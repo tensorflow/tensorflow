@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/tfrt/mlrt/bytecode/span.h"
 
+#include <cstdint>
 #include <vector>
 
 #include <gmock/gmock.h>

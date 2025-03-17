@@ -25,13 +25,13 @@ limitations under the License.
 #include "xla/stream_executor/gpu/gpu_init.h"
 #include "xla/tests/test_macros.h"
 #include "xla/tsl/framework/device_id.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_process_state.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/random.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/test.h"
-#include "tsl/lib/core/status_test_util.h"
 
 #ifdef TF_GPU_USE_PJRT
 #include "xla/pjrt/pjrt_client.h"
@@ -65,6 +65,15 @@ se::CudaComputeCapability GetComputeCapability() {
       .value()
       ->GetDeviceDescription()
       .cuda_compute_capability();
+}
+
+bool IsRocm() {
+  return std::holds_alternative<se::RocmComputeCapability>(
+      se::GPUMachineManager()
+          ->ExecutorForDevice(0)
+          .value()
+          ->GetDeviceDescription()
+          .gpu_compute_capability());
 }
 
 void ExpectErrorMessageSubstr(const Status& s, StringPiece substr) {
@@ -144,7 +153,10 @@ class GPUDeviceTest : public ::testing::Test {
   }
 };
 
-TEST_F(GPUDeviceTest, DISABLED_ON_GPU_ROCM(CudaMallocAsync)) {
+TEST_F(GPUDeviceTest, CudaMallocAsync) {
+  if (IsRocm()) {
+    GTEST_SKIP();
+  }
   // cudaMallocAsync supported only when cuda toolkit and driver supporting
   // CUDA 11.2+
 #ifndef GOOGLE_CUDA
@@ -189,7 +201,10 @@ TEST_F(GPUDeviceTest, DISABLED_ON_GPU_ROCM(CudaMallocAsync)) {
   EXPECT_EQ(status.code(), error::OK);
 }
 
-TEST_F(GPUDeviceTest, DISABLED_ON_GPU_ROCM(CudaMallocAsyncPreallocate)) {
+TEST_F(GPUDeviceTest, CudaMallocAsyncPreallocate) {
+  if (IsRocm()) {
+    GTEST_SKIP();
+  }
   SessionOptions opts = MakeSessionOptions("0", 0, 1, {}, {}, {}, 0,
                                            /*use_cuda_malloc_async=*/true);
   setenv("TF_CUDA_MALLOC_ASYNC_SUPPORTED_PREALLOC", "2048", 1);
@@ -522,7 +537,7 @@ TEST_F(GPUDeviceTest, MultipleVirtualDevicesWithSpecifiedNumber) {
 // Enabling unified memory on pre-Pascal GPUs results in an initialization
 // error.
 TEST_F(GPUDeviceTest, UnifiedMemoryUnavailableOnPrePascalGpus) {
-  if (GetComputeCapability().IsAtLeast(se::CudaComputeCapability::PASCAL_)) {
+  if (GetComputeCapability().IsAtLeast(se::CudaComputeCapability::kPascal)) {
     return;
   }
 
@@ -544,7 +559,7 @@ TEST_F(GPUDeviceTest, UnifiedMemoryAllocation) {
   static constexpr tsl::PlatformDeviceId kPlatformDeviceId(0);
 
   // Exit early if running on pre-Pascal GPUs.
-  if (!GetComputeCapability().IsAtLeast(se::CudaComputeCapability::PASCAL_)) {
+  if (!GetComputeCapability().IsAtLeast(se::CudaComputeCapability::kPascal)) {
     LOG(INFO)
         << "Unified memory allocation is not supported with pre-Pascal GPUs.";
     return;

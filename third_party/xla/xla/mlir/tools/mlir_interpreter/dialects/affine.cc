@@ -17,8 +17,8 @@ limitations under the License.
 #include <cstdint>
 
 #include "llvm/ADT/SmallVector.h"
-#include "mlir/Dialect/Affine/IR/AffineOps.h"  // from @llvm-project
-#include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "mlir/Dialect/Affine/IR/AffineOps.h"
+#include "mlir/Support/LLVM.h"
 #include "xla/mlir/tools/mlir_interpreter/dialects/util.h"
 #include "xla/mlir/tools/mlir_interpreter/framework/interpreter.h"
 #include "xla/mlir/tools/mlir_interpreter/framework/registration.h"

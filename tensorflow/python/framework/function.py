@@ -1385,6 +1385,9 @@ _DTYPE_TO_STR = {
     dtypes.bfloat16: "b16",
     dtypes.float8_e5m2: "f8e5m2",
     dtypes.float8_e4m3fn: "f8e4m3fn",
+    dtypes.float8_e4m3fnuz: "f8e4m3fnuz",
+    dtypes.float8_e4m3b11fnuz: "f8e4m3b11fnuz",
+    dtypes.float8_e5m2fnuz: "f8e5m2fnuz",
     dtypes.int4: "i4",
     dtypes.uint4: "u4",
 }

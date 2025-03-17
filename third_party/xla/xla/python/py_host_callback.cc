@@ -30,7 +30,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
 #include "llvm/Support/ExtensibleRTTI.h"
-#include "third_party/nanobind/include/nanobind/nanobind.h"
+#include "nanobind/nanobind.h"
 #include "xla/layout_util.h"
 #include "xla/pjrt/host_callback.h"
 #include "xla/pjrt/pjrt_compiler.h"
@@ -46,9 +46,9 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
 #include "xla/tsl/concurrency/ref_count.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/statusor.h"
 
 namespace nb = nanobind;
 
@@ -69,7 +69,7 @@ absl::StatusOr<std::vector<CpuCallback::Arg>> CreateCallbackArgs(
       Shape layout =
           (shape.has_layout() ? shape
                               : LayoutUtil::GetWithDefaultLayout(shape));
-      callback_args[i].dims.resize(shape.dimensions_size());
+      callback_args[i].dims.resize(shape.rank());
       absl::c_copy(shape.dimensions(), callback_args[i].dims.begin());
       callback_args[i].strides = ByteStridesForShape(layout);
       callback_args[i].type = shape.element_type();
@@ -97,13 +97,13 @@ absl::StatusOr<std::vector<CpuCallback::Result>> CreateCallbackResults(
           result_shapes[i].has_layout()
               ? result_shapes[i]
               : LayoutUtil::GetWithDefaultLayout(result_shapes[i]);
-      callback_results[i].expected_dims.resize(shape.dimensions_size());
+      callback_results[i].expected_dims.resize(shape.rank());
       absl::c_copy(shape.dimensions(),
                    callback_results[i].expected_dims.begin());
       callback_results[i].expected_strides = ByteStridesForShape(shape);
       callback_results[i].type = shape.element_type();
       callback_results[i].size_in_bytes = ShapeUtil::ByteSizeOf(shape);
-      callback_results[i].reversed_layout.resize(shape.dimensions_size());
+      callback_results[i].reversed_layout.resize(shape.rank());
       absl::c_reverse_copy(shape.layout().minor_to_major(),
                            callback_results[i].reversed_layout.begin());
     } else if (result_shapes[i].IsToken()) {
@@ -127,7 +127,7 @@ PyCpuLoadedHostCallback::Create(ifrt::Client* ifrt_client,
                                 absl::Span<const Shape> result_shapes) {
   ifrt::PlatformId platform_id = ifrt_client->platform_id();
   if (platform_id != CpuId() && platform_id != CudaId() &&
-      platform_id != RocmId()) {
+      platform_id != RocmId() && platform_id != SyclId()) {
     return Unimplemented("CpuCallback supports CPU and GPU only");
   }
 

@@ -50,7 +50,7 @@ namespace v2 {
 // Output: Modifies the input module in place with clustered operations.
 //   status - Whether the transformation to cluster the input MLIR module was
 //   successful.
-tensorflow::Status RunFunctionTf2xlaClusteringBridge(
+absl::Status RunFunctionTf2xlaClusteringBridge(
     mlir::ModuleOp module, bool is_supported_by_replicated_brige,
     bool is_in_fallback_enabled_mode,
     llvm::StringRef module_name = llvm::StringRef());

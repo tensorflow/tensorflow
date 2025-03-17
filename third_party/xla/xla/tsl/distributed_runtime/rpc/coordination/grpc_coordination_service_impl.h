@@ -30,9 +30,9 @@ limitations under the License.
 #include "xla/tsl/distributed_runtime/rpc/async_service_interface.h"
 #include "xla/tsl/distributed_runtime/rpc/grpc_call.h"
 #include "xla/tsl/distributed_runtime/rpc/grpc_util.h"
-#include "tsl/platform/threadpool.h"
-#include "tsl/protobuf/coordination_service.grpc.pb.h"
-#include "tsl/protobuf/coordination_service.pb.h"
+#include "xla/tsl/platform/threadpool.h"
+#include "xla/tsl/protobuf/coordination_service.grpc.pb.h"
+#include "xla/tsl/protobuf/coordination_service.pb.h"
 
 namespace tsl {
 
@@ -91,6 +91,7 @@ class GrpcCoordinationServiceImpl : public AsyncServiceInterface {
   HANDLER(ReportErrorToTask);
   HANDLER(ReportErrorToService);
   HANDLER(GetTaskState);
+  HANDLER(GetJobState);
   HANDLER(InsertKeyValue);
   HANDLER(GetKeyValue);
   HANDLER(TryGetKeyValue);
@@ -98,6 +99,8 @@ class GrpcCoordinationServiceImpl : public AsyncServiceInterface {
   HANDLER(DeleteKeyValue);
   HANDLER(Barrier);
   HANDLER(CancelBarrier);
+  HANDLER(GetAliveTasks);
+  HANDLER(PollForError);
 #undef HANDLER
 
   thread::ThreadPool& compute_pool_;

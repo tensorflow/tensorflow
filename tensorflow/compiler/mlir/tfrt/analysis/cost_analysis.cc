@@ -15,6 +15,8 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tfrt/analysis/cost_analysis.h"
 
 #include <algorithm>
+#include <cassert>
+#include <cstdint>
 #include <string>
 #include <utility>
 

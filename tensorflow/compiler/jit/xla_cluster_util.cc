@@ -47,8 +47,8 @@ const char* const kXlaCompileTimeConstantInputsAttr =
 namespace {
 // Returns a string describing how an edge from src to dst would
 // create a cycle.
-string DescribeCycle(const GraphCycles* cycles, const Graph& graph, int src,
-                     int dst) {
+string DescribeCycle(const xla::GraphCycles* cycles, const Graph& graph,
+                     int src, int dst) {
   int32_t max_path_size = graph.num_node_ids() + 1;
   std::vector<int32> path(max_path_size);
   int32_t path_size = cycles->FindPath(dst, src, max_path_size, path.data());
@@ -108,7 +108,7 @@ bool HasForwardedRefInput(const Node& node) {
 }
 
 absl::StatusOr<bool> CreateCycleDetectionGraph(const Graph* graph,
-                                               GraphCycles* cycles) {
+                                               xla::GraphCycles* cycles) {
   for (int i = 0; i < graph->num_node_ids(); ++i) {
     // We rely on the node IDs in the cycle detection graph being consecutive
     // integers starting from 0.
@@ -202,7 +202,7 @@ std::optional<absl::string_view> GetXlaClusterForNode(const Node& node) {
   if (attr_value == nullptr) {
     return std::nullopt;
   }
-  Status s = AttrValueHasType(*attr_value, "string");
+  absl::Status s = AttrValueHasType(*attr_value, "string");
   if (!s.ok()) {
     return std::nullopt;
   }
@@ -420,7 +420,7 @@ CallTargetListTy GetCallTargetListFromNode(
 
 enum class Direction { kForward, kBackward };
 
-Status GetNodesRelatedToRefVariablesInDirection(
+absl::Status GetNodesRelatedToRefVariablesInDirection(
     const Graph& graph, FunctionLibraryRuntime* lib_runtime,
     Direction direction, int depth, absl::flat_hash_set<Node*>* result);
 
@@ -480,7 +480,7 @@ absl::StatusOr<bool> DoesAnyCalleeHaveRefNodes(
 
 // Helper for GetNodesRelatedToRefVariables that traverses the graph in one
 // direction.
-Status GetNodesRelatedToRefVariablesInDirection(
+absl::Status GetNodesRelatedToRefVariablesInDirection(
     const Graph& graph, FunctionLibraryRuntime* lib_runtime,
     Direction direction, int depth, absl::flat_hash_set<Node*>* result) {
   std::vector<Node*> nodes_in_order;

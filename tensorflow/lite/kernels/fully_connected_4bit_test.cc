@@ -139,7 +139,7 @@ TEST(Hybrid4BitFullyConnectedOpTest, SimpleTestHybridInt4) {
               ElementsAreArray(ArrayFloatNear(
                   {393., 456., 457., 455., 394., 413., 476., 477., 475., 414.,
                    393., 456., 457., 455., 394., 393., 456., 457., 455., 394},
-                  /*max_abs_error=*/1.3f)));
+                  /*max_abs_err=*/1.3f)));
 }
 
 TEST(Hybrid4BitFullyConnectedOpTest, TestHybridInt4AllZeroBatch) {
@@ -182,7 +182,7 @@ TEST(Hybrid4BitFullyConnectedOpTest, TestHybridInt4AllZeroBatch) {
               ElementsAreArray(ArrayFloatNear(
                   {393., 456., 457., 455., 394., 413., 476., 477., 475., 414.,
                    393., 456., 457., 455., 394., 1,    2,    3,    1,    2},
-                  /*max_abs_error=*/1.3f)));
+                  /*max_abs_err=*/1.3f)));
 }
 
 std::mt19937 random_engine(2023);
@@ -232,7 +232,7 @@ TEST_P(Hybrid4BitFullyConnectedVsReferenceOpTests, TestHybridInt4) {
   expected.Invoke();
   std::vector<float> expected_data = expected.GetOutput();
   EXPECT_THAT(test_data, ElementsAreArray(ArrayFloatNear(
-                             expected_data, /*max_abs_error=*/1e-3f)));
+                             expected_data, /*max_abs_err=*/1e-3f)));
 }
 
 INSTANTIATE_TEST_SUITE_P(Hybrid4BitFullyConnectedVsReferenceOpTests,

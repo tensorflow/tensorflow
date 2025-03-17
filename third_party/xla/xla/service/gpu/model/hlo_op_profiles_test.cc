@@ -15,10 +15,12 @@ limitations under the License.
 
 #include "xla/service/gpu/model/hlo_op_profiles.h"
 
+#include <utility>
+
 #include <gtest/gtest.h>
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
-#include "xla/tests/hlo_test_base.h"
+#include "xla/stream_executor/device_description.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {

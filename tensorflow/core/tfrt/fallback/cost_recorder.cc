@@ -14,10 +14,15 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/tfrt/fallback/cost_recorder.h"
 
+#include <algorithm>
+#include <cstddef>
+#include <cstdint>
 #include <limits>
 #include <string>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/status.h"
@@ -51,7 +56,7 @@ uint64_t CostRecorder::GetCost(int64_t op_key) const {
   return r;
 }
 
-Status CostRecorder::WriteToFile() const {
+absl::Status CostRecorder::WriteToFile() const {
   OpCostMapProto op_cost_map_proto;
   {
     tf_shared_lock l(op_cost_map_mutex_);

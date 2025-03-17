@@ -16,35 +16,7 @@ limitations under the License.
 #ifndef XLA_SERVICE_HLO_ELEMENT_TYPE_CONVERTER_H_
 #define XLA_SERVICE_HLO_ELEMENT_TYPE_CONVERTER_H_
 
-#include "xla/hlo/ir/hlo_module.h"
-#include "xla/service/hlo_pass_interface.h"
-
-namespace xla {
-
-// A pass that eliminates certain element types as the input or output of ops by
-// inserting Convert ops. This allows a backend to support an element type while
-// only actually implementing the Convert op for that element type. This is
-// generally not the fastest approach, but it works.
-class HloElementTypeConverter : public HloModulePass {
- public:
-  // eliminate_type is the type to eliminate as the input or output of ops,
-  // using Convert ops to replace it with replace_with_type.
-  HloElementTypeConverter(PrimitiveType eliminate_type,
-                          PrimitiveType replace_with_type);
-
-  absl::string_view name() const override { return "element_type_converter"; }
-
-  // Returns the pass on the module and returns whether the module was modified.
-  using HloPassInterface::Run;
-  absl::StatusOr<bool> Run(
-      HloModule* module,
-      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
-
- private:
-  PrimitiveType eliminate_type_;
-  PrimitiveType replace_with_type_;
-};
-
-}  // namespace xla
+// The current header will be deprecated in favour of the following.
+#include "xla/hlo/transforms/simplifiers/hlo_element_type_converter.h"
 
 #endif  // XLA_SERVICE_HLO_ELEMENT_TYPE_CONVERTER_H_

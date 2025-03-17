@@ -13,14 +13,16 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <memory>
+
 #include "mlir/Pass/Pass.h"  // from @llvm-project
-#include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/transforms/lift_variables.h"
+#include "tensorflow/compiler/mlir/tensorflow/transforms/test_passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/fake_session.h"
 
 namespace mlir {
-namespace tf_saved_model {
+namespace tf_test {
 namespace {
 using ::tensorflow::Session;
 
@@ -37,7 +39,9 @@ class LiftVariablesTestPass
 
   void runOnOperation() override {
     ModuleOp module = getOperation();
-    if (failed(tf_saved_model::LiftVariables(module, session_)))
+    if (failed(tf_saved_model::LiftVariables(
+            module, session_, /*import_variables_as_dense_resources=*/
+            import_variables_as_dense_resources_)))
       signalPassFailure();
   }
 
@@ -62,18 +66,17 @@ class LiftVariablesInvalidSessionTestPass
 };
 
 }  // namespace
-}  // namespace tf_saved_model
+}  // namespace tf_test
 
 namespace tf_test {
 
 std::unique_ptr<OperationPass<ModuleOp>> CreateLiftVariablesTestPass() {
-  return std::make_unique<tf_saved_model::LiftVariablesTestPass>();
+  return std::make_unique<tf_test::LiftVariablesTestPass>();
 }
 
 std::unique_ptr<OperationPass<ModuleOp>>
 CreateLiftVariablesInvalidSessionTestPass() {
-  return std::make_unique<
-      tf_saved_model::LiftVariablesInvalidSessionTestPass>();
+  return std::make_unique<tf_test::LiftVariablesInvalidSessionTestPass>();
 }
 
 }  // namespace tf_test

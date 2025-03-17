@@ -105,10 +105,9 @@ NodeDef MakeMapAndBatchNode(const NodeDef& map_node, const NodeDef& batch_node,
 
 }  // namespace
 
-Status MapAndBatchFusion::OptimizeAndCollectStats(Cluster* cluster,
-                                                  const GrapplerItem& item,
-                                                  GraphDef* output,
-                                                  OptimizationStats* stats) {
+absl::Status MapAndBatchFusion::OptimizeAndCollectStats(
+    Cluster* cluster, const GrapplerItem& item, GraphDef* output,
+    OptimizationStats* stats) {
   *output = item.graph;
   MutableGraphView graph(output);
   absl::flat_hash_set<string> nodes_to_delete;
@@ -122,6 +121,11 @@ Status MapAndBatchFusion::OptimizeAndCollectStats(Cluster* cluster,
     NodeDef* node2 = graph_utils::GetInputNode(batch_node, graph);
 
     if (node2->op() != "MapDataset" && !IsParallelMap(*node2)) {
+      continue;
+    }
+    // Do not fuse ParallelMap node that uses the unbounded thread pool.
+    if (node2->attr().find("use_unbounded_threadpool") != node2->attr().end() &&
+        node2->attr().at("use_unbounded_threadpool").b()) {
       continue;
     }
     // Use a more descriptive variable name now that we know the node type.

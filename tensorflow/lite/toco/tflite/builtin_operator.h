@@ -18,6 +18,7 @@ limitations under the License.
 #include <memory>
 
 #include "absl/memory/memory.h"
+#include "tensorflow/compiler/mlir/lite/tools/versioning/op_version.h"
 #include "tensorflow/lite/toco/tflite/operator.h"
 
 namespace toco {

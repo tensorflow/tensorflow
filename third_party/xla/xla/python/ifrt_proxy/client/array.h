@@ -28,7 +28,6 @@
 #include "absl/base/attributes.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "absl/types/optional.h"
 #include "absl/types/span.h"
 #include "llvm/Support/ExtensibleRTTI.h"
 #include "xla/python/ifrt/array.h"
@@ -69,9 +68,10 @@ class Array final : public llvm::RTTIExtends<Array, xla::ifrt::Array> {
   static absl::StatusOr<tsl::RCReference<xla::ifrt::Array>>
   AssembleArrayFromSingleDeviceArrays(
       xla::ifrt::Client* client, std::shared_ptr<RpcHelper> rpc_helper,
-      Shape shape, std::shared_ptr<const Sharding> sharding,
+      DType dtype, Shape shape, std::shared_ptr<const Sharding> sharding,
       absl::Span<tsl::RCReference<xla::ifrt::Array>> arrays,
-      ArrayCopySemantics semantics);
+      ArrayCopySemantics array_copy_semantics,
+      SingleDeviceShardSemantics single_device_shard_semantics);
 
   // `Array::RemapArrays()` implements `Client::RemapArrays()`.
   // TODO(b/261226026): Implement logic directly in client.cc.
@@ -111,13 +111,17 @@ class Array final : public llvm::RTTIExtends<Array, xla::ifrt::Array> {
   std::shared_ptr<const Sharding> shared_ptr_sharding() const override {
     return sharding_;
   }
-  absl::StatusOr<std::unique_ptr<PjRtLayout>> layout() const override {
+  absl::StatusOr<std::shared_ptr<const PjRtLayout>> layout() const override {
     return absl::UnimplementedError(
         "Array::layout() not implemented for IFRT proxy");
   };
 
   absl::StatusOr<std::vector<tsl::RCReference<xla::ifrt::Array>>>
   DisassembleIntoSingleDeviceArrays(ArrayCopySemantics semantics) override;
+  absl::StatusOr<std::vector<tsl::RCReference<xla::ifrt::Array>>>
+  DisassembleIntoSingleDeviceArrays(
+      ArrayCopySemantics array_copy_semantics,
+      SingleDeviceShardSemantics single_device_shard_semantics) override;
 
   absl::StatusOr<tsl::RCReference<xla::ifrt::Array>> FullyReplicatedShard(
       xla::ifrt::ArrayCopySemantics semantics) override;
@@ -127,17 +131,15 @@ class Array final : public llvm::RTTIExtends<Array, xla::ifrt::Array> {
       void* data, std::optional<absl::Span<const int64_t>> byte_strides,
       ArrayCopySemantics semantics) override;
 
-  // This will be deleted once the client requires the minimum version of 3.
-  ABSL_DEPRECATED("Use `Client::CopyArrays` instead")
-  absl::StatusOr<tsl::RCReference<xla::ifrt::Array>> Reshard(
-      std::shared_ptr<const Sharding> new_sharding,
-      ArrayCopySemantics semantics);
-
   static char ID;  // NOLINT
 
  private:
   template <typename T, typename... Args>
   friend tsl::RCReference<T> tsl::MakeRef(Args&&... args);
+
+  Future<> CopyToStringHostBuffer(
+      void* data, std::optional<absl::Span<const int64_t>> byte_strides,
+      ArrayCopySemantics semantics);
 
   // Not owned. Used only for implementing `client()` interface method. Note
   // that `client()` will still return the pointer even if the pointed-to memory

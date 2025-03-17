@@ -14,10 +14,14 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/mini_benchmark.h"
 
+#include <cstdint>
+#include <memory>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/status/statusor.h"
+#include "absl/synchronization/mutex.h"
 #include "flatbuffers/flatbuffers.h"  // from @flatbuffers
 
 namespace tflite {

@@ -35,7 +35,7 @@ class CollectiveRemoteAccessLocal : public CollectiveRemoteAccess {
 
   ~CollectiveRemoteAccessLocal() override = default;
 
-  void StartAbort(const Status& s) override;
+  void StartAbort(const absl::Status& s) override;
 
   void RecvFromPeer(const string& peer_device, const string& peer_task,
                     bool peer_is_local, const string& key, Device* to_device,

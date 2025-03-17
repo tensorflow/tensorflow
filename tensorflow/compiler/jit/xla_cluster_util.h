@@ -56,7 +56,7 @@ bool HasForwardedRefInput(const Node& node);
 // Returns true for success and false for valid graphs that we can't handle yet
 // (b/127521408).
 absl::StatusOr<bool> CreateCycleDetectionGraph(const Graph* graph,
-                                               GraphCycles* cycles);
+                                               xla::GraphCycles* cycles);
 
 // Returns the XLA cluster in which `node` is placed if it is in an XLA cluster,
 // otherwise returns nullopt.

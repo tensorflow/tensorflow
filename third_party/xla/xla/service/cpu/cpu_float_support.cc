@@ -13,12 +13,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#if defined(INTEL_MKL) && defined(ENABLE_ONEDNN_V3)
+#if defined(INTEL_MKL)
 
 #include "xla/service/cpu/cpu_float_support.h"
 
-#include "xla/service/cpu/onednn_convolution_rewriter.h"
-#include "xla/service/cpu/onednn_matmul_rewriter.h"
+#include "xla/service/cpu/onednn_contraction_rewriter.h"
 
 namespace xla {
 namespace cpu {
@@ -28,10 +27,10 @@ bool CpuFloatSupport::IsSupported(const HloInstruction& hlo) const {
     // oneDNN rewritable ops
     case HloOpcode::kDot:
       return LowPrecisionType() == BF16 &&
-             OneDnnMatMulRewriter::ShouldRewrite(&hlo);
+             OneDnnContractionRewriter::ShouldRewriteDot(&hlo, true);
     case HloOpcode::kConvolution:
       return LowPrecisionType() == BF16 &&
-             OneDnnConvolutionRewriter::ShouldRewrite(&hlo);
+             OneDnnContractionRewriter::ShouldRewriteConv(&hlo);
     // Collective ops.
     case HloOpcode::kAllGather:
     case HloOpcode::kAllReduce:
@@ -66,4 +65,4 @@ bool CpuFloatSupport::IsSupported(const HloInstruction& hlo) const {
 }  // namespace cpu
 }  // namespace xla
 
-#endif  // INTEL_MKL && ENABLE_ONEDNN_V3
+#endif  // INTEL_MKL

@@ -29,16 +29,22 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "llvm/Support/Casting.h"
-#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
-#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/IR/BuiltinOps.h"
 #include "xla/hlo/ir/hlo_sharding.h"
+#include "xla/hlo/translate/mhlo_to_hlo/type_to_shape.h"
+#include "xla/layout.h"
 #include "xla/pjrt/host_callback.h"
 #include "xla/pjrt/pjrt_client.h"
+#include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/pjrt_future.h"
+#include "xla/pjrt/pjrt_layout.h"
 #include "xla/primitive_util.h"
 #include "xla/python/ifrt/array.h"
+#include "xla/python/ifrt/basic_device_list.h"
 #include "xla/python/ifrt/device.h"
+#include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/dtype.h"
 #include "xla/python/ifrt/executable.h"
 #include "xla/python/ifrt/future.h"
@@ -49,6 +55,7 @@ limitations under the License.
 #include "xla/python/pjrt_ifrt/pjrt_array.h"
 #include "xla/python/pjrt_ifrt/pjrt_client.h"
 #include "xla/python/pjrt_ifrt/pjrt_device.h"
+#include "xla/python/pjrt_ifrt/pjrt_dtype.h"
 #include "xla/python/pjrt_ifrt/pjrt_host_callback.h"
 #include "xla/python/pjrt_ifrt/pjrt_memory.h"
 #include "xla/python/pjrt_ifrt/xla_compiler.h"
@@ -56,12 +63,11 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
-#include "xla/translate/mhlo_to_hlo/type_to_shape.h"
 #include "xla/tsl/concurrency/ref_count.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace ifrt {
@@ -182,10 +188,9 @@ char PjRtExecutable::ID = 0;
 char PjRtLoadedExecutable::ID = 0;
 
 absl::StatusOr<std::unique_ptr<Executable>> PjRtExecutable::Create(
-    std::shared_ptr<xla::PjRtExecutable> pjrt_executable,
-    std::unique_ptr<XlaCompileOptions> compile_options) {
-  return std::unique_ptr<Executable>(new PjRtExecutable(
-      std::move(pjrt_executable), std::move(compile_options)));
+    std::shared_ptr<xla::PjRtExecutable> pjrt_executable) {
+  return std::unique_ptr<Executable>(
+      new PjRtExecutable(std::move(pjrt_executable)));
 }
 
 absl::StatusOr<std::optional<std::string>> PjRtExecutable::Fingerprint() const {
@@ -317,19 +322,20 @@ PjRtLoadedExecutable::CreateInternal(
     const std::optional<xla::HloSharding>& result_hlo_sharding,
     const std::optional<std::vector<absl::string_view>>& result_memory_kinds,
     std::vector<tsl::RCReference<LoadedHostCallback>> loaded_host_callbacks) {
-  DeviceList::Devices ds;
+  BasicDeviceList::Devices ds;
   ds.reserve(pjrt_loaded_executable->addressable_devices().size());
   for (xla::PjRtDevice* device :
        pjrt_loaded_executable->addressable_devices()) {
     TF_ASSIGN_OR_RETURN(Device * ifrt_device, client->LookupPjRtDevice(device));
     ds.push_back(ifrt_device);
   }
-  DeviceList devices(std::move(ds));
+  DeviceListRef devices = BasicDeviceList::Create(std::move(ds));
   // Devices used for constructing output shardings. A fake one will be used for
   // a portable executable.
-  std::optional<DeviceList> sharding_devices;
-  if (devices.empty()) {
-    sharding_devices = DeviceList({client->addressable_devices().front()});
+  std::optional<DeviceListRef> sharding_devices;
+  if (devices->devices().empty()) {
+    sharding_devices =
+        BasicDeviceList::Create({client->addressable_devices().front()});
   } else {
     sharding_devices = devices;
   }
@@ -464,7 +470,7 @@ PjRtLoadedExecutable::CreateInternal(
 PjRtLoadedExecutable::PjRtLoadedExecutable(
     PjRtCompatibleClient* client,
     std::shared_ptr<xla::PjRtLoadedExecutable> pjrt_loaded_executable,
-    DeviceList devices, std::vector<Device*> addressable_devices,
+    DeviceListRef devices, std::vector<Device*> addressable_devices,
     std::vector<tsl::RCReference<LoadedHostCallback>> all_loaded_host_callbacks,
     std::vector<PjRtHostSendAndRecvLoadedHostCallback*>
         host_send_recv_callbacks,
@@ -487,7 +493,7 @@ PjRtLoadedExecutable::~PjRtLoadedExecutable() = default;
 absl::StatusOr<PjRtLoadedExecutable::ExecuteResult>
 PjRtLoadedExecutable::Execute(absl::Span<tsl::RCReference<Array>> args,
                               const ExecuteOptions& options,
-                              std::optional<DeviceList> devices) {
+                              std::optional<DeviceListRef> devices) {
   DCHECK(this);
   // TODO(hyeontaek): Check input sharding consistency.
 
@@ -500,17 +506,18 @@ PjRtLoadedExecutable::Execute(absl::Span<tsl::RCReference<Array>> args,
   const bool portable_execution = devices.has_value();
   PjRtCompatibleDevice* portable_execution_device = nullptr;
   if (portable_execution) {
-    if (devices->size() != 1) {
+    if ((*devices)->size() != 1) {
       return InvalidArgument(
           "Only single-shard portable execution is supported");
     }
     num_computations = 1;
-    portable_execution_device = static_cast<PjRtDevice*>(devices->front());
+    portable_execution_device =
+        static_cast<PjRtDevice*>((*devices)->devices().front());
   } else {
-    if (devices_.empty()) {
+    if (devices_->devices().empty()) {
       return InvalidArgument("No devices provided for portable executable");
     }
-    num_computations = devices_.size();
+    num_computations = devices_->size();
   }
 
   argument_handles.resize(num_computations);
@@ -534,16 +541,26 @@ PjRtLoadedExecutable::Execute(absl::Span<tsl::RCReference<Array>> args,
     }
   }
 
-  const bool returned_future_supported =
-      pjrt_loaded_executable_->IsReturnedFutureSupported();
+  xla::ExecuteOptions opts;
+  opts.untuple_result = true;
+  opts.launch_id = options.launch_id;
+  opts.use_major_to_minor_data_layout_for_callbacks = true;
+  opts.non_donatable_input_indices = options.non_donatable_input_indices;
 
-  auto opts = options;
+  auto context = std::make_shared<xla::ExecuteContext>();
+  auto platform_id = pjrt_loaded_executable_->client()->platform_id();
+  // Forward callbacks via FFI's ExecutionContext for CPU/GPU platforms only.
+  if (platform_id == CpuId() || platform_id == CudaId() ||
+      platform_id == RocmId() || platform_id == SyclId()) {
+    CHECK_OK(context->ffi_context().Insert(all_loaded_host_callbacks_.get()));
+    opts.context = context.get();
+  }
 
-  if (!all_loaded_host_callbacks_->empty() && !returned_future_supported) {
-    return Internal(
-        "Host callback not supported without returned future support in "
-        "runtime: %s",
-        client_->runtime_type());
+  // When using host callbacks on CPU, we need to use synchronous dispatch to
+  // avoid deadlocks with reentrant callbacks. Note that this option only
+  // affects the CPU runtime.
+  if (!all_loaded_host_callbacks_->empty()) {
+    opts.execution_mode = xla::ExecuteOptions::ExecutionMode::kSynchronous;
   }
 
   std::unique_ptr<HostCallbackStates> host_callback_states;
@@ -560,9 +577,7 @@ PjRtLoadedExecutable::Execute(absl::Span<tsl::RCReference<Array>> args,
         contexts.push_back(CreateHostCallbackStateAndAppendSendRecvCallbacks(
             host_send_recv_callback->host_callback(),
             /*host_memory_for_device_manager=*/nullptr, send_callbacks,
-            recv_callbacks,
-            /*use_major_to_minor_data_layout_for_callbacks=*/
-            options.use_major_to_minor_data_layout_for_callbacks));
+            recv_callbacks, opts.use_major_to_minor_data_layout_for_callbacks));
       }
     }
     opts.send_callbacks = host_callback_states->send_callbacks;
@@ -571,7 +586,7 @@ PjRtLoadedExecutable::Execute(absl::Span<tsl::RCReference<Array>> args,
 
   // Execute the computation.
   std::vector<std::vector<std::unique_ptr<PjRtBuffer>>> pjrt_outputs;
-  ExecuteResult result;
+  xla::ifrt::Future<> status;
   if (portable_execution) {
     std::optional<PjRtFuture<>> returned_pjrt_future;
     TF_RET_CHECK(portable_execution_device->IsAddressable());
@@ -580,39 +595,30 @@ PjRtLoadedExecutable::Execute(absl::Span<tsl::RCReference<Array>> args,
         pjrt_loaded_executable_->ExecutePortable(
             argument_handles.front(), portable_execution_device->pjrt_device(),
             opts, returned_pjrt_future,
-            /*fill_future=*/returned_future_supported));
+            /*fill_future=*/true));
 
     pjrt_outputs.push_back(std::move(single_device_pjrt_results));
-    if (returned_future_supported) {
-      result.status = *std::move(returned_pjrt_future);
-    } else {
-      result.status = Future<>(absl::OkStatus());
-    }
+    status = *std::move(returned_pjrt_future);
   } else {
     std::optional<std::vector<PjRtFuture<>>> returned_pjrt_futures;
-    if (returned_future_supported) {
-      returned_pjrt_futures.emplace();
-    }
+    returned_pjrt_futures.emplace();
 
     TF_ASSIGN_OR_RETURN(
         pjrt_outputs, pjrt_loaded_executable_->Execute(argument_handles, opts,
                                                        returned_pjrt_futures));
 
-    if (returned_future_supported) {
-      result.status = JoinFutures(absl::MakeSpan(*returned_pjrt_futures));
-    } else {
-      result.status = Future<>(absl::OkStatus());
-    }
+    status = JoinFutures(absl::MakeSpan(*returned_pjrt_futures));
   }
 
   if (!all_loaded_host_callbacks_->empty()) {
     // For host callbacks to work, returned futures must be supported so that we
     // can use the futures to extend the lifetime of the host callbacks until
     // the execution finishes.
-    result.status.OnReady(
-        [all_loaded_host_callbacks = all_loaded_host_callbacks_,
-         host_callback_states = std::move(host_callback_states)](
-            absl::Status) mutable { all_loaded_host_callbacks.reset(); });
+    status.OnReady([all_loaded_host_callbacks = all_loaded_host_callbacks_,
+                    host_callback_states = std::move(host_callback_states),
+                    context = std::move(context)](absl::Status) mutable {
+      all_loaded_host_callbacks.reset();
+    });
   }
 
   // Convert 2-level PjRtBuffer vectors into an Array vector.
@@ -634,6 +640,40 @@ PjRtLoadedExecutable::Execute(absl::Span<tsl::RCReference<Array>> args,
   // memory_kind shares the same Sharding object.
   absl::flat_hash_map<MemoryKind, std::shared_ptr<const Sharding>>
       single_device_shardings;
+
+  // TODO(emilyaf): Simplify the handling of layouts here when they're plumbed
+  // through from JAX.
+  std::vector<std::shared_ptr<const xla::PjRtLayout>> layouts;
+  layouts.reserve(num_outputs);
+  if (!pjrt_outputs.empty()) {
+    for (int i = 0; i < num_outputs; ++i) {
+      auto layout = output_dtypes_[i].kind() == xla::ifrt::DType::kToken
+                        ? std::make_shared<xla::PjRtLayout>(xla::Layout())
+                        : pjrt_outputs.front()[i]->layout();
+      layouts.push_back(std::move(layout));
+    }
+  } else {
+    auto maybe_layouts = GetOutputLayouts();
+    if (absl::IsUnimplemented(maybe_layouts.status())) {
+      for (int i = 0; i < num_outputs; ++i) {
+        std::shared_ptr<const xla::PjRtLayout> layout;
+        if (output_dtypes_[i].kind() == xla::ifrt::DType::kToken) {
+          layout = std::make_shared<xla::PjRtLayout>(xla::Layout());
+        } else {
+          TF_ASSIGN_OR_RETURN(layout,
+                              client_->GetDefaultLayout(
+                                  output_dtypes_[i], output_shapes_[i].dims(),
+                                  devices_->devices().front(),
+                                  output_shardings_[i]->memory_kind()));
+        }
+        layouts.push_back(std::move(layout));
+      }
+    } else {
+      TF_RETURN_IF_ERROR(maybe_layouts.status());
+      layouts = *std::move(maybe_layouts);
+    }
+  }
+
   for (int i = 0; i < num_outputs; ++i) {
     PjRtArray::PjRtBuffers buffers;
     buffers.reserve(num_computations);
@@ -651,8 +691,8 @@ PjRtLoadedExecutable::Execute(absl::Span<tsl::RCReference<Array>> args,
                 memory_kind, pjrt_outputs[j][i]->device())) {
           return FailedPrecondition(
               "Memory kind mismatch between PjRtBuffers. Got one buffer with "
-              "memory kind '%s' and another with memory_kind '%s'",
-              first_memory_kind.DebugString(), memory_kind.DebugString());
+              "memory kind '%v' and another with memory_kind '%v'",
+              first_memory_kind, memory_kind);
         }
       }
       buffers.push_back(
@@ -674,9 +714,14 @@ PjRtLoadedExecutable::Execute(absl::Span<tsl::RCReference<Array>> args,
     } else {
       sharding = output_shardings_[i];
     }
-    outputs.push_back(*PjRtArray::Create(client_, output_dtypes_[i],
-                                         output_shapes_[i], std::move(sharding),
-                                         std::move(buffers)));
+    outputs.push_back(*PjRtArray::Create(
+        client_, output_dtypes_[i], output_shapes_[i], std::move(sharding),
+        std::move(buffers), std::move(layouts[i])));
+  }
+
+  ExecuteResult result;
+  if (options.fill_status) {
+    result.status = status;
   }
   result.outputs = std::move(outputs);
   return result;

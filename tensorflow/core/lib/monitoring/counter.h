@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_LIB_MONITORING_COUNTER_H_
 #define TENSORFLOW_CORE_LIB_MONITORING_COUNTER_H_
 
-#include "tsl/lib/monitoring/counter.h"
+#include "xla/tsl/lib/monitoring/counter.h"
 #ifdef IS_MOBILE_PLATFORM
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/macros.h"

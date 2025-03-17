@@ -21,10 +21,10 @@ limitations under the License.
 #include <utility>
 
 #include "absl/base/thread_annotations.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
-#include "tsl/platform/logging.h"
 
 namespace xla {
 
@@ -42,6 +42,7 @@ struct State {
 }  // namespace
 
 PjRtFuture<> JoinFutures(absl::Span<const PjRtFuture<>> futures) {
+  VLOG(2) << "xla::JoinFutures: " << futures.size() << " futures";
   if (futures.empty()) {
     return PjRtFuture<>(absl::OkStatus());
   } else if (futures.size() == 1) {
@@ -54,6 +55,12 @@ PjRtFuture<> JoinFutures(absl::Span<const PjRtFuture<>> futures) {
     future.OnReady([state](absl::Status status) {
       if (!status.ok()) {
         absl::MutexLock lock(&state->mu);
+        if (VLOG_IS_ON(2)) {
+          if (!state->status.ok() && status.code() != state->status.code()) {
+            VLOG(2) << "Ignoring status " << status
+                    << " because first error was " << state->status;
+          }
+        }
         state->status.Update(status);
       }
 

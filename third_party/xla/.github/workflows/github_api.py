@@ -120,3 +120,41 @@ class GitHubAPI:
     """
     endpoint = f"repos/{repo}/issues/{issue_number}"
     return self._make_request("POST", endpoint, status=status)
+
+  def add_issue_labels(
+      self, repo: str, issue_number: int, labels: list[str]
+  ) -> requests.Response:
+    """Adds labels to an issue (or PR).
+
+    https://docs.github.com/en/actions/managing-issues-and-pull-requests/adding-labels-to-issues
+
+    Arguments:
+      repo: a string of the form `owner/repo_name`, e.g. openxla/xla
+      issue_number: the issue (or PR) to set the status of
+      labels: the labels to add to the issue
+
+    Returns:
+      a requests.Response object containing the response from the API.
+
+    Raises:
+      requests.exceptions.HTTPError
+    """
+    endpoint = f"repos/{repo}/issues/{issue_number}/labels"
+    return self._make_request("POST", endpoint, labels=labels)
+
+  def get_user_orgs(self, username: str) -> requests.Response:
+    """Gets all public org memberships for a user.
+
+    https://docs.github.com/en/rest/orgs/orgs?apiVersion=2022-11-28#list-organizations-for-a-user
+
+    Arguments:
+      username: The user's GitHub username as a string.
+
+    Returns:
+      a requests.Response object containing the response from the API.
+
+    Raises:
+      requests.exceptions.HTTPError
+    """
+    endpoint = f"users/{username}/orgs"
+    return self._make_request("GET", endpoint, username=username)

@@ -49,7 +49,7 @@ class SerializeTensorOpTest : public OpsTestBase {
         DeviceFactory::NewDevice("CPU", {}, "/job:a/replica:0/task:0"));
     absl::InlinedVector<TensorValue, 4> inputs;
     inputs.push_back({nullptr, serialized});
-    Status status;
+    absl::Status status;
     std::unique_ptr<OpKernel> op(CreateOpKernel(DEVICE_CPU, device.get(),
                                                 cpu_allocator(), parse_node_def,
                                                 TF_GRAPH_DEF_VERSION, &status));

@@ -18,8 +18,9 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "absl/memory/memory.h"
-#include "absl/strings/string_view.h"
+#include "absl/log/check.h"
+#include "absl/status/status.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/lite/toco/graph_transformations/graph_transformations.h"
 #include "tensorflow/lite/toco/graph_transformations/lstm_utils.h"
 #include "tensorflow/lite/toco/model.h"
@@ -27,9 +28,8 @@ limitations under the License.
 
 namespace toco {
 
-::tensorflow::Status MergeLstmCellInputs::Run(Model* model,
-                                              std::size_t op_index,
-                                              bool* modified) {
+absl::Status MergeLstmCellInputs::Run(Model* model, std::size_t op_index,
+                                      bool* modified) {
   *modified = false;
   // Find lstm cell.
   auto op_it = model->operators.begin() + op_index;

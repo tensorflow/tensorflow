@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <memory>
 #include <optional>
+#include <vector>
 
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
@@ -27,7 +28,6 @@ limitations under the License.
 #include "xla/literal.h"
 #include "xla/service/dynamic_dimension_inference.h"
 #include "xla/service/executable.h"
-#include "xla/service/hlo_execution_profile.h"
 #include "xla/service/service_executable_run_options.h"
 #include "xla/shape.h"
 #include "xla/stream_executor/device_memory_allocator.h"
@@ -44,8 +44,7 @@ class InterpreterExecutableBase : public Executable {
 
   absl::StatusOr<ExecutionOutput> ExecuteAsyncOnStream(
       const ServiceExecutableRunOptions* run_options,
-      std::vector<ExecutionInput> arguments,
-      HloExecutionProfile* hlo_execution_profile) override;
+      std::vector<ExecutionInput> arguments) override;
 
  protected:
   virtual absl::StatusOr<Literal> Evaluate(

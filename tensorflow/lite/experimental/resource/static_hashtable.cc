@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/lite/experimental/resource/static_hashtable.h"
 
+#include <cstdint>
 #include <memory>
 #include <string>
 

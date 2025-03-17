@@ -22,10 +22,13 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "absl/algorithm/container.h"
 #include "absl/container/inlined_vector.h"
+#include "absl/functional/function_ref.h"
 #include "absl/log/check.h"
 #include "absl/types/span.h"
 #include "xla/array.h"
+#include "xla/printer.h"
 #include "xla/util.h"
 
 namespace xla {
@@ -337,7 +340,7 @@ std::optional<IotaTileAssignment> IotaTileAssignment::Transpose(
 }
 
 void IotaTileAssignment::Print(Printer* printer) const {
-  printer->Append("devices=[");
+  printer->Append("[");
   AppendJoin(printer, dims(), ",");
   printer->Append("]<=[");
   AppendJoin(printer, reshape_dims(), ",");
@@ -454,6 +457,7 @@ absl::Status TileAssignment::EachStatus(
 
 void TileAssignment::Print(Printer* printer) const {
   if (iota_) {
+    printer->Append("devices=");
     iota_->Print(printer);
   } else {
     printer->Append("devices=[");

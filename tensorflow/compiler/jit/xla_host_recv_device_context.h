@@ -66,7 +66,7 @@ class XlaHostRecvDeviceContext : public DeviceContext {
   // Copies `device_memory_base_` with `shape_` into `cpu_tensor`.
   // `device_tensor` is unused.
   void CopyDeviceTensorToCPU(const Tensor* device_tensor,
-                             StringPiece tensor_name, Device* device,
+                             absl::string_view tensor_name, Device* device,
                              Tensor* cpu_tensor, StatusCallback done) override;
 
   void CopyTensorInSameDevice(const Tensor* input_tensor, Device* device,

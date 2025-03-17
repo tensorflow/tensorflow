@@ -11,6 +11,12 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/kernels/data/interleave_dataset_op.h"
 
+#include <cstdint>
+#include <memory>
+#include <string>
+#include <utility>
+#include <vector>
+
 #include "tensorflow/core/data/dataset_test_base.h"
 
 namespace tensorflow {
@@ -54,7 +60,7 @@ class InterleaveDatasetParams : public DatasetParams {
     return input_tensors;
   }
 
-  Status GetInputNames(std::vector<string>* input_names) const override {
+  absl::Status GetInputNames(std::vector<string>* input_names) const override {
     input_names->clear();
     input_names->reserve(input_dataset_params_.size() +
                          other_arguments_.size() + 2);
@@ -68,7 +74,7 @@ class InterleaveDatasetParams : public DatasetParams {
     return absl::OkStatus();
   }
 
-  Status GetAttributes(AttributeVector* attr_vector) const override {
+  absl::Status GetAttributes(AttributeVector* attr_vector) const override {
     *attr_vector = {{"f", func_},
                     {"Targuments", type_arguments_},
                     {"output_shapes", output_shapes_},

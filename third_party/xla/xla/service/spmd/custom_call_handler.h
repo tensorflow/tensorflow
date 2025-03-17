@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_SERVICE_SPMD_CUSTOM_CALL_HANDLER_H_
 #define XLA_SERVICE_SPMD_CUSTOM_CALL_HANDLER_H_
 
+#include <cstdint>
 #include <memory>
 
 #include "xla/hlo/ir/hlo_instruction.h"

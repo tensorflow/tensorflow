@@ -83,3 +83,71 @@ func.func @zero_ext(%arg0: tensor<0xi1>) -> tensor<i32> {
   // CHECK: return %[[CST]]
   return %5 : tensor<i32>
 }
+
+// -----
+
+// CHECK-LABEL: func @init_constant
+func.func @init_constant() -> tensor<512xi1> {
+  %cst = mhlo.constant dense<true> : tensor<i1>
+  %cst_1 = mhlo.constant dense<true> : tensor<512x1xi1>
+  %0 = mhlo.reduce(%cst_1 init: %cst) across dimensions = [1] : (tensor<512x1xi1>, tensor<i1>) -> tensor<512xi1>
+   reducer(%arg1: tensor<i1>, %arg2: tensor<i1>)  {
+    mhlo.return %cst : tensor<i1>
+  }
+  return %0 : tensor<512xi1>
+
+  // CHECK:      %0 = mhlo.constant dense<true> : tensor<512xi1>
+  // CHECK-NEXT: return %0 : tensor<512xi1>
+}
+
+// -----
+
+// CHECK-LABEL: func @init_arith_constant
+func.func @init_arith_constant() -> tensor<512xi1> {
+  %cst = arith.constant dense<true> : tensor<i1>
+  %cst_1 = arith.constant dense<true> : tensor<512x1xi1>
+  %0 = mhlo.reduce(%cst_1 init: %cst) across dimensions = [1] : (tensor<512x1xi1>, tensor<i1>) -> tensor<512xi1>
+   reducer(%arg1: tensor<i1>, %arg2: tensor<i1>)  {
+    mhlo.return %cst : tensor<i1>
+  }
+  return %0 : tensor<512xi1>
+
+  // CHECK:      %0 = mhlo.constant dense<true> : tensor<512xi1>
+  // CHECK-NEXT: return %0 : tensor<512xi1>
+}
+
+// -----
+
+// CHECK-LABEL: func @init_constant_multiple_inputs
+func.func @init_constant_multiple_inputs() -> (tensor<512xi1>, tensor<512xi32>) {
+  %cst = mhlo.constant dense<false> : tensor<i1>
+  %cst_1 = mhlo.constant dense<true> : tensor<512x1xi1>
+  %cst_2 = mhlo.constant dense<5> : tensor<i32>
+  %cst_3 = mhlo.constant dense<0> : tensor<512x1xi32>
+  %0:2 = mhlo.reduce(%cst_1 init: %cst), (%cst_3 init: %cst_2) across dimensions = [1] : (tensor<512x1xi1>, tensor<512x1xi32>, tensor<i1>, tensor<i32>) -> (tensor<512xi1>, tensor<512xi32>)
+   reducer(%arg1: tensor<i1>, %arg2: tensor<i1>) (%arg3: tensor<i32>, %arg4: tensor<i32>)  {
+    mhlo.return %cst, %cst_2 : tensor<i1>, tensor<i32>
+  }
+  return %0#0, %0#1 : tensor<512xi1>, tensor<512xi32>
+
+  // CHECK:      %0 = mhlo.constant dense<false> : tensor<512xi1>
+  // CHECK-NEXT: %1 = mhlo.constant dense<5> : tensor<512xi32>
+  // CHECK-NEXT: return %0, %1 : tensor<512xi1>, tensor<512xi32>
+}
+
+// -----
+
+// CHECK-LABEL: func @init_constant_return_outside_constant
+func.func @init_constant_return_outside_constant() -> tensor<1x128xi1> {
+  %cst = mhlo.constant dense<true> : tensor<i1>
+  %cst_1 = mhlo.constant dense<true> : tensor<1x128x1xi1>
+  %cst_2 = mhlo.constant dense<false> : tensor<i1>
+  %0 = mhlo.reduce(%cst_1 init: %cst_2) across dimensions = [2] : (tensor<1x128x1xi1>, tensor<i1>) -> tensor<1x128xi1>
+  reducer(%arg2: tensor<i1>, %arg3: tensor<i1>)  {
+    mhlo.return %cst : tensor<i1>
+  }
+  return %0 : tensor<1x128xi1>
+
+  // CHECK:      %0 = mhlo.constant dense<true> : tensor<1x128xi1>
+  // CHECK-NEXT: return %0 : tensor<1x128xi1>
+}

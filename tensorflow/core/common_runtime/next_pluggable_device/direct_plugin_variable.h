@@ -18,9 +18,10 @@ limitations under the License.
 
 #include <string>
 
+#include "absl/status/status.h"
 #include "tensorflow/compiler/jit/variable_info.h"
+#include "xla/tsl/platform/status.h"
 #include "tensorflow/core/common_runtime/next_pluggable_device/plugin_variable.h"
-#include "tsl/platform/status.h"
 
 namespace tensorflow {
 

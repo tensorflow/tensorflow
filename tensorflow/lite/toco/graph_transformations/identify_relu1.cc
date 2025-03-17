@@ -17,7 +17,8 @@ limitations under the License.
 #include <unordered_map>
 #include <vector>
 
-#include "tensorflow/core/platform/logging.h"
+#include "absl/status/status.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/lite/toco/graph_transformations/graph_transformations.h"
 #include "tensorflow/lite/toco/graph_transformations/identify_util.h"
 #include "tensorflow/lite/toco/model.h"
@@ -27,8 +28,8 @@ namespace toco {
 
 using util::GetSingleScalarInputIndexOfBinaryOp;
 
-::tensorflow::Status IdentifyRelu1::Run(Model* model, std::size_t op_index,
-                                        bool* modified) {
+absl::Status IdentifyRelu1::Run(Model* model, std::size_t op_index,
+                                bool* modified) {
   *modified = false;
   // Follow sequences of min+max and max+min. First get the leading op.
   const auto op_it = model->operators.begin() + op_index;

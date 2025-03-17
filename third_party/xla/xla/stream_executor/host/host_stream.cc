@@ -36,7 +36,6 @@ limitations under the License.
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_common.h"
 #include "tsl/platform/denormal.h"
-#include "tsl/platform/env.h"
 #include "tsl/platform/setround.h"
 
 namespace stream_executor {
@@ -135,6 +134,14 @@ absl::Status HostStream::RecordEvent(Event* event) {
   return absl::OkStatus();
 }
 
+absl::Status HostStream::DoHostCallbackWithStatus(
+    absl::AnyInvocable<absl::Status() &&> callback) {
+  if (EnqueueTaskWithStatus(std::move(callback))) {
+    return absl::OkStatus();
+  }
+  return absl::InternalError("Failed to host callback.");
+}
+
 bool HostStream::EnqueueTaskWithStatus(
     absl::AnyInvocable<absl::Status() &&> task) {
   CHECK(task != nullptr);
@@ -185,5 +192,4 @@ absl::Status HostStream::BlockUntilDone() {
 }
 
 }  // namespace host
-
 }  // namespace stream_executor

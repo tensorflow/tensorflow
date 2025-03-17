@@ -29,9 +29,10 @@ namespace tensorflow {
 namespace collective_util {
 
 /*static*/
-Status InitializeDeviceAndLocality(const DeviceMgr* dev_mgr,
-                                   const string& device_name, Device** device,
-                                   DeviceLocality* device_locality) {
+absl::Status InitializeDeviceAndLocality(const DeviceMgr* dev_mgr,
+                                         const string& device_name,
+                                         Device** device,
+                                         DeviceLocality* device_locality) {
   if (!dev_mgr) {
     return errors::Internal("Required non-null dev_mgr ", dev_mgr,
                             " for InitializeDeviceAndLocality");
@@ -39,7 +40,7 @@ Status InitializeDeviceAndLocality(const DeviceMgr* dev_mgr,
 
   // In rare cases during cancellation, this lookup can lead to a SIGSEGV. The
   // cancellation was caused by some other error. See b/301496136 for details.
-  Status status = dev_mgr->LookupDevice(device_name, device);
+  absl::Status status = dev_mgr->LookupDevice(device_name, device);
   if (status.ok()) {
     CHECK(*device);
     *device_locality = (*device)->attributes().locality();
@@ -97,9 +98,9 @@ SubContext::SubContext(OpKernelContext* ctx, OpKernelContext::Params* params,
   sub_ctx_.reset(new OpKernelContext(&sub_params_, 1));
 }
 
-Status ComputeBinOp(OpKernelContext* op_ctx, OpKernelContext::Params* params,
-                    Device* device, OpKernel* op, Tensor* output,
-                    Tensor* input) {
+absl::Status ComputeBinOp(OpKernelContext* op_ctx,
+                          OpKernelContext::Params* params, Device* device,
+                          OpKernel* op, Tensor* output, Tensor* input) {
   // Prepare an OpKernelContext that is identical to that of the original Op
   // (i.e. the collective), except for the input output sizes and identities and
   // the Op itself.

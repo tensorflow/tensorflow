@@ -13,12 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// Class declaration for Stream type that enqueues tasks onto a host/CPU-based
-// execution context (as opposed to a GPU device), HostExecutor.
 #ifndef XLA_STREAM_EXECUTOR_HOST_HOST_STREAM_H_
 #define XLA_STREAM_EXECUTOR_HOST_HOST_STREAM_H_
 
-#include <cstddef>
+#include <cstdint>
 #include <memory>
 #include <queue>
 
@@ -27,13 +25,20 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/event.h"
+#include "xla/stream_executor/kernel.h"
+#include "xla/stream_executor/launch_dim.h"
+#include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_common.h"
+#include "xla/stream_executor/stream_executor.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/thread_annotations.h"
 
 namespace stream_executor {
 namespace host {
 
+// Class declaration for Stream type that enqueues tasks onto a host/CPU-based
+// execution context (as opposed to a GPU device), HostExecutor.
 class HostStream : public StreamCommon {
  public:
   explicit HostStream(StreamExecutor* executor);
@@ -43,13 +48,16 @@ class HostStream : public StreamCommon {
   // stop the stream or block any other tasks from executing; rather, the stream
   // will remember the first error encountered and return it from
   // 'BlockUntilDone'.
-  bool EnqueueTaskWithStatus(absl::AnyInvocable<absl::Status() &&> task);
+  virtual bool EnqueueTaskWithStatus(
+      absl::AnyInvocable<absl::Status() &&> task);
   // Enqueue a task that doesn't report any status.
   bool EnqueueTask(absl::AnyInvocable<void() &&> task);
 
   // Blocks until all tasks are done, returns the first error reported by a task
   // (if any) and clears the error status.
   absl::Status BlockUntilDone();
+
+  absl::Status BlockHostUntilDone() override { return BlockUntilDone(); }
 
   absl::Status WaitFor(Stream* other) override;
   absl::Status WaitFor(Event* event) override;
@@ -63,8 +71,10 @@ class HostStream : public StreamCommon {
                       const DeviceMemoryBase& gpu_src, uint64_t size) override;
   absl::Status Memcpy(void* host_dst, const DeviceMemoryBase& gpu_src,
                       uint64_t size) override;
+  absl::Status DoHostCallbackWithStatus(
+      absl::AnyInvocable<absl::Status() &&> callback) override;
 
- private:
+ protected:
   bool WorkAvailable() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
   void WorkLoop();
 

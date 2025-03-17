@@ -23,6 +23,7 @@ limitations under the License.
 #include <unordered_map>
 #include <vector>
 
+#include "absl/log/log.h"
 #include "tensorflow/core/platform/logging.h"
 
 namespace mlir {

@@ -23,6 +23,13 @@ namespace tensorflow {
 // PyCapsule name for DLPack Tensor
 const char* const kDlTensorCapsuleName = "dltensor";
 
+// Returns the DLDevice* for the given eager tensor handle.
+//
+// The caller takes ownership of the returned pointer and is responsible for
+// deleting it.
+TF_CAPI_EXPORT extern void* TFE_GetDLDevice(TFE_TensorHandle* h,
+                                            TF_Status* status);
+
 // Converts eager tensor handle to DLPack (DLManagedTensor*), and return the
 // void* for further PyCapsule construction.
 TF_CAPI_EXPORT extern void* TFE_HandleToDLPack(TFE_TensorHandle* h,

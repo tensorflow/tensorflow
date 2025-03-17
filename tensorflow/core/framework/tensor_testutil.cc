@@ -106,6 +106,35 @@ static ::testing::AssertionResult IsEqual(Eigen::half x, Eigen::half y,
   }
   return EqualFailure(x, y);
 }
+static ::testing::AssertionResult IsEqual(tsl::bfloat16 x, tsl::bfloat16 y,
+                                          Tolerance t) {
+  // We consider NaNs equal for testing.
+  if (Eigen::numext::isnan(x) && Eigen::numext::isnan(y))
+    return ::testing::AssertionSuccess();
+
+  // Below is a reimplementation of CmpHelperFloatingPointEQ<tsl::bfloat16>,
+  // which we cannot use because tsl::bfloat16 is not default-constructible.
+
+  if (Eigen::numext::isnan(x) || Eigen::numext::isnan(y))
+    return EqualFailure(x, y);
+
+  auto sign_and_magnitude_to_biased = [](uint16_t sam) {
+    const uint16_t kSignBitMask = 0x8000;
+    if (kSignBitMask & sam) return ~sam + 1;  // negative number.
+    return kSignBitMask | sam;                // positive number.
+  };
+
+  auto xb = sign_and_magnitude_to_biased(Eigen::numext::bit_cast<uint16_t>(x));
+  auto yb = sign_and_magnitude_to_biased(Eigen::numext::bit_cast<uint16_t>(y));
+  if (t == Tolerance::kNone) {
+    if (xb == yb) return ::testing::AssertionSuccess();
+  } else {
+    auto distance = xb >= yb ? xb - yb : yb - xb;
+    const uint16_t kMaxUlps = 4;
+    if (distance <= kMaxUlps) return ::testing::AssertionSuccess();
+  }
+  return EqualFailure(x, y);
+}
 template <typename T>
 static ::testing::AssertionResult IsEqual(const T& x, const T& y, Tolerance t) {
   if (::testing::internal::CmpHelperEQ<T>("", "", x, y))
@@ -243,6 +272,12 @@ void ExpectEqual(const Tensor& x, const Tensor& y, Tolerance t) {
       return ExpectEqual<float8_e5m2>(x, y, t);
     case DT_FLOAT8_E4M3FN:
       return ExpectEqual<float8_e4m3fn>(x, y, t);
+    case DT_FLOAT8_E4M3FNUZ:
+      return ExpectEqual<float8_e4m3fnuz>(x, y, t);
+    case DT_FLOAT8_E4M3B11FNUZ:
+      return ExpectEqual<float8_e4m3b11fnuz>(x, y, t);
+    case DT_FLOAT8_E5M2FNUZ:
+      return ExpectEqual<float8_e5m2fnuz>(x, y, t);
     case DT_INT4:
       return ExpectEqual<int4>(x, y, t);
     case DT_UINT4:

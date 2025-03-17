@@ -156,7 +156,7 @@ template <typename T>
 std::string TypeNameVariantImpl(
     const T& value, TypeNameResolver<T, false /* has_type_name */,
                                      false /* Tensor */, true /* protobuf */>) {
-  return value.GetTypeName();
+  return std::string(value.GetTypeName());
 }
 
 template <typename T>

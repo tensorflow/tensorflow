@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <cmath>
+#include <cstddef>
 #include <cstdint>
 #include <map>
 #include <optional>
@@ -36,6 +37,7 @@ limitations under the License.
 #include "absl/strings/strip.h"
 #include "absl/time/time.h"
 #include "absl/types/optional.h"
+#include "xla/tsl/profiler/utils/timespan.h"
 #include "tensorflow/core/profiler/convert/trace_viewer/trace_events_util.h"
 #include "tensorflow/core/profiler/convert/trace_viewer/trace_viewer_color.h"
 #include "tensorflow/core/profiler/lib/context_types.h"
@@ -44,7 +46,6 @@ limitations under the License.
 #include "tensorflow/core/profiler/protobuf/trace_events_raw.pb.h"
 #include "tsl/platform/protobuf.h"
 #include "tsl/profiler/lib/context_types.h"
-#include "tsl/profiler/utils/timespan.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -56,10 +57,6 @@ struct JsonTraceOptions {
   // Options and values for filtering based on the "details" menu.
   Details details;
 
-  // If selected_device_ids is set, we add a field "selected_device_ids"
-  // in the Trace JSON.
-  std::optional<absl::flat_hash_set<uint32_t>> selected_device_ids;
-
   // Device IDs of devices whose resources should be sorted by name instead of
   // by resource ID.
   absl::flat_hash_set<uint32_t /*device_id*/> sort_resources_by_name;
@@ -68,6 +65,8 @@ struct JsonTraceOptions {
   TraceEventsColorerInterface* colorer = nullptr;
 
   bool generate_stack_frames = true;
+  bool use_new_backend = false;
+  std::string code_link;
 };
 
 // Counts generated JSON events by type.
@@ -93,6 +92,8 @@ class JsonEventCounter {
     }
     return output;
   }
+
+  size_t GetCounterEventCount() const { return event_count_[kCounterEvent]; }
 
  private:
   static constexpr absl::string_view kEventTypeName[] = {
@@ -193,7 +194,7 @@ class JsonEventWriter {
         }
         switch (event.flow_entry_type()) {
           case TraceEvent::FLOW_NONE:
-            // The caller prevents this case from happenning.
+            // The caller prevents this case from happening.
             break;
           case TraceEvent::FLOW_START:
             output_->Append(R"(,"flow_out":true)");
@@ -222,7 +223,7 @@ class JsonEventWriter {
         }
         switch (event.flow_entry_type()) {
           case TraceEvent::FLOW_NONE:
-            // The caller prevents this case from happenning.
+            // The caller prevents this case from happening.
             break;
           case TraceEvent::FLOW_START:
             output_->Append(R"(,"ph":"b")");
@@ -252,6 +253,10 @@ class JsonEventWriter {
       output_->Append(",");
       WriteEvent(*async_event);
     }
+  }
+
+  size_t GetCounterEventCount() const {
+    return counter_.GetCounterEventCount();
   }
 
  private:
@@ -468,21 +473,6 @@ void WriteDetails(const JsonTraceOptions::Details& details, IOBuffer* output) {
   output->Append("],");
 }
 
-template <typename IOBuffer>
-void WriteSelectedDeviceIds(
-    const absl::optional<absl::flat_hash_set<uint32_t>>& selected_device_ids,
-    IOBuffer* output) {
-  if (!selected_device_ids.has_value()) return;
-
-  output->Append(R"("selected_device_ids":[)");
-  JsonSeparator<IOBuffer> separator(output);
-  for (const auto& device_id : selected_device_ids.value()) {
-    separator.Add();
-    output->Append(device_id);
-  }
-  output->Append("],");
-}
-
 std::map<uint64_t, uint64_t> BuildStackFrameReferences(const Trace& trace);
 
 template <typename IOBuffer>
@@ -514,10 +504,13 @@ void TraceEventsToJson(const JsonTraceOptions& options,
   // uses higher-precision when manipulating event times. Note that the
   // timestamps of trace events are always given in microseconds.
   output->Append(
-      R"({"displayTimeUnit":"ns","metadata":{"highres-ticks":true},)");
+      R"({"displayTimeUnit":"ns","metadata":{"highres-ticks":true}, "codeLink":")",
+      options.code_link, R"(",)");
+
+  output->Append(absl::StrFormat(R"("useNewBackend": %s,)",
+                                 options.use_new_backend ? "true" : "false"));
 
   WriteDetails(options.details, output);
-  WriteSelectedDeviceIds(options.selected_device_ids, output);
   WriteReturnedEventsSize(events.NumEvents(), output);
   WriteFilteredByVisibility(events.FilterByVisibility(), output);
   WriteTraceFullTimespan(&events.trace(), output);
@@ -541,7 +534,7 @@ void TraceEventsToJson(const JsonTraceOptions& options,
       separator.Add();
       output->Append(R"({"args":{"name":)", JsonEscape(device.name()),
                      R"(},"name":"process_name","ph":"M","pid":)", device_id,
-                     "}");
+                     R"(,"thread_count":)", device.resources_size(), "}");
     }
     separator.Add();
     output->Append(R"({"args":{"sort_index":)", device_id,
@@ -577,7 +570,14 @@ void TraceEventsToJson(const JsonTraceOptions& options,
     separator.Add();
     writer.WriteEvent(event);
   });
-  output->Append("]}");
+  size_t counter_event_count = writer.GetCounterEventCount();
+  VLOG(1) << "Counter event count: " << counter_event_count;
+  if (counter_event_count == 2000000) {
+    output->Append(
+        R"(], "showCounterMessage": "Only 2M counter events are shown. Zoom in or pan to see more." })");
+  } else {
+    output->Append(R"(], "showCounterMessage": "" })");
+  }
 }
 
 class IOBufferAdapter {

@@ -66,7 +66,8 @@ class LowerToIfrtRestoreVariablePass
   // Returns true if the given user is a VarHandleOp.
   struct RestoredTensorUser {
     // Path to the AssignVariableOp from the RestoreV2Op. Those ops are deleted
-    // after rewriting RestoreV2Op to IfrtRestoreVariableOp.
+    // after rewriting RestoreV2Op to IfrtRestoreVariableOp because we want to
+    // handle the host tensor restore asynchronously in IfrtRestoreVariableOp.
     std::vector<mlir::Operation*> path_to_assign_variable_op;
 
     // The VarHandleOp associated with the AssignVariableOp.

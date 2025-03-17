@@ -30,13 +30,13 @@ namespace {
 
 using tensorflow::TF_StatusPtr;
 
-Status ReluModel(AbstractContext* ctx,
-                 absl::Span<AbstractTensorHandle* const> inputs,
-                 absl::Span<AbstractTensorHandle*> outputs) {
+absl::Status ReluModel(AbstractContext* ctx,
+                       absl::Span<AbstractTensorHandle* const> inputs,
+                       absl::Span<AbstractTensorHandle*> outputs) {
   return ops::Relu(ctx, inputs[0], &outputs[0], "Relu");
 }
 
-Status SparseSoftmaxCrossEntropyWithLogitsModel(
+absl::Status SparseSoftmaxCrossEntropyWithLogitsModel(
     AbstractContext* ctx, absl::Span<AbstractTensorHandle* const> inputs,
     absl::Span<AbstractTensorHandle*> outputs) {
   AbstractTensorHandle* loss;
@@ -53,9 +53,9 @@ Status SparseSoftmaxCrossEntropyWithLogitsModel(
   return absl::OkStatus();
 }
 
-Status BiasAddModel(AbstractContext* ctx,
-                    absl::Span<AbstractTensorHandle* const> inputs,
-                    absl::Span<AbstractTensorHandle*> outputs) {
+absl::Status BiasAddModel(AbstractContext* ctx,
+                          absl::Span<AbstractTensorHandle* const> inputs,
+                          absl::Span<AbstractTensorHandle*> outputs) {
   return ops::BiasAdd(ctx, inputs[0], inputs[1], &outputs[0], "NHWC",
                       "BiasAdd");
 }
@@ -85,7 +85,7 @@ class CppGradients
 
   AbstractContextPtr immediate_execution_ctx_;
   GradientRegistry registry_;
-  Status status_;
+  absl::Status status_;
 
  public:
   bool UseMlir() const { return strcmp(std::get<0>(GetParam()), "mlir") == 0; }

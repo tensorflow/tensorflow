@@ -17,6 +17,7 @@ limitations under the License.
 // Used for creating the binary version of a compatibility list.
 //
 // The flatc command line is not available in all build environments.
+#include <cstdint>
 #include <fstream>
 #include <iostream>
 #include <string>

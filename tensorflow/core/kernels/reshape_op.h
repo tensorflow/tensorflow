@@ -116,9 +116,9 @@ class ReshapeOp : public OpKernel {
 
  private:
   template <typename Tshape>
-  Status ValidateSizes(const Tensor& sizes, int64_t* product,
-                       int* unknown_index, TensorShape* shape,
-                       bool* has_zero_dim) {
+  absl::Status ValidateSizes(const Tensor& sizes, int64_t* product,
+                             int* unknown_index, TensorShape* shape,
+                             bool* has_zero_dim) {
     *product = 1;
     *unknown_index = -1;
     *has_zero_dim = false;

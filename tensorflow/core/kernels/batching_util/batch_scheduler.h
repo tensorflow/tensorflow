@@ -27,12 +27,13 @@ limitations under the License.
 #define TENSORFLOW_CORE_KERNELS_BATCHING_UTIL_BATCH_SCHEDULER_H_
 
 #include <stddef.h>
+#include <sys/types.h>
 
 #include <algorithm>
 #include <atomic>
 #include <cstddef>
 #include <deque>
-#include <functional>
+#include <iterator>
 #include <memory>
 #include <optional>
 #include <utility>
@@ -43,12 +44,11 @@ limitations under the License.
 #include "tensorflow/core/lib/core/notification.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/platform/types.h"
-#include "tensorflow/core/profiler/lib/traceme.h"
 #include "tsl/platform/criticality.h"
+#include "tsl/profiler/lib/traceme.h"
 
 namespace tensorflow {
 namespace serving {
@@ -58,11 +58,13 @@ const absl::string_view kLowPriorityPaddingWithMaxBatchSizeAttrValue =
 const absl::string_view kLowPriorityPaddingWithNextAllowedBatchSizeAttrValue =
     "low_priority_padding_with_next_allowed_batch_size";
 const absl::string_view kPriorityIsolationAttrValue = "priority_isolation";
+const absl::string_view kPriorityMergeAttrValue = "priority_merge";
 
 enum class MixedPriorityBatchingPolicy {
   kLowPriorityPaddingWithMaxBatchSize,
   kLowPriorityPaddingWithNextAllowedBatchSize,
-  kPriorityIsolation
+  kPriorityIsolation,
+  kPriorityMerge,
 };
 
 absl::StatusOr<MixedPriorityBatchingPolicy> GetMixedPriorityBatchingPolicy(
@@ -116,6 +118,9 @@ class TaskQueue {
   // Appends a task to the end of the queue with the given start time.
   void AddTask(std::unique_ptr<TaskType> task, uint64 start_time_micros);
 
+  // Adds a task to the front of the queue with the given start time.
+  void PrependTask(std::unique_ptr<TaskType> task, uint64 start_time_micros);
+
   // Removes a task from the front of the queue, i.e., the oldest task in the
   // queue.
   std::unique_ptr<TaskType> RemoveTask();
@@ -162,6 +167,17 @@ void TaskQueue<TaskType>::AddTask(std::unique_ptr<TaskType> task,
     mutex_lock l(mu_);
     size_ += task->size();
     tasks_.emplace_back(std::move(task), start_time_micros);
+    empty_.store(false);
+  }
+}
+
+template <typename TaskType>
+void TaskQueue<TaskType>::PrependTask(std::unique_ptr<TaskType> task,
+                                      uint64 start_time_micros) {
+  {
+    mutex_lock l(mu_);
+    size_ += task->size();
+    tasks_.emplace_front(std::move(task), start_time_micros);
     empty_.store(false);
   }
 }
@@ -252,7 +268,7 @@ int TaskQueue<TaskType>::size() const {
 // accept new tasks; a closed one cannot. A batch is monotonic: initially it is
 // open and tasks can be added to it; then it is closed and its set of tasks
 // remains fixed for the remainder of its life. A closed batch cannot be re-
-// opened. Tasks can never be removed from a batch.
+// opened.
 //
 // Type parameter TaskType must be a subclass of BatchTask.
 template <typename TaskType>
@@ -265,7 +281,7 @@ class Batch {
   // Appends 'task' to the batch. After calling AddTask(), the newly-added task
   // can be accessed via task(num_tasks()-1) or mutable_task(num_tasks()-1).
   // Dies if the batch is closed.
-  void AddTask(std::unique_ptr<TaskType> task);
+  void AddTask(std::unique_ptr<TaskType> task, uint64 start_time_micros = 0);
 
   // Removes the most recently added task. Returns nullptr if the batch is
   // empty.
@@ -304,6 +320,19 @@ class Batch {
   // Returns the TraceMe context id of this batch.
   uint64 traceme_context_id() const;
 
+  // Attempts to trim this batch to a new, smaller size (not to be confused with
+  // the number of tasks in the batch). On success, the trimmed tasks go into
+  // 'out_trimmed_tasks' in the same order the tasks were in this batch.
+  //
+  // The method might not succeed if it needs to split a large task to hit the
+  // correct size.
+  void TryTrimToNewSize(
+      int new_size, std::vector<std::unique_ptr<TaskType>>& out_trimmed_tasks);
+
+  // Returns the start time of the earliest task in the queue. If the queue is
+  // empty, return the null value.
+  std::optional<uint64> EarliestTaskStartTime() const;
+
  private:
   mutable mutex mu_;
 
@@ -320,6 +349,10 @@ class Batch {
 
   // The TracMe context id.
   const uint64 traceme_context_id_;
+
+  // The minimum start time of all tasks in the batch.
+  // If the batch is empty, the value is undefined.
+  uint64 earliest_task_start_time_micros_ TF_GUARDED_BY(mu_);
 
   Batch(const Batch&) = delete;
   void operator=(const Batch&) = delete;
@@ -353,7 +386,7 @@ class BatchScheduler {
   // substantial amount of time. If the method returns Status::OK, the task is
   // processed asynchronously, and any errors that occur during the processing
   // of the batch that includes the task can be reported to 'task'.
-  virtual Status Schedule(std::unique_ptr<TaskType>* task) = 0;
+  virtual absl::Status Schedule(std::unique_ptr<TaskType>* task) = 0;
 
   // Returns the number of tasks that have been scheduled (i.e. accepted by
   // Schedule()), but have yet to be handed to a thread for execution as part of
@@ -397,13 +430,31 @@ Batch<TaskType>::~Batch() {
 }
 
 template <typename TaskType>
-void Batch<TaskType>::AddTask(std::unique_ptr<TaskType> task) {
+void Batch<TaskType>::AddTask(std::unique_ptr<TaskType> task,
+                              uint64 start_time_micros) {
   DCHECK(!IsClosed());
   {
     mutex_lock l(mu_);
     size_ += task->size();
     tasks_.push_back(std::move(task));
     empty_.store(false);
+    if (tasks_.size() == 1) {
+      earliest_task_start_time_micros_ = start_time_micros;
+    } else {
+      earliest_task_start_time_micros_ =
+          std::min(earliest_task_start_time_micros_, start_time_micros);
+    }
+  }
+}
+
+template <typename TaskType>
+std::optional<uint64> Batch<TaskType>::EarliestTaskStartTime() const {
+  {
+    mutex_lock l(mu_);
+    if (tasks_.empty()) {
+      return std::nullopt;
+    }
+    return earliest_task_start_time_micros_;
   }
 }
 
@@ -503,6 +554,45 @@ void Batch<TaskType>::Close() {
 template <typename TaskType>
 uint64 Batch<TaskType>::traceme_context_id() const {
   return traceme_context_id_;
+}
+
+template <typename TaskType>
+void Batch<TaskType>::TryTrimToNewSize(
+    int new_size, std::vector<std::unique_ptr<TaskType>>& out_trimmed_tasks) {
+  mutex_lock l(mu_);
+  DCHECK_GT(new_size, 0);
+  DCHECK_LT(new_size, size_);
+  DCHECK(out_trimmed_tasks.empty());
+
+  // Index of the first task to trim away. It is possible that it is the index
+  // of a task of size larger than 1 that will have to be split in order to get
+  // to the target new_size.
+  int32 first_task_to_move = 0;
+  // The sum of sizes of tasks i, where i < first_task_to_move.
+  int32 size_of_previous_tasks = 0;
+  while (size_of_previous_tasks + tasks_[first_task_to_move]->size() <=
+         new_size) {
+    size_of_previous_tasks += tasks_[first_task_to_move]->size();
+    first_task_to_move++;
+    // The loop must always stop before this check is tripped because new_size
+    // must never be larger than the size of the batch.
+    DCHECK_LT(first_task_to_move, tasks_.size());
+  }
+
+  // Check whether task 'first_task_to_move' will have to be split.
+  if (size_of_previous_tasks < new_size) {
+    // TODO: b/325954758 - Consider supporting splitting large tasks and then
+    // drop 'Try' from the method name.
+    return;
+  }
+  DCHECK_EQ(size_of_previous_tasks, new_size);
+
+  // Actually trim.
+  out_trimmed_tasks.reserve(tasks_.size() - first_task_to_move);
+  std::move(tasks_.begin() + first_task_to_move, tasks_.end(),
+            std::back_inserter(out_trimmed_tasks));
+  tasks_.resize(first_task_to_move);
+  size_ = new_size;
 }
 
 }  // namespace serving

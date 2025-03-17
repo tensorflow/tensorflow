@@ -15,12 +15,13 @@ limitations under the License.
 
 #include "xla/shape.h"
 
+#include <gtest/gtest.h>
 #include "absl/hash/hash_testing.h"
+#include "xla/hlo/testlib/test.h"
 #include "xla/layout.h"
 #include "xla/shape_util.h"
-#include "xla/test.h"
+#include "xla/tsl/platform/test_benchmark.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/test_benchmark.h"
 
 namespace xla {
 namespace {
@@ -88,6 +89,13 @@ TEST_F(ShapeTest, DynamicShapeToString) {
   EXPECT_EQ("f32[<=23,44,55]", array_shape.ToString());
 
   EXPECT_EQ("f32[?,784]", unbounded_.ToString());
+}
+
+TEST_F(ShapeTest, DeleteDimensions) {
+  Shape shape = ShapeUtil::MakeShapeWithDenseLayout(F32, {5, 3, 2, 7, 9},
+                                                    {2, 0, 1, 4, 3});
+  shape.DeleteDimensions({1, 2, 3});
+  EXPECT_EQ(shape, ShapeUtil::MakeShapeWithDenseLayout(F32, {5, 9}, {0, 1}));
 }
 
 TEST_F(ShapeTest, EqualityTest) {
@@ -290,13 +298,13 @@ void BM_ShapeCopy(::testing::benchmark::State& state) {
     }
     case 1: {
       // f32[1,2,2]{2,1,0}
-      shape = Shape(F32, {1, 2, 2}, {false, false, false}, {});
+      shape = Shape(F32, {1, 2, 2}, {false, false, false});
       *shape.mutable_layout() = Layout({2, 1, 0});
       break;
     }
     case 2: {
       // f32[1,2,2]{2,1,0:T(2,128)}
-      shape = Shape(F32, {1, 2, 2}, {false, false, false}, {});
+      shape = Shape(F32, {1, 2, 2}, {false, false, false});
       *shape.mutable_layout() = Layout({2, 1, 0}, {}, {}, {}, {Tile({2, 128})});
       break;
     }

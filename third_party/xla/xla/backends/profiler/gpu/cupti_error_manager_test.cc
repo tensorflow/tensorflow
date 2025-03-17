@@ -27,8 +27,8 @@ limitations under the License.
 #include "xla/backends/profiler/gpu/cupti_tracer.h"
 #include "xla/backends/profiler/gpu/cupti_wrapper.h"
 #include "xla/backends/profiler/gpu/mock_cupti.h"
+#include "xla/tsl/profiler/utils/time_utils.h"
 #include "tsl/platform/test.h"
-#include "tsl/profiler/utils/time_utils.h"
 
 namespace xla {
 namespace profiler {
@@ -124,6 +124,9 @@ TEST_F(CuptiErrorManagerTest, GpuTraceActivityEnableTest) {
       .InSequence(s1)
       .WillRepeatedly(
           Invoke(cupti_wrapper_.get(), &CuptiWrapper::EnableCallback));
+  EXPECT_CALL(*mock_, SetThreadIdType(_))
+      .InSequence(s1)
+      .WillOnce(Invoke(cupti_wrapper_.get(), &CuptiWrapper::SetThreadIdType));
   EXPECT_CALL(*mock_, ActivityUsePerThreadBuffer())
       .InSequence(s1)
       .WillOnce(Invoke(cupti_wrapper_.get(),
@@ -182,6 +185,9 @@ TEST_F(CuptiErrorManagerTest, GpuTraceAutoEnableTest) {
   EXPECT_CALL(*mock_, EnableDomain(1, _, _))
       .InSequence(s1)
       .WillOnce(Invoke(cupti_wrapper_.get(), &CuptiWrapper::EnableDomain));
+  EXPECT_CALL(*mock_, SetThreadIdType(_))
+      .InSequence(s1)
+      .WillOnce(Invoke(cupti_wrapper_.get(), &CuptiWrapper::SetThreadIdType));
   EXPECT_CALL(*mock_, ActivityUsePerThreadBuffer())
       .InSequence(s1)
       .WillOnce(Invoke(cupti_wrapper_.get(),

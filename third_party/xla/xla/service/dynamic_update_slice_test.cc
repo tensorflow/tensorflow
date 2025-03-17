@@ -14,7 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "xla/execution_options_util.h"
-#include "xla/service/hlo_parser.h"
+#include "xla/hlo/parser/hlo_parser.h"
 #include "xla/status_macros.h"
 #include "xla/test.h"
 #include "xla/tests/client_library_test_base.h"

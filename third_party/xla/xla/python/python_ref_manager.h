@@ -27,7 +27,7 @@ limitations under the License.
 #include "absl/container/inlined_vector.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
-#include "third_party/nanobind/include/nanobind/nanobind.h"
+#include "nanobind/nanobind.h"
 
 namespace xla {
 
@@ -57,7 +57,7 @@ class PythonRefManager {
     ManagedPyObjects(const ManagedPyObjects& other) = delete;
     ManagedPyObjects(ManagedPyObjects&& other) = default;
     ManagedPyObjects& operator=(const ManagedPyObjects& other) = delete;
-    ManagedPyObjects& operator=(ManagedPyObjects&& other) = default;
+    ManagedPyObjects& operator=(ManagedPyObjects&& other) noexcept = default;
 
    private:
     PythonRefManager* manager_ = nullptr;

@@ -14,7 +14,9 @@ limitations under the License.
 ==============================================================================*/
 
 #include <algorithm>
+#include <cmath>
 #include <cstdint>
+#include <cstdlib>
 #include <memory>
 #include <optional>
 #include <set>
@@ -598,7 +600,7 @@ createSubgroupsByTopoDist(
   // between two ops
   for (auto& all_reduce_group : all_reduce_groups) {
     std::vector<mlir::TF::DTensorAllReduceOp> new_group;
-    Status status = absl::OkStatus();
+    absl::Status status = absl::OkStatus();
 
     // Sort AllReduces by topological level as the input order may not reflect
     // their dependencies on the operands in the compute graph.

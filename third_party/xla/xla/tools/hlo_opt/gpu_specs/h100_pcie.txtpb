@@ -32,6 +32,8 @@ gpu_device_info {
   threads_per_block_limit: 1024
   threads_per_core_limit: 2048
   threads_per_warp: 32
+  registers_per_core_limit: 65536
+  registers_per_block_limit: 65536
 }
 platform_name: "CUDA"
 dnn_version_info {

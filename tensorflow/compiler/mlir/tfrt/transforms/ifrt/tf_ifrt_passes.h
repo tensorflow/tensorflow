@@ -17,12 +17,14 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_MLIR_TFRT_TRANSFORMS_IFRT_TF_IFRT_PASSES_H_
 
 #include <memory>
+#include <string>
 
 #include "absl/status/status.h"
 #include "llvm/ADT/StringRef.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Pass/PassRegistry.h"  // from @llvm-project
 
 namespace tensorflow {
 namespace ifrt_serving {
@@ -57,11 +59,21 @@ CreateTfRestorePruningPass();
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
 CreateLowerToIfrtRestoreVariablePass();
 
+// Creates a pass that cleans up device attributes from all ops.
+std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
+CreateTfDeviceCleanupPass();
+
 #define GEN_PASS_REGISTRATION
 #include "tensorflow/compiler/mlir/tfrt/transforms/ifrt/passes.h.inc"  // IWYU pragma: keep
 
 // Register all passes.
 void RegisterTfIfrtPasses();
+
+// Setup the input pass manager to enable IR dumping after each pass.
+// Note a side effect of this method is that multi threading will be disabled.
+void EnablePassIRPrinting(mlir::PassManager& pm,
+                          const std::string& dump_group_name,
+                          llvm::StringRef module_name);
 
 // Convert tf_device.cluster_func to tf.ifrt_program_call.
 // The callee function is converted to a ifrt_program.

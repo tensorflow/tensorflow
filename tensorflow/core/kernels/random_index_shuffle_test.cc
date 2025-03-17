@@ -46,7 +46,7 @@ TEST_P(RandomIndexShuffleTest, Bijection) {
 }
 
 INSTANTIATE_TEST_SUITE_P(MaxValueTests, RandomIndexShuffleTest,
-                         ::testing::Values(285, 17, 23495, 499'000));
+                         ::testing::Values(0, 285, 17, 23495, 499'000));
 
 }  // namespace
 }  // namespace random

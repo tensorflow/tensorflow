@@ -96,7 +96,7 @@ class CustomNestProtocol(Protocol):
     - This method only needs to flatten the current level. If current object has
       an attribute that also need custom flattening, nest functions (such as
       `nest.flatten`) will utilize this method to do recursive flattening.
-    - Components must ba a `tuple`, not a `list`
+    - Components must be a `tuple`, not a `list`
     """
 
   @classmethod
@@ -104,7 +104,7 @@ class CustomNestProtocol(Protocol):
     """Create a user-defined object from (metadata, components).
 
     Args:
-      metadata: a custom Python objet that stands for the static config for
+      metadata: a custom Python object that stands for the static config for
         reconstructing a new object of the current class.
       components: a `tuple` that contains the dynamic data fields of the current
         class, for object reconstruction.

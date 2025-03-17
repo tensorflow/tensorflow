@@ -15,6 +15,11 @@ limitations under the License.
 
 #include "xla/service/cpu/buffer_info_util.h"
 
+#include <cassert>
+#include <cstdint>
+#include <vector>
+
+#include "absl/types/span.h"
 #include "xla/cpu_function_runtime.h"
 
 namespace xla {

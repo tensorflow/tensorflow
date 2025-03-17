@@ -1,0 +1,20 @@
+// RUN: fusion_to_mlir %s | FileCheck %s
+// RUN: test_correctness %s --bijection_inputs=reduce:0 --bijection_outputs=reduce
+
+add {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  ROOT add = f32[] add(lhs, rhs)
+}
+
+fusion {
+  param_0 = f32[1024,4] parameter(0)
+  c = f32[] constant(0)
+  ROOT reduce = f32[1024] reduce(param_0, c), dimensions={1}, to_apply=add
+}
+
+// Multi-row reductions do not use shared memory.
+// CHECK-NOT: allocate_shared
+// There should be 8 elements per warp.
+// CHECK: shuffle_reduce(%{{.*}}) to 2
+// CHECK-NOT: allocate_shared

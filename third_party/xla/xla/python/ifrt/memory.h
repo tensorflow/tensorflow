@@ -62,17 +62,15 @@ class MemoryKind {
 
   template <typename Sink>
   friend void AbslStringify(Sink& sink, const MemoryKind& memory_kind) {
-    sink.Append(memory_kind.DebugString());
+    sink.Append(memory_kind.ToString());
   }
 
   // Returns a platform-dependent identifier of a memory kind.
   std::optional<absl::string_view> memory_kind() const { return memory_kind_; }
 
-  // TODO(kedars): Rename & make private after replacing usage with
-  // AbslStringify.
-  std::string DebugString() const;
-
  private:
+  std::string ToString() const;
+
   std::optional<absl::string_view> memory_kind_;
 };
 
@@ -81,8 +79,8 @@ class MemoryKind {
 // indicated by the device, simply returns `MemoryKind` with no memory kind
 // chosen.
 //
-// TODO(hyeontaek,yashkatariya): Harden `MemoryKind` creation paths so that
-// every `MemoryKind` is canonicalized and does not require on-demand
+// TODO(b/356623715): Harden `MemoryKind` creation paths so that every
+// `MemoryKind` is canonicalized and does not require on-demand
 // canonicalization.
 MemoryKind CanonicalizeMemoryKind(MemoryKind memory_kind, Device* device);
 
@@ -112,10 +110,26 @@ class Memory : public llvm::RTTIExtends<Memory, llvm::RTTIRoot> {
 
   // Debug string suitable for logging when errors occur. Should be verbose
   // enough to describe the current device unambiguously.
+  //
+  // TODO(hyeontaek): Remove this method in favor of AbslStringify.
   virtual absl::string_view DebugString() const = 0;
 
   // The devices to which this memory space is attached.
   virtual absl::Span<Device* const> Devices() const = 0;
+
+  template <typename Sink>
+  friend void AbslStringify(Sink& sink, const Memory& memory) {
+    sink.Append(memory.DebugString());
+  }
+
+  template <typename Sink>
+  friend void AbslStringify(Sink& sink, const Memory* memory) {
+    if (memory == nullptr) {
+      sink.Append("<nullptr>");
+    } else {
+      sink.Append(memory->DebugString());
+    }
+  }
 
   static char ID;  // NOLINT
 };

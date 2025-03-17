@@ -15,18 +15,20 @@ limitations under the License.
 
 #include "tensorflow/dtensor/mlir/expansions/split_spmd_expander.h"
 
-#include <algorithm>
+#include <cassert>
 #include <cstdint>
 #include <string>
 #include <vector>
 
-#include "absl/types/optional.h"
+#include "llvm/ADT/DenseMap.h"
 #include "mlir/IR/Value.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/dtensor/cc/dstatus.h"
+#include "tensorflow/dtensor/cc/tensor_layout.h"
 #include "tensorflow/dtensor/mlir/layout_parsing.h"
 #include "tensorflow/dtensor/mlir/shape_utils.h"
-#include "tensorflow/dtensor/mlir/spmd_expander_common.h"
 #include "tensorflow/dtensor/mlir/value_utils.h"
 #include "tensorflow/dtensor/proto/layout.pb.h"
 

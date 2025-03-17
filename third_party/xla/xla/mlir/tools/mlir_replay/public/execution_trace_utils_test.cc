@@ -24,12 +24,12 @@ limitations under the License.
 
 #include <gtest/gtest.h>
 #include "llvm/ADT/STLExtras.h"
-#include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/mlir/tools/mlir_interpreter/framework/interpreter_value.h"
 #include "xla/mlir/tools/mlir_interpreter/framework/tensor_or_memref.h"
-#include "tsl/platform/statusor.h"
+#include "xla/tsl/platform/statusor.h"
 
 namespace mlir {
 namespace interpreter {

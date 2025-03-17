@@ -14,14 +14,11 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/tools/versioning/op_version.h"
 
-#include <algorithm>
-#include <string>
-#include <utility>
+#include <cstdint>
+#include <cstdlib>
 #include <vector>
 
-#include "absl/memory/memory.h"
-#include "absl/strings/numbers.h"
-#include "absl/strings/str_split.h"
+#include "absl/log/log.h"
 #include "tensorflow/compiler/mlir/lite/schema/mutable/schema_generated.h"
 #include "tensorflow/compiler/mlir/lite/schema/schema_generated.h"
 #include "tensorflow/core/platform/logging.h"
@@ -149,6 +146,14 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
       return 1;
     }
 
+    case BuiltinOperator_EMBEDDING_LOOKUP: {
+      if (op_sig.inputs.at(1).type == kTfLiteInt4 ||
+          op_sig.ext_options.embedding_lookup.is_per_channel_quantized) {
+        return 4;
+      }
+      return 1;
+    }
+
     case BuiltinOperator_FAKE_QUANT: {
       auto fake_quant_params =
           reinterpret_cast<TfLiteFakeQuantParams*>(op_sig.builtin_data);
@@ -172,6 +177,12 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
       auto fully_connected_params =
           reinterpret_cast<TfLiteFullyConnectedParams*>(op_sig.builtin_data);
       TFLITE_DCHECK(fully_connected_params != nullptr);
+
+      if (op_sig.inputs.at(0).type == kTfLiteInt16 &&
+          op_sig.inputs.at(1).type == kTfLiteInt4 &&
+          op_sig.outputs.at(0).type == kTfLiteInt16) {
+        return 13;
+      }
 
       if (op_sig.inputs.at(0).type == kTfLiteFloat32 &&
           op_sig.inputs.at(1).type == kTfLiteInt8 &&
@@ -345,6 +356,9 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
       return 1;
 
     case BuiltinOperator_TRANSPOSE:
+      if (op_sig.inputs.at(0).type == kTfLiteInt4) {
+        return 7;
+      }
       if (op_sig.inputs.at(0).dims.size() > 5) {
         return 6;
       }
@@ -1034,9 +1048,12 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
       }
       return 1;
     case BuiltinOperator_DYNAMIC_UPDATE_SLICE:
-      if (op_sig.inputs.at(2).type == kTfLiteInt64) return 2;
+      if (op_sig.inputs.at(0).type == kTfLiteFloat16) {
+        return 3;
+      } else if (op_sig.inputs.at(2).type == kTfLiteInt64) {
+        return 2;
+      }
       return 1;
-
     // The version one of broadcast to op won't be not supported since the
     // version one was rollbacked and the builtin op code number has been
     // changed because of builtin op code shortage problem.

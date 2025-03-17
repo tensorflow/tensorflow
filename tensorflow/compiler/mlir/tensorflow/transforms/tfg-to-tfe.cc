@@ -13,7 +13,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "absl/strings/match.h"
+#include <cassert>
+#include <memory>
+#include <string>
+#include <utility>
+
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/Support/FormatVariadic.h"
@@ -459,9 +463,10 @@ class ConvertGeneralOp : public ConversionPattern {
             op->getAttrOfType<BoolAttr>("_disable_call_shape_inference")
                 .getValue();
       }
-      inner_op =
-          rewriter.create<LegacyCallOp>(loc, new_types, inner_op_operands,
-                                        op_name, disable_call_shape_inference);
+      inner_op = rewriter.create<LegacyCallOp>(
+          loc, new_types, inner_op_operands,
+          /*args_attrs=*/nullptr,
+          /*res_attrs=*/nullptr, op_name, disable_call_shape_inference);
     }
 
     rewriter.create<tf_executor::YieldOp>(loc, inner_op->getResults());

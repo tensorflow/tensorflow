@@ -40,9 +40,10 @@ limitations under the License.
 #include "xla/service/hlo.pb.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/tsl/platform/errors.h"
 #include "xla/xla_data.pb.h"
 #include "tensorflow/core/platform/errors.h"
-#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/protobuf/memory_viewer_preprocess.pb.h"
 
 namespace tensorflow {
@@ -535,6 +536,7 @@ struct HeapSimulatorStats {
     // Update memory timelines and seen buffers.
     heap_size_bytes_timeline.push_back(heap_size_bytes);
     unpadded_heap_size_bytes_timeline.push_back(unpadded_heap_size_bytes);
+    hlo_instruction_name_timeline.push_back(event.instruction_name());
     const LogicalBufferStruct* logical_buffer =
         wrapper.GetLogicalBuffer(event.buffer_id());
     if (logical_buffer == nullptr) return;
@@ -569,7 +571,8 @@ struct HeapSimulatorStats {
   }
 
   // Update stats when memory usage decrease.
-  Status DecreaseMemoryUsage(LogicalBufferStruct* canonical_logical_buffer) {
+  absl::Status DecreaseMemoryUsage(
+      LogicalBufferStruct* canonical_logical_buffer) {
     int64_t canonical_buffer_id = canonical_logical_buffer->proto.id();
     logical_buffers.remove(canonical_buffer_id);
     heap_size_bytes -= canonical_logical_buffer->size();
@@ -587,10 +590,13 @@ struct HeapSimulatorStats {
   }
 
   // Finalize the memory usage stats from heap simulator trace.
-  Status FinalizeMemoryUsage() {
+  absl::Status FinalizeMemoryUsage() {
     // Add the final heap size after simulating the entire heap trace.
     heap_size_bytes_timeline.push_back(heap_size_bytes);
     unpadded_heap_size_bytes_timeline.push_back(unpadded_heap_size_bytes);
+    // Add an empty instruction name just so that this array is the same size as
+    // the other two.
+    hlo_instruction_name_timeline.push_back("");
 
     if (seen_buffer_allocations.size() != 1) {
       return errors::InvalidArgument(
@@ -627,6 +633,7 @@ struct HeapSimulatorStats {
   // Heap size timeline.
   std::vector<int64_t> heap_size_bytes_timeline;
   std::vector<int64_t> unpadded_heap_size_bytes_timeline;
+  std::vector<std::string> hlo_instruction_name_timeline;
 
   // Position of peak memory usage in the timeline.
   int64_t peak_heap_size_position = 0;
@@ -640,9 +647,9 @@ struct HeapSimulatorStats {
   int64_t simulator_trace_event_size;
 };
 
-Status ProcessHeapSimulatorTrace(const HloProtoBufferWrapper& wrapper,
-                                 const int64_t memory_color,
-                                 HeapSimulatorStats* stats) {
+absl::Status ProcessHeapSimulatorTrace(const HloProtoBufferWrapper& wrapper,
+                                       const int64_t memory_color,
+                                       HeapSimulatorStats* stats) {
   int64_t heap_simulator_trace_id =
       wrapper.GetHeapSimulatorTraceId(memory_color);
 
@@ -1047,6 +1054,8 @@ void GeneratePreprocessResult(const HloProtoBufferWrapper& wrapper,
     result->add_unpadded_heap_sizes(
         BytesToMiB(simulator_stats.unpadded_heap_size_bytes_timeline[i]) +
         add_mib);
+    result->add_hlo_instruction_names(
+        simulator_stats.hlo_instruction_name_timeline[i]);
   }
 
   result->set_peak_heap_mib(BytesToMiB(simulator_stats.peak_heap_size_bytes) +

@@ -1,0 +1,23 @@
+// RUN: fusion_to_mlir %s | emitters_opt -xla-gpu-test-optimize |\
+// RUN:   FileCheck %s
+// RUN: test_correctness %s
+
+fusion {
+  param0 = f32[64] parameter(0)
+  param1 = f32[128] parameter(1)
+  log = f32[64] log(param0)
+  exp = f32[128] exponential(param1)
+  concat = f32[192] concatenate(log, exp), dimensions={0}
+  ROOT neg = f32[192] negate(concat)
+}
+// CHECK: %[[THREAD_ID:.*]] = gpu.thread_id x
+
+// CHECK: xla.loop ({{.*}})[{{.*}}] -> (%[[RA:.*]]) in
+// CHECK:   %[[VAL_1_1:.*]] = xla.pure_call @fusion_log({{.*}}, %[[THREAD_ID]])
+// CHECK:   %[[VAL_1_2:.*]] = xla.pure_call @fusion__epilogue__neg({{.*}}, %[[RA]], %[[VAL_1_1]])
+// CHECK:   tensor.insert %[[VAL_1_2:.*]] into {{.*}}[%[[RA]]]
+
+// CHECK: xla.loop ({{.*}})[{{.*}}] -> (%[[RA:.*]]) in
+// CHECK:   %[[VAL_2_1:.*]] = xla.pure_call @fusion_exp({{.*}}, %[[THREAD_ID]])
+// CHECK:   %[[VAL_2_2:.*]] = xla.pure_call @fusion__epilogue__neg({{.*}}, %[[RA]], %[[VAL_2_1]])
+// CHECK:   tensor.insert %[[VAL_2_2:.*]] into {{.*}}[%[[RA]]]

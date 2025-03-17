@@ -1,6 +1,9 @@
 """Build rules for XLA generated regression testing."""
 
 load("//xla/tests:build_defs.bzl", "xla_test")
+load("//xla/tsl:package_groups.bzl", "DEFAULT_LOAD_VISIBILITY")
+
+visibility(DEFAULT_LOAD_VISIBILITY)
 
 def hlo_test(name, hlo, **kwargs):
     """Wrapper around `xla_test` which runs an HLO through `hlo_test_lib`.
@@ -42,7 +45,7 @@ def hlo_test(name, hlo, **kwargs):
         real_hardware_only = True,
         deps = [
             "//xla/tests/fuzz:hlo_test_lib",
-            "@local_tsl//tsl/platform:test_main",
+            "@com_google_googletest//:gtest_main",
         ],
         **kwargs
     )

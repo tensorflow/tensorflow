@@ -15,8 +15,12 @@ limitations under the License.
 
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
-#include "xla/client/lib/self_adjoint_eig.h"
+#include "xla/hlo/builder/lib/self_adjoint_eig.h"
+#include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/op_requires.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/lib/core/bits.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 namespace {

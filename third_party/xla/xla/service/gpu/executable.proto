@@ -25,7 +25,7 @@ message CompilationResultProto {
   BufferAssignmentProto buffer_assignment = 2;
   string asm_text = 3;
   bytes binary = 4;
-  map<string, string> dnn_compiled_graphs = 5;
+  map<string, bytes> dnn_compiled_graphs = 5;
 }
 
 message LaunchDimensionsProto {

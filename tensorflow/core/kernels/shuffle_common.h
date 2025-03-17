@@ -61,9 +61,9 @@ static void IndexedShuffle(const int64_t size, const InT& input_mat,
 }
 
 template <typename T>
-Status RandomShuffle(OpKernelContext* context, const Tensor& input,
-                     int output_idx,
-                     std::function<random::PhiloxRandom(int64_t)> get_rng) {
+absl::Status RandomShuffle(
+    OpKernelContext* context, const Tensor& input, int output_idx,
+    std::function<random::PhiloxRandom(int64_t)> get_rng) {
   if (input.NumElements() <= 1 || input.dim_size(0) <= 1) {
     // No shuffling is required, so copy input directly to output
     context->set_output(output_idx, input);

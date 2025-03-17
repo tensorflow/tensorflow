@@ -16,13 +16,11 @@ limitations under the License.
 
 #include <vector>
 
-#include "absl/strings/match.h"
-#include "absl/strings/string_view.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/status.h"
 #include "tensorflow/core/data/service/byte_size.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor.pb.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/status.h"
 
 namespace tensorflow {
 namespace data {

@@ -29,7 +29,7 @@ limitations under the License.
 #include <cstdint>
 
 #include "absl/base/casts.h"
-#include "Eigen/Core"  // from @eigen_archive
+#include "Eigen/Core"
 #include "xla/types.h"
 #include "tsl/platform/bfloat16.h"
 

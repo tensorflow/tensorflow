@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "xla/stream_executor/platform.h"
 
-#include <map>
 #include <string>
 
 #include "absl/status/status.h"
@@ -32,11 +31,6 @@ std::string StreamPriorityToString(StreamPriority priority) {
       return "Default Priority";
   }
 }
-
-StreamExecutorConfig::StreamExecutorConfig() : ordinal(-1) {}
-
-StreamExecutorConfig::StreamExecutorConfig(int ordinal_in)
-    : ordinal(ordinal_in) {}
 
 bool Platform::Initialized() const { return true; }
 

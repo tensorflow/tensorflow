@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/runtime/buffer_use.h"
 
+#include <gtest/gtest.h>
 #include "xla/service/buffer_assignment.h"
 #include "tsl/platform/test.h"
 

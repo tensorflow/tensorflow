@@ -18,6 +18,7 @@ import time
 
 import numpy as np
 
+from xla.tsl.protobuf import rpc_options_pb2
 from tensorflow.core.protobuf import cluster_pb2
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.protobuf import tensorflow_server_pb2
@@ -35,7 +36,6 @@ from tensorflow.python.platform import test
 from tensorflow.python.training import input as input_ops
 from tensorflow.python.training import queue_runner_impl
 from tensorflow.python.training import server_lib
-from tsl.protobuf import rpc_options_pb2
 
 
 class GrpcServerTest(test.TestCase):

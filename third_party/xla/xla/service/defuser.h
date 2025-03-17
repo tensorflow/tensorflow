@@ -16,29 +16,7 @@ limitations under the License.
 #ifndef XLA_SERVICE_DEFUSER_H_
 #define XLA_SERVICE_DEFUSER_H_
 
-#include <utility>
-
-#include "xla/hlo/ir/hlo_module.h"
-#include "xla/service/hlo_pass_interface.h"
-
-namespace xla {
-
-// A pass which replaces all fusion instructions with the equivalent un-fused
-// instructions.
-class Defuser : public HloModulePass {
- public:
-  Defuser() {}
-  ~Defuser() override {}
-  absl::string_view name() const override { return "defuser"; }
-
-  // Run defusion on the given module. Returns whether the module was
-  // changed.
-  using HloPassInterface::Run;
-  absl::StatusOr<bool> Run(
-      HloModule* module,
-      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
-};
-
-}  // namespace xla
+// The current header will be deprecated in favour of the following.
+#include "xla/hlo/transforms/defuser.h"
 
 #endif  // XLA_SERVICE_DEFUSER_H_

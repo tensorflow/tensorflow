@@ -19,12 +19,11 @@ limitations under the License.
 #include <Python.h>
 
 #include <string>
-#include <string_view>
 #include <utility>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/statusor.h"
-#include "third_party/nanobind/include/nanobind/nanobind.h"
+#include "nanobind/nanobind.h"
 #include "tsl/profiler/protobuf/profile.pb.h"
 
 namespace xla {
@@ -36,7 +35,7 @@ class PprofProfileBuilder {
   tensorflow::tfprof::pprof::Profile& profile() { return profile_; }
 
   // Adds or returns the ID of `s` in the table.
-  int StringId(std::string_view s);
+  int StringId(absl::string_view s);
 
   // Adds or returns the ID of a function.
   int FunctionId(PyCodeObject* code);

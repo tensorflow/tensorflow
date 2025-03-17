@@ -15,9 +15,9 @@ limitations under the License.
 
 #include "xla/python/ifrt/ir/ifrt_interfaces.h"
 
-#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
-#include "mlir/IR/Operation.h"  // from @llvm-project
-#include "mlir/Support/LogicalResult.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/IR/Operation.h"
+#include "mlir/Support/LogicalResult.h"
 #include "xla/python/ifrt/ir/constants.h"
 
 // Generated definitions.

@@ -46,11 +46,11 @@ class SparseTensorsMap : public ResourceBase {
   typedef struct {
     Tensor indices;
     Tensor values;
-    gtl::InlinedVector<int64_t, 8> shape;
+    absl::InlinedVector<int64_t, 8UL> shape;
   } PersistentSparseTensor;
 
-  Status AddSparseTensor(OpKernelContext* ctx, const SparseTensor& sp,
-                         int64_t* handle) {
+  absl::Status AddSparseTensor(OpKernelContext* ctx, const SparseTensor& sp,
+                               int64_t* handle) {
     Tensor ix;
     TF_RETURN_IF_ERROR(
         ctx->allocate_temp(sp.indices().dtype(), sp.indices().shape(), &ix));
@@ -63,15 +63,16 @@ class SparseTensorsMap : public ResourceBase {
     {
       mutex_lock l(mu_);
       int64_t unique_st_handle = counter_++;  // increment is guarded on purpose
-      sp_tensors_[unique_st_handle] = PersistentSparseTensor{
-          ix, values,
-          gtl::InlinedVector<int64_t, 8>(sp.shape().begin(), sp.shape().end())};
+      sp_tensors_[unique_st_handle] =
+          PersistentSparseTensor{ix, values,
+                                 absl::InlinedVector<int64_t, 8UL>(
+                                     sp.shape().begin(), sp.shape().end())};
       *handle = unique_st_handle;
     }
     return absl::OkStatus();
   }
 
-  Status RetrieveAndClearSparseTensors(
+  absl::Status RetrieveAndClearSparseTensors(
       OpKernelContext* ctx, const TTypes<int64_t>::ConstVec& handles,
       std::vector<SparseTensor>* sparse_tensors) {
     sparse_tensors->clear();
@@ -112,7 +113,7 @@ class SparseTensorsMap : public ResourceBase {
 
 class SparseTensorAccessingOp : public OpKernel {
  public:
-  typedef std::function<Status(SparseTensorsMap**)> CreatorCallback;
+  typedef std::function<absl::Status(SparseTensorsMap**)> CreatorCallback;
 
   explicit SparseTensorAccessingOp(OpKernelConstruction* context)
       : OpKernel(context), sparse_tensors_map_(nullptr) {}
@@ -122,8 +123,8 @@ class SparseTensorAccessingOp : public OpKernel {
     if (sparse_tensors_map_) sparse_tensors_map_->Unref();
   }
 
-  Status GetMap(OpKernelContext* ctx, bool is_writing,
-                SparseTensorsMap** sparse_tensors_map) {
+  absl::Status GetMap(OpKernelContext* ctx, bool is_writing,
+                      SparseTensorsMap** sparse_tensors_map) {
     mutex_lock l(mu_);
 
     if (sparse_tensors_map_) {
@@ -267,7 +268,7 @@ class AddManySparseToTensorsMapOp : public SparseTensorAccessingOp {
     TensorShape tensor_input_shape;
     OP_REQUIRES_OK(context, TensorShape::BuildTensorShape(input_shape_vec,
                                                           &tensor_input_shape));
-    gtl::InlinedVector<int64_t, 8> std_order(rank);
+    absl::InlinedVector<int64_t, 8UL> std_order(rank);
     std::iota(std_order.begin(), std_order.end(), 0);
     SparseTensor input_st;
     OP_REQUIRES_OK(context, SparseTensor::Create(*input_indices, *input_values,
@@ -482,7 +483,7 @@ class TakeManySparseFromTensorsMapOp : public SparseTensorAccessingOp {
     }
 
     // Dimension 0 is the primary dimension.
-    gtl::InlinedVector<int64_t, 8> std_order(rank);
+    absl::InlinedVector<int64_t, 8UL> std_order(rank);
     std::iota(std_order.begin(), std_order.end(), 0);
 
     std::vector<SparseTensor> tensors_to_concat;

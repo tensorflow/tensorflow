@@ -369,6 +369,7 @@ bool IsOpTypeAllowedTf2XlaFallback(const TypeID& type_id) {
             TF::XlaSparseDenseMatmulGradWithFtrlAndStaticBufferSizeOp>(),
         TypeID::get<
             TF::XlaSparseDenseMatmulGradWithSgdAndStaticBufferSizeOp>(),  // NOLINT
+        TypeID::get<TF::XlaSparseDenseMatmulGradWithCsrInputOp>(),
         TypeID::get<TF::XlaSpmdFullToShardShapeOp>(),
         TypeID::get<TF::XlaSpmdShardToFullShapeOp>(),
         TypeID::get<TF::XlaSvdOp>(),
@@ -525,12 +526,6 @@ const llvm::DenseSet<mlir::TypeID>& DynamicTensorflowOps() {
 bool HasTf2XlaFallback(const TypeID& type_id) {
   return IsOpTypeAllowedTf2XlaFallback(type_id) ||
          IsOpTypeAllowedTf2XlaPreferred(type_id);
-}
-
-bool IsOpLegalizedWithMlir(Operation& op) {
-  auto abstractOp = op.getRegisteredInfo();
-  if (!abstractOp) return false;
-  return IsTypeLegalizedWithMlir(abstractOp->getTypeID());
 }
 
 bool IsTypeLegalizedWithMlir(const TypeID& type_id) {

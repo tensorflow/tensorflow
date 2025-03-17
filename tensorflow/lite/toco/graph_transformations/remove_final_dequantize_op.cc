@@ -17,17 +17,17 @@ limitations under the License.
 #include <unordered_map>
 #include <vector>
 
+#include "absl/status/status.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/lite/toco/graph_transformations/graph_transformations.h"
 #include "tensorflow/lite/toco/model.h"
 #include "tensorflow/lite/toco/model_flags.pb.h"
 #include "tensorflow/lite/toco/tooling_util.h"
-#include "tensorflow/core/platform/logging.h"
 
 namespace toco {
 
-::tensorflow::Status RemoveFinalDequantizeOp::Run(Model* model,
-                                                  std::size_t op_index,
-                                                  bool* modified) {
+absl::Status RemoveFinalDequantizeOp::Run(Model* model, std::size_t op_index,
+                                          bool* modified) {
   *modified = false;
   const auto dequantize_it = model->operators.begin() + op_index;
   const auto* dequantize_op = dequantize_it->get();

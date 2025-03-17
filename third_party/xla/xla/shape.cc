@@ -22,13 +22,17 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/types/span.h"
 #include "xla/layout.h"
 #include "xla/layout_util.h"
 #include "xla/primitive_util.h"
 #include "xla/printer.h"
 #include "xla/shape_util.h"
+#include "xla/tsl/platform/logging.h"  // IWYU pragma: keep
+#include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/logging.h"  // IWYU pragma: keep
 
 namespace xla {
 
@@ -36,9 +40,9 @@ namespace xla {
 Shape::Shape() = default;
 Shape::~Shape() = default;
 Shape::Shape(const Shape&) = default;
-Shape::Shape(Shape&&) = default;
+Shape::Shape(Shape&&) noexcept = default;
 Shape& Shape::operator=(const Shape&) = default;
-Shape& Shape::operator=(Shape&&) = default;
+Shape& Shape::operator=(Shape&&) noexcept = default;
 
 Shape::Shape(const ShapeProto& shape_proto) {
   set_element_type(shape_proto.element_type());
@@ -60,7 +64,7 @@ Shape::Shape(const ShapeProto& shape_proto) {
       LOG(WARNING) << "Malformed shape proto: is_dynamic_dimension is empty";
     }
   }
-  int64_t num_dynamic_dimension_fields = std::min(
+  const int64_t num_dynamic_dimension_fields = std::min(
       shape_proto.dimensions_size(), shape_proto.is_dynamic_dimension_size());
   for (int i = 0; i < num_dynamic_dimension_fields; i++) {
     dynamic_dimensions_[i] = shape_proto.is_dynamic_dimension(i);
@@ -83,7 +87,7 @@ Shape::Shape(const ShapeProto& shape_proto) {
 void Shape::SetProto(ShapeProto& proto) const {
   proto.Clear();
   proto.set_element_type(element_type_);
-  proto.mutable_dimensions()->Reserve(dimensions_size());
+  proto.mutable_dimensions()->Reserve(rank());
   for (const int64_t dimension : dimensions()) {
     proto.add_dimensions(dimension);
   }
@@ -167,6 +171,20 @@ void Shape::DeleteDimension(int64_t dim_to_delete) {
   dynamic_dimensions_.erase(dynamic_dimensions_.begin() + dim_to_delete);
   if (LayoutUtil::HasLayout(*this)) {
     layout_->DeleteDimension(dim_to_delete);  // NOLINT: optional-access
+  }
+}
+
+void Shape::DeleteDimensions(absl::Span<const int64_t> sorted_dims_to_delete) {
+  CHECK(IsArray());
+  CHECK(absl::c_is_sorted(sorted_dims_to_delete));
+  dimensions_ = RemoveElements(sorted_dims_to_delete, dimensions_);
+  dynamic_dimensions_ =
+      RemoveElements(sorted_dims_to_delete, dynamic_dimensions_);
+  if (LayoutUtil::HasLayout(*this)) {
+    for (auto it = sorted_dims_to_delete.rbegin();
+         it != sorted_dims_to_delete.rend(); ++it) {
+      layout_->DeleteDimension(*it);  // NOLINT: optional-access
+    }
   }
 }
 

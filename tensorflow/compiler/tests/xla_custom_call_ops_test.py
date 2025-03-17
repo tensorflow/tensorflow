@@ -59,7 +59,7 @@ class XlaCustomCallOpTest(xla_test.XLATestCase):
             backend_config='my_backend_config',
         )
 
-      with self.assertRaises(errors_impl.InvalidArgumentError):
+      with self.assertRaises(errors_impl.OpError):
         compiled_f = def_function.function(f, jit_compile=True)
         compiled_f()
 

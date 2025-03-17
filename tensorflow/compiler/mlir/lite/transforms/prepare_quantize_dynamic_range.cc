@@ -19,8 +19,8 @@ limitations under the License.
 #include <utility>
 
 #include "llvm/Support/CommandLine.h"
-#include "mlir/Dialect/Quant/QuantOps.h"  // from @llvm-project
-#include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
+#include "mlir/Dialect/Quant/IR/Quant.h"  // from @llvm-project
+#include "mlir/Dialect/Quant/IR/QuantTypes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Dialect.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
@@ -235,7 +235,7 @@ class PrepareDynamicRangeQuantizableOp
     // Get types
     TensorType old_result_type =
         mlir::dyn_cast<TensorType>(op.getResult().getType());
-    FloatType quantized_type = FloatType::getF16(op.getContext());
+    FloatType quantized_type = Float16Type::get(op.getContext());
     ShapedType new_result_type = old_result_type.clone(quantized_type);
 
     // Insert CastOp if it does not exist yet. Otherwise, just rewire without
@@ -496,7 +496,7 @@ void PrepareDynamicRangeQuantizePass::runOnOperation() {
   RewritePatternSet patterns(&getContext());
   patterns.add<PrepareDynamicRangeQuantizableOp>(ctx, quant_specs_,
                                                  &visited_nonquantizable_ops_);
-  (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
+  (void)applyPatternsGreedily(func, std::move(patterns));
 
   ConvertMlirQuantOpsToTFLQuantOps(func);
 }

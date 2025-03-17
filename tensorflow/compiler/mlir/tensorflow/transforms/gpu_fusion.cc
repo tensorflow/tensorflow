@@ -123,7 +123,7 @@ void GpuOpFusionPass::runOnOperation() {
   func::FuncOp func = getOperation();
   RewritePatternSet patterns(&getContext());
   patterns.add<ReluToFusedBatchNorm>(&getContext());
-  (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
+  (void)applyPatternsGreedily(func, std::move(patterns));
 }
 
 }  // namespace

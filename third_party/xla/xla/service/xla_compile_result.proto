@@ -19,7 +19,7 @@ package xla;
 
 import "google/protobuf/duration.proto";
 import "xla/service/hlo.proto";
-import "tsl/protobuf/status.proto";
+import "xla/tsl/protobuf/status.proto";
 
 // Statistics on how long various parts of compilation took.
 // Not all durations may be relevant for all producers of this message, in
@@ -37,12 +37,20 @@ message CompilerPerfStats {
   optional google.protobuf.Duration total_duration = 5;
 }
 
+message ProgramMemoryMetadata {
+  // Reserved stack usage.
+  optional int64 reserved_hbm_usage_bytes = 1;
+}
+
 message CompilationResult {
   // The compiled HLO. Only set when compilation succeeds.
   optional xla.HloModuleProto hlo_module = 1;
   // Always set when compilation succeeds. May or may not be set when
   // compilation fails.
   optional CompilerPerfStats perf_stats = 2;
+  // Always set when compilation succeeds on supported backends. May or may not
+  // be set when compilation fails.
+  optional ProgramMemoryMetadata program_memory_metadata = 5;
   // Always set even when compilation succeeds.
   optional tensorflow.StatusProto status = 3;
   // Collects counters collected during compilation. Not every producer may

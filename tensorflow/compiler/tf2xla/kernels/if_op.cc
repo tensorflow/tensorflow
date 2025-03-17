@@ -27,10 +27,11 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/compiler/tf2xla/xla_resource.h"
-#include "xla/client/lib/dynamic_shaped_ops.h"
-#include "xla/client/xla_builder.h"
+#include "xla/hlo/builder/lib/dynamic_shaped_ops.h"
+#include "xla/hlo/builder/xla_builder.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/tsl/platform/errors.h"
 #include "tensorflow/core/common_runtime/function_body.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -41,7 +42,6 @@ limitations under the License.
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/types.h"
-#include "tsl/platform/errors.h"
 
 namespace tensorflow {
 
@@ -104,10 +104,10 @@ static absl::StatusOr<bool> PopulateTensorArrayGradients(
 }
 
 // Checks that shapes matches on both sides of the conditional.
-static Status ValidateShapes(XlaOpKernelContext* ctx,
-                             const XlaCompiler::CompilationResult& then_result,
-                             const XlaCompiler::CompilationResult& else_result,
-                             std::vector<PartialTensorShape>& output_shapes) {
+static absl::Status ValidateShapes(
+    XlaOpKernelContext* ctx, const XlaCompiler::CompilationResult& then_result,
+    const XlaCompiler::CompilationResult& else_result,
+    std::vector<PartialTensorShape>& output_shapes) {
   // Check that both branches have identical input shapes.
   if (then_result.xla_input_shapes.size() != 1) {
     return errors::FailedPrecondition("Expected one input shape");

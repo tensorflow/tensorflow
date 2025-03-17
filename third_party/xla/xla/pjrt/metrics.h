@@ -18,7 +18,7 @@ limitations under the License.
 
 #include "absl/base/attributes.h"
 #include "absl/strings/string_view.h"
-#include "tsl/lib/monitoring/counter.h"
+#include "xla/tsl/lib/monitoring/counter.h"
 
 // Simplified version of tensorflow/core/framework/metrics.h for JAX.
 

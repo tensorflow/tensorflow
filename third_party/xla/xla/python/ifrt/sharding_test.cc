@@ -22,17 +22,19 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/hash/hash_testing.h"
 #include "llvm/Support/Casting.h"
-#include "xla/python/ifrt/device.h"
+#include "xla/python/ifrt/device_list.h"
+#include "xla/python/ifrt/device_test_util.h"
 #include "xla/python/ifrt/index.h"
 #include "xla/python/ifrt/index_domain.h"
 #include "xla/python/ifrt/ir/sharding_param.h"
 #include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/shape.h"
-#include "xla/python/ifrt/sharding_test_util.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/status_matchers.h"
-#include "tsl/platform/statusor.h"
+#include "xla/tsl/concurrency/ref_count.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/status_matchers.h"
+#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace ifrt {
@@ -45,23 +47,27 @@ using ::testing::SizeIs;
 using ::tsl::testing::IsOkAndHolds;
 using ::tsl::testing::StatusIs;
 
-class SingleDeviceShardingTest : public test_util::ShardingTest {};
-class OpaqueShardingTest : public test_util::ShardingTest {};
-class ConcreteShardingTest : public test_util::ShardingTest {};
-class ConcreteEvenShardingTest : public test_util::ShardingTest {};
-class ShardingParamShardingTest : public test_util::ShardingTest {};
+class SingleDeviceShardingTest : public test_util::DeviceTest {};
+class OpaqueShardingTest : public test_util::DeviceTest {};
+class ConcreteShardingTest : public test_util::DeviceTest {};
+class ConcreteEvenShardingTest : public test_util::DeviceTest {};
+class ShardingParamShardingTest : public test_util::DeviceTest {};
+
+TEST_P(SingleDeviceShardingTest, CreateWithBadDevice) {
+  EXPECT_DEATH(SingleDeviceSharding::Create(nullptr, MemoryKind()), "");
+}
 
 TEST_P(SingleDeviceShardingTest, IsFullyReplicated) {
   auto device_list = GetDevices({0});
-  std::shared_ptr<const Sharding> sharding =
-      SingleDeviceSharding::Create(device_list.devices().front(), MemoryKind());
+  std::shared_ptr<const Sharding> sharding = SingleDeviceSharding::Create(
+      device_list->devices().front(), MemoryKind());
   EXPECT_TRUE(sharding->IsFullyReplicated());
 }
 
 TEST_P(SingleDeviceShardingTest, GetShardShape) {
   auto device_list = GetDevices({0});
-  std::shared_ptr<const Sharding> sharding =
-      SingleDeviceSharding::Create(device_list.devices().front(), MemoryKind());
+  std::shared_ptr<const Sharding> sharding = SingleDeviceSharding::Create(
+      device_list->devices().front(), MemoryKind());
   EXPECT_THAT(sharding->GetShardShape(Shape({10, 20})),
               IsOkAndHolds(Shape({10, 20})));
 }
@@ -69,13 +75,13 @@ TEST_P(SingleDeviceShardingTest, GetShardShape) {
 TEST_P(SingleDeviceShardingTest, HasSamePartitioning) {
   auto device_list0 = GetDevices({0});
   std::shared_ptr<const Sharding> sharding0 = SingleDeviceSharding::Create(
-      device_list0.devices().front(), MemoryKind());
+      device_list0->devices().front(), MemoryKind());
 
   EXPECT_TRUE(sharding0->HasSamePartitioning(*sharding0));
   {
     auto device_list1 = GetDevices({1});
     std::shared_ptr<const Sharding> sharding1 = SingleDeviceSharding::Create(
-        device_list1.devices().front(), MemoryKind());
+        device_list1->devices().front(), MemoryKind());
     EXPECT_TRUE(sharding0->HasSamePartitioning(*sharding1));
   }
 }
@@ -83,11 +89,11 @@ TEST_P(SingleDeviceShardingTest, HasSamePartitioning) {
 TEST_P(SingleDeviceShardingTest, WithDeviceAssignment) {
   auto device_list0 = GetDevices({0});
   std::shared_ptr<const Sharding> sharding0 = SingleDeviceSharding::Create(
-      device_list0.devices().front(), MemoryKind());
+      device_list0->devices().front(), MemoryKind());
   {
     auto device_list1 = GetDevices({1});
     std::shared_ptr<const Sharding> sharding1 = SingleDeviceSharding::Create(
-        device_list1.devices().front(), MemoryKind());
+        device_list1->devices().front(), MemoryKind());
     TF_ASSERT_OK_AND_ASSIGN(
         auto new_sharding,
         sharding0->WithDeviceAssignment(device_list1,
@@ -106,41 +112,112 @@ TEST_P(SingleDeviceShardingTest, WithDeviceAssignment) {
 
 TEST_P(SingleDeviceShardingTest, IndexDomains) {
   auto device_list = GetDevices({0});
-  std::shared_ptr<const Sharding> sharding =
-      SingleDeviceSharding::Create(device_list.devices().front(), MemoryKind());
+  std::shared_ptr<const Sharding> sharding = SingleDeviceSharding::Create(
+      device_list->devices().front(), MemoryKind());
 
   Shape shape({10, 20});
-  TF_ASSERT_OK_AND_ASSIGN(auto index_domains, sharding->IndexDomains(shape));
-  EXPECT_THAT(index_domains, ElementsAre(IndexDomain(shape)));
+  {
+    TF_ASSERT_OK_AND_ASSIGN(auto index_domains, sharding->IndexDomains(shape));
+    EXPECT_THAT(index_domains, ElementsAre(IndexDomain(shape)));
+  }
+  {
+    TF_ASSERT_OK_AND_ASSIGN(
+        auto index_domains,
+        sharding->IndexDomains(shape, SingleDeviceShardSemantics::kAllShards));
+    EXPECT_THAT(index_domains, ElementsAre(IndexDomain(shape)));
+  }
+  {
+    TF_ASSERT_OK_AND_ASSIGN(
+        auto index_domains,
+        sharding->IndexDomains(shape,
+                               SingleDeviceShardSemantics::kAddressableShards));
+    EXPECT_THAT(index_domains, ElementsAre(IndexDomain(shape)));
+  }
 }
 
 TEST_P(SingleDeviceShardingTest, Disassemble) {
   auto device_list = GetDevices({0});
-  std::shared_ptr<const Sharding> sharding =
-      SingleDeviceSharding::Create(device_list.devices().front(), MemoryKind());
+  std::shared_ptr<const Sharding> sharding = SingleDeviceSharding::Create(
+      device_list->devices().front(), MemoryKind());
 
   {  // Disassemble static shape.
     Shape shape({10, 20});
-    TF_ASSERT_OK_AND_ASSIGN(auto disassembled, sharding->Disassemble(shape));
-
-    ASSERT_THAT(disassembled, SizeIs(1));
-    const auto& [result_shape, result_sharding] = disassembled[0];
-    EXPECT_EQ(shape, result_shape);
-    EXPECT_EQ(*result_sharding, *sharding);
+    {
+      TF_ASSERT_OK_AND_ASSIGN(auto disassembled, sharding->Disassemble(shape));
+      ASSERT_THAT(disassembled, SizeIs(1));
+      const auto& [result_shape, result_sharding] = disassembled[0];
+      EXPECT_EQ(shape, result_shape);
+      EXPECT_EQ(*result_sharding, *sharding);
+    }
+    {
+      TF_ASSERT_OK_AND_ASSIGN(
+          auto disassembled,
+          sharding->Disassemble(shape, SingleDeviceShardSemantics::kAllShards));
+      ASSERT_THAT(disassembled, SizeIs(1));
+      const auto& [result_shape, result_sharding] = disassembled[0];
+      EXPECT_EQ(shape, result_shape);
+      EXPECT_EQ(*result_sharding, *sharding);
+    }
+    {
+      TF_ASSERT_OK_AND_ASSIGN(
+          auto disassembled,
+          sharding->Disassemble(
+              shape, SingleDeviceShardSemantics::kAddressableShards));
+      ASSERT_THAT(disassembled, SizeIs(1));
+      const auto& [result_shape, result_sharding] = disassembled[0];
+      EXPECT_EQ(shape, result_shape);
+      EXPECT_EQ(*result_sharding, *sharding);
+    }
   }
   {  // Disassemble dynamic shape.
     TF_ASSERT_OK_AND_ASSIGN(
         DynamicShape dynamic_shape,
         DynamicShape::Create(Shape({10, 20}),
                              BoundedDynamicShapeTag({true, true})));
-    TF_ASSERT_OK_AND_ASSIGN(auto disassembled,
-                            sharding->Disassemble(dynamic_shape));
-
-    ASSERT_THAT(disassembled, SizeIs(1));
-    const auto& [result_shape, result_sharding] = disassembled[0];
-    EXPECT_EQ(dynamic_shape, result_shape);
-    EXPECT_EQ(*result_sharding, *sharding);
+    {
+      TF_ASSERT_OK_AND_ASSIGN(auto disassembled,
+                              sharding->Disassemble(dynamic_shape));
+      ASSERT_THAT(disassembled, SizeIs(1));
+      const auto& [result_shape, result_sharding] = disassembled[0];
+      EXPECT_EQ(dynamic_shape, result_shape);
+      EXPECT_EQ(*result_sharding, *sharding);
+    }
+    {
+      TF_ASSERT_OK_AND_ASSIGN(
+          auto disassembled,
+          sharding->Disassemble(dynamic_shape,
+                                SingleDeviceShardSemantics::kAllShards));
+      ASSERT_THAT(disassembled, SizeIs(1));
+      const auto& [result_shape, result_sharding] = disassembled[0];
+      EXPECT_EQ(dynamic_shape, result_shape);
+      EXPECT_EQ(*result_sharding, *sharding);
+    }
+    {
+      TF_ASSERT_OK_AND_ASSIGN(
+          auto disassembled,
+          sharding->Disassemble(
+              dynamic_shape, SingleDeviceShardSemantics::kAddressableShards));
+      ASSERT_THAT(disassembled, SizeIs(1));
+      const auto& [result_shape, result_sharding] = disassembled[0];
+      EXPECT_EQ(dynamic_shape, result_shape);
+      EXPECT_EQ(*result_sharding, *sharding);
+    }
   }
+}
+
+TEST_P(SingleDeviceShardingTest, Hash) {
+  EXPECT_TRUE(absl::VerifyTypeImplementsAbslHashCorrectly({
+      *SingleDeviceSharding::Create(GetDevices({0})->devices().front(),
+                                    MemoryKind()),
+      *SingleDeviceSharding::Create(GetDevices({1})->devices().front(),
+                                    MemoryKind()),
+  }));
+}
+
+TEST_P(OpaqueShardingTest, CreateWithBadDeviceList) {
+  EXPECT_DEATH(OpaqueSharding::Create(DeviceListRef(), MemoryKind()), "");
+
+  EXPECT_DEATH(OpaqueSharding::Create(GetDevices({}), MemoryKind()), "");
 }
 
 TEST_P(OpaqueShardingTest, IsFullyReplicated) {
@@ -187,8 +264,8 @@ TEST_P(OpaqueShardingTest, WithDeviceAssignment) {
                                         /*memory_kind=*/std::nullopt));
     // For OpaqueSharding, we cannot use an equality test.
     ASSERT_TRUE(llvm::isa<OpaqueSharding>(*new_sharding));
-    EXPECT_THAT(new_sharding->devices().devices(),
-                ElementsAreArray(device_list1.devices()));
+    EXPECT_THAT(new_sharding->devices()->devices(),
+                ElementsAreArray(device_list1->devices()));
   }
   {
     auto device_list1 = GetDevices({0, 1, 2, 3});
@@ -235,6 +312,23 @@ TEST_P(OpaqueShardingTest, IndexDomainsFails) {
           HasSubstr("OpaqueSharding does not have index domain information")));
 }
 
+TEST_P(OpaqueShardingTest, Hash) {
+  EXPECT_TRUE(absl::VerifyTypeImplementsAbslHashCorrectly({
+      *OpaqueSharding::Create(GetDevices({0, 1}), MemoryKind()),
+      *OpaqueSharding::Create(GetDevices({2, 3}), MemoryKind()),
+  }));
+}
+
+TEST_P(ConcreteShardingTest, CreateWithBadDeviceList) {
+  EXPECT_DEATH(ConcreteSharding::Create(DeviceListRef(), MemoryKind(),
+                                        Shape({}), {Shape({})}),
+               "");
+
+  EXPECT_DEATH(ConcreteSharding::Create(GetDevices({}), MemoryKind(), Shape({}),
+                                        {Shape({})}),
+               "");
+}
+
 TEST_P(ConcreteShardingTest, IsFullyReplicated) {
   auto device_list = GetDevices({0, 1});
   std::vector<Shape> shard_shapes;
@@ -246,7 +340,16 @@ TEST_P(ConcreteShardingTest, IsFullyReplicated) {
   EXPECT_FALSE(sharding->IsFullyReplicated());
 }
 
-TEST_P(ConcreteShardingTest, GetShardShape) {
+TEST_P(ConcreteShardingTest, GetShardShapeSuccess) {
+  auto device_list = GetDevices({0, 1});
+  Shape shard_shape({30});
+  std::vector<Shape> shard_shapes(2, shard_shape);
+  std::shared_ptr<const Sharding> sharding = ConcreteSharding::Create(
+      device_list, MemoryKind(), Shape({30}), shard_shapes);
+  EXPECT_THAT(sharding->GetShardShape(Shape({30})), IsOkAndHolds(shard_shape));
+}
+
+TEST_P(ConcreteShardingTest, GetShardShapeFailure) {
   auto device_list = GetDevices({0, 1});
   std::vector<Shape> shard_shapes;
   shard_shapes.reserve(2);
@@ -352,51 +455,111 @@ TEST_P(ConcreteShardingTest, WithDeviceAssignment) {
 }
 
 TEST_P(ConcreteShardingTest, Disassemble) {
-  auto device_list = GetDevices({0, 1});
+  auto device_list = GetDevices({0, 1, 2, 3, 4, 5});
   std::vector<Shape> shard_shapes;
-  shard_shapes.reserve(2);
-  shard_shapes.push_back(Shape({10}));
-  shard_shapes.push_back(Shape({20}));
+  shard_shapes.reserve(4);
+  shard_shapes.push_back(Shape({3}));
+  shard_shapes.push_back(Shape({7}));
+  shard_shapes.push_back(Shape({3}));
+  shard_shapes.push_back(Shape({7}));
   std::shared_ptr<const Sharding> sharding = ConcreteSharding::Create(
-      device_list, MemoryKind(), Shape({30}), shard_shapes);
+      device_list, MemoryKind(), Shape({20}), shard_shapes);
 
-  TF_ASSERT_OK_AND_ASSIGN(auto disassembled,
-                          sharding->Disassemble(Shape({30})));
-  ASSERT_THAT(disassembled, SizeIs(2));
-  for (int i = 0; i < 2; ++i) {
-    const auto& [shape, sharding] = disassembled[i];
-    EXPECT_EQ(shape, shard_shapes[i]);
-    EXPECT_EQ(*sharding,
-              *SingleDeviceSharding::Create(device_list[i], MemoryKind()));
+  {
+    EXPECT_THAT(
+        sharding->Disassemble(Shape({20})),
+        StatusIs(
+            tsl::error::INVALID_ARGUMENT,
+            HasSubstr("SingleDeviceShardSemantics::kAllShards was requested, "
+                      "but the ConcreteSharding contains non-addressable "
+                      "devices. Saw 6 devices, with 4 addressable devices")));
+  }
+  {
+    EXPECT_THAT(
+        sharding->Disassemble(Shape({20}),
+                              SingleDeviceShardSemantics::kAllShards),
+        StatusIs(
+            tsl::error::INVALID_ARGUMENT,
+            HasSubstr("SingleDeviceShardSemantics::kAllShards was requested, "
+                      "but the ConcreteSharding contains non-addressable "
+                      "devices. Saw 6 devices, with 4 addressable devices")));
+  }
+  {
+    TF_ASSERT_OK_AND_ASSIGN(
+        auto disassembled,
+        sharding->Disassemble(Shape({20}),
+                              SingleDeviceShardSemantics::kAddressableShards));
+    // The first 4 devices are addressable.
+    ASSERT_THAT(disassembled, SizeIs(4));
+    for (int i = 0; i < 4; ++i) {
+      const auto& [shape, sharding] = disassembled[i];
+      EXPECT_EQ(shape, shard_shapes[i]);
+      EXPECT_EQ(*sharding, *SingleDeviceSharding::Create(
+                               device_list->devices()[i], MemoryKind()));
+    }
   }
 }
 
 TEST_P(ConcreteShardingTest, DisassembleDynamicShape) {
-  DeviceList device_list = GetDevices({0, 1});
+  auto device_list = GetDevices({0, 1, 2, 3, 4, 5});
   TF_ASSERT_OK_AND_ASSIGN(
       DynamicShape dynamic_shape,
-      DynamicShape::Create(Shape({10}), BoundedDynamicShapeTag({true})));
+      DynamicShape::Create(Shape({20}), BoundedDynamicShapeTag({true})));
   TF_ASSERT_OK_AND_ASSIGN(
-      DynamicShape shard_dynamic_shape1,
+      DynamicShape shard_dynamic_shape0,
       DynamicShape::Create(Shape({3}), BoundedDynamicShapeTag({true})));
   TF_ASSERT_OK_AND_ASSIGN(
+      DynamicShape shard_dynamic_shape1,
+      DynamicShape::Create(Shape({7}), BoundedDynamicShapeTag({true})));
+  TF_ASSERT_OK_AND_ASSIGN(
       DynamicShape shard_dynamic_shape2,
+      DynamicShape::Create(Shape({3}), BoundedDynamicShapeTag({true})));
+  TF_ASSERT_OK_AND_ASSIGN(
+      DynamicShape shard_dynamic_shape3,
       DynamicShape::Create(Shape({7}), BoundedDynamicShapeTag({true})));
   std::vector<DynamicShape> shard_dynamic_shapes{
-      std::move(shard_dynamic_shape1), std::move(shard_dynamic_shape2)};
+      std::move(shard_dynamic_shape0),
+      std::move(shard_dynamic_shape1),
+      std::move(shard_dynamic_shape2),
+      std::move(shard_dynamic_shape3),
+  };
   auto sharding = ConcreteSharding::Create(device_list, MemoryKind(),
                                            dynamic_shape, shard_dynamic_shapes);
-  EXPECT_THAT(sharding->Disassemble(Shape({10})),
+  EXPECT_THAT(sharding->Disassemble(Shape({20})),
               StatusIs(tsl::error::INVALID_ARGUMENT,
                        HasSubstr("ConcreteSharding holds dynamic shape")));
-  TF_ASSERT_OK_AND_ASSIGN(auto disassembled,
-                          sharding->Disassemble(DynamicShape(dynamic_shape)));
-  ASSERT_THAT(disassembled, SizeIs(2));
-  for (int i = 0; i < disassembled.size(); ++i) {
-    const auto& [dynamic_shape, sharding] = disassembled[i];
-    EXPECT_EQ(dynamic_shape, shard_dynamic_shapes[i]);
-    EXPECT_EQ(*sharding,
-              *SingleDeviceSharding::Create(device_list[i], MemoryKind()));
+  {
+    EXPECT_THAT(
+        sharding->Disassemble(DynamicShape(dynamic_shape)),
+        StatusIs(
+            tsl::error::INVALID_ARGUMENT,
+            HasSubstr("SingleDeviceShardSemantics::kAllShards was requested, "
+                      "but the ConcreteSharding contains non-addressable "
+                      "devices. Saw 6 devices, with 4 addressable devices")));
+  }
+  {
+    EXPECT_THAT(
+        sharding->Disassemble(DynamicShape(dynamic_shape),
+                              SingleDeviceShardSemantics::kAllShards),
+        StatusIs(
+            tsl::error::INVALID_ARGUMENT,
+            HasSubstr("SingleDeviceShardSemantics::kAllShards was requested, "
+                      "but the ConcreteSharding contains non-addressable "
+                      "devices. Saw 6 devices, with 4 addressable devices")));
+  }
+  {
+    TF_ASSERT_OK_AND_ASSIGN(
+        auto disassembled,
+        sharding->Disassemble(DynamicShape(dynamic_shape),
+                              SingleDeviceShardSemantics::kAddressableShards));
+    // The first 4 devices are addressable.
+    ASSERT_THAT(disassembled, SizeIs(4));
+    for (int i = 0; i < 4; ++i) {
+      const auto& [dynamic_shape, sharding] = disassembled[i];
+      EXPECT_EQ(dynamic_shape, shard_dynamic_shapes[i]);
+      EXPECT_EQ(*sharding, *SingleDeviceSharding::Create(
+                               device_list->devices()[i], MemoryKind()));
+    }
   }
 }
 
@@ -427,6 +590,30 @@ TEST_P(ConcreteShardingTest, IndexDomainsFails) {
               StatusIs(tsl::error::INVALID_ARGUMENT,
                        HasSubstr("ConcreteSharding does not have index "
                                  "domain information")));
+}
+
+TEST_P(ConcreteShardingTest, Hash) {
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto dynamic_shape,
+      DynamicShape::Create(Shape({30}), BoundedDynamicShapeTag({true})));
+  EXPECT_TRUE(absl::VerifyTypeImplementsAbslHashCorrectly({
+      *ConcreteSharding::Create(GetDevices({0, 1}), MemoryKind(), Shape({30}),
+                                {Shape({10}), Shape({20})}),
+      *ConcreteSharding::Create(GetDevices({0, 1}), MemoryKind(), dynamic_shape,
+                                {dynamic_shape, dynamic_shape}),
+  }));
+}
+
+TEST_P(ConcreteEvenShardingTest, CreateWithBadDeviceList) {
+  EXPECT_DEATH(ConcreteEvenSharding::Create(DeviceListRef(), MemoryKind(),
+                                            Shape({}), Shape({}),
+                                            /*is_fully_replicated=*/true),
+               "");
+
+  EXPECT_DEATH(ConcreteEvenSharding::Create(GetDevices({}), MemoryKind(),
+                                            Shape({}), Shape({}),
+                                            /*is_fully_replicated=*/true),
+               "");
 }
 
 TEST_P(ConcreteEvenShardingTest, IsFullyReplicated) {
@@ -539,19 +726,48 @@ TEST_P(ConcreteEvenShardingTest, WithDeviceAssignment) {
 }
 
 TEST_P(ConcreteEvenShardingTest, Disassemble) {
-  auto device_list = GetDevices({0, 1});
+  auto device_list = GetDevices({0, 1, 2, 3, 4, 5});
   std::shared_ptr<const Sharding> sharding =
       ConcreteEvenSharding::Create(device_list, MemoryKind(), Shape({30}),
-                                   Shape({15}), /*is_fully_replicated=*/false);
+                                   Shape({5}), /*is_fully_replicated=*/false);
 
-  TF_ASSERT_OK_AND_ASSIGN(auto disassembled,
-                          sharding->Disassemble(Shape({30})));
-  ASSERT_THAT(disassembled, SizeIs(2));
-  for (int i = 0; i < 2; ++i) {
-    const auto& [shape, sharding] = disassembled[i];
-    EXPECT_EQ(shape, Shape({15}));
-    EXPECT_EQ(*sharding,
-              *SingleDeviceSharding::Create(device_list[i], MemoryKind()));
+  {
+    TF_ASSERT_OK_AND_ASSIGN(auto disassembled,
+                            sharding->Disassemble(Shape({30})));
+    ASSERT_THAT(disassembled, SizeIs(6));
+    for (int i = 0; i < 6; ++i) {
+      const auto& [shape, sharding] = disassembled[i];
+      EXPECT_EQ(shape, Shape({5}));
+      EXPECT_EQ(*sharding, *SingleDeviceSharding::Create(
+                               device_list->devices()[i], MemoryKind()));
+    }
+  }
+  {
+    TF_ASSERT_OK_AND_ASSIGN(
+        auto disassembled,
+        sharding->Disassemble(Shape({30}),
+                              SingleDeviceShardSemantics::kAllShards));
+    ASSERT_THAT(disassembled, SizeIs(6));
+    for (int i = 0; i < 6; ++i) {
+      const auto& [shape, sharding] = disassembled[i];
+      EXPECT_EQ(shape, Shape({5}));
+      EXPECT_EQ(*sharding, *SingleDeviceSharding::Create(
+                               device_list->devices()[i], MemoryKind()));
+    }
+  }
+  {
+    TF_ASSERT_OK_AND_ASSIGN(
+        auto disassembled,
+        sharding->Disassemble(Shape({30}),
+                              SingleDeviceShardSemantics::kAddressableShards));
+    // The first 4 devices are addressable.
+    ASSERT_THAT(disassembled, SizeIs(4));
+    for (int i = 0; i < 4; ++i) {
+      const auto& [shape, sharding] = disassembled[i];
+      EXPECT_EQ(shape, Shape({5}));
+      EXPECT_EQ(*sharding, *SingleDeviceSharding::Create(
+                               device_list->devices()[i], MemoryKind()));
+    }
   }
 }
 
@@ -571,7 +787,7 @@ TEST_P(ConcreteEvenShardingTest, IndexDomainsFails) {
   std::vector<Shape> shard_shapes;
   std::shared_ptr<const Sharding> sharding =
       ConcreteEvenSharding::Create(device_list, MemoryKind(), Shape({30}),
-                                   Shape({15}), /*is_fully_replicated=*/false);
+                                   Shape({5}), /*is_fully_replicated=*/false);
 
   EXPECT_THAT(
       sharding->IndexDomains(Shape({30})),
@@ -579,6 +795,31 @@ TEST_P(ConcreteEvenShardingTest, IndexDomainsFails) {
           tsl::error::INVALID_ARGUMENT,
           HasSubstr(
               "ConcreteEvenSharding does not have index domain information")));
+}
+
+TEST_P(ConcreteEvenShardingTest, Hash) {
+  EXPECT_TRUE(absl::VerifyTypeImplementsAbslHashCorrectly({
+      *ConcreteEvenSharding::Create(GetDevices({0, 1}), MemoryKind(),
+                                    Shape({30}), Shape({30}),
+                                    /*is_fully_replicated=*/true),
+      *ConcreteEvenSharding::Create(GetDevices({2, 3}), MemoryKind(),
+                                    Shape({30}), Shape({15}),
+                                    /*is_fully_replicated=*/false),
+  }));
+}
+
+TEST_P(ShardingParamShardingTest, CreateWithBadDeviceList) {
+  ShardingParam param{/*dim_shards=*/{2, 3},
+                      {/*permutation=*/{1, 0}, /*axis_sizes=*/{3, 2}}};
+  EXPECT_DEATH(
+      ShardingParamSharding::Create(param, DeviceListRef(), MemoryKind())
+          .value(),
+      "");
+
+  EXPECT_DEATH(
+      ShardingParamSharding::Create(param, GetDevices({}), MemoryKind())
+          .value(),
+      "");
 }
 
 TEST_P(ShardingParamShardingTest, CreateFailsWhenDeviceCountNotMatch) {
@@ -719,14 +960,43 @@ TEST_P(ShardingParamShardingTest, Disassemble) {
       std::shared_ptr<const Sharding> param_sharding,
       ShardingParamSharding::Create(param, device_list, MemoryKind()));
 
-  TF_ASSERT_OK_AND_ASSIGN(auto disassembled,
-                          param_sharding->Disassemble(Shape({6, 6})));
-  ASSERT_THAT(disassembled, SizeIs(6));
-  for (int i = 0; i < 6; ++i) {
-    const auto& [shape, sharding] = disassembled[i];
-    EXPECT_EQ(shape, Shape({3, 2}));
-    EXPECT_EQ(*sharding,
-              *SingleDeviceSharding::Create(device_list[i], MemoryKind()));
+  {
+    TF_ASSERT_OK_AND_ASSIGN(auto disassembled,
+                            param_sharding->Disassemble(Shape({6, 6})));
+    ASSERT_THAT(disassembled, SizeIs(6));
+    for (int i = 0; i < 6; ++i) {
+      const auto& [shape, sharding] = disassembled[i];
+      EXPECT_EQ(shape, Shape({3, 2}));
+      EXPECT_EQ(*sharding, *SingleDeviceSharding::Create(
+                               device_list->devices()[i], MemoryKind()));
+    }
+  }
+  {
+    TF_ASSERT_OK_AND_ASSIGN(
+        auto disassembled,
+        param_sharding->Disassemble(Shape({6, 6}),
+                                    SingleDeviceShardSemantics::kAllShards));
+    ASSERT_THAT(disassembled, SizeIs(6));
+    for (int i = 0; i < 6; ++i) {
+      const auto& [shape, sharding] = disassembled[i];
+      EXPECT_EQ(shape, Shape({3, 2}));
+      EXPECT_EQ(*sharding, *SingleDeviceSharding::Create(
+                               device_list->devices()[i], MemoryKind()));
+    }
+  }
+  {
+    TF_ASSERT_OK_AND_ASSIGN(
+        auto disassembled,
+        param_sharding->Disassemble(
+            Shape({6, 6}), SingleDeviceShardSemantics::kAddressableShards));
+    // The first 4 devices are addressable.
+    ASSERT_THAT(disassembled, SizeIs(4));
+    for (int i = 0; i < 4; ++i) {
+      const auto& [shape, sharding] = disassembled[i];
+      EXPECT_EQ(shape, Shape({3, 2}));
+      EXPECT_EQ(*sharding, *SingleDeviceSharding::Create(
+                               device_list->devices()[i], MemoryKind()));
+    }
   }
 }
 
@@ -767,15 +1037,42 @@ TEST_P(ShardingParamShardingTest, IndexDomain) {
       std::shared_ptr<const Sharding> param_sharding,
       ShardingParamSharding::Create(param, device_list, MemoryKind()));
 
-  TF_ASSERT_OK_AND_ASSIGN(auto index_domains,
-                          param_sharding->IndexDomains(Shape({6, 6})));
-  EXPECT_THAT(index_domains,
-              ElementsAre(IndexDomain(Index({0, 0}), Shape({3, 2})),
-                          IndexDomain(Index({0, 2}), Shape({3, 2})),
-                          IndexDomain(Index({0, 4}), Shape({3, 2})),
-                          IndexDomain(Index({3, 0}), Shape({3, 2})),
-                          IndexDomain(Index({3, 2}), Shape({3, 2})),
-                          IndexDomain(Index({3, 4}), Shape({3, 2}))));
+  {
+    TF_ASSERT_OK_AND_ASSIGN(auto index_domains,
+                            param_sharding->IndexDomains(Shape({6, 6})));
+    EXPECT_THAT(index_domains,
+                ElementsAre(IndexDomain(Index({0, 0}), Shape({3, 2})),
+                            IndexDomain(Index({0, 2}), Shape({3, 2})),
+                            IndexDomain(Index({0, 4}), Shape({3, 2})),
+                            IndexDomain(Index({3, 0}), Shape({3, 2})),
+                            IndexDomain(Index({3, 2}), Shape({3, 2})),
+                            IndexDomain(Index({3, 4}), Shape({3, 2}))));
+  }
+  {
+    TF_ASSERT_OK_AND_ASSIGN(
+        auto index_domains,
+        param_sharding->IndexDomains(Shape({6, 6}),
+                                     SingleDeviceShardSemantics::kAllShards));
+    EXPECT_THAT(index_domains,
+                ElementsAre(IndexDomain(Index({0, 0}), Shape({3, 2})),
+                            IndexDomain(Index({0, 2}), Shape({3, 2})),
+                            IndexDomain(Index({0, 4}), Shape({3, 2})),
+                            IndexDomain(Index({3, 0}), Shape({3, 2})),
+                            IndexDomain(Index({3, 2}), Shape({3, 2})),
+                            IndexDomain(Index({3, 4}), Shape({3, 2}))));
+  }
+  {
+    TF_ASSERT_OK_AND_ASSIGN(
+        auto index_domains,
+        param_sharding->IndexDomains(
+            Shape({6, 6}), SingleDeviceShardSemantics::kAddressableShards));
+    // The first 4 devices are addressable.
+    EXPECT_THAT(index_domains,
+                ElementsAre(IndexDomain(Index({0, 0}), Shape({3, 2})),
+                            IndexDomain(Index({0, 2}), Shape({3, 2})),
+                            IndexDomain(Index({0, 4}), Shape({3, 2})),
+                            IndexDomain(Index({3, 0}), Shape({3, 2}))));
+  }
 }
 
 TEST_P(ShardingParamShardingTest, IndexDomainWithPermutation) {
@@ -786,15 +1083,42 @@ TEST_P(ShardingParamShardingTest, IndexDomainWithPermutation) {
       std::shared_ptr<const Sharding> param_sharding,
       ShardingParamSharding::Create(param, device_list, MemoryKind()));
 
-  TF_ASSERT_OK_AND_ASSIGN(auto index_domains,
-                          param_sharding->IndexDomains(Shape({6, 6})));
-  EXPECT_THAT(index_domains,
-              ElementsAre(IndexDomain(Index({0, 0}), Shape({3, 2})),
-                          IndexDomain(Index({0, 4}), Shape({3, 2})),
-                          IndexDomain(Index({3, 2}), Shape({3, 2})),
-                          IndexDomain(Index({0, 2}), Shape({3, 2})),
-                          IndexDomain(Index({3, 0}), Shape({3, 2})),
-                          IndexDomain(Index({3, 4}), Shape({3, 2}))));
+  {
+    TF_ASSERT_OK_AND_ASSIGN(auto index_domains,
+                            param_sharding->IndexDomains(Shape({6, 6})));
+    EXPECT_THAT(index_domains,
+                ElementsAre(IndexDomain(Index({0, 0}), Shape({3, 2})),
+                            IndexDomain(Index({0, 4}), Shape({3, 2})),
+                            IndexDomain(Index({3, 2}), Shape({3, 2})),
+                            IndexDomain(Index({0, 2}), Shape({3, 2})),
+                            IndexDomain(Index({3, 0}), Shape({3, 2})),
+                            IndexDomain(Index({3, 4}), Shape({3, 2}))));
+  }
+  {
+    TF_ASSERT_OK_AND_ASSIGN(
+        auto index_domains,
+        param_sharding->IndexDomains(Shape({6, 6}),
+                                     SingleDeviceShardSemantics::kAllShards));
+    EXPECT_THAT(index_domains,
+                ElementsAre(IndexDomain(Index({0, 0}), Shape({3, 2})),
+                            IndexDomain(Index({0, 4}), Shape({3, 2})),
+                            IndexDomain(Index({3, 2}), Shape({3, 2})),
+                            IndexDomain(Index({0, 2}), Shape({3, 2})),
+                            IndexDomain(Index({3, 0}), Shape({3, 2})),
+                            IndexDomain(Index({3, 4}), Shape({3, 2}))));
+  }
+  {
+    TF_ASSERT_OK_AND_ASSIGN(
+        auto index_domains,
+        param_sharding->IndexDomains(
+            Shape({6, 6}), SingleDeviceShardSemantics::kAddressableShards));
+    // The first 4 devices are addressable.
+    EXPECT_THAT(index_domains,
+                ElementsAre(IndexDomain(Index({0, 0}), Shape({3, 2})),
+                            IndexDomain(Index({0, 4}), Shape({3, 2})),
+                            IndexDomain(Index({3, 2}), Shape({3, 2})),
+                            IndexDomain(Index({0, 2}), Shape({3, 2}))));
+  }
 }
 
 TEST_P(ShardingParamShardingTest, IndexDomainWithReplication) {
@@ -805,35 +1129,77 @@ TEST_P(ShardingParamShardingTest, IndexDomainWithReplication) {
       std::shared_ptr<const Sharding> param_sharding,
       ShardingParamSharding::Create(param, device_list, MemoryKind()));
 
-  TF_ASSERT_OK_AND_ASSIGN(auto index_domains,
-                          param_sharding->IndexDomains(Shape({6, 6})));
-  EXPECT_THAT(index_domains,
-              ElementsAre(IndexDomain(Index({0, 0}), Shape({3, 6})),
-                          IndexDomain(Index({0, 0}), Shape({3, 6})),
-                          IndexDomain(Index({0, 0}), Shape({3, 6})),
-                          IndexDomain(Index({3, 0}), Shape({3, 6})),
-                          IndexDomain(Index({3, 0}), Shape({3, 6})),
-                          IndexDomain(Index({3, 0}), Shape({3, 6}))));
+  {
+    TF_ASSERT_OK_AND_ASSIGN(auto index_domains,
+                            param_sharding->IndexDomains(Shape({6, 6})));
+    EXPECT_THAT(index_domains,
+                ElementsAre(IndexDomain(Index({0, 0}), Shape({3, 6})),
+                            IndexDomain(Index({0, 0}), Shape({3, 6})),
+                            IndexDomain(Index({0, 0}), Shape({3, 6})),
+                            IndexDomain(Index({3, 0}), Shape({3, 6})),
+                            IndexDomain(Index({3, 0}), Shape({3, 6})),
+                            IndexDomain(Index({3, 0}), Shape({3, 6}))));
+  }
+  {
+    TF_ASSERT_OK_AND_ASSIGN(
+        auto index_domains,
+        param_sharding->IndexDomains(Shape({6, 6}),
+                                     SingleDeviceShardSemantics::kAllShards));
+    EXPECT_THAT(index_domains,
+                ElementsAre(IndexDomain(Index({0, 0}), Shape({3, 6})),
+                            IndexDomain(Index({0, 0}), Shape({3, 6})),
+                            IndexDomain(Index({0, 0}), Shape({3, 6})),
+                            IndexDomain(Index({3, 0}), Shape({3, 6})),
+                            IndexDomain(Index({3, 0}), Shape({3, 6})),
+                            IndexDomain(Index({3, 0}), Shape({3, 6}))));
+  }
+  {
+    TF_ASSERT_OK_AND_ASSIGN(
+        auto index_domains,
+        param_sharding->IndexDomains(
+            Shape({6, 6}), SingleDeviceShardSemantics::kAddressableShards));
+    // The first 4 devices are addressable.
+    EXPECT_THAT(index_domains,
+                ElementsAre(IndexDomain(Index({0, 0}), Shape({3, 6})),
+                            IndexDomain(Index({0, 0}), Shape({3, 6})),
+                            IndexDomain(Index({0, 0}), Shape({3, 6})),
+                            IndexDomain(Index({3, 0}), Shape({3, 6}))));
+  }
+}
+
+TEST_P(ShardingParamShardingTest, Hash) {
+  EXPECT_TRUE(absl::VerifyTypeImplementsAbslHashCorrectly({
+      *ShardingParamSharding::Create(
+           ShardingParam{/*dim_shards=*/{2, 3},
+                         {/*permutation=*/{1, 0}, /*axis_sizes=*/{3, 2}}},
+           GetDevices({0, 1, 2, 3, 4, 5}), MemoryKind())
+           .value(),
+      *ShardingParamSharding::Create(
+           ShardingParam{/*dim_shards=*/{2, 3},
+                         {/*permutation=*/{1, 0}, /*axis_sizes=*/{3, 2}}},
+           GetDevices({3, 4, 5, 0, 1, 2}), MemoryKind())
+           .value(),
+  }));
 }
 
 INSTANTIATE_TEST_SUITE_P(NumDevices, SingleDeviceShardingTest,
-                         testing::Values(test_util::ShardingTestParam{
+                         testing::Values(test_util::DeviceTestParam{
                              /*num_devices=*/6,
-                             /*num_addressable_devices=*/6}));
+                             /*num_addressable_devices=*/4}));
 INSTANTIATE_TEST_SUITE_P(NumDevices, OpaqueShardingTest,
-                         testing::Values(test_util::ShardingTestParam{
+                         testing::Values(test_util::DeviceTestParam{
                              /*num_devices=*/6,
-                             /*num_addressable_devices=*/6}));
+                             /*num_addressable_devices=*/4}));
 INSTANTIATE_TEST_SUITE_P(NumDevices, ConcreteShardingTest,
-                         testing::Values(test_util::ShardingTestParam{
+                         testing::Values(test_util::DeviceTestParam{
                              /*num_devices=*/6,
-                             /*num_addressable_devices=*/6}));
+                             /*num_addressable_devices=*/4}));
 INSTANTIATE_TEST_SUITE_P(NumDevices, ConcreteEvenShardingTest,
-                         testing::Values(test_util::ShardingTestParam{
+                         testing::Values(test_util::DeviceTestParam{
                              /*num_devices=*/6,
-                             /*num_addressable_devices=*/6}));
+                             /*num_addressable_devices=*/4}));
 INSTANTIATE_TEST_SUITE_P(NumDevices, ShardingParamShardingTest,
-                         testing::Values(test_util::ShardingTestParam{
+                         testing::Values(test_util::DeviceTestParam{
                              /*num_devices=*/6,
                              /*num_addressable_devices=*/4}));
 

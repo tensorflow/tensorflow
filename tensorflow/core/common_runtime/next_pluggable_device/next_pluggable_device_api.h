@@ -18,8 +18,9 @@ limitations under the License.
 
 #include <string>
 
+#include "absl/status/statusor.h"
+#include "xla/tsl/platform/statusor.h"
 #include "tensorflow/core/common_runtime/next_pluggable_device/c/plugin_c_api.h"
-#include "tsl/platform/statusor.h"
 
 namespace tensorflow {
 

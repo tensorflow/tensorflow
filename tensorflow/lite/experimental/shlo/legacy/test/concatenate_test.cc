@@ -17,12 +17,12 @@ limitations under the License.
 #include <initializer_list>
 #include <sstream>
 #include <string>
-#include <string_view>
 #include <utility>
 #include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "tensorflow/lite/experimental/shlo/legacy/include/shlo.h"
 #include "tensorflow/lite/experimental/shlo/legacy/src/debug.h"  // IWYU pragma: keep, b/321245930
@@ -39,7 +39,7 @@ struct TensorConst {
 };
 
 template <typename T>
-std::string ToString(std::string_view name,
+std::string ToString(absl::string_view name,
                      const std::vector<const T*>& tensors) {
   std::ostringstream result;
   for (size_t i = 0; i < tensors.size(); ++i) {

@@ -139,7 +139,7 @@ class MarkForCompilationPassImpl {
         cpu_global_jit_(cpu_global_jit),
         cluster_name_prefix_(cluster_name_prefix) {}
 
-  Status Run();
+  absl::Status Run();
 
  private:
   // Represents a "cluster" or a connected subgraph of a TensorFlow graph.
@@ -295,7 +295,7 @@ class MarkForCompilationPassImpl {
   // Contracts as many edges as possible to create XLA clusters.  After this
   // finishes the clustering decisions made are implicitly stored in
   // `clusters_`.
-  Status RunEdgeContractionLoop();
+  absl::Status RunEdgeContractionLoop();
 
   // "Fixes up" clusters by removing some modes.
   //
@@ -304,14 +304,14 @@ class MarkForCompilationPassImpl {
   // of those constants, and increase overall memory usage.
   //
   // This function removes "obviously bad" cases like these.
-  Status DeclusterNodes();
+  absl::Status DeclusterNodes();
 
   // Manifests the clustering decisions into the TF graph by tagging nodes with
   // an `_XlaCluster` attribute.  Also some basic filter logic, like
   // tf_xla_min_cluster_size, are applied here.
-  Status CreateClusters();
+  absl::Status CreateClusters();
 
-  Status DumpDebugInfo();
+  absl::Status DumpDebugInfo();
 
   bool IsCompilationCandidate(Node* n) const {
     return compilation_candidates_.find(n) != compilation_candidates_.end();
@@ -322,12 +322,12 @@ class MarkForCompilationPassImpl {
   absl::StatusOr<bool> TryToContractEdge(Cluster* from, Cluster* to);
 
   // Nodes that XLA can compile are put in `compilation_candidates_`.
-  Status FindCompilationCandidates();
+  absl::Status FindCompilationCandidates();
 
   bool CompilationDisallowedByXlaCompileAttr(Node* node);
 
   // Populates `clusters_`.
-  Status BuildInitialClusterSet();
+  absl::Status BuildInitialClusterSet();
 
   absl::StatusOr<bool> ShouldCompileClusterImpl(const Cluster& cluster);
 
@@ -482,9 +482,9 @@ class MarkForCompilationPassImpl {
   bool clusters_created_ = false;
 
   std::vector<std::unique_ptr<Cluster>> cluster_storage_;
-  std::vector<UnionFind<Cluster*>> cluster_for_node_;
+  std::vector<xla::UnionFind<Cluster*>> cluster_for_node_;
   absl::flat_hash_set<const Node*> declustered_nodes_;
-  GraphCycles cycles_graph_;
+  xla::GraphCycles cycles_graph_;
   OrderedNodeSet compilation_candidates_;
   std::unique_ptr<DeadnessAnalysis> deadness_analysis_;
   int64_t iteration_count_ = 0;
@@ -614,7 +614,7 @@ void MarkForCompilationPassImpl::Cluster::Merge(Cluster* other) {
   other->resource_var_operation_node_ids_.clear();
 }
 
-Status IgnoreResourceOpForSafetyAnalysis(
+absl::Status IgnoreResourceOpForSafetyAnalysis(
     jit::DeviceInfoCache* device_info_cache, const Node& n, bool* ignore) {
   // If a resource operation is assigned to XLA_CPU or XLA_GPU explicitly then
   // ignore it during resource operation safety analysis.  We need this hack
@@ -772,7 +772,7 @@ bool MarkForCompilationPassImpl::IsScalarIntegerResourceOperation(
   return TensorShapeUtils::IsScalar(proto->tensor_shape());
 }
 
-Status MarkForCompilationPassImpl::RunEdgeContractionLoop() {
+absl::Status MarkForCompilationPassImpl::RunEdgeContractionLoop() {
   TF_RET_CHECK(initialized_ && !edges_contracted_ && !clusters_created_);
   edges_contracted_ = true;
 
@@ -898,11 +898,49 @@ Status MarkForCompilationPassImpl::RunEdgeContractionLoop() {
   return absl::OkStatus();
 }
 
-Status MarkForCompilationPassImpl::DeclusterNodes() {
+int64_t GetConstantTensorSize(Node* n) {
+  if (n->op_def().name() != "Const") return -1;
+
+  const TensorProto* proto = nullptr;
+  absl::Status s = GetNodeAttr(n->def(), "value", &proto);
+  if (!s.ok()) return -1;
+
+  if (!proto->has_tensor_shape()) {
+    return -1;
+  }
+  const auto& tensor_shape_proto = proto->tensor_shape();
+  if (tensor_shape_proto.unknown_rank()) {
+    return -1;
+  }
+  int64_t num_elements = 1;
+  for (const auto& dim : tensor_shape_proto.dim()) {
+    // Note that in some cases, dim.size() can be zero (e.g., empty vector).
+    num_elements *= dim.size();
+  }
+  return num_elements;
+}
+
+absl::Status MarkForCompilationPassImpl::DeclusterNodes() {
   for (Node* n : compilation_candidates_) {
     Cluster* cluster = GetClusterForNode(n);
     if (cluster == nullptr) {
       continue;
+    }
+
+    // Large constants (bigger than L1 cache size) shared across multiple
+    // clusters typically get copied, resulting in performance penalty. Below
+    // code will avoid copying large constant to multiple clusters.
+    const int64_t kLargeConstantThreshold = 16384;
+    if (n->op_def().name() == "Const") {
+      int64_t tensor_size = GetConstantTensorSize(n);
+      if (tensor_size > kLargeConstantThreshold) {
+        // Check if the constant is used outside its cluster
+        if (absl::c_any_of(n->out_nodes(), [&](Node* user) {
+              return GetClusterForNode(user) != cluster;
+            })) {
+          declustered_nodes_.insert(n);
+        }
+      }
     }
 
     // De-cluster Fill ops that are
@@ -959,7 +997,7 @@ int64_t GetNextClusterSequenceNumber(uint64 fingerprint) {
   return ClusterSequenceNumberGenerator::Global().GetNext(fingerprint);
 }
 
-Status MarkForCompilationPassImpl::CreateClusters() {
+absl::Status MarkForCompilationPassImpl::CreateClusters() {
   TF_RET_CHECK(initialized_ && edges_contracted_ && !clusters_created_);
   clusters_created_ = true;
 
@@ -1016,7 +1054,7 @@ Status MarkForCompilationPassImpl::CreateClusters() {
   return absl::OkStatus();
 }
 
-Status MarkForCompilationPassImpl::DumpDebugInfo() {
+absl::Status MarkForCompilationPassImpl::DumpDebugInfo() {
   TF_RET_CHECK(initialized_ && edges_contracted_ && clusters_created_);
 
   if (debug_options_.dump_graphs) {
@@ -1112,7 +1150,7 @@ static bool GetNodeOrFuncAttr(Node* node, FunctionLibraryDefinition* flib_def,
   return out;
 }
 
-Status MarkForCompilationPassImpl::BuildInitialClusterSet() {
+absl::Status MarkForCompilationPassImpl::BuildInitialClusterSet() {
   auto ignore_resource_ops = [&](const Node& n, bool* ignore) {
     return IgnoreResourceOpForSafetyAnalysis(&device_info_cache_, n, ignore);
   };
@@ -1267,7 +1305,7 @@ absl::flat_hash_set<string> GetOrCreateAllowlist() {
   return allowlist;
 }
 
-Status MarkForCompilationPassImpl::FindCompilationCandidates() {
+absl::Status MarkForCompilationPassImpl::FindCompilationCandidates() {
   OptimizerOptions opts;
   std::unique_ptr<ProcessFunctionLibraryRuntime> pflr(
       new ProcessFunctionLibraryRuntime(nullptr, env_, /*config=*/nullptr,
@@ -1489,7 +1527,7 @@ bool MarkForCompilationPassImpl::CompilationDisallowedByXlaCompileAttr(
 
   // If there is a _XlaCompile annotation, use its value.
   bool compile = false;
-  Status status = GetNodeAttr(node->attrs(), kXlaCompileAttr, &compile);
+  absl::Status status = GetNodeAttr(node->attrs(), kXlaCompileAttr, &compile);
   if (status.ok()) {
     if (!compile) {
       VLOG(2) << "Rejecting " << node->name() << ": kXlaCompileAttr("
@@ -1587,7 +1625,7 @@ absl::StatusOr<bool> MarkForCompilationPassImpl::TryToContractEdge(
   return MergeClusters(from, to);
 }
 
-Status MarkForCompilationPassImpl::Run() {
+absl::Status MarkForCompilationPassImpl::Run() {
   // Make sure that kernels have been registered on the JIT device.
   XlaOpRegistry::RegisterCompilationKernels();
 
@@ -1853,7 +1891,7 @@ absl::StatusOr<bool> MarkForCompilationPassImpl::ShouldCompileCluster(
   return should_compile;
 }
 
-Status MarkForCompilation(
+absl::Status MarkForCompilation(
     const GraphOptimizationPassOptions& options,
     const MarkForCompilationPassImpl::DebugOptions& debug_options) {
   Graph* graph = options.graph->get();
@@ -1908,7 +1946,7 @@ std::atomic<int64_t>* GetPointerToFuel(int64_t initial_value) {
 
 }  // anonymous namespace
 
-Status MarkForCompilationPass::Run(
+absl::Status MarkForCompilationPass::Run(
     const GraphOptimizationPassOptions& options) {
   MarkForCompilationPassFlags* flags = GetMarkForCompilationPassFlags();
 
@@ -1928,7 +1966,7 @@ Status MarkForCompilationPass::Run(
   return MarkForCompilation(options, debug_options);
 }
 
-Status MarkForCompilationPass::RunForTest(
+absl::Status MarkForCompilationPass::RunForTest(
     const GraphOptimizationPassOptions& options, bool disable_deadness_analysis,
     bool deterministic_cluster_names) {
   MarkForCompilationPassFlags* flags = GetMarkForCompilationPassFlags();

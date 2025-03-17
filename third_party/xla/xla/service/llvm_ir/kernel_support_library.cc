@@ -15,9 +15,31 @@ limitations under the License.
 
 #include "xla/service/llvm_ir/kernel_support_library.h"
 
+#include <algorithm>
+#include <cstdint>
+#include <functional>
+#include <iterator>
+#include <memory>
+#include <vector>
+
+#include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/strings/string_view.h"
+#include "llvm/IR/BasicBlock.h"
+#include "llvm/IR/DerivedTypes.h"
+#include "llvm/IR/Function.h"
+#include "llvm/IR/GlobalValue.h"
+#include "llvm/IR/IRBuilder.h"
+#include "llvm/IR/Instructions.h"
+#include "llvm/IR/Module.h"
+#include "llvm/IR/Type.h"
+#include "llvm/IR/Value.h"
+#include "xla/service/hlo_module_config.h"
+#include "xla/service/llvm_ir/llvm_loop.h"
 #include "xla/service/llvm_ir/llvm_type_conversion_util.h"
 #include "xla/service/llvm_ir/llvm_util.h"
+#include "xla/tsl/platform/errors.h"
 
 namespace xla {
 absl::Status KernelSupportLibrary::ForWithStatus(
@@ -64,7 +86,7 @@ absl::Status KernelSupportLibrary::IfWithStatus(
 }
 
 void KernelSupportLibrary::EmitAndCallOutlinedKernel(
-    const HloModuleConfig& module_config, llvm::IRBuilder<>* b,
+    const HloModuleConfig& module_config, llvm::IRBuilderBase* b,
     absl::string_view kernel_name,
     KernelSupportLibrary::ArgumentVector arguments,
     const std::function<void(KernelSupportLibrary::ArgumentVector)>&
@@ -99,7 +121,7 @@ void KernelSupportLibrary::EmitAndCallOutlinedKernel(
                                           llvm::GlobalValue::InternalLinkage,
                                           module_config, kernel_name, module);
 
-    llvm::IRBuilder<>::InsertPointGuard guard(*b);
+    llvm::IRBuilderBase::InsertPointGuard guard(*b);
 
     auto* entry_bb =
         llvm::BasicBlock::Create(b->getContext(), "entry", function);

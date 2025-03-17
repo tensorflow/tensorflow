@@ -33,14 +33,14 @@ limitations under the License.
 //   "third_party/tensorflow/compiler/xla/tsl/framework/contraction/eigen_contraction_kernel.h"
 //   #endif
 
-#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
+#include "unsupported/Eigen/CXX11/Tensor"
 #include "xla/tsl/framework/fixedpoint/FixedPoint.h"
 
 #if defined(TENSORFLOW_USE_MKLDNN_CONTRACTION_KERNEL)
 #include "dnnl.h"
 #endif
 
-#include "tsl/platform/dynamic_annotations.h"
+#include "xla/tsl/platform/dynamic_annotations.h"
 
 namespace Eigen {
 namespace internal {

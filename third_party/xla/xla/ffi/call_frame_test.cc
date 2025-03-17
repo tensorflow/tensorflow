@@ -21,10 +21,12 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include <gtest/gtest.h>
 #include "absl/strings/str_cat.h"
 #include "xla/ffi/api/c_api.h"
 #include "xla/stream_executor/device_memory.h"
-#include "tsl/lib/core/status_test_util.h"
+#include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/xla_data.pb.h"
 #include "tsl/platform/test.h"
 #include "tsl/platform/test_benchmark.h"
 
@@ -129,14 +131,14 @@ void BM_AddBufferArg(benchmark::State& state) {
 void BM_AddAttributes(benchmark::State& state) {
   size_t num_attrs = state.range(0);
 
-  CallFrameBuilder::FlatAttributesMap flat_attrs;
+  CallFrameBuilder::AttributesMap attrs;
   for (size_t i = 0; i < num_attrs; ++i) {
-    flat_attrs.try_emplace(absl::StrCat("attr_", i), 42);
+    attrs.try_emplace(absl::StrCat("attr_", i), 42);
   }
 
   for (auto _ : state) {
     CallFrameBuilder::AttributesBuilder attrs_builder;
-    attrs_builder.Append(flat_attrs);
+    attrs_builder.Append(attrs);
 
     CallFrameBuilder builder(/*num_args=*/0, /*num_rets=*/0);
     builder.AddAttributes(attrs_builder.Build());

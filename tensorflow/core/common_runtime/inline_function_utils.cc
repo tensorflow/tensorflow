@@ -96,24 +96,24 @@ struct EndpointEq {
 
 // The following Add* routines are used to add a few graph nodes while
 // functions are transformed.
-static Node* AddNoOp(StringPiece name, Graph* g) {
+static Node* AddNoOp(absl::string_view name, Graph* g) {
   NodeDef ndef;
   ndef.set_name(g->NewName(absl::StrCat(kNodeLabel, "/", name)));
   ndef.set_op("NoOp");
-  Status s;
+  absl::Status s;
   Node* ret = g->AddNode(ndef, &s);
   TF_CHECK_OK(s);
   return ret;
 }
 
-static Node* AddIdentity(StringPiece name, Graph* g, Endpoint input) {
+static Node* AddIdentity(absl::string_view name, Graph* g, Endpoint input) {
   DCHECK_LT(0, input.dtype());
   NodeDef ndef;
   ndef.set_name(g->NewName(absl::StrCat(kNodeLabel, "/", name)));
   ndef.set_op("Identity");
   ndef.add_input(input.name());
   AddNodeAttr("T", BaseType(input.dtype()), &ndef);
-  Status s;
+  absl::Status s;
   Node* ret = g->AddNode(ndef, &s);
   TF_CHECK_OK(s);
   g->AddEdge(input.node, input.index, ret, 0);
@@ -271,7 +271,7 @@ InlinedFunctionBodyPlacer::MultiDevicePlacer(const Graph& graph,
 
 namespace {
 
-Status ValidateNoInline(const FunctionBody* fbody) {
+absl::Status ValidateNoInline(const FunctionBody* fbody) {
   const auto attr = AttrSlice(&fbody->record->fdef().attr());
   bool noinline = false;
   if (TryGetNodeAttr(attr, kNoInlineAttr, &noinline) && noinline) {
@@ -332,8 +332,8 @@ string InlineFunctionBodyOptions::DebugString() const {
       ", uniquify_frame_names=", true_false(uniquify_frame_names));
 }
 
-Status ValidateInlining(const Node* node, const FunctionBody* fbody,
-                        const InlineFunctionBodyOptions& options) {
+absl::Status ValidateInlining(const Node* node, const FunctionBody* fbody,
+                              const InlineFunctionBodyOptions& options) {
   // TODO(ezhulenev): Currently common_runtime function inlining can't guarantee
   // that all side-effectful ops will be executed after inlining. See Grappler
   // function_optimizer for details. Unify all function inlining mechanism.
@@ -476,9 +476,10 @@ Status ValidateInlining(const Node* node, const FunctionBody* fbody,
 // a single device).
 //
 // TODO(ezhulenev): Documentation above is ahead of implementation below.
-Status InlineFunctionBody(const FunctionLibraryDefinition& flib_def, Graph* g,
-                          Node* caller, const FunctionBody* fbody,
-                          const InlineFunctionBodyOptions& options) {
+absl::Status InlineFunctionBody(const FunctionLibraryDefinition& flib_def,
+                                Graph* g, Node* caller,
+                                const FunctionBody* fbody,
+                                const InlineFunctionBodyOptions& options) {
   VLOG(3) << "Inline function call: " << SummarizeNode(*caller) << " ["
           << options.DebugString() << "]";
   VLOG(4) << "Inlining function: "
@@ -486,7 +487,7 @@ Status InlineFunctionBody(const FunctionLibraryDefinition& flib_def, Graph* g,
   VLOG(4) << "Current graphdef: " << g->ToGraphDefDebug().DebugString();
   VLOG(4) << "Caller: " << caller->DebugString();
 
-  Status validation = ValidateInlining(caller, fbody, options);
+  absl::Status validation = ValidateInlining(caller, fbody, options);
   if (!validation.ok()) {
     return errors::Internal("Inlining mismatch: ", validation.message());
   }
@@ -505,7 +506,7 @@ Status InlineFunctionBody(const FunctionLibraryDefinition& flib_def, Graph* g,
   // control nodes and inlined function inputs and outputs.
 
   // Add a NoOp node for function control inputs/outputs.
-  const auto no_op = [&](StringPiece name) -> Node* {
+  const auto no_op = [&](absl::string_view name) -> Node* {
     Node* node = AddNoOp(absl::StrCat(caller->name(), "/", name), g);
     const absl::optional<string> device = placer->ControlNodeDevice();
     if (device.has_value()) node->set_requested_device(*device);
@@ -513,7 +514,7 @@ Status InlineFunctionBody(const FunctionLibraryDefinition& flib_def, Graph* g,
   };
 
   // Add an Identity node for function input.
-  const auto input_identity = [&](StringPiece name, Endpoint input,
+  const auto input_identity = [&](absl::string_view name, Endpoint input,
                                   int index) -> Node* {
     Node* node = AddIdentity(absl::StrCat(caller->name(), "/", name), g, input);
     const absl::optional<string> device = placer->InputNodeDevice(index);
@@ -528,7 +529,7 @@ Status InlineFunctionBody(const FunctionLibraryDefinition& flib_def, Graph* g,
   };
 
   // Add an Identity node for function output.
-  const auto output_identity = [&](StringPiece name, Endpoint input,
+  const auto output_identity = [&](absl::string_view name, Endpoint input,
                                    int index) -> Node* {
     Node* node = AddIdentity(absl::StrCat(caller->name(), "/", name), g, input);
     const absl::optional<string> device = placer->OutputNodeDevice(index);
@@ -628,7 +629,7 @@ Status InlineFunctionBody(const FunctionLibraryDefinition& flib_def, Graph* g,
     TF_RETURN_IF_ERROR(
         MaybeAddPrefixToColocationConstraints(fn_nodes, prefix, &ndef));
 
-    Status added_node;
+    absl::Status added_node;
     Node* clone = g->AddNode(std::move(ndef), &added_node);
     TF_CHECK_OK(added_node);
     node_map[n->id()] = clone;
@@ -878,7 +879,7 @@ bool ExpandInlineFunctions(FunctionLibraryRuntime* lib, Graph* graph,
       continue;
     }
     FunctionLibraryRuntime::Handle handle;
-    Status s = InstantiateFunctionCall(node->def(), lib, &handle);
+    absl::Status s = InstantiateFunctionCall(node->def(), lib, &handle);
     if (!s.ok()) {
       LOG(ERROR) << "Failed to instantiate a function:  " << s.message();
       continue;
@@ -890,10 +891,10 @@ bool ExpandInlineFunctions(FunctionLibraryRuntime* lib, Graph* graph,
 
   bool inlined_any = false;
   for (const auto& p : candidates) {
-    Status inlined = InlineFunctionBody(*fld, graph, p.first, p.second,
-                                        p.first->IsPartitionedCall()
-                                            ? options.multi_device_options
-                                            : options.native_options);
+    absl::Status inlined = InlineFunctionBody(*fld, graph, p.first, p.second,
+                                              p.first->IsPartitionedCall()
+                                                  ? options.multi_device_options
+                                                  : options.native_options);
     if (inlined.ok()) {
       inlined_any = true;
     } else {

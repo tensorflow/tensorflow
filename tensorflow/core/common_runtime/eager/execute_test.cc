@@ -168,7 +168,7 @@ TEST(ExecuteTest, SimpleFunctionInt32BadFullType) {
 
   std::vector<TensorHandle*> retvals(1);
   int num_retvals = retvals.size();
-  Status status = EagerExecute(op.get(), retvals.data(), &num_retvals);
+  absl::Status status = EagerExecute(op.get(), retvals.data(), &num_retvals);
   ASSERT_TRUE(errors::IsInvalidArgument(status)) << "Actual status: " << status;
   EXPECT_TRUE(
       absl::StrContains(status.message(), "TFT_TENSOR has 0 args instead of 1"))

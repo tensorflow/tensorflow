@@ -16,10 +16,13 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_TOOLS_KERNEL_GEN_TF_JIT_CACHE_H_
 #define TENSORFLOW_COMPILER_MLIR_TOOLS_KERNEL_GEN_TF_JIT_CACHE_H_
 
+#include <cstddef>
 #include <functional>
+#include <memory>
 #include <string>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/status/status.h"
 #include "mlir/ExecutionEngine/ExecutionEngine.h"  // from @llvm-project
 #include "tensorflow/core/framework/resource_base.h"
 #include "tensorflow/core/framework/resource_op_kernel.h"
@@ -34,11 +37,11 @@ namespace tf_framework {
 class JITCache : public tensorflow::ResourceBase {
  public:
   static constexpr const char* kDefaultResourceName = "mlir-jit-cache";
-  static tensorflow::Status Create(JITCache** dst);
+  static absl::Status Create(JITCache** dst);
 
   std::string DebugString() const override;
   ExecutionEngine* LookupOrCompile(
-      const std::string code,
+      std::string code,
       std::function<llvm::Expected<std::unique_ptr<ExecutionEngine>>()>
           compile_callback);
   size_t Size();

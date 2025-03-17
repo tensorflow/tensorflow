@@ -6,7 +6,6 @@
 *TF_*
 *Eager*
 *TFE_*
-*nsync_*
 *stream_executor*
 *xla*
 *PyInit_*

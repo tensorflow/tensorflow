@@ -40,7 +40,8 @@ namespace v2 {
 // Input: A MLIR Module in the Tensorflow Dialect with no
 // `tf_device.cluster_func` ops.
 // Output: A MLIR module in the Tensorflow Executor Dialect.
-tensorflow::Status ExportFromTensorflowDialectToExecutor(
+ABSL_DEPRECATED("Use tensorflow::tf2xla::v2::ConvertGraphToTfExecutor instead.")
+absl::Status ExportFromTensorflowDialectToExecutor(
     mlir::ModuleOp module, llvm::StringRef module_name = llvm::StringRef());
 
 }  // namespace v2

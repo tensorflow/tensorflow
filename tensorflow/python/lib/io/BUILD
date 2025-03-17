@@ -58,13 +58,18 @@ tf_python_pybind_extension(
 py_strict_library(
     name = "file_io",
     srcs = ["file_io.py"],
+    # copybara:uncomment_begin(google-only)
+    # visibility = [
+    # "//third_party/cloud_tpu/convergence_tools:__subpackages__",
+    # "//third_party/py/tf_slim:__subpackages__",
+    # "//tensorflow:__subpackages__",
+    # "//tensorflow:internal",
+    # ],
+    # copybara:uncomment_end_and_comment_begin
     visibility = [
-        "//tensorflow:__subpackages__",
-        "//tensorflow:internal",
-        "//third_party/cloud_tpu/convergence_tools:__subpackages__",
-        "//third_party/proto_splitter:__subpackages__",  # TODO(b/277279227): remove this dep from proto_splitter
-        "//third_party/py/tf_slim:__subpackages__",
+        "//visibility:public",
     ],
+    # copybara:comment_end
     deps = [
         ":_pywrap_file_io",
         "//tensorflow/python/framework:errors",
@@ -105,7 +110,6 @@ tf_py_strict_test(
     name = "file_io_test",
     size = "small",
     srcs = ["file_io_test.py"],
-    python_version = "PY3",
     tags = [
         "no_rocm",
         "no_windows",
@@ -124,7 +128,6 @@ tf_py_strict_test(
     size = "small",
     srcs = ["tf_record_test.py"],
     main = "tf_record_test.py",
-    python_version = "PY3",
     tags = [
         # copybara:uncomment_begin(google-only)
         # "manual",

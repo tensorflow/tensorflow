@@ -33,15 +33,16 @@ namespace {
 TfLiteOperator* CreateDelegateKernelRegistration(
     SimpleOpaqueDelegateInterface* delegate) {
   TfLiteOperator* kernel_registration =
-      TfLiteOperatorCreateWithData(kTfLiteBuiltinDelegate, delegate->Name(),
-                                   /*version=*/1, /*user_data=*/nullptr);
+      TfLiteOperatorCreate(kTfLiteBuiltinDelegate, delegate->Name(),
+                           /*version=*/1, /*user_data=*/nullptr);
 
   TfLiteOperatorSetFreeWithData(
       kernel_registration,
       [](void* user_data, TfLiteOpaqueContext* context, void* buffer) -> void {
-        delete reinterpret_cast<SimpleOpaqueDelegateInterface*>(buffer);
+        // The type used here must match the type returned from the init method
+        // that we set below.
+        delete reinterpret_cast<SimpleOpaqueDelegateKernelInterface*>(buffer);
       });
-
   TfLiteOperatorSetInitWithData(
       kernel_registration,
       [](void* user_data, TfLiteOpaqueContext* context, const char* buffer,
@@ -55,7 +56,8 @@ TfLiteOperator* CreateDelegateKernelRegistration(
             params->delegate_data);
         std::unique_ptr<SimpleOpaqueDelegateKernelInterface> delegate_kernel(
             delegate_data->CreateDelegateKernelInterface());
-        if (delegate_kernel->Init(context, params) != kTfLiteOk) {
+        if (delegate_kernel &&
+            delegate_kernel->Init(context, params) != kTfLiteOk) {
           return nullptr;
         }
         return delegate_kernel.release();

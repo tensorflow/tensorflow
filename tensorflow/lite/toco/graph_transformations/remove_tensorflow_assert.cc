@@ -16,16 +16,17 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/status/status.h"
+#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/lite/toco/graph_transformations/graph_transformations.h"
 #include "tensorflow/lite/toco/model.h"
 #include "tensorflow/lite/toco/tooling_util.h"
-#include "tensorflow/core/platform/logging.h"
 
 namespace toco {
 
-::tensorflow::Status RemoveTensorFlowAssert::Run(Model* model,
-                                                 std::size_t op_index,
-                                                 bool* modified) {
+absl::Status RemoveTensorFlowAssert::Run(Model* model, std::size_t op_index,
+                                         bool* modified) {
   *modified = false;
   const auto assert_it = model->operators.begin() + op_index;
   const auto* assert_op = assert_it->get();

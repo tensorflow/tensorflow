@@ -20,19 +20,21 @@ limitations under the License.
 namespace tensorflow {
 namespace graph_transforms {
 
-Status LoadTextOrBinaryGraphFile(const string& file_name, GraphDef* graph_def) {
+absl::Status LoadTextOrBinaryGraphFile(const string& file_name,
+                                       GraphDef* graph_def) {
   string file_data;
-  Status load_file_status =
+  absl::Status load_file_status =
       ReadFileToString(Env::Default(), file_name, &file_data);
   if (!load_file_status.ok()) {
     errors::AppendToMessage(&load_file_status, " (for file ", file_name, ")");
     return load_file_status;
   }
   // Try to load in binary format first, and then try ascii if that fails.
-  Status load_status = ReadBinaryProto(Env::Default(), file_name, graph_def);
+  absl::Status load_status =
+      ReadBinaryProto(Env::Default(), file_name, graph_def);
   if (!load_status.ok()) {
     if (protobuf::TextFormat::ParseFromString(file_data, graph_def)) {
-      load_status = OkStatus();
+      load_status = absl::OkStatus();
     } else {
       errors::AppendToMessage(&load_status,
                               " (both text and binary parsing failed for file ",

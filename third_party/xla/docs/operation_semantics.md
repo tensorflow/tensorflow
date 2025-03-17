@@ -1,7 +1,7 @@
 # Operation semantics
 
 The following describes the semantics of operations defined in the
-[`XlaBuilder`](https://github.com/openxla/xla/tree/main/xla/client/xla_builder.h)
+[`XlaBuilder`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h)
 interface. Typically, these operations map one-to-one to operations defined in
 the RPC interface in
 [`xla_data.proto`](https://github.com/openxla/xla/tree/main/xla/xla_data.proto).
@@ -16,14 +16,14 @@ and familiar names; for example a *vector* is a 1-dimensional array and a
 ## AfterAll
 
 See also
-[`XlaBuilder::AfterAll`](https://github.com/openxla/xla/tree/main/xla/client/xla_builder.h).
+[`XlaBuilder::AfterAll`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
 AfterAll takes a variadic number of tokens and produces a single token. Tokens
 are primitive types which can be threaded between side-effecting operations to
 enforce ordering. `AfterAll` can be used as a join of tokens for ordering an
 operation after a set operations.
 
-<b> `AfterAll(operands)` </b>
+**`AfterAll(operands)`**
 
 Arguments  | Type    | Semantics
 ---------- | ------- | -------------------------
@@ -32,12 +32,12 @@ Arguments  | Type    | Semantics
 ## AllGather
 
 See also
-[`XlaBuilder::AllGather`](https://github.com/openxla/xla/tree/main/xla/client/xla_builder.h).
+[`XlaBuilder::AllGather`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
 Performs concatenation across replicas.
 
-<b> `AllGather(operand, all_gather_dim, shard_count, replica_group_ids,
-channel_id)` </b>
+**`AllGather(operand, all_gather_dim, shard_count, replica_group_ids,
+channel_id)`**
 
 | Arguments        | Type                 | Semantics                   |
 | ---------------- | -------------------- | --------------------------- |
@@ -71,11 +71,11 @@ output value from this op where `all_gather_dim` is `0` will be `[1.0, 2.5, 3.0,
 ## AllReduce
 
 See also
-[`XlaBuilder::AllReduce`](https://github.com/openxla/xla/tree/main/xla/client/xla_builder.h).
+[`XlaBuilder::AllReduce`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
 Performs a custom computation across replicas.
 
-<b> `AllReduce(operand, computation, replica_group_ids, channel_id)` </b>
+**`AllReduce(operand, computation, replica_group_ids, channel_id)`**
 
 | Arguments        | Type                 | Semantics                        |
 | ---------------- | -------------------- | -------------------------------- |
@@ -115,7 +115,7 @@ causes the while loop to iterate more times on one replica than another.
 ## AllToAll
 
 See also
-[`XlaBuilder::AllToAll`](https://github.com/openxla/xla/tree/main/xla/client/xla_builder.h).
+[`XlaBuilder::AllToAll`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
 AllToAll is a collective operation that sends data from all cores to all cores.
 It has two phases:
@@ -145,8 +145,8 @@ Prerequisites:
 `split_count`.
 -   The operand's shape is not tuple.
 
-<b> `AllToAll(operand, split_dimension, concat_dimension, split_count,
-replica_groups)` </b>
+**`AllToAll(operand, split_dimension, concat_dimension, split_count,
+replica_groups)`**
 
 | Arguments          | Type                  | Semantics                       |
 | ------------------ | --------------------- | ------------------------------- |
@@ -180,21 +180,22 @@ AllToAll(x, /*split_dimension=*/1, /*concat_dimension=*/0, /*split_count=*/4);
 ![](images/ops_alltoall.png)
 
 In this example, there are 4 cores participating in the Alltoall. On each core,
-the operand is split into 4 parts along dimension 0, so each part has shape
+the operand is split into 4 parts along dimension 1, so each part has shape
 f32[4,4]. The 4 parts are scattered to all cores. Then each core concatenates
-the received parts along dimension 1, in the order of core 0-4. So the output on
+the received parts along dimension 0, in the order of core 0-4. So the output on
 each core has shape f32[16,4].
 
 ## BatchNormGrad
 
 See also
-[`XlaBuilder::BatchNormGrad`](https://github.com/openxla/xla/tree/main/xla/client/xla_builder.h)
+[`XlaBuilder::BatchNormGrad`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h)
 and [the original batch normalization paper](https://arxiv.org/abs/1502.03167)
 for a detailed description of the algorithm.
 
 Calculates gradients of batch norm.
 
-<b> `BatchNormGrad(operand, scale, mean, variance, grad_output, epsilon, feature_index)` </b>
+**`BatchNormGrad(operand, scale, mean, variance, grad_output, epsilon,
+                 feature_index)`**
 
 Arguments       | Type    | Semantics
 --------------- | ------- | ----------------------------------------------------
@@ -251,13 +252,14 @@ The output type is a tuple of three handles:
 ## BatchNormInference
 
 See also
-[`XlaBuilder::BatchNormInference`](https://github.com/openxla/xla/tree/main/xla/client/xla_builder.h)
+[`XlaBuilder::BatchNormInference`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h)
 and [the original batch normalization paper](https://arxiv.org/abs/1502.03167)
 for a detailed description of the algorithm.
 
 Normalizes an array across batch and spatial dimensions.
 
-<b> `BatchNormInference(operand, scale, offset, mean, variance, epsilon, feature_index)` </b>
+**`BatchNormInference(operand, scale, offset, mean, variance, epsilon,
+                      feature_index)`**
 
 Arguments       | Type    | Semantics
 --------------- | ------- | ---------------------------------------
@@ -286,13 +288,13 @@ The output is an n-dimensional, normalized array with the same shape as input
 ## BatchNormTraining
 
 See also
-[`XlaBuilder::BatchNormTraining`](https://github.com/openxla/xla/tree/main/xla/client/xla_builder.h)
+[`XlaBuilder::BatchNormTraining`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h)
 and [`the original batch normalization paper`](https://arxiv.org/abs/1502.03167)
 for a detailed description of the algorithm.
 
 Normalizes an array across batch and spatial dimensions.
 
-<b> `BatchNormTraining(operand, scale, offset, epsilon, feature_index)` </b>
+**`BatchNormTraining(operand, scale, offset, epsilon, feature_index)`**
 
 Arguments       | Type    | Semantics
 --------------- | ------- | ----------------------------------------
@@ -339,7 +341,7 @@ spatial dimensions using the formulas above.
 ## BitcastConvertType
 
 See also
-[`XlaBuilder::BitcastConvertType`](https://github.com/openxla/xla/tree/main/xla/client/xla_builder.h).
+[`XlaBuilder::BitcastConvertType`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
 Similar to a `tf.bitcast` in TensorFlow, performs an element-wise bitcast
 operation from a data shape to a target shape. The input and output size must
@@ -348,7 +350,7 @@ match: e.g. `s32` elements become `f32` elements via bitcast routine, and one
 low-level cast, so machines with different floating-point representations will
 give different results.
 
-<b> `BitcastConvertType(operand, new_element_type)` </b>
+**`BitcastConvertType(operand, new_element_type)`**
 
 Arguments          | Type            | Semantics
 ------------------ | --------------- | ---------------------------
@@ -395,11 +397,11 @@ Note that conversions between different bitwidths are not elementwise.
 ## Broadcast
 
 See also
-[`XlaBuilder::Broadcast`](https://github.com/openxla/xla/tree/main/xla/client/xla_builder.h).
+[`XlaBuilder::Broadcast`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
 Adds dimensions to an array by duplicating the data in the array.
 
-<b> `Broadcast(operand, broadcast_sizes)` </b>
+**`Broadcast(operand, broadcast_sizes)`**
 
 Arguments         | Type                | Semantics
 ----------------- | ------------------- | -------------------------------
@@ -423,11 +425,11 @@ For example, if `operand` is a scalar `f32` with value `2.0f`, and
 ## BroadcastInDim
 
 See also
-[`XlaBuilder::BroadcastInDim`](https://github.com/openxla/xla/tree/main/xla/client/xla_builder.h).
+[`XlaBuilder::BroadcastInDim`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
 Expands the size and rank of an array by duplicating the data in the array.
 
-<b> `BroadcastInDim(operand, out_dim_size, broadcast_dimensions)` </b>
+**`BroadcastInDim(operand, out_dim_size, broadcast_dimensions)`**
 
 | Arguments              | Type                | Semantics                     |
 | ---------------------- | ------------------- | ----------------------------- |
@@ -451,11 +453,11 @@ the [broadcasting page](broadcasting.md).
 ## Call
 
 See also
-[`XlaBuilder::Call`](https://github.com/openxla/xla/tree/main/xla/client/xla_builder.h).
+[`XlaBuilder::Call`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
 Invokes a computation with the given arguments.
 
-<b> `Call(computation, args...)` </b>
+**`Call(computation, args...)`**
 
 | Arguments     | Type                   | Semantics                           |
 | ------------- | ---------------------- | ----------------------------------- |
@@ -465,16 +467,55 @@ Invokes a computation with the given arguments.
 The arity and types of the `args` must match the parameters of the
 `computation`. It is allowed to have no `args`.
 
+## CompositeCall
+
+See also
+[`XlaBuilder::CompositeCall`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
+
+Encapsulates an operation made up (composed) of other StableHLO operations,
+taking inputs and composite_attributes and producing results. The semantics of
+the op are implemented by the decomposition attribute. The composite op can be
+replaced with its decomposition without changing program semantics. In cases
+where inlining the decomposition does not provide the same op semantics, prefer
+using custom_call.
+
+The version field (defaults to 0) is used to denote when a composite's semantics
+change.
+
+This op is implemented as a `kCall` with attribute `is_composite=true`. The
+`decomposition` field is specified by the `computation` attribute. The frontend
+attributes store the remaining attributes prefixed with `composite.`.
+
+Example CompositeCall op:
+```cpp
+f32[] call(f32[] %cst), to_apply=%computation, is_composite=true,
+frontend_attributes = {
+  composite.name="foo.bar",
+  composite.attributes={n = 1 : i32, tensor = dense<1> : tensor<i32>},
+  composite.version="1"
+}
+```
+
+**`Call(computation, args..., name, composite_attributes, version)`**
+
+| Arguments                   | Type                   | Semantics                                                                             |
+| --------------------------- | ---------------------- | ------------------------------------------------------------------------------------- |
+| `inputs`                    | `XlaOp`                | variadic number of values                                                             |
+| `name`                      | `string`               | name of the composite                                                                 |
+| `composite_attributes`      | optional `string`      | optional stringified dictionary of attributes                                         |
+| `decomposition`             | `XlaComputation`       | computation of type `T_0, T_1, ..., T_{N-1} -> S` with N parameters of arbitrary type |
+| `version`                   | `int64`.               | number to version updates to semantics of the composite op                            |
+
 ## Cholesky
 
 See also
-[`XlaBuilder::Cholesky`](https://github.com/openxla/xla/tree/main/xla/client/xla_builder.h).
+[`XlaBuilder::Cholesky`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
 Computes the
 [Cholesky decomposition](https://en.wikipedia.org/wiki/Cholesky_decomposition)
 of a batch of symmetric (Hermitian) positive definite matrices.
 
-<b> `Cholesky(a, lower)` </b>
+**`Cholesky(a, lower)`**
 
 Arguments | Type    | Semantics
 --------- | ------- | -----------------------------------------------------
@@ -499,11 +540,11 @@ implementation-defined.
 ## Clamp
 
 See also
-[`XlaBuilder::Clamp`](https://github.com/openxla/xla/tree/main/xla/client/xla_builder.h).
+[`XlaBuilder::Clamp`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
 Clamps an operand to within the range between a minimum and maximum value.
 
-<b> `Clamp(min, operand, max)` </b>
+**`Clamp(min, operand, max)`**
 
 Arguments | Type    | Semantics
 --------- | ------- | ---------------
@@ -532,12 +573,12 @@ Clamp(min, operand, max) = s32[3]{0, 5, 6};
 ## Collapse
 
 See also
-[`XlaBuilder::Collapse`](https://github.com/openxla/xla/tree/main/xla/client/xla_builder.h)
+[`XlaBuilder::Collapse`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h)
 and the `tf.reshape` operation.
 
 Collapses dimensions of an array into one dimension.
 
-<b> `Collapse(operand, dimensions)` </b>
+**`Collapse(operand, dimensions)`**
 
 Arguments    | Type           | Semantics
 ------------ | -------------- | -----------------------------------------------
@@ -595,12 +636,12 @@ then v12 == f32[8x3] {{10, 11, 12},
 ## CollectivePermute
 
 See also
-[`XlaBuilder::CollectivePermute`](https://github.com/openxla/xla/tree/main/xla/client/xla_builder.h).
+[`XlaBuilder::CollectivePermute`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
 CollectivePermute is a collective operation that sends and receives data cross
 replicas.
 
-<b> `CollectivePermute(operand, source_target_pairs)` </b>
+**`CollectivePermute(operand, source_target_pairs)`**
 
 | Arguments             | Type                    | Semantics                  |
 | --------------------- | ----------------------- | -------------------------- |
@@ -617,13 +658,13 @@ Note that there are the following restrictions on the `source_target_pair`:
 ## Concatenate
 
 See also
-[`XlaBuilder::ConcatInDim`](https://github.com/openxla/xla/tree/main/xla/client/xla_builder.h).
+[`XlaBuilder::ConcatInDim`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
 Concatenate composes an array from multiple array operands. The array is of the
 same rank as each of the input array operands (which must be of the same rank as
 each other) and contains the arguments in the order that they were specified.
 
-<b> `Concatenate(operands..., dimension)` </b>
+**`Concatenate(operands..., dimension)`**
 
 | Arguments   | Type                  | Semantics                              |
 | ----------- | --------------------- | -------------------------------------- |
@@ -669,10 +710,10 @@ Diagram:
 ## Conditional
 
 See also
-[`XlaBuilder::Conditional`](https://github.com/openxla/xla/tree/main/xla/client/xla_builder.h).
+[`XlaBuilder::Conditional`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
-<b> `Conditional(pred, true_operand, true_computation, false_operand,
-false_computation)` </b>
+**`Conditional(pred, true_operand, true_computation, false_operand,
+false_computation)`**
 
 <!-- mdformat off(disable mdformat for proper MathJax formatting) -->
 
@@ -698,7 +739,7 @@ returned value of `true_computation` and `false_computation` must be the same.
 Note that only one of `true_computation` and `false_computation` will be
 executed depending on the value of `pred`.
 
-<b> `Conditional(branch_index, branch_computations, branch_operands)` </b>
+**`Conditional(branch_index, branch_computations, branch_operands)`**
 
 <!-- mdformat off(disable mdformat for proper MathJax formatting) -->
 
@@ -724,7 +765,7 @@ the value of `branch_index`.
 ## Conv (convolution)
 
 See also
-[`XlaBuilder::Conv`](https://github.com/openxla/xla/tree/main/xla/client/xla_builder.h).
+[`XlaBuilder::Conv`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
 As ConvWithGeneralPadding, but the padding is specified in a short-hand way as
 either SAME or VALID. SAME padding pads the input (`lhs`) with zeroes so that
@@ -734,7 +775,7 @@ account. VALID padding simply means no padding.
 ## ConvWithGeneralPadding (convolution)
 
 See also
-[`XlaBuilder::ConvWithGeneralPadding`](https://github.com/openxla/xla/tree/main/xla/client/xla_builder.h).
+[`XlaBuilder::ConvWithGeneralPadding`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
 Computes a convolution of the kind used in neural networks. Here, a convolution
 can be thought of as a n-dimensional window moving across a n-dimensional base
@@ -880,14 +921,14 @@ for (b, oz, oy, ox) {  // output coordinates
 ## ConvertElementType
 
 See also
-[`XlaBuilder::ConvertElementType`](https://github.com/openxla/xla/tree/main/xla/client/xla_builder.h).
+[`XlaBuilder::ConvertElementType`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
 Similar to an element-wise `static_cast` in C++, performs an element-wise
 conversion operation from a data shape to a target shape. The dimensions must
 match, and the conversion is an element-wise one; e.g. `s32` elements become
 `f32` elements via an `s32`-to-`f32` conversion routine.
 
-<b> `ConvertElementType(operand, new_element_type)` </b>
+**`ConvertElementType(operand, new_element_type)`**
 
 Arguments          | Type            | Semantics
 ------------------ | --------------- | ---------------------------
@@ -918,11 +959,11 @@ Performs `AllReduce` with a summation computation.
 ## CustomCall
 
 See also
-[`XlaBuilder::CustomCall`](https://github.com/openxla/xla/tree/main/xla/client/xla_builder.h).
+[`XlaBuilder::CustomCall`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
 Call a user-provided function within a computation.
 
-<b> `CustomCall(target_name, args..., shape)` </b>
+**`CustomCall(target_name, args..., shape)`**
 
 | Arguments     | Type                   | Semantics                         |
 | ------------- | ---------------------- | --------------------------------- |
@@ -975,9 +1016,9 @@ idempotent.
 ## Dot
 
 See also
-[`XlaBuilder::Dot`](https://github.com/openxla/xla/tree/main/xla/client/xla_builder.h).
+[`XlaBuilder::Dot`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
-<b> `Dot(lhs, rhs)` </b>
+**`Dot(lhs, rhs)`**
 
 Arguments | Type    | Semantics
 --------- | ------- | ---------------
@@ -1001,9 +1042,9 @@ vectors, vector/matrix multiplications or matrix/matrix multiplications.
 ## DotGeneral
 
 See also
-[`XlaBuilder::DotGeneral`](https://github.com/openxla/xla/tree/main/xla/client/xla_builder.h).
+[`XlaBuilder::DotGeneral`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
-<b> `DotGeneral(lhs, rhs, dimension_numbers)` </b>
+**`DotGeneral(lhs, rhs, dimension_numbers)`**
 
 Arguments           | Type                  | Semantics
 ------------------- | --------------------- | ---------------
@@ -1088,7 +1129,7 @@ non-contracting/non-batch dimension.
 ## DynamicSlice
 
 See also
-[`XlaBuilder::DynamicSlice`](https://github.com/openxla/xla/tree/main/xla/client/xla_builder.h).
+[`XlaBuilder::DynamicSlice`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
 DynamicSlice extracts a sub-array from the input array at dynamic
 `start_indices`. The size of the slice in each dimension is passed in
@@ -1096,7 +1137,7 @@ DynamicSlice extracts a sub-array from the input array at dynamic
 dimension: [start, start + size). The shape of `start_indices` must be rank ==
 1, with dimension size equal to the rank of `operand`.
 
-<b> `DynamicSlice(operand, start_indices, size_indices)` </b>
+**`DynamicSlice(operand, start_indices, size_indices)`**
 
 | Arguments       | Type                  | Semantics                          |
 | --------------- | --------------------- | ---------------------------------- |
@@ -1142,7 +1183,7 @@ DynamicSlice(b, s, {2, 2}) produces:
 ## DynamicUpdateSlice
 
 See also
-[`XlaBuilder::DynamicUpdateSlice`](https://github.com/openxla/xla/tree/main/xla/client/xla_builder.h).
+[`XlaBuilder::DynamicUpdateSlice`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
 DynamicUpdateSlice generates a result which is the value of the input array
 `operand`, with a slice `update` overwritten at `start_indices`.
@@ -1151,7 +1192,7 @@ is updated.
 The shape of `start_indices` must be rank == 1, with dimension size equal to
 the rank of `operand`.
 
-<b> `DynamicUpdateSlice(operand, update, start_indices)` </b>
+**`DynamicUpdateSlice(operand, update, start_indices)`**
 
 | Arguments       | Type                  | Semantics                          |
 | --------------- | --------------------- | ---------------------------------- |
@@ -1206,16 +1247,16 @@ DynamicUpdateSlice(b, u, s) produces:
 ## Element-wise binary arithmetic operations
 
 See also
-[`XlaBuilder::Add`](https://github.com/openxla/xla/tree/main/xla/client/xla_builder.h).
+[`XlaBuilder::Add`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
 A set of element-wise binary arithmetic operations is supported.
 
-<b> `Op(lhs, rhs)` </b>
+**`Op(lhs, rhs)`**
 
 Where `Op` is one of `Add` (addition), `Sub`(subtraction), `Mul`
 (multiplication), `Div` (division), `Pow` (power), `Rem` (remainder), `Max`
-(maximum), `Min` (minimum), `LogicalAnd` (logical AND), `LogicalOr` (logical
-OR), `LogicalXor` (logical XOR), `ShiftLeft` (Left Shift),
+(maximum), `Min` (minimum), `And` (logical AND), `Or` (logical
+OR), `Xor` (logical XOR), `ShiftLeft` (Left Shift),
 `ShiftRightArithmetic` (arithmetic Right Shift), `ShiftRightLogical` (logical
 Right Shift), `Atan2` (2-argument arctangent), or `Complex` (combines real and
 imaginary parts into a complex number)
@@ -1241,7 +1282,7 @@ value.
 An alternative variant with different-rank broadcasting support exists for these
 operations:
 
-<b> `Op(lhs, rhs, broadcast_dimensions)` </b>
+**`Op(lhs, rhs, broadcast_dimensions)`**
 
 Where `Op` is the same as above. This variant of the operation should be used
 for arithmetic operations between arrays of different ranks (such as adding a
@@ -1259,13 +1300,13 @@ shapes of both operands. The semantics are described in detail on the
 ## Element-wise comparison operations
 
 See also
-[`XlaBuilder::Eq`](https://github.com/openxla/xla/tree/main/xla/client/xla_builder.h).
+[`XlaBuilder::Eq`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
 A set of standard element-wise binary comparison operations is supported. Note
 that standard IEEE 754 floating-point comparison semantics apply when comparing
 floating-point types.
 
-<b> `Op(lhs, rhs)` </b>
+**`Op(lhs, rhs)`**
 
 Where `Op` is one of `Eq` (equal-to), `Ne` (not equal-to), `Ge`
 (greater-or-equal-than), `Gt` (greater-than), `Le` (less-or-equal-than), `Lt`
@@ -1289,7 +1330,7 @@ the operands is a scalar.
 An alternative variant with different-rank broadcasting support exists for these
 operations:
 
-<b> `Op(lhs, rhs, broadcast_dimensions)` </b>
+**`Op(lhs, rhs, broadcast_dimensions)`**
 
 Where `Op` is the same as above. This variant of the operation should be used
 for comparison operations between arrays of different ranks (such as adding a
@@ -1305,11 +1346,21 @@ XlaBuilder supports these element-wise unary functions:
 
 <b>`Abs(operand)`</b> Element-wise abs `x -> |x|`.
 
+<b>`Cbrt(operand)`</b> Element-wise cubic root operation `x -> cbrt(x)`.
+
 <b>`Ceil(operand)`</b> Element-wise ceil `x -> ⌈x⌉`.
+
+<b>`Clz(operand)`</b> Element-wise count leading zeros.
 
 <b>`Cos(operand)`</b> Element-wise cosine `x -> cos(x)`.
 
+<b>`Erf(operand)`</b> Element-wise error function `x -> erf(x)` where
+
+$$\text{erf}(x) = \frac{2}{\sqrt{\pi}}\int_0^x e^{-t^2} \, dt$$.
+
 <b>`Exp(operand)`</b> Element-wise natural exponential `x -> e^x`.
+
+<b>`Expm1(operand)`</b> Element-wise natural exponential minus one `x -> e^x - 1`.
 
 <b>`Floor(operand)`</b> Element-wise floor `x -> ⌊x⌋`.
 
@@ -1323,18 +1374,24 @@ if and only if the corresponding input element is finite.
 
 <b>`Log(operand)`</b> Element-wise natural logarithm `x -> ln(x)`.
 
-<b>`LogicalNot(operand)`</b> Element-wise logical not `x -> !(x)`.
+<b>`Log1p(operand)`</b> Element-wise shifted natural logarithm `x -> ln(1+x)`.
 
 <b>`Logistic(operand)`</b> Element-wise logistic function computation `x ->
 logistic(x)`.
 
+<b>`Neg(operand)`</b> Element-wise negation `x -> -x`.
+
+<b>`Not(operand)`</b> Element-wise logical not `x -> !(x)`.
+
 <b>`PopulationCount(operand)`</b> Computes the number of bits set in each
 element of `operand`.
 
-<b>`Neg(operand)`</b> Element-wise negation `x -> -x`.
-
 <b>`Real(operand)`</b> Element-wise real part of a complex (or real) shape.
 `x -> real(x)`. If the operand is a floating point type, returns the same value.
+
+<b>`Round(operand)`</b> Element-wise rounding, ties away from zero.
+
+<b>`RoundNearestEven(operand)`</b> Element-wise rounding, ties to nearest even.
 
 <b>`Rsqrt(operand)`</b> Element-wise reciprocal of square root operation
 `x -> 1.0 / sqrt(x)`.
@@ -1345,15 +1402,13 @@ $$\text{sgn}(x) = \begin{cases} -1 & x < 0\\ -0 & x = -0\\ NaN & x = NaN\\ +0 & 
 
 using the comparison operator of the element type of `operand`.
 
+<b>`Sin(operand)`</b> Element-wise sine `x -> sin(x)`.
+
 <b>`Sqrt(operand)`</b> Element-wise square root operation `x -> sqrt(x)`.
 
-<b>`Cbrt(operand)`</b> Element-wise cubic root operation `x -> cbrt(x)`.
+<b>`Tan(operand)`</b> Element-wise tangent `x -> tan(x)`.
 
 <b>`Tanh(operand)`</b> Element-wise hyperbolic tangent `x -> tanh(x)`.
-
-<b>`Round(operand)`</b> Element-wise rounding, ties away from zero.
-
-<b>`RoundNearestEven(operand)`</b> Element-wise rounding, ties to nearest even.
 
 Arguments | Type    | Semantics
 --------- | ------- | ---------------------------
@@ -1369,7 +1424,7 @@ real and complex inputs/outputs. Multidimensional FFTs on up to 3 axes are
 supported.
 
 See also
-[`XlaBuilder::Fft`](https://github.com/openxla/xla/tree/main/xla/client/xla_builder.h).
+[`XlaBuilder::Fft`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
 | Arguments    | Type                | Semantics                |
 | ------------ | ------------------- | ------------------------ |
@@ -1405,10 +1460,11 @@ potentially different runtime offset) of an input array.
 ### General Semantics
 
 See also
-[`XlaBuilder::Gather`](https://github.com/openxla/xla/tree/main/xla/client/xla_builder.h).
+[`XlaBuilder::Gather`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 For a more intuitive description, see the "Informal Description" section below.
 
-<b> `gather(operand, start_indices, offset_dims, collapsed_slice_dims, slice_sizes, start_index_map)` </b>
+**`gather(operand, start_indices, offset_dims, collapsed_slice_dims,
+          slice_sizes, start_index_map)`**
 
 | Arguments              | Type                | Semantics                     |
 | ---------------------- | ------------------- | ----------------------------- |
@@ -1486,8 +1542,9 @@ if, e.g., `offset_dims.size` is `4`, `operand.rank` is `6` and
 `1`→`3`, `2`→`4`, `3`→`5`}.
 
 If `indices_are_sorted` is set to true then XLA can assume that `start_indices`
-are sorted (in ascending `start_index_map` order) by the user. If they are not
-then the semantics is implementation defined.
+are sorted (in ascending order, _after_ scattering its values according to
+`start_index_map`) by the user. If they are not then the semantics are
+implementation defined.
 
 ### Informal Description and Examples
 
@@ -1590,12 +1647,12 @@ concatenation of all these rows.
 ## GetDimensionSize
 
 See also
-[`XlaBuilder::GetDimensionSize`](https://github.com/openxla/xla/tree/main/xla/client/xla_builder.h).
+[`XlaBuilder::GetDimensionSize`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
 Returns the size of the given dimension of the operand. The operand must be
 array shaped.
 
-<b> `GetDimensionSize(operand, dimension)` </b>
+**`GetDimensionSize(operand, dimension)`**
 
 | Arguments   | Type    | Semantics                                           |
 | ----------- | ------- | --------------------------------------------------- |
@@ -1605,12 +1662,12 @@ array shaped.
 ## SetDimensionSize
 
 See also
-[`XlaBuilder::SetDimensionSize`](https://github.com/openxla/xla/tree/main/xla/client/xla_builder.h).
+[`XlaBuilder::SetDimensionSize`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
 Sets the dynamic size of XlaOp's given dimension. The operand must be
 array shaped.
 
-<b> `SetDimensionSize(operand, size, dimension)` </b>
+**`SetDimensionSize(operand, size, dimension)`**
 
 | Arguments   | Type    | Semantics                                           |
 | ----------- | ------- | --------------------------------------------------- |
@@ -1646,7 +1703,7 @@ let sum:f32[] = reduce_sum(padded_v_six);
 ## GetTupleElement
 
 See also
-[`XlaBuilder::GetTupleElement`](https://github.com/openxla/xla/tree/main/xla/client/xla_builder.h).
+[`XlaBuilder::GetTupleElement`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
 Indexes into a tuple with a compile-time-constant value.
 
@@ -1667,9 +1724,9 @@ See also `tf.tuple`.
 ## Infeed
 
 See also
-[`XlaBuilder::Infeed`](https://github.com/openxla/xla/tree/main/xla/client/xla_builder.h).
+[`XlaBuilder::Infeed`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
-<b> `Infeed(shape)` </b>
+**`Infeed(shape)`**
 
 | Argument | Type    | Semantics                                             |
 | -------- | ------- | ----------------------------------------------------- |
@@ -1703,9 +1760,9 @@ Infeed of the device.
 ## Iota
 
 See also
-[`XlaBuilder::Iota`](https://github.com/openxla/xla/tree/main/xla/client/xla_builder.h).
+[`XlaBuilder::Iota`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
-<b> `Iota(shape, iota_dimension)` </b>
+**`Iota(shape, iota_dimension)`**
 
 Builds a constant literal on device rather than a potentially large host
 transfer. Creates an array that has specified shape and holds values starting at
@@ -1739,9 +1796,9 @@ For example, `Iota(s32[4, 8], 0)` returns
 ## Map
 
 See also
-[`XlaBuilder::Map`](https://github.com/openxla/xla/tree/main/xla/client/xla_builder.h).
+[`XlaBuilder::Map`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
-<b> `Map(operands..., computation)` </b>
+**`Map(operands..., computation)`**
 
 | Arguments         | Type                   | Semantics                      |
 | ----------------- | ---------------------- | ------------------------------ |
@@ -1772,9 +1829,9 @@ barrier's outputs.
 ## Pad
 
 See also
-[`XlaBuilder::Pad`](https://github.com/openxla/xla/tree/main/xla/client/xla_builder.h).
+[`XlaBuilder::Pad`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
-<b> `Pad(operand, padding_value, padding_config)` </b>
+**`Pad(operand, padding_value, padding_config)`**
 
 | Arguments        | Type            | Semantics                               |
 | ---------------- | --------------- | --------------------------------------- |
@@ -1811,9 +1868,9 @@ interior padding values are all 0. The figure below shows examples of different
 ## Recv
 
 See also
-[`XlaBuilder::Recv`](https://github.com/openxla/xla/tree/main/xla/client/xla_builder.h).
+[`XlaBuilder::Recv`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
-<b> `Recv(shape, channel_handle)` </b>
+**`Recv(shape, channel_handle)`**
 
 | Arguments        | Type            | Semantics                            |
 | ---------------- | --------------- | ------------------------------------ |
@@ -1837,7 +1894,7 @@ by a following `RecvDone` instruction to wait for the completion of the data
 transfer. The context is a tuple of {receive buffer (shape), request identifier
 (U32)} and it can only be used by a `RecvDone` instruction.
 
-<b> `RecvDone(HloInstruction context)` </b>
+**`RecvDone(HloInstruction context)`**
 
 Given a context created by a `Recv` instruction, waits for the data transfer to
 complete and returns the received data.
@@ -1845,11 +1902,11 @@ complete and returns the received data.
 ## Reduce
 
 See also
-[`XlaBuilder::Reduce`](https://github.com/openxla/xla/tree/main/xla/client/xla_builder.h).
+[`XlaBuilder::Reduce`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
 Applies a reduction function to one or more arrays in parallel.
 
-<b> `Reduce(operands..., init_values..., computation, dimensions)` </b>
+**`Reduce(operands..., init_values..., computation, dimensions)`**
 
 | Arguments     | Type                  | Semantics                        |
 | ------------- | --------------------- | -------------------------------- |
@@ -2002,7 +2059,7 @@ containing the maximal value and the matching index.
 ## ReducePrecision
 
 See also
-[`XlaBuilder::ReducePrecision`](https://github.com/openxla/xla/tree/main/xla/client/xla_builder.h).
+[`XlaBuilder::ReducePrecision`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
 Models the effect of converting floating-point values to a lower-precision
 format (such as IEEE-FP16) and back to the original format.  The number of
@@ -2010,7 +2067,7 @@ exponent and mantissa bits in the lower-precision format can be specified
 arbitrarily, although all bit sizes may not be supported on all hardware
 implementations.
 
-<b> `ReducePrecision(operand, mantissa_bits, exponent_bits)` </b>
+**`ReducePrecision(operand, mantissa_bits, exponent_bits)`**
 
 Arguments       | Type    | Semantics
 --------------- | ------- | -------------------------------------------------
@@ -2033,15 +2090,15 @@ portion of the conversion is then simply a no-op.
 ## ReduceScatter
 
 See also
-[`XlaBuilder::ReduceScatter`](https://github.com/openxla/xla/tree/main/xla/client/xla_builder.h).
+[`XlaBuilder::ReduceScatter`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
 ReduceScatter is a collective operation that effectively does an AllReduce and
 then scatters the result by splitting it into `shard_count` blocks along the
 `scatter_dimension` and replica `i` in the replica group receives the `ith`
 shard.
 
-<b> `ReduceScatter(operand, computation, scatter_dim, shard_count,
-replica_group_ids, channel_id)` </b>
+**`ReduceScatter(operand, computation, scatter_dim, shard_count,
+replica_group_ids, channel_id)`**
 
 | Arguments           | Type                 | Semantics                     |
 | ------------------- | -------------------- | ----------------------------- |
@@ -2078,7 +2135,7 @@ replicas, then the output value from this op where `scatter_dim` is `0` will be
 ## ReduceWindow
 
 See also
-[`XlaBuilder::ReduceWindow`](https://github.com/openxla/xla/tree/main/xla/client/xla_builder.h).
+[`XlaBuilder::ReduceWindow`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
 Applies a reduction function to all elements in each window of a sequence of N
 multi-dimensional arrays, producing a single or a tuple of N multi-dimensional
@@ -2087,8 +2144,8 @@ number of valid positions of the window. A pooling layer can be expressed as a
 `ReduceWindow`. Similar to [`Reduce`](#reduce), the applied `computation` is
 always passed the `init_values` on the left-hand side.
 
-<b> `ReduceWindow(operands..., init_values..., computation, window_dimensions,
-window_strides, padding)` </b>
+**`ReduceWindow(operands..., init_values..., computation, window_dimensions,
+window_strides, padding)`**
 
 | Arguments           | Type                | Semantics                        |
 | ------------------- | ------------------- | -------------------------------- |
@@ -2168,11 +2225,11 @@ context of [`Reduce`](#reduce) for more details.
 ## ReplicaId
 
 See also
-[`XlaBuilder::ReplicaId`](https://github.com/openxla/xla/tree/main/xla/client/xla_builder.h).
+[`XlaBuilder::ReplicaId`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
 Returns the unique ID (U32 scalar) of the replica.
 
-<b> `ReplicaId()` </b>
+**`ReplicaId()`**
 
 The unique ID of each replica is an unsigned integer in the interval `[0, N)`,
 where `N` is the number of replicas. Since all the replicas are running the same
@@ -2182,35 +2239,29 @@ each replica.
 ## Reshape
 
 See also
-[`XlaBuilder::Reshape`](https://github.com/openxla/xla/tree/main/xla/client/xla_builder.h)
+[`XlaBuilder::Reshape`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h)
 and the [`Collapse`](#collapse) operation.
 
 Reshapes the dimensions of an array into a new configuration.
 
-<b> `Reshape(operand, new_sizes)` </b>
-<b> `Reshape(operand, dimensions, new_sizes)` </b>
+**`Reshape(operand, dimensions)`**
 
 Arguments    | Type           | Semantics
------------- | -------------- | ---------------------------------------
+------------ | -------------- | ---------------------------------
 `operand`    | `XlaOp`        | array of type T
-`dimensions` | `int64` vector | order in which dimensions are collapsed
-`new_sizes`  | `int64` vector | vector of sizes of new dimensions
+`dimensions` | `int64` vector | vector of sizes of new dimensions
 
 Conceptually, reshape first flattens an array into a one-dimensional vector of
 data values, and then refines this vector into a new shape. The input arguments
 are an arbitrary array of type T, a compile-time-constant vector of dimension
 indices, and a compile-time-constant vector of dimension sizes for the result.
-The values in the `dimension` vector, if given, must be a permutation of all of
-T's dimensions; the default if not given is `{0, ..., rank - 1}`. The order of
-the dimensions in `dimensions` is from slowest-varying dimension (most major) to
-fastest-varying dimension (most minor) in the loop nest which collapses the
-input array into a single dimension. The `new_sizes` vector determines the size
-of the output array. The value at index 0 in `new_sizes` is the size of
-dimension 0, the value at index 1 is the size of dimension 1, and so on. The
-product of the `new_size` dimensions must equal the product of the operand's
-dimension sizes. When refining the collapsed array into the multidimensional
-array defined by `new_sizes`, the dimensions in `new_sizes` are ordered from
-slowest varying (most major) and to fastest varying (most minor).
+The `dimensions` vector determines the size of the output array. The value at
+index 0 in `dimensions` is the size of dimension 0, the value at index 1 is the
+size of dimension 1, and so on. The product of the `dimensions` dimensions must
+equal the product of the operand's dimension sizes. When refining the collapsed
+array into the multidimensional array defined by `dimensions`, the dimensions in
+`dimensions` are ordered from slowest varying (most major) and to fastest
+varying (most minor).
 
 For example, let v be an array of 24 elements:
 
@@ -2220,50 +2271,29 @@ let v = f32[4x2x3] {{{10, 11, 12}, {15, 16, 17}},
                     {{30, 31, 32}, {35, 36, 37}},
                     {{40, 41, 42}, {45, 46, 47}}};
 
-In-order collapse:
-let v012_24 = Reshape(v, {0,1,2}, {24});
+let v012_24 = Reshape(v, {24});
 then v012_24 == f32[24] {10, 11, 12, 15, 16, 17, 20, 21, 22, 25, 26, 27,
                          30, 31, 32, 35, 36, 37, 40, 41, 42, 45, 46, 47};
 
-let v012_83 = Reshape(v, {0,1,2}, {8,3});
+let v012_83 = Reshape(v, {8,3});
 then v012_83 == f32[8x3] {{10, 11, 12}, {15, 16, 17},
                           {20, 21, 22}, {25, 26, 27},
                           {30, 31, 32}, {35, 36, 37},
                           {40, 41, 42}, {45, 46, 47}};
-
-Out-of-order collapse:
-let v021_24 = Reshape(v, {1,2,0}, {24});
-then v012_24 == f32[24]  {10, 20, 30, 40, 11, 21, 31, 41, 12, 22, 32, 42,
-                          15, 25, 35, 45, 16, 26, 36, 46, 17, 27, 37, 47};
-
-let v021_83 = Reshape(v, {1,2,0}, {8,3});
-then v021_83 == f32[8x3] {{10, 20, 30}, {40, 11, 21},
-                          {31, 41, 12}, {22, 32, 42},
-                          {15, 25, 35}, {45, 16, 26},
-                          {36, 46, 17}, {27, 37, 47}};
-
-
-let v021_262 = Reshape(v, {1,2,0}, {2,6,2});
-then v021_262 == f32[2x6x2] {{{10, 20}, {30, 40},
-                              {11, 21}, {31, 41},
-                              {12, 22}, {32, 42}},
-                             {{15, 25}, {35, 45},
-                              {16, 26}, {36, 46},
-                              {17, 27}, {37, 47}}};
 ```
 
 As a special case, reshape can transform a single-element array to a scalar and
 vice versa. For example,
 
 ```cpp
-Reshape(f32[1x1] {{5}}, {0,1}, {}) == 5;
-Reshape(5, {}, {1,1}) == f32[1x1] {{5}};
+Reshape(f32[1x1] {{5}}, {}) == 5;
+Reshape(5, {1,1}) == f32[1x1] {{5}};
 ```
 
 ## Rev (reverse)
 
 See also
-[`XlaBuilder::Rev`](https://github.com/openxla/xla/tree/main/xla/client/xla_builder.h).
+[`XlaBuilder::Rev`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
 <b>`Rev(operand, dimensions)`</b>
 
@@ -2285,7 +2315,7 @@ the two window dimensions during the gradient computation in neural networks.
 ## RngNormal
 
 See also
-[`XlaBuilder::RngNormal`](https://github.com/openxla/xla/tree/main/xla/client/xla_builder.h).
+[`XlaBuilder::RngNormal`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
 Constructs an output of a given shape with random numbers generated following
 the $N(\mu, \sigma)$ normal distribution. The parameters $\mu$ and $\sigma$, and
@@ -2303,7 +2333,7 @@ furthermore have to be scalar valued.
 ## RngUniform
 
 See also
-[`XlaBuilder::RngUniform`](https://github.com/openxla/xla/tree/main/xla/client/xla_builder.h).
+[`XlaBuilder::RngUniform`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
 Constructs an output of a given shape with random numbers generated following
 the uniform distribution over the interval $[a,b)$. The parameters and output
@@ -2363,11 +2393,11 @@ of the input array `operands`, with several slices (at indices specified by
 `update_computation`.
 
 See also
-[`XlaBuilder::Scatter`](https://github.com/openxla/xla/tree/main/xla/client/xla_builder.h).
+[`XlaBuilder::Scatter`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
-<b> `scatter(operands..., scatter_indices, updates..., update_computation,
+**`scatter(operands..., scatter_indices, updates..., update_computation,
 index_vector_dim, update_window_dims, inserted_window_dims,
-scatter_dims_to_operand_dims)` </b>
+scatter_dims_to_operand_dims)`**
 
 Arguments                      | Type                  | Semantics
 ------------------------------ | --------------------- | ---------
@@ -2479,9 +2509,10 @@ always be the current value from the `output` array and the second parameter
 will always be the value from the `updates` array. This is important
 specifically for cases when the `update_computation` is _not commutative_.
 
-If `indices_are_sorted` is set to true then XLA can assume that `start_indices`
-are sorted (in ascending `start_index_map` order) by the user. If they are not
-then the semantics is implementation defined.
+If `indices_are_sorted` is set to true then XLA can assume that `scatter_indices`
+are sorted (in ascending order, _after_ scattering its values according to
+`scatter_dims_to_operand_dims`) by the user. If they are not then the semantics
+are implementation defined.
 
 If `unique_indices` is set to true then XLA can assume that all elements
 scattered to are unique. So XLA could use non-atomic operations. If
@@ -2498,12 +2529,12 @@ For a detailed informal description and examples, refer to the
 ## Select
 
 See also
-[`XlaBuilder::Select`](https://github.com/openxla/xla/tree/main/xla/client/xla_builder.h).
+[`XlaBuilder::Select`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
 Constructs an output array from elements of two input arrays, based on the
 values of a predicate array.
 
-<b> `Select(pred, on_true, on_false)` </b>
+**`Select(pred, on_true, on_false)`**
 
 Arguments  | Type    | Semantics
 ---------- | ------- | ------------------
@@ -2548,7 +2579,7 @@ the same shape!) then `pred` has to be a scalar of type `PRED`.
 ## SelectAndScatter
 
 See also
-[`XlaBuilder::SelectAndScatter`](https://github.com/openxla/xla/tree/main/xla/client/xla_builder.h).
+[`XlaBuilder::SelectAndScatter`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
 This operation can be considered as a composite operation that first computes
 `ReduceWindow` on the `operand` array to select an element from each window, and
@@ -2609,9 +2640,9 @@ context of [`Reduce`](#reduce) for more details.
 ## Send
 
 See also
-[`XlaBuilder::Send`](https://github.com/openxla/xla/tree/main/xla/client/xla_builder.h).
+[`XlaBuilder::Send`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
-<b> `Send(operand, channel_handle)` </b>
+**`Send(operand, channel_handle)`**
 
 Arguments        | Type            | Semantics
 ---------------- | --------------- | -----------------------------------------
@@ -2634,12 +2665,12 @@ used by a following `SendDone` instruction to wait for the completion of the
 data transfer. The context is a tuple of {operand (shape), request identifier
 (U32)} and it can only be used by a `SendDone` instruction.
 
-<b> `SendDone(HloInstruction context)` </b>
+**`SendDone(HloInstruction context)`**
 
 Given a context created by a `Send` instruction, waits for the data transfer to
 complete.  The instruction does not return any data.
 
-<b> Scheduling of channel instructions </b>
+**Scheduling of channel instructions**
 
 The execution order of the 4 instructions for each channel (`Recv`, `RecvDone`,
 `Send`, `SendDone`) is as below.
@@ -2660,14 +2691,14 @@ computations. For example, below schedules lead to deadlocks.
 ## Slice
 
 See also
-[`XlaBuilder::Slice`](https://github.com/openxla/xla/tree/main/xla/client/xla_builder.h).
+[`XlaBuilder::Slice`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
 Slicing extracts a sub-array from the input array. The sub-array is of the same
 rank as the input and contains the values inside a bounding box within the input
 array where the dimensions and indices of the bounding box are given as
 arguments to the slice operation.
 
-<b> `Slice(operand, start_indices, limit_indices, strides)` </b>
+**`Slice(operand, start_indices, limit_indices, strides)`**
 
 | Arguments       | Type                | Semantics                            |
 | --------------- | ------------------- | ------------------------------------ |
@@ -2702,7 +2733,7 @@ Slice(b, {2, 1}, {4, 3}) produces:
 ## Sort
 
 See also
-[`XlaBuilder::Sort`](https://github.com/openxla/xla/tree/main/xla/client/xla_builder.h).
+[`XlaBuilder::Sort`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
 <b>`Sort(operands, comparator, dimension, is_stable)`</b>
 
@@ -2758,6 +2789,38 @@ relative order of the equal values is preserved. Two elements `e1` and `e2` are
 equal if and only if `comparator(e1, e2) = comparator(e2, e1) = false`. By
 default, `is_stable` is set to false.
 
+## TopK
+
+See also
+[`XlaBuilder::TopK`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
+
+`TopK` finds the values and indices of the `k` largest or smallest elements for
+the last dimension of the given tensor.
+
+**`TopK(operand, k, largest)`**
+
+Arguments | Type    | Semantics
+--------- | ------- | --------------------
+`operand` | `XlaOp` | The tensor from which to extract the top `k` elements. The tensor must have rank greater or equal to one. The size of the last dimension of the tensor must be greater or equal to `k`.
+`k`       | `int64` | The number of elements to extract.
+`largest` | `bool`  | Whether to extract the largest or smallest `k` elements.
+
+For an input tensor of rank 1 (an array), finds the `k` largest or smallest
+entries in the array and outputs a tuple of two arrays `(values, indices)`. Thus
+`values[j]` is the `j`-th largest/smallest entry in `operand`, and its index is
+`indices[j]`.
+
+For an input tensor of rank larger than 1, computes the top `k` entries along
+the last dimension, preserving all other dimensions (rows) in the output. Thus,
+for an operand of shape `[A, B, ..., P, Q]` where `Q >= k` the output is a tuple
+`(values, indices)` where:
+
+```
+values.shape = indices.shape = [A, B, ..., P, k]
+```
+
+If two elements within a row are equal, the lower-index element appears first.
+
 ## Transpose
 
 See also the `tf.reshape` operation.
@@ -2779,7 +2842,7 @@ This is the same as Reshape(operand, permutation,
 ## TriangularSolve
 
 See also
-[`XlaBuilder::TriangularSolve`](https://github.com/openxla/xla/tree/main/xla/client/xla_builder.h).
+[`XlaBuilder::TriangularSolve`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
 Solves systems of linear equations with lower or upper triangular coefficient
 matrices by forward- or back-substitution. Broadcasting along leading
@@ -2787,7 +2850,7 @@ dimensions, this routine solves one of the matrix systems `op(a) * x =
 b`, or `x * op(a) = b`, for the variable `x`, given `a` and `b`, where `op(a)` is
 either `op(a) = a`, or `op(a) = Transpose(a)`, or `op(a) = Conj(Transpose(a))`.
 
-<b> `TriangularSolve(a, b, left_side, lower, unit_diagonal, transpose_a)` </b>
+**`TriangularSolve(a, b, left_side, lower, unit_diagonal, transpose_a)`**
 
 | Arguments       | Type        | Semantics                                    |
 | --------------- | ----------- | -------------------------------------------- |
@@ -2810,7 +2873,7 @@ matrices, where all except the minor 2 dimensions are batch dimensions. `a` and
 ## Tuple
 
 See also
-[`XlaBuilder::Tuple`](https://github.com/openxla/xla/tree/main/xla/client/xla_builder.h).
+[`XlaBuilder::Tuple`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
 A tuple containing a variable number of data handles, each of which has its own
 shape.
@@ -2829,9 +2892,9 @@ Tuples can be deconstructed (accessed) via the [`GetTupleElement`]
 ## While
 
 See also
-[`XlaBuilder::While`](https://github.com/openxla/xla/tree/main/xla/client/xla_builder.h).
+[`XlaBuilder::While`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
-<b> `While(condition, body, init)` </b>
+**`While(condition, body, init)`**
 
 | Arguments   | Type             | Semantics                                |
 | ----------- | ---------------- | ---------------------------------------- |

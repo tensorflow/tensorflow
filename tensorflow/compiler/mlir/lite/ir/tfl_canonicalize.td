@@ -54,3 +54,8 @@ def ConvertTransposeToDecreaseRank : Pat<
     [(AnyStaticShapeTensor $input),
      (HasRankAtLeast<7> $input),
      (CanSqueezeTensor $input)]>;
+
+def RemoveNoopTranspose : Pat<
+  (TFL_TransposeOp $input, $perm),
+  (replaceWithValue $input),
+  [(IsTransposeNoop $perm)]>;

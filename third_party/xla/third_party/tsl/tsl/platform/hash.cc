@@ -17,9 +17,9 @@ limitations under the License.
 
 #include <string.h>
 
-#include "tsl/platform/macros.h"
+#include "xla/tsl/platform/macros.h"
+#include "xla/tsl/platform/types.h"
 #include "tsl/platform/raw_coding.h"
-#include "tsl/platform/types.h"
 
 namespace tsl {
 

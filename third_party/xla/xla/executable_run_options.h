@@ -128,12 +128,23 @@ class ExecutableRunOptions {
   stream_executor::DeviceMemoryAllocator* allocator() const;
 
   // If set, this is the device to run the computation on. Valid device_ordinal
-  // values are: 0 to # of devices - 1. These values are identical to the device
-  // ordinal values used by StreamExecutor. The device must be of the same type
-  // as the executable was compiled for. A value of -1 indicates this option has
-  // not been set.
+  // values are: 0 to # of devices - 1. These are the logical device ordinals,
+  // since multiple logical devices could reside on the same physical device,
+  // e.g., virtual GPUs. If there is only one logical device on a physical
+  // device, then these values are identical to the device ordinal values used
+  // by StreamExecutor. The device must be of the same type as the executable
+  // was compiled for. A value of -1 indicates this option has not been set.
   ExecutableRunOptions& set_device_ordinal(int device_ordinal);
   int device_ordinal() const;
+
+  // If set, this is the physical device to run the computation on. These values
+  // are identical to the device ordinal values used by StreamExecutor. The
+  // device must be of the same type as the executable was compiled for. A value
+  // of -1 indicates this option has not been set, in which case the physical
+  // device ordinal is the same as the logical device ordinal.
+  ExecutableRunOptions& set_physical_device_ordinal(
+      int physical_device_ordinal);
+  int physical_device_ordinal() const;
 
   // If set, this is the stream to run the computation on. The platform of the
   // stream must match the platform the executable was built for.  A value of
@@ -237,9 +248,17 @@ class ExecutableRunOptions {
       const ffi::ExecutionContext* ffi_execution_context);
   const ffi::ExecutionContext* ffi_execution_context() const;
 
+  // This indicates how many local devices are used by the execution.
+  // Valid values are any value greater than 0.
+  // 0 means unset.
+  ExecutableRunOptions& set_local_device_count(int local_device_count);
+  int local_device_count() const;
+
  private:
   stream_executor::DeviceMemoryAllocator* allocator_ = nullptr;
   int device_ordinal_ = -1;
+  int local_device_count_ = 0;
+  int physical_device_ordinal_ = -1;
   const DeviceAssignment* device_assignment_ = nullptr;
   stream_executor::Stream* stream_ = nullptr;
   const Eigen::ThreadPoolDevice* intra_op_thread_pool_ = nullptr;

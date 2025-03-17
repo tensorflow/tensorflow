@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <memory>
+
 #include "tensorflow/compiler/mlir/tensorflow/transforms/initialize_variables_in_session_init.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/test_passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/fake_session.h"

@@ -14,7 +14,8 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/nnapi/nnapi_handler.h"
 
-#include <cstdio>
+#include <cstdint>
+#include <cstring>
 #include <string>
 
 #include "tensorflow/lite/nnapi/nnapi_implementation.h"

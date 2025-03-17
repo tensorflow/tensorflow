@@ -19,12 +19,11 @@ limitations under the License.
 #include <deque>
 #include <memory>
 #include <utility>
-#include <vector>
 
 #include "absl/container/inlined_vector.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
-#include "third_party/nanobind/include/nanobind/nanobind.h"
+#include "nanobind/nanobind.h"
 
 namespace xla {
 

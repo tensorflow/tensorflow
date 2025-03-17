@@ -18,7 +18,7 @@ limitations under the License.
 
 #include <stdint.h>
 
-#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
+#include "unsupported/Eigen/CXX11/Tensor"
 
 extern "C" {
 

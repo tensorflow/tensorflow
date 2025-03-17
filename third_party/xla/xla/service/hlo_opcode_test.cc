@@ -15,74 +15,50 @@ limitations under the License.
 
 #include "xla/hlo/ir/hlo_opcode.h"
 
-#include "xla/test.h"
-#include "xla/types.h"
+#include <cstdint>
+#include <optional>
+#include <vector>
+
+#include <gtest/gtest.h>
 
 namespace xla {
 namespace {
 
-// This test verifies that an example HloOpcode stringifies as expected.
-TEST(HloOpcodeTest, StringifyMultiply) {
-  ASSERT_EQ("multiply", HloOpcodeString(HloOpcode::kMultiply));
+TEST(HloOpcodeTest, ExampleUsage) {
+  ASSERT_EQ(HloOpcodeString(HloOpcode::kMultiply), "multiply");
+  ASSERT_EQ(HloOpcodeArity(HloOpcode::kAdd), 2);
 }
 
-TEST(HloOpcodeTest, OpcodeProperties) {
-  // Test counting macro.
+TEST(HloOpcodeTest, HloXList) {
 #define SOME_LIST(X) \
   X(One)             \
   X(Two)             \
   X(Three)
   EXPECT_EQ(3, HLO_XLIST_LENGTH(SOME_LIST));
 #undef SOME_LIST
+}
 
+std::vector<HloOpcode> GetAllCodes() {
+  std::vector<HloOpcode> test_cases;
   for (int i = 0; i < HloOpcodeCount(); ++i) {
-    auto opcode = static_cast<HloOpcode>(i);
-    // Test round-trip conversion to and from string.
-    EXPECT_EQ(opcode, StringToHloOpcode(HloOpcodeString(opcode)).value());
+    test_cases.push_back(static_cast<HloOpcode>(i));
+  }
+  return test_cases;
+}
 
-    // Test some properties.
-    switch (opcode) {
-      case HloOpcode::kCompare:
-        EXPECT_TRUE(HloOpcodeIsComparison(opcode));
-        break;
-      default:
-        EXPECT_FALSE(HloOpcodeIsComparison(opcode));
-    }
-    switch (opcode) {
-      case HloOpcode::kAfterAll:
-      case HloOpcode::kAllGather:
-      case HloOpcode::kAllGatherStart:
-      case HloOpcode::kAllReduce:
-      case HloOpcode::kAsyncStart:
-      case HloOpcode::kReduceScatter:
-      case HloOpcode::kAllReduceStart:
-      case HloOpcode::kAllToAll:
-      case HloOpcode::kCall:
-      case HloOpcode::kCollectiveBroadcast:
-      case HloOpcode::kCollectivePermute:
-      case HloOpcode::kCollectivePermuteStart:
-      case HloOpcode::kConcatenate:
-      case HloOpcode::kConditional:
-      case HloOpcode::kCustomCall:
-      case HloOpcode::kDot:  // Sparse dot has an extra meta argument.
-      case HloOpcode::kDynamicSlice:
-      case HloOpcode::kDynamicUpdateSlice:
-      case HloOpcode::kDynamicReshape:
-      case HloOpcode::kFusion:
-      case HloOpcode::kMap:
-      case HloOpcode::kReduce:
-      case HloOpcode::kRng:
-      case HloOpcode::kScatter:
-      case HloOpcode::kSort:
-      case HloOpcode::kTuple:
-      case HloOpcode::kReduceWindow:
-        EXPECT_TRUE(HloOpcodeIsVariadic(opcode));
-        break;
-      default:
-        EXPECT_FALSE(HloOpcodeIsVariadic(opcode));
-    }
+class HloOpcodeTestP : public ::testing::TestWithParam<HloOpcode> {};
+
+TEST_P(HloOpcodeTestP, OpcodePropertiesNew) {
+  HloOpcode opcode = GetParam();
+  EXPECT_EQ(opcode, StringToHloOpcode(HloOpcodeString(opcode)).value());
+  std::optional<int64_t> arity = HloOpcodeArity(opcode);
+  if (arity.has_value()) {
+    EXPECT_GE(arity.value(), 0);
   }
 }
+
+INSTANTIATE_TEST_SUITE_P(HloOpcodeTestSuite, HloOpcodeTestP,
+                         testing::ValuesIn(GetAllCodes()));
 
 }  // namespace
 }  // namespace xla

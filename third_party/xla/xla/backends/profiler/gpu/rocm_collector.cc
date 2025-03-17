@@ -22,8 +22,12 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
-#include "absl/types/optional.h"
 #include "xla/stream_executor/rocm/roctracer_wrapper.h"
+#include "xla/tsl/profiler/backends/cpu/annotation_stack.h"
+#include "xla/tsl/profiler/utils/parse_annotation.h"
+#include "xla/tsl/profiler/utils/xplane_builder.h"
+#include "xla/tsl/profiler/utils/xplane_schema.h"
+#include "xla/tsl/profiler/utils/xplane_utils.h"
 #include "xla/tsl/util/env_var.h"
 #include "tsl/platform/abi.h"
 #include "tsl/platform/env_time.h"
@@ -33,13 +37,8 @@ limitations under the License.
 #include "tsl/platform/status.h"
 #include "tsl/platform/thread_annotations.h"
 #include "tsl/platform/types.h"
-#include "tsl/profiler/backends/cpu/annotation_stack.h"
 #include "tsl/profiler/lib/profiler_factory.h"
 #include "tsl/profiler/lib/profiler_interface.h"
-#include "tsl/profiler/utils/parse_annotation.h"
-#include "tsl/profiler/utils/xplane_builder.h"
-#include "tsl/profiler/utils/xplane_schema.h"
-#include "tsl/profiler/utils/xplane_utils.h"
 
 namespace xla {
 namespace profiler {
@@ -48,8 +47,6 @@ namespace se = ::stream_executor;
 using tensorflow::ProfileOptions;
 using tsl::mutex;
 using tsl::mutex_lock;
-// using tsl::OkStatus;
-using tsl::Status;
 using tsl::profiler::Annotation;
 using tsl::profiler::AnnotationStack;
 using tsl::profiler::FindOrAddMutablePlaneWithName;
@@ -70,7 +67,8 @@ using tsl::profiler::XSpace;
 void AnnotationMap::Add(uint32_t correlation_id,
                         const std::string& annotation) {
   if (annotation.empty()) return;
-  VLOG(3) << "Add annotation: " << " correlation_id=" << correlation_id
+  VLOG(3) << "Add annotation: "
+          << " correlation_id=" << correlation_id
           << ", annotation: " << annotation;
   absl::MutexLock lock(&map_.mutex);
   if (map_.annotations.size() < max_size_) {
@@ -460,7 +458,8 @@ class PerDeviceCollector {
         continue;
       }
       auto* plane = is_host_event ? host_plane : device_plane;
-      VLOG(9) << "Event" << " type=" << static_cast<int>(event.type)
+      VLOG(9) << "Event"
+              << " type=" << static_cast<int>(event.type)
               << " line_id=" << line_id
               << (is_host_event ? " host plane=" : " device plane=")
               << plane->Name();
@@ -618,7 +617,7 @@ class RocmTraceCollectorImpl : public profiler::RocmTraceCollector {
   const std::vector<RocmTracerEvent> ApiActivityInfoExchange()
       TF_EXCLUSIVE_LOCKS_REQUIRED(event_maps_mutex_);
 
-  absl::flat_hash_map<uint32_t, PerDeviceCollector> per_device_collector_;
+  absl::node_hash_map<uint32_t, PerDeviceCollector> per_device_collector_;
 };
 //==========
 

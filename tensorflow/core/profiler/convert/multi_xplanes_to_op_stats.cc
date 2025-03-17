@@ -15,21 +15,25 @@ limitations under the License.
 
 #include "tensorflow/core/profiler/convert/multi_xplanes_to_op_stats.h"
 
+#include <memory>
 #include <vector>
 
-#include "tensorflow/core/platform/status.h"
+#include "absl/status/status.h"
+#include "xla/tsl/platform/statusor.h"
+#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/convert/op_stats_combiner.h"
 #include "tensorflow/core/profiler/convert/preprocess_single_host_xplane.h"
 #include "tensorflow/core/profiler/convert/repository.h"
+#include "tensorflow/core/profiler/convert/xplane_to_op_stats.h"
 #include "tensorflow/core/profiler/protobuf/op_stats.pb.h"
-#include "tensorflow/core/profiler/protobuf/xplane.pb.h"
 #include "tensorflow/core/profiler/utils/hardware_type_utils.h"
+#include "tensorflow/core/profiler/utils/step_intersection.h"
 #include "tsl/profiler/protobuf/xplane.pb.h"
 
 namespace tensorflow {
 namespace profiler {
 
-Status ConvertMultiXSpacesToCombinedOpStats(
+absl::Status ConvertMultiXSpacesToCombinedOpStats(
     const SessionSnapshot& session_snapshot, const OpStatsOptions& options,
     OpStats* combined_op_stats) {
   // Read multiple XSpaces and convert to multiple OpStats.
@@ -41,7 +45,7 @@ Status ConvertMultiXSpacesToCombinedOpStats(
     TF_ASSIGN_OR_RETURN(std::unique_ptr<XSpace> xspace,
                         session_snapshot.GetXSpace(i));
     PreprocessSingleHostXSpace(xspace.get(), /*step_grouping=*/true,
-                               /*derived_timeline=*/false);
+                               /*derived_timeline=*/true);
     all_op_stats.push_back(ConvertXSpaceToOpStats(*xspace, options));
   }
 

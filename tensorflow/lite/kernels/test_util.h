@@ -41,6 +41,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/algorithm/container.h"
 #include "absl/types/span.h"
+#include "Eigen/Core"  // from @eigen_archive
 #include "flatbuffers/flatbuffers.h"  // from @flatbuffers
 #include "tensorflow/lite/core/api/op_resolver.h"
 #include "tensorflow/lite/core/c/common.h"
@@ -60,11 +61,36 @@ limitations under the License.
 
 namespace tflite {
 
-// A gmock matcher that check that elements of a float vector match to a given
-// tolerance.
-std::vector<::testing::Matcher<float>> ArrayFloatNear(
-    const std::vector<float>& values, float max_abs_error = 1e-5);
+// This constant indicates the error bound is derived automatically in functions
+// like ArrayFloatNear.
+constexpr float kFpErrorAuto = -1;
 
+// Returns whether we allow FP16 precision for FP32 operations, i.e. in FP16
+// mode.
+bool AllowFp16PrecisionForFp32();
+
+// It checks if the actual number almost equals the expected number with the
+// tolerance of 4 FP16 ULPs in FP16 mode; 4 FP32 ULPs in FP32 mode.
+// Given float x, 2^e <= |x| <= 2^(e+1), then ULP(x) = 2^(max(e, e_min)-p+1)
+// where e_min is -24 for FP16, -126 for FP32; p is 10 for FP16, 23 for FP32.
+::testing::Matcher<std::tuple<float, float>> FloatingPointAlmostEq();
+
+// In FP32 mode, it equals to Eq(), which means the error bound is zero (no
+// error allowed); in FP16 mode, it checks if the actual number almost equals
+// the expected number with the tolerance of 4 FP16 ULPs.
+::testing::Matcher<std::tuple<float, float>> FloatingPointEq();
+
+// A gmock matcher that check that elements of a float vector match to a given
+// tolerance. In FP32 mode, the tolerance is max(max_abs_err, value *
+// max_rel_err). In FP16 mode, the tolerance is max(fp16_max_abs_err, value *
+// fp16_max_rel_err). If fp16_max_abs_err is kFpErrorAuto, it is set to
+// std::max(max_abs_err, sqrt(max_abs_err)) automatically.
+std::vector<::testing::Matcher<float>> ArrayFloatNear(
+    const std::vector<float>& values, float max_abs_err = 1e-5,
+    float fp16_max_abs_err = kFpErrorAuto, float max_rel_err = 0,
+    float fp16_max_rel_err = 0.01);
+
+// TODO(b/280061335): Add FP16 logic as ArrayFloatNear does.
 // A gmock matcher that check that elements of a complex vector match to a given
 // tolerance.
 std::vector<::testing::Matcher<std::complex<float>>> ArrayComplex64Near(
@@ -106,6 +132,11 @@ inline std::vector<float> Dequantize(const std::vector<T>& data, float scale,
 template <>
 constexpr TfLiteType typeToTfLiteType<Eigen::half>() {
   return kTfLiteFloat16;
+}
+
+template <>
+constexpr TfLiteType typeToTfLiteType<Eigen::bfloat16>() {
+  return kTfLiteBFloat16;
 }
 
 // A test model that contains a single operator. All operator inputs and
@@ -535,17 +566,15 @@ class SingleOpModel {
 
   void SignedSymmetricQuantizeAndPopulate(int index,
                                           const std::vector<float>& data) {
-    std::vector<int8_t> q = QuantizeTensor(index, data);
-    PopulateTensor(index, /*offset=*/0, q.data(), q.data() + q.size());
-  }
-
-  void SignedSymmetricQuantizeAndPopulate4Bit(int index,
-                                              const std::vector<float>& data) {
     TfLiteTensor* t = interpreter_->tensor(index);
-    t->type = kTfLiteInt4;
-    std::vector<int8_t> q =
-        Quantize<int8_t>(data, t->params.scale, t->params.zero_point, t->type);
-    PopulateTensor4bit(index, /*offset=*/0, q.data(), q.data() + q.size());
+    if (t->type == kTfLiteInt4) {
+      std::vector<int8_t> q = Quantize<int8_t>(data, t->params.scale,
+                                               t->params.zero_point, t->type);
+      PopulateTensor4bit(index, /*offset=*/0, q.data(), q.data() + q.size());
+    } else {
+      std::vector<int8_t> q = QuantizeTensor(index, data);
+      PopulateTensor(index, /*offset=*/0, q.data(), q.data() + q.size());
+    }
   }
 
   // Quantize and populate data for filter with per channel quantization.
@@ -1163,6 +1192,8 @@ TFLITE_TENSOR_TYPE_ASSOC(uint32_t, TensorType_UINT32);
 TFLITE_TENSOR_TYPE_ASSOC(uint64_t, TensorType_UINT64);
 TFLITE_TENSOR_TYPE_ASSOC(TfLiteFloat16, TensorType_FLOAT16);
 TFLITE_TENSOR_TYPE_ASSOC(Eigen::half, TensorType_FLOAT16);
+TFLITE_TENSOR_TYPE_ASSOC(TfLiteBFloat16, TensorType_BFLOAT16);
+TFLITE_TENSOR_TYPE_ASSOC(Eigen::bfloat16, TensorType_BFLOAT16);
 TFLITE_TENSOR_TYPE_ASSOC(float, TensorType_FLOAT32);
 TFLITE_TENSOR_TYPE_ASSOC(double, TensorType_FLOAT64);
 TFLITE_TENSOR_TYPE_ASSOC(std::string, TensorType_STRING);
@@ -1256,6 +1287,26 @@ struct TypeUnion<uint8_t> {
   // NOLINTNEXTLINE
   static constexpr TfLiteType tflite_type = TfLiteType::kTfLiteUInt8;
   typedef uint8_t ScalarType;
+};
+
+template <>
+struct TypeUnion<Eigen::half> {
+ public:
+  // NOLINTNEXTLINE
+  static constexpr TensorType tensor_type = TensorType::TensorType_FLOAT16;
+  // NOLINTNEXTLINE
+  static constexpr TfLiteType tflite_type = TfLiteType::kTfLiteFloat16;
+  typedef Eigen::half ScalarType;
+};
+
+template <>
+struct TypeUnion<Eigen::bfloat16> {
+ public:
+  // NOLINTNEXTLINE
+  static constexpr TensorType tensor_type = TensorType::TensorType_BFLOAT16;
+  // NOLINTNEXTLINE
+  static constexpr TfLiteType tflite_type = TfLiteType::kTfLiteBFloat16;
+  typedef Eigen::bfloat16 ScalarType;
 };
 
 class MultiOpModel : public SingleOpModel {

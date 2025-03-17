@@ -128,8 +128,10 @@ namespace tensorflow {
 
 namespace op_requires_internal {
 
+// ctx is usually a plain pointer, but could be a smart pointer, so we accept it
+// by const ref.
 template <typename S, typename Ctx>
-bool OkImpl(Ctx&& ctx, const char* file, int line, const S& s) {
+bool OkImpl(const Ctx& ctx, const char* file, int line, const S& s) {
   if (!TF_PREDICT_TRUE(s.ok())) {
     CheckNotInComputeAsync(ctx, "OP_REQUIRES_OK_ASYNC");
     ctx->CtxFailureWithWarning(file, line, s);
@@ -139,8 +141,10 @@ bool OkImpl(Ctx&& ctx, const char* file, int line, const S& s) {
   }
 }
 
+// ctx is usually a plain pointer, but could be a smart pointer, so we accept it
+// by const ref.
 template <typename S, typename Ctx>
-bool OkAsyncImpl(Ctx&& ctx, const char* file, int line, const S& s) {
+bool OkAsyncImpl(const Ctx& ctx, const char* file, int line, const S& s) {
   if (!TF_PREDICT_TRUE(s.ok())) {
     ctx->CtxFailureWithWarning(file, line, s);
     return false;

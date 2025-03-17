@@ -37,7 +37,7 @@ class LazyLoader(types.ModuleType):
     self._tfll_warning = warning
 
     # These members allows doctest correctly process this module member without
-    # triggering self._load(). self._load() mutates parant_module_globals and
+    # triggering self._load(). self._load() mutates parent_module_globals and
     # triggers a dict mutated during iteration error from doctest.py.
     # - for from_module()
     super().__setattr__("__module__", name.rsplit(".", 1)[0])

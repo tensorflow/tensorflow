@@ -19,10 +19,10 @@ limitations under the License.
 #include <memory>
 
 #include "json/json.h"
+#include "xla/tsl/platform/cloud/oauth_client.h"
 #include "tensorflow/core/platform/cloud/http_request.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/status.h"
-#include "tsl/platform/cloud/oauth_client.h"
 
 namespace tensorflow {
 using tsl::OAuthClient;  // NOLINT(misc-unused-using-decls)

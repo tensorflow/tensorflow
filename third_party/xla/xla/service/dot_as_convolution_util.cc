@@ -21,6 +21,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/shape_inference.h"
 #include "xla/status_macros.h"
+#include "xla/util.h"
 
 namespace xla {
 namespace dot_as_convolution_util {
@@ -129,6 +130,9 @@ bool SpatialIsContracting(int64_t lhs_spatial_size, int64_t rhs_spatial_size,
     }
   }
 
+  dims.lhs_shape_rank = conv->operand(0)->shape().rank();
+  dims.rhs_shape_rank = conv->operand(1)->shape().rank();
+  dims.output_shape_rank = conv->shape().rank();
   return dims;
 }
 
@@ -199,31 +203,35 @@ DotConvolutionDimsInfo ParseDotGeneralFromDot(const HloInstruction* dot) {
     dnums.contracting_dims.back().output = -1;
     dnums.contracting_dims.back().spatial_dim = -1;
   }
-  for (int64_t i = 0; i < dot->operand(0)->shape().rank(); ++i) {
-    if (!absl::c_linear_search(dot_dim_numbs.lhs_batch_dimensions(), i) &&
-        !absl::c_linear_search(dot_dim_numbs.lhs_contracting_dimensions(), i)) {
-      dnums.lhs_non_contracting_dims.emplace_back();
-      dnums.lhs_non_contracting_dims.back().lhs = i;
-      dnums.lhs_non_contracting_dims.back().rhs = -1;
-      dnums.lhs_non_contracting_dims.back().output =
-          dot_dim_numbs.lhs_batch_dimensions_size() +
-          dnums.lhs_non_contracting_dims.size() - 1;
-      dnums.lhs_non_contracting_dims.back().spatial_dim = -1;
-    }
+  for (auto i :
+       GetNonContractingDims(dot->operand(0)->shape().rank(),
+                             dot_dim_numbs.lhs_contracting_dimensions(),
+                             dot_dim_numbs.lhs_batch_dimensions())) {
+    dnums.lhs_non_contracting_dims.emplace_back();
+    dnums.lhs_non_contracting_dims.back().lhs = i;
+    dnums.lhs_non_contracting_dims.back().rhs = -1;
+    dnums.lhs_non_contracting_dims.back().output =
+        dot_dim_numbs.lhs_batch_dimensions_size() +
+        dnums.lhs_non_contracting_dims.size() - 1;
+    dnums.lhs_non_contracting_dims.back().spatial_dim = -1;
   }
-  for (int64_t i = 0; i < dot->operand(1)->shape().rank(); ++i) {
-    if (!absl::c_linear_search(dot_dim_numbs.rhs_batch_dimensions(), i) &&
-        !absl::c_linear_search(dot_dim_numbs.rhs_contracting_dimensions(), i)) {
-      dnums.rhs_non_contracting_dims.emplace_back();
-      dnums.rhs_non_contracting_dims.back().lhs = -1;
-      dnums.rhs_non_contracting_dims.back().rhs = i;
-      dnums.rhs_non_contracting_dims.back().output =
-          dot_dim_numbs.lhs_batch_dimensions_size() +
-          dnums.lhs_non_contracting_dims.size() +
-          dnums.rhs_non_contracting_dims.size() - 1;
-      dnums.rhs_non_contracting_dims.back().spatial_dim = -1;
-    }
+  for (auto i :
+       GetNonContractingDims(dot->operand(1)->shape().rank(),
+                             dot_dim_numbs.rhs_contracting_dimensions(),
+                             dot_dim_numbs.rhs_batch_dimensions())) {
+    dnums.rhs_non_contracting_dims.emplace_back();
+    dnums.rhs_non_contracting_dims.back().lhs = -1;
+    dnums.rhs_non_contracting_dims.back().rhs = i;
+    dnums.rhs_non_contracting_dims.back().output =
+        dot_dim_numbs.lhs_batch_dimensions_size() +
+        dnums.lhs_non_contracting_dims.size() +
+        dnums.rhs_non_contracting_dims.size() - 1;
+    dnums.rhs_non_contracting_dims.back().spatial_dim = -1;
   }
+
+  dnums.lhs_shape_rank = dot->operand(0)->shape().rank();
+  dnums.rhs_shape_rank = dot->operand(1)->shape().rank();
+  dnums.output_shape_rank = dot->shape().rank();
   return dnums;
 }
 

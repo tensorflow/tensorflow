@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <memory>
 #include <string>
+#include <vector>
 
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 

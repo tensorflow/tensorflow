@@ -32,6 +32,7 @@ enum PrimitiveType {
   PRED = 1;
 
   // Signed integral values of fixed width.
+  S1 = 30;
   S2 = 26;
   S4 = 21;
   S8 = 2;
@@ -40,6 +41,7 @@ enum PrimitiveType {
   S64 = 5;
 
   // Unsigned integral values of fixed width.
+  U1 = 31;
   U2 = 27;
   U4 = 22;
   U8 = 6;
@@ -66,6 +68,9 @@ enum PrimitiveType {
   // F8E5M2 has 5 exponent bits and 2 mantissa bits, and is similar to the
   // existing IEEE types.
   //
+  // F8E4M3 has 4 exponent bits and 3 mantissa bits, and is similar to the
+  // existing IEEE types.
+  //
   // F8E4M3FN has 4 exponent bits and 3 mantissa bits. The "FN" means only
   // Finite and NaN values are supported. Unlike IEEE types, infinities are not
   // supported.  NaN is represented when the exponent and mantissa bits are all
@@ -77,12 +82,17 @@ enum PrimitiveType {
   // the exponent and mantissa bits are all 0s with a sign bit of 1. All other
   // values are finite.
   //
+  // F8E3M4 has 3 exponent bits and 4 mantissa bits, and is similar to the
+  // existing IEEE types.
+  //
   // Support for these dtypes is under development. They do not yet work
   // properly in most cases.
   // TODO(b/259609697): Fully support FP8.
   F8E5M2 = 19;
+  F8E4M3 = 28;
   F8E4M3FN = 20;
   F8E4M3B11FNUZ = 23;
+  F8E3M4 = 29;
 
   // FP8 dtypes, as described in this paper: https://arxiv.org/abs/2206.02915
   //
@@ -100,6 +110,17 @@ enum PrimitiveType {
   // (8 for Float8E4M3FNUZ and 16 for Float8E5M2FNUZ).
   F8E5M2FNUZ = 24;
   F8E4M3FNUZ = 25;
+
+  // MX float dtypes, as described in:
+  // https://www.opencompute.org/documents/ocp-microscaling-formats-mx-v1-0-spec-final-pdf
+  //
+  // F4E2M1FN has 2 exponent bits and 1 mantissa bit.
+  // F8E8M0FNU has 8 exponent bits, no mantissa and no sign.
+  //
+  // Only finite values are supported (hence "FN" suffix). Unlike IEEE types,
+  // infinities and NaNs are not supported.
+  F4E2M1FN = 32;
+  F8E8M0FNU = 33;
 
   // Complex values of fixed width.
   C64 = 15;   // Paired F32 (real, imag), as in std::complex<float>.
@@ -126,10 +147,9 @@ enum PrimitiveType {
   // primitive type will have empty dimensions and tuple_shapes fields.
   TOKEN = 17;
 
-  // Next = 28
+  // Next = 34
 }
 // LINT.ThenChange(
-//   https://www.tensorflow.org/code/tensorflow/compiler/xla/shape_util.cc,
 //   https://www.tensorflow.org/code/tensorflow/compiler/xla/tools/driver.cc
 // )
 
@@ -200,26 +220,28 @@ message SplitConfigProto {
 // computation. Layouts specified in interior operations which take Shapes (for
 // example, Convert) are ignored.
 //
-// See the XLA documentation for more information on shapes and layouts.
+// See https://openxla.org/xla/shapes for more information on shapes and
+// layouts.
 //
 // LINT.IfChange
 message LayoutProto {
+  // Sequence of dimension indices, from minor (fastest varying index) to major
+  // (slowest varying index). The size of this field must equal the table's
+  // rank.
+  repeated int64 minor_to_major = 1;
+
   // The dimension level type list for this array, specifying the way in which
   // each array dimension is represented in memory. If this list is empty, the
   // array is assumed to be dense.
   repeated DimLevelType dim_level_types = 9;
 
   // Whether each dimension is unique or ordered.  Each of the following lists
-  // must be empty, or have one entry for each entry of dim_level_types.  If
-  // either list is empty, all dimensions are assumed to be unique and ordered,
-  // respectively.  Entries in this list may not be false for some DimLevelType
-  // values (such as DIM_DENSE in particular).
+  // must either be empty or have one entry for each entry of dim_level_types.
+  // If either list is empty, all dimensions are assumed to be unique or
+  // ordered, respectively.  Entries in this list may not be false for some
+  // DimLevelType values (such as DIM_DENSE in particular).
   repeated bool dim_unique = 13;
   repeated bool dim_ordered = 14;
-
-  // Sequence of dimension numbers, from minor (fastest varying index) to major
-  // (slowest varying index). This field is required.
-  repeated int64 minor_to_major = 1;
 
   // A sequence of tiles, starting from the tile that's applied first to the
   // Shape.
@@ -228,13 +250,15 @@ message LayoutProto {
   // error.
   repeated TileProto tiles = 6;
 
-  // The shape is padded at the end to multiple of, in terms of number of
-  // elements. This is useful when tiling does not bring the shape to certain
-  // desired granules. Tiling effectively pads/reshapes/transposes the shape
-  // to another shape. This field pads the total number of elements of that
-  // new shape to a multiple of certain number of elements. This is useful such
-  // as we want a layout which does not tile the data but still requires it to
-  // be padded to certain number of elements.
+  // The shape is padded at the end to the smallest multiple of, in terms of
+  // number of elements, this value. This is useful when tiling does not bring
+  // the shape to certain desired granules. Tiling effectively
+  // pads/reshapes/transposes the shape to another shape. This field pads the
+  // total number of elements of that new shape to a multiple of certain number
+  // of elements. This is useful such as we want a layout which does not tile
+  // the data but still requires it to be padded to certain number of elements.
+  //
+  // If omitted or set to 0, it's treated as 1.
   int64 tail_padding_alignment_in_elements = 16;
 
   // (Optional) Bit size of each element. When unspecified or being 0, default
@@ -291,41 +315,51 @@ message LayoutProto {
 // Tuples are a special case in that they have rank zero and have tuple_shapes
 // defined.
 //
-// See the XLA documentation for more information on shapes and layouts.
+// See https://openxla.org/xla/shapes for more information on shapes and
+// layouts.
 //
 // LINT.IfChange
 message ShapeProto {
   reserved 1;
   reserved "rank";
 
-  // The element type for this shape.
+  // If this is TUPLE/TOKEN/OPAQUE_TYPE, the shape is a tuple/token/opaque shape
+  // respectively. Otherwise, the shape is an array shape and this is its
+  // element type.
   PrimitiveType element_type = 2;
 
+  // Used only for an array shape.
+  //
   // The size (number of elements) for each dimension, or an upper bound on the
   // size if the dimension is dynamic.  In XLA, dimensions are numbered from 0
   // to N-1 for an N-dimensional array. The first element of 'dimensions' is the
   // size of dimension 0, the second element is the size of dimension 1, and so
   // forth.  Empty list indicates a scalar.
   //
-  // If the respective element in 'is_dimension_dynamic' is true then the value
-  // in this field represents an upper bound on the size of the dimension.
+  // Each element in this list must be >= 0. In particular, 0 is a valid value
+  // for a dimension size.
+  //
+  // If a dimension is dynamic (see `is_dynamic_dimension` below), its value
+  // in this list is an upper bound on the size of the dimension.
   repeated int64 dimensions = 3;
 
-  // For tuples only, the shapes of constituent shapes in the tuple sequence.
+  // Used only for an array shape.
+  //
+  // Indicates whether or not each dimension is dynamically-sized. If this list
+  // is empty, all dimensions are statically-sized. Otherwise, this must have
+  // the same size as 'dimensions' and the value at index i indicates whether
+  // or not the dimension at index i is dynamically-sized.
+  repeated bool is_dynamic_dimension = 6;
+
+  // For tuples only. The constituent shapes in the tuple.
   repeated ShapeProto tuple_shapes = 4;
 
   // The layout used to back this shape.
   LayoutProto layout = 5;
 
-  // For arrays, this indicates whether or not each dimension is
-  // dynamically-sized. The number of elements in this repeated field should be
-  // zero (indicating that no dimensions are dynamic) or equal to the number of
-  // elements in the 'dimensions' field.
-  repeated bool is_dynamic_dimension = 6;
-
   // Important: if any field is added, be sure to modify ShapeUtil::Equal(),
-  // ShapeUtil::Compatible() and ShapeUtil::Hash() appropriately to account for
-  // the new field.
+  // ShapeUtil::Compatible() and Shape::Hash() appropriately to account for the
+  // new field.
 }
 // LINT.ThenChange( \
 //     https://www.tensorflow.org/code/tensorflow/compiler/xla/shape_util.cc)
@@ -424,6 +458,8 @@ message OpMetadata {
   // Profile information for the Op.
   ProfileInfo profile_info = 10;
 
+  reserved 11;
+
   // Deduplicated HLO name for this op. In some cases, we can have multiple
   // instructions (e.g. fusions) that are considered duplicates. We want to
   // group them together under the same name so that we can group them together
@@ -432,12 +468,14 @@ message OpMetadata {
   // fusion.2 and fusion.3 will have deduplicated_name = fusion.1
   string deduplicated_name = 12;
 
-  // Whether to preserve the layout of the HLO op.
-  bool preserve_layout = 13;
+  reserved 13;
 
   // 1-based position of the frame in frames flat array.
   // Ids are 1-based to keep 0 value as representation of non-set property.
   int32 stack_frame_id = 15;
+
+  // Instruction name available upon scheduling.
+  string scheduling_name = 16;
 
   reserved 14;
 }
@@ -549,9 +587,11 @@ message DeviceAssignmentProto {
 message LiteralProto {
   ShapeProto shape = 1;
   repeated bool preds = 2;
+  bytes s1s = 30;
   bytes s2s = 26;
   bytes s4s = 21;
   bytes s8s = 15;
+  bytes u1s = 31;
   bytes u2s = 27;
   bytes u4s = 22;
   bytes u8s = 3;
@@ -569,13 +609,17 @@ message LiteralProto {
   bytes bf16s = 13;
   bytes u16s = 16;
   bytes s16s = 17;
-  bytes f8e5m2s = 19;
-  bytes f8e4m3fns = 20;
+  bytes f4e2m1fns = 32;
+  bytes f8e3m4s = 29;
   bytes f8e4m3b11fnuzs = 23;
-  bytes f8e5m2fnuzs = 24;
+  bytes f8e4m3fns = 20;
   bytes f8e4m3fnuzs = 25;
+  bytes f8e4m3s = 28;
+  bytes f8e5m2fnuzs = 24;
+  bytes f8e5m2s = 19;
+  bytes f8e8m0fnus = 33;
   repeated int64 sparse_indices = 14;
-  // Next = 28
+  // Next = 34
 }
 
 message WindowDimension {
@@ -658,6 +702,13 @@ message GatherDimensionNumbers {
   // The dimension in the start_indices input that contains the starting
   // indices.
   int64 index_vector_dim = 4;
+
+  // This is the batch dimensions in the operand.
+  repeated int64 operand_batching_dims = 5;
+
+  // This is the batch dimensions in the index, and it should be the same size
+  // as operand_batching_dims.
+  repeated int64 start_indices_batching_dims = 6;
 }
 
 // Describes the dimension numbers for a scatter operation.
@@ -672,6 +723,12 @@ message ScatterDimensionNumbers {
 
   repeated int64 scatter_dims_to_operand_dims = 3;
   int64 index_vector_dim = 4;
+
+  // This is the batch dimension in the input.
+  repeated int64 input_batching_dims = 5;
+
+  // This is the batch dimension in the index.
+  repeated int64 scatter_indices_batching_dims = 6;
 }
 
 message ConvolutionDimensionNumbers {
@@ -734,6 +791,15 @@ message DotDimensionNumbers {
   repeated int64 lhs_batch_dimensions = 3;
   // The dimension numbers that represent the 'rhs' batch dimensions.
   repeated int64 rhs_batch_dimensions = 4;
+}
+
+message RaggedDotDimensionNumbers {
+  // The contracting and batch dimensions of the 'lhs' and 'rhs'.
+  DotDimensionNumbers dot_dimension_numbers = 1;
+  // The dimension numbers that represent the 'lhs' ragged dimensions.
+  repeated int64 lhs_ragged_dimensions = 2;
+  // The dimension numbers that represent the 'rhs' group dimensions.
+  repeated int64 rhs_group_dimensions = 3;
 }
 
 enum SparsityType {
@@ -937,10 +1003,65 @@ message ReplicaGroup {
   repeated int64 replica_ids = 1;
 }
 
+// Represents a list of replica groups (a list of list of devices) with
+// reshaping and transposing an iota array (iota tile assignment). Can be used
+// to represent certain common patterns of device lists in a compact, scalable
+// format.
+message IotaReplicaGroupListProto {
+  // Number of replica groups.
+  int64 num_replica_groups = 1;
+
+  // Number of devices per group.
+  int64 num_devices_per_group = 2;
+
+  // The dimensions used to reshape the 1D iota array of device IDs.
+  repeated int64 iota_reshape_dims = 3;
+
+  // The dimension permutations to transposed the iota array reshaped to
+  // iota_reshape_dims. This must have the same size as iota_reshape_dims.
+  repeated int32 iota_transpose_perm = 4;
+}
+
+// Represents a series of devices participating in a collective operation (e.g.,
+// all-reduce and all-to-all). While this directly translates to a list of
+// replica groups, it may be used to represent these lists in a compact form.
+message CollectiveDeviceListProto {
+  // ReplicaGroupV1: List of replica groups. Legacy way of representing device
+  // lists.
+  repeated ReplicaGroup replica_groups = 1;
+
+  // ReplicaGroupV2: Represents a list of replica groups with reshaping and
+  // transposing an iota array.
+  IotaReplicaGroupListProto iota_replica_group_list = 2;
+}
+
 // Describes the source target pair in the collective permute op.
 message SourceTarget {
   int64 source = 1;
   int64 target = 2;
+}
+
+// Describes the types of accuracy the user can request for unary ops with
+// multiple implementations.
+message ResultAccuracy {
+  enum Mode {
+    DEFAULT = 0;
+    HIGHEST = 1;
+  }
+  message Tolerance {
+    // Absolute error tolerance for unary instructions.
+    double atol = 1;
+    // Relative error tolerance for unary instructions.
+    double rtol = 2;
+    // The error in ulps (units in the last place) is relative to machine
+    // precision.
+    int64 ulps = 3;
+  }
+  oneof specs {
+    // Choose either DEFAULT or HIGHEST precision implementation.
+    Mode mode = 1;
+    Tolerance tolerance = 2;
+  }
 }
 
 // Used to indicate the precision configuration. It has backend specific
@@ -998,8 +1119,9 @@ message PrecisionConfig {
     ALG_DOT_TF32_TF32_F32_X3 = 10;
     ALG_DOT_F32_F32_F32 = 11;
     ALG_DOT_F64_F64_F64 = 12;
+    ALG_DOT_BF16_BF16_F32_X9 = 13;
 
-    // Next: 13
+    // Next: 14
   }
 
   repeated Precision operand_precision = 1;
@@ -1013,7 +1135,7 @@ message PrecisionConfig {
   // will be ignored.
   Algorithm algorithm = 2;
 
-  // Next: 3
+  // Next: 8
 }
 
 // Describes whether all data-parallelism replicas will receive the same
@@ -1037,12 +1159,30 @@ message ParameterReplication {
 // whereas implementing a `while` loop requires a host-device sync on each
 // iteration.
 message WhileLoopBackendConfig {
+  message KnownInitStep {
+    int64 init = 1;
+    int64 step = 2;
+  }
+
   message KnownTripCount {
     int64 n = 1;
   }
+
+  message KnownInductionVariable {
+    int64 tuple_index = 1;
+  }
+
   // This indirection lets us distinguish between known-trip-count == 0 and
   // unknown-trip-count.
   KnownTripCount known_trip_count = 1;
+
+  // Independently from the known trip count, we may also know the start and
+  // step of the induction variable.
+  KnownInitStep known_init_step = 2;
+
+  // This lets us distinguish between an unknown induction variable (or none)
+  // and tuple index 0.
+  KnownInductionVariable known_induction_variable = 3;
 }
 
 // Specifies a pair of output/operand buffers that alias each other for
@@ -1051,4 +1191,14 @@ message OutputOperandAliasing {
   repeated int64 output_shape_index = 1;
   int64 operand_index = 2;
   repeated int64 operand_shape_index = 3;
+}
+
+message OriginalArrayProto {
+  repeated int64 leaf_shape_index = 1;
+  string instruction_name = 2;
+  repeated int64 shape_index = 3;
+}
+
+message OriginalValueProto {
+  repeated OriginalArrayProto leaves = 1;
 }

@@ -16,7 +16,6 @@ limitations under the License.
 #include "tensorflow/dtensor/mlir/dtensor_dialect/ir/ops.h"
 
 #include <string>
-#include <typeinfo>
 
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Diagnostics.h"  // from @llvm-project

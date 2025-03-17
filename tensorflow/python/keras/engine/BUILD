@@ -92,6 +92,7 @@ py_library(
         "//tensorflow/python/training:py_checkpoint_reader",
         "//tensorflow/python/types:data",
         "//tensorflow/python/util:nest",
+        "//tensorflow/python/util:numpy_compat",
         "//tensorflow/python/util:tf_decorator_py",
         "//tensorflow/python/util:tf_export",
         "//tensorflow/tools/docs:doc_controls",
@@ -201,6 +202,7 @@ py_library(
         "//tensorflow/python/platform:tf_logging",
         "//tensorflow/python/types:data",
         "//tensorflow/python/util:nest",
+        "//tensorflow/python/util:numpy_compat",
         "//tensorflow/python/util:tf_export",
     ],
 )

@@ -26,7 +26,7 @@ limitations under the License.
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/python/ifrt/serdes.h"
 #include "xla/python/pjrt_ifrt/xla_compiler.pb.h"
-#include "tsl/platform/statusor.h"
+#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace ifrt {
@@ -40,7 +40,8 @@ class XlaCompileOptionsSerDes
     return "xla::ifrt::XlaCompileOptions";
   }
 
-  absl::StatusOr<std::string> Serialize(Serializable& serializable) override {
+  absl::StatusOr<std::string> Serialize(
+      Serializable& serializable, std::unique_ptr<SerializeOptions>) override {
     const auto& options = llvm::cast<XlaCompileOptions>(serializable);
 
     XlaCompileOptionsProto proto;

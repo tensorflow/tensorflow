@@ -26,6 +26,7 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/status/status.h"
+#include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -35,17 +36,21 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
+#include "xla/tsl/lib/gtl/map_util.h"
 #include "xla/util.h"
 #include "xla/window_util.h"
-#include "tsl/lib/gtl/map_util.h"
 #include "tsl/platform/errors.h"
 
 namespace xla {
 
 HloCostAnalysis::HloCostAnalysis(const Options& options) : options_(options) {}
+// TODO(mehrdadk): merge all constructors into HloCostAnalysis(const Options&
+// options)
 HloCostAnalysis::HloCostAnalysis(ShapeSizeFunction shape_size,
-                                 const Properties& per_second_rates)
-    : HloCostAnalysis(Options{shape_size, per_second_rates}) {}
+                                 const Properties& per_second_rates,
+                                 const Properties& min_latencies_seconds)
+    : HloCostAnalysis(
+          Options{shape_size, per_second_rates, min_latencies_seconds}) {}
 
 absl::Status HloCostAnalysis::Preprocess(const HloInstruction* hlo) {
   // Set current instruction cost values to reasonable default values. Each
@@ -82,7 +87,9 @@ absl::Status HloCostAnalysis::Postprocess(const HloInstruction* hlo) {
       }
       float per_second_rate = options_.per_second_rate(key);
       if (per_second_rate != 0) {
-        optimal_seconds = std::max(optimal_seconds, val / per_second_rate);
+        float time_for_key =
+            std::max(val / per_second_rate, options_.min_latency_seconds(key));
+        optimal_seconds = std::max(optimal_seconds, time_for_key);
       }
     });
     current_properties_[kOptimalSecondsKey] = optimal_seconds;
@@ -96,12 +103,13 @@ absl::Status HloCostAnalysis::Postprocess(const HloInstruction* hlo) {
   auto [it_ignored, inserted] =
       hlo_properties_.emplace(hlo, std::move(current_properties_));
   current_properties_ = Properties();
-  TF_RET_CHECK(inserted);
+  TF_RET_CHECK(inserted) << hlo->name() << " already exists in hlo_properties_";
 
   return absl::OkStatus();
 }
 
-absl::Status HloCostAnalysis::RemoveInstruction(HloInstruction* instruction) {
+absl::Status HloCostAnalysis::RemoveInstruction(
+    const HloInstruction* instruction) {
   // Subtract the previously calculated properties of the instruction
   // from HLO graph's total properties_sum_ if instruction was analyzed before.
   auto it = hlo_properties_.find(instruction);
@@ -114,7 +122,8 @@ absl::Status HloCostAnalysis::RemoveInstruction(HloInstruction* instruction) {
   return absl::OkStatus();
 }
 
-absl::Status HloCostAnalysis::RevisitInstruction(HloInstruction* instruction) {
+absl::Status HloCostAnalysis::RevisitInstruction(
+    const HloInstruction* instruction) {
   TF_RETURN_IF_ERROR(RemoveInstruction(instruction));
   // Now do Preprocess() -> Visit() -> Postprocess() for the instruction same
   // way it is done during the complete analysis.
@@ -212,9 +221,10 @@ int64_t HloCostAnalysis::FusionParameterReadBytes(
           const auto& fusion_users = user->users();
           const HloInstruction* root_instruction =
               user->fused_instructions_computation()->root_instruction();
-          // We define the nested fusion as simple if the parameter directly
-          // feeds the root.
+          // We define the nested fusion as simple if the parameter is the root
+          // or feeds directly into the root.
           const bool fusion_is_simple =
+              root_instruction->operand_count() == 0 ||
               user->fused_parameter(idx) == root_instruction->operand(0);
           // TODO(b/332998529): deal with nested fusions more generally.
           for (const HloInstruction* fusion_user : fusion_users) {
@@ -455,6 +465,23 @@ int64_t HloCostAnalysis::GetDotFlops(const Shape& lhs_shape,
 absl::Status HloCostAnalysis::HandleDot(const HloInstruction* dot) {
   current_properties_[kFlopsKey] = GetDotFlops(
       dot->operand(0)->shape(), dot->shape(), dot->dot_dimension_numbers());
+  return absl::OkStatus();
+}
+
+absl::Status HloCostAnalysis::HandleRaggedDot(
+    const HloInstruction* ragged_dot) {
+  RaggedDotDimensionNumbers ragged_dnum =
+      ragged_dot->ragged_dot_dimension_numbers();
+  Shape result_shape = ragged_dot->shape();
+
+  // Get a new output shape with the group dimension(s) removed.
+  for (int64_t i = 0; i < ragged_dnum.rhs_group_dimensions_size(); ++i) {
+    result_shape = ShapeUtil::DeleteDimension(i, result_shape);
+  }
+
+  current_properties_[kFlopsKey] =
+      GetDotFlops(ragged_dot->operand(0)->shape(), result_shape,
+                  ragged_dnum.dot_dimension_numbers());
   return absl::OkStatus();
 }
 
@@ -949,7 +976,7 @@ absl::Status HloCostAnalysis::HandleTriangularSolve(const HloInstruction* hlo) {
   const Shape& a_shape = hlo->operand(0)->shape();
   const Shape& b_shape = hlo->operand(1)->shape();
   // Estimate as batch * mn^2 / 2 flops.
-  int64_t elems = a_shape.dimensions(a_shape.dimensions_size() - 1);
+  int64_t elems = a_shape.dimensions(a_shape.rank() - 1);
   elems *= ShapeUtil::ElementsIn(b_shape);
   current_properties_[kFlopsKey] = kFmaFlops * elems;
   return absl::OkStatus();
@@ -967,7 +994,7 @@ absl::Status HloCostAnalysis::HandleCholesky(const HloInstruction* hlo) {
 
   const Shape& a_shape = hlo->operand(0)->shape();
   // Estimate as batch * n^3 / 3 flops.
-  int64_t elems = a_shape.dimensions(a_shape.dimensions_size() - 1);
+  int64_t elems = a_shape.dimensions(a_shape.rank() - 1);
   elems *= ShapeUtil::ElementsIn(a_shape);
   current_properties_[kFlopsKey] = elems / 3;
   return absl::OkStatus();
@@ -1030,6 +1057,10 @@ absl::Status HloCostAnalysis::HandleAllReduceDone(
 }
 
 absl::Status HloCostAnalysis::HandleAllToAll(const HloInstruction* hlo) {
+  return absl::OkStatus();
+}
+
+absl::Status HloCostAnalysis::HandleRaggedAllToAll(const HloInstruction* hlo) {
   return absl::OkStatus();
 }
 
@@ -1520,6 +1551,10 @@ std::unique_ptr<HloCostAnalysis> HloCostAnalysis::CreateNestedCostAnalysis() {
 bool HloCostAnalysis::KeyToCopyFromSubcomputation(absl::string_view key) const {
   return !absl::StartsWith(key, kBytesAccessedKey) &&
          !absl::StartsWith(key, kUtilizationKey);
+}
+
+int64_t HloCostAnalysis::DefaultShapeSize(const Shape& shape) {
+  return ShapeUtil::ByteSizeOf(shape, kDefaultPointerSize);
 }
 
 }  // namespace xla

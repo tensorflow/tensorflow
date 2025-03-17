@@ -19,6 +19,8 @@ limitations under the License.
 #include <utility>
 
 #include "llvm/Support/Casting.h"
+#include "mlir/Dialect/Quant/IR/QuantTypes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
@@ -234,9 +236,11 @@ struct FoldTransposeOp : public OpRewritePattern<TransposeOp> {
     DenseIntElementsAttr perm_tensor;
     if (!matchPattern(op.getPerm(), m_Constant(&perm_tensor))) return failure();
 
-    if (!mlir::isa<quant::UniformQuantizedType>(
-            (getElementTypeOrSelf(op.getOutput().getType()))))
+    auto output_element_type = getElementTypeOrSelf(op.getOutput().getType());
+    if (!mlir::isa<quant::UniformQuantizedType>(output_element_type) &&
+        !mlir::isa<quant::UniformQuantizedPerAxisType>(output_element_type)) {
       return failure();
+    }
 
     ElementsAttr input_tensor = qconst_op.getValue();
 
@@ -265,10 +269,19 @@ struct FoldTransposeOp : public OpRewritePattern<TransposeOp> {
                        /*output_axis=*/0, &input_indices, &new_values);
     auto result_type =
         RankedTensorType::get(output_shape, output_type.getElementType());
-    auto values_type = RankedTensorType::get(
-        output_shape,
-        mlir::cast<quant::UniformQuantizedType>(output_type.getElementType())
-            .getStorageType());
+    RankedTensorType values_type;
+    if (mlir::isa<quant::UniformQuantizedType>(output_element_type)) {
+      values_type = RankedTensorType::get(
+          output_shape,
+          mlir::cast<quant::UniformQuantizedType>(output_type.getElementType())
+              .getStorageType());
+    } else {
+      values_type = RankedTensorType::get(
+          output_shape, mlir::cast<quant::UniformQuantizedPerAxisType>(
+                            output_type.getElementType())
+                            .getStorageType());
+    }
+
     rewriter.replaceOpWithNewOp<QConstOp>(
         op, TypeAttr::get(result_type),
         DenseIntElementsAttr::get(values_type, new_values));
@@ -287,16 +300,17 @@ struct FoldReshapeOp : public OpRewritePattern<ReshapeOp> {
                                 PatternRewriter& rewriter) const override {
     Operation* def_op = op.getInput().getDefiningOp();
     auto qconst_op = llvm::dyn_cast_or_null<QConstOp>(def_op);
-    if (qconst_op == nullptr) return failure();
+    if (qconst_op == nullptr) {
+      return rewriter.notifyMatchFailure(op, "input is not a QConstOp.");
+    }
 
     auto dense_elements =
         mlir::dyn_cast_or_null<DenseElementsAttr>(qconst_op.getValue());
     if (dense_elements == nullptr) return failure();
 
-    // Handle per tensor cases only.
-    if (!mlir::isa<quant::UniformQuantizedType>(
-            (getElementTypeOrSelf(op.getType())))) {
-      return failure();
+    auto output_element_type = getElementTypeOrSelf(op.getType());
+    if (!mlir::isa<quant::QuantizedType>(output_element_type)) {
+      return rewriter.notifyMatchFailure(op, "output type is not quantized.");
     }
 
     // Remove identity reshape with both static result and input shape.
@@ -318,10 +332,19 @@ struct FoldReshapeOp : public OpRewritePattern<ReshapeOp> {
       result_type =
           RankedTensorType::get(shape_data, input_type.getElementType());
     }
-    auto values_type = RankedTensorType::get(
-        result_type.getShape(),
-        mlir::cast<quant::UniformQuantizedType>(result_type.getElementType())
-            .getStorageType());
+    RankedTensorType values_type;
+    if (mlir::isa<quant::UniformQuantizedType>(output_element_type)) {
+      values_type = RankedTensorType::get(
+          result_type.getShape(),
+          mlir::cast<quant::UniformQuantizedType>(result_type.getElementType())
+              .getStorageType());
+    } else {
+      values_type =
+          RankedTensorType::get(result_type.getShape(),
+                                mlir::cast<quant::UniformQuantizedPerAxisType>(
+                                    result_type.getElementType())
+                                    .getStorageType());
+    }
 
     DenseElementsAttr reshaped_elements = dense_elements.reshape(values_type);
     rewriter.replaceOpWithNewOp<QConstOp>(op, TypeAttr::get(result_type),
@@ -384,7 +407,7 @@ void PostQuantizePass::runOnOperation() {
   patterns.add<PruneUnusedOpsWithSideEffect<TFL::SVDFOp>>(ctx);
   patterns.add<PruneUnusedOpsWithSideEffect<TFL::CustomOp>>(ctx,
                                                             custom_op_map_);
-  (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
+  (void)applyPatternsGreedily(func, std::move(patterns));
 
   if (!emit_quant_adaptor_ops_) {
     RemoveQuantizationAdaptorOps(getOperation());
@@ -395,7 +418,7 @@ void PostQuantizePass::runOnOperation() {
   phase_2_patterns.add<quant::FoldTrivalRequantizeOp<QuantizeOp>,
                        RemoveVolatileOps<kPreserveInputsAndOutputs>,
                        FoldTransposeOp, FoldReshapeOp>(ctx);
-  (void)applyPatternsAndFoldGreedily(func, std::move(phase_2_patterns));
+  (void)applyPatternsGreedily(func, std::move(phase_2_patterns));
 }
 
 void PostQuantizeRemoveQDQPass::runOnOperation() {
@@ -404,7 +427,7 @@ void PostQuantizeRemoveQDQPass::runOnOperation() {
   auto* ctx = func.getContext();
   TFL::populateWithGenerated(patterns);
   patterns.add<RemoveVolatileOps<kPreserveNone>>(ctx);
-  (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
+  (void)applyPatternsGreedily(func, std::move(patterns));
 }
 
 }  // namespace

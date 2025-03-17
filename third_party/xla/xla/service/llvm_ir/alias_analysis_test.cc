@@ -13,16 +13,27 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <gtest/gtest.h>
 #include "absl/status/status.h"
 #include "xla/ffi/ffi.h"
 #include "xla/ffi/ffi_api.h"
 #include "xla/service/cpu/tests/cpu_codegen_test.h"
-#include "tsl/platform/test.h"
+#include "xla/tests/hlo_test_base.h"
+#include "xla/tsl/platform/test.h"
+#include "xla/xla.pb.h"
 
-namespace xla {
-namespace cpu {
+namespace xla::cpu {
 namespace {
-class AliasAnalysisTest : public CpuCodegenTest {};
+
+class AliasAnalysisTest : public CpuCodegenTest {
+  DebugOptions GetDebugOptionsForTest() const override {
+    DebugOptions debug_options = HloTestBase::GetDebugOptionsForTest();
+    // We do not generate IR for while loops with thunks runtime, so we
+    // explicitly disable it for this test.
+    debug_options.set_xla_cpu_use_thunk_runtime(false);
+    return debug_options;
+  }
+};
 
 static absl::Status FakeCustomCallTarget(ffi::AnyBuffer,
                                          ffi::Result<ffi::AnyBuffer>) {
@@ -86,5 +97,4 @@ ENTRY while3 {
 }
 
 }  // namespace
-}  // namespace cpu
-}  // namespace xla
+}  // namespace xla::cpu

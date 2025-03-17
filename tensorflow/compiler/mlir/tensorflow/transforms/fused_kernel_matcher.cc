@@ -360,7 +360,7 @@ void FusedKernelMatcherPass::runOnOperation() {
   auto func = getOperation();
   patterns.add<FuseConv2DBiasAdd, FuseMatMulBiasAdd>(&getContext());
 
-  (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
+  (void)applyPatternsGreedily(func, std::move(patterns));
 }
 
 }  // namespace

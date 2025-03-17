@@ -14,23 +14,23 @@ limitations under the License.
 ==============================================================================*/
 #include "xla/stream_executor/device_description.h"
 
-#include "tsl/platform/test.h"
+#include <gtest/gtest.h>
+#include "xla/stream_executor/semantic_version.h"
 
 namespace stream_executor {
 namespace {
 
-TEST(CudaComputeCapability, GenerationNumericTest) {
-  EXPECT_TRUE(CudaComputeCapability(7, 5).IsAtLeastVolta());
-  EXPECT_TRUE(CudaComputeCapability(8, 0).IsAtLeastAmpere());
-  EXPECT_TRUE(CudaComputeCapability(9, 0).IsAtLeastHopper());
-  EXPECT_TRUE(CudaComputeCapability(10, 0).IsAtLeastBlackwell());
-}
-
-TEST(CudaComputeCapability, GenerationLiteralTest) {
-  EXPECT_TRUE(CudaComputeCapability::Volta().IsAtLeast(7));
-  EXPECT_TRUE(CudaComputeCapability::Ampere().IsAtLeast(8));
-  EXPECT_TRUE(CudaComputeCapability::Hopper().IsAtLeast(9));
-  EXPECT_TRUE(CudaComputeCapability::Blackwell().IsAtLeast(10));
+TEST(DeviceDescription, DefaultConstruction) {
+  DeviceDescription desc;
+  EXPECT_EQ(desc.device_address_bits(), -1);
+  EXPECT_EQ(desc.device_memory_size(), -1);
+  EXPECT_EQ(desc.clock_rate_ghz(), -1);
+  EXPECT_EQ(desc.name(), "<undefined>");
+  EXPECT_EQ(desc.platform_version(), "<undefined>");
+  constexpr SemanticVersion kZeroVersion = {0, 0, 0};
+  EXPECT_EQ(desc.driver_version(), kZeroVersion);
+  EXPECT_EQ(desc.runtime_version(), kZeroVersion);
+  EXPECT_EQ(desc.pci_bus_id(), "<undefined>");
 }
 
 }  // namespace

@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "mlir/Dialect/Linalg/IR/Linalg.h"  // from @llvm-project
+#include "mlir/Dialect/Linalg/IR/Linalg.h"
 
 // clang-format erroneously puts the Linalg header above.
 #include <algorithm>   // NOLINT
@@ -25,8 +25,8 @@ limitations under the License.
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
-#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
-#include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"
+#include "mlir/Support/LLVM.h"
 #include "xla/mlir/tools/mlir_interpreter/dialects/util.h"
 #include "xla/mlir/tools/mlir_interpreter/framework/interpreter.h"
 #include "xla/mlir/tools/mlir_interpreter/framework/interpreter_value.h"

@@ -43,18 +43,18 @@ namespace tensorflow {
 typedef std::unordered_map<string, uint32> AttrTypeMap;
 
 // Look up OpDef for `op_name`.
-Status OpDefForOp(const string& op_name, const OpDef** op_def);
+absl::Status OpDefForOp(const string& op_name, const OpDef** op_def);
 
 // Returns the AttrTypeMap for the TensorFlow operation named op_name.
 // If op_name is not registered in global op registry, AttrTypeMapForOp assumes
 // the op to be a function and returns the default attributes for a function.
 // `is_function` is set to true in this case.
-Status AttrTypeMapForOp(const char* op_name, const AttrTypeMap** out,
-                        bool* is_function);
+absl::Status AttrTypeMapForOp(const char* op_name, const AttrTypeMap** out,
+                              bool* is_function);
 
 // Looks for 'attr_name' in 'm' and sets 'out' and 'is_list'.
-Status AttrTypeByName(const AttrTypeMap& m, const string& attr_name,
-                      TF_AttrType* out, unsigned char* is_list);
+absl::Status AttrTypeByName(const AttrTypeMap& m, const string& attr_name,
+                            TF_AttrType* out, unsigned char* is_list);
 
 // KernelAndDevice::Init needs a NodeDef only to pass the attribute map through.
 // An AttrBuilder is a convenience class to help with that - providing a smaller
@@ -118,7 +118,7 @@ class AttrBuilder : public AbstractOpAttrs {
   AttrBuilder& NumInputs(int n);
 
   template <class T>
-  AttrBuilder& Set(StringPiece attr_name, T&& value) {
+  AttrBuilder& Set(absl::string_view attr_name, T&& value) {
     SetAttrValue(value, &attr_tmp_);
     AddAttrIfNotPresent(attr_name, attr_tmp_);
     node_def_finalized_ = false;
@@ -128,7 +128,7 @@ class AttrBuilder : public AbstractOpAttrs {
 
   size_t NumAttributes() const { return encoded_attrs_.size(); }
 
-  AttrBuilder& Set(StringPiece attr_name, const AttrValue& value) {
+  AttrBuilder& Set(absl::string_view attr_name, const AttrValue& value) {
     AddAttrIfNotPresent(attr_name, value);
     cached_cache_key_ = std::nullopt;
     return *this;
@@ -139,7 +139,7 @@ class AttrBuilder : public AbstractOpAttrs {
   // value type in this Node. This is not an issue, because Get is used rarely
   // and nodes have a small number of attributes.
   template <class T>
-  Status Get(StringPiece attr_name, T* value) const {
+  absl::Status Get(absl::string_view attr_name, T* value) const {
     // Common attributes are stored in AttrVecs. This Get() template
     // is specialized for them below. If we end up here, the type must be
     // among those that we store in the node_def_.
@@ -150,7 +150,7 @@ class AttrBuilder : public AbstractOpAttrs {
     return GetNodeAttr(AttrSlice(node_def_), attr_name, value);
   }
 
-  tensorflow::Fprint128 CacheKey(StringPiece device);
+  tensorflow::Fprint128 CacheKey(absl::string_view device);
 
   // Fill `m` with the attr-value pairs set via AttrBuilder::Set() so far, as
   // well as any default attr-value pairs from the associated op_def, if there
@@ -178,12 +178,12 @@ class AttrBuilder : public AbstractOpAttrs {
   bool GetBool(absl::string_view attr_name, bool* result) const override;
   bool GetType(absl::string_view attr_name,
                tensorflow::DataType* result) const override;
-  Status GetTypeList(
+  absl::Status GetTypeList(
       absl::string_view attr_name,
       absl::InlinedVector<DataType, 4>* type_list) const override;
 
  private:
-  tensorflow::Fprint128 BuildCacheKeyForDevice(StringPiece device) const;
+  tensorflow::Fprint128 BuildCacheKeyForDevice(absl::string_view device) const;
 
   template <class T>
   void SetInAttrValueMap(AttrValueMap* m, const string& attr_name,
@@ -194,7 +194,7 @@ class AttrBuilder : public AbstractOpAttrs {
     m->insert({attr_name, value});
   }
 
-  void AddAttrIfNotPresent(StringPiece attr_name, const AttrValue& value);
+  void AddAttrIfNotPresent(absl::string_view attr_name, const AttrValue& value);
 
   gtl::FlatMap<string, string> encoded_attrs_;
   mutable AttrValue attr_tmp_;  // For encoding
@@ -210,14 +210,14 @@ class AttrBuilder : public AbstractOpAttrs {
 };
 
 template <>
-Status AttrBuilder::Get(StringPiece attr_name, int* value) const;
+absl::Status AttrBuilder::Get(absl::string_view attr_name, int* value) const;
 template <>
-Status AttrBuilder::Get(StringPiece attr_name, float* value) const;
+absl::Status AttrBuilder::Get(absl::string_view attr_name, float* value) const;
 template <>
-Status AttrBuilder::Get(StringPiece attr_name, bool* value) const;
+absl::Status AttrBuilder::Get(absl::string_view attr_name, bool* value) const;
 template <>
-Status AttrBuilder::Get(StringPiece attr_name,
-                        tensorflow::DataType* value) const;
+absl::Status AttrBuilder::Get(absl::string_view attr_name,
+                              tensorflow::DataType* value) const;
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_CORE_COMMON_RUNTIME_EAGER_ATTR_BUILDER_H_

@@ -16,32 +16,7 @@ limitations under the License.
 #ifndef XLA_SERVICE_OPERAND_UPCASTER_H_
 #define XLA_SERVICE_OPERAND_UPCASTER_H_
 
-#include <utility>
-
-#include "absl/status/statusor.h"
-#include "absl/strings/string_view.h"
-#include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/service/op_expander_pass.h"
-#include "xla/util.h"
-
-namespace xla {
-
-// Inserts Convert to operands of instructions that allows result accumulation
-// as wider integral types.
-class OperandUpcaster : public OpExpanderPass {
- public:
-  explicit OperandUpcaster(HloPredicate extra_filter = nullptr)
-      : OpExpanderPass(std::move(extra_filter)) {}
-
-  absl::string_view name() const override { return "operand_upcaster"; }
-
- protected:
-  bool InstructionMatchesPattern(HloInstruction* instruction) override;
-
-  absl::StatusOr<HloInstruction*> ExpandInstruction(
-      HloInstruction* instruction) override;
-};
-
-}  // namespace xla
+// The current header will be deprecated in favour of the following.
+#include "xla/hlo/transforms/operand_upcaster.h"
 
 #endif  // XLA_SERVICE_OPERAND_UPCASTER_H_

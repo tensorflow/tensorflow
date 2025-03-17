@@ -80,7 +80,7 @@ struct NaiveCopyRemovalPass
     RewritePatternSet patterns(ctx);
     patterns.add(removeCopy);
     memref::AllocOp::getCanonicalizationPatterns(patterns, ctx);
-    if (failed(applyPatternsAndFoldGreedily(func, std::move(patterns))))
+    if (failed(applyPatternsGreedily(func, std::move(patterns))))
       return signalPassFailure();
   }
 };

@@ -35,7 +35,7 @@ TEST(ErrorUtilTest, AllSupportedErrorConversion){
 }
 
 TEST(ErrorUtilTest, UnsupportedErrorConversion) {
-  tensorflow::Status status(absl::StatusCode::kUnauthenticated, "error_test");
+  absl::Status status(absl::StatusCode::kUnauthenticated, "error_test");
   EXPECT_EQ(ConvertTfErrorCodeToTfrtErrorCode(status),
             tfrt::ErrorCode::kUnknown);
 }

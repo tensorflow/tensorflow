@@ -40,12 +40,12 @@ class FinalizeDatasetParams : public DatasetParams {
 
   std::vector<Tensor> GetInputTensors() const override { return {}; }
 
-  Status GetInputNames(std::vector<string>* input_names) const override {
+  absl::Status GetInputNames(std::vector<string>* input_names) const override {
     input_names->emplace_back(FinalizeDatasetOp::kInputDataset);
     return absl::OkStatus();
   }
 
-  Status GetAttributes(AttributeVector* attr_vector) const override {
+  absl::Status GetAttributes(AttributeVector* attr_vector) const override {
     *attr_vector = {{FinalizeDatasetOp::kHasCapturedRef, has_captured_ref_},
                     {FinalizeDatasetOp::kOutputTypes, output_dtypes_},
                     {FinalizeDatasetOp::kOutputShapes, output_shapes_}};
@@ -245,7 +245,7 @@ TEST_F(FinalizeDatasetOpTest, MaxIntraOpParallelismNodeName) {
   auto test_case_params = MaxIntraOpParallelismParams();
   TF_ASSERT_OK(Initialize(test_case_params));
   std::vector<const DatasetBase*> inputs;
-  Status s = dataset_->InputDatasets(&inputs);
+  absl::Status s = dataset_->InputDatasets(&inputs);
   TF_ASSERT_OK(CheckDatasetNodeName(test_case_params.node_name()));
   CheckDatasetPipelineTypeStrings(
       {"MaxIntraOpParallelismDataset", "OptionsDataset", "RangeDataset"});
@@ -255,7 +255,7 @@ TEST_F(FinalizeDatasetOpTest, PrivateThreadPoolNodeName) {
   auto test_case_params = PrivateThreadPoolParams();
   TF_ASSERT_OK(Initialize(test_case_params));
   std::vector<const DatasetBase*> inputs;
-  Status s = dataset_->InputDatasets(&inputs);
+  absl::Status s = dataset_->InputDatasets(&inputs);
   TF_ASSERT_OK(CheckDatasetNodeName(test_case_params.node_name()));
   CheckDatasetPipelineTypeStrings(
       {"PrivateThreadPoolDataset", "OptionsDataset", "RangeDataset"});
@@ -265,7 +265,7 @@ TEST_F(FinalizeDatasetOpTest, ModelNodeName) {
   auto test_case_params = ModelParams();
   TF_ASSERT_OK(Initialize(test_case_params));
   std::vector<const DatasetBase*> inputs;
-  Status s = dataset_->InputDatasets(&inputs);
+  absl::Status s = dataset_->InputDatasets(&inputs);
   TF_ASSERT_OK(CheckDatasetNodeName(test_case_params.node_name()));
   CheckDatasetPipelineTypeStrings(
       {"ModelDataset", "OptionsDataset", "RangeDataset"});
@@ -275,7 +275,7 @@ TEST_F(FinalizeDatasetOpTest, OptimizationsDefaultNodeName) {
   auto test_case_params = OptimizationsDefaultParams();
   TF_ASSERT_OK(Initialize(test_case_params));
   std::vector<const DatasetBase*> inputs;
-  Status s = dataset_->InputDatasets(&inputs);
+  absl::Status s = dataset_->InputDatasets(&inputs);
   TF_ASSERT_OK(CheckDatasetNodeName(test_case_params.node_name()));
   CheckDatasetPipelineTypeStrings({"PrivateThreadPoolDataset",
                                    "MaxIntraOpParallelismDataset",
@@ -286,7 +286,7 @@ TEST_F(FinalizeDatasetOpTest, AllChainedDatasetsNodeName) {
   auto test_case_params = AllChainedDatasetsParams();
   TF_ASSERT_OK(Initialize(test_case_params));
   std::vector<const DatasetBase*> inputs;
-  Status s = dataset_->InputDatasets(&inputs);
+  absl::Status s = dataset_->InputDatasets(&inputs);
   TF_ASSERT_OK(CheckDatasetNodeName(test_case_params.node_name()));
   CheckDatasetPipelineTypeStrings(
       {"PrefetchDataset", "ModelDataset", "PrivateThreadPoolDataset",

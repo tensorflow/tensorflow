@@ -18,6 +18,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/strings/match.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "tensorflow/core/common_runtime/kernel_benchmark_testlib.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/fake_input.h"
@@ -37,7 +38,6 @@ limitations under the License.
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
-#include "tsl/lib/core/status_test_util.h"
 
 namespace tensorflow {
 
@@ -89,7 +89,7 @@ TEST_F(GatherNdOpTest, Error_OutOfRange) {
   // Feed and run
   AddInputFromArray<float>(TensorShape({5}), {0, 1, 2, 8, 4});
   AddInputFromArray<int32>(TensorShape({2, 1}), {3, 5});
-  Status s = RunOpKernel();
+  absl::Status s = RunOpKernel();
   EXPECT_TRUE(absl::StrContains(
       s.message(), "indices[1] = [5] does not index into param shape [5]"))
       << s.message();

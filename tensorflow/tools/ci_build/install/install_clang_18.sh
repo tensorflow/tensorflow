@@ -25,7 +25,7 @@ deb http://apt.llvm.org/focal/ llvm-toolchain-focal-18 main
 deb-src http://apt.llvm.org/focal/ llvm-toolchain-focal-18 main
 SOURCES
 
-apt-get autoremove clang-17 -y
+apt-get autoremove clang-17 -y || true # Remove clang-17 if it exists.
 apt-get update && apt-get install -y \
     llvm-18 \
     clang-18 \

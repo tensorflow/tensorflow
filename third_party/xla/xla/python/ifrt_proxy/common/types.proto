@@ -41,6 +41,12 @@ enum ArrayCopySemantics {
   ARRAY_COPY_SEMANTICS_DONATE_INPUT = 3;
 }
 
+enum SingleDeviceShardSemantics {
+  SINGLE_DEVICE_SHARD_SEMANTICS_UNSPECIFIED = 0;
+  SINGLE_DEVICE_SHARD_SEMANTICS_ADDRESSABLE_SHARDS = 1;
+  SINGLE_DEVICE_SHARD_SEMANTICS_ALL_SHARDS = 2;
+}
+
 message ByteStrides {
   repeated int64 strides = 1;
 }

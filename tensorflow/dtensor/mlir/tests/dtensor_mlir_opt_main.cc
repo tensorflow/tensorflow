@@ -13,15 +13,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "llvm/Support/LogicalResult.h"
 #include "mlir/InitAllDialects.h"  // from @llvm-project
 #include "mlir/InitAllExtensions.h"  // from @llvm-project
 #include "mlir/InitAllPasses.h"  // from @llvm-project
-#include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Tools/mlir-opt/MlirOptMain.h"  // from @llvm-project
 #include "stablehlo/dialect/Register.h"  // from @stablehlo
 #include "tensorflow/compiler/mlir/init_mlir.h"
 #include "tensorflow/compiler/mlir/tensorflow/dialect_registration.h"
-#include "xla/mlir_hlo/mhlo/IR/register.h"
 #include "tensorflow/dtensor/mlir/create_dtensor_mlir_passes.h"
 #include "tensorflow/dtensor/mlir/dtensor_dialect/ir/dialect.h"
 #include "tensorflow/dtensor/mlir/ir/tf_dtensor.h"
@@ -36,7 +35,6 @@ int main(int argc, char **argv) {
   mlir::registerAllDialects(registry);
   mlir::registerAllExtensions(registry);
   mlir::RegisterAllTensorFlowDialects(registry);
-  mlir::mhlo::registerAllMhloDialects(registry);
   mlir::stablehlo::registerAllDialects(registry);
   registry.insert<mlir::dtensor::DTensorDialect>();
   mlir::TF::RegisterDTensorTFOps();

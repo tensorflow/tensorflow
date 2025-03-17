@@ -17,6 +17,8 @@ limitations under the License.
 
 #define EIGEN_USE_THREADS
 
+#include <limits>
+
 #include "dnnl.hpp"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"

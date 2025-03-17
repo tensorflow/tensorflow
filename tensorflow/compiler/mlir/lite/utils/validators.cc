@@ -16,10 +16,13 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/utils/validators.h"
 
 #include <algorithm>
+#include <cstdint>
 
 #include "mlir/Dialect/Traits.h"  // from @llvm-project
+#include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributeInterfaces.h"  // from @llvm-project
+#include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 
 namespace mlir {

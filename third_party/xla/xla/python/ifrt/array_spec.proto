@@ -26,4 +26,5 @@ message ArraySpecProto {
   DTypeProto dtype = 1;
   ShapeProto shape = 2;
   ShardingProto sharding = 3;
+  optional bytes layout = 4;
 }

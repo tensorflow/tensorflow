@@ -225,7 +225,7 @@ ComposableSplitterBase::WriteToCord() {
   absl::Cord output;
   if (chunked_message->chunked_fields().empty()) {
     // Export regular pb.
-    if (!message_->SerializeToCord(&output))
+    if (!message_->SerializeToString(&output))
       return absl::InvalidArgumentError("Serialization to absl::Cord failed");
     LOG(INFO) << "Splitter output written to absl::Cord";
     return std::make_tuple(output, false);

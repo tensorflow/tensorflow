@@ -7,7 +7,6 @@ licenses(["notice"])
 py_strict_library(
     name = "config",
     srcs = ["config.py"],
-    srcs_version = "PY2AND3",
     deps = [
         "@absl_py//absl:app",
         "@absl_py//absl/flags",
@@ -17,7 +16,6 @@ py_strict_library(
 py_strict_library(
     name = "test_util",
     srcs = ["test_util.py"],
-    srcs_version = "PY2AND3",
     deps = [
         ":config",
         ":extensions",
@@ -29,6 +27,7 @@ py_strict_library(
         "//tensorflow/python/ops/numpy_ops:np_utils",
         "//tensorflow/python/ops/numpy_ops:numpy",
         "//tensorflow/python/util:nest",
+        "//tensorflow/python/util:numpy_compat",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:absltest",
         "@absl_py//absl/testing:parameterized",
@@ -38,7 +37,6 @@ py_strict_library(
 py_strict_library(
     name = "np_wrapper",
     srcs = ["np_wrapper.py"],
-    srcs_version = "PY2AND3",
     visibility = [
         "//visibility:public",
     ],
@@ -60,7 +58,6 @@ py_strict_library(
 py_strict_library(
     name = "extensions",
     srcs = ["extensions.py"],
-    srcs_version = "PY2AND3",
     deps = [
         ":np_wrapper",
         "//tensorflow:tensorflow_py",
@@ -105,8 +102,6 @@ py_strict_library(
 # py_strict_test(
 #     name = "extensions_test",
 #     srcs = ["extensions_test.py"],
-#     python_version = "PY3",
-#     srcs_version = "PY2AND3",
 #     tags = [
 #         "gpu",
 #         "no_pip",
@@ -153,7 +148,6 @@ py_strict_library(
 #         "--requires_tpu",
 #     ],
 #     main = "extensions_test.py",
-#     python_version = "PY3",
 #     tags = [
 #         "no_pip",
 #         "requires-tpu",
@@ -199,9 +193,7 @@ py_strict_test(
         "--num_generated_cases=90",
         "--enable_x64",  # Needed to enable dtype check
     ],
-    python_version = "PY3",
     shard_count = 20,
-    srcs_version = "PY2AND3",
     tags = [
         "gpu",
         "no_pip",
@@ -220,6 +212,7 @@ py_strict_test(
         "//tensorflow/python/ops/numpy_ops:np_config",
         "//tensorflow/python/ops/numpy_ops:numpy",
         "//tensorflow/python/util:nest",
+        "//tensorflow/python/util:numpy_compat",
         "@absl_py//absl/testing:absltest",
         "@absl_py//absl/testing:parameterized",
     ],
@@ -232,9 +225,7 @@ py_strict_test(
         "--num_generated_cases=90",
         "--enable_x64",  # Needed to enable dtype check
     ],
-    python_version = "PY3",
     shard_count = 10,
-    srcs_version = "PY2AND3",
     # TODO(b/164245103): Re-enable GPU once tf.tensor_strided_slice_update's segfault is fixed.
     tags = [
         "no_pip",
@@ -263,9 +254,7 @@ py_strict_test(
         "--num_generated_cases=90",
         "--enable_x64",  # Needed to enable dtype check
     ],
-    python_version = "PY3",
     shard_count = 20,
-    srcs_version = "PY2AND3",
     tags = [
         "gpu",
         "no_pip",

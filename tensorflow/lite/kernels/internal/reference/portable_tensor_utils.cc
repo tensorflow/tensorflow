@@ -37,6 +37,7 @@ const int32_t kInt16Max = std::numeric_limits<int16_t>::max();
 const int32_t kInt16Min = std::numeric_limits<int16_t>::min();
 }  // namespace
 
+// LINT.IfChange(portable_symmetric_quantize_floats)
 void PortableSymmetricQuantizeFloats(const float* values, const int size,
                                      int8_t* quantized_values, float* min_value,
                                      float* max_value, float* scaling_factor) {
@@ -68,6 +69,7 @@ void PortableSymmetricQuantizeFloats(const float* values, const int size,
         std::min(kScale, std::max(-kScale, quantized_value)));
   }
 }
+// LINT.ThenChange(//tensorflow/compiler/mlir/lite/quantization/lite/toco_legacy/portable_tensor_utils.cc:portable_symmetric_quantize_floats)
 
 void PortableAsymmetricQuantizeFloats(const float* values, const int size,
                                       int8_t* quantized_values,

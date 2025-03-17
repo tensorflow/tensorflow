@@ -17,13 +17,13 @@ limitations under the License.
 
 #include <memory>
 #include <string>
-#include <string_view>
 #include <utility>
 #include <variant>
 
 #include "absl/memory/memory.h"
 #include "absl/strings/str_cat.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/service/gpu/model/hlo_op_profile.pb.h"
 #include "xla/service/gpu/model/hlo_op_profiles_data.h"
 #include "xla/stream_executor/device_description.h"
 #include "tsl/platform/logging.h"
@@ -50,8 +50,8 @@ namespace gpu {
 }
 
 /*static*/ std::unique_ptr<HloOpProfiles> HloOpProfiles::Load(
-    std::string_view profiles_text_proto,
-    std::string_view default_profile_name) {
+    absl::string_view profiles_text_proto,
+    absl::string_view default_profile_name) {
   ProfilesNestedMap profiles_map;
   DeviceHloInstructionProfiles all_device_profiles;
   CHECK(tsl::protobuf::TextFormat::ParseFromString(

@@ -10,7 +10,6 @@ package(
 py_strict_library(
     name = "module",
     srcs = ["module.py"],
-    srcs_version = "PY3",
     deps = [
         "//tensorflow/python:tf2",
         "//tensorflow/python/framework:composite_tensor",

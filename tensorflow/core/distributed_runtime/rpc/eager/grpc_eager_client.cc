@@ -15,10 +15,18 @@ limitations under the License.
 
 #include "tensorflow/core/distributed_runtime/rpc/eager/grpc_eager_client.h"
 
+#include <cstddef>
 #include <cstdint>
+#include <memory>
 #include <string>
+#include <tuple>
+#include <unordered_map>
+#include <utility>
+#include <vector>
 
 #include "grpcpp/generic/generic_stub.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "xla/tsl/distributed_runtime/call_options.h"
 #include "tensorflow/core/distributed_runtime/call_options.h"
 #include "tensorflow/core/distributed_runtime/rpc/eager/grpc_eager_service.h"
@@ -243,9 +251,9 @@ class GrpcEagerClient : public EagerClient {
       it->second.SendNextRequest(*request, response, std::move(done_wrapped));
     } else {
       Notification n;
-      Status status;
+      absl::Status status;
       EnqueueAsync(call_opts, request, response,
-                   [&n, &status](const Status& s) {
+                   [&n, &status](const absl::Status& s) {
                      status.Update(s);
                      n.Notify();
                    });
@@ -268,7 +276,7 @@ class GrpcEagerClient : public EagerClient {
 
   StatusCallback callback_wrapper(StatusCallback done) {
     Ref();
-    return [this, done = std::move(done)](const Status& status) {
+    return [this, done = std::move(done)](const absl::Status& status) {
       done(status);
       this->Unref();
       if (TF_PREDICT_FALSE(!status.ok())) {
@@ -304,8 +312,8 @@ class GrpcEagerClientCache : public EagerClientCache {
 
   ~GrpcEagerClientCache() override { threads_.clear(); }
 
-  Status GetClient(const string& target,
-                   core::RefCountPtr<EagerClient>* client) override {
+  absl::Status GetClient(const string& target,
+                         core::RefCountPtr<EagerClient>* client) override {
     mutex_lock l(clients_mu_);
     auto it = clients_.find(target);
     if (it == clients_.end()) {

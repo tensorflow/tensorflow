@@ -15,6 +15,7 @@ limitations under the License.
 
 #include <Python.h>
 
+#include <string>
 #include <vector>
 
 #include "absl/types/span.h"

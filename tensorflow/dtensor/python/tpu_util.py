@@ -33,6 +33,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.tpu import topology
+from tensorflow.python.util import numpy_compat
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -118,7 +119,7 @@ def _create_tpu_topology(core_locations: List[_CoreLocation], num_tasks: int,
   mesh_shape = [x_max + 1, y_max + 1, z_max + 1, core_max + 1]
 
   device_coordinates = [[l.x, l.y, l.z, l.core] for l in core_locations]
-  device_coordinates = np.asarray(device_coordinates).reshape(
+  device_coordinates = numpy_compat.np_asarray(device_coordinates).reshape(
       num_tasks, num_devices_per_task, 4)
 
   return topology.Topology(

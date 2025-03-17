@@ -270,7 +270,7 @@ void ConvWithAccFunctionAndOutFunction(
 // Quantized Conv on per-tensor quantized padded and dilated transposed lhs and
 // per-tensor quantized transposed rhs.
 template <typename Tin, typename Tout>
-Status EvalLhsPerTensorAndRhsPerTensorQuantizedConv(
+absl::Status EvalLhsPerTensorAndRhsPerTensorQuantizedConv(
     const Tensor& lhs, const Tensor& rhs,
     const UniformQuantizedConvolutionParams& convolution_params,
     const float lhs_scale, const int32_t lhs_zero_point, const float rhs_scale,
@@ -308,7 +308,7 @@ Status EvalLhsPerTensorAndRhsPerTensorQuantizedConv(
 // Quantized Conv on per-tensor quantized padded and dilated transposed lhs and
 // per-channel quantized transposed rhs.
 template <typename Tin, typename Tout>
-Status EvalLhsPerTensorAndRhsPerChannelQuantizedConv(
+absl::Status EvalLhsPerTensorAndRhsPerChannelQuantizedConv(
     OpKernelContext* context, const Tensor& lhs, const Tensor& rhs,
     const UniformQuantizedConvolutionParams& convolution_params,
     const float lhs_scale, const int32_t lhs_zero_point,
@@ -449,7 +449,7 @@ void EvalLhsPerBatchAndRhsPerChannelQuantizedConv(
 // Given quantized `lhs` and quantized `rhs`, performs quantized convolution and
 // writes to `out`. Assumes that `out` is already allocated with correct size.
 template <typename Tin, typename Tout>
-Status EvalQuantizedConv(
+absl::Status EvalQuantizedConv(
     OpKernelContext* context, const Tensor& lhs, const Tensor& rhs,
     const UniformQuantizedConvolutionParams& convolution_params,
     const Tensor& lhs_scales, const Tensor& lhs_zero_points,
@@ -519,7 +519,7 @@ Status EvalQuantizedConv(
 // For more details on `lhs` quantization policy, refer to the comment of class
 // UniformQuantizedConvolutionHybridOp below.
 template <typename Trhs>
-Status EvalHybridConv(
+absl::Status EvalHybridConv(
     OpKernelContext* context, const Tensor& lhs, const Tensor& rhs,
     const UniformQuantizedConvolutionParams& convolution_params,
     const Tensor& rhs_scales, const Tensor& rhs_zero_points, Tensor& out) {

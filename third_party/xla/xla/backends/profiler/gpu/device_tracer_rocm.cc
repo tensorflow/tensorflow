@@ -26,6 +26,11 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "xla/backends/profiler/gpu/rocm_collector.h"
 #include "xla/backends/profiler/gpu/rocm_tracer.h"
+#include "xla/tsl/profiler/backends/cpu/annotation_stack.h"
+#include "xla/tsl/profiler/utils/parse_annotation.h"
+#include "xla/tsl/profiler/utils/xplane_builder.h"
+#include "xla/tsl/profiler/utils/xplane_schema.h"
+#include "xla/tsl/profiler/utils/xplane_utils.h"
 #include "xla/tsl/util/env_var.h"
 #include "tsl/platform/abi.h"
 #include "tsl/platform/env_time.h"
@@ -33,13 +38,8 @@ limitations under the License.
 #include "tsl/platform/macros.h"
 #include "tsl/platform/mutex.h"
 #include "tsl/platform/thread_annotations.h"
-#include "tsl/profiler/backends/cpu/annotation_stack.h"
 #include "tsl/profiler/lib/profiler_factory.h"
 #include "tsl/profiler/lib/profiler_interface.h"
-#include "tsl/profiler/utils/parse_annotation.h"
-#include "tsl/profiler/utils/xplane_builder.h"
-#include "tsl/profiler/utils/xplane_schema.h"
-#include "tsl/profiler/utils/xplane_utils.h"
 
 namespace xla {
 namespace profiler {
@@ -47,7 +47,6 @@ namespace profiler {
 using tensorflow::ProfileOptions;
 using tsl::mutex;
 using tsl::mutex_lock;
-using tsl::Status;
 using tsl::profiler::Annotation;
 using tsl::profiler::AnnotationStack;
 using tsl::profiler::FindOrAddMutablePlaneWithName;

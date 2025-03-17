@@ -26,7 +26,8 @@ limitations under the License.
 
 namespace tensorflow {
 
-Status TrackUnique(int64_t request_id, RecentRequestIds* recent_request_ids) {
+absl::Status TrackUnique(int64_t request_id,
+                         RecentRequestIds* recent_request_ids) {
   RecvTensorRequest request;
   request.set_request_id(request_id);
   return recent_request_ids->TrackUnique(request_id, "recent_request_ids_test",

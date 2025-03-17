@@ -14,12 +14,13 @@ limitations under the License.
 ==============================================================================*/
 #include <algorithm>
 #include <cstdio>
-#include <iterator>
 #include <memory>
 #include <stack>
 #include <string>
 #include <vector>
 
+#include "absl/log/check.h"
+#include "absl/status/status.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/lite/toco/graph_transformations/graph_transformations.h"
 #include "tensorflow/lite/toco/model.h"
@@ -401,9 +402,9 @@ void RemoveUnidirectionalSequenceOps(std::stack<Operator*> uni_sequence_ops,
 }
 
 template <typename T>
-::tensorflow::Status GroupDynamicSequenceOps(Model* model, std::size_t op_index,
-                                             OperatorType operator_type,
-                                             bool* modified) {
+absl::Status GroupDynamicSequenceOps(Model* model, std::size_t op_index,
+                                     OperatorType operator_type,
+                                     bool* modified) {
   *modified = false;
 
   // We assume there's a concatenation right after the bidirectional sequence
@@ -475,9 +476,9 @@ template <typename T>
 
 }  // namespace
 
-::tensorflow::Status GroupBidirectionalSequenceLstm::Run(Model* model,
-                                                         std::size_t op_index,
-                                                         bool* modified) {
+absl::Status GroupBidirectionalSequenceLstm::Run(Model* model,
+                                                 std::size_t op_index,
+                                                 bool* modified) {
   *modified = false;
   // Bidirectional sequence lstm will generate two separate unidirectional
   // sequence lstm ops, for static bidirectional sequence lstm, there will be
@@ -552,9 +553,9 @@ template <typename T>
   return absl::OkStatus();
 }
 
-::tensorflow::Status GroupBidirectionalSequenceRnn::Run(Model* model,
-                                                        std::size_t op_index,
-                                                        bool* modified) {
+absl::Status GroupBidirectionalSequenceRnn::Run(Model* model,
+                                                std::size_t op_index,
+                                                bool* modified) {
   *modified = false;
   // Bidirectional sequence rnn will generate two separate unidirectional
   // sequence rnn ops, for static bidirectional sequence rnn, there will be
@@ -627,14 +628,16 @@ template <typename T>
   return absl::OkStatus();
 }
 
-::tensorflow::Status GroupDynamicBidirectionalSequenceRnn::Run(
-    Model* model, std::size_t op_index, bool* modified) {
+absl::Status GroupDynamicBidirectionalSequenceRnn::Run(Model* model,
+                                                       std::size_t op_index,
+                                                       bool* modified) {
   return GroupDynamicSequenceOps<BidirectionalSequenceRnnOperator*>(
       model, op_index, OperatorType::kBidirectionalSequenceRnn, modified);
 }
 
-::tensorflow::Status GroupDynamicBidirectionalSequenceLstm::Run(
-    Model* model, std::size_t op_index, bool* modified) {
+absl::Status GroupDynamicBidirectionalSequenceLstm::Run(Model* model,
+                                                        std::size_t op_index,
+                                                        bool* modified) {
   return GroupDynamicSequenceOps<BidirectionalSequenceLstmOperator*>(
       model, op_index, OperatorType::kBidirectionalSequenceLstm, modified);
 }

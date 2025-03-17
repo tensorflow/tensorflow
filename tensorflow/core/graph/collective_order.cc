@@ -23,11 +23,11 @@ namespace {
 
 // Find all CollectiveReduce nodes and the existing data dependencies between
 // them.
-Status DiscoverDataDependencies(
+absl::Status DiscoverDataDependencies(
     const Graph* graph, std::vector<Node*>* collective_nodes,
     std::vector<int32>* instance_keys,
     absl::flat_hash_map<Node*, absl::flat_hash_set<int32>>* data_dependencies) {
-  Status s;
+  absl::Status s;
   // Algorithm: do Reverse DFS starting at sink.  `node_leave` is called when
   // all parents of `node` have been visited.  At that point,
   // `data_dependencies[node]` is a list containing `instance_key` of every
@@ -40,7 +40,7 @@ Status DiscoverDataDependencies(
     bool enter_node =
         node->IsCollective() && node->type_string() == "CollectiveReduce";
     if (enter_node) {
-      Status get_attr_status =
+      absl::Status get_attr_status =
           GetNodeAttr(node->attrs(), "instance_key", &instance_key);
       s.Update(get_attr_status);
       collective_nodes->push_back(node);
@@ -67,7 +67,7 @@ Status DiscoverDataDependencies(
 // collective nodes, create control dependencies between concurrent collectives
 // and store in `dependency_edges`.
 // If there exists an edge a -> b then `dependency_edges[a]` contains `b`
-Status CreateControlDependencies(
+absl::Status CreateControlDependencies(
     const std::vector<Node*>& collective_nodes,
     const std::vector<int32>& instance_keys,
     absl::flat_hash_map<Node*, absl::flat_hash_set<int32>>* data_dependencies,
@@ -144,7 +144,7 @@ Status CreateControlDependencies(
 // Insert control dependencies defined by `dependency_edges` in `graph`.  If
 // `order_type` is `kEdges`, insert explicit control edges, else if `order_type`
 // is `kAttrs`, encode dependencies as an attribute on collective node.
-Status InsertControlDependencies(
+absl::Status InsertControlDependencies(
     Graph* graph, GraphCollectiveOrder order_type,
     const absl::flat_hash_map<Node*, absl::flat_hash_set<Node*>>&
         dependency_edges) {
@@ -181,7 +181,7 @@ Status InsertControlDependencies(
 
 }  // namespace
 
-Status OrderCollectives(Graph* graph, GraphCollectiveOrder order_type) {
+absl::Status OrderCollectives(Graph* graph, GraphCollectiveOrder order_type) {
   // `instance_keys[i]` corresponds to `collective_nodes[i]`
   std::vector<Node*> collective_nodes;
   std::vector<int32> instance_keys;

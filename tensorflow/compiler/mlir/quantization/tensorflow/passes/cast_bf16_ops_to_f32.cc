@@ -47,10 +47,10 @@ class CastBf16OpsToF32Pass
   void runOnOperation() override;
 };
 
-class CastBf16OpsToF32 : public RewritePattern {
+class CastBf16OpsToF32 : public RewritePattern::SplitMatchAndRewrite {
  public:
   explicit CastBf16OpsToF32(MLIRContext* context)
-      : RewritePattern(MatchAnyOpTypeTag(), /*benefit=*/1, context) {}
+      : SplitMatchAndRewrite(MatchAnyOpTypeTag(), /*benefit=*/1, context) {}
 
  private:
   LogicalResult match(Operation* op) const override {
@@ -117,7 +117,7 @@ void CastBf16OpsToF32Pass::runOnOperation() {
   patterns.add<CastBf16OpsToF32>(ctx);
   populateWithGenerated(patterns);
 
-  if (failed(applyPatternsAndFoldGreedily(module_op, std::move(patterns)))) {
+  if (failed(applyPatternsGreedily(module_op, std::move(patterns)))) {
     module_op.emitError() << "quant-cast-bf16-ops-to-f32 failed.";
     signalPassFailure();
   }

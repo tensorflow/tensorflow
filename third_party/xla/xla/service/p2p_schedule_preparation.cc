@@ -28,12 +28,12 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/string_view.h"
+#include "xla/hlo/analysis/hlo_reachability.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
-#include "xla/hlo/ir/hlo_reachability.h"
 #include "xla/hlo/utils/hlo_query.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/util.h"
@@ -62,9 +62,6 @@ bool IsP2POp(const HloInstruction* op) {
 // operations, regardless whether they are on hosts or on devices.
 bool IsCollectiveOp(const HloInstruction* op) {
   HloOpcode opcode = op->opcode();
-  // TODO(b/309639264): We temporarily make this pass to also order custom-calls
-  // with respect to P2P chains, to workaround an NVIDIA bug. Remove the code
-  // for custom-calls once the bug has been fixed.
   if (opcode == HloOpcode::kCustomCall) {
     return true;
   }

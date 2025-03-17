@@ -17,7 +17,6 @@ package(
 py_strict_library(
     name = "tpu_cluster_resolver_py",
     srcs = ["tpu_cluster_resolver.py"],
-    srcs_version = "PY3",
     deps = [
         "//tensorflow/core/protobuf/tpu:topology_proto_py",
         "//tensorflow/python/distribute/cluster_resolver:base_cluster_resolver_py",
@@ -39,7 +38,6 @@ tf_py_strict_test(
     srcs = ["tpu_cluster_resolver_test.py"],
     grpc_enabled = True,
     main = "tpu_cluster_resolver_test.py",
-    python_version = "PY3",
     deps = [
         ":tpu_cluster_resolver_py",
         "//tensorflow/core/protobuf/tpu:topology_proto_py",

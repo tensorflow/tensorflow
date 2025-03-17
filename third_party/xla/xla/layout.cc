@@ -21,6 +21,7 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
@@ -28,8 +29,8 @@ limitations under the License.
 #include "xla/primitive_util.h"
 #include "xla/printer.h"
 #include "xla/shape.h"
+#include "xla/tsl/platform/logging.h"  // IWYU pragma: keep
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/logging.h"  // IWYU pragma: keep
 
 namespace xla {
 
@@ -217,12 +218,13 @@ Layout& Layout::operator=(Layout&& other) = default;
   for (const TileProto& tile_proto : proto.tiles()) {
     *layout.add_tiles() = Tile::CreateFromProto(tile_proto);
   }
-  if (proto.tail_padding_alignment_in_elements() != 0) {
-    layout.set_tail_padding_alignment_in_elements(
-        proto.tail_padding_alignment_in_elements());
-  } else {
-    layout.set_tail_padding_alignment_in_elements(1);
-  }
+  // If the proto does not have tail_padding_alignment_in_elements set, or have
+  // it set to 0, we treat it as 1.
+  const auto alignment = proto.tail_padding_alignment_in_elements() != 0
+                             ? proto.tail_padding_alignment_in_elements()
+                             : 1;
+  layout.set_tail_padding_alignment_in_elements(alignment,
+                                                ActionOnError::kWarning);
   layout.set_index_primitive_type(proto.index_primitive_type());
   layout.set_pointer_primitive_type(proto.pointer_primitive_type());
   layout.set_element_size_in_bits(proto.element_size_in_bits());

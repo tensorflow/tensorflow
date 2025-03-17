@@ -17,7 +17,7 @@ limitations under the License.
 #define XLA_PYTHON_XLA_COMPILER_H_
 
 // placeholder for index annotation headers
-#include "third_party/nanobind/include/nanobind/nanobind.h"
+#include "nanobind/nanobind.h"
 
 namespace xla {
 

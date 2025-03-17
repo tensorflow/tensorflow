@@ -29,8 +29,8 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
-Status PopulateInfeedLayoutVector(const xla::Shape& shape,
-                                  std::vector<int>* layouts) {
+absl::Status PopulateInfeedLayoutVector(const xla::Shape& shape,
+                                        std::vector<int>* layouts) {
   if (shape.IsTuple()) {
     int64_t tuple_elements = xla::ShapeUtil::TupleElementCount(shape);
     for (int64_t i = 0; i < tuple_elements; ++i) {
@@ -73,7 +73,7 @@ absl::StatusOr<bool> MakeLayout(absl::Span<const int64_t> minor_to_major,
   return true;
 }
 
-Status AssignLayout(
+absl::Status AssignLayout(
     absl::Span<const int64_t> minor_to_major,
     const std::function<xla::Layout(const xla::Shape&)>& layout_func,
     xla::Shape* shape) {
@@ -89,8 +89,8 @@ Status AssignLayout(
 }  // namespace
 
 // Convert an XLA Shape into the equivalent TensorFlow shape.
-Status XLAShapeToTensorShape(const xla::Shape& shape,
-                             TensorShape* tensor_shape) {
+absl::Status XLAShapeToTensorShape(const xla::Shape& shape,
+                                   TensorShape* tensor_shape) {
   if (shape.IsTuple()) {
     return errors::InvalidArgument("XLA shape ",
                                    xla::ShapeUtil::HumanString(shape),
@@ -104,19 +104,18 @@ Status XLAShapeToTensorShape(const xla::Shape& shape,
 }
 
 // Convert a TensorShape into the equivalent XLA Shape proto.
-Status TensorShapeToXLAShape(DataType dtype,
-                             const PartialTensorShape& tensor_shape,
-                             xla::Shape* shape) {
+absl::Status TensorShapeToXLAShape(DataType dtype,
+                                   const PartialTensorShape& tensor_shape,
+                                   xla::Shape* shape) {
   xla::PrimitiveType type;
   TF_RETURN_IF_ERROR(DataTypeToPrimitiveType(dtype, &type));
   *shape = TensorShapeToXLAShape(type, tensor_shape);
   return absl::OkStatus();
 }
 
-Status TensorShapeToBoundedXLAShape(DataType dtype,
-                                    const PartialTensorShape& tensor_shape,
-                                    const TensorShape& bound,
-                                    xla::Shape* shape) {
+absl::Status TensorShapeToBoundedXLAShape(
+    DataType dtype, const PartialTensorShape& tensor_shape,
+    const TensorShape& bound, xla::Shape* shape) {
   xla::PrimitiveType type;
   TF_RETURN_IF_ERROR(DataTypeToPrimitiveType(dtype, &type));
   if (tensor_shape.unknown_rank()) {
@@ -185,8 +184,9 @@ xla::Shape TensorShapeToXLAShape(xla::PrimitiveType type,
 }
 
 // Convert a TensorShape into the equivalent XLA Shape proto.
-Status TensorShapeToXLAShape(DataType dtype, const TensorShape& tensor_shape,
-                             xla::Shape* shape) {
+absl::Status TensorShapeToXLAShape(DataType dtype,
+                                   const TensorShape& tensor_shape,
+                                   xla::Shape* shape) {
   xla::PrimitiveType type;
   TF_RETURN_IF_ERROR(DataTypeToPrimitiveType(dtype, &type));
   *shape = TensorShapeToXLAShape(type, tensor_shape);
@@ -220,7 +220,7 @@ absl::StatusOr<std::vector<int>> GetShapeLayoutVector(const xla::Shape& shape) {
   return layouts;
 }
 
-Status GetShapeWithLayout(
+absl::Status GetShapeWithLayout(
     const xla::Shape& input_shape, absl::Span<const int64_t> minor_to_major,
     const std::function<xla::Layout(const xla::Shape&)>& layout_func,
     xla::Shape* output_shape) {

@@ -77,7 +77,7 @@ class CompilationCacheEntryRef {
   //
   // If the requested subentry does not exist, the ref will point to a nullptr
   // entry, and the original entry will be unref'ed.
-  virtual Status ToSubEntryRef(CompilationCacheFetchTarget fetch_target);
+  virtual absl::Status ToSubEntryRef(CompilationCacheFetchTarget fetch_target);
 
  protected:
   TpuCompilationCacheInterface* parent_;  // Not owned.
@@ -109,7 +109,7 @@ class TpuCompilationCacheInterface : public ResourceBase {
   // one TPUExecutableProto per model-parallel core into its passed argument. It
   // should return OK if and only if compilation succeeds. The executable proto
   // vector will be discarded on non-OK status.
-  Status CompileIfKeyAbsent(
+  absl::Status CompileIfKeyAbsent(
       const TpuCompilationCacheKey& subgraph_key,
       const SessionMetadata* session_metadata,
       CompilationRefHolder* per_step_ref_holder, int64_t* uid,
@@ -117,7 +117,8 @@ class TpuCompilationCacheInterface : public ResourceBase {
       std::vector<std::string>* sharding_key,
       std::vector<bool>* may_modify_variables,
       absl::Span<const xla::HloProto* const>* hlo_metadatas,
-      const std::function<Status(TpuProgramGroupInterface*)>& compile_function);
+      const std::function<absl::Status(TpuProgramGroupInterface*)>&
+          compile_function);
 
   // Differences between MarkEntryForEviction and Release:
   // There are two modes of managing cache entries:
@@ -132,28 +133,28 @@ class TpuCompilationCacheInterface : public ResourceBase {
   // called if per_step_ref_holder was NOT nullptr in the corresponding call to
   // CompileIfKeyAbsent(subgraph_key, ...). Otherwise, use Release(int64
   // subgraph_uid).
-  Status MarkEntryForEviction(int64_t subgraph_uid);
+  absl::Status MarkEntryForEviction(int64_t subgraph_uid);
 
   // Manually discards a reference to the compiled subgraph. This should only be
   // called if per_step_ref_holder was nullptr in the corresponding call to
   // CompileIfKeyAbsent(subgraph_key, ...).
-  Status Release(int64_t subgraph_uid);
+  absl::Status Release(int64_t subgraph_uid);
 
   // Looks up an executable corresponding to the model-parallel core index of
   // the subgraph represented by key. On success a pointer to an EntryRef
   // holding the program is returned in entry.
-  Status Lookup(const std::string& proto_key,
-                std::unique_ptr<CompilationCacheEntryRef>* entry);
+  absl::Status Lookup(const std::string& proto_key,
+                      std::unique_ptr<CompilationCacheEntryRef>* entry);
 
   // Looks up an executable corresponding to the model-parallel core index of
   // the subgraph represented by uid. On success a pointer to an EntryRef
   // holding the program is returned in entry.
-  Status Lookup(int64_t uid, int proto_index,
-                std::unique_ptr<CompilationCacheEntryRef>* entry);
+  absl::Status Lookup(int64_t uid, int proto_index,
+                      std::unique_ptr<CompilationCacheEntryRef>* entry);
 
   // Looks up the subgraph represented by uid, and returns the vector of keys,
   // one per core, corresponding to that subgraph.
-  Status GetKeysFromUid(int64_t uid, std::vector<std::string>* keys);
+  absl::Status GetKeysFromUid(int64_t uid, std::vector<std::string>* keys);
 
   // Makes a reference holder for this cache, that can be stored in the per-step
   // resource manager and will ensure that compiled entries persist until the
@@ -198,7 +199,7 @@ class TpuCompilationCacheInterface : public ResourceBase {
   // of unloading programs that corresponds to possibly removed cache
   // entries. The split helps to manage locking since we prefer to perform
   // unloading without holding extra locks.
-  Status CompileIfKeyAbsentHelper(
+  absl::Status CompileIfKeyAbsentHelper(
       const TpuCompilationCacheKey& subgraph_key,
       const SessionMetadata* session_metadata,
       CompilationRefHolder* per_step_ref_holder, int64_t* uid,
@@ -207,7 +208,8 @@ class TpuCompilationCacheInterface : public ResourceBase {
       std::vector<bool>* may_modify_variables,
       std::vector<CompiledSubgraph*>* removed_entries,
       absl::Span<const xla::HloProto* const>* hlo_metadatas,
-      const std::function<Status(TpuProgramGroupInterface*)>& compile_function);
+      const std::function<absl::Status(TpuProgramGroupInterface*)>&
+          compile_function);
 
   // This is called by the cache when entry is marked for eviction; by
   // a RefHolder (via DiscardEntryRefs) when a step completes; and by
@@ -267,7 +269,7 @@ class TpuCompilationCacheInterface : public ResourceBase {
   // **InitializeEntry releases mu_ during the call to initialize_programs.**
   virtual CompiledSubgraph* InitializeEntry(
       const std::string& key,
-      const std::function<Status(TpuProgramGroupInterface*)>&
+      const std::function<absl::Status(TpuProgramGroupInterface*)>&
           initialize_programs,
       const TpuCompilationCacheKey& subgraph_key)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_) = 0;

@@ -1,0 +1,180 @@
+# Copyright 2025 The OpenXLA Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ============================================================================
+name: Postsubmit Benchmarks
+permissions:
+  contents: read
+on:
+  workflow_dispatch:
+    inputs:
+      halt-for-connection:
+        description: 'Should this workflow run wait for a remote connection?'
+        type: choice
+        required: true
+        default: 'no'
+        options:
+        - 'yes'
+        - 'no'
+  push:
+    branches:
+      - main
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
+  cancel-in-progress: ${{ github.ref != 'main' }}
+
+jobs:
+  Tests:
+    strategy:
+      # Don't fail fast - want to see results for all builds even if one fails.
+      fail-fast: false
+      matrix:
+        job_info: [
+          {
+            pool: "linux-x86-n2-16",
+            container: "us-central1-docker.pkg.dev/tensorflow-sigs/tensorflow/ml-build:latest",
+            pretty_name: "XLA Linux x86 CPU 16 vcpu Presubmit",
+            bazel_arch_dir: "k8-opt",
+            platform: "CPU"
+          },
+          {
+            pool: "linux-arm64-c4a-16",
+            container: "us-central1-docker.pkg.dev/tensorflow-sigs/tensorflow/ml-build-arm64:latest",
+            pretty_name: "XLA Linux ARM64 CPU 16 vcpu Presubmit",
+            bazel_arch_dir: "aarch64-opt",
+            platform: "CPU"
+          },
+          {
+            pool: "linux-x86-n2-128",
+            container: "us-central1-docker.pkg.dev/tensorflow-sigs/tensorflow/ml-build:latest",
+            pretty_name: "XLA Linux x86 CPU 128 vcpu Presubmit",
+            bazel_arch_dir: "k8-opt",
+            platform: "CPU"
+          },
+          {
+            pool: "linux-x86-g2-16-l4-1gpu",
+            container: "us-central1-docker.pkg.dev/tensorflow-sigs/tensorflow/ml-build:latest",
+            pretty_name: "XLA Linux x86 GPU T4 16 vcpu Presubmit",
+            bazel_arch_dir: "k8-opt",
+            platform: "GPU"
+          },
+          {
+            pool: "linux-x86-g2-48-l4-4gpu",
+            container: "us-central1-docker.pkg.dev/tensorflow-sigs/tensorflow/ml-build:latest",
+            pretty_name: "XLA Linux x86 GPU T4 48 vcpu Presubmit",
+            bazel_arch_dir: "k8-opt",
+            platform: "GPU"
+          },
+        ]
+    name: ${{ matrix.job_info.pretty_name }}
+    runs-on: ${{ matrix.job_info.pool }}
+    container: ${{ matrix.job_info.container }}
+    defaults:
+      run:
+        shell: bash
+    timeout-minutes: 10
+    env:
+      OUTPUT_FILE_PATH: ${{ github.workspace }}/hlo_test_output.txt
+    steps:
+      - name: Print machine specs
+        run: |
+          lscpu
+          free -h  # Memory information
+          df -h    # Disk space information
+          uname -a # Kernel information
+
+      - name: Print GitHub Context
+        run: |
+          echo "GitHub SHA: ${{ github.sha }}"
+          echo "GitHub Ref: ${{ github.ref }}"
+          echo "GitHub Ref Name: ${{ github.ref_name }}"
+          echo "GitHub Head Ref: ${{ github.head_ref }})"
+          echo "GitHub Base Ref: ${{ github.base_ref }})"
+          echo "GitHub Repository: ${{ github.repository }}"
+          echo "GitHub Run ID: ${{ github.run_id }}"
+          echo "GitHub Run Number: ${{ github.run_number }}"
+          echo "GitHub Workflow: ${{ github.workflow }}"
+          echo "GitHub Actor: ${{ github.actor }}"
+          echo "GitHub Event Name: ${{ github.event_name }}"
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            echo "Pull Request Number: ${{ github.event.pull_request.number }}"
+            echo "Pull Request Head Ref: ${{ github.event.pull_request.head.ref }}"
+            echo "Pull Request Base Ref: ${{ github.event.pull_request.base.ref }}"
+          fi
+      # Find the current PR number, if any, because github context doesn't have it for push events.
+      - uses: jwalton/gh-find-current-pr@master
+        id: findPr
+        with:
+          # Can be "open", "closed", or "all".  Defaults to "open".
+          state: all
+      # This will echo "Your PR is 7", or be skipped if there is no current PR.
+      - run: echo "PR_NUMBER=${{ steps.findPr.outputs.pr }}"
+        if: success() && steps.findPr.outputs.number
+        env:
+          PR: ${{ steps.findPr.outputs.pr }}
+
+      - name: Checkout OpenXLA
+        uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4.1.1
+
+      - name: "Run build.py"
+        run: |
+          ./build_tools/ci/build.py --build="${{ matrix.job_info.pretty_name }}_github_actions"
+
+      # Run the corresponding HLO tests based on platform
+      - name: Run HLO tests
+        run: |
+          bazel_arch_dir="${{ matrix.job_info.bazel_arch_dir }}"
+          binary_path=""
+          test_hlo_file=""
+
+          if [[ ${{ matrix.job_info.platform }} == "CPU" ]]; then
+            binary_path="./bazel-out/${bazel_arch_dir}/bin/xla/tools/run_hlo_module"
+            test_hlo_file="xla/tools/hlo_opt/tests/cpu_hlo.hlo"
+            echo "Running CPU test with binary: $binary_path"
+            pwd #print working directory
+            $binary_path --input_format=hlo --reference_platform="" --platform="${{ matrix.job_info.platform }}" $test_hlo_file > "$OUTPUT_FILE_PATH"
+            cat "$OUTPUT_FILE_PATH"
+          elif [[ ${{ matrix.job_info.platform }} == "GPU" ]]; then
+            binary_dir="./bazel-out/${bazel_arch_dir}/bin/xla/tools"
+            test_hlo_file="xla/tools/hlo_opt/tests/gpu_hlo_backend.hlo"
+            echo "Running GPU test with binary: $binary_dir"
+            pwd #print working directory
+            $binary_dir/multihost_hlo_runner/hlo_runner_main_gpu --device_type=gpu --log_output=True --use_spmd_partitioning --profile_execution=True  --xla_gpu_dump_xspace_to="$GITHUB_WORKSPACE/$test_hlo_file"_xspace.pb "$test_hlo_file" > "$OUTPUT_FILE_PATH"
+            $binary_dir/compute_gpu_device_stats_main_gpu --input="$GITHUB_WORKSPACE/$test_hlo_file"_xspace.pb >> "$OUTPUT_FILE_PATH"
+            cat "$OUTPUT_FILE_PATH"
+          else
+            echo "Unsupported platform: ${{ matrix.job_info.platform }}"
+            exit 1
+          fi
+          echo "Output written to: $OUTPUT_FILE_PATH"
+
+      - name: Upload HLO test output to a GCS bucket
+        run: |
+          GCS_BUCKET="gs://openxla-postsubmit-transient"
+          TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+          DATE_FOLDER=$(date +%Y%m%d)
+          FILENAME="hlo_test_output.txt"
+          COMMIT_SHA="${{ github.sha }}"
+          RUN_ID="${{ github.run_id }}"
+          PR_NUMBER="${{ steps.findPr.outputs.pr }}"
+          PR_SUFFIX=""
+          if [[ -n "$PR_NUMBER" ]]; then
+            PR_SUFFIX="_pr_${PR_NUMBER}"
+          fi
+
+          GCS_OBJECT_NAME="${DATE_FOLDER}/${TIMESTAMP}_${{ matrix.job_info.pool }}_run_${RUN_ID}_commit_${COMMIT_SHA}${PR_SUFFIX}_${FILENAME}"
+
+          echo "Uploading $OUTPUT_FILE_PATH to $GCS_BUCKET/$GCS_OBJECT_NAME"
+          ls -l "$OUTPUT_FILE_PATH" # Verify the file exists
+          gsutil cp "$OUTPUT_FILE_PATH" "$GCS_BUCKET/$GCS_OBJECT_NAME"

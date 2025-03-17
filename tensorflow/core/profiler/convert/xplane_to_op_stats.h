@@ -18,9 +18,11 @@ limitations under the License.
 
 #include <vector>
 
+#include "tensorflow/core/profiler/convert/duty_cycle_tracker.h"
 #include "tensorflow/core/profiler/convert/repository.h"
 #include "tensorflow/core/profiler/protobuf/op_stats.pb.h"
 #include "tensorflow/core/profiler/utils/hlo_proto_map.h"
+#include "tensorflow/core/profiler/utils/xplane_visitor.h"
 #include "tsl/profiler/protobuf/xplane.pb.h"
 
 namespace tensorflow {
@@ -54,6 +56,9 @@ PerfEnv MakePerfEnv(double peak_tera_flops_per_second,
 
 // Extracts PerfEnv from XPlane stats.
 PerfEnv GetPerfEnvFromXPlane(const XPlane& device_plane);
+
+// Constructs a DutyCycleTracker from the given XPlaneVisitor.
+DutyCycleTracker ConstructDutyCycleTracker(XPlaneVisitor& visitor);
 
 }  // namespace profiler
 }  // namespace tensorflow

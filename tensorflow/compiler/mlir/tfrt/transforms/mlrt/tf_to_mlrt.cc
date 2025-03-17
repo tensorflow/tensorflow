@@ -23,6 +23,7 @@ limitations under the License.
 #include <utility>
 
 #include "google/protobuf/text_format.h"
+#include "absl/log/log.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/Casting.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
@@ -43,22 +44,23 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/host_runtime/tfrt_ops.h.inc"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
-#include "tensorflow/compiler/mlir/tensorflow/translate/export_tf_dialect_op.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_tensor.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/translate_utils.h"
 #include "tensorflow/compiler/mlir/tfrt/constants.h"
 #include "tensorflow/compiler/mlir/tfrt/ir/mlrt/mlrt_dialect.h"
 #include "tensorflow/compiler/mlir/tfrt/ir/mlrt/mlrt_ops.h"
 #include "tensorflow/compiler/mlir/tfrt/ir/mlrt/tf_mlrt_ops.h"
 #include "tensorflow/compiler/mlir/tfrt/ir/mlrt/tf_mlrt_tpu_ops.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/mlrt/execute_op_registry.h"
+#include "tensorflow/compiler/mlir/tfrt/transforms/mlrt/mlrt_device_constants.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/mlrt/tpu_conversion_patterns.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/mlrt/util.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/utils.h"
+#include "xla/tsl/platform/status.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/tfrt/fallback/fallback_state.h"
 #include "tensorflow/core/tfrt/fallback/op_kernel_runner_cache.h"
-#include "tsl/platform/status.h"
 
 namespace tensorflow {
 namespace mlrt_compiler {
@@ -543,7 +545,9 @@ class ExecuteOpConversion final : public mlir::ConversionPattern {
           fallback_state_.process_function_library_runtime());
       // TODO(290630314): Use LOG_IF when absl logging is available
       if (!op_kernel_runner.ok()) {
-        std::cerr << op_kernel_runner.status() << "\n";
+        LOG(WARNING) << "Failed to create op_kernel_runner for "
+                     << node_def_text
+                     << " with error: " << op_kernel_runner.status();
       }
 
       if (op_kernel_runner.ok() && (*op_kernel_runner)->IsAsync()) {
@@ -868,6 +872,10 @@ void CreateFallbackInitializationFunction(
       builder.create<tf_mlrt::CreateOp>(
           func_op.getLoc(), /*resultTypes=*/mlir::TypeRange{},
           /*operands=*/mlir::ValueRange{}, op->getAttrs());
+    } else {
+      // TODO: b/381849919 - Remove this log once the bug is fixed.
+      LOG_FIRST_N(WARNING, 100)
+          << "Skip creation of fallback kernel for op index " << op_index;
     }
   }
 
@@ -1050,17 +1058,9 @@ class TfToMlrtConversionPass
     };
 
     type_converter_.addTargetMaterialization(future_to_tensor_materialization);
+    type_converter_.addSourceMaterialization(future_to_tensor_materialization);
     type_converter_.addArgumentMaterialization(
         future_to_tensor_materialization);
-    type_converter_.addSourceMaterialization(
-        [](mlir::OpBuilder &builder, mlir::Type result_type,
-           mlir::ValueRange inputs,
-           mlir::Location loc) -> std::optional<mlir::Value> {
-          return builder
-              .create<mlir::UnrealizedConversionCastOp>(loc, result_type,
-                                                        inputs)
-              .getResult(0);
-        });
 
     if (use_tpu_host_allocator_for_inputs_.hasValue()) {
       options_.use_tpu_host_allocator_for_inputs =

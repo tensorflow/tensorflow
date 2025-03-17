@@ -46,8 +46,8 @@ void ServerFactory::Register(const string& server_type,
 }
 
 /* static */
-Status ServerFactory::GetFactory(const ServerDef& server_def,
-                                 ServerFactory** out_factory) {
+absl::Status ServerFactory::GetFactory(const ServerDef& server_def,
+                                       ServerFactory** out_factory) {
   mutex_lock l(*get_server_factory_lock());
   for (const auto& server_factory : *server_factories()) {
     if (server_factory.second->AcceptsOptions(server_def)) {
@@ -69,8 +69,8 @@ Status ServerFactory::GetFactory(const ServerDef& server_def,
 
 // Creates a server based on the given `server_def`, and stores it in
 // `*out_server`. Returns OK on success, otherwise returns an error.
-Status NewServer(const ServerDef& server_def,
-                 std::unique_ptr<ServerInterface>* out_server) {
+absl::Status NewServer(const ServerDef& server_def,
+                       std::unique_ptr<ServerInterface>* out_server) {
   ServerFactory* factory;
   TF_RETURN_IF_ERROR(ServerFactory::GetFactory(server_def, &factory));
   return factory->NewServer(server_def, ServerFactory::Options(), out_server);
@@ -78,9 +78,9 @@ Status NewServer(const ServerDef& server_def,
 
 // Creates a server based on the given `server_def`, and stores it in
 // `*out_server`. Returns OK on success, otherwise returns an error.
-Status NewServerWithOptions(const ServerDef& server_def,
-                            const ServerFactory::Options& options,
-                            std::unique_ptr<ServerInterface>* out_server) {
+absl::Status NewServerWithOptions(
+    const ServerDef& server_def, const ServerFactory::Options& options,
+    std::unique_ptr<ServerInterface>* out_server) {
   ServerFactory* factory;
   TF_RETURN_IF_ERROR(ServerFactory::GetFactory(server_def, &factory));
   return factory->NewServer(server_def, options, out_server);

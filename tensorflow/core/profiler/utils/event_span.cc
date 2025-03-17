@@ -14,18 +14,21 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/profiler/utils/event_span.h"
 
+#include <cstddef>
+#include <cstdint>
 #include <string>
 #include <utility>
 #include <vector>
 
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/log/check.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/profiler/utils/timespan.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/protobuf/op_metrics.pb.h"
-#include "tsl/profiler/utils/timespan.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -283,7 +286,7 @@ void StepDetails::AddMarker(const StepMarker& m) { markers_.push_back(m); }
 void StepDetails::AddEvent(const EventTypeSpan& e) { events_.push_back(e); }
 
 void StepDetails::AggregateDeviceMemoryTransfers(
-    const std::vector<DeviceMemoryTransfer> device_memory_transfers) {
+    const std::vector<DeviceMemoryTransfer>& device_memory_transfers) {
   if (device_memory_transfers.size() != device_memory_transfers_.size()) {
     return;  // Sanity check.
   }

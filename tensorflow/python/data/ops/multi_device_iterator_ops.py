@@ -40,6 +40,7 @@ class _PerDeviceGenerator(dataset_ops.DatasetV2):
   def __init__(self, shard_num, multi_device_iterator_resource, incarnation_id,
                source_device, element_spec, iterator_is_anonymous):
     self._element_spec = element_spec
+    self._name = f"device_generator_{shard_num}"
 
     multi_device_iterator_string_handle = (
         gen_dataset_ops.multi_device_iterator_to_string_handle(
@@ -172,6 +173,8 @@ class _ReincarnatedPerDeviceGenerator(dataset_ops.DatasetV2):
 
   def __init__(self, per_device_dataset, incarnation_id):
     # pylint: disable=protected-access
+    if hasattr(per_device_dataset, "_name"):
+      self._name = per_device_dataset._name
     self._element_spec = per_device_dataset.element_spec
     self._init_func = per_device_dataset._init_func
     self._init_captured_args = self._init_func.captured_inputs
@@ -214,7 +217,7 @@ def _create_device_dataset(prototype_ds, incarnation_id, prefetch_buffer_size,
       ds = prefetch_op._PrefetchDataset(  # pylint: disable=protected-access
           ds, prefetch_buffer_size, slack_period=1)
     else:
-      ds = ds.prefetch(prefetch_buffer_size)
+      ds = ds.prefetch(prefetch_buffer_size, name="device_prefetch")
   return ds
 
 

@@ -1,0 +1,17 @@
+// RUN: hlo-opt %s --platform=gpu --stage=llvm-after-optimizations --xla_gpu_target_config_filename=%S/../../../tools/hlo_opt/gpu_specs/%{GPU}.txtpb --split-input-file | FileCheck %s
+
+HloModule test
+
+add {
+  lhs = f16[] parameter(0)
+  rhs = f16[] parameter(1)
+  ROOT add = f16[] add(lhs, rhs)
+}
+
+ENTRY main {
+  param_0 = f16[100,256] parameter(0)
+  zero = f16[] constant(0.0)
+  ROOT reduce = f16[100] reduce(param_0, zero), dimensions={1}, to_apply=add
+}
+
+// CHECK-NOT: fadd half %{{.*}}, 0xH0000

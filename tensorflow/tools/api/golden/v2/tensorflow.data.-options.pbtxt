@@ -32,6 +32,10 @@ tf_class {
     mtype: "<type \'property\'>"
   }
   member {
+    name: "experimental_service"
+    mtype: "<type \'property\'>"
+  }
+  member {
     name: "experimental_slack"
     mtype: "<type \'property\'>"
   }

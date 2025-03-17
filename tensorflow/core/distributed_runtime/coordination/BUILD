@@ -60,8 +60,8 @@ cc_library(
         "@com_google_absl//absl/time",
         "@local_tsl//tsl/profiler/lib:traceme",
         "@local_tsl//tsl/profiler/lib:traceme_encode",
-        "@local_tsl//tsl/protobuf:coordination_service_proto_cc",
         "@local_xla//xla/tsl/distributed_runtime/coordination:coordination_service_agent",
+        "@local_xla//xla/tsl/protobuf:coordination_service_proto_cc",
     ],
 )
 
@@ -81,11 +81,11 @@ tf_cc_test(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/time",
         "@com_google_googletest//:gtest_main",
-        "@local_tsl//tsl/protobuf:coordination_config_proto_cc",
-        "@local_tsl//tsl/protobuf:coordination_service_proto_cc",
         "@local_xla//xla/tsl/distributed_runtime:call_options",
         "@local_xla//xla/tsl/distributed_runtime/coordination:coordination_client",
         "@local_xla//xla/tsl/distributed_runtime/coordination:coordination_service_agent",
+        "@local_xla//xla/tsl/protobuf:coordination_config_proto_cc",
+        "@local_xla//xla/tsl/protobuf:coordination_service_proto_cc",
     ],
 )
 

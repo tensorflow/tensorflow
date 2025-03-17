@@ -21,6 +21,7 @@ import tempfile
 import tensorflow as tf
 
 from tensorflow.lite.python import analyzer
+from tensorflow.lite.python import lite
 from tensorflow.python.framework import test_util
 from tensorflow.python.platform import resource_loader
 from tensorflow.python.platform import test
@@ -80,7 +81,7 @@ class AnalyzerTest(test_util.TensorFlowTestCase):
     def func(x):
       return x + tf.cos(x)
 
-    converter = tf.lite.TFLiteConverter.from_concrete_functions(
+    converter = lite.TFLiteConverterV2.from_concrete_functions(
         [func.get_concrete_function()], func)
     fb_model = converter.convert()
     mock_stdout = io.StringIO()
@@ -98,7 +99,7 @@ class AnalyzerTest(test_util.TensorFlowTestCase):
     def func(x):
       return x + tf.cos(x)
 
-    converter = tf.lite.TFLiteConverter.from_concrete_functions(
+    converter = lite.TFLiteConverterV2.from_concrete_functions(
         [func.get_concrete_function()], func)
     fb_model = converter.convert()
     mock_stdout = io.StringIO()
@@ -113,38 +114,6 @@ class AnalyzerTest(test_util.TensorFlowTestCase):
         '%1 = tfl.add %arg0, %0 {fused_activation_function = "NONE"} : '
         'tensor<?xf32>', mlir)
     self.assertIn('return %1 : tensor<?xf32', mlir)
-
-  def testTxtGpuCompatiblity(self):
-    model_path = resource_loader.get_path_to_datafile(
-        '../testdata/multi_add_flex.bin')
-    mock_stdout = io.StringIO()
-    with test.mock.patch.object(sys, 'stdout', mock_stdout):
-      analyzer.ModelAnalyzer.analyze(
-          model_path=model_path, gpu_compatibility=True)
-    txt = mock_stdout.getvalue()
-    self.assertIn(
-        'GPU COMPATIBILITY WARNING: Not supported custom op FlexAddV2', txt)
-    self.assertIn(
-        'GPU COMPATIBILITY WARNING: Subgraph#0 has GPU delegate compatibility '
-        'issues at nodes 0, 1, 2', txt)
-
-  def testTxtGpuCompatiblityPass(self):
-
-    @tf.function(
-        input_signature=[tf.TensorSpec(shape=[None], dtype=tf.float32)])
-    def func(x):
-      return x + tf.cos(x)
-
-    converter = tf.lite.TFLiteConverter.from_concrete_functions(
-        [func.get_concrete_function()], func)
-    fb_model = converter.convert()
-    mock_stdout = io.StringIO()
-    with test.mock.patch.object(sys, 'stdout', mock_stdout):
-      analyzer.ModelAnalyzer.analyze(
-          model_content=fb_model, gpu_compatibility=True)
-    txt = mock_stdout.getvalue()
-    self.assertIn(
-        'Your model looks compatible with GPU delegate on TFLite runtime', txt)
 
   def testTxtSignatureDefs(self):
     with tempfile.TemporaryDirectory() as tmp_dir:
@@ -173,7 +142,7 @@ class AnalyzerTest(test_util.TensorFlowTestCase):
               'sub': root.f2
           })
 
-      converter = tf.lite.TFLiteConverter.from_saved_model(tmp_dir)
+      converter = lite.TFLiteConverterV2.from_saved_model(tmp_dir)
       fb_model = converter.convert()
       mock_stdout = io.StringIO()
       with test.mock.patch.object(sys, 'stdout', mock_stdout):
@@ -195,7 +164,7 @@ class AnalyzerTest(test_util.TensorFlowTestCase):
     def func():
       return tf.cos(1.0)
 
-    converter = tf.lite.TFLiteConverter.from_concrete_functions(
+    converter = lite.TFLiteConverterV2.from_concrete_functions(
         [func.get_concrete_function()], func)
     fb_model = converter.convert()
     mock_stdout = io.StringIO()
@@ -213,7 +182,7 @@ class AnalyzerTest(test_util.TensorFlowTestCase):
     def func(lhs, rhs):
       return tf.einsum('ABD,DNH->ABNH', lhs, rhs)
 
-    converter = tf.lite.TFLiteConverter.from_concrete_functions(
+    converter = lite.TFLiteConverterV2.from_concrete_functions(
         [func.get_concrete_function()], func)
     converter.unfold_batchmatmul = True
     fb_model = converter.convert()

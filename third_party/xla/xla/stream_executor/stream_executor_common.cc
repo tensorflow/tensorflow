@@ -15,21 +15,14 @@ limitations under the License.
 
 #include "xla/stream_executor/stream_executor_common.h"
 
-#include <cstddef>
 #include <cstdint>
 #include <memory>
-#include <optional>
-#include <string>
-#include <tuple>
-#include <utility>
-#include <variant>
 
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/tsl/util/env_var.h"
 #include "tsl/platform/status.h"

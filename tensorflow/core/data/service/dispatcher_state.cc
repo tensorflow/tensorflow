@@ -41,7 +41,7 @@ DispatcherState::DispatcherState(
     const experimental::DispatcherConfig& dispatcher_config)
     : worker_index_resolver_(dispatcher_config.worker_addresses()) {}
 
-Status DispatcherState::Apply(const Update& update) {
+absl::Status DispatcherState::Apply(const Update& update) {
   switch (update.update_type_case()) {
     case Update::kRegisterDataset:
       RegisterDataset(update.register_dataset());
@@ -134,8 +134,8 @@ void DispatcherState::CreateJob(const CreateJobUpdate& create_job) {
   next_available_job_id_ = std::max(next_available_job_id_, job_id + 1);
 }
 
-Status DispatcherState::JobFromId(int64_t job_id,
-                                  std::shared_ptr<const Job>& job) const {
+absl::Status DispatcherState::JobFromId(int64_t job_id,
+                                        std::shared_ptr<const Job>& job) const {
   auto it = jobs_by_id_.find(job_id);
   if (it == jobs_by_id_.end()) {
     return errors::NotFound("Job with id ", job_id, " not found");
@@ -144,8 +144,8 @@ Status DispatcherState::JobFromId(int64_t job_id,
   return absl::OkStatus();
 }
 
-Status DispatcherState::JobByName(const std::string& job_name,
-                                  std::shared_ptr<const Job>& job) const {
+absl::Status DispatcherState::JobByName(const std::string& job_name,
+                                        std::shared_ptr<const Job>& job) const {
   auto it = jobs_by_name_.find(job_name);
   if (it == jobs_by_name_.end()) {
     return errors::NotFound("Job with name ", job_name, " not found");
@@ -323,7 +323,7 @@ void DispatcherState::UpdateNextAvailableDatasetId() {
   }
 }
 
-Status DispatcherState::DatasetFromId(
+absl::Status DispatcherState::DatasetFromId(
     const std::string& id, std::shared_ptr<const Dataset>& dataset) const {
   auto it = datasets_by_id_.find(id);
   if (it == datasets_by_id_.end()) {
@@ -333,7 +333,7 @@ Status DispatcherState::DatasetFromId(
   return absl::OkStatus();
 }
 
-Status DispatcherState::WorkerFromAddress(
+absl::Status DispatcherState::WorkerFromAddress(
     const std::string& address, std::shared_ptr<const Worker>& worker) const {
   auto it = workers_.find(address);
   if (it == workers_.end()) {
@@ -363,7 +363,7 @@ DispatcherState::ListIterations() const {
   return iterations;
 }
 
-Status DispatcherState::IterationFromId(
+absl::Status DispatcherState::IterationFromId(
     int64_t id, std::shared_ptr<const Iteration>& iteration) const {
   auto it = iterations_.find(id);
   if (it == iterations_.end()) {
@@ -373,7 +373,7 @@ Status DispatcherState::IterationFromId(
   return absl::OkStatus();
 }
 
-Status DispatcherState::IterationByKey(
+absl::Status DispatcherState::IterationByKey(
     IterationKey iteration_key,
     std::shared_ptr<const Iteration>& iteration) const {
   auto it = iterations_by_key_.find(iteration_key);
@@ -393,7 +393,7 @@ int64_t DispatcherState::NextAvailableIterationId() const {
   return next_available_iteration_id_;
 }
 
-Status DispatcherState::IterationForIterationClientId(
+absl::Status DispatcherState::IterationForIterationClientId(
     int64_t iteration_client_id, std::shared_ptr<const Iteration>& iteration) {
   iteration = iterations_for_client_ids_[iteration_client_id];
   if (!iteration) {
@@ -417,8 +417,8 @@ int64_t DispatcherState::NextAvailableIterationClientId() const {
   return next_available_iteration_client_id_;
 }
 
-Status DispatcherState::TaskFromId(int64_t id,
-                                   std::shared_ptr<const Task>& task) const {
+absl::Status DispatcherState::TaskFromId(
+    int64_t id, std::shared_ptr<const Task>& task) const {
   auto it = tasks_.find(id);
   if (it == tasks_.end()) {
     return errors::NotFound("Task ", id, " not found");
@@ -427,7 +427,7 @@ Status DispatcherState::TaskFromId(int64_t id,
   return absl::OkStatus();
 }
 
-Status DispatcherState::TasksForIteration(
+absl::Status DispatcherState::TasksForIteration(
     int64_t iteration_id,
     std::vector<std::shared_ptr<const Task>>& tasks) const {
   auto it = tasks_by_iteration_.find(iteration_id);
@@ -442,7 +442,7 @@ Status DispatcherState::TasksForIteration(
   return absl::OkStatus();
 }
 
-Status DispatcherState::TasksForWorker(
+absl::Status DispatcherState::TasksForWorker(
     absl::string_view worker_address,
     std::vector<std::shared_ptr<const Task>>& tasks) const {
   tasks.clear();
@@ -463,7 +463,8 @@ int64_t DispatcherState::NextAvailableTaskId() const {
   return next_available_task_id_;
 }
 
-Status DispatcherState::ValidateWorker(absl::string_view worker_address) const {
+absl::Status DispatcherState::ValidateWorker(
+    absl::string_view worker_address) const {
   return worker_index_resolver_.ValidateWorker(worker_address);
 }
 

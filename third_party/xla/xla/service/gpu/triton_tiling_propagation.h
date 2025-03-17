@@ -75,6 +75,7 @@ class TensorIterationSpec {
     // These are the sizes of the HLO dimensions which make up this basic
     // iteration.
     std::vector<int64_t> subfragments;
+    int64_t broadcast_multiplier = 1;
 
     bool is_sliced() const { return count != sliced_count; }
 
@@ -158,13 +159,16 @@ class DimensionOrder {
   // Description of a continuous fragment of one dimension of a tensor.
   class Fragment {
    public:
-    explicit Fragment(int dst_dim_number, int64_t count)
+    explicit Fragment(int dst_dim_number, int64_t count,
+                      int64_t broadcast_size = 1)
         : dst_dim_number_(dst_dim_number),
           count_(count),
           slice_start_(0),
-          sliced_count_(count) {}
+          sliced_count_(count),
+          broadcast_multiplier_(broadcast_size) {}
 
     std::string ToString() const;
+    std::string ToLongString() const;
 
     // Label carrying the dimension number of an defining operation.
     int dst_dim_number() const { return dst_dim_number_; }
@@ -181,11 +185,28 @@ class DimensionOrder {
     }
     void set_count(int64_t count) { count_ = count; }
 
+    // Broadcast multiplier (1 for non-broadcast).
+    // If we broadcast non-trivial fragments of a dimension, then the
+    // broadcast multiplier is the size of the broadcast.
+    // For example, if we have a dimension of size 8 and we broadcast it to
+    // size 2048, then the broadcast multiplier is 256.
+    // This is used to adjust the stride and the advancement of the pointer.
+    // We need this piece of info for covering the cases when we do subchannel
+    // dequantisation with the sequences of ops like
+    // [m,y]scales -> [m,x,y]broadcast -> [m,x*y]bitcast -> multiply -> matmul.
+    // In this example x is the broadcast multiplier.
+    void set_broadcast_multiplier(int64_t broadcast_multiplier) {
+      broadcast_multiplier_ = broadcast_multiplier;
+    }
+    bool has_broadcast_multiplier() const { return broadcast_multiplier_ > 1; }
+    int64_t broadcast_multiplier() const { return broadcast_multiplier_; }
+
    private:
     const int dst_dim_number_;
     int64_t count_;
     int64_t slice_start_;
     int64_t sliced_count_;
+    int64_t broadcast_multiplier_;
   };
   using Fragments = std::vector<Fragment>;
   using FragmentOrders = absl::flat_hash_map<int, std::vector<int>>;
@@ -201,6 +222,7 @@ class DimensionOrder {
   FragmentOrders& DimFragmentsOrders() { return dim_fragments_orders_; }
 
   std::string ToString() const;
+  std::string ToLongString() const;
 
   TensorIterationSpec ToTensorIterationSpec() const;
 

@@ -30,6 +30,7 @@ limitations under the License.
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/shape.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace gpu {
@@ -61,18 +62,22 @@ class GpuHloCostAnalysis : public HloCostAnalysis {
 
   float ScalingRatio(const HloInstruction& hlo) const;
   int64_t NumOfDevices(const HloInstruction& hlo) const;
+  float BytesTransferred(const HloInstruction& hlo) const;
 
   absl::Status HandleCustomCall(const HloInstruction* call) override;
 
   int64_t GetConvolutionFlops(const HloInstruction* convolution) override;
 
-  absl::Status HandleElementwiseOp(const HloInstruction* hlo);
-  absl::Status HandleElementwiseUnary(const HloInstruction* hlo) override;
-  absl::Status HandleElementwiseBinary(const HloInstruction* hlo) override;
+  absl::Status HandleElementwiseOp(const HloInstruction* hlo) override;
 
   absl::Status HandleConcatenate(const HloInstruction* hlo) override;
   absl::Status HandleAllReduce(const HloInstruction* allreduce) override;
   absl::Status HandleReduce(const HloInstruction* hlo) override;
+  absl::Status HandleAllReduceStart(const HloInstruction* hlo) override;
+  absl::Status HandleAllGather(const HloInstruction* hlo) override;
+  absl::Status HandleAllGatherStart(const HloInstruction* hlo) override;
+  absl::Status HandleAsyncStart(const HloInstruction* hlo) override;
+  absl::Status HandleReduceScatter(const HloInstruction* hlo) override;
 
   // Estimate the total size of IR accounting for both duplication
   // of producer code by consumer and the total number of basic blocks.
@@ -110,12 +115,6 @@ class GpuHloCostAnalysis : public HloCostAnalysis {
   size_t immediate_constant_max_elements() const override { return 8; }
 
   bool KeyToCopyFromSubcomputation(absl::string_view key) const override;
-
-  // Some instructions create new LLVM basic blocks; with our current code
-  // generation this means in the worst case doubling the IR size of a fusion
-  // containing such an instruction.
-  // Count these to avoid unmanageable IR code size.
-  float IrBasicBlockSplitCount(const HloInstruction& hlo) const;
 
   // To estimate where within the computation an instruction output can be
   // reused and where it has to be recomputed again we group accesses to the

@@ -19,7 +19,7 @@ limitations under the License.
 #include <string>
 
 #include "mlmodel/format/NeuralNetwork.pb.h"
-#include "third_party/protobuf/repeated_field.h"
+#include "google/protobuf/repeated_field.h"
 #include "tensorflow/lite/core/c/builtin_op_data.h"
 #include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/delegates/coreml/builders/activation_layer_builder.h"

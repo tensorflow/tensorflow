@@ -26,6 +26,7 @@ limitations under the License.
 
 #include "absl/base/casts.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "Eigen/Core"  // from @eigen_archive
 #include "llvm/ADT/APInt.h"
@@ -33,7 +34,7 @@ limitations under the License.
 #include "llvm/ADT/bit.h"
 #include "llvm/Support/Endian.h"
 #include "llvm/Support/ErrorHandling.h"
-#include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
+#include "mlir/Dialect/Quant/IR/QuantTypes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypeInterfaces.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
@@ -45,6 +46,8 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/utils/string_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/dynamic_shape_utils.h"
+#include "tensorflow/core/framework/tensor.pb.h"
+#include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tsl/platform/statusor.h"
 
 namespace mlir {
@@ -449,6 +452,7 @@ tensorflow::TensorProto ConvertTfliteConstTensor(
 }
 
 int64_t GetSizeInBits(mlir::ShapedType shaped_type) {
+  if (!shaped_type.hasStaticShape()) return 0;
   return GetSizeInBits(shaped_type.getElementType()) *
          shaped_type.getNumElements();
 }

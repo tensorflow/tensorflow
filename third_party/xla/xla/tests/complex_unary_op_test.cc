@@ -16,9 +16,9 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
-#include "xla/client/global_data.h"
 #include "xla/client/local_client.h"
-#include "xla/client/xla_builder.h"
+#include "xla/hlo/builder/lib/math.h"
+#include "xla/hlo/builder/xla_builder.h"
 #include "xla/tests/client_library_test_base.h"
 #include "xla/tests/complex_unary_op_samples.h"
 #include "xla/tests/literal_test_util.h"
@@ -96,13 +96,27 @@ class ComplexUnaryOpTest : public ClientLibraryTestBase {
 };
 
 XLA_TEST_F(ComplexUnaryOpTest, Log1pTest) {
-  UnaryTestHelper<complex_unary_op_samples::Log1p<float>>(Log1p);
-  UnaryTestHelper<complex_unary_op_samples::Log1p<double>>(Log1p);
+  UnaryTestHelper<complex_unary_op_samples::Log1p<float>>(
+      [](XlaOp x) { return Log1p(x); });
+  UnaryTestHelper<complex_unary_op_samples::Log1p<double>>(
+      [](XlaOp x) { return Log1p(x); });
 }
 
 XLA_TEST_F(ComplexUnaryOpTest, TanTest) {
-  UnaryTestHelper<complex_unary_op_samples::Tan<float>>(Tan);
-  UnaryTestHelper<complex_unary_op_samples::Tan<double>>(Tan);
+  UnaryTestHelper<complex_unary_op_samples::Tan<float>>(
+      [](XlaOp x) { return Tan(x); });
+  UnaryTestHelper<complex_unary_op_samples::Tan<double>>(
+      [](XlaOp x) { return Tan(x); });
+}
+
+XLA_TEST_F(ComplexUnaryOpTest, AsinTest) {
+  UnaryTestHelper<complex_unary_op_samples::Asin<float>>(Asin);
+  UnaryTestHelper<complex_unary_op_samples::Asin<double>>(Asin);
+}
+
+XLA_TEST_F(ComplexUnaryOpTest, AsinhTest) {
+  UnaryTestHelper<complex_unary_op_samples::Asinh<float>>(Asinh);
+  UnaryTestHelper<complex_unary_op_samples::Asinh<double>>(Asinh);
 }
 
 }  // namespace

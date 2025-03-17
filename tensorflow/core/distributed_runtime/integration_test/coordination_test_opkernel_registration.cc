@@ -13,6 +13,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cstdint>
+
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/strings/cord.h"
 #include "xla/tsl/distributed_runtime/coordination/coordination_service_agent.h"
 #include "xla/tsl/distributed_runtime/coordination/coordination_service_error_util.h"
 #include "tensorflow/core/framework/common_shape_fns.h"
@@ -147,8 +152,7 @@ class TestReportErrorToClusterOp : public OpKernel {
                            "initialized properly."));
       return;
     }
-    tensorflow::Status s(static_cast<absl::StatusCode>(error_code),
-                         error_message);
+    absl::Status s(static_cast<absl::StatusCode>(error_code), error_message);
     s.SetPayload(tsl::CoordinationErrorPayloadKey(),
                  absl::Cord("testing error payload"));
     OP_REQUIRES_OK(ctx, coord_agent->ReportError(s));

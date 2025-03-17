@@ -1,0 +1,59 @@
+// RUN: hlo-opt %s --platform=gpu --stage=hlo --xla_gpu_target_config_filename=%S/../../../tools/hlo_opt/gpu_specs/a100_pcie_80.txtpb --split-input-file | FileCheck --check-prefixes=CHECK %s
+
+HloModule jit_f, entry_computation_layout={()->(f32[4]{0:S(5)}, f32[4]{0})}, allow_spmd_sharding_propagation_to_output={true,true}
+
+// # Simplified from the following Python script.
+//
+// import jax
+// import jax.numpy as jnp
+//
+// p = jax.sharding.SingleDeviceSharding(jax.devices()[0], memory_kind="pinned_host")
+//
+// @jax.jit
+// def f():
+//   def g(_1, _2):
+//     return None, (jax.device_put(jnp.array(1.0), p), jnp.array(2.0))
+//   return jax.lax.scan(g, None, length = 4)[1]
+//
+// print(f()[0].sharding)  # doesn't crash
+
+// Verify that the optimized code allocates one pinned-host buffer.
+// CHECK: f32[4]{0:S(5)} custom-call(), custom_call_target="AllocateBuffer"
+// CHECK-NOT: custom-call(), custom_call_target="AllocateBuffer"
+
+body {
+  body-arg.tuple = (s32[], f32[4]{0}, f32[4]{0}) parameter(0)
+  index.s32 = s32[] get-tuple-element(body-arg.tuple), index=0
+  one.s32 = s32[] constant(1)
+  add.32 = s32[] add(index.s32, one.s32)
+  pinned-host-buffer = f32[4]{0} get-tuple-element(body-arg.tuple), index=1
+  one.f32 = f32[] constant(1)
+  custom-call.9 = f32[] custom-call(one.f32), custom_call_target="annotate_device_placement",
+                                              custom_call_has_side_effect=true,
+                                              frontend_attributes={_xla_buffer_placement="pinned_host"}
+  reshape.22 = f32[1]{0} reshape(custom-call.9)
+  new-pinned-host-buffer = f32[4]{0} dynamic-update-slice(pinned-host-buffer, reshape.22, index.s32)
+  device-buffer = f32[4]{0} get-tuple-element(body-arg.tuple), index=2
+  two.f32 = f32[] constant(2)
+  reshape.27 = f32[1]{0} reshape(two.f32)
+  new-device-buffer = f32[4]{0} dynamic-update-slice(device-buffer, reshape.27, index.s32)
+  ROOT new-body-arg.tuple = (s32[], f32[4]{0}, f32[4]{0}) tuple(add.32, new-pinned-host-buffer, new-device-buffer)
+} // body
+
+cond {
+  cond-arg.tuple = (s32[], f32[4]{0}, f32[4]{0}) parameter(0)
+  cond-index.s32 = s32[] get-tuple-element(cond-arg.tuple), index=0
+  four.s32 = s32[] constant(4)
+  ROOT cond-result = pred[] compare(cond-index.s32, four.s32), direction=LT
+} // cond
+
+ENTRY main {
+  zero.s32 = s32[] constant(0)
+  zero.f32 = f32[] constant(0)
+  empty-buffer = f32[4]{0} broadcast(zero.f32), dimensions={}
+  while.tuple = (s32[], f32[4]{0}, f32[4]{0}) tuple(zero.s32, empty-buffer, empty-buffer)
+  while = (s32[], f32[4]{0}, f32[4]{0}) while(while.tuple), condition=cond, body=body
+  output-pinned-host-buffer = f32[4]{0} get-tuple-element(while), index=1
+  output-device-buffer = f32[4]{0} get-tuple-element(while), index=2
+  ROOT result.tuple = (f32[4]{0}, f32[4]{0}) tuple(output-pinned-host-buffer, output-device-buffer)
+} // main

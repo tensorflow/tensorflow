@@ -16,6 +16,11 @@ limitations under the License.
 #ifndef XLA_HLO_IR_HLO_INSTRUCTION_UTILS_H_
 #define XLA_HLO_IR_HLO_INSTRUCTION_UTILS_H_
 
+#include <cstdint>
+#include <string>
+#include <utility>
+#include <vector>
+
 #include "xla/hlo/ir/hlo_instruction.h"
 
 namespace xla {
@@ -30,10 +35,6 @@ bool IsUnstridedSlice(const HloInstruction* hlo);
 void AddOrUpdateVectorOfPairsAsAttribute(
     HloInstruction* instr, std::string attr_name,
     std::vector<std::pair<int64_t, int64_t>> intervals);
-
-// Check if two shardings are equivalent.
-bool HasEquivalentShardings(const HloInstruction& lhs,
-                            const HloInstruction& rhs);
 
 }  // namespace hlo_instruction_utils
 }  // namespace xla

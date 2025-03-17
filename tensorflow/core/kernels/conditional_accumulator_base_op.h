@@ -76,10 +76,10 @@ class ConditionalAccumulatorBaseOp : public OpKernel {
   virtual void SetHandleToOutput(OpKernelContext* ctx)
       TF_SHARED_LOCKS_REQUIRED(mu_) = 0;
 
-  virtual Status CheckSignature(OpKernelContext* ctx) = 0;
+  virtual absl::Status CheckSignature(OpKernelContext* ctx) = 0;
 
  protected:
-  typedef std::function<Status(ConditionalAccumulatorBase**)> Creator;
+  typedef std::function<absl::Status(ConditionalAccumulatorBase**)> Creator;
 
   // Subclasses must override this
   virtual Creator GetCreator() const = 0;
@@ -94,7 +94,7 @@ class ConditionalAccumulatorBaseOp : public OpKernel {
   bool accumulator_set_ TF_GUARDED_BY(mu_);
 
  private:
-  Status SetAccumulatorHandle(OpKernelContext* ctx)
+  absl::Status SetAccumulatorHandle(OpKernelContext* ctx)
       TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
     TF_RETURN_IF_ERROR(cinfo_.Init(ctx->resource_manager(), def()));
 

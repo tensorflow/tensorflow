@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/profiler/convert/repository.h"
 
-#include <cstdint>
+#include <cstddef>
 #include <memory>
 #include <optional>
 #include <string>
@@ -23,24 +23,24 @@ limitations under the License.
 #include <vector>
 
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/strings/strip.h"
-#include "tensorflow/core/platform/env.h"
+#include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/profiler/utils/file_system_utils.h"
 #include "tensorflow/core/platform/errors.h"
-#include "tensorflow/core/platform/path.h"
-#include "tensorflow/core/platform/status.h"
-#include "tensorflow/core/platform/statusor.h"
-#include "tsl/platform/errors.h"
+#include "tsl/platform/path.h"
 #include "tsl/profiler/protobuf/xplane.pb.h"
-#include "tsl/profiler/utils/file_system_utils.h"
 
 namespace tensorflow {
 namespace profiler {
 namespace {
 std::string GetHostnameByPath(absl::string_view xspace_path) {
-  std::string_view file_name = tensorflow::io::Basename(xspace_path);
+  std::string_view file_name = tsl::io::Basename(xspace_path);
   // Remove suffix from file_name, preserving entire prefix.
   absl::ConsumeSuffix(&file_name, ".xplane.pb");
   return std::string(file_name);
@@ -97,9 +97,8 @@ absl::StatusOr<std::unique_ptr<XSpace>> SessionSnapshot::GetXSpace(
 
   // Return the XSpace proto from file.
   auto xspace_from_file = std::make_unique<XSpace>();
-  TF_RETURN_IF_ERROR(tensorflow::ReadBinaryProto(tensorflow::Env::Default(),
-                                                 xspace_paths_.at(index),
-                                                 xspace_from_file.get()));
+  TF_RETURN_IF_ERROR(tsl::ReadBinaryProto(
+      tsl::Env::Default(), xspace_paths_.at(index), xspace_from_file.get()));
   return xspace_from_file;
 }
 
@@ -124,8 +123,7 @@ std::optional<std::string> SessionSnapshot::GetFilePath(
   std::string file_name = "";
   if (toolname == "trace_viewer@")
     file_name = absl::StrCat(hostname, ".", "SSTABLE");
-  if (!file_name.empty())
-    return tensorflow::io::JoinPath(session_run_dir_, file_name);
+  if (!file_name.empty()) return tsl::io::JoinPath(session_run_dir_, file_name);
   return std::nullopt;
 }
 

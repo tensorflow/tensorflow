@@ -129,12 +129,6 @@ bool hasExperimentalFeaturesNotInStablehlo(HloOpTy hloOp) {
 // fit for StableHLO, and are usually accompanied by a StableHLO GitHub ticket.
 template <typename HloOpTy>
 std::optional<int64_t> getPublicFeaturesNotInStablehlo(HloOpTy hloOp) {
-  // StableHLO doesn't support TanOp yet.
-  // Proposal: https://github.com/openxla/stablehlo/issues/954
-  if constexpr (std::is_same<HloOpTy, mhlo::TanOp>::value) {
-    // Version 1: Initial version for TanOp.
-    return 1;
-  }
   // StableHLO doesn't support TopK yet.
   // Proposal: https://github.com/openxla/stablehlo/pull/1593
   if constexpr (std::is_same<HloOpTy, mhlo::TopKOp>::value) {
@@ -233,6 +227,20 @@ Attribute convertDenseArray(mlir::StringAttr hloName, Attribute hloAttr) {
   if (!stablehloValue.has_value()) return {};                 \
   return stablehlo::Name##Attr::get(attr.getContext(), stablehloValue.value())
 
+stablehlo::ResultAccuracyMode convertResultAccuracyMode(
+    mhlo::ResultAccuracyMode mode) {
+  switch (mode) {
+    case mhlo::ResultAccuracyMode::DEFAULT:
+      return stablehlo::ResultAccuracyMode::DEFAULT;
+    case mhlo::ResultAccuracyMode::HIGHEST:
+      return stablehlo::ResultAccuracyMode::HIGHEST;
+    case mhlo::ResultAccuracyMode::TOLERANCE:
+      return stablehlo::ResultAccuracyMode::TOLERANCE;
+    default:
+      return {};
+  }
+}
+
 Attribute convertAttr(Attribute hloAttr) {
   // Handle MHLO attributes.
   // The logic that handles attributes from other dialects (e.g. builtin
@@ -258,6 +266,13 @@ Attribute convertAttr(Attribute hloAttr) {
   }
   // NOTE: We cannot process CustomCallApiVersionAttr here because
   // `dyn_cast<mhlo::CustomCallApiVersionAttr>()` succeeds for IntegerAttr too.
+  if (auto attr = mlir::dyn_cast<mhlo::DotAlgorithmAttr>(hloAttr)) {
+    return stablehlo::DotAlgorithmAttr::get(
+        attr.getContext(), attr.getLhsPrecisionType(),
+        attr.getRhsPrecisionType(), attr.getAccumulationType(),
+        attr.getLhsComponentCount(), attr.getRhsComponentCount(),
+        attr.getNumPrimitiveOperations(), attr.getAllowImpreciseAccumulation());
+  }
   if (auto attr = mlir::dyn_cast<mhlo::DotDimensionNumbersAttr>(hloAttr)) {
     return stablehlo::DotDimensionNumbersAttr::get(
         attr.getContext(), attr.getLhsBatchingDimensions(),
@@ -299,6 +314,19 @@ Attribute convertAttr(Attribute hloAttr) {
   }
   if (auto attr = mlir::dyn_cast<mhlo::TransposeAttr>(hloAttr)) {
     RETURN_CONVERTED_ENUM_ATTR(Transpose);
+  }
+  if (auto attr = mlir::dyn_cast<mhlo::ResultAccuracyModeAttr>(hloAttr)) {
+    RETURN_CONVERTED_ENUM_ATTR(ResultAccuracyMode);
+  }
+  if (auto attr = mlir::dyn_cast<mhlo::ResultAccuracyAttr>(hloAttr)) {
+    stablehlo::ResultAccuracyModeAttr modeAttr;
+    modeAttr = stablehlo::ResultAccuracyModeAttr::get(
+        attr.getContext(),
+        convertResultAccuracyMode(attr.getMode().getValue()));
+
+    return stablehlo::ResultAccuracyAttr::get(attr.getContext(), attr.getAtol(),
+                                              attr.getRtol(), attr.getUlps(),
+                                              modeAttr);
   }
   if (hloAttr.getDialect().getNamespace() ==
       mhlo::MhloDialect::getDialectNamespace()) {
@@ -453,8 +481,7 @@ LogicalResult convertAttributes(ConversionPatternRewriter& rewriter,
     }
 
     // Handle DenseElements --> DenseArray for certain StableHLO ops
-    if constexpr (!std::is_same<HloOpTy, mhlo::TanOp>::value &&
-                  !std::is_same<HloOpTy, mhlo::ErfOp>::value &&
+    if constexpr (!std::is_same<HloOpTy, mhlo::ErfOp>::value &&
                   !std::is_same<HloOpTy, mhlo::TopKOp>::value) {
       if (!stablehloAttr)
         stablehloAttr = convertDenseArray<HloToStablehloOp<HloOpTy>>(
@@ -722,8 +749,7 @@ void populateHloToStablehloPatterns(RewritePatternSet* patterns,
 #include "stablehlo/dialect/StablehloOps.cpp.inc"
       >(patterns, converter, context, allowExperimentalFeatures);
 
-  populateHloToStablehloCustomCallPatterns<mhlo::TanOp, mhlo::TopKOp,
-                                           mhlo::ErfOp>(
+  populateHloToStablehloCustomCallPatterns<mhlo::TopKOp, mhlo::ErfOp>(
       patterns, converter, context, allowExperimentalFeatures);
 }
 

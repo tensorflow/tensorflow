@@ -42,8 +42,8 @@ TfLiteStatus DummyPrepare(void* user_data, TfLiteOpaqueContext* context,
 
 TfLiteOperator* GetDummyRegistration() {
   static TfLiteOperator* registration = []() {
-    auto* op = TfLiteOperatorCreateWithData(
-        kTfLiteBuiltinCustom, "dummy", /*version=*/1, /*user_data=*/nullptr);
+    auto* op = TfLiteOperatorCreate(kTfLiteBuiltinCustom, "dummy",
+                                    /*version=*/1, /*user_data=*/nullptr);
     TfLiteOperatorSetPrepareWithData(op, DummyPrepare);
     TfLiteOperatorSetInvokeWithData(op, DummyInvoke);
     return op;
@@ -53,9 +53,8 @@ TfLiteOperator* GetDummyRegistration() {
 
 TfLiteOperator* GetAdditionOpRegistration() {
   static TfLiteOperator* registration = []() {
-    auto* r =
-        TfLiteOperatorCreateWithData(kTfLiteBuiltinAdd, /*custom_name=*/nullptr,
-                                     /*version=*/1, /*user_data=*/nullptr);
+    auto* r = TfLiteOperatorCreate(kTfLiteBuiltinAdd, /*custom_name=*/nullptr,
+                                   /*version=*/1, /*user_data=*/nullptr);
     TfLiteOperatorSetInvokeWithData(r, DummyInvoke);
     return r;
   }();

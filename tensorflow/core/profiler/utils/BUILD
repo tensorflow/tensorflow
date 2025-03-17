@@ -42,8 +42,9 @@ cc_library(
         "//tensorflow/core/profiler/protobuf:steps_db_proto_cc",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/strings",
-        "@local_tsl//tsl/profiler/utils:timespan",
+        "@local_xla//xla/tsl/profiler/utils:timespan",
     ],
 )
 
@@ -54,9 +55,23 @@ cc_library(
     copts = tf_profiler_copts(),
     deps = [
         ":xplane_schema",
-        "//tensorflow/core:lib",
         "//tensorflow/core/profiler/protobuf:hardware_types_proto_cc",
+        "@com_google_absl//absl/container:btree",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/strings",
+        "@local_xla//xla/tsl/profiler/utils:math_utils",
+    ],
+)
+
+tf_cc_test(
+    name = "hardware_type_utils_test",
+    srcs = ["hardware_type_utils_test.cc"],
+    deps = [
+        ":hardware_type_utils",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "@local_xla//xla/tsl/profiler/utils:math_utils",
     ],
 )
 
@@ -65,7 +80,7 @@ cc_library(
     hdrs = ["math_utils.h"],
     deps = [
         "@com_google_absl//absl/base:core_headers",
-        "@local_tsl//tsl/profiler/utils:math_utils",
+        "@local_xla//xla/tsl/profiler/utils:math_utils",
     ],
 )
 
@@ -83,16 +98,16 @@ cc_library(
     hdrs = ["op_metrics_db_utils.h"],
     copts = tf_profiler_copts(),
     deps = [
-        ":math_utils",
+        ":xplane_visitor",
         "//tensorflow/core:lib",
         "//tensorflow/core/profiler/protobuf:op_metrics_proto_cc",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/types:optional",
-        "@local_tsl//tsl/profiler/utils:tf_op_utils",
-        "@local_tsl//tsl/profiler/utils:xplane_schema",
-        "@local_tsl//tsl/profiler/utils:xplane_visitor",
+        "@local_xla//xla/tsl/profiler/utils:math_utils",
+        "@local_xla//xla/tsl/profiler/utils:tf_op_utils",
+        "@local_xla//xla/tsl/profiler/utils:xplane_schema",
+        "@local_xla//xla/tsl/profiler/utils:xplane_visitor",
     ],
 )
 
@@ -101,9 +116,15 @@ tf_cc_test(
     srcs = ["op_metrics_db_utils_test.cc"],
     deps = [
         ":op_metrics_db_utils",
+        ":xplane_builder",
+        ":xplane_schema",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core/profiler/protobuf:op_metrics_proto_cc",
+        "@com_google_googletest//:gtest_main",
+        "@local_tsl//tsl/profiler/protobuf:xplane_proto_cc",
+        "@local_xla//xla/tsl/profiler/utils:tf_xplane_visitor",
+        "@local_xla//xla/tsl/profiler/utils:xplane_visitor",
     ],
 )
 
@@ -113,14 +134,17 @@ cc_library(
     hdrs = ["op_utils.h"],
     copts = tf_profiler_copts(),
     deps = [
+        ":hlo_module_map",
         ":op_metrics_db_utils",
-        "//tensorflow/core:lib",
-        "//tensorflow/core/platform:protobuf",
         "//tensorflow/core/profiler/convert:op_metrics_db_combiner",
         "//tensorflow/core/profiler/protobuf:op_metrics_proto_cc",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/strings",
-        "@local_tsl//tsl/profiler/utils:tf_op_utils",
-        "@local_tsl//tsl/profiler/utils:timespan",
+        "@local_tsl//tsl/platform:protobuf",
+        "@local_xla//xla/hlo/ir:hlo",
+        "@local_xla//xla/tsl/platform:types",
+        "@local_xla//xla/tsl/profiler/utils:tf_op_utils",
+        "@local_xla//xla/tsl/profiler/utils:timespan",
     ],
 )
 
@@ -129,7 +153,7 @@ cc_library(
     hdrs = ["trace_utils.h"],
     copts = tf_profiler_copts(),
     deps = [
-        "@local_tsl//tsl/profiler/utils:trace_utils",
+        "@local_xla//xla/tsl/profiler/utils:trace_utils",
     ],
 )
 
@@ -139,7 +163,7 @@ cc_library(
     copts = tf_profiler_copts(),
     visibility = [":friends"],
     deps = [
-        "@local_tsl//tsl/profiler/utils:xplane_builder",
+        "@local_xla//xla/tsl/profiler/utils:xplane_builder",
     ],
 )
 
@@ -148,10 +172,7 @@ cc_library(
     hdrs = ["xplane_schema.h"],
     copts = tf_profiler_copts(),
     visibility = [":friends"],
-    deps = [
-        "@com_google_absl//absl/strings",
-        "@local_tsl//tsl/profiler/utils:xplane_schema",
-    ],
+    deps = ["@local_xla//xla/tsl/profiler/utils:xplane_schema"],
 )
 
 cc_library(
@@ -160,7 +181,7 @@ cc_library(
     copts = tf_profiler_copts(),
     visibility = [":friends"],
     deps = [
-        "@local_tsl//tsl/profiler/utils:xplane_utils",
+        "@local_xla//xla/tsl/profiler/utils:xplane_utils",
     ],
 )
 
@@ -170,14 +191,7 @@ cc_library(
     hdrs = ["xplane_test_utils.h"],
     copts = tf_profiler_copts(),
     visibility = [":friends"],
-    deps = [
-        ":xplane_builder",
-        ":xplane_schema",
-        "//tensorflow/core:lib",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/types:variant",
-        "@local_tsl//tsl/profiler/utils:xplane_test_utils",
-    ],
+    deps = ["@local_xla//xla/tsl/profiler/utils:xplane_test_utils"],
 )
 
 cc_library(
@@ -186,7 +200,7 @@ cc_library(
     copts = tf_profiler_copts(),
     visibility = [":friends"],
     deps = [
-        "@local_tsl//tsl/profiler/utils:xplane_visitor",
+        "@local_xla//xla/tsl/profiler/utils:xplane_visitor",
     ],
 )
 
@@ -206,9 +220,9 @@ cc_library(
         "//tensorflow/core/grappler/costs:op_level_cost_estimator",
         "//tensorflow/core/grappler/costs:op_performance_data_cc",
         "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/types:optional",
-        "@local_tsl//tsl/profiler/utils:tf_op_utils",
+        "@local_xla//xla/tsl/profiler/utils:tf_op_utils",
     ],
 )
 
@@ -218,6 +232,7 @@ cc_library(
     hdrs = ["host_offload_utils.h"],
     copts = tf_profiler_copts(),
     deps = [
+        ":trace_utils",
         ":xplane_builder",
         ":xplane_schema",
         ":xplane_visitor",
@@ -225,8 +240,9 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/strings",
-        "@local_tsl//tsl/profiler/utils:timespan",
+        "@com_google_absl//absl/strings:str_format",
         "@local_xla//xla:shape_util",
+        "@local_xla//xla/tsl/profiler/utils:timespan",
     ],
 )
 
@@ -235,31 +251,36 @@ cc_library(
     srcs = ["derived_timeline.cc"],
     hdrs = ["derived_timeline.h"],
     copts = tf_profiler_copts(),
+    visibility = [":friends"],
     deps = [
         ":gpu_event_stats",
         ":hlo_module_map",
         ":hlo_proto_map",
         ":host_offload_utils",
-        ":math_utils",
         ":trace_utils",
         ":xplane_builder",
         ":xplane_schema",
         ":xplane_utils",
         ":xplane_visitor",
         "//tensorflow/core:lib_internal",
-        "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
         "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/strings",
-        "@local_tsl//tsl/profiler/convert:xla_op_utils",
+        "@com_google_absl//absl/types:optional",
+        "@com_google_absl//absl/types:span",
         "@local_tsl//tsl/profiler/protobuf:xplane_proto_cc",
-        "@local_tsl//tsl/profiler/utils:group_events",
-        "@local_tsl//tsl/profiler/utils:tf_op_utils",
-        "@local_tsl//tsl/profiler/utils:tf_xplane_visitor",
-        "@local_tsl//tsl/profiler/utils:timespan",
-        "@local_tsl//tsl/profiler/utils:tpu_xplane_utils",
-        "@local_tsl//tsl/profiler/utils:trace_utils",
-        "@local_tsl//tsl/profiler/utils:xplane_schema",
+        "@local_xla//xla/tsl/profiler/convert:xla_op_utils",
+        "@local_xla//xla/tsl/profiler/utils:device_utils",
+        "@local_xla//xla/tsl/profiler/utils:group_events",
+        "@local_xla//xla/tsl/profiler/utils:math_utils",
+        "@local_xla//xla/tsl/profiler/utils:tf_op_utils",
+        "@local_xla//xla/tsl/profiler/utils:tf_xplane_visitor",
+        "@local_xla//xla/tsl/profiler/utils:timespan",
+        "@local_xla//xla/tsl/profiler/utils:tpu_xplane_utils",
+        "@local_xla//xla/tsl/profiler/utils:trace_utils",
+        "@local_xla//xla/tsl/profiler/utils:xplane_schema",
+        "@local_xla//xla/tsl/profiler/utils:xplane_visitor",
         "@local_xla//xla/tsl/util:stats_calculator_portable",
     ],
 )
@@ -274,14 +295,15 @@ tf_cc_test(
         ":xplane_schema",
         ":xplane_test_utils",
         ":xplane_visitor",
-        "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
-        "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/strings",
-        "@local_tsl//tsl/profiler/utils:group_events",
-        "@local_tsl//tsl/profiler/utils:tf_xplane_visitor",
-        "@local_tsl//tsl/profiler/utils:xplane_schema",
+        "@com_google_googletest//:gtest_main",
+        "@local_tsl//tsl/profiler/protobuf:xplane_proto_cc",
+        "@local_xla//xla/tsl/profiler/utils:group_events",
+        "@local_xla//xla/tsl/profiler/utils:tf_xplane_visitor",
+        "@local_xla//xla/tsl/profiler/utils:xplane_schema",
     ],
 )
 
@@ -295,6 +317,9 @@ cc_library(
         "//tensorflow/core/profiler/protobuf:kernel_stats_proto_cc",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/hash",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -307,8 +332,9 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core/profiler/protobuf:kernel_stats_proto_cc",
+        "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",
-        "@local_xla//xla/backends/profiler/gpu:cupti_collector",
+        "@local_xla//xla/backends/profiler/gpu:cupti_buffer_events",
     ],
 )
 
@@ -323,9 +349,9 @@ cc_library(
         "//tensorflow/core:lib_internal",
         "//tensorflow/core/framework:protos_all_cc",
         "//tensorflow/core/profiler/protobuf:tfstreamz_proto_cc",
-        "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
-        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
+        "@local_tsl//tsl/profiler/protobuf:xplane_proto_cc",
     ],
 )
 
@@ -339,8 +365,11 @@ cc_library(
         "//tensorflow/core:lib_internal",
         "//tensorflow/core/platform:types",
         "//tensorflow/core/profiler/protobuf:steps_db_proto_cc",
+        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
-        "@local_tsl//tsl/profiler/utils:timespan",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/strings",
+        "@local_xla//xla/tsl/profiler/utils:timespan",
     ],
 )
 
@@ -367,8 +396,8 @@ cc_library(
         ":xplane_schema",
         ":xplane_visitor",
         "//tensorflow/core/profiler/protobuf:hardware_types_proto_cc",
-        "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
-        "@local_tsl//tsl/profiler/utils:tf_xplane_visitor",
+        "@local_tsl//tsl/profiler/protobuf:xplane_proto_cc",
+        "@local_xla//xla/tsl/profiler/utils:tf_xplane_visitor",
     ],
 )
 
@@ -379,10 +408,9 @@ cc_library(
     copts = tf_profiler_copts(),
     visibility = [":friends"],
     deps = [
-        "//tensorflow/core/profiler/utils:xplane_schema",
-        "//tensorflow/core/profiler/utils:xplane_visitor",
+        ":xplane_schema",
+        ":xplane_visitor",
         "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/types:optional",
     ],
 )
 
@@ -395,15 +423,16 @@ cc_library(
         ":xplane_schema",
         ":xplane_utils",
         ":xplane_visitor",
-        "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
-        "@local_tsl//tsl/profiler/convert:xla_op_utils",
-        "@local_tsl//tsl/profiler/utils:tf_xplane_visitor",
+        "@local_tsl//tsl/profiler/protobuf:xplane_proto_cc",
         "@local_xla//xla/service:hlo_proto_cc",
+        "@local_xla//xla/tsl/profiler/convert:xla_op_utils",
+        "@local_xla//xla/tsl/profiler/utils:tf_xplane_visitor",
     ],
 )
 
@@ -413,11 +442,12 @@ cc_library(
     hdrs = ["hlo_proto_to_module.h"],
     visibility = [":friends"],
     deps = [
-        "//tensorflow/core/platform:statusor",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status:statusor",
         "@local_xla//xla:util",
         "@local_xla//xla/hlo/ir:hlo",
-        "@local_xla//xla/service:hlo_module_config",
         "@local_xla//xla/service:hlo_proto_cc",
+        "@local_xla//xla/tsl/platform:statusor",
     ],
 )
 
@@ -430,19 +460,99 @@ tf_cuda_library(
     ],
     visibility = [":friends"],
     deps = [
+        ":hlo_module_utils",
+        ":hlo_proto_map",
         ":hlo_proto_to_module",
         "//tensorflow/core/platform:path",
-        "//tensorflow/core/profiler/lib:traceme_encode",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/strings",
+        "@local_tsl//tsl/profiler/lib:traceme_encode",
+        "@local_tsl//tsl/profiler/protobuf:xplane_proto_cc",
+        "@local_xla//xla:shape_util",
         "@local_xla//xla/hlo/ir:hlo",
         "@local_xla//xla/service:hlo_cost_analysis",
         "@local_xla//xla/service:hlo_proto_cc",
+        "@local_xla//xla/tsl/profiler/convert:xla_op_utils",
     ],
 )
 
 cc_library(
     name = "hlo_module_utils",
     hdrs = ["hlo_module_utils.h"],
-    deps = ["@local_xla//xla/hlo/ir:hlo"],
+    visibility = [
+        ":friends",
+        # copybara:uncomment "//tensorflow/compiler/mlir/lite/experimental/google/tooling/google:__subpackages__",
+    ],
+    deps = [
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/strings",
+        "@local_xla//xla/hlo/ir:hlo",
+        "@local_xla//xla/tsl/profiler/convert:xla_op_utils",
+    ],
+)
+
+tf_cc_test(
+    name = "hlo_module_utils_test",
+    srcs = ["hlo_module_utils_test.cc"],
+    deps = [
+        ":hlo_module_utils",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_googletest//:gtest_main",
+        "@local_xla//xla/hlo/ir:hlo",
+        "@local_xla//xla/tests:hlo_test_base",
+    ],
+)
+
+cc_library(
+    name = "xprof_gpu_cost_analysis",
+    srcs = ["xprof_gpu_cost_analysis.cc"],
+    hdrs = ["xprof_gpu_cost_analysis.h"],
+    visibility = [":friends"],
+    deps = [
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings:string_view",
+        "@local_xla//xla:shape_util",
+        "@local_xla//xla/hlo/ir:hlo",
+        "@local_xla//xla/service:hlo_cost_analysis",
+        "@local_xla//xla/service/gpu:cublas_cudnn",
+        "@local_xla//xla/service/gpu/model:gpu_hlo_cost_analysis",
+        "@local_xla//xla/tsl/platform:errors",
+    ],
+)
+
+cc_library(
+    name = "tpu_step_breakdown_utils",
+    hdrs = ["tpu_step_breakdown_utils.h"],
+    visibility = [":friends"],
+    deps = ["//tensorflow/core/profiler/protobuf:steps_db_proto_cc"],
+)
+
+cc_library(
+    name = "tpu_step_details_utils",
+    hdrs = ["tpu_step_details_utils.h"],
+    visibility = [":friends"],
+    deps = ["//tensorflow/core/profiler/protobuf:tpu_input_pipeline_proto_cc"],
+)
+
+tf_cc_test(
+    name = "xprof_gpu_cost_analysis_test",
+    srcs = ["xprof_gpu_cost_analysis_test.cc"],
+    deps = [
+        ":xprof_gpu_cost_analysis",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest",
+        "@local_xla//xla:shape_util",
+        "@local_xla//xla:xla_data_proto_cc",
+        "@local_xla//xla/hlo/ir:hlo",
+        "@local_xla//xla/hlo/testlib:test_helpers",
+        "@local_xla//xla/service:hlo_cost_analysis",
+        "@local_xla//xla/tests:hlo_test_base",
+        "@local_xla//xla/tests:xla_internal_test_main",
+        "@local_xla//xla/tsl/platform:statusor",
+    ],
 )

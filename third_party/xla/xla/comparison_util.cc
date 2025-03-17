@@ -19,13 +19,15 @@ limitations under the License.
 #include <string>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "xla/primitive_util.h"
+#include "xla/tsl/platform/logging.h"  // IWYU pragma: keep
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/logging.h"  // IWYU pragma: keep
 
 namespace xla {
 namespace {
@@ -177,19 +179,6 @@ absl::StatusOr<Comparison::Direction> StringToComparisonDirection(
   auto it = map->find(direction);
   if (it == map->end()) {
     return InvalidArgument("Unknown comparison direction: %s", direction);
-  }
-  return it->second;
-}
-
-absl::StatusOr<Comparison::Order> StringToComparisonOrder(
-    absl::string_view order) {
-  static auto* map = new absl::flat_hash_map<std::string, Comparison::Order>({
-      {"TOTALORDER", Comparison::Order::kTotal},
-      {"PARTIALORDER", Comparison::Order::kPartial},
-  });
-  auto it = map->find(order);
-  if (it == map->end()) {
-    return InvalidArgument("Unknown comparison type: %s", order);
   }
   return it->second;
 }

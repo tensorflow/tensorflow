@@ -19,20 +19,21 @@ limitations under the License.
 #include <utility>
 
 #include "llvm/ADT/StringRef.h"
-#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
-#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
-#include "mlir/IR/MLIRContext.h"  // from @llvm-project
-#include "mlir/IR/OperationSupport.h"  // from @llvm-project
-#include "mlir/Pass/Pass.h"  // from @llvm-project
-#include "mlir/Pass/PassRegistry.h"  // from @llvm-project
-#include "mlir/Support/LLVM.h"  // from @llvm-project
-#include "mlir/Support/LogicalResult.h"  // from @llvm-project
-#include "mlir/Support/TypeID.h"  // from @llvm-project
-#include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
-#include "shardy/dialect/sdy/ir/dialect.h"  // from @shardy
-#include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
+#include "llvm/Support/LogicalResult.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/IR/BuiltinAttributes.h"
+#include "mlir/IR/MLIRContext.h"
+#include "mlir/IR/OperationSupport.h"
+#include "mlir/Pass/Pass.h"
+#include "mlir/Pass/PassRegistry.h"
+#include "mlir/Support/LLVM.h"
+#include "mlir/Support/LogicalResult.h"
+#include "mlir/Support/TypeID.h"
+#include "mlir/Transforms/DialectConversion.h"
+#include "shardy/dialect/sdy/ir/dialect.h"
+#include "stablehlo/dialect/StablehloOps.h"
 
-namespace mhlo = ::mlir::mhlo;
+namespace stablehlo = ::mlir::stablehlo;
 
 namespace xla {
 namespace sdy {
@@ -47,11 +48,11 @@ using ::mlir::func::FuncOp;
 
 using ::mlir::sdy::ConstantOp;
 
-class ConstantPattern : public OpConversionPattern<mhlo::ConstantOp> {
+class ConstantPattern : public OpConversionPattern<stablehlo::ConstantOp> {
   using OpConversionPattern::OpConversionPattern;
 
   LogicalResult matchAndRewrite(
-      mhlo::ConstantOp op, OpAdaptor adaptor,
+      stablehlo::ConstantOp op, OpAdaptor adaptor,
       ConversionPatternRewriter& rewriter) const override {
     // We use the generic op builder so that unregistered attributes will be
     // added to the new op.
@@ -70,7 +71,7 @@ class ImportConstantsPass
   void runOnOperation() final {
     mlir::MLIRContext& context = getContext();
     mlir::ConversionTarget target(context);
-    target.addIllegalOp<mhlo::ConstantOp>();
+    target.addIllegalOp<stablehlo::ConstantOp>();
     target.addLegalOp<ConstantOp>();
     mlir::RewritePatternSet patterns(&context);
     patterns.add<ConstantPattern>(&context);
@@ -83,7 +84,7 @@ class ImportConstantsPass
   StringRef getArgument() const override { return "xla-sdy-import-constants"; }
 
   StringRef getDescription() const override {
-    return "Converts an `mhlo.constant` into an `sdy.constant`.";
+    return "Converts an `stablehlo.constant` into an `sdy.constant`.";
   }
 };
 

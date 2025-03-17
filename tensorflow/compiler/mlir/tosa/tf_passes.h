@@ -19,8 +19,7 @@ limitations under the License.
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Pass/PassOptions.h"  // from @llvm-project
 
-namespace mlir {
-namespace tosa {
+namespace mlir::tosa {
 
 struct TOSATFLegalizationPipelineOptions
     : public PassPipelineOptions<TOSATFLegalizationPipelineOptions> {};
@@ -31,7 +30,6 @@ void createTFtoTOSALegalizationPipeline(
 
 void registerTFtoTOSALegalizationPipeline();
 
-}  // namespace tosa
-}  // namespace mlir
+}  // namespace mlir::mlir
 
 #endif  // TENSORFLOW_COMPILER_MLIR_TOSA_TF_PASSES_H_

@@ -21,11 +21,11 @@ limitations under the License.
 #include <string>
 #include <utility>
 
-#include "third_party/nanobind/include/nanobind/nanobind.h"
-#include "third_party/nanobind/include/nanobind/stl/optional.h"  // IWYU pragma: keep
-#include "third_party/nanobind/include/nanobind/stl/set.h"  // IWYU pragma: keep
-#include "third_party/nanobind/include/nanobind/stl/shared_ptr.h"  // IWYU pragma: keep
-#include "third_party/nanobind/include/nanobind/stl/string.h"  // IWYU pragma: keep
+#include "nanobind/nanobind.h"
+#include "nanobind/stl/optional.h"  // IWYU pragma: keep
+#include "nanobind/stl/set.h"  // IWYU pragma: keep
+#include "nanobind/stl/shared_ptr.h"  // IWYU pragma: keep
+#include "nanobind/stl/string.h"  // IWYU pragma: keep
 #include "xla/pjrt/distributed/client.h"
 #include "xla/pjrt/distributed/key_value_store_interface.h"
 #include "xla/pjrt/gpu/gpu_helpers.h"
@@ -64,7 +64,9 @@ void RegisterGpuClientAndDefineGpuAllocatorConfig(nanobind::module_& m_nb) {
          int node_id, int num_nodes,
          std::optional<std::set<int>> allowed_devices,
          std::optional<std::string> platform_name,
-         std::optional<bool> mock = false) -> nb_class_ptr<PyClient> {
+         std::optional<bool> mock = false,
+         std::optional<std::string> mock_gpu_topology =
+             "") -> nb_class_ptr<PyClient> {
         std::unique_ptr<ifrt::PjRtClient> ifrt_client;
         {
           nb::gil_scoped_release gil_release;
@@ -81,6 +83,7 @@ void RegisterGpuClientAndDefineGpuAllocatorConfig(nanobind::module_& m_nb) {
           options.platform_name = platform_name;
           options.kv_store = kv_store;
           options.enable_mock_nccl = mock.value_or(false);
+          options.mock_gpu_topology = mock_gpu_topology;
           std::unique_ptr<PjRtClient> pjrt_client =
               xla::ValueOrThrow(GetStreamExecutorGpuClient(options));
           ifrt_client = ifrt::PjRtClient::Create(std::move(pjrt_client));
@@ -93,7 +96,8 @@ void RegisterGpuClientAndDefineGpuAllocatorConfig(nanobind::module_& m_nb) {
       nb::arg("num_nodes") = 1,
       nb::arg("allowed_devices").none() = std::nullopt,
       nb::arg("platform_name").none() = std::nullopt,
-      nb::arg("mock").none() = std::nullopt);
+      nb::arg("mock").none() = std::nullopt,
+      nb::arg("mock_gpu_topology").none() = std::nullopt);
 }
 
 }  // namespace xla

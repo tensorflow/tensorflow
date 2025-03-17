@@ -12,7 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include <cstdint>
+#include <cassert>
+#include <cstddef>
 #include <string>
 #include <string_view>
 
@@ -31,7 +32,7 @@ limitations under the License.
 namespace {
 
 void FuzzTest(absl::StatusCode error_code, std::string_view error_message) {
-  tensorflow::Status s = tensorflow::Status(error_code, error_message);
+  absl::Status s = absl::Status(error_code, error_message);
   const std::string actual_message = s.ToString();
   const std::size_t pos = actual_message.rfind(error_message);
   assert(pos != std::string::npos);  // Suffix is error message

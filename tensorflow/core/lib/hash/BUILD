@@ -26,7 +26,7 @@ cc_library(
         "//tensorflow/core/platform",
         "//tensorflow/core/platform:cord",
         "//tensorflow/core/platform:types",
-        "@local_tsl//tsl/lib/hash:crc32c",
+        "@local_xla//xla/tsl/lib/hash:crc32c",
     ],
 )
 
@@ -51,7 +51,7 @@ filegroup(
     name = "mobile_srcs_only_runtime",
     srcs = [
         "crc32c.h",
-        "@local_tsl//tsl/lib/hash:mobile_srcs_only_runtime",
+        "@local_xla//xla/tsl/lib/hash:mobile_srcs_only_runtime",
     ],
     visibility = ["//tensorflow/core:__pkg__"],
 )
@@ -61,7 +61,7 @@ filegroup(
     srcs = [
         "crc32c.h",
         "hash.h",
-        "@local_tsl//tsl/lib/hash:legacy_lib_hash_all_headers",
+        "@local_xla//xla/tsl/lib/hash:legacy_lib_hash_all_headers",
     ],
     visibility = ["//tensorflow/core:__pkg__"],
 )

@@ -108,7 +108,7 @@ TEST_F(LoopOptimizerTest, Basic) {
   TF_EXPECT_OK(optimizer.Optimize(nullptr, item, &output));
 
   {  // Original graph.
-    Status status;
+    absl::Status status;
     utils::GraphView view(&graph, &status);
     TF_ASSERT_OK(status);
     FrameView frames;
@@ -128,7 +128,7 @@ TEST_F(LoopOptimizerTest, Basic) {
   }
 
   {  // Optimized graph.
-    Status status;
+    absl::Status status;
     utils::GraphView view(&output, &status);
     TF_ASSERT_OK(status);
     FrameView frames;
@@ -175,7 +175,7 @@ TEST_F(LoopOptimizerTest, Const) {
   TF_EXPECT_OK(optimizer.Optimize(nullptr, item, &output));
 
   {  // Original graph.
-    Status status;
+    absl::Status status;
     utils::GraphView view(&graph, &status);
     TF_ASSERT_OK(status);
     FrameView frames;
@@ -195,7 +195,7 @@ TEST_F(LoopOptimizerTest, Const) {
   }
 
   {  // Optimized graph.
-    Status status;
+    absl::Status status;
     utils::GraphView view(&output, &status);
     TF_ASSERT_OK(status);
     FrameView frames;
@@ -242,7 +242,7 @@ TEST_F(LoopOptimizerTest, ControlOutput) {
   TF_EXPECT_OK(optimizer.Optimize(nullptr, item, &output));
 
   {  // Original graph.
-    Status status;
+    absl::Status status;
     utils::GraphView view(&graph, &status);
     TF_ASSERT_OK(status);
     FrameView frames;
@@ -257,7 +257,7 @@ TEST_F(LoopOptimizerTest, ControlOutput) {
   }
 
   {  // Optimized graph.
-    Status status;
+    absl::Status status;
     utils::GraphView view(&output, &status);
     TF_ASSERT_OK(status);
     FrameView frames;
@@ -316,7 +316,7 @@ TEST_F(LoopOptimizerTest, NestedLoop1) {
   TF_EXPECT_OK(optimizer.Optimize(nullptr, item, &output));
 
   {  // Original graph.
-    Status status;
+    absl::Status status;
     utils::GraphView view(&graph, &status);
     TF_ASSERT_OK(status);
     FrameView frames;
@@ -341,7 +341,7 @@ TEST_F(LoopOptimizerTest, NestedLoop1) {
   }
 
   {  // Optimized graph.
-    Status status;
+    absl::Status status;
     utils::GraphView view(&output, &status);
     TF_ASSERT_OK(status);
     FrameView frames;
@@ -409,7 +409,7 @@ TEST_F(LoopOptimizerTest, NestedLoop2) {
   TF_EXPECT_OK(optimizer.Optimize(nullptr, item, &output));
 
   {  // Original graph.
-    Status status;
+    absl::Status status;
     utils::GraphView view(&graph, &status);
     TF_ASSERT_OK(status);
     FrameView frames;
@@ -429,7 +429,7 @@ TEST_F(LoopOptimizerTest, NestedLoop2) {
   }
 
   {  // Optimized graph.
-    Status status;
+    absl::Status status;
     utils::GraphView view(&output, &status);
     TF_ASSERT_OK(status);
     FrameView frames;
@@ -492,7 +492,7 @@ TEST_F(LoopOptimizerTest, NestedLoopConst1) {
   TF_EXPECT_OK(optimizer.Optimize(nullptr, item, &output));
 
   {  // Original graph.
-    Status status;
+    absl::Status status;
     utils::GraphView view(&graph, &status);
     TF_ASSERT_OK(status);
     FrameView frames;
@@ -512,7 +512,7 @@ TEST_F(LoopOptimizerTest, NestedLoopConst1) {
   }
 
   {  // Optimized graph.
-    Status status;
+    absl::Status status;
     utils::GraphView view(&output, &status);
     TF_ASSERT_OK(status);
     FrameView frames;
@@ -576,7 +576,7 @@ TEST_F(LoopOptimizerTest, NestedLoopConst2) {
   TF_EXPECT_OK(optimizer.Optimize(nullptr, item, &output));
 
   {  // Original graph.
-    Status status;
+    absl::Status status;
     utils::GraphView view(&graph, &status);
     TF_ASSERT_OK(status);
     FrameView frames;
@@ -596,7 +596,7 @@ TEST_F(LoopOptimizerTest, NestedLoopConst2) {
   }
 
   {  // Optimized graph.
-    Status status;
+    absl::Status status;
     utils::GraphView view(&output, &status);
     TF_ASSERT_OK(status);
     FrameView frames;
@@ -638,7 +638,7 @@ TEST_F(LoopOptimizerTest, NoOp) {
   LoopOptimizer optimizer;
   EnableOnlyStackPushRemoval(&optimizer);
   GraphDef output;
-  Status status = optimizer.Optimize(nullptr, item, &output);
+  absl::Status status = optimizer.Optimize(nullptr, item, &output);
   TF_EXPECT_OK(status);
 
   VerifyGraphsEqual(item.graph, output, __FUNCTION__);
@@ -668,7 +668,7 @@ TEST_F(LoopOptimizerTest, RemovePushNoOp) {
   LoopOptimizer optimizer;
   EnableOnlyStackPushRemoval(&optimizer);
   GraphDef output;
-  Status status = optimizer.Optimize(nullptr, item, &output);
+  absl::Status status = optimizer.Optimize(nullptr, item, &output);
   TF_EXPECT_OK(status);
   VerifyGraphsEqual(item.graph, output, __FUNCTION__);
 }
@@ -691,7 +691,7 @@ TEST_F(LoopOptimizerTest, RemovePushNoPopButStackLives) {
   LoopOptimizer optimizer;
   EnableOnlyStackPushRemoval(&optimizer);
   GraphDef output;
-  Status status = optimizer.Optimize(nullptr, item, &output);
+  absl::Status status = optimizer.Optimize(nullptr, item, &output);
   TF_EXPECT_OK(status);
   VerifyGraphsEqual(item.graph, output, __FUNCTION__);
 }
@@ -722,7 +722,7 @@ TEST_F(LoopOptimizerTest, RemovePushWithoutMatchingPop) {
   LoopOptimizer optimizer;
   EnableOnlyStackPushRemoval(&optimizer);
   GraphDef output;
-  Status status = optimizer.Optimize(nullptr, item, &output);
+  absl::Status status = optimizer.Optimize(nullptr, item, &output);
   TF_EXPECT_OK(status);
 
   EXPECT_EQ(output.node_size(), 13);
@@ -819,7 +819,7 @@ TEST_F(LoopOptimizerTest, RemoveDeadBranchesConstantCondition) {
 
   LoopOptimizer optimizer(RewriterConfig::AGGRESSIVE, nullptr);
   GraphDef output;
-  Status status = optimizer.Optimize(nullptr, item, &output);
+  absl::Status status = optimizer.Optimize(nullptr, item, &output);
   TF_CHECK_OK(status);
 
   for (const NodeDef& node : output.node()) {
@@ -945,7 +945,7 @@ TEST_F(LoopOptimizerTest, RemoveDeadBranchesConstantCondition2) {
 
   LoopOptimizer optimizer(RewriterConfig::AGGRESSIVE, nullptr);
   GraphDef output;
-  Status status = optimizer.Optimize(nullptr, item, &output);
+  absl::Status status = optimizer.Optimize(nullptr, item, &output);
   TF_CHECK_OK(status);
 
   for (const NodeDef& node : output.node()) {
@@ -1362,7 +1362,7 @@ versions {
 
   LoopOptimizer optimizer(RewriterConfig::AGGRESSIVE, nullptr);
   GraphDef output;
-  Status status = optimizer.Optimize(nullptr, item, &output);
+  absl::Status status = optimizer.Optimize(nullptr, item, &output);
   TF_CHECK_OK(status);
 
   bool found_merge = false;
@@ -1586,7 +1586,7 @@ versions {
 
   LoopOptimizer optimizer(RewriterConfig::AGGRESSIVE, nullptr);
   GraphDef output;
-  Status status = optimizer.Optimize(nullptr, item, &output);
+  absl::Status status = optimizer.Optimize(nullptr, item, &output);
   TF_CHECK_OK(status);
   auto tensors_got = EvaluateNodes(output, item.fetch);
   ASSERT_EQ(tensors_got.size(), 1);
@@ -1779,7 +1779,7 @@ versions {
 
   LoopOptimizer optimizer(RewriterConfig::AGGRESSIVE, nullptr);
   GraphDef output;
-  Status status = optimizer.Optimize(nullptr, item, &output);
+  absl::Status status = optimizer.Optimize(nullptr, item, &output);
   TF_CHECK_OK(status);
   auto tensors_got = EvaluateNodes(output, item.fetch);
   ASSERT_EQ(tensors_got.size(), 1);

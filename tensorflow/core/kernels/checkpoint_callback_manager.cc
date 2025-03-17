@@ -66,7 +66,7 @@ void TriggerSaveCallbackIfFileNotExist(absl::string_view checkpoint_id,
     return;
   }
 
-  Status write_status =
+  absl::Status write_status =
       WriteStringToFile(Env::Default(), file_path, *save_content);
   if (!write_status.ok()) {
     LOG(WARNING) << write_status;
@@ -86,7 +86,8 @@ void TriggerRestoreCallbackIfFileExists(absl::string_view checkpoint_id,
     return;
   }
   std::string payload;
-  Status read_status = ReadFileToString(Env::Default(), file_path, &payload);
+  absl::Status read_status =
+      ReadFileToString(Env::Default(), file_path, &payload);
   if (!read_status.ok()) {
     LOG(WARNING) << "Failed to read: " << read_status;
     return;
@@ -94,7 +95,7 @@ void TriggerRestoreCallbackIfFileExists(absl::string_view checkpoint_id,
 
   LOG(INFO) << "Calling a restore callback: file_extension = " << file_extension
             << ", checkpoint_id = " << checkpoint_id;
-  Status callback_status = callback(checkpoint_id, payload);
+  absl::Status callback_status = callback(checkpoint_id, payload);
   if (!callback_status.ok()) {
     LOG(WARNING) << callback_status;
   }
@@ -140,7 +141,7 @@ CheckpointCallbackManager::GetCheckpointIdAndPathFromPrefix(
       absl::StrCat("Failed to find a checkpoint id. prefix = ", prefix));
 }
 
-Status CheckpointCallbackManager::RegisterSaveCallback(
+absl::Status CheckpointCallbackManager::RegisterSaveCallback(
     absl::string_view file_extension, SaveCallback callback) {
   SaveCallback lazy_callback = nullptr;
   std::string checkpoint_id;
@@ -174,7 +175,7 @@ bool CheckpointCallbackManager::DoesSaveCallbackExist(
   return save_callbacks_.contains(file_extension);
 }
 
-Status CheckpointCallbackManager::RegisterRestoreCallback(
+absl::Status CheckpointCallbackManager::RegisterRestoreCallback(
     absl::string_view file_extension, RestoreCallback callback) {
   RestoreCallback lazy_callback = nullptr;
   std::string checkpoint_id;

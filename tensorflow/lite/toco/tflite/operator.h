@@ -15,17 +15,20 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_TOCO_TFLITE_OPERATOR_H_
 #define TENSORFLOW_LITE_TOCO_TFLITE_OPERATOR_H_
 
+#include <cstdint>
+#include <map>
+#include <memory>
 #include <string>
+#include <vector>
 
 #include "flatbuffers/flatbuffers.h"
 #include "flatbuffers/flexbuffers.h"
 #include "flatbuffers/buffer.h"  // from @flatbuffers
 #include "flatbuffers/flatbuffer_builder.h"  // from @flatbuffers
 #include "flatbuffers/vector.h"  // from @flatbuffers
+#include "tensorflow/compiler/mlir/lite/tools/versioning/op_signature.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/toco/model.h"
-#include "tensorflow/lite/tools/versioning/op_signature.h"
-#include "tensorflow/lite/tools/versioning/op_version.h"
 
 namespace toco {
 

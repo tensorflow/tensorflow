@@ -15,6 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_CORE_API_OP_RESOLVER_H_
 #define TENSORFLOW_LITE_CORE_API_OP_RESOLVER_H_
 
+#include <cstddef>
 #include <functional>
 #include <limits>
 #include <memory>
@@ -22,6 +23,7 @@ limitations under the License.
 #include <unordered_map>
 #include <vector>
 
+#include "tensorflow/compiler/mlir/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/schema/schema_generated.h"

@@ -3,7 +3,6 @@ load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
-    default_visibility = ["//tensorflow/compiler/mlir/lite:__subpackages__"],
     licenses = ["notice"],
 )
 
@@ -15,6 +14,7 @@ cc_library(
     deps = [
         "//tensorflow/cc/saved_model:constants",
         "//tensorflow/cc/saved_model:loader",
+        "//tensorflow/compiler/mlir/lite:tensorflow_lite_tf_unfreeze_global_tensors",
         "//tensorflow/compiler/mlir/lite/stablehlo:tf_stablehlo",
         "//tensorflow/compiler/mlir/quantization/stablehlo:passes",
         "//tensorflow/compiler/mlir/quantization/stablehlo:quantization_config_proto_cc",
@@ -49,6 +49,6 @@ tf_cc_test(
         "@com_google_absl//absl/status:statusor",
         "@com_google_googletest//:gtest_main",
         "@llvm-project//mlir:IR",
-        "@local_tsl//tsl/platform:status_matchers",
+        "@local_xla//xla/tsl/platform:status_matchers",
     ],
 )

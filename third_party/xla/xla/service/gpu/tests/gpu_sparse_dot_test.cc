@@ -27,7 +27,7 @@ limitations under the License.
 #include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/service/gpu/tests/gpu_codegen_test.h"
-#include "tsl/lib/core/status_test_util.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 
 namespace xla {
 namespace gpu {
@@ -43,7 +43,7 @@ class SparseDotTest
     : public GpuCodegenTest,
       public ::testing::WithParamInterface<std::tuple<int, int, int>> {
  protected:
-  DebugOptions GetDebugOptionsForTest() override {
+  DebugOptions GetDebugOptionsForTest() const override {
     DebugOptions debug_options = GpuCodegenTest::GetDebugOptionsForTest();
     debug_options.set_xla_gpu_enable_triton_gemm(true);
     debug_options.set_xla_gpu_autotune_level(0);

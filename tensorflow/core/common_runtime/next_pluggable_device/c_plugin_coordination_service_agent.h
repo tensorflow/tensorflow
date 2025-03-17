@@ -20,6 +20,8 @@ limitations under the License.
 #include <string>
 #include <string_view>
 
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/time/time.h"
 #include "tensorflow/c/experimental/next_pluggable_device/c_api.h"
 #include "tensorflow/c/kernels_experimental.h"
@@ -39,14 +41,15 @@ class CPluginCoordinationServiceAgent : public PluginCoordinationServiceAgent {
     return TF_CoordinationServiceIsInitialized(agent_);
   }
 
-  Status InsertKeyValue(std::string_view key, std::string_view value) override;
+  absl::Status InsertKeyValue(std::string_view key,
+                              std::string_view value) override;
 
   absl::StatusOr<std::string> GetKeyValue(std::string_view key) override;
   absl::StatusOr<std::string> GetKeyValue(std::string_view key,
                                           absl::Duration timeout) override;
   absl::StatusOr<std::string> TryGetKeyValue(std::string_view key) override;
 
-  Status DeleteKeyValue(std::string_view key) override;
+  absl::Status DeleteKeyValue(std::string_view key) override;
 
  private:
   TF_CoordinationServiceAgent* agent_;

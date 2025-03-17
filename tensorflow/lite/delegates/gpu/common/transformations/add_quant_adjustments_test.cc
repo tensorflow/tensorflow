@@ -15,7 +15,9 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/common/transformations/add_quant_adjustments.h"
 
+#include <any>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -34,7 +36,7 @@ namespace tflite {
 namespace gpu {
 namespace {
 
-void AddQuantParams(absl::optional<QuantizationParams>* params, float min,
+void AddQuantParams(std::optional<QuantizationParams>* params, float min,
                     float max, float scale) {
   params->emplace();
   params->value().min = min;
@@ -154,7 +156,7 @@ TEST(AddQuantAdjustments, GeneralCase) {
             graph.nodes()[2]->operation.type);
   EXPECT_EQ(quant_node->id, graph.nodes()[2]->id);
   EXPECT_EQ(ToString(OperationType::ADD), graph.nodes()[3]->operation.type);
-  auto new_quant_attr = absl::any_cast<QuantizeAndDequantizeAttributes>(
+  auto new_quant_attr = std::any_cast<QuantizeAndDequantizeAttributes>(
       graph.nodes()[1]->operation.attributes);
   EXPECT_EQ(0.0, new_quant_attr.min);
   EXPECT_EQ(2.0, new_quant_attr.max);

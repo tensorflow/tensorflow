@@ -166,6 +166,46 @@ TEST_F(BackendConfigsTest, DefaultGpuBackendConfigSetWaitOnQueue) {
                           add->backend_config<GpuBackendConfig>());
 }
 
+TEST_F(BackendConfigsTest, ParseAllReduceIsAsync) {
+  const absl::string_view kModuleStr = R"(
+    HloModule test
+
+    apply_op {
+      x = u32[] parameter(0)
+      y = u32[] parameter(1)
+      ROOT apply_op = u32[] add(x, y)
+    }
+
+    ENTRY test_computation {
+      id = u32[] replica-id()
+      start1 = u32[] all-reduce-start(id), to_apply=apply_op, backend_config={"collective_backend_config": {"is_sync":false}}
+      done1 = u32[] all-reduce-done(start1)
+      start2 = u32[] all-reduce-start(done1), to_apply=apply_op, backend_config={"collective_backend_config": {"is_sync":true}}
+      done2 = u32[] all-reduce-done(start2)
+      start3 = u32[] all-reduce-start(done2), to_apply=apply_op
+      done3 = u32[] all-reduce-done(start3)
+      ROOT done = (u32[], u32[], u32[]) tuple(done1, done2, done3)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
+                          ParseAndReturnVerifiedModule(kModuleStr));
+  auto start1 =
+      m->entry_computation()->root_instruction()->operand(0)->operand(0);
+  auto start2 =
+      m->entry_computation()->root_instruction()->operand(1)->operand(0);
+  auto start3 =
+      m->entry_computation()->root_instruction()->operand(2)->operand(0);
+  TF_ASSERT_OK_AND_ASSIGN(GpuBackendConfig backend_config,
+                          start1->backend_config<GpuBackendConfig>());
+  EXPECT_FALSE(backend_config.collective_backend_config().is_sync());
+  TF_ASSERT_OK_AND_ASSIGN(backend_config,
+                          start2->backend_config<GpuBackendConfig>());
+  EXPECT_TRUE(backend_config.collective_backend_config().is_sync());
+  TF_ASSERT_OK_AND_ASSIGN(backend_config,
+                          start3->backend_config<GpuBackendConfig>());
+  EXPECT_FALSE(backend_config.collective_backend_config().is_sync());
+}
+
 }  // namespace
 }  // namespace gpu
 }  // namespace xla

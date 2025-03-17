@@ -152,6 +152,7 @@ cc_library(
         "//tensorflow/c/experimental/saved_model/core:tf_saved_model_api",
         "//tensorflow/core:lib",
         "//tensorflow/core/common_runtime/eager:context",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/types:optional",
     ],
 )
@@ -370,7 +371,9 @@ tf_cc_test(
         "//tensorflow/c/experimental/saved_model/public:signature_def_param_list",
         "//tensorflow/c/experimental/saved_model/public:tensor_spec",
         "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "@com_google_absl//absl/status",
     ],
 )

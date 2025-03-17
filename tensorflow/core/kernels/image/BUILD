@@ -132,6 +132,7 @@ IMAGE_DEPS = [
     "//tensorflow/core:lib",
     "//tensorflow/core:lib_internal",
     "//tensorflow/core/lib/png:png_io",
+    "//tensorflow/core/lib/webp:webp_io",
     "//tensorflow/core:protos_all_cc",
     "//tensorflow/core/framework:bounds_check",
     "//tensorflow/core/kernels:eigen_helpers",
@@ -197,7 +198,6 @@ tf_kernel_library(
         "//tensorflow/core/util:determinism_for_kernels",
     ] + if_cuda_or_rocm([
         "//tensorflow/core/platform:stream_executor",
-        "@local_xla//xla/stream_executor/cuda:cuda_activation",
     ]),
 )
 
@@ -273,7 +273,6 @@ tf_kernel_library(
     prefix = "non_max_suppression_op",
     deps = IMAGE_DEPS + ["//tensorflow/core/kernels:gpu_prim_hdrs"] + if_cuda_or_rocm([
         "@com_google_absl//absl/strings",
-        "@local_xla//xla/stream_executor",
     ]),
 )
 
@@ -407,6 +406,17 @@ tf_cuda_cc_test(
     ] + IMAGE_TEST_DEPS,
 )
 
+tf_cc_test(
+    name = "scale_and_translate_op_benchmark_test",
+    srcs = ["scale_and_translate_op_benchmark_test.cc"],
+    deps = [
+        ":scale_and_translate_op",
+        "@com_google_benchmark//:benchmark",
+        "@local_tsl//tsl/platform:test_benchmark",
+        "@local_xla//xla/tsl/platform:test_main",
+    ] + IMAGE_TEST_DEPS,
+)
+
 tf_cuda_cc_test(
     name = "non_max_suppression_op_gpu_test",
     srcs = ["non_max_suppression_op_gpu_test.cc"],
@@ -452,6 +462,7 @@ cc_library(
         "//tensorflow/core/framework:types_proto_cc",
         "//tensorflow/core/lib/core:status",
         "//tensorflow/core/lib/png:png_io",
+        "//tensorflow/core/lib/webp:webp_io",
         "//tensorflow/core/platform:byte_order",
         "//tensorflow/core/platform:errors",
         "@com_google_absl//absl/strings",

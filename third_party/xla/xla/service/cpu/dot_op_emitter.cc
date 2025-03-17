@@ -36,10 +36,12 @@ limitations under the License.
 #include "llvm/IR/DerivedTypes.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Instructions.h"
+#include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Value.h"
 #include "llvm/Support/Alignment.h"
 #include "llvm/Support/Casting.h"
+#include "xla/backends/cpu/codegen/target_machine_features.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -50,7 +52,6 @@ limitations under the License.
 #include "xla/service/cpu/backend_config.pb.h"
 #include "xla/service/cpu/cpu_options.h"
 #include "xla/service/cpu/cpu_runtime.h"
-#include "xla/service/cpu/target_machine_features.h"
 #include "xla/service/cpu/tiled_dot_emitter.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/llvm_ir/ir_array.h"
@@ -176,8 +177,8 @@ DotImplementationStrategy GetNonBatchDotImplementationStrategy(
   // Any Matrix-Vector product of floating point or integral type, or
   // a transpose-dot fusion of the same can be lowered to a tiled LLVM
   // IR implementation.
-  if ((dot_info.result_shape.dimensions_size() <= 1 ||
-       (dot_info.result_shape.dimensions_size() == 2 &&
+  if ((dot_info.result_shape.rank() <= 1 ||
+       (dot_info.result_shape.rank() == 2 &&
         (dot_info.result_shape.dimensions(0) == 1 ||
          dot_info.result_shape.dimensions(1) == 1))) &&
       (primitive_util::IsFloatingPointType(element_type) ||
@@ -186,12 +187,12 @@ DotImplementationStrategy GetNonBatchDotImplementationStrategy(
   }
 
   // MatMul smaller than 3x3 should use naive nested loop.
-  if ((dot_info.lhs_shape.dimensions_size() <= 1 ||
-       (dot_info.lhs_shape.dimensions_size() == 2 &&
+  if ((dot_info.lhs_shape.rank() <= 1 ||
+       (dot_info.lhs_shape.rank() == 2 &&
         (dot_info.lhs_shape.dimensions(0) <= 3 ||
          dot_info.lhs_shape.dimensions(1) <= 3))) &&
-      (dot_info.rhs_shape.dimensions_size() <= 1 ||
-       (dot_info.rhs_shape.dimensions_size() == 2 &&
+      (dot_info.rhs_shape.rank() <= 1 ||
+       (dot_info.rhs_shape.rank() == 2 &&
         (dot_info.rhs_shape.dimensions(0) <= 3 ||
          dot_info.rhs_shape.dimensions(1) <= 3))) &&
       (primitive_util::IsFloatingPointType(element_type) ||
@@ -218,7 +219,7 @@ class DotOpEmitter {
                         const llvm_ir::IrArray& rhs_array,
                         const llvm_ir::IrArray* addend_array,
                         llvm::Value* executable_run_options_value,
-                        llvm::IRBuilder<>* b,
+                        llvm::IRBuilderBase* b,
                         const HloModuleConfig& hlo_module_config,
                         const TargetMachineFeatures& target_machine_features,
                         bool allow_runtime_calls);
@@ -311,7 +312,7 @@ class DotOpEmitter {
   const llvm_ir::IrArray& rhs_array_;
   const llvm_ir::IrArray* addend_array_;
   llvm::Value* executable_run_options_value_;
-  llvm::IRBuilder<>* b_;
+  llvm::IRBuilderBase* b_;
   const HloModuleConfig& hlo_module_config_;
   const TargetMachineFeatures& target_machine_features_;
   bool allow_runtime_calls_;
@@ -324,7 +325,7 @@ DotOpEmitter::DotOpEmitter(DotInfo dot_info, std::string dot_hlo_name,
                            const llvm_ir::IrArray& rhs_array,
                            const llvm_ir::IrArray* addend_array,
                            llvm::Value* executable_run_options_value,
-                           llvm::IRBuilder<>* b,
+                           llvm::IRBuilderBase* b,
                            const HloModuleConfig& hlo_module_config,
                            const TargetMachineFeatures& target_machine_features,
                            bool allow_runtime_calls)
@@ -770,6 +771,7 @@ absl::Status DotOpEmitter::EmitCallToRuntime() {
   bool use_acl = hlo_module_config_.debug_options().xla_cpu_use_acl();
   PrimitiveType type = target_array_.GetShape().element_type();
   llvm::Function* function = b_->GetInsertBlock()->getParent();
+  llvm::LLVMContext& context = b_->getContext();
   llvm::Module* module = function->getParent();
   llvm::Type* float_type;
   const char* fn_name;
@@ -797,13 +799,13 @@ absl::Status DotOpEmitter::EmitCallToRuntime() {
       fn_name = multi_threaded
                     ? runtime::kEigenMatMulC64SymbolName
                     : runtime::kEigenSingleThreadedMatMulC64SymbolName;
-      float_type = llvm_ir::PrimitiveTypeToIrType(C64, module);
+      float_type = llvm_ir::PrimitiveTypeToIrType(C64, context);
       break;
     case C128:
       fn_name = multi_threaded
                     ? runtime::kEigenMatMulC128SymbolName
                     : runtime::kEigenSingleThreadedMatMulC128SymbolName;
-      float_type = llvm_ir::PrimitiveTypeToIrType(C128, module);
+      float_type = llvm_ir::PrimitiveTypeToIrType(C128, context);
       break;
     case S32:
       fn_name = multi_threaded
@@ -957,7 +959,7 @@ absl::Status DotOpEmitter::EmitCallToBatchRuntime() {
 }
 
 DotOpEmitter::MatMultDims DotOpEmitter::GetMatMultDims() const {
-  CHECK_LE(dot_info_.result_shape.dimensions_size(), 2);
+  CHECK_LE(dot_info_.result_shape.rank(), 2);
 
   const Shape& lhs_shape = lhs_array_.GetShape();
   const Shape& rhs_shape = rhs_array_.GetShape();
@@ -987,7 +989,7 @@ DotOpEmitter::MatMultDims DotOpEmitter::GetMatMultDims() const {
 }
 
 DotOpEmitter::MatMultDims DotOpEmitter::GetBatchMatMultDims() const {
-  CHECK_LE(dot_info_.result_shape.dimensions_size(), 2);
+  CHECK_LE(dot_info_.result_shape.rank(), 2);
 
   const Shape& lhs_shape = lhs_array_.GetShape();
   const Shape& rhs_shape = rhs_array_.GetShape();
@@ -1020,7 +1022,7 @@ DotOpEmitter::MatMultDims DotOpEmitter::GetBatchMatMultDims() const {
 // column major.
 std::optional<int64_t> ProfitableToMakeDotOperandColumnMajor(
     const HloInstruction& hlo) {
-  if (hlo.opcode() == HloOpcode::kDot && hlo.shape().dimensions_size() <= 1) {
+  if (hlo.opcode() == HloOpcode::kDot && hlo.shape().rank() <= 1) {
     if (hlo.operand(0)->shape().rank() != 1 ||
         hlo.dot_dimension_numbers().rhs_contracting_dimensions(0) != 0) {
       return {};
@@ -1070,7 +1072,7 @@ absl::Status EmitNonBatchDotOperation(
     DotInfo dot_info, std::string hlo_name,
     const llvm_ir::IrArray& target_array, const llvm_ir::IrArray& lhs_array,
     const llvm_ir::IrArray& rhs_array, const llvm_ir::IrArray* addend_array,
-    llvm::Value* executable_run_options_value, llvm::IRBuilder<>* b,
+    llvm::Value* executable_run_options_value, llvm::IRBuilderBase* b,
     const HloModuleConfig& hlo_module_config,
     const TargetMachineFeatures& target_machine_features,
     bool allow_runtime_calls) {
@@ -1106,15 +1108,14 @@ Shape CollapseFirstNDims(const Shape& shape, int64_t n) {
                                                   result_dims);
 }
 
-llvm_ir::IrArray CollapseFirstNDims(llvm::IRBuilder<>* b,
+llvm_ir::IrArray CollapseFirstNDims(llvm::IRBuilderBase* b,
                                     const llvm_ir::IrArray& array, int64_t n) {
-  llvm::Module* module = b->GetInsertBlock()->getParent()->getParent();
   const Shape& shape = array.GetShape();
   CHECK(shape.has_layout() &&
         LayoutUtil::IsMonotonicWithDim0Major(shape.layout()));
-  CHECK_GE(shape.dimensions_size(), n);
+  CHECK_GE(shape.rank(), n);
   Shape new_shape = CollapseFirstNDims(shape, n);
-  llvm::Type* new_ir_type = llvm_ir::ShapeToIrType(new_shape, module);
+  llvm::Type* new_ir_type = llvm_ir::ShapeToIrType(new_shape, b->getContext());
   return llvm_ir::IrArray(array.GetBasePointer(), new_ir_type,
                           std::move(new_shape));
 }
@@ -1137,9 +1138,7 @@ absl::Status ValidateDotDimensionNumbers(
 // Slice out the inner array at batch index `batch_index` from `outer_array`.
 llvm_ir::IrArray SliceOutInnerArray(llvm_ir::IrArray outer_array,
                                     llvm::Value* batch_index,
-                                    llvm::IRBuilder<>* b) {
-  llvm::Module* module = b->GetInsertBlock()->getParent()->getParent();
-
+                                    llvm::IRBuilderBase* b) {
   Shape inner_shape = DropFirstDim(outer_array.GetShape());
   std::vector<llvm::Value*> multidim_index(inner_shape.rank() + 1,
                                            b->getInt64(0));
@@ -1147,14 +1146,15 @@ llvm_ir::IrArray SliceOutInnerArray(llvm_ir::IrArray outer_array,
   llvm_ir::IrArray::Index slice_index(multidim_index, outer_array.GetShape(),
                                       batch_index->getType());
   llvm::Value* slice_ptr = outer_array.EmitArrayElementAddress(slice_index, b);
-  llvm::Type* new_ir_type = llvm_ir::ShapeToIrType(inner_shape, module);
+  llvm::Type* new_ir_type =
+      llvm_ir::ShapeToIrType(inner_shape, b->getContext());
   return llvm_ir::IrArray(slice_ptr, new_ir_type, std::move(inner_shape));
 }
 
 bool PotentiallyImplementedAsEigenMatmul(
     const HloInstruction& dot, const llvm_ir::IrArray& target_array,
     const llvm_ir::IrArray& lhs_array, const llvm_ir::IrArray& rhs_array,
-    llvm::Value* executable_run_options_value, llvm::IRBuilder<>* b,
+    llvm::Value* executable_run_options_value, llvm::IRBuilderBase* b,
     const HloModuleConfig& hlo_module_config,
     const TargetMachineFeatures& target_machine_features, DotInfo& dot_info) {
   int64_t num_batch_dims =
@@ -1211,7 +1211,7 @@ bool PotentiallyImplementedAsEigenMatmul(
 absl::Status EmitBatchDotOperation(
     const HloInstruction& dot, const llvm_ir::IrArray& target_array,
     const llvm_ir::IrArray& lhs_array, const llvm_ir::IrArray& rhs_array,
-    llvm::Value* executable_run_options_value, llvm::IRBuilder<>* b,
+    llvm::Value* executable_run_options_value, llvm::IRBuilderBase* b,
     const HloModuleConfig& hlo_module_config,
     const TargetMachineFeatures& target_machine_features,
     bool allow_runtime_calls) {
@@ -1382,7 +1382,7 @@ absl::Status EmitDotOperation(
     const HloInstruction& dot, const llvm_ir::IrArray& target_array,
     const llvm_ir::IrArray& lhs_array, const llvm_ir::IrArray& rhs_array,
     const llvm_ir::IrArray* addend_array,
-    llvm::Value* executable_run_options_value, llvm::IRBuilder<>* b,
+    llvm::Value* executable_run_options_value, llvm::IRBuilderBase* b,
     const HloModuleConfig& hlo_module_config,
     const TargetMachineFeatures& target_machine_features,
     bool allow_runtime_calls) {

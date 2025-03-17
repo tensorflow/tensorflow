@@ -162,7 +162,7 @@ class RecvAtHostOp : public AsyncOpKernel {
       VLOG(2) << "Recv " << key;
       ctx->rendezvous()->RecvAsync(
           parsed_key[i], args,
-          [ctx, i, counter, key, done](const Status& s,
+          [ctx, i, counter, key, done](const absl::Status& s,
                                        const Rendezvous::Args& send_args,
                                        const Rendezvous::Args& recv_args,
                                        const Tensor& val, bool is_dead) {

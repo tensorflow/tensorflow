@@ -60,11 +60,11 @@ class TestParamResolver : public ParamResolverInterface {
     done(errors::Internal("Unimplemented"));
   }
 
-  Status LookupGroup(int32_t group_key, CollGroupParams* group) override {
+  absl::Status LookupGroup(int32_t group_key, CollGroupParams* group) override {
     return errors::Internal("Unimplemented");
   }
 
-  void StartAbort(const Status& s) override {}
+  void StartAbort(const absl::Status& s) override {}
 };
 
 class TestCollectiveExecutorMgr : public CollectiveExecutorMgrInterface {

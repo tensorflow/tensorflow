@@ -21,8 +21,8 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "xla/service/test_compilation_environment.pb.h"
 #include "xla/test.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/xla.pb.h"
-#include "tsl/lib/core/status_test_util.h"
 #include "tsl/platform/casts.h"
 #include "tsl/platform/protobuf.h"
 

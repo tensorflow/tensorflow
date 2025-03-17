@@ -16,37 +16,7 @@ limitations under the License.
 #ifndef XLA_CLIENT_LIB_QR_H_
 #define XLA_CLIENT_LIB_QR_H_
 
-#include "xla/client/xla_builder.h"
-#include "xla/xla_data.pb.h"
-
-namespace xla {
-
-// Computes the QR decompositions of a batch of matrices. That is,
-// given a (batched) matrix a, computes an orthonormal matrix Q and an
-// upper-triangular matrix R such that a = QR.
-// `a` must be a (batched) matrix of size [..., m, n].
-struct QrDecomposition {
-  // A matrix with the same shape as the input matrix `a`, whose upper triangle
-  // (inclusive of the diagonal) is the matrix R, and whose lower triangle
-  // (exclusive of the diagonal) contains the elementary Householder reflectors.
-  // This is the same output format as used by LAPACK's xGEQRF routine.
-  XlaOp q_and_r;
-  // A vector of shape [..., min(m, n)] containing the scalar factors of the
-  // elementary Householder reflectors.
-  XlaOp taus;
-};
-
-QrDecomposition Qr(XlaOp a);
-
-// Given `a` and `taus` as returned by `QRDecomposition`, compute the product of
-// the elementary Householder reflectors (i.e., the matrix Q of the QR
-// decomposition). The equivalent LAPACK routine is xORGQR/xUNGQR.
-XlaOp ProductOfElementaryHouseholderReflectors(XlaOp a, XlaOp taus);
-
-// Helper that combines `Qr` and `ProductOfElementaryHouseholderReflectors` to
-// compute explicit matrices `q` and `r`.
-void QrExplicit(XlaOp a, bool full_matrices, XlaOp& q, XlaOp& r);
-
-}  // namespace xla
+// The current header will be deprecated in favour of the following.
+#include "xla/hlo/builder/lib/qr.h"
 
 #endif  // XLA_CLIENT_LIB_QR_H_

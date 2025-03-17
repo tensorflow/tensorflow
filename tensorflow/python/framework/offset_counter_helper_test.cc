@@ -18,10 +18,10 @@ limitations under the License.
 #include <string>
 
 #include "absl/strings/str_format.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/python/framework/op_reg_offset.pb.h"
-#include "tsl/lib/core/status_test_util.h"
 
 namespace tensorflow {
 namespace {

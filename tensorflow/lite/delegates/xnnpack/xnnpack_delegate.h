@@ -16,6 +16,9 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_DELEGATES_XNNPACK_XNNPACK_DELEGATE_H_
 #define TENSORFLOW_LITE_DELEGATES_XNNPACK_XNNPACK_DELEGATE_H_
 
+#include <stddef.h>
+#include <stdint.h>
+
 #include "tensorflow/lite/core/c/common.h"
 
 #ifdef __cplusplus
@@ -45,6 +48,9 @@ extern "C" {
 // Enable XNNPack subgraph reshaping. This means that models with dynamic
 // tensors are supported and that inputs may be efficiently resized.
 #define TFLITE_XNNPACK_DELEGATE_FLAG_ENABLE_SUBGRAPH_RESHAPING 0x00000080
+// If XNNPACK has been built with Slinky, enable Slinky usage.
+// (Ignored if XNNPACK is built without Slinky.)
+#define TFLITE_XNNPACK_DELEGATE_FLAG_ENABLE_SLINKY 0x00000100
 
 struct TfLiteXNNPackDelegateWeightsCache;
 
@@ -74,6 +80,14 @@ typedef struct {
   // weight cache will only be loaded from this if `weight_cache` is undefined.
   const char* weight_cache_file_path;
 } TfLiteXNNPackDelegateOptions;
+
+// Returns true on systems that support running the in-memory weight cache
+// provider.
+TFL_CAPI_EXPORT bool TfLiteXNNPackDelegateCanUseInMemoryWeightCacheProvider();
+
+// Returns a file path that will activate the in-memory weight cache that
+// enables weight deduplication.
+TFL_CAPI_EXPORT const char* TfLiteXNNPackDelegateInMemoryFilePath();
 
 // Returns a structure with the default XNNPack delegate options.
 TFL_CAPI_EXPORT TfLiteXNNPackDelegateOptions

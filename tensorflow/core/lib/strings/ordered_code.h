@@ -54,7 +54,7 @@ class OrderedCode {
   // Encoding routines: each one of the following routines append
   // one item to "*dest" in an encoding where larger values are
   // ordered lexicographically after smaller values.
-  static void WriteString(string* dest, StringPiece str);
+  static void WriteString(string* dest, absl::string_view str);
   static void WriteNumIncreasing(string* dest, uint64 num);
   static void WriteSignedNumIncreasing(string* dest, int64_t num);
 
@@ -66,9 +66,9 @@ class OrderedCode {
   // result.  In case of string result, the decoded string is appended to
   // "*result".  Returns true if the next item was read successfully, false
   // otherwise.
-  static bool ReadString(StringPiece* src, string* result);
-  static bool ReadNumIncreasing(StringPiece* src, uint64* result);
-  static bool ReadSignedNumIncreasing(StringPiece* src, int64_t* result);
+  static bool ReadString(absl::string_view* src, string* result);
+  static bool ReadNumIncreasing(absl::string_view* src, uint64* result);
+  static bool ReadSignedNumIncreasing(absl::string_view* src, int64_t* result);
 
   // Helper for testing: corrupt "*str" by changing the kth item separator
   // in the string.

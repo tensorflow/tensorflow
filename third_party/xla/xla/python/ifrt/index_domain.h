@@ -43,7 +43,7 @@ class IndexDomain {
   IndexDomain(const IndexDomain&) = default;
   IndexDomain(IndexDomain&&) = default;
   IndexDomain& operator=(const IndexDomain&) = default;
-  IndexDomain& operator=(IndexDomain&&) = default;
+  IndexDomain& operator=(IndexDomain&&) noexcept = default;
 
   const Index& origin() const { return origin_; }
   const Shape& shape() const { return shape_; }
@@ -72,7 +72,14 @@ class IndexDomain {
     origin_ -= offset;
     return *this;
   }
+
+  // TODO(hyeontaek): Remove this method in favor of AbslStringify.
   std::string DebugString() const;
+
+  template <typename Sink>
+  friend void AbslStringify(Sink& sink, const IndexDomain& index_domain) {
+    sink.Append(index_domain.DebugString());
+  }
 
  private:
   Index origin_;

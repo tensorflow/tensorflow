@@ -15,9 +15,12 @@ limitations under the License.
 #include "tensorflow/core/util/example_proto_helper.h"
 
 #include <algorithm>
+#include <cstddef>
 #include <limits>
 #include <vector>
 
+#include "absl/status/status.h"
+#include "absl/strings/str_format.h"
 #include "tensorflow/core/example/example.pb.h"
 #include "tensorflow/core/example/feature.pb.h"
 #include "tensorflow/core/framework/numeric_op.h"
@@ -29,7 +32,7 @@ limitations under the License.
 
 namespace tensorflow {
 
-Status CheckValidType(const DataType& dtype) {
+absl::Status CheckValidType(const DataType& dtype) {
   switch (dtype) {
     case DT_INT64:
     case DT_FLOAT:
@@ -41,8 +44,8 @@ Status CheckValidType(const DataType& dtype) {
   }
 }
 
-Status CheckTypesMatch(const Feature& feature, const DataType& dtype,
-                       bool* match) {
+absl::Status CheckTypesMatch(const Feature& feature, const DataType& dtype,
+                             bool* match) {
   switch (dtype) {
     case DT_INT64:
       *match = (feature.kind_case() == Feature::kInt64List);
@@ -60,10 +63,10 @@ Status CheckTypesMatch(const Feature& feature, const DataType& dtype,
   return absl::OkStatus();
 }
 
-Status FeatureDenseCopy(const std::size_t out_index, const string& name,
-                        const string& key, const DataType& dtype,
-                        const TensorShape& shape, const Feature& feature,
-                        Tensor* out) {
+absl::Status FeatureDenseCopy(const std::size_t out_index, const string& name,
+                              const string& key, const DataType& dtype,
+                              const TensorShape& shape, const Feature& feature,
+                              Tensor* out) {
   const std::size_t num_elements = shape.num_elements();
   const std::size_t offset = out_index * num_elements;
 
@@ -217,7 +220,7 @@ void RowDenseCopy(const std::size_t& out_index, const DataType& dtype,
   }
 }
 
-Status SingleExampleProtoToTensors(
+absl::Status SingleExampleProtoToTensors(
     const Example& example, const string& example_name, const int batch_index,
     const std::vector<FixedLenFeature>& fixed_len_features,
     const std::vector<VarLenFeature>& var_len_features,
@@ -300,10 +303,10 @@ Status SingleExampleProtoToTensors(
   return absl::OkStatus();
 }
 
-Status GetSparseTensorShapes(const VarLenFeature& var_len_feature,
-                             const std::vector<Tensor>& sparse_values_tmp,
-                             const int batch_size,
-                             VarLenFeatureBatchShapes* output_shapes) {
+absl::Status GetSparseTensorShapes(const VarLenFeature& var_len_feature,
+                                   const std::vector<Tensor>& sparse_values_tmp,
+                                   const int batch_size,
+                                   VarLenFeatureBatchShapes* output_shapes) {
   int64_t total_num_features = 0;
   int64_t max_num_features = 0;
   for (int b = 0; b < batch_size; ++b) {
@@ -319,7 +322,7 @@ Status GetSparseTensorShapes(const VarLenFeature& var_len_feature,
   return absl::OkStatus();
 }
 
-Status BatchExampleProtoToTensors(
+absl::Status BatchExampleProtoToTensors(
     const std::vector<const Example*>& examples,
     const std::vector<string>& names,
     const std::vector<FixedLenFeature>& fixed_len_features,
@@ -407,7 +410,23 @@ Status BatchExampleProtoToTensors(
   return absl::OkStatus();
 }
 
-Status ParseExampleAttrs::FinishInit(int op_version) {
+absl::Status ParseExampleAttrs::UpdateDenseShapes(
+    const std::vector<size_t>& got_dims) {
+  if (got_dims.size() != dense_shapes.size()) {
+    return absl::InvalidArgumentError(absl::StrFormat(
+        "got_dims.size() (%d) must match dense_shapes.size() (%d)",
+        got_dims.size(), dense_shapes.size()));
+  }
+  for (size_t d = 0; d < dense_shapes.size(); ++d) {
+    dense_shapes[d].set_dim(0, got_dims[d]);
+  }
+  // Recalculate relative fields.
+  variable_length.clear();
+  elements_per_stride.clear();
+  return GetDenseShapes(dense_shapes, &variable_length, &elements_per_stride);
+}
+
+absl::Status ParseExampleAttrs::FinishInit(int op_version) {
   switch (op_version) {
     case 1:
       num_ragged = 0;
@@ -457,7 +476,7 @@ Status ParseExampleAttrs::FinishInit(int op_version) {
   return absl::OkStatus();
 }
 
-Status ParseSingleExampleAttrs::FinishInit() {
+absl::Status ParseSingleExampleAttrs::FinishInit() {
   if (sparse_keys.size() != sparse_types.size()) {
     return errors::InvalidArgument("len(sparse_keys) != len(sparse_types)");
   }
@@ -476,7 +495,7 @@ Status ParseSingleExampleAttrs::FinishInit() {
   return absl::OkStatus();
 }
 
-Status ParseSequenceExampleAttrs::FinishInit(int op_version) {
+absl::Status ParseSequenceExampleAttrs::FinishInit(int op_version) {
   switch (op_version) {
     case 1:
       num_context_ragged = 0;
@@ -593,7 +612,7 @@ Status ParseSequenceExampleAttrs::FinishInit(int op_version) {
   return absl::OkStatus();
 }
 
-Status ParseSingleSequenceExampleAttrs::FinishInit() {
+absl::Status ParseSingleSequenceExampleAttrs::FinishInit() {
   if (static_cast<size_t>(num_context_sparse) != context_sparse_types.size()) {
     return errors::InvalidArgument(
         "len(context_sparse_keys) != len(context_sparse_types)");
@@ -632,9 +651,9 @@ Status ParseSingleSequenceExampleAttrs::FinishInit() {
   return absl::OkStatus();
 }
 
-Status GetDenseShapes(const std::vector<PartialTensorShape>& dense_shapes,
-                      std::vector<bool>* variable_length,
-                      std::vector<std::size_t>* elements_per_stride) {
+absl::Status GetDenseShapes(const std::vector<PartialTensorShape>& dense_shapes,
+                            std::vector<bool>* variable_length,
+                            std::vector<std::size_t>* elements_per_stride) {
   // Temporary check until we start allowing a variable length outer
   // dimension.
   for (int i = 0; i < dense_shapes.size(); ++i) {

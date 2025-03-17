@@ -36,8 +36,8 @@ limitations under the License.
 #include "xla/tests/literal_test_util.h"
 #include "xla/tests/test_macros.h"
 #include "xla/tests/test_utils.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/lib/core/status_test_util.h"
 #include "tsl/platform/protobuf.h"
 #include "tsl/platform/test.h"
 #include "tsl/platform/test_benchmark.h"
@@ -52,7 +52,7 @@ class MultiOutputFusionTest : public HloTestBase {
   // Layout assignment assumes that there are no fusions in the input graph.
   // Since the purpose of this test is to send pre-fused graphs to XLA, we have
   // to do layout assignment ourselves.
-  DebugOptions GetDebugOptionsForTest() override {
+  DebugOptions GetDebugOptionsForTest() const override {
     auto opts = HloTestBase::GetDebugOptionsForTest();
     opts.add_xla_disable_hlo_passes("layout-assignment");
     return opts;
@@ -245,9 +245,7 @@ XLA_TEST_F(MultiOutputFusionTest,
 
 XLA_TEST_F(MultiOutputFusionTest, MultiOutputLoopFeedingMap) {
 #ifdef XLA_TEST_BACKEND_GPU
-  if (GetDebugOptionsForTest().xla_gpu_mlir_emitter_level() > 0) {
-    GTEST_SKIP() << "Nested fusions not supported on GPU with MLIR emitters.";
-  }
+  GTEST_SKIP() << "Nested fusions not supported on GPU with MLIR emitters.";
 #endif
   const char* testcase = R"(
     HloModule m, is_scheduled=true

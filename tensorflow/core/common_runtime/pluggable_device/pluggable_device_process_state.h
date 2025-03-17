@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_COMMON_RUNTIME_PLUGGABLE_DEVICE_PLUGGABLE_DEVICE_PROCESS_STATE_H_
 #define TENSORFLOW_CORE_COMMON_RUNTIME_PLUGGABLE_DEVICE_PLUGGABLE_DEVICE_PROCESS_STATE_H_
 
+#include <cstddef>
 #include <functional>
 #include <map>
 #include <memory>
@@ -116,10 +117,6 @@ class PluggableDeviceProcessState {
 
   std::vector<AllocatorParts> pluggable_device_host_allocators_
       TF_GUARDED_BY(mu_);
-  std::vector<std::vector<SubAllocator::Visitor>>
-      pluggable_device_host_alloc_visitors_ TF_GUARDED_BY(mu_);
-  std::vector<std::vector<SubAllocator::Visitor>>
-      pluggable_device_host_free_visitors_ TF_GUARDED_BY(mu_);
 };
 
 }  // namespace tensorflow

@@ -17,40 +17,41 @@ limitations under the License.
 
 #include <algorithm>
 #include <cstdint>
+#include <limits>
 #include <memory>
 #include <optional>
-#include <string>
 #include <utility>
 #include <vector>
 
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/log/log.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
-#include "absl/types/optional.h"
+#include "xla/tsl/profiler/utils/tf_op_utils.h"
+#include "xla/tsl/profiler/utils/tf_xplane_visitor.h"
+#include "xla/tsl/profiler/utils/timespan.h"
+#include "xla/tsl/profiler/utils/xplane_schema.h"
+#include "xla/tsl/profiler/utils/xplane_utils.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/convert/op_metrics_db_combiner.h"
 #include "tensorflow/core/profiler/convert/op_stack.h"
 #include "tensorflow/core/profiler/protobuf/op_metrics.pb.h"
-#include "tensorflow/core/profiler/protobuf/xplane.pb.h"
 #include "tensorflow/core/profiler/utils/cost_utils.h"
 #include "tensorflow/core/profiler/utils/op_metrics_db_utils.h"
 #include "tensorflow/core/profiler/utils/op_utils.h"
 #include "tensorflow/core/profiler/utils/trace_utils.h"
 #include "tensorflow/core/profiler/utils/xplane_schema.h"
 #include "tensorflow/core/profiler/utils/xplane_visitor.h"
-#include "tsl/profiler/utils/tf_op_utils.h"
-#include "tsl/profiler/utils/tf_xplane_visitor.h"
-#include "tsl/profiler/utils/timespan.h"
-#include "tsl/profiler/utils/xplane_schema.h"
+#include "tsl/profiler/protobuf/xplane.pb.h"
 
 namespace tensorflow {
 namespace profiler {
 namespace {
 
-constexpr uint64_t kRootSymbolId = 0;
+using tsl::profiler::GetDeviceEventTimespan;
 
 // Type of a TensorFlow Op activity, which is either beginning or ending an Op.
 enum TfActivityType { kTfOpBegin, kTfOpEnd };
@@ -225,19 +226,54 @@ OpMetricsDb ConvertHostThreadsXPlaneToOpMetricsDb(const XPlane& host_trace) {
 OpMetricsDb ConvertTpuDeviceTraceXPlaneToOpMetricsDb(
     const XPlane& device_trace) {
   XPlaneVisitor plane = tsl::profiler::CreateTfXPlaneVisitor(&device_trace);
-  using OpMetricBySymbol =
-      absl::flat_hash_map</*symbol_id=*/uint64_t, OpMetrics>;
-  absl::flat_hash_map</*program_id=*/uint64_t, OpMetricBySymbol> flat_op_metric;
-
   XEventsOpMetricsDbBuilder builder;
+  uint64_t first_op_timestamp_ps = std::numeric_limits<uint64_t>::max();
+  uint64_t last_op_timestamp_ps = 0;
+
+  struct ParentReference {
+    const XEventVisitor event;
+    tsl::profiler::Timespan device_timespan;
+    uint64_t children_duration_ps = 0;
+  };
+
+  tsl::profiler::AncestorStack<ParentReference> event_stack(
+      [&](const ParentReference& parent) {
+        OpMetrics op_metrics = FromXEvent(parent.event);
+        op_metrics.set_time_ps(parent.device_timespan.duration_ps());
+        op_metrics.set_self_time_ps(op_metrics.time_ps() -
+                                    parent.children_duration_ps);
+        builder.AddOpMetric(op_metrics, GetOpKeyFromXEvent(parent.event));
+      },
+      [](const ParentReference& parent, const ParentReference& child) {
+        return parent.device_timespan.Includes(child.device_timespan);
+      },
+      [](ParentReference& parent, ParentReference& child) {
+        parent.children_duration_ps += child.device_timespan.duration_ps();
+      });
+
+  auto track_first_and_last_op_timestamps = [&](const XEventVisitor& event) {
+    tsl::profiler::Timespan timespan = GetDeviceEventTimespan(event);
+    first_op_timestamp_ps =
+        std::min(first_op_timestamp_ps, timespan.begin_ps());
+    last_op_timestamp_ps = std::max(last_op_timestamp_ps, timespan.end_ps());
+  };
 
   plane.ForEachLine([&](const XLineVisitor& line) {
-    line.ForEachEvent(
-        [&](const XEventVisitor& event) { builder.AddOpMetric(event); });
+    if (line.Name() == tsl::profiler::kSparseCoreStepLineName ||
+        line.Name() == tsl::profiler::kStepLineName) {
+      line.ForEachEvent(track_first_and_last_op_timestamps);
+    }
+    if (!tsl::profiler::IsOpLineName(line.Name())) return;
+    line.ForEachEvent([&](const XEventVisitor& event) {
+      tsl::profiler::Timespan timespan = GetDeviceEventTimespan(event);
+      track_first_and_last_op_timestamps(event);
+
+      event_stack.Push({.event = event, .device_timespan = timespan});
+    });
+    event_stack.Flush();
   });
 
-  return builder.Finalize(
-      plane.GetStat(StatType::kTotalProfileDurationPs)->IntOrUintValue());
+  return builder.Finalize(last_op_timestamp_ps - first_op_timestamp_ps);
 }
 
 OpMetricsDb ConvertDeviceTraceXPlaneToOpMetricsDb(const XPlane& device_trace) {

@@ -1,7 +1,7 @@
 # tf.data service tests.
 
 load("//tensorflow:strict.default.bzl", "py_strict_library")
-load("//tensorflow:tensorflow.default.bzl", "tf_py_strict_test")
+load("//tensorflow:tensorflow.default.bzl", "cuda_py_strict_test", "tf_py_strict_test")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -102,6 +102,23 @@ tf_py_strict_test(
         "//tensorflow/python/ops:variable_scope",
         "//tensorflow/python/ops:variable_v1",
         "//tensorflow/python/ops:variables",
+        "//tensorflow/python/platform:client_testlib",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+cuda_py_strict_test(
+    name = "gpu_test",
+    srcs = ["gpu_test.py"],
+    deps = [
+        ":test_base",
+        "//tensorflow/python/data/kernel_tests:test_base",
+        "//tensorflow/python/data/ops:options",
+        "//tensorflow/python/framework:combinations",
+        "//tensorflow/python/framework:config",
+        "//tensorflow/python/framework:errors",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/ops:experimental_dataset_ops_gen",
         "//tensorflow/python/platform:client_testlib",
         "@absl_py//absl/testing:parameterized",
     ],
@@ -347,7 +364,6 @@ tf_py_strict_test(
 py_strict_library(
     name = "multi_process_cluster",
     srcs = ["multi_process_cluster.py"],
-    srcs_version = "PY3",
     deps = [
         ":test_base",
         "//tensorflow/core:protos_all_py",
@@ -382,7 +398,6 @@ tf_py_strict_test(
 py_strict_library(
     name = "test_base",
     srcs = ["test_base.py"],
-    srcs_version = "PY3",
     deps = [
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python/data/experimental/ops:data_service_ops",

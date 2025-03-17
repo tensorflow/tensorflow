@@ -18,11 +18,13 @@ limitations under the License.
 #include <unordered_map>
 #include <vector>
 
+#include "absl/status/status.h"
+#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/lite/toco/graph_transformations/graph_transformations.h"
 #include "tensorflow/lite/toco/model.h"
 #include "tensorflow/lite/toco/runtime/types.h"
 #include "tensorflow/lite/toco/tooling_util.h"
-#include "tensorflow/core/platform/logging.h"
 
 namespace toco {
 
@@ -150,9 +152,9 @@ void FuseMulOrDivParamsIntoFollowingAffine(Model* model, Operator* following_op,
 
 }  // namespace
 
-::tensorflow::Status FuseBinaryIntoFollowingAffine::Run(Model* model,
-                                                        std::size_t op_index,
-                                                        bool* modified) {
+absl::Status FuseBinaryIntoFollowingAffine::Run(Model* model,
+                                                std::size_t op_index,
+                                                bool* modified) {
   *modified = false;
   const auto binary_it = model->operators.begin() + op_index;
   auto* binary_op = binary_it->get();

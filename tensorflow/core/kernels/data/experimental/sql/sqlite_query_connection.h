@@ -30,15 +30,15 @@ class SqliteQueryConnection : public QueryConnection {
  public:
   SqliteQueryConnection();
   ~SqliteQueryConnection() override;
-  Status Open(const string& data_source_name, const string& query,
-              const DataTypeVector& output_types) override;
-  Status Close() override;
-  Status GetNext(IteratorContext* ctx, std::vector<Tensor>* out_tensors,
-                 bool* end_of_sequence) override;
+  absl::Status Open(const string& data_source_name, const string& query,
+                    const DataTypeVector& output_types) override;
+  absl::Status Close() override;
+  absl::Status GetNext(IteratorContext* ctx, std::vector<Tensor>* out_tensors,
+                       bool* end_of_sequence) override;
 
  private:
   // Prepares the query string `query_`.
-  Status PrepareQuery();
+  absl::Status PrepareQuery();
   // Fills `tensor` with the column_index_th element of the current row of
   // `stmt_`.
   void FillTensorWithResultSetEntry(const DataType& data_type, int column_index,

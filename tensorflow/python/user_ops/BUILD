@@ -24,7 +24,6 @@ tf_gen_op_wrapper_private_py(
 py_strict_library(
     name = "ops",
     srcs = ["user_ops.py"],
-    srcs_version = "PY3",
     deps = [
         ":user_ops_gen",
         "//tensorflow/python/util:tf_export",

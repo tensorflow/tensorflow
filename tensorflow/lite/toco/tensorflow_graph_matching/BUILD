@@ -56,6 +56,8 @@ cc_library(
         "//tensorflow/lite/toco:model",
         "//tensorflow/lite/toco:toco_port",
         "//tensorflow/lite/toco:tooling_util",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
     ],
 )
 
@@ -70,6 +72,7 @@ tf_cc_test(
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/lite/toco:toco_port",
+        "@com_google_absl//absl/log:check",
         "@com_google_googletest//:gtest_main",
     ],
 )

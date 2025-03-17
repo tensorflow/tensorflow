@@ -18,13 +18,13 @@ limitations under the License.
 
 #include <memory>
 
-#include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Pass/Pass.h"
 
 namespace xla {
 namespace sdy {
 
-// Creates a pass that converts an `mhlo.constant` (which is foldable) into an
-// `sdy.constant` (which isn't foldable).
+// Creates a pass that converts a `stablehlo.constant` (which is foldable) into
+// an `sdy.constant` (which isn't foldable).
 std::unique_ptr<mlir::Pass> createImportConstantsPass();
 
 // Register the xla-sdy-import-constants pass.

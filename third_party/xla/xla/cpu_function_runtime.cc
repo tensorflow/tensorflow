@@ -19,7 +19,7 @@ limitations under the License.
 
 namespace xla {
 namespace {
-// Inline memory allocation routines here, because depending on '//base' brings
+// Inline memory allocation routines here, because depending on 'base' brings
 // in libraries which use c++ streams, which adds considerable code size on
 // android.
 void* aligned_malloc(size_t size, int minimum_alignment) {

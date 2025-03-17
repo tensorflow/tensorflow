@@ -348,6 +348,8 @@ absl::StatusOr<DimAndBound> InferMostSpecificDimAndBound(int64_t dim,
   TF_DCHECK_OK(ShapeUtil::ValidateShapeWithOptionalLayout(shape));
   switch (opcode) {
     case HloOpcode::kFloor:
+    case HloOpcode::kCbrt:  // Complex cbrt is not implemented in either of the
+                            // backends.
     case HloOpcode::kCeil:
     case HloOpcode::kErf:
     case HloOpcode::kRoundNearestAfz:
@@ -368,7 +370,6 @@ absl::StatusOr<DimAndBound> InferMostSpecificDimAndBound(int64_t dim,
     case HloOpcode::kLogistic:
     case HloOpcode::kRsqrt:
     case HloOpcode::kSqrt:
-    case HloOpcode::kCbrt:
     case HloOpcode::kTan:
     case HloOpcode::kTanh:
       if (!ShapeUtil::ElementIsFloating(shape) &&
@@ -475,7 +476,7 @@ absl::StatusOr<DimAndBound> InferMostSpecificDimAndBound(int64_t dim,
   TF_RET_CHECK(operand_shape.dimensions(last_dim) >= k)
       << "k=" << k << " is larger than the last dimension of size="
       << operand_shape.dimensions(last_dim);
-  for (int64_t i = 0; i < operand_shape.dimensions_size(); ++i) {
+  for (int64_t i = 0; i < operand_shape.rank(); ++i) {
     is_dynamic[i] =
         i == last_dim ? false : operand_shape.is_dynamic_dimension(i);
     dimensions[i] = i == last_dim ? k : operand_shape.dimensions(i);
@@ -634,8 +635,8 @@ absl::StatusOr<DimAndBound> InferMostSpecificDimAndBound(int64_t dim,
   if (input_bitwidth > output_bitwidth) {
     ShapeUtil::AppendMinorDimension(ratio, &new_shape);
   } else if (input_bitwidth < output_bitwidth) {
-    int last_dimension_idx = operand_shape.dimensions_size() - 1;
-    if (operand_shape.dimensions_size() < 1 ||
+    int last_dimension_idx = operand_shape.rank() - 1;
+    if (operand_shape.rank() < 1 ||
         operand_shape.dimensions(last_dimension_idx) != ratio) {
       return InvalidArgument(
           "Last dimension of input shape=%d is not equal to ratio of "
@@ -755,7 +756,7 @@ absl::StatusOr<DimAndBound> InferMostSpecificDimAndBound(int64_t dim,
 
   std::vector<int64_t> dimensions(operand_shape.rank());
   std::vector<bool> is_dynamic(operand_shape.rank());
-  for (int64_t i = 0; i < operand_shape.dimensions_size(); ++i) {
+  for (int64_t i = 0; i < operand_shape.rank(); ++i) {
     const auto& p = padding_config.dimensions(i);
     if (operand_shape.is_unbounded_dynamic_dimension(i)) {
       dimensions[i] = Shape::kUnboundedSize;
@@ -815,8 +816,9 @@ absl::Status ValidateDotDimensionNumbers(
                      lhs_batch_dimensions) ||
       !dims_in_range(rhs.rank(), rhs_contracting_dimensions,
                      rhs_batch_dimensions)) {
-    return InvalidArgument("A dimension number is out of range in Dot: %s.",
-                           dimension_numbers.DebugString());
+    return InvalidArgument(
+        "A dimension number is out of range in Dot: %s. %s %s",
+        dimension_numbers.DebugString(), lhs.ToString(), rhs.ToString());
   }
 
   // Check that dimension numbers are unique.
@@ -839,16 +841,13 @@ absl::Status ValidateDotDimensionNumbers(
   return absl::OkStatus();
 }
 
-}  // namespace
-
-/* static */ absl::StatusOr<Shape> ShapeInference::InferDotOpShape(
+absl::Status CheckDotDimensionConstraints(
     const Shape& lhs, const Shape& rhs,
     const DotDimensionNumbers& dimension_numbers,
-    std::optional<PrimitiveType> preferred_element_type,
-    absl::Span<const SparsityDescriptor> sparsity) {
-  TF_RETURN_IF_ERROR(ExpectArray(lhs, "lhs of dot"));
-  TF_RETURN_IF_ERROR(ExpectArray(rhs, "rhs of dot"));
-
+    std::optional<std::array<std::pair<int, int>, HloDotInstruction::kOperands>>
+        sparsity_nm = std::nullopt,
+    std::optional<std::array<int, HloDotInstruction::kOperands>> sparsity_dim =
+        std::nullopt) {
   auto fail = [lhs, rhs](const std::string& addendum) -> absl::Status {
     std::string message =
         StrFormat("Cannot infer shape for dot operation: %s <dot> %s.",
@@ -858,26 +857,6 @@ absl::Status ValidateDotDimensionNumbers(
     }
     return InvalidArgument("%s", message);
   };
-
-  // Validate basic properties of dot dimension numbers.
-  TF_RETURN_IF_ERROR(ValidateDotDimensionNumbers(lhs, rhs, dimension_numbers));
-
-  // Sparsity is only supported for contracting dimensions.
-  // With N:M sparsity, the contracting dimension sizes have N/M ratio.
-  const int kSize = HloDotInstruction::kOperands;
-  std::array<std::pair<int, int>, kSize> sparsity_nm = {{{1, 1}, {1, 1}}};
-  std::array<int, kSize> sparsity_dim = {-1, -1};
-  for (const auto& descriptor : sparsity) {
-    TF_RET_CHECK(descriptor.index() == 0 || descriptor.index() == 1);
-    sparsity_dim[descriptor.index()] = descriptor.dimension();
-    switch (descriptor.type()) {
-      case SPARSITY_STRUCTURED_N_M:
-        sparsity_nm[descriptor.index()] = {descriptor.n(), descriptor.m()};
-        break;
-      default:
-        LOG(FATAL) << "Unsupported sparsity type: " << descriptor.type();
-    }
-  }
 
   // Check that number of contracting dimensions match.
   if (dimension_numbers.lhs_contracting_dimensions_size() !=
@@ -896,15 +875,17 @@ absl::Status ValidateDotDimensionNumbers(
     int64_t lhs_size = lhs.dimensions(lhs_contracting_dimension);
     int64_t rhs_size = rhs.dimensions(rhs_contracting_dimension);
     bool is_sparse = false;
-    if (lhs_contracting_dimension == sparsity_dim[0]) {
-      lhs_size *= sparsity_nm[0].second;
-      rhs_size *= sparsity_nm[0].first;
-      is_sparse = true;
-    }
-    if (rhs_contracting_dimension == sparsity_dim[1]) {
-      lhs_size *= sparsity_nm[1].first;
-      rhs_size *= sparsity_nm[1].second;
-      is_sparse = true;
+    if (sparsity_nm.has_value() && sparsity_dim.has_value()) {
+      if (lhs_contracting_dimension == sparsity_dim.value()[0]) {
+        lhs_size *= sparsity_nm.value()[0].second;
+        rhs_size *= sparsity_nm.value()[0].first;
+        is_sparse = true;
+      }
+      if (rhs_contracting_dimension == sparsity_dim.value()[1]) {
+        lhs_size *= sparsity_nm.value()[1].first;
+        rhs_size *= sparsity_nm.value()[1].second;
+        is_sparse = true;
+      }
     }
     if (!CompatibleDimensionSizes(lhs_size, rhs_size)) {
       return fail(
@@ -928,14 +909,19 @@ absl::Status ValidateDotDimensionNumbers(
       return fail("Batch dimension sizes are not compatible.");
     }
   }
+  return absl::OkStatus();
+}
 
-  // The ranks of lhs and rhs are decremented by 1 respectively due to the
-  // contraction, and added for the rank of the result. When an input tensor is
-  // a scalar, its contribution to the rank of the result is 0.
-  // Generate the result dimensions in order, rhs dimensions followed by lhs
-  // dimensions except the contracted and batch dimensions.
-  std::vector<int64_t> dimensions;
-  std::vector<bool> is_dynamic;
+// The ranks of lhs and rhs are decremented by 1 respectively due to the
+// contraction, and added for the rank of the result. When an input tensor is
+// a scalar, its contribution to the rank of the result is 0.
+// Generate the result dimensions in order, rhs dimensions followed by lhs
+// dimensions except the contracted and batch dimensions.
+void GenerateDotResultDimensions(
+    const Shape& lhs, const Shape& rhs,
+    const DotDimensionNumbers& dimension_numbers,
+    std::vector<int64_t>& dimensions, std::vector<bool>& is_dynamic,
+    std::vector<int64_t> rhs_group_dimensions = {}) {
   const auto& lhs_batch_dimensions = dimension_numbers.lhs_batch_dimensions();
   const auto lhs_batch_dimensions_size =
       lhs.rank() - dimension_numbers.lhs_contracting_dimensions().size() +
@@ -958,11 +944,52 @@ absl::Status ValidateDotDimensionNumbers(
   for (int64_t i = 0; i < rhs.rank(); i++) {
     if (!absl::c_linear_search(dimension_numbers.rhs_contracting_dimensions(),
                                i) &&
-        !absl::c_linear_search(dimension_numbers.rhs_batch_dimensions(), i)) {
+        !absl::c_linear_search(dimension_numbers.rhs_batch_dimensions(), i) &&
+        !absl::c_linear_search(rhs_group_dimensions, i)) {
       dimensions.push_back(rhs.dimensions(i));
       is_dynamic.push_back(rhs.is_dynamic_dimension(i));
     }
   }
+}
+
+}  // namespace
+
+/* static */ absl::StatusOr<Shape> ShapeInference::InferDotOpShape(
+    const Shape& lhs, const Shape& rhs,
+    const DotDimensionNumbers& dimension_numbers,
+    std::optional<PrimitiveType> preferred_element_type,
+    absl::Span<const SparsityDescriptor> sparsity) {
+  TF_RETURN_IF_ERROR(ExpectArray(lhs, "lhs of dot"));
+  TF_RETURN_IF_ERROR(ExpectArray(rhs, "rhs of dot"));
+
+  // Validate basic properties of dot dimension numbers.
+  TF_RETURN_IF_ERROR(ValidateDotDimensionNumbers(lhs, rhs, dimension_numbers));
+
+  // Sparsity is only supported for contracting dimensions.
+  // With N:M sparsity, the contracting dimension sizes have N/M ratio.
+  const int kSize = HloDotInstruction::kOperands;
+  std::array<std::pair<int, int>, kSize> sparsity_nm = {{{1, 1}, {1, 1}}};
+  std::array<int, kSize> sparsity_dim = {-1, -1};
+  for (const auto& descriptor : sparsity) {
+    TF_RET_CHECK(descriptor.index() == 0 || descriptor.index() == 1);
+    sparsity_dim[descriptor.index()] = descriptor.dimension();
+    switch (descriptor.type()) {
+      case SPARSITY_STRUCTURED_N_M:
+        sparsity_nm[descriptor.index()] = {descriptor.n(), descriptor.m()};
+        break;
+      default:
+        LOG(FATAL) << "Unsupported sparsity type: " << descriptor.type();
+    }
+  }
+
+  // Check the number and sizes of batch and contracting dimensions.
+  TF_RETURN_IF_ERROR(CheckDotDimensionConstraints(lhs, rhs, dimension_numbers,
+                                                  sparsity_nm, sparsity_dim));
+
+  std::vector<int64_t> dimensions;
+  std::vector<bool> is_dynamic;
+  GenerateDotResultDimensions(lhs, rhs, dimension_numbers, dimensions,
+                              is_dynamic);
 
   PrimitiveType type = preferred_element_type.value_or(
       ShapeUtil::HigherPrecisionElementType(lhs, rhs));
@@ -970,6 +997,209 @@ absl::Status ValidateDotDimensionNumbers(
 
   TF_DCHECK_OK(ShapeUtil::ValidateShapeWithOptionalLayout(result));
   VLOG(2) << "inferred dot shape: " << ShapeUtil::HumanString(result);
+  return result;
+}
+
+// Ragged dot allows exactly one lhs ragged dimension. At a high level it has
+// three modes, based on the kind of the ragged dimension:
+// 1. [b,m,k], [g,b,k,n], [b,g] -> [b,m,n]. Here the ragged dimension is the
+//    non-contracting dimension (m) of the lhs.
+// 2. [b,m,k], [b,k,n], [b,g] -> [g,b,m,n]. Here the ragged dimension is the
+//    contracting dimension (k) of the lhs and rhs.
+// 3. [b,m,k], [b,k,n], [g] -> [b,m,n]. Here the ragged dimension is the
+//    batch dimension (b) of the lhs and rhs.
+
+// The group_sizes arg has the shape [b...,x...,g], where:
+// - b... are all the lhs batch dims before (outer-to) the lhs ragged dim,
+// - x... are,
+//   - in mode 1, all the lhs non-contracting dims before the lhs ragged dim,
+//   - in mode 2, all the lhs contracting dims before the lhs ragged dim, and
+//   - in mode 3, empty;
+// - g is the number of groups in the lhs ragged dim.
+// If a group_sizes of shape [g] is passed, it is broadcasted according to the
+// rules above.
+/* static */ absl::StatusOr<Shape> ShapeInference::InferRaggedDotOpShape(
+    const Shape& lhs, const Shape& rhs, const Shape& group_sizes,
+    const RaggedDotDimensionNumbers& ragged_dot_dim_nums,
+    std::optional<PrimitiveType> preferred_element_type) {
+  TF_RETURN_IF_ERROR(ExpectArray(lhs, "lhs of ragged dot"));
+  TF_RETURN_IF_ERROR(ExpectArray(rhs, "rhs of ragged dot"));
+  TF_RETURN_IF_ERROR(ExpectArray(group_sizes, "group_sizes of ragged dot"));
+
+  auto fail = [lhs, rhs](const std::string& addendum) -> absl::Status {
+    std::string message = StrFormat(
+        "Cannot infer shape for ragged dot operation: %s <ragged_dot> %s.",
+        ShapeUtil::HumanString(lhs), ShapeUtil::HumanString(rhs));
+    if (!addendum.empty()) {
+      message += " " + addendum;
+    }
+    return InvalidArgument("%s", message);
+  };
+
+  DotDimensionNumbers dimension_numbers =
+      ragged_dot_dim_nums.dot_dimension_numbers();
+
+  // Validate basic properties of dot dimension numbers.
+  TF_RETURN_IF_ERROR(ValidateDotDimensionNumbers(lhs, rhs, dimension_numbers));
+  // Check the number and sizes of batch and contracting dimensions.
+  TF_RETURN_IF_ERROR(CheckDotDimensionConstraints(lhs, rhs, dimension_numbers));
+
+  // Check that there is exactly one lhs ragged dimension.
+  if (ragged_dot_dim_nums.lhs_ragged_dimensions_size() != 1) {
+    return fail("There must be exactly one ragged dimension in the lhs.");
+  }
+  const int64_t lhs_ragged_dimension =
+      ragged_dot_dim_nums.lhs_ragged_dimensions(0);
+  // Check that the lhs ragged dimension is within bounds.
+  if (lhs_ragged_dimension < 0 || lhs_ragged_dimension >= lhs.rank()) {
+    return fail(StrFormat("lhs ragged dimension %d is out of range [0, %d)",
+                          lhs_ragged_dimension, lhs.rank()));
+  }
+
+  enum Mode {
+    // Ragged non-contracting (m): [b,m,k], [g,b,k,n], [b,g] -> [b,m,n].
+    kNonContracting,
+    // Ragged contracting (k):     [b,m,k], [b,k,n],   [b,g] -> [g,b,m,n].
+    kContracting,
+    // Ragged batch (b):           [b,m,k], [b,k,n],   [g]   -> [b,m,n].
+    kBatch
+  };
+  Mode mode;
+  if (absl::c_linear_search(dimension_numbers.lhs_batch_dimensions(),
+                            lhs_ragged_dimension)) {
+    mode = kBatch;
+  } else if (absl::c_linear_search(
+                 dimension_numbers.lhs_contracting_dimensions(),
+                 lhs_ragged_dimension)) {
+    mode = kContracting;
+  } else {
+    mode = kNonContracting;
+  }
+
+  // Validate the shape of group_sizes.
+  {
+    std::vector<int64_t> lhs_batch_dims = {
+        dimension_numbers.lhs_batch_dimensions().begin(),
+        dimension_numbers.lhs_batch_dimensions().end()};
+    std::vector<int64_t> lhs_contracting_dims = {
+        dimension_numbers.lhs_contracting_dimensions().begin(),
+        dimension_numbers.lhs_contracting_dimensions().end()};
+    std::vector<int64_t> lhs_non_contracting_dims;
+    for (int64_t i = 0; i < lhs.rank(); ++i) {
+      if (!absl::c_linear_search(dimension_numbers.lhs_contracting_dimensions(),
+                                 i) &&
+          !absl::c_linear_search(dimension_numbers.lhs_batch_dimensions(), i)) {
+        lhs_non_contracting_dims.push_back(i);
+      }
+    }
+
+    // Construct the expected shape [b...,x...,g] of group_sizes.
+    std::vector<int64_t> prefix_dims;
+    prefix_dims.reserve(lhs.rank() - 1);
+    prefix_dims.insert(prefix_dims.end(), lhs_batch_dims.begin(),
+                       lhs_batch_dims.end());
+    switch (mode) {
+      case kBatch:
+        prefix_dims.resize(
+            std::distance(lhs_batch_dims.begin(),
+                          absl::c_find(lhs_batch_dims, lhs_ragged_dimension)));
+        break;
+      case kContracting:
+        prefix_dims.insert(
+            prefix_dims.end(), lhs_contracting_dims.begin(),
+            absl::c_find(lhs_contracting_dims, lhs_ragged_dimension));
+        break;
+      case kNonContracting:
+        prefix_dims.insert(
+            prefix_dims.end(), lhs_non_contracting_dims.begin(),
+            absl::c_find(lhs_non_contracting_dims, lhs_ragged_dimension));
+        break;
+    }
+    std::vector<int64_t> expected_prefix;
+    expected_prefix.reserve(prefix_dims.size());
+    for (const int64_t dim : prefix_dims) {
+      expected_prefix.push_back(lhs.dimensions(dim));
+    }
+
+    // Validate the actual shape, if it was passed as something other than [g].
+    if (group_sizes.rank() != 1) {
+      if (group_sizes.rank() != expected_prefix.size() + 1) {
+        return fail(StrFormat("expected group_sizes to have rank %d, got %d",
+                              expected_prefix.size() + 1, group_sizes.rank()));
+      }
+      if (!absl::c_equal(expected_prefix, group_sizes.dimensions().first(
+                                              group_sizes.rank() - 1))) {
+        return fail(StrFormat(
+            "group_sizes is expected to have shape [%s, %d], got [%s]",
+            absl::StrJoin(expected_prefix, ", "),
+            group_sizes.dimensions().back(),
+            absl::StrJoin(group_sizes.dimensions(), ", ")));
+      }
+    }
+  }
+  const int64_t num_groups = group_sizes.dimensions().back();
+  const bool is_dynamic_group_sizes = group_sizes.dynamic_dimensions().back();
+
+  // Validate basic properties of the rhs group dimension(s).
+  for (auto rhs_group_dim : ragged_dot_dim_nums.rhs_group_dimensions()) {
+    if (rhs_group_dim < 0 || rhs_group_dim >= rhs.rank()) {
+      return fail(StrFormat("rhs group dimension %d is out of range [0, %d)",
+                            rhs_group_dim, rhs.rank()));
+    }
+    if (absl::c_linear_search(dimension_numbers.rhs_batch_dimensions(),
+                              rhs_group_dim) ||
+        absl::c_linear_search(dimension_numbers.rhs_contracting_dimensions(),
+                              rhs_group_dim)) {
+      return fail(
+          "rhs group dimension cannot be a batch or contracting dimension");
+    }
+  }
+  std::vector<int64_t> rhs_group_dimensions = {
+      ragged_dot_dim_nums.rhs_group_dimensions().begin(),
+      ragged_dot_dim_nums.rhs_group_dimensions().end()};
+
+  switch (mode) {
+    case kBatch:
+      [[fallthrough]];
+    case kContracting:
+      if (!rhs_group_dimensions.empty()) {
+        return fail(
+            "There must be zero group dimensions in the rhs when the "
+            "ragged dimension is batch or contracting.");
+      }
+      break;
+    case kNonContracting:
+      if (rhs_group_dimensions.size() != 1) {
+        return fail(
+            "There must be exactly one group dimension in the rhs when the lhs "
+            "ragged dimension is non-contracting.");
+      }
+      // Compare the group dimension size with the number of groups.
+      const int64_t rhs_group_dim = rhs_group_dimensions[0];
+      if (!CompatibleDimensionSizes(num_groups,
+                                    rhs.dimensions(rhs_group_dim))) {
+        return fail(
+            StrFormat("rhs group dimension is expected to have size=%d, got %d",
+                      num_groups, rhs.dimensions(rhs_group_dim)));
+      }
+      break;
+  }
+
+  PrimitiveType type = preferred_element_type.value_or(
+      ShapeUtil::HigherPrecisionElementType(lhs, rhs));
+  std::vector<int64_t> dimensions;
+  std::vector<bool> is_dynamic;
+  // Add the group dimension to the result shape in case of ragged contracting.
+  if (mode == kContracting) {
+    dimensions.push_back(num_groups);
+    is_dynamic.push_back(is_dynamic_group_sizes);
+  }
+  GenerateDotResultDimensions(lhs, rhs, dimension_numbers, dimensions,
+                              is_dynamic, rhs_group_dimensions);
+
+  Shape result = ShapeUtil::MakeShape(type, dimensions, is_dynamic);
+  TF_DCHECK_OK(ShapeUtil::ValidateShapeWithOptionalLayout(result));
+  VLOG(2) << "inferred ragged dot shape: " << ShapeUtil::HumanString(result);
   return result;
 }
 
@@ -1149,18 +1379,18 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(const Shape& lhs,
   output_shape.set_element_type(
       ShapeUtil::HigherPrecisionElementType(larger_shape, smaller_shape));
 
-  for (int i = 0; i < smaller_shape.dimensions_size(); ++i) {
+  for (int i = 0; i < smaller_shape.rank(); ++i) {
     int64_t dimension_to_match = broadcast_dimensions.at(i);
     if (dimension_to_match < 0) {
       return InvalidArgumentError(
           StrFormat("Broadcast dimension number (%d) cannot be negative.",
                     dimension_to_match));
     }
-    if (dimension_to_match >= larger_shape.dimensions_size()) {
+    if (dimension_to_match >= larger_shape.rank()) {
       return InvalidArgumentError(
           StrFormat("Broadcast dimension number (%d) too large; higher-rank "
                     "operand has rank %d.",
-                    dimension_to_match, larger_shape.dimensions_size()));
+                    dimension_to_match, larger_shape.rank()));
     }
     int64_t small_dimension_size = smaller_shape.dimensions(i);
     int64_t large_dimension_size = larger_shape.dimensions(dimension_to_match);
@@ -1229,6 +1459,14 @@ ShapeInference::InferElementwiseBinaryOpShape(
           "Broadcast dimensions field must either be not set or be the "
           "identity on binary operations with operands of the same rank.");
     }
+  }
+
+  if (operation == HloOpcode::kAtan2 && !ShapeUtil::ElementIsFloating(lhs) &&
+      !ShapeUtil::ElementIsComplex(lhs)) {
+    return InvalidArgument(
+        "Expected input element type to be floating or complex for %s "
+        "operation; got %s.",
+        HloOpcodeString(operation), PrimitiveType_Name(lhs.element_type()));
   }
 
   if (ShapeUtil::CompatibleIgnoringFpPrecision(lhs, rhs) &&
@@ -1477,13 +1715,13 @@ ShapeInference::InferScalarBroadcastShape(absl::Span<const Shape> shapes) {
                       }));
   }
 
-  // Check that dimensions.size == arg_shape.dimensions_size() (we currently
+  // Check that dimensions.size == arg_shape.rank() (we currently
   // only support mapping across all dimensions: i.e. scalar map functions).
-  if (dimensions.size() != arg_shape->dimensions_size()) {
+  if (dimensions.size() != arg_shape->rank()) {
     return InvalidArgument(
         "Map applied to a subset of dimensions currently not supported: "
         "arg_dimension_size: %d, requested_map_dimensions_size: %u.",
-        arg_shape->dimensions_size(), dimensions.size());
+        arg_shape->rank(), dimensions.size());
   }
 
   // Check that requested map dimensions numbers are monotonically increasing.
@@ -2224,11 +2462,11 @@ ShapeInference::InferScalarBroadcastShape(absl::Span<const Shape> shapes) {
     return InvalidArgument("FFT only supports ranks 1-3; got %d.", fft_rank);
   }
 #define RET_CHECK_RANK(x)                            \
-  if (x.dimensions_size() < fft_rank) {              \
+  if (x.rank() < fft_rank) {                         \
     return InvalidArgument(                          \
         "FFT of rank %d requires input of at least " \
         "same rank; got input of rank %d",           \
-        fft_rank, x.dimensions_size());              \
+        fft_rank, x.rank());                         \
   }
   switch (fft_type) {
     case FFT:
@@ -2247,15 +2485,12 @@ ShapeInference::InferScalarBroadcastShape(absl::Span<const Shape> shapes) {
       }
       RET_CHECK_RANK(in);
       for (int i = 0; i < fft_rank; i++) {
-        if (!IsUnboundedDynamicSize(
-                in.dimensions(in.dimensions_size() - fft_rank + i)) &&
-            in.dimensions(in.dimensions_size() - fft_rank + i) !=
-                fft_length[i]) {
+        if (!IsUnboundedDynamicSize(in.dimensions(in.rank() - fft_rank + i)) &&
+            in.dimensions(in.rank() - fft_rank + i) != fft_length[i]) {
           return InvalidArgument(
               "RFFT requires innermost dimensions match fft_length but "
               "dimension %d is %d and should be %d.",
-              in.dimensions_size() - fft_rank + i,
-              in.dimensions(in.dimensions_size() - fft_rank + i),
+              in.rank() - fft_rank + i, in.dimensions(in.rank() - fft_rank + i),
               fft_length[i]);
         }
       }
@@ -2263,10 +2498,10 @@ ShapeInference::InferScalarBroadcastShape(absl::Span<const Shape> shapes) {
           in, in.element_type() == F32 ? C64 : C128);
       // Preserve the size of zero-sized dimensions.
       if (fft_length[fft_rank - 1] != 0) {
-        result.set_dimensions(result.dimensions_size() - 1,
+        result.set_dimensions(result.rank() - 1,
                               fft_length[fft_rank - 1] / 2 + 1);
-        if (in.is_unbounded_dynamic_dimension(result.dimensions_size() - 1)) {
-          result.set_dynamic_dimension(result.dimensions_size() - 1, false);
+        if (in.is_unbounded_dynamic_dimension(result.rank() - 1)) {
+          result.set_dynamic_dimension(result.rank() - 1, false);
         }
       }
       return result;
@@ -2279,31 +2514,28 @@ ShapeInference::InferScalarBroadcastShape(absl::Span<const Shape> shapes) {
       RET_CHECK_RANK(in);
       Shape result = ShapeUtil::ComplexComponentShape(in);
       for (int i = 0; i < fft_rank - 1; i++) {
-        if (in.dimensions(in.dimensions_size() - fft_rank + i) !=
-            fft_length[i]) {
+        if (in.dimensions(in.rank() - fft_rank + i) != fft_length[i]) {
           return InvalidArgument(
               "IRFFT requires all but one innermost dimensions match "
               "fft_length, but dimension %d is %d and should be %d.",
-              in.dimensions_size() - fft_rank + i,
-              in.dimensions(in.dimensions_size() - fft_rank + i),
+              in.rank() - fft_rank + i, in.dimensions(in.rank() - fft_rank + i),
               fft_length[i]);
         }
       }
       // The size of zero-sized dimensions is preserved.
-      int64_t last_in_dimension_size = in.dimensions(in.dimensions_size() - 1);
+      int64_t last_in_dimension_size = in.dimensions(in.rank() - 1);
       if ((last_in_dimension_size != 0 || fft_length[fft_rank - 1] != 0) &&
           !IsUnboundedDynamicSize(last_in_dimension_size) &&
           last_in_dimension_size != fft_length[fft_rank - 1] / 2 + 1) {
         return InvalidArgument(
             "IRFFT requires innermost dimension matches fft_length/2+1, but "
             "dimension %d is %d and should be %d.",
-            in.dimensions_size() - 1, last_in_dimension_size,
+            in.rank() - 1, last_in_dimension_size,
             fft_length[fft_rank - 1] / 2 + 1);
       }
-      result.set_dimensions(result.dimensions_size() - 1,
-                            fft_length[fft_rank - 1]);
-      if (in.is_unbounded_dynamic_dimension(result.dimensions_size() - 1)) {
-        result.set_dynamic_dimension(result.dimensions_size() - 1, false);
+      result.set_dimensions(result.rank() - 1, fft_length[fft_rank - 1]);
+      if (in.is_unbounded_dynamic_dimension(result.rank() - 1)) {
+        result.set_dynamic_dimension(result.rank() - 1, false);
       }
       return result;
     }
@@ -2559,6 +2791,13 @@ ShapeInference::InferScalarBroadcastShape(absl::Span<const Shape> shapes) {
   return InferVariadicOpShape(HloOpcode::kTuple, operand_shapes);
 }
 
+/* static */ absl::StatusOr<Shape> ShapeInference::InferRaggedAllToAllShape(
+    absl::Span<const Shape* const> operand_shapes) {
+  TF_RETURN_IF_ERROR(
+      ExpectArray(*(operand_shapes[1]), "operand 1 of ragged-all-to-all"));
+  return *(operand_shapes[1]);
+}
+
 /* static */ absl::StatusOr<Shape>
 ShapeInference::InferCollectiveBroadcastShape(
     absl::Span<const Shape* const> operand_shapes) {
@@ -2568,11 +2807,16 @@ ShapeInference::InferCollectiveBroadcastShape(
 }
 
 /* static */ absl::StatusOr<Shape> ShapeInference::InferCollectivePermuteShape(
-    absl::Span<const Shape* const> operand_shapes) {
-  if (operand_shapes.size() == 1) {
-    TF_RETURN_IF_ERROR(
-        ExpectArray(*(operand_shapes[0]), "operand of collective-permute"));
-    return *(operand_shapes[0]);
+    absl::Span<const Shape* const> operand_shapes, bool inplace) {
+  if (!inplace) {
+    for (const Shape* operand_shape : operand_shapes) {
+      TF_RETURN_IF_ERROR(
+          ExpectArray(*operand_shape, "operand of collective-permute"));
+    }
+    if (operand_shapes.size() == 1) {
+      return *operand_shapes[0];
+    }
+    return ShapeUtil::MakeTupleShapeWithPtrs(operand_shapes);
   } else {
     TF_RET_CHECK(operand_shapes.size() == 4);
     return *(operand_shapes[1]);
@@ -2582,19 +2826,24 @@ ShapeInference::InferCollectiveBroadcastShape(
 /* static */ absl::StatusOr<Shape>
 ShapeInference::InferCollectivePermuteStartShape(
     absl::Span<const Shape* const> operand_shapes,
-    absl::Span<const Shape> context_shapes) {
-  absl::InlinedVector<const Shape*, 4> shapes;
-  if (operand_shapes.size() == 1) {
-    TF_RETURN_IF_ERROR(ExpectArray(*(operand_shapes[0]),
-                                   "operand of collective-permute-start"));
-    shapes = {operand_shapes[0], operand_shapes[0]};
+    absl::Span<const Shape> context_shapes, bool inplace) {
+  absl::InlinedVector<Shape, 4> shapes;
+  if (!inplace) {
+    if (operand_shapes.size() == 1) {
+      TF_RETURN_IF_ERROR(ExpectArray(*(operand_shapes[0]),
+                                     "operand of collective-permute-start"));
+      shapes = {*operand_shapes[0], *operand_shapes[0]};
+    } else {
+      Shape tuple_shape = ShapeUtil::MakeTupleShapeWithPtrs(operand_shapes);
+      shapes = {tuple_shape, tuple_shape};
+    }
   } else {
     TF_RET_CHECK(operand_shapes.size() == 4);
-    shapes = {operand_shapes[0], operand_shapes[1]};
+    shapes = {*operand_shapes[0], *operand_shapes[1]};
   }
   absl::c_transform(context_shapes, std::back_inserter(shapes),
-                    [](const Shape& shape) { return &shape; });
-  return ShapeUtil::MakeTupleShapeWithPtrs(shapes);
+                    [](const Shape& shape) { return shape; });
+  return ShapeUtil::MakeTupleShape(shapes);
 }
 
 /* static */ absl::StatusOr<Shape>
@@ -2969,7 +3218,7 @@ ShapeInference::InferCollectivePermuteDoneShape(const Shape& operand_shape) {
   }
 
   std::vector<bool> is_dynamic(arg.rank());
-  for (int64_t i = 0; i < arg.dimensions_size(); ++i) {
+  for (int64_t i = 0; i < arg.rank(); ++i) {
     // Slicing 1 out of a dynamic dimension eliminates the dynamic dimension.
     if (sizes[i] == 1) {
       continue;
@@ -3392,15 +3641,14 @@ ShapeInference::InferCollectivePermuteDoneShape(const Shape& operand_shape) {
     }
   }
 
-  std::vector<int64_t> dimensions(operand.dimensions_size() +
-                                  broadcast_sizes.size());
+  std::vector<int64_t> dimensions(operand.rank() + broadcast_sizes.size());
   std::copy(broadcast_sizes.begin(), broadcast_sizes.end(), dimensions.begin());
   std::copy(operand.dimensions().begin(), operand.dimensions().end(),
             dimensions.begin() + broadcast_sizes.size());
 
   TF_ASSIGN_OR_RETURN(Shape result, ShapeUtil::MakeValidatedShape(
                                         operand.element_type(), dimensions));
-  for (int64_t i = 0; i < operand.dimensions_size(); ++i) {
+  for (int64_t i = 0; i < operand.rank(); ++i) {
     result.set_dynamic_dimension(broadcast_sizes.size() + i,
                                  operand.is_dynamic_dimension(i));
   }
@@ -3498,10 +3746,10 @@ ShapeInference::InferCollectivePermuteDoneShape(const Shape& operand_shape) {
 
 /* static */ absl::StatusOr<Shape> ShapeInference::InferReshapeShape(
     const Shape& operand, absl::Span<const int64_t> dimensions,
-    absl::Span<const int64_t> new_sizes, int64_t inferred_dimension) {
+    int64_t inferred_dimension) {
   TF_RETURN_IF_ERROR(ExpectArray(operand, "reshape"));
   Shape inferred_shape =
-      ShapeUtil::MakeShape(operand.element_type(), new_sizes);
+      ShapeUtil::MakeShape(operand.element_type(), dimensions);
   VLOG(3) << "Reshape inferred shape: "
           << ShapeUtil::HumanString(inferred_shape);
 
@@ -3524,17 +3772,9 @@ ShapeInference::InferCollectivePermuteDoneShape(const Shape& operand_shape) {
 
   std::vector<int64_t> indices(operand.rank());
   std::iota(indices.begin(), indices.end(), 0);
-  if (dimensions.size() != operand.rank() ||
-      !std::is_permutation(dimensions.begin(), dimensions.end(),
-                           indices.begin())) {
-    return InvalidArgument(
-        "Reshape dimensions [%s] are not a permutation of the operand "
-        "dimensions (operand shape is %s).",
-        StrJoin(dimensions, ","), ShapeUtil::HumanString(operand));
-  }
 
   // Propagate dynamic dimension.
-  auto common_factors = CommonFactors(operand.dimensions(), new_sizes);
+  auto common_factors = CommonFactors(operand.dimensions(), dimensions);
   for (int64_t input_dim = 0; input_dim < operand.rank(); ++input_dim) {
     if (!operand.is_dynamic_dimension(input_dim)) {
       continue;
@@ -3606,14 +3846,14 @@ ShapeInference::InferCollectivePermuteDoneShape(const Shape& operand_shape) {
     // Calculate output dynamic reshape dimension.
     int64_t output_dynamic_dimension = -1;
 
-    if (operand.dimensions(input_dim) == 1 && !new_sizes.empty()) {
+    if (operand.dimensions(input_dim) == 1 && !dimensions.empty()) {
       // If dynamic dimension is size 1, it can only be most-major or
       // most-minor.
       if (input_dim == 0) {
         output_dynamic_dimension = 0;
       }
       if (input_dim == operand.rank() - 1) {
-        output_dynamic_dimension = new_sizes.size() - 1;
+        output_dynamic_dimension = dimensions.size() - 1;
       }
 
       if (output_dynamic_dimension == -1) {
@@ -3642,7 +3882,7 @@ ShapeInference::InferCollectivePermuteDoneShape(const Shape& operand_shape) {
       std::vector<int64_t> output_non_degenerated;
       output_non_degenerated.reserve(output_dim_end);
       for (int64_t i = output_dim_start; i < output_dim_end; ++i) {
-        if (new_sizes[i] != 1) {
+        if (dimensions[i] != 1) {
           output_non_degenerated.push_back(i);
         }
       }
@@ -3755,6 +3995,10 @@ ShapeInference::InferCollectivePermuteDoneShape(const Shape& operand_shape) {
                          on_false.is_dynamic_dimension(dimension));
     }
   }
+  if (result.has_layout()) {
+    result.mutable_layout()->set_element_size_in_bits(
+        on_true.layout().element_size_in_bits());
+  }
   return std::move(result);
 }
 
@@ -3794,6 +4038,7 @@ ShapeInference::InferCollectivePermuteDoneShape(const Shape& operand_shape) {
 static absl::Status ValidateGatherDimensionNumbers(
     const Shape& input_shape, absl::Span<const int64_t> start_indices_shape,
     const GatherDimensionNumbers& dim_numbers) {
+  // Validate offset_dims in GatherDimensionNumbers.
   if (!absl::c_is_sorted(dim_numbers.offset_dims())) {
     return InvalidArgument(
         "Output window dimensions in gather op must be ascending; got: %s.",
@@ -3834,13 +4079,14 @@ static absl::Status ValidateGatherDimensionNumbers(
         start_indices_shape[dim_numbers.index_vector_dim()]);
   }
 
+  // Validate start_index_map in GatherDimensionNumbers.
   for (int i = 0; i < dim_numbers.start_index_map_size(); i++) {
     int64_t operand_dim_for_start_index_i = dim_numbers.start_index_map(i);
     if (operand_dim_for_start_index_i < 0 ||
-        operand_dim_for_start_index_i >= input_shape.dimensions_size()) {
+        operand_dim_for_start_index_i >= input_shape.rank()) {
       return InvalidArgument(
           "Invalid start_index_map; domain is [0, %d), got: %d->%d.",
-          input_shape.dimensions_size(), i, operand_dim_for_start_index_i);
+          input_shape.rank(), i, operand_dim_for_start_index_i);
     }
   }
 
@@ -3858,12 +4104,13 @@ static absl::Status ValidateGatherDimensionNumbers(
         StrJoin(dim_numbers.start_index_map(), ", "));
   }
 
+  // Validate collapsed_slice_dims in GatherDimensionNumbers.
   for (int64_t collapsed_dim : dim_numbers.collapsed_slice_dims()) {
-    if (collapsed_dim < 0 || collapsed_dim >= input_shape.dimensions_size()) {
+    if (collapsed_dim < 0 || collapsed_dim >= input_shape.rank()) {
       return InvalidArgument(
           "Invalid collapsed_slice_dims set in gather op; valid range is [0, "
           "%d), got: %d.",
-          input_shape.dimensions_size(), collapsed_dim);
+          input_shape.rank(), collapsed_dim);
     }
   }
 
@@ -3881,6 +4128,69 @@ static absl::Status ValidateGatherDimensionNumbers(
         StrJoin(dim_numbers.collapsed_slice_dims(), ", "));
   }
 
+  // Validate operand_batching_dims and start_indices_batching_dims are of the
+  // same size.
+  if (dim_numbers.operand_batching_dims_size() !=
+      dim_numbers.start_indices_batching_dims_size()) {
+    return InvalidArgument(
+        "operand_batching_dims and start_indices_batching_dims in gather op "
+        "must be of the same size; got: %d and %d.",
+        dim_numbers.operand_batching_dims_size(),
+        dim_numbers.start_indices_batching_dims_size());
+  }
+
+  // Validate operand_batching_dims in GatherDimensionNumbers.
+  for (int64_t operand_batching_dim : dim_numbers.operand_batching_dims()) {
+    if (operand_batching_dim < 0 ||
+        operand_batching_dim >= input_shape.rank()) {
+      return InvalidArgument(
+          "Invalid operand_batching_dims set in gather op; valid range is [0, "
+          "%d), got: %d.",
+          input_shape.rank(), operand_batching_dim);
+    }
+  }
+
+  if (!absl::c_is_sorted(dim_numbers.operand_batching_dims())) {
+    return InvalidArgument(
+        "operand_batching_dims in gather op must be sorted; got: %s",
+        StrJoin(dim_numbers.operand_batching_dims(), ", "));
+  }
+
+  if (absl::c_adjacent_find(dim_numbers.operand_batching_dims()) !=
+      dim_numbers.operand_batching_dims().end()) {
+    return InvalidArgument(
+        "Repeated dimensions not allowed in operand_batching_dims in gather "
+        "op; "
+        "got: %s.",
+        StrJoin(dim_numbers.operand_batching_dims(), ", "));
+  }
+
+  // Validate start_indices_batching_dims in GatherDimensionNumbers.
+  for (int i = 0; i < dim_numbers.start_indices_batching_dims_size(); i++) {
+    int64_t start_indices_batching_dim_i =
+        dim_numbers.start_indices_batching_dims(i);
+    if (start_indices_batching_dim_i < 0 ||
+        start_indices_batching_dim_i >= start_indices_shape.size()) {
+      return InvalidArgument(
+          "Invalid start_indices_batching_dims; domain is [0, %d), got: "
+          "%d->%d.",
+          start_indices_shape.size(), i, start_indices_batching_dim_i);
+    }
+  }
+
+  std::vector<int64_t> sorted_start_indices_batching_dims(
+      dim_numbers.start_indices_batching_dims().begin(),
+      dim_numbers.start_indices_batching_dims().end());
+
+  absl::c_sort(sorted_start_indices_batching_dims);
+
+  if (absl::c_adjacent_find(sorted_start_indices_batching_dims) !=
+      sorted_start_indices_batching_dims.end()) {
+    return InvalidArgument(
+        "Repeated dimensions are not allowed in start_indices_batching_dims; "
+        "got: %s.",
+        StrJoin(dim_numbers.start_indices_batching_dims(), ", "));
+  }
   return absl::OkStatus();
 }
 
@@ -3903,23 +4213,21 @@ static absl::Status ValidateGatherDimensionNumbers(
   // index_vector_dim is rank(P).  The bounds of this expanded shape is
   // stored in expanded_start_indices_shape.
 
-  if (start_indices_shape.dimensions_size() <
-          gather_dim_numbers.index_vector_dim() ||
+  if (start_indices_shape.rank() < gather_dim_numbers.index_vector_dim() ||
       gather_dim_numbers.index_vector_dim() < 0) {
     return InvalidArgument(
         "Gather index leaf dimension must be within [0, rank(start_indices) + "
         "1). rank(start_indices) is %d and gather index leaf dimension is "
         "%d.",
-        start_indices_shape.dimensions_size(),
-        gather_dim_numbers.index_vector_dim());
+        start_indices_shape.rank(), gather_dim_numbers.index_vector_dim());
   }
 
   std::vector<int64_t> expanded_start_indices_shape;
   // Also tracks if an output dimension is dynamic.
   std::vector<bool> expanded_start_indices_shape_dynamic_dimensions;
-  expanded_start_indices_shape.reserve(start_indices_shape.dimensions_size());
+  expanded_start_indices_shape.reserve(start_indices_shape.rank());
   expanded_start_indices_shape_dynamic_dimensions.reserve(
-      start_indices_shape.dimensions_size());
+      start_indices_shape.rank());
   absl::c_copy(start_indices_shape.dimensions(),
                std::back_inserter(expanded_start_indices_shape));
   absl::c_copy(
@@ -3934,22 +4242,25 @@ static absl::Status ValidateGatherDimensionNumbers(
   TF_RETURN_IF_ERROR(ValidateGatherDimensionNumbers(
       input_shape, expanded_start_indices_shape, gather_dim_numbers));
 
-  if (slice_sizes.size() != input_shape.dimensions_size()) {
+  if (slice_sizes.size() != input_shape.rank()) {
     return InvalidArgument(
         "Gather op must have one slice size for every input dimension; got: "
         "len(slice_sizes)=%lu, input_shape.rank=%d.",
-        slice_sizes.size(), input_shape.dimensions_size());
+        slice_sizes.size(), input_shape.rank());
   }
 
   if (slice_sizes.size() !=
       gather_dim_numbers.offset_dims_size() +
-          gather_dim_numbers.collapsed_slice_dims_size()) {
+          gather_dim_numbers.collapsed_slice_dims_size() +
+          gather_dim_numbers.operand_batching_dims_size()) {
     return InvalidArgument(
         "All components of the offset index in a gather op must either be a "
-        "offset dimension or explicitly collapsed; got len(slice_sizes)=%lu, "
-        "output_slice_sizes=%s, collapsed_slice_dims=%s.",
+        "offset dimension or explicitly collapsed or explicitly batched; got "
+        "len(slice_sizes)=%lu, output_slice_sizes=%s, collapsed_slice_dims=%s, "
+        "operand_batching_dims=%s.",
         slice_sizes.size(), StrJoin(gather_dim_numbers.offset_dims(), ","),
-        StrJoin(gather_dim_numbers.collapsed_slice_dims(), ","));
+        StrJoin(gather_dim_numbers.collapsed_slice_dims(), ","),
+        StrJoin(gather_dim_numbers.operand_batching_dims(), ","));
   }
 
   for (int i = 0; i < slice_sizes.size(); i++) {
@@ -3974,6 +4285,16 @@ static absl::Status ValidateGatherDimensionNumbers(
     }
   }
 
+  for (int i = 0; i < gather_dim_numbers.operand_batching_dims_size(); i++) {
+    if (slice_sizes[gather_dim_numbers.operand_batching_dims(i)] > 1) {
+      return InvalidArgument(
+          "Gather op can only have operand_batching_dims with bound 1 or 0, "
+          "but bound is %d for index %d at position %d.",
+          slice_sizes[gather_dim_numbers.operand_batching_dims(i)],
+          gather_dim_numbers.operand_batching_dims(i), i);
+    }
+  }
+
   int64_t result_rank = gather_dim_numbers.offset_dims_size() +
                         (expanded_start_indices_shape.size() - 1);
   int64_t offset_dims_seen = 0;
@@ -3990,6 +4311,8 @@ static absl::Status ValidateGatherDimensionNumbers(
         absl::c_binary_search(gather_dim_numbers.offset_dims(), i);
     if (is_window_index) {
       while (absl::c_binary_search(gather_dim_numbers.collapsed_slice_dims(),
+                                   offset_dims_seen) ||
+             absl::c_binary_search(gather_dim_numbers.operand_batching_dims(),
                                    offset_dims_seen)) {
         offset_dims_seen++;
       }
@@ -4065,17 +4388,18 @@ absl::Status ValidateScatterDimensionNumbers(
         StrJoin(dim_numbers.inserted_window_dims(), ", "));
   }
   for (int64_t inserted_dim : dim_numbers.inserted_window_dims()) {
-    if (inserted_dim < 0 || inserted_dim >= operand_shape.dimensions_size()) {
+    if (inserted_dim < 0 || inserted_dim >= operand_shape.rank()) {
       return InvalidArgument(
           "Invalid inserted_window_dims set in scatter op; valid range is [0, "
           "%d), got: %d.",
-          operand_shape.dimensions_size(), inserted_dim);
+          operand_shape.rank(), inserted_dim);
     }
   }
 
   // Validate window size.
   auto window_size = dim_numbers.update_window_dims_size() +
-                     dim_numbers.inserted_window_dims_size();
+                     dim_numbers.inserted_window_dims_size() +
+                     dim_numbers.input_batching_dims_size();
   if (window_size != operand_shape.rank()) {
     return InvalidArgument(
         "Scatter op has window of size %d; doesn't match operand of rank %d.",
@@ -4098,11 +4422,11 @@ absl::Status ValidateScatterDimensionNumbers(
     int64_t scatter_dim_to_operand_dim =
         dim_numbers.scatter_dims_to_operand_dims(i);
     if (scatter_dim_to_operand_dim < 0 ||
-        scatter_dim_to_operand_dim >= operand_shape.dimensions_size()) {
+        scatter_dim_to_operand_dim >= operand_shape.rank()) {
       return InvalidArgument(
           "Invalid scatter_dims_to_operand_dims mapping; domain is [0, %d), "
           "got: %d->%d.",
-          operand_shape.dimensions_size(), i, scatter_dim_to_operand_dim);
+          operand_shape.rank(), i, scatter_dim_to_operand_dim);
     }
   }
   std::vector<int64_t> sorted_scatter_dims_to_operand_dims(
@@ -4115,6 +4439,60 @@ absl::Status ValidateScatterDimensionNumbers(
         "Repeated dimensions not allowed in scatter_dims_to_operand_dims; "
         "got: %s.",
         StrJoin(dim_numbers.scatter_dims_to_operand_dims(), ", "));
+  }
+
+  // Validate input_batching_dims and scatter_indices_batching_dims in
+  // ScatterDimensionNumbers.
+  if (dim_numbers.input_batching_dims_size() !=
+      dim_numbers.scatter_indices_batching_dims_size()) {
+    return InvalidArgument(
+        "input_batching_dims and scatter_indices_batching_dims in scatter op "
+        "must be of the same size; got: %d and %d.",
+        dim_numbers.input_batching_dims_size(),
+        dim_numbers.scatter_indices_batching_dims_size());
+  }
+
+  // Validate input_batching_dims in ScatterDimensionNumbers.
+  if (!absl::c_is_sorted(dim_numbers.input_batching_dims())) {
+    return InvalidArgument(
+        "input_batching_dims in scatter op must be sorted; got: %s.",
+        StrJoin(dim_numbers.input_batching_dims(), ", "));
+  }
+  if (absl::c_adjacent_find(dim_numbers.input_batching_dims()) !=
+      dim_numbers.input_batching_dims().end()) {
+    return InvalidArgument(
+        "input_batching_dims in scatter op must not repeat; got: %s.",
+        StrJoin(dim_numbers.input_batching_dims(), ", "));
+  }
+  for (int64_t input_batching_dim : dim_numbers.input_batching_dims()) {
+    if (input_batching_dim < 0 || input_batching_dim >= operand_shape.rank()) {
+      return InvalidArgument(
+          "Invalid input_batching_dims set in scatter op; valid range is [0, "
+          "%d), got: %d.",
+          operand_shape.rank(), input_batching_dim);
+    }
+  }
+
+  // Validate scatter_indices_batching_dims in ScatterDimensionNumbers.
+  for (int64_t scatter_indices_batching_dim :
+       dim_numbers.scatter_indices_batching_dims()) {
+    if (scatter_indices_batching_dim < 0 ||
+        scatter_indices_batching_dim >= scatter_indices_shape.size()) {
+      return InvalidArgument(
+          "Invalid scatter_indices_batching_dims set in scatter op; valid "
+          "range is [0, %d), got: %d.",
+          scatter_indices_shape.size(), scatter_indices_batching_dim);
+    }
+  }
+  std::vector<int64_t> sorted_scatter_indices_batching_dims(
+      dim_numbers.scatter_indices_batching_dims().begin(),
+      dim_numbers.scatter_indices_batching_dims().end());
+  absl::c_sort(sorted_scatter_indices_batching_dims);
+  if (absl::c_adjacent_find(sorted_scatter_indices_batching_dims) !=
+      sorted_scatter_indices_batching_dims.end()) {
+    return InvalidArgument(
+        "scatter_indices_batching_dims in scatter op must not repeat; got: %s.",
+        StrJoin(dim_numbers.scatter_indices_batching_dims(), ", "));
   }
 
   return absl::OkStatus();
@@ -4141,15 +4519,13 @@ absl::Status ValidateScatterDimensionNumbers(
         "Scatter indices parameter must be an integral tensor; got %s.",
         ShapeUtil::HumanString(scatter_indices_shape));
   }
-  if (scatter_indices_shape.dimensions_size() <
-          scatter_dim_numbers.index_vector_dim() ||
+  if (scatter_indices_shape.rank() < scatter_dim_numbers.index_vector_dim() ||
       scatter_dim_numbers.index_vector_dim() < 0) {
     return InvalidArgument(
         "Scatter index leaf dimension must be within [0, rank(scatter_indices)"
         " + 1). rank(scatter_indices) is %d and scatter index leaf dimension "
         "is %d.",
-        scatter_indices_shape.dimensions_size(),
-        scatter_dim_numbers.index_vector_dim());
+        scatter_indices_shape.rank(), scatter_dim_numbers.index_vector_dim());
   }
 
   std::vector<int64_t> expanded_scatter_indices_shape =
@@ -4169,15 +4545,20 @@ absl::Status ValidateScatterDimensionNumbers(
     TF_RETURN_IF_ERROR(ExpectArray(
         updates_shape, absl::StrCat("updates ", operand_i, " of scatter op")));
 
-    int64_t inserted_dims_seen = 0;
+    int64_t inserted_dims_seen = 0, input_batching_dims_seen = 0;
     std::vector<int64_t> max_update_slice_sizes;
-    const auto dimensions_size = operand_shape.dimensions_size();
+    const auto dimensions_size = operand_shape.rank();
     max_update_slice_sizes.reserve(dimensions_size);
     for (int i = 0; i < dimensions_size; ++i) {
       if (inserted_dims_seen <
               scatter_dim_numbers.inserted_window_dims_size() &&
           scatter_dim_numbers.inserted_window_dims(inserted_dims_seen) == i) {
         ++inserted_dims_seen;
+      } else if (input_batching_dims_seen <
+                     scatter_dim_numbers.input_batching_dims_size() &&
+                 scatter_dim_numbers.input_batching_dims(
+                     input_batching_dims_seen) == i) {
+        ++input_batching_dims_seen;
       } else {
         max_update_slice_sizes.push_back(operand_shape.dimensions(i));
       }

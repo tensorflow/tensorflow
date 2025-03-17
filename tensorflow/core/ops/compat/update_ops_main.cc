@@ -24,7 +24,7 @@ limitations under the License.
 #include "tensorflow/core/platform/init_main.h"
 #include "tensorflow/core/platform/path.h"
 #include "tensorflow/core/platform/protobuf.h"
-#include "tensorflow/core/public/version.h"
+#include "tensorflow/core/public/release_version.h"
 #include "tsl/platform/protobuf.h"
 
 namespace tensorflow {
@@ -53,7 +53,7 @@ void WriteUpdateTo(const string& directory) {
   printf("%d changed ops\n%d added ops\n", changed_ops, added_ops);
 
   const string& history_dir = compatibility.op_history_directory();
-  Status status = env->CreateDir(history_dir);
+  absl::Status status = env->CreateDir(history_dir);
   if (!errors::IsAlreadyExists(status)) {
     TF_QCHECK_OK(status);
   }

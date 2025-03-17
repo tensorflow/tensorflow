@@ -17,17 +17,22 @@ limitations under the License.
 #define XLA_HLO_IR_HLO_SCHEDULE_H_
 
 #include <algorithm>
+#include <cstdint>
 #include <ostream>
 #include <string>
 #include <vector>
 
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
+#include "absl/log/check.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/service/hlo.pb.h"
 
 namespace xla {
 
@@ -45,10 +50,24 @@ class HloInstructionSequence {
     }
   }
 
+  bool operator==(const HloInstructionSequence& other) const {
+    return instruction_sequence_ == other.instruction_sequence_ &&
+           id_sequence_ == other.id_sequence_;
+  }
+
+  bool operator!=(const HloInstructionSequence& other) const {
+    return !(*this == other);
+  }
+
   // Adds the instruction to the end of the sequence.
   void push_back(HloInstruction* instruction) {
     instruction_sequence_.push_back(instruction);
     id_sequence_.push_back(instruction->unique_id());
+  }
+
+  void reserve(int64_t size) {
+    instruction_sequence_.reserve(size);
+    id_sequence_.reserve(size);
   }
 
   // Removes the instruction from the sequence.
@@ -84,6 +103,11 @@ class HloInstructionSequence {
     instruction_sequence_.insert(instruction_sequence_.begin() + index,
                                  instruction);
     id_sequence_.insert(id_sequence_.begin() + index, instruction->unique_id());
+  }
+
+  bool contains(const HloInstruction* inst) const {
+    return absl::c_find(instruction_sequence_, inst) !=
+           instruction_sequence_.end();
   }
 
   // Clears the sequence of all instructions.

@@ -1,8 +1,11 @@
 /* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
+
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
+
     http://www.apache.org/licenses/LICENSE-2.0
+
 Unless required by applicable law or agreed to in writing, software
 distributed under the License is distributed on an "AS IS" BASIS,
 WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -110,7 +113,7 @@ StatusOr<se::blas::ComputationType> GetBlasComputationType(
 
 }  // namespace
 
-StatusOr<const PlanAndAlgorithms*> GetPlanAndAlgorithms(
+/* static */ StatusOr<const PlanAndAlgorithms*> PlanAndAlgorithms::GetOrCreate(
     se::Stream* stream, const BlasLtMatmulPlanParams& params,
     absl::Mutex** ppmu, std::optional<int> max_algorithm_count) {
   static const int64_t max_scratch_size =
@@ -128,8 +131,6 @@ StatusOr<const PlanAndAlgorithms*> GetPlanAndAlgorithms(
                         se::gpu::AsXlaPrimitiveType(params.dtype));
     TF_ASSIGN_OR_RETURN(auto computation_type,
                         GetBlasComputationType(params.dtype));
-
-    auto scale_type = se::gpu::GetScaleType(params.dtype, computation_type);
 
     // row-major output is now handled automatically by blas-lt API
     constexpr auto kRowMajor = se::gpu::MatrixLayout::Order::kRowMajor;
@@ -178,12 +179,33 @@ StatusOr<const PlanAndAlgorithms*> GetPlanAndAlgorithms(
 
     TF_ASSIGN_OR_RETURN(
         auto algorithms,
-        plan->GetAlgorithms(*max_algorithm_count, max_scratch_size));
+        plan->GetAlgorithms(stream, *max_algorithm_count, max_scratch_size));
 
-    ptr->second = {std::move(plan), std::move(algorithms), scale_type};
+    ptr->second = {std::move(plan), std::move(algorithms)};
   }
   *ppmu = &plan_map.mu;
   return &ptr->second;
+}
+
+Status PlanAndAlgorithms::ExecuteOnStream(
+    se::Stream* stream, const se::DeviceMemoryBase& a,
+    const se::DeviceMemoryBase& b, se::DeviceMemoryBase& c,
+    size_t algorithm_idx, se::ScratchAllocator& scratch_allocator,
+    const se::DeviceMemoryBase& bias,
+    se::blas::ProfileResult* profile_result) const {
+  if (!plan || algorithm_idx >= algorithms.size()) {
+    return errors::Internal("MatmulPlan or algorithms are not initialized!");
+  }
+  return plan->ExecuteOnStream(stream, a, b, c, c,
+                               bias,                    // bias_buffer
+                               se::DeviceMemoryBase{},  // aux_buffer
+                               se::DeviceMemoryBase{},  // a_scale_buffer
+                               se::DeviceMemoryBase{},  // b_scale_buffer
+                               se::DeviceMemoryBase{},  // c_scale_buffer
+                               se::DeviceMemoryBase{},  // d_scale_buffer
+                               se::DeviceMemoryBase{},  // d_amax_buffer
+                               algorithms[algorithm_idx], scratch_allocator,
+                               profile_result);
 }
 
 }  // namespace tensorflow

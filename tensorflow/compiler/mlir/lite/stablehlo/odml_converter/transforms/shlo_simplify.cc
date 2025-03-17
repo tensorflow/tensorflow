@@ -44,7 +44,7 @@ class SHLOSimplifyPass : public impl::SHLOSimplifyPassBase<SHLOSimplifyPass> {
     RewritePatternSet patterns(&getContext());
     populateWithGenerated(patterns);
     PopulateFolderPatterns(patterns);
-    if (failed(applyPatternsAndFoldGreedily(module, std::move(patterns)))) {
+    if (failed(applyPatternsGreedily(module, std::move(patterns)))) {
       signalPassFailure();
     }
   }

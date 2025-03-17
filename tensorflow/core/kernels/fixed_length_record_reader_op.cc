@@ -48,7 +48,7 @@ class FixedLengthRecordReader : public ReaderBase {
   // On success:
   // * buffered_inputstream_ != nullptr,
   // * buffered_inputstream_->Tell() == header_bytes_
-  Status OnWorkStartedLocked() override {
+  absl::Status OnWorkStartedLocked() override {
     record_number_ = 0;
 
     lookahead_cache_.clear();
@@ -72,13 +72,13 @@ class FixedLengthRecordReader : public ReaderBase {
     return absl::OkStatus();
   }
 
-  Status OnWorkFinishedLocked() override {
+  absl::Status OnWorkFinishedLocked() override {
     buffered_inputstream_.reset(nullptr);
     return absl::OkStatus();
   }
 
-  Status ReadLocked(tstring* key, tstring* value, bool* produced,
-                    bool* at_end) override {
+  absl::Status ReadLocked(tstring* key, tstring* value, bool* produced,
+                          bool* at_end) override {
     // We will always "hop" the hop_bytes_ except the first record
     // where record_number_ == 0
     if (record_number_ != 0) {
@@ -92,7 +92,8 @@ class FixedLengthRecordReader : public ReaderBase {
         // as the cache_size has been skipped through cache.
         int64_t cache_size = lookahead_cache_.size();
         lookahead_cache_.clear();
-        Status s = buffered_inputstream_->SkipNBytes(hop_bytes_ - cache_size);
+        absl::Status s =
+            buffered_inputstream_->SkipNBytes(hop_bytes_ - cache_size);
         if (!s.ok()) {
           if (!errors::IsOutOfRange(s)) {
             return s;
@@ -105,7 +106,7 @@ class FixedLengthRecordReader : public ReaderBase {
 
     // Fill up lookahead_cache_ to record_bytes_ + footer_bytes_
     int bytes_to_read = record_bytes_ + footer_bytes_ - lookahead_cache_.size();
-    Status s = buffered_inputstream_->ReadNBytes(bytes_to_read, value);
+    absl::Status s = buffered_inputstream_->ReadNBytes(bytes_to_read, value);
     if (!s.ok()) {
       value->clear();
       if (!errors::IsOutOfRange(s)) {
@@ -127,7 +128,7 @@ class FixedLengthRecordReader : public ReaderBase {
     return absl::OkStatus();
   }
 
-  Status ResetLocked() override {
+  absl::Status ResetLocked() override {
     record_number_ = 0;
     buffered_inputstream_.reset(nullptr);
     lookahead_cache_.clear();

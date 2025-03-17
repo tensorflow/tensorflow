@@ -75,7 +75,7 @@ absl::StatusOr<xla::Shape> TpuShapeRepresentation(
 
 // Given a tensor, returns the shape of its representation on device,
 // fully padded. Contents of `shape` are undefined on error.
-Status TpuPaddedShapeFn(const Tensor& tensor, xla::Shape* shape) {
+absl::Status TpuPaddedShapeFn(const Tensor& tensor, xla::Shape* shape) {
   const tensorflow::XlaTensor* xla_tensor =
       tensorflow::XlaTensor::FromTensor(&tensor);
   if (xla_tensor == nullptr) {
@@ -106,7 +106,7 @@ Status TpuPaddedShapeFn(const Tensor& tensor, xla::Shape* shape) {
 
 // Check if TPU has been initialized. TPU initialization is not necessary
 // for 1x1.
-Status CheckIfTPUInitialized() {
+absl::Status CheckIfTPUInitialized() {
   auto* tpu_platform = tpu::TpuPlatformInterface::GetRegisteredPlatform();
   if (!tpu_platform->Initialized()) {
     return errors::FailedPrecondition(
@@ -136,9 +136,9 @@ void TpuDeviceToDeviceCopy(DeviceContext* src_dev_context,
   static const bool should_use_substream =
       tpu_use_substreams_for_cross_tpu_device_transfers_flag;
 
-  auto impl = [&]() -> Status {
+  auto impl = [&]() -> absl::Status {
     if (src->name() != dst->name()) {
-      Status s = CheckIfTPUInitialized();
+      absl::Status s = CheckIfTPUInitialized();
       if (!s.ok()) {
         done(s);
         return absl::OkStatus();
@@ -301,7 +301,7 @@ void TpuDeviceToDeviceCopy(DeviceContext* src_dev_context,
           done(absl::OkStatus());
         });
   };
-  Status status = impl();
+  absl::Status status = impl();
   if (!status.ok()) {
     done(status);
   }
@@ -309,12 +309,14 @@ void TpuDeviceToDeviceCopy(DeviceContext* src_dev_context,
 
 class TpuNodeDeviceFactory : public DeviceFactory {
  public:
-  Status ListPhysicalDevices(std::vector<string>* devices) override;
-  Status CreateDevices(const SessionOptions& options, const string& name_prefix,
-                       std::vector<std::unique_ptr<Device>>* devices) override;
+  absl::Status ListPhysicalDevices(std::vector<string>* devices) override;
+  absl::Status CreateDevices(
+      const SessionOptions& options, const string& name_prefix,
+      std::vector<std::unique_ptr<Device>>* devices) override;
 };
 
-Status TpuNodeDeviceFactory::ListPhysicalDevices(std::vector<string>* devices) {
+absl::Status TpuNodeDeviceFactory::ListPhysicalDevices(
+    std::vector<string>* devices) {
   tpu::TpuPlatformInterface* platform =
       tpu::TpuPlatformInterface::GetRegisteredPlatform();
   if (platform == nullptr) {
@@ -332,7 +334,7 @@ Status TpuNodeDeviceFactory::ListPhysicalDevices(std::vector<string>* devices) {
   return absl::OkStatus();
 }
 
-Status TpuNodeDeviceFactory::CreateDevices(
+absl::Status TpuNodeDeviceFactory::CreateDevices(
     const SessionOptions& session_options, const string& name_prefix,
     std::vector<std::unique_ptr<Device>>* devices) {
   tpu::TpuPlatformInterface* platform =
@@ -392,7 +394,7 @@ Status TpuNodeDeviceFactory::CreateDevices(
     // The AcceleratorDeviceInfo actually provides information not only for GPU
     // devices but also for TPU. The name is a legacy from the pre-TPU
     // dark ages.
-    Status status = device->UseAcceleratorDeviceInfo();
+    absl::Status status = device->UseAcceleratorDeviceInfo();
     if (!status.ok()) {
       errors::AppendToMessage(&status, "while setting up ", DEVICE_TPU_XLA_JIT,
                               " device number ", i);
@@ -411,12 +413,13 @@ Status TpuNodeDeviceFactory::CreateDevices(
 
 class TpuSystemDeviceFactory : public DeviceFactory {
  public:
-  Status ListPhysicalDevices(std::vector<string>* devices) override;
-  Status CreateDevices(const SessionOptions& options, const string& name_prefix,
-                       std::vector<std::unique_ptr<Device>>* devices) override;
+  absl::Status ListPhysicalDevices(std::vector<string>* devices) override;
+  absl::Status CreateDevices(
+      const SessionOptions& options, const string& name_prefix,
+      std::vector<std::unique_ptr<Device>>* devices) override;
 };
 
-Status TpuSystemDeviceFactory::ListPhysicalDevices(
+absl::Status TpuSystemDeviceFactory::ListPhysicalDevices(
     std::vector<string>* devices) {
   int device_count = 0;
   TF_RETURN_IF_ERROR(tpu::TpuPlatform::TpusPerHost(&device_count));
@@ -430,7 +433,7 @@ Status TpuSystemDeviceFactory::ListPhysicalDevices(
   return absl::OkStatus();
 }
 
-Status TpuSystemDeviceFactory::CreateDevices(
+absl::Status TpuSystemDeviceFactory::CreateDevices(
     const SessionOptions& options, const string& name_prefix,
     std::vector<std::unique_ptr<Device>>* devices) {
   int device_count = 0;

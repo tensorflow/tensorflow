@@ -129,3 +129,16 @@ func.func @requires_resharded_array_to_have_same_dtype(%arg0: !array0)
   %0, %ctrl = ifrt.Reshard(%arg0) : (!array0) -> (!array1)
   return
 }
+
+// -----
+
+!array0 = !ifrt.array<tensor<2x2xi32>, #ifrt.sharding_param<1x1 to [0] on 2>,
+                      [0,1], layout = "auto">
+!array1 = !ifrt.array<tensor<2x2xi32>, #ifrt.sharding_param<1x1 to [0] on 4>,
+                      [0,1,2,3], layout = "auto">
+func.func @no_auto_layout(%arg0: !array0) attributes {ifrt.function} {
+  // expected-error@+1 {{'ifrt.Reshard' op does not allow input or output arrays with `auto` layout}}
+  %0, %ctrl = ifrt.Reshard(%arg0) : (!array0) -> !array1
+  return
+}
+

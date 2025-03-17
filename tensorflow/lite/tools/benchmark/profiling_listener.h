@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_TOOLS_BENCHMARK_PROFILING_LISTENER_H_
 #define TENSORFLOW_LITE_TOOLS_BENCHMARK_PROFILING_LISTENER_H_
 
+#include <cstdint>
 #include <memory>
 #include <string>
 

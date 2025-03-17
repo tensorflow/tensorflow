@@ -55,7 +55,7 @@ class ParallelBatchDatasetParams : public DatasetParams {
     return {batch_size, num_parallel_calls, drop_remainder};
   }
 
-  Status GetInputNames(std::vector<string>* input_names) const override {
+  absl::Status GetInputNames(std::vector<string>* input_names) const override {
     *input_names = {ParallelBatchDatasetOp::kInputDataset,
                     ParallelBatchDatasetOp::kBatchSize,
                     ParallelBatchDatasetOp::kNumParallelCalls,
@@ -63,7 +63,7 @@ class ParallelBatchDatasetParams : public DatasetParams {
     return absl::OkStatus();
   }
 
-  Status GetAttributes(AttributeVector* attr_vector) const override {
+  absl::Status GetAttributes(AttributeVector* attr_vector) const override {
     *attr_vector = {
         {"parallel_copy", parallel_copy_},
         {"output_types", output_dtypes_},

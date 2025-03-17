@@ -13,9 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include "third_party/gpus/cuda/include/cuda.h"
+#include "xla/tsl/platform/logging.h"
 #include "tsl/platform/dso_loader.h"
 #include "tsl/platform/load_library.h"
-#include "tsl/platform/logging.h"
 
 // Implements the CUDA driver API by forwarding to CUDA loaded from the DSO.
 

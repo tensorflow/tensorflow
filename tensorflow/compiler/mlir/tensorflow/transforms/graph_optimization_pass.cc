@@ -29,7 +29,7 @@ limitations under the License.
 namespace mlir {
 namespace TF {
 namespace {
-using Status = ::tensorflow::Status;
+using Status = absl::Status;
 using ConfigProto = ::tensorflow::ConfigProto;
 using Graph = ::tensorflow::Graph;
 }  // namespace

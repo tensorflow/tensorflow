@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/core/transforms/consolidate_attrs/pass.h"
 
+#include <cassert>
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <utility>
@@ -374,8 +376,7 @@ void ConsolidateAttributesPassImpl::runOnOperation() {
   patterns.add(
       RemoveAttributes<WhileOp, StatelessWhileOp, StatefulWhileOp, ForOp>(
           &getContext(), {"T"}));
-  if (failed(
-          applyPatternsAndFoldGreedily(getOperation(), std::move(patterns)))) {
+  if (failed(applyPatternsGreedily(getOperation(), std::move(patterns)))) {
     getOperation()->emitError(getArgument() + " pass failed");
     signalPassFailure();
     return;
@@ -673,8 +674,7 @@ void PrepareAttributesForExportPassImpl::runOnOperation() {
                  ForOp>(patterns, control_type);
   patterns.insert<MaterializeTFGOpOutputShapes, MaterializeCFOpOutputShapes>(
       &getContext());
-  if (failed(
-          applyPatternsAndFoldGreedily(getOperation(), std::move(patterns)))) {
+  if (failed(applyPatternsGreedily(getOperation(), std::move(patterns)))) {
     getOperation()->emitError(getArgument() + " pass failed");
     signalPassFailure();
     return;

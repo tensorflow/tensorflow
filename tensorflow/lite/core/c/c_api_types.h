@@ -36,11 +36,11 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_CORE_C_C_API_TYPES_H_
 #define TENSORFLOW_LITE_CORE_C_C_API_TYPES_H_
 
-#include <stdint.h>
-
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+#include "tensorflow/compiler/mlir/lite/core/c/tflite_types.h"  // IWYU pragma: export
 
 // clang-format off
 // NOLINTBEGIN(whitespace/line_length)
@@ -56,12 +56,12 @@ extern "C" {
 #define TFL_CAPI_EXPORT
 #elif defined(TFL_STATIC_LIBRARY_BUILD)
 #define TFL_CAPI_EXPORT
-#else  // not definded TFL_STATIC_LIBRARY_BUILD
+#else  // not defined TFL_STATIC_LIBRARY_BUILD
 #if defined(_WIN32)
 #ifdef TFL_COMPILE_LIBRARY
 #define TFL_CAPI_EXPORT __declspec(dllexport)
 #else
-#define TFL_CAPI_EXPORT __declspec(dllimport)
+#define TFL_CAPI_EXPORT
 #endif  // TFL_COMPILE_LIBRARY
 #else
 #define TFL_CAPI_EXPORT __attribute__((visibility("default")))
@@ -110,41 +110,14 @@ typedef enum TfLiteStatus {
   // TODO(b/250636993): Cancellation triggered by `SetCancellationFunction`
   // should also return this status code.
   kTfLiteCancelled = 8,
+
+  // This status is returned by Prepare when the output shape cannot be
+  // determined but the size of the output tensor is known. For example, the
+  // output of reshape is always the same size as the input. This means that
+  // such ops may be
+  // done in place.
+  kTfLiteOutputShapeNotKnown = 9,
 } TfLiteStatus;
-
-/// Types supported by tensor
-typedef enum {
-  kTfLiteNoType = 0,
-  kTfLiteFloat32 = 1,
-  kTfLiteInt32 = 2,
-  kTfLiteUInt8 = 3,
-  kTfLiteInt64 = 4,
-  kTfLiteString = 5,
-  kTfLiteBool = 6,
-  kTfLiteInt16 = 7,
-  kTfLiteComplex64 = 8,
-  kTfLiteInt8 = 9,
-  kTfLiteFloat16 = 10,
-  kTfLiteFloat64 = 11,
-  kTfLiteComplex128 = 12,
-  kTfLiteUInt64 = 13,
-  kTfLiteResource = 14,
-  kTfLiteVariant = 15,
-  kTfLiteUInt32 = 16,
-  kTfLiteUInt16 = 17,
-  kTfLiteInt4 = 18,
-  kTfLiteBFloat16 = 19,
-} TfLiteType;
-
-/// Legacy. Will be deprecated in favor of `TfLiteAffineQuantization`.
-/// If per-layer quantization is specified this field will still be populated in
-/// addition to `TfLiteAffineQuantization`.
-/// Parameters for asymmetric quantization. Quantized values can be converted
-/// back to float using: `real_value = scale * (quantized_value - zero_point)`
-typedef struct TfLiteQuantizationParams {
-  float scale;
-  int32_t zero_point;
-} TfLiteQuantizationParams;
 
 // --------------------------------------------------------------------------
 // Opaque types used by c_api.h, c_api_opaque.h and common.h.

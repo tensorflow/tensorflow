@@ -38,7 +38,7 @@ class AbstractFunction : public core::RefCounted {
   AbstractFunctionKind getKind() const { return kind_; }
 
   // Returns the AbstractFunction as a FunctionDef.
-  virtual Status GetFunctionDef(const FunctionDef**) = 0;
+  virtual absl::Status GetFunctionDef(const FunctionDef**) = 0;
 
   // Returns a shared reference to the wrapped function.
   virtual absl::StatusOr<core::RefCountPtr<FunctionRecord>>

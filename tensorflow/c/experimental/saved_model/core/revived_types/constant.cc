@@ -16,7 +16,9 @@ limitations under the License.
 #include "tensorflow/c/experimental/saved_model/core/revived_types/constant.h"
 
 #include <memory>
+#include <utility>
 
+#include "absl/status/status.h"
 #include "tensorflow/c/eager/immediate_execution_context.h"
 #include "tensorflow/c/eager/immediate_execution_tensor_handle.h"
 #include "tensorflow/c/experimental/saved_model/core/revived_types/tensorhandle_convertible.h"
@@ -30,15 +32,15 @@ namespace tensorflow {
 Constant::Constant(ImmediateTensorHandlePtr handle)
     : TensorHandleConvertible(std::move(handle)) {}
 
-Status Constant::Create(ImmediateExecutionContext* ctx,
-                        AbstractTensorInterface* tensor,
-                        std::unique_ptr<Constant>* output) {
+absl::Status Constant::Create(ImmediateExecutionContext* ctx,
+                              AbstractTensorInterface* tensor,
+                              std::unique_ptr<Constant>* output) {
   ImmediateExecutionTensorHandle* handle = ctx->CreateLocalHandle(tensor);
   if (handle == nullptr) {
     return errors::Internal("Failed to convert tensor to tensorhandle");
   }
   output->reset(new Constant(ImmediateTensorHandlePtr(handle)));
-  return Status();
+  return absl::Status();
 }
 
 }  // namespace tensorflow

@@ -22,6 +22,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/status/status.h"
 #include "absl/strings/string_view.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/STLFunctionalExtras.h"
@@ -71,7 +72,7 @@ struct TFRTSavedModelSignatureInfo {
 // Apply `map_fn` on every exported function in the module with the
 // corresponding signature metadata populated in TFRTSavedModelSignatureInfo for
 // the function.
-Status MapFunctionSignaturesFromTFSavedModelMLIR(
+absl::Status MapFunctionSignaturesFromTFSavedModelMLIR(
     mlir::ModuleOp module,
     llvm::function_ref<void(const TFRTSavedModelSignatureInfo&)> map_fn);
 

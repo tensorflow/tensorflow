@@ -334,6 +334,8 @@ def TensorFlowShapeInferencePass : Pass<"tf-shape-inference", "ModuleOp"> {
            "Maximum shape inference iterations">,
     Option<"input_arg_shapes_", "input-arg-shapes", "std::string", /*default=*/"",
            "Input tensor shapes. Shapes for different tensors are separated by ':', and dimension sizes for the same tensor are separated by ','">,
+    Option<"enable_stablehlo_propagation_", "enable-stablehlo-propagation", "bool", /*default=*/"false",
+           "Enables refined shape propagation to the StableHLO module inside XlaCallModule ops.">,
   ];
 }
 
@@ -835,18 +837,6 @@ def TPUPartitionedOpConversionPass : Pass<"tf-tpu-partitioned-op-conversion", "m
   let summary = "Rewrite all TPU Partitioned ops into their V2 counterparts.";
 
   let constructor = "TFTPU::CreateTPUPartitionedOpConversionPass()";
-}
-
-def TPUValidateInputsPass : Pass<"tf-tpu-validate-inputs", "ModuleOp"> {
-  let summary = "Validates inputs to the TPU TF/XLA bridge";
-
-  let description = [{
-    This pass checks that the IR has valid input to TPU TF/XLA bridge.
-    It checks the relations of multiple ops. Properties of single ops are
-    checked by the 'verify' method of ops.
-  }];
-
-  let constructor = "TFTPU::CreateTPUValidateInputsPass()";
 }
 
 def ClusterConstantSinkingPass : Pass<"tf-device-constant-sinking", "mlir::func::FuncOp"> {
@@ -2225,7 +2215,7 @@ def XlaCallModuleDeserializationPass
     "shape::ShapeDialect",
     "stablehlo::StablehloDialect",
     "vhlo::VhloDialect",
-    "quant::QuantizationDialect",
+    "quant::QuantDialect",
   ];
 
   let constructor = "TF::CreateXlaCallModuleDeserializationPass()";

@@ -13,8 +13,10 @@
 # limitations under the License.
 # ==============================================================================
 
+import gc
 import threading
 import time
+import weakref
 
 from absl.testing import absltest
 
@@ -74,6 +76,36 @@ class WeakrefLRUCacheTest(absltest.TestCase):
       cache(wrkey, GilReleasingCacheKey())
     t.join()
 
+  def testAnotherMultiThreaded(self):
+    num_workers = 5
+    barrier = threading.Barrier(num_workers)
+    cache = xla_client.weakref_lru_cache(lambda: None, lambda x, y: y, 2048)
+
+    class WRKey:
+      pass
+
+    def WorkerAddToCache():
+      barrier.wait()
+      wrkey = WRKey()
+      for i in range(10):
+        cache(wrkey, i)
+
+    def WorkerCleanCache():
+      barrier.wait()
+      for _ in range(10):
+        cache.cache_clear()
+
+    workers = [
+        threading.Thread(target=WorkerAddToCache)
+        for _ in range(num_workers - 1)
+    ] + [threading.Thread(target=WorkerCleanCache)]
+
+    for t in workers:
+      t.start()
+
+    for t in workers:
+      t.join()
+
   def testKwargsDictOrder(self):
     miss_id = 0
 
@@ -111,6 +143,19 @@ class WeakrefLRUCacheTest(absltest.TestCase):
     cache(wrkey, "arg2")
     self.assertLen(cache.cache_keys(), 2)
 
+  def testNonWeakreferenceableKey(self):
+    class NonWRKey:
+      __slots__ = ()
+
+    non_wr_key = NonWRKey()
+    with self.assertRaises(TypeError):
+      weakref.ref(non_wr_key)
+
+    cache = xla_client.weakref_lru_cache(lambda: None, lambda x: 2048)
+    for _ in range(100):
+      with self.assertRaises(TypeError):
+        cache(non_wr_key)
+
   def testCrashingKey(self):
     class WRKey:
       pass
@@ -145,6 +190,67 @@ class WeakrefLRUCacheTest(absltest.TestCase):
         repr(cache.cache_info()),
         "WeakrefLRUCache(hits=5, misses=10, maxsize=2048, currsize=10)",
     )
+
+  def testGCKeys(self):
+    class WRKey:
+
+      def __init__(self, x):
+        self.x = x
+
+      def __eq__(self, other):
+        return self.x == other.x
+
+      def __hash__(self):
+        return hash(self.x)
+
+    cache = xla_client.weakref_lru_cache(lambda: None, lambda x, y: y, 2048)
+    keys = [WRKey(i) for i in range(10)]
+    for i in range(10):
+      cache(keys[i], i)
+
+    # Delete some keys, to exercise the weakref callback behavior.
+    del keys[::2]
+
+    for key in keys:
+      cache(key, 7)
+
+  def testTpTraverse(self):
+    class WRKey:
+      pass
+
+    def CacheContextFn():
+      return None
+
+    def CallFn(x, y, *args, **kwargs):
+      del x, args, kwargs
+      return y
+
+    cache = xla_client.weakref_lru_cache(CacheContextFn, CallFn, 2048)
+
+    keys = [WRKey() for _ in range(10)]
+    values = [str(i) for i in range(10)]
+    args = [str(i) for i in range(10)]
+    kwargs = {"a": "b"}
+
+    for key, value in zip(keys, values):
+      cache(key, value, *args, **kwargs)
+
+    expected_refs = (
+        [
+            CacheContextFn,
+            CallFn,
+            xla_client._xla.WeakrefLRUCache,
+            kwargs,
+        ]
+        + [weakref.getweakrefs(key)[0] for key in keys]
+        + values
+        + args
+    )
+
+    # Can't use assertContainsSubset because it doesn't support kwargs since
+    # dicts aren't hashable.
+    for ref in expected_refs:
+      self.assertIn(ref, gc.get_referents(cache))
 
 
 if __name__ == "__main__":

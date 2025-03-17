@@ -1296,8 +1296,8 @@ class CudnnRNNKernelCommon : public OpKernel {
     auto rnn_desc_s = dnn->CreateRnnDescriptor(
         num_layers, h_num_units, input_size, /*cell_size=*/c_num_units,
         /*batch_size=*/0, input_mode, rnn_direction_mode(), rnn_mode(),
-        ToDataType<T>::value, algo_config, GetNumericOptions(), dropout(),
-        seed(),
+        ToDataType<T>::value, algo_config, GetNumericOptionsForCuDnn(),
+        dropout(), seed(),
         /* state_allocator=*/nullptr, /*use_padded_io=*/false);
     if (!rnn_desc_s.ok()) {
       return FromExecutorStatus(rnn_desc_s);
@@ -1326,7 +1326,7 @@ class CudnnRNNKernelCommon : public OpKernel {
         model_shapes.num_layers, model_shapes.num_units,
         model_shapes.input_size, model_shapes.cell_num_units,
         model_shapes.batch_size, input_mode, rnn_direction_mode(), rnn_mode(),
-        data_type, algo_config, GetNumericOptions(), dropout(), seed(),
+        data_type, algo_config, GetNumericOptionsForCuDnn(), dropout(), seed(),
         dropout_state_allocator, use_padded_io);
     TF_RETURN_IF_ERROR(rnn_desc_s.status());
 

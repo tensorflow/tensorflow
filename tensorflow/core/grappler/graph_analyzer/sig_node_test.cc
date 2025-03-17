@@ -613,7 +613,7 @@ class SignatureTest : public SigBaseTest {
 
     gen_map_.clear();
     sig_.map.clear();
-    Status result = GenNode::BuildGraphInMap(graph, &gen_map_);
+    absl::Status result = GenNode::BuildGraphInMap(graph, &gen_map_);
     ASSERT_THAT(result, Eq(absl::OkStatus()));
     Subgraph::Identity id;
     for (const auto& entry : gen_map_) {
@@ -1038,7 +1038,8 @@ TEST_F(SignatureTest, ComputeOneRoundSplitLinear) {
 TEST_F(SignatureTest, OrderLinks) {
   gen_map_.clear();
   sig_.map.clear();
-  Status result = GenNode::BuildGraphInMap(graph_for_link_order_, &gen_map_);
+  absl::Status result =
+      GenNode::BuildGraphInMap(graph_for_link_order_, &gen_map_);
   ASSERT_THAT(result, Eq(absl::OkStatus()));
   Subgraph::Identity id;
   for (const auto& entry : gen_map_) {
@@ -1097,11 +1098,12 @@ TEST_F(SignatureTest, GraphTooBig) {
   Subgraph sg(id);
   sg.ExtractForSignature(&sig_.map);
 
-  ASSERT_THAT(sig_.Compute(),
-              Eq(Status(absl::StatusCode::kInvalidArgument,
-                        "A graph of 65 nodes is too big for signature "
-                        "computation, the maximal supported node count is "
-                        "64.")));
+  ASSERT_THAT(
+      sig_.Compute(),
+      Eq(absl::Status(absl::StatusCode::kInvalidArgument,
+                      "A graph of 65 nodes is too big for signature "
+                      "computation, the maximal supported node count is "
+                      "64.")));
 }
 
 TEST_F(SignatureTest, ToString) {

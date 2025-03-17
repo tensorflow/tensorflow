@@ -21,14 +21,13 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/MLIRContext.h"
+#include "xla/hlo/analysis/indexing_analysis.h"
+#include "xla/hlo/analysis/indexing_map.h"
 #include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/service/gpu/hlo_traversal.h"
-#include "xla/service/gpu/model/indexing_analysis.h"
-#include "xla/service/gpu/model/indexing_map.h"
+#include "xla/hlo/utils/hlo_traversal.h"
 #include "xla/service/gpu/model/symbolic_tile.h"
 #include "xla/tests/hlo_test_base.h"
-#include "xla/tests/verified_hlo_module.h"
 #include "tsl/platform/statusor.h"
 
 namespace xla {
@@ -88,9 +87,10 @@ ENTRY main {
 
   std::vector<int64_t> output_tile_sizes = {8, 4};
 
-  auto p0_tile_sizes = tiled_p0.TileSizes(output_tile_sizes);
-  EXPECT_THAT(tiled_p0.TileSizes(output_tile_sizes), ElementsAre(4, 8));
-  EXPECT_THAT(tiled_p1.TileSizes(output_tile_sizes), ElementsAre(8, 4));
+  EXPECT_THAT(EvaluateTileSizes(tiled_p0.symbolic_tile(), output_tile_sizes),
+              ElementsAre(4, 8));
+  EXPECT_THAT(EvaluateTileSizes(tiled_p1.symbolic_tile(), output_tile_sizes),
+              ElementsAre(8, 4));
 }
 
 }  // namespace

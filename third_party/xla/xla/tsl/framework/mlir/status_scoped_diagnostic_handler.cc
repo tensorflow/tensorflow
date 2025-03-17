@@ -19,10 +19,10 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "llvm/Support/LogicalResult.h"
-#include "mlir/IR/Diagnostics.h"  // from @llvm-project
-#include "mlir/IR/MLIRContext.h"  // from @llvm-project
-#include "mlir/Support/LogicalResult.h"  // from @llvm-project
-#include "tsl/platform/logging.h"
+#include "mlir/IR/Diagnostics.h"
+#include "mlir/IR/MLIRContext.h"
+#include "mlir/Support/LogicalResult.h"
+#include "xla/tsl/platform/logging.h"
 
 namespace tsl {
 

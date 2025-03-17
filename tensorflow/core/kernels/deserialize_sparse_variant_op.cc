@@ -224,7 +224,8 @@ class DeserializeSparseOp : public OpKernel {
         // to outermost/major dimension). The `cumulative_product` represents
         // the size of the inner subtensor for which `sparse_tensor_index` has
         // already been built.
-        gtl::InlinedVector<int64_t, 4> sparse_tensor_index(input_dims_to_stack);
+        absl::InlinedVector<int64_t, 4UL> sparse_tensor_index(
+            input_dims_to_stack);
         int cumulative_product = 1;
         for (size_t j = 0; j < sparse_tensor_index.size(); ++j) {
           size_t reverse_index = sparse_tensor_index.size() - j - 1;
@@ -273,10 +274,11 @@ class DeserializeSparseOp : public OpKernel {
   }
 
  private:
-  Status GetAndValidateSparseTensorShape(const Variant& serialized_values,
-                                         const Variant& serialized_shape,
-                                         int index, const Tensor** output_shape,
-                                         int64_t* output_num_non_zeros) {
+  absl::Status GetAndValidateSparseTensorShape(const Variant& serialized_values,
+                                               const Variant& serialized_shape,
+                                               int index,
+                                               const Tensor** output_shape,
+                                               int64_t* output_num_non_zeros) {
     // Deserialize and validate the shape.
     *output_shape = serialized_shape.get<Tensor>();
     if (*output_shape == nullptr) {
@@ -299,7 +301,7 @@ class DeserializeSparseOp : public OpKernel {
     return absl::OkStatus();
   }
 
-  Status GetAndValidateSparseTensorIndicesAndValues(
+  absl::Status GetAndValidateSparseTensorIndicesAndValues(
       const Variant& serialized_indices, const Variant& serialized_values,
       int index, int expected_rank, const Tensor** output_indices,
       const Tensor** output_values) {
@@ -365,6 +367,22 @@ class DeserializeSparseOp : public OpKernel {
 REGISTER_KERNEL_BUILDER(Name("DeserializeSparse")
                             .Device(DEVICE_CPU)
                             .TypeConstraint<Variant>("Tserialized"),
+                        DeserializeSparseOp)
+REGISTER_KERNEL_BUILDER(Name("DeserializeSparse")
+                            .Device(DEVICE_GPU)
+                            .TypeConstraint<Variant>("Tserialized")
+                            .HostMemory("serialized_sparse")
+                            .HostMemory("sparse_indices")
+                            .HostMemory("sparse_values")
+                            .HostMemory("sparse_shape"),
+                        DeserializeSparseOp)
+REGISTER_KERNEL_BUILDER(Name("DeserializeSparse")
+                            .Device(DEVICE_TPU)
+                            .TypeConstraint<Variant>("Tserialized")
+                            .HostMemory("serialized_sparse")
+                            .HostMemory("sparse_indices")
+                            .HostMemory("sparse_values")
+                            .HostMemory("sparse_shape"),
                         DeserializeSparseOp)
 
 }  // namespace

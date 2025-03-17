@@ -15,6 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_EXPERIMENTAL_ACCELERATION_MINI_BENCHMARK_RUNNER_H_
 #define TENSORFLOW_LITE_EXPERIMENTAL_ACCELERATION_MINI_BENCHMARK_RUNNER_H_
 
+#include <cstdio>
 #include <string>
 #include <vector>
 

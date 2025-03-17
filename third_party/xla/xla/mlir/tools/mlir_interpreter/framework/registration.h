@@ -27,8 +27,8 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/TypeName.h"
-#include "mlir/IR/Operation.h"  // from @llvm-project
-#include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "mlir/IR/Operation.h"
+#include "mlir/Support/LLVM.h"
 #include "xla/mlir/tools/mlir_interpreter/framework/interpreter.h"
 #include "xla/mlir/tools/mlir_interpreter/framework/interpreter_value.h"
 #include "xla/mlir/tools/mlir_interpreter/framework/interpreter_value_util.h"
@@ -163,7 +163,7 @@ void RegisterTypedInterpreterOpImpl(Ret (*fn)(InterpreterState&, Op, T... args),
           return {};
         }
         int64_t used_args = 0;
-        for (auto i : llvm::seq(0ul, sizeof...(T))) {
+        for (auto i : llvm::seq<uint64_t>(0, sizeof...(T))) {
           used_args += cast.getODSOperandIndexAndLength(i).second;
         }
         if (args.size() != used_args) {

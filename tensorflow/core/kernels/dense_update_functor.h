@@ -66,14 +66,15 @@ struct DenseUpdate<CPUDevice, T, ASSIGN> {
 }  // end namespace functor
 
 template <typename Device>
-Status VariantCopyFn(OpKernelContext* context, const Tensor& from, Tensor* to);
+absl::Status VariantCopyFn(OpKernelContext* context, const Tensor& from,
+                           Tensor* to);
 
 template <>
-Status VariantCopyFn<CPUDevice>(OpKernelContext* context, const Tensor& from,
-                                Tensor* to);
+absl::Status VariantCopyFn<CPUDevice>(OpKernelContext* context,
+                                      const Tensor& from, Tensor* to);
 template <>
-Status VariantCopyFn<GPUDevice>(OpKernelContext* context, const Tensor& from,
-                                Tensor* to);
+absl::Status VariantCopyFn<GPUDevice>(OpKernelContext* context,
+                                      const Tensor& from, Tensor* to);
 
 }  // end namespace tensorflow
 

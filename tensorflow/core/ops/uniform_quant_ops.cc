@@ -43,9 +43,10 @@ absl::StatusOr<TensorShape> ToTensorShape(ShapeHandle shape_handle,
   return shape;
 }
 
-Status ScalesZeroPointsShapeValid(shape_inference::InferenceContext* context,
-                                  DimensionHandle match_dimension_handle,
-                                  ShapeHandle scales, ShapeHandle zero_points) {
+absl::Status ScalesZeroPointsShapeValid(
+    shape_inference::InferenceContext* context,
+    DimensionHandle match_dimension_handle, ShapeHandle scales,
+    ShapeHandle zero_points) {
   const int32_t scales_rank = shape_inference::InferenceContext::Rank(scales);
   const int32_t zero_points_rank =
       shape_inference::InferenceContext::Rank(zero_points);
@@ -72,7 +73,7 @@ Status ScalesZeroPointsShapeValid(shape_inference::InferenceContext* context,
   return absl::OkStatus();
 }
 
-Status DotShape(shape_inference::InferenceContext* context) {
+absl::Status DotShape(shape_inference::InferenceContext* context) {
   ShapeHandle lhs;
   TF_RETURN_IF_ERROR(context->WithRank(context->input(0), 2, &lhs));
   ShapeHandle rhs;
@@ -115,7 +116,7 @@ Status DotShape(shape_inference::InferenceContext* context) {
   return absl::OkStatus();
 }
 
-Status DotHybridShape(shape_inference::InferenceContext* context) {
+absl::Status DotHybridShape(shape_inference::InferenceContext* context) {
   ShapeHandle lhs;
   TF_RETURN_IF_ERROR(context->WithRank(context->input(0), 2, &lhs));
   ShapeHandle rhs;
@@ -177,8 +178,8 @@ struct ShapeCommonParams {
         is_output_scales_zero_points_set(false) {}
 };
 
-Status ConvolutionShapeCommon(shape_inference::InferenceContext* context,
-                              const ShapeCommonParams& params) {
+absl::Status ConvolutionShapeCommon(shape_inference::InferenceContext* context,
+                                    const ShapeCommonParams& params) {
   const int32_t lhs_rank = shape_inference::InferenceContext::Rank(params.lhs);
   const int32_t rhs_rank = shape_inference::InferenceContext::Rank(params.rhs);
 
@@ -237,7 +238,7 @@ Status ConvolutionShapeCommon(shape_inference::InferenceContext* context,
   return absl::OkStatus();
 }
 
-Status ConvolutionShape(shape_inference::InferenceContext* context) {
+absl::Status ConvolutionShape(shape_inference::InferenceContext* context) {
   ShapeHandle lhs;
   TF_RETURN_IF_ERROR(context->WithRankAtLeast(context->input(0), 2, &lhs));
   ShapeHandle rhs;
@@ -268,7 +269,8 @@ Status ConvolutionShape(shape_inference::InferenceContext* context) {
                         rhs_zero_points, output_scales, output_zero_points));
 }
 
-Status ConvolutionHybridShape(shape_inference::InferenceContext* context) {
+absl::Status ConvolutionHybridShape(
+    shape_inference::InferenceContext* context) {
   ShapeHandle lhs;
   TF_RETURN_IF_ERROR(context->WithRankAtLeast(context->input(0), 2, &lhs));
   ShapeHandle rhs;
@@ -291,7 +293,7 @@ REGISTER_OP("UniformQuantize")
     .Input("zero_points: int32")
     .Output("output: Tout")
     .Attr("Tin: {float}")
-    .Attr("Tout: {qint8, qint32}")
+    .Attr("Tout: {qint8, quint8, qint32}")
     .Attr("quantization_axis: int = -1")
     .Attr("quantization_min_val: int")
     .Attr("quantization_max_val: int")
@@ -319,7 +321,7 @@ REGISTER_OP("UniformDequantize")
     .Input("scales: float")
     .Input("zero_points: int32")
     .Output("output: Tout")
-    .Attr("Tin: {qint8, qint32}")
+    .Attr("Tin: {qint8, quint8, qint32}")
     .Attr("Tout: {float}")
     .Attr("quantization_axis: int = -1")
     .Attr("quantization_min_val: int")

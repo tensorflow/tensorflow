@@ -16,6 +16,9 @@ limitations under the License.
 #ifndef XLA_STREAM_EXECUTOR_ROCM_ROCM_DIAGNOSTICS_H_
 #define XLA_STREAM_EXECUTOR_ROCM_ROCM_DIAGNOSTICS_H_
 
+#include <string>
+
+#include "absl/status/statusor.h"
 #include "xla/stream_executor/gpu/gpu_diagnostics.h"
 
 namespace stream_executor {

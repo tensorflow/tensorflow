@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <string>
 
+#include "absl/status/status.h"
 #include "absl/strings/cord.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
@@ -37,7 +38,7 @@ constexpr absl::string_view kTpuEmbeddingErrorMessage =
 // Appends a payload of type tensorflow::tpu::kTpuEmbeddingErrorUrl to the
 // tensorflow::Status obj if the status is NOT OK. Returns the
 // tensorflow::Status obj unchanged if the status is OK.
-Status AppendTpuEmbeddingErrorPayload(Status obj);
+absl::Status AppendTpuEmbeddingErrorPayload(absl::Status obj);
 
 // Appends a payload of type tensorflow::tpu::kTpuEmbeddingErrorUrl to the
 // tensorflow::Status obj if the status is NOT OK. Returns obj.value() if the
@@ -49,7 +50,7 @@ StatusOr<T> AppendTpuEmbeddingErrorPayload(StatusOr<T> obj) {
   } else {
     const std::string error_message =
         absl::StrCat(kTpuEmbeddingErrorMessage, ". ", obj.status().message());
-    Status status(obj.status().code(), error_message);
+    absl::Status status(obj.status().code(), error_message);
     TPUEmbeddingError error_payload;
     status.SetPayload(kTpuEmbeddingErrorUrl,
                       absl::Cord(error_payload.SerializeAsString()));
@@ -59,11 +60,11 @@ StatusOr<T> AppendTpuEmbeddingErrorPayload(StatusOr<T> obj) {
 
 // Returns true if the tensorflow::Status obj has a payload of type
 // tensorflow::tpu::kTpuEmbeddingErrorUrl.
-bool HasTpuEmbeddingErrorPayload(const Status& status);
+bool HasTpuEmbeddingErrorPayload(const absl::Status& status);
 
 // Returns true if the tensorflow::Status obj error message contains
 // tensorflow::tpu::kTpuEmbeddingErrorMessage as a substring.
-bool HasTpuEmbeddingErrorMessage(const Status& status);
+bool HasTpuEmbeddingErrorMessage(const absl::Status& status);
 
 }  // namespace tensorflow::tpu
 

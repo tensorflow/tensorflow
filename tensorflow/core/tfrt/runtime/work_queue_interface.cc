@@ -14,11 +14,13 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/tfrt/runtime/work_queue_interface.h"
 
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <string>
 #include <utility>
 
+#include "absl/status/statusor.h"
 #include "tfrt/host_context/execution_context.h"  // from @tf_runtime
 
 namespace tensorflow {

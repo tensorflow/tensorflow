@@ -26,7 +26,7 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/dynamic_shape_utils.h"
-#include "xla/test.h"
+#include "xla/hlo/testlib/test.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/framework/tensor_util.h"
 #include "tensorflow/core/framework/types.pb.h"
@@ -112,12 +112,13 @@ class ConvertTensorTest : public ::testing::Test {
  protected:
   template <typename T>
   void VerifyConversion(std::initializer_list<T> values, DataType dtype,
-                        mlir::Type expected_ty) {
+                        mlir::Type expected_ty,
+                        bool convert_to_dense_resource = false) {
     mlir::Builder b(expected_ty.getContext());
     Tensor tensor(dtype, TensorShape({static_cast<int64_t>(values.size())}));
     tensor.flat<T>().setValues(values);
 
-    auto value_or = ConvertTensor(tensor, &b);
+    auto value_or = ConvertTensor(tensor, &b, convert_to_dense_resource);
     TF_ASSERT_OK(value_or.status());
     auto attr = value_or.value();
 
@@ -134,20 +135,29 @@ TEST_F(ConvertTensorTest, Simple) {
   mlir::MLIRContext context;
   RegisterDialects(context);
   ASSERT_NO_FATAL_FAILURE(VerifyConversion<Eigen::half>(
-      {Eigen::half(1.0)}, DT_HALF, mlir::FloatType::getF16(&context)));
+      {Eigen::half(1.0)}, DT_HALF, mlir::Float16Type::get(&context)));
   ASSERT_NO_FATAL_FAILURE(
       VerifyConversion<bfloat16>({bfloat16(1.0), bfloat16(-1.0)}, DT_BFLOAT16,
-                                 mlir::FloatType::getBF16(&context)));
+                                 mlir::BFloat16Type::get(&context)));
   ASSERT_NO_FATAL_FAILURE(VerifyConversion<float>(
-      {1.0, -1.0}, DT_FLOAT, mlir::FloatType::getF32(&context)));
+      {1.0, -1.0}, DT_FLOAT, mlir::Float32Type::get(&context)));
   ASSERT_NO_FATAL_FAILURE(VerifyConversion<double>(
-      {1.0, -1.0}, DT_DOUBLE, mlir::FloatType::getF64(&context)));
+      {1.0, -1.0}, DT_DOUBLE, mlir::Float64Type::get(&context)));
   ASSERT_NO_FATAL_FAILURE(VerifyConversion<tsl::float8_e5m2>(
       {tsl::float8_e5m2{1.0}, tsl::float8_e5m2{-1.0}}, DT_FLOAT8_E5M2,
-      mlir::FloatType::getFloat8E5M2(&context)));
+      mlir::Float8E5M2Type::get(&context)));
   ASSERT_NO_FATAL_FAILURE(VerifyConversion<tsl::float8_e4m3fn>(
       {tsl::float8_e4m3fn{1.0}, tsl::float8_e4m3fn{-1.0}}, DT_FLOAT8_E4M3FN,
-      mlir::FloatType::getFloat8E4M3FN(&context)));
+      mlir::Float8E4M3FNType::get(&context)));
+  ASSERT_NO_FATAL_FAILURE(VerifyConversion<tsl::float8_e4m3fnuz>(
+      {tsl::float8_e4m3fnuz{1.0}, tsl::float8_e4m3fnuz{-1.0}},
+      DT_FLOAT8_E4M3FNUZ, mlir::Float8E4M3FNUZType::get(&context)));
+  ASSERT_NO_FATAL_FAILURE(VerifyConversion<tsl::float8_e4m3b11fnuz>(
+      {tsl::float8_e4m3b11fnuz{1.0}, tsl::float8_e4m3b11fnuz{-1.0}},
+      DT_FLOAT8_E4M3B11FNUZ, mlir::Float8E4M3B11FNUZType::get(&context)));
+  ASSERT_NO_FATAL_FAILURE(VerifyConversion<tsl::float8_e5m2fnuz>(
+      {tsl::float8_e5m2fnuz{1.0}, tsl::float8_e5m2fnuz{-1.0}},
+      DT_FLOAT8_E5M2FNUZ, mlir::Float8E5M2FNUZType::get(&context)));
 
   ASSERT_NO_FATAL_FAILURE(VerifyConversion<int4>(
       {static_cast<int4>(1), static_cast<int4>(-1)}, DT_INT4,
@@ -185,10 +195,77 @@ TEST_F(ConvertTensorTest, Simple) {
 
   ASSERT_NO_FATAL_FAILURE(VerifyConversion<std::complex<float>>(
       {{0.0, 1.0}, {1.0, 0.0}}, DT_COMPLEX64,
-      mlir::ComplexType::get(mlir::FloatType::getF32(&context))));
+      mlir::ComplexType::get(mlir::Float32Type::get(&context))));
   ASSERT_NO_FATAL_FAILURE(VerifyConversion<std::complex<double>>(
       {{0.0, 1.0}, {1.0, 0.0}}, DT_COMPLEX128,
-      mlir::ComplexType::get(mlir::FloatType::getF64(&context))));
+      mlir::ComplexType::get(mlir::Float64Type::get(&context))));
+}
+
+TEST_F(ConvertTensorTest, SimpleDenseResourceElements) {
+  mlir::MLIRContext context;
+  RegisterDialects(context);
+  ASSERT_NO_FATAL_FAILURE(VerifyConversion<Eigen::half>(
+      {Eigen::half(1.0)}, DT_HALF, mlir::Float16Type::get(&context), true));
+  ASSERT_NO_FATAL_FAILURE(
+      VerifyConversion<bfloat16>({bfloat16(1.0), bfloat16(-1.0)}, DT_BFLOAT16,
+                                 mlir::BFloat16Type::get(&context), true));
+  ASSERT_NO_FATAL_FAILURE(VerifyConversion<float>(
+      {1.0, -1.0}, DT_FLOAT, mlir::Float32Type::get(&context), true));
+  ASSERT_NO_FATAL_FAILURE(VerifyConversion<double>(
+      {1.0, -1.0}, DT_DOUBLE, mlir::Float64Type::get(&context), true));
+  ASSERT_NO_FATAL_FAILURE(VerifyConversion<tsl::float8_e5m2>(
+      {tsl::float8_e5m2{1.0}, tsl::float8_e5m2{-1.0}}, DT_FLOAT8_E5M2,
+      mlir::Float8E5M2Type::get(&context), true));
+  ASSERT_NO_FATAL_FAILURE(VerifyConversion<tsl::float8_e4m3fn>(
+      {tsl::float8_e4m3fn{1.0}, tsl::float8_e4m3fn{-1.0}}, DT_FLOAT8_E4M3FN,
+      mlir::Float8E4M3FNType::get(&context), true));
+
+  ASSERT_NO_FATAL_FAILURE(VerifyConversion<int4>(
+      {static_cast<int4>(1), static_cast<int4>(-1)}, DT_INT4,
+      mlir::IntegerType::get(&context, 4,
+                             mlir::IntegerType::SignednessSemantics::Signed),
+      true));
+  ASSERT_NO_FATAL_FAILURE(VerifyConversion<int8>(
+      {1, -1}, DT_INT8, mlir::IntegerType::get(&context, 8), true));
+  ASSERT_NO_FATAL_FAILURE(VerifyConversion<int16>(
+      {1, -1}, DT_INT16, mlir::IntegerType::get(&context, 16), true));
+  ASSERT_NO_FATAL_FAILURE(VerifyConversion<int32>(
+      {1, -1}, DT_INT32, mlir::IntegerType::get(&context, 32), true));
+  ASSERT_NO_FATAL_FAILURE(VerifyConversion<int64_t>(
+      {1, -1}, DT_INT64, mlir::IntegerType::get(&context, 64), true));
+
+  ASSERT_NO_FATAL_FAILURE(VerifyConversion<uint4>(
+      {static_cast<uint4>(1), static_cast<uint4>(2)}, DT_UINT4,
+      mlir::IntegerType::get(&context, 4,
+                             mlir::IntegerType::SignednessSemantics::Unsigned),
+      true));
+  ASSERT_NO_FATAL_FAILURE(VerifyConversion<uint8>(
+      {1, 2}, DT_UINT8,
+      mlir::IntegerType::get(&context, 8,
+                             mlir::IntegerType::SignednessSemantics::Unsigned),
+      true));
+  ASSERT_NO_FATAL_FAILURE(VerifyConversion<uint16>(
+      {1, 2}, DT_UINT16,
+      mlir::IntegerType::get(&context, 16,
+                             mlir::IntegerType::SignednessSemantics::Unsigned),
+      true));
+  ASSERT_NO_FATAL_FAILURE(VerifyConversion<uint32>(
+      {1, 2}, DT_UINT32,
+      mlir::IntegerType::get(&context, 32,
+                             mlir::IntegerType::SignednessSemantics::Unsigned),
+      true));
+  ASSERT_NO_FATAL_FAILURE(VerifyConversion<uint64>(
+      {1, 2}, DT_UINT64,
+      mlir::IntegerType::get(&context, 64,
+                             mlir::IntegerType::SignednessSemantics::Unsigned),
+      true));
+
+  ASSERT_NO_FATAL_FAILURE(VerifyConversion<std::complex<float>>(
+      {{0.0, 1.0}, {1.0, 0.0}}, DT_COMPLEX64,
+      mlir::ComplexType::get(mlir::Float32Type::get(&context)), true));
+  ASSERT_NO_FATAL_FAILURE(VerifyConversion<std::complex<double>>(
+      {{0.0, 1.0}, {1.0, 0.0}}, DT_COMPLEX128,
+      mlir::ComplexType::get(mlir::Float64Type::get(&context))));
 }
 
 bool IsSplat(mlir::ElementsAttr attr) {

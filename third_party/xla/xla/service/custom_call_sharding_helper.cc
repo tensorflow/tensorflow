@@ -21,6 +21,7 @@ limitations under the License.
 
 #include "absl/base/attributes.h"
 #include "absl/base/const_init.h"
+#include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "tsl/platform/logging.h"
 
@@ -74,7 +75,7 @@ const CustomCallPartitioner* GetCustomCallPartitioner(
 }
 
 void RegisterCustomCallPartitioner(
-    const std::string& custom_call_target,
+    absl::string_view custom_call_target,
     std::unique_ptr<CustomCallPartitioner> partitioner) {
   absl::MutexLock partitioners_lock(&partitioners_mutex);
   auto& partitioners = GetPartitioners();

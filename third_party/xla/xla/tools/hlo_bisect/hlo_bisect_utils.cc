@@ -24,9 +24,10 @@ limitations under the License.
 #include "absl/cleanup/cleanup.h"
 #include "xla/error_spec.h"
 #include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/protobuf_util.h"
+#include "xla/hlo/parser/hlo_parser.h"
+#include "xla/service/dump.h"
 #include "xla/service/hlo.pb.h"
-#include "xla/service/hlo_parser.h"
+#include "xla/service/hlo_module_util.h"
 #include "xla/service/hlo_proto_util.h"
 #include "xla/service/hlo_runner.h"
 #include "xla/service/hlo_verifier.h"
@@ -34,9 +35,9 @@ limitations under the License.
 #include "xla/tests/literal_test_util.h"
 #include "xla/tests/test_utils.h"
 #include "xla/tools/prepare_reference_module.h"
+#include "xla/tsl/platform/subprocess.h"
 #include "xla/util.h"
 #include "tsl/platform/path.h"
-#include "tsl/platform/subprocess.h"
 
 namespace xla {
 namespace bisect {
@@ -137,7 +138,7 @@ absl::Status DumpHloModule(HloModule* module, const std::string& file_name,
   HloProto proto = MakeHloProto(*module);
   if (output_format == "hlo") {
     tsl::Env* env = tsl::Env::Default();
-    TF_RETURN_IF_ERROR(env->RecursivelyCreateDir(std::string(dir_path)));
+    TF_RETURN_IF_ERROR(CreateDirIfNeeded(std::string(dir_path), env));
     std::string file_path =
         tsl::io::JoinPath(dir_path, SanitizeFileName(file_name)) + ".hlo";
     LOG(INFO) << "Dumped HLO text to " << file_path;
@@ -145,11 +146,12 @@ absl::Status DumpHloModule(HloModule* module, const std::string& file_name,
         env, file_path,
         module->ToString(HloPrintOptions::Canonical()
                              .set_print_large_constants(true)
+                             .set_print_backend_config(true)
                              .set_compact_operands(false))));
   } else if (output_format == "pb") {
     std::string path;
-    TF_RETURN_IF_ERROR(protobuf_util::DumpProtoToDirectory(
-        proto, std::string(dir_path), file_name, &path));
+    TF_RETURN_IF_ERROR(
+        DumpProtoToDirectory(proto, std::string(dir_path), file_name, &path));
     LOG(INFO) << "Dumped HLO module proto to " << path;
 
   } else {
@@ -264,6 +266,7 @@ absl::StatusOr<bool> ScriptChecker::Run(const HloModule& module) {
   std::string hlo_contents =
       module.ToString(HloPrintOptions::Canonical()
                           .set_print_large_constants(true)
+                          .set_print_backend_config(true)
                           .set_compact_operands(false));
 
   TF_RETURN_IF_ERROR(tsl::WriteStringToFile(env, hlo_path, hlo_contents));

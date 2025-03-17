@@ -13,6 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cstdint>
+#include <vector>
+
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/python/mlir_wrapper/mlir_wrapper.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
@@ -27,10 +30,21 @@ void init_types(py::module& m) {
            [](mlir::FunctionType& ft) { return ft.getResults().vec(); });
 
   py::class_<mlir::FloatType, mlir::Type>(m, "FloatType")
-      .def("getBF16", &mlir::FloatType::getBF16)
-      .def("getF16", &mlir::FloatType::getF16)
-      .def("getF32", &mlir::FloatType::getF32)
-      .def("getF64", &mlir::FloatType::getF64);
+      .def("getBF16",
+           [](mlir::MLIRContext* context) -> mlir::FloatType {
+             return mlir::BFloat16Type::get(context);
+           })
+      .def("getF16",
+           [](mlir::MLIRContext* context) -> mlir::FloatType {
+             return mlir::Float16Type::get(context);
+           })
+      .def("getF32",
+           [](mlir::MLIRContext* context) -> mlir::FloatType {
+             return mlir::Float32Type::get(context);
+           })
+      .def("getF64", [](mlir::MLIRContext* context) -> mlir::FloatType {
+        return mlir::Float64Type::get(context);
+      });
 
   py::class_<mlir::IntegerType, mlir::Type>(m, "IntegerType")
       .def("get", [](mlir::MLIRContext* context, unsigned width) {

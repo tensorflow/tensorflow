@@ -27,7 +27,7 @@ def ConvertTFQuantOpsToMHLO : Pass<"quant-convert-tf-quant-ops-to-mhlo", "mlir::
   let constructor = "mlir::quant::stablehlo::CreateConvertTFQuantOpsToMHLOPass()";
   let dependentDialects = ["TF::TensorFlowDialect", "chlo::ChloDialect",
                            "mhlo::MhloDialect", "tf_type::TFTypeDialect",
-                           "quant::QuantizationDialect"];
+                           "quant::QuantDialect"];
 }
 
 def ConvertTFQuantTypes : Pass<"convert-tf-quant-types", "mlir::func::FuncOp"> {
@@ -53,7 +53,7 @@ def VerifyQuantLegalization : Pass<"verify-quant-legalization", "mlir::func::Fun
 
   let constructor = "mlir::quant::stablehlo::CreateVerifyQuantLegalizationPass()";
   let dependentDialects =  ["tf_type::TFTypeDialect",
-                            "quant::QuantizationDialect"];
+                            "quant::QuantDialect"];
 
 }
 

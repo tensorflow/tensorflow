@@ -15,17 +15,13 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/gl/kernels/add.h"
 
-#include <algorithm>
 #include <any>
-#include <cstdint>
-#include <cstring>
 #include <memory>
 #include <string>
 #include <utility>
 #include <variant>
 #include <vector>
 
-#include "absl/memory/memory.h"
 #include "absl/strings/str_cat.h"
 #include "tensorflow/lite/delegates/gpu/common/convert.h"
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"

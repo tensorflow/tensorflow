@@ -19,6 +19,7 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
+#include "absl/log/check.h"
 #include "tensorflow/compiler/tf2xla/tf2xla.pb.h"
 #include "tensorflow/compiler/tf2xla/xla_compiled_cpu_function.h"
 #include "xla/client/local_client.h"
@@ -56,6 +57,11 @@ class XlaJitCompiledCpuFunction {
   // across each instance.
   const XlaCompiledCpuFunction::StaticData& StaticData() const {
     return static_data_;
+  }
+
+  const xla::LocalExecutable& LocalExecutable() const {
+    CHECK(executable_);  // Crash ok
+    return *executable_;
   }
 
  private:

@@ -21,9 +21,9 @@ limitations under the License.
 
 #include "grpcpp/grpcpp.h"
 #include "xla/tsl/distributed_runtime/rpc/test_request.pb.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/test.h"
-#include "tsl/platform/test_benchmark.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/test.h"
+#include "xla/tsl/platform/test_benchmark.h"
 
 namespace tsl {
 

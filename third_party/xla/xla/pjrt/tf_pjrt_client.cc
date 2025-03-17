@@ -38,10 +38,10 @@ TfPjRtBuffer::~TfPjRtBuffer() { client_->UntrackBuffer(this); }
 PjRtClient* TfPjRtBuffer::client() const { return client_; }
 PjRtClient* TfPjRtExecutable::client() const { return client_; }
 
-absl::StatusOr<std::unique_ptr<PjRtBuffer>> TfPjRtBuffer::CopyToDevice(
-    PjRtDevice* dst_device) {
+absl::StatusOr<std::unique_ptr<PjRtBuffer>> TfPjRtBuffer::CopyToMemorySpace(
+    PjRtMemorySpace* dst_memory_space) {
   TF_ASSIGN_OR_RETURN(std::unique_ptr<PjRtBuffer> result,
-                      wrapped_->CopyToDevice(dst_device));
+                      wrapped_->CopyToMemorySpace(dst_memory_space));
   return std::unique_ptr<PjRtBuffer>(
       std::make_unique<TfPjRtBuffer>(client_, std::move(result)));
 }

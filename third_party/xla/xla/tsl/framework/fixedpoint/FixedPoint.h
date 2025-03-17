@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef XLA_TSL_FRAMEWORK_FIXEDPOINT_FIXEDPOINT_H_
 #define XLA_TSL_FRAMEWORK_FIXEDPOINT_FIXEDPOINT_H_
 
-#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
+#include "unsupported/Eigen/CXX11/Tensor"
 #include "xla/tsl/framework/fixedpoint_types.h"
 
 // Use optimized implementations whenever available

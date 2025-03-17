@@ -20,8 +20,6 @@ import functools
 import threading
 import weakref
 
-import numpy as np
-
 from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import distribute_utils
 from tensorflow.python.distribute import values
@@ -40,6 +38,7 @@ from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.saved_model import save_context
 from tensorflow.python.trackable import base as trackable
 from tensorflow.python.types import core
+from tensorflow.python.util import numpy_compat
 
 
 TRACKABLE_RESOURCE_METHODS = [
@@ -471,7 +470,7 @@ class CachingVariable(resource_variable_ops.BaseResourceVariable, core.Tensor):
     return self._v.constraint
 
   def __array__(self, dtype=None):
-    return np.asarray(self.numpy(), dtype=dtype)
+    return numpy_compat.np_asarray(self.numpy(), dtype=dtype)
 
   def __complex__(self):
     return complex(self.value().numpy())

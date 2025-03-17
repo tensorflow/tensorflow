@@ -15,7 +15,10 @@ limitations under the License.
 
 #include "tensorflow/core/profiler/utils/gpu_event_stats.h"
 
+#include <cstdint>
+
 #include "absl/strings/str_split.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/profiler/utils/xplane_schema.h"
 #include "tensorflow/core/profiler/utils/xplane_visitor.h"
 
@@ -57,13 +60,22 @@ GpuEventStats::GpuEventStats(const XEventVisitor* event) {
         memcpy_details = stat.StrOrRefValue();
         break;
       case StatType::kCorrelationId:
-        correlation_id = stat.IntValue();
+        correlation_id = static_cast<int64_t>(stat.IntOrUintValue());
         break;
       case StatType::kGroupId:
         group_id = stat.IntValue();
         break;
       case StatType::kIsEager:
         is_eager = stat.BoolValue();
+        break;
+      case StatType::kCudaGraphExecId:
+        cuda_graph_exec_id = stat.UintValue();
+        break;
+      case StatType::kCudaGraphId:
+        cuda_graph_id_for_inner_node = stat.UintValue();
+        break;
+      case StatType::kScopeRangeId:
+        scope_range_id = stat.IntValue();
         break;
       default:
         break;
@@ -79,7 +91,7 @@ LaunchEventStats::LaunchEventStats(const XEventVisitor* event) {
         device_id = stat.IntOrUintValue();
         break;
       case StatType::kCorrelationId:
-        correlation_id = stat.IntValue();
+        correlation_id = static_cast<int64_t>(stat.IntOrUintValue());
         break;
       case StatType::kGroupId:
         group_id = stat.IntValue();

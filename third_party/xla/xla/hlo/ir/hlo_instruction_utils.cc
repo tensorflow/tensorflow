@@ -16,10 +16,16 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction_utils.h"
 
 #include <cstdint>
+#include <string>
+#include <utility>
+#include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace hlo_instruction_utils {
@@ -47,23 +53,6 @@ void AddOrUpdateVectorOfPairsAsAttribute(HloInstruction* instr,
   attributes.CopyFrom(instr->frontend_attributes());
   (*attributes.mutable_map())[attr_name] = intervals_str;
   instr->set_frontend_attributes(attributes);
-}
-
-bool HasEquivalentShardings(const HloInstruction& lhs,
-                            const HloInstruction& rhs) {
-  if (lhs.has_sharding() && !lhs.sharding().IsReplicated() &&
-      !rhs.has_sharding()) {
-    return false;
-  }
-  if (!lhs.has_sharding() && rhs.has_sharding() &&
-      !rhs.sharding().IsReplicated()) {
-    return false;
-  }
-  if (lhs.has_sharding() && rhs.has_sharding() &&
-      lhs.sharding() != rhs.sharding()) {
-    return false;
-  }
-  return true;
 }
 
 }  // namespace hlo_instruction_utils

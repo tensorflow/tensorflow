@@ -113,4 +113,6 @@ message OneDnnConvolutionConfig {
 
   OneDnnFusionConfig fusions = 6;
   uint64 feature_groups = 7;
+
+  OneDnnOptimizationConfig optimization_config = 8;
 }

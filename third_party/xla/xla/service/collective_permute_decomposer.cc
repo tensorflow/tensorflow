@@ -15,249 +15,310 @@ limitations under the License.
 
 #include "xla/service/collective_permute_decomposer.h"
 
+#include <algorithm>
+#include <cstddef>
 #include <cstdint>
+#include <memory>
 #include <optional>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_set.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
-#include "absl/strings/str_join.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/service/call_graph.h"
+#include "xla/service/collective_conflict_analysis.h"
 #include "xla/service/collective_ops_utils.h"
+#include "xla/service/collective_permute_cycle.h"
 #include "xla/service/gpu/backend_configs.pb.h"
-#include "xla/service/graphcycles/graphcycles.h"
+#include "xla/service/pattern_matcher.h"
+#include "xla/service/source_target_pairs.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/xla_data.pb.h"
-#include "tsl/platform/errors.h"
+#include "xla/tsl/platform/errors.h"
 
 namespace xla {
-
-namespace {
-
-using SourceTargetPair = std::pair<int64_t, int64_t>;
-using SourceTargetPairs = std::vector<SourceTargetPair>;
-
-// Returns true if the (source, target) relationship has a cycle.
-//
-bool HasCycles(const SourceTargetPairs& pairs) {
-  // Build a direct graph to check for cycles in (source, target) relationship.
-  tensorflow::GraphCycles graph;
-
-  // Map replica numbers to graph node ids.
-  absl::flat_hash_map<int64_t, int32_t> replica_to_node_id;
-  auto get_node_id = [&](int64_t replica) {
-    auto it_and_inserted = replica_to_node_id.emplace(replica, -1);
-    auto it = it_and_inserted.first;
-    auto inserted = it_and_inserted.second;
-    if (inserted) {
-      // First time to see the replica, create a node for it.
-      it->second = graph.NewNode();
-    }
-    return it->second;
-  };
-
-  for (auto pair : pairs) {
-    auto source = get_node_id(pair.first);
-    auto target = get_node_id(pair.second);
-    VLOG(3) << "See source " << source << " -> target " << target;
-    if (!graph.InsertEdge(source, target)) {
-      VLOG(3) << "Detected cycles";
-      return true;
-    }
-  }
-  return false;
-}
 
 // Returns true if the CollectivePermute instruction should be transformed
 // to Send/Recv. We currently limit the transformation to CollectivePermute
 // operations without any cycle in their (source, target) relationship,
 // with only one input and without any context data.
-bool ShouldDecompose(const HloCollectivePermuteInstruction& collective_permute,
-                     int64_t threshold_in_bytes) {
-  // TODO(b/316043789): enable the transformation for the no channel_id case.
-  if (!collective_permute.channel_id().has_value()) {
-    return false;
-  }
-
+static bool ShouldDecompose(
+    const HloCollectivePermuteInstruction& collective_permute,
+    int64_t threshold_in_bytes, const CallGraph& call_graph,
+    DebugOptions::PipelineParallelismOptLevel pipeline_parallelism_opt_level) {
   const Shape& result_shape = collective_permute.shape();
+
   // Skip the transformation if result is not an array, such as containing
   // context data.
   if (!result_shape.IsArray()) {
     return false;
   }
 
+  // Respect threshold to limit this pass.
   if (ShapeUtil::ByteSizeOf(result_shape) < threshold_in_bytes) {
     return false;
   }
-  return !HasCycles(collective_permute.source_target_pairs());
+
+  // Do not decompose cycles as this leads to deadlocks in NCCL.
+  if (collective_permute_cycle::HasCycles(
+          SourceTargetPairs(collective_permute.source_target_pairs()))) {
+    return false;
+  }
+
+  // Only decompose collective permutes that may be subject to pipelining.
+  if (pipeline_parallelism_opt_level !=
+      DebugOptions::PIPELINE_PARALLELISM_OPT_LEVEL_DISABLE) {
+    if (!Match(collective_permute.operand(0),
+               match::GetTupleElement(match::Parameter()))) {
+      return false;
+    }
+  }
+  auto callers = call_graph.GetComputationCallers(collective_permute.parent());
+  if (callers.size() != 1 || callers.front()->opcode() != HloOpcode::kWhile) {
+    return false;
+  }
+
+  return true;
 }
 
 // Returns true for a pipelineable collective-permute. As a simple heuristic,
 // currently only pipeline a collective-permute with a loop input as its send
 // data.
-bool MayPipeline(const HloCollectivePermuteInstruction& collective_permute) {
-  const HloInstruction* data = collective_permute.operand(0);
-  return (data->opcode() == HloOpcode::kGetTupleElement &&
-          data->operand(0)->opcode() == HloOpcode::kParameter);
+static bool MayPipeline(
+    const HloCollectivePermuteInstruction& collective_permute) {
+  return Match(collective_permute.operand(0),
+               match::GetTupleElement(match::Parameter()));
 }
 
-// Decomposes a collective-permute and adds frontend attributes to record
-// pipeline decision. The present of the frontend attribute means that the
-// collective-permute will be pipelined and the value of the attribute
-// represents the runtime stream to execute the instruction. Without the
-// frontend attribute, the collective-permute will not be pipelined.
-absl::Status DecomposeCollectivePermute(
-    HloCollectivePermuteInstruction* collective_permute,
-    HloComputation* computation, const std::string& pipeline_decision) {
-  // We currently only decompose collective-permute with a channel_id.
-  int64_t channel_id = collective_permute->channel_id().value();
-  HloInstruction* data = collective_permute->mutable_operand(0);
-  const Shape& data_shape = data->shape();
-  const OpMetadata& metadata = collective_permute->metadata();
+namespace {
 
-  const xla::FrontendAttributes& old_attributes =
-      collective_permute->frontend_attributes();
+// Contains source-target pairs from the permute operation and send and recv
+// instructions it was decomposed to.
+struct DecomposedCp {
+  HloInstruction* send;
+  HloInstruction* recv;
+  HloInstruction* send_done;
+  HloInstruction* recv_done;
+  std::vector<std::pair<int64_t, int64_t>> source_target_pairs;
+};
+
+}  // namespace
+
+static xla::FrontendAttributes ExtractFrontendAttributes(
+    const HloCollectivePermuteInstruction& cp) {
+  const xla::FrontendAttributes& old_attributes = cp.frontend_attributes();
   xla::FrontendAttributes attributes;
-  std::string source_target_pairs_string =
-      "{" +
-      absl::StrJoin(collective_permute->source_target_pairs(), ",",
-                    absl::PairFormatter(
-                        [](std::string* out, int64_t value) {
-                          absl::StrAppend(out, "{", value);
-                        },
-                        ",",
-                        [](std::string* out, int64_t value) {
-                          absl::StrAppend(out, value, "}");
-                        })) +
-      "}";
   attributes.mutable_map()->insert(old_attributes.map().begin(),
                                    old_attributes.map().end());
   (*attributes.mutable_map())[kSendRecvSourceTargetPairsAttr] =
-      source_target_pairs_string;
+      SourceTargetPairs(cp.source_target_pairs()).ToString();
+  return attributes;
+}
 
-  HloInstruction* after_all =
-      computation->AddInstruction(HloInstruction::CreateToken());
+// Decomposes a collective-permute into send, send-done, recv, recv-done.
+// Adds frontend attributes to record pipeline decision. The present of the
+// frontend attribute means that the collective-permute will be pipelined and
+// the value of the attribute represents the runtime stream to execute the
+// instruction. Without the frontend attribute, the collective-permute will not
+// be pipelined.
+static absl::StatusOr<DecomposedCp> DecomposeCollectivePermute(
+    HloCollectivePermuteInstruction* cp, HloComputation* computation,
+    const std::string& pipeline_decision,
+    DebugOptions::PipelineParallelismOptLevel pipeline_parallelism_opt_level) {
+  absl::string_view cp_name = cp->name();
+  std::optional<int64_t> channel_id = cp->channel_id();
+  HloInstruction* data = cp->mutable_operand(0);
+  const Shape& shape = data->shape();
+  const OpMetadata& metadata = cp->metadata();
+  const xla::FrontendAttributes attributes = ExtractFrontendAttributes(*cp);
+
+  HloInstruction* after_all = computation->AddInstruction(
+      HloInstruction::CreateToken(), absl::StrCat(cp_name, "-after-all"));
   HloInstruction* recv = computation->AddInstruction(
-      HloInstruction::CreateRecv(data_shape, after_all, channel_id));
-  recv->add_frontend_attributes(attributes);
+      HloInstruction::CreateRecv(shape, after_all, channel_id,
+                                 /*is_host_transfer=*/false),
+      absl::StrCat(cp_name, "-recv"));
+  recv->set_frontend_attributes(attributes);
   recv->set_metadata(metadata);
 
   HloInstruction* send = computation->AddInstruction(
-      HloInstruction::CreateSend(data, after_all, channel_id));
-  send->add_frontend_attributes(attributes);
+      HloInstruction::CreateSend(data, after_all, channel_id,
+                                 /*is_host_transfer=*/false),
+      absl::StrCat(cp_name, "-send"));
+  send->set_frontend_attributes(attributes);
   send->set_metadata(metadata);
 
-  HloInstruction* recv_done =
-      computation->AddInstruction(HloInstruction::CreateRecvDone(recv));
-  HloInstruction* send_done =
-      computation->AddInstruction(HloInstruction::CreateSendDone(send));
-
-  // We will add control dependence to represent how we want to order Send/Recv
-  // and other collective operations. Here we only add the necessary control
-  // dependence to avoid optimization that can cause problems, in particular,
-  // to prevent fusion from fusing the computation of Send-data with the
-  // computation that requires the Recv-result.
-  TF_RETURN_IF_ERROR(send->AddControlDependencyTo(recv_done));
+  HloInstruction* recv_done = computation->AddInstruction(
+      HloInstruction::CreateRecvDone(recv, channel_id,
+                                     /*is_host_transfer=*/false),
+      absl::StrCat(cp_name, "-recv-done"));
+  HloInstruction* send_done = computation->AddInstruction(
+      HloInstruction::CreateSendDone(send, channel_id,
+                                     /*is_host_transfer=*/false),
+      absl::StrCat(cp_name, "-send-done"));
 
   HloInstruction* recv_data = computation->AddInstruction(
-      HloInstruction::CreateGetTupleElement(recv_done, 0));
-  TF_RETURN_IF_ERROR(collective_permute->ReplaceAllUsesWith(recv_data));
-  TF_RETURN_IF_ERROR(
-      computation->RemoveInstructionAndUnusedOperands(collective_permute));
+      HloInstruction::CreateGetTupleElement(recv_done, 0),
+      absl::StrCat(cp_name, "-recv-data"));
+
+  TF_RETURN_IF_ERROR(cp->ReplaceAllUsesWith(recv_data));
+  TF_RETURN_IF_ERROR(computation->RemoveInstructionAndUnusedOperands(cp));
+
+  // We choose to run recv before send as an invariant, which helps avoid
+  // deadlocks. At the same time, running recv before send allows for pipelining
+  // recv into prior loop iterations, which is especially beneficial for
+  // pipeline parallelism.
+  switch (pipeline_parallelism_opt_level) {
+    case DebugOptions::PIPELINE_PARALLELISM_OPT_LEVEL_DISABLE:
+      TF_RETURN_IF_ERROR(recv->AddControlDependencyTo(send));
+      TF_RETURN_IF_ERROR(send->AddControlDependencyTo(recv_done));
+      break;
+    case DebugOptions::PIPELINE_PARALLELISM_OPT_LEVEL_ENABLE:
+      TF_RETURN_IF_ERROR(recv_done->AddControlDependencyTo(send));
+      break;
+    case DebugOptions::PIPELINE_PARALLELISM_OPT_LEVEL_ENABLE_CYCLE_DECOMPOSER:
+      TF_RETURN_IF_ERROR(recv->AddControlDependencyTo(send));
+      TF_RETURN_IF_ERROR(recv_done->AddControlDependencyTo(send_done));
+      break;
+    default:
+      return absl::InvalidArgumentError(
+          absl::StrCat("Unsupported pipeline parallelism opt level: ",
+                       pipeline_parallelism_opt_level));
+  }
 
   if (!pipeline_decision.empty()) {
-    xla::FrontendAttributes attributes;
-    (*attributes.mutable_map())[kSendRecvPipelineAttr] = pipeline_decision;
-    send->add_frontend_attributes(attributes);
-    send_done->add_frontend_attributes(attributes);
-    recv->add_frontend_attributes(attributes);
-    recv_done->add_frontend_attributes(attributes);
+    send->set_frontend_attribute(kSendRecvPipelineAttr, pipeline_decision);
+    send_done->set_frontend_attribute(kSendRecvPipelineAttr, pipeline_decision);
+    recv->set_frontend_attribute(kSendRecvPipelineAttr, pipeline_decision);
+    recv_done->set_frontend_attribute(kSendRecvPipelineAttr, pipeline_decision);
   }
-
-  return absl::OkStatus();
-}
-
-// Returns true if the (source, target) pairs form a forward cycle with all
-// participants in the cycle, such as {{0,1},{1,2},{2,3},{3,0}}. We assume that
-// the (source, target) pairs are ordered via increasing source IDs, as they are
-// currently generated by SPMD partitioning.
-//
-bool IsForwardCycle(const SourceTargetPair& backedge,
-                    const SourceTargetPairs& others) {
-  int64_t num_pairs = others.size() + 1;
-  if (backedge.first != num_pairs - 1 || backedge.second != 0) {
-    return false;
-  }
-  for (int64_t i = 0; i < num_pairs - 1; ++i) {
-    const SourceTargetPair& pair = others[i];
-    if (pair.first != i || pair.second != i + 1) {
-      return false;
-    }
-  }
-  return true;
-}
-
-// Returns true if the (source, target) pairs form a backward cycle with all
-// participants in the cycle, such as {{0,3},{1,0},{2,1},{3,2}}. We assume that
-// the (source, target) pairs are ordered via increasing source IDs, as they are
-// currently generated by SPMD partitioning.
-//
-bool IsBackwardCycle(const SourceTargetPair& backedge,
-                     const SourceTargetPairs& others) {
-  int64_t num_pairs = others.size() + 1;
-  if (backedge.first != 0 || backedge.second != num_pairs - 1) {
-    return false;
-  }
-  for (int64_t i = 0; i < num_pairs - 1; ++i) {
-    const SourceTargetPair& pair = others[i];
-    if (pair.first != i + 1 || pair.second != i) {
-      return false;
-    }
-  }
-  return true;
+  return DecomposedCp{send, recv, send_done, recv_done,
+                      cp->source_target_pairs()};
 }
 
 // Checks whether the two collective-permutes for a forward cycle or a backward
 // cycle for pipelining. If the two collective-permutes form a cycle, returns
 // a pair of the collective-permutes with the one for the backward edge of the
 // cycle as the first entry in the pair.
-std::optional<std::pair<HloCollectivePermuteInstruction*,
-                        HloCollectivePermuteInstruction*>>
+static std::optional<std::pair<HloCollectivePermuteInstruction*,
+                               HloCollectivePermuteInstruction*>>
 CheckCyclePatterns(HloCollectivePermuteInstruction* cp0,
                    HloCollectivePermuteInstruction* cp1) {
-  const SourceTargetPairs& cp0_pairs = cp0->source_target_pairs();
-  const SourceTargetPairs& cp1_pairs = cp1->source_target_pairs();
-  if (cp0_pairs.size() == 1) {
-    if (IsForwardCycle(cp0_pairs.front(), cp1_pairs) ||
-        IsBackwardCycle(cp0_pairs.front(), cp1_pairs)) {
-      // cp0 represents the backedge for the cycle.
-      return std::make_pair(cp0, cp1);
-    }
+  const SourceTargetPairs cp0_pairs(cp0->source_target_pairs());
+  const SourceTargetPairs cp1_pairs(cp1->source_target_pairs());
+  if (collective_permute_cycle::IsForwardCycle(cp0_pairs, cp1_pairs) ||
+      collective_permute_cycle::IsBackwardCycle(cp0_pairs, cp1_pairs)) {
+    // cp0 represents the backedge for the cycle.
+    return std::make_pair(cp0, cp1);
   }
-  if (cp1_pairs.size() == 1) {
-    if (IsForwardCycle(cp1_pairs.front(), cp0_pairs) ||
-        IsBackwardCycle(cp1_pairs.front(), cp0_pairs)) {
-      // cp1 represents the forward edge for the cycle.
-      return std::make_pair(cp1, cp0);
-    }
+  if (collective_permute_cycle::IsForwardCycle(cp1_pairs, cp0_pairs) ||
+      collective_permute_cycle::IsBackwardCycle(cp1_pairs, cp0_pairs)) {
+    // cp1 represents the forward edge for the cycle.
+    return std::make_pair(cp1, cp0);
   }
   return std::nullopt;
 }
 
-}  // namespace
+static std::vector<HloInstruction*> FindAllConflictingCollectives(
+    HloComputation* computation,
+    const std::vector<HloCollectivePermuteInstruction*>& cps) {
+  std::vector<HloInstruction*> seed_collectives;
+  seed_collectives.reserve(cps.size());
+  for (HloCollectivePermuteInstruction* cp : cps) {
+    seed_collectives.push_back(static_cast<HloInstruction*>(cp));
+  }
+  return FindAllConflictingCollectives(computation, seed_collectives);
+}
+
+static void AddCollectiveStreamAnnotationP2P(
+    std::vector<HloInstruction*>& instructions) {
+  xla::FrontendAttributes attributes;
+  (*attributes.mutable_map())[kCollectiveStreamAttrName] = kCollectiveStreamP2P;
+  for (HloInstruction* instr : instructions) {
+    instr->add_frontend_attributes(attributes);
+  }
+}
+
+static void AddCollectiveStreamAnnotationP2P(
+    std::vector<DecomposedCp>& decomposed) {
+  std::vector<HloInstruction*> instructions;
+  for (DecomposedCp& cp : decomposed) {
+    instructions.push_back(cp.send);
+    instructions.push_back(cp.recv);
+  }
+  AddCollectiveStreamAnnotationP2P(instructions);
+}
+
+// Inserts control dependencies to enforce send/recv chain order.
+// The order protects from a potential deadlock when every device tries to
+// execute recv with no devices executing send - if there are no constraints,
+// the scheduler is free to schedule all recv ops first.
+// deco_post_order is expected to be post order within a computation.
+// TODO b/388072780 add second hueristic to enforce back edge before the forward
+// edge for max performance.
+static absl::Status EnforceOrderOfSendRecvChain(
+    std::vector<DecomposedCp>& deco_post_order) {
+  for (size_t i = 1; i < deco_post_order.size(); ++i) {
+    DecomposedCp& cur = deco_post_order[i];
+    DecomposedCp& prev = deco_post_order[i - 1];
+    TF_RETURN_IF_ERROR(prev.send->AddControlDependencyTo(cur.recv));
+    TF_RETURN_IF_ERROR(prev.send_done->AddControlDependencyTo(cur.recv_done));
+  }
+  return absl::OkStatus();
+}
+
+static absl::Status EnforceOrderOfSendRecvChainRelativeToConflictingCollectives(
+    std::vector<DecomposedCp>& deco_post_order,
+    std::vector<HloInstruction*> conflicting_collectives) {
+  // Find last collective in send/recv chain.
+  if (deco_post_order.empty()) return absl::OkStatus();
+  HloInstruction* last_in_chain = deco_post_order.back().send_done;
+
+  // Add control dependencies from chain to all conflicting collectives.
+  for (HloInstruction* instr : conflicting_collectives) {
+    TF_RETURN_IF_ERROR(last_in_chain->AddControlDependencyTo(instr));
+  }
+
+  return absl::OkStatus();
+}
+
+// TODO(b/399486412) clean up collective permute decomposer and only return one
+// CP op
+void RemoveAllButOne(std::vector<HloCollectivePermuteInstruction*>& cps) {
+  // This is a heuristic that chooses the collective permute with the highest
+  // number of source-target pairs.
+  int cp_index = 0;
+  int max_num_pairs = 0;
+  for (int i = 0; i < cps.size(); ++i) {
+    if (cps[i]->source_target_pairs().size() > max_num_pairs) {
+      max_num_pairs = cps[i]->source_target_pairs().size();
+      cp_index = i;
+    }
+  }
+  cps = {cps[cp_index]};
+}
 
 absl::StatusOr<bool> CollectivePermuteDecomposer::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
+  std::unique_ptr<CallGraph> call_graph = CallGraph::Build(module);
+
   bool changed = false;
   std::vector<HloComputation*> all_computations =
       module->MakeComputationPostOrder(execution_threads);
   absl::flat_hash_set<HloComputation*> while_bodies;
+
   // Process the computation from callers to callees and collect while-body
   // along the way. When we process a computation, we know whether it is a
   // while-body computation or not.
@@ -279,19 +340,21 @@ absl::StatusOr<bool> CollectivePermuteDecomposer::Run(
     std::vector<HloCollectivePermuteInstruction*> cps_to_decompose;
     HloCollectivePermuteInstruction* cp0_to_pipeline = nullptr;
     HloCollectivePermuteInstruction* cp1_to_pipeline = nullptr;
-    for (HloInstruction* hlo : computation->MakeInstructionPostOrder()) {
-      if (hlo->opcode() == HloOpcode::kWhile) {
+    for (HloInstruction* instr : computation->MakeInstructionPostOrder()) {
+      if (instr->opcode() == HloOpcode::kWhile) {
         // Collect while-body computations.
-        while_bodies.insert(hlo->while_body());
+        while_bodies.insert(instr->while_body());
         continue;
       }
-      if (hlo->opcode() != HloOpcode::kCollectivePermute) {
+
+      if (instr->opcode() != HloOpcode::kCollectivePermute) {
         continue;
       }
 
       HloCollectivePermuteInstruction* cp =
-          Cast<HloCollectivePermuteInstruction>(hlo);
-      if (!ShouldDecompose(*cp, threshold_in_bytes_)) {
+          Cast<HloCollectivePermuteInstruction>(instr);
+      if (!ShouldDecompose(*cp, threshold_in_bytes_, *call_graph,
+                           pipeline_parallelism_opt_level_)) {
         continue;
       }
       // Record collective-permute to be decomposed.
@@ -301,7 +364,7 @@ absl::StatusOr<bool> CollectivePermuteDecomposer::Run(
         continue;
       }
       if (cp0_to_pipeline != nullptr && cp1_to_pipeline != nullptr) {
-        // Already find a pair of collective-permute that forms a cycle to
+        // Already found a pair of collective-permute that forms a cycle to
         // pipeline.
         continue;
       }
@@ -323,8 +386,29 @@ absl::StatusOr<bool> CollectivePermuteDecomposer::Run(
         // Collective-permute for the forward edges.
         cp1_to_pipeline = optional_pair.value().second;
       }
+    }  // for MakeInstructionPostOrder
+
+    if (cps_to_decompose.size() > 1 &&
+        pipeline_parallelism_opt_level_ !=
+            DebugOptions::PIPELINE_PARALLELISM_OPT_LEVEL_DISABLE) {
+      RemoveAllButOne(cps_to_decompose);
     }
 
+    // Find all collectives conflicting with the collective permutes that we
+    // want to decompose. We need this information to achieve two things:
+    // 1. We want to run these in parallel with non-conflicting collectives,
+    // e.g. those used on inner sharding strategies. The annotation allows us to
+    // later execute them on a separate stream.
+    // 2. We want to add control dependencies to these conflicting collectives
+    // so that they cannot move in between the decomposed send/recv, which would
+    // lead to deadlocks.
+    std::vector<HloInstruction*> conflicing_collectives =
+        FindAllConflictingCollectives(computation, cps_to_decompose);
+
+    // cps to decompose were collected post order, similarly we will collect
+    // the decomposed send/recv pairs.
+    std::vector<DecomposedCp> deco_post_order;
+    deco_post_order.reserve(cps_to_decompose.size());
     // Decompose the collective-permute, may add frontend attribute to record
     // pipeline decision.
     for (HloCollectivePermuteInstruction* cp : cps_to_decompose) {
@@ -334,15 +418,36 @@ absl::StatusOr<bool> CollectivePermuteDecomposer::Run(
       } else if (cp1_to_pipeline == cp) {
         pipeline_decision = "1";
       }
-      TF_RETURN_IF_ERROR(
-          DecomposeCollectivePermute(cp, computation, pipeline_decision));
+      TF_ASSIGN_OR_RETURN(
+          DecomposedCp decomposed_ops,
+          DecomposeCollectivePermute(cp, computation, pipeline_decision,
+                                     pipeline_parallelism_opt_level_));
+      deco_post_order.push_back(decomposed_ops);
     }
+
+    // Move all decomposed and conflicting collectives to a separate stream for
+    // p2p communication. This will allow for overlap of pipeline parallelism
+    // with other inner sharding strategies. We can remove this when XLA:GPU
+    // supports multi-stream collectives more generally.
+    if (pipeline_parallelism_opt_level_ !=
+        DebugOptions::PIPELINE_PARALLELISM_OPT_LEVEL_DISABLE) {
+      AddCollectiveStreamAnnotationP2P(conflicing_collectives);
+      AddCollectiveStreamAnnotationP2P(deco_post_order);
+    }
+
+    // Enforce order of send/recv pairs at the beginning of the loop body. Also
+    // enforce all other conflicting collectives to follow the send/recv chain
+    // so that these cannot be scheduled in between the send/recv, which would
+    // also lead to deadlocks.
+    TF_RETURN_IF_ERROR(EnforceOrderOfSendRecvChain(deco_post_order));
+    TF_RETURN_IF_ERROR(
+        EnforceOrderOfSendRecvChainRelativeToConflictingCollectives(
+            deco_post_order, conflicing_collectives));
+
     if (!cps_to_decompose.empty()) {
       changed = true;
     }
-  }
-
+  }  // for reverse MakeComputationPostOrder
   return changed;
 }
-
 }  // namespace xla

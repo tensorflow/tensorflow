@@ -26,7 +26,8 @@ namespace tensorflow {
 bool StaticallyRegisterLocalFilesystems() {
   TF_FilesystemPluginInfo info;
   TF_InitPlugin(&info);
-  Status status = filesystem_registration::RegisterFilesystemPluginImpl(&info);
+  absl::Status status =
+      filesystem_registration::RegisterFilesystemPluginImpl(&info);
   if (!status.ok()) {
     VLOG(0) << "Static POSIX filesystem could not be registered: " << status;
     return false;

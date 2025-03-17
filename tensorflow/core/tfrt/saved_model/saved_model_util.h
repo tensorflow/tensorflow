@@ -37,6 +37,7 @@ limitations under the License.
 #include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/protobuf/meta_graph.pb.h"
 #include "tensorflow/core/tfrt/fallback/fallback_state.h"
+#include "tensorflow/core/tfrt/graph_executor/config.h"
 #include "tensorflow/core/tfrt/mlrt/bytecode/bytecode.h"
 #include "tsl/platform/protobuf.h"
 #include "tfrt/bef/bef_buffer.h"  // from @tf_runtime
@@ -93,7 +94,8 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ImportSavedModel(
     mlir::MLIRContext* context, const tensorflow::MetaGraphDef& meta_graph_def,
     const FallbackState& fallback_state, std::string saved_model_dir,
     bool import_user_signatures, bool run_placer_grappler_on_functions,
-    const std::vector<std::string>& import_signature_names = {});
+    const std::vector<std::string>& import_signature_names = {},
+    tensorflow::tfrt_stub::RuntimeConfig* runtime_config = nullptr);
 
 absl::StatusOr<tensorflow::MetaGraphDef> ReadSavedModel(
     absl::string_view saved_model_dir,

@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_PROFILER_INTERNAL_TFPROF_NODE_H_
 
 #include <algorithm>
+#include <cstdint>
 #include <map>
 #include <memory>
 #include <set>
@@ -31,7 +32,6 @@ limitations under the License.
 #include "tensorflow/core/framework/step_stats.pb.h"
 #include "tensorflow/core/framework/tensor_description.pb.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
-#include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/regexp.h"
 #include "tensorflow/core/profiler/tfprof_log.pb.h"
 #include "tensorflow/core/profiler/tfprof_options.h"
@@ -54,13 +54,9 @@ class CallStack {
 
     int32 lineno() const { return trace_->lineno(); }
     string file() const {
-      // Backward compatible with old proto files.
-      if (!trace_->file().empty()) return trace_->file();
       return id_to_string_->at(trace_->file_id());
     }
     string function() const {
-      // Backward compatible with old proto files.
-      if (!trace_->function().empty()) return trace_->function();
       return id_to_string_->at(trace_->function_id());
     }
     int32 func_start_line() const { return trace_->func_start_line(); }

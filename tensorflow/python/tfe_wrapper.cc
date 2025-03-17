@@ -24,10 +24,10 @@ limitations under the License.
 // clang-format on
 
 #include "Python.h"
-#include "absl/strings/match.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/str_split.h"
+#include "include/dlpack/dlpack.h"  // from @dlpack
 #include "pybind11/chrono.h"  // from @pybind11
 #include "pybind11/complex.h"  // from @pybind11
 #include "pybind11/functional.h"  // from @pybind11
@@ -381,8 +381,7 @@ py::object TFE_Py_ExecuteCancelable_wrapper(
 
 static py::object TF_ListPhysicalDevices() {
   std::vector<string> devices;
-  tensorflow::Status s =
-      tensorflow::DeviceFactory::ListAllPhysicalDevices(&devices);
+  absl::Status s = tensorflow::DeviceFactory::ListAllPhysicalDevices(&devices);
   MaybeRaiseRegisteredFromStatus(s);
   PyObject* result = PyList_New(devices.size());
   int i = 0;
@@ -396,7 +395,7 @@ static py::object TF_ListPhysicalDevices() {
 
 static py::object TF_ListPluggablePhysicalDevices() {
   std::vector<string> devices;
-  tensorflow::Status s =
+  absl::Status s =
       tensorflow::DeviceFactory::ListPluggablePhysicalDevices(&devices);
   MaybeRaiseRegisteredFromStatus(s);
   Safe_PyObjectPtr result(PyList_New(devices.size()));
@@ -412,7 +411,7 @@ static py::object TF_ListPluggablePhysicalDevices() {
 static std::unordered_map<string, string> TF_GetDeviceDetails(int index) {
   tensorflow::Safe_TF_StatusPtr status = tensorflow::make_safe(TF_NewStatus());
   std::unordered_map<string, string> device_details;
-  tensorflow::Status s =
+  absl::Status s =
       tensorflow::DeviceFactory::GetAnyDeviceDetails(index, &device_details);
   tensorflow::Set_TF_Status_from_Status(status.get(), s);
   MaybeRaiseRegisteredFromTFStatus(status.get());
@@ -459,7 +458,11 @@ static py::bytes TFE_GetCompilerIr(py::handle& ctx,
 
   std::string s_stage(stage);
   IrExportStage selected_stage = [&] {
-    if (s_stage == "hlo") {
+    if (s_stage == "stablehlo") {
+      return IrExportStage::STABLEHLO;
+    } else if (s_stage == "stablehlo_serialized") {
+      return IrExportStage::STABLEHLO_SERIALIZED;
+    } else if (s_stage == "hlo") {
       return IrExportStage::HLO;
     } else if (s_stage == "hlo_no_metadata") {
       return IrExportStage::HLO_NO_METADATA;
@@ -1824,6 +1827,24 @@ PYBIND11_MODULE(_pywrap_tfe, m) {
         py::return_value_policy::reference);
 
   // DLPack functions
+  m.def("TFE_DlpackDevice", [](py::handle& o) {
+    PyObject* eager_tensor_pyobject_ptr = o.ptr();
+    tensorflow::Safe_TF_StatusPtr status =
+        tensorflow::make_safe(TF_NewStatus());
+
+    if (!EagerTensor_CheckExact(eager_tensor_pyobject_ptr)) {
+      status->status = tensorflow::errors::InvalidArgument(
+          "The argument to `to_dlpack` must be a TF tensor, not Python object");
+      tensorflow::MaybeRaiseRegisteredFromTFStatus(status.get());
+    }
+
+    TFE_TensorHandle* thandle = EagerTensor_Handle(eager_tensor_pyobject_ptr);
+    auto dl_device = std::unique_ptr<DLDevice>(static_cast<DLDevice*>(
+        tensorflow::TFE_GetDLDevice(thandle, status.get())));
+    tensorflow::MaybeRaiseRegisteredFromTFStatus(status.get());
+    return py::make_tuple(dl_device->device_type, dl_device->device_id);
+  });
+
   m.def("TFE_ToDlpackCapsule", [](py::handle& o) {
     PyObject* eager_tensor_pyobject_ptr = o.ptr();
     tensorflow::Safe_TF_StatusPtr status =

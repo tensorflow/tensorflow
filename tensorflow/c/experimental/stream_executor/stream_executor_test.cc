@@ -14,19 +14,31 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/c/experimental/stream_executor/stream_executor.h"
 
+#include <cstddef>
+#include <cstdint>
+#include <cstdlib>
+#include <cstring>
 #include <functional>
+#include <memory>
+#include <string>
 #include <utility>
 
+#include <gmock/gmock.h>
+#include "absl/memory/memory.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/types/optional.h"
 #include "tensorflow/c/experimental/stream_executor/stream_executor_internal.h"
 #include "tensorflow/c/experimental/stream_executor/stream_executor_test_util.h"
 #include "xla/stream_executor/event.h"
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/protobuf/error_codes.pb.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
-#include "tsl/platform/statusor.h"
 
 namespace stream_executor {
 namespace {
@@ -208,6 +220,29 @@ TEST_F(StreamExecutorTest, HostMemoryAllocate) {
   ASSERT_TRUE(deallocate_called);
 }
 
+TEST_F(StreamExecutorTest, HostMemoryAllocator) {
+  static bool allocate_called = false;
+  static bool deallocate_called = false;
+  se_.host_memory_allocate = [](const SP_Device* const device, uint64_t size) {
+    allocate_called = true;
+    return malloc(size);
+  };
+  se_.host_memory_deallocate = [](const SP_Device* const device, void* mem) {
+    free(mem);
+    deallocate_called = true;
+  };
+  StreamExecutor* executor = GetExecutor(0);
+  ASSERT_FALSE(allocate_called);
+  TF_ASSERT_OK_AND_ASSIGN(auto allocator,
+                          executor->CreateMemoryAllocator(MemoryType::kHost));
+  TF_ASSERT_OK_AND_ASSIGN(auto mem, allocator->Allocate(8));
+  ASSERT_NE(mem->opaque(), nullptr);
+  ASSERT_TRUE(allocate_called);
+  ASSERT_FALSE(deallocate_called);
+  mem.reset();
+  ASSERT_TRUE(deallocate_called);
+}
+
 TEST_F(StreamExecutorTest, UnifiedMemoryAllocate) {
   static bool allocate_called = false;
   static bool deallocate_called = false;
@@ -222,11 +257,13 @@ TEST_F(StreamExecutorTest, UnifiedMemoryAllocate) {
   };
   StreamExecutor* executor = GetExecutor(0);
   ASSERT_FALSE(allocate_called);
-  void* mem = executor->UnifiedMemoryAllocate(8);
-  ASSERT_NE(mem, nullptr);
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto allocator, executor->CreateMemoryAllocator(MemoryType::kUnified));
+  TF_ASSERT_OK_AND_ASSIGN(auto mem, allocator->Allocate(8));
+  ASSERT_NE(mem->opaque(), nullptr);
   ASSERT_TRUE(allocate_called);
   ASSERT_FALSE(deallocate_called);
-  executor->UnifiedMemoryDeallocate(mem);
+  mem.reset();
   ASSERT_TRUE(deallocate_called);
 }
 

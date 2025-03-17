@@ -19,8 +19,8 @@ limitations under the License.
 #include <complex>
 #include <cstdint>
 
+#include "xla/tsl/protobuf/dnn.pb.h"
 #include "tsl/platform/ml_dtypes.h"
-#include "tsl/protobuf/dnn.pb.h"
 
 namespace Eigen {
 struct bfloat16;
@@ -37,6 +37,18 @@ struct ToDataType;
 // Note: If you add a new specialization below, make sure to add the
 // corresponding definition in stream_executor/dnn.cc.
 template <>
+struct ToDataType<tsl::float4_e2m1fn> {
+  static constexpr DataType value = DataType::kF4E2M1FN;
+};
+template <>
+struct ToDataType<tsl::float8_e3m4> {
+  static constexpr DataType value = DataType::kF8E3M4;
+};
+template <>
+struct ToDataType<tsl::float8_e4m3> {
+  static constexpr DataType value = DataType::kF8E4M3;
+};
+template <>
 struct ToDataType<tsl::float8_e4m3fn> {
   static constexpr DataType value = DataType::kF8E4M3FN;
 };
@@ -51,6 +63,10 @@ struct ToDataType<tsl::float8_e4m3fnuz> {
 template <>
 struct ToDataType<tsl::float8_e5m2fnuz> {
   static constexpr DataType value = DataType::kF8E5M2FNUZ;
+};
+template <>
+struct ToDataType<tsl::float8_e8m0fnu> {
+  static constexpr DataType value = DataType::kF8E8M0FNU;
 };
 template <>
 struct ToDataType<float> {

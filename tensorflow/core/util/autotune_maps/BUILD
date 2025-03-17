@@ -15,6 +15,7 @@ load(
 load(
     "//tensorflow/core/platform:build_config.bzl",
     "tf_proto_library",
+    # copybara:uncomment "tf_pyclif_proto_library",
 )
 load(
     "//tensorflow/core/platform:rules_cc.bzl",
@@ -41,14 +42,18 @@ cc_library(
     name = "conv_map_wrapper",
     srcs = ["conv_map_wrapper.cc"],
     hdrs = ["conv_map_wrapper.h"],
+    visibility = [
+        "//tensorflow:__subpackages__",
+        "//waymo/ml/deploy:__subpackages__",
+    ],
     deps = [
         ":autotune_map_proto_cc",
         ":conv_parameters_proto_cc",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
-        "@local_tsl//tsl/lib/strings:proto_serialization",
-        "@local_tsl//tsl/protobuf:dnn_proto_cc",
+        "@local_xla//xla/tsl/lib/strings:proto_serialization",
+        "@local_xla//xla/tsl/protobuf:dnn_proto_cc",
     ],
 )
 
@@ -60,9 +65,8 @@ tf_cc_test(
         ":conv_map_wrapper",
         ":conv_parameters_proto_cc",
         "@com_google_googletest//:gtest_main",
-        "@local_tsl//tsl/platform:statusor",
-        "@local_tsl//tsl/protobuf:dnn_proto_cc",
-        "@local_xla//xla:test",
+        "@local_xla//xla/tsl/platform:statusor",
+        "@local_xla//xla/tsl/protobuf:dnn_proto_cc",
     ],
 )
 
@@ -71,10 +75,9 @@ tf_proto_library(
     srcs = [
         "conv_parameters.proto",
     ],
-    cc_api_version = 2,
     protodeps = [
         "//tensorflow/core/framework:types_proto",
-        "@local_tsl//tsl/protobuf:dnn_proto",
+        "@local_xla//xla/tsl/protobuf:dnn_proto",
     ],
 )
 
@@ -113,7 +116,7 @@ tf_cuda_library(
         "conv_parameters.h",
     ],
     cuda_deps = [
-        "@local_tsl//tsl/lib/strings:proto_serialization",
+        "@local_xla//xla/tsl/lib/strings:proto_serialization",
     ],
     deps = [
         ":conv_parameters_proto_cc",
@@ -130,10 +133,9 @@ tf_proto_library(
     srcs = [
         "autotune_map.proto",
     ],
-    cc_api_version = 2,
     protodeps = [
         "//tensorflow/core/util/autotune_maps:conv_parameters_proto",
-        "@local_tsl//tsl/protobuf:dnn_proto",
+        "@local_xla//xla/tsl/protobuf:dnn_proto",
     ],
     visibility = [
         "//waymo/ml/deploy/benchmark:__subpackages__",
@@ -145,9 +147,14 @@ tf_proto_library(
 # py_proto_library(
 #     name = "autotune_map_py_pb2",
 #     has_services = 0,
-#     api_version = 2,
 #     visibility = ["//waymo/ml/deploy/system/autotuning:__subpackages__"],
 #     deps = [":autotune_map_proto"],
+# )
+#
+# tf_pyclif_proto_library(
+#     name = "autotune_map_pyclif",
+#     proto_lib = ":autotune_map_proto",
+#     visibility = ["//waymo/ml/deploy/system/autotuning:__subpackages__"],
 # )
 # copybara:uncomment_end
 
@@ -168,12 +175,14 @@ tf_cuda_library(
         "//tensorflow/core:framework",
         "//tensorflow/core/platform:status",
         "//tensorflow/core/platform:str_util",
-        "@local_tsl//tsl/lib/strings:proto_serialization",
-        "@local_tsl//tsl/protobuf:dnn_proto_cc",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings:string_view",
         "@local_xla//xla:status_macros",
         "@local_xla//xla/stream_executor:dnn",
         "@local_xla//xla/stream_executor:platform_manager",
         "@local_xla//xla/stream_executor/gpu:gpu_init",
+        "@local_xla//xla/tsl/lib/strings:proto_serialization",
+        "@local_xla//xla/tsl/protobuf:dnn_proto_cc",
     ],
 )
 
@@ -191,7 +200,6 @@ tf_cuda_only_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core/platform:status_matchers",
-        "@local_xla//xla/stream_executor/gpu:gpu_driver_header",
         "@local_xla//xla/stream_executor/gpu:gpu_init",
     ],
 )

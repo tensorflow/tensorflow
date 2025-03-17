@@ -14,7 +14,7 @@ cc_library(
         "*spmd_expander.h",
     ]),
     compatible_with = get_compatible_with_portable(),
-    visibility = ["//xla/python/ifrt:friends"],
+    visibility = ["//xla/python/ifrt:users"],
     deps = [
         "//xla/python/ifrt/ir",
         "//xla/python/ifrt/ir:sharding_param",

@@ -23,18 +23,17 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/ExtensibleRTTI.h"
-#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
-#include "mlir/IR/OwningOpRef.h"  // from @llvm-project
-#include "mlir/Pass/PassManager.h"  // from @llvm-project
-#include "mlir/Support/LogicalResult.h"  // from @llvm-project
-#include "stablehlo/api/PortableApi.h"  // from @stablehlo
-#include "stablehlo/dialect/Serialization.h"  // from @stablehlo
+#include "mlir/IR/BuiltinOps.h"
+#include "mlir/IR/OwningOpRef.h"
+#include "mlir/Pass/PassManager.h"
+#include "mlir/Support/LogicalResult.h"
+#include "stablehlo/dialect/Serialization.h"
 #include "xla/mlir/utils/error_util.h"
 #include "xla/mlir_hlo/mhlo/transforms/passes.h"
 #include "xla/pjrt/mlir_to_hlo.h"
 #include "xla/python/ifrt/hlo/hlo_program.h"
 #include "xla/python/ifrt/serdes.h"
-#include "tsl/platform/statusor.h"
+#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace ifrt {
@@ -64,7 +63,8 @@ class HloProgramSerDes : public llvm::RTTIExtends<HloProgramSerDes, SerDes> {
     return "xla::ifrt::XlaProgram";
   }
 
-  absl::StatusOr<std::string> Serialize(Serializable& serializable) override {
+  absl::StatusOr<std::string> Serialize(
+      Serializable& serializable, std::unique_ptr<SerializeOptions>) override {
     // Currently, PjRT-IFRT accepts an `HloProgram` that contains C/MHLO. Since
     // these dialects don't provide version compatibility, the following
     // converts the module into StableHLO and use its portable serialization.
@@ -80,7 +80,7 @@ class HloProgramSerDes : public llvm::RTTIExtends<HloProgramSerDes, SerDes> {
     // Serialize portable artifact.
     TF_ASSIGN_OR_RETURN(std::string serialized,
                         xla::SerializeUsingVersionedStablehlo(
-                            *module, mlir::stablehlo::getMinimumVersion()));
+                            *module, xla::GetDefaultStablehloVersion()));
     return serialized;
   }
 

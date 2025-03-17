@@ -83,7 +83,8 @@ void HandleStridedSliceCase(OpKernelContext* context,
                             bool is_simple_slice, Tensor* result) {
   typedef typename proxy_type<Device, T>::type Proxy;
 
-  gtl::InlinedVector<int64_t, 4> processing_dims = processing_shape.dim_sizes();
+  absl::InlinedVector<int64_t, 4UL> processing_dims =
+      processing_shape.dim_sizes();
   if (is_simple_slice) {
     Eigen::DSizes<Eigen::DenseIndex, NDIM> begin_di;
     Eigen::DSizes<Eigen::DenseIndex, NDIM> sizes_di;
@@ -119,7 +120,8 @@ void HandleStridedSliceGradCase(OpKernelContext* context,
                                 const absl::Span<const int64_t>& strides,
                                 const TensorShape& processing_shape,
                                 bool is_simple_slice, Tensor* result) {
-  gtl::InlinedVector<int64_t, 4> processing_dims = processing_shape.dim_sizes();
+  absl::InlinedVector<int64_t, 4UL> processing_dims =
+      processing_shape.dim_sizes();
 
   Eigen::DSizes<Eigen::DenseIndex, NDIM> begin_di;
   Eigen::DSizes<Eigen::DenseIndex, NDIM> end_di;
@@ -170,7 +172,7 @@ class HandleStridedSliceAssignCase<Device, T, 0> {
                   const absl::Span<const int64_t>& end,
                   const absl::Span<const int64_t>& strides,
                   const StridedSliceAssignBCast& bcast, Tensor* result) {
-    gtl::InlinedVector<int64_t, 1> processing_dims(1);
+    absl::InlinedVector<int64_t, 1UL> processing_dims(1);
     processing_dims[0] = 1;
 
     typedef typename proxy_type<Device, T>::type Proxy;

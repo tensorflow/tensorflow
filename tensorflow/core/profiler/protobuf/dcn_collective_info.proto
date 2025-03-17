@@ -26,6 +26,10 @@ message DcnCollectiveInfoProto {
     // XLA all-reduce transfer.
     // Needs `endpoint_groups`.
     ALL_REDUCE = 5;
+
+    // XLA ragged all-to-all transfer.
+    // Needs `endpoint_groups`.
+    RAGGED_ALL_TO_ALL = 6;
   }
 
   message Endpoint {

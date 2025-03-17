@@ -18,9 +18,9 @@ limitations under the License.
 
 #include <memory>
 
-#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
-#include "mlir/Pass/Pass.h"  // from @llvm-project
-#include "mlir/Pass/PassRegistry.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"
+#include "mlir/Pass/Pass.h"
+#include "mlir/Pass/PassRegistry.h"
 
 namespace mlir {
 

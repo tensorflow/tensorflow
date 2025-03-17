@@ -15,29 +15,40 @@ limitations under the License.
 
 #include "xla/python/ifrt/array_spec.h"
 
+#include <memory>
 #include <string>
 #include <utility>
 
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
+#include "xla/pjrt/pjrt_layout.h"
 #include "xla/python/ifrt/array_spec.pb.h"
-#include "xla/python/ifrt/device.h"
+#include "xla/python/ifrt/client.h"
+#include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/dtype.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
-#include "tsl/platform/statusor.h"
+#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace ifrt {
 
-absl::StatusOr<ArraySpec> ArraySpec::FromProto(
-    DeviceList::LookupDeviceFunc lookup_device, const ArraySpecProto& proto) {
+absl::StatusOr<ArraySpec> ArraySpec::FromProto(Client* client,
+                                               const ArraySpecProto& proto) {
   TF_ASSIGN_OR_RETURN(auto dtype, DType::FromProto(proto.dtype()));
   TF_ASSIGN_OR_RETURN(auto shape, Shape::FromProto(proto.shape()));
   TF_ASSIGN_OR_RETURN(auto sharding,
-                      Sharding::FromProto(lookup_device, proto.sharding()));
-  return ArraySpec{/*dtype=*/dtype, /*shape=*/std::move(shape),
-                   /*sharding=*/std::move(sharding)};
+                      Sharding::FromProto(client, proto.sharding()));
+  std::shared_ptr<const xla::PjRtLayout> layout;
+  if (proto.has_layout()) {
+    TF_ASSIGN_OR_RETURN(layout, xla::PjRtLayout::Deserialize(proto.layout()));
+  }
+  return ArraySpec{
+      /*dtype=*/dtype,
+      /*shape=*/std::move(shape),
+      /*sharding=*/std::move(sharding),
+      /*layout=*/std::move(layout),
+  };
 }
 
 absl::StatusOr<ArraySpecProto> ArraySpec::ToProto() const {
@@ -45,13 +56,17 @@ absl::StatusOr<ArraySpecProto> ArraySpec::ToProto() const {
   *proto.mutable_dtype() = dtype.ToProto();
   *proto.mutable_shape() = shape.ToProto();
   TF_ASSIGN_OR_RETURN(*proto.mutable_sharding(), sharding->ToProto());
+  if (layout != nullptr) {
+    proto.set_layout(layout->Serialize());
+  }
   return proto;
 }
 
 std::string ArraySpec::DebugString() const {
-  return absl::StrCat("ArraySpec(dtype=", dtype.DebugString(),
-                      ",shape=", shape.DebugString(),
-                      ",sharding=", sharding->DebugString(), ")");
+  return absl::StrCat(
+      "ArraySpec(dtype=", dtype.DebugString(), ",shape=", shape.DebugString(),
+      ",sharding=", sharding->DebugString(),
+      ",layout=", (layout != nullptr ? layout->ToString() : "<nullptr>"), ")");
 }
 
 }  // namespace ifrt

@@ -12,7 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#if defined(INTEL_MKL) && defined(ENABLE_ONEDNN_V3)
+#if defined(INTEL_MKL)
 #include "xla/service/cpu/onednn_softmax.h"
 
 #include <algorithm>
@@ -29,7 +29,7 @@ limitations under the License.
 #include "xla/service/cpu/runtime_lightweight_check.h"
 #include "xla/tsl/util/onednn_threadpool.h"
 // Below must come after `onednn_threadpool.h`
-#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive  // NOLINT
+#include "unsupported/Eigen/CXX11/Tensor"  // NOLINT
 
 namespace xla {
 namespace cpu {
@@ -82,4 +82,4 @@ ABSL_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_OneDnnSoftmax(
 }  // namespace cpu
 }  // namespace xla
 
-#endif  // INTEL_MKL && ENABLE_ONEDNN_V3
+#endif  // INTEL_MKL

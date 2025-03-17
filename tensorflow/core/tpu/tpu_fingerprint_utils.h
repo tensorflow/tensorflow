@@ -18,13 +18,14 @@ limitations under the License.
 
 #include <cstdint>
 
+#include "absl/status/status.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/platform/status.h"
 
 namespace tensorflow {
 // Computes a fingerprint of the contents of `library`.
-Status FingerprintFunctionLibrary(const FunctionLibraryDefinition& library,
-                                  uint64_t& fingerprint);
+absl::Status FingerprintFunctionLibrary(
+    const FunctionLibraryDefinition& library, uint64_t& fingerprint);
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_CORE_TPU_TPU_FINGERPRINT_UTILS_H_

@@ -55,6 +55,7 @@ def copy_file(
     src_file: str,
     dst_dir: str,
     strip: str = None,
+    dest_file: str = None,
 ) -> None:
   """Copy a file to the destination directory.
 
@@ -62,13 +63,13 @@ def copy_file(
     src_file: file to be copied
     dst_dir: destination directory
     strip: prefix to strip before copying to destination
+    dest_file: destanation file location if different from src_file
   """
 
   # strip `bazel-out/.../bin/` for generated files.
-  if src_file.startswith("bazel-out"):
-    dest = src_file[src_file.index("bin") + 4:]
-  else:
-    dest = src_file
+  dest = dest_file if dest_file else src_file
+  if dest.startswith("bazel-out"):
+    dest = dest[dest.index("bin") + 4 :]
 
   if strip:
     dest = dest.removeprefix(strip)

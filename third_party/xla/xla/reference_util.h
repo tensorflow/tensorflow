@@ -18,17 +18,20 @@ limitations under the License.
 
 #include <algorithm>
 #include <array>
+#include <cstdint>
 #include <functional>
 #include <memory>
+#include <type_traits>
 #include <utility>
 #include <vector>
 
 #include "absl/functional/function_ref.h"
+#include "absl/log/check.h"
 #include "absl/types/span.h"
 #include "xla/array2d.h"
 #include "xla/array3d.h"
 #include "xla/array4d.h"
-#include "xla/client/padding.h"
+#include "xla/hlo/builder/padding.h"
 #include "xla/hlo/evaluator/hlo_evaluator.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"

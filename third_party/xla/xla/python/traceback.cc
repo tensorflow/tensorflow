@@ -20,19 +20,20 @@ limitations under the License.
 #include <cstddef>
 #include <optional>
 #include <string>
-#include <string_view>
 #include <utility>
 #include <vector>
 
 #include "absl/base/casts.h"
 #include "absl/hash/hash.h"
+#include "absl/log/check.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
-#include "third_party/nanobind/include/nanobind/nanobind.h"
-#include "third_party/nanobind/include/nanobind/stl/optional.h"  // IWYU pragma: keep
-#include "third_party/nanobind/include/nanobind/stl/string.h"  // IWYU pragma: keep
-#include "third_party/nanobind/include/nanobind/stl/string_view.h"  // IWYU pragma: keep
-#include "third_party/nanobind/include/nanobind/stl/vector.h"  // IWYU pragma: keep
+#include "absl/strings/string_view.h"
+#include "nanobind/nanobind.h"
+#include "nanobind/stl/optional.h"  // IWYU pragma: keep
+#include "nanobind/stl/string.h"  // IWYU pragma: keep
+#include "nanobind/stl/string_view.h"  // IWYU pragma: keep
+#include "nanobind/stl/vector.h"  // IWYU pragma: keep
 #include "xla/pjrt/exceptions.h"
 #include "xla/python/nb_class_ptr.h"
 #include "tsl/platform/platform.h"
@@ -99,7 +100,8 @@ Traceback::~Traceback() {
   }
 }
 
-Traceback::Traceback(Traceback&& other) : frames_(std::move(other.frames_)) {
+Traceback::Traceback(Traceback&& other) noexcept
+    : frames_(std::move(other.frames_)) {
   // absl::InlinedVector does not always clear itself if moved. Since we rely on
   // its empty() method to destroy Traceback differently, we explicitly clear
   // here.
@@ -107,8 +109,8 @@ Traceback::Traceback(Traceback&& other) : frames_(std::move(other.frames_)) {
 }
 
 std::string Traceback::Frame::ToString() const {
-  return absl::StrFormat("%s:%d (%s)", nb::cast<std::string_view>(file_name),
-                         line_num, nb::cast<std::string_view>(function_name));
+  return absl::StrFormat("%s:%d (%s)", nb::cast<absl::string_view>(file_name),
+                         line_num, nb::cast<absl::string_view>(function_name));
 }
 
 std::string Traceback::ToString() const {
@@ -222,14 +224,15 @@ PyType_Slot traceback_slots_[] = {
 
 void BuildTracebackSubmodule(nb::module_& m) {
   nb::class_<Traceback::Frame>(m, "Frame")
+      .def(nb::init<const nb::str&, const nb::str&, int, int>())
       .def_ro("file_name", &Traceback::Frame::file_name)
       .def_ro("function_name", &Traceback::Frame::function_name)
       .def_ro("function_start_line", &Traceback::Frame::function_start_line)
       .def_ro("line_num", &Traceback::Frame::line_num)
       .def("__repr__", [](const Traceback::Frame& frame) {
         return absl::StrFormat(
-            "%s;%s:%d", nb::cast<std::string_view>(frame.function_name),
-            nb::cast<std::string_view>(frame.file_name), frame.line_num);
+            "%s;%s:%d", nb::cast<absl::string_view>(frame.function_name),
+            nb::cast<absl::string_view>(frame.file_name), frame.line_num);
       });
 
   nb::class_<Traceback> traceback(m, "Traceback",
@@ -270,6 +273,33 @@ void BuildTracebackSubmodule(nb::module_& m) {
   });
   traceback.def("__str__", &Traceback::ToString);
   traceback.def("as_python_traceback", &Traceback::AsPythonTraceback);
+
+  traceback.def_static(
+      "traceback_from_frames",
+      [](std::vector<Traceback::Frame> frames) {
+        nb::object traceback = nb::none();
+        nb::dict globals;
+        nb::handle traceback_type(
+            reinterpret_cast<PyObject*>(&PyTraceBack_Type));
+        for (const Traceback::Frame& frame : frames) {
+          PyCodeObject* py_code =
+              PyCode_NewEmpty(frame.file_name.c_str(),
+                              frame.function_name.c_str(), frame.line_num);
+          PyFrameObject* py_frame = PyFrame_New(PyThreadState_Get(), py_code,
+                                                globals.ptr(), /*locals=*/
+                                                nullptr);
+          Py_DECREF(py_code);
+          traceback = traceback_type(
+              /*tb_next=*/std::move(traceback),
+              /*tb_frame=*/
+              nb::steal<nb::object>(reinterpret_cast<PyObject*>(py_frame)),
+              /*tb_lasti=*/0,
+              /*tb_lineno=*/
+              frame.line_num);
+        }
+        return traceback;
+      },
+      "Creates a traceback from a list of frames.");
 
   traceback.def_static(
       "code_addr2line",

@@ -17,9 +17,7 @@ limitations under the License.
 
 #include <string>
 
-#include "tensorflow/core/data/dataset_utils.h"
 #include "tensorflow/core/data/service/credentials_factory.h"
-#include "tensorflow/core/framework/metrics.h"
 
 namespace tensorflow {
 namespace data {
@@ -37,18 +35,6 @@ std::string DefaultProtocol() {
   });
 #endif  // PLATFORM_GOOGLE
   return "grpc";
-}
-
-bool DisableCompressionAtRegistrationTime() {
-#if defined(PLATFORM_GOOGLE)
-  if (!GetExperiments().contains("no_compression_v2")) {
-    return false;
-  }
-  metrics::RecordTFDataServiceCompressionAction(
-      "disabled_at_registration_time");
-  return true;
-#endif  // PLATFORM_GOOGLE
-  return false;
 }
 
 }  // namespace data

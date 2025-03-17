@@ -56,7 +56,7 @@ absl::StatusOr<std::unique_ptr<HloModule>> LoadModule(
 struct XlaCompileOptions {
   // Fully backend-independent options.
   std::string module_path;
-  std::string output_path;
+  std::string output_file;
   std::string platform;
   std::string result_output_file;
 
@@ -84,6 +84,15 @@ struct XlaCompileOptions {
 // correspond to fields in XlaCompileOptions.
 absl::Status XlaCompileMain(const XlaCompileOptions& compile_options);
 
+namespace internal {
+
+// Loads autotuning data if autotuning is enabled and autotuning results are
+// present. Returns true if data was present and successfully loaded, false
+// otherwise.
+absl::StatusOr<bool> LoadAutotuneDataFromModule(HloModuleAndMetadata* mod,
+                                                BackendType backend);
+
+}  // namespace internal
 }  // namespace xla
 
 #endif  // XLA_TOOLS_XLA_COMPILE_LIB_H_

@@ -28,6 +28,12 @@ bool SimpleDynamicBuffer::AddString(const char* str, size_t len) {
   // will overflow to something less than max_length_. After checking `len <=
   // max_length_` we can use this subtraction to check for overflow.
   if (len > max_length_ || data_.size() >= max_length_ - len) return false;
+  // It is undefined to call memcpy with `nullptr`, and that will be the case if
+  // `len` is 0, and `data_` is empty. An empty record is created though.
+  if (len == 0) {
+    offset_.push_back(offset_.back());
+    return true;
+  }
   data_.resize(data_.size() + len);
   memcpy(data_.data() + offset_.back(), str, len);
   offset_.push_back(offset_.back() + len);
@@ -70,7 +76,9 @@ int SimpleDynamicBuffer::WriteToBuffer(char** buffer) {
   }
 
   // Copy data of strings.
-  memcpy(*buffer + start, data_.data(), data_.size());
+  if (!data_.empty()) {
+    memcpy(*buffer + start, data_.data(), data_.size());
+  }
   return bytes;
 }
 

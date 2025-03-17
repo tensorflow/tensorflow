@@ -15,7 +15,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tfrt/transforms/update_op_cost_in_tfrt_mlir.h"
 
 #include <cstdint>
-#include <cstdlib>
 #include <string>
 
 #include <gmock/gmock.h>

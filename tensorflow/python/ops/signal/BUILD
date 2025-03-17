@@ -156,6 +156,7 @@ py_strict_library(
 py_strict_library(
     name = "window_ops",
     srcs = ["window_ops.py"],
+    visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",

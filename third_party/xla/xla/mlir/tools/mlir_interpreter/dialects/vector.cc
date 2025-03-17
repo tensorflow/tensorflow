@@ -27,13 +27,13 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/ErrorHandling.h"
-#include "mlir/Dialect/Vector/IR/VectorOps.h"  // from @llvm-project
-#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
-#include "mlir/IR/BuiltinTypeInterfaces.h"  // from @llvm-project
-#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
-#include "mlir/IR/TypeUtilities.h"  // from @llvm-project
-#include "mlir/IR/Types.h"  // from @llvm-project
-#include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "mlir/Dialect/Vector/IR/VectorOps.h"
+#include "mlir/IR/BuiltinAttributes.h"
+#include "mlir/IR/BuiltinTypeInterfaces.h"
+#include "mlir/IR/BuiltinTypes.h"
+#include "mlir/IR/TypeUtilities.h"
+#include "mlir/IR/Types.h"
+#include "mlir/Support/LLVM.h"
 #include "xla/mlir/tools/mlir_interpreter/dialects/comparators.h"
 #include "xla/mlir/tools/mlir_interpreter/dialects/util.h"
 #include "xla/mlir/tools/mlir_interpreter/framework/interpreter.h"
@@ -230,7 +230,7 @@ InterpreterValue MaskImpl(mlir::Operation* op, ArrayRef<int64_t> mask_sizes) {
 }
 
 InterpreterValue ConstantMask(InterpreterState&, vector::ConstantMaskOp mask) {
-  return MaskImpl(mask, ExtractVector<int64_t>(mask.getMaskDimSizes()));
+  return MaskImpl(mask, mask.getMaskDimSizes());
 }
 
 // TODO(jreiffers): Support masked contractions.
@@ -553,7 +553,7 @@ InterpreterValue MultiReduction(InterpreterState& state,
                                 const InterpreterValue& acc) {
   auto element_ty = getElementTypeOrSelf(reduction->getResultTypes()[0]);
   return {ReductionImpl(state, source, &acc, reduction.getKind(),
-                        ExtractVector<int64_t>(reduction.getReductionDims()),
+                        SmallVector<int64_t>(reduction.getReductionDims()),
                         element_ty)};
 }
 
@@ -634,7 +634,7 @@ InterpreterValue Shuffle(InterpreterState& state, vector::ShuffleOp shuffle,
   auto& result_view = result.View();
   result_view.is_vector = true;
 
-  auto mask = ExtractVector<int64_t>(shuffle.getMask());
+  auto mask = shuffle.getMask();
   bool is_zero_dim = v0.View().Rank() == 0;
   int64_t size0 = is_zero_dim ? 1 : v0.View().sizes[0];
   for (auto [dst_index, src_index] : llvm::enumerate(mask)) {

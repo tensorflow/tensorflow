@@ -17,11 +17,11 @@ limitations under the License.
 #include <cstdint>
 #include <random>
 
+#include "xla/tsl/lib/random/philox_random.h"
+#include "xla/tsl/lib/random/random_distributions_utils.h"
 #include "tensorflow/lite/core/c/builtin_op_data.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
-#include "tsl/lib/random/philox_random.h"
-#include "tsl/lib/random/random_distributions_utils.h"
 
 namespace tflite {
 namespace ops {

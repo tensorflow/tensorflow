@@ -22,9 +22,10 @@ limitations under the License.
 #include "xla/service/cpu/cpu_event.h"
 #include "xla/tsl/concurrency/async_value.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
-#include "tsl/platform/env.h"
-#include "tsl/platform/statusor.h"
-#include "tsl/platform/threadpool.h"
+#include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/platform/threadpool.h"
+#include "xla/util.h"
 
 namespace xla {
 namespace {
@@ -116,7 +117,8 @@ TEST(TrackedTfrtCpuDeviceBufferTest, BasicError) {
                          /*num_threads=*/4);
 
   thread_pool.Schedule([&]() {
-    definition_event.SetError("tracked_tfrt_cpu_device_buffer_test error.");
+    definition_event.SetError(
+        Internal("tracked_tfrt_cpu_device_buffer_test error."));
   });
 
   TrackedTfrtCpuDeviceBuffer tracked_buffer(
@@ -151,7 +153,7 @@ TEST(TrackedTfrtCpuDeviceBufferTest, TupleError) {
   });
   thread_pool.Schedule([&]() {
     definition_event_1.SetError(
-        "tracked_tfrt_cpu_device_buffer_test tuple error.");
+        Internal("tracked_tfrt_cpu_device_buffer_test tuple error."));
   });
 
   TrackedTfrtCpuDeviceBuffer tracked_buffer(

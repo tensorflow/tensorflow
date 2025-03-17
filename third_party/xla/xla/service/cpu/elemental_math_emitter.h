@@ -25,16 +25,17 @@ limitations under the License.
 namespace xla::cpu {
 
 absl::StatusOr<llvm::Value*> EmitAtan2(llvm::Module* module,
-                                       llvm::IRBuilder<>& b,
+                                       llvm::IRBuilderBase& b,
                                        PrimitiveType prim_type,
                                        llvm::Value* lhs, llvm::Value* rhs);
 
 absl::StatusOr<llvm::Value*> EmitTanh(llvm::Module* module,
-                                      llvm::IRBuilder<>& b,
+                                      llvm::IRBuilderBase& b,
                                       PrimitiveType prim_type,
                                       llvm::Value* value);
 
-absl::StatusOr<llvm::Value*> EmitErf(llvm::Module* module, llvm::IRBuilder<>& b,
+absl::StatusOr<llvm::Value*> EmitErf(llvm::Module* module,
+                                     llvm::IRBuilderBase& b,
                                      PrimitiveType prim_type,
                                      llvm::Value* value);
 

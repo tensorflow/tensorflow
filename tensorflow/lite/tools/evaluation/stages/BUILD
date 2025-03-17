@@ -50,6 +50,7 @@ cc_library(
         "//tensorflow/lite/tools/evaluation/proto:evaluation_stages_cc_proto",
         "//tensorflow/lite/tools/evaluation/proto:preprocessing_steps_cc_proto",
         "@com_google_absl//absl/base",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/strings",
         "@libjpeg_turbo//:jpeg",
         "@local_xla//xla/tsl/util:stats_calculator_portable",
@@ -90,6 +91,7 @@ cc_library(
         "//tensorflow/lite/tools/evaluation:evaluation_stage",
         "//tensorflow/lite/tools/evaluation/proto:evaluation_config_cc_proto",
         "//tensorflow/lite/tools/evaluation/proto:evaluation_stages_cc_proto",
+        "@com_google_absl//absl/log",
     ],
 )
 
@@ -126,6 +128,7 @@ cc_library(
         "//tensorflow/lite/tools/evaluation/proto:evaluation_config_cc_proto",
         "//tensorflow/lite/tools/evaluation/proto:evaluation_stages_cc_proto",
         "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/log",
         "@local_xla//xla/tsl/util:stats_calculator_portable",
     ],
 )
@@ -164,6 +167,7 @@ cc_library(
         "//tensorflow/lite/tools/evaluation:utils",
         "//tensorflow/lite/tools/evaluation/proto:evaluation_config_cc_proto",
         "//tensorflow/lite/tools/evaluation/proto:evaluation_stages_cc_proto",
+        "@com_google_absl//absl/log",
     ],
 )
 
@@ -181,6 +185,7 @@ cc_library(
         "//tensorflow/lite/tools/evaluation/proto:evaluation_config_cc_proto",
         "//tensorflow/lite/tools/evaluation/proto:evaluation_stages_cc_proto",
         "@FP16",
+        "@com_google_absl//absl/log",
         "@local_xla//xla/tsl/util:stats_calculator_portable",
     ],
 )
@@ -214,6 +219,7 @@ cc_library(
         "//tensorflow/lite/tools/evaluation/proto:evaluation_config_cc_proto",
         "//tensorflow/lite/tools/evaluation/proto:evaluation_stages_cc_proto",
         "//tensorflow/lite/tools/evaluation/stages/utils:image_metrics",
+        "@com_google_absl//absl/log",
     ],
 )
 
@@ -249,5 +255,6 @@ cc_library(
         "//tensorflow/lite/tools/evaluation/proto:evaluation_config_cc_proto",
         "//tensorflow/lite/tools/evaluation/proto:evaluation_stages_cc_proto",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/log",
     ],
 )

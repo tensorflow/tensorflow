@@ -94,7 +94,7 @@ void UpdateCompileOptions(AotOptions& options) {
       !options.graph_execution_options->enable_mlrt;
 }
 
-Status CompileTfGraphToHlo(
+absl::Status CompileTfGraphToHlo(
     const FunctionLibraryDefinition* flib_def, const NameAttrList& function,
     int graph_def_version, const std::vector<XlaCompiler::Argument>& args,
     bool has_ref_vars, bool may_alias_resource_update,
@@ -132,7 +132,7 @@ std::string GetNodeName(const std::string& signature_node_name) {
   return signature_node_name.substr(0, node_name_len - 2);
 }
 
-Status UpdateGraphDefWithInputShapes(
+absl::Status UpdateGraphDefWithInputShapes(
     MetaGraphDef& meta_graph_def,
     const absl::flat_hash_map<std::string, tensorflow::TensorShapeProto>&
         input_shapes,

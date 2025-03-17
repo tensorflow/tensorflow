@@ -38,8 +38,6 @@ class HloOpcodeHistogram : public std::map<std::set<std::string>, int64_t> {
 
 class HloFusionStatsVisitor : public ConstDfsHloVisitorWithDefault {
  public:
-  absl::Status RunOnModule(HloModule* module);
-
   std::string ToString();
 
  protected:

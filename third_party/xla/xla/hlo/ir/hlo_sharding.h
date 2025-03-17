@@ -34,7 +34,10 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/array.h"
 #include "xla/hlo/ir/tile_assignment.h"  // IWYU pragma: export
+#include "xla/printer.h"
+#include "xla/shape.h"
 #include "xla/shape_tree.h"
+#include "xla/shape_util.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -137,6 +140,11 @@ class HloSharding {
   // empty tuples, the shardings array must have one element.
   static HloSharding Tuple(const Shape& tuple_shape,
                            absl::Span<const HloSharding> shardings);
+
+  // Creates a new sharding for a flat tuple type.
+  static HloSharding FlatTuple(std::vector<HloSharding> sub_shardings) {
+    return HloSharding(std::move(sub_shardings));
+  }
 
   // Creates a new sharding for a tuple type, with a single input sharding
   // repeated on each leaf.

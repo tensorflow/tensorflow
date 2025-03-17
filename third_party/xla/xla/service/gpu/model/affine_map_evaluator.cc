@@ -16,13 +16,12 @@ limitations under the License.
 #include "xla/service/gpu/model/affine_map_evaluator.h"
 
 #include <cstdint>
-#include <vector>
 
 #include "absl/types/span.h"
 #include "llvm/Support/MathExtras.h"
-#include "mlir/IR/AffineExpr.h"  // from @llvm-project
-#include "mlir/IR/AffineMap.h"  // from @llvm-project
-#include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "mlir/IR/AffineExpr.h"
+#include "mlir/IR/AffineMap.h"
+#include "mlir/Support/LLVM.h"
 #include "tsl/platform/logging.h"  // IWYU pragma: keep
 
 namespace xla {
@@ -49,10 +48,10 @@ int64_t EvaluateAffineExpr(AffineExpr expr,
     return mlir::cast<AffineConstantExpr>(expr).getValue();
   }
   if (kind == AffineExprKind::DimId) {
-    return dim_values[mlir::cast<AffineDimExpr>(expr).getPosition()];
+    return dim_values.at(mlir::cast<AffineDimExpr>(expr).getPosition());
   }
   if (kind == AffineExprKind::SymbolId) {
-    return symbol_values[mlir::cast<AffineSymbolExpr>(expr).getPosition()];
+    return symbol_values.at(mlir::cast<AffineSymbolExpr>(expr).getPosition());
   }
 
   auto binary_expr = mlir::cast<AffineBinaryOpExpr>(expr);

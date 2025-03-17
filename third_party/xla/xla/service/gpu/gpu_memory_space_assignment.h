@@ -19,10 +19,10 @@ limitations under the License.
 #include <cstdint>
 
 #include "absl/status/status.h"
+#include "xla/hlo/analysis/hlo_alias_analysis.h"
+#include "xla/hlo/analysis/hlo_ordering.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/buffer_assignment.h"
-#include "xla/service/hlo_alias_analysis.h"
-#include "xla/service/hlo_ordering.h"
 #include "xla/service/hlo_value.h"
 
 namespace xla {

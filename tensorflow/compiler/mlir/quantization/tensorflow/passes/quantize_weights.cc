@@ -18,8 +18,8 @@ limitations under the License.
 
 #include "llvm/Support/Casting.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
-#include "mlir/Dialect/Quant/QuantOps.h"  // from @llvm-project
-#include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
+#include "mlir/Dialect/Quant/IR/Quant.h"  // from @llvm-project
+#include "mlir/Dialect/Quant/IR/QuantTypes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypeInterfaces.h"  // from @llvm-project
@@ -80,7 +80,7 @@ class QuantizeWeightsPass
   }
 
   void getDependentDialects(DialectRegistry& registry) const override {
-    registry.insert<TF::TensorFlowDialect, quant::QuantizationDialect>();
+    registry.insert<TF::TensorFlowDialect, quant::QuantDialect>();
   }
 
  private:
@@ -262,7 +262,7 @@ void QuantizeWeightsPass::runOnOperation() {
   // function can be modified at the same time so avoid running functions in
   // parallel.
   for (auto func : module_op.getOps<func::FuncOp>()) {
-    if (failed(applyPatternsAndFoldGreedily(func, frozen_patterns))) {
+    if (failed(applyPatternsGreedily(func, frozen_patterns))) {
       func.emitError() << "quant-quantize-weights failed.";
       signalPassFailure();
     }

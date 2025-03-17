@@ -54,6 +54,13 @@ tf_proto {
       type_name: ".tensorflow.GPUOptions"
     }
     field {
+      name: "pluggable_device_options"
+      number: 18
+      label: LABEL_OPTIONAL
+      type: TYPE_MESSAGE
+      type_name: ".tensorflow.GPUOptions"
+    }
+    field {
       name: "allow_soft_placement"
       number: 7
       label: LABEL_OPTIONAL
@@ -299,6 +306,18 @@ tf_proto {
       field {
         name: "disable_eager_executor_streaming_enqueue"
         number: 26
+        label: LABEL_OPTIONAL
+        type: TYPE_BOOL
+      }
+      field {
+        name: "finalize_function_library_runtime"
+        number: 33
+        label: LABEL_OPTIONAL
+        type: TYPE_BOOL
+      }
+      field {
+        name: "finalize_resource_manager"
+        number: 34
         label: LABEL_OPTIONAL
         type: TYPE_BOOL
       }

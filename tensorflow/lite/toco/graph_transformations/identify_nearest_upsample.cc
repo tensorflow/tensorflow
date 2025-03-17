@@ -17,8 +17,9 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/lite/toco/graph_transformations/graph_transformations.h"
 #include "tensorflow/lite/toco/model.h"
 #include "tensorflow/lite/toco/tooling_util.h"
@@ -79,9 +80,8 @@ std::vector<std::unique_ptr<Operator>>::iterator FindOperator(
 // It's possible the model uses mul-broadcast to implement nearest neighbor
 // upsample which may involve 5-d, 6-d tensors. We can actually change this
 // pattern to be pack-based which is easier for us to handle.
-::tensorflow::Status IdentifyNearestUpsample::Run(Model* model,
-                                                  std::size_t op_index,
-                                                  bool* modified) {
+absl::Status IdentifyNearestUpsample::Run(Model* model, std::size_t op_index,
+                                          bool* modified) {
   *modified = false;
   auto op_it = model->operators.begin() + op_index;
   auto* op = op_it->get();

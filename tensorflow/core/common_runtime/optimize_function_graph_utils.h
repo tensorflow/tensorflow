@@ -43,13 +43,13 @@ constexpr absl::Duration kCachingThresholdDuration = absl::Seconds(3);
 // Pins each arg that emits a `DT_RESOURCE` tensor to the device on which the
 // corresponding resource lives. This ensures that the Placer assigns ops that
 // access these resources to the appropriate devices.
-Status PinArgsAndRets(const std::vector<string>& input_devices,
-                      const std::vector<string>& output_devices,
-                      const DeviceSet& device_set,
-                      const std::vector<Node*>& arg_nodes,
-                      const std::vector<Node*>& ret_nodes,
-                      const FunctionLibraryDefinition* lib_def,
-                      Device* default_device);
+absl::Status PinArgsAndRets(const std::vector<string>& input_devices,
+                            const std::vector<string>& output_devices,
+                            const DeviceSet& device_set,
+                            const std::vector<Node*>& arg_nodes,
+                            const std::vector<Node*>& ret_nodes,
+                            const FunctionLibraryDefinition* lib_def,
+                            Device* default_device);
 
 // Outputs graph optimization result after all the graph optimization (up till
 // before graph partitioning); returns error if optimization fails. Note that

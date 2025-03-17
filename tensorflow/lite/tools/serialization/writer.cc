@@ -18,10 +18,13 @@ limitations under the License.
 // Usage:
 //   writer <input tflite> <output tflite>
 
-#include <iostream>
+#include <cstdio>
+#include <memory>
 
+#include "tensorflow/lite/core/interpreter_builder.h"
 #include "tensorflow/lite/core/kernels/register.h"
-#include "tensorflow/lite/core/model.h"
+#include "tensorflow/lite/interpreter.h"
+#include "tensorflow/lite/model_builder.h"
 #include "tensorflow/lite/tools/serialization/writer_lib.h"
 
 int main(int argc, char* argv[]) {

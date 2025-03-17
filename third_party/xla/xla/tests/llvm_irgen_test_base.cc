@@ -19,9 +19,9 @@ limitations under the License.
 #include <utility>
 
 #include "absl/status/status.h"
+#include "xla/hlo/testlib/filecheck.h"
 #include "xla/service/llvm_ir/llvm_util.h"
-#include "xla/tests/filecheck.h"
-#include "tsl/lib/core/status_test_util.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "tsl/platform/test.h"
 
 namespace xla {

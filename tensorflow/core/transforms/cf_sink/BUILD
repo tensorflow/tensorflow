@@ -18,6 +18,7 @@ cc_library(
         "//tensorflow/core/ir:Dialect",
         "//tensorflow/core/platform:logging",
         "//tensorflow/core/transforms:PassIncGen",
+        "@com_google_absl//absl/log",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:ControlFlowInterfaces",
         "@llvm-project//mlir:IR",

@@ -29,18 +29,25 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/base/optimization.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
+#include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
+#include "xla/array.h"
 #include "xla/hlo/ir/hlo_op_metadata.h"
 #include "xla/overflow_util.h"
 #include "xla/printer.h"
+#include "xla/shape.h"
+#include "xla/shape_tree.h"
+#include "xla/shape_util.h"
 #include "xla/status_macros.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/errors.h"
 #include "tsl/platform/protobuf.h"
 
 namespace xla {
@@ -570,9 +577,9 @@ std::vector<int64_t> HloSharding::TileOffsetForDevice(const Shape& shape,
   CHECK(!IsUnknown());
 
   if (maximal_) {
-    return std::vector<int64_t>(shape.dimensions_size(), 0);
+    return std::vector<int64_t>(shape.rank(), 0);
   }
-  CHECK_EQ(shape.dimensions_size(), TiledDataRank());
+  CHECK_EQ(shape.rank(), TiledDataRank());
   std::vector<int64_t> index = TileIndexForDevice(device);
   for (int64_t i = 0; i < index.size(); ++i) {
     const int64_t shape_dim = shape.dimensions(i);
@@ -593,7 +600,7 @@ std::vector<int64_t> HloSharding::TileLimitForDevice(const Shape& shape,
                                 shape.dimensions().end());
   }
 
-  CHECK_EQ(shape.dimensions_size(), TiledDataRank());
+  CHECK_EQ(shape.rank(), TiledDataRank());
   std::vector<int64_t> index = TileIndexForDevice(device);
   for (int64_t i = 0; i < index.size(); ++i) {
     const int64_t shape_dim = shape.dimensions(i);

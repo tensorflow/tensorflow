@@ -31,7 +31,7 @@ jobs:
       pull-requests: write
     steps:
       - name: Awaiting response issues
-        uses: actions/stale@28ca1036281a5e5922ead5184a1bbf96e5fc984e # v9.0.0
+        uses: actions/stale@5bef64f19d7facfb25b37b414482c7164d639639 # v9.1.0
         with:
           #Comma separated list of labels that can be assigned to issues to exclude them from being marked as stale
           exempt-issue-labels: 'override-stale'
@@ -59,7 +59,7 @@ jobs:
           close-pr-message: "This PR was closed because it has been inactive for 14 days since being marked as stale. Please reopen if you'd like to work on this further."
           repo-token: ${{ secrets.GITHUB_TOKEN }}
       - name: Contribution issues
-        uses: actions/stale@28ca1036281a5e5922ead5184a1bbf96e5fc984e # v9.0.0
+        uses: actions/stale@5bef64f19d7facfb25b37b414482c7164d639639 # v9.1.0
         with:
           #Comma separated list of labels that can be assigned to issues to exclude them from being marked as stale
           exempt-issue-labels: 'override-stale'

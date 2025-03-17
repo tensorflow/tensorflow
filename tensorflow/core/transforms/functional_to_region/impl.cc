@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "tensorflow/core/transforms/functional_to_region/impl.h"
 
-#include <algorithm>
 #include <tuple>
 #include <utility>
 

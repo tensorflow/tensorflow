@@ -91,7 +91,7 @@ void Expect(const Tensor& input, float x_min, float x_max,
       root, input_ph, x_min, x_max,
       QuantizedInstanceNorm::Attrs().VarianceEpsilon(variance_eps));
 
-  Status s = root.status();
+  absl::Status s = root.status();
   EXPECT_TRUE(s.ok());
 
   ClientSession session(root);

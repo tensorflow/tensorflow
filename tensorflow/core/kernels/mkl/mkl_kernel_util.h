@@ -19,9 +19,9 @@ limitations under the License.
 #ifdef INTEL_MKL
 
 #include "dnnl.hpp"
+#include "xla/tsl/platform/status.h"
 #include "tensorflow/core/graph/testlib.h"
 #include "tensorflow/core/public/session.h"
-#include "tsl/platform/status.h"
 
 using dnnl::memory;
 

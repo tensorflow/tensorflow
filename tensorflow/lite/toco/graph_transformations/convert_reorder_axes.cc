@@ -17,11 +17,12 @@ limitations under the License.
 #include <unordered_map>
 #include <vector>
 
-#include "absl/strings/str_cat.h"
+#include "absl/status/status.h"
+#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/lite/toco/graph_transformations/graph_transformations.h"
 #include "tensorflow/lite/toco/model.h"
 #include "tensorflow/lite/toco/tooling_util.h"
-#include "tensorflow/core/platform/logging.h"
 
 namespace toco {
 
@@ -87,8 +88,8 @@ TransposeOperator* CreateTransposeFromReorderAxes(
 
 // Converts ReorderAxes into Transpose and Reshape which are compatible with the
 // TFLite interpreter.
-::tensorflow::Status ConvertReorderAxes::Run(Model* model, std::size_t op_index,
-                                             bool* modified) {
+absl::Status ConvertReorderAxes::Run(Model* model, std::size_t op_index,
+                                     bool* modified) {
   *modified = false;
   auto reorder_it = model->operators.begin() + op_index;
   if (reorder_it->get()->type != OperatorType::kReorderAxes)

@@ -129,3 +129,14 @@ def TfIdentityPropagationPass
   let constructor = "CreateTfIdentityPropagationPass()";
 }
 
+def TfDeviceCleanupPass : Pass<"tf-device-cleanup", "mlir::func::FuncOp"> {
+  let summary = "Cleans up device attributes from all ops";
+
+  let description = [{
+    This pass removes `device` attributes from all TF ops. Some Serving
+    doesn't rely on `device` attributes from SavedModel.
+  }];
+
+  let constructor = "CreateTfDeviceCleanupPass()";
+}
+

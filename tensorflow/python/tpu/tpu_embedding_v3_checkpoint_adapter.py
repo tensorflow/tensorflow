@@ -91,12 +91,24 @@ class EmbeddingReshardCallback(checkpoint_adapter.ReshardCallback):
   ) -> tuple[Sequence[str], Sequence[str]]:
     keys = []
     slices = []
+    # TODO(b/398016624): Make this a vlog this log after bug is fixed.
+    logging.info(
+        "Updating restore v2 inputs for %s: %s",
+        checkpoint_key,
+        shape_and_slice_spec,
+    )
     for i, layout in enumerate(self._to_shard_layout):
-      checkpoint_key = checkpoint_key.replace(
+      sub_checkpoint_key = checkpoint_key.replace(
           self._main_checkpoint_name, self._checkpoint_local_names[i]
       )
       # For resharding later, we need to read the full value here.
-      keys.append(checkpoint_key)
+      # TODO(b/398016624): Make this a vlog this log after bug is fixed.
+      logging.info(
+          "Will read sub key %s: %s",
+          sub_checkpoint_key,
+          layout.unsharded_shape,
+      )
+      keys.append(sub_checkpoint_key)
       slices.append(
           _shard_info_str(
               layout.unsharded_shape,
@@ -142,7 +154,8 @@ class EmbeddingReshardCallback(checkpoint_adapter.ReshardCallback):
         table_value = full_values[table_idx]
         # Apply rotation to get this table's shard index
         table_shard_offset = (
-            shard_idx + layout.sparse_core_shard_rotation
+            shard_idx
+            + (layout.num_sparse_cores - layout.sparse_core_shard_rotation)
         ) % layout.num_sparse_cores
         sharded_tensors.append(
             table_value[
@@ -212,7 +225,7 @@ class TpuEmbeddingV3CheckpointAdapter(
         self._checkpoint_to_reshard_callback[sorted_layouts[0].table_name] = (
             EmbeddingReshardCallback(
                 stacked_name,
-                [l.table_name for l in layouts],
+                [l.table_name for l in sorted_layouts],
                 sorted_layouts,
                 None,
             )

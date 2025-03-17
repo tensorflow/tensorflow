@@ -64,7 +64,6 @@ py_strict_library(
     srcs = [
         "calibrator.py",
     ],
-    srcs_version = "PY3",
     visibility = ["//visibility:public"],
     deps = [
         ":_pywrap_tensorflow_lite_calibration_wrapper",  # buildcleaner: keep
@@ -83,8 +82,6 @@ py_strict_test(
         ":test_data",
         "//tensorflow/lite:testdata/multi_add.bin",
     ],
-    python_version = "PY3",
-    srcs_version = "PY3",
     tags = ["no_oss"],
     deps = [
         ":calibrator",

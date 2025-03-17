@@ -214,8 +214,8 @@ CallContext UnionContexts(CallContext a, CallContext b) {
   } else if (a == b) {
     return a;
   } else {
-    // Contexts are different and neither is kNone, ie one is kSequential and
-    // the other is kParallel.
+    // Contexts are different and neither is kNone, i.e. one is kControlFlow and
+    // the other is kEmbedded.
     return CallContext::kBoth;
   }
 }

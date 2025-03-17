@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 
 #include <memory>
+#include <string>
+#include <utility>
 
 #include <gtest/gtest.h>
 #include "xla/hlo/ir/hlo_computation.h"
@@ -58,6 +60,10 @@ TEST_F(CpuDynamicShapeTest, DynamicShapeR2) {
       /*features=*/"",
       /*entry_point_name=*/"entry",
       /*relocation_model=*/CpuAotCompilationOptions::RelocationModel::Static};
+
+  hlo_module->mutable_config()
+      .mutable_debug_options()
+      .set_xla_cpu_use_thunk_runtime(false);
 
   CompileAheadOfTimeAndVerifyIr(std::move(hlo_module), options,
                                 filecheck_pattern,

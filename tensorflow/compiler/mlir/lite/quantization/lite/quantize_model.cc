@@ -34,6 +34,7 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/common/tfl_pass_config.h"
 #include "tensorflow/compiler/mlir/lite/debug/debug.h"
+#include "tensorflow/compiler/mlir/lite/debug/debug_options.pb.h"
 #include "tensorflow/compiler/mlir/lite/flatbuffer_export.h"
 #include "tensorflow/compiler/mlir/lite/flatbuffer_import.h"
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
@@ -132,9 +133,9 @@ absl::Status QuantizeModel(
 
   // Export the results.
   tflite::FlatbufferExportOptions options;
-  options.toco_flags.set_force_select_tf_ops(false);
-  options.toco_flags.set_enable_select_tf_ops(true);
-  options.toco_flags.set_allow_custom_ops(true);
+  options.converter_flags.set_force_select_tf_ops(false);
+  options.converter_flags.set_enable_select_tf_ops(true);
+  options.converter_flags.set_allow_custom_ops(true);
   if (!tflite::MlirToFlatBufferTranslateFunction(module.get(), options,
                                                  &output_buffer)) {
     return absl::InternalError("Failed to export MLIR to flatbuffer.");

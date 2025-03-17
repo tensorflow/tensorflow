@@ -22,11 +22,8 @@ limitations under the License.
 #include "tensorflow/core/data/service/common.pb.h"
 #include "tensorflow/core/data/service/data_transfer.h"
 #include "tensorflow/core/data/service/worker.pb.h"
-#include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/status.h"
-#include "tensorflow/core/platform/statusor.h"
-#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 namespace data {
@@ -40,34 +37,48 @@ class DataServiceWorkerClient : public DataServiceClientBase {
   DataServiceWorkerClient(
       const std::string& address, const std::string& protocol,
       const std::string& transfer_protocol,
+      bool fall_back_to_grpc_at_get_element_time,
       const DeviceBase::AcceleratorDeviceInfo* accelerator_device_info,
       Allocator* allocator)
       : DataServiceClientBase(address, protocol),
         transfer_protocol_(transfer_protocol),
+        fall_back_to_grpc_at_get_element_time_(
+            fall_back_to_grpc_at_get_element_time),
         accelerator_device_info_(accelerator_device_info),
         allocator_(allocator) {}
 
   // Fetches an element from the worker.
-  Status GetElement(const GetElementRequest& req, GetElementResult& result);
+  absl::Status GetElement(const GetElementRequest& req,
+                          GetElementResult& result);
 
   // Makes a best effort to cancel all outstanding calls in progress for the
   // client, and causes further calls to return Cancelled status.
   void TryCancel();
+
   // Returns an error if the client is incompatible with a server which has the
   // properties described in `compatibility_info`.
-  Status CheckCompatibility(
+  absl::Status CheckCompatibility(
       const std::string& server_compatibility_info) const {
     return client_->CheckCompatibility(server_compatibility_info);
   }
+
+  // If `true`, data service clients should fall back to gRPC for this worker
+  // client if it nonretryably fails to transfer an element using an alternative
+  // data transfer protocol.
+  bool FallBackToGrpcAtGetElementTime() const {
+    return fall_back_to_grpc_at_get_element_time_;
+  }
+
   // Returns the data transfer protocol, preferring to use the local transfer
   // protocol if a local tf.data worker exists.
   std::string GetDataTransferProtocol() const;
 
  protected:
-  Status EnsureInitialized() override;
+  absl::Status EnsureInitialized() override;
 
  private:
   std::string transfer_protocol_;
+  bool fall_back_to_grpc_at_get_element_time_;
   const DeviceBase::AcceleratorDeviceInfo* accelerator_device_info_;
   Allocator* allocator_;
 
@@ -84,6 +95,10 @@ CreateDataServiceWorkerClient(
     const std::string& dispatcher_protocol, const DataTransferServerInfo& info,
     const DeviceBase::AcceleratorDeviceInfo* accelerator_device_info,
     Allocator* allocator);
+
+// If true, clients should use local protocol for data transfer (disregarding
+// any other user-specified or runtime-defaulted protocol).
+bool ForceLocalProtocol(const std::string& worker_address);
 
 }  // namespace data
 }  // namespace tensorflow

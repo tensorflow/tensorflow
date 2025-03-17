@@ -38,31 +38,56 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
-#include "llvm/ADT/SmallString.h"
-#include "llvm/Support/ToolOutputFile.h"
 #include "llvm/Support/raw_ostream.h"
-#include "mlir/IR/OperationSupport.h"  // from @llvm-project
-#include "mlir/Support/FileUtilities.h"  // from @llvm-project
-#include "mlir/Transforms/LocationSnapshot.h"  // from @llvm-project
+#include "mlir/IR/OperationSupport.h"
+#include "mlir/Transforms/LocationSnapshot.h"
+#include "xla/debug_options_flags.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/runtime/large_hlo_snapshot_serialization/serialization.h"
+#include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_graph_dumper.h"
 #include "xla/service/hlo_proto_util.h"
+#include "xla/tsl/lib/io/zlib_compression_options.h"
+#include "xla/tsl/lib/io/zlib_outputbuffer.h"
+#include "xla/tsl/lib/strings/proto_serialization.h"
+#include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/file_system.h"
+#include "xla/tsl/platform/file_system_helper.h"
 #include "xla/util.h"
-#include "tsl/lib/io/zlib_compression_options.h"
-#include "tsl/lib/io/zlib_outputbuffer.h"
-#include "tsl/lib/strings/proto_serialization.h"
-#include "tsl/platform/env.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/file_system.h"
 #include "tsl/platform/path.h"
+#include "tsl/platform/platform.h"
+#include "tsl/platform/protobuf.h"
 #include "tsl/platform/regexp.h"
-#include "tsl/platform/status.h"
 #include "tsl/profiler/lib/scoped_annotation.h"
 
+// BuildData isn't available in OSS.
+#if !TSL_IS_IN_OSS
+#include "absl/base/builddata.h"
+#endif  // TSL_IS_IN_OSS
+
 namespace xla {
+
+absl::Status CreateDirIfNeeded(const std::string& dir, tsl::Env* env) {
+  if (!env->IsDirectory(dir).ok()) {
+    absl::Status status = env->RecursivelyCreateDir(dir);
+    // Two threads can race to observe the absence of the dump directory and
+    // simultaneously try to create it, causing the "losing" thread to get a
+    // "directory already exists" error.  We can work around this by checking
+    // again whether the dir exists.
+    if (!status.ok()) {
+      status = env->IsDirectory(dir);
+      if (!status.ok()) {
+        LOG(ERROR) << "Could not create directory: " << dir
+                   << ". Error: " << status;
+        return status;
+      }
+    }
+  }
+  return absl::OkStatus();
+}
 
 std::string RenderGraph(absl::string_view label, const HloModule& module,
                         RenderedGraphFormat format,
@@ -95,14 +120,13 @@ struct CanonicalDebugOptions {
         dump_as_url(opts.xla_dump_hlo_as_url()),
         dump_fusion_visualization(opts.xla_dump_fusion_visualization()),
         dump_snapshots(opts.xla_dump_hlo_snapshots()),
+        dump_unoptimized_snapshots(
+            opts.xla_gpu_dump_hlo_unoptimized_snapshots()),
         dump_include_timestamp(opts.xla_dump_include_timestamp()),
         dump_max_hlo_modules(opts.xla_dump_max_hlo_modules()),
-        dump_module_metadata(opts.xla_dump_module_metadata()),
         dump_compress_protos(opts.xla_dump_compress_protos()),
-        dump_hlo_metadata(!opts.xla_dump_disable_metadata()),
-        dump_as_long_text(opts.xla_dump_hlo_as_long_text()),
-        dump_mlir_pretty_form(opts.xla_dump_enable_mlir_pretty_form()),
-        dump_large_constants(opts.xla_dump_large_constants()) {
+        dump_fdo_profiles(opts.xla_gpu_experimental_dump_fdo_profiles()),
+        dump_mlir_pretty_form(opts.xla_dump_enable_mlir_pretty_form()) {
     // This constructor examines the values in `opts` and turns on other flags
     // based on what we think is the user's intent.  To reduce confusion about
     // what was a user-specified value versus an extrapolated value, within this
@@ -113,7 +137,8 @@ struct CanonicalDebugOptions {
     bool output_format_other_than_url_specified =
         opts.xla_dump_hlo_as_text() || opts.xla_dump_hlo_as_proto() ||
         opts.xla_dump_hlo_as_dot() || opts.xla_dump_hlo_as_html() ||
-        opts.xla_dump_hlo_snapshots();
+        opts.xla_dump_hlo_snapshots() ||
+        opts.xla_gpu_dump_hlo_unoptimized_snapshots();
     bool output_format_specified =
         output_format_other_than_url_specified || opts.xla_dump_hlo_as_url();
 
@@ -194,6 +219,14 @@ struct CanonicalDebugOptions {
         should_dump_pipeline = [](string_view) { return false; };
       }
     }
+
+    // Dumping unoptimized HLO snapshots should not trigger dumping of all
+    // available information for the HLO module and pipelines.
+
+    if (dump_unoptimized_snapshots) {
+      should_dump_module = [](string_view) { return false; };
+      should_dump_pipeline = [](string_view) { return false; };
+    }
   }
 
   bool dumping_to_stdout() const { return dump_to == "-"; }
@@ -212,14 +245,12 @@ struct CanonicalDebugOptions {
   bool dump_as_url;
   bool dump_fusion_visualization;
   bool dump_snapshots;
+  bool dump_unoptimized_snapshots;
   bool dump_include_timestamp;
   int64_t dump_max_hlo_modules;
-  bool dump_module_metadata;
   bool dump_compress_protos;
-  bool dump_hlo_metadata;
-  bool dump_as_long_text;
+  bool dump_fdo_profiles;
   bool dump_mlir_pretty_form;
-  bool dump_large_constants;
 };
 
 // Helper class to hold a list of functions that produces data to be written to
@@ -297,17 +328,8 @@ static std::optional<std::string> GetDumpFilePath(
   VLOG(1) << "Dumping " << filename << " to " << dir;
 
   tsl::Env* env = tsl::Env::Default();
-  // Two threads can race to observe the absence of the dump directory and
-  // simultaneously try to create it, causing the "losing" thread to get a
-  // "directory already exists" error.  We can work around this by checking
-  // again whether the dir exists.
-  if (!env->IsDirectory(dir).ok()) {
-    auto status = env->RecursivelyCreateDir(dir);
-    if (!status.ok() && !env->IsDirectory(dir).ok()) {
-      LOG(ERROR) << "Could not create directory " << dir
-                 << " for dumping XLA debug data: " << status;
-      return std::nullopt;
-    }
+  if (!CreateDirIfNeeded(dir, env).ok()) {
+    return std::nullopt;
   }
 
   // Make sure we are not going to dump more modules than the user has asked.
@@ -436,25 +458,20 @@ static std::vector<std::string> DumpHloModuleImpl(
   std::vector<std::optional<std::string>> file_paths;
 
   if (opts.dump_as_text) {
-    auto print_options = opts.dump_as_long_text
-                             ? HloPrintOptions::Default()
-                             : HloPrintOptions::ShortParsable();
-    print_options.set_print_large_constants(opts.dump_large_constants);
-    print_options.set_print_control_dependencies(true);
-    print_options.set_print_operand_index_annotation_interval(5);
-    print_options.set_print_backend_config(true);
-    print_options.set_print_metadata(opts.dump_hlo_metadata);
-    print_options.set_print_name_after_closing_brace(true);
-    file_paths.push_back(DumpToFileInDirOrStdoutImpl(
-        StrCat(filename, ".txt"), module.ToString(print_options), opts));
+    file_paths.push_back(DumpToFileInDirOrStdoutImpl(StrCat(filename, ".txt"),
+                                                     module.ToString(), opts));
     if (buffer_assn) {
-      DataProducer data_producer;
-      data_producer.Append([&] { return buffer_assn->ToString(); });
-      data_producer.Append([&] { return "\n\n"; });
-      data_producer.Append(
+      DataProducer buffer_assignment;
+      buffer_assignment.Append([&] { return buffer_assn->ToString(); });
+      buffer_assignment.Append([&] { return "\n\n"; });
+      buffer_assignment.Append(
           [&] { return buffer_assn->hlo_live_range().ToString(); });
       file_paths.push_back(DumpToFileInDirOrStdoutImpl(
-          StrCat(filename, "-buffer-assignment.txt"), data_producer, opts));
+          StrCat(filename, "-buffer-assignment.txt"), buffer_assignment, opts));
+      DataProducer summary_report;
+      summary_report.Append([&] { return buffer_assn->MemoryUsageReport(); });
+      file_paths.push_back(DumpToFileInDirOrStdoutImpl(
+          StrCat(filename, "-memory-usage-report.txt"), summary_report, opts));
     }
   }
 
@@ -509,6 +526,12 @@ static std::vector<std::string> DumpHloModuleImpl(
           FilenameFor(module, computation->name(), "_fusion.html"),
           *rendered_graph, opts));
     }
+  }
+
+  if (opts.dump_fdo_profiles) {
+    file_paths.push_back(
+        DumpToFileInDirImpl(StrFormat("%s.fdo_profile", filename),
+                            module.config().fdo_profile(), opts));
   }
 
   // Special case for rendering graphs as URLs.  We'll dump them to a file
@@ -605,11 +628,20 @@ std::string FilenameFor(int unique_id, string_view module_name,
   if (!module_name.empty()) {
     absl::StrAppend(&filename, ".", module_name);
   }
+
+#if !TSL_IS_IN_OSS
+  absl::string_view cl_number = BuildData::Changelist();
+  if (!cl_number.empty()) {
+    absl::StrAppend(&filename, ".cl_", cl_number);
+  }
+#endif  // !TSL_IS_IN_OSS
+
   absl::StrAppend(&filename, ".", suffix);
   // Skip the module name if the resulting length is too long.
   if (!module_name.empty() && filename.size() > 255) {
     return FilenameFor(unique_id, "", prefix, suffix);
   }
+
   return filename;
 }
 
@@ -674,15 +706,7 @@ void DumpProtobufToFile(const tsl::protobuf::Message& proto,
   if (dir.empty()) {
     return;
   }
-  if (!env->IsDirectory(dir).ok()) {
-    auto status = env->RecursivelyCreateDir(dir);
-    if (!status.ok()) {
-      LOG(ERROR) << "Could not create directory " << dir
-                 << " for dumping: " << status;
-      return;
-    }
-  }
-  if (!env->IsDirectory(dir).ok()) {
+  if (!CreateDirIfNeeded(dir, env).ok()) {
     return;
   }
   const std::string path = tsl::io::JoinPath(dir, filename);
@@ -736,6 +760,22 @@ std::vector<std::string> DumpHloModuleIfEnabled(
   CanonicalDebugOptions opts(module.config().debug_options());
   if (opts.should_dump_module(module.name())) {
     DumpHloModuleImpl(module, &buffer_assn, TimestampFor(module), name, opts);
+  }
+  return {};
+}
+
+std::vector<std::string> DumpHloModuleProtoIfEnabled(
+    const HloModuleProto& module_proto, absl::string_view name) {
+  auto config = xla::HloModule::CreateModuleConfigFromProto(
+      module_proto, xla::GetDebugOptionsFromFlags());
+
+  auto module =
+      xla::HloModule::CreateFromProto(module_proto, config.value()).value();
+
+  CanonicalDebugOptions opts(module->config().debug_options());
+  if (opts.should_dump_module(module->name())) {
+    return DumpHloModuleImpl(*module, /*buffer_assn=*/nullptr,
+                             TimestampFor(*module), name, opts);
   }
   return {};
 }
@@ -864,11 +904,70 @@ void DumpHloSnapshotIfEnabled(const HloSnapshot& snapshot,
   DumpToFileInDirImpl(filename, pb, canonical_opts);
 }
 
+void DumpHloUnoptimizedSnapshotIfEnabled(
+    const HloUnoptimizedSnapshot& hlo_snapshot, const DebugOptions& opts) {
+  CanonicalDebugOptions canonical_opts(opts);
+  std::string name = hlo_snapshot.hlo_module().name();
+  if (!canonical_opts.dump_unoptimized_snapshots) {
+    return;
+  }
+
+  if (hlo_snapshot.partitions_size() == 0) {
+    LOG(ERROR) << "Refusing to write unoptimized HLO snapshot proto for module "
+               << name << ": no partitions input found.";
+    return;
+  }
+  int64_t execution_count;
+  {
+    static absl::Mutex mu(absl::kConstInit);
+    static auto& module_id_to_execution_count ABSL_GUARDED_BY(mu) =
+        *new absl::flat_hash_map<int64_t, int64_t>();
+    absl::MutexLock lock(&mu);
+    execution_count =
+        module_id_to_execution_count[hlo_snapshot.hlo_module().id()]++;
+  }
+  std::string filename = FilenameFor(
+      hlo_snapshot.hlo_module().id(), hlo_snapshot.hlo_module().name(), "",
+      absl::StrFormat("execution_%04d.hlo_unoptimized_snapshot",
+                      execution_count));
+  // We use a custom proto binary serialization for HloUnoptimizedSnapshot to
+  // bypass the 2GiB proto size limitation.
+  if (canonical_opts.dump_as_proto && !canonical_opts.dump_as_text) {
+    tsl::Env* env = tsl::Env::Default();
+    const std::string& dir = canonical_opts.dump_to;
+    if (dir.empty()) {
+      return;
+    }
+    if (!CreateDirIfNeeded(dir, env).ok()) {
+      return;
+    }
+    const std::string path = tsl::io::JoinPath(dir, filename);
+
+    std::unique_ptr<tsl::WritableFile> file;
+    absl::Status s = env->NewWritableFile(absl::StrCat(path, ".pb"), &file);
+    if (!s.ok()) {
+      LOG(ERROR) << "Could not create file " << filename << ": " << s;
+      return;
+    }
+    tsl::WritableFileCopyingOutputStream output_stream(file.get());
+    tsl::protobuf::io::CopyingOutputStreamAdaptor adaptor(&output_stream);
+    if (!SerializeHloUnoptimizedSnapshot(hlo_snapshot, &adaptor).ok()) {
+      LOG(ERROR) << "Failed to serialize HLO unoptimized snapshot proto";
+    }
+    adaptor.Flush();
+    if (!file->Close().ok()) {
+      LOG(ERROR) << "Failed to close HLO unoptimized snapshot proto file";
+    }
+  } else {
+    DumpProtobufToFile(hlo_snapshot, opts, filename, nullptr);
+  }
+}
+
 void DumpHloModuleMetadataIfEnabled(const std::vector<HloModule*>& modules) {
   absl::flat_hash_set<int64_t> dumped_module_ids;
   for (const HloModule* module : modules) {
     CanonicalDebugOptions opts(module->config().debug_options());
-    if (!opts.dump_module_metadata) {
+    if (!module->config().debug_options().xla_dump_module_metadata()) {
       continue;
     }
     DumpHloModuleMetadata(module->metadata().proto(), opts, &dumped_module_ids);
@@ -879,6 +978,22 @@ void DumpHloModuleMetadataIfEnabled(const std::vector<HloModule*>& modules) {
                             &dumped_module_ids);
     }
   }
+}
+
+absl::Status DumpProtoToDirectory(const tsl::protobuf::Message& message,
+                                  const std::string& directory,
+                                  const std::string& file_name,
+                                  std::string* full_path) {
+  tsl::Env* env = tsl::Env::Default();
+  TF_RETURN_IF_ERROR(env->RecursivelyCreateDir(directory));
+  TF_RETURN_IF_ERROR(CreateDirIfNeeded(directory, env));
+  std::string safe_file_name = SanitizeFileName(file_name) + ".pb";
+  std::string full_path_impl;
+  if (!full_path) {
+    full_path = &full_path_impl;
+  }
+  *full_path = tsl::io::JoinPath(directory, safe_file_name);
+  return tsl::WriteBinaryProto(env, *full_path, message);
 }
 
 }  // namespace xla

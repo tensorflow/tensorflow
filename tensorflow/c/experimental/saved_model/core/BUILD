@@ -174,6 +174,8 @@ cc_library(
         "//tensorflow/core:protos_all_cc",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:optional",
     ],
@@ -197,6 +199,7 @@ tf_cc_test(
         "//tensorflow/core/common_runtime:core_cpu_lib",
         "//tensorflow/core/common_runtime/eager:context",
         "//tensorflow/core/common_runtime/eager:core",
+        "@com_google_absl//absl/status",
     ],
 )
 
@@ -242,6 +245,9 @@ tf_cc_test(
         "//tensorflow/core/common_runtime/eager:context",
         "//tensorflow/core/common_runtime/eager:core",
         "//tensorflow/core/common_runtime/eager:tensor_handle",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/types:optional",
     ],
 )
 
@@ -298,5 +304,7 @@ tf_cc_test(
         "//tensorflow/core/common_runtime:core_cpu_lib",
         "//tensorflow/core/common_runtime/eager:context",
         "//tensorflow/core/common_runtime/eager:core",
+        "@com_google_absl//absl/status",
+        "@local_xla//xla/tsl/protobuf:error_codes_proto_impl_cc",
     ],
 )

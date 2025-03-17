@@ -20,7 +20,7 @@ limitations under the License.
 
 namespace tensorflow {
 
-Status StatefulRandomShape(shape_inference::InferenceContext* c) {
+absl::Status StatefulRandomShape(shape_inference::InferenceContext* c) {
   using shape_inference::ShapeHandle;
   // Check algorithm shape
   ShapeHandle unused;
@@ -61,7 +61,7 @@ REGISTER_OP("StatefulUniformInt")
       // Check inputs
       ShapeHandle unused;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
-      Status s = c->WithRank(c->input(3), 0, &unused);
+      absl::Status s = c->WithRank(c->input(3), 0, &unused);
       if (!s.ok()) {
         return errors::InvalidArgument(
             "minval must be a scalar; got a tensor of shape ",

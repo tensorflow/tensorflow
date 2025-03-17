@@ -66,7 +66,7 @@ std::vector<std::vector<int>> ShardVariables(
   };
   std::priority_queue<RestoreVariableCluster,
                       std::vector<RestoreVariableCluster>, decltype(cmp)>
-      min_heap;
+      min_heap(cmp);
   for (int i = 0; i < num_shards; ++i) {
     min_heap.push(RestoreVariableCluster());
   }

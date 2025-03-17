@@ -29,9 +29,10 @@ namespace {
 class AsyncCommandBufferTest : public HloTestBase {};
 
 HloModuleConfig GetModuleConfig() {
-  // Allow even small graphs to be launched on the GPU.
+  // Disable command buffer scheduling pass as we already have explicit command
+  // buffers in the input HLO module.
   DebugOptions debug_options = DefaultDebugOptionsIgnoringFlags();
-  debug_options.set_xla_gpu_graph_min_graph_size(1);
+  debug_options.clear_xla_gpu_enable_command_buffer();
 
   HloModuleConfig config;
   config.set_debug_options(debug_options);

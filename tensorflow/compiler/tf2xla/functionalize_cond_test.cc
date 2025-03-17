@@ -94,7 +94,8 @@ TEST_F(FunctionalizeCondTest, JoinCondStates) {
   }
 
   // An non-merge op with inputs from then and else branch.
-  Status status = JoinCondStatesNonMerge(then_branch, else_branch).status();
+  absl::Status status =
+      JoinCondStatesNonMerge(then_branch, else_branch).status();
   EXPECT_TRUE(errors::IsInvalidArgument(status));
 
   // Merge between then and else branch.

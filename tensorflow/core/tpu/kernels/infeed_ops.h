@@ -38,7 +38,7 @@ class TpuInfeedEnqueueOp : public TpuTransferAsyncOpKernel {
   explicit TpuInfeedEnqueueOp(
       OpKernelConstruction* ctx,
       std::unique_ptr<TpuTransferOpInterface> transfer_op);
-  Status DoWork(OpKernelContext* ctx, int device_ordinal) override;
+  absl::Status DoWork(OpKernelContext* ctx, int device_ordinal) override;
 
  private:
   TensorShape shape_;
@@ -56,7 +56,7 @@ class TpuInfeedEnqueueTupleOp : public TpuTransferAsyncOpKernel {
   explicit TpuInfeedEnqueueTupleOp(
       OpKernelConstruction* ctx,
       std::unique_ptr<TpuTransferOpInterface> transfer_op);
-  Status DoWork(OpKernelContext* ctx, int device_ordinal) override;
+  absl::Status DoWork(OpKernelContext* ctx, int device_ordinal) override;
 
  private:
   std::vector<TensorShape> shapes_;
@@ -75,7 +75,7 @@ class InfeedEnqueuePrelinearizedBufferOp : public TpuTransferAsyncOpKernel {
       OpKernelConstruction* ctx,
       std::unique_ptr<TpuTransferOpInterface> transfer_op);
 
-  Status DoWork(OpKernelContext* ctx, int device_ordinal) override;
+  absl::Status DoWork(OpKernelContext* ctx, int device_ordinal) override;
 
  private:
   InfeedEnqueuePrelinearizedBufferOp(

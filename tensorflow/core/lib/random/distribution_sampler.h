@@ -31,12 +31,12 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_LIB_RANDOM_DISTRIBUTION_SAMPLER_H_
 #define TENSORFLOW_CORE_LIB_RANDOM_DISTRIBUTION_SAMPLER_H_
 
+#include "xla/tsl/lib/random/distribution_sampler.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/lib/random/simple_philox.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/types.h"
-#include "tsl/lib/random/distribution_sampler.h"
 
 namespace tensorflow {
 namespace random {

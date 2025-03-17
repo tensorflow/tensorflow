@@ -15,10 +15,13 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_TFRT_RUNTIME_TF_THREADPOOL_CONCURRENT_WORK_QUEUE_H_
 #define TENSORFLOW_CORE_TFRT_RUNTIME_TF_THREADPOOL_CONCURRENT_WORK_QUEUE_H_
 
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <string>
 
+#include "absl/base/attributes.h"
+#include "absl/status/statusor.h"
 #include "tensorflow/core/platform/cpu_info.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/threadpool_interface.h"

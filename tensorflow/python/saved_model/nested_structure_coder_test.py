@@ -26,6 +26,7 @@ from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import extension_type
+from tensorflow.python.framework import immutable_dict
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor
 from tensorflow.python.framework import tensor_shape
@@ -70,6 +71,20 @@ class NestedStructureCoderTest(test.TestCase):
 
   def testEncodeDecodeDict(self):
     structure = dict(a=3, b=[7, 2.5])
+    self.assertTrue(nested_structure_coder.can_encode(structure))
+    encoded = nested_structure_coder.encode_structure(structure)
+    expected = struct_pb2.StructuredValue()
+    expected.dict_value.fields["a"].int64_value = 3
+    list_value = expected.dict_value.fields["b"].list_value
+    list_value.values.add().int64_value = 7
+    list_value.values.add().float64_value = 2.5
+    self.assertEqual(expected, encoded)
+    decoded = nested_structure_coder.decode_proto(encoded)
+    self.assertIsInstance(decoded["a"], int)
+    self.assertEqual(structure, decoded)
+
+  def testEncodeDecodeImmutableDict(self):
+    structure = immutable_dict.ImmutableDict(dict(a=3, b=[7, 2.5]))
     self.assertTrue(nested_structure_coder.can_encode(structure))
     encoded = nested_structure_coder.encode_structure(structure)
     expected = struct_pb2.StructuredValue()

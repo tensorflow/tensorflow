@@ -43,7 +43,7 @@ class FakeOptimizerStage : public GraphOptimizerStage<FakeResult> {
   ~FakeOptimizerStage() override = default;
 
   bool IsSupported(const NodeDef* node) const override { return true; }
-  Status TrySimplify(NodeDef* node, FakeResult* result) override {
+  absl::Status TrySimplify(NodeDef* node, FakeResult* result) override {
     return absl::OkStatus();
   }
 };

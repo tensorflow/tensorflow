@@ -23,14 +23,14 @@ limitations under the License.
 namespace tensorflow {
 
 typedef std::map<string, Tensor> NamedTensors;
-typedef std::function<void(const Status&)> StatusCallback;
+typedef std::function<void(const absl::Status&)> StatusCallback;
 
 // Uses `rendezvous` to send tensors in `tensors_to_send`. `device_context`
 // should be the DeviceContext associated with the source of the tensors.
 // `alloc_attrs` contains information about how the `tensors_to_send` are
 // allocated. `alloc_attrs` should either be {} or should match the length of
 // `keys`.
-Status SendTensorsToRendezvous(
+absl::Status SendTensorsToRendezvous(
     RendezvousInterface* rendezvous, DeviceContext* device_context,
     const std::vector<AllocatorAttributes>& alloc_attrs,
     const std::vector<string>& keys, absl::Span<const Tensor> tensors_to_send);
@@ -45,9 +45,9 @@ void RecvOutputsFromRendezvousAsync(
     const std::vector<string>& keys, std::vector<Tensor>* received_tensors,
     StatusCallback done);
 
-Status RecvOutputsFromRendezvous(RendezvousInterface* rendezvous,
-                                 NamedTensors* out,
-                                 const Rendezvous::Args& args);
+absl::Status RecvOutputsFromRendezvous(RendezvousInterface* rendezvous,
+                                       NamedTensors* out,
+                                       const Rendezvous::Args& args);
 
 }  // namespace tensorflow
 

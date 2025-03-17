@@ -24,6 +24,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/cleanup/cleanup.h"
+#include "absl/container/flat_hash_map.h"
 #include "absl/functional/function_ref.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_format.h"
@@ -47,6 +48,7 @@ limitations under the License.
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/rocm/rocm_platform_id.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "xla/stream_executor/sycl/sycl_platform_id.h"
 #include "xla/util.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
@@ -63,16 +65,43 @@ GpuTransferManager::GpuTransferManager(se::Platform::Id id,
                                        unsigned pointer_size)
     : GenericTransferManager(id, pointer_size) {}
 
+InfeedManager* GpuTransferManager::GetOrCreateInfeedManager(
+    se::StreamExecutor* executor) {
+  static absl::Mutex* mutex = new absl::Mutex();
+  static auto* infeed_managers =
+      new absl::flat_hash_map<se::StreamExecutor*,
+                              std::unique_ptr<InfeedManager>>();
+  absl::MutexLock lock(mutex);
+  if (!infeed_managers->contains(executor)) {
+    infeed_managers->emplace(executor,
+                             std::make_unique<InfeedManager>(executor));
+  }
+  return infeed_managers->at(executor).get();
+}
+
+OutfeedManager* GpuTransferManager::GetOrCreateOutfeedManager(
+    se::StreamExecutor* executor) {
+  static absl::Mutex* mutex = new absl::Mutex();
+  static auto* outfeed_managers =
+      new absl::flat_hash_map<se::StreamExecutor*,
+                              std::unique_ptr<OutfeedManager>>();
+  absl::MutexLock lock(mutex);
+  if (!outfeed_managers->contains(executor)) {
+    outfeed_managers->emplace(executor, std::make_unique<OutfeedManager>());
+  }
+  return outfeed_managers->at(executor).get();
+}
+
 absl::Status GpuTransferManager::TransferLiteralToInfeed(
     se::StreamExecutor* executor, const LiteralSlice& literal) {
-  return gpu::GetOrCreateInfeedManager(executor)->TransferLiteralToInfeed(
-      executor, literal);
+  InfeedManager* infeed_manager = GetOrCreateInfeedManager(executor);
+  return infeed_manager->TransferLiteralToInfeed(executor, literal);
 }
 
 absl::Status GpuTransferManager::TransferLiteralFromOutfeed(
     se::StreamExecutor* executor, MutableBorrowingLiteral literal) {
-  return gpu::GetOrCreateOutfeedManager(executor)->TransferLiteralFromOutfeed(
-      executor, literal);
+  OutfeedManager* outfeed_manager = GetOrCreateOutfeedManager(executor);
+  return outfeed_manager->TransferLiteralFromOutfeed(executor, literal);
 }
 
 absl::Status GpuTransferManager::EnsurePinnedBuffersAllocated(
@@ -83,7 +112,6 @@ absl::Status GpuTransferManager::EnsurePinnedBuffersAllocated(
 
   TF_ASSIGN_OR_RETURN(pinned_chunk_,
                       executor->HostMemoryAllocate(kPinnedChunkBytes));
-  pinned_chunk_se_ = executor;
 
   static_assert(kPinnedChunkBytes % kPinnedBufferBytes == 0,
                 "assumption of loop below");
@@ -211,7 +239,8 @@ static absl::Status ForEachChunk(
   for (int64_t chunk_index = 0; chunk_index < num_chunks; ++chunk_index) {
     TF_RETURN_IF_ERROR(callback(
         /*chunk_offset=*/chunk_index * chunk_size,
-        /*chunk_size=*/std::min(chunk_size, size - chunk_index * chunk_size)));
+        /*chunk_size=*/std::min(
+            chunk_size, static_cast<size_t>(size - chunk_index * chunk_size))));
   }
   return absl::OkStatus();
 }
@@ -342,11 +371,20 @@ static std::unique_ptr<xla::TransferManager> CreateAMDGPUTransferManager() {
           .getPointerSize(0 /* default address space */));
 }
 
+static std::unique_ptr<xla::TransferManager> CreateSYCLTransferManager() {
+  return std::make_unique<xla::gpu::GpuTransferManager>(
+      /*id=*/stream_executor::sycl::kSyclPlatformId,
+      /*pointer_size=*/llvm::DataLayout(xla::gpu::spir::DataLayout())
+          .getPointerSize(0 /* default address space */));
+}
+
 static bool InitModule() {
   xla::TransferManager::RegisterTransferManager(
       stream_executor::cuda::kCudaPlatformId, &CreateNVPTXTransferManager);
   xla::TransferManager::RegisterTransferManager(
       stream_executor::rocm::kROCmPlatformId, &CreateAMDGPUTransferManager);
+  xla::TransferManager::RegisterTransferManager(
+      stream_executor::sycl::kSyclPlatformId, &CreateSYCLTransferManager);
   return true;
 }
 

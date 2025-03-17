@@ -19,7 +19,7 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include "absl/status/statusor.h"
 #include "tensorflow/compiler/mlir/tf2xla/api/v1/compile_mlir_util.h"
-#include "tsl/platform/statusor.h"
+#include "xla/tsl/platform/statusor.h"
 
 template <typename T>
 bool WasGraphAnalysisFailure(const absl::StatusOr<T>& status) {

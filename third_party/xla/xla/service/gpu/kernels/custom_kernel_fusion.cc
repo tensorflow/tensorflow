@@ -17,12 +17,12 @@ limitations under the License.
 
 #include <memory>
 #include <string>
-#include <string_view>
 #include <utility>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 
 namespace xla::gpu {
@@ -46,7 +46,7 @@ absl::Status CustomKernelFusionRegistry::Register(
 }
 
 CustomKernelFusion* CustomKernelFusionRegistry::Lookup(
-    std::string_view name) const {
+    absl::string_view name) const {
   absl::MutexLock lock(&mutex_);
   if (auto it = registry_.find(name); it != registry_.end())
     return it->second.get();

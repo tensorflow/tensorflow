@@ -8,7 +8,6 @@ package(
         "//tensorflow/core/data:__pkg__",
         "//tensorflow/core/data/service:__pkg__",
         "//tensorflow/core/grappler/optimizers/data:__subpackages__",
-        "//tensorflow/core/kernels/data:__pkg__",
         "//tensorflow/core/kernels/data/experimental:__pkg__",
     ],
     licenses = ["notice"],
@@ -823,7 +822,9 @@ cc_library(
     deps = [
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
+        "//tensorflow/core/framework:graph_proto_cc",
         "//tensorflow/core/grappler/optimizers:custom_graph_optimizer",
+        "@com_google_absl//absl/status",
     ],
 )
 
@@ -838,6 +839,7 @@ cc_library(
         "//tensorflow/core/grappler:op_types",
         "//tensorflow/core/grappler/clusters:cluster",
         "//tensorflow/core/grappler/optimizers:custom_graph_optimizer_registry",
+        "@com_google_absl//absl/status",
     ] + tf_protos_all(),
     alwayslink = 1,
 )
@@ -854,6 +856,8 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
+        "//tensorflow/core/framework:graph_proto_cc",
+        "//tensorflow/core/framework:types_proto_cc",
         "//tensorflow/core/grappler:grappler_item",
     ],
 )
@@ -896,7 +900,7 @@ tf_cc_test(
         "//tensorflow/core/grappler:grappler_item",
         "//tensorflow/core/platform:status_matchers",
         "@com_google_googletest//:gtest_main",
-        "@local_tsl//tsl/protobuf:error_codes_proto_impl_cc",
+        "@local_xla//xla/tsl/protobuf:error_codes_proto_impl_cc",
     ],
 )
 
@@ -994,7 +998,7 @@ cc_library(
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/strings",
-        "@local_tsl//tsl/protobuf:error_codes_proto_impl_cc",
+        "@local_xla//xla/tsl/protobuf:error_codes_proto_impl_cc",
     ] + tf_protos_all(),
     alwayslink = 1,
 )
@@ -1022,7 +1026,7 @@ tf_cc_test(
         "//tensorflow/core/platform:status",
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest_main",
-        "@local_tsl//tsl/lib/core:status_test_util",
+        "@local_xla//xla/tsl/lib/core:status_test_util",
     ],
 )
 

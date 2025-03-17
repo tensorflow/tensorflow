@@ -26,10 +26,10 @@ limitations under the License.
 
 #include <cstdint>
 #include <optional>
-#include <string_view>
 
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "third_party/nanobind/include/nanobind/nanobind.h"
+#include "nanobind/nanobind.h"
 #include "xla/tsl/python/lib/core/numpy.h"
 
 #if NPY_ABI_VERSION < 0x02000000
@@ -46,7 +46,7 @@ class nb_dtype : public nanobind::object {
 
   explicit nb_dtype(const nanobind::str& format)
       : nb_dtype(from_args(format)) {}
-  explicit nb_dtype(std::string_view format)
+  explicit nb_dtype(absl::string_view format)
       : nb_dtype(from_args(nanobind::str(format.data(), format.size()))) {}
 
   static nb_dtype from_args(const nanobind::object& args);

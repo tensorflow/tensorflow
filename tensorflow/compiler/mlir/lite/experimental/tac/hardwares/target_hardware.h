@@ -15,6 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_LITE_EXPERIMENTAL_TAC_HARDWARES_TARGET_HARDWARE_H_
 #define TENSORFLOW_COMPILER_MLIR_LITE_EXPERIMENTAL_TAC_HARDWARES_TARGET_HARDWARE_H_
 
+#include <cstddef>
 #include <functional>
 #include <memory>
 #include <string>

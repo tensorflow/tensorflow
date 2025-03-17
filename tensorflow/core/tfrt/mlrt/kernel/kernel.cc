@@ -24,14 +24,17 @@ limitations under the License.
 
 #include "absl/base/optimization.h"
 #include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/tfrt/fallback/op_kernel_runner.h"
 #include "tensorflow/core/tfrt/mlrt/bytecode/function.h"
 #include "tensorflow/core/tfrt/mlrt/interpreter/async_handle.h"
 #include "tensorflow/core/tfrt/mlrt/interpreter/attribute_span.h"
@@ -364,6 +367,11 @@ struct MapFnOp : mlrt::KernelFrame {
   using KernelFrame::KernelFrame;
 
   static constexpr char kName[] = "tf_mlrt.map_fn";
+
+  // The order of arguments is [max_iterations, tensor_lists_or_flows,
+  // other_args(invariant)].
+  // The size of tensor_lists_or_flows is num_tensor_list_or_flow_in attribute.
+
   // Tensor list or flow in inputs starts after max_iteration
   static constexpr int kTensorListFlowInStartIndex = 1;
 
@@ -436,6 +444,18 @@ void MapFnOp::Invoke() {
   std::vector<mlrt::Promise> initializer_promises;
   initializer_promises.reserve(num_tensor_list_or_flow_in());
 
+  // Each iteration invoke a map_fn_body that has an input signature of
+  // (in_tensor_list_future, out_tensor_list_promise, loop_counter,
+  // tensor_list_index, other_args). The in_tensor_list_future is the output
+  // of the previous iteration and input of the current iteration. The
+  // out_tensor_list_promise is the output of the current iteration and input
+  // of the next iteration. The loop_counter is the loop index. The
+  // tensor_list_index is the index of the tensor list. The other_args are the
+  // invariant arguments.
+  //
+  // Here last_iter_futures is the in_tensor_list_future for the very first
+  // iteration and the initializer_promises are used to set
+  // last_iter_futures to bootstrap the first iteration.
   std::vector<mlrt::Future> last_iter_futures;
   last_iter_futures.reserve(num_tensor_list_or_flow_in());
   for (int i = 0; i < num_tensor_list_or_flow_in(); ++i) {
@@ -476,6 +496,8 @@ void MapFnOp::Invoke() {
           std::move(promise).Finish(execution_context.status());
         });
 
+    // First populate the in_tensor_list_future and out_tensor_list_promise
+    // arguments.
     auto arg_iter = body_args.begin();
     for (int j = 0; j < last_iter_futures.size(); ++j) {
       *arg_iter = std::move(last_iter_futures[j]);
@@ -497,12 +519,15 @@ void MapFnOp::Invoke() {
         tensorflow::tfrt_stub::FallbackTensor(std::move(loop_counter_tensor));
     ++arg_iter;
 
+    // The current tensor list index is the next argument.
     tensorflow::Tensor element_index_tensor(DT_INT32, {});
     element_index_tensor.scalar<int32_t>()() = i;
     *arg_iter =
         tensorflow::tfrt_stub::FallbackTensor(std::move(element_index_tensor));
     ++arg_iter;
 
+    // The rest of the arguments are the invariant arguments and are already
+    // populated outside the loop.
     thread_execution_context.Call(function, body_arg_last_uses,
                                   absl::MakeSpan(body_args),
                                   absl::Span<mlrt::Value>());
@@ -700,19 +725,26 @@ void CreateOp::Invoke() {
     return;
   }
 
-  auto runner = tfrt_stub::OpKernelRunner::Create(
-                    node_def.op(), node_def.name(), node_def.device(),
-                    node_def.input().size(),
-                    [&](tensorflow::AttrValueMap* attr_value_map) {
-                      *attr_value_map = node_def.attr();
-                      return absl::OkStatus();
-                    },
-                    fallback_request_state.device_manager(),
-                    fallback_request_state.process_function_library_runtime())
-                    .value();
+  absl::StatusOr<tfrt_stub::OpKernelRunner> runner =
+      tfrt_stub::OpKernelRunner::Create(
+          node_def.op(), node_def.name(), node_def.device(),
+          node_def.input().size(),
+          [&](tensorflow::AttrValueMap* attr_value_map) {
+            *attr_value_map = node_def.attr();
+            return absl::OkStatus();
+          },
+          fallback_request_state.device_manager(),
+          fallback_request_state.process_function_library_runtime());
+
+  if (!runner.ok()) {
+    LOG(WARNING) << "Fail to create OpKernelRunner for " << node_def_text()
+                 << ",  model= "
+                 << fallback_request_state.session_metadata().name()
+                 << " with error: " << runner.status();
+  }
 
   if (!fallback_request_state.runner_table()->Insert(op_key(),
-                                                     std::move(runner))) {
+                                                     *std::move(runner))) {
     execution_context().Fail(absl::InternalError(absl::StrCat(
         "CreateOp: OpKernelRunner already exists: ", node_def.op())));
   }
@@ -732,7 +764,13 @@ void ExecuteOpInternal(Frame& frame) {
 
   auto* kernel_runner =
       fallback_request_state.runner_table()->GetUnsafe(op_key);
-  DCHECK(kernel_runner);
+  if (kernel_runner->op_kernel() == nullptr) {
+    frame.execution_context().Fail(absl::InternalError(absl::StrCat(
+        "ExecuteOp: OpKernel not found: op_Key= ", op_key,
+        " , node_def= ", frame.node_def_text(),
+        " , model= ", fallback_request_state.session_metadata().name())));
+    return;
+  }
 
   ExecuteKernelRunner<IsAsync>(frame, context, fallback_request_state,
                                *kernel_runner);

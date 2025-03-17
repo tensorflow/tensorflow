@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/strings/str_format.h"
 #include "absl/types/span.h"
+#include "xla/layout_util.h"
 #include "xla/literal.h"
 #include "xla/primitive_util.h"
 #include "xla/service/shaped_buffer.h"
@@ -82,7 +83,7 @@ void GenericTransferManager::TransferLiteralFromDevice(
 
   absl::Status status = [&]() -> absl::Status {
     TF_RET_CHECK(stream->parent()->device_ordinal() ==
-                 device_buffer.device_ordinal());
+                 device_buffer.physical_device_ordinal());
 
     TF_RETURN_IF_ERROR(ShapeUtil::ForEachSubshapeWithStatus(
         device_buffer.on_device_shape(),
@@ -154,7 +155,7 @@ absl::Status GenericTransferManager::TransferLiteralToDeviceAsync(
   TF_RET_CHECK(
       ShapeUtil::Compatible(literal.shape(), device_buffer.on_device_shape()));
   TF_RET_CHECK(stream->parent()->device_ordinal() ==
-               device_buffer.device_ordinal());
+               device_buffer.physical_device_ordinal());
 
   TF_RETURN_IF_ERROR(WriteTupleIndexTablesAsync(stream, device_buffer));
 
@@ -285,7 +286,7 @@ int64_t GenericTransferManager::GetByteSizeRequirement(
   if (shape.IsTuple() || shape.is_static()) {
     return ShapeUtil::ByteSizeOf(shape, pointer_size_);
   }
-  int64_t metadata_size = sizeof(int32_t) * shape.dimensions_size();
+  int64_t metadata_size = sizeof(int32_t) * shape.rank();
   return ShapeUtil::ByteSizeOf(shape, pointer_size_) + metadata_size;
 }
 
@@ -298,6 +299,17 @@ Shape GenericTransferManager::HostShapeToDeviceShape(
         primitive_util::BitWidth(device_shape.element_type()));
   }
   return device_shape;
+}
+
+absl::StatusOr<Shape> GenericTransferManager::ChooseCompactLayoutForShape(
+    const Shape& host_shape) const {
+  Shape compact_shape = LayoutUtil::GetWithDefaultLayout(host_shape);
+  if (PackSubbyteTypes() &&
+      primitive_util::IsSubByteNonPredType(compact_shape.element_type())) {
+    compact_shape.mutable_layout()->set_element_size_in_bits(
+        primitive_util::BitWidth(compact_shape.element_type()));
+  }
+  return compact_shape;
 }
 
 }  // namespace xla

@@ -27,7 +27,7 @@ limitations under the License.
 #include "absl/functional/any_invocable.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
-#include "third_party/nanobind/include/nanobind/nanobind.h"
+#include "nanobind/nanobind.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/memory.h"
@@ -49,8 +49,8 @@ struct DevicePutResult {
   // dangerous due to `owning_pybuffer`.
   DevicePutResult(const DevicePutResult&) = delete;
   DevicePutResult& operator=(const DevicePutResult&) = delete;
-  DevicePutResult(DevicePutResult&&) = default;
-  DevicePutResult& operator=(DevicePutResult&&) = default;
+  DevicePutResult(DevicePutResult&&) noexcept = default;
+  DevicePutResult& operator=(DevicePutResult&&) noexcept = default;
 
   // Points to the on-device array. Not owned.
   tsl::RCReference<ifrt::Array> ifrt_array;

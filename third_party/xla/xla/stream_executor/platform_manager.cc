@@ -16,7 +16,6 @@ limitations under the License.
 #include "xla/stream_executor/platform_manager.h"
 
 #include <functional>
-#include <map>
 #include <memory>
 #include <string>
 #include <utility>

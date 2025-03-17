@@ -15,13 +15,23 @@ limitations under the License.
 
 #include "tensorflow/core/profiler/convert/xplane_to_op_stats.h"
 
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include <gmock/gmock.h>
+#include <gtest/gtest.h>
+#include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
+#include "xla/tsl/platform/status.h"
+#include "xla/tsl/profiler/convert/xla_op_utils.h"
+#include "xla/tsl/profiler/utils/tf_xplane_visitor.h"
+#include "xla/tsl/profiler/utils/xplane_schema.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/profiler/convert/duty_cycle_tracker.h"
 #include "tensorflow/core/profiler/convert/multi_xplanes_to_op_stats.h"
 #include "tensorflow/core/profiler/convert/repository.h"
 #include "tensorflow/core/profiler/convert/step_events_to_steps_db.h"
@@ -30,13 +40,11 @@ limitations under the License.
 #include "tensorflow/core/profiler/protobuf/op_stats.pb.h"
 #include "tensorflow/core/profiler/protobuf/steps_db.pb.h"
 #include "tensorflow/core/profiler/protobuf/tf_function.pb.h"
-#include "tensorflow/core/profiler/protobuf/xplane.pb.h"
 #include "tensorflow/core/profiler/utils/xplane_builder.h"
 #include "tensorflow/core/profiler/utils/xplane_schema.h"
 #include "tensorflow/core/profiler/utils/xplane_test_utils.h"
-#include "tsl/platform/status.h"
+#include "tensorflow/core/profiler/utils/xplane_visitor.h"
 #include "tsl/profiler/protobuf/xplane.pb.h"
-#include "tsl/profiler/utils/group_events.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -86,12 +94,16 @@ TEST(ConvertXPlaneToOpStats, GpuPerfEnv) {
   TF_CHECK_OK(ConvertMultiXSpacesToCombinedOpStats(session_snapshot_or.value(),
                                                    options, &op_stats));
   const PerfEnv& perf_env = op_stats.perf_env();
-  EXPECT_NEAR(141, perf_env.peak_tera_flops_per_second(), kMaxError);
+  // Change to lower flops number that we do not use sum of the tensor core peak
+  // flops and the cuda core peak flops together as peak flops. Only use the
+  // tensor core peak flops as all those white papers are using.
+  EXPECT_NEAR(125.34, perf_env.peak_tera_flops_per_second(), kMaxError);
   EXPECT_NEAR(
       900,
       perf_env.peak_bws_giga_bytes_per_second(MemBwType::MEM_BW_TYPE_HBM_RW),
       kMaxError);
-  EXPECT_NEAR(156.67, perf_env.ridge_point(), kMaxError);
+  // Ridge point changed accordingly from above peak flops change.
+  EXPECT_NEAR(139.26, perf_env.ridge_point(), kMaxError);
 }
 
 TEST(ConvertXPlaneToOpStats, GpuRunEnvironment) {
@@ -212,7 +224,7 @@ TEST(ConvertXPlaneToOpStats, GpuStepDbTest) {
                                                    options, &op_stats));
   const StepDatabaseResult& step_db = op_stats.step_db();
 
-  EXPECT_EQ(step_db.step_sequence_size(), 0);
+  EXPECT_EQ(step_db.step_sequence_size(), 1);
 
   PrecisionStats precision_stats =
       op_stats.device_op_metrics_db().precision_stats();
@@ -351,6 +363,12 @@ TEST(ConvertXPlaneToOpStats, TpuPerfEnv) {
   constexpr int kComputeCapMinor = 0;
   constexpr double kDevCapPeakTeraflopsPerSecond = 141.0;
   constexpr double kDevCapPeakHbmBwGigabytesPerSecond = 900.0;
+  constexpr double kDevCapPeakSramRdBwGigabytesPerSecond = 101.0;
+  constexpr double kDevCapPeakSramWrBwGigabytesPerSecond = 102.0;
+  constexpr double kDevCapPeakCmemRdBwGigabytesPerSecond = 101.0;
+  constexpr double kDevCapPeakCmemWrBwGigabytesPerSecond = 102.0;
+  constexpr double kDevCapPeakVmemRdBwGigabytesPerSecond = 201.0;
+  constexpr double kDevCapPeakVmemWrBwGigabytesPerSecond = 202.0;
 
   XPlaneBuilder device_plane(GetOrCreateTpuXPlane(
       space.get(), /*device_ordinal=*/0, "TPU V4",
@@ -371,6 +389,24 @@ TEST(ConvertXPlaneToOpStats, TpuPerfEnv) {
   device_plane.AddStatValue(
       *device_plane.GetOrCreateStatMetadata("compute_cap_minor"),
       kComputeCapMinor);
+  device_plane.AddStatValue(*device_plane.GetOrCreateStatMetadata(
+                                "peak_sram_rd_bw_gigabytes_per_second"),
+                            kDevCapPeakSramRdBwGigabytesPerSecond);
+  device_plane.AddStatValue(*device_plane.GetOrCreateStatMetadata(
+                                "peak_sram_wr_bw_gigabytes_per_second"),
+                            kDevCapPeakSramWrBwGigabytesPerSecond);
+  device_plane.AddStatValue(*device_plane.GetOrCreateStatMetadata(
+                                "peak_cmem_rd_bw_gigabytes_per_second"),
+                            kDevCapPeakCmemRdBwGigabytesPerSecond);
+  device_plane.AddStatValue(*device_plane.GetOrCreateStatMetadata(
+                                "peak_cmem_wr_bw_gigabytes_per_second"),
+                            kDevCapPeakCmemWrBwGigabytesPerSecond);
+  device_plane.AddStatValue(*device_plane.GetOrCreateStatMetadata(
+                                "peak_vmem_rd_bw_gigabytes_per_second"),
+                            kDevCapPeakVmemRdBwGigabytesPerSecond);
+  device_plane.AddStatValue(*device_plane.GetOrCreateStatMetadata(
+                                "peak_vmem_wr_bw_gigabytes_per_second"),
+                            kDevCapPeakVmemWrBwGigabytesPerSecond);
 
   OpStatsOptions options;
   options.generate_op_metrics_db = true;
@@ -383,10 +419,35 @@ TEST(ConvertXPlaneToOpStats, TpuPerfEnv) {
   TF_CHECK_OK(ConvertMultiXSpacesToCombinedOpStats(session_snapshot_or.value(),
                                                    options, &op_stats));
   const PerfEnv& perf_env = op_stats.perf_env();
-  EXPECT_NEAR(141, perf_env.peak_tera_flops_per_second(), kMaxError);
+  EXPECT_NEAR(kDevCapPeakTeraflopsPerSecond,
+              perf_env.peak_tera_flops_per_second(), kMaxError);
   EXPECT_NEAR(
-      900,
+      kDevCapPeakHbmBwGigabytesPerSecond,
       perf_env.peak_bws_giga_bytes_per_second(MemBwType::MEM_BW_TYPE_HBM_RW),
+      kMaxError);
+  EXPECT_NEAR(
+      kDevCapPeakSramRdBwGigabytesPerSecond,
+      perf_env.peak_bws_giga_bytes_per_second(MemBwType::MEM_BW_TYPE_SRAM_RD),
+      kMaxError);
+  EXPECT_NEAR(
+      kDevCapPeakSramWrBwGigabytesPerSecond,
+      perf_env.peak_bws_giga_bytes_per_second(MemBwType::MEM_BW_TYPE_SRAM_WR),
+      kMaxError);
+  EXPECT_NEAR(
+      kDevCapPeakCmemRdBwGigabytesPerSecond,
+      perf_env.peak_bws_giga_bytes_per_second(MemBwType::MEM_BW_TYPE_CMEM_RD),
+      kMaxError);
+  EXPECT_NEAR(
+      kDevCapPeakCmemWrBwGigabytesPerSecond,
+      perf_env.peak_bws_giga_bytes_per_second(MemBwType::MEM_BW_TYPE_CMEM_WR),
+      kMaxError);
+  EXPECT_NEAR(
+      kDevCapPeakVmemRdBwGigabytesPerSecond,
+      perf_env.peak_bws_giga_bytes_per_second(MemBwType::MEM_BW_TYPE_VMEM_RD),
+      kMaxError);
+  EXPECT_NEAR(
+      kDevCapPeakVmemWrBwGigabytesPerSecond,
+      perf_env.peak_bws_giga_bytes_per_second(MemBwType::MEM_BW_TYPE_VMEM_WR),
       kMaxError);
   EXPECT_NEAR(156.67, perf_env.ridge_point(), kMaxError);
 }
@@ -520,6 +581,232 @@ TEST(ConvertXPlaneToOpStats, TpuMultiDeviceStepDbTest) {
   // For TPU step events, we intersect the step events by step num across
   // different TPU devices.
   EXPECT_EQ(step_db.step_sequence_size(), 1);
+}
+
+TEST(ConvertXPlaneToOpStats, ConstructDutyCycleTrackerFromXlaOps) {
+  XSpace space;
+  XPlane* device_plane = GetOrCreateTpuXPlane(
+      &space, /*device_ordinal=*/0, /*device_type=*/"TPU v4",
+      /*peak_tera_flops_per_second=*/0,
+      /*peak_hbm_bw_gigabytes_per_second=*/0);
+  XPlaneBuilder device_plane_builder(device_plane);
+  XLineBuilder op_line = device_plane_builder.GetOrCreateLine(0);
+  op_line.SetName(kXlaOpLineName);
+  CreateXEvent(&device_plane_builder, &op_line, "op.1", /*offset_ps=*/10,
+               /*duration_ps=*/10,
+               {{StatType::kHloCategory, tsl::profiler::kHloInfeed}});
+  CreateXEvent(&device_plane_builder, &op_line, "op.2", /*offset_ps=*/20,
+               /*duration_ps=*/10,
+               {{StatType::kHloCategory, tsl::profiler::kHloCall}});
+  CreateXEvent(&device_plane_builder, &op_line, "op.3", /*offset_ps=*/30,
+               /*duration_ps=*/10);
+  CreateXEvent(&device_plane_builder, &op_line, "op.4", /*offset_ps=*/40,
+               /*duration_ps=*/10,
+               {{StatType::kHloCategory, tsl::profiler::kHloOutfeed}});
+
+  XPlaneVisitor visitor = tsl::profiler::CreateTfXPlaneVisitor(device_plane);
+  DutyCycleTracker tracker = ConstructDutyCycleTracker(visitor);
+  EXPECT_EQ(tracker.GetActiveTimePs(), 20);
+  EXPECT_EQ(tracker.GetIdleTimePs(), 20);
+}
+
+TEST(ConvertXPlaneToOpStats, ConstructDutyCycleTrackerFromSparseCore) {
+  XSpace space;
+  XPlane* sc_plane = GetOrCreateTpuXPlane(
+      &space, /*device_ordinal=*/0, /*device_type=*/"TPU v4",
+      /*peak_tera_flops_per_second=*/0,
+      /*peak_hbm_bw_gigabytes_per_second=*/0);
+  XPlaneBuilder sc_plane_builder(sc_plane);
+  XLineBuilder op_line = sc_plane_builder.GetOrCreateLine(0);
+  op_line.SetName(kSparseCoreOpLineName);
+  CreateXEvent(&sc_plane_builder, &op_line, "op.1", /*offset_ps=*/10,
+               /*duration_ps=*/10);
+  CreateXEvent(&sc_plane_builder, &op_line, "op.2", /*offset_ps=*/20,
+               /*duration_ps=*/10);
+  CreateXEvent(&sc_plane_builder, &op_line, "op.3", /*offset_ps=*/30,
+               /*duration_ps=*/10);
+  CreateXEvent(&sc_plane_builder, &op_line, "op.4", /*offset_ps=*/40,
+               /*duration_ps=*/10);
+  XLineBuilder module_line = sc_plane_builder.GetOrCreateLine(1);
+  module_line.SetName(kSparseCoreModuleLineName);
+  CreateXEvent(&sc_plane_builder, &module_line, "module.1", /*offset_ps=*/5,
+               /*duration_ps=*/50);
+
+  XPlaneVisitor visitor = tsl::profiler::CreateTfXPlaneVisitor(sc_plane);
+  DutyCycleTracker tracker = ConstructDutyCycleTracker(visitor);
+  EXPECT_EQ(tracker.GetActiveTimePs(), 40);
+  EXPECT_EQ(tracker.GetIdleTimePs(), 10);
+}
+
+TEST(ConvertXPlaneToOpStats, MultiCoreChipBusyAndIdleTimeTest) {
+  XSpace space;
+  CoreDetails tc_core_details;
+  tc_core_details.set_local_chip_id(0);
+  CoreDetails sc_core_details;
+  sc_core_details.set_local_chip_id(0);
+  XPlane* tc_plane = GetOrCreateTpuXPlane(
+      &space, /*device_ordinal=*/0, /*device_type=*/"TPU v4",
+      /*peak_tera_flops_per_second=*/0,
+      /*peak_hbm_bw_gigabytes_per_second=*/0);
+  XPlaneBuilder tc_plane_builder(tc_plane);
+  tc_plane_builder.AddStatValue(*tc_plane_builder.GetOrCreateStatMetadata(
+                                    GetStatTypeStr(StatType::kCoreDetails)),
+                                tc_core_details);
+  XLineBuilder xla_op_line = tc_plane_builder.GetOrCreateLine(0);
+  xla_op_line.SetName(kXlaOpLineName);
+  CreateXEvent(&tc_plane_builder, &xla_op_line, "op.1", /*offset_ps=*/10,
+               /*duration_ps=*/10,
+               {{StatType::kHloCategory, tsl::profiler::kHloInfeed}});
+  CreateXEvent(&tc_plane_builder, &xla_op_line, "op.2", /*offset_ps=*/20,
+               /*duration_ps=*/10,
+               {{StatType::kHloCategory, tsl::profiler::kHloCall}});
+  CreateXEvent(&tc_plane_builder, &xla_op_line, "op.3", /*offset_ps=*/30,
+               /*duration_ps=*/10);
+  CreateXEvent(&tc_plane_builder, &xla_op_line, "op.4", /*offset_ps=*/40,
+               /*duration_ps=*/10,
+               {{StatType::kHloCategory, tsl::profiler::kHloOutfeed}});
+
+  XPlane* sc_plane = GetOrCreateTpuXPlane(
+      &space, /*device_ordinal=*/1, /*device_type=*/"TPU v4",
+      /*peak_tera_flops_per_second=*/0,
+      /*peak_hbm_bw_gigabytes_per_second=*/0);
+  XPlaneBuilder sc_plane_builder(sc_plane);
+  sc_plane_builder.AddStatValue(*sc_plane_builder.GetOrCreateStatMetadata(
+                                    GetStatTypeStr(StatType::kCoreDetails)),
+                                sc_core_details);
+  XLineBuilder sc_op_line = sc_plane_builder.GetOrCreateLine(0);
+  sc_op_line.SetName(kSparseCoreOpLineName);
+  CreateXEvent(&sc_plane_builder, &sc_op_line, "op.1", /*offset_ps=*/10,
+               /*duration_ps=*/10);
+  CreateXEvent(&sc_plane_builder, &sc_op_line, "op.2", /*offset_ps=*/20,
+               /*duration_ps=*/10);
+  CreateXEvent(&sc_plane_builder, &sc_op_line, "op.3", /*offset_ps=*/30,
+               /*duration_ps=*/10);
+  CreateXEvent(&sc_plane_builder, &sc_op_line, "op.4", /*offset_ps=*/40,
+               /*duration_ps=*/10);
+  XLineBuilder sc_module_line = sc_plane_builder.GetOrCreateLine(1);
+  sc_module_line.SetName(kSparseCoreModuleLineName);
+  CreateXEvent(&sc_plane_builder, &sc_module_line, "module.1", /*offset_ps=*/5,
+               /*duration_ps=*/50);
+
+  OpStats op_stats = ConvertXSpaceToOpStats(space, OpStatsOptions());
+  EXPECT_EQ(op_stats.device_op_metrics_db().idle_time_ps(), 10);
+  EXPECT_EQ(op_stats.device_op_metrics_db().busy_time_ps(), 40);
+}
+
+TEST(ConvertXPlaneToOpStats, HandleSparseCoreBusyOpMetrics) {
+  XSpace space;
+  XPlane* tc_plane = GetOrCreateTpuXPlane(
+      &space, /*device_ordinal=*/0, /*device_type=*/"TPU v4",
+      /*peak_tera_flops_per_second=*/0,
+      /*peak_hbm_bw_gigabytes_per_second=*/0);
+  XPlaneBuilder tc_plane_builder(tc_plane);
+  tc_plane_builder.SetId(0);
+  XLineBuilder tc_step_line = tc_plane_builder.GetOrCreateLine(0);
+  tc_step_line.SetName(tsl::profiler::kStepLineName);
+  CreateXEvent(&tc_plane_builder, &tc_step_line, "step.1", /*offset_ps=*/10,
+               /*duration_ps=*/10, {{StatType::kGroupId, int64_t{1}}});
+  CreateXEvent(&tc_plane_builder, &tc_step_line, "step.2", /*offset_ps=*/20,
+               /*duration_ps=*/10, {{StatType::kGroupId, int64_t{2}}});
+  CreateXEvent(&tc_plane_builder, &tc_step_line, "step.3", /*offset_ps=*/30,
+               /*duration_ps=*/10, {{StatType::kGroupId, int64_t{3}}});
+  CreateXEvent(&tc_plane_builder, &tc_step_line, "step.4", /*offset_ps=*/40,
+               /*duration_ps=*/10, {{StatType::kGroupId, int64_t{4}}});
+  XLineBuilder tc_module_line = tc_plane_builder.GetOrCreateLine(1);
+  tc_module_line.SetName(tsl::profiler::kXlaModuleLineName);
+  CreateXEvent(&tc_plane_builder, &tc_module_line, "module.1", /*offset_ps=*/10,
+               /*duration_ps=*/10, {{StatType::kGroupId, int64_t{1}}});
+  CreateXEvent(&tc_plane_builder, &tc_module_line, "module.2", /*offset_ps=*/20,
+               /*duration_ps=*/10, {{StatType::kGroupId, int64_t{2}}});
+  CreateXEvent(&tc_plane_builder, &tc_module_line, "module.3", /*offset_ps=*/30,
+               /*duration_ps=*/10, {{StatType::kGroupId, int64_t{3}}});
+  CreateXEvent(&tc_plane_builder, &tc_module_line, "module.4", /*offset_ps=*/40,
+               /*duration_ps=*/10, {{StatType::kGroupId, int64_t{4}}});
+  XLineBuilder tc_op_line = tc_plane_builder.GetOrCreateLine(2);
+  tc_op_line.SetName(kXlaOpLineName);
+  auto& program_id_stat = *tc_plane_builder.GetOrCreateStatMetadata(
+      GetStatTypeStr(StatType::kProgramId));
+  auto& symbol_id_stat = *tc_plane_builder.GetOrCreateStatMetadata(
+      GetStatTypeStr(StatType::kSymbolId));
+  XStatsBuilder<XEventMetadata> op1_stats(
+      tc_plane_builder.GetOrCreateEventMetadata("op.1"), &tc_plane_builder);
+  op1_stats.AddStatValue(program_id_stat, 1);
+  op1_stats.AddStatValue(symbol_id_stat, 1);
+  XStatsBuilder<XEventMetadata> op2_stats(
+      tc_plane_builder.GetOrCreateEventMetadata("op.2"), &tc_plane_builder);
+  op2_stats.AddStatValue(program_id_stat, 1);
+  op2_stats.AddStatValue(symbol_id_stat, 2);
+  XStatsBuilder<XEventMetadata> op3_stats(
+      tc_plane_builder.GetOrCreateEventMetadata("op.3"), &tc_plane_builder);
+  op3_stats.AddStatValue(program_id_stat, 1);
+  op3_stats.AddStatValue(symbol_id_stat, 3);
+  XStatsBuilder<XEventMetadata> op4_stats(
+      tc_plane_builder.GetOrCreateEventMetadata("op.4"), &tc_plane_builder);
+  op4_stats.AddStatValue(program_id_stat, 1);
+  op4_stats.AddStatValue(symbol_id_stat, 4);
+  CreateXEvent(&tc_plane_builder, &tc_op_line, "op.1", /*offset_ps=*/15,
+               /*duration_ps=*/5, {{StatType::kGroupId, int64_t{1}}});
+  CreateXEvent(&tc_plane_builder, &tc_op_line, "op.2", /*offset_ps=*/25,
+               /*duration_ps=*/5, {{StatType::kGroupId, int64_t{2}}});
+  CreateXEvent(&tc_plane_builder, &tc_op_line, "op.3", /*offset_ps=*/35,
+               /*duration_ps=*/5, {{StatType::kGroupId, int64_t{3}}});
+  CreateXEvent(&tc_plane_builder, &tc_op_line, "op.4", /*offset_ps=*/45,
+               /*duration_ps=*/5, {{StatType::kGroupId, int64_t{4}}});
+  XPlane* sc_plane = GetOrCreateTpuXPlane(
+      &space, /*device_ordinal=*/1, /*device_type=*/"TPU v4",
+      /*peak_tera_flops_per_second=*/0,
+      /*peak_hbm_bw_gigabytes_per_second=*/0);
+  XPlaneBuilder sc_plane_builder(sc_plane);
+  sc_plane_builder.SetId(1);
+  sc_plane_builder.SetName(
+      absl::StrCat(sc_plane->name(), " SparseCore ", sc_plane->id()));
+  XLineBuilder sc_step_line = sc_plane_builder.GetOrCreateLine(0);
+  sc_step_line.SetName(tsl::profiler::kSparseCoreStepLineName);
+  CreateXEvent(&sc_plane_builder, &sc_step_line, "step.1", /*offset_ps=*/10,
+               /*duration_ps=*/10,
+               {{StatType::kStepIdleTimePs, int64_t{5}},
+                {StatType::kGroupId, int64_t{1}}});
+  CreateXEvent(&sc_plane_builder, &sc_step_line, "step.2", /*offset_ps=*/20,
+               /*duration_ps=*/10,
+               {{StatType::kStepIdleTimePs, int64_t{5}},
+                {StatType::kGroupId, int64_t{2}}});
+  CreateXEvent(&sc_plane_builder, &sc_step_line, "step.3", /*offset_ps=*/30,
+               /*duration_ps=*/10,
+               {{StatType::kStepIdleTimePs, int64_t{5}},
+                {StatType::kGroupId, int64_t{3}}});
+  CreateXEvent(&sc_plane_builder, &sc_step_line, "step.4", /*offset_ps=*/40,
+               /*duration_ps=*/10,
+               {{StatType::kStepIdleTimePs, int64_t{5}},
+                {StatType::kGroupId, int64_t{4}}});
+  XLineBuilder sc_module_line = sc_plane_builder.GetOrCreateLine(1);
+  sc_module_line.SetName(kSparseCoreModuleLineName);
+  CreateXEvent(&sc_plane_builder, &sc_module_line, "module.1", /*offset_ps=*/10,
+               /*duration_ps=*/10, {{StatType::kGroupId, int64_t{1}}});
+  CreateXEvent(&sc_plane_builder, &sc_module_line, "module.2", /*offset_ps=*/20,
+               /*duration_ps=*/10, {{StatType::kGroupId, int64_t{2}}});
+  CreateXEvent(&sc_plane_builder, &sc_module_line, "module.3", /*offset_ps=*/30,
+               /*duration_ps=*/10, {{StatType::kGroupId, int64_t{3}}});
+  CreateXEvent(&sc_plane_builder, &sc_module_line, "module.4", /*offset_ps=*/40,
+               /*duration_ps=*/10, {{StatType::kGroupId, int64_t{4}}});
+  XLineBuilder sc_op_line = sc_plane_builder.GetOrCreateLine(2);
+  sc_op_line.SetName(kSparseCoreOpLineName);
+  CreateXEvent(&sc_plane_builder, &sc_op_line, "scs op.1", /*offset_ps=*/15,
+               /*duration_ps=*/5, {{StatType::kGroupId, int64_t{1}}});
+  CreateXEvent(&sc_plane_builder, &sc_op_line, "scs op.2", /*offset_ps=*/25,
+               /*duration_ps=*/5, {{StatType::kGroupId, int64_t{2}}});
+  CreateXEvent(&sc_plane_builder, &sc_op_line, "scs op.3", /*offset_ps=*/35,
+               /*duration_ps=*/5, {{StatType::kGroupId, int64_t{3}}});
+  CreateXEvent(&sc_plane_builder, &sc_op_line, "scs op.4", /*offset_ps=*/45,
+               /*duration_ps=*/5, {{StatType::kGroupId, int64_t{4}}});
+  OpStats op_stats = ConvertXSpaceToOpStats(
+      space,
+      OpStatsOptions{.generate_op_metrics_db = true, .generate_step_db = true});
+  EXPECT_EQ(op_stats.device_op_metrics_db().total_time_ps(), 40);
+  EXPECT_EQ(op_stats.device_op_metrics_db().total_op_time_ps(), 20);
+  EXPECT_EQ(op_stats.step_db().step_sequence_size(), 4);
+  EXPECT_EQ(op_stats.hlo_metrics_db_complete_steps_only().total_time_ps(), 40);
+  EXPECT_EQ(op_stats.hlo_metrics_db_complete_steps_only().total_op_time_ps(),
+            20);
 }
 
 }  // namespace

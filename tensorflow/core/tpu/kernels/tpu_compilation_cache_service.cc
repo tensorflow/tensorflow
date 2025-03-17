@@ -92,7 +92,7 @@ void TpuCompilationCacheService::GetTpuProgram(GetTpuProgramCall* call) {
   std::unique_ptr<CompilationCacheEntryRef> entry;
 
   VLOG(1) << "GetTpuProgram: " << call->request.DebugString();
-  Status s;
+  absl::Status s;
   switch (call->request.key_oneof_case()) {
     case tpu::GetTpuProgramRequest::kKey:
       s = cache_->Lookup(call->request.key(), &entry);

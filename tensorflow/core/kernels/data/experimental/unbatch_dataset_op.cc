@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/platform/status.h"
@@ -72,7 +73,7 @@ class UnbatchDatasetOp : public UnaryDatasetOpKernel {
           if (batch_size_ < 0 && shape.dim_size(0) >= 0) {
             batch_size_ = shape.dim_size(0);
           }
-          gtl::InlinedVector<int64_t, 4> partial_dim_sizes;
+          absl::InlinedVector<int64_t, 4UL> partial_dim_sizes;
           for (int i = 1; i < shape.dims(); ++i) {
             partial_dim_sizes.push_back(shape.dim_size(i));
           }

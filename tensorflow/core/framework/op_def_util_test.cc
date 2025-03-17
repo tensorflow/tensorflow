@@ -41,11 +41,13 @@ OpDef::AttrDef ADef(const string& text) {
 
 class ValidateOpDefTest : public ::testing::Test {
  protected:
-  Status TestProto(const string& text) { return ValidateOpDef(FromText(text)); }
+  absl::Status TestProto(const string& text) {
+    return ValidateOpDef(FromText(text));
+  }
 
-  Status TestBuilder(const OpDefBuilder& builder) {
+  absl::Status TestBuilder(const OpDefBuilder& builder) {
     OpRegistrationData op_reg_data;
-    Status status = builder.Finalize(&op_reg_data);
+    absl::Status status = builder.Finalize(&op_reg_data);
     TF_EXPECT_OK(status);
     if (!status.ok()) {
       return status;
@@ -56,7 +58,7 @@ class ValidateOpDefTest : public ::testing::Test {
 };
 
 namespace {
-void ExpectFailure(const Status& status, const string& message) {
+void ExpectFailure(const absl::Status& status, const string& message) {
   EXPECT_FALSE(status.ok()) << "Did not see error with: " << message;
   if (!status.ok()) {
     LOG(INFO) << "message: " << status;
@@ -540,12 +542,12 @@ TEST(OpDefAttrDefaultsUnchangedTest, Foo) {
   TF_EXPECT_OK(OpDefAttrDefaultsUnchanged(op1, op2));
 
   // Changing a default value: not ok.
-  Status changed_attr = OpDefAttrDefaultsUnchanged(op2, op3);
+  absl::Status changed_attr = OpDefAttrDefaultsUnchanged(op2, op3);
   ExpectFailure(changed_attr,
                 "Attr 'n' has changed it's default value; from \"x\" to \"y\"");
 
   // Removing a default value: not ok.
-  Status removed_attr = OpDefAttrDefaultsUnchanged(op2, op1);
+  absl::Status removed_attr = OpDefAttrDefaultsUnchanged(op2, op1);
   ExpectFailure(removed_attr,
                 "Attr 'n' has removed it's default; from \"x\" to no default");
 }

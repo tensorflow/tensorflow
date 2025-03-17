@@ -27,21 +27,16 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "xla/service/gpu/kernels/custom_kernel.h"
+#include "xla/service/gpu/kernels/topk_kernel_common.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/kernel_spec.h"
 #include "xla/stream_executor/launch_dim.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/types.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/statusor.h"
-
-#if defined(GOOGLE_CUDA) || defined(TENSORFLOW_USE_ROCM)
-#include "xla/service/gpu/kernels/topk_kernel_common.h"
-#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 namespace xla::gpu::kernel::topk {
-
-#if defined(GOOGLE_CUDA) || defined(TENSORFLOW_USE_ROCM)
 
 namespace {
 
@@ -134,17 +129,5 @@ absl::StatusOr<CustomKernel> GetTopKKernel(std::string name,
           absl::StrCat("Unsupported GpuTopK data type: ", dtype));
   }
 }
-
-#else
-
-// Fallback implementation of creating a CustomKernel for TopK operation.
-absl::StatusOr<CustomKernel> GetTopKKernel(std::string name,
-                                           PrimitiveType dtype,
-                                           size_t num_elements, size_t k,
-                                           size_t batch_size) {
-  return absl::InternalError("XLA compiled without CUDA support");
-}
-
-#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 }  // namespace xla::gpu::kernel::topk

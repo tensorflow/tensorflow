@@ -16,20 +16,26 @@ limitations under the License.
 #ifndef XLA_SERVICE_SPMD_SHARDY_ROUND_TRIP_COMMON_PIPELINE_PASSES_H_
 #define XLA_SERVICE_SPMD_SHARDY_ROUND_TRIP_COMMON_PIPELINE_PASSES_H_
 
-#include "mlir/Pass/PassOptions.h"  // from @llvm-project
+#include "mlir/Pass/PassOptions.h"
 
 namespace xla {
 namespace sdy {
 
-// Adds the common import passes for both the SDY and MHLO import
-// pipelines that need to be called before each pass converts an HLO sharding/
-// SDY sharding string into an `sdy.sharding` attribute.
-void addCommonPreImportPasses(mlir::OpPassManager& pm);
+// Adds the common import passes for both the SDY and StableHLO import
+// pipelines that need to be called before each pipeline converts an HLO
+// sharding/SDY sharding string into an `sdy.sharding` attribute.
+void addCommonPreImportPasses(mlir::OpPassManager& pm,
+                              bool enableConstantImport = true);
 
-// Adds the common import passes for both the SDY and MHLO import
-// pipelines that need to be called after each pass converts an HLO sharding/
-// SDY sharding string into an `sdy.sharding` attribute.
+// Adds the common import passes for both the SDY and StableHLO import
+// pipelines that need to be called after each pipeline converts an HLO
+// sharding/SDY sharding string into an `sdy.sharding` attribute.
 void addCommonPostImportPasses(mlir::OpPassManager& pm);
+
+// Adds the common export passes for both the SDY and StableHLO import
+// pipelines that need to be called before each pipeline converts an HLO
+// sharding/SDY sharding string into an `sdy.sharding` attribute.
+void addCommonPreExportPasses(mlir::OpPassManager& pm);
 
 }  // namespace sdy
 }  // namespace xla

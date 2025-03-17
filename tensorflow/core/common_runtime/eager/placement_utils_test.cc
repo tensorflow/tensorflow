@@ -21,11 +21,11 @@ limitations under the License.
 
 #include <gtest/gtest.h>
 #include "tensorflow/c/eager/immediate_execution_tensor_handle.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/eager/eager_operation.h"
 #include "tensorflow/core/common_runtime/eager/execute_node.h"
 #include "tensorflow/core/platform/test.h"
-#include "tsl/lib/core/status_test_util.h"
 
 #define DEVICE_CPU0 "/job:localhost/replica:0/task:0/device:CPU:0"
 #define DEVICE_CPU0_TASK1 "/job:localhost/replica:0/task:1/device:CPU:0"
@@ -57,7 +57,7 @@ static Device* CreateDevice(const char* type, const char* name,
    public:
     explicit FakeDevice(const DeviceAttributes& attr, bool is_local)
         : Device(nullptr, attr), is_local_(is_local) {}
-    Status Sync() override { return absl::OkStatus(); }
+    absl::Status Sync() override { return absl::OkStatus(); }
     Allocator* GetAllocator(AllocatorAttributes) override { return nullptr; }
     bool IsLocal() const override { return is_local_; }
 
@@ -211,7 +211,7 @@ TEST(PlacementUtilsTest, MaybePinToResourceDevice_OtherDevice) {
 
   Device* device1 = remote_device_mgr->ListDevices().at(0);
 
-  Status s;
+  absl::Status s;
   std::unique_ptr<CompositeDevice> composite_device =
       CompositeDevice::MakeDevice({device0->name(), device1->name()},
                                   /*unique_device_id=*/0,

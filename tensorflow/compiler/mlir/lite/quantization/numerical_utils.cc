@@ -18,10 +18,9 @@ limitations under the License.
 
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
 #include <limits>
 #include <optional>
-
-#include "absl/types/optional.h"
 
 namespace mlir {
 namespace quant {

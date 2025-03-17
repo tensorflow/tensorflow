@@ -260,7 +260,7 @@ void *TensorFlowDialect::getRegisteredInterfaceForOp(
 
     // Only use fallback interface for known not-stateful ops.
     const tensorflow::OpRegistrationData *op_reg_data = nullptr;
-    tensorflow::Status s = tensorflow::OpRegistry::Global()->LookUp(
+    absl::Status s = tensorflow::OpRegistry::Global()->LookUp(
         opName.stripDialect().str(), &op_reg_data);
     return (s.ok() && !op_reg_data->op_def.is_stateful())
                ? fallback_effect_op_interface_

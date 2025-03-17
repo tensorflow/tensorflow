@@ -15,7 +15,6 @@ limitations under the License.
 #include "tensorflow/lite/core/async/interop/c/attribute_map.h"
 
 #include <cstddef>
-#include <cstdint>
 
 #include <gtest/gtest.h>
 #include "tensorflow/lite/core/async/interop/c/types.h"

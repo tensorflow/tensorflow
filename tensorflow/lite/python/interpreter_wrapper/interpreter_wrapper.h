@@ -83,6 +83,7 @@ class InterpreterWrapper {
                               int subgraph_index);
 
   int NumTensors(int subgraph_index) const;
+  int NumSubgraphs() const;
   std::string TensorName(int tensor_index, int subgraph_index) const;
   PyObject* TensorType(int tensor_index, int subgraph_index) const;
   PyObject* TensorSize(int tensor_index, int subgraph_index) const;

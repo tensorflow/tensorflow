@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/service/cpu/runtime_fp16.h"
 
+#include <cstdint>
 #include <cstring>
 
 #include "absl/base/attributes.h"

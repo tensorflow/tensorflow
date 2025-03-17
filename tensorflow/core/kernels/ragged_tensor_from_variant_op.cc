@@ -18,6 +18,7 @@ limitations under the License.
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/variant.h"
 #include "tensorflow/core/framework/variant_encode_decode.h"
 #include "tensorflow/core/kernels/ragged_tensor_variant.h"
@@ -29,7 +30,7 @@ namespace {
 
 /* Extracts the components of the variant-encoded tensor `encoded_variant`
  * into a flat vector of `RaggedTensorVariant` objects. */
-Status RaggedComponentsFromVariant(
+absl::Status RaggedComponentsFromVariant(
     const Tensor& encoded_variant, int input_ragged_rank,
     int output_ragged_rank, DataType value_dtype, DataType split_dtype,
     std::vector<RaggedTensorVariant>* decoded_ragged) {
@@ -91,7 +92,7 @@ Status RaggedComponentsFromVariant(
  * This should only be used when input_ragged_rank=0 and output_ragged_rank=0.
  */
 template <typename VALUE_TYPE>
-Status StackNonRaggedTensors(
+absl::Status StackNonRaggedTensors(
     const std::vector<RaggedTensorVariant>& ragged_components,
     RaggedTensorVariant* output_ragged) {
   if (ragged_components.empty()) {
@@ -124,7 +125,7 @@ Status StackNonRaggedTensors(
 }
 
 template <typename VALUE_TYPE, typename SPLIT_TYPE>
-Status NestedStackRaggedTensors(
+absl::Status NestedStackRaggedTensors(
     const std::vector<RaggedTensorVariant>& ragged_components,
     const std::vector<int>& nested_dim_sizes, const int input_ragged_rank,
     const int output_ragged_rank, RaggedTensorVariant* output_ragged) {
@@ -353,11 +354,27 @@ class RaggedTensorFromVariantOp : public OpKernel {
   }
 };
 
-#define REGISTER_KERNELS_WITH_SPLIT_TYPE(value_type, split_type)      \
-  REGISTER_KERNEL_BUILDER(Name("RaggedTensorFromVariant")             \
-                              .Device(DEVICE_CPU)                     \
-                              .TypeConstraint<value_type>("Tvalues")  \
-                              .TypeConstraint<split_type>("Tsplits"), \
+#define REGISTER_KERNELS_WITH_SPLIT_TYPE(value_type, split_type)             \
+  REGISTER_KERNEL_BUILDER(Name("RaggedTensorFromVariant")                    \
+                              .Device(DEVICE_CPU)                            \
+                              .TypeConstraint<value_type>("Tvalues")         \
+                              .TypeConstraint<split_type>("Tsplits"),        \
+                          RaggedTensorFromVariantOp<value_type, split_type>) \
+  REGISTER_KERNEL_BUILDER(Name("RaggedTensorFromVariant")                    \
+                              .Device(DEVICE_GPU)                            \
+                              .TypeConstraint<value_type>("Tvalues")         \
+                              .TypeConstraint<split_type>("Tsplits")         \
+                              .HostMemory("encoded_ragged")                  \
+                              .HostMemory("output_nested_splits")            \
+                              .HostMemory("output_dense_values"),            \
+                          RaggedTensorFromVariantOp<value_type, split_type>) \
+  REGISTER_KERNEL_BUILDER(Name("RaggedTensorFromVariant")                    \
+                              .Device(DEVICE_TPU)                            \
+                              .TypeConstraint<value_type>("Tvalues")         \
+                              .TypeConstraint<split_type>("Tsplits")         \
+                              .HostMemory("encoded_ragged")                  \
+                              .HostMemory("output_nested_splits")            \
+                              .HostMemory("output_dense_values"),            \
                           RaggedTensorFromVariantOp<value_type, split_type>);
 #define REGISTER_KERNELS(value_type)                  \
   REGISTER_KERNELS_WITH_SPLIT_TYPE(value_type, int32) \

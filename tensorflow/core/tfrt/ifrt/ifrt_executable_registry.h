@@ -88,6 +88,7 @@ class ServingExecutableRegistry {
 
  private:
   friend class Handle;
+  friend class IfrtBackendCompilerTest;
 
   static absl::Mutex mu_;
 

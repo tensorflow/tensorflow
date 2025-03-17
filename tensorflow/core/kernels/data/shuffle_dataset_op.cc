@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/kernels/data/shuffle_dataset_op.h"
 
+#include <atomic>
 #include <cstdint>
 #include <deque>
 #include <memory>
@@ -124,17 +125,18 @@ class ShuffleDatasetOpBase::ShuffleDatasetBase : public DatasetBase {
     }
   }
 
-  Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override {
+  absl::Status InputDatasets(
+      std::vector<const DatasetBase*>* inputs) const override {
     inputs->push_back(input_);
     return absl::OkStatus();
   }
 
-  Status CheckExternalState() const override {
+  absl::Status CheckExternalState() const override {
     return input_->CheckExternalState();
   }
 
-  Status Get(OpKernelContext* ctx, int64 index,
-             std::vector<Tensor>* out_tensors) const override {
+  absl::Status Get(OpKernelContext* ctx, int64 index,
+                   std::vector<Tensor>* out_tensors) const override {
     TF_RETURN_IF_ERROR(CheckRandomAccessCompatible(index));
     {
       mutex_lock l(mu_);
@@ -201,7 +203,7 @@ class ShuffleDatasetOpBase::ShuffleDatasetBase : public DatasetBase {
 
     bool SymbolicCheckpointCompatible() const override { return true; }
 
-    Status Initialize(IteratorContext* ctx) override {
+    absl::Status Initialize(IteratorContext* ctx) override {
       mutex_lock l(mu_);
       seed_generator_->GenerateSeeds(&seed_, &seed2_);
       ResetRngs();
@@ -214,9 +216,9 @@ class ShuffleDatasetOpBase::ShuffleDatasetBase : public DatasetBase {
       return absl::OkStatus();
     }
 
-    Status GetNextInternal(IteratorContext* ctx,
-                           std::vector<Tensor>* out_tensors,
-                           bool* end_of_sequence) override {
+    absl::Status GetNextInternal(IteratorContext* ctx,
+                                 std::vector<Tensor>* out_tensors,
+                                 bool* end_of_sequence) override {
       mutex_lock l(mu_);
       TF_RETURN_IF_ERROR(FillBuffer(ctx));
       if (num_elements_ == 0) {
@@ -259,8 +261,8 @@ class ShuffleDatasetOpBase::ShuffleDatasetBase : public DatasetBase {
       generator_.Skip(num_random_samples_);
     }
 
-    Status SaveInternal(SerializationContext* ctx,
-                        IteratorStateWriter* writer) override {
+    absl::Status SaveInternal(SerializationContext* ctx,
+                              IteratorStateWriter* writer) override {
       mutex_lock l(mu_);
       // Save state needed to restore the random number generators.
       TF_RETURN_IF_ERROR(
@@ -319,8 +321,8 @@ class ShuffleDatasetOpBase::ShuffleDatasetBase : public DatasetBase {
       return absl::OkStatus();
     }
 
-    Status RestoreInternal(IteratorContext* ctx,
-                           IteratorStateReader* reader) override {
+    absl::Status RestoreInternal(IteratorContext* ctx,
+                                 IteratorStateReader* reader) override {
       mutex_lock l(mu_);
       // Restore the random number generators.
       int64_t num_random_samples;
@@ -440,7 +442,8 @@ class ShuffleDatasetOpBase::ShuffleDatasetBase : public DatasetBase {
     }
 
     // Fills the shuffle buffer, preparing the buffer for sampling.
-    Status FillBuffer(IteratorContext* ctx) TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+    absl::Status FillBuffer(IteratorContext* ctx)
+        TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
       int64_t start_micros = EnvTime::NowMicros();
       int64_t num_log_entries = 0;
       while (ShouldFillBuffer()) {
@@ -503,7 +506,7 @@ class ShuffleDatasetOpBase::ShuffleDatasetBase : public DatasetBase {
       return num_elements_ < buffer_->size();
     }
 
-    Status PrepareNextEpoch(IteratorContext* ctx)
+    absl::Status PrepareNextEpoch(IteratorContext* ctx)
         TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
       if (epoch_ == 0) {
         slices_.push_back(std::make_unique<Slice>(0, 0, false));
@@ -610,7 +613,7 @@ class ShuffleDatasetOp::Dataset : public ShuffleDatasetBase {
 
   ~Dataset() override {
     manager_->Unref();
-    Status s = resource_mgr_->Delete<SeedGeneratorManager>(
+    absl::Status s = resource_mgr_->Delete<SeedGeneratorManager>(
         resource_handle_.container(), resource_handle_.name());
     if (!s.ok()) {
       LOG(WARNING) << "Failed to delete RNG resource: " << s.ToString();
@@ -620,9 +623,9 @@ class ShuffleDatasetOp::Dataset : public ShuffleDatasetBase {
   string op_type() const override { return kDatasetType; }
 
  protected:
-  Status AsGraphDefInternal(SerializationContext* ctx,
-                            DatasetGraphDefBuilder* b,
-                            Node** output) const override {
+  absl::Status AsGraphDefInternal(SerializationContext* ctx,
+                                  DatasetGraphDefBuilder* b,
+                                  Node** output) const override {
     Node* input_graph_node = nullptr;
     TF_RETURN_IF_ERROR(b->AddInputDataset(ctx, input_, &input_graph_node));
     Node* buffer_size_node = nullptr;
@@ -669,7 +672,7 @@ class ShuffleDatasetOp::DatasetV2 : public ShuffleDatasetBase {
   ~DatasetV2() override {
     manager_->Unref();
     if (owns_resource_) {
-      Status s = resource_mgr_->Delete<SeedGeneratorManager>(
+      absl::Status s = resource_mgr_->Delete<SeedGeneratorManager>(
           resource_handle_.container(), resource_handle_.name());
       if (!s.ok()) {
         LOG(WARNING) << "Failed to delete RNG resource: " << s.ToString();
@@ -680,9 +683,9 @@ class ShuffleDatasetOp::DatasetV2 : public ShuffleDatasetBase {
   string op_type() const override { return kDatasetType; }
 
  protected:
-  Status AsGraphDefInternal(SerializationContext* ctx,
-                            DatasetGraphDefBuilder* b,
-                            Node** output) const override {
+  absl::Status AsGraphDefInternal(SerializationContext* ctx,
+                                  DatasetGraphDefBuilder* b,
+                                  Node** output) const override {
     Node* input_graph_node = nullptr;
     TF_RETURN_IF_ERROR(b->AddInputDataset(ctx, input_, &input_graph_node));
     Node* buffer_size_node = nullptr;
@@ -724,7 +727,7 @@ class ShuffleDatasetOp::DatasetV3 : public ShuffleDatasetBase {
   ~DatasetV3() override {
     manager_->Unref();
     if (owns_resource_) {
-      Status s = resource_mgr_->Delete<SeedGeneratorManager>(
+      absl::Status s = resource_mgr_->Delete<SeedGeneratorManager>(
           resource_handle_.container(), resource_handle_.name());
       if (!s.ok()) {
         LOG(WARNING) << "Failed to delete RNG resource: " << s.ToString();
@@ -735,9 +738,9 @@ class ShuffleDatasetOp::DatasetV3 : public ShuffleDatasetBase {
   string op_type() const override { return kDatasetType; }
 
  protected:
-  Status AsGraphDefInternal(SerializationContext* ctx,
-                            DatasetGraphDefBuilder* b,
-                            Node** output) const override {
+  absl::Status AsGraphDefInternal(SerializationContext* ctx,
+                                  DatasetGraphDefBuilder* b,
+                                  Node** output) const override {
     Node* input_graph_node = nullptr;
     TF_RETURN_IF_ERROR(b->AddInputDataset(ctx, input_, &input_graph_node));
     Node* buffer_size_node = nullptr;
@@ -805,7 +808,7 @@ void ShuffleDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase* input,
   if (op_version_ == 3) {
     auto handle = HandleFromInput(ctx, 4);
     SeedGeneratorManager* manager = nullptr;
-    Status s = ctx->resource_manager()->Lookup<SeedGeneratorManager>(
+    absl::Status s = ctx->resource_manager()->Lookup<SeedGeneratorManager>(
         handle.container(), handle.name(), &manager);
     int64_t seed;
     OP_REQUIRES_OK(ctx, ParseScalarArgument<int64_t>(ctx, kSeed, &seed));
@@ -842,7 +845,7 @@ void ShuffleDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase* input,
   } else if (op_version_ == 2) {
     auto handle = HandleFromInput(ctx, 2);
     SeedGeneratorManager* manager = nullptr;
-    Status s = ctx->resource_manager()->Lookup<SeedGeneratorManager>(
+    absl::Status s = ctx->resource_manager()->Lookup<SeedGeneratorManager>(
         handle.container(), handle.name(), &manager);
     bool owns_resource = false;
     if (errors::IsNotFound(s)) {
@@ -917,7 +920,7 @@ class ShuffleAndRepeatDatasetOp::Dataset : public ShuffleDatasetBase {
 
   ~Dataset() override {
     manager_->Unref();
-    Status s = resource_mgr_->Delete<SeedGeneratorManager>(
+    absl::Status s = resource_mgr_->Delete<SeedGeneratorManager>(
         resource_handle_.container(), resource_handle_.name());
     if (!s.ok()) {
       LOG(WARNING) << "Failed to delete RNG resource: " << s.ToString();
@@ -927,9 +930,9 @@ class ShuffleAndRepeatDatasetOp::Dataset : public ShuffleDatasetBase {
   string op_type() const override { return kDatasetType; }
 
  protected:
-  Status AsGraphDefInternal(SerializationContext* ctx,
-                            DatasetGraphDefBuilder* b,
-                            Node** output) const override {
+  absl::Status AsGraphDefInternal(SerializationContext* ctx,
+                                  DatasetGraphDefBuilder* b,
+                                  Node** output) const override {
     Node* input_graph_node = nullptr;
     TF_RETURN_IF_ERROR(b->AddInputDataset(ctx, input_, &input_graph_node));
     Node* buffer_size = nullptr;
@@ -974,7 +977,7 @@ class ShuffleAndRepeatDatasetOp::DatasetV2 : public ShuffleDatasetBase {
   ~DatasetV2() override {
     manager_->Unref();
     if (owns_resource_) {
-      Status s = resource_mgr_->Delete<SeedGeneratorManager>(
+      absl::Status s = resource_mgr_->Delete<SeedGeneratorManager>(
           resource_handle_.container(), resource_handle_.name());
       if (!s.ok()) {
         LOG(WARNING) << "Failed to delete RNG resource: " << s.ToString();
@@ -985,9 +988,9 @@ class ShuffleAndRepeatDatasetOp::DatasetV2 : public ShuffleDatasetBase {
   string op_type() const override { return kDatasetType; }
 
  protected:
-  Status AsGraphDefInternal(SerializationContext* ctx,
-                            DatasetGraphDefBuilder* b,
-                            Node** output) const override {
+  absl::Status AsGraphDefInternal(SerializationContext* ctx,
+                                  DatasetGraphDefBuilder* b,
+                                  Node** output) const override {
     Node* input_graph_node = nullptr;
     TF_RETURN_IF_ERROR(b->AddInputDataset(ctx, input_, &input_graph_node));
     Node* buffer_size_node = nullptr;
@@ -1070,7 +1073,7 @@ void ShuffleAndRepeatDatasetOp::MakeDataset(OpKernelContext* ctx,
   if (op_version_ == 2) {
     auto handle = HandleFromInput(ctx, 5);
     SeedGeneratorManager* manager = nullptr;
-    Status s = ctx->resource_manager()->Lookup<SeedGeneratorManager>(
+    absl::Status s = ctx->resource_manager()->Lookup<SeedGeneratorManager>(
         handle.container(), handle.name(), &manager);
     bool owns_resource = false;
     if (errors::IsNotFound(s)) {

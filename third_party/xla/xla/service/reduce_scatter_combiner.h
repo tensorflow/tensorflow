@@ -16,9 +16,20 @@ limitations under the License.
 #ifndef XLA_SERVICE_REDUCE_SCATTER_COMBINER_H_
 #define XLA_SERVICE_REDUCE_SCATTER_COMBINER_H_
 
+#include <cstdint>
+#include <optional>
+#include <string>
+#include <tuple>
+
+#include "absl/container/flat_hash_set.h"
+#include "absl/functional/function_ref.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
+#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
-#include "xla/service/hlo_pass_interface.h"
+#include "xla/hlo/pass/hlo_pass_interface.h"
+#include "xla/service/all_reduce_key.h"
+#include "xla/service/hlo_domain_map.h"
 
 namespace xla {
 
@@ -29,7 +40,8 @@ namespace xla {
 class ReduceScatterCombiner : public HloModulePass {
  public:
   ReduceScatterCombiner(int64_t combine_threshold_in_bytes,
-                        int64_t combine_threshold_count, bool combine_by_dim);
+                        int64_t combine_threshold_count, bool combine_by_dim,
+                        bool combine_while_loops = true);
 
   absl::string_view name() const override { return "reduce-scatter-combiner"; }
 
@@ -38,7 +50,26 @@ class ReduceScatterCombiner : public HloModulePass {
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
- private:
+  using GroupKey = std::tuple<AllReduceKey, /*scatter_dimension*/ int64_t,
+                              /*extra_args*/ std::string>;
+
+  static std::string& GetGroupKeyExtraArgs(
+      ReduceScatterCombiner::GroupKey& key);
+
+  // Returns a key that will be equal for instructions that might be combined,
+  // or different if not.
+  static std::optional<ReduceScatterCombiner::GroupKey> CombineKey(
+      const HloInstruction* instruction, const HloDomainMap& domain_map,
+      bool combine_by_dim);
+
+ protected:
+  absl::StatusOr<bool> RunWithKeyCombiner(
+      HloModule* module,
+      const absl::flat_hash_set<absl::string_view>& execution_threads,
+      absl::FunctionRef<std::optional<ReduceScatterCombiner::GroupKey>(
+          const HloInstruction*, const HloDomainMap&, bool)>
+          combine_key);
+
   // Combine reduce-scatter ops up to this threshold.
   int64_t combine_threshold_in_bytes_;
 
@@ -47,6 +78,9 @@ class ReduceScatterCombiner : public HloModulePass {
 
   // Combine only reduce-scatter ops with the same dimension.
   bool combine_by_dim_;
+
+  // Combine reduce-scatter ops that are inside while loop body computations.
+  bool combine_while_loops_;
 };
 
 }  // namespace xla

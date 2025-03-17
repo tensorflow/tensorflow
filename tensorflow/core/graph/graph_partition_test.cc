@@ -51,7 +51,7 @@ limitations under the License.
 namespace tensorflow {
 
 // from graph_partition.cc
-extern Status TopologicalSortNodesWithTimePriority(
+extern absl::Status TopologicalSortNodesWithTimePriority(
     const GraphDef* gdef,
     std::vector<std::pair<const NodeDef*, int64_t>>* nodes,
     std::unordered_map<const NodeDef*, int64_t>* node_to_start_time_out);
@@ -103,7 +103,7 @@ void Partition(const GraphDef& graph_def,
   popts.get_incarnation = [](const string& name) {
     return (name[0] - 'A') + 100;
   };
-  Status s = Partition(popts, &g, partitions);
+  absl::Status s = Partition(popts, &g, partitions);
   CHECK(s.ok()) << s;
 
   // Check versions.
@@ -466,7 +466,7 @@ TEST_F(GraphPartitionTest, PartitionIncompleteGraph) {
       )EOF",
       &ndef);
   ASSERT_TRUE(parsed);
-  Status status;
+  absl::Status status;
   g.AddNode(ndef, &status);
   TF_ASSERT_OK(status);
 

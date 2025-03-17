@@ -27,6 +27,7 @@ limitations under the License.
 #include "xla/backends/profiler/gpu/cupti_collector.h"
 #include "xla/backends/profiler/gpu/cupti_tracer.h"
 #include "xla/backends/profiler/gpu/cupti_wrapper.h"
+#include "xla/tsl/profiler/utils/time_utils.h"
 #include "xla/tsl/util/env_var.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/macros.h"
@@ -34,7 +35,6 @@ limitations under the License.
 #include "tsl/profiler/lib/profiler_factory.h"
 #include "tsl/profiler/lib/profiler_interface.h"
 #include "tsl/profiler/protobuf/xplane.pb.h"
-#include "tsl/profiler/utils/time_utils.h"
 
 namespace xla {
 namespace profiler {
@@ -46,8 +46,7 @@ using tsl::ReadBoolFromEnvVar;
 // GpuTracer for GPU.
 class GpuTracer : public tsl::profiler::ProfilerInterface {
  public:
-  GpuTracer(CuptiTracer* cupti_tracer, CuptiInterface* cupti_interface)
-      : cupti_tracer_(cupti_tracer) {
+  explicit GpuTracer(CuptiTracer* cupti_tracer) : cupti_tracer_(cupti_tracer) {
     VLOG(1) << "GpuTracer created.";
   }
   ~GpuTracer() override {}
@@ -227,8 +226,7 @@ std::unique_ptr<tsl::profiler::ProfilerInterface> CreateGpuTracer(
   if (!cupti_tracer->IsAvailable()) {
     return nullptr;
   }
-  profiler::CuptiInterface* cupti_interface = profiler::GetCuptiInterface();
-  return std::make_unique<profiler::GpuTracer>(cupti_tracer, cupti_interface);
+  return std::make_unique<profiler::GpuTracer>(cupti_tracer);
 }
 
 auto register_gpu_tracer_factory = [] {

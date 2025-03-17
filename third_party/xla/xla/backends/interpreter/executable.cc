@@ -15,12 +15,10 @@ limitations under the License.
 
 #include "xla/backends/interpreter/executable.h"
 
-#include <algorithm>
-#include <cstring>
+#include <cstdint>
 #include <memory>
-#include <string>
+#include <optional>
 #include <utility>
-#include <vector>
 
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
@@ -34,7 +32,6 @@ limitations under the License.
 #include "xla/service/service_executable_run_options.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/stream_executor/stream_executor.h"
 
 namespace xla {
 namespace interpreter {

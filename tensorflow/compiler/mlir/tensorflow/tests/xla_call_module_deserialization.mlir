@@ -21,6 +21,7 @@ module {
     // CHECK-NOT:    function_list
     // CHECK-SAME:   module = ""
     // CHECK-SAME:   _entry_function = @main_0,
+    // CHECK-SAME:   _stablehlo_version = "0.12.0"
 
     // `module` is stablehlo bytecode for:
     //  func.func @main(%arg0: tensor<?xi32> {jax.arg_info = "x", mhlo.sharding = "{replicated}"}, %arg1: tensor<*xi32>) -> (tensor<?xi32> {jax.result_info = ""}) {
@@ -39,6 +40,7 @@ module {
     // CHECK-NOT:    function_list
     // CHECK-SAME:   module = ""
     // CHECK-SAME:   _entry_function = @main_1,
+    // CHECK-SAME:   _stablehlo_version = "0.12.0"
 
     // `module` is stablehlo bytecode for:
     //  func.func @main(%arg0: tensor<?xi32> {jax.arg_info = "x", mhlo.sharding = "{replicated}"}, %arg1: tensor<*xi32>) -> (tensor<?xi32> {jax.result_info = ""}) {

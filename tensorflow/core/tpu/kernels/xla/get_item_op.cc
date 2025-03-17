@@ -20,7 +20,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
-#include "xla/client/xla_builder.h"
+#include "xla/hlo/builder/xla_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/op_requires.h"
 #include "tensorflow/core/framework/tensor_shape.h"
@@ -53,11 +53,9 @@ class GetItemXlaOp : public XlaOpKernel {
       operands.push_back(const_zero);
     }
 
-    std::vector<int64_t> dims = {0};
     std::vector<int64_t> slice_sizes = {1};
     std::vector<int64_t> out_sizes = {};
     for (int i = 1; i < data_shape.dims(); i++) {
-      dims.push_back(i);
       auto size = data_shape.dim_size(i);
       slice_sizes.push_back(size);
       out_sizes.push_back(size);
@@ -66,7 +64,7 @@ class GetItemXlaOp : public XlaOpKernel {
     // if its out-of-range.
     auto slice = xla::DynamicSlice(ctx->Input(0), operands, slice_sizes);
     // In-order collapse to remove the 1st dim.
-    auto reshape = xla::Reshape(slice, dims, out_sizes);
+    auto reshape = xla::Reshape(slice, out_sizes);
     ctx->SetOutput(0, reshape);
   }
 };

@@ -22,7 +22,7 @@ limitations under the License.
 #include "mlir/Pass/Pass.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/Support/Casting.h"
-#include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
+#include "mlir/Dialect/Quant/IR/QuantTypes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
@@ -61,6 +61,13 @@ class DefaultQuantParamsPass
     this->default_min_ = default_min;
     this->default_max_ = default_max;
     this->is_signed_ = is_signed;
+  }
+
+  explicit DefaultQuantParamsPass(
+      const DefaultQuantParamsPassOptions &options) {
+    this->default_min_ = options.default_min_;
+    this->default_max_ = options.default_max_;
+    this->is_signed_ = options.is_signed_;
   }
 
   MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(DefaultQuantParamsPass)
@@ -235,6 +242,11 @@ std::unique_ptr<OperationPass<func::FuncOp>> CreateDefaultQuantParamsPass(
     double default_min, double default_max, bool is_signed) {
   return std::make_unique<DefaultQuantParamsPass>(default_min, default_max,
                                                   is_signed);
+}
+
+std::unique_ptr<OperationPass<func::FuncOp>> CreateDefaultQuantParamsPass(
+    const DefaultQuantParamsPassOptions &options) {
+  return std::make_unique<DefaultQuantParamsPass>(options);
 }
 
 std::unique_ptr<OperationPass<func::FuncOp>> CreateDefaultQuantParamsPass() {

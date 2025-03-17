@@ -130,7 +130,7 @@ def reshape(tensor, shape, name=None):  # pylint: disable=redefined-outer-name
 
   `tf.reshape(t, [])` reshapes a tensor `t` with one element to a scalar.
 
-  >>> tf.reshape([7], []).numpy()
+  >>> tf.reshape([7], []).numpy().item()
   7
 
   More examples:
@@ -275,9 +275,9 @@ def identity(input, name=None):  # pylint: disable=redefined-builtin
   >>> a_identity = tf.identity(a)
   >>> a.assign_add(1)
   <tf.Variable ... shape=() dtype=int32, numpy=6>
-  >>> a.numpy()
+  >>> print(a.numpy())
   6
-  >>> a_identity.numpy()
+  >>> print(a_identity.numpy())
   5
 
   This function can also be used to explicitly transfer tensors between devices.
@@ -396,7 +396,7 @@ def expand_dims_v2(input, axis, name=None):
 
   Given a tensor `input`, this operation inserts a dimension of length 1 at the
   dimension index `axis` of `input`'s shape. The dimension index follows Python
-  indexing rules: It's zero-based, a negative index it is counted backward
+  indexing rules: It's zero-based, and a negative index is counted backward
   from the end.
 
   This operation is useful to:
@@ -1276,7 +1276,39 @@ def _cast_nested_seqs_to_dtype(dtype):
   return _maybe_cast
 
 
-_NON_AUTOPACKABLE_TYPES = set(np.core.numerictypes.ScalarType)
+_NON_AUTOPACKABLE_TYPES = set((
+    int,
+    float,
+    complex,
+    bool,
+    bytes,
+    str,
+    memoryview,
+    np.bool_,
+    np.complex64,
+    np.clongdouble,
+    np.complex128,
+    np.float16,
+    np.float32,
+    np.float64,
+    np.longdouble,
+    np.int8,
+    np.int16,
+    np.int32,
+    np.int64,
+    np.longlong,
+    np.timedelta64,
+    np.datetime64,
+    np.object_,
+    np.bytes_,
+    np.str_,
+    np.uint8,
+    np.uint16,
+    np.uint32,
+    np.uint64,
+    np.ulonglong,
+    np.void,
+))
 _NON_AUTOPACKABLE_TYPES.add(np.ndarray)
 
 
@@ -4851,7 +4883,7 @@ def gather(params,
   ...     result[:, :, a, b, :] ==
   ...     # is equal to the slice of `params` along `axis` at the index.
   ...     params[:, :, indices[a, b], :]
-  ... ).numpy()
+  ... ).numpy().item()
   True
 
   ### Batching:

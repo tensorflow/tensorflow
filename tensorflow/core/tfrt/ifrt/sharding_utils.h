@@ -26,10 +26,13 @@ limitations under the License.
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/device.h"
+#include "xla/python/ifrt/device_list.h"
+#include "xla/python/ifrt/future.h"
 #include "xla/tsl/concurrency/ref_count.h"
+#include "xla/tsl/platform/threadpool.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
-#include "tsl/platform/threadpool.h"
+#include "tensorflow/core/framework/types.pb.h"
 
 namespace tensorflow {
 namespace ifrt_serving {
@@ -45,7 +48,7 @@ absl::StatusOr<tsl::RCReference<xla::ifrt::Array>> MakeArrayFromTensor(
 // device_list directly instead of a list of device_ids.
 absl::StatusOr<tsl::RCReference<xla::ifrt::Array>> MakeArrayFromTensor(
     xla::ifrt::Client& ifrt_client, const tensorflow::Tensor& input_tensor,
-    const xla::ifrt::DeviceList& device_list,
+    const xla::ifrt::DeviceListRef& device_list,
     const xla::HloSharding& hlo_sharding,
     const tsl::thread::ThreadPool& thread_pool);
 
@@ -60,11 +63,11 @@ absl::StatusOr<tsl::RCReference<xla::ifrt::Array>> MakeArrayFromTensor(
 // device_list: list of devices that is aligned with the order of device buffers
 // in the `input_array`.
 //
-absl::StatusOr<tensorflow::Tensor> MakeTensorFromArray(
+xla::ifrt::Future<tensorflow::Tensor> MakeTensorFromArray(
     xla::ifrt::Client& ifrt_client, xla::ifrt::Array& input_array,
     const xla::HloSharding& hlo_sharding,
-    const xla::ifrt::DeviceList& device_list,
-    const tsl::thread::ThreadPool& thread_pool);
+    const xla::ifrt::DeviceListRef& device_list,
+    tsl::thread::ThreadPool& thread_pool);
 
 // A wrapper around xla::ShapeUtil::ByteStrides to get the byte strides of a
 // TensorFlow tensor.

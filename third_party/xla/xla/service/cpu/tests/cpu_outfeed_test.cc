@@ -14,12 +14,14 @@ limitations under the License.
 ==============================================================================*/
 
 #include <memory>
+#include <string>
+#include <utility>
 
 #include <gtest/gtest.h>
 #include "xla/service/cpu/cpu_compiler.h"
 #include "xla/service/cpu/test_target_triple_helper.h"
 #include "xla/service/cpu/tests/cpu_codegen_test.h"
-#include "tsl/platform/statusor.h"
+#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace cpu {
@@ -54,6 +56,10 @@ CHECK: private unnamed_addr constant [48 x i8]
       /*entry_point_name=*/"entry",
       /*relocation_model=*/CpuAotCompilationOptions::RelocationModel::Static};
 
+  module->mutable_config()
+      .mutable_debug_options()
+      .set_xla_cpu_use_thunk_runtime(false);
+
   CompileAheadOfTimeAndVerifyIr(std::move(module), options, filecheck_pattern,
                                 /*match_optimized_ir=*/false);
 }
@@ -82,6 +88,10 @@ CHECK: private unnamed_addr constant [0 x i8]
       /*entry_point_name=*/"entry",
       /*relocation_model=*/CpuAotCompilationOptions::RelocationModel::Static};
 
+  module->mutable_config()
+      .mutable_debug_options()
+      .set_xla_cpu_use_thunk_runtime(false);
+
   CompileAheadOfTimeAndVerifyIr(std::move(module), options, filecheck_pattern,
                                 /*match_optimized_ir=*/false);
 }
@@ -109,6 +119,10 @@ CHECK: Outfeed
       /*features=*/"",
       /*entry_point_name=*/"entry",
       /*relocation_model=*/CpuAotCompilationOptions::RelocationModel::Static};
+
+  module->mutable_config()
+      .mutable_debug_options()
+      .set_xla_cpu_use_thunk_runtime(false);
 
   CompileAheadOfTimeAndVerifyIr(std::move(module), options, filecheck_pattern,
                                 /*match_optimized_ir=*/false);

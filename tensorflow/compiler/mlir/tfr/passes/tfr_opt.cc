@@ -16,8 +16,8 @@ limitations under the License.
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Func/Extensions/AllExtensions.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
-#include "mlir/Dialect/Quant/QuantOps.h"  // from @llvm-project
-#include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
+#include "mlir/Dialect/Quant/IR/Quant.h"  // from @llvm-project
+#include "mlir/Dialect/Quant/IR/QuantTypes.h"  // from @llvm-project
 #include "mlir/Dialect/SCF/IR/SCF.h"  // from @llvm-project
 #include "mlir/Dialect/Shape/IR/Shape.h"  // from @llvm-project
 #include "mlir/InitAllDialects.h"  // from @llvm-project
@@ -37,7 +37,7 @@ int main(int argc, char **argv) {
   mlir::DialectRegistry registry;
   registry.insert<mlir::scf::SCFDialect, mlir::TF::TensorFlowDialect,
                   mlir::arith::ArithDialect, mlir::func::FuncDialect,
-                  mlir::shape::ShapeDialect, mlir::quant::QuantizationDialect,
+                  mlir::shape::ShapeDialect, mlir::quant::QuantDialect,
                   mlir::quantfork::QuantizationForkDialect,
                   mlir::TFR::TFRDialect>();
   mlir::func::registerAllExtensions(registry);

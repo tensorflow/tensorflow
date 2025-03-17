@@ -25,11 +25,16 @@ limitations under the License.
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/node_hash_set.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/tf2xla/functionalize_control_flow_util.h"
 #include "tensorflow/compiler/tf2xla/tf2xla_util.h"
 #include "xla/status_macros.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/logging.h"  // IWYU pragma: keep
+#include "xla/tsl/platform/statusor.h"
 #include "tensorflow/core/common_runtime/function_body.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/node_def.pb.h"
@@ -45,9 +50,6 @@ limitations under the License.
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/protobuf/tpu/compile_metadata.pb.h"
 #include "tensorflow/core/tpu/graph_rewrite/distributed_tpu_rewrite_pass_internal.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/logging.h"  // IWYU pragma: keep
-#include "tsl/platform/statusor.h"
 #include "tsl/platform/tstring.h"
 
 namespace tensorflow {
@@ -130,7 +132,7 @@ absl::StatusOr<bool> ResourceOnlyUsedForTPUExecuteInLoop(
 // program and its model weight variable inputs as well.
 // TPUCompileMetadataProto of TPUCompile node must be reset to `new_metadata`
 // if new reshard ops are added.
-Status ExtractExecuteNodeInfo(
+absl::Status ExtractExecuteNodeInfo(
     const Node* compile_node, const Graph& graph,
     const std::unordered_set<Node*>& loop_nodes,  // NOLINT
     std::vector<ExecuteNodeInfo>* execute_node_info,
@@ -318,8 +320,8 @@ std::vector<Node*> FindLoopExitNodes(const Node& loop_cond) {
 // in the while loop.
 // TODO(mdan): Inject this node between the Enter and Merge nodes instead.
 // See AddNoOpAfterLastIteration for an example.
-Status GetOrCreateBeforeEachIterationNode(const Node& loop_cond_node,
-                                          Graph* graph, Node** node_out) {
+absl::Status GetOrCreateBeforeEachIterationNode(const Node& loop_cond_node,
+                                                Graph* graph, Node** node_out) {
   Node* loop_switch_node = nullptr;
   for (auto n : loop_cond_node.out_nodes()) {
     if (n->IsSwitch()) {
@@ -349,7 +351,7 @@ Status GetOrCreateBeforeEachIterationNode(const Node& loop_cond_node,
   at_loop_iteration_nodedef.set_name(graph->NewName(absl::StrCat(
       "TPUVariableReshard/before_iteration", "/_", internal::GetNodeId())));
 
-  Status status;
+  absl::Status status;
   TF_ASSIGN_OR_RETURN(Node * at_loop_iteration_node,
                       graph->AddNode(at_loop_iteration_nodedef));
   TF_RETURN_IF_ERROR(status);
@@ -366,15 +368,15 @@ Status GetOrCreateBeforeEachIterationNode(const Node& loop_cond_node,
 // corresponding Exit nodes (meaning, before the loop finally completed).
 // See the white paper for details:
 // http://download.tensorflow.org/paper/white_paper_tf_control_flow_implementation_2017_11_1.pdf
-Status AddNoOpAfterLastIteration(const Node& loop_cond_node, Graph* graph,
-                                 Node** node_out) {
+absl::Status AddNoOpAfterLastIteration(const Node& loop_cond_node, Graph* graph,
+                                       Node** node_out) {
   NodeDef after_last_iteration;
   after_last_iteration.set_op("NoOp");
 
   after_last_iteration.set_name(graph->NewName(absl::StrCat(
       "TPUVariableReshard/after_last_iteration", "/_", internal::GetNodeId())));
 
-  Status status;
+  absl::Status status;
   Node* after_last_iteration_node =
       graph->AddNode(after_last_iteration, &status);
   TF_RETURN_IF_ERROR(status);
@@ -418,7 +420,7 @@ Status AddNoOpAfterLastIteration(const Node& loop_cond_node, Graph* graph,
 
 }  // namespace
 
-Status DetectHostTrainingLoop(
+absl::Status DetectHostTrainingLoop(
     const std::string* current_function_name,
     const AttrValueMap* current_function_attr,
     const FunctionLibraryDefinition* library, Graph* graph,
@@ -434,7 +436,7 @@ Status DetectHostTrainingLoop(
                                     associated_functions.end());
   }
 
-  Status ret_status = absl::OkStatus();
+  absl::Status ret_status = absl::OkStatus();
   for (const auto& function : associated_function_list) {
     if (function.type() != AssociatedFunctionInfo::kFunctionAttr) continue;
 
@@ -470,7 +472,8 @@ Status DetectHostTrainingLoop(
   return ret_status;
 }
 
-Status AddReshardOp(Graph* graph, const HostTrainingLoopInfo& host_loop_info) {
+absl::Status AddReshardOp(Graph* graph,
+                          const HostTrainingLoopInfo& host_loop_info) {
   const auto& compile_node_name = host_loop_info.compile_node_name;
   const auto node_name_map = graph->BuildNodeNameIndex();
   const auto node_it = node_name_map.find(compile_node_name);
@@ -480,7 +483,7 @@ Status AddReshardOp(Graph* graph, const HostTrainingLoopInfo& host_loop_info) {
   const auto compile_node = node_it->second;
   std::vector<ExecuteNodeInfo> execute_nodes_info;
 
-  Status status;
+  absl::Status status;
   TPUCompileMetadataProto metadata;
   status =
       ExtractExecuteNodeInfo(compile_node, *graph, host_loop_info.loop_nodes,

@@ -49,6 +49,10 @@ limitations under the License.
 #include "xla/stream_executor/event.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/tpu/tpu_node_context.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/logging.h"  // IWYU pragma: keep
+#include "xla/tsl/platform/macros.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -74,10 +78,6 @@ limitations under the License.
 #include "tensorflow/core/tpu/tpu_defs.h"
 #include "tensorflow/core/tpu/tpu_execute.h"
 #include "tsl/platform/casts.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/logging.h"  // IWYU pragma: keep
-#include "tsl/platform/macros.h"
-#include "tsl/platform/statusor.h"
 
 namespace tensorflow {
 namespace {
@@ -87,7 +87,7 @@ using ::tensorflow::tpu::TpuNodeContext;
 
 // Looks up the input `key` in the compilation cache, populating
 // `*rendezvous_key_base` and `*entry`.
-Status GetComputationCacheEntry(
+absl::Status GetComputationCacheEntry(
     OpKernelContext* context, std::string* rendezvous_key_base,
     std::unique_ptr<CompilationCacheEntryRef>* entry) {
   const Tensor* key;
@@ -131,7 +131,8 @@ absl::StatusOr<VariableUpdateMap> BuildVariableUpdateMap(
     const std::vector<int>& fused_device_var_updates_in_computation_outputs,
     int64_t computation_output_count) {
   VariableUpdateMap map;
-  auto add_pair = [&](int input, int output, bool from_compilation) -> Status {
+  auto add_pair = [&](int input, int output,
+                      bool from_compilation) -> absl::Status {
     TF_RET_CHECK(map.input_to_output.emplace(input, output).second)
         << "Duplicate variable input index: " << input;
     if (output >= 0) {
@@ -390,7 +391,7 @@ struct OutputBuffers {
     buffers.buffers().ForEachElement(
         [&](const xla::ShapeIndex& index, const se::DeviceMemoryBase& buffer) {
           if (owned_buffers.element(index) && !buffer.is_null()) {
-            Status status =
+            absl::Status status =
                 memory_allocator->Deallocate(buffers.device_ordinal(), buffer);
             if (!status.ok()) {
               LOG(ERROR) << "Error deallocating buffer " << status;
@@ -619,7 +620,7 @@ AsyncOpKernel* TPUExecuteOp::AsAsync() {
 }
 
 void TPUExecuteOp::Compute(OpKernelContext* context) {
-  Status s = DoWork(context);
+  absl::Status s = DoWork(context);
   // NOTE: We can't use `OP_REQUIRES_OK()` here because that macro includes
   // a dynamic check that we are not in an AsyncOpKernel.
   if (TF_PREDICT_FALSE(!s.ok())) {
@@ -634,7 +635,7 @@ void TPUExecuteOp::ComputeAsync(OpKernelContext* context, DoneCallback done) {
   done();
 }
 
-Status TPUExecuteOp::DoWork(OpKernelContext* context) {
+absl::Status TPUExecuteOp::DoWork(OpKernelContext* context) {
   VLOG(1) << "Cloud TPU: TPUExecuteOp::Compute";
 
   const XlaDevice::Metadata* metadata;
@@ -727,7 +728,7 @@ Status TPUExecuteOp::DoWork(OpKernelContext* context) {
         std::make_shared<xla::Literal>(shaped_buffer.on_host_shape());
     transfer_manager->TransferLiteralFromDevice(
         stream, shaped_buffer, literal.get(),
-        [hlo_snapshot, literal](Status status) {
+        [hlo_snapshot, literal](absl::Status status) {
           if (!status.ok()) {
             LOG(ERROR) << "TransferLiteralFromDevice for HLO snapshot inputs "
                           "failed: "
@@ -791,7 +792,7 @@ Status TPUExecuteOp::DoWork(OpKernelContext* context) {
         std::make_shared<xla::Literal>(output_buffers->buffers.on_host_shape());
     transfer_manager->TransferLiteralFromDevice(
         stream, output_buffers->buffers, literal.get(),
-        [hlo_snapshot, literal](Status status) {
+        [hlo_snapshot, literal](absl::Status status) {
           if (status.ok()) {
             *hlo_snapshot->mutable_result() = literal->ToProto();
           } else {

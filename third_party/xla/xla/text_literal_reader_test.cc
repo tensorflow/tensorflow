@@ -17,12 +17,12 @@ limitations under the License.
 
 #include <string>
 
+#include <gtest/gtest.h>
+#include "xla/hlo/testlib/test.h"
 #include "xla/literal.h"
 #include "xla/shape_util.h"
-#include "xla/test.h"
-#include "xla/types.h"
+#include "xla/tsl/platform/env.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/env.h"
 
 namespace xla {
 namespace {

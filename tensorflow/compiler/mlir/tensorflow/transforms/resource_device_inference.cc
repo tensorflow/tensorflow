@@ -13,10 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <iterator>
+#include <cassert>
+#include <cstdint>
 #include <memory>
 #include <optional>
-#include <tuple>
 #include <utility>
 
 #include "llvm/ADT/ArrayRef.h"

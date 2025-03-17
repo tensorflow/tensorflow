@@ -18,8 +18,11 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_TPU_GRAPH_REWRITE_UPDATE_TPU_EMBEDDING_OPS_PASSES_H_
 #define TENSORFLOW_CORE_TPU_GRAPH_REWRITE_UPDATE_TPU_EMBEDDING_OPS_PASSES_H_
 
+#include <map>
+
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/node_hash_map.h"
+#include "absl/status/status.h"
 #include "tensorflow/core/common_runtime/optimization_registry.h"
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/graph/graph.h"
@@ -29,22 +32,22 @@ namespace tensorflow {
 
 class UpdateTPUEmbeddingEnqueueOrdinalPass : public GraphOptimizationPass {
  public:
-  Status Run(const GraphOptimizationPassOptions& options) override;
+  absl::Status Run(const GraphOptimizationPassOptions& options) override;
 };
 
 class UpdateTPUEmbeddingModePass : public GraphOptimizationPass {
  public:
-  Status Run(const GraphOptimizationPassOptions& options) override;
+  absl::Status Run(const GraphOptimizationPassOptions& options) override;
 
-  static Status GetEnqueueOpsFromGraph(
+  static absl::Status GetEnqueueOpsFromGraph(
       Graph* graph, absl::flat_hash_map<Node*, bool>* enqueue);
-  static Status UpdateGraphEnqueueOp(bool training, Graph* graph,
-                                     Node* enqueue);
-  static Status GetEnqueueOpsFromFunctionDef(FunctionDef* function,
-                                             std::map<int, bool>* enqueue);
-  static Status UpdateFunctionDefEnqueueOp(int enqueue, bool training,
-                                           FunctionDef* function,
-                                           bool* updated);
+  static absl::Status UpdateGraphEnqueueOp(bool training, Graph* graph,
+                                           Node* enqueue);
+  static absl::Status GetEnqueueOpsFromFunctionDef(
+      FunctionDef* function, std::map<int, bool>* enqueue);
+  static absl::Status UpdateFunctionDefEnqueueOp(int enqueue, bool training,
+                                                 FunctionDef* function,
+                                                 bool* updated);
 };
 
 }  // namespace tensorflow

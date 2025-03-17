@@ -17,8 +17,8 @@ limitations under the License.
 #define XLA_MLIR_UTILS_TYPE_UTIL_H_
 
 #include "absl/status/statusor.h"
-#include "mlir/IR/Builders.h"  // from @llvm-project
-#include "mlir/IR/Types.h"  // from @llvm-project
+#include "mlir/IR/Builders.h"
+#include "mlir/IR/Types.h"
 #include "xla/xla_data.pb.h"
 
 // Type utilities to match MLIR types to XLA primitive types and vice versa.

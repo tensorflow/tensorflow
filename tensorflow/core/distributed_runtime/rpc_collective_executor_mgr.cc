@@ -87,7 +87,7 @@ void RpcCollectiveExecutorMgr::RefreshStepIdSequenceAsync(
     GetStepSequenceResponse* resp = new GetStepSequenceResponse;
     req->add_graph_key(graph_key);
     wi->GetStepSequenceAsync(
-        req, resp, [this, req, resp, done](const Status& s) {
+        req, resp, [this, req, resp, done](const absl::Status& s) {
           if (!s.ok()) {
             LOG(ERROR) << "Bad response [" << s
                        << "] from GetStepSequenceAsync call to "
@@ -128,7 +128,7 @@ void RpcCollectiveExecutorMgr::GetStepSequenceAsync(
   }
 }
 
-Status RpcCollectiveExecutorMgr::UpdateStepSequences(
+absl::Status RpcCollectiveExecutorMgr::UpdateStepSequences(
     const GetStepSequenceResponse& resp) {
   mutex_lock l(sequence_mu_);
   for (const StepSequence& ss : resp.step_sequence()) {

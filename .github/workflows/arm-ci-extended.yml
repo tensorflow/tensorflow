@@ -51,12 +51,12 @@ jobs:
         run: find /home/ubuntu/actions-runner/_work/tensorflow/tensorflow/. -name . -o -prune -exec sudo rm -rf -- {} + || true
       - name: Checkout repository for nightly (skipped for releases)
         if: ${{ github.event_name == 'schedule' }}
-        uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4.1.7
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           ref: 'nightly'
       - name: Checkout repository
         if: ${{ github.event_name == 'push' }}
-        uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4.1.7
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
       - name: Build binary and run python tests on nightly for all python versions
         shell: bash
         run: |

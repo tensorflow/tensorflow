@@ -43,7 +43,7 @@ void TensorMap::Encode(VariantTensorData* data) const {
   }
 }
 
-static Status TensorMapDeviceCopy(
+static absl::Status TensorMapDeviceCopy(
     const TensorMap& from, TensorMap* to,
     const UnaryVariantOpRegistry::AsyncTensorDeviceCopyFn& copy) {
   for (const std::pair<TensorKey, Tensor>& p : from.tensors()) {

@@ -36,3 +36,69 @@ def BufferReusePass : Pass<"hlo-buffer-reuse", "mlir::func::FuncOp"> {
   let dependentDialects = ["::mlir::memref::MemRefDialect"];
 }
 
+// TODO(b/380236304): Migrate from the pass. The pass was removed from upstream in
+// https://github.com/llvm/llvm-project/commit/213917be82e3cd57c74afc836377a746be45dafd.
+def BufferDeallocation : Pass<"buffer-deallocation", "func::FuncOp"> {
+  let summary = "Adds all required dealloc operations for all allocations in "
+                "the input program";
+  let description = [{
+    This pass implements an algorithm to automatically introduce all required
+    deallocation operations for all buffers in the input program. This ensures
+    that the resulting program does not have any memory leaks.
+    Input
+    ```mlir
+    #map0 = affine_map<(d0) -> (d0)>
+    module {
+      func.func @condBranch(%arg0: i1, %arg1: memref<2xf32>, %arg2: memref<2xf32>) {
+        cf.cond_br %arg0, ^bb1, ^bb2
+      ^bb1:
+        cf.br ^bb3(%arg1 : memref<2xf32>)
+      ^bb2:
+        %0 = memref.alloc() : memref<2xf32>
+        linalg.generic {
+          indexing_maps = [#map0, #map0],
+          iterator_types = ["parallel"]} %arg1, %0 {
+        ^bb0(%gen1_arg0: f32, %gen1_arg1: f32):
+          %tmp1 = exp %gen1_arg0 : f32
+          linalg.yield %tmp1 : f32
+        }: memref<2xf32>, memref<2xf32>
+        cf.br ^bb3(%0 : memref<2xf32>)
+      ^bb3(%1: memref<2xf32>):
+        "memref.copy"(%1, %arg2) : (memref<2xf32>, memref<2xf32>) -> ()
+        return
+      }
+    }
+    ```
+    Output
+    ```mlir
+    #map0 = affine_map<(d0) -> (d0)>
+    module {
+      func.func @condBranch(%arg0: i1, %arg1: memref<2xf32>, %arg2: memref<2xf32>) {
+        cf.cond_br %arg0, ^bb1, ^bb2
+      ^bb1:  // pred: ^bb0
+        %0 = memref.alloc() : memref<2xf32>
+        memref.copy(%arg1, %0) : memref<2xf32>, memref<2xf32>
+        cf.br ^bb3(%0 : memref<2xf32>)
+      ^bb2:  // pred: ^bb0
+        %1 = memref.alloc() : memref<2xf32>
+        linalg.generic {
+          indexing_maps = [#map0, #map0],
+          iterator_types = ["parallel"]} %arg1, %1 {
+        ^bb0(%arg3: f32, %arg4: f32):
+          %4 = exp %arg3 : f32
+          linalg.yield %4 : f32
+        }: memref<2xf32>, memref<2xf32>
+        %2 = memref.alloc() : memref<2xf32>
+        memref.copy(%1, %2) : memref<2xf32>, memref<2xf32>
+        dealloc %1 : memref<2xf32>
+        cf.br ^bb3(%2 : memref<2xf32>)
+      ^bb3(%3: memref<2xf32>):  // 2 preds: ^bb1, ^bb2
+        memref.copy(%3, %arg2) : memref<2xf32>, memref<2xf32>
+        dealloc %3 : memref<2xf32>
+        return
+      }
+    }
+    ```
+  }];
+  let constructor = "::mlir::deallocation::createBufferDeallocationPass()";
+}

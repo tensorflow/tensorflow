@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PROFILER_CONVERT_REPOSITORY_H_
 #define TENSORFLOW_CORE_PROFILER_CONVERT_REPOSITORY_H_
 
+#include <cstddef>
 #include <memory>
 #include <optional>
 #include <string>
@@ -24,15 +25,15 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
-#include "tensorflow/core/platform/env.h"
-#include "tensorflow/core/platform/path.h"
-#include "tensorflow/core/platform/statusor.h"
-#include "tsl/platform/env.h"
-#include "tsl/platform/statusor.h"
+#include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/profiler/utils/file_system_utils.h"
+#include "tensorflow/core/profiler/utils/hlo_module_map.h"
+#include "tsl/platform/path.h"
 #include "tsl/profiler/protobuf/xplane.pb.h"
-#include "tsl/profiler/utils/file_system_utils.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -115,7 +116,7 @@ class SessionSnapshot {
     std::string filepath =
         tsl::profiler::ProfilerJoinPath(GetSessionRunDir(), filename);
 
-    return tensorflow::WriteBinaryProto(tsl::Env::Default(), filepath, proto);
+    return tsl::WriteBinaryProto(tsl::Env::Default(), filepath, proto);
   }
 
   template <typename T>
@@ -125,8 +126,7 @@ class SessionSnapshot {
     TF_ASSIGN_OR_RETURN(std::optional<std::string> filepath,
                         GetHostDataFilePath(data_type, host));
     if (filepath) {
-      return tensorflow::ReadBinaryProto(tsl::Env::Default(), filepath.value(),
-                                         proto);
+      return tsl::ReadBinaryProto(tsl::Env::Default(), filepath.value(), proto);
     }
 
     return absl::NotFoundError(
@@ -142,7 +142,7 @@ class SessionSnapshot {
         // encapsulated in this class will be disabled in this mode.
         has_accessible_run_dir_(!xspaces.has_value()),
         xspaces_(std::move(xspaces)) {
-    session_run_dir_ = tensorflow::io::Dirname(xspace_paths_.at(0));
+    session_run_dir_ = tsl::io::Dirname(xspace_paths_.at(0));
     for (size_t i = 0; i < xspace_paths_.size(); ++i) {
       std::string host_name = GetHostname(i);
       hostname_map_[host_name] = i;
@@ -179,6 +179,18 @@ absl::Status ReadBinaryProto(const SessionSnapshot& session_snapshot,
                              const StoredDataType data_type,
                              const std::string& host, T* proto) {
   return session_snapshot.ReadBinaryProto(data_type, host, proto);
+}
+
+// Process HloModuleMap from all XSpaces in a session.
+inline absl::StatusOr<HloModuleMap> ProcessHloModuleMap(
+    const SessionSnapshot& session_snapshot) {
+  HloModuleMap hlo_module_map;
+  for (int i = 0; i < session_snapshot.XSpaceSize(); i++) {
+    TF_ASSIGN_OR_RETURN(std::unique_ptr<XSpace> xspace,
+                        session_snapshot.GetXSpace(i));
+    ProcessHloModuleMapFromXSpace(hlo_module_map, xspace.get());
+  }
+  return hlo_module_map;
 }
 
 }  // namespace profiler

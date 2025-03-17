@@ -16,17 +16,17 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PROFILER_UTILS_HLO_PROTO_MAP_H_
 #define TENSORFLOW_CORE_PROFILER_UTILS_HLO_PROTO_MAP_H_
 
+#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <string>
-#include <utility>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/service/hlo.pb.h"
-#include "tensorflow/core/profiler/protobuf/xplane.pb.h"
+#include "tsl/profiler/protobuf/xplane.pb.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -40,8 +40,6 @@ class HloProtoMap {
 
   void AddHloProto(uint64_t program_id,
                    std::unique_ptr<const xla::HloProto> hlo_proto);
-  // Returns whether <hlo_proto> is new to HloProtoMap.
-  bool AddHloProto(uint64_t program_id, const xla::HloProto* hlo_proto);
 
   size_t size() const { return hlo_protos_by_program_id_.size(); }
 
@@ -76,6 +74,10 @@ class HloProtoMap {
   absl::flat_hash_map<uint64_t, const xla::HloProto*> hlo_protos_by_program_id_;
   absl::flat_hash_map<std::string, const xla::HloProto*> hlo_protos_by_name_;
   std::vector<std::unique_ptr<const xla::HloProto>> owned_hlo_protos_;
+
+  // Try to add proto to the map and returns true if the addition is successful
+  // (i.e., the proto is new to the map).
+  bool AddHloProto(uint64_t program_id, const xla::HloProto* hlo_proto);
 };
 
 }  // namespace profiler

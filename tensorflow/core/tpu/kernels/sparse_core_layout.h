@@ -84,8 +84,8 @@ class SparseCoreLayoutStacker {
   //
   // Be sure you call AddTable in a deterministic order; the details of the
   // stacking will depend on the order you call AddTable.
-  absl::Status AddTable(tsl::StringPiece table_name, int64_t table_height,
-                        int64_t table_width, tsl::StringPiece group,
+  absl::Status AddTable(absl::string_view table_name, int64_t table_height,
+                        int64_t table_width, absl::string_view group,
                         int64_t output_samples);
 
   // Get the information about each table out.

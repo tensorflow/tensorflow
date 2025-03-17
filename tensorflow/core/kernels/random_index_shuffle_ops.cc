@@ -45,8 +45,8 @@ std::array<uint32_t, 3> CastSeedFrom(const Tensor& seed_t, const int row) {
           static_cast<uint32_t>(seed_vals(3 * row + 2))};
 }
 
-Status GetSeed(const Tensor& seed_t, const int row,
-               std::array<uint32_t, 3>* seed) {
+absl::Status GetSeed(const Tensor& seed_t, const int row,
+                     std::array<uint32_t, 3>* seed) {
   if (seed_t.dtype() == DT_INT32) {
     *seed = CastSeedFrom<int32_t>(seed_t, row);
   } else if (seed_t.dtype() == DT_UINT32) {

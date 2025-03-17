@@ -21,7 +21,7 @@ limitations under the License.
 
 namespace tensorflow {
 
-Status ForceXlaConstantsOnHostPass::Run(
+absl::Status ForceXlaConstantsOnHostPass::Run(
     const GraphOptimizationPassOptions& options) {
   Graph* graph = options.graph->get();
 

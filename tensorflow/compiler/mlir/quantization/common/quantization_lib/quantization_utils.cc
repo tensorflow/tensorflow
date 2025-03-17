@@ -33,7 +33,7 @@ limitations under the License.
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
-#include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
+#include "mlir/Dialect/Quant/IR/QuantTypes.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributeInterfaces.h"  // from @llvm-project
@@ -47,11 +47,11 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/quantization/ir/QuantOps.h"
 #include "tensorflow/compiler/mlir/lite/quantization/ir/QuantizeUtils.h"
+#include "tensorflow/compiler/mlir/lite/quantization/lite/toco_legacy/portable_tensor_utils.h"
 #include "tensorflow/compiler/mlir/quantization/common/ir/FakeQuantSupport.h"
 #include "tensorflow/compiler/mlir/quantization/common/ir/UniformSupport.h"
 #include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_traits.h"
-#include "tensorflow/lite/kernels/internal/portable_tensor_utils.h"
-#include "tensorflow/lite/tools/optimize/quantization_utils.h"
+#include "tensorflow/compiler/mlir/tools/optimize/quantization_utils.h"
 
 namespace mlir {
 
@@ -209,10 +209,63 @@ bool IsOpQuantizable(Operation* op) {
       op->getAttrOfType<StringAttr>(kQuantTraitAttrName).getValue().str() ==
           QuantTraitValues[QuantizationTrait::FullyQuantizable];
 
+  const bool attr_output_quantized = QuantizableOpSupportsFloatOutputType(op);
+
   const bool trait_enforced_quantizable =
       op->hasTrait<OpTrait::quant::QuantizableResult>();
 
-  return attr_enforced_quantizable || trait_enforced_quantizable;
+  return attr_enforced_quantizable || trait_enforced_quantizable ||
+         attr_output_quantized;
+}
+
+// Checks if an op has specific attributes that enable quantized inputs with
+// float outputs.
+bool QuantizableOpSupportsFloatOutputType(Operation* op) {
+  static constexpr char kOutputTypes[] = "_output_types";
+  static constexpr char kSupportOutputTypeFloat[] =
+      "_support_output_type_float_in_quantized_op";
+
+  if (!(op->hasAttrOfType<mlir::BoolAttr>(kOutputQuantized) &&
+        op->getAttrOfType<mlir::BoolAttr>(kOutputQuantized).getValue())) {
+    return false;
+  }
+
+  if (!(op->hasAttrOfType<mlir::BoolAttr>(kSupportOutputTypeFloat) &&
+        op->getAttrOfType<mlir::BoolAttr>(kSupportOutputTypeFloat)
+            .getValue())) {
+    return false;
+  }
+
+  if (!op->hasAttrOfType<mlir::ArrayAttr>(kOutputTypes)) {
+    return false;
+  }
+
+  auto output_types_attr = op->getAttrOfType<mlir::ArrayAttr>(kOutputTypes);
+
+  if (output_types_attr.size() != op->getResultTypes().size()) {
+    return false;
+  }
+
+  for (const auto [attr_element, result_type] :
+       llvm::zip_equal(output_types_attr, op->getResultTypes())) {
+    auto type_attr = mlir::dyn_cast_or_null<TypeAttr>(attr_element);
+
+    if (!type_attr) {
+      return false;
+    }
+
+    auto tensor_type = mlir::dyn_cast_or_null<TensorType>(result_type);
+
+    if (!tensor_type) {
+      return false;
+    }
+
+    if (type_attr.getValue() != tensor_type.getElementType()) {
+      return false;
+    }
+  }
+
+  return true;
 }
 
 // Returns the quantized type for the
@@ -580,7 +633,7 @@ ElementsAttr QuantizeLegacy(const Attribute real_value,
     std::vector<int8_t> quantized_values(real_values_attr.getNumElements());
     if (auto uniform_type = dyn_cast<UniformQuantizedType>(q_type)) {
       float min, max, scale;
-      tflite::tensor_utils::SymmetricQuantizeFloats(
+      mlir::lite::toco_legacy::PortableSymmetricQuantizeFloats(
           real_values.data(), real_values.size(), quantized_values.data(), &min,
           &max, &scale);
       // The scale has been adjusted, so the adjusted scale should be respected.
@@ -598,7 +651,7 @@ ElementsAttr QuantizeLegacy(const Attribute real_value,
                      std::back_inserter(scales_inv),
                      [](float scale) { return 1.0 / scale; });
 
-      tflite::optimize::utils::SymmetricPerChannelQuantizeValues(
+      tflite_migration::optimize::utils::SymmetricPerChannelQuantizeValues(
           real_values.data(), scales_inv, dimension,
           uniform_type.getQuantizedDimension(), &quantized_values);
     } else {
@@ -619,7 +672,7 @@ ElementsAttr QuantizeLegacy(const Attribute real_value,
   } else if (width == 16) {
     if (const auto uniform_type = dyn_cast<UniformQuantizedType>(q_type)) {
       const auto quantized_values =
-          tflite::optimize::utils::SymmetricQuantizeFloatsToInt16(
+          tflite_migration::optimize::utils::SymmetricQuantizeFloatsToInt16(
               real_values.data(), real_values.size(), uniform_type.getScale());
       std::transform(quantized_values.begin(), quantized_values.end(),
                      std::back_inserter(quantized_attr),
@@ -640,7 +693,7 @@ ElementsAttr QuantizeLegacy(const Attribute real_value,
       return {};
     }
     const auto quantized_bias =
-        tflite::optimize::utils::SymmetricBiasQuantize<std::int32_t>(
+        tflite_migration::optimize::utils::SymmetricBiasQuantize<std::int32_t>(
             real_values.data(), real_values.size(), scales);
     std::transform(quantized_bias.begin(), quantized_bias.end(),
                    std::back_inserter(quantized_attr),

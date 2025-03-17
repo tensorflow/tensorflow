@@ -14,7 +14,6 @@ package(
 py_strict_library(
     name = "structured",
     srcs = ["__init__.py"],
-    srcs_version = "PY3",
     tags = ["nofixdeps"],
     deps = [
         ":structured_ops",
@@ -33,7 +32,6 @@ py_strict_library(
 py_strict_library(
     name = "structured_tensor",
     srcs = ["structured_tensor.py"],
-    srcs_version = "PY3",
     deps = [
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
@@ -62,7 +60,6 @@ py_strict_library(
     srcs = [
         "structured_tensor_dynamic.py",
     ],
-    srcs_version = "PY3",
     deps = [
         ":structured_tensor",
         "//tensorflow/python/framework:tensor",
@@ -77,7 +74,6 @@ py_strict_library(
     srcs = [
         "structured_array_ops.py",
     ],
-    srcs_version = "PY3",
     deps = [
         ":structured_tensor",
         "//tensorflow/core/config:flags_py",
@@ -99,7 +95,6 @@ py_strict_library(
 py_strict_test(
     name = "structured_tensor_test",
     srcs = ["structured_tensor_test.py"],
-    python_version = "PY3",
     deps = [
         ":structured_array_ops",
         ":structured_tensor",
@@ -129,7 +124,6 @@ py_strict_test(
 py_strict_test(
     name = "structured_tensor_spec_test",
     srcs = ["structured_tensor_spec_test.py"],
-    python_version = "PY3",
     deps = [
         ":structured_tensor",
         "@absl_py//absl/testing:parameterized",
@@ -153,7 +147,6 @@ py_strict_test(
 py_strict_test(
     name = "structured_array_ops_test",
     srcs = ["structured_array_ops_test.py"],
-    python_version = "PY3",
     deps = [
         ":structured_array_ops",
         ":structured_tensor",
@@ -180,7 +173,6 @@ py_strict_test(
 py_strict_test(
     name = "structured_tensor_slice_test",
     srcs = ["structured_tensor_slice_test.py"],
-    python_version = "PY3",
     deps = [
         ":structured_tensor",
         "@absl_py//absl/testing:parameterized",

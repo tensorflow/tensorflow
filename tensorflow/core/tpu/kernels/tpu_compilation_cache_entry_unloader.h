@@ -21,11 +21,11 @@ limitations under the License.
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/synchronization/mutex.h"
+#include "xla/tsl/platform/logging.h"  // IWYU pragma: keep
+#include "xla/tsl/platform/macros.h"
 #include "tensorflow/core/framework/resource_base.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/tpu/kernels/tpu_compilation_cache_interface.h"
-#include "tsl/platform/logging.h"  // IWYU pragma: keep
-#include "tsl/platform/macros.h"
 
 namespace tensorflow {
 namespace tpu {
@@ -42,7 +42,7 @@ class TpuCompilationCacheEntryUnloader : public ResourceBase {
   ~TpuCompilationCacheEntryUnloader() override {
     absl::MutexLock lock(&mu_);
     for (int64_t uid : cache_entry_uids_) {
-      Status s = cache_->MarkEntryForEviction(uid);
+      absl::Status s = cache_->MarkEntryForEviction(uid);
       if (!s.ok()) {
         LOG(WARNING) << "MarkEntryForEviction in "
                         "~CompilationCacheEntryUnloader fails with error "

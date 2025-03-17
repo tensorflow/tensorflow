@@ -43,9 +43,9 @@ namespace {
 using mlir::TF::DTensorLayout;
 
 class RemoveDTensorLayoutAfterConstOrBlockArgPattern
-    : public mlir::OpRewritePattern<DTensorLayout> {
+    : public mlir::OpRewritePattern<DTensorLayout>::SplitMatchAndRewrite {
  public:
-  using mlir::OpRewritePattern<DTensorLayout>::OpRewritePattern;
+  using SplitMatchAndRewrite::SplitMatchAndRewrite;
 
   mlir::LogicalResult match(DTensorLayout layout_op) const override;
 
@@ -88,8 +88,8 @@ void DTensorLayoutToXlaShardingOpPass::runOnOperation() {
   // For BlockArgument, the sharding is already attached to function attribute
   // by DTensorSetHloShardingPass. No additional tf.XlaSharding is needed.
   patterns.add<RemoveDTensorLayoutAfterConstOrBlockArgPattern>(&getContext());
-  if (mlir::failed(mlir::applyPatternsAndFoldGreedily(getOperation(),
-                                                      std::move(patterns)))) {
+  if (mlir::failed(
+          mlir::applyPatternsGreedily(getOperation(), std::move(patterns)))) {
     signalPassFailure();
   }
 

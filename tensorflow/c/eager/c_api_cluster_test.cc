@@ -148,7 +148,7 @@ void TestRemoteExecuteChangeServerDef(bool async) {
   serialized = updated_server_def.SerializeAsString();
 
   updated_server_def.set_task_index(1);
-  tensorflow::Status s = tensorflow::GrpcServer::Create(
+  absl::Status s = tensorflow::GrpcServer::Create(
       updated_server_def, tensorflow::Env::Default(), &worker_server);
   ASSERT_TRUE(s.ok()) << s.message();
   ASSERT_TRUE(worker_server->Start().ok());
@@ -430,7 +430,7 @@ void TestConnectToCluster(bool keep_localhost_for_first_connect) {
   TFE_TensorHandle* var_handle0 = TestVariable(ctx, 1.0, dev0_name);
   EXPECT_NE(var_handle0, nullptr);
 
-  tensorflow::Status status2;
+  absl::Status status2;
   EXPECT_EQ(tensorflow::unwrap(var_handle0)->DeviceName(&status2), dev0_name);
 
   // Rename local device

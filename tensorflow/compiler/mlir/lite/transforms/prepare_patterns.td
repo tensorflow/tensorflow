@@ -24,7 +24,7 @@ def DenseElementsAttr : ElementsAttrBase<
   "non-opaque constant tensor">;
 
 def CreateGatherNdOp : NativeCodeCall<
-    "$_builder.create<TF::GatherNdOp>($0.getLoc(), $0.getType(), $1, $2)">;
+    "$_builder.create<TF::GatherNdOp>($0.getLoc(), $0.getType(), $1, $2, $3)">;
 
 def CreateTFCastOpI32 : NativeCodeCall<
     "CreateTFCastOpI32(&$_builder, $_loc, $0, $1)">;
@@ -197,9 +197,14 @@ def ConvertMatrixSetDiagV3ToMatrixSetDiag :
 //===----------------------------------------------------------------------===//
 
 def LowerTensorScatterAdd: Pat<
-  (TF_TensorScatterAddOp $input, $indices, $updates),
-  (TF_TensorScatterUpdateOp $input, $indices,
-     (TF_AddOp $updates, (CreateGatherNdOp $updates, $input, $indices)))>;
+  (TF_TensorScatterAddOp $input, $indices, $updates, $bad_indices_policy),
+  (TF_TensorScatterUpdateOp
+    $input,
+    $indices,
+    (TF_AddOp
+      $updates,
+      (CreateGatherNdOp $updates, $input, $indices, $bad_indices_policy)),
+    $bad_indices_policy)>;
 
 //===----------------------------------------------------------------------===//
 // AddV2 op patterns.

@@ -34,7 +34,8 @@ limitations under the License.
 namespace tensorflow {
 namespace data {
 
-Status DataServiceSplitProvider::GetNext(Tensor* split, bool* end_of_splits)
+absl::Status DataServiceSplitProvider::GetNext(Tensor* split,
+                                               bool* end_of_splits)
     TF_LOCKS_EXCLUDED(mu_) {
   mutex_lock l(mu_);
   if (!dispatcher_) {
@@ -61,27 +62,27 @@ Status DataServiceSplitProvider::GetNext(Tensor* split, bool* end_of_splits)
   return absl::OkStatus();
 }
 
-Status DataServiceSplitProvider::Reset() TF_LOCKS_EXCLUDED(mu_) {
+absl::Status DataServiceSplitProvider::Reset() TF_LOCKS_EXCLUDED(mu_) {
   mutex_lock l(mu_);
   repetition_++;
   return absl::OkStatus();
 }
 
-Status DataServiceSplitProvider::Save(
+absl::Status DataServiceSplitProvider::Save(
     std::function<std::string(std::string)> full_name,
     IteratorStateWriter* writer) {
   return errors::Unimplemented(
       "Save is not implemented for DataServiceSplitProvider");
 }
 
-Status DataServiceSplitProvider::Restore(
+absl::Status DataServiceSplitProvider::Restore(
     std::function<std::string(std::string)> full_name,
     IteratorStateReader* reader) {
   return errors::Unimplemented(
       "Restore is not implemented for DataServiceSplitProvider");
 }
 
-Status CreateSplitProviders(
+absl::Status CreateSplitProviders(
     const DatasetDef& dataset_def,
     std::vector<std::unique_ptr<SplitProvider>>& split_providers) {
   standalone::Dataset::Params params;

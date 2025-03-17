@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#if defined(INTEL_MKL) && defined(ENABLE_ONEDNN_V3)
+#if defined(INTEL_MKL)
 
 #include "xla/service/cpu/onednn_convolution.h"
 
@@ -27,7 +27,7 @@ limitations under the License.
 #define EIGEN_USE_THREADS
 
 #include "absl/base/dynamic_annotations.h"
-#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
+#include "unsupported/Eigen/CXX11/Tensor"
 #include "dnnl.hpp"
 #include "xla/executable_run_options.h"
 #include "xla/service/cpu/backend_config.pb.h"
@@ -61,6 +61,13 @@ dnnl::memory::format_tag GetFormatTag(const int dims) {
          : (dims == 4) ? dnnl::memory::format_tag::nhwc
          : (dims == 5) ? dnnl::memory::format_tag::ndhwc
                        : dnnl::memory::format_tag::any;
+}
+
+template <>
+typename PrimitiveTrait<kOnednnConvConfig>::pointer_type
+GetKernelConfig<kOnednnConvConfig>(
+    absl::StatusOr<BackendConfig>* backend_config) {
+  return (*backend_config)->mutable_onednn_conv_config();
 }
 
 ABSL_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_OneDnnConvolution(
@@ -154,7 +161,6 @@ ABSL_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_OneDnnConvolution(
   MemrefInfo ker_minfo(args[arg_indx++]);
   MemrefInfo res_minfo(result);
 
-  // Permute memory descriptors
   auto inp_md = inp_minfo.GetOneDnnMemDesc();
   auto ker_md = ker_minfo.GetOneDnnMemDesc();
   auto res_md = res_minfo.GetOneDnnMemDesc();
@@ -174,6 +180,28 @@ ABSL_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_OneDnnConvolution(
     new_ker_md = new_ker_md.reshape(corr_dims);
   }
 
+  const int64_t num_fused_operands = num_args - arg_indx;
+  std::vector<memory::desc> fused_mds;
+  std::vector<void*> fused_bufs;
+  for (int64_t i = 0; i < num_fused_operands; ++i) {
+    MemrefInfo operand_minfo(args[arg_indx++]);
+    auto mem_desc = operand_minfo.GetOneDnnMemDesc();
+    if (mem_desc.get_ndims() == new_res_md.get_ndims()) {
+      mem_desc = mem_desc.permute_axes(out_axes);
+    }
+    fused_mds.push_back(mem_desc);
+    fused_bufs.push_back(operand_minfo.Data());
+  }
+
+  std::vector<std::pair<int, dnnl::memory>> postop_args;
+  FusedOperandsRef fused_operands_ref{fused_bufs, postop_args};
+
+  auto bias_md = memory::desc();
+
+  dnnl::post_ops post_ops =
+      PopulateOneDnnPostOps(cpu_engine, fused_mds, &conv_config.fusions(),
+                            &fused_operands_ref, &bias_md);
+
   auto any_ker_md =
       memory::desc(new_ker_md.get_dims(), new_ker_md.get_data_type(),
                    dnnl::memory::format_tag::any);
@@ -187,37 +215,41 @@ ABSL_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_OneDnnConvolution(
   XLA_LIGHTWEIGHT_CHECK(num_args == arg_indx);
 
   dnnl::primitive_attr attrs;
+  if (post_ops.len() > 0) {
+    attrs.set_post_ops(post_ops);
+  }
+
+  auto conv_pd = std::make_unique<convolution_forward::primitive_desc>(
+      cpu_engine, prop_kind::forward_inference, algorithm::convolution_direct,
+      any_inp_md, any_ker_md, bias_md, any_res_md, strides, rhs_dilations,
+      pad_left, pad_right, attrs);
 
   auto inp_mem = memory(new_inp_md, cpu_engine, inp_minfo.Data());
   auto ker_mem = memory(new_ker_md, cpu_engine, ker_minfo.Data());
   auto res_mem = memory(new_res_md, cpu_engine, res_minfo.Data());
 
-  auto conv_pd = convolution_forward::primitive_desc(
-      cpu_engine, prop_kind::forward_inference, algorithm::convolution_direct,
-      any_inp_md, any_ker_md, any_res_md, strides, rhs_dilations, pad_left,
-      pad_right, attrs);
-
-  auto new_inp_mem = (conv_pd.src_desc() == inp_mem.get_desc())
+  auto new_inp_mem = (conv_pd->src_desc() == inp_mem.get_desc())
                          ? inp_mem
-                         : ReorderMemory(cpu_engine, conv_pd.src_desc(),
+                         : ReorderMemory(cpu_engine, conv_pd->src_desc(),
                                          inp_mem, onednn_stream);
-  auto new_ker_mem = (conv_pd.weights_desc() == ker_mem.get_desc())
+  auto new_ker_mem = (conv_pd->weights_desc() == ker_mem.get_desc())
                          ? ker_mem
-                         : ReorderMemory(cpu_engine, conv_pd.weights_desc(),
+                         : ReorderMemory(cpu_engine, conv_pd->weights_desc(),
                                          ker_mem, onednn_stream);
-  auto new_res_mem = (conv_pd.dst_desc() == res_mem.get_desc())
+  auto new_res_mem = (conv_pd->dst_desc() == res_mem.get_desc())
                          ? res_mem
-                         : memory(conv_pd.dst_desc(), cpu_engine);
+                         : memory(conv_pd->dst_desc(), cpu_engine);
 
-  auto conv_prim = convolution_forward(conv_pd);
+  auto conv_prim = convolution_forward(*conv_pd);
 
   std::unordered_map<int, memory> conv_args{{DNNL_ARG_SRC, new_inp_mem},
                                             {DNNL_ARG_WEIGHTS, new_ker_mem},
                                             {DNNL_ARG_DST, new_res_mem}};
 
+  conv_args.insert(postop_args.begin(), postop_args.end());
   conv_prim.execute(onednn_stream, conv_args);
 
-  if (conv_pd.dst_desc() == res_mem.get_desc()) {
+  if (conv_pd->dst_desc() == res_mem.get_desc()) {
     res_mem = new_res_mem;
   } else {
     dnnl::reorder(new_res_mem, res_mem)
@@ -228,4 +260,4 @@ ABSL_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_OneDnnConvolution(
 }  // namespace cpu
 }  // namespace xla
 
-#endif  // INTEL_MKL && ENABLE_ONEDNN_V3
+#endif  // INTEL_MKL

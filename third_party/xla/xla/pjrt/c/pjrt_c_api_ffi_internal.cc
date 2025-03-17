@@ -15,8 +15,6 @@ limitations under the License.
 
 #include "xla/pjrt/c/pjrt_c_api_ffi_internal.h"
 
-#include <string_view>
-
 #include "absl/status/status.h"
 #include "xla/ffi/execution_context.h"
 #include "xla/ffi/type_id_registry.h"
@@ -36,7 +34,7 @@ static PJRT_Error* PJRT_FFI_TypeID_Register(
   PJRT_ASSIGN_OR_RETURN(
       auto type_id,
       xla::ffi::TypeIdRegistry::RegisterExternalTypeId(
-          std::string_view(args->type_name, args->type_name_size)));
+          absl::string_view(args->type_name, args->type_name_size)));
   args->type_id = type_id.value();
   return nullptr;
 }

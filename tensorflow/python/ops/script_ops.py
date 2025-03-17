@@ -17,8 +17,6 @@
 # pylint: disable=g-bad-name
 import functools
 import threading
-
-
 # Used by py_util.cc to get tracebacks.
 import traceback  # pylint: disable=unused-import
 import weakref
@@ -46,6 +44,7 @@ from tensorflow.python.util import compat
 from tensorflow.python.util import deprecation
 from tensorflow.python.util import dispatch
 from tensorflow.python.util import nest
+from tensorflow.python.util import numpy_compat
 from tensorflow.python.util import tf_inspect
 from tensorflow.python.util import variable_utils
 from tensorflow.python.util.tf_export import tf_export
@@ -226,12 +225,12 @@ class FuncRegistry:
     Returns:
       A numpy array.
     """
-    result = np.asarray(value, dtype=dtype, order="C")
+    result = numpy_compat.np_asarray(value, dtype=dtype, order="C")
     if result.dtype.char == "S" and result is not value:
-      return np.asarray(value, order="C", dtype=object)
+      return numpy_compat.np_asarray(value, order="C", dtype=object)
     elif result.dtype.char == "U" and result is not value:
       value = np.vectorize(lambda x: x.encode("utf8"))(value)
-      return np.asarray(value, order="C", dtype=object)
+      return numpy_compat.np_asarray(value, order="C", dtype=object)
     elif result.dtype.char == "U":
       return result.astype(np.bytes_)
     else:

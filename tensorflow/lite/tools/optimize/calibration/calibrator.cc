@@ -14,9 +14,10 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/tools/optimize/calibration/calibrator.h"
 
-#include <fstream>
+#include <cstddef>
 #include <memory>
 #include <string>
+#include <tuple>
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
@@ -25,8 +26,8 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "flatbuffers/buffer.h"  // from @flatbuffers
 #include "flatbuffers/vector.h"  // from @flatbuffers
+#include "tensorflow/compiler/mlir/lite/allocation.h"
 #include "tensorflow/compiler/mlir/lite/schema/schema_utils.h"
-#include "tensorflow/lite/allocation.h"
 #include "tensorflow/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/core/api/op_resolver.h"
 #include "tensorflow/lite/core/c/common.h"

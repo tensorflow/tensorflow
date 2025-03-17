@@ -91,6 +91,7 @@ cc_library(
         "//tensorflow/core/grappler/costs:analytical_cost_estimator",
         "//tensorflow/core/grappler/costs:op_level_cost_estimator",
         "//tensorflow/core/grappler/costs:virtual_scheduler",
+        "@com_google_absl//absl/status",
     ],
 )
 
@@ -106,6 +107,9 @@ tf_cc_test(
         "//tensorflow/core:test_main",
         "//tensorflow/core/grappler:grappler_item",
         "//tensorflow/core/grappler/inputs:trivial_test_graph_input_yielder",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@local_xla//xla/tsl/protobuf:error_codes_proto_impl_cc",
     ],
 )
 
@@ -127,10 +131,16 @@ cc_library(
         "//tensorflow/core/common_runtime:core_cpu_lib",
         "//tensorflow/core/common_runtime:direct_session_internal",
         "//tensorflow/core/common_runtime/gpu:gpu_id",
+        "//tensorflow/core/framework:cost_graph_proto_cc",
+        "//tensorflow/core/framework:graph_proto_cc",
         "//tensorflow/core/grappler:utils",
         "//tensorflow/core/kernels:ops_util",
+        "//tensorflow/core/protobuf:for_core_protos_cc",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:optional",
     ],
     alwayslink = 1,
 )

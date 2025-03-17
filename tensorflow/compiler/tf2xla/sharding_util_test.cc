@@ -115,7 +115,7 @@ TEST_P(ShardingWithMetadataTest, GetShardingFromNode) {
 
   {
     Graph graph(OpRegistry::Global());
-    Status status;
+    absl::Status status;
     Node* node = graph.AddNode(node_def, &status);
     TF_ASSERT_OK(status);
 

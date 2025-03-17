@@ -52,7 +52,7 @@ TEST_F(ImplementationSelectorTest, NoUpdate) {
   TF_ASSERT_OK(optimizer->Init());
 
   GraphDef output;
-  const Status status = optimizer->Optimize(nullptr, item, &output);
+  const absl::Status status = optimizer->Optimize(nullptr, item, &output);
   TF_EXPECT_OK(status);
 
   // This is a trivial graph so there is nothing to update.

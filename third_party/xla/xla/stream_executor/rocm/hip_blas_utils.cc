@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/stream_executor/rocm/hip_blas_utils.h"
 
+#include "absl/log/log.h"
 #include "absl/strings/str_cat.h"
 #include "xla/stream_executor/blas.h"
 
@@ -35,8 +36,13 @@ absl::Status ToStatus(hipblasStatus_t status, const char* prefix) {
 hipDataType AsHipblasDataType(blas::DataType type) {
   switch (type) {
     case blas::DataType::kF8E5M2:
+    case blas::DataType::kF8E4M3:
     case blas::DataType::kF8E4M3FN:
-      LOG(FATAL) << "hipblaslt does not support F8E5M2 and F8E4M3FN";
+    case blas::DataType::kF8E3M4:
+    case blas::DataType::kF4E2M1FN:
+    case blas::DataType::kF8E8M0FNU:
+      LOG(FATAL) << "hipblaslt does not support F8E5M2, F8E4M3, F8E4M3FN, "
+                    "F8E3M4, F4E2M1FN and F8E8M0FNU";
 #if TF_ROCM_VERSION >= 60000
     case blas::DataType::kF8E5M2FNUZ:
       return HIP_R_8F_E5M2_FNUZ;

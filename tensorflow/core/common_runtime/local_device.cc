@@ -126,7 +126,7 @@ LocalDevice::LocalDevice(const SessionOptions& options,
     // computations.
     static mutex& global_tp_mu = *new mutex;
     static auto& global_tp_info TF_GUARDED_BY(global_tp_mu) =
-        *new gtl::InlinedVector<LocalDevice::EigenThreadPoolInfo*, 4>;
+        *new absl::InlinedVector<LocalDevice::EigenThreadPoolInfo*, 4UL>;
 
     mutex_lock l(global_tp_mu);
     if (options.config.experimental().use_numa_affinity()) {

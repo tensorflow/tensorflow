@@ -169,11 +169,11 @@ bool PollTillFirstRequestSucceeds(const string& server_url,
 
   while (n_attempts++ < max_attempts) {
     const uint64 wall_time = Env::Default()->NowMicros();
-    Status publish_s = DebugIO::PublishDebugTensor(
+    absl::Status publish_s = DebugIO::PublishDebugTensor(
         DebugNodeKey("/job:localhost/replica:0/task:0/cpu:0", "prep_node", 0,
                      "DebugIdentity"),
         prep_tensor, wall_time, {server_url});
-    Status close_s = DebugIO::CloseDebugURL(server_url);
+    absl::Status close_s = DebugIO::CloseDebugURL(server_url);
 
     if (publish_s.ok() && close_s.ok()) {
       success = true;

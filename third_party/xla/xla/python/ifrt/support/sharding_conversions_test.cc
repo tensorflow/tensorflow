@@ -29,7 +29,9 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/hlo/ir/tile_assignment.h"
+#include "xla/python/ifrt/basic_device_list.h"
 #include "xla/python/ifrt/device.h"
+#include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/index_domain.h"
 #include "xla/python/ifrt/ir/sharding_param.h"
 #include "xla/python/ifrt/memory.h"
@@ -38,10 +40,11 @@ limitations under the License.
 #include "xla/python/ifrt/sharding.h"
 #include "xla/python/ifrt/test_util.h"
 #include "xla/shape.h"
+#include "xla/tsl/concurrency/ref_count.h"
+#include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/status_matchers.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/lib/core/status_test_util.h"
-#include "tsl/platform/status_matchers.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace ifrt {
@@ -53,7 +56,7 @@ using ::tsl::testing::StatusIs;
 using xla::HloSharding;
 
 absl::StatusOr<HloSharding> ToHloShardingViaOpSharding(
-    const ShardingParam& sharding_param, const DeviceList& device_list) {
+    const ShardingParam& sharding_param, const DeviceListRef& device_list) {
   TF_ASSIGN_OR_RETURN(xla::OpSharding op_sharding,
                       ToOpSharding(sharding_param, device_list));
   return HloSharding::FromProto(op_sharding);
@@ -74,6 +77,7 @@ std::shared_ptr<MockClient> MakeTestClient(int num_devices) {
   for (int i = 0; i < num_devices; ++i) {
     auto device = std::make_unique<MockDevice>();
     ON_CALL(*device, Id).WillByDefault(Return(DeviceId(i)));
+    ON_CALL(*device, IsAddressable).WillByDefault(Return(true));
     state->devices.push_back(device.get());
     state->device_map.insert({DeviceId(i), std::move(device)});
   }
@@ -81,6 +85,10 @@ std::shared_ptr<MockClient> MakeTestClient(int num_devices) {
   ON_CALL(*client, devices)
       .WillByDefault(
           [state]() -> absl::Span<Device* const> { return state->devices; });
+  ON_CALL(*client, MakeDeviceList)
+      .WillByDefault([](absl::Span<Device* const> devices) -> DeviceListRef {
+        return BasicDeviceList::Create(devices);
+      });
   return client;
 }
 
@@ -88,7 +96,7 @@ class ShardingConversionsTest : public testing::TestWithParam<int> {
  public:
   void SetUp() override { client_ = MakeTestClient(GetParam()); }
 
-  DeviceList GetDevices(absl::Span<const int> device_indices) {
+  DeviceListRef GetDevices(absl::Span<const int> device_indices) {
     return test_util::GetDevices(client_.get(), device_indices).value();
   }
 
@@ -98,7 +106,7 @@ class ShardingConversionsTest : public testing::TestWithParam<int> {
     TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<const Sharding> sharding,
                             ShardingParamSharding::Create(
                                 sharding_param, device_list, MemoryKind()));
-    const xla::Shape xla_shape(PrimitiveType::F16, shape.dims(), {}, {});
+    const xla::Shape xla_shape(PrimitiveType::F16, shape.dims(), {});
 
     TF_ASSERT_OK_AND_ASSIGN(const std::vector<IndexDomain> index_domains,
                             sharding->IndexDomains(shape));
@@ -305,7 +313,7 @@ class HloShardingToShardingParamTest
     client_ = MakeTestClient(param.num_devices);
   }
 
-  DeviceList GetDevices(absl::Span<const int> device_indices) {
+  DeviceListRef GetDevices(absl::Span<const int> device_indices) {
     return test_util::GetDevices(client_.get(), device_indices).value();
   }
 

@@ -11,7 +11,7 @@ annotated:
 <img src="images/android_apple_banana.png" alt="Screenshot of Android example" width="30%">
 
 Note: (1) To integrate an existing model, try
-[TensorFlow Lite Task Library](../../inference_with_metadata/task_library/object_detector).
+[TensorFlow Lite Task Library](https://ai.google.dev/edge/litert/libraries/task_library/object_detector).
 (2) To customize a model, try
 [TensorFlow Lite Model Maker](https://www.tensorflow.org/lite/guide/model_maker).
 
@@ -52,7 +52,7 @@ started.
 #### Android
 
 You can leverage the out-of-box API from
-[TensorFlow Lite Task Library](../../inference_with_metadata/task_library/object_detector)
+[TensorFlow Lite Task Library](https://ai.google.dev/edge/litert/libraries/task_library/object_detector)
 to integrate object detection models in just a few lines of code. You can also
 build your own custom inference pipeline using the
 [TensorFlow Lite Interpreter Java API](../../guide/inference#load_and_run_a_model_in_java).

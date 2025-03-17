@@ -21,7 +21,7 @@ limitations under the License.
 #include <utility>
 
 #include "xla/tsl/framework/numeric_types.h"
-#include "tsl/platform/types.h"
+#include "xla/tsl/platform/types.h"
 
 namespace tsl {
 
@@ -70,9 +70,15 @@ struct is_simple_type {
       std::is_trivial<T>::value || std::is_same<T, Eigen::half>::value ||
       std::is_same<T, complex64>::value || std::is_same<T, complex128>::value ||
       is_quantized<T>::value || std::is_same<T, bfloat16>::value ||
+      std::is_same<T, float4_e2m1fn>::value ||
+      std::is_same<T, float8_e3m4>::value ||
+      std::is_same<T, float8_e4m3>::value ||
       std::is_same<T, float8_e4m3fn>::value ||
+      std::is_same<T, float8_e4m3fnuz>::value ||
       std::is_same<T, float8_e4m3b11fnuz>::value ||
-      std::is_same<T, float8_e5m2>::value || std::is_same<T, int4>::value ||
+      std::is_same<T, float8_e5m2>::value ||
+      std::is_same<T, float8_e5m2fnuz>::value ||
+      std::is_same<T, float8_e8m0fnu>::value || std::is_same<T, int4>::value ||
       std::is_same<T, uint4>::value;
 };
 
@@ -92,17 +98,22 @@ class numeric_limits<tsl::quint16> : public numeric_limits<tsl::uint16> {};
 template <>
 class numeric_limits<tsl::qint32> : public numeric_limits<tsl::int32> {};
 
-// Specialize is_signed for quantized types.
+// Templates from <type_traits> are not permitted to be specialized by users,
+// and doing so may be ignored or cause an error. As a transitional measure,
+// since tensorflow was specializing is_signed for some time, poison uses by
+// specializing with an empty struct (missing the `value` member).
+//
+// TODO(b/392034954): Delete these invalid specializations.
 template <>
-struct is_signed<tsl::qint8> : public is_signed<tsl::int8> {};
+struct is_signed<tsl::qint8> {};
 template <>
-struct is_signed<tsl::quint8> : public is_signed<tsl::uint8> {};
+struct is_signed<tsl::quint8> {};
 template <>
-struct is_signed<tsl::qint16> : public is_signed<tsl::int16> {};
+struct is_signed<tsl::qint16> {};
 template <>
-struct is_signed<tsl::quint16> : public is_signed<tsl::uint16> {};
+struct is_signed<tsl::quint16> {};
 template <>
-struct is_signed<tsl::qint32> : public is_signed<tsl::int32> {};
+struct is_signed<tsl::qint32> {};
 
 }  // namespace std
 

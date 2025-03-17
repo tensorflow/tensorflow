@@ -30,6 +30,7 @@ def _map_v2(
     num_parallel_calls=None,
     deterministic=None,
     synchronous=None,
+    use_unbounded_threadpool=None,
     name=None,
 ):
   """See `Dataset.map()` for details."""
@@ -59,6 +60,7 @@ def _map_v2(
         num_parallel_calls=num_parallel_calls,
         deterministic=deterministic,
         preserve_cardinality=True,
+        use_unbounded_threadpool=use_unbounded_threadpool,
         name=name)
 
 
@@ -68,6 +70,7 @@ def _map_v1(
     num_parallel_calls=None,
     deterministic=None,
     synchronous=None,
+    use_unbounded_threadpool=None,  # pylint: disable=unused-argument
 ):
   """See `Dataset.map()` for details."""
   if num_parallel_calls is None or debug_mode.DEBUG_MODE:
@@ -92,7 +95,8 @@ def _map_v1(
             map_func,
             num_parallel_calls,
             deterministic,
-            preserve_cardinality=False))
+            preserve_cardinality=False,
+            use_unbounded_threadpool=False))
 
 
 def _map_v1_with_legacy_function(  # pylint: disable=unused-private-name
@@ -130,7 +134,8 @@ def _map_v1_with_legacy_function(  # pylint: disable=unused-private-name
             num_parallel_calls,
             deterministic,
             preserve_cardinality=False,
-            use_legacy_function=True))
+            use_legacy_function=True,
+            use_unbounded_threadpool=False))
 
 
 class _MapDataset(dataset_ops.UnaryDataset):
@@ -189,6 +194,7 @@ class _ParallelMapDataset(dataset_ops.UnaryDataset):
                use_inter_op_parallelism=True,
                preserve_cardinality=False,
                use_legacy_function=False,
+               use_unbounded_threadpool=False,
                name=None):
     """See `Dataset.map()` for details."""
     self._input_dataset = input_dataset
@@ -207,6 +213,7 @@ class _ParallelMapDataset(dataset_ops.UnaryDataset):
     self._preserve_cardinality = preserve_cardinality
     self._num_parallel_calls = ops.convert_to_tensor(
         num_parallel_calls, dtype=dtypes.int64, name="num_parallel_calls")
+    self._use_unbounded_threadpool = use_unbounded_threadpool
     self._name = name
     variant_tensor = gen_dataset_ops.parallel_map_dataset_v2(
         input_dataset._variant_tensor,  # pylint: disable=protected-access
@@ -216,6 +223,7 @@ class _ParallelMapDataset(dataset_ops.UnaryDataset):
         deterministic=self._deterministic,
         use_inter_op_parallelism=self._use_inter_op_parallelism,
         preserve_cardinality=self._preserve_cardinality,
+        use_unbounded_threadpool=self._use_unbounded_threadpool,
         **self._common_args)
     super().__init__(input_dataset, variant_tensor)
 

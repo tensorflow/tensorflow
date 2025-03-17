@@ -18,9 +18,9 @@ limitations under the License.
 #include <vector>
 
 #include "xla/tsl/framework/device_id_manager.h"
+#include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/status_matchers.h"
 #include "xla/tsl/util/device_name_utils.h"
-#include "tsl/lib/core/status_test_util.h"
-#include "tsl/platform/status_matchers.h"
 
 namespace tsl {
 namespace {
@@ -99,6 +99,48 @@ TEST(DeviceIdUtilsTest, ParseDuplicateVisibleDeviceList) {
       StatusIs(
           tensorflow::error::INVALID_ARGUMENT,
           HasSubstr("visible_device_list contained a duplicate entry: 1,1")));
+}
+
+TEST(DeviceIdUtilsTest, ParseMultiplePluggableVisibleDeviceList) {
+  {
+    std::vector<PlatformDeviceId> visible_device_order;
+    TF_EXPECT_OK(
+        ParseVisibleDeviceList("A:0,A:1,B:0", 3, &visible_device_order, "A"));
+    PlatformDeviceId platform_device_id0(0), platform_device_id1(1);
+    std::vector<PlatformDeviceId> expected = {platform_device_id0,
+                                              platform_device_id1};
+    EXPECT_EQ(visible_device_order, expected);
+  }
+
+  {
+    std::vector<PlatformDeviceId> visible_device_order;
+    TF_EXPECT_OK(
+        ParseVisibleDeviceList("A:0,A:1,B:0", 3, &visible_device_order, "B"));
+    PlatformDeviceId platform_device_id0(0);
+    std::vector<PlatformDeviceId> expected = {platform_device_id0};
+    EXPECT_EQ(visible_device_order, expected);
+  }
+}
+
+TEST(DeviceIdUtilsTest, ParseMultiplePluggableOutOfOrderVisibleDeviceList) {
+  {
+    std::vector<PlatformDeviceId> visible_device_order;
+    TF_EXPECT_OK(
+        ParseVisibleDeviceList("A:1,B:0,A:0", 3, &visible_device_order, "A"));
+    PlatformDeviceId platform_device_id0(0), platform_device_id1(1);
+    std::vector<PlatformDeviceId> expected = {platform_device_id1,
+                                              platform_device_id0};
+    EXPECT_EQ(visible_device_order, expected);
+  }
+
+  {
+    std::vector<PlatformDeviceId> visible_device_order;
+    TF_EXPECT_OK(
+        ParseVisibleDeviceList("A:1,B:0,A:0", 3, &visible_device_order, "B"));
+    PlatformDeviceId platform_device_id0(0);
+    std::vector<PlatformDeviceId> expected = {platform_device_id0};
+    EXPECT_EQ(visible_device_order, expected);
+  }
 }
 
 TEST(DeviceIdUtilsTest, GetNumberTfDevicesDefault) {
@@ -182,11 +224,7 @@ TEST(DeviceIdUtilsTest, GetDeviceIdWithPlatformDeviceId) {
   DeviceNameUtils::ParsedName device_name;
   device_name.id = 0;
 
-  TF_ASSERT_OK_AND_ASSIGN(int device_id,
-                          GetDeviceIdFromDeviceParsedName(
-                              device_name, DeviceType(kTestDeviceType)));
-
-  EXPECT_EQ(device_id, 1);
+  EXPECT_EQ(GetDeviceIdFromDeviceParsedName(device_name), 0);
   DeviceIdManager::TestOnlyReset();
 }
 
@@ -194,11 +232,7 @@ TEST(DeviceIdUtilsTest, GetDeviceIdWithoutPlatformDeviceId) {
   DeviceNameUtils::ParsedName device_name;
   device_name.id = 0;
 
-  TF_ASSERT_OK_AND_ASSIGN(int device_id,
-                          GetDeviceIdFromDeviceParsedName(
-                              device_name, DeviceType(kTestDeviceType)));
-
-  EXPECT_EQ(device_id, 0);
+  EXPECT_EQ(GetDeviceIdFromDeviceParsedName(device_name), 0);
 }
 
 }  // namespace

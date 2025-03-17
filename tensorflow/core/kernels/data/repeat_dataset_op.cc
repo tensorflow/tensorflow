@@ -26,13 +26,13 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "tensorflow/core/data/global_shuffle_utils.h"
 #include "tensorflow/core/data/name_utils.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/statusor.h"
 #include "tsl/platform/thread_annotations.h"
 
 namespace tensorflow {
@@ -73,7 +73,7 @@ bool HasDataServiceInput(const DatasetBase* dataset) {
     return true;
   }
   std::vector<const DatasetBase*> inputs;
-  Status s = dataset->InputDatasets(&inputs);
+  absl::Status s = dataset->InputDatasets(&inputs);
   if (!s.ok()) {
     return false;
   }
@@ -204,17 +204,18 @@ class RepeatDatasetOp::Dataset : public DatasetBase {
     return count_ * n;
   }
 
-  Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override {
+  absl::Status InputDatasets(
+      std::vector<const DatasetBase*>* inputs) const override {
     inputs->push_back(input_);
     return absl::OkStatus();
   }
 
-  Status CheckExternalState() const override {
+  absl::Status CheckExternalState() const override {
     return input_->CheckExternalState();
   }
 
-  Status Get(OpKernelContext* ctx, int64 index,
-             std::vector<Tensor>* out_tensors) const override {
+  absl::Status Get(OpKernelContext* ctx, int64 index,
+                   std::vector<Tensor>* out_tensors) const override {
     TF_RETURN_IF_ERROR(CheckRandomAccessCompatible(index));
     return input_->Get(ctx, index % input_->Cardinality(), out_tensors);
   }
@@ -224,9 +225,9 @@ class RepeatDatasetOp::Dataset : public DatasetBase {
   }
 
  protected:
-  Status AsGraphDefInternal(SerializationContext* ctx,
-                            DatasetGraphDefBuilder* b,
-                            Node** output) const override {
+  absl::Status AsGraphDefInternal(SerializationContext* ctx,
+                                  DatasetGraphDefBuilder* b,
+                                  Node** output) const override {
     Node* input_graph_node = nullptr;
     TF_RETURN_IF_ERROR(b->AddInputDataset(ctx, input_, &input_graph_node));
     Node* count = nullptr;
@@ -243,9 +244,9 @@ class RepeatDatasetOp::Dataset : public DatasetBase {
 
     bool SymbolicCheckpointCompatible() const override { return true; }
 
-    Status GetNextInternal(IteratorContext* ctx,
-                           std::vector<Tensor>* out_tensors,
-                           bool* end_of_sequence) override {
+    absl::Status GetNextInternal(IteratorContext* ctx,
+                                 std::vector<Tensor>* out_tensors,
+                                 bool* end_of_sequence) override {
       *end_of_sequence = true;
       return absl::OkStatus();
     }
@@ -257,12 +258,12 @@ class RepeatDatasetOp::Dataset : public DatasetBase {
                                        /*ratio=*/kKnownRatio);
     }
 
-    Status SaveInternal(SerializationContext* ctx,
-                        IteratorStateWriter* writer) override {
+    absl::Status SaveInternal(SerializationContext* ctx,
+                              IteratorStateWriter* writer) override {
       return absl::OkStatus();
     }
-    Status RestoreInternal(IteratorContext* ctx,
-                           IteratorStateReader* reader) override {
+    absl::Status RestoreInternal(IteratorContext* ctx,
+                                 IteratorStateReader* reader) override {
       return absl::OkStatus();
     }
   };
@@ -274,15 +275,15 @@ class RepeatDatasetOp::Dataset : public DatasetBase {
 
     bool SymbolicCheckpointCompatible() const override { return true; }
 
-    Status Initialize(IteratorContext* ctx) override {
+    absl::Status Initialize(IteratorContext* ctx) override {
       mutex_lock l(mu_);
       return dataset()->input_->MakeIterator(
           ctx, this, nested_prefix(prefix(), i_), &input_impl_);
     }
 
-    Status GetNextInternal(IteratorContext* ctx,
-                           std::vector<Tensor>* out_tensors,
-                           bool* end_of_sequence) override {
+    absl::Status GetNextInternal(IteratorContext* ctx,
+                                 std::vector<Tensor>* out_tensors,
+                                 bool* end_of_sequence) override {
       mutex_lock l(mu_);  // TODO(mrry): Make locking less conservative.
       if (!input_impl_) {
         *end_of_sequence = true;
@@ -319,7 +320,7 @@ class RepeatDatasetOp::Dataset : public DatasetBase {
         if (element_position >= input_cardinality) {
           // The input element position is out-of-range. The caller is
           // responsible for handle this case (e.g.: returning end_of_sequence).
-          return element_position;
+          return absl::OutOfRangeError("Finite repeat is out of range");
         }
 
         // First, maps the input indices from
@@ -341,8 +342,8 @@ class RepeatDatasetOp::Dataset : public DatasetBase {
                                        /*ratio=*/kKnownRatio);
     }
 
-    Status SaveInternal(SerializationContext* ctx,
-                        IteratorStateWriter* writer) override {
+    absl::Status SaveInternal(SerializationContext* ctx,
+                              IteratorStateWriter* writer) override {
       mutex_lock l(mu_);
       TF_RETURN_IF_ERROR(writer->WriteScalar(prefix(), kCurIteration, i_));
       TF_RETURN_IF_ERROR(writer->WriteScalar(
@@ -353,31 +354,40 @@ class RepeatDatasetOp::Dataset : public DatasetBase {
       return absl::OkStatus();
     }
 
-    Status RestoreInternal(IteratorContext* ctx,
-                           IteratorStateReader* reader) override {
+    absl::Status RestoreInternal(IteratorContext* ctx,
+                                 IteratorStateReader* reader) override {
       mutex_lock l(mu_);
+      int64_t input_empty;
+      TF_RETURN_IF_ERROR(
+          reader->ReadScalar(prefix(), kInputImplEmpty, &input_empty));
+      TF_RETURN_IF_ERROR(reader->ReadScalar(prefix(), kCurIteration, &i_));
+
       if (ctx->restored_element_count().has_value()) {
         CardinalityOptions options;
         options.set_compute_level(
             CardinalityOptions::CARDINALITY_COMPUTE_MODERATE);
         const int64_t input_cardinality =
             dataset()->input_->Cardinality(std::move(options));
-        i_ = *ctx->restored_element_count() / input_cardinality;
         // For upstream iterators, the restored element count should be the
         // element count within the current repetition.
         IteratorContext::Params params(ctx);
         params.restored_element_count =
-            *ctx->restored_element_count() % input_cardinality;
+            *ctx->restored_element_count() % (input_cardinality);
         params.index_mapper = GetIndexMapper(ctx->index_mapper());
         IteratorContext ctx_with_restored_element_count(params);
-        return RestoreInput(&ctx_with_restored_element_count, reader,
-                            input_impl_);
+        if (!input_empty) {
+          // Needs to re-`MakeIterator` because `i_` might have changed.
+          TF_RETURN_IF_ERROR(dataset()->input_->MakeIterator(
+              ctx, this, nested_prefix(prefix(), i_), &input_impl_));
+          TF_RETURN_IF_ERROR(RestoreInput(&ctx_with_restored_element_count,
+                                          reader, input_impl_));
+          ctx->MergeCheckpoint(ctx_with_restored_element_count.checkpoint());
+        } else {
+          input_impl_.reset();
+        }
+        return absl::OkStatus();
       }
 
-      TF_RETURN_IF_ERROR(reader->ReadScalar(prefix(), kCurIteration, &i_));
-      int64_t input_empty;
-      TF_RETURN_IF_ERROR(
-          reader->ReadScalar(prefix(), kInputImplEmpty, &input_empty));
       if (static_cast<bool>(!input_empty)) {
         TF_RETURN_IF_ERROR(dataset()->input_->MakeIterator(
             ctx, this, nested_prefix(prefix(), i_), &input_impl_));
@@ -405,15 +415,15 @@ class RepeatDatasetOp::Dataset : public DatasetBase {
 
     bool SymbolicCheckpointCompatible() const override { return true; }
 
-    Status Initialize(IteratorContext* ctx) override {
+    absl::Status Initialize(IteratorContext* ctx) override {
       mutex_lock l(mu_);
       return dataset()->input_->MakeIterator(
           ctx, this, nested_prefix(prefix(), i_), &input_impl_);
     }
 
-    Status GetNextInternal(IteratorContext* ctx,
-                           std::vector<Tensor>* out_tensors,
-                           bool* end_of_sequence) override {
+    absl::Status GetNextInternal(IteratorContext* ctx,
+                                 std::vector<Tensor>* out_tensors,
+                                 bool* end_of_sequence) override {
       mutex_lock l(mu_);  // TODO(mrry): Make locking less conservative.
       do {
         if (!input_impl_) {
@@ -454,8 +464,8 @@ class RepeatDatasetOp::Dataset : public DatasetBase {
                                        /*ratio=*/kKnownRatio);
     }
 
-    Status SaveInternal(SerializationContext* ctx,
-                        IteratorStateWriter* writer) override {
+    absl::Status SaveInternal(SerializationContext* ctx,
+                              IteratorStateWriter* writer) override {
       mutex_lock l(mu_);
       TF_RETURN_IF_ERROR(writer->WriteScalar(prefix(), kCurIteration, i_));
       TF_RETURN_IF_ERROR(writer->WriteScalar(
@@ -466,8 +476,8 @@ class RepeatDatasetOp::Dataset : public DatasetBase {
       return absl::OkStatus();
     }
 
-    Status RestoreInternal(IteratorContext* ctx,
-                           IteratorStateReader* reader) override {
+    absl::Status RestoreInternal(IteratorContext* ctx,
+                                 IteratorStateReader* reader) override {
       mutex_lock l(mu_);
       TF_RETURN_IF_ERROR(reader->ReadScalar(prefix(), kCurIteration, &i_));
       int64_t input_empty;

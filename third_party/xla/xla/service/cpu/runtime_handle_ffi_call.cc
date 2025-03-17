@@ -17,7 +17,6 @@ limitations under the License.
 
 #include <cstdint>
 #include <functional>
-#include <string_view>
 #include <utility>
 
 #include "absl/algorithm/container.h"
@@ -27,11 +26,11 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "mlir/AsmParser/AsmParser.h"  // from @llvm-project
-#include "mlir/IR/Attributes.h"  // from @llvm-project
-#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
-#include "mlir/IR/MLIRContext.h"  // from @llvm-project
-#include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "mlir/AsmParser/AsmParser.h"
+#include "mlir/IR/Attributes.h"
+#include "mlir/IR/BuiltinAttributes.h"
+#include "mlir/IR/MLIRContext.h"
+#include "mlir/Support/LLVM.h"
 #include "xla/executable_run_options.h"
 #include "xla/ffi/attribute_map.h"
 #include "xla/ffi/call_frame.h"
@@ -95,8 +94,8 @@ void BuildRetBuffers(absl::Span<const int32_t> types, int64_t* encoded_dims,
 }
 
 static absl::Status BuildAndCallFfi(
-    const xla::ExecutableRunOptions* run_options, std::string_view target_name,
-    std::string_view backend_config, absl::Span<void* const> outputs,
+    const xla::ExecutableRunOptions* run_options, absl::string_view target_name,
+    absl::string_view backend_config, absl::Span<void* const> outputs,
     absl::Span<void* const> inputs, absl::Span<const int32_t> result_types,
     int64_t* result_dims, absl::Span<const int32_t> operand_types,
     int64_t* operand_dims) {
@@ -108,13 +107,13 @@ static absl::Status BuildAndCallFfi(
       ffi::FindHandler(target_name, "Host");
 
   if (!registration.ok()) {
-    return absl::UnimplementedError(
+    return absl::NotFoundError(
         absl::StrCat("No registered implementation for custom call to ",
                      target_name, " for Host."));
   }
 
   // For FFI handlers backend config must be a compatible MLIR dictionary.
-  ffi::CallFrameBuilder::FlatAttributesMap attributes;
+  ffi::CallFrameBuilder::AttributesMap attributes;
   if (!backend_config.empty() && backend_config != "{}") {
     // Backend config not empty, so proceed to parse it into an MLIR attribute
     // and build an MLIR compatible map of attributes out of it.
@@ -142,9 +141,9 @@ static absl::Status BuildAndCallFfi(
 
   // Forward executable run options to the FFI handlers via the call options.
   ffi::CallOptions call_options = {
-      run_options->device_ordinal(), run_options->stream(),
-      run_options->allocator(), /*called_computation=*/nullptr,
-      run_options->ffi_execution_context()};
+      run_options->run_id(), run_options->device_ordinal(),
+      ffi::CallOptions::CpuOptions{run_options->intra_op_thread_pool()},
+      /*called_computation=*/nullptr, run_options->ffi_execution_context()};
 
   ffi::CallFrame call_frame = builder.Build();
   return ffi::Call(registration->bundle.execute, call_frame, call_options);

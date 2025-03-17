@@ -38,6 +38,7 @@ cc_library(
         "//tensorflow/core/runtime_fallback/kernel:tensor_util",
         "//tensorflow/core/runtime_fallback/runtime:kernel_utils",
         "//tensorflow/core/runtime_fallback/runtime:runtime_fallback_tensor",
+        "@com_google_absl//absl/status",
         "@tf_runtime//:hostcontext",
         "@tf_runtime//:tensor",
     ],

@@ -24,9 +24,9 @@ limitations under the License.
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/stream_executor/typed_kernel_factory.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/statusor.h"
 
 #if TENSORFLOW_USE_ROCM
 #include "xla/stream_executor/gpu/gpu_stream.h"
@@ -64,10 +64,10 @@ absl::Status MakeBatchPointers(se::Stream* stream,
           se::DeviceMemoryBase>::Create(executor, "make_batch_pointers",
                                         make_batch_pointers::kernel())));
 
-  TF_RETURN_IF_ERROR(
-      stream->ThenLaunch(se::ThreadDim(kThreads, 1, 1),
-                         se::BlockDim(CeilOfRatio(n, kThreads), 1, 1), kernel,
-                         base_ptr, stride_bytes, n, ptrs_out));
+  TF_RETURN_IF_ERROR(kernel.Launch(se::ThreadDim(kThreads, 1, 1),
+                                   se::BlockDim(CeilOfRatio(n, kThreads), 1, 1),
+                                   stream, base_ptr, stride_bytes, n,
+                                   ptrs_out));
 #endif
   return absl::OkStatus();
 }

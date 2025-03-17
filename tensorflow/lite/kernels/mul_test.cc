@@ -945,7 +945,7 @@ void TestFloatBroadcast(std::vector<int> input1_shape,
   m.PopulateTensor<float>(m.input1(), input1);
   m.PopulateTensor<float>(m.input2(), input2);
   ASSERT_EQ(m.Invoke(), kTfLiteOk);
-  EXPECT_THAT(m.GetOutput(), testing::ContainerEq(output_ref));
+  EXPECT_THAT(m.GetOutput(), Pointwise(FloatingPointEq(), output_ref));
 }
 
 template <typename IntegerType>
@@ -1029,7 +1029,7 @@ void TestIntegerBroadcast(std::vector<int> input1_shape,
   m.template PopulateTensor<IntegerType>(m.input1(), input1);
   m.template PopulateTensor<IntegerType>(m.input2(), input2);
   ASSERT_EQ(m.Invoke(), kTfLiteOk);
-  EXPECT_THAT(m.GetOutput(), testing::ContainerEq(output_ref));
+  EXPECT_THAT(m.GetOutput(), Pointwise(FloatingPointEq(), output_ref));
 }
 
 // To improve automatic test sharding (via shard_count in the BUILD file),

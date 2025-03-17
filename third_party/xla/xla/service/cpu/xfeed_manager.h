@@ -20,9 +20,12 @@ limitations under the License.
 #ifndef XLA_SERVICE_CPU_XFEED_MANAGER_H_
 #define XLA_SERVICE_CPU_XFEED_MANAGER_H_
 
+#include <cstdint>
 #include <deque>
+#include <string>
 
 #include "absl/status/statusor.h"
+#include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/shape.h"
 #include "xla/types.h"
@@ -82,10 +85,6 @@ class XfeedQueueManager {
   const std::string queue_name_;
 
   absl::Mutex mu_;
-
-  // Condition variable that is signaled every time a buffer is
-  // enqueued to an empty queue.
-  absl::CondVar cv_;
 
   // XfeedBuffer* queue contents are not owned, but buffer->Done must
   // be called when the buffer is no longer needed by the runtime.

@@ -98,7 +98,7 @@ from different frameworks to the TOSA dialect.
 ### get_padding_values_from_explicit_pad_attr()
 
 ```
-vector<int64> get_padding_values_from_explict_pad_attr(vector<int64> explicit_pad,
+vector<int64> get_padding_values_from_explicit_pad_attr(vector<int64> explicit_pad,
                                                          tensorflow::TensorFormat data_format_tf)
 {
     int64 pad_before, pad_after
@@ -1670,7 +1670,7 @@ for (int32 i = 0; i < input_sizes.size(); i++) {
 
 if (%padding == "EXPLICIT") {
    tosa_padding =
-       get_padding_values_from_explicit_pad_attr(explict_padding, data_format)
+       get_padding_values_from_explicit_pad_attr(explicit_padding, data_format)
 } else {
     tosa_padding =
         get_transpose_conv2d_padding_values_from_pad_type(%input_sizes, %filter, output_shape, padding, data_format, FORMAT_HWIO, strides, dilations)
@@ -1701,7 +1701,7 @@ assert(data_format == "NHWC")
 
 if (padding == "EXPLICIT") {
    tosa_padding =
-       get_padding_values_from_explicit_pad_attr(explict_padding, data_format)
+       get_padding_values_from_explicit_pad_attr(explicit_padding, data_format)
 } else {
     %tosa_padding =
         get_padding_values_from_pad_type(%input, %filter.shape, padding, data_format,
@@ -1757,7 +1757,7 @@ Computes a 2-D depthwise convolution given 4-D input and filter tensors.
 ```
 if (padding == "EXPLICIT") {
    tosa_padding =
-       get_padding_values_from_explicit_pad_attr(explict_padding, data_format)
+       get_padding_values_from_explicit_pad_attr(explicit_padding, data_format)
 } else {
     tosa_padding =
         get_padding_values_from_pad_type(%input, %filter.shape, padding, data_format,

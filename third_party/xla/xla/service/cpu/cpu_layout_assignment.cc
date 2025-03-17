@@ -20,7 +20,10 @@ limitations under the License.
 #include <optional>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/log/check.h"
+#include "absl/status/status.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/map_util.h"
@@ -90,7 +93,7 @@ static Shape RowMajorShape(Shape shape) {
         if (!subshape->IsArray()) {
           return;
         }
-        std::vector<int64_t> dimension_order(subshape->dimensions_size());
+        std::vector<int64_t> dimension_order(subshape->rank());
         std::iota(dimension_order.rbegin(), dimension_order.rend(), 0);
         *subshape->mutable_layout() = LayoutUtil::MakeLayout(dimension_order);
       });
@@ -99,7 +102,7 @@ static Shape RowMajorShape(Shape shape) {
 
 static Shape ColMajorShape(const Shape& old_shape) {
   Shape new_shape(old_shape);
-  std::vector<int64_t> dimension_order(new_shape.dimensions_size());
+  std::vector<int64_t> dimension_order(new_shape.rank());
   std::iota(dimension_order.begin(), dimension_order.end(), 0);
   *new_shape.mutable_layout() = LayoutUtil::MakeLayout(dimension_order);
   return new_shape;

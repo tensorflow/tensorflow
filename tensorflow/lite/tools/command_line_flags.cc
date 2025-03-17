@@ -13,14 +13,15 @@ limitations under the License.
 #include "tensorflow/lite/tools/command_line_flags.h"
 
 #include <algorithm>
+#include <cstdint>
 #include <cstring>
 #include <functional>
 #include <iomanip>
+#include <ios>
 #include <numeric>
 #include <sstream>
 #include <string>
 #include <unordered_map>
-#include <utility>
 #include <vector>
 
 #include "absl/strings/match.h"

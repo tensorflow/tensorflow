@@ -13,7 +13,6 @@ package(
 py_strict_library(
     name = "registration",
     srcs = ["__init__.py"],
-    srcs_version = "PY3",
     deps = [
         ":registration_lib",
     ],
@@ -24,7 +23,6 @@ py_strict_library(
     srcs = [
         "registration.py",
     ],
-    srcs_version = "PY3",
     deps = [
         "//tensorflow/python/util:tf_inspect",
         "@absl_py//absl/logging",
@@ -75,7 +73,6 @@ py_strict_library(
     srcs = [
         "test_util.py",
     ],
-    srcs_version = "PY3",
     deps = [
         ":registration_lib",
     ],

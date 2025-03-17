@@ -21,8 +21,8 @@ limitations under the License.
 #include <vector>
 
 #include "absl/strings/str_join.h"
+#include "xla/hlo/testlib/test_helpers.h"
 #include "xla/literal.h"
-#include "xla/test_helpers.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/path.h"

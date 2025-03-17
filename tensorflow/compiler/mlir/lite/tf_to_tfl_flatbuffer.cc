@@ -19,9 +19,7 @@ limitations under the License.
 
 #include <cstddef>
 #include <cstdint>
-#include <iostream>
 #include <memory>
-#include <optional>
 #include <string>
 #include <unordered_set>
 #include <utility>
@@ -35,21 +33,20 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "flatbuffers/flatbuffer_builder.h"  // from @flatbuffers
 #include "llvm/Support/Casting.h"
+#include "llvm/Support/LogicalResult.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/Bytecode/BytecodeWriter.h"  // from @llvm-project
 #include "mlir/Conversion/ReconcileUnrealizedCasts/ReconcileUnrealizedCasts.h"  // from @llvm-project
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Func/Extensions/AllExtensions.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
-#include "mlir/Dialect/Quant/QuantOps.h"  // from @llvm-project
+#include "mlir/Dialect/Quant/IR/Quant.h"  // from @llvm-project
 #include "mlir/IR/AsmState.h"  // from @llvm-project
-#include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Diagnostics.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
-#include "mlir/IR/Matchers.h"  // from @llvm-project
 #include "mlir/IR/OwningOpRef.h"  // from @llvm-project
 #include "mlir/IR/Visitors.h"  // from @llvm-project
 #include "mlir/Parser/Parser.h"  // from @llvm-project
@@ -61,23 +58,23 @@ limitations under the License.
 #include "stablehlo/dialect/VhloOps.h"  // from @stablehlo
 #include "tensorflow/cc/saved_model/loader.h"
 #include "tensorflow/compiler/mlir/lite/common/tfl_pass_config.h"
+#include "tensorflow/compiler/mlir/lite/converter_flags.pb.h"
 #include "tensorflow/compiler/mlir/lite/debug/debug.h"
 #include "tensorflow/compiler/mlir/lite/experimental/remat/metadata_util.h"
 #include "tensorflow/compiler/mlir/lite/flatbuffer_export.h"
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/lite/metrics/converter_error_data.pb.h"
-#include "tensorflow/compiler/mlir/lite/metrics/error_collector.h"
 #include "tensorflow/compiler/mlir/lite/metrics/error_collector_inst.h"
-#include "tensorflow/compiler/mlir/lite/quantization/stablehlo/quantization.h"
+#include "tensorflow/compiler/mlir/lite/quantization/lite/toco_legacy/quantize_weights.h"
 #include "tensorflow/compiler/mlir/lite/schema/schema_generated.h"
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/op_stat_pass.h"
-#include "tensorflow/compiler/mlir/lite/stablehlo/transforms/passes.h"
+#include "tensorflow/compiler/mlir/lite/stablehlo/transforms/stablehlo_passes.h"
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/stablehlo_util.h"
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/transforms.h"
 #include "tensorflow/compiler/mlir/lite/tf_tfl_passes.h"
 #include "tensorflow/compiler/mlir/lite/tools/optimize/reduced_precision_metadata.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
-#include "tensorflow/compiler/mlir/lite/utils/const_tensor_utils.h"
+#include "tensorflow/compiler/mlir/lite/utils/mlir_module_utils.h"
 #include "tensorflow/compiler/mlir/op_or_arg_name_mapper.h"
 #include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_config.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/quantization_config.pb.h"
@@ -89,10 +86,10 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_saved_model.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_saved_model_freeze_variables.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/mlir_import_options.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/tf_mlir_translate.h"
+#include "tensorflow/compiler/mlir/tensorflow/translate/tools/file_tf_mlir_translate.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_def.pb.h"
@@ -100,10 +97,7 @@ limitations under the License.
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/ir/types/dialect.h"
 #include "tensorflow/core/protobuf/meta_graph.pb.h"
-#include "tensorflow/core/public/session.h"
-#include "tensorflow/lite/tools/optimize/quantize_weights.h"
 #include "tsl/platform/protobuf.h"  // IWYU pragma: keep
-#include "tsl/platform/statusor.h"
 
 namespace tensorflow {
 namespace {
@@ -112,7 +106,6 @@ using mlir::MLIRContext;
 using mlir::ModuleOp;
 using mlir::Operation;
 using mlir::OwningOpRef;
-using ::stablehlo::quantization::QuantizationConfig;
 using ::tensorflow::quantization::PyFunctionLibrary;
 
 bool IsControlFlowV1Op(Operation* op) {
@@ -181,88 +174,6 @@ absl::Status RegisterExtraTfOpDefs(
   return absl::OkStatus();
 }
 
-// The hlo->tf conversion is done in three steps; pre-quantization,
-// quantization, and post-quantization. Quantization is optional, enabled only
-// when `pass_config.enable_stablehlo_quantizer` is `true`. If quantization is
-// not run, it only performs the hlo->tf conversion.
-//
-// All parameters except for `pass_config`, `pass_manager`, `status_handler`,
-// and `module` are only required for quantization. See the comments of
-// `RunQuantization` for details. If quantization is not performed, they will be
-// ignored.
-//
-// Returns a failure status when any of the three steps fail. `pass_manager`
-// will be cleared before returning.
-mlir::LogicalResult RunHloToTfConversion(
-    const mlir::TFL::PassConfig& pass_config,
-    const absl::string_view saved_model_dir,
-    const std::unordered_set<std::string>& saved_model_tags,
-    QuantizationConfig* quantization_config,
-    const PyFunctionLibrary* quantization_py_function_lib,
-    const SavedModelBundle* saved_model_bundle, mlir::PassManager& pass_manager,
-    mlir::StatusScopedDiagnosticHandler& status_handler, ModuleOp module) {
-  // TODO: b/194747383 - We need to valid that indeed the "main" func is
-  // presented.
-  AddPreQuantizationStableHloToTfPasses(/*entry_function_name=*/"main",
-                                        pass_config, pass_manager);
-  if (failed(pass_manager.run(module))) {
-    return mlir::failure();
-  }
-  pass_manager.clear();
-
-  if (pass_config.enable_stablehlo_quantizer) {
-    const absl::StatusOr<mlir::ModuleOp> quantized_module_op = RunQuantization(
-        saved_model_bundle, saved_model_dir, saved_model_tags,
-        *quantization_config, quantization_py_function_lib, module);
-    if (!quantized_module_op.ok()) {
-      LOG(ERROR) << "Failed to run quantization: "
-                 << quantized_module_op.status();
-      return mlir::failure();
-    }
-    module = *quantized_module_op;
-  }
-
-  AddPostQuantizationStableHloToTfPasses(pass_config, pass_manager);
-  if (failed(pass_manager.run(module))) {
-    return mlir::failure();
-  }
-  pass_manager.clear();
-
-  return mlir::success();
-}
-
-// This function estimates the size of the module in bytes. It does so by
-// iterating through all the constant-like attributes and tensors in the module
-// and summing up their sizes.
-//
-// This function is used to reserve space in the buffer before serializing the
-// module to avoid reallocating the buffer during serialization.
-//
-// This function may need to be improved to give more accurate size of the
-// module if the current estimate is not good enough and causes huge
-// reallocations during serialization.
-size_t GetApproximateModuleSize(mlir::ModuleOp module) {
-  size_t module_size_estimate = 0;
-  mlir::DenseMap<mlir::Attribute, size_t> unique_tensors;
-
-  module.walk([&](Operation* op) {
-    mlir::DenseElementsAttr attr;
-    if (mlir::detail::constant_op_binder<mlir::DenseElementsAttr>(&attr).match(
-            op)) {
-      auto it = unique_tensors.find(attr);
-
-      // If the tensor hasn't been seen before
-      if (it == unique_tensors.end()) {
-        size_t tensor_size =
-            mlir::TFL::GetSizeInBytes(op->getResult(0).getType());
-        unique_tensors[attr] = tensor_size;  // Store the size in the map
-        module_size_estimate += tensor_size;
-      }
-    }
-  });
-  return module_size_estimate;
-}
-
 // Cloning MLIR modules requires serializing the source and deserializing
 // into the target. We do this when we need Garbage collection of
 // types/attributes after running the pass pipeline.
@@ -279,7 +190,8 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> CloneModuleInto(
   // 1. Get the module size. Module size is a rough estimate of all the
   // constant-like attributes and tensors in the module, plus the size of the
   // module itself without the attributes and constants.
-  size_t module_size_estimate = GetApproximateModuleSize(source_module.get());
+  size_t module_size_estimate =
+      mlir::TFL::GetApproximateModuleSize(source_module.get());
 
   // 2. Serialize the module into a buffer with size reserved.
   llvm::SmallString<1024> buffer;
@@ -365,13 +277,13 @@ absl::Status ApplyDynamicRangeQuantizationFromOldQuantizer(
       reinterpret_cast<const uint8_t*>(translated_result.c_str());
   const ::tflite::Model* input_model = ::tflite::GetModel(buffer);
 
-  ::tflite::optimize::BufferType quantized_type;
+  mlir::lite::toco_legacy::BufferType quantized_type;
   switch (quant_specs.inference_type) {
     case DT_QINT8:
-      quantized_type = ::tflite::optimize::BufferType::QUANTIZED_INT8;
+      quantized_type = mlir::lite::toco_legacy::BufferType::QUANTIZED_INT8;
       break;
     case DT_HALF:
-      quantized_type = ::tflite::optimize::BufferType::QUANTIZED_FLOAT16;
+      quantized_type = mlir::lite::toco_legacy::BufferType::QUANTIZED_FLOAT16;
       break;
     default:
       return absl::InvalidArgumentError("Quantized type not supported");
@@ -379,9 +291,10 @@ absl::Status ApplyDynamicRangeQuantizationFromOldQuantizer(
   }
 
   bool use_updated_hybrid_scheme = !quant_specs.disable_per_channel;
-  absl::Status quantize_weights_status = ::tflite::optimize::QuantizeWeights(
-      &q_builder, input_model, quantized_type, use_updated_hybrid_scheme,
-      ::tflite::optimize::QuantizerType::OLD_QUANTIZER);
+  absl::Status quantize_weights_status =
+      mlir::lite::toco_legacy::QuantizeWeights(
+          &q_builder, input_model, quantized_type, use_updated_hybrid_scheme,
+          mlir::lite::toco_legacy::QuantizerType::OLD_QUANTIZER);
   if (!quantize_weights_status.ok()) return quantize_weights_status;
   const uint8_t* q_buffer = q_builder.GetBufferPointer();
   *result =
@@ -393,16 +306,16 @@ absl::Status ApplyDynamicRangeQuantizationFromOldQuantizer(
 absl::Status ConvertTFExecutorToStablehloFlatbuffer(
     mlir::PassManager& pass_manager, mlir::ModuleOp module, bool export_to_mlir,
     mlir::StatusScopedDiagnosticHandler& status_handler,
-    const toco::TocoFlags& toco_flags, const mlir::TFL::PassConfig& pass_config,
-    std::optional<Session*> session, std::string* result,
+    const tflite::ConverterFlags& converter_flags,
+    const mlir::TFL::PassConfig& pass_config, std::string* result,
     const std::unordered_set<std::string>& saved_model_tags) {
   // Currently, TF quantization only support dynamic range quant, as such
-  // when toco flag post training quantization is specified with converting to
-  // stablehlo, we automatically enable dynamic range quantization
+  // when converter flag post training quantization is specified with converting
+  // to stablehlo, we automatically enable dynamic range quantization
 
-  if (toco_flags.post_training_quantize()) {
-    const auto status = quantization::PreprocessAndFreezeGraph(
-        module, module.getContext(), session);
+  if (converter_flags.post_training_quantize()) {
+    const absl::Status status =
+        quantization::PreprocessAndFreezeGraph(module, module.getContext());
     if (!status.ok()) {
       return status_handler.Combine(
           absl::InternalError("Failed to preprocess & freeze TF graph."));
@@ -410,7 +323,7 @@ absl::Status ConvertTFExecutorToStablehloFlatbuffer(
 
     // TODO: b/264218457 - Refactor the component below once StableHLO Quantizer
     // can run DRQ. Temporarily using TF Quantization for StableHLO DRQ.
-    if (!toco_flags.has_quantization_options()) {
+    if (!converter_flags.has_quantization_options()) {
       // The default minimum number of elements a weights array must have to be
       // quantized by this transformation.
       const int kWeightsMinNumElementsDefault = 1024;
@@ -437,9 +350,9 @@ absl::Status ConvertTFExecutorToStablehloFlatbuffer(
   pass_manager.addPass(mlir::odml::createPrintOpStatsPass(
       mlir::odml::GetAcceptedStableHLODialects()));
   mlir::odml::AddStablehloOptimizationPasses(pass_manager);
-  if (toco_flags.has_quantization_options()) {
+  if (converter_flags.has_quantization_options()) {
     stablehlo::quantization::AddQuantizationPasses(
-        pass_manager, toco_flags.quantization_options());
+        pass_manager, converter_flags.quantization_options());
   }
   if (failed(pass_manager.run(module))) {
     return status_handler.ConsumeStatus();
@@ -460,7 +373,7 @@ absl::Status ConvertTFExecutorToStablehloFlatbuffer(
   // Write MLIR Stablehlo dialect into FlatBuffer
   OpOrArgLocNameMapper op_or_arg_name_mapper;
   tflite::FlatbufferExportOptions options;
-  options.toco_flags = toco_flags;
+  options.converter_flags = converter_flags;
   options.saved_model_tags = saved_model_tags;
   options.op_or_arg_name_mapper = &op_or_arg_name_mapper;
   options.metadata[tflite::kModelUseStablehloTensorKey] = "true";
@@ -475,13 +388,16 @@ absl::Status ConvertTFExecutorToStablehloFlatbuffer(
 
 absl::Status ConvertTFExecutorToTFLOrFlatbuffer(
     std::unique_ptr<mlir::MLIRContext>&& context,
-    mlir::OwningOpRef<mlir::ModuleOp> module, toco::TocoFlags& toco_flags,
+    mlir::OwningOpRef<mlir::ModuleOp> module,
+    tflite::ConverterFlags& converter_flags,
     const mlir::TFL::PassConfig& pass_config,
     const std::unordered_set<std::string>& saved_model_tags,
-    llvm::StringRef saved_model_dir,
-    std::unique_ptr<SavedModelBundle>&& saved_model_bundle, std::string* result,
-    bool serialize_stablehlo_ops, bool export_to_mlir,
+    llvm::StringRef saved_model_dir, std::string* result, bool export_to_mlir,
     const PyFunctionLibrary* quantization_py_function_lib) {
+  // TODO: b/353597396 - Remove this once the StableHLO Quantizer is fully
+  // eliminated from the TFLite Converter.
+  (void)quantization_py_function_lib;
+
   // Explicitly disable dumping Op details on failures.
   context->printOpOnDiagnostic(false);
 
@@ -499,36 +415,34 @@ absl::Status ConvertTFExecutorToTFLOrFlatbuffer(
   if (mlir::failed(mlir::applyPassManagerCLOptions(*pass_manager))) {
     return absl::InternalError("Failed to apply MLIR pass manager CL options.");
   }
-  InitPassManager(*pass_manager, toco_flags.debug_options());
+
+  InitPassManager(*pass_manager, converter_flags.debug_options());
 
   if (failed(IsValidGraph(module.get()))) {
     return status_handler->ConsumeStatus();
   }
 
-  Session* session = saved_model_bundle == nullptr
-                         ? nullptr
-                         : saved_model_bundle->GetSession();
   if (pass_config.enable_stablehlo_conversion) {
-    // `ConvertTFExecutorToStablehloFlatbuffer` expects a `std::nullopt` if the
-    // `Session*` is a nullptr.
-    std::optional<Session*> session_opt =
-        session == nullptr ? std::nullopt : std::make_optional(session);
-
     // return to avoid adding TFL converter path
     return ConvertTFExecutorToStablehloFlatbuffer(
         *pass_manager, module.get(), export_to_mlir, *status_handler,
-        toco_flags, pass_config, std::move(session_opt), result,
-        saved_model_tags);
+        converter_flags, pass_config, result, saved_model_tags);
   }
-
   if (pass_config.enable_hlo_to_tf_conversion) {
-    if (failed(RunHloToTfConversion(
-            pass_config, saved_model_dir, saved_model_tags,
-            toco_flags.mutable_quantization_config(),
-            quantization_py_function_lib, saved_model_bundle.get(),
-            *pass_manager, *status_handler, module.get()))) {
+    // TODO: b/194747383 - We need to valid that indeed the "main" func is
+    // presented.
+    AddPreQuantizationStableHloToTfPasses(/*entry_function_name=*/"main",
+                                          pass_config, *pass_manager);
+    if (failed(pass_manager->run(module.get()))) {
       return status_handler->ConsumeStatus();
     }
+    pass_manager->clear();
+
+    AddPostQuantizationStableHloToTfPasses(pass_config, *pass_manager);
+    if (failed(pass_manager->run(module.get()))) {
+      return status_handler->ConsumeStatus();
+    }
+    pass_manager->clear();
   }
 
   AddPreVariableFreezingTFToTFLConversionPasses(pass_config,
@@ -537,34 +451,20 @@ absl::Status ConvertTFExecutorToTFLOrFlatbuffer(
     return status_handler->ConsumeStatus();
   }
 
-  // Freeze variables if a session is provided.
-  if (session != nullptr &&
-      failed(mlir::tf_saved_model::FreezeVariables(module.get(), session))) {
-    return status_handler->Combine(absl::InvalidArgumentError(
-        "Variable constant folding is failed. Please consider using "
-        "enabling `experimental_enable_resource_variables` flag in the "
-        "TFLite converter object. For example, "
-        "converter.experimental_enable_resource_variables = True"));
+  pass_manager->clear();
+
+  AddVariableFreezingFromGlobalTensorsPasses(converter_flags, pass_config,
+                                             pass_manager.get());
+  if (failed(pass_manager->run(module.get()))) {
+    return status_handler->ConsumeStatus();
   }
-
-  // Its safe to reset the saved_model_bundle after variable freezing, as this
-  // function owns the saved_model_bundle via std::move into a unique_ptr.
-  saved_model_bundle.reset();
-
-  // set session to nullptr to avoid invalid access  as the session would be
-  // deleted along with the saved_model_bundle.
-  session = nullptr;
 
   pass_manager->clear();
 
   AddPostVariableFreezingTFToTFLConversionPasses(
-      saved_model_dir, toco_flags, pass_config, pass_manager.get());
+      saved_model_dir, converter_flags, pass_config, pass_manager.get());
   if (failed(pass_manager->run(module.get()))) {
-    return status_handler->Combine(absl::InvalidArgumentError(
-        "Variable constant folding is failed. Please consider using "
-        "enabling `experimental_enable_resource_variables` flag in the "
-        "TFLite converter object. For example, "
-        "converter.experimental_enable_resource_variables = True"));
+    return status_handler->ConsumeStatus();
   }
 
   if (failed(GraphContainsStatefulPartitionedOp(module.get()))) {
@@ -594,7 +494,7 @@ absl::Status ConvertTFExecutorToTFLOrFlatbuffer(
       .insert<mlir::TFL::TensorFlowLiteDialect, mlir::TF::TensorFlowDialect,
               mlir::stablehlo::StablehloDialect, mlir::vhlo::VhloDialect,
               mlir::arith::ArithDialect, mlir::func::FuncDialect,
-              mlir::quant::QuantizationDialect,
+              mlir::quant::QuantDialect,
               mlir::quantfork::QuantizationForkDialect,
               mlir::tf_saved_model::TensorFlowSavedModelDialect,
               mlir::tf_type::TFTypeDialect,
@@ -617,7 +517,7 @@ absl::Status ConvertTFExecutorToTFLOrFlatbuffer(
   if (mlir::failed(mlir::applyPassManagerCLOptions(*pass_manager))) {
     return absl::InternalError("Failed to apply MLIR pass manager CL options.");
   }
-  InitPassManager(*pass_manager, toco_flags.debug_options());
+  InitPassManager(*pass_manager, converter_flags.debug_options());
 
   status_handler =
       std::make_unique<mlir::StatusScopedDiagnosticHandler>(context.get(),
@@ -642,7 +542,7 @@ absl::Status ConvertTFExecutorToTFLOrFlatbuffer(
   OpOrArgLocNameMapper op_or_arg_name_mapper;
   tflite::FlatbufferExportOptions options;
   std::string translated_result;
-  options.toco_flags = toco_flags;
+  options.converter_flags = converter_flags;
   options.saved_model_tags = saved_model_tags;
   options.op_or_arg_name_mapper = &op_or_arg_name_mapper;
   if (quant_specs.support_mask !=
@@ -670,7 +570,7 @@ absl::Status ConvertTFExecutorToTFLOrFlatbuffer(
       return status_handler->Combine(status);
     }
   } else {
-    *result = translated_result;
+    *result = std::move(translated_result);
   }
 
   if (mlir::failed(module->verifyInvariants())) {

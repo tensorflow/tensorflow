@@ -60,6 +60,16 @@ _COND = 1
 _CASE = 2
 
 
+def _normalize_pred(pred):
+  """Normalize the predicate to a scalar tensor."""
+  pred = ops.convert_to_tensor(pred)
+  if tensor_util.is_tf_type(pred) and (
+      pred.shape.dims is None or pred.shape.dims
+  ):
+    pred = array_ops.squeeze_v2(pred)
+  return pred
+
+
 def cond_v2(pred, true_fn, false_fn, name="cond"):
   """Like tf.cond, except emits a single If op."""
   if isinstance(pred, bool):
@@ -75,10 +85,7 @@ def cond_v2(pred, true_fn, false_fn, name="cond"):
     # Automatic control dependencies are added in defuns, but not in v1
     # graphs. Propagate that behavior here.
     add_control_dependencies = ops.get_default_graph()._add_control_dependencies
-    pred = ops.convert_to_tensor(pred)
-    if (tensor_util.is_tf_type(pred) and
-        (pred.shape.dims is None or pred.shape.dims)):
-      pred = array_ops.squeeze_v2(pred)
+    pred = _normalize_pred(pred)
 
     true_graph = func_graph_module.func_graph_from_py_func(
         true_name,
@@ -103,7 +110,82 @@ def cond_v2(pred, true_fn, false_fn, name="cond"):
         true_graph.external_captures,
         false_graph.external_captures,
         building_gradient=False,
-        name=scope)
+        name=scope,
+    )
+
+
+def fast_cond_v2(pred, true_fn, false_fn, name=None):
+  """Like cond_v2, except emits an If op and applies various optimizations.
+
+  This function is intended to be used for cases where the cond is used to
+  implement a simple conditional control flow operator. It makes the following
+  assumptions:
+
+  1. The conditional is never differentiated.
+  2. The caller does not rely on V1 control flow semantics, i.e. for cross
+     device execution, pruning subgraphs of the true or false branches, or
+     non-strict evaluation order.
+  3. The caller manually configures any control dependencies within the graphs.
+
+  In this case, the cond will be lowered to a single If (or StatelessIf) op and
+  the true and false graphs will be executed as TF functions.
+
+  Args:
+    pred: boolean Tensor
+    true_fn: function to execute if pred is true
+    false_fn: function to execute if pred is false
+    name: the name for the If op.
+    
+  Returns:
+    A list of Tensors which are the outputs of the If op. Does not include 
+    intermediate outputs.
+  """
+  if isinstance(pred, bool):
+    raise TypeError("pred must not be a Python bool", pred)
+
+  if not name:
+    name = "fast_cond"
+
+  with ops.name_scope(name) as scope:
+    true_name = util.unique_fn_name(scope, "true")
+    false_name = util.unique_fn_name(scope, "false")
+    pred = _normalize_pred(pred)
+
+    true_graph = func_graph_module.func_graph_from_py_func(
+        true_name,
+        true_fn,
+        [],
+        {},
+        func_graph=util.CondBranchFuncGraph(
+            true_name, collections=ops.get_default_graph()._collections
+        ),  # pylint: disable=protected-access
+        add_control_dependencies=False,
+        op_return_value=pred,
+    )
+    false_graph = func_graph_module.func_graph_from_py_func(
+        false_name,
+        false_fn,
+        [],
+        {},
+        func_graph=util.CondBranchFuncGraph(
+            false_name, collections=ops.get_default_graph()._collections
+        ),  # pylint: disable=protected-access
+        add_control_dependencies=False,
+        op_return_value=pred,
+    )
+
+    verify_captures(_COND, [true_graph, false_graph])
+    return _build_cond(
+        pred,
+        true_graph,
+        false_graph,
+        true_graph.external_captures,
+        false_graph.external_captures,
+        building_gradient=False,
+        add_identities=False,
+        prevent_lowering=True,
+        name=scope,
+    )
 
 
 @ops.RegisterGradient("StatelessIf")
@@ -224,13 +306,17 @@ def _is_op_stateful(op):
   return op._is_stateful
 
 
-def _build_cond(pred,
-                true_graph,
-                false_graph,
-                true_inputs,
-                false_inputs,
-                building_gradient,
-                name=None):
+def _build_cond(
+    pred,
+    true_graph,
+    false_graph,
+    true_inputs,
+    false_inputs,
+    building_gradient,
+    add_identities: bool = True,
+    prevent_lowering: bool = False,
+    name=None,
+):
   """Creates an If op from the specified predicate, branch functions and inputs.
 
   Note that this modifies true_graph and false_graph to make the inputs match,
@@ -247,6 +333,12 @@ def _build_cond(pred,
     true_inputs: a list of Tensors to be passed to true_graph as input.
     false_inputs: a list of Tensors to be passed to false_graph as input.
     building_gradient: Whether this is a gradient If op.
+    add_identities: If `True`, adds an identity op for each output of the If op.
+      This is useful for pruning, but can be disabled if the caller does not
+      want to rely on pruning and wants to avoid the overhead of extra identity
+      ops in the graph.
+    prevent_lowering: If `True`, prevents the If op from being lowered to
+      V1 `Switch` and `Merge` ops.
     name: the name for the If op.
 
   Returns:
@@ -315,6 +407,7 @@ def _build_cond(pred,
                                            false_graph.outputs),
           name=name))
       _copy_handle_data(tensors, true_graph.outputs, false_graph.outputs)
+
       # `if_op` is None if this is a `StatelessIf` op with no outputs.
       if if_op is not None:
         # The true and false graphs have already been created, and we need that
@@ -326,11 +419,12 @@ def _build_cond(pred,
         false_graph.outer_graph = ops.get_default_graph()
         if_op._true_graph = true_graph
         if_op._false_graph = false_graph
-        util.maybe_set_lowering_attr(if_op)
+        util.maybe_set_lowering_attr(if_op, False if prevent_lowering else None)
         util.maybe_propagate_compile_time_consts_in_xla(if_op)
         _set_read_only_resource_inputs_attr(if_op, [true_graph, false_graph])
         # Prevent fetching since the variant outputs can't be fetched directly.
-        if_op.graph.prevent_fetching(if_op)
+        if not prevent_lowering:
+          if_op.graph.prevent_fetching(if_op)
       return tensors
     tensors = util.run_as_function_for_tape_gradients(_make_op, cond_inputs)
 
@@ -339,10 +433,13 @@ def _build_cond(pred,
   # fetched: the lowering pass converts the If outputs into IdentityN outputs,
   # which if fetched will cause all ops in the taken branch to be run (since
   # it takes all merge ops as input). After lowering, each output identity op
-  # will end up with only the appropriate merge op as input.
+  # will end up with only the appropriate merge op as input. This can be
+  # disabled (via `fast_cond_v2()`) if the caller does not want to rely on
+  # pruning and wants to avoid the overhead of extra identity ops in the graph.
   # TODO(b/79984175): this doesn't have to be a tuple once we covert to the
   # correct output structure
-  tensors = [array_ops.identity(t) for t in tensors]
+  if add_identities:
+    tensors = [array_ops.identity(t) for t in tensors]
 
   structured_output_specs = _get_compatible_structured_output_specs(true_graph,
                                                                     false_graph)

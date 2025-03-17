@@ -15,6 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_LITE_UTILS_VARIABLES_UTILS_H_
 #define TENSORFLOW_COMPILER_MLIR_LITE_UTILS_VARIABLES_UTILS_H_
 
+#include "mlir/IR/AffineMap.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 
 namespace mlir {

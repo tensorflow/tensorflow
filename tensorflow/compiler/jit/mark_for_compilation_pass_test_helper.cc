@@ -24,7 +24,7 @@ limitations under the License.
 #include "tensorflow/core/public/session_options.h"
 
 namespace tensorflow {
-/*static*/ Status MarkForCompilationPassTestHelper::MarkForCompilation(
+/*static*/ absl::Status MarkForCompilationPassTestHelper::MarkForCompilation(
     std::unique_ptr<Graph>* graph, FunctionLibraryDefinition* flib_def,
     MarkForCompilationPassTestHelper::Options options) {
   // Assign all unassigned nodes to the CPU device.
@@ -71,7 +71,7 @@ namespace tensorflow {
       /*deterministic_cluster_names=*/options.deterministic_cluster_names);
 }
 
-/*static*/ Status MarkForCompilationPassTestHelper::MarkForCompilation(
+/*static*/ absl::Status MarkForCompilationPassTestHelper::MarkForCompilation(
     std::unique_ptr<Graph>* graph,
     MarkForCompilationPassTestHelper::Options options) {
   FunctionDefLibrary flib;

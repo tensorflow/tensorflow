@@ -56,13 +56,14 @@ class AnalyticalCostEstimator : public CostEstimator {
   ~AnalyticalCostEstimator() override {}
 
   // This implementation always returns OK.
-  Status Initialize(const GrapplerItem& item) override;
+  absl::Status Initialize(const GrapplerItem& item) override;
 
   // Predict the performance of each node of the optimized graph and annotate
   // the RunMetadata with the corresponding estimates. Also returns the
   // expected cost for the whole graph.
-  Status PredictCosts(const GraphDef& optimized_graph,
-                      RunMetadata* run_metadata, Costs* cost) const override;
+  absl::Status PredictCosts(const GraphDef& optimized_graph,
+                            RunMetadata* run_metadata,
+                            Costs* cost) const override;
 
   const VirtualScheduler* GetScheduler() const { return scheduler_.get(); }
 

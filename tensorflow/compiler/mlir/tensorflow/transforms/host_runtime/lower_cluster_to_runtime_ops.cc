@@ -34,6 +34,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/dump_mlir_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
 #include "xla/tsl/framework/device_type.h"
+#include "xla/tsl/platform/errors.h"
 #include "tensorflow/core/framework/metrics.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/platform/error_payloads.h"
@@ -41,7 +42,6 @@ limitations under the License.
 #include "tensorflow/core/tpu/tpu_defs.h"
 #include "tensorflow/core/util/debug_data_dumper.h"
 #include "tsl/platform/error_logging.h"
-#include "tsl/platform/errors.h"
 
 namespace tensorflow {
 namespace tfrt_compiler {
@@ -117,10 +117,10 @@ void CreateNonTPULowerClusterToRuntimeOpsPassPipeline(
 
 // TODO(b/306728216): Move this out of the Bridge component and into a Host
 // runtime component.
-tensorflow::Status RecordIfErrorStatus(const std::string error_prefix,
-                                       std::string bridge_type,
-                                       tsl::DeviceType device_type,
-                                       absl::Status status) {
+absl::Status RecordIfErrorStatus(const std::string error_prefix,
+                                 std::string bridge_type,
+                                 tsl::DeviceType device_type,
+                                 absl::Status status) {
   if (status.ok()) {
     return status;
   }

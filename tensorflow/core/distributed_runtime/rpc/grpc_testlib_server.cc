@@ -35,9 +35,10 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
-Status FillServerDef(const string& job_spec, const string& job_name,
-                     int num_cpus, int num_gpus, int task_index, int replica,
-                     std::string host_port, ServerDef* options) {
+absl::Status FillServerDef(const string& job_spec, const string& job_name,
+                           int num_cpus, int num_gpus, int task_index,
+                           int replica, std::string host_port,
+                           ServerDef* options) {
   options->set_protocol("grpc");
   options->set_job_name(job_name);
   options->set_task_index(task_index);
@@ -61,7 +62,7 @@ Status FillServerDef(const string& job_spec, const string& job_name,
       return errors::InvalidArgument("Invalid job string: ", job_str);
     }
 
-    const StringPiece spec = job_pieces[1];
+    const absl::string_view spec = job_pieces[1];
 
     // job_str is of form <job_name>|<host_ports>.
     const std::vector<string> host_ports = str_util::Split(spec, ';');
@@ -138,7 +139,7 @@ int main(int argc, char* argv[]) {
   }
 
   tensorflow::ServerDef def;
-  tensorflow::Status s =
+  absl::Status s =
       tensorflow::FillServerDef(job_spec, job_name, num_cpus, num_gpus,
                                 task_index, replica, host_port, &def);
   if (!s.ok()) {

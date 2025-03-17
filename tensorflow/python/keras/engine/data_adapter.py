@@ -49,6 +49,7 @@ from tensorflow.python.ops import script_ops
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.types import data as data_types
 from tensorflow.python.util import nest
+from tensorflow.python.util import numpy_compat
 
 
 class DataAdapter(object, metaclass=abc.ABCMeta):
@@ -661,11 +662,11 @@ class ListsOfScalarsDataAdapter(DataAdapter):
                shuffle=False,
                **kwargs):
     super(ListsOfScalarsDataAdapter, self).__init__(x, y, **kwargs)
-    x = np.asarray(x)
+    x = numpy_compat.np_asarray(x)
     if y is not None:
-      y = np.asarray(y)
+      y = numpy_compat.np_asarray(y)
     if sample_weights is not None:
-      sample_weights = np.asarray(sample_weights)
+      sample_weights = numpy_compat.np_asarray(sample_weights)
     sample_weight_modes = broadcast_sample_weight_modes(
         sample_weights, sample_weight_modes)
 

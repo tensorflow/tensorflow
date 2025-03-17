@@ -17,7 +17,6 @@ limitations under the License.
 
 #include <cassert>
 #include <memory>
-#include <string>
 #include <utility>
 
 #include "llvm/ADT/ArrayRef.h"
@@ -133,8 +132,7 @@ class FlattenTuplePass : public impl::FlattenTuplePassBase<FlattenTuplePass> {
     MLIRContext *context = &getContext();
     RewritePatternSet patterns(context);
     patterns.add<FlattenCustomCallOp>(context);
-    if (failed(applyPatternsAndFoldGreedily(getOperation(),
-                                            std::move(patterns)))) {
+    if (failed(applyPatternsGreedily(getOperation(), std::move(patterns)))) {
       signalPassFailure();
     }
   }

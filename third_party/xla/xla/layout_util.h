@@ -28,8 +28,8 @@ limitations under the License.
 #include "xla/layout.h"
 #include "xla/printer.h"
 #include "xla/shape.h"
+#include "xla/tsl/platform/logging.h"  // IWYU pragma: keep
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/logging.h"  // IWYU pragma: keep
 
 namespace xla {
 
@@ -250,7 +250,9 @@ class LayoutUtil {
   // lhs and rhs need not be compatible to have the same layout but the two
   // shapes must have the same tuple structure (if any) and arrays must have the
   // same rank. Element type is ignored.
-  static bool LayoutsInShapesEqual(const Shape& lhs, const Shape& rhs);
+  static bool LayoutsInShapesEqual(
+      const Shape& lhs, const Shape& rhs,
+      std::optional<Layout::Equal> equal = std::nullopt);
 
   // Returns whether the given dimensions are consecutive in the given layout,
   // not necessarily in the order given.
@@ -301,11 +303,6 @@ class LayoutUtil {
   // stored in a particular split. This can be useful for calculating how much
   // memory to allocate in each of the memories.
   static int64_t MaxElementsInPerSplit(const Shape& shape);
-
-  // Returns the physical shape with the descending layout based on a logical
-  // shape and its layout, e.g., (8,128){0,1} -> (128,8){1,0}.
-  // It only supports the leaf shape but not the tuple shape.
-  static Shape GetPhysicalShapeFromLogicalShape(const Shape& logical_shape);
 };
 
 }  // namespace xla

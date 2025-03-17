@@ -15,9 +15,11 @@ limitations under the License.
 
 #include "tensorflow/lite/kernels/variants/tensor_array.h"
 
+#include <functional>
 #include <memory>
 #include <numeric>
 #include <optional>
+#include <utility>
 #include <vector>
 
 #include <gmock/gmock.h>

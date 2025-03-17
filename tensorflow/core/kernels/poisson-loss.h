@@ -78,7 +78,7 @@ class PoissonLossUpdater : public DualLossUpdater {
   // Setting this at 1 for now, it only impacts the adaptive sampling.
   double SmoothnessConstant() const final { return 1; }
 
-  Status ConvertLabel(float* const example_label) const final {
+  absl::Status ConvertLabel(float* const example_label) const final {
     if (*example_label < 0.0) {
       return errors::InvalidArgument(
           "Only non-negative labels can be used with the Poisson log loss. "

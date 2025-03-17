@@ -39,6 +39,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/comparison_util.h"
+#include "xla/hlo/analysis/hlo_dataflow_analysis.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "xla/hlo/ir/dynamic_parameter_binding.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
@@ -52,7 +53,6 @@ limitations under the License.
 #include "xla/service/call_inliner.h"
 #include "xla/service/dynamic_window_utils.h"
 #include "xla/service/hlo_creation_utils.h"
-#include "xla/service/hlo_dataflow_analysis.h"
 #include "xla/service/hlo_value.h"
 #include "xla/service/tuple_util.h"
 #include "xla/service/while_util.h"
@@ -487,9 +487,11 @@ absl::Status DynamicDimensionInferenceVisitor::HandleCustomCall(
     return absl::OkStatus();
   }
 
+  bool handled = false;
   if (custom_call_handler_) {
-    TF_RETURN_IF_ERROR(custom_call_handler_(hlo, parent_));
-  } else {
+    handled = custom_call_handler_(hlo, parent_);
+  }
+  if (!handled) {
     TF_RETURN_IF_ERROR(ForEachOperandDynamicDimension(
         hlo,
         [&](HloInstruction* operand, ShapeIndex index, int64_t dimension,
@@ -1056,8 +1058,7 @@ DynamicDimensionInferenceVisitor::HandleDynamicConvolutionInputGrad(
   HloComputation* comp = hlo->parent();
   TF_RET_CHECK(input_sizes->shape().rank() == 1) << hlo->ToString();
   TF_RET_CHECK(input_sizes->shape().element_type() == S32) << hlo->ToString();
-  TF_RET_CHECK(input_sizes->shape().dimensions(0) ==
-               hlo->shape().dimensions_size())
+  TF_RET_CHECK(input_sizes->shape().dimensions(0) == hlo->shape().rank())
       << hlo->ToString();
   // Slice to get corresponding input size.
   HloInstruction* slice = comp->AddInstruction(
@@ -2461,7 +2462,9 @@ absl::StatusOr<bool> DynamicDimensionInferenceVisitor::RequiresPadToStatic(
       return true;
     }
     if (use.instruction->opcode() != HloOpcode::kCustomCall ||
-        use.instruction->custom_call_target() != "PadToStatic") {
+        !use.instruction->IsCustomCall({"PadToStatic", "Sharding",
+                                        "SPMDShardToFullShape",
+                                        "SPMDFullToShardShape"})) {
       if (parent_->op_supports_dynamism_handler_ == nullptr) {
         return true;
       }
@@ -2804,7 +2807,7 @@ bool DynamicDimensionInference::HasDynamicDimension(
     if (ShapeIndexView(subindex).subspan(0, index.size()) != index) {
       return;
     }
-    for (int64_t i = 0; i < subshape.dimensions_size(); ++i) {
+    for (int64_t i = 0; i < subshape.rank(); ++i) {
       HloInstruction* operand_dynamic_size = GetDynamicSize(inst, subindex, i);
       if (operand_dynamic_size != nullptr) {
         has_dynamic_dim = true;

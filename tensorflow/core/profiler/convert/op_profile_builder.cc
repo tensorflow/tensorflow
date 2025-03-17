@@ -21,21 +21,21 @@ limitations under the License.
 #include <string>
 #include <vector>
 
-// #include "perftools/accelerators/xprof/convert/device_type_utils.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/node_hash_map.h"
+#include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/strings/ascii.h"
 #include "absl/strings/str_cat.h"
+#include "xla/tsl/profiler/convert/xla_op_utils.h"
+#include "xla/tsl/profiler/utils/math_utils.h"
 #include "tensorflow/core/lib/gtl/top_n.h"
-#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/profiler/convert/op_metrics_db_combiner.h"
 #include "tensorflow/core/profiler/convert/op_metrics_to_record.h"
 #include "tensorflow/core/profiler/protobuf/op_metrics.pb.h"
 #include "tensorflow/core/profiler/protobuf/op_profile.pb.h"
-#include "tensorflow/core/profiler/utils/math_utils.h"
 #include "tensorflow/core/profiler/utils/op_metrics_db_utils.h"
-#include "tsl/profiler/convert/xla_op_utils.h"
+#include "tsl/platform/protobuf.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -51,7 +51,9 @@ double CapUtilization(double utilization) { return std::min(utilization, 1.0); }
 void PopulateSymbolNode(const OpMetrics& op_metrics, Node* node) {
   node->set_name(op_metrics.name());
   Node::XLAInstruction& xla = *node->mutable_xla();
+  xla.set_program_id(op_metrics.hlo_module_id());
   xla.set_expression(op_metrics.long_name());
+  xla.set_fingerprint(op_metrics.fingerprint());
   xla.set_category(op_metrics.category());
   xla.set_provenance(op_metrics.provenance());
   if (op_metrics.has_layout()) {
@@ -88,7 +90,9 @@ void CopySymbolDetailsToDeduplicatedNode(Node* top_child_node,
       absl::StrCat(top_child_node->name(), " and its duplicate(s)"));
   Node::XLAInstruction& xla = *deduplicated_node->mutable_xla();
   const Node::XLAInstruction& top_child_node_xla = top_child_node->xla();
+  xla.set_program_id(top_child_node_xla.program_id());
   xla.set_expression(top_child_node_xla.expression());
+  xla.set_fingerprint(top_child_node_xla.fingerprint());
   xla.set_category(top_child_node_xla.category());
   if (IsFusion(top_child_node_xla.category())) return;
   xla.set_provenance(top_child_node_xla.provenance());
@@ -126,10 +130,13 @@ void FinalizeDeduplicatedNodes(bool by_program, Node* root) {
     for (Node& program_node : *root->mutable_children()) {
       for (Node& category_node : *program_node.mutable_children()) {
         for (Node& deduplicated_node : *category_node.mutable_children()) {
-          // Skip for non deduplicated nodes. Those nodes already have name set.
-          if (!deduplicated_node.name().empty() ||
-              deduplicated_node.children().empty())
+          // Node with 1 child doesn't have deduplication, the child is itself.
+          // Removing the dedup layer.
+          if (deduplicated_node.children_size() == 1) {
+            Node child = *deduplicated_node.mutable_children(0);
+            deduplicated_node = child;
             continue;
+          }
           CopySymbolDetailsToDeduplicatedNode(
               deduplicated_node.mutable_children(0), &deduplicated_node);
         }
@@ -138,10 +145,13 @@ void FinalizeDeduplicatedNodes(bool by_program, Node* root) {
   } else {
     for (Node& category_node : *root->mutable_children()) {
       for (Node& deduplicated_node : *category_node.mutable_children()) {
-        // Skip for non deduplicated nodes. Those nodes already have name set.
-        if (!deduplicated_node.name().empty() ||
-            deduplicated_node.children().empty())
+        // Node with 1 child doesn't have deduplication, the child is itself.
+        // Removing the dedup layer.
+        if (deduplicated_node.children_size() == 1) {
+          Node child = *deduplicated_node.mutable_children(0);
+          deduplicated_node = child;
           continue;
+        }
         CopySymbolDetailsToDeduplicatedNode(
             deduplicated_node.mutable_children(0), &deduplicated_node);
       }
@@ -279,12 +289,62 @@ Node* OpProfileBuilder::AddOpNode(const OpMetrics& op_metrics,
   return leaf;
 }
 
+// Function to create deduplicated aggregation layer.
+// 1. Empty deduplicated_name in op_metrics means either:
+// (1) a grouping op of a deduplicated op list. (fusion.3 in the example below)
+// (2) an op that does not have duplicates. (fusion.4 in the example below)
+// We create dedup layer for both cases due to lack of clue which case it is.
+// The op name is used directly as the hash key for the dedup group. The dedup
+// layer will be removed in the 2nd pass for case (2).
+// 2. Non-empty deduplicated_name means this op can be grouped to a
+// deduplicated op list (fusion.1 in the example below).
+// Example:
+// op_metrics {
+//   name: "fusion.1"
+//   deduplicated_name: "fusion.3"
+//   category: "convolution"
+// }
+// op_metrics {
+//   name: "fusion.3"
+//   deduplicated_name: ""
+//   category: "convolution"
+// }
+// op_metrics {
+//   name: "fusion.4"
+//   deduplicated_name: ""
+//   category: "convolution"
+// }
+// The data above will create the following tree after calling the function
+// repeatedly:
+// root(by_program)
+// - jit.xx
+//   - convolution
+//     - fusion.3
+//       - fusion.1
+//       - fusion.2
+//       - fusion.3
+//     - fusion.4
+//       - fusion.4
+// After finalization, the tree will look like:
+// root(by_program)
+// - jit.xx
+//   - convolution
+//     - fusion.3 and its duplicate(s)
+//       - fusion.1
+//       - fusion.2
+//       - fusion.3
+//     - fusion.4
 Node* OpProfileBuilder::LookupOrAddDeduplicatedNode(const OpMetrics& op_metrics,
                                                     Category* category) {
-  Node*& deduplicated_node =
-      category->deduplicated_nodes[op_metrics.deduplicated_name()];
+  std::string deduplicated_name = op_metrics.deduplicated_name().empty()
+                                      ? op_metrics.name()
+                                      : op_metrics.deduplicated_name();
+  Node*& deduplicated_node = category->deduplicated_nodes[deduplicated_name];
   if (deduplicated_node == nullptr) {
     deduplicated_node = category->node->add_children();
+    // Set deduplicated name which is the hash key for the dedup group.
+    // Symbol details will be added in finalization step.
+    deduplicated_node->set_name(deduplicated_name);
   }
   return deduplicated_node;
 }
@@ -339,8 +399,7 @@ void OpProfileBuilder::AddOp(const OpMetrics& op_metrics) {
     nested_grouping_nodes.push_back(category->node);
 
     Node* deduplicated_node = nullptr;
-    if (options_.group_by_deduplicated_name &&
-        !op_metrics.deduplicated_name().empty()) {
+    if (options_.group_by_deduplicated_name) {
       deduplicated_node = LookupOrAddDeduplicatedNode(op_metrics, category);
       nested_grouping_nodes.push_back(deduplicated_node);
     }
@@ -383,7 +442,7 @@ void OpProfileBuilder::Finalize(
 OpProfileBuilder::OpProfileBuilder(
     const OpProfileOptions& options,
     tensorflow::profiler::op_profile::Node* root,
-    const tensorflow::protobuf::Map<uint64_t, std::string>* program_name_map)
+    const tsl::protobuf::Map<uint64_t, std::string>* program_name_map)
     : options_(options), root_(root), program_name_map_(program_name_map) {
   if (root == nullptr) {
     LOG(DFATAL) << "root is null.";

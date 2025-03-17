@@ -12,10 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include <iterator>
+#include <cstddef>
 #include <memory>
-#include <string>
-#include <unordered_map>
 #include <vector>
 
 #include "absl/log/check.h"
@@ -54,9 +52,8 @@ void FillArrayWithZeros(Array* array) {
 // Removes a multiplication by array of constant zeros by making the output
 // array to an array of constant zeros and removing the input arrays if they
 // are no longer needed.
-::tensorflow::Status ResolveMultiplyByZero::Run(Model* model,
-                                                std::size_t op_index,
-                                                bool* modified) {
+absl::Status ResolveMultiplyByZero::Run(Model* model, std::size_t op_index,
+                                        bool* modified) {
   *modified = false;
   const auto mul_it = model->operators.begin() + op_index;
   auto* mul_op = mul_it->get();

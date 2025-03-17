@@ -31,6 +31,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/autotuning.pb.h"
+#include "xla/backends/gpu/codegen/triton/support_legacy.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -41,9 +42,8 @@ limitations under the License.
 #include "xla/layout.h"
 #include "xla/literal_util.h"
 #include "xla/service/gpu/ir_emission_utils.h"
-#include "xla/service/gpu/matmul_utils.h"
+#include "xla/service/gpu/matmul_indexing_utils.h"
 #include "xla/service/gpu/triton_fusion_analysis.h"
-#include "xla/service/gpu/triton_support.h"
 #include "xla/service/gpu/triton_tiling_propagation.h"
 #include "xla/service/hlo_creation_utils.h"
 #include "xla/shape.h"
@@ -201,7 +201,7 @@ absl::StatusOr<HloInstruction*> MakeSplitKOperand(
 
   // Add bitcast.
   const Shape& shape = operand->shape();
-  Shape new_shape(shape.element_type(), {}, {}, {});
+  Shape new_shape(shape.element_type(), {}, {});
 
   for (int i = 0; i < shape.rank(); ++i) {
     const int64_t dimension_size = shape.dimensions(i);

@@ -18,7 +18,7 @@ limitations under the License.
 
 #include <stdint.h>
 
-#include "Eigen/Core"  // from @eigen_archive
+#include "Eigen/Core"
 
 extern "C" {
 

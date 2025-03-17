@@ -42,6 +42,7 @@ tf_python_pybind_extension(
     pytype_srcs = [
         "filecheck_wrapper.pyi",
     ],
+    starlark_only = True,
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/python/lib/core:pybind11_lib",

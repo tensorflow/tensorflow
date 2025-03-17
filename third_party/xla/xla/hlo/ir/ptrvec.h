@@ -23,7 +23,7 @@
 #include <vector>
 
 #include "absl/log/check.h"
-#include "tsl/platform/logging.h"  // IWYU pragma: keep
+#include "xla/tsl/platform/logging.h"  // IWYU pragma: keep
 
 namespace xla {
 

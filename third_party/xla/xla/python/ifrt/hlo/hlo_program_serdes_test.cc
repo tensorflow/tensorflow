@@ -22,18 +22,19 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/strings/string_view.h"
 #include "llvm/Support/Casting.h"
-#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
-#include "mlir/IR/BuiltinDialect.h"  // from @llvm-project
-#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
-#include "mlir/IR/MLIRContext.h"  // from @llvm-project
-#include "mlir/IR/OwningOpRef.h"  // from @llvm-project
-#include "mlir/Support/DebugStringHelper.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/IR/BuiltinDialect.h"
+#include "mlir/IR/BuiltinOps.h"
+#include "mlir/IR/MLIRContext.h"
+#include "mlir/IR/OwningOpRef.h"
+#include "mlir/Support/DebugStringHelper.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/pjrt/mlir_to_hlo.h"
 #include "xla/python/ifrt/hlo/hlo_program.h"
 #include "xla/python/ifrt/serdes.h"
-#include "tsl/platform/status_matchers.h"
-#include "tsl/platform/statusor.h"
+#include "xla/python/ifrt/serdes.pb.h"
+#include "xla/tsl/platform/status_matchers.h"
+#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace ifrt {
@@ -63,7 +64,8 @@ module {
         xla::ParseMlirModuleString(kMlirModuleStr, *context));
     auto program =
         std::make_unique<HloProgram>(std::move(context), std::move(module));
-    TF_ASSERT_OK_AND_ASSIGN(serialized, Serialize(*program));
+    TF_ASSERT_OK_AND_ASSIGN(serialized,
+                            Serialize(*program, /*options=*/nullptr));
   }
 
   TF_ASSERT_OK_AND_ASSIGN(
@@ -101,7 +103,7 @@ module {
         xla::ParseMlirModuleString(kMlirModuleStr, *context));
     auto program =
         std::make_unique<HloProgram>(std::move(context), std::move(module));
-    EXPECT_THAT(Serialize(*program),
+    EXPECT_THAT(Serialize(*program, /*options=*/nullptr),
                 StatusIs(Not(absl::StatusCode::kOk),
                          HasSubstr("Failed to serialize StableHLO")));
   }
@@ -123,7 +125,8 @@ module {
         xla::ParseMlirModuleString(kMlirModuleStr, *context));
     auto program =
         std::make_unique<HloProgram>(std::move(context), std::move(module));
-    TF_ASSERT_OK_AND_ASSIGN(serialized, Serialize(*program));
+    TF_ASSERT_OK_AND_ASSIGN(serialized,
+                            Serialize(*program, /*options=*/nullptr));
   }
 
   serialized.set_data("invalid data");

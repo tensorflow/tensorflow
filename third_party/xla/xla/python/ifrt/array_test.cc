@@ -15,13 +15,12 @@ limitations under the License.
 
 #include "xla/python/ifrt/array.h"
 
-#include <memory>
 #include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "llvm/Support/ExtensibleRTTI.h"
 #include "xla/python/ifrt/mock.h"
+#include "xla/tsl/concurrency/ref_count.h"
 
 namespace xla {
 namespace ifrt {

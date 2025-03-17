@@ -143,15 +143,16 @@ class PythonAPIInfo {
   //   defaults_tuple: Tuple containing default values for the parameters,
   //     right-aligned with `param_names` -- i.e., `defaults[-i]` is the default
   //     for `param_names[-i]`.
-  Status Initialize(const OpDef& op_def, const std::vector<string> param_names,
-                    PyObject* defaults_tuple);
+  absl::Status Initialize(const OpDef& op_def,
+                          const std::vector<string> param_names,
+                          PyObject* defaults_tuple);
 
   // Initialize this PythonAPIInfo based on the registered OpDef for the given
   // operation.
   //
   // Args:
   //   op_name: The registered name of the operation (e.g. "AddV2").
-  Status InitializeFromRegisteredOp(const std::string& op_name);
+  absl::Status InitializeFromRegisteredOp(const std::string& op_name);
 
   // Initializes this PythonAPIInfo based on a set of parameter specifications.
   //
@@ -167,7 +168,7 @@ class PythonAPIInfo {
   //
   // Note: the `name` parameter should not be included in `input_specs` or
   // `attr_specs`.
-  Status InitializeFromParamSpecs(
+  absl::Status InitializeFromParamSpecs(
       const std::map<std::string, std::string>& input_specs,
       const std::map<std::string, std::string>& attr_specs,
       const std::vector<string> param_names, PyObject* defaults_tuple);
@@ -226,7 +227,7 @@ class PythonAPIInfo {
   // If `attr_def` describes an int attribute, then adds a value to
   // inputs_with_number_attrs_ (to record any tensor inputs that use this
   // value as a list length).
-  Status InitializeAttribute(
+  absl::Status InitializeAttribute(
       const OpDef::AttrDef& attr_def,
       const std::map<std::string, ParamIndex>& param_name_to_index);
 
@@ -241,12 +242,13 @@ class PythonAPIInfo {
   // If `arg_def`'s dtype is described by a `list(type)` attr, then updates the
   // appropriate value in `inputs_with_type_list_attrs_` with information about
   // the `arg_def`.
-  Status InitializeInput(const OpDef::ArgDef& arg_def,
-                         const std::map<std::string, int>& param_name_to_index);
+  absl::Status InitializeInput(
+      const OpDef::ArgDef& arg_def,
+      const std::map<std::string, int>& param_name_to_index);
 
   // Checks that the OpDef used to initialize this PythonAPIInfo
   // had an AttrDef or ArgDef specification for each parameter.
-  Status CheckParamNames() const;
+  absl::Status CheckParamNames() const;
 
   // Searches inputs_with_type_attrs_ for an input with the given name.
   InputsWithTypeAttr* FindInputsWithTypeAttr(const string& name);

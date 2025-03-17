@@ -29,9 +29,8 @@ limitations under the License.
 namespace mlir {
 namespace TF {
 
-tensorflow::Status RunBridgeWithStandardPipeline(ModuleOp module,
-                                                 bool enable_logging,
-                                                 bool enable_inliner) {
+absl::Status RunBridgeWithStandardPipeline(ModuleOp module, bool enable_logging,
+                                           bool enable_inliner) {
   PassManager bridge(module.getContext());
 
   StandardPipelineOptions pipeline_options;

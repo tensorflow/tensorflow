@@ -8,7 +8,6 @@ package(
         "//tensorflow/compiler/mlir:__pkg__",
         "//tensorflow/compiler/mlir/tensorflow/transforms:__pkg__",
         "//tensorflow/compiler/mlir/tensorflow/transforms/host_runtime:__pkg__",
-        "//tensorflow/compiler/mlir/tf2xla/api:__subpackages__",
         "//tensorflow/compiler/mlir/tf2xla/internal:__pkg__",
     ],
     licenses = ["notice"],

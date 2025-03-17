@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "third_party/nanobind/include/nanobind/nanobind.h"
+#include "nanobind/nanobind.h"
 #include "xla/pjrt/exceptions.h"
 #include "xla/pjrt/status_casters.h"
 

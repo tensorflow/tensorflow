@@ -17,7 +17,9 @@ limitations under the License.
 #include <unordered_map>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/lite/toco/graph_transformations/graph_transformations.h"
 #include "tensorflow/lite/toco/model.h"
 #include "tensorflow/lite/toco/runtime/types.h"
@@ -203,9 +205,9 @@ void FuseMulOrDivParamsIntoPrecedingAffine(Model* model, Operator* preceding_op,
 }
 }  // namespace
 
-::tensorflow::Status FuseBinaryIntoPrecedingAffine::Run(Model* model,
-                                                        std::size_t op_index,
-                                                        bool* modified) {
+absl::Status FuseBinaryIntoPrecedingAffine::Run(Model* model,
+                                                std::size_t op_index,
+                                                bool* modified) {
   *modified = false;
   const auto binary_it = model->operators.begin() + op_index;
   const auto* binary_op = binary_it->get();

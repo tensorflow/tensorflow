@@ -20,19 +20,19 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "absl/memory/memory.h"
+#include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
+#include "absl/strings/string_view.h"
 #include "absl/strings/substitute.h"
 #include "tensorflow/core/framework/summary.pb.h"
 #include "tensorflow/core/lib/monitoring/collected_metrics.h"
 #include "tensorflow/core/lib/monitoring/metric_def.h"
 #include "tensorflow/core/lib/monitoring/types.h"
-#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/protobuf/tfstreamz.pb.h"
-#include "tensorflow/core/profiler/protobuf/xplane.pb.h"
 #include "tensorflow/core/profiler/utils/xplane_builder.h"
+#include "tsl/profiler/protobuf/xplane.pb.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -76,8 +76,8 @@ tfstreamz::Percentiles ToProto(const monitoring::Percentiles& percentiles) {
 
 }  // namespace
 
-Status SerializeToXPlane(const std::vector<TfStreamzSnapshot>& snapshots,
-                         XPlane* plane, uint64 line_start_time_ns) {
+absl::Status SerializeToXPlane(const std::vector<TfStreamzSnapshot>& snapshots,
+                               XPlane* plane, uint64 line_start_time_ns) {
   XPlaneBuilder xplane(plane);
   XLineBuilder line = xplane.GetOrCreateLine(0);  // This plane has single line.
   line.SetTimestampNs(line_start_time_ns);

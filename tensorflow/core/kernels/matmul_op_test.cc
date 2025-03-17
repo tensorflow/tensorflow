@@ -20,6 +20,7 @@ limitations under the License.
 #include "absl/strings/match.h"
 #include "tensorflow/cc/ops/nn_ops_internal.h"
 #include "tensorflow/cc/ops/standard_ops.h"
+#include "xla/tsl/platform/status.h"
 #include "tensorflow/core/common_runtime/kernel_benchmark_testlib.h"
 #include "tensorflow/core/framework/ops_util.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -30,7 +31,6 @@ limitations under the License.
 #include "tensorflow/core/platform/test_benchmark.h"
 #include "tensorflow/core/protobuf/rewriter_config.pb.h"
 #include "tensorflow/core/public/session.h"
-#include "tsl/platform/status.h"
 
 #if TENSORFLOW_USE_ROCM
 #include "rocm/rocm_config.h"

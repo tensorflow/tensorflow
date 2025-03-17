@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2024 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,16 +16,6 @@ limitations under the License.
 #ifndef TENSORFLOW_TSL_PLATFORM_THREADPOOL_INTERFACE_H_
 #define TENSORFLOW_TSL_PLATFORM_THREADPOOL_INTERFACE_H_
 
-#include "unsupported/Eigen/CXX11/ThreadPool"  // from @eigen_archive
-#include "tsl/platform/mutex.h"
-#include "tsl/platform/types.h"
-
-namespace tsl {
-namespace thread {
-
-class ThreadPoolInterface : public Eigen::ThreadPoolInterface {};
-
-}  // namespace thread
-}  // namespace tsl
+#include "xla/tsl/platform/threadpool_interface.h"
 
 #endif  // TENSORFLOW_TSL_PLATFORM_THREADPOOL_INTERFACE_H_

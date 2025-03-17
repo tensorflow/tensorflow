@@ -30,11 +30,11 @@ struct I4 {
   constexpr I4(const I4&) = default;
   constexpr I4& operator=(const I4&) = default;
 
-  template <class T>
+  template <class T, class = std::enable_if_t<std::is_convertible_v<T, int8_t>>>
   // NOLINTNEXTLINE(google-explicit-constructor)
   constexpr I4(T v) : data(v) {}
 
-  template <class T>
+  template <class T, class = std::enable_if_t<std::is_convertible_v<int8_t, T>>>
   // NOLINTNEXTLINE(google-explicit-constructor)
   constexpr operator T() const {
     return static_cast<T>(data);

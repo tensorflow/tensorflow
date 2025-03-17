@@ -56,10 +56,10 @@ class OpSegment {
   // error.
   //
   // OpSegment keeps the ownership of the returned "*kernel".
-  typedef std::function<Status(OpKernel**)> CreateKernelFn;
-  Status FindOrCreate(const std::string& session_handle,
-                      const std::string& node_name, OpKernel** kernel,
-                      CreateKernelFn create_fn);
+  typedef std::function<absl::Status(OpKernel**)> CreateKernelFn;
+  absl::Status FindOrCreate(const std::string& session_handle,
+                            const std::string& node_name, OpKernel** kernel,
+                            CreateKernelFn create_fn);
 
   // Returns true if OpSegment should own the kernel.
   static bool ShouldOwnKernel(FunctionLibraryRuntime* lib,

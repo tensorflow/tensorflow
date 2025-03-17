@@ -17,7 +17,9 @@ limitations under the License.
 
 #include <utility>
 
+#include "absl/log/check.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "xla/ffi/type_id_registry.h"
 #include "xla/util.h"
 #include "tsl/platform/logging.h"

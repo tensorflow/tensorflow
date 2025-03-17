@@ -2,7 +2,7 @@ load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
 load("//tensorflow/lite:build_def.bzl", "tflite_copts", "tflite_copts_warnings", "tflite_self_contained_libs_test_suite")
 load("//tensorflow/lite:special_rules.bzl", "internal_visibility_allowlist", "tflite_portable_test_suite")
-load("//tensorflow/lite/core:special_rules.bzl", "macros_visibility_allowlist")
+load("//tensorflow/lite/core:special_rules.bzl", "core_cc_api_stable_visibility_allowlist", "macros_visibility_allowlist")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -43,12 +43,11 @@ cc_library(
     ],
     compatible_with = get_compatible_with_portable(),
     copts = tflite_copts() + tflite_copts_warnings(),
-    visibility = [
-        "//tensorflow/lite:__subpackages__",
-    ],
+    visibility = ["//tensorflow/lite:__subpackages__"],
     deps = [
         ":cc_api_stable",
         ":signature_runner",
+        "//tensorflow/compiler/mlir/lite/core:model_builder_base",
         "//tensorflow/compiler/mlir/lite/experimental/remat:metadata_util",
         "//tensorflow/lite:allocation",
         "//tensorflow/lite:array",
@@ -64,7 +63,6 @@ cc_library(
         "//tensorflow/lite:util",
         "//tensorflow/lite/c:common_internal",
         "//tensorflow/lite/core/api",
-        "//tensorflow/lite/core/api:verifier",
         "//tensorflow/lite/core/async:async_signature_runner",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/experimental/resource",
@@ -120,6 +118,7 @@ cc_library(
         ":cc_api_stable",
         ":model_builder",
         ":signature_runner",
+        "//tensorflow/compiler/mlir/lite/core:model_builder_base",
         "//tensorflow/compiler/mlir/lite/experimental/remat:metadata_util",
         "//tensorflow/lite:allocation",
         "//tensorflow/lite:array",
@@ -135,7 +134,6 @@ cc_library(
         "//tensorflow/lite:util",
         "//tensorflow/lite/c:common_internal",
         "//tensorflow/lite/core/api",
-        "//tensorflow/lite/core/api:verifier",
         "//tensorflow/lite/core/async:async_signature_runner",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/experimental/resource",
@@ -167,14 +165,17 @@ cc_library(
     ],
     compatible_with = get_compatible_with_portable(),
     visibility = [
-        "//research/drishti/benchmarking/async:__subpackages__",
         "//tensorflow/lite:__subpackages__",
-    ],
+        "//third_party/odml/litert/litert:__subpackages__",
+    ] + core_cc_api_stable_visibility_allowlist(),
     deps = [
         ":model_builder",
         ":signature_runner",
         ":subgraph",
+        "//tensorflow/compiler/mlir/lite/core:model_builder_base",
         "//tensorflow/compiler/mlir/lite/experimental/remat:metadata_util",
+        "//tensorflow/compiler/mlir/lite/schema:schema_fbs",
+        "//tensorflow/compiler/mlir/lite/schema:schema_utils",
         "//tensorflow/lite:allocation",
         "//tensorflow/lite:array",
         "//tensorflow/lite:external_cpu_backend_context",
@@ -253,6 +254,7 @@ cc_library(
     deps = [
         ":cc_api_stable",
         ":signature_runner",
+        "//tensorflow/compiler/mlir/lite/core:model_builder_base",
         "//tensorflow/compiler/mlir/lite/experimental/remat:metadata_util",
         "//tensorflow/lite:allocation",
         "//tensorflow/lite:array",
@@ -268,7 +270,6 @@ cc_library(
         "//tensorflow/lite:util",
         "//tensorflow/lite/c:common_internal",
         "//tensorflow/lite/core/api",
-        "//tensorflow/lite/core/api:verifier",
         "//tensorflow/lite/core/async:async_signature_runner",
         "//tensorflow/lite/core/c:c_api_types",
         "//tensorflow/lite/core/c:common",
@@ -286,22 +287,14 @@ cc_library(
 
 cc_library(
     name = "model_builder",
-    srcs = ["model_builder.cc"],
     hdrs = ["model_builder.h"],
     compatible_with = get_compatible_with_portable(),
     copts = tflite_copts_warnings(),
     visibility = internal_visibility_allowlist(),
     deps = [
-        ":macros",
-        "//tensorflow/compiler/mlir/lite/core:macros",
-        "//tensorflow/lite:allocation",
+        "//tensorflow/compiler/mlir/lite/core:model_builder_base",
         "//tensorflow/lite:stderr_reporter",
-        "//tensorflow/lite:string",
         "//tensorflow/lite/core/api:error_reporter",
-        "//tensorflow/lite/core/api:verifier",
-        "//tensorflow/lite/schema:schema_fbs",
-        "@com_google_absl//absl/strings",
-        "@flatbuffers",
     ],
     alwayslink = 1,
 )
@@ -313,8 +306,8 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     visibility = [
         "//tensorflow/lite:__pkg__",
-        "//tensorflow/lite/c:__subpackages__",
         "//tensorflow/lite/core:__subpackages__",
+        "//third_party/odml/infra/genai/inference/executor/google_tensor:__subpackages__",
     ],
     deps = [
         "//tensorflow/lite/c:common",
@@ -332,10 +325,12 @@ cc_test(
     srcs = ["signature_runner_test.cc"],
     data = [
         "//tensorflow/lite:testdata/multi_signatures.bin",
+        "//tensorflow/lite:testdata/reverse_signature_model.bin",
     ],
     deps = [
         ":framework",
         ":signature_runner",
+        "//tensorflow/compiler/mlir/lite/core:model_builder_base",
         "//tensorflow/lite:model_builder",
         "//tensorflow/lite/core/kernels:builtin_ops",
         "//tensorflow/lite/testing:util",
@@ -366,11 +361,13 @@ cc_test(
     ],
     tags = [
         "no_windows",  # TODO(b/194459105): the test is flaky.
+        "noasan",
         "tflite_not_portable",
         "tflite_smoke_test",
     ],
     deps = [
         ":framework",
+        "//tensorflow/compiler/mlir/lite:allocation",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:string_util",
         "//tensorflow/lite/core/api",
@@ -512,6 +509,58 @@ cc_test(
         "//tensorflow/lite/c:c_api_types",
         "//tensorflow/lite/kernels:builtin_ops",  # build_cleaner: keep
         "@com_google_absl//absl/log:check",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
+    name = "model_building",
+    srcs = ["model_building.cc"],
+    hdrs = ["model_building.h"],
+    deps = [
+        ":subgraph",
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite/c:c_api_types",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/c:common",
+        "//tensorflow/lite/kernels:builtin_ops",
+        "//tensorflow/lite/schema:schema_fbs",
+        "@com_google_absl//absl/container:flat_hash_map",
+    ],
+)
+
+cc_test(
+    name = "model_building_test",
+    srcs = ["model_building_test.cc"],
+    deps = [
+        ":model_building",
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite/c:c_api_types",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/types:span",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "subgraph_composite_inlining_test",
+    srcs = ["subgraph_composite_inlining_test.cc"],
+    deps = [
+        ":model_building",
+        ":subgraph",
+        "//tensorflow/lite:array",
+        "//tensorflow/lite:builtin_ops",
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite:util",
+        "//tensorflow/lite/c:c_api_types",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/c:common",
+        "//tensorflow/lite/kernels:kernel_util",
+        "//tensorflow/lite/kernels:subgraph_test_util",
+        "//tensorflow/lite/kernels:test_util",
+        "//tensorflow/lite/kernels/internal:tensor_ctypes",
+        "//tensorflow/lite/schema:schema_fbs",
+        "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_main",
     ],
 )

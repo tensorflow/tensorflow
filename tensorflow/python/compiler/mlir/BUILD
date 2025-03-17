@@ -9,7 +9,6 @@ package(
 py_strict_library(
     name = "mlir",
     srcs = ["mlir.py"],
-    srcs_version = "PY3",
     deps = [
         "//tensorflow/python:pywrap_mlir",
         "//tensorflow/python/util:tf_export",
@@ -22,7 +21,6 @@ py_strict_test(
     data = [
         "multi_add.tflite",
     ],
-    python_version = "PY3",
     tags = [
         "no_mac",  # TODO(b/291995580): Reenable.
         "no_pip",

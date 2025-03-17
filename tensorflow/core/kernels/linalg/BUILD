@@ -247,7 +247,7 @@ tf_kernel_library(
     gpu_srcs = ["tridiagonal_solve_op_gpu.cu.cc"],
     deps = LINALG_DEPS + if_cuda([
         "//tensorflow/core/util:cuda_sparse",
-    ]),
+    ]) + ["@com_google_absl//absl/log"],
 )
 
 tf_kernel_library(
@@ -278,6 +278,7 @@ tf_kernel_library(
     ]) + [
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "@com_google_absl//absl/container:inlined_vector",
         "@eigen_archive//:eigen3",
     ],
 )
@@ -324,7 +325,7 @@ cc_library(
     name = "loose_headers",
     tags = ["avoid_dep"],
     textual_hdrs = ["eye_functor.h"],
-    visibility = [":__pkg__"],
+    visibility = ["//visibility:private"],
 )
 
 tf_cuda_cc_test(

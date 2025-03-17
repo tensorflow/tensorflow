@@ -22,8 +22,6 @@ import sys
 import traceback
 from typing import List
 
-import numpy as np
-
 from tensorflow.compiler.tf2xla.python import xla
 from tensorflow.core.framework import full_type_pb2
 from tensorflow.python.eager import context
@@ -72,6 +70,7 @@ from tensorflow.python.platform import flags
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import compat
 from tensorflow.python.util import nest
+from tensorflow.python.util import numpy_compat
 from tensorflow.python.util import object_identity
 
 
@@ -1112,7 +1111,7 @@ def wrap(tensor, is_stacked=True, is_sparse_stacked=False):
   """Helper to create a WrappedTensor object."""
   assert isinstance(is_stacked, bool)
   assert isinstance(is_sparse_stacked, bool)
-  assert isinstance(tensor, tensor_lib.Tensor)
+  assert isinstance(tensor, tensor_lib.Tensor), type(tensor)
   assert not is_sparse_stacked or is_stacked, ("If the wrapped tensor is "
                                                "stacked via a sparse "
                                                "conversion, it must also be "
@@ -1369,8 +1368,12 @@ class PFor:
     self._all_indices_partitioned = all_indices_partitioned
     if all_indices_partitioned:
       assert all_indices is not None
-    self.all_indices = (
-        math_ops.range(loop_len) if all_indices is None else all_indices)
+    if all_indices is None:
+      self.all_indices = math_ops.range(
+          loop_len, dtype=dtypes.int32, name="all_indices"
+      )
+    else:
+      self.all_indices = all_indices
 
     self._conversion_map = object_identity.ObjectIdentityDictionary()
     self._conversion_map[loop_var] = wrap(self.all_indices, True)
@@ -2258,6 +2261,17 @@ def _convert_reshape(pfor_input: _PforInput):
   return wrap(array_ops.reshape(t, new_shape), True)
 
 
+@RegisterPFor("TopK")
+@RegisterPFor("TopKV2")
+def _convert_top_k(pfor_input: _PforInput):
+  outputs = _create_op(
+      op_type=pfor_input.op_type,
+      inputs=[x.t for x in pfor_input.inputs],
+      op_dtypes=[x.dtype for x in pfor_input.outputs],
+      attrs=pfor_input.op.node_def.attr).outputs
+  return [wrap(x, True) for x in outputs]
+
+
 @RegisterPFor("Fill")
 def _convert_fill(pfor_input: _PforInput):
   dims = pfor_input.unstacked_input(0)
@@ -2795,7 +2809,9 @@ def _convert_matmul(pfor_input: _PforInput):
   tr_a = pfor_input.get_attr("transpose_a")
   tr_b = pfor_input.get_attr("transpose_b")
   if a_stacked and b_stacked:
-    output = wrap(math_ops.matmul(a, b, adjoint_a=tr_a, adjoint_b=tr_b), True)
+    output = wrap(
+        math_ops.matmul(a, b, transpose_a=tr_a, transpose_b=tr_b), True
+    )
     return output
   elif a_stacked:
     if tr_a:
@@ -3939,7 +3955,7 @@ def _stack_tensor_list_shape(shape, first_dim):
   # Note that negative values in the shape are used to signify unknown shapes
   # and are handled in a special way.
   if shape_value is not None:
-    shape_value = np.asarray(shape_value)
+    shape_value = numpy_compat.np_asarray(shape_value)
     if -1 in shape_value:
       return constant_op.constant(-1)
     elif not shape_value.size:

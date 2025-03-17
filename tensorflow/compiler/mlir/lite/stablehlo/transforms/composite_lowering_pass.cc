@@ -27,7 +27,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/composite_avg_pool.h"  // IWYU pragma: keep
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/composite_utils.h"  // IWYU pragma: keep
-#include "tensorflow/compiler/mlir/lite/stablehlo/transforms/passes.h"
+#include "tensorflow/compiler/mlir/lite/stablehlo/transforms/stablehlo_passes.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"  // IWYU pragma: keep
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"  // IWYU pragma: keep
 
@@ -39,7 +39,7 @@ namespace {
 // This file is generated from `passes.td` and provides the implementation base
 // class.
 #define GEN_PASS_DEF_COMPOSITELOWERINGPASS
-#include "tensorflow/compiler/mlir/lite/stablehlo/transforms/passes.h.inc"
+#include "tensorflow/compiler/mlir/lite/stablehlo/transforms/stablehlo_passes.h.inc"
 
 class CompositeLoweringPass
     : public impl::CompositeLoweringPassBase<CompositeLoweringPass> {

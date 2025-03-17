@@ -151,7 +151,7 @@ func.func @main(%arg0: tensor<10x8x9xf32>, %arg1: tensor<5xi32>, %arg2: tensor<5
   %tl = "tf.TensorListFromTensor"(%arg0, %elem_shape) : (tensor<10x8x9xf32>, tensor<2xi32>) -> tensor<!tf_type.variant<tensor<8x9xf32>>>
   // CHECK: %[[IND_SHAPE:.*]] = "tf.Const"() <{value = dense<[5, 1]> : tensor<2xi32>}> : () -> tensor<2xi32>
   // CHECK: %[[IND_RESHPE:.*]] = "tf.Reshape"(%[[ARG1]], %[[IND_SHAPE]]) : (tensor<5xi32>, tensor<2xi32>) -> tensor<5x1xi32>
-  // CHECK: %[[SC:.*]] = "tf.TensorScatterUpdate"(%[[BUFFER]], %[[IND_RESHPE]], %[[ARG2]]) : (tensor<10x8x9xf32>, tensor<5x1xi32>, tensor<5x8x9xf32>) -> tensor<10x8x9xf32>
+  // CHECK: %[[SC:.*]] = "tf.TensorScatterUpdate"(%[[BUFFER]], %[[IND_RESHPE]], %[[ARG2]]) <{bad_indices_policy = ""}> : (tensor<10x8x9xf32>, tensor<5x1xi32>, tensor<5x8x9xf32>) -> tensor<10x8x9xf32>
   %scatter = "tf.TensorListScatterIntoExistingList"(%tl, %arg2, %arg1) : (tensor<!tf_type.variant<tensor<8x9xf32>>>, tensor<5x8x9xf32>, tensor<5xi32>) -> tensor<!tf_type.variant<tensor<8x9xf32>>>
   %stack = "tf.TensorListStack"(%scatter, %elem_shape) : (tensor<!tf_type.variant<tensor<8x9xf32>>>, tensor<2xi32>) -> tensor<10x8x9xf32>
   // CHECK: return %[[SC]] : tensor<10x8x9xf32>

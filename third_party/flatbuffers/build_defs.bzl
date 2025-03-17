@@ -415,6 +415,7 @@ def flatbuffer_py_library(
         name,
         srcs,
         deps = [],
+        visibility = None,
         include_paths = []):
     """A py_library with the generated reader/writers for the given schema.
 
@@ -465,6 +466,7 @@ def flatbuffer_py_library(
         deps = deps + [
             "@flatbuffers//:runtime_py",
         ],
+        visibility = visibility,
     )
 
 def flatbuffer_java_library(
@@ -506,7 +508,6 @@ def flatbuffer_java_library(
     java_library(
         name = name,
         srcs = [out_srcjar],
-        javacopts = ["-source 7 -target 7"],
         deps = [
             "@flatbuffers//:runtime_java",
         ],
@@ -637,7 +638,6 @@ def flatbuffer_android_library(
     android_library(
         name = name,
         srcs = [out_srcjar],
-        javacopts = ["-source 7 -target 7"],
         visibility = visibility,
         deps = [
             "@flatbuffers//:runtime_android",

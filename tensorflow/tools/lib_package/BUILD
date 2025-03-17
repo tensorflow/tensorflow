@@ -72,7 +72,12 @@ pkg_tar(
         "//tensorflow/c:headers",
     ],
     package_dir = "include/",
-    strip_prefix = "/external/local_xla",
+    # TODO(ddunleavy): Remove `local_tsl` after TSL move is completed.
+    remap_paths = {
+        "external/local_xla/xla": "xla",
+        "external/local_tsl/tsl": "tsl",
+    },
+    strip_prefix = ".",
     # Mark as "manual" till
     # https://github.com/bazelbuild/bazel/issues/2352
     # and https://github.com/bazelbuild/bazel/issues/1580
@@ -150,6 +155,7 @@ genrule(
         "@tf_runtime//:LICENSE",
         "@local_tsl//:LICENSE",
         "@local_xla//:LICENSE",
+        "@XNNPACK//:LICENSE",
     ] + select({
         "//tensorflow:android": [],
         "//tensorflow:ios": [],
@@ -159,11 +165,6 @@ genrule(
         "//conditions:default": [
             "@com_github_googlecloudplatform_google_cloud_cpp//:LICENSE",
         ],
-    }) + select({
-        "@local_xla//xla/tsl:with_numa_support": [
-            "@hwloc//:COPYING",
-        ],
-        "//conditions:default": [],
     }) + if_cuda([
         "@cub_archive//:LICENSE.TXT",
         "@local_config_nccl//:LICENSE",
@@ -193,6 +194,7 @@ genrule(
         "@tf_runtime//:LICENSE",
         "@local_tsl//:LICENSE",
         "@local_xla//:LICENSE",
+        "@XNNPACK//:LICENSE",
     ] + select({
         "//tensorflow:android": [],
         "//tensorflow:ios": [],
@@ -202,11 +204,6 @@ genrule(
         "//conditions:default": [
             "@com_github_googlecloudplatform_google_cloud_cpp//:LICENSE",
         ],
-    }) + select({
-        "@local_xla//xla/tsl:with_numa_support": [
-            "@hwloc//:COPYING",
-        ],
-        "//conditions:default": [],
     }) + if_cuda([
         "@cub_archive//:LICENSE.TXT",
         "@local_config_nccl//:LICENSE",

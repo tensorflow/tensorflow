@@ -20,7 +20,7 @@ limitations under the License.
 #include <map>
 #include <memory>
 
-#include "tsl/platform/logging.h"
+#include "xla/tsl/platform/logging.h"
 #include "tsl/platform/mutex.h"
 #include "tsl/platform/thread_annotations.h"
 

@@ -148,6 +148,7 @@ class TflToStablehloPass
         case flexbuffers::FBT_VECTOR_INT: {
           const auto& vector = value.AsTypedVector();
           std::vector<int64_t> vec;
+          vec.reserve(vector.size());
           for (size_t i = 0; i < vector.size(); i++) {
             vec.push_back(vector[i].AsInt64());
           }

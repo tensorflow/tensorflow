@@ -118,6 +118,16 @@ def make_cast_tests(options):
           "output_dtype": [tf.float32],
           "input_shape": [[], [1], [1, 2], [5, 6, 7, 8], [3, 4, 5, 6]],
       },
+      {
+          "input_dtype": [tf.bfloat16],
+          "output_dtype": [tf.float32],
+          "input_shape": [[], [1], [1, 2], [5, 6, 7, 8], [3, 4, 5, 6]],
+      },
+      {
+          "input_dtype": [tf.float32],
+          "output_dtype": [tf.bfloat16],
+          "input_shape": [[], [1], [1, 2], [5, 6, 7, 8], [3, 4, 5, 6]],
+      },
   ]
 
   def build_graph(parameters):

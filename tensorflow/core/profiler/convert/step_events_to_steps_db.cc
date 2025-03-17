@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/log/log.h"
+#include "xla/tsl/profiler/utils/timespan.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
@@ -31,7 +32,6 @@ limitations under the License.
 #include "tensorflow/core/profiler/protobuf/steps_db.pb.h"
 #include "tensorflow/core/profiler/utils/event_span.h"
 #include "tensorflow/core/profiler/utils/op_metrics_db_utils.h"
-#include "tsl/profiler/utils/timespan.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -56,15 +56,16 @@ void StepEventsToPerCoreStepInfo(uint32_t step_num, StepDetails& step_details,
   for (auto& [core_id, metrics_db] : step_details.PerCoreOpMetricsDb()) {
     SetTotalTimePs(metrics_db, step_time.duration_ps());
     AddIdleOp(metrics_db);
-    combiner.Combine(metrics_db);
+    // TODO(b/397774568): Remove this once the SparseCore OpMetricsDb is
+    // implemented.
+    if (core_id < kSparseCoreIndexStart) combiner.Combine(metrics_db);
+
     GenericStepBreakdown step_breakdown;
     auto& category_ps = *(step_breakdown.mutable_category_ps());
     for (auto& metric : metrics_db.metrics_db()) {
       category_ps[metric.category()] += metric.self_time_ps();
     }
 
-    if (per_core_step_info.mutable_hlo_metrics_db()->metrics_db().empty())
-      continue;
     StepInfoResult step_info;
     step_info.set_step_num(step_num);
     step_info.set_step_name(step_details.StepName());
@@ -73,6 +74,11 @@ void StepEventsToPerCoreStepInfo(uint32_t step_num, StepDetails& step_details,
     step_info.mutable_step_breakdown()->PackFrom(step_breakdown);
     (*per_core_step_info.mutable_step_info_per_core())[core_id] =
         std::move(step_info);
+  }
+  auto& all_reduce_db_per_core_map =
+      *per_core_step_info.mutable_all_reduce_db_per_core();
+  for (const auto& [core_id, all_reduce_db] : step_details.Collectives()) {
+    all_reduce_db_per_core_map[core_id].CopyFrom(all_reduce_db);
   }
 }
 

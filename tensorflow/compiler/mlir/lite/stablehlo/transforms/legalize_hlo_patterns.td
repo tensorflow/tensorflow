@@ -147,7 +147,6 @@ foreach Mapping = [[MHLO_AbsOp, TF_AbsOp],
                    [MHLO_BitcastConvertOp, TF_BitcastOp],
                    [MHLO_CeilOp, TF_CeilOp],
                    [MHLO_CosineOp, TF_CosOp],
-                   [MHLO_ExpOp, TF_ExpOp],
                    [MHLO_Expm1Op, TF_Expm1Op],
                    [MHLO_FloorOp, TF_FloorOp],
                    [MHLO_ImagOp, TF_ImagOp],
@@ -163,6 +162,14 @@ foreach Mapping = [[MHLO_AbsOp, TF_AbsOp],
                    [MHLO_SqrtOp, TF_SqrtOp],
                    [MHLO_TanhOp, TF_TanhOp]] in
   def : Pat<(Mapping[0] TF_IntOrFpTensor:$input), (Mapping[1] $input)>;
+
+def ConstDefaultResultAccuracyAttr :
+  ConstantAttr<MHLO_ResultAccuracyAttr, "::mlir::mhlo::ResultAccuracyMode::DEFAULT">;
+
+foreach Mapping = [[MHLO_ExpOp, TF_ExpOp]] in {
+  def : Pat<(Mapping[0] $input, ConstDefaultResultAccuracyAttr),
+           (Mapping[1] MHLO_Tensor:$input)>;
+}
 
 class GetRankedScalarAttr<string prefix, int width, string signed, string value> :
   NativeCodeCall<"DenseElementsAttr::get<" # prefix # "int" # width # "_t>("
@@ -380,7 +387,7 @@ def ConvertDotGeneralOp : NativeCodeCall<"ConvertDotGeneralOp($_builder, "
 def : Pat<(MHLO_DotGeneralOp:$old_value
                RankedTensorOf<[TF_ElementType]>:$lhs,
                RankedTensorOf<[TF_ElementType]>:$rhs,
-               $dot_dimension_numbers, $precision_config),
+               $dot_dimension_numbers, $precision_config, $algorithm),
           (ConvertDotGeneralOp $old_value)>;
 
 

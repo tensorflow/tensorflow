@@ -26,6 +26,8 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "tensorflow/compiler/jit/shape_inference.h"
 #include "xla/stream_executor/tpu/c_api_decl.h"
+#include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/logging.h"  // IWYU pragma: keep
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor_shape.h"
@@ -38,8 +40,6 @@ limitations under the License.
 #include "tensorflow/core/tpu/kernels/tpu_compile_op_support.h"
 #include "tensorflow/core/tpu/kernels/tpu_mesh_state_interface.h"
 #include "tensorflow/core/tpu/kernels/tpu_program_group_interface.h"
-#include "tsl/platform/env.h"
-#include "tsl/platform/logging.h"  // IWYU pragma: keep
 
 namespace tensorflow {
 namespace tpu {

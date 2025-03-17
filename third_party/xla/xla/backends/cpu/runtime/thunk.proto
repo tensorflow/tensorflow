@@ -1,0 +1,315 @@
+/* Copyright 2022 The OpenXLA Authors.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+==============================================================================*/
+
+syntax = "proto3";
+
+package xla.cpu;
+
+import "xla/service/hlo.proto";
+import "xla/xla_data.proto";
+
+option cc_enable_arenas = true;
+
+message ResourceProto {
+  enum Kind {
+    UNKNOWN = 0;
+    TOKEN = 1;
+    COLLECTIVE_COMMUNICATOR = 2;
+  }
+  Kind kind = 1;
+}
+
+enum SortDirectionProto {
+  UNKNOWN = 0;
+  ASCENDING = 1;
+  DESCENDING = 2;
+}
+
+message BoolOptional {
+  bool value = 1;
+  bool contains_value = 2;
+}
+
+message ResourceOptional {
+  ResourceProto value = 1;
+  bool contains_value = 2;
+}
+
+message Int64Optional {
+  int64 value = 1;
+  bool contains_value = 2;
+}
+
+message SortDirectionOptional {
+  SortDirectionProto value = 1;
+  bool contains_value = 2;
+}
+
+message BufferAllocationSliceProto {
+  int64 offset = 1;
+  int64 size = 2;
+  int64 buffer_allocation_index = 3;
+}
+
+message ShapeBufferAllocationSliceProto {
+  xla.ShapeProto shape = 1;
+  BufferAllocationSliceProto slice = 2;
+}
+
+message OpParamsProto {
+  int64 op_id = 1;
+  bool has_channel_id = 2;
+  BoolOptional use_global_device_ids = 3;
+  repeated ReplicaGroup replica_group = 4;
+}
+
+message OpBuffersProto {
+  repeated ShapeBufferAllocationSliceProto source_shapes_buffer_slices = 1;
+  repeated ShapeBufferAllocationSliceProto destination_shapes_buffer_slices = 2;
+}
+
+message OpResourcesProto {
+  ResourceOptional communicator_resource = 1;
+}
+
+message AllGatherThunkProto {}  // NOTE(basioli) empty for now
+
+message AllReduceThunkProto {
+  string reduction_kind = 1;
+  bool single_replica = 2;
+}
+
+message AllToAllThunkProto {}  // NOTE(basioli) empty for now
+
+message ReduceScatterThunkProto {
+  string reduction_kind = 1;
+}
+
+message CollectivePermuteThunkProto {
+  message SourceTargetPairProto {
+    int64 source = 1;
+    int64 target = 2;
+  }
+  repeated SourceTargetPairProto source_target_pairs = 1;
+}
+
+message CollectiveThunkProto {
+  OpParamsProto op_params = 1;
+  OpBuffersProto op_buffers = 2;
+  OpResourcesProto op_resources = 3;
+  oneof impl {
+    AllGatherThunkProto all_gather_thunk = 4;
+    AllReduceThunkProto all_reduce_thunk = 5;
+    AllToAllThunkProto all_to_all_thunk = 6;
+    ReduceScatterThunkProto reduce_scatter_thunk = 7;
+    CollectivePermuteThunkProto collective_permute_thunk = 8;
+  }
+}
+
+message CallThunkProto {
+  ThunkSequenceProto called_sequence = 1;
+}
+
+message ConditionalThunkProto {
+  repeated ThunkSequenceProto branch_sequences = 1;
+  BufferAllocationSliceProto branch_index_buffer = 2;
+}
+
+message ConvolutionThunkProto {
+  message Options {
+    bool multi_threaded = 1;
+  }
+  ConvolutionDimensionNumbers dimension_numbers = 1;
+  Window window = 2;
+  int64 feature_group_count = 3;
+  ShapeBufferAllocationSliceProto input_buffer_shape = 4;
+  ShapeBufferAllocationSliceProto kernel_buffer_shape = 5;
+  ShapeBufferAllocationSliceProto output_buffer_shape = 6;
+  Options options = 7;
+}
+
+message SortThunkProto {
+  int64 dimension = 1;
+  bool is_stable = 2;
+  SortDirectionOptional direction = 3;
+  string comparator_name = 4;
+  repeated ShapeBufferAllocationSliceProto inputs_shapes = 5;
+}
+
+message XnnDotThunkProto {
+  DotDimensionNumbers dot_dimensions = 1;
+  ShapeBufferAllocationSliceProto lhs_buffer_shape = 2;
+  ShapeBufferAllocationSliceProto rhs_buffer_shape = 3;
+  ShapeBufferAllocationSliceProto out_buffer_shape = 4;
+}
+
+message XnnConvolutionThunkProto {
+  ConvolutionDimensionNumbers dimension_numbers = 1;
+  Window window = 2;
+  int64 feature_group_count = 3;
+  ShapeBufferAllocationSliceProto input_buffer_shape = 4;
+  ShapeBufferAllocationSliceProto kernel_buffer_shape = 5;
+  ShapeBufferAllocationSliceProto output_buffer_shape = 6;
+}
+
+message XnnFusionThunkProtoImpl {
+  repeated ShapeBufferAllocationSliceProto arguments_shapes = 1;
+  repeated ShapeBufferAllocationSliceProto results_shapes = 2;
+  // TODO(basioli) something for Builder?
+  // TODO(basioli) should we support OneUseBuilder?
+}
+
+message XnnFusionThunkProto {
+  message Options {
+    bool use_threadpool = 1;
+  }
+
+  Options options = 1;
+
+  oneof impl {
+    XnnDotThunkProto xnn_dot_thunk = 2;
+    XnnConvolutionThunkProto xnn_convolution_thunk = 3;
+    XnnFusionThunkProtoImpl xnn_fusion_thunk = 4;
+  }
+}
+
+message DotThunkProto {
+  DotDimensionNumbers dot_dimensions = 1;
+  ShapeBufferAllocationSliceProto lhs_buffer_shape = 2;
+  ShapeBufferAllocationSliceProto rhs_buffer_shape = 3;
+  ShapeBufferAllocationSliceProto out_buffer_shape = 4;
+}
+
+message RngGetAndUpdateStateThunkProto {
+  int64 delta = 1;
+  BufferAllocationSliceProto state_buffer = 2;
+}
+
+message TopKThunkProto {
+  int64 batch_size = 1;
+  int64 input_size = 2;
+  int64 k = 3;
+  BufferAllocationSliceProto values_buffer = 4;
+  BufferAllocationSliceProto output_buffer = 5;
+  BufferAllocationSliceProto indices_buffer = 6;
+}
+
+message WhileThunkProto {
+  ThunkSequenceProto cond_sequence = 1;
+  ThunkSequenceProto body_sequence = 2;
+  Int64Optional trip_count = 3;
+  BufferAllocationSliceProto cond_buffer = 4;
+}
+
+message KernelThunkProto {
+  message ThreadDim {
+    int64 x = 1;
+    int64 y = 2;
+    int64 z = 3;
+  }
+  string kernel_name = 1;
+  ThreadDim thread_dim = 2;
+  repeated int64 invariant_arguments = 3;
+  Int64Optional min_alignment = 4;
+  repeated BufferAllocationSliceProto arguments_buffers = 5;
+  repeated BufferAllocationSliceProto results_buffers = 6;
+}
+
+message CopyThunkProto {
+  ShapeBufferAllocationSliceProto src_buffer_shape = 1;
+  ShapeBufferAllocationSliceProto dst_buffer_shape = 2;
+}
+
+message FftThunkProto {
+  bool is_multi_thread_eigen = 1;
+  int32 fft_type = 2;
+  repeated int64 fft_length = 3;
+  ShapeBufferAllocationSliceProto input_buffer_shape = 4;
+  ShapeBufferAllocationSliceProto output_buffer_shape = 5;
+}
+
+message InfeedThunkProto {
+  message InfeedResource {
+    ResourceOptional consume_token = 1;
+    ResourceOptional produce_token = 2;
+  }
+
+  InfeedResource infeed_resources = 1;
+  repeated ShapeBufferAllocationSliceProto infeed_buffers_shapes = 2;
+}
+
+message OutfeedThunkProto {
+  message OutfeedResource {
+    ResourceOptional consume_token = 1;
+    ResourceOptional produce_token = 2;
+  }
+
+  OutfeedResource outfeed_resources = 1;
+  repeated ShapeBufferAllocationSliceProto outfeed_buffers_shapes = 2;
+}
+
+message CustomCallThunkProto {
+  message OpBuffers {
+    repeated ShapeBufferAllocationSliceProto arguments_shapes = 1;
+    repeated ShapeBufferAllocationSliceProto results_shapes = 2;
+  }
+  CustomCallApiVersion api_version = 1;
+  string target_name = 2;
+  string backend_config = 3;
+  OpBuffers op_buffers = 4;
+}
+
+message PartitionIdThunkProto {
+  BufferAllocationSliceProto logical_id_buffer = 1;
+}
+
+message ReplicaIdThunkProto {
+  BufferAllocationSliceProto logical_id_buffer = 1;
+}
+
+message InfoProto {
+  string op_name = 1;
+  string module_name = 2;
+  int64 module_id = 3;
+}
+
+message ThunkProto {
+  string kind = 1;
+  InfoProto info = 2;
+  oneof impl {
+    CallThunkProto call_thunk = 3;
+    ConditionalThunkProto conditional_thunk = 4;
+    SortThunkProto sort_thunk = 5;
+    XnnFusionThunkProto xnn_fusion_thunk = 6;
+    DotThunkProto dot_thunk = 7;
+    RngGetAndUpdateStateThunkProto rng_get_and_update_state_thunk = 8;
+    TopKThunkProto top_k_thunk = 9;
+    WhileThunkProto while_thunk = 10;
+    KernelThunkProto kernel_thunk = 11;
+    CopyThunkProto copy_thunk = 12;
+    FftThunkProto fft_thunk = 13;
+    InfeedThunkProto infeed_thunk = 14;
+    OutfeedThunkProto outfeed_thunk = 15;
+    CustomCallThunkProto custom_call_thunk = 16;
+    ConvolutionThunkProto convolution_thunk = 17;
+    CollectiveThunkProto collective_thunk = 18;
+    PartitionIdThunkProto partition_id_thunk = 19;
+    ReplicaIdThunkProto replica_id_thunk = 20;
+  }
+}
+
+message ThunkSequenceProto {
+  repeated ThunkProto thunks = 1;
+}

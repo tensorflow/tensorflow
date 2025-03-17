@@ -29,6 +29,7 @@ if hasattr(sys, 'setdlopenflags') and hasattr(sys, 'getdlopenflags'):
   sys.setdlopenflags(sys.getdlopenflags() | ctypes.RTLD_GLOBAL)
 
 from tensorflow.lite.python import interpreter as interpreter_wrapper
+from tensorflow.lite.python import lite
 from tensorflow.lite.python.metrics import metrics
 from tensorflow.lite.python.testdata import _pywrap_test_registerer as test_registerer
 from tensorflow.python.framework import test_util
@@ -63,6 +64,22 @@ class InterpreterCustomOpsTest(test_util.TensorFlowTestCase):
           model_path=resource_loader.get_path_to_datafile(
               'testdata/permute_float.tflite'),
           custom_op_registerers=[bogus_name])
+
+  # Register GenAI Ops is only supported when using LiteRT wheel.
+  def testRegisterGenAIOpsFailure(self):
+    genai_ops_name = 'pywrap_genai_ops.GenAIOpsRegisterer'
+    with self.assertRaisesRegex(
+        ValueError,
+        "Loading library 'pywrap_genai_ops.so' failed with error"
+        " 'pywrap_genai_ops.so: cannot open shared object file: No such file or"
+        " directory'",
+    ):
+      interpreter_wrapper.InterpreterWithCustomOps(
+          model_path=resource_loader.get_path_to_datafile(
+              'testdata/permute_float.tflite'
+          ),
+          custom_op_registerers=[genai_ops_name],
+      )
 
   def testNoCustomOps(self):
     interpreter = interpreter_wrapper.InterpreterWithCustomOps(
@@ -310,15 +327,13 @@ class InterpreterTestErrorPropagation(test_util.TensorFlowTestCase):
 
   # Model must have at least 7 bytes to hold model identifier
   def testTooShortModelContent(self):
-    with self.assertRaisesRegex(
-        ValueError,
-        'Model provided must have at least 7 bytes to hold identifier.',
-    ):
+    with self.assertRaisesRegex(ValueError,
+                                'The model is not a valid Flatbuffer buffer'):
       interpreter_wrapper.Interpreter(model_content=b'short')
 
   def testInvalidModelContent(self):
     with self.assertRaisesRegex(ValueError,
-                                'Model provided has model identifier \''):
+                                'The model is not a valid Flatbuffer buffer'):
       interpreter_wrapper.Interpreter(model_content=b'wrong_identifier')
 
   def testInvalidModelFile(self):
@@ -360,12 +375,12 @@ class InterpreterTestErrorPropagation(test_util.TensorFlowTestCase):
         return tf.raw_ops.Sum(input=x, axis=[0])
 
     test_model = TestModel()
-    converter = tf.lite.TFLiteConverter.from_concrete_functions([
+    converter = lite.TFLiteConverterV2.from_concrete_functions([
         test_model.TestSum.get_concrete_function(
             tf.TensorSpec([None], tf.float32))
     ], test_model)
     model = converter.convert()
-    interpreter = tf.lite.Interpreter(model_content=model)
+    interpreter = lite.Interpreter(model_content=model)
     # Make sure that passing empty tensor doesn't cause any errors.
     interpreter.get_signature_runner()(x=tf.zeros([0], tf.float32))
 
@@ -595,6 +610,63 @@ class InterpreterDelegateTest(test_util.TensorFlowTestCase):
         ValueError, 'Failed to load delegate from'):
       interpreter_wrapper.load_delegate(
           self._delegate_file, options={'fail': 'fail'})
+
+
+class InterpreterMultiSignatureTest(test_util.TensorFlowTestCase):
+
+  def setUp(self):
+    super(InterpreterMultiSignatureTest, self).setUp()
+    self._single_signature_file = resource_loader.get_path_to_datafile(
+        'testdata/permute_float.tflite'
+    )
+    self._double_signature_file = resource_loader.get_path_to_datafile(
+        'testdata/two_signatures.tflite'
+    )
+
+  def testNumSubgraphsSingleSignature(self):
+    single_signature_interpreter = interpreter_wrapper.Interpreter(
+        model_path=self._single_signature_file
+    )
+    self.assertEqual(single_signature_interpreter.num_subgraphs(), 1)
+
+  def testNumSubgraphsDoubleSignature(self):
+    double_signature_interpreter = interpreter_wrapper.Interpreter(
+        model_path=self._double_signature_file
+    )
+    self.assertEqual(double_signature_interpreter.num_subgraphs(), 2)
+
+  def testGetTensorDetailsSingleSignature(self):
+    single_signature_interpreter = interpreter_wrapper.Interpreter(
+        model_path=self._single_signature_file
+    )
+    tensor_details = single_signature_interpreter.get_tensor_details()
+    self.assertLen(tensor_details, 3)
+    self.assertEqual(tensor_details[0]['name'], 'input')
+
+    with self.assertRaisesRegex(ValueError, 'subgraph_index is out of range'):
+      single_signature_interpreter.get_tensor_details(subgraph_index=1)
+
+    with self.assertRaisesRegex(ValueError, 'subgraph_index is out of range'):
+      single_signature_interpreter.get_tensor_details(subgraph_index=-1)
+
+  def testGetTensorDetailsDoubleSignature(self):
+    double_signature_interpreter = interpreter_wrapper.Interpreter(
+        model_path=self._double_signature_file
+    )
+    subgraph0_tensor_details = double_signature_interpreter.get_tensor_details(
+        subgraph_index=0
+    )
+    self.assertLen(subgraph0_tensor_details, 3)
+    self.assertEqual(subgraph0_tensor_details[0]['name'], 'add_x:0')
+
+    subgraph1_tensor_details = double_signature_interpreter.get_tensor_details(
+        subgraph_index=1
+    )
+    self.assertLen(subgraph1_tensor_details, 3)
+    self.assertEqual(subgraph1_tensor_details[0]['name'], 'multiply_x:0')
+
+    with self.assertRaisesRegex(ValueError, 'subgraph_index is out of range'):
+      double_signature_interpreter.get_tensor_details(subgraph_index=3)
 
 
 if __name__ == '__main__':

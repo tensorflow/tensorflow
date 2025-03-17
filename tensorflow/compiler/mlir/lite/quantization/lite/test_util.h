@@ -15,7 +15,9 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_LITE_QUANTIZATION_LITE_TEST_UTIL_H_
 #define TENSORFLOW_COMPILER_MLIR_LITE_QUANTIZATION_LITE_TEST_UTIL_H_
 
-#include "tensorflow/lite/core/api/error_reporter.h"
+#include <cstdarg>
+
+#include "tensorflow/compiler/mlir/lite/core/api/error_reporter.h"
 
 namespace mlir {
 namespace lite {

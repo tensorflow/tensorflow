@@ -26,8 +26,8 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tf2xla/internal/passes/lowering_passes.h"
 #include "tensorflow/compiler/mlir/tf2xla/transforms/test_utils.h"
+#include "xla/tsl/platform/statusor.h"
 #include "tensorflow/core/lib/monitoring/cell_reader.h"
-#include "tsl/platform/statusor.h"
 
 namespace tensorflow {
 namespace tf2xla {

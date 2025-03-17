@@ -44,7 +44,7 @@ void EagerOpRewriteRegistry::Register(Phase phase, int32_t ordinal,
                            std::make_pair(std::move(pass), ordinal));
 }
 
-Status EagerOpRewriteRegistry::RunRewrite(
+absl::Status EagerOpRewriteRegistry::RunRewrite(
     Phase phase, EagerOperation* orig_op,
     std::unique_ptr<EagerOperation>* out_op) {
   EagerOperation* pre_op = orig_op;

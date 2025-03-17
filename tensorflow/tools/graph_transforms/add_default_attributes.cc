@@ -21,9 +21,9 @@ namespace tensorflow {
 namespace graph_transforms {
 
 // Sets any parameters not specified in a node to their defaults.
-Status AddDefaultAttributes(const GraphDef& input_graph_def,
-                            const TransformFuncContext& context,
-                            GraphDef* output_graph_def) {
+absl::Status AddDefaultAttributes(const GraphDef& input_graph_def,
+                                  const TransformFuncContext& context,
+                                  GraphDef* output_graph_def) {
   // Find all of the ops that are currently defined.
   std::unique_ptr<FunctionLibraryDefinition> flib_def(
       new FunctionLibraryDefinition(OpRegistry::Global(),
@@ -31,7 +31,7 @@ Status AddDefaultAttributes(const GraphDef& input_graph_def,
   // Works in-place, so copy over the original graph.
   *output_graph_def = input_graph_def;
   TF_RETURN_IF_ERROR(AddDefaultAttrsToGraphDef(output_graph_def, *flib_def, 0));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 REGISTER_GRAPH_TRANSFORM("add_default_attributes", AddDefaultAttributes);

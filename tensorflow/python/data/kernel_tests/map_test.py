@@ -262,13 +262,15 @@ class MapTest(test_base.DatasetTestBase, parameterized.TestCase):
             self.assertAllEqual(component[i]**2, result_component)
 
   def _parallel_map_dataset_factory(self, components, apply_map, count,
-                                    num_parallel_calls, buffer_size):
+                                    num_parallel_calls, buffer_size,
+                                    use_unbounded_threadpool=False):
 
     def _map_fn(x, y, z):
       return math_ops.square(x), math_ops.square(y), math_ops.square(z)
 
     dataset = dataset_ops.Dataset.from_tensor_slices(components)
-    dataset = apply_map(dataset, _map_fn, num_parallel_calls=num_parallel_calls)
+    dataset = apply_map(dataset, _map_fn, num_parallel_calls=num_parallel_calls,
+                        use_unbounded_threadpool=use_unbounded_threadpool)
     dataset = dataset.prefetch(buffer_size).repeat(count)
 
     self.assertEqual(
@@ -284,8 +286,10 @@ class MapTest(test_base.DatasetTestBase, parameterized.TestCase):
           combinations.combine(num_parallel_calls=2, buffer_size=2) +
           combinations.combine(num_parallel_calls=2, buffer_size=4) +
           combinations.combine(num_parallel_calls=8, buffer_size=8) +
-          combinations.combine(num_parallel_calls=8, buffer_size=16)))
-  def testParallelMapDataset(self, apply_map, num_parallel_calls, buffer_size):
+          combinations.combine(num_parallel_calls=8, buffer_size=16),
+          combinations.combine(use_unbounded_threadpool=[None, True, False])))
+  def testParallelMapDataset(self, apply_map, num_parallel_calls, buffer_size,
+                             use_unbounded_threadpool):
     """Test an dataset that maps a TF function across its input elements."""
 
     # The pipeline is TensorSliceDataset -> ParallelMapDataset(square_3) ->
@@ -296,7 +300,8 @@ class MapTest(test_base.DatasetTestBase, parameterized.TestCase):
     # Test single-threaded access to the iterator.
     get_next = self.getNext(
         self._parallel_map_dataset_factory(components, apply_map, 14,
-                                           num_parallel_calls, buffer_size))
+                                           num_parallel_calls, buffer_size,
+                                           use_unbounded_threadpool))
     for _ in range(14):
       for i in range(7):
         result = self.evaluate(get_next())
@@ -1534,6 +1539,20 @@ class MapTest(test_base.DatasetTestBase, parameterized.TestCase):
     del dataset
     del iterator
     manager.restore_or_initialize()
+
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations(),
+                         combinations.combine(
+                             use_unbounded_threadpool=[True, False])))
+  def testAutotuneUseUnboundedThreadpool(self, use_unbounded_threadpool):
+    dataset = dataset_ops.Dataset.range(100)
+    dataset = dataset.map(
+        lambda x: x * 2,
+        num_parallel_calls=dataset_ops.AUTOTUNE,
+        use_unbounded_threadpool=use_unbounded_threadpool,
+        deterministic=True,
+        name="map")
+    self.assertDatasetProduces(dataset, [x * 2 for x in range(100)])
 
   @combinations.generate(
       combinations.times(test_base.default_test_combinations(),

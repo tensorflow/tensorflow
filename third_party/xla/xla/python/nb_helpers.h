@@ -19,17 +19,9 @@ limitations under the License.
 #include <Python.h>
 
 #include "absl/strings/str_format.h"
-#include "third_party/nanobind/include/nanobind/nanobind.h"
+#include "nanobind/nanobind.h"
 
 namespace xla {
-
-// Calls Python hash() on an object.
-// TODO(phawkins): consider upstreaming this to nanobind.
-Py_hash_t nb_hash(nanobind::handle o);
-
-// Calls Python isinstance(inst, cls).
-// TODO(phawkins): consider upstreaming this to nanobind.
-bool nb_isinstance(nanobind::handle inst, nanobind::handle cls);
 
 // Issues a Python deprecation warning. Throws a C++ exception if issuing the
 // Python warning causes a Python exception to be raised.
@@ -49,6 +41,10 @@ void PythonDeprecationWarning(int stacklevel,
   static constexpr auto Name = descr;                    \
   template <typename T_>                                 \
   using Cast = movable_cast_t<T_>;                       \
+  template <typename T_>                                 \
+  static constexpr bool can_cast() {                     \
+    return true;                                         \
+  }                                                      \
   explicit operator Value*() { return &value; }          \
   explicit operator Value&() { return (Value&)value; }   \
   explicit operator Value&&() { return (Value&&)value; } \

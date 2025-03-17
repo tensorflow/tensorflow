@@ -23,21 +23,20 @@ limitations under the License.
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Casting.h"
-#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
-#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
-#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
-#include "mlir/IR/MLIRContext.h"  // from @llvm-project
-#include "mlir/IR/OpDefinition.h"  // from @llvm-project
-#include "mlir/IR/SymbolTable.h"  // from @llvm-project
-#include "mlir/IR/TypeUtilities.h"  // from @llvm-project
-#include "mlir/IR/Value.h"  // from @llvm-project
-#include "mlir/IR/Visitors.h"  // from @llvm-project
-#include "mlir/Pass/Pass.h"  // from @llvm-project
-#include "mlir/Support/LLVM.h"  // from @llvm-project
-#include "mlir/Support/LogicalResult.h"  // from @llvm-project
-#include "xla/python/ifrt/ir/ifrt_dialect.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/IR/BuiltinAttributes.h"
+#include "mlir/IR/BuiltinOps.h"
+#include "mlir/IR/MLIRContext.h"
+#include "mlir/IR/OpDefinition.h"
+#include "mlir/IR/SymbolTable.h"
+#include "mlir/IR/TypeUtilities.h"
+#include "mlir/IR/Value.h"
+#include "mlir/IR/Visitors.h"
+#include "mlir/Pass/Pass.h"
+#include "mlir/Support/LLVM.h"
+#include "mlir/Support/LogicalResult.h"
+#include "xla/python/ifrt/ir/constants.h"
 #include "xla/python/ifrt/ir/ifrt_interfaces.h"
-#include "xla/python/ifrt/ir/transforms/constants.h"
 #include "xla/python/ifrt/ir/transforms/passes.h"
 
 namespace xla::ifrt {
@@ -272,15 +271,15 @@ mlir::LogicalResult SpmdExpansionPass::spmdExpand(mlir::func::FuncOp func_op) {
 void SpmdExpansionPass::runOnOperation() {
   mlir::ModuleOp module_op = getOperation();
   // Skip single-device case.
-  auto devices = module_op->getAttrOfType<xla::ifrt::IfrtDevicesAttr>(
-      kIfrtDevicesAttrName);
-  if (devices == nullptr) {
+  auto num_devices =
+      module_op->getAttrOfType<mlir::IntegerAttr>(kIfrtNumDevicesAttrName);
+  if (num_devices == nullptr) {
     module_op->emitOpError()
         << "`" << module_op.getName()->str() << "` requires `"
-        << kIfrtDevicesAttrName << "` attribute.";
+        << kIfrtNumDevicesAttrName << "` attribute.";
     return signalPassFailure();
   }
-  if (devices.getIds().size() == 1) {
+  if (num_devices.getInt() == 1) {
     return;
   }
 

@@ -22,7 +22,7 @@ limitations under the License.
 
 #include "xla/backends/profiler/plugin/profiler_c_api.h"
 #include "xla/backends/profiler/plugin/profiler_error.h"
-#include "tsl/platform/logging.h"
+#include "xla/tsl/platform/logging.h"
 #include "tsl/profiler/lib/profiler_collection.h"
 #include "tsl/profiler/lib/profiler_factory.h"
 #include "tsl/profiler/protobuf/profiler_options.pb.h"

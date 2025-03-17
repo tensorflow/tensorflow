@@ -22,6 +22,7 @@ limitations under the License.
 #include <array>
 #include <functional>
 #include <numeric>
+#include <ostream>
 #include <string>
 #include <utility>
 #include <vector>

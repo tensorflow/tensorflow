@@ -17,15 +17,15 @@ limitations under the License.
 #include <memory>
 
 #include "xla/comparison_util.h"
+#include "xla/hlo/analysis/while_loop_analysis.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/testlib/test.h"
 #include "xla/literal_util.h"
-#include "xla/service/while_loop_analysis.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/test.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/xla_data.pb.h"
 

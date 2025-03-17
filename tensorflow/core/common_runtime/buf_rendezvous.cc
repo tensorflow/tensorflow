@@ -43,7 +43,7 @@ BufRendezvous::~BufRendezvous() {
   }
 }
 
-void BufRendezvous::StartAbort(const Status& s) {
+void BufRendezvous::StartAbort(const absl::Status& s) {
   CHECK(!s.ok());
   HookTable dummy_table;
   {
@@ -58,7 +58,7 @@ void BufRendezvous::StartAbort(const Status& s) {
   PurgeTable(s, &dummy_table);
 }
 
-void BufRendezvous::PurgeTable(const Status& s, HookTable* table) {
+void BufRendezvous::PurgeTable(const absl::Status& s, HookTable* table) {
   for (auto& it : *table) {
     Hook* h = it.second;
     if (h->cancellation_manager != nullptr) {
@@ -96,7 +96,7 @@ void BufRendezvous::ProvideBuf(const string& key, Device* dev,
   }
 #endif
   Hook* h = nullptr;
-  Status providebuf_status;
+  absl::Status providebuf_status;
   do {
     mutex_lock l(mu_);
     if (!status_.ok()) {
@@ -168,7 +168,7 @@ void BufRendezvous::ConsumeBuf(const string& key, const string& device_name,
   // Check the incarnation in the request matches the current device
   // incarnation of the producer.
   Device* device;
-  Status consumebuf_status = dev_mgr_->LookupDevice(device_name, &device);
+  absl::Status consumebuf_status = dev_mgr_->LookupDevice(device_name, &device);
   if (consumebuf_status.ok() &&
       device->attributes().incarnation() != device_incarnation) {
     consumebuf_status = errors::FailedPrecondition(

@@ -13,30 +13,28 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "xla/stream_executor/cuda/cuda_collectives.h"
+
 #include <cstdint>
+#include <memory>
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
-#include "xla/stream_executor/cuda/cuda_driver.h"
-#include "xla/stream_executor/gpu/gpu_collectives.h"
-#include "xla/stream_executor/gpu/gpu_driver.h"
+#include "third_party/nccl/nccl.h"
+#include "xla/stream_executor/activate_context.h"
+#include "xla/stream_executor/stream_executor.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/numbers.h"
 
-#ifdef STREAM_EXECUTOR_GPU_ENABLE_XCCL
-#include "third_party/nccl/nccl.h"
-#endif  // STREAM_EXECUTOR_GPU_ENABLE_XCCL
-
 namespace stream_executor::gpu {
 
-/* static */ absl::StatusOr<void*> GpuCollectives::CollectiveMemoryAllocate(
-    GpuContext* context, uint64_t bytes) {
+/* static */ absl::StatusOr<void*> CudaCollectives::CollectiveMemoryAllocate(
+    StreamExecutor* executor, uint64_t bytes) {
   if (bytes == 0) return nullptr;
 
-  ScopedActivateContext activated(context);
+  std::unique_ptr<ActivateContext> activation = executor->Activate();
 
-#ifdef STREAM_EXECUTOR_GPU_ENABLE_XCCL
   void* ptr = nullptr;
   ncclResult_t res = ncclMemAlloc(&ptr, bytes);
   if (res != ncclSuccess) {
@@ -46,19 +44,15 @@ namespace stream_executor::gpu {
         tsl::strings::HumanReadableNumBytes(bytes), bytes,
         ncclGetErrorString(res), ncclGetLastError(nullptr)));
   }
-  VLOG(2) << "Allocated collective memory " << ptr << " for context "
-          << context->context() << " of " << bytes << " bytes";
+  VLOG(2) << "Allocated collective memory " << ptr << " for executor "
+          << executor << " of " << bytes << " bytes";
   return ptr;
-#else
-  return absl::FailedPreconditionError("XLA was compiled without NCCL support");
-#endif
 }
 
-/* static */ absl::Status GpuCollectives::CollectiveMemoryDeallocate(
-    GpuContext* context, void* location) {
-  ScopedActivateContext activation(context);
+/* static */ absl::Status CudaCollectives::CollectiveMemoryDeallocate(
+    StreamExecutor* executor, void* location) {
+  std::unique_ptr<ActivateContext> activation = executor->Activate();
 
-#ifdef STREAM_EXECUTOR_GPU_ENABLE_XCCL
   ncclResult_t res = ncclMemFree(location);
   if (res != ncclSuccess) {
     return absl::InternalError(absl::StrFormat(
@@ -67,12 +61,9 @@ namespace stream_executor::gpu {
         location, ncclGetErrorString(res), ncclGetLastError(nullptr)));
   }
 
-  VLOG(2) << "Deallocated collective memory " << location << " for context "
-          << context->context();
+  VLOG(2) << "Deallocated collective memory " << location << " for executor "
+          << executor;
   return absl::OkStatus();
-#else
-  return absl::FailedPreconditionError("XLA was compiled without NCCL support");
-#endif
 }
 
 }  // namespace stream_executor::gpu

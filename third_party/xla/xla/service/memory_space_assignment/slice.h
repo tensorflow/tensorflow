@@ -38,6 +38,7 @@ limitations under the License.
 #define XLA_SERVICE_MEMORY_SPACE_ASSIGNMENT_SLICE_H_
 
 #include <cstdint>
+#include <functional>
 #include <ostream>
 #include <string>
 #include <tuple>

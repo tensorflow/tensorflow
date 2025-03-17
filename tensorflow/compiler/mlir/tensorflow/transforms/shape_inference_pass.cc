@@ -19,6 +19,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "llvm/ADT/ArrayRef.h"
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
@@ -39,8 +40,11 @@ class ShapeInference
     : public impl::TensorFlowShapeInferencePassBase<ShapeInference> {
  public:
   ShapeInference() = default;
-  explicit ShapeInference(ArrayRef<ArrayRef<int64_t>> input_shapes)
-      : input_shapes_(input_shapes) {}
+  explicit ShapeInference(ArrayRef<ArrayRef<int64_t>> input_shapes,
+                          bool enable_stablehlo_propagation)
+      : input_shapes_(input_shapes) {
+    enable_stablehlo_propagation_ = enable_stablehlo_propagation;
+  }
   void runOnOperation() override {
     // Parse `input_arg_shapes_` if provided (test only)
     SmallVector<ArrayRef<int64_t>> input_shapes_vec;
@@ -56,8 +60,9 @@ class ShapeInference
       input_shapes_ = input_shapes_vec;
     }
 
-    auto failure_or_converged = InferModuleShape(
-        getOperation(), max_iterations_, /*ops_to_skip=*/{}, input_shapes_);
+    auto failure_or_converged =
+        InferModuleShape(getOperation(), max_iterations_, /*ops_to_skip=*/{},
+                         input_shapes_, enable_stablehlo_propagation_);
     if (failed(failure_or_converged)) return signalPassFailure();
     if (!failure_or_converged.value()) {
       getOperation().emitError()
@@ -72,9 +77,12 @@ class ShapeInference
 };
 }  // namespace
 
+// TODO: b/393025760 - Consider enabling stablehlo propagation by default.
 std::unique_ptr<OperationPass<ModuleOp>> CreateTFShapeInferencePass(
-    ArrayRef<ArrayRef<int64_t>> input_shapes) {
-  return std::make_unique<ShapeInference>(input_shapes);
+    ArrayRef<ArrayRef<int64_t>> input_shapes,
+    bool enable_stablehlo_propagation) {
+  return std::make_unique<ShapeInference>(input_shapes,
+                                          enable_stablehlo_propagation);
 }
 
 }  // namespace TF

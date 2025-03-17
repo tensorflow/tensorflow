@@ -18,6 +18,7 @@ limitations under the License.
 #include <cstdint>
 #include <limits>
 
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/random/simple_philox.h"
@@ -28,7 +29,6 @@ limitations under the License.
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
-#include "tsl/lib/core/status_test_util.h"
 
 namespace tensorflow {
 class TensorShapeTestHelper {
@@ -427,7 +427,7 @@ TEST(TensorShapeTest, ostream) {
 
 TEST(TensorShapeTest, AddDimWithStatus) {
   TensorShape s({10, 5, 20});
-  Status status = s.AddDimWithStatus(400);
+  absl::Status status = s.AddDimWithStatus(400);
   EXPECT_TRUE(status.ok());
   EXPECT_EQ(400000, s.num_elements());
   ASSERT_EQ(4, s.dims());
@@ -458,7 +458,7 @@ TEST(TensorShapeTest, AppendShapeWithStatus) {
 
 TEST(TensorShapeTest, Factory) {
   TensorShape s;
-  Status status = TensorShape::BuildTensorShapeBase({10, 5, 20}, &s);
+  absl::Status status = TensorShape::BuildTensorShapeBase({10, 5, 20}, &s);
   EXPECT_TRUE(status.ok());
   EXPECT_EQ(1000, s.num_elements());
   ASSERT_EQ(3, s.dims());
@@ -547,7 +547,7 @@ class TensorShapeOld {
 
   /// Returns `OK` iff `proto` is a valid tensor shape, and a descriptive error
   /// status otherwise.
-  static Status IsValidShape(const TensorShapeProto& proto);
+  static absl::Status IsValidShape(const TensorShapeProto& proto);
 
   /// Clear a tensor shape
   void Clear();
@@ -675,7 +675,7 @@ bool TensorShapeOld::IsValid(const TensorShapeProto& proto) {
   return true;
 }
 
-Status TensorShapeOld::IsValidShape(const TensorShapeProto& proto) {
+absl::Status TensorShapeOld::IsValidShape(const TensorShapeProto& proto) {
   int64_t num_elements = 1;
   for (const auto& d : proto.dim()) {
     if (d.size() < 0) {

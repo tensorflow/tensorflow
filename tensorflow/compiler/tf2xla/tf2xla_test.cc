@@ -20,7 +20,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/tf2xla.pb.h"
 #include "xla/client/client_library.h"
 #include "xla/client/local_client.h"
-#include "xla/client/xla_computation.h"
+#include "xla/hlo/builder/xla_computation.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
@@ -55,7 +55,7 @@ AttrValue TypeAttrValue(DataType type) {
   return attr_value;
 }
 
-AttrValue StringAttrValue(StringPiece str) {
+AttrValue StringAttrValue(absl::string_view str) {
   AttrValue attr_value;
   SetAttrValue(str, &attr_value);
   return attr_value;

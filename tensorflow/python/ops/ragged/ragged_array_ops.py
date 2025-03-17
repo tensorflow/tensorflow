@@ -485,7 +485,7 @@ def size(input: ragged_tensor.Ragged, out_type=dtypes.int32, name=None):  # pyli
 
   #### Example:
 
-  >>> tf.size(tf.ragged.constant([[1, 2], [3]])).numpy()
+  >>> tf.size(tf.ragged.constant([[1, 2], [3]])).numpy().item()
   3
 
   Args:
@@ -523,7 +523,7 @@ def rank(input: ragged_tensor.Ragged, name=None):  # pylint: disable=redefined-b
 
   >>> # shape of tensor 't' is [2, None, None]
   >>> t = tf.ragged.constant([[[1], [2, 2]], [[3, 3, 3], [4, 4, 4, 4]]])
-  >>> tf.rank(t).numpy()
+  >>> tf.rank(t).numpy().item()
   3
 
   Args:

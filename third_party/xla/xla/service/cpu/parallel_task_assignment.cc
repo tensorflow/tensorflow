@@ -28,15 +28,17 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "xla/backends/cpu/codegen/target_machine_features.h"
+#include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/cpu/backend_config.pb.h"
 #include "xla/service/cpu/ir_emission_utils.h"
-#include "xla/service/cpu/shape_partition.h"
-#include "xla/service/cpu/target_machine_features.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/service/llvm_ir/dynamic_update_slice_util.h"
+#include "xla/shape_partition.h"
 #include "xla/util.h"
 #include "tsl/platform/cpu_info.h"
 #include "tsl/platform/logging.h"  // IWYU pragma: keep
@@ -166,6 +168,13 @@ int64_t ParallelTaskAssignment::GetTargetParallelTaskCount(
       instruction->shape().IsTuple() || opcode == HloOpcode::kRng ||
       opcode == HloOpcode::kConstant) {
     return 1;
+  }
+
+  // Skip custom fusions.
+  if (opcode == HloOpcode::kFusion) {
+    const HloFusionInstruction* fusion =
+        Cast<HloFusionInstruction>(instruction);
+    if (fusion->fusion_kind() == HloInstruction::FusionKind::kCustom) return 1;
   }
 
   // Only allow instructions that can be trivially parallelized (where all

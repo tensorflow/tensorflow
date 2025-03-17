@@ -14,6 +14,9 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/compiler/mlir/quantization/tensorflow/cc/const_op_size.h"
 
+#include <cstdint>
+
+#include <gmock/gmock.h>
 #include "absl/strings/string_view.h"
 #include "llvm/Support/Casting.h"
 #include "mlir/IR/AsmState.h"  // from @llvm-project

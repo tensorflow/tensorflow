@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/core/transforms/func_to_graph/func_to_graph.h"
 
+#include <cstdint>
+
 #include "absl/status/status.h"
 #include "llvm/ADT/STLExtras.h"
 #include "mlir/IR/Builders.h"  // from @llvm-project
@@ -31,7 +33,7 @@ limitations under the License.
 namespace mlir {
 namespace tfg {
 
-tensorflow::Status FuncToGraph(GraphFuncOp func) {
+absl::Status FuncToGraph(GraphFuncOp func) {
   MLIRContext *context = func->getContext();
   auto version = func->getAttrOfType<VersionAttr>("tfg.lifted_graph_version");
   if (!version) {

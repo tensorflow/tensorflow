@@ -136,15 +136,7 @@ absl::StatusOr<std::optional<HloInstruction*>> UpdateLayoutForCudnnConvolution(
     const Shape& s = op->shape();
     Shape s_reordered =
         ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(s);
-    HloInstruction* normalized_op = op->mutable_operand(0);
-    HloInstruction* new_op;
-    if (normalized_op->shape() == s_reordered) {
-      new_op = normalized_op;
-    } else {
-      new_op = MakeBitcastHlo(op, s_reordered);
-      performed_normalization = true;
-    }
-    normalized_operands.push_back(new_op);
+    normalized_operands.emplace_back(MakeBitcastHlo(op, s_reordered));
   }
 
   // Avoid replacing the Custom Call with an identical copy.

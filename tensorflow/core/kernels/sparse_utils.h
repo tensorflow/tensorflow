@@ -78,9 +78,9 @@ enum class IndexValidation {
 // Validates the three component tensors of a sparse tensor have the proper
 // shapes.  Also validates index values according to the method supplied.
 template <typename Tindices>
-Status ValidateSparseTensor(const Tensor& indices, const Tensor& values,
-                            const Tensor& shape,
-                            IndexValidation index_validation);
+absl::Status ValidateSparseTensor(const Tensor& indices, const Tensor& values,
+                                  const Tensor& shape,
+                                  IndexValidation index_validation);
 
 }  // namespace sparse_utils
 }  // namespace tensorflow

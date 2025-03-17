@@ -29,9 +29,8 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_expression.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
-#include "xla/client/xla_builder.h"
+#include "xla/hlo/builder/xla_builder.h"
 #include "tensorflow/core/framework/device.h"
-#include "tensorflow/core/framework/graph_debug_info.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/op_requires.h"
 #include "tensorflow/core/framework/resource_base.h"
@@ -52,7 +51,7 @@ class MLIRContextResource : public ResourceBase {
   static constexpr const char* kDefaultResourceName =
       "mlir-xla-op-cached-context";
 
-  static Status Create(MLIRContextResource** resource) {
+  static absl::Status Create(MLIRContextResource** resource) {
     *resource = new MLIRContextResource();
     return absl::OkStatus();
   }
@@ -71,7 +70,7 @@ class MLIRContextResource : public ResourceBase {
 
 }  // namespace
 
-Status MlirXlaOpKernel::ContextToXlaArgs(
+absl::Status MlirXlaOpKernel::ContextToXlaArgs(
     XlaOpKernelContext* ctx, std::vector<XlaCompiler::Argument>& xla_args) {
   // Collect arguments that are registered as CompileTimeConstantInput.
   std::vector<int> registered_consts_vec;
@@ -109,7 +108,7 @@ Status MlirXlaOpKernel::ContextToXlaArgs(
 MlirXlaOpKernel::MlirXlaOpKernel(OpKernelConstruction* ctx)
     : XlaOpKernel(ctx) {}
 
-Status MlirXlaOpKernel::ConstructXlaOp(XlaOpKernelContext* ctx) {
+absl::Status MlirXlaOpKernel::ConstructXlaOp(XlaOpKernelContext* ctx) {
   // Create input XlaArguments.
   std::vector<XlaCompiler::Argument> xla_args;
   TF_RETURN_IF_ERROR(ContextToXlaArgs(ctx, xla_args));
@@ -154,7 +153,6 @@ Status MlirXlaOpKernel::ConstructXlaOp(XlaOpKernelContext* ctx) {
   core::ScopedUnref unref_ctx(ctx_res);
 
   // Compile the graph to HLO.
-  GraphDebugInfo debug_info;
   std::vector<xla::XlaOp> returns(1);
   auto build_hlo = [&](bool unconditionally_use_output_shapes) {
     return BuildHloFromGraph(
@@ -162,7 +160,7 @@ Status MlirXlaOpKernel::ConstructXlaOp(XlaOpKernelContext* ctx) {
         unconditionally_use_output_shapes,
         mlir::SpanToArrayRef<XlaCompiler::Argument>(xla_args), control_rets,
         device->device_type(),
-        *ctx->function_library()->GetFunctionLibraryDefinition(), debug_info);
+        *ctx->function_library()->GetFunctionLibraryDefinition());
   };
 
   // Some of the operations that come through here do not know how to set their

@@ -15,8 +15,10 @@ limitations under the License.
 
 #include "xla/tsl/framework/tracking_allocator.h"
 
-#include "tsl/platform/env.h"
-#include "tsl/platform/logging.h"
+#include <optional>
+
+#include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/logging.h"
 
 namespace tsl {
 
@@ -152,7 +154,7 @@ int64_t TrackingAllocator::AllocationId(const void* ptr) const {
   }
 }
 
-absl::optional<AllocatorStats> TrackingAllocator::GetStats() {
+std::optional<AllocatorStats> TrackingAllocator::GetStats() {
   return allocator_->GetStats();
 }
 

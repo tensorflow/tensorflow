@@ -24,8 +24,8 @@ limitations under the License.
 #include "tsl/platform/types.h"
 
 #define EIGEN_USE_THREADS
-#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
-#include "tsl/platform/dynamic_annotations.h"
+#include "unsupported/Eigen/CXX11/Tensor"
+#include "xla/tsl/platform/dynamic_annotations.h"
 
 namespace {
 // ACL GEMM API for 32-bit Matrix Multiplication.

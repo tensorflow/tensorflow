@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include <functional>
+#include <limits>
 #include <memory>
 #include <random>
 #include <vector>
@@ -43,7 +44,7 @@ class DequantizeOpTest : public OpsTestBase {
                                               float min_range, float max_range,
                                               Tensor* output) {
     float half_range =
-        !std::is_signed<T>::value
+        !std::numeric_limits<T>::is_signed
             ? 0.0f
             : (static_cast<float>(std::numeric_limits<T>::max()) -
                std::numeric_limits<T>::min() + 1) /

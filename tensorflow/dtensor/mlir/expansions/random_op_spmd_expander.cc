@@ -16,26 +16,38 @@ limitations under the License.
 #include "tensorflow/dtensor/mlir/expansions/random_op_spmd_expander.h"
 
 #include <algorithm>
+#include <cstdint>
 
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallSet.h"
-#include "llvm/Support/FormatVariadic.h"
+#include "llvm/Support/Casting.h"
+#include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
-#include "mlir/IR/IntegerSet.h"  // from @llvm-project
+#include "mlir/IR/Types.h"  // from @llvm-project
+#include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/tensorflow/transforms/collection_ops_util.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
+#include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/types.h"
 #include "tensorflow/dtensor/cc/constants.h"
+#include "tensorflow/dtensor/cc/dstatus.h"
 #include "tensorflow/dtensor/cc/tensor_layout.h"
 #include "tensorflow/dtensor/mlir/dtensor_location.h"
 #include "tensorflow/dtensor/mlir/layout_parsing.h"
 #include "tensorflow/dtensor/mlir/op_utils.h"
+#include "tensorflow/dtensor/mlir/spmd_expander_common.h"
 #include "tensorflow/dtensor/mlir/value_utils.h"
 
 namespace tensorflow {
 namespace dtensor {
 namespace {
 
-Status CheckLayoutIsSupported(const Layout& layout) {
+absl::Status CheckLayoutIsSupported(const Layout& layout) {
   // Currently we support small mesh rank for arbitrary layout.
   if (layout.mesh().rank() > 3)
     return errors::InvalidArgument("Large mesh rank size is not supported",
@@ -44,7 +56,7 @@ Status CheckLayoutIsSupported(const Layout& layout) {
   return absl::OkStatus();
 }
 
-Status ValidateShapeAndGetNewShape(
+absl::Status ValidateShapeAndGetNewShape(
     const llvm::SmallVector<int64_t, 4>& op_shape, const Layout& layout,
     llvm::SmallVectorImpl<int64_t>& new_random_shape) {
   TF_RETURN_IF_ERROR(CheckLayoutIsSupported(layout));

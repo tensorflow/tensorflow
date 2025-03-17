@@ -28,7 +28,7 @@ limitations under the License.
 
 namespace tensorflow {
 
-Status CreateTpuCompilationCache(
+absl::Status CreateTpuCompilationCache(
     ResourceMgr* rmgr, tpu::TpuCompilationCacheInterface** compilation_cache);
 
 absl::StatusOr<std::vector<int32_t>> ConstructDevicesPerHost(

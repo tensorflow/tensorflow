@@ -17,14 +17,14 @@ limitations under the License.
 #define XLA_FFI_ATTRIBUTE_MAP_H_
 
 #include "absl/status/statusor.h"
-#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributes.h"
 #include "xla/ffi/call_frame.h"
 
 namespace xla::ffi {
 
 // Converts MLIR dictionary attribute attached to a custom call operation to a
 // custom call handler attributes that are forwarded to the FFI handler.
-absl::StatusOr<CallFrameBuilder::FlatAttributesMap> BuildAttributesMap(
+absl::StatusOr<CallFrameBuilder::AttributesMap> BuildAttributesMap(
     mlir::DictionaryAttr dict);
 
 }  // namespace xla::ffi

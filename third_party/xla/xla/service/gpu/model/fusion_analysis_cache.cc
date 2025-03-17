@@ -33,7 +33,8 @@ const HloFusionAnalysis& HloFusionAnalysisCache::Get(
     }
   }
 
-  HloFusionAnalysis analysis = AnalyzeFusion(instruction, device_info_);
+  HloFusionAnalysis analysis =
+      HloFusionAnalysis::Create(instruction, device_info_);
   absl::MutexLock lock(&mutex_);
 
   // If some other thread created an entry for this key concurrently, return
@@ -59,7 +60,7 @@ const HloFusionAnalysis& HloFusionAnalysisCache::Get(
   }
 
   HloFusionAnalysis analysis =
-      AnalyzeProducerConsumerFusion(producer, consumer, device_info_);
+      HloFusionAnalysis::Create(producer, consumer, device_info_);
   absl::MutexLock lock(&mutex_);
 
   // If some other thread created an entry for this key concurrently, return
@@ -78,7 +79,6 @@ const HloFusionAnalysis& HloFusionAnalysisCache::Get(
 }
 
 void HloFusionAnalysisCache::Invalidate(const HloInstruction& instruction) {
-  absl::MutexLock lock(&mutex_);
   analyses_.erase(instruction.unique_id());
 
   if (auto consumers =
@@ -96,8 +96,6 @@ void HloFusionAnalysisCache::Invalidate(const HloInstruction& instruction) {
 }
 
 void HloFusionAnalysisCache::Clear() {
-  absl::MutexLock lock(&mutex_);
-
   analyses_.clear();
   producer_consumer_analyses_.clear();
   consumers_for_producers_.clear();

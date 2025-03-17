@@ -15,7 +15,8 @@ limitations under the License.
 
 // Some very simple unit tests of the (C++) XNNPack Delegate Plugin.
 
-#include <gmock/gmock.h>
+#include <memory>
+
 #include <gtest/gtest.h>
 #include "flatbuffers/flatbuffers.h"  // from @flatbuffers
 #include "pthreadpool.h"  // from @pthreadpool
