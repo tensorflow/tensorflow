@@ -19,6 +19,7 @@ limitations under the License.
 #include <sstream>
 #include <string>
 
+#include <gtest/gtest.h>
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "xla/comparison_util.h"
@@ -33,6 +34,7 @@ limitations under the License.
 #include "xla/test.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/util.h"
+#include "xla/xla_data.pb.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/platform/test.h"
 

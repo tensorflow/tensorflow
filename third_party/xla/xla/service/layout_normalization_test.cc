@@ -18,6 +18,7 @@ limitations under the License.
 #include <functional>
 #include <optional>
 
+#include <gtest/gtest.h>
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/scatter_simplifier.h"
