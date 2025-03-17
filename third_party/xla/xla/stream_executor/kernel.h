@@ -430,9 +430,9 @@ class PodArgs {
  protected:
   template <typename T>
   const std::byte *add_pod_argument(const T &arg) {
-    static_assert(
-        std::is_pod_v<T> && sizeof(T) <= size & alignof(T) <= alignment,
-        "Type is not compatible with POD arguments storage");
+    static_assert(std::is_trivially_copyable_v<T> &&
+                      sizeof(T) <= size & alignof(T) <= alignment,
+                  "Type is not compatible with POD arguments storage");
 
     assert(num_args_ < capacity && "pod args overflow");
     std::byte *arg_storage = args_storage_[num_args_++].storage;
