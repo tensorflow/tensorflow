@@ -51,7 +51,7 @@ class HloPrintOptions {
       : print_operand_index_annotation_interval_(5),
         print_subcomputation_mode_(PrintSubcomputationMode::kNameOnly),
         indent_amount_(0),
-        print_large_constants_(true),
+        print_large_constants_(false),
         print_only_essential_constants_(false),
         print_original_value_(true),
         print_metadata_(true),
