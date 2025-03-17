@@ -27,7 +27,6 @@
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/types/span.h"
-#include <CL/cl.h>
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
 #include "tensorflow/lite/experimental/litert/c/litert_gl_types.h"
 #include "tensorflow/lite/experimental/litert/c/litert_layout.h"
@@ -38,7 +37,11 @@
 #include "tensorflow/lite/experimental/litert/runtime/event.h"
 #include "tensorflow/lite/experimental/litert/runtime/gl_buffer.h"
 #include "tensorflow/lite/experimental/litert/runtime/gl_texture.h"
+
+#if LITERT_HAS_OPENCL_SUPPORT
+#include <CL/cl.h>
 #include "tensorflow/lite/experimental/litert/runtime/open_cl_buffer.h"
+#endif  // LITERT_HAS_OPENCL_SUPPORT
 
 class LiteRtTensorBufferT {
  public:
@@ -79,9 +82,11 @@ class LiteRtTensorBufferT {
       size_t fastrpc_buffer_offset,
       LiteRtFastRpcDeallocator deallocator = nullptr);
 
+#if LITERT_HAS_OPENCL_SUPPORT
   static litert::Expected<Ptr> CreateFromOpenClBuffer(
       const LiteRtRankedTensorType& tensor_type, cl_mem buffer,
       size_t opencl_buffer_size, LiteRtOpenClDeallocator deallocator = nullptr);
+#endif  // LITERT_HAS_OPENCL_SUPPORT
 
   static litert::Expected<Ptr> CreateFromGlBuffer(
       const LiteRtRankedTensorType& tensor_type, LiteRtGLenum target,
@@ -122,7 +127,9 @@ class LiteRtTensorBufferT {
   litert::Expected<std::pair<void*, int>> GetIonBuffer();
   litert::Expected<std::pair<void*, int>> GetDmaBufBuffer();
   litert::Expected<std::pair<void*, int>> GetFastRpcBuffer();
+#if LITERT_HAS_OPENCL_SUPPORT
   litert::Expected<litert::internal::OpenClBuffer*> GetOpenClBuffer();
+#endif  // LITERT_HAS_OPENCL_SUPPORT
   litert::Expected<litert::internal::GlBuffer*> GetGlBuffer();
   litert::Expected<litert::internal::GlTexture*> GetGlTexture();
 
@@ -180,7 +187,10 @@ class LiteRtTensorBufferT {
 
   using BufferVariant =
       std::variant<HostBuffer, AhwbBuffer, IonBuffer, DmaBufBuffer,
-                   FastRpcBuffer, litert::internal::OpenClBuffer,
+                   FastRpcBuffer,
+#if LITERT_HAS_OPENCL_SUPPORT
+                   litert::internal::OpenClBuffer,
+#endif  // LITERT_HAS_OPENCL_SUPPORT
                    litert::internal::GlBuffer, litert::internal::GlTexture>;
 
   LiteRtTensorBufferT(const LiteRtRankedTensorType& tensor_type,

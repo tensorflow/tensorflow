@@ -18,7 +18,6 @@
 #include <cstdint>
 
 #include "absl/types/span.h"
-#include <CL/cl.h>
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
 #include "tensorflow/lite/experimental/litert/c/litert_event.h"
 #include "tensorflow/lite/experimental/litert/c/litert_gl_types.h"
@@ -26,6 +25,10 @@
 #include "tensorflow/lite/experimental/litert/c/litert_model.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
 #include "tensorflow/lite/experimental/litert/runtime/tensor_buffer.h"
+
+#if LITERT_HAS_OPENCL_SUPPORT
+#include <CL/cl.h>
+#endif  // LITERT_HAS_OPENCL_SUPPORT
 
 #ifdef __cplusplus
 extern "C" {
