@@ -16,10 +16,12 @@ limitations under the License.
 // Tests transferring literals of various shapes and values in and out of the
 // XLA service.
 
+#include <cstdint>
 #include <memory>
 #include <numeric>
 #include <vector>
 
+#include <gtest/gtest.h>
 #include "absl/status/statusor.h"
 #include "xla/array4d.h"
 #include "xla/client/local_client.h"
