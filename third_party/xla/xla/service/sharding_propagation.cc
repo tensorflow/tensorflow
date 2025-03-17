@@ -50,7 +50,7 @@ limitations under the License.
 #include "xla/protobuf_util.h"
 #include "xla/service/call_graph.h"
 #include "xla/service/dot_as_convolution_util.h"
-#include "xla/service/host_memory_offload_annotations.h"
+#include "xla/service/memory_annotations.h"
 #include "xla/service/spmd/shard_barrier_partitioner.h"
 #include "xla/shape.h"
 #include "xla/shape_tree.h"
@@ -186,10 +186,10 @@ bool IsPassthroughCustomOps(const HloInstruction* hlo) {
   return hlo->IsCustomCall(
       {"ResizeNearest", "ResizeBilinear", "ResizeNearestGrad",
        "ResizeBilinearGrad", "Cholesky",
-       host_memory_offload_annotations::kMoveToHostCustomCallTarget,
-       host_memory_offload_annotations::kMoveToDeviceCustomCallTarget,
-       host_memory_offload_annotations::kPinToDeviceCustomCallTarget,
-       host_memory_offload_annotations::kPinToDeviceSramCustomCallTarget});
+       memory_annotations::kMoveToHostCustomCallTarget,
+       memory_annotations::kMoveToDeviceCustomCallTarget,
+       memory_annotations::kPinToDeviceCustomCallTarget,
+       memory_annotations::kPinToDeviceSramCustomCallTarget});
 }
 
 // Return the operand which is the most suitable for determining the sharding

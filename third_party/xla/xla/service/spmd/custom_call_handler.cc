@@ -46,7 +46,7 @@ limitations under the License.
 #include "xla/service/custom_call_sharding_helper.h"
 #include "xla/service/hlo_creation_utils.h"
 #include "xla/service/hlo_module_config.h"
-#include "xla/service/host_memory_offload_annotations.h"
+#include "xla/service/memory_annotations.h"
 #include "xla/service/spmd/spmd_partitioner.h"
 #include "xla/service/spmd/spmd_partitioner_util.h"
 #include "xla/shape.h"
@@ -457,16 +457,16 @@ absl::Status SpmdPartitioningVisitor::HandleCustomCall(HloInstruction* hlo) {
   }
 
   if (hlo->custom_call_target() ==
-      host_memory_offload_annotations::kMoveToHostCustomCallTarget) {
+      memory_annotations::kMoveToHostCustomCallTarget) {
     return HandleElementwise(hlo);
   }
 
   if (hlo->custom_call_target() ==
-          host_memory_offload_annotations::kMoveToDeviceCustomCallTarget ||
+          memory_annotations::kMoveToDeviceCustomCallTarget ||
       hlo->custom_call_target() ==
-          host_memory_offload_annotations::kPinToDeviceCustomCallTarget ||
+          memory_annotations::kPinToDeviceCustomCallTarget ||
       hlo->custom_call_target() ==
-          host_memory_offload_annotations::kPinToDeviceSramCustomCallTarget) {
+          memory_annotations::kPinToDeviceSramCustomCallTarget) {
     // Use the operand's sharding to shard the move-to-device op. This avoids
     // inserting any resharding before the custom call so that the
     // host-offloader pass can pattern match the offloading sequences correctly.

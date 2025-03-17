@@ -43,7 +43,7 @@ limitations under the License.
 #include "xla/literal_util.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/hlo_verifier.h"
-#include "xla/service/host_memory_offload_annotations.h"
+#include "xla/service/memory_annotations.h"
 #include "xla/service/scheduling_annotations_util.h"
 #include "xla/test_helpers.h"
 #include "xla/tests/hlo_test_base.h"
@@ -1595,7 +1595,7 @@ ENTRY entry {
   auto is_all_gather_or_offloading = [](const HloInstruction* instruction) {
     return instruction->opcode() == HloOpcode::kAllGather ||
            instruction->IsCustomCall(
-               host_memory_offload_annotations::kMoveToDeviceCustomCallTarget);
+               memory_annotations::kMoveToDeviceCustomCallTarget);
   };
   EXPECT_TRUE(RunOptimizer(module.get(), /*last_run=*/true, 0,
                            /*pipeline_use_tree=*/false,
@@ -1692,7 +1692,7 @@ ENTRY entry {
   auto is_all_gather_or_offloading = [](const HloInstruction* instruction) {
     return instruction->opcode() == HloOpcode::kAllGather ||
            instruction->IsCustomCall(
-               host_memory_offload_annotations::kMoveToDeviceCustomCallTarget);
+               memory_annotations::kMoveToDeviceCustomCallTarget);
   };
   EXPECT_TRUE(RunOptimizer(module.get(), /*last_run=*/true, 0,
                            /*pipeline_use_tree=*/false,
@@ -1758,10 +1758,10 @@ ENTRY entry {
   auto module = ParseAndReturnUnverifiedModule(hlo_string, config_).value();
   auto is_all_gather_or_offloading = [](const HloInstruction* instruction) {
     return instruction->opcode() == HloOpcode::kAllGather ||
-           instruction->IsCustomCall(host_memory_offload_annotations::
-                                         kMoveToDeviceCustomCallTarget) ||
            instruction->IsCustomCall(
-               host_memory_offload_annotations::kMoveToHostCustomCallTarget);
+               memory_annotations::kMoveToDeviceCustomCallTarget) ||
+           instruction->IsCustomCall(
+               memory_annotations::kMoveToHostCustomCallTarget);
   };
   bool changed =
       RunOptimizer(module.get(), /*last_run=*/true, /*level_to_operate_on=*/0,

@@ -42,8 +42,8 @@ limitations under the License.
 #include "xla/service/hlo_buffer.h"
 #include "xla/service/hlo_cse.h"
 #include "xla/service/hlo_value.h"
-#include "xla/service/host_memory_offload_annotations.h"
 #include "xla/service/host_offload_utils.h"
+#include "xla/service/memory_annotations.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/shape.h"
 #include "xla/shape_tree.h"
@@ -146,14 +146,13 @@ absl::StatusOr<bool> HostOffloader::WalkDownHostMemoryOffloadPaths(
     bool need_to_wrap_instruction_as_host_compute = false;
     if (instruction->opcode() == HloOpcode::kCustomCall &&
         instruction->custom_call_target() ==
-            host_memory_offload_annotations::kMoveToHostCustomCallTarget) {
+            memory_annotations::kMoveToHostCustomCallTarget) {
       // This MoveToHost custom call is a no-op; save it to remove later.
       already_visited_move_to_host_custom_calls_.insert(instruction);
       mth_custom_calls_to_remove.insert(instruction);
     } else if (instruction->opcode() == HloOpcode::kCustomCall &&
                instruction->custom_call_target() ==
-                   host_memory_offload_annotations::
-                       kMoveToDeviceCustomCallTarget) {
+                   memory_annotations::kMoveToDeviceCustomCallTarget) {
       // This MoveToDevice marks the end of this path.
       custom_calls_to_insert_copies_before.insert(instruction);
       continue;
@@ -599,7 +598,7 @@ absl::StatusOr<bool> HostOffloader::SliceLeadsToMoveToDeviceCustomCall(
     HloInstruction* current_instruction = instruction_and_shape.instruction;
     if (current_instruction->opcode() == HloOpcode::kCustomCall &&
         current_instruction->custom_call_target() ==
-            host_memory_offload_annotations::kMoveToDeviceCustomCallTarget) {
+            memory_annotations::kMoveToDeviceCustomCallTarget) {
       // This path ended with the MoveToDevice custom call. This path is good.
       continue;
     }
@@ -882,7 +881,7 @@ absl::StatusOr<bool> UpdateMemorySpaceForHostOffloadedOutputs(
          *instruction_and_shape_indexes) {
       // If instruction is MoveToHost, we will replace usage.
       if (instr_and_shape.instruction->IsCustomCall(
-              host_memory_offload_annotations::kMoveToHostCustomCallTarget)) {
+              memory_annotations::kMoveToHostCustomCallTarget)) {
         to_replace.push_back(instr_and_shape);
         continue;
       }
@@ -934,7 +933,7 @@ bool ExtraCheckForValidUsageOnHostForHostOffloadedOutputs(
   // generic redundant copies removal.
   if (instruction->opcode() == HloOpcode::kCustomCall &&
       instruction->custom_call_target() !=
-          host_memory_offload_annotations::kMoveToHostCustomCallTarget) {
+          memory_annotations::kMoveToHostCustomCallTarget) {
     return false;
   }
 
@@ -1062,7 +1061,7 @@ absl::StatusOr<bool> HostOffloader::ProcessNextMoveToHostInstr(
     HloComputation* computation) {
   for (HloInstruction* instruction : computation->MakeInstructionPostOrder()) {
     if (instruction->IsCustomCall(
-            host_memory_offload_annotations::kMoveToHostCustomCallTarget)) {
+            memory_annotations::kMoveToHostCustomCallTarget)) {
       TF_ASSIGN_OR_RETURN(bool removed_move_to_host,
                           HandleMoveToHostCustomCall(instruction));
       if (removed_move_to_host) {
@@ -1184,7 +1183,7 @@ absl::StatusOr<bool> HostOffloader::Run(
     for (HloInstruction* instruction :
          computation->MakeInstructionPostOrder()) {
       if (instruction->IsCustomCall(
-              host_memory_offload_annotations::kMoveToDeviceCustomCallTarget)) {
+              memory_annotations::kMoveToDeviceCustomCallTarget)) {
         TF_ASSIGN_OR_RETURN(bool result,
                             HandleMoveToDeviceCustomCall(instruction));
         changed = changed || result;
