@@ -1442,6 +1442,7 @@ cc_library(
         "//xla/hlo/transforms/collectives:all_reduce_combiner",
         "//xla/hlo/transforms/collectives:all_reduce_contiguous",
         "//xla/hlo/transforms/collectives:async_collective_creator",
+        "//xla/hlo/transforms/collectives:collective_permute_combiner",
         "//xla/hlo/transforms/collectives:collective_quantizer",
         "//xla/hlo/transforms/collectives:collectives_schedule_linearizer",
         "//xla/hlo/transforms/collectives:convert_async_collectives_to_sync",

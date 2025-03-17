@@ -138,6 +138,8 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
       kDefaultAllGatherCombineThreshold);
   opts.set_xla_gpu_reduce_scatter_combine_threshold_bytes(
       kDefaultReduceScatterCombineThreshold);
+  opts.set_xla_gpu_collective_permute_combine_threshold_bytes(
+      kDefaultCollectivePermuteCombineThreshold);
   opts.set_xla_gpu_enable_all_gather_combine_by_dim(false);
   opts.set_xla_gpu_enable_reduce_scatter_combine_by_dim(false);
   opts.set_xla_gpu_enable_approx_costly_collectives(false);
@@ -1360,6 +1362,13 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
           &DebugOptions::set_xla_gpu_reduce_scatter_combine_threshold_bytes),
       debug_options->xla_gpu_reduce_scatter_combine_threshold_bytes(),
       "Size threshold (in bytes) for the GPU reduce-scatter combiner."));
+  flag_list->push_back(tsl::Flag(
+      "xla_gpu_collective_permute_combine_threshold_bytes",
+      int64_setter_for(
+          &DebugOptions::
+              set_xla_gpu_collective_permute_combine_threshold_bytes),
+      debug_options->xla_gpu_collective_permute_combine_threshold_bytes(),
+      "Size threshold (in bytes) for the GPU collective-permute combiner."));
   flag_list->push_back(tsl::Flag(
       "xla_gpu_enable_all_gather_combine_by_dim",
       bool_setter_for(

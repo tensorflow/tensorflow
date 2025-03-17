@@ -311,6 +311,9 @@ message DebugOptions {
   // Inflate collective cost by running each collective multiple times.
   int32 xla_gpu_collective_inflation_factor = 205;
 
+  // Size threshold (in bytes) for the GPU collective-permute combiner.
+  int64 xla_gpu_collective_permute_combine_threshold_bytes = 378;
+
   // The minimum data size in bytes to trigger collective-permute-decomposer
   // transformation.
   int64 xla_gpu_collective_permute_decomposer_threshold = 237;
@@ -1187,7 +1190,7 @@ message DebugOptions {
   // Note: when adding a new flag, please add it to one of the hardware-specific
   // or hardware-agnostic sections at the top of this proto message.
 
-  // Next id: 378
+  // Next id: 379
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.
