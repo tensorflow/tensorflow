@@ -1592,8 +1592,10 @@ def boolean_mask_v2(tensor, mask, axis=None, name="boolean_mask"):
   boolean_mask(tensor, mask)  # [[1, 2], [5, 6]]
   ```
   """
+  # Ensure mask is a boolean tensor
+  if mask.dtype != tf.bool:
+    raise TypeError(f"Expected mask to have dtype `bool`,but got {mask.dtype}.")
   return boolean_mask(tensor, mask, name, axis)
-
 
 @tf_export("sparse.mask", v1=["sparse.mask", "sparse_mask"])
 @deprecation.deprecated_endpoints("sparse_mask")
