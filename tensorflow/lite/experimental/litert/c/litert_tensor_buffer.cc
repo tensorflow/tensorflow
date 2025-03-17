@@ -421,11 +421,12 @@ LiteRtStatus LiteRtGetTensorBufferEvent(LiteRtTensorBuffer tensor_buffer,
 }
 
 LiteRtStatus LiteRtSetTensorBufferEvent(LiteRtTensorBuffer tensor_buffer,
-                                        LiteRtEvent event) {
+                                        LiteRtEvent event,
+                                        bool transfer_ownership) {
   if (!tensor_buffer || !event) {
     return kLiteRtStatusErrorInvalidArgument;
   }
-  tensor_buffer->SetEvent(event);
+  tensor_buffer->SetEvent(event, transfer_ownership);
   return kLiteRtStatusOk;
 }
 

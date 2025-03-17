@@ -46,7 +46,7 @@ class LiteRtTensorBufferT {
 
   ~LiteRtTensorBufferT();
 
-  // Make this class non-copiable because it includes raw pointers and resource
+  // Make this class non-copyable because it includes raw pointers and resource
   // handles.
   LiteRtTensorBufferT(const LiteRtTensorBufferT&) = delete;
   LiteRtTensorBufferT(LiteRtTensorBufferT&&) = delete;
@@ -108,14 +108,25 @@ class LiteRtTensorBufferT {
       return litert::Error(kLiteRtStatusErrorRuntimeFailure,
                            "TensorBuffer has no event");
     }
-    return event_.get();
+    return event_;
   }
 
-  void SetEvent(LiteRtEventT* e) {
+  // Bind the event to the tensor buffer. `transfer_ownership` indicates if the
+  // tensor buffer should take ownership of the event.
+  void SetEvent(LiteRtEventT* e, bool transfer_ownership) {
     // Take ownership of the event.
-    event_ = std::unique_ptr<LiteRtEventT>(e);
+    event_ = e;
+    has_event_ownership_ = transfer_ownership;
   }
-  void ClearEvent() { event_ = nullptr; }
+
+  // Clear the event attached to the tensor buffer.
+  void ClearEvent() {
+    if (has_event_ownership_) {
+      delete event_;
+    }
+    event_ = nullptr;
+    has_event_ownership_ = false;
+  }
 
   litert::Expected<void*> GetHostBuffer();
   litert::Expected<AHardwareBuffer*> GetAhwbBuffer();
@@ -217,7 +228,13 @@ class LiteRtTensorBufferT {
   size_t buffer_size_;
   size_t buffer_offset_;
   BufferVariant buffer_;
-  std::unique_ptr<LiteRtEventT> event_;
+
+  // The event attached to the tensor buffer.
+  LiteRtEventT* event_;
+  // Indicates if the tensor buffer owns the event. When it's true, the tensor
+  // buffer is responsible for deallocating the event.
+  bool has_event_ownership_;
+
   mutable std::atomic_int_fast32_t ref_;
   // A map of memory backed buffers. Memory backed buffers are backed by the
   // memory of buffer_. For example, a GL buffer can be backed by the memory of
