@@ -24,6 +24,7 @@
 #include <string>
 #include <vector>
 
+#include "absl/base/nullability.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -45,6 +46,7 @@
 #include "xla/python/ifrt/sharding.h"
 #include "xla/python/ifrt/topology.h"
 #include "xla/python/ifrt/tuple.h"
+#include "xla/python/ifrt/user_context.h"
 #include "xla/python/ifrt/value.h"
 #include "xla/python/ifrt_proxy/client/compiler.h"
 #include "xla/python/ifrt_proxy/client/device.h"
@@ -70,7 +72,18 @@ class Client final : public llvm::RTTIExtends<Client, xla::ifrt::Client> {
       std::optional<absl::Span<const int64_t>> byte_strides,
       std::shared_ptr<const Sharding> sharding, HostBufferSemantics semantics,
       std::function<void()> on_done_with_host_buffer) override;
-
+  absl::StatusOr<tsl::RCReference<xla::ifrt::Array>> MakeArrayFromHostBuffer(
+      const void* data, xla::ifrt::DType dtype, xla::ifrt::Shape shape,
+      std::optional<absl::Span<const int64_t>> byte_strides,
+      absl::Nonnull<std::shared_ptr<const xla::ifrt::Sharding>> sharding,
+      HostBufferSemantics semantics,
+      std::function<void()> on_done_with_host_buffer,
+      tsl::RCReference<xla::ifrt::UserContext> user_context) override {
+    // Ignore the explicitly passed UserContext until the users of this client
+    // (such as JAX) are ready to use it.
+    return MakeArrayFromHostBuffer(data, dtype, shape, byte_strides, sharding,
+                                   semantics, on_done_with_host_buffer);
+  }
   absl::StatusOr<tsl::RCReference<xla::ifrt::Array>>
   AssembleArrayFromSingleDeviceArrays(
       Shape shape, std::shared_ptr<const Sharding> sharding,
@@ -153,6 +166,10 @@ class Client final : public llvm::RTTIExtends<Client, xla::ifrt::Client> {
       xla::ifrt::MemoryKind memory_kind) const override {
     return absl::UnimplementedError(
         "GetDefaultLayout is not supported for the IFRT proxy client.");
+  }
+
+  tsl::RCReference<xla::ifrt::UserContext> CreateUserContext() override {
+    return tsl::RCReference<xla::ifrt::UserContext>();
   }
 
   // For llvm::RTTIExtends.

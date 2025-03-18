@@ -110,7 +110,7 @@ MockArray::MockArray(tsl::RCReference<xla::ifrt::Array> delegated)
 // LINT.IfChange(MockClientDelegation)
 MockClient::MockClient(std::unique_ptr<xla::ifrt::Client> delegated)
     : delegated_(std::move(delegated)) {
-  ON_CALL(*this, MakeArrayFromHostBuffer)
+  ON_CALL(*this, MakeArrayFromHostBuffer(_, _, _, _, _, _, _))
       .WillByDefault(
           [this](const void* data, DType dtype, Shape shape,
                  std::optional<absl::Span<const int64_t>> byte_strides,
