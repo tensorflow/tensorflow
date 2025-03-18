@@ -63,6 +63,7 @@ xla_cc_test(
         "//xla/service/llvm_ir:llvm_util",
         "//xla/tests:xla_internal_test_main",
         "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest_main",
         "@llvm-project//mlir:ArithDialect",
         "@llvm-project//mlir:IR",
         "@local_tsl//tsl/platform:status_matchers",
