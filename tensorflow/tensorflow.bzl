@@ -82,7 +82,7 @@ load(
     "if_tensorrt_exec",
 )
 load(
-    "@local_xla//third_party/py/rules_pywrap:pywrap.bzl",
+    "@local_xla//third_party/py/rules_pywrap:pywrap.default.bzl",
     "use_pywrap_rules",
     _pybind_extension = "pybind_extension",
     _stripped_cc_info = "stripped_cc_info",
