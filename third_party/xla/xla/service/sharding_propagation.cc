@@ -50,7 +50,7 @@ limitations under the License.
 #include "xla/protobuf_util.h"
 #include "xla/service/call_graph.h"
 #include "xla/service/dot_as_convolution_util.h"
-#include "xla/service/host_memory_offload_annotations.h"
+#include "xla/service/memory_annotations.h"
 #include "xla/service/spmd/shard_barrier_partitioner.h"
 #include "xla/shape.h"
 #include "xla/shape_tree.h"
@@ -186,8 +186,10 @@ bool IsPassthroughCustomOps(const HloInstruction* hlo) {
   return hlo->IsCustomCall(
       {"ResizeNearest", "ResizeBilinear", "ResizeNearestGrad",
        "ResizeBilinearGrad", "Cholesky",
-       host_memory_offload_annotations::kMoveToDeviceCustomCallTarget,
-       host_memory_offload_annotations::kMoveToHostCustomCallTarget});
+       memory_annotations::kMoveToHostCustomCallTarget,
+       memory_annotations::kMoveToDeviceCustomCallTarget,
+       memory_annotations::kPinToDeviceCustomCallTarget,
+       memory_annotations::kPinToDeviceSramCustomCallTarget});
 }
 
 // Return the operand which is the most suitable for determining the sharding
@@ -1770,7 +1772,7 @@ std::optional<HloSharding> ShardingPropagation::GetShardingFromUser(
               [&](const Shape& sub_shape, const ShapeIndex& index) {
                 if (ShapeUtil::IsLeafIndex(instruction.shape(), index)) {
                   shardings.push_back(hlo_sharding_util::ReplicateAllDataDims(
-                      user_sharding, sub_shape.dimensions_size()));
+                      user_sharding, sub_shape.rank()));
                 }
               });
           return HloSharding::Tuple(instruction.shape(), shardings);
@@ -3539,7 +3541,7 @@ absl::StatusOr<bool> ShardingPropagation::Run(
         }
       }
     }
-    for (int64_t i = 0; i < shape.dimensions_size(); ++i) {
+    for (int64_t i = 0; i < shape.rank(); ++i) {
       if (shape.dimensions(i) % sharding.tile_assignment().dim(i) != 0) {
         return false;
       }
@@ -3603,8 +3605,8 @@ absl::StatusOr<bool> ShardingPropagation::Run(
 
   TF_RETURN_IF_ERROR(
       hlo_sharding_util::CanonicalizeLayoutAfterShardingPropagation(
-          module, allow_spmd_sharding_propagation_to_output_,
-          allow_spmd_sharding_propagation_to_parameters_));
+          module, allow_spmd_sharding_propagation_to_output_vector_,
+          allow_spmd_sharding_propagation_to_parameters_vector_));
 
   VLOG(1) << "Sharding propagation completed after " << iterations
           << " iterations";

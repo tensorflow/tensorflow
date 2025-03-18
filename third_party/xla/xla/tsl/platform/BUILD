@@ -68,13 +68,17 @@ exports_files(
 bzl_library(
     name = "rules_cc_bzl",
     srcs = ["rules_cc.bzl"],
-    deps = tf_platform_alias("rules_cc_bzl"),
+    deps = tf_platform_alias("rules_cc_bzl") + [
+        "//xla/tsl:package_groups_bzl",
+    ],
 )
 
 bzl_library(
     name = "build_config_root_bzl",
     srcs = ["build_config_root.bzl"],
-    deps = tf_platform_alias("build_config_root_bzl"),
+    deps = tf_platform_alias("build_config_root_bzl") + [
+        "//xla/tsl:package_groups_bzl",
+    ],
 )
 
 filegroup(
@@ -421,6 +425,8 @@ cc_library(
         ":statusor",
         ":types",
         "//xla/tsl/platform:env",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/types:span",
         "@local_tsl//tsl/platform",
         "@local_tsl//tsl/platform:cord",
         "@local_tsl//tsl/platform:mutex",

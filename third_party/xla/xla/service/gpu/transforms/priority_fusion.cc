@@ -30,7 +30,6 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
-#include "absl/meta/type_traits.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
@@ -38,6 +37,7 @@ limitations under the License.
 #include "absl/synchronization/blocking_counter.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
+#include "absl/types/span.h"
 #include "llvm/ADT/STLExtras.h"
 #include "mlir/IR/MLIRContext.h"
 #include "xla/backends/gpu/codegen/triton/support.h"
@@ -45,7 +45,9 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/ir/hlo_print_options.h"
 #include "xla/hlo/utils/hlo_traversal.h"
+#include "xla/map_util.h"
 #include "xla/service/dump.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/fusion_deduplication_cache.h"
@@ -65,12 +67,12 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/logging.h"
+#include "xla/tsl/platform/status.h"
+#include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/platform/threadpool.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/logging.h"
-#include "tsl/platform/status.h"
-#include "tsl/platform/statusor.h"
-#include "tsl/platform/threadpool.h"
 
 namespace xla {
 namespace gpu {
@@ -138,8 +140,6 @@ GpuBackendConfig GetTritonGpuBackendConfig(
 // nodes and their operands.
 class PriorityFusionQueue {
   using Priority = absl::Duration;
-  using CanFuseCallback = std::function<FusionDecision(
-      HloInstruction* /*producer*/, int64_t /*consumer operand_index*/)>;
 
  public:
   PriorityFusionQueue(HloComputation* computation,
@@ -159,7 +159,6 @@ class PriorityFusionQueue {
                                         mlir_context),
         fusion_process_dump_(fusion_process_dump),
         thread_pool_(thread_pool),
-        mlir_context_(mlir_context),
         fusion_analysis_cache_(fusion_analysis_cache),
         fusion_deduplication_cache_(fusion_deduplication_cache),
         fusion_info_cache_(*device_info_),
@@ -507,6 +506,8 @@ class PriorityFusionQueue {
         is_incremental_update
             ? operands_to_new_consumers_.find(producer)->second
             : absl::MakeConstSpan(producer->users());
+    // Note that `gpu_performance_model_cache_` may contain a runtime estimate
+    // from the Triton cost model.
     GpuPerformanceModel::RunTimes run_times =
         GpuPerformanceModel::EstimateRunTimes(
             producer, *device_info_, &cost_analysis_,
@@ -566,7 +567,7 @@ class PriorityFusionQueue {
       const HloInstruction* producer, const HloInstruction* consumer) {
     FusionDeduplicationCache::FusionId fusion_id = [&]() {
       absl::MutexLock lock(&fusion_deduplication_cache_mutex_);
-      return fusion_deduplication_cache_.GetFusionId(*producer, *consumer);
+      return fusion_deduplication_cache_.GetFusionId(producer, consumer);
     }();
 
     {
@@ -635,6 +636,8 @@ class PriorityFusionQueue {
     TiledRunTimeData tiled_run_time_data =
         std::get<TiledRunTimeData>(std::move(tiled_run_time_data_or_error));
 
+    // This is our way to pass the runtime estimate to the CalculatePriorities()
+    // function.
     gpu_performance_model_cache_.Set(
         *producer, *consumer, tiled_run_time_data.runtime_data.exec_time);
 
@@ -845,8 +848,6 @@ class PriorityFusionQueue {
 
   tsl::thread::ThreadPool* thread_pool_;
 
-  mlir::MLIRContext* mlir_context_;
-
   HloFusionAnalysisCache& fusion_analysis_cache_;
 
   FusionDeduplicationCache& fusion_deduplication_cache_;
@@ -906,7 +907,7 @@ bool PriorityFusion::ConsumeFuel(HloInstruction* producer,
     return absl::StrFormat("Not fusing producer %s with consumer %s",
                            producer->name(), consumer->name());
   });
-};
+}
 
 FusionDecision PriorityFusion::CanFuseConstant(const HloInstruction* constant,
                                                const HloInstruction* user) {
@@ -983,7 +984,7 @@ absl::StatusOr<bool> PriorityFusion::Run(
   FusionDeduplicationCache fusion_deduplication_cache =
       FusionDeduplicationCache::Create(*module, IsFusible);
 
-  int changed = false;
+  bool changed = false;
   for (auto* computation : fusible_computations) {
     CHECK(!computation->IsFusionComputation());
 
@@ -1016,7 +1017,7 @@ absl::StatusOr<bool> PriorityFusion::Run(
         fusion_queue->PreFusion(producer, consumer);
         auto fusion_instruction = Fuse(producer, consumer);
         fusion_deduplication_cache.UpdateFusedInstructionId(
-            *fusion_instruction, *producer, *consumer, consumer_operand_index);
+            fusion_instruction, producer, consumer, consumer_operand_index);
         fusion_queue->OnFusingInstruction(fusion_instruction, producer,
                                           consumer);
 
@@ -1093,6 +1094,7 @@ HloInstruction::FusionKind PriorityFusion::ChooseKind(
   // analysis.
   const auto& analysis = fusion_analysis_cache_.Get(*producer, *consumer);
   switch (analysis.GetEmitterFusionKind()) {
+    case HloFusionAnalysis::EmitterFusionKind::kDynamicMemcpy:
     case HloFusionAnalysis::EmitterFusionKind::kLoop:
       return HloInstruction::FusionKind::kLoop;
     case HloFusionAnalysis::EmitterFusionKind::kTriton:

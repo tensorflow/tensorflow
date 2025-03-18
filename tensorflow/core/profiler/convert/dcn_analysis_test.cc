@@ -14,13 +14,16 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/profiler/convert/dcn_analysis.h"
 
+#include <optional>
 #include <string>
 #include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "xla/tsl/profiler/utils/tf_xplane_visitor.h"
+#include "xla/tsl/profiler/utils/xplane_builder.h"
 #include "xla/tsl/profiler/utils/xplane_schema.h"
+#include "xla/tsl/profiler/utils/xplane_visitor.h"
 #include "tensorflow/core/profiler/convert/dcn_utils.h"
 
 namespace tensorflow {
@@ -32,16 +35,16 @@ using tensorflow::profiler::DCN_MESSAGE_INVALID_BAD_KEY;
 using tensorflow::profiler::DCN_MESSAGE_INVALID_CLOCK_SKEW;
 using tensorflow::profiler::DCN_MESSAGE_VALID;
 using tensorflow::profiler::DCN_MESSAGE_VALID_LOOPBACK;
-using tensorflow::profiler::XEventBuilder;
-using tensorflow::profiler::XEventMetadata;
-using tensorflow::profiler::XLineBuilder;
-using tensorflow::profiler::XPlane;
-using tensorflow::profiler::XPlaneBuilder;
-using tensorflow::profiler::XPlaneVisitor;
-using tensorflow::profiler::XSpace;
 using ::testing::FieldsAre;
 using tsl::profiler::kMegaScaleDcnReceive;
 using tsl::profiler::kMegaScaleDcnSend;
+using tsl::profiler::XEventBuilder;
+using tsl::profiler::XEventMetadata;
+using tsl::profiler::XLineBuilder;
+using tsl::profiler::XPlane;
+using tsl::profiler::XPlaneBuilder;
+using tsl::profiler::XPlaneVisitor;
+using tsl::profiler::XSpace;
 
 TEST(DcnAnalysis, SetupMessageInfoTest) {
   XSpace space;

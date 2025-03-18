@@ -17,6 +17,7 @@ limitations under the License.
 // resulting object file to stdout.
 
 #include <iostream>
+#include <utility>
 #include <vector>
 
 #include "llvm/TargetParser/Host.h"
@@ -24,6 +25,7 @@ limitations under the License.
 #include "xla/client/client_library.h"
 #include "xla/hlo/builder/xla_builder.h"
 #include "xla/hlo/builder/xla_computation.h"
+#include "xla/service/cpu/cpu_aot_compilation_result.h"
 #include "xla/service/cpu/cpu_compiler.h"
 #include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/types.h"
@@ -94,9 +96,11 @@ int main(int argc, char** argv) {
       /*cpu_name=*/"", /*features=*/"", "SumAndDouble",
       xla::cpu::CpuAotCompilationOptions::RelocationModel::Static);
 
+  options.mutable_debug_options()->set_xla_cpu_use_thunk_runtime(false);
   auto results = client->CompileAheadOfTime({instance}, options).value();
-  auto result = xla::unique_ptr_down_cast<xla::cpu::CpuAotCompilationResult>(
-      std::move(results.front()));
+  auto result =
+      xla::unique_ptr_down_cast<xla::cpu::CpuAotCompilationResultLegacy>(
+          std::move(results.front()));
   // It's lame to hard-code the buffer assignments, but we need
   // local_client_aot_test.cc to be able to easily invoke the function.
   CHECK_EQ(result->result_buffer_index(), 1);

@@ -16,6 +16,11 @@ limitations under the License.
 #include "tensorflow/core/grappler/optimizers/data/auto_shard.h"
 
 #include <array>
+#include <cstddef>
+#include <cstdint>
+#include <string>
+#include <utility>
+#include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
@@ -181,11 +186,6 @@ constexpr std::array<const char*, 3> kBatchDatasetOps = {
 };
 
 // clang-format on
-
-absl::Status OptimizeGraph(const GrapplerItem& item, int64_t num_workers,
-                           int64_t index, AutoShardPolicy policy,
-                           int64_t num_replicas, GraphDef* output,
-                           AutoShardPolicy* policy_applied);
 
 template <std::size_t SIZE>
 bool IsDatasetNodeOfType(const NodeDef& node,

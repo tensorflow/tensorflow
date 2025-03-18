@@ -23,9 +23,11 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/container/flat_hash_set.h"
+#include "absl/hash/hash_testing.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "xla/autotune_results.pb.h"
 #include "xla/autotuning.pb.h"
@@ -513,6 +515,23 @@ TEST(AutotuneCacheKeyTest, DeviceDescriptionToCacheKey) {
                 device_description("mi200.txtpb")),
             "ROCM: gfx90a, Cores: 110, GPU clock: 1.7 GHz, Memory bandwidth: "
             "1638 GB/s, L2 cache: 8 MB");
+}
+
+TEST(AutotuneCacheKeyTest, VersionIsIncludedInCacheKey) {
+  AutotuneCacheKey key = AutotuneCacheKey("model", "hlo");
+  EXPECT_THAT(key.ToString(),
+              HasSubstr(absl::StrFormat("version=%d", key.GetVersion())));
+}
+
+TEST(AutotuneCacheKeyTest, VersionChangeInvalidateCacheKey) {
+  AutotuneCacheKey key0 = AutotuneCacheKey("model", "hlo", /*version=*/0);
+  AutotuneCacheKey key1 = AutotuneCacheKey("model", "hlo", /*version=*/1);
+  EXPECT_FALSE(key0 == key1);
+  EXPECT_NE(key0.ToString(), key1.ToString());
+  EXPECT_TRUE(absl::VerifyTypeImplementsAbslHashCorrectly({
+      key0,
+      key1,
+  }));
 }
 
 TEST_F(FileBasedCacheTest, AddResultDoesNotWriteTheFileInReadMode) {

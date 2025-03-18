@@ -116,64 +116,66 @@ class Thunk {
   static constexpr auto kDefaultExecutionStreamId = ExecutionStreamId(0);
 
   enum Kind {
-    kDynamicSlice,
+    // # go/keep-sorted start
+    kAllGather,
+    kAllGatherDone,
+    kAllGatherStart,
+    kAllReduce,
+    kAllReduceDone,
+    kAllReduceStart,
+    kAllToAll,
+    kAllToAllDone,
+    kAllToAllStart,
     kCholesky,
+    kCollectiveBroadcast,
+    kCollectiveBroadcastDone,
+    kCollectiveBroadcastStart,
+    kCollectivePermute,
+    kCollectivePermuteDone,
+    kCollectivePermuteStart,
+    kCommandBuffer,
     kConditional,
     kConvolution,
     kConvolutionReorder,
     kCopy,
     kCopyDone,
-    kCommandBuffer,
+    kCuDnn,
     kCubSort,
     kCublasLtMatmul,
     kCustomCall,
     kCustomKernel,
+    kDynamicSlice,
     kFft,
     kGemm,
+    kGroupDone,
+    kGroupStart,
+    kHostRecv,
+    kHostRecvDone,
+    kHostSend,
+    kHostSendDone,
     kInfeed,
     kKernel,
     kMemset32BitValue,
     kMemzero,
-    kNcclAllGather,
-    kNcclAllGatherStart,
-    kNcclAllGatherDone,
-    kNcclAllReduce,
-    kNcclAllReduceStart,
-    kNcclAllReduceDone,
-    kNcclCollectiveBroadcast,
-    kNcclCollectiveBroadcastStart,
-    kNcclCollectiveBroadcastDone,
-    kNcclCollectivePermute,
-    kNcclCollectivePermuteStart,
-    kNcclCollectivePermuteDone,
-    kNcclGroupStart,
-    kNcclGroupDone,
-    kNcclReduceScatter,
-    kNcclReduceScatterStart,
-    kNcclReduceScatterDone,
-    kNcclAllToAll,
-    kNcclAllToAllStart,
-    kNcclAllToAllDone,
-    kNcclRaggedAllToAll,
-    kNcclRaggedAllToAllStart,
-    kNcclRaggedAllToAllDone,
-    kNcclSend,
-    kNcclSendDone,
-    kNcclRecv,
-    kNcclRecvDone,
     kNorm,
     kOutfeed,
     kPartitionId,
+    kRaggedAllToAll,
+    kRaggedAllToAllDone,
+    kRaggedAllToAllStart,
     kRecv,
     kRecvDone,
+    kReduceScatter,
+    kReduceScatterDone,
+    kReduceScatterStart,
     kReplicaId,
-    kSequential,
     kSend,
     kSendDone,
+    kSequential,
     kTriangularSolve,
-    kWhile,
     kWaitForStreams,
-    kCuDnn
+    kWhile
+    // go/keep-sorted end
   };
 
   // TODO(ezhulenev): This should become a part of StreamExecutor library, but
@@ -231,6 +233,11 @@ class Thunk {
 
     // Returns whether the clique is a local clique.
     absl::StatusOr<bool> is_local_clique(const GpuCliqueKey& clique_key) const;
+
+    // Returns whether peer device memory access is possible between all devices
+    // in the clique.
+    absl::StatusOr<bool> peer_access_enabled(
+        const GpuCliqueKey& clique_key) const;
 
     bool empty() const { return cliques_map_.empty(); }
 

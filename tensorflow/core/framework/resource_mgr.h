@@ -234,6 +234,13 @@ class ResourceMgr {
   // Deletes all resources in all containers.
   void Clear();
 
+  // Call `ResourceBase::Finalize` on all resources. Erase resources that are
+  // `nullptr` or whose weak references have expired.
+  //
+  // After calling this method, creating new resources on the same `ResourceMgr`
+  // will fail.
+  void Finalize();
+
   // Returns a text description for all resources.
   std::string DebugString() const;
 
@@ -275,6 +282,7 @@ class ResourceMgr {
   const std::string default_container_;
   mutable mutex mu_;
   absl::flat_hash_map<string, Container*> containers_ TF_GUARDED_BY(mu_);
+  bool finalized_ TF_GUARDED_BY(mu_) = false;
 
   template <typename T, bool use_dynamic_cast = false>
   absl::Status LookupInternal(const std::string& container,

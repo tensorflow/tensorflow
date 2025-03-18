@@ -15,35 +15,37 @@
 #ifndef TENSORFLOW_LITE_EXPERIMENTAL_LITERT_C_LITERT_ENVIRONMENT_H_
 #define TENSORFLOW_LITE_EXPERIMENTAL_LITERT_C_LITERT_ENVIRONMENT_H_
 
-#include "tensorflow/lite/experimental/litert/c/litert_any.h"
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
+#include "tensorflow/lite/experimental/litert/c/litert_environment_options.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif  // __cplusplus
 
-typedef enum {
-  kLiteRtEnvOptionTagCompilerPluginLibraryDir = 0,
-  kLiteRtEnvOptionTagDispatchLibraryDir = 1,
-  kLiteRtEnvOptionTagOpenClDeviceId = 2,
-  kLiteRtEnvOptionTagOpenClPlatformId = 3,
-  kLiteRtEnvOptionTagOpenClContext = 4,
-  kLiteRtEnvOptionTagOpenClCommandQueue = 5,
-} LiteRtEnvOptionTag;
-
-typedef struct {
-  LiteRtEnvOptionTag tag;
-  LiteRtAny value;
-} LiteRtEnvOption;
-
 LITERT_DEFINE_HANDLE(LiteRtEnvironment);
 
 // Create a LiteRT environment with options.
+// Used to set the path of the compiler plugin library and dispatch library.
+//
+// Note: options of kLiteRtEnvOptionTagOpenCl* shouldn't be set with this API.
 LiteRtStatus LiteRtEnvironmentCreate(int num_options,
                                      const LiteRtEnvOption* options,
                                      LiteRtEnvironment* environment);
 
+// Destroy a created LiteRT environment.
 void LiteRtDestroyEnvironment(LiteRtEnvironment environment);
+
+// Get the options that the environment was created with.
+LiteRtStatus LiteRtGetEnvironmentOptions(LiteRtEnvironment environment,
+                                         LiteRtEnvironmentOptions* options);
+
+// Create a LiteRT GPU global environment with options.
+// This API is usually called by the GPU accelerator implementation to set GPU
+// environment options which affect the entire LiteRT runtime.
+//
+// Note: In most cases, users should not call this API directly.
+LiteRtStatus LiteRtGpuGlobalEnvironmentCreate(int num_options,
+                                              const LiteRtEnvOption* options);
 
 #ifdef __cplusplus
 }

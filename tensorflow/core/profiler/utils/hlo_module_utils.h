@@ -20,10 +20,13 @@ limitations under the License.
 #include <cstdint>
 #include <string>
 
+#include "absl/algorithm/container.h"
+#include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/ir/hlo_print_options.h"
 #include "xla/tsl/profiler/convert/xla_op_utils.h"
 
 namespace tensorflow {
@@ -71,7 +74,9 @@ inline std::string UncachedExpression(const xla::HloInstruction* instr,
       new xla::HloPrintOptions(xla::HloPrintOptions()
                                    .set_print_metadata(false)
                                    .set_print_backend_config(false)
-                                   .set_print_infeed_outfeed_config(false));
+                                   .set_print_infeed_outfeed_config(false)
+                                   .set_print_operand_shape(true)
+                                   .set_print_large_constants(false));
   std::string expression = instr->ToString(*hlo_print_options);
   if (expression.size() > max_size) {
     expression.resize(max_size);

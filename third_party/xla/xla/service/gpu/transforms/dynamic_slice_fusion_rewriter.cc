@@ -533,8 +533,7 @@ absl::StatusOr<bool> DynamicSliceFusionRewriter::Run(
   for (HloComputation* computation : module->computations()) {
     if (computation->IsFusionComputation()) continue;
     for (HloInstruction* instr : computation->instructions()) {
-      if ((HloPredicateIsOp<HloOpcode::kReduceScatter>(instr) &&
-           instr->shape().IsArray()) ||
+      if ((HloPredicateIsOp<HloOpcode::kReduceScatter>(instr)) ||
           IsLegacyCublasMatmul(*instr) || IsCustomCall(instr, platform_name_)) {
         UseDefDataflowPaths sliced_operand_paths =
             GetSlicedOperandPaths(instr, call_graph.get());

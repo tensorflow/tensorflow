@@ -19,6 +19,18 @@ include "mlir/IR/OpBase.td"
 include "mlir/Dialect/Func/IR/FuncOps.td"
 include "mlir/IR/PatternBase.td"
 
+
+////////////////////////////////////////////////////////////////////////////////
+///////////////// TENSOR TYPE UTILITIES ////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////
+
+def IsQuantized : Constraint<CPred<
+  "$0.getType().dyn_cast<ShapedType>() && "
+  "$0.getType().dyn_cast<ShapedType>().getElementType()"
+  ".isa<quant::UniformQuantizedType>()">>;
+
+def IsNotQuantized : Constraint<Neg<IsQuantized.predicate>>;
+
 ////////////////////////////////////////////////////////////////////////////////
 ///////////////// TENSOR RANK UTILITIES ////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////
@@ -109,6 +121,9 @@ def OperandsBroadcastToOutputType : Constraint<CPred<
   "TFL::OperandsBroadcastToOutputType($0.getType(), $1.getType(), "
                                      "$2.getType())">>;
 
+def OperandsDontBroadcastToOutputType : Constraint<Neg<
+  OperandsBroadcastToOutputType.predicate>>;
+
 ////////////////////////////////////////////////////////////////////////////////
 ///////////////// TENSOR SHAPE UTILITIES ///////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////
@@ -146,6 +161,9 @@ def IsAllOnesConstant : Constraint<CPred<"TFL::IsAllOnesConstant($0)">>;
 def IsTransposeTrivial : Constraint<CPred<
   "TFL::IsTransposeTrivial($0.getType().cast<ShapedType>().getShape(), $1)">>;
 
+// Constraint that checks if the transpose op is a no-op.
+def IsTransposeNoop : Constraint<CPred<"TFL::IsTransposeNoop($0)">>;
+
 // Constraint that checks if the reshape op is equivalent to a transpose op.
 // This is true if the reshape op is a trivial reshape op, meaning no change in
 // the order of non-identity dimensions.
@@ -179,11 +197,6 @@ def ZeroIntAttr
 class HasRankAtLeast<int n> : Constraint<
     CPred<"$0.getType().cast<ShapedType>().hasRank() && "
           "$0.getType().cast<ShapedType>().getRank() >= " # n>>;
-
-// Checks value is not produced by a TFL_Quant or
-// from TFL_Quant Op with same quant type.
-def NotFromQuantOpOrSameQuantType : Constraint<
-  CPred<"tflite::NotFromQuantOpOrSameQuantType($0,$1)">>;
 
 // Accepts two inputs and check if both have the same element type.
 def SameElementType : Constraint<

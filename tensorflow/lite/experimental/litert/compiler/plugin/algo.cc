@@ -31,14 +31,6 @@
 namespace litert::internal {
 namespace {
 
-void MakeDispatchOp(LiteRtOpT& op) {
-  ABSL_DCHECK(op.Inputs().empty());
-  ABSL_DCHECK(op.Outputs().empty());
-  op.SetOpCode(kLiteRtOpCodeTflCustom);
-  detail::SetTflOpCodeInd(op, detail::kDispatchOpCodeTflInd);
-  op.ClearCustomOptions();
-}
-
 //
 // flatlist to partition(s)
 //===----------------------------------------------------------------------===//
@@ -258,6 +250,8 @@ LiteRtOp GraphSlicer::SlicePartitionFromGraph(
   // topological order.
   slicer.dispatch_op_ = partition.back();
 
+  ABSL_DCHECK(slicer.dispatch_op_->Inputs().empty());
+  ABSL_DCHECK(slicer.dispatch_op_->Outputs().empty());
   MakeDispatchOp(*slicer.dispatch_op_);
   slicer.RerouteTensorsThroughCustomOp(root);
 

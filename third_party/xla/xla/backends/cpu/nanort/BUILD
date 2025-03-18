@@ -1,6 +1,7 @@
 load("//xla:xla.bzl", "xla_cc_test")
 load("//xla/backends/cpu/nanort:package_groups.bzl", "xla_cpu_nanort_packages")
 load("//xla/tsl:tsl.bzl", "internal_visibility")
+load("//xla/tsl/platform/default:rules_cc.bzl", "cc_library")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -34,7 +35,6 @@ cc_library(
         "//xla/tsl/platform:logging",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/status:statusor",
-        "@local_tsl//tsl/platform:env",
         "@local_tsl//tsl/profiler/lib:traceme",
         "@local_tsl//tsl/profiler/lib:traceme_encode",
     ],
@@ -46,6 +46,9 @@ xla_cc_test(
     deps = [
         ":nanort_client",
         ":nanort_executable",
+        "//xla:array2d",
+        "//xla:literal",
+        "//xla:literal_util",
         "//xla:shape_util",
         "//xla:xla_data_proto_cc",
         "//xla/backends/cpu:alignment",
@@ -65,6 +68,8 @@ xla_cc_test(
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/types:span",
+        "@eigen_archive//:eigen3",
     ],
 )
 
@@ -80,6 +85,8 @@ cc_library(
         "//xla:util",
         "//xla/backends/cpu:alignment",
         "//xla/backends/cpu/runtime:buffer_allocations",
+        "//xla/backends/cpu/runtime:function_library",
+        "//xla/backends/cpu/runtime:thread_pool_task_runner",
         "//xla/backends/cpu/runtime:thunk",
         "//xla/hlo/ir:hlo",
         "//xla/service:buffer_assignment",
@@ -89,7 +96,6 @@ cc_library(
         "//xla/service/cpu:cpu_executable",
         "//xla/stream_executor:device_memory",
         "//xla/tsl/concurrency:async_value",
-        "//xla/tsl/platform:env",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:logging",
         "//xla/tsl/platform:statusor",
@@ -101,7 +107,7 @@ cc_library(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:span",
-        "@llvm-project//llvm:Support",
+        "@eigen_archive//:eigen3",
         "@local_tsl//tsl/platform:casts",
         "@local_tsl//tsl/platform:platform_port",
         "@local_tsl//tsl/profiler/lib:traceme",

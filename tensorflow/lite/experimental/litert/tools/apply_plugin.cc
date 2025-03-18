@@ -319,7 +319,7 @@ LiteRtStatus Partition(Context& ctx) {
   DumpPartitionResult(ctx.Dump(), *partition_result);
 
   auto& new_subgraphs = partition_result->second;
-  model.TransferSubgraphs(std::move(new_subgraphs));
+  model.TransferSubgraphsFrom(std::move(new_subgraphs));
 
   ctx.Dump().Start("Serializing model");
   auto serialized = SerializeModel(std::move(model));

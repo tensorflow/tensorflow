@@ -19,6 +19,8 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
+#include "xla/pjrt/pjrt_client.h"
 #include "xla/tsl/concurrency/ref_count.h"
 
 namespace xla {
@@ -36,7 +38,12 @@ PjRtRawBuffer::CreateRawAliasOfBuffer(PjRtBuffer* buffer) {
       return *res;
     }
   }
-  return absl::UnimplementedError("CreateRawAliasOfBuffer not implemented.");
+  if (buffer == nullptr) {
+    return absl::InvalidArgumentError("Cannot create view of null buffer.");
+  }
+  return absl::UnimplementedError(
+      absl::StrCat("CreateRawAliasOfBuffer not implemented for: ",
+                   buffer->client()->platform_version()));
 }
 
 RegisterRawBufferFactory::RegisterRawBufferFactory(

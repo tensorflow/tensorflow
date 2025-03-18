@@ -8,8 +8,8 @@ overwrite {
 }
 scatter {
   %operand = f32[10,5]  parameter(0)
-  %indices = s32[3,1] parameter(1)
-  %update = f32[3,2,3] parameter(2)
+  %indices = s32[3,1] constant({{1}, {3}, {5}})
+  %update = f32[3,2,3] parameter(1)
 
   ROOT %scatter = f32[10,5] scatter(
       f32[10,5] %operand,
@@ -25,7 +25,7 @@ scatter {
 }
 // CHECK-LABEL: func.func @main(
 // CHECK-SAME:    %[[OPERAND:[a-zA-Z0-9]*]]: tensor<10x5xf32>
-// CHECK-SAME:    %[[INDICES:[a-zA-Z0-9]*]]: tensor<3x1xi32>
+
 // CHECK-SAME:    %[[UPDATES:[a-zA-Z0-9]*]]: tensor<3x2x3xf32>
 // CHECK-SAME:    %[[OUT:[a-zA-Z0-9]*]]: tensor<10x5xf32>
 

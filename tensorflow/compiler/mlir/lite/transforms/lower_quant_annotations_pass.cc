@@ -411,6 +411,12 @@ void LowerQuantAnnotationsPass::runOnOperation() {
         if (!mhlo_op) {
           return true;
         }
+        // DRQ fake quant survives this pass to be later fused into the DRQ
+        // kernel. We cannot lower this to Q-DQ since scale/zero_point are
+        // unknown.
+        if (IsDrqFakeQuant(mhlo_op)) {
+          return true;
+        }
         return mhlo_op.getName() != "quant.quantize" &&
                mhlo_op.getName() != "quant.dequantize" &&
                mhlo_op.getName() != "quant.fake_quant";

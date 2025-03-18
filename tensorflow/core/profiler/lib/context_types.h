@@ -20,11 +20,6 @@ limitations under the License.
 #include "absl/base/macros.h"
 #include "tsl/profiler/lib/context_types.h"
 
-// TODO: b/323943471 - This macro should eventually be provided by Abseil.
-#ifndef ABSL_DEPRECATE_AND_INLINE
-#define ABSL_DEPRECATE_AND_INLINE()
-#endif
-
 namespace tensorflow {
 namespace profiler {
 

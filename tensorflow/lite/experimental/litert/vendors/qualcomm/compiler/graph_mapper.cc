@@ -17,6 +17,7 @@
 #include <alloca.h>
 #include <stdio.h>
 
+#include <array>
 #include <cstdint>
 
 #include "absl/container/flat_hash_map.h"
@@ -29,7 +30,6 @@
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
 #include "tensorflow/lite/experimental/litert/c/litert_logging.h"
 #include "tensorflow/lite/experimental/litert/c/litert_model.h"
-#include "tensorflow/lite/experimental/litert/cc/litert_element_type.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_macros.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_model.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/common.h"
@@ -38,38 +38,62 @@
 
 namespace litert::qnn {
 
-// Get empty configurations for graph building.
-inline absl::Span<const QnnGraph_Config_t*> GetFp32GraphConfigs() {
-  static QnnHtpGraph_CustomConfig_t htp_graph_config =
-      QNN_HTP_GRAPH_CUSTOM_CONFIG_INIT;
-  htp_graph_config.option = QNN_HTP_GRAPH_CONFIG_OPTION_PRECISION;
-  htp_graph_config.precision = QNN_PRECISION_FLOAT16;
+inline absl::Span<const QnnGraph_Config_t*> GetDefaultGraphConfigs() {
+  static std::array<QnnHtpGraph_CustomConfig_t, 2> graph_custom_configs;
+  // QNN suggest always enable relax precision.
+  graph_custom_configs[0] = QNN_HTP_GRAPH_CUSTOM_CONFIG_INIT;
+  graph_custom_configs[0].option = QNN_HTP_GRAPH_CONFIG_OPTION_PRECISION;
+  graph_custom_configs[0].precision = QNN_PRECISION_FLOAT16;
+  // Default use O3 for now.
+  graph_custom_configs[1] = QNN_HTP_GRAPH_CUSTOM_CONFIG_INIT;
+  graph_custom_configs[1].option = QNN_HTP_GRAPH_CONFIG_OPTION_OPTIMIZATION;
+  graph_custom_configs[1].optimizationOption.type =
+      QNN_HTP_GRAPH_OPTIMIZATION_TYPE_FINALIZE_OPTIMIZATION_FLAG;
+  // Change to 2 if you want to use O2 (default).
+  graph_custom_configs[1].optimizationOption.floatValue = 3;
 
-  static QnnGraph_Config_t graph_config = QNN_GRAPH_CONFIG_INIT;
-  graph_config.option = QNN_GRAPH_CONFIG_OPTION_CUSTOM;
-  graph_config.customConfig = &htp_graph_config;
+  static std::array<QnnGraph_Config_t, 2> graph_configs;
+  graph_configs[0] = QNN_GRAPH_CONFIG_INIT;
+  graph_configs[0].option = QNN_GRAPH_CONFIG_OPTION_CUSTOM;
+  graph_configs[0].customConfig = &graph_custom_configs[0];
 
-  static const QnnGraph_Config_t* configs[2] = {&graph_config, nullptr};
-  return absl::MakeSpan(configs);
+  graph_configs[1] = QNN_GRAPH_CONFIG_INIT;
+  graph_configs[1].option = QNN_GRAPH_CONFIG_OPTION_CUSTOM;
+  graph_configs[1].customConfig = &graph_custom_configs[1];
+
+  static std::array<const QnnGraph_Config_t*, 3> result = {
+      &graph_configs[0], &graph_configs[1], nullptr};
+
+  return absl::MakeSpan(result.data(), result.size());
 }
 
-inline absl::Span<const QnnGraph_Config_t*> GetDefaultGraphConfigs() {
-  static const QnnGraph_Config_t* configs[] = {nullptr};
-  return absl::MakeSpan(configs);
+inline absl::Span<const QnnGraph_Config_t*> GetLegacyGraphConfigs() {
+  static QnnHtpGraph_CustomConfig_t graph_custom_config;
+  // Default use O3 for now.
+  graph_custom_config = QNN_HTP_GRAPH_CUSTOM_CONFIG_INIT;
+  graph_custom_config.option = QNN_HTP_GRAPH_CONFIG_OPTION_OPTIMIZATION;
+  graph_custom_config.optimizationOption.type =
+      QNN_HTP_GRAPH_OPTIMIZATION_TYPE_FINALIZE_OPTIMIZATION_FLAG;
+  // Change to 2 if you want to use O2 (default).
+  graph_custom_config.optimizationOption.floatValue = 3;
+
+  static QnnGraph_Config_t graph_config;
+  graph_config = QNN_GRAPH_CONFIG_INIT;
+  graph_config.option = QNN_GRAPH_CONFIG_OPTION_CUSTOM;
+  graph_config.customConfig = &graph_custom_config;
+
+  static std::array<const QnnGraph_Config_t*, 2> result = {&graph_config,
+                                                           nullptr};
+
+  return absl::MakeSpan(result.data(), result.size());
 }
 
 absl::Span<const QnnGraph_Config_t*> GraphMapper::PickGraphConfigHeuristic() {
-  for (const auto& input : subgraph_.Inputs()) {
-    if (input.ElementType() == ElementType::Float32) {
-      return GetFp32GraphConfigs();
-    }
+  if (qnn_.IsLegacySocModel()) {
+    return GetLegacyGraphConfigs();
+  } else {
+    return GetDefaultGraphConfigs();
   }
-  for (const auto& output : subgraph_.Outputs()) {
-    if (output.ElementType() == ElementType::Float32) {
-      return GetFp32GraphConfigs();
-    }
-  }
-  return GetDefaultGraphConfigs();
 }
 
 LiteRtStatus GraphMapper::AssignTensorName(Qnn_Tensor_t& qnn_tensor) {

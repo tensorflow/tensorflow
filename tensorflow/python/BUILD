@@ -172,8 +172,6 @@ py_strict_library(
         "//tensorflow/python/dlpack",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/eager:monitoring",
-        "//tensorflow/python/eager:profiler",
-        "//tensorflow/python/eager:profiler_client",
         "//tensorflow/python/eager:remote",
         "//tensorflow/python/framework:_pywrap_python_op_gen",
         "//tensorflow/python/framework:_test_metrics_util",
@@ -971,6 +969,7 @@ pywrap_aware_filegroup(
         "//tensorflow/compiler/aot:tfcompile_lib",  # tfcompile
         "@local_xla//xla:status_macros",  # tfcompile
         "@local_xla//xla/hlo/ir:hlo",  # tfcompile
+        "@local_xla//xla/tsl/concurrency:async_value",  # tfcompile
     ]),
     visibility = ["//visibility:private"],
 )
@@ -1253,6 +1252,7 @@ tf_python_pybind_extension(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:optional",
+        "@dlpack",
         "@pybind11",
         # copybara:uncomment "@pybind11_protobuf//pybind11_protobuf:native_proto_caster",
     ] + if_pywrap(

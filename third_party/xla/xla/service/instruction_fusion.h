@@ -277,11 +277,6 @@ class InstructionFusion : public HloModulePass {
     is_expensive_ = is_expensive;
   }
 
-  // Whether multi-output fusion would introduce a cycle into the HLO graph.
-  bool MultiOutputFusionCreatesCycle(HloInstruction* producer,
-                                     HloInstruction* consumer,
-                                     const HloReachabilityMap& reachability);
-
   FusionConfigCollection config_collection_mode() {
     return config_collection_mode_;
   }

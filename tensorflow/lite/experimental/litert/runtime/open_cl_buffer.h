@@ -26,8 +26,8 @@
 #include "tensorflow/lite/experimental/litert/runtime/opencl/buffer.h"
 #include "tensorflow/lite/experimental/litert/runtime/opencl/opencl_wrapper.h"
 
-namespace litert {
-namespace internal {
+namespace litert::internal {
+
 /**
  * The OpenCL buffer class that provides GPU memory allocation and two-way sync
  * between the CPU memory and the GPU OpenCL buffer.
@@ -75,6 +75,7 @@ class OpenClBuffer {
 
   static bool IsSupported();
   static Expected<OpenClBuffer> Alloc(size_t bytes_size);
+  size_t size_bytes() const { return size_; }
 
  private:
   absl::Mutex mutex_;
@@ -86,7 +87,6 @@ class OpenClBuffer {
   size_t size_ = 0;
 };
 
-}  // namespace internal
-}  // namespace litert
+}  // namespace litert::internal
 
 #endif  // TENSORFLOW_LITE_EXPERIMENTAL_LITERT_RUNTIME_OPEN_CL_BUFFER_H_

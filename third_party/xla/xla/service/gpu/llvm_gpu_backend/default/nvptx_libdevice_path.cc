@@ -15,6 +15,7 @@ limitations under the License.
 #include "absl/base/const_init.h"
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/log/log.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/service/gpu/llvm_gpu_backend/nvptx_utils.h"

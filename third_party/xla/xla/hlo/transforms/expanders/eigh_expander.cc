@@ -204,7 +204,7 @@ void PermuteRowsInColumn(XlaOp& top, XlaOp& bottom) {
   if (k <= 1) {
     return;
   }
-  int ndim = shape.dimensions_size();
+  int ndim = shape.rank();
   std::tie(top, bottom) =
       std::make_tuple(ConcatInDim(builder,
                                   {SliceInMinorDims(top, {0, 0}, {1, k}),
@@ -224,7 +224,7 @@ void PermuteColumnsInRow(XlaOp& left, XlaOp& right) {
   if (k <= 1) {
     return;
   }
-  int ndim = shape.dimensions_size();
+  int ndim = shape.rank();
   std::tie(left, right) =
       std::make_tuple(ConcatInDim(builder,
                                   {SliceInMinorDims(left, {0}, {1}),

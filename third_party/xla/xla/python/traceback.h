@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_PYTHON_TRACEBACK_H_
 #define XLA_PYTHON_TRACEBACK_H_
 
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <string>
@@ -102,6 +103,27 @@ H AbslHashValue(H h, const Traceback& traceback) {
 }
 
 void BuildTracebackSubmodule(nanobind::module_& m);
+
+// TODO(b/318709106): This is a temporary solution to propagate a hint to
+// backends that the current traceback does not change within the scope.
+// This should be removed once context propagation from IFRT API is
+// implemented.
+
+// A scope that caches the current traceback cache id in thread_local storage.
+// This is used as a hint for the backend that the current Traceback does not
+// change within the scope.
+class TracebackCacheScope {
+ public:
+  TracebackCacheScope();
+  ~TracebackCacheScope();
+
+ private:
+  uint64_t id_;
+  uint64_t previous_id_;
+};
+
+// Returns the current traceback cache id.
+uint64_t CurrentTracebackCacheId();
 
 }  // namespace xla
 

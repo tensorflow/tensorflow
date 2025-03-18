@@ -24,7 +24,10 @@ def sdy_round_trip_import_shardings(
     module: ir.module
 ) -> str: ...
 
-
 def get_mesh(
     module: ir.module
 ) -> tuple[tuple[str, int], ...]: ...
+
+def lowered_with_shardy(
+    module: ir.module
+) -> bool: ...

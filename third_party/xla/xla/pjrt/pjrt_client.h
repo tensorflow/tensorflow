@@ -594,13 +594,23 @@ class PjRtClient {
   }
 
   // Compile `computation` with given `options`.
+  // ABSL_DEPRECATED("Use CompileAndLoad() below instead")
   virtual absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> Compile(
       const XlaComputation& computation, CompileOptions options) {
-    return Unimplemented("Compile with options is not supported.");
+    return CompileAndLoad(computation, options);
+  }
+  virtual absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> CompileAndLoad(
+      const XlaComputation& computation, CompileOptions options) {
+    return Unimplemented("Compile with XlaComputation is not supported.");
   }
 
   // Variant of `Compile` that accepts an MLIR module.
+  // ABSL_DEPRECATED("Use CompileAndLoad() below instead")
   virtual absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> Compile(
+      mlir::ModuleOp module, CompileOptions options) {
+    return CompileAndLoad(module, options);
+  }
+  virtual absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> CompileAndLoad(
       mlir::ModuleOp module, CompileOptions options) {
     return Unimplemented("Compile with MLIR Module is not supported.");
   }
@@ -1257,20 +1267,6 @@ class PjRtBuffer {
   // valid (will not transition to error as a consequence of buffer deletion)
   // even if the buffer is subsequently donated or deleted.
   virtual PjRtFuture<> GetReadyFuture() = 0;
-
-  // Blocks the host until the buffer's value has been computed and is ready for
-  // immediate use on the device. Useful in particular for timing benchmarks.
-  ABSL_DEPRECATED("Use GetReadyFuture().Await() instead")
-  absl::Status BlockHostUntilReady() {
-    auto s = GetReadyFuture().Await();
-    // Fix up error string because some clients rely on it.
-    if (!s.ok() &&
-        s.message() == "GetReadyFuture() called on deleted or donated buffer") {
-      return InvalidArgument(
-          "BlockHostUntilReady() called on deleted or donated buffer");
-    }
-    return s;
-  }
 
   // Whether this buffer is on CPU and thus allows for certain optimizations.
   virtual bool IsOnCpu() const = 0;

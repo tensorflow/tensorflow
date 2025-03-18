@@ -59,6 +59,16 @@ bool IsDynamicUpdateSliceFusion(const HloFusionAnalysis& analysis) {
 
 std::optional<std::unique_ptr<FusionInterface>> HloFusionInfo::GetCopyFusion()
     const {
+  if (analysis().GetEmitterFusionKind() ==
+      HloFusionAnalysis::EmitterFusionKind::kDynamicMemcpy) {
+    auto dynamic_memcpy =
+        DynamicMemcpyFusion::GetMemcpyDescriptorForFusion(*instr_, call_graph_);
+    if (dynamic_memcpy) {
+      return std::make_unique<DynamicMemcpyFusion>(
+          analysis(), buffer_assignment_, std::move(*dynamic_memcpy));
+    }
+  }
+
   for (const HloInstructionAdaptor& root_adaptor : analysis().fusion_roots()) {
     const HloInstruction* root = &root_adaptor.instruction();
     if (root->opcode() != HloOpcode::kCopy ||
@@ -104,6 +114,7 @@ std::unique_ptr<FusionInterface> GetFusionEmitter(
     }
     case HloFusionAnalysis::EmitterFusionKind::kInputSlices:
       return std::make_unique<InputSlicesFusion>(analysis);
+    case HloFusionAnalysis::EmitterFusionKind::kDynamicMemcpy:
     case HloFusionAnalysis::EmitterFusionKind::kLoop: {
       if (IsDynamicUpdateSliceFusion(analysis) &&
           fusion_info.CanEmitDynamicUpdateSliceInPlace()) {

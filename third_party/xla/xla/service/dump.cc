@@ -80,7 +80,8 @@ absl::Status CreateDirIfNeeded(const std::string& dir, tsl::Env* env) {
     if (!status.ok()) {
       status = env->IsDirectory(dir);
       if (!status.ok()) {
-        LOG(ERROR) << "Could not create directory " << dir;
+        LOG(ERROR) << "Could not create directory: " << dir
+                   << ". Error: " << status;
         return status;
       }
     }

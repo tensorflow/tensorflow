@@ -393,6 +393,44 @@ TEST_F(HloConstantFoldingTest,
   EXPECT_FALSE(result);
 }
 
+TEST_F(HloConstantFoldingTest, ConstantFoldCopyOp) {
+  // Replace %copy.3 with %constant.2
+  const char* const kModuleStr = R"(
+  HloModule m
+  ENTRY main {
+    %p0 = f32[] parameter(0)
+    %constant.2 = f32[] constant(0)
+    ROOT %copy.3 = f32[] copy(f32[] %constant.2)
+  })";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kModuleStr));
+  HloConstantFolding constant_folding;
+  TF_ASSERT_OK_AND_ASSIGN(bool result,
+                          RunHloPass(&constant_folding, module.get()));
+  EXPECT_TRUE(result);
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              GmockMatch(m::Constant()));
+}
+
+TEST_F(HloConstantFoldingTest, DontFoldCopyOp_NonSafelyRemovableOp) {
+  // copy.3 is not SafelyRemovable (has control-predecessors)
+  // Skip ConstantFolding
+  const char* const kModuleStr = R"(
+  HloModule m
+  ENTRY main {
+    %p0 = f32[] parameter(0)
+    %copy.1 = f32[] copy(f32[] %p0)
+    %constant.2 = f32[] constant(0)
+    ROOT %copy.3 = f32[] copy(f32[] %constant.2), control-predecessors={%copy.1}
+  })";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kModuleStr));
+  HloConstantFolding constant_folding;
+  TF_ASSERT_OK_AND_ASSIGN(bool result,
+                          RunHloPass(&constant_folding, module.get()));
+  EXPECT_FALSE(result);
+}
+
 TEST_F(HloConstantFoldingTest, FoldOpsWhereOneOperandIsBroadcast) {
   const char* const kModuleStr = R"(
   HloModule test

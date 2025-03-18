@@ -1,4 +1,4 @@
-# Using XLA tooling
+# XLA Tooling
 
 The XLA development workflow is usually centered around
 [HLO](./operation_semantics) IR, which represents isolated functional
@@ -19,7 +19,11 @@ $ XLA_FLAGS=--xla_dump_to=/tmp/myfolder ./myprogram-entry-point
 which stores all before-optimization HLO files in the folder specified, along
 with many other useful artifacts.
 
-## Running HLO snippets: `run_hlo_module`
+## [`run_hlo_module`] Run HLO Modules
+
+```
+bazel run //xla/tools:run_hlo_module -- [flags] <filename>
+```
 
 The tool `run_hlo_module` operates on pre-optimization HLO, and by default
 bundles compilation, running and comparison with the reference interpreter
@@ -27,33 +31,47 @@ implementation. For example, the usual invocation to run an input file
 `computation.hlo` on an NVIDIA GPU and to check it for correctness is:
 
 ```
-$ run_hlo_module --platform=CUDA --reference_platform=Interpreter computation.hlo
+run_hlo_module --platform=CUDA --reference_platform=Interpreter computation.hlo
 ```
 
-As with all the tools, `--help` can be used to obtain the full list of options.
+### Run Multiple HLO Modules
+Invocation with multiple HLO modules is supported for `run_hlo_module`. To run
+all hlo modules from a directory:
 
-## Running HLO snippets with SPMD support: `multihost_hlo_runner`
+```
+bazel run //xla/tools:run_hlo_module -- [flags] /dump/*before_optimizations*
+```
+
+## [`multihost_hlo_runner`] Run HLO Modules With SPMD Support
+
+```
+# Note: Binary name is `hlo_runner_main`.
+bazel run //xla/tools/multihost_hlo_runner:hlo_runner_main -- [flags] <filename>
+```
 
 Multihost HLO runner is a very similar tool, with the caveat that it supports
 SPMD, including cross host communication. See
 [Multi-Host HLO Runner](./tools_multihost_hlo_runner) for details.
 
-## Multi-HLO replay
+### Run Multiple HLO Modules With SPMD Support
 
-Invocation with multiple modules is supported for both `run_hlo_module` and
-`hlo_runner_main`, which is often convenient to replay all modules in a dump
-directory:
+Similar to `run_hlo_module`, `multihost_hlo_runner` also supports invocation
+with multiple modules.
 
-```shell
-$ hlo_runner_main /dump/*before_optimizations*
+```
+bazel run //xla/tools/multihost_hlo_runner:hlo_runner_main -- [flags] /dump/*before_optimizations*
 ```
 
-## Running passes/stages of HLO compilation: `hlo-opt`
+## [`hlo-opt`] Compile HLO Module
+
+```
+bazel run //xla/tools:hlo-opt -- --platform=[gpu|cpu|...] [more flags] <filename>
+```
 
 When debugging or understanding the workings of the compiler, it is often useful
 to get the expansion for a particular hardware at a particular point in the
-pipeline (be it HLO, optimized HLO, TritonIR or LLVM), for a given (Stable) HLO
-input.
+pipeline (be it HLO, optimized HLO, TritonIR or LLVM), for a given HLO or
+StableHLO input.
 
 `hlo-opt` supports multiple output stages: be it PTX, HLO after optimizations,
 LLVM IR before optimizations, or TritonIR. The exact set of stages supported
@@ -61,9 +79,14 @@ depends on the platform (as e.g. PTX is NVIDIA-specific), and can be seen using
 the --list-stages command:
 
 ```
-$ hlo-opt --platform=CUDA --list-stages
+hlo-opt --platform=CUDA --list-stages
+buffer-assignment
 hlo
+hlo-backend
+html
 llvm
+llvm-after-optimizations
+llvm-before-optimizations
 ptx
 ```
 
@@ -71,25 +94,23 @@ After selecting a stage, the user can write the result of the conversion for a
 given platform to a given stream:
 
 ```
-$ hlo-opt myinput.hlo --platform=CUDA --stage=llvm
+hlo-opt --platform=cpu --stage=hlo input.hlo
 ```
 
 which would print the dump to stdout (or to a given file if `-o` was specified).
 
-### Deviceless Usage
+### Deviceless Compilation for GPU
 
-Access to a GPU is not needed for most of the compilation, and by specifying a
-GPU spec on the command line we can get e.g. PTX output without access to an
-accelerator:
+Deviceless compilation do not need access to a GPU. The Deviceless Compilation
+provides a way to specify GPU spec on the command line
+(`--xla_gpu_target_config_filename`) for stages where access to GPU is required,
+eliminating a need for GPU device.
+
+Example: PTX output without access to a gpu device:
 
 ```
-$ hlo-opt  --platform=CUDA --stage=llvm  --xla_gpu_target_config_filename=(pwd)/tools/data/gpu_specs/a100_pcie_80.txtpb input.hlo
+hlo-opt  --platform=CUDA --stage=llvm  --xla_gpu_target_config_filename=/xla/tools/hlo_opt/gpu_specs/a100_pcie_80.txtpb input.hlo
 ```
-
-Note: For the above invocation to work, the user would usually either need to
-disable autotuning with `--xla_gpu_autotune_level=0` or load a pre-existing
-autotuning results with `--xla_gpu_load_autotune_results_from=<filename>`
-(obtained with `--xla_gpu_dump_autotune_results_to=<filename>`).
 
 Specs for popular GPUs are shipped with the compiler, and the provided file is
 string serialization of `device_description.proto`:
@@ -117,12 +138,20 @@ gpu_device_info {
 }
 platform_name: "CUDA"
 ```
+More GPU specs are located at `/xla/tools/hlo_opt/gpu_specs`
 
-Deviceless compilation might run into issues if autotuning is required. Luckily,
-we can also provide those on the command line:
+#### Autotuning
+
+Sometimes compilation may involve autotuning based on a compilation `--stage`.
+For the deviceless compilation to work, the user either need to \
+**disable** autotuning with `--xla_gpu_autotune_level=0`\
+or\
+**load a pre-existing autotuning results** with
+`--xla_gpu_load_autotune_results_from=<filename>` (obtained with
+`--xla_gpu_dump_autotune_results_to=<filename>`).
 
 ```
-$ hlo-opt  --platform=CUDA --stage=llvm  --xla_gpu_target_config_filename=gpu_specs/a100_pcie_80.txtpb --xla_gpu_load_autotune_results_from=results.textpb input.hlo
+hlo-opt  --platform=CUDA --stage=llvm  --xla_gpu_target_config_filename=gpu_specs/a100_pcie_80.txtpb --xla_gpu_load_autotune_results_from=results.textpb input.hlo
 ```
 
 The autotune file is text serialization of `autotune_results.proto`, with
@@ -150,13 +179,115 @@ results {
 ```
 
 The autotuning database can be serialized using
-`XLA_FLAGS=--xla_gpu_dump_autotune_results_t=<myfile.pbtxt>`
+`XLA_FLAGS=--xla_gpu_dump_autotune_results_to=<myfile.pbtxt>`
 
-### Running a Single Compiler Pass
-
-The flags from `XLA_FLAGS` are also supported, so the tool can be used to test
-running a single pass:
+## [`hlo-opt`] HLO Pass Development And Debugging
 
 ```
-$ hlo-opt --platform=CUDA --stage=hlo --passes=algebraic_simplifer input.hlo
+# If you are working with hardware independent passes from the
+# `xla/hlo/transforms/` directory, prefer light-weight version
+# of the `hlo-opt` tool with fewer dependencies:
+
+bazel run //xla/hlo/tools:hlo-opt -- [flags] <filename>
+
+# Otherwise, for hardware independent and CPU, GPU passes use
+# the same binary from "Compile HLO Modules" section above:
+
+bazel run //xla/tools:hlo-opt -- [flags] <filename>
+```
+
+The `hlo-opt` tool allows execution of an individual passes
+independent of the given platform compilation stages. This isolation helps to
+quickly run passes on input hlo module and pinpoint the root cause of failures.
+
+```
+hlo-opt --passes=schedule-aware-collective-cse input.hlo
+```
+
+Note: `--platform` option is not required.
+
+`hlo-opt` tool also supports [`DebugOptions XLA_FLAGS`](https://github.com/openxla/xla/blob/5bf1e6420d250dce5eb840889096bdf8aad6f432/xla/xla.proto#L40-L1197).
+
+```
+hlo-opt --passes=schedule-aware-collective-cse
+--xla_gpu_experimental_collective_cse_distance_threshold=20 input.hlo
+```
+
+Use`--list-passes` option to get the pass name string.
+
+```
+hlo-opt --list-passes
+```
+
+Users can create their own custom pipeline by specifying more than one passes
+to `--passes` option.
+
+```
+hlo-opt --passes=pass1,pass2,pass3 input.hlo
+```
+
+### Assist New HLO Pass Development
+
+1. First, write your pass.
+1. Register the new pass to the `hlo-opt` tool pass registry.
+
+    ```
+    RegisterPass<FooPass>(FooPassInputOptions)
+    ```
+
+    Based on the pass type, choose one of the following locations for
+    registration:\
+    [`opt_lib.cc`](https://github.com/openxla/xla/blob/5d015a2ddfcf4f40934a33891dc63471704f221d/xla/hlo/tools/hlo_opt/opt_lib.cc)
+    Hardware-independent passes.\
+    [`cpu_opt.cc`](https://github.com/openxla/xla/blob/5d015a2ddfcf4f40934a33891dc63471704f221d/xla/tools/hlo_opt/cpu_opt.cc)
+    CPU specific passes.\
+    [`gpu_opt.cc`](https://github.com/openxla/xla/blob/5d015a2ddfcf4f40934a33891dc63471704f221d/xla/tools/hlo_opt/gpu_opt.cc)
+    GPU specific passes.\
+    [`compiled_opt.cc`](https://github.com/openxla/xla/blob/5d015a2ddfcf4f40934a33891dc63471704f221d/xla/tools/hlo_opt/compiled_opt_lib.cc)
+    Passes common to CPU, GPU, XPU.\
+    Don't forget to add build dependency.
+
+    Include pass registration as part of your PR([example](https://github.com/openxla/xla/pull/22968/files#diff-e37a0ea999dfc5764d624240cd2edebb8b7ee4e6d91686be89c632dd7203b823)) so that the pass will be
+    available to use for all `hlo-opt` users.
+
+1. Rebuild the `hlo-opt` tool, validate successful pass registration using
+   `--list-passes` option and then use `--passes` option to run the pass.
+
+    ```
+    $ hlo-opt --passes=foo-pass input.hlo
+    ```
+
+1. Writing unit tests for the pass? refer https://openxla.org/xla/test_hlo_passes for more details.
+
+### Pass Runtime Measurement
+
+For large models, full compilation runs can take upto few minutes, making it
+challenging to detect subtle performance regressions. In contrast, individual
+pass runs using `hlo-opt` allow for precise
+performance measurement and the easy detection of even small increases in
+execution time caused by new code changes.
+
+```
+time hlo-opt --passes=reduce-window-rewriter,scatter_simplifier
+--xla_reduce_window_rewrite_base_length=128 input.hlo
+```
+
+## [`hlo-opt`] Convert HLO Module Formats
+
+```
+# Use the light weight version of the `hlo-opt` tool.
+
+bazel run //xla/hlo/tools:hlo-opt -- [flags] <filename>
+```
+
+#### Convert `HLO Text` -> `HLO Proto`
+
+```
+hlo-opt --emit-proto input.hlo
+```
+
+#### Convert `HLO Proto` or `HLO Proto Binary` -> `HLO Text`
+
+```
+hlo-opt input.pbtxt or input.pb
 ```

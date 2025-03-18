@@ -1681,11 +1681,23 @@ void FixAllocationSequenceAfterPostAllocationTransformation(
 
   // (2)
   for (auto& allocation : *allocations) {
+    std::vector<HloUse> uses_to_update;
     for (const HloUse& use : allocation->uses()) {
-      auto new_use_it = transformation_info.update_use_map.find(use);
-      if (new_use_it != transformation_info.update_use_map.end()) {
-        allocation->RemoveUse(use);
-        allocation->AddUse(new_use_it->second);
+      for (const auto& [old_use, new_use] :
+           transformation_info.update_use_map) {
+        if (use == old_use) {
+          uses_to_update.push_back(old_use);
+          break;  // found the use, no need to keep searching update_use_map
+        }
+      }
+    }
+
+    // Perform update uses
+    if (!uses_to_update.empty()) {
+      for (const HloUse& old_use : uses_to_update) {
+        const HloUse& new_use = transformation_info.update_use_map.at(old_use);
+        allocation->RemoveUse(old_use);
+        allocation->AddUse(new_use);
       }
     }
   }
@@ -2028,7 +2040,6 @@ absl::StatusOr<HeapSimulator::Result<HloValue>> MsaAlgorithm::Finish() {
   // Run post allocation transformation and fix the allocation sequence if
   // needed.
   if (options_.post_allocation_transformation_fn) {
-    PostAllocationTransformationUpdate all_changes;
     VLOG(3) << "Running post allocation transformation on module";
     for (HloComputation* comp : alias_analysis_.dataflow_analysis()
                                     .module()
@@ -2056,24 +2067,19 @@ absl::StatusOr<HeapSimulator::Result<HloValue>> MsaAlgorithm::Finish() {
           }
           for (HloInstruction* user : operand->users()) {
             if (HloDataflowAnalysis::IsInPlaceOperation(user->opcode())) {
-              continue;
+              break;
             }
           }
         }
 
         TF_ASSIGN_OR_RETURN(PostAllocationTransformationUpdate changes,
                             options_.post_allocation_transformation_fn(instr));
-        all_changes.to_be_removed.insert(all_changes.to_be_removed.end(),
-                                         changes.to_be_removed.begin(),
-                                         changes.to_be_removed.end());
-        all_changes.update_use_map.insert(changes.update_use_map.begin(),
-                                          changes.update_use_map.end());
+        VLOG(3) << "Post allocation transformation info: \n"
+                << changes.ToString();
+        FixAllocationSequenceAfterPostAllocationTransformation(allocations_,
+                                                               changes);
       }
     }
-    VLOG(3) << "Post allocation transformation info: \n"
-            << all_changes.ToString();
-    FixAllocationSequenceAfterPostAllocationTransformation(allocations_,
-                                                           all_changes);
   }
 
   HeapSimulator::Result<HloValue> result;
@@ -2242,16 +2248,14 @@ MsaAlgorithm::GetInefficientAllocationSites(
         if (!allocation->is_copy_like_allocation()) {
           const HloPosition& defining_position =
               allocation->defining_position();
-          int64_t accessed =
-              options_.cost_analysis->base_costs().OutputBytesAccessed(
-                  *defining_position.instruction, defining_position.index);
+          int64_t accessed = options_.cost_analysis->OutputBytesAccessed(
+              *defining_position.instruction, defining_position.index);
           VLOG(3) << "    pos: " << defining_position.ToString()
                   << ", accessed: " << accessed << " / " << size;
         }
         for (const HloUse& use : allocation->uses()) {
-          int64_t accessed =
-              options_.cost_analysis->base_costs().OperandBytesAccessed(
-                  *use.instruction, use.operand_number, use.operand_index);
+          int64_t accessed = options_.cost_analysis->OperandBytesAccessed(
+              *use.instruction, use.operand_number, use.operand_index);
           VLOG(3) << "    use: " << use.ToString() << ", accessed: " << accessed
                   << " / " << size;
         }
@@ -2279,15 +2283,14 @@ MsaAlgorithm::GetInefficientAllocationSites(
         copy_bytes += size;
       }
       if (position_memory_space == MemorySpace::kAlternate) {
-        use_bytes += options_.cost_analysis->base_costs().OutputBytesAccessed(
+        use_bytes += options_.cost_analysis->OutputBytesAccessed(
             *allocation->defining_position().instruction,
             allocation->defining_position().index);
       }
       if (allocation->memory_space() == MemorySpace::kAlternate) {
         for (const HloUse& use : allocation->uses()) {
-          use_bytes +=
-              options_.cost_analysis->base_costs().OperandBytesAccessed(
-                  *use.instruction, use.operand_number, use.operand_index);
+          use_bytes += options_.cost_analysis->OperandBytesAccessed(
+              *use.instruction, use.operand_number, use.operand_index);
         }
       }
     }
@@ -2857,6 +2860,20 @@ AllocationRequest MsaAlgorithm::CreateAllocationRequest(
     }
     required_copy_allocation_latest_time =
         std::min(earliest_use_time, earliest_position_time);
+    // We need to make sure that the copy allocation is scheduled before the
+    // controlled successor of the sync mem op.
+    for (const HloInstruction* control_successor :
+         required_copy_allocation_for->control_successors()) {
+      int64_t successor_time = instruction_schedule.at(control_successor);
+      if (successor_time < required_copy_allocation_latest_time) {
+        VLOG(3) << "Updating the required replacement async mem op allocation "
+                   "latest time from "
+                << required_copy_allocation_latest_time << " to "
+                << successor_time << ", because of control successor "
+                << control_successor->ToString();
+        required_copy_allocation_latest_time = successor_time;
+      }
+    }
   }
   int64_t use_time = instruction_schedule.at(hlo_use.instruction);
   bool allow_no_copy_alternate_mem_allocation = true;
@@ -4621,10 +4638,10 @@ AllocationResult MsaAlgorithm::AllocateSegment(AllocationRequest& request) {
             << options_.cost_analysis->GetAlternateMemoryBenefit(
                    request.use->hlo_use);
     VLOG(3) << "Definition bytes accessed = "
-            << options_.cost_analysis->base_costs().OutputBytesAccessed(
+            << options_.cost_analysis->OutputBytesAccessed(
                    *defining_position.instruction, defining_position.index)
             << ", use bytes accessed = "
-            << options_.cost_analysis->base_costs().OperandBytesAccessed(
+            << options_.cost_analysis->OperandBytesAccessed(
                    *use.instruction, use.operand_number, use.operand_index);
   }
 

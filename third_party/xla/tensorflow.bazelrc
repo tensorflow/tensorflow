@@ -27,7 +27,6 @@
 #     cuda_clang    Build with CUDA Clang support.
 #     rocm:         Build with AMD GPU support (rocm)
 #     mkl:          Enable full mkl support.
-#     nogcp:        Disable GCS support.
 #     nonccl:       Disable nccl support.
 #
 #
@@ -109,6 +108,12 @@ test --test_env="GTEST_INSTALL_FAILURE_SIGNAL_HANDLER=1"
 # Sets the default Apple platform to macOS.
 build:macos --apple_platform_type=macos
 
+# Use cc toolchains from apple_support for Apple builds.
+# https://github.com/bazelbuild/apple_support/tree/master?tab=readme-ov-file#bazel-6-setup
+build:macos --apple_crosstool_top=@local_config_apple_cc//:toolchain
+build:macos --crosstool_top=@local_config_apple_cc//:toolchain
+build:macos --host_crosstool_top=@local_config_apple_cc//:toolchain
+
 # gRPC on MacOS requires this #define
 build:macos --copt=-DGRPC_BAZEL_BUILD
 
@@ -157,7 +162,7 @@ build:cuda --repo_env TF_NEED_CUDA=1
 build:cuda --crosstool_top=@local_config_cuda//crosstool:toolchain
 build:cuda --@local_config_cuda//:enable_cuda
 # Default CUDA and CUDNN versions.
-build:cuda --repo_env=HERMETIC_CUDA_VERSION="12.5.1"
+build:cuda --repo_env=HERMETIC_CUDA_VERSION="12.6.3"
 build:cuda --repo_env=HERMETIC_CUDNN_VERSION="9.3.0"
 # This flag is needed to include CUDA libraries.
 build:cuda --@local_config_cuda//cuda:include_cuda_libs=true
@@ -188,7 +193,7 @@ build:cuda_clang --linkopt="-lm"
 
 # Set up compilation CUDA version and paths and use the CUDA Clang toolchain.
 build:cuda_clang_official --config=cuda_clang
-build:cuda_clang_official --repo_env=HERMETIC_CUDA_VERSION="12.5.1"
+build:cuda_clang_official --repo_env=HERMETIC_CUDA_VERSION="12.6.3"
 build:cuda_clang_official --repo_env=HERMETIC_CUDNN_VERSION="9.3.0"
 build:cuda_clang_official --action_env=CLANG_CUDA_COMPILER_PATH="/usr/lib/llvm-18/bin/clang"
 build:cuda_clang_official --crosstool_top="@local_config_cuda//crosstool:toolchain"
@@ -210,15 +215,21 @@ build:dbg --per_file_copt=+.*,-xla.*@-g0
 # AWS SDK must be compiled in release mode. see: https://github.com/tensorflow/tensorflow/issues/37498
 build:dbg --copt -DDEBUG_BUILD
 
-build:rocm --copt=-Wno-gnu-offsetof-extensions
-build:rocm --crosstool_top=@local_config_rocm//crosstool:toolchain
-build:rocm --define=using_rocm_hipcc=true
-build:rocm --define=tensorflow_mkldnn_contraction_kernel=0
-build:rocm --define=xnn_enable_avxvnniint8=false
-build:rocm --define=xnn_enable_avx512fp16=false
-build:rocm --repo_env TF_NEED_ROCM=1
+build:rocm_base --copt=-Wno-gnu-offsetof-extensions
+build:rocm_base --crosstool_top=@local_config_rocm//crosstool:toolchain
+build:rocm_base --define=using_rocm_hipcc=true
+build:rocm_base --define=tensorflow_mkldnn_contraction_kernel=0
+build:rocm_base --define=xnn_enable_avxvnniint8=false
+build:rocm_base --define=xnn_enable_avx512fp16=false
+build:rocm_base --repo_env TF_NEED_ROCM=1
 
-build:rocm_clang_official --config=rocm
+# Depraceted, will be removed once all build/test scripts are migrated from --config=rocm.
+build:rocm --config=rocm_base 
+
+build:rocm_gcc --config=rocm_base
+build:rocm_gcc --copt=-Wno-stringop-truncation
+
+build:rocm_clang_official --config=rocm_base
 build:rocm_clang_official --action_env=CLANG_COMPILER_PATH="/usr/lib/llvm-18/bin/clang"
 build:rocm_clang_official --action_env=TF_ROCM_CLANG="1"
 build:rocm_clang_official --linkopt="-fuse-ld=lld"
@@ -228,7 +239,7 @@ build:rocm_ci --config=rocm_clang_official
 build:rocm_ci_hermetic --config=rocm_clang_official
 build:rocm_ci_hermetic --repo_env="OS=ubuntu_22.04"
 build:rocm_ci_hermetic --repo_env="ROCM_VERSION=6.2.0"
-build:rocm_ci_hermetic --@local_config_rocm//rocm:use_rocm_hermetic_rpath=True
+build:rocm_ci_hermetic --@local_config_rocm//rocm:rocm_path_type=hermetic
 
 build:sycl --crosstool_top=@local_config_sycl//crosstool:toolchain
 build:sycl --define=using_sycl=true
@@ -236,7 +247,6 @@ build:sycl --define=tensorflow_mkldnn_contraction_kernel=0
 build:sycl --repo_env TF_NEED_SYCL=1
 
 # Options to disable default on features
-build:nogcp --define=no_gcp_support=true
 build:nonccl --define=no_nccl_support=true
 
 # Don't trigger --config=<host platform> when cross-compiling.
@@ -244,22 +254,6 @@ build:linux --host_copt=-w
 build:macos --copt=-w
 build:windows --copt=/W0
 build:windows --host_copt=/W0
-
-# Suppress most C++ compiler warnings to reduce log size but allow
-# for specific warnings to still be present.
-build:linux --copt="-Wno-all"
-build:linux --copt="-Wno-extra"
-build:linux --copt="-Wno-deprecated"
-build:linux --copt="-Wno-deprecated-declarations"
-build:linux --copt="-Wno-ignored-attributes"
-build:linux --copt="-Wno-array-bounds"
-
-# Add unused-result as an error on Linux.
-build:linux --copt="-Wunused-result"
-build:linux --copt="-Werror=unused-result"
-# Add switch as an error on Linux.
-build:linux --copt="-Wswitch"
-build:linux --copt="-Werror=switch"
 
 # Linux ARM64 specific options
 build:linux_arm64 --copt="-mtune=generic" --copt="-march=armv8-a" --copt="-O3"
@@ -462,6 +456,8 @@ build:rbe_win_base --remote_instance_name=projects/tensorflow-testing/instances/
 build:rbe_win_base --remote_download_minimal
 build:rbe_win_base --enable_runfiles
 build:rbe_win_base --nobuild_python_zip
+# Don't build the runfile links in the RBE build which is expensive on Windows.
+build:rbe_win_base --nobuild_runfile_links
 build:rbe_win_base --define=override_eigen_strong_inline=true
 
 build:rbe_windows_x86_cpu_2022 --config=rbe_win_base --config=windows_x86_cpu_2022

@@ -83,6 +83,11 @@ inline constexpr absl::string_view kTritonGemmFusionKind = "__triton_gemm";
 
 inline constexpr absl::string_view kCuDnnFusionKind = "__cudnn$fusion";
 
+// Fusions that can be emitted using a dynamic memcpy. A dynamic memcpy depends
+// on some loop induction variable.
+inline constexpr absl::string_view kDynamicMemcpyFusionKind =
+    "__dynamic_memcpy";
+
 inline constexpr absl::string_view kUncompilableFusion =
     "__uncompilable_fusion";
 
@@ -110,6 +115,11 @@ std::optional<std::string> GetCustomFusionConfigName(
 // Returns true if the given instruction is a custom fusion for dynamic slice
 // fusion. This is determined by checking the name of custom fusion config.
 bool IsDynamicSliceFusion(const HloInstruction* instr);
+
+// Returns true if the given instruction is a dynamic memcpy fusion. This
+// function only checks the fusion kind, which is populated by the
+// FusionDispatch pipeline.
+bool IsDynamicMemcpyFusion(const HloInstruction* instr);
 
 // Returns true if `hlo` will be implemented as a call to a cuSolver routine.
 //
@@ -271,6 +281,30 @@ absl::StatusOr<std::string> FingerprintWithBackendConfig(
   return absl::StrCat(hlo.ToString(HloPrintOptions::Fingerprint()),
                       ", backend_config_fingerprint=", fingerprint);
 }
+
+struct InductionVariableFunctionalDependency {
+  // The value that is derived from the induction variable. This is guaranteed
+  // to have no other transitive dependencies (except constants).
+  const HloInstruction* derived_value;
+
+  // The loop and its induction variable that the value depends on.
+  const HloInstruction* loop;
+  const HloInstruction* induction_var;
+};
+
+// Checks if `parameter`'s value is a pure function of a while loop's induction
+// variable. This supports parameters that are inside call, async or fusion
+// instructions. The dependency can be through arbitrary non-side-effecting
+// instructions.
+// `call_stack` should contain the nested instructions that are ancestor of
+// `parameter`. For example, if it is a parameter of a fusion in a while loop,
+// it should contain the while loop as the first element and the fusion as the
+// second element.
+// Requires `while_loop_trip_count_annotator` to have been run on the loop.
+std::optional<InductionVariableFunctionalDependency>
+ResolveFunctionalDependencyOnInductionVariable(
+    absl::Span<const HloInstruction* const> call_stack,
+    const HloInstruction* parameter);
 
 }  // namespace gpu
 }  // namespace xla

@@ -863,7 +863,7 @@ absl::Status OpKernelContext::allocate_temp(
   if (track_allocations() && s.ok() && out_temp->TotalBytes() > 0) {
     Allocator* a = get_allocator(allocator_attr);
     if (a->TracksAllocationSizes()) {
-      int64_t alloc_size = a->AllocatedSize(out_temp->tensor_data().data());
+      int64_t alloc_size = a->AllocatedSize(out_temp->data());
       record_temp_memory_allocation(alloc_size, *out_temp);
     }
   } else if (record_memory_consumption_) {
@@ -988,8 +988,7 @@ void OpKernelContext::maybe_track_allocations_for_set_output(
         tracking_state_->temp_tensor_buffer_and_size.begin(),
         tracking_state_->temp_tensor_buffer_and_size.end(),
         [&tensor](const std::pair<const void*, int64>& e) {
-          return e.first ==
-                 static_cast<const void*>(tensor.tensor_data().data());
+          return e.first == static_cast<const void*>(tensor.data());
         });
     if (it != tracking_state_->temp_tensor_buffer_and_size.end()) {
       tracking_state_->temp_memory_allocated -= it->second;
@@ -1081,7 +1080,7 @@ void OpKernelContext::record_temp_memory_allocation(int64_t size,
     mutex_lock l(tracking_state_->stats_mu);
     tracking_state_->temp_memory_allocated += size;
     tracking_state_->temp_tensor_buffer_and_size.emplace_back(
-        static_cast<const void*>(t.tensor_data().data()), size);
+        static_cast<const void*>(t.data()), size);
   }
 }
 

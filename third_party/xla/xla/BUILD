@@ -348,6 +348,7 @@ cc_library(
         "@local_tsl//tsl/platform:casts",
         "@local_tsl//tsl/platform:ml_dtypes",
         "@local_tsl//tsl/platform:numbers",
+        "@local_tsl//tsl/platform:protobuf",
         "@local_tsl//tsl/platform:stacktrace",
     ],
 )
@@ -358,12 +359,14 @@ xla_cc_test(
     deps = [
         ":types",
         ":util",
+        ":xla_data_proto_cc",
         "//xla/hlo/testlib:test",
         "//xla/tsl/platform:logging",
         "//xla/tsl/platform:test_main",
         "@com_google_absl//absl/base:log_severity",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest",
@@ -433,6 +436,7 @@ cc_library(
         "layout_util.cc",
         "primitive_util.cc",
         "shape.cc",
+        "shape_partition.cc",
         "shape_util.cc",
     ],
     hdrs = [
@@ -441,6 +445,7 @@ cc_library(
         "layout_util.h",
         "primitive_util.h",
         "shape.h",
+        "shape_partition.h",
         "shape_util.h",
     ],
     visibility = ["//visibility:public"],
@@ -451,6 +456,7 @@ cc_library(
         ":types",
         ":util",
         ":xla_data_proto_cc",
+        "//xla/tsl/lib/math:math_util",
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:logging",
@@ -521,6 +527,21 @@ xla_cc_test(
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest",
         "@local_tsl//tsl/platform:protobuf",
+    ],
+)
+
+xla_cc_test(
+    name = "shape_partition_test",
+    srcs = ["shape_partition_test.cc"],
+    deps = [
+        ":shape_util",
+        "//xla:util",
+        "//xla:xla_data_proto_cc",
+        "//xla/hlo/testlib:test_helpers",
+        "//xla/tests:hlo_test_base",
+        "//xla/tests:xla_internal_test_main",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_googletest//:gtest",
     ],
 )
 
@@ -600,6 +621,7 @@ cc_library(
         ":util",
         ":xla_data_proto_cc",
         "//xla/tsl/lib/core:bitmap",
+        "//xla/tsl/lib/math:math_util",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:logging",
         "//xla/tsl/platform:macros",
@@ -704,6 +726,7 @@ cc_library(
         "//xla/tsl/platform:logging",
         "//xla/tsl/platform:status",
         "@com_google_absl//absl/functional:function_ref",
+        "@com_google_absl//absl/random:distributions",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
@@ -1373,10 +1396,36 @@ xla_cc_test(
     ],
 )
 
+cc_library(
+    name = "online_topsort",
+    hdrs = ["online_topsort.h"],
+    deps = [
+        "//xla/tsl/platform:logging",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+xla_cc_test(
+    name = "online_topsort_test",
+    srcs = ["online_topsort_test.cc"],
+    deps = [
+        ":online_topsort",
+        "//xla/tsl/platform:test",
+        "//xla/tsl/platform:test_main",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/log:log_streamer",
+        "@com_google_absl//absl/random",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
 bzl_library(
     name = "lit_bzl",
     srcs = ["lit.bzl"],
     deps = [
+        "//xla/tsl:package_groups_bzl",
         "//xla/tsl:tsl_bzl",
         "//xla/tsl/platform/default:cuda_build_defs_bzl",
         "@bazel_skylib//lib:paths",

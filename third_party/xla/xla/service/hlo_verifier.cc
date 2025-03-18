@@ -147,8 +147,7 @@ absl::Status ShapeVerifier::Preprocess(HloInstruction* hlo) {
                            hlo->ToString());
   }
   if (hlo->shape().has_layout()) {
-    if (hlo->shape().layout().minor_to_major_size() !=
-        hlo->shape().dimensions_size()) {
+    if (hlo->shape().layout().minor_to_major_size() != hlo->shape().rank()) {
       return InvalidArgument(
           "Instruction has mismatched minor-to-major size and dimension size: "
           "%s",
@@ -2952,6 +2951,9 @@ class InstructionVerifier : public DfsHloVisitorWithDefault {
   }
 
   absl::Status Postprocess(HloInstruction* instruction) override {
+    if (opts_.verify_no_host_memory_space) {
+      TF_RETURN_IF_ERROR(VerifyNoHostMemorySpace(instruction));
+    }
     if (!opts_.InstructionCanChangeLayout(instruction) &&
         LayoutUtil::IsDenseArray(instruction->shape()) &&
         instruction->shape().has_layout()) {
@@ -3044,6 +3046,26 @@ class InstructionVerifier : public DfsHloVisitorWithDefault {
                        instruction->ToString()));
     }
     return absl::OkStatus();
+  }
+
+  // Returns an error status if an instruction or any operand contains host
+  // memory space.
+  static absl::Status VerifyNoHostMemorySpace(
+      const HloInstruction* instruction) {
+    return ShapeUtil::ForEachSubshapeWithStatus(
+        instruction->shape(),
+        [&](const Shape& subshape, const ShapeIndex& index) -> absl::Status {
+          if (subshape.has_layout()) {
+            const Layout& result_layout = subshape.layout();
+            if (result_layout.memory_space() == Layout::kHostMemorySpace) {
+              return absl::InternalError(absl::StrCat(
+                  "Instruction shouldn't have the layout of host memory "
+                  "space: ",
+                  instruction->ToString()));
+            }
+          }
+          return absl::OkStatus();
+        });
   }
 
   absl::flat_hash_map<std::string, const HloInstruction*> instructions_by_name_;

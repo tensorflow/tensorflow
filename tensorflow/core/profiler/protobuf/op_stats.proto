@@ -98,8 +98,6 @@ message RunEnvironment {
   // The number of cores used for a single replica, e.g. model parallelism.
   // If there is no model parallelism, then num_cores_per_replica = 1
   int32 num_cores_per_replica = 10;
-  // The chip interconnection topology.
-  SystemTopology topology = 11 [deprecated = true];
   // Host trace level.
   uint32 host_trace_level = 12;
   // The chip and host interconnection topology.
@@ -110,7 +108,7 @@ message RunEnvironment {
   PowerMetrics power_metrics = 15;
   // Hardware type.
   tensorflow.profiler.HardwareType hardware_type = 16;
-  reserved 6;
+  reserved 6, 11;
 }
 
 // Next ID: 8

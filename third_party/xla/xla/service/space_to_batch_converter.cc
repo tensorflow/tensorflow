@@ -570,7 +570,7 @@ absl::StatusOr<HloInstruction*> ConvolutionVisitor::HaloDuplicateWithSlice(
       VLOG(1) << "first slice " << first_slice->ToString();
 
       PaddingConfig padding_config =
-          MakeNoPaddingConfig(first_slice->shape().dimensions_size());
+          MakeNoPaddingConfig(first_slice->shape().rank());
       padding_config.mutable_dimensions(remapped_batch_dimension)
           ->set_edge_padding_low(1);
 
@@ -595,7 +595,7 @@ absl::StatusOr<HloInstruction*> ConvolutionVisitor::HaloDuplicateWithSlice(
                        &activations->frontend_attributes()));
       VLOG(1) << "halo_region " << halo_region->ToString();
       PaddingConfig padding_config_halo =
-          MakeNoPaddingConfig(halo_region->shape().dimensions_size());
+          MakeNoPaddingConfig(halo_region->shape().rank());
       padding_config_halo.mutable_dimensions(remapped_batch_dimension)
           ->set_edge_padding_high(1);
       TF_ASSIGN_OR_RETURN(halo_region,
@@ -855,8 +855,8 @@ ConvolutionVisitor::ChangeSpatialSizeOnSpaceToBatchedShape(
   // If spatial size is increased, we add padding. If it has shrunk, we slice
   // out the padding that was added before.
   if (increase_spatial_size) {
-    PaddingConfig padding_config = MakeNoPaddingConfig(
-        batch_space_collapsed_reshape->shape().dimensions_size());
+    PaddingConfig padding_config =
+        MakeNoPaddingConfig(batch_space_collapsed_reshape->shape().rank());
     for (auto spatial_dimension : spatial_dimensions) {
       padding_config.mutable_dimensions(spatial_dimension)
           ->set_edge_padding_high(new_spatial_dim_size *
@@ -1945,7 +1945,7 @@ absl::StatusOr<bool> ConvolutionVisitor::Propagate(HloInstruction* consumer,
                 !is_pivot_producer_modified);
 
           PaddingConfig padding_config =
-              MakeNoPaddingConfig(reshape->shape().dimensions_size());
+              MakeNoPaddingConfig(reshape->shape().rank());
           padding_config.mutable_dimensions(space_dim)->set_edge_padding_high(
               pivot_space_size - new_dimensions[space_dim]);
           padding_config.mutable_dimensions(space_dim)->set_edge_padding_low(0);
@@ -2480,7 +2480,7 @@ absl::StatusOr<bool> ConvolutionVisitor::Propagate(HloInstruction* consumer,
                           &both_compare->frontend_attributes()));
 
         PaddingConfig padding_config =
-            MakeNoPaddingConfig(final_selection->shape().dimensions_size());
+            MakeNoPaddingConfig(final_selection->shape().rank());
         padding_config.mutable_dimensions(new_batch_dim)
             ->set_edge_padding_low(1);
         padding_config.mutable_dimensions(new_space_dim)
@@ -3164,7 +3164,7 @@ absl::StatusOr<HloInstruction*> ConvolutionVisitor::TransposeAndMergeBatch(
     int64_t start_space_dim_position =
         start_batch_dim_position + spatial_dim_count;
 
-    std::vector<int64_t> trans_dims(activations->shape().dimensions_size());
+    std::vector<int64_t> trans_dims(activations->shape().rank());
     absl::c_iota(trans_dims, 0);
 
     for (int i = 0; i < spatial_dim_count; ++i) {
@@ -3253,7 +3253,7 @@ absl::StatusOr<HloInstruction*> ConvolutionVisitor::PadAndSplitSpace(
   // padding in the spatial dimension, we materialize it.
   if (high_padding || low_padding) {
     PaddingConfig padding_config =
-        MakeNoPaddingConfig(activations->shape().dimensions_size());
+        MakeNoPaddingConfig(activations->shape().rank());
     for (auto spatial_dimension_to_split : spatial_dimensions_to_split) {
       padding_config.mutable_dimensions(spatial_dimension_to_split)
           ->set_edge_padding_high(high_padding);
@@ -3473,8 +3473,7 @@ absl::Status ConvolutionVisitor::PropagateOnBackpropFilterConv(
 
   // TODO(b/189500737): For multi-dimensional space-to-batch, we'd need to add
   // an auxiliary dim per converted dimension.
-  const int64_t new_spatial_dimension =
-      activations_new->shape().dimensions_size();
+  const int64_t new_spatial_dimension = activations_new->shape().rank();
 
   auto permuted_conv_dims_numbers = original_conv_dims;
 
@@ -3798,7 +3797,7 @@ absl::Status ConvolutionVisitor::PropagateOnBackpropFilterConv(
           GetFirstChosenSpatialDim(convolution));
   instr_to_dim_map_[convolution] = dim_map;
 
-  std::vector<int64_t> trans_dims(convolution->shape().dimensions_size());
+  std::vector<int64_t> trans_dims(convolution->shape().rank());
   absl::c_iota(trans_dims, 0);
   instr_to_dim_permute_map_[new_conv] = trans_dims;
 

@@ -340,7 +340,7 @@ class FunctionalHloRunner {
       const xla::FunctionalHloRunner::PreprocessingOptions& preproc_options,
       const xla::FunctionalHloRunner::RawCompileOptions& raw_compile_options,
       const xla::FunctionalHloRunner::RunningOptions& running_options,
-      absl::string_view hlo_text, InputFormat input_format,
+      absl::string_view hlo_file, InputFormat input_format,
       std::string dump_output_to = "", int task_id = 0, int num_nodes = 1,
       std::shared_ptr<xla::KeyValueStoreInterface> kv_store = nullptr);
 
@@ -353,7 +353,7 @@ class FunctionalHloRunner {
       PjRtClient& client, const DebugOptions& debug_options,
       const PreprocessingOptions& preproc_options,
       const CompileOptions& compile_options,
-      const RunningOptions& running_options, absl::string_view hlo_text,
+      const RunningOptions& running_options, absl::string_view hlo_file,
       InputFormat input_format, const PerDeviceLiteralVecType& arguments = {},
       std::minstd_rand0* engine = nullptr);
 

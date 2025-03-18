@@ -29,6 +29,7 @@
 #include "tensorflow/lite/experimental/litert/vendors/c/litert_dispatch.h"
 #include "tensorflow/lite/experimental/litert/vendors/google_tensor/dispatch/litert_dispatch_device_context.h"
 #include "tensorflow/lite/experimental/litert/vendors/google_tensor/dispatch/litert_dispatch_graph.h"
+#include "tensorflow/lite/experimental/litert/vendors/google_tensor/dispatch/litert_dispatch_metrics.h"
 #include "tensorflow/lite/experimental/litert/vendors/google_tensor/dispatch/southbound.h"
 
 using litert::Error;
@@ -561,5 +562,52 @@ litert::Expected<void> LiteRtDispatchInvocationContextT::InvokeAsync(
     }
   }
 
+  return {};
+}
+
+litert::Expected<void> LiteRtDispatchInvocationContextT::StartMetricsCollection(
+    int detail_level) {
+  auto thr_invocation_context_start_metrics_collection =
+      southbound_.api().thr_invocation_context_start_metrics_collection;
+  if (!thr_invocation_context_start_metrics_collection) {
+    return Error(kLiteRtStatusErrorRuntimeFailure,
+                 "thr_invocation_context_start_metrics_collection not found");
+  }
+  if (auto status = thr_invocation_context_start_metrics_collection(
+          thr_invocation_context_, detail_level);
+      status != kThrStatusSuccess) {
+    LITERT_LOG(LITERT_ERROR,
+               "thr_invocation_context_start_metrics_collection failed: %d",
+               status);
+    return Error(kLiteRtStatusErrorRuntimeFailure,
+                 "thr_invocation_context_start_metrics_collection failed");
+  }
+  return {};
+}
+
+litert::Expected<void> LiteRtDispatchInvocationContextT::StopMetricsCollection(
+    LiteRtDispatchMetrics* metrics) {
+  auto thr_invocation_context_stop_metrics_collection =
+      southbound_.api().thr_invocation_context_stop_metrics_collection;
+  if (!thr_invocation_context_stop_metrics_collection) {
+    return Error(kLiteRtStatusErrorRuntimeFailure,
+                 "thr_invocation_context_stop_metrics_collection not found");
+  }
+  ThrInvocationMetrics thr_metrics{.version = 0};
+  if (auto status = thr_invocation_context_stop_metrics_collection(
+          thr_invocation_context_, &thr_metrics);
+      status != kThrStatusSuccess) {
+    LITERT_LOG(LITERT_ERROR,
+               "thr_invocation_context_stop_metrics_collection failed: %d",
+               status);
+    *metrics = new LiteRtDispatchMetricsT(/*num_metrics=*/0,
+                                          /*metric_names=*/nullptr,
+                                          /*metric_values=*/nullptr);
+    return Error(kLiteRtStatusErrorRuntimeFailure,
+                 "thr_invocation_context_stop_metrics_collection failed");
+  }
+  *metrics = new LiteRtDispatchMetricsT(thr_metrics.num_metrics,
+                                        thr_metrics.metric_keys,
+                                        thr_metrics.metric_values);
   return {};
 }

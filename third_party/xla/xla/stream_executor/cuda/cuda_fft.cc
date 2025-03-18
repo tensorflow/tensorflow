@@ -464,7 +464,7 @@ void initialize_cufft() {
             return new gpu::CUDAFft(parent);
           });
   if (!status.ok()) {
-    LOG(ERROR) << "Unable to register cuFFT factory: " << status.message();
+    LOG(INFO) << "Unable to register cuFFT factory: " << status.message();
   }
 }
 

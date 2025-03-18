@@ -31,8 +31,9 @@
 #include "tensorflow/lite/experimental/litert/cc/litert_tensor_buffer_requirements.h"
 #include "tensorflow/lite/experimental/litert/vendors/c/litert_dispatch.h"
 
-namespace litert {
-namespace internal {
+namespace litert::internal {
+
+class ExternalLiteRtBufferContext;
 
 // A TFL kernel that the interpreter calls to dispatch execution through the
 // Dispatch API.
@@ -93,7 +94,10 @@ class DispatchDelegateKernel
   std::string graph_name_;
   LiteRtDispatchDeviceContext device_context_;
   LiteRtDispatchInvocationContext invocation_context_ = nullptr;
+  // Indicates whether the Dispatch API can be invoked asynchronously.
   const bool async_dispatch_;
+
+  ExternalLiteRtBufferContext* buffer_context_ = nullptr;
 
   // Indicates whether the input tensor buffer requires a CPU sync before
   // invoking the Dispatch API.
@@ -112,7 +116,6 @@ class DispatchDelegateKernel
   std::vector<size_t> output_tensor_buffer_used_size_;
 };
 
-}  // namespace internal
-}  // namespace litert
+}  // namespace litert::internal
 
 #endif  // TENSORFLOW_LITE_EXPERIMENTAL_LITERT_RUNTIME_DISPATCH_DISPATCH_DELEGATE_KERNEL_H_

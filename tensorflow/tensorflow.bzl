@@ -25,6 +25,7 @@ load(
     "if_mkldnn_openmp",
     "onednn_v3_define",
 )
+load("//tensorflow:tf_version.bzl", "TF_VERSION")
 
 #
 # Returns the options to use for a C++ library or binary build.
@@ -81,7 +82,7 @@ load(
     "if_tensorrt_exec",
 )
 load(
-    "@local_tsl//third_party/py/rules_pywrap:pywrap.bzl",
+    "@local_xla//third_party/py/rules_pywrap:pywrap.bzl",
     "use_pywrap_rules",
     _pybind_extension = "pybind_extension",
     _stripped_cc_info = "stripped_cc_info",
@@ -93,10 +94,7 @@ def register_extension_info(**kwargs):
 
 # version for the shared libraries, can
 # not contain rc or alpha, only numbers.
-# Also update tensorflow/core/public/version.h
-# and tensorflow/tools/pip_package/setup.py
-WHEEL_VERSION = "2.20.0"
-VERSION = "2.20.0"
+VERSION = TF_VERSION
 VERSION_MAJOR = VERSION.split(".")[0]
 two_gpu_tags = ["requires-gpu-nvidia:2", "manual", "no_pip"]
 
@@ -3710,7 +3708,7 @@ def if_cuda_tools(if_true, if_false = []):
 # The config is used to determine if we need dependency on pre-built wheels.
 def if_wheel_dependency(if_true, if_false = []):
     return select({
-        "@local_tsl//third_party/py:enable_wheel_dependency": if_true,
+        "@local_xla//third_party/py:enable_wheel_dependency": if_true,
         "//conditions:default": if_false,
     })
 

@@ -199,48 +199,5 @@ TEST_F(TmaUtilsFixture,
   EXPECT_FALSE(fn.getArgAttr(2, "tt.nv_tma_desc"));
 }
 
-TEST(TmaIsEnabledTest, SupportedConfigAndDeviceReturnsTrue) {
-  HloModuleConfig config;
-  config.mutable_debug_options().set_xla_gpu_experimental_enable_triton_tma(
-      true);
-  se::DeviceDescription device_info;
-  device_info.set_cuda_compute_capability(9, 0);
-  EXPECT_TRUE(TmaIsEnabled(config, device_info));
-}
-
-TEST(TmaIsEnabledTest, UnsupportedConfigReturnsFalse) {
-  HloModuleConfig config;
-  se::DeviceDescription device_info;
-  device_info.set_cuda_compute_capability(9, 0);
-  EXPECT_FALSE(TmaIsEnabled(config, device_info));
-}
-
-TEST(TmaIsEnabledTest, UnsupportedDeviceReturnsFalse) {
-  HloModuleConfig config;
-  config.mutable_debug_options().set_xla_gpu_experimental_enable_triton_tma(
-      true);
-  se::DeviceDescription device_info;
-  device_info.set_cuda_compute_capability(8, 0);
-  EXPECT_FALSE(TmaIsEnabled(config, device_info));
-}
-
-TEST(CanUseTmaOnInputTest, SupportedShapesReturnsTrue) {
-  Shape global_shape = ShapeUtil::MakeShape(F32, {1024, 512});
-  llvm::SmallVector<int64_t, 2> block_shape = {128, 64};
-  EXPECT_TRUE(CanUseTmaOnInput(global_shape, block_shape));
-}
-
-TEST(CanUseTmaOnInputTest, IndivisibleMinorDimensionReturnsFalse) {
-  Shape global_shape = ShapeUtil::MakeShape(F32, {1024, 511});
-  llvm::SmallVector<int64_t, 2> block_shape = {128, 64};
-  EXPECT_FALSE(CanUseTmaOnInput(global_shape, block_shape));
-}
-
-TEST(CanUseTmaOnInputTest, LargeBlocksReturnsFalse) {
-  Shape global_shape = ShapeUtil::MakeShape(F32, {1024, 512});
-  llvm::SmallVector<int64_t, 2> block_shape = {128, 512};
-  EXPECT_FALSE(CanUseTmaOnInput(global_shape, block_shape));
-}
-
 }  // namespace
 }  // namespace xla::gpu

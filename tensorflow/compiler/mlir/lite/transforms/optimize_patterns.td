@@ -64,6 +64,8 @@ def IsBiasShape : Constraint<
 
 def ReshapeNCHWBiasToNHWC : NativeCodeCall<"ReshapeNCHWBiasToNHWC($0, $1)">;
 
+def HasSameType : Constraint<CPred<[{$0.getType() == $1.getType()}]>>;
+
 //===----------------------------------------------------------------------===//
 // Ternary ops patterns.
 //===----------------------------------------------------------------------===//
@@ -263,14 +265,10 @@ multiclass FuseMulOrDivWithConv2dOrDepthwiseConv2d<Op BinaryOp> {
 foreach BinaryOp = [TFL_DivOp, TFL_MulOp]<Op> in
   defm : FuseMulOrDivWithConv2dOrDepthwiseConv2d<BinaryOp>;
 
-
-// This pattern applies when the same quantize/dequantize have been used twice
-// with the same scale. We want to remove the redundancy.
-// TODO(fengliuai): move this to the sanity check of pre-quantize pass.
-def eliminate_dq_q_pairs : Pat<
-  (TFL_QuantizeOp (TFL_DequantizeOp $in), $qt),
-  (replaceWithValue $in),
-  [(NotFromQuantOpOrSameQuantType $in, $qt)]>;
+// Squash tfl.dequantize and tfl.quantize pairs.
+def : Pat<(TFL_QuantizeOp:$out (TFL_DequantizeOp $in), $qt),
+          (replaceWithValue $in),
+          [(HasSameType $in, $out)]>;
 
 // Matching HardSwish
 def MatchHardSwishPattern1 : Pat<
@@ -1116,6 +1114,24 @@ foreach SelectOp = [TFL_SelectOp, TFL_SelectV2Op] in {
   def Optimize#SelectOp#Not : Pat<
     (SelectOp (TFL_LogicalNotOp $condition), $input1, $input2),
     (SelectOp $condition, $input2, $input1)>;
+  // select(C, true_tensor, false_tensor) -> C
+  def Optimize#SelectOp#IsNoop : Pat<
+    (SelectOp:$result $condition,
+                       (Arith_ConstantOp $input1),
+                       (Arith_ConstantOp $input2)),
+    (replaceWithValue $condition),
+    [(HaveSameType $condition, $result),
+     (AllElementsAreBool<"true"> $input1),
+     (AllElementsAreBool<"false"> $input2)]>;
+  // select(C, false_tensor, true_tensor) -> logical_not(C)
+  def Optimize#SelectOp#IsNegate : Pat<
+    (SelectOp:$result $condition,
+                       (Arith_ConstantOp $input1),
+                       (Arith_ConstantOp $input2)),
+    (TFL_LogicalNotOp $condition),
+    [(HaveSameType $condition, $result),
+     (AllElementsAreBool<"false"> $input1),
+     (AllElementsAreBool<"true"> $input2)]>;
 }
 
 def EliminateLogicalAndTrue : Pat<

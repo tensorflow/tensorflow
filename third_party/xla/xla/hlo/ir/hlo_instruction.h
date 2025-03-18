@@ -1732,12 +1732,7 @@ class HloInstruction {
   // when we clone hlo_computations and want to let the instructions to point
   // to the newly cloned nodes.
   void ReplaceCalledComputations(
-      absl::FunctionRef<HloComputation*(HloComputation*)> map_function) {
-    for (int64_t i = 0; i < called_computations().size(); ++i) {
-      mutable_rare()->called_computations[i] =
-          map_function(rare()->called_computations[i]);
-    }
-  }
+      absl::FunctionRef<HloComputation*(HloComputation*)> map_function);
 
   // Clears out the called computations.
   //
@@ -1747,11 +1742,7 @@ class HloInstruction {
   // clearing out the computations, we reflect the fact that all side-effecting
   // properties have been reflected in the caller, and make the call HLO
   // removable.
-  virtual void ClearCalledComputations() {
-    if (has_rare()) {
-      mutable_rare()->called_computations.clear();
-    }
-  }
+  virtual void ClearCalledComputations();
 
   // Returns true if this instruction performs an elementwise operation on
   // `operand_idx`-th operand. An instruction is elementwise on an operand iff,
@@ -1869,6 +1860,10 @@ class HloInstruction {
     auto it =
         mutable_rare()->frontend_attributes.mutable_map()->insert({key, value});
     return it.second;
+  }
+
+  size_t erase_frontend_attribute(const std::string& key) {
+    return mutable_rare()->frontend_attributes.mutable_map()->erase(key);
   }
 
   // Adds or overrides a single attribute in the HloInstruction.
@@ -2401,9 +2396,8 @@ class HloInstruction {
 
   void DetachFrom(HloInstruction* usee) { usee->RemoveUser(this); }
 
-  void set_called_computation(int index, HloComputation* computation) {
-    mutable_rare()->called_computations[index] = computation;
-  }
+  void set_called_computation(int index, HloComputation* computation);
+
   // Indices of computations in called_computations for instructions which call
   // multiple computations.
   enum {

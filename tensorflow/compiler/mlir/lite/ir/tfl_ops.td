@@ -77,7 +77,7 @@ class TFL_OperandsHaveSameShapesOrBroadcastableShape<
   TFL_RuntimePredOpTrait<"operands do not have the same shape or "
       "broadcastable shapes within the rank " # max_bcast_rank,
     CPred<"TFL::VerifyOperandsHaveSameShapesOrBroadcastableShape("
-            "$_op, llvm::ArrayRef<unsigned>({" # !interleave(indices, ", ") #
+            "&$_op, llvm::ArrayRef<unsigned>({" # !interleave(indices, ", ") #
             "}), " # max_bcast_rank # ")">>;
 
 // These additional types/type constraints here are used to decouple the ops
@@ -525,6 +525,16 @@ an output element, this operation computes \\(y = |x|\\).
   let results = (outs TFL_TensorOf<[I16, I32, F32, QI8, QI16]>:$y);
 
   let hasFolder = 1;
+
+  // This builder doesn't work with quantized type, so it can only be used by
+  // non-quantization tablegen patterns.
+  let builders = [
+    OpBuilder<(ins "Value":$input),
+    [{
+      $_state.addOperands({input});
+      $_state.addTypes(input.getType());
+    }]>
+  ];
 }
 
 def TFL_DilateOp : TFL_Op<"dilate", [
@@ -1114,7 +1124,7 @@ def TFL_BatchMatMulOp : TFL_Op<"batch_matmul", [
    TFL_OperandHasAtleastRank<0, 2>,
    TFL_OperandHasAtleastRank<1, 2>,
    QuantizableResult,
-   PredOpTrait<"x and output must have same element type or they are int8 and int32",
+   TFL_RuntimePredOpTrait<"x and output must have same element type or they are int8 and int32",
        Or<[TFL_TCresVTEtIsSameAsOp<0, 0>,
            And<[CPred<"getElementTypeOrSelf($_op.getOperand(0)).isInteger(8)">,
                 CPred<"getElementTypeOrSelf($_op.getOperand(1)).isInteger(8)">,
@@ -1637,6 +1647,14 @@ def TFL_EluOp: TFL_Op<"elu", [
   let results = (outs TFL_TensorOf<[F32, I8]>:$y);
 
   let hasOptions = 0;
+
+  let builders = [
+    OpBuilder<(ins "Value":$input),
+    [{
+      $_state.addOperands({input});
+      $_state.addTypes(input.getType());
+    }]>
+  ];
 }
 
 def TFL_EmbeddingLookupOp: TFL_Op<"embedding_lookup",
@@ -1973,6 +1991,16 @@ def TFL_HardSwishOp: TFL_Op<"hard_swish", [
   let results = (outs TFL_TensorOf<[F32, QUI8, QI8]>:$output);
 
   let hasOptions = 0;
+
+  // This builder doesn't work with quantized type, so it can only be used by
+  // non-quantization tablegen patterns.
+  let builders = [
+    OpBuilder<(ins "Value":$input),
+    [{
+      $_state.addOperands({input});
+      $_state.addTypes(input.getType());
+    }]>
+  ];
 }
 
 def TFL_L2NormalizationOp : TFL_Op<"l2_normalization", [Pure,
@@ -2097,7 +2125,8 @@ def TFL_LogicalAndOp : TFL_Op<"logical_and", [ResultsBroadcastableShape, Pure]> 
 
 def TFL_LogicalNotOp : TFL_Op<"logical_not", [
     Pure,
-    SameOperandsAndResultShape]> {
+    SameOperandsAndResultType
+    ]> {
   let summary = "Logical NOT operator";
 
   let description = [{
@@ -2203,6 +2232,16 @@ def TFL_LogOp: TFL_Op<"log", [
       return TF::ArraysAreCastCompatible(l, r);
     }
   }];
+
+  // This builder doesn't work with quantized type, so it can only be used by
+  // non-quantization tablegen patterns.
+  let builders = [
+    OpBuilder<(ins "Value":$input),
+    [{
+      $_state.addOperands({input});
+      $_state.addTypes(input.getType());
+    }]>
+  ];
 }
 
 def TFL_LogSoftmaxOp : TFL_Op<"log_softmax", [
@@ -2976,6 +3015,16 @@ def TFL_Relu0To1Op: TFL_Op<"relu_0_to_1", [
   let arguments = (ins TFL_TensorOf<[F32, QUI8, QI8]>:$x);
 
   let results = (outs TFL_TensorOf<[F32, QUI8, QI8]>:$y);
+
+  // This builder doesn't work with quantized type, so it can only be used by
+  // non-quantization tablegen patterns.
+  let builders = [
+    OpBuilder<(ins "Value":$input),
+    [{
+      $_state.addOperands({input});
+      $_state.addTypes(input.getType());
+    }]>
+  ];
 }
 
 def TFL_Relu1Op: TFL_Op<"relu_n1_to_1", [
@@ -3086,6 +3135,16 @@ def TFL_RsqrtOp: TFL_Op<"rsqrt", [Pure,
   let results = (outs TFL_TensorOf<[F32, QI8, QI16]>:$y);
 
   let hasFolder = 1;
+
+  // This builder doesn't work with quantized type, so it can only be used by
+  // non-quantization tablegen patterns.
+  let builders = [
+    OpBuilder<(ins "Value":$input),
+    [{
+      $_state.addOperands({input});
+      $_state.addTypes(input.getType());
+    }]>
+  ];
 }
 
 def TFL_ShapeOp: TFL_Op<"shape", [
@@ -3623,10 +3682,9 @@ def TFL_UnpackOp : TFL_Op<"unpack", [
 }
 
 def TFL_ZerosLikeOp: TFL_Op<"zeros_like", [
-    PredOpTrait<"input and output must have same element type",
-      TFL_TCresVTEtIsSameAsOp<0, 0>>,
-    SameOperandsAndResultShape,
-    Pure]> {
+    Pure,
+    SameOperandsAndResultType
+    ]> {
   let summary = "ZerosLike operator";
 
   let description = [{
@@ -5167,8 +5225,8 @@ def TFL_UnsortedSegmentSumOp: TFL_Op<"unsorted_segment_sum", [
 
 def TFL_Atan2Op: TFL_Op<"atan2", [
   Pure,
-  SameOperandsAndResultShape,
-  SameOperandsAndResultElementType]> {
+  SameOperandsAndResultType
+  ]> {
 
   let summary = "Atan2 operation";
   let description = [{
@@ -5188,8 +5246,7 @@ def TFL_Atan2Op: TFL_Op<"atan2", [
 
 def TFL_SignOp: TFL_Op<"sign", [
   Pure,
-  SameOperandsAndResultShape,
-  SameOperandsAndResultElementType
+  SameOperandsAndResultType
   ]> {
 
   let summary = "Sign operation";
@@ -5658,6 +5715,14 @@ value is computed as \\( \sqrt{a^2 + b^2}\\).
   let results = (outs
     TFL_TensorOf<[F32, F64]>:$output
   );
+
+  let builders = [
+    OpBuilder<(ins "Value":$input),
+    [{
+      $_state.addOperands({input});
+      $_state.addTypes(dyn_cast<ComplexType>(input.getType()).getElementType());
+    }]>
+  ];
 }
 
 def TFL_RealOp : TFL_Op<"real", [
@@ -5679,6 +5744,14 @@ type `float` that is the real part of each element in `input`. All elements in
   let results = (outs
     TFL_TensorOf<[F32, F64]>:$output
   );
+
+  let builders = [
+    OpBuilder<(ins "Value":$input),
+    [{
+      $_state.addOperands({input});
+      $_state.addTypes(dyn_cast<ComplexType>(input.getType()).getElementType());
+    }]>
+  ];
 }
 
 def TFL_ImagOp : TFL_Op<"imag", [
@@ -5700,6 +5773,14 @@ is the real part and *b* is the imaginary part returned by this operation.
   let results = (outs
     TFL_TensorOf<[F32, F64]>:$output
   );
+
+  let builders = [
+    OpBuilder<(ins "Value":$input),
+    [{
+      $_state.addOperands({input});
+      $_state.addTypes(dyn_cast<ComplexType>(input.getType()).getElementType());
+    }]>
+  ];
 }
 
 def TFL_HashtableOp: TFL_Op<"hashtable", []> {

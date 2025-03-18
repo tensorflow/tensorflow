@@ -90,6 +90,22 @@ LogicalResult FillCompositeParams(stablehlo::CompositeOp op,
   return success();
 }
 
+bool IsDrqFakeQuant(stablehlo::CompositeOp op) {
+  if (op.getName() != "quant.fake_quant") {
+    return false;
+  }
+  SmallVector<double, 4> scales;
+  SmallVector<int64_t, 4> zero_points;
+  int num_bits;
+  bool is_signed;
+  bool is_narrow_range;
+  if (failed(FillCompositeParams(op, scales, zero_points, num_bits, is_signed,
+                                 is_narrow_range))) {
+    return false;
+  }
+  return scales.empty() && zero_points.empty();
+}
+
 LogicalResult GetStorageParams(unsigned num_bits, bool narrow_range,
                                bool is_signed, MLIRContext* ctx,
                                Type& storage_type, int64_t& qmin,

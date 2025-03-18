@@ -199,6 +199,7 @@ cc_library(
         "//xla/tsl/platform:status",
         "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:test",
+        "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
@@ -313,6 +314,7 @@ xla_cc_binary(
         "//xla/hlo/builder:xla_builder",
         "//xla/hlo/builder:xla_computation",
         "//xla/service:cpu_plugin",
+        "//xla/service/cpu:cpu_aot_compilation_result",
         "//xla/service/cpu:cpu_compiler",
         "//xla/service/llvm_ir:llvm_util",
         "@llvm-project//llvm:Support",
@@ -1613,43 +1615,6 @@ xla_test(
 )
 
 xla_test(
-    name = "convolution_test_cudnn_frontend_disabled",
-    timeout = "long",
-    srcs = ["convolution_test.cc"],
-    backend_args = {"gpu": ["--xla_gpu_enable_cudnn_frontend=false"]},
-    backends = ["gpu"],
-    shard_count = 50,
-    tags = [
-        "nozapfhahn",
-        "optonly",
-        "test_migrated_to_hlo_runner_pjrt",
-    ],
-    deps = [
-        ":client_library_test_runner_mixin",
-        ":hlo_pjrt_interpreter_reference_mixin",
-        ":hlo_pjrt_test_base",
-        ":test_macros_header",
-        ":xla_internal_test_main",
-        "//xla:array2d",
-        "//xla:array4d",
-        "//xla:error_spec",
-        "//xla:literal",
-        "//xla:literal_util",
-        "//xla:shape_util",
-        "//xla:types",
-        "//xla:window_util",
-        "//xla:xla_data_proto_cc",
-        "//xla/hlo/builder:padding",
-        "//xla/hlo/builder:xla_builder",
-        "//xla/service:hlo_runner_interface",
-        "//xla/stream_executor:device_description",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings",
-        "@eigen_archive//:eigen3",
-    ],
-)
-
-xla_test(
     name = "convolution_variants_test",
     timeout = "long",
     srcs = ["convolution_variants_test.cc"],
@@ -1819,6 +1784,7 @@ xla_test(
         "//xla/hlo/testlib:test",
         "//xla/hlo/testlib:test_helpers",
         "@com_google_absl//absl/status:statusor",
+        "@eigen_archive//:eigen3",
     ],
 )
 
@@ -2055,7 +2021,7 @@ xla_test(
     timeout = "long",
     srcs = [],
     # placeholder for extra args for reduce_window_test
-    shard_count = 40,
+    shard_count = 50,
     tags = [
         "optonly",
         "test_xla_cpu_no_thunks",
@@ -2762,6 +2728,7 @@ xla_test(
         "gpu",
     ],
     deps = [
+        ":hlo_runner_agnostic_test_base",
         ":hlo_test_base",
         ":literal_test_util",
         ":test_macros_header",
@@ -2774,16 +2741,22 @@ xla_test(
         "//xla:types",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/utils:hlo_matchers",
+        "//xla/pjrt/gpu:gpu_helpers",
         "//xla/service:computation_placer_hdr",
-        "//xla/service:executable",
         "//xla/service:hlo_module_config",
         "//xla/service:hlo_runner_interface",
         "//xla/service/gpu:backend_configs_cc",
         "//xla/stream_executor:device_description",
+        "//xla/stream_executor/cuda:cuda_compute_capability",
+        "//xla/tsl/lib/core:status_test_util",
+        "//xla/tsl/platform:errors",
         "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:test",
+        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
@@ -2917,35 +2890,6 @@ xla_test(
         "@com_google_absl//absl/status",
         "@com_google_googletest//:gtest",
         "@local_tsl//tsl/platform:env",
-        "@local_tsl//tsl/platform:status",
-        "@local_tsl//tsl/platform:statusor",
-    ],
-)
-
-xla_test(
-    name = "value_inference_test",
-    srcs = ["value_inference_test.cc"],
-    tags = ["test_xla_cpu_no_thunks"],
-    deps = [
-        ":literal_test_util",
-        ":test_macros_header",
-        ":test_utils",
-        ":xla_internal_test_main",
-        "//xla:literal",
-        "//xla:shape_util",
-        "//xla:status_macros",
-        "//xla:xla_data_proto_cc",
-        "//xla/client:client_library",
-        "//xla/hlo/builder:value_inference",
-        "//xla/hlo/builder:xla_builder",
-        "//xla/hlo/builder:xla_computation",
-        "//xla/hlo/builder/lib:arithmetic",
-        "//xla/hlo/builder/lib:prng",
-        "//xla/hlo/testlib:test",
-        "//xla/tsl/lib/core:status_test_util",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/types:span",
         "@local_tsl//tsl/platform:status",
         "@local_tsl//tsl/platform:statusor",
     ],
@@ -3667,7 +3611,7 @@ xla_test(
 bzl_library(
     name = "plugin_bzl",
     srcs = ["plugin.bzl"],
-    deps = [],
+    deps = ["//xla/tsl:package_groups_bzl"],
 )
 
 bzl_library(
@@ -3677,7 +3621,9 @@ bzl_library(
         ":plugin_bzl",
         "//xla:xla_bzl",
         "//xla/stream_executor:build_defs_bzl",
+        "//xla/tsl:package_groups_bzl",
         "//xla/tsl/platform:build_config_root_bzl",
+        "//xla/tsl/platform/default:build_config_bzl",
     ] + tests_build_defs_bzl_deps(),
 )
 

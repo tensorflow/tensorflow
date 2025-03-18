@@ -287,4 +287,157 @@ TEST(GetOpOptionTest, TestGetSplitOptions) {
   ASSERT_EQ(num_splits, 3);
 }
 
+TEST(GetOpOptionTest, TestGetConv2dOptions) {
+  auto model = litert::testing::LoadTestFileModel("simple_conv_2d_op.tflite");
+  auto subgraph = model.MainSubgraph();
+  EXPECT_TRUE(subgraph);
+
+  auto ops = subgraph->Ops();
+  auto op = ops.front().Get();
+
+  uint32_t padding;
+  LITERT_ASSERT_OK(LiteRtGetConv2dPaddingOption(op, &padding));
+  ASSERT_EQ(padding, 0);
+  int32_t stride_w;
+  LITERT_ASSERT_OK(LiteRtGetConv2dStrideWOption(op, &stride_w));
+  ASSERT_EQ(stride_w, 1);
+  int32_t stride_h;
+  LITERT_ASSERT_OK(LiteRtGetConv2dStrideHOption(op, &stride_h));
+  ASSERT_EQ(stride_h, 1);
+  uint32_t fused_activation_function;
+  LITERT_ASSERT_OK(
+      LiteRtGetConv2dFusedActivationOption(op, &fused_activation_function));
+  ASSERT_EQ(fused_activation_function, 0);
+  int32_t dilation_w_factor;
+  LITERT_ASSERT_OK(LiteRtGetConv2dDilationWOption(op, &dilation_w_factor));
+  ASSERT_EQ(dilation_w_factor, 1);
+  int32_t dilation_h_factor;
+  LITERT_ASSERT_OK(LiteRtGetConv2dDilationWOption(op, &dilation_h_factor));
+  ASSERT_EQ(dilation_h_factor, 1);
+}
+
+TEST(GetOpOptionTest, TestGetDepthwiseConv2dOptions) {
+  auto model =
+      litert::testing::LoadTestFileModel("simple_depthwise_conv_2d_op.tflite");
+  auto subgraph = model.MainSubgraph();
+  EXPECT_TRUE(subgraph);
+
+  auto ops = subgraph->Ops();
+  auto op = ops.front().Get();
+
+  uint32_t padding;
+  LITERT_ASSERT_OK(LiteRtGetDepthwiseConv2dPaddingOption(op, &padding));
+  ASSERT_EQ(padding, 1);
+  int32_t stride_w;
+  LITERT_ASSERT_OK(LiteRtGetDepthwiseConv2dStrideWOption(op, &stride_w));
+  ASSERT_EQ(stride_w, 1);
+  int32_t stride_h;
+  LITERT_ASSERT_OK(LiteRtGetDepthwiseConv2dStrideHOption(op, &stride_h));
+  ASSERT_EQ(stride_h, 1);
+  uint32_t fused_activation_function;
+  LITERT_ASSERT_OK(LiteRtGetDepthwiseConv2dFusedActivationOption(
+      op, &fused_activation_function));
+  ASSERT_EQ(fused_activation_function, 0);
+  int32_t dilation_w_factor;
+  LITERT_ASSERT_OK(
+      LiteRtGetDepthwiseConv2dDilationWOption(op, &dilation_w_factor));
+  ASSERT_EQ(dilation_w_factor, 4);
+  int32_t dilation_h_factor;
+  LITERT_ASSERT_OK(
+      LiteRtGetDepthwiseConv2dDilationHOptions(op, &dilation_h_factor));
+  ASSERT_EQ(dilation_h_factor, 4);
+}
+
+TEST(GetOpOptionTest, TestGetAveragePool2dOptions) {
+  auto model =
+      litert::testing::LoadTestFileModel("simple_average_poll_2d.tflite");
+  auto subgraph = model.MainSubgraph();
+  EXPECT_TRUE(subgraph);
+
+  auto ops = subgraph->Ops();
+  auto op = ops.front().Get();
+
+  uint32_t padding;
+  LITERT_ASSERT_OK(LiteRtGetAveragePool2dPaddingOption(op, &padding));
+  ASSERT_EQ(padding, 1);
+  int32_t stride_w;
+  LITERT_ASSERT_OK(LiteRtGetAveragePool2dStrideWOption(op, &stride_w));
+  ASSERT_EQ(stride_w, 4);
+  int32_t stride_h;
+  LITERT_ASSERT_OK(LiteRtGetAveragePool2dStrideHOption(op, &stride_h));
+  ASSERT_EQ(stride_h, 4);
+  int32_t filter_width;
+  LITERT_ASSERT_OK(LiteRtGetAveragePool2dFilterWidthOption(op, &filter_width));
+  ASSERT_EQ(filter_width, 4);
+  int32_t filter_height;
+  LITERT_ASSERT_OK(
+      LiteRtGetAveragePool2dFilterHeightOption(op, &filter_height));
+  ASSERT_EQ(filter_height, 4);
+  uint32_t fused_activation_function;
+  LITERT_ASSERT_OK(LiteRtGetAveragePool2dFusedActivationOption(
+      op, &fused_activation_function));
+  ASSERT_EQ(fused_activation_function, 0);
+}
+
+TEST(GetOpOptionTest, TestGetResizeBilinearOptions) {
+  auto model =
+      litert::testing::LoadTestFileModel("simple_resize_bilinear_op.tflite");
+  auto subgraph = model.MainSubgraph();
+  EXPECT_TRUE(subgraph);
+
+  auto ops = subgraph->Ops();
+  auto op = ops.front().Get();
+
+  bool align_corners;
+  LITERT_ASSERT_OK(
+      LiteRtGetResizeBilinearAlignCornersOption(op, &align_corners));
+  ASSERT_EQ(align_corners, false);
+  bool half_pixel_centers;
+  LITERT_ASSERT_OK(
+      LiteRtGetResizeBilinearHalfPixelCenterOption(op, &half_pixel_centers));
+  ASSERT_EQ(half_pixel_centers, true);
+}
+
+TEST(GetOpOptionTest, TestGetLeakyReluOptions) {
+  auto model =
+      litert::testing::LoadTestFileModel("simple_leaky_relu_op.tflite");
+  auto subgraph = model.MainSubgraph();
+  EXPECT_TRUE(subgraph);
+
+  auto ops = subgraph->Ops();
+  auto op = ops.front().Get();
+
+  float alpha;
+  LITERT_ASSERT_OK(LiteRtGetLeakyReluAlphaOption(op, &alpha));
+  ASSERT_FLOAT_EQ(alpha, 0.2);
+}
+
+TEST(GetOpOptionTest, TestGetDepthToSpaceOptions) {
+  auto model =
+      litert::testing::LoadTestFileModel("simple_depth_to_space_op.tflite");
+  auto subgraph = model.MainSubgraph();
+  EXPECT_TRUE(subgraph);
+
+  auto ops = subgraph->Ops();
+  auto op = ops.front().Get();
+
+  int32_t block_size;
+  LITERT_ASSERT_OK(LiteRtGetDepthToSpaceBlockSizeOption(op, &block_size));
+  ASSERT_EQ(block_size, 2);
+}
+
+TEST(GetOpOptionTest, TestGetSpaceToDepthOptions) {
+  auto model =
+      litert::testing::LoadTestFileModel("simple_space_to_depth_op.tflite");
+  auto subgraph = model.MainSubgraph();
+  EXPECT_TRUE(subgraph);
+
+  auto ops = subgraph->Ops();
+  auto op = ops.front().Get();
+
+  int32_t block_size;
+  LITERT_ASSERT_OK(LiteRtGetSpaceToDepthBlockSizeOption(op, &block_size));
+  ASSERT_EQ(block_size, 2);
+}
+
 }  // namespace

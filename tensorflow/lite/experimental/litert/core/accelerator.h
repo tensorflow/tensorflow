@@ -17,11 +17,11 @@
 
 #include <cstddef>
 #include <memory>
-#include <utility>
 #include <vector>
 
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
+#include "tensorflow/lite/experimental/litert/cc/litert_shared_library.h"
 
 extern "C" {
 
@@ -136,6 +136,10 @@ struct LiteRtAcceleratorT {
 
 namespace litert::internal {
 
+// Holds a list of accelerators.
+//
+// This is a helper class for the LiteRT environment that manages the
+// accelerators (and their resources) that are registered with it.
 class AcceleratorRegistry {
  public:
   struct Deleter {
@@ -168,6 +172,14 @@ class AcceleratorRegistry {
   Expected<LiteRtParamIndex> FindAcceleratorIndex(
       LiteRtAcceleratorT* accelerator);
 
+  // Gives ownership of the shared library to the registry.
+  //
+  // This should be called when an accelerator is loaded from a shared library
+  // to tie the library lifetime to the registry.
+  //
+  // The library will be closed when the registry is destroyed.
+  void TakeOwnershipOfSharedLibrary(SharedLibrary library);
+
   // Returns the number of accelerators that have been registered.
   size_t size() const { return accelerators_.size(); }
   auto begin() const { return accelerators_.begin(); }
@@ -177,6 +189,9 @@ class AcceleratorRegistry {
 
  private:
   std::vector<Ptr> accelerators_;
+  // Some accelerators are loaded as shared libraries. This list keeps these
+  // libraries loaded while the environment uses them.
+  std::vector<SharedLibrary> accelerator_shared_libraries_;
 };
 
 }  // namespace litert::internal

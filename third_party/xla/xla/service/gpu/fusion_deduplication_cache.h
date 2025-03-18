@@ -29,7 +29,10 @@ namespace gpu {
 
 // A cache that helps to track identical HLO instructions and their fusions. The
 // cache assigns an InstructionId to each instruction. Instructions that are the
-// same in terms of `HloInstruction::Identical` have the same id.
+// same in terms of `HloInstruction::Identical` have the same id. The cache
+// operates with HloInstruction pointers and does not dereference them when
+// retrieving/updating a FusionId, except one method which has a corresponding
+// comment.
 //
 // The id depends on the fusion order. If we have the following chain of HLO
 // instructions:
@@ -67,13 +70,14 @@ class FusionDeduplicationCache {
   // Returns the id for the given instruction. The instruction should have an id
   // already assigned, either during the initialization process in `Create` or
   // manually after the fusion by `SetFusedInstructionId`.
-  InstructionId GetInstructionId(const HloInstruction& instruction);
+  InstructionId GetInstructionId(const HloInstruction* instruction);
 
   // Returns the id for the fusion of `producer` and `consumer`.
   // `allow_multi_output` should be set to true if we allow to create a
-  // multi-output fusion to avoid having to duplicate `producer`.
-  FusionId GetFusionId(const HloInstruction& producer,
-                       const HloInstruction& consumer,
+  // multi-output fusion to avoid having to duplicate `producer`. `consumer`
+  // should not be deleted yet.
+  FusionId GetFusionId(const HloInstruction* producer,
+                       const HloInstruction* consumer,
                        bool allow_multi_output = false);
 
   // Sets the new id for the `fusion_instruction`.
@@ -89,9 +93,9 @@ class FusionDeduplicationCache {
   // The operand index needs to be obtained before the fusion happened and
   // provided explicitly, because at this point `original_producer` and
   // `original_consumer` have been modified and became disconnected.
-  void UpdateFusedInstructionId(const HloInstruction& fusion_instruction,
-                                const HloInstruction& original_producer,
-                                const HloInstruction& original_consumer,
+  void UpdateFusedInstructionId(const HloInstruction* fusion_instruction,
+                                const HloInstruction* original_producer,
+                                const HloInstruction* original_consumer,
                                 int64_t consumer_operand_index,
                                 bool allow_multi_output = false);
 
@@ -101,10 +105,9 @@ class FusionDeduplicationCache {
                            instruction_id_map)
       : next_id_(next_id), instruction_id_map_(std::move(instruction_id_map)) {}
 
-  FusionId GetFusionId(const HloInstruction& producer,
-                       const HloInstruction& consumer,
-                       int64_t consumer_operand_index,
-                       bool allow_multi__output);
+  FusionId GetFusionId(const HloInstruction* producer,
+                       const HloInstruction* consumer,
+                       int64_t consumer_operand_index, bool allow_multi_output);
 
   int64_t next_id_ = 0;
 

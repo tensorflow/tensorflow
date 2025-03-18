@@ -94,6 +94,56 @@ TEST(LiteRtReturnIfErrorTest, DoesntReturnOnSuccess) {
   EXPECT_EQ(canary_value, 2);
 }
 
+TEST(LiteRtReturnIfErrorTest, ExtraLoggingWorks) {
+  int canary_value = 0;
+  [&canary_value]() -> LiteRtStatus {
+    LITERT_RETURN_IF_ERROR(false) << "Successful default level logging.";
+    canary_value = 2;
+    return kLiteRtStatusOk;
+  }();
+  EXPECT_EQ(canary_value, 0);
+
+  canary_value = 0;
+  [&canary_value]() -> LiteRtStatus {
+    LITERT_RETURN_IF_ERROR(false).LogVerbose() << "Successful verbose logging.";
+    canary_value = 2;
+    return kLiteRtStatusOk;
+  }();
+  EXPECT_EQ(canary_value, 0);
+
+  canary_value = 0;
+  [&canary_value]() -> LiteRtStatus {
+    LITERT_RETURN_IF_ERROR(false).LogInfo() << "Successful info logging.";
+    canary_value = 2;
+    return kLiteRtStatusOk;
+  }();
+  EXPECT_EQ(canary_value, 0);
+
+  canary_value = 0;
+  [&canary_value]() -> LiteRtStatus {
+    LITERT_RETURN_IF_ERROR(false).LogWarning() << "Successful warning logging.";
+    canary_value = 2;
+    return kLiteRtStatusOk;
+  }();
+  EXPECT_EQ(canary_value, 0);
+
+  canary_value = 0;
+  [&canary_value]() -> LiteRtStatus {
+    LITERT_RETURN_IF_ERROR(false).LogError() << "Successful error logging.";
+    canary_value = 2;
+    return kLiteRtStatusOk;
+  }();
+  EXPECT_EQ(canary_value, 0);
+
+  canary_value = 0;
+  [&canary_value]() -> LiteRtStatus {
+    LITERT_RETURN_IF_ERROR(false).NoLog() << "This should never be printed";
+    canary_value = 2;
+    return kLiteRtStatusOk;
+  }();
+  EXPECT_EQ(canary_value, 0);
+}
+
 TEST(LiteRtAssignOrReturnTest, VariableAssignmentWorks) {
   int canary_value = 0;
   auto ChangeCanaryValue = [&canary_value]() -> LiteRtStatus {

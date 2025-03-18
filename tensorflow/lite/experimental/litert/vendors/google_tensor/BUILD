@@ -67,6 +67,7 @@ cc_test(
         "no_oss",
         # Sanitizer runtime doesn't work with anything that uses dlopen.
         "nosan",
+        "manual",
     ],
     # This test can only be run on Android and Linux.
     target_compatible_with = select({
@@ -80,6 +81,7 @@ cc_test(
         "//tensorflow/lite/experimental/litert/c:litert_logging",
         "//tensorflow/lite/experimental/litert/c:litert_model",
         "//tensorflow/lite/experimental/litert/cc:litert_buffer_ref",
+        "//tensorflow/lite/experimental/litert/cc:litert_model",
         "//tensorflow/lite/experimental/litert/test:common",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",

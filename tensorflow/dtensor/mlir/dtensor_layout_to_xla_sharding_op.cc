@@ -43,9 +43,9 @@ namespace {
 using mlir::TF::DTensorLayout;
 
 class RemoveDTensorLayoutAfterConstOrBlockArgPattern
-    : public mlir::OpRewritePattern<DTensorLayout> {
+    : public mlir::OpRewritePattern<DTensorLayout>::SplitMatchAndRewrite {
  public:
-  using mlir::OpRewritePattern<DTensorLayout>::OpRewritePattern;
+  using SplitMatchAndRewrite::SplitMatchAndRewrite;
 
   mlir::LogicalResult match(DTensorLayout layout_op) const override;
 

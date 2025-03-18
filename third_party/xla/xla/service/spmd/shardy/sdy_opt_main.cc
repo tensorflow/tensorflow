@@ -19,12 +19,14 @@ limitations under the License.
 #include "mlir/Tools/mlir-opt/MlirOptMain.h"
 #include "shardy/dialect/sdy/ir/register.h"
 #include "shardy/dialect/sdy/transforms/passes.h"
+#include "shardy/round_trip_import/pipelines.h"
 #include "xla/mlir_hlo/stablehlo_ext/transforms/passes.h"
 #include "xla/service/spmd/shardy/round_trip_common/export_named_computations.h"
 #include "xla/service/spmd/shardy/round_trip_common/import_backend_func_calls.h"
 #include "xla/service/spmd/shardy/round_trip_common/import_constants.h"
 #include "xla/service/spmd/shardy/round_trip_common/import_sdy_custom_calls.h"
 #include "xla/service/spmd/shardy/round_trip_common/open_while_free_vars_sharding.h"
+#include "xla/service/spmd/shardy/sdy_round_trip/dedup_meshes.h"
 #include "xla/service/spmd/shardy/sdy_round_trip/export_ops.h"
 #include "xla/service/spmd/shardy/sdy_round_trip/export_shardy_attrs.h"
 #include "xla/service/spmd/shardy/sdy_round_trip/import_callback_custom_calls.h"
@@ -75,10 +77,14 @@ int main(int argc, char** argv) {
   xla::sdy::registerSdyRoundTripRemoveSizeOneAxesPass();
   xla::sdy::registerSdyRoundTripExportOpsPass();
   xla::sdy::registerSdyRoundTripExportPipeline();
+  xla::sdy::registerSdyRoundTripDedupMeshesPass();
   xla::sdy::registerSdyRoundTripShardMapExportPass();
   xla::sdy::registerSdyRoundTripShardMapImportPass();
   xla::sdy::registerSdyRoundTripImportPipeline();
   xla::sdy::registerSdyRoundTripTestingPipeline();
+
+  // Test SdyRoundTripImportPipeline cloned on Shardy Github.
+  mlir::sdy::registerSdyRoundTripImportPipeline();
 
   return mlir::asMainReturnCode(
       mlir::MlirOptMain(argc, argv, "XLA SDY pass driver\n", dialects));

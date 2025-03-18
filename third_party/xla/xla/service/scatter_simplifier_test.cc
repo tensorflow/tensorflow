@@ -17,12 +17,14 @@ limitations under the License.
 
 #include <cstdint>
 #include <optional>
+#include <string>
 
+#include "absl/strings/string_view.h"
+#include "absl/strings/substitute.h"
 #include "xla/hlo/evaluator/hlo_evaluator.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
+#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/parser/hlo_parser.h"
-#include "xla/hlo/pass/hlo_pass_fix.h"
-#include "xla/hlo/pass/hlo_pass_pipeline.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/tests/hlo_test_base.h"
@@ -547,6 +549,57 @@ TEST_F(SimpleScatterExampleTest, 3x1d) {
       LiteralTestUtil::Equal(LiteralUtil::CreateR1<int32_t>(
                                  {1 + 1, 2 + 2 + 10, 3 + 20 + 200, 4 + 300}),
                              result));
+}
+
+TEST_F(SimpleScatterExampleTest,
+       ScatterSimplifierPropagatesPackingForSubByteType) {
+  constexpr absl::string_view kHloTextTemplate = R"(
+    HloModule scatter_simplifier
+
+    scatter_computation {
+      p0 = s4[] parameter(0)
+      ROOT result = s4[] parameter(1)
+    }
+
+    ENTRY kernel_entry {
+      operand = s4[3,4,5]{2,1,0$0} parameter(0)
+      indices = s32[2,2]{1,0} parameter(1)
+      update = s4[2,1,1,3]{3,2,1,0$0} parameter(2)
+      ROOT scatter = s4[3,4,5]{2,1,0$0} scatter(operand, indices, update),
+          to_apply=scatter_computation,
+          update_window_dims={1, 2, 3},
+          inserted_window_dims={},
+          scatter_dims_to_operand_dims={2,0},
+          index_vector_dim=1
+    })";
+
+  // First, test with no packing.
+  std::string unpacked_module_str = absl::Substitute(kHloTextTemplate, "");
+  RunAndFilecheckHloRewrite(unpacked_module_str, ScatterSimplifier(), R"(
+           CHECK: %[[T_OPERAND:.*]] = s4[5,3,4]{2,1,0} transpose(%operand),
+      CHECK-SAME:     dimensions={2,0,1}
+           CHECK: %[[T_UPDATES:.*]] = s4[2,3,1,1]{3,2,1,0} transpose(%update),
+      CHECK-SAME:     dimensions={0,3,1,2}
+           CHECK: %[[SCATTER:.*]] = {{.*}} scatter(
+      CHECK-SAME:     %[[T_OPERAND]], %indices, %[[T_UPDATES]])
+      CHECK-SAME:     scatter_dims_to_operand_dims={0,1},
+           CHECK: ROOT %{{.*}} = s4[3,4,5]{2,1,0}
+      CHECK-SAME:     transpose(%[[SCATTER]]), dimensions={1,2,0}
+  )");
+
+  // Second, test with packing.
+  std::string packed_module_str = absl::Substitute(kHloTextTemplate, ":E(4)");
+  RunAndFilecheckHloRewrite(packed_module_str, ScatterSimplifier(), R"(
+           CHECK: %[[T_OPERAND:.*]] = s4[5,3,4]{2,1,0:E(4)} transpose(%operand),
+      CHECK-SAME:     dimensions={2,0,1}
+           CHECK: %[[T_UPDATES:.*]] = s4[2,3,1,1]{3,2,1,0:E(4)} transpose(%update),
+      CHECK-SAME:     dimensions={0,3,1,2}
+           CHECK: %[[SCATTER:.*]] = {{.*}} scatter(
+      CHECK-SAME:     %[[T_OPERAND]], %indices, %[[T_UPDATES]])
+      CHECK-SAME:     scatter_dims_to_operand_dims={0,1},
+           CHECK: ROOT %{{.*}} = s4[3,4,5]{2,1,0:E(4)}
+      CHECK-SAME:     transpose(%[[SCATTER]]), dimensions={1,2,0}
+  )");
 }
 
 }  // namespace

@@ -738,7 +738,7 @@ func.func @int4_constant(%arg0: tensor<3xi4>, %arg1: index) -> i4 {
   return %0 : i4
 }
 // CHECK: llvm.mlir.global private constant
-// CHECK-SAME: dense<[18, 48]>
+// CHECK-SAME: dense<[33, 3]>
 // CHECK-LABEL: @int4_constant
 
 // -----
@@ -801,7 +801,7 @@ func.func @f4_constant(%arg0: tensor<3xf4E2M1FN>, %arg1: index) -> f4E2M1FN {
   return %0 : f4E2M1FN
 }
 // CHECK: llvm.mlir.global private constant
-// CHECK-SAME: dense<[25, 64]>
+// CHECK-SAME: dense<[-111, 4]>
 // CHECK-LABEL: @f4_constant
 
 // -----

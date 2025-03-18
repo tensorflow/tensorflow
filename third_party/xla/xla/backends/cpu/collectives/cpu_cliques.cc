@@ -112,6 +112,12 @@ absl::StatusOr<Communicator*> AcquireCommunicator(
   }
 
   absl::MutexLock lock(&thread_safe_clique.mu);
+
+  // Check if we lost a race to create a communicator to another thread.
+  if (auto comm = thread_safe_clique.clique.comm(rank)) {
+    return *comm;
+  }
+
   TF_RETURN_IF_ERROR(thread_safe_clique.clique.AddComm(
       rank, std::move(communicators.front())));
 

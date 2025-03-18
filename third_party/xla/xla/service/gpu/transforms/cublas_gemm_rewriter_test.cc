@@ -66,7 +66,7 @@ ENTRY e {
   RunAndFilecheckHloRewrite(
       hlo_text,
       GemmRewriter(
-          se::CudaComputeCapability{se::CudaComputeCapability::AMPERE, 0},
+          se::CudaComputeCapability{se::CudaComputeCapability::kAmpere, 0},
           /*toolkit_version=*/stream_executor::SemanticVersion{12, 4, 0}),
       R"(
 ; CHECK:  %[[P0:.+]] = f32[2048]{0} parameter(0)
@@ -90,7 +90,7 @@ ENTRY e {
   RunAndFilecheckHloRewrite(
       hlo_text,
       GemmRewriter(
-          se::CudaComputeCapability{se::CudaComputeCapability::AMPERE, 0},
+          se::CudaComputeCapability{se::CudaComputeCapability::kAmpere, 0},
           /*toolkit_version=*/stream_executor::SemanticVersion{12, 4, 0}),
       R"(
 ; CHECK:  %[[P0:.+]] = f32[10,10,2048]{2,1,0} parameter(0)
@@ -111,7 +111,7 @@ ENTRY main {
       lhs_contracting_dims={1}, rhs_contracting_dims={0}, sparsity=L.1@2:4
 })";
   auto hlo_pass = GemmRewriter(
-      se::CudaComputeCapability{se::CudaComputeCapability::AMPERE, 0},
+      se::CudaComputeCapability{se::CudaComputeCapability::kAmpere, 0},
       /*toolkit_version=*/stream_executor::SemanticVersion{12, 4, 0});
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_text));
   TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHloPass(&hlo_pass, module.get()));
@@ -3331,6 +3331,39 @@ ENTRY test {
 ; CHECK:        %[[custom_call:.*]] = {{.*}} custom-call{{.*}}__cublas$lt$matmul
 ; CHECK:        %[[tuple:.*]] = bf16[16,16]{1,0} get-tuple-element(%[[custom_call]]), index=0
 ; CHECK:        ROOT {{.*}} fusion({{.*}}%[[tuple]]
+)");
+}
+
+TEST_F(CublasLtGemmRewriteTest, CublasLtFullyContractingRhsWithBias) {
+  const char* hlo_text = R"(
+HloModule test
+
+ENTRY test {
+  param_0 = bf16[10240,1024]{1,0} parameter(0)
+  param_1 = bf16[1024,1]{1,0} parameter(1)
+  dot = bf16[10240,1]{1,0} dot(param_0, param_1), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  transpose = bf16[10240,1]{1,0} transpose(dot), dimensions={0,1}
+  param_2 = bf16[1]{0} parameter(2)
+  reshape = bf16[1]{0} reshape(param_2)
+  broadcast = bf16[10240,1]{1,0} broadcast(reshape), dimensions={1}
+  ROOT out = bf16[10240,1]{1,0} add(transpose, broadcast)
+}
+)";
+
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-2, 1e-2}));
+
+  if (IsCuda() &&
+      !HasCudaComputeCapability(se::CudaComputeCapability::Ampere())) {
+    GTEST_SKIP() << "Pre-Ampere casts up bf16 to fp32";
+  }
+
+  MatchOptimizedHlo(hlo_text, R"(
+; CHECK-DAG: [[LHS:%[^ ]+]] = bf16[10240,1024]{1,0} parameter(0)
+; CHECK-DAG: [[P_1:%[^ ]+]] = bf16[1024,1]{1,0} parameter(1)
+; CHECK-DAG: [[P_2:%[^ ]+]] = bf16[1]{0} parameter(2)
+; CHECK-DAG: [[RHS:%[^ ]+]] = bf16[1024]{0} {{.+}}([[P_1]])
+; CHECK-DAG: [[BIAS:%[^ ]+]] = bf16[] {{.+}}([[P_2]])
+; CHECK: custom-call([[LHS]], [[RHS]], [[BIAS]]), custom_call_target="__cublas$lt$matmul"
 )");
 }
 

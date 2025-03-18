@@ -1038,20 +1038,15 @@ LogicalResult ConvertTFConv2DBackpropInputOp::matchAndRewrite(
   a1_transpose_dims.push_back(filter_shape[0]);
   a1_transpose_dims.push_back(filter_shape[1]);
   a1_transpose_dims.push_back(filter_shape[3]);
-  std::optional<Value> a1_filter_transpose_perm = getConstTensor<int32_t>(
-      rewriter, op, /*vec=*/{2, 0, 1, 3}, /*shape=*/{4});
-
-  if (!a1_filter_transpose_perm) return failure();
 
   auto a1_filter_transpose_op = CreateOpAndInfer<tosa::TransposeOp>(
       rewriter, op->getLoc(),
       tensorflow::GetTypeFromTFTensorShape(ArrayRef<int64_t>(a1_transpose_dims),
                                            filter_type.getElementType()),
-      tf_conv_op.getFilter(), a1_filter_transpose_perm.value());
+      tf_conv_op.getFilter(), rewriter.getDenseI32ArrayAttr({2, 0, 1, 3}));
 
   DenseI64ArrayAttr stride;
   DenseI64ArrayAttr outpad;
-  DenseI64ArrayAttr output_shape;
   {
     auto tmpAttr = tf_conv_op.getStrides();
     if (!tmpAttr) {
@@ -1093,21 +1088,6 @@ LogicalResult ConvertTFConv2DBackpropInputOp::matchAndRewrite(
         return failure();
     }
   }
-  {
-    ElementsAttr output_shape_elems;
-    // Match from input_sizes tensor first.
-    if (matchPattern(tf_conv_op.getInputSizes(),
-                     m_Constant(&output_shape_elems))) {
-      SmallVector<int64_t> shape_vec;
-      for (int i = 0; i < output_shape_elems.getNumElements(); i++)
-        shape_vec.push_back(
-            output_shape_elems.getValues<IntegerAttr>()[i].getInt());
-      output_shape = rewriter.getDenseI64ArrayAttr(shape_vec);
-    } else {
-      // Use output tensor's shape otherwise.
-      output_shape = rewriter.getDenseI64ArrayAttr(output_type.getShape());
-    }
-  }
 
   int output_channel = output_type.getShape()[3];
   SmallVector<float> vec(output_channel, 0.0f);
@@ -1124,7 +1104,7 @@ LogicalResult ConvertTFConv2DBackpropInputOp::matchAndRewrite(
   CreateReplaceOpAndInfer<tosa::TransposeConv2DOp>(
       rewriter, op, output_type, tf_conv_op.getOutBackprop(),
       a1_filter_transpose_op.getResult(), zero_bias.value(), outpad, stride,
-      output_shape, acc_type);
+      acc_type);
 
   return success();
 }
@@ -1595,9 +1575,20 @@ LogicalResult ConvertTFTransposeOp::matchAndRewrite(
     return failure();
   }
 
-  CreateReplaceOpAndInfer<tosa::TransposeOp>(rewriter, op, output_type,
-                                             tf_transpose_op.getX(),
-                                             tf_transpose_op.getPerm());
+  // Get the constant values for perm input
+  ElementsAttr permsAttrElems;
+  if (!matchPattern(tf_transpose_op.getPerm(), m_Constant(&permsAttrElems))) {
+    return rewriter.notifyMatchFailure(op, "perm value is not constant");
+  }
+
+  SmallVector<int32_t> perms;
+  for (auto v : permsAttrElems.getValues<APInt>()) {
+    perms.push_back(v.getSExtValue());
+  }
+
+  CreateReplaceOpAndInfer<tosa::TransposeOp>(
+      rewriter, op, output_type, tf_transpose_op.getX(),
+      rewriter.getDenseI32ArrayAttr(perms));
 
   return success();
 }
@@ -1794,6 +1785,13 @@ LogicalResult ConvertTFPadV2Op::matchAndRewrite(
   Value input = tf_pad_op.getInput();
   Value constant_value = tf_pad_op.getConstantValues();
 
+  Value rank1_scalar_value =
+      reshapeScalarTo1D(rewriter, op->getLoc(), constant_value);
+  if (!rank1_scalar_value) {
+    return rewriter.notifyMatchFailure(
+        op, "cannot reshape constant_value input to rank 1");
+  }
+
   SmallVector<int64_t> padding_vals;
   if (failed(getVectorFromValue64(tf_pad_op.getPaddings(), padding_vals))) {
     return rewriter.notifyMatchFailure(op, "paddings is not a constant value");
@@ -1802,7 +1800,7 @@ LogicalResult ConvertTFPadV2Op::matchAndRewrite(
   Value padding = mlir::tosa::getTosaConstShape(rewriter, op->getLoc(), padding_vals);
 
   CreateReplaceOpAndInfer<tosa::PadOp>(rewriter, op, tf_pad_op.getType(), input,
-                                       padding, constant_value);
+                                       padding, rank1_scalar_value);
 
   return success();
 }

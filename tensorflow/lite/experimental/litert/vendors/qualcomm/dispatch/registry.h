@@ -19,8 +19,7 @@
 
 #include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
 
-namespace litert {
-namespace qnn {
+namespace litert::qnn {
 
 template <typename H, typename V>
 class Registry {
@@ -67,7 +66,6 @@ class Registry {
   std::vector<Entry> entries_;
 };
 
-}  // namespace qnn
-}  // namespace litert
+}  // namespace litert::qnn
 
 #endif  // TENSORFLOW_LITE_EXPERIMENTAL_LITERT_VENDORS_QUALCOMM_DISPATCH_REGISTRY_H_

@@ -115,11 +115,11 @@ absl::StatusOr<Literal> TextLiteralReader::ReadAllLines() {
       }
       coordinate_values.push_back(coordinate_value);
     }
-    if (coordinate_values.size() != shape.dimensions_size()) {
+    if (coordinate_values.size() != shape.rank()) {
       return InvalidArgument(
           "line did not have expected number of coordinates; want %d got %u: "
           "\"%s\"",
-          shape.dimensions_size(), coordinate_values.size(), line);
+          shape.rank(), coordinate_values.size(), line);
     }
     result.Set<float>(coordinate_values, value);
   }

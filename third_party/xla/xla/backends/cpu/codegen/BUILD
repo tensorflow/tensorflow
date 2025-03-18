@@ -1,3 +1,4 @@
+load("//xla:strict.default.bzl", "py_strict_test")
 load("//xla:xla.bzl", "xla_cc_test", "xla_internal")
 load(
     "//xla/tsl/platform:build_config_root.bzl",
@@ -58,14 +59,19 @@ cc_library(
     hdrs = ["ir_compiler.h"],
     deps = [
         ":polynomial_approximations",
+        "//xla:debug_options_flags",
         "//xla:util",
         "//xla/service:hlo_module_config",
+        "//xla/service/cpu:cpu_options",
         "//xla/service/llvm_ir:llvm_util",
         "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/base:nullability",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/synchronization",
         "@llvm-project//llvm:Analysis",
         "@llvm-project//llvm:Core",
@@ -286,6 +292,34 @@ cc_library(
     ],
 )
 
+xla_cc_test(
+    name = "aot_compiled_function_library_test",
+    srcs = ["aot_compiled_function_library_test.cc"],
+    deps = [
+        ":aot_compiled_function_library",
+        "//xla/backends/cpu/runtime:function_library",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
+    name = "aot_compiled_function_library",
+    srcs = ["aot_compiled_function_library.cc"],
+    hdrs = ["aot_compiled_function_library.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//xla/backends/cpu/runtime:function_library",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/strings:string_view",
+    ],
+)
+
 cc_library(
     name = "object_loader",
     srcs = ["object_loader.cc"],
@@ -327,6 +361,42 @@ cc_library(
         "@llvm-project//llvm:ExecutionEngine",
         "@llvm-project//llvm:JITLink",
         "@llvm-project//llvm:OrcJIT",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//llvm:ir_headers",
+    ],
+)
+
+cc_library(
+    name = "computation_kernel_emitter",
+    srcs = ["computation_kernel_emitter.cc"],
+    hdrs = ["computation_kernel_emitter.h"],
+    deps = [
+        ":kernel_api_ir_builder",
+        ":target_machine_features",
+        "//xla:shape_util",
+        "//xla:util",
+        "//xla/codegen:kernel_definition",
+        "//xla/codegen:kernel_emitter",
+        "//xla/codegen:kernel_spec",
+        "//xla/codegen:llvm_ir_kernel_source",
+        "//xla/hlo/ir:hlo",
+        "//xla/service:buffer_assignment",
+        "//xla/service/cpu:backend_config_proto_cc",
+        "//xla/service/cpu:ir_emitter",
+        "//xla/service/llvm_ir:ir_array",
+        "//xla/service/llvm_ir:llvm_util",
+        "//xla/stream_executor:launch_dim",
+        "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:Support",
         "@llvm-project//llvm:ir_headers",
     ],
@@ -385,5 +455,21 @@ xla_cc_test(
         "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:status_matchers",
         "@local_tsl//tsl/platform:test",
+    ],
+)
+
+py_strict_test(
+    name = "computation_kernel_emitter_test",
+    srcs = ["computation_kernel_emitter_test.py"],
+    tags = [
+        "no_oss",
+    ],
+    deps = [
+        "//third_party/py/numpy",
+        "//xla/backends/cpu/testlib",
+        "//xla/codegen/testlib",
+        "//xla/python:xla_extension",
+        "@absl_py//absl/testing:absltest",
+        "@absl_py//absl/testing:parameterized",
     ],
 )

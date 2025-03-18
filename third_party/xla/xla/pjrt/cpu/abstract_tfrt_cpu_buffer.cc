@@ -515,8 +515,7 @@ AbstractTfrtCpuBuffer::CopyToDeviceAcrossClients(PjRtDevice* dst_device) {
   TF_ASSIGN_OR_RETURN(std::shared_ptr<Literal> literal, ToLiteralSync());
   // Avoid use-after-free on `literal` due to unsequenced move and use.
   Literal* literal_pointer = literal.get();
-  absl::InlinedVector<int64_t, 4> byte_strides(
-      literal->shape().dimensions_size());
+  absl::InlinedVector<int64_t, 4> byte_strides(literal->shape().rank());
   TF_RETURN_IF_ERROR(
       ShapeUtil::ByteStrides(literal->shape(), absl::MakeSpan(byte_strides)));
   TF_ASSIGN_OR_RETURN(PjRtMemorySpace * dst_memory_space,

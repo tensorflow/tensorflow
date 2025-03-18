@@ -27,7 +27,7 @@ enum AutoShardPolicy {
   OFF = -1;
 }
 
-// next: 6
+// next: 7
 message AutotuneOptions {
   // Whether to automatically tune performance knobs.
   oneof optional_enabled {
@@ -62,6 +62,12 @@ message AutotuneOptions {
   // Defaults to 16.
   oneof optional_initial_parallelism {
     int64 initial_parallelism = 5;
+  }
+
+  // The minimal parallelism to start for autotune algorithm to optimize from
+  // for the parallelism of `.map` and `.batch` dataset operations.
+  oneof optional_min_parallelism {
+    int64 min_parallelism = 6;
   }
 }
 

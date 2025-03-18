@@ -20,6 +20,10 @@
 #include "tensorflow/lite/experimental/litert/core/accelerator.h"
 #include "tensorflow/lite/experimental/litert/core/environment.h"
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 // Gets the number of accelerators registered to LiteRT.
 LiteRtStatus LiteRtGetNumAccelerators(LiteRtEnvironment environment,
                                       LiteRtParamIndex* num_accelerators) {
@@ -118,3 +122,7 @@ LiteRtStatus LiteRtGetAcceleratorHardwareSupport(
   }
   return accelerator->GetHardwareSupport(accelerator, supported_hardware);
 }
+
+#ifdef __cplusplus
+}  // extern "C"
+#endif

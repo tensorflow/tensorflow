@@ -3,6 +3,17 @@
 
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/builders/split_op_builder.h"
 
+#include <cstdint>
+#include <vector>
+
+#include "third_party/qairt/latest/include/QNN/QnnOpDef.h"
+#include "third_party/qairt/latest/include/QNN/QnnTypes.h"
+#include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/builders/op_builder.h"
+#include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/tensor_pool.h"
+#include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/utils/log.h"
+#include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/wrappers/op_wrapper.h"
+#include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/wrappers/tensor_wrapper.h"
+
 namespace qnn {
 
 namespace {
@@ -22,10 +33,14 @@ std::vector<OpWrapper> BuildSplitOp(
   }
 
   const TensorWrapper& input_tensor = inputs[1];
-  auto* axis_data =
-      reinterpret_cast<const std::int32_t*>(axis_tensor.GetStaticTensorData());
-  std::uint32_t axis =
-      axis_data[0] >= 0 ? axis_data[0] : axis_data[0] + input_tensor.GetRank();
+  auto axis_data = axis_tensor.GetStaticTensorData<int32_t>();
+  if (!axis_data.has_value()) {
+    QNN_LOG_ERROR("Get axis_data failed.");
+    return res;
+  }
+  std::uint32_t axis = (*axis_data)[0] >= 0
+                           ? (*axis_data)[0]
+                           : (*axis_data)[0] + input_tensor.GetRank();
 
   const std::uint32_t slice_size = input_tensor.GetDim(axis) / num_splits;
   // The split_indice will do N cuts, split the dimension into N+1 clips

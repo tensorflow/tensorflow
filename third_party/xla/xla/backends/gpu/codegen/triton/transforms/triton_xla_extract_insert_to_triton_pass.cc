@@ -21,16 +21,19 @@ limitations under the License.
 #include <optional>
 #include <string>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include "absl/log/check.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
+#include "mlir/Analysis/SliceAnalysis.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/LLVMIR/NVVMDialect.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
+#include "mlir/IR/Attributes.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/BuiltinTypes.h"
@@ -45,15 +48,18 @@ limitations under the License.
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "xla/backends/gpu/codegen/triton/emitter_helpers.h"
 #include "xla/backends/gpu/codegen/triton/ir/triton_xla_ops.h"
+#include "xla/backends/gpu/codegen/triton/tma_utils.h"
 #include "xla/backends/gpu/codegen/triton/transforms/passes.h"
 #include "xla/codegen/emitter_loc_op_builder.h"
+#include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
 #include "triton/Dialect/Triton/IR/Dialect.h"
 #include "triton/Dialect/Triton/IR/Types.h"
 
 namespace mlir::triton::xla {
 
-namespace xgt = ::xla::gpu::triton;
+namespace xg = ::xla::gpu;
+namespace xgt = xg::triton;
 
 namespace {
 
@@ -76,10 +82,77 @@ PointerType GetTensorPtrType(::xla::EmitterLocOpBuilder& builder, Type type) {
                           mlir::NVVM::kGlobalMemorySpace);
 }
 
+TensorDescType GetTensorDescPtrType(::xla::EmitterLocOpBuilder& builder,
+                                    RankedTensorType type) {
+  return TensorDescType::get(builder.getContext(), type);
+}
+
 bool AreRankedTensors(ArrayRef<Type> types) {
   return llvm::all_of(types, [](mlir::Type type) {
     return mlir::isa<mlir::RankedTensorType>(type);
   });
+}
+
+bool TmaIsEnabledForDevice(
+    const stream_executor::DeviceDescription& device_info) {
+  bool is_cuda = std::holds_alternative<stream_executor::CudaComputeCapability>(
+      device_info.gpu_compute_capability());
+  return is_cuda && device_info.cuda_compute_capability().IsAtLeastHopper();
+}
+
+bool CanUseTMA(::xla::EmitterLocOpBuilder& builder, bool tma_enabled,
+               const stream_executor::DeviceDescription& device_description,
+               TiledTensorType tiled_tensor_type,
+               TypedValue<RankedTensorType> tensor) {
+  if (!tma_enabled) {
+    return false;
+  }
+  if (!TmaIsEnabledForDevice(device_description)) {
+    return false;
+  }
+  // Currently only 2D tensors are supported.
+  if (tiled_tensor_type.getTileShape().size() != 2) {
+    return false;
+  }
+
+  // We only enable TMA for inputs that have one use only.
+  auto block_arg = mlir::dyn_cast<BlockArgument>(tensor);
+  if (!block_arg || !block_arg.hasOneUse()) {
+    return false;
+  }
+  auto func_op =
+      mlir::dyn_cast<func::FuncOp>(block_arg.getOwner()->getParentOp());
+  if (!func_op) {
+    return false;
+  }
+
+  // Limitations of TMA:
+  // - The minor dimension of the global input must be divisible by 16.
+  // - The block size must be less than 256 in every dimension.
+  // See source:
+  // https://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__TENSOR__MEMORY.html
+  if (tiled_tensor_type.getOriginalShape()[1] % 16 != 0) {
+    return false;
+  }
+  return llvm::none_of(tiled_tensor_type.getTileShape(),
+                       [](int64_t dim) { return dim > 256; });
+}
+
+// Tile Op is rewritten to tt.reinterpret_tensor_desc if TMA is used.
+// During rewriting of other ops, such as ExtractOp and InsertOp, we need to
+// check if TMA is used or not. This function basically checks that the
+// backward slice of the op contains a ReinterpretTensorDescOp, indicating that
+// TMA is to be used.
+bool IsTmaUsed(Operation* op) {
+  SetVector<Operation*> backwardSlice;
+  BackwardSliceOptions opt;
+  mlir::getBackwardSlice(op, &backwardSlice, opt);
+  for (auto op : backwardSlice) {
+    if (mlir::isa<ReinterpretTensorDescOp>(op)) {
+      return true;
+    }
+  }
+  return false;
 }
 
 void ComputeBoundaryChecks(std::vector<int32_t>& boundary_checks,
@@ -133,8 +206,21 @@ struct RewriteFuncOp : mlir::OpRewritePattern<func::FuncOp> {
 
     auto new_function_type = FunctionType::get(
         op.getContext(), new_operand_types, /*result_types=*/{});
-    auto new_func = rewriter.create<triton::FuncOp>(op.getLoc(), op.getName(),
-                                                    new_function_type);
+
+    // Transfer the argument attributes from the old function to the new one.
+    SmallVector<DictionaryAttr> arg_attrs;
+    if (op.getArgAttrs().has_value()) {
+      auto oldArgAttrsArray = op.getArgAttrs().value();
+      for (int i = 0; i < oldArgAttrsArray.size(); ++i) {
+        arg_attrs.push_back(
+            mlir::cast<mlir::DictionaryAttr>(oldArgAttrsArray[i]));
+      }
+    }
+
+    // Currently not propagating any function attributes to the new function.
+    ArrayRef<NamedAttribute> attrs;
+    auto new_func = rewriter.create<triton::FuncOp>(
+        op.getLoc(), op.getName(), new_function_type, attrs, arg_attrs);
 
     rewriter.inlineRegionBefore(op.getRegion(), new_func.getFunctionBody(),
                                 new_func.end());
@@ -150,12 +236,60 @@ struct RewriteFuncOp : mlir::OpRewritePattern<func::FuncOp> {
 };
 
 struct RewriteTile : mlir::OpRewritePattern<TileOp> {
+  RewriteTile(mlir::MLIRContext* context,
+              const stream_executor::DeviceDescription* device_description,
+              bool tma_enabled)
+      : OpRewritePattern(context),
+        device_description(device_description),
+        tma_enabled(tma_enabled) {}
   using OpRewritePattern::OpRewritePattern;
 
-  // Rewriting TileOp as tt.make_tensor_ptr.
+  // Rewriting TileOp as tt.make_tensor_ptr if TMA is not enabled, otherwise
+  // tt.reinterpret_tensor_desc.
   mlir::LogicalResult matchAndRewrite(
       TileOp op, mlir::PatternRewriter& rewriter) const override {
     ::xla::EmitterLocOpBuilder builder(op.getLoc(), rewriter);
+
+    if (CanUseTMA(builder, tma_enabled, *device_description,
+                  op.getTiledTensor().getType(), op.getTensor())) {
+      // Add TMA attributes to the corresponding argument in the function.
+      auto block_arg = mlir::dyn_cast<BlockArgument>(op.getTensor());
+      auto func_op =
+          mlir::dyn_cast<func::FuncOp>(block_arg.getOwner()->getParentOp());
+      func_op.setArgAttr(block_arg.getArgNumber(), "tt.nv_tma_desc",
+                         builder.getI32IntegerAttr(1));
+      // Prefixing the attribute name with "tt", otherwise tt.func will
+      // complain that it is not part of the dialect. Not the best way to
+      // do this, but it works for now.
+      auto tiled_tensor_type = op.getTiledTensor().getType();
+      func_op.setArgAttr(
+          block_arg.getArgNumber(), "tt.tma_descriptor",
+          builder.getAttr<TmaDescriptorAttr>(
+              tiled_tensor_type.getOriginalShape(),
+              tiled_tensor_type.getTileShape(),
+              tiled_tensor_type.getElementType().getIntOrFloatBitWidth() / 8));
+
+      // tensor -> !tt.ptr<>
+      auto cast_to_tensor_ptr_type =
+          builder
+              .create<mlir::UnrealizedConversionCastOp>(
+                  GetTensorPtrType(builder,
+                                   op.getTensor().getType().getElementType()),
+                  op.getTensor())
+              .getResult(0);
+
+      auto reinterpret_tensor_desc =
+          xg::EmitTmaDescriptor(builder, cast_to_tensor_ptr_type,
+                                op.getTiledTensor().getType().getTileType());
+
+      // !tt.tensordesc<tensor> -> tiled_tensor
+      auto cast_desc_ptr_to_tiled_tensor_ptr_type =
+          builder.create<mlir::UnrealizedConversionCastOp>(
+              op.getTiledTensor().getType(), reinterpret_tensor_desc);
+
+      rewriter.replaceOp(op, cast_desc_ptr_to_tiled_tensor_ptr_type);
+      return mlir::success();
+    }
 
     // Order is 0, 1, ..., rank - 1.
     std::vector<int32_t> dim_order(op.getSizes().size());
@@ -188,16 +322,42 @@ struct RewriteTile : mlir::OpRewritePattern<TileOp> {
     rewriter.replaceOp(op, cast_to_tiled_tensor_type);
     return mlir::success();
   }
+
+  const stream_executor::DeviceDescription* device_description;
+  const bool tma_enabled;
 };
 
 struct RewriteExtract : mlir::OpRewritePattern<ExtractOp> {
   using OpRewritePattern::OpRewritePattern;
 
-  // Rewriting ExtractOp as tt.advance + tt.load.
+  // Rewriting ExtractOp as tt.advance + tt.load if TMA is not enabled,
+  // otherwise tt.experimental_descriptor_load.
   mlir::LogicalResult matchAndRewrite(
       ExtractOp op, mlir::PatternRewriter& rewriter) const override {
     ::xla::EmitterLocOpBuilder builder(op.getLoc(), rewriter);
 
+    if (IsTmaUsed(op.getSrc().getDefiningOp())) {
+      // tiled_tensor -> !tt.tensordesc<tensor>
+      auto cast_to_tensor_desc_ptr_type =
+          builder
+              .create<mlir::UnrealizedConversionCastOp>(
+                  GetTensorDescPtrType(
+                      builder, RankedTensorType::get(
+                                   op.getSrc().getType().getTileShape(),
+                                   op.getSrc().getType().getElementType())),
+                  op.getSrc())
+              .getResult(0);
+
+      auto descriptor_load =
+          builder
+              .create<ExperimentalDescriptorLoadOp>(
+                  op.getResult().getType(), cast_to_tensor_desc_ptr_type,
+                  op.getOffsets())
+              .getResult();
+
+      rewriter.replaceOp(op, descriptor_load);
+      return mlir::success();
+    }
     // tiled_tensor -> !tt.ptr<tensor>
     auto cast_to_tensor_ptr_type =
         builder
@@ -232,34 +392,51 @@ struct RewriteExtract : mlir::OpRewritePattern<ExtractOp> {
 struct RewriteInsert : mlir::OpRewritePattern<InsertOp> {
   using OpRewritePattern::OpRewritePattern;
 
-  // Rewriting InsertOp as tt.advance + tt.store.
+  // Rewriting InsertOp as tt.advance + tt.store if TMA is not enabled,
+  // otherwise tt.experimental_descriptor_store.
   mlir::LogicalResult matchAndRewrite(
       InsertOp op, mlir::PatternRewriter& rewriter) const override {
     ::xla::EmitterLocOpBuilder builder(op.getLoc(), rewriter);
 
-    // tiled_tensor -> !tt.ptr<tensor>
-    auto cast_dst_to_tensor_ptr_type =
-        builder
-            .create<mlir::UnrealizedConversionCastOp>(
-                GetTensorPtrType(builder,
-                                 RankedTensorType::get(
-                                     op.getDst().getType().getTileShape(),
-                                     op.getDst().getType().getElementType())),
-                op.getDst())
-            .getResult(0);
+    if (IsTmaUsed(op.getDst().getDefiningOp())) {
+      // tiled_tensor -> !tt.tensordesc<tensor>
+      auto cast_to_tensor_desc_ptr_type =
+          builder
+              .create<mlir::UnrealizedConversionCastOp>(
+                  GetTensorDescPtrType(
+                      builder, RankedTensorType::get(
+                                   op.getDst().getType().getTileShape(),
+                                   op.getDst().getType().getElementType())),
+                  op.getDst())
+              .getResult(0);
 
-    auto advance =
-        builder.create<AdvanceOp>(cast_dst_to_tensor_ptr_type.getType(),
-                                  cast_dst_to_tensor_ptr_type, op.getOffsets());
-    std::vector<int32_t> boundary_checks;
-    ComputeBoundaryChecks(boundary_checks, op.getDst().getType());
-    std::optional<PaddingOption> padding;
-    if (!boundary_checks.empty()) {
-      padding = PaddingOption::PAD_ZERO;
+      builder.create<ExperimentalDescriptorStoreOp>(
+          cast_to_tensor_desc_ptr_type, op.getSrc(), op.getOffsets());
+    } else {
+      // tiled_tensor -> !tt.ptr<tensor>
+      auto cast_dst_to_tensor_ptr_type =
+          builder
+              .create<mlir::UnrealizedConversionCastOp>(
+                  GetTensorPtrType(builder,
+                                   RankedTensorType::get(
+                                       op.getDst().getType().getTileShape(),
+                                       op.getDst().getType().getElementType())),
+                  op.getDst())
+              .getResult(0);
+
+      auto advance = builder.create<AdvanceOp>(
+          cast_dst_to_tensor_ptr_type.getType(), cast_dst_to_tensor_ptr_type,
+          op.getOffsets());
+      std::vector<int32_t> boundary_checks;
+      ComputeBoundaryChecks(boundary_checks, op.getDst().getType());
+      std::optional<PaddingOption> padding;
+      if (!boundary_checks.empty()) {
+        padding = PaddingOption::PAD_ZERO;
+      }
+      rewriter.create<StoreOp>(op->getLoc(), advance, op.getSrc(),
+                               boundary_checks, CacheModifier::NONE,
+                               EvictionPolicy::NORMAL);
     }
-    rewriter.create<StoreOp>(op->getLoc(), advance, op.getSrc(),
-                             boundary_checks, CacheModifier::NONE,
-                             EvictionPolicy::NORMAL);
 
     // InsertOp has a result, so we propagate it to the users.
     op->replaceAllUsesWith(ValueRange(op.getDst()));
@@ -321,35 +498,44 @@ struct TritonXLAExtractInsertToTritonPass
       : TritonXLAExtractInsertToTritonPassBase(options) {}
 
   explicit TritonXLAExtractInsertToTritonPass(
-      const ::xla::se::DeviceDescription& device_description, bool tma_enabled)
+      const stream_executor::DeviceDescription& device_description,
+      bool tma_enabled)
       : device_description(device_description), tma_enabled(tma_enabled) {}
 
   void runOnOperation() override {
     if (!gpu_device_info_.empty()) {
-      ::xla::se::GpuDeviceInfoProto device_info;
+      stream_executor::GpuDeviceInfoProto device_info;
       CHECK(tsl::protobuf::TextFormat::ParseFromString(gpu_device_info_,
                                                        &device_info));
-      device_description = ::xla::se::DeviceDescription(device_info);
+      device_description = stream_executor::DeviceDescription(device_info);
     }
+    tma_enabled = tma_enabled_;
+
     mlir::MLIRContext* mlir_context = &getContext();
+
+    mlir::RewritePatternSet tile_pattern_set(mlir_context);
+    tile_pattern_set.add<RewriteTile>(mlir_context, &device_description,
+                                      tma_enabled);
+    auto tile_result = mlir::applyPatternsGreedily(getOperation(),
+                                                   std::move(tile_pattern_set));
+
     mlir::RewritePatternSet patterns(mlir_context);
     // clang-format off
-    patterns.add<
-        RewriteExtract,
-        RewriteFuncOp,
-        RewriteInsert,
-        RewriteScalarExtract,
-        RewriteScalarInsert,
-        RewriteTile
-    >( mlir_context);
+    patterns.add<RewriteExtract,
+                 RewriteFuncOp,
+                 RewriteInsert,
+                 RewriteScalarExtract,
+                 RewriteScalarInsert>(mlir_context);
     // clang-format on
-    if (mlir::failed(
-            mlir::applyPatternsGreedily(getOperation(), std::move(patterns)))) {
+    auto result =
+        mlir::applyPatternsGreedily(getOperation(), std::move(patterns));
+
+    if (mlir::failed(tile_result) && mlir::failed(result)) {
       signalPassFailure();
     }
   }
 
-  ::xla::se::DeviceDescription device_description;
+  stream_executor::DeviceDescription device_description;
   bool tma_enabled;
 };
 
@@ -364,7 +550,8 @@ std::unique_ptr<mlir::Pass> CreateTritonXLAExtractInsertToTritonPass(
 }
 
 std::unique_ptr<mlir::Pass> CreateTritonXLAExtractInsertToTritonPass(
-    const ::xla::se::DeviceDescription& device_description, bool tma_enabled) {
+    const stream_executor::DeviceDescription& device_description,
+    bool tma_enabled) {
   return std::make_unique<TritonXLAExtractInsertToTritonPass>(
       device_description, tma_enabled);
 }

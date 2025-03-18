@@ -6,6 +6,11 @@ load(
     "if_rocm_is_configured",
 )
 load(
+    "//xla/tsl:package_groups.bzl",
+    "DEFAULT_LOAD_VISIBILITY",
+    "LEGACY_XLA_USERS",
+)
+load(
     "//xla/tsl:tsl.bzl",
     "tsl_copts",
 )
@@ -14,10 +19,9 @@ load(
     "if_static",
     "tf_exec_properties",
 )
-load(
-    "//xla/tsl/platform/default:cuda_build_defs.bzl",
-    "if_cuda_is_configured",
-)
+load("//xla/tsl/platform/default:build_config.bzl", "strict_cc_test")
+
+visibility(DEFAULT_LOAD_VISIBILITY + LEGACY_XLA_USERS)
 
 def xla_py_proto_library(**_kwargs):
     # Note: we don't currently define a proto library target for Python in OSS.
@@ -58,13 +62,7 @@ _XLA_SHARED_OBJECT_SENSITIVE_DEPS = if_static(extra_deps = [], otherwise = [
     "@local_tsl//tsl/profiler/protobuf:xplane_proto_cc_impl",
     "//xla/tsl/profiler/utils:time_utils_impl",
     "//xla/tsl/protobuf:protos_all_cc_impl",
-]) + if_cuda_is_configured([
-    Label("//xla/stream_executor/cuda:all_runtime"),
-    Label("//xla/stream_executor/cuda:stream_executor_cuda"),
 ]) + if_rocm_is_configured([
-    Label("//xla/stream_executor/gpu:gpu_stream"),
-    Label("//xla/stream_executor/rocm:all_runtime"),
-    Label("//xla/stream_executor/rocm:stream_executor_rocm"),
     "//xla/tsl/util:determinism",
 ])
 
@@ -74,11 +72,8 @@ def xla_cc_binary(deps = [], copts = tsl_copts(), **kwargs):
 def xla_cc_test(
         name,
         deps = [],
-        linkstatic = True,
-        args = None,
-        shuffle_tests = True,
         **kwargs):
-    """A wrapper around cc_test that adds XLA-specific dependencies.
+    """A wrapper around strict_cc_test that adds XLA-specific dependencies.
 
     Also, it sets linkstatic to True by default, which is a good practice for catching duplicate
     symbols at link time (e.g. linking in two main() functions).
@@ -89,24 +84,12 @@ def xla_cc_test(
     Args:
       name: The name of the test.
       deps: The dependencies of the test.
-      linkstatic: Whether to link statically.
-      args: The arguments to pass to the test.
-      shuffle_tests: Whether to shuffle the test cases.
       **kwargs: Other arguments to pass to the test.
     """
 
-    if args == None:
-        args = []
-
-    if shuffle_tests:
-        # Shuffle tests to avoid test ordering dependencies.
-        args = args + ["--gtest_shuffle"]
-
-    native.cc_test(
+    strict_cc_test(
         name = name,
-        args = args,
         deps = deps + _XLA_SHARED_OBJECT_SENSITIVE_DEPS,
-        linkstatic = linkstatic,
         exec_properties = tf_exec_properties(kwargs),
         **kwargs
     )

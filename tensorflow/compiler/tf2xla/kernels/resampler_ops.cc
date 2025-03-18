@@ -265,8 +265,9 @@ XlaOp CalculateGradData(XlaOpKernelContext* ctx, XlaOp grad_output, XlaOp ratio,
   std::vector<int64_t> reshape_dims(warp_shape.dims());
   std::iota(reshape_dims.begin(), reshape_dims.end(), 0);
   // The dimension is [batch, dim_0,..., dim_n, 2, 2].
-  auto reshaped_weights = xla::Reshape(weights, /*dimensions=*/reshape_dims,
-                                       /*new_sizes=*/reshaped_weights_dims);
+  auto reshaped_weights =
+      xla::Reshape(xla::Transpose(weights, /*permutation=*/reshape_dims),
+                   /*dimensions=*/reshaped_weights_dims);
 
   std::vector<int64_t> weights_with_channels_dims = reshaped_weights_dims;
   weights_with_channels_dims.push_back(data_channels);
@@ -456,16 +457,13 @@ XlaOp CalculateGradWarp(XlaOpKernelContext* ctx, XlaOp grad_output, XlaOp ratio,
   std::vector<int64_t> reshaped_sizes = warp_dims_without_last_dims;
   reshaped_sizes.push_back(1);
 
-  std::vector<int64_t> reshaped_dims(warp_dims_without_last_dims.size());
-  std::iota(reshaped_dims.begin(), reshaped_dims.end(), 0);
-
   // Reduce-add along the channel dimension.
   auto x_result =
       xla::Reduce(x_before_reduce, xla::Zero(ctx->builder(), data_type),
                   xla::CreateScalarAddComputation(data_type, ctx->builder()),
                   {last_warp_dim});
   // Reshape before concatenating with y values.
-  XlaOp reshaped_x = xla::Reshape(x_result, reshaped_dims, reshaped_sizes);
+  XlaOp reshaped_x = xla::Reshape(x_result, reshaped_sizes);
 
   auto y_before_reduce = grad_output * weight_x * bottom_right_minus_top_right +
                          one_minus_x * bottom_left_minus_top_left;
@@ -475,7 +473,7 @@ XlaOp CalculateGradWarp(XlaOpKernelContext* ctx, XlaOp grad_output, XlaOp ratio,
 
                   xla::CreateScalarAddComputation(data_type, ctx->builder()),
                   {last_warp_dim});
-  XlaOp reshaped_y = xla::Reshape(y_result, reshaped_dims, reshaped_sizes);
+  XlaOp reshaped_y = xla::Reshape(y_result, reshaped_sizes);
 
   return xla::ConcatInDim(ctx->builder(), {reshaped_x, reshaped_y},
                           last_warp_dim);

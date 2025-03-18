@@ -96,15 +96,17 @@ limitations under the License.
 namespace mlir {
 namespace TFL {
 
+// go/keep-sorted start
 INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(CeilOp);
 INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(CosOp);
-INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(LocalResponseNormalizationOp);
 INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(FloorOp);
-INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(RoundOp);
+INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(LocalResponseNormalizationOp);
 INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(NegOp);
+INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(RoundOp);
 INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(SinOp);
 INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(SqrtOp);
 INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(SquareOp);
+// go/keep-sorted end
 
 namespace {
 
@@ -2228,9 +2230,10 @@ namespace {
 // * The input's defining op is another tfl.reshape.
 // TODO(antiagainst): This pattern probably should be moved to the peephole
 // category, after we have the infra for peephole passes.
-struct RemoveAdjacentReshape : public RewritePattern {
+struct RemoveAdjacentReshape : public RewritePattern::SplitMatchAndRewrite {
   explicit RemoveAdjacentReshape(MLIRContext* context)
-      : RewritePattern(ReshapeOp::getOperationName(), 1, context) {}
+      : RewritePattern::SplitMatchAndRewrite(ReshapeOp::getOperationName(), 1,
+                                             context) {}
 
   LogicalResult match(Operation* op) const override {
     auto thisOp = cast<ReshapeOp>(op);
@@ -2960,9 +2963,10 @@ namespace {
 
 /// This pattern matches and remove a tfl.fake_quant if all the users of this op
 /// and itself have "minmax" attribute set.
-struct DropFakeQuant : public RewritePattern {
+struct DropFakeQuant : public RewritePattern::SplitMatchAndRewrite {
   explicit DropFakeQuant(MLIRContext* context)
-      : RewritePattern(FakeQuantOp::getOperationName(), 1, context) {}
+      : RewritePattern::SplitMatchAndRewrite(FakeQuantOp::getOperationName(), 1,
+                                             context) {}
 
   LogicalResult match(Operation* op) const override {
     // We only match the op with valid "minmax" attribute.
@@ -4574,7 +4578,7 @@ void ComputePermutation(ArrayRef<int64_t> perms, ArrayRef<int64_t> output_shape,
 
 void TransposeOp::getCanonicalizationPatterns(RewritePatternSet& results,
                                               MLIRContext* context) {
-  results.add<ConvertTransposeToDecreaseRank>(context);
+  results.add<ConvertTransposeToDecreaseRank, RemoveNoopTranspose>(context);
 }
 
 OpFoldResult TransposeOp::fold(FoldAdaptor adaptor) {

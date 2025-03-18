@@ -19,8 +19,8 @@
 
 #include "neuron/api/NeuronAdapter.h"
 #include "absl/container/flat_hash_set.h"
+#include "tensorflow/lite/experimental/litert/c/litert_tensor_buffer.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
-#include "tensorflow/lite/experimental/litert/cc/litert_tensor_buffer.h"
 #include "tensorflow/lite/experimental/litert/vendors/c/litert_dispatch.h"
 #include "tensorflow/lite/experimental/litert/vendors/mediatek/neuron_adapter_api.h"
 
@@ -39,7 +39,7 @@ class LiteRtDispatchDeviceContextT {
       const litert::mediatek::NeuronAdapterApi& neuron_adapter_api);
 
   litert::Expected<LiteRtTensorBufferHandle> RegisterTensorBuffer(
-      const litert::TensorBuffer& tensor_buffer);
+      LiteRtTensorBuffer tensor_buffer);
 
   litert::Expected<void> UnregisterTensorBuffer(
       LiteRtTensorBufferHandle tensor_buffer_handle) {

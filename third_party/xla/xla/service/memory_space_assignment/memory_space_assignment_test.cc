@@ -59,6 +59,7 @@ limitations under the License.
 #include "xla/layout.h"
 #include "xla/layout_util.h"
 #include "xla/literal_util.h"
+#include "xla/service/cost_modelling/op_cost.h"
 #include "xla/service/heap_simulator/allocation_block.h"
 #include "xla/service/heap_simulator/heap_simulator.h"
 #include "xla/service/hlo_buffer.h"
@@ -398,6 +399,55 @@ ENTRY entry {
   ASSERT_NE(p0, nullptr);
   EXPECT_THAT(add0->operand(0),
               op::AsyncCopy(kAlternateMemorySpace, kDefaultMemorySpace, p0));
+}
+
+TEST_F(MemorySpaceAssignmentTest, SyncCopyReplacementWithControlPredecessor) {
+  absl::string_view hlo_string = R"(
+HloModule module, is_scheduled=true
+
+ENTRY entry {
+  p0 = f32[2,3]{1,0} parameter(0)
+  p1 = f32[2,3]{1,0} parameter(1)
+  negate0 = f32[2,3]{1,0} negate(p1)
+  negate1 = f32[2,3]{1,0} negate(negate0)
+  negate2 = f32[2,3]{1,0} negate(negate1)
+  negate3 = f32[2,3]{1,0} negate(negate2)
+  negate4 = f32[2,3]{1,0} negate(negate3)
+  negate5 = f32[2,3]{1,0} negate(negate4)
+  negate6 = f32[2,3]{1,0} negate(negate5)
+  negate7 = f32[2,3]{1,0} negate(negate6)
+  p0_copy = f32[2,3]{1,0} copy(p0)
+  negate8 = f32[2,3]{1,0} negate(negate7)
+  negate9 = f32[2,3]{1,0} negate(negate8), control-predecessors={p0_copy}
+  ROOT add0 = f32[2,3]{1,0} add(p0_copy, negate9)
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  Options options = DefaultMemorySpaceOptions();
+  options.enable_sync_copy_replacement = true;
+  AssignMemorySpace(module.get(), options);
+  HloInstruction* add0 = FindInstruction(module.get(), "add0");
+  ASSERT_NE(add0, nullptr);
+  HloInstruction* p0 = FindInstruction(module.get(), "p0");
+  ASSERT_NE(p0, nullptr);
+  EXPECT_THAT(add0->operand(0),
+              op::AsyncCopy(kAlternateMemorySpace, kDefaultMemorySpace, p0));
+  HloInstruction* negate9 = FindInstruction(module.get(), "negate9");
+  ASSERT_NE(negate9, nullptr);
+  const HloInstruction* copy_done = add0->operand(0);
+  const HloInstructionSequence& sequence =
+      module->schedule().sequence(module->entry_computation());
+  auto find_index = [&](const HloInstruction* instruction) {
+    return std::distance(sequence.instructions().begin(),
+                         std::find(sequence.instructions().begin(),
+                                   sequence.instructions().end(), instruction));
+  };
+  int64_t copy_done_time = find_index(copy_done);
+  int64_t negate9_time = find_index(negate9);
+  // The negate9 instruction should be scheduled after the copy done, because of
+  // the control dependency constraint.
+  EXPECT_GT(negate9_time, copy_done_time);
 }
 
 // This is a case where we p0_copy uses and and p0 uses after copy(p0) are not
@@ -11358,14 +11408,22 @@ ENTRY main {
   properties[HloCostAnalysis::kBytesAccessedKey] = kBytesPerSecond;
   HloCostAnalysis hlo_cost_analysis(HloCostAnalysis::DefaultShapeSize,
                                     properties);
+  HloCostAnalysisWithAcceptState hlo_cost_analysis_wrapper(hlo_cost_analysis);
   CostAnalysisOptions cost_analysis_options;
   cost_analysis_options.default_mem_bandwidth_bytes_per_second =
       kBytesPerSecond;
-  HloCostAnalysisCosts hlo_cost_analysis_costs(hlo_cost_analysis);
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto cost_analysis,
-      FakeCostAnalysis::Create(hlo_cost_analysis_costs, *module,
-                               cost_analysis_options));
+  OpCostManager op_cost_manager(
+      OpCostManager::Options{
+          /*enable_cache=*/false,
+          /*enable_analysis_logging=*/false,
+      },
+      OpCostManager::CalculationNode::CreateLeaf(
+          "HloCostAnalysis",
+          CreateHloCostAnalysisCalculator(hlo_cost_analysis_wrapper),
+          /*enable_cache=*/false));
+  TF_ASSERT_OK_AND_ASSIGN(auto cost_analysis,
+                          FakeCostAnalysis::Create(op_cost_manager, *module,
+                                                   cost_analysis_options));
   cost_analysis->SetOverrideForGetInstructionElapsed(
       [](const HloInstruction& instruction) -> float { return 10.0; });
   cost_analysis->SetOverrideForGetAsyncCopyElapsed(

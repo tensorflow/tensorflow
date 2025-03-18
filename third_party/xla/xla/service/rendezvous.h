@@ -208,7 +208,7 @@ struct RendezvousStateSynchronization {
   absl::CondVar cv;
 
   // Signals availability of `result`.
-  std::atomic<bool> ready ABSL_GUARDED_BY(mutex);
+  bool ready ABSL_GUARDED_BY(mutex);
 };
 
 // A state for a single round of rendezvous. We expect exactly `num_treads` to
@@ -284,7 +284,7 @@ class RendezvousMap {
 
     // Notify awaiting participants that result is ready.
     absl::MutexLock lock(&state->mutex);
-    state->ready.store(true);
+    state->ready = true;
     state->cv.SignalAll();
   }
 

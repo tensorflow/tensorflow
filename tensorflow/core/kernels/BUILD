@@ -2395,6 +2395,7 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
+        "@com_google_absl//absl/log",
         "@eigen_archive//:eigen3",
     ],
     alwayslink = 1,
@@ -4754,6 +4755,8 @@ tf_kernel_library(
     prefix = "decode_compressed_op",
     deps = [
         "//tensorflow/core:lib_internal",
+        "@com_google_absl//absl/status",
+        "@net_zstd//:zstdlib",
     ] + PARSING_DEPS,
 )
 
@@ -7170,6 +7173,7 @@ cc_library(
         "//tensorflow/core/framework:tensor_shape_proto_cc",
         "//tensorflow/core/framework:types_proto_cc",
         "//tensorflow/core/lib/png:png_io",
+        "//tensorflow/core/lib/webp:webp_io",
         "//tensorflow/core/platform:strong_hash",
         "//tensorflow/core/platform:types",
         "//tensorflow/core/protobuf:autotuning_proto_cc",
@@ -8057,6 +8061,7 @@ tf_cc_shared_library(
         "@local_config_tensorrt//:__subpackages__",
         "@local_execution_config_platform//:__subpackages__",
         "@mkl_dnn_acl_compatible//:__subpackages__",
+        "@net_zstd//:__subpackages__",
         "@onednn//:__subpackages__",
         "@org_sqlite//:__subpackages__",
         "@platforms//:__subpackages__",

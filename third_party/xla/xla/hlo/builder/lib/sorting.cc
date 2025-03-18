@@ -37,7 +37,7 @@ XlaOp TopK(XlaOp input, int64_t k, PrimitiveType index_type) {
   XlaBuilder* const builder = input.builder();
   return builder->ReportErrorOrReturn([&]() -> absl::StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(Shape input_shape, builder->GetShape(input));
-    int last_dim = input_shape.dimensions_size() - 1;
+    int last_dim = input_shape.rank() - 1;
     int64_t last_dim_size = input_shape.dimensions(last_dim);
     // TODO(b/148796364): tune these constants for better performance.
     const int64_t kPerPartitionSize = 8192;        // 2^13
@@ -82,10 +82,10 @@ XlaOp TopK(XlaOp input, int64_t k, PrimitiveType index_type) {
           (input_shape.rank() == 2 &&
            input_shape.dimensions(0) >= kSmallBatchSizeThreshold)));
 
-    std::vector<int64_t> start_indices(input_shape.dimensions_size(), 0);
+    std::vector<int64_t> start_indices(input_shape.rank(), 0);
     std::vector<int64_t> limit_indices(input_dims.begin(), input_dims.end());
     limit_indices[last_dim] = k;
-    std::vector<int64_t> strides(input_shape.dimensions_size(), 1);
+    std::vector<int64_t> strides(input_shape.rank(), 1);
 
     XlaOp values;
     XlaOp indices;
@@ -165,7 +165,7 @@ XlaOp TopKWithPartitions(XlaOp input, int64_t k, int64_t num_partitions,
   XlaBuilder* const builder = input.builder();
   return builder->ReportErrorOrReturn([&]() -> absl::StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(Shape input_shape, builder->GetShape(input));
-    int last_dim = input_shape.dimensions_size() - 1;
+    int last_dim = input_shape.rank() - 1;
     // Calculate per partition size.
     auto input_dims = input_shape.dimensions();
     int64_t last_dim_size = input_shape.dimensions(last_dim);
@@ -213,9 +213,9 @@ XlaOp TopKWithPartitions(XlaOp input, int64_t k, int64_t num_partitions,
                                     sliced_indices.builder()),
           last_dim, true);
 
-      std::vector<int64_t> start_indices(input_shape.dimensions_size(), 0);
+      std::vector<int64_t> start_indices(input_shape.rank(), 0);
       std::vector<int64_t> limit_indices(input_dims.begin(), input_dims.end());
-      std::vector<int64_t> strides(input_shape.dimensions_size(), 1);
+      std::vector<int64_t> strides(input_shape.rank(), 1);
       // Slice topk.
       start_indices[last_dim] = 0;
       limit_indices[last_dim] = k;
@@ -228,9 +228,9 @@ XlaOp TopKWithPartitions(XlaOp input, int64_t k, int64_t num_partitions,
 
     // Get the values and indices for the first topk so that they can
     // be passed to the while loop.
-    std::vector<int64_t> start_indices(input_shape.dimensions_size(), 0);
+    std::vector<int64_t> start_indices(input_shape.rank(), 0);
     std::vector<int64_t> limit_indices(input_dims.begin(), input_dims.end());
-    std::vector<int64_t> strides(input_shape.dimensions_size(), 1);
+    std::vector<int64_t> strides(input_shape.rank(), 1);
     start_indices[last_dim] = 0;
     limit_indices[last_dim] = per_partition_size;
     // Slice value and indices for the first partition.

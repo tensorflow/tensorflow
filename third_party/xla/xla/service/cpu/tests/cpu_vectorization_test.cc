@@ -122,6 +122,10 @@ TEST_P(CpuVectorizationTest, DoIt) {
 
   std::string check_lines{spec.check_lines.data(), spec.check_lines.size()};
 
+  hlo_module->mutable_config()
+      .mutable_debug_options()
+      .set_xla_cpu_use_thunk_runtime(false);
+
   CompileAheadOfTimeAndVerifyIr(std::move(hlo_module), options, check_lines,
                                 /*match_optimized_ir=*/true);
 }

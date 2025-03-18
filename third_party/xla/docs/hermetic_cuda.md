@@ -62,7 +62,7 @@ is specified in [third_party/gpus/cuda/hermetic/cuda_redist_versions.bzl](https:
 
    ```
    load(
-      "@local_tsl//third_party/gpus/cuda/hermetic:cuda_json_init_repository.bzl",
+      "@local_xla//third_party/gpus/cuda/hermetic:cuda_json_init_repository.bzl",
       "cuda_json_init_repository",
    )
 
@@ -74,7 +74,7 @@ is specified in [third_party/gpus/cuda/hermetic/cuda_redist_versions.bzl](https:
       "CUDNN_REDISTRIBUTIONS",
    )
    load(
-      "@local_tsl//third_party/gpus/cuda/hermetic:cuda_redist_init_repositories.bzl",
+      "@local_xla//third_party/gpus/cuda/hermetic:cuda_redist_init_repositories.bzl",
       "cuda_redist_init_repositories",
       "cudnn_redist_init_repository",
    )
@@ -88,21 +88,21 @@ is specified in [third_party/gpus/cuda/hermetic/cuda_redist_versions.bzl](https:
    )
 
    load(
-      "@local_tsl//third_party/gpus/cuda/hermetic:cuda_configure.bzl",
+      "@local_xla//third_party/gpus/cuda/hermetic:cuda_configure.bzl",
       "cuda_configure",
    )
 
    cuda_configure(name = "local_config_cuda")
 
    load(
-      "@local_tsl//third_party/nccl/hermetic:nccl_redist_init_repository.bzl",
+      "@local_xla//third_party/nccl/hermetic:nccl_redist_init_repository.bzl",
       "nccl_redist_init_repository",
    )
 
    nccl_redist_init_repository()
 
    load(
-      "@local_tsl//third_party/nccl/hermetic:nccl_configure.bzl",
+      "@local_xla//third_party/nccl/hermetic:nccl_configure.bzl",
       "nccl_configure",
    )
 
@@ -152,24 +152,29 @@ is specified in [third_party/gpus/cuda/hermetic/cuda_redist_versions.bzl](https:
    details.
 
 ## Upgrade hermetic CUDA/CUDNN version
-1. Create and submit a pull request with updated `CUDA_REDIST_JSON_DICT`,
-   `CUDA_REDIST_JSON_DICT` dictionaries in
-   [third_party/gpus/cuda/hermetic/cuda_redist_versions.bzl](https://github.com/openxla/xla/blob/main/third_party/tsl/third_party/gpus/cuda/hermetic/cuda_redist_versions.bzl).
 
-   Update `CUDA_NCCL_WHEELS` in
-   [third_party/gpus/cuda/hermetic/cuda_redist_versions.bzl](https://github.com/openxla/xla/blob/main/third_party/tsl/third_party/gpus/cuda/hermetic/cuda_redist_versions.bzl)
-   if needed.
+1.  Create and submit a pull request with updated `CUDA_REDIST_JSON_DICT`,
+    `CUDA_REDIST_JSON_DICT` dictionaries in
+    [third_party/gpus/cuda/hermetic/cuda_redist_versions.bzl](https://github.com/openxla/xla/blob/main/third_party/tsl/third_party/gpus/cuda/hermetic/cuda_redist_versions.bzl).
 
-   Update `REDIST_VERSIONS_TO_BUILD_TEMPLATES` in
-   [third_party/gpus/cuda/hermetic/cuda_redist_versions.bzl](https://github.com/openxla/xla/blob/main/third_party/tsl/third_party/gpus/cuda/hermetic/cuda_redist_versions.bzl)
-   if needed.
+    Update `CUDA_NCCL_WHEELS` in
+    [third_party/gpus/cuda/hermetic/cuda_redist_versions.bzl](https://github.com/openxla/xla/blob/main/third_party/tsl/third_party/gpus/cuda/hermetic/cuda_redist_versions.bzl)
+    if needed.
 
-2. For each Google ML project create a separate pull request with updated
-   `HERMETIC_CUDA_VERSION` and `HERMETIC_CUDNN_VERSION` in `.bazelrc` file.
+    Update `REDIST_VERSIONS_TO_BUILD_TEMPLATES` in
+    [third_party/gpus/cuda/hermetic/cuda_redist_versions.bzl](https://github.com/openxla/xla/blob/main/third_party/tsl/third_party/gpus/cuda/hermetic/cuda_redist_versions.bzl)
+    if needed.
 
-   The PR presubmit job executions will launch bazel tests and download hermetic
-   CUDA/CUDNN distributions. Verify that the presubmit jobs passed before
-   submitting the PR.
+    Update `PTX_VERSION_DICT` in
+    [third_party/gpus/cuda/hermetic/cuda_redist_versions.bzl](https://github.com/openxla/xla/blob/main/third_party/gpus/cuda/hermetic/cuda_redist_versions.bzl)
+    if needed.
+
+2.  For each Google ML project create a separate pull request with updated
+    `HERMETIC_CUDA_VERSION` and `HERMETIC_CUDNN_VERSION` in `.bazelrc` file.
+
+    The PR presubmit job executions will launch bazel tests and download
+    hermetic CUDA/CUDNN distributions. Verify that the presubmit jobs passed
+    before submitting the PR.
 
 ## Pointing to CUDA/CUDNN/NCCL redistributions on local file system
 
@@ -519,17 +524,17 @@ projects:
 
    For XLA and JAX:
    ```
-   load("@local_tsl//third_party/gpus:cuda_configure.bzl", "cuda_configure")
+   load("@local_xla//third_party/gpus:cuda_configure.bzl", "cuda_configure")
    cuda_configure(name = "local_config_cuda")
-   load("@local_tsl//third_party/nccl:nccl_configure.bzl", "nccl_configure")
+   load("@local_xla//third_party/nccl:nccl_configure.bzl", "nccl_configure")
    nccl_configure(name = "local_config_nccl")
    ```
 
    For Tensorflow:
    ```
-   load("@local_tsl//third_party/gpus:cuda_configure.bzl", "cuda_configure")
+   load("@local_xla//third_party/gpus:cuda_configure.bzl", "cuda_configure")
    cuda_configure(name = "local_config_cuda")
-   load("@local_tsl//third_party/nccl:nccl_configure.bzl", "nccl_configure")
+   load("@local_xla//third_party/nccl:nccl_configure.bzl", "nccl_configure")
    nccl_configure(name = "local_config_nccl")
    ```
 

@@ -82,7 +82,7 @@ void PrintSubexpression(HloInstruction* inst, int depth) {
 bool IsConstantScalarInt(const HloInstruction* inst) {
   return inst->opcode() == HloOpcode::kConstant &&
          ShapeUtil::IsEffectiveScalar(inst->shape()) &&
-         inst->shape().IsInteger();
+         inst->shape().AreAllLeavesIntegers();
 }
 
 bool IsNotContainedInLoop(const HloInstruction& while_hlo,

@@ -82,12 +82,12 @@ absl::Status Concat(const absl::Span<const Tensor> tensors, Tensor* result) {
   }
   *result = Tensor(dtype, shape);
 
-  // We use StringPiece as a convenient map over the tensor buffer,
-  // but we cast the type to get to the underlying buffer to do the
-  // copy.
-  absl::string_view to_data = result->tensor_data();
-
   if (DataTypeCanUseMemcpy(dtype)) {
+    // We use StringPiece as a convenient map over the tensor buffer,
+    // but we cast the type to get to the underlying buffer to do the
+    // copy.
+    absl::string_view to_data = result->tensor_data();
+
     int64_t offset = 0;
     for (const Tensor& tensor : tensors) {
       absl::string_view from_data = tensor.tensor_data();
@@ -101,8 +101,7 @@ absl::Status Concat(const absl::Span<const Tensor> tensors, Tensor* result) {
     if (dtype != DT_STRING) {
       return errors::Internal("Unexpected data type");
     }
-    tstring* to_strings =
-        reinterpret_cast<tstring*>(const_cast<char*>(to_data.data()));
+    tstring* to_strings = result->unaligned_flat<tstring>().data();
 
     int64_t offset = 0;
     for (const Tensor& tensor : tensors) {
@@ -134,9 +133,9 @@ absl::Status Split(const Tensor& tensor, const absl::Span<const int64_t> sizes,
         "'tensor'");
   }
 
-  absl::string_view from_data = tensor.tensor_data();
-
   if (DataTypeCanUseMemcpy(tensor.dtype())) {
+    absl::string_view from_data = tensor.tensor_data();
+
     int64_t offset = 0;
     for (int64_t size : sizes) {
       TensorShape shape = tensor.shape();
@@ -166,8 +165,7 @@ absl::Status Split(const Tensor& tensor, const absl::Span<const int64_t> sizes,
       shape.set_dim(0, size);
       result->emplace_back(tensor.dtype(), shape);
       Tensor& split = (*result)[result->size() - 1];
-      tstring* to_strings = reinterpret_cast<tstring*>(
-          const_cast<char*>(split.tensor_data().data()));
+      tstring* to_strings = split.unaligned_flat<tstring>().data();
 
       CHECK_LE(offset + split.NumElements(), tensor.NumElements());
       for (int i = 0; i < split.NumElements(); ++i) {

@@ -163,7 +163,7 @@ TEST(ConvertGraphTest, ConvertSingleGeneralConversion) {
   add_opts.fused_activation_function = tflite::ActivationFunctionType_RELU;
   internal::TflOptions tfl_opts;
   tfl_opts.Set(std::move(add_opts));
-  detail::SetTflOptions(op, std::move(tfl_opts));
+  litert::internal::SetTflOptions(op, std::move(tfl_opts));
 
   auto& input1 = subgraph.EmplaceTensor();
   input1.SetType(GetTestTensorType());

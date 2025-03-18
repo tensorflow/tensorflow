@@ -37,7 +37,7 @@ PYBIND11_MODULE(_op_def_registry, m) {
     }
 
     // Explicitly convert to py::bytes because std::string is implicitly
-    // convertable to py::str by default.
+    // convertible to py::str by default.
     return py::reinterpret_borrow<py::object>(py::bytes(serialized_op_def));
   });
 }

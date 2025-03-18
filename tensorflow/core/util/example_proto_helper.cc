@@ -15,9 +15,12 @@ limitations under the License.
 #include "tensorflow/core/util/example_proto_helper.h"
 
 #include <algorithm>
+#include <cstddef>
 #include <limits>
 #include <vector>
 
+#include "absl/status/status.h"
+#include "absl/strings/str_format.h"
 #include "tensorflow/core/example/example.pb.h"
 #include "tensorflow/core/example/feature.pb.h"
 #include "tensorflow/core/framework/numeric_op.h"
@@ -405,6 +408,22 @@ absl::Status BatchExampleProtoToTensors(
     }
   }
   return absl::OkStatus();
+}
+
+absl::Status ParseExampleAttrs::UpdateDenseShapes(
+    const std::vector<size_t>& got_dims) {
+  if (got_dims.size() != dense_shapes.size()) {
+    return absl::InvalidArgumentError(absl::StrFormat(
+        "got_dims.size() (%d) must match dense_shapes.size() (%d)",
+        got_dims.size(), dense_shapes.size()));
+  }
+  for (size_t d = 0; d < dense_shapes.size(); ++d) {
+    dense_shapes[d].set_dim(0, got_dims[d]);
+  }
+  // Recalculate relative fields.
+  variable_length.clear();
+  elements_per_stride.clear();
+  return GetDenseShapes(dense_shapes, &variable_length, &elements_per_stride);
 }
 
 absl::Status ParseExampleAttrs::FinishInit(int op_version) {

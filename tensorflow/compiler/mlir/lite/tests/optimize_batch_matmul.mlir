@@ -146,7 +146,7 @@ func.func @Batchmatmul2Fullyconnected_qint4_rank_3(%arg0: tensor<10x1x2x!quant.u
 
 // CHECK-LABEL: Batchmatmul2Fullyconnected_qint8
 func.func @Batchmatmul2Fullyconnected_qint8(%arg0: tensor<10x2x!quant.uniform<i8:f32, 0.01524067297577858>>, %arg1: tensor<2x2x!quant.uniform<i8:f32, 0.014552096836268902>>) -> (tensor<10x2x!quant.uniform<i8:f32, 0.016966061666607857>>) {
-  // CHECK: "tfl.batch_matmul"
+  // CHECK-NOT: "tfl.batch_matmul"
   %2 = "tfl.batch_matmul"(%arg0, %arg1) <{adj_x = false, adj_y = false, asymmetric_quantize_inputs = false}> : (tensor<10x2x!quant.uniform<i8:f32, 0.01524067297577858>>, tensor<2x2x!quant.uniform<i8:f32, 0.014552096836268902>>) -> tensor<10x2x!quant.uniform<i8:f32, 0.016966061666607857>>
   func.return %2 : tensor<10x2x!quant.uniform<i8:f32, 0.016966061666607857>>
 }

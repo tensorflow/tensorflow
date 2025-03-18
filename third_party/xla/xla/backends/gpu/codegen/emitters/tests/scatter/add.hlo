@@ -30,13 +30,17 @@ scatter {
 // CHECK-SAME:    %[[UPDATES:[a-zA-Z0-9]*]]: tensor<24x2x3xf32>
 // CHECK-SAME:    %[[OUT:[a-zA-Z0-9]*]]: tensor<10x5xf32>
 
-// CHECK: %[[IN_BOUNDS:.*]] = arith.cmpi ule
-// CHECK: scf.if %[[IN_BOUNDS]] -> (tensor<10x5xf32>) {
-// CHECK:   xla.loop
-// CHECK:     %[[UPD_ELEM:.*]] = xla.pure_call @scatter_update
-// CHECK:     %[[RMW:.*]] = xla.atomic_rmw %{{[a-z0-9]+}}
-// CHECK:     ^bb0(%[[CUR_VALUE:.*]]: f32):
-// CHECK:       %[[SUM:.*]] = arith.addf %[[CUR_VALUE]], %[[UPD_ELEM]]
-// CHECK:       xla.yield %[[SUM]] : f32
-// CHECK:     }
-// CHECK:     xla.yield %[[RMW]] : tensor<10x5xf32>
+// CHECK: %[[C24:.*]] = arith.constant 24
+// CHECK: %[[INDEX:.*]] = xla.apply_indexing
+// CHECK: %[[INDEX_IN_BOUNDS:.*]] = arith.cmpi ult, %[[INDEX]], %[[C24]]
+// CHECK: scf.if %[[INDEX_IN_BOUNDS]] -> (tensor<10x5xf32>) {
+// CHECK:   %[[IN_BOUNDS:.*]] = arith.cmpi ule
+// CHECK:   scf.if %[[IN_BOUNDS]] -> (tensor<10x5xf32>) {
+// CHECK:     xla.loop
+// CHECK:       %[[UPD_ELEM:.*]] = xla.pure_call @scatter_update
+// CHECK:       %[[RMW:.*]] = xla.atomic_rmw %{{[a-z0-9]+}}
+// CHECK:       ^bb0(%[[CUR_VALUE:.*]]: f32):
+// CHECK:         %[[SUM:.*]] = arith.addf %[[CUR_VALUE]], %[[UPD_ELEM]]
+// CHECK:         xla.yield %[[SUM]] : f32
+// CHECK:       }
+// CHECK:       xla.yield %[[RMW]] : tensor<10x5xf32>

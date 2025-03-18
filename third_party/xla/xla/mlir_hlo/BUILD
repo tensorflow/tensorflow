@@ -1083,12 +1083,12 @@ gentbl_cc_library(
 cc_library(
     name = "stablehlo_extension_passes",
     srcs = [
+        "stablehlo_ext/transforms/chlo_preserve_high_level_ops.cpp",
         "stablehlo_ext/transforms/chlo_recompose_ops.cpp",
         "stablehlo_ext/transforms/sdy_refine_shapes.cpp",
         "stablehlo_ext/transforms/stablehlo_add_quant_dequant_conv.cpp",
         "stablehlo_ext/transforms/stablehlo_canonicalize_dynamism.cpp",
-        "stablehlo_ext/transforms/stablehlo_flatten_entry_function_tuples.cpp",
-        "stablehlo_ext/transforms/stablehlo_flatten_tuple.cpp",
+        "stablehlo_ext/transforms/stablehlo_canonicalize_from_hlo_import.cpp",
         "stablehlo_ext/transforms/stablehlo_legalize_quant_composite.cpp",
         "stablehlo_ext/transforms/stablehlo_prepare_for_hlo_export.cpp",
         "stablehlo_ext/transforms/stablehlo_refine_shapes.cpp",

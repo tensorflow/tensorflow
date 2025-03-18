@@ -28,7 +28,7 @@ module {
 // CHECK-NEXT:       %6 = arith.shli %4, %cst : tensor<64x32xi8>
 // CHECK-NEXT:       %7 = arith.shrsi %6, %cst : tensor<64x32xi8>
 // CHECK-NEXT:       %8 = arith.shrsi %4, %cst : tensor<64x32xi8>
-// CHECK-NEXT:       %9 = tt.join %8, %7 : tensor<64x32xi8> -> tensor<64x32x2xi8>
+// CHECK-NEXT:       %9 = tt.join %7, %8 : tensor<64x32xi8> -> tensor<64x32x2xi8>
 // CHECK-NEXT:       %10 = tt.reshape %9 : tensor<64x32x2xi8> -> tensor<64x64xi8>
 
                      scf.yield %5, %6 : !tt.ptr<tensor<64x64xi4>>, tensor<64x64xi8>

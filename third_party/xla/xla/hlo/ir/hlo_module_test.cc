@@ -18,8 +18,10 @@ limitations under the License.
 #include <cstddef>
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/hash/hash.h"
 #include "absl/strings/str_cat.h"
@@ -32,10 +34,17 @@ limitations under the License.
 #include "xla/service/hlo_module_config.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/platform/test.h"
+#include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace {
+
+using ::testing::ElementsAre;
+using ::testing::IsEmpty;
+using ::testing::UnorderedElementsAre;
 
 TEST(HloModuleTest, AbslHashValue) {
   HloModule module1("temp_module", HloModuleConfig());
@@ -467,6 +476,98 @@ TEST(HloModuleTest, CheckToStringHonorsDebugOptions) {
     // CHECK-NOT: subtract-done
   )"));
   EXPECT_TRUE(filecheck_matched);
+}
+
+TEST(HloModuleTest, TestCallersAndCallees) {
+  const char* hlo = R"(
+    HloModule jit_h
+
+    f {
+      p0 = f32[] parameter(0)
+      ROOT sine.4 = f32[] sine(p0)
+    }
+
+    g {
+      p0 = f32[] parameter(0)
+      call.f.0 = f32[] call(p0), to_apply=f
+      ROOT call.f.1 = f32[] call(call.f.0), to_apply=f
+    }
+
+    h {
+      ROOT p0 = f32[] parameter(0)
+    }
+
+    uncalled {
+      p0 = f32[] parameter(0)
+      ROOT call.h = f32[] call(p0), to_apply=h
+    }
+
+    ENTRY main {
+      Arg_0.1 = f32[] parameter(0)
+      call.f.2 = f32[] call(Arg_0.1), to_apply=f
+      call.g.0 = f32[] call(call.f.2), to_apply=g
+      ROOT call.g.1 = f32[] call(call.g.0), to_apply=g
+    })";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnUnverifiedModule(hlo));
+  EXPECT_EQ(module->computation_count(), 5);
+  HloComputation* main = module->GetComputationWithName("main");
+  HloComputation* f = module->GetComputationWithName("f");
+  HloComputation* g = module->GetComputationWithName("g");
+  HloComputation* h = module->GetComputationWithName("h");
+  HloComputation* uncalled = module->GetComputationWithName("uncalled");
+  EXPECT_THAT(main->callee_computations(),
+              ElementsAre(std::make_pair(f, 1), std::make_pair(g, 2)));
+  EXPECT_THAT(f->callee_computations(), ElementsAre());
+  EXPECT_THAT(g->callee_computations(), ElementsAre(std::make_pair(f, 2)));
+  EXPECT_THAT(f->caller_computations(),
+              ElementsAre(std::make_pair(g, 2), std::make_pair(main, 1)));
+  EXPECT_THAT(g->caller_computations(), ElementsAre(std::make_pair(main, 2)));
+
+  HloInstruction* call_f_0 = g->GetInstructionWithName("call.f.0");
+  HloInstruction* call_f_1 = g->GetInstructionWithName("call.f.1");
+  HloInstruction* call_f_2 = main->GetInstructionWithName("call.f.2");
+  HloInstruction* call_g_0 = main->GetInstructionWithName("call.g.0");
+  HloInstruction* call_g_1 = main->GetInstructionWithName("call.g.1");
+  HloInstruction* call_h = uncalled->GetInstructionWithName("call.h");
+
+  EXPECT_THAT(f->caller_instructions(),
+              UnorderedElementsAre(call_f_0, call_f_1, call_f_2));
+  EXPECT_THAT(g->caller_instructions(),
+              UnorderedElementsAre(call_g_0, call_g_1));
+  EXPECT_THAT(h->caller_instructions(), ElementsAre(call_h));
+  EXPECT_THAT(uncalled->caller_instructions(), IsEmpty());
+}
+
+TEST(HloModuleTest, MultipleCallsFromOneInstruction) {
+  const char* hlo = R"(
+    f {
+      tparam = f32[4] parameter(0)
+      ROOT tuple = (f32[4]) tuple(tparam)
+    }
+
+    g {
+      fparam = f32[4] parameter(0)
+      ROOT tuple = (f32[4]) tuple(fparam)
+    }
+
+    ENTRY main {
+      p0 = f32[4] parameter(0)
+      b0 = s32[] parameter(1)
+      ROOT conditional = (f32[4]) conditional(b0, p0, p0, p0),
+        branch_computations={f, f, g}
+    })";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnUnverifiedModule(hlo));
+  EXPECT_EQ(module->computation_count(), 3);
+  HloComputation* main = module->GetComputationWithName("main");
+  HloComputation* f = module->GetComputationWithName("f");
+  HloComputation* g = module->GetComputationWithName("g");
+
+  HloInstruction* conditional = main->GetInstructionWithName("conditional");
+
+  EXPECT_THAT(f->caller_instructions(), ElementsAre(conditional));
+  EXPECT_THAT(g->caller_instructions(), ElementsAre(conditional));
 }
 
 }  // namespace

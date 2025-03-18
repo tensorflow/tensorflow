@@ -43,7 +43,6 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"
 #include "mlir/Support/TypeID.h"
 #include "mlir/Transforms/DialectConversion.h"
-#include "shardy/dialect/sdy/ir/constants.h"
 #include "shardy/dialect/sdy/ir/dialect.h"
 #include "shardy/dialect/sdy/ir/utils.h"
 #include "stablehlo/dialect/StablehloOps.h"
@@ -70,11 +69,9 @@ using ::mlir::StringRef;
 using ::mlir::success;
 
 using ::mlir::sdy::ConstantOp;
-using ::mlir::sdy::kShardingAttr;
 using ::mlir::sdy::ReshardOp;
 using ::mlir::sdy::ShardingConstraintOp;
 using ::mlir::sdy::TensorShardingAttr;
-using ::mlir::sdy::TensorShardingPerValueAttr;
 
 // Converts `sdy::ConstantOp` to `stablehlo::ConstantOp`.
 class ConstantPattern : public OpConversionPattern<ConstantOp> {
@@ -158,7 +155,7 @@ class ExportOpsPass
   }
 
   void getDependentDialects(mlir::DialectRegistry& registry) const final {
-    registry.insert<mlir::sdy::SdyDialect>();
+    registry.insert<mlir::sdy::SdyDialect, mlir::mhlo::MhloDialect>();
   }
 };
 

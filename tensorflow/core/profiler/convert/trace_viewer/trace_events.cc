@@ -35,18 +35,17 @@ limitations under the License.
 #include "xla/tsl/lib/io/table.h"
 #include "xla/tsl/lib/io/table_builder.h"
 #include "xla/tsl/lib/io/table_options.h"
+#include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/file_system.h"
+#include "xla/tsl/platform/macros.h"
 #include "xla/tsl/profiler/utils/timespan.h"
-#include "tensorflow/core/platform/file_system.h"
-#include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/convert/trace_viewer/trace_events_filter_interface.h"
 #include "tensorflow/core/profiler/convert/trace_viewer/trace_events_util.h"
 #include "tensorflow/core/profiler/convert/trace_viewer/trace_viewer_visibility.h"
 #include "tensorflow/core/profiler/protobuf/trace_events.pb.h"
 #include "tensorflow/core/profiler/protobuf/trace_events_raw.pb.h"
-#include "tsl/platform/env.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/file_system.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -291,11 +290,11 @@ absl::Status DoLoadFromLevelDbTable(
   uint64_t file_size;
   TF_RETURN_IF_ERROR(tsl::Env::Default()->GetFileSize(filename, &file_size));
 
-  tensorflow::FileSystem* file_system;
+  tsl::FileSystem* file_system;
   TF_RETURN_IF_ERROR(
       tsl::Env::Default()->GetFileSystemForFile(filename, &file_system));
 
-  std::unique_ptr<tensorflow::RandomAccessFile> file;
+  std::unique_ptr<tsl::RandomAccessFile> file;
   TF_RETURN_IF_ERROR(file_system->NewRandomAccessFile(filename, &file));
 
   tsl::table::Options options;

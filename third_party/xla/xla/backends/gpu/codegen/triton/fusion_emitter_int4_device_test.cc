@@ -75,7 +75,7 @@ class TritonTest : public GpuCodegenTest {
     } else {
       return stream_executor::GpuComputeCapability{
           stream_executor::CudaComputeCapability{
-              stream_executor::CudaComputeCapability::AMPERE, 0}};
+              stream_executor::CudaComputeCapability::kAmpere, 0}};
     }
   }
 

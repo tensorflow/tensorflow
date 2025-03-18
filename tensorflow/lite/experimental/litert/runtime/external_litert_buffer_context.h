@@ -16,19 +16,19 @@
 #define TENSORFLOW_LITE_EXPERIMENTAL_LITERT_RUNTIME_EXTERNAL_LITERT_BUFFER_CONTEXT_H_
 
 #include <memory>
+#include <unordered_map>
 #include <utility>
 
-#include "absl/container/flat_hash_map.h"
 #include "tensorflow/lite/c/c_api_opaque.h"
 #include "tensorflow/lite/c/c_api_types.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
+#include "tensorflow/lite/experimental/litert/c/litert_tensor_buffer_requirements.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_tensor_buffer.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_tensor_buffer_requirements.h"
 
-namespace litert {
-namespace internal {
+namespace litert::internal {
 
 class ExternalLiteRtBufferContext : public TfLiteExternalContext {
  public:
@@ -51,6 +51,15 @@ class ExternalLiteRtBufferContext : public TfLiteExternalContext {
     return RegisterBufferRequirement(
         reinterpret_cast<const TfLiteOpaqueTensor*>(tensor),
         std::move(buffer_requirements));
+  }
+
+  inline LiteRtStatus RegisterLiteRtBufferRequirement(
+      const TfLiteTensor* tensor,
+      LiteRtTensorBufferRequirements& litert_buffer_requirements) {
+    return RegisterBufferRequirement(
+        reinterpret_cast<const TfLiteOpaqueTensor*>(tensor),
+        TensorBufferRequirements(litert_buffer_requirements,
+                                 /*owned=*/true));
   }
 
   // Gets a registered tensor buffer requirements for the given tensor.
@@ -99,17 +108,27 @@ class ExternalLiteRtBufferContext : public TfLiteExternalContext {
         reinterpret_cast<const TfLiteOpaqueTensor*>(tensor));
   }
 
+  // Sets the async execution mode. It's set by CompiledModel and used by
+  // DelegateKernel to decide whether to use async execution mode.
+  inline void SetAsyncExecutionMode(bool async_execution_mode) {
+    async_execution_mode_ = async_execution_mode;
+  }
+
+  // Returns true if the async execution mode is set.
+  inline bool IsAsyncExecutionMode() const { return async_execution_mode_; }
+
  private:
-  absl::flat_hash_map<const TfLiteOpaqueTensor*, TensorBufferRequirements>
+  std::unordered_map<const TfLiteOpaqueTensor*, TensorBufferRequirements>
       buffer_requirements_;
-  absl::flat_hash_map<const TfLiteOpaqueTensor*, TensorBuffer> tensor_buffers_;
+  std::unordered_map<const TfLiteOpaqueTensor*, TensorBuffer> tensor_buffers_;
 
   ExternalLiteRtBufferContext(const ExternalLiteRtBufferContext&) = delete;
   ExternalLiteRtBufferContext& operator=(const ExternalLiteRtBufferContext&) =
       delete;
+
+  bool async_execution_mode_ = false;
 };
 
-}  // namespace internal
-}  // namespace litert
+}  // namespace litert::internal
 
 #endif  // TENSORFLOW_LITE_EXPERIMENTAL_LITERT_RUNTIME_EXTERNAL_LITERT_BUFFER_CONTEXT_H_

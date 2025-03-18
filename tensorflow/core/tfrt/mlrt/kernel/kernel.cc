@@ -24,14 +24,17 @@ limitations under the License.
 
 #include "absl/base/optimization.h"
 #include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/tfrt/fallback/op_kernel_runner.h"
 #include "tensorflow/core/tfrt/mlrt/bytecode/function.h"
 #include "tensorflow/core/tfrt/mlrt/interpreter/async_handle.h"
 #include "tensorflow/core/tfrt/mlrt/interpreter/attribute_span.h"
@@ -722,19 +725,26 @@ void CreateOp::Invoke() {
     return;
   }
 
-  auto runner = tfrt_stub::OpKernelRunner::Create(
-                    node_def.op(), node_def.name(), node_def.device(),
-                    node_def.input().size(),
-                    [&](tensorflow::AttrValueMap* attr_value_map) {
-                      *attr_value_map = node_def.attr();
-                      return absl::OkStatus();
-                    },
-                    fallback_request_state.device_manager(),
-                    fallback_request_state.process_function_library_runtime())
-                    .value();
+  absl::StatusOr<tfrt_stub::OpKernelRunner> runner =
+      tfrt_stub::OpKernelRunner::Create(
+          node_def.op(), node_def.name(), node_def.device(),
+          node_def.input().size(),
+          [&](tensorflow::AttrValueMap* attr_value_map) {
+            *attr_value_map = node_def.attr();
+            return absl::OkStatus();
+          },
+          fallback_request_state.device_manager(),
+          fallback_request_state.process_function_library_runtime());
+
+  if (!runner.ok()) {
+    LOG(WARNING) << "Fail to create OpKernelRunner for " << node_def_text()
+                 << ",  model= "
+                 << fallback_request_state.session_metadata().name()
+                 << " with error: " << runner.status();
+  }
 
   if (!fallback_request_state.runner_table()->Insert(op_key(),
-                                                     std::move(runner))) {
+                                                     *std::move(runner))) {
     execution_context().Fail(absl::InternalError(absl::StrCat(
         "CreateOp: OpKernelRunner already exists: ", node_def.op())));
   }
@@ -755,12 +765,11 @@ void ExecuteOpInternal(Frame& frame) {
   auto* kernel_runner =
       fallback_request_state.runner_table()->GetUnsafe(op_key);
   if (kernel_runner->op_kernel() == nullptr) {
-    // TODO: b/381849919 - Remove this log once the bug is fixed and replace
-    // with DCHECK. For now, let this error fall through to the
-    // ExecuteKernelRunner below for debugging purposes.
-    LOG(ERROR) << "ExecuteOp: OpKernel not found: op_Key= " << op_key
-               << " , node_def= " << frame.node_def_text() << " , model= "
-               << fallback_request_state.session_metadata().name();
+    frame.execution_context().Fail(absl::InternalError(absl::StrCat(
+        "ExecuteOp: OpKernel not found: op_Key= ", op_key,
+        " , node_def= ", frame.node_def_text(),
+        " , model= ", fallback_request_state.session_metadata().name())));
+    return;
   }
 
   ExecuteKernelRunner<IsAsync>(frame, context, fallback_request_state,

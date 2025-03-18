@@ -12,4 +12,4 @@ func.func @main(%arg0: tensor<16x16xf32>, %arg1: tensor<16x16xf32> {mhlo.is_same
 // CHECK:  %[[ARG0:.*]] = f32[16,16] parameter(0)
 // CHECK-NOT: parameter_replication={true}
 // CHECK:  %[[ARG1:.*]] = f32[16,16] parameter(1), parameter_replication={true}
-// CHECK:  ROOT %[[RESULT:.*]] = f32[16,16] add(f32[16,16] %[[ARG0]], f32[16,16] %[[ARG1]])
+// CHECK:  ROOT %[[RESULT:.*]] = f32[16,16] add(%[[ARG0]], %[[ARG1]])

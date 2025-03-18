@@ -21,10 +21,12 @@ limitations under the License.
 #include <vector>
 
 #include "google/protobuf/any.pb.h"
+#include "absl/algorithm/container.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "xla/tsl/profiler/utils/format_utils.h"
+#include "xla/tsl/profiler/utils/math_utils.h"
 #include "xla/tsl/profiler/utils/tf_op_utils.h"
-#include "xla/tsl/profiler/utils/tf_xplane_visitor.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/convert/op_metrics_to_record.h"
 #include "tensorflow/core/profiler/convert/op_stats_to_input_pipeline_analysis.h"
@@ -41,10 +43,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/utils/hardware_type_utils.h"
 #include "tensorflow/core/profiler/utils/html_utils.h"
 #include "tensorflow/core/profiler/utils/kernel_stats_utils.h"
-#include "tensorflow/core/profiler/utils/math_utils.h"
 #include "tensorflow/core/profiler/utils/op_metrics_db_utils.h"
-#include "tensorflow/core/profiler/utils/xplane_schema.h"
-#include "tensorflow/core/profiler/utils/xplane_utils.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -80,9 +79,6 @@ void ComputeHostTips(OverviewPageRecommendation* re) {
   *re->add_host_tips() = MakeOverviewPageTip(
       "input_pipeline_analyzer (especially Section 3 for the breakdown of "
       "input operations on the Host)");
-  *re->add_host_tips() = MakeOverviewPageTip(
-      "tf_data_bottleneck_analysis (find the bottleneck in the tf.data input "
-      "pipeline)");
   *re->add_host_tips() = MakeOverviewPageTip(
       "trace_viewer (look at the activities on the timeline of each Host "
       "Thread near the bottom of the trace view)");

@@ -128,7 +128,7 @@ bool DotIsDefault(const HloInstruction* instruction) {
   auto dnums = instruction->dot_dimension_numbers();
   DotDimensionNumbers default_dimension_numbers;
   default_dimension_numbers.add_lhs_contracting_dimensions(
-      instruction->operand(0)->shape().dimensions_size() == 1 ? 0 : 1);
+      instruction->operand(0)->shape().rank() == 1 ? 0 : 1);
   default_dimension_numbers.add_rhs_contracting_dimensions(0);
   return protobuf_util::ProtobufEquals(dnums, default_dimension_numbers);
 }
@@ -422,7 +422,7 @@ absl::StatusOr<FuncOp> HloFunctionImporter::ImportAsFunc(
         }
         // NOTE: since we are flattening args, all arguments will share the same
         // location as the tuple parameter instruction.
-        function.getArgument(i).setLoc(
+        function.getArgument(arg_index).setLoc(
             mlir::mhlo::GenerateInstructionLocation(instruction, context_));
         ++arg_index;
       }

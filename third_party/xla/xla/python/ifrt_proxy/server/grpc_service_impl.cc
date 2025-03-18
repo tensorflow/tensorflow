@@ -147,6 +147,7 @@ namespace proxy {
   const auto it = context->client_metadata().find(
       "ifrt-proxy-grpc-host-buffer-store-metadata-bin");
   if (it == context->client_metadata().end()) {
+    LOG(WARNING) << "Missing gRPC metadata for GrpcHostBufferService.Store";
     return ::grpc::Status(
         ::grpc::StatusCode::INTERNAL,
         "Missing gRPC metadata for GrpcHostBufferService.Store");
@@ -155,6 +156,7 @@ namespace proxy {
   GrpcHostBufferStoreMetadata metadata;
   if (!metadata.ParseFromString(AsProtoStringData(
           absl::string_view(it->second.data(), it->second.size())))) {
+    LOG(WARNING) << "Unable to parse GrpcHostBufferStoreMetadata";
     return ::grpc::Status(::grpc::StatusCode::DATA_LOSS,
                           "Unable to parse GrpcHostBufferStoreMetadata");
   }
@@ -171,11 +173,11 @@ namespace proxy {
   VLOG(3) << "HostBufferStore received all data "
           << metadata.ShortDebugString();
   if (data.size() != metadata.buffer_size()) {
-    return ::grpc::Status(
-        ::grpc::StatusCode::DATA_LOSS,
-        absl::StrCat("Potential data loss for host buffers: expected ",
-                     metadata.buffer_size(), " bytes but got ", data.size(),
-                     " bytes"));
+    std::string error = absl::StrCat(
+        "Potential data loss for host buffers: expected ",
+        metadata.buffer_size(), " bytes but got ", data.size(), " bytes");
+    LOG(WARNING) << "Bad request by proxy client: " << error;
+    return ::grpc::Status(::grpc::StatusCode::DATA_LOSS, error);
   }
 
   auto store = GetHostBufferStore(metadata.session_id());
@@ -193,10 +195,16 @@ namespace proxy {
 
   auto store = GetHostBufferStore(request->session_id());
   if (!store.ok()) {
+    LOG(WARNING) << "Returning '" << store.status()
+                 << "' while attempting to retrieve proxy buffer store for "
+                 << request->ShortDebugString();
     return xla::ToGrpcStatus(store.status());
   }
   auto data = (*store)->Lookup(request->handle());
   if (!data.ok()) {
+    LOG(WARNING) << "Returning '" << data.status()
+                 << "' while attempting to retrieve data for "
+                 << request->ShortDebugString();
     return xla::ToGrpcStatus(data.status());
   }
 

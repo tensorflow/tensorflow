@@ -17,27 +17,16 @@
 #include <memory>
 
 #include "absl/types/span.h"
-#include "tensorflow/lite/experimental/litert/c/litert_environment.h"
+#include "tensorflow/lite/experimental/litert/c/litert_environment_options.h"
 #include "tensorflow/lite/experimental/litert/c/litert_logging.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
-#include "tensorflow/lite/shared_library.h"
 
 litert::Expected<LiteRtEnvironmentT::Ptr> LiteRtEnvironmentT::CreateWithOptions(
     absl::Span<const LiteRtEnvOption> options) {
   LITERT_LOG(LITERT_INFO, "Creating LiteRT environment with options");
   auto env = std::make_unique<LiteRtEnvironmentT>();
-  for (auto& option : options) {
-    env->options_[option.tag] = option.value;
-  }
-
-  // Find `LiteRtRegisterAcceleratorGpuOpenCl` to register the GPU delegate.
-  void* lib_opencl = nullptr;
-  auto opencl_registrar_func = reinterpret_cast<void (*)(LiteRtEnvironment)>(
-      tflite::SharedLibrary::GetLibrarySymbol(
-          lib_opencl, "LiteRtRegisterAcceleratorGpuOpenCl"));
-  if (opencl_registrar_func) {
-    LITERT_LOG(LITERT_INFO, "Found GPU Accelerator");
-    opencl_registrar_func(env.get());
+  for (const auto& opt : options) {
+    env->options_.SetOption(opt);
   }
 
   return env;

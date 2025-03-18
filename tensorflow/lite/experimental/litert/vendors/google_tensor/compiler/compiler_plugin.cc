@@ -19,9 +19,11 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
@@ -46,8 +48,48 @@ constexpr const char* kPluginSocModels[] = {
     "P25",
 };  // get the name for plugin soc model
 
-constexpr LiteRtOpCode kSupportedOps[] = {
-    kLiteRtOpCodeTflMul,
+constexpr LiteRtOpCode kUnSupportedOps[] = {
+    kLiteRtOpCodeTflAssignVariable,
+    kLiteRtOpCodeTflBidirectionalSequenceLstm,
+    kLiteRtOpCodeTflBroadcastArgs,
+    kLiteRtOpCodeTflBucketize,
+    kLiteRtOpCodeTflCallOnce,
+    kLiteRtOpCodeTflComplexAbs,
+    kLiteRtOpCodeTflConv3d,
+    kLiteRtOpCodeTflConv3dTranspose,
+    kLiteRtOpCodeTflDensify,
+    kLiteRtOpCodeTflFakeQuant,
+    kLiteRtOpCodeTflHashtable,
+    kLiteRtOpCodeTflHashtableFind,
+    kLiteRtOpCodeTflHashtableImport,
+    kLiteRtOpCodeTflHashtableSize,
+    kLiteRtOpCodeTflImag,
+    kLiteRtOpCodeTflLocalResponseNormalization,
+    kLiteRtOpCodeTflMatrixDiag,
+    kLiteRtOpCodeTflMatrixSetDiag,
+    kLiteRtOpCodeTflMultinomial,
+    kLiteRtOpCodeTflNonMaxSuppressionV4,
+    kLiteRtOpCodeTflNonMaxSuppressionV5,
+    kLiteRtOpCodeTflRandomStandardNormal,
+    kLiteRtOpCodeTflRandomUniform,
+    kLiteRtOpCodeTflRank,
+    kLiteRtOpCodeTflReadVariable,
+    kLiteRtOpCodeTflReal,
+    kLiteRtOpCodeTflReduceProd,
+    kLiteRtOpCodeTflReverseSequence,
+    kLiteRtOpCodeTflRfft2d,
+    kLiteRtOpCodeTflSegmentSum,
+    kLiteRtOpCodeTflShape,
+    kLiteRtOpCodeTflSparseToDense,
+    kLiteRtOpCodeTflSvdf,
+    kLiteRtOpCodeTflUnidirectionalSequenceRnn,
+    kLiteRtOpCodeTflUnique,
+    kLiteRtOpCodeTflUnsortedSegmentMax,
+    kLiteRtOpCodeTflUnsortedSegmentMin,
+    kLiteRtOpCodeTflUnsortedSegmentProd,
+    kLiteRtOpCodeTflUnsortedSegmentSum,
+    kLiteRtOpCodeTflVarHandle,
+    kLiteRtOpCodeTflWhere,
 };
 // clang format on
 
@@ -185,13 +227,28 @@ void LiteRtDestroyCompiledResult(LiteRtCompiledResult compiled_result) {
 //
 
 // Plugins can hold state.
-struct LiteRtCompilerPluginT {};
+struct LiteRtCompilerPluginT {
+  using Flag = std::pair<std::string, std::string>;
+  std::vector<Flag> flags;
+};
 
 LiteRtStatus LiteRtCompilerPluginSetFlags(LiteRtCompilerPlugin compiler_plugin,
                                           LiteRtParamIndex num_flags,
                                           const char** keys,
                                           const char** values) {
-  // IMPLEMENT ME
+  auto& flags = compiler_plugin->flags;
+  if (flags.size() != 0) {
+    LITERT_LOG(LITERT_INFO, "Overwriting existing flags");
+    flags.clear();
+  }
+  flags.resize(num_flags);
+  for (int i = 0; i < num_flags; ++i) {
+    auto& flag = flags[i];
+    flag.first = std::string(keys[i]);
+    flag.second = std::string(values[i]);
+    LITERT_LOG(LITERT_INFO, "Setting Flag: %s = %s", flag.first.c_str(),
+               flag.second.c_str());
+  }
   return kLiteRtStatusOk;
 }
 
@@ -211,17 +268,18 @@ namespace google_tensor {
 //  TODO(abhirs): update the function to use the darwinn inbuilt way of
 //  finding supportedops
 bool IsOpSupported(const litert::Op& op) {
-  for (auto supported_op : kSupportedOps) {
-    if (supported_op == op.Code()) {
-      return true;
+  for (auto unsupported_op : kUnSupportedOps) {
+    if (unsupported_op == op.Code()) {
+      return false;
     }
   }
-  return false;
+  return true;
 }
 
 }  // namespace google_tensor
 
 LiteRtStatus LiteRtCompilerPluginPartition(LiteRtCompilerPlugin compiler_plugin,
+                                           const char* soc_model,
                                            LiteRtSubgraph subgraph,
                                            LiteRtOpList selected_ops) {
   ::litert::Subgraph graph(subgraph);
@@ -274,14 +332,17 @@ LiteRtStatus LiteRtCompilerPluginCompile(
 
   // Compile model.
   LITERT_LOG(LITERT_INFO, "%s", "Compiling model...");
-  // TODO(abhirs): add support for multiple bytecodes
+  // TODO(b/398984678): add support for multiple bytecodes
   absl::string_view soc_model_view(soc_model);
   std::string compiled;
   auto compile_status = adapter_result.Value()->api().compile(
-      buffer_str, soc_model_view, &compiled);
+      buffer_str, soc_model_view, compiler_plugin->flags, &compiled);
 
   if (!compile_status.ok()) {
-    LITERT_LOG(LITERT_ERROR, "Failed to compile model");
+    LITERT_LOG(
+        LITERT_ERROR, "%s",
+        absl::StrCat("Failed to compile model: ", compile_status.message())
+            .c_str());
     return kLiteRtStatusErrorRuntimeFailure;
   }
 
@@ -291,7 +352,8 @@ LiteRtStatus LiteRtCompilerPluginCompile(
   result->byte_code = std::string(compiled.data(), compiled.size());
   // Generate per_op_data.
   for (auto i = 0; i < num_partitions; ++i) {
-    result->per_op_data.emplace_back(absl::StrFormat("Partition_%d", i));
+    result->per_op_data.emplace_back(
+        absl::StrFormat("Partition_%d", static_cast<int>(i)));
   }
   *compiled_result = result.release();
   return kLiteRtStatusOk;

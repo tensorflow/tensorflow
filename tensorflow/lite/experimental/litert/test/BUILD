@@ -12,6 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+load("//tensorflow/lite/experimental/litert/build_common:tfl_model_gen.bzl", "tfl_model_gen")
+
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
@@ -21,26 +23,9 @@ package(
     ],
 )
 
-# TODO: b/365295276 - Make custom rule and move to `.sh`.
-OUT_DIR = "$(RULEDIR)"
-
-CONVERTER = "//tensorflow/compiler/mlir/lite:tf_tfl_translate"
-
-CMD = """
-for mlir_file in $(SRCS); do
-    $(location {converter}) --input-mlir $$mlir_file --o={out_dir}/testdata/$$(basename $$mlir_file .mlir).tflite
-done
-""".format(
-    converter = CONVERTER,
-    out_dir = OUT_DIR,
-)
-
-genrule(
+tfl_model_gen(
     name = "mlir_test_data",
     srcs = glob(["testdata/*.mlir"]),
-    outs = [s.removesuffix(".mlir") + ".tflite" for s in glob(["testdata/*.mlir"])],
-    cmd = CMD,
-    tools = [CONVERTER],
 )
 
 filegroup(
@@ -182,5 +167,6 @@ cc_library(
 
 exports_files(srcs = [
     "testdata/simple_model_google_tensor.bin",
+    "testdata/simple_model_mtk.bin",
     "testdata/simple_model_qualcomm.bin",
 ])

@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""# Test that buidling using op_allowlist works with ops with namespaces."""
+"""# Test that building using op_allowlist works with ops with namespaces."""
 
 from tensorflow.python.framework import test_namespace_ops
 from tensorflow.python.platform import googletest

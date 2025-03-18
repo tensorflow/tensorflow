@@ -244,6 +244,7 @@ bool IsOpSupported(const litert::Op& op) {
 }  // namespace
 
 LiteRtStatus LiteRtCompilerPluginPartition(LiteRtCompilerPlugin compiler_plugin,
+                                           const char* soc_model,
                                            LiteRtSubgraph subgraph,
                                            LiteRtOpList selected_ops) {
   litert::Subgraph graph(subgraph);

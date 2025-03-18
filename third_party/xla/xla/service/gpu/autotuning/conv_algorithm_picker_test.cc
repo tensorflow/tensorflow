@@ -143,7 +143,7 @@ ENTRY main {
 
 TEST_F(GpuConvAlgorithmPickerTest, SetAlgorithmGraphConvF8) {
   if (!GetCudaComputeCapability().IsAtLeast(
-          se::CudaComputeCapability::HOPPER)) {
+          se::CudaComputeCapability::kHopper)) {
     GTEST_SKIP() << "FP8 convolutions require Hopper or newer architecture.";
   }
   constexpr absl::string_view kHlo = R"(

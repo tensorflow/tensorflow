@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-load("//tensorflow/lite/experimental/litert/build_common:litert_build_defs.bzl", "litert_dynamic_lib")
+load("//tensorflow/lite/experimental/litert/build_common:litert_build_defs.bzl", "copy_file", "litert_dynamic_lib")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -30,12 +30,22 @@ litert_dynamic_lib(
         "litert_dispatch_device_context.h",
         "litert_dispatch_invocation_context.h",
     ],
+    copts = [
+        "-Os",
+        "-fno-exceptions",
+        "-fno-unwind-tables",
+        "-fno-asynchronous-unwind-tables",
+        "-ffunction-sections",
+        "-fdata-sections",
+    ],
     export_litert_only = True,
     linkopts = select({
         "//tensorflow:android": ["-landroid"],
         "//conditions:default": [],
-    }),
-    linkstatic = 1,
+    }) + [
+        "-Wl,-soname=libLiteRtDispatch_GoogleTensor.so",
+        "-Wl,-lc++abi",
+    ],
     shared_lib_name = "dispatch_api_so",
     so_name = "libLiteRtDispatch_Mediatek.so",
     tags = [
@@ -52,12 +62,9 @@ litert_dynamic_lib(
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:span",
         # copybara:uncomment "//third_party/neuro_pilot:latest_host_headers",
-        "//tensorflow/lite/experimental/litert/c:litert_common",
-        "//tensorflow/lite/experimental/litert/c:litert_logging",
-        "//tensorflow/lite/experimental/litert/c:litert_model",
-        "//tensorflow/lite/experimental/litert/c:litert_tensor_buffer",
+        "//tensorflow/lite/experimental/litert/c:litert_runtime_c_api_shared_lib",
         "//tensorflow/lite/experimental/litert/cc:litert_expected",
-        "//tensorflow/lite/experimental/litert/cc:litert_tensor_buffer",
+        "//tensorflow/lite/experimental/litert/cc:litert_macros",
         "//tensorflow/lite/experimental/litert/core:dynamic_loading",
         "//tensorflow/lite/experimental/litert/core/util:tensor_type_util",
         "//tensorflow/lite/experimental/litert/vendors/c:litert_dispatch_c_api",
@@ -70,7 +77,13 @@ litert_dynamic_lib(
 cc_library(
     name = "dispatch_api_shared_lib",
     srcs = [":dispatch_api_so"],
-    linkstatic = 1,
+)
+
+# Copies the shared library so that it is available for use in test data as libLiteRtDispatch_Mediatek.so.
+copy_file(
+    name = "copy_dispatch_api_so",
+    src = "//tensorflow/lite/experimental/litert/vendors/mediatek/dispatch:dispatch_api_so",
+    target = "libLiteRtDispatch_Mediatek.so",
 )
 
 cc_test(

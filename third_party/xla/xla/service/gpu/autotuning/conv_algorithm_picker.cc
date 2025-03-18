@@ -824,8 +824,7 @@ GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheCuda(
         blas_version, runtime_arguments.canonical_hlo.value());
   }
 
-  const bool cudnn_frontend_enabled =
-      debug_options.xla_gpu_enable_cudnn_frontend();
+  const bool cudnn_frontend_enabled = true;
   bool allow_tf32 = true;
   // TODO(b/284371623): Properly set allow_tf32 even if instr==nullptr, which is
   // the case when running an AOT compiled executable with runtime autotuning.

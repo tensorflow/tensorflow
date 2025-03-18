@@ -901,7 +901,7 @@ XLA_TEST_F(WhileTest, WhileWithPrngScalarResult) {
   auto build_condition = [this, v6s32](int count) {
     XlaBuilder builder(TestName());
     auto prev = Reshape(
-        Slice(Parameter(&builder, 0, v6s32, "prev"), {0}, {1}, {1}), {0}, {});
+        Slice(Parameter(&builder, 0, v6s32, "prev"), {0}, {1}, {1}), {});
     Gt(ConstantR0<int32_t>(&builder, count), prev);
     return builder.Build().value();
   };

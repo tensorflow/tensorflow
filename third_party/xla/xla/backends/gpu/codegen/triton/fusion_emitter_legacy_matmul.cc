@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "xla/backends/gpu/codegen/triton/fusion_emitter_legacy_matmul.h"
 
-#include <algorithm>
 #include <array>
 #include <climits>
 #include <cstddef>
@@ -515,7 +514,7 @@ absl::StatusOr<Value> EmitConstant(EmitterLocOpBuilder b,
     return CreateConst(b, ty, converted.GetFirstElement<uint64_t>());
   }
 
-  if (constant.shape().IsInteger()) {
+  if (constant.shape().AreAllLeavesIntegers()) {
     TF_ASSIGN_OR_RETURN(Literal converted, constant.literal().Convert(S64));
     return CreateConst(b, ty, converted.GetFirstElement<int64_t>());
   }
@@ -542,23 +541,6 @@ Value AddPtr(EmitterLocOpBuilder b, Value ptr, Value offset) {
 
 Value EmitParameterLoad(EmitterLocOpBuilder b, Value pointer,
                         ArrayRef<int32_t> boundary_checks) {
-  // 0-D MakeTensorPtrOp
-  //
-  // Triton tries to access the -1 element of a vector and segfaults when
-  // lowering the code to load a 0-D tensor to LLVM. The workaround is to load a
-  // regular pointer + a splat.
-  if (auto make_tensor_ptr = pointer.getDefiningOp<mt::MakeTensorPtrOp>()) {
-    if (make_tensor_ptr.getOffsets().empty()) {
-      return Splat(b,
-                   b.create<mt::LoadOp>(make_tensor_ptr.getBase(),
-                                        mt::CacheModifier::NONE,
-                                        mt::EvictionPolicy::NORMAL,
-                                        /*isVolatile=*/false),
-                   {});
-    }
-  }
-
-  // Any other tensor pointer.
   if (mt::isTensorPointerType(pointer.getType())) {
     std::optional<mt::PaddingOption> padding;
     if (!boundary_checks.empty()) {
@@ -570,10 +552,7 @@ Value EmitParameterLoad(EmitterLocOpBuilder b, Value pointer,
                                 /*isVolatile=*/false);
   }
 
-  // Non-tensor pointer.
-  //
-  // TODO(b/343013366): Remove this after we delete the legacy SoftMax code.
-  // It's the only place where this code-path is used.
+  // EmitTensorPointer will not create a MakeTensorPtrOp for scalars.
   return Splat(b,
                b.create<mt::LoadOp>(pointer, mt::CacheModifier::NONE,
                                     mt::EvictionPolicy::NORMAL,
@@ -787,6 +766,7 @@ struct MatMulDims {
   int64_t m;
   int64_t n;
   int64_t k;
+  TritonGemmConfig config;
 
   std::string ToString() const {
     return absl::StrCat("MxNxK: ", m, "x", n, "x", k,
@@ -812,10 +792,39 @@ struct MatMulLaunchConfig {
   mt::ProgramIDDim noncontracting_program_id_dim;
 };
 
+ma::ConstantOp Cst(EmitterLocOpBuilder b, Type index_ty, int64_t v) {
+  return CreateConst(b, index_ty, v);
+}
+
+AutotuneResult::TritonGemmKey DefaultTritonGemmKey() {
+  AutotuneResult::TritonGemmKey triton_gemm_key;
+  triton_gemm_key.set_block_m(64);
+  triton_gemm_key.set_block_k(64);
+  triton_gemm_key.set_block_n(64);
+  triton_gemm_key.set_split_k(1);
+  triton_gemm_key.set_num_stages(1);
+  triton_gemm_key.set_num_warps(2);
+  triton_gemm_key.set_num_ctas(1);
+  return triton_gemm_key;
+}
+
+ma::ConstantOp Cst32(EmitterLocOpBuilder b, int32_t v) {
+  return CreateConst(b, b.getI32Type(), v);
+}
+
+ma::ConstantOp Cst64(EmitterLocOpBuilder b, int64_t v) {
+  return CreateConst(b, b.getI64Type(), v);
+}
+
+Value RoundToBF16(EmitterLocOpBuilder b, Value input) {
+  return Cast(b, input, b.getBF16Type());
+};
+
 /*static*/ absl::StatusOr<MatMulDims> MatMulDims::Create(
     const TritonGemmConfig& config, const HloDotInstruction& dot,
     const TritonFusionAnalysis& analysis) {
   MatMulDims matmul_dims;
+  matmul_dims.config = config;
   if (config.split_k > 1) {
     // split-k is always the first logical dimension.
     matmul_dims.out_split_k_dim_idx = 0;
@@ -1188,11 +1197,10 @@ class MatMulEmitterHelper {
             increments.push_back(Cst32(b, 1));
           }
         } else {
-          increments.push_back(
-              CreateConst(b, b.getI32Type(), dim.block_size * dim.split_value));
+          increments.push_back(Cst32(b, dim.block_size * dim.split_value));
         }
       } else {
-        increments.push_back(CreateConst(b, b.getI32Type(), 0));
+        increments.push_back(Cst32(b, 0));
       }
     }
     return increments;
@@ -1235,7 +1243,7 @@ class MatMulEmitterHelper {
     }
 
     has_batch_offset |= stride_batch != 0;
-    return Cst(b, stride_batch);
+    return Cst(b, index_ty_, stride_batch);
   }
 
   // bases: The base pointers of each argument.
@@ -1335,11 +1343,13 @@ class MatMulEmitterHelper {
       // instead of being broadcasted.
       return absl::OkStatus();
     }
-    Value pid_offset =
-        (properties.pid == nullptr)
-            ? Cst32(b, 0)
-            : b.create<ma::MulIOp>(properties.pid,
-                                   Cst32(b, properties.block_size));
+    Value pid_offset;
+    if (properties.pid == nullptr) {
+      pid_offset = Cst32(b, 0);
+    } else {
+      pid_offset =
+          b.create<ma::MulIOp>(properties.pid, Cst32(b, properties.block_size));
+    }
     std::vector<const HloInstruction*> inputs;
     if (hlo->opcode() == HloOpcode::kConcatenate) {
       inputs.insert(inputs.end(), hlo->operands().cbegin(),
@@ -1553,7 +1563,7 @@ class MatMulEmitterHelper {
           b.create<mt::GetProgramIdOp>(launch_config_.batch_program_id_dim);
 
       Value pid_offset_batch = b.create<ma::MulIOp>(
-          b.create<ma::AddIOp>(Cst(b, offset_batch),
+          b.create<ma::AddIOp>(Cst(b, index_ty_, offset_batch),
                                ConvertScalar(b, pid_batch)),
           batch_stride);
 
@@ -1570,9 +1580,10 @@ class MatMulEmitterHelper {
         TritonFusionAnalysis::Scope::OUTPUT, hlo, *dims_.out_split_k_dim_idx);
     if (spec != nullptr && spec->at(0).count > 1) {
       TF_RET_CHECK(pid_k != nullptr);
-      base = AddPtr(b, base,
-                    b.create<ma::MulIOp>(ConvertScalar(b, pid_k),
-                                         Cst(b, spec->at(0).stride)));
+      base =
+          AddPtr(b, base,
+                 b.create<ma::MulIOp>(ConvertScalar(b, pid_k),
+                                      Cst(b, index_ty_, spec->at(0).stride)));
     }
     return base;
   }
@@ -1625,18 +1636,6 @@ class MatMulEmitterHelper {
       return b.create<ma::ExtSIOp>(index_ty_, value);
     }
     return value;
-  }
-
-  Value Cst(EmitterLocOpBuilder b, int64_t v) {
-    return CreateConst(b, index_ty_, v);
-  }
-
-  Value Cst32(EmitterLocOpBuilder b, int32_t v) {
-    return CreateConst(b, b.getI32Type(), v);
-  }
-
-  Value Cst64(EmitterLocOpBuilder b, int64_t v) {
-    return CreateConst(b, b.getI64Type(), v);
   }
 
   absl::string_view libdevice_path_;
@@ -1695,8 +1694,7 @@ ConstHloInstructionSet ScopeInputs(const TritonFusionAnalysis& analysis,
 
 // Truncates |input| of F32 type to the number representable in Bf16 toward
 // zero.
-// It is used for Emit6xBfloat16MatMul.
-Value TruncateToBF16TowardsZero(EmitterLocOpBuilder& b, Value input) {
+Value MaskToBF16(EmitterLocOpBuilder& b, Value input) {
   ShapedType input_type = mlir::dyn_cast<ShapedType>(input.getType());
   Type input_type_as_i32 = input_type.clone(b.getI32Type());
   Value input_as_i32 = b.create<mt::BitcastOp>(input_type_as_i32, input);
@@ -1707,113 +1705,120 @@ Value TruncateToBF16TowardsZero(EmitterLocOpBuilder& b, Value input) {
   return b.create<mt::BitcastOp>(input_type, high_bits);
 }
 
-// Finds the middle 8 bits of |input|'s mantissa.
-// It is used for Emit6xBfloat16MatMul.
-Value SoftMiddleEight(EmitterLocOpBuilder& b, Value input) {
-  Value high = TruncateToBF16TowardsZero(b, input);
-  return b.create<ma::SubFOp>(input, high);
-}
-
-// Finds the low 8 bits of |input|'s mantissa.
-// It is used for Emit6xBfloat16MatMul.
-Value SoftLowEight(EmitterLocOpBuilder& b, Value input) {
-  // Find the middle bits of the middle bits, and these are the low eight
-  // bits.
-  return SoftMiddleEight(b, SoftMiddleEight(b, input));
-}
-
-// Rounds |input| to BF16 type.
-// It is used for Emit6xBfloat16MatMul.
-Value RoundToBF16(EmitterLocOpBuilder& b, Value input) {
-  return Cast(b, input, b.getBF16Type());
-}
-
-// Checks |input| is finite f32 (not Nan and not infinite).
-// It is used for Emit6xBfloat16MatMul and Emit3xBfloat16MatMul.
-Value CheckFiniteF32(EmitterLocOpBuilder& b, Value input) {
+// If lhs is 1.0, we will have lhs_high = 1.0 and lhs_low = 0.0.
+// If rhs is +infinity, we will have:
+// +infinity * 1.0 = +infinity
+// +infinity * 0.0 = NaN
+// We would get the wrong result if we sum these partial products. Instead, we
+// must override any accumulated result if the last partial product is
+// non-finite. See b/115844437.
+Value ZeroNaNs(EmitterLocOpBuilder& b, Value input) {
   Value positive_inf = CreateConst<float>(
       b, b.getF32Type(), std::numeric_limits<float>::infinity(),
       mlir::cast<ShapedType>(input.getType()).getShape());
   Value abs_input = b.create<mm::AbsFOp>(input);
-  return b.create<ma::CmpFOp>(ma::CmpFPredicate::OGT, positive_inf, abs_input);
+  Value is_finite =
+      b.create<ma::CmpFOp>(ma::CmpFPredicate::OGT, positive_inf, abs_input);
+  return b.create<ma::SelectOp>(is_finite, input, ZerosLike(b, input));
 }
 
-// Leverages BF16 datatype for F32 matmul computation. It follows the guidance
-// from https://arxiv.org/pdf/1904.06376.pdf.
-absl::StatusOr<Value> Emit6xBfloat16MatMul(EmitterLocOpBuilder& b, Value lhs,
-                                           Value rhs, Value acc) {
+absl::Status CheckF32Type(EmitterLocOpBuilder& b, Value lhs, Value rhs,
+                          Value acc) {
   Type f32 = b.getF32Type();
   TF_RET_CHECK(mlir::cast<ShapedType>(lhs.getType()).getElementType() == f32);
   TF_RET_CHECK(mlir::cast<ShapedType>(rhs.getType()).getElementType() == f32);
   TF_RET_CHECK(mlir::cast<ShapedType>(acc.getType()).getElementType() == f32);
+  return absl::OkStatus();
+}
 
-  Value lhs_high = RoundToBF16(b, TruncateToBF16TowardsZero(b, lhs));
-  Value lhs_middle =
-      RoundToBF16(b, TruncateToBF16TowardsZero(b, SoftMiddleEight(b, lhs)));
-  Value lhs_low =
-      RoundToBF16(b, TruncateToBF16TowardsZero(b, SoftLowEight(b, lhs)));
+std::vector<Value> SplitF32(EmitterLocOpBuilder b, Value input,
+                            int split_count) {
+  std::vector<Value> split_inputs;
+  split_inputs.reserve(split_count);
+  for (int i = 0; i < split_count; ++i) {
+    Value masked = MaskToBF16(b, input);
+    if (i != split_count - 1) {
+      input = b.create<ma::SubFOp>(input, masked);
+    }
+    split_inputs.push_back(RoundToBF16(b, masked));
+  }
+  return split_inputs;
+}
 
-  Value rhs_high = RoundToBF16(b, TruncateToBF16TowardsZero(b, rhs));
-  Value rhs_middle =
-      RoundToBF16(b, TruncateToBF16TowardsZero(b, SoftMiddleEight(b, rhs)));
-  Value rhs_low =
-      RoundToBF16(b, TruncateToBF16TowardsZero(b, SoftLowEight(b, rhs)));
+Value IEEEDot(EmitterLocOpBuilder b, Value lhs, Value rhs, Value acc) {
+  return b.create<mt::DotOp>(lhs, rhs, acc,
+                             /*inputPrecision=*/mt::InputPrecision::IEEE,
+                             /*maxNumImpreciseAcc=*/0);
+}
 
-  auto bf16_dot = [&](Value lhs_bf16, Value rhs_bf16,
-                      Value accumulator) -> Value {
-    return b.create<mt::DotOp>(lhs_bf16, rhs_bf16, accumulator,
-                               /*inputPrecision=*/mt::InputPrecision::IEEE,
-                               /*maxNumImpreciseAcc=*/0);
-  };
+// Leverages BF16 datatype for F32 matmul computation. It follows the guidance
+// from https://arxiv.org/pdf/1904.06376.pdf.
+Value EmitBF16x9Matmul(EmitterLocOpBuilder& b, Value lhs, Value rhs,
+                       Value acc) {
+  std::vector<Value> lhs_parts = SplitF32(b, lhs, 3);
+  std::vector<Value> rhs_parts = SplitF32(b, rhs, 3);
 
   Value local_acc = ZerosLike(b, acc);
-  Value result = bf16_dot(lhs_middle, rhs_middle, local_acc);
-  result = bf16_dot(lhs_low, rhs_high, result);
-  result = bf16_dot(lhs_high, rhs_low, result);
-  result = bf16_dot(lhs_middle, rhs_high, result);
-  result = bf16_dot(lhs_high, rhs_middle, result);
-  // If lhs is 1.0, we will have lhs_high = 1.0 and lhs_low = 0.0.
-  // If rhs is +infinity, we will have:
-  // +infinity * 1.0 = +infinity
-  // +infinity * 0.0 = NaN
-  // We would get the wrong result if we sum these partial products. Instead, we
-  // must override any accumulated result if the last partial product is
-  // non-finite. See b/115844437.
-  Value is_finite = CheckFiniteF32(b, result);
-  result = b.create<ma::SelectOp>(is_finite, result, ZerosLike(b, result));
-  result = bf16_dot(lhs_high, rhs_high, result);
+  Value result;
+
+  // low @ low + low @ mid + mid @ low
+  result = IEEEDot(b, lhs_parts[2], rhs_parts[2], local_acc);
+  result = IEEEDot(b, lhs_parts[1], rhs_parts[2], result);
+  result = IEEEDot(b, lhs_parts[2], rhs_parts[1], result);
+
+  // mid @ mid
+  result = IEEEDot(b, lhs_parts[1], rhs_parts[1], result);
+
+  // high @ low + low @ high
+  result = IEEEDot(b, lhs_parts[2], rhs_parts[0], result);
+  result = IEEEDot(b, lhs_parts[0], rhs_parts[2], result);
+
+  // high @ mid + mid @ high
+  result = IEEEDot(b, lhs_parts[1], rhs_parts[0], result);
+  result = IEEEDot(b, lhs_parts[0], rhs_parts[1], result);
+
+  result = ZeroNaNs(b, result);
+  result = IEEEDot(b, lhs_parts[0], rhs_parts[0], result);
+  result = b.create<ma::AddFOp>(acc, result);
+  return result;
+}
+
+// Leverages BF16 datatype for F32 matmul computation. It follows the guidance
+// from https://arxiv.org/pdf/1904.06376.pdf.
+Value EmitBF16x6Matmul(EmitterLocOpBuilder& b, Value lhs, Value rhs,
+                       Value acc) {
+  LOG(ERROR) << "EmitBF16x6Matmul";
+  std::vector<Value> lhs_parts = SplitF32(b, lhs, 3);
+  std::vector<Value> rhs_parts = SplitF32(b, rhs, 3);
+
+  Value local_acc = ZerosLike(b, acc);
+  Value result = IEEEDot(b, lhs_parts[1], rhs_parts[1], local_acc);
+  // high @ low + low @ high
+  result = IEEEDot(b, lhs_parts[2], rhs_parts[0], result);
+  result = IEEEDot(b, lhs_parts[0], rhs_parts[2], result);
+
+  // high @ mid + mid @ high
+  result = IEEEDot(b, lhs_parts[1], rhs_parts[0], result);
+  result = IEEEDot(b, lhs_parts[0], rhs_parts[1], result);
+
+  result = ZeroNaNs(b, result);
+  result = IEEEDot(b, lhs_parts[0], rhs_parts[0], result);
   result = b.create<ma::AddFOp>(acc, result);
   return result;
 }
 
 // Compute F32 matmul with 3 BF16 dots. It is less accurate than
-// Emit6xBfloat16MatMul.
-absl::StatusOr<Value> Emit3xBfloat16MatMul(EmitterLocOpBuilder& b, Value lhs,
-                                           Value rhs, Value acc) {
-  Type f32 = b.getF32Type();
-  TF_RET_CHECK(mlir::cast<ShapedType>(lhs.getType()).getElementType() == f32);
-  TF_RET_CHECK(mlir::cast<ShapedType>(rhs.getType()).getElementType() == f32);
-  TF_RET_CHECK(mlir::cast<ShapedType>(acc.getType()).getElementType() == f32);
-
-  Value lhs_high = RoundToBF16(b, TruncateToBF16TowardsZero(b, lhs));
-  Value lhs_low = RoundToBF16(b, SoftMiddleEight(b, lhs));
-
-  Value rhs_high = RoundToBF16(b, TruncateToBF16TowardsZero(b, rhs));
-  Value rhs_low = RoundToBF16(b, SoftMiddleEight(b, rhs));
-
-  auto bf16_dot = [&](Value lhs_bf16, Value rhs_bf16,
-                      Value accumulator) -> Value {
-    return b.create<mt::DotOp>(lhs_bf16, rhs_bf16, accumulator,
-                               /*inputPrecision=*/mt::InputPrecision::IEEE,
-                               /*maxNumImpreciseAcc=*/0);
-  };
+// EmitBF16x6Matmul.
+Value EmitBF16x3Matmul(EmitterLocOpBuilder& b, Value lhs, Value rhs,
+                       Value acc) {
+  std::vector<Value> lhs_bf16 = SplitF32(b, lhs, 2);
+  std::vector<Value> rhs_bf16 = SplitF32(b, rhs, 2);
 
   Value local_acc = ZerosLike(b, acc);
-  Value result = bf16_dot(lhs_low, rhs_high, local_acc);
-  result = bf16_dot(lhs_high, rhs_low, result);
-  Value is_finite = CheckFiniteF32(b, result);
-  result = b.create<ma::SelectOp>(is_finite, result, ZerosLike(b, result));
-  result = bf16_dot(lhs_high, rhs_high, result);
+  Value result = IEEEDot(b, lhs_bf16[1], rhs_bf16[0], local_acc);
+  result = IEEEDot(b, lhs_bf16[0], rhs_bf16[1], result);
+  result = ZeroNaNs(b, result);
+  result = IEEEDot(b, lhs_bf16[0], rhs_bf16[0], result);
   result = b.create<ma::AddFOp>(acc, result);
   return result;
 }
@@ -1852,26 +1857,6 @@ mt::InputPrecision InferDotPrecision(const HloDotInstruction* dot_instr) {
   return IsTf32Allowed(dot_instr) && !is_unsupported_bitwidth
              ? mt::InputPrecision::TF32
              : mt::InputPrecision::IEEE;
-}
-
-bool Is6xBfloat16MatMul(const HloDotInstruction* dot_instr,
-                        EmitterLocOpBuilder& b, Value dot_input_lhs,
-                        Value dot_input_rhs,
-                        const se::DeviceDescription& device_info) {
-  const PrecisionConfig::Algorithm algorithm =
-      dot_instr->precision_config().algorithm();
-
-  return algorithm == PrecisionConfig::ALG_DOT_BF16_BF16_F32_X6;
-}
-
-bool Is3xBfloat16MatMul(const HloDotInstruction* dot_instr,
-                        EmitterLocOpBuilder& b, Value dot_input_lhs,
-                        Value dot_input_rhs,
-                        const se::DeviceDescription& device_info) {
-  const PrecisionConfig::Algorithm algorithm =
-      dot_instr->precision_config().algorithm();
-
-  return algorithm == PrecisionConfig::ALG_DOT_BF16_BF16_F32_X3;
 }
 
 // This is a heuristic that serves as a proxy for register usage and code size.
@@ -1923,18 +1908,17 @@ class Scopes {
     constexpr int group_m = 8;
     const int64_t width = group_m * launch_config.grid_n;
 
-    auto c32 = [&](int64_t v) { return CreateConst(b, b.getI32Type(), v); };
-
     auto pid_nc = b.create<mt::GetProgramIdOp>(
         launch_config.noncontracting_program_id_dim);
     pid_k_ = (config.split_k > 1)
                  ? b.create<mt::GetProgramIdOp>(mt::ProgramIDDim::Z)
                  : Value{};
 
-    auto group_id = b.create<ma::DivSIOp>(pid_nc, c32(width));
-    ma::ConstantOp group_m_op = c32(group_m);
+    auto group_id = b.create<ma::DivSIOp>(pid_nc, Cst32(b, width));
+    ma::ConstantOp group_m_op = Cst32(b, group_m);
     auto first_pid_m = b.create<ma::MulIOp>(group_id, group_m_op);
-    auto sub0 = b.create<ma::SubIOp>(c32(launch_config.grid_m), first_pid_m);
+    auto sub0 =
+        b.create<ma::SubIOp>(Cst32(b, launch_config.grid_m), first_pid_m);
     auto group_size = b.create<ma::SelectOp>(
         b.create<ma::CmpIOp>(ma::CmpIPredicate::slt, sub0, group_m_op), sub0,
         group_m_op);
@@ -1942,8 +1926,8 @@ class Scopes {
     pid_m_ = b.create<ma::AddIOp>(first_pid_m,
                                   b.create<ma::RemSIOp>(pid_nc, group_size));
 
-    pid_n_ = b.create<ma::DivSIOp>(b.create<ma::RemSIOp>(pid_nc, c32(width)),
-                                   group_size);
+    pid_n_ = b.create<ma::DivSIOp>(
+        b.create<ma::RemSIOp>(pid_nc, Cst32(b, width)), group_size);
 
     int lhs_non_contracting_block_size = config.block_m;
     int lhs_contracting_block_size = config.block_k;
@@ -2104,12 +2088,11 @@ Value EmitMaskOnInput(EmitterLocOpBuilder& b,
                       MaskExpandDimension expand_along_dimension, Value input,
                       int dim_k_denom, Value k, int64_t dims_k, int64_t block_k,
                       Value pid_k, int64_t other_dim_block_size) {
-  auto c32 = [&](int64_t v) { return CreateConst(b, b.getI32Type(), v); };
   int block_k_size = block_k / dim_k_denom;
   auto dim_k_elements_to_keep =
-      b.create<ma::SubIOp>(c32(dims_k / dim_k_denom), k);
+      b.create<ma::SubIOp>(Cst32(b, dims_k / dim_k_denom), k);
   auto is_last_tile_cond = b.create<ma::CmpIOp>(
-      ma::CmpIPredicate::slt, dim_k_elements_to_keep, c32(block_k_size));
+      ma::CmpIPredicate::slt, dim_k_elements_to_keep, Cst32(b, block_k_size));
   auto input_type = mlir::cast<mlir::RankedTensorType>(input.getType());
   auto input_element_type = input_type.getElementType();
 
@@ -2147,7 +2130,7 @@ Value EmitMaskOnInput(EmitterLocOpBuilder& b,
         if (pid_k != nullptr) {
           range_from_0_to_k = b.create<ma::AddIOp>(
               range_from_0_to_k,
-              Splat(b, b.create<ma::MulIOp>(pid_k, c32(block_k_size)),
+              Splat(b, b.create<ma::MulIOp>(pid_k, Cst32(b, block_k_size)),
                     block_k_size));
         }
         // Make it a 2D matrix.
@@ -2185,6 +2168,136 @@ Value EmitMaskOnInput(EmitterLocOpBuilder& b,
   return if_op.getResult(0);
 }
 
+Value EmitRegularMatmul(EmitterLocOpBuilder& b, Value lhs, Value rhs, Value acc,
+                        const HloDotInstruction* dot_instr) {
+  // Execute matrix multiplication of input tiles and pass the accumulator.
+  // TODO(manany): Should be looked into once we enable Hopper workloads.
+  // maxNumImpreciseAcc flag was introduced for Hopper to accumulate in a
+  // lower precision than the output type. The change was introduced here:
+  // https://github.com/openai/triton/commit/31b0c521427109a8eda609b58d756c380b21599a
+  auto dot_precision = InferDotPrecision(dot_instr);
+
+  // Cast F32 inputs to BF16 if the algorithm is BF16_BF16_F32.
+  if (dot_instr->precision_config().algorithm() ==
+      PrecisionConfig::ALG_DOT_BF16_BF16_F32) {
+    if (dot_instr->operand(0)->shape().element_type() == F32) {
+      lhs = Cast(b, lhs, b.getBF16Type());
+    }
+    if (dot_instr->operand(1)->shape().element_type() == F32) {
+      rhs = Cast(b, rhs, b.getBF16Type());
+    }
+  }
+
+  // For fp8 matmuls, disable accumulator promotion, as it's what cublas
+  // does. It may make sense to enable frequent accumulator promotion at
+  // higher matmul precisions set in the config.
+  int max_num_imprecise_acc =
+      IsFp8Matmul(dot_instr) ? std::numeric_limits<int>::max() : 0;
+  return b.create<mt::DotOp>(lhs, rhs, acc,
+                             /*inputPrecision=*/dot_precision,
+                             /*maxNumImpreciseAcc=*/max_num_imprecise_acc);
+}
+
+absl::StatusOr<TritonGemmConfig> GetTritonGemmConfig(
+    const HloFusionInstruction* fusion) {
+  auto backend_config =
+      fusion->backend_config<GpuBackendConfig>()->fusion_backend_config();
+
+  if (!backend_config.has_triton_gemm_config()) {
+    // TODO(bchetioui): consolidate default parameters. At the moment, these
+    // may be constructed in two distinct places.
+    LOG(WARNING) << "Using fallback triton GEMM config for op "
+                 << fusion->name();
+    *backend_config.mutable_triton_gemm_config() = DefaultTritonGemmKey();
+  }
+
+  return TritonGemmConfig::FromProto(backend_config.triton_gemm_config());
+}
+
+Type GetIndexType(EmitterLocOpBuilder& b, const HloDotInstruction& dot_instr,
+                  const TritonGemmConfig& config) {
+  // Use 32-bit indexing if addressing any of the inputs or the output (which
+  // could grow if split_k is set) does not cross the INT_MAX boundary.
+  // Otherwise, fall back to 64-bit indexing, which is slower.
+  bool use_64bit_indexing =
+      ShapeUtil::ElementsIn(dot_instr.operand(0)->shape()) > INT_MAX ||
+      ShapeUtil::ElementsIn(dot_instr.operand(1)->shape()) > INT_MAX ||
+      ShapeUtil::ElementsIn(dot_instr.shape()) * config.split_k > INT_MAX;
+  return b.getIntegerType(use_64bit_indexing ? 64 : 32);
+}
+
+void EmitForLoopBody(EmitterLocOpBuilder& b, MatMulEmitterHelper& emitter,
+                     const Scopes& scopes, const HloDotInstruction* dot_instr,
+                     bool is_sparse, const MatMulDims& dims,
+                     const llvm::SmallVector<IterableInput>& inputs, Value ki,
+                     ValueRange iter_args) {
+  SmallVector<Value> args_for_yield;
+  std::array<absl::flat_hash_map<const HloInstruction*, Value>, 3> values;
+
+  // Load tiles of all parameters of LHS and RHS scopes and advance pointers.
+  for (const IterableInput& input : inputs) {
+    Value param_value = input.EmitLoad(b, iter_args[input.iter_arg_index_]);
+    CHECK(values[input.operand_index_]
+              .insert({input.hlo_instr_, param_value})
+              .second);
+    args_for_yield.push_back(input.EmitAdvance(b, emitter, ki, iter_args));
+  }
+
+  // Emit all operations of LHS and RHS scopes.
+  Value dot_lhs =
+      emitter.MakeInput(b, scopes.lhs(), kLhsIndex, values[kLhsIndex]);
+  Value dot_rhs =
+      emitter.MakeInput(b, scopes.rhs(), kRhsIndex, values[kRhsIndex]);
+  Value dot_meta = is_sparse ? emitter.MakeInput(b, *scopes.meta(), kMetaIndex,
+                                                 values[kMetaIndex])
+                             : Value{};
+
+  // Operation in the fusion before the dot can alter the elements of the
+  // tiles that were zero masked during loads. These have to be zeroed here
+  // again just before the dot so that they do not affect the output.
+  // Only the K dimension needs masking here because unnecessary elements in
+  // the other two get discarded by the masked store at the end.
+  const bool need_masking =
+      dims.k % (dims.config.block_k * dims.config.split_k) > 0;
+  if (need_masking) {
+    dot_lhs = EmitMaskOnInput(
+        b, MaskExpandDimension::kMajor, dot_lhs, is_sparse ? 2 : 1, ki, dims.k,
+        dims.config.block_k, scopes.pid_k(), dims.config.block_m);
+    dot_rhs = EmitMaskOnInput(b, MaskExpandDimension::kMinor, dot_rhs, 1, ki,
+                              dims.k, dims.config.block_k, scopes.pid_k(),
+                              dims.config.block_n);
+    // Masking the metadata is not necessary, as the inputs are masked
+    // (i.e. zeroed out), so the padded metadata can hold any values.
+  }
+
+  if (is_sparse) {
+    args_for_yield.push_back(b.create<mt::xla::SparseDotOp>(
+        dot_lhs, dot_rhs, iter_args.back(), dot_meta));
+    b.create<mlir::scf::YieldOp>(args_for_yield);
+    return;
+  }
+
+  Value acc_next;
+  auto algorithm = dot_instr->precision_config().algorithm();
+
+  if (algorithm == PrecisionConfig::ALG_DOT_BF16_BF16_F32_X9) {
+    TF_CHECK_OK(CheckF32Type(b, dot_lhs, dot_rhs, iter_args.back()));
+    acc_next = EmitBF16x9Matmul(b, dot_lhs, dot_rhs, iter_args.back());
+  } else if (algorithm == PrecisionConfig::ALG_DOT_BF16_BF16_F32_X6) {
+    TF_CHECK_OK(CheckF32Type(b, dot_lhs, dot_rhs, iter_args.back()));
+    acc_next = EmitBF16x6Matmul(b, dot_lhs, dot_rhs, iter_args.back());
+  } else if (algorithm == PrecisionConfig::ALG_DOT_BF16_BF16_F32_X3) {
+    TF_CHECK_OK(CheckF32Type(b, dot_lhs, dot_rhs, iter_args.back()));
+    acc_next = EmitBF16x3Matmul(b, dot_lhs, dot_rhs, iter_args.back());
+  } else {
+    acc_next =
+        EmitRegularMatmul(b, dot_lhs, dot_rhs, iter_args.back(), dot_instr);
+  }
+  args_for_yield.push_back(acc_next);
+
+  b.create<mlir::scf::YieldOp>(args_for_yield);
+}
+
 }  // namespace
 
 // Use tiling and execution parameters from 'config'. BlockLevelParameters are
@@ -2197,27 +2310,8 @@ absl::StatusOr<std::optional<stream_executor::gpu::TmaMetadata>> EmitMatMul(
     const BlockLevelParameters&) {
   // TODO b/315957220: Populate tma_metadata.
   stream_executor::gpu::TmaMetadata tma_metadata;
-  auto backend_config =
-      fusion->backend_config<GpuBackendConfig>()->fusion_backend_config();
 
-  if (!backend_config.has_triton_gemm_config()) {
-    // TODO(bchetioui): consolidate default parameters. At the moment, these
-    // may be constructed in two distinct places.
-    LOG(WARNING) << "Using fallback triton GEMM config for op "
-                 << fusion->name();
-    auto& triton_config = *backend_config.mutable_triton_gemm_config();
-    triton_config.set_block_m(64);
-    triton_config.set_block_k(64);
-    triton_config.set_block_n(64);
-    triton_config.set_split_k(1);
-    triton_config.set_num_stages(1);
-    triton_config.set_num_warps(2);
-    triton_config.set_num_ctas(1);
-  }
-
-  TF_ASSIGN_OR_RETURN(
-      TritonGemmConfig config,
-      TritonGemmConfig::FromProto(backend_config.triton_gemm_config()));
+  TF_ASSIGN_OR_RETURN(TritonGemmConfig config, GetTritonGemmConfig(fusion));
   TF_ASSIGN_OR_RETURN(auto analysis,
                       TritonFusionAnalysis::Execute(
                           *fusion->called_computation(), config.split_k));
@@ -2230,21 +2324,10 @@ absl::StatusOr<std::optional<stream_executor::gpu::TmaMetadata>> EmitMatMul(
   const HloDotInstruction* dot_instr = DynCast<HloDotInstruction>(instr);
   bool is_sparse = dot_instr->sparse_operands() > 0;
 
-  // Use 32-bit indexing if addressing any of the inputs or the output (which
-  // could grow if split_k is set) does not cross the INT_MAX boundary.
-  // Otherwise, fall back to 64-bit indexing, which is slower.
-  bool use_64bit_indexing =
-      ShapeUtil::ElementsIn(dot_instr->operand(0)->shape()) > INT_MAX ||
-      ShapeUtil::ElementsIn(dot_instr->operand(1)->shape()) > INT_MAX ||
-      ShapeUtil::ElementsIn(dot_instr->shape()) * config.split_k > INT_MAX;
-  Type index_ty = b.getIntegerType(use_64bit_indexing ? 64 : 32);
+  Type index_ty = GetIndexType(b, *dot_instr, config);
 
   const HloInstruction* root = dot_instr->parent()->root_instruction();
   TF_RET_CHECK(!root->shape().IsTuple());
-
-  // We'll be creating a lot of instructions from a single dot, use an
-  // implicit loc builder so we don't have to pass around the location all the
-  // time.
 
   TF_RETURN_IF_ERROR(ValidateMatMulConfig(config, *dot_instr));
   const int split_k = config.split_k;
@@ -2268,114 +2351,11 @@ absl::StatusOr<std::optional<stream_executor::gpu::TmaMetadata>> EmitMatMul(
   // Calculate the sizes of the lhs, rhs, meta, and output sides.
   Scopes scopes(b, dot_instr, analysis, dims, config, launch_config, is_sparse);
 
-  auto c32 = [&](int64_t v) { return CreateConst(b, b.getI32Type(), v); };
-
-  size_t lsize = ScopeInputs(analysis, TritonFusionAnalysis::Scope::LHS).size();
-  size_t rsize = ScopeInputs(analysis, TritonFusionAnalysis::Scope::RHS).size();
-
   llvm::SmallVector<IterableInput> inputs;
-
-  auto body_builder_callback = [&](mlir::OpBuilder&, mlir::Location, Value ki,
-                                   ValueRange iter_args) -> void {
-    SmallVector<Value> args_for_yield;
-    args_for_yield.reserve(iter_args.size());
-    std::array<absl::flat_hash_map<const HloInstruction*, Value>, 3> values;
-
-    // Load tiles of all parameters of LHS and RHS scopes and advance pointers.
-    for (const IterableInput& input : inputs) {
-      Value param_value = input.EmitLoad(b, iter_args[input.iter_arg_index_]);
-      CHECK(values[input.operand_index_]
-                .insert({input.hlo_instr_, param_value})
-                .second);
-      args_for_yield.push_back(input.EmitAdvance(b, emitter, ki, iter_args));
-    }
-
-    // Emit all operations of LHS and RHS scopes.
-    Value dot_input_lhs =
-        emitter.MakeInput(b, scopes.lhs(), kLhsIndex, values[kLhsIndex]);
-    Value dot_input_rhs =
-        emitter.MakeInput(b, scopes.rhs(), kRhsIndex, values[kRhsIndex]);
-    Value dot_input_meta =
-        is_sparse ? emitter.MakeInput(b, *scopes.meta(), kMetaIndex,
-                                      values[kMetaIndex])
-                  : Value{};
-
-    // Operation in the fusion before the dot can alter the elements of the
-    // tiles that were zero masked during loads. These have to be zeroed here
-    // again just before the dot so that they do not affect the output.
-    // Only the K dimension needs masking here because unnecessary elements in
-    // the other two get discarded by the masked store at the end.
-    const bool need_masking = dims.k % (block_k * split_k) > 0;
-    if (need_masking) {
-      dot_input_lhs = EmitMaskOnInput(b, MaskExpandDimension::kMajor,
-                                      dot_input_lhs, is_sparse ? 2 : 1, ki,
-                                      dims.k, block_k, scopes.pid_k(), block_m);
-      dot_input_rhs =
-          EmitMaskOnInput(b, MaskExpandDimension::kMinor, dot_input_rhs, 1, ki,
-                          dims.k, block_k, scopes.pid_k(), block_n);
-      // Masking the metadata is not necessary, as the inputs are masked
-      // (i.e. zeroed out), so the padded metadata can hold any values.
-    }
-
-    if (is_sparse) {
-      args_for_yield.push_back(b.create<mt::xla::SparseDotOp>(
-          dot_input_lhs, dot_input_rhs, iter_args.back(), dot_input_meta));
-      b.create<mlir::scf::YieldOp>(args_for_yield);
-      return;
-    }
-
-    Value accumulator_next;
-    if (Is6xBfloat16MatMul(dot_instr, b, dot_input_lhs, dot_input_rhs,
-                           device_info)) {
-      absl::StatusOr<Value> accumulator_next_or = Emit6xBfloat16MatMul(
-          b, dot_input_lhs, dot_input_rhs, iter_args.back());
-      TF_CHECK_OK(accumulator_next_or.status());
-      accumulator_next = accumulator_next_or.value();
-    } else if (Is3xBfloat16MatMul(dot_instr, b, dot_input_lhs, dot_input_rhs,
-                                  device_info)) {
-      absl::StatusOr<Value> accumulator_next_or = Emit3xBfloat16MatMul(
-          b, dot_input_lhs, dot_input_rhs, iter_args.back());
-      TF_CHECK_OK(accumulator_next_or.status());
-      accumulator_next = accumulator_next_or.value();
-    } else {
-      // Execute matrix multiplication of input tiles and pass the accumulator.
-      // TODO(manany): Should be looked into once we enable Hopper workloads.
-      // maxNumImpreciseAcc flag was introduced for Hopper to accumulate in a
-      // lower precision than the output type. The change was introduced here:
-      // https://github.com/openai/triton/commit/31b0c521427109a8eda609b58d756c380b21599a
-      auto dot_precision = InferDotPrecision(dot_instr);
-
-      // Cast F32 inputs to BF16 if the algorithm is BF16_BF16_F32.
-      if (dot_instr->precision_config().algorithm() ==
-          PrecisionConfig::ALG_DOT_BF16_BF16_F32) {
-        if (dot_instr->operand(0)->shape().element_type() == F32) {
-          dot_input_lhs = Cast(b, dot_input_lhs, b.getBF16Type());
-        }
-        if (dot_instr->operand(1)->shape().element_type() == F32) {
-          dot_input_rhs = Cast(b, dot_input_rhs, b.getBF16Type());
-        }
-      }
-
-      // For fp8 matmuls, disable accumulator promotion, as it's what cublas
-      // does. It may make sense to enable frequent accumulator promotion at
-      // higher matmul precisions set in the config.
-      int max_num_imprecise_acc =
-          IsFp8Matmul(dot_instr) ? std::numeric_limits<int>::max() : 0;
-      accumulator_next =
-          b.create<mt::DotOp>(dot_input_lhs, dot_input_rhs, iter_args.back(),
-                              /*inputPrecision=*/dot_precision,
-                              /*maxNumImpreciseAcc=*/max_num_imprecise_acc);
-    }
-    args_for_yield.push_back(accumulator_next);
-
-    b.create<mlir::scf::YieldOp>(args_for_yield);
-    return;
-  };
 
   // Pointers to inputs of LHS scope, then RHS, then the accumulator
   // that change with every loop iteration and are passed between them.
   SmallVector<Value> iter_args;
-  iter_args.reserve(lsize + rsize + 1 + is_sparse);
   int64_t step_k = block_k * split_k;
   for (const Side* side : scopes.input_scopes()) {
     for (const HloInstruction* input_hlo : ScopeInputs(analysis, side->scope)) {
@@ -2394,11 +2374,17 @@ absl::StatusOr<std::optional<stream_executor::gpu::TmaMetadata>> EmitMatMul(
     }
   }
 
+  auto body_builder_callback = [&](mlir::OpBuilder&, mlir::Location, Value ki,
+                                   ValueRange iter_args) -> void {
+    EmitForLoopBody(b, emitter, scopes, dot_instr, is_sparse, dims, inputs, ki,
+                    iter_args);
+  };
+
   iter_args.push_back(accumulator_init);
   Value acc_final = b.create<mlir::scf::ForOp>(
-                         /*lowerBound*/ c32(0),
-                         /*upperBound*/ c32(dims.k),
-                         /*step*/ c32(step_k),
+                         /*lowerBound*/ Cst32(b, 0),
+                         /*upperBound*/ Cst32(b, dims.k),
+                         /*step*/ Cst32(b, step_k),
                          /*iterArgs*/ iter_args, body_builder_callback)
                         .getResult(iter_args.size() - 1);
   absl::flat_hash_map<const HloInstruction*, Value> values_out;

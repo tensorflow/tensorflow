@@ -27,7 +27,6 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "third_party/gpus/cuda/extras/CUPTI/include/cupti_activity.h"
 #include "third_party/gpus/cuda/extras/CUPTI/include/cupti_result.h"
-#include "third_party/gpus/cuda/extras/CUPTI/include/generated_nvtx_meta.h"
 #include "third_party/gpus/cuda/include/cuda.h"
 #include "xla/backends/profiler/gpu/cupti_buffer_events.h"
 #include "xla/backends/profiler/gpu/cupti_collector.h"
@@ -443,8 +442,8 @@ void SetCuMemAllocEventUponApiExit(CuptiTracerEvent &event, uint32_t device_id,
   event.correlation_id = cbdata->correlationId;
   event.memalloc_info.address = reinterpret_cast<uintptr_t>(dptr);
   event.memalloc_info.num_bytes = params->bytesize;
-  VLOG(3) << "Cuda MemAlloc API exit." << " dptr=" << dptr
-          << " sz=" << params->bytesize;
+  VLOG(3) << "Cuda MemAlloc API exit."
+          << " dptr=" << dptr << " sz=" << params->bytesize;
 }
 
 void SetCuMemAllocPitchEventUponApiExit(
@@ -465,8 +464,8 @@ void SetCuMemAllocPitchEventUponApiExit(
   const size_t size_in_bytes = *params->pPitch * params->Height;
   event.memalloc_info.address = reinterpret_cast<uintptr_t>(dptr);
   event.memalloc_info.num_bytes = size_in_bytes;
-  VLOG(3) << "Cuda MemAllocPitch API exit." << " dptr=" << dptr
-          << " sz=" << size_in_bytes;
+  VLOG(3) << "Cuda MemAllocPitch API exit."
+          << " dptr=" << dptr << " sz=" << size_in_bytes;
 }
 
 void SetCuMemAllocManagedEventUponApiExit(
@@ -486,8 +485,8 @@ void SetCuMemAllocManagedEventUponApiExit(
   event.correlation_id = cbdata->correlationId;
   event.memalloc_info.address = reinterpret_cast<uintptr_t>(dptr);
   event.memalloc_info.num_bytes = params->bytesize;
-  VLOG(3) << "Cuda MemAllocManaged API exit." << " dptr=" << dptr
-          << " sz=" << params->bytesize;
+  VLOG(3) << "Cuda MemAllocManaged API exit."
+          << " dptr=" << dptr << " sz=" << params->bytesize;
 }
 
 void SetCuMemAllocHostEventUponApiExit(CuptiTracerEvent &event,
@@ -508,8 +507,8 @@ void SetCuMemAllocHostEventUponApiExit(CuptiTracerEvent &event,
   event.correlation_id = cbdata->correlationId;
   event.memalloc_info.address = reinterpret_cast<uintptr_t>(*params->pp);
   event.memalloc_info.num_bytes = params->bytesize;
-  VLOG(3) << "Cuda MemAllocHost API exit." << " pp=" << *params->pp
-          << " sz=" << params->bytesize;
+  VLOG(3) << "Cuda MemAllocHost API exit."
+          << " pp=" << *params->pp << " sz=" << params->bytesize;
 }
 
 void SetCuMemHostAllocEventUponApiExit(CuptiTracerEvent &event,
@@ -530,8 +529,9 @@ void SetCuMemHostAllocEventUponApiExit(CuptiTracerEvent &event,
   event.correlation_id = cbdata->correlationId;
   event.memalloc_info.address = reinterpret_cast<uintptr_t>(*params->pp);
   event.memalloc_info.num_bytes = params->bytesize;
-  VLOG(3) << "Cuda MemHostAlloc API exit." << " pp=" << *params->pp
-          << " sz=" << params->bytesize << " Flags=" << params->Flags;
+  VLOG(3) << "Cuda MemHostAlloc API exit."
+          << " pp=" << *params->pp << " sz=" << params->bytesize
+          << " Flags=" << params->Flags;
 }
 
 void SetCuMemFreeEventUponApiExit(CuptiTracerEvent &event, uint32_t device_id,
@@ -551,7 +551,8 @@ void SetCuMemFreeEventUponApiExit(CuptiTracerEvent &event, uint32_t device_id,
   event.context_id = cbdata->contextUid;
   event.correlation_id = cbdata->correlationId;
   event.memfree_info.address = reinterpret_cast<uintptr_t>(dptr);
-  VLOG(3) << "Cuda MemFree API exit." << " dptr=" << dptr;
+  VLOG(3) << "Cuda MemFree API exit."
+          << " dptr=" << dptr;
 }
 
 void SetCuMemFreeHostEventUponApiExit(CuptiTracerEvent &event,
@@ -570,7 +571,8 @@ void SetCuMemFreeHostEventUponApiExit(CuptiTracerEvent &event,
   event.context_id = cbdata->contextUid;
   event.correlation_id = cbdata->correlationId;
   event.memfree_info.address = reinterpret_cast<uintptr_t>(params->p);
-  VLOG(3) << "Cuda MemFreeHost API exit." << " p=" << params->p;
+  VLOG(3) << "Cuda MemFreeHost API exit."
+          << " p=" << params->p;
 }
 
 void SetCuMemHostRegisterEventUponApiExit(
@@ -590,8 +592,9 @@ void SetCuMemHostRegisterEventUponApiExit(
   event.host_register_info.address = reinterpret_cast<uintptr_t>(params->p);
   event.host_register_info.num_bytes = params->bytesize;
   event.host_register_info.flags = params->Flags;
-  VLOG(3) << "Cuda HostRegister API exit." << " p=" << params->p
-          << " bytesize=" << params->bytesize << " flags=" << params->Flags;
+  VLOG(3) << "Cuda HostRegister API exit."
+          << " p=" << params->p << " bytesize=" << params->bytesize
+          << " flags=" << params->Flags;
 }
 
 void SetCuMemHostUnregisterEventUponApiExit(
@@ -609,7 +612,8 @@ void SetCuMemHostUnregisterEventUponApiExit(
   event.context_id = cbdata->contextUid;
   event.correlation_id = cbdata->correlationId;
   event.host_unregister_info.address = reinterpret_cast<uintptr_t>(params->p);
-  VLOG(3) << "Cuda HostUnregister API exit." << " p=" << params->p;
+  VLOG(3) << "Cuda HostUnregister API exit."
+          << " p=" << params->p;
 }
 
 struct GraphResourceCreationInfo {
@@ -650,7 +654,8 @@ void SetCudaGraphEventUponApiExit(CuptiTracerEvent &event,
   event.cuda_graph_info.cbid = cbid;
   event.graph_id = graph_id_info.graph_id;
   event.cuda_graph_info.orig_graph_id = graph_id_info.orig_graph_id;
-  VLOG(3) << "Observed CudaGraph API exit." << " name=" << cbdata->functionName;
+  VLOG(3) << "Observed CudaGraph API exit."
+          << " name=" << cbdata->functionName;
 }
 
 void SetGenericEventUponApiExit(CuptiTracerEvent &event, uint32_t device_id,
@@ -667,7 +672,8 @@ void SetGenericEventUponApiExit(CuptiTracerEvent &event, uint32_t device_id,
   event.context_id = cbdata->contextUid;
   event.correlation_id = cbdata->correlationId;
   event.generic_info.cbid = cbid;
-  VLOG(3) << "Observed generic API exit." << " name=" << cbdata->functionName;
+  VLOG(3) << "Observed generic API exit."
+          << " name=" << cbdata->functionName;
 }
 
 static void SetCallbackEventUponApiExit(CuptiTracerEvent &event,

@@ -31,6 +31,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/base/nullability.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
@@ -60,8 +61,8 @@ limitations under the License.
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/service/hlo_creation_utils.h"
 #include "xla/service/hlo_module_config.h"
-#include "xla/service/host_memory_offload_annotations.h"
 #include "xla/service/host_offload_utils.h"
+#include "xla/service/memory_annotations.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/service/shape_inference.h"
 #include "xla/shape.h"
@@ -380,7 +381,7 @@ bool ValidateTilingOfBitcast(
         VLOG(2) << "Abort b/c tiled dimension " << op_dim << " has size 1.\n";
         return false;
       }
-    } else if (bitcast_shape.dimensions_size() <= operand_map[op_dim][0]) {
+    } else if (bitcast_shape.rank() <= operand_map[op_dim][0]) {
       VLOG(2) << "Abort because the bitcasted dimensions are not aligned!\n";
       return false;
     } else if (bitcast_shape.dimensions(operand_map[op_dim][0]) <
@@ -1356,10 +1357,9 @@ absl::Status AlgebraicSimplifierVisitor::HandleBitcast(
 std::optional<std::vector<std::vector<int64_t>>>
 AlgebraicSimplifierVisitor::ComputeBitcastDimMap(const Shape& bitcast_shape,
                                                  const Shape& operand_shape) {
-  std::vector<std::vector<int64_t>> operand_dim_map(
-      operand_shape.dimensions_size());
-  int64_t bitcast_rank = bitcast_shape.dimensions_size();
-  int64_t operand_rank = operand_shape.dimensions_size();
+  std::vector<std::vector<int64_t>> operand_dim_map(operand_shape.rank());
+  int64_t bitcast_rank = bitcast_shape.rank();
+  int64_t operand_rank = operand_shape.rank();
   int64_t cur_bitcast_size = 1, cur_operand_size = 1;
   int64_t operand_pos = -1, operand_dim = -1;
   for (int64_t bitcast_pos = 0; bitcast_pos < bitcast_rank; ++bitcast_pos) {
@@ -1371,7 +1371,7 @@ AlgebraicSimplifierVisitor::ComputeBitcastDimMap(const Shape& bitcast_shape,
       }
       continue;
     }
-    CHECK_LT(bitcast_dim, bitcast_shape.dimensions_size());
+    CHECK_LT(bitcast_dim, bitcast_shape.rank());
     int64_t bitcast_dim_size = bitcast_shape.dimensions()[bitcast_dim];
     auto prev_bitcast_size = cur_bitcast_size;
     cur_bitcast_size *= bitcast_dim_size;
@@ -1514,7 +1514,7 @@ std::vector<std::vector<int64_t>>
 AlgebraicSimplifierVisitor::InvertBitcastDimMap(
     const Shape& original_shape, const Shape& bitcast_shape,
     const std::vector<std::vector<int64_t>>& original_map) {
-  std::vector<std::vector<int64_t>> result_map(bitcast_shape.dimensions_size());
+  std::vector<std::vector<int64_t>> result_map(bitcast_shape.rank());
   // Invert the operand map into result map.
   for (auto i = 0; i < original_shape.rank(); ++i) {
     auto j = original_shape.layout().minor_to_major(i);
@@ -2748,7 +2748,7 @@ absl::StatusOr<HloInstruction*> AlgebraicSimplifierVisitor::OptimizeDotOfConcat(
   if (dnums.lhs_contracting_dimensions_size() != 1 ||
       dnums.lhs_batch_dimensions_size() != 0 ||
       Cast<HloDotInstruction>(dot)->sparse_operands() ||
-      dot->shape().dimensions_size() != 2) {  // dot output 2D
+      dot->shape().rank() != 2) {  // dot output 2D
     return nullptr;
   }
 
@@ -2892,7 +2892,7 @@ absl::StatusOr<HloInstruction*> AlgebraicSimplifierVisitor::OptimizeDotOfGather(
   if (dnums.lhs_contracting_dimensions_size() != 1 ||
       dnums.lhs_batch_dimensions_size() != 0 ||
       Cast<HloDotInstruction>(dot)->sparse_operands() ||
-      dot->shape().dimensions_size() != 2) {  // dot output 2D
+      dot->shape().rank() != 2) {  // dot output 2D
     VLOG(10) << "DotOfGather: Can only optimize 2D, non-batch dot operations.";
     return nullptr;
   }
@@ -3092,7 +3092,7 @@ AlgebraicSimplifierVisitor::OptimizeDotOfReorderContractingDims(
     unmodified_transpose_dims.insert(pair.first);
   }
   lhs_contracting_dims.Clear();
-  for (int64_t i = 0; i < transpose->shape().dimensions_size(); ++i) {
+  for (int64_t i = 0; i < transpose->shape().rank(); ++i) {
     if (!unmodified_transpose_dims.contains(i)) {
       lhs_contracting_dims.Add(i);
     }
@@ -6056,7 +6056,7 @@ absl::Status AlgebraicSimplifierVisitor::HandleRemainder(
     int64_t iota_upper_bound = iota->shape().dimensions(
         Cast<HloIotaInstruction>(iota)->iota_dimension());
     std::optional<int64_t> divisor_val = divisor->literal().GetIntegralAsS64(
-        std::vector<int64_t>(0, divisor->shape().dimensions_size()));
+        std::vector<int64_t>(0, divisor->shape().rank()));
     if (divisor_val && *divisor_val >= iota_upper_bound) {
       return ReplaceInstruction(remainder, iota);
     }
@@ -6084,7 +6084,7 @@ absl::Status AlgebraicSimplifierVisitor::HandleRemainder(
     int64_t iota_upper_bound = iota->shape().dimensions(
         Cast<HloIotaInstruction>(iota)->iota_dimension());
     std::optional<int64_t> divisor_val = divisor->literal().GetIntegralAsS64(
-        std::vector<int64_t>(0, divisor->shape().dimensions_size()));
+        std::vector<int64_t>(0, divisor->shape().rank()));
     if (divisor_val) {
       // Check whether divisor_val + iota_upper_bound - 1 overflows.
       std::optional<int64_t> max_val =
@@ -6641,6 +6641,45 @@ absl::StatusOr<bool> AlgebraicSimplifierVisitor::TryToReorderSliceAndReverse(
   return false;
 }
 
+absl::StatusOr<bool> AlgebraicSimplifierVisitor::RemoveRedundantStride(
+    absl::Nonnull<HloInstruction*> slice) {
+  CHECK(slice->opcode() == HloOpcode::kSlice);
+
+  std::vector<int64_t> index_to_change;
+  for (int64_t i = 0; i < slice->shape().rank(); ++i) {
+    const int64_t start = slice->slice_starts(i);
+    const int64_t stride = slice->slice_strides(i);
+    const int64_t limit = slice->slice_limits(i);
+
+    if (stride == 1) {
+      // Nothing to update.
+      continue;
+    }
+
+    if (stride >= limit || start + stride >= limit) {
+      index_to_change.push_back(i);
+    }
+  }
+
+  if (index_to_change.empty()) {
+    return false;
+  }
+
+  std::vector<int64_t> new_slice_limits = slice->slice_limits();
+  std::vector<int64_t> new_slice_strides = slice->slice_strides();
+  for (int64_t index : index_to_change) {
+    new_slice_limits[index] = slice->slice_starts(index) + 1;
+    new_slice_strides[index] = 1;
+  }
+
+  HloInstruction* slice_operand = slice->mutable_operand(0);
+  TF_RETURN_IF_ERROR(ReplaceWithNewInstruction(
+      slice, HloInstruction::CreateSlice(slice->shape(), slice_operand,
+                                         slice->slice_starts(),
+                                         new_slice_limits, new_slice_strides)));
+  return true;
+}
+
 absl::Status AlgebraicSimplifierVisitor::HandleSlice(HloInstruction* slice) {
   // Delete no-op slices, i.e. where shape = operand shape.
   if (ReplaceInstructionIfCompatible(slice, slice->mutable_operand(0))) {
@@ -7013,7 +7052,7 @@ absl::Status AlgebraicSimplifierVisitor::HandleSlice(HloInstruction* slice) {
           !window_util::HasPadding(window)) {
         return DimensionVector{};
       }
-      auto rank = reduce_window->shape().dimensions_size();
+      auto rank = reduce_window->shape().rank();
       auto& slice_starts = slice->slice_starts();
       auto& slice_limits = slice->slice_limits();
       DimensionVector reduce_dims;
@@ -7073,6 +7112,12 @@ absl::Status AlgebraicSimplifierVisitor::HandleSlice(HloInstruction* slice) {
   }
   if (reversed) {
     return absl::OkStatus();
+  }
+
+  TF_ASSIGN_OR_RETURN(bool removed_redundant_stride,
+                      RemoveRedundantStride(slice));
+  if (removed_redundant_stride) {
+    VLOG(10) << "Removed redundant stride for slice op.";
   }
 
   return absl::OkStatus();
@@ -7410,8 +7455,8 @@ absl::Status AlgebraicSimplifierVisitor::HandleDynamicUpdateSlice(
     // HostOffloader is run the broadcast should be rewritten to an
     // AllocateBuffer so this dus->pad rewrite won't apply anymore.
     auto is_host_offloading = [&](HloInstruction* hlo) {
-      const auto custom_call_pattern = m::CustomCall(
-          {host_memory_offload_annotations::kMoveToHostCustomCallTarget});
+      const auto custom_call_pattern =
+          m::CustomCall({memory_annotations::kMoveToHostCustomCallTarget});
       if (Match(hlo, custom_call_pattern)) {
         return true;
       }
@@ -8362,7 +8407,7 @@ absl::Status AlgebraicSimplifierVisitor::HandleReduceWindow(
                 m::MinimumAnyOrder(m::Parameter(0), m::Parameter(1)),
                 m::MaximumAnyOrder(m::Parameter(0), m::Parameter(1))))) {
     const HloInstruction* nested_root = function->root_instruction();
-    DimensionVector broadcast_dims(nested_root->shape().dimensions_size());
+    DimensionVector broadcast_dims(nested_root->shape().rank());
     absl::c_iota(broadcast_dims, 0);
     TF_ASSIGN_OR_RETURN(
         auto new_op, MakeBinaryHlo(nested_root->opcode(), operand,
@@ -8979,8 +9024,7 @@ absl::Status AlgebraicSimplifierVisitor::HandleTranspose(
     HloInstruction* outer_reshape = transpose->users()[0];
     TF_ASSIGN_OR_RETURN(
         bool did_transform, ([&]() -> absl::StatusOr<bool> {
-          if (operand->shape().dimensions_size() !=
-              reshape_operand->shape().dimensions_size() + 1) {
+          if (operand->shape().rank() != reshape_operand->shape().rank() + 1) {
             return false;
           }
 
@@ -9386,7 +9430,8 @@ absl::StatusOr<bool> AlgebraicSimplifierVisitor::SwapConvOperands(
   return true;
 }
 
-absl::StatusOr<bool> AlgebraicSimplifierVisitor::IsOneDnnRewritableBF16Conv(
+absl::StatusOr<bool>
+AlgebraicSimplifierVisitor::PromoteConvolutionToF32IfNotOnednnCompatible(
     HloInstruction** convolution) {
   bool can_rewrite = true;
   auto from_dtype = (*convolution)->shape().element_type();
@@ -9414,11 +9459,10 @@ absl::StatusOr<bool> AlgebraicSimplifierVisitor::IsOneDnnRewritableBF16Conv(
     can_rewrite = false;
   }
 
-  for (auto it = (*convolution)->window().dimensions().begin();
-       it != (*convolution)->window().dimensions().end(); it++) {
-    if ((*it).padding_low() < 0 || (*it).padding_high() < 0 ||
-        (*it).stride() < 0 || (*it).base_dilation() != 1 ||
-        (*it).window_reversal()) {
+  const auto& window_dims = (*convolution)->window().dimensions();
+  for (auto it = window_dims.begin(); it != window_dims.end(); ++it) {
+    if (it->padding_low() < 0 || it->padding_high() < 0 || it->stride() < 0 ||
+        it->base_dilation() != 1 || it->window_reversal()) {
       can_rewrite = false;
     }
   }
@@ -9534,7 +9578,7 @@ absl::StatusOr<bool> AlgebraicSimplifierVisitor::SimplifyConvToDot(
     return false;
   }
   auto add_bitcast = [&](Shape shape, HloInstruction* operand) {
-    std::vector<int64_t> dims(operand->shape().dimensions_size());
+    std::vector<int64_t> dims(operand->shape().rank());
     std::iota(dims.begin(), dims.end(), 0);
     return operand->AddInstruction(
         HloInstruction::CreateBitcast(shape, operand));
@@ -9548,7 +9592,7 @@ absl::StatusOr<bool> AlgebraicSimplifierVisitor::SimplifyConvToDot(
 
   // Computes the product of the non-feature dimensions.
   int64_t conv_width = 1;
-  for (int i = 0; i < input_shape.dimensions_size(); ++i) {
+  for (int i = 0; i < input_shape.rank(); ++i) {
     if (i != dnums.input_feature_dimension()) {
       conv_width *= input_shape.dimensions(i);
     }
@@ -9720,15 +9764,18 @@ absl::Status AlgebraicSimplifierVisitor::HandleConvolution(
   if (swapped) {
     return absl::OkStatus();
   }
-#if defined(INTEL_MKL) && defined(ENABLE_ONEDNN_V3)
-  // Convert the data type back to F32 if we can't rewrite BF16 convolution to
-  // oneDNN custom call.
-  TF_ASSIGN_OR_RETURN(bool can_rewrite_bf16_conv_to_onednn,
-                      IsOneDnnRewritableBF16Conv(&convolution));
-  if (can_rewrite_bf16_conv_to_onednn) {
-    return absl::OkStatus();
+
+  if (options_.enable_onednn_support()) {
+    // Convert the data type back to F32 if we can't rewrite BF16 convolution to
+    // oneDNN custom call.
+    TF_ASSIGN_OR_RETURN(
+        bool can_rewrite_bf16_conv_to_onednn,
+        PromoteConvolutionToF32IfNotOnednnCompatible(&convolution));
+    if (can_rewrite_bf16_conv_to_onednn) {
+      return absl::OkStatus();
+    }
   }
-#endif  // INTEL_MKL && ENABLE_ONEDNN_V3
+
   // Try to replace the convolution with a kDot or a kMultiply instruction.
   TF_ASSIGN_OR_RETURN(bool replaced_with_dot, SimplifyConvToDot(convolution));
   if (replaced_with_dot) {

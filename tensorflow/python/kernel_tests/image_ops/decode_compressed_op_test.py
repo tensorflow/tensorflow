@@ -18,6 +18,8 @@ import gzip
 import io
 import zlib
 
+import zstandard as zstd
+
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
@@ -32,6 +34,8 @@ class DecodeCompressedOpTest(test.TestCase):
       return bytes_in
     elif compression_type == "ZLIB":
       return zlib.compress(bytes_in)
+    elif compression_type == "ZSTD":
+      return zstd.compress(bytes_in)
     else:
       out = io.BytesIO()
       with gzip.GzipFile(fileobj=out, mode="wb") as f:
@@ -40,7 +44,7 @@ class DecodeCompressedOpTest(test.TestCase):
 
   def testDecompressShapeInference(self):
     with ops.Graph().as_default():
-      for compression_type in ["ZLIB", "GZIP", ""]:
+      for compression_type in ["ZLIB", "GZIP", "ZSTD", ""]:
         with self.cached_session():
           in_bytes = array_ops.placeholder(dtypes.string, shape=[2])
           decompressed = parsing_ops.decode_compressed(
@@ -48,7 +52,7 @@ class DecodeCompressedOpTest(test.TestCase):
           self.assertEqual([2], decompressed.get_shape().as_list())
 
   def testDecompress(self):
-    for compression_type in ["ZLIB", "GZIP", ""]:
+    for compression_type in ["ZLIB", "GZIP", "ZSTD", ""]:
       with self.cached_session():
 
         def decode(in_bytes, compression_type=compression_type):
@@ -61,7 +65,7 @@ class DecodeCompressedOpTest(test.TestCase):
         self.assertAllEqual([b"AaAA", b"bBbb"], result)
 
   def testDecompressWithRaw(self):
-    for compression_type in ["ZLIB", "GZIP", ""]:
+    for compression_type in ["ZLIB", "GZIP", "ZSTD", ""]:
       with self.cached_session():
 
         def decode(in_bytes, compression_type=compression_type):

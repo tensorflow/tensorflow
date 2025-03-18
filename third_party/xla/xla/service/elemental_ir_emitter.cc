@@ -3407,11 +3407,9 @@ absl::StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalGather(
   // First copy in the window indices to operand_index. Also collect a mapping
   // from operand dimension to output window dimension. Elided window dimensions
   // map to -1.
-  std::vector<int64_t> operand_to_output_dim(operand_shape.dimensions_size(),
-                                             -1);
-  for (int64_t i = 0, e = operand_shape.dimensions_size(),
-               operand_index_dim = 0;
-       i < e; i++) {
+  std::vector<int64_t> operand_to_output_dim(operand_shape.rank(), -1);
+  for (int64_t i = 0, e = operand_shape.rank(), operand_index_dim = 0; i < e;
+       i++) {
     if (absl::c_binary_search(dim_numbers.collapsed_slice_dims(), i)) {
       operand_multi_index.push_back(index.GetConstantWithIndexType(0));
     } else {
@@ -3424,14 +3422,13 @@ absl::StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalGather(
   // This is the index of the index vector in the start_indices tensor.
   std::vector<llvm::Value*> gather_index_index_components;
   {
-    for (int64_t i = 0, e = output_shape.dimensions_size(); i < e; i++) {
+    for (int64_t i = 0, e = output_shape.rank(); i < e; i++) {
       if (!absl::c_binary_search(dim_numbers.offset_dims(), i)) {
         gather_index_index_components.push_back(index[i]);
       }
     }
 
-    if (gather_index_index_components.size() !=
-        indices_shape.dimensions_size()) {
+    if (gather_index_index_components.size() != indices_shape.rank()) {
       gather_index_index_components.insert(
           gather_index_index_components.begin() +
               dim_numbers.index_vector_dim(),
@@ -3480,7 +3477,7 @@ absl::StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalGather(
         Add(operand_multi_index[operand_dim], maybe_truncated_clamped_index);
   };
 
-  if (indices_shape.dimensions_size() == dim_numbers.index_vector_dim()) {
+  if (indices_shape.rank() == dim_numbers.index_vector_dim()) {
     IrArray::Index gather_index_index(gather_index_index_components,
                                       indices_shape, index_type);
     TF_ASSIGN_OR_RETURN(llvm::Value * gather_dim_component,
@@ -3678,8 +3675,8 @@ absl::StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalDot(
 
   int64_t contracted_dim_size =
       hlo->operand(0)->shape().dimensions(lhs_contracting_dim);
-  int64_t lhs_dims = hlo->operand(0)->shape().dimensions_size();
-  int64_t rhs_dims = hlo->operand(1)->shape().dimensions_size();
+  int64_t lhs_dims = hlo->operand(0)->shape().rank();
+  int64_t rhs_dims = hlo->operand(1)->shape().rank();
 
   llvm::Type* index_type = dot_result_index.GetType();
   auto index_typed_const = [&](uint64_t c) -> llvm::Constant* {

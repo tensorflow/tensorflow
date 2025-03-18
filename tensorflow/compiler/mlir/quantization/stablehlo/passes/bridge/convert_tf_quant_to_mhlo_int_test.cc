@@ -199,7 +199,7 @@ class ConvertTfQuantToMhloIntTest : public Test {
     AddQuantizationLoweringPasses(pm);
     CHECK(succeeded(pm.run(module_op.get())));
     // Compile the program.
-    return pjrt_client_->Compile(*module_op, xla::CompileOptions{});
+    return pjrt_client_->CompileAndLoad(*module_op, xla::CompileOptions{});
   }
 
   absl::StatusOr<std::shared_ptr<xla::Literal>>

@@ -20,6 +20,7 @@
 #include "tensorflow/lite/experimental/litert/c/litert_op_code.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_macros.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_model.h"
+#include "tensorflow/lite/experimental/litert/cc/litert_op_options.h"
 #include "tensorflow/lite/experimental/litert/vendors/c/litert_compiler_plugin.h"
 #include "tensorflow/lite/experimental/litert/vendors/examples/example_plugin_common.h"
 
@@ -40,6 +41,7 @@ void LiteRtDestroyCompilerPlugin(LiteRtCompilerPlugin compiler_plugin) {
 }
 
 LiteRtStatus LiteRtCompilerPluginPartition(LiteRtCompilerPlugin compiler_plugin,
+                                           const char* soc_model,
                                            LiteRtSubgraph subgraph,
                                            LiteRtOpList selected_ops) {
   ::litert::Subgraph main_subgraph(subgraph);
@@ -48,6 +50,15 @@ LiteRtStatus LiteRtCompilerPluginPartition(LiteRtCompilerPlugin compiler_plugin,
       LITERT_RETURN_IF_ERROR(LiteRtPushOp(selected_ops, op.Get(), 0));
     } else if (op.Code() == kLiteRtOpCodeTflSub) {
       LITERT_RETURN_IF_ERROR(LiteRtPushOp(selected_ops, op.Get(), 1));
+    } else if (op.Code() == kLiteRtOpCodeShloComposite) {
+      const auto opts =
+          litert::GetOptionsAs<litert::CompositeOptions>(op.Get());
+      if (!opts) {
+        return opts.Error().Status();
+      }
+      if (opts->name == "odml.rms_norm") {
+        LITERT_RETURN_IF_ERROR(LiteRtPushOp(selected_ops, op.Get(), 0));
+      }
     }
   }
   return kLiteRtStatusOk;

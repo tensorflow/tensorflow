@@ -19,7 +19,6 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <deque>
-#include <iterator>
 #include <sstream>
 #include <string>
 #include <utility>
@@ -34,6 +33,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/IR/MLIRContext.h"
@@ -54,9 +54,9 @@ limitations under the License.
 #include "xla/service/gpu/model/symbolic_tiled_hlo_instruction.h"
 #include "xla/service/gpu/model/tiled_hlo_computation.h"
 #include "xla/service/instruction_fusion.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/macros.h"
-#include "tsl/platform/statusor.h"
+#include "xla/shape.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 
 namespace xla::gpu {
 
@@ -316,6 +316,7 @@ absl::Status MakeNestedFusionFromGemmFusion(HloFusionInstruction* fusion,
                       fusion->backend_config<GpuBackendConfig>());
   FusionBackendConfig& backend_config =
       *gpu_config.mutable_fusion_backend_config();
+  backend_config.clear_triton_gemm_config();
   backend_config.set_kind(std::string(kTritonFusionKind));
 
   BlockLevelParameters block_level_parameters;
@@ -423,7 +424,7 @@ absl::Status HoistBitcastUpwardsToCallers(
         absl::StrCat("Cannot hoist bitcast past ", (*it)->ToString()));
   }
 
-  // Adjust the shape of of every producer instruction.
+  // Adjust the shape of every producer instruction.
   Shape shape = bitcast->shape();
   for (HloInstruction* instruction : producers) {
     *instruction->mutable_shape() = shape;
