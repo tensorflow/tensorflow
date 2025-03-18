@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/hlo/transforms/host_offloader.h"
 
+#include <algorithm>
 #include <cstdint>
 #include <iomanip>
 #include <memory>
@@ -89,6 +90,23 @@ bool SetBuffersToMemorySpaceColor(
   return changed;
 }
 
+void PrintTrace(InstructionAndShapeIndex instruction_and_shape_index,
+                const absl::flat_hash_map<InstructionAndShapeIndex,
+                                          InstructionAndShapeIndex>& previous) {
+  std::vector<InstructionAndShapeIndex> trace;
+  trace.push_back(instruction_and_shape_index);
+  auto it = previous.find(instruction_and_shape_index);
+  while (it != previous.end()) {
+    trace.push_back(it->second);
+    instruction_and_shape_index = it->second;
+    it = previous.find(instruction_and_shape_index);
+  }
+  std::reverse(trace.begin(), trace.end());
+  for (const auto& instruction_and_shape_index : trace) {
+    VLOG(1) << "  " << instruction_and_shape_index.ToString();
+  }
+}
+
 }  // namespace
 
 bool HostOffloader::InstructionIsAllowedBetweenMoveToHostAndDus(
@@ -135,6 +153,8 @@ absl::StatusOr<bool> HostOffloader::WalkDownHostMemoryOffloadPaths(
   HloInstruction* starting_instruction =
       starting_instruction_and_index.instruction;
   std::queue<InstructionAndShapeIndex> queue;
+  absl::flat_hash_map<InstructionAndShapeIndex, InstructionAndShapeIndex>
+      previous;
   queue.push(starting_instruction_and_index);
   while (!queue.empty()) {
     InstructionAndShapeIndex instruction_and_shape_index = queue.front();
@@ -277,6 +297,10 @@ absl::StatusOr<bool> HostOffloader::WalkDownHostMemoryOffloadPaths(
             starting_instruction_and_index.ToString());
         continue;
       } else {
+        if (VLOG_IS_ON(1)) {
+          LOG(INFO) << "Instruction trace leading to error:";
+          PrintTrace(instruction_and_shape_index, previous);
+        }
         return absl::InvalidArgumentError(
             absl::StrFormat("Tensor which is moved to host (starting from %s) "
                             "is returned from the entry computation but the "
@@ -289,6 +313,9 @@ absl::StatusOr<bool> HostOffloader::WalkDownHostMemoryOffloadPaths(
         const std::vector<InstructionAndShapeIndex> successors,
         host_offload_utils::GetSuccessors(instruction_and_shape_index));
     for (const InstructionAndShapeIndex& successor : successors) {
+      if (VLOG_IS_ON(1)) {
+        previous.emplace(successor, instruction_and_shape_index);
+      }
       queue.push(successor);
     }
   }
