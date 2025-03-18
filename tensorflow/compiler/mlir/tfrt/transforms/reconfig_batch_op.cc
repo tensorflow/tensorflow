@@ -72,7 +72,7 @@ class ReconfigBatchOpPass
     if (min_num_batch_threads_ == 0 && min_max_enqueued_batches_ == 0 &&
         batch_padding_policy_.empty() && num_batch_threads_ == 0 &&
         max_batch_size_ == 0 && batch_timeout_micros_ == 0 &&
-        allowed_batch_sizes_.empty() && max_enqueued_batches_ == 0) {
+        allowed_batch_sizes_.empty() && max_enqueued_batches_ == -1) {
       return;
     }
     mlir::ModuleOp module = getOperation();
@@ -104,7 +104,7 @@ class ReconfigBatchOpPass
             mlir::Builder(module.getContext())
                 .getI64ArrayAttr(allowed_batch_sizes_));
       }
-      if (max_enqueued_batches_ > 0) {
+      if (max_enqueued_batches_ > -1) {
         batch_op.setMaxEnqueuedBatches(max_enqueued_batches_);
       }
     });
@@ -136,7 +136,7 @@ class ReconfigBatchOpPass
       *this, "tfrt-allowed-batch-sizes",
       llvm::cl::desc("Allowed sizes for padding (or splitting) batches")};
   mlir::Pass::Option<int64_t> max_enqueued_batches_{
-      *this, "tfrt-max-enqueued-batches", llvm::cl::init(0),
+      *this, "tfrt-max-enqueued-batches", llvm::cl::init(-1),
       llvm::cl::desc("The maximum number of batches enqueued for processing "
                      "before requests are failed fast")};
 };

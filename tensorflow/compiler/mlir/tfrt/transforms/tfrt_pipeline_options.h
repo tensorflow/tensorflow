@@ -177,7 +177,7 @@ struct TfrtPipelineOptions
       *this, "tfrt-max-enqueued-batches",
       llvm::cl::desc("The maximum number of batches enqueued for processing "
                      "before requests are failed fast"),
-      llvm::cl::init(0)};
+      llvm::cl::init(-1)};
 
   Option<bool> merge_inter_dependent_streams{
       *this, "tfrt-merge-inter-dependent-streams",
