@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/tools/compute_gpu_device_stats.h"
+#include "xla/tools/compute_xspace_stats.h"
 
 #include <gtest/gtest.h>
 #include "xla/tsl/platform/statusor.h"
@@ -63,9 +63,8 @@ TEST(ComputeGpuDeviceStatsTest, CalculateDeviceTimeAndMemcpyTest) {
   event = line->add_events();
   event->set_duration_ps(3000);
   event->add_stats()->set_metadata_id(1);
-  TF_ASSERT_OK_AND_ASSIGN(
-      GpuDeviceStats stats,
-      xla::gpu::CalculateDeviceTimeAndMemcpy(xspace, "/device:GPU:0"));
+  TF_ASSERT_OK_AND_ASSIGN(GpuDeviceStats stats,
+                          xla::gpu::CalculateGpuDeviceStats(xspace));
   EXPECT_EQ(stats.device_time_us, 0.006);
   EXPECT_EQ(stats.device_memcpy_time_us, 0.004);
   EXPECT_TRUE(xla::gpu::IsMemcpy(*event, 1));

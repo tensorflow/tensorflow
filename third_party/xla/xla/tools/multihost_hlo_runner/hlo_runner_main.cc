@@ -234,7 +234,7 @@ static absl::Status RunMultihostHloRunner(int argc, char** argv,
   QCHECK_LT(opts.gpu_client_mem_fraction, 1.0);
 
   PjRtEnvironment env;
-  std::unique_ptr<GPURunnerProfiler> gpu_runner_profiler;
+  std::unique_ptr<HLORunnerProfiler> hlo_runner_profiler;
   if (opts.device_type_str == "gpu") {
     xla::GpuClientOptions gpu_options;
     gpu_options.node_id = opts.task_id;
@@ -248,13 +248,19 @@ static absl::Status RunMultihostHloRunner(int argc, char** argv,
     // Create a GPURunnerProfiler to profile GPU executions to save xspace data
     // to disk.
     if (env.client != nullptr && !opts.xla_gpu_dump_xspace_to.empty()) {
-      TF_ASSIGN_OR_RETURN(gpu_runner_profiler,
-                          GPURunnerProfiler::Create(opts.xla_gpu_dump_xspace_to,
+      TF_ASSIGN_OR_RETURN(hlo_runner_profiler,
+                          HLORunnerProfiler::Create(opts.xla_gpu_dump_xspace_to,
                                                     /*keep_xspace=*/false));
-      running_options.profiler = gpu_runner_profiler.get();
+      running_options.profiler = hlo_runner_profiler.get();
     }
   } else if (opts.device_type_str == "host") {
     TF_ASSIGN_OR_RETURN(env, xla::GetPjRtEnvironmentForHostCpu());
+    if (env.client != nullptr && !opts.xla_gpu_dump_xspace_to.empty()) {
+      TF_ASSIGN_OR_RETURN(hlo_runner_profiler,
+                          HLORunnerProfiler::Create(opts.xla_gpu_dump_xspace_to,
+                                                    /*keep_xspace=*/false));
+      running_options.profiler = hlo_runner_profiler.get();
+    }
   } else {
     return absl::InvalidArgumentError(
         absl::StrCat("Unrecognized device type ", opts.device_type_str,
@@ -272,10 +278,14 @@ static absl::Status RunMultihostHloRunner(int argc, char** argv,
     execution_profiles.clear();
     if (opts.should_run) {
       std::cout << "\n** Running " << hlo_file << " **\n";
+      absl::Time start_time = absl::Now();
       TF_RETURN_IF_ERROR(xla::FunctionalHloRunner::LoadAndRunAndDump(
           *env.client, GetDebugOptionsFromFlags(), preproc_options,
           raw_compile_options, running_options, hlo_file, opts.input_format,
           opts.dump_output_literal_to, opts.task_id));
+      absl::Time end_time = absl::Now();
+      std::cout << "## LoadAndRunAndDump Execution time, file=" << hlo_file
+                << " duration=" << end_time - start_time << std::endl;
     } else {
       std::cout << "\n** Compiling " << hlo_file << " **\n";
       TF_RETURN_IF_ERROR(FunctionalHloRunner::LoadAndCompile(

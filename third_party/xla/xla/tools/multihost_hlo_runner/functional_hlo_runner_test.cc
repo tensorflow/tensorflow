@@ -142,7 +142,7 @@ TEST_F(FunctionalHloRunnerTest, GPUProfilerWithEmptyDumpPathReturnsError) {
   }
   std::string empty_profile_dump_path = "";
   EXPECT_THAT(
-      GPURunnerProfiler::Create(empty_profile_dump_path, /*keep_xspace=*/true),
+      HLORunnerProfiler::Create(empty_profile_dump_path, /*keep_xspace=*/true),
       StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
@@ -159,7 +159,7 @@ TEST_F(FunctionalHloRunnerTest, GPUProfilerKeepXSpaceReturnsNonNullXSpace) {
   FunctionalHloRunner::RunningOptions running_options;
   TF_ASSERT_OK_AND_ASSIGN(
       auto profiler,
-      GPURunnerProfiler::Create(profile_dump_path, /*keep_xspace=*/true));
+      HLORunnerProfiler::Create(profile_dump_path, /*keep_xspace=*/true));
   running_options.profiler = profiler.get();
 
   profiler->CreateSession();
@@ -176,11 +176,11 @@ TEST_F(FunctionalHloRunnerTest,
   std::string profile_dump_path =
       tsl::io::JoinPath(testing::TempDir(), "xspace.pb");
 
-  std::unique_ptr<GPURunnerProfiler> profiler;
+  std::unique_ptr<HLORunnerProfiler> profiler;
   FunctionalHloRunner::RunningOptions running_options;
   TF_ASSERT_OK_AND_ASSIGN(
       profiler,
-      GPURunnerProfiler::Create(profile_dump_path, /*keep_xspace=*/true));
+      HLORunnerProfiler::Create(profile_dump_path, /*keep_xspace=*/true));
   running_options.profiler = profiler.get();
 
   running_options.num_repeats = 2;
