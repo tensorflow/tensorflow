@@ -111,10 +111,9 @@ class RocmComputeCapability {
             gfx_version().find("gfx12"));
   }
 
-  bool has_fp16_atomics_support() const {
-    // TODO(rocm): Check. This should be the same as has_fast_fp16_support().
-    return gfx9_mi200_or_later();
-  }
+  bool has_packed_fp16_atomics_support() const { return gfx9_mi100_or_later(); }
+
+  bool has_packed_bf16_atomics_support() const { return gfx9_mi300_series(); }
 
   bool fence_before_barrier() const {
     return gfx_version() != "gfx900" && gfx_version() != "gfx906";
