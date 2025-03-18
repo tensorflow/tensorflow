@@ -4241,6 +4241,19 @@ def TFL_DequantizeOp: TFL_Op<"dequantize", [NoMemoryEffect]> {
   let arguments = (ins TFL_TensorOf<[QI4, QI8, QUI8, QI16, F16]>:$input);
 
   let results = (outs TFL_FpTensor:$output);
+
+  let builders = [
+    OpBuilder<(ins "Value":$input),
+    [{
+      $_state.addOperands({input});
+      $_state.addTypes(mlir::cast<TensorType>(input.getType()).hasRank() ?
+         static_cast<TensorType>(RankedTensorType::get(
+           mlir::cast<TensorType>(input.getType()).getShape(),
+           $_builder.getF32Type())) :
+         static_cast<TensorType>(
+          UnrankedTensorType::get($_builder.getF32Type())));
+    }]>
+  ];
 }
 
 def TFL_FakeQuantOp : TFL_Op<"fake_quant", [
