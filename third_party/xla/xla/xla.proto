@@ -1184,11 +1184,6 @@ message DebugOptions {
 
   bool xla_pjrt_allow_auto_layout_in_hlo = 344;
 
-  // If false, platform_util::GetDefaultPlatform() will return an error. Used as
-  // a safeguard for tests where GetDefaultPlatform() won't work properly and
-  // its use indicates an error in test setup.
-  bool xla_allow_get_default_platform = 371;
-
   // If true, the test launched with ClientLibraryTestBase will also try to
   // use command buffer mode to run.
   bool xla_test_add_command_buffer_mode = 373;
@@ -1223,8 +1218,9 @@ message DebugOptions {
   // xla_gpu_enable_bf16_3way_gemm
   // xla_gpu_enable_bf16_6way_gemm
   // xla_gpu_enable_cudnn_fmha
+  // xla_allow_get_default_platform
   reserved 5, 117, 133, 139, 176, 178, 180, 193, 214, 194, 221, 242, 206, 320,
-      325, 326, 332, 361, 270, 229, 271, 279, 218;
+      325, 326, 332, 361, 270, 229, 271, 279, 218, 371;
 }
 
 // Contains flags which affects the GPU compilation result.
