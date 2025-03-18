@@ -123,7 +123,7 @@ ENTRY DonationWithExecutionError() -> f32[2, 2] {
                           ParseAndReturnUnverifiedModule(kProgram, {}));
   XlaComputation xla_computation(hlo_module->ToProto());
   TF_ASSERT_OK_AND_ASSIGN(auto pjrt_executable,
-                          client->Compile(xla_computation, {}));
+                          client->CompileAndLoad(xla_computation, {}));
 
   TF_ASSERT_OK_AND_ASSIGN(auto fingerprint,
                           pjrt_executable->FingerprintExecutable());
@@ -174,7 +174,7 @@ TEST(TfrtCpuClientTest, HloSnapshot) {
   debug_opts->set_xla_dump_hlo_snapshots(true);
   XlaComputation xla_computation(hlo_module->ToProto());
   TF_ASSERT_OK_AND_ASSIGN(auto pjrt_executable,
-                          client->Compile(xla_computation, options));
+                          client->CompileAndLoad(xla_computation, options));
 
   std::vector<float> data1{1.0, 2.0, 3.0, 4.0, 5.0, 6.0};
   std::vector<float> data2{10.0, 20.0, 30.0, 40.0, 50.0, 60.0};
@@ -432,7 +432,7 @@ ENTRY Identity() -> f32[2, 2] {
                           ParseAndReturnUnverifiedModule(kProgram, {}));
   XlaComputation xla_computation(hlo_module->ToProto());
   TF_ASSERT_OK_AND_ASSIGN(auto pjrt_executable,
-                          client->Compile(xla_computation, {}));
+                          client->CompileAndLoad(xla_computation, {}));
 
   TF_ASSERT_OK_AND_ASSIGN(auto fingerprint,
                           pjrt_executable->FingerprintExecutable());
@@ -470,7 +470,7 @@ ENTRY Identity() -> f32[2, 2] {
                           ParseAndReturnUnverifiedModule(kProgram, {}));
   XlaComputation xla_computation(hlo_module->ToProto());
   TF_ASSERT_OK_AND_ASSIGN(auto pjrt_executable,
-                          client->Compile(xla_computation, {}));
+                          client->CompileAndLoad(xla_computation, {}));
 
   TF_ASSERT_OK_AND_ASSIGN(auto fingerprint,
                           pjrt_executable->FingerprintExecutable());
@@ -512,7 +512,7 @@ ENTRY Identity() -> f32[2, 2] {
                           ParseAndReturnUnverifiedModule(kProgram, {}));
   XlaComputation xla_computation(hlo_module->ToProto());
   TF_ASSERT_OK_AND_ASSIGN(auto pjrt_executable,
-                          client->Compile(xla_computation, {}));
+                          client->CompileAndLoad(xla_computation, {}));
 
   TF_ASSERT_OK_AND_ASSIGN(auto fingerprint,
                           pjrt_executable->FingerprintExecutable());
@@ -573,7 +573,7 @@ ENTRY Identity() -> f32[2, 2] {
                           ParseAndReturnUnverifiedModule(kProgram, {}));
   XlaComputation xla_computation(hlo_module->ToProto());
   TF_ASSERT_OK_AND_ASSIGN(auto pjrt_executable,
-                          client->Compile(xla_computation, {}));
+                          client->CompileAndLoad(xla_computation, {}));
 
   TF_ASSERT_OK_AND_ASSIGN(auto fingerprint,
                           pjrt_executable->FingerprintExecutable());
@@ -662,7 +662,7 @@ TEST(TfrtCpuClientTest, ForwardUserDataToFfiHandler) {
                           ParseAndReturnUnverifiedModule(kProgram, {}));
   XlaComputation xla_computation(hlo_module->ToProto());
   TF_ASSERT_OK_AND_ASSIGN(auto executable,
-                          client->Compile(xla_computation, {}));
+                          client->CompileAndLoad(xla_computation, {}));
 
   ExecuteContext context;
   TF_ASSERT_OK(context.ffi_context().Emplace<MemsetValue>(42.0f));
@@ -711,7 +711,7 @@ TEST(TfrtCpuClientTest, PassAttrToFfiHandler) {
                           ParseAndReturnUnverifiedModule(kProgram, {}));
   XlaComputation xla_computation(hlo_module->ToProto());
   TF_ASSERT_OK_AND_ASSIGN(auto executable,
-                          client->Compile(xla_computation, {}));
+                          client->CompileAndLoad(xla_computation, {}));
 
   ExecuteOptions opts;
   auto result = executable->Execute(/*argument_handles=*/{{}}, opts);

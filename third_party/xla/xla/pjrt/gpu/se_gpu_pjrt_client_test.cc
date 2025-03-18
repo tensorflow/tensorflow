@@ -112,7 +112,7 @@ absl::StatusOr<std::unique_ptr<xla::PjRtLoadedExecutable>> CompileExecutable(
                       ParseAndReturnUnverifiedModule(program, {}));
 
   xla::XlaComputation xla_computation(hlo_module->ToProto());
-  return client.Compile(xla_computation, compile_options);
+  return client.CompileAndLoad(xla_computation, compile_options);
 }
 
 // Given the result of a PjrtExecutable::Execute call (TF-status of vectors of
@@ -1293,7 +1293,8 @@ TEST(StreamExecutorGpuClientTest, MockNcclClientWithGpuTopologyExecuteTest) {
   options.executable_build_options.set_num_partitions(8)
       .set_use_spmd_partitioning(true)
       .set_allow_spmd_sharding_propagation_to_output({true});
-  TF_ASSERT_OK_AND_ASSIGN(auto executable, client->Compile(*module, options));
+  TF_ASSERT_OK_AND_ASSIGN(auto executable,
+                          client->CompileAndLoad(*module, options));
 
   Shape shape = ShapeUtil::MakeShapeWithDenseLayout(S32, {1}, {0});
   std::vector<std::unique_ptr<PjRtBuffer>> inputs;
@@ -1698,7 +1699,7 @@ TEST(StreamExecutorGpuClientTest, MlirParameterHostMemorySpaceIsSetInHlo) {
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           xla::ParseMlirModuleString(kMlirH2D, context));
 
-  TF_ASSERT_OK_AND_ASSIGN(auto executable, client->Compile(*module, {}));
+  TF_ASSERT_OK_AND_ASSIGN(auto executable, client->CompileAndLoad(*module, {}));
   TF_ASSERT_OK_AND_ASSIGN(auto modules, executable->GetHloModules());
 
   auto first_param_layout =
@@ -1736,7 +1737,7 @@ TEST(StreamExecutorGpuClientTest, MlirResultHostMemorySpaceIsSetInHlo) {
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           xla::ParseMlirModuleString(kMlirD2H, context));
 
-  TF_ASSERT_OK_AND_ASSIGN(auto executable, client->Compile(*module, {}));
+  TF_ASSERT_OK_AND_ASSIGN(auto executable, client->CompileAndLoad(*module, {}));
   TF_ASSERT_OK_AND_ASSIGN(auto modules, executable->GetHloModules());
 
   auto first_param_layout =
@@ -1787,7 +1788,7 @@ TEST(StreamExecutorGpuClientTest, MlirAutoResultLayoutIsSet) {
   TF_ASSERT_OK_AND_ASSIGN(auto module, xla::ParseMlirModuleString(
                                            kMlirWithParameterLayout, context));
 
-  TF_ASSERT_OK_AND_ASSIGN(auto executable, client->Compile(*module, {}));
+  TF_ASSERT_OK_AND_ASSIGN(auto executable, client->CompileAndLoad(*module, {}));
   TF_ASSERT_OK_AND_ASSIGN(auto modules, executable->GetHloModules());
 
   auto result_layout =
@@ -1816,7 +1817,7 @@ TEST(StreamExecutorGpuClientTest, MlirAutoParameterLayoutIsSet) {
   TF_ASSERT_OK_AND_ASSIGN(auto module, xla::ParseMlirModuleString(
                                            kMlirWithParameterLayout, context));
 
-  TF_ASSERT_OK_AND_ASSIGN(auto executable, client->Compile(*module, {}));
+  TF_ASSERT_OK_AND_ASSIGN(auto executable, client->CompileAndLoad(*module, {}));
   TF_ASSERT_OK_AND_ASSIGN(auto modules, executable->GetHloModules());
 
   auto first_param_layout =
@@ -1843,7 +1844,7 @@ TEST(StreamExecutorGpuClientTest, MlirParameterLayoutIsSetInHlo) {
   TF_ASSERT_OK_AND_ASSIGN(auto module, xla::ParseMlirModuleString(
                                            kMlirWithParameterLayout, context));
 
-  TF_ASSERT_OK_AND_ASSIGN(auto executable, client->Compile(*module, {}));
+  TF_ASSERT_OK_AND_ASSIGN(auto executable, client->CompileAndLoad(*module, {}));
   TF_ASSERT_OK_AND_ASSIGN(auto modules, executable->GetHloModules());
 
   auto first_param_layout =
@@ -1873,7 +1874,8 @@ TEST(StreamExecutorGpuClientTest, MlirParameterLayoutFromOptionsIsSetInHlo) {
   xla::CompileOptions options;
   options.argument_layouts = {
       {ShapeUtil::MakeShapeWithDenseLayout(S32, {2, 2, 2}, {0, 2, 1})}};
-  TF_ASSERT_OK_AND_ASSIGN(auto executable, client->Compile(*module, options));
+  TF_ASSERT_OK_AND_ASSIGN(auto executable,
+                          client->CompileAndLoad(*module, options));
   TF_ASSERT_OK_AND_ASSIGN(auto modules, executable->GetHloModules());
 
   auto first_param_layout =
@@ -1927,7 +1929,8 @@ TEST(StreamExecutorGpuClientTest,
       .set_use_spmd_partitioning(true)
       .set_allow_spmd_sharding_propagation_to_output({true});
 
-  TF_ASSERT_OK_AND_ASSIGN(auto executable, client->Compile(*module, options));
+  TF_ASSERT_OK_AND_ASSIGN(auto executable,
+                          client->CompileAndLoad(*module, options));
   TF_ASSERT_OK_AND_ASSIGN(auto modules, executable->GetHloModules());
 
   auto first_param_layout =
@@ -1981,7 +1984,7 @@ TEST(StreamExecutorGpuClientTest, AutoLayoutIsSupported) {
       ->set_xla_pjrt_allow_auto_layout_in_hlo(true);
   XlaComputation computation = m->ToProto();
   TF_ASSERT_OK_AND_ASSIGN(auto executable,
-                          client->Compile(computation, compile_options));
+                          client->CompileAndLoad(computation, compile_options));
   TF_ASSERT_OK_AND_ASSIGN(auto layouts, executable->GetParameterLayouts());
   // Check that the assigned layouts are not default.
   EXPECT_NE(layouts[0]->ToString(), "{2,1,0}");
@@ -2310,9 +2313,10 @@ absl::Status ShardedAutotuningWorksTestBody(const int node_id,
                                             /*return_tuple=*/false,
                                             /*use_shardy=*/false));
     TF_ASSIGN_OR_RETURN(executable,
-                        client->Compile(computation, compile_options));
+                        client->CompileAndLoad(computation, compile_options));
   } else {
-    TF_ASSIGN_OR_RETURN(executable, client->Compile(*module, compile_options));
+    TF_ASSIGN_OR_RETURN(executable,
+                        client->CompileAndLoad(*module, compile_options));
   }
 
   const std::string optimized_hlo =
