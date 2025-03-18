@@ -525,6 +525,16 @@ an output element, this operation computes \\(y = |x|\\).
   let results = (outs TFL_TensorOf<[I16, I32, F32, QI8, QI16]>:$y);
 
   let hasFolder = 1;
+
+  // This builder doesn't work with quantized type, so it can only be used by
+  // non-quantization tablegen patterns.
+  let builders = [
+    OpBuilder<(ins "Value":$input),
+    [{
+      $_state.addOperands({input});
+      $_state.addTypes(input.getType());
+    }]>
+  ];
 }
 
 def TFL_DilateOp : TFL_Op<"dilate", [
@@ -1637,6 +1647,14 @@ def TFL_EluOp: TFL_Op<"elu", [
   let results = (outs TFL_TensorOf<[F32, I8]>:$y);
 
   let hasOptions = 0;
+
+  let builders = [
+    OpBuilder<(ins "Value":$input),
+    [{
+      $_state.addOperands({input});
+      $_state.addTypes(input.getType());
+    }]>
+  ];
 }
 
 def TFL_EmbeddingLookupOp: TFL_Op<"embedding_lookup",
@@ -1973,6 +1991,16 @@ def TFL_HardSwishOp: TFL_Op<"hard_swish", [
   let results = (outs TFL_TensorOf<[F32, QUI8, QI8]>:$output);
 
   let hasOptions = 0;
+
+  // This builder doesn't work with quantized type, so it can only be used by
+  // non-quantization tablegen patterns.
+  let builders = [
+    OpBuilder<(ins "Value":$input),
+    [{
+      $_state.addOperands({input});
+      $_state.addTypes(input.getType());
+    }]>
+  ];
 }
 
 def TFL_L2NormalizationOp : TFL_Op<"l2_normalization", [Pure,
@@ -2204,6 +2232,16 @@ def TFL_LogOp: TFL_Op<"log", [
       return TF::ArraysAreCastCompatible(l, r);
     }
   }];
+
+  // This builder doesn't work with quantized type, so it can only be used by
+  // non-quantization tablegen patterns.
+  let builders = [
+    OpBuilder<(ins "Value":$input),
+    [{
+      $_state.addOperands({input});
+      $_state.addTypes(input.getType());
+    }]>
+  ];
 }
 
 def TFL_LogSoftmaxOp : TFL_Op<"log_softmax", [
@@ -2977,6 +3015,16 @@ def TFL_Relu0To1Op: TFL_Op<"relu_0_to_1", [
   let arguments = (ins TFL_TensorOf<[F32, QUI8, QI8]>:$x);
 
   let results = (outs TFL_TensorOf<[F32, QUI8, QI8]>:$y);
+
+  // This builder doesn't work with quantized type, so it can only be used by
+  // non-quantization tablegen patterns.
+  let builders = [
+    OpBuilder<(ins "Value":$input),
+    [{
+      $_state.addOperands({input});
+      $_state.addTypes(input.getType());
+    }]>
+  ];
 }
 
 def TFL_Relu1Op: TFL_Op<"relu_n1_to_1", [
@@ -3087,6 +3135,16 @@ def TFL_RsqrtOp: TFL_Op<"rsqrt", [Pure,
   let results = (outs TFL_TensorOf<[F32, QI8, QI16]>:$y);
 
   let hasFolder = 1;
+
+  // This builder doesn't work with quantized type, so it can only be used by
+  // non-quantization tablegen patterns.
+  let builders = [
+    OpBuilder<(ins "Value":$input),
+    [{
+      $_state.addOperands({input});
+      $_state.addTypes(input.getType());
+    }]>
+  ];
 }
 
 def TFL_ShapeOp: TFL_Op<"shape", [
@@ -5657,6 +5715,14 @@ value is computed as \\( \sqrt{a^2 + b^2}\\).
   let results = (outs
     TFL_TensorOf<[F32, F64]>:$output
   );
+
+  let builders = [
+    OpBuilder<(ins "Value":$input),
+    [{
+      $_state.addOperands({input});
+      $_state.addTypes(dyn_cast<ComplexType>(input.getType()).getElementType());
+    }]>
+  ];
 }
 
 def TFL_RealOp : TFL_Op<"real", [
@@ -5678,6 +5744,14 @@ type `float` that is the real part of each element in `input`. All elements in
   let results = (outs
     TFL_TensorOf<[F32, F64]>:$output
   );
+
+  let builders = [
+    OpBuilder<(ins "Value":$input),
+    [{
+      $_state.addOperands({input});
+      $_state.addTypes(dyn_cast<ComplexType>(input.getType()).getElementType());
+    }]>
+  ];
 }
 
 def TFL_ImagOp : TFL_Op<"imag", [
@@ -5699,6 +5773,14 @@ is the real part and *b* is the imaginary part returned by this operation.
   let results = (outs
     TFL_TensorOf<[F32, F64]>:$output
   );
+
+  let builders = [
+    OpBuilder<(ins "Value":$input),
+    [{
+      $_state.addOperands({input});
+      $_state.addTypes(dyn_cast<ComplexType>(input.getType()).getElementType());
+    }]>
+  ];
 }
 
 def TFL_HashtableOp: TFL_Op<"hashtable", []> {
