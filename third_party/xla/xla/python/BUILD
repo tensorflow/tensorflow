@@ -1285,33 +1285,6 @@ cc_library(
     ],
 )
 
-cc_library(
-    name = "gpu_support",
-    srcs = ["gpu_support.cc"],
-    hdrs = ["gpu_support.h"],
-    compatible_with = [],
-    copts = [
-        "-fexceptions",
-        "-fno-strict-aliasing",
-    ],
-    features = ["-use_header_modules"],
-    visibility = internal_visibility([":friends"]),
-    deps = [
-        ":nb_class_ptr",
-        ":py_client",
-        ":py_client_gpu",
-        "//xla/pjrt:pjrt_client",
-        "//xla/pjrt:status_casters",
-        "//xla/pjrt/distributed:client",
-        "//xla/pjrt/distributed:key_value_store_interface",
-        "//xla/pjrt/gpu:gpu_helpers",
-        "//xla/pjrt/gpu:se_gpu_pjrt_client",
-        "//xla/python/pjrt_ifrt",
-        "@local_config_python//:python_headers",  # buildcleaner: keep
-        "@nanobind",
-    ],
-)
-
 tsl_pybind_extension(
     name = "xla_extension",
     srcs = ["xla.cc"],
