@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_sharding_metadata.h"
 #include "xla/hlo/transforms/simplifiers/hlo_dce.h"
@@ -39,8 +40,6 @@ limitations under the License.
 #include "xla/status_macros.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
@@ -259,6 +258,7 @@ absl::StatusOr<bool> CallInliner::Run(
             node.computation()->execution_thread(), execution_threads)) {
       return absl::OkStatus();
     }
+    bool did_node_mutate = false;
     VLOG(1) << "Visiting node: " << node.ToString();
     for (HloInstruction* instruction :
          node.computation()->MakeInstructionPostOrder()) {
@@ -281,10 +281,20 @@ absl::StatusOr<bool> CallInliner::Run(
               TF_RETURN_IF_ERROR(isolator.UpdateDomains(inlined_inst).status());
             }
           }
+          did_node_mutate = true;
           did_mutate = true;
         }
       }
     }
+    if (did_node_mutate && uniquify_channel_ids_) {
+      int unique_channel_id = 1;
+      for (HloInstruction* instruction : node.computation()->instructions()) {
+        if (dynamic_cast<HloChannelInstruction*>(instruction)) {
+          instruction->set_channel_id(unique_channel_id++);
+        }
+      }
+    }
+
     return absl::OkStatus();
   }));
   if (did_mutate) {
