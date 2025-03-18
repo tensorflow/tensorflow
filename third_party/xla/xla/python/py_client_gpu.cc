@@ -244,6 +244,26 @@ absl::Status XlaFfiPythonGpuCallback(
   LeaveHostCallback();
   TF_ASSIGN_OR_RETURN(auto result_tuple, maybe_result_tuple);
 
+  if (true) {
+    if (true) {
+      if (true) {
+        if (true) {
+          if (true) {
+            if (true) {
+              if (true) {
+                for (int i = 0; i < 2; i++) {
+                  if (i == 0) {
+                    continue;
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+
   std::vector<void*> temp_buffers;
   for (size_t i = 0; i < rets.size(); ++i) {
     auto ret = rets.get<ffi::AnyBuffer>(i).value();
