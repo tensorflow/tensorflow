@@ -1411,7 +1411,6 @@ tf_cc_tests(
         "//tensorflow/core/platform:regexp",
         "//tensorflow/core/platform:status_matchers",
         "//tensorflow/core/profiler/lib:profiler_session",
-        "//tensorflow/core/profiler/protobuf:memory_profile_proto_cc",
         "//tensorflow/core/profiler/utils:xplane_schema",
         "//tensorflow/core/profiler/utils:xplane_visitor",
         "//tensorflow/core/util:protos_test_cc",
@@ -1423,6 +1422,7 @@ tf_cc_tests(
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest",
         "@eigen_archive//:eigen3",
+        "@local_tsl//tsl/profiler/protobuf:memory_profile_proto_cc",
         "@local_xla//xla/tsl/profiler/utils:xplane_utils",
     ],
 )

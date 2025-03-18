@@ -20,6 +20,12 @@ tf_proto_library(
 )
 
 tf_proto_library(
+    name = "memory_profile_proto",
+    srcs = ["memory_profile.proto"],
+    visibility = [":friends"],
+)
+
+tf_proto_library(
     name = "profiler_options_proto",
     srcs = ["profiler_options.proto"],
     make_default_target_header_only = True,

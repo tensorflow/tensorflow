@@ -195,8 +195,8 @@ tf_proto_library(
 
 tf_proto_library(
     name = "memory_profile_proto",
-    srcs = ["memory_profile.proto"],
     visibility = [":friends"],
+    deps = ["@local_tsl//tsl/profiler/protobuf:memory_profile_proto"],
 )
 
 tf_proto_library(
