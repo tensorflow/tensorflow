@@ -18,8 +18,11 @@ limitations under the License.
 #include <stdint.h>
 
 #include <memory>
+#include <numeric>
+#include <optional>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
@@ -177,6 +180,28 @@ TEST(TfrtGpuClientTest, AcquireDonation) {
   EXPECT_EQ(donation_transaction->device_buffer(), nullptr);
   EXPECT_TRUE(
       DonationTransactionPeer::GetDonationEvent(tfrt_buffer.get()).get());
+}
+
+// TODO(b/382117736): Add more tests for BufferFromHostBuffer when D2H is
+// supported.
+
+TEST(TfrtGpuClientTest, BufferFromHostBuffer) {
+  TF_ASSERT_OK_AND_ASSIGN(auto client, GetTfrtGpuClient(GpuClientOptions()));
+  ASSERT_GE(client->devices().size(), 1);
+  std::vector<int32_t> data(256);
+  std::iota(data.begin(), data.end(), 10);
+  Shape shape = ShapeUtil::MakeShape(S32, {256});
+  auto buffer =
+      client
+          ->BufferFromHostBuffer(
+              data.data(), shape.element_type(), shape.dimensions(),
+              /*byte_strides=*/std::nullopt,
+              PjRtClient::HostBufferSemantics::kImmutableOnlyDuringCall,
+              nullptr,
+              *client->addressable_devices()[0]->default_memory_space(),
+              /*device_layout=*/nullptr)
+          .value();
+  ASSERT_OK(buffer->GetReadyFuture().Await());
 }
 
 }  // namespace

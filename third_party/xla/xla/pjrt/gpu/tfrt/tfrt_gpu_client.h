@@ -42,9 +42,11 @@ limitations under the License.
 #include "xla/client/local_client.h"
 #include "xla/hlo/builder/xla_computation.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/layout.h"
 #include "xla/literal.h"
 #include "xla/pjrt/gpu/gpu_topology.h"
 #include "xla/pjrt/gpu/tfrt/gpu_event.h"
+#include "xla/pjrt/gpu/tfrt/host_memory_allocator.h"
 #include "xla/pjrt/gpu/tfrt/stream_pool.h"
 #include "xla/pjrt/gpu/tfrt/tracked_tfrt_gpu_device_buffer.h"
 #include "xla/pjrt/pjrt_client.h"
@@ -54,6 +56,7 @@ limitations under the License.
 #include "xla/pjrt/pjrt_future.h"
 #include "xla/pjrt/pjrt_stream_executor_device_description.h"
 #include "xla/pjrt/plugin/xla_gpu/xla_gpu_client_options.h"
+#include "xla/pjrt/transpose.h"
 #include "xla/pjrt/utils.h"
 #include "xla/service/computation_placer.h"
 #include "xla/service/hlo.pb.h"
@@ -187,7 +190,7 @@ class TfrtGpuDevice final : public PjRtDevice {
 
  private:
   friend class TfrtGpuClient;
-
+  friend class TfrtGpuBuffer;
   int id_;
   PjRtClient* client_ = nullptr;
   PjRtLocalDeviceId local_device_id_;
@@ -209,6 +212,7 @@ class TfrtGpuClient final : public PjRtClient {
  public:
   TfrtGpuClient(int process_index, xla::LocalClient* xla_client,
                 std::vector<std::unique_ptr<TfrtGpuDevice>> devices,
+                bool should_stage_host_to_device_transfers,
                 std::unique_ptr<tsl::Allocator> host_memory_allocator,
                 std::shared_ptr<const GpuTopology> gpu_topology);
 
@@ -233,6 +237,16 @@ class TfrtGpuClient final : public PjRtClient {
 
   absl::Span<PjRtMemorySpace* const> memory_spaces() const override;
 
+  xla::LocalClient* xla_client() const { return xla_client_; }
+
+  bool should_stage_host_to_device_transfers() const {
+    return should_stage_host_to_device_transfers_;
+  }
+
+  HostMemoryAllocator* host_memory_allocator() const {
+    return host_memory_allocator_.get();
+  }
+
   PjRtPlatformId platform_id() const override {
     // TODO(b/382117736): Add support for ROCM and SYCL.
     return tsl::Fingerprint64(xla::CudaName());
@@ -247,6 +261,14 @@ class TfrtGpuClient final : public PjRtClient {
   absl::StatusOr<DeviceAssignment> GetDefaultDeviceAssignment(
       int num_replicas, int num_partitions) const override;
 
+  tsl::thread::ThreadPool* blocking_thread_pool() const {
+    return blocking_thread_pool_.get();
+  }
+
+  tsl::thread::ThreadPool* non_blocking_thread_pool() const {
+    return non_blocking_thread_pool_.get();
+  }
+
   absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> CompileAndLoad(
       const XlaComputation& computation, CompileOptions options) override;
   absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> CompileAndLoad(
@@ -254,6 +276,13 @@ class TfrtGpuClient final : public PjRtClient {
 
   absl::StatusOr<std::unique_ptr<PjRtBuffer>> CreateErrorBuffer(
       absl::Status error, const Shape& shape, PjRtMemorySpace* memory) override;
+
+  absl::StatusOr<std::unique_ptr<PjRtBuffer>> BufferFromHostBuffer(
+      const void* data, PrimitiveType type, absl::Span<int64_t const> dims,
+      std::optional<absl::Span<int64_t const>> byte_strides,
+      HostBufferSemantics host_buffer_semantics,
+      absl::AnyInvocable<void() &&> on_done_with_host_buffer,
+      PjRtMemorySpace* memory_space, const Layout* device_layout) override;
 
  private:
   // Helper function for creating PjRtStreamExecutorExecutables. Modifies
@@ -275,8 +304,11 @@ class TfrtGpuClient final : public PjRtClient {
   int process_index_;
 
   xla::LocalClient* xla_client_;
-
   const std::string platform_version_;
+
+  bool should_stage_host_to_device_transfers_;
+  // Allocator to be used for staging memory transfers to devices.
+  std::unique_ptr<HostMemoryAllocator> host_memory_allocator_;
 
   // Includes all devices, including non-local devices on multi-host platforms.
   std::vector<std::unique_ptr<TfrtGpuDevice>> owned_devices_;
@@ -294,6 +326,14 @@ class TfrtGpuClient final : public PjRtClient {
   std::vector<PjRtMemorySpace*> memory_spaces_;
 
   std::unique_ptr<tsl::thread::ThreadPool> compile_thread_pool_;
+  std::unique_ptr<tsl::thread::ThreadPool> blocking_thread_pool_;
+  std::unique_ptr<tsl::thread::ThreadPool> non_blocking_thread_pool_;
+
+  // A cache for transpose plans. We use transposes to convert
+  // (possibly strided) buffers provided to BufferFromHostBuffer into dense
+  // major-to-minor layout.
+  absl::Mutex transpose_mu_;
+  TransposePlanCache transpose_cache_ ABSL_GUARDED_BY(transpose_mu_);
 };
 
 absl::StatusOr<std::unique_ptr<PjRtClient>> GetTfrtGpuClient(
@@ -318,9 +358,7 @@ class TfrtGpuBuffer final : public PjRtBuffer {
   TfrtGpuDevice* device() const override { return device_; }
   TfrtGpuClient* client() const override { return client_; }
 
-  absl::StatusOr<Shape> logical_on_device_shape() override {
-    return Unimplemented("logical_on_device_shape not implemented.");
-  }
+  absl::StatusOr<Shape> logical_on_device_shape() override;
 
   absl::StatusOr<std::unique_ptr<ExternalReference>> AcquireExternalReference()
       override;
@@ -333,6 +371,7 @@ class TfrtGpuBuffer final : public PjRtBuffer {
     // TODO(b/382117736): Implement ToLiteral.
     return PjRtFuture<>(Unimplemented("ToLiteral not implemented."));
   }
+
   PjRtFuture<> LazyToLiteral(
       absl::AnyInvocable<absl::StatusOr<MutableLiteralBase*>() &&> generator)
       override {
@@ -369,13 +408,13 @@ class TfrtGpuBuffer final : public PjRtBuffer {
             /*sends_were_enqueued=*/false);
   }
 
-  PjRtFuture<> GetReadyFuture() override {
-    return PjRtFuture<>(Unimplemented("GetReadyFuture not implemented."));
-  }
+  PjRtFuture<> GetReadyFuture() override;
 
   bool IsOnCpu() const override { return false; }
 
  private:
+  TrackedTfrtGpuDeviceBuffer* AcquireUsage(
+      tsl::AsyncValueRef<GpuEvent> usage_event);
   // A helper class for managing a pending donation. It should be committed upon
   // success. Otherwise, the donated buffer is returned to the TfrtGpuBuffer.
   class DonationTransaction {

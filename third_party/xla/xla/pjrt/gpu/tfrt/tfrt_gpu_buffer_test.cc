@@ -16,7 +16,9 @@ limitations under the License.
 #include <array>
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <utility>
+#include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
@@ -275,6 +277,26 @@ TEST(TfrtGpuBufferTest, Delete) {
   usage_event.SetStateConcrete();
   EXPECT_TRUE(destructed);
 }
+
+TEST(TfrtGpuBufferTest, IsDeviceShapeWhenStaticShape) {
+  TF_ASSERT_OK_AND_ASSIGN(auto client, GetTfrtGpuClient(GpuClientOptions()));
+  std::vector<int32_t> data{1, 2, 3, 4, 5, 6};
+  for (PrimitiveType t : {F32, F16, S8, BF16}) {
+    Shape shape = ShapeUtil::MakeShape(t, {3, 2});
+    TF_ASSERT_OK_AND_ASSIGN(
+        auto buffer,
+        client->BufferFromHostBuffer(
+            data.data(), shape.element_type(), shape.dimensions(),
+            /*byte_strides=*/std::nullopt,
+            PjRtClient::HostBufferSemantics::kImmutableOnlyDuringCall, nullptr,
+            client->memory_spaces()[0], /*device_layout=*/nullptr));
+    EXPECT_EQ(buffer->on_device_shape(), shape);
+    EXPECT_EQ(*buffer->logical_on_device_shape(), shape);
+  }
+}
+
+// TODO(b/382117736): Add test for logical shape when shape is dynamic after
+// TfrtGpuClient::Execute() is ready.
 
 }  // namespace
 }  // namespace xla

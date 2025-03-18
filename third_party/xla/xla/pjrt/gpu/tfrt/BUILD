@@ -22,6 +22,7 @@ cc_library(
     visibility = internal_visibility(["//xla/pjrt/gpu:legacy_gpu_client_users"]),
     deps = [
         ":gpu_event",
+        ":host_memory_allocator",
         ":stream_pool",
         ":tracked_tfrt_gpu_device_buffer",
         "//xla:literal",
@@ -40,6 +41,7 @@ cc_library(
         "//xla/pjrt:pjrt_executable",
         "//xla/pjrt:pjrt_future",
         "//xla/pjrt:pjrt_stream_executor_device_description",
+        "//xla/pjrt:transpose",
         "//xla/pjrt:utils",
         "//xla/pjrt/gpu:gpu_helpers",
         "//xla/pjrt/gpu:gpu_topology",
@@ -48,6 +50,8 @@ cc_library(
         "//xla/service:computation_placer_hdr",
         "//xla/service:executable",
         "//xla/service:hlo_proto_cc",
+        "//xla/service:shaped_buffer",
+        "//xla/service:transfer_manager",
         "//xla/stream_executor:device_description",
         "//xla/stream_executor:device_memory",
         "//xla/stream_executor:device_memory_allocator",
@@ -80,6 +84,7 @@ cc_library(
         "@llvm-project//mlir:IR",
         "@local_tsl//tsl/platform:casts",
         "@local_tsl//tsl/platform:fingerprint",
+        "@local_tsl//tsl/profiler/lib:connected_traceme",
         "@local_tsl//tsl/profiler/lib:traceme",
     ],
 )
@@ -106,6 +111,7 @@ xla_cc_test(
         "//xla/pjrt:pjrt_executable",
         "//xla/pjrt/plugin/xla_gpu:xla_gpu_client_options",
         "//xla/service:gpu_plugin",
+        "//xla/tests:literal_test_util",
         "//xla/tsl/concurrency:async_value",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -265,5 +271,13 @@ xla_cc_test(
         "//xla/stream_executor:stream_executor_h",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
+    name = "host_memory_allocator",
+    hdrs = ["host_memory_allocator.h"],
+    deps = [
+        "//xla/tsl/framework:allocator",
     ],
 )
