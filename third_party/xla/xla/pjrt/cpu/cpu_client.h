@@ -186,10 +186,6 @@ class TfrtCpuClient final : public PjRtClient {
       std::function<void()> on_delete_callback,
       std::optional<std::intptr_t> stream) override;
 
-  absl::Status Defragment() override {
-    return Unimplemented("Defragment not implemented.");
-  }
-
   tsl::thread::ThreadPool* pjrt_client_thread_pool() const {
     return pjrt_client_thread_pool_.get();
   }
