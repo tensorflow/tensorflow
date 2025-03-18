@@ -62,12 +62,9 @@ constexpr LiteRtParamIndex kDefaultPartitionIndex = 0;
 
 static constexpr absl::string_view kEntryPointNameFmt = "qnn_partition_%d";
 
-constexpr auto kNumSocInfos =
-    sizeof(::qnn::kSocInfos) / sizeof(::qnn::kSocInfos[0]);
-
 std::optional<::qnn::SocInfo> FindSocModel(absl::string_view soc_model_name) {
   std::optional<::qnn::SocInfo> soc_model;
-  for (auto i = 0; i < kNumSocInfos; ++i) {
+  for (auto i = 0; i < ::qnn::kNumSocInfos; ++i) {
     if (soc_model_name == ::qnn::kSocInfos[i].soc_name) {
       soc_model = ::qnn::kSocInfos[i];
       break;
@@ -112,7 +109,7 @@ LiteRtStatus LiteRtGetNumCompilerPluginSupportedSocModels(
   if (!compiler_plugin || !num_supported_soc_models) {
     return kLiteRtStatusErrorInvalidArgument;
   }
-  *num_supported_soc_models = kNumSocInfos;
+  *num_supported_soc_models = ::qnn::kNumSocInfos;
   return kLiteRtStatusOk;
 }
 
@@ -121,7 +118,7 @@ LiteRtStatus LiteRtGetCompilerPluginSupportedSocModel(
     const char** soc_model_name) {
   if (!compiler_plugin || !soc_model_name) {
     return kLiteRtStatusErrorInvalidArgument;
-  } else if (soc_model_idx < 0 || soc_model_idx >= kNumSocInfos) {
+  } else if (soc_model_idx < 0 || soc_model_idx >= ::qnn::kNumSocInfos) {
     return kLiteRtStatusErrorInvalidArgument;
   }
   *soc_model_name = ::qnn::kSocInfos[soc_model_idx].soc_name;

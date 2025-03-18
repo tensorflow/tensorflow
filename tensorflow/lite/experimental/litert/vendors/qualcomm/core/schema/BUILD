@@ -9,6 +9,7 @@ package(
 cc_library(
     name = "soc_table",
     hdrs = ["soc_table.h"],
+    srcs = ["soc_table.cc"],
     tags = [
         # Don't build/test in OS until qnn is available.
         "nobuilder",

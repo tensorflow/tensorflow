@@ -26,4 +26,4 @@ class HtpDeviceCustomConfig {
   std::vector<std::unique_ptr<QnnHtpDevice_CustomConfig_t>> htp_device_config_;
 };
 }  // namespace qnn
-#endif TENSORFLOW_LITE_EXPERIMENTAL_LITERT_VENDORS_QUALCOMM_CORE_BACKENDS_HTP_DEVICE_CUSTOM_CONFIG_H_
+#endif  // TENSORFLOW_LITE_EXPERIMENTAL_LITERT_VENDORS_QUALCOMM_CORE_BACKENDS_HTP_DEVICE_CUSTOM_CONFIG_H_

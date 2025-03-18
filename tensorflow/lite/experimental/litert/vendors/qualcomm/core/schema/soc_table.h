@@ -5,7 +5,6 @@
 #define TENSORFLOW_LITE_EXPERIMENTAL_LITERT_VENDORS_QUALCOMM_CORE_SCHEMA_SOC_TABLE_H_
 
 #include <string>
-#include <vector>
 
 namespace qnn {
 enum class SnapdragonModel {
@@ -44,31 +43,7 @@ struct SocInfo {
         vtcm_size_in_mb(vtcm_size_in_mb) {}
 };
 
-constexpr SocInfo kSocInfos[] = {
-    {SocInfo("UNKNOWN_SDM", SnapdragonModel::UNKNOWN_SDM, DspArch::NONE,
-             0  // vtcm_size_in_mb
-             )},
-    {SocInfo("SA8255", SnapdragonModel::SA8255, DspArch::V73,
-             8  // vtcm_size_in_mb
-             )},
-    {SocInfo("SA8295", SnapdragonModel::SA8295, DspArch::V68,
-             8  // vtcm_size_in_mb
-             )},
-    {SocInfo("SM8350", SnapdragonModel::SM8350, DspArch::V68,
-             4  // vtcm_size_in_mb
-             )},
-    {SocInfo("SM8450", SnapdragonModel::SM8450, DspArch::V69,
-             8  // vtcm_size_in_mb
-             )},
-    {SocInfo("SM8550", SnapdragonModel::SM8550, DspArch::V73,
-             8  // vtcm_size_in_mb
-             )},
-    {SocInfo("SM8650", SnapdragonModel::SM8650, DspArch::V75,
-             8  // vtcm_size_in_mb
-             )},
-    {SocInfo("SM8750", SnapdragonModel::SM8750, DspArch::V79,
-             8  // vtcm_size_in_mb
-             )},
-};
+extern const SocInfo kSocInfos[];
+extern const unsigned long kNumSocInfos;
 }  // namespace qnn
 #endif  // TENSORFLOW_LITE_EXPERIMENTAL_LITERT_VENDORS_QUALCOMM_CORE_SCHEMA_SOC_TABLE_H_
