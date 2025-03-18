@@ -2,7 +2,7 @@
 
 #blocked = #ttg.blocked<{sizePerThread = [1, 1], threadsPerWarp = [8, 4], warpsPerCTA = [4, 1], order = [1, 0]}>
 #mma = #ttg.nvidia_mma<{versionMajor = 2, versionMinor = 0, warpsPerCTA = [2, 2], instrShape = [16, 8]}>
-// CHECK: #[[SHARED:.+]] = #ttg.shared
+// CHECK: #[[SHARED:.+]] = #ttg.swizzled_shared<{vec = 8, perPhase = 1, maxPhase = 1, order = [1, 0]}> 
 module attributes {"ttg.num-warps" = 4 : i32} {
   tt.func @sparse_dot_metadata(%meta: tensor<64x4xi16, #blocked>) {
     // CHECK: %[[META:.+]] = ttg.local_alloc {{.+}} : (tensor<64x4xi16, #blocked>) -> !ttg.memdesc<64x4xi16, #[[SHARED]], #smem>
