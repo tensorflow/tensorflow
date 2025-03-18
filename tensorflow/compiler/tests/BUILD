@@ -2427,14 +2427,15 @@ tf_xla_py_strict_test(
     ],
     shard_count = 10,
     tags = [
-        "manual",
         "notap",
+        "optonly",
     ],
     deps = [
         ":xla_test",
         "//tensorflow/python/client:session",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:tensor",
         "//tensorflow/python/ops:math_ops",
         "//tensorflow/python/ops:resource_variable_ops",
         "//tensorflow/python/ops:tpu_ops_gen",

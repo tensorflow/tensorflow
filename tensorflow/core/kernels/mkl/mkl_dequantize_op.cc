@@ -139,7 +139,10 @@ class MklDequantizeOp : public OpKernel {
       // The quantization logic here for mode SCALED is similar to the logic
       // in QuantizeAndDequantizeV2 and QuantizeAndDequantizeV3.
       static constexpr int num_bits = sizeof(T) * 8;
-      bool is_signed = std::numeric_limits<T>::is_signed;
+
+      // Currently, T can be qint8 or quint8. So it is sufficient to check
+      // signedness with std::is_same<T, qint8>()
+      static constexpr bool is_signed = std::is_same<T, qint8>();
 
       const int target_bits = is_signed ? (num_bits - 1) : num_bits;
       const float v_max = static_cast<float>(uint64_t{1} << target_bits) - 1;
