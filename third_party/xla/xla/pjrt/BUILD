@@ -177,6 +177,7 @@ cc_library(
     name = "pjrt_api",
     srcs = ["pjrt_api.cc"],
     hdrs = ["pjrt_api.h"],
+    visibility = internal_visibility([":friends"]),
     deps = [
         "//xla/pjrt/c:pjrt_c_api_hdrs",
         "//xla/pjrt/c:pjrt_c_api_helpers",
@@ -802,6 +803,7 @@ cc_library(
     name = "pjrt_c_api_client",
     srcs = ["pjrt_c_api_client.cc"],
     hdrs = ["pjrt_c_api_client.h"],
+    visibility = internal_visibility([":friends"]),
     deps = [
         ":compile_options_proto_cc",
         ":mlir_to_hlo",

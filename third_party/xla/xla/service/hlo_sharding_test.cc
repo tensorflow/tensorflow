@@ -24,10 +24,10 @@ limitations under the License.
 #include "absl/hash/hash.h"
 #include "absl/types/span.h"
 #include "xla/hlo/parser/hlo_parser.h"
+#include "xla/hlo/testlib/test.h"
+#include "xla/hlo/testlib/test_helpers.h"
 #include "xla/protobuf_util.h"
 #include "xla/shape_util.h"
-#include "xla/test.h"
-#include "xla/test_helpers.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/xla_data.pb.h"
 

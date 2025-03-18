@@ -586,7 +586,6 @@ cc_library(
         "-fno-strict-aliasing",
     ],
     features = ["-use_header_modules"],
-    visibility = ["//xla/python:__pkg__"],
     deps = [
         ":grpc_client",
         ":registry",

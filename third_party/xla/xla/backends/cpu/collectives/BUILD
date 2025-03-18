@@ -169,9 +169,10 @@ cc_library(
         "-fno-strict-aliasing",
     ],
     features = ["-use_header_modules"],
-    visibility = [
+    visibility = internal_visibility([
         "//xla/pjrt/cpu:legacy_cpu_internal_users",
-    ],
+        "//third_party/py/jax:__subpackages__",
+    ]),
     deps = [
         "//xla/pjrt:status_casters",
         "//xla/pjrt/distributed:key_value_store_interface",

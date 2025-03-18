@@ -229,6 +229,14 @@ class TfrtGpuDevice final : public PjRtDevice {
   std::random_device prng_seed_device_ ABSL_GUARDED_BY(mu_);
   std::mt19937 prng_seed_generator_ ABSL_GUARDED_BY(mu_);
   std::uniform_int_distribution<> prng_seed_distribution_ ABSL_GUARDED_BY(mu_);
+  // Launching collectives are prone to deadlock when we use fixed-sized
+  // thread pools and stream pools, since ExecuteHelper will block until all
+  // replicas reach the barrier. We ensure that
+  // 1. Thread pool size is at least as large as device_count so one collective
+  //    launch over all devices can succeed.
+  // 2. Gang-schedule each collective by conservatively ensuring a total order
+  //    of collectives and launching only one collective at a time to avoid
+  //    having no active threads to make progress
   tsl::AsyncValueRef<GpuEvent> last_collective_launch_event_
       ABSL_GUARDED_BY(mu_);
 
@@ -637,17 +645,13 @@ class TfrtGpuExecutable final : public PjRtLoadedExecutable {
   absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>> ExecuteSharded(
       absl::Span<PjRtBuffer* const> argument_handles, PjRtDevice* device,
       const ExecuteOptions& options,
-      std::optional<PjRtFuture<>>& returned_future, bool fill_future) override {
-    return Unimplemented("Not implemented");
-  }
+      std::optional<PjRtFuture<>>& returned_future, bool fill_future) override;
 
   using PjRtLoadedExecutable::ExecutePortable;
   absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>> ExecutePortable(
       absl::Span<PjRtBuffer* const> argument_handles, PjRtDevice* device,
       const ExecuteOptions& options,
-      std::optional<PjRtFuture<>>& returned_future, bool fill_future) override {
-    return Unimplemented("Not implemented");
-  }
+      std::optional<PjRtFuture<>>& returned_future, bool fill_future) override;
 
   void Delete() override { executables_.clear(); }
 

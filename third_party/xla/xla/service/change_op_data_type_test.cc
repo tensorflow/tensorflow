@@ -20,8 +20,8 @@ limitations under the License.
 #include <vector>
 
 #include "absl/types/span.h"
+#include "xla/hlo/testlib/pattern_matcher_gmock.h"
 #include "xla/service/pattern_matcher.h"
-#include "xla/service/pattern_matcher_gmock.h"
 #include "xla/tests/hlo_test_base.h"
 
 namespace xla {

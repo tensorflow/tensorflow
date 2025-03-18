@@ -156,7 +156,6 @@ xla_cc_test(
         "//xla/hlo/utils:hlo_matchers",
         "//xla/service:hlo_creation_utils",
         "//xla/service:pattern_matcher",
-        "//xla/service:pattern_matcher_gmock",
         "//xla/tsl/lib/core:status_test_util",
         "@com_google_googletest//:gtest",
         "@com_google_googletest//:gtest_main",
@@ -289,7 +288,6 @@ xla_cc_test(
         "//xla/hlo/testlib:test",
         "//xla/service:dynamic_padder",
         "//xla/service:pattern_matcher",
-        "//xla/service:pattern_matcher_gmock",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest",
         "@com_google_googletest//:gtest_main",  # fixdeps: keep
