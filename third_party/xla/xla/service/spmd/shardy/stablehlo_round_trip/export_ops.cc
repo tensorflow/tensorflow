@@ -68,6 +68,11 @@ using ::mlir::StringAttr;
 using ::mlir::StringRef;
 using ::mlir::success;
 
+using ::mlir::sdy::AllGatherOp;
+using ::mlir::sdy::AllReduceOp;
+using ::mlir::sdy::AllSliceOp;
+using ::mlir::sdy::AllToAllOp;
+using ::mlir::sdy::CollectivePermuteOp;
 using ::mlir::sdy::ConstantOp;
 using ::mlir::sdy::ReshardOp;
 using ::mlir::sdy::ShardingConstraintOp;
@@ -88,6 +93,46 @@ class ConstantPattern : public OpConversionPattern<ConstantOp> {
   }
 };
 
+class AllReducePattern : public OpConversionPattern<AllReduceOp> {
+ public:
+  using OpConversionPattern::OpConversionPattern;
+
+ private:
+  LogicalResult matchAndRewrite(
+      AllReduceOp op, OpAdaptor adaptor,
+      ConversionPatternRewriter& rewriter) const override {
+    rewriter.replaceOp(op, adaptor.getTensor());
+    return success();
+  }
+};
+
+void rewriteCollectiveOp(mlir::Operation* op, mlir::Value input,
+                         TensorShardingAttr sharding,
+                         ConversionPatternRewriter& rewriter,
+                         bool addUnspecifiedDims = false) {
+  auto copyOp = rewriter.replaceOpWithNewOp<mhlo::CopyOp>(op, input);
+  mlir::sdy::setShardings(copyOp, sharding);
+
+  if (!addUnspecifiedDims) {
+    return;
+  }
+
+  SmallVector<int64_t> unspecifiedDims;
+  for (auto [dim, dimSharding] : llvm::enumerate(sharding.getDimShardings())) {
+    // Unspecified dims are those that are marked open but is not partitioned
+    // on any axes.
+    if (!dimSharding.getIsClosed() && dimSharding.emptyAxes()) {
+      unspecifiedDims.push_back(dim);
+    }
+  }
+  if (!unspecifiedDims.empty()) {
+    copyOp->setAttr(kXlaBackendConfigAttr,
+                    StringAttr::get(op->getContext(),
+                                    xla::sharding_op_util::EncodeAttributes(
+                                        unspecifiedDims)));
+  }
+}
+
 class ReshardPattern : public OpConversionPattern<ReshardOp> {
  public:
   using OpConversionPattern::OpConversionPattern;
@@ -96,28 +141,23 @@ class ReshardPattern : public OpConversionPattern<ReshardOp> {
   LogicalResult matchAndRewrite(
       ReshardOp op, OpAdaptor adaptor,
       ConversionPatternRewriter& rewriter) const override {
-    auto copyOp =
-        rewriter.replaceOpWithNewOp<mhlo::CopyOp>(op, adaptor.getInput());
+    rewriteCollectiveOp(op, adaptor.getInput(), adaptor.getSharding(), rewriter,
+                        /*addUnspecifiedDims=*/true);
+    return success();
+  }
+};
 
-    TensorShardingAttr sdySharding = adaptor.getShardingAttr();
-    mlir::sdy::setShardings(copyOp, sdySharding);
+template <class OpTy>
+class CollectivePattern : public OpConversionPattern<OpTy> {
+ public:
+  using OpConversionPattern<OpTy>::OpConversionPattern;
 
-    SmallVector<int64_t> unspecifiedDims;
-    for (auto [dim, dimSharding] :
-         llvm::enumerate(sdySharding.getDimShardings())) {
-      // Unspecified dims are those that are marked open but is not partitioned
-      // on any axes.
-      if (!dimSharding.getIsClosed() && dimSharding.emptyAxes()) {
-        unspecifiedDims.push_back(dim);
-      }
-    }
-    if (!unspecifiedDims.empty()) {
-      copyOp->setAttr(kXlaBackendConfigAttr,
-                      StringAttr::get(op.getContext(),
-                                      xla::sharding_op_util::EncodeAttributes(
-                                          unspecifiedDims)));
-    }
-
+ private:
+  LogicalResult matchAndRewrite(
+      OpTy op, typename OpTy::Adaptor adaptor,
+      ConversionPatternRewriter& rewriter) const override {
+    rewriteCollectiveOp(op, adaptor.getTensor(), adaptor.getOutSharding(),
+                        rewriter);
     return success();
   }
 };
@@ -133,14 +173,19 @@ class ExportOpsPass
     // We do not expect to see ShardingConstraintOp in the input module.
     // ShardingConstraintOp should be replaced by ReshardOp before this pass.
     // Hence, we add ShardingConstraintOp as an illegal op.
-    target.addIllegalOp<ConstantOp, ReshardOp, ShardingConstraintOp>();
+    target.addIllegalOp<ConstantOp, ReshardOp, AllGatherOp, AllReduceOp,
+                        AllSliceOp, AllToAllOp, CollectivePermuteOp,
+                        ShardingConstraintOp>();
     target.addLegalOp<stablehlo::ConstantOp, mhlo::CopyOp>();
     mlir::RewritePatternSet patterns(&context);
     // After converting `sdy.constant` into `stablehlo.constant`, the constants
     // should not be deduped via folding. Fortunately, folding only happens in
     // greedy pattern rewriters. ExportHloShardingsPass does a simple walk,
     // which keeps the constants as is.
-    patterns.add<ConstantPattern, ReshardPattern>(&context);
+    patterns.add<ConstantPattern, AllReducePattern, ReshardPattern,
+                 CollectivePattern<AllGatherOp>, CollectivePattern<AllSliceOp>,
+                 CollectivePattern<AllToAllOp>,
+                 CollectivePattern<CollectivePermuteOp>>(&context);
     if (mlir::failed(mlir::applyPartialConversion(getOperation(), target,
                                                   std::move(patterns)))) {
       signalPassFailure();
