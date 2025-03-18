@@ -35,6 +35,8 @@
 
 #if LITERT_HAS_OPENCL_SUPPORT
 #include <CL/cl.h>
+#else
+typedef struct _cl_mem* cl_mem;
 #endif
 
 namespace litert {
@@ -140,13 +142,16 @@ class TensorBuffer
 #endif
   }
 
-#if LITERT_HAS_OPENCL_SUPPORT
   Expected<cl_mem> GetOpenClBuffer() const {
+#if LITERT_HAS_OPENCL_SUPPORT
     cl_mem cl_mem;
     LITERT_RETURN_IF_ERROR(LiteRtGetTensorBufferOpenClBuffer(Get(), &cl_mem));
     return cl_mem;
-  }
+#else
+    return litert::Unexpected(kLiteRtStatusErrorRuntimeFailure,
+                              "OpenCL is not supported on this platform");
 #endif
+  }
 
   struct GlBuffer {
     LiteRtGLenum target;
