@@ -3,6 +3,8 @@
 
 #include <stdarg.h>
 
+#include <cstdio>
+
 #include "log.h"
 
 namespace qnn {
