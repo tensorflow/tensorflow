@@ -61,6 +61,12 @@ class Bitmap {
   // Returns bits() if no such i exists.
   size_t FirstUnset(size_t start) const;
 
+  // Returns true if all bits are set.
+  bool IsAllSet() const;
+
+  // Returns the number of one bits in the bitmap.
+  size_t CountOnes() const;
+
   // Returns the bitmap as an ascii string of '0' and '1' characters, bits()
   // characters in length.
   std::string ToString() const;
