@@ -11,11 +11,11 @@ lit_test_suite(
     srcs = enforce_glob(
         [
             # go/keep-sorted start
-            "algebraic_simplifier.hlo",
-            "cholesky_expander.hlo",
-            "rewrite_bf16_conv_to_onednn.hlo",
-            "rng_bit_generator_expander.hlo",
-            "rng_expander.hlo",
+            "algebraic_simplifier_test.hlo",
+            "cholesky_expander_test.hlo",
+            "rewrite_bf16_conv_to_onednn_test.hlo",
+            "rng_bit_generator_expander_test.hlo",
+            "rng_expander_test.hlo",
             # go/keep-sorted end
         ],
         include = [
