@@ -468,7 +468,7 @@ cc_test(
 filegroup(
     name = "litert_model_srcs",
     srcs = ["litert_model.cc"],
-    visibility = ["//tensorflow/lite/experimental/litert/core/model:__pkg__"],
+    visibility = ["//visibility:private"],
 )
 
 filegroup(
