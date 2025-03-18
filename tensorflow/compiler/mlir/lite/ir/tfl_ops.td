@@ -2097,7 +2097,8 @@ def TFL_LogicalAndOp : TFL_Op<"logical_and", [ResultsBroadcastableShape, Pure]> 
 
 def TFL_LogicalNotOp : TFL_Op<"logical_not", [
     Pure,
-    SameOperandsAndResultShape]> {
+    SameOperandsAndResultType
+    ]> {
   let summary = "Logical NOT operator";
 
   let description = [{
@@ -3623,10 +3624,9 @@ def TFL_UnpackOp : TFL_Op<"unpack", [
 }
 
 def TFL_ZerosLikeOp: TFL_Op<"zeros_like", [
-    PredOpTrait<"input and output must have same element type",
-      TFL_TCresVTEtIsSameAsOp<0, 0>>,
-    SameOperandsAndResultShape,
-    Pure]> {
+    Pure,
+    SameOperandsAndResultType
+    ]> {
   let summary = "ZerosLike operator";
 
   let description = [{
@@ -5167,8 +5167,8 @@ def TFL_UnsortedSegmentSumOp: TFL_Op<"unsorted_segment_sum", [
 
 def TFL_Atan2Op: TFL_Op<"atan2", [
   Pure,
-  SameOperandsAndResultShape,
-  SameOperandsAndResultElementType]> {
+  SameOperandsAndResultType
+  ]> {
 
   let summary = "Atan2 operation";
   let description = [{
@@ -5188,8 +5188,7 @@ def TFL_Atan2Op: TFL_Op<"atan2", [
 
 def TFL_SignOp: TFL_Op<"sign", [
   Pure,
-  SameOperandsAndResultShape,
-  SameOperandsAndResultElementType
+  SameOperandsAndResultType
   ]> {
 
   let summary = "Sign operation";
