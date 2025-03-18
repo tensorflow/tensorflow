@@ -42,3 +42,8 @@ def tfl_model_gen(name, srcs, subdir = "testdata"):
         cmd = CMD,
         tools = [CONVERTER],
     )
+
+    native.filegroup(
+        name = name + "_files",
+        srcs = [name],
+    )

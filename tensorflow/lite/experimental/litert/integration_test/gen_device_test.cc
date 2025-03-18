@@ -29,6 +29,7 @@
 #include "tensorflow/lite/experimental/litert/integration_test/gen_device_test_lib.h"
 #include "tensorflow/lite/experimental/litert/test/common.h"
 #include "tensorflow/lite/experimental/litert/test/matchers.h"
+#include "tensorflow/lite/experimental/litert/tools/dump.h"
 
 ABSL_FLAG(std::string, model_path, "",
           "Tflite models to test. This can be a single tflite model or a "
@@ -92,12 +93,17 @@ class InvokeOnceTest : public GenDeviceTestFixt {
             litert::Environment::OptionTag::DispatchLibraryDir,
             absl::string_view(dispatch_library_dir_),
         },
+        litert::Environment::Option{
+            litert::Environment::OptionTag::CompilerPluginLibraryDir,
+            absl::string_view(dispatch_library_dir_),
+        },
     };
     LITERT_ASSERT_OK_AND_ASSIGN(
         auto env, litert::Environment::Create(environment_options));
 
     LITERT_ASSERT_OK_AND_ASSIGN(auto model,
                                 litert::Model::CreateFromFile(model_path_));
+    litert::internal::Dump(*model.Get());
 
     invoker_ = std::make_unique<InvokerT>(std::move(env), std::move(model));
     invoker_->MaybeSkip();
@@ -143,6 +149,7 @@ void ParseTests() {
   }
 
   for (const auto& model_path : model_paths) {
+    LITERT_LOG(LITERT_INFO, "model_path: %s", model_path.c_str());
     const auto test_name = absl::StrFormat("%s_%s", ModelName(model_path), hw);
     ::testing::RegisterTest("GenDeviceTest", test_name.c_str(), nullptr,
                             nullptr, __FILE__, __LINE__,
