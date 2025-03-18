@@ -54,9 +54,8 @@ TEST(RtldFlagsTest, FlagFactoryWorks) {
 }
 
 TEST(SharedLibraryTest, LoadRtldDefaultWorks) {
-  LITERT_ASSERT_OK_AND_ASSIGN(
-      SharedLibrary lib,
-      SharedLibrary::Load(RtldFlags::kDefault, RtldFlags::Now().Local()));
+  LITERT_ASSERT_OK_AND_ASSIGN(SharedLibrary lib,
+                              SharedLibrary::Load(RtldFlags::kDefault));
 
   EXPECT_THAT(lib.Path(), StrEq(""));
   EXPECT_EQ(lib.Handle(), RTLD_DEFAULT);
@@ -73,9 +72,8 @@ TEST(SharedLibraryTest, LoadRtldDefaultWorks) {
 }
 
 TEST(SharedLibraryTest, LoadRtldNextWorks) {
-  LITERT_ASSERT_OK_AND_ASSIGN(
-      SharedLibrary lib,
-      SharedLibrary::Load(RtldFlags::kNext, RtldFlags::Now().Local()));
+  LITERT_ASSERT_OK_AND_ASSIGN(SharedLibrary lib,
+                              SharedLibrary::Load(RtldFlags::kNext));
 
   EXPECT_THAT(lib.Path(), StrEq(""));
   EXPECT_EQ(lib.Handle(), RTLD_NEXT);

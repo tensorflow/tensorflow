@@ -73,6 +73,7 @@ limitations under the License.
 #include "xla/hlo/pass/hlo_pass_pipeline.h"
 #include "xla/hlo/transforms/collectives/all_gather_broadcast_reorder.h"
 #include "xla/hlo/transforms/collectives/all_reduce_contiguous.h"
+#include "xla/hlo/transforms/collectives/collective_permute_combiner.h"
 #include "xla/hlo/transforms/collectives/collective_quantizer.h"
 #include "xla/hlo/transforms/collectives/collectives_schedule_linearizer.h"
 #include "xla/hlo/transforms/convert_memory_placement_to_internal_annotations.h"
@@ -168,6 +169,7 @@ limitations under the License.
 #include "xla/service/gpu/kernel_reuse_cache.h"
 #include "xla/service/gpu/matmul_utils.h"
 #include "xla/service/gpu/metrics.h"
+#include "xla/service/gpu/model/collective_ptable_stats_collection.h"
 #include "xla/service/gpu/model/gpu_cost_model_stats_collection.h"
 #include "xla/service/gpu/model/gpu_hlo_cost_analysis.h"
 #include "xla/service/gpu/model/sol_gpu_cost_model_stats_collection.h"
@@ -375,7 +377,8 @@ class GpuThunkAotCompilationResult : public AotCompilationResult {
   }
 
   absl::StatusOr<std::unique_ptr<Executable>> LoadExecutable(
-      Compiler* compiler, const se::StreamExecutor* stream_exec) const override;
+      Compiler* compiler,
+      const se::StreamExecutor* stream_exec) const&& override;
 
   const HloModule* optimized_module() const override { return module_.get(); }
   std::unique_ptr<HloModule> consume_optimized_module() override {
@@ -395,7 +398,7 @@ class GpuThunkAotCompilationResult : public AotCompilationResult {
 
 absl::StatusOr<std::unique_ptr<Executable>>
 GpuThunkAotCompilationResult::LoadExecutable(
-    Compiler* compiler, const se::StreamExecutor* stream_exec) const {
+    Compiler* compiler, const se::StreamExecutor* stream_exec) const&& {
   // Recreate HloModule+HloModuleConfig from proto.
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<HloModule> hlo_module,
@@ -520,10 +523,23 @@ void CheckNotScheduled(HloModule* hlo_module) {
 void LogDebugOptions(HloModule* hlo_module) {
   // LOG_LINES is used instead of LOG since the message can exceed the
   // maximum line length, which results in the message being truncated.
-  XLA_VLOG_LINES(
-      1, absl::StrFormat("GpuCompilationEnvironment of hlo_module %s:\n%s",
-                         hlo_module->name(),
-                         hlo_module->config().debug_options().DebugString()));
+  //
+  // We are also printing all the fields, instead of the DebugString() because
+  // DebugString() does not print the default values of the fields. For example
+  // for all boolean fields, the default value is false, it will not be printed
+  // by DebugString() if the value is false. We however need that value to be
+  // printed, because our "default" values (defined in
+  // xla/debug_options_flags.cc) override the default values of the fields. If
+  // we set the "default" value of a field to be true in
+  // `debug_option_flags.cc`, and it is overridden by XLA_FLAGS to false, we
+  // will not see it in the DebugString(). So, we print all the fields.
+  if (VLOG_IS_ON(1)) {
+    XLA_VLOG_LINES(
+        1,
+        absl::StrFormat("GpuCompilationEnvironment of hlo_module %s:\n%s",
+                        hlo_module->name(),
+                        PrintAllFields(hlo_module->config().debug_options())));
+  }
 }
 
 AlgebraicSimplifierOptions LayoutInsensitiveAlgebraicSimplifierOptions(
@@ -1133,6 +1149,10 @@ absl::Status RunPostFusionPasses(
       combine_threshold_count,
       /*combine_by_dim=*/opts.xla_gpu_enable_reduce_scatter_combine_by_dim(),
       /*pointer_size=*/pointer_size);
+  pipeline.AddPass<CollectivePermuteCombiner>(
+      /*combine_threshold_in_bytes=*/
+      opts.xla_gpu_collective_permute_combine_threshold_bytes(),
+      combine_threshold_count);
 
   pipeline.AddPass<AllReduceContiguous>();
 
@@ -2559,9 +2579,19 @@ absl::Status GpuCompiler::RunPreSchedulingPasses(
     // Cost model analysis for compute.
     pipeline.AddPass<GpuCostModelStatsCollection>(gpu_device_info,
                                                   cost_analysis_options);
-    // Cost model analysis for collectives.
+    // S-curve model analysis for collectives.
     pipeline.AddPass<SolGpuCostModelStatsCollection>(gpu_device_info,
                                                      ShapeSizeBytesFunction());
+
+    // Perf tables model analysis for collectives.
+    if (std::string collective_perf_table_path =
+            module->config()
+                .debug_options()
+                .xla_gpu_experimental_collective_perf_table_path();
+        !collective_perf_table_path.empty()) {
+      pipeline.AddPass<CollectivePerfTableStatsCollection>(
+          collective_perf_table_path, gpu_device_info);
+    }
   }
   return pipeline.Run(module).status();
 }

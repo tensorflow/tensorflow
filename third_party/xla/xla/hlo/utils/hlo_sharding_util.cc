@@ -197,7 +197,7 @@ bool IsSubTilingOrEqualSharding(const Shape& potential_sharded_shape,
   // Different tiled ranks can't be compared (something is wrong, are the
   // shardings for different shapes?)
   if (tiled_data_rank != sharding.TiledDataRank() ||
-      tiled_data_rank != potential_sharded_shape.dimensions_size()) {
+      tiled_data_rank != potential_sharded_shape.rank()) {
     return false;
   }
 
@@ -2162,7 +2162,7 @@ std::optional<GatherScatterDims> GetGatherScatterBatchParallelDims(
     int concatenated_dims = 0;
     for (const HloInstruction* op : indices->operands()) {
       const int64_t num_indices_from_element =
-          op->shape().dimensions_size() > index_vector_dim
+          op->shape().rank() > index_vector_dim
               ? op->shape().dimensions(index_vector_dim)
               : 1;
       if (std::optional<int64_t> maybe_iota_dim =
@@ -2180,7 +2180,7 @@ std::optional<GatherScatterDims> GetGatherScatterBatchParallelDims(
     if (*maybe_iota_dim != index_vector_dim) {
       // This is a case of a single iota with index_dim being out of bounds.
       const int64_t num_indices_from_element =
-          indices->shape().dimensions_size() > index_vector_dim
+          indices->shape().rank() > index_vector_dim
               ? indices->shape().dimensions(index_vector_dim)
               : 1;
       index_parallel_in_dim.assign(num_indices_from_element, *maybe_iota_dim);

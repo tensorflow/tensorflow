@@ -222,7 +222,7 @@ absl::StatusOr<ScalarIndexedArray*> IndexedArrayAnalysis::FoldGatherOfGather(
 
   enum class IndexComponent { Ungathered, GatheredFirst, GatheredSecond };
 
-  std::vector<IndexComponent> simulated_index(a->shape().dimensions_size(),
+  std::vector<IndexComponent> simulated_index(a->shape().rank(),
                                               IndexComponent::Ungathered);
 
   // Simulate the first gather.
@@ -275,7 +275,7 @@ absl::StatusOr<ScalarIndexedArray*> IndexedArrayAnalysis::FoldGatherOfGather(
 absl::StatusOr<Analysis::Array*> IndexedArrayAnalysis::ComputeArrayForGather(
     const Shape& shape, const GatherDimensionNumbers& dim_numbers,
     absl::Span<const int64_t> slice_sizes, Array* source, Array* indices) {
-  if (dim_numbers.index_vector_dim() != indices->shape().dimensions_size()) {
+  if (dim_numbers.index_vector_dim() != indices->shape().rank()) {
     VLOG(3) << "ComputeArrayForGather: indices are not scalar";
     return nullptr;
   }
@@ -297,7 +297,7 @@ absl::StatusOr<Analysis::Array*> IndexedArrayAnalysis::ComputeArrayForGather(
   // dimensions -- for instance it cannot represent a gather that picks 5 [2,3]
   // arrays from an array of size [7,4,6].  We check that condition down below:
 
-  for (int64_t i = 0, e = source->shape().dimensions_size(); i < e; i++) {
+  for (int64_t i = 0, e = source->shape().rank(); i < e; i++) {
     if (i != dim_numbers.collapsed_slice_dims(0) &&
         source->shape().dimensions(i) != slice_sizes[i]) {
       VLOG(3) << "ComputeArrayForGather: slice_sizes[" << i
@@ -311,7 +311,7 @@ absl::StatusOr<Analysis::Array*> IndexedArrayAnalysis::ComputeArrayForGather(
 
   int64_t source_dim = dim_numbers.start_index_map(0);
   std::vector<int64_t> output_dims;
-  for (int64_t i = 0, e = shape.dimensions_size(); i < e; i++) {
+  for (int64_t i = 0, e = shape.rank(); i < e; i++) {
     if (!absl::c_binary_search(dim_numbers.offset_dims(), i)) {
       output_dims.push_back(i);
     }
@@ -498,7 +498,7 @@ IndexedArrayAnalysis::ReshapeToRemoveDegenerateDims(
 
   const Shape& source_shape = operand->source()->shape();
   DimensionVector new_source_shape_dims;
-  for (int64_t i = 0, e = source_shape.dimensions_size(); i < e; i++) {
+  for (int64_t i = 0, e = source_shape.rank(); i < e; i++) {
     if (i == operand->source_dim() || source_shape.dimensions(i) != 1) {
       new_source_shape_dims.push_back(source_shape.dimensions(i));
     }
@@ -520,7 +520,7 @@ IndexedArrayAnalysis::ReshapeToRemoveDegenerateDims(
   // will no longer be present.
   DimensionVector new_output_dims;
   int64_t degenerate_dims_seen = 0;
-  for (int64_t i = 0, e = shape.dimensions_size(); i < e; i++) {
+  for (int64_t i = 0, e = shape.rank(); i < e; i++) {
     if (shape.dimensions(i) == 1) {
       degenerate_dims_seen++;
     } else if (absl::c_linear_search(operand->output_dims(), i)) {
@@ -556,8 +556,7 @@ IndexedArrayAnalysis::ReshapeToAddDegenerateDims(
     // element is true iff the i'th component of the result index is an output
     // index.
 
-    absl::InlinedVector<bool, 6> output_dims_bitvector(
-        operand->shape().dimensions_size());
+    absl::InlinedVector<bool, 6> output_dims_bitvector(operand->shape().rank());
     for (int64_t output_dim : operand->output_dims()) {
       output_dims_bitvector[output_dim] = true;
     }
@@ -644,7 +643,7 @@ absl::StatusOr<ScalarIndexedArray*> IndexedArrayAnalysis::FoldReshapeOfGather(
   }
 
   DimensionVector degenerate_result_dims;
-  for (int64_t i = 0, e = shape.dimensions_size(); i < e; i++) {
+  for (int64_t i = 0, e = shape.rank(); i < e; i++) {
     if (shape.dimensions(i) == 1) {
       degenerate_result_dims.push_back(i);
     }
@@ -910,8 +909,8 @@ IndexedArrayAnalysis::ComputeArrayForElementwiseBinaryOp(HloOpcode opcode,
   // scalar-indexed node, we "simulate" the index transformation done by the
   // existing broadcast:
   enum class IndexComponent { Broadcasted, NotBroadcasted };
-  std::vector<IndexComponent> simulated_index(
-      broadcast_instr->shape().dimensions_size(), IndexComponent::Broadcasted);
+  std::vector<IndexComponent> simulated_index(broadcast_instr->shape().rank(),
+                                              IndexComponent::Broadcasted);
   for (int64_t broadcast_dim : broadcast_dims) {
     simulated_index[broadcast_dim] = IndexComponent::NotBroadcasted;
   }

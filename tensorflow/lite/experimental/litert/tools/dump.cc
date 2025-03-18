@@ -309,7 +309,7 @@ void Dump(const LiteRtModelT& model, std::ostream& out) {
 }
 
 void DumpOptions(const LiteRtOpT& op, std::ostream& out) {
-  auto& opts = detail::GetTflOptions(op);
+  auto& opts = litert::internal::GetTflOptions(op);
   if (opts.value == nullptr) {
     out << "null options\n";
     return;

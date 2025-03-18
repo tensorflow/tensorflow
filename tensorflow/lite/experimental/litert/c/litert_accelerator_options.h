@@ -30,7 +30,8 @@ typedef struct LiteRtAcceleratorCompilationOptionsHeader*
 LiteRtStatus LiteRtGetNextAcceleratorCompilationOptions(
     LiteRtAcceleratorCompilationOptions* accelerator_options);
 
-// Appends a new compilation option object to the list.
+// Appends a new compilation option object to the list and takes ownership of
+// the appended object.
 //
 // This goes through the links in the option list and appends the given link.
 //

@@ -9,6 +9,7 @@ package(
         "//learning/brain/mlir/quantization:__subpackages__",
         "//tensorflow/compiler/mlir/lite:__subpackages__",
         "//tensorflow/compiler/mlir/quantization:__subpackages__",
+        "//tensorflow/compiler/mlir/stablehlo:__subpackages__",
     ],
     licenses = ["notice"],
 )

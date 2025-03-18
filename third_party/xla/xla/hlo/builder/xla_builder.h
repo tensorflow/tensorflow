@@ -2084,9 +2084,9 @@ XlaOp Collapse(XlaOp operand, absl::Span<const int64_t> dimensions);
 // Enqueues a slice operation onto the computation that slices the operand
 // from the start indices to the limit indices; e.g.
 //
-//        x
+//        y
 //   [ 0 1 2 3 ]
-// y [ 4 5 6 7 ] => slice(start={1, 1}, limit={2, 3}) => [ 5 6 ]
+// x [ 4 5 6 7 ] => slice(start={1, 1}, limit={2, 3}) => [ 5 6 ]
 //   [ 8 9 a b ]
 //
 // Note that "limit" means up-to-but-not-including; i.e. [start, limit) in 1D

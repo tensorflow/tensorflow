@@ -100,7 +100,7 @@ bool EvenlyPartitions(const Shape& shape, const HloSharding& sharding) {
   if (sharding.IsTileMaximal()) {
     return sharding.IsReplicated();
   }
-  for (int64_t i = 0; i < shape.dimensions_size(); ++i) {
+  for (int64_t i = 0; i < shape.rank(); ++i) {
     if (shape.dimensions(i) % sharding.tile_assignment().dim(i) != 0) {
       return false;
     }
@@ -1682,7 +1682,7 @@ std::optional<int64_t> GetKValueInTopKWhenPartitionSortDim(
       supported = false;
       break;
     }
-    for (int64_t dim = 0; dim < data->shape().dimensions_size(); dim++) {
+    for (int64_t dim = 0; dim < data->shape().rank(); dim++) {
       if (dim == sort_dim) {
         continue;
       }
@@ -1716,8 +1716,7 @@ std::optional<int64_t> GetKValueInTopKWhenPartitionSortDim(
   }
 
   // Check if partitioned at sort dimension.
-  for (int64_t dim = 0; dim < sort->shape().tuple_shapes(0).dimensions_size();
-       ++dim) {
+  for (int64_t dim = 0; dim < sort->shape().tuple_shapes(0).rank(); ++dim) {
     if (sharding.tile_assignment().dim(dim) > 1) {
       if (dim != sort_dim) {
         return std::nullopt;
@@ -1747,9 +1746,9 @@ HloInstruction* SliceFirstK(HloInstruction* hlo, SpmdBuilder* builder,
                             int64_t slice_dim, int64_t k) {
   const Shape& hlo_shape = hlo->shape();
   auto hlo_dims = hlo_shape.dimensions();
-  std::vector<int64_t> start_indices(hlo_shape.dimensions_size(), 0);
+  std::vector<int64_t> start_indices(hlo_shape.rank(), 0);
   std::vector<int64_t> limit_indices(hlo_dims.begin(), hlo_dims.end());
-  std::vector<int64_t> strides(hlo_shape.dimensions_size(), 1);
+  std::vector<int64_t> strides(hlo_shape.rank(), 1);
   limit_indices[slice_dim] = k;
   auto output_shape = hlo_shape;
   output_shape.set_dimensions(slice_dim, k);
@@ -2113,7 +2112,7 @@ HloSharding CreateMatchingShardingOnDims(
   if (source_sharding.IsReplicated()) {
     return HloSharding::Replicate();
   }
-  absl::InlinedVector<int64_t, 4> tile_dims(target_shape.dimensions_size(), 1);
+  absl::InlinedVector<int64_t, 4> tile_dims(target_shape.rank(), 1);
   int num_tiles = 1;
   for (int i = 0, end = target_dims.size(); i < end; ++i) {
     num_tiles *= source_sharding.tile_assignment().dim(source_dims[i]);

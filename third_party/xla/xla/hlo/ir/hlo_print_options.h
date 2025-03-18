@@ -62,7 +62,7 @@ class HloPrintOptions {
         compact_operands_(false),
         include_layout_in_shapes_(true),
         print_result_shape_(true),
-        print_operand_shape_(true),
+        print_operand_shape_(false),
         print_operand_names_(true),
         print_program_shape_(true),
         print_percent_(true),

@@ -72,6 +72,7 @@ void LiteRtDestroyCompilerPlugin(LiteRtCompilerPlugin compiler_plugin) {
 // Leverage the convert_type PartitionViaCapabilties algorithm for partitioning
 // implementation.
 LiteRtStatus LiteRtCompilerPluginPartition(LiteRtCompilerPlugin compiler_plugin,
+                                           const char* soc_model,
                                            LiteRtSubgraph subgraph,
                                            LiteRtOpList selected_ops) {
   ExampleTensorAllocator tensor_alloc;

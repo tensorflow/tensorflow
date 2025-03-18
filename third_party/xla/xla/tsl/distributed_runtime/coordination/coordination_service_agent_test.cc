@@ -146,6 +146,9 @@ class TestCoordinationClient : public CoordinationClient {
               (const GetTaskStateRequest*, GetTaskStateResponse*,
                StatusCallback),
               (override));
+  MOCK_METHOD(void, GetJobStateAsync,
+              (const GetJobStateRequest*, GetJobStateResponse*, StatusCallback),
+              (override));
   MOCK_METHOD(void, HeartbeatAsync,
               (CallOptions*, const HeartbeatRequest*, HeartbeatResponse*,
                StatusCallback),

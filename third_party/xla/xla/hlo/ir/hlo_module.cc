@@ -90,6 +90,14 @@ HloModule::HloModule(const std::string& name,
   metadata_.set_canonical_module_id(unique_id_);
 }
 
+HloModule::~HloModule() {
+  // To avoid dangling references between computations, we first clear all the
+  // inter-computation references before deleting any of the computations.
+  for (const auto& computation : computations_) {
+    computation->ClearCalledComputations();
+  }
+}
+
 absl::Status HloModule::set_schedule(HloSchedule schedule) {
   TF_RET_CHECK(schedule.module() == this);
   TF_RETURN_IF_ERROR(schedule.Verify());
@@ -180,6 +188,17 @@ HloComputation* HloModule::AddComputationInternal(
   }
 
   computation->set_parent(this);
+  topological_sort_.AddNode(computation.get());
+  for (auto& [caller, count] : computation->caller_computations_) {
+    if (caller->parent() == this) {
+      topological_sort_.AddEdge(caller, computation.get());
+    }
+  }
+  for (auto& [callee, count] : computation->callee_computations_) {
+    if (callee->parent() == this) {
+      topological_sort_.AddEdge(computation.get(), callee);
+    }
+  }
   computations_.push_back(std::move(computation));
   return computations_.back().get();
 }
@@ -202,6 +221,7 @@ absl::Status HloModule::RemoveEmbeddedComputation(HloComputation* to_remove) {
   if (has_schedule()) {
     schedule_->remove_computation(to_remove);
   }
+  topological_sort_.RemoveNode(to_remove);
 
   auto it = absl::c_find_if(
       computations_, [&to_remove](const std::unique_ptr<HloComputation>& comp) {
@@ -253,6 +273,7 @@ void HloModule::MoveComputationsFrom(HloModule* module,
     if (computation_raw_ptr->IsEntryComputation()) {
       this->entry_computation_ = nullptr;
     }
+    module->topological_sort_.RemoveNode(computation_raw_ptr);
     this->AddComputationInternal(
         std::move(module->computations_[i]),
         /*is_entry=*/computation_raw_ptr->IsEntryComputation(),
@@ -339,6 +360,8 @@ void HloModule::ReplaceComputations(
 
     if (replacements.find(computation.get()) == replacements.end()) {
       new_computations.push_back(std::move(computation));
+    } else {
+      topological_sort_.RemoveNode(computation.get());
     }
   }
 
@@ -357,7 +380,6 @@ void HloModule::Print(Printer* printer, const HloPrintOptions& options) const {
     printer->Append(name());
   }
   if (has_schedule()) {
-    TF_CHECK_OK(schedule().Verify());
     printer->Append(", is_scheduled=true");
   }
   std::string serialized_aliasing = input_output_alias_config().ToShortString();
@@ -413,9 +435,14 @@ void HloModule::Print(Printer* printer, const HloPrintOptions& options) const {
               FrontendAttributesToString(frontend_attributes_));
   }
   printer->Append("\n\n");
-  const auto& computations = options.canonicalize_computations()
-                                 ? MakeComputationSorted()
-                                 : MakeComputationPostOrder();
+  // We use a DFS postorder traversal to ensure that computations are printed
+  // more consistently run to run. Even thet non-dfs postorder is deterministic,
+  // but exactly which topological ordering it yields depends on the order in
+  // which the module was constructed.
+  const auto& computations =
+      options.canonicalize_computations()
+          ? MakeComputationSorted()
+          : MakeComputationPostOrder(/*dfs_postorder=*/true);
   for (const HloComputation* computation : computations) {
     // Don't print async computations when the syntax sugar is enabled since
     // that is redundant information.
@@ -939,9 +966,10 @@ int64_t HloModule::instruction_count() const {
 
 std::vector<HloComputation*> HloModule::MakeComputationPostOrder(
     const absl::flat_hash_set<absl::string_view>& execution_threads,
-    const absl::flat_hash_set<HloComputation*>& allow_list) const {
+    const absl::flat_hash_set<HloComputation*>& allow_list,
+    bool dfs_postorder) const {
   std::vector<HloComputation*> post_order =
-      this->MakeComputationPostOrder(execution_threads);
+      this->MakeComputationPostOrder(execution_threads, dfs_postorder);
 
   post_order.erase(std::remove_if(post_order.begin(), post_order.end(),
                                   [&allow_list](HloComputation* computation) {
@@ -953,69 +981,104 @@ std::vector<HloComputation*> HloModule::MakeComputationPostOrder(
 }
 
 std::vector<HloComputation*> HloModule::MakeComputationPostOrder(
-    const absl::flat_hash_set<absl::string_view>& execution_threads) const {
+    const absl::flat_hash_set<absl::string_view>& execution_threads,
+    bool dfs_postorder) const {
   if (computations_.empty()) {
     return {};
   }
-  // First determine all root computations by building a set of non-root
-  // computations (computations which are called by an instruction in the
-  // module).
-  absl::flat_hash_set<HloComputation*> nonroot_computations;
-  nonroot_computations.reserve(computations_.size() - 1);
-  for (auto& computation : computations_) {
-    for (const HloInstructionInfo& inst :
-         computation->instructions_with_info()) {
-      if (HloInstruction::MightHaveCalledComputations(inst.opcode())) {
-        for (HloComputation* called_computation : inst->called_computations()) {
-          nonroot_computations.insert(called_computation);
+
+  if (dfs_postorder) {
+    // First determine all root computations by building a set of non-root
+    // computations (computations which are called by an instruction in the
+    // module).
+    absl::flat_hash_set<HloComputation*> nonroot_computations;
+    nonroot_computations.reserve(computations_.size() - 1);
+    for (auto& computation : computations_) {
+      for (const HloInstructionInfo& inst :
+           computation->instructions_with_info()) {
+        if (HloInstruction::MightHaveCalledComputations(inst.opcode())) {
+          for (HloComputation* called_computation :
+               inst->called_computations()) {
+            nonroot_computations.insert(called_computation);
+          }
         }
       }
     }
-  }
 
-  // Keep track of computations which have already been added to the post
-  // order. This prevents duplication as an embedded computation may be called
-  // from two different root computations.
-  absl::flat_hash_set<HloComputation*> added_computations;
-  std::vector<HloComputation*> post_order;
-  added_computations.reserve(computations_.size());
-  post_order.reserve(computations_.size());
-  for (auto& computation : computations_) {
-    if (nonroot_computations.contains(computation.get())) {
-      continue;
+    // Keep track of computations which have already been added to the post
+    // order. This prevents duplication as an embedded computation may be called
+    // from two different root computations.
+    absl::flat_hash_set<HloComputation*> added_computations;
+    std::vector<HloComputation*> post_order;
+    added_computations.reserve(computations_.size());
+    post_order.reserve(computations_.size());
+    for (auto& computation : computations_) {
+      if (nonroot_computations.contains(computation.get())) {
+        continue;
+      }
+      for (HloComputation* embedded_computation :
+           computation->MakeEmbeddedComputationsList()) {
+        if (added_computations.insert(embedded_computation).second) {
+          post_order.push_back(embedded_computation);
+        }
+      }
+      // Root computations should only be encountered once.
+      CHECK(!added_computations.contains(computation.get()));
+      post_order.push_back(computation.get());
+      added_computations.insert(computation.get());
     }
-    for (HloComputation* embedded_computation :
-         computation->MakeEmbeddedComputationsList()) {
-      if (added_computations.insert(embedded_computation).second) {
-        post_order.push_back(embedded_computation);
+    if (post_order.size() != computations_.size()) {
+      for (HloComputation* computation : post_order) {
+        LOG(ERROR) << "Post Order: " << computation->name() << " ("
+                   << computation->parent()->name() << ")";
+      }
+      for (auto& computation : computations_) {
+        LOG(ERROR) << "Computations: " << computation->name() << " ("
+                   << computation->parent()->name() << ")";
+      }
+      LOG(FATAL) << "Mismatch computation count: post_order="
+                 << post_order.size()
+                 << " computation_count=" << computations_.size();
+    }
+    if (!execution_threads.empty()) {
+      post_order.erase(std::remove_if(post_order.begin(), post_order.end(),
+                                      [&](HloComputation* computation) {
+                                        return !execution_threads.contains(
+                                            computation->execution_thread());
+                                      }),
+                       post_order.end());
+    }
+    return post_order;
+  } else {
+    // The topological sort is a reverse post-order, reverse it so we get a
+    // post-order.
+    std::vector<HloComputation*> post_order;
+    post_order.reserve(computations_.size());
+    int num_computations = 0;
+    for (auto it = topological_sort_.rbegin(); it != topological_sort_.rend();
+         ++it) {
+      ++num_computations;
+      if (execution_threads.empty() ||
+          execution_threads.contains(it->execution_thread())) {
+        post_order.push_back(&*it);
       }
     }
-    // Root computations should only be encountered once.
-    CHECK(!added_computations.contains(computation.get()));
-    post_order.push_back(computation.get());
-    added_computations.insert(computation.get());
-  }
-  if (post_order.size() != computations_.size()) {
-    for (HloComputation* computation : post_order) {
-      LOG(ERROR) << "Post Order: " << computation->name() << " ("
-                 << computation->parent()->name() << ")";
+
+    if (num_computations != computations_.size()) {
+      for (HloComputation& computation : topological_sort_) {
+        LOG(ERROR) << "Reverse postorder: " << computation.name() << " ("
+                   << computation.parent()->name() << ")";
+      }
+      for (auto& computation : computations_) {
+        LOG(ERROR) << "Computations: " << computation->name() << " ("
+                   << computation->parent()->name() << ")";
+      }
+      LOG(FATAL) << "Mismatch computation count: post_order="
+                 << post_order.size()
+                 << " computation_count=" << computations_.size();
     }
-    for (auto& computation : computations_) {
-      LOG(ERROR) << "Computations: " << computation->name() << " ("
-                 << computation->parent()->name() << ")";
-    }
-    LOG(FATAL) << "Mismatch computation count: post_order=" << post_order.size()
-               << " computation_count=" << computations_.size();
+    return post_order;
   }
-  if (!execution_threads.empty()) {
-    post_order.erase(std::remove_if(post_order.begin(), post_order.end(),
-                                    [&](HloComputation* computation) {
-                                      return !execution_threads.contains(
-                                          computation->execution_thread());
-                                    }),
-                     post_order.end());
-  }
-  return post_order;
 }
 
 namespace {

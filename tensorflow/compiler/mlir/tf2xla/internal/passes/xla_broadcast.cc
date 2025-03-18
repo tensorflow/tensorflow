@@ -58,7 +58,6 @@ namespace internal {
 namespace {
 
 using llvm::dyn_cast;
-using mlir::Attribute;
 using mlir::Block;
 using mlir::BlockArgument;
 using mlir::DenseIntElementsAttr;
@@ -78,7 +77,6 @@ using mlir::ValueRange;
 using mlir::WalkResult;
 using mlir::func::FuncOp;
 using mlir::TF::ConstOp;
-using mlir::TF::FillOp;
 using mlir::TF::IdentityOp;
 using mlir::TF::ShapeAttr;
 using mlir::TF::TPUDummyInputOp;

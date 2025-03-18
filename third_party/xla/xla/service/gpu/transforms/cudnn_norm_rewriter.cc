@@ -826,7 +826,7 @@ auto F1(UniqueHloInstruction* x, UniqueHloInstruction* x_center,
                                        .GetAsDouble({})
                                        .value();
     int64_t nelems = 1;
-    for (int i = 0; i < instr->shape().dimensions_size(); ++i) {
+    for (int i = 0; i < instr->shape().rank(); ++i) {
       if (!absl::c_linear_search(instr->dimensions(), i)) {
         nelems *= instr->shape().dimensions()[i];
       }
@@ -992,8 +992,7 @@ class CudnnNormRewriterVisitor : public DfsHloRewriteVisitor {
                                      reduce->dimensions().end());
       std::vector<int64_t> norm_dims_adjusted = AdjustedDimensions(reduce);
       if (norm_dims_adjusted.size() !=
-          ShapeUtil::DropDegenerateDimensions(scale->shape())
-              .dimensions_size()) {
+          ShapeUtil::DropDegenerateDimensions(scale->shape()).rank()) {
         VLOG(1) << "Layer norm input dimensions not supported.";
         return absl::OkStatus();
       }
@@ -1348,7 +1347,7 @@ class CudnnNormRewriterVisitor : public DfsHloRewriteVisitor {
       // broadcasted dimensions.
       float actual_r_nelems = scalar->literal().GetAsDouble({}).value();
       int64_t nelems = 1;
-      for (int i = 0; i < broadcast->shape().dimensions_size(); ++i) {
+      for (int i = 0; i < broadcast->shape().rank(); ++i) {
         if (!absl::c_linear_search(broadcast->dimensions(), i)) {
           nelems *= broadcast->shape().dimensions()[i];
         }

@@ -69,11 +69,11 @@ class IsOkMatcher {
   template <class T>
   // NOLINTNEXTLINE(*-explicit-constructor): This needs to be implicit.
   operator testing::Matcher<T>() const {
-    return ::testing::Matcher<T>(new Impl<const T&>());
+    return testing::Matcher<T>(new Impl<const T&>());
   }
 
   template <class V>
-  class Impl : public ::testing::MatcherInterface<V> {
+  class Impl : public testing::MatcherInterface<V> {
     template <class T>
     bool MatchAndExplainImpl(const ::litert::Expected<T>& value,
                              testing::MatchResultListener* listener) const {
@@ -164,7 +164,7 @@ class IsErrorMatcher {
   template <class T>
   // NOLINTNEXTLINE(*-explicit-constructor): This needs to be implicit.
   operator testing::Matcher<T>() const {
-    return ::testing::Matcher<T>(new Impl<const T&>(impl_));
+    return testing::Matcher<T>(new Impl<const T&>(impl_));
   }
 
  private:
@@ -243,7 +243,7 @@ class IsErrorMatcher {
   };
 
   template <class V>
-  class Impl : public ::testing::MatcherInterface<V>, ImplBase {
+  class Impl : public testing::MatcherInterface<V>, ImplBase {
    public:
     using is_gtest_matcher = void;
 
@@ -334,6 +334,9 @@ inline IsErrorMatcher IsError(LiteRtStatus status, std::string msg) {
 #if defined(LITERT_DEFINE_GTEST_STATUS_PRINTER) && !defined(GTEST_USE_ABSL)
 #include "absl/strings/str_format.h"
 
+// GTest documentation explicitly states that functions the those below must
+// live in the same namespace as the classes they are used with so that GTest
+// can find them through ADL.
 namespace litert {
 
 inline void PrintTo(const Error& error, std::ostream* os) {

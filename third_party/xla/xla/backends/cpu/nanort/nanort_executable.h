@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "xla/backends/cpu/alignment.h"
+#include "xla/backends/cpu/runtime/thread_pool_task_runner.h"
 #include "xla/service/executable.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/concurrency/chain.h"
@@ -54,7 +55,7 @@ class NanoRtExecutable {
 
   class ExecuteOptions {
    public:
-    ExecuteOptions() : intra_op_thread_pool_(nullptr) {}
+    ExecuteOptions() : intra_op_thread_pool_(nullptr), task_runner_(nullptr) {}
     // Sets the thread pool device on which to run Eigen subcomputations.
     //
     // This field must be set for XLA:CPU models that call Eigen routines, but
@@ -67,9 +68,11 @@ class NanoRtExecutable {
         const Eigen::ThreadPoolDevice* intra_op_thread_pool);
 
     const Eigen::ThreadPoolDevice* intra_op_thread_pool() const;
+    ThreadPoolTaskRunner* task_runner() const;
 
    private:
     const Eigen::ThreadPoolDevice* intra_op_thread_pool_;
+    std::unique_ptr<ThreadPoolTaskRunner> task_runner_;
   };
 
   // A non-owning read-only view into the XLA executable's argument buffer.
@@ -130,13 +133,13 @@ class NanoRtExecutable {
   tsl::AsyncValueRef<ExecuteEvent> Execute(absl::Span<const Argument> arguments,
                                            absl::Span<const Result> results,
                                            PreallocatedTemp temp = {},
-                                           ExecuteOptions options = {});
+                                           const ExecuteOptions& options = {});
 
   template <size_t n>
   tsl::AsyncValueRef<ExecuteEvent> Execute(absl::Span<const Argument> arguments,
                                            absl::Span<const Result> results,
                                            ManagedTemp<n>& temp,
-                                           ExecuteOptions options = {}) {
+                                           const ExecuteOptions& options = {}) {
     return Execute(arguments, results, temp.data(), std::move(options));
   }
 

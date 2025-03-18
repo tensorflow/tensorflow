@@ -42,6 +42,7 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringSwitch.h"
 #include "llvm/Support/Debug.h"
+#include "llvm/Support/LogicalResult.h"
 #include "mlir/Dialect/Affine/Analysis/LoopAnalysis.h"  // from @llvm-project
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
@@ -1499,6 +1500,32 @@ struct RemoveIdentity : public OpRewritePattern<TF::IdentityOp> {
   }
 };
 
+llvm::FailureOr<TF::FakeQuantWithMinMaxVarsOp> TryGetAncestorFakeQuantOp(
+    Operation *operand) {
+  if (auto fq =
+          mlir::dyn_cast_or_null<TF::FakeQuantWithMinMaxVarsOp>(operand)) {
+    return fq;
+  }
+
+  auto dq = mlir::dyn_cast_or_null<TFL::DequantizeOp>(operand);
+  if (!dq) {
+    return failure();
+  }
+
+  auto q =
+      mlir::dyn_cast_or_null<TFL::QuantizeOp>(dq.getInput().getDefiningOp());
+  if (!q) {
+    return failure();
+  }
+
+  if (auto fq = mlir::dyn_cast_or_null<TF::FakeQuantWithMinMaxVarsOp>(
+          q.getInput().getDefiningOp())) {
+    return fq;
+  }
+
+  return failure();
+}
+
 // Quantizes Concat ops where the inputs are quantized with fake quant but the
 // result is not explicitly quantized. Without this, later quantization passes
 // handle the quantization of the concat op incorrectly.
@@ -1523,22 +1550,11 @@ class QuantizeConcatResult : public OpRewritePattern<TF::ConcatV2Op> {
     // fake quants.
     llvm::SmallVector<TF::FakeQuantWithMinMaxVarsOp> fake_quant_ops;
     for (Value operand_value : concat.getValues()) {
-      auto dq = mlir::dyn_cast_or_null<TFL::DequantizeOp>(
-          operand_value.getDefiningOp());
-
-      if (!dq) {
+      auto fq_or = TryGetAncestorFakeQuantOp(operand_value.getDefiningOp());
+      if (failed(fq_or)) {
         return failure();
       }
-
-      auto q = mlir::dyn_cast_or_null<TFL::QuantizeOp>(
-          dq.getInput().getDefiningOp());
-
-      if (!q) {
-        return failure();
-      }
-
-      auto fq = mlir::dyn_cast_or_null<TF::FakeQuantWithMinMaxVarsOp>(
-          q.getInput().getDefiningOp());
+      auto fq = fq_or.value();
 
       if (!fq) {
         return failure();
@@ -1635,30 +1651,11 @@ class QuantizeMeanResult : public OpRewritePattern<TF::MeanOp> {
       }
     }
 
-    // At this point, all pre-existing FakeQuantWithMinMaxVarsOps should have
-    // had qdq ops generated so we'll need to follow up the chain to get to the
-    // fake quants.
-    Value operand_value = mean.getInput();
-    auto dq = mlir::dyn_cast_or_null<TFL::DequantizeOp>(
-        operand_value.getDefiningOp());
-
-    if (!dq) {
+    auto fq_or = TryGetAncestorFakeQuantOp(mean.getInput().getDefiningOp());
+    if (failed(fq_or)) {
       return failure();
     }
-
-    auto q =
-        mlir::dyn_cast_or_null<TFL::QuantizeOp>(dq.getInput().getDefiningOp());
-
-    if (!q) {
-      return failure();
-    }
-
-    auto fq = mlir::dyn_cast_or_null<TF::FakeQuantWithMinMaxVarsOp>(
-        q.getInput().getDefiningOp());
-
-    if (!fq) {
-      return failure();
-    }
+    auto fq = fq_or.value();
 
     Value mean_result = mean.getResult();
     llvm::SmallVector<OpOperand *> uses;

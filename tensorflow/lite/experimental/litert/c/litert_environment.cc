@@ -16,7 +16,11 @@
 
 #include "absl/types/span.h"
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
+#include "tensorflow/lite/experimental/litert/c/litert_environment_options.h"
+#include "tensorflow/lite/experimental/litert/cc/litert_macros.h"
 #include "tensorflow/lite/experimental/litert/core/environment.h"
+#include "tensorflow/lite/experimental/litert/runtime/accelerators/auto_registration.h"
+#include "tensorflow/lite/experimental/litert/runtime/gpu_environment.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -25,12 +29,12 @@ extern "C" {
 LiteRtStatus LiteRtEnvironmentCreate(int num_options,
                                      const LiteRtEnvOption* options,
                                      LiteRtEnvironment* environment) {
-  auto status = LiteRtEnvironmentT::CreateWithOptions(
-      absl::MakeSpan(options, num_options));
-  if (!status) {
-    return status.Error().Status();
-  }
-  *environment = status->release();
+  LITERT_RETURN_IF_ERROR(environment != nullptr,
+                         kLiteRtStatusErrorInvalidArgument);
+  LITERT_ASSIGN_OR_RETURN(auto env, LiteRtEnvironmentT::CreateWithOptions(
+                                        absl::MakeSpan(options, num_options)));
+  litert::TriggerAcceleratorAutomaticRegistration(*env);
+  *environment = env.release();
   return kLiteRtStatusOk;
 }
 
@@ -38,6 +42,26 @@ void LiteRtDestroyEnvironment(LiteRtEnvironment environment) {
   if (environment != nullptr) {
     delete environment;
   }
+}
+
+LiteRtStatus LiteRtGetEnvironmentOptions(LiteRtEnvironment environment,
+                                         LiteRtEnvironmentOptions* options) {
+  LITERT_RETURN_IF_ERROR(
+      environment, litert::ErrorStatusBuilder(kLiteRtStatusErrorInvalidArgument)
+                       << "Environment pointer is null.");
+  LITERT_RETURN_IF_ERROR(
+      options, litert::ErrorStatusBuilder(kLiteRtStatusErrorInvalidArgument)
+                   << "Options pointer is null.");
+  *options = &environment->GetOptions();
+  return kLiteRtStatusOk;
+}
+
+LiteRtStatus LiteRtGpuGlobalEnvironmentCreate(int num_options,
+                                              const LiteRtEnvOption* options) {
+  LITERT_ASSIGN_OR_RETURN(auto env, LiteRtEnvironmentT::CreateWithOptions(
+                                        absl::MakeSpan(options, num_options)));
+  litert::internal::GpuEnvironmentSingleton::Create(env.release());
+  return kLiteRtStatusOk;
 }
 
 #ifdef __cplusplus

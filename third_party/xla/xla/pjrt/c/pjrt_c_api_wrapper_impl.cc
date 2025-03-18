@@ -823,7 +823,7 @@ PJRT_Error* PJRT_Client_Compile(PJRT_Client_Compile_Args* args) {
   PJRT_ASSIGN_OR_RETURN(std::unique_ptr<xla::PjRtLoadedExecutable> executable,
                         std::visit(
                             [args, &options](auto& program) {
-                              return args->client->client->Compile(
+                              return args->client->client->CompileAndLoad(
                                   UnpackPjrtProgram(program), options);
                             },
                             module_or_hlo));

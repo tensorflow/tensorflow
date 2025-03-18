@@ -36,14 +36,7 @@ using testing::Pointwise;
 namespace litert {
 namespace {
 
-TEST(CompiledModelGpuTest, Basic) {
-  // MSAN does not support GPU tests.
-#if defined(MEMORY_SANITIZER) || defined(THREAD_SANITIZER)
-  GTEST_SKIP() << "GPU tests are not supported in MSAN";
-#endif
-  // To workaround the memory leak in Nvidia's driver
-  absl::LeakCheckDisabler disable_leak_check;
-
+void BasicTest() {
   auto model = testing::LoadTestFileModel(kModelFileName);
   ASSERT_TRUE(model);
 
@@ -100,6 +93,30 @@ TEST(CompiledModelGpuTest, Basic) {
     }
     EXPECT_THAT(output, Pointwise(FloatNear(1e-5), kTestOutputTensor));
   }
+}
+
+TEST(CompiledModelGpuTest, Basic) {
+  // MSAN does not support GPU tests.
+#if defined(MEMORY_SANITIZER) || defined(THREAD_SANITIZER)
+  GTEST_SKIP() << "GPU tests are not supported in MSAN";
+#endif
+  // To workaround the memory leak in Nvidia's driver
+  absl::LeakCheckDisabler disable_leak_check;
+
+  BasicTest();
+}
+
+TEST(CompiledModelGpuTest, Basic2nd) {
+  // MSAN does not support GPU tests.
+#if defined(MEMORY_SANITIZER) || defined(THREAD_SANITIZER)
+  GTEST_SKIP() << "GPU tests are not supported in MSAN";
+#endif
+  // To workaround the memory leak in Nvidia's driver
+  absl::LeakCheckDisabler disable_leak_check;
+
+  // Run the test twice to verify that the CL environment is shared between
+  // instances.
+  BasicTest();
 }
 
 }  // namespace

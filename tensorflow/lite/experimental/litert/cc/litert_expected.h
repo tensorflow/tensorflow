@@ -174,24 +174,45 @@ class Expected {
 
   Expected& operator=(Expected&& other) {
     if (this != &other) {
-      this->~Expected();
-      has_value_ = other.has_value_;
       if (HasValue()) {
-        value_ = std::move(other.Value());
+        if (other.HasValue()) {
+          value_ = std::move(other.value_);
+        } else {
+          value_.~T();
+          ConstructAt(std::addressof(unexpected_),
+                      std::move(other.unexpected_));
+        }
       } else {
-        unexpected_ = std::move(other.unexpected_);
+        if (other.HasValue()) {
+          unexpected_.~Unexpected();
+          ConstructAt(std::addressof(value_), std::move(other.value_));
+        } else {
+          unexpected_ = std::move(other.unexpected_);
+        }
       }
+      has_value_ = other.has_value_;
     }
     return *this;
   }
 
   Expected& operator=(const Expected& other) {
-    ~Expected();
-    has_value_ = other.has_value_;
-    if (HasValue()) {
-      value_ = other.value_;
-    } else {
-      unexpected_ = other.unexpected_;
+    if (this != &other) {
+      if (HasValue()) {
+        if (other.HasValue()) {
+          value_ = other.value_;
+        } else {
+          value_.~T();
+          ConstructAt(std::addressof(unexpected_), other.unexpected_);
+        }
+      } else {
+        if (other.HasValue()) {
+          unexpected_.~Unexpected();
+          ConstructAt(std::addressof(value_), other.value_);
+        } else {
+          unexpected_ = other.unexpected_;
+        }
+      }
+      has_value_ = other.has_value_;
     }
     return *this;
   }

@@ -37,9 +37,9 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
+#include "xla/backends/gpu/runtime/collective_thunk.h"
 #include "xla/backends/gpu/runtime/custom_call_thunk.h"
 #include "xla/backends/gpu/runtime/dynamic_slice_thunk.h"
-#include "xla/backends/gpu/runtime/nccl_collective_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/ffi/api/c_api.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -967,7 +967,7 @@ class CollectiveCmd : public CommandBufferCmd {
   CollectiveCmd(CommandBufferCmdType cmd_type,
                 ExecutionStreamId execution_stream_id,
                 ExecutionStreamId async_from_stream_id,
-                NcclCollectiveConfig config);
+                CollectiveConfig config);
 
   absl::Status Prepare(
       const Thunk::PrepareParams& params,
@@ -1001,11 +1001,11 @@ class CollectiveCmd : public CommandBufferCmd {
       const CommandBufferCmd::RecordParams& record_params);
 
  protected:
-  const NcclCollectiveConfig& config() const { return config_; }
+  const CollectiveConfig& config() const { return config_; }
 
  private:
   ExecutionStreamId async_from_stream_id_;
-  NcclCollectiveConfig config_;
+  CollectiveConfig config_;
 };
 
 //===----------------------------------------------------------------------===//
@@ -1015,9 +1015,9 @@ class CollectiveCmd : public CommandBufferCmd {
 class AllReduceCmd : public CollectiveCmd {
  public:
   AllReduceCmd(ExecutionStreamId execution_stream_id,
-               ExecutionStreamId async_from_stream_id,
-               NcclCollectiveConfig config, ReductionKind reduction_kind,
-               absl::Span<const NcclCollectiveThunk::Buffer> buffers);
+               ExecutionStreamId async_from_stream_id, CollectiveConfig config,
+               ReductionKind reduction_kind,
+               absl::Span<const CollectiveThunk::Buffer> buffers);
 
   absl::Status Record(const Thunk::ExecuteParams& execute_params,
                       const RecordParams& record_params,
@@ -1031,7 +1031,7 @@ class AllReduceCmd : public CollectiveCmd {
 
  private:
   ReductionKind reduction_kind_;
-  std::vector<NcclCollectiveThunk::Buffer> buffers_;
+  std::vector<CollectiveThunk::Buffer> buffers_;
 };
 
 //===----------------------------------------------------------------------===//
@@ -1042,8 +1042,8 @@ class ReduceScatterCmd : public CollectiveCmd {
  public:
   ReduceScatterCmd(ExecutionStreamId execution_stream_id,
                    ExecutionStreamId async_from_stream_id,
-                   NcclCollectiveConfig config, ReductionKind reduction_kind,
-                   absl::Span<const NcclCollectiveThunk::Buffer> buffers);
+                   CollectiveConfig config, ReductionKind reduction_kind,
+                   absl::Span<const CollectiveThunk::Buffer> buffers);
 
   absl::Status Record(const Thunk::ExecuteParams& execute_params,
                       const RecordParams& record_params,
@@ -1057,7 +1057,7 @@ class ReduceScatterCmd : public CollectiveCmd {
 
  private:
   ReductionKind reduction_kind_;
-  std::vector<NcclCollectiveThunk::Buffer> buffers_;
+  std::vector<CollectiveThunk::Buffer> buffers_;
 };
 
 //===----------------------------------------------------------------------===//
@@ -1067,9 +1067,9 @@ class ReduceScatterCmd : public CollectiveCmd {
 class AllToAllCmd : public CollectiveCmd {
  public:
   AllToAllCmd(ExecutionStreamId execution_stream_id,
-              ExecutionStreamId async_from_stream_id,
-              NcclCollectiveConfig config, bool has_split_dimension,
-              absl::Span<const NcclCollectiveThunk::Buffer> buffers);
+              ExecutionStreamId async_from_stream_id, CollectiveConfig config,
+              bool has_split_dimension,
+              absl::Span<const CollectiveThunk::Buffer> buffers);
 
   absl::Status Record(const Thunk::ExecuteParams& execute_params,
                       const RecordParams& record_params,
@@ -1083,7 +1083,7 @@ class AllToAllCmd : public CollectiveCmd {
 
  private:
   bool has_split_dimension_;
-  std::vector<NcclCollectiveThunk::Buffer> buffers_;
+  std::vector<CollectiveThunk::Buffer> buffers_;
 };
 
 //===----------------------------------------------------------------------===//
@@ -1093,9 +1093,8 @@ class AllToAllCmd : public CollectiveCmd {
 class AllGatherCmd : public CollectiveCmd {
  public:
   AllGatherCmd(ExecutionStreamId execution_stream_id,
-               ExecutionStreamId async_from_stream_id,
-               NcclCollectiveConfig config,
-               absl::Span<const NcclCollectiveThunk::Buffer> buffers);
+               ExecutionStreamId async_from_stream_id, CollectiveConfig config,
+               absl::Span<const CollectiveThunk::Buffer> buffers);
 
   absl::Status Record(const Thunk::ExecuteParams& execute_params,
                       const RecordParams& record_params,
@@ -1108,7 +1107,7 @@ class AllGatherCmd : public CollectiveCmd {
   };
 
  private:
-  std::vector<NcclCollectiveThunk::Buffer> buffers_;
+  std::vector<CollectiveThunk::Buffer> buffers_;
 };
 
 //===----------------------------------------------------------------------===//
@@ -1119,8 +1118,8 @@ class CollectiveBroadcastCmd : public CollectiveCmd {
  public:
   CollectiveBroadcastCmd(ExecutionStreamId execution_stream_id,
                          ExecutionStreamId async_from_stream_id,
-                         NcclCollectiveConfig config,
-                         absl::Span<const NcclCollectiveThunk::Buffer> buffers);
+                         CollectiveConfig config,
+                         absl::Span<const CollectiveThunk::Buffer> buffers);
 
   absl::Status Record(const Thunk::ExecuteParams& execute_params,
                       const RecordParams& record_params,
@@ -1129,7 +1128,7 @@ class CollectiveBroadcastCmd : public CollectiveCmd {
   BufferUseVector buffers() override;
 
  private:
-  std::vector<NcclCollectiveThunk::Buffer> buffers_;
+  std::vector<CollectiveThunk::Buffer> buffers_;
 };
 
 //===----------------------------------------------------------------------===//

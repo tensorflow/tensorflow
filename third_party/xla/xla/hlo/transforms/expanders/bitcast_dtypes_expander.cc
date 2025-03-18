@@ -86,7 +86,7 @@ absl::StatusOr<HloInstruction*> BitcastDtypesExpander::ExpandInstruction(
                                       broadcasted_input_shape));
       input = BitcastConvertType(input, input_logical_type);
       TF_ASSIGN_OR_RETURN(Shape input_shape, b.GetShape(input));
-      XlaOp iota = Iota(&b, input_shape, input_shape.dimensions_size() - 1);
+      XlaOp iota = Iota(&b, input_shape, input_shape.rank() - 1);
       XlaOp iota_m = Mul(ScalarLike(input, output_bit_width), iota);
       input = And(ShiftRightLogical(input, iota_m),
                   ScalarLike(input, output_bit_width_mask));

@@ -255,6 +255,41 @@ TEST_F(PjrtCApiGpuBufferTest, CopyRawToHostWithInvalidOffset) {
   free(args.dst);
 }
 
+// TODO(b/399495406): Add tests for other GPU Executable behaviors.
+class PjrtCApiGpuExecutableTest : public PjrtCApiGpuTest {
+ protected:
+  std::unique_ptr<PJRT_LoadedExecutable, PJRT_LoadedExecutableDeleter>
+      executable_;
+
+  PjrtCApiGpuExecutableTest() {
+    executable_ = create_executable(api_, client_);
+  }
+
+  ~PjrtCApiGpuExecutableTest() override { executable_.reset(); }
+};
+
+TEST_F(PjrtCApiGpuExecutableTest, GetCompiledMemoryStats) {
+  auto executable = PjrtCApiTestBase::GetExecutable(executable_.get(), api_);
+  TF_ASSERT_OK_AND_ASSIGN(auto stats,
+                          pjrt::GetCompiledMemoryStats(api_, executable.get()));
+  TF_ASSERT_OK_AND_ASSIGN(auto ref_stats,
+                          executable->executable->GetCompiledMemoryStats());
+  EXPECT_EQ(ref_stats.generated_code_size_in_bytes,
+            stats.generated_code_size_in_bytes);
+  EXPECT_EQ(ref_stats.argument_size_in_bytes, stats.argument_size_in_bytes);
+  EXPECT_EQ(ref_stats.output_size_in_bytes, stats.output_size_in_bytes);
+  EXPECT_EQ(ref_stats.alias_size_in_bytes, stats.alias_size_in_bytes);
+  EXPECT_EQ(ref_stats.temp_size_in_bytes, stats.temp_size_in_bytes);
+  EXPECT_EQ(ref_stats.host_generated_code_size_in_bytes,
+            stats.host_generated_code_size_in_bytes);
+  EXPECT_EQ(ref_stats.host_argument_size_in_bytes,
+            stats.host_argument_size_in_bytes);
+  EXPECT_EQ(ref_stats.host_output_size_in_bytes,
+            stats.host_output_size_in_bytes);
+  EXPECT_EQ(ref_stats.host_alias_size_in_bytes, stats.host_alias_size_in_bytes);
+  EXPECT_EQ(ref_stats.host_temp_size_in_bytes, stats.host_temp_size_in_bytes);
+}
+
 TEST_F(PjrtCApiGpuTest, CreateAndDestroyExecuteContext) {
   PJRT_ExecuteContext_Create_Args create_arg;
   create_arg.struct_size = PJRT_ExecuteContext_Create_Args_STRUCT_SIZE;

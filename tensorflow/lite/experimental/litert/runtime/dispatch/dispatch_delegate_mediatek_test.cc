@@ -26,9 +26,11 @@
 #include "tensorflow/lite/c/c_api_opaque.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
-#include "tensorflow/lite/experimental/litert/c/litert_compiled_model_options.h"
+#include "tensorflow/lite/experimental/litert/c/litert_compilation_options.h"
 #include "tensorflow/lite/experimental/litert/c/litert_dispatch_delegate.h"
-#include "tensorflow/lite/experimental/litert/c/litert_tensor_buffer.h"
+#include "tensorflow/lite/experimental/litert/c/litert_environment.h"
+#include "tensorflow/lite/experimental/litert/c/litert_environment_options.h"
+#include "tensorflow/lite/experimental/litert/c/litert_tensor_buffer_types.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_compiled_model.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_dispatch_delegate.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_environment.h"
@@ -76,12 +78,15 @@ TEST(DispatchDelegate, MediaTekCpuBuffer) {
   EXPECT_EQ(interpreter.outputs().size(), 1);
   ASSERT_EQ(interpreter.execution_plan().size(), 1);
 
+  LiteRtEnvironmentOptions env_options;
+  LiteRtGetEnvironmentOptions(env->Get(), &env_options);
+
   auto dispatch_delegate_options =
-      CreateDispatchDelegateOptionsPtr(*env->Get());
+      CreateDispatchDelegateOptionsPtr(env_options);
   LiteRtDispatchDelegateAddAllocBaseOption(dispatch_delegate_options.get(),
                                            rt.Flatbuffer().Buf().Data());
   auto dispatch_delegate = CreateDispatchDelegatePtr(
-      *env->Get(), std::move(dispatch_delegate_options));
+      env_options, std::move(dispatch_delegate_options));
 
 #if !defined(__ANDROID__)
   GTEST_SKIP() << "The rest of this test is specific to Android devices with a "
@@ -132,7 +137,6 @@ TEST(DispatchDelegate, MediaTekHwBuffer) {
   ASSERT_TRUE(runtime) << "Failed to initialize tflite interpreter";
   auto& rt = **runtime;
   auto& interpreter = rt.Interpreter();
-
   const std::vector<litert::Environment::Option> environment_options = {
       litert::Environment::Option{
           litert::Environment::OptionTag::DispatchLibraryDir,
@@ -151,12 +155,15 @@ TEST(DispatchDelegate, MediaTekHwBuffer) {
   EXPECT_EQ(interpreter.outputs().size(), 1);
   ASSERT_EQ(interpreter.execution_plan().size(), 1);
 
+  LiteRtEnvironmentOptions env_options;
+  LiteRtGetEnvironmentOptions(env->Get(), &env_options);
+
   auto dispatch_delegate_options =
-      CreateDispatchDelegateOptionsPtr(*env->Get());
+      CreateDispatchDelegateOptionsPtr(env_options);
   LiteRtDispatchDelegateAddAllocBaseOption(dispatch_delegate_options.get(),
                                            rt.Flatbuffer().Buf().Data());
   auto dispatch_delegate = CreateDispatchDelegatePtr(
-      *env->Get(), std::move(dispatch_delegate_options));
+      env_options, std::move(dispatch_delegate_options));
 
 #if !defined(__ANDROID__)
   GTEST_SKIP() << "The rest of this test is specific to Android devices with a "
@@ -257,10 +264,10 @@ TEST(DispatchDelegate, CompiledModel) {
   GTEST_SKIP() << "The rest of this test is specific to Android devices with a "
                   "MediaTek NPU";
 #endif
-
-  auto options = CompiledModel::Options::Create();
-  ASSERT_TRUE(options);
-  ASSERT_TRUE(options->SetHardwareAccelerators(kLiteRtHwAcceleratorCpu));
+  auto jit_compilation_options = CompilationOptions::Create();
+  ASSERT_TRUE(jit_compilation_options);
+  ASSERT_TRUE(jit_compilation_options->SetHardwareAccelerators(
+      kLiteRtHwAcceleratorCpu));
 
   const std::vector<litert::Environment::Option> environment_options = {
       litert::Environment::Option{
@@ -272,7 +279,7 @@ TEST(DispatchDelegate, CompiledModel) {
       litert::Environment::Create(absl::MakeConstSpan(environment_options));
   ASSERT_TRUE(env);
   auto res_compiled_model =
-      CompiledModel::Create(*env, *model, std::move(*options));
+      CompiledModel::Create(*env, *model, *jit_compilation_options);
   ASSERT_TRUE(res_compiled_model) << "Failed to initialize CompiledModel";
   auto& compiled_model = *res_compiled_model;
 
@@ -331,9 +338,10 @@ TEST(DispatchDelegate, CompiledModelSharedInput) {
   GTEST_SKIP() << "The rest of this test is specific to Android devices with a "
                   "MediaTek NPU";
 #endif
-  auto options = CompiledModel::Options::Create();
-  ASSERT_TRUE(options);
-  ASSERT_TRUE(options->SetHardwareAccelerators(kLiteRtHwAcceleratorCpu));
+  auto jit_compilation_options = CompilationOptions::Create();
+  ASSERT_TRUE(jit_compilation_options);
+  ASSERT_TRUE(jit_compilation_options->SetHardwareAccelerators(
+      kLiteRtHwAcceleratorCpu));
 
   const std::vector<litert::Environment::Option> environment_options = {
       litert::Environment::Option{
@@ -345,7 +353,7 @@ TEST(DispatchDelegate, CompiledModelSharedInput) {
       litert::Environment::Create(absl::MakeConstSpan(environment_options));
   ASSERT_TRUE(env);
   auto res_compiled_model =
-      CompiledModel::Create(*env, *model, std::move(*options));
+      CompiledModel::Create(*env, *model, *jit_compilation_options);
   ASSERT_TRUE(res_compiled_model) << "Failed to initialize CompiledModel";
   auto& compiled_model = *res_compiled_model;
 

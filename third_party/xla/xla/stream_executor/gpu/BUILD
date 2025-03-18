@@ -398,6 +398,7 @@ gpu_kernel_library(
         "//xla/stream_executor:kernel",
         "//xla/stream_executor:stream_executor_h",
         "//xla/stream_executor:typed_kernel_factory",
+        "@com_google_absl//absl/container:node_hash_map",
         "@com_google_absl//absl/status:statusor",
         "@local_config_rocm//rocm:rocm_headers",
         "@local_tsl//tsl/platform:statusor",
@@ -599,11 +600,15 @@ cc_library(
     ],
 )
 
-xla_test(
+xla_cc_test(
     name = "gpu_test_kernels_fatbin_test",
     srcs = ["gpu_test_kernels_fatbin_test.cc"],
+<<<<<<< HEAD
     backends = ["gpu"],
     data = [":gpu_test_kernels_fatbin"],
+=======
+    tags = ["gpu"],
+>>>>>>> upstream/master
     deps = [
         ":gpu_test_kernels_fatbin",
         "@com_google_googletest//:gtest_main",

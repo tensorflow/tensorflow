@@ -21,11 +21,12 @@ limitations under the License.
 #include <utility>
 
 #include "absl/functional/function_ref.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "xla/backends/gpu/runtime/annotation.h"
 #include "xla/backends/gpu/runtime/thunk.h"
-#include "tsl/platform/errors.h"
+#include "xla/tsl/platform/errors.h"
 #include "tsl/profiler/lib/scoped_annotation.h"
 
 namespace xla {
@@ -83,7 +84,13 @@ absl::Status SequentialThunk::ExecuteOnStream(const ExecuteParams& params) {
     if (params.mock_collectives && thunk->IsCollective()) {
       continue;
     }
+    VLOG(1) << "[" << params.stream->parent()->device_ordinal() << "] "
+            << "Start SequentialThunk::ExecuteOnStream: "
+            << thunk->profile_annotation();
     TF_RETURN_IF_ERROR(thunk->ExecuteOnStream(params));
+    VLOG(1) << "[" << params.stream->parent()->device_ordinal() << "] "
+            << "End SequentialThunk::ExecuteOnStream: "
+            << thunk->profile_annotation();
   }
   return absl::OkStatus();
 }

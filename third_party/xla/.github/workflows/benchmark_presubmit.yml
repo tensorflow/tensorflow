@@ -27,7 +27,6 @@ on:
         - 'yes'
         - 'no'
   pull_request:
-  push:
     branches:
       - main
 
@@ -85,6 +84,25 @@ jobs:
           free -h  # Memory information
           df -h    # Disk space information
           uname -a # Kernel information
+
+      - name: Print GitHub Context
+        run: |
+          echo "GitHub SHA: ${{ github.sha }}"
+          echo "GitHub Ref: ${{ github.ref }}"
+          echo "GitHub Ref Name: ${{ github.ref_name }}"
+          echo "GitHub Head Ref: ${{ github.head_ref }})"
+          echo "GitHub Base Ref: ${{ github.base_ref }})"
+          echo "GitHub Repository: ${{ github.repository }}"
+          echo "GitHub Run ID: ${{ github.run_id }}"
+          echo "GitHub Run Number: ${{ github.run_number }}"
+          echo "GitHub Workflow: ${{ github.workflow }}"
+          echo "GitHub Actor: ${{ github.actor }}"
+          echo "GitHub Event Name: ${{ github.event_name }}"
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            echo "Pull Request Number: ${{ github.event.pull_request.number }}"
+            echo "Pull Request Head Ref: ${{ github.event.pull_request.head.ref }}"
+            echo "Pull Request Base Ref: ${{ github.event.pull_request.base.ref }}"
+          fi
 
       - name: Checkout OpenXLA
         uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4.1.1

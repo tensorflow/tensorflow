@@ -1516,8 +1516,7 @@ HloTransposeInstruction::HloTransposeInstruction(
 }
 
 bool HloTransposeInstruction::IsRank2Transpose() const {
-  return dimensions() == std::vector<int64_t>({1, 0}) &&
-         shape().dimensions_size() == 2 &&
+  return dimensions() == std::vector<int64_t>({1, 0}) && shape().rank() == 2 &&
          std::equal(shape().dimensions().begin(), shape().dimensions().end(),
                     operand(0)->shape().dimensions().rbegin());
 }
@@ -1635,7 +1634,7 @@ bool HloMapInstruction::IsElementwiseImpl(
     const std::optional<int64_t>& operand_idx) const {
   if (!dimensions().empty()) {
     // Check that the map is executed in elementwise compatible dimensions.
-    if (dimensions().size() != shape().dimensions_size()) {
+    if (dimensions().size() != shape().rank()) {
       return false;
     }
     for (int i = 0; i < dimensions().size(); ++i) {
@@ -1827,7 +1826,7 @@ void HloConstantInstruction::PrintOperandsWithCanonicalNameMap(
       printer->Append("1");
       return;
     }
-    if (shape().IsInteger()) {
+    if (shape().AreAllLeavesIntegers()) {
       // The following prevents high compilation latencies caused by serializing
       // large constant tensors; for example: b/265669625. The limit of 500k was
       // chosen empirically to make sure that serialization of the `literal_` is

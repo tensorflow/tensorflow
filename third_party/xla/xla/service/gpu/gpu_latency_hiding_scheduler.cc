@@ -174,7 +174,7 @@ HloCostAnalysis::ShapeSizeFunction ShapeSizeBytesFunction(
       return size;
     }
     // Each dynamic dimension size is represented as a S32.
-    int64_t metadata_size = sizeof(int32_t) * shape.dimensions_size();
+    int64_t metadata_size = sizeof(int32_t) * shape.rank();
     return size + metadata_size;
   };
 }

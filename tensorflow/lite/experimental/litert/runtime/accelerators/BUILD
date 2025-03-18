@@ -25,10 +25,12 @@ cc_library(
     hdrs = ["auto_registration.h"],
     deps = [
         "//tensorflow/lite/experimental/litert/c:litert_common",
+        "//tensorflow/lite/experimental/litert/c:litert_logging",
         "//tensorflow/lite/experimental/litert/cc:litert_expected",
         "//tensorflow/lite/experimental/litert/cc:litert_macros",
         "//tensorflow/lite/experimental/litert/cc:litert_shared_library",
         "//tensorflow/lite/experimental/litert/core:environment",
+        "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/strings:string_view",
     ],
 )

@@ -22,8 +22,7 @@
 #include "third_party/odml/infra/southbound/sb_api.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
 
-namespace litert {
-namespace google_tensor {
+namespace litert::google_tensor {
 
 class Southbound {
  public:
@@ -129,7 +128,6 @@ struct Southbound::ThrFunctions {
       thr_vendor_set_system_attribute_int64 = nullptr;
 };
 
-}  // namespace google_tensor
-}  // namespace litert
+}  // namespace litert::google_tensor
 
 #endif  // TENSORFLOW_LITE_EXPERIMENTAL_LITERT_VENDORS_GOOGLE_TENSOR_DISPATCH_SOUTHBOUND_H_

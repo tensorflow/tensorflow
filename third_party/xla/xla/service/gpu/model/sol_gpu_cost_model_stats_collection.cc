@@ -47,7 +47,8 @@ absl::StatusOr<bool> SolGpuCostModelStatsCollection::Run(
         auto gpu_config = instr->backend_config<GpuBackendConfig>();
         TF_CHECK_OK(gpu_config.status()) << instr->ToString();
         auto reification_cost = gpu_config->mutable_collective_backend_config()
-                                    ->mutable_reification_cost();
+                                    ->add_reification_cost();
+        *reification_cost->mutable_name() = name();
         reification_cost->set_exec_time_us(
             absl::ToDoubleMicroseconds(exec_time));
         TF_CHECK_OK(instr->set_backend_config(*gpu_config));

@@ -26,8 +26,11 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/types/span.h"
 #include "xla/client/executable_build_options.h"
+#include "xla/hlo/builder/xla_builder.h"
+#include "xla/hlo/builder/xla_computation.h"
 #include "xla/pjrt/c/pjrt_c_api.h"
 #include "xla/pjrt/c/pjrt_c_api_helpers.h"
+#include "xla/pjrt/c/pjrt_c_api_wrapper_impl.h"  // IWYU pragma: keep
 #include "xla/pjrt/compile_options.pb.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_executable.h"
@@ -271,4 +274,43 @@ PjrtCApiTestBase::create_transfer_manager(const xla::Shape& host_shape) {
   return transfer_manager_out;
 }
 
+xla::XlaComputation PjrtCApiTestBase::CreateAddOneComputation() {
+  xla::XlaBuilder builder(std::string{kExecutableName});
+  xla::Shape s = xla::ShapeUtil::MakeShape(xla::F32, {});
+  auto inp = Parameter(&builder, 0, s, "input");
+  auto one = xla::ConstantR0<float>(&builder, 1.0f);
+  auto incremented = Add(inp, one);
+  return builder.Build(incremented).value();
+}
+
+std::unique_ptr<PJRT_LoadedExecutable, PJRT_LoadedExecutableDeleter>
+PjrtCApiTestBase::create_executable(const PJRT_Api* c_api,
+                                    PJRT_Client* client) {
+  return create_executable(c_api, client, CreateAddOneComputation());
+}
+
+std::unique_ptr<PJRT_LoadedExecutable, PJRT_LoadedExecutableDeleter>
+PjrtCApiTestBase::create_executable(const PJRT_Api* c_api, PJRT_Client* client,
+                                    const xla::XlaComputation& computation) {
+  xla::CompileOptions compile_options;
+  compile_options.executable_build_options.set_num_replicas(1);
+  auto compile_result =
+      client->client->CompileAndLoad(computation, compile_options);
+  CHECK_OK(compile_result.status());
+  CHECK_NE(compile_result.value().get(), nullptr);
+  return {new PJRT_LoadedExecutable{std::move(compile_result).value(), client},
+          MakeLoadedExecutableDeleter(c_api)};
+}
+
+std::unique_ptr<PJRT_Executable, PJRT_ExecutableDeleter>
+PjrtCApiTestBase::GetExecutable(PJRT_LoadedExecutable* loaded_executable,
+                                const PJRT_Api* api) {
+  PJRT_LoadedExecutable_GetExecutable_Args args;
+  args.struct_size = PJRT_LoadedExecutable_GetExecutable_Args_STRUCT_SIZE;
+  args.extension_start = nullptr;
+  args.loaded_executable = loaded_executable;
+  args.executable = nullptr;
+  LogFatalIfPjrtError(api->PJRT_LoadedExecutable_GetExecutable(&args), api);
+  return {args.executable, MakeExecutableDeleter(api)};
+}
 }  // namespace pjrt

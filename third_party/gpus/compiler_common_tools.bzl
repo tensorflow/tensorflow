@@ -72,8 +72,14 @@ def _get_cxx_inc_directories_impl(repository_ctx, cc, lang_is_cpp, tf_sys_root):
     sysroot = []
     if tf_sys_root:
         sysroot += ["--sysroot", tf_sys_root]
+    no_canonical_prefixes_supported = _is_compiler_option_supported(
+        repository_ctx,
+        cc,
+        "-no-canonical-prefixes",
+    )
+    no_canonical_prefixes = (["-no-canonical-prefixes"] if no_canonical_prefixes_supported else [])
     result = raw_exec(repository_ctx, [cc, "-E", "-x" + lang, "-", "-v"] +
-                                      sysroot)
+                                      sysroot + no_canonical_prefixes)
     stderr = err_out(result)
     index1 = stderr.find(_INC_DIR_MARKER_BEGIN)
     if index1 == -1:

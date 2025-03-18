@@ -23,7 +23,10 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/backends/gpu/runtime/thunk.h"
+#include "xla/backends/gpu/runtime/while_thunk.h"
+#include "xla/hlo/evaluator/hlo_evaluator.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/literal_util.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/event.h"
@@ -181,6 +184,7 @@ absl::Status HostToDeviceCopyThunk::ExecuteOnStream(
 //===----------------------------------------------------------------------===//
 // CopyDoneThunk
 //===----------------------------------------------------------------------===//
+
 CopyDoneThunk::CopyDoneThunk(
     Thunk::Kind kind, ThunkInfo thunk_info,
     std::shared_ptr<CopyThunk::AsyncEvents> async_events,
@@ -196,6 +200,70 @@ absl::Status CopyDoneThunk::ExecuteOnStream(const ExecuteParams& params) {
   TF_ASSIGN_OR_RETURN(std::unique_ptr<se::Event> event,
                       async_events_->Extract(executor, copy_start_instr_));
   return params.stream->WaitFor(event.get());
+}
+
+//===----------------------------------------------------------------------===//
+// DynamicMemcpyThunk
+//===----------------------------------------------------------------------===//
+
+DynamicMemcpyThunk::DynamicMemcpyThunk(
+    ThunkInfo thunk_info, const BufferAllocation::Slice& source_buffer,
+    const BufferAllocation::Slice& destination_buffer, uint64_t mem_size,
+    DynamicMemcpyThunk::MemcpyDescriptor descriptor)
+    : Thunk(Kind::kCopy, std::move(thunk_info)),
+      source_buffer_(source_buffer),
+      destination_buffer_(destination_buffer),
+      mem_size_(mem_size),
+      descriptor_(descriptor) {}
+
+absl::Status DynamicMemcpyThunk::ExecuteOnStream(const ExecuteParams& params) {
+  se::DeviceMemoryBase destination_data =
+      params.buffer_allocations->GetDeviceAddress(destination_buffer_);
+  se::DeviceMemoryBase source_data =
+      params.buffer_allocations->GetDeviceAddress(source_buffer_);
+
+  HloEvaluator evaluator(/*max_loop_iterations=*/0);
+  int64_t src_offset = descriptor_.src_byte_static_offset;
+  for (const auto& offset : descriptor_.src_dynamic_offsets) {
+    TF_ASSIGN_OR_RETURN(
+        auto config,
+        offset.while_loop->backend_config<xla::WhileLoopBackendConfig>());
+
+    TF_RET_CHECK(config.has_known_init_step());
+    TF_ASSIGN_OR_RETURN(int64_t iteration,
+                        WhileThunk::CurrentLoopIteration(offset.while_loop));
+    int64_t induction_variable = config.known_init_step().init() +
+                                 iteration * config.known_init_step().step();
+
+    Literal induction_variable_literal(offset.induction_variable->shape());
+    TF_RETURN_IF_ERROR(
+        induction_variable_literal.SetIntegralAsS64({}, induction_variable));
+    TF_ASSIGN_OR_RETURN(
+        Literal array_index_literal,
+        evaluator.EvaluateWithSubstitutions(
+            offset.offset,
+            {{offset.induction_variable, &induction_variable_literal}}, true));
+
+    std::optional<int64_t> array_index =
+        LiteralUtil::LiteralAsScalarInt64(array_index_literal);
+    if (!array_index) {
+      return absl::InternalError("Failed to evaluate offset");
+    }
+
+    int64_t clamped_index =
+        std::max<int64_t>(0, std::min(*array_index, offset.dimension_size - 1));
+    VLOG(3) << "Iteration index " << induction_variable
+            << " resulted in array index " << *array_index << ".";
+    src_offset += clamped_index * offset.byte_stride;
+  }
+
+  auto src_with_offset = source_data.GetByteSlice(src_offset, mem_size_);
+  VLOG(3) << "Memcpy of size " << mem_size_ << " from "
+          << src_with_offset.opaque() << " to " << destination_data.opaque();
+  TF_ASSIGN_OR_RETURN(
+      se::Stream * stream,
+      GetStreamForExecution(Thunk::execution_stream_id(), params));
+  return stream->Memcpy(&destination_data, src_with_offset, mem_size_);
 }
 
 }  // namespace gpu

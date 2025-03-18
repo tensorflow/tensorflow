@@ -111,8 +111,8 @@ template <PrimitiveType kType>
 const Shape& ScalarShapeImpl() {
   static_assert(primitive_util::IsArrayType(kType),
                 "Not a valid type for a scalar.");
-  static const Shape* shape = [] {
-    auto shape = new Shape(kType, {}, {}, {});
+  static const Shape* const shape = [] {
+    auto* const shape = new Shape(kType, {}, {});
     shape->mutable_layout();
     return shape;
   }();
@@ -128,7 +128,8 @@ const Shape& ScalarShape(PrimitiveType type) {
 }
 
 const Shape& NilShape() {
-  static const Shape* shape = new Shape(TUPLE, {}, {}, {});
+  // Create a nullary tuple.
+  static const Shape* const shape = new Shape(std::vector<Shape>());
   return *shape;
 }
 
@@ -138,7 +139,7 @@ const Shape* TryInternShape(const Shape& shape) {
   if (shape.IsTuple() && shape.tuple_shapes_size() == 0) {
     return &NilShape();
   }
-  if (shape.IsArray() && shape.dimensions_size() == 0 && shape.is_static() &&
+  if (shape.IsArray() && shape.rank() == 0 && shape.is_static() &&
       shape.has_layout() && shape.layout().tiles_size() == 0 &&
       shape.layout().memory_space() == 0 &&
       shape.layout().element_size_in_bits() == 0) {
@@ -1568,9 +1569,9 @@ void DenseArrayPrintHelper(const LiteralBase& literal,
     PrintShape(print_layout, subshape, printer);
     if (subshape.is_dynamic()) {
       printer->Append("(");
-      for (int64_t i = 0; i < subshape.dimensions_size(); ++i) {
+      for (int64_t i = 0; i < subshape.rank(); ++i) {
         printer->Append(literal.GetDynamicSize(i, shape_index));
-        if (i < subshape.dimensions_size() - 1) {
+        if (i < subshape.rank() - 1) {
           printer->Append(",");
         }
       }

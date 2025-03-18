@@ -206,6 +206,7 @@ LiteRtStatus InvocationContextCreate(
     const LiteRtMemBuffer* exec_bytecode_buffer, const char* function_name,
     int num_inputs, int num_outputs,
     LiteRtDispatchInvocationContext* invocation_context) {
+  function_name = "";
   if (auto result = LiteRtDispatchInvocationContextT::CreateFromBytecode(
           *TheSouthbound, device_context, exec_type, exec_bytecode_buffer,
           function_name, num_inputs, num_outputs);
@@ -504,6 +505,10 @@ LiteRtStatus AssignNodeFunction(LiteRtDispatchGraph graph,
                                 LiteRtDispatchNodeId node_id,
                                 LiteRtDispatchExecutableHandle exec_handle,
                                 const char* function_name) {
+  // TODO - b/397771624: Southbound currently doesn't support function names, so
+  // overriding function names to empty strings as a temporary fix. We need to
+  // investigate with the CoreML team to find a more robust solution.
+  function_name = "";
   if (auto result =
           graph->AssignNodeFunction(node_id, exec_handle, function_name);
       result) {

@@ -29,10 +29,12 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/container/btree_map.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/functional/function_ref.h"
+#include "absl/log/check.h"
 #include "absl/memory/memory.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
@@ -183,9 +185,39 @@ HloComputation::~HloComputation() {
     async_start_->ClearCalledComputations();
   }
   Cleanup();
+  ClearCalledComputations();
+
+  // We need to make sure there are no dangling references to this computation
+  // from instructions in other computations.
+  std::vector<HloComputation*> callers;
+  for (const auto& [caller, count] : caller_computations_) {
+    callers.push_back(caller);
+  }
+  for (HloComputation* caller : callers) {
+    for (HloInstruction* inst : caller->instructions()) {
+      for (int i = 0; i < inst->called_computations().size(); ++i) {
+        if (inst->called_computations()[i] == this) {
+          inst->set_called_computation(i, nullptr);
+        }
+      }
+    }
+  }
+  CHECK(caller_computations_.empty());
+
+  // Delete the map from caller instructions to count, if it exists.
+  delete GetCallersMap();
+
   for (const auto& i : instructions_) {
     delete i.inst();
   }
+}
+
+void HloComputation::ClearCalledComputations() {
+  for (HloInstruction* i : instructions()) {
+    i->ClearCalledComputations();
+  }
+  // Clearing the instructions should have removed all callee computations.
+  CHECK(callee_computations_.empty());
 }
 
 void HloComputation::SetInstruction(HloInstruction* instruction,
@@ -241,6 +273,94 @@ HloInstruction* HloComputation::AddInstruction(
   return AddInstruction(std::move(instruction));
 }
 
+static void IncrementCount(
+    absl::btree_map<HloComputation*, int, HloComputation::UniqueIdComparator>&
+        map,
+    HloComputation* key) {
+  ++map[key];
+}
+
+static void DecrementCount(
+    absl::btree_map<HloComputation*, int, HloComputation::UniqueIdComparator>&
+        map,
+    HloComputation* key) {
+  auto it = map.find(key);
+  CHECK(it != map.end());
+  CHECK_GT(it->second, 0);
+  --it->second;
+  if (it->second == 0) {
+    map.erase(it);
+  }
+}
+
+void HloComputation::AddCallee(HloInstruction* caller, HloComputation* callee) {
+  IncrementCount(callee_computations_, callee);
+  IncrementCount(callee->caller_computations_, this);
+
+  if (auto* map = callee->GetCallersMap()) {
+    ++(*map)[caller];
+  } else if (callee->callers_ == 0) {
+    callee->callers_ = reinterpret_cast<uintptr_t>(caller);
+  } else {
+    // Convert the single instruction to a map.
+    auto* current_caller = reinterpret_cast<const HloInstruction*>(
+        callee->callers_ & ~kCallerTypeMask);
+    auto* map = new absl::flat_hash_map<const HloInstruction*, int>();
+    (*map)[current_caller] = 1;
+    ++(*map)[caller];
+    callee->callers_ = reinterpret_cast<uintptr_t>(map) |
+                       static_cast<uintptr_t>(CallersType::kCallerCountHashMap);
+  }
+
+  if (parent() != nullptr && callee->parent() == parent()) {
+    parent()->topological_sort_.AddEdge(this, callee);
+  }
+}
+
+void HloComputation::RemoveCallee(HloInstruction* caller,
+                                  HloComputation* callee) {
+  CHECK(caller);
+  CHECK(callee);
+  DecrementCount(callee_computations_, callee);
+  DecrementCount(callee->caller_computations_, this);
+
+  if (callee->callers_ == reinterpret_cast<uintptr_t>(caller)) {
+    // The callee had just this single caller, so we reset it to 0 (no caller).
+    callee->callers_ = 0;
+  } else {
+    auto* map = callee->GetCallersMap();
+    CHECK(map) << "Attempted to remove a caller " << caller->name()
+               << " that did not call the computation " << name() << "."
+               << callee->callers_;
+    auto it = map->find(caller);
+    CHECK(it != map->end())
+        << "Attempted to remove a caller " << caller->name()
+        << " that did not call the computation " << name() << ".";
+    --it->second;
+    // We don't convert back to the inline representation, since this case
+    // should be rare.
+  }
+}
+
+absl::flat_hash_map<HloInstruction*, int>* HloComputation::GetCallersMap() {
+  if (static_cast<CallersType>(callers_ & kCallerTypeMask) ==
+      CallersType::kCallerCountHashMap) {
+    return reinterpret_cast<absl::flat_hash_map<HloInstruction*, int>*>(
+        callers_ & ~kCallerTypeMask);
+  }
+  return nullptr;
+}
+
+absl::flat_hash_map<HloInstruction*, int>* const HloComputation::GetCallersMap()
+    const {
+  if (static_cast<CallersType>(callers_ & kCallerTypeMask) ==
+      CallersType::kCallerCountHashMap) {
+    return reinterpret_cast<absl::flat_hash_map<HloInstruction*, int>* const>(
+        callers_ & ~kCallerTypeMask);
+  }
+  return nullptr;
+}
+
 HloInstruction* HloComputation::AddInstructionInternal(
     std::unique_ptr<HloInstruction> instruction) {
   if (parent() != nullptr) {
@@ -265,6 +385,7 @@ HloInstruction* HloComputation::AddInstructionInternal(
     CHECK(parent() == nullptr || called_computation->parent() == parent())
         << "Called computation " << called_computation->name()
         << " is not in the same module as " << name();
+    AddCallee(pinst, called_computation);
   }
   return pinst;
 }
@@ -521,13 +642,13 @@ absl::Status HloComputation::RemoveInstructionImpl(HloInstruction* instruction,
 
   HloInstructionInfo* info = &instructions_[instruction->index_in_parent_];
   DCHECK_EQ(info->inst(), instruction);
-  info->inst()->set_parent(nullptr);
   to_be_deleted_.push_back(info->inst());  // Takes ownership
   to_be_deleted_.back()->DetachFromOperandsAndUsers();
   // Clear all operands to avoid Null operands.
   to_be_deleted_.back()->RemoveAllOperands();
   to_be_deleted_.back()->ClearCalledComputations();
   to_be_deleted_.back()->MarkAsDead();
+  info->inst()->set_parent(nullptr);
 
   // If this instruction is a constant, clear the literal eagerly instead of
   // waiting for the instruction to be deleted in Cleanup(). This greatly
@@ -918,9 +1039,6 @@ void HloComputation::Print(Printer* printer,
 void HloComputation::Print(
     Printer* printer, const HloPrintOptions& options,
     absl::Span<const HloInstruction* const> instruction_order) const {
-  if (!instruction_order.empty()) {
-    CHECK_EQ(instruction_order.size(), instruction_count());
-  }
   const std::string tab(2 * options.indent_amount(), ' ');
 
   printer->Append(tab);
@@ -1089,7 +1207,7 @@ HloComputation::CreateFromProto(
 
   auto computation = absl::WrapUnique(
       new HloComputation(proto.name(), parameter_count, &instructions, root));
-  computation->unique_id_ = proto.id();
+  computation->SetUniqueIdHelper(proto.id());
   if (proto.is_fusion_computation()) {
     computation->instruction_and_type_ =
         static_cast<uintptr_t>(InstructionType::kFusion);
@@ -1838,6 +1956,38 @@ bool HloComputation::CanExpandIntoSingleInstruction() const {
       instructions(), [root = root_instruction()](const HloInstruction* instr) {
         return root == instr || instr->opcode() == HloOpcode::kParameter;
       });
+}
+
+void HloComputation::ClearUniqueIdInternal() { SetUniqueIdHelper(-1); }
+
+void HloComputation::SetUniqueId(int64_t id) {
+  CHECK_EQ(unique_id_, -1);
+  CHECK_GE(id, 0);
+  SetUniqueIdHelper(id);
+}
+
+void HloComputation::SetUniqueIdHelper(int64_t id) {
+  // The caller/callee computations are ordered by unique ID, so we need to
+  // remove and readd them to our neighbor's data structures.
+  for (auto& [computation, count] : caller_computations_) {
+    auto it = computation->callee_computations_.find(this);
+    CHECK(it != computation->callee_computations_.end());
+    CHECK_EQ(it->second, count);
+    computation->callee_computations_.erase(it);
+  }
+  for (auto& [computation, count] : callee_computations_) {
+    auto it = computation->caller_computations_.find(this);
+    CHECK(it != computation->caller_computations_.end());
+    CHECK_EQ(it->second, count);
+    computation->caller_computations_.erase(it);
+  }
+  unique_id_ = id;
+  for (auto& [computation, count] : caller_computations_) {
+    computation->callee_computations_[this] = count;
+  }
+  for (auto& [computation, count] : callee_computations_) {
+    computation->caller_computations_[this] = count;
+  }
 }
 
 }  // namespace xla

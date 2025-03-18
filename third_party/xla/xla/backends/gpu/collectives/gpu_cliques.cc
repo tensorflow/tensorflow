@@ -188,6 +188,39 @@ static auto DeviceRanksToString(absl::Span<const DeviceRank> ranks) {
   });
 }
 
+// Returns true if peer access is possible between all devices in `ranks`. As a
+// side effect, enables peer access even if it was not enabled before.
+static absl::StatusOr<bool> EnablePeerAccess(
+    const GpuCliqueKey& key, absl::Span<const DeviceRank> ranks) {
+  if (key.devices().size() != ranks.size()) {
+    // The clique is not local, so we can't enable peer access.
+    return false;
+  }
+
+  std::vector<se::StreamExecutor*> devices;
+  devices.reserve(ranks.size());
+  for (int64_t i = 0; i < ranks.size(); ++i) {
+    TF_ASSIGN_OR_RETURN(auto device, GpuCollectives::TryCast(ranks[i].device));
+    devices.push_back(device->stream_executor());
+  }
+
+  for (int64_t i = 0; i < devices.size(); ++i) {
+    for (int64_t j = 0; j < devices.size(); ++j) {
+      // An attempt to enable peer access to itself will fail.
+      if (i == j) continue;
+
+      // To check if peer access is possible, we need to enable it and check
+      // the result. OkStatus means that peer access is possible.
+      auto status = devices[i]->EnablePeerAccessTo(devices[j]);
+      if (!status.ok()) {
+        return false;
+      }
+    }
+  }
+
+  return true;
+}
+
 // Joins a GpuClique initialization rendezvous for a `clique_key` and returns
 // a lock that gives an access to initialized clique (access is shared between
 // all participating ranks that own a shared pointer).
@@ -250,11 +283,15 @@ InitializeGpuClique(GpuCollectives* collectives, se::StreamExecutor* device,
     // Sort device ranks, mainly to get more readable logs below.
     absl::c_sort(ranks, [](auto& a, auto& b) { return a.rank < b.rank; });
 
+    // Check if peer access is possible between all devices in the clique.
+    TF_ASSIGN_OR_RETURN(bool peer_access_enabled,
+                        EnablePeerAccess(clique_key, ranks));
+
     VLOG(3) << absl::StreamFormat(
         "Create GPU communicators for clique %s; ranks=[%s]; "
-        "nroots=%lld; fingerprint(id)=%d",
+        "nroots=%lld; fingerprint(id)=%d, peer_access_enabled=%d",
         clique_key.ToString(), DeviceRanksToString(ranks), nroots,
-        clique_ids.fingerprint());
+        clique_ids.fingerprint(), peer_access_enabled);
 
     TF_ASSIGN_OR_RETURN(
         std::vector<std::unique_ptr<Communicator>> created_comms,
@@ -268,16 +305,17 @@ InitializeGpuClique(GpuCollectives* collectives, se::StreamExecutor* device,
 
     VLOG(3) << absl::StreamFormat(
         "Created GPU communicators for clique %s; ranks=[%s]; "
-        "nroots=%lld; fingerprint(id)=%d",
+        "nroots=%lld; fingerprint(id)=%d, peer_access_enabled=%d",
         clique_key.ToString(), DeviceRanksToString(ranks), nroots,
-        clique_ids.fingerprint());
+        clique_ids.fingerprint(), peer_access_enabled);
 
     ProcessGpuCliques& cliques = GetProcessGpuCliques();
     absl::MutexLock lock(&cliques.mu);
 
     // Create a new clique with given clique key and communicators.
-    auto emplaced = cliques.map.try_emplace(clique_key, clique_key, clique_ids,
-                                            std::move(comms));
+    auto emplaced =
+        cliques.map.try_emplace(clique_key, clique_key, clique_ids,
+                                std::move(comms), peer_access_enabled);
 
     // We can have a race to create a clique for a given key, the winner
     // inserts it into a map and the looser destroys all communicators.
@@ -354,8 +392,10 @@ InitializeGpuClique(GpuCollectives* collectives, se::StreamExecutor* device,
           << " in parent clique " << parent_clique_key.ToString()
           << "; num_local_participants=" << num_local_participants;
 
-  using RankPair = std::pair<RankId, RankId>;
-  RankPair rank_pair = {parent_rank, rank};
+  using RankPair = std::pair<RankId, DeviceRank>;
+  GpuCollectives::Device gpu_device(device);
+  GpuCollectives::DeviceRank device_rank = {&gpu_device, rank};
+  RankPair rank_pair = {parent_rank, device_rank};
 
   // Current approach for communicator splitting works because of XLAs SPMD
   // programming model where all collective operations have replica groups that
@@ -375,7 +415,7 @@ InitializeGpuClique(GpuCollectives* collectives, se::StreamExecutor* device,
     // Collect mapping from ranks in parent clique to ranks in a new clique.
     absl::btree_map<RankId, RankId> rank_mapping;
     for (auto* rank_pair : rank_pairs) {
-      rank_mapping[rank_pair->first] = rank_pair->second;
+      rank_mapping[rank_pair->first] = rank_pair->second.rank;
     }
 
     auto rank_mapping_formatter = [](std::string* str, auto mapping) {
@@ -402,10 +442,28 @@ InitializeGpuClique(GpuCollectives* collectives, se::StreamExecutor* device,
     // Get a globally consistent color value for newly created clique.
     int32_t color = GetCommSplitColor(clique_key);
 
+    bool peer_access_enabled = false;
+    if ((*parent_clique)->IsLocal()) {
+      // The parent clique is local, we can be sure that peer access was already
+      // enabled.
+      peer_access_enabled = (*parent_clique)->peer_access_enabled();
+    } else {
+      // The parent clique is not local, but this clique can be local. We need
+      // to check if peer access is possible between all devices in this clique.
+      std::vector<DeviceRank> ranks;
+      ranks.reserve(rank_pairs.size());
+      for (auto& rank_pair : rank_pairs) {
+        ranks.emplace_back(rank_pair->second);
+      }
+      TF_ASSIGN_OR_RETURN(peer_access_enabled,
+                          EnablePeerAccess(clique_key, ranks));
+    }
+
     VLOG(3) << absl::StreamFormat(
         "Create GPU communicators for clique %s; parent=%s; color=%d; "
-        "rank_mapping=[%s]",
+        "peer_access_enabled=%d; rank_mapping=[%s]",
         clique_key.ToString(), parent_clique_key.ToString(), color,
+        peer_access_enabled,
         absl::StrJoin(rank_mapping, ",", rank_mapping_formatter));
 
     TF_ASSIGN_OR_RETURN(
@@ -419,16 +477,19 @@ InitializeGpuClique(GpuCollectives* collectives, se::StreamExecutor* device,
 
     VLOG(3) << absl::StreamFormat(
         "Created GPU communicators for clique %s; parent=%s; color=%d; "
+        "peer_access_enabled=%d; "
         "rank_mapping=[%s]",
         clique_key.ToString(), parent_clique_key.ToString(), color,
+        peer_access_enabled,
         absl::StrJoin(rank_mapping, ",", rank_mapping_formatter));
 
     ProcessGpuCliques& cliques = GetProcessGpuCliques();
     absl::MutexLock lock(&cliques.mu);
 
     // Create a new clique with given clique key and communicators.
-    auto emplaced = cliques.map.try_emplace(clique_key, clique_key,
-                                            std::nullopt, std::move(comms));
+    auto emplaced =
+        cliques.map.try_emplace(clique_key, clique_key, std::nullopt,
+                                std::move(comms), peer_access_enabled);
 
     // We can have a race to create a clique for a given key, the winner
     // inserts it into a map and the looser destroys all communicators.

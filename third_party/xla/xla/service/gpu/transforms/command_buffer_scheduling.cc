@@ -261,6 +261,10 @@ static bool IsCommand(const HloInstruction* hlo,
     if (backend_config.kind() == kCuDnnFusionKind) {
       return config.enabled_commands.contains(DebugOptions::CUDNN);
     }
+    if (IsDynamicMemcpyFusion(fusion)) {
+      // Dynamic memcpy fusions do not yet have a command implementation.
+      return false;
+    }
     if (IsDynamicSliceFusion(fusion)) {
       auto fusion_analysis =
           HloFusionAnalysis::Create(*hlo, config.device_description);

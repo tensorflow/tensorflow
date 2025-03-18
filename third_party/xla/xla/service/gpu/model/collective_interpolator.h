@@ -29,22 +29,16 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/gpu/model/hlo_op_profile.pb.h"
 #include "xla/service/gpu/model/interpolator.h"
+#include "xla/service/gpu/transforms/collectives/collective_ops_utils.h"
 #include "xla/stream_executor/device_description.h"
 
 namespace xla::gpu {
 
 class CollectiveInterpolator {
  public:
-  enum class CommunicationType {
-    UNDEFINED = 0,
-    RAIL_ALIGNED = 1,
-    NON_RAIL_ALIGNED = 2,
-    SINGLE_HOST = 3
-  };
-
   struct InterpolatorKey {
     HloOpcode opcode;
-    CommunicationType communication_type;
+    GPUCommunicationType communication_type;
 
     template <typename H>
     friend H AbslHashValue(H h, const InterpolatorKey& key) {

@@ -696,6 +696,7 @@ cc_library(
         "//xla/hlo/utils:hlo_traversal",
         "//xla/service:instruction_fusion",
         "//xla/service:name_uniquer",
+        "//xla/service/gpu:backend_configs_cc",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -924,13 +925,14 @@ cc_library(
 )
 
 [
-    xla_cc_test(
+    xla_test(
         name = "hlo_op_profiler_run_" + sm,
         timeout = "eternal",
         srcs = ["hlo_op_profiler_run.cc"],
         # Disable backend optimizations (in particular reassociate and instcombine) which would optimize
         # expressions like integer add and multiply.
         args = ["--xla_backend_optimization_level=0"],
+        backends = ["gpu"],
         # This is a development tool, not a normal test, and thus should only be run
         # manually with --config=cuda.
         tags = [
@@ -1059,6 +1061,7 @@ cc_library(
         "//xla/hlo/ir:hlo",
         "//xla/service:hlo_module_config",
         "//xla/service:hlo_proto_cc",
+        "//xla/service/gpu/transforms/collectives:collective_ops_utils",
         "//xla/stream_executor:device_description",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:statusor",
@@ -1083,10 +1086,65 @@ xla_cc_test(
         "//xla/hlo/ir:hlo",
         "//xla/service:hlo_proto_cc",
         "//xla/service/gpu:gpu_device_info_for_tests",
+        "//xla/service/gpu/transforms/collectives:collective_ops_utils",
         "//xla/stream_executor:device_description",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/time",
         "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
+    name = "collective_ptable_stats_collection",
+    srcs = ["collective_ptable_stats_collection.cc"],
+    hdrs = ["collective_ptable_stats_collection.h"],
+    deps = [
+        ":collective_interpolator",
+        ":hlo_op_profile_proto_cc",
+        ":hlo_op_profiles",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/pass:hlo_pass",
+        "//xla/hlo/utils:hlo_query",
+        "//xla/service/gpu:backend_configs_cc",
+        "//xla/stream_executor:device_description",
+        "//xla/tsl/platform:env",
+        "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:status",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/time",
+    ],
+)
+
+xla_cc_test(
+    name = "collective_ptable_stats_collection_test",
+    srcs = ["collective_ptable_stats_collection_test.cc"],
+    deps = [
+        ":collective_ptable_stats_collection",
+        ":hlo_op_profile_proto_cc",
+        ":hlo_op_profiles",
+        "//xla:shape_util",
+        "//xla:xla_data_proto_cc",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/testlib:filecheck",
+        "//xla/service:hlo_proto_cc",
+        "//xla/service/gpu:gpu_device_info_for_tests",
+        "//xla/stream_executor:device_description",
+        "//xla/tests:hlo_test_base",
+        "//xla/tsl/lib/core:status_test_util",
+        "//xla/tsl/platform:env",
+        "//xla/tsl/platform:statusor",
+        "//xla/tsl/platform:test",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest_main",
+        "@local_tsl//tsl/platform:path",
     ],
 )

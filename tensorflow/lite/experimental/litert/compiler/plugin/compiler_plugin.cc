@@ -337,10 +337,11 @@ Expected<LiteRtHwAccelerators> CompilerPlugin::SupportedHardware() const {
 }
 
 Expected<std::vector<LiteRtOpWithPartitionIndex>> CompilerPlugin::Partition(
-    const Subgraph& subgraph) {
+    const Subgraph& subgraph, absl::string_view soc_model) {
   LiteRtOpListT ops;
+  const char* soc_model_str = !soc_model.empty() ? soc_model.data() : nullptr;
   LITERT_RETURN_IF_ERROR(plugin_api_.compiler_plugin_partition(
-      plugin_handle_, subgraph.Get(), &ops));
+      plugin_handle_, soc_model_str, subgraph.Get(), &ops));
   return ops.Values();
 }
 
@@ -448,10 +449,10 @@ Expected<PartitionResult> PartitionModel(CompilerPlugin& compiler_plugin,
       return selected_ops.Error();
     }
 
-    LITERT_RETURN_IF_ERROR(PartitionSubgraph(
-        std::move(*selected_ops), *subgraph, result, model.Buffers()));
     LITERT_LOG(LITERT_INFO, "PartitionSubgraph: %d, selected num ops: %lu", i,
                selected_ops->size());
+    LITERT_RETURN_IF_ERROR(PartitionSubgraph(
+        std::move(*selected_ops), *subgraph, result, model.Buffers()));
   }
 
   // Add npu_call partitions to result. Update the npu_call ops to be dispatch
@@ -495,7 +496,7 @@ Expected<void> ApplyPluginWithPartition(CompilerPlugin& compiler_plugin,
   sliced_model.TransferSubgraphsFrom(std::move(subgraphs));
 
   // Copy op codes.
-  const auto& op_codes = detail::GetTflOpCodes(model);
+  const auto& op_codes = litert::internal::GetTflOpCodes(model);
 
   LiteRtModelT::TflOpCodes codes;
   codes.reserve(op_codes.size());
@@ -503,7 +504,7 @@ Expected<void> ApplyPluginWithPartition(CompilerPlugin& compiler_plugin,
     codes.emplace_back(std::make_unique<TflOpCode>(*op_code));
   }
 
-  detail::SetTflOpCodes(sliced_model, std::move(codes));
+  litert::internal::SetTflOpCodes(sliced_model, std::move(codes));
 
   // Pass sliced subgraphs to plugin for compilation.
   auto compiled_result = compiler_plugin.Compile(&sliced_model, soc_model);
@@ -578,7 +579,7 @@ Expected<void> ApplyPlugin(CompilerPlugin& compiler_plugin, LiteRtModelT& model,
 
 Expected<ApplyPluginsResult> ApplyPlugins(
     LiteRtEnvironment environment, LiteRtModel model,
-    LiteRtHwAcceleratorSet selected_hw_accelerators) {
+    LiteRtHwAcceleratorSet selected_hw_accelerators, bool* mutated) {
   auto option =
       environment->GetOption(kLiteRtEnvOptionTagCompilerPluginLibraryDir);
   if (!option.has_value() || option->type != kLiteRtAnyTypeString) {
@@ -600,7 +601,6 @@ Expected<ApplyPluginsResult> ApplyPlugins(
                          "No compiler plugin found");
   }
 
-  OwningBufferRef<uint8_t> new_flatbuffer;
   std::vector<std::string> success_messages;
   std::vector<std::string> error_messages;
 
@@ -617,7 +617,11 @@ Expected<ApplyPluginsResult> ApplyPlugins(
     }
 
     if (*plugin_supported_hardware & selected_hw_accelerators) {
-      if (auto status = ApplyPlugin(compiler_plugin, *model); !status) {
+      auto status = ApplyPlugin(compiler_plugin, *model);
+      if (mutated != nullptr) {
+        *mutated = true;
+      }
+      if (!status) {
         error_messages.push_back(
             absl::StrCat(plugin_name, " ", status.Error().Message()));
         continue;
@@ -628,7 +632,6 @@ Expected<ApplyPluginsResult> ApplyPlugins(
     }
   }
 
-  result.new_flatbuffer = std::move(new_flatbuffer);
   result.success_message = absl::StrJoin(success_messages, ", ");
   result.error_message = absl::StrJoin(error_messages, ", ");
 

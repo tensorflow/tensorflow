@@ -105,7 +105,7 @@ class CompilerPlugin {
 
   // Selects ops for the plugin to compile.
   Expected<std::vector<LiteRtOpWithPartitionIndex>> Partition(
-      const Subgraph& subgraph);
+      const Subgraph& subgraph, absl::string_view soc_model = "");
 
   // Compile given LiteRtSubgraphs. Result object must be outlived by
   // this CompilerPlugin.
@@ -180,20 +180,19 @@ Expected<void> ApplyPluginWithPartition(CompilerPlugin& compiler_plugin,
 
 // Apply all available plugins providing the selected HW accelerators to the
 // given model, modify the model accordingly, and return (1) the number of
-// compiler plugins successfully applied, (2) a new flatbuffer backing the
-// modified model, (3) a string listing the compiler plugins that were
-// successfully applied, and (4) a string listing the compiler plugins that
-// failed to apply with an associated error message.
+// compiler plugins successfully applied, (2) a string listing the compiler
+// plugins that were successfully applied, and (3) a string listing the compiler
+// plugins that failed to apply with an associated error message. This mutates
+// the given model.
 struct ApplyPluginsResult {
   size_t num_applied_plugins;
-  OwningBufferRef<uint8_t> new_flatbuffer;
   std::string success_message;
   std::string error_message;
 };
 
 Expected<ApplyPluginsResult> ApplyPlugins(
     LiteRtEnvironment environment, LiteRtModel model,
-    LiteRtHwAcceleratorSet selected_hw_accelerators);
+    LiteRtHwAcceleratorSet selected_hw_accelerators, bool* mutated = nullptr);
 
 }  // namespace litert::internal
 

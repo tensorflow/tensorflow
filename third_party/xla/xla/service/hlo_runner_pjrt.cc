@@ -409,7 +409,7 @@ HloRunnerPjRt::CreateExecutable(HloModule* module,
                                 CompileOptions compile_options) {
   XlaComputation computation(module->ToProto());
 
-  return pjrt_client_->Compile(computation, std::move(compile_options));
+  return pjrt_client_->CompileAndLoad(computation, std::move(compile_options));
 }
 
 absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>

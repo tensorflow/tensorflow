@@ -38,7 +38,7 @@ namespace xla {
   // I{L(1)} = (linear_index / D{L(0)}) % D{L(1)}
   // I{L(2)} = (linear_index / (D{L(0)} * D{L(1)})) % D{L(2)}
   // ...
-  DimensionVector multi_index(shape.dimensions_size());
+  DimensionVector multi_index(shape.rank());
 
   // Accumulated product D{L(0)} * D{L(1)} * ...
   int64_t divisor = 1;

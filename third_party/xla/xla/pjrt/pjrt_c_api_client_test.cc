@@ -98,7 +98,7 @@ TEST(PjRtCApiClientTest, IsDynamicDimension) {
       DynamicReshape(inp_0, {inp_1, inp_1}, {2, 3}, dims_are_dynamic);
   auto computation = builder.Build(reshaped).value();
   std::unique_ptr<PjRtLoadedExecutable> executable =
-      client->Compile(computation, CompileOptions()).value();
+      client->CompileAndLoad(computation, CompileOptions()).value();
   ExecuteOptions execute_options;
   execute_options.non_donatable_input_indices = {0};
   std::vector<std::vector<std::unique_ptr<PjRtBuffer>>> results =
@@ -157,7 +157,7 @@ TEST(PjRtCApiClientTest, NonEmptyExecutableFingerprint) {
   builder.SetUpAlias({}, 0, {});
   auto computation = builder.Build(sum).value();
   std::unique_ptr<PjRtLoadedExecutable> executable =
-      client->Compile(computation, CompileOptions()).value();
+      client->CompileAndLoad(computation, CompileOptions()).value();
 
   PjRtCApiClient* c_client = dynamic_cast<PjRtCApiClient*>(client.get());
   ASSERT_NE(c_client, nullptr);
@@ -238,7 +238,7 @@ TEST(PjRtClientTest, CompileUsesStableHloVersion) {
     return PJRT_Client_Compile_Orig(args);
   };
   std::unique_ptr<PjRtLoadedExecutable> executable =
-      client->Compile(*module, CompileOptions()).value();
+      client->CompileAndLoad(*module, CompileOptions()).value();
   const_cast<PJRT_Api*>(c_api)->PJRT_Client_Compile = PJRT_Client_Compile_Orig;
 }
 
@@ -310,7 +310,7 @@ TEST(PjRtCApiClientTest, ForwardExecuteContext) {
                           ParseAndReturnUnverifiedModule(kProgram, {}));
   TF_ASSERT_OK_AND_ASSIGN(
       auto executable,
-      client->Compile(XlaComputation(hlo_module->ToProto()), {}));
+      client->CompileAndLoad(XlaComputation(hlo_module->ToProto()), {}));
 
   ExecuteContext context;
   TF_ASSERT_OK(context.ffi_context().Emplace<MemsetValue>(42.0f));

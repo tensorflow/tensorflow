@@ -133,6 +133,10 @@ CUDNN_REDIST_JSON_DICT = {
         "https://developer.download.nvidia.com/compute/cudnn/redist/redistrib_9.7.1.json",
         "f9bc411a4908f0931e7323f89049e3a38453632c4ac5f4aa3220af69ddded9dc",
     ],
+    "9.8.0": [
+        "https://developer.download.nvidia.com/compute/cudnn/redist/redistrib_9.8.0.json",
+        "a1599fa1f8dcb81235157be5de5ab7d3936e75dfc4e1e442d07970afad3c4843",
+    ],
 }
 
 CUDA_12_NCCL_WHEEL_DICT = {

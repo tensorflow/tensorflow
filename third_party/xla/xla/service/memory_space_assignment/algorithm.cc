@@ -1681,11 +1681,23 @@ void FixAllocationSequenceAfterPostAllocationTransformation(
 
   // (2)
   for (auto& allocation : *allocations) {
+    std::vector<HloUse> uses_to_update;
     for (const HloUse& use : allocation->uses()) {
-      auto new_use_it = transformation_info.update_use_map.find(use);
-      if (new_use_it != transformation_info.update_use_map.end()) {
-        allocation->RemoveUse(use);
-        allocation->AddUse(new_use_it->second);
+      for (const auto& [old_use, new_use] :
+           transformation_info.update_use_map) {
+        if (use == old_use) {
+          uses_to_update.push_back(old_use);
+          break;  // found the use, no need to keep searching update_use_map
+        }
+      }
+    }
+
+    // Perform update uses
+    if (!uses_to_update.empty()) {
+      for (const HloUse& old_use : uses_to_update) {
+        const HloUse& new_use = transformation_info.update_use_map.at(old_use);
+        allocation->RemoveUse(old_use);
+        allocation->AddUse(new_use);
       }
     }
   }
@@ -2028,7 +2040,6 @@ absl::StatusOr<HeapSimulator::Result<HloValue>> MsaAlgorithm::Finish() {
   // Run post allocation transformation and fix the allocation sequence if
   // needed.
   if (options_.post_allocation_transformation_fn) {
-    PostAllocationTransformationUpdate all_changes;
     VLOG(3) << "Running post allocation transformation on module";
     for (HloComputation* comp : alias_analysis_.dataflow_analysis()
                                     .module()
@@ -2056,24 +2067,19 @@ absl::StatusOr<HeapSimulator::Result<HloValue>> MsaAlgorithm::Finish() {
           }
           for (HloInstruction* user : operand->users()) {
             if (HloDataflowAnalysis::IsInPlaceOperation(user->opcode())) {
-              continue;
+              break;
             }
           }
         }
 
         TF_ASSIGN_OR_RETURN(PostAllocationTransformationUpdate changes,
                             options_.post_allocation_transformation_fn(instr));
-        all_changes.to_be_removed.insert(all_changes.to_be_removed.end(),
-                                         changes.to_be_removed.begin(),
-                                         changes.to_be_removed.end());
-        all_changes.update_use_map.insert(changes.update_use_map.begin(),
-                                          changes.update_use_map.end());
+        VLOG(3) << "Post allocation transformation info: \n"
+                << changes.ToString();
+        FixAllocationSequenceAfterPostAllocationTransformation(allocations_,
+                                                               changes);
       }
     }
-    VLOG(3) << "Post allocation transformation info: \n"
-            << all_changes.ToString();
-    FixAllocationSequenceAfterPostAllocationTransformation(allocations_,
-                                                           all_changes);
   }
 
   HeapSimulator::Result<HloValue> result;

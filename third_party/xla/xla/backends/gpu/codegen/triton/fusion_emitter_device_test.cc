@@ -1776,11 +1776,10 @@ ENTRY entry_computation {
 
 TEST_F(TritonEmitterTest, SingleTileDotWithNestedFusionsIsEmittedCorrectly) {
   // Simplest case when everything fits into one tile that is useful for
-  // debugging.
+  // debugging. This also tests support for empty nested fusions.
   const std::string kHloText = R"(
 flhs {
-  flhs.p0 = f32[16,16] parameter(0)
-  ROOT lhs.root = f32[16,16] negate(flhs.p0)
+  ROOT flhs.p0 = f32[16,16] parameter(0)
 }
 
 frhs {
@@ -1891,6 +1890,55 @@ CHECK-DAG:  tt.dot {{.*}} tensor<16x32xf32> * tensor<32x64xf32> -> tensor<16x64x
 CHECK:      scf.yield {{.*}} : tensor<16x64xf32>
 CHECK-COUNT-1: tt.store
 )"));
+  EXPECT_TRUE(RunAndCompareNoHloPasses(
+      kHloText, ErrorSpec{/*aabs=*/1e-4, /*arel=*/1e-6}));
+}
+
+TEST_F(TritonEmitterTest, MaskedDotIsEmittedCorrectly) {
+  const std::string kHloText = R"(
+flhs {
+  flhs.p0 = f32[32,299] parameter(0)
+  ROOT lhs.root = f32[32,299] cosine(flhs.p0)
+}
+
+frhs {
+  frhs.p0 = f32[299,512] parameter(0)
+  ROOT frhs.root = f32[299,512] cosine(frhs.p0)
+}
+
+fdot {
+  fdot.p0 = f32[32,299] parameter(0)
+  fdot.p1 = f32[299,512] parameter(1)
+  fdot.lhs = f32[32,299] fusion(fdot.p0), kind=kCustom, calls=flhs, backend_config={
+    "fusion_backend_config":{
+      "kind":"__triton", "block_level_fusion_config":{
+        "output_tiles":[{"sizes":["16", "32"]}]
+      }
+    }
+  }
+  fdot.rhs = f32[299,512]{1,0} fusion(fdot.p1), kind=kCustom, calls=frhs, backend_config={
+    "fusion_backend_config":{
+      "kind":"__triton", "block_level_fusion_config":{
+        "output_tiles":[{"sizes":["32", "64"]}]
+      }
+    }
+  }
+  ROOT fdot.root = f32[32,512]{1,0} dot(fdot.lhs, fdot.rhs),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+}
+
+ENTRY entry {
+  entry.p0 = f32[32,299] parameter(0)
+  entry.p1 = f32[299,512] parameter(1)
+  ROOT fusion = f32[32,512] fusion(entry.p0, entry.p1),
+    kind=kCustom, calls=fdot, backend_config={
+      "fusion_backend_config":{
+        "kind":"__triton", "block_level_fusion_config":{
+          "output_tiles":[{"sizes":["16", "64"]}], "num_warps":"1"
+        }
+      }
+    }
+})";
   EXPECT_TRUE(RunAndCompareNoHloPasses(
       kHloText, ErrorSpec{/*aabs=*/1e-4, /*arel=*/1e-6}));
 }

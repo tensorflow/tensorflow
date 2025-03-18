@@ -72,9 +72,7 @@ class ConvolutionTest : public HloTestBase,
   ConvolutionTest() {
     dtype_ = GetParam();
     atol_ = rtol_ = (dtype_ == F32) ? 1e-4 : 1e-2;
-    // TODO(intel-tf): Set default value of user_scratchpad to true after
-    // enabling feature
-    user_scratchpad_ = false;
+    user_scratchpad_ = true;
     weights_prepacked_ = false;
     dtypeString_ = primitive_util::LowercasePrimitiveTypeName(dtype_);
   }

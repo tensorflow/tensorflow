@@ -4381,7 +4381,7 @@ class IndicatorColumnTest(test.TestCase):
                         self.evaluate(output))
 
   def test_2D_shape_succeeds(self):
-    # TODO(ispir/cassandrax): Swith to categorical_column_with_keys when ready.
+    # TODO(ispir/cassandrax): Switch to categorical_column_with_keys when ready.
     animal = fc.indicator_column(
         fc.categorical_column_with_hash_bucket('animal', 4))
     transformation_cache = fc.FeatureTransformationCache({

@@ -42,9 +42,9 @@ cc_library(
     deps = [
         "//tensorflow/core:lib",
         "//tensorflow/core/platform",
-        "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
         "@com_google_absl//absl/base:core_headers",
         "@local_tsl//tsl/profiler/lib:profiler_session",
+        "@local_tsl//tsl/profiler/protobuf:xplane_proto_cc",
     ] + if_not_android([
         ":profiler_interface",
         ":profiler_lock",

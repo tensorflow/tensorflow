@@ -24,10 +24,10 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "xla/service/hlo.pb.h"
+#include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/profiler/utils/file_system_utils.h"
-#include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/profiler/convert/repository.h"
 #include "tensorflow/core/profiler/utils/hlo_proto_map.h"
@@ -62,8 +62,8 @@ absl::StatusOr<bool> GetHloProtoFromMultiXSpaceAndSaveToFile(
         ProfilerJoinPath(session_snapshot.GetSessionRunDir(),
                          absl::StrCat(kNoModuleIdentifier, kHloProtoSuffix));
     xla::HloProto empty_hlo;
-    TF_RETURN_IF_ERROR(tensorflow::WriteBinaryProto(tensorflow::Env::Default(),
-                                                    file_name, empty_hlo));
+    TF_RETURN_IF_ERROR(
+        tsl::WriteBinaryProto(tsl::Env::Default(), file_name, empty_hlo));
     // The profile does not have HLO proto.
     return false;
   }
@@ -77,8 +77,8 @@ absl::StatusOr<bool> GetHloProtoFromMultiXSpaceAndSaveToFile(
     std::string file_name =
         ProfilerJoinPath(session_snapshot.GetSessionRunDir(),
                          absl::StrCat(module_name, kHloProtoSuffix));
-    TF_RETURN_IF_ERROR(tensorflow::WriteBinaryProto(
-        tensorflow::Env::Default(), file_name, *hlo_proto_or.value()));
+    TF_RETURN_IF_ERROR(tsl::WriteBinaryProto(tsl::Env::Default(), file_name,
+                                             *hlo_proto_or.value()));
   }
 
   // The profile has HLO proto.
@@ -94,8 +94,8 @@ absl::StatusOr<xla::HloProto> GetHloProtoByModuleName(
       ProfilerJoinPath(session_snapshot.GetSessionRunDir(),
                        absl::StrCat(module_name, kHloProtoSuffix));
   xla::HloProto hlo_proto;
-  TF_RETURN_IF_ERROR(tensorflow::ReadBinaryProto(tensorflow::Env::Default(),
-                                                 file_name, &hlo_proto));
+  TF_RETURN_IF_ERROR(
+      tsl::ReadBinaryProto(tsl::Env::Default(), file_name, &hlo_proto));
   return hlo_proto;
 }
 
@@ -105,7 +105,7 @@ absl::StatusOr<bool> ConvertMultiXSpaceToHloProto(
   // TODO(profiler): Move this glob to SessionSnapshot and build a map from file
   // type to file paths.
   std::vector<std::string> results;
-  TF_RETURN_IF_ERROR(tensorflow::Env::Default()->GetChildren(
+  TF_RETURN_IF_ERROR(tsl::Env::Default()->GetChildren(
       std::string(session_snapshot.GetSessionRunDir()), &results));
 
   // If the profiler finds a filename with hlo proto suffix, this means HLO

@@ -394,6 +394,7 @@ cc_library(
         "//tensorflow/core:portable_gif_internal",
         "//tensorflow/core:portable_jpeg_internal",
         "//tensorflow/core/lib/png:png_io",
+        "//tensorflow/core/lib/webp:webp_io",
     ],
 )
 

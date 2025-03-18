@@ -1,4 +1,4 @@
-load("//xla/tests:build_defs.bzl", "xla_test")
+load("//xla:xla.bzl", "xla_cc_test")
 load("//xla/tsl:tsl.bzl", "if_google")
 load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
 
@@ -12,6 +12,18 @@ package_group(
     name = "friends",
     includes = [
         "//xla:friends",
+    ],
+)
+
+cc_library(
+    name = "autotuner",
+    hdrs = ["autotuner.h"],
+    deps = [
+        "//xla/hlo/ir:hlo",
+        "//xla/runtime:thunk",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/time",
     ],
 )
 
@@ -40,10 +52,10 @@ cc_library(
     ] + if_google(["@com_google_absl//absl/types:source_location"]),
 )
 
-xla_test(
+xla_cc_test(
     name = "emitter_loc_op_builder_test",
     srcs = ["emitter_loc_op_builder_test.cc"],
-    backends = ["gpu"],
+    tags = ["gpu"],
     deps = [
         ":emitter_loc_op_builder",
         "//xla/backends/gpu/codegen/triton:fusion_emitter",

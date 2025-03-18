@@ -828,7 +828,7 @@ class CSVDatasetOp : public DatasetOpKernel {
       // converts it to a Tensor of the right type and adds it to the
       // out_tensors vector.
       absl::Status UnquotedFieldToOutput(
-          IteratorContext* ctx, StringPiece field,
+          IteratorContext* ctx, absl::string_view field,
           std::vector<Tensor>* out_tensors,
           const std::vector<Piece>& earlier_pieces, bool include)
           TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {

@@ -304,7 +304,7 @@ func.func @broadcast_to_to_reshape(%arg0: tensor<4x4x4xf32>, %arg1 : tensor<4xi3
 
 // Converts tfl.broadcast_to to tfl.reshape if input and output have the same
 // number of elements.
-// CHECK-LABEL: broadcast_to_to_reshape_i64
+// CHECK-LABEL: @broadcast_to_to_reshape_i64
 func.func @broadcast_to_to_reshape_i64(%arg0: tensor<4x4x4xf32>, %arg1 : tensor<4xi64>) -> tensor<1x4x4x4xf32> {
   %0 = "tfl.broadcast_to"(%arg0, %arg1) : (tensor<4x4x4xf32>, tensor<4xi64>) -> tensor<1x4x4x4xf32>
   // CHECK: "tfl.cast"
@@ -317,7 +317,7 @@ func.func @broadcast_to_to_reshape_i64(%arg0: tensor<4x4x4xf32>, %arg1 : tensor<
 
 // Converts tfl.broadcast_to to tfl.reshape if input and output have the same
 // number of elements.
-// CHECK-LABEL: broadcast_to_to_reshape_i64_const
+// CHECK-LABEL: @broadcast_to_to_reshape_i64_const
 func.func @broadcast_to_to_reshape_i64_const(%arg0: tensor<4x4x4xf32>) -> tensor<1x4x4x4xf32> {
   %cst = arith.constant dense<[1, 4, 4, 4]> : tensor<4xi64>
   %0 = "tfl.broadcast_to"(%arg0, %cst) : (tensor<4x4x4xf32>, tensor<4xi64>) -> tensor<1x4x4x4xf32>
@@ -329,6 +329,7 @@ func.func @broadcast_to_to_reshape_i64_const(%arg0: tensor<4x4x4xf32>) -> tensor
 
 // -----
 
+// CHECK-LABEL: @trivial_dynamic_update_slice
 func.func @trivial_dynamic_update_slice(%arg0: tensor<2x7x14xf32>, %arg1: tensor<2x7x14xf32>) -> tensor<2x7x14xf32> {
   %0 = arith.constant dense<0> : tensor<3xi32>
   %1 = "tfl.dynamic_update_slice"(%arg0, %arg1, %0) : (tensor<2x7x14xf32>, tensor<2x7x14xf32>, tensor<3xi32>) -> tensor<2x7x14xf32>
@@ -338,6 +339,7 @@ func.func @trivial_dynamic_update_slice(%arg0: tensor<2x7x14xf32>, %arg1: tensor
 
 // -----
 
+// CHECK-LABEL: @trivial_dynamic_update_slice_wrong_update_shape
 func.func @trivial_dynamic_update_slice_wrong_update_shape(%arg0: tensor<2x7x14xf32>, %arg1: tensor<2x7x7xf32>) -> tensor<2x7x14xf32> {
   %0 = arith.constant dense<0> : tensor<3xi32>
   %1 = "tfl.dynamic_update_slice"(%arg0, %arg1, %0) : (tensor<2x7x14xf32>, tensor<2x7x7xf32>, tensor<3xi32>) -> tensor<2x7x14xf32>
@@ -381,4 +383,10 @@ func.func @ConstPadToI32(%arg0: tensor<15600xf32>) -> tensor<15602xf32> {
   // CHECK: "tfl.pad"(%arg0, %cst) : (tensor<15600xf32>, tensor<1x2xi32>) -> tensor<15602xf32>
 }
 
-
+// CHECK-LABEL: @RemoveNoopTranspose
+func.func @RemoveNoopTranspose(%arg0: tensor<1x2x3x4xf32>) -> tensor<1x2x3x4xf32> {
+  %cst = arith.constant dense<[0, 1, 2, 3]> : tensor<4xi32>
+  %0 = "tfl.transpose"(%arg0, %cst) : (tensor<1x2x3x4xf32>, tensor<4xi32>) -> tensor<1x2x3x4xf32>
+  func.return %0 : tensor<1x2x3x4xf32>
+  // CHECK: return %arg0
+}

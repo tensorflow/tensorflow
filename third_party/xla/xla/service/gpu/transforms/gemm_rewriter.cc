@@ -356,14 +356,14 @@ HloInstruction *TransposeMatrix(HloInstruction *instr, int64_t contracting_dim,
   auto input_shape = instr->shape();
   // Identify the dimensional order which describes a transpose of the
   // contracting and non-contracting dimensions of the GEMM.
-  std::vector<int64_t> permutation(input_shape.dimensions_size(), -1);
+  std::vector<int64_t> permutation(input_shape.rank(), -1);
   // Discard the batch dimensions.
   for (int64_t batch_dim : batch_dims) {
     permutation[batch_dim] = batch_dim;
   }
   // Identify the non-contracting dimension.
   int non_contracting_dim;
-  for (int i = 0; i < input_shape.dimensions_size(); ++i) {
+  for (int i = 0; i < input_shape.rank(); ++i) {
     if (permutation[i] == -1 && contracting_dim != i) {
       non_contracting_dim = i;
     }
@@ -627,10 +627,8 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
 
     int64_t lhs_batch_dims_size =
         instr->dot_dimension_numbers().lhs_batch_dimensions_size();
-    bool is_lhs_vector =
-        lhs->shape().dimensions_size() == lhs_batch_dims_size + 1;
-    bool is_rhs_vector =
-        rhs->shape().dimensions_size() == lhs_batch_dims_size + 1;
+    bool is_lhs_vector = lhs->shape().rank() == lhs_batch_dims_size + 1;
+    bool is_rhs_vector = rhs->shape().rank() == lhs_batch_dims_size + 1;
     int64_t lhs_stride =
         is_lhs_vector ? lhs->shape().dimensions(lhs_batch_dims_size)
                       : lhs->shape().dimensions(lhs_batch_dims_size) *

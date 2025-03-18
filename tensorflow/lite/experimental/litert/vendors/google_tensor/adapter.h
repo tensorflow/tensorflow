@@ -16,16 +16,20 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <utility>
+#include <vector>
 
 #include "absl/log/log.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
 
-namespace litert {
-namespace google_tensor {
+namespace litert::google_tensor {
 
+// Flags is a vector of key-value pairs. where key is the flag name and value is
+// the flag value. eg. {{"enable_reference", "true"}}
+using Flags = std::vector<std::pair<std::string, std::string>>;
 typedef absl::Status (*Compile)(absl::string_view serialized_tfl_buffer,
-                                absl::string_view soc_model,
+                                absl::string_view soc_model, const Flags& flags,
                                 std::string* compiled_code);
 
 // This class adapts the google tensor compiler API for dynamic loading.
@@ -59,7 +63,6 @@ struct Adapter::Api {
   Compile compile = nullptr;
 };
 
-}  // namespace google_tensor
-}  // namespace litert
+}  // namespace litert::google_tensor
 
 #endif  // TENSORFLOW_LITE_EXPERIMENTAL_LITERT_VENDORS_GOOGLE_TENSOR_ADAPTER_H_

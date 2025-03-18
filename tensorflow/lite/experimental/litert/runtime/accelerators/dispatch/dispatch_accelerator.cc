@@ -102,11 +102,13 @@ class NpuAccelerator final {
 
   // Goes through the options in the linked list and returns the model
   // compilation data if it exists.
-  static Expected<const litert::ModelCompilationData*> GetModelCompilationData(
-      LiteRtAcceleratorCompilationOptions options) {
+  static Expected<const litert::internal::ModelCompilationData*>
+  GetModelCompilationData(LiteRtAcceleratorCompilationOptions options) {
     while (options) {
-      if (options->identifier == litert::ModelCompilationData::kIdentifier) {
-        return reinterpret_cast<litert::ModelCompilationData*>(options);
+      if (options->identifier ==
+          litert::internal::ModelCompilationData::kIdentifier) {
+        return reinterpret_cast<litert::internal::ModelCompilationData*>(
+            options);
       }
       LiteRtGetNextAcceleratorCompilationOptions(&options);
     }
@@ -126,16 +128,15 @@ class NpuAccelerator final {
                   kLiteRtStatusErrorInvalidArgument,
                   "Accelerator is not registered to an environment.");
 
-    LITERT_ASSIGN_OR_RETURN(
-        const litert::ModelCompilationData* compilation_data,
-        GetModelCompilationData(options));
+    LITERT_ASSIGN_OR_RETURN(const auto* compilation_data,
+                            GetModelCompilationData(options));
     const char* allocation_base = compilation_data->allocation_base;
 
     LITERT_ENSURE(allocation_base != nullptr, kLiteRtStatusErrorRuntimeFailure,
                   "No model allocation was passed by the runtime.");
 
-    auto dispatch_delegate_options =
-        litert::CreateDispatchDelegateOptionsPtr(*accelerator->env);
+    auto dispatch_delegate_options = litert::CreateDispatchDelegateOptionsPtr(
+        &accelerator->env->GetOptions());
     LITERT_ENSURE(dispatch_delegate_options != nullptr,
                   kLiteRtStatusErrorRuntimeFailure,
                   "Dispatch delegate options failed to be created.");
@@ -147,7 +148,7 @@ class NpuAccelerator final {
         "Could not add allocation base to dispatch delegate options.");
 
     auto dispatch_delegate = litert::CreateDispatchDelegatePtr(
-        *accelerator->env, std::move(dispatch_delegate_options));
+        &accelerator->env->GetOptions(), std::move(dispatch_delegate_options));
     LITERT_ENSURE(dispatch_delegate != nullptr,
                   kLiteRtStatusErrorRuntimeFailure,
                   "Dispatch delegate failed to be created.");

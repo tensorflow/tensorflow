@@ -130,6 +130,13 @@ absl::StatusOr<Shape> GetBatchRowColumnShape(
     case 012:  // (B,R,C) (major-to-minor)
       break;
     case 021:  // (B,C,R)
+      if (num_cols == 1) {
+        // If rhs operand has no non-contracting dims, guarantee bias vector
+        // length will still match matrix D rows with HIPBLASLT_EPILOGUE_BIAS
+        // epilogue
+        // (https://rocm.docs.amd.com/projects/hipBLASLt/en/latest/datatypes.html).
+        break;
+      }
       order = Order::kColumnMajor;
       leading_dim_stride = num_rows;
       break;

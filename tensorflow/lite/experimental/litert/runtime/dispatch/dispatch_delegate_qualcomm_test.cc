@@ -28,7 +28,10 @@
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
 #include "tensorflow/lite/experimental/litert/c/litert_dispatch_delegate.h"
+#include "tensorflow/lite/experimental/litert/c/litert_environment.h"
+#include "tensorflow/lite/experimental/litert/c/litert_environment_options.h"
 #include "tensorflow/lite/experimental/litert/c/litert_tensor_buffer.h"
+#include "tensorflow/lite/experimental/litert/cc/litert_compilation_options.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_compiled_model.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_dispatch_delegate.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_environment.h"
@@ -75,12 +78,15 @@ TEST(DispatchDelegate, QualcommCpuBuffer) {
   EXPECT_EQ(interpreter.outputs().size(), 1);
   ASSERT_EQ(interpreter.execution_plan().size(), 1);
 
+  LiteRtEnvironmentOptions env_options;
+  LiteRtGetEnvironmentOptions(env->Get(), &env_options);
+
   auto dispatch_delegate_options =
-      CreateDispatchDelegateOptionsPtr(*env->Get());
+      CreateDispatchDelegateOptionsPtr(env_options);
   LiteRtDispatchDelegateAddAllocBaseOption(dispatch_delegate_options.get(),
                                            rt.Flatbuffer().Buf().Data());
   auto dispatch_delegate = CreateDispatchDelegatePtr(
-      *env->Get(), std::move(dispatch_delegate_options));
+      env_options, std::move(dispatch_delegate_options));
 
 #if !defined(__ANDROID__)
   GTEST_SKIP() << "The rest of this test is specific to Android devices with a "
@@ -149,12 +155,15 @@ TEST(DispatchDelegate, QualcommHwBuffer) {
   EXPECT_EQ(interpreter.outputs().size(), 1);
   ASSERT_EQ(interpreter.execution_plan().size(), 1);
 
+  LiteRtEnvironmentOptions env_options;
+  LiteRtGetEnvironmentOptions(env->Get(), &env_options);
+
   auto dispatch_delegate_options =
-      CreateDispatchDelegateOptionsPtr(*env->Get());
+      CreateDispatchDelegateOptionsPtr(env_options);
   LiteRtDispatchDelegateAddAllocBaseOption(dispatch_delegate_options.get(),
                                            rt.Flatbuffer().Buf().Data());
   auto dispatch_delegate = CreateDispatchDelegatePtr(
-      *env->Get(), std::move(dispatch_delegate_options));
+      env_options, std::move(dispatch_delegate_options));
 
 #if !defined(__ANDROID__)
   GTEST_SKIP() << "The rest of this test is specific to Android devices with a "
@@ -255,9 +264,10 @@ TEST(DispatchDelegate, CompiledModel) {
   GTEST_SKIP() << "The rest of this test is specific to Android devices with a "
                   "Qualcomm HTP";
 #endif
-  auto options = CompiledModel::Options::Create();
-  ASSERT_TRUE(options);
-  ASSERT_TRUE(options->SetHardwareAccelerators(kLiteRtHwAcceleratorCpu));
+  auto jit_compilation_options = CompilationOptions::Create();
+  ASSERT_TRUE(jit_compilation_options);
+  ASSERT_TRUE(jit_compilation_options->SetHardwareAccelerators(
+      kLiteRtHwAcceleratorCpu));
 
   const std::vector<litert::Environment::Option> environment_options = {
       litert::Environment::Option{
@@ -269,7 +279,7 @@ TEST(DispatchDelegate, CompiledModel) {
       litert::Environment::Create(absl::MakeConstSpan(environment_options));
   ASSERT_TRUE(env);
   auto res_compiled_model =
-      CompiledModel::Create(*env, *model, std::move(*options));
+      CompiledModel::Create(*env, *model, *jit_compilation_options);
   ASSERT_TRUE(res_compiled_model) << "Failed to initialize CompiledModel";
   auto& compiled_model = *res_compiled_model;
 
@@ -328,9 +338,10 @@ TEST(DispatchDelegate, QualcommSharedInput) {
   GTEST_SKIP() << "The rest of this test is specific to Android devices with a "
                   "Qualcomm HTP";
 #endif
-  auto options = CompiledModel::Options::Create();
-  ASSERT_TRUE(options);
-  ASSERT_TRUE(options->SetHardwareAccelerators(kLiteRtHwAcceleratorCpu));
+  auto jit_compilation_options = CompilationOptions::Create();
+  ASSERT_TRUE(jit_compilation_options);
+  ASSERT_TRUE(jit_compilation_options->SetHardwareAccelerators(
+      kLiteRtHwAcceleratorCpu));
 
   const std::vector<litert::Environment::Option> environment_options = {
       litert::Environment::Option{
@@ -342,7 +353,7 @@ TEST(DispatchDelegate, QualcommSharedInput) {
       litert::Environment::Create(absl::MakeConstSpan(environment_options));
   ASSERT_TRUE(env);
   auto res_compiled_model =
-      CompiledModel::Create(*env, *model, std::move(*options));
+      CompiledModel::Create(*env, *model, *jit_compilation_options);
   ASSERT_TRUE(res_compiled_model) << "Failed to initialize CompiledModel";
   auto& compiled_model = *res_compiled_model;
 

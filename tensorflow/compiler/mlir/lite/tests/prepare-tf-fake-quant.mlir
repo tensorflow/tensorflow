@@ -1,7 +1,5 @@
-// RUN: tf-opt %s -tfl-raise-custom-ops="test-raise-tf-targets=tf.FakeQuantWithMinMaxVarsPerChannel,tf.FakeQuantWithMinMaxVars" -tfl-prepare-tf | FileCheck --dump-input=always %s
-// RUN: tf-opt %s -tfl-raise-custom-ops="test-raise-tf-targets=tf.FakeQuantWithMinMaxVarsPerChannel,tf.FakeQuantWithMinMaxVars" -tfl-prepare-tf=use-fake-quant-num-bits=true | FileCheck --check-prefix LOBIT --dump-input=always %s
-
-module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, producer = 268 : i32}} {
+// RUN: tf-opt %s -split-input-file -tfl-raise-custom-ops="test-raise-tf-targets=tf.FakeQuantWithMinMaxVarsPerChannel,tf.FakeQuantWithMinMaxVars" -tfl-prepare-tf | FileCheck --dump-input=always %s
+// RUN: tf-opt %s -split-input-file -tfl-raise-custom-ops="test-raise-tf-targets=tf.FakeQuantWithMinMaxVarsPerChannel,tf.FakeQuantWithMinMaxVars" -tfl-prepare-tf=use-fake-quant-num-bits=true | FileCheck --check-prefix LOBIT --dump-input=always %s
 
 // CHECK-LABEL: fakeQuantPerChannelForActivation
 func.func @fakeQuantPerChannelForActivation(%arg0: tensor<8x4xf32>) -> (tensor<8x4xf32>) {
@@ -15,6 +13,8 @@ func.func @fakeQuantPerChannelForActivation(%arg0: tensor<8x4xf32>) -> (tensor<8
 // CHECK:  %[[dq:.*]] = "tfl.dequantize"(%[[q]])
 // CHECK:  return %[[dq]]
 }
+
+// -----
 
 // CHECK-LABEL: fakeQuantForActivation
 func.func @fakeQuantForActivation(tensor<8xf32>) -> (tensor<8xf32>) {
@@ -30,6 +30,8 @@ func.func @fakeQuantForActivation(tensor<8xf32>) -> (tensor<8xf32>) {
 // CHECK:  return %2
 }
 
+// -----
+
 // CHECK-LABEL: fakeQuantForActivationNoDuplication
 func.func @fakeQuantForActivationNoDuplication(tensor<8xf32>) -> (tensor<8x!quant.uniform<u8:f32, 1.000000e+00>>) {
 ^bb0(%arg0: tensor<8xf32>):
@@ -43,6 +45,8 @@ func.func @fakeQuantForActivationNoDuplication(tensor<8xf32>) -> (tensor<8x!quan
 // CHECK:  %1 = "tfl.quantize"(%0) <{qtype = tensor<8x!quant.uniform<u8:f32, 1.000000e+00>>}>
 // CHECK:  return %1
 }
+
+// -----
 
 // CHECK-LABEL: WrappedFakeQuantFolded
 func.func @WrappedFakeQuantFolded() -> tensor<8xf32> {
@@ -64,6 +68,8 @@ func.func @WrappedFakeQuantFolded() -> tensor<8xf32> {
 // CHECK: return %[[DEQUANTIZE]] : tensor<8xf32>
 }
 
+// -----
+
 // CHECK-LABEL: fakeQuantFolded
 func.func @fakeQuantFolded() -> (tensor<8xf32>) {
   %in = arith.constant dense<0.0> : tensor<8xf32>
@@ -80,6 +86,8 @@ func.func @fakeQuantFolded() -> (tensor<8xf32>) {
 // CHECK: return %[[DEQUANTIZE]] : tensor<8xf32>
 }
 
+// -----
+
 // CHECK-LABEL: fakeQuantFoldedWithoutIdentity
 func.func @fakeQuantFoldedWithoutIdentity() -> (tensor<8xf32>) {
   %in = arith.constant dense<0.0> : tensor<8xf32>
@@ -93,6 +101,8 @@ func.func @fakeQuantFoldedWithoutIdentity() -> (tensor<8xf32>) {
 // CHECK: %[[DEQUANTIZE:.*]] = "tfl.dequantize"(%[[QUANTIZE]])
 // CHECK: return %[[DEQUANTIZE]] : tensor<8xf32>
 }
+
+// -----
 
 // CHECK-LABEL: fakeQuantFoldedWithCast
 func.func @fakeQuantFoldedWithCast() -> (tensor<8xf32>) {
@@ -112,6 +122,8 @@ func.func @fakeQuantFoldedWithCast() -> (tensor<8xf32>) {
 // CHECK: return %[[DEQUANTIZE]] : tensor<8xf32>
 }
 
+// -----
+
 // CHECK-LABEL: fakeQuantNotFolded
 func.func @fakeQuantNotFolded(tensor<8xf32>, tensor<f32>, tensor<f32>) -> (tensor<8xf32>) {
 ^bb0(%arg0: tensor<8xf32>, %arg3: tensor<f32>, %arg4: tensor<f32>):
@@ -121,6 +133,8 @@ func.func @fakeQuantNotFolded(tensor<8xf32>, tensor<f32>, tensor<f32>) -> (tenso
 // CHECK: %0 = "tf.FakeQuantWithMinMaxVars"(%arg0, %arg1, %arg2)
 // CHECK: return %0 : tensor<8xf32>
 }
+
+// -----
 
 // CHECK-LABEL: fakeQuantFollowedByTranspose
 func.func @fakeQuantFollowedByTranspose(tensor<1x2xf32>, tensor<f32>, tensor<f32>) -> (tensor<2x1xf32>) {
@@ -135,6 +149,8 @@ func.func @fakeQuantFollowedByTranspose(tensor<1x2xf32>, tensor<f32>, tensor<f32
 // CHECK:  %1 = "tf.FakeQuantWithMinMaxVars"(%0, %arg1, %arg2)
 // CHECK:  return %1
 }
+
+// -----
 
 // CHECK-LABEL: fakeQuantFollowedByTransposes
 func.func @fakeQuantFollowedByTransposes(tensor<1x2xf32>, tensor<f32>, tensor<f32>) -> (tensor<2x1xf32>, tensor<2x1xf32>) {
@@ -151,6 +167,8 @@ func.func @fakeQuantFollowedByTransposes(tensor<1x2xf32>, tensor<f32>, tensor<f3
 // CHECK:  %[[T2:.*]] = "tf.Transpose"(%[[FQ]], %cst)
 }
 
+// -----
+
 // CHECK-LABEL: fakeQuantFollowedByReshape
 func.func @fakeQuantFollowedByReshape(tensor<1x2xf32>, tensor<f32>, tensor<f32>) -> (tensor<2x1xf32>) {
 ^bb0(%arg0: tensor<1x2xf32>, %arg1: tensor<f32>, %arg2: tensor<f32>):
@@ -165,6 +183,8 @@ func.func @fakeQuantFollowedByReshape(tensor<1x2xf32>, tensor<f32>, tensor<f32>)
 // CHECK:  %1 = "tf.FakeQuantWithMinMaxVars"(%0, %arg1, %arg2)
 // CHECK:  return %1
 }
+
+// -----
 
 // CHECK-LABEL: fakeQuantFollowedByReshapes
 func.func @fakeQuantFollowedByReshapes(tensor<1x2xf32>, tensor<f32>, tensor<f32>) -> (tensor<2x1xf32>, tensor<2x1xf32>) {
@@ -182,6 +202,8 @@ func.func @fakeQuantFollowedByReshapes(tensor<1x2xf32>, tensor<f32>, tensor<f32>
 // CHECK:  %[[R2:.*]] = "tf.Reshape"(%[[FQ]], %cst)
 // CHECK-SAME: tensor<2x1xf32>
 }
+
+// -----
 
 // CHECK-LABEL: fakeQuantWithConv2D
 func.func @fakeQuantWithConv2D(tensor<256x32x32x3xf32>) -> (tensor<256x8x7x16xf32>) {
@@ -202,6 +224,8 @@ func.func @fakeQuantWithConv2D(tensor<256x32x32x3xf32>) -> (tensor<256x8x7x16xf3
 // CHECK: %[[CONV:.*]] = "tfl.conv_2d"(%arg0, %[[DEQUANTIZE]], %[[CONSTANT]])
 // CHECK: return %[[CONV]]
 }
+
+// -----
 
 // CHECK-LABEL: perChannelFakeQuantWithConv2D
 func.func @perChannelFakeQuantWithConv2D(tensor<256x32x32x3xf32>) -> (tensor<256x8x7x16xf32>) {
@@ -224,6 +248,8 @@ func.func @perChannelFakeQuantWithConv2D(tensor<256x32x32x3xf32>) -> (tensor<256
 // CHECK: return %[[CONV]] : tensor<256x8x7x16xf32>
 }
 
+// -----
+
 // CHECK-LABEL: fakeQuantWithDepthwiseConv2D
 func.func @fakeQuantWithDepthwiseConv2D(tensor<256x32x32x3xf32>) -> (tensor<256x30x30x16xf32>) {
 ^bb0(%arg: tensor<256x32x32x3xf32>) :
@@ -243,6 +269,8 @@ func.func @fakeQuantWithDepthwiseConv2D(tensor<256x32x32x3xf32>) -> (tensor<256x
 // CHECK: %[[CONV:.*]] = "tfl.depthwise_conv_2d"(%arg0, %[[DEQUANTIZE]], %[[CONSTANT]])
 // CHECK: return %[[CONV]]
 }
+
+// -----
 
 // CHECK-LABEL: perChannelFakeQuantWithDepthwiseConv2D
 func.func @perChannelFakeQuantWithDepthwiseConv2D(tensor<256x32x32x3xf32>) -> (tensor<256x30x30x16xf32>) {
@@ -266,6 +294,8 @@ func.func @perChannelFakeQuantWithDepthwiseConv2D(tensor<256x32x32x3xf32>) -> (t
 // CHECK: %[[CONV:.*]] = "tfl.depthwise_conv_2d"(%arg0, %[[DEQUANTIZE]], %[[CONSTANT]])
 // CHECK: return %[[CONV]]
 }
+
+// -----
 
 // CHECK-LABEL: perChannelFakeQuantWithDepthwiseConv2DWithReshape
 func.func @perChannelFakeQuantWithDepthwiseConv2DWithReshape(%arg: tensor<1x160x160x48xf32>) -> (tensor<1x160x160x48xf32>) {
@@ -293,6 +323,8 @@ func.func @perChannelFakeQuantWithDepthwiseConv2DWithReshape(%arg: tensor<1x160x
 // CHECK: return %[[CONV]]
 }
 
+// -----
+
 // LOBIT-LABEL: fakeQuant3BitPerChannelForActivation
 func.func @fakeQuant3BitPerChannelForActivation(%arg0: tensor<8x4xf32>) -> (tensor<8x4xf32>) {
   %arg1 = arith.constant dense<[0.0, -1.0, -31.0, -30.0]> : tensor<4xf32>
@@ -305,6 +337,8 @@ func.func @fakeQuant3BitPerChannelForActivation(%arg0: tensor<8x4xf32>) -> (tens
 // LOBIT:  %[[dq:.*]] = "tfl.dequantize"(%[[q]])
 // LOBIT:  return %[[dq]]
 }
+
+// -----
 
 // LOBIT-LABEL: fakeQuant3BitForActivation
 func.func @fakeQuant3BitForActivation(tensor<8xf32>) -> (tensor<8xf32>) {
@@ -319,6 +353,8 @@ func.func @fakeQuant3BitForActivation(tensor<8xf32>) -> (tensor<8xf32>) {
 // LOBIT:  %2 = "tfl.dequantize"(%1)
 // LOBIT:  return %2
 }
+
+// -----
 
 // CHECK-LABEL: fakeQuantConcat
 func.func @fakeQuantConcat(%arg0: tensor<1x6400x2xf32>, %arg1: tensor<1x1600x2xf32>) -> (tensor<1x8000x2xf32>) {
@@ -345,6 +381,38 @@ func.func @fakeQuantConcat(%arg0: tensor<1x6400x2xf32>, %arg1: tensor<1x1600x2xf
 // CHECK:  return %9
 }
 
+// -----
+
+// CHECK-LABEL: fakeQuantConcatQDQ
+func.func @fakeQuantConcatQDQ(%arg0: tensor<1x6400x2xf32>, %arg1: tensor<1x1600x2xf32>) -> (tensor<1x8000x2xf32>) {
+  %cst = arith.constant dense<1> : tensor<i32>
+  %cst_1 = arith.constant dense<-1.0> : tensor<f32>
+  %cst_2 = arith.constant dense<1.0> : tensor<f32>
+  %cst_3 = arith.constant dense<-2.0> : tensor<f32>
+  %cst_4 = arith.constant dense<0.5> : tensor<f32>
+  %0 = "tf.FakeQuantWithMinMaxVars"(%arg0, %cst_1, %cst_2) {num_bits = 8, narrow_range = false} : (tensor<1x6400x2xf32>, tensor<f32>, tensor<f32>) -> tensor<1x6400x2xf32>
+  %1 = "tfl.quantize"(%0) {qtype = tensor<1x6400x2x!quant.uniform<u8:f32, 1.0>>} : (tensor<1x6400x2xf32>) -> tensor<1x6400x2x!quant.uniform<u8:f32, 1.0>>
+  %2 = "tfl.dequantize"(%1) : (tensor<1x6400x2x!quant.uniform<u8:f32, 1.0>>) -> tensor<1x6400x2xf32>
+  %3 = "tf.FakeQuantWithMinMaxVars"(%arg1, %cst_3, %cst_4) {num_bits = 8, narrow_range = false} : (tensor<1x1600x2xf32>, tensor<f32>, tensor<f32>) -> tensor<1x1600x2xf32>
+  %4 = "tfl.quantize"(%3) {qtype = tensor<1x1600x2x!quant.uniform<u8:f32, 1.0>>} : (tensor<1x1600x2xf32>) -> tensor<1x1600x2x!quant.uniform<u8:f32, 1.0>>
+  %5 = "tfl.dequantize"(%4) : (tensor<1x1600x2x!quant.uniform<u8:f32, 1.0>>) -> tensor<1x1600x2xf32>
+  %6 = "tf.ConcatV2"(%2, %5, %cst) : (tensor<1x6400x2xf32>, tensor<1x1600x2xf32>, tensor<i32>) -> tensor<1x8000x2xf32>
+  return %6 : tensor<1x8000x2xf32>
+
+// CHECK:  %0 = "tf.FakeQuantWithMinMaxVars"(%arg0, %cst_0, %cst_1)
+// CHECK:  %1 = "tfl.quantize"(%0)
+// CHECK:  %2 = "tfl.dequantize"(%1)
+// CHECK:  %3 = "tf.FakeQuantWithMinMaxVars"(%arg1, %cst_2, %cst_3)
+// CHECK:  %4 = "tfl.quantize"(%3)
+// CHECK:  %5 = "tfl.dequantize"(%4)
+// CHECK:  %6 = "tf.ConcatV2"(%2, %5, %cst)
+// CHECK:  %7 = "tf.FakeQuantWithMinMaxVars"(%6, %cst_2, %cst_1) <{narrow_range = false, num_bits = 8 : i64}> : (tensor<1x8000x2xf32>, tensor<f32>, tensor<f32>) -> tensor<1x8000x2xf32>
+// CHECK:  %8 = "tfl.quantize"(%7) <{qtype = tensor<1x8000x2x!quant.uniform<u8:f32, 0.011764705882352941:170>>}> : (tensor<1x8000x2xf32>) -> tensor<1x8000x2x!quant.uniform<u8:f32, 0.011764705882352941:170>>
+// CHECK:  %9 = "tfl.dequantize"(%8) : (tensor<1x8000x2x!quant.uniform<u8:f32, 0.011764705882352941:170>>) -> tensor<1x8000x2xf32>
+// CHECK:  return %9
+}
+
+// -----
 
 // CHECK-LABEL: populateFakeQuantOnMeanOutput
 func.func @populateFakeQuantOnMeanOutput(%arg0: tensor<f32>) -> (tensor<f32>) {
@@ -365,6 +433,67 @@ func.func @populateFakeQuantOnMeanOutput(%arg0: tensor<f32>) -> (tensor<f32>) {
 // CHECK:  return %6
 }
 
+// -----
+
+// CHECK-LABEL: populateFakeQuantOnMeanOutputQDQs
+func.func @populateFakeQuantOnMeanOutputQDQs(%arg0: tensor<f32>) -> (tensor<f32>) {
+  %cst = arith.constant dense<-1.0> : tensor<f32>
+  %cst_1 = arith.constant dense<1.0> : tensor<f32>
+  %cst_2 = arith.constant dense<0> : tensor<1xi32>
+  %0 = "tf.FakeQuantWithMinMaxVars"(%arg0, %cst, %cst_1) {num_bits = 8, narrow_range = false} : (tensor<f32>, tensor<f32>, tensor<f32>) -> tensor<f32>
+  %1 = "tfl.quantize"(%0) <{qtype = tensor<!quant.uniform<u8:f32, 0.0078431372549019607:128>>}> : (tensor<f32>) -> tensor<!quant.uniform<u8:f32, 0.0078431372549019607:128>>
+  %2 = "tfl.dequantize"(%1) : (tensor<!quant.uniform<u8:f32, 0.0078431372549019607:128>>) -> tensor<f32>
+  %3 = "tf.Mean"(%2, %cst_2) <{keep_dims = false}> : (tensor<f32>, tensor<1xi32>) -> tensor<f32>
+  return %3 : tensor<f32>
+
+// CHECK:       %0 = "tf.FakeQuantWithMinMaxVars"(%arg0, %cst, %cst_0)
+// CHECK-NEXT:  %1 = "tfl.quantize"(%0) <{qtype = tensor<!quant.uniform<u8:f32, 0.0078431372549019607:128>>}> : (tensor<f32>) -> tensor<!quant.uniform<u8:f32, 0.0078431372549019607:128>>
+// CHECK-NEXT:  %2 = "tfl.dequantize"(%1) : (tensor<!quant.uniform<u8:f32, 0.0078431372549019607:128>>) -> tensor<f32>
+// CHECK-NEXT:  %3 = "tf.Mean"(%2, %cst_1)
+// CHECK-NEXT:  %4 = "tf.FakeQuantWithMinMaxVars"(%3, %cst, %cst_0)
+// CHECK-NEXT:  %5 = "tfl.quantize"(%4) <{qtype = tensor<!quant.uniform<u8:f32, 0.0078431372549019607:128>>}> : (tensor<f32>) -> tensor<!quant.uniform<u8:f32, 0.0078431372549019607:128>>
+// CHECK-NEXT:  %6 = "tfl.dequantize"(%5) : (tensor<!quant.uniform<u8:f32, 0.0078431372549019607:128>>) -> tensor<f32>
+// CHECK-NEXT:  return %6
+}
+
+// -----
+
+// CHECK-LABEL: populateFakeQuantOnMeanOutputFollowedByConcat
+func.func @populateFakeQuantOnMeanOutputFollowedByConcat(%arg0: tensor<f32>, %arg1: tensor<f32>) -> (tensor<1xf32>) {
+  %cst = arith.constant dense<1> : tensor<i32>
+  %cst_1 = arith.constant dense<-1.0> : tensor<f32>
+  %cst_2 = arith.constant dense<1.0> : tensor<f32>
+  %cst_3 = arith.constant dense<0> : tensor<1xi32>
+  %0 = "tf.FakeQuantWithMinMaxVars"(%arg0, %cst_1, %cst_2) {num_bits = 8, narrow_range = false} : (tensor<f32>, tensor<f32>, tensor<f32>) -> tensor<f32>
+  %1 = "tf.Mean"(%0, %cst_3) <{keep_dims = false}> : (tensor<f32>, tensor<1xi32>) -> tensor<f32>
+  %2 = "tf.FakeQuantWithMinMaxVars"(%arg1, %cst_1, %cst_2) {num_bits = 8, narrow_range = false} : (tensor<f32>, tensor<f32>, tensor<f32>) -> tensor<f32>
+  %3 = "tf.Mean"(%2, %cst_3) <{keep_dims = false}> : (tensor<f32>, tensor<1xi32>) -> tensor<f32>
+  %4 = "tf.ConcatV2"(%1, %3, %cst) : (tensor<f32>, tensor<f32>, tensor<i32>) -> tensor<1xf32>
+  return %4 : tensor<1xf32>
+
+// CHECK:       %0 = "tf.FakeQuantWithMinMaxVars"(%arg0, %cst_0, %cst_1)
+// CHECK-NEXT:  %1 = "tfl.quantize"(%0) <{qtype = tensor<!quant.uniform<u8:f32, 0.0078431372549019607:128>>}> : (tensor<f32>) -> tensor<!quant.uniform<u8:f32, 0.0078431372549019607:128>>
+// CHECK-NEXT:  %2 = "tfl.dequantize"(%1) : (tensor<!quant.uniform<u8:f32, 0.0078431372549019607:128>>) -> tensor<f32>
+// CHECK-NEXT:  %3 = "tf.Mean"(%2, %cst_2)
+// CHECK-NEXT:  %4 = "tf.FakeQuantWithMinMaxVars"(%3, %cst_0, %cst_1)
+// CHECK-NEXT:  %5 = "tfl.quantize"(%4) <{qtype = tensor<!quant.uniform<u8:f32, 0.0078431372549019607:128>>}> : (tensor<f32>) -> tensor<!quant.uniform<u8:f32, 0.0078431372549019607:128>>
+// CHECK-NEXT:  %6 = "tfl.dequantize"(%5) : (tensor<!quant.uniform<u8:f32, 0.0078431372549019607:128>>) -> tensor<f32>
+// CHECK-NEXT:  %7 = "tf.FakeQuantWithMinMaxVars"(%arg1, %cst_0, %cst_1)
+// CHECK-NEXT:  %8 = "tfl.quantize"(%7) <{qtype = tensor<!quant.uniform<u8:f32, 0.0078431372549019607:128>>}> : (tensor<f32>) -> tensor<!quant.uniform<u8:f32, 0.0078431372549019607:128>>
+// CHECK-NEXT:  %9 = "tfl.dequantize"(%8) : (tensor<!quant.uniform<u8:f32, 0.0078431372549019607:128>>) -> tensor<f32>
+// CHECK-NEXT:  %10 = "tf.Mean"(%9, %cst_2)
+// CHECK-NEXT:  %11 = "tf.FakeQuantWithMinMaxVars"(%10, %cst_0, %cst_1)
+// CHECK-NEXT:  %12 = "tfl.quantize"(%11) <{qtype = tensor<!quant.uniform<u8:f32, 0.0078431372549019607:128>>}> : (tensor<f32>) -> tensor<!quant.uniform<u8:f32, 0.0078431372549019607:128>>
+// CHECK-NEXT:  %13 = "tfl.dequantize"(%12) : (tensor<!quant.uniform<u8:f32, 0.0078431372549019607:128>>) -> tensor<f32>
+// CHECK-NEXT:  %14 = "tf.ConcatV2"(%6, %13, %cst)
+// CHECK-NEXT:  %15 = "tf.FakeQuantWithMinMaxVars"(%14, %cst_0, %cst_1) <{narrow_range = false, num_bits = 8 : i64}> : (tensor<1xf32>, tensor<f32>, tensor<f32>) -> tensor<1xf32>
+// CHECK-NEXT:  %16 = "tfl.quantize"(%15) <{qtype = tensor<1x!quant.uniform<u8:f32, 0.0078431372549019607:128>>}> : (tensor<1xf32>) -> tensor<1x!quant.uniform<u8:f32, 0.0078431372549019607:128>>
+// CHECK-NEXT:  %17 = "tfl.dequantize"(%16) : (tensor<1x!quant.uniform<u8:f32, 0.0078431372549019607:128>>) -> tensor<1xf32>
+// CHECK-NEXT:  return %17
+}
+
+// -----
+
 // CHECK-LABEL: populateFakeQuantOnMeanOutputNegativeCase
 func.func @populateFakeQuantOnMeanOutputNegativeCase(%arg0: tensor<f32>) -> (tensor<f32>) {
   %cst = arith.constant dense<-1.0> : tensor<f32>
@@ -383,5 +512,5 @@ func.func @populateFakeQuantOnMeanOutputNegativeCase(%arg0: tensor<f32>) -> (ten
 // CHECK-NOT:  "tf.FakeQuantWithMinMaxVars"
 }
 
-}
+// -----
 

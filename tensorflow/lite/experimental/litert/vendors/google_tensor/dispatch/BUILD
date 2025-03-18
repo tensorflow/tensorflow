@@ -37,12 +37,22 @@ litert_dynamic_lib(
         "southbound.h",
         # copybara:uncomment "//third_party/odml/infra/southbound:sb_api.h",
     ],
+    copts = [
+        "-Os",
+        "-fno-exceptions",
+        "-fno-unwind-tables",
+        "-fno-asynchronous-unwind-tables",
+        "-ffunction-sections",
+        "-fdata-sections",
+    ],
     export_litert_only = True,
     linkopts = select({
         "//tensorflow:android": ["-landroid"],
         "//conditions:default": [],
-    }),
-    linkstatic = 1,
+    }) + [
+        "-Wl,-soname=libLiteRtDispatch_GoogleTensor.so",
+        "-Wl,-lc++abi",
+    ],
     shared_lib_name = "dispatch_api_so",
     so_name = "libLiteRtDispatch_GoogleTensor.so",
     tags = [
@@ -66,7 +76,6 @@ litert_dynamic_lib(
 cc_library(
     name = "dispatch_api_shared_lib",
     srcs = [":dispatch_api_so"],
-    linkstatic = 1,
     visibility = ["//visibility:public"],
 )
 

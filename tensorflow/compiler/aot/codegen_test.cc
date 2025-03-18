@@ -19,10 +19,13 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/memory/memory.h"
 #include "absl/strings/match.h"
 #include "absl/strings/string_view.h"
 #include "llvm/Support/TargetSelect.h"
+#include "tensorflow/compiler/aot/compile.h"
 #include "xla/cpu_function_runtime.h"
+#include "xla/service/cpu/cpu_aot_compilation_result.h"
 #include "xla/shape_util.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/framework/types.pb.h"
@@ -215,24 +218,30 @@ TEST(CodegenTest, Golden) {
   variable3->mutable_shape()->add_dim()->set_size(5);
   variable3->set_type(DT_INT32);
   CompileResult compile_result;
-  compile_result.aot.reset(new xla::cpu::CpuAotCompilationResult(
-      {},
-      {BufferInfo::MakeTempBuffer(3 * 8),
-       BufferInfo::MakeEntryParameter(/*size=*/8, /*entry_param_number=*/0),
-       BufferInfo::MakeTempBuffer(1),
-       BufferInfo::MakeEntryParameter(/*size=*/96, /*entry_param_number=*/1),
-       BufferInfo::MakeTempBuffer(1),
-       BufferInfo::MakeEntryParameter(/*size=*/96, /*entry_param_number=*/2),
-       BufferInfo::MakeTempBuffer(1),
-       BufferInfo::MakeEntryParameter(/*size=*/96, /*entry_param_number=*/3),
-       BufferInfo::MakeResultParameter(/*size=*/5 * 6 * 4,
-                                       /*result_param_number=*/0),
-       BufferInfo::MakeEntryParameter(/*size=*/96, /*entry_param_number=*/4),
-       BufferInfo::MakeResultParameter(/*size=*/1 * 4,
-                                       /*result_param_number=*/1),
-       BufferInfo::MakeResultParameter(/*size=*/5 * 4,
-                                       /*result_param_number=*/2)},
-      0, nullptr, {}));
+  compile_result.aot =
+      absl::WrapUnique(new xla::cpu::CpuAotCompilationResultLegacy(
+          {},
+          {BufferInfo::MakeTempBuffer(3 * 8),
+           BufferInfo::MakeEntryParameter(/*size=*/8,
+                                          /*entry_param_number=*/0),
+           BufferInfo::MakeTempBuffer(1),
+           BufferInfo::MakeEntryParameter(/*size=*/96,
+                                          /*entry_param_number=*/1),
+           BufferInfo::MakeTempBuffer(1),
+           BufferInfo::MakeEntryParameter(/*size=*/96,
+                                          /*entry_param_number=*/2),
+           BufferInfo::MakeTempBuffer(1),
+           BufferInfo::MakeEntryParameter(/*size=*/96,
+                                          /*entry_param_number=*/3),
+           BufferInfo::MakeResultParameter(/*size=*/5 * 6 * 4,
+                                           /*result_param_number=*/0),
+           BufferInfo::MakeEntryParameter(/*size=*/96,
+                                          /*entry_param_number=*/4),
+           BufferInfo::MakeResultParameter(/*size=*/1 * 4,
+                                           /*result_param_number=*/1),
+           BufferInfo::MakeResultParameter(/*size=*/5 * 4,
+                                           /*result_param_number=*/2)},
+          0, nullptr, {}));
   compile_result.program_shape =
       xla::ShapeUtil::MakeProgramShape(
           {

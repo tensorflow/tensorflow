@@ -46,6 +46,7 @@ class HloFusionAnalysis {
     kInputSlices,
     kScatter,
     kCuDnn,
+    kDynamicMemcpy,
   };
 
   // Precomputed information about inputs (arguments) and outputs (roots) of the

@@ -66,6 +66,7 @@ limitations under the License.
 #include "xla/mlir/utils/error_util.h"
 #include "xla/mlir_hlo/mhlo/IR/register.h"
 #include "xla/mlir_hlo/mhlo/transforms/passes.h"
+#include "xla/mlir_hlo/stablehlo_ext/transforms/passes.h"
 #include "xla/service/spmd/shardy/constants.h"
 #include "xla/service/spmd/shardy/sdy_round_trip/pipelines.h"
 #include "xla/service/spmd/shardy/utils.h"
@@ -82,12 +83,23 @@ absl::Status MlirToXlaComputation(mlir::ModuleOp module,
   mlir::BaseScopedDiagnosticHandler diagnostic_handler(context);
   {
     mlir::PassManager pm(context);
+
+    // CHLO -> MHLO for high level ops (TopK, Erf, RaggedDot, etc.)
+    // CHLO -> StableHLO otherwise
+    pm.addNestedPass<mlir::func::FuncOp>(
+        mlir::stablehlo_ext::createChloRecomposeOpsPass());
+    pm.addPass(mlir::createSymbolDCEPass());
+    pm.addNestedPass<mlir::func::FuncOp>(
+        mlir::mhlo::createChloLegalizeToHighLevelMhloPass());
+    pm.addNestedPass<mlir::func::FuncOp>(
+        mlir::stablehlo::createChloLegalizeToStablehloPass());
+
     // Expand stablehlo complex math functions such as log_plus_one, etc.
     pm.addNestedPass<mlir::func::FuncOp>(
         mlir::stablehlo::createStablehloComplexMathExpanderPass());
+
+    // StableHLO -> MHLO
     pm.addPass(mlir::mhlo::createStablehloLegalizeToHloPass());
-    pm.addNestedPass<mlir::func::FuncOp>(
-        mlir::mhlo::createChloLegalizeToHloPass());
     pm.addNestedPass<mlir::func::FuncOp>(mlir::createCanonicalizerPass());
     // In order to export to XLA, we must sink constants to control flow
     // regions, since XLA uses functional control flow.
@@ -231,8 +243,7 @@ absl::StatusOr<std::string> SerializeUsingVersionedStablehlo(
       mlir::stablehlo::createStablehloComplexMathExpanderPass());
 
   xla::sdy::addSdyRoundTripExportPipeline(pm);
-  pm.addNestedPass<mlir::func::FuncOp>(
-      mlir::mhlo::createChloLegalizeToHighLevelMhloPass());
+  pm.addPass(mlir::stablehlo_ext::createChloPreserveHighLevelOpsPass());
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::stablehlo::createChloLegalizeToStablehloPass());
   pm.addPass(mlir::stablehlo::createStablehloCompatibilityExpanderPass(
@@ -245,10 +256,10 @@ absl::StatusOr<std::string> SerializeUsingVersionedStablehlo(
   pm.addPass(mlir::mhlo::createHloLegalizeToStablehloPass());
   if (!mlir::succeeded(pm.run(mlir_module))) {
     const absl::Status status = diagnostic_handler.ConsumeStatus();
-    return absl::InvalidArgumentError(
-        absl::StrCat("CHLO => [MHLO+Shape] => StableHLO failed;\n\nDetailed "
-                     "error from MLIR: ",
-                     status.message()));
+    return absl::InvalidArgumentError(absl::StrCat(
+        "CHLO => [StableHLO+Shape] => StableHLO failed;\n\nDetailed "
+        "error from MLIR: ",
+        status.message()));
   }
 
   // Avoid mutating the original module if it will be reused elsewhere

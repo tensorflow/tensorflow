@@ -123,6 +123,6 @@ HloModule test_module, entry_computation_layout={(f32[], f32[])->f32[]}
     a = f32[] parameter(0)
     // CHECK-ROUNDTRIP-NEXT:   b = f32[] parameter(1)
     b = f32[] parameter(1)
-  // CHECK-ROUNDTRIP-NEXT:   ROOT %res = f32[] multiply(f32[] %a, f32[] %b)
+  // CHECK-ROUNDTRIP-NEXT:   ROOT %res = f32[] multiply(%a, %b)
   ROOT %res = f32[] multiply(f32[] %a, f32[] %b)
 }

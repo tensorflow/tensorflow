@@ -11891,10 +11891,11 @@ func DecodeImageDtype(value tf.DataType) DecodeImageAttr {
 
 // DecodeImageExpandAnimations sets the optional expand_animations attribute to value.
 //
-// value: Controls the output shape of the returned op. If True, the returned op will
-// produce a 3-D tensor for PNG, JPEG, and BMP files; and a 4-D tensor for all
-// GIFs, whether animated or not. If, False, the returned op will produce a 3-D
-// tensor for all file types and will truncate animated GIFs to the first frame.
+// value: Controls the output shape of the returned op. If True, the returned op
+// will produce a 3-D tensor for PNG, JPEG, and BMP files; and a 4-D
+// tensor for all GIFs and WebP images, whether animated or not. If,
+// False, the returned op will produce a 3-D tensor for all file types
+// and will truncate animated images to the first frame.
 // If not specified, defaults to true
 func DecodeImageExpandAnimations(value bool) DecodeImageAttr {
 	return func(m optionalAttr) {
@@ -11902,19 +11903,20 @@ func DecodeImageExpandAnimations(value bool) DecodeImageAttr {
 	}
 }
 
-// Function for decode_bmp, decode_gif, decode_jpeg, and decode_png.
+// Function for decode_bmp, decode_gif, decode_jpeg, decode_webp, and decode_png.
 //
-// Detects whether an image is a BMP, GIF, JPEG, or PNG, and performs the
+// Detects whether an image is a BMP, GIF, JPEG, WebP, or PNG, and performs the
 // appropriate operation to convert the input bytes string into a Tensor of type
 // dtype.
 //
-// *NOTE*: decode_gif returns a 4-D array [num_frames, height, width, 3], as
-// opposed to decode_bmp, decode_jpeg and decode_png, which return 3-D arrays
-// [height, width, num_channels]. Make sure to take this into account when
-// constructing your graph if you are intermixing GIF files with BMP, JPEG, and/or
-// PNG files. Alternately, set the expand_animations argument of this function to
-// False, in which case the op will return 3-dimensional tensors and will truncate
-// animated GIF files to the first frame.
+// *NOTE*: decode_gif and decode_webp return a 4-D
+// array [num_frames, height, width, 3], as opposed to decode_bmp,
+// decode_jpeg, and decode_png, which always return 3-D arrays [height,
+// width, num_channels]. Make sure to take this into account when
+// constructing your graph if you are intermixing animated files with
+// BMP, JPEG, and/or PNG files. Alternately, set the expand_animations
+// argument of this function to False, in which case the op will return
+// 3-dimensional tensors and will truncate animations to the first frame.
 //
 // *NOTE*: If the first frame of an animated GIF does not occupy the entire
 // canvas (maximum frame width x maximum frame height), then it fills the
@@ -12457,6 +12459,65 @@ func DecodeWav(scope *Scope, contents tf.Output, optional ...DecodeWavAttr) (aud
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0), op.Output(1)
+}
+
+// DecodeWebPAttr is an optional argument to DecodeWebP.
+type DecodeWebPAttr func(optionalAttr)
+
+// DecodeWebPChannels sets the optional channels attribute to value.
+//
+// value: Number of color channels for the decoded image.
+// If not specified, defaults to 0
+func DecodeWebPChannels(value int64) DecodeWebPAttr {
+	return func(m optionalAttr) {
+		m["channels"] = value
+	}
+}
+
+// DecodeWebPDtype sets the optional dtype attribute to value.
+// If not specified, defaults to DT_UINT8
+func DecodeWebPDtype(value tf.DataType) DecodeWebPAttr {
+	return func(m optionalAttr) {
+		m["dtype"] = value
+	}
+}
+
+// Decode a WebP-encoded image to a uint8 tensor.
+//
+// The attr `channels` indicates the desired number of color channels for the
+// decoded image.
+//
+// Accepted values are:
+//
+// *   0: Use the number of channels in the WebP-encoded image.
+// *   3: output an RGB image.
+// *   4: output an RGBA image.
+//
+// The number of channels must currently match that of the underlying file.
+// For WebP animations, only 4-channel RGBA is supported.
+//
+// Arguments:
+//
+//	contents: 0-D.  The WebP-encoded image.
+//
+// Returns 4-D with shape `[num_frames, height, width, channels]`.
+func DecodeWebP(scope *Scope, contents tf.Output, optional ...DecodeWebPAttr) (image tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "DecodeWebP",
+		Input: []tf.Input{
+			contents,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
 }
 
 // Makes a copy of `x`.

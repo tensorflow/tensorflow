@@ -26,8 +26,8 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/status.h"
-#include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/file_system.h"
 #include "tensorflow/core/profiler/convert/repository.h"
 #include "tensorflow/core/profiler/protobuf/dcn_slack_analysis.pb.h"
@@ -71,18 +71,18 @@ SessionSnapshot CreateSessionSnapshot(bool create_cache_file,
 
   if (create_cache_file) {
     if (has_dcn_collective_stats) {
-      tensorflow::Env::Default()
+      tsl::Env::Default()
           ->NewAppendableFile(
               absl::StrCat(path, "hostname.dcn_collective_stats.pb"),
               &xplane_file)
           .IgnoreError();
-      tensorflow::Env::Default()
+      tsl::Env::Default()
           ->NewAppendableFile(
               absl::StrCat(path, "ALL_HOSTS.dcn_collective_stats.pb"),
               &xplane_file)
           .IgnoreError();
     } else {
-      tensorflow::Env::Default()
+      tsl::Env::Default()
           ->NewAppendableFile(
               absl::StrCat(path, "NO_HOST.dcn_collective_stats.pb"),
               &xplane_file)

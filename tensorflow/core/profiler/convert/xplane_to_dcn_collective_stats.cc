@@ -23,11 +23,12 @@ limitations under the License.
 #include "absl/strings/match.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/profiler/utils/xplane_schema.h"
+#include "xla/tsl/profiler/utils/xplane_visitor.h"
 #include "tensorflow/core/profiler/convert/dcn_slack_analysis_combiner.h"
 #include "tensorflow/core/profiler/convert/repository.h"
 #include "tensorflow/core/profiler/convert/xspace_to_dcn_slack_analysis.h"
 #include "tensorflow/core/profiler/protobuf/dcn_slack_analysis.pb.h"
-#include "tensorflow/core/profiler/utils/xplane_schema.h"
 #include "tensorflow/core/profiler/utils/xplane_utils.h"
 #include "tsl/profiler/protobuf/xplane.pb.h"
 
@@ -37,8 +38,8 @@ namespace profiler {
 namespace {
 
 bool HasDcnCollectiveStatsInXSpace(const XSpace& xspace) {
-  if (const tensorflow::profiler::XPlane* xplane = FindPlaneWithName(
-          xspace, tensorflow::profiler::kHostThreadsPlaneName);
+  if (const tsl::profiler::XPlane* xplane =
+          FindPlaneWithName(xspace, tsl::profiler::kHostThreadsPlaneName);
       xplane != nullptr) {
     for (const auto& [_, metadata] : xplane->event_metadata()) {
       if (absl::StartsWith(metadata.name(), "MegaScale:")) {

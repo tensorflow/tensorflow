@@ -594,13 +594,23 @@ class PjRtClient {
   }
 
   // Compile `computation` with given `options`.
+  // ABSL_DEPRECATED("Use CompileAndLoad() below instead")
   virtual absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> Compile(
       const XlaComputation& computation, CompileOptions options) {
-    return Unimplemented("Compile with options is not supported.");
+    return CompileAndLoad(computation, options);
+  }
+  virtual absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> CompileAndLoad(
+      const XlaComputation& computation, CompileOptions options) {
+    return Unimplemented("Compile with XlaComputation is not supported.");
   }
 
   // Variant of `Compile` that accepts an MLIR module.
+  // ABSL_DEPRECATED("Use CompileAndLoad() below instead")
   virtual absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> Compile(
+      mlir::ModuleOp module, CompileOptions options) {
+    return CompileAndLoad(module, options);
+  }
+  virtual absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> CompileAndLoad(
       mlir::ModuleOp module, CompileOptions options) {
     return Unimplemented("Compile with MLIR Module is not supported.");
   }

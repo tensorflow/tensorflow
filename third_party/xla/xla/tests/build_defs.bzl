@@ -310,8 +310,16 @@ def xla_test(
             ]
             if backend in NVIDIA_GPU_BACKENDS:
                 this_backend_tags += tf_gpu_tests_tags()
+                backend_deps += [
+                    "//xla/stream_executor/cuda:all_runtime",
+                    "//xla/stream_executor/cuda:stream_executor_cuda",
+                ]
             if backend in AMD_GPU_DEFAULT_BACKENDS:
                 this_backend_tags.append("gpu")
+                backend_deps += [
+                    "//xla/stream_executor/rocm:all_runtime",
+                    "//xla/stream_executor/rocm:stream_executor_rocm",
+                ]
             this_backend_copts.append("-DXLA_TEST_BACKEND_GPU=1")
 
             # TODO: b/382779188 - Remove this when all tests are migrated to PjRt.
