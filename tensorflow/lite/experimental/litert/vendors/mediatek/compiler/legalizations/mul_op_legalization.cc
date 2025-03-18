@@ -64,12 +64,10 @@ Expected<void> LegalizeMulOp(const NeuronAdapterApi& neuron_adapter_api,
     output_indices.push_back(*id);
   }
 
-  if (neuron_adapter_api.api().model_add_operation(
-          model, /*type=*/NEURON_MUL, input_indices.size(),
-          input_indices.data(), output_indices.size(),
-          output_indices.data()) != NEURON_NO_ERROR) {
+  if (ModelAddOperation(neuron_adapter_api, model, /*type=*/NEURON_MUL,
+                        input_indices, output_indices) != NEURON_NO_ERROR) {
     return Error(kLiteRtStatusErrorRuntimeFailure,
-                 "Failed to set value of NEURON_MUL fused activation");
+                 "Failed to add NEURON_MUL operation");
   }
 
   return {};

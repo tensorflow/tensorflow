@@ -34,6 +34,7 @@
 #include "tensorflow/lite/experimental/litert/vendors/c/litert_compiler_plugin.h"
 #include "tensorflow/lite/experimental/litert/vendors/mediatek/compiler/compile_model.h"
 #include "tensorflow/lite/experimental/litert/vendors/mediatek/compiler/create_model.h"
+#include "tensorflow/lite/experimental/litert/vendors/mediatek/compiler/legalizations/common_op_legalization.h"
 #include "tensorflow/lite/experimental/litert/vendors/mediatek/neuron_adapter_api.h"
 #include "tensorflow/lite/experimental/litert/vendors/mediatek/schema/neuron_schema_generated.h"
 #include "tensorflow/lite/experimental/litert/vendors/mediatek/schema/schema_resolver.h"
@@ -73,6 +74,17 @@ constexpr LiteRtOpCode kSupportedOps[] = {
     kLiteRtOpCodeTflMul,
     kLiteRtOpCodeTflBatchMatmul,
     kLiteRtOpCodeTflFullyConnected,
+    kLiteRtOpCodeTflReshape,
+    kLiteRtOpCodeTflTranspose,
+    kLiteRtOpCodeTflRsqrt,
+    kLiteRtOpCodeTflConcatenation,
+    kLiteRtOpCodeTflQuantize,
+    kLiteRtOpCodeTflSlice,
+    kLiteRtOpCodeTflSub,
+    kLiteRtOpCodeTflTanh,
+    kLiteRtOpCodeTflSoftmax,
+    kLiteRtOpCodeTflMean,
+    kLiteRtOpCodeTflGelu,
 };
 // clang-format on
 
@@ -234,7 +246,8 @@ bool IsOpSupported(const litert::Op& op) {
   // NOTE: Currently we are demoing by just mapping simple f32 mul ops.  Use a
   // very loose guard for now -- only checking if op code is supported.
   for (auto supported_op : kSupportedOps) {
-    if (op.Code() == supported_op) {
+    if (op.Code() == supported_op &&
+        litert::mediatek::VerifyCommonOp(op, op.Code())) {
       return true;
     }
   }
