@@ -83,7 +83,7 @@ jobs:
     defaults:
       run:
         shell: bash
-    timeout-minutes: 10
+    timeout-minutes: 60
     env:
       OUTPUT_FILE_PATH: ${{ github.workspace }}/hlo_test_output.txt
     steps:
