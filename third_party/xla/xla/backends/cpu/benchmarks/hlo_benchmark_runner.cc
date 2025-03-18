@@ -29,6 +29,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/literal.h"
+#include "xla/pjrt/cpu/cpu_client.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/plugin/xla_cpu/cpu_client_options.h"
@@ -40,6 +41,7 @@ limitations under the License.
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test_benchmark.h"
 #include "xla/tsl/platform/threadpool.h"
+#include "tsl/platform/casts.h"
 
 namespace xla::cpu {
 
@@ -68,8 +70,16 @@ absl::Status RunHloBenchmark(benchmark::State& state,
     compile_options.executable_build_options.mutable_debug_options()
         ->add_xla_disable_hlo_passes("cpu-parallel-task-assigner");
   }
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<PjRtLoadedExecutable> executable,
-                      client->CompileAndLoad(computation, compile_options));
+  std::unique_ptr<PjRtLoadedExecutable> executable;
+  if (benchmark_options.aot_options) {
+    auto* cpu_client = tsl::down_cast<TfrtCpuClient*>(client.get());
+    TF_ASSIGN_OR_RETURN(executable, cpu_client->CompileAheadOfTimeAndLoad(
+                                        computation, compile_options,
+                                        *benchmark_options.aot_options));
+  } else {
+    TF_ASSIGN_OR_RETURN(executable,
+                        client->CompileAndLoad(computation, compile_options));
+  }
 
   // Convert literals to PjRtBuffers.
   std::vector<std::unique_ptr<PjRtBuffer>> args_buffers;
