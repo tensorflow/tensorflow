@@ -16,12 +16,10 @@
 #include "absl/types/span.h"
 #include "third_party/qairt/latest/include/QNN/QnnTypes.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/utils/log.h"
+#include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/utils/miscs.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/wrappers/quantize_params_wrapper.h"
 
 namespace qnn {
-
-template <typename...>
-inline constexpr bool always_false = false;
 
 // Get the Qnn_DataType_t associated with given C++ type.
 template <typename T>

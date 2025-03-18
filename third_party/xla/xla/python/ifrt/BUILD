@@ -919,6 +919,22 @@ cc_library(
     alwayslink = True,
 )
 
+cc_library(
+    name = "user_context",
+    srcs = ["user_context.cc"],
+    hdrs = ["user_context.h"],
+    visibility = [
+        ":friends",
+        ":internal",
+        ":users",
+    ],
+    deps = [
+        ":ifrt",
+        "//xla/tsl/concurrency:ref_count",
+        "@llvm-project//llvm:Support",
+    ],
+)
+
 xla_cc_test(
     name = "custom_call_program_serdes_test",
     srcs = ["custom_call_program_serdes_test.cc"],
