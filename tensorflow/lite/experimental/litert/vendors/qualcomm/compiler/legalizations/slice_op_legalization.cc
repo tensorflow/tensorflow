@@ -104,7 +104,7 @@ LiteRtStatus SliceOpLegalization::LegalizeOp(const Op& src,
   }
 
   LITERT_STACK_ARRAY(int32_t, range_tensor_data,
-                     src_input_tensor_rank* kRangesParamArgSize,
+                     src_input_tensor_rank * kRangesParamArgSize,
                      /*init value*/ 0);
   for (int i = 0; i < src_input_tensor_rank; ++i) {
     // Copy begin, end, and stride values from src_begin_indices and
