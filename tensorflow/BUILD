@@ -190,6 +190,8 @@ package(
 #     name = "build_cleaner_spec_test",
 #     src = "build_cleaner_spec.textproto",
 # )
+#
+# exports_files(srcs = ["METADATA"])
 # copybara:uncomment_end
 
 licenses(["notice"])
