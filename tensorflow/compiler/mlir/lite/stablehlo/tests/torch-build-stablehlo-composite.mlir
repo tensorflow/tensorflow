@@ -1,4 +1,4 @@
-// RUN: odml-to-stablehlo-opt %s -build-stablehlo-composite -cse -canonicalize -cse | FileCheck %s --dump-input=fail
+// RUN: odml-to-stablehlo-opt %s -split-input-file -build-stablehlo-composite -cse -canonicalize -cse | FileCheck %s --dump-input=fail
 
 module {
   func.func public @build_nested_composite(%arg0: tensor<2x2xf32>) -> tensor<2x2xf32> {
@@ -29,4 +29,24 @@ module {
 // CHECK: func.func private @test.outer.impl
 // CHECK: stablehlo.add %arg0,
 // CHECK: stablehlo.composite "test.inner"
+// CHECK: return
+
+
+// -----
+
+module {
+  func.func public @multi_out(%arg0: tensor<2x2xf32>) -> tensor<2x2xf32> {
+    %c_0 = stablehlo.constant dense<2.0> : tensor<2x2xf32>
+    %input = stablehlo.custom_call @mark_tensor(%arg0) {backend_config = "{\22name\22: \22test.outer\22, \22pos\22: 0, \22id\22: \22f8cf5dba52ff4995b9f3810647aa69e2\22, \22is_input\22: true, \22attr\22: null}"} : (tensor<2x2xf32>) -> tensor<2x2xf32>
+    %mul1 = stablehlo.multiply %input, %c_0 : tensor<2x2xf32>
+    %mul2 = stablehlo.multiply %mul1, %c_0 : tensor<2x2xf32>
+    %output1 = stablehlo.custom_call @mark_tensor(%mul1) {backend_config = "{\22name\22: \22test.outer\22, \22pos\22: 1, \22id\22: \22f8cf5dba52ff4995b9f3810647aa69e2\22, \22is_input\22: false, \22attr\22: null}"} : (tensor<2x2xf32>) -> tensor<2x2xf32>
+    %output2 = stablehlo.custom_call @mark_tensor(%mul2) {backend_config = "{\22name\22: \22test.outer\22, \22pos\22: 2, \22id\22: \22f8cf5dba52ff4995b9f3810647aa69e2\22, \22is_input\22: false, \22attr\22: null}"} : (tensor<2x2xf32>) -> tensor<2x2xf32>
+    %res = stablehlo.multiply %output1, %output2 : tensor<2x2xf32>
+    return %res : tensor<2x2xf32>
+  }
+}
+
+// CHECK-LABEL: multi_out
+// CHECK: stablehlo.composite "test.outer"{{.*}} (tensor<2x2xf32>) -> (tensor<2x2xf32>, tensor<2x2xf32>)
 // CHECK: return
