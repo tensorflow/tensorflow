@@ -158,6 +158,13 @@ def _tf_repositories():
         strip_prefix = "pybind11_protobuf-80f3440cd8fee124e077e2e47a8a17b78b451363",
     )
 
+    tf_http_archive(
+        name = "com_github_nelhage_rules_boost",
+        urls = tf_mirror_urls("https://github.com/nelhage/rules_boost/archive/5160325dbdc8c9e499f9d9917d913f35f1785d52.zip"),
+        strip_prefix = "rules_boost-5160325dbdc8c9e499f9d9917d913f35f1785d52",
+        sha256 = "feb4b1294684c79df7c1e08f1aec5da0da52021e33db59c88edbe86b4d1a017a",
+    )
+
 # buildifier: disable=function-docstring
 # buildifier: disable=unnamed-macro
 def workspace():
