@@ -82,7 +82,6 @@ jobs:
           echo "Running GPU test: $HLO_FILE_GB"
           $binary_dir/multihost_hlo_runner/hlo_runner_main_gpu \
             --device_type=gpu \
-            --log_output=True \
             --use_spmd_partitioning \
             --profile_execution=True \
             --xla_gpu_dump_xspace_to="${OUTPUT_PREFIX_GB}_xspace.pb" \
@@ -101,7 +100,6 @@ jobs:
           echo "Running GPU test: $HLO_FILE_GEMMA"
           $binary_dir/multihost_hlo_runner/hlo_runner_main_gpu \
             --device_type=gpu \
-            --log_output=True \
             --use_spmd_partitioning \
             --profile_execution=True \
             --xla_gpu_dump_xspace_to="${OUTPUT_PREFIX_GEMMA}_xspace.pb" \

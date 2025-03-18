@@ -42,16 +42,9 @@ jobs:
       matrix:
         job_info: [
           {
-            pool: "linux-x86-n2-16",
-            container: "us-central1-docker.pkg.dev/tensorflow-sigs/tensorflow/ml-build:latest",
-            pretty_name: "XLA Linux x86 CPU 16 vcpu Presubmit",
-            bazel_arch_dir: "k8-opt",
-            platform: "CPU"
-          },
-          {
-            pool: "linux-arm64-c4a-16",
+            pool: "linux-arm64-t2a-48",
             container: "us-central1-docker.pkg.dev/tensorflow-sigs/tensorflow/ml-build-arm64:latest",
-            pretty_name: "XLA Linux ARM64 CPU 16 vcpu Presubmit",
+            pretty_name: "XLA Linux ARM64 CPU 48 vcpu Presubmit",
             bazel_arch_dir: "aarch64-opt",
             platform: "CPU"
           },
@@ -127,7 +120,7 @@ jobs:
             binary_path="./bazel-out/${bazel_arch_dir}/bin/xla/tools/multihost_hlo_runner/hlo_runner_main_gpu"
             test_hlo_file="xla/tools/hlo_opt/tests/gpu_hlo_backend.hlo"
             echo "Running GPU test with binary: $binary_path"
-            $binary_path --device_type=gpu --log_output=True --use_spmd_partitioning --profile_execution=True  $test_hlo_file
+            $binary_path --device_type=gpu --use_spmd_partitioning --profile_execution=True  $test_hlo_file
           else
             echo "Unsupported platform: ${{ matrix.job_info.platform }}"
             exit 1

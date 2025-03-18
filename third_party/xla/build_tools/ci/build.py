@@ -105,8 +105,7 @@ class BuildType(enum.Enum):
   XLA_LINUX_X86_GPU_T4_GITHUB_ACTIONS = enum.auto()
 
   # Presubmit builds for regression testing.
-  XLA_LINUX_X86_CPU_16_VCPU_PRESUBMIT_GITHUB_ACTIONS = enum.auto()
-  XLA_LINUX_ARM64_CPU_16_VCPU_PRESUBMIT_GITHUB_ACTIONS = enum.auto()
+  XLA_LINUX_ARM64_CPU_48_VCPU_PRESUBMIT_GITHUB_ACTIONS = enum.auto()
   XLA_LINUX_X86_CPU_128_VCPU_PRESUBMIT_GITHUB_ACTIONS = enum.auto()
   XLA_LINUX_X86_GPU_T4_16_VCPU_PRESUBMIT_GITHUB_ACTIONS = enum.auto()
   XLA_LINUX_X86_GPU_T4_48_VCPU_PRESUBMIT_GITHUB_ACTIONS = enum.auto()
@@ -294,16 +293,6 @@ nvidia_gpu_build_with_compute_capability(
     compute_capability=75,
 )
 
-Build(
-    type_=BuildType.XLA_LINUX_X86_CPU_16_VCPU_PRESUBMIT_GITHUB_ACTIONS,
-    repo="openxla/xla",
-    configs=("warnings", "nonccl", "rbe_linux_cpu"),
-    target_patterns=_XLA_CPU_PRESUBMIT_BENCHMARKS_DEFAULT_TARGET_PATTERNS,
-    build_tag_filters=cpu_x86_tag_filter,
-    test_tag_filters=cpu_x86_tag_filter,
-    options=_DEFAULT_BAZEL_OPTIONS,
-    subcommand="build",
-)
 
 Build(
     type_=BuildType.XLA_LINUX_X86_CPU_128_VCPU_PRESUBMIT_GITHUB_ACTIONS,
@@ -317,7 +306,7 @@ Build(
 )
 
 Build(
-    type_=BuildType.XLA_LINUX_ARM64_CPU_16_VCPU_PRESUBMIT_GITHUB_ACTIONS,
+    type_=BuildType.XLA_LINUX_ARM64_CPU_48_VCPU_PRESUBMIT_GITHUB_ACTIONS,
     repo="openxla/xla",
     configs=("warnings", "rbe_cross_compile_linux_arm64", "nonccl"),
     target_patterns=_XLA_CPU_PRESUBMIT_BENCHMARKS_DEFAULT_TARGET_PATTERNS,
