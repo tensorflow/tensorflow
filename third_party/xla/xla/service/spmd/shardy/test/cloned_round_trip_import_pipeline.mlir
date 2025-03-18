@@ -3,8 +3,6 @@
 // RUN: diff t1.mlir t2.mlir
 
 sdy.mesh @mesh_0 = <["axis_0"=2, "axis_1"=4, "axis_2"=4]>
-sdy.mesh @mesh_1 = <["axis_0"=16]>
-sdy.mesh @mesh_2 = <["x"=8, "y"=4]>
 
 func.func @multiple_shardings(%arg0: tensor<8x8xf32> {sdy.sharding = #sdy.sharding<@mesh_0, [{"axis_2"}, {"axis_0", "axis_1"}]>},
                               %arg1: tensor<8x8xf32> {sdy.sharding = #sdy.sharding<@mesh_0, [{}, {"axis_0", "axis_2"}]>},
@@ -13,6 +11,10 @@ func.func @multiple_shardings(%arg0: tensor<8x8xf32> {sdy.sharding = #sdy.shardi
   %1 = stablehlo.dot %0, %arg2 : (tensor<8x8xf32>, tensor<8x16xf32>) -> tensor<8x16xf32>
   return %1 : tensor<8x16xf32>
 }
+
+// -----
+
+sdy.mesh @mesh_2 = <["x"=8, "y"=4]>
 
 func.func @multi_result_op(%arg0: tensor<4x64x8xf32>, %arg1: tensor<4x64x8xf32>) -> (tensor<4x8xf32>, tensor<4x8xf32>) {
   %0 = sdy.constant dense<0.000000e+00> : tensor<f32>
