@@ -243,6 +243,9 @@ class FunctionalHloRunner {
       return while_execution_count.has_value();
     }
 
+    // Set / update known_trip_count in while loop backend config.
+    bool annotate_while_loop_trip_count = false;
+
     // Is the module the partitioned result of SPMD?
     bool is_spmd_partitioned_module() const {
       return spmd_partitioned_mode ==

@@ -218,6 +218,7 @@ static absl::Status RunMultihostHloRunner(int argc, char** argv,
   TF_ASSIGN_OR_RETURN(
       xla::FunctionalHloRunner::PreprocessingOptions preproc_options,
       PreprocessingOptionsFromFlags(opts));
+  preproc_options.annotate_while_loop_trip_count = true;
   TF_ASSIGN_OR_RETURN(
       xla::FunctionalHloRunner::RawCompileOptions raw_compile_options,
       RawCompileOptionsFromFlags(opts));
