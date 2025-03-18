@@ -403,6 +403,7 @@ xla_test(
         ":gpu_codegen_test",
         "//xla:error_spec",
         "//xla/service:hlo_module_config",
+        "//xla/service:platform_util",
         "//xla/tests:hlo_test_base",
         "@com_google_absl//absl/status",
         "@com_google_googletest//:gtest_main",
