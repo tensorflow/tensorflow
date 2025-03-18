@@ -128,33 +128,6 @@ py_strict_test(
     ] + xla_py_test_deps(),
 )
 
-py_strict_test(
-    name = "xla_client_test_gpu",
-    srcs = ["xla_client_test.py"],
-    args = ["--backend=gpu"],
-    main = "xla_client_test.py",
-    tags = [
-        "no_oss",
-        "requires-gpu-nvidia",
-    ] + if_google(["config-cuda-only"]),  # TODO(phawkins): This test passes, but requires --config=monolithic.
-    deps = [
-        ":xla_client",
-        ":xla_extension",
-        "@absl_py//absl/flags",
-        "@absl_py//absl/logging",
-        "@absl_py//absl/testing:absltest",
-        "@absl_py//absl/testing:parameterized",
-        "@ml_dtypes_py//ml_dtypes",
-    ] + if_google(
-        [
-            ":xla_gpu_extension",
-            "//third_party/py/numpy",
-            "//xla/service:gpu_plugin",
-        ],
-        [],
-    ) + xla_py_test_deps(),
-)
-
 tsl_pybind_extension(
     name = "status_casters_ext",
     srcs = ["status_casters_ext.cc"],
@@ -1322,6 +1295,7 @@ cc_library(
         "-fno-strict-aliasing",
     ],
     features = ["-use_header_modules"],
+    visibility = internal_visibility([":friends"]),
     deps = [
         ":nb_class_ptr",
         ":py_client",
@@ -1335,30 +1309,6 @@ cc_library(
         "//xla/python/pjrt_ifrt",
         "@local_config_python//:python_headers",  # buildcleaner: keep
         "@nanobind",
-    ],
-)
-
-tsl_pybind_extension(
-    name = "xla_gpu_extension",
-    srcs = ["xla_gpu_support.cc"],
-    copts = [
-        "-fexceptions",
-        "-fno-strict-aliasing",
-    ],
-    features = ["-use_header_modules"],
-    pytype_deps = [],
-    pytype_srcs = [],
-    visibility = ["//visibility:public"],
-    deps = [
-        ":gpu_support",
-        ":logging",
-        ":py_client",
-        # placeholder for index annotation deps  # buildcleaner: keep
-        "@com_google_absl//absl/strings:string_view",
-        "@nanobind",
-        "@local_config_python//:python_headers",  # buildcleaner: keep
-        "//xla/pjrt:status_casters",
-        "//xla/pjrt:triton",
     ],
 )
 

@@ -38,17 +38,6 @@ try:
 except ImportError:
   custom_calls_testlib = None
 
-try:
-  from xla.python import xla_extension
-  from xla.python import xla_gpu_extension
-
-  if not hasattr(xla_extension, "GpuAllocatorConfig"):
-    xla_extension.GpuAllocatorConfig = xla_gpu_extension.GpuAllocatorConfig
-  if not hasattr(xla_extension, "get_gpu_client"):
-    xla_extension.get_gpu_client = xla_gpu_extension.get_gpu_client
-except ImportError:
-  pass
-
 xla_client._xla.jax_jit.set_thread_local_state_initialization_callback(
     lambda: None
 )
@@ -3714,7 +3703,6 @@ def InstantiateTests(globals_dict, backend_fn, test_prefix="", **kw):
 
 backends = {
     "cpu": functools.partial(xla_client.make_cpu_client, num_devices=2),
-    "gpu": xla_client.make_gpu_client,
 }
 
 if __name__ == "__main__":
