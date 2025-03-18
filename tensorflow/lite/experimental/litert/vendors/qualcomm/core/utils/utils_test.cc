@@ -1,14 +1,18 @@
 // Copyright (c) Qualcomm Innovation Center, Inc. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+#include <cstdio>
 #include <filesystem>
 #include <fstream>
 #include <string>
+#include <string_view>
 
 #include <gtest/gtest.h>
+#include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/common.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/utils/log.h"
+#include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/utils/miscs.h"
 
-namespace litert {
+namespace qnn {
 namespace {
 
 bool IsPrefix(std::string_view prefix, std::string_view full) {
@@ -80,4 +84,22 @@ TEST_P(LiteRtLog, SanityTest) {
   // Delete the temporary log file
   std::filesystem::remove(temp_path);
 }
-}  // namespace litert
+
+TEST(MiscTest, TestAlwaysFalse) {
+  ASSERT_FALSE(::qnn::always_false<bool>);
+  ASSERT_FALSE(::qnn::always_false<signed char>);
+  ASSERT_FALSE(::qnn::always_false<unsigned char>);
+  ASSERT_FALSE(::qnn::always_false<short int>);
+  ASSERT_FALSE(::qnn::always_false<unsigned short int>);
+  ASSERT_FALSE(::qnn::always_false<int>);
+  ASSERT_FALSE(::qnn::always_false<unsigned int>);
+  ASSERT_FALSE(::qnn::always_false<long int>);
+  ASSERT_FALSE(::qnn::always_false<unsigned long int>);
+  ASSERT_FALSE(::qnn::always_false<long long int>);
+  ASSERT_FALSE(::qnn::always_false<unsigned long long int>);
+  ASSERT_FALSE(::qnn::always_false<float>);
+  ASSERT_FALSE(::qnn::always_false<double>);
+  ASSERT_FALSE(::qnn::always_false<long double>);
+}
+
+}  // namespace qnn

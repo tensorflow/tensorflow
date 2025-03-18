@@ -26,6 +26,17 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "miscs",
+    hdrs = ["miscs.h"],
+    tags = [
+        # Don't build/test in OS until qnn is available.
+        "nobuilder",
+    ],
+    deps = [
+    ],
+)
+
 cc_test(
     name = "utils_test",
     srcs = [
@@ -43,6 +54,8 @@ cc_test(
     ],
     deps = [
         ":log",
+        ":miscs",
+        "//tensorflow/lite/experimental/litert/vendors/qualcomm/core:common",
         "@com_google_googletest//:gtest_main",
     ],
 )

@@ -590,11 +590,7 @@ LiteRtStatus MapGraph(QnnManager& qnn, Qnn_ContextHandle_t context_handle,
   // Legalize subgraph inputs and update tensors in scope
   //
 
-  ::qnn::TensorPool tensor_pool(
-      [&qnn, &graph_mapper](::qnn::TensorWrapper& tensor_wrapper) {
-        qnn.Api()->tensorCreateGraphTensor(graph_mapper.QnnGraph(),
-                                           &tensor_wrapper.GetQnnTensor());
-      });
+  ::qnn::TensorPool tensor_pool;
   absl::flat_hash_map<LiteRtTensor, ::qnn::TensorWrapper*>
       litert_tensor_to_wrapper;
 
@@ -612,6 +608,8 @@ LiteRtStatus MapGraph(QnnManager& qnn, Qnn_ContextHandle_t context_handle,
   // Topologically traverse graph, legalizing and updating tensors in scope
   //
 
+  // TODO: make ConvertOp accept a vector and append OpWrapper in it.
+  std::vector<::qnn::OpWrapper> graph_op_wrappers;
   std::ostringstream dump;
   for (const auto& op : graph_mapper.Graph().Ops()) {
     // Dump op info.
@@ -648,11 +646,18 @@ LiteRtStatus MapGraph(QnnManager& qnn, Qnn_ContextHandle_t context_handle,
     std::vector<::qnn::OpWrapper> op_wrappers;
     LITERT_RETURN_IF_ERROR(
         ConvertOp(op, tensor_pool, input_tensors, output_tensors, op_wrappers));
-
-    for (const auto& op_wrapper : op_wrappers) {
-      qnn.Api()->graphAddNode(graph_mapper.QnnGraph(),
-                              op_wrapper.GetOpConfig());
-    }
+    std::move(op_wrappers.begin(), op_wrappers.end(),
+              std::back_inserter(graph_op_wrappers));
+  }
+  // Insert all tensors into Qnn graph and update the id of Qnn_Tensor_t inside.
+  tensor_pool.ForEach(
+      [&qnn, &graph_mapper](::qnn::TensorWrapper& tensor_wrapper) {
+        qnn.Api()->tensorCreateGraphTensor(graph_mapper.QnnGraph(),
+                                           &tensor_wrapper.GetQnnTensor());
+      });
+  // Then op can be added into Qnn graph after the tensor ids are updated.
+  for (auto& op_wrapper : graph_op_wrappers) {
+    qnn.Api()->graphAddNode(graph_mapper.QnnGraph(), op_wrapper.GetOpConfig());
   }
 
   LITERT_RETURN_STATUS_IF_QNN_NOT_OK(graph_mapper.Finalize());
