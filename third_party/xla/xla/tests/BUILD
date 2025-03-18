@@ -2895,35 +2895,6 @@ xla_test(
     ],
 )
 
-xla_cc_test(
-    name = "value_inference_test",
-    srcs = ["value_inference_test.cc"],
-    tags = ["test_xla_cpu_no_thunks"],
-    deps = [
-        ":literal_test_util",
-        ":test_macros_header",
-        ":test_utils",
-        ":xla_internal_test_main",
-        "//xla:literal",
-        "//xla:shape_util",
-        "//xla:status_macros",
-        "//xla:xla_data_proto_cc",
-        "//xla/client:client_library",
-        "//xla/hlo/builder:value_inference",
-        "//xla/hlo/builder:xla_builder",
-        "//xla/hlo/builder:xla_computation",
-        "//xla/hlo/builder/lib:arithmetic",
-        "//xla/hlo/builder/lib:prng",
-        "//xla/hlo/testlib:test",
-        "//xla/tsl/lib/core:status_test_util",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/types:span",
-        "@local_tsl//tsl/platform:status",
-        "@local_tsl//tsl/platform:statusor",
-    ],
-)
-
 xla_test(
     name = "compute_constant_test",
     srcs = ["compute_constant_test.cc"],

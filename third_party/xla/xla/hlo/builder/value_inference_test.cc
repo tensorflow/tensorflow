@@ -15,30 +15,27 @@ limitations under the License.
 
 #include "xla/hlo/builder/value_inference.h"
 
-#include <memory>
+#include <cstdint>
+#include <string>
 #include <utility>
 #include <vector>
 
 #include "absl/status/statusor.h"
-#include "absl/strings/match.h"
 #include "absl/types/span.h"
-#include "xla/client/client_library.h"
+#include "xla/comparison_util.h"
 #include "xla/hlo/builder/lib/arithmetic.h"
 #include "xla/hlo/builder/lib/prng.h"
 #include "xla/hlo/builder/xla_builder.h"
 #include "xla/hlo/builder/xla_computation.h"
 #include "xla/hlo/testlib/test.h"
-#include "xla/layout_util.h"
+#include "xla/layout.h"
 #include "xla/literal.h"
+#include "xla/literal_util.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/status_macros.h"
-#include "xla/tests/literal_test_util.h"
-#include "xla/tests/test_macros.h"
-#include "xla/tests/test_utils.h"
-#include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/status.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
@@ -52,9 +49,6 @@ class ValueInferenceTest : public ::testing::Test {
 
 class DynamismInferenceTest : public ValueInferenceTest {
  public:
-  explicit DynamismInferenceTest(se::Platform* platform = nullptr)
-      : platform_(platform) {}
-
   absl::StatusOr<Literal> ComputeDynamismLiteral(
       XlaOp operand, XlaBuilder* builder, Layout* output_layout = nullptr) {
     TF_RETURN_IF_ERROR(builder->first_error());
@@ -70,8 +64,6 @@ class DynamismInferenceTest : public ValueInferenceTest {
                         ComputeDynamismLiteral(operand, builder, nullptr));
     return literal.Get<bool>({}, index);
   }
-
-  se::Platform* platform_;
 };
 
 TEST_F(DynamismInferenceTest, ScalarInt32Literal) {
@@ -85,7 +77,7 @@ TEST_F(DynamismInferenceTest, ScalarInt32Literal) {
 }
 
 TEST_F(DynamismInferenceTest, Iota) {
-  // The output of iota are consistened static.
+  // The output of iota are considered static.
   XlaBuilder b(TestName());
   auto computation = Iota(&b, S32, 2);
   // Iota is not dynamic.
@@ -554,9 +546,6 @@ TEST_F(DynamismInferenceTest, ArgumentForwardingNestedTuple) {
 
 class UpperBoundInferenceTest : public ValueInferenceTest {
  public:
-  explicit UpperBoundInferenceTest(se::Platform* platform = nullptr)
-      : platform_(platform) {}
-
   absl::StatusOr<OptionalLiteral> ComputeUpperBoundLiteral(
       XlaOp operand, XlaBuilder* builder, Layout* output_layout = nullptr) {
     ValueInference value_inference(builder);
@@ -565,8 +554,6 @@ class UpperBoundInferenceTest : public ValueInferenceTest {
                             operand, ValueInferenceMode::kUpperBound));
     return literal;
   }
-
-  se::Platform* platform_;
 };
 
 TEST_F(UpperBoundInferenceTest, GetDimensionSize) {
@@ -711,9 +698,6 @@ TEST_F(UpperBoundInferenceTest, KeyValueSort) {
 
 class ConstValueInferenceTest : public ValueInferenceTest {
  public:
-  explicit ConstValueInferenceTest(se::Platform* platform = nullptr)
-      : platform_(platform) {}
-
   absl::StatusOr<OptionalLiteral> ComputeConstantValueLiteral(
       XlaOp operand, XlaBuilder* builder, Layout* output_layout = nullptr) {
     ValueInference value_inference(builder);
@@ -721,8 +705,6 @@ class ConstValueInferenceTest : public ValueInferenceTest {
                                           operand, ValueInferenceMode::kValue));
     return literal;
   }
-
-  se::Platform* platform_;
 };
 
 TEST_F(ConstValueInferenceTest, ConstValuePassThroughSetBound) {
