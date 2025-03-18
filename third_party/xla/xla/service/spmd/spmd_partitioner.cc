@@ -5378,16 +5378,8 @@ int64_t SpmdPartitioner::CommunicationCostInBytes(HloInstruction* hlo) {
   }
 }
 
-absl::StatusOr<bool> SpmdPartitioner::Run(
-    HloModule* module,
-    const absl::flat_hash_set<absl::string_view>& execution_threads) {
-  set_execution_threads(execution_threads);
-  TF_RETURN_IF_ERROR(PreprocessSharding(module, execution_threads));
-  TF_RETURN_IF_ERROR(PreprocessHlos(module, execution_threads));
-
-  XLA_VLOG_LINES(1, SpmdLogger::ReportBeforePartition(
-                        *module, options_.report_instruction_count));
-
+/* static */ void SpmdPartitioner::RecordInputsOutputsSharding(
+    HloModule* module) {
   // Add the parameters' and output's shardings to the module.
   std::vector<HloSharding> entry_params_shardings;
   const auto num_parameters = module->entry_computation()->num_parameters();
@@ -5401,6 +5393,18 @@ absl::StatusOr<bool> SpmdPartitioner::Run(
   auto entry_root = module->entry_computation()->root_instruction();
   CHECK(entry_root->has_sharding()) << "Missing sharding in entry root.";
   module->set_spmd_output_sharding(entry_root->sharding());
+}
+
+absl::StatusOr<bool> SpmdPartitioner::Run(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
+  set_execution_threads(execution_threads);
+  TF_RETURN_IF_ERROR(PreprocessSharding(module, execution_threads));
+  TF_RETURN_IF_ERROR(PreprocessHlos(module, execution_threads));
+
+  XLA_VLOG_LINES(1, SpmdLogger::ReportBeforePartition(
+                        *module, options_.report_instruction_count));
+  RecordInputsOutputsSharding(module);
 
   FlattenCallGraph flatten;
   TF_ASSIGN_OR_RETURN(auto changed, flatten.Run(module));
@@ -5411,7 +5415,8 @@ absl::StatusOr<bool> SpmdPartitioner::Run(
   int64_t next_channel_id = hlo_query::NextChannelId(*module);
   // Copy the root sharding since the partitioner visitor may temporarily change
   // the sharding to work around manual sharding.
-  HloSharding root_sharding = entry_root->sharding();
+  HloSharding root_sharding =
+      module->entry_computation()->root_instruction()->sharding();
 
   std::unique_ptr<CallGraph> call_graph = CallGraph::Build(module);
   CHECK(call_graph->IsFlattened());
