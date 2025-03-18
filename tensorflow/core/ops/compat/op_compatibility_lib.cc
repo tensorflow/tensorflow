@@ -16,7 +16,16 @@ limitations under the License.
 #include "tensorflow/core/ops/compat/op_compatibility_lib.h"
 
 #include <stdio.h>
+
+#include <algorithm>
+#include <set>
+#include <vector>
+
+#include "absl/status/status.h"
+#include "absl/strings/str_join.h"
+#include "third_party/protobuf/text_format.h"
 #include "tensorflow/core/framework/op.h"
+#include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/framework/op_def_util.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
