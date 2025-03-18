@@ -20,11 +20,9 @@ limitations under the License.
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/OpDefinition.h"  // IWYU pragma: keep
-#include "mlir/IR/Types.h"
 #include "mlir/Support/LLVM.h"
 #include "xla/backends/gpu/codegen/triton/ir/triton_xla_ops.h"
 #include "triton/Dialect/Triton/IR/Utility.h"
-#include "triton/Dialect/TritonGPU/IR/Attributes.h"
 #include "triton/Dialect/TritonGPU/IR/Dialect.h"
 #include "triton/Dialect/TritonGPU/IR/LinearLayoutConversions.h"
 #include "triton/Dialect/TritonGPU/IR/TritonGPUInterfaces.h"
