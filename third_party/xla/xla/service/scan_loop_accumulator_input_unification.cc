@@ -33,6 +33,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/transforms/simplifiers/tuple_simplifier.h"
 #include "xla/literal_util.h"
+#include "xla/service/call_graph.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/service/while_loop_simplifier.h"
 #include "xla/service/while_loop_unroller.h"
@@ -209,8 +210,16 @@ FindAccumulatorInputPairs(const HloAliasAnalysis& alias_analysis,
 absl::StatusOr<bool> UnifyAccumulatorWithInput(
     const HloAliasAnalysis& alias_analysis,
     std::vector<std::pair<HloInstruction*, WhileLoopConfig>> unrollable_loops) {
+  // TODO(b/333521102): Helper function to check if a computation is a body of a
+  // while call. Currently, IsWhileBodyComputation api call does not work
+  // properly so we check it ourself. We should switch to IsWhileBodyComputation
+  // when it's fixed.
+  std::unique_ptr<CallGraph> call_graph =
+      CallGraph::Build(&alias_analysis.dataflow_analysis().module());
   auto is_while_body = [&](HloComputation* comp) {
-    return comp->GetUniqueCaller(HloOpcode::kWhile).has_value();
+    std::vector<HloInstruction*> callers =
+        call_graph->GetComputationCallers(comp);
+    return !callers.empty() && callers.at(0)->opcode() == HloOpcode::kWhile;
   };
 
   std::vector<HloInstruction*> changed_loops;
