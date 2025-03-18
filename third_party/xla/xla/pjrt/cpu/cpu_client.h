@@ -26,6 +26,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/base/attributes.h"
+#include "absl/base/nullability.h"
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/inlined_vector.h"
@@ -57,6 +58,7 @@ limitations under the License.
 #include "xla/pjrt/plugin/xla_cpu/cpu_topology_description.h"
 #include "xla/pjrt/transpose.h"
 #include "xla/service/buffer_assignment.h"
+#include "xla/service/compiler.h"
 #include "xla/service/computation_placer.h"
 #include "xla/service/cpu/cpu_event.h"
 #include "xla/service/executable.h"
@@ -125,6 +127,14 @@ class TfrtCpuClient final : public PjRtClient {
       const XlaComputation& computation, CompileOptions options) override;
   absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> CompileAndLoad(
       mlir::ModuleOp module, CompileOptions options) override;
+
+  // TODO(b/403584258): PJRT wants to have just one simple Compile API. When the
+  // CPU runtime stops supporting the legacy runtime we will unify our compile
+  // paths better and this will be redundant.
+  absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
+  CompileAheadOfTimeAndLoad(const XlaComputation& computation,
+                            CompileOptions options,
+                            const AotCompilationOptions& aot_options);
 
   // For TfrtCpuClient, `options` is mandatory.
   // This function returns an InvalidArgument error if `std::nullopt` is passed.
@@ -222,7 +232,8 @@ class TfrtCpuClient final : public PjRtClient {
       const XlaComputation& computation,
       const std::vector<const Shape*>& argument_layout_pointers,
       LayoutCanonicalizationCallback layout_canonicalization_callback,
-      CompileOptions options);
+      CompileOptions options,
+      absl::Nullable<const AotCompilationOptions*> aot_options = nullptr);
 
   int process_index_;
   // Includes all devices, including non-addressable devices.
