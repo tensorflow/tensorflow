@@ -111,9 +111,59 @@ class LiteRtCompiledModelT {
                                  bool* async);
 
  private:
-  // Processes the model and initializes the internal states.
+  // Initializes the internal TFLite interpreter and related objects.
   // This is called in the public Create*() methods.
-  litert::Expected<void> Initialize();
+  // The flatbuffer_model_ must be set before calling this method.
+  litert::Expected<void> InitializeRuntime();
+
+  // Handles any JIT compilation and intializes the flatbuffer_model_ and
+  // related field within the compiled model.
+  //
+  // If no JIT compilation is requested, the compiled model will point to the
+  // underlying tflite::Model* owned by the input litert model. The compiled
+  // models alloc_ and model_buf_ will be nullptr as these are only relevant
+  // when compiled model owns a flatbuffer.
+  //
+  // If JIT compilation does occur, a new flatbuffer owned by the compiled model
+  // will be serialized from the result of compilation. The alloc_ and
+  // model_buf_ will be set for storage of the new flatbuffer.
+  //
+  // NOTE: JIT compilation invalidates the input litert model.
+  // TODO: Design a better abstraction for optional ownership for flatbuffer,
+  // consider caching JIT result.
+  litert::Expected<void> InitializeModel(LiteRtModelT& model,
+                                         LiteRtHwAcceleratorSet hw_accelerators,
+                                         LiteRtEnvironmentT& env);
+
+  // Returns the base address of the flatbuffer memory.
+  //
+  // If no JIT compilation has taken place, this points to flatbuffer memory
+  // owned by the incoming litert model (litert models always owns their
+  // flatbuffer memory until serialization).
+  //
+  // If JIT compilation has taken place, this points to the base address of the
+  // a newly serialized flatbuffer which is owned by the compiled model (in
+  // model_buf_);
+  //
+  // NOTE: This should never be nullptr after initialization.
+  const char* GetModelBase() {
+    if (fb_model_ == nullptr) {
+      return nullptr;
+    }
+
+    // fb_model_->allocation is only null when the flatbuffer is built with
+    // BuildFlatBufferFromModel, which is not currently in use in either
+    // litert::LoadModel or LiteRtCompiledModelT::Create.
+    const auto* alloc = fb_model_->allocation();
+    if (alloc) {
+      // NOTE: During JIT, alloc->base() == model_buf_.Data(), which is owned
+      // by the compiled model. Otherwise, model_buf_.Data() is nullptr and
+      // alloc->base() points a buffer owned by the incoming litert model.
+      return reinterpret_cast<const char*>(alloc->base());
+    }
+
+    return nullptr;
+  }
 
   // Returns the buffer requirements for the given tensor.
   litert::Expected<LiteRtTensorBufferRequirements> GetTensorBufferRequirements(
@@ -156,7 +206,6 @@ class LiteRtCompiledModelT {
   // The Interpreter and related objects used to run the model.
   std::unique_ptr<::tflite::Interpreter> interp_;
   std::unique_ptr<::tflite::FlatBufferModel> fb_model_;
-  std::unique_ptr<::tflite::Allocation> alloc_;
   litert::OwningBufferRef<uint8_t> model_buf_;
   std::vector<const std::string*> signature_keys_;
 

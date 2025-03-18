@@ -232,6 +232,8 @@ cc_library(
         "//tensorflow/lite/experimental/litert/core:build_stamp",
         "//tensorflow/lite/experimental/litert/core:environment",
         "//tensorflow/lite/experimental/litert/core/model",
+        "//tensorflow/lite/experimental/litert/core/model:model_serialize",
+        "//tensorflow/lite/experimental/litert/core/util:flatbuffer_tools",
         "//tensorflow/lite/experimental/litert/runtime/dispatch:dispatch_delegate",
         "//tensorflow/lite/kernels:builtin_ops",
         "@com_google_absl//absl/cleanup",
