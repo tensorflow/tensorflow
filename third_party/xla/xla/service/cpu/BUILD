@@ -536,6 +536,35 @@ xla_test(
     ],
 )
 
+xla_test(
+    name = "cpu_aot_compiler_test",
+    srcs = ["cpu_aot_compiler_test.cc"],
+    backends = [
+        "cpu",
+    ],
+    deps = [
+        ":cpu_aot_compilation_result",
+        ":cpu_compiler_pure",
+        ":test_header_helper",
+        "//xla:literal",
+        "//xla:literal_util",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/ir:hlo_module_group",
+        "//xla/service:compiler",
+        "//xla/service:executable",
+        "//xla/service:hlo_runner",
+        "//xla/service:hlo_runner_interface",
+        "//xla/stream_executor:platform",
+        "//xla/stream_executor:platform_manager",
+        "//xla/tests:hlo_test_base",
+        "//xla/tests:literal_test_util",
+        "//xla/tests:xla_internal_test_main",
+        "//xla/tsl/platform:statusor",
+        "//xla/tsl/platform:test",
+        "@com_google_absl//absl/strings:string_view",
+    ],
+)
+
 tf_proto_library(
     name = "executable_proto",
     srcs = ["executable.proto"],
