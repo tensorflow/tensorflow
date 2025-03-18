@@ -336,7 +336,28 @@ foreach BinaryOp = [TFL_MinimumOp, TFL_MaximumOp, TFL_LessOp,
   defm : ReorderBroadcastToOpAndBinaryOpWithoutActFn<BinaryOp>;
 }
 
+////////////////////////////////////////////////////////////////////////////////
+// Reorder TFL::<UnaryOp> with the TFL::broadcast_to operator.
+////////////////////////////////////////////////////////////////////////////////
+multiclass ReorderBroadcastToAndUnaryOp<Op UnaryOp> {
+  def ReorderBroadcastToOf#UnaryOp : Pat<
+    (UnaryOp (TFL_BroadcastToOp AnyStaticShapeTensor:$input, $dim)),
+    (TFL_BroadcastToOp (UnaryOp $input), $dim)>;
+}
+
+foreach UnaryOp = [TFL_AbsOp, TFL_CeilOp, TFL_ComplexAbsOp, TFL_CosOp,
+                   TFL_DequantizeOp, TFL_EluOp, TFL_ExpOp, TFL_FloorOp,
+                   TFL_HardSwishOp, TFL_ImagOp, TFL_LogOp, TFL_LogicalNotOp,
+                   TFL_LogisticOp, TFL_NegOp, TFL_RealOp, TFL_Relu0To1Op,
+                   TFL_Relu1Op, TFL_Relu6Op, TFL_ReluOp, TFL_RoundOp,
+                   TFL_RsqrtOp, TFL_SignOp, TFL_SinOp, TFL_SqrtOp, TFL_SquareOp,
+                   TFL_TanhOp, TFL_ZerosLikeOp] in {
+  defm : ReorderBroadcastToAndUnaryOp<UnaryOp>;
+}
+
+////////////////////////////////////////////////////////////////////////////////
 // Remove redundant broadcast_to op.
+////////////////////////////////////////////////////////////////////////////////
 def RemoveRedundantBroadcastToOp : Pat<
   (TFL_BroadcastToOp:$result AnyStaticShapeTensor:$pre_broadcast, $dim),
   (replaceWithValue $pre_broadcast),
