@@ -80,7 +80,7 @@ class CpuVectorizationTest
           '_');
     }
 
-    return absl::StrCat(opcode, "_On_", triple,
+    return absl::StrCat(opcode, "_on_", triple,
                         (features.empty() ? "" : "_With"), features);
   }
 
@@ -170,16 +170,21 @@ class MaxIsaTest : public CpuCodegenTest,
   }
 };
 
-TEST_P(MaxIsaTest, ShouldEnableFeature) {
+class X86MaxIsaTest : public MaxIsaTest {};
+
+TEST_P(X86MaxIsaTest, ShouldEnableFeature) {
   HloComputation::Builder builder(TestName());
   MaxIsaTestSpec spec = GetParam();
+  if (!tsl::port::IsX86CPU()) {
+    GTEST_SKIP() << "This test is for x86 CPUs.";
+  }
 
   auto max_feature = CpuFeatureFromString(spec.max_isa);
   bool should_enable = ShouldEnableCpuFeature(spec.feature, *max_feature);
   EXPECT_EQ(should_enable, spec.should_enable);
 }
 
-std::vector<MaxIsaTestSpec> GetMaxIsaTestCases() {
+std::vector<MaxIsaTestSpec> GetX86MaxIsaTestCases() {
   return std::vector<MaxIsaTestSpec>({
       MaxIsaTestSpec{"AVX2", "avx", true},
       MaxIsaTestSpec{"AVX2", "avx2", true},
@@ -192,9 +197,41 @@ std::vector<MaxIsaTestSpec> GetMaxIsaTestCases() {
   });
 }
 
-INSTANTIATE_TEST_SUITE_P(MaxIsaTestInstantiation, MaxIsaTest,
-                         ::testing::ValuesIn(GetMaxIsaTestCases()),
-                         MaxIsaTest::Name);
+INSTANTIATE_TEST_SUITE_P(X86MaxIsaTestInstantiation, X86MaxIsaTest,
+                         ::testing::ValuesIn(GetX86MaxIsaTestCases()),
+                         X86MaxIsaTest::Name);
+
+class AArch64MaxIsaTest : public MaxIsaTest {};
+
+TEST_P(AArch64MaxIsaTest, ShouldEnableFeature) {
+  HloComputation::Builder builder(TestName());
+  MaxIsaTestSpec spec = GetParam();
+  if (!tsl::port::IsAarch64CPU()) {
+    GTEST_SKIP() << "This test is for AArch64 CPUs.";
+  }
+
+  auto max_feature = CpuFeatureFromString(spec.max_isa);
+  bool should_enable = ShouldEnableCpuFeature(spec.feature, *max_feature);
+  EXPECT_EQ(should_enable, spec.should_enable);
+}
+
+std::vector<MaxIsaTestSpec> GetAArch64MaxIsaTestCases() {
+  return std::vector<MaxIsaTestSpec>({
+      MaxIsaTestSpec{"NEON", "neon", true},
+      MaxIsaTestSpec{"NEON", "sve", false},
+      MaxIsaTestSpec{"NEON", "sve2", false},
+      MaxIsaTestSpec{"SVE", "neon", true},
+      MaxIsaTestSpec{"SVE", "sve", true},
+      MaxIsaTestSpec{"SVE", "sve2", false},
+      MaxIsaTestSpec{"SVE2", "neon", true},
+      MaxIsaTestSpec{"SVE2", "sve", true},
+      MaxIsaTestSpec{"SVE2", "sve2", true},
+  });
+}
+
+INSTANTIATE_TEST_SUITE_P(AArch64MaxIsaTestInstantiation, AArch64MaxIsaTest,
+                         ::testing::ValuesIn(GetAArch64MaxIsaTestCases()),
+                         AArch64MaxIsaTest::Name);
 
 struct JitVectorizationTestSpec {
   HloOpcode opcode;
@@ -229,7 +266,9 @@ class JitVectorizationTest
   }
 };
 
-TEST_P(JitVectorizationTest, JitUpToIsa) {
+// Most Aarch64 CPUs are still using 128-bit registers so we don't have this
+// test for Aarch64.
+TEST_P(JitVectorizationTest, JitX86UpToIsa) {
   if (!tsl::port::IsX86CPU()) {
     GTEST_SKIP() << "This feature only works for x86 CPUs.";
   }
