@@ -509,6 +509,7 @@ _TENSORFLOW_LINUX_X86_CPU_GITHUB_ACTIONS_BUILD = Build(
     build_tag_filters=tensorflow_cpu_tag_filters,
     test_tag_filters=tensorflow_cpu_tag_filters,
     options=dict(
+        repo_env="USE_PYWRAP_RULES=True",
         verbose_failures=True,
         test_output="errors",
         override_repository=f"xla={_GITHUB_WORKSPACE}/openxla/xla",
@@ -537,6 +538,7 @@ _TENSORFLOW_LINUX_X86_GPU_T4_GITHUB_ACTIONS_BUILD = Build(
     build_tag_filters=tensorflow_gpu_tag_filters,
     test_tag_filters=tensorflow_gpu_tag_filters,
     options=dict(
+        repo_env="USE_PYWRAP_RULES=True",
         verbose_failures=True,
         test_output="errors",
         override_repository=f"xla={_GITHUB_WORKSPACE}/openxla/xla",
