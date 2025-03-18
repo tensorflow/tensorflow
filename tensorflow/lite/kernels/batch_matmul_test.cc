@@ -36,7 +36,6 @@ namespace ops {
 namespace builtin {
 
 TfLiteRegistration* Register_BATCH_MATMUL_REF();
-TfLiteRegistration* Register_BATCH_MATMUL_GENERIC_OPTIMIZED();
 
 }  // namespace builtin
 }  // namespace ops
@@ -87,8 +86,6 @@ class BatchMatMulOpModel : public SingleOpModel {
 
 const auto kKernelMap = new std::map<string, TfLiteRegistration*>({
     {"Reference", ops::builtin::Register_BATCH_MATMUL_REF()},
-    {"GenericOptimized",
-     ops::builtin::Register_BATCH_MATMUL_GENERIC_OPTIMIZED()},
 });
 
 class BatchMatMulOpTest : public SingleOpTest {

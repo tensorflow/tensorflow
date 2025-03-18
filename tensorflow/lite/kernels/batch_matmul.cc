@@ -24,13 +24,9 @@ limitations under the License.
 
 #include "tensorflow/lite/core/c/builtin_op_data.h"
 #include "tensorflow/lite/core/c/common.h"
-#include "tensorflow/lite/kernels/cpu_backend_context.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
-#include "tensorflow/lite/kernels/internal/optimized/batch_matmul.h"
 #include "tensorflow/lite/kernels/internal/optimized/optimized_ops.h"
-#include "tensorflow/lite/kernels/internal/tensor.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
-#include "tensorflow/lite/kernels/internal/tensor_utils.h"
 #include "tensorflow/lite/kernels/internal/types.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 
@@ -49,7 +45,6 @@ static const int kNumTempTensorsForHybrid = 5;
 // This file has two implementations of Transpose.
 enum KernelType {
   kReference,
-  kGenericOptimized,
 };
 
 struct OpData {
@@ -204,8 +199,8 @@ TfLiteStatus InitializeTemporaries(TfLiteContext* context, TfLiteNode* node,
   // If we have to perform on-the-fly quantization (with quantized weights and
   // float inputs) first we need to quantize the inputs. Allocate temporary
   // buffer to store the intermediate quantized values, the batch scaling
-  // factors, the accumulator buffer (optimized version), the input offsets,
-  // and the sums of the rows for each weights matrix.
+  // factors, the input offsets, and the sums of the rows for each weights
+  // matrix.
   // RHS = weights, LHS = inputs
   if (is_hybrid) {
     // Calculate the total number of LHS batches.
@@ -549,18 +544,11 @@ TfLiteStatus EvalInt8Int8(TfLiteContext* context, const OpData* data,
   op_params.lhs_cacheable = IsConstantTensor(lhs);
   op_params.rhs_cacheable = IsConstantTensor(rhs);
 
-  if (kernel_type == kReference) {
-    reference_ops::BatchMatMul<int8_t, int32_t>(
-        op_params, rhs_shape, GetTensorData<int8_t>(rhs), lhs_shape,
-        GetTensorData<int8_t>(lhs), GetTensorShape(output),
-        GetTensorData<int8_t>(output));
-  } else {
-    optimized_ops::BatchMatMul(
-        op_params, rhs_shape, GetTensorData<int8_t>(rhs), lhs_shape,
-        GetTensorData<int8_t>(lhs), GetTensorShape(output),
-        GetTensorData<int8_t>(output),
-        CpuBackendContext::GetFromContext(context), transpose_lhs);
-  }
+  reference_ops::BatchMatMul<int8_t, int32_t>(
+      op_params, rhs_shape, GetTensorData<int8_t>(rhs), lhs_shape,
+      GetTensorData<int8_t>(lhs), GetTensorShape(output),
+      GetTensorData<int8_t>(output));
+
   return kTfLiteOk;
 }
 
@@ -589,18 +577,9 @@ TfLiteStatus EvalInt8Int32(TfLiteContext* context, const OpData* data,
 
   // Set BatchMatMul lhs param to rhs(filter) and rhs param to lhs(input). For
   // the reason, see comment of Eval() function.
-  if (kernel_type == kReference) {
-    reference_ops::BatchMatMul<int8, int8, int32>(
-        rhs_shape, GetTensorData<int8>(rhs), lhs_shape,
-        GetTensorData<int8>(lhs), GetTensorShape(output),
-        GetTensorData<int32>(output));
-  } else {
-    optimized_ops::BatchMatMul(
-        op_params, rhs_shape, GetTensorData<int8_t>(rhs), lhs_shape,
-        GetTensorData<int8_t>(lhs), GetTensorShape(output),
-        GetTensorData<int32_t>(output),
-        CpuBackendContext::GetFromContext(context), transpose_lhs);
-  }
+  reference_ops::BatchMatMul<int8, int8, int32>(
+      rhs_shape, GetTensorData<int8>(rhs), lhs_shape, GetTensorData<int8>(lhs),
+      GetTensorShape(output), GetTensorData<int32>(output));
   return kTfLiteOk;
 }
 
@@ -622,8 +601,6 @@ TfLiteStatus EvalInt16(TfLiteContext* context, const OpData* data,
   op_params.quantized_activation_min = data->output_activation_min;
   op_params.quantized_activation_max = data->output_activation_max;
 
-  // optimized_ops not yet implemented for int16_t, use reference_ops in all
-  // cases.
   reference_ops::BatchMatMul<int16_t, int64_t>(
       op_params, rhs_shape, GetTensorData<int16_t>(rhs), lhs_shape,
       GetTensorData<int16_t>(lhs), GetTensorShape(output),
@@ -856,15 +833,8 @@ TfLiteRegistration* Register_BATCH_MATMUL_REF() {
   return &r;
 }
 
-TfLiteRegistration* Register_BATCH_MATMUL_GENERIC_OPTIMIZED() {
-  static TfLiteRegistration r = {
-      batch_matmul::Init, batch_matmul::Free, batch_matmul::Prepare,
-      batch_matmul::Eval<batch_matmul::kGenericOptimized>};
-  return &r;
-}
-
 TfLiteRegistration* Register_BATCH_MATMUL() {
-  return Register_BATCH_MATMUL_GENERIC_OPTIMIZED();
+  return Register_BATCH_MATMUL_REF();
 }
 
 }  // namespace builtin
