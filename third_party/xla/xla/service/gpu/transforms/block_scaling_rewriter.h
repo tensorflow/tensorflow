@@ -19,7 +19,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/service/op_expander_pass.h"
+#include "xla/hlo/transforms/expanders/op_expander_pass.h"
 
 namespace xla::gpu {
 

@@ -24,7 +24,6 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/pjrt/distributed/in_memory_key_value_store.h"
 #include "xla/pjrt/distributed/protocol.pb.h"
-#include "xla/test_helpers.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/status_matchers.h"
 #include "tsl/platform/env.h"
