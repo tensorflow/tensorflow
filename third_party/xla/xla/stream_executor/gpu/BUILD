@@ -603,12 +603,8 @@ cc_library(
 xla_cc_test(
     name = "gpu_test_kernels_fatbin_test",
     srcs = ["gpu_test_kernels_fatbin_test.cc"],
-<<<<<<< HEAD
-    backends = ["gpu"],
-    data = [":gpu_test_kernels_fatbin"],
-=======
     tags = ["gpu"],
->>>>>>> upstream/master
+    data = [":gpu_test_kernels_fatbin"],
     deps = [
         ":gpu_test_kernels_fatbin",
         "@com_google_googletest//:gtest_main",
