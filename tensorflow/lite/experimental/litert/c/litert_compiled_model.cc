@@ -140,6 +140,63 @@ void LiteRtDestroyCompiledModel(LiteRtCompiledModel compiled_model) {
   delete compiled_model;
 }
 
+LiteRtStatus LiteRtCompiledModelStartMetricsCollection(
+    LiteRtCompiledModel compiled_model, int detail_level) {
+  if (!compiled_model) {
+    return kLiteRtStatusErrorInvalidArgument;
+  }
+  auto res = compiled_model->StartMetricsCollection(detail_level);
+  if (!res) {
+    LITERT_LOG(LITERT_ERROR, "%s", res.Error().Message().c_str());
+    return res.Error().Status();
+  }
+  return kLiteRtStatusOk;
+}
+
+LiteRtStatus LiteRtCompiledModelStopMetricsCollection(
+    LiteRtCompiledModel compiled_model, LiteRtCompiledModelMetrics* metrics) {
+  if (!compiled_model || !metrics) {
+    return kLiteRtStatusErrorInvalidArgument;
+  }
+  auto metrics_or = compiled_model->StopMetricsCollection();
+  if (!metrics_or) {
+    LITERT_LOG(LITERT_ERROR, "%s", metrics_or.Error().Message().c_str());
+    return metrics_or.Error().Status();
+  }
+  *metrics = new LiteRtCompiledModelMetricsT(std::move(metrics_or.Value()));
+  return kLiteRtStatusOk;
+}
+
+LiteRtStatus LiteRtCompiledModelGetNumMetrics(
+    LiteRtCompiledModelMetrics metrics, int* num_metrics) {
+  if (!metrics || !num_metrics) {
+    return kLiteRtStatusErrorInvalidArgument;
+  }
+  *num_metrics = metrics->metrics.size();
+  return kLiteRtStatusOk;
+}
+
+LiteRtStatus LiteRtCompiledModelGetMetric(LiteRtCompiledModelMetrics metrics,
+                                          int metric_index,
+                                          LiteRtMetric* metric) {
+  if (!metrics || !metric) {
+    return kLiteRtStatusErrorInvalidArgument;
+  }
+  if (metric_index < 0 || metric_index >= metrics->metrics.size()) {
+    return kLiteRtStatusErrorInvalidArgument;
+  }
+  auto& compiled_model_metric = metrics->metrics[metric_index];
+  *metric = {.name = compiled_model_metric.name.c_str(),
+             .value = compiled_model_metric.value};
+  return kLiteRtStatusOk;
+}
+
+LiteRtStatus LiteRtCompiledModelDestroyMetrics(
+    LiteRtCompiledModelMetrics metrics) {
+  delete metrics;
+  return kLiteRtStatusOk;
+}
+
 #ifdef __cplusplus
 }  // extern "C"
 #endif

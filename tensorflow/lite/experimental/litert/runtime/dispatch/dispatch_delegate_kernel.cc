@@ -21,6 +21,7 @@
 #include <utility>
 #include <vector>
 
+#include "absl/cleanup/cleanup.h"
 #include "tensorflow/lite/c/c_api_opaque.h"
 #include "tensorflow/lite/c/c_api_types.h"
 #include "tensorflow/lite/c/common.h"
@@ -650,6 +651,51 @@ TfLiteStatus DispatchDelegateKernel::Eval(TfLiteOpaqueContext* context,
     std::memcpy(tensor_data, lock_and_addr->second, buffer_size);
   }
 
+  return kTfLiteOk;
+}
+
+TfLiteStatus DispatchDelegateKernel::StartMetricsCollection(int detail_level) {
+  if (auto status = LiteRtDispatchStartMetricsCollection(invocation_context_,
+                                                         detail_level);
+      status != kLiteRtStatusOk) {
+    LITERT_LOG(LITERT_ERROR, "Failed to start metrics collection: %d", status);
+    return kTfLiteError;
+  }
+  return kTfLiteOk;
+}
+
+TfLiteStatus DispatchDelegateKernel::StopMetricsCollection(
+    LiteRtDispatchDelegateMetricsT& dispatch_delegate_metrics) {
+  LiteRtDispatchMetrics metrics;
+  if (auto status =
+          LiteRtDispatchStopMetricsCollection(invocation_context_, &metrics);
+      status != kLiteRtStatusOk) {
+    LITERT_LOG(LITERT_ERROR, "Failed to stop metrics collection: %d", status);
+    return kTfLiteError;
+  }
+  absl::Cleanup metrics_cleanup = [&metrics] {
+    if (auto status = LiteRtDispatchDestroyMetrics(metrics);
+        status != kLiteRtStatusOk) {
+      LITERT_LOG(LITERT_ERROR, "Failed to destroy metrics: %d", status);
+    }
+  };
+
+  int num_metrics = 0;
+  if (auto status = LiteRtDispatchGetNumMetrics(metrics, &num_metrics);
+      status != kLiteRtStatusOk) {
+    LITERT_LOG(LITERT_ERROR, "Failed to get number of metrics: %d", status);
+    return kTfLiteError;
+  }
+
+  for (int i = 0; i < num_metrics; ++i) {
+    LiteRtMetric metric;
+    if (auto status = LiteRtDispatchGetMetric(metrics, i, &metric);
+        status != kLiteRtStatusOk) {
+      LITERT_LOG(LITERT_ERROR, "Failed to get metric %d: %d", i, status);
+      return kTfLiteError;
+    }
+    dispatch_delegate_metrics.metrics.push_back({metric.name, metric.value});
+  }
   return kTfLiteOk;
 }
 

@@ -26,6 +26,7 @@
 #include "absl/strings/string_view.h"
 #include "tensorflow/compiler/mlir/lite/allocation.h"
 #include "tensorflow/lite/delegates/utils/simple_opaque_delegate.h"
+#include "tensorflow/lite/experimental/litert/c/litert_any.h"
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
 #include "tensorflow/lite/experimental/litert/c/litert_compilation_options.h"
 #include "tensorflow/lite/experimental/litert/c/litert_model.h"
@@ -40,6 +41,14 @@
 #include "tensorflow/lite/experimental/litert/runtime/tensor_buffer.h"
 #include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/model_builder.h"
+
+struct LiteRtCompiledModelMetricsT {
+  struct Metric {
+    std::string name;
+    LiteRtAny value;
+  };
+  std::vector<Metric> metrics;
+};
 
 // The LiteRtCompiledModelT is internal implementation of CompiledModel C++ API.
 class LiteRtCompiledModelT {
@@ -109,6 +118,10 @@ class LiteRtCompiledModelT {
                                  size_t num_output_buffers,
                                  LiteRtTensorBuffer* output_buffers,
                                  bool* async);
+
+  litert::Expected<void> StartMetricsCollection(int detail_level);
+
+  litert::Expected<LiteRtCompiledModelMetricsT> StopMetricsCollection();
 
  private:
   // Initializes the internal TFLite interpreter and related objects.
@@ -217,6 +230,8 @@ class LiteRtCompiledModelT {
       buffer_context_;
 
   std::vector<tflite::TfLiteOpaqueDelegateUniquePtr> delegates_;
+
+  TfLiteOpaqueDelegate* dispatch_delegate_ = nullptr;
 
   // The set of CPU Tensors. This is used to manage TensorBufferRequirements
   // for shared CPU Tensors.

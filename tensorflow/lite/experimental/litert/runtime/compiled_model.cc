@@ -23,6 +23,7 @@
 #include <vector>
 
 #include "absl/cleanup/cleanup.h"
+#include "tensorflow/lite/c/c_api_types.h"
 #include "tensorflow/lite/experimental/litert/c/litert_accelerator_options.h"
 #include "tensorflow/lite/experimental/litert/c/litert_environment.h"
 #include "tensorflow/lite/experimental/litert/c/litert_environment_options.h"
@@ -293,6 +294,7 @@ Expected<LiteRtCompiledModelT::Ptr> LiteRtCompiledModelT::Create(
                       "Failed to modify graph with delegate");
   }
 
+  compiled_model->dispatch_delegate_ = dispatch_delegate.get();
   compiled_model->RegisterDelegate(std::move(dispatch_delegate));
 
   compiled_model->CheckCpuTensors();
@@ -644,4 +646,65 @@ litert::Expected<void> LiteRtCompiledModelT::RunCApi(
     *async = async_;
   }
   return result;
+}
+
+litert::Expected<void> LiteRtCompiledModelT::StartMetricsCollection(
+    int detail_level) {
+  if (detail_level < 0) {
+    return litert::Unexpected(kLiteRtStatusErrorInvalidArgument,
+                              "Detail level must be >= 0");
+  }
+  // TODO: b/393453378 - Once the accelerator delegate APIs for metrics
+  // collection are available, add support for collecting metrics from
+  // accelerator delegates.
+  if (dispatch_delegate_ == nullptr) {
+    return litert::Unexpected(kLiteRtStatusErrorRuntimeFailure,
+                              "Dispatch delegate is not registered");
+  }
+  if (auto status = LiteRtDispatchDelegateStartMetricsCollection(
+          dispatch_delegate_, detail_level);
+      status != kTfLiteOk) {
+    return litert::Unexpected(kLiteRtStatusErrorRuntimeFailure,
+                              "Failed to start metrics collection");
+  }
+  return {};
+}
+
+litert::Expected<LiteRtCompiledModelMetricsT>
+LiteRtCompiledModelT::StopMetricsCollection() {
+  if (dispatch_delegate_ == nullptr) {
+    return litert::Unexpected(kLiteRtStatusErrorRuntimeFailure,
+                              "Dispatch delegate is not registered");
+  }
+  LiteRtDispatchDelegateMetrics dispatch_delegate_metrics;
+  if (auto status = LiteRtDispatchDelegateStopMetricsCollection(
+          dispatch_delegate_, &dispatch_delegate_metrics);
+      status != kTfLiteOk) {
+    return litert::Unexpected(kLiteRtStatusErrorRuntimeFailure,
+                              "Failed to stop metrics collection");
+  }
+  auto metrics_cleanup = absl::MakeCleanup([&dispatch_delegate_metrics]() {
+    LiteRtDispatchDelegateDestroyMetrics(dispatch_delegate_metrics);
+  });
+  int num_metrics = 0;
+  if (auto status = LiteRtDispatchDelegateGetNumMetrics(
+          dispatch_delegate_metrics, &num_metrics);
+      status != kTfLiteOk) {
+    return litert::Unexpected(kLiteRtStatusErrorRuntimeFailure,
+                              "Failed to get number of metrics");
+  }
+  std::vector<LiteRtCompiledModelMetricsT::Metric> compiled_model_metrics;
+  compiled_model_metrics.reserve(num_metrics);
+  for (int i = 0; i < num_metrics; ++i) {
+    LiteRtMetric metric;
+    if (auto status = LiteRtDispatchDelegateGetMetric(dispatch_delegate_metrics,
+                                                      i, &metric);
+        status != kTfLiteOk) {
+      return litert::Unexpected(kLiteRtStatusErrorRuntimeFailure,
+                                "Failed to get metric");
+    }
+    compiled_model_metrics.push_back({metric.name, metric.value});
+  }
+  return LiteRtCompiledModelMetricsT{.metrics =
+                                         std::move(compiled_model_metrics)};
 }
