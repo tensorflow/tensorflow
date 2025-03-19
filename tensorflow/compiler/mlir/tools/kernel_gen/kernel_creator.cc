@@ -289,11 +289,12 @@ absl::Status LowerLoopsToGPU(mlir::ModuleOp module, bool index_64bit,
   // Make loops with min bounds into a conditional plus static bounds.
   pm.addNestedPass<FuncOp>(mlir::createForLoopSpecializationPass());
   // Take launches to launches with kernels.
-  pm.addPass(mlir::createGpuLauchSinkIndexComputationsPass());
+  pm.addPass(mlir::createGpuLaunchSinkIndexComputationsPass());
   const std::string gpuDataLayoutSpec =
       index_64bit ? "#dlti.dl_spec<#dlti.dl_entry<index,64:i64>>"
                   : "#dlti.dl_spec<#dlti.dl_entry<index,32:i32>>";
-  pm.addPass(mlir::createGpuKernelOutliningPass(gpuDataLayoutSpec));
+  pm.addPass(
+      mlir::createGpuKernelOutliningPass({.dataLayoutStr = gpuDataLayoutSpec}));
 
   pm.addPass(::mlir::createLowerAffinePass());
   // Constraints are removed as late as possible and before lowering to CFG.

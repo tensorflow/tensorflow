@@ -1,0 +1,33 @@
+
+--- a/bin/triton-llvm-opt.cpp	2024-05-02 01:41:56.000000000 -0700
++++ b/bin/triton-llvm-opt.cpp	2025-03-18 07:35:39.000000000 -0700
+@@ -91,7 +91,7 @@
+   }
+   // If we are supposed to override the target triple or data layout, do so now.
+   if (!TargetTriple.empty())
+-    M->setTargetTriple(Triple::normalize(TargetTriple));
++    M->setTargetTriple(llvm::Triple(Triple::normalize(TargetTriple)));
+   auto optPipeline = makeOptimizingPipeline();
+   if (auto err = optPipeline(M.get())) {
+     llvm::errs() << "Failed to optimize LLVM IR " << err << "\n";
+
+--- a/python/src/llvm.cc	2025-01-21 05:40:49.000000000 -0800
++++ b/python/src/llvm.cc	2025-03-18 07:35:39.000000000 -0700
+@@ -59,7 +59,7 @@
+   opt.MCOptions.AsmVerbose = true;
+   opt.MCOptions.PreserveAsmComments = true;
+   std::unique_ptr<llvm::TargetMachine> machine{target->createTargetMachine(
+-      module->getTargetTriple(), proc, features, opt, llvm::Reloc::PIC_,
++      module->getTargetTriple().str(), proc, features, opt, llvm::Reloc::PIC_,
+       std::nullopt,
+       disableLLVMOpt ? llvm::CodeGenOptLevel::None
+                      : llvm::CodeGenOptLevel::Aggressive)};
+@@ -132,7 +132,7 @@
+   // module->print(llvm::outs(), nullptr);
+ 
+   // create machine
+-  module.setTargetTriple(triple);
++  module.setTargetTriple(llvm::Triple(triple));
+   auto machine = createTargetMachine(&module, proc, enable_fp_fusion, features);
+   // set data layout
+   module.setDataLayout(machine->createDataLayout());

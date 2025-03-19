@@ -1274,7 +1274,6 @@ cc_library(
         "//xla/service:dump",
         "//xla/service:hlo_proto_cc",
         "//xla/service:logical_buffer",
-        "//xla/service/llvm_ir:llvm_command_line_options",
         "//xla/stream_executor:device_description",
         "//xla/stream_executor:platform",
         "//xla/stream_executor/cuda:cuda_compute_capability",
@@ -1285,12 +1284,12 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
-        "@com_google_absl//absl/log:globals",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@llvm-project//llvm:AsmParser",
+        "@llvm-project//llvm:TargetParser",
         "@llvm-project//llvm:TransformUtils",
         "@llvm-project//llvm:ir_headers",
         "@llvm-project//mlir:IR",
@@ -1647,7 +1646,7 @@ cc_library(
     ]) + xla_internal(["service:export_hlo"]) + if_google([
         "//xla/hlo/experimental/auto_sharding",
         "//xla/hlo/experimental/auto_sharding:auto_sharding_option",
-    ]),
+    ]) + ["@llvm-project//llvm:TargetParser"],
 )
 
 xla_test(
