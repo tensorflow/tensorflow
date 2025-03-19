@@ -109,6 +109,8 @@ message Resource {
  * 3. Counter Event
  * 4. Async Event
  *
+ * NOTE: A flow event is just a complete event but with flow data.
+ *
  * =======================================================================
  *                         |  has_flow_id = true   |   has_flow_id = false
  * =======================================================================
@@ -126,9 +128,10 @@ message Resource {
 
 message TraceEvent {
   enum EventType {
+    // Flow events are now part of EVENT_TYPE_COMPLETE. (Flow V2)
+    reserved 2;
     EVENT_TYPE_UNSPECIFIED = 0;
     EVENT_TYPE_COMPLETE = 1;
-    EVENT_TYPE_FLOW = 2;  // DEPRECATED.
     EVENT_TYPE_ASYNC = 3;
     EVENT_TYPE_COUNTER = 4;
   }
