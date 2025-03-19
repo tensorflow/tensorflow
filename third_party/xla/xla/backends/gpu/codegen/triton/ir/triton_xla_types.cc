@@ -57,14 +57,6 @@ LogicalResult TiledTensorType::verify(
     return emit_error() << "tile shape and original shape have different ranks";
   }
 
-  for (const auto &[tile_dim, original_dim] :
-       llvm::zip(tile_shape, original_shape)) {
-    if (tile_dim > original_dim) {
-      return emit_error()
-             << "tile dim value can't be greater than original dim value";
-    }
-  }
-
   return success();
 }
 

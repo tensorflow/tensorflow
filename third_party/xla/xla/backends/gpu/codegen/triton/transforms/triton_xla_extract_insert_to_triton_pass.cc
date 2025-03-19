@@ -28,6 +28,7 @@ limitations under the License.
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/Support/raw_ostream.h"
 #include "mlir/Analysis/SliceAnalysis.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
@@ -85,6 +86,12 @@ PointerType GetTensorPtrType(::xla::EmitterLocOpBuilder& builder, Type type) {
 TensorDescType GetTensorDescPtrType(::xla::EmitterLocOpBuilder& builder,
                                     RankedTensorType type) {
   return TensorDescType::get(builder.getContext(), type);
+}
+
+RankedTensorType GetRankedTensorType(::xla::EmitterLocOpBuilder& builder,
+                                     TiledTensorType type) {
+  return RankedTensorType::get(
+      type.getTileShape(), xgt::StorageType(builder, type.getElementType()));
 }
 
 bool AreRankedTensors(ArrayRef<Type> types) {
@@ -176,6 +183,8 @@ struct RewriteFuncOp : mlir::OpRewritePattern<func::FuncOp> {
       func::FuncOp op, mlir::PatternRewriter& rewriter) const override {
     ::xla::EmitterLocOpBuilder builder(op.getLoc(), rewriter);
 
+    llvm::errs() << "RewriteFuncOp happening\n";
+
     auto input_types = op.getFunctionType().getInputs();
     auto output_types = op.getFunctionType().getResults();
 
@@ -222,6 +231,11 @@ struct RewriteFuncOp : mlir::OpRewritePattern<func::FuncOp> {
     auto new_func = rewriter.create<triton::FuncOp>(
         op.getLoc(), op.getName(), new_function_type, attrs, arg_attrs);
 
+    for (int i = 0; i < new_func.getNumArguments(); ++i) {
+      new_func.setArgAttr(i, "tt.divisibility",
+                          builder.getIntegerAttr(builder.getI32Type(), 16));
+    }
+
     rewriter.inlineRegionBefore(op.getRegion(), new_func.getFunctionBody(),
                                 new_func.end());
     rewriter.replaceOp(op, new_func);
@@ -230,6 +244,8 @@ struct RewriteFuncOp : mlir::OpRewritePattern<func::FuncOp> {
     rewriter.setInsertionPoint(terminator);
     rewriter.create<triton::ReturnOp>(new_func.getLoc());
     rewriter.eraseOp(terminator);
+
+    llvm::errs() << "Replaced func op\n";
 
     return mlir::success();
   }
@@ -249,6 +265,8 @@ struct RewriteTile : mlir::OpRewritePattern<TileOp> {
   mlir::LogicalResult matchAndRewrite(
       TileOp op, mlir::PatternRewriter& rewriter) const override {
     ::xla::EmitterLocOpBuilder builder(op.getLoc(), rewriter);
+
+    llvm::errs() << "RewriteTile happening\n";
 
     if (CanUseTMA(builder, tma_enabled, *device_description,
                   op.getTiledTensor().getType(), op.getTensor())) {
@@ -285,7 +303,8 @@ struct RewriteTile : mlir::OpRewritePattern<TileOp> {
       // !tt.tensordesc<tensor> -> tiled_tensor
       auto cast_desc_ptr_to_tiled_tensor_ptr_type =
           builder.create<mlir::UnrealizedConversionCastOp>(
-              op.getTiledTensor().getType(), reinterpret_tensor_desc);
+              xgt::StorageType(builder, op.getTiledTensor().getType()),
+              reinterpret_tensor_desc);
 
       rewriter.replaceOp(op, cast_desc_ptr_to_tiled_tensor_ptr_type);
       return mlir::success();
@@ -304,22 +323,28 @@ struct RewriteTile : mlir::OpRewritePattern<TileOp> {
                 op.getTensor())
             .getResult(0);
 
+    // TODO(manany): Should we change the tiled tensor type to use i32?
+    auto tile_shape = op.getTiledTensor().getType().getTileShape();
+    std::vector<int32_t> tile_shape_i32;
+    std::transform(tile_shape.begin(), tile_shape.end(),
+                   std::back_inserter(tile_shape_i32),
+                   [](int64_t value) { return static_cast<int32_t>(value); });
     auto tensor_ptr =
         builder
-            .create<MakeTensorPtrOp>(
-                cast_to_tensor_ptr_type,
-                GetValueRange(builder, op.getTensor().getType().getShape()),
-                GetValueRange(builder, op.getStrides()),
-                GetValueRange(builder, op.getOffsets()), op.getSizes(),
-                dim_order)
+            .create<MakeTensorPtrOp>(cast_to_tensor_ptr_type, op.getSizes(),
+                                     op.getStrides(), op.getOffsets(),
+                                     tile_shape_i32, dim_order)
             .getResult();
 
     // !tt.ptr<tensor> -> tiled_tensor
     auto cast_to_tiled_tensor_type =
         builder.create<mlir::UnrealizedConversionCastOp>(
-            op.getTiledTensor().getType(), tensor_ptr);
+            xgt::StorageType(builder, op.getTiledTensor().getType()),
+            tensor_ptr);
 
     rewriter.replaceOp(op, cast_to_tiled_tensor_type);
+    llvm::errs() << "Replaced tile op\n";
+
     return mlir::success();
   }
 
@@ -336,15 +361,16 @@ struct RewriteExtract : mlir::OpRewritePattern<ExtractOp> {
       ExtractOp op, mlir::PatternRewriter& rewriter) const override {
     ::xla::EmitterLocOpBuilder builder(op.getLoc(), rewriter);
 
+    llvm::errs() << "RewriteExtract happening\n";
+
     if (IsTmaUsed(op.getSrc().getDefiningOp())) {
       // tiled_tensor -> !tt.tensordesc<tensor>
       auto cast_to_tensor_desc_ptr_type =
           builder
               .create<mlir::UnrealizedConversionCastOp>(
                   GetTensorDescPtrType(
-                      builder, RankedTensorType::get(
-                                   op.getSrc().getType().getTileShape(),
-                                   op.getSrc().getType().getElementType())),
+                      builder,
+                      GetRankedTensorType(builder, op.getSrc().getType())),
                   op.getSrc())
               .getResult(0);
 
@@ -362,10 +388,8 @@ struct RewriteExtract : mlir::OpRewritePattern<ExtractOp> {
     auto cast_to_tensor_ptr_type =
         builder
             .create<mlir::UnrealizedConversionCastOp>(
-                GetTensorPtrType(builder,
-                                 RankedTensorType::get(
-                                     op.getSrc().getType().getTileShape(),
-                                     op.getSrc().getType().getElementType())),
+                GetTensorPtrType(builder, GetRankedTensorType(
+                                              builder, op.getSrc().getType())),
                 op.getSrc())
             .getResult(0);
 
@@ -398,15 +422,16 @@ struct RewriteInsert : mlir::OpRewritePattern<InsertOp> {
       InsertOp op, mlir::PatternRewriter& rewriter) const override {
     ::xla::EmitterLocOpBuilder builder(op.getLoc(), rewriter);
 
+    llvm::errs() << "RewriteInsert happening\n";
+
     if (IsTmaUsed(op.getDst().getDefiningOp())) {
       // tiled_tensor -> !tt.tensordesc<tensor>
       auto cast_to_tensor_desc_ptr_type =
           builder
               .create<mlir::UnrealizedConversionCastOp>(
                   GetTensorDescPtrType(
-                      builder, RankedTensorType::get(
-                                   op.getDst().getType().getTileShape(),
-                                   op.getDst().getType().getElementType())),
+                      builder,
+                      GetRankedTensorType(builder, op.getDst().getType())),
                   op.getDst())
               .getResult(0);
 
@@ -417,10 +442,9 @@ struct RewriteInsert : mlir::OpRewritePattern<InsertOp> {
       auto cast_dst_to_tensor_ptr_type =
           builder
               .create<mlir::UnrealizedConversionCastOp>(
-                  GetTensorPtrType(builder,
-                                   RankedTensorType::get(
-                                       op.getDst().getType().getTileShape(),
-                                       op.getDst().getType().getElementType())),
+                  GetTensorPtrType(
+                      builder,
+                      GetRankedTensorType(builder, op.getDst().getType())),
                   op.getDst())
               .getResult(0);
 

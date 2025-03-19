@@ -51,6 +51,7 @@ limitations under the License.
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/Extensions/InlinerExtension.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/Dialect/LLVMIR/LLVMTypes.h"
 #include "mlir/Dialect/LLVMIR/NVVMDialect.h"
@@ -72,6 +73,7 @@ limitations under the License.
 #include "mlir/IR/Value.h"
 #include "mlir/IR/ValueRange.h"
 #include "mlir/IR/Verifier.h"
+#include "mlir/Interfaces/FunctionInterfaces.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Support/LLVM.h"
@@ -101,6 +103,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/ir/hlo_print_options.h"
 #include "xla/hlo/translate/hlo_to_mhlo/hlo_function_importer.h"
 #include "xla/layout_util.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
@@ -119,6 +122,7 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
+#include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/gpu/tma_metadata.h"
 #include "xla/stream_executor/launch_dim.h"
@@ -602,7 +606,7 @@ absl::StatusOr<std::vector<ScalarOrTensor>> EmitTiledComputation(
     EmitterLocOpBuilder& b, absl::string_view libdevice_path,
     const se::DeviceDescription& device_info,
     const HloFusionInstruction* fusion,
-    const TiledHloComputation& tiled_computation, mlir::triton::FuncOp fn,
+    const TiledHloComputation& tiled_computation, mlir::FunctionOpInterface fn,
     ValueRange tile_multi_index);
 
 bool UseGenericTritonEmitterForGemms(const HloInstruction* hlo) {
@@ -716,7 +720,7 @@ absl::StatusOr<ScalarOrTensor> EmitDot(EmitterLocOpBuilder& b,
                                        const se::DeviceDescription& device_info,
                                        const HloFusionInstruction* fusion,
                                        const TiledHloInstruction& tiled_hlo_dot,
-                                       mlir::triton::FuncOp fn,
+                                       mlir::FunctionOpInterface fn,
                                        ValueRange tile_multi_index) {
   QCHECK(UseGenericTritonEmitterForGemms(tiled_hlo_dot.hlo()));
   // We expect to get a tiled HLO in form:
@@ -846,7 +850,7 @@ absl::StatusOr<ScalarOrTensor> EmitTiledHloInstruction(
     EmitterLocOpBuilder& b, absl::string_view libdevice_path,
     const se::DeviceDescription& device_info,
     const HloFusionInstruction* fusion, const TiledHloInstruction& tiled_hlo,
-    mlir::triton::FuncOp fn, ValueRange tile_multi_index,
+    mlir::FunctionOpInterface fn, ValueRange tile_multi_index,
     absl::flat_hash_map<const TiledHloInstruction*, ScalarOrTensor>& values) {
   const HloInstruction* hlo = tiled_hlo.hlo();
   VLOG(4) << "EmitTiledHloInstruction: " << hlo->ToString();
@@ -974,7 +978,7 @@ absl::StatusOr<std::vector<ScalarOrTensor>> EmitTiledComputation(
     EmitterLocOpBuilder& b, absl::string_view libdevice_path,
     const se::DeviceDescription& device_info,
     const HloFusionInstruction* fusion,
-    const TiledHloComputation& tiled_computation, mlir::triton::FuncOp fn,
+    const TiledHloComputation& tiled_computation, mlir::FunctionOpInterface fn,
     ValueRange tile_multi_index) {
   VLOG(2) << "EmitTiledComputation: " << tiled_computation.ToString();
   absl::flat_hash_map<const TiledHloInstruction*, ScalarOrTensor> values;
@@ -1234,7 +1238,7 @@ absl::Status EmitGeneric(mlir::OpBuilder builder,
                          absl::string_view libdevice_path,
                          const se::DeviceDescription& device_info,
                          const HloFusionInstruction* fusion,
-                         mlir::triton::FuncOp fn,
+                         mlir::FunctionOpInterface fn,
                          const BlockLevelParameters& block_level_parameters) {
   const HloComputation* computation = fusion->fused_instructions_computation();
   SymbolicTileAnalysisOrError symbolic_tile_analysis_or =
@@ -1321,7 +1325,8 @@ void LoadMlirDialectsForTriton(mlir::MLIRContext& mlir_context) {
       .loadDialect<ttir::TritonDialect, ttir::gpu::TritonGPUDialect,
                    mlir::arith::ArithDialect, mlir::affine::AffineDialect,
                    mlir::LLVM::LLVMDialect, xla::XlaDialect,
-                   xla::gpu::XlaGpuDialect, ttir::xla::XlaTritonDialect>();
+                   xla::gpu::XlaGpuDialect, ttir::xla::XlaTritonDialect,
+                   mlir::func::FuncDialect, mlir::tensor::TensorDialect>();
   mlir::DialectRegistry registry;
   mlir::func::registerInlinerExtension(registry);
   mlir::LLVM::registerInlinerInterface(registry);
@@ -1377,6 +1382,48 @@ absl::Status CreateInternalError(absl::string_view message,
   return absl::InternalError(err);
 }
 
+// TODO(manany): Migrate the new emitter to use func::FuncOp.
+void AppendFuncArgType(EmitterLocOpBuilder& b, absl::Span<const int64_t> dims,
+                       absl::string_view fusion_kind, Type ir_type,
+                       SmallVector<Type>& fn_arg_types) {
+  if (fusion_kind == kTritonGemmFusionKind) {
+    fn_arg_types.push_back(mlir::RankedTensorType::get(
+        llvm::ArrayRef<int64_t>(dims.data(), dims.size()),
+        StorageType(b, ir_type)));
+  } else {
+    fn_arg_types.push_back(ttir::PointerType::get(
+        StorageType(b, ir_type), mlir::NVVM::kGlobalMemorySpace));
+  }
+}
+
+// TODO(manany): Migrate the new emitter to use func::FuncOp.
+mlir::FunctionOpInterface CreateFuncOp(EmitterLocOpBuilder& b,
+                                       absl::string_view fn_name,
+                                       absl::string_view fusion_kind,
+                                       SmallVector<Type>& fn_arg_types) {
+  mlir::FunctionOpInterface fn;
+  if (fusion_kind == kTritonGemmFusionKind) {
+    fn = b.create<mlir::func::FuncOp>(
+        fn_name, b.getFunctionType(fn_arg_types, std::nullopt));
+  } else {
+    fn = b.create<ttir::FuncOp>(fn_name,
+                                b.getFunctionType(fn_arg_types, std::nullopt));
+    for (int i = 0; i < fn.getNumArguments(); ++i) {
+      fn.setArgAttr(i, "tt.divisibility", b.getIntegerAttr(b.getI32Type(), 16));
+    }
+  }
+  return fn;
+}
+
+// TODO(manany): Migrate the new emitter to use func::FuncOp.
+void EmitReturnOp(EmitterLocOpBuilder& b, absl::string_view fusion_kind) {
+  if (fusion_kind == kTritonGemmFusionKind) {
+    b.create<mlir::func::ReturnOp>();
+  } else {
+    b.create<ttir::ReturnOp>();
+  }
+}
+
 absl::StatusOr<TritonModule> CreateTritonModule(
     absl::string_view fn_name, const HloFusionInstruction* fusion,
     const se::DeviceDescription& device_info,
@@ -1398,6 +1445,10 @@ absl::StatusOr<TritonModule> CreateTritonModule(
       llvm_ir::CreateMlirModuleOp(loc);
   b.setInsertionPointToEnd(triton_module->getBody());
 
+  auto backend_config =
+      fusion->backend_config<GpuBackendConfig>()->fusion_backend_config();
+  absl::string_view fusion_kind = backend_config.kind();
+
   // Build Triton kernel.
   SmallVector<Type> fn_arg_types;
   for (HloInstruction* p : hlo_computation->parameter_instructions()) {
@@ -1410,32 +1461,26 @@ absl::StatusOr<TritonModule> CreateTritonModule(
     } else {
       TF_ASSIGN_OR_RETURN(ir_type, TritonType(b, type));
     }
-    fn_arg_types.push_back(ttir::PointerType::get(
-        StorageType(b, ir_type), mlir::NVVM::kGlobalMemorySpace));
+
+    AppendFuncArgType(b, p->shape().dimensions(), fusion_kind, ir_type,
+                      fn_arg_types);
   }
 
   for (const ShapeUtil::IndexedShape& s :
        ShapeUtil::GetLeafShapes(fusion->shape())) {
     TF_ASSIGN_OR_RETURN(Type triton_ty, TritonType(b, s.shape.element_type()));
-    fn_arg_types.push_back(ttir::PointerType::get(
-        StorageType(b, triton_ty), mlir::NVVM::kGlobalMemorySpace));
+    AppendFuncArgType(b, s.shape.dimensions(), fusion_kind, triton_ty,
+                      fn_arg_types);
   }
 
-  auto fn = b.create<ttir::FuncOp>(
-      fn_name, b.getFunctionType(fn_arg_types, std::nullopt));
-  for (int i = 0; i < fn.getNumArguments(); ++i) {
-    fn.setArgAttr(i, "tt.divisibility", b.getIntegerAttr(b.getI32Type(), 16));
-  }
+  mlir::FunctionOpInterface fn =
+      CreateFuncOp(b, fn_name, fusion_kind, fn_arg_types);
 
   fn.addEntryBlock();
   b.setInsertionPointToStart(&fn.front());
 
   std::string libdevice_path =
       GetLibdevicePath(fusion->GetModule()->config(), device_info);
-
-  auto backend_config =
-      fusion->backend_config<GpuBackendConfig>()->fusion_backend_config();
-  absl::string_view fusion_kind = backend_config.kind();
 
   // It's okay for tma_metadata to be empty; it's only populated when used
   // explicitly.
@@ -1451,7 +1496,8 @@ absl::StatusOr<TritonModule> CreateTritonModule(
     return Internal("Unsupported fusion kind: %s", fusion_kind);
   }
 
-  b.create<ttir::ReturnOp>();
+  // TODO(manany): Bring back somehow.
+  // EmitReturnOp(b, fusion_kind);
 
   if (DumpingEnabledForHloModule(*hlo_computation->parent())) {
     auto suffix = absl::StrCat(fusion->name(), ".before_validation.ttir");
@@ -1467,18 +1513,34 @@ absl::StatusOr<TritonModule> CreateTritonModule(
                             hlo_computation->ToString());
   }
 
-  if (mlir::failed(mlir::verify(*triton_module))) {
-    return CreateInternalError(
-        "Failed to verify Triton module for fusion:", fusion, *triton_module);
-  }
+  // // TODO(manany): Remove.
+  // llvm::errs() << "triton_module>>>\n";
+  // triton_module->print(llvm::errs(),
+  //                      mlir::OpPrintingFlags().enableDebugInfo(true, true));
+  // llvm::errs() << "<<<triton_module\n";
 
   mlir::PassManager pm(&mlir_context);
+
+  // TODO(manany): Pass device and tma_flag to the pass.
+  pm.addPass(mlir::triton::xla::CreateTritonXLAExtractInsertToTritonPass());
+
   pm.addPass(mlir::createCanonicalizerPass());
   pm.addPass(mlir::createCSEPass());
   if (mlir::failed(pm.run(triton_module.get()))) {
     return CreateInternalError(
         "Failed to create Triton module for fusion:", fusion, *triton_module);
   }
+
+  if (mlir::failed(mlir::verify(*triton_module))) {
+    return CreateInternalError(
+        "Failed to verify Triton module for fusion:", fusion, *triton_module);
+  }
+
+  // // TODO(manany): Remove.
+  llvm::errs() << "triton_module>>>\n";
+  triton_module->print(llvm::errs(),
+                       mlir::OpPrintingFlags().enableDebugInfo(true, true));
+  llvm::errs() << "<<<triton_module\n";
 
   VLOG(6) << DumpTritonIR(triton_module.get(),
                           fusion->GetModule()
