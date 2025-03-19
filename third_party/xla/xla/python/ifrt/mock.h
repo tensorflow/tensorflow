@@ -127,21 +127,6 @@ class MockClient : public llvm::RTTIExtends<MockClient, Client> {
               (final));
   MOCK_METHOD(absl::StatusOr<tsl::RCReference<Array>>,
               AssembleArrayFromSingleDeviceArrays,
-              (Shape shape,
-               absl::Nonnull<std::shared_ptr<const Sharding>> sharding,
-               absl::Span<tsl::RCReference<Array>> arrays,
-               ArrayCopySemantics semantics),
-              (final));
-  MOCK_METHOD(absl::StatusOr<tsl::RCReference<Array>>,
-              AssembleArrayFromSingleDeviceArrays,
-              (Shape shape,
-               absl::Nonnull<std::shared_ptr<const Sharding>> sharding,
-               absl::Span<tsl::RCReference<Array>> arrays,
-               ArrayCopySemantics array_copy_semantics,
-               SingleDeviceShardSemantics single_device_shard_semantics),
-              (final));
-  MOCK_METHOD(absl::StatusOr<tsl::RCReference<Array>>,
-              AssembleArrayFromSingleDeviceArrays,
               (DType dtype, Shape shape,
                absl::Nonnull<std::shared_ptr<const Sharding>> sharding,
                absl::Span<tsl::RCReference<Array>> arrays,

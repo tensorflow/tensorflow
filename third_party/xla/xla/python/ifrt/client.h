@@ -23,6 +23,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/base/macros.h"
 #include "absl/base/nullability.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/status/statusor.h"
@@ -191,22 +192,32 @@ class Client : public llvm::RTTIExtends<Client, llvm::RTTIRoot> {
   // `SingleDeviceShardSemantics` and `dtype`.
   virtual absl::StatusOr<tsl::RCReference<Array>>
   AssembleArrayFromSingleDeviceArrays(
-      Shape shape, absl::Nonnull<std::shared_ptr<const Sharding>> sharding,
-      absl::Span<tsl::RCReference<Array>> arrays,
-      ArrayCopySemantics semantics) = 0;
-  virtual absl::StatusOr<tsl::RCReference<Array>>
-  AssembleArrayFromSingleDeviceArrays(
-      Shape shape, absl::Nonnull<std::shared_ptr<const Sharding>> sharding,
-      absl::Span<tsl::RCReference<Array>> arrays,
-      ArrayCopySemantics array_copy_semantics,
-      SingleDeviceShardSemantics single_device_shard_semantics) = 0;
-  virtual absl::StatusOr<tsl::RCReference<Array>>
-  AssembleArrayFromSingleDeviceArrays(
       DType dtype, Shape shape,
       absl::Nonnull<std::shared_ptr<const Sharding>> sharding,
       absl::Span<tsl::RCReference<Array>> arrays,
       ArrayCopySemantics array_copy_semantics,
       SingleDeviceShardSemantics single_device_shard_semantics) = 0;
+
+  ABSL_DEPRECATE_AND_INLINE()
+  absl::StatusOr<tsl::RCReference<Array>> AssembleArrayFromSingleDeviceArrays(
+      Shape shape, absl::Nonnull<std::shared_ptr<const Sharding>> sharding,
+      absl::Span<tsl::RCReference<Array>> arrays,
+      ArrayCopySemantics semantics) {
+    return AssembleArrayFromSingleDeviceArrays(
+        arrays.at(0)->dtype(), std::move(shape), std::move(sharding), arrays,
+        semantics, SingleDeviceShardSemantics::kAddressableShards);
+  }
+
+  ABSL_DEPRECATE_AND_INLINE()
+  absl::StatusOr<tsl::RCReference<Array>> AssembleArrayFromSingleDeviceArrays(
+      Shape shape, absl::Nonnull<std::shared_ptr<const Sharding>> sharding,
+      absl::Span<tsl::RCReference<Array>> arrays,
+      ArrayCopySemantics array_copy_semantics,
+      SingleDeviceShardSemantics single_device_shard_semantics) {
+    return AssembleArrayFromSingleDeviceArrays(
+        arrays.at(0)->dtype(), std::move(shape), std::move(sharding), arrays,
+        array_copy_semantics, single_device_shard_semantics);
+  }
 
   // Copies the arrays to a new set of devices.
   //
