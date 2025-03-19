@@ -61,6 +61,7 @@ namespace ifrt {
 namespace proxy {
 namespace {
 
+using ::testing::_;
 using ::tsl::testing::IsOk;
 using ::tsl::testing::StatusIs;
 
@@ -116,7 +117,7 @@ class MockArrayTest : public testing::Test {
     auto mock_backend = std::make_unique<MockClient>(
         /*delegate=*/xla::ifrt::PjRtClient::Create(std::move(pjrt_cpu_client)));
 
-    ON_CALL(*mock_backend, MakeArrayFromHostBuffer)
+    ON_CALL(*mock_backend, MakeArrayFromHostBuffer(_, _, _, _, _, _, _))
         .WillByDefault(
             [this, mock_backend = mock_backend.get()](
                 const void* data, DType dtype, Shape shape,

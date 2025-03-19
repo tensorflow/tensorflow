@@ -43,6 +43,7 @@ limitations under the License.
 #include "xla/python/ifrt/sharding.h"
 #include "xla/python/ifrt/topology.h"
 #include "xla/python/ifrt/tuple.h"
+#include "xla/python/ifrt/user_context.h"
 #include "xla/python/ifrt/value.h"
 #include "xla/service/computation_placer.h"
 #include "xla/tsl/concurrency/ref_count.h"
@@ -113,6 +114,17 @@ class Client : public llvm::RTTIExtends<Client, llvm::RTTIRoot> {
       absl::Nonnull<std::shared_ptr<const Sharding>> sharding,
       HostBufferSemantics semantics,
       std::function<void()> on_done_with_host_buffer) = 0;
+
+  // Same as above, but accepts a `UserContext` that gets attached to all the
+  // runtime actions triggered by this call. For facilitating performance
+  // analysis and debugging.
+  virtual absl::StatusOr<tsl::RCReference<Array>> MakeArrayFromHostBuffer(
+      const void* data, DType dtype, Shape shape,
+      std::optional<absl::Span<const int64_t>> byte_strides,
+      absl::Nonnull<std::shared_ptr<const Sharding>> sharding,
+      HostBufferSemantics semantics,
+      std::function<void()> on_done_with_host_buffer,
+      tsl::RCReference<UserContext> user_context) = 0;
 
   // Builds a larger array out of individual per-device shards.
   // TODO(hyeontaek): Replace this API with the version that takes
@@ -255,6 +267,11 @@ class Client : public llvm::RTTIExtends<Client, llvm::RTTIRoot> {
   virtual absl::StatusOr<std::shared_ptr<const PjRtLayout>> GetDefaultLayout(
       DType dtype, absl::Span<const int64_t> dims, Device* device,
       xla::ifrt::MemoryKind memory_kind) const = 0;
+
+  // Returns a UserContext that captures the current context information such as
+  // the stack trace. Users should exercise caution when using this method since
+  // IFRT implementations that do not support UserContext will return a nullptr.
+  virtual tsl::RCReference<UserContext> CreateUserContext() = 0;
 
   static char ID;  // NOLINT
 };
