@@ -445,9 +445,6 @@ message DebugOptions {
   // Enable NCCL communicator splitting.
   bool xla_gpu_enable_nccl_comm_splitting = 272;
 
-  // Enable NCCL per stream communicators.
-  bool xla_gpu_enable_nccl_per_stream_comms = 276;
-
   // Enable NCCL user buffers.
   bool xla_gpu_enable_nccl_user_buffers = 267;
 
@@ -797,6 +794,8 @@ message DebugOptions {
   bool xla_gpu_verify_triton_fusion_numerics = 291;
 
   // go/keep-sorted end
+
+  reserved 276;  // xla_gpu_enable_nccl_per_stream_comms
 
   //--------------------------------------------------------------------------//
   // XLA:TPU options.

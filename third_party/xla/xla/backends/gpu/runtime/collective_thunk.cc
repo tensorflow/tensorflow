@@ -244,12 +244,8 @@ absl::StatusOr<GpuCliqueKey> GetGpuCliqueKey(
         "Partial replica groups are not allowed when using NCCL_COMM_ID "
         "environment configuration.");
   }
-  static const bool enable_per_stream_comms =
-      xla::GetDebugOptionsFromFlags().xla_gpu_enable_nccl_per_stream_comms();
-
-  return GpuCliqueKey(std::move(participants),
-                      enable_per_stream_comms ? stream_id : kNoStreamId,
-                      stream_kind, std::move(participant_groups));
+  return GpuCliqueKey(std::move(participants), kNoStreamId, stream_kind,
+                      std::move(participant_groups));
 }
 
 absl::StatusOr<CommunicatorHandle> GetComm(

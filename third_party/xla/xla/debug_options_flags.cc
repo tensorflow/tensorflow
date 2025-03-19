@@ -158,7 +158,6 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_enable_shared_constants(true);
   opts.set_xla_gpu_enable_nccl_user_buffers(false);
   opts.set_xla_gpu_enable_nccl_comm_splitting(true);
-  opts.set_xla_gpu_enable_nccl_per_stream_comms(false);
   opts.set_xla_gpu_nccl_init_max_rank_per_root_ratio(0);
 
   opts.set_xla_gpu_temp_buffer_use_separate_color(false);
@@ -1590,14 +1589,6 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       debug_options->xla_gpu_enable_nccl_comm_splitting(),
       "Enables NCCL communicator splitting which allows sharing NCCL resources "
       "between different NCCL cliques."));
-  flag_list->push_back(tsl::Flag(
-      "xla_gpu_enable_nccl_per_stream_comms",
-      bool_setter_for(&DebugOptions::set_xla_gpu_enable_nccl_per_stream_comms),
-      debug_options->xla_gpu_enable_nccl_per_stream_comms(),
-      "A separate NCCL communicator will be created for each stream that a "
-      "NCCL collective is executed on. This can lead to higher performance if "
-      "NCCL collectives are issued concurrently at the cost of more GPU memory"
-      " usage."));
   flag_list->push_back(tsl::Flag(
       "xla_gpu_nccl_init_max_rank_per_root_ratio",
       int64_setter_for(
