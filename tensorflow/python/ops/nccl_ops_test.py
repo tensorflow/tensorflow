@@ -25,6 +25,7 @@ from tensorflow.python.ops import gradients
 from tensorflow.python.ops import nccl_ops
 from tensorflow.python.platform import test
 
+ops.disable_eager_execution()
 
 def _DeviceTensors(tensors, devices):
   res = []
