@@ -1431,10 +1431,10 @@ cc_library(
         "//xla/service/gpu:gpu_transfer_manager",
     ]) + if_cuda_is_configured([
         "//xla/service/gpu:nvptx_compiler",
-        "//xla/stream_executor/cuda:all_runtime",
+        "//xla/stream_executor/cuda:stream_executor_cuda",
     ]) + if_rocm_is_configured([
         "//xla/service/gpu:amdgpu_compiler",
-        "//xla/stream_executor/rocm:all_runtime",
+        "//xla/stream_executor/rocm:stream_executor_rocm",
     ]),
 )
 
