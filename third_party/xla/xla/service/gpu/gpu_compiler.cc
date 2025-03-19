@@ -191,6 +191,7 @@ limitations under the License.
 #include "xla/service/gpu/transforms/collective_select_folder.h"
 #include "xla/service/gpu/transforms/collectives/all_gather_combiner.h"
 #include "xla/service/gpu/transforms/collectives/all_reduce_combiner.h"
+#include "xla/service/gpu/transforms/collectives/collective_annotator.h"
 #include "xla/service/gpu/transforms/collectives/convert_async_collectives_to_sync.h"
 #include "xla/service/gpu/transforms/collectives/gpu_collective_combiner_utils.h"
 #include "xla/service/gpu/transforms/collectives/reduce_scatter_combiner.h"
@@ -1138,6 +1139,11 @@ absl::Status RunPostFusionPasses(
 
   HloPassPipeline pipeline("post-fusion optimization");
   pipeline.AddPass<RenameFusions>();
+  if (hlo_module->config()
+          .debug_options()
+          .xla_gpu_experimental_enable_sync_collective_combining()) {
+    pipeline.AddPass<CollectiveAnnotator>();
+  }
   pipeline.AddPass<GpuAllGatherCombiner>(
       device_description,
       /*default_combine_threshold_in_bytes=*/kDefaultAllGatherCombineThreshold,

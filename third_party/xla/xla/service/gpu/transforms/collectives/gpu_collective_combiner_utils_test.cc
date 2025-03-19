@@ -540,8 +540,8 @@ TEST_F(CollectiveCombinerUtilsTest, SynchronousCollectivesNoOverlap) {
     ENTRY main {
       p0 = f16[10000000]{0} parameter(0)
       p1 = f16[10000000]{0} parameter(1)
-      ar0 = f16[10000000]{0} all-reduce(p0), replica_groups={}, to_apply=add
-      ar1 = f16[10000000]{0} all-reduce(p1), replica_groups={}, to_apply=add
+      ar0 = f16[10000000]{0} all-reduce(p0), replica_groups={}, to_apply=add, frontend_attributes={collective_id="1"}
+      ar1 = f16[10000000]{0} all-reduce(p1), replica_groups={}, to_apply=add, frontend_attributes={collective_id="2"}
       ROOT result = tuple(ar0, ar1)
     }
   )";
@@ -577,8 +577,8 @@ TEST_F(CollectiveCombinerUtilsTest, SynchronousCollectivesWithOverlap) {
       c0 = f16[10000000]{0} copy(p0)
       c1 = f16[10000000]{0} copy(p1)
 
-      ar0 = f16[10000000]{0} all-reduce(c0), replica_groups={}, to_apply=add
-      ar1 = f16[10000000]{0} all-reduce(c1), replica_groups={}, to_apply=add
+      ar0 = f16[10000000]{0} all-reduce(c0), replica_groups={}, to_apply=add, frontend_attributes={collective_id="1"}
+      ar1 = f16[10000000]{0} all-reduce(c1), replica_groups={}, to_apply=add, frontend_attributes={collective_id="2"}
 
       ROOT result = tuple(ar0, ar1)
     }
