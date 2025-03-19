@@ -717,26 +717,18 @@ struct GatherOp {
   int group_size_;
 };
 
-#if TENSORFLOW_USE_ROCM
-inline bool isGfx10orGfx11(OpKernelContext* ctx) {
-  hipDeviceProp_t props;
-  int dev = 0;
-  hipError_t result = hipGetDevice(&dev);
-  result = hipGetDeviceProperties(&props, dev);
-  if (result == hipSuccess) {
-    std::string gcnArchName = props.gcnArchName;
-    return gcnArchName.substr(0,4)=="gfx1";
-  }
-  return false;
-}
-#endif
-
 template <typename T, typename Op, typename OUT_T, typename IN_T>
 void LaunchScalarReduction(OpKernelContext* ctx, OUT_T out, IN_T in,
                            int in_size, Op op, T init,
                            const gpuStream_t& cu_stream) {
 #if TENSORFLOW_USE_ROCM
-  int WARPSIZE = isGfx10orGfx11(ctx) ? 32 : 64;
+  int WARPSIZE;
+  hipError_t err = AMD_WarpSize(&WARPSIZE);
+  if (err != hipSuccess){
+    std::cerr << "Error getting warp size: " 
+              << hipGetErrorString(err) << std::endl;
+    return;
+  }
 #else
   constexpr int WARPSIZE = TF_RED_WARPSIZE;
 #endif
@@ -808,7 +800,8 @@ void LaunchRowReduction(OpKernelContext* ctx, OUT_T out, IN_T in, int num_rows,
                         int num_cols, Op op, T init,
                         const gpuStream_t& cu_stream) {
 #if TENSORFLOW_USE_ROCM
-  int WARPSIZE = isGfx10orGfx11(ctx) ? 32 : 64;
+  int WARPSIZE;
+  hipError_t err = AMD_WarpSize(&WARPSIZE);
 #else
   constexpr int WARPSIZE = TF_RED_WARPSIZE;
 #endif
@@ -857,11 +850,20 @@ template <typename T, typename Op, typename OUT_T, typename IN_T>
 void LaunchColumnReduction_LTE16Cols(OpKernelContext* ctx, OUT_T out, IN_T in,
                                      int extent_x, int extent_y, Op op, T init,
                                      const gpuStream_t& cu_stream) {
-#if TENSORFLOW_USE_ROCM
-  int WARPSIZE = (std::is_same<T, hipDoubleComplex>::value || isGfx10orGfx11(ctx))
-      ? 32 : 64;
-#else
-  constexpr int WARPSIZE = TF_RED_WARPSIZE;
+#if GOOGLE_CUDA
+  constexpr int WARPSIZE = TF_RED_WARPSIZE;  
+#else // TENSORLFOW_USE_ROCM
+  int WARPSIZE;
+  if constexpr (std::is_same<T, hipDoubleComplex>::value){
+    WARPSIZE = 32;
+  }else{
+    hipError_t err = AMD_WarpSize(&WARPSIZE);
+    if (err != hipSuccess){
+      std::cerr << "Error getting warp size: " 
+                << hipGetErrorString(err) << std::endl;
+      return;
+    }
+  }
 #endif
   int rows_per_warp = WARPSIZE / extent_y;
   dim3 block_dim(
@@ -881,7 +883,7 @@ void LaunchColumnReduction_LTE16Cols(OpKernelContext* ctx, OUT_T out, IN_T in,
   }
 
   if (grid_dim.y == 1) {
-    auto fun = WARPSIZE==32
+    auto fun = WARPSIZE == 32
               ? ColumnReduceMax16ColumnsKernel<IN_T, OUT_T, Op, 32>
               : ColumnReduceMax16ColumnsKernel<IN_T, OUT_T, Op, 64>;
     TF_CHECK_OK(GpuLaunchKernel(fun, grid_dim, block_dim, 0, cu_stream, in, out,
@@ -893,7 +895,7 @@ void LaunchColumnReduction_LTE16Cols(OpKernelContext* ctx, OUT_T out, IN_T in,
                                       TensorShape({static_cast<int64_t>(
                                           sizeof(T) * extent_y * grid_dim.y)}),
                                       &temp_storage));
-    auto fun = WARPSIZE==32
+    auto fun = WARPSIZE == 32
             ? ColumnReduceMax16ColumnsKernel<IN_T, T*, Op, 32>
             : ColumnReduceMax16ColumnsKernel<IN_T, T*, Op, 64>;
     TF_CHECK_OK(GpuLaunchKernel(fun, grid_dim, block_dim, 0, cu_stream, in,
@@ -915,14 +917,23 @@ template <typename T, typename Op, typename OUT_T, typename IN_T>
 void LaunchColumnReduction_LTE4096Cols(OpKernelContext* ctx, OUT_T out, IN_T in,
                                        int extent_x, int extent_y, Op op,
                                        T init, const gpuStream_t& cu_stream) {
-#if TENSORFLOW_USE_ROCM  
+#if GOOGLE_CUDA
+  constexpr int WARPSIZE = TF_RED_WARPSIZE;  
+#else // TENSORLFOW_USE_ROCM
+  int WARPSIZE;
   // On ROCm, TF_RED_WARPSIZE is 64 and the default value would require
   // 66 kB of shared memory with double complex - more than actually
   // available in the GPU.
-  int WARPSIZE = (std::is_same<T, hipDoubleComplex>::value || isGfx10orGfx11(ctx))
-      ? 32 : 64;
-#else
-  constexpr int WARPSIZE = TF_RED_WARPSIZE;
+  if constexpr (std::is_same<T, hipDoubleComplex>::value){
+    WARPSIZE = 32;
+  }else{
+    hipError_t err = AMD_WarpSize(&WARPSIZE);
+    if (err != hipSuccess){
+      std::cerr << "Error getting warp size: " 
+                << hipGetErrorString(err) << std::endl;
+      return;
+    }
+  }
 #endif
   dim3 block_dim(WARPSIZE, std::min(extent_x, (1024 / WARPSIZE)),
                  1);
@@ -938,7 +949,7 @@ void LaunchColumnReduction_LTE4096Cols(OpKernelContext* ctx, OUT_T out, IN_T in,
   }
 
   if (grid_dim.y == 1) {
-    auto fun = WARPSIZE==32
+    auto fun = WARPSIZE == 32
                ? ColumnReduceKernel<IN_T, OUT_T, Op, 32>
                : ColumnReduceKernel<IN_T, OUT_T, Op, 64>;
     TF_CHECK_OK(GpuLaunchKernel(fun, grid_dim,
@@ -952,7 +963,7 @@ void LaunchColumnReduction_LTE4096Cols(OpKernelContext* ctx, OUT_T out, IN_T in,
                                           sizeof(T) * extent_y * grid_dim.y)}),
                                       &temp_storage));
 
-    auto fun = WARPSIZE==32
+    auto fun = WARPSIZE == 32
                ? ColumnReduceKernel<IN_T, T*, Op, 32>
                : ColumnReduceKernel<IN_T, T*, Op, 64>;
     TF_CHECK_OK(GpuLaunchKernel(
