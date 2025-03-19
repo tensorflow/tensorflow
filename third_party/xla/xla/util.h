@@ -847,12 +847,15 @@ absl::Status EraseElementFromVector(std::vector<T>* container, const T& value) {
   return absl::OkStatus();
 }
 
-// Takes a sequence of unpacked n-bit values, such that every byte stores one
-// value in the low-order bits, and packs them so every byte stores as many
-// which will fit. `output` should have ceil((input.size()*kBitsPerElement)/8)
-// bytes. The high-order bits of each byte in `input` are ignored.
+// Takes a sequence of unpacked kBitsPerElement-bit values (kBitsPerElement must
+// be between 1 and 7), such that every byte stores one value in the low-order
+// bits, and packs them so every byte stores as many which will fit. `output`
+// should have at least ceil((input.size()*kBitsPerElement)/8.0) bytes. The
+// high-order bits of each byte in `input` are ignored.
 template <size_t kBitsPerElement>
 void PackIntN(absl::Span<const char> input, absl::Span<char> output) {
+  static_assert(1 <= kBitsPerElement);
+  static_assert(kBitsPerElement <= 7);
   constexpr auto kElementsPerByte = 8 / kBitsPerElement;
   const size_t aligned_inputs = input.size() / kElementsPerByte;
   for (size_t i = 0; i < aligned_inputs; ++i) {
@@ -864,7 +867,8 @@ void PackIntN(absl::Span<const char> input, absl::Span<char> output) {
     }
     output[i] = byte;
   }
-  if (size_t remainder = input.size() % kElementsPerByte; remainder != 0) {
+  if (const size_t remainder = input.size() % kElementsPerByte;
+      remainder != 0) {
     char byte = 0;
     for (size_t j = 0; j < remainder; ++j) {
       byte |= (input[aligned_inputs * kElementsPerByte + j] &
@@ -875,6 +879,8 @@ void PackIntN(absl::Span<const char> input, absl::Span<char> output) {
   }
 }
 
+// Same as above, but takes the number of bits per element as an argument.
+// `bits_per_element` must be 2 or 4, or this function will crash.
 inline void PackIntN(int bits_per_element, absl::Span<const char> input,
                      absl::Span<char> output) {
   if (bits_per_element == 2) {
@@ -889,10 +895,12 @@ inline void PackIntN(int bits_per_element, absl::Span<const char> input,
 // Takes a sequence of packed values, such that every byte stores multiple
 // values, and unpacks them so every byte stores one value in the low-order
 // bits. `input` should have
-// ceil(output.size()*8/kBitsPerElement) bytes. The high-order bits in each
-// output are zero.
+// ceil(output.size()*8.0/kBitsPerElement) bytes. kBitsPerElement must be
+// between 1 and 7. ßThe high-order bits in each output are zero.
 template <size_t kBitsPerElement>
 void UnpackIntN(absl::Span<const char> input, absl::Span<char> output) {
+  static_assert(1 <= kBitsPerElement);
+  static_assert(kBitsPerElement <= 7);
   constexpr auto kElementsPerByte = 8 / kBitsPerElement;
   const size_t aligned_outputs = output.size() / kElementsPerByte;
   for (size_t i = 0; i < aligned_outputs; ++i) {
@@ -911,6 +919,8 @@ void UnpackIntN(absl::Span<const char> input, absl::Span<char> output) {
   }
 }
 
+// Same as above, but takes the number of bits per element as an argument.
+// `bits_per_element` must be 2 or 4, or this function will crash.
 inline void UnpackIntN(int bits_per_element, absl::Span<const char> input,
                        absl::Span<char> output) {
   if (bits_per_element == 2) {

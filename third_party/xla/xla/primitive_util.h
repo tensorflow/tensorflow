@@ -19,7 +19,6 @@ limitations under the License.
 #define XLA_PRIMITIVE_UTIL_H_
 
 #include <array>
-#include <cstddef>
 #include <cstdint>
 #include <limits>
 #include <string>
@@ -27,7 +26,6 @@ limitations under the License.
 #include <type_traits>
 #include <utility>
 
-#include "absl/base/attributes.h"
 #include "absl/base/optimization.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
@@ -78,7 +76,8 @@ bool HasNaN(PrimitiveType type);
 bool HasNegativeZero(PrimitiveType type);
 
 // Returns the XLA primitive type (eg, F32) corresponding to the given
-// template parameter native type (eg, float).
+// template parameter native type (eg, float). Doesn't compile if the native
+// type has no corresponding primitive type.
 template <typename NativeT>
 constexpr PrimitiveType NativeToPrimitiveType() {
   // Make the expression depend on the template parameter NativeT so
@@ -246,8 +245,10 @@ constexpr PrimitiveType NativeToPrimitiveType<complex128>() {
   return C128;
 }
 
-// Returns the native type (eg, float) corresponding to the given template
-// parameter XLA primitive type (eg, F32).
+// PrimitiveTypeToNative<k>::type is an alias for the native type of the given
+// primitive type, and is undefined for primitive types that do not
+// have a corresponding native type. E.g. PrimitiveTypeToNative<F32>::type is
+// float.
 template <PrimitiveType>
 struct PrimitiveTypeToNative;
 
@@ -409,6 +410,9 @@ template <PrimitiveType kType>
 using NativeTypeOf =
     typename primitive_util::PrimitiveTypeToNative<kType>::type;
 
+// For each possible value k of type PrimitiveType, PrimitiveTypeConstant<k> is
+// a distinct type, and PrimitiveTypeConstant<k>() can be implicitly converted
+// to a compile-time constant of value k.
 template <PrimitiveType kPrimitiveType>
 using PrimitiveTypeConstant =
     std::integral_constant<PrimitiveType, kPrimitiveType>;
@@ -420,43 +424,82 @@ inline constexpr bool IsArrayType(PrimitiveType primitive_type) {
          primitive_type < PrimitiveType_ARRAYSIZE;
 }
 
+// Returns true if the given primitive type is a MX floating-point type.
 constexpr bool IsMXType(PrimitiveType type) {
   return type == F4E2M1FN || type == F8E8M0FNU;
 }
 
+// Returns true if the given primitive type is an 8-bit floating-point type.
 constexpr bool IsF8Type(PrimitiveType type) {
   return type == F8E5M2 || type == F8E4M3 || type == F8E4M3FN ||
          type == F8E4M3B11FNUZ || type == F8E5M2FNUZ || type == F8E4M3FNUZ ||
          type == F8E3M4;
 }
 
+// Returns true if the given primitive type is a floating-point type.
 constexpr bool IsFloatingPointType(PrimitiveType type) {
   return type == F16 || type == F32 || type == F64 || type == BF16 ||
          IsF8Type(type) || IsMXType(type);
 }
 
+// Returns true if the given primitive type is a complex type.
 constexpr bool IsComplexType(PrimitiveType type) {
   return type == C64 || type == C128;
 }
 
+// Returns true if the given primitive type is a signed integral type.
 constexpr bool IsSignedIntegralType(PrimitiveType type) {
   return type == S1 || type == S2 || type == S4 || type == S8 || type == S16 ||
          type == S32 || type == S64;
 }
 
+// Returns true if the given primitive type is an unsigned integral type.
 constexpr bool IsUnsignedIntegralType(PrimitiveType type) {
   return type == U1 || type == U2 || type == U4 || type == U8 || type == U16 ||
          type == U32 || type == U64;
 }
 
+// Returns true if the given primitive type is an integral type.
 constexpr bool IsIntegralType(PrimitiveType type) {
   return IsUnsignedIntegralType(type) || IsSignedIntegralType(type);
 }
 
+// Returns true if the given primitive type is an 8-bit integral type.
 constexpr bool Is8BitIntegralType(PrimitiveType type) {
   return type == S8 || type == U8;
 }
 
+// The following *TypeSwitch functions are used to dispatch on the run-time
+// value of a PrimitiveType. They each take a polymorphic functor `f` and a
+// PrimitiveType value `type` and return the result of applying `f` on a
+// PrimitiveTypeConstant<type> value.
+//
+// They are useful because they allow us to use the run-time value of a
+// PrimitiveType in a context expecting a compile-time constant.
+//
+// For example, consider the following function:
+//
+//   // Returns the size of the native type of the given primitive type.
+//   int GetNativeSizeOf(PrimitiveType type) {
+//     ...
+//   }
+//
+// We can use PrimitiveTypeSwitch to implement it as follows:
+//
+//   int GetNativeSizeOf(PrimitiveType type) {
+//     return PrimitiveTypeSwitch<int>(
+//         // The functor is polymorphic and can accept any
+//         // PrimitiveTypeConstant<type> value.
+//         [&](auto primitive_type) -> int {
+//           // Use primitive_type as a *compile-time* constant of type
+//           // PrimitiveType.
+//           return sizeof(NativeTypeOf<primitive_type>());
+//         },
+//         type);
+//   }
+
+// If `type` is an integral type, returns the result of applying polymorphic
+// functor f on a PrimitiveTypeConstant<type> value; otherwise crashes.
 template <typename R, typename F>
 constexpr R IntegralTypeSwitch(F&& f, PrimitiveType type) {
   if (ABSL_PREDICT_TRUE(IsIntegralType(type))) {
@@ -496,6 +539,9 @@ constexpr R IntegralTypeSwitch(F&& f, PrimitiveType type) {
   LOG(FATAL) << "Not an integral data type " << type;
 }
 
+// If `type` is a floating-point type, returns the result of applying
+// polymorphic functor f on a PrimitiveTypeConstant<type> value; otherwise
+// crashes.
 template <typename R, typename F>
 constexpr R FloatingPointTypeSwitch(F&& f, PrimitiveType type) {
   if (ABSL_PREDICT_TRUE(IsFloatingPointType(type))) {
@@ -542,6 +588,8 @@ constexpr R FloatingPointTypeSwitch(F&& f, PrimitiveType type) {
   LOG(FATAL) << "Not a floating point data type " << type;
 }
 
+// If `type` is a complex type, returns the result of applying polymorphic
+// functor f on a PrimitiveTypeConstant<type> value; otherwise crashes.
 template <typename R, typename F>
 constexpr R ComplexTypeSwitch(F&& f, PrimitiveType type) {
   if (ABSL_PREDICT_TRUE(IsComplexType(type))) {
@@ -557,6 +605,8 @@ constexpr R ComplexTypeSwitch(F&& f, PrimitiveType type) {
   LOG(FATAL) << "Not a complex data type " << type;
 }
 
+// If `type` is an array type, returns the result of applying polymorphic
+// functor f on a PrimitiveTypeConstant<type> value; otherwise crashes.
 template <typename R, typename F>
 constexpr R ArrayTypeSwitch(F&& f, PrimitiveType type) {
   if (ABSL_PREDICT_TRUE(IsArrayType(type))) {
@@ -576,6 +626,9 @@ constexpr R ArrayTypeSwitch(F&& f, PrimitiveType type) {
   LOG(FATAL) << "Not an array data type " << type;
 }
 
+// If `type` is not PRIMITIVE_TYPE_INVALID, returns the result of applying
+// polymorphic functor f on a PrimitiveTypeConstant<type> value; otherwise
+// crashes.
 template <typename R, typename F>
 constexpr R PrimitiveTypeSwitch(F&& f, PrimitiveType type) {
   if (ABSL_PREDICT_TRUE(IsArrayType(type))) {
@@ -596,6 +649,8 @@ constexpr R PrimitiveTypeSwitch(F&& f, PrimitiveType type) {
 
 namespace internal {
 
+// Returns the number of bits in the native type for a given primitive type if
+// it is an array type. Otherwise, returns 0.
 template <PrimitiveType primitive_type>
 inline constexpr int PrimitiveTypeBitWidth() {
   if constexpr (IsArrayType(primitive_type)) {
@@ -624,12 +679,18 @@ inline constexpr int PrimitiveTypeBitWidth() {
   }
   return 0;
 }
+
+// BitWidthArrayHelper(<i0, i1, ...>) returns an array of bit widths for the
+// given primitive types static_cast<PrimitiveType>(i0),
+// static_cast<PrimitiveType>(i1), ...
 template <int... Types>
 inline constexpr auto BitWidthArrayHelper(
     std::integer_sequence<int, Types...>) {
   return std::array{PrimitiveTypeBitWidth<PrimitiveType{Types}>()...};
 }
 
+// An array of bit widths for all primitive types, where kBitWidths[i] is the
+// bit width of primitive type static_cast<PrimitiveType>(i).
 inline constexpr auto kBitWidths = BitWidthArrayHelper(
     std::make_integer_sequence<int, PrimitiveType_ARRAYSIZE>{});
 
@@ -678,6 +739,8 @@ inline constexpr int ByteWidth(PrimitiveType type) {
   return internal::WidthForType<internal::kByteWidths>(type);
 }
 
+// Returns the primitive type for the unsigned integral type with the given
+// bit width, or PRIMITIVE_TYPE_INVALID if there is no such type.
 constexpr PrimitiveType UnsignedIntegralTypeForBitWidth(int64_t src_bitwidth) {
   switch (src_bitwidth) {
     case 1:
@@ -699,10 +762,12 @@ constexpr PrimitiveType UnsignedIntegralTypeForBitWidth(int64_t src_bitwidth) {
   }
 }
 
+// Returns the primitive type for the signed integral type with the given
+// bit width, or PRIMITIVE_TYPE_INVALID if there is no such type.
 PrimitiveType SignedIntegralTypeForBitWidth(int64_t src_bitwidth);
 
-// Returns the real, imag component type underlying the given complex type.
-// LOG(FATAL)'s if complex_type is not complex.
+// Returns the real, imag component type for the given complex type.
+// Crashes if complex_type is not complex.
 constexpr PrimitiveType ComplexComponentType(PrimitiveType complex_type) {
   switch (complex_type) {
     case C64:
@@ -715,6 +780,8 @@ constexpr PrimitiveType ComplexComponentType(PrimitiveType complex_type) {
   }
 }
 
+// Returns the complex type for the given real, imag component type.
+// Crashes if there's no complex type for the given component type.
 constexpr PrimitiveType ComplexType(PrimitiveType base_type) {
   if (base_type == F32) {
     return C64;
@@ -762,7 +829,7 @@ inline PrimitiveType HigherPrecisionType(PrimitiveType a, PrimitiveType b) {
   return a;
 }
 
-// Returns true if a convert from from_type to to_type loses no precision.
+// Returns true if a conversion from from_type to to_type loses no precision.
 bool CastPreservesValues(PrimitiveType from_type, PrimitiveType to_type);
 
 // Returns the lower-case name of the given primitive type.
@@ -770,9 +837,10 @@ const std::string& LowercasePrimitiveTypeName(PrimitiveType s);
 
 // Returns the PrimitiveType matching the given name. The given name is expected
 // to be lower-case.
-absl::StatusOr<PrimitiveType> StringToPrimitiveType(absl::string_view name);
+absl::StatusOr<PrimitiveType> StringToPrimitiveType(
+    absl::string_view lower_name);
 
-// Returns true if the given name is a primitive type string (lower-case).
+// Returns true if the given string is a lower-case primitive type name.
 bool IsPrimitiveTypeName(absl::string_view name);
 
 // Returns whether `type` can be expressed as an instance of T.
@@ -782,7 +850,7 @@ bool IsPrimitiveTypeName(absl::string_view name);
 //  CanRepresent<int32_t>(S8)         // true, 8 <= 32
 //  CanRepresent<uint16_t>(S16)       // false, unsigned.
 template <typename T>
-bool CanRepresent(PrimitiveType type) {
+constexpr bool CanRepresent(PrimitiveType type) {
   return PrimitiveTypeSwitch<bool>(
       [](auto primitive_type) -> bool {
         if constexpr (primitive_util::IsFloatingPointType(primitive_type) ||
@@ -806,6 +874,7 @@ bool CanRepresent(PrimitiveType type) {
       type);
 }
 
+// Returns true if `x` can be represented by the native type of `ty`.
 inline bool FitsInIntegralType(int64_t x, PrimitiveType ty) {
   return primitive_util::IntegralTypeSwitch<bool>(
       [&](auto primitive_type) -> bool {
@@ -816,16 +885,21 @@ inline bool FitsInIntegralType(int64_t x, PrimitiveType ty) {
       ty);
 }
 
+// Returns true if `type` is smaller than 8 bits and is not PRED.
 constexpr bool IsSubByteNonPredType(PrimitiveType type) {
   return IsArrayType(type) && type != PRED &&
          primitive_util::BitWidth(type) < 8;
 }
 
+// Packs the given input of sub-byte values into the given output. The bit width
+// of the input type must be 2 or 4, or this function will crash.
 inline void PackIntN(PrimitiveType input_type, absl::Span<const char> input,
                      absl::Span<char> output) {
   xla::PackIntN(primitive_util::BitWidth(input_type), input, output);
 }
 
+// Unpacks the given input of sub-byte values into the given output. The bit
+// width of the input type must be 2 or 4, or this function will crash.
 inline void UnpackIntN(PrimitiveType input_type, absl::Span<const char> input,
                        absl::Span<char> output) {
   xla::UnpackIntN(primitive_util::BitWidth(input_type), input, output);
