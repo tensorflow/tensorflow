@@ -20,6 +20,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/backends/cpu/benchmarks/aot_benchmark_helper.h"
 #include "xla/backends/cpu/benchmarks/hlo_benchmark_runner.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
@@ -33,6 +34,7 @@ namespace xla::cpu {
 static void BM_SelectAndScatterF32(benchmark::State& state) {
   int64_t d0 = state.range(0);
   int64_t d1 = (d0 - 1) / 2;
+  bool is_aot = static_cast<bool>(state.range(1));
 
   absl::string_view hlo = R"(
     HloModule select_and_scatter_f32_$d0
@@ -67,15 +69,28 @@ static void BM_SelectAndScatterF32(benchmark::State& state) {
   auto p2 = LiteralUtil::CreateR0(1.0f);
 
   std::vector<const Literal*> args = {&p0, &p1, &p2};
-  CHECK_OK(
-      RunHloBenchmark(state, hlo, args,
-                      {{"$d0", absl::StrCat(d0)}, {"$d1", absl::StrCat(d1)}}));
+
+  HloBenchmarkOptions benchmark_options;
+  benchmark_options.aot_options = is_aot ? GetAotCompilationOptions() : nullptr;
+
+  CHECK_OK(RunHloBenchmark(
+      state, hlo, args, {{"$d0", absl::StrCat(d0)}, {"$d1", absl::StrCat(d1)}},
+      benchmark_options));
 }
 
-BENCHMARK(BM_SelectAndScatterF32)
-    ->MeasureProcessCPUTime()
-    ->Arg(128)
-    ->Arg(256)
-    ->Arg(512);
+void GenerateSelectAndScatterArgs(benchmark::internal::Benchmark* benchmark) {
+  benchmark->MeasureProcessCPUTime();
+  benchmark->ArgNames({"d0", "is_aot"});
+  const std::vector<int64_t> args_values = {128, 256, 512, 1024, 4096};
+  const std::vector<bool> is_aot_values = {false, true};
+
+  for (const auto& arg_value : args_values) {
+    for (const auto& is_aot : is_aot_values) {
+      benchmark->Args({arg_value, is_aot});
+    }
+  }
+}
+
+BENCHMARK(BM_SelectAndScatterF32)->Apply(GenerateSelectAndScatterArgs);
 
 }  // namespace xla::cpu

@@ -13,11 +13,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <array>
+#include <cstdint>
 #include <random>
 #include <string>
 #include <vector>
 
 #include "absl/strings/str_cat.h"
+#include "xla/backends/cpu/benchmarks/aot_benchmark_helper.h"
 #include "xla/backends/cpu/benchmarks/hlo_benchmark_runner.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
@@ -40,6 +43,7 @@ static void BM_Conv2D(benchmark::State& state) {
   int kernel_h = state.range(4);
   int kernel_w = state.range(5);
   int output_channels = state.range(6);
+  bool is_aot = static_cast<bool>(state.range(7));
 
   // Padding values for 'SAME' padding. Only odd kernel sizes are supported.
   CHECK(IsOdd(kernel_h) && IsOdd(kernel_w));
@@ -72,13 +76,17 @@ static void BM_Conv2D(benchmark::State& state) {
       kernel_shape, &engine, 1.0f, 0.1f);
   std::vector<const Literal*> args = {&input, &kernel};
 
+  HloBenchmarkOptions benchmark_options;
+  benchmark_options.aot_options = is_aot ? GetAotCompilationOptions() : nullptr;
+
   CHECK_OK(
       RunHloBenchmark(state, hlo_module, args,
                       {{"$input_shape", input_shape.ToString()},
                        {"$kernel_shape", kernel_shape.ToString()},
                        {"$window_size", absl::StrCat(kernel_h, "x", kernel_w)},
                        {"$padding", absl::StrCat(padding_h, "_", padding_h, "x",
-                                                 padding_w, "_", padding_w)}}));
+                                                 padding_w, "_", padding_w)}},
+                      benchmark_options));
 }
 
 static void BM_GroupedConv2D(benchmark::State& state) {
@@ -90,6 +98,7 @@ static void BM_GroupedConv2D(benchmark::State& state) {
   int kernel_w = state.range(5);
   int output_channels = state.range(6);
   int feature_group_count = state.range(7);
+  bool is_aot = static_cast<bool>(state.range(8));
 
   // Derive filter channels from input channels and feature group count.
   int filter_channels = input_channels / feature_group_count;
@@ -126,6 +135,9 @@ static void BM_GroupedConv2D(benchmark::State& state) {
 
   std::vector<const Literal*> args = {&input, &kernel};
 
+  HloBenchmarkOptions benchmark_options;
+  benchmark_options.aot_options = is_aot ? GetAotCompilationOptions() : nullptr;
+
   CHECK_OK(RunHloBenchmark(
       state, hlo_module, args,
       {{"$input_shape", input_shape.ToString()},
@@ -133,13 +145,15 @@ static void BM_GroupedConv2D(benchmark::State& state) {
        {"$window_size", absl::StrCat(kernel_h, "x", kernel_w)},
        {"$padding", absl::StrCat(padding_h, "_", padding_h, "x", padding_w, "_",
                                  padding_w)},
-       {"$feature_group_count", absl::StrCat(feature_group_count)}}));
+       {"$feature_group_count", absl::StrCat(feature_group_count)}},
+      benchmark_options));
 }
 
 // Regular strided 1D convolution. Shapes come from an actual use case.
 static void BM_Conv1DStrided(benchmark::State& state) {
   int input_channels = state.range(0);
   int output_channels = state.range(1);
+  bool is_aot = static_cast<bool>(state.range(2));
 
   std::string hlo_module = R"(
     HloModule jit_jconvf
@@ -167,10 +181,14 @@ static void BM_Conv1DStrided(benchmark::State& state) {
       *LiteralUtil::CreateRandomLiteral<F32>(kernel_shape, &engine, 1.0f, 0.1f);
   std::vector<const Literal*> args = {&input, &kernel};
 
+  HloBenchmarkOptions benchmark_options;
+  benchmark_options.aot_options = is_aot ? GetAotCompilationOptions() : nullptr;
+
   CHECK_OK(RunHloBenchmark(state, hlo_module, args,
                            {{"$input_shape", input_shape.ToString()},
                             {"$kernel_shape", kernel_shape.ToString()},
-                            {"$output_shape", output_shape.ToString()}}));
+                            {"$output_shape", output_shape.ToString()}},
+                           benchmark_options));
 }
 
 // Transposed version (i.e. gradient) of BM_Conv1DStrided. In terms of shapes,
@@ -182,6 +200,7 @@ static void BM_Conv1DStrided(benchmark::State& state) {
 static void BM_Conv1DTransposedStrided(benchmark::State& state) {
   int input_channels = state.range(0);
   int output_channels = state.range(1);
+  bool is_aot = static_cast<bool>(state.range(2));
 
   std::string hlo_module = R"(
     HloModule jit_jconvt
@@ -209,10 +228,14 @@ static void BM_Conv1DTransposedStrided(benchmark::State& state) {
       *LiteralUtil::CreateRandomLiteral<F32>(kernel_shape, &engine, 1.0f, 0.1f);
   std::vector<const Literal*> args = {&input, &kernel};
 
+  HloBenchmarkOptions benchmark_options;
+  benchmark_options.aot_options = is_aot ? GetAotCompilationOptions() : nullptr;
+
   CHECK_OK(RunHloBenchmark(state, hlo_module, args,
                            {{"$input_shape", input_shape.ToString()},
                             {"$kernel_shape", kernel_shape.ToString()},
-                            {"$output_shape", output_shape.ToString()}}));
+                            {"$output_shape", output_shape.ToString()}},
+                           benchmark_options));
 }
 
 // The same shapes as BM_Conv1DTransposedStrided, but with a different layout.
@@ -220,6 +243,8 @@ static void BM_Conv1DTransposedStridedNonDefaultLayout(
     benchmark::State& state) {
   int input_channels = state.range(0);
   int output_channels = state.range(1);
+  bool is_aot = static_cast<bool>(state.range(2));
+
   std::string hlo_module = R"(
     HloModule jit_jconvt
 
@@ -246,15 +271,21 @@ static void BM_Conv1DTransposedStridedNonDefaultLayout(
       *LiteralUtil::CreateRandomLiteral<F32>(kernel_shape, &engine, 1.0f, 0.1f);
   std::vector<const Literal*> args = {&input, &kernel};
 
+  HloBenchmarkOptions benchmark_options;
+  benchmark_options.aot_options = is_aot ? GetAotCompilationOptions() : nullptr;
+
   CHECK_OK(RunHloBenchmark(state, hlo_module, args,
                            {{"$input_shape", input_shape.ToString()},
                             {"$kernel_shape", kernel_shape.ToString()},
-                            {"$output_shape", output_shape.ToString()}}));
+                            {"$output_shape", output_shape.ToString()}},
+                           benchmark_options));
 }
 
 // Regular strided 2D convolution. Buffer sizes and convolution parameters are
 // based on an actual 1D use case, but adapted to a 2D convolution.
 static void BM_Conv2DStrided(benchmark::State& state) {
+  bool is_aot = static_cast<bool>(state.range(0));
+
   std::string hlo_module = R"(
     HloModule jit_jconvf
 
@@ -279,7 +310,10 @@ static void BM_Conv2DStrided(benchmark::State& state) {
       *LiteralUtil::CreateRandomLiteral<F32>(kernel_shape, &engine, 1.0f, 0.1f);
   std::vector<const Literal*> args = {&input, &kernel};
 
-  CHECK_OK(RunHloBenchmark(state, hlo_module, args));
+  HloBenchmarkOptions benchmark_options;
+  benchmark_options.aot_options = is_aot ? GetAotCompilationOptions() : nullptr;
+
+  CHECK_OK(RunHloBenchmark(state, hlo_module, args, {}, benchmark_options));
 }
 
 // Transposed version (i.e. gradient) of BM_Conv2DStrided. In terms of shapes,
@@ -289,6 +323,8 @@ static void BM_Conv2DStrided(benchmark::State& state) {
 // Currently, the performance is orders of magnitude worse than regular conv
 // when they should be similar.
 static void BM_Conv2DTransposedStrided(benchmark::State& state) {
+  bool is_aot = static_cast<bool>(state.range(0));
+
   std::string hlo_module = R"(
     HloModule jit_jconvt
 
@@ -314,7 +350,10 @@ static void BM_Conv2DTransposedStrided(benchmark::State& state) {
       *LiteralUtil::CreateRandomLiteral<F32>(kernel_shape, &engine, 1.0f, 0.1f);
   std::vector<const Literal*> args = {&input, &kernel};
 
-  CHECK_OK(RunHloBenchmark(state, hlo_module, args));
+  HloBenchmarkOptions benchmark_options;
+  benchmark_options.aot_options = is_aot ? GetAotCompilationOptions() : nullptr;
+
+  CHECK_OK(RunHloBenchmark(state, hlo_module, args, {}, benchmark_options));
 }
 
 // Regular (i.e. non-transposed) grouped and strided 2D convolution.
@@ -322,6 +361,7 @@ static void BM_GroupedConv2DStrided(benchmark::State& state) {
   int input_channels = state.range(0);
   int output_channels = state.range(1);
   int feature_group_count = state.range(2);
+  bool is_aot = static_cast<bool>(state.range(3));
 
   // Derive filter channels from input channels and feature group count.
   int filter_channels = input_channels / feature_group_count;
@@ -352,11 +392,15 @@ static void BM_GroupedConv2DStrided(benchmark::State& state) {
       *LiteralUtil::CreateRandomLiteral<F32>(kernel_shape, &engine, 1.0f, 0.1f);
   std::vector<const Literal*> args = {&input, &kernel};
 
+  HloBenchmarkOptions benchmark_options;
+  benchmark_options.aot_options = is_aot ? GetAotCompilationOptions() : nullptr;
+
   CHECK_OK(RunHloBenchmark(
       state, hlo_module, args,
       {{"$input_shape", input_shape.ToString()},
        {"$kernel_shape", kernel_shape.ToString()},
-       {"$feature_group_count", std::to_string(feature_group_count)}}));
+       {"$feature_group_count", std::to_string(feature_group_count)}},
+      benchmark_options));
 }
 
 // Transposed version (i.e. gradient) of BM_GroupedConv2DStrided. In terms of
@@ -367,6 +411,7 @@ static void BM_GroupedConv2DTransposedStrided(benchmark::State& state) {
   int input_channels = state.range(0);
   int output_channels = state.range(1);
   int feature_group_count = state.range(2);
+  bool is_aot = static_cast<bool>(state.range(3));
 
   // Derive filter channels from input channels and feature group count.
   int filter_channels = input_channels / feature_group_count;
@@ -397,110 +442,214 @@ static void BM_GroupedConv2DTransposedStrided(benchmark::State& state) {
       *LiteralUtil::CreateRandomLiteral<F32>(kernel_shape, &engine, 1.0f, 0.1f);
   std::vector<const Literal*> args = {&input, &kernel};
 
+  HloBenchmarkOptions benchmark_options;
+  benchmark_options.aot_options = is_aot ? GetAotCompilationOptions() : nullptr;
+
   CHECK_OK(RunHloBenchmark(
       state, hlo_module, args,
       {{"$input_shape", input_shape.ToString()},
        {"$kernel_shape", kernel_shape.ToString()},
-       {"$feature_group_count", std::to_string(feature_group_count)}}));
+       {"$feature_group_count", std::to_string(feature_group_count)}},
+      benchmark_options));
 }
 
 // -------------------------------------------------------------------------- //
-// Pixel CNN convolutions.
+// Conv2D
 // -------------------------------------------------------------------------- //
 
-// Shapes from XLA convolution tests
-BENCHMARK(BM_Conv2D<F32>)
-    ->MeasureProcessCPUTime()
-    ->Args({8, 5, 5, 1, 1, 1, 32})
-    ->Args({8, 5, 5, 4, 1, 1, 32})
-    ->Args({8, 128, 128, 4, 1, 1, 8});
+void GenerateArgsConv2DArgs(benchmark::internal::Benchmark* benchmark) {
+  benchmark->MeasureProcessCPUTime();
+  benchmark->ArgNames({
+      "batch",
+      "height",
+      "width",
+      "input_channels",
+      "kernel_h",
+      "kernel_w",
+      "output_channels",
+      "is_aot",
+  });
 
-// Shapes from TF convolution benchmarks.
-BENCHMARK(BM_Conv2D<F32>)
-    ->MeasureProcessCPUTime()
-    ->Args({8, 32, 32, 128, 1, 1, 1024})
-    ->Args({16, 32, 32, 128, 1, 1, 1024})
-    ->Args({32, 32, 32, 128, 1, 1, 1024});
+  const std::vector<bool> is_aot_values = {false, true};
 
-// Shapes similar to Eigen spatial convolution benchmarks.
-BENCHMARK(BM_Conv2D<F32>)
-    ->MeasureProcessCPUTime()
-    ->Args({32, 64, 64, 32, 1, 1, 64})
-    ->Args({32, 256, 256, 4, 1, 1, 16})
-    ->Args({32, 64, 64, 4, 1, 1, 16})
-    ->Args({32, 32, 32, 96, 1, 1, 96});
+  std::vector<std::array<int64_t, 7>> args_values = {
+      // --------------------------------------------------------------------------
+      // //
+      // Pixel CNN convolutions.
+      // --------------------------------------------------------------------------
+      // //
+      // Shapes from XLA convolution tests
+      {8, 5, 5, 1, 1, 1, 32},
+      {8, 5, 5, 4, 1, 1, 32},
+      {8, 128, 128, 4, 1, 1, 8},
+      // Shapes from TF convolution benchmarks.
+      {8, 32, 32, 128, 1, 1, 1024},
+      {16, 32, 32, 128, 1, 1, 1024},
+      {32, 32, 32, 128, 1, 1, 1024},
+      // Shapes similar to Eigen spatial convolution benchmarks.
+      {32, 64, 64, 32, 1, 1, 64},
+      {32, 256, 256, 4, 1, 1, 16},
+      {32, 64, 64, 4, 1, 1, 16},
+      {32, 32, 32, 96, 1, 1, 96},
+      // --------------------------------------------------------------------------
+      // //
+      // 3x3 Convolution: SpatialConvolution
+      // --------------------------------------------------------------------------
+      // //
+      // Shapes from XLA convolution tests
+      {8, 5, 5, 1, 3, 3, 32},
+      {8, 5, 5, 4, 3, 3, 32},
+      {8, 128, 128, 4, 3, 3, 8},
+      // Shapes from TF convolution benchmarks
+      {8, 32, 32, 128, 3, 3, 1024},
+      {16, 32, 32, 128, 3, 3, 1024},
+      {32, 32, 32, 128, 3, 3, 1024},
+      // Shapes similar to Eigen spatial convolution benchmarks.
+      {32, 64, 64, 32, 3, 3, 64},
+      {32, 256, 256, 4, 3, 3, 16},
+      {32, 64, 64, 4, 3, 3, 16},
+      {32, 32, 32, 96, 3, 3, 96},
+  };
 
-// -------------------------------------------------------------------------- //
-// 3x3 Convolution: SpatialConvolution
-// -------------------------------------------------------------------------- //
+  for (const auto& arg_value : args_values) {
+    for (bool is_aot : is_aot_values) {
+      std::vector<int64_t> arg_values_with_is_aot(arg_value.begin(),
+                                                  arg_value.end());
+      arg_values_with_is_aot.push_back(is_aot);
+      benchmark->Args(arg_values_with_is_aot);
+    }
+  }
+}
 
-// Shapes from XLA convolution tests
-BENCHMARK(BM_Conv2D<F32>)
-    ->MeasureProcessCPUTime()
-    ->Args({8, 5, 5, 1, 3, 3, 32})
-    ->Args({8, 5, 5, 4, 3, 3, 32})
-    ->Args({8, 128, 128, 4, 3, 3, 8});
-
-// Shapes from TF convolution benchmarks
-BENCHMARK(BM_Conv2D<F32>)
-    ->MeasureProcessCPUTime()
-    ->Args({8, 32, 32, 128, 3, 3, 1024})
-    ->Args({16, 32, 32, 128, 3, 3, 1024})
-    ->Args({32, 32, 32, 128, 3, 3, 1024});
-
-// Shapes similar to Eigen spatial convolution benchmarks.
-BENCHMARK(BM_Conv2D<F32>)
-    ->MeasureProcessCPUTime()
-    ->Args({32, 64, 64, 32, 3, 3, 64})
-    ->Args({32, 256, 256, 4, 3, 3, 16})
-    ->Args({32, 64, 64, 4, 3, 3, 16})
-    ->Args({32, 32, 32, 96, 3, 3, 96});
+BENCHMARK(BM_Conv2D<F32>)->Apply(GenerateArgsConv2DArgs);
 
 // -------------------------------------------------------------------------- //
 // Grouped convolution
 // -------------------------------------------------------------------------- //
 
-BENCHMARK(BM_GroupedConv2D)
-    ->MeasureProcessCPUTime()
-    ->Args({1, 45, 45, 1024, 5, 5, 1024, 1024});
+void GenerateArgsGroupedConv2DArgs(benchmark::internal::Benchmark* benchmark) {
+  benchmark->MeasureProcessCPUTime();
+  benchmark->ArgNames({
+      "batch",
+      "height",
+      "width",
+      "input_channels",
+      "kernel_h",
+      "kernel_w",
+      "output_channels",
+      "feature_group_count",
+      "is_aot",
+  });
 
-// -------------------------------------------------------------------------- //
-// 1D and 2D strided convolutions
-// -------------------------------------------------------------------------- //
+  const std::vector<bool> is_aot_values = {false, true};
+  const std::vector<std::array<int64_t, 8>> args_values = {
+      {1, 45, 45, 1024, 5, 5, 1024, 1024}};
 
-BENCHMARK(BM_Conv1DStrided)
-    ->MeasureProcessCPUTime()
-    ->Args({1, 129})
-    ->Args({3, 129});
+  for (const auto& arg_value : args_values) {
+    for (const auto& is_aot : is_aot_values) {
+      std::vector<int64_t> arg_values_with_is_aot(arg_value.begin(),
+                                                  arg_value.end());
+      arg_values_with_is_aot.push_back(is_aot);
+      benchmark->Args(arg_values_with_is_aot);
+    }
+  }
+}
+
+BENCHMARK(BM_GroupedConv2D)->Apply(GenerateArgsGroupedConv2DArgs);
+
+// --------------------------------------------------------------------------
+// // 1D and 2D strided convolutions
+// --------------------------------------------------------------------------
+// //
+
+void GenerateArgsConv1DStridedArgs(benchmark::internal::Benchmark* benchmark) {
+  benchmark->MeasureProcessCPUTime();
+  benchmark->ArgNames({"input_channels", "output_channels", "is_aot"});
+  const std::vector<bool> is_aot_values = {false, true};
+  std::vector<std::array<int64_t, 2>> args_values = {
+      {1, 129},
+      {3, 129},
+  };
+
+  for (const auto& arg_value : args_values) {
+    for (const auto& is_aot : is_aot_values) {
+      std::vector<int64_t> arg_values_with_is_aot(arg_value.begin(),
+                                                  arg_value.end());
+      arg_values_with_is_aot.push_back(is_aot);
+      benchmark->Args(arg_values_with_is_aot);
+    }
+  }
+}
+
+BENCHMARK(BM_Conv1DStrided)->Apply(GenerateArgsConv1DStridedArgs);
+
+void GenerateArgsConv1DTransposedStridedArgs(
+    benchmark::internal::Benchmark* benchmark) {
+  benchmark->MeasureProcessCPUTime();
+  benchmark->ArgNames({"input_channels", "output_channels", "is_aot"});
+  const std::vector<bool> is_aot_values = {false, true};
+  std::vector<std::array<int64_t, 2>> args_values = {
+      {129, 1},
+      {129, 3},
+  };
+
+  for (const auto& arg_value : args_values) {
+    for (const auto& is_aot : is_aot_values) {
+      std::vector<int64_t> arg_values_with_is_aot(arg_value.begin(),
+                                                  arg_value.end());
+      arg_values_with_is_aot.push_back(is_aot);
+      benchmark->Args(arg_values_with_is_aot);
+    }
+  }
+}
+
+// BM_Conv1DTransposedStrided and BM_Conv1DTransposedStridedNonDefaultLayout use
+// the same args
 BENCHMARK(BM_Conv1DTransposedStrided)
-    ->MeasureProcessCPUTime()
-    ->MeasureProcessCPUTime()
-    ->Args({129, 1})
-    ->Args({129, 3});
+    ->Apply(GenerateArgsConv1DTransposedStridedArgs);
 BENCHMARK(BM_Conv1DTransposedStridedNonDefaultLayout)
-    ->MeasureProcessCPUTime()
-    ->Args({129, 1})
-    ->Args({129, 3});
+    ->Apply(GenerateArgsConv1DTransposedStridedArgs);
 
-BENCHMARK(BM_Conv2DStrided)->MeasureProcessCPUTime();
-BENCHMARK(BM_Conv2DTransposedStrided)->MeasureProcessCPUTime();
+void GenerateArgsConv2DStridedArgs(benchmark::internal::Benchmark* benchmark) {
+  benchmark->MeasureProcessCPUTime();
+  benchmark->ArgNames({"is_aot"});
+  const std::vector<bool> is_aot_values = {false, true};
 
-// -------------------------------------------------------------------------- //
-// Grouped strided convolutions
-// -------------------------------------------------------------------------- //
+  for (const auto& is_aot : is_aot_values) {
+    benchmark->Args({is_aot});
+  }
+}
 
-BENCHMARK(BM_GroupedConv2DStrided)
-    ->MeasureProcessCPUTime()
-    ->Args({128, 128, 128});
+BENCHMARK(BM_Conv2DStrided)->Apply(GenerateArgsConv2DStridedArgs);
+BENCHMARK(BM_Conv2DTransposedStrided)->Apply(GenerateArgsConv2DStridedArgs);
+
+// --------------------------------------------------------------------------
+// // Grouped strided convolutions
+// --------------------------------------------------------------------------
+// //
+
+void GenerateArgsGroupedConv2DStrided(
+    benchmark::internal::Benchmark* benchmark) {
+  benchmark->MeasureProcessCPUTime();
+  benchmark->ArgNames(
+      {"input_channels", "output_channels", "feature_group_count", "is_aot"});
+  const std::vector<bool> is_aot_values = {false, true};
+  std::vector<std::array<int64_t, 3>> args_values = {{128, 128, 128},
+                                                     {128, 128, 16}};
+
+  for (const auto& arg_value : args_values) {
+    for (const auto& is_aot : is_aot_values) {
+      std::vector<int64_t> arg_values_with_is_aot(arg_value.begin(),
+                                                  arg_value.end());
+      arg_values_with_is_aot.push_back(is_aot);
+      benchmark->Args(arg_values_with_is_aot);
+    }
+  }
+}
+
+BENCHMARK(BM_GroupedConv2DStrided)->Apply(GenerateArgsGroupedConv2DStrided);
 BENCHMARK(BM_GroupedConv2DTransposedStrided)
-    ->MeasureProcessCPUTime()
-    ->Args({128, 128, 128});
-BENCHMARK(BM_GroupedConv2DStrided)
-    ->MeasureProcessCPUTime()
-    ->Args({128, 128, 16});
-BENCHMARK(BM_GroupedConv2DTransposedStrided)
-    ->MeasureProcessCPUTime()
-    ->Args({128, 128, 16});
+    ->Apply(GenerateArgsGroupedConv2DStrided);
 
 }  // namespace
 }  // namespace xla::cpu

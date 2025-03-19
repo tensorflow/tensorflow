@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/backends/cpu/benchmarks/aot_benchmark_helper.h"
 #include "xla/backends/cpu/benchmarks/hlo_benchmark_runner.h"
 #include "xla/ffi/ffi.h"
 #include "xla/ffi/ffi_api.h"
@@ -50,6 +51,7 @@ XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "__xla_bm$$minimal", "Host",
                          kMinimal);
 
 static void BM_CustomCall_Minimal(benchmark::State& state) {
+  const bool is_aot = static_cast<bool>(state.range(0));
   const char* kModuleStr = R"(
     HloModule module
 
@@ -59,8 +61,12 @@ static void BM_CustomCall_Minimal(benchmark::State& state) {
         api_version=API_VERSION_TYPED_FFI
     }
   )";
+
+  HloBenchmarkOptions benchmark_options;
+  benchmark_options.aot_options = is_aot ? GetAotCompilationOptions() : nullptr;
+
   CHECK_OK(RunHloBenchmark(state, kModuleStr, /*args=*/{},
-                           /*replacements=*/{}));
+                           /*replacements=*/{}, benchmark_options));
 }
 
 static absl::Status ManyIntAttributes(
@@ -95,6 +101,7 @@ XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "__xla_bm$$many_int_attributes",
                          "Host", kManyIntAttributes);
 
 static void BM_CustomCall_16IntAttributes(benchmark::State& state) {
+  bool is_aot = static_cast<bool>(state.range(0));
   absl::string_view hlo = R"(
     HloModule module
 
@@ -110,8 +117,13 @@ static void BM_CustomCall_16IntAttributes(benchmark::State& state) {
     config << "attr" << i << " = 5 : i32" << (i < 15 ? ", " : "");
   }
   config << "}";
+
+  HloBenchmarkOptions benchmark_options;
+  benchmark_options.aot_options = is_aot ? GetAotCompilationOptions() : nullptr;
+
   CHECK_OK(RunHloBenchmark(state, hlo, /*args=*/{},
-                           /*replacements=*/{{"$config", config.str()}}));
+                           /*replacements=*/{{"$config", config.str()}},
+                           benchmark_options));
 }
 
 static absl::Status ManyFloatBuffers(
@@ -152,6 +164,7 @@ XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "__xla_bm$$many_float_buffers",
                          "Host", kManyFloatBuffers);
 
 static void BM_CustomCall_16FloatBuffers(benchmark::State& state) {
+  bool is_aot = static_cast<bool>(state.range(0));
   int64_t d = 128;
 
   absl::string_view hlo = R"(
@@ -182,12 +195,25 @@ static void BM_CustomCall_16FloatBuffers(benchmark::State& state) {
   auto p0 = *LiteralUtil::CreateRandomLiteral<F32>(shape, &engine, 1.0f, 0.1f);
   std::vector<const Literal*> args(10, &p0);
 
-  CHECK_OK(RunHloBenchmark(state, hlo, args, {{"$d", absl::StrCat(d)}}));
+  HloBenchmarkOptions benchmark_options;
+  benchmark_options.aot_options = is_aot ? GetAotCompilationOptions() : nullptr;
+
+  CHECK_OK(RunHloBenchmark(state, hlo, args, {{"$d", absl::StrCat(d)}},
+                           benchmark_options));
 }
 
-BENCHMARK(BM_CustomCall_Minimal)->MeasureProcessCPUTime();
-BENCHMARK(BM_CustomCall_16IntAttributes)->MeasureProcessCPUTime();
-BENCHMARK(BM_CustomCall_16FloatBuffers)->MeasureProcessCPUTime();
+void GenerateCustomCallArgs(benchmark::internal::Benchmark* benchmark) {
+  benchmark->MeasureProcessCPUTime();
+  benchmark->ArgNames({"is_aot"});
+  const std::vector<bool> is_aot_values = {false, true};
+  for (const auto& is_aot : is_aot_values) {
+    benchmark->Args({is_aot});
+  }
+}
+
+BENCHMARK(BM_CustomCall_Minimal)->Apply(GenerateCustomCallArgs);
+BENCHMARK(BM_CustomCall_16IntAttributes)->Apply(GenerateCustomCallArgs);
+BENCHMARK(BM_CustomCall_16FloatBuffers)->Apply(GenerateCustomCallArgs);
 
 }  // namespace
 }  // namespace xla::cpu
