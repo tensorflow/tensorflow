@@ -473,6 +473,49 @@ class HloGraphNode {
   // Nullptr is not a valid value for 'i'.
   explicit HloGraphNode(const HloInstruction* i, int64_t original_position)
       : instr_(i), original_position_(original_position) {}
+
+  static void UpdateOrAddDependency(HloGraphNode* from, HloGraphNode* to,
+                                    LatencyEstimator::TimeCost latency) {
+    auto update_latency_if_edge_exists =
+        [&](absl::Span<HloEdge> edges, HloGraphNode* to,
+            LatencyEstimator::TimeCost latency) {
+          auto it = absl::c_find_if(
+              edges, [&](HloEdge edge) { return &edge.Target() == to; });
+          if (it != edges.end()) {
+            it->SetLatency(latency);
+            return true;
+          }
+          return false;
+        };
+    if (!update_latency_if_edge_exists(from->GetSuccessors(), to, latency)) {
+      from->successors_.push_back(HloEdge(latency, to));
+      from->outdegree_++;
+    }
+    if (!update_latency_if_edge_exists(to->GetPredecessors(), from, latency)) {
+      to->predecessors_.push_back(HloEdge(latency, from));
+      to->indegree_++;
+    }
+  }
+
+  static void UpdateOrAddDependency(HloGraphNode* from, HloGraphNode* to,
+                                    const LatencyEstimator* latency_estimator) {
+    UpdateOrAddDependency(from, to,
+                          latency_estimator->GetLatencyBetween(*from, *to));
+  }
+
+  static void AddDependency(HloGraphNode* from, HloGraphNode* to,
+                            LatencyEstimator::TimeCost latency) {
+    to->predecessors_.push_back(HloEdge(latency, from));
+    to->indegree_++;
+    from->successors_.push_back(HloEdge(latency, to));
+    from->outdegree_++;
+  }
+
+  static void AddDependency(HloGraphNode* from, HloGraphNode* to,
+                            const LatencyEstimator* latency_estimator) {
+    AddDependency(from, to, latency_estimator->GetLatencyBetween(*from, *to));
+  }
+
   const HloInstruction& GetInstr() const { return *instr_; }
   bool IsScheduled() const { return scheduled_; }
   int32_t GetIndegree() const { return indegree_; }

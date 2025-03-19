@@ -2093,19 +2093,6 @@ HloScheduleGraph::HloScheduleGraph(
       while_instrs.push_back(instr);
     }
   }
-  auto add_dependency_helper = [latency_estimator](HloGraphNode* from,
-                                                   HloGraphNode* to) {
-    // Get the latency between these two instructions for this edge.
-    const LatencyEstimator::TimeCost latency =
-        latency_estimator->GetLatencyBetween(*from, *to);
-    // Adding dependencies as successors for the instruction we are
-    // considering now (instr) and as predecessor for the user.
-    from->successors_.push_back(HloEdge(latency, to));
-    to->predecessors_.push_back(HloEdge(latency, from));
-    ++to->indegree_;
-    ++from->outdegree_;
-  };
-
   // Add dependencies edges between each of the graph nodes.
   for (const HloInstruction* instr : *post_order_instructions) {
     auto node_it = nodes_.find(instr);
@@ -2118,14 +2105,15 @@ HloScheduleGraph::HloScheduleGraph(
       auto user_node_it = nodes_.find(user);
       CHECK(user_node_it != nodes_.end());
       HloGraphNode* user_node = user_node_it->second.get();
-      add_dependency_helper(instr_node, user_node);
+      HloGraphNode::AddDependency(instr_node, user_node, latency_estimator);
     }
     for (const HloInstruction* ctrl_succ : instr->control_successors()) {
       VLOG(10) << "\tCtrl Successor: " << ctrl_succ->ToString();
       auto ctrl_succ_node_it = nodes_.find(ctrl_succ);
       CHECK(ctrl_succ_node_it != nodes_.end());
       HloGraphNode* ctrl_succ_node = ctrl_succ_node_it->second.get();
-      add_dependency_helper(instr_node, ctrl_succ_node);
+      HloGraphNode::AddDependency(instr_node, ctrl_succ_node,
+                                  latency_estimator);
     }
     // To make sure an instruction that aliases with the buffer produced
     // by the async-done operation is not scheduled in between the start and the
@@ -2166,10 +2154,7 @@ HloScheduleGraph::HloScheduleGraph(
                 if (IsPredecessorTransitively(pred_node, start_node)) {
                   continue;
                 }
-                pred_node->successors_.push_back(HloEdge(1, start_node));
-                start_node->predecessors_.push_back(HloEdge(1, pred_node));
-                ++pred_node->outdegree_;
-                ++start_node->indegree_;
+                HloGraphNode::AddDependency(pred_node, start_node, 1);
               }
             }
           }
@@ -2215,10 +2200,7 @@ HloScheduleGraph::HloScheduleGraph(
           auto while_it = nodes_.find(dependent_while_instr);
           CHECK(while_it != nodes_.end());
           HloGraphNode* while_node = while_it->second.get();
-          send_done_node->successors_.push_back(HloEdge(1, while_node));
-          while_node->predecessors_.push_back(HloEdge(1, send_done_node));
-          ++send_done_node->outdegree_;
-          ++while_node->indegree_;
+          HloGraphNode::AddDependency(send_done_node, while_node, 1);
         }
         break;
       }
