@@ -22,6 +22,7 @@ limitations under the License.
 #include "xla/service/gpu/cublas_cudnn.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/tests/hlo_test_base.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace gpu {
