@@ -1,5 +1,3 @@
-load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
-load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm")
 load("//xla:pytype.default.bzl", "pytype_strict_library")
 load("//xla:strict.default.bzl", "py_strict_library", "py_strict_test")
 load(
@@ -9,7 +7,6 @@ load(
 )
 load(
     "//xla/tsl:tsl.bzl",
-    "if_cuda_or_rocm",
     "if_google",
     "if_oss",
     "internal_visibility",
@@ -519,61 +516,6 @@ cc_library(
         "@nanobind",
     ],
     alwayslink = 1,
-)
-
-cc_library(
-    name = "py_client_gpu",
-    srcs = if_google(
-        ["py_client_gpu.cc"],
-        if_cuda_or_rocm(["py_client_gpu.cc"]),
-    ),
-    hdrs = if_google(
-        ["py_client_gpu.h"],
-        if_cuda_or_rocm(["py_client_gpu.h"]),
-    ),
-    compatible_with = [],
-    copts = [
-        "-fexceptions",
-        "-fno-strict-aliasing",
-    ],
-    defines = if_cuda(["GOOGLE_CUDA=1"]) + if_rocm([
-        "TENSORFLOW_USE_ROCM=1",
-    ]),
-    features = ["-use_header_modules"],
-    visibility = internal_visibility([":friends"]),
-    deps = [
-        ":callback",
-        ":nb_numpy",
-        ":py_host_callback",
-        ":types",
-        "//xla:comparison_util",
-        "//xla:shape_util",
-        "//xla/ffi",
-        "//xla/ffi:ffi_api",
-        "//xla/pjrt:exceptions",
-        "//xla/pjrt:host_callback",
-        "//xla/pjrt:transpose",
-        "//xla/python/ifrt",
-        "//xla/service:custom_call_status",
-        "//xla/service:custom_call_target_registry",
-        "//xla/service:platform_util",
-        "//xla/tsl/concurrency:ref_count",
-        "//xla/tsl/platform:errors",
-        "//xla/tsl/platform:statusor",
-        "@com_google_absl//absl/algorithm:container",
-        "@com_google_absl//absl/base",
-        "@com_google_absl//absl/container:inlined_vector",
-        "@com_google_absl//absl/log:check",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/types:span",
-        "@llvm-project//llvm:Support",
-        "@nanobind",
-    ] + if_rocm(
-        ["@local_config_rocm//rocm:rocm_headers"],
-        ["@local_config_cuda//cuda:cuda_headers"],
-    ),
 )
 
 cc_library(
