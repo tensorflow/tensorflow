@@ -15,11 +15,27 @@ limitations under the License.
 
 #include "tensorflow/core/framework/tensor_shape.h"
 
+#include <algorithm>
+#include <cstddef>
 #include <cstdint>
+#include <cstdio>
+#include <initializer_list>
 #include <limits>
+#include <sstream>
+#include <utility>
+#include <vector>
 
+#include <gmock/gmock.h>
+#include "absl/container/inlined_vector.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/strings/str_join.h"
+#include "absl/types/span.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/protobuf/error_codes.pb.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/random/simple_philox.h"
 #include "tensorflow/core/lib/strings/str_util.h"
