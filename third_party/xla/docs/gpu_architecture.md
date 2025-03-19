@@ -133,7 +133,7 @@ HLO decouples logical shape and physical layout (how tensors are laid out in
 memory). For example, a matrix `f32[32, 64]` can be represented either in
 row-major or column-major order, represented as `{1,0}` or `{0,1}` respectively.
 In general, layout is represented as a part of shape, showing a permutation over
-the rank indicating physical layout in memory.
+the number of dimensions indicating physical layout in memory.
 
 For each operation present in the HLO, the Layout Assignment pass chooses an
 optimal layout (e.g. NHWC for a convolution on Ampere). For example, an

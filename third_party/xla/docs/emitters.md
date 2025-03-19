@@ -123,8 +123,8 @@ https://github.com/openxla/xla/blob/main/xla/hlo/transforms/simplifiers/gather_s
 ## Subgraph functions
 
 For a subgraph of a computation with parameters `%p0` to `%p_n`, and subgraph
-roots with rank `r` and element types (`e0` to `e_m`), we use the following MLIR
-function signature:
+roots with `r` dimensions and element types (`e0` to `e_m`), we use the
+following MLIR function signature:
 
 ``````
 (%p0: tensor<...>, %p1: tensor<...>, ..., %pn: tensor<...>,

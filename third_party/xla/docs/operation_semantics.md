@@ -277,7 +277,7 @@ across all the other dimensions and uses the mean and variance to normalize each
 element in `operand`. The `feature_index` must be a valid index for the feature
 dimension in `operand`.
 
-`BatchNormInference`  is equivalent to calling `BatchNormTraining` without
+`BatchNormInference` is equivalent to calling `BatchNormTraining` without
 computing `mean` and `variance` for each batch. It uses the input `mean` and
 `variance` instead as estimated values. The purpose of this op is to reduce
 latency in inference, hence the name `BatchNormInference`.
@@ -324,7 +324,8 @@ is a 4 dimensional array):
 -   Normalizes, scales and shifts:
     $y_{ijkl}=\frac{\gamma_l(x_{ijkl}-\mu_l)}{\sqrt[2]{\sigma^2_l+\epsilon}}+\beta_l$
 
-The epsilon value, usually a small number, is added to avoid divide-by-zero errors.
+The epsilon value, usually a small number, is added to avoid divide-by-zero
+errors.
 
 The output type is a tuple of three `XlaOp`s:
 
@@ -427,7 +428,8 @@ For example, if `operand` is a scalar `f32` with value `2.0f`, and
 See also
 [`XlaBuilder::BroadcastInDim`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
-Expands the size and rank of an array by duplicating the data in the array.
+Expands the size and number of dimensions of an array by duplicating the data
+in the array.
 
 **`BroadcastInDim(operand, out_dim_size, broadcast_dimensions)`**
 
@@ -519,7 +521,7 @@ of a batch of symmetric (Hermitian) positive definite matrices.
 
 Arguments | Type    | Semantics
 --------- | ------- | -----------------------------------------------------
-`a`       | `XlaOp` | a rank > 2 array of a complex or floating-point type.
+`a`       | `XlaOp` | an array of a complex or floating-point type with > 2 dimensions.
 `lower`   | `bool`  | whether to use the upper or lower triangle of `a`.
 
 If `lower` is `true`, computes lower-triangular matrices `l` such that $a = l .
@@ -531,7 +533,7 @@ value of `lower`. Values from the other triangle are ignored. Output data is
 returned in the same triangle; the values in the other triangle are
 implementation-defined and may be anything.
 
-If the rank of `a` is greater than 2, `a` is treated as a batch of matrices,
+If `a` has greater than 2 dimensions, `a` is treated as a batch of matrices,
 where all except the minor 2 dimensions are batch dimensions.
 
 If `a` is not symmetric (Hermitian) positive definite, the result is
@@ -555,7 +557,7 @@ Arguments | Type    | Semantics
 Given an operand and minimum and maximum values, returns the operand if it is in
 the range between the minimum and maximum, else returns the minimum value if the
 operand is below this range or the maximum value if the operand is above this
-range.  That is, `clamp(a, x, b) =  min(max(a, x), b)`.
+range. That is, `clamp(a, x, b) =  min(max(a, x), b)`.
 
 All three arrays must be the same shape. Alternatively, as a restricted form of
 [broadcasting](broadcasting.md), `min` and/or `max` can be a scalar of type `T`.
@@ -660,9 +662,10 @@ Note that there are the following restrictions on the `source_target_pair`:
 See also
 [`XlaBuilder::ConcatInDim`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
-Concatenate composes an array from multiple array operands. The array is of the
-same rank as each of the input array operands (which must be of the same rank as
-each other) and contains the arguments in the order that they were specified.
+Concatenate composes an array from multiple array operands. The array has the
+same number of dimensions as each of the input array operands (which must have
+the same number of dimensions as each other) and contains the arguments in the
+order that they were specified.
 
 **`Concatenate(operands..., dimension)`**
 
@@ -672,9 +675,9 @@ each other) and contains the arguments in the order that they were specified.
 | `dimension` | `int64`               | A value in the interval `[0, N)` that names the dimension to be concatenated between the `operands`. |
 
 With the exception of `dimension` all dimensions must be the same. This is
-because XLA does not support "ragged" arrays. Also note that rank-0 values
-cannot be concatenated (as it's impossible to name the dimension along which the
-concatenation occurs).
+because XLA does not support "ragged" arrays. Also note that 0-dimensional
+values cannot be concatenated (as it's impossible to name the dimension along
+which the concatenation occurs).
 
 1-dimensional example:
 
@@ -783,8 +786,8 @@ area and a computation is performed for each possible position of the window.
 
 | Arguments             | Type                     | Semantics                |
 | --------------------- | ------------------------ | ------------------------ |
-| `lhs`                 | `XlaOp`                  | rank n+2 array of inputs |
-| `rhs`                 | `XlaOp`                  | rank n+2 array of kernel weights |
+| `lhs`                 | `XlaOp`                  | (n+2)-dimensional array of inputs |
+| `rhs`                 | `XlaOp`                  | (n+2)-dimensional array of kernel weights |
 | `window_strides`      | `ArraySlice<int64>`      | n-d array of kernel strides |
 | `padding`             | `ArraySlice< pair<int64,int64>>` | n-d array of (low, high) padding |
 | `lhs_dilation`        | `ArraySlice<int64>`      | n-d lhs dilation factor array |
@@ -792,10 +795,10 @@ area and a computation is performed for each possible position of the window.
 | `feature_group_count` | int64                    | the number of feature groups |
 | `batch_group_count`   | int64                    | the number of batch groups |
 
-Let n be the number of spatial dimensions. The `lhs` argument is a rank n+2
-array describing the base area. This is called the input, even though of course
-the rhs is also an input. In a neural network, these are the input activations.
-The n+2 dimensions are, in this order:
+Let n be the number of spatial dimensions. The `lhs` argument is an
+(n+2)-dimensional array describing the base area. This is called the input,
+even though of course the rhs is also an input. In a neural network, these are
+the input activations. The n+2 dimensions are, in this order:
 
 *   `batch`: Each coordinate in this dimension represents an independent input
 for which convolution is carried out.
@@ -804,7 +807,7 @@ associated to it, which goes into this dimension.
 *   `spatial_dims`: Describes the `n` spatial dimensions that define the base
 area that the window moves across.
 
-The `rhs` argument is a rank n+2 array describing the convolutional
+The `rhs` argument is an (n+2)-dimensional array describing the convolutional
 filter/kernel/window. The dimensions are, in this order:
 
 *   `output-z`: The `z` dimension of the output.
@@ -943,7 +946,7 @@ conversion routine such as round-to-nearest-even.
 
 > Note: The precise float-to-int and visa-versa conversions are currently
 > unspecified, but may become additional arguments to the convert operation in
-> the future.  Not all possible conversions have been implemented for all
+> the future. Not all possible conversions have been implemented for all
 >targets.
 
 ```cpp
@@ -1034,7 +1037,7 @@ The exact semantics of this operation depend on the ranks of the operands:
 | matrix [m x k] `dot` matrix [k x n] | matrix [m x n]  | matrix-matrix multiplication |
 
 The operation performs sum of products over the second dimension of `lhs` (or
-the first if it has rank 1) and the first dimension of `rhs`. These are the
+the first if it has 1 dimension) and the first dimension of `rhs`. These are the
 "contracted" dimensions. The contracted dimensions of `lhs` and `rhs` must be of
 the same size. In practice, it can be used to perform dot products between
 vectors, vector/matrix multiplications or matrix/matrix multiplications.
@@ -1134,8 +1137,9 @@ See also
 DynamicSlice extracts a sub-array from the input array at dynamic
 `start_indices`. The size of the slice in each dimension is passed in
 `size_indices`, which specify the end point of exclusive slice intervals in each
-dimension: [start, start + size). The shape of `start_indices` must be rank ==
-1, with dimension size equal to the rank of `operand`.
+dimension: [start, start + size). The shape of `start_indices` must
+1-dimensional, with dimension size equal to the number of dimensions of
+`operand`.
 
 **`DynamicSlice(operand, start_indices, size_indices)`**
 
@@ -1189,8 +1193,8 @@ DynamicUpdateSlice generates a result which is the value of the input array
 `operand`, with a slice `update` overwritten at `start_indices`.
 The shape of `update` determines the shape of the sub-array of the result which
 is updated.
-The shape of `start_indices` must be rank == 1, with dimension size equal to
-the rank of `operand`.
+The shape of `start_indices` must be 1-dimensional, with dimension size equal to
+the number of dimensions of `operand`.
 
 **`DynamicUpdateSlice(operand, update, start_indices)`**
 
@@ -1279,8 +1283,8 @@ Integer division overflow (signed/unsigned division/remainder by zero or signed
 division/remainder of `INT_SMIN` with `-1`) produces an implementation defined
 value.
 
-An alternative variant with different-rank broadcasting support exists for these
-operations:
+An alternative variant with different-dimensional broadcasting support exists
+for these operations:
 
 **`Op(lhs, rhs, broadcast_dimensions)`**
 
@@ -1289,9 +1293,10 @@ for arithmetic operations between arrays of different ranks (such as adding a
 matrix to a vector).
 
 The additional `broadcast_dimensions` operand is a slice of integers used to
-expand the rank of the lower-rank operand up to the rank of the higher-rank
-operand. `broadcast_dimensions` maps the dimensions of the lower-rank shape to
-the dimensions of the higher-rank shape. The unmapped dimensions of the expanded
+expand the number of dimensions of the lower-dimensional operand up to the
+number of dimensions of the higher-dimensional operand. `broadcast_dimensions`
+maps the dimensions of the lower-dimensional shape to the dimensions of the
+higher-dimensional shape. The unmapped dimensions of the expanded
 shape are filled with dimensions of size one. Degenerate-dimension broadcasting
 then broadcasts the shapes along these degenerate dimensions to equalize the
 shapes of both operands. The semantics are described in detail on the
@@ -1327,8 +1332,8 @@ broadcasting the two input arrays with the element type `PRED`. In this variant,
 operations between arrays of different ranks are *not* supported, unless one of
 the operands is a scalar.
 
-An alternative variant with different-rank broadcasting support exists for these
-operations:
+An alternative variant with different-dimensional broadcasting support exists
+for these operations:
 
 **`Op(lhs, rhs, broadcast_dimensions)`**
 
@@ -1344,6 +1349,7 @@ in detail on the [broadcasting page](broadcasting.md).
 
 XlaBuilder supports these element-wise unary functions:
 
+<!-- disableFinding(HTML_FORMAT) -->
 <b>`Abs(operand)`</b> Element-wise abs `x -> |x|`.
 
 <b>`Cbrt(operand)`</b> Element-wise cubic root operation `x -> cbrt(x)`.
@@ -1360,7 +1366,8 @@ $$\text{erf}(x) = \frac{2}{\sqrt{\pi}}\int_0^x e^{-t^2} \, dt$$.
 
 <b>`Exp(operand)`</b> Element-wise natural exponential `x -> e^x`.
 
-<b>`Expm1(operand)`</b> Element-wise natural exponential minus one `x -> e^x - 1`.
+<b>`Expm1(operand)`</b> Element-wise natural exponential minus one
+`x -> e^x - 1`.
 
 <b>`Floor(operand)`</b> Element-wise floor `x -> ⌊x⌋`.
 
@@ -1398,7 +1405,8 @@ element of `operand`.
 
 <b>`Sign(operand)`</b> Element-wise sign operation `x -> sgn(x)` where
 
-$$\text{sgn}(x) = \begin{cases} -1 & x < 0\\ -0 & x = -0\\ NaN & x = NaN\\ +0 & x = +0\\ 1 & x > 0 \end{cases}$$
+$$\text{sgn}(x) = \begin{cases} -1 & x < 0\\ -0 & x = -0\\ NaN & x = NaN\\ +0 &
+x = +0\\ 1 & x > 0 \end{cases}$$
 
 using the comparison operator of the element type of `operand`.
 
@@ -1415,7 +1423,8 @@ Arguments | Type    | Semantics
 `operand` | `XlaOp` | The operand to the function
 
 The function is applied to each element in the `operand` array, resulting in an
-array with the same shape. It is allowed for `operand` to be a scalar (rank 0).
+array with the same shape. It is allowed for `operand` to be a scalar
+(0-dimensional).
 
 ## Fft
 
@@ -1480,7 +1489,7 @@ For a more intuitive description, see the "Informal Description" section below.
 For convenience, we label dimensions in the output array not in `offset_dims`
 as `batch_dims`.
 
-The output is an array of rank `batch_dims.size` + `offset_dims.size`.
+The output is an array with `batch_dims.size` + `offset_dims.size` dimensions.
 
 The `operand.rank` must equal the sum of `offset_dims.size` and
 `collapsed_slice_dims.size`. Also, `slice_sizes.size` has to be equal to
@@ -1572,7 +1581,7 @@ that follow. More interesting values for `index_vector_dim` do not change the
 operation fundamentally, but make the visual representation more cumbersome.
 
 To get an intuition on how all of the above fits together, let's look at an
-example that gathers 5 slices of shape `[8,6]` from a `[16,11]` array.  The
+example that gathers 5 slices of shape `[8,6]` from a `[16,11]` array. The
 position of a slice into the `[16,11]` array can be represented as an index
 vector of shape `S64[2]`, so the set of 5 positions can be represented as a
 `S64[5,2]` array.
@@ -1595,34 +1604,34 @@ O<sub>`1`</sub>, and this in turn decides the bounds of the slice.
 This gather operation acts as a batch dynamic slice with `G` as the batch
 dimension.
 
-The gather indices may be multidimensional.  For instance, a more general
+The gather indices may be multidimensional. For instance, a more general
 version of the example above using a "gather indices" array of shape `[4,5,2]`
 would translate indices like this:
 
 ![](images/ops_xla_gather_1.svg)
 
 Again, this acts as a batch dynamic slice `G`<sub>`0`</sub> and
-`G`<sub>`1`</sub> as the batch dimensions.  The slice size is still `[8,6]`.
+`G`<sub>`1`</sub> as the batch dimensions. The slice size is still `[8,6]`.
 
 The gather operation in XLA generalizes the informal semantics outlined above in
 the following ways:
 
 1. We can configure which dimensions in the output shape are the offset
 dimensions (dimensions containing `O`<sub>`0`</sub>, `O`<sub>`1`</sub> in
-the last example).  The output batch dimensions (dimensions containing
+the last example). The output batch dimensions (dimensions containing
 `G`<sub>`0`</sub>, `G`<sub>`1`</sub> in the last example) are defined to be
 the output dimensions that are not offset dimensions.
 
 2. The number of output offset dimensions explicitly present in the output
-shape may be smaller than the input rank.  These "missing" dimensions, which
-are listed explicitly as `collapsed_slice_dims`, must have a slice size of
-`1`.  Since they have a slice size of `1` the only valid index for them is
-`0` and eliding them does not introduce ambiguity.
+shape may be smaller than the input number of dimensions. These "missing"
+dimensions, which are listed explicitly as `collapsed_slice_dims`, must have a
+slice size of `1`. Since they have a slice size of `1` the only valid index
+for them is `0` and eliding them does not introduce ambiguity.
 
 3. The slice extracted from the "Gather Indices" array ((`X`, `Y`) in the last
-example) may have fewer elements than the input array rank, and an explicit
-mapping dictates how the index should be expanded to have the same rank as
-the input.
+example) may have fewer elements than the input array's number of dimensions,
+and an explicit mapping dictates how the index should be expanded to have the
+same number of dimensions as the input.
 
 As a final example, we use (2) and (3) to implement `tf.gather_nd`:
 
@@ -1640,7 +1649,7 @@ adding up to [`X`,`O`<sub>`0`</sub>]. In other words, the output index
 [`GatherIndices`[`G`<sub>`0`</sub>,`G`<sub>`1`</sub>,`0`],`O`<sub>`0`</sub>]
 which gives us the semantics for `tf.gather_nd`.
 
-`slice_sizes` for this case is `[1,11]`.  Intuitively this means that every
+`slice_sizes` for this case is `[1,11]`. Intuitively this means that every
 index `X` in the gather indices array picks an entire row and the result is the
 concatenation of all these rows.
 
@@ -1855,7 +1864,7 @@ absolute value of negative padding indicates the number of elements to remove
 from the specified dimension.
 
 `interior_padding` specifies the amount of padding added between any two
-elements in each dimension; it may not be negative.  Interior padding occurs
+elements in each dimension; it may not be negative. Interior padding occurs
 logically before edge padding, so in the case of negative edge padding, elements
 are removed from the interior-padded operand.
 
@@ -1926,11 +1935,12 @@ Where:
     `T`.
 
 This operation reduces one or more dimensions of each input array into scalars.
-The rank of each returned array is `rank(operand) - len(dimensions)`. The output
-of the op is `Collate(Q_0, ..., Q_N)` where `Q_i` is an array of type `T_i`, the
+The number of dimensions of each returned array is
+`number_of_dimensions(operand) - len(dimensions)`. The output of the op is
+`Collate(Q_0, ..., Q_N)` where `Q_i` is an array of type `T_i`, the
 dimensions of which are described below.
 
-Different backends are allowed to reassociate the reduction computation.  This
+Different backends are allowed to reassociate the reduction computation. This
 can lead to numerical differences, as some reduction functions like addition are
 not associative for floats.
 However, if the range of the data is limited, floating-point addition is close
@@ -1956,7 +1966,7 @@ of 0.
 result_shape <- remove all dims in dimensions from operand_shape
 
 # Iterate over all elements in result_shape. The number of r's here is equal
-# to the rank of the result
+# to the number of dimensions of the result.
 for r0 in range(result_shape[0]), r1 in range(result_shape[1]), ...:
   # Initialize this result element
   result[r0, r1...] <- 0
@@ -1970,7 +1980,7 @@ for r0 in range(result_shape[0]), r1 in range(result_shape[1]), ...:
     result[r0, r1...] += operand[ri... di]
 ```
 
-Here's an example of reducing a 2D array (matrix). The shape has rank 2,
+Here's an example of reducing a 2D array (matrix). The shape has 2 dimensions,
 dimension 0 of size 2 and dimension 1 of size 3:
 
 ![](images/ops_2d_matrix.png)
@@ -1982,14 +1992,14 @@ Results of reducing dimensions 0 or 1 with an "add" function:
 Note that both reduction results are 1D arrays. The diagram shows one as column
 and another as row just for visual convenience.
 
-For a more complex example, here is a 3D array. Its rank is 3, dimension 0 of
-size 4, dimension 1 of size 2 and dimension 2 of size 3. For simplicity, the
-values 1 to 6 are replicated across dimension 0.
+For a more complex example, here is a 3D array. Its number of dimensions is 3,
+dimension 0 of size 4, dimension 1 of size 2 and dimension 2 of size 3. For
+simplicity, the values 1 to 6 are replicated across dimension 0.
 
 ![](images/ops_reduce_from_3d_matrix.png)
 
 Similarly to the 2D example, we can reduce just one dimension. If we reduce
-dimension 0, for example, we get a rank-2 array where all values across
+dimension 0, for example, we get a 2-dimensional array where all values across
 dimension 0 were folded into a scalar:
 
 ```text
@@ -1997,8 +2007,8 @@ dimension 0 were folded into a scalar:
 | 16  20  24 |
 ```
 
-If we reduce dimension 2, we also get a rank-2 array where all values across
-dimension 2 were folded into a scalar:
+If we reduce dimension 2, we also get a 2-dimensional array where all values
+across dimension 2 were folded into a scalar:
 
 ```text
 | 6  15 |
@@ -2009,7 +2019,7 @@ dimension 2 were folded into a scalar:
 
 Note that the relative order between the remaining dimensions in the input is
 preserved in the output, but some dimensions may get assigned new numbers (since
-the rank changes).
+the number of dimensions changes).
 
 We can also reduce multiple dimensions. Add-reducing dimensions 0 and 1 produces
 the 1D array `[20, 28, 36]`.
@@ -2062,7 +2072,7 @@ See also
 [`XlaBuilder::ReducePrecision`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
 Models the effect of converting floating-point values to a lower-precision
-format (such as IEEE-FP16) and back to the original format.  The number of
+format (such as IEEE-FP16) and back to the original format. The number of
 exponent and mantissa bits in the lower-precision format can be specified
 arbitrarily, although all bit sizes may not be supported on all hardware
 implementations.
@@ -2075,15 +2085,15 @@ Arguments       | Type    | Semantics
 `exponent_bits` | `int32` | number of exponent bits in lower-precision format
 `mantissa_bits` | `int32` | number of mantissa bits in lower-precision format
 
-The result is an array of type `T`.  The input values are rounded to the nearest
+The result is an array of type `T`. The input values are rounded to the nearest
 value representable with the given number of mantissa bits (using "ties to even"
 semantics), and any values that exceed the range specified by the number of
-exponent bits are clamped to positive or negative infinity.  `NaN` values are
+exponent bits are clamped to positive or negative infinity. `NaN` values are
 retained, although they may be converted to canonical `NaN` values.
 
 The lower-precision format must have at least one exponent bit (in order to
 distinguish a zero value from an infinity, since both have a zero mantissa), and
-must have a non-negative number of mantissa bits.  The number of exponent or
+must have a non-negative number of mantissa bits. The number of exponent or
 mantissa bits may exceed the corresponding value for type `T`; the corresponding
 portion of the conversion is then simply a no-op.
 
@@ -2429,8 +2439,8 @@ order.
 
 The arguments of scatter should follow these constraints:
 
--   Each `updates` array must be of rank `update_window_dims.size +
-    scatter_indices.rank - 1`.
+-   Each `updates` array must have `update_window_dims.size +
+    scatter_indices.rank - 1` dimensions.
 
 -   Bounds of dimension `i` in each `updates` array must conform to the
     following:
@@ -2509,10 +2519,10 @@ always be the current value from the `output` array and the second parameter
 will always be the value from the `updates` array. This is important
 specifically for cases when the `update_computation` is _not commutative_.
 
-If `indices_are_sorted` is set to true then XLA can assume that `scatter_indices`
-are sorted (in ascending order, _after_ scattering its values according to
-`scatter_dims_to_operand_dims`) by the user. If they are not then the semantics
-are implementation defined.
+If `indices_are_sorted` is set to true then XLA can assume that
+`scatter_indices` are sorted (in ascending order, _after_ scattering its values
+according to `scatter_dims_to_operand_dims`) by the user. If they are not then
+the semantics are implementation defined.
 
 If `unique_indices` is set to true then XLA can assume that all elements
 scattered to are unique. So XLA could use non-atomic operations. If
@@ -2550,7 +2560,8 @@ For each element `P` of `pred`, the corresponding element of the output array is
 taken from `on_true` if the value of `P` is `true`, and from `on_false` if the
 value of `P` is `false`. As a restricted form of [broadcasting](broadcasting.md),
 `pred` can be a scalar of type `PRED`. In this case, the output array is taken
-wholly from `on_true` if `pred` is `true`, and from `on_false` if `pred` is `false`.
+wholly from `on_true` if `pred` is `true`, and from `on_false` if `pred` is
+`false`.
 
 Example with non-scalar `pred`:
 
@@ -2668,7 +2679,7 @@ data transfer. The context is a tuple of {operand (shape), request identifier
 **`SendDone(HloInstruction context)`**
 
 Given a context created by a `Send` instruction, waits for the data transfer to
-complete.  The instruction does not return any data.
+complete. The instruction does not return any data.
 
 **Scheduling of channel instructions**
 
@@ -2693,10 +2704,10 @@ computations. For example, below schedules lead to deadlocks.
 See also
 [`XlaBuilder::Slice`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
-Slicing extracts a sub-array from the input array. The sub-array is of the same
-rank as the input and contains the values inside a bounding box within the input
-array where the dimensions and indices of the bounding box are given as
-arguments to the slice operation.
+Slicing extracts a sub-array from the input array. The sub-array has the same
+number of dimensions as the input and contains the values inside a bounding box
+within the input array where the dimensions and indices of the bounding box are
+given as arguments to the slice operation.
 
 **`Slice(operand, start_indices, limit_indices, strides)`**
 
@@ -2705,7 +2716,7 @@ arguments to the slice operation.
 | `operand`       | `XlaOp`             | N dimensional array of type T        |
 | `start_indices` | `ArraySlice<int64>` | List of N integers containing the  starting indices of the slice for each dimension. Values must be greater than or equal to zero. |
 | `limit_indices` | `ArraySlice<int64>` | List of N integers containing the ending indices (exclusive) for the slice for each dimension. Each value must be greater than or equal to the respective `start_indices` value for the dimension and less than or equal to the size of the dimension. |
-| `strides`      | `ArraySlice<int64>` | List of N integers that decides the input stride of the slice.  The slice picks every `strides[d]` element in dimension `d`. |
+| `strides`      | `ArraySlice<int64>` | List of N integers that decides the input stride of the slice. The slice picks every `strides[d]` element in dimension `d`. |
 
 
 1-dimensional example:
@@ -2746,19 +2757,19 @@ Arguments    | Type                | Semantics
 
 If only one operand is provided:
 
-* If the operand is a rank-1 tensor (an array), the result is a sorted array.
-  If you want to sort the array into ascending order, the comparator should
-  perform a less-than comparison. Formally, after the array is sorted, it holds
-  for all index positions `i, j` with `i < j` that either
+* If the operand is a 1-dimensional tensor (an array), the result is a sorted
+  array. If you want to sort the array into ascending order, the comparator
+  should perform a less-than comparison. Formally, after the array is sorted,
+  it holds for all index positions `i, j` with `i < j` that either
   `comparator(value[i], value[j]) = comparator(value[j], value[i]) = false` or
   `comparator(value[i], value[j]) = true`.
 
-* If the operand has higher rank, the operand is sorted along the provided
-  dimension. For example, for a rank-2 tensor (a matrix), a dimension value of
-  `0` will independently sort every column, and a dimension value of `1` will
-  independently sort each row. If no dimension number is provided, then the last
-  dimension is chosen by default. For the dimension which is sorted, the same
-  sorting order applies as in the rank-1 case.
+* If the operand has higher number of dimensions, the operand is sorted along
+  the provided dimension. For example, for a 2-dimensional tensor (a matrix),
+  a dimension value of `0` will independently sort every column, and a dimension
+  value of `1` will independently sort each row. If no dimension number is
+  provided, then the last dimension is chosen by default. For the dimension
+  which is sorted, the same sorting order applies as in the 1-dimensional case.
 
 If `n > 1` operands are provided:
 
@@ -2801,19 +2812,19 @@ the last dimension of the given tensor.
 
 Arguments | Type    | Semantics
 --------- | ------- | --------------------
-`operand` | `XlaOp` | The tensor from which to extract the top `k` elements. The tensor must have rank greater or equal to one. The size of the last dimension of the tensor must be greater or equal to `k`.
+`operand` | `XlaOp` | The tensor from which to extract the top `k` elements. The tensor must have greater or equal to one dimensions. The size of the last dimension of the tensor must be greater or equal to `k`.
 `k`       | `int64` | The number of elements to extract.
 `largest` | `bool`  | Whether to extract the largest or smallest `k` elements.
 
-For an input tensor of rank 1 (an array), finds the `k` largest or smallest
+For a 1-dimensional input tensor (an array), finds the `k` largest or smallest
 entries in the array and outputs a tuple of two arrays `(values, indices)`. Thus
 `values[j]` is the `j`-th largest/smallest entry in `operand`, and its index is
 `indices[j]`.
 
-For an input tensor of rank larger than 1, computes the top `k` entries along
-the last dimension, preserving all other dimensions (rows) in the output. Thus,
-for an operand of shape `[A, B, ..., P, Q]` where `Q >= k` the output is a tuple
-`(values, indices)` where:
+For an input tensor with more than 1 dimension, computes the top `k` entries
+along the last dimension, preserving all other dimensions (rows) in the output.
+Thus, for an operand of shape `[A, B, ..., P, Q]` where `Q >= k` the output is
+a tuple `(values, indices)` where:
 
 ```
 values.shape = indices.shape = [A, B, ..., P, k]
@@ -2832,9 +2843,9 @@ Arguments     | Type                | Semantics
 `operand`     | `XlaOp`             | The operand to transpose.
 `permutation` | `ArraySlice<int64>` | How to permute the dimensions.
 
-
 Permutes the operand dimensions with the given permutation, so
-`∀ i . 0 ≤ i < rank ⇒ input_dimensions[permutation[i]] = output_dimensions[i]`.
+`∀ i . 0 ≤ i < number of dimensions ⇒
+input_dimensions[permutation[i]] = output_dimensions[i]`.
 
 This is the same as Reshape(operand, permutation,
                             Permute(permutation, operand.shape.dimensions)).
@@ -2847,16 +2858,17 @@ See also
 Solves systems of linear equations with lower or upper triangular coefficient
 matrices by forward- or back-substitution. Broadcasting along leading
 dimensions, this routine solves one of the matrix systems `op(a) * x =
-b`, or `x * op(a) = b`, for the variable `x`, given `a` and `b`, where `op(a)` is
-either `op(a) = a`, or `op(a) = Transpose(a)`, or `op(a) = Conj(Transpose(a))`.
+b`, or `x * op(a) = b`, for the variable `x`, given `a` and `b`, where `op(a)`
+is either `op(a) = a`, or `op(a) = Transpose(a)`, or
+`op(a) = Conj(Transpose(a))`.
 
 **`TriangularSolve(a, b, left_side, lower, unit_diagonal, transpose_a)`**
 
 | Arguments       | Type        | Semantics                                    |
 | --------------- | ----------- | -------------------------------------------- |
-| `a`             | `XlaOp`     | a rank > 2 array of a complex or floating-point type with shape `[..., M, M]`. |
-| `b`             | `XlaOp`     | a rank > 2 array of the same type with shape `[..., M, K]` if `left_side` is true, `[..., K, M]` otherwise.  |
-| `left_side`     | `bool`      | indicates whether to solve a system of the form `op(a) * x = b` (`true`) or `x * op(a) = b` (`false`).  |
+| `a`             | `XlaOp`     | a > 2 dimensional array of a complex or floating-point type with shape `[..., M, M]`. |
+| `b`             | `XlaOp`     | a > 2 dimensional array of the same type with shape `[..., M, K]` if `left_side` is true, `[..., K, M]` otherwise. |
+| `left_side`     | `bool`      | indicates whether to solve a system of the form `op(a) * x = b` (`true`) or `x * op(a) = b` (`false`). |
 | `lower`         | `bool`      | whether to use the upper or lower triangle of `a`. |
 | `unit_diagonal` | `bool`      | if `true`, the diagonal elements of `a` are assumed to be `1` and not accessed. |
 | `transpose_a`   | `Transpose` | whether to use `a` as is, transpose it or take its conjugate transpose. |
@@ -2866,9 +2878,9 @@ value of `lower`. Values from the other triangle are ignored. Output data is
 returned in the same triangle; the values in the other triangle are
 implementation-defined and may be anything.
 
-If the rank of `a` and `b` are greater than 2, they are treated as batches of
-matrices, where all except the minor 2 dimensions are batch dimensions. `a` and
-`b` must have equal batch dimensions.
+If the number of dimensions of `a` and `b` are greater than 2, they are treated
+as batches of matrices, where all except the minor 2 dimensions are batch
+dimensions. `a` and `b` must have equal batch dimensions.
 
 ## Tuple
 
