@@ -89,12 +89,12 @@ class GlBuffer {
   absl::Mutex mutex_;
 #if LITERT_HAS_OPENGL_SUPPORT
   tflite::gpu::gl::GlBuffer tflite_gl_buffer_;
-#endif  // LITERT_HAS_OPENGL_SUPPORT
   LiteRtGlBufferDeallocator deallocator_;
   // The cpu memory buffer pointer.
   void* data_ = nullptr;
   // The size of the buffer in bytes.
   size_t size_bytes_ = 0;
+#endif  // LITERT_HAS_OPENGL_SUPPORT
 #if LITERT_HAS_AHWB_SUPPORT
   AHardwareBuffer* ahwb_ = nullptr;
 #endif  // LITERT_HAS_AHWB_SUPPORT
