@@ -175,6 +175,16 @@ bool InlineComposites(
              instruction->frontend_attributes().map().at("composite.name"));
 }
 
+// Introduces a specific attribute so that the frontend has the direct
+// control over inlining specific calls.
+bool InlineInstruction(HloInstruction* instruction) {
+  auto it = instruction->frontend_attributes().map().find("inlineable");
+  if (it != instruction->frontend_attributes().map().end()) {
+    return it->second == "true";
+  }
+  return true;
+}
+
 bool InlineStreamAnnotation(HloInstruction* instruction) {
   if (instruction->GetModule()
           ->config()
@@ -240,7 +250,7 @@ bool CallInliner::IsInlineableCallOp(HloInstruction* instruction) const {
   return instruction->opcode() == HloOpcode::kCall &&
          !instruction->has_backend_config() &&
          !instruction->parent()->IsAsyncComputation() &&
-         InlineUnderShardy(instruction) &&
+         InlineInstruction(instruction) && InlineUnderShardy(instruction) &&
          InlineComposites(instruction, composites_to_preserve_) &&
          InlineStreamAnnotation(instruction);
 }
