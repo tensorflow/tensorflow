@@ -17,6 +17,7 @@ syntax = "proto3";
 package xla.ifrt.proxy;
 
 import "google/protobuf/any.proto";
+import "xla/python/ifrt/array_spec.proto";
 import "xla/python/ifrt/attribute_map.proto";
 import "xla/python/ifrt/dtype.proto";
 import "xla/python/ifrt/execute_options.proto";
@@ -48,6 +49,8 @@ message IfrtRequest {
 
     // ===== Array =====
     MakeArrayFromHostBufferRequest make_array_from_host_buffer_request = 4;
+    MakeArraysFromHostBufferShardsRequest
+        make_arrays_from_host_buffer_shards_request = 25;
     AssembleArrayFromSingleDeviceArraysRequest
         assemble_array_from_single_device_arrays_request = 5;
     RemapArraysRequest remap_arrays_request = 23;
@@ -96,6 +99,8 @@ message IfrtResponse {
 
     // ===== Array =====
     MakeArrayFromHostBufferResponse make_array_from_host_buffer_response = 4;
+    MakeArraysFromHostBufferShardsResponse
+        make_arrays_from_host_buffer_shards_response = 25;
     AssembleArrayFromSingleDeviceArraysResponse
         assemble_array_from_single_device_arrays_response = 5;
     RemapArraysResponse remap_arrays_response = 23;
@@ -265,6 +270,38 @@ message MakeArrayFromHostBufferRequest {
 }
 message MakeArrayFromHostBufferResponse {
   fixed64 array_handle = 1;
+}
+
+// Makes IFRT Arrays, where a subset of shards of each Array is mapped to a
+// HostBuffer.
+// Equivalent to `ifrt::Client::MakeArraysFromHostBufferShards`.
+message MakeArraysFromHostBufferShardsRequest {
+  message HostBuffer {
+    DTypeProto dtype = 1;
+    ShapeProto shape = 2;
+    fixed64 host_buffer_handle = 3;
+    optional proto.ByteStrides byte_strides = 4;
+  }
+  message ShardIndices {
+    repeated int64 indices = 1;
+  }
+  message MakeArraysFromHostBufferShardsSpec {
+    // `addressable_shard_indices` and `host_buffers` are parallel. Transposed
+    // from `xla::ifrt::Client::MakeArraysFromHostBufferShardsSpec::Buffers` to
+    // reduce nesting.
+    repeated ShardIndices addressable_shard_indices = 1;
+    repeated HostBuffer host_buffers = 2;
+
+    xla.ifrt.ArraySpecProto array_spec = 3;
+  }
+
+  repeated MakeArraysFromHostBufferShardsSpec specs = 1;
+  // If array_handles is provided, the server will either respond with the same
+  // handles in `MakeArraysFromHostBufferShardsResponse` or return an error.
+  repeated fixed64 array_handles = 2;
+}
+message MakeArraysFromHostBufferShardsResponse {
+  repeated fixed64 array_handles = 1;
 }
 
 // Makes an IFRT Array from a set of single-device Arrays.

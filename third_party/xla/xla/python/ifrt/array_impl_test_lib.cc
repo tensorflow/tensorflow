@@ -347,6 +347,92 @@ TEST(ArrayImplTest, MakeArrayFromHostBufferReplicated) {
   }
 }
 
+TEST(ArrayImplTest, MakeArraysFromHostBufferShardsAndCopyToHostBuffer) {
+  TF_ASSERT_OK_AND_ASSIGN(auto client, test_util::GetClient());
+  if (client->addressable_devices().size() < 2) {
+    GTEST_SKIP() << "This test is relevant only for clients with devices that "
+                    "have at least 2 devices";
+  }
+
+  DType dtype(DType::kF32);
+  Shape shape({2, 3});
+  Shape shard_shape({1, 3});
+  auto data0 = std::make_unique<std::vector<float>>(3);
+  std::iota(data0->begin(), data0->end(), 0);
+  auto data1 = std::make_unique<std::vector<float>>(3);
+  std::iota(data1->begin(), data1->end(), 3);
+  absl::Span<Device* const> devices =
+      client->addressable_devices().subspan(0, 2);
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::shared_ptr<const Sharding> sharding,
+      ShardingParamSharding::Create(
+          ShardingParam(
+              /*dim_shards=*/{2, 1},
+              {/*permutation=*/{0, 1}, /*axis_sizes=*/{2, 1}}),
+          client->MakeDeviceList(devices), MemoryKind()));
+
+  std::vector<Client::MakeArraysFromHostBufferShardsSpec> specs;
+  // Create two arrays with the same sharding, but swapped host buffers (data0
+  // and data1).
+  specs.push_back({
+      /*buffers=*/{
+          {{0},
+           {data0->data(), dtype, shard_shape, /*byte_strides=*/std::nullopt,
+            /*on_done_with_host_buffer=*/nullptr}},
+          {{1},
+           {data1->data(), dtype, shard_shape, /*byte_strides=*/std::nullopt,
+            /*on_done_with_host_buffer=*/nullptr}}},
+      /*array_spec=*/{dtype, shape, sharding, /*layout=*/nullptr},
+  });
+  specs.push_back({
+      /*buffers=*/{
+          {{0},
+           {data1->data(), dtype, shard_shape, /*byte_strides=*/std::nullopt,
+            /*on_done_with_host_buffer=*/nullptr}},
+          {{1},
+           {data0->data(), dtype, shard_shape, /*byte_strides=*/std::nullopt,
+            /*on_done_with_host_buffer=*/nullptr}}},
+      /*array_spec=*/{dtype, shape, sharding, /*layout=*/nullptr},
+  });
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto arrays, client->MakeArraysFromHostBufferShards(
+                       absl::MakeSpan(specs),
+                       Client::HostBufferSemantics::kImmutableOnlyDuringCall));
+  ASSERT_THAT(arrays, SizeIs(2));
+
+  // Once the `Array` has become ready, the host buffer is not accessed.
+  TF_ASSERT_OK(arrays[0]->GetReadyFuture().Await());
+  TF_ASSERT_OK(arrays[1]->GetReadyFuture().Await());
+  data0 = nullptr;
+  data1 = nullptr;
+  // There should be no use-after-free.
+
+  for (int i = 0; i < arrays.size(); ++i) {
+    TF_ASSERT_OK_AND_ASSIGN(
+        auto single_device_arrays,
+        arrays[i]->DisassembleIntoSingleDeviceArrays(
+            ArrayCopySemantics::kAlwaysCopy,
+            SingleDeviceShardSemantics::kAddressableShards));
+    ASSERT_EQ(single_device_arrays.size(), devices.size());
+    for (int j = 0; j < single_device_arrays.size(); ++j) {
+      EXPECT_THAT(single_device_arrays[j]->sharding().devices()->devices(),
+                  ElementsAre(devices[j]));
+
+      std::vector<float> out_data(3);
+      auto future = single_device_arrays[j]->CopyToHostBuffer(
+          out_data.data(),
+          /*byte_strides=*/std::nullopt, ArrayCopySemantics::kAlwaysCopy);
+      TF_ASSERT_OK(future.Await());
+      if ((i + j) % 2 == 0) {
+        EXPECT_THAT(out_data, ElementsAre(0, 1, 2));
+      } else {
+        EXPECT_THAT(out_data, ElementsAre(3, 4, 5));
+      }
+    }
+  }
+}
+
 TEST(ArrayImplTest, AssembleArray) {
   TF_ASSERT_OK_AND_ASSIGN(auto client, test_util::GetClient());
 

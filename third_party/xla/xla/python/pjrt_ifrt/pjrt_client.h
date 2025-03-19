@@ -172,6 +172,10 @@ class PjRtClient final
       std::shared_ptr<const Sharding> sharding,
       Client::HostBufferSemantics semantics,
       std::function<void()> on_done_with_host_buffer) override;
+  absl::StatusOr<std::vector<tsl::RCReference<Array>>>
+  MakeArraysFromHostBufferShards(
+      absl::Span<MakeArraysFromHostBufferShardsSpec> specs,
+      HostBufferSemantics semantics) override;
 
   absl::StatusOr<tsl::RCReference<Array>> AssembleArrayFromSingleDeviceArrays(
       Shape shape, std::shared_ptr<const Sharding> sharding,

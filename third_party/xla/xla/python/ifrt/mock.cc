@@ -122,6 +122,12 @@ MockClient::MockClient(std::unique_ptr<xla::ifrt::Client> delegated)
                 std::move(sharding), semantics,
                 std::move(on_done_with_host_buffer));
           });
+  ON_CALL(*this, MakeArraysFromHostBufferShards)
+      .WillByDefault(
+          [this](absl::Span<MakeArraysFromHostBufferShardsSpec> specs,
+                 HostBufferSemantics semantics) {
+            return delegated_->MakeArraysFromHostBufferShards(specs, semantics);
+          });
   ON_CALL(*this, AssembleArrayFromSingleDeviceArrays(_, _, _, _))
       .WillByDefault(
           [this](Shape shape,

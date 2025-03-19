@@ -94,6 +94,10 @@ class NanoIfrtClient : public llvm::RTTIExtends<NanoIfrtClient, ifrt::Client> {
       absl::Nonnull<std::shared_ptr<const ifrt::Sharding>> sharding,
       HostBufferSemantics semantics,
       std::function<void()> on_done_with_host_buffer) override;
+  absl::StatusOr<std::vector<tsl::RCReference<ifrt::Array>>>
+  MakeArraysFromHostBufferShards(
+      absl::Span<MakeArraysFromHostBufferShardsSpec> specs,
+      HostBufferSemantics semantics) override;
 
   // Assembles a sharded array from a list of single device arrays. If the
   // provided sharding is specific enough to assemble a dense array, this method

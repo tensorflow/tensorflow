@@ -25,6 +25,7 @@
 #include <vector>
 
 #include "absl/cleanup/cleanup.h"
+#include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
@@ -39,6 +40,7 @@
 #include "llvm/Support/Casting.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/client.h"
+#include "xla/python/ifrt/client_impl_util.h"
 #include "xla/python/ifrt/dtype.h"
 #include "xla/python/ifrt/future.h"
 #include "xla/python/ifrt/remap_plan.h"
@@ -53,15 +55,15 @@
 #include "xla/python/ifrt_proxy/common/versions.h"
 #include "xla/status_macros.h"
 #include "xla/tsl/concurrency/ref_count.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/statusor.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "tsl/profiler/lib/traceme.h"
 
 namespace xla {
 namespace ifrt {
 namespace proxy {
 
-char Array::ID = 0;
+namespace {
 
 template <typename T>
 void CheckResponseAfterAsyncCall(const Future<std::shared_ptr<T>>& f,
@@ -95,12 +97,12 @@ void CheckResponseAfterAsyncCall(const Future<std::shared_ptr<T>>& f,
 
 using HostBufferSemantics = ::xla::ifrt::Client::HostBufferSemantics;
 
-absl::StatusOr<tsl::RCReference<xla::ifrt::Array>>
-Array::MakeArrayFromHostBuffer(
+// Makes a host buffer on the server.
+absl::StatusOr<uint64_t> MakeHostBuffer(
     xla::ifrt::Client* client, std::shared_ptr<RpcHelper> rpc_helper,
     const void* data, DType dtype, Shape shape,
     std::optional<absl::Span<const int64_t>> byte_strides,
-    std::shared_ptr<const Sharding> sharding, HostBufferSemantics semantics,
+    HostBufferSemantics semantics,
     std::function<void()> on_done_with_host_buffer) {
   absl::string_view mem_region;
   if (dtype.kind() != DType::kString) {
@@ -186,6 +188,33 @@ Array::MakeArrayFromHostBuffer(
           }
         });
   }
+  return host_buffer_handle;
+}
+
+}  // namespace
+
+char Array::ID = 0;
+
+absl::StatusOr<tsl::RCReference<xla::ifrt::Array>>
+Array::MakeArrayFromHostBuffer(
+    xla::ifrt::Client* client, std::shared_ptr<RpcHelper> rpc_helper,
+    const void* data, DType dtype, Shape shape,
+    std::optional<absl::Span<const int64_t>> byte_strides,
+    std::shared_ptr<const Sharding> sharding, HostBufferSemantics semantics,
+    std::function<void()> on_done_with_host_buffer) {
+  TF_ASSIGN_OR_RETURN(
+      const uint64_t host_buffer_handle,
+      MakeHostBuffer(client, rpc_helper, data, dtype, shape, byte_strides,
+                     semantics, std::move(on_done_with_host_buffer)));
+  auto cleanup = absl::MakeCleanup([&]() {
+    rpc_helper->host_buffer_store()
+        ->Delete(host_buffer_handle)
+        .OnReady([](absl::Status status) {
+          if (!status.ok()) {
+            LOG(WARNING) << "Failed to delete host buffer: " << status;
+          }
+        });
+  });
 
   auto req = std::make_unique<MakeArrayFromHostBufferRequest>();
   req->set_host_buffer_handle(host_buffer_handle);
@@ -210,9 +239,135 @@ Array::MakeArrayFromHostBuffer(
     CheckResponseAfterAsyncCall(
         rpc_helper->MakeArrayFromHostBuffer(std::move(req)), arr_handle);
   }
+
+  std::move(cleanup).Cancel();
+
   return tsl::RCReference<xla::ifrt::Array>(
       tsl::MakeRef<Array>(client, std::move(rpc_helper), dtype,
                           std::move(shape), std::move(sharding), arr_handle));
+}
+
+absl::StatusOr<std::vector<tsl::RCReference<xla::ifrt::Array>>>
+Array::MakeArraysFromHostBufferShards(
+    xla::ifrt::Client* client, std::shared_ptr<RpcHelper> rpc_helper,
+    absl::Span<xla::ifrt::Client::MakeArraysFromHostBufferShardsSpec> specs,
+    xla::ifrt::Client::HostBufferSemantics semantics) {
+  if (rpc_helper->version().protocol_version() <
+      protocol_version::kMakeArraysFromHostBufferShards) {
+    return xla::ifrt::ClientMakeArraysFromHostBufferShards(client, specs,
+                                                           semantics);
+  }
+
+  absl::InlinedVector<absl::InlinedVector<uint64_t, 1>, 1>
+      host_buffer_handles_for_specs;
+  auto cleanup = absl::MakeCleanup([&]() {
+    for (const auto& host_buffer_handles : host_buffer_handles_for_specs) {
+      for (const uint64_t host_buffer_handle : host_buffer_handles) {
+        rpc_helper->host_buffer_store()
+            ->Delete(host_buffer_handle)
+            .OnReady([](absl::Status status) {
+              if (!status.ok()) {
+                LOG(WARNING) << "Failed to delete host buffer: " << status;
+              }
+            });
+      }
+    }
+  });
+  host_buffer_handles_for_specs.reserve(specs.size());
+  for (const auto& spec : specs) {
+    auto& host_buffer_handles = host_buffer_handles_for_specs.emplace_back();
+    host_buffer_handles.reserve(spec.buffers.size());
+    for (const auto& [_, host_buffer] : spec.buffers) {
+      TF_ASSIGN_OR_RETURN(
+          const uint64_t host_buffer_handle,
+          MakeHostBuffer(client, rpc_helper, host_buffer.data,
+                         host_buffer.dtype, host_buffer.shape,
+                         host_buffer.byte_strides, semantics,
+                         /*on_done_with_host_buffer=*/host_buffer.on_done));
+      host_buffer_handles.push_back(host_buffer_handle);
+    }
+  }
+
+  std::vector<ArrayHandle> arr_handles;
+  arr_handles.reserve(specs.size());
+
+  auto req = std::make_unique<MakeArraysFromHostBufferShardsRequest>();
+  req->mutable_specs()->Reserve(specs.size());
+  if (!GetGlobalClientFlags()->synchronous_host_buffer_store) {
+    req->mutable_array_handles()->Reserve(specs.size());
+  }
+  for (int spec_idx = 0; spec_idx < specs.size(); ++spec_idx) {
+    const xla::ifrt::Client::MakeArraysFromHostBufferShardsSpec& spec =
+        specs[spec_idx];
+    MakeArraysFromHostBufferShardsRequest::MakeArraysFromHostBufferShardsSpec*
+        spec_proto = req->add_specs();
+    spec_proto->mutable_host_buffers()->Reserve(spec.buffers.size());
+    for (int buffer_idx = 0; buffer_idx < spec.buffers.size(); ++buffer_idx) {
+      const auto& [addressable_shard_indices, host_buffer] =
+          spec.buffers[buffer_idx];
+      MakeArraysFromHostBufferShardsRequest::ShardIndices*
+          addressable_shard_indices_proto =
+              spec_proto->add_addressable_shard_indices();
+      addressable_shard_indices_proto->mutable_indices()->Reserve(
+          addressable_shard_indices.size());
+      for (const int shard_index : addressable_shard_indices) {
+        addressable_shard_indices_proto->add_indices(shard_index);
+      }
+
+      MakeArraysFromHostBufferShardsRequest::HostBuffer* host_buffer_proto =
+          spec_proto->add_host_buffers();
+      *host_buffer_proto->mutable_dtype() = host_buffer.dtype.ToProto();
+      *host_buffer_proto->mutable_shape() = host_buffer.shape.ToProto();
+      host_buffer_proto->set_host_buffer_handle(
+          host_buffer_handles_for_specs[spec_idx][buffer_idx]);
+      if (host_buffer.byte_strides.has_value()) {
+        *host_buffer_proto->mutable_byte_strides() =
+            ToByteStridesProto(*host_buffer.byte_strides);
+      }
+    }
+    TF_ASSIGN_OR_RETURN(*spec_proto->mutable_array_spec(),
+                        spec.array_spec.ToProto());
+
+    if (!GetGlobalClientFlags()->synchronous_host_buffer_store) {
+      uint64_t arr_handle;
+      if (spec.buffers.empty()) {
+        arr_handle = rpc_helper->NextHandle();
+      } else {
+        // Reuse the host_buffer_handle as also the client-generated arr_handle.
+        arr_handle = spec_proto->host_buffers(0).host_buffer_handle();
+      }
+
+      req->add_array_handles(arr_handle);
+      arr_handles.push_back(ArrayHandle{arr_handle});
+    }
+  }
+
+  if (GetGlobalClientFlags()->synchronous_host_buffer_store) {
+    TF_ASSIGN_OR_RETURN(
+        auto resp,
+        rpc_helper->MakeArraysFromHostBufferShards(std::move(req)).Await());
+    for (const uint64_t array_handle : resp->array_handles()) {
+      arr_handles.push_back(ArrayHandle{array_handle});
+    }
+  } else {
+    CheckResponseAfterAsyncCall(
+        rpc_helper->MakeArraysFromHostBufferShards(std::move(req)),
+        arr_handles);
+  }
+
+  std::move(cleanup).Cancel();
+
+  std::vector<tsl::RCReference<xla::ifrt::Array>> arrays;
+  arrays.reserve(specs.size());
+  for (int spec_idx = 0; spec_idx < specs.size(); ++spec_idx) {
+    xla::ifrt::Client::MakeArraysFromHostBufferShardsSpec& spec =
+        specs[spec_idx];
+    arrays.push_back(tsl::MakeRef<Array>(
+        client, rpc_helper, spec.array_spec.dtype,
+        std::move(spec.array_spec.shape), std::move(spec.array_spec.sharding),
+        arr_handles[spec_idx]));
+  }
+  return arrays;
 }
 
 void Array::Destruct(RpcHelper* rpc_helper, ArrayHandle handle) {

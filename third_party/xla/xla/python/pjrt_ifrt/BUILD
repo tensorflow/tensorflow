@@ -231,6 +231,7 @@ cc_library(
         "//xla/python/ifrt",
         "//xla/python/ifrt:attribute_map",
         "//xla/python/ifrt:basic_device_list",
+        "//xla/python/ifrt:client_impl_util",
         "//xla/python/ifrt/hlo:hlo_program",
         "//xla/service:computation_placer_hdr",
         "//xla/service:hlo_proto_cc",

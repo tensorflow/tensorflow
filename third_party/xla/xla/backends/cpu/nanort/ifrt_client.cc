@@ -60,6 +60,7 @@ limitations under the License.
 #include "xla/python/ifrt/attribute_map.h"
 #include "xla/python/ifrt/basic_device_list.h"
 #include "xla/python/ifrt/client.h"
+#include "xla/python/ifrt/client_impl_util.h"
 #include "xla/python/ifrt/compiler.h"
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/device_list.h"
@@ -1264,6 +1265,13 @@ NanoIfrtClient::MakeArrayFromHostBuffer(
                                std::move(shape), std::move(sharding),
                                byte_strides, make_copy,
                                std::move(on_done_with_host_buffer));
+}
+
+absl::StatusOr<std::vector<tsl::RCReference<ifrt::Array>>>
+NanoIfrtClient::MakeArraysFromHostBufferShards(
+    absl::Span<MakeArraysFromHostBufferShardsSpec> specs,
+    HostBufferSemantics semantics) {
+  return ifrt::ClientMakeArraysFromHostBufferShards(this, specs, semantics);
 }
 
 absl::StatusOr<tsl::RCReference<ifrt::Array>>

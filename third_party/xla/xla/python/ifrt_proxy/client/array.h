@@ -62,6 +62,15 @@ class Array final : public llvm::RTTIExtends<Array, xla::ifrt::Array> {
                           xla::ifrt::Client::HostBufferSemantics semantics,
                           std::function<void()> on_done_with_host_buffer);
 
+  // `Array::MakeArraysFromHostBufferShards()` implements
+  // `Client::MakeArraysFromHostBufferShards()`.
+  // TODO(b/261226026): Implement logic directly in client.cc.
+  static absl::StatusOr<std::vector<tsl::RCReference<xla::ifrt::Array>>>
+  MakeArraysFromHostBufferShards(
+      xla::ifrt::Client* client, std::shared_ptr<RpcHelper> rpc_helper,
+      absl::Span<xla::ifrt::Client::MakeArraysFromHostBufferShardsSpec> specs,
+      xla::ifrt::Client::HostBufferSemantics semantics);
+
   // `Array::AssembleArrayFromSingleDeviceArrays()` implements
   // `Client::AssembleArrayFromSingleDeviceArrays()`.
   // TODO(b/261226026): Implement logic directly in client.cc.
