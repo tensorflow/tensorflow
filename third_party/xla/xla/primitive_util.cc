@@ -260,34 +260,36 @@ namespace {
 // Due to Postel's Law considerations, both "opaque" and "opaque_type" map to
 // the xla::OPAQUE_TYPE enumerator.
 const absl::flat_hash_map<std::string, PrimitiveType>&
-GetPrimitiveTypeStringMap() {
-  static absl::flat_hash_map<std::string, PrimitiveType>* name_to_type = [] {
-    static auto* map = new absl::flat_hash_map<std::string, PrimitiveType>;
-    for (int i = 0; i < PrimitiveType_ARRAYSIZE; i++) {
-      if (PrimitiveType_IsValid(i) && i != PRIMITIVE_TYPE_INVALID) {
-        auto value = static_cast<PrimitiveType>(i);
-        (*map)[LowercasePrimitiveTypeName(value)] = value;
-      }
-    }
-    (*map)["opaque"] = OPAQUE_TYPE;
-    return map;
-  }();
+LowerCaseNameToPrimitiveType() {
+  static absl::flat_hash_map<std::string, PrimitiveType>* const name_to_type =
+      [] {
+        static auto* map = new absl::flat_hash_map<std::string, PrimitiveType>;
+        for (int i = 0; i < PrimitiveType_ARRAYSIZE; i++) {
+          if (PrimitiveType_IsValid(i) && i != PRIMITIVE_TYPE_INVALID) {
+            auto value = static_cast<PrimitiveType>(i);
+            (*map)[LowercasePrimitiveTypeName(value)] = value;
+          }
+        }
+        (*map)["opaque"] = OPAQUE_TYPE;
+        return map;
+      }();
   return *name_to_type;
 }
 
 }  // namespace
 
-absl::StatusOr<PrimitiveType> StringToPrimitiveType(absl::string_view name) {
-  const auto& map = GetPrimitiveTypeStringMap();
-  auto found = map.find(name);
+absl::StatusOr<PrimitiveType> StringToPrimitiveType(
+    absl::string_view lower_name) {
+  const auto& map = LowerCaseNameToPrimitiveType();
+  auto found = map.find(lower_name);
   if (found == map.end()) {
-    return InvalidArgument("Invalid element type string: \"%s\".", name);
+    return InvalidArgument("Invalid element type string: \"%s\".", lower_name);
   }
   return found->second;
 }
 
 bool IsPrimitiveTypeName(absl::string_view name) {
-  const auto& map = GetPrimitiveTypeStringMap();
+  const auto& map = LowerCaseNameToPrimitiveType();
   auto found = map.find(name);
   return found != map.end();
 }
