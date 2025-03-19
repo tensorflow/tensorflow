@@ -199,10 +199,14 @@ cc_test(
         "//tensorflow/lite/experimental/litert/c:litert_model",
         "//tensorflow/lite/experimental/litert/c:litert_tensor_buffer",
         "//tensorflow/lite/experimental/litert/c:litert_tensor_buffer_types",
+        "//tensorflow/lite/experimental/litert/runtime:gpu_environment",
         "//tensorflow/lite/experimental/litert/runtime:tensor_buffer",
+        "//tensorflow/lite/experimental/litert/runtime/opencl:buffer",
+        "//tensorflow/lite/experimental/litert/runtime/opencl:cl_command_queue",
         "//tensorflow/lite/experimental/litert/test:matchers",
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_main",
+        "@opencl_headers",
     ] + select({
         "//tensorflow:android": [
             "//tensorflow/lite/delegates/gpu/gl:egl_environment",

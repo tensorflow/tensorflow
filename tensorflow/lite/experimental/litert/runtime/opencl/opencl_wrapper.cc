@@ -169,6 +169,9 @@ void LoadOpenCLFunctionExtensions(cl_platform_id platform_id) {
   LoadFunctionExtension(platform_id, clEnqueueCommandBufferKHR);
   LoadFunctionExtension(platform_id, clCommandNDRangeKernelKHR);
   LoadFunctionExtension(platform_id, clGetCommandBufferInfoKHR);
+
+  // cl_arm_import_memory extension
+  LoadFunctionExtension(platform_id, clImportMemoryARM);
 }
 
 #ifdef __WINDOWS__
@@ -436,6 +439,9 @@ PFN_clGetCommandBufferInfoKHR clGetCommandBufferInfoKHR;
 // OpenCL 3.0
 PFN_clCreateBufferWithProperties clCreateBufferWithProperties;
 PFN_clCreateImageWithProperties clCreateImageWithProperties;
+
+// cl_arm_import_memory extension
+PFN_clImportMemoryARM clImportMemoryARM;
 
 cl_mem CreateImage2DLegacy(cl_context context, cl_mem_flags flags,
                            const cl_image_format* image_format,
