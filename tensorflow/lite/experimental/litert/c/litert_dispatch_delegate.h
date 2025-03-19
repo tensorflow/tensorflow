@@ -19,11 +19,13 @@
 
 #include "tensorflow/lite/c/c_api_types.h"
 #include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/experimental/litert/c/litert_common.h"
 #include "tensorflow/lite/experimental/litert/c/litert_environment_options.h"
 #include "tensorflow/lite/experimental/litert/vendors/c/litert_dispatch.h"
 
 typedef struct LiteRtDispatchDelegateOptions LiteRtDispatchDelegateOptions;
 typedef struct LiteRtEnvironmentT* LiteRtEnvironment;
+typedef struct LiteRtDispatchDelegateMetricsT* LiteRtDispatchDelegateMetrics;
 
 // Returns DispatchDelegateOptions populated with default values.
 LiteRtDispatchDelegateOptions* LiteRtCreateDefaultDispatchDelegateOptions(
@@ -57,5 +59,40 @@ TfLiteStatus LiteRtDispatchDelegateAddAllocBaseOption(
 // to find the start of npu byte code appended to the file.
 TfLiteStatus LiteRtDispatchDelegateAddAllocFdOption(
     LiteRtDispatchDelegateOptions* options, int alloc_fd);
+
+#ifdef __cplusplus
+extern "C" {
+#endif  // __cplusplus
+
+//
+// Metrics
+//
+
+// Start collection of HW-specific metrics at a specific level of detail (>= 0).
+TfLiteStatus LiteRtDispatchDelegateStartMetricsCollection(
+    TfLiteOpaqueDelegate* delegate, int detail_level);
+
+// Stop collection of HW-specific metrics and report the collected
+// metrics. Note: The caller is responsible for deallocating the returned
+// metrics by calling `LiteRtDispatchDelegateDestroyMetrics`.
+TfLiteStatus LiteRtDispatchDelegateStopMetricsCollection(
+    TfLiteOpaqueDelegate* delegate, LiteRtDispatchDelegateMetrics* metrics);
+
+// Get the number of metrics collected.
+TfLiteStatus LiteRtDispatchDelegateGetNumMetrics(
+    LiteRtDispatchDelegateMetrics metrics, int* num_metrics);
+
+// Fetch a specific metric. The caller owns the returned object.
+TfLiteStatus LiteRtDispatchDelegateGetMetric(
+    LiteRtDispatchDelegateMetrics metrics, int metric_index,
+    LiteRtMetric* metric);
+
+// Destroy the metrics object.
+void LiteRtDispatchDelegateDestroyMetrics(
+    LiteRtDispatchDelegateMetrics metrics);
+
+#ifdef __cplusplus
+}
+#endif  // __cplusplus
 
 #endif  // TENSORFLOW_LITE_EXPERIMENTAL_LITERT_C_LITERT_DISPATCH_DELEGATE_H_

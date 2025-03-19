@@ -14,6 +14,7 @@ cc_library(
     name = "litert_common",
     srcs = ["litert_common.cc"],
     hdrs = ["litert_common.h"],
+    deps = [":litert_any"],
 )
 
 cc_test(
@@ -291,6 +292,7 @@ cc_library(
         "litert_dispatch_delegate.h",
     ],
     deps = [
+        ":litert_common",
         ":litert_environment_options",
         "//tensorflow/lite/c:c_api",
         "//tensorflow/lite/c:c_api_opaque",

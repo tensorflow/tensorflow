@@ -46,6 +46,8 @@ extern "C" {
 
 LITERT_DEFINE_HANDLE(LiteRtCompiledModel);
 
+LITERT_DEFINE_HANDLE(LiteRtCompiledModelMetrics);
+
 // Creates a LiteRtCompiledModel from a LiteRtModel object. Parameter
 // `jit_compilation_options` is optional and can be null, and is owned by the
 // caller.  The model is loaded into memory and the caller takes ownership of
@@ -128,6 +130,29 @@ LiteRtStatus LiteRtRunCompiledModelAsync(
     size_t num_output_buffers, LiteRtTensorBuffer* output_buffers, bool* async);
 
 void LiteRtDestroyCompiledModel(LiteRtCompiledModel compiled_model);
+
+// Start collection of HW-specific metrics at a specific level of detail (>= 0).
+LiteRtStatus LiteRtCompiledModelStartMetricsCollection(
+    LiteRtCompiledModel compiled_model, int detail_level);
+
+// Stop collection of HW-specific metrics and report the collected
+// metrics. Note: The caller is responsible for deallocating the returned
+// metrics by calling `LiteRtCompiledModelDestroyMetrics`.
+LiteRtStatus LiteRtCompiledModelStopMetricsCollection(
+    LiteRtCompiledModel compiled_model, LiteRtCompiledModelMetrics* metrics);
+
+// Get the number of metrics collected.
+LiteRtStatus LiteRtCompiledModelGetNumMetrics(
+    LiteRtCompiledModelMetrics metrics, int* num_metrics);
+
+// Fetch a specific metric. The caller owns the returned object.
+LiteRtStatus LiteRtCompiledModelGetMetric(LiteRtCompiledModelMetrics metrics,
+                                          int metric_index,
+                                          LiteRtMetric* metric);
+
+// Destroy the metrics object.
+LiteRtStatus LiteRtCompiledModelDestroyMetrics(
+    LiteRtCompiledModelMetrics metrics);
 
 #ifdef __cplusplus
 }

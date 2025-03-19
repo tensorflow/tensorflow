@@ -17,6 +17,8 @@
 
 #include <stddef.h>
 
+#include "tensorflow/lite/experimental/litert/c/litert_any.h"
+
 #ifdef __cplusplus
 extern "C" {
 #endif  // __cplusplus
@@ -129,6 +131,11 @@ typedef int LiteRtHwAcceleratorSet;
 
 // For indexing into LiteRT collections or counting LiteRT things.
 typedef size_t LiteRtParamIndex;
+
+typedef struct LiteRtMetric {
+  const char* name;
+  LiteRtAny value;
+} LiteRtMetric;
 
 #if defined(_WIN32)
 // Provides posix_memalign() missing in Windows.

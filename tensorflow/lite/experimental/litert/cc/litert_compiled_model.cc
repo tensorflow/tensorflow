@@ -21,6 +21,7 @@
 #include <utility>
 #include <vector>
 
+#include "absl/cleanup/cleanup.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
@@ -202,6 +203,42 @@ Expected<void> CompiledModel::RunHelper(
   }
   return RunCApiHelper(*signature_index, num_inputs, input_buffers_ptr.get(),
                        num_outputs, output_buffers_ptr.get(), async);
+}
+
+Expected<void> CompiledModel::StartMetricsCollection(int detail_level) {
+  if (auto status =
+          LiteRtCompiledModelStartMetricsCollection(Get(), detail_level);
+      status != kLiteRtStatusOk) {
+    return Unexpected(status, "Failed to start metrics collection");
+  }
+  return {};
+}
+
+Expected<CompiledModel::Metrics> CompiledModel::StopMetricsCollection() {
+  LiteRtCompiledModelMetrics metrics;
+  if (auto status = LiteRtCompiledModelStopMetricsCollection(Get(), &metrics);
+      status != kLiteRtStatusOk) {
+    return Unexpected(status, "Failed to stop metrics collection");
+  }
+  absl::Cleanup metrics_cleanup = [&metrics] {
+    LiteRtCompiledModelDestroyMetrics(metrics);
+  };
+  int num_metrics;
+  if (auto status = LiteRtCompiledModelGetNumMetrics(metrics, &num_metrics);
+      status != kLiteRtStatusOk) {
+    return Unexpected(status, "Failed to get number of metrics");
+  }
+  std::vector<Metrics::Metric> compiled_model_metrics;
+  compiled_model_metrics.reserve(num_metrics);
+  for (int i = 0; i < num_metrics; ++i) {
+    LiteRtMetric metric;
+    if (auto status = LiteRtCompiledModelGetMetric(metrics, i, &metric);
+        status != kLiteRtStatusOk) {
+      return Unexpected(status, "Failed to get metric");
+    }
+    compiled_model_metrics.push_back({metric.name, metric.value});
+  }
+  return CompiledModel::Metrics{.metrics = std::move(compiled_model_metrics)};
 }
 
 }  // namespace litert

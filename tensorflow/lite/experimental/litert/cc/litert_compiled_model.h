@@ -23,6 +23,7 @@
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/strings/string_view.h"
+#include "tensorflow/lite/experimental/litert/c/litert_any.h"
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
 #include "tensorflow/lite/experimental/litert/c/litert_compiled_model.h"
 #include "tensorflow/lite/experimental/litert/c/litert_environment.h"
@@ -59,6 +60,14 @@ namespace litert {
 class CompiledModel
     : public internal::Handle<LiteRtCompiledModel, LiteRtDestroyCompiledModel> {
  public:
+  struct Metrics {
+    struct Metric {
+      std::string name;
+      LiteRtAny value;
+    };
+    std::vector<Metric> metrics;
+  };
+
   CompiledModel() = default;
 
   // Creates a CompiledModel instance.
@@ -281,6 +290,10 @@ class CompiledModel
     async = true;
     return RunHelper(signature_key, input_map, output_map, async);
   }
+
+  Expected<void> StartMetricsCollection(int detail_level);
+
+  Expected<Metrics> StopMetricsCollection();
 
  private:
   // Returns the signature input index for the given input tensor name.

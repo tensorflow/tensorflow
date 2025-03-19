@@ -59,11 +59,6 @@ typedef struct LiteRtDispatchOption {
   LiteRtAny value;
 } LiteRtDispatchOption;
 
-typedef struct LiteRtMetric {
-  const char* name;
-  LiteRtAny value;
-} LiteRtMetric;
-
 typedef struct LiteRtMemBuffer {
   int fd;  // File descriptor for an mmapped buffer, -1 if unused.
   const void* base_addr;  // Base address of the buffer.
