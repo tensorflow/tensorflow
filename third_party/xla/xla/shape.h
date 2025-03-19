@@ -42,26 +42,19 @@ namespace xla {
 // structure (number of elements and nesting).
 class Shape {
  public:
+  // Creates an invalid shape, with element type PRIMITIVE_TYPE_INVALID and the
+  // other fields empty.
   Shape();
+
   ~Shape();
+
   Shape(const Shape&);
   Shape(Shape&&) noexcept;
   Shape& operator=(const Shape&);
   Shape& operator=(Shape&&) noexcept;
 
-  ABSL_DEPRECATED(
-      "This ctor is unsafe as it allows invalid combinations of the "
-      "parameters. Use the other ctors instead.")
-  Shape(PrimitiveType element_type, absl::Span<const int64_t> dimensions,
-        absl::Span<const bool> dynamic_dimensions,
-        std::vector<Shape> tuple_shapes)
-      : element_type_(element_type),
-        dimensions_(dimensions.begin(), dimensions.end()),
-        dynamic_dimensions_(dynamic_dimensions.begin(),
-                            dynamic_dimensions.end()),
-        tuple_shapes_(std::move(tuple_shapes)) {}
-
-  // Construct a shape from a ShapeProto.
+  // Constructs a shape from a ShapeProto. Results in an invalid shape (as
+  // opposed to crashing) if the proto has logically invalid fields.
   explicit Shape(const ShapeProto& shape_proto);
 
   // Creates a token or opaque shape.
