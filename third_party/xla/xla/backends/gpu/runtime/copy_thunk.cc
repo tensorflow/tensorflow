@@ -206,25 +206,14 @@ absl::Status CopyDoneThunk::ExecuteOnStream(const ExecuteParams& params) {
 // DynamicMemcpyThunk
 //===----------------------------------------------------------------------===//
 
-DynamicMemcpyThunk::DynamicMemcpyThunk(
-    ThunkInfo thunk_info, const BufferAllocation::Slice& source_buffer,
-    const BufferAllocation::Slice& destination_buffer, uint64_t mem_size,
-    DynamicMemcpyThunk::MemcpyDescriptor descriptor)
-    : Thunk(Kind::kCopy, std::move(thunk_info)),
-      source_buffer_(source_buffer),
-      destination_buffer_(destination_buffer),
-      mem_size_(mem_size),
-      descriptor_(descriptor) {}
+namespace {
 
-absl::Status DynamicMemcpyThunk::ExecuteOnStream(const ExecuteParams& params) {
-  se::DeviceMemoryBase destination_data =
-      params.buffer_allocations->GetDeviceAddress(destination_buffer_);
-  se::DeviceMemoryBase source_data =
-      params.buffer_allocations->GetDeviceAddress(source_buffer_);
-
-  HloEvaluator evaluator(/*max_loop_iterations=*/0);
-  int64_t src_offset = descriptor_.src_byte_static_offset;
-  for (const auto& offset : descriptor_.src_dynamic_offsets) {
+absl::StatusOr<int64_t> EvaluateDynamicOffsets(
+    HloEvaluator& evaluator,
+    absl::Span<const DynamicMemcpyThunk::MemcpyDescriptor::DynamicOffset>
+        offsets) {
+  int64_t offset_sum = 0;
+  for (const auto& offset : offsets) {
     TF_ASSIGN_OR_RETURN(
         auto config,
         offset.while_loop->backend_config<xla::WhileLoopBackendConfig>());
@@ -254,16 +243,49 @@ absl::Status DynamicMemcpyThunk::ExecuteOnStream(const ExecuteParams& params) {
         std::max<int64_t>(0, std::min(*array_index, offset.dimension_size - 1));
     VLOG(3) << "Iteration index " << induction_variable
             << " resulted in array index " << *array_index << ".";
-    src_offset += clamped_index * offset.byte_stride;
+    offset_sum += clamped_index * offset.byte_stride;
   }
+  return offset_sum;
+}
 
-  auto src_with_offset = source_data.GetByteSlice(src_offset, mem_size_);
+}  // namespace
+
+DynamicMemcpyThunk::DynamicMemcpyThunk(
+    ThunkInfo thunk_info, const BufferAllocation::Slice& source_buffer,
+    const BufferAllocation::Slice& destination_buffer, uint64_t mem_size,
+    DynamicMemcpyThunk::MemcpyDescriptor descriptor)
+    : Thunk(Kind::kCopy, std::move(thunk_info)),
+      source_buffer_(source_buffer),
+      destination_buffer_(destination_buffer),
+      mem_size_(mem_size),
+      descriptor_(descriptor) {}
+
+absl::Status DynamicMemcpyThunk::ExecuteOnStream(const ExecuteParams& params) {
+  se::DeviceMemoryBase src_data =
+      params.buffer_allocations->GetDeviceAddress(source_buffer_);
+  se::DeviceMemoryBase dst_data =
+      params.buffer_allocations->GetDeviceAddress(destination_buffer_);
+
+  HloEvaluator evaluator(/*max_loop_iterations=*/0);
+  TF_ASSIGN_OR_RETURN(
+      int64_t src_offset,
+      EvaluateDynamicOffsets(evaluator, descriptor_.src_dynamic_offsets));
+  src_offset += descriptor_.src_byte_static_offset;
+
+  TF_ASSIGN_OR_RETURN(
+      int64_t dst_offset,
+      EvaluateDynamicOffsets(evaluator, descriptor_.dst_dynamic_offsets));
+  dst_offset += descriptor_.dst_byte_static_offset;
+
+  auto src_with_offset = src_data.GetByteSlice(src_offset, mem_size_);
+  auto dst_with_offset = dst_data.GetByteSlice(dst_offset, mem_size_);
   VLOG(3) << "Memcpy of size " << mem_size_ << " from "
-          << src_with_offset.opaque() << " to " << destination_data.opaque();
+          << src_with_offset.opaque() << " (offset " << src_offset << ") to "
+          << dst_with_offset.opaque() << " (offset " << dst_offset << ")";
   TF_ASSIGN_OR_RETURN(
       se::Stream * stream,
       GetStreamForExecution(Thunk::execution_stream_id(), params));
-  return stream->Memcpy(&destination_data, src_with_offset, mem_size_);
+  return stream->Memcpy(&dst_with_offset, src_with_offset, mem_size_);
 }
 
 }  // namespace gpu

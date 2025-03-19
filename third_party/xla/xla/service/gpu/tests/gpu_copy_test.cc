@@ -210,8 +210,104 @@ TEST_F(GpuCopyTest, DoNotUseMemcpyWithLayoutChange) {
   CompileAndVerifyIr(std::move(hlo_module), "; CHECK: void @slice",
                      /*match_optimized_ir=*/false,
                      /*run_optimization_passes=*/false);
+  EXPECT_TRUE(RunAndCompareNoHloPasses(kSliceMemcpyModule, ErrorSpec{0, 0}));
+}
+
+constexpr char kDynamicUpdateSliceModule[] = R"(
+    dynamic_update_slice {
+      p0 = s32[4,8,8] parameter(0)
+      p1 = s32[1,1,8] parameter(1)
+      p2 = s32[] parameter(2)
+      c0 = s32[] constant(0)
+
+      ROOT update-slice = s32[4,8,8] dynamic-update-slice(p0, p1, p2, c0, c0)
+    }
+
+    add {
+      p0 = s32[] parameter(0)
+      c1 = s32[] constant(1)
+      ROOT sum = s32[] add(p0, c1)
+    }
+
+    add_slices {
+      p0 = s32[1,1,8] parameter(0)
+      ROOT sum = s32[1,1,8] add(p0, p0)
+    }
+
+    body {
+      p0 = (s32[], s32[4,8,8], s32[1,1,8]) parameter(0)
+      ivar = s32[] get-tuple-element(p0), index=0
+      input = s32[4,8,8] get-tuple-element(p0), index=1
+      input-copy = s32[4,8,8] copy(input)
+
+      ivar_copy = s32[] copy(ivar)
+      acc = s32[1,1,8] get-tuple-element(p0), index=2
+      acc_copy = s32[1,1,8] copy(acc)
+
+      updated = s32[4,8,8] fusion(input-copy, acc_copy, ivar_copy), kind=kLoop,
+          calls=dynamic_update_slice,
+          backend_config={"fusion_backend_config":{"kind":"__dynamic_memcpy"}}
+      next_ivar = s32[] fusion(ivar_copy), kind=kLoop, calls=add
+
+      next_acc = s32[1,1,8] fusion(acc_copy), kind=kLoop, calls=add_slices
+      ROOT result = (s32[], s32[4,8,8], s32[1,1,8])
+          tuple(next_ivar, updated, next_acc)
+    }
+
+    compare {
+      p0 = s32[] parameter(0)
+      c6 = s32[] constant(6)
+      ROOT cmp = pred[] compare(p0, c6), direction=LT
+    }
+
+    condition {
+      p0 = (s32[], s32[4,8,8], s32[1,1,8]) parameter(0)
+      ivar = s32[] get-tuple-element(p0), index=0
+      ROOT cmp = pred[] fusion(ivar), kind=kLoop, calls=compare
+    }
+
+    input {
+      iota = s32[256] iota(), iota_dimension=0
+      ROOT bc = s32[4,8,8] bitcast(iota)
+    }
+
+    ENTRY main {
+      input = s32[4,8,8] fusion(), kind=kLoop, calls=input
+      init_acc = s32[1,1,8] constant({{{7,6,5,4,3,2,1,0}}})
+      c0 = s32[] constant(0)
+      tuple = (s32[], s32[4,8,8], s32[1,1,8]) tuple(c0, input, init_acc)
+      ROOT while = (s32[], s32[4,8,8], s32[1,1,8]) while(tuple),
+          condition=condition, body=body,
+          backend_config={"known_trip_count":{"n":"6"},
+                          "known_init_step":{"init":"0","step":"1"},
+                          "known_induction_variable":{"tuple_index":"0"}}
+    })";
+
+TEST_F(GpuCopyTest, UseMemcpyForDynamicUpdateSlice) {
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<VerifiedHloModule> hlo_module,
+      ParseAndReturnVerifiedModule(kDynamicUpdateSliceModule));
+
+  CompileAndVerifyIr(std::move(hlo_module), "; CHECK-NOT: void @updated",
+                     /*match_optimized_ir=*/false,
+                     /*run_optimization_passes=*/false);
   EXPECT_TRUE(
-      RunAndCompareNoHloPasses(kSliceMemcpyModule, ErrorSpec{1e-5, 1e-5}));
+      RunAndCompareNoHloPasses(kDynamicUpdateSliceModule, ErrorSpec{0, 0}));
+}
+
+TEST_F(GpuCopyTest, DoNotUseMemcpyForDynamicUpdateSlice) {
+  // This is a test for the CompileAndVerifyIr statement in
+  // UseMemcpyForDynamicUpdateSlice. When the conditions are not met, there
+  // should be a fusion for the slice.
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<VerifiedHloModule> hlo_module,
+      ParseAndReturnVerifiedModule(kDynamicUpdateSliceModule));
+
+  // This prevents the memcpy fusion logic from triggering.
+  hlo_module->entry_computation()->root_instruction()->clear_backend_config();
+  CompileAndVerifyIr(std::move(hlo_module), "; CHECK: void @updated",
+                     /*match_optimized_ir=*/false,
+                     /*run_optimization_passes=*/false);
 }
 
 }  // namespace gpu
