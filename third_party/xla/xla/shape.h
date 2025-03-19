@@ -102,7 +102,8 @@ class Shape {
 
   // Returns the rank (number of dimensions) of the given shape. Returns 0 for
   // non-array shapes.
-  int64_t rank() const { return dimensions_.size(); }
+  ABSL_DEPRECATED("Use dimensions().size() instead.")
+  int64_t rank() const { return dimensions().size(); }
 
   // Returns whether the shape is of the specified type (array, tuple, etc).
   bool IsArray() const { return primitive_util::IsArrayType(element_type()); }
@@ -187,8 +188,8 @@ class Shape {
   void set_element_type(PrimitiveType value) { element_type_ = value; }
 
   // Methods for accessing the dimensions array.
-  ABSL_DEPRECATED("Use rank() instead.")
-  int dimensions_size() const { return rank(); }
+  ABSL_DEPRECATED("Use dimensions().size() instead.")
+  int dimensions_size() const { return dimensions().size(); }
   int64_t dimensions(int index) const { return dimensions_[index]; }
 
   int64_t dimensions_minor(int index) const {
