@@ -1823,6 +1823,12 @@ tf_cuda_library(
         "//tensorflow/core/public:session.h",
     ],
     copts = tf_copts(),
+    visibility = [
+        ":dependency_allowlist",
+        "//learning/gemini/gemax/core/models/gemini3/vision/vision_decoder:__pkg__",
+        "//tensorflow:internal",
+        "//tensorflow_models:__subpackages__",
+    ],
     deps = ["//tensorflow/core/common_runtime:core_cpu_base_no_ops"] + if_static([
         ":function_ops_op_lib",
         ":functional_grad",
