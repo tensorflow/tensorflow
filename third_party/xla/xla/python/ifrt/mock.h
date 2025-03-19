@@ -294,6 +294,8 @@ class MockLoadedExecutable
               (const, final));
   MOCK_METHOD(absl::StatusOr<std::vector<std::shared_ptr<const PjRtLayout>>>,
               GetParameterLayouts, (), (const, final));
+  MOCK_METHOD(absl::StatusOr<absl::Span<const int>>, GetDonatableInputIndices,
+              (), (const, final));
   MOCK_METHOD(absl::StatusOr<std::vector<std::shared_ptr<const PjRtLayout>>>,
               GetOutputLayouts, (), (const, final));
   MOCK_METHOD(absl::StatusOr<std::vector<std::vector<absl::string_view>>>,

@@ -26,7 +26,6 @@
 #include "absl/base/thread_annotations.h"
 #include "absl/cleanup/cleanup.h"
 #include "absl/container/flat_hash_map.h"
-#include "absl/functional/bind_front.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
@@ -63,15 +62,15 @@
 #include "xla/python/pjrt_ifrt/pjrt_host_callback.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/concurrency/ref_count.h"
+#include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/status_to_from_proto.h"
+#include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/platform/threadpool.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/cpu_info.h"
-#include "tsl/platform/env.h"
-#include "tsl/platform/errors.h"
 #include "tsl/platform/mem.h"
 #include "tsl/platform/protobuf.h"
-#include "tsl/platform/status_to_from_proto.h"
-#include "tsl/platform/statusor.h"
-#include "tsl/platform/threadpool.h"
 #include "tsl/profiler/lib/traceme.h"
 
 namespace xla {
@@ -359,6 +358,24 @@ LoadedExecutable::LoadedExecutable(
           info->output_memory_kinds = std::move(output_memory_kinds);
         }
 
+        if (response.value()->has_donated_input_indices()) {
+          info->donated_input_indices =
+              std::vector<int>(response.value()
+                                   ->donated_input_indices()
+                                   .donated_input_indices()
+                                   .begin(),
+                               response.value()
+                                   ->donated_input_indices()
+                                   .donated_input_indices()
+                                   .end());
+        } else if (response.value()->has_donated_input_indices_error()) {
+          info->donated_input_indices = tsl::StatusFromProto(
+              response.value()->donated_input_indices_error());
+        } else {
+          info->donated_input_indices = absl::UnimplementedError(
+              "IFRT Proxy server did not return donated input indices");
+        }
+
         promise.Set(std::move(info));
       };
   rpc_helper_->LoadedExecutableMetadata(std::move(req))
@@ -420,6 +437,14 @@ std::optional<std::vector<OpSharding>> LoadedExecutable::GetParameterShardings()
     return std::nullopt;
   }
   return (*info)->parameter_shardings;
+}
+
+absl::StatusOr<absl::Span<const int>>
+LoadedExecutable::GetDonatableInputIndices() const {
+  tsl::profiler::TraceMe traceme_ifrt_entrypoint(
+      "IfrtProxyEntrypointLoadedExecutableDonatableInputIndices");
+  TF_ASSIGN_OR_RETURN(auto info, metadata_future_.Await());
+  return info->donated_input_indices;
 }
 
 std::optional<std::vector<OpSharding>> LoadedExecutable::GetOutputShardings()

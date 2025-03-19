@@ -437,13 +437,22 @@ message LoadedExecutableMetadataResponse {
   message ShardingList {
     repeated xla.OpSharding shardings = 1;
   }
-
-  optional ShardingList parameter_shardings = 1;
-  optional ShardingList output_shardings = 2;
-
   message LayoutList {
     repeated xla.LayoutProto layouts = 1;
   }
+  message MemoryKindList {
+    repeated string memory_kinds = 1;
+  }
+  message OutputMemoryKind {
+    tensorflow.StatusProto status = 1;
+    repeated MemoryKindList memory_kind_lists = 2;
+  }
+  message DonatedInputIndices {
+    repeated fixed32 donated_input_indices = 1;
+  }
+
+  optional ShardingList parameter_shardings = 1;
+  optional ShardingList output_shardings = 2;
 
   oneof parameter_layouts {
     LayoutList parameter_layouts_list = 4;
@@ -454,16 +463,12 @@ message LoadedExecutableMetadataResponse {
     tensorflow.StatusProto output_layouts_error = 7;
   }
 
-  message MemoryKindList {
-    repeated string memory_kinds = 1;
-  }
-
-  message OutputMemoryKind {
-    tensorflow.StatusProto status = 1;
-    repeated MemoryKindList memory_kind_lists = 2;
-  }
-
   OutputMemoryKind output_memory_kinds = 3;
+
+  oneof donated_input_indices_oneof {
+    DonatedInputIndices donated_input_indices = 8;
+    tensorflow.StatusProto donated_input_indices_error = 9;
+  }
 }
 
 // Mirrors `LoadedExecutable::Execute`. Returns output array handles and a

@@ -804,6 +804,12 @@ class NanoExecutable final
 
   absl::string_view name() const override { return program_.name(); }
 
+  absl::StatusOr<absl::Span<const int>> GetDonatableInputIndices()
+      const override {
+    return absl::UnimplementedError(
+        "NanoExecutable::GetDonatableInputIndices is not implemented.");
+  }
+
   absl::StatusOr<ExecuteResult> Execute(
       absl::Span<tsl::RCReference<ifrt::Array>> args,
       const ExecuteOptions& options,

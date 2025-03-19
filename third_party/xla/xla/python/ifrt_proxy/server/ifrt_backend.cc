@@ -1504,6 +1504,16 @@ IfrtBackend::HandleLoadedExecutableMetadataRequest(
           tsl::StatusToProto(output_memory_kinds.status());
     }
 
+    auto donated_input_indices = executable->GetDonatableInputIndices();
+    if (donated_input_indices.ok()) {
+      metadata_resp->mutable_donated_input_indices()
+          ->mutable_donated_input_indices()
+          ->Add(donated_input_indices->begin(), donated_input_indices->end());
+    } else {
+      *metadata_resp->mutable_donated_input_indices_error() =
+          tsl::StatusToProto(donated_input_indices.status());
+    }
+
     return ifrt_resp;
   });
 }

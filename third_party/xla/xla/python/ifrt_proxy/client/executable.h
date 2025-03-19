@@ -77,6 +77,8 @@ class LoadedExecutable final
   absl::StatusOr<CompiledMemoryStats> GetCompiledMemoryStats() const override;
 
   std::optional<std::vector<OpSharding>> GetParameterShardings() const override;
+  absl::StatusOr<absl::Span<const int>> GetDonatableInputIndices()
+      const override;
   std::optional<std::vector<OpSharding>> GetOutputShardings() const override;
   absl::StatusOr<std::vector<std::shared_ptr<const xla::PjRtLayout>>>
   GetParameterLayouts() const override;
@@ -122,6 +124,8 @@ class LoadedExecutable final
     absl::node_hash_set<std::string> memory_kinds;
     absl::StatusOr<std::vector<std::vector<absl::string_view>>>
         output_memory_kinds;
+
+    absl::StatusOr<std::vector<int>> donated_input_indices;
   };
 
   void PollLoadedHostCallback(
