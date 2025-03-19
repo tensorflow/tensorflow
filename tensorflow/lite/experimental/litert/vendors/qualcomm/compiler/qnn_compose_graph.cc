@@ -573,7 +573,6 @@ LiteRtStatus ConvertOp(
       LITERT_LOG(LITERT_ERROR,
                  "LiteRT Op Code: %d is not supported in Qualcomm Compiler.",
                  litert_op.Code());
-      return kLiteRtStatusErrorUnsupported;
     }
   }
   return kLiteRtStatusOk;
