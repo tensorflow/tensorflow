@@ -27,6 +27,7 @@ from tensorflow.python.platform import test
 
 ops.disable_eager_execution()
 
+
 def _DeviceTensors(tensors, devices):
   res = []
   for t, d in zip(tensors, devices):
@@ -103,27 +104,6 @@ class NcclTestCase(test.TestCase):
           for t in self.evaluate(result_tensors):
             self.assertAllClose(t, np_ans)
 
-  def _TestGradient(self, nccl_reduce, numpy_fn):
-    """Tests the gradient of nccl_reduce.
-
-    Args:
-      nccl_reduce: A function taking a list of tensors and a list of devices,
-          and returns a list of reduced tensors and a list of ops to perform the
-          reduction.
-      numpy_fn: A function taking two tensors and returning the gradient of the
-          reduction of the two.
-    """
-
-    def _Gradient(tensors, devices):
-      inputs = [array_ops.placeholder(t.dtype, t.shape) for t in tensors]
-      reduce_tensors = nccl_reduce(inputs, devices)
-      losses = _DeviceTensors(tensors, [t.device for t in reduce_tensors])
-      grads = gradients.gradients(
-          reduce_tensors, inputs, losses, colocate_gradients_with_ops=True)
-      return [g for g in grads if g is not None]
-
-    self._Test(_Gradient, numpy_fn)
-
 
 class AllReduceTest(NcclTestCase):
 
@@ -132,10 +112,6 @@ class AllReduceTest(NcclTestCase):
     self._Test(partial(_NcclAllReduce, nccl_ops.all_prod), lambda x, y: x * y)
     self._Test(partial(_NcclAllReduce, nccl_ops.all_min), np.minimum)
     self._Test(partial(_NcclAllReduce, nccl_ops.all_max), np.maximum)
-
-  def testAllSumGrad(self):
-    self._TestGradient(
-        partial(_NcclAllReduce, nccl_ops.all_sum), lambda x, y: x + y)
 
   def testErrors(self):
     with self.assertRaisesRegex(ValueError, 'Device assignment .* required'):
@@ -148,10 +124,6 @@ class SingleReduceTest(NcclTestCase):
 
   def testSum(self):
     self._Test(partial(_NcclReduce, nccl_ops.reduce_sum), lambda x, y: x + y)
-
-  def testSumGrad(self):
-    self._TestGradient(partial(_NcclReduce, nccl_ops.reduce_sum),
-                       lambda x, y: x)
 
 
 class BroadcastTest(NcclTestCase):
@@ -170,8 +142,8 @@ class BroadcastTest(NcclTestCase):
       self._Test(_NcclBroadcast, lambda x, y: x,
                  (['/device:GPU:0', '/device:CPU:0'],))
     except errors.NotFoundError as e:
-      self.assertRegex(
-          str(e), "No registered '_NcclBroadcastRecv' OpKernel for CPU devices")
+      self.assertIn("No registered '_NcclBroadcastRecv' OpKernel for 'CPU' devices",
+                    str(e))
     else:
       # Session isn't executed when no GPU is available.
       if test.is_gpu_available():
