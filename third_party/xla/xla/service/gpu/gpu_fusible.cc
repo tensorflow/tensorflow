@@ -874,13 +874,10 @@ std::vector<HloComputation*> GetFusibleComputations(
       }
     }
   }
-  result.erase(
-      std::remove_if(result.begin(), result.end(),
-                     [&](HloComputation* computation) {
-                       return computation->IsFusionComputation() ||
-                              computations_not_to_fuse.contains(computation);
-                     }),
-      result.end());
+  std::erase_if(result, [&](HloComputation* computation) {
+    return computation->IsFusionComputation() ||
+           computations_not_to_fuse.contains(computation);
+  });
   return result;
 }
 

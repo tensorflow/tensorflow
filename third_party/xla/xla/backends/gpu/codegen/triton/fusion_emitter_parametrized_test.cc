@@ -480,8 +480,7 @@ std::vector<HloOpcode> TestedBinaryElementwise(PrimitiveType element_type) {
       legacy_triton::TritonSupportedBinaryElementwiseUpToFloatNormalization(
           element_type);
   // Comparison requires an additional property.
-  ret.erase(std::remove_if(ret.begin(), ret.end(), HloOpcodeIsComparison),
-            ret.end());
+  std::erase_if(ret, HloOpcodeIsComparison);
   return ret;
 }
 

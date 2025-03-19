@@ -1668,16 +1668,13 @@ void FixAllocationSequenceAfterPostAllocationTransformation(
   VLOG(3) << "Fixing AllocationSequence after post-allocation transformation";
 
   // (1)
-  allocations->erase(
-      std::remove_if(
-          allocations->begin(), allocations->end(),
-          [transformation_info](const std::unique_ptr<Allocation>& allocation) {
-            return std::find(transformation_info.to_be_removed.begin(),
-                             transformation_info.to_be_removed.end(),
-                             allocation->defining_position().instruction) !=
-                   transformation_info.to_be_removed.end();
-          }),
-      allocations->end());
+  std::erase_if(
+      *allocations,
+      [transformation_info](const std::unique_ptr<Allocation>& allocation) {
+        return absl::c_find(transformation_info.to_be_removed,
+                            allocation->defining_position().instruction) !=
+               transformation_info.to_be_removed.end();
+      });
 
   // (2)
   for (auto& allocation : *allocations) {
@@ -2198,11 +2195,8 @@ MsaAlgorithm::GetLinkedAllocationsInAlternateMemory(
     }
   }
 
-  linked_allocations.erase(
-      std::remove_if(
-          linked_allocations.begin(), linked_allocations.end(),
-          [](const auto& allocations) { return allocations.empty(); }),
-      linked_allocations.end());
+  std::erase_if(linked_allocations,
+                [](const auto& allocations) { return allocations.empty(); });
 
   if (VLOG_IS_ON(3)) {
     for (int i = 0; i < linked_allocations.size(); ++i) {

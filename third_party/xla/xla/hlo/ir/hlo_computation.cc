@@ -676,8 +676,8 @@ void HloComputation::Cleanup() {
   DCHECK_GT(instruction_count(), 0);
 
   // Perform a stable compaction with the erase-remove idiom. We have to open
-  // code it (instead of using std::erase(std::remove_if)) because we must
-  // update the reverse mapping.
+  // code it (instead of using std::erase_if) because we must update the reverse
+  // mapping.
   auto is_marked_for_removal = [](const HloInstructionInfo& info) {
     return info.inst() == nullptr;
   };
