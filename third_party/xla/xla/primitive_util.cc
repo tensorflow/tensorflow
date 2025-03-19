@@ -138,6 +138,86 @@ xla::PrimitiveType SignedIntegralTypeForBitWidth(int64_t src_bitwidth) {
   }
 }
 
+bool CastPreservesValues(const PrimitiveType from_type,
+                         const PrimitiveType to_type) {
+  // * -> *
+  if (from_type == to_type) {
+    return true;
+  }
+  // * -> F8E8M0FNU is not possible because zero cannot be represented.
+  if (to_type == F8E8M0FNU) {
+    return false;
+  }
+  // PRED -> *
+  if (from_type == PRED) {
+    return true;
+  }
+  // ~PRED -> PRED is not safe because it drops almost all numbers.
+  if (to_type == PRED) {
+    return false;
+  }
+  // * -> C is safe if the components of * and C can be safely converted.
+  if (IsComplexType(to_type)) {
+    auto from_component_type =
+        IsComplexType(from_type) ? ComplexComponentType(from_type) : from_type;
+    auto to_component_type = ComplexComponentType(to_type);
+    return CastPreservesValues(from_component_type, to_component_type);
+  }
+  // ~C -> C is not safe because it drops imaginary components.
+  if (IsComplexType(from_type)) {
+    return false;
+  }
+  // F -> F is safe if the exponent/significand are preserved and `to_type`
+  // preserves infinities/nans/unsigned zero in `from_type`.
+  if (IsFloatingPointType(from_type) && IsFloatingPointType(to_type)) {
+    return
+        // Target mantissa should be large enough.
+        SignificandWidth(from_type) <= SignificandWidth(to_type) &&
+        // Target exponent should be large enough.
+        ExponentWidth(from_type) <= ExponentWidth(to_type) &&
+        // HasInfinity check.
+        (!HasInfinity(from_type) || HasInfinity(to_type)) &&
+        // HasNaN check.
+        (!HasNaN(from_type) || HasNaN(to_type)) &&
+        // HasNegativeZero check.
+        (!HasNegativeZero(from_type) || HasNegativeZero(to_type)) &&
+        // Minimum denormal should be representable by target type.
+        (UnderflowExponent(from_type) - SignificandWidth(from_type)) >=
+            (UnderflowExponent(to_type) - SignificandWidth(to_type)) &&
+        // Maximum exponent may be larger with custom bias (e.g. F8E4M3B11FNUZ).
+        OverflowExponent(from_type) <= OverflowExponent(to_type);
+  }
+  // F -> I is not safe because it drops fractional numbers.
+  if (!IsIntegralType(from_type)) {
+    return false;
+  }
+  // An n-bit unsigned integer takes on values from [0, 2^n - 1].
+  // An n-bit signed integer takes on values from [-2^(n-1), 2^(n-1) - 1].
+  // from_bits/to_bits considers the number of non-sign bits.
+  const int from_bits = IsSignedIntegralType(from_type)
+                            ? BitWidth(from_type) - 1
+                            : BitWidth(from_type);
+  const int to_bits =
+      IsSignedIntegralType(to_type) ? BitWidth(to_type) - 1 : BitWidth(to_type);
+  // I -> F is safe if the integer can be represented exactly.
+  if (IsFloatingPointType(to_type)) {
+    // In both cases, we need to handle an exponent of n-1.
+    // However, the significand needed to represent signed two's complement
+    // numbers is smaller by one bit because it will only have a non-zero
+    // trailing significand field when the exponent is smaller than n-1.
+    return from_bits <= SignificandWidth(to_type) &&
+           BitWidth(from_type) - 1 < OverflowExponent(to_type);
+  }
+  // S -> U is not safe because it drops negative numbers.
+  if (IsSignedIntegralType(from_type) && IsUnsignedIntegralType(to_type)) {
+    return false;
+  }
+  // I -> I is safe if the integer can be represented exactly; we've already
+  // ensured that signed to unsigned conversions won't happen here.
+  CHECK(IsIntegralType(to_type));
+  return from_bits <= to_bits;
+}
+
 // Class to memoize the computation of
 //   absl::AsciiStrToLower(PrimitiveType_Name(p))
 // for all PrimitiveType values "p"
