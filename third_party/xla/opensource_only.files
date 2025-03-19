@@ -104,6 +104,7 @@ third_party/py/python_init_rules.bzl:
 third_party/py/python_init_toolchains.bzl:
 third_party/py/python_repo.bzl:
 third_party/py/python_wheel.bzl:
+third_party/py/rules_pywrap/def_file_filter_tool.py:
 third_party/pybind11.BUILD:
 third_party/remote_config/BUILD.tpl:
 third_party/remote_config/common.bzl:

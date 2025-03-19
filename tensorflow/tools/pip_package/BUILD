@@ -336,7 +336,9 @@ tf_wheel(
             if_false = [
                 "//tensorflow/python:pywrap_tensorflow_import_lib_file",
             ],
-            if_true = [],
+            if_true = [
+                "//tensorflow/python:pywrap_tensorflow_binaries",
+            ],
         ),
     }) + if_mkl_ml(["@local_xla//xla/tsl/mkl:intel_binary_blob"]),
     xla_aot_compiled = [

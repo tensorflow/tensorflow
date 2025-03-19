@@ -494,20 +494,31 @@ build:avx_linux --copt=-mavx
 build:avx_linux --host_copt=-mavx
 build:avx_win --copt=/arch:AVX
 
+build:win_clang_base --@com_google_protobuf//:use_dlls=True
+build:win_clang_base --@com_google_absl//absl:use_dlls
+build:win_clang_base --linkopt=/demangle:no --host_linkopt=/demangle:no
+build:win_clang_base --linkopt=/errorlimit:0 --host_linkopt=/errorlimit:0
+build:win_clang_base --copt=/clang:-Weverything
+build:win_clang_base --host_copt=/clang:-Weverything
+build:win_clang_base --compiler=clang-cl
+build:win_clang_base --linkopt=/FORCE:MULTIPLE
+build:win_clang_base --host_linkopt=/FORCE:MULTIPLE
+build:win_clang_base --action_env=PATHEXT=.COM;.EXE;.BAT;.CMD;.VBS;.VBE;.JS;.JSE;.WSF;.WSH;.MSC;.PY;.PYW
+test:win_clang_base --linkopt=/FORCE:MULTIPLE
+test:win_clang_base --host_linkopt=/FORCE:MULTIPLE
+test:win_clang_base --build_tests_only --keep_going --test_output=errors --verbose_failures=true --test_summary=short
+
+build:win_clang --config=win_clang_base
+build:win_clang --extra_toolchains=@local_config_cc//:cc-toolchain-x64_windows-clang-cl
+build:win_clang --extra_execution_platforms=//tensorflow/tools/toolchains/win:x64_windows-clang-cl
+build:win_clang --host_platform=//tensorflow/tools/toolchains/win:x64_windows-clang-cl
+
+build:windows_x86_cpu_2022 --config=win_clang_base
 build:windows_x86_cpu_2022 --crosstool_top="//tensorflow/tools/toolchains/win2022/20241118:toolchain"
 build:windows_x86_cpu_2022 --extra_toolchains="//tensorflow/tools/toolchains/win2022/20241118:cc-toolchain-x64_windows-clang-cl"
 build:windows_x86_cpu_2022 --extra_execution_platforms="//tensorflow/tools/toolchains/win2022:windows_ltsc2022_clang"
 build:windows_x86_cpu_2022 --host_platform="//tensorflow/tools/toolchains/win2022:windows_ltsc2022_clang"
 build:windows_x86_cpu_2022 --platforms="//tensorflow/tools/toolchains/win2022:windows_ltsc2022_clang"
-build:windows_x86_cpu_2022 --copt=/clang:-Weverything
-build:windows_x86_cpu_2022 --host_copt=/clang:-Weverything
-build:windows_x86_cpu_2022 --compiler=clang-cl
-build:windows_x86_cpu_2022 --linkopt=/FORCE:MULTIPLE
-build:windows_x86_cpu_2022 --host_linkopt=/FORCE:MULTIPLE
-test:windows_x86_cpu_2022 --linkopt=/FORCE:MULTIPLE
-test:windows_x86_cpu_2022 --host_linkopt=/FORCE:MULTIPLE
-test:windows_x86_cpu_2022 --action_env=PATHEXT=.COM;.EXE;.BAT;.CMD;.VBS;.VBE;.JS;.JSE;.WSF;.WSH;.MSC;.PY;.PYW
-test:windows_x86_cpu_2022 --build_tests_only --keep_going --test_output=errors --verbose_failures=true --test_summary=short
 
 # Options to build TensorFlow 1.x or 2.x.
 # TODO(kanglan): Change v2's define to default behavior
@@ -853,9 +864,8 @@ build:cross_compile_macos_x86_pycpp_test --config=macos_x86_pycpp_test
 build:cross_compile_macos_x86_pycpp_test -//tensorflow/core/kernels:quantized_conv_ops_test -//tensorflow/core/kernels:quantized_matmul_op_test -//tensorflow/python/ops:quantized_conv_ops_test -//tensorflow/tools/graph_transforms:transforms_test -//tensorflow/python/tools:aot_compiled_test
 # WINDOWS X86-64 CPU PYCPP
 build:windows_x86_cpu_2022_pycpp_test_build_opts --copt=/d2ReducedOptimizeHugeFunctions --host_copt=/d2ReducedOptimizeHugeFunctions --dynamic_mode=off
-build:windows_x86_cpu_2022_pycpp_test_build_opts_debug --config=windows_x86_cpu_2022_pycpp_test_build_opts --linkopt=/demangle:no --host_linkopt=/demangle:no --linkopt=/errorlimit:0 --host_linkopt=/errorlimit:0
 test:windows_x86_cpu_2022_pycpp_test_filters --test_tag_filters=-no_windows,-windows_excluded,-no_oss,-tf_tosa,-oss_excluded,-gpu,-tpu,-benchmark-test,-v1only
-test:windows_x86_cpu_2022_pycpp_test_filters --build_tag_filters=-no_windows,-windows_excluded,-no_oss,-tf_tosa,-oss_excluded,-benchmark-test,-v1only
+build:windows_x86_cpu_2022_pycpp_test_filters --build_tag_filters=-no_windows,-windows_excluded,-no_oss,-tf_tosa,-oss_excluded,-benchmark-test,-v1only
 test:windows_x86_cpu_2022_pycpp_test_filters --test_lang_filters=cc,py --test_size_filters=small,medium --test_timeout="300,450,1200,3600"
 test:windows_x86_cpu_2022_pycpp_test_opts --config=windows_x86_cpu_2022_pycpp_test_build_opts --build_tests_only
 test:windows_x86_cpu_2022_pycpp_test --config=windows_x86_cpu_2022_pycpp_test_opts --config=windows_x86_cpu_2022_pycpp_test_filters -- //tensorflow/... //tensorflow/tools/pip_package:import_api_packages_test_cpu -//tensorflow/java/... -//tensorflow/lite/... -//tensorflow/compiler/...

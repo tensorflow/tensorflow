@@ -10,3 +10,9 @@ bzl_library(
     ],
     visibility = ["//visibility:public"],
 )
+
+py_binary(
+    name = "def_file_filter_tool",
+    srcs = [":def_file_filter_tool.py"],
+    visibility = ["//visibility:public"],
+)
