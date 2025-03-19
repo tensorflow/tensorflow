@@ -410,6 +410,7 @@ cc_library(
         "-fno-strict-aliasing",
     ],
     features = ["-use_header_modules"],
+    visibility = internal_visibility([":friends"]),
     deps = [
         ":callback",
         ":py_host_callback_proto_cc",
@@ -456,6 +457,7 @@ cc_library(
         "-fno-strict-aliasing",
     ],
     features = ["-use_header_modules"],
+    visibility = internal_visibility([":friends"]),
     deps = [
         ":nb_numpy",
         ":python_ref_manager",
