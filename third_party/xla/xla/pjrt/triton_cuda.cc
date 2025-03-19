@@ -42,6 +42,7 @@ limitations under the License.
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Target/TargetMachine.h"
 #include "llvm/Target/TargetOptions.h"
+#include "llvm/TargetParser/Triple.h"
 #include "mlir/Conversion/ArithToLLVM/ArithToLLVM.h"
 #include "mlir/Conversion/IndexToLLVM/IndexToLLVM.h"
 #include "mlir/Conversion/LLVMCommon/TypeConverter.h"
@@ -96,7 +97,7 @@ absl::StatusOr<std::unique_ptr<llvm::TargetMachine>> CreateTargetMachine(
   if (target == nullptr) {
     return absl::InternalError(
         absl::StrFormat("Failed to lookup LLVM target based on triple %s: %s",
-                        module->getTargetTriple(), error));
+                        module->getTargetTriple().str(), error));
   }
   llvm::TargetOptions opt;
   if (enable_fp_fusion) {
@@ -109,8 +110,8 @@ absl::StatusOr<std::unique_ptr<llvm::TargetMachine>> CreateTargetMachine(
   opt.MCOptions.AsmVerbose = true;
   opt.MCOptions.PreserveAsmComments = true;
   return std::unique_ptr<llvm::TargetMachine>(target->createTargetMachine(
-      module->getTargetTriple(), arch_name, features, opt, llvm::Reloc::PIC_,
-      std::nullopt, llvm::CodeGenOptLevel::Aggressive));
+      module->getTargetTriple().str(), arch_name, features, opt,
+      llvm::Reloc::PIC_, std::nullopt, llvm::CodeGenOptLevel::Aggressive));
 }
 
 absl::Status LinkLibdevice(llvm::Module* module) {
@@ -172,7 +173,7 @@ absl::StatusOr<std::string> LLVMToPTX(mlir::ModuleOp module,
   // We cap the ISA at 8.4 to align with Triton.
   // See get_features() in triton/third_party/nvidia/backend/compiler.py.
   auto features = cc >= "84" ? "+ptx84" : "+ptx" + cc;
-  llvmModule->setTargetTriple("nvptx64-nvidia-cuda");
+  llvmModule->setTargetTriple(llvm::Triple("nvptx64-nvidia-cuda"));
   static absl::once_flag init_target_once;
   absl::call_once(init_target_once, []() {
     LLVMInitializeNVPTXTarget();
