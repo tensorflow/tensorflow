@@ -55,7 +55,7 @@ class RCReferenceWrapper {
 
   void reset(T* pointer = nullptr) { ref_.reset(pointer); }
   T* release() { return ref_.release(); }
-  void swap(RCReferenceWrapper& other) { std::swap(ref_, other.ref_); }
+  void swap(RCReferenceWrapper& other) noexcept { std::swap(ref_, other.ref_); }
 
   RCReferenceWrapper& operator=(const RCReferenceWrapper& other) = default;
   RCReferenceWrapper& operator=(RCReferenceWrapper&& other) = default;
