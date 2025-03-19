@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include <cstdint>
 #include <cstdlib>
 #include <cstring>
 #include <string>
@@ -29,6 +30,7 @@
 #include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_macros.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_model.h"
+#include "tensorflow/lite/profiling/time.h"
 
 ABSL_FLAG(std::string, graph, "", "Model filename to use for testing.");
 ABSL_FLAG(std::string, dispatch_library_dir, "",
@@ -85,8 +87,11 @@ Expected<void> RunModel() {
                           compiled_model.CreateOutputBuffers(signature_index));
 
   ABSL_LOG(INFO) << "Run model";
+  uint64_t start = tflite::profiling::time::NowMicros();
   auto status =
       compiled_model.Run(signature_index, input_buffers, output_buffers);
+  uint64_t end = tflite::profiling::time::NowMicros();
+  LITERT_LOG(LITERT_INFO, "Run took %lu microseconds", end - start);
 
   ABSL_LOG(INFO) << "Model run completed";
 
