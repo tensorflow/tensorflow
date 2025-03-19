@@ -195,6 +195,9 @@ class DynamicMemcpyThunk : public Thunk {
 
     std::vector<DynamicOffset> src_dynamic_offsets;
     int64_t src_byte_static_offset = 0;
+
+    std::vector<DynamicOffset> dst_dynamic_offsets;
+    int64_t dst_byte_static_offset = 0;
   };
 
   DynamicMemcpyThunk(ThunkInfo thunk_info,

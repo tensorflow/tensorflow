@@ -83,28 +83,62 @@ absl::StatusOr<FusionEmissionResult> DynamicMemcpyFusion::Emit(
     const HloFusionInstruction& fusion) const {
   CHECK_EQ(analysis_.fusion_roots().size(), 1);
 
-  const auto* src_instr = &analysis_.fusion_root(0).GetOperand(0).instruction();
+  auto root = analysis_.fusion_roots().front();
+
+  int source_operand_index;
+  const Shape* copy_shape;
+
+  if (root.opcode() == HloOpcode::kDynamicUpdateSlice) {
+    // We only handle in-place DUS operations (where the source and the
+    // destination are the same). This could be extended to out-of-place DUSes,
+    // but we would either have to issue two memcpys (one of the full original
+    // buffer, one for the updated slice), or three (one for the unchanged
+    // prefix, one for the updated slice, one for the unchanged suffix). The
+    // first option is inefficient, the second option is currently not
+    // implemented: we only support dynamic offsets, no dynamic sizes.
+    TF_ASSIGN_OR_RETURN(BufferAllocation::Slice input,
+                        buffer_assignment_->GetUniqueSlice(
+                            &root.GetOperand(0).instruction(), {}));
+    TF_ASSIGN_OR_RETURN(BufferAllocation::Slice dst,
+                        buffer_assignment_->GetUniqueSlice(&fusion, {}));
+    CHECK_EQ(input, dst);
+
+    source_operand_index = 1;
+    copy_shape = &root.GetOperand(source_operand_index).shape();
+  } else {
+    CHECK_EQ(root.opcode(), HloOpcode::kDynamicSlice);
+    source_operand_index = 0;
+    copy_shape = &root.shape();
+  }
+
+  const auto* src_instr = &root.GetOperand(source_operand_index).instruction();
   TF_ASSIGN_OR_RETURN(BufferAllocation::Slice src_buffer,
                       buffer_assignment_->GetUniqueSlice(src_instr, {}));
   TF_ASSIGN_OR_RETURN(BufferAllocation::Slice dst_buffer,
                       buffer_assignment_->GetUniqueSlice(&fusion, {}));
 
   FusionEmissionResult result;
-  if (src_buffer != dst_buffer) {
-    result.thunks.emplace_back(std::make_unique<DynamicMemcpyThunk>(
-        Thunk::ThunkInfo::WithProfileAnnotation(&fusion),
-        /*source_buffer=*/src_buffer,
-        /*destination_buffer=*/dst_buffer,
-        /*mem_size=*/dst_buffer.size(),
-        /*descriptor=*/descriptor_));
-  }
+  result.thunks.emplace_back(std::make_unique<DynamicMemcpyThunk>(
+      Thunk::ThunkInfo::WithProfileAnnotation(&fusion),
+      /*source_buffer=*/src_buffer,
+      /*destination_buffer=*/dst_buffer,
+      /*mem_size=*/ShapeUtil::ByteSizeOfElements(*copy_shape),
+      /*descriptor=*/descriptor_));
   return result;
 }
 
 namespace {
 
+// Whether the offset in the given dimension of the slice operation is
+// guaranteed to be clamped to 0. This is the case if the slice size is the
+// same as the size of the dimension in the unsliced shape.
 bool IsZeroOffset(const HloInstruction* slice, int dim) {
-  return slice->dynamic_slice_sizes()[dim] ==
+  if (slice->opcode() == HloOpcode::kDynamicSlice) {
+    return slice->dynamic_slice_sizes()[dim] ==
+           slice->operand(0)->shape().dimensions(dim);
+  }
+  CHECK_EQ(slice->opcode(), HloOpcode::kDynamicUpdateSlice);
+  return slice->operand(1)->shape().dimensions(dim) ==
          slice->operand(0)->shape().dimensions(dim);
 }
 
@@ -129,12 +163,22 @@ std::vector<const HloInstruction*> GetCallStack(
   return stack;
 }
 
+int GetFirstOffsetOperandIndex(const HloInstruction* slice) {
+  // dynamic-slice takes the full array, then the offsets.
+  // dynamic-update-slice takes the full array, then the update slice, then the
+  // offsets.
+  CHECK(slice->opcode() == HloOpcode::kDynamicSlice ||
+        slice->opcode() == HloOpcode::kDynamicUpdateSlice);
+  return slice->opcode() == HloOpcode::kDynamicSlice ? 1 : 2;
+}
+
 }  // namespace
 
 bool DynamicMemcpyFusion::IsCandidateFusion(
     const HloFusionInstruction& instruction) {
   const HloInstruction* root = instruction.fused_expression_root();
-  if (root->opcode() != HloOpcode::kDynamicSlice) {
+  if (root->opcode() != HloOpcode::kDynamicSlice &&
+      root->opcode() != HloOpcode::kDynamicUpdateSlice) {
     return false;
   }
 
@@ -151,14 +195,17 @@ bool DynamicMemcpyFusion::IsCandidateFusion(
     return false;
   }
 
-  if (root->operand(0)->opcode() != HloOpcode::kParameter) {
-    VLOG(5) << "Not a slice of a parameter.";
-    return false;
+  int first_offset_index = GetFirstOffsetOperandIndex(root);
+  for (int i = 0; i < first_offset_index; ++i) {
+    if (root->operand(i)->opcode() != HloOpcode::kParameter) {
+      VLOG(5) << "Not a slice of a parameter.";
+      return false;
+    }
   }
 
   int rank = root->operand(0)->shape().rank();
   for (int i = 0; i < rank; ++i) {
-    auto* operand = root->operand(i + 1);
+    auto* operand = root->operand(i + first_offset_index);
     if (!IsZeroOffset(root, i) && operand->opcode() != HloOpcode::kConstant &&
         operand->opcode() != HloOpcode::kParameter) {
       VLOG(5) << "Dimension " << i << " is not a constant or a parameter.";
@@ -186,13 +233,20 @@ DynamicMemcpyFusion::GetMemcpyDescriptorForFusion(
     return std::nullopt;
   }
 
+  int first_offset_index = GetFirstOffsetOperandIndex(slice);
   int rank = slice_input_shape.rank();
   auto stack = GetCallStack(fusion, call_graph);
 
   VLOG(5) << "Preconditions passed, trying to build a memcpy descriptor.";
   DynamicMemcpyThunk::MemcpyDescriptor descriptor;
+  auto& dynamic_offsets = slice->opcode() == HloOpcode::kDynamicSlice
+                              ? descriptor.src_dynamic_offsets
+                              : descriptor.dst_dynamic_offsets;
+  auto& static_offset = slice->opcode() == HloOpcode::kDynamicSlice
+                            ? descriptor.src_byte_static_offset
+                            : descriptor.dst_byte_static_offset;
   for (int i = 0; i < rank; ++i) {
-    auto* operand = slice->operand(i + 1);
+    auto* operand = slice->operand(i + first_offset_index);
     // If this dimension's offset is always clamped to 0, we can skip it.
     if (IsZeroOffset(slice, i)) {
       VLOG(5) << "Offset for dimension " << i << " is clamped to 0.";
@@ -208,7 +262,7 @@ DynamicMemcpyFusion::GetMemcpyDescriptorForFusion(
 
       VLOG(5) << "Offset for dimension " << i << " is constant: " << *value
               << ".";
-      descriptor.src_byte_static_offset += *value * (*strides)[i];
+      static_offset += *value * (*strides)[i];
       continue;
     }
 
@@ -230,7 +284,7 @@ DynamicMemcpyFusion::GetMemcpyDescriptorForFusion(
     }
 
     VLOG(5) << "Offset for dimension " << i << " is dynamic.";
-    descriptor.src_dynamic_offsets.emplace_back() = {
+    dynamic_offsets.emplace_back() = {
         functional_dependency->loop, functional_dependency->induction_var,
         functional_dependency->derived_value,
         /*dimension_size=*/slice_input_shape.dimensions(i),
