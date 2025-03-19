@@ -126,8 +126,6 @@ class Array final : public llvm::RTTIExtends<Array, xla::ifrt::Array> {
   };
 
   absl::StatusOr<std::vector<tsl::RCReference<xla::ifrt::Array>>>
-  DisassembleIntoSingleDeviceArrays(ArrayCopySemantics semantics) override;
-  absl::StatusOr<std::vector<tsl::RCReference<xla::ifrt::Array>>>
   DisassembleIntoSingleDeviceArrays(
       ArrayCopySemantics array_copy_semantics,
       SingleDeviceShardSemantics single_device_shard_semantics) override;

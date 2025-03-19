@@ -604,12 +604,6 @@ Array::RemapArrays(xla::ifrt::Client* client,
 }
 
 absl::StatusOr<std::vector<tsl::RCReference<xla::ifrt::Array>>>
-Array::DisassembleIntoSingleDeviceArrays(ArrayCopySemantics semantics) {
-  return DisassembleIntoSingleDeviceArrays(
-      semantics, SingleDeviceShardSemantics::kAllShards);
-}
-
-absl::StatusOr<std::vector<tsl::RCReference<xla::ifrt::Array>>>
 Array::DisassembleIntoSingleDeviceArrays(
     ArrayCopySemantics array_copy_semantics,
     SingleDeviceShardSemantics single_device_shard_semantics) {

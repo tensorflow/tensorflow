@@ -82,10 +82,6 @@ MockArray::MockArray(tsl::RCReference<xla::ifrt::Array> delegated)
           [this]() -> absl::StatusOr<std::shared_ptr<const PjRtLayout>> {
             return delegated_->layout();
           });
-  ON_CALL(*this, DisassembleIntoSingleDeviceArrays(_))
-      .WillByDefault([this](ArrayCopySemantics semantics) {
-        return delegated_->DisassembleIntoSingleDeviceArrays(semantics);
-      });
   ON_CALL(*this, DisassembleIntoSingleDeviceArrays(_, _))
       .WillByDefault(
           [this](ArrayCopySemantics array_copy_semantics,

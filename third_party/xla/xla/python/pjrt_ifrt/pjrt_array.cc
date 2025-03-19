@@ -293,13 +293,6 @@ PjRtArray::PjRtArray(PjRtCompatibleClient* client, DType dtype,
       layout_(std::move(layout)) {}
 
 absl::StatusOr<std::vector<tsl::RCReference<Array>>>
-PjRtArray::DisassembleIntoSingleDeviceArrays(ArrayCopySemantics semantics) {
-  DCHECK(this);
-  return DisassembleIntoSingleDeviceArrays(
-      semantics, SingleDeviceShardSemantics::kAddressableShards);
-}
-
-absl::StatusOr<std::vector<tsl::RCReference<Array>>>
 PjRtArray::DisassembleIntoSingleDeviceArrays(
     ArrayCopySemantics semantics,
     SingleDeviceShardSemantics single_device_shard_semantics) {

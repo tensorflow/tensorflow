@@ -82,9 +82,6 @@ class MockArray : public llvm::RTTIExtends<MockArray, Array> {
   MOCK_METHOD(absl::StatusOr<std::shared_ptr<const PjRtLayout>>, layout, (),
               (const, final));
   MOCK_METHOD(absl::StatusOr<std::vector<tsl::RCReference<Array>>>,
-              DisassembleIntoSingleDeviceArrays, (ArrayCopySemantics semantics),
-              (final));
-  MOCK_METHOD(absl::StatusOr<std::vector<tsl::RCReference<Array>>>,
               DisassembleIntoSingleDeviceArrays,
               (ArrayCopySemantics array_copy_semantics,
                SingleDeviceShardSemantics single_device_shard_semantics),

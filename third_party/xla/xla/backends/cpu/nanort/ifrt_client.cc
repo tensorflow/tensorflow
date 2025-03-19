@@ -393,18 +393,11 @@ class NanoArray final : public NanoValue<NanoArray, ifrt::Array> {
 
   absl::StatusOr<std::vector<tsl::RCReference<Array>>>
   DisassembleIntoSingleDeviceArrays(
-      ifrt::ArrayCopySemantics semantics) override {
-    TF_RETURN_IF_ERROR(ValidateNotDeleted());
-    TF_ASSIGN_OR_RETURN(auto shards, Disassemble());
-    return std::vector<tsl::RCReference<Array>>(shards.begin(), shards.end());
-  }
-
-  absl::StatusOr<std::vector<tsl::RCReference<Array>>>
-  DisassembleIntoSingleDeviceArrays(
       ifrt::ArrayCopySemantics array_copy_semantics,
       ifrt::SingleDeviceShardSemantics single_device_shard_semantics) override {
     TF_RETURN_IF_ERROR(ValidateNotDeleted());
-    return DisassembleIntoSingleDeviceArrays(array_copy_semantics);
+    TF_ASSIGN_OR_RETURN(auto shards, Disassemble());
+    return std::vector<tsl::RCReference<Array>>(shards.begin(), shards.end());
   }
 
   absl::StatusOr<tsl::RCReference<Array>> FullyReplicatedShard(
@@ -615,16 +608,10 @@ class ShardedNanoArray final : public NanoValue<ShardedNanoArray, ifrt::Array> {
 
   absl::StatusOr<std::vector<tsl::RCReference<Array>>>
   DisassembleIntoSingleDeviceArrays(
-      ifrt::ArrayCopySemantics semantics) override {
-    TF_RETURN_IF_ERROR(ValidateNotDeleted());
-    return std::vector<tsl::RCReference<Array>>(shards_.begin(), shards_.end());
-  }
-
-  absl::StatusOr<std::vector<tsl::RCReference<Array>>>
-  DisassembleIntoSingleDeviceArrays(
       ifrt::ArrayCopySemantics array_copy_semantics,
       ifrt::SingleDeviceShardSemantics single_device_shard_semantics) override {
-    return DisassembleIntoSingleDeviceArrays(array_copy_semantics);
+    TF_RETURN_IF_ERROR(ValidateNotDeleted());
+    return std::vector<tsl::RCReference<Array>>(shards_.begin(), shards_.end());
   }
 
   absl::StatusOr<tsl::RCReference<Array>> FullyReplicatedShard(
