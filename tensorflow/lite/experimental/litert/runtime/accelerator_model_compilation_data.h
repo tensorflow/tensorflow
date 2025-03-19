@@ -12,16 +12,15 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef TENSORFLOW_LITE_EXPERIMENTAL_LITERT_CORE_ACCELERATOR_MODEL_COMPILATION_DATA_H_
-#define TENSORFLOW_LITE_EXPERIMENTAL_LITERT_CORE_ACCELERATOR_MODEL_COMPILATION_DATA_H_
+#ifndef TENSORFLOW_LITE_EXPERIMENTAL_LITERT_RUNTIME_ACCELERATOR_MODEL_COMPILATION_DATA_H_
+#define TENSORFLOW_LITE_EXPERIMENTAL_LITERT_RUNTIME_ACCELERATOR_MODEL_COMPILATION_DATA_H_
 
 #include <memory>
 
-#include "absl/strings/string_view.h"
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
+#include "tensorflow/lite/experimental/litert/cc/litert_accelerator_compilation_options.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_macros.h"
-#include "tensorflow/lite/experimental/litert/core/accelerator.h"
 
 namespace litert::internal {
 
@@ -30,28 +29,17 @@ namespace litert::internal {
 //
 // These options are automatically added to the compilation options list
 // during the creation of the compiled model.
-struct ModelCompilationData : public LiteRtAcceleratorCompilationOptionsHeader {
-  static constexpr absl::string_view kIdentifier =
-      "environment-compilation-options";
+struct ModelCompilationData {
   static constexpr LiteRtApiVersion kVersion = {1, 0, 0};
+  static constexpr auto kIdentifier = "environment-compilation-options";
 
-  struct Deleter {
-    void operator()(ModelCompilationData* options) { delete options; }
-  };
-
-  using Ptr = std::unique_ptr<ModelCompilationData, Deleter>;
-
-  static Expected<Ptr> Create() {
-    Ptr data(new ModelCompilationData());
-    LITERT_RETURN_IF_ERROR(LiteRtSetAcceleratorCompilationOptionsIdentifier(
-        data.get(), kIdentifier.data()));
-    LITERT_RETURN_IF_ERROR(
-        LiteRtSetAcceleratorCompilationOptionsVersion(data.get(), kVersion));
-    LITERT_RETURN_IF_ERROR(LiteRtSetAcceleratorCompilationOptionsDestructor(
-        data.get(), [](LiteRtAcceleratorCompilationOptionsHeader* options) {
-          Deleter()(reinterpret_cast<ModelCompilationData*>(options));
-        }));
-    return data;
+  static Expected<AcceleratorCompilationOptions> CreateOptions() {
+    auto* payload_data = new ModelCompilationData;
+    auto payload_destructor = [](void* payload_data) {
+      delete reinterpret_cast<ModelCompilationData*>(payload_data);
+    };
+    return AcceleratorCompilationOptions::Create(
+        kVersion, kIdentifier, payload_data, payload_destructor);
   }
 
   // Pointer to the start of the model file memory allocation.
@@ -63,4 +51,4 @@ struct ModelCompilationData : public LiteRtAcceleratorCompilationOptionsHeader {
 
 }  // namespace litert::internal
 
-#endif  // TENSORFLOW_LITE_EXPERIMENTAL_LITERT_CORE_ACCELERATOR_MODEL_COMPILATION_DATA_H_
+#endif  // TENSORFLOW_LITE_EXPERIMENTAL_LITERT_RUNTIME_ACCELERATOR_MODEL_COMPILATION_DATA_H_

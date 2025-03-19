@@ -27,7 +27,10 @@
 #include "tensorflow/lite/experimental/litert/c/litert_tensor_buffer.h"
 #include "tensorflow/lite/experimental/litert/c/litert_tensor_buffer_requirements.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
+#include "tensorflow/lite/experimental/litert/cc/litert_macros.h"
+#include "tensorflow/lite/experimental/litert/cc/litert_shared_library.h"
 #include "tensorflow/lite/experimental/litert/core/dynamic_loading.h"
+#include "tensorflow/lite/experimental/litert/core/version.h"
 #include "tensorflow/lite/experimental/litert/vendors/c/litert_dispatch_api.h"
 
 #define INVOKE_FUNC(function, ...)                                \
@@ -65,6 +68,7 @@
 
 namespace {
 
+litert::SharedLibrary* DispatchSharedLibrary = nullptr;
 bool IsTheApiInitialized = false;
 LiteRtDispatchApi TheApi = {
     /*.version=*/{/*.major=*/0, /*.minor=*/0, /*.patch=*/0},
@@ -110,44 +114,34 @@ LiteRtStatus LiteRtDispatchInitialize(const LiteRtDispatchOption* options,
 
   // TODO(piyu): support Android systems where libraries are not unpacked in the
   // system directory.
-  auto shared_lib_path = GetSharedLibraryPath(options, num_options);
-  if (!shared_lib_path) {
-    return kLiteRtStatusErrorNotFound;
-  }
+  LITERT_ASSIGN_OR_RETURN(auto shared_lib_path,
+                          GetSharedLibraryPath(options, num_options));
+
   LITERT_LOG(LITERT_INFO, "Loading shared library: %s",
-             shared_lib_path.Value().c_str());
-  void* lib_handle =
-      ::dlopen(shared_lib_path.Value().c_str(), RTLD_NOW | RTLD_LOCAL);
-  if (!lib_handle) {
-    LITERT_LOG(LITERT_ERROR, "Failed to load dispatch library: %s %s",
-               ::dlerror(), shared_lib_path.Value().data());
-    return kLiteRtStatusErrorRuntimeFailure;
+             shared_lib_path.c_str());
+
+  if (!DispatchSharedLibrary) {
+    DispatchSharedLibrary = new litert::SharedLibrary();
   }
+
+  LITERT_ASSIGN_OR_RETURN(
+      *DispatchSharedLibrary,
+      litert::SharedLibrary::Load(shared_lib_path,
+                                  litert::RtldFlags::Now().Local()));
 
   using LiteRtDispatchGetApi_t = LiteRtStatus (*)(LiteRtDispatchApi*);
-  auto LiteRtDispatchGetApi = reinterpret_cast<LiteRtDispatchGetApi_t>(
-      ::dlsym(lib_handle, "LiteRtDispatchGetApi"));
-  if (!LiteRtDispatchGetApi) {
-    ::dlclose(lib_handle);
-    LITERT_LOG(LITERT_ERROR, "LiteRtDispatchGetApi not found");
-    return kLiteRtStatusErrorRuntimeFailure;
-  }
+  LITERT_ASSIGN_OR_RETURN(
+      auto LiteRtDispatchGetApi,
+      DispatchSharedLibrary->LookupSymbol<LiteRtDispatchGetApi_t>(
+          "LiteRtDispatchGetApi"));
 
   if (auto status = LiteRtDispatchGetApi(&TheApi); status != kLiteRtStatusOk) {
-    ::dlclose(lib_handle);
     return status;
   }
 
-  if (TheApi.version.major != LITERT_API_VERSION_MAJOR) {
-    ::dlclose(lib_handle);
-    LITERT_LOG(
-        LITERT_ERROR,
-        "Unsupported Dispatch API runtime version, found version %d.%d.%d and "
-        "expected version %d.%d.%d",
-        TheApi.version.major, TheApi.version.minor, TheApi.version.patch,
-        LITERT_API_VERSION_MAJOR, LITERT_API_VERSION_MINOR,
-        LITERT_API_VERSION_PATCH);
-    return kLiteRtStatusErrorRuntimeFailure;
+  if (!litert::internal::IsSameVersionAsRuntime(TheApi.version)) {
+    LITERT_LOG(LITERT_ERROR, "Unsupported dispatch runtime version");
+    return kLiteRtStatusErrorWrongVersion;
   }
 
   auto status = Initialize(options, num_options);

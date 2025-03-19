@@ -55,6 +55,7 @@
 #include "tensorflow/lite/experimental/litert/core/model/ir_allocator.h"
 #include "tensorflow/lite/experimental/litert/core/model/model.h"
 #include "tensorflow/lite/experimental/litert/core/util/flatbuffer_tools.h"
+#include "tensorflow/lite/experimental/litert/core/version.h"
 #include "tensorflow/lite/experimental/litert/vendors/c/litert_compiler_plugin.h"
 #include "tensorflow/lite/experimental/litert/vendors/c/litert_compiler_plugin_api.h"
 
@@ -235,16 +236,9 @@ Expected<CompilerPlugin> CompilerPlugin::LoadPlugin(
     return api_version.Error();
   }
 
-  if (api_version->major != LITERT_API_VERSION_MAJOR) {
-    LITERT_LOG(
-        LITERT_ERROR,
-        "Unsupported Compiler Plugin version, found version %d.%d.%d and "
-        "expected version %d.%d.%d",
-        api_version.Value().major, api_version.Value().minor,
-        api_version.Value().patch, LITERT_API_VERSION_MAJOR,
-        LITERT_API_VERSION_MINOR, LITERT_API_VERSION_PATCH);
-    return Unexpected(kLiteRtStatusErrorRuntimeFailure);
-  }
+  LITERT_RETURN_IF_ERROR(litert::internal::IsSameVersionAsRuntime(*api_version),
+                         Unexpected(kLiteRtStatusErrorWrongVersion,
+                                    "Unsupported compiler plugin version"));
 
   // This should never change throughout the lifetime of the compiler
   // plugin so save to avoid recalling.

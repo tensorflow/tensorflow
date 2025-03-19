@@ -15,8 +15,8 @@
 #ifndef TENSORFLOW_LITE_EXPERIMENTAL_LITERT_RUNTIME_COMPILATION_OPTIONS_H_
 #define TENSORFLOW_LITE_EXPERIMENTAL_LITERT_RUNTIME_COMPILATION_OPTIONS_H_
 
-#include "tensorflow/lite/experimental/litert/c/litert_accelerator_options.h"
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
+#include "tensorflow/lite/experimental/litert/cc/litert_accelerator_compilation_options.h"
 
 struct LiteRtCompilationOptionsT {
   // This should be updated every time a field is added/edited.
@@ -28,7 +28,7 @@ struct LiteRtCompilationOptionsT {
   // Note: Changing a default value does not impact the version.
   LiteRtApiVersion version = {.major = 0, .minor = 0, .patch = 1};
   LiteRtHwAcceleratorSet hardware_accelerators = kLiteRtHwAcceleratorNone;
-  LiteRtAcceleratorCompilationOptions accelerator_compilation_options = nullptr;
+  litert::AcceleratorCompilationOptions accelerator_compilation_options;
 };
 
 #endif  // TENSORFLOW_LITE_EXPERIMENTAL_LITERT_RUNTIME_COMPILATION_OPTIONS_H_

@@ -23,15 +23,15 @@
 #include <vector>
 
 #include "absl/cleanup/cleanup.h"
-#include "tensorflow/lite/experimental/litert/c/litert_accelerator_options.h"
+#include "tensorflow/lite/experimental/litert/c/litert_accelerator_compilation_options.h"
 #include "tensorflow/lite/experimental/litert/c/litert_environment.h"
 #include "tensorflow/lite/experimental/litert/c/litert_environment_options.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_event.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_macros.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_model.h"
-#include "tensorflow/lite/experimental/litert/core/accelerator.h"
-#include "tensorflow/lite/experimental/litert/core/accelerator_model_compilation_data.h"
 #include "tensorflow/lite/experimental/litert/core/util/flatbuffer_tools.h"
+#include "tensorflow/lite/experimental/litert/runtime/accelerator.h"
+#include "tensorflow/lite/experimental/litert/runtime/accelerator_model_compilation_data.h"
 
 #if defined(__ANDROID__)
 #include <android/hardware_buffer.h>
@@ -160,29 +160,29 @@ namespace {
 class ScopedCompilationOptionsModifier {
  public:
   explicit ScopedCompilationOptionsModifier(
-      LiteRtCompilationOptions compilation_options) {
-    last_accelerator_option_ptr_ =
-        &compilation_options->accelerator_compilation_options;
-    while (*last_accelerator_option_ptr_) {
-      last_accelerator_option_ptr_ = &((*last_accelerator_option_ptr_)->next);
-    }
-  }
+      LiteRtCompilationOptions compilation_options)
+      : accelerator_options_(
+            compilation_options->accelerator_compilation_options) {}
 
   ~ScopedCompilationOptionsModifier() {
     // Remove any option that was appended during the lifetime of this object.
-    if (*last_accelerator_option_ptr_) {
-      LiteRtDestroyAcceleratorCompilationOptions(*last_accelerator_option_ptr_);
-      *last_accelerator_option_ptr_ = nullptr;
+    while (--num_appended_options_ >= 0) {
+      accelerator_options_.Pop();
     }
   }
 
-  LiteRtStatus Append(LiteRtAcceleratorCompilationOptions accelerator_options) {
-    return LiteRtAppendAcceleratorCompilationOptions(
-        last_accelerator_option_ptr_, accelerator_options);
+  Expected<void> Append(
+      litert::AcceleratorCompilationOptions&& accelerator_options) {
+    auto status = accelerator_options_.Append(std::move(accelerator_options));
+    if (status) {
+      ++num_appended_options_;
+    }
+    return status;
   }
 
  private:
-  LiteRtAcceleratorCompilationOptions* last_accelerator_option_ptr_;
+  litert::AcceleratorCompilationOptions& accelerator_options_;
+  int num_appended_options_ = 0;
 };
 
 }  // namespace
@@ -221,8 +221,14 @@ Expected<LiteRtCompiledModelT::Ptr> LiteRtCompiledModelT::Create(
 
   // Add a new link in the accelerator compilation options that holds some data
   // that is computed during model compilation.
-  LITERT_ASSIGN_OR_RETURN(auto model_compilation_data,
-                          litert::internal::ModelCompilationData::Create());
+  LITERT_ASSIGN_OR_RETURN(
+      auto model_compilation_data_options,
+      litert::internal::ModelCompilationData::CreateOptions());
+
+  LITERT_ASSIGN_OR_RETURN(
+      auto* model_compilation_data,
+      model_compilation_data_options
+          .GetData<litert::internal::ModelCompilationData>());
   model_compilation_data->allocation_base = compiled_model->GetModelBase();
 
   // Temporarily append model_compilation_data to the jit_compilation_options,
@@ -230,7 +236,7 @@ Expected<LiteRtCompiledModelT::Ptr> LiteRtCompiledModelT::Create(
   // jit_compilation_options and may use it for other purposes.
   ScopedCompilationOptionsModifier scoped_modifier(jit_compilation_options);
   LITERT_RETURN_IF_ERROR(
-      scoped_modifier.Append(model_compilation_data.release()));
+      scoped_modifier.Append(std::move(model_compilation_data_options)));
 
   // Retrieve the accelerator options list.
   LiteRtAcceleratorCompilationOptions accelerator_options = nullptr;

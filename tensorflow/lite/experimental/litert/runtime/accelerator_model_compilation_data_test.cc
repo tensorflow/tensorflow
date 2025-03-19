@@ -12,34 +12,30 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "tensorflow/lite/experimental/litert/core/accelerator_model_compilation_data.h"
+#include "tensorflow/lite/experimental/litert/runtime/accelerator_model_compilation_data.h"
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "tensorflow/lite/experimental/litert/c/litert_accelerator_options.h"
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
+#include "tensorflow/lite/experimental/litert/core/version.h"
 #include "tensorflow/lite/experimental/litert/test/matchers.h"
 
 namespace {
+
 using testing::Eq;
 using testing::StrEq;
 
 TEST(ModelCompilationDataTest, CreateSetsUpAllNecessaryFields) {
-  LITERT_ASSERT_OK_AND_ASSIGN(auto ptr,
-                              litert::internal::ModelCompilationData::Create());
+  LITERT_ASSERT_OK_AND_ASSIGN(
+      auto options, litert::internal::ModelCompilationData::CreateOptions());
 
-  const char* identifier = nullptr;
-  LITERT_EXPECT_OK(
-      LiteRtGetAcceleratorCompilationOptionsIdentifier(ptr.get(), &identifier));
+  LITERT_ASSERT_OK_AND_ASSIGN(auto identifier, options.GetIdentifier());
   EXPECT_THAT(identifier,
               StrEq(litert::internal::ModelCompilationData::kIdentifier));
 
-  LiteRtApiVersion version;
-  LITERT_EXPECT_OK(
-      LiteRtGetAcceleratorCompilationOptionsVersion(ptr.get(), &version));
-  EXPECT_THAT(LiteRtCompareApiVersion(
-                  version, litert::internal::ModelCompilationData::kVersion),
-              Eq(0));
+  LITERT_ASSERT_OK_AND_ASSIGN(auto version, options.GetVersion());
+  EXPECT_TRUE(litert::internal::IsSameVersion(
+      version, litert::internal::ModelCompilationData::kVersion));
 }
 
 }  // namespace

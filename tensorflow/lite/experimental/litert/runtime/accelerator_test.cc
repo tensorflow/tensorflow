@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "tensorflow/lite/experimental/litert/core/accelerator.h"
+#include "tensorflow/lite/experimental/litert/runtime/accelerator.h"
 
 #include <gtest/gtest.h>
 

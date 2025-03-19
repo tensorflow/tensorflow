@@ -26,7 +26,7 @@ cc_library(
     deps = [
         "//tensorflow/lite/c:c_api_types",
         "//tensorflow/lite/experimental/litert/c:litert_accelerator",
-        "//tensorflow/lite/experimental/litert/c:litert_accelerator_options",
+        "//tensorflow/lite/experimental/litert/c:litert_accelerator_compilation_options",
         "//tensorflow/lite/experimental/litert/c:litert_accelerator_registration",
         "//tensorflow/lite/experimental/litert/c:litert_common",
         "//tensorflow/lite/experimental/litert/c:litert_dispatch_delegate",
@@ -34,8 +34,8 @@ cc_library(
         "//tensorflow/lite/experimental/litert/cc:litert_dispatch_delegate",
         "//tensorflow/lite/experimental/litert/cc:litert_expected",
         "//tensorflow/lite/experimental/litert/cc:litert_macros",
-        "//tensorflow/lite/experimental/litert/core:accelerator_model_compilation_data",
         "//tensorflow/lite/experimental/litert/core:environment",
+        "//tensorflow/lite/experimental/litert/runtime:accelerator_model_compilation_data",
         "@com_google_absl//absl/strings:string_view",
     ],
 )

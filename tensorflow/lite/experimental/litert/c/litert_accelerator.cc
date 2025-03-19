@@ -17,8 +17,8 @@
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
 #include "tensorflow/lite/experimental/litert/c/litert_environment.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
-#include "tensorflow/lite/experimental/litert/core/accelerator.h"
 #include "tensorflow/lite/experimental/litert/core/environment.h"
+#include "tensorflow/lite/experimental/litert/runtime/accelerator.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -27,13 +27,9 @@ extern "C" {
 // Gets the number of accelerators registered to LiteRT.
 LiteRtStatus LiteRtGetNumAccelerators(LiteRtEnvironment environment,
                                       LiteRtParamIndex* num_accelerators) {
-  if (!num_accelerators) {
+  if (!environment || !num_accelerators) {
     return kLiteRtStatusErrorInvalidArgument;
   }
-  if (!environment) {
-    return kLiteRtStatusErrorInvalidArgument;
-  }
-
   *num_accelerators = environment->GetAcceleratorRegistry().size();
   return kLiteRtStatusOk;
 }
@@ -43,13 +39,9 @@ LiteRtStatus LiteRtGetAccelerator(LiteRtEnvironment environment,
                                   LiteRtParamIndex index,
 
                                   LiteRtAccelerator* accelerator) {
-  if (!accelerator) {
+  if (!environment || !accelerator) {
     return kLiteRtStatusErrorInvalidArgument;
   }
-  if (!environment) {
-    return kLiteRtStatusErrorInvalidArgument;
-  }
-
   litert::Expected<LiteRtAccelerator> registered_accelerator =
       environment->GetAcceleratorRegistry().Get(index);
   if (!registered_accelerator.HasValue()) {
@@ -61,13 +53,7 @@ LiteRtStatus LiteRtGetAccelerator(LiteRtEnvironment environment,
 
 LiteRtStatus LiteRtGetAcceleratorName(LiteRtAccelerator accelerator,
                                       char const** name) {
-  if (!accelerator) {
-    return kLiteRtStatusErrorInvalidArgument;
-  }
-  if (!accelerator->GetName) {
-    return kLiteRtStatusErrorInvalidArgument;
-  }
-  if (!name) {
+  if (!accelerator || !accelerator->GetName || !name) {
     return kLiteRtStatusErrorInvalidArgument;
   }
   return accelerator->GetName(accelerator, name);
@@ -75,16 +61,9 @@ LiteRtStatus LiteRtGetAcceleratorName(LiteRtAccelerator accelerator,
 
 LiteRtStatus LiteRtGetAcceleratorId(LiteRtAccelerator accelerator,
                                     LiteRtAcceleratorId* id) {
-  if (!accelerator) {
+  if (!accelerator || !accelerator->env || !id) {
     return kLiteRtStatusErrorInvalidArgument;
   }
-  if (!id) {
-    return kLiteRtStatusErrorInvalidArgument;
-  }
-  if (!accelerator->env) {
-    return kLiteRtStatusErrorInvalidArgument;
-  }
-
   litert::Expected<LiteRtParamIndex> index =
       accelerator->env->GetAcceleratorRegistry().FindAcceleratorIndex(
           accelerator);
@@ -97,13 +76,7 @@ LiteRtStatus LiteRtGetAcceleratorId(LiteRtAccelerator accelerator,
 
 LiteRtStatus LiteRtGetAcceleratorVersion(LiteRtAccelerator accelerator,
                                          LiteRtApiVersion* version) {
-  if (!accelerator) {
-    return kLiteRtStatusErrorInvalidArgument;
-  }
-  if (!accelerator->GetVersion) {
-    return kLiteRtStatusErrorInvalidArgument;
-  }
-  if (!version) {
+  if (!accelerator || !accelerator->GetVersion || !version) {
     return kLiteRtStatusErrorInvalidArgument;
   }
   return accelerator->GetVersion(accelerator, version);
@@ -111,13 +84,7 @@ LiteRtStatus LiteRtGetAcceleratorVersion(LiteRtAccelerator accelerator,
 
 LiteRtStatus LiteRtGetAcceleratorHardwareSupport(
     LiteRtAccelerator accelerator, LiteRtHwAcceleratorSet* supported_hardware) {
-  if (!accelerator) {
-    return kLiteRtStatusErrorInvalidArgument;
-  }
-  if (!accelerator->GetHardwareSupport) {
-    return kLiteRtStatusErrorInvalidArgument;
-  }
-  if (!supported_hardware) {
+  if (!accelerator || !accelerator->GetHardwareSupport || !supported_hardware) {
     return kLiteRtStatusErrorInvalidArgument;
   }
   return accelerator->GetHardwareSupport(accelerator, supported_hardware);

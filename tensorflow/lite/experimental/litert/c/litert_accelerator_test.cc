@@ -22,7 +22,7 @@
 #include "tensorflow/lite/experimental/litert/c/litert_accelerator_registration.h"
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
 #include "tensorflow/lite/experimental/litert/c/litert_environment.h"
-#include "tensorflow/lite/experimental/litert/core/accelerator.h"
+#include "tensorflow/lite/experimental/litert/runtime/accelerator.h"
 
 #define LITERT_ENSURE_OK(expr)       \
   do {                               \

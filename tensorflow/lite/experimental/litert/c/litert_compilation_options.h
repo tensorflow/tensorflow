@@ -15,7 +15,7 @@
 #ifndef TENSORFLOW_LITE_EXPERIMENTAL_LITERT_C_LITERT_COMPILATION_OPTIONS_H_
 #define TENSORFLOW_LITE_EXPERIMENTAL_LITERT_C_LITERT_COMPILATION_OPTIONS_H_
 
-#include "tensorflow/lite/experimental/litert/c/litert_accelerator_options.h"
+#include "tensorflow/lite/experimental/litert/c/litert_accelerator_compilation_options.h"
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
 
 #ifdef __cplusplus

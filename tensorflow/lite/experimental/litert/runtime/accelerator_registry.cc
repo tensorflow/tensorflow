@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "tensorflow/lite/experimental/litert/core/accelerator.h"
+#include "tensorflow/lite/experimental/litert/runtime/accelerator_registry.h"
 
 #include <cstddef>
 #include <utility>
@@ -64,37 +64,3 @@ void AcceleratorRegistry::TakeOwnershipOfSharedLibrary(SharedLibrary lib) {
 }
 
 }  // namespace litert::internal
-
-extern "C" {
-
-LiteRtStatus LiteRtSetAcceleratorCompilationOptionsDestructor(
-    LiteRtAcceleratorCompilationOptionsHeader* options,
-    void (*Destructor)(LiteRtAcceleratorCompilationOptionsHeader*)) {
-  if (!options) {
-    return kLiteRtStatusErrorInvalidArgument;
-  }
-  options->ReleaseData = Destructor;
-  return kLiteRtStatusOk;
-}
-
-LiteRtStatus LiteRtSetAcceleratorCompilationOptionsIdentifier(
-    LiteRtAcceleratorCompilationOptionsHeader* options,
-    const char* identifier) {
-  if (!options) {
-    return kLiteRtStatusErrorInvalidArgument;
-  }
-  options->identifier = identifier;
-  return kLiteRtStatusOk;
-}
-
-LiteRtStatus LiteRtSetAcceleratorCompilationOptionsVersion(
-    LiteRtAcceleratorCompilationOptionsHeader* options,
-    LiteRtApiVersion version) {
-  if (!options) {
-    return kLiteRtStatusErrorInvalidArgument;
-  }
-  options->version = version;
-  return kLiteRtStatusOk;
-}
-
-}  // extern "C"

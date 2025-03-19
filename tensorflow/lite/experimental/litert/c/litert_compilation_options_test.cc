@@ -15,9 +15,10 @@
 #include "tensorflow/lite/experimental/litert/c/litert_compilation_options.h"
 
 #include <gtest/gtest.h>
-#include "tensorflow/lite/experimental/litert/c/litert_accelerator_options.h"
+#include "tensorflow/lite/experimental/litert/c/litert_accelerator_compilation_options.h"
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
-#include "tensorflow/lite/experimental/litert/core/accelerator.h"
+#include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
+#include "tensorflow/lite/experimental/litert/cc/litert_macros.h"
 
 namespace {
 
@@ -82,25 +83,20 @@ TEST(LiteRtCompiledModelOptionsTest, SetAndGetHardwareAcceleratorsWorks) {
   LiteRtDestroyCompilationOptions(options);
 }
 
-struct DummyAccleratorCompilationOptions {
-  // This NEEDS to be the first non-static field of the structure.
-  LiteRtAcceleratorCompilationOptionsHeader link;
+struct DummyAcceleratorCompilationOptions {
+  static constexpr const LiteRtApiVersion kVersion = {1, 0, 0};
+  static constexpr const char* const kIdentifier = "dummy-accelerator";
 
   // Allocates and sets the basic structure for the accelerator options.
-  static LiteRtStatus Create(LiteRtAcceleratorCompilationOptions* options) {
-    if (!options) {
-      return kLiteRtStatusErrorInvalidArgument;
-    }
-    *options = reinterpret_cast<LiteRtAcceleratorCompilationOptions>(
-        new DummyAccleratorCompilationOptions());
-    LiteRtSetAcceleratorCompilationOptionsDestructor(*options, Destroy);
-    return kLiteRtStatusOk;
-  }
-
- private:
-  // Destroys the options.
-  static void Destroy(LiteRtAcceleratorCompilationOptions options) {
-    delete reinterpret_cast<DummyAccleratorCompilationOptions*>(options);
+  static litert::Expected<LiteRtAcceleratorCompilationOptions> CreateOptions() {
+    LiteRtAcceleratorCompilationOptions options;
+    auto* payload = new DummyAcceleratorCompilationOptions;
+    auto payload_destructor = [](void* payload) {
+      delete reinterpret_cast<DummyAcceleratorCompilationOptions*>(payload);
+    };
+    LITERT_RETURN_IF_ERROR(LiteRtCreateAcceleratorCompilationOptions(
+        &kVersion, kIdentifier, payload, payload_destructor, &options));
+    return options;
   }
 };
 
@@ -108,34 +104,34 @@ TEST(LiteRtCompiledModelOptionsTest, AddAcceleratorCompilationOptionsWorks) {
   LiteRtCompilationOptions options;
   ASSERT_EQ(LiteRtCreateCompilationOptions(&options), kLiteRtStatusOk);
 
-  LiteRtAcceleratorCompilationOptions accelerator_options1,
-      accelerator_options2;
-  ASSERT_EQ(DummyAccleratorCompilationOptions::Create(&accelerator_options1),
-            kLiteRtStatusOk);
-  ASSERT_EQ(DummyAccleratorCompilationOptions::Create(&accelerator_options2),
-            kLiteRtStatusOk);
+  auto accelerator_compilation_options1 =
+      DummyAcceleratorCompilationOptions::CreateOptions();
+  EXPECT_TRUE(accelerator_compilation_options1);
+  auto accelerator_compilation_options2 =
+      DummyAcceleratorCompilationOptions::CreateOptions();
+  EXPECT_TRUE(accelerator_compilation_options2);
 
-  EXPECT_EQ(
-      LiteRtAddAcceleratorCompilationOptions(nullptr, accelerator_options1),
-      kLiteRtStatusErrorInvalidArgument);
+  EXPECT_EQ(LiteRtAddAcceleratorCompilationOptions(
+                nullptr, *accelerator_compilation_options1),
+            kLiteRtStatusErrorInvalidArgument);
   EXPECT_EQ(LiteRtAddAcceleratorCompilationOptions(options, nullptr),
             kLiteRtStatusErrorInvalidArgument);
 
-  EXPECT_EQ(
-      LiteRtAddAcceleratorCompilationOptions(options, accelerator_options1),
-      kLiteRtStatusOk);
-  EXPECT_EQ(
-      LiteRtAddAcceleratorCompilationOptions(options, accelerator_options2),
-      kLiteRtStatusOk);
+  EXPECT_EQ(LiteRtAddAcceleratorCompilationOptions(
+                options, *accelerator_compilation_options1),
+            kLiteRtStatusOk);
+  EXPECT_EQ(LiteRtAddAcceleratorCompilationOptions(
+                options, *accelerator_compilation_options2),
+            kLiteRtStatusOk);
 
   LiteRtAcceleratorCompilationOptions options_it = nullptr;
   EXPECT_EQ(LiteRtGetAcceleratorCompilationOptions(options, &options_it),
             kLiteRtStatusOk);
-  EXPECT_EQ(options_it, accelerator_options1);
+  EXPECT_EQ(options_it, *accelerator_compilation_options1);
 
   EXPECT_EQ(LiteRtGetNextAcceleratorCompilationOptions(&options_it),
             kLiteRtStatusOk);
-  EXPECT_EQ(options_it, accelerator_options2);
+  EXPECT_EQ(options_it, *accelerator_compilation_options2);
 
   LiteRtDestroyCompilationOptions(options);
 }

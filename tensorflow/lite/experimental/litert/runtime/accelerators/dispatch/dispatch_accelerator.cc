@@ -21,7 +21,7 @@
 #include "absl/strings/string_view.h"
 #include "tensorflow/lite/c/c_api_types.h"
 #include "tensorflow/lite/experimental/litert/c/litert_accelerator.h"
-#include "tensorflow/lite/experimental/litert/c/litert_accelerator_options.h"
+#include "tensorflow/lite/experimental/litert/c/litert_accelerator_compilation_options.h"
 #include "tensorflow/lite/experimental/litert/c/litert_accelerator_registration.h"
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
 #include "tensorflow/lite/experimental/litert/c/litert_dispatch_delegate.h"
@@ -30,8 +30,8 @@
 #include "tensorflow/lite/experimental/litert/cc/litert_dispatch_delegate.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_macros.h"
-#include "tensorflow/lite/experimental/litert/core/accelerator_model_compilation_data.h"
 #include "tensorflow/lite/experimental/litert/core/environment.h"
+#include "tensorflow/lite/experimental/litert/runtime/accelerator_model_compilation_data.h"
 
 namespace litert {
 
@@ -104,16 +104,13 @@ class NpuAccelerator final {
   // compilation data if it exists.
   static Expected<const litert::internal::ModelCompilationData*>
   GetModelCompilationData(LiteRtAcceleratorCompilationOptions options) {
-    while (options) {
-      if (options->identifier ==
-          litert::internal::ModelCompilationData::kIdentifier) {
-        return reinterpret_cast<litert::internal::ModelCompilationData*>(
-            options);
-      }
-      LiteRtGetNextAcceleratorCompilationOptions(&options);
-    }
-    return Unexpected(kLiteRtStatusErrorNotFound,
-                      "Could not retrieve mode compilation data.");
+    LiteRtApiVersion payload_version;
+    void* payload_data;
+    LITERT_RETURN_IF_ERROR(LiteRtFindAcceleratorCompilationOptionsData(
+        options, litert::internal::ModelCompilationData::kIdentifier,
+        &payload_version, &payload_data));
+    return reinterpret_cast<litert::internal::ModelCompilationData*>(
+        payload_data);
   }
 
   // Creates a Dispatch delegate instance.

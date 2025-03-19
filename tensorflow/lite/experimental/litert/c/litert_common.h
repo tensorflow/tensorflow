@@ -73,12 +73,6 @@ typedef struct LiteRtApiVersion {
   int patch;
 } LiteRtApiVersion;
 
-// Compares `v1` and `v2`.
-//
-// Returns 0 if they are the same, a negative number if v1 < v2 and a positive
-// number if v1 > v2.
-int LiteRtCompareApiVersion(LiteRtApiVersion v1, LiteRtApiVersion v2);
-
 typedef enum {
   kLiteRtStatusOk = 0,
 
