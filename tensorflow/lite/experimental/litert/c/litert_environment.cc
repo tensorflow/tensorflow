@@ -60,7 +60,7 @@ LiteRtStatus LiteRtGpuGlobalEnvironmentCreate(int num_options,
                                               const LiteRtEnvOption* options) {
   LITERT_ASSIGN_OR_RETURN(auto env, LiteRtEnvironmentT::CreateWithOptions(
                                         absl::MakeSpan(options, num_options)));
-  litert::internal::GpuEnvironmentSingleton::Create(env.release());
+  litert::internal::GpuEnvironmentSingleton::Create(env.get());
   return kLiteRtStatusOk;
 }
 
