@@ -33,6 +33,7 @@ class LegalizeSchedulingAnnotations : public HloModulePass {
  public:
   struct Config {
     HloPredicate keep_sync_annotation = HloPredicateTrue;
+    bool propagate_annotation = false;
   };
 
   explicit LegalizeSchedulingAnnotations(Config config)
