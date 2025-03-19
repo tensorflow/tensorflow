@@ -15,21 +15,15 @@ limitations under the License.
 
 #include "xla/service/spmd/shardy/stablehlo_round_trip/export_ops.h"
 
-#include <cstdint>
 #include <memory>
 #include <utility>
 
-#include "llvm/ADT/STLExtras.h"
-#include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/LogicalResult.h"
 #include "mlir/IR/AffineMap.h"
-#include "mlir/IR/Attributes.h"
-#include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinOps.h"
-#include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/Diagnostics.h"
 #include "mlir/IR/DialectRegistry.h"
 #include "mlir/IR/MLIRContext.h"
@@ -47,8 +41,6 @@ limitations under the License.
 #include "shardy/dialect/sdy/ir/utils.h"
 #include "stablehlo/dialect/StablehloOps.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
-#include "xla/service/spmd/shardy/constants.h"
-#include "xla/sharding_op_util.h"
 
 namespace xla {
 namespace sdy {
@@ -63,8 +55,6 @@ using ::mlir::LogicalResult;
 using ::mlir::OpConversionPattern;
 using ::mlir::OperationPass;
 using ::mlir::Pass;
-using ::mlir::SmallVector;
-using ::mlir::StringAttr;
 using ::mlir::StringRef;
 using ::mlir::success;
 
@@ -93,6 +83,8 @@ class ConstantPattern : public OpConversionPattern<ConstantOp> {
   }
 };
 
+// We erase an `AllReduceOp` instead of converting it to a copy op, since it
+// does not reshard the tensor.
 class AllReducePattern : public OpConversionPattern<AllReduceOp> {
  public:
   using OpConversionPattern::OpConversionPattern;
@@ -108,29 +100,9 @@ class AllReducePattern : public OpConversionPattern<AllReduceOp> {
 
 void rewriteCollectiveOp(mlir::Operation* op, mlir::Value input,
                          TensorShardingAttr sharding,
-                         ConversionPatternRewriter& rewriter,
-                         bool addUnspecifiedDims = false) {
+                         ConversionPatternRewriter& rewriter) {
   auto copyOp = rewriter.replaceOpWithNewOp<mhlo::CopyOp>(op, input);
   mlir::sdy::setShardings(copyOp, sharding);
-
-  if (!addUnspecifiedDims) {
-    return;
-  }
-
-  SmallVector<int64_t> unspecifiedDims;
-  for (auto [dim, dimSharding] : llvm::enumerate(sharding.getDimShardings())) {
-    // Unspecified dims are those that are marked open but is not partitioned
-    // on any axes.
-    if (!dimSharding.getIsClosed() && dimSharding.emptyAxes()) {
-      unspecifiedDims.push_back(dim);
-    }
-  }
-  if (!unspecifiedDims.empty()) {
-    copyOp->setAttr(kXlaBackendConfigAttr,
-                    StringAttr::get(op->getContext(),
-                                    xla::sharding_op_util::EncodeAttributes(
-                                        unspecifiedDims)));
-  }
 }
 
 class ReshardPattern : public OpConversionPattern<ReshardOp> {
@@ -141,8 +113,8 @@ class ReshardPattern : public OpConversionPattern<ReshardOp> {
   LogicalResult matchAndRewrite(
       ReshardOp op, OpAdaptor adaptor,
       ConversionPatternRewriter& rewriter) const override {
-    rewriteCollectiveOp(op, adaptor.getInput(), adaptor.getSharding(), rewriter,
-                        /*addUnspecifiedDims=*/true);
+    rewriteCollectiveOp(op, adaptor.getInput(), adaptor.getSharding(),
+                        rewriter);
     return success();
   }
 };

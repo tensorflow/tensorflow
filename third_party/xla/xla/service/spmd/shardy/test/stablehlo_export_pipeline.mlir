@@ -103,25 +103,11 @@ func.func @split_constants() -> (tensor<8x8xf32>, tensor<8x8xf32>) {
   return %0, %1 : tensor<8x8xf32>, tensor<8x8xf32>
 }
 
-// CHECK-LABEL: func @reshard_all_closed
-func.func @reshard_all_closed(%arg0: tensor<8x8xf32>) -> tensor<8x8xf32> {
+// CHECK-LABEL: func @reshard
+func.func @reshard(%arg0: tensor<8x8xf32>) -> tensor<8x8xf32> {
   // CHECK-NEXT: %[[COPY:.*]] = mhlo.copy %arg0 {mhlo.sharding = "{devices=[2,4,4]<=[2,4,4]T(0,2,1) last_tile_dim_replicate}"}
   // CHECK-NEXT: return %[[COPY]]
   %0 = sdy.reshard %arg0 <@mesh_0, [{"axis_0"}, {"axis_2"}], replicated={"axis_1"}> : tensor<8x8xf32>
-  return %0 : tensor<8x8xf32>
-}
-
-// CHECK-LABEL: func @reshard_partially_open_closed
-func.func @reshard_partially_open_closed(%arg0: tensor<8x8xf32>) -> tensor<8x8xf32> {
-  // CHECK: mhlo.copy %arg0 {mhlo.sharding = "{devices=[2,4,4]<=[2,4,4]T(0,2,1) last_tile_dim_replicate}"}
-  %0 = sdy.reshard %arg0 <@mesh_0, [{"axis_0", ?}, {"axis_2"}]> : tensor<8x8xf32>
-  return %0 : tensor<8x8xf32>
-}
-
-// CHECK-LABEL: func @reshard_fully_open_partially_open
-func.func @reshard_fully_open_partially_open(%arg0: tensor<8x8xf32>) -> tensor<8x8xf32> {
-  // CHECK: mhlo.copy %arg0 {backend_config = "unspecified_dims=[1]", mhlo.sharding = "{devices=[2,1,16]<=[32] last_tile_dim_replicate}"}
-  %0 = sdy.reshard %arg0 <@mesh_0, [{"axis_0", ?}, {?}]> : tensor<8x8xf32>
   return %0 : tensor<8x8xf32>
 }
 
