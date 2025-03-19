@@ -34,6 +34,7 @@ cc_library(
         "//xla:status_macros",
         "//xla:util",
         "//xla:xla_data_proto_cc",
+        "//xla/backends/cpu:alignment",
         "//xla/backends/cpu/codegen:kernel_api_ir_builder",
         "//xla/backends/cpu/codegen/emitters/ir:xla_cpu",
         "//xla/backends/cpu/codegen/emitters/transforms:passes",

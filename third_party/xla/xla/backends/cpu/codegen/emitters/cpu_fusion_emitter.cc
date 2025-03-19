@@ -70,6 +70,7 @@ limitations under the License.
 #include "mlir/Target/LLVMIR/Dialect/ROCDL/ROCDLToLLVMIRTranslation.h"
 #include "mlir/Target/LLVMIR/Export.h"
 #include "mlir/Transforms/Passes.h"
+#include "xla/backends/cpu/alignment.h"
 #include "xla/backends/cpu/codegen/emitters/ir/xla_cpu_dialect.h"
 #include "xla/backends/cpu/codegen/emitters/ir/xla_cpu_ops.h"
 #include "xla/backends/cpu/codegen/emitters/ir/xla_cpu_types.h"
@@ -275,8 +276,9 @@ CpuFusionEmitterBase::CreateMLIRModule(
     attrs.push_back(builder.getNamedAttr(
         mlir::LLVM::LLVMDialect::getDereferenceableAttrName(),
         builder.getIndexAttr(slice.size())));
-    attrs.push_back(builder.getNamedAttr(
-        mlir::LLVM::LLVMDialect::getAlignAttrName(), builder.getIndexAttr(32)));
+    attrs.push_back(
+        builder.getNamedAttr(mlir::LLVM::LLVMDialect::getAlignAttrName(),
+                             builder.getIndexAttr(MinAlign())));
     return builder.getDictionaryAttr(attrs);
   };
 
