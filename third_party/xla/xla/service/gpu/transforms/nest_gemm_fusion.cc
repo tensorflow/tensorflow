@@ -46,6 +46,7 @@ limitations under the License.
 #include "xla/hlo/transforms/simplifiers/hlo_dce.h"
 #include "xla/hlo/utils/hlo_query.h"
 #include "xla/service/call_graph.h"
+#include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/matmul_indexing_utils.h"
 #include "xla/service/gpu/matmul_utils.h"
@@ -57,6 +58,7 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla::gpu {
 
