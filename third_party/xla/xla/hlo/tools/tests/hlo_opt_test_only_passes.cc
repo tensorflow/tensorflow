@@ -15,18 +15,22 @@ limitations under the License.
 
 #include "xla/hlo/tools/tests/hlo_opt_test_only_passes.h"
 
+#include <algorithm>
 #include <cstdint>
 #include <memory>
 #include <string>
+#include <tuple>
 #include <vector>
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/builder/lib/math.h"
 #include "xla/hlo/builder/lib/matrix.h"
 #include "xla/hlo/builder/lib/prng.h"
+#include "xla/hlo/builder/lib/tridiagonal.h"
 #include "xla/hlo/builder/xla_builder.h"
 #include "xla/hlo/builder/xla_computation.h"
 #include "xla/hlo/ir/hlo_clone_context.h"
@@ -71,15 +75,26 @@ std::vector<XlaOp> GetParameters(XlaBuilder& builder,
   return parameters;
 }
 
+absl::Status VerifyOperandCounts(
+    HloInstruction* instruction,
+    const std::vector<int64_t>& expected_operand_counts,
+    absl::string_view custom_call_target) {
+  if (std::find(expected_operand_counts.begin(), expected_operand_counts.end(),
+                instruction->operand_count()) ==
+      expected_operand_counts.end()) {
+    return absl::InvalidArgumentError(absl::StrCat(
+        custom_call_target, " expected ",
+        absl::StrJoin(expected_operand_counts, " or "), " operands, but got ",
+        instruction->operand_count(), " operands."));
+  }
+  return absl::OkStatus();
+}
+
 absl::Status VerifyOperandCount(HloInstruction* instruction,
                                 int64_t expected_operand_count,
                                 absl::string_view custom_call_target) {
-  if (instruction->operand_count() != expected_operand_count) {
-    return absl::InvalidArgumentError(absl::StrCat(
-        custom_call_target, " expected ", expected_operand_count,
-        " operands, but got ", instruction->operand_count(), " operands."));
-  }
-  return absl::OkStatus();
+  return VerifyOperandCounts(instruction, {expected_operand_count},
+                             custom_call_target);
 }
 
 absl::StatusOr<bool> BuildAndReplace(XlaBuilder& builder,
@@ -180,6 +195,24 @@ absl::StatusOr<bool> XlaBuilderTestPass::ReplaceWithExpandedClientHlo(
   if (custom_call_target == "xla_builder.prng.ScramblePhiloxKey") {
     TF_RETURN_IF_ERROR(VerifyOperandCount(instruction, 1, custom_call_target));
     xla::ScramblePhiloxKey(parameters[0]);
+    return BuildAndReplace(builder, instruction);
+  }
+
+  // xla_builder.tridiagonal
+  if (custom_call_target == "xla_builder.tridiagonal.TridiagonalSolver") {
+    TF_RETURN_IF_ERROR(
+        VerifyOperandCounts(instruction, {2, 4}, custom_call_target));
+    if (parameters.size() == 2) {
+      TF_ASSIGN_OR_RETURN(
+          std::ignore, xla::tridiagonal::TridiagonalSolver(
+                           tridiagonal::SolverAlgorithm::kThomas, parameters[0],
+                           parameters[1]));
+      return BuildAndReplace(builder, instruction);
+    }
+    TF_ASSIGN_OR_RETURN(
+        std::ignore, xla::tridiagonal::TridiagonalSolver(
+                         tridiagonal::SolverAlgorithm::kThomas, parameters[0],
+                         parameters[1], parameters[2], parameters[3]));
     return BuildAndReplace(builder, instruction);
   }
 
