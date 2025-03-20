@@ -22,6 +22,7 @@
 #include <string>
 #include <vector>
 
+#include "absl/strings/match.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
@@ -263,36 +264,26 @@ LiteRtStatus QnnManager::ValidateOp(const Qnn_OpConfig_t& op_config) {
 LiteRtStatus QnnManager::Init(absl::Span<const QnnBackend_Config_t*> configs,
                               std::optional<std::string> shared_library_dir,
                               std::optional<QnnHtpDevice_Arch_t> soc_model) {
-  // Users can set ADSP_LIBRARY_PATH, if it is not set, we will set it to the
-  // shared library directory.
-  if (getenv("ADSP_LIBRARY_PATH") == nullptr &&
-      shared_library_dir.has_value()) {
-    setenv("ADSP_LIBRARY_PATH", shared_library_dir->data(), /*overwrite=*/1);
-  }
+  // If shared_library_dir is provided, add it to the path as it may contain
+  // libs to be loaded.
+  // TOOD: This should probably be done upstream in litert_dispatch.
+  if (shared_library_dir) {
+    LITERT_LOG(LITERT_INFO, "Adding shared library dir to path: %s",
+               shared_library_dir->c_str());
 
-  std::string lib_qnn_htp_so_path = kLibQnnHtpSo;
-  // If shared_library_dir is provided, we will try to find the libQnnHtp.so
-  // in the directory.
-  if (shared_library_dir.has_value()) {
-    std::vector<std::string> results;
-    litert::internal::FindLiteRtSharedLibsHelper(
-        shared_library_dir->data(), kLibQnnHtpSo, /*full_match=*/true, results);
-    if (!results.empty()) {
-      lib_qnn_htp_so_path = results[0];
-      shared_library_dir =
-          std::filesystem::path(lib_qnn_htp_so_path).parent_path();
+    static constexpr char kAdsp[] = "ADSP_LIBRARY_PATH";
+    if (getenv(kAdsp) == nullptr) {
+      setenv(kAdsp, shared_library_dir->data(), /*overwrite=*/1);
     }
+
+    // TODO: Put dynamic loading module in cc or vendor/cc.
+    litert::internal::PutLibOnLdPath(shared_library_dir->data(), kLibQnnHtpSo);
   }
 
-  LITERT_RETURN_IF_ERROR(LoadLib(lib_qnn_htp_so_path));
+  LITERT_RETURN_IF_ERROR(LoadLib(kLibQnnHtpSo));
   LITERT_RETURN_IF_ERROR(ResolveApi());
 
-  auto lib_qnn_system_so_path =
-      shared_library_dir.has_value()
-          ? absl::StrFormat("%s/%s", shared_library_dir->data(),
-                            kLibQnnSystemSo)
-          : kLibQnnSystemSo;
-  LITERT_RETURN_IF_ERROR(LoadSystemLib(lib_qnn_system_so_path));
+  LITERT_RETURN_IF_ERROR(LoadSystemLib(kLibQnnSystemSo));
   LITERT_RETURN_IF_ERROR(ResolveSystemApi());
 
   if (auto status = Api()->logCreate(GetDefaultStdOutLogger(),

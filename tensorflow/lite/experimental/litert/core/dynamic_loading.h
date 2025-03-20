@@ -58,6 +58,11 @@ LiteRtStatus FindLiteRtSharedLibsHelper(const std::string& search_path,
                                         bool full_match,
                                         std::vector<std::string>& results);
 
+// Analogous to the above, but the first match identified, its immeidate parent
+// directory will be appended to the LD_LIBRARY_PATH.
+LiteRtStatus PutLibOnLdPath(absl::string_view search_path,
+                            absl::string_view lib_pattern);
+
 }  // namespace litert::internal
 
 #endif  // TENSORFLOW_LITE_EXPERIMENTAL_LITERT_CORE_DYNAMIC_LOADING_H_
