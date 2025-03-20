@@ -454,6 +454,7 @@ cc_library(
     name = "android_tensorflow_image_op",
     srcs = if_android(["decode_image_op.cc"]),
     copts = tf_copts(),
+    features = if_android(["-layering_check"]),
     linkopts = ["-ldl"],
     visibility = ["//visibility:public"],
     deps = [
