@@ -132,7 +132,6 @@ xla_test(
         "//xla/hlo/testlib:verified_hlo_module",
         "//xla/service/gpu:gpu_device_info_for_tests",
         "//xla/service/gpu/transforms:custom_kernel_fusion_rewriter",
-        "//xla/stream_executor:device_description",
         "//xla/tests:hlo_test_base",
         "//xla/tsl/platform:test",
         "//xla/tsl/platform:test_main",
