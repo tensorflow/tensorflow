@@ -58,6 +58,7 @@ namespace xla {
 namespace {
 
 using ::testing::SizeIs;
+using ::tsl::testing::IsOkAndHolds;
 using ::tsl::testing::StatusIs;
 using HloModuleAndArguments = ::xla::FunctionalHloRunner::HloModuleAndArguments;
 
@@ -343,31 +344,25 @@ TEST_F(FunctionalHloRunnerTest, UseUninitializedInputsWithTupledArguments) {
       InputFormat::kText));
 }
 
-TEST_F(FunctionalHloRunnerTest, CanCompileWithoutHavingEnoughGpus) {
-  // This test corresponds to:
-  // --num_replicas=1 --num_partitions=16
-  // --run=false --xla_dump_to=dump_dir
-
+void compile_and_filecheck(
+    absl::string_view hlo_file, absl::string_view pattern,
+    const FunctionalHloRunner::PreprocessingOptions& preproc_options,
+    const FunctionalHloRunner::HloPassesMode hlo_passes_mode,
+    const int num_partitions = 1) {
   tsl::Env* env = tsl::Env::Default();
   std::string dump_dir;
   ASSERT_TRUE(env->LocalTempFilename(&dump_dir));
   tsl::FileSystem* fs = nullptr;
   TF_ASSERT_OK(env->GetFileSystemForFile(dump_dir, &fs));
-
-  xla::DebugOptions debug_options;
-  FunctionalHloRunner::PreprocessingOptions preproc_options;
-  FunctionalHloRunner::RawCompileOptions raw_compile_options;
-  raw_compile_options.num_replicas = 1;
-  raw_compile_options.num_partitions = 16;
-  raw_compile_options.xla_dump_to = dump_dir;
-
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::PjRtClient> client,
                           GetPjRtClient());
   TF_EXPECT_OK(FunctionalHloRunner::LoadAndCompile(
-      *client, debug_options, preproc_options, raw_compile_options,
-      GetHloPath("sharded_16_devices.hlo"), InputFormat::kText));
+      *client, xla::DebugOptions{}, preproc_options,
+      FunctionalHloRunner::RawCompileOptions{.hlo_passes_mode = hlo_passes_mode,
+                                             .num_partitions = num_partitions,
+                                             .xla_dump_to = dump_dir},
+      hlo_file, InputFormat::kText));
 
-  // Check that the sharding was done correctly.
   {
     std::vector<std::string> after_opt_hlo_paths;
     TF_ASSERT_OK(
@@ -377,12 +372,7 @@ TEST_F(FunctionalHloRunnerTest, CanCompileWithoutHavingEnoughGpus) {
     std::string after_opt_hlo;
     TF_ASSERT_OK(
         tsl::ReadFileToString(env, after_opt_hlo_paths[0], &after_opt_hlo));
-    absl::StatusOr<bool> file_check_result = RunFileCheck(after_opt_hlo, R"(
-      // CHECK: param{{.*}} = f32[16,1]{1,0}
-      // CHECK: add{{.*}} = f32[16,1]{1,0}
-    )");
-    TF_ASSERT_OK(file_check_result.status());
-    EXPECT_TRUE(file_check_result.value());
+    EXPECT_THAT(RunFileCheck(after_opt_hlo, pattern), IsOkAndHolds(true));
   }
 
   // Check that the LLVM IR has been generated.
@@ -392,6 +382,30 @@ TEST_F(FunctionalHloRunnerTest, CanCompileWithoutHavingEnoughGpus) {
                                       &ir_paths));
     ASSERT_THAT(ir_paths, SizeIs(1));
   }
+}
+
+TEST_F(FunctionalHloRunnerTest, CanCompileWithoutHavingEnoughGpus) {
+  compile_and_filecheck(GetHloPath("sharded_16_devices.hlo"),
+                        // Check that the sharding was done correctly.
+                        R"(
+      // CHECK: param{{.*}} = f32[16,1]{1,0}
+      // CHECK: add{{.*}} = f32[16,1]{1,0}
+    )",
+                        /*preproc_options=*/{},
+                        FunctionalHloRunner::HloPassesMode::kStandardCompile,
+                        /*num_partitions=*/16);
+}
+
+TEST_F(FunctionalHloRunnerTest, WhileKnownTripCountGetsCapped) {
+  compile_and_filecheck(
+      GetHloPath("while_with_known_trip_count.hlo"),
+      R"(
+      // CHECK: constant(5)
+      // CHECK: "known_trip_count":{"n":"5"}
+    )",
+      FunctionalHloRunner::PreprocessingOptions{
+          .while_execution_count = 5, .annotate_while_loop_trip_count = true},
+      FunctionalHloRunner::HloPassesMode::kRunXLABackendOnly);
 }
 
 // Name of the test binary.

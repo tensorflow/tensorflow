@@ -45,6 +45,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/pass/hlo_pass_pipeline.h"
+#include "xla/hlo/transforms/while_loop_trip_count_annotator.h"
 #include "xla/hlo/translate/hlo_to_mhlo/translate.h"
 #include "xla/hlo/translate/stablehlo.h"
 #include "xla/layout.h"
@@ -782,6 +783,9 @@ absl::Status FunctionalHloRunner::PrepareHloModuleForCompilation(
             preproc_options.flatten_conditional,
             /*conditional_value=*/
             preproc_options.conditional_value});
+    if (preproc_options.annotate_while_loop_trip_count) {
+      pipeline.AddPass<WhileLoopTripCountAnnotator>();
+    }
     TF_RETURN_IF_ERROR(pipeline.Run(hlo_module).status());
   }
   return absl::OkStatus();
