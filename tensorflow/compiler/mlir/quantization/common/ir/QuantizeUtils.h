@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_MLIR_LITE_QUANTIZATION_IR_QUANTIZEUTILS_H_
-#define TENSORFLOW_COMPILER_MLIR_LITE_QUANTIZATION_IR_QUANTIZEUTILS_H_
+#ifndef TENSORFLOW_COMPILER_MLIR_QUANTIZATION_COMMON_IR_QUANTIZEUTILS_H_
+#define TENSORFLOW_COMPILER_MLIR_QUANTIZATION_COMMON_IR_QUANTIZEUTILS_H_
 
 namespace mlir {
 class Attribute;
@@ -23,11 +23,9 @@ class Type;
 namespace quant {
 class QuantizedType;
 class UniformQuantizedType;
-namespace ir {
-class UniformQuantizedValueConverter;
-}  // namespace ir
 }  // namespace quant
-namespace quantfork {
+namespace quant::ir {
+class UniformQuantizedValueConverter;
 
 /// Converts an attribute from a type based on
 /// quantizedElementType.getExpressedType() to one based on
@@ -63,11 +61,11 @@ Attribute quantizeAttr(Attribute realValue,
 /// (realValue: DenseElementsAttr[tensor<2x2xf32>],
 ///  quantizedElementType: UniformQuantizedType[i8:f32])
 ///   -> (DenseElementsAttr[tensor<2x2xi8>], outConvertedType: tensor<2x2xi8>)
-Attribute quantizeAttrUniform(
-    Attribute realValue, quant::UniformQuantizedType quantizedElementType,
-    const mlir::quant::ir::UniformQuantizedValueConverter &converter,
-    Type &outConvertedType);
-}  // namespace quantfork
+Attribute quantizeAttrUniform(Attribute realValue,
+                              quant::UniformQuantizedType quantizedElementType,
+                              const UniformQuantizedValueConverter &converter,
+                              Type &outConvertedType);
+}  // namespace quant::ir
 }  // namespace mlir
 
-#endif  // TENSORFLOW_COMPILER_MLIR_LITE_QUANTIZATION_IR_QUANTIZEUTILS_H_
+#endif  // TENSORFLOW_COMPILER_MLIR_QUANTIZATION_COMMON_IR_QUANTIZEUTILS_H_
