@@ -1127,30 +1127,52 @@ TEST(FfiTest, WrongEnumAttrType) {
       << status.message() << "\n";
 }
 
-struct MyData {
+struct MyDataWithAutoTypeId {
   static TypeId id;
-  std::string str;
+  std::string value;
 };
 
-TypeId MyData::id = {};  // zero-initialize type id
-XLA_FFI_REGISTER_TYPE(GetXlaFfiApi(), "my_data", &MyData::id);
+struct MyDataWithExplicitTypeId {
+  static TypeId id;
+  int64_t value;
+};
+
+// Rely on XLA to assign unique type id for the type.
+TypeId MyDataWithAutoTypeId::id = XLA_FFI_UNKNOWN_TYPE_ID;
+XLA_FFI_REGISTER_TYPE(GetXlaFfiApi(), "my_data_auto",
+                      &MyDataWithAutoTypeId::id);
+
+// Provide explicit type id and rely on XLA to check that it's unique.
+TypeId MyDataWithExplicitTypeId::id = {42};
+XLA_FFI_REGISTER_TYPE(GetXlaFfiApi(), "my_data_explicit",
+                      &MyDataWithExplicitTypeId::id);
 
 TEST(FfiTest, UserData) {
-  MyData data{"foo"};
+  MyDataWithAutoTypeId data0{"foo"};
+  MyDataWithExplicitTypeId data1{42};
+
+  EXPECT_GE(MyDataWithAutoTypeId::id.type_id, 0);
+  EXPECT_EQ(MyDataWithExplicitTypeId::id.type_id, 42);
 
   ExecutionContext execution_context;
   TF_ASSERT_OK(execution_context.Insert(
-      TypeIdRegistry::TypeId(MyData::id.type_id), &data));
+      TypeIdRegistry::TypeId(MyDataWithAutoTypeId::id.type_id), &data0));
+  TF_ASSERT_OK(execution_context.Insert(
+      TypeIdRegistry::TypeId(MyDataWithExplicitTypeId::id.type_id), &data1));
 
   CallFrameBuilder builder(/*num_args=*/0, /*num_rets=*/0);
   auto call_frame = builder.Build();
 
-  auto fn = [&](MyData* data) {
-    EXPECT_EQ(data->str, "foo");
+  auto fn = [&](MyDataWithAutoTypeId* data0, MyDataWithExplicitTypeId* data1) {
+    EXPECT_EQ(data0->value, "foo");
+    EXPECT_EQ(data1->value, 42);
     return Error::Success();
   };
 
-  auto handler = Ffi::Bind().Ctx<UserData<MyData>>().To(fn);
+  auto handler = Ffi::Bind()
+                     .Ctx<UserData<MyDataWithAutoTypeId>>()
+                     .Ctx<UserData<MyDataWithExplicitTypeId>>()
+                     .To(fn);
 
   CallOptions options;
   options.execution_context = &execution_context;
