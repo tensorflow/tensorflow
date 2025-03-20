@@ -881,7 +881,7 @@ INSTANTIATE_TEST_SUITE_P(GatherLoopFusionTestInstantiation,
                          ::testing::ValuesIn(GetGatherLoopFusionTestSpecs()),
                          GatherLoopFusionTestSpec::Name);
 
-TEST_F(InstructionFusionTest, NoFuseReduceMajor) {
+TEST_F(InstructionFusionTest, FuseReduceMajor) {
   absl::string_view module_string = R"(
 HloModule module
 
@@ -904,9 +904,8 @@ ENTRY main {
                           ParseAndReturnVerifiedModule(module_string));
   TF_ASSERT_OK_AND_ASSIGN(bool fused_something,
                           CpuInstructionFusion().Run(module.get()));
-  EXPECT_FALSE(fused_something);
-  EXPECT_THAT(module->entry_computation()->root_instruction(),
-              Not(op::Fusion()));
+  EXPECT_TRUE(fused_something);
+  EXPECT_THAT(module->entry_computation()->root_instruction(), op::Fusion());
 }
 
 TEST_F(InstructionFusionTest, FuseReduceMinor) {
