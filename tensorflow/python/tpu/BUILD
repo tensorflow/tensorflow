@@ -832,10 +832,10 @@ tf_py_strict_test(
         "//tensorflow/core/tpu/kernels:sparse_core_layout_proto_py",
         "//tensorflow/python/compat:v2_compat",
         "//tensorflow/python/framework:constant_op",
+        "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:math_ops",
         "//tensorflow/python/platform:client_testlib",
-        "@absl_py//absl/logging",
     ],
 )
 

@@ -14,7 +14,10 @@
 # ==============================================================================
 """Tests for tpu_embedding_v3_checkpoint_adapter."""
 
+
 from tensorflow.core.tpu.kernels import sparse_core_layout_pb2
+from tensorflow.python.compat import v2_compat
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework.constant_op import constant as tf_constant
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
@@ -75,7 +78,7 @@ class TpuEmbeddingV3CheckpointAdapterTest(test.TestCase):
     callback = adapter.get_reshard_callback("some_feature")
     # Check partition index 1 (second parition)
     self.assertAllEqual(
-        callback.reshard([t], "128 8 8,16:0,8"),
+        callback.reshard([t], "128 8 8,12:0,8"),
         tf_constant([
             [2, 2, 2, 2, 0, 0, 0, 0],
             [10, 10, 10, 10, 0, 0, 0, 0],
@@ -145,8 +148,9 @@ class TpuEmbeddingV3CheckpointAdapterTest(test.TestCase):
         updated_slices,
         ["20 4 0,20:0,4", "32 4 0,32:0,4"],
     )
+    actual = callback.reshard([one_t, two_t], "56 8 14,14:0,8")
     self.assertAllEqual(
-        callback.reshard([one_t, two_t], "56 8 14,28:0,8"),
+        actual,
         tf_constant([
             # table one shard 2
             [2, 2, 2, 2, 0, 0, 0, 0],
@@ -167,6 +171,88 @@ class TpuEmbeddingV3CheckpointAdapterTest(test.TestCase):
             [68, 68, 68, 68, 0, 0, 0, 0],
             [76, 76, 76, 76, 0, 0, 0, 0],
         ]),
+    )
+    # Check that full resharding works.
+    actual_full = callback.reshard([one_t, two_t], "56 8 0,56:0,8")
+    self.assertAllEqual(
+        actual_full,
+        tf_constant(
+            [
+                # table one shard 0
+                [0, 0, 0, 0, 0, 0, 0, 0],
+                [8, 8, 8, 8, 0, 0, 0, 0],
+                [16, 16, 16, 16, 0, 0, 0, 0],
+                # table two shard 0
+                [57, 57, 57, 57, 0, 0, 0, 0],
+                [65, 65, 65, 65, 0, 0, 0, 0],
+                [73, 73, 73, 73, 0, 0, 0, 0],
+                [81, 81, 81, 81, 0, 0, 0, 0],
+                # table one shard 1
+                [1, 1, 1, 1, 0, 0, 0, 0],
+                [9, 9, 9, 9, 0, 0, 0, 0],
+                [17, 17, 17, 17, 0, 0, 0, 0],
+                # table two shard 1
+                [50, 50, 50, 50, 0, 0, 0, 0],
+                [58, 58, 58, 58, 0, 0, 0, 0],
+                [66, 66, 66, 66, 0, 0, 0, 0],
+                [74, 74, 74, 74, 0, 0, 0, 0],
+                # table one shard 2
+                [2, 2, 2, 2, 0, 0, 0, 0],
+                [10, 10, 10, 10, 0, 0, 0, 0],
+                [18, 18, 18, 18, 0, 0, 0, 0],
+                # table two shard 2
+                [51, 51, 51, 51, 0, 0, 0, 0],
+                [59, 59, 59, 59, 0, 0, 0, 0],
+                [67, 67, 67, 67, 0, 0, 0, 0],
+                [75, 75, 75, 75, 0, 0, 0, 0],
+                # table one shard 3
+                [3, 3, 3, 3, 0, 0, 0, 0],
+                [11, 11, 11, 11, 0, 0, 0, 0],
+                [19, 19, 19, 19, 0, 0, 0, 0],
+                # table two shard 3
+                [52, 52, 52, 52, 0, 0, 0, 0],
+                [60, 60, 60, 60, 0, 0, 0, 0],
+                [68, 68, 68, 68, 0, 0, 0, 0],
+                [76, 76, 76, 76, 0, 0, 0, 0],
+                # table one shard 4
+                [4, 4, 4, 4, 0, 0, 0, 0],
+                [12, 12, 12, 12, 0, 0, 0, 0],
+                [0, 0, 0, 0, 0, 0, 0, 0],
+                # table two shard 4
+                [53, 53, 53, 53, 0, 0, 0, 0],
+                [61, 61, 61, 61, 0, 0, 0, 0],
+                [69, 69, 69, 69, 0, 0, 0, 0],
+                [77, 77, 77, 77, 0, 0, 0, 0],
+                # table one shard 5
+                [5, 5, 5, 5, 0, 0, 0, 0],
+                [13, 13, 13, 13, 0, 0, 0, 0],
+                [0, 0, 0, 0, 0, 0, 0, 0],
+                # table two shard 5
+                [54, 54, 54, 54, 0, 0, 0, 0],
+                [62, 62, 62, 62, 0, 0, 0, 0],
+                [70, 70, 70, 70, 0, 0, 0, 0],
+                [78, 78, 78, 78, 0, 0, 0, 0],
+                # table one shard 6
+                [6, 6, 6, 6, 0, 0, 0, 0],
+                [14, 14, 14, 14, 0, 0, 0, 0],
+                [0, 0, 0, 0, 0, 0, 0, 0],
+                # table two shard 6
+                [55, 55, 55, 55, 0, 0, 0, 0],
+                [63, 63, 63, 63, 0, 0, 0, 0],
+                [71, 71, 71, 71, 0, 0, 0, 0],
+                [79, 79, 79, 79, 0, 0, 0, 0],
+                # table one shard 7
+                [7, 7, 7, 7, 0, 0, 0, 0],
+                [15, 15, 15, 15, 0, 0, 0, 0],
+                [0, 0, 0, 0, 0, 0, 0, 0],
+                # table two shard 7
+                [56, 56, 56, 56, 0, 0, 0, 0],
+                [64, 64, 64, 64, 0, 0, 0, 0],
+                [72, 72, 72, 72, 0, 0, 0, 0],
+                [80, 80, 80, 80, 0, 0, 0, 0],
+            ],
+            dtype=dtypes.float32,
+        ),
     )
     self.assertAllEqual(callback._checkpoint_local_names, ["one", "two"])
     self.assertAllEqual(
@@ -204,4 +290,5 @@ class TpuEmbeddingV3CheckpointAdapterTest(test.TestCase):
 
 
 if __name__ == "__main__":
+  v2_compat.enable_v2_behavior()
   test.main()
