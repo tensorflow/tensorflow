@@ -13,6 +13,7 @@ lit_test_suite(
             # go/keep-sorted start
             "algebraic_simplifier.hlo",
             "cholesky_expander.hlo",
+            "operand_upcaster.hlo",
             "optimization_barrier_expander.hlo",
             "rewrite_bf16_conv_to_onednn.hlo",
             "rng_bit_generator_expander.hlo",
