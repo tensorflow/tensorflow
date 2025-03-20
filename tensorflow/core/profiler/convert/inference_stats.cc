@@ -165,6 +165,9 @@ struct BatchEvents {
 
   // The BatchDetail proto.
   tensorflow::profiler::BatchDetail batch_detail_proto;
+
+  // All the events.
+  std::vector<EventTypeSpan> events;
 };
 
 // Map from the ID of a batch to its events.
@@ -190,24 +193,38 @@ int32_t AssignIndexToModelId(
 void UpdateEventTimestamps(
     const GroupMetadataMap& group_metadata_map, int64_t group_id, int64_t value,
     std::function<void(int64_t, int64_t, RequestEvents*)> function,
-    RequestEventsMap* request_events_map) {
+    RequestEventsMap* request_events_map,
+    BatchEventsMap* batch_events_map = nullptr) {
   // Update RequestEvents that are directly associated with <group_id>.
-  if (auto request_events = gtl::FindOrNull(*request_events_map, group_id)) {
-    function(group_id, value, request_events);
-  }
-
-  // Update all the parent RequestEvents of <group_id>.
-  const GroupMetadata* group_metadata =
-      gtl::FindOrNull(group_metadata_map, group_id);
-  if (!group_metadata) return;
-  for (const int64_t parent_group_id : group_metadata->parents) {
-    if (auto parent_request_events =
-            gtl::FindOrNull(*request_events_map, parent_group_id)) {
-      // Update parent events, but still use <group_id> instead of
-      // <parent_group_id>, because xprof needs to track where these event
-      // timestamps originally come from.
-      function(group_id, value, parent_request_events);
+  if (request_events_map != nullptr) {
+    if (auto request_events = gtl::FindOrNull(*request_events_map, group_id)) {
+      function(group_id, value, request_events);
     }
+
+    // Update all the parent RequestEvents of <group_id>.
+    const GroupMetadata* group_metadata =
+        gtl::FindOrNull(group_metadata_map, group_id);
+    if (!group_metadata) return;
+    for (const int64_t parent_group_id : group_metadata->parents) {
+      if (auto parent_request_events =
+              gtl::FindOrNull(*request_events_map, parent_group_id)) {
+        // Update parent events, but still use <group_id> instead of
+        // <parent_group_id>, because xprof needs to track where these event
+        // timestamps originally come from.
+        function(group_id, value, parent_request_events);
+      }
+    }
+  }
+  // Note: Timestamp updates for batch analysis is not supported yet.
+}
+
+void UpdateBatchEvents(const GroupMetadataMap& group_metadata_map,
+                       absl::Span<const EventTypeSpan> events, int64_t group_id,
+                       BatchEventsMap* batch_events_map) {
+  // Update BatchEvents that are directly associated with <group_id>.
+  if (auto batch_events = gtl::FindOrNull(*batch_events_map, group_id)) {
+    batch_events->events.insert(batch_events->events.end(), events.begin(),
+                                events.end());
   }
 }
 
@@ -344,7 +361,8 @@ void UpdateTpuDataTransferEventsInTpuSystem(
     const GroupMetadataMap& group_metadata_map,
     const HostEventType data_transfer_start_event,
     const HostEventType data_transfer_end_event,
-    const EventType data_transfer_type, RequestEventsMap* request_events_map) {
+    const EventType data_transfer_type, RequestEventsMap* request_events_map,
+    BatchEventsMap* batch_events_map) {
   absl::flat_hash_map<uint64_t, std::array<const XEventVisitor*, 2>>
       events_per_transfer;
 
@@ -394,9 +412,16 @@ void UpdateTpuDataTransferEventsInTpuSystem(
       event_to_update[0].span =
           Timespan(events[0]->TimestampPs(),
                    events[1]->EndTimestampPs() - events[0]->TimestampPs());
-      UpdateRequestEvents(group_metadata_map, event_to_update,
+      if (request_events_map != nullptr) {
+        UpdateRequestEvents(group_metadata_map, event_to_update,
+                            events[0]->GetStat(StatType::kGroupId)->IntValue(),
+                            request_events_map);
+      }
+      if (batch_events_map != nullptr) {
+        UpdateBatchEvents(group_metadata_map, event_to_update,
                           events[0]->GetStat(StatType::kGroupId)->IntValue(),
-                          request_events_map);
+                          batch_events_map);
+      }
     }
   }
 }
@@ -405,7 +430,8 @@ void UpdateTpuDataTransferEventsInTpuSystem(
 void BuildTPUDeviceEvents(const std::vector<XPlane*>& device_traces,
                           const EventsByType& host_events_by_type,
                           const GroupMetadataMap& group_metadata_map,
-                          RequestEventsMap* request_events_map) {
+                          RequestEventsMap* request_events_map,
+                          BatchEventsMap* batch_events_map) {
   static constexpr int64_t kDataTransferTypes[] = {
       HostEventType::kReadHbm, HostEventType::kTransferD2HRequest,
       HostEventType::kWriteHbm, HostEventType::kTransferH2DRequest,
@@ -441,8 +467,14 @@ void BuildTPUDeviceEvents(const std::vector<XPlane*>& device_traces,
         int64_t group_id = optional_group_id->IntValue();
         event_to_update[0] = {data_transfer_type_to_enum(data_transfer_type),
                               data_transfer_event.GetTimespan()};
-        UpdateRequestEvents(group_metadata_map, event_to_update, group_id,
-                            request_events_map);
+        if (request_events_map != nullptr) {
+          UpdateRequestEvents(group_metadata_map, event_to_update, group_id,
+                              request_events_map);
+        }
+        if (batch_events_map != nullptr) {
+          UpdateBatchEvents(group_metadata_map, event_to_update, group_id,
+                            batch_events_map);
+        }
       }
     }
   }
@@ -451,20 +483,21 @@ void BuildTPUDeviceEvents(const std::vector<XPlane*>& device_traces,
       host_events_by_type, group_metadata_map,
       HostEventType::kTransferToDeviceIssueEvent,
       HostEventType::kTransferToDeviceDone, EventType::HOST_TO_DEVICE,
-      request_events_map);
+      request_events_map, batch_events_map);
 
   UpdateTpuDataTransferEventsInTpuSystem(
       host_events_by_type, group_metadata_map,
       HostEventType::kTransferFromDeviceIssueEvent,
       HostEventType::kTransferFromDeviceDone, EventType::DEVICE_TO_HOST,
-      request_events_map);
+      request_events_map, batch_events_map);
 
   for (const XPlane* device_trace : device_traces) {
     XPlaneVisitor device_plane = CreateTfXPlaneVisitor(device_trace);
-    device_plane.ForEachLine([request_events_map, &event_to_update,
+    device_plane.ForEachLine([request_events_map, batch_events_map,
+                              &event_to_update,
                               &group_metadata_map](const XLineVisitor& line) {
       if (line.Name() != tsl::profiler::kXlaModuleLineName) return;
-      line.ForEachEvent([request_events_map, &event_to_update,
+      line.ForEachEvent([request_events_map, batch_events_map, &event_to_update,
                          &group_metadata_map](const XEventVisitor& event) {
         std::optional<XStatVisitor> group_id =
             event.GetStat(StatType::kGroupId);
@@ -473,8 +506,14 @@ void BuildTPUDeviceEvents(const std::vector<XPlane*>& device_traces,
         // DEVICE_COMPUTE_32 to annotate this is a compute event.
         event_to_update[0] = {EventType::DEVICE_COMPUTE_32,
                               event.GetTimespan()};
-        UpdateRequestEvents(group_metadata_map, event_to_update,
-                            group_id->IntValue(), request_events_map);
+        if (request_events_map != nullptr) {
+          UpdateRequestEvents(group_metadata_map, event_to_update,
+                              group_id->IntValue(), request_events_map);
+        }
+        if (batch_events_map != nullptr) {
+          UpdateBatchEvents(group_metadata_map, event_to_update,
+                            group_id->IntValue(), batch_events_map);
+        }
       });
     });
   }
@@ -498,9 +537,9 @@ void BuildTPUDeviceEvents(const std::vector<XPlane*>& device_traces,
             tpu_execute_event.GetStat(StatType::kGroupId);
         if (!optional_group_id.has_value()) continue;
         int64_t group_id = optional_group_id->IntValue();
-        UpdateEventTimestamps(group_metadata_map, group_id,
-                              tpu_execute_event.TimestampPs(),
-                              UpdateTsTPUExecute, request_events_map);
+        UpdateEventTimestamps(
+            group_metadata_map, group_id, tpu_execute_event.TimestampPs(),
+            UpdateTsTPUExecute, request_events_map, batch_events_map);
       }
     }
   }
@@ -522,7 +561,8 @@ void BuildTPUDeviceEvents(const std::vector<XPlane*>& device_traces,
         int64_t group_id = optional_group_id->IntValue();
         UpdateEventTimestamps(group_metadata_map, group_id,
                               tpu_program_launch_event.TimestampPs(),
-                              UpdateTsTPUProgramLaunch, request_events_map);
+                              UpdateTsTPUProgramLaunch, request_events_map,
+                              batch_events_map);
       }
     }
   }
@@ -539,7 +579,8 @@ void BuildTPUDeviceEvents(const std::vector<XPlane*>& device_traces,
       int64_t group_id = optional_group_id->IntValue();
       UpdateEventTimestamps(group_metadata_map, group_id,
                             tpu_complete_callback_event.TimestampPs(),
-                            UpdateTsTPUCompleteCallback, request_events_map);
+                            UpdateTsTPUCompleteCallback, request_events_map,
+                            batch_events_map);
     }
   }
 }
@@ -547,10 +588,19 @@ void BuildTPUDeviceEvents(const std::vector<XPlane*>& device_traces,
 // Initializes device side events for GPU.
 void BuildGPUDeviceEvents(const StepEvents& nonoverlapped_step_events,
                           const GroupMetadataMap& group_metadata_map,
-                          RequestEventsMap* request_events_map) {
-  for (const auto& [step_id, step_details] : nonoverlapped_step_events) {
-    UpdateRequestEvents(group_metadata_map, step_details.Events(), step_id,
-                        request_events_map);
+                          RequestEventsMap* request_events_map,
+                          BatchEventsMap* batch_events_map) {
+  if (request_events_map != nullptr) {
+    for (const auto& [step_id, step_details] : nonoverlapped_step_events) {
+      UpdateRequestEvents(group_metadata_map, step_details.Events(), step_id,
+                          request_events_map);
+    }
+  }
+  if (batch_events_map != nullptr) {
+    for (const auto& [step_id, step_details] : nonoverlapped_step_events) {
+      UpdateBatchEvents(group_metadata_map, step_details.Events(), step_id,
+                        batch_events_map);
+    }
   }
 }
 
@@ -705,16 +755,19 @@ void BuildRequestEventsMap(const std::vector<XPlane*>& device_traces,
 
   if (device_type == DeviceType::kTpu) {
     BuildTPUDeviceEvents(device_traces, host_events_by_type, group_metadata_map,
-                         request_events_map);
+                         request_events_map, nullptr);
   } else if (device_type == DeviceType::kGpu) {
     BuildGPUDeviceEvents(nonoverlapped_step_events, group_metadata_map,
-                         request_events_map);
+                         request_events_map, nullptr);
   }
 }
 
 // Extracts batch details from <event_forest>.
-void BuildBatchEventsMap(const EventsByType& host_events_by_type,
+void BuildBatchEventsMap(const std::vector<XPlane*>& device_traces,
+                         const EventsByType& host_events_by_type,
                          const GroupMetadataMap& group_metadata_map,
+                         const StepEvents& nonoverlapped_step_events,
+                         DeviceType device_type,
                          RequestEventsMap* request_events_map,
                          BatchEventsMap* batch_events_map) {
   // Initialize BatchDetails from ProcessBatch events.
@@ -801,6 +854,14 @@ void BuildBatchEventsMap(const EventsByType& host_events_by_type,
         batch_detail.set_model_id_index(request_events->model_id_index);
       }
     }
+  }
+
+  if (device_type == DeviceType::kTpu) {
+    BuildTPUDeviceEvents(device_traces, host_events_by_type, group_metadata_map,
+                         nullptr, batch_events_map);
+  } else if (device_type == DeviceType::kGpu) {
+    BuildGPUDeviceEvents(nonoverlapped_step_events, group_metadata_map, nullptr,
+                         batch_events_map);
   }
 }
 
@@ -1100,6 +1161,41 @@ void GenerateTensorDetails(
   }
 }
 
+// Generate batch details from batch events.
+// host runtime breakdown (added in request details) is not supported.
+void BatchEventsToDetails(DeviceType device_type, int64_t group_id,
+                          const BatchEvents& batch_events,
+                          tensorflow::profiler::BatchDetail* batch_detail) {
+  std::vector<EventTypeSpan> tpu_non_overlapped_events;
+  const std::vector<EventTypeSpan>* non_overlapped_events =
+      &tpu_non_overlapped_events;
+  if (device_type == DeviceType::kTpu) {
+    // For TPU device events, batch_events.events may be overlapped in the
+    // timeline. So first converts it to non-overlapped events in the timeline
+    // before the breakdown.
+    tpu_non_overlapped_events = ToNonOverlappedEvents(batch_events.events);
+  } else if (device_type == DeviceType::kGpu) {
+    // For GPU device events, batch_events.events come from non overlapped
+    // StepEvents, so there is no need to convert to non overlapping events
+    // again.
+    non_overlapped_events = &(batch_events.events);
+  }
+
+  int64_t device_time_ps = 0;
+  for (const auto& event : *non_overlapped_events) {
+    const auto& duration_ps = event.span.duration_ps();
+    switch (event.type) {
+      case EventType::DEVICE_COMPUTE_16:
+      case EventType::DEVICE_COMPUTE_32:
+        device_time_ps += duration_ps;
+        break;
+      default:
+        break;
+    }
+  }
+  batch_detail->set_device_time_ps(device_time_ps);
+}
+
 // Generates the request details proto from its events.
 void RequestEventsToDetails(
     DeviceType device_type, int64_t group_id,
@@ -1213,12 +1309,15 @@ void BuildRequestDetails(
 }
 
 void BuildBatchDetails(
-    BatchEventsMap batch_events_map, const int32_t host_id,
+    BatchEventsMap batch_events_map, DeviceType device_type,
+    const int32_t host_id,
     tsl::protobuf::RepeatedPtrField<tensorflow::profiler::BatchDetail>*
         batch_details) {
   for (auto& [group_id, batch_events] : batch_events_map) {
-    batch_events.batch_detail_proto.set_host_id(host_id);
-    *batch_details->Add() = std::move(batch_events.batch_detail_proto);
+    tensorflow::profiler::BatchDetail* batch_detail = batch_details->Add();
+    *batch_detail = std::move(batch_events.batch_detail_proto);
+    batch_detail->set_host_id(host_id);
+    BatchEventsToDetails(device_type, group_id, batch_events, batch_detail);
   }
   std::sort(batch_details->begin(), batch_details->end(),
             CompareByDuration<tensorflow::profiler::BatchDetail>);
@@ -1386,7 +1485,8 @@ void GenerateInferenceStats(
                         inference_stats->mutable_model_id_db(),
                         &request_events_map);
   BatchEventsMap batch_events_map;
-  BuildBatchEventsMap(host_events_by_type, group_metadata_map,
+  BuildBatchEventsMap(device_traces, host_events_by_type, group_metadata_map,
+                      nonoverlapped_step_events, device_type,
                       &request_events_map, &batch_events_map);
 
   GenerateRequestAndBatchDelay(&request_events_map, &batch_events_map);
@@ -1399,7 +1499,8 @@ void GenerateInferenceStats(
   BuildRequestDetails(request_events_map, device_type, host_id,
                       request_details);
   auto* batch_details = per_host_inference_stats->mutable_batch_details();
-  BuildBatchDetails(std::move(batch_events_map), host_id, batch_details);
+  BuildBatchDetails(std::move(batch_events_map), device_type, host_id,
+                    batch_details);
 
   ParseTfstreamzForBatchingParameter(xspace,
                                      inference_stats->mutable_model_id_db());
