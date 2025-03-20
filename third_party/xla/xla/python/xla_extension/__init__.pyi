@@ -49,6 +49,9 @@ from . import profiler
 from . import pytree
 from . import transfer_guard_lib
 
+custom_call_targets = Any
+hlo_sharding_util = Any
+
 _LiteralSlice = Any
 _Status = Any
 _Dtype = Any
@@ -299,6 +302,8 @@ def register_custom_call_as_batch_partitionable(
     target_name: str,
     c_api: Optional[Any] = ...,
 ) -> None: ...
+
+def register_custom_type_id(type_name: str, type_id: Any) -> None: ...
 
 class AutotuneCacheMode(enum.IntEnum):
   UNSPECIFIED: AutotuneCacheMode
@@ -626,6 +631,7 @@ def get_gpu_client(
     allowed_devices: Optional[Any] = ...,
     platform_name: Optional[str] = ...,
     mock: Optional[bool] = ...,
+    mock_gpu_topology: Optional[str] = ...,
 ) -> Client: ...
 def get_mock_gpu_client(
     asynchronous: bool = ...,
@@ -642,6 +648,11 @@ def get_c_api_client(
 ) -> Client: ...
 def get_default_c_api_topology(
     platform_name: str,
+    topology_name: str,
+    options: Dict[str, Union[str, int, List[int], float]],
+) -> DeviceTopology: ...
+def get_c_api_topology(
+    c_api: Any,
     topology_name: str,
     options: Dict[str, Union[str, int, List[int], float]],
 ) -> DeviceTopology: ...
