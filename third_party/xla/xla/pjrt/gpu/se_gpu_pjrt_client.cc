@@ -902,7 +902,8 @@ absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
 StreamExecutorGpuClient::LoadSerialized(absl::string_view serialized,
                                         std::optional<CompileOptions> options,
                                         const LoadOptions& load_options) {
-  return PjRtStreamExecutorClient::DeserializeExecutable(serialized, options);
+  return PjRtStreamExecutorClient::LoadSerializedExecutable(serialized, options,
+                                                            load_options);
 }
 
 absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>>

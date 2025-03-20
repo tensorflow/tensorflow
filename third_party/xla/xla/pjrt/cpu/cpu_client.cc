@@ -519,8 +519,9 @@ absl::StatusOr<std::string> TfrtCpuExecutable::SerializeExecutable() const {
 }
 
 absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
-TfrtCpuClient::DeserializeExecutable(absl::string_view serialized,
-                                     std::optional<CompileOptions> options) {
+TfrtCpuClient::LoadSerializedExecutable(absl::string_view serialized,
+                                        std::optional<CompileOptions> options,
+                                        const LoadOptions& load_options) {
   ExecutableAndOptionsProto proto;
   if (serialized.size() > std::numeric_limits<int>::max()) {
     return Internal(
@@ -624,13 +625,6 @@ TfrtCpuClient::DeserializeExecutable(absl::string_view serialized,
       compile_options.parameter_is_tupled_arguments));
 
   return std::unique_ptr<PjRtLoadedExecutable>(std::move(tfrt_cpu_executable));
-}
-
-absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
-TfrtCpuClient::LoadSerializedExecutable(absl::string_view serialized,
-                                        std::optional<CompileOptions> options,
-                                        const LoadOptions& load_options) {
-  return DeserializeExecutable(serialized, options);
 }
 
 static absl::StatusOr<std::unique_ptr<xla::Executable>> JitCompile(
