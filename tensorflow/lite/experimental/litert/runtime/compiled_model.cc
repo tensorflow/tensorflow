@@ -16,6 +16,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <cstring>
 #include <memory>
 #include <optional>
 #include <string>
@@ -23,6 +24,7 @@
 #include <vector>
 
 #include "absl/cleanup/cleanup.h"
+#include "tensorflow/lite/experimental/litert/c/litert_accelerator.h"
 #include "tensorflow/lite/experimental/litert/c/litert_accelerator_compilation_options.h"
 #include "tensorflow/lite/experimental/litert/c/litert_environment.h"
 #include "tensorflow/lite/experimental/litert/c/litert_environment_options.h"
@@ -246,26 +248,36 @@ Expected<LiteRtCompiledModelT::Ptr> LiteRtCompiledModelT::Create(
   // Apply accelerators matching the requested hardware support to the
   // model in the order they were registered.
   for (auto& accelerator : env->GetAcceleratorRegistry()) {
+    bool delegate_responsible_for_jit = false;
+    LITERT_RETURN_IF_ERROR(
+        LiteRtIsAcceleratorDelegateResponsibleForJitCompilation(
+            accelerator.get(), &delegate_responsible_for_jit));
     LiteRtHwAcceleratorSet accelerator_supported_hardware;
     LITERT_RETURN_IF_ERROR(accelerator->GetHardwareSupport(
         accelerator.get(), &accelerator_supported_hardware));
-    if (hardware_accelerators & accelerator_supported_hardware) {
-      TfLiteOpaqueDelegate* delegate_ptr = nullptr;
-      LITERT_RETURN_IF_ERROR(
-          accelerator->CreateDelegate(accelerator.get(), accelerator_options,
-                                      reinterpret_cast<void**>(&delegate_ptr)));
-
-      auto delegate = tflite::TfLiteOpaqueDelegateUniquePtr(
-          delegate_ptr, reinterpret_cast<void (*)(TfLiteOpaqueDelegate*)>(
-                            accelerator->DestroyDelegate));
-
-      if (compiled_model->interp_->ModifyGraphWithDelegate(delegate_ptr) !=
-          kTfLiteOk) {
-        return Unexpected(kLiteRtStatusErrorRuntimeFailure,
-                          "Failed to modify graph with delegate");
-      }
-      compiled_model->RegisterDelegate(std::move(delegate));
+    // We don't apply the delegate if:
+    //   - the delegate is responsible for JIT compilation
+    //   - and JIT has not been requested for the hardware it supports.
+    if (delegate_responsible_for_jit &&
+        !(hardware_accelerators & accelerator_supported_hardware)) {
+      continue;
     }
+
+    TfLiteOpaqueDelegate* delegate_ptr = nullptr;
+    LITERT_RETURN_IF_ERROR(
+        accelerator->CreateDelegate(accelerator.get(), accelerator_options,
+                                    reinterpret_cast<void**>(&delegate_ptr)));
+
+    auto delegate = tflite::TfLiteOpaqueDelegateUniquePtr(
+        delegate_ptr, reinterpret_cast<void (*)(TfLiteOpaqueDelegate*)>(
+                          accelerator->DestroyDelegate));
+
+    if (compiled_model->interp_->ModifyGraphWithDelegate(delegate_ptr) !=
+        kTfLiteOk) {
+      return Unexpected(kLiteRtStatusErrorRuntimeFailure,
+                        "Failed to modify graph with delegate");
+    }
+    compiled_model->RegisterDelegate(std::move(delegate));
   }
 
   // Apply the dispatch delegate, unconditionally, since the loaded model may

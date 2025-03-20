@@ -65,6 +65,9 @@ struct LiteRtAcceleratorT {
   // Used void* instead of TfLiteOpaqueDelegate* to avoid TFLite dependency.
   void (*DestroyDelegate)(void* delegate);
 
+  LiteRtStatus (*IsTfLiteDelegateResponsibleForJitCompilation)(
+      LiteRtAcceleratorT* accelerator, bool* does_jit_compilation);
+
   // NOLINTEND(*-readability-class-member-naming)
 };
 

@@ -250,4 +250,38 @@ TEST_F(LiteRtAcceleratorTest, GetAcceleratorHardwareSupportWorks) {
       kLiteRtStatusErrorInvalidArgument);
 }
 
+TEST_F(LiteRtAcceleratorTest,
+       IsAcceleratorDelegateResponsibleForJitCompilationWorks) {
+  LiteRtParamIndex num_accelerators = 0;
+  ASSERT_THAT(LiteRtGetNumAccelerators(env_, &num_accelerators),
+              kLiteRtStatusOk);
+  ASSERT_THAT(num_accelerators, 1);
+
+  LiteRtAccelerator accelerator;
+  ASSERT_THAT(LiteRtGetAccelerator(env_, 0, &accelerator), kLiteRtStatusOk);
+  bool does_jit_compilation;
+  ASSERT_THAT(LiteRtIsAcceleratorDelegateResponsibleForJitCompilation(
+                  accelerator, &does_jit_compilation),
+              kLiteRtStatusOk);
+  EXPECT_THAT(does_jit_compilation, false);
+
+  EXPECT_THAT(LiteRtIsAcceleratorDelegateResponsibleForJitCompilation(
+                  nullptr, &does_jit_compilation),
+              kLiteRtStatusErrorInvalidArgument);
+  EXPECT_THAT(LiteRtIsAcceleratorDelegateResponsibleForJitCompilation(
+                  accelerator, nullptr),
+              kLiteRtStatusErrorInvalidArgument);
+
+  // Add an implementation to the function.
+  accelerator->IsTfLiteDelegateResponsibleForJitCompilation =
+      [](LiteRtAccelerator, bool* does_jit) {
+        *does_jit = true;
+        return kLiteRtStatusOk;
+      };
+  EXPECT_THAT(LiteRtIsAcceleratorDelegateResponsibleForJitCompilation(
+                  accelerator, &does_jit_compilation),
+              kLiteRtStatusOk);
+  EXPECT_THAT(does_jit_compilation, true);
+}
+
 }  // namespace

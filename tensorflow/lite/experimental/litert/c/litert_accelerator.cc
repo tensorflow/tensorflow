@@ -90,6 +90,19 @@ LiteRtStatus LiteRtGetAcceleratorHardwareSupport(
   return accelerator->GetHardwareSupport(accelerator, supported_hardware);
 }
 
+LiteRtStatus LiteRtIsAcceleratorDelegateResponsibleForJitCompilation(
+    LiteRtAccelerator accelerator, bool* does_jit_compilation) {
+  if (!accelerator || !does_jit_compilation) {
+    return kLiteRtStatusErrorInvalidArgument;
+  }
+  if (!accelerator->IsTfLiteDelegateResponsibleForJitCompilation) {
+    *does_jit_compilation = false;
+    return kLiteRtStatusOk;
+  }
+  return accelerator->IsTfLiteDelegateResponsibleForJitCompilation(
+      accelerator, does_jit_compilation);
+}
+
 #ifdef __cplusplus
 }  // extern "C"
 #endif

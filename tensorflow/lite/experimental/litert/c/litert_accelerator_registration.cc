@@ -108,3 +108,15 @@ LiteRtStatus LiteRtSetDelegateFunction(
   accelerator->DestroyDelegate = DestroyDelegate;
   return kLiteRtStatusOk;
 }
+
+LiteRtStatus LiteRtSetIsAcceleratorDelegateResponsibleForJitCompilation(
+    LiteRtAccelerator accelerator,
+    LiteRtStatus (*IsTfLiteDelegateResponsibleForJitCompilation)(
+        LiteRtAcceleratorT* accelerator, bool* does_jit_compilation)) {
+  if (!accelerator) {
+    return kLiteRtStatusErrorInvalidArgument;
+  }
+  accelerator->IsTfLiteDelegateResponsibleForJitCompilation =
+      IsTfLiteDelegateResponsibleForJitCompilation;
+  return kLiteRtStatusOk;
+}
