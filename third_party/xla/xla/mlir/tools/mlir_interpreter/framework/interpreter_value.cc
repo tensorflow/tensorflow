@@ -83,7 +83,7 @@ struct InterpreterValuePrinter {
     } else {
       os << TypeStr::Get(T{}) << ">: ";
     }
-    SmallVector<int64_t> indices(t.view.Rank() +
+    SmallVector<int64_t> indices(t.view.num_dimensions() +
                                  t.view.num_vector_dims.value_or(0));
     std::function<void(int64_t)> print;
     print = [&](int64_t dim) {

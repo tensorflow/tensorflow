@@ -1435,7 +1435,7 @@ absl::StatusOr<DeviceMemoryBase> CudaExecutor::CreateTensorMap(
 
   CUtensorMap tensor_map;
   auto result = cuTensorMapEncodeTiled(
-      &tensor_map, data_type, tma_desc.rank(), global_address,
+      &tensor_map, data_type, tma_desc.num_dimensions(), global_address,
       &tma_desc.global_dims()[0], &tma_desc.global_strides()[0],
       &tma_desc.box_dims()[0], &tma_desc.element_strides()[0], interleave,
       swizzle, l2_promotion, float_oob_fill);

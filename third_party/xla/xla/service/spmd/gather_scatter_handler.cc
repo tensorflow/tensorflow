@@ -200,7 +200,7 @@ PartitionedHlo ClampGatherIndices(const PartitionedHlo& indices,
   const PrimitiveType indices_type = indices.hlo()->shape().element_type();
 
   HloInstruction* max_indices;
-  if (index_vector_dim < indices.rank()) {
+  if (index_vector_dim < indices.num_dimensions()) {
     std::vector<int32_t> max_indices_values;
     max_indices_values.reserve(start_index_map.size());
     for (int64_t operand_dim : start_index_map) {
@@ -268,7 +268,7 @@ IndexBoundsForGatherScatterOperandPartitionedOnTrivialSliceDims(
   // Broadcast the index bounds to the same shape as the indices.
   HloInstruction* broadcast_min;
   HloInstruction* broadcast_max;
-  if (index_vector_dim < indices.rank()) {
+  if (index_vector_dim < indices.num_dimensions()) {
     // The index vector is an R1, we need to reshape individual bounds to
     // [1], and concat them if there are more than one.
     for (int64_t i = 0; i < min_indices.size(); ++i) {
@@ -337,7 +337,7 @@ absl::StatusOr<HloInstruction*> PartitionGatherIndexPassthroughDimensions(
   if (hlo_sharding_util::MergeShardingIfCompatible(
           hlo_sharding_util::PropagateShardingAlongDimsAndReplicateOthers(
               output_sharding, index_passthrough_dims.output_dims,
-              index_passthrough_dims.indices_dims, indices.rank()),
+              index_passthrough_dims.indices_dims, indices.num_dimensions()),
           &indices_sharding)) {
     indices = indices.Reshard(indices_sharding);
   }
@@ -366,7 +366,7 @@ absl::StatusOr<HloInstruction*> PartitionGatherIndexPassthroughDimensions(
   const int64_t num_tiles = indices.sharding().TotalNumTiles();
   const GroupedSharding operand_grouped = AlignGroupsWith(
       hlo_sharding_util::GroupShardingOnReplicatedDim(
-          operand.sharding(), num_groups, num_tiles, operand.rank(),
+          operand.sharding(), num_groups, num_tiles, operand.num_dimensions(),
           GatherOperandDimsByPriority(operand, gather, slice_sizes)),
       output_grouped);
   PartitionedHlo per_group_operand =
@@ -444,11 +444,11 @@ absl::StatusOr<HloInstruction*> PartitionGatherOperandPassthroughDimensions(
                         output_grouped);
     // See if we can group partially replicated dimensions from the indices
     // otherwise replicate it.
-    const GroupedSharding indices_grouped =
-        AlignGroupsWith(hlo_sharding_util::GroupShardingOnReplicatedDim(
-                            indices.sharding(), num_groups, num_tiles,
-                            indices.rank(), GatherIndexDimsByPriority(gather)),
-                        output_grouped);
+    const GroupedSharding indices_grouped = AlignGroupsWith(
+        hlo_sharding_util::GroupShardingOnReplicatedDim(
+            indices.sharding(), num_groups, num_tiles, indices.num_dimensions(),
+            GatherIndexDimsByPriority(gather)),
+        output_grouped);
     PartitionedHlo per_group_operand =
         PerGroupPartitionedHlo(operand, operand_grouped, b, clean_ups);
     PartitionedHlo per_group_indices =
@@ -500,11 +500,11 @@ absl::StatusOr<HloInstruction*> PartitionGatherTrivialSlicedOperandDimensions(
                                                *trivial_slice_dims);
     // See if we can group partially replicated dimensions from the indices
     // otherwise replicate it.
-    GroupedSharding indices_grouped =
-        AlignGroupsWith(hlo_sharding_util::GroupShardingOnReplicatedDim(
-                            indices.sharding(), num_groups, num_tiles,
-                            indices.rank(), GatherIndexDimsByPriority(gather)),
-                        operand_grouped);
+    GroupedSharding indices_grouped = AlignGroupsWith(
+        hlo_sharding_util::GroupShardingOnReplicatedDim(
+            indices.sharding(), num_groups, num_tiles, indices.num_dimensions(),
+            GatherIndexDimsByPriority(gather)),
+        operand_grouped);
     GroupedSharding output_grouped = AlignGroupsWith(
         hlo_sharding_util::GroupShardingOnReplicatedDim(
             output_sharding, num_groups, num_tiles, output_shape.rank(),
@@ -533,8 +533,8 @@ absl::StatusOr<HloInstruction*> PartitionGatherTrivialSlicedOperandDimensions(
                                                            gather);
       indices_grouped = AlignGroupsWith(
           hlo_sharding_util::GroupShardingOnReplicatedDim(
-              new_indices_sharding, num_groups, num_tiles, indices.rank(),
-              GatherIndexDimsByPriority(gather)),
+              new_indices_sharding, num_groups, num_tiles,
+              indices.num_dimensions(), GatherIndexDimsByPriority(gather)),
           operand_grouped);
     }
     // Reshard indices to its intended sharding before clamping and adjusting.
@@ -599,7 +599,7 @@ absl::StatusOr<HloInstruction*> PartitionGatherTrivialSlicedOperandDimensions(
         hlo_sharding_util::UngroupSharding(output_grouped), gather));
     filter = pfilter.hlo();
 
-    if (dnums.index_vector_dim() < indices.rank()) {
+    if (dnums.index_vector_dim() < indices.num_dimensions()) {
       std::vector<int64_t> reduced_filter_dims;
       for (int64_t i = 0; i < filter->shape().rank(); ++i) {
         if (i != dnums.index_vector_dim()) {
@@ -704,7 +704,7 @@ absl::StatusOr<HloInstruction*> PartitionGatherParallelDimensions(
     for (int start_idx = 0; start_idx < dnums.start_index_map_size();
          ++start_idx) {
       HloInstruction* index_offset =
-          indices.rank() > index_dim
+          indices.num_dimensions() > index_dim
               ? b->AddInstruction(HloInstruction::CreateReshape(
                     ShapeUtil::MakeShape(S32, {1}),
                     operand_offsets[dnums.start_index_map(start_idx)]))
@@ -712,7 +712,7 @@ absl::StatusOr<HloInstruction*> PartitionGatherParallelDimensions(
       index_offsets.push_back(index_offset);
     }
     HloInstruction* adjusted_indices = nullptr;
-    if (indices.rank() > index_dim) {
+    if (indices.num_dimensions() > index_dim) {
       // Concatenate the offsets for the parallel dimensions to subtract.
       adjusted_indices = b->AddInstruction(HloInstruction::CreateConcatenate(
           ShapeUtil::MakeShape(S32,
@@ -1368,7 +1368,7 @@ absl::StatusOr<HloInstruction*> PartitionScatterOperandPassthroughDimensions(
     // otherwise replicate it.
     const GroupedSharding indices_grouped = AlignGroupsWith(
         hlo_sharding_util::GroupShardingOnReplicatedDim(
-            indices.sharding(), num_groups, num_tiles, indices.rank(),
+            indices.sharding(), num_groups, num_tiles, indices.num_dimensions(),
             ScatterIndexDimsByPriority(scatter)),
         update_grouped);
     const GroupedSharding& output_grouped = operand_grouped;
@@ -1426,7 +1426,7 @@ absl::StatusOr<HloInstruction*> PartitionScatterIndexPassthroughDimensions(
   if (hlo_sharding_util::MergeShardingIfCompatible(
           hlo_sharding_util::PropagateShardingAlongDimsAndReplicateOthers(
               updates[0].sharding(), index_passthrough_dims.output_dims,
-              index_passthrough_dims.indices_dims, indices.rank()),
+              index_passthrough_dims.indices_dims, indices.num_dimensions()),
           &indices_sharding)) {
     indices = indices.Reshard(indices_sharding);
   }
@@ -1451,7 +1451,8 @@ absl::StatusOr<HloInstruction*> PartitionScatterIndexPassthroughDimensions(
   const int64_t num_tiles = indices.sharding().TotalNumTiles();
   const GroupedSharding operand_grouped = AlignGroupsWith(
       hlo_sharding_util::GroupShardingOnReplicatedDim(
-          operands[0].sharding(), num_groups, num_tiles, operands[0].rank(),
+          operands[0].sharding(), num_groups, num_tiles,
+          operands[0].num_dimensions(),
           ScatterOperandDimsByPriority(operands[0], scatter, slice_sizes)),
       update_grouped);
   const GroupedSharding indices_grouped = AlignGroupsWith(
@@ -1577,14 +1578,15 @@ absl::StatusOr<HloInstruction*> PartitionScatterTrivialSlicedOperandDimensions(
     // otherwise replicate it.
     GroupedSharding indices_grouped = AlignGroupsWith(
         hlo_sharding_util::GroupShardingOnReplicatedDim(
-            indices.sharding(), num_groups, num_tiles, indices.rank(),
+            indices.sharding(), num_groups, num_tiles, indices.num_dimensions(),
             ScatterIndexDimsByPriority(scatter)),
         operand_grouped);
     // See if we can group partially replicated dimensions from the updates
     // otherwise replicate it.
     GroupedSharding update_grouped = AlignGroupsWith(
         hlo_sharding_util::GroupShardingOnReplicatedDim(
-            updates[0].sharding(), num_groups, num_tiles, updates[0].rank(),
+            updates[0].sharding(), num_groups, num_tiles,
+            updates[0].num_dimensions(),
             ScatterUpdateDimsByPriority(updates[0].base_shape(), operands[0],
                                         scatter, slice_sizes)),
         operand_grouped);
@@ -1610,8 +1612,8 @@ absl::StatusOr<HloInstruction*> PartitionScatterTrivialSlicedOperandDimensions(
               updates[0].sharding(), scatter);
       indices_grouped = AlignGroupsWith(
           hlo_sharding_util::GroupShardingOnReplicatedDim(
-              new_indices_sharding, num_groups, num_tiles, indices.rank(),
-              ScatterIndexDimsByPriority(scatter)),
+              new_indices_sharding, num_groups, num_tiles,
+              indices.num_dimensions(), ScatterIndexDimsByPriority(scatter)),
           operand_grouped);
     }
     const GroupedSharding& output_grouped = operand_grouped;
@@ -1871,7 +1873,7 @@ absl::Status SpmdPartitioningVisitor::HandleScatter(HloInstruction* hlo) {
   auto indices_sharding = indices.sharding();
   // Reshard indices with -1 padding, which will have no effect on the result as
   // guaranteed by the scatter semantics.
-  for (auto i = 0; i != indices.rank(); ++i) {
+  for (auto i = 0; i != indices.num_dimensions(); ++i) {
     if (indices.base_shape().dimensions(i) !=
         indices_sharding.tile_assignment().dim(i) *
             indices.hlo()->shape().dimensions(i)) {

@@ -224,7 +224,7 @@ TmaDescriptor::TmaDescriptor(llvm::ArrayRef<uint64_t> global_dims,
                              TmaSwizzle swizzle, TmaL2Promotion l2_promotion,
                              TmaFloatOobFill float_oob_fill)
     : element_size_(element_size),
-      rank_(global_dims.size()),
+      num_dimensions_(global_dims.size()),
       global_dims_(global_dims.begin(), global_dims.end()),
       global_strides_(global_strides.begin(), global_strides.end()),
       box_dims_(box_dims.begin(), box_dims.end()),
@@ -240,7 +240,7 @@ std::string TmaDescriptor::ToString() const {
       "global_strides: {%s}, box_dims: {%s}, element_strides: {%s}, "
       "interleave: %d, swizzle: %d, l2_promotion: %d, "
       "float_oob_fill: %d}",
-      element_size_, rank_, absl::StrJoin(global_dims_, ","),
+      element_size_, num_dimensions_, absl::StrJoin(global_dims_, ","),
       absl::StrJoin(global_strides_, ","), absl::StrJoin(box_dims_, ","),
       absl::StrJoin(element_strides_, ","), interleave_, swizzle_,
       l2_promotion_, float_oob_fill_);

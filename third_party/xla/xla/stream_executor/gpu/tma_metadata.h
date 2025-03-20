@@ -94,8 +94,8 @@ class TmaDescriptor {
   // Element size in bytes of the tensor. Can be 1, 2, 4, 8.
   int element_size() const { return element_size_; }
 
-  // Rank of the tensor. Can be 1-5.
-  uint32_t rank() const { return rank_; }
+  // Number of dimensions of the tensor. Can be 1-5.
+  uint32_t num_dimensions() const { return num_dimensions_; }
 
   // Array containing tensor size (number of elements) along each of the rank
   // dimensions.
@@ -136,8 +136,8 @@ class TmaDescriptor {
   // Element size in bytes of the tensor. Can be 1, 2, 4, 8.
   int element_size_;
 
-  // Rank of the tensor. Can be 1-5.
-  uint32_t rank_;
+  // Number of dimensions of the tensor. Can be 1-5.
+  uint32_t num_dimensions_;
 
   // Array containing tensor size (number of elements) along each of the rank
   // dimensions.
