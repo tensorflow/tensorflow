@@ -704,30 +704,6 @@ xla_test(
 )
 
 xla_test(
-    name = "gpu_sparse_dot_test",
-    srcs = if_cuda_is_configured(["gpu_sparse_dot_test.cc"]),
-    backends = [
-        "gpu_a100",
-        "gpu_h100",
-        "gpu_b200",
-    ],
-    tags = ["cuda-only"],
-    deps = if_cuda_is_configured(
-        [
-            ":gpu_codegen_test",
-            "@com_google_googletest//:gtest",
-            "@com_google_absl//absl/strings",
-            "@com_google_absl//absl/types:span",
-            "//xla:literal",
-            "//xla:literal_util",
-            "//xla/tests:xla_internal_test_main",
-            "//xla/tsl/lib/core:status_test_util",
-        ],
-        ["@com_google_googletest//:gtest_main"],  # b/317293391
-    ),
-)
-
-xla_test(
     name = "gpu_cub_sort_test",
     size = "medium",
     srcs = ["gpu_cub_sort_test.cc"],

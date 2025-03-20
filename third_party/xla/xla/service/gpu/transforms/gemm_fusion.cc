@@ -673,18 +673,9 @@ absl::StatusOr<Decision> CreateDotFusion(
     return Decision::Deny(is_supported.Explain());
   }
 
-  // Verify sparse dot constraints.
+  // Verify not sparse.
   if (dot.sparse_operands()) {
-    const SparsityDescriptor& descriptor = dot.sparsity().front();
-    if (dot.sparse_operands() != 1 || descriptor.index() != 0) {
-      return InvalidArgument("Sparsity is only supported on left operand");
-    }
-    if (descriptor.type() != SparsityType::SPARSITY_STRUCTURED_N_M ||
-        descriptor.n() != 2 || descriptor.m() != 4) {
-      return InvalidArgument("Only 2:4 structured sparsity is supported");
-    }
-    // DotDimensionSorter pass makes sure the sparse dimension is minor.
-    CHECK_EQ(descriptor.dimension(), dot.operand(0)->shape().rank() - 1);
+    return InvalidArgument("Sparsity is not supported");
   }
 
   TF_ASSIGN_OR_RETURN(HlosAndRequirements lhs_hlos_and_reqs,

@@ -36,24 +36,6 @@ class TTXLA_Op<string mnemonic, list<Trait> traits = []> :
       Op<XlaTritonDialect, mnemonic, traits> {
 }
 
-def TTXLA_SparseDotOp : TTXLA_Op<"sparse_dot", [
-        Pure, DotLike, DeclareOpInterfaceMethods<InferTypeOpInterface>,
-        TypesMatchWith<"result's type matches accumulator's type", "d", "c", "$_self">]> {
-    let summary = "sparse dot";
-
-    let arguments = (ins
-      TTG_TensorOrMemDesc:$a,
-      TTG_TensorOrMemDesc:$b,
-      TT_FpIntTensor:$c,
-      TT_IntTensor: $aMeta);
-    let results = (outs TT_FpIntTensor:$d);
-    let assemblyFormat = [{
-      $a`,` $b`,` $c`,` $aMeta attr-dict
-        `:` type($a) `meta` type($aMeta) `*` type($b) `->` type($d)
-    }];
-    let hasVerifier = 1;
-}
-
 def TTXLA_TileOp : TTXLA_Op<"tile", [Pure,
     DeclareOpInterfaceMethods<OpAsmOpInterface, ["getAsmResultNames"]>]> {
   let summary = "Capture the tiling information of a tensor.";

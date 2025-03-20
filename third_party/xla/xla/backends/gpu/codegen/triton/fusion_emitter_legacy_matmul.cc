@@ -1900,8 +1900,7 @@ class Scopes {
  public:
   Scopes(EmitterLocOpBuilder& b, const HloInstruction* dot_instr,
          const TritonFusionAnalysis& analysis, const MatMulDims& dims,
-         const TritonGemmConfig& config, const MatMulLaunchConfig launch_config,
-         bool is_sparse)
+         const TritonGemmConfig& config, const MatMulLaunchConfig launch_config)
       : lhs_(TritonFusionAnalysis::Scope::LHS),
         rhs_(TritonFusionAnalysis::Scope::RHS),
         out_(TritonFusionAnalysis::Scope::OUTPUT) {
@@ -1931,9 +1930,6 @@ class Scopes {
 
     int lhs_non_contracting_block_size = config.block_m;
     int lhs_contracting_block_size = config.block_k;
-    if (is_sparse) {
-      lhs_contracting_block_size /= 2;
-    }
     lhs_.tiled_dims = {
         DimProperties(dims.lhs_noncontracting_dim_idx, pid_m_,
                       lhs_non_contracting_block_size,
@@ -1959,17 +1955,6 @@ class Scopes {
                                      pid_n_, config.block_n,
                                      /*split_value=*/1)};
     out_.batch_dim_idx = dims.out_batch_dim_idx;
-
-    if (is_sparse) {
-      meta_ = Side{TritonFusionAnalysis::Scope::META,
-                   /*tiled_dims=*/
-                   {DimProperties(dims.lhs_noncontracting_dim_idx, pid_m_,
-                                  config.block_m,
-                                  /*split_value=*/1),
-                    DimProperties(dims.lhs_contracting_dim_idx, pid_k_,
-                                  config.block_k / 16, config.split_k)},
-                   dims.lhs_batch_dim_idx};
-    }
   }
 
   std::vector<const Side*> input_scopes() const {
@@ -2228,7 +2213,7 @@ Type GetIndexType(EmitterLocOpBuilder& b, const HloDotInstruction& dot_instr,
 
 void EmitForLoopBody(EmitterLocOpBuilder& b, MatMulEmitterHelper& emitter,
                      const Scopes& scopes, const HloDotInstruction* dot_instr,
-                     bool is_sparse, const MatMulDims& dims,
+                     const MatMulDims& dims,
                      const llvm::SmallVector<IterableInput>& inputs, Value ki,
                      ValueRange iter_args) {
   SmallVector<Value> args_for_yield;
@@ -2248,9 +2233,6 @@ void EmitForLoopBody(EmitterLocOpBuilder& b, MatMulEmitterHelper& emitter,
       emitter.MakeInput(b, scopes.lhs(), kLhsIndex, values[kLhsIndex]);
   Value dot_rhs =
       emitter.MakeInput(b, scopes.rhs(), kRhsIndex, values[kRhsIndex]);
-  Value dot_meta = is_sparse ? emitter.MakeInput(b, *scopes.meta(), kMetaIndex,
-                                                 values[kMetaIndex])
-                             : Value{};
 
   // Operation in the fusion before the dot can alter the elements of the
   // tiles that were zero masked during loads. These have to be zeroed here
@@ -2260,21 +2242,14 @@ void EmitForLoopBody(EmitterLocOpBuilder& b, MatMulEmitterHelper& emitter,
   const bool need_masking =
       dims.k % (dims.config.block_k * dims.config.split_k) > 0;
   if (need_masking) {
-    dot_lhs = EmitMaskOnInput(
-        b, MaskExpandDimension::kMajor, dot_lhs, is_sparse ? 2 : 1, ki, dims.k,
-        dims.config.block_k, scopes.pid_k(), dims.config.block_m);
+    dot_lhs = EmitMaskOnInput(b, MaskExpandDimension::kMajor, dot_lhs, 1, ki,
+                              dims.k, dims.config.block_k, scopes.pid_k(),
+                              dims.config.block_m);
     dot_rhs = EmitMaskOnInput(b, MaskExpandDimension::kMinor, dot_rhs, 1, ki,
                               dims.k, dims.config.block_k, scopes.pid_k(),
                               dims.config.block_n);
     // Masking the metadata is not necessary, as the inputs are masked
     // (i.e. zeroed out), so the padded metadata can hold any values.
-  }
-
-  if (is_sparse) {
-    args_for_yield.push_back(b.create<mt::xla::SparseDotOp>(
-        dot_lhs, dot_rhs, iter_args.back(), dot_meta));
-    b.create<mlir::scf::YieldOp>(args_for_yield);
-    return;
   }
 
   Value acc_next;
@@ -2322,7 +2297,6 @@ absl::StatusOr<std::optional<stream_executor::gpu::TmaMetadata>> EmitMatMul(
   const HloInstruction* instr =
       hlo_query::GetFirstInstructionWithOpcode(*computation, HloOpcode::kDot);
   const HloDotInstruction* dot_instr = DynCast<HloDotInstruction>(instr);
-  bool is_sparse = dot_instr->sparse_operands() > 0;
 
   Type index_ty = GetIndexType(b, *dot_instr, config);
 
@@ -2349,7 +2323,7 @@ absl::StatusOr<std::optional<stream_executor::gpu::TmaMetadata>> EmitMatMul(
       CreateConst(b, acc_ty, 0, {block_m, block_n});
 
   // Calculate the sizes of the lhs, rhs, meta, and output sides.
-  Scopes scopes(b, dot_instr, analysis, dims, config, launch_config, is_sparse);
+  Scopes scopes(b, dot_instr, analysis, dims, config, launch_config);
 
   llvm::SmallVector<IterableInput> inputs;
 
@@ -2376,8 +2350,7 @@ absl::StatusOr<std::optional<stream_executor::gpu::TmaMetadata>> EmitMatMul(
 
   auto body_builder_callback = [&](mlir::OpBuilder&, mlir::Location, Value ki,
                                    ValueRange iter_args) -> void {
-    EmitForLoopBody(b, emitter, scopes, dot_instr, is_sparse, dims, inputs, ki,
-                    iter_args);
+    EmitForLoopBody(b, emitter, scopes, dot_instr, dims, inputs, ki, iter_args);
   };
 
   iter_args.push_back(accumulator_init);
