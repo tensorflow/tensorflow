@@ -46,12 +46,10 @@ static bool InstructionIsUnavailable(const HloInstruction* instr) {
   // Eigen requires a thread pool to be passed so we conservatively exclude it.
   // (This could be relaxed with a little work to make it optional if required).
   switch (instr->opcode()) {
-    case HloOpcode::kConvolution:
     case HloOpcode::kCustomCall:
     case HloOpcode::kInfeed:
     case HloOpcode::kOutfeed:
     case HloOpcode::kScatter:
-    case HloOpcode::kDot:
       return true;
     default:
       return IsCollective(instr);

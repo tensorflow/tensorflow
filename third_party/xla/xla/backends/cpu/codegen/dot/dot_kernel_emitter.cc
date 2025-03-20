@@ -61,8 +61,8 @@ DotKernelEmitter::DotKernelEmitter(const HloInstruction* instr,
 absl::StatusOr<KernelDefinition> DotKernelEmitter::EmitKernelDefinition() {
   const HloModuleConfig& config = instr_->GetModule()->config();
 
-  DotImplementationStrategy strategy =
-      GetDotImplementationStrategy(config, *instr_, *target_machine_);
+  DotImplementationStrategy strategy = GetDotImplementationStrategy(
+      config, *instr_, *target_machine_, /*allow_runtime_calls=*/false);
 
   if (!IsDotCodegenStrategy(strategy)) {
     return Internal("Unsupported dot implementation strategy");

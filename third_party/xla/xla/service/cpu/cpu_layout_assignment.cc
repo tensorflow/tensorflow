@@ -115,8 +115,8 @@ static bool OperandsAndResultMustHaveRowMajorLayout(
     return PotentiallyImplementedAsEigenConvolution(instr,
                                                     target_machine_features);
   } else if (instr.opcode() == HloOpcode::kDot) {
-    return DotOperandsAndResultMustHaveRowMajorLayout(instr,
-                                                      target_machine_features);
+    return DotOperandsAndResultMustHaveRowMajorLayout(
+        instr, target_machine_features, /*allow_runtime_calls=*/true);
   } else if (instr.opcode() == HloOpcode::kCustomCall) {
     return instr.custom_call_target() == "TopK";
   }

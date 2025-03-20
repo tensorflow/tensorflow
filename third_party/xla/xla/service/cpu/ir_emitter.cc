@@ -142,7 +142,8 @@ IrEmitter::IrEmitter(mlir::MLIRContext* mlir_context,
                      const TargetMachineFeatures* target_machine_features,
                      bool emit_code_for_msan,
                      absl::flat_hash_map<BufferAllocation::Slice, int64_t>
-                         slice_to_buffer_table_index)
+                         slice_to_buffer_table_index,
+                     bool allow_runtime_calls)
     : assignment_(assignment),
       module_(llvm_module),
       arch_type_(llvm::Triple(llvm_module->getTargetTriple()).getArch()),
@@ -159,7 +160,8 @@ IrEmitter::IrEmitter(mlir::MLIRContext* mlir_context,
       is_top_level_computation_(false),
       target_machine_features_(*target_machine_features),
       emit_code_for_msan_(emit_code_for_msan),
-      slice_to_buffer_table_index_(std::move(slice_to_buffer_table_index)) {
+      slice_to_buffer_table_index_(std::move(slice_to_buffer_table_index)),
+      allow_runtime_calls_(allow_runtime_calls) {
   b()->setFastMathFlags(llvm_ir::GetCpuFastMathFlags(hlo_module_config_));
   absl::Status s = GatherComputationsByAllocationType(
       &hlo_module, &thread_local_computations_, &global_computations_);
@@ -796,10 +798,10 @@ absl::Status IrEmitter::HandleDot(HloInstruction* dot) {
           << llvm_ir::DumpToString(target_array.GetBasePointer());
 
   // Dot operation is complicated so we delegate to a helper class.
-  return EmitDotOperation(*dot, target_array, lhs_array, rhs_array,
-                          /*addend_array=*/nullptr,
-                          GetExecutableRunOptionsArgument(), b(),
-                          hlo_module_config_, target_machine_features_);
+  return EmitDotOperation(
+      *dot, target_array, lhs_array, rhs_array,
+      /*addend_array=*/nullptr, GetExecutableRunOptionsArgument(), b(),
+      hlo_module_config_, target_machine_features_, allow_runtime_calls_);
 }
 
 absl::Status IrEmitter::HandleConvolution(HloInstruction* convolution) {
@@ -812,8 +814,8 @@ absl::Status IrEmitter::HandleConvolution(HloInstruction* convolution) {
 
   // TODO(tonywy): Add PotentiallyImplementedAsMKLConvolution to support
   // different data layouts.
-  if (PotentiallyImplementedAsEigenConvolution(*convolution,
-                                               target_machine_features_)) {
+  if (allow_runtime_calls_ && PotentiallyImplementedAsEigenConvolution(
+                                  *convolution, target_machine_features_)) {
     const Shape& lhs_shape = lhs->shape();
     const Shape& rhs_shape = rhs->shape();
     const Shape& convolution_shape = convolution->shape();

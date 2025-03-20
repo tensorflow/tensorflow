@@ -336,8 +336,8 @@ absl::StatusOr<IrEmitter2::KernelInfo> IrEmitter2::EmitDotFusionHostKernel(
 
   // Check that we can emit LLVM IR for this dot operation.
   DotImplementationStrategy strategy = GetDotImplementationStrategy(
-      hlo_module_.config(), *dot,
-      nested_ir_emitter_->target_machine_features());
+      hlo_module_.config(), *dot, nested_ir_emitter_->target_machine_features(),
+      /*allow_runtime_calls=*/false);
 
   if (!IsDotCodegenStrategy(strategy)) {
     return Internal("Unsupported dot implementation strategy");

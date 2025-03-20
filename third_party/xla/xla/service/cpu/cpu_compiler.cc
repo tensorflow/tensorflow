@@ -735,8 +735,8 @@ absl::Status CpuCompiler::RunHloPassesThroughLayoutAssn(
   pipeline.AddPass<IndexedArrayAnalysisPrinterPass>();
   pipeline.AddPass<TransposeFolding>(
       [&](const HloInstruction& dot, int64_t operand) -> absl::StatusOr<bool> {
-        if (DotImplementationCanHandleTranspose(dot,
-                                                *target_machine_features)) {
+        if (DotImplementationCanHandleTranspose(dot, *target_machine_features,
+                                                /*allow_runtime_calls=*/true)) {
           return TransposeFolding::IsRowColumnTransposeDotOperand(dot, operand);
         }
         return false;
