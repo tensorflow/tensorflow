@@ -1115,6 +1115,18 @@ func.func @broadcast_abs(%arg0: tensor<1x2xf32>) -> (tensor<2x2xf32>) {
   // CHECK: return %[[broadcasted]]
 }
 
+// CHECK-LABEL: @broadcast_cast
+func.func @broadcast_cast(%arg0: tensor<1x2xi8>) -> (tensor<2x2xf32>) {
+  %cst = mhlo.constant dense<[2, 2]> : tensor<2xi32>
+  %0 = "tfl.broadcast_to"(%arg0, %cst) : (tensor<1x2xi8>, tensor<2xi32>) -> tensor<2x2xi8>
+  %1 = "tfl.cast"(%0) : (tensor<2x2xi8>) -> tensor<2x2xf32>
+  func.return %1 : tensor<2x2xf32>
+  // CHECK: %[[constant:.*]] = mhlo.constant dense<2> : tensor<2xi32>
+  // CHECK: %[[cast_value:.*]] = "tfl.cast"(%arg0) : (tensor<1x2xi8>) -> tensor<1x2xf32>
+  // CHECK: %[[broadcasted:.*]] = "tfl.broadcast_to"(%[[cast_value]], %[[constant]]) : (tensor<1x2xf32>, tensor<2xi32>) -> tensor<2x2xf32>
+  // CHECK: return %[[broadcasted]]
+}
+
 // CHECK-LABEL: @broadcast_dequantize
 func.func @broadcast_dequantize(%arg0: tensor<1x2x!quant.uniform<i8:f32, 0.0123456789:-128>>) -> (tensor<2x2xf32>) {
   %cst = mhlo.constant dense<[2, 2]> : tensor<2xi32>

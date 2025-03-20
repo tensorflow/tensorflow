@@ -345,6 +345,8 @@ multiclass ReorderBroadcastToAndUnaryOp<Op UnaryOp> {
     (TFL_BroadcastToOp (UnaryOp $input), $dim)>;
 }
 
+// TFL_CastOp of requires special handling due to not having a builder, it's
+// implemented in native code in ReorderBroadcastToCast.
 foreach UnaryOp = [TFL_AbsOp, TFL_CeilOp, TFL_ComplexAbsOp, TFL_CosOp,
                    TFL_DequantizeOp, TFL_EluOp, TFL_ExpOp, TFL_FloorOp,
                    TFL_HardSwishOp, TFL_ImagOp, TFL_LogOp, TFL_LogicalNotOp,

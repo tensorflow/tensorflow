@@ -1261,6 +1261,7 @@ cc_library(
         ":pass",
         ":pass_options",
         ":tensorflow_lite_ops",
+        ":utils",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:ArithDialect",
         "@llvm-project//mlir:Dialect",

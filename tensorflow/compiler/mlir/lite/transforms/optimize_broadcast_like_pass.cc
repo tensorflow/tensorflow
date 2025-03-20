@@ -27,9 +27,11 @@ limitations under the License.
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project  // IWYU pragma: keep
 #include "mlir/Dialect/Traits.h"  // from @llvm-project
+#include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypeInterfaces.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
+#include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Matchers.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
@@ -40,6 +42,7 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"  // IWYU pragma: keep
+#include "tensorflow/compiler/mlir/lite/utils/utils.h"
 
 namespace mlir {
 namespace TFL {
@@ -330,6 +333,50 @@ LogicalResult ConvertResultsBroadcastableBatchMatMulShapeOp::RewriteOp(
                                                        get_broadcasted_shape);
 }
 
+class ReorderBroadcastToCast : public RewritePattern {
+ public:
+  explicit ReorderBroadcastToCast(MLIRContext* context)
+      : RewritePattern(TFL::CastOp::getOperationName(), /*PatternBenefit*/ 1,
+                       context) {}
+
+  LogicalResult matchAndRewrite(Operation* op,
+                                PatternRewriter& rewriter) const override;
+};
+
+LogicalResult ReorderBroadcastToCast::matchAndRewrite(
+    Operation* op, PatternRewriter& rewriter) const {
+  auto cast_op = llvm::dyn_cast<TFL::CastOp>(op);
+  if (!cast_op) return rewriter.notifyMatchFailure(op, "Not a CastOp");
+
+  auto broadcast_to_op = llvm::dyn_cast_or_null<TFL::BroadcastToOp>(
+      cast_op.getInput().getDefiningOp());
+  if (!broadcast_to_op)
+    return rewriter.notifyMatchFailure(op, "Not a BroadcastToOp");
+
+  auto fused_loc = FusedLoc::get(cast_op.getContext(),
+                                 {cast_op.getLoc(), broadcast_to_op.getLoc()});
+
+  auto input_value = broadcast_to_op.getInput();
+  auto input_type = input_value.getType();
+  auto old_cast_op_output_type = cast_op.getOutput().getType();
+  auto new_cast_op_output_type =
+      old_cast_op_output_type.hasRank()
+          ? static_cast<TensorType>(
+                RankedTensorType::get(input_type.getShape(),
+                                      old_cast_op_output_type.getElementType()))
+          : static_cast<TensorType>(UnrankedTensorType::get(
+                old_cast_op_output_type.getElementType()));
+
+  auto new_cast_op = rewriter.create<TFL::CastOp>(
+      fused_loc, new_cast_op_output_type, input_value);
+  auto new_broadcast_to_op = rewriter.create<TFL::BroadcastToOp>(
+      fused_loc, old_cast_op_output_type, new_cast_op.getOutput(),
+      broadcast_to_op.getShape());
+
+  rewriter.replaceOp(cast_op, new_broadcast_to_op.getOutput());
+  return success();
+}
+
 #include "tensorflow/compiler/mlir/lite/transforms/generated_optimize_broadcast_like.inc"
 }  // namespace
 
@@ -340,6 +387,7 @@ void OptimizeBroadcastLikePass::runOnOperation() {
   patterns.add<ConvertResultsBroadcastableShapeOp>(func.getContext());
   patterns.add<ConvertResultsBroadcastableBatchMatMulShapeOp>(
       func.getContext());
+  patterns.add<ReorderBroadcastToCast>(func.getContext());
   TFL::populateWithGenerated(patterns);
   (void)applyPatternsGreedily(getOperation(), std::move(patterns));
 }
