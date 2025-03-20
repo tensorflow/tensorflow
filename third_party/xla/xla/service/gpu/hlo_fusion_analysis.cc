@@ -233,7 +233,8 @@ HloFusionAnalysis::EmitterFusionKind HloFusionAnalysis::GetEmitterFusionKind()
   }
 
   if (fusion_backend_config_.kind() == kTritonFusionKind ||
-      fusion_backend_config_.kind() == kTritonGemmFusionKind) {
+      fusion_backend_config_.kind() == kTritonGemmFusionKind ||
+      fusion_backend_config_.kind() == kTritonNestedGemmFusionKind) {
     return EmitterFusionKind::kTriton;
   }
 

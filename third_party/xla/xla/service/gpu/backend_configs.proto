@@ -201,8 +201,8 @@ message FusionBackendConfig {
   // present, we use the default Triton config.
   AutotuneResult.TritonGemmKey triton_gemm_config = 2;
 
-  // Only valid when kind == "__triton" for now. Code generation of such
-  // fusions will fail if this field is not set.
+  // Only valid when kind is "__triton" or "__triton_nested_fusion_gemm". Code
+  // generation of such fusions will fail if this field is not set.
   BlockLevelFusionConfig block_level_fusion_config = 6;
 
   // Only valid when kind == "__custom_fusion".

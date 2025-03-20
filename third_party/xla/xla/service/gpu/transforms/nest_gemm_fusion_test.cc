@@ -56,6 +56,10 @@ MATCHER_P(OutputTileSizesIs, matcher, "") {
     *result_listener << "has no block level fusion config";
     return false;
   }
+  if (fusion_backend_config.kind() != "__triton_nested_gemm_fusion") {
+    *result_listener << "fusion kind is not __triton_nested_gemm_fusion";
+    return false;
+  }
   auto output_tile_sizes =
       fusion_backend_config.block_level_fusion_config().output_tiles(0).sizes();
   return ExplainMatchResult(matcher, output_tile_sizes, result_listener);

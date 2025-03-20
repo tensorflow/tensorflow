@@ -1444,7 +1444,8 @@ absl::StatusOr<TritonModule> CreateTritonModule(
     TF_ASSIGN_OR_RETURN(tma_metadata,
                         EmitMatMul(b, libdevice_path, device_info, fusion, fn,
                                    block_level_parameters));
-  } else if (fusion_kind == kTritonFusionKind) {
+  } else if (fusion_kind == kTritonFusionKind ||
+             fusion_kind == kTritonNestedGemmFusionKind) {
     TF_RETURN_IF_ERROR(EmitGeneric(b, libdevice_path, device_info, fusion, fn,
                                    block_level_parameters));
   } else {

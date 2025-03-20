@@ -118,7 +118,7 @@ absl::Status FuseInstructionsForConsumer(
                       fusion->backend_config<GpuBackendConfig>());
   FusionBackendConfig& backend_config =
       *gpu_config.mutable_fusion_backend_config();
-  backend_config.set_kind(std::string(kTritonFusionKind));
+  backend_config.set_kind(std::string(kTritonNestedGemmFusionKind));
   TF_RETURN_IF_ERROR(fusion->set_backend_config(gpu_config));
 
   for (int64_t operand_index : consumer.OperandIndices(old_root)) {
@@ -317,7 +317,7 @@ absl::Status MakeNestedFusionFromGemmFusion(HloFusionInstruction* fusion,
   FusionBackendConfig& backend_config =
       *gpu_config.mutable_fusion_backend_config();
   backend_config.clear_triton_gemm_config();
-  backend_config.set_kind(std::string(kTritonFusionKind));
+  backend_config.set_kind(std::string(kTritonNestedGemmFusionKind));
 
   BlockLevelParameters block_level_parameters;
   block_level_parameters.output_tile_sizes = {
