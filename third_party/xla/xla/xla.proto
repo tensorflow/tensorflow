@@ -125,6 +125,10 @@ message DebugOptions {
   bool xla_hlo_pass_fix_detect_cycles = 370;
   // Crash if HloPassFix can not converge after a fixed number of iterations.
   bool xla_unsupported_crash_on_hlo_pass_fix_max_iterations = 363;
+  // Crash if a pass reports that it changes the HLO but in fact it did not.
+  bool xla_unsupported_crash_on_hlo_pass_noop_change = 379;
+  // Crash if a pass reports that it did not change the HLO but in fact it did.
+  bool xla_unsupported_crash_on_hlo_pass_silent_hlo_change = 380;
   // go/keep-sorted end
 
   reserved 346;  // xla_experimental_exec_time_optimization_effort
@@ -1189,7 +1193,7 @@ message DebugOptions {
   // Note: when adding a new flag, please add it to one of the hardware-specific
   // or hardware-agnostic sections at the top of this proto message.
 
-  // Next id: 379
+  // Next id: 381
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.
