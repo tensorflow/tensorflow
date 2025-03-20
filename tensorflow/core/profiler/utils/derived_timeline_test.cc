@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/core/profiler/utils/derived_timeline.h"
 
+#include <sys/types.h>
+
 #include <cstddef>
 #include <cstdint>
 #include <map>
@@ -275,6 +277,37 @@ TEST(DerivedTimelineTest, TfOpNameScopeTest) {
         EXPECT_EQ(event_visitor.Name(), kTfOpName);
         EXPECT_EQ(event_visitor.OffsetPs(), 0);
         EXPECT_EQ(event_visitor.DurationPs(), 500);
+      });
+    }
+  });
+}
+
+// Checks that the TF op events are expanded.
+TEST(DerivedTimelineTest, TfNameScopeMaintainsOrder) {
+  const absl::string_view kTfOpName = "scope1/scope2/mul:Mul";
+  const absl::string_view kKernelDetails = "kernel_details";
+  XSpace space;
+  tsl::profiler::GroupMetadataMap group_metadata_map;
+  XPlane* plane =
+      GetOrCreateTpuXPlane(&space, /*device_ordinal=*/0, "TPU V4", 0, 0);
+  XPlaneBuilder plane_builder(plane);
+  auto line_builder = plane_builder.GetOrCreateLine(0);
+  CreateXEvent(&plane_builder, &line_builder, "op1", 0, 10000,
+               {{StatType::kTfOp, kTfOpName},
+                {StatType::kKernelDetails, kKernelDetails}});
+  GenerateDerivedTimeLines(group_metadata_map, &space);
+  XPlaneVisitor plane_visitor = tsl::profiler::CreateTfXPlaneVisitor(plane);
+  // The TF name scope line and the TF op line are added.
+  EXPECT_EQ(plane_visitor.NumLines(), 3);
+  plane_visitor.ForEachLine([&](const XLineVisitor& line_visitor) {
+    if (line_visitor.Name() == tsl::profiler::kTensorFlowNameScopeLineName) {
+      EXPECT_EQ(line_visitor.NumEvents(), 2);
+      uint64_t expected_duration = 10000;
+      line_visitor.ForEachEvent([&](const XEventVisitor& event_visitor) {
+        LOG(INFO) << "scope: " << event_visitor.Name();
+        EXPECT_EQ(event_visitor.OffsetPs(), 0);
+        EXPECT_EQ(event_visitor.DurationPs(), expected_duration);
+        expected_duration -= 1000;
       });
     }
   });
