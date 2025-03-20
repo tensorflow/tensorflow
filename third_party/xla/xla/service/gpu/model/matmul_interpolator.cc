@@ -21,14 +21,20 @@ limitations under the License.
 #include <optional>
 #include <utility>
 
+#include "absl/algorithm/container.h"
+#include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/time/time.h"
+#include "xla/backends/gpu/codegen/triton/support.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
+#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/service/gpu/backend_configs.pb.h"
+#include "xla/service/gpu/cublas_cudnn.h"
 #include "xla/service/gpu/model/hlo_op_profile.pb.h"
 #include "xla/service/gpu/model/interpolator.h"
 #include "xla/shape.h"
@@ -46,6 +52,17 @@ struct InterpolationSpecification {
   int k;
   int n;
 };
+
+bool IsTritonGemm(const HloInstruction& instr) {
+  if (instr.called_computations().size() != 1) {
+    return false;
+  }
+  if (!IsTritonFusedComputation(*instr.called_computations()[0])) {
+    return false;
+  }
+  auto fused_range = instr.fused_instructions();
+  return absl::c_count_if(fused_range, HloPredicateIsOp<HloOpcode::kDot>) == 1;
+}
 
 InterpolationSpecification ExtractDotSpec(const DotDimensionNumbers& dot_dims,
                                           const Shape& lhs, const Shape& rhs) {
@@ -102,6 +119,30 @@ InterpolationSpecification Spec(const HloDotInstruction& dot) {
   return ExtractDotSpec(dot_dims, lhs_shape, rhs_shape);
 }
 
+InterpolationSpecification Spec(const HloCustomCallInstruction& dot) {
+  CHECK(IsCublasGemm(dot));
+  const Shape& lhs_shape = dot.operand(0)->shape();
+  const Shape& rhs_shape = dot.operand(1)->shape();
+  DotDimensionNumbers dot_dims = dot.backend_config<GpuBackendConfig>()
+                                     ->gemm_backend_config()
+                                     .dot_dimension_numbers();
+  return ExtractDotSpec(dot_dims, lhs_shape, rhs_shape);
+}
+
+InterpolationSpecification Spec(const HloFusionInstruction& dot_fusion) {
+  CHECK(IsTritonGemm(dot_fusion));
+
+  auto fused = dot_fusion.fused_instructions();
+  auto dot_it = absl::c_find_if(fused, HloPredicateIsOp<HloOpcode::kDot>);
+  CHECK(dot_it != std::end(fused));
+
+  const HloDotInstruction& dot = *Cast<HloDotInstruction>(*dot_it);
+  const Shape& lhs_shape = dot.operand(0)->shape();
+  const Shape& rhs_shape = dot.operand(1)->shape();
+  DotDimensionNumbers dot_dims = dot.dot_dimension_numbers();
+  return ExtractDotSpec(dot_dims, lhs_shape, rhs_shape);
+}
+
 }  // namespace
 
 /*static*/ absl::StatusOr<std::unique_ptr<MatmulInterpolator>>
@@ -128,13 +169,22 @@ MatmulInterpolator::Create(const HloInstructionProfileList& profiles,
 
 std::optional<absl::Duration> MatmulInterpolator::EstimatedRuntime(
     const HloInstruction& instr) {
-  if (instr.opcode() != HloOpcode::kDot) {
-    VLOG(1) << "Opcodes different than 'kDot' unsupported: "
+  InterpolationSpecification spec;
+  if (instr.opcode() == HloOpcode::kDot) {
+    auto* dot = Cast<HloDotInstruction>(&instr);
+    spec = Spec(*dot);
+  } else if (IsCublasGemm(instr)) {
+    auto* dot = Cast<HloCustomCallInstruction>(&instr);
+    spec = Spec(*dot);
+  } else if (IsTritonGemm(instr)) {
+    auto* dot_fusion = Cast<HloFusionInstruction>(&instr);
+    spec = Spec(*dot_fusion);
+  } else {
+    VLOG(1) << "Opcodes different than 'kDot' are unsupported: "
             << instr.ToString();
     return std::nullopt;
   }
-  auto* dot = Cast<HloDotInstruction>(&instr);
-  InterpolationSpecification spec = Spec(*dot);
+
   std::array<int64_t, 4> point = {
       spec.b,
       spec.m,

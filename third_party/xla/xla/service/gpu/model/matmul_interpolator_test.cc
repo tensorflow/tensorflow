@@ -42,6 +42,7 @@ limitations under the License.
 namespace xla::gpu {
 namespace {
 
+using ::testing::Test;
 using ::testing::TestParamInfo;
 using ::testing::TestWithParam;
 using ::testing::ValuesIn;
@@ -65,9 +66,9 @@ struct ParametrizedTestCase {
   absl::Duration expected_duration;
 };
 
-class MatmulInterpolatorTest : public TestWithParam<ParametrizedTestCase> {
+class MatmulInterpolatorParamTest : public TestWithParam<ParametrizedTestCase> {
  public:
-  MatmulInterpolatorTest()
+  MatmulInterpolatorParamTest()
       : device_info_(TestGpuDeviceInfo::RTXA6000DeviceInfo()) {}
 
   void SetUp() override {
@@ -170,7 +171,8 @@ class MatmulInterpolatorTest : public TestWithParam<ParametrizedTestCase> {
   std::unique_ptr<MatmulInterpolator> interpolator_;
 };
 
-TEST_P(MatmulInterpolatorTest, MatmulInteprolatorNextNeighbourInterpolation) {
+TEST_P(MatmulInterpolatorParamTest,
+       MatmulInteprolatorNextNeighbourInterpolation) {
   const auto& [_, spec, expected_duration] = GetParam();
   TF_ASSERT_OK_AND_ASSIGN(DotContext context,
                           Dot(spec.b, spec.m, spec.n, spec.k));
@@ -180,7 +182,7 @@ TEST_P(MatmulInterpolatorTest, MatmulInteprolatorNextNeighbourInterpolation) {
 }
 
 INSTANTIATE_TEST_SUITE_P(
-    MatmulInterpolatorTestInstantiation, MatmulInterpolatorTest,
+    MatmulInterpolatorTestInstantiation, MatmulInterpolatorParamTest,
     ValuesIn<ParametrizedTestCase>({
         /*Interpolates to b=1,m=256,n=1024,k=512*/
         {
@@ -249,9 +251,141 @@ INSTANTIATE_TEST_SUITE_P(
             /*expected_duration=*/absl::Seconds(10),
         },
     }),
-    [](const TestParamInfo<MatmulInterpolatorTest::ParamType>& info) {
+    [](const TestParamInfo<MatmulInterpolatorParamTest::ParamType>& info) {
       return info.param.test_name;
     });
+
+class MatmulInterpolatorTest : public Test {
+ public:
+  void SetUp() override {
+    constexpr char perf_table[] = R"pb(
+      entries {
+        instruction {
+          opcode: "dot"
+          shape {
+            element_type: BF16
+            dimensions: 1
+            dimensions: 1024
+            dimensions: 1024
+          }
+          dot_dimension_numbers {
+            lhs_contracting_dimensions: 2
+            rhs_contracting_dimensions: 1
+            lhs_batch_dimensions: 0
+            rhs_batch_dimensions: 0
+          }
+          id: 2
+          operand_ids: 0
+          operand_ids: 1
+        }
+        operands {
+          name: "lhs"
+          opcode: "parameter"
+          shape {
+            element_type: BF16
+            dimensions: 1
+            dimensions: 1024
+            dimensions: 1024
+          }
+        }
+        operands {
+          name: "rhs"
+          opcode: "parameter"
+          shape {
+            element_type: BF16
+            dimensions: 1
+            dimensions: 1024
+            dimensions: 1024
+          }
+          parameter_number: 1
+          id: 1
+        }
+        clock_cycles: 1410000000
+      }
+    )pb";
+    HloInstructionProfileList profiles;
+    CHECK(tsl::protobuf::TextFormat::ParseFromString(perf_table, &profiles));
+    interpolator_ = *MatmulInterpolator::Create(
+        profiles, TestGpuDeviceInfo::RTXA6000DeviceInfo());
+  }
+
+ protected:
+  MatmulInterpolator& interpolator() { return *interpolator_; }
+
+ private:
+  std::unique_ptr<MatmulInterpolator> interpolator_;
+};
+
+TEST_F(MatmulInterpolatorTest, SupportsCublasCustomCalls) {
+  absl::string_view hlo = R"(
+    HloModule m
+
+    ENTRY e {
+      p0 = bf16[1024,1024] parameter(0)
+      p1 = bf16[1024,1024] parameter(1)
+      ROOT _ =  (bf16[1024,1024], s8[2097152]{0}) custom-call(p0,p1),
+        custom_call_target="__cublas$gemm",
+        backend_config={
+          "operation_queue_id":"0",
+          "wait_on_operation_queues":[],
+          "gemm_backend_config":{
+            "alpha_real":1,
+            "beta":1,
+            "dot_dimension_numbers": {
+              "lhs_contracting_dimensions":["1"],
+              "rhs_contracting_dimensions":["1"],
+              "lhs_batch_dimensions":[],
+              "rhs_batch_dimensions":[]
+            }
+          }
+        }
+    }
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
+  const HloInstruction& custom_call =
+      *module->entry_computation()->root_instruction();
+  EXPECT_EQ(*interpolator().EstimatedRuntime(custom_call), absl::Seconds(1));
+}
+
+TEST_F(MatmulInterpolatorTest, SupportsDotTritonFusion) {
+  absl::string_view hlo = R"(
+    HloModule m
+
+    comp {
+      p0 = bf16[1024,1024] parameter(0)
+      p1 = bf16[1024,1024] parameter(1)
+      ROOT dot = bf16[1024,1024] dot(p0,p1), lhs_contracting_dims={0}, rhs_contracting_dims={1}
+    }
+
+    ENTRY e {
+      p0 = bf16[1024,1024] parameter(0)
+      p1 = bf16[1024,1024] parameter(1)
+      ROOT _ =  bf16[1024,1024] fusion(p0,p1),
+        kind=kCustom,
+        calls=comp,
+        backend_config={
+          "operation_queue_id":"0",
+          "wait_on_operation_queues":[],
+          "fusion_backend_config": {
+            "kind":"__triton_gemm",
+            "triton_gemm_config":{
+              "block_m":"128",
+              "block_n":"128",
+              "block_k":"64",
+              "split_k":"1",
+              "num_stages":"1",
+              "num_warps":"8",
+              "num_ctas":"1"
+            }
+          },
+        }
+    }
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
+  const HloInstruction& custom_call =
+      *module->entry_computation()->root_instruction();
+  EXPECT_EQ(*interpolator().EstimatedRuntime(custom_call), absl::Seconds(1));
+}
 
 }  // namespace
 }  // namespace xla::gpu
