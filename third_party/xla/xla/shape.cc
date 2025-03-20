@@ -19,6 +19,7 @@ limitations under the License.
 #include <cstdint>
 #include <ostream>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/algorithm/container.h"
@@ -43,6 +44,30 @@ Shape::Shape(const Shape&) = default;
 Shape::Shape(Shape&&) noexcept = default;
 Shape& Shape::operator=(const Shape&) = default;
 Shape& Shape::operator=(Shape&&) noexcept = default;
+
+Shape::Shape(const PrimitiveType element_type) : element_type_(element_type) {
+  CHECK(element_type_ == TOKEN || element_type_ == OPAQUE_TYPE)
+      << "Invalid element type for token or opaque shape: " << element_type_;
+}
+
+Shape::Shape(const PrimitiveType element_type,
+             const absl::Span<const int64_t> dimensions,
+             const absl::Span<const bool> dynamic_dimensions)
+    : element_type_(element_type),
+      dimensions_(dimensions.begin(), dimensions.end()),
+      dynamic_dimensions_(dynamic_dimensions.begin(),
+                          dynamic_dimensions.end()) {
+  CHECK(primitive_util::IsArrayType(element_type_))
+      << "Invalid element type for array shape: " << element_type_;
+  if (!dynamic_dimensions.empty()) {
+    CHECK_EQ(dimensions_.size(), dynamic_dimensions_.size())
+        << "If dynamic_dimensions is provided, it must have the same size as "
+           "dimensions.";
+  }
+}
+
+Shape::Shape(std::vector<Shape> tuple_shapes)
+    : element_type_(TUPLE), tuple_shapes_(std::move(tuple_shapes)) {}
 
 Shape::Shape(const ShapeProto& shape_proto) {
   set_element_type(shape_proto.element_type());
