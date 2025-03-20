@@ -954,23 +954,6 @@ absl::StatusOr<bool> PriorityFusion::Run(
   auto fusible_computations =
       GetFusibleComputations(*module, execution_threads);
 
-  // Appends ".0" suffix to all instructions.
-  //
-  // Every time an instruction is duplicated, the last integer suffix is
-  // incremented.
-  // Before: broadcast.123 -> broadcast.124
-  // After: broadcast.123.0 -> broadcast.123.1
-  //
-  // With this modification it will be easier to match instructions before and
-  // after fusion passes, because they will have the same unique prefix. Names
-  // are not used in the pipeline, but it makes debugging much easier.
-  for (auto* computation : fusible_computations) {
-    for (auto* instruction : computation->instructions()) {
-      module->SetAndUniquifyInstrName(instruction,
-                                      absl::StrCat(instruction->name(), ".0"));
-    }
-  }
-
   if (dump_enabled) {
     fusion_process_dump_->set_hlo_module_before_fusion(
         module->ToString(HloPrintOptions::ShortParsable()));
