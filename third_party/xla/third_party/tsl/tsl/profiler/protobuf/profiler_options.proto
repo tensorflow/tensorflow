@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package tensorflow;
 
-// Next ID: 12
+// Next ID: 13
 message ProfileOptions {
   // Some default value of option are not proto3 default value. Use this version
   // to determine if we should use default option value instead of proto3
@@ -73,6 +73,27 @@ message ProfileOptions {
   }
 
   TraceOptions trace_options = 11;
+
+  // AdvancedConfigValue represents the configuration value, it can be one of
+  // the following types: string, bool, int64, depending upon the config type.
+  message AdvancedConfigValue {
+    oneof value {
+      string string_value = 1;
+      bool bool_value = 2;
+      int64 int64_value = 3;
+    }
+  }
+
+  // Advanced configuration for the profiler contains a map of config name to
+  // config value. It gives the flexibility to pass any configuration to the
+  // profiler. eg:
+  // advanced_configuration {
+  //   key: "tpu_trace_mode"
+  //   value: {
+  //     int64_value: 2
+  //   }
+  // }
+  map<string, AdvancedConfigValue> advanced_configuration = 12;
 }
 
 // Options for remote profiler session manager.
