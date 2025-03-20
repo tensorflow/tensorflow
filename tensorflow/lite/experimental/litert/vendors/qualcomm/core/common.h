@@ -18,6 +18,13 @@ typedef enum LiteRtQnnLogLevel {  // NOLINT(modernize-use-using)
   kLogLevelDebug = 5,
 } LiteRtQnnLogLevel;
 
+typedef struct {  // NOLINT(modernize-use-using)
+  /// Apply HTP-friendly op builder.
+  bool useHtpPreferencs;
+} LiteRtQnnOptions;
+
+#define LITERT_QNN_OPTIONS_INIT {false, /*useHtpPreferencs*/}
+
 #ifdef __cplusplus
 }
 #endif  // __cplusplus
