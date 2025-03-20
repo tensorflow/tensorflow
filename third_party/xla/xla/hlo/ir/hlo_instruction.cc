@@ -3918,9 +3918,10 @@ void HloInstruction::PrintWithCanonicalNameMap(
   }
 
   if (options.print_metadata() &&
-      (!metadata_->op_type().empty() || !metadata_->op_name().empty() ||
-       !metadata_->source_file().empty() ||
-       !metadata_->scheduling_name().empty())) {
+      (metadata_ != nullptr &&
+       (!metadata_->op_type().empty() || !metadata_->op_name().empty() ||
+        !metadata_->source_file().empty() ||
+        !metadata_->scheduling_name().empty()))) {
     printer->Append(", metadata={");
     printer->Append(xla::OpMetadataToString(
         *metadata_, options.print_metadata_only_op_name()));
