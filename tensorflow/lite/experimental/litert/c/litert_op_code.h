@@ -238,6 +238,15 @@ typedef enum {
   kLiteRtOpCodeShloComposite = kTfLiteBuiltinStablehloComposite,
 } LiteRtOpCode;
 
+typedef enum {
+  kLiteRtFusedActivationNone = 0,
+  kLiteRtFusedActivationRelu = 1,
+  kLiteRtFusedActivationReluN1To1 = 2,
+  kLiteRtFusedActivationRelu6 = 3,
+  kLiteRtFusedActivationTanh = 4,
+  kLiteRtFusedActivationSignBit = 5,
+} LiteRtFusedActivationOption;
+
 #ifdef __cplusplus
 }
 #endif  // __cplusplus

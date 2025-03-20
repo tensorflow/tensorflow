@@ -296,7 +296,7 @@ LiteRtStatus QnnManager::Init(absl::Span<const QnnBackend_Config_t*> configs,
   LITERT_RETURN_IF_ERROR(ResolveSystemApi());
 
   if (auto status = Api()->logCreate(GetDefaultStdOutLogger(),
-                                     QNN_LOG_LEVEL_INFO, &LogHandle());
+                                     QNN_LOG_LEVEL_DEBUG, &LogHandle());
       status != QNN_SUCCESS) {
     LITERT_LOG(LITERT_ERROR, "Failed to create QNN logger: %d", status);
     return kLiteRtStatusErrorRuntimeFailure;

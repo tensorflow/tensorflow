@@ -10,8 +10,10 @@
 
 #include "third_party/qairt/latest/include/QNN/QnnOpDef.h"
 #include "third_party/qairt/latest/include/QNN/QnnTypes.h"
+#include "tensorflow/lite/experimental/litert/c/litert_op_code.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/builders/op_builder.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/tensor_pool.h"
+#include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/utils/log.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/wrappers/op_wrapper.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/wrappers/quantize_params_wrapper.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/wrappers/tensor_wrapper.h"
@@ -34,7 +36,9 @@ std::vector<OpWrapper> BuildDepthwiseConv2dOp(
     TensorPool& tensor_pool, const std::vector<TensorWrapperRef>& inputs,
     const std::vector<TensorWrapperRef>& outputs, const std::uint32_t stride_h,
     const std::uint32_t stride_w, const std::uint32_t dilation_h,
-    const std::uint32_t dilation_w, const PaddingType padding_type) {
+    const std::uint32_t dilation_w, const std::uint32_t fused_activation,
+    const PaddingType padding_type) {
+  QNN_LOG_INFO("fused_activation: %d", fused_activation);
   std::vector<OpWrapper> res;
 
   // reshape filter
@@ -70,7 +74,19 @@ std::vector<OpWrapper> BuildDepthwiseConv2dOp(
     conv_op.AddInputTensor(bias_tensor);
   }
 
-  TensorWrapper& output_tensor = outputs[kOutputIndex];
+  TensorWrapper* conv2d_output_tensor = nullptr;
+
+  // If Conv2d fused activation is available, create a new tensor for the
+  // output of Conv2d, which is also the input of the activation op.
+  if (fused_activation != kLiteRtFusedActivationNone) {
+    conv2d_output_tensor = &tensor_pool.CreateNativeTensor(
+        outputs[0].get().GetDataType(), {}, outputs[0].get().GetDims());
+    QNN_LOG_INFO("Added Native Tensor for fused activation");
+  } else {
+    conv2d_output_tensor = &outputs[0].get();
+  }
+
+  TensorWrapper& output_tensor = *conv2d_output_tensor;
   conv_op.AddOutputTensor(output_tensor);
   // TODO: fused activation
 
@@ -111,6 +127,17 @@ std::vector<OpWrapper> BuildDepthwiseConv2dOp(
       sizeof(decltype(padding_data)::value_type) * padding_data.size(),
       padding_data.data());
   conv_op.AddTensorParam(QNN_OP_CONV_2D_PARAM_PAD_AMOUNT, padding_tensor);
+
+  // Fused activation if available.
+  if (fused_activation != kLiteRtFusedActivationNone) {
+    AddFusedActivationNode(res, fused_activation, *conv2d_output_tensor,
+                           outputs[0].get());
+  }
+
+  QNN_LOG_INFO("LiteRt Conv_2d Op built with:");
+  for (auto& op : res) {
+    QNN_LOG_INFO("    Op: %s", op.GetOpConfig().v1.name);
+  }
 
   return res;
 }

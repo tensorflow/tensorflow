@@ -331,6 +331,19 @@ LiteRtStatus LiteRtGetDepthToSpaceBlockSizeOption(LiteRtOp op,
 LiteRtStatus LiteRtGetSpaceToDepthBlockSizeOption(LiteRtOp op,
                                                   int32_t* block_size);
 
+//==============================================================================
+//
+// Get option APIs for LiteRt ResizeNearestNeighbor op.
+//  Options:
+// - align_corners : bool
+// - half_pixel_centers : bool
+//
+//==============================================================================
+LiteRtStatus LiteRtGetResizeNearestNeighborAlignCornersOption(
+    LiteRtOp op, bool* align_corners);
+LiteRtStatus LiteRtGetResizeNearestNeighborHalfPixelCenterOption(
+    LiteRtOp op, bool* half_pixel_centers);
+
 #ifdef __cplusplus
 }
 #endif  // __cplusplus

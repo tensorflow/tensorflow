@@ -8,6 +8,10 @@
 #include <utility>
 #include <vector>
 
+#include "third_party/qairt/latest/include/QNN/QnnOpDef.h"
+#include "third_party/qairt/latest/include/QNN/QnnTypes.h"
+#include "tensorflow/lite/experimental/litert/c/litert_op_code.h"
+#include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/utils/log.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/wrappers/op_wrapper.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/wrappers/tensor_wrapper.h"
 
@@ -61,6 +65,75 @@ OpWrapper& CreateSimpleActivationOp(std::vector<OpWrapper>& ops,
   ret.AddInputTensor(input_tensor);
   ret.AddOutputTensor(output_tensor);
   return ret;
+}
+
+void ConvertFp32ActivationToFp16IfWeightOnlyQuantized(
+    std::vector<OpWrapper>& res, TensorWrapper& fp32_input_activation,
+    TensorWrapper& fp32_output_activation, TensorWrapper*& input_activation,
+    TensorWrapper*& output_activation, bool is_int8_weight_only_quantized,
+    TensorPool& tensor_pool) {
+  if (is_int8_weight_only_quantized) {
+    TensorWrapper& fp16_input_activation = tensor_pool.CreateNativeTensor(
+        QNN_DATATYPE_FLOAT_16, {}, fp32_input_activation.GetDims());
+
+    TensorWrapper& fp16_output_activation = tensor_pool.CreateNativeTensor(
+        QNN_DATATYPE_FLOAT_16, {}, fp32_output_activation.GetDims());
+
+    OpWrapper& cast_op = CreateOpWrapper(res, QNN_OP_CAST);
+    cast_op.AddInputTensor(fp32_input_activation);
+    cast_op.AddOutputTensor(fp16_input_activation);
+
+    input_activation = &fp16_input_activation;
+    output_activation = &fp16_output_activation;
+  } else {
+    input_activation = &fp32_input_activation;
+    output_activation = &fp32_output_activation;
+  }
+}
+
+void ConvertFp32ActivationToFp16(std::vector<OpWrapper>& res,
+                                 TensorWrapper& fp32_activation,
+                                 TensorWrapper*& activation,
+                                 bool is_int8_weight_only_quantized,
+                                 TensorPool& tensor_pool) {
+  if (is_int8_weight_only_quantized) {
+    TensorWrapper& fp16_activation = tensor_pool.CreateNativeTensor(
+        QNN_DATATYPE_FLOAT_16, {}, fp32_activation.GetDims());
+    OpWrapper& cast_op = CreateOpWrapper(res, QNN_OP_CAST);
+    cast_op.AddInputTensor(fp32_activation);
+    cast_op.AddOutputTensor(fp16_activation);
+
+    activation = &fp16_activation;
+  } else {
+    activation = &fp32_activation;
+  }
+}
+
+void ConvertFp16ActivationToFp32IfWeightOnlyQuantized(
+    std::vector<OpWrapper>& res, TensorWrapper* fp16_output_activation,
+    TensorWrapper& output_activation, bool is_int8_weight_only_quantized) {
+  if (is_int8_weight_only_quantized) {
+    OpWrapper& cast_op = CreateOpWrapper(res, QNN_OP_CAST);
+    cast_op.AddInputTensor(*fp16_output_activation);
+    cast_op.AddOutputTensor(output_activation);
+  }
+}
+
+void AddFusedActivationNode(std::vector<OpWrapper>& res,
+                            const uint32_t fused_activation_function,
+                            const TensorWrapper& input_tensor,
+                            const TensorWrapper& output_tensor) {
+  switch (fused_activation_function) {
+    case kLiteRtFusedActivationRelu: {
+      CreateSimpleActivationOp(res, QNN_OP_RELU, input_tensor, output_tensor);
+      break;
+    }
+    default: {
+      QNN_LOG_WARNING("Unsupported fused activation function: %d",
+                      fused_activation_function);
+      break;
+    }
+  }
 }
 
 /*
