@@ -1936,7 +1936,11 @@ absl::Status PyArray::RegisterTypes(nb::module_& m) {
       /*.slots=*/PyArray_slots,
   };
 
-  type_ = PyType_FromSpec(&PyArray_spec);
+  auto bases = [] {
+    auto basearray = nb::module_::import_("jax._src.basearray");
+    return nb::make_tuple(basearray.attr("Array"));
+  }();
+  type_ = PyType_FromSpecWithBases(&PyArray_spec, bases.ptr());
   if (!type_) {
     throw nb::python_error();
   }
