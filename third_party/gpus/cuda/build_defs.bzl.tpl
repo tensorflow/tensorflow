@@ -94,6 +94,12 @@ def if_cuda_is_configured(x, no_cuda = []):
       return select({"//conditions:default": x})
     return select({"//conditions:default": no_cuda})
 
+def is_cuda_configured():
+    """
+    Returns True if CUDA is configured. False otherwise.
+    """
+    return %{cuda_is_configured}
+
 def if_cuda_newer_than(wanted_ver, if_true, if_false = []):
     """Tests if CUDA was enabled during the configured process and if the
     configured version is at least `wanted_ver`. `wanted_ver` needs
