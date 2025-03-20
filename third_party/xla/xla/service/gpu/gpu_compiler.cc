@@ -179,6 +179,7 @@ limitations under the License.
 #include "xla/service/gpu/reduction_utils.h"
 #include "xla/service/gpu/runtime_intrinsics.h"
 #include "xla/service/gpu/stream_executor_util.h"
+#include "xla/service/gpu/transforms/add_tracking_suffix_to_instruction_names.h"
 #include "xla/service/gpu/transforms/algebraic_simplifier.h"
 #include "xla/service/gpu/transforms/algorithm_checker.h"
 #include "xla/service/gpu/transforms/all_gather_dynamic_slice_simplifier.h"
@@ -1075,6 +1076,10 @@ absl::Status RunFusionPasses(HloModule* hlo_module,
                              HloCostAnalysis::ShapeSizeFunction shape_size_fn) {
   const se::DeviceDescription& gpu_device_info =
       gpu_target_config.device_description;
+
+  HloPassPipeline pre_fusion("pre-fusion");
+  pre_fusion.AddPass<AddTrackingSuffixToInstructionNames>();
+  TF_RETURN_IF_ERROR(pre_fusion.Run(hlo_module).status());
 
   TF_RETURN_IF_ERROR(FusionPipeline(hlo_module->config().debug_options(),
                                     shape_size_fn, thread_pool, gpu_device_info)
