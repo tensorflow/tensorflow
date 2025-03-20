@@ -365,6 +365,14 @@ TfLiteStatus LessEval(TfLiteContext* context, TfLiteNode* node) {
       Comparison<float, reference_ops::LessFn>(input1, input2, output,
                                                requires_broadcast);
       break;
+    case kTfLiteFloat16:
+      Comparison<Eigen::half, reference_ops::LessFn>(input1, input2, output,
+                                                     requires_broadcast);
+      break;
+    case kTfLiteBFloat16:
+      Comparison<Eigen::bfloat16, reference_ops::LessFn>(input1, input2, output,
+                                                         requires_broadcast);
+      break;
     case kTfLiteInt16:
       Comparison<int16_t, reference_ops::LessFn>(input1, input2, output,
                                                  requires_broadcast);
