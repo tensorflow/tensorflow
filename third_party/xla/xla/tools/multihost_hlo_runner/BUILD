@@ -151,6 +151,7 @@ cc_library(
         "//xla/hlo/ir:hlo",
         "//xla/hlo/parser:hlo_parser",
         "//xla/hlo/pass:hlo_pass_pipeline",
+        "//xla/hlo/transforms:while_loop_trip_count_annotator",
         "//xla/hlo/translate:stablehlo",
         "//xla/hlo/translate/hlo_to_mhlo:translate",
         "//xla/pjrt:host_memory_spaces",
@@ -216,6 +217,7 @@ xla_test(
         "data/single_device.hlo",
         "data/single_device_tupled.hlo",
         "data/single_gemm_fusion.hlo",
+        "data/while_with_known_trip_count.hlo",
     ],
     tags = ["no_mac"],
     deps = [
