@@ -545,7 +545,7 @@ absl::Status RaggedAllToAllStartThunk::RunCollective(
       GpuCliqueKey clique_key,
       GetGpuCliqueKey(collectives, *params.collective_params,
                       config().replica_groups, config().group_mode,
-                      nccl_stream_id(), GetAsyncStreamKind()));
+                      GetAsyncStreamKind()));
 
   std::optional<RankId> rank =
       clique_key.rank(params.collective_params->global_device_id);

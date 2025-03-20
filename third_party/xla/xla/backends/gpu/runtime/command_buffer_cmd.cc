@@ -1612,7 +1612,7 @@ absl::Status CollectiveCmd::Prepare(
       GpuCliqueKey clique_key,
       GetGpuCliqueKey(collectives, *params.collective_params,
                       config().replica_groups, config().group_mode,
-                      nccl_stream_id(), GetAsyncStreamKind()));
+                      GetAsyncStreamKind()));
   TF_ASSIGN_OR_RETURN(
       size_t num_local_participants,
       GetNumLocalParticipants(*params.collective_params,
@@ -1682,7 +1682,7 @@ absl::Status AllReduceCmd::Record(const Thunk::ExecuteParams& execute_params,
       CommunicatorHandle comm_handle,
       GetComm(collectives, *execute_params.collective_params,
               *execute_params.collective_cliques, config().replica_groups,
-              config().group_mode, nccl_stream_id(), GetAsyncStreamKind()));
+              config().group_mode, GetAsyncStreamKind()));
 
   return AddTracedCommandBuffer(
       execute_params, record_params, command_buffer, [&](se::Stream* stream) {
@@ -1749,7 +1749,7 @@ absl::Status ReduceScatterCmd::Record(
       CommunicatorHandle comm_handle,
       GetComm(collectives, *execute_params.collective_params,
               *execute_params.collective_cliques, config().replica_groups,
-              config().group_mode, nccl_stream_id(), GetAsyncStreamKind()));
+              config().group_mode, GetAsyncStreamKind()));
 
   return AddTracedCommandBuffer(
       execute_params, record_params, command_buffer, [&](se::Stream* stream) {
@@ -1813,7 +1813,7 @@ absl::Status AllToAllCmd::Record(const Thunk::ExecuteParams& execute_params,
       CommunicatorHandle comm_handle,
       GetComm(collectives, *execute_params.collective_params,
               *execute_params.collective_cliques, config().replica_groups,
-              config().group_mode, nccl_stream_id(), GetAsyncStreamKind()));
+              config().group_mode, GetAsyncStreamKind()));
 
   return AddTracedCommandBuffer(
       execute_params, record_params, command_buffer, [&](se::Stream* stream) {
@@ -1876,7 +1876,7 @@ absl::Status AllGatherCmd::Record(const Thunk::ExecuteParams& execute_params,
       CommunicatorHandle comm_handle,
       GetComm(collectives, *execute_params.collective_params,
               *execute_params.collective_cliques, config().replica_groups,
-              config().group_mode, nccl_stream_id(), GetAsyncStreamKind()));
+              config().group_mode, GetAsyncStreamKind()));
 
   return AddTracedCommandBuffer(
       execute_params, record_params, command_buffer, [&](se::Stream* stream) {
@@ -1941,7 +1941,7 @@ absl::Status CollectiveBroadcastCmd::Record(
       CommunicatorHandle comm_handle,
       GetComm(collectives, *execute_params.collective_params,
               *execute_params.collective_cliques, config().replica_groups,
-              config().group_mode, nccl_stream_id(), GetAsyncStreamKind()));
+              config().group_mode, GetAsyncStreamKind()));
 
   return AddTracedCommandBuffer(
       execute_params, record_params, command_buffer, [&](se::Stream* stream) {

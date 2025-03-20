@@ -280,8 +280,7 @@ absl::Status AddOpDescription(absl::Status status, OpT op,
 absl::StatusOr<GpuCliqueKey> GetGpuCliqueKey(
     GpuCollectives* collectives, const Thunk::CollectiveExecuteParams& params,
     const std::vector<ReplicaGroup>& replica_groups,
-    CollectiveOpGroupMode group_mode, CollectiveStreamId stream_id,
-    AsyncStreamKind stream_kind);
+    CollectiveOpGroupMode group_mode, AsyncStreamKind stream_kind);
 
 absl::StatusOr<size_t> GetNumLocalParticipants(
     const Thunk::CollectiveExecuteParams& params,
@@ -293,8 +292,7 @@ absl::StatusOr<CommunicatorHandle> GetComm(
     GpuCollectives* collectives, const Thunk::CollectiveExecuteParams& params,
     const Thunk::CollectiveCliques& collective_cliques,
     const std::vector<ReplicaGroup>& replica_groups,
-    CollectiveOpGroupMode group_mode, CollectiveStreamId stream_id,
-    AsyncStreamKind stream_kind);
+    CollectiveOpGroupMode group_mode, AsyncStreamKind stream_kind);
 
 struct DeviceBufferPair {
   PrimitiveType element_type;
