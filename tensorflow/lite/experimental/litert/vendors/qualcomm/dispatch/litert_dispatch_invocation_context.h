@@ -11,6 +11,9 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
+//
+// Copyright (c) Qualcomm Innovation Center, Inc. All Rights Reserved.
+// SPDX-License-Identifier: Apache-2.0
 
 #ifndef TENSORFLOW_LITE_EXPERIMENTAL_LITERT_VENDORS_QUALCOMM_DISPATCH_LITERT_DISPATCH_INVOCATION_CONTEXT_H_
 #define TENSORFLOW_LITE_EXPERIMENTAL_LITERT_VENDORS_QUALCOMM_DISPATCH_LITERT_DISPATCH_INVOCATION_CONTEXT_H_
@@ -18,8 +21,6 @@
 #include <memory>
 
 #include "absl/strings/string_view.h"
-#include "third_party/qairt/latest/include/QNN/QnnInterface.h"
-#include "third_party/qairt/latest/include/QNN/QnnTypes.h"
 #include "tensorflow/lite/experimental/litert/c/litert_tensor_buffer.h"
 #include "tensorflow/lite/experimental/litert/c/litert_tensor_buffer_requirements.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
@@ -27,6 +28,8 @@
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/context_binary_info.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/dispatch/registry.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/qnn_manager.h"
+#include "third_party/qairt/latest/include/QNN/QnnInterface.h"
+#include "third_party/qairt/latest/include/QNN/QnnTypes.h"
 
 class LiteRtDispatchDeviceContextT;
 
@@ -53,6 +56,8 @@ class LiteRtDispatchInvocationContextT {
       int graph_output_index, LiteRtTensorBufferHandle tensor_buffer_handle);
 
   litert::Expected<void> Execute();
+
+  litert::Expected<void> Profile();
 
   Qnn_ContextHandle_t ContextHandle() { return context_handle_.get(); }
 
