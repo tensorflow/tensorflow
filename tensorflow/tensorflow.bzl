@@ -216,11 +216,11 @@ def if_android_arm64(a):
         "//conditions:default": [],
     })
 
-def if_android_mips(a):
-    return select({
-        clean_dep("//tensorflow:android_mips"): a,
-        "//conditions:default": [],
-    })
+# def if_android_mips(a):
+#     return select({
+#         clean_dep("//tensorflow:android_mips"): a,
+#         "//conditions:default": [],
+#     })
 
 def if_not_android(a):
     return select({
@@ -228,12 +228,12 @@ def if_not_android(a):
         "//conditions:default": a,
     })
 
-def if_not_android_mips_and_mips64(a):
-    return select({
-        clean_dep("//tensorflow:android_mips"): [],
-        clean_dep("//tensorflow:android_mips64"): [],
-        "//conditions:default": a,
-    })
+# def if_not_android_mips_and_mips64(a):
+#     return select({
+#         clean_dep("//tensorflow:android_mips"): [],
+#         clean_dep("//tensorflow:android_mips64"): [],
+#         "//conditions:default": a,
+#     })
 
 def if_android(a):
     return select({
