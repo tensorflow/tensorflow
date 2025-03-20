@@ -44,6 +44,9 @@ struct ModelCompilationData {
 
   // Pointer to the start of the model file memory allocation.
   const char* allocation_base;
+  // File descriptor of the model file memory allocation. If there is no such
+  // file descriptor, this must be set to -1.
+  int allocation_fd;
 
  private:
   ModelCompilationData() = default;
