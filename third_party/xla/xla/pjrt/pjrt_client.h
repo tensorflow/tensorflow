@@ -594,25 +594,24 @@ class PjRtClient {
   }
 
   // Compile `computation` with given `options`.
-  // ABSL_DEPRECATED("Use CompileAndLoad() below instead")
-  virtual absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> Compile(
-      const XlaComputation& computation, CompileOptions options) {
-    return CompileAndLoad(computation, options);
-  }
-  virtual absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> CompileAndLoad(
+  virtual absl::StatusOr<std::unique_ptr<PjRtExecutable>> Compile(
       const XlaComputation& computation, CompileOptions options) {
     return Unimplemented("Compile with XlaComputation is not supported.");
   }
+  virtual absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> CompileAndLoad(
+      const XlaComputation& computation, CompileOptions options) {
+    return Unimplemented(
+        "CompileAndLoad with XlaComputation is not supported.");
+  }
 
   // Variant of `Compile` that accepts an MLIR module.
-  // ABSL_DEPRECATED("Use CompileAndLoad() below instead")
-  virtual absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> Compile(
+  virtual absl::StatusOr<std::unique_ptr<PjRtExecutable>> Compile(
       mlir::ModuleOp module, CompileOptions options) {
-    return CompileAndLoad(module, options);
+    return Unimplemented("Compile with MLIR Module is not supported.");
   }
   virtual absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> CompileAndLoad(
       mlir::ModuleOp module, CompileOptions options) {
-    return Unimplemented("Compile with MLIR Module is not supported.");
+    return Unimplemented("CompileAndLoad with MLIR Module is not supported.");
   }
 
   // Deserializes a serialized executable as produced by
