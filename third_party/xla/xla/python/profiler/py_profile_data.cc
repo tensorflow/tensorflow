@@ -13,17 +13,20 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "xla/python/profiler/py_profile_data.h"
+
 #include <nanobind/make_iterator.h>  // For automatic conversion of std::iterator to Python iterable.
 #include <nanobind/stl/string.h>  // For automatic conversion of std::string to Python string.
 
 #include <memory>
 #include <string>
 
-#include "xla/python/profiler/profile_data.h"
+#include "nanobind/nanobind.h"
+#include "xla/python/profiler/profile_data_lib.h"
 #include "tsl/platform/protobuf.h"
 #include "tsl/profiler/protobuf/xplane.pb.h"
 
-namespace {
+namespace xla {
 
 namespace nb = nanobind;
 // NOLINTBEGIN(build/namespaces)
@@ -31,7 +34,7 @@ using namespace nb::literals;
 using namespace tensorflow::profiler::python;
 // NOLINTEND(build/namespaces)
 
-NB_MODULE(profile_data, m) {
+void BuildProfileDataModule(nb::module_& m) {
   nb::class_<ProfileEvent>(m, "ProfileEvent")
       .def_prop_ro("start_ns", &ProfileEvent::start_ns)
       .def_prop_ro("duration_ns", &ProfileEvent::duration_ns)
@@ -104,4 +107,6 @@ NB_MODULE(profile_data, m) {
           nb::keep_alive<0, 1>());
 }
 
-}  // namespace
+}  // namespace xla
+
+NB_MODULE(profile_data, m) { xla::BuildProfileDataModule(m); }

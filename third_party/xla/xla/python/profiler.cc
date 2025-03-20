@@ -33,7 +33,8 @@ limitations under the License.
 #include "xla/pjrt/exceptions.h"
 #include "xla/pjrt/status_casters.h"
 #include "xla/python/aggregate_profile.h"
-#include "xla/python/profiler/profile_data.h"
+#include "xla/python/profiler/profile_data_lib.h"
+#include "xla/python/profiler/py_profile_data.h"
 #include "xla/python/profiler_utils.h"
 #include "xla/python/xplane_to_profile_instructions.h"
 #include "xla/tsl/platform/macros.h"
@@ -147,6 +148,8 @@ static std::string GetFdoProfile(const std::string& xspace,
 void BuildProfilerSubmodule(nb::module_& m) {
   nb::module_ profiler =
       m.def_submodule("profiler", "TensorFlow profiler integration");
+  BuildProfileDataModule(profiler);
+
   nb::class_<tsl::profiler::ProfilerServer> profiler_server_class(
       profiler, "ProfilerServer");
   profiler.def(

@@ -6,8 +6,8 @@ load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
 
 cc_library(
     name = "profile_data_lib",
-    srcs = ["profile_data.cc"],
-    hdrs = ["profile_data.h"],
+    srcs = ["profile_data_lib.cc"],
+    hdrs = ["profile_data_lib.h"],
     copts = [
         "-fexceptions",
         "-fno-strict-aliasing",
@@ -29,14 +29,34 @@ cc_library(
     alwayslink = 1,
 )
 
+# This target builds a standalone module for profile_data.py, which some existing code depends on.
 tsl_pybind_extension(
     name = "profile_data",
     srcs = ["py_profile_data.cc"],
+    hdrs = ["py_profile_data.h"],
     copts = [
         "-fexceptions",
         "-fno-strict-aliasing",
     ],
-    pytype_srcs = ["profile_data.pyi"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":profile_data_lib",
+        "@local_tsl//tsl/platform:protobuf",
+        "@local_tsl//tsl/profiler/protobuf:xplane_proto_cc",
+        "@nanobind",
+    ],
+)
+
+# We need a separate target to build the python profile data submodule for xla_extension
+cc_library(
+    name = "profile_data_submodule",
+    srcs = ["py_profile_data.cc"],
+    hdrs = ["py_profile_data.h"],
+    copts = [
+        "-fexceptions",
+        "-fno-strict-aliasing",
+    ],
+    features = ["-use_header_modules"],
     visibility = ["//visibility:public"],
     deps = [
         ":profile_data_lib",
@@ -54,8 +74,8 @@ py_strict_test(
         "optonly",
     ],
     deps = [
-        ":profile_data",
         # copybara:uncomment "//pyglib:gfile",
         "@absl_py//absl/testing:absltest",
+        "//xla/python:xla_extension",
     ],
 )
