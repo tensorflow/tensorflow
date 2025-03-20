@@ -295,6 +295,7 @@ class ShapeUtil {
   // 1. e.g., f32[2x1x1] has a true rank of 1D, the other dimensions are just
   // fluff. Note that zero dimensions are included in the true rank, e.g.,
   // f32[3,0,1] has a true rank of 2D.
+  // Precondition: shape.IsArray().
   static int64_t TrueRank(const Shape& shape);
 
   static ProgramShape MakeProgramShape(std::initializer_list<Shape> parameters,

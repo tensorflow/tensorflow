@@ -3079,11 +3079,12 @@ XlaOp XlaBuilder::RngBitGenerator(RandomAlgorithm algorithm,
     TF_RETURN_IF_ERROR(ShapeUtil::ValidateShapeWithOptionalLayout(shape));
     TF_ASSIGN_OR_RETURN(Shape state_shape, GetShape(initial_state));
     Shape output_shape = shape;
-    output_shape.set_element_type(PRIMITIVE_TYPE_INVALID);
     if (primitive_util::IsArrayType(shape.element_type())) {
       output_shape.set_element_type(
           primitive_util::UnsignedIntegralTypeForBitWidth(
               primitive_util::BitWidth(shape.element_type())));
+    } else {
+      output_shape.Clear();
     }
     if (!primitive_util::IsUnsignedIntegralType(output_shape.element_type())) {
       return InvalidArgument("Unsupported shape for RngBitGenerator: %s",
