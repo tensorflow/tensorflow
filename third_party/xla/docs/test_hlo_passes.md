@@ -76,7 +76,7 @@ process, you can use
 to automatically insert generated `CHECK` directives above each test case in an
 HLO file.
 
-> WARNING: This tool inherently assumes that the pass's current behavior is
+> IMPORTANT: This tool inherently assumes that the pass's current behavior is
 > correct, so make sure to look over the generated `CHECK` lines yourself and
 > confirm that they match the output you expect.
 
