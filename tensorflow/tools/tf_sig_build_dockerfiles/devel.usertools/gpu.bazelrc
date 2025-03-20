@@ -41,8 +41,6 @@ test:nonpip_large --config=nonpip_filters_large -- //tensorflow/... -//tensorflo
 test:nonpip_filters_multi_gpu --test_tag_filters=-no_gpu,-cuda-only
 test:nonpip_filters_multi_gpu --build_tag_filters=-no_gpu,-cuda-only
 test:nonpip_filters_multi_gpu --test_lang_filters=py --flaky_test_attempts=2 --test_size_filters=small,medium,large --test_env=TF_PER_DEVICE_MEMORY_LIMIT_MB=2048
-test:nonpip_multi_gpu --test_env="NCCL_DEBUG=TRACE"
-test:nonpip_multi_gpu --test_env="NCCL_DEBUG_SUBSYS=ALL"
 test:nonpip_multi_gpu --config=nonpip_filters_multi_gpu -- \
 //tensorflow/core/nccl:nccl_manager_test_2gpu \
 //tensorflow/python/distribute/integration_test:mwms_peer_failure_test_2gpu \
