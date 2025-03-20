@@ -16,11 +16,14 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_original_value.h"
 
 #include <cstdint>
+#include <memory>
 #include <optional>
 #include <string>
 #include <vector>
 
+#include "absl/log/log.h"
 #include "absl/strings/str_cat.h"
+#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/xla_data.pb.h"
@@ -86,6 +89,26 @@ OriginalValueProto OriginalValueToProto(const OriginalValue& original_value) {
     }
   }
   return original_value_proto;
+}
+
+void CopyOriginalValue(const HloInstruction* src_instruction,
+                       HloInstruction* dest_instruction) {
+  std::shared_ptr<OriginalValue> original_value =
+      src_instruction->original_value();
+  if (!original_value) {
+    return;
+  }
+
+  // This is not expected to happen in practice.
+  if (!ShapeUtil::Compatible(src_instruction->shape(),
+                             dest_instruction->shape())) {
+    LOG(WARNING)
+        << "Expect the new instruction to have the same shape with the old "
+           "instruction when copying over original_value";
+    return;
+  }
+
+  dest_instruction->set_original_value(original_value);
 }
 
 }  // namespace xla
