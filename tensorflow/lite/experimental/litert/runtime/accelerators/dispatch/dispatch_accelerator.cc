@@ -125,11 +125,12 @@ class NpuAccelerator final {
                   kLiteRtStatusErrorInvalidArgument,
                   "Accelerator is not registered to an environment.");
 
-    LITERT_ASSIGN_OR_RETURN(const auto* compilation_data,
-                            GetModelCompilationData(options));
-    const char* allocation_base = compilation_data->allocation_base;
+    LITERT_ASSIGN_OR_RETURN(
+        const litert::internal::ModelCompilationData* compilation_data,
+        GetModelCompilationData(options));
 
-    LITERT_ENSURE(allocation_base != nullptr, kLiteRtStatusErrorRuntimeFailure,
+    LITERT_ENSURE(compilation_data->allocation_base,
+                  kLiteRtStatusErrorRuntimeFailure,
                   "No model allocation was passed by the runtime.");
 
     auto dispatch_delegate_options = litert::CreateDispatchDelegateOptionsPtr(
@@ -140,9 +141,19 @@ class NpuAccelerator final {
 
     LITERT_ENSURE(
         LiteRtDispatchDelegateAddAllocBaseOption(
-            dispatch_delegate_options.get(), allocation_base) == kTfLiteOk,
+            dispatch_delegate_options.get(),
+            compilation_data->allocation_base) == kTfLiteOk,
         kLiteRtStatusErrorRuntimeFailure,
         "Could not add allocation base to dispatch delegate options.");
+
+    if (compilation_data->allocation_fd != -1) {
+      LITERT_ENSURE(LiteRtDispatchDelegateAddAllocFdOption(
+                        dispatch_delegate_options.get(),
+                        compilation_data->allocation_fd) == kTfLiteOk,
+                    kLiteRtStatusErrorRuntimeFailure,
+                    "Could not add allocation file descriptor to dispatch "
+                    "delegate options.");
+    }
 
     auto dispatch_delegate = litert::CreateDispatchDelegatePtr(
         &accelerator->env->GetOptions(), std::move(dispatch_delegate_options));
@@ -192,17 +203,16 @@ LiteRtStatus LiteRtRegisterNpuAccelerator(
   LiteRtAccelerator accelerator_handle;
   LITERT_RETURN_IF_ERROR(LiteRtCreateAccelerator(&accelerator_handle));
   litert::AcceleratorGuard accelerator(accelerator_handle);
+  LITERT_RETURN_IF_ERROR(LiteRtSetAcceleratorGetName(
+      accelerator.get(), litert::NpuAccelerator::GetName));
+  LITERT_RETURN_IF_ERROR(LiteRtSetAcceleratorGetVersion(
+      accelerator.get(), litert::NpuAccelerator::GetVersion));
+  LITERT_RETURN_IF_ERROR(LiteRtSetAcceleratorGetHardwareSupport(
+      accelerator.get(), litert::NpuAccelerator::GetHardwareSupport));
 
-  LiteRtSetAcceleratorGetName(accelerator.get(),
-                              litert::NpuAccelerator::GetName);
-  LiteRtSetAcceleratorGetVersion(accelerator.get(),
-                                 litert::NpuAccelerator::GetVersion);
-  LiteRtSetAcceleratorGetHardwareSupport(
-      accelerator.get(), litert::NpuAccelerator::GetHardwareSupport);
-
-  LiteRtSetDelegateFunction(accelerator.get(),
-                            litert::NpuAccelerator::CreateDelegate,
-                            litert::NpuAccelerator::DestroyDelegate);
+  LITERT_RETURN_IF_ERROR(LiteRtSetDelegateFunction(
+      accelerator.get(), litert::NpuAccelerator::CreateDelegate,
+      litert::NpuAccelerator::DestroyDelegate));
 
   std::string library_folder;
   if (options && options->library_folder) {
