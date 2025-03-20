@@ -196,8 +196,20 @@ void Dump(LiteRtOpCode code, std::ostream& out) {
     case kLiteRtOpCodeTflResizeBilinear:
       out << "RESIZE_BILINEAR";
       break;
+    case kLiteRtOpCodeTflMinimum:
+      out << "MINIMUM";
+      break;
+    case kLiteRtOpCodeTflMaximum:
+      out << "MAXIMUM";
+      break;
+    case kLiteRtOpCodeTflResizeNearestNeighbor:
+      out << "RESIZE_NEAREST_NEIGHBOR";
+      break;
     default:
       out << "UKNOWN_OP_CODE: " << code;
+      break;
+    case kLiteRtOpCodeTflRelu:
+      out << "TFL_RELU";
       break;
   }
 };
@@ -301,7 +313,6 @@ void Dump(const CompilerPlugin& plugin, std::ostream& out) {
 
   out << "}\n";
 }
-
 
 void Dump(const LiteRtModelT& model, std::ostream& out) {
   out << absl::StreamFormat("LiteRtModel : [ #subgraphs=%d ]\n",

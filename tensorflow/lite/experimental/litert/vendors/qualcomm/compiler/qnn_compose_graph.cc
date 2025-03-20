@@ -59,6 +59,7 @@
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/builders/pool2d_op_builder.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/builders/quantize_op_builder.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/builders/reduce_op_builder.h"
+#include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/builders/relu_op_builder.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/builders/reshape_op_builder.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/builders/resize_op_builder.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/builders/rms_norm_op_builder.h"
@@ -246,6 +247,11 @@ LiteRtStatus ConvertOp(
     const std::vector<::qnn::TensorWrapperRef>& input_tensors,
     const std::vector<::qnn::TensorWrapperRef>& output_tensors,
     std::vector<::qnn::OpWrapper>& op_wrappers) {
+  std::ostringstream dump;
+  dump.clear();
+  Dump(*litert_op.Get(), dump);
+  std::string s = dump.str();
+  LITERT_LOG(LITERT_INFO, "%s", s.data());
   switch (litert_op.Code()) {
     case LiteRtOpCode::kLiteRtOpCodeTflCast: {
       op_wrappers =
@@ -332,6 +338,16 @@ LiteRtStatus ConvertOp(
                                                  output_tensors);
       break;
     }
+    case LiteRtOpCode::kLiteRtOpCodeTflMinimum: {
+      op_wrappers = ::qnn::BuildElementwiseMinimumOp(tensor_pool, input_tensors,
+                                                     output_tensors);
+      break;
+    }
+    case LiteRtOpCode::kLiteRtOpCodeTflMaximum: {
+      op_wrappers = ::qnn::BuildElementwiseMaximumOp(tensor_pool, input_tensors,
+                                                     output_tensors);
+      break;
+    }
     case LiteRtOpCode::kLiteRtOpCodeTflEmbeddingLookup: {
       op_wrappers = ::qnn::BuildEmbeddingLookupOp(tensor_pool, input_tensors,
                                                   output_tensors);
@@ -363,6 +379,11 @@ LiteRtStatus ConvertOp(
           ::qnn::BuildGeluOp(tensor_pool, input_tensors, output_tensors);
       break;
     }
+    case LiteRtOpCode::kLiteRtOpCodeTflRelu: {
+      op_wrappers =
+          ::qnn::BuildReluOp(tensor_pool, input_tensors, output_tensors);
+      break;
+    }
     case LiteRtOpCode::kLiteRtOpCodeTflBatchMatmul: {
       bool adj_x{};
       LITERT_RETURN_IF_ERROR(
@@ -385,6 +406,11 @@ LiteRtStatus ConvertOp(
     case LiteRtOpCode::kLiteRtOpCodeTflQuantize: {
       op_wrappers =
           ::qnn::BuildQuantizeOp(tensor_pool, input_tensors, output_tensors);
+      break;
+    }
+    case LiteRtOpCode::kLiteRtOpCodeTflDequantize: {
+      op_wrappers =
+          ::qnn::BuildDequantizeOp(tensor_pool, input_tensors, output_tensors);
       break;
     }
     case LiteRtOpCode::kLiteRtOpCodeTflSum: {
@@ -472,12 +498,15 @@ LiteRtStatus ConvertOp(
       int32_t dilation_h_factor;
       LITERT_RETURN_IF_ERROR(
           LiteRtGetConv2dDilationWOption(litert_op.Get(), &dilation_h_factor));
+      uint32_t fused_activation;
+      LITERT_RETURN_IF_ERROR(LiteRtGetConv2dFusedActivationOption(
+          litert_op.Get(), &fused_activation));
 
       ::qnn::PaddingType qnn_padding;
       LITERT_RETURN_IF_ERROR(ConvertPaddingType(padding, qnn_padding));
       op_wrappers = ::qnn::BuildConv2dOp(
           tensor_pool, input_tensors, output_tensors, stride_h, stride_w,
-          dilation_h_factor, dilation_w_factor, qnn_padding);
+          dilation_h_factor, dilation_w_factor, fused_activation, qnn_padding);
       break;
     }
     case LiteRtOpCode::kLiteRtOpCodeTflDepthwiseConv2d: {
@@ -496,12 +525,15 @@ LiteRtStatus ConvertOp(
       int32_t dilation_h_factor;
       LITERT_RETURN_IF_ERROR(LiteRtGetDepthwiseConv2dDilationHOptions(
           litert_op.Get(), &dilation_h_factor));
+      uint32_t fused_activation;
+      LITERT_RETURN_IF_ERROR(LiteRtGetDepthwiseConv2dFusedActivationOption(
+          litert_op.Get(), &fused_activation));
 
       ::qnn::PaddingType qnn_padding;
       LITERT_RETURN_IF_ERROR(ConvertPaddingType(padding, qnn_padding));
       op_wrappers = ::qnn::BuildDepthwiseConv2dOp(
           tensor_pool, input_tensors, output_tensors, stride_h, stride_w,
-          dilation_h_factor, dilation_w_factor, qnn_padding);
+          dilation_h_factor, dilation_w_factor, fused_activation, qnn_padding);
       break;
     }
     case LiteRtOpCode::kLiteRtOpCodeTflAveragePool2d: {
@@ -567,6 +599,19 @@ LiteRtStatus ConvertOp(
       op_wrappers = ::qnn::BuildResizeBilinearOp(tensor_pool, input_tensors,
                                                  output_tensors, align_corners,
                                                  half_pixel_centers);
+      break;
+    }
+    case LiteRtOpCode::kLiteRtOpCodeTflResizeNearestNeighbor: {
+      bool align_corners;
+      LITERT_RETURN_IF_ERROR(LiteRtGetResizeNearestNeighborAlignCornersOption(
+          litert_op.Get(), &align_corners));
+      bool half_pixel_centers;
+      LITERT_RETURN_IF_ERROR(
+          LiteRtGetResizeNearestNeighborHalfPixelCenterOption(
+              litert_op.Get(), &half_pixel_centers));
+      op_wrappers = ::qnn::BuildResizeNearestOp(tensor_pool, input_tensors,
+                                                output_tensors, align_corners,
+                                                half_pixel_centers);
       break;
     }
     default: {

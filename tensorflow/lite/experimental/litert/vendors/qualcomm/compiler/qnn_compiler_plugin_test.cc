@@ -82,6 +82,8 @@ const auto kSupportedOps =
                     "simple_leaky_relu_op.tflite",
                     "simple_resize_bilinear_op.tflite",
                     "simple_space_to_depth_op.tflite",
+                    "simple_resize_nearest_neighbor_op.tflite",
+                    "simple_relu_op.tflite",
                     kFeedForwardModel,
                     kKeyEinsumModel,
                     kQueryEinsumModel,

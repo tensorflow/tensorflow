@@ -16,6 +16,9 @@ cc_library(
     ],
     deps = [
         # copybara:uncomment "//third_party/qairt/latest:qnn_lib_headers",
+        "//tensorflow/lite/experimental/litert/c:litert_op_code",
+        "//tensorflow/lite/experimental/litert/vendors/qualcomm/core:tensor_pool",
+        "//tensorflow/lite/experimental/litert/vendors/qualcomm/core/utils:log",
         "//tensorflow/lite/experimental/litert/vendors/qualcomm/core/wrappers:op_wrapper",
         "//tensorflow/lite/experimental/litert/vendors/qualcomm/core/wrappers:tensor_wrapper",
     ],
@@ -32,6 +35,7 @@ cc_library(
     deps = [
         ":op_builder",
         # copybara:uncomment "//third_party/qairt/latest:qnn_lib_headers",
+        "//tensorflow/lite/experimental/litert/c:litert_logging",
         "//tensorflow/lite/experimental/litert/vendors/qualcomm/core:tensor_pool",
         "//tensorflow/lite/experimental/litert/vendors/qualcomm/core/wrappers:op_wrapper",
         "//tensorflow/lite/experimental/litert/vendors/qualcomm/core/wrappers:param_wrapper",
@@ -131,6 +135,23 @@ cc_library(
     name = "gelu_op_builder",
     srcs = ["gelu_op_builder.cc"],
     hdrs = ["gelu_op_builder.h"],
+    tags = [
+        # Don't build/test in OS until qnn is available.
+        "nobuilder",
+    ],
+    deps = [
+        ":op_builder",
+        # copybara:uncomment "//third_party/qairt/latest:qnn_lib_headers",
+        "//tensorflow/lite/experimental/litert/vendors/qualcomm/core:tensor_pool",
+        "//tensorflow/lite/experimental/litert/vendors/qualcomm/core/wrappers:op_wrapper",
+        "//tensorflow/lite/experimental/litert/vendors/qualcomm/core/wrappers:tensor_wrapper",
+    ],
+)
+
+cc_library(
+    name = "relu_op_builder",
+    srcs = ["relu_op_builder.cc"],
+    hdrs = ["relu_op_builder.h"],
     tags = [
         # Don't build/test in OS until qnn is available.
         "nobuilder",
@@ -401,6 +422,7 @@ cc_library(
     deps = [
         ":op_builder",
         # copybara:uncomment "//third_party/qairt/latest:qnn_lib_headers",
+        "//tensorflow/lite/experimental/litert/c:litert_op_code",
         "//tensorflow/lite/experimental/litert/vendors/qualcomm/core:tensor_pool",
         "//tensorflow/lite/experimental/litert/vendors/qualcomm/core/utils:log",
         "//tensorflow/lite/experimental/litert/vendors/qualcomm/core/wrappers:op_wrapper",
@@ -512,7 +534,9 @@ cc_library(
     deps = [
         ":op_builder",
         # copybara:uncomment "//third_party/qairt/latest:qnn_lib_headers",
+        "//tensorflow/lite/experimental/litert/c:litert_op_code",
         "//tensorflow/lite/experimental/litert/vendors/qualcomm/core:tensor_pool",
+        "//tensorflow/lite/experimental/litert/vendors/qualcomm/core/utils:log",
         "//tensorflow/lite/experimental/litert/vendors/qualcomm/core/wrappers:op_wrapper",
         "//tensorflow/lite/experimental/litert/vendors/qualcomm/core/wrappers:quantize_params_wrapper",
         "//tensorflow/lite/experimental/litert/vendors/qualcomm/core/wrappers:tensor_wrapper",

@@ -275,7 +275,7 @@ LiteRtStatus LiteRtCompilerPluginPartition(LiteRtCompilerPlugin compiler_plugin,
   auto backend_configs = QnnManager::DefaultBackendConfigs();
   // TODO: pass soc_model as parameter
   auto qnn_manager = QnnManager::Create(backend_configs, std::nullopt,
-                                        {QNN_HTP_DEVICE_ARCH_V75});
+                                        {QNN_HTP_DEVICE_ARCH_V79});
   if (!qnn_manager) {
     LITERT_LOG(LITERT_ERROR, "%s", qnn_manager.Error().Message().data());
     return qnn_manager.Error().Status();
@@ -318,8 +318,12 @@ LiteRtStatus LiteRtCompilerPluginPartition(LiteRtCompilerPlugin compiler_plugin,
           // Use default partition index if vendor doesn't support multiple
           // partitions.
           LiteRtPushOp(selected_ops, op.Get(), kDefaultPartitionIndex));
+    } else {
+      LITERT_LOG(LITERT_INFO, "Op %d is not supported by QNN",
+                 op.Get()->OpCode());
     }
   }
+  LITERT_LOG(LITERT_INFO, "Partition done.");
 
   return kLiteRtStatusOk;
 }
