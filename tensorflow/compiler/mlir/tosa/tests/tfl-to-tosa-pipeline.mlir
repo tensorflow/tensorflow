@@ -593,9 +593,9 @@ func.func @test_logical_or(%arg0: tensor<13x1x3xi1>, %arg1: tensor<13x21x3xi1>) 
 
 // CHECK-LABEL: test_logical_not
 // CHECK: %[[VAR0:.*]] = tosa.logical_not %arg0
-func.func @test_logical_not(%arg0: tensor<1x21x3xi1>) -> tensor<*xi1> {
-  %0 = "tfl.logical_not"(%arg0) : (tensor<1x21x3xi1>) -> tensor<*xi1>
-  func.return %0 : tensor<*xi1>
+func.func @test_logical_not(%arg0: tensor<1x21x3xi1>) -> tensor<1x21x3xi1> {
+  %0 = "tfl.logical_not"(%arg0) : (tensor<1x21x3xi1>) -> tensor<1x21x3xi1>
+  func.return %0 : tensor<1x21x3xi1>
 }
 
 // -----
@@ -968,9 +968,9 @@ func.func @test_cos(%arg0: tensor<10xf32>) -> tensor<*xf32> {
 // CHECK: %[[VAL_30:.*]] = tosa.greater %[[VAL_8]], %arg0 : (tensor<1x1x1xf32>, tensor<13x21x3xf32>) -> tensor<13x21x3xi1>
 // CHECK: %[[VAL_31:.*]] = tosa.select %[[VAL_30]], %[[VAL_29]], %[[VAL_28]] : (tensor<13x21x3xi1>, tensor<13x21x3xf32>, tensor<13x21x3xf32>) -> tensor<13x21x3xf32>
 // CHECK: return %[[VAL_31]] : tensor<13x21x3xf32>
-func.func @test_atan2(%arg0: tensor<13x21x3xf32>, %arg1: tensor<13x21x3xf32>) -> tensor<*xf32> {
-  %0 = "tfl.atan2"(%arg0, %arg1) : (tensor<13x21x3xf32>, tensor<13x21x3xf32>) -> tensor<*xf32>
-  func.return %0 : tensor<*xf32>
+func.func @test_atan2(%arg0: tensor<13x21x3xf32>, %arg1: tensor<13x21x3xf32>) -> tensor<13x21x3xf32> {
+  %0 = "tfl.atan2"(%arg0, %arg1) : (tensor<13x21x3xf32>, tensor<13x21x3xf32>) -> tensor<13x21x3xf32>
+  func.return %0 : tensor<13x21x3xf32>
 }
 
 // -----
