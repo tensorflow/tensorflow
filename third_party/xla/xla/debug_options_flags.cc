@@ -226,7 +226,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
       DebugOptions::PARTITIONING_ALGORITHM_NOOP);
 
   opts.set_xla_gpu_enable_triton_gemm(true);
-  opts.set_xla_gpu_unsupported_enable_generic_triton_emitter_for_gemms(false);
+  opts.set_xla_gpu_unsupported_enable_generic_triton_emitter_for_gemms(true);
   opts.set_xla_gpu_enable_cudnn_int8x32_convolution_reordering(true);
   opts.set_xla_gpu_triton_gemm_any(true);
   opts.set_xla_gpu_unsupported_force_triton_gemm(false);

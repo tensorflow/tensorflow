@@ -38,6 +38,8 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/hlo/ir/hlo_print_options.h"
+#include "xla/hlo/testlib/filecheck.h"
 #include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/primitive_util.h"
 #include "xla/service/gpu/backend_configs.pb.h"
@@ -48,6 +50,7 @@ limitations under the License.
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/status_matchers.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
@@ -57,6 +60,8 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 namespace {
+
+using ::tsl::testing::IsOkAndHolds;
 
 constexpr ErrorSpec kExactMatch{/*aabs=*/0, /*arel=*/0};
 
@@ -1933,6 +1938,53 @@ ENTRY entry {
 })";
   EXPECT_TRUE(RunAndCompareNoHloPasses(
       kHloText, ErrorSpec{/*aabs=*/1e-4, /*arel=*/1e-6}));
+}
+
+TEST_F(TritonEmitterTest, DotFromBroadcastIsEmittedCorrectly) {
+  const std::string kHloText = R"(
+HloModule t
+
+triton_dot {
+  p0 = f32[11,1,24,1] parameter(0)
+  p0_broadcast = f32[11,1,24,1,128] broadcast(p0), dimensions={0,1,2,3}
+  p0_reshape = f32[264,128] bitcast(p0_broadcast)
+
+  p1 = f32[128,8]{1,0} parameter(1)
+  ROOT result = f32[264,8]{1,0} dot(p0_reshape, p1),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+}
+
+ENTRY e {
+  p0 = f32[11,1,24,1] parameter(0)
+  p1 = f32[128,8] parameter(1)
+  ROOT result = f32[264,8] fusion(p0, p1), kind=kCustom, calls=triton_dot,
+    backend_config={"fusion_backend_config": {kind: "__triton_gemm",
+    triton_gemm_config: {"block_m":32,"block_n":16,"block_k":16,
+    "split_k":1,"num_stages":1,"num_warps":4,"num_ctas":1}}}
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, GetOptimizedModule(kHloText));
+  auto opt_module_text = module->ToString(
+      HloPrintOptions::ShortParsable().set_print_backend_config(true));
+  EXPECT_THAT(RunFileCheck(opt_module_text, R"(
+CHECK: [[broadcast:[^ ]*]] {
+CHECK-NEXT: [[broadcast_p0:[^ ]+]] = f32[264]{0} parameter(0)
+CHECK-NEXT: ROOT {{.*}} = f32[264,128]{1,0} broadcast([[broadcast_p0]]), dimensions={0}
+CHECK-NEXT: }
+CHECK: {{.*}} = f32[264,128]{1,0} fusion{{.*}}, kind=kCustom, calls=[[broadcast]],
+CHECK-SAME: {{.*}}"kind":"__triton_nested_gemm_fusion"
+CHECK-SAME: {{.*}}"output_tiles":[{"sizes":["32","16"]}]
+CHECK: ENTRY {{.*}} {
+CHECK: [[entry_p0:[^ ]+]] = f32[11,1,24,1]{3,2,1,0} parameter(0)
+CHECK: {{.*}} = f32[264]{0} bitcast([[entry_p0]])
+)"),
+              IsOkAndHolds(true));
+  TF_EXPECT_OK(
+      CreateTritonIrAndFileCheck(this, opt_module_text, "triton_dot", R"(
+CHECK: tt.dot {{.*}} -> tensor<32x16xf32>
+  )"));
+  EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-4,
+                                                /*arel=*/1e-6}));
 }
 
 }  // namespace
