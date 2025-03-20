@@ -1,3 +1,141 @@
+diff --ruN a/stablehlo/BUILD.bazel b/stablehlo/BUILD.bazel
+--- stablehlo/BUILD.bazel
++++ stablehlo/BUILD.bazel
+@@ -1577,8 +1577,9 @@
+     srcs = [
+         "stablehlo/conversions/tosa/transforms/StablehloLegalizeToTosa.cpp",
+         "stablehlo/conversions/tosa/transforms/StablehloPrepareForTosa.cpp",
+-        "stablehlo/conversions/tosa/transforms/StablehloQuantLegalizeToTosaRescale.cpp",
+-        "stablehlo/conversions/tosa/transforms/TosaRescaleLegalizeToStablehlo.cpp",
++        # TODO: un-comment the following once #2751 is fixed
++        # "stablehlo/conversions/tosa/transforms/StablehloQuantLegalizeToTosaRescale.cpp",
++        # "stablehlo/conversions/tosa/transforms/TosaRescaleLegalizeToStablehlo.cpp",
+     ],
+     hdrs = [
+         "stablehlo/conversions/tosa/transforms/Passes.h",
+diff --ruN a/stablehlo/docs/generated/stablehlo_tosa_passes.md b/stablehlo/docs/generated/stablehlo_tosa_passes.md
+--- stablehlo/docs/generated/stablehlo_tosa_passes.md
++++ stablehlo/docs/generated/stablehlo_tosa_passes.md
+@@ -10,17 +10,3 @@
+ 
+ This pass adds rewriters to make StableHLO ops more compatible with TOSA ops.
+ Currently simplifies stablehlo.dot_general into stablehlo.dot for easier lowering.
+-
+-### `-stablehlo-quant-legalize-to-tosa-rescale`
+-
+-_Legalize StableHLO Quantized operations to TOSA rescale operations_
+-
+-This pass rewrites StableHLO quantized operations to integer operations
+-by inserting TOSA rescale operations at the inputs and outputs of the
+-integer operations.
+-
+-### `-tosa-rescale-legalize-to-stablehlo`
+-
+-_Legalize TOSA rescales to StableHlo primitive math operations_
+-
+-This pass rewrites TOSA rescale operations to StableHLO primitive math operations.
+diff --ruN a/stablehlo/stablehlo/conversions/tosa/tests/BUILD.bazel b/stablehlo/stablehlo/conversions/tosa/tests/BUILD.bazel
+--- stablehlo/stablehlo/conversions/tosa/tests/BUILD.bazel
++++ stablehlo/stablehlo/conversions/tosa/tests/BUILD.bazel
+@@ -55,7 +55,18 @@
+         tags = ["stablehlo_tosa_tests"],
+         deps = ["@rules_python//python/runfiles"],
+     )
+-    for src in glob(["**/*.mlir"])
++    # TODO: remove the following excludes once #2751 is fixed.
++    for src in glob(
++        ["**/*.mlir"],
++        exclude = [
++            "legalize_quant_ops_to_tosa_rescale.mlir",
++            "legalize_tosa_rescale_to_stablehlo.mlir",
++            "rescale_interpreter.mlir",
++            "binary.mlir",
++            "nullary.mlir",
++            "unary.mlir",
++        ],
++    )
+ ]
+ 
+ test_suite(
+diff --ruN a/stablehlo/stablehlo/conversions/tosa/tests/lit.cfg.py b/stablehlo/stablehlo/conversions/tosa/tests/lit.cfg.py
+--- stablehlo/stablehlo/conversions/tosa/tests/lit.cfg.py
++++ stablehlo/stablehlo/conversions/tosa/tests/lit.cfg.py
+@@ -25,6 +25,8 @@
+ config.test_format = lit.formats.ShTest(not llvm_config.use_lit_shell)
+ config.suffixes = ['.mlir']
+ config.test_source_root = os.path.dirname(__file__)
++# TODO: remove the following once #2751 is fixed.
++config.excludes = ['legalize_quant_ops_to_tosa_rescale.mlir', 'legalize_tosa_rescale_to_stablehlo.mlir', 'rescale_interpreter.mlir', 'binary.mlir', 'nullary.mlir', 'unary.mlir']
+ 
+ # Disallow reusing variables across CHECK-LABEL matches.
+ # A variable can eschew this (be made "global") by prefixing its name with $.
+diff --ruN a/stablehlo/stablehlo/conversions/tosa/transforms/CMakeLists.txt b/stablehlo/stablehlo/conversions/tosa/transforms/CMakeLists.txt
+--- stablehlo/stablehlo/conversions/tosa/transforms/CMakeLists.txt
++++ stablehlo/stablehlo/conversions/tosa/transforms/CMakeLists.txt
+@@ -25,9 +25,11 @@
+ add_mlir_library(StablehloTOSATransforms
+   StablehloLegalizeToTosa.cpp
+   StablehloPrepareForTosa.cpp
+-  StablehloQuantLegalizeToTosaRescale.cpp
+-  TosaRescaleLegalizeToStablehlo.cpp
++  # TODO: un-comment the following once #2751 is fixed.
++  # StablehloQuantLegalizeToTosaRescale.cpp
++  # TosaRescaleLegalizeToStablehlo.cpp
+ 
++  PARTIAL_SOURCES_INTENDED
+   DEPENDS
+   StablehloTOSATransformsPassIncGen
+   StablehloTOSAPDLLPatternsIncGen
+diff --ruN a/stablehlo/stablehlo/conversions/tosa/transforms/Passes.td b/stablehlo/stablehlo/conversions/tosa/transforms/Passes.td
+--- stablehlo/stablehlo/conversions/tosa/transforms/Passes.td
++++ stablehlo/stablehlo/conversions/tosa/transforms/Passes.td
+@@ -33,24 +33,25 @@
+   let dependentDialects = ["::mlir::tosa::TosaDialect"];
+ }
+ 
+-def StablehloQuantLegalizeToTosaRescalePass : Pass<"stablehlo-quant-legalize-to-tosa-rescale", "mlir::func::FuncOp"> {
+-  let summary = "Legalize StableHLO Quantized operations to TOSA rescale operations";
+-  let description = [{
+-    This pass rewrites StableHLO quantized operations to integer operations
+-    by inserting TOSA rescale operations at the inputs and outputs of the
+-    integer operations.
+-  }];
+-  let dependentDialects = [
+-    "::mlir::tosa::TosaDialect",
+-  ];
+-}
+-
+-def TosaRescaleLegalizeToStablehloPass : Pass<"tosa-rescale-legalize-to-stablehlo", "mlir::func::FuncOp"> {
+-  let summary = "Legalize TOSA rescales to StableHlo primitive math operations";
+-  let description = [{
+-    This pass rewrites TOSA rescale operations to StableHLO primitive math operations.
+-  }];
+-  let dependentDialects = [
+-    "::mlir::stablehlo::StablehloDialect"
+-  ];
+-}
++// TODO: un-comment the following once #2751 is fixed.
++// def StablehloQuantLegalizeToTosaRescalePass : Pass<"stablehlo-quant-legalize-to-tosa-rescale", "mlir::func::FuncOp"> {
++//   let summary = "Legalize StableHLO Quantized operations to TOSA rescale operations";
++//   let description = [{
++//     This pass rewrites StableHLO quantized operations to integer operations
++//     by inserting TOSA rescale operations at the inputs and outputs of the
++//     integer operations.
++//   }];
++//   let dependentDialects = [
++//     "::mlir::tosa::TosaDialect",
++//   ];
++// }
++//
++// def TosaRescaleLegalizeToStablehloPass : Pass<"tosa-rescale-legalize-to-stablehlo", "mlir::func::FuncOp"> {
++//   let summary = "Legalize TOSA rescales to StableHlo primitive math operations";
++//   let description = [{
++//     This pass rewrites TOSA rescale operations to StableHLO primitive math operations.
++//   }];
++//   let dependentDialects = [
++//     "::mlir::stablehlo::StablehloDialect"
++//   ];
++// }
 diff --ruN a/stablehlo/stablehlo/dialect/StablehloOps.cpp b/stablehlo/stablehlo/dialect/StablehloOps.cpp
 --- stablehlo/stablehlo/dialect/StablehloOps.cpp
 +++ stablehlo/stablehlo/dialect/StablehloOps.cpp
