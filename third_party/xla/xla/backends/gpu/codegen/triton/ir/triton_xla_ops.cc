@@ -16,12 +16,9 @@ limitations under the License.
 #include "xla/backends/gpu/codegen/triton/ir/triton_xla_ops.h"
 
 #include <cassert>
-#include <optional>
 
 #include "llvm/ADT/STLExtras.h"
-#include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/TypeSwitch.h"  // IWYU pragma: keep
-#include "llvm/Support/Casting.h"
 #include "llvm/Support/LogicalResult.h"
 #include "mlir/IR/Builders.h"  // IWYU pragma: keep
 #include "mlir/IR/BuiltinAttributes.h"
@@ -29,27 +26,15 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"  // IWYU pragma: keep
 #include "mlir/IR/OperationSupport.h"
 #include "mlir/IR/PatternMatch.h"  // IWYU pragma: keep
-#include "mlir/IR/Region.h"
 #include "mlir/IR/TypeUtilities.h"  // IWYU pragma: keep
-#include "mlir/IR/ValueRange.h"
 #include "mlir/Support/LLVM.h"
 #include "mlir/Support/LogicalResult.h"
 #include "xla/backends/gpu/codegen/triton/ir/triton_xla_dialect.cc.inc"
-#include "triton/Dialect/Triton/IR/Dialect.h"
 #include "triton/Dialect/TritonGPU/IR/Types.h"
 
-using mlir::Dialect;
-using mlir::DictionaryAttr;
-using mlir::Location;
 using mlir::LogicalResult;
-using mlir::MLIRContext;
-using mlir::OpaqueProperties;
 using mlir::RankedTensorType;
-using mlir::RegionRange;
-using mlir::SmallVectorImpl;
 using mlir::Type;
-using mlir::ValueRange;
-using mlir::triton::gpu::TensorOrMemDesc;
 
 namespace mlir::triton::xla {
 
@@ -73,22 +58,24 @@ mlir::ParseResult parseDenseIntArrayAttr(mlir::AsmParser& parser,
 ParseResult TileOp::parse(OpAsmParser& parser, OperationState& result) {
   OpAsmParser::UnresolvedOperand src;
   TiledTensorType tiled_tensor_type;
-  DenseI64ArrayAttr strides;
-  DenseI32ArrayAttr offsets, sizes;
-  if (parser.parseOperand(src) || parseDenseIntArrayAttr(parser, offsets) ||
-      parseDenseIntArrayAttr(parser, sizes) ||
-      parseDenseIntArrayAttr(parser, strides) ||
+  SmallVector<OpAsmParser::UnresolvedOperand, 4> offsets, sizes, strides;
+  if (parser.parseOperand(src) ||
+      parser.parseOperandList(offsets, OpAsmParser::Delimiter::Square) ||
+      parser.parseOperandList(sizes, OpAsmParser::Delimiter::Square) ||
+      parser.parseOperandList(strides, OpAsmParser::Delimiter::Square) ||
       parser.parseOptionalAttrDict(result.attributes) ||
       parser.parseColonType(tiled_tensor_type)) {
     return failure();
   }
+  auto offset_type = parser.getBuilder().getI32Type();
+  auto size_and_stride_type = parser.getBuilder().getI64Type();
   if (parser.resolveOperand(src, tiled_tensor_type.getOriginalType(),
-                            result.operands)) {
+                            result.operands) ||
+      parser.resolveOperands(offsets, offset_type, result.operands) ||
+      parser.resolveOperands(sizes, size_and_stride_type, result.operands) ||
+      parser.resolveOperands(strides, size_and_stride_type, result.operands)) {
     return failure();
   }
-  result.addAttribute("offsets", offsets);
-  result.addAttribute("sizes", sizes);
-  result.addAttribute("strides", strides);
   result.addTypes(tiled_tensor_type);
   return success();
 }
