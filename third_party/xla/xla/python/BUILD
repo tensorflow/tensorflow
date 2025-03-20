@@ -332,6 +332,7 @@ cc_library(
         "@llvm-project//mlir:Pass",
         "@nanobind",
         "@shardy//shardy/dialect/sdy/ir:dialect",
+        "@pybind11_abseil//pybind11_abseil:absl_casters",
         "@local_config_python//:python_headers",  # buildcleaner: keep
         "//xla:comparison_util",
         "//xla:literal",
