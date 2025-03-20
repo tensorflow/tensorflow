@@ -136,6 +136,10 @@ absl::Status RunHloBenchmark(benchmark::State& state,
   TF_ASSIGN_OR_RETURN(results[0], executable->ExecuteSharded(args_ptrs, device,
                                                              execute_options));
 
+  for (const auto& result : results[0]) {
+    CHECK_OK(result->GetReadyFuture().Await());
+  }
+
   // Benchmark executable.
   for (auto _ : state) {
     if (benchmark_options.num_executions == 1) {
