@@ -1672,10 +1672,12 @@ absl::Status IrEmitterUnnested::EmitSort(const HloSortInstruction* sort) {
         sort->operand_count() > 1 ? ShapeIndex({i}) : ShapeIndex({});
     // We assume that the layout of all involved operands and outputs is the
     // same.
-    TF_RET_CHECK(LayoutUtil::LayoutsInShapesEqual(keys_shape,
-                                                  sort->operand(i)->shape()));
+    TF_RET_CHECK(
+        LayoutUtil::LayoutsInShapesEqual(keys_shape, sort->operand(i)->shape(),
+                                         Layout::Equal().IgnoreMemorySpace()));
     TF_RET_CHECK(LayoutUtil::LayoutsInShapesEqual(
-        keys_shape, ShapeUtil::GetSubshape(sort->shape(), shape_index)));
+        keys_shape, ShapeUtil::GetSubshape(sort->shape(), shape_index),
+        Layout::Equal().IgnoreMemorySpace()));
 
     BufferAllocation::Slice destination_buffer;
     BufferAllocation::Slice source_address;

@@ -69,6 +69,56 @@ ENTRY TestComputation {
   EXPECT_TRUE(RunAndCompareNoHloPasses(hlo_text, ErrorSpec{1e-5, 1e-5}));
 }
 
+// Test that verifies the IgnoreMemorySpace option works correctly
+TEST_F(SortingTest, LayoutsInShapesEqualWithIgnoreMemorySpace) {
+  const char* hlo_text = R"(
+HloModule TestModule
+
+compare {
+  p.0.lhs = f32[] parameter(0)
+  p.0.rhs = f32[] parameter(1)
+  p.1.lhs = f32[] parameter(2)
+  p.1.rhs = f32[] parameter(3)
+  ROOT lt = pred[] compare(p.0.lhs, p.0.rhs), direction=LT
+}
+
+ENTRY TestComputation {
+  data = f32[6] parameter(0)
+  
+  // Create two copies in different memory spaces
+  keys = f32[6] copy(data)
+  values = f32[6] copy(data)
+  
+  // Sort operation with operands in different memory spaces
+  ROOT sort = (f32[6], f32[6]) sort(keys, values), dimensions={0}, to_apply=compare
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_text));
+
+  HloInstruction* values =
+      module->entry_computation()->GetInstructionWithName("values");
+  Shape values_shape = values->shape();
+  values_shape.mutable_layout()->set_memory_space(1);
+  *values->mutable_shape() = values_shape;
+
+  const HloInstruction* sort = module->entry_computation()->root_instruction();
+  EXPECT_EQ(sort->opcode(), HloOpcode::kSort);
+
+  const HloInstruction* keys = sort->operand(0);
+  const HloInstruction* values_const = sort->operand(1);
+
+  EXPECT_FALSE(
+      LayoutUtil::LayoutsInShapesEqual(keys->shape(), values->shape()));
+  EXPECT_TRUE(LayoutUtil::LayoutsInShapesEqual(
+      keys->shape(), values->shape(), Layout::Equal().IgnoreMemorySpace()));
+
+  auto literal = LiteralUtil::CreateR1<float>({1.0, 6.0, 7.0, 0.0, 2.0, 5.0});
+  absl::StatusOr<Literal> executed = Execute(std::move(module), {&literal});
+  EXPECT_TRUE(executed.ok()) << executed.status().message();
+}
+
 // Size of the radix sort tests.
 static constexpr int kRadixSortTestSize = 100000;
 
