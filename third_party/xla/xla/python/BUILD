@@ -1066,7 +1066,6 @@ cc_library(
         "//xla/pjrt/c:pjrt_c_api_hdrs",
         "//xla/pjrt/c:pjrt_c_api_profiler_extension_hdrs",
         "//xla/python/profiler:profile_data_lib",
-        "//xla/python/profiler:profile_data_submodule",
         "//xla/tsl/platform:macros",
         "//xla/tsl/profiler/rpc:profiler_server_impl",
         "//xla/tsl/profiler/rpc/client:capture_profile",

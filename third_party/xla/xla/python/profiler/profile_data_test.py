@@ -15,9 +15,8 @@
 """Unit tests for profile_data.py."""
 
 from absl.testing import absltest
-from xla.python import xla_extension
 
-profile_data = xla_extension.profiler
+from xla.python.profiler import profile_data
 
 
 class ProfileDataTest(absltest.TestCase):
