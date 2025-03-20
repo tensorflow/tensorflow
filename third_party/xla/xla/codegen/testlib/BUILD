@@ -52,6 +52,7 @@ tsl_pybind_extension(
         "//xla:literal",
         "//xla:shape_util",
         "//xla:util",
+        "//xla:xla_data_proto_cc",
         "//xla/codegen:kernel_definition",
         "//xla/codegen:kernel_emitter",
         "//xla/codegen:kernel_source",
