@@ -24,6 +24,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/gpu/model/gpu_hlo_cost_analysis.h"
 #include "xla/service/hlo_cost_analysis.h"
+#include "tensorflow/core/profiler/utils/hlo_cost_analysis_wrapper.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -39,7 +40,7 @@ class XProfGpuCostAnalysis : public xla::gpu::GpuHloCostAnalysis {
 
   absl::Status Postprocess(const xla::HloInstruction* hlo) override;
 
-  int64_t GetDeviceFlopsAdjustment(const xla::HloInstruction& hlo);
+  int64_t GetDeviceFlopsAdjustment(const xla::HloInstruction& hlo) const;
 
  protected:
   std::unique_ptr<xla::HloCostAnalysis> CreateNestedCostAnalysis() override;
@@ -50,6 +51,11 @@ class XProfGpuCostAnalysis : public xla::gpu::GpuHloCostAnalysis {
   static inline constexpr absl::string_view kDeviceFlopsAdjustment =
       "device_flops_adjustment";
 };
+
+// Creates a HloCostAnalysisWrapper for XProfGpuCostAnalysis based on the given
+// options.
+std::unique_ptr<HloCostAnalysisWrapper> CreateXprofGpuCostAnalysis(
+    xla::HloCostAnalysis::Options options = xla::HloCostAnalysis::Options());
 
 }  // namespace profiler
 }  // namespace tensorflow

@@ -1,4 +1,4 @@
-load("//tensorflow:tensorflow.bzl", "tf_cc_test", "tf_cuda_library")
+load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow/core/profiler/builds:build_config.bzl", "tf_profiler_copts")
 
@@ -451,15 +451,13 @@ cc_library(
     ],
 )
 
-tf_cuda_library(
+cc_library(
     name = "hlo_module_map",
     srcs = ["hlo_module_map.cc"],
     hdrs = ["hlo_module_map.h"],
-    cuda_deps = [
-        "@local_xla//xla/service/gpu/model:gpu_hlo_cost_analysis",
-    ],
     visibility = [":friends"],
     deps = [
+        ":hlo_cost_analysis_wrapper",
         ":hlo_module_utils",
         ":hlo_proto_map",
         ":hlo_proto_to_module",
@@ -467,10 +465,10 @@ tf_cuda_library(
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@local_tsl//tsl/profiler/lib:traceme_encode",
         "@local_tsl//tsl/profiler/protobuf:xplane_proto_cc",
-        "@local_xla//xla:shape_util",
         "@local_xla//xla/hlo/ir:hlo",
         "@local_xla//xla/service:hlo_cost_analysis",
         "@local_xla//xla/service:hlo_proto_cc",
@@ -514,6 +512,8 @@ cc_library(
     hdrs = ["xprof_gpu_cost_analysis.h"],
     visibility = [":friends"],
     deps = [
+        ":hlo_cost_analysis_wrapper",
+        "//tensorflow/core/profiler/protobuf:op_metrics_proto_cc",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings:string_view",
         "@local_xla//xla:shape_util",
@@ -522,6 +522,7 @@ cc_library(
         "@local_xla//xla/service/gpu:cublas_cudnn",
         "@local_xla//xla/service/gpu/model:gpu_hlo_cost_analysis",
         "@local_xla//xla/tsl/platform:errors",
+        "@local_xla//xla/tsl/profiler/convert:xla_op_utils",
     ],
 )
 
@@ -539,6 +540,37 @@ cc_library(
     deps = ["//tensorflow/core/profiler/protobuf:tpu_input_pipeline_proto_cc"],
 )
 
+cc_library(
+    name = "hlo_cost_analysis_wrapper",
+    srcs = ["hlo_cost_analysis_wrapper.cc"],
+    hdrs = ["hlo_cost_analysis_wrapper.h"],
+    visibility = [":friends"],
+    deps = [
+        "//tensorflow/core/profiler/protobuf:op_metrics_proto_cc",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/functional:any_invocable",
+        "@com_google_absl//absl/log:check",
+        "@local_xla//xla:shape_util",
+        "@local_xla//xla:xla_data_proto_cc",
+        "@local_xla//xla/hlo/ir:hlo",
+        "@local_xla//xla/service:hlo_cost_analysis",
+        "@local_xla//xla/tsl/profiler/convert:xla_op_utils",
+    ],
+)
+
+tf_cc_test(
+    name = "hlo_cost_analysis_wrapper_test",
+    srcs = ["hlo_cost_analysis_wrapper_test.cc"],
+    deps = [
+        ":hlo_cost_analysis_wrapper",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "@com_google_absl//absl/strings:string_view",
+        "@local_xla//xla/hlo/ir:hlo",
+        "@local_xla//xla/hlo/parser:hlo_parser",
+    ],
+)
+
 tf_cc_test(
     name = "xprof_gpu_cost_analysis_test",
     srcs = ["xprof_gpu_cost_analysis_test.cc"],
@@ -554,5 +586,37 @@ tf_cc_test(
         "@local_xla//xla/tests:hlo_test_base",
         "@local_xla//xla/tests:xla_internal_test_main",
         "@local_xla//xla/tsl/platform:statusor",
+    ],
+)
+
+cc_library(
+    name = "performance_info_wrapper",
+    srcs = ["performance_info_wrapper.cc"],
+    hdrs = ["performance_info_wrapper.h"],
+    visibility = [":friends"],
+    deps = [
+        ":hlo_cost_analysis_wrapper",
+        "//tensorflow/core/profiler/protobuf:op_metrics_proto_cc",
+        "@com_google_absl//absl/memory",
+        "@local_tsl//tsl/platform:protobuf",
+        "@local_xla//xla:xla_data_proto_cc",
+        "@local_xla//xla/hlo/ir:hlo",
+    ],
+)
+
+tf_cc_test(
+    name = "performance_info_wrapper_test",
+    srcs = ["performance_info_wrapper_test.cc"],
+    deps = [
+        ":hlo_cost_analysis_wrapper",
+        ":hlo_module_map",
+        ":performance_info_wrapper",
+        ":xprof_gpu_cost_analysis",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "@com_google_absl//absl/strings:string_view",
+        "@local_tsl//tsl/platform:protobuf",
+        "@local_xla//xla/hlo/ir:hlo",
+        "@local_xla//xla/hlo/parser:hlo_parser",
     ],
 )

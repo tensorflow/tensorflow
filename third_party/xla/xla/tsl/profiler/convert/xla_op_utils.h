@@ -15,6 +15,8 @@ limitations under the License.
 #ifndef XLA_TSL_PROFILER_CONVERT_XLA_OP_UTILS_H_
 #define XLA_TSL_PROFILER_CONVERT_XLA_OP_UTILS_H_
 
+#include <algorithm>
+#include <cstdint>
 #include <string>
 
 #include "absl/strings/match.h"
@@ -167,6 +169,10 @@ inline bool IsOffDutyOp(absl::string_view category) {
                                                  // time of children is on-duty.
   );
 }
+
+// Returns 0 in case a cost returned by HloCostAnalysis is -1.
+// HloCostAnalysis returns -1 if the instruction does not have a cost.
+inline int64_t ValidHloCost(int64_t cost) { return std::max<int64_t>(0, cost); }
 
 // File and line that the framework op corresponding to an HLO op is associated
 // to in a user's program; e.g. it could be the file and line of user code that
