@@ -79,10 +79,8 @@ Expected<TensorBuffer> CompiledModel::CreateBufferImpl(
 }
 
 Expected<TensorBuffer> CompiledModel::CreateInputOutputBuffer(
-    absl::string_view signature_name, absl::string_view tensor_name,
+    size_t signature_index, absl::string_view tensor_name,
     bool is_input) const {
-  LITERT_ASSIGN_OR_RETURN(size_t signature_index,
-                          model_.GetSignatureIndex(signature_name));
   LITERT_ASSIGN_OR_RETURN(Signature signature,
                           model_.GetSignature(signature_index));
 
@@ -162,7 +160,7 @@ Expected<void> CompiledModel::RunHelper(
                        output_buffers_ptr.get(), async);
 }
 
-Expected<void> CompiledModel::RunHelper(
+Expected<void> CompiledModel::RunMapHelper(
     absl::string_view signature_key,
     const absl::flat_hash_map<absl::string_view, TensorBuffer>& input_map,
     const absl::flat_hash_map<absl::string_view, TensorBuffer>& output_map,
@@ -176,7 +174,16 @@ Expected<void> CompiledModel::RunHelper(
   if (!subgraph) {
     return Unexpected(kLiteRtStatusErrorNotFound, "Failed to get subgraph");
   }
-  auto input_tensors = subgraph->Inputs();
+  return RunMapWithIndexHelper(*signature_index, *subgraph, input_map,
+                               output_map, async);
+}
+
+Expected<void> CompiledModel::RunMapWithIndexHelper(
+    size_t signature_index, const Subgraph& subgraph,
+    const absl::flat_hash_map<absl::string_view, TensorBuffer>& input_map,
+    const absl::flat_hash_map<absl::string_view, TensorBuffer>& output_map,
+    bool& async) const {
+  auto input_tensors = subgraph.Inputs();
   size_t num_inputs = input_tensors.size();
   auto input_buffers_ptr = std::make_unique<LiteRtTensorBuffer[]>(num_inputs);
   for (int i = 0; i < num_inputs; ++i) {
@@ -188,7 +195,7 @@ Expected<void> CompiledModel::RunHelper(
     }
     input_buffers_ptr[i] = it->second.Get();
   }
-  auto output_tensors = subgraph->Outputs();
+  auto output_tensors = subgraph.Outputs();
   size_t num_outputs = output_tensors.size();
   auto output_buffers_ptr = std::make_unique<LiteRtTensorBuffer[]>(num_outputs);
   for (int i = 0; i < num_outputs; ++i) {
@@ -200,7 +207,7 @@ Expected<void> CompiledModel::RunHelper(
     }
     output_buffers_ptr[i] = it->second.Get();
   }
-  return RunCApiHelper(*signature_index, num_inputs, input_buffers_ptr.get(),
+  return RunCApiHelper(signature_index, num_inputs, input_buffers_ptr.get(),
                        num_outputs, output_buffers_ptr.get(), async);
 }
 
