@@ -1218,6 +1218,8 @@ cc_library(
             "@com_google_absl//absl/log:check",
             "@com_google_absl//absl/strings",
             "@com_google_absl//absl/strings:str_format",
+            "@local_tsl//tsl/platform",
+            "@local_tsl//tsl/platform:platform_port",
             "@local_tsl//tsl/platform:protobuf",
         ],
 )
