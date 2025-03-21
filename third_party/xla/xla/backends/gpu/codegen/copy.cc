@@ -29,7 +29,6 @@ limitations under the License.
 #include "xla/hlo/utils/hlo_traversal.h"
 #include "xla/literal_util.h"
 #include "xla/service/buffer_assignment.h"
-#include "xla/service/call_graph.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/ir_emitter_context.h"
 #include "xla/shape.h"
@@ -143,13 +142,13 @@ bool IsZeroOffset(const HloInstruction* slice, int dim) {
 }
 
 std::vector<const HloInstruction*> GetCallStack(
-    const HloInstruction& instruction, const CallGraph& call_graph) {
+    const HloInstruction& instruction) {
   const HloInstruction* current = &instruction;
   std::vector<const HloInstruction*> stack;
   while (current) {
     stack.push_back(current);
 
-    auto callers = call_graph.GetComputationCallers(current->parent());
+    auto callers = current->parent()->caller_instructions();
     if (callers.size() == 1) {
       current = callers[0];
     } else {
@@ -220,7 +219,7 @@ bool DynamicMemcpyFusion::IsCandidateFusion(
 
 std::optional<DynamicMemcpyThunk::MemcpyDescriptor>
 DynamicMemcpyFusion::GetMemcpyDescriptorForFusion(
-    const HloFusionInstruction& fusion, const CallGraph& call_graph) {
+    const HloFusionInstruction& fusion) {
   if (!IsCandidateFusion(fusion)) {
     return std::nullopt;
   }
@@ -235,7 +234,7 @@ DynamicMemcpyFusion::GetMemcpyDescriptorForFusion(
 
   int first_offset_index = GetFirstOffsetOperandIndex(slice);
   int rank = slice_input_shape.rank();
-  auto stack = GetCallStack(fusion, call_graph);
+  auto stack = GetCallStack(fusion);
 
   VLOG(5) << "Preconditions passed, trying to build a memcpy descriptor.";
   DynamicMemcpyThunk::MemcpyDescriptor descriptor;

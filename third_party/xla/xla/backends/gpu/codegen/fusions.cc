@@ -68,7 +68,7 @@ std::optional<std::unique_ptr<FusionInterface>> HloFusionInfo::GetCopyFusion()
     }
 
     auto dynamic_memcpy =
-        DynamicMemcpyFusion::GetMemcpyDescriptorForFusion(*instr_, call_graph_);
+        DynamicMemcpyFusion::GetMemcpyDescriptorForFusion(*instr_);
     if (dynamic_memcpy) {
       return std::make_unique<DynamicMemcpyFusion>(
           analysis(), buffer_assignment_, std::move(*dynamic_memcpy));

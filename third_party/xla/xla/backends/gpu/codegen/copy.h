@@ -23,7 +23,6 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/copy_thunk.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/buffer_assignment.h"
-#include "xla/service/call_graph.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
 #include "xla/service/gpu/ir_emitter_context.h"
 
@@ -70,8 +69,7 @@ class DynamicMemcpyFusion : public FusionInterface {
 
   // Attempts to build a memcpy descriptor for the given fusion.
   static std::optional<DynamicMemcpyThunk::MemcpyDescriptor>
-  GetMemcpyDescriptorForFusion(const HloFusionInstruction& fusion,
-                               const CallGraph& call_graph);
+  GetMemcpyDescriptorForFusion(const HloFusionInstruction& fusion);
 
  private:
   const HloFusionAnalysis& analysis_;

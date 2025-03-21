@@ -148,9 +148,8 @@ TEST_F(CopyFusionTest, BuildSliceDescriptor) {
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(kSliceMemcpyModule));
 
-  auto call_graph = CallGraph::Build(module.get(), /*execution_threads=*/{});
   auto descriptor = DynamicMemcpyFusion::GetMemcpyDescriptorForFusion(
-      GetFusion(module.get()), *call_graph);
+      GetFusion(module.get()));
 
   ASSERT_TRUE(descriptor.has_value());
   ASSERT_THAT(descriptor->src_dynamic_offsets, ::testing::SizeIs(1));
@@ -214,9 +213,8 @@ TEST_F(CopyFusionTest, BuildUpdateSliceDescriptor) {
   TF_ASSERT_OK_AND_ASSIGN(
       auto module, ParseAndReturnVerifiedModule(kUpdateSliceMemcpyModule));
 
-  auto call_graph = CallGraph::Build(module.get(), /*execution_threads=*/{});
   auto descriptor = DynamicMemcpyFusion::GetMemcpyDescriptorForFusion(
-      GetFusion(module.get()), *call_graph);
+      GetFusion(module.get()));
 
   ASSERT_TRUE(descriptor.has_value());
   EXPECT_THAT(descriptor->src_dynamic_offsets, ::testing::IsEmpty());
