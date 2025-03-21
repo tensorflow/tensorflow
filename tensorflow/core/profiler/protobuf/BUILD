@@ -33,7 +33,7 @@ tf_proto_library(
     protodeps = [
         "@local_tsl//tsl/profiler/protobuf:xplane_proto",
     ],
-    visibility = [":friends"],
+    visibility = [":friends"] + ["@org_xprof//xprof/convert:__subpackages__"],
     exports = [
         "@local_tsl//tsl/profiler/protobuf:xplane_proto",
     ],
@@ -83,16 +83,17 @@ tf_proto_library(
     ],
 )
 
+# TODO(subhamsoni): Remove extra visibility once migrated to xprof
 tf_proto_library(
     name = "op_metrics_proto",
     srcs = ["op_metrics.proto"],
-    visibility = [":friends"],
+    visibility = [":friends"] + ["@org_xprof//xprof/convert:__subpackages__"],
 )
 
 tf_proto_library(
     name = "power_metrics_proto",
     srcs = ["power_metrics.proto"],
-    visibility = [":friends"],
+    visibility = [":friends"] + ["@org_xprof//xprof/convert:__subpackages__"],
 )
 
 tf_proto_library(
@@ -101,7 +102,7 @@ tf_proto_library(
     protodeps = [
         ":diagnostics_proto",
     ],
-    visibility = [":friends"],
+    visibility = [":friends"] + ["@org_xprof//xprof/convert:__subpackages__"],
 )
 
 tf_proto_library(
@@ -112,7 +113,7 @@ tf_proto_library(
         ":pod_stats_proto",
         ":topology_proto",
     ],
-    visibility = [":friends"],
+    visibility = [":friends"] + ["@org_xprof//xprof/convert:__subpackages__"],
 )
 
 tf_proto_library(
@@ -127,20 +128,20 @@ tf_proto_library(
 tf_proto_library(
     name = "op_profile_proto",
     srcs = ["op_profile.proto"],
-    visibility = [":friends"],
+    visibility = [":friends"] + ["@org_xprof//xprof/convert:__subpackages__"],
 )
 
 tf_proto_library(
     name = "hlo_stats_proto",
     srcs = ["hlo_stats.proto"],
-    visibility = [":friends"],
+    visibility = [":friends"] + ["@org_xprof//xprof/convert:__subpackages__"],
 )
 
 tf_proto_library(
     name = "roofline_model_proto",
     srcs = ["roofline_model.proto"],
     protodeps = [":diagnostics_proto"],
-    visibility = [":friends"],
+    visibility = [":friends"] + ["@org_xprof//xprof/convert:__subpackages__"],
 )
 
 tf_proto_library(
@@ -164,13 +165,13 @@ tf_proto_library(
 tf_proto_library(
     name = "kernel_stats_proto",
     srcs = ["kernel_stats.proto"],
-    visibility = [":friends"],
+    visibility = [":friends"] + ["@org_xprof//xprof/convert:__subpackages__"],
 )
 
 tf_proto_library(
     name = "tf_function_proto",
     srcs = ["tf_function.proto"],
-    visibility = [":friends"],
+    visibility = [":friends"] + ["@org_xprof//xprof/convert:__subpackages__"],
 )
 
 # This proto is deprecating and not guaranteed to be compatible across versions.
@@ -178,31 +179,31 @@ tf_proto_library(
 tf_proto_library(
     name = "tf_stats_proto",
     srcs = ["tf_stats.proto"],
-    visibility = [":friends"],
+    visibility = [":friends"] + ["@org_xprof//xprof/convert:__subpackages__"],
 )
 
 tf_proto_library(
     name = "hardware_types_proto",
     srcs = ["hardware_types.proto"],
-    visibility = [":friends"],
+    visibility = [":friends"] + ["@org_xprof//xprof/convert:__subpackages__"],
 )
 
 tf_proto_library(
     name = "tfstreamz_proto",
     srcs = ["tfstreamz.proto"],
-    visibility = [":friends"],
+    visibility = [":friends"] + ["@org_xprof//xprof/convert:__subpackages__"],
 )
 
 tf_proto_library(
     name = "memory_profile_proto",
     srcs = ["memory_profile.proto"],
-    visibility = [":friends"],
+    visibility = [":friends"] + ["@org_xprof//xprof/convert:__subpackages__"],
 )
 
 tf_proto_library(
     name = "tf_data_stats_proto",
     srcs = ["tf_data_stats.proto"],
-    visibility = [":friends"],
+    visibility = [":friends"] + ["@org_xprof//xprof/convert:__subpackages__"],
 )
 
 tf_proto_library(
@@ -214,7 +215,7 @@ tf_proto_library(
 # copybara:uncomment_begin(google-only)
 # py_proto_library(
 #     name = "xplane_py_pb2",
-#     visibility = [":friends"],
+#     visibility = [":friends"] + ["@org_xprof//xprof/convert:__subpackages__"],
 #     deps = [":xplane_proto"],
 # )
 #
@@ -252,7 +253,7 @@ tf_proto_library(
 tf_proto_library(
     name = "task_proto",
     srcs = ["task.proto"],
-    visibility = [":friends"],
+    visibility = [":friends"] + ["@org_xprof//xprof/convert:__subpackages__"],
 )
 
 tf_proto_library(
@@ -261,25 +262,25 @@ tf_proto_library(
     protodeps = [
         ":task_proto",
     ],
-    visibility = [":friends"],
+    visibility = [":friends"] + ["@org_xprof//xprof/convert:__subpackages__"],
 )
 
 tf_proto_library(
     name = "trace_events_raw_proto",
     srcs = ["trace_events_raw.proto"],
-    visibility = [":friends"],
+    visibility = [":friends"] + ["@org_xprof//xprof/convert:__subpackages__"],
 )
 
 tf_proto_library(
     name = "dcn_slack_analysis_proto",
     srcs = ["dcn_slack_analysis.proto"],
-    visibility = [":friends"],
+    visibility = [":friends"] + ["@org_xprof//xprof/convert:__subpackages__"],
 )
 
 tf_proto_library(
     name = "dcn_collective_info_proto",
     srcs = ["dcn_collective_info.proto"],
-    visibility = [":friends"],
+    visibility = [":friends"] + ["@org_xprof//xprof/convert:__subpackages__"],
 )
 
 tf_proto_library(
