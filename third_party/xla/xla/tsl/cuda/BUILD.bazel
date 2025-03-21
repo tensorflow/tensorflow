@@ -162,7 +162,7 @@ cc_library(
         "cudnn_stub.cc",
         "cudnn.tramp.S",
     ]),
-    linkopts = if_cuda_is_configured(cuda_rpath_flags("nvidia/cudnn/lib")),
+    #linkopts = if_cuda_is_configured(cuda_rpath_flags("nvidia/cudnn/lib")),
     local_defines = [
         "IMPLIB_EXPORT_SHIMS=1",
     ],

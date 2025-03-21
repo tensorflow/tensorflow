@@ -87,6 +87,22 @@ absl::StatusOr<void*> GetDsoHandle(const std::string& name,
   VLOG(1) << message;
   return absl::Status(absl::StatusCode::kFailedPrecondition, message);
 }
+
+absl::StatusOr<void*> GetDsoHandle(const std::string& name,
+                                   absl::string_view version,
+                                   const std::string& file_path) {
+  auto filename = tsl::internal::FormatLibraryFileName(file_path + "/" + name,
+                                                       std::string(version));
+  void* dso_handle;
+  absl::Status status =
+      tsl::internal::LoadDynamicLibrary(filename.c_str(), &dso_handle);
+  if (status.ok()) {
+    VLOG(1) << "Successfully opened dynamic library " << filename;
+    return dso_handle;
+  } else {
+    return GetDsoHandle(name, version);
+  }
+}
 }  // namespace
 
 namespace DsoLoader {
@@ -138,6 +154,10 @@ absl::StatusOr<void*> GetCuptiDsoHandle() {
 
 absl::StatusOr<void*> GetCudnnDsoHandle() {
   return GetDsoHandle("cudnn", GetCudnnVersion());
+}
+
+absl::StatusOr<void*> GetCudnnDsoHandle(const std::string& file_path) {
+  return GetDsoHandle("cudnn", GetCudnnVersion(), file_path);
 }
 
 absl::StatusOr<void*> GetNcclDsoHandle() {
@@ -251,6 +271,11 @@ absl::StatusOr<void*> GetCuptiDsoHandle() {
 
 absl::StatusOr<void*> GetCudnnDsoHandle() {
   static auto result = new auto(DsoLoader::GetCudnnDsoHandle());
+  return *result;
+}
+
+absl::StatusOr<void*> GetCudnnDsoHandle(const std::string& file_path) {
+  static auto result = new auto(DsoLoader::GetCudnnDsoHandle(file_path));
   return *result;
 }
 
