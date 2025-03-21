@@ -343,8 +343,11 @@ TEST_F(HloCostAnalysisTest, ConvolutionSame) {
   ASSERT_IS_OK(
       hlo_module->entry_computation()->root_instruction()->Accept(&analysis));
 
-  // Output shape is [1x1x3x3] and each output element requires (3x3)
-  // FMAs and one FMA is 2 flops.
+  // Output shape is [1x1x3x3] with the following flops required for each
+  // element:
+  //    4 6 4
+  //    6 9 6
+  //    4 6 4
   // NOTE: This formula only works for the hard-coded dimensions for now.
   EXPECT_EQ(analysis.flop_count(), 2 * (4 + 6 + 4 + 6 + 9 + 6 + 4 + 6 + 4));
 
