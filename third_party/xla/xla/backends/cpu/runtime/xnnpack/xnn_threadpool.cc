@@ -41,7 +41,7 @@ limitations under the License.
 //
 // At link time `pthreadpool` symbols resolved to our own implementation. This
 // is a temporary hack around the fact that it's impossible to customize
-// `pthreadpool` implementation at run time. The downsize is that it's
+// `pthreadpool` implementation at run time. The downside is that it's
 // impossible to have two `pthreadpool` implementations linked into the same
 // binary.
 //
@@ -522,6 +522,13 @@ extern "C" void pthreadpool_parallelize_4d_tile_2d_with_uarch(
     void* context, uint32_t default_uarch_index, uint32_t max_uarch_index,
     size_t range_i, size_t range_j, size_t range_k, size_t range_l,
     size_t tile_k, size_t tile_l, uint32_t flags) {
+  LOG(FATAL) << "Not implemented";
+}
+
+extern "C" void pthreadpool_parallelize_4d_tile_2d_dynamic(
+    pthreadpool_t threadpool, pthreadpool_task_4d_tile_2d_dynamic_t function,
+    void* context, size_t range_i, size_t range_j, size_t range_k,
+    size_t range_l, size_t tile_k, size_t tile_l, uint32_t flags) {
   LOG(FATAL) << "Not implemented";
 }
 
