@@ -220,9 +220,7 @@ class Kernel {
       ThreadDim threads, size_t dynamic_shared_memory_bytes) const = 0;
 
   const KernelMetadata &metadata() const { return metadata_; }
-  void set_metadata(KernelMetadata metadata) {
-    metadata_ = std::move(metadata);
-  }
+  void set_metadata(KernelMetadata metadata) { metadata_ = metadata; }
 
   const KernelArgsPacking &args_packing() const { return args_packing_; }
   void set_args_packing(KernelArgsPacking args_packing) {

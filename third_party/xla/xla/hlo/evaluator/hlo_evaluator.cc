@@ -318,11 +318,11 @@ std::optional<ParamIndexAndValue> TryParsingInstructionAsParameterAndInteger(
   }
   std::optional<DynamicOrStaticInteger> integer_value =
       GetInstructionValueAsInteger(instruction, precomputed_analyses);
-  result.value = std::move(integer_value);
+  result.value = integer_value;
   if (!result.IsValid()) {
     return std::nullopt;
   }
-  return std::optional<ParamIndexAndValue>(std::move(result));
+  return result;
 }
 
 // Represents the while loop condition comparison.
@@ -377,8 +377,7 @@ std::optional<WhileCondComparisonOrNoOp> PatternMatchLoopCondComparison(
   if (!lhs.has_value() || !rhs.has_value()) {
     return std::nullopt;
   }
-  return WhileCondComparison{comparison->comparison_direction(),
-                             *std::move(lhs), *std::move(rhs)};
+  return WhileCondComparison{comparison->comparison_direction(), *lhs, *rhs};
 }
 // Finds the while loop condition comparison by matching the loop condition root
 // with known patterns.
@@ -1707,7 +1706,7 @@ absl::Status HloEvaluator::HandleTuple(const HloInstruction* tuple) {
     CHECK(new_result.IsDetermined(visitor_shape_index_));
     Literal literal;
     TF_RETURN_IF_ERROR(
-        literal.CopyFrom(std::move(new_result),
+        literal.CopyFrom(new_result,
                          /*dest_shape_index=*/visitor_shape_index_,
                          /*src_shape_index=*/visitor_shape_index_));
     SetEvaluatedLiteralFor(tuple, std::move(literal));
