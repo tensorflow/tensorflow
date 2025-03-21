@@ -199,7 +199,8 @@ TEST(StreamExecutorGpuCompilerTest, SuccessSerializeDeserialize) {
                           se_client->SerializeExecutable(*loaded_executable));
   TF_ASSERT_OK_AND_ASSIGN(
       auto deserialized_executable,
-      se_client->DeserializeExecutable(serialized_executable, std::nullopt));
+      se_client->LoadSerializedExecutable(serialized_executable, std::nullopt,
+                                          LoadOptions()));
 
   EXPECT_EQ(deserialized_executable->name(), "Identity");
 }
