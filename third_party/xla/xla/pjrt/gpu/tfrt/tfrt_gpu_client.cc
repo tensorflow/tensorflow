@@ -1183,6 +1183,104 @@ absl::StatusOr<std::unique_ptr<PjRtBuffer>> TfrtGpuClient::BufferFromHostBuffer(
       memory_space));
 }
 
+absl::StatusOr<std::unique_ptr<TfrtGpuBuffer>> AllocateTfrtGpuDestinationBuffer(
+    const Shape& on_device_shape,
+    absl::InlinedVector<tsl::AsyncValueRef<GpuEvent>, 4> definition_events,
+    TfrtGpuDevice* device, TfrtGpuClient* client,
+    PjRtMemorySpace* memory_space) {
+  if (!on_device_shape.IsTuple()) {
+    size_t byte_size = ShapeUtil::ByteSizeOf(on_device_shape);
+    TF_ASSIGN_OR_RETURN(
+        auto device_buffer,
+        MaybeOwningGpuMemory::AllocateShared(device->allocator(), byte_size));
+    auto buffer_async_value_ref =
+        tsl::MakeAvailableAsyncValueRef<MaybeOwningGpuMemory>(
+            std::move(device_buffer));
+    return std::make_unique<TfrtGpuBuffer>(
+        on_device_shape,
+        std::make_unique<TrackedTfrtGpuDeviceBuffer>(
+            buffer_async_value_ref, std::move(definition_events)),
+        client, device, memory_space);
+  }
+  return Unimplemented(
+      "Tuple case not implemented for AllocateTfrtGpuDestinationBuffer");
+}
+
+absl::StatusOr<std::unique_ptr<PjRtBuffer>>
+TfrtGpuClient::BufferFromHostLiteral(const LiteralSlice& literal,
+                                     PjRtMemorySpace* memory_space) {
+  PjRtDevice* device = memory_space->devices()[0];
+  tsl::profiler::TraceMe traceme("TfrtGpuClient::BufferFromHostLiteral");
+  if (VLOG_IS_ON(1)) {
+    LOG(INFO) << "TfrtGpuClient::BufferFromHostLiteral: shape: "
+              << literal.shape().DebugString()
+              << " device: " << device->DebugString();
+  }
+  const Shape& shape = literal.shape();
+
+  // Add a placeholder definition event for each leaf buffer when creating the
+  // buffer. They are set only after h2d dispatch.
+  absl::InlinedVector<tsl::AsyncValueRef<GpuEvent>, 4> definition_events;
+  absl::InlinedVector<tsl::RCReference<tsl::AsyncValue>, 4> avs;
+  int num_leaf_buffers = shape.IsTuple() ? shape.tuple_shapes_size() : 1;
+  for (int i = 0; i < num_leaf_buffers; ++i) {
+    tsl::AsyncValueRef<GpuEvent> definition_event =
+        tsl::MakeConstructedAsyncValueRef<GpuEvent>();
+    definition_events.push_back(definition_event.CopyRef());
+    avs.push_back(std::move(definition_event));
+  }
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<TfrtGpuBuffer> output_buffer,
+      AllocateTfrtGpuDestinationBuffer(shape, std::move(definition_events),
+                                       tsl::down_cast<TfrtGpuDevice*>(device),
+                                       this, memory_space));
+
+  auto usage_event = tsl::MakeConstructedAsyncValueRef<GpuEvent>();
+  auto* device_buffer = output_buffer->AcquireUsage(usage_event);
+  CHECK(device_buffer);
+  if (!shape.IsTuple()) {
+    // It is OK to capture `buffer` pointer because the `output_buffer` can't
+    // be deleted until all the usage holds have gone away.
+    VLOG(2) << "BufferFromHostLiteral for device_buffer: " << device_buffer;
+    EnqueueWork(
+        non_blocking_thread_pool_.get(),
+        [literal, av = avs[0], device_buffer, shape, this,
+         device = tsl::down_cast<TfrtGpuDevice*>(device),
+         usage_event = std::move(usage_event)]() mutable {
+          tsl::profiler::TraceMe traceme("H2D Dispatch");
+          TransferManager* transfer_manager =
+              xla_client()->backend().transfer_manager();
+
+          absl::StatusOr<BoundedStreamPool::Handle> handle_or =
+              device->stream_pool().Borrow();
+          CHECK_OK(handle_or.status())
+              << "Failed to borrow a stream from the pool";
+          BoundedStreamPool::Handle stream = std::move(handle_or.value());
+
+          const auto& buffer = device_buffer->buffer();
+          CHECK_EQ(literal.size_bytes(), buffer->size());
+
+          ShapedBuffer shaped_buffer = buffer->AsShapedBuffer(shape, device);
+
+          CHECK_NE(stream.get(), nullptr);
+          TF_CHECK_OK(transfer_manager->TransferLiteralToDeviceAsync(
+              stream.get(), literal, shaped_buffer));
+
+          auto status = stream->BlockHostUntilDone();
+          CHECK_OK(status) << "Failed to block host until done";
+          VLOG(2) << "BufferFromHostLiteral done for device_buffer: "
+                  << device_buffer << " AsyncValue: " << av.get();
+
+          av->SetStateConcrete();
+          usage_event.SetStateConcrete();
+        });
+  } else {
+    return Unimplemented(
+        "Tuple case is not supported in TfrtGpuClient::BufferFromHostLiteral");
+  }
+  return std::unique_ptr<PjRtBuffer>(std::move(output_buffer));
+}
+
 absl::StatusOr<std::unique_ptr<PjRtClient::AsyncHostToDeviceTransferManager>>
 TfrtGpuClient::CreateBuffersForAsyncHostToDevice(
     absl::Span<const ShapeSpec> shape_specs,
@@ -1535,6 +1633,107 @@ PjRtFuture<> TfrtGpuBuffer::LazyToLiteral(
     return PjRtFuture<>(buffer.status());
   }
   return ToLiteral(buffer.value());
+}
+
+PjRtFuture<> TfrtGpuBuffer::CopyRawToHostFuture(PjRtFuture<void*> dst,
+                                                int64_t offset,
+                                                int64_t transfer_size) {
+  tsl::profiler::TraceMe traceme("TfrtGpuBuffer::CopyRawToHostFuture");
+  auto promise = PjRtFuture<>::CreatePromise();
+  auto usage_event = tsl::MakeConstructedAsyncValueRef<GpuEvent>();
+  auto* device_buffer = AcquireUsage(usage_event);
+  if (device_buffer == nullptr) {
+    return PjRtFuture<>(
+        InvalidArgument("ToLiteral() called on deleted or donated buffer"));
+  }
+  EnqueueWorkWhenReady(
+      client_->blocking_thread_pool(),
+      {device_buffer->definition_event().CopyRCRef()},
+      [device(device_), device_buffer, usage_event(std::move(usage_event)), dst,
+       promise, client = client_, offset, transfer_size]() mutable {
+        tsl::profiler::TraceMe traceme("D2H copy");
+        if (device_buffer->definition_event().IsError()) {
+          usage_event.SetStateConcrete();
+          LOG(ERROR) << "device_buffer->definition_event().GetError(): "
+                     << device_buffer->definition_event().GetError();
+          promise.Set(device_buffer->definition_event().GetError());
+          return;
+        }
+        se::DeviceMemoryBase device_memory = device_buffer->buffer()->buffer();
+        if (offset < 0 || offset > device_memory.size() ||
+            device_memory.size() - offset < transfer_size) {
+          LOG(ERROR) << "Copy raw buffer called on buffer size "
+                     << device_memory.size() << " with invalid offset "
+                     << offset << ", transfer size " << transfer_size;
+          promise.Set(
+              InvalidArgument("Copy raw buffer called on buffer size %lld with "
+                              "invalid offset %lld, transfer size %lld",
+                              device_memory.size(), offset, transfer_size));
+          return;
+        }
+
+        std::unique_ptr<se::DeviceMemoryBase> sub_buffer;
+        if (transfer_size < device_memory.size()) {
+          sub_buffer = std::make_unique<se::DeviceMemoryBase>(
+              device_memory.GetByteSlice(offset, transfer_size));
+        } else {
+          sub_buffer = std::make_unique<se::DeviceMemoryBase>(device_memory);
+        }
+
+        HostMemoryAllocator::OwnedPtr staging_buffer =
+            client->host_memory_allocator()->Allocate(transfer_size);
+
+        {
+          tsl::profiler::TraceMe traceme2("D2H GPU copy");
+          MarkEventReadyOnExit ready_on_exit(std::move(usage_event));
+          auto stream_or = device->stream_pool().Borrow();
+          if (!stream_or.ok()) {
+            promise.Set(stream_or.status());
+            LOG(ERROR) << "Failed to borrow a stream from the pool";
+            return;
+          }
+          BoundedStreamPool::Handle stream = std::move(stream_or.value());
+
+          CHECK_OK(
+              stream->Memcpy(staging_buffer.get(), *sub_buffer, transfer_size))
+              << "stream->Memcpy failed copying from GPU to host";
+          absl::Status status = stream->BlockHostUntilDone();
+          if (!status.ok()) {
+            LOG(ERROR) << "stream->BlockHostUntilDone failed: " << status;
+            promise.Set(status);
+            return;
+          }
+        }
+        dst.OnReady([staging_buffer = std::move(staging_buffer),
+                     promise = std::move(promise),
+                     transfer_size](absl::StatusOr<void*> dst) mutable {
+          tsl::profiler::TraceMe traceme3("D2H staging copy");
+          if (!dst.ok()) {
+            promise.Set(dst.status());
+            LOG(ERROR) << "dst.status(): " << dst.status();
+            return;
+          }
+          std::memcpy(dst.value(), staging_buffer.get(), transfer_size);
+          VLOG(4) << "D2H staging copy done";
+          promise.Set(absl::OkStatus());
+        });
+      });
+
+  return PjRtFuture<>(
+      std::move(promise),
+      /*on_block_start=*/
+      []() {
+        tsl::profiler::TraceMeProducer traceme(
+            "TfrtGpuBuffer::CopyRawToHostFuture");
+        VLOG(1) << "TfrtGpuBuffer::CopyRawToHostFuture";
+        return PjRtFutureHelpers::ProfilingKeys(
+            {/*traceme_context_id =*/traceme.GetContextId()});
+      },
+      /*on_block_end=*/
+      [](PjRtFutureHelpers::ProfilingKeys keys) {
+        tsl::profiler::TraceMeConsumer traceme(
+            "TfrtGpuBuffer::CopyRawToHostFuture", keys.traceme_context_id);
+      });
 }
 
 void TfrtGpuBuffer::Delete() {
