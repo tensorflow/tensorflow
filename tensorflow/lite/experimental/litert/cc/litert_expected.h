@@ -24,6 +24,8 @@
 #include <utility>
 
 #include "absl/log/absl_check.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_detail.h"
 
@@ -54,11 +56,19 @@ class Error {
   const std::string& Message() const { return message_; }
 
   friend std::ostream& operator<<(std::ostream& stream, const Error& error) {
-    stream << '(' << LiteRtGetStatusString(error.Status()) << ')';
+    stream << LiteRtGetStatusString(error.Status());
     if (!error.Message().empty()) {
-      stream << ' ' << error.Message();
+      stream << ": " << error.Message();
     }
     return stream;
+  }
+
+  template <class Sink>
+  friend void AbslStringify(Sink& sink, const Error& error) {
+    absl::Format(&sink, "%s", LiteRtGetStatusString(error.Status()));
+    if (!error.Message().empty()) {
+      absl::Format(&sink, ": %v", error.Message());
+    }
   }
 
  private:
@@ -87,6 +97,11 @@ class Unexpected {
     return std::move(error_);
   }
   constexpr class Error&& Error() && noexcept { return std::move(error_); }
+
+  template <class Sink>
+  friend void AbslStringify(Sink& sink, const Unexpected& unexpected) {
+    AbslStringify(sink, unexpected.Error());
+  }
 
  private:
   class Error error_;
@@ -159,24 +174,45 @@ class Expected {
 
   Expected& operator=(Expected&& other) {
     if (this != &other) {
-      this->~Expected();
-      has_value_ = other.has_value_;
       if (HasValue()) {
-        value_ = std::move(other.Value());
+        if (other.HasValue()) {
+          value_ = std::move(other.value_);
+        } else {
+          value_.~T();
+          ConstructAt(std::addressof(unexpected_),
+                      std::move(other.unexpected_));
+        }
       } else {
-        unexpected_ = std::move(other.unexpected_);
+        if (other.HasValue()) {
+          unexpected_.~Unexpected();
+          ConstructAt(std::addressof(value_), std::move(other.value_));
+        } else {
+          unexpected_ = std::move(other.unexpected_);
+        }
       }
+      has_value_ = other.has_value_;
     }
     return *this;
   }
 
   Expected& operator=(const Expected& other) {
-    ~Expected();
-    has_value_ = other.has_value_;
-    if (HasValue()) {
-      value_ = other.value_;
-    } else {
-      unexpected_ = other.unexpected_;
+    if (this != &other) {
+      if (HasValue()) {
+        if (other.HasValue()) {
+          value_ = other.value_;
+        } else {
+          value_.~T();
+          ConstructAt(std::addressof(unexpected_), other.unexpected_);
+        }
+      } else {
+        if (other.HasValue()) {
+          unexpected_.~Unexpected();
+          ConstructAt(std::addressof(value_), other.value_);
+        } else {
+          unexpected_ = other.unexpected_;
+        }
+      }
+      has_value_ = other.has_value_;
     }
     return *this;
   }
@@ -264,6 +300,39 @@ class Expected {
   void CheckNoVal() const { ABSL_CHECK(!HasValue()); }
   void CheckVal() const { ABSL_CHECK(HasValue()); }
 };
+
+namespace internal {
+template <class T>
+struct CanBeAbslFormated {
+  template <class U>
+  static constexpr auto Check(int)
+      -> decltype(absl::StrCat(std::declval<U>()), true) {
+    return true;
+  }
+  template <class U>
+  static constexpr bool Check(...) {
+    return false;
+  }
+  enum { value = Check<T>(0) };
+};
+}  // namespace internal
+
+template <class Sink, class T>
+void AbslStringify(Sink& sink, const Expected<T>& expected) {
+  if (!expected.HasValue()) {
+    absl::Format(&sink, "%v", expected.Error());
+  } else {
+    if constexpr (std::is_same_v<T, void>) {
+      sink.Append("void expected value");
+    } else {
+      if constexpr (internal::CanBeAbslFormated<T>::value) {
+        absl::Format(&sink, "%v", expected.Value());
+      } else {
+        absl::Format(&sink, "unformattable expected value");
+      }
+    }
+  }
+}
 
 template <>
 class Expected<void> {

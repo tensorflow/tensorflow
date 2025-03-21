@@ -291,6 +291,7 @@ tf_cuda_library(
         ":tf_datatype",
         ":tf_status_helper",
         ":tf_status_internal",
+        "//tensorflow/core/public:release_version",
     ] + select({
         "//tensorflow:android": [
             "//tensorflow/core:portable_tensorflow_lib_lite",

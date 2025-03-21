@@ -5,7 +5,7 @@ module @multiple_func_result_shardings attributes {mhlo.frontend_attributes = {x
     "{mesh = #sdy.mesh<[\\\22a\\\22=8, \\\22b\\\22=8, \\\22c\\\22=8]>, mesh2 = #sdy.mesh<[\\\22a\\\22=1, \\\22b\\\22=4, \\\22c\\\22=1]>}"}} {
   // CHECK: sdy.mesh @mesh = <["a"=8, "b"=8, "c"=8]>
 
-  // CHECK: sdy.mesh @mesh2 = <["b"=4]>
+  // CHECK: sdy.mesh @mesh2 = <["a"=1, "b"=4, "c"=1]>
 
   // CHECK-LABEL: func @func_results_with_sharding
   // CHECK-SAME:    %arg0: tensor<32xi32> {sdy.sharding = #sdy.sharding<@mesh, [{"b"}p2]>},

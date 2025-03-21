@@ -210,18 +210,64 @@ void RewriteF32ToBF16X6(HloInstruction* instr) {
   auto [rhs_high_bf16, rhs_mid_bf16, rhs_low_bf16] =
       Split3xToBF16(original_dot->mutable_operand(1));
 
-  HloInstruction* middle_middle_dot = dot(lhs_mid_bf16, rhs_mid_bf16);
+  HloInstruction* mid_mid_dot = dot(lhs_mid_bf16, rhs_mid_bf16);
   HloInstruction* high_low_dot = dot(lhs_high_bf16, rhs_low_bf16);
   HloInstruction* low_high_dot = dot(lhs_low_bf16, rhs_high_bf16);
-  HloInstruction* high_middle_dot = dot(lhs_high_bf16, rhs_mid_bf16);
-  HloInstruction* middle_high_dot = dot(lhs_mid_bf16, rhs_high_bf16);
+  HloInstruction* high_mid_dot = dot(lhs_high_bf16, rhs_mid_bf16);
+  HloInstruction* mid_high_dot = dot(lhs_mid_bf16, rhs_high_bf16);
   HloInstruction* high_high_dot = dot(lhs_high_bf16, rhs_high_bf16);
 
   HloInstruction* result = nullptr;
-  result = sum(middle_middle_dot, high_low_dot);
+  result = sum(mid_mid_dot, high_low_dot);
   result = sum(result, low_high_dot);
-  result = sum(result, high_middle_dot);
-  result = sum(result, middle_high_dot);
+  result = sum(result, high_mid_dot);
+  result = sum(result, mid_high_dot);
+  result = ReplaceNaNWithZeros(result);
+  result = sum(result, high_high_dot);
+
+  TF_CHECK_OK(original_dot->ReplaceAllUsesWith(result));
+  TF_CHECK_OK(original_dot->parent()->RemoveInstruction(original_dot));
+}
+
+void RewriteF32ToBF16X9(HloInstruction* instr) {
+  HloComputation* computation = instr->parent();
+  HloDotInstruction* original_dot = Cast<HloDotInstruction>(instr);
+  PrecisionConfig precision_config = original_dot->precision_config();
+  precision_config.set_algorithm(PrecisionConfig::ALG_DOT_BF16_BF16_F32);
+  const Shape& shape = original_dot->shape();
+  const DotDimensionNumbers& dnums = original_dot->dot_dimension_numbers();
+  auto dot = [&](HloInstruction* lhs, HloInstruction* rhs) {
+    return computation->AddInstruction(
+        HloInstruction::CreateDot(shape, lhs, rhs, dnums, precision_config));
+  };
+  auto sum = [&](HloInstruction* lhs, HloInstruction* rhs) {
+    return computation->AddInstruction(
+        HloInstruction::CreateBinary(shape, HloOpcode::kAdd, lhs, rhs));
+  };
+
+  auto [lhs_high_bf16, lhs_mid_bf16, lhs_low_bf16] =
+      Split3xToBF16(original_dot->mutable_operand(0));
+  auto [rhs_high_bf16, rhs_mid_bf16, rhs_low_bf16] =
+      Split3xToBF16(original_dot->mutable_operand(1));
+
+  HloInstruction* low_low_dot = dot(lhs_low_bf16, rhs_low_bf16);
+  HloInstruction* low_mid_dot = dot(lhs_low_bf16, rhs_mid_bf16);
+  HloInstruction* mid_low_dot = dot(lhs_mid_bf16, rhs_low_bf16);
+  HloInstruction* mid_mid_dot = dot(lhs_mid_bf16, rhs_mid_bf16);
+  HloInstruction* high_low_dot = dot(lhs_high_bf16, rhs_low_bf16);
+  HloInstruction* low_high_dot = dot(lhs_low_bf16, rhs_high_bf16);
+  HloInstruction* high_mid_dot = dot(lhs_high_bf16, rhs_mid_bf16);
+  HloInstruction* mid_high_dot = dot(lhs_mid_bf16, rhs_high_bf16);
+  HloInstruction* high_high_dot = dot(lhs_high_bf16, rhs_high_bf16);
+
+  HloInstruction* result = nullptr;
+  result = sum(low_low_dot, low_mid_dot);
+  result = sum(result, mid_low_dot);
+  result = sum(result, mid_mid_dot);
+  result = sum(result, high_low_dot);
+  result = sum(result, low_high_dot);
+  result = sum(result, high_mid_dot);
+  result = sum(result, mid_high_dot);
   result = ReplaceNaNWithZeros(result);
   result = sum(result, high_high_dot);
 
@@ -282,6 +328,10 @@ absl::StatusOr<bool> DotAlgorithmRewriter::Run(
           break;
         case PrecisionConfig::ALG_DOT_BF16_BF16_F32_X6:
           RewriteF32ToBF16X6(instruction);
+          changed = true;
+          break;
+        case PrecisionConfig::ALG_DOT_BF16_BF16_F32_X9:
+          RewriteF32ToBF16X9(instruction);
           changed = true;
           break;
         case PrecisionConfig::ALG_DOT_TF32_TF32_F32_X3:
@@ -347,18 +397,51 @@ DotAlgorithmRewriter::MakeMultiplyForBF16BF16F32X6(HloInstruction* lhs,
 
   auto [lhs_high_bf16, lhs_mid_bf16, lhs_low_bf16] = Split3xToBF16(lhs);
   auto [rhs_high_bf16, rhs_mid_bf16, rhs_low_bf16] = Split3xToBF16(rhs);
-  TF_ASSIGN_OR_RETURN(auto* middle_middle, Mult(lhs_mid_bf16, rhs_mid_bf16));
+  TF_ASSIGN_OR_RETURN(auto* mid_mid, Mult(lhs_mid_bf16, rhs_mid_bf16));
   TF_ASSIGN_OR_RETURN(auto* high_low, Mult(lhs_high_bf16, rhs_low_bf16));
   TF_ASSIGN_OR_RETURN(auto* low_high, Mult(lhs_low_bf16, rhs_high_bf16));
-  TF_ASSIGN_OR_RETURN(auto* high_middle, Mult(lhs_high_bf16, rhs_mid_bf16));
-  TF_ASSIGN_OR_RETURN(auto* middle_high, Mult(lhs_mid_bf16, rhs_high_bf16));
+  TF_ASSIGN_OR_RETURN(auto* high_mid, Mult(lhs_high_bf16, rhs_mid_bf16));
+  TF_ASSIGN_OR_RETURN(auto* mid_high, Mult(lhs_mid_bf16, rhs_high_bf16));
   TF_ASSIGN_OR_RETURN(auto* high_high, Mult(lhs_high_bf16, rhs_high_bf16));
 
   HloInstruction* result = nullptr;
-  result = SumToF32(middle_middle, high_low);
+  result = SumToF32(mid_mid, high_low);
   result = SumToF32(result, low_high);
-  result = SumToF32(result, high_middle);
-  result = SumToF32(result, middle_high);
+  result = SumToF32(result, high_mid);
+  result = SumToF32(result, mid_high);
+  result = ReplaceNaNWithZeros(result);
+  result = SumToF32(result, high_high);
+  return result;
+}
+
+absl::StatusOr<HloInstruction*>
+DotAlgorithmRewriter::MakeMultiplyForBF16BF16F32X9(HloInstruction* lhs,
+                                                   HloInstruction* rhs) {
+  TF_RET_CHECK(lhs->shape().element_type() == PrimitiveType::F32)
+      << "Algorithm field set to BF16_BF16_F32_X9, but the lhs is not F32.";
+  TF_RET_CHECK(rhs->shape().element_type() == PrimitiveType::F32)
+      << "Algorithm field set to BF16_BF16_F32_X9, but the rhs is not F32.";
+
+  auto [lhs_high_bf16, lhs_mid_bf16, lhs_low_bf16] = Split3xToBF16(lhs);
+  auto [rhs_high_bf16, rhs_mid_bf16, rhs_low_bf16] = Split3xToBF16(rhs);
+  TF_ASSIGN_OR_RETURN(auto* low_low, Mult(lhs_low_bf16, rhs_low_bf16));
+  TF_ASSIGN_OR_RETURN(auto* low_mid, Mult(lhs_low_bf16, rhs_mid_bf16));
+  TF_ASSIGN_OR_RETURN(auto* mid_low, Mult(lhs_mid_bf16, rhs_low_bf16));
+  TF_ASSIGN_OR_RETURN(auto* mid_mid, Mult(lhs_mid_bf16, rhs_mid_bf16));
+  TF_ASSIGN_OR_RETURN(auto* high_low, Mult(lhs_high_bf16, rhs_low_bf16));
+  TF_ASSIGN_OR_RETURN(auto* low_high, Mult(lhs_low_bf16, rhs_high_bf16));
+  TF_ASSIGN_OR_RETURN(auto* high_mid, Mult(lhs_high_bf16, rhs_mid_bf16));
+  TF_ASSIGN_OR_RETURN(auto* mid_high, Mult(lhs_mid_bf16, rhs_high_bf16));
+  TF_ASSIGN_OR_RETURN(auto* high_high, Mult(lhs_high_bf16, rhs_high_bf16));
+
+  HloInstruction* result = nullptr;
+  result = SumToF32(low_low, low_mid);
+  result = SumToF32(result, mid_low);
+  result = SumToF32(result, mid_mid);
+  result = SumToF32(result, high_low);
+  result = SumToF32(result, low_high);
+  result = SumToF32(result, high_mid);
+  result = SumToF32(result, mid_high);
   result = ReplaceNaNWithZeros(result);
   result = SumToF32(result, high_high);
   return result;

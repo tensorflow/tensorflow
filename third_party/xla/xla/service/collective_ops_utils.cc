@@ -857,7 +857,7 @@ bool IsExclusivelyCrossModule(absl::Span<const ReplicaGroup> replica_groups,
     return false;
   }
   if (!use_global_ids) {
-    // Each id is a replica group is a replica id. If any group
+    // Each id in a replica group is a replica id. If any group
     // has more than one id then this is not exclusively cross module.
     for (const ReplicaGroup& replica_group : replica_groups) {
       if (replica_group.replica_ids_size() != 1) {
@@ -869,7 +869,7 @@ bool IsExclusivelyCrossModule(absl::Span<const ReplicaGroup> replica_groups,
   // Each id in a replica group is a global id. Check if all replica groups are
   // exclusively cross module (all participants in a group have the same replica
   // id).
-  int64_t partition_count = device_assignment.computation_count();
+  const int64_t partition_count = device_assignment.computation_count();
   for (const ReplicaGroup& replica_group : replica_groups) {
     std::optional<int64_t> first_replica_id;
     for (int64_t global_id : replica_group.replica_ids()) {
@@ -877,6 +877,36 @@ bool IsExclusivelyCrossModule(absl::Span<const ReplicaGroup> replica_groups,
       if (!first_replica_id.has_value()) {
         first_replica_id = replica_id;
       } else if (replica_id != first_replica_id) {
+        return false;
+      }
+    }
+  }
+  return true;
+}
+
+bool IsExclusivelyCrossReplica(absl::Span<const ReplicaGroup> replica_groups,
+                               bool use_global_ids, bool has_channel_id,
+                               const DeviceAssignment& device_assignment) {
+  if (!has_channel_id) {
+    return true;
+  }
+  const int64_t partition_count = device_assignment.computation_count();
+  if (!use_global_ids) {
+    // Each id in a replica group is a replica id and we will perform the
+    // collective between all devices with that replica id. If partition count
+    // is > 1, then this is not exclusively cross replica.
+    return partition_count == 1;
+  }
+  // Each id in a replica group is a global id. Check if all replica groups are
+  // exclusively cross replica (all participants in a group have the same
+  // partition id).
+  for (const ReplicaGroup& replica_group : replica_groups) {
+    std::optional<int64_t> first_partition_id;
+    for (int64_t global_id : replica_group.replica_ids()) {
+      int64_t partition_id = global_id % partition_count;
+      if (!first_partition_id.has_value()) {
+        first_partition_id = partition_id;
+      } else if (partition_id != first_partition_id) {
         return false;
       }
     }

@@ -37,6 +37,7 @@
 #include "xla/pjrt/plugin/xla_cpu/cpu_client_options.h"
 #include "xla/pjrt/plugin/xla_cpu/xla_cpu_pjrt_client.h"
 #include "xla/python/ifrt/array.h"
+#include "xla/python/ifrt/attribute_map.h"
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/dtype.h"
@@ -74,7 +75,9 @@ class MockArrayTest : public testing::Test {
         absl::StrCat("localhost:", tsl::testing::PickUnusedPortOrDie());
     TF_ASSERT_OK_AND_ASSIGN(
         server_, GrpcServer::CreateFromIfrtClientFactory(
-                     address, [this] { return CreateMockBackend(); }));
+                     address, [this](AttributeMap initialization_data) {
+                       return CreateMockBackend();
+                     }));
     TF_ASSERT_OK_AND_ASSIGN(client_,
                             CreateClient(absl::StrCat("grpc://", address)));
   }

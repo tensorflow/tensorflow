@@ -19,4 +19,4 @@ TFCI_BUILD_PIP_PACKAGE_WHEEL_NAME_ARG="--repo_env=WHEEL_NAME=tensorflow"
 TFCI_DOCKER_ARGS="--gpus all"
 TFCI_LIB_SUFFIX="-gpu-linux-x86_64"
 # TODO: Set back to 610M once the wheel size is fixed.
-TFCI_WHL_SIZE_LIMIT=620M
+TFCI_WHL_SIZE_LIMIT=630M

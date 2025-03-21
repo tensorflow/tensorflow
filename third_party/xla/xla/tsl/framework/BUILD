@@ -114,7 +114,6 @@ cc_library(
         ":type_traits",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/types:optional",
     ] + if_static(
         extra_deps = [
             ":allocator_registry_impl",
@@ -159,6 +158,7 @@ cc_library(
         "//tensorflow/core:__subpackages__",
         "@local_tsl//tsl:__subpackages__",
         "//tensorflow/python/profiler/internal:__pkg__",
+        "//third_party/xprof:__subpackages__",
     ]),
     deps = [
         ":numeric_types",
@@ -169,7 +169,6 @@ cc_library(
         "//xla/tsl/platform:types",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/types:optional",
         "@local_tsl//tsl/platform:mutex",
         "@local_tsl//tsl/platform:platform_port",
         "@local_tsl//tsl/platform:strcat",
@@ -206,7 +205,6 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
-        "@com_google_absl//absl/types:optional",
         "@local_tsl//tsl/platform:numbers",
         "@local_tsl//tsl/platform:stacktrace",
         "@local_tsl//tsl/profiler/lib:scoped_memory_debug_annotation",

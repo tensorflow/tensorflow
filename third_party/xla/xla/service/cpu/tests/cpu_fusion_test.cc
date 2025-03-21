@@ -166,15 +166,19 @@ TEST_F(CpuFusionTest, ElementwiseOpChainWithNonfusibleInstruction) {
           HloInstruction::CreateParameter(1, r0f32, "y"))));
   auto add_f32 = module->AddEmbeddedComputation(embedded_builder.Build());
 
+  Window window;
+  WindowDimension* window_dimension = window.add_dimensions();
+  window_dimension->set_size(1);
+  window_dimension->set_stride(1);
+  window_dimension->set_base_dilation(1);
+  window_dimension->set_window_dilation(1);
   // This is a nop reduction.
-  auto reduce = builder.AddInstruction(HloInstruction::CreateReduce(
-      cshape,
-      builder.AddInstruction(HloInstruction::CreateReshape(
-          ShapeUtil::MakeShape(F32, {1, 6}), concatenate)),
+  auto reduce = builder.AddInstruction(HloInstruction::CreateReduceWindow(
+      cshape, concatenate,
       /*init_value=*/
       builder.AddInstruction(
           HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(0))),
-      /*dimensions_to_reduce=*/{0}, add_f32));
+      window, add_f32));
 
   auto exp = builder.AddInstruction(
       HloInstruction::CreateUnary(cshape, HloOpcode::kExp, reduce));
@@ -208,11 +212,11 @@ TEST_F(CpuFusionTest, ElementwiseOpChainWithNonfusibleInstruction) {
 
   auto fusion_instruction2 = reduce->operand(0);
   EXPECT_EQ(HloOpcode::kFusion, fusion_instruction1->opcode());
-  EXPECT_EQ(HloOpcode::kReshape,
+  EXPECT_EQ(HloOpcode::kConcatenate,
             fusion_instruction2->fused_expression_root()->opcode());
   // There should be 5 fused instructions in the second fusion instruction: 1
-  // parameter, negate, ceil, concat, and reshape.
-  EXPECT_EQ(5, fusion_instruction2->fused_instruction_count())
+  // parameter, negate, ceil and concat.
+  EXPECT_EQ(4, fusion_instruction2->fused_instruction_count())
       << fusion_instruction2->fused_instructions_computation()->ToString();
 
   // Compile and execute the computation.

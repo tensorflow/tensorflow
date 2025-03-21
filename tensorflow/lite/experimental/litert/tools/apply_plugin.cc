@@ -34,6 +34,7 @@
 #include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_macros.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_model.h"
+#include "tensorflow/lite/experimental/litert/compiler/plugin/compiler_flags.h"
 #include "tensorflow/lite/experimental/litert/compiler/plugin/compiler_plugin.h"
 #include "tensorflow/lite/experimental/litert/core/model/model_serialize.h"
 #include "tensorflow/lite/experimental/litert/core/util/flatbuffer_tools.h"
@@ -43,6 +44,7 @@
 namespace litert::tools {
 
 using ::litert::BufferRef;
+using ::litert::internal::CompilerFlags;
 using ::litert::internal::CompilerPlugin;
 using ::litert::internal::Dump;
 using ::litert::internal::PartitionResult;
@@ -82,10 +84,12 @@ class Context {
     return run_->soc_manufacturer.value();
   }
 
-  std::ostream& Out() {
-    ABSL_CHECK_EQ(run_->outs.size(), 1);
-    return run_->outs.front();
+  std::ostream& Out(size_t out_ind = 0) {
+    ABSL_CHECK_GE(run_->outs.size(), 1);
+    return run_->outs.at(out_ind);
   }
+
+  const CompilerFlags& Flags() const { return run_->compiler_flags; }
 
   OutStream SwapOut(OutStream out) {
     ABSL_CHECK_EQ(run_->outs.size(), 1);
@@ -93,6 +97,8 @@ class Context {
     run_->outs.at(0) = out;
     return res;
   }
+
+  uint32_t NumOuts() const { return run_->outs.size(); }
 
   const ApplyPluginRun& Run() const { return *run_; }
   ApplyPluginRun& Run() { return *run_; }
@@ -116,10 +122,12 @@ void DumpSubgraphs(ToolDisplay& display, absl::string_view label,
 }
 
 void DumpCompilationRequest(ToolDisplay& display, absl::string_view soc_model,
-                            size_t num_subgraphs) {
+                            size_t num_subgraphs, const CompilerFlags& flags) {
   display.Labeled() << absl::StreamFormat(
-      "Requesting compilation for target `%s` on %lu partitions\n", soc_model,
-      num_subgraphs);
+                           "Requesting compilation for target `%s` on %lu "
+                           "partitions with flags: ",
+                           soc_model, num_subgraphs)
+                    << flags << "\n";
 }
 
 void DumpCompilationResult(ToolDisplay& display, size_t byte_code_size,
@@ -303,7 +311,7 @@ LiteRtStatus Partition(Context& ctx) {
   auto& model = *model_wrap->Get();
 
   ctx.Dump().Start("Partitioning model");
-  auto partition_result = PartitionModel(*plugin, model);
+  auto partition_result = PartitionModel(*plugin, model, ctx.Run().subgraphs);
   if (!partition_result) {
     return partition_result.Error().Status();
   }
@@ -311,7 +319,7 @@ LiteRtStatus Partition(Context& ctx) {
   DumpPartitionResult(ctx.Dump(), *partition_result);
 
   auto& new_subgraphs = partition_result->second;
-  model.TransferSubgraphs(std::move(new_subgraphs));
+  model.TransferSubgraphsFrom(std::move(new_subgraphs));
 
   ctx.Dump().Start("Serializing model");
   auto serialized = SerializeModel(std::move(model));
@@ -339,7 +347,6 @@ LiteRtStatus ValidateCompileRun(const ApplyPluginRun& run) {
   LITERT_ENSURE_CONFIG(!run.lib_search_paths.empty());
   LITERT_ENSURE_CONFIG(run.model.has_value());
   LITERT_ENSURE_CONFIG(run.soc_manufacturer.has_value());
-  LITERT_ENSURE_CONFIG(run.outs.size() == run.soc_models.size());
   // TODO: implement multi target compilation.
   LITERT_ENSURE_SUPPORTED(run.soc_models.size() == 1,
                           "Multi target compilation not implemented.");
@@ -359,8 +366,9 @@ LiteRtStatus Compile(Context& ctx) {
   }
 
   ctx.Dump().Start("Compiling");
-  DumpCompilationRequest(ctx.Dump(), ctx.SocModelTarget(),
-                         model.NumSubgraphs());
+  DumpCompilationRequest(ctx.Dump(), ctx.SocModelTarget(), model.NumSubgraphs(),
+                         ctx.Flags());
+  plugin->SetFlags(ctx.Flags());
   auto compilation_result = plugin->Compile(&model, ctx.SocModelTarget());
   if (!compilation_result) {
     ctx.Dump().Fail();
@@ -368,30 +376,29 @@ LiteRtStatus Compile(Context& ctx) {
   }
 
   auto num_byte_code = compilation_result->NumByteCodeModules();
-  if (!num_byte_code || *num_byte_code != 1) {
-    ctx.Dump().Labeled() << absl::StreamFormat(
-        "Standalone compile tool only supports single byte code module, got "
-        "%lu",
-        *num_byte_code);
+  if (*num_byte_code < 1) {
     ctx.Dump().Fail();
     return compilation_result.Error().Status();
   }
-
-  auto byte_code = compilation_result->ByteCode();
-  if (!byte_code) {
+  if (!num_byte_code) {
     ctx.Dump().Fail();
     return compilation_result.Error().Status();
   }
+  for (int i = 0; i < ctx.NumOuts(); ++i) {
+    auto byte_code = compilation_result->ByteCode(i);
+    if (!byte_code) {
+      ctx.Dump().Fail();
+      return compilation_result.Error().Status();
+    }
+    auto num_calls = compilation_result->NumCalls();
+    if (!num_calls) {
+      ctx.Dump().Fail();
+      return compilation_result.Error().Status();
+    }
 
-  auto num_calls = compilation_result->NumCalls();
-  if (!num_calls) {
-    ctx.Dump().Fail();
-    return compilation_result.Error().Status();
+    DumpCompilationResult(ctx.Dump(), byte_code->Size(), *num_calls);
+    byte_code->WriteStr(ctx.Out(i));
   }
-
-  DumpCompilationResult(ctx.Dump(), byte_code->Size(), *num_calls);
-
-  byte_code->WriteStr(ctx.Out());
   ctx.Dump().Done();
 
   return kLiteRtStatusOk;
@@ -425,8 +432,9 @@ LiteRtStatus Apply(Context& ctx) {
   }
 
   ctx.Dump().Start("Applying plugin");
-  if (auto status =
-          litert::internal::ApplyPlugin(*plugin, model, ctx.SocModelTarget());
+  plugin->SetFlags(ctx.Flags());
+  if (auto status = litert::internal::ApplyPlugin(
+          *plugin, model, ctx.SocModelTarget(), ctx.Run().subgraphs);
       !status) {
     LITERT_LOG(LITERT_ERROR, "%s", status.Error().Message().c_str());
     return status.Error().Status();

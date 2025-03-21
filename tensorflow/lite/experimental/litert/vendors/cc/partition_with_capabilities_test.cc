@@ -185,7 +185,7 @@ TEST(PartitionWithCapabilitiesTest, WithGeneralResult) {
   add_opts.fused_activation_function = tflite::ActivationFunctionType_RELU;
   internal::TflOptions tfl_opts;
   tfl_opts.Set(std::move(add_opts));
-  detail::SetTflOptions(add1, std::move(tfl_opts));
+  litert::internal::SetTflOptions(add1, std::move(tfl_opts));
 
   Subgraph litert_subgraph(&subgraph);
 

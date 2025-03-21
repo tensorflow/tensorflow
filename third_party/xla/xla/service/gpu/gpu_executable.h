@@ -42,6 +42,7 @@ limitations under the License.
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/service_executable_run_options.h"
 #include "xla/service/shaped_buffer.h"
+#include "xla/service/xla_debug_info_manager.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/device_description.h"
@@ -102,6 +103,14 @@ class GpuExecutable : public Executable {
 
   // This should be called after set_ir_module_string.
   const std::string& ir_module_string() const { return ir_module_string_; }
+
+  const std::string& module_name() const { return module_name_; }
+
+  const xla::Shape& output_shape() const { return output_shape_; }
+
+  const absl::flat_hash_map<ShapeIndex, OutputInfo>& output_info() const {
+    return output_info_;
+  }
 
   // This should be called before ExecuteOnStream.
   void set_ir_module_string(const std::string& ir_module_string) {
@@ -166,9 +175,8 @@ class GpuExecutable : public Executable {
 
   const SequentialThunk& GetThunk() { return *thunks_; }
 
- private:
-  // Use GpuExecutable::Create() to create an instance.
-  explicit GpuExecutable(Params params);
+  absl::Status ExecuteThunks(const BufferAllocations& buffer_allocations,
+                             const ServiceExecutableRunOptions* run_options);
 
   using BufferAllocToDeviceMemoryMap =
       absl::flat_hash_map<BufferAllocation::Index, se::DeviceMemoryBase>;
@@ -185,6 +193,12 @@ class GpuExecutable : public Executable {
   // instead.
   absl::StatusOr<const BufferAllocToDeviceMemoryMap*> ResolveConstantGlobals(
       stream_executor::Stream* stream);
+
+  absl::Status VerboseAllocationError(absl::Status s);
+
+ private:
+  // Use GpuExecutable::Create() to create an instance.
+  explicit GpuExecutable(Params params);
 
   // GpuExecutable check with either AMD's ISA version, or Nvidia's major minor
   // version for compute capability, depending on the hardware.

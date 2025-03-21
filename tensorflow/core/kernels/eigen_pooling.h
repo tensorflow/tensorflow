@@ -55,9 +55,9 @@ SpatialMaxPooling(const Input& input, DenseIndex patchRows,
                       YOU_MADE_A_PROGRAMMING_MISTAKE);
 
   typedef typename internal::traits<Input>::Index TensorIndex;
-  TensorRef<Tensor<typename internal::traits<Input>::Scalar,
-                   internal::traits<Input>::NumDimensions,
-                   internal::traits<Input>::Layout, TensorIndex> >
+  TensorRef<const Tensor<typename internal::traits<Input>::Scalar,
+                         internal::traits<Input>::NumDimensions,
+                         internal::traits<Input>::Layout, TensorIndex>>
       in(input);
 
   const DenseIndex patchRowsEff =
@@ -148,9 +148,9 @@ CuboidMaxPooling(const Input& input, DenseIndex patchPlanes,
   static const bool isColMajor = (internal::traits<Input>::Layout == ColMajor);
 
   typedef typename internal::traits<Input>::Index TensorIndex;
-  TensorRef<Tensor<typename internal::traits<Input>::Scalar,
-                   internal::traits<Input>::NumDimensions,
-                   internal::traits<Input>::Layout, TensorIndex> >
+  TensorRef<const Tensor<typename internal::traits<Input>::Scalar,
+                         internal::traits<Input>::NumDimensions,
+                         internal::traits<Input>::Layout, TensorIndex>>
       in(input);
 
   static const int idxPlanes = isColMajor ? 1 : 3;
@@ -383,9 +383,9 @@ SpatialAvgPooling(const Input& input, DenseIndex patchRows,
                       YOU_MADE_A_PROGRAMMING_MISTAKE);
 
   typedef typename internal::traits<Input>::Index TensorIndex;
-  TensorRef<Tensor<typename internal::traits<Input>::Scalar,
-                   internal::traits<Input>::NumDimensions,
-                   internal::traits<Input>::Layout, TensorIndex> >
+  TensorRef<const Tensor<typename internal::traits<Input>::Scalar,
+                         internal::traits<Input>::NumDimensions,
+                         internal::traits<Input>::Layout, TensorIndex>>
       in(input);
 
   const DenseIndex patchRowsEff =
@@ -475,9 +475,9 @@ CuboidAvgPooling(const Input& input, DenseIndex patchPlanes,
   static const bool isColMajor = (internal::traits<Input>::Layout == ColMajor);
 
   typedef typename internal::traits<Input>::Index TensorIndex;
-  TensorRef<Tensor<typename internal::traits<Input>::Scalar,
-                   internal::traits<Input>::NumDimensions,
-                   internal::traits<Input>::Layout, TensorIndex> >
+  TensorRef<const Tensor<typename internal::traits<Input>::Scalar,
+                         internal::traits<Input>::NumDimensions,
+                         internal::traits<Input>::Layout, TensorIndex>>
       in(input);
 
   static const int idxPlanes = isColMajor ? 1 : 3;

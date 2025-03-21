@@ -18,7 +18,9 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <unordered_map>
 #include <utility>
+#include <variant>
 
 #include "absl/log/check.h"
 #include "absl/log/log.h"
@@ -31,7 +33,10 @@
 #include "nanobind/stl/function.h"  // IWYU pragma: keep
 #include "nanobind/stl/optional.h"  // IWYU pragma: keep
 #include "nanobind/stl/string.h"  // IWYU pragma: keep
+#include "nanobind/stl/unordered_map.h"  // IWYU pragma: keep
+#include "nanobind/stl/variant.h"  // IWYU pragma: keep
 #include "xla/pjrt/status_casters.h"
+#include "xla/python/ifrt/attribute_map.h"
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt_proxy/client/registry.h"
 #include "xla/python/nb_class_ptr.h"
@@ -50,6 +55,9 @@ struct PyClientConnectionOptions {
   std::optional<std::function<void(std::string)>> on_disconnect;
   std::optional<std::function<void(std::string)>> on_connection_update;
   std::optional<int64_t> connection_timeout_in_seconds;
+  std::optional<
+      std::unordered_map<std::string, std::variant<nb::bytes, bool, int64_t>>>
+      initialization_data;
 };
 
 absl::StatusOr<nb_class_ptr<PyClient>> GetClient(
@@ -97,6 +105,25 @@ absl::StatusOr<nb_class_ptr<PyClient>> GetClient(
         absl::Seconds(*py_options.connection_timeout_in_seconds);
   }
 
+  if (py_options.initialization_data.has_value()) {
+    AttributeMap::Map attribute_map;
+    for (const auto& [key, py_value] : *py_options.initialization_data) {
+      if (std::holds_alternative<nb::bytes>(py_value)) {
+        nb::bytes value = std::get<nb::bytes>(py_value);
+        attribute_map.insert({key, AttributeMap::StringValue(std::string(
+                                       value.c_str(), value.size()))});
+      } else if (std::holds_alternative<bool>(py_value)) {
+        attribute_map.insert(
+            {key, AttributeMap::BoolValue(std::get<bool>(py_value))});
+      } else {
+        CHECK(std::holds_alternative<int64_t>(py_value));
+        attribute_map.insert(
+            {key, AttributeMap::Int64Value(std::get<int64_t>(py_value))});
+      }
+    }
+    options.initialization_data = AttributeMap(std::move(attribute_map));
+  }
+
   {
     nb::gil_scoped_release gil_release;
     TF_ASSIGN_OR_RETURN(client, CreateClient(proxy_server_address, options));
@@ -120,6 +147,9 @@ void BuildIfrtProxySubmodule(nb::module_& m) {
               nb::arg().none())
       .def_rw("connection_timeout_in_seconds",
               &PyClientConnectionOptions::connection_timeout_in_seconds,
+              nb::arg().none())
+      .def_rw("initialization_data",
+              &PyClientConnectionOptions::initialization_data,
               nb::arg().none());
 
   sub_module.def("get_client", xla::ValueOrThrowWrapper(GetClient),

@@ -51,7 +51,6 @@ limitations under the License.
 #include "xla/service/gpu/triton_tiling_propagation.h"
 #include "xla/service/instruction_fusion.h"
 #include "xla/shape_util.h"
-#include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
@@ -674,18 +673,9 @@ absl::StatusOr<Decision> CreateDotFusion(
     return Decision::Deny(is_supported.Explain());
   }
 
-  // Verify sparse dot constraints.
+  // Verify not sparse.
   if (dot.sparse_operands()) {
-    const SparsityDescriptor& descriptor = dot.sparsity().front();
-    if (dot.sparse_operands() != 1 || descriptor.index() != 0) {
-      return InvalidArgument("Sparsity is only supported on left operand");
-    }
-    if (descriptor.type() != SparsityType::SPARSITY_STRUCTURED_N_M ||
-        descriptor.n() != 2 || descriptor.m() != 4) {
-      return InvalidArgument("Only 2:4 structured sparsity is supported");
-    }
-    // DotDimensionSorter pass makes sure the sparse dimension is minor.
-    CHECK_EQ(descriptor.dimension(), dot.operand(0)->shape().rank() - 1);
+    return InvalidArgument("Sparsity is not supported");
   }
 
   TF_ASSIGN_OR_RETURN(HlosAndRequirements lhs_hlos_and_reqs,
@@ -737,28 +727,17 @@ absl::StatusOr<Decision> CreateDotFusion(
     }
   }
 
-  const DebugOptions& debug_options = dot.GetModule()->config().debug_options();
-  bool should_use_triton_gemm_any = debug_options.xla_gpu_triton_gemm_any();
-
-  // TODO(b/395903738): Remove this once F16 -> F8E5M2 conversion is fixed.
-  if (auto* cc = std::get_if<se::CudaComputeCapability>(&gpu_version)) {
-    should_use_triton_gemm_any =
-        should_use_triton_gemm_any && cc->IsAtLeastHopper();
-  }
-
-  should_use_triton_gemm_any =
-      should_use_triton_gemm_any ||
-      debug_options.xla_gpu_unsupported_force_triton_gemm();
-
   const PrecisionConfig::Algorithm algorithm =
       dot.precision_config().algorithm();
-  if (algorithm == PrecisionConfig::ALG_DOT_BF16_BF16_F32_X6 ||
+  if (algorithm == PrecisionConfig::ALG_DOT_BF16_BF16_F32_X9 ||
+      algorithm == PrecisionConfig::ALG_DOT_BF16_BF16_F32_X6 ||
       algorithm == PrecisionConfig::ALG_DOT_BF16_BF16_F32_X3 ||
       algorithm == PrecisionConfig::ALG_DOT_BF16_BF16_F32 ||
       algorithm == PrecisionConfig::ALG_DOT_TF32_TF32_F32 ||
       algorithm == PrecisionConfig::ALG_DOT_TF32_TF32_F32_X3 ||
       algorithm == PrecisionConfig::ALG_DOT_F32_F32_F32 ||
-      should_use_triton_gemm_any || dot.sparse_operands()) {
+      dot.GetModule()->config().debug_options().xla_gpu_triton_gemm_any() ||
+      dot.sparse_operands()) {
     return Decision::Allow();
   }
 

@@ -22,12 +22,14 @@
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
 
+using litert::Error;
+using litert::Expected;
+using litert::Unexpected;
 using testing::Not;
 using testing::StrEq;
 using testing::litert::IsError;
 using testing::litert::IsOk;
 
-namespace litert {
 namespace {
 
 struct CopyOnly {
@@ -64,13 +66,11 @@ TEST(IsOkMatcherTest, Works) {
 
   listener.Clear();
   EXPECT_FALSE(testing::ExplainMatchResult(IsOk(), error, &listener));
-  EXPECT_THAT(listener.str(),
-              StrEq("error is (kLiteRtStatusErrorNotFound) not found"));
+  EXPECT_THAT(listener.str(), StrEq(""));
 
   listener.Clear();
   EXPECT_FALSE(testing::ExplainMatchResult(IsOk(), error.Error(), &listener));
-  EXPECT_THAT(listener.str(),
-              StrEq("error is (kLiteRtStatusErrorNotFound) not found"));
+  EXPECT_THAT(listener.str(), StrEq(""));
 }
 
 // No, I'm not creating a templated test fixture just for that. This only
@@ -92,7 +92,7 @@ void TestErrorWrapper() {
   testing::StringMatchResultListener listener;
   EXPECT_FALSE(testing::ExplainMatchResult(
       IsError(kLiteRtStatusErrorInvalidArgument), error, &listener));
-  EXPECT_THAT(listener.str(), StrEq("status is kLiteRtStatusErrorNotFound"));
+  EXPECT_THAT(listener.str(), StrEq("status doesn't match"));
 
   listener.Clear();
   EXPECT_FALSE(testing::ExplainMatchResult(
@@ -126,12 +126,13 @@ TEST(IsErrorMatcherTest, Works) {
   testing::StringMatchResultListener listener;
   EXPECT_FALSE(
       testing::ExplainMatchResult(IsError(), kLiteRtStatusOk, &listener));
-  EXPECT_THAT(listener.str(), StrEq("status is kLiteRtStatusOk"));
+  EXPECT_THAT(listener.str(), StrEq("status doesn't match"));
 
   listener.Clear();
   EXPECT_FALSE(
       testing::ExplainMatchResult(IsError(), Expected<int>(3), &listener));
-  EXPECT_THAT(listener.str(), StrEq("expected holds a value"));
+  EXPECT_THAT(listener.str(),
+              StrEq("expected holds a value (but should hold an error)"));
 }
 
 TEST(LitertAssertOk, Works) {
@@ -181,4 +182,3 @@ TEST(AssertOkAndAssign, FailuresStopsExecution) {
 }
 
 }  // namespace
-}  // namespace litert

@@ -133,6 +133,7 @@ cc_library(
         "//xla/tsl/lib/core:status_test_util",
         "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:test",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
@@ -231,6 +232,7 @@ cc_library(
         "//xla/python/ifrt",
         "//xla/python/ifrt:attribute_map",
         "//xla/python/ifrt:basic_device_list",
+        "//xla/python/ifrt:client_impl_util",
         "//xla/python/ifrt/hlo:hlo_program",
         "//xla/service:computation_placer_hdr",
         "//xla/service:hlo_proto_cc",
@@ -454,6 +456,7 @@ xla_cc_test(
 #     srcs = ["pjrt_ifrt.bzl"],
 #     parse_tests = False,
 #     visibility = ["//visibility:private"],
+#     deps = ["//xla/tsl:package_groups_bzl"],
 # )
 #
 # bzl_library(

@@ -15,6 +15,7 @@ limitations under the License.
 
 #include <optional>
 
+#include "absl/strings/str_join.h"
 #include "tensorflow/core/data/name_utils.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -330,7 +331,7 @@ class RebatchDatasetV2Op : public UnaryDatasetOpKernel {
           output_types_(output_types),
           output_shapes_(output_shapes),
           traceme_metadata_(
-              {{"batch_sizes", absl::StrJoin(batch_sizes, ",")}}) {
+              {{"batch_sizes", absl::StrJoin(batch_sizes_, ",")}}) {
       input_->Ref();
     }
 

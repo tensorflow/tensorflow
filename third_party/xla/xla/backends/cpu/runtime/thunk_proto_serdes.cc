@@ -808,6 +808,10 @@ static absl::Status ToProto(const KernelThunkBase& thunk, ThunkProto& proto) {
     TF_ASSIGN_OR_RETURN(*kernel_thunk_proto->add_results_buffers(),
                         SerializeSliceIntoProto(buffer));
   }
+
+  kernel_thunk_proto->mutable_invariant_arguments()->Add(
+      thunk.invariant_arguments().begin(), thunk.invariant_arguments().end());
+
   return absl::OkStatus();
 }
 
@@ -1311,12 +1315,10 @@ static absl::StatusOr<std::unique_ptr<Thunk>> KernelThunkFromProto(
     min_alignment = proto.kernel_thunk().min_alignment().value();
   }
 
-  return KernelThunk::Create(
-      std::move(info), std::move(arguments_buffers), std::move(results_buffers),
-      proto.kernel_thunk().kernel_name(), thread_dim,
-      invariant_arguments.empty() ? std::nullopt
-                                  : std::make_optional(invariant_arguments),
-      min_alignment);
+  return KernelThunk::Create(std::move(info), std::move(arguments_buffers),
+                             std::move(results_buffers),
+                             proto.kernel_thunk().kernel_name(), thread_dim,
+                             invariant_arguments, min_alignment);
 }
 
 static absl::StatusOr<std::unique_ptr<OutfeedThunk>> OutfeedThunkFromProto(

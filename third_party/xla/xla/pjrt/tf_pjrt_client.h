@@ -105,14 +105,6 @@ class TfPjRtBuffer : public PjRtBuffer {
     wrapped_->CopyToRemoteDevice(std::move(serialized_descriptor),
                                  std::move(on_done));
   }
-  void CopyToRemoteDeviceScattered(
-      PjRtFuture<std::vector<std::string>> serialized_descriptors,
-      std::vector<RemoteSendCallback> callbacks,
-      const ScatterDetails& scatter_details) override {
-    return wrapped_->CopyToRemoteDeviceScattered(
-        std::move(serialized_descriptors), std::move(callbacks),
-        scatter_details);
-  }
   PjRtFuture<> GetReadyFuture() override { return wrapped_->GetReadyFuture(); }
   bool IsOnCpu() const override { return wrapped_->IsOnCpu(); }
 
@@ -179,9 +171,6 @@ class TfPjRtExecutable : public PjRtLoadedExecutable {
 
   void Delete() override { return wrapped_->Delete(); }
   bool IsDeleted() override { return wrapped_->IsDeleted(); }
-  bool IsReturnedFutureSupported() const override {
-    return wrapped_->IsReturnedFutureSupported();
-  }
 
   absl::StatusOr<std::string> SerializeExecutable() const override {
     return wrapped_->SerializeExecutable();
@@ -255,19 +244,21 @@ class TfPjRtClient : public PjRtClient {
       const override {
     return wrapped_->GetHloCostAnalysis();
   }
-  absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> Compile(
+  absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> CompileAndLoad(
       const XlaComputation& computation, CompileOptions options) override {
-    return WrapExecutable(wrapped_->Compile(computation, options));
+    return WrapExecutable(wrapped_->CompileAndLoad(computation, options));
   }
-  absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> Compile(
+  absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> CompileAndLoad(
       mlir::ModuleOp module, CompileOptions options) override {
-    return WrapExecutable(wrapped_->Compile(std::move(module), options));
+    return WrapExecutable(wrapped_->CompileAndLoad(std::move(module), options));
   }
 
-  absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> DeserializeExecutable(
-      absl::string_view serialized,
-      std::optional<CompileOptions> options) override {
-    return WrapExecutable(wrapped_->DeserializeExecutable(serialized, options));
+  absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
+  LoadSerializedExecutable(absl::string_view serialized,
+                           std::optional<CompileOptions> options,
+                           const LoadOptions& load_options) override {
+    return WrapExecutable(
+        wrapped_->LoadSerializedExecutable(serialized, options, load_options));
   }
 
   absl::StatusOr<std::unique_ptr<PjRtBuffer>> CreateUninitializedBuffer(
@@ -314,13 +305,6 @@ class TfPjRtClient : public PjRtClient {
                               PjRtCrossHostRecvNotifier notifier) override {
     return wrapped_->MakeCrossHostReceiveBuffers(shapes, device,
                                                  std::move(notifier));
-  }
-  absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>
-  MakeCrossHostReceiveBuffersForGather(
-      absl::Span<const Shape> shapes, std::vector<GatherDetails> gather_details,
-      PjRtDevice* device, PjRtCrossHostRecvNotifier notifier) override {
-    return wrapped_->MakeCrossHostReceiveBuffersForGather(
-        shapes, std::move(gather_details), device, std::move(notifier));
   }
   absl::StatusOr<const PjRtTopologyDescription*> GetTopologyDescription()
       const override {

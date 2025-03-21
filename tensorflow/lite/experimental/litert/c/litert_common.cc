@@ -16,23 +16,6 @@
 
 extern "C" {
 
-int LiteRtCompareApiVersion(LiteRtApiVersion v1, LiteRtApiVersion v2) {
-  if (v1.major > v2.major) {
-    return 1;
-  } else if (v1.major == v2.major) {
-    if (v1.minor > v2.minor) {
-      return 1;
-    } else if (v1.minor == v2.minor) {
-      if (v1.patch > v2.patch) {
-        return 1;
-      } else if (v1.patch == v2.patch) {
-        return 0;
-      }
-    }
-  }
-  return -1;
-}
-
 const char* LiteRtGetStatusString(LiteRtStatus status) {
   switch (status) {
     // NOLINTNEXTLINE(preprocessor-macros)
@@ -60,6 +43,7 @@ const char* LiteRtGetStatusString(LiteRtStatus status) {
     LITERT_STATUS_STR_CASE(kLiteRtStatusLegalizeNoMatch);
     LITERT_STATUS_STR_CASE(kLiteRtStatusErrorInvalidLegalization);
     LITERT_STATUS_STR_CASE(kLiteRtStatusErrorWrongVersion);
+    LITERT_STATUS_STR_CASE(kLiteRtStatusErrorUnknown);
 #undef LITERT_STATUS_STR_CASE
   }
 }

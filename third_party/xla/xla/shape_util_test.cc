@@ -793,6 +793,44 @@ TEST(ShapeUtilTest, ForEachIndexParallel_WithSkips) {
   }
 }
 
+TEST(ShapeUtilTest, ForEachIndexParallel_WithOddIncr) {
+  Shape shape = ShapeUtil::MakeShape(F32, {10, 10});
+  int64_t output[10][10] = {};
+  int init = 5;
+  auto set_func = [&](absl::Span<const int64_t> indexes,
+                      int /*thread_id*/) -> absl::StatusOr<bool> {
+    output[indexes[0]][indexes[1]] = init + indexes[0] + indexes[1];
+    return true;
+  };
+
+  ShapeUtil::ForEachIndexParallel(shape, /*base=*/{0, 0}, /*count=*/{10, 10},
+                                  /*incr=*/{3, 3}, set_func);
+
+  for (int i = 0; i < 10; ++i) {
+    for (int j = 0; j < 10; ++j) {
+      if (i % 3 == 0 && j % 3 == 0) {
+        EXPECT_EQ(output[i][j], init + i + j);
+      } else {
+        EXPECT_EQ(output[i][j], 0);
+      }
+    }
+  }
+}
+
+TEST(ShapeUtilTest, ForEachIndexParallel_Scalar) {
+  Shape shape = ShapeUtil::MakeShape(F32, {});
+  int64_t output = 0;
+  auto set_func = [&](absl::Span<const int64_t> indexes,
+                      int /*thread_id*/) -> absl::StatusOr<bool> {
+    output = 5;
+    return true;
+  };
+
+  ShapeUtil::ForEachIndexParallel(shape, /*base=*/{}, /*count=*/{},
+                                  /*incr=*/{}, set_func);
+  EXPECT_EQ(output, 5);
+}
+
 TEST(ShapeUtilTest, ForEachIndexParallel_CalledTwice) {
   Shape shape = ShapeUtil::MakeShape(F32, {10, 10});
   int64_t output[10][10];
@@ -1508,6 +1546,22 @@ TEST(AlignmentTest,
   auto aligned_shape = ShapeUtil::AlignLayouts(
       input, ShapeUtil::MakeShape(xla::F32, {4, 3, 2, 5, 77}));
   EXPECT_FALSE(aligned_shape);
+}
+
+TEST(ShapeUtilTest, FlattenTupleShape) {
+  Shape shape = ShapeUtil::MakeTupleShape(
+      {ShapeUtil::MakeShape(F32, {2, 3}),
+       ShapeUtil::MakeTupleShape({ShapeUtil::MakeShape(F32, {4, 5}),
+                                  ShapeUtil::MakeTupleShape({}),
+                                  ShapeUtil::MakeShape(F32, {6, 7})}),
+       ShapeUtil::MakeShape(F32, {8, 9})});
+  std::vector<const Shape*> flattened_shapes =
+      ShapeUtil::FlattenTupleShape(shape);
+  EXPECT_EQ(flattened_shapes.size(), 4);
+  EXPECT_EQ(flattened_shapes[0]->ToString(), "f32[2,3]");
+  EXPECT_EQ(flattened_shapes[1]->ToString(), "f32[4,5]");
+  EXPECT_EQ(flattened_shapes[2]->ToString(), "f32[6,7]");
+  EXPECT_EQ(flattened_shapes[3]->ToString(), "f32[8,9]");
 }
 
 void BM_MakeShape(::testing::benchmark::State& state) {

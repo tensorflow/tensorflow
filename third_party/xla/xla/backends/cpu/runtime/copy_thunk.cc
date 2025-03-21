@@ -46,7 +46,6 @@ limitations under the License.
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
-#include "tsl/profiler/lib/traceme.h"
 
 namespace xla::cpu {
 
@@ -135,7 +134,6 @@ CopyThunk::ParallelBlockParams CopyThunk::ComputeParallelBlockParams(
 
 tsl::AsyncValueRef<Thunk::ExecuteEvent> CopyThunk::Execute(
     const ExecuteParams& params) {
-  tsl::profiler::TraceMe trace([&] { return TraceMeEncode(); });
 
   const BufferAllocations* allocations = params.buffer_allocations;
 

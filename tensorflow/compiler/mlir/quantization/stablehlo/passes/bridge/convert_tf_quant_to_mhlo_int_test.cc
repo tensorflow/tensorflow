@@ -57,6 +57,7 @@ limitations under the License.
 #include "xla/tests/literal_test_util.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
+#include "xla/xla_data.pb.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 
@@ -198,7 +199,7 @@ class ConvertTfQuantToMhloIntTest : public Test {
     AddQuantizationLoweringPasses(pm);
     CHECK(succeeded(pm.run(module_op.get())));
     // Compile the program.
-    return pjrt_client_->Compile(*module_op, xla::CompileOptions{});
+    return pjrt_client_->CompileAndLoad(*module_op, xla::CompileOptions{});
   }
 
   absl::StatusOr<std::shared_ptr<xla::Literal>>

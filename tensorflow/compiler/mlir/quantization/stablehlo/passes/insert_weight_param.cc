@@ -80,12 +80,13 @@ class InsertWeightParamPass
 // Inserts quantization parameters for weights for hybrid quantization of
 // `stablehlo.convolution` and `stablehlo.dot_general`.
 class InsertWeightParamPattern
-    : public OpTraitRewritePattern<OpTrait::ConstantLike> {
+    : public OpTraitRewritePattern<
+          OpTrait::ConstantLike>::SplitMatchAndRewrite {
  public:
-  using OpTraitRewritePattern<OpTrait::ConstantLike>::OpTraitRewritePattern;
-
   explicit InsertWeightParamPattern(MLIRContext* context)
-      : OpTraitRewritePattern<OpTrait::ConstantLike>(context) {}
+      : SplitMatchAndRewrite(Pattern::MatchTraitOpTypeTag(),
+                             TypeID::get<OpTrait::ConstantLike>(), 1, context) {
+  }
 
   LogicalResult match(Operation* op) const override {
     if (op->getNumResults() != 1) {

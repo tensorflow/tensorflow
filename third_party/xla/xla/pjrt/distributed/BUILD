@@ -150,6 +150,7 @@ xla_cc_test(
         "//xla:status_macros",
         "//xla/tsl/distributed_runtime/coordination:coordination_service_agent",
         "//xla/tsl/lib/core:status_test_util",
+        "//xla/tsl/platform:env",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",

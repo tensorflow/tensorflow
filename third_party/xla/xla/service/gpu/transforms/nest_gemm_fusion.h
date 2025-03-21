@@ -27,6 +27,14 @@ namespace xla::gpu {
 // Rewrites Triton GEMM fusions to generic Triton fusions. Any other fusions are
 // left unchanged.
 //
+// Fusions with kind kCustom and fusion_backend_config.kind "__triton_gemm" are
+// rewritten to fusion_backend_config.kind
+// "__triton_nested_fusion_gemm".
+//
+// While this new fusion kind is supported by generic triton emitter we want
+// to distinguish it from "__triton" as we don't want other passes to modify the
+// resulting fusions.
+//
 // The fusion's backend config is set to a BlockLevelFusionConfig, derived from
 // a previously set TritonGemmConfig.
 //

@@ -16,6 +16,7 @@
 
 #include <any>
 #include <array>
+#include <utility>
 
 #include <gtest/gtest.h>
 #include "tensorflow/lite/experimental/litert/c/litert_any.h"
@@ -28,14 +29,36 @@ namespace {
 TEST(LiteRtEnvironmentT, CreateWithOptions) {
   const std::array<LiteRtEnvOption, 1> environment_options = {
       LiteRtEnvOption{
-          kLiteRtEnvOptionTagCompilerPluginLibraryPath,
+          kLiteRtEnvOptionTagCompilerPluginLibraryDir,
           *ToLiteRtAny(std::any("sample path")),
       },
   };
   auto env = LiteRtEnvironmentT::CreateWithOptions(environment_options);
   ASSERT_TRUE(env);
 
-  auto option = (*env)->GetOption(kLiteRtEnvOptionTagCompilerPluginLibraryPath);
+  auto option = (*env)->GetOption(kLiteRtEnvOptionTagCompilerPluginLibraryDir);
+  ASSERT_TRUE(option.has_value());
+  ASSERT_EQ(option->type, kLiteRtAnyTypeString);
+  ASSERT_STREQ(option->str_value, "sample path");
+}
+
+TEST(LiteRtEnvironmentT, CheckStringCopy) {
+  LiteRtEnvironmentT::Ptr env;
+
+  // The passed string becomes obsolete after the scope.
+  {
+    const std::array<LiteRtEnvOption, 1> environment_options = {
+        LiteRtEnvOption{
+            kLiteRtEnvOptionTagCompilerPluginLibraryDir,
+            *ToLiteRtAny(std::any("sample path")),
+        },
+    };
+    auto res = LiteRtEnvironmentT::CreateWithOptions(environment_options);
+    ASSERT_TRUE(res);
+    env = std::move(*res);
+  }
+
+  auto option = env->GetOption(kLiteRtEnvOptionTagCompilerPluginLibraryDir);
   ASSERT_TRUE(option.has_value());
   ASSERT_EQ(option->type, kLiteRtAnyTypeString);
   ASSERT_STREQ(option->str_value, "sample path");

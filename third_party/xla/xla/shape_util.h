@@ -114,10 +114,10 @@ class ShapeUtil {
   template <bool kBoundedDynamicOk>
   static inline std::pair<int64_t, bool> ExtentProduct(const Shape& shape) {
     DCHECK(shape.IsArray()) << ShapeUtil::HumanString(shape);
-    DCHECK_EQ(shape.dimensions_size(), shape.rank());
+    DCHECK_EQ(shape.rank(), shape.rank());
     int64_t product = 1;
     bool any_overflows = false;
-    for (int dim = 0; dim < shape.dimensions_size(); ++dim) {
+    for (int dim = 0; dim < shape.rank(); ++dim) {
       if constexpr (kBoundedDynamicOk) {
         if (shape.is_unbounded_dynamic_dimension(dim)) {
           continue;
@@ -169,7 +169,7 @@ class ShapeUtil {
 
   // Returns the number of bytes used to store the primitive_type.
   //
-  // Precondition: shape.IsArray()
+  // Precondition: primitive_type is an array type (otherwise crashes)
   static int64_t ByteSizeOfPrimitiveType(PrimitiveType primitive_type);
 
   // Returns the number of bytes required to store the tuple member pointers for
@@ -961,8 +961,8 @@ class ShapeUtil {
 
   static absl::Status ForEachIndexWithStatus(
       const Shape& shape, const ForEachVisitorFunction& visitor_function) {
-    std::vector<int64_t> base(shape.dimensions_size());
-    std::vector<int64_t> incr(shape.dimensions_size(), 1);
+    std::vector<int64_t> base(shape.rank());
+    std::vector<int64_t> incr(shape.rank(), 1);
     return ForEachIndexWithStatus(shape, base,
                                   /*count=*/shape.dimensions(), incr,
                                   visitor_function);
@@ -971,8 +971,8 @@ class ShapeUtil {
   static void ForEachIndexNoStatus(
       const Shape& shape,
       const ForEachVisitorFunctionNoStatus& visitor_function) {
-    std::vector<int64_t> base(shape.dimensions_size());
-    std::vector<int64_t> incr(shape.dimensions_size(), 1);
+    std::vector<int64_t> base(shape.rank());
+    std::vector<int64_t> incr(shape.rank(), 1);
     ForEachIndexNoStatus(shape, base,
                          /*count=*/shape.dimensions(), incr, visitor_function);
   }
@@ -1051,11 +1051,22 @@ class ShapeUtil {
   // for all types.
   static void UpdateElementSizeInBits(Shape* s, bool pack_subbyte_types);
 
+  // Recursively flattens a tuple shape into a vector of subshapes.
+  static void FlattenTupleShape(const Shape& shape,
+                                std::vector<const Shape*>& flattened);
+  static std::vector<const Shape*> FlattenTupleShape(const Shape& shape);
+
  private:
   // Fills *shape ignoring dynamic dimensions. Returns true on success.
+  // This populates the following fields in the shape:
+  // - sets shape->element_type to element_type,
+  // - sets shape->dimensions to dimensions,
+  // - sets shape->layout.minor_to_major to [ndims - 1, ndims - 2, ..., 0]
+  //   where ndims is the size of dimensions.
   // REQUIRES: *shape is empty.
-  static bool FillNewShape(PrimitiveType element_type,
-                           absl::Span<const int64_t> dimensions, Shape* shape);
+  [[nodiscard]] static bool FillNewShape(PrimitiveType element_type,
+                                         absl::Span<const int64_t> dimensions,
+                                         Shape* shape);
 
   // Helper for ForEachSubshape which visits the subshapes of the given shape in
   // DFS pre-order starting with the index.

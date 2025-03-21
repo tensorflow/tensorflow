@@ -58,9 +58,6 @@ namespace xla {
 namespace spmd {
 namespace {
 
-using MeshDimSet = StableSet<int>;
-using DimMap = StableMap</*tensor dim*/ int, /*mesh dims*/ MeshDimSet>;
-
 // Contains base functionality common to both DotHandler and ConvHandler.
 class HandlerBase {
  protected:
@@ -144,33 +141,6 @@ class HandlerBase {
 
   std::optional<HloSharding> GetShardingFromUser(const HloSharding& lhs_spec,
                                                  const HloSharding& rhs_spec);
-
-  // Given a set of tensor dims, and a set of mesh dims, enumerates all mappings
-  // where a subset of all tensor dims is mapped to a subset of mesh dims, such
-  // that each tensor dim is mapped to at most mesh dim, and no two tensor dims
-  // are mapped to the same mesh dim.
-  void Enumerate(std::function<void(const DimMap&)> split_func, int tensor_rank,
-                 int current_mesh_dim_idx,
-                 const std::vector<int>& unassigned_mesh_dims,
-                 const DimMap& current_dim_map) {
-    if (current_mesh_dim_idx == unassigned_mesh_dims.size()) {
-      split_func(current_dim_map);
-      return;
-    }
-    // Current mesh dim is not assigned to any tensor dim
-    Enumerate(split_func, tensor_rank, current_mesh_dim_idx + 1,
-              unassigned_mesh_dims, current_dim_map);
-
-    for (int i = 0; i < tensor_rank; ++i) {
-      DimMap updated_dim_map = current_dim_map;
-      if (!updated_dim_map[i].empty() && !option_.allow_mixed_mesh_shape) {
-        continue;
-      }
-      updated_dim_map[i].insert(unassigned_mesh_dims[current_mesh_dim_idx]);
-      Enumerate(split_func, tensor_rank, current_mesh_dim_idx + 1,
-                unassigned_mesh_dims, updated_dim_map);
-    }
-  }
 
   bool IsMeshDimSetNonTrivial(const MeshDimSet& mesh_dim_set) {
     return absl::c_any_of(mesh_dim_set, [&](int mesh_dim) {
@@ -732,9 +702,8 @@ void DotHandler::GenerateDotShardingStrategiesFromOutputSharding(
                 /*compute_cost=*/0, communication_cost_fn);
   };
 
-  Enumerate(split_func, reduction_dims.size(),
-            /*current_mesh_dim_idx=*/0, unused_mesh_dims,
-            /*current_dim_map=*/{});
+  Enumerate(split_func, reduction_dims.size(), unused_mesh_dims,
+            option_.allow_mixed_mesh_shape);
 }
 
 void DotHandler::AppendAllGatherWindowedEinsumStrategyForOperand(
@@ -836,8 +805,7 @@ absl::Status DotHandler::RegisterStrategies() {
       [&](const DimMap& output_dim_map) {
         GenerateDotShardingStrategiesFromOutputSharding(output_dim_map);
       },
-      ins_->shape().rank(), /*current_mesh_dim_idx=*/0, all_mesh_dims,
-      /*current_dim_map=*/{});
+      ins_->shape().rank(), all_mesh_dims, option_.allow_mixed_mesh_shape);
   SortStrategies();
   return absl::OkStatus();
 }
@@ -957,8 +925,7 @@ absl::Status ConvHandler::RegisterStrategies() {
       [&](const DimMap& output_dim_map) {
         GenerateConvolutionShardingStrategiesFromOutputSharding(output_dim_map);
       },
-      2, /*current_mesh_dim_idx=*/0, all_mesh_dims,
-      /*current_dim_map=*/{});
+      2, all_mesh_dims, option_.allow_mixed_mesh_shape);
 
   SortStrategies();
   return absl::OkStatus();
@@ -997,9 +964,8 @@ void ConvHandler::SplitDepthwise(bool forward) {
       };
   std::vector<int> all_mesh_dims(device_mesh_.num_dimensions());
   std::iota(all_mesh_dims.begin(), all_mesh_dims.end(), 0);
-  Enumerate(split_func, ins_->shape().rank(), /*current_mesh_dim_idx=*/0,
-            all_mesh_dims,
-            /*current_dim_map=*/{});
+  Enumerate(split_func, ins_->shape().rank(), all_mesh_dims,
+            option_.allow_mixed_mesh_shape);
 }
 
 }  // namespace

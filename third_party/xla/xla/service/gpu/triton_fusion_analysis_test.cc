@@ -697,7 +697,7 @@ ENTRY e {
   ROOT bc = bf16[2,2,100] broadcast(dot), dimensions={0,1}
 })"));
   EXPECT_TRUE(GemmFusion(se::CudaComputeCapability{
-                             se::CudaComputeCapability::AMPERE, 0})
+                             se::CudaComputeCapability::kAmpere, 0})
                   .Run(module.get())
                   .value());
   EXPECT_EQ(module->entry_computation()->root_instruction()->opcode(),

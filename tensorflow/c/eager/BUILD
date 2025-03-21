@@ -1107,7 +1107,6 @@ cc_library(
         ":c_api",
         ":c_api_experimental",
         ":tfe_tensorhandle_internal",
-        "//tensorflow/c:tf_status_helper",
         "//tensorflow/c:tf_status_internal",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",

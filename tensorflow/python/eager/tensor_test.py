@@ -474,7 +474,7 @@ class TFETensorTest(test_util.TensorFlowTestCase):
   def testEagerTensorFormatForResource(self):
     t = resource_variable_ops.VarHandleOp(shape=[], dtype=dtypes.float32)
 
-    # type is compiler-depdendent, as it comes from demangling.
+    # type is compiler-dependent, as it comes from demangling.
     handle_str = (f"<ResourceHandle("
                   f"name=\"\", "
                   f"device=\"{t.device}\", "

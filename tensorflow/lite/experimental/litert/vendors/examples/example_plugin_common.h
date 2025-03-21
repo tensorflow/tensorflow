@@ -20,7 +20,7 @@
 
 // Simple compiled result def holds byte code and per op data.
 struct LiteRtCompiledResultT {
-  std::string byte_code;
+  std::vector<std::string> byte_code;
   std::vector<std::string> per_op_data;
 };
 

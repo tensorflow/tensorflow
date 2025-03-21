@@ -1,12 +1,23 @@
-//  Copyright (c) Qualcomm Innovation Center, Inc.
-//  All Rights Reserved.
+// Copyright (c) Qualcomm Innovation Center, Inc. All Rights Reserved.
+// SPDX-License-Identifier: Apache-2.0
 
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/wrappers/tensor_wrapper.h"
 
 #include <cmath>
+#include <cstddef>
+#include <cstdint>
 #include <cstring>
-#include <iostream>
+#include <functional>
+#include <limits>
 #include <numeric>
+#include <string>
+#include <utility>
+#include <variant>
+#include <vector>
+
+#include "third_party/qairt/latest/include/QNN/QnnTypes.h"
+#include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/utils/log.h"
+#include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/wrappers/quantize_params_wrapper.h"
 
 namespace qnn {
 
@@ -78,7 +89,7 @@ TensorWrapper::TensorWrapper(
     const std::vector<std::uint32_t>& dimentions, std::uint32_t bytes,
     const void* data)
     : TensorWrapper(id, tensor_type, data_type, quantize_params, dimentions) {
-  SetTensorData(bytes, data);
+  SetDataBy(bytes, data);
 }
 
 TensorWrapper::TensorWrapper(const TensorWrapper& other)
@@ -131,37 +142,18 @@ Qnn_TensorType_t TensorWrapper::GetTensorType() const {
   return qnn_tensor_.v2.type;
 }
 
-size_t TensorWrapper::GetTensorSize() const {
-  return std::accumulate(GetDims().begin(), GetDims().end(),
-                         GetDataTypeSize(GetDataType()), std::multiplies<>());
+std::uint32_t TensorWrapper::GetTensorNumElements() const {
+  return GetDims().empty() ? 0
+                           : std::accumulate(GetDims().begin(), GetDims().end(),
+                                             1, std::multiplies<>());
+}
+
+size_t TensorWrapper::GetTensorBytes() const {
+  return GetDataTypeSize(GetDataType()) * GetTensorNumElements();
 }
 
 void TensorWrapper::SetDataType(Qnn_DataType_t data_type) {
   qnn_tensor_.v2.dataType = data_type;
-}
-
-void TensorWrapper::SetTensorData(std::uint32_t bytes, const void* data) {
-  if (!IsSubgraphInput() && !IsTensorStatic()) {
-    // TODO: error log
-    // LITERT_LOG(LITERT_ERROR,
-    //            "Cannot set tensor data of tensor type other than "
-    //            "QNN_TENSOR_TYPE_APP_WRITE or QNN_TENSOR_TYPE_STATIC.");
-    return;
-  }
-
-  if (bytes != GetTensorSize()) {
-    // TODO: error log
-    std::cout << "ERROR bytes: " << bytes
-              << " != TensorSize(): " << GetTensorSize()
-              << ", use TensorSize() instead." << std::endl;
-    bytes = GetTensorSize();
-  }
-
-  owned_data_.resize(bytes);
-  std::memcpy(owned_data_.data(), reinterpret_cast<const char*>(data), bytes);
-
-  qnn_tensor_.v2.clientBuf.dataSize = owned_data_.size();
-  qnn_tensor_.v2.clientBuf.data = owned_data_.data();
 }
 
 bool TensorWrapper::IsPerTensorQuantWithOffsetDiff(
@@ -207,6 +199,19 @@ bool TensorWrapper::IsPerTensorQuantWithOffsetDiff(
     }
   }
   return false;
+}
+
+void TensorWrapper::SetDataBy(std::uint32_t bytes, const void* data) {
+  if (bytes != GetTensorBytes()) {
+    QNN_LOG_WARNING(
+        "Bytes: %d != GetTensorBytes(): %d, use GetTensorBytes() instead.",
+        bytes, GetTensorBytes());
+    bytes = GetTensorBytes();
+  }
+  owned_data_.resize(bytes);
+  std::memcpy(owned_data_.data(), reinterpret_cast<const char*>(data), bytes);
+  qnn_tensor_.v2.clientBuf.dataSize = owned_data_.size();
+  qnn_tensor_.v2.clientBuf.data = owned_data_.data();
 }
 
 }  // namespace qnn

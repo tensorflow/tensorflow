@@ -227,6 +227,7 @@ CreateIrEmitterForConstantEmissionTests(HloModule& module,
   IrCompiler::Options ir_compiler_options{
       /*optimization_level=*/llvm::CodeGenOptLevel::Default,
       /*optimize_for_size=*/options::OptimizeForSizeRequested(config),
+      /*max_cpu_isa=*/CpuFeatureFromString(debug_options.xla_cpu_max_isa()),
       /*fast_math_flags=*/llvm_ir::GetCpuFastMathFlags(config),
       /*disable_expensive_passes=*/
       debug_options.xla_llvm_disable_expensive_passes(),
@@ -241,11 +242,8 @@ CreateIrEmitterForConstantEmissionTests(HloModule& module,
 
   // Options for orchestrating the JIT compilation process.
   JitCompiler::Options jit_compiler_options{
-      std::move(ir_compiler_options),
-      {},
       /*num_dylibs=*/1,
       /*definition_generator=*/std::move(definition_generator),
-      /*max_cpu_isa=*/CpuFeatureFromString(debug_options.xla_cpu_max_isa()),
   };
 
   llvm::TargetOptions target_options;
@@ -259,10 +257,14 @@ CreateIrEmitterForConstantEmissionTests(HloModule& module,
     thread_pool->Schedule(std::move(task));
   };
 
+  std::unique_ptr<IrCompiler> ir_compiler =
+      IrCompiler::Create(target_options, std::move(ir_compiler_options),
+                         IrCompiler::CompilationHooks());
+
   TF_ASSIGN_OR_RETURN(
       JitCompiler jit_compiler,
-      JitCompiler::Create(target_options, std::move(jit_compiler_options),
-                          compilation_task_runner));
+      JitCompiler::Create(std::move(jit_compiler_options),
+                          std::move(ir_compiler), compilation_task_runner));
 
   auto scheduler =
       debug_options.xla_cpu_enable_concurrency_optimized_scheduler()

@@ -165,6 +165,7 @@ xla_cc_test(
         "//xla:executable_run_options",
         "//xla:literal_util",
         "//xla:shape_util",
+        "//xla:xla_data_proto_cc",
         "//xla/backends/cpu/runtime:buffer_allocations",
         "//xla/backends/cpu/runtime:thunk",
         "//xla/backends/cpu/runtime:thunk_testlib",

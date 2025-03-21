@@ -19,20 +19,36 @@
 #include <stdint.h>
 
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
+#include "tensorflow/lite/experimental/litert/c/litert_event_type.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif  // __cplusplus
+
+// Forward declaration of OpenCL event to avoid including OpenCL headers.
+typedef struct _cl_event* cl_event;
 
 LITERT_DEFINE_HANDLE(LiteRtEvent);
 
 LiteRtStatus LiteRtCreateEventFromSyncFenceFd(int sync_fence_fd, bool owns_fd,
                                               LiteRtEvent* event);
 
+LiteRtStatus LiteRtCreateEventFromOpenClEvent(cl_event cl_event,
+                                              LiteRtEvent* event);
+
+LiteRtStatus LiteRtCreateManagedEvent(LiteRtEventType type, LiteRtEvent* event);
+
+LiteRtStatus LiteRtGetEventEventType(LiteRtEvent event, LiteRtEventType* type);
+
 LiteRtStatus LiteRtGetEventSyncFenceFd(LiteRtEvent event, int* sync_fence_fd);
+
+LiteRtStatus LiteRtGetEventOpenClEvent(LiteRtEvent event, cl_event* cl_event);
 
 // Pass -1 for timeout_in_ms for indefinite wait.
 LiteRtStatus LiteRtEventWait(LiteRtEvent event, int64_t timeout_in_ms);
+
+// Signal the event to notify the waiters.
+LiteRtStatus LiteRtEventSignal(LiteRtEvent event);
 
 void LiteRtDestroyEvent(LiteRtEvent event);
 

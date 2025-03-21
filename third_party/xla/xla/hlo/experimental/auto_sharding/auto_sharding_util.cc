@@ -1671,10 +1671,15 @@ HloSharding Tile(const Shape& tensor_shape,
   for (int i = 0; i < mesh_dims.size(); ++i) {
     mesh_dims_general[i].push_back(mesh_dims[i]);
   }
-  if (device_mesh.IsIota()) {
-    return TileV2(tensor_shape, tensor_dims, mesh_dims_general, device_mesh);
-  }
-  return TileV1(tensor_shape, tensor_dims, mesh_dims_general, device_mesh);
+  return Tile(tensor_shape, tensor_dims, mesh_dims_general, device_mesh);
+}
+
+HloSharding Tile(const Shape& tensor_shape,
+                 absl::Span<const int64_t> tensor_dims,
+                 std::initializer_list<int64_t> mesh_dims,
+                 const DeviceMesh& device_mesh) {
+  return Tile(tensor_shape, tensor_dims, absl::Span<const int64_t>(mesh_dims),
+              device_mesh);
 }
 
 AliasMap BuildAliasMap(const HloModule* module,
@@ -1858,7 +1863,8 @@ absl::Status CheckAliasSetCompatibility(const AliasSet& alias_set,
              "tensors and may result in large memory consumption: "
           << "(" << instructions.at(src_strategy_group->instruction_id)->name()
           << ", " << instructions.at(dst_strategy_group->instruction_id)->name()
-          << ")" << "\n"
+          << ")"
+          << "\n"
           << "(" << src_strategy_group->node_idx << ", "
           << dst_strategy_group->node_idx << ")\n"
           << src_strategy_group->ToString() << "\n"
@@ -1922,7 +1928,8 @@ absl::StatusOr<AliasCompatibility> ComputeAliasCompatibility(
                  << instructions.at(src_strategy_group->instruction_id)->name()
                  << ", "
                  << instructions.at(dst_strategy_group->instruction_id)->name()
-                 << ")" << "\n"
+                 << ")"
+                 << "\n"
                  << "(" << src_strategy_group->node_idx << ", "
                  << dst_strategy_group->node_idx << ")\n"
                  << src_strategy_group->ToString() << "\n"

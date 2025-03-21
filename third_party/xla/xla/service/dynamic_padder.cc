@@ -551,7 +551,7 @@ absl::StatusOr<bool> RewriteDynamicReshapeSplitInput(
 
   GatherDimensionNumbers gather_dim_numbers;
   // Use gather to rearrange the input dim dimension.
-  for (int64_t i = 0; i < operand_shape.dimensions_size(); ++i) {
+  for (int64_t i = 0; i < operand_shape.rank(); ++i) {
     // Offset dim is every dimension including newly added size 1 dim, except
     // for input_dim, which acts as a batch_dim.
     if (i != input_dim) {
@@ -736,7 +736,7 @@ absl::StatusOr<bool> RewriteDynamicReshapeCombineInput(
 
   GatherDimensionNumbers gather_dim_numbers;
   // Use gather to rearrange the output dim dimension.
-  for (int64_t i = 0; i < output_shape.dimensions_size(); ++i) {
+  for (int64_t i = 0; i < output_shape.rank(); ++i) {
     // Offset dim is every dimension including newly added size 1 dim, except
     // for input_dim, which acts as a batch_dim.
     if (i != output_dim) {
@@ -1322,8 +1322,8 @@ absl::StatusOr<bool> RewriteDynamicConcat(
     return false;
   }
   std::vector<HloInstruction*> offsets;
-  offsets.reserve(concat->shape().dimensions_size());
-  for (int64_t i = 0; i < concat->shape().dimensions_size(); ++i) {
+  offsets.reserve(concat->shape().rank());
+  for (int64_t i = 0; i < concat->shape().rank(); ++i) {
     offsets.push_back(concat->AddInstruction(
         HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32_t>(0))));
   }
@@ -1668,15 +1668,15 @@ absl::StatusOr<bool> RewriteDynamicReshape(
   bool changed = false;
   HloInstruction* operand = reshape->mutable_operand(0);
   std::vector<HloInstruction*> input_dynamic_dims;
-  input_dynamic_dims.reserve(operand->shape().dimensions_size());
-  for (int64_t dim = 0; dim < operand->shape().dimensions_size(); ++dim) {
+  input_dynamic_dims.reserve(operand->shape().rank());
+  for (int64_t dim = 0; dim < operand->shape().rank(); ++dim) {
     input_dynamic_dims.push_back(
         dynamic_dimension_inference->GetDynamicSize(operand, {}, dim));
   }
 
   std::vector<HloInstruction*> output_dynamic_dims;
-  output_dynamic_dims.reserve(reshape->shape().dimensions_size());
-  for (int64_t dim = 0; dim < reshape->shape().dimensions_size(); ++dim) {
+  output_dynamic_dims.reserve(reshape->shape().rank());
+  for (int64_t dim = 0; dim < reshape->shape().rank(); ++dim) {
     output_dynamic_dims.push_back(
         dynamic_dimension_inference->GetDynamicSize(reshape, {}, dim));
   }
@@ -1934,7 +1934,7 @@ absl::StatusOr<HloInstruction*> DynamicShapeRemovingVisitor::ConvertToDynamic(
     // slice to dynamic to create a dynamic tensor.
     std::vector<HloInstruction*> slice_operand;
     slice_operand.push_back(*element);
-    for (int64_t i = 0; i < subshape.dimensions_size(); ++i) {
+    for (int64_t i = 0; i < subshape.rank(); ++i) {
       auto dimension_size =
           dynamic_dimension_inference_->GetDynamicSize(inst, index, i);
       if (dimension_size == nullptr) {

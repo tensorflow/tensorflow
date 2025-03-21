@@ -966,6 +966,14 @@ int64 GetAutotuneDefaultParallelism(IteratorContext* ctx) {
   return value;
 }
 
+int64_t GetAutotuneMinParallelism(IteratorContext* ctx) {
+  if (ctx->options() &&
+      ctx->options()->autotune_options().has_min_parallelism()) {
+    return ctx->options()->autotune_options().min_parallelism();
+  }
+  return 1;
+}
+
 IteratorContext MakeNestedIteratorContext(IteratorContext* ctx) {
   // Strips out any split providers so that they don't apply to sub-iterators.
   if (ctx->split_providers().empty()) {

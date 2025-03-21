@@ -32,6 +32,7 @@ limitations under the License.
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/kernels/batching_util/adaptive_shared_batch_scheduler.h"
 #include "tensorflow/core/kernels/batching_util/batch_resource_base.h"
+#include "tensorflow/core/kernels/batching_util/batch_scheduler.h"
 #include "tensorflow/core/platform/random.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/statusor.h"
@@ -126,6 +127,11 @@ class FallbackBatchResource : public tensorflow::serving::BatchResourceBase {
 
     BatcherT::Options batcher_options;
     batcher_options.num_batch_threads = options.num_batch_threads;
+    if (options.mixed_priority_batching_policy ==
+        serving::MixedPriorityBatchingPolicy::kPriorityMerge) {
+      batcher_options.use_global_scheduler = true;
+      batcher_options.rank_queues = true;
+    }
     std::shared_ptr<BatcherT> batcher;
     TF_RETURN_IF_ERROR(BatcherT::Create(batcher_options, &batcher));
 

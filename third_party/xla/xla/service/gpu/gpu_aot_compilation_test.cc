@@ -80,8 +80,9 @@ ENTRY main {
       compiler->LoadAotCompilationResult(serialized_aot_result));
 
   // Load Executable from AOT compilation result.
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<Executable> executable,
-                          aot_result->LoadExecutable(compiler, stream_exec));
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<Executable> executable,
+      std::move(*aot_result).LoadExecutable(compiler, stream_exec));
 }
 
 TEST_F(GpuAotCompilationTest, AotCompilationWithoutGpuDevice) {
@@ -123,8 +124,9 @@ ENTRY main {
       compiler->LoadAotCompilationResult(serialized_aot_result));
 
   // Load Executable from AOT compilation result.
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<Executable> executable,
-                          aot_result->LoadExecutable(compiler, stream_exec));
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<Executable> executable,
+      std::move(*aot_result).LoadExecutable(compiler, stream_exec));
 }
 
 namespace {
@@ -236,8 +238,9 @@ TEST_F(GpuAotCompilationTest, ExportAndLoadExecutableWithTriton) {
       compiler->LoadAotCompilationResult(serialized_aot_result));
 
   // Load Executable from AOT compilation result.
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<Executable> executable,
-                          aot_result->LoadExecutable(compiler, stream_exec));
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<Executable> executable,
+      std::move(*aot_result).LoadExecutable(compiler, stream_exec));
   std::unique_ptr<OpaqueExecutable> wrapped_executable =
       test_runner_as_hlo_runner().WrapExecutable(std::move(executable));
 

@@ -24,6 +24,7 @@ limitations under the License.
 #include <vector>
 
 #include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "mlir/Dialect/Traits.h"  // from @llvm-project
@@ -115,6 +116,19 @@ inline DenseElementsAttr RemapPermutation(Value permutation1,
   (void)matchPattern(permutation2, m_Constant(&perm2_const));
 
   return RemapPermutation(permutation1, perm2_const);
+}
+
+inline bool IsTransposeNoop(Value permutation) {
+  DenseElementsAttr perm_values_attr;
+  if (!matchPattern(permutation, m_Constant(&perm_values_attr))) return false;
+
+  for (const auto& [idx, perm_value] :
+       llvm::enumerate(perm_values_attr.getValues<APInt>())) {
+    if (perm_value.getSExtValue() != idx) {
+      return false;
+    }
+  }
+  return true;
 }
 
 // Returns true if the transpose op is trivial. Trivial means that

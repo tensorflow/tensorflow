@@ -74,6 +74,7 @@ limitations under the License.
 #include "xla/service/name_uniquer.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/side_effect_util.h"
 #include "xla/sort_json.h"
 #include "xla/status_macros.h"
 #include "xla/tsl/lib/gtl/iterator_range.h"
@@ -218,6 +219,48 @@ void HloInstruction::AppendComputation(HloComputation* computation) {
   // In .cc file since PtrVec<T*>::push_back() wants to check the alignment
   // of T and hlo_instruction.h does not include hlo_computation.h.
   mutable_rare()->called_computations.push_back(computation);
+  if (parent()) {
+    parent()->AddCallee(this, computation);
+  }
+}
+
+void HloInstruction::set_called_computation(int index,
+                                            HloComputation* computation) {
+  // TODO(b/399394039): Consider also enforcing that computation->parent() !=
+  // nullptr.
+  CHECK(parent() == nullptr || parent()->parent() == nullptr ||
+        computation == nullptr || parent()->parent() == computation->parent())
+      << ToString();
+  HloComputation* old_computation = computation;
+  std::swap(old_computation, mutable_rare()->called_computations[index]);
+  if (parent()) {
+    if (old_computation) {
+      parent()->RemoveCallee(this, old_computation);
+    }
+    if (computation) {
+      parent()->AddCallee(this, computation);
+    }
+  }
+}
+
+void HloInstruction::ReplaceCalledComputations(
+    absl::FunctionRef<HloComputation*(HloComputation*)> map_function) {
+  for (int64_t i = 0; i < called_computations().size(); ++i) {
+    set_called_computation(i, map_function(rare()->called_computations[i]));
+  }
+}
+
+void HloInstruction::ClearCalledComputations() {
+  if (has_rare()) {
+    if (parent()) {
+      for (HloComputation* computation : called_computations()) {
+        if (computation) {
+          parent()->RemoveCallee(this, computation);
+        }
+      }
+    }
+    mutable_rare()->called_computations.clear();
+  }
 }
 
 HloInstruction* HloInstruction::AddInstruction(
@@ -817,10 +860,8 @@ absl::StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
                   .IsArray()) {
             slice_sizes.resize(input->shape().tuple_shapes_size());
             for (int i = 0; i < input->shape().tuple_shapes_size(); ++i) {
-              slice_sizes[i].resize(
-                  input->shape().tuple_shapes(i).dimensions_size());
-              for (int j = 0;
-                   j < input->shape().tuple_shapes(i).dimensions_size(); ++j) {
+              slice_sizes[i].resize(input->shape().tuple_shapes(i).rank());
+              for (int j = 0; j < input->shape().tuple_shapes(i).rank(); ++j) {
                 CHECK_GE(proto.dynamic_slice_sizes_size(), proto_index);
                 slice_sizes[i][j] = proto.dynamic_slice_sizes(proto_index);
                 proto_index += 1;
@@ -857,16 +898,16 @@ absl::StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
             for (int i = 0;
                  i < ShapeUtil::TupleElementCount(input_start_indices->shape());
                  ++i) {
-              slice_sizes[i].resize(input->shape().dimensions_size());
-              for (int j = 0; j < input->shape().dimensions_size(); ++j) {
+              slice_sizes[i].resize(input->shape().rank());
+              for (int j = 0; j < input->shape().rank(); ++j) {
                 slice_sizes[i][j] = proto.dynamic_slice_sizes(proto_index);
                 proto_index += 1;
               }
             }
           } else {
             slice_sizes.resize(1);
-            slice_sizes[0].resize(input->shape().dimensions_size());
-            for (int j = 0; j < input->shape().dimensions_size(); ++j) {
+            slice_sizes[0].resize(input->shape().rank());
+            for (int j = 0; j < input->shape().rank(); ++j) {
               slice_sizes[0][j] = proto.dynamic_slice_sizes(proto_index);
               proto_index += 1;
             }
@@ -1266,8 +1307,6 @@ absl::StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
         TF_RET_CHECK(proto.called_computation_ids_size() == 2)
             << "While should have 2 called computation but has "
             << proto.called_computation_ids_size();
-        computation_map.at(proto.called_computation_ids(0))
-            ->SetWhileCallInstruction(instruction.get());
       }
 
       for (const int64_t operand_id : proto.operand_ids()) {
@@ -1275,9 +1314,6 @@ absl::StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
       }
       for (const int64_t computation_id : proto.called_computation_ids()) {
         instruction->AppendComputation(computation_map.at(computation_id));
-      }
-      if (instruction->opcode() == HloOpcode::kWhile) {
-        instruction->while_body()->SetWhileCallInstruction(instruction.get());
       }
 
       TF_RET_CHECK(!proto.has_precision_config())
@@ -1946,8 +1982,6 @@ HloInstruction::CreateAddDependency(HloInstruction* data_operand,
   // Body comes before condition computation in the vector.
   instruction->AppendComputation(body);
   instruction->AppendComputation(condition);
-  // Set back pointer from body computation to the while call instruction.
-  body->SetWhileCallInstruction(instruction.get());
   return instruction;
 }
 
@@ -2316,7 +2350,10 @@ void HloInstruction::SetupDerivedInstruction(
   }
   derived_instruction->set_metadata(*metadata_);
   if (has_rare()) {
+    derived_instruction->set_result_accuracy(result_accuracy());
     derived_instruction->set_frontend_attributes(frontend_attributes());
+    // Offload annotations should not be implicitly derived.
+    derived_instruction->erase_frontend_attribute(kXlaComputeTypeAttr);
     derived_instruction->set_statistics_viz(statistics_viz());
   } else if (derived_instruction->has_rare()) {
     derived_instruction->mutable_rare()->frontend_attributes.Clear();
@@ -2726,10 +2763,6 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
       CHECK_EQ(new_operands.size(), 1);
       clone =
           CreateWhile(shape, while_condition(), while_body(), new_operands[0]);
-      // Repoint the while body back at the original while instruction.
-      // If a context was passed, the body will be cloned and the clone will
-      // point to the copied instruction.
-      while_body()->SetWhileCallInstruction(const_cast<HloInstruction*>(this));
       break;
     case HloOpcode::kConditional:
       CHECK_EQ(new_operands.size(), branch_count() + 1);
@@ -2761,8 +2794,8 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
   }
   // SetupDerivedInstruction will setup the precision_config_ field.
   SetupDerivedInstruction(clone.get());
-  clone->set_parent(parent_);
   clone->backend_config_ = BackendConfigWrapper(backend_config_);
+  clone->set_frontend_attributes(frontend_attributes());
   // The new instruction's name will be uniquified when it's added to a
   // computation.
   clone->SetAndSanitizeName(name());
@@ -2773,9 +2806,6 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
                  ? context->module()->DeepCloneComputation(callee, context)
                  : callee;
     });
-    if (opcode() == HloOpcode::kWhile) {
-      clone->while_body()->SetWhileCallInstruction(clone.get());
-    }
   }
 
   if (!suffix.empty()) {
@@ -2996,6 +3026,9 @@ bool HloInstruction::IdenticalInternal(
     return false;
   }
   if (operands().size() != other.operands().size()) {
+    return false;
+  }
+  if (!equal_result_accuracy(&other)) {
     return false;
   }
 
@@ -3514,7 +3547,7 @@ void HloInstruction::set_to_apply(HloComputation* computation) {
   if (has_to_apply()) {
     CHECK_EQ(called_computations().size(), 1)
         << "Expected a to_apply computation for " << opcode();
-    rare_->called_computations[0] = computation;
+    set_called_computation(0, computation);
     return;
   }
   LOG(FATAL) << "Invalid opcode for to_apply(): " << opcode();
@@ -3553,12 +3586,12 @@ HloComputation* HloInstruction::while_body() const {
 
 void HloInstruction::set_while_condition(HloComputation* computation) {
   CHECK_EQ(HloOpcode::kWhile, opcode_);
-  rare_->called_computations[kConditionComputationIndex] = computation;
+  set_called_computation(kConditionComputationIndex, computation);
 }
 
 void HloInstruction::set_while_body(HloComputation* computation) {
   CHECK_EQ(HloOpcode::kWhile, opcode_);
-  rare_->called_computations[kBodyComputationIndex] = computation;
+  set_called_computation(kBodyComputationIndex, computation);
 }
 
 HloInstruction* HloInstruction::while_init() const {
@@ -3610,7 +3643,7 @@ int32_t HloInstruction::branch_index(HloComputation* computation) const {
 void HloInstruction::set_branch_computation(int b,
                                             HloComputation* computation) {
   CHECK_EQ(HloOpcode::kConditional, opcode_);
-  rare_->called_computations[b] = computation;
+  set_called_computation(b, computation);
 }
 
 std::string HloInstruction::SignatureString() const {
@@ -3708,7 +3741,9 @@ std::string HloInstruction::ToString(const HloPrintOptions& options) const {
 }
 
 std::string HloInstruction::ToString() const {
-  return ToString(HloPrintOptions::Default());
+  HloPrintOptions options = HloPrintOptions::Default();
+  options.set_print_large_constants(false);
+  return ToString(options);
 }
 
 bool HloInstruction::IsOpElementwise(HloOpcode opcode) {
@@ -3883,9 +3918,10 @@ void HloInstruction::PrintWithCanonicalNameMap(
   }
 
   if (options.print_metadata() &&
-      (!metadata_->op_type().empty() || !metadata_->op_name().empty() ||
-       !metadata_->source_file().empty() ||
-       !metadata_->scheduling_name().empty())) {
+      (metadata_ != nullptr &&
+       (!metadata_->op_type().empty() || !metadata_->op_name().empty() ||
+        !metadata_->source_file().empty() ||
+        !metadata_->scheduling_name().empty()))) {
     printer->Append(", metadata={");
     printer->Append(xla::OpMetadataToString(
         *metadata_, options.print_metadata_only_op_name()));
@@ -4897,7 +4933,7 @@ static UseKind OperandElementUse(const HloInstruction& instr,
                                                 *instr.fused_expression_root());
     case HloOpcode::kDot:
       // Matrix-vector dots do not reuse the matrix operand.
-      if (instr.shape().dimensions_size() <= 1) {
+      if (instr.shape().rank() <= 1) {
         if ((operand_num == 0 && instr.operand(1)->shape().rank() <= 1) ||
             (operand_num == 1 && instr.operand(0)->shape().rank() <= 1)) {
           return UseKind::kUse;

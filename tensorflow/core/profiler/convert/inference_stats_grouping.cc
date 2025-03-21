@@ -24,9 +24,10 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "xla/tsl/lib/gtl/map_util.h"
+#include "xla/tsl/profiler/utils/math_utils.h"
 #include "xla/tsl/profiler/utils/timespan.h"
-#include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/profiler/protobuf/inference_stats.pb.h"
+#include "tsl/platform/protobuf.h"
 
 namespace tensorflow::profiler {
 
@@ -159,7 +160,7 @@ bool CompareByDuration(const DataType* a, const DataType* b) {
 template <typename DataType>
 void RegroupDataByModelId(
     const ModelIdDatabase& model_id_db,
-    const std::vector<const protobuf::RepeatedPtrField<DataType>*>&
+    const std::vector<const tsl::protobuf::RepeatedPtrField<DataType>*>&
         data_by_host,
     std::vector<std::vector<const DataType*>>* data_by_model_id) {
   // First group data by model_id and host.
@@ -177,7 +178,7 @@ void RegroupDataByModelId(
   }
 
   int32_t host_index = 0;
-  for (const protobuf::RepeatedPtrField<DataType>* single_host_data :
+  for (const tsl::protobuf::RepeatedPtrField<DataType>* single_host_data :
        data_by_host) {
     for (const DataType& data : *single_host_data) {
       int model_index = no_model_id ? 0 : data.model_id_index();
@@ -317,6 +318,7 @@ void AggregateBatch(const BatchDetail& input, BatchDetail* result) {
   result->set_padding_amount(result->padding_amount() + input.padding_amount());
   result->set_batch_size_after_padding(result->batch_size_after_padding() +
                                        input.batch_size_after_padding());
+  result->set_device_time_ps(result->device_time_ps() + input.device_time_ps());
 }
 
 BatchDetail GetAverageBatchDetails(const BatchDetail& batch, int64_t size) {
@@ -330,12 +332,14 @@ BatchDetail GetAverageBatchDetails(const BatchDetail& batch, int64_t size) {
   result.set_batch_delay_ps(batch.batch_delay_ps() / size);
   result.set_padding_amount(batch.padding_amount() / size);
   result.set_batch_size_after_padding(batch.batch_size_after_padding() / size);
+  result.set_device_time_ps(batch.device_time_ps() / size);
   return result;
 }
 
 void AggregatePerModelInferenceStats(InferenceStats* inference_stats) {
   for (auto& [model_index, per_model_stats] :
        *inference_stats->mutable_inference_stats_per_model()) {
+    // TODO: remove batch size aggregation from request table.
     absl::flat_hash_map<int /*batch_id*/, const BatchDetail*> batch_id_to_batch;
     for (const BatchDetail& b : per_model_stats.batch_details()) {
       batch_id_to_batch[b.batch_id()] = &b;
@@ -356,14 +360,16 @@ void AggregatePerModelInferenceStats(InferenceStats* inference_stats) {
     for (const RequestDetail& r : per_model_stats.request_details()) {
       // Aggregate all data.
       AggregateRequest(r, &aggregated_r);
-      // Aggregate per batch size for request included in only one batch.
-      if (r.related_batch_ids_size() != 1) continue;
-      if (const BatchDetail* batch = ::tsl::gtl::FindPtrOrNull(
-              batch_id_to_batch, r.related_batch_ids(0))) {
-        int batch_size = batch->batch_size_after_padding();
-        auto& info = per_batch_size_info[batch_size];
-        AggregateRequest(r, info.result.mutable_aggregated_request_result());
-        info.request_count++;
+      // Aggregate per batch size.
+      // TODO: remove batch size aggregation from request table.
+      for (const auto batch_id : r.related_batch_ids()) {
+        if (const BatchDetail* batch =
+                ::tsl::gtl::FindPtrOrNull(batch_id_to_batch, batch_id)) {
+          int batch_size = batch->batch_size_after_padding();
+          auto& info = per_batch_size_info[batch_size];
+          AggregateRequest(r, info.result.mutable_aggregated_request_result());
+          info.request_count++;
+        }
       }
     }
 
@@ -412,7 +418,7 @@ void RegroupInferenceStatsByModel(InferenceStats* inference_stats) {
   if (inference_stats->inference_stats_per_host().empty()) {
     return;
   }
-  std::vector<const protobuf::RepeatedPtrField<RequestDetail>*>
+  std::vector<const tsl::protobuf::RepeatedPtrField<RequestDetail>*>
       all_requests_by_host;
   for (const auto& [host_id, per_host_inference_stats] :
        inference_stats->inference_stats_per_host()) {
@@ -422,7 +428,7 @@ void RegroupInferenceStatsByModel(InferenceStats* inference_stats) {
   RegroupDataByModelId(inference_stats->model_id_db(), all_requests_by_host,
                        &requests_by_model_id);
 
-  std::vector<const protobuf::RepeatedPtrField<BatchDetail>*>
+  std::vector<const tsl::protobuf::RepeatedPtrField<BatchDetail>*>
       all_batches_by_host;
   for (const auto& [host_id, per_host_inference_stats] :
        inference_stats->inference_stats_per_host()) {

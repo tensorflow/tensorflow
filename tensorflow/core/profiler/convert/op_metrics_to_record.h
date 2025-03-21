@@ -21,11 +21,10 @@ limitations under the License.
 #include <vector>
 
 #include "absl/strings/string_view.h"
-#include "xla/tsl/profiler/utils/device_utils.h"
+#include "xla/tsl/profiler/utils/math_utils.h"
 #include "tensorflow/core/profiler/protobuf/hardware_types.pb.h"
 #include "tensorflow/core/profiler/protobuf/op_metrics.pb.h"
 #include "tensorflow/core/profiler/protobuf/op_stats.pb.h"
-#include "tensorflow/core/profiler/utils/math_utils.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -97,12 +96,12 @@ template <typename Record>
 inline void SetExecutionTimes(const OpMetrics& metrics, Record* record) {
   record->set_occurrences(metrics.occurrences());
   record->set_total_time_in_us(tsl::profiler::PicoToMicro(metrics.time_ps()));
-  record->set_avg_time_in_us(
-      SafeDivide(record->total_time_in_us(), metrics.occurrences()));
+  record->set_avg_time_in_us(tsl::profiler::SafeDivide(
+      record->total_time_in_us(), metrics.occurrences()));
   record->set_total_self_time_in_us(
       tsl::profiler::PicoToMicro(metrics.self_time_ps()));
-  record->set_avg_self_time_in_us(
-      SafeDivide(record->total_self_time_in_us(), metrics.occurrences()));
+  record->set_avg_self_time_in_us(tsl::profiler::SafeDivide(
+      record->total_self_time_in_us(), metrics.occurrences()));
 }
 
 template <typename Record>
@@ -115,8 +114,8 @@ template <typename Record>
 inline void SetRankAndTimeFractions(double total_time_us,
                                     const Record& prev_record, Record* record) {
   record->set_rank(prev_record.rank() + 1);
-  record->set_total_self_time_as_fraction(
-      SafeDivide(record->total_self_time_in_us(), total_time_us));
+  record->set_total_self_time_as_fraction(tsl::profiler::SafeDivide(
+      record->total_self_time_in_us(), total_time_us));
   record->set_cumulative_total_self_time_as_fraction(
       prev_record.cumulative_total_self_time_as_fraction() +
       record->total_self_time_as_fraction());
@@ -127,8 +126,8 @@ inline void SetRankAndDeviceTimeFractions(double total_time_us,
                                           const Record& prev_record,
                                           Record* record) {
   record->set_rank(prev_record.rank() + 1);
-  record->set_device_total_self_time_as_fraction(
-      SafeDivide(record->total_self_time_in_us(), total_time_us));
+  record->set_device_total_self_time_as_fraction(tsl::profiler::SafeDivide(
+      record->total_self_time_in_us(), total_time_us));
   record->set_device_cumulative_total_self_time_as_fraction(
       prev_record.device_cumulative_total_self_time_as_fraction() +
       record->device_total_self_time_as_fraction());
@@ -139,8 +138,8 @@ inline void SetRankAndHostTimeFractions(double total_time_us,
                                         const Record& prev_record,
                                         Record* record) {
   record->set_rank(prev_record.rank() + 1);
-  record->set_host_total_self_time_as_fraction(
-      SafeDivide(record->total_self_time_in_us(), total_time_us));
+  record->set_host_total_self_time_as_fraction(tsl::profiler::SafeDivide(
+      record->total_self_time_in_us(), total_time_us));
   record->set_host_cumulative_total_self_time_as_fraction(
       prev_record.host_cumulative_total_self_time_as_fraction() +
       record->host_total_self_time_as_fraction());
@@ -161,7 +160,6 @@ inline void SetRooflineMetrics(const OpMetrics& metrics, const PerfEnv perf_env,
                                const RunEnvironment& run_env, Record* record) {
   using ::tensorflow::profiler::MemorySpace;
   using ::tensorflow::profiler::PerformanceInfo;
-  using ::tensorflow::profiler::PicoToNano;
 
   // Set overall performance metrics.
   record->set_measured_flop_rate(GigaFlopsPerSecondPerCore(metrics));
@@ -246,15 +244,15 @@ inline void SetRooflineMetrics(const OpMetrics& metrics, const PerfEnv perf_env,
   double peak_flops =
       tsl::profiler::TeraToGiga(perf_env.peak_tera_flops_per_second());
   double flops_utilization =
-      SafeDivide(record->measured_flop_rate(), peak_flops);
+      tsl::profiler::SafeDivide(record->measured_flop_rate(), peak_flops);
   if (bottleneck_utilization < flops_utilization) {
     bottleneck_resource = kCompute;
     bottleneck_utilization = flops_utilization;
     bottleneck_operational_intensity = record->operational_intensity();
   }
   double peak_hbm_bw = GetMemoryPeakBandwidth(perf_env, 0);
-  double hbm_bw_utilization =
-      SafeDivide(record->hbm_bw(), tsl::profiler::GigaToGibi(peak_hbm_bw));
+  double hbm_bw_utilization = tsl::profiler::SafeDivide(
+      record->hbm_bw(), tsl::profiler::GigaToGibi(peak_hbm_bw));
   if (bottleneck_utilization < hbm_bw_utilization) {
     bottleneck_resource = kHbm;
     bottleneck_utilization = hbm_bw_utilization;
@@ -265,9 +263,9 @@ inline void SetRooflineMetrics(const OpMetrics& metrics, const PerfEnv perf_env,
     if (cmem_read_bytes) {
       double peak_cmem_read_bw = GetMemoryPeakBandwidth(perf_env, 3);
       if (peak_cmem_read_bw) {
-        double cmem_read_bw_utilization =
-            SafeDivide(record->cmem_read_bw(),
-                       tsl::profiler::GigaToGibi(peak_cmem_read_bw));
+        double cmem_read_bw_utilization = tsl::profiler::SafeDivide(
+            record->cmem_read_bw(),
+            tsl::profiler::GigaToGibi(peak_cmem_read_bw));
         if (bottleneck_utilization < cmem_read_bw_utilization) {
           bottleneck_resource = kCmemRead;
           bottleneck_utilization = cmem_read_bw_utilization;
@@ -279,9 +277,9 @@ inline void SetRooflineMetrics(const OpMetrics& metrics, const PerfEnv perf_env,
     if (cmem_write_bytes) {
       double peak_cmem_write_bw = GetMemoryPeakBandwidth(perf_env, 4);
       if (peak_cmem_write_bw) {
-        double cmem_write_bw_utilization =
-            SafeDivide(record->cmem_write_bw(),
-                       tsl::profiler::GigaToGibi(peak_cmem_write_bw));
+        double cmem_write_bw_utilization = tsl::profiler::SafeDivide(
+            record->cmem_write_bw(),
+            tsl::profiler::GigaToGibi(peak_cmem_write_bw));
         if (bottleneck_utilization < cmem_write_bw_utilization) {
           bottleneck_resource = kCmemWrite;
           bottleneck_utilization = cmem_write_bw_utilization;
@@ -293,9 +291,9 @@ inline void SetRooflineMetrics(const OpMetrics& metrics, const PerfEnv perf_env,
     if (vmem_read_bytes) {
       double peak_vmem_read_bw = GetMemoryPeakBandwidth(perf_env, 5);
       if (peak_vmem_read_bw) {
-        double vmem_read_bw_utilization =
-            SafeDivide(record->vmem_read_bw(),
-                       tsl::profiler::GigaToGibi(peak_vmem_read_bw));
+        double vmem_read_bw_utilization = tsl::profiler::SafeDivide(
+            record->vmem_read_bw(),
+            tsl::profiler::GigaToGibi(peak_vmem_read_bw));
         if (bottleneck_utilization < vmem_read_bw_utilization) {
           bottleneck_resource = kVmemRead;
           bottleneck_utilization = vmem_read_bw_utilization;
@@ -307,9 +305,9 @@ inline void SetRooflineMetrics(const OpMetrics& metrics, const PerfEnv perf_env,
     if (vmem_write_bytes) {
       double peak_vmem_write_bw = GetMemoryPeakBandwidth(perf_env, 6);
       if (peak_vmem_write_bw) {
-        double vmem_write_bw_utilization =
-            SafeDivide(record->vmem_write_bw(),
-                       tsl::profiler::GigaToGibi(peak_vmem_write_bw));
+        double vmem_write_bw_utilization = tsl::profiler::SafeDivide(
+            record->vmem_write_bw(),
+            tsl::profiler::GigaToGibi(peak_vmem_write_bw));
         if (bottleneck_utilization < vmem_write_bw_utilization) {
           bottleneck_resource = kVmemWrite;
           bottleneck_utilization = vmem_write_bw_utilization;
@@ -323,7 +321,7 @@ inline void SetRooflineMetrics(const OpMetrics& metrics, const PerfEnv perf_env,
     double peak_shm_l1_bw = GetMemoryPeakBandwidth(perf_env, 2);
     if (peak_shm_l1_bw) {
       // Currently, we only have general read/write bandwidth in record.
-      double shm_l1_bw_utilization = SafeDivide(
+      double shm_l1_bw_utilization = tsl::profiler::SafeDivide(
           record->hbm_bw(), tsl::profiler::GigaToGibi(peak_shm_l1_bw));
       if (bottleneck_utilization < shm_l1_bw_utilization) {
         bottleneck_resource = kShmL1;

@@ -71,14 +71,20 @@ absl::StatusOr<KernelDefinition> LlvmIrKernelEmitter::EmitKernelDefinition() {
                                                      std::move(module));
 
   // Convert kernel arguments to fake allocations and buffer uses.
-  KernelSpec::BufferUses buffer_uses;
+  KernelSpec::Buffers argument_buffers;
+  KernelSpec::Buffers result_buffers;
 
   for (const auto& [arg, allocation] : llvm::zip(args_, buffer_allocations_)) {
     BufferAllocation::Slice slice(&allocation, 0, arg.size_bytes);
-    buffer_uses.push_back(BufferUse(slice, arg.memory_access));
+    if (arg.memory_access == BufferUse::MemoryAccess::kRead) {
+      argument_buffers.push_back(slice);
+    } else {
+      result_buffers.push_back(slice);
+    }
   }
 
-  KernelSpec kernel_spec(kernel_name_, thread_dim_, buffer_uses);
+  KernelSpec kernel_spec(kernel_name_, thread_dim_, std::move(argument_buffers),
+                         std::move(result_buffers), /*invariant_arguments=*/{});
   return KernelDefinition(std::move(kernel_spec), std::move(source));
 }
 

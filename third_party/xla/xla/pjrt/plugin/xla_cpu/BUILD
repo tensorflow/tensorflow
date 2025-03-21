@@ -60,6 +60,16 @@ cc_library(
 )
 
 cc_library(
+    name = "cpu_execute_options",
+    srcs = [],
+    hdrs = ["cpu_execute_options.h"],
+    deps = [
+        "//xla/backends/cpu/collectives:cpu_collectives",
+        "//xla/pjrt:pjrt_executable",
+    ],
+)
+
+cc_library(
     name = "cpu_topology_description",
     srcs = ["cpu_topology_description.cc"],
     hdrs = ["cpu_topology_description.h"],
@@ -101,8 +111,8 @@ xla_cc_test(
     deps = [
         ":cpu_topology",
         ":cpu_topology_proto_cc",
+        "//xla/pjrt:pjrt_common",
         "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:protobuf",
-        "@local_tsl//tsl/platform:test",
     ],
 )

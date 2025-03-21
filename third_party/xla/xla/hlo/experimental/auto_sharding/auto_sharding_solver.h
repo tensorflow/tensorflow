@@ -42,6 +42,9 @@ struct AutoShardingSolverOutput {
 AutoShardingSolverRequest ScaleRequest(
     const AutoShardingSolverRequest& request);
 
+// Determines the minimum memory budget required to avoid memory violations.
+double MinimumMemoryBudgetRequired(const AutoShardingSolverRequest& request);
+
 absl::StatusOr<AutoShardingSolverOutput> FormulateAndSolveMIPFromSolverRequest(
     const AutoShardingSolverRequest& request);
 

@@ -1030,6 +1030,7 @@ cc_library(
     deps = [
         "//tensorflow/core:mobile_additional_lib_deps",
         "//tensorflow/core/platform:resource",
+        "//tensorflow/core/public:release_version",
         "//tensorflow/core/util:stats_calculator_portable",
     ] + tf_portable_proto_lib() + tf_portable_deps_no_runtime(),
     alwayslink = 1,
@@ -1136,7 +1137,7 @@ cc_library(
         "//tensorflow/core/util:android_test_hdrs",
     ],
     copts = tf_copts(android_optimization_level_override = None) + if_ios(["-Os"]),
-    features = tf_features_nomodules_if_mobile() + tf_opts_nortti_if_lite_protos(),
+    features = tf_features_nomodules_if_mobile() + tf_opts_nortti_if_lite_protos() + if_android(["-layering_check"]),
     tags = [
         "manual",
         "notap",
@@ -1600,6 +1601,7 @@ filegroup(
         "//tensorflow/core/framework:op_segment.h",
         "//tensorflow/core/framework:ref_var.h",
         "//tensorflow/core/framework:rendezvous.h",  # only needed for tests
+        "//tensorflow/core/framework:resource_base.h",  # only needed for tests
         "//tensorflow/core/framework:resource_var.h",
         "//tensorflow/core/framework:run_handler.h",
         "//tensorflow/core/framework:run_handler_util.h",
@@ -1642,6 +1644,8 @@ cc_header_only_library(
     extra_deps = [
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
     ],
     deps = [
         ":lib",
@@ -1706,6 +1710,7 @@ tf_cuda_library(
         "//tensorflow/core/profiler/lib:annotated_traceme",
         "//tensorflow/core/profiler/lib:scoped_memory_debug_annotation",
         "//tensorflow/core/profiler/lib:traceme",
+        "//tensorflow/core/public:release_version",
         "//tensorflow/core/util:determinism",
         "//tensorflow/core/util:einsum_op_util",
         "//tensorflow/core/util:managed_stack_trace",
@@ -1786,6 +1791,7 @@ tf_cuda_library(
     name = "graph",
     srcs = ["//tensorflow/core/graph:graph_srcs"],
     hdrs = ["//tensorflow/core/graph:graph_headers"],
+    visibility = ["//visibility:public"],
     deps = [
         ":framework",
         ":framework_internal",
@@ -1817,6 +1823,12 @@ tf_cuda_library(
         "//tensorflow/core/public:session.h",
     ],
     copts = tf_copts(),
+    visibility = [
+        ":dependency_allowlist",
+        "//learning/gemini/gemax/core/models/gemini3/vision/vision_decoder:__pkg__",
+        "//tensorflow:internal",
+        "//tensorflow_models:__subpackages__",
+    ],
     deps = ["//tensorflow/core/common_runtime:core_cpu_base_no_ops"] + if_static([
         ":function_ops_op_lib",
         ":functional_grad",
@@ -1832,6 +1844,7 @@ alias(
     name = "core_cpu_lib",
     actual =
         "//tensorflow/core/common_runtime:core_cpu_lib",
+    visibility = ["//visibility:public"],
 )
 
 alias(
@@ -2028,6 +2041,7 @@ filegroup(
         "//tensorflow/core/lib/gif/testdata:gif_testdata",
         # BMP data
         "//tensorflow/core/lib/bmp:bmp_testdata",
+        "//tensorflow/core/lib/webp:testdata",
     ],
     visibility = ["//visibility:public"],
 )

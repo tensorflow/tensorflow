@@ -91,7 +91,7 @@ def _create_device_array(shape, device_type, host_id, local_device_ids=None):
   # User can specify local_device_ids or use default list for multi host.
   num_local_devices = len(local_device_list)
   local_device_ids = [
-      x + host_id * num_local_devices for x in range(num_local_devices)
+      x + host_id * num_local_devices for x in range(num_local_devices)  # pytype: disable=unsupported-operands
   ] if not local_device_ids else local_device_ids
 
   return global_device_ids, local_device_ids, local_device_list

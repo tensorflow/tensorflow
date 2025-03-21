@@ -356,7 +356,7 @@ void RegisterTransferServerTypes(nanobind::module_& m) {
           }
           auto arr = xla::ValueOrThrow(xla::ifrt::PjRtArray::Create(
               ifrt_client, avals[i].dtype, avals[i].shape, avals[i].sharding,
-              std::move(buffers)));
+              std::move(buffers), avals[i].layout));
           out.push_back(xla::PyArray::MakeFromIfrtArrayAndSharding(
               py_client, traceback, std::move(arr), shardings[i], false, true,
               /*skip_checks=*/false));

@@ -118,7 +118,7 @@ TEST(ExampleConversionImplTest, LegalizeAddSimpleResult) {
   add_opts.fused_activation_function = tflite::ActivationFunctionType_NONE;
   internal::TflOptions tfl_opts;
   tfl_opts.Set(std::move(add_opts));
-  detail::SetTflOptions(op, std::move(tfl_opts));
+  litert::internal::SetTflOptions(op, std::move(tfl_opts));
 
   ExampleTensorAllocator tensor_alloc;
   ExampleOpAllocator op_alloc;
@@ -171,7 +171,7 @@ TEST(ExampleConversionImplTest, LegalizeAddGeneralResult) {
   add_opts.fused_activation_function = tflite::ActivationFunctionType_RELU;
   internal::TflOptions tfl_opts;
   tfl_opts.Set(std::move(add_opts));
-  detail::SetTflOptions(op, std::move(tfl_opts));
+  litert::internal::SetTflOptions(op, std::move(tfl_opts));
 
   ExampleTensorAllocator tensor_alloc;
   ExampleOpAllocator op_alloc;

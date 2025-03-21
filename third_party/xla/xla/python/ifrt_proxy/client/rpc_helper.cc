@@ -39,9 +39,9 @@
 #include "xla/python/ifrt_proxy/common/prof_util.h"
 #include "xla/python/ifrt_proxy/common/test_utils.h"
 #include "xla/python/ifrt_proxy/common/types.h"
-#include "tsl/platform/env.h"
-#include "tsl/platform/status_to_from_proto.h"
-#include "tsl/platform/threadpool.h"
+#include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/status_to_from_proto.h"
+#include "xla/tsl/platform/threadpool.h"
 #include "tsl/profiler/lib/traceme.h"
 
 namespace xla {
@@ -322,6 +322,7 @@ RPC(GetDefaultDeviceAssignment, get_default_device_assignment);
 RPC(CheckFuture, check_future);
 RPC(CheckValueReady, check_value_ready);
 RPC(MakeArrayFromHostBuffer, make_array_from_host_buffer);
+RPC(MakeArraysFromHostBufferShards, make_arrays_from_host_buffer_shards);
 RPC(AssembleArrayFromSingleDeviceArrays,
     assemble_array_from_single_device_arrays);
 RPC(RemapArrays, remap_arrays);

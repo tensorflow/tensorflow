@@ -269,9 +269,10 @@ LogicalResult ApplyIndexingOp::verify() {
   auto affine_map = getIndexingMapAttr().getIndexingMap().GetAffineMap();
   unsigned num_variables = affine_map.getNumDims() + affine_map.getNumSymbols();
   if (getOperands().size() != num_variables) {
-    return emitOpError(
-        "operand count must match the number of dimensions and symbols in the "
-        "affine map");
+    return emitOpError(absl::StrCat(
+        "operand count ", getOperands().size(),
+        " does not match the sum of dimensions ", affine_map.getNumDims(),
+        " and symbols ", affine_map.getNumSymbols(), " in the affine map"));
   }
   if (!getIndexingMap().GetConstraints().empty()) {
     return emitOpError("apply indexing op cannot have any constraints");

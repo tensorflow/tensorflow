@@ -271,15 +271,6 @@ class InterpreterLiteralWrapperBuffer final : public PjRtBuffer {
                   "called but is not implemented.";
   }
 
-  void CopyToRemoteDeviceScattered(
-      PjRtFuture<std::vector<std::string>> serialized_descriptors,
-      std::vector<RemoteSendCallback> callbacks,
-      const ScatterDetails& scatter_details) override {
-    LOG(ERROR)
-        << "InterpreterLiteralWrapperBuffer::CopyToRemoteDeviceScattered "
-           "was called but is not implemented.";
-  }
-
   PjRtFuture<> GetReadyFuture() override {
     return PjRtFuture<>(absl::OkStatus());
   }
@@ -462,10 +453,10 @@ class InterpreterClient final : public PjRtClient {
     return std::make_unique<HloCostAnalysis>(ShapeSizeBytes);
   }
 
-  absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> Compile(
+  absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> CompileAndLoad(
       const XlaComputation& computation, CompileOptions options) override;
 
-  absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> Compile(
+  absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> CompileAndLoad(
       mlir::ModuleOp module, CompileOptions options) override;
 
   absl::StatusOr<std::unique_ptr<PjRtBuffer>> BufferFromHostLiteral(

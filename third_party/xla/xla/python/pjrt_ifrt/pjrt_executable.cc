@@ -33,11 +33,13 @@ limitations under the License.
 #include "mlir/IR/BuiltinOps.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/hlo/translate/mhlo_to_hlo/type_to_shape.h"
+#include "xla/layout.h"
 #include "xla/pjrt/host_callback.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/pjrt_future.h"
+#include "xla/pjrt/pjrt_layout.h"
 #include "xla/primitive_util.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/basic_device_list.h"
@@ -256,9 +258,9 @@ absl::StatusOr<std::unique_ptr<LoadedExecutable>> PjRtLoadedExecutable::Create(
       (build_options.use_auto_spmd_partitioning() ||
        build_options.any_allow_spmd_sharding_propagation_to_parameters() ||
        build_options.any_allow_spmd_sharding_propagation_to_output());
-  TF_ASSIGN_OR_RETURN(
-      auto pjrt_loaded_executable,
-      client->pjrt_client()->Compile(module, std::move(compile_options)));
+  TF_ASSIGN_OR_RETURN(auto pjrt_loaded_executable,
+                      client->pjrt_client()->CompileAndLoad(
+                          module, std::move(compile_options)));
 
   if (auto_spmd_partitioning) {
     // TODO(hyeontaek): Use a full shape and a sharding rather than a per-shard
@@ -327,10 +329,10 @@ PjRtLoadedExecutable::CreateInternal(
     TF_ASSIGN_OR_RETURN(Device * ifrt_device, client->LookupPjRtDevice(device));
     ds.push_back(ifrt_device);
   }
-  tsl::RCReference<DeviceList> devices = BasicDeviceList::Create(std::move(ds));
+  DeviceListRef devices = BasicDeviceList::Create(std::move(ds));
   // Devices used for constructing output shardings. A fake one will be used for
   // a portable executable.
-  std::optional<tsl::RCReference<DeviceList>> sharding_devices;
+  std::optional<DeviceListRef> sharding_devices;
   if (devices->devices().empty()) {
     sharding_devices =
         BasicDeviceList::Create({client->addressable_devices().front()});
@@ -468,8 +470,7 @@ PjRtLoadedExecutable::CreateInternal(
 PjRtLoadedExecutable::PjRtLoadedExecutable(
     PjRtCompatibleClient* client,
     std::shared_ptr<xla::PjRtLoadedExecutable> pjrt_loaded_executable,
-    tsl::RCReference<DeviceList> devices,
-    std::vector<Device*> addressable_devices,
+    DeviceListRef devices, std::vector<Device*> addressable_devices,
     std::vector<tsl::RCReference<LoadedHostCallback>> all_loaded_host_callbacks,
     std::vector<PjRtHostSendAndRecvLoadedHostCallback*>
         host_send_recv_callbacks,
@@ -490,9 +491,9 @@ PjRtLoadedExecutable::PjRtLoadedExecutable(
 PjRtLoadedExecutable::~PjRtLoadedExecutable() = default;
 
 absl::StatusOr<PjRtLoadedExecutable::ExecuteResult>
-PjRtLoadedExecutable::Execute(
-    absl::Span<tsl::RCReference<Array>> args, const ExecuteOptions& options,
-    std::optional<tsl::RCReference<DeviceList>> devices) {
+PjRtLoadedExecutable::Execute(absl::Span<tsl::RCReference<Array>> args,
+                              const ExecuteOptions& options,
+                              std::optional<DeviceListRef> devices) {
   DCHECK(this);
   // TODO(hyeontaek): Check input sharding consistency.
 
@@ -540,9 +541,6 @@ PjRtLoadedExecutable::Execute(
     }
   }
 
-  const bool returned_future_supported =
-      pjrt_loaded_executable_->IsReturnedFutureSupported();
-
   xla::ExecuteOptions opts;
   opts.untuple_result = true;
   opts.launch_id = options.launch_id;
@@ -556,13 +554,6 @@ PjRtLoadedExecutable::Execute(
       platform_id == RocmId() || platform_id == SyclId()) {
     CHECK_OK(context->ffi_context().Insert(all_loaded_host_callbacks_.get()));
     opts.context = context.get();
-  }
-
-  if (!all_loaded_host_callbacks_->empty() && !returned_future_supported) {
-    return Internal(
-        "Host callback not supported without returned future support in "
-        "runtime: %s",
-        client_->runtime_type());
   }
 
   // When using host callbacks on CPU, we need to use synchronous dispatch to
@@ -604,29 +595,19 @@ PjRtLoadedExecutable::Execute(
         pjrt_loaded_executable_->ExecutePortable(
             argument_handles.front(), portable_execution_device->pjrt_device(),
             opts, returned_pjrt_future,
-            /*fill_future=*/returned_future_supported));
+            /*fill_future=*/true));
 
     pjrt_outputs.push_back(std::move(single_device_pjrt_results));
-    if (returned_future_supported) {
-      status = *std::move(returned_pjrt_future);
-    } else {
-      status = Future<>(absl::OkStatus());
-    }
+    status = *std::move(returned_pjrt_future);
   } else {
     std::optional<std::vector<PjRtFuture<>>> returned_pjrt_futures;
-    if (returned_future_supported) {
-      returned_pjrt_futures.emplace();
-    }
+    returned_pjrt_futures.emplace();
 
     TF_ASSIGN_OR_RETURN(
         pjrt_outputs, pjrt_loaded_executable_->Execute(argument_handles, opts,
                                                        returned_pjrt_futures));
 
-    if (returned_future_supported) {
-      status = JoinFutures(absl::MakeSpan(*returned_pjrt_futures));
-    } else {
-      status = Future<>(absl::OkStatus());
-    }
+    status = JoinFutures(absl::MakeSpan(*returned_pjrt_futures));
   }
 
   if (!all_loaded_host_callbacks_->empty()) {
@@ -659,6 +640,40 @@ PjRtLoadedExecutable::Execute(
   // memory_kind shares the same Sharding object.
   absl::flat_hash_map<MemoryKind, std::shared_ptr<const Sharding>>
       single_device_shardings;
+
+  // TODO(emilyaf): Simplify the handling of layouts here when they're plumbed
+  // through from JAX.
+  std::vector<std::shared_ptr<const xla::PjRtLayout>> layouts;
+  layouts.reserve(num_outputs);
+  if (!pjrt_outputs.empty()) {
+    for (int i = 0; i < num_outputs; ++i) {
+      auto layout = output_dtypes_[i].kind() == xla::ifrt::DType::kToken
+                        ? std::make_shared<xla::PjRtLayout>(xla::Layout())
+                        : pjrt_outputs.front()[i]->layout();
+      layouts.push_back(std::move(layout));
+    }
+  } else {
+    auto maybe_layouts = GetOutputLayouts();
+    if (absl::IsUnimplemented(maybe_layouts.status())) {
+      for (int i = 0; i < num_outputs; ++i) {
+        std::shared_ptr<const xla::PjRtLayout> layout;
+        if (output_dtypes_[i].kind() == xla::ifrt::DType::kToken) {
+          layout = std::make_shared<xla::PjRtLayout>(xla::Layout());
+        } else {
+          TF_ASSIGN_OR_RETURN(layout,
+                              client_->GetDefaultLayout(
+                                  output_dtypes_[i], output_shapes_[i].dims(),
+                                  devices_->devices().front(),
+                                  output_shardings_[i]->memory_kind()));
+        }
+        layouts.push_back(std::move(layout));
+      }
+    } else {
+      TF_RETURN_IF_ERROR(maybe_layouts.status());
+      layouts = *std::move(maybe_layouts);
+    }
+  }
+
   for (int i = 0; i < num_outputs; ++i) {
     PjRtArray::PjRtBuffers buffers;
     buffers.reserve(num_computations);
@@ -699,9 +714,9 @@ PjRtLoadedExecutable::Execute(
     } else {
       sharding = output_shardings_[i];
     }
-    outputs.push_back(*PjRtArray::Create(client_, output_dtypes_[i],
-                                         output_shapes_[i], std::move(sharding),
-                                         std::move(buffers)));
+    outputs.push_back(*PjRtArray::Create(
+        client_, output_dtypes_[i], output_shapes_[i], std::move(sharding),
+        std::move(buffers), std::move(layouts[i])));
   }
 
   ExecuteResult result;

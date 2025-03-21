@@ -20,8 +20,10 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/log/log.h"
+#include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/ir/hlo_print_options.h"
 #include "xla/hlo/testlib/filecheck.h"
 #include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/hlo/utils/hlo_matchers.h"
@@ -688,7 +690,7 @@ ENTRY %main.0 (Arg_0.0: s64[2]) -> s64[2] {
   const char* const expected = R"(
   // CHECK:               ENTRY %main.3 (Arg_0.1: s64[2]) -> s64[2] {
   // CHECK-NEXT:            ROOT %Arg_0.1 = s64[2] parameter(0)
-  // CHECK-NEXT{LITERAL}:   %custom-call.2 = () custom-call(s64[2] %Arg_0.1), custom_call_target="xla_ffi_python_cpu_callback",
+  // CHECK-NEXT{LITERAL}:   %custom-call.2 = () custom-call(%Arg_0.1), custom_call_target="xla_ffi_python_cpu_callback",
   // CHECK-SAME{LITERAL}:   operand_layout_constraints={s64[2]{0}}, custom_call_has_side_effect=true, api_version=API_VERSION_TYPED_FFI,
   // CHECK-SAME{LITERAL}:   sharding={{maximal device=0}}
 )";
@@ -751,6 +753,61 @@ TEST_F(ShardyXLATest, WhileShardingOnlyOnFreeVariables) {
   // result that corresponds to parameter(1) is further sharded.
   EXPECT_THAT(whileInst, op::Sharding("{{replicated}, {replicated}, "
                                       "{devices=[4,1]<=[4]}}"));
+}
+
+TEST_F(ShardyXLATest, EmptyResultLayout) {
+  const char* const hloString = R"(
+    HloModule pjit_f_, entry_computation_layout={(s64[2,2,2]{2,1,0})->()}, num_partitions=2, frontend_attributes={xla.sdy.meshes="{maximal_mesh_0 = #sdy.mesh<[], device_ids=[0]>, mesh = #sdy.mesh<[\"x\"=2]>}"}
+
+    ENTRY %main.5 (Arg_0.1: s64[2,2,2]) -> () {
+      %Arg_0.0 = s64[2,2,2]{2,1,0} parameter(0), sharding={devices=[2,1,1]<=[2]}, metadata={op_name="x"}
+      ROOT %tuple.0 = () tuple()
+    })";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(hloString));
+  runShardyWithSdyImport(module.get());
+
+  EXPECT_EQ(module.get()->entry_computation_layout().ToString(),
+            "(s64[2,2,2]{2,1,0})->()");
+}
+
+TEST_F(ShardyXLATest, EmptyOperandLayout) {
+  const char* const hloString = R"(
+    HloModule pjit_f_, entry_computation_layout={()->s64[2,2]{1,0}}, num_partitions=2, frontend_attributes={xla.sdy.meshes="{maximal_mesh_0 = #sdy.mesh<[], device_ids=[0]>, mesh = #sdy.mesh<[\"x\"=2]>}"}
+
+    ENTRY %main.5 () -> s64[2,2] {
+      ROOT %constant = s64[2,2]{1,0} constant({{1,1},{1,1}})
+    })";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(hloString));
+  runShardyWithSdyImport(module.get());
+
+  EXPECT_EQ(module.get()->entry_computation_layout().ToString(),
+            "()->s64[2,2]{1,0}");
+}
+
+TEST_F(ShardyXLATest, RaggedDotMode1) {
+  const char* const hloString = R"(
+  HloModule ragged_dot, allow_spmd_sharding_propagation_to_parameters={true,true,true}, allow_spmd_sharding_propagation_to_output={true}, frontend_attributes={xla.sdy.meshes="{mesh = #sdy.mesh<[\"a\"=2, \"b\"=2, \"c\"=2]>}"}
+    ENTRY entry {
+      p0 = f32[16,32,64] parameter(0), frontend_attributes={xla.sdy.sharding="#sdy.sharding<@mesh, [{\"a\", ?}, {\"b\", ?}, {\"c\", ?}]>"}
+      p1 = f32[4,16,64,8] parameter(1)
+      p2 = s32[16,4] parameter(2)
+      ROOT ragged-dot = f32[16,32,8] ragged-dot(p0, p1, p2), lhs_batch_dims={0}, rhs_batch_dims={1}, lhs_contracting_dims={2}, rhs_contracting_dims={2}, lhs_ragged_dims={1}, rhs_group_dims={0}
+    })";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(hloString));
+  runShardyWithSdyImport(module.get());
+
+  HloComputation* entry = module->entry_computation();
+  EXPECT_THAT(
+      entry->parameter_instruction(1),
+      op::Sharding(
+          "{devices=[1,2,2,1,2]<=[2,2,2]T(0,2,1) last_tile_dim_replicate}"));
+  EXPECT_THAT(entry->parameter_instruction(2),
+              op::Sharding("{devices=[2,1,4]<=[8] last_tile_dim_replicate}"));
+  EXPECT_THAT(entry->root_instruction(),
+              op::Sharding("{devices=[2,2,1,2]<=[8] last_tile_dim_replicate}"));
 }
 
 }  // namespace sdy

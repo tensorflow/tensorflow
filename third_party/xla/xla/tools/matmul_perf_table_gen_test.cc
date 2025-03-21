@@ -120,8 +120,8 @@ TEST_F(MatmulPerfTableGenTest, SweepSpaceSavesOperands) {
 
 TEST_F(MatmulPerfTableGenTest, SweepSpaceSavesFlops) {
   MatmulPerfTableGen::Config cfg;
-  cfg.b_spec.start = 1;
-  cfg.b_spec.stop = 1;
+  cfg.b_spec.start = 2;
+  cfg.b_spec.stop = 2;
   cfg.b_spec.step = 1;
   cfg.k_spec.start = 8;
   cfg.k_spec.stop = 8;
@@ -141,9 +141,10 @@ TEST_F(MatmulPerfTableGenTest, SweepSpaceSavesFlops) {
 
   EXPECT_EQ(profiles.entries_size(), 1);
   EXPECT_EQ(profiles.entries().begin()->second.entries_size(), 1);
-  // m = 8, n = 3, k = 7 => # flops = 2 * 8 * 3 * 7 = 336.
-  // with a dry run on, t = 42ns, gflops = 336 / 42 = 8 => flops/s = 8 * 1e9.
-  EXPECT_EQ(profiles.entries().begin()->second.entries(0).flops(), 8 * 1e9);
+  // b = 2, m = 8, n = 3, k = 7 => # flops = 2 * 8 * 3 * 7 * 2 = 672.
+  // with a dry run on, t = 42ns, gflops/s = 672 / 42 = 16 => flops/s = 16 *
+  // 1e9.
+  EXPECT_EQ(profiles.entries().begin()->second.entries(0).flops(), 16 * 1e9);
 }
 
 }  // namespace

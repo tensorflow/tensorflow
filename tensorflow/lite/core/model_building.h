@@ -138,7 +138,7 @@ template <size_t Count>
 //
 // auto [in1, in2] = NewInputs<2>(graph, kTfLiteInt32);
 // Tensor sum = Add(in1, in2);
-// Tensor abs1 = Abs(in1)
+// Tensor abs = Abs(in1)
 // Tensor out = Mul(sum, abs1);
 // MarkOuput(out);
 //

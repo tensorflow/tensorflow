@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/hlo/transforms/collectives/async_collective_creator.h"
 
+#include <cstdint>
 #include <memory>
 #include <string>
 

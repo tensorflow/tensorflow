@@ -16,9 +16,10 @@ limitations under the License.
 
 #include <algorithm>
 #include <cstdlib>
-#include <functional>
+#include <memory>
 #include <optional>
 #include <utility>
+#include <vector>
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"

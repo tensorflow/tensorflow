@@ -55,6 +55,7 @@ using WeightSharingMap =
 namespace {
 
 constexpr char kPluginManufacturer[] = "Qualcomm";
+constexpr LiteRtParamIndex kDefaultPartitionIndex = 0;
 
 // clang-format off
 constexpr std::pair<const char*, QnnHtpDevice_Arch_t> kPluginSocModels[] = {
@@ -235,7 +236,25 @@ LiteRtStatus LiteRtCompiledResultNumByteCodeModules(
 //
 
 // Plugins can hold state.
-struct LiteRtCompilerPluginT {};
+struct LiteRtCompilerPluginT {
+  // A "key-only" flag will have an empty string as the value.
+  using Flag = std::pair<std::string, std::string>;
+  std::vector<Flag> flags;
+};
+
+LiteRtStatus LiteRtCompilerPluginSetFlags(LiteRtCompilerPlugin compiler_plugin,
+                                          LiteRtParamIndex num_flags,
+                                          const char** keys,
+                                          const char** values) {
+  auto& flags = compiler_plugin->flags;
+  flags.resize(num_flags);
+  for (int i = 0; i < num_flags; ++i) {
+    auto& flag = flags[i];
+    flag.first = std::string(keys[i]);
+    flag.second = std::string(values[i]);
+  }
+  return kLiteRtStatusOk;
+}
 
 LiteRtStatus LiteRtCreateCompilerPlugin(LiteRtCompilerPlugin* compiler_plugin) {
   auto* plugin = new LiteRtCompilerPluginT;
@@ -248,6 +267,7 @@ void LiteRtDestroyCompilerPlugin(LiteRtCompilerPlugin compiler_plugin) {
 }
 
 LiteRtStatus LiteRtCompilerPluginPartition(LiteRtCompilerPlugin compiler_plugin,
+                                           const char* soc_model,
                                            LiteRtSubgraph subgraph,
                                            LiteRtOpList selected_ops) {
   ::litert::Subgraph graph(subgraph);
@@ -284,13 +304,20 @@ LiteRtStatus LiteRtCompilerPluginPartition(LiteRtCompilerPlugin compiler_plugin,
     std::vector<::qnn::OpWrapper> op_wrappers;
     LITERT_RETURN_IF_ERROR(litert::qnn::ConvertOp(
         op, tensor_pool, input_tensors, output_tensors, op_wrappers));
+    // Empty op_wrappers means the op is not supported by QNN.
+    if (op_wrappers.empty()) {
+      continue;
+    }
     if (std::all_of(
             op_wrappers.begin(), op_wrappers.end(),
-            [&qnn_manager](const ::qnn::OpWrapper& op_wrapper) -> bool {
+            [&qnn_manager](::qnn::OpWrapper& op_wrapper) -> bool {
               return kLiteRtStatusOk ==
                      (*qnn_manager)->ValidateOp(op_wrapper.GetOpConfig());
             })) {
-      LITERT_RETURN_IF_ERROR(LiteRtPushOp(selected_ops, op.Get()));
+      LITERT_RETURN_IF_ERROR(
+          // Use default partition index if vendor doesn't support multiple
+          // partitions.
+          LiteRtPushOp(selected_ops, op.Get(), kDefaultPartitionIndex));
     }
   }
 

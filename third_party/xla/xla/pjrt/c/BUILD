@@ -70,6 +70,7 @@ cc_library(
         "//xla/ffi:execution_context",
         "//xla/ffi:type_id_registry",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings:string_view",
     ],
 )
 
@@ -322,8 +323,14 @@ cc_library(
 # PJRT CPU plugin.
 xla_cc_binary(
     name = "pjrt_c_api_cpu_plugin.so",
+    additional_linker_inputs = [
+        ":pjrt_c_api_cpu_version_script.lds",
+    ],
     linkopts = if_macos(
-        [],
+        [
+            "-Wl,-exported_symbol,_GetPjrtApi",
+            "-Wl,-undefined,error",
+        ],
         [
             "-Wl,--version-script,$(location :pjrt_c_api_cpu_version_script.lds)",
             "-Wl,--no-undefined",
@@ -338,7 +345,6 @@ xla_cc_binary(
     visibility = ["//visibility:public"],
     deps = [
         ":pjrt_c_api_cpu",
-        ":pjrt_c_api_cpu_version_script.lds",
     ],
 )
 
@@ -409,6 +415,9 @@ cc_library(
 # PJRT GPU plugin. Can be configured to be built for CUDA or ROCM.
 xla_cc_binary(
     name = "pjrt_c_api_gpu_plugin.so",
+    additional_linker_inputs = [
+        ":pjrt_c_api_gpu_version_script.lds",
+    ],
     linkopts = [
         "-Wl,--version-script,$(location :pjrt_c_api_gpu_version_script.lds)",
         "-Wl,--no-undefined",
@@ -422,7 +431,6 @@ xla_cc_binary(
     ],
     deps = [
         ":pjrt_c_api_gpu",
-        ":pjrt_c_api_gpu_version_script.lds",
         "//xla/service:gpu_plugin",
     ] + if_cuda_is_configured([
         "//xla/stream_executor:cuda_platform",
@@ -440,8 +448,11 @@ cc_library(
     deps = [
         ":pjrt_c_api_hdrs",
         ":pjrt_c_api_helpers",
+        ":pjrt_c_api_wrapper_impl",
         "//xla:shape_util",
         "//xla/client:executable_build_options",
+        "//xla/hlo/builder:xla_builder",
+        "//xla/hlo/builder:xla_computation",
         "//xla/pjrt:compile_options_proto_cc",
         "//xla/pjrt:pjrt_client",
         "//xla/pjrt:pjrt_executable",
@@ -450,6 +461,7 @@ cc_library(
         "//xla/tsl/platform:status",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest",
     ],
@@ -485,6 +497,7 @@ xla_test(
         "//xla/pjrt:pjrt_compiler",
         "//xla/pjrt:pjrt_future",
         "//xla/pjrt/distributed:in_memory_key_value_store",
+        "//xla/pjrt/gpu:se_gpu_pjrt_client",
         "//xla/service:custom_call_target_registry",
         "//xla/stream_executor/gpu:gpu_init",
         "//xla/tests:literal_test_util",

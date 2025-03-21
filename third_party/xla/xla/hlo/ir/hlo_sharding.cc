@@ -577,9 +577,9 @@ std::vector<int64_t> HloSharding::TileOffsetForDevice(const Shape& shape,
   CHECK(!IsUnknown());
 
   if (maximal_) {
-    return std::vector<int64_t>(shape.dimensions_size(), 0);
+    return std::vector<int64_t>(shape.rank(), 0);
   }
-  CHECK_EQ(shape.dimensions_size(), TiledDataRank());
+  CHECK_EQ(shape.rank(), TiledDataRank());
   std::vector<int64_t> index = TileIndexForDevice(device);
   for (int64_t i = 0; i < index.size(); ++i) {
     const int64_t shape_dim = shape.dimensions(i);
@@ -600,7 +600,7 @@ std::vector<int64_t> HloSharding::TileLimitForDevice(const Shape& shape,
                                 shape.dimensions().end());
   }
 
-  CHECK_EQ(shape.dimensions_size(), TiledDataRank());
+  CHECK_EQ(shape.rank(), TiledDataRank());
   std::vector<int64_t> index = TileIndexForDevice(device);
   for (int64_t i = 0; i < index.size(); ++i) {
     const int64_t shape_dim = shape.dimensions(i);

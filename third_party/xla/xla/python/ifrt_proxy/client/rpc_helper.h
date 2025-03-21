@@ -100,6 +100,9 @@ class RpcHelper {
 
   ResponseFuture<MakeArrayFromHostBufferResponse> MakeArrayFromHostBuffer(
       std::unique_ptr<MakeArrayFromHostBufferRequest> req);
+  ResponseFuture<MakeArraysFromHostBufferShardsResponse>
+  MakeArraysFromHostBufferShards(
+      std::unique_ptr<MakeArraysFromHostBufferShardsRequest> req);
   ResponseFuture<AssembleArrayFromSingleDeviceArraysResponse>
   AssembleArrayFromSingleDeviceArrays(
       std::unique_ptr<AssembleArrayFromSingleDeviceArraysRequest> req);

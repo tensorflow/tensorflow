@@ -42,14 +42,14 @@ bool ComputeInNhwcEnabled(DataType data_type, se::Stream* stream,
   // configurations it's more efficient to run computation in NCHW data format.
   bool use_nhwc_tf32 = data_type == DT_FLOAT &&
                        stream->GetCudaComputeCapability().IsAtLeast(
-                           se::CudaComputeCapability::AMPERE) &&
+                           se::CudaComputeCapability::kAmpere) &&
                        tensorflow::tensor_float_32_execution_enabled();
   bool use_nhwc_fp16 =
       data_type == DT_HALF && stream->GetCudaComputeCapability().IsAtLeast(
-                                  se::CudaComputeCapability::VOLTA);
+                                  se::CudaComputeCapability::kVolta);
   bool use_nhwc_bf16 =
       data_type == DT_BFLOAT16 && stream->GetCudaComputeCapability().IsAtLeast(
-                                      se::CudaComputeCapability::AMPERE);
+                                      se::CudaComputeCapability::kAmpere);
   if (use_4d_tensor) {
     return use_nhwc_fp16 || use_nhwc_tf32 || use_nhwc_bf16;
   }

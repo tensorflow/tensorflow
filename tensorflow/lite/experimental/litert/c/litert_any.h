@@ -31,6 +31,24 @@ typedef enum {
   kLiteRtAnyTypeVoidPtr = 9,
 } LiteRtAnyType;
 
+inline const char* LiteRtAnyTypeToString(LiteRtAnyType type) {
+  switch (type) {
+    case kLiteRtAnyTypeNone:
+      return "kLiteRtAnyTypeNone";
+    case kLiteRtAnyTypeBool:
+      return "kLiteRtAnyTypeBool";
+    case kLiteRtAnyTypeInt:
+      return "kLiteRtAnyTypeInt";
+    case kLiteRtAnyTypeReal:
+      return "kLiteRtAnyTypeReal";
+    case kLiteRtAnyTypeString:
+      return "kLiteRtAnyTypeString";
+    case kLiteRtAnyTypeVoidPtr:
+      return "kLiteRtAnyTypeVoidPtr";
+  }
+  return "Unknown";
+}
+
 typedef struct {
   LiteRtAnyType type;
   union {

@@ -54,7 +54,7 @@ absl::StatusOr<XlaOp> ShiftElemsRight(XlaOp x) {
   xla::XlaBuilder* b = x.builder();
   absl::StatusOr<xla::Shape> shape = b->GetShape(x);
   TF_RETURN_IF_ERROR(shape.status());
-  TF_RET_CHECK(shape->dimensions_size() == 1);
+  TF_RET_CHECK(shape->dimensions().size() == 1);
   int64_t n = shape->dimensions(0);
 
   XlaOp padded = xla::PadInDim(x, xla::Zero(b, shape->element_type()),
@@ -94,7 +94,7 @@ absl::StatusOr<XlaOp> PrefixSum(XlaOp arr) {
   absl::StatusOr<xla::Shape> input_shape = b->GetShape(arr);
   TF_RETURN_IF_ERROR(input_shape.status());
 
-  TF_RET_CHECK(input_shape->dimensions_size() == 1);
+  TF_RET_CHECK(input_shape->dimensions().size() == 1);
   int64_t n = input_shape->dimensions(0);
 
   // The original input length must be a power of 2, but we recursively divide

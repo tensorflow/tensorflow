@@ -136,12 +136,8 @@ TfLiteStatus TfLiteOpaqueTensorGetDimSignature(
     const TfLiteOpaqueTensor* opaque_tensor, int32_t dim_index,
     int32_t* dim_length) {
   const TfLiteTensor* tensor = Convert(opaque_tensor);
-  // `dims_signature` is not defined when no unknown dimensions are present.
-  if (tensor->dims_signature != nullptr && tensor->dims_signature->size != 0) {
-    *dim_length = tensor->dims_signature->data[dim_index];
-  } else {
-    *dim_length = tensor->dims->data[dim_index];
-  }
+  const TfLiteIntArray* dims_signature = TfLiteTensorGetDimsSignature(tensor);
+  *dim_length = dims_signature->data[dim_index];
   return kTfLiteOk;
 }
 

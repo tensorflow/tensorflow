@@ -1113,6 +1113,13 @@ TEST(FfiTest, PlatformStream) {
   (void)Ffi::BindTo(+[](TestStream stream) { return absl::OkStatus(); });
 }
 
+TEST(FfiTest, BindFfiInternals) {
+  (void)Ffi::Bind().Ctx<FfiApi>().Ctx<FfiExecutionContext>().To(
+      +[](const XLA_FFI_Api* api, XLA_FFI_ExecutionContext* ctx) {
+        return absl::OkStatus();
+      });
+}
+
 //===----------------------------------------------------------------------===//
 // Performance benchmarks are below.
 //===----------------------------------------------------------------------===//

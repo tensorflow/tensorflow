@@ -41,7 +41,8 @@ class GpuClique : public Clique {
  public:
   GpuClique(
       GpuCliqueKey key, std::optional<CliqueIds> ids,
-      absl::btree_map<RankId, std::unique_ptr<Communicator>> communicators);
+      absl::btree_map<RankId, std::unique_ptr<Communicator>> communicators,
+      bool peer_access_enabled);
 
   // Returns true if clique is local: all communicators belong to current
   // process. Non-local cliques spans multiple processes (typically hosts).
@@ -49,6 +50,7 @@ class GpuClique : public Clique {
 
   const GpuCliqueKey& key() const { return key_; }
   const std::optional<CliqueIds>& ids() const { return ids_; }
+  bool peer_access_enabled() const { return peer_access_enabled_; }
 
   std::string DebugString() const final;
   absl::Status HealthCheck() const final;
@@ -63,6 +65,10 @@ class GpuClique : public Clique {
 
   GpuCliqueKey key_;
   std::optional<CliqueIds> ids_;
+
+  // True if peer device memory access is possible between all local devices in
+  // the clique.
+  bool peer_access_enabled_;
 };
 
 // A lockable version of GpuClique that guarantees exclusive access to the
@@ -71,7 +77,8 @@ class LockableGpuClique : public Lockable<GpuClique, GpuClique::LockableName> {
  public:
   LockableGpuClique(
       GpuCliqueKey clique_key, std::optional<CliqueIds> clique_ids,
-      absl::btree_map<RankId, std::unique_ptr<Communicator>> communicators);
+      absl::btree_map<RankId, std::unique_ptr<Communicator>> communicators,
+      bool peer_access_enabled);
 
   std::string DebugString() const;
 

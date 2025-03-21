@@ -48,9 +48,9 @@ class PjRtRawBuffer : public tsl::ReferenceCounted<PjRtRawBuffer> {
   // completed.
   //
   // Note that the underlying driver may have requirements
-  // on the alignment of `dst` and `offset` as well. Look at implementations of
+  // on the alignment of `src` and `offset` as well. Look at implementations of
   // this method for specific alignment requirements.
-  virtual PjRtFuture<> CopyRawHostToDevice(void* dst, int64_t offset,
+  virtual PjRtFuture<> CopyRawHostToDevice(const void* src, int64_t offset,
                                            int64_t transfer_size) = 0;
 
   // Transfers a sub-range of the on-device representation of the buffer.

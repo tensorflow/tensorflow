@@ -1,19 +1,26 @@
 # Shapes and layout
 
-The XLA `Shape` proto
+The XLA `ShapeProto` proto
 ([xla_data.proto](https://github.com/openxla/xla/tree/main/xla/xla_data.proto))
-describes the rank, size, and data type of an N-dimensional array (*array* in
-short).
+describes the number of dimensions, size, and data type of an N-dimensional
+array (*array* in short).
 
 ## Terminology, notation, and conventions
 
-*   The rank of an array is equal to the number of dimensions. The *true rank*
-    of an array is the number of dimensions which have a size greater than 1.
+NOTE: in the past, XLA has used the term "rank" to mean the number of dimensions
+of an array. We have stopped this usage as it's inconsistent with the matrix
+rank concept in linear algebra. However, you may still see the name `rank` used
+in legacy documentation and some of the code.
+
+*   The *true number of dimensions* of an array is the number of dimensions
+    which have a size greater than 1.
 
 *   Dimensions are numbered from `0` up to `N-1` for an `N` dimensional array.
-    The dimension numbers are arbitrary labels for convenience. The order of
-    these dimension numbers does not imply a particular minor/major ordering in
-    the layout of the shape. The layout is determined by the `Layout` proto.
+    The size of a dimension is a non-negative integer. In particular, size 0 is
+    valid. The dimension numbers are arbitrary labels for convenience. The
+    order of these dimension numbers does not imply a particular minor/major
+    ordering in the layout of the shape. The layout is determined by the
+    `LayoutProto` proto.
 
 *   By convention, dimensions are listed in increasing order of dimension
     number. For example, for a 3-dimensional array of size `[A x B x C]`,
@@ -55,14 +62,14 @@ short).
 
 ## Layout
 
-The `Layout` proto describes how an array is represented in memory. The `Layout`
-proto includes the following fields:
+The `LayoutProto` proto describes how an array is represented in memory. It
+includes the following fields:
 
 ```
-message Layout {
-  repeated int64 minor_to_major = 1;
-  repeated int64 padded_dimensions = 2;
-  optional PaddingValue padding_value = 3;
+message LayoutProto {
+  repeated int64 minor_to_major;
+  int64 tail_padding_alignment_in_elements;
+  ...
 }
 ```
 
@@ -93,8 +100,8 @@ a d b e c f
 ```
 
 This minor-to-major dimension order of `0` up to `N-1` is akin to *column-major*
-(at rank 2). Assuming a monotonic ordering of dimensions, another way we may
-refer to this layout in the code is simply "dim 0 is minor".
+(for 2-dimensionals). Assuming a monotonic ordering of dimensions, another way
+we may refer to this layout in the code is simply "dim 0 is minor".
 
 On the other hand, if the `minor_to_major` field in the layout is `[1, 0]` then
 the layout in linear memory is:
@@ -104,39 +111,21 @@ a b c d e f
 ```
 
 A minor-to-major dimension order of `N-1` down to `0` for an `N` dimensional
-array is akin to *row-major* (at rank 2). Assuming a monotonic ordering of
-dimensions, another way we may refer to this layout in the code is simply "dim 0
-is major".
+array is akin to *row-major* (for 2-dimensionals). Assuming a monotonic
+ordering of dimensions, another way we may refer to this layout in the code is
+simply "dim 0 is major".
 
 #### Default minor-to-major ordering
 
 The default layout for newly created Shapes is "dimension order is
-major-to-minor" (akin to row-major at rank 2).
+major-to-minor" (i.e. `[N-1, ..., 0]`).
 
 ### Padding
 
-Padding is defined in the optional `padded_dimensions` and `padding_value`
-fields. The field `padded_dimensions` describes the sizes (widths) to which each
-dimension is padded. If present, the number of elements in `padded_dimensions`
-must equal the rank of the shape.
-
-For example, given the `[2 x 3]` array defined above, if `padded_dimensions` is
-`[3, 5]` then dimension 0 is padded to a width of 3 and dimension 1 is padded to
-a width of 5. The layout in linear memory (assuming a padding value of 0 and
-column-major layout) is:
-
-```
-a d 0 b e 0 c f 0 0 0 0 0 0 0
-```
-
-This is equivalent to the layout of the following array with the same
-minor-to-major dimension order:
-
-```
-a b c 0 0
-d e f 0 0
-0 0 0 0 0
-```
+The `tail_padding_alignment_in_elements` field defines the alignment of the
+[tiled](tiled_layout.md) array in terms of the number of elements. After
+applying tiling, padded elements will be added at the end of the layout until
+the total number of elements is a multiple of this value.
 
 ### Indexing into arrays
 

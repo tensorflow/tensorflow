@@ -93,19 +93,22 @@ DotInfo InnerDotInfo(const DotInfo& batch_dot);
 // `dot_info`.
 DotImplementationStrategy GetDotImplementationStrategy(
     const HloModuleConfig& config, const HloInstruction& instr,
-    const TargetMachineFeatures& target_machine_features);
+    const TargetMachineFeatures& target_machine_features,
+    bool allow_runtime_calls);
 
 // Returns true if the two operands and the output of `dot_instr` must have row
 // major layout.
 bool DotOperandsAndResultMustHaveRowMajorLayout(
     const HloInstruction& dot_instr,
-    const TargetMachineFeatures& target_machine_features);
+    const TargetMachineFeatures& target_machine_features,
+    bool allow_runtime_calls);
 
 // Returns true our lowering strategy for `dot_instr` can fold in transposes to
 // the either of the inputs.
 bool DotImplementationCanHandleTranspose(
     const HloInstruction& dot_instr,
-    const TargetMachineFeatures& target_machine_features);
+    const TargetMachineFeatures& target_machine_features,
+    bool allow_runtime_calls);
 
 // Returns the index for an operand to `hlo` that should ideally be column
 // major.  Returns nullopt if there is no such operand or if `hlo` is not a dot

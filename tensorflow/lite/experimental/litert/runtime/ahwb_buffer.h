@@ -15,9 +15,11 @@
 #ifndef TENSORFLOW_LITE_EXPERIMENTAL_LITERT_RUNTIME_AHWB_BUFFER_H_
 #define TENSORFLOW_LITE_EXPERIMENTAL_LITERT_RUNTIME_AHWB_BUFFER_H_
 
+#include <cstddef>
+
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
-#include "tensorflow/lite/experimental/litert/c/litert_event.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
+#include "tensorflow/lite/experimental/litert/runtime/event.h"
 
 #if LITERT_HAS_AHWB_SUPPORT
 #include <android/hardware_buffer.h>
@@ -32,8 +34,7 @@ typedef struct AHardwareBuffer AHardwareBuffer;
 #endif  // __cplusplus
 #endif  // LITERT_HAS_AHWB_SUPPORT
 
-namespace litert {
-namespace internal {
+namespace litert::internal {
 
 struct AhwbBuffer {
   AHardwareBuffer* ahwb;
@@ -43,11 +44,10 @@ struct AhwbBuffer {
   static void Free(AHardwareBuffer* ahwb);
   static Expected<size_t> GetSize(AHardwareBuffer* ahwb);
   static Expected<void*> Lock(AHardwareBuffer* ahwb,
-                              LiteRtEvent event = nullptr);
+                              LiteRtEventT* event = nullptr);
   static Expected<void> Unlock(AHardwareBuffer* ahwb);
 };
 
-}  // namespace internal
-}  // namespace litert
+}  // namespace litert::internal
 
 #endif  // TENSORFLOW_LITE_EXPERIMENTAL_LITERT_RUNTIME_AHWB_BUFFER_H_

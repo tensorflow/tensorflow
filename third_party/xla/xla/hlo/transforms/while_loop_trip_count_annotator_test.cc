@@ -59,7 +59,12 @@ TEST_F(TripCountAnnotatorTest, KnownSmallTripCount) {
                           m->entry_computation()
                               ->root_instruction()
                               ->backend_config<WhileLoopBackendConfig>());
-  EXPECT_EQ(10, config.known_trip_count().n());
+  EXPECT_TRUE(config.has_known_induction_variable());
+  EXPECT_TRUE(config.has_known_init_step());
+  EXPECT_EQ(config.known_trip_count().n(), 10);
+  EXPECT_EQ(config.known_induction_variable().tuple_index(), 0);
+  EXPECT_EQ(config.known_init_step().init(), 0);
+  EXPECT_EQ(config.known_init_step().step(), 1);
 }
 
 TEST_F(TripCountAnnotatorTest, KnownLargeTripCount) {
@@ -95,25 +100,25 @@ TEST_F(TripCountAnnotatorTest, KnownLargeTripCount) {
                           m->entry_computation()
                               ->root_instruction()
                               ->backend_config<WhileLoopBackendConfig>());
-  EXPECT_EQ(1000000, config.known_trip_count().n());
+  EXPECT_EQ(config.known_trip_count().n(), 1000000);
 }
 
-TEST_F(TripCountAnnotatorTest, NonzeroStart) {
+TEST_F(TripCountAnnotatorTest, NonzeroStartStep) {
   const char* kModuleStr = R"(
     HloModule test
     Body {
       param = (s32[]) parameter(0)
       i = s32[] get-tuple-element(param), index=0
-      one = s32[] constant(1)
-      i_plus_one = s32[] add(i, one)
-      ROOT tuple = (s32[]) tuple(i_plus_one)
+      two = s32[] constant(2)
+      i_plus_two = s32[] add(i, two)
+      ROOT tuple = (s32[]) tuple(i_plus_two)
     }
 
     Cond {
       param = (s32[]) parameter(0)
       i = s32[] get-tuple-element(param), index=0
-      trip_count = s32[] constant(1000000)
-      ROOT done = pred[] compare(i, trip_count), direction=LT
+      max_i = s32[] constant(1000000)
+      ROOT done = pred[] compare(i, max_i), direction=LT
     }
 
     ENTRY test {
@@ -131,7 +136,10 @@ TEST_F(TripCountAnnotatorTest, NonzeroStart) {
                           m->entry_computation()
                               ->root_instruction()
                               ->backend_config<WhileLoopBackendConfig>());
-  EXPECT_EQ(999990, config.known_trip_count().n());
+  EXPECT_EQ(config.known_trip_count().n(), 499995);
+  EXPECT_TRUE(config.has_known_init_step());
+  EXPECT_EQ(config.known_init_step().init(), 10);
+  EXPECT_EQ(config.known_init_step().step(), 2);
 }
 
 TEST_F(TripCountAnnotatorTest, LessThanOrEqualTo) {
@@ -167,7 +175,7 @@ TEST_F(TripCountAnnotatorTest, LessThanOrEqualTo) {
                           m->entry_computation()
                               ->root_instruction()
                               ->backend_config<WhileLoopBackendConfig>());
-  EXPECT_EQ(999991, config.known_trip_count().n());
+  EXPECT_EQ(config.known_trip_count().n(), 999991);
 }
 
 TEST_F(TripCountAnnotatorTest, Int64Overflow) {
@@ -200,7 +208,52 @@ TEST_F(TripCountAnnotatorTest, Int64Overflow) {
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
   WhileLoopTripCountAnnotator pass;
   TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHloPass(&pass, m.get()));
-  EXPECT_FALSE(changed);
+  EXPECT_TRUE(changed);
+
+  TF_ASSERT_OK_AND_ASSIGN(auto config,
+                          m->entry_computation()
+                              ->root_instruction()
+                              ->backend_config<WhileLoopBackendConfig>());
+  EXPECT_FALSE(config.has_known_trip_count());
+  EXPECT_FALSE(config.has_known_init_step());
+  EXPECT_TRUE(config.has_known_induction_variable());
+  EXPECT_EQ(config.known_induction_variable().tuple_index(), 0);
+}
+
+TEST_F(TripCountAnnotatorTest, NonZeroTupleIndex) {
+  const char* kModuleStr = R"(
+    HloModule test
+    Body {
+      param = (s32[], s32[]) parameter(0)
+      i = s32[] get-tuple-element(param), index=1
+      one = s32[] constant(1)
+      i_plus_one = s32[] add(i, one)
+      ROOT tuple = (s32[], s32[]) tuple(one, i_plus_one)
+    }
+
+    Cond {
+      param = (s32[], s32[]) parameter(0)
+      i = s32[] get-tuple-element(param), index=1
+      trip_count = s32[] constant(10)
+      ROOT done = pred[] compare(i, trip_count), direction=LT
+    }
+
+    ENTRY test {
+      i_start = s32[] constant(0)
+      initial_tuple = (s32[], s32[]) tuple(i_start, i_start)
+      ROOT while = (s32[], s32[]) while(initial_tuple), condition=Cond, body=Body
+    })";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  WhileLoopTripCountAnnotator pass;
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHloPass(&pass, m.get()));
+  ASSERT_TRUE(changed);
+
+  TF_ASSERT_OK_AND_ASSIGN(auto config,
+                          m->entry_computation()
+                              ->root_instruction()
+                              ->backend_config<WhileLoopBackendConfig>());
+  EXPECT_EQ(config.known_induction_variable().tuple_index(), 1);
 }
 
 }  // namespace

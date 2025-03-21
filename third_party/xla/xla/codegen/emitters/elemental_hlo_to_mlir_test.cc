@@ -477,33 +477,6 @@ TEST_F(ElementalHloToMlirTest, Gather) {
   )"));
 }
 
-TEST_F(ElementalHloToMlirTest, GatherWithImplicitVectorDim) {
-  TF_EXPECT_OK(Run(R"(
-    ENTRY main {
-      operand = f32[33,34] parameter(0)
-      indices = s32[1806] parameter(1)
-      ROOT r = f32[1806,7,8] gather(operand, indices), offset_dims={1,2},
-                                 collapsed_slice_dims={}, start_index_map={0},
-                                 index_vector_dim=1, slice_sizes={7,8}
-    })",
-                   R"(
-    // CHECK:      @main_r(
-    // CHECK-SAME:     %[[ARG0:.*]]: tensor<33x34xf32>,
-    // CHECK-SAME:     %[[ARG1:.*]]: tensor<1806xi32>,
-    // CHECK-SAME:     %[[X:.*]]: index {{{.*}}}, %[[Y:.*]]: index {{{.*}}},
-    // CHECK-SAME:     %[[Z:.*]]: index {{{.*}}}
-    // CHECK-DAG:    %[[C0:.*]] = arith.constant 0
-    // CHECK-DAG:    %[[C26:.*]] = arith.constant 26
-    // CHECK:        %[[IDX_I32:.*]] = tensor.extract %[[ARG1]][%[[X]]]
-    // CHECK:        %[[IDX:.*]] = arith.index_cast %[[IDX_I32]] : i32 to index
-    // CHECK:        %[[CLAMP_HIGH:.*]] = arith.minsi %[[IDX]], %[[C26]]
-    // CHECK:        %[[CLAMPED:.*]] = arith.maxsi %[[CLAMP_HIGH]], %[[C0]]
-    // CHECK:        %[[X_IN:.*]] = arith.addi %[[CLAMPED]], %[[Y]]
-    // CHECK:        %[[RET:.*]] = tensor.extract %[[ARG0]][%[[X_IN]], %[[Z]]]
-    // CHECK:        return %[[RET]]
-  )"));
-}
-
 TEST_F(ElementalHloToMlirTest, Pad) {
   TF_EXPECT_OK(Run(R"(
     ENTRY main {
@@ -1617,21 +1590,6 @@ TEST_F(ElementalHloToMlirTest, DynamicSliceUnsignedIndices) {
   )"));
 }
 
-TEST_F(ElementalHloToMlirTest, DynamicSliceIndexIsNotCanonical_NotSupported) {
-  auto status = Run(R"(
-    ENTRY main {
-      in = f32[20,30] parameter(0)
-      idx = s32[2] parameter(1)
-      ROOT slice = f32[4,5] dynamic-slice(in, idx), dynamic_slice_sizes={4,5}
-    })",
-                    "");
-
-  EXPECT_EQ(status.code(), absl::StatusCode::kFailedPrecondition);
-  EXPECT_THAT(status.message(),
-              HasSubstr("Dynamic indexing instruction with non-scalar index is "
-                        "not supported."));
-}
-
 TEST_F(ElementalHloToMlirTest, DynamicUpdateSlice) {
   TF_EXPECT_OK(Run(R"(
     ENTRY main {
@@ -1706,23 +1664,6 @@ TEST_F(ElementalHloToMlirTest, DynamicUpdateSliceUnsigned) {
   )"));
 }
 
-TEST_F(ElementalHloToMlirTest,
-       DynamicUpdateSliceIndexIsNotCanonical_NotSupported) {
-  auto status = Run(R"(
-    ENTRY main {
-      in = f32[20,30] parameter(0)
-      updates = f32[5,6] parameter(1)
-      idx = s32[2] parameter(2)
-      ROOT updated = f32[20,30] dynamic-update-slice(in, updates, idx)
-    })",
-                    "");
-
-  EXPECT_EQ(status.code(), absl::StatusCode::kFailedPrecondition);
-  EXPECT_THAT(status.message(),
-              HasSubstr("Dynamic indexing instruction with non-scalar index is "
-                        "not supported."));
-}
-
 TEST_F(ElementalHloToMlirTest, IotaUnsigned) {
   TF_EXPECT_OK(Run(R"(
     ENTRY main {
@@ -1770,31 +1711,6 @@ TEST_F(ElementalHloToMlirTest, MixedIndexingTuple) {
     // CHECK-SAME:       d0 in [0, 9], d1 in [0, 9]">(%[[X]], %[[Y]])
     // CHECK:        %[[B:.*]] = tensor.extract %[[P1]][%[[IDX]]]
     // CHECK:        return %[[A]], %[[B]]
-  )"));
-}
-
-TEST_F(ElementalHloToMlirTest, NestedTuple) {
-  TF_EXPECT_OK(Run(R"(
-    ENTRY main {
-      %p0 = f32[10,10] parameter(0)
-      %p1 = f32[100] parameter(1)
-      %t0 = (f32[10,10], f32[100]) tuple(%p0, %p1)
-      %t1 = (f32[100], f32[10,10]) tuple(%p1, %p0)
-      ROOT tuple = ((f32[10,10], f32[100]), f32[100], (f32[100], f32[10,10]))
-        tuple(%t0, %p1, %t1)
-    })",
-                   R"(
-    // CHECK:      @main_tuple(
-    // CHECK-SAME:     %[[P0:.*]]: tensor<10x10xf32>,
-    // CHECK-SAME:     %[[P1:.*]]: tensor<100xf32>,
-    // CHECK-SAME:     %[[X:.*]]: index {{{.*}}}, %[[Y:.*]]: index {{{.*}}}
-    // CHECK:          %[[P0_V:.*]] = xla.pure_call @main_p0
-    // CHECK:          %[[IDX:.*]] =
-    // CHECK-SAME:       #xla.indexing_map<"(d0, d1) -> (d0 * 10 + d1),
-    // CHECK-SAME:       d0 in [0, 9], d1 in [0, 9]">(%[[X]], %[[Y]])
-    // CHECK:          %[[P1_V:.*]] = xla.pure_call @main_p1
-    // CHECK-SAME:       (%[[P0]], %[[P1]], %[[IDX]])
-    // CHECK:          return %[[P0_V]], %[[P1_V]], %[[P1_V]], %[[P1_V]], %[[P0_V]]
   )"));
 }
 

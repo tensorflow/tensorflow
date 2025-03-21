@@ -411,7 +411,7 @@ class ConverterErrorMetricTest(test_util.TensorFlowTestCase,
 
     model = tf.keras.models.Sequential([NgramsLayer()])
     model.predict(tf.constant(['test']))
-    converter = tf.lite.TFLiteConverter.from_keras_model(model)
+    converter = lite.TFLiteConverterV2.from_keras_model(model)
     converter.allow_custom_ops = True
     self.convert_and_check_location_info(
         converter, converter_error_data_pb2.ConverterErrorData.UNKNOWNLOC)
@@ -504,7 +504,7 @@ class ConverterErrorMetricTest(test_util.TensorFlowTestCase,
     def model(a, b):
       return tf.add(a, b, name='add')
 
-    converter = tf.lite.TFLiteConverter.from_concrete_functions(
+    converter = lite.TFLiteConverterV2.from_concrete_functions(
         [model.get_concrete_function()], model)
     self.convert_and_check_location_info(
         converter,
@@ -531,7 +531,7 @@ class ConverterErrorMetricTest(test_util.TensorFlowTestCase,
           tmp_dir,
           options=tf.saved_model.SaveOptions(save_debug_info=True))
 
-      converter = tf.lite.TFLiteConverter.from_saved_model(tmp_dir)
+      converter = lite.TFLiteConverterV2.from_saved_model(tmp_dir)
       self.convert_and_check_location_info(
           converter,
           converter_error_data_pb2.ConverterErrorData.CALLSITELOC,
@@ -557,7 +557,7 @@ class ConverterErrorMetricTest(test_util.TensorFlowTestCase,
         loss='sparse_categorical_crossentropy',
         metrics=['accuracy'])
 
-    converter = tf.lite.TFLiteConverter.from_keras_model(model)
+    converter = lite.TFLiteConverterV2.from_keras_model(model)
     converter.experimental_lower_to_saved_model = lower_to_saved_model
     # The location does not contain callsite to the current file.
     self.convert_and_check_location_info(

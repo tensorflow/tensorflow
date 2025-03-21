@@ -29,7 +29,6 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "absl/types/optional.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/APInt.h"
 #include "llvm/ADT/ArrayRef.h"
@@ -129,7 +128,7 @@ bool DotIsDefault(const HloInstruction* instruction) {
   auto dnums = instruction->dot_dimension_numbers();
   DotDimensionNumbers default_dimension_numbers;
   default_dimension_numbers.add_lhs_contracting_dimensions(
-      instruction->operand(0)->shape().dimensions_size() == 1 ? 0 : 1);
+      instruction->operand(0)->shape().rank() == 1 ? 0 : 1);
   default_dimension_numbers.add_rhs_contracting_dimensions(0);
   return protobuf_util::ProtobufEquals(dnums, default_dimension_numbers);
 }
@@ -423,7 +422,7 @@ absl::StatusOr<FuncOp> HloFunctionImporter::ImportAsFunc(
         }
         // NOTE: since we are flattening args, all arguments will share the same
         // location as the tuple parameter instruction.
-        function.getArgument(i).setLoc(
+        function.getArgument(arg_index).setLoc(
             mlir::mhlo::GenerateInstructionLocation(instruction, context_));
         ++arg_index;
       }
@@ -456,7 +455,15 @@ absl::StatusOr<FuncOp> HloFunctionImporter::ImportAsFunc(
       ++arg_index;
     }
   }
-  if (computation.root_instruction()->has_sharding()) {
+  // TODO(b/260756663): Token sharding is unverified, legacy users provide
+  // multiple sharding values for a single token output.
+  bool is_token = computation.root_instruction()->shape().IsToken();
+  if (is_token && computation.root_instruction()->has_sharding()) {
+    function.setResultAttr(
+        0, kShardingAttr,
+        ConvertSharding(computation.root_instruction()->sharding(), builder_));
+  }
+  if (!is_token && computation.root_instruction()->has_sharding()) {
     ArrayRef<HloSharding> ret_shardings =
         computation.root_instruction()->sharding();
     if (flatten_computation_args_result_) {

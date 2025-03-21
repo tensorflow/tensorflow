@@ -205,6 +205,14 @@ void LiteRtDestroyCompiledResult(LiteRtCompiledResult compiled_result) {
 // Plugins can hold state.
 struct LiteRtCompilerPluginT {};
 
+LiteRtStatus LiteRtCompilerPluginSetFlags(LiteRtCompilerPlugin compiler_plugin,
+                                          LiteRtParamIndex num_flags,
+                                          const char** keys,
+                                          const char** values) {
+  // IMPLEMENT ME
+  return kLiteRtStatusOk;
+}
+
 LiteRtStatus LiteRtCreateCompilerPlugin(LiteRtCompilerPlugin* compiler_plugin) {
   auto* plugin = new LiteRtCompilerPluginT;
   *compiler_plugin = plugin;
@@ -232,6 +240,7 @@ bool IsOpSupported(const litert::Op& op) {
 }  // namespace
 
 LiteRtStatus LiteRtCompilerPluginPartition(LiteRtCompilerPlugin compiler_plugin,
+                                           const char* soc_model,
                                            LiteRtSubgraph subgraph,
                                            LiteRtOpList selected_ops) {
   litert::Subgraph graph(subgraph);
@@ -240,7 +249,7 @@ LiteRtStatus LiteRtCompilerPluginPartition(LiteRtCompilerPlugin compiler_plugin,
       continue;
     }
 
-    LITERT_RETURN_IF_ERROR(LiteRtPushOp(selected_ops, op.Get()));
+    LITERT_RETURN_IF_ERROR(LiteRtPushOp(selected_ops, op.Get(), 0));
   }
 
   return kLiteRtStatusOk;

@@ -127,16 +127,6 @@ class AbstractTfrtCpuBuffer : public PjRtBuffer {
             /*sends_were_enqueued=*/false);
   }
 
-  void CopyToRemoteDeviceScattered(
-      PjRtFuture<std::vector<std::string>> serialized_descriptors,
-      std::vector<RemoteSendCallback> callbacks,
-      const xla::PjRtBuffer::ScatterDetails& scatter_details) override {
-    for (const auto& on_done : callbacks) {
-      on_done(Unimplemented("Implement CopyToRemoteDeviceScattered."),
-              /*sends_were_enqueued=*/false);
-    }
-  }
-
   PjRtFuture<> GetReadyFuture() override;
 
   bool IsOnCpu() const override { return true; }

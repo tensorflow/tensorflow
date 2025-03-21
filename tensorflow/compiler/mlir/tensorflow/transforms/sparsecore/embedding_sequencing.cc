@@ -68,6 +68,8 @@ limitations under the License.
 static constexpr char kEmbeddingPipelining[] = "_embedding_pipelining";
 static constexpr char kEmbeddingForward[] = "forward";
 static constexpr char kEmbeddingBackward[] = "backward";
+static constexpr char kEmbeddingForwardSequential[] = "forward_sequential";
+static constexpr char kEmbeddingBackwardSequential[] = "backward_sequential";
 static constexpr char kDevice[] = "device";
 static constexpr llvm::StringRef kTpuCompilationStatus =
     "_tpu_compilation_status";
@@ -785,9 +787,11 @@ void EmbeddingSequencingPass::runOnOperation() {
     if (op->hasAttr(kEmbeddingPipelining)) {
       const std::string region =
           op->getAttrOfType<StringAttr>(kEmbeddingPipelining).getValue().str();
-      if (region == kEmbeddingForward) {
+      if (region == kEmbeddingForward ||
+          region == kEmbeddingForwardSequential) {
         forward_pass_ops.insert(op);
-      } else if (region == kEmbeddingBackward) {
+      } else if (region == kEmbeddingBackward ||
+                 region == kEmbeddingBackwardSequential) {
         backward_pass_ops.insert(op);
       } else {
         return op->emitOpError()

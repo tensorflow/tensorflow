@@ -35,7 +35,6 @@ limitations under the License.
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
-#include "tsl/profiler/lib/traceme.h"
 
 namespace xla::cpu {
 
@@ -55,7 +54,6 @@ OutfeedThunk::OutfeedThunk(Info info,
 
 tsl::AsyncValueRef<Thunk::ExecuteEvent> OutfeedThunk::Execute(
     const ExecuteParams& params) {
-  tsl::profiler::TraceMe trace([&] { return TraceMeEncode(); });
 
   VLOG(3) << absl::StreamFormat("Outfeed %d buffers", outfeed_buffers_.size());
 

@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include <memory>
 #include <string>
 #include <utility>
 
@@ -71,6 +72,7 @@ void LiteRtDestroyCompilerPlugin(LiteRtCompilerPlugin compiler_plugin) {
 // Leverage the convert_type PartitionViaCapabilties algorithm for partitioning
 // implementation.
 LiteRtStatus LiteRtCompilerPluginPartition(LiteRtCompilerPlugin compiler_plugin,
+                                           const char* soc_model,
                                            LiteRtSubgraph subgraph,
                                            LiteRtOpList selected_ops) {
   ExampleTensorAllocator tensor_alloc;
@@ -84,7 +86,7 @@ LiteRtStatus LiteRtCompilerPluginPartition(LiteRtCompilerPlugin compiler_plugin,
   }
 
   for (auto* op : *ops) {
-    LITERT_RETURN_IF_ERROR(LiteRtPushOp(selected_ops, op));
+    LITERT_RETURN_IF_ERROR(LiteRtPushOp(selected_ops, op, 0));
   }
 
   return kLiteRtStatusOk;
@@ -106,7 +108,8 @@ LiteRtStatus CompileSinglePartition(
       litert_subgraph, name, MakeTensorConverter, tensor_alloc, op_alloc,
       legalizations, builder));
 
-  result.byte_code.append(builder.Serialize());
+  // This example plugin only supports a single byte code module.
+  result.byte_code[0].append(builder.Serialize());
   result.per_op_data.push_back(std::move(name));
 
   return kLiteRtStatusOk;
@@ -119,10 +122,10 @@ LiteRtStatus CompileSinglePartition(
 LiteRtStatus LiteRtCompilerPluginCompile(
     LiteRtCompilerPlugin compiler_plugin, const char* soc_model,
     LiteRtModel partitions, LiteRtCompiledResult* compiled_result) {
-  auto* result = new LiteRtCompiledResultT;
-
   auto model = litert::Model::CreateFromNonOwnedHandle(partitions);
   const auto num_partitions = model.NumSubgraphs();
+  auto result = std::make_unique<LiteRtCompiledResultT>();
+  result->byte_code.resize(num_partitions);
   for (auto i = 0; i < num_partitions; ++i) {
     auto name = absl::StrFormat("partition_%lu", i);
     LITERT_RETURN_IF_ERROR(
@@ -130,7 +133,7 @@ LiteRtStatus LiteRtCompilerPluginCompile(
                                model.Subgraph(i)->Get(), *result));
   }
 
-  *compiled_result = result;
+  *compiled_result = result.release();
 
   return kLiteRtStatusOk;
 }

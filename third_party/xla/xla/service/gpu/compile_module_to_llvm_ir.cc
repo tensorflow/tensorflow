@@ -39,6 +39,7 @@ limitations under the License.
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Verifier.h"
+#include "llvm/TargetParser/Triple.h"
 #include "llvm/Transforms/Utils/SplitModule.h"
 #include "mlir/IR/Diagnostics.h"
 #include "mlir/IR/DialectRegistry.h"
@@ -125,14 +126,14 @@ CompileModuleResults InitializeResults(const HloModule* hlo_module,
   results.module_name = module_name;
   results.llvm_module =
       std::make_unique<llvm::Module>(module_name, *llvm_context);
-  results.llvm_module->setTargetTriple(target_triple);
+  results.llvm_module->setTargetTriple(llvm::Triple(target_triple));
   results.llvm_module->setDataLayout(data_layout);
 
   if (split_constants_module) {
     // Constants are emitted into a separate module to avoid caching them.
     results.llvm_module_constants = std::make_unique<llvm::Module>(
         absl::StrCat(module_name, "_consts"), *llvm_context);
-    results.llvm_module_constants->setTargetTriple(target_triple);
+    results.llvm_module_constants->setTargetTriple(llvm::Triple(target_triple));
     results.llvm_module_constants->setDataLayout(data_layout);
   }
 

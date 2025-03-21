@@ -400,7 +400,7 @@ HloAsyncStartInstruction::HloAsyncStartInstruction(
     HloComputation* async_computation, absl::string_view async_execution_thread)
     : HloAsyncInstruction(opcode, shape, operands,
                           async_computation->root_instruction()->opcode()) {
-  CHECK(!async_computation->IsCustomCallComputation());
+  CHECK(async_computation->caller_instructions(HloOpcode::kCustomCall).empty());
   CHECK(!async_computation->IsFusionComputation());
   CHECK(!async_computation->IsAsyncComputation());
   AppendComputation(async_computation);
@@ -1516,8 +1516,7 @@ HloTransposeInstruction::HloTransposeInstruction(
 }
 
 bool HloTransposeInstruction::IsRank2Transpose() const {
-  return dimensions() == std::vector<int64_t>({1, 0}) &&
-         shape().dimensions_size() == 2 &&
+  return dimensions() == std::vector<int64_t>({1, 0}) && shape().rank() == 2 &&
          std::equal(shape().dimensions().begin(), shape().dimensions().end(),
                     operand(0)->shape().dimensions().rbegin());
 }
@@ -1635,7 +1634,7 @@ bool HloMapInstruction::IsElementwiseImpl(
     const std::optional<int64_t>& operand_idx) const {
   if (!dimensions().empty()) {
     // Check that the map is executed in elementwise compatible dimensions.
-    if (dimensions().size() != shape().dimensions_size()) {
+    if (dimensions().size() != shape().rank()) {
       return false;
     }
     for (int i = 0; i < dimensions().size(); ++i) {
@@ -1827,7 +1826,7 @@ void HloConstantInstruction::PrintOperandsWithCanonicalNameMap(
       printer->Append("1");
       return;
     }
-    if (shape().IsInteger()) {
+    if (shape().AreAllLeavesIntegers()) {
       // The following prevents high compilation latencies caused by serializing
       // large constant tensors; for example: b/265669625. The limit of 500k was
       // chosen empirically to make sure that serialization of the `literal_` is
@@ -1976,8 +1975,8 @@ HloCallableInstruction::CloneAndAppendInstructionIntoCalledComputation(
     CHECK(!add_output);
     auto builder = HloComputation::Builder(default_called_computation_name());
     builder.AddInstruction(instruction_to_append->Clone(/*suffix=*/""));
-    auto* new_computation =
-        CHECK_NOTNULL(GetModule())->AddEmbeddedComputation(builder.Build());
+    auto* new_computation = CHECK_NOTNULL(instruction_to_append->GetModule())
+                                ->AddEmbeddedComputation(builder.Build());
     AppendComputation(new_computation);
     if (opcode() == HloOpcode::kFusion) {
       new_computation->SetFusionInstruction(this);
@@ -2198,7 +2197,6 @@ HloFusionInstruction::HloFusionInstruction(const Shape& shape,
   CHECK(fused_root != nullptr);
   SetAndSanitizeName(absl::StrCat(prefix, HloOpcodeString(opcode())));
 
-  set_parent(fused_root->parent());
   set_metadata(fused_root->metadata());
   set_frontend_attributes(fused_root->frontend_attributes());
   // This simplifies some use cases for the original value that involve fusions.
@@ -2613,7 +2611,6 @@ HloCallInstruction::HloCallInstruction(const Shape& shape,
     : HloCallableInstruction(HloOpcode::kCall, shape) {
   CHECK(called_computation_root != nullptr);
   SetAndSanitizeName(HloOpcodeString(opcode()));
-  set_parent(called_computation_root->parent());
   set_metadata(called_computation_root->metadata());
   CloneAndAppendInstructionIntoCalledComputation(called_computation_root);
 }
@@ -2643,7 +2640,6 @@ HloCallInstruction::HloCallInstruction(const Shape& shape,
 
   add_frontend_attributes(frontend_attributes);
   set_is_composite(true);
-  set_parent(decomposition_root->parent());
   set_metadata(decomposition_root->metadata());
   CloneAndAppendInstructionIntoCalledComputation(decomposition_root);
 }
@@ -3183,7 +3179,6 @@ HloCustomCallInstruction::HloCustomCallInstruction(
       custom_call_schedule_(CustomCallSchedule::SCHEDULE_NONE),
       api_version_(api_version) {
   set_raw_backend_config_string(std::move(opaque));
-  to_apply->SetCustomCallInstruction(this);
 }
 
 HloCustomCallInstruction::HloCustomCallInstruction(
@@ -3202,9 +3197,6 @@ HloCustomCallInstruction::HloCustomCallInstruction(
       custom_call_schedule_(CustomCallSchedule::SCHEDULE_NONE),
       api_version_(api_version) {
   set_raw_backend_config_string(std::move(opaque));
-  for (auto comp : called_computations) {
-    comp->SetCustomCallInstruction(this);
-  }
 }
 
 HloCustomCallInstruction::HloCustomCallInstruction(

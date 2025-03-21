@@ -138,9 +138,18 @@ struct Costs {
   // Memory access cost of running the graph.
   Duration memory_time;
 
-  // HBM read and write cost of running the graph.
+  // HBM read and write cost of running the graph. These are the achieved time
+  // where the HBM bw might haven been derated (from the peak bw). For small
+  // DMAs there is usually high derating, i.e. the achieved HBM bw is smaller
+  // than the peak bw and the achieved time is much larger than the theoretical
+  // roofline time.
   Duration hbm_read_time;
   Duration hbm_write_time;
+
+  // HBM read and write cost of running the graph without HBM bw derating. These
+  // are the theoretical roofline HBM time if the peak HBM bw is achieved.
+  Duration hbm_read_time_noderate;
+  Duration hbm_write_time_noderate;
 
   // Intermediate memory access cost of running the graph
   Duration intermediate_memory_time;

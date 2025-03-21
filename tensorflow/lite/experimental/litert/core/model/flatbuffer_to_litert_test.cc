@@ -44,6 +44,21 @@ TEST(FlatbufferToLiteRtTest, MapStaticTensorType) {
             kDimsSpan);
 }
 
+TEST(FlatbufferToLiteRtTest, MapStaticTensorInt4Type) {
+  static constexpr int32_t kDims[] = {2, 2};
+  static constexpr auto kDimsSpan = absl::MakeConstSpan(kDims);
+
+  auto t = MapTensorType(
+      std::make_pair(TflElementType::TensorType_INT4, TflShapeInfo(kDimsSpan)));
+  ASSERT_TRUE(t);
+
+  ASSERT_EQ(t->first, kLiteRtRankedTensorType);
+  auto& ranked = t->second.ranked_tensor_type;
+  EXPECT_EQ(ranked.element_type, kLiteRtElementTypeInt4);
+  EXPECT_EQ(absl::MakeSpan(ranked.layout.dimensions, ranked.layout.rank),
+            kDimsSpan);
+}
+
 TEST(FlatbufferToLiteRtTest, MapDynamicTensorType) {
   static constexpr int32_t kDims[] = {-1, 2};
   static constexpr auto kDimsSpan = absl::MakeConstSpan(kDims);

@@ -40,7 +40,7 @@ std::vector<double> ParamFromEnvWithDefault(const char* var_name,
   result.reserve(splits.size());
   for (auto& split : splits) {
     double num;
-    if (strings::safe_strtod(split, &num)) {
+    if (absl::SimpleAtod(split, &num)) {
       result.push_back(num);
     } else {
       LOG(ERROR) << "Wrong format for " << var_name << ". Use default value.";
@@ -61,7 +61,7 @@ std::vector<int> ParamFromEnvWithDefault(const char* var_name,
   result.reserve(splits.size());
   for (auto& split : splits) {
     int num;
-    if (strings::safe_strto32(split, &num)) {
+    if (absl::SimpleAtoi(split, &num)) {
       result.push_back(num);
     } else {
       LOG(ERROR) << "Wrong format for " << var_name << ". Use default value.";

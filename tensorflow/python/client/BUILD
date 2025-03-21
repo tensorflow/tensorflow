@@ -67,6 +67,7 @@ tf_python_pybind_extension(
         "//tensorflow/core/config:flags_headers",
         "//tensorflow/core/framework:pywrap_required_hdrs",
         "//tensorflow/core/lib/llvm_rtti",
+        "//tensorflow/core/public:release_version",
         "//tensorflow/core/util:version_info",
         "//tensorflow/python/lib/core:pybind11_lib",
         "//tensorflow/python/lib/core:pybind11_status",

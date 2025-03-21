@@ -38,6 +38,7 @@ cc_library(
         "//tensorflow/lite/experimental/litert/c:litert_op_code",
         "//tensorflow/lite/experimental/litert/cc:litert_buffer_ref",
         "//tensorflow/lite/experimental/litert/cc:litert_expected",
+        "//tensorflow/lite/experimental/litert/core:build_stamp",
         "//tensorflow/lite/experimental/litert/core/util:flatbuffer_tools",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/log:absl_check",
@@ -57,6 +58,7 @@ cc_test(
         ":model",
         "//tensorflow/lite/experimental/litert/c:litert_op_code",
         "//tensorflow/lite/experimental/litert/cc:litert_buffer_ref",
+        "//tensorflow/lite/experimental/litert/core:build_stamp",
         "//tensorflow/lite/experimental/litert/core/util:flatbuffer_tools",
         "//tensorflow/lite/experimental/litert/test:matchers",
         "//tensorflow/lite/schema:schema_fbs",
@@ -95,6 +97,7 @@ cc_test(
     data = [
         "//tensorflow/lite/experimental/litert/test:mlir_test_data",
         "//tensorflow/lite/experimental/litert/test:tflite_test_data",
+        # copybara:uncomment "//tensorflow/lite/java/demo/app/src/main/assets:mobilenet_v1_1.0_224.tflite",
     ],
     deps = [
         ":buffer_manager",
@@ -117,7 +120,6 @@ cc_test(
         "//tensorflow/lite/experimental/litert/test:common",
         "//tensorflow/lite/experimental/litert/test:matchers",
         "//tensorflow/lite/experimental/litert/test:test_models",
-        "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite/schema:schema_fbs_with_mutable",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
@@ -142,7 +144,6 @@ cc_library(
         "//tensorflow/lite/experimental/litert/core:dispatch_op_schema",
         "//tensorflow/lite/experimental/litert/core:insert_order_map",
         "//tensorflow/lite/experimental/litert/core/util:flatbuffer_tools",
-        "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite/schema:schema_fbs_with_mutable",
         "@com_google_absl//absl/container:flat_hash_map",
     ],
@@ -263,6 +264,7 @@ cc_library(
     deps = [
         ":model",
         "//tensorflow/lite/experimental/litert/c:litert_common",
+        "//tensorflow/lite/experimental/litert/c:litert_logging",
         "//tensorflow/lite/experimental/litert/c:litert_op_code",
         "//tensorflow/lite/experimental/litert/cc:litert_buffer_ref",
         "//tensorflow/lite/experimental/litert/cc:litert_detail",
@@ -299,6 +301,7 @@ cc_test(
     srcs = ["model_graph_test.cc"],
     deps = [
         ":graph_validation",
+        ":ir_allocator",
         ":model",
         ":model_graph",
         "//tensorflow/lite/experimental/litert/c:litert_op_code",

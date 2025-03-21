@@ -1,5 +1,6 @@
 """Default (OSS) build versions of TSL general-purpose build extensions."""
 
+load("//xla/tsl:package_groups.bzl", "DEFAULT_LOAD_VISIBILITY")
 load(
     "//xla/tsl:tsl.bzl",
     _filegroup = "filegroup",
@@ -13,6 +14,8 @@ load(
     _tsl_grpc_cc_dependencies = "tsl_grpc_cc_dependencies",
     _tsl_pybind_extension = "tsl_pybind_extension",
 )
+
+visibility(DEFAULT_LOAD_VISIBILITY)
 
 get_compatible_with_portable = _get_compatible_with_portable
 get_compatible_with_libtpu_portable = _get_compatible_with_libtpu_portable

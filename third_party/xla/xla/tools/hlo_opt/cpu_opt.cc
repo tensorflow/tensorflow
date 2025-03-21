@@ -27,6 +27,7 @@ limitations under the License.
 #include "llvm/Support/CodeGen.h"
 #include "llvm/Target/TargetOptions.h"
 #include "xla/backends/cpu/codegen/cpu_features.h"
+#include "xla/backends/cpu/codegen/ir_compiler.h"
 #include "xla/backends/cpu/codegen/jit_compiler.h"
 #include "xla/backends/cpu/codegen/target_machine_features.h"
 #include "xla/debug_options_flags.h"
@@ -35,10 +36,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_schedule.h"
-#include "xla/hlo/pass/hlo_pass_fix.h"
-#include "xla/hlo/transforms/expanders/rng_bit_generator_expander.h"
-#include "xla/hlo/transforms/simplifiers/algebraic_simplifier.h"
-#include "xla/hlo/transforms/simplifiers/reduce_window_rewriter.h"
+#include "xla/hlo/tools/hlo_opt/opt_lib.h"
 #include "xla/hlo/translate/hlo_to_mhlo/hlo_to_mlir_hlo.h"
 #include "xla/service/batchnorm_expander.h"
 #include "xla/service/change_op_data_type.h"
@@ -53,17 +51,13 @@ limitations under the License.
 #include "xla/service/dynamic_dimension_inference.h"
 #include "xla/service/dynamic_padder.h"
 #include "xla/service/executable.h"
-#include "xla/service/gather_expander.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_execution_profile.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/hlo_profile_printer_data.pb.h"
 #include "xla/service/llvm_ir/llvm_util.h"
-#include "xla/service/scatter_expander.h"
-#include "xla/service/select_and_scatter_expander.h"
 #include "xla/service/sharding_propagation.h"
 #include "xla/service/spmd/stateful_rng_spmd_partitioner.h"
-#include "xla/service/topk_rewriter.h"
 #include "xla/service/transpose_folding.h"
 #include "xla/stream_executor/platform/initialize.h"
 #include "xla/tools/hlo_opt/compiled_opt_lib.h"
@@ -105,7 +99,9 @@ class CpuOptProvider : public CompiledOptProvider {
     return GetRegisteredPassNamesHelper(pass_registry_);
   }
 
-  // Register only CPU specific passes here.
+  //////////////////////////////////////////////////////////////////////////////
+  // Registration of CPU-specific HLO Passes                                  //
+  //////////////////////////////////////////////////////////////////////////////
   void RegisterProviderPasses(HloModule& module) override {
     // initialize all needed to extract configs for pass registration
     // and pass it to the register function
@@ -113,7 +109,7 @@ class CpuOptProvider : public CompiledOptProvider {
     auto executor = GetExecutor();
     HloModuleConfig module_config = module.config();
     absl::StatusOr<std::unique_ptr<llvm::TargetMachine>> jit_target_machine =
-        cpu::JitCompiler::InferTargetMachine(
+        cpu::IrCompiler::InferTargetMachine(
             CompilerTargetOptions(module_config),
             CodeGenOptLevel(module_config),
             cpu::CpuFeatureFromString(
@@ -137,36 +133,21 @@ class CpuOptProvider : public CompiledOptProvider {
 
     RegisterPass<spmd::StatefulRngSpmdPartitioner>(
         module_config.num_partitions(), module_config.replica_count());
-    RegisterPass<RngBitGeneratorExpander>(RandomAlgorithm::RNG_PHILOX);
-    RegisterPass<TopkDecomposer>([&](const HloInstruction* instr) {
-      return instr->opcode() == HloOpcode::kTopK;
-    });
     RegisterPass<BatchNormExpander>(
         /*rewrite_training_op=*/true,
         /*rewrite_inference_op=*/true,
         /*rewrite_grad_op=*/true);
-    RegisterPass<HloPassFix<ReduceWindowRewriter>>(
-        module_config.debug_options().xla_reduce_window_rewrite_base_length());
     auto dynamic_padder_options = DynamicPadderOptions();
     dynamic_padder_options.shape_check_mode =
         DynamicDimensionInference::ShapeCheckMode::kIgnore;
     RegisterPass<DynamicPadder>(dynamic_padder_options);
-    RegisterPass<SelectAndScatterExpander>();
-    RegisterPass<ScatterExpander>(ScatterExpander::kEliminateAllScatters);
     RegisterPass<ChangeOpDataType>(
         F16, F32, HloPredicateIsOp<HloOpcode::kDot, HloOpcode::kConvolution>);
-    AlgebraicSimplifierOptions options;
-    options.set_enable_dot_strength_reduction(false);
-    options.set_minmax_propagate_nan(false);
-    options.set_supports_non_canonical_dots(false);
-    options.set_executing_on_cpu(true);
-    RegisterPass<AlgebraicSimplifier>(options);
-    RegisterPass<GatherExpander>(GatherExpander::kEliminateSimpleGathers);
     RegisterPass<TransposeFolding>(
         [&](const HloInstruction& dot,
             int64_t operand) -> absl::StatusOr<bool> {
-          if (DotImplementationCanHandleTranspose(dot,
-                                                  target_machine_features)) {
+          if (DotImplementationCanHandleTranspose(
+                  dot, target_machine_features, /*allow_runtime_calls=*/true)) {
             return TransposeFolding::IsRowColumnTransposeDotOperand(dot,
                                                                     operand);
           }
@@ -182,7 +163,6 @@ class CpuOptProvider : public CompiledOptProvider {
           nullptr);
     }
 
-    RegisterPass<GatherExpander>(GatherExpander::kEliminateSimpleGathers);
     const int max_parallelism =
         module_config.intra_op_parallelism_threads() > 0
             ? module_config.intra_op_parallelism_threads()

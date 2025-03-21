@@ -16,36 +16,35 @@
 #define TENSORFLOW_LITE_EXPERIMENTAL_LITERT_RUNTIME_DISPATCH_DISPATCH_DELEGATE_OPTIONS_H_
 
 #include <any>
-#include <cstdint>
-#include <map>
-#include <optional>
-#include <string>
-#include <utility>
 #include <vector>
 
 #include "absl/strings/string_view.h"
-#include "absl/types/span.h"
 #include "tensorflow/lite/experimental/litert/c/litert_any.h"
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
 #include "tensorflow/lite/experimental/litert/c/litert_dispatch_delegate.h"
-#include "tensorflow/lite/experimental/litert/c/litert_environment.h"
+#include "tensorflow/lite/experimental/litert/c/litert_environment_options.h"
 #include "tensorflow/lite/experimental/litert/c/litert_logging.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_any.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
-#include "tensorflow/lite/experimental/litert/core/environment.h"
+#include "tensorflow/lite/experimental/litert/core/environment_options.h"
 #include "tensorflow/lite/experimental/litert/vendors/c/litert_dispatch.h"
 
 class LiteRtDispatchDelegateOptions {
  public:
-  explicit LiteRtDispatchDelegateOptions(LiteRtEnvironmentT& environment) {
-    auto option = environment.GetOption(kLiteRtEnvOptionTagDispatchLibraryDir);
-    if (!option.has_value()) {
+  explicit LiteRtDispatchDelegateOptions(
+      const LiteRtEnvironmentOptionsT* environment_options) {
+    if (!environment_options) {
+      return;
+    }
+    auto option =
+        environment_options->GetOption(kLiteRtEnvOptionTagDispatchLibraryDir);
+    if (!option.HasValue()) {
       return;
     }
 
     if (option->type != kLiteRtAnyTypeString) {
       LITERT_LOG(LITERT_WARNING,
-                 "Ingoring option kLiteRtEnvOptionTagDispatchLibraryDir due "
+                 "Ignoring option kLiteRtEnvOptionTagDispatchLibraryDir due "
                  "to invalid value");
       return;
     }
@@ -85,6 +84,7 @@ class LiteRtDispatchDelegateOptions {
 //
 
 static constexpr absl::string_view kAllocBase = "alloc_base";
+static constexpr absl::string_view kAllocFd = "alloc_fd";
 
 inline void AddAllocBaseOption(const void* alloc_base,
                                LiteRtDispatchDelegateOptions& opts) {
@@ -101,6 +101,23 @@ inline litert::Expected<const void*> FindAllocBase(
     return alloc_base.Error();
   }
   return std::any_cast<const void*>(*alloc_base);
+}
+
+inline void AddAllocFdOption(int alloc_fd,
+                             LiteRtDispatchDelegateOptions& opts) {
+  LiteRtAny opt;
+  opt.type = kLiteRtAnyTypeVoidPtr;
+  opt.int_value = alloc_fd;
+  opts.AddOption(LiteRtDispatchOption{kAllocBase.data(), opt});
+}
+
+inline litert::Expected<int> FindAllocFd(
+    const LiteRtDispatchDelegateOptions& opts) {
+  auto alloc_fd = opts.FindDispatchOption(kAllocFd);
+  if (!alloc_fd) {
+    return alloc_fd.Error();
+  }
+  return std::any_cast<int>(*alloc_fd);
 }
 
 #endif  // TENSORFLOW_LITE_EXPERIMENTAL_LITERT_RUNTIME_DISPATCH_DISPATCH_DELEGATE_OPTIONS_H_

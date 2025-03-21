@@ -166,6 +166,7 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     visibility = [
         "//tensorflow/lite:__subpackages__",
+        "//third_party/odml/litert/litert:__subpackages__",
     ] + core_cc_api_stable_visibility_allowlist(),
     deps = [
         ":model_builder",
@@ -306,6 +307,7 @@ cc_library(
     visibility = [
         "//tensorflow/lite:__pkg__",
         "//tensorflow/lite/core:__subpackages__",
+        "//third_party/odml/infra/genai/inference/executor/google_tensor:__subpackages__",
     ],
     deps = [
         "//tensorflow/lite/c:common",
@@ -323,6 +325,7 @@ cc_test(
     srcs = ["signature_runner_test.cc"],
     data = [
         "//tensorflow/lite:testdata/multi_signatures.bin",
+        "//tensorflow/lite:testdata/reverse_signature_model.bin",
     ],
     deps = [
         ":framework",

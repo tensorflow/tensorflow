@@ -427,6 +427,21 @@ func.func private @XlaCallModule_odml.embedding_lookup.impl_0(%arg0: tensor<1xi3
 // CHECK:           return %[[VAL_1]] : tensor<1x2048xf32>
 // CHECK:         }
 
+func.func @embedding_lookup_dynamic(%arg0: tensor<1xi32>, %arg1: tensor<32000x2048xf32>, %arg2: tensor<i32>) -> tensor<1x2048xf32> {
+  %0 = mhlo.composite "odml.embedding_lookup" %arg2, %arg0, %arg1 {decomposition = @XlaCallModule_odml.embedding_lookup.impl_1} : (tensor<i32>, tensor<1xi32>, tensor<32000x2048xf32>) -> tensor<1x2048xf32>
+  return %0 : tensor<1x2048xf32>
+}
+func.func private @XlaCallModule_odml.embedding_lookup.impl_1(%arg2: tensor<i32>, %arg0: tensor<1xi32>, %arg1: tensor<32000x2048xf32>) -> tensor<1x2048xf32> {
+    %0 = "mhlo.gather"(%arg1, %arg0) <{dimension_numbers = #mhlo.gather<offset_dims = [1], collapsed_slice_dims = [0], start_index_map = [0], index_vector_dim = 1>, slice_sizes = dense<[1, 2048]> : tensor<2xi64>}> : (tensor<32000x2048xf32>, tensor<1xi32>) -> tensor<1x2048xf32>
+    return %0 : tensor<1x2048xf32>
+  }
+
+// CHECK-LABEL:   func.func @embedding_lookup_dynamic(
+// CHECK-SAME:        %[[ARG_0:.*]]: tensor<1xi32>, %[[ARG_1:.*]]: tensor<32000x2048xf32>, %[[ARG_2:.*]]: tensor<i32>) -> tensor<1x2048xf32> {
+// CHECK:           %[[VAL_1:.*]] = "tfl.embedding_lookup"(%[[ARG_0]], %[[ARG_1]]) : (tensor<1xi32>, tensor<32000x2048xf32>) -> tensor<1x2048xf32>
+// CHECK:           return %[[VAL_1]] : tensor<1x2048xf32>
+// CHECK:         }
+
 
 func.func @random_uniform(%arg0: tensor<3xi32>) -> tensor<1x2x3xf32> {
   %0 = mhlo.composite "odml.random_uniform" %arg0 {composite_attributes = {seed = 0 : i64, seed2 = 1: i64}, decomposition = @XlaCallModule_odml.random_uniform.impl_0} : (tensor<3xi32>) -> tensor<1x2x3xf32>

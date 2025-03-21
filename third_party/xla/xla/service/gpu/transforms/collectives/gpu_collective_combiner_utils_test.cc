@@ -340,6 +340,7 @@ TEST_F(CollectiveCombinerUtilsTest,
       /*should_allow_control_dependencies=*/false,
       /*postprocess_backward_peeled_op=*/std::nullopt,
       /*postprocess_backward_rotated_op=*/std::nullopt,
+      /*postprocess_backward_peeled_trailing_op=*/std::nullopt,
       /*should_add_loop_invariant_op_in_chain=*/true,
   };
   config.postprocess_pipelined_ops = AppendPipelinedInstruction;
@@ -434,6 +435,7 @@ TEST_F(CollectiveCombinerUtilsTest,
       /*should_allow_control_dependencies=*/false,
       /*postprocess_backward_peeled_op=*/std::nullopt,
       /*postprocess_backward_rotated_op=*/std::nullopt,
+      /*postprocess_backward_peeled_trailing_op=*/std::nullopt,
       /*should_add_loop_invariant_op_in_chain=*/true,
   };
   config.postprocess_pipelined_ops = AppendPipelinedInstruction;

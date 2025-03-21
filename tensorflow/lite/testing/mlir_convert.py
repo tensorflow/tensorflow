@@ -17,8 +17,8 @@ import os
 import tempfile
 
 import numpy as np
-import tensorflow as tf
 
+from tensorflow.lite.python import lite
 from tensorflow.lite.python import test_util as tflite_test_util
 from tensorflow.lite.testing import zip_test_utils
 from tensorflow.python.platform import resource_loader
@@ -51,7 +51,7 @@ def mlir_convert(
   log = ""
 
   signature_key = signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY
-  converter = tf.lite.TFLiteConverter.from_saved_model(
+  converter = lite.TFLiteConverterV2.from_saved_model(
       saved_model_dir, [signature_key])
   converter.allow_custom_ops = extra_convert_options.allow_custom_ops
   converter.experimental_new_quantizer = options.mlir_quantizer
@@ -64,7 +64,7 @@ def mlir_convert(
 
   if options.run_with_flex:
     converter.target_spec.supported_ops = set(
-        [tf.lite.OpsSet.TFLITE_BUILTINS, tf.lite.OpsSet.SELECT_TF_OPS])
+        [lite.OpsSet.TFLITE_BUILTINS, lite.OpsSet.SELECT_TF_OPS])
 
   if options.enable_dynamic_update_slice:
     converter._experimental_enable_dynamic_update_slice = True  # pylint: disable=protected-access
@@ -72,7 +72,7 @@ def mlir_convert(
   converter.unfold_batchmatmul = options.unfold_batchmatmul
 
   if test_params.get("dynamic_range_quantize", False):
-    converter.optimizations = [tf.lite.Optimize.DEFAULT]
+    converter.optimizations = [lite.Optimize.DEFAULT]
 
   if options.experimental_low_bit_qat:
     converter._experimental_low_bit_qat = (   # pylint: disable=protected-access
@@ -80,7 +80,7 @@ def mlir_convert(
     )
 
   if test_params.get("fully_quantize", False):
-    converter.optimizations = [tf.lite.Optimize.DEFAULT]
+    converter.optimizations = [lite.Optimize.DEFAULT]
 
     # Read the input range for the representative dataset from parameters.
     min_value, max_value = test_params.get("input_range", (-1, 1))
@@ -100,12 +100,12 @@ def mlir_convert(
 
     if test_params.get("quant_16x8", False):
       converter.target_spec.supported_ops = [
-          tf.lite.OpsSet
+          lite.OpsSet
           .EXPERIMENTAL_TFLITE_BUILTINS_ACTIVATIONS_INT16_WEIGHTS_INT8
       ]
     else:
       converter.target_spec.supported_ops = [
-          tf.lite.OpsSet.TFLITE_BUILTINS_INT8
+          lite.OpsSet.TFLITE_BUILTINS_INT8
       ]
 
     converter.representative_dataset = representative_dataset_gen

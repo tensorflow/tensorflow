@@ -43,10 +43,10 @@ cc_library(
     deps = [
         "//tensorflow/core:lib",
         "//tensorflow/core/profiler/lib:profiler_session",
-        "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
         "//tensorflow/core/profiler/rpc/client:save_profile",
         "//tensorflow/core/profiler/utils:math_utils",
         "//tensorflow/core/profiler/utils:xplane_utils",
+        "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
@@ -62,7 +62,10 @@ cc_library(
 tf_profiler_pybind_cc_library_wrapper(
     name = "profiler_server_for_pybind",
     actual = ":profiler_server_impl",
-    visibility = ["//tensorflow/python/profiler/internal:__pkg__"],
+    visibility = [
+        "//tensorflow/python/profiler/internal:__pkg__",
+        "@org_xprof//xprof/pywrap:__pkg__",
+    ],
 )
 
 cc_library(
@@ -76,10 +79,12 @@ cc_library(
         "//tensorflow/python/profiler/internal:__pkg__",
         "@local_xla//xla:__subpackages__",
         "@local_xla//xla/tsl/profiler/rpc/client:__pkg__",
+        "@org_xprof//xprof/pywrap:__pkg__",
     ],
     deps = [
         ":profiler_service_impl",
         "//tensorflow/core:lib",
+        "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/strings",
         "@local_tsl//tsl/profiler/protobuf:profiler_service_cc_grpc_proto",
         "@local_xla//xla/tsl/profiler/rpc:profiler_server_impl",

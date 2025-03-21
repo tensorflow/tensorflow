@@ -22,8 +22,11 @@ limitations under the License.
 #include <vector>
 
 #include "absl/base/nullability.h"
+#include "absl/base/thread_annotations.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/executable_run_options.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -41,6 +44,7 @@ limitations under the License.
 #include "xla/stream_executor/platform.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
+#include "tsl/platform/protobuf.h"
 
 namespace xla {
 
@@ -63,10 +67,6 @@ class HloRunner : public HloRunnerInterface {
   ~HloRunner() override;
 
   // Transfers data between the host and device.
-  absl::StatusOr<ScopedShapedBuffer> TransferLiteralToDevice(
-      const Literal& literal, int64_t param_no);
-  absl::StatusOr<std::vector<ScopedShapedBuffer>> TransferLiteralsToDevice(
-      absl::Span<const Literal* const> literals);
   absl::StatusOr<std::vector<ScopedShapedBuffer>> TransferLiteralsToDevice(
       absl::Span<const Literal> literals);
   absl::StatusOr<Literal> TransferLiteralFromDevice(const ShapedBuffer& buffer);
@@ -148,6 +148,13 @@ class HloRunner : public HloRunnerInterface {
       const BufferAssignmentProto* /*buffer_assignment_proto*/,
       bool run_hlo_passes) override;
 
+  // Creates a runner-internal executable object given a runner and
+  // platform-specific serialized executable representation. The serialized
+  // representation must have been produced by a compiler of the same platform
+  // and version as this one.
+  absl::StatusOr<std::unique_ptr<OpaqueExecutable>> DeserializeExecutable(
+      absl::Nonnull<const tsl::protobuf::Message*> serialized) const override;
+
   // Executes a given HLO module into a set of replicas, and returns a map
   // with the replica number as key, and the corresponding returned literal as
   // value.
@@ -225,6 +232,14 @@ class HloRunner : public HloRunnerInterface {
       const OpaqueExecutable* wrapped) const;
 
  private:
+  absl::StatusOr<ScopedShapedBuffer> TransferLiteralToDevice(
+      const Literal& literal,
+      absl::Nullable<const ComputationLayout*> entry_computation_layout,
+      int64_t param_no);
+  absl::StatusOr<std::vector<ScopedShapedBuffer>> TransferLiteralsToDevice(
+      absl::Span<const Literal* const> literals,
+      absl::Nullable<const ComputationLayout*> entry_computation_layout);
+
   absl::StatusOr<ExecutionOutput> ExecuteWithExecutionInputs(
       Executable* executable, std::vector<ExecutionInput> arguments,
       ExecutionProfile* profile);
@@ -249,15 +264,26 @@ class HloRunner : public HloRunnerInterface {
       DeviceAssignment* device_assignment);
 
   // Gets or creates the DeviceMemoryAllocator.
-  se::DeviceMemoryAllocator* GetAllocator();
+  se::DeviceMemoryAllocator* GetAllocator() ABSL_LOCKS_EXCLUDED(mu_);
+
+  // Calls UpdateEntryComputationLayout if HloRunner has not called it on the
+  // module before. This method is called before the module is executed. The
+  // reason UpdateEntryComputationLayout is only called once instead of every
+  // time is to avoid one thread updating the layout while another thread is
+  // reading it during execution.
+  void MaybeUpdateEntryComputationLayout(HloModule* module)
+      ABSL_LOCKS_EXCLUDED(mu_);
 
   std::unique_ptr<Backend> backend_;
-
-  std::unique_ptr<se::DeviceMemoryAllocator> allocator_;
-
   DeviceShapeRepresentationFn device_shape_representation_fn_;
 
-  const ComputationLayout* entry_computation_layout_ = nullptr;
+  absl::Mutex mu_;
+  std::unique_ptr<se::DeviceMemoryAllocator> allocator_ ABSL_GUARDED_BY(mu_);
+
+  // Set of module unique_ids that we already called
+  // UpdateEntryComputationLayout() on
+  absl::flat_hash_set<int> module_ids_with_updated_layouts_
+      ABSL_GUARDED_BY(mu_);
 };
 
 }  // namespace xla

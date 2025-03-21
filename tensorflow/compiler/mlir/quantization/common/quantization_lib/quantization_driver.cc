@@ -813,8 +813,9 @@ bool QuantizationDriver::PropagateParamsAndReturnIfChanged() {
       // propagation if any of the operands has a per-axis quantized type param
       // and `RequiredSameQuantizedAxes` set to false.
       // Currently, these lines of code are only applicable to TFL_TransposeOp
-      // and the output q-dq propagation for this Op is performed in
-      // `PropagateTransposedPerAxisQuantDim`.
+      // and TFL_ReshapeOp. And the output q-dq propagation for this Op is
+      // performed in `PropagateTransposedPerAxisQuantDim` and
+      // `PropagateReshapedPerAxisQuantDim` respectively.
       if (is_qdq_conversion_ &&
           !scale_spec->required_same_quantized_axes_func()) {
         if (HasPerAxisQuantizedOperand(op)) continue;

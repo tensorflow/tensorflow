@@ -23,19 +23,19 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/node_hash_map.h"
+#include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/strings/ascii.h"
 #include "absl/strings/str_cat.h"
 #include "xla/tsl/profiler/convert/xla_op_utils.h"
 #include "xla/tsl/profiler/utils/math_utils.h"
 #include "tensorflow/core/lib/gtl/top_n.h"
-#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/profiler/convert/op_metrics_db_combiner.h"
 #include "tensorflow/core/profiler/convert/op_metrics_to_record.h"
 #include "tensorflow/core/profiler/protobuf/op_metrics.pb.h"
 #include "tensorflow/core/profiler/protobuf/op_profile.pb.h"
-#include "tensorflow/core/profiler/utils/math_utils.h"
 #include "tensorflow/core/profiler/utils/op_metrics_db_utils.h"
+#include "tsl/platform/protobuf.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -51,6 +51,7 @@ double CapUtilization(double utilization) { return std::min(utilization, 1.0); }
 void PopulateSymbolNode(const OpMetrics& op_metrics, Node* node) {
   node->set_name(op_metrics.name());
   Node::XLAInstruction& xla = *node->mutable_xla();
+  xla.set_program_id(op_metrics.hlo_module_id());
   xla.set_expression(op_metrics.long_name());
   xla.set_fingerprint(op_metrics.fingerprint());
   xla.set_category(op_metrics.category());
@@ -89,6 +90,7 @@ void CopySymbolDetailsToDeduplicatedNode(Node* top_child_node,
       absl::StrCat(top_child_node->name(), " and its duplicate(s)"));
   Node::XLAInstruction& xla = *deduplicated_node->mutable_xla();
   const Node::XLAInstruction& top_child_node_xla = top_child_node->xla();
+  xla.set_program_id(top_child_node_xla.program_id());
   xla.set_expression(top_child_node_xla.expression());
   xla.set_fingerprint(top_child_node_xla.fingerprint());
   xla.set_category(top_child_node_xla.category());
@@ -440,7 +442,7 @@ void OpProfileBuilder::Finalize(
 OpProfileBuilder::OpProfileBuilder(
     const OpProfileOptions& options,
     tensorflow::profiler::op_profile::Node* root,
-    const tensorflow::protobuf::Map<uint64_t, std::string>* program_name_map)
+    const tsl::protobuf::Map<uint64_t, std::string>* program_name_map)
     : options_(options), root_(root), program_name_map_(program_name_map) {
   if (root == nullptr) {
     LOG(DFATAL) << "root is null.";

@@ -51,7 +51,8 @@ int64_t ComputeSuggestedCombinerThreshold(
 // Adds information that `instr` has been pipelined to the
 // `CollectiveBackendInfo`. It is up to the caller to decide when to invoke
 // this.
-absl::Status AppendPipelinedInstruction(HloInstruction* instr);
+absl::Status AppendPipelinedInstruction(HloInstruction* instr,
+                                        HloInstruction* new_while_instr);
 
 // Returns true if module contains any pipelined instruction. False otherwise.
 bool ContainsPipelinedInstruction(const HloModule& module);

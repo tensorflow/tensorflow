@@ -30,17 +30,18 @@ limitations under the License.
 #include "absl/strings/str_replace.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/ir/hlo_print_options.h"
+#include "xla/tsl/platform/statusor.h"
 #ifdef PLATFORM_GOOGLE
-#include "third_party/json/src/json.hpp"
-#include "tensorflow/compiler/mlir/lite/experimental/google/tooling/google/direct_hlo_to_json_graph_convert.h"
+#include "nlohmann/json.hpp"
+#include "tensorflow/compiler/mlir/lite/experimental/google/tooling/hlo_adapter/direct_hlo_to_json_graph_convert.h"
 #endif  // PLATFORM_GOOGLE
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_graph_dumper.h"
-#include "tensorflow/core/platform/errors.h"
-#include "tensorflow/core/platform/statusor.h"
+#include "xla/tsl/platform/errors.h"
 #include "tensorflow/core/profiler/convert/tool_options.h"
 #include "tensorflow/core/profiler/utils/hlo_module_utils.h"
 #include "tensorflow/core/profiler/utils/hlo_proto_to_module.h"
@@ -49,8 +50,8 @@ namespace tensorflow {
 namespace profiler {
 namespace {
 
-using ::tensorflow::StatusOr;
-using ::tensorflow::errors::InvalidArgument;
+using ::tsl::StatusOr;
+using ::tsl::errors::InvalidArgument;
 using ::xla::HloComputation;
 using ::xla::HloInstruction;
 using ::xla::HloModule;
@@ -301,7 +302,7 @@ absl::StatusOr<GraphViewerParams> ParseGraphViewerParams(
   GraphViewerParams params;
   std::optional<std::string> type = GetParam<std::string>(options, "type");
   if (!type.has_value()) {
-    return errors::InvalidArgument("Graph viewer must provide a type option.");
+    return InvalidArgument("Graph viewer must provide a type option.");
   }
 
   // For graph type.
@@ -334,8 +335,7 @@ absl::StatusOr<GraphViewerParams> ParseGraphViewerParams(
   }
 
   // Unknown type.
-  return errors::InvalidArgument("Unknown graph viewer type option: ",
-                                 type.value());
+  return InvalidArgument("Unknown graph viewer type option: ", type.value());
 }
 
 xla::RenderedGraphFormat GetRenderFormat(const std::string& format_string) {

@@ -197,7 +197,7 @@ bool IsSubTilingOrEqualSharding(const Shape& potential_sharded_shape,
   // Different tiled ranks can't be compared (something is wrong, are the
   // shardings for different shapes?)
   if (tiled_data_rank != sharding.TiledDataRank() ||
-      tiled_data_rank != potential_sharded_shape.dimensions_size()) {
+      tiled_data_rank != potential_sharded_shape.rank()) {
     return false;
   }
 
@@ -2162,7 +2162,7 @@ std::optional<GatherScatterDims> GetGatherScatterBatchParallelDims(
     int concatenated_dims = 0;
     for (const HloInstruction* op : indices->operands()) {
       const int64_t num_indices_from_element =
-          op->shape().dimensions_size() > index_vector_dim
+          op->shape().rank() > index_vector_dim
               ? op->shape().dimensions(index_vector_dim)
               : 1;
       if (std::optional<int64_t> maybe_iota_dim =
@@ -2180,7 +2180,7 @@ std::optional<GatherScatterDims> GetGatherScatterBatchParallelDims(
     if (*maybe_iota_dim != index_vector_dim) {
       // This is a case of a single iota with index_dim being out of bounds.
       const int64_t num_indices_from_element =
-          indices->shape().dimensions_size() > index_vector_dim
+          indices->shape().rank() > index_vector_dim
               ? indices->shape().dimensions(index_vector_dim)
               : 1;
       index_parallel_in_dim.assign(num_indices_from_element, *maybe_iota_dim);
@@ -3016,11 +3016,8 @@ Shape TileLeafShape(const HloSharding& sharding, const Shape& shape) {
 }
 
 absl::Status CanonicalizeLayoutAfterShardingPropagation(
-    HloModule* module, bool update_output_layout,
-    bool update_parameters_layout) {
-  if (!update_output_layout && !update_parameters_layout) {
-    return absl::OkStatus();
-  }
+    HloModule* module, const std::vector<bool>& update_output_layout,
+    const std::vector<bool>& update_parameters_layout) {
   if (!module->layout_canonicalization_callback()) {
     LOG(INFO) << "There is no registered layout_canonicalization_callback.";
     return absl::OkStatus();
@@ -3028,19 +3025,39 @@ absl::Status CanonicalizeLayoutAfterShardingPropagation(
   TF_ASSIGN_OR_RETURN(auto shapes_with_layout,
                       module->layout_canonicalization_callback()(*module));
 
-  if (update_output_layout &&
-      module->entry_computation_layout().result_layout().LayoutIsSet()) {
-    TF_RETURN_IF_ERROR(module->mutable_entry_computation_layout()
-                           ->mutable_result_layout()
-                           ->CopyLayoutFromShape(shapes_with_layout.second));
+  if (module->entry_computation_layout().result_layout().LayoutIsSet() &&
+      absl::c_any_of(update_output_layout, [](bool v) { return v; })) {
+    if (absl::c_all_of(update_output_layout, [](bool v) { return v; })) {
+      TF_RETURN_IF_ERROR(module->mutable_entry_computation_layout()
+                             ->mutable_result_layout()
+                             ->CopyLayoutFromShape(shapes_with_layout.second));
+    } else {
+      Shape result_shape = module->mutable_entry_computation_layout()
+                               ->mutable_result_layout()
+                               ->shape();
+      CHECK_EQ(result_shape.tuple_shapes_size(),
+               shapes_with_layout.second.tuple_shapes_size());
+      for (int64_t i = 0; i < result_shape.tuple_shapes_size(); ++i) {
+        if (update_output_layout[i]) {
+          *result_shape.mutable_tuple_shapes(i) =
+              shapes_with_layout.second.tuple_shapes(i);
+        }
+      }
+      TF_RETURN_IF_ERROR(module->mutable_entry_computation_layout()
+                             ->mutable_result_layout()
+                             ->CopyLayoutFromShape(result_shape));
+    }
   }
 
-  if (update_parameters_layout) {
+  if (absl::c_any_of(update_parameters_layout, [](bool v) { return v; })) {
     for (int64_t i = 0; i < module->entry_computation()->num_parameters();
          ++i) {
-      if (module->entry_computation_layout()
-              .parameter_layout(i)
-              .LayoutIsSet()) {
+      bool update_parameter_layout = update_parameters_layout.size() == 1
+                                         ? update_parameters_layout[0]
+                                         : update_parameters_layout[i];
+      bool parameter_layout_is_set =
+          module->entry_computation_layout().parameter_layout(i).LayoutIsSet();
+      if (update_parameter_layout && parameter_layout_is_set) {
         TF_RETURN_IF_ERROR(
             module->mutable_entry_computation_layout()
                 ->mutable_parameter_layout(i)

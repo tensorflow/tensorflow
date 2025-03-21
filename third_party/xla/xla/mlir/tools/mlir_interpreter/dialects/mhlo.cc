@@ -321,13 +321,13 @@ llvm::SmallVector<InterpreterValue> Gather(
   auto& operand = args[0];
   auto& start_indices = args[1];
   const auto& operand_view = operand.View();
-  int64_t operand_rank = operand_view.Rank();
+  int64_t operand_rank = operand_view.num_dimensions();
 
   // Make a fake BufferView for the start indices.
   BufferView start_indices_view = start_indices.View();
-  auto output_rank =
-      static_cast<int64_t>(start_indices_view.Rank() + offset_dims.size());
-  if (index_vector_dim < start_indices_view.Rank()) {
+  auto output_rank = static_cast<int64_t>(start_indices_view.num_dimensions() +
+                                          offset_dims.size());
+  if (index_vector_dim < start_indices_view.num_dimensions()) {
     --output_rank;
     start_indices_view.sizes[index_vector_dim] = 1;
   }
@@ -365,7 +365,7 @@ llvm::SmallVector<InterpreterValue> Gather(
   for (auto start_indices_index : start_indices_view.Indices()) {
     SmallVector<int64_t> operand_base_indices(operand_rank);
     for (auto [i, dim] : llvm::enumerate(start_index_map)) {
-      if (index_vector_dim < start_indices_view.Rank()) {
+      if (index_vector_dim < start_indices_view.num_dimensions()) {
         start_indices_index[index_vector_dim] = static_cast<int64_t>(i);
       }
       operand_base_indices[dim] = std::max<int64_t>(
@@ -410,9 +410,9 @@ llvm::SmallVector<InterpreterValue> Scatter(
   auto update_window_dims = dims.getUpdateWindowDims();
 
   auto input_view = n_inputs.front().View();
-  int64_t operand_rank = input_view.Rank();
-  int64_t updates_rank = n_updates.front().View().Rank();
-  int64_t indices_rank = scatter_indices.View().Rank();
+  int64_t operand_rank = input_view.num_dimensions();
+  int64_t updates_rank = n_updates.front().View().num_dimensions();
+  int64_t indices_rank = scatter_indices.View().num_dimensions();
 
   llvm::SmallVector<int64_t> batch_dims;
   for (int64_t dim = 0; dim < operand_rank; ++dim) {
@@ -689,14 +689,14 @@ InterpreterValue DotGeneralImpl(InterpreterValue& lhs, InterpreterValue& rhs,
   for (int64_t lhs_dim : lhs_batch) {
     dimensions.push_back(lhsv.sizes[lhs_dim]);
   }
-  for (int64_t i = 0; i < lhsv.Rank(); i++) {
+  for (int64_t i = 0; i < lhsv.num_dimensions(); i++) {
     if (!llvm::is_contained(lhs_contracting, i) &&
         !llvm::is_contained(lhs_batch, i)) {
       dimensions.push_back(lhsv.sizes[i]);
       lhs_non_batch.push_back(i);
     }
   }
-  for (int64_t i = 0; i < rhs.View().Rank(); i++) {
+  for (int64_t i = 0; i < rhs.View().num_dimensions(); i++) {
     if (!llvm::is_contained(rhs_contracting, i) &&
         !llvm::is_contained(rhs_batch, i)) {
       dimensions.push_back(rhsv.sizes[i]);
@@ -704,8 +704,8 @@ InterpreterValue DotGeneralImpl(InterpreterValue& lhs, InterpreterValue& rhs,
     }
   }
 
-  SmallVector<int64_t> lhs_index(lhsv.Rank());
-  SmallVector<int64_t> rhs_index(rhsv.Rank());
+  SmallVector<int64_t> lhs_index(lhsv.num_dimensions());
+  SmallVector<int64_t> rhs_index(rhsv.num_dimensions());
   SmallVector<int64_t> output_index(dimensions.size());
   auto output = lhs.TypedAlike(dimensions);
 
@@ -778,7 +778,7 @@ InterpreterValue Dot(InterpreterState& state, mhlo::DotOp op,
   auto ty = cast<ShapedType>(op->getResultTypes()[0]);
   auto result = lhs.TypedAlike(ty.getShape());
 
-  if (lhs.View().Rank() == 1 && rhs.View().Rank() == 1) {
+  if (lhs.View().num_dimensions() == 1 && rhs.View().num_dimensions() == 1) {
     DispatchScalarType(ty, [&](auto dummy) {
       using T = decltype(dummy);
       using TT = TensorOrMemref<T>;
@@ -791,7 +791,8 @@ InterpreterValue Dot(InterpreterState& state, mhlo::DotOp op,
       }
       std::get<TT>(result.storage).at({}) += product;
     });
-  } else if (lhs.View().Rank() == 2 && rhs.View().Rank() == 1) {
+  } else if (lhs.View().num_dimensions() == 2 &&
+             rhs.View().num_dimensions() == 1) {
     DispatchScalarType(ty, [&](auto dummy) {
       using TT = TensorOrMemref<decltype(dummy)>;
       auto lhs_tensor = std::get<TT>(lhs.storage);
@@ -803,7 +804,8 @@ InterpreterValue Dot(InterpreterState& state, mhlo::DotOp op,
         }
       }
     });
-  } else if (lhs.View().Rank() == 2 && rhs.View().Rank() == 2) {
+  } else if (lhs.View().num_dimensions() == 2 &&
+             rhs.View().num_dimensions() == 2) {
     DispatchScalarType(ty, [&](auto dummy) {
       using TT = TensorOrMemref<decltype(dummy)>;
       auto lhs_tensor = std::get<TT>(lhs.storage);

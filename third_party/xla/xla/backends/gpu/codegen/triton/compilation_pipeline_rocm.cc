@@ -90,7 +90,7 @@ absl::Status CreateTritonPipeline(mlir::OpPassManager* pm,
   pm->addPass(mt::gpu::createTritonGPUCoalesce());
   pm->addPass(mt::gpu::createTritonGPURemoveLayoutConversions());
   pm->addPass(mt::gpu::createTritonGPUOptimizeThreadLocality());
-  pm->addPass(mlir::createTritonAMDGPUAccelerateMatmulPass());
+  pm->addPass(mlir::createTritonAMDGPUAccelerateMatmulPass(cc.gfx_version()));
   pm->addPass(mt::gpu::createTritonGPURemoveLayoutConversions());
   // TODO ROCm Check if we want to compare MI100 and greater
   pm->addPass(mlir::createTritonAMDGPUOptimizeEpiloguePass());
@@ -121,7 +121,7 @@ absl::Status CreateTritonPipeline(mlir::OpPassManager* pm,
   const int custom_lds_size = 0;
   pm->addPass(mlir::triton::AMD::createOptimizeLDSUsagePass(cc.gfx_version(),
                                                             custom_lds_size));
-  pm->addPass(mlir::createConvertSCFToCFPass());
+  pm->addPass(mlir::createSCFToControlFlowPass());
   pm->addPass(mlir::createConvertIndexToLLVMPass());
   pm->addPass(mt::gpu::createAllocateSharedMemoryPass());
   pm->addPass(mt::createConvertTritonAMDGPUToLLVMPass(cc.gfx_version(), true));

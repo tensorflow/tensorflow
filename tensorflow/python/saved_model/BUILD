@@ -16,7 +16,7 @@ package(
 py_strict_library(
     name = "saved_model",
     srcs = ["saved_model.py"],
-    visibility = ["//tensorflow:internal"],
+    visibility = ["//visibility:public"],
     deps = [
         ":builder",
         ":constants",

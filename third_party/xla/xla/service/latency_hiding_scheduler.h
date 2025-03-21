@@ -374,41 +374,39 @@ class AnnotationTracker {
                              const int64_t annotation) {
     return annotations_[annotation][comp].size();
   }
-  void FindAnnotationRoots(const HloComputation* comp,
-                           const int64_t annotation) {
+  void FindSuccessors(const HloComputation* comp, const int64_t annotation) {
     absl::flat_hash_set<const HloInstruction*> seen_instructions(
         annotations_[annotation][comp].begin(),
         annotations_[annotation][comp].end());
     for (const HloInstruction* instr : annotations_.at(annotation).at(comp)) {
-      bool has_annotated_user = false;
       for (const PtrVec<HloInstruction*>& users :
            {instr->users(), instr->control_successors()}) {
         for (HloInstruction* user : users) {
-          if (seen_instructions.contains(user)) {
-            has_annotated_user = true;
-            break;
+          if (!seen_instructions.contains(user) &&
+              (GetAnnotation(user) == std::nullopt ||
+               GetAnnotation(user).value() != annotation)) {
+            annotation_successors_[annotation][comp].push_back(user);
+            VLOG(3) << "Annotation group: " << annotation
+                    << ", successor: " << user->name();
           }
+          seen_instructions.insert(user);
         }
       }
-      if (!has_annotated_user) {
-        VLOG(3) << "Annotation: " << annotation << ", root: " << instr->name();
-        annotation_roots_[annotation][comp].push_back(instr);
-      }
     }
   }
-  int64_t GetNumRootInstructions(const HloComputation* comp,
-                                 const int64_t annotation) {
-    if (!annotation_roots_[annotation].contains(comp)) {
-      FindAnnotationRoots(comp, annotation);
+  int64_t GetNumSuccessors(const HloComputation* comp,
+                           const int64_t annotation) {
+    if (!annotation_successors_[annotation].contains(comp)) {
+      FindSuccessors(comp, annotation);
     }
-    return annotation_roots_[annotation][comp].size();
+    return annotation_successors_[annotation][comp].size();
   }
-  std::vector<const HloInstruction*> GetRootInstructions(
-      const HloComputation* comp, const int64_t annotation) {
-    if (!annotation_roots_.contains(annotation)) {
-      FindAnnotationRoots(comp, annotation);
+  std::vector<const HloInstruction*> GetSuccessors(const HloComputation* comp,
+                                                   const int64_t annotation) {
+    if (!annotation_successors_[annotation].contains(comp)) {
+      FindSuccessors(comp, annotation);
     }
-    return annotation_roots_[annotation][comp];
+    return annotation_successors_[annotation][comp];
   }
   void PrintAnnotationSets(int64_t level) const {
     for (const auto& [annotation, comp_instr_vector] : annotations_) {
@@ -433,7 +431,7 @@ class AnnotationTracker {
   absl::flat_hash_map<int64_t,
                       absl::flat_hash_map<const HloComputation*,
                                           std::vector<const HloInstruction*>>>
-      annotation_roots_;
+      annotation_successors_;
 };
 
 // Represents an edge between two nodes in the schedule graph.
@@ -452,6 +450,7 @@ class HloEdge {
   }
   const HloGraphNode& Target() const { return *target_; }
   HloGraphNode& Target() { return *target_; }
+  HloGraphNode* TargetPtr() { return target_; }
   std::string ToString() const;
 
  private:
@@ -474,6 +473,49 @@ class HloGraphNode {
   // Nullptr is not a valid value for 'i'.
   explicit HloGraphNode(const HloInstruction* i, int64_t original_position)
       : instr_(i), original_position_(original_position) {}
+
+  static void UpdateOrAddDependency(HloGraphNode* from, HloGraphNode* to,
+                                    LatencyEstimator::TimeCost latency) {
+    auto update_latency_if_edge_exists =
+        [&](absl::Span<HloEdge> edges, HloGraphNode* to,
+            LatencyEstimator::TimeCost latency) {
+          auto it = absl::c_find_if(
+              edges, [&](HloEdge edge) { return &edge.Target() == to; });
+          if (it != edges.end()) {
+            it->SetLatency(latency);
+            return true;
+          }
+          return false;
+        };
+    if (!update_latency_if_edge_exists(from->GetSuccessors(), to, latency)) {
+      from->successors_.push_back(HloEdge(latency, to));
+      from->outdegree_++;
+    }
+    if (!update_latency_if_edge_exists(to->GetPredecessors(), from, latency)) {
+      to->predecessors_.push_back(HloEdge(latency, from));
+      to->indegree_++;
+    }
+  }
+
+  static void UpdateOrAddDependency(HloGraphNode* from, HloGraphNode* to,
+                                    const LatencyEstimator* latency_estimator) {
+    UpdateOrAddDependency(from, to,
+                          latency_estimator->GetLatencyBetween(*from, *to));
+  }
+
+  static void AddDependency(HloGraphNode* from, HloGraphNode* to,
+                            LatencyEstimator::TimeCost latency) {
+    to->predecessors_.push_back(HloEdge(latency, from));
+    to->indegree_++;
+    from->successors_.push_back(HloEdge(latency, to));
+    from->outdegree_++;
+  }
+
+  static void AddDependency(HloGraphNode* from, HloGraphNode* to,
+                            const LatencyEstimator* latency_estimator) {
+    AddDependency(from, to, latency_estimator->GetLatencyBetween(*from, *to));
+  }
+
   const HloInstruction& GetInstr() const { return *instr_; }
   bool IsScheduled() const { return scheduled_; }
   int32_t GetIndegree() const { return indegree_; }
@@ -529,11 +571,14 @@ class HloGraphNode {
   bool DoesOccupyShareableResource(int64_t resource) const {
     return absl::c_linear_search(occupied_shareable_resources_, resource);
   }
-  bool DoesReleaseResource(ResourceType res) const {
+  bool DoesReleaseResource(int64_t res) const {
     return absl::c_any_of(resources_, [res](const ResourcePair& resource) {
       return resource.second == ResourceUsageType::kResourceRelease &&
-             resource.first == ResourceTypeToIndex(res);
+             resource.first == res;
     });
+  }
+  bool DoesReleaseResource(ResourceType res) const {
+    return DoesReleaseResource(ResourceTypeToIndex(res));
   }
   std::optional<ResourceUsageType> UsesResourceType(ResourceType res) const {
     int64_t res_type = ResourceTypeToIndex(res);
@@ -553,11 +598,12 @@ class HloGraphNode {
     return std::nullopt;
   }
   std::vector<int64_t> GetShareableResourcesOnEdge(const HloEdge& edge) const {
-    HloGraphNode node = edge.Target();
+    HloGraphNode to = edge.Target();
     std::vector<int64_t> resources;
     absl::c_for_each(released_shareable_resources_,
-                     [&node, &resources](const int64_t resource) {
-                       if (node.DoesOccupyShareableResource(resource)) {
+                     [this, &to, &resources](const int64_t resource) {
+                       if (to.DoesOccupyShareableResource(resource) &&
+                           this->DoesReleaseResource(resource)) {
                          resources.push_back(resource);
                        }
                      });
@@ -1004,8 +1050,9 @@ class DefaultSchedulerCore : public SchedulerCore {
     std::vector<HloGraphNode*> selective_resource_releasers;
     // Similar to ready set, but only contains the no-op instructions.
     ReadyQueueSet nop_set;
-    // Number of nodes that are ready to be scheduled with the given annotation.
-    absl::flat_hash_map<int64_t, int64_t> ready_num_nodes_with_annotation;
+    // Number of scheduled nodes that are a successor for the given annotation.
+    absl::flat_hash_map<int64_t, int64_t>
+        num_scheduled_successors_for_annotation;
     // List of annotations that are ready to be scheduled.
     absl::InlinedVector<int64_t, 2> ready_annotations;
     // List of annotated nodes that are ready to be scheduled.
@@ -1067,6 +1114,8 @@ class DefaultSchedulerCore : public SchedulerCore {
   }
   int64_t GetRerunTimes() override { return config_.rerun; }
   bool SchedulingAnnotationCrossesOverlapLimit(
+      const SchedulingState& sched_state, int64_t annotation);
+  absl::flat_hash_map<int64_t, int64_t> GetNumResourcesNeededForAnnotation(
       const SchedulingState& sched_state, int64_t annotation);
 
  protected:

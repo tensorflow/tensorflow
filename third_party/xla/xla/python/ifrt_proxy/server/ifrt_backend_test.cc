@@ -372,6 +372,17 @@ class IfrtBackendHandlerTest : public IfrtBackendTest {
     return tsl::StatusFromProto(response->response_metadata().status());
   }
 
+  absl::Status CheckValueReady(uint64_t handle) {
+    if (handle == 0) {
+      return absl::InternalError("Test error, future handle is 0");
+    }
+    auto request = NewIfrtRequest(NewOpId());
+    request->mutable_check_value_ready_request()->add_value_handles(handle);
+    TF_ASSIGN_OR_RETURN(std::shared_ptr<IfrtResponse> response,
+                        CallBackend(std::move(request)));
+    return tsl::StatusFromProto(response->response_metadata().status());
+  }
+
   xla::ifrt::MockClient* mock_client_;
   xla::ifrt::MockCompiler mock_compiler_;
   std::vector<std::unique_ptr<xla::ifrt::MockDevice>> mock_devices_;
@@ -750,6 +761,7 @@ TEST_P(IfrtBackendHandlerTest, AssembleArrayFromSingleDeviceArrays) {
   std::vector<tsl::RCReference<xla::ifrt::MockArray>> single_device_arrays;
   for (int i = 0; i < 2; ++i) {
     auto array = tsl::MakeRef<xla::ifrt::MockArray>();
+    ON_CALL(*array, dtype()).WillByDefault(Return(dtype));
     single_device_arrays.push_back(array);
 
     TF_ASSERT_OK_AND_ASSIGN(uint64_t array_handle, MakeTestArray(array));
@@ -775,20 +787,10 @@ TEST_P(IfrtBackendHandlerTest, AssembleArrayFromSingleDeviceArrays) {
       tsl::MakeRef<xla::ifrt::MockArray>();
   const Shape expected_shape({2, 2});
 
-  if (Version().protocol_version() >=
-      protocol_version::kAssembleArrayFromSingleDeviceArraysWithDType) {
-    EXPECT_CALL(*mock_client_,
-                AssembleArrayFromSingleDeviceArrays(
-                    dtype, expected_shape, _,
-                    ElementsAreArray(single_device_arrays), _, _))
-        .WillOnce(Return(std::move(result)));
-  } else {
-    EXPECT_CALL(
-        *mock_client_,
-        AssembleArrayFromSingleDeviceArrays(
-            expected_shape, _, ElementsAreArray(single_device_arrays), _, _))
-        .WillOnce(Return(std::move(result)));
-  }
+  EXPECT_CALL(*mock_client_, AssembleArrayFromSingleDeviceArrays(
+                                 dtype, expected_shape, _,
+                                 ElementsAreArray(single_device_arrays), _, _))
+      .WillOnce(Return(std::move(result)));
 
   TF_ASSERT_OK_AND_ASSIGN(auto response, CallBackend(std::move(ifrt_request)));
   EXPECT_NE(response->assemble_array_from_single_device_arrays_response()
@@ -965,7 +967,7 @@ TEST_P(IfrtBackendHandlerTest, CopyArrays) {
   BasicDeviceList::Devices ds;
   TF_ASSERT_OK_AND_ASSIGN(ds.emplace_back(),
                           mock_client_->LookupDevice(DeviceId(1)));
-  tsl::RCReference<DeviceList> devices = BasicDeviceList::Create(std::move(ds));
+  DeviceListRef devices = BasicDeviceList::Create(std::move(ds));
   MemoryKind memory_kind("device");
 
   EXPECT_CALL(*mock_client_, CopyArrays(ElementsAreArray(src_arrays),
@@ -1391,7 +1393,7 @@ TEST_P(IfrtBackendHandlerTest, LoadedExecutableExecute) {
       .WillOnce(
           Invoke([&](absl::Span<tsl::RCReference<Array>> args,
                      const xla::ifrt::LoadedExecutable::ExecuteOptions& options,
-                     std::optional<tsl::RCReference<DeviceList>> devices)
+                     std::optional<DeviceListRef> devices)
                      -> absl::StatusOr<LoadedExecutable::ExecuteResult> {
             return LoadedExecutable::ExecuteResult{
                 .status = Future<>(absl::InternalError("injected error")),
@@ -1449,6 +1451,74 @@ TEST_P(IfrtBackendHandlerTest, LoadedExecutableExecute) {
                HasSubstr("Unknown future handle")));
 }
 #endif
+
+TEST_P(IfrtBackendHandlerTest, LoadedExecutableExecuteErrorWithClientHandles) {
+  TF_ASSERT_OK_AND_ASSIGN(xla::ifrt::Device* const device,
+                          mock_client_->LookupDevice(DeviceId(0)));
+
+  MockLoadedExecutable* executable;
+  uint64_t handle;
+  {
+    auto e = std::make_unique<MockLoadedExecutable>();
+    executable = e.get();
+    TF_ASSERT_OK_AND_ASSIGN(CompileResponse response,
+                            CompileTestLoadedExecutable(std::move(e)));
+    handle = response.loaded_executable_handle();
+  }
+
+  constexpr int kNumArgs = 3;
+  constexpr int kNumOutputs = 2;
+
+  Shape shape({2, 2});
+  auto sharding = SingleDeviceSharding::Create(device, MemoryKind());
+
+  auto make_array = [&]() {
+    auto array = tsl::MakeRef<MockArray>();
+    ON_CALL(*array, dtype()).WillByDefault(Return(DType(DType::kF32)));
+    ON_CALL(*array, shape()).WillByDefault(ReturnRef(shape));
+    ON_CALL(*array, sharding()).WillByDefault(ReturnRef(*sharding));
+    return array;
+  };
+
+  EXPECT_CALL(*executable, Execute(SizeIs(kNumArgs), _, _))
+      .WillOnce(
+          Invoke([&](absl::Span<tsl::RCReference<Array>> args,
+                     const xla::ifrt::LoadedExecutable::ExecuteOptions& options,
+                     std::optional<DeviceListRef> devices)
+                     -> absl::StatusOr<LoadedExecutable::ExecuteResult> {
+            return absl::InternalError("injected error");
+          }));
+
+  auto request = NewIfrtRequest(NewOpId());
+  LoadedExecutableExecuteRequest* execute_request =
+      request->mutable_loaded_executable_execute_request();
+  for (int i = 0; i < kNumArgs; ++i) {
+    TF_ASSERT_OK_AND_ASSIGN(uint64_t arg_handle, MakeTestArray(make_array()));
+    execute_request->add_args_handles(arg_handle);
+  }
+  execute_request->set_loaded_executable_handle(handle);
+  constexpr uint64_t kFirstResultHandle = 1000;
+  for (int i = 0; i < kNumOutputs; ++i) {
+    execute_request->add_result_array_handle(kFirstResultHandle + i);
+  }
+  execute_request->set_result_status_handle(kFirstResultHandle + kNumOutputs);
+
+  xla::ifrt::LoadedExecutable::ExecuteOptions execute_options;
+  execute_options.fill_status = true;
+  TF_ASSERT_OK_AND_ASSIGN(*execute_request->mutable_execute_options(),
+                          execute_options.ToProto());
+
+  auto status_is_err =
+      StatusIs(absl::StatusCode::kInternal, StrEq("injected error"));
+
+  EXPECT_THAT(CallBackend(std::move(request)), status_is_err);
+
+  EXPECT_THAT(CheckFuture(kFirstResultHandle + kNumOutputs), status_is_err);
+
+  for (int i = 0; i < kNumOutputs; ++i) {
+    EXPECT_THAT(CheckValueReady(kFirstResultHandle + i), status_is_err);
+  }
+}
 
 // TODO(b/315809436): Test needs rewrite because protobuf matchers are not OSS
 #if defined(PLATFORM_GOOGLE)

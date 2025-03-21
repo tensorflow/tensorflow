@@ -924,6 +924,22 @@ TEST(ScaleRequest, SkipsScaling) {
   EXPECT_THAT(request, ::testing::EqualsProto(expected_request));
 }
 
+TEST(MinimumMemoryBudgetRequired, HandlesLiveMatrix) {
+  const AutoShardingSolverRequest request = DefaultAutoShardingSolverRequest();
+  EXPECT_EQ(MinimumMemoryBudgetRequired(request), 1000000.0);
+}
+
+TEST(MinimumMemoryBudgetRequired, HandlesReducedIntervalsAndGroups) {
+  AutoShardingSolverRequest request = DefaultAutoShardingSolverRequest();
+  const std::vector<std::pair<int64_t, int64_t>> node_intervals =
+      {{5, -1}, {5, -1}, {2, 3}, {3, 4}, {100, -1}, {0, 4}};
+  const std::vector<std::vector<int64_t>> node_groups = {{0, 1}};
+  request.clear_live();
+  AddIntervals(request.mutable_node_intervals(), node_intervals);
+  AddGroups(request.mutable_node_groups(), node_groups);
+  EXPECT_EQ(MinimumMemoryBudgetRequired(request), 1000000.0);
+}
+
 TEST(StableMap, IterationOrderDeterminism){
   StableMap<int, int> map;
   std::vector<int> insertion_order = {6, 3, 1, 2, 4, 5, 10, 0, 7, 9, 8};

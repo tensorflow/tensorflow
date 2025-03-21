@@ -29,6 +29,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/base/optimization.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
@@ -1427,13 +1428,12 @@ bool HloInstructionIndexing::Simplify() {
   for (auto& operand_indexing : indexing_maps) {
     std::vector<IndexingMap> to_remove, to_add;
     for (IndexingMap map : operand_indexing) {
-      to_remove.push_back(map);
-      if (map.IsUndefined()) {
-        to_add.push_back(map);
-      } else if (map.Simplify()) {
+      if (map.Simplify()) {
         map.RemoveUnusedSymbols();
-      } else {
-        to_remove.pop_back();
+        to_add.push_back(map);
+      }
+      if (map.IsUndefined()) {
+        to_remove.push_back(map);
       }
     }
     for (auto& map : to_remove) {

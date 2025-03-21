@@ -68,13 +68,14 @@ TEST(TestQnnPlugin, PartitionAdd) {
   auto model = testing::LoadTestFileModel("add_simple.tflite");
 
   LiteRtOpListT selected_op_list;
-  ASSERT_EQ(LiteRtCompilerPluginPartition(
-                plugin.get(), model.Subgraph(0)->Get(), &selected_op_list),
+  ASSERT_EQ(LiteRtCompilerPluginPartition(plugin.get(), /*soc_model=*/nullptr,
+                                          model.Subgraph(0)->Get(),
+                                          &selected_op_list),
             kLiteRtStatusOk);
-  const auto selected_ops = selected_op_list.Vec();
+  const auto selected_ops = selected_op_list.Values();
 
   ASSERT_EQ(selected_ops.size(), 1);
-  EXPECT_EQ(selected_ops[0]->OpCode(), kLiteRtOpCodeTflAdd);
+  EXPECT_EQ(selected_ops[0].first->OpCode(), kLiteRtOpCodeTflAdd);
 }
 
 // /////////////////////////////////////////////////////////////////////////////

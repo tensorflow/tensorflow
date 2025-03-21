@@ -23,9 +23,10 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/layout_util.h"
 #include "xla/service/fusion_node_indexing_evaluation.h"
 #include "xla/service/instruction_fusion.h"
-#include "xla/service/llvm_ir/fused_ir_emitter.h"
+#include "xla/shape_util.h"
 
 namespace xla {
 namespace cpu {
@@ -53,7 +54,7 @@ bool CanBeLoopFused(const HloInstruction& hlo) {
 bool IsNonComplexNonBatchedMatrixVectorDot(const HloInstruction* hlo) {
   const Shape& hlo_shape = hlo->shape();
   return !ShapeUtil::ElementIsComplex(hlo_shape) &&
-         hlo->opcode() == HloOpcode::kDot && hlo_shape.dimensions_size() <= 1 &&
+         hlo->opcode() == HloOpcode::kDot && hlo_shape.rank() <= 1 &&
          hlo->dot_dimension_numbers().lhs_batch_dimensions_size() == 0;
 }
 
@@ -83,6 +84,9 @@ void CpuInstructionFusion::ComputeInstructionsToSkip(
   const auto computations_list =
       module->MakeComputationPostOrder(execution_threads);
   instructions_to_skip_.clear();
+  const bool is_fusion_emitters =
+      module->config().debug_options().xla_cpu_use_thunk_runtime() &&
+      module->config().debug_options().xla_cpu_use_fusion_emitters();
   for (auto* computation : computations_list) {
     for (auto* instruction : computation->MakeInstructionPostOrder()) {
       if (instruction->IsCustomFusion() ||
@@ -95,6 +99,16 @@ void CpuInstructionFusion::ComputeInstructionsToSkip(
         for (HloInstruction* instr :
              callable->called_computation()->instructions())
           instructions_to_skip_.insert(instr);
+      } else if (is_fusion_emitters &&
+                 instruction->opcode() == HloOpcode::kScatter) {
+        // Disallow fusions in the called computation (e.g. reduction)
+        // of a scatter "fusion"; the fusion emitter can't handle them.
+        auto* scatter = Cast<HloScatterInstruction>(instruction);
+        for (const auto* computation : scatter->called_computations()) {
+          for (const auto* instr : computation->instructions()) {
+            instructions_to_skip_.insert(instr);
+          }
+        }
       }
     }
   }
@@ -115,12 +129,13 @@ FusionDecision CpuInstructionFusion::ShouldFuse(HloInstruction* consumer,
   VLOG(2) << "Considering for fusion: operand " << operand_index << " of "
           << consumer->ToString();
 
-  constexpr int kFusionThresholdBytes = 16 * 1024;
+  static constexpr int64_t kFusionThresholdBytes = 16 * 1024;
+
   // When we fuse a concatenate we don't take the fast path of simple memcpy /
   // for-loop; instead we currently emit a tree mapping the input to output idx
   // with a depth of log2(#args), this can have a large overhead for large
   // number of arguments.
-  constexpr int64_t kMaxConcatenateArguments = 8;
+  static constexpr int64_t kMaxConcatenateArguments = 8;
 
   if (IsLargeConstant(producer)) {
     return FusionDecision::Forbid("Don't fuse large constants.");
@@ -140,10 +155,28 @@ FusionDecision CpuInstructionFusion::ShouldFuse(HloInstruction* consumer,
     return FusionDecision::Forbid("Producer is not loop-fusible.");
   }
 
+  // Concatenation on the minor dimension leads to inefficient code with a lot
+  // of branches in the innermost loop. We prefer to materialize concatenated
+  // buffers and run concat as a separate operation, as LLVM tends to do a
+  // better job with pure data movement loops.
+  auto is_minor_dim_concatenate = [](const HloInstruction* hlo) {
+    // For vectors it's always beneficial to fuse concatenations.
+    if (hlo->shape().rank() <= 1) return false;
+
+    // For small concatenated dimensions we don't loose any performance by
+    // fusing the concatenation as we don't have opportunities for vectorization
+    // anyway.
+    int64_t concat_dim = hlo->concatenate_dimension();
+    return concat_dim == LayoutUtil::Minor(hlo->shape().layout(), 0) &&
+           hlo->shape().dimensions(concat_dim) >= 128;
+  };
+
   if ((producer->opcode() == HloOpcode::kConcatenate &&
-       producer->operand_count() > kMaxConcatenateArguments) ||
+       (producer->operand_count() > kMaxConcatenateArguments ||
+        is_minor_dim_concatenate(producer))) ||
       (consumer->opcode() == HloOpcode::kConcatenate &&
-       consumer->operand_count() > kMaxConcatenateArguments)) {
+       (consumer->operand_count() > kMaxConcatenateArguments ||
+        is_minor_dim_concatenate(consumer)))) {
     return FusionDecision::Forbid("Concatenate fusion is inefficient.");
   }
 
@@ -198,7 +231,7 @@ FusionDecision CpuInstructionFusion::ShouldFuse(HloInstruction* consumer,
     // fusion can easily be overshadowed by the overhead of a naive GEMM
     // algorithm in the IR.
     const Shape& output_shape = consumer->shape();
-    if (output_shape.dimensions_size() <= 1) {
+    if (output_shape.rank() <= 1) {
       // We fuse in cases where we have a matrix*vector or vector*matrix dot and
       // fusion can get rid of the larger tensor.  We assume that a naive
       // traversal of a small enough (to fit in L1) column or row tensor is
@@ -217,23 +250,6 @@ FusionDecision CpuInstructionFusion::ShouldFuse(HloInstruction* consumer,
         return FusionDecision::Allow();
       }
     }
-  }
-
-  // Don't fuse reductions over the major dimensions. These have an efficient
-  // lowering that's only implemented for the unfused case.
-  if (consumer->opcode() == HloOpcode::kReduce &&
-      !absl::c_linear_search(
-          consumer->dimensions(),
-          LayoutUtil::Minor(consumer->operand(0)->shape().layout(), 0))) {
-    return FusionDecision::Forbid(
-        "Not fusing reductions over major dimensions");
-  }
-  if (producer->opcode() == HloOpcode::kReduce &&
-      !absl::c_linear_search(
-          producer->dimensions(),
-          LayoutUtil::Minor(producer->operand(0)->shape().layout(), 0))) {
-    return FusionDecision::Forbid(
-        "Not fusing reductions over major dimensions");
   }
 
   if (consumer->IsLoopFusion()) {

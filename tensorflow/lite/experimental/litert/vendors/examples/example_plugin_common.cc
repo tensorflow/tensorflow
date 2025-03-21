@@ -17,11 +17,9 @@
 #include <cstddef>
 #include <cstdio>
 #include <cstdlib>
-#include <string>
 #include <vector>
 
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
-#include "tensorflow/lite/experimental/litert/c/litert_model.h"
 #include "tensorflow/lite/experimental/litert/vendors/c/litert_compiler_plugin.h"
 
 //
@@ -36,6 +34,14 @@ constexpr char kPluginSocModel[] = "ExampleSocModel";
 
 }  // namespace
 }  // namespace litert::example
+
+LiteRtStatus LiteRtCompilerPluginSetFlags(LiteRtCompilerPlugin compiler_plugin,
+                                          LiteRtParamIndex num_flags,
+                                          const char** keys,
+                                          const char** values) {
+  // IMPLEMENT ME
+  return kLiteRtStatusOk;
+}
 
 LiteRtStatus LiteRtGetCompilerPluginVersion(LiteRtApiVersion* api_version) {
   if (!api_version) {
@@ -90,11 +96,11 @@ LiteRtStatus LiteRtGetCompilerPluginSupportedSocModel(
 LiteRtStatus LiteRtGetCompiledResultByteCode(
     LiteRtCompiledResult compiled_result, LiteRtParamIndex byte_code_idx,
     const void** byte_code, size_t* byte_code_size) {
-  if (!compiled_result || byte_code_idx != 0) {
+  if (!compiled_result) {
     return kLiteRtStatusErrorInvalidArgument;
   }
-  *byte_code = compiled_result->byte_code.data();
-  *byte_code_size = compiled_result->byte_code.size();
+  *byte_code = compiled_result->byte_code[byte_code_idx].data();
+  *byte_code_size = compiled_result->byte_code[byte_code_idx].size();
   return kLiteRtStatusOk;
 }
 
@@ -122,7 +128,7 @@ LiteRtStatus LiteRtGetNumCompiledResultCalls(
 
 LiteRtStatus LiteRtCompiledResultNumByteCodeModules(
     LiteRtCompiledResult compiled_result, LiteRtParamIndex* num_byte_code) {
-  *num_byte_code = 1;
+  *num_byte_code = compiled_result->byte_code.size();
   return kLiteRtStatusOk;
 }
 

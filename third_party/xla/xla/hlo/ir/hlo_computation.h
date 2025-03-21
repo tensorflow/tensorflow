@@ -21,10 +21,12 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
+#include <tuple>
 #include <utility>
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/container/btree_map.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
@@ -43,6 +45,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/ptrvec.h"
 #include "xla/iterator_util.h"
+#include "xla/online_topsort.h"
 #include "xla/printer.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/name_uniquer.h"
@@ -212,12 +215,8 @@ class HloComputation {
     // unreachable, and its instruction is set to null. We still need to regard
     // such computations as fusion computations for HLO scheduling purposes.
     kFusion,
-    // This computation is a custom-call computation.
-    kCustomCall,
     // This computation is a collective computation.
     kCollective,
-    // This computation is a while body computation.
-    kWhile,
     // This computation is a conditional branch computation.
     kConditional,
     // Last Value for range checking.
@@ -312,7 +311,7 @@ class HloComputation {
   // on a removed instruction before its marked as deleted. If
   // ignore_control_dependencies is set to true, if will remove the unused
   // operands even when they have control dependencies, and transitively pass
-  // the control dependencies from the predecessors to the succesors of the
+  // the control dependencies from the predecessors to the successors of the
   // removed instructions, so that the logical exeuction order of the remaining
   // unremoved instructions are preserved.
   absl::Status RemoveInstructionAndUnusedOperands(
@@ -673,8 +672,7 @@ class HloComputation {
   absl::Status ReplaceInstructionWithDifferentShape(
       HloInstruction* old_instruction, HloInstruction* new_instruction);
 
-  // Set/get the module containing this computation.
-  void set_parent(HloModule* module) { parent_ = module; }
+  // Get the module containing this computation.
   const HloModule* parent() const { return parent_; }
   HloModule* parent() { return parent_; }
 
@@ -807,21 +805,6 @@ class HloComputation {
     SetInstruction(fusion_instruction, InstructionType::kFusion);
   }
 
-  // Returns if this computation is a custom-call computation.
-  bool IsCustomCallComputation() const {
-    return instruction_type() == InstructionType::kCustomCall;
-  }
-
-  // Returns the owning custom call instruction, or nullptr if this is not a
-  // custom call computation.
-  HloInstruction* CustomCallInstruction() const {
-    return instruction_type() == InstructionType::kCustomCall ? instruction()
-                                                              : nullptr;
-  }
-  void SetCustomCallInstruction(HloInstruction* custom_call_instruction) {
-    SetInstruction(custom_call_instruction, InstructionType::kCustomCall);
-  }
-
   // Returns if this computation is a to_apply region of a collective.
   bool IsCollectiveCalledComputation() const {
     return instruction_type() == InstructionType::kCollective;
@@ -837,30 +820,6 @@ class HloComputation {
   void SetCollectiveCallInstruction(
       HloInstruction* collective_call_instruction) {
     SetInstruction(collective_call_instruction, InstructionType::kCollective);
-  }
-
-  // Returns if this computation is a body computation of a while.
-  [[deprecated(
-      "This is broken. Use CallGraph::GetComputationCallers() instead")]]
-  bool IsWhileBodyComputation() const {
-    return instruction_type() == InstructionType::kWhile;
-  }
-
-  // Returns the owning while call instruction, or nullptr if this is not a
-  // while call body computation.
-  [[deprecated(
-      "This is broken. Use CallGraph::GetComputationCallers() instead")]]
-  HloInstruction* WhileCallInstruction() const {
-    return instruction_type() == InstructionType::kWhile ? instruction()
-                                                         : nullptr;
-  }
-
-  [[deprecated(
-      "This is broken. Use CallGraph::GetComputationCallers() instead")]]
-  void SetWhileCallInstruction(HloInstruction* while_call_instruction) {
-    CHECK(while_call_instruction != nullptr);
-    CHECK(while_call_instruction->opcode() == HloOpcode::kWhile);
-    SetInstruction(while_call_instruction, InstructionType::kWhile);
   }
 
   // Returns if this computation is a branch computation of a conditional.
@@ -918,14 +877,10 @@ class HloComputation {
 
   // Clear the unique ID of the computation so that it can be re-assigned, such
   // as for the purpose of compacting the unique IDs.
-  void ClearUniqueIdInternal() { unique_id_ = -1; }
+  void ClearUniqueIdInternal();
 
   // The id of this computation should be unique within the module.
-  void SetUniqueId(int64_t id) {
-    CHECK_EQ(unique_id_, -1);
-    CHECK_GE(id, 0);
-    unique_id_ = id;
-  }
+  void SetUniqueId(int64_t id);
 
   // Returns the instruction in this computation that has name `name`.  Returns
   // null if there is no such computation.
@@ -958,7 +913,82 @@ class HloComputation {
   // Returns true iff this computation can be inlined as a single instruction.
   bool CanExpandIntoSingleInstruction() const;
 
+  // A comparator that orders computations by their unique IDs. This is used
+  // for determinism.
+  struct UniqueIdComparator {
+    bool operator()(const HloComputation* lhs,
+                    const HloComputation* rhs) const {
+      // We include the computation pointer so that we can disambiguate
+      // computations that do not belong to any module and therefore have a
+      // unique ID of -1. This is not deterministic, but we don't need
+      // determinism for computations not in a module since they are ignored
+      // by the topological sorting code.
+      return std::tie(lhs->unique_id_, lhs) < std::tie(rhs->unique_id_, rhs);
+    }
+  };
+
+  // Count of times this computation calls other computations.
+  absl::btree_map<HloComputation*, int, UniqueIdComparator>
+  callee_computations() const {
+    return callee_computations_;
+  }
+
+  // Count of times this computation is called by other computations.
+  absl::btree_map<HloComputation*, int, UniqueIdComparator>
+  caller_computations() const {
+    return caller_computations_;
+  }
+
+  // The returned callers are in no particular order.
+  absl::InlinedVector<HloInstruction*, 1> caller_instructions(
+      std::optional<HloOpcode> caller_opcode = std::nullopt) const {
+    if (const auto* map = GetCallersMap()) {
+      absl::InlinedVector<HloInstruction*, 1> result;
+      for (auto [instr, count] : *map) {
+        if (count == 0) {
+          continue;
+        }
+        if (caller_opcode == std::nullopt ||
+            instr->opcode() == *caller_opcode) {
+          result.push_back(instr);
+        }
+      }
+      return result;
+    }
+
+    if (callers_ == 0) {
+      return {};
+    }
+
+    auto* instr =
+        reinterpret_cast<HloInstruction*>(callers_ & ~kCallerTypeMask);
+    if (caller_opcode == std::nullopt || instr->opcode() == *caller_opcode) {
+      return {instr};
+    }
+
+    return {};
+  }
+
+  // Returns the only caller with the given opcode, if there is exactly one.
+  std::optional<HloInstruction*> GetUniqueCaller(HloOpcode opcode) const {
+    auto callers = caller_instructions(opcode);
+    if (callers.size() == 1) {
+      return callers.front();
+    }
+    return std::nullopt;
+  }
+
+  void ClearCalledComputations();
+
  private:
+  friend class HloModule;
+
+  enum class CallersType : uint8_t {
+    kHloInstruction = 0,
+    kCallerCountHashMap = 1,
+  };
+  static constexpr uintptr_t kCallerTypeMask = 0b1;
+
   explicit HloComputation(
       const std::string& name, int parameter_count,
       std::vector<std::unique_ptr<HloInstruction>>* instructions,
@@ -1011,6 +1041,30 @@ class HloComputation {
 
   void SetInstruction(HloInstruction* instruction, InstructionType type);
 
+  // Private, because only HloModule should be able to set the parent.
+  // We maintain the invariant that a computation has a parent() if and only if
+  // the computation has been added to a module. Accordingly, the only way to
+  // set the parent of a computation is to add it to a module.
+  void set_parent(HloModule* module) { parent_ = module; }
+
+  // Helper that updates the unique ID of the computation. This requires
+  // updating the callee_computations_ and caller_computations_ sets since they
+  // are ordered by unique ID.
+  void SetUniqueIdHelper(int64_t id);
+
+  friend class HloInstruction;
+  // Add/remove call from `caller`, which must be in this computation, to
+  // `callee`.
+  void AddCallee(HloInstruction* caller, HloComputation* callee);
+  void RemoveCallee(HloInstruction* caller, HloComputation* callee);
+
+  // Returns nullptr if `callers_` is not a map.
+  absl::flat_hash_map<HloInstruction*, int>* GetCallersMap();
+  absl::flat_hash_map<HloInstruction*, int>* const GetCallersMap() const;
+
+  // Unique ID of this computation.
+  // This is set to -1 if the computation is not in a module. Should only be
+  // updated by SetUniqueIdHelper().
   int64_t unique_id_;
   HloInstruction* root_instruction_;
 
@@ -1020,6 +1074,11 @@ class HloComputation {
   // Contains HloInstruction* and its type.
   // The respective type in the least significant three bits.
   uintptr_t instruction_and_type_ = 0;
+
+  // Contains an HloInstruction* or an absl::flat_hash_map<HloInstruction*,
+  // /*count=*/int> in the high bits and a CallersType in the least significant
+  // bit.
+  uintptr_t callers_ = 0;
 
   // If this computation is an async computation, this field points to the
   // first async instruction (async-start) in the asynchronous op chain that
@@ -1048,6 +1107,95 @@ class HloComputation {
   std::string execution_thread_ = HloInstruction::kMainExecutionThread;
 
   std::string name_;
+
+  // Callers and callees of this computation.
+  // * These include all computations that have a caller/callee relationship
+  //   with this computation, even those that may not belong to a module. For
+  //   example, a computation that has been created and is in the process of
+  //   being constructed but has not been added to a module yet may appear here.
+  // * These are ordered maps, ordered by (unique ID, computation pointer). The
+  //   unique ID is used to ensure determinism, whereas the computation pointer
+  //   is used to disambiguate computations that do not belong to any module and
+  //   therefore have a unique ID of -1. We assume that determinism only matters
+  //   for computations that belong to a module (i.e, unique_id != -1), since
+  //   the primary use case for this data structure is to topologically sort
+  //   computations in a module.
+  // * The values of the maps are the number of times the computation is
+  //   referenced. In a graph sense, this is the number of parallel edges.
+  absl::btree_map<HloComputation*, int, UniqueIdComparator>
+      callee_computations_;
+  absl::btree_map<HloComputation*, int, UniqueIdComparator>
+      caller_computations_;
+
+  // Adapters for the use of the topological sort.
+  class NeighborIterator {
+   public:
+    using Iterator = absl::btree_map<HloComputation*, int,
+                                     UniqueIdComparator>::const_iterator;
+    NeighborIterator(const HloModule* parent, Iterator it, Iterator end)
+        : parent_(parent), it_(it), end_(end) {
+      SkipComputationsFromOtherModules();
+    }
+
+    HloComputation* operator*() const { return it_->first; }
+    HloComputation* operator->() const { return it_->first; }
+    NeighborIterator& operator++() {
+      ++it_;
+      SkipComputationsFromOtherModules();
+      return *this;
+    }
+    bool operator==(const NeighborIterator& other) const {
+      return it_ == other.it_;
+    }
+    bool operator!=(const NeighborIterator& other) const {
+      return it_ != other.it_;
+    }
+
+   private:
+    void SkipComputationsFromOtherModules() {
+      if (!parent_) {
+        it_ = end_;
+        return;
+      }
+      while (it_ != end_ && it_->first->parent() != parent_) {
+        ++it_;
+      }
+    }
+
+    const HloModule* parent_;
+    Iterator it_;
+    Iterator end_;
+  };
+  NeighborIterator callers_begin() const {
+    return NeighborIterator(parent(), caller_computations_.begin(),
+                            caller_computations_.end());
+  }
+  NeighborIterator callers_end() const {
+    return NeighborIterator(parent(), caller_computations_.end(),
+                            caller_computations_.end());
+  }
+  NeighborIterator callees_begin() const {
+    return NeighborIterator(parent(), callee_computations_.begin(),
+                            callee_computations_.end());
+  }
+  NeighborIterator callees_end() const {
+    return NeighborIterator(parent(), callee_computations_.end(),
+                            callee_computations_.end());
+  }
+
+  template <typename S, typename Index, TopologicalSortNode<S> S::* Link,
+            Index S::* IndexInParent, typename PredecessorIterator,
+            PredecessorIterator (S::*PredecessorsBegin)() const,
+            PredecessorIterator (S::*PredecessorsEnd)() const,
+            typename SuccessorIterator,
+            SuccessorIterator (S::*SuccessorsBegin)() const,
+            SuccessorIterator (S::*SuccessorsEnd)() const>
+  friend class TopologicalSort;
+
+  template <typename S, TopologicalSortNode<S> S::* Link>
+  friend class TopologicalSortIterator;
+
+  TopologicalSortNode<HloComputation> topological_sort_node_;
 
   HloComputation(const HloComputation&) = delete;
   HloComputation& operator=(const HloComputation&) = delete;

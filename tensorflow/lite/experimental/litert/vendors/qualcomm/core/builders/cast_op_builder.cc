@@ -1,7 +1,14 @@
-//  Copyright (c) Qualcomm Innovation Center, Inc.
-//  All Rights Reserved.
+// Copyright (c) Qualcomm Innovation Center, Inc.
+// All Rights Reserved.
 
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/builders/cast_op_builder.h"
+
+#include <vector>
+
+#include "third_party/qairt/latest/include/QNN/QnnOpDef.h"
+#include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/builders/op_builder.h"
+#include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/wrappers/op_wrapper.h"
+#include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/wrappers/tensor_wrapper.h"
 
 namespace qnn {
 

@@ -66,6 +66,20 @@ ENTRY main {
 }
 ```
 
+## Automated `CHECK`-generation script
+
+Writing test checks manually can be a lot of work, so it's often more practical
+to run an optimizer, read over the results to make sure they match expectations,
+and then convert the optimized HLO into `CHECK` directives. To simplify this
+process, you can use
+[`generate_hlo_test_checks.py`](https://github.com/openxla/xla/tree/main/xla/hlo/tools/generate_hlo_test_checks.py)
+to automatically insert generated `CHECK` directives above each test case in an
+HLO file.
+
+> IMPORTANT: This tool inherently assumes that the pass's current behavior is
+> correct, so make sure to look over the generated `CHECK` lines yourself and
+> confirm that they match the output you expect.
+
 ## (Don't) Graph traversal
 
 Refrain from writing tests that travel leaf nodes of the result graph and match

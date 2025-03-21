@@ -16,9 +16,7 @@
 from typing import Union
 from . import XlaComputation
 
-def xla_computation_to_mlir_module(
-    computation: XlaComputation, emit_stable_hlo: bool = ...
-) -> str: ...
+def xla_computation_to_mlir_module(computation: XlaComputation) -> str: ...
 def mlir_module_to_xla_computation(
     mlir_module: Union[bytes, str],
     use_tuple_args: bool = ...,
@@ -32,4 +30,5 @@ def refine_polymorphic_shapes(
     mlir_module: Union[bytes, str],
     enable_shape_assertions: bool = ...,
     validate_static_shapes: bool = ...,
+    enable_shardy: bool = ...,
 ) -> bytes: ...

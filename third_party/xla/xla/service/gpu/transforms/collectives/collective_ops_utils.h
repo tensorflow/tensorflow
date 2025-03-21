@@ -16,10 +16,24 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_TRANSFORMS_COLLECTIVES_COLLECTIVE_OPS_UTILS_H_
 #define XLA_SERVICE_GPU_TRANSFORMS_COLLECTIVES_COLLECTIVE_OPS_UTILS_H_
 
+#include "absl/status/statusor.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/stream_executor/device_description.h"
 
 namespace xla {
 namespace gpu {
+
+enum class GPUCommunicationType {
+  UNDEFINED = 0,
+  RAIL_ALIGNED = 1,
+  NON_RAIL_ALIGNED = 2,
+  SINGLE_HOST = 3
+};
+
+absl::StatusOr<GPUCommunicationType> CommunicationType(
+    const HloCollectiveInstruction& instr,
+    const se::GpuComputeCapability& gpu_version);
 
 // Returns true if instruction is a synchronous collective op.
 bool IsGPUSyncCollective(const HloInstruction& instr);

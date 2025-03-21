@@ -35,12 +35,16 @@ class XProfGpuCostAnalysis : public xla::gpu::GpuHloCostAnalysis {
   explicit XProfGpuCostAnalysis(const xla::HloCostAnalysis::Options& options)
       : xla::gpu::GpuHloCostAnalysis(options) {}
 
+  absl::Status HandleCustomCall(const xla::HloInstruction* hlo) override;
+
   absl::Status Postprocess(const xla::HloInstruction* hlo) override;
 
   int64_t GetDeviceFlopsAdjustment(const xla::HloInstruction& hlo);
 
  protected:
   std::unique_ptr<xla::HloCostAnalysis> CreateNestedCostAnalysis() override;
+
+  absl::Status DefaultPostprocess(const xla::HloInstruction* hlo);
 
  private:
   static inline constexpr absl::string_view kDeviceFlopsAdjustment =

@@ -14,6 +14,8 @@
 
 #include "tensorflow/lite/experimental/litert/runtime/open_cl_buffer.h"
 
+#include <stdlib.h>
+
 #include <algorithm>
 #include <cstddef>
 #include <utility>
@@ -24,7 +26,8 @@
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
 #include "tensorflow/lite/experimental/litert/c/litert_tensor_buffer.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
-#include "tensorflow/lite/experimental/litert/runtime/environment.h"
+#include "tensorflow/lite/experimental/litert/cc/litert_macros.h"
+#include "tensorflow/lite/experimental/litert/runtime/gpu_environment.h"
 #include "tensorflow/lite/experimental/litert/runtime/opencl/buffer.h"
 #include "tensorflow/lite/experimental/litert/runtime/opencl/cl_command_queue.h"
 #include "tensorflow/lite/experimental/litert/runtime/opencl/cl_context.h"
@@ -34,7 +37,9 @@ namespace litert {
 namespace internal {
 
 template Expected<float*> OpenClBuffer::Lock<float>();
+template Expected<char*> OpenClBuffer::Lock<char>();
 template Expected<void> OpenClBuffer::Unlock<float>();
+template Expected<void> OpenClBuffer::Unlock<char>();
 
 template <typename T>
 Expected<T*> OpenClBuffer::Lock() {
@@ -43,7 +48,7 @@ Expected<T*> OpenClBuffer::Lock() {
   // buffer.
   if (data_ == nullptr) {
     litert::cl::ClCommandQueue* queue =
-        EnvironmentSingleton::GetInstance().getCommandQueue();
+        GpuEnvironmentSingleton::GetInstance().getCommandQueue();
     std::vector<T> result;
     auto status = buffer_.ReadData(queue, &result);
     if (!status.ok()) {
@@ -51,8 +56,8 @@ Expected<T*> OpenClBuffer::Lock() {
                         "Failed to read OpenCL buffer");
     }
     // Ensure the data is aligned.
-    if (auto rc = ::posix_memalign(&data_, LITERT_HOST_MEMORY_BUFFER_ALIGNMENT,
-                                   size_);
+    if (auto rc =
+            posix_memalign(&data_, LITERT_HOST_MEMORY_BUFFER_ALIGNMENT, size_);
         rc) {
       return Unexpected(kLiteRtStatusErrorRuntimeFailure,
                         "Failed to allocate aligned memory");
@@ -69,7 +74,7 @@ template <typename T>
 Expected<void> OpenClBuffer::Unlock() {
   absl::MutexLock lock(&mutex_);
   litert::cl::ClCommandQueue* queue =
-      EnvironmentSingleton::GetInstance().getCommandQueue();
+      GpuEnvironmentSingleton::GetInstance().getCommandQueue();
   // The buffer has not been locked, so we don't need to write back.
   if (data_ == nullptr) {
     return Error(
@@ -94,10 +99,14 @@ bool OpenClBuffer::IsSupported() {
 }
 
 Expected<OpenClBuffer> OpenClBuffer::Alloc(size_t bytes_size) {
+  LITERT_RETURN_IF_ERROR(
+      IsSupported(),
+      Unexpected(kLiteRtStatusErrorRuntimeFailure, "OpenCL is not supported"));
+
   litert::cl::Buffer buffer;
 
   litert::cl::ClContext* cl_context =
-      EnvironmentSingleton::GetInstance().getContext();
+      GpuEnvironmentSingleton::GetInstance().getContext();
   auto result =
       litert::cl::CreateReadWriteBuffer(bytes_size, cl_context, &buffer);
   if (!result.ok()) {

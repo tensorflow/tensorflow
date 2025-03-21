@@ -62,3 +62,23 @@ module {
     func.return
   }
 }
+
+// -----
+
+// expected-remark@below {{Tac filter (0): filter type: function filter SKIP_TARGET_ANNOTATION, filter_pattern: "^testFunction"}}
+// expected-remark@below {{Tac filter (0) specified but not applied to any op}}
+// expected-remark@below {{Tac filter (1): filter type: function filter INCLUDE_TARGET_ANNOTATION, filter_pattern: "testFunctionInclude"}}
+// expected-remark@below {{Tac filter (1) specified but not applied to any op}}
+// expected-remark@below {{Tac filter (2): filter type: op filter, filter_pattern: "^test_op"}}
+module {
+  // CHECK-LABEL: testOpMultipleResults
+  // expected-remark@+1 {{all ops filtered by tac filter (2): "tfl.split_v"}}
+  func.func @testOpMultipleResults(%arg0: tensor<16x4x4xf32>) -> (tensor<7x4x4xf32>, tensor<3x4x4xf32>, tensor<6x4x4xf32>) {
+    %size_splits = arith.constant dense<[7, 3, 6]> : tensor<3xi32>
+    %split_dim = arith.constant dense<0> : tensor<i32>
+    // CHECK: tfl.split_v
+    // CHECK-SAME: tac.skip_target_annotation
+    %0, %1, %2 = "tfl.split_v"(%arg0, %size_splits, %split_dim) {num_splits = 3 : i32} : (tensor<16x4x4xf32>, tensor<3xi32>, tensor<i32>) -> (tensor<7x4x4xf32>, tensor<3x4x4xf32>, tensor<6x4x4xf32>) loc("test_op_split"("/tmp/test_model.tflite":0:0))
+    func.return %0, %1, %2 : tensor<7x4x4xf32>, tensor<3x4x4xf32>, tensor<6x4x4xf32>
+  }
+}

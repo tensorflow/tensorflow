@@ -15,21 +15,15 @@ limitations under the License.
 
 #include "xla/service/spmd/shardy/stablehlo_round_trip/export_ops.h"
 
-#include <cstdint>
 #include <memory>
 #include <utility>
 
-#include "llvm/ADT/STLExtras.h"
-#include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/LogicalResult.h"
 #include "mlir/IR/AffineMap.h"
-#include "mlir/IR/Attributes.h"
-#include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinOps.h"
-#include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/Diagnostics.h"
 #include "mlir/IR/DialectRegistry.h"
 #include "mlir/IR/MLIRContext.h"
@@ -43,13 +37,10 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"
 #include "mlir/Support/TypeID.h"
 #include "mlir/Transforms/DialectConversion.h"
-#include "shardy/dialect/sdy/ir/constants.h"
 #include "shardy/dialect/sdy/ir/dialect.h"
 #include "shardy/dialect/sdy/ir/utils.h"
 #include "stablehlo/dialect/StablehloOps.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
-#include "xla/service/spmd/shardy/constants.h"
-#include "xla/sharding_op_util.h"
 
 namespace xla {
 namespace sdy {
@@ -64,17 +55,18 @@ using ::mlir::LogicalResult;
 using ::mlir::OpConversionPattern;
 using ::mlir::OperationPass;
 using ::mlir::Pass;
-using ::mlir::SmallVector;
-using ::mlir::StringAttr;
 using ::mlir::StringRef;
 using ::mlir::success;
 
+using ::mlir::sdy::AllGatherOp;
+using ::mlir::sdy::AllReduceOp;
+using ::mlir::sdy::AllSliceOp;
+using ::mlir::sdy::AllToAllOp;
+using ::mlir::sdy::CollectivePermuteOp;
 using ::mlir::sdy::ConstantOp;
-using ::mlir::sdy::kShardingAttr;
 using ::mlir::sdy::ReshardOp;
 using ::mlir::sdy::ShardingConstraintOp;
 using ::mlir::sdy::TensorShardingAttr;
-using ::mlir::sdy::TensorShardingPerValueAttr;
 
 // Converts `sdy::ConstantOp` to `stablehlo::ConstantOp`.
 class ConstantPattern : public OpConversionPattern<ConstantOp> {
@@ -91,6 +83,28 @@ class ConstantPattern : public OpConversionPattern<ConstantOp> {
   }
 };
 
+// We erase an `AllReduceOp` instead of converting it to a copy op, since it
+// does not reshard the tensor.
+class AllReducePattern : public OpConversionPattern<AllReduceOp> {
+ public:
+  using OpConversionPattern::OpConversionPattern;
+
+ private:
+  LogicalResult matchAndRewrite(
+      AllReduceOp op, OpAdaptor adaptor,
+      ConversionPatternRewriter& rewriter) const override {
+    rewriter.replaceOp(op, adaptor.getTensor());
+    return success();
+  }
+};
+
+void rewriteCollectiveOp(mlir::Operation* op, mlir::Value input,
+                         TensorShardingAttr sharding,
+                         ConversionPatternRewriter& rewriter) {
+  auto copyOp = rewriter.replaceOpWithNewOp<mhlo::CopyOp>(op, input);
+  mlir::sdy::setShardings(copyOp, sharding);
+}
+
 class ReshardPattern : public OpConversionPattern<ReshardOp> {
  public:
   using OpConversionPattern::OpConversionPattern;
@@ -99,28 +113,23 @@ class ReshardPattern : public OpConversionPattern<ReshardOp> {
   LogicalResult matchAndRewrite(
       ReshardOp op, OpAdaptor adaptor,
       ConversionPatternRewriter& rewriter) const override {
-    auto copyOp =
-        rewriter.replaceOpWithNewOp<mhlo::CopyOp>(op, adaptor.getInput());
+    rewriteCollectiveOp(op, adaptor.getInput(), adaptor.getSharding(),
+                        rewriter);
+    return success();
+  }
+};
 
-    TensorShardingAttr sdySharding = adaptor.getShardingAttr();
-    mlir::sdy::setShardings(copyOp, sdySharding);
+template <class OpTy>
+class CollectivePattern : public OpConversionPattern<OpTy> {
+ public:
+  using OpConversionPattern<OpTy>::OpConversionPattern;
 
-    SmallVector<int64_t> unspecifiedDims;
-    for (auto [dim, dimSharding] :
-         llvm::enumerate(sdySharding.getDimShardings())) {
-      // Unspecified dims are those that are marked open but is not partitioned
-      // on any axes.
-      if (!dimSharding.getIsClosed() && dimSharding.emptyAxes()) {
-        unspecifiedDims.push_back(dim);
-      }
-    }
-    if (!unspecifiedDims.empty()) {
-      copyOp->setAttr(kXlaBackendConfigAttr,
-                      StringAttr::get(op.getContext(),
-                                      xla::sharding_op_util::EncodeAttributes(
-                                          unspecifiedDims)));
-    }
-
+ private:
+  LogicalResult matchAndRewrite(
+      OpTy op, typename OpTy::Adaptor adaptor,
+      ConversionPatternRewriter& rewriter) const override {
+    rewriteCollectiveOp(op, adaptor.getTensor(), adaptor.getOutSharding(),
+                        rewriter);
     return success();
   }
 };
@@ -136,14 +145,19 @@ class ExportOpsPass
     // We do not expect to see ShardingConstraintOp in the input module.
     // ShardingConstraintOp should be replaced by ReshardOp before this pass.
     // Hence, we add ShardingConstraintOp as an illegal op.
-    target.addIllegalOp<ConstantOp, ReshardOp, ShardingConstraintOp>();
+    target.addIllegalOp<ConstantOp, ReshardOp, AllGatherOp, AllReduceOp,
+                        AllSliceOp, AllToAllOp, CollectivePermuteOp,
+                        ShardingConstraintOp>();
     target.addLegalOp<stablehlo::ConstantOp, mhlo::CopyOp>();
     mlir::RewritePatternSet patterns(&context);
     // After converting `sdy.constant` into `stablehlo.constant`, the constants
     // should not be deduped via folding. Fortunately, folding only happens in
     // greedy pattern rewriters. ExportHloShardingsPass does a simple walk,
     // which keeps the constants as is.
-    patterns.add<ConstantPattern, ReshardPattern>(&context);
+    patterns.add<ConstantPattern, AllReducePattern, ReshardPattern,
+                 CollectivePattern<AllGatherOp>, CollectivePattern<AllSliceOp>,
+                 CollectivePattern<AllToAllOp>,
+                 CollectivePattern<CollectivePermuteOp>>(&context);
     if (mlir::failed(mlir::applyPartialConversion(getOperation(), target,
                                                   std::move(patterns)))) {
       signalPassFailure();
@@ -158,7 +172,7 @@ class ExportOpsPass
   }
 
   void getDependentDialects(mlir::DialectRegistry& registry) const final {
-    registry.insert<mlir::sdy::SdyDialect>();
+    registry.insert<mlir::sdy::SdyDialect, mlir::mhlo::MhloDialect>();
   }
 };
 

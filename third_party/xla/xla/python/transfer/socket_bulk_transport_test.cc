@@ -174,7 +174,7 @@ TEST(SocketBulkTransportFactoryTest, SendAndRecvWithFactory) {
 
   std::unique_ptr<BulkTransportInterface> bulk_transporta;
   std::unique_ptr<BulkTransportInterface> bulk_transportb;
-  {
+  for (size_t i = 0; i < 4; ++i) {
     auto init_res = factory->InitBulkTransport();
     bulk_transporta = std::move(init_res.bulk_transport);
     auto recv_res = factory2->RecvBulkTransport(init_res.request);

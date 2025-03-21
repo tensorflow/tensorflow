@@ -133,6 +133,16 @@ struct CseKey {
       return H::combine(std::move(h), window_dims.size());
     };
 
+    auto result_accuracy_hash = [](H h, const ResultAccuracy& result_accuracy) {
+      if (result_accuracy.has_tolerance()) {
+        return H::combine(std::move(h), result_accuracy.tolerance().atol(),
+                          result_accuracy.tolerance().rtol(),
+                          result_accuracy.tolerance().ulps());
+      }
+      return H::combine(std::move(h), result_accuracy.mode());
+    };
+    h = result_accuracy_hash(std::move(h), instruction->result_accuracy());
+
     // Hash operands, ignoring operand order on commutative ops.
     if (HloOpcodeIsBinaryCommutative(instruction->opcode())) {
       CHECK_EQ(instruction->operand_count(), 2);
@@ -285,6 +295,12 @@ absl::StatusOr<bool> HloCSE::RunOnComputation(HloComputation* computation) {
     }
     // Skip instructions which have side effects.
     if (instruction->HasSideEffect()) {
+      continue;
+    }
+
+    // Skip instructions that cannot be safely removed.
+    if (!computation->IsSafelyRemovable(instruction,
+                                        ignore_control_dependencies_)) {
       continue;
     }
 

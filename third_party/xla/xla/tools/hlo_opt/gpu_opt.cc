@@ -53,6 +53,7 @@ limitations under the License.
 #include "xla/service/gpu/transforms/windowed_einsum_handler.h"
 #include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/service/platform_util.h"
+#include "xla/service/spmd/schedule_aware_collective_ops_cse.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/platform.h"
@@ -115,9 +116,12 @@ class GpuOptProvider : public CompiledOptProvider {
     return GetRegisteredPassNamesHelper(pass_registry_);
   }
 
-  // Register only GPU specific passes here.
+  //////////////////////////////////////////////////////////////////////////////
+  // Registration of GPU-specific HLO Passes                                  //
+  //////////////////////////////////////////////////////////////////////////////
   void RegisterProviderPasses(HloModule& module) override {
     auto device_description = GetDeviceDescription(&module);
+    auto debug_config = module.config().debug_options();
     se::GpuComputeCapability gpu_compute_capability;
     if (device_description.ok()) {
       gpu_compute_capability = device_description->gpu_compute_capability();
@@ -148,6 +152,12 @@ class GpuOptProvider : public CompiledOptProvider {
     RegisterPass<gpu::TransposeDimensionGrouper>();
     RegisterPass<gpu::WindowedEinsumHandler>();
     // go/keep-sorted end
+    if (debug_config.xla_gpu_experimental_collective_cse_distance_threshold() >
+        0) {
+      RegisterPass<ScheduleAwareCollectiveOpsCSE>(
+          debug_config.xla_gpu_experimental_collective_cse_distance_threshold(),
+          false);
+    }
   }
 
  private:

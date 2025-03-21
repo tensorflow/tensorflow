@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023-2025 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -203,6 +203,7 @@ std::string FindMinimumRuntimeVersionForOp(tflite::BuiltinOperator op_code,
               {{BuiltinOperator_TRANSPOSE, 4}, "2.3.0"},
               {{BuiltinOperator_TRANSPOSE, 5}, "2.4.0"},
               {{BuiltinOperator_TRANSPOSE, 6}, "2.12.0"},
+              {{BuiltinOperator_TRANSPOSE, 7}, "2.14.4"},
               {{BuiltinOperator_LSTM, 1}, "1.7.0"},
               {{BuiltinOperator_LSTM, 2}, "1.10.0"},
               {{BuiltinOperator_LSTM, 3}, "1.14.0"},

@@ -141,7 +141,7 @@ TEST_F(BitcastConvertTest, ConvertMapToF32) {
 TEST_F(BitcastConvertTest, ConvertReshape) {
   XlaBuilder builder(TestName());
   auto input = ConstantR1<int32_t>(&builder, {0x42280000});
-  auto reshape = Reshape(input, /*dimensions=*/{0}, /*new_sizes=*/{});
+  auto reshape = Reshape(input, /*dimensions=*/{});
   BitcastConvertType(reshape, F32);
 
   ComputeAndCompareR0<float>(&builder, 42.0f, {});

@@ -15,6 +15,12 @@ limitations under the License.
 
 #include "xla/hlo/transforms/collectives/collectives_schedule_linearizer.h"
 
+#include <cstdint>
+#include <memory>
+
+#include <gtest/gtest.h>
+#include "absl/algorithm/container.h"
+#include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"

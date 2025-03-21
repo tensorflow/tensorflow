@@ -126,7 +126,7 @@ llvm::SmallVector<InterpreterValue> ExtractSlice(
   int64_t dim = 0;
   const auto& result_sizes = extract.getResultType().getShape();
   const auto& static_sizes = extract.getStaticSizes();
-  while (dim < out_view.Rank()) {
+  while (dim < out_view.num_dimensions()) {
     if (static_sizes[num_dropped + dim] == 1 &&
         (dim >= result_sizes.size() || result_sizes[dim] != 1)) {
       out_view.sizes.erase(out_view.sizes.begin() + dim);

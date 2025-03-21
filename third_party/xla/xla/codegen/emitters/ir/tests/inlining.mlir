@@ -142,9 +142,7 @@ module {
 
 // CHECK-LABEL: module {
 // CHECK: @caller
-// CHECK-NOT: xla.pure_call
-// CHECK: arith.addf
-// CHECK: arith.addf
+// CHECK-COUNT-2: xla.pure_call
 
 // -----
 
@@ -268,9 +266,10 @@ module {
 }
 
 // CHECK-LABEL: module {
-// CHECK-NOT: func.func
-// CHECK: func.func @caller
-// CHECK-NOT: xla.pure_call
+// CHECK:      func.func private @callee2
+// CHECK-NOT:  func.func private @callee1
+// CHECK:      func.func @caller
+// CHECK:        pure_call @callee2
 // CHECK-NOT: func.func
 
 // -----

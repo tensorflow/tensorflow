@@ -4,12 +4,13 @@ load(
     "gentbl_cc_library",
 )
 load("//tensorflow:strict.default.bzl", "py_strict_library")
-
-# Placeholder: load proto_library
-load("//tensorflow:tensorflow.bzl", "tf_cc_binary", "tf_cc_test")
+load("//tensorflow:tensorflow.bzl", "if_google", "tf_cc_binary", "tf_cc_test")
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
+load(
+    "//tensorflow/core/platform:build_config.bzl",
+    "tf_proto_library",
+)
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
-# copybara:uncomment load("//tools/build_defs/proto/cpp:cc_proto_library.bzl", "cc_proto_library")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -253,7 +254,7 @@ cc_library(
         ":common",
         ":cost_model",
         ":device_transform",
-        ":tac_filter_cc_proto",
+        ":tac_filter_proto_cc",
         ":tac_importer_exporter",
         "//tensorflow/compiler/mlir/lite:tensorflow_lite",
         "//tensorflow/compiler/mlir/lite:tf_tfl_passes",
@@ -394,14 +395,9 @@ py_strict_library(
     ],
 )
 
-proto_library(
+tf_proto_library(
     name = "tac_filter_proto",
     srcs = ["tac_filter.proto"],
-    compatible_with = get_compatible_with_portable(),
-)
-
-cc_proto_library(
-    name = "tac_filter_cc_proto",
-    compatible_with = get_compatible_with_portable(),
-    deps = [":tac_filter_proto"],
+    protodeps = if_google(["//google/protobuf:any"]),
+    visibility = ["//visibility:public"],
 )

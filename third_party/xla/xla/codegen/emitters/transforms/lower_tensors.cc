@@ -49,6 +49,7 @@ limitations under the License.
 #include "mlir/IR/ImplicitLocOpBuilder.h"
 #include "mlir/IR/Location.h"
 #include "mlir/IR/MLIRContext.h"
+#include "mlir/IR/Matchers.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/TypeRange.h"
 #include "mlir/IR/Types.h"
@@ -122,6 +123,30 @@ Value GetDestinationBuffer(Value dest) {
     }
   }
   return dest;
+}
+
+std::optional<int> GetAlignmentFromArg(Value addr, ValueRange indices) {
+  CHECK_LE(indices.size(), 1) << "Only 0D and 1D tensors are supported";
+
+  // If the offset isn't empty or {0}, we don't return any alignment because
+  // computing it isn't trivial and it's unclear that we need to deal with that
+  // case in practice.
+  auto effective_offset_is_zero = [](ValueRange offsets) -> bool {
+    if (offsets.empty()) return true;
+    return mlir::matchPattern(offsets[0].getDefiningOp(), mlir::m_Zero());
+  };
+  if (!effective_offset_is_zero(indices)) return std::nullopt;
+
+  // Try to get the alignment from the function signature.
+  auto base = mlir::dyn_cast<mlir::BlockArgument>(addr);
+  if (!base) return std::nullopt;
+  auto func =
+      mlir::dyn_cast<mlir::func::FuncOp>(base.getOwner()->getParentOp());
+  if (!func) return std::nullopt;
+  auto align_attr =
+      func.getArgAttr(base.getArgNumber(), ml::LLVMDialect::getAlignAttrName());
+  if (!align_attr) return std::nullopt;
+  return align_attr.cast<mlir::IntegerAttr>().getValue().getSExtValue();
 }
 
 template <typename Op>
@@ -296,9 +321,10 @@ Value GetLinearIndex(ValueRange indices, mlir::ImplicitLocOpBuilder& b) {
 
 std::tuple<Value, Value> GetI4IndexAndNibble(Value linear_index,
                                              mlir::ImplicitLocOpBuilder& b) {
+  Value zero = b.create<mlir::arith::ConstantIntOp>(0, linear_index.getType());
   Value one = b.create<mlir::arith::ConstantIntOp>(1, linear_index.getType());
   Value is_low_nibble = b.create<mlir::arith::CmpIOp>(
-      mlir::arith::CmpIPredicate::eq, one,
+      mlir::arith::CmpIPredicate::eq, zero,
       b.create<mlir::arith::AndIOp>(linear_index, one));
   Value i8_index = b.create<mlir::arith::ShRUIOp>(linear_index, one);
   return {i8_index, is_low_nibble};
@@ -362,22 +388,6 @@ struct RewriteTensorExtract : OpRewritePattern<mlir::tensor::ExtractOp> {
   }
 };
 
-// Swaps pairs of values in the vector: [0, 1, 2, 3] -> [1, 0, 3, 2].
-Value PermutePairsInVector(Value vector, mlir::ImplicitLocOpBuilder& b) {
-  // There is a `vector.extract_strided_slice` op that would be useful here, but
-  // it actually requires the strides to be 1.
-  auto ty = mlir::cast<mlir::VectorType>(vector.getType());
-  int size = ty.getNumElements();
-  Value result = vector;
-  for (int i = 0; i < size; i += 2) {
-    auto v0 = b.create<vector::ExtractOp>(vector, i);
-    auto v1 = b.create<vector::ExtractOp>(vector, i + 1);
-    result = b.create<vector::InsertOp>(v1, result, i);
-    result = b.create<vector::InsertOp>(v0, result, i + 1);
-  }
-  return result;
-}
-
 struct RewriteTransferRead : OpRewritePattern<vector::TransferReadOp> {
   using OpRewritePattern::OpRewritePattern;
 
@@ -408,17 +418,16 @@ struct RewriteTransferRead : OpRewritePattern<vector::TransferReadOp> {
 
     mlir::LLVMTypeConverter converter(b.getContext());
     auto llvm_vector_type = converter.convertType(vector_type);
-    auto loaded = b.create<ml::LoadOp>(llvm_vector_type, gep).getResult();
+    auto load = b.create<ml::LoadOp>(llvm_vector_type, gep);
+    if (auto alignment = GetAlignmentFromArg(op.getSource(), op.getIndices())) {
+      load.setAlignment(*alignment);
+    }
+    auto loaded = load.getResult();
 
     if (source_element_type.isInteger(1)) {
       Value zero = b.create<mlir::arith::ConstantOp>(
           mlir::DenseElementsAttr::get(vector_type, b.getI8IntegerAttr(0)));
       loaded = b.create<arith::CmpIOp>(arith::CmpIPredicate::ne, loaded, zero);
-    } else if (source_element_type.isIntOrFloat() &&
-               source_element_type.getIntOrFloatBitWidth() == 4) {
-      // LLVM and XLA pack i4s in opposite order, so we have to reshuffle the
-      // elements.
-      loaded = PermutePairsInVector(loaded, b);
     }
 
     rewriter.replaceOpWithNewOp<UnrealizedConversionCastOp>(op, op.getType(),
@@ -537,9 +546,6 @@ struct RewriteTransferWrite : OpRewritePattern<vector::TransferWriteOp> {
       linear_index = b.create<arith::ShRUIOp>(
           linear_index,
           b.create<arith::ConstantIntOp>(1, linear_index.getType()));
-      // LLVM and XLA pack i4s in opposite order, so we have to reshuffle the
-      // elements.
-      vector_value = PermutePairsInVector(vector_value, b);
     }
     auto gep = CreateGep(tensor_dest, linear_index, b);
 
@@ -874,13 +880,13 @@ class RewriteAtomicRMW : public OpRewritePattern<AtomicRMWOp> {
     // https://docs.nvidia.com/cuda/parallel-thread-execution/index.html#parallel-synchronization-and-communication-instructions-atom
     bool is_supported_f16_atomic =
         element_type.isF16() &&
-        cuda_compute_capability.IsAtLeast(se::CudaComputeCapability::VOLTA);
+        cuda_compute_capability.IsAtLeast(se::CudaComputeCapability::kVolta);
     bool is_supported_bf16_atomic =
         element_type.isBF16() &&
-        cuda_compute_capability.IsAtLeast(se::CudaComputeCapability::HOPPER);
+        cuda_compute_capability.IsAtLeast(se::CudaComputeCapability::kHopper);
     bool is_supported_f64_atomic =
         element_type.isF64() &&
-        cuda_compute_capability.IsAtLeast(se::CudaComputeCapability::PASCAL_);
+        cuda_compute_capability.IsAtLeast(se::CudaComputeCapability::kPascal);
     if (auto vector_type = dyn_cast_or_null<mlir::VectorType>(element_type)) {
       return emitNvidiaVectorizedAtomicFAdd(
           loc, modifier_arg, addr, vector_type, cuda_compute_capability, b);
@@ -905,7 +911,7 @@ class RewriteAtomicRMW : public OpRewritePattern<AtomicRMWOp> {
           (vector_type.getNumElements() == 2 ||
            vector_type.getNumElements() == 4) &&
           cuda_compute_capability.IsAtLeast(
-              se::CudaComputeCapability::HOPPER))) {
+              se::CudaComputeCapability::kHopper))) {
       return failure();
     }
 

@@ -23,6 +23,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/functional/any_invocable.h"
 #include "absl/log/check.h"
 #include "absl/strings/str_format.h"
 #include "absl/synchronization/mutex.h"
@@ -174,7 +175,7 @@ absl::Status LocalDeviceState::ThenMemcpyDeviceToDevice(
 }
 
 absl::Status LocalDeviceState::ThenExecuteCallback(
-    se::Stream* stream, std::function<void()> callback) {
+    se::Stream* stream, absl::AnyInvocable<void() &&> callback) {
   tsl::profiler::TraceMe traceme("ThenExecuteCallback");
   if (callback_stream_map_.has_value()) {
     // Prevent concurrent updates to the callback stream map.

@@ -15,15 +15,13 @@ limitations under the License.
 
 #include "xla/hlo/transforms/collectives/collectives_schedule_linearizer.h"
 
-#include <algorithm>
-#include <list>
 #include <memory>
-#include <string>
-#include <utility>
-#include <vector>
 
-#include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "xla/hlo/analysis/hlo_reachability.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"

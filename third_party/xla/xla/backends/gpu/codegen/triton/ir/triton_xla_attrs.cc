@@ -14,9 +14,11 @@ limitations under the License.
 ==============================================================================*/
 
 #include <cstdint>
-#include <optional>
 
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/Support/ErrorHandling.h"
+#include "mlir/IR/Attributes.h"
+#include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/OpDefinition.h"  // IWYU pragma: keep
 #include "mlir/IR/Types.h"
 #include "mlir/Support/LLVM.h"
@@ -30,57 +32,37 @@ limitations under the License.
 
 namespace mlir::triton::xla {
 
-//--- SparseDotMetaEncodingAttr ---
-unsigned SparseDotMetaEncodingAttr::getTotalElemsPerThread(
-    ArrayRef<int64_t> shape, Type eltTy) const {
-  constexpr int kMetadataElementsPerWarp = 16;
-  auto mmaLayout = mlir::cast<gpu::NvidiaMmaEncodingAttr>(getParent());
-  return product<int64_t>(shape) /
-         (mmaLayout.getWarpsPerCTA()[0] * kMetadataElementsPerWarp);
+static mlir::ParseResult parseI64ArrayAttr(mlir::AsmParser& parser,
+                                           mlir::DenseI64ArrayAttr& array) {
+  array = mlir::dyn_cast_or_null<mlir::DenseI64ArrayAttr>(
+      mlir::DenseI64ArrayAttr::parse(parser, mlir::Type{}));
+  if (!array) return mlir::failure();
+  return mlir::success();
 }
 
-SmallVector<unsigned> SparseDotMetaEncodingAttr::getElemsPerThread(
-    ArrayRef<int64_t> shape, Type eltTy) const {
-  llvm_unreachable("getElemsPerThread is not supported for sparse dot meta");
-  return SmallVector<unsigned>();
+Attribute TmaDescriptorAttr::parse(mlir::AsmParser& parser, mlir::Type) {
+  int element_byte_size;
+  DenseI64ArrayAttr global_shape, block_shape;
+
+  if (parser.parseLess() || parser.parseKeyword("global_shape") ||
+      parser.parseEqual() || parseI64ArrayAttr(parser, global_shape) ||
+      parser.parseComma() || parser.parseKeyword("block_shape") ||
+      parser.parseEqual() || parseI64ArrayAttr(parser, block_shape) ||
+      parser.parseComma() || parser.parseKeyword("element_byte_size") ||
+      parser.parseEqual() || parser.parseInteger(element_byte_size) ||
+      parser.parseGreater()) {
+    return {};
+  }
+  return TmaDescriptorAttr::get(parser.getContext(), global_shape.asArrayRef(),
+                                block_shape.asArrayRef(), element_byte_size);
 }
 
-SmallVector<unsigned> SparseDotMetaEncodingAttr::getCTAsPerCGA() const {
-  return gpu::getCTAsPerCGA(getParent());
-}
-SmallVector<unsigned> SparseDotMetaEncodingAttr::getCTAOrder() const {
-  return gpu::getCTAOrder(getParent());
-}
-SmallVector<unsigned> SparseDotMetaEncodingAttr::getCTASplitNum() const {
-  return gpu::getCTASplitNum(getParent());
-}
-SmallVector<unsigned> SparseDotMetaEncodingAttr::getWarpsPerCTA() const {
-  return gpu::getWarpsPerCTA(getParent());
-}
-SmallVector<unsigned> SparseDotMetaEncodingAttr::getWarpOrder() const {
-  return {1, 0};
-}
-SmallVector<unsigned> SparseDotMetaEncodingAttr::getThreadsPerWarp() const {
-  return gpu::getThreadsPerWarp(getParent());
-}
-SmallVector<unsigned> SparseDotMetaEncodingAttr::getThreadOrder() const {
-  return {1, 0};
-}
-SmallVector<unsigned> SparseDotMetaEncodingAttr::getSizePerThread() const {
-  return gpu::getSizePerThread(getParent());
-}
-LinearLayout SparseDotMetaEncodingAttr::toLinearLayout(
-    ArrayRef<int64_t> shape) const {
-  return gpu::toLinearLayout(shape, getParent());
-}
-
-SmallVector<unsigned> SparseDotMetaEncodingAttr::getRepOrder() const {
-  // TODO: b/381422752 - Maybe we should reuse upstream's implementation from
-  // lib/Dialect/TritonGPU/IR/Dialect.cpp, but we would need to make it public
-  // first.
-  if (auto parent = mlir::dyn_cast<gpu::DistributedEncodingTrait>(getParent()))
-    return parent.getRepOrder();
-  llvm::report_fatal_error("Unimplemented usage of getRepOrder");
+void TmaDescriptorAttr::print(mlir::AsmPrinter& printer) const {
+  printer << "<global_shape = [";
+  llvm::interleaveComma(getGlobalShape(), printer);
+  printer << "], block_shape = [";
+  llvm::interleaveComma(getBlockShape(), printer);
+  printer << "], element_byte_size = " << getElementByteSize() << ">";
 }
 
 }  // namespace mlir::triton::xla

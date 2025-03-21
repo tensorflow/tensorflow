@@ -684,3 +684,69 @@ func.func @func(%arg0: tensor<?xf32>, %arg1: tensor<!tf_type.variant<tensor<*xf3
   %2 = "tf.TensorListStack"(%1#2, %cst_0) {device = "/job:localhost/replica:0/task:0/device:CPU:0", num_elements = 3 : i64} : (tensor<!tf_type.variant<tensor<*xf32>>>, tensor<0xi32>) -> tensor<3xf32>
   return %2 : tensor<3xf32>
 }
+
+// -----
+
+// Test a while to map_fn conversion in which a tf.StopGradient is inserted to consume the while result.
+// CHECK-LABEL: @while_map_while_body_884030
+func.func private @while_map_while_body_884030(%arg0: tensor<i32>, %arg1: tensor<i32>, %arg2: tensor<i32>, %arg3: tensor<!tf_type.variant<tensor<*x!tf_type.string>>>, %arg4: tensor<!tf_type.variant<tensor<?x?x1xui8>>> {tf._user_specified_name = "while/map/TensorArrayUnstack/TensorListFromTensor"}) -> (tensor<i32>, tensor<i32>, tensor<i32>, tensor<!tf_type.variant<tensor<*x!tf_type.string>>>, tensor<!tf_type.variant<tensor<?x?x1xui8>>>) {
+  %cst = "tf.Const"() <{value = dense<[-1, -1, 1]> : tensor<3xi32>}>  : () -> tensor<3xi32>
+  %cst_0 = "tf.Const"() <{value = dense<1> : tensor<i32>}>  : () -> tensor<i32>
+  %0 = "tf.AddV2"(%arg2, %cst_0)  : (tensor<i32>, tensor<i32>) -> tensor<i32>
+  %1 = "tf.Identity"(%0)  : (tensor<i32>) -> tensor<i32>
+  %2 = "tf.TensorListGetItem"(%arg4, %arg2, %cst)  : (tensor<!tf_type.variant<tensor<?x?x1xui8>>>, tensor<i32>, tensor<3xi32>) -> tensor<?x?x1xui8>
+  %3 = "tf.EncodePng"(%2) <{compression = -1 : i64}>  : (tensor<?x?x1xui8>) -> tensor<!tf_type.string>
+  %4 = "tf.TensorListSetItem"(%arg3, %arg2, %3) <{resize_if_index_out_of_bounds = false}>  : (tensor<!tf_type.variant<tensor<*x!tf_type.string>>>, tensor<i32>, tensor<!tf_type.string>) -> tensor<!tf_type.variant<tensor<*x!tf_type.string>>>
+  %5 = "tf.Identity"(%4)  : (tensor<!tf_type.variant<tensor<*x!tf_type.string>>>) -> tensor<!tf_type.variant<tensor<*x!tf_type.string>>>
+  %6 = "tf.AddV2"(%arg0, %cst_0)  : (tensor<i32>, tensor<i32>) -> tensor<i32>
+  %7 = "tf.Identity"(%6)  : (tensor<i32>) -> tensor<i32>
+  %8 = "tf.Identity"(%arg1)  : (tensor<i32>) -> tensor<i32>
+  return %7, %8, %1, %5, %arg4 : tensor<i32>, tensor<i32>, tensor<i32>, tensor<!tf_type.variant<tensor<*x!tf_type.string>>>, tensor<!tf_type.variant<tensor<?x?x1xui8>>>
+}
+
+// CHECK-LABEL:  while_map_while_body_884030/MapFnBody
+// CHECK:         tf.AddV2
+// CHECK-NEXT:    tf.TensorListGetItem
+// CHECK-NEXT:    tf.EncodePng
+// CHECK-NEXT:    tf.AddV2
+// CHECK-NEXT:    tf_await
+// CHECK-NEXT:    tf.TensorListSetItem
+// CHECK-NEXT:    tf_promise
+ 
+// CHECK-LABEL: @while_map_while_cond_884020
+func.func private @while_map_while_cond_884020(%arg0: tensor<i32>, %arg1: tensor<i32>, %arg2: tensor<i32>, %arg3: tensor<!tf_type.variant<tensor<*x!tf_type.string>>>, %arg4: tensor<!tf_type.variant<tensor<?x?x1xui8>>>) -> tensor<i1> {
+  %cst = "tf.Const"() <{value = dense<11> : tensor<i32>}>  : () -> tensor<i32>
+  %0 = "tf.Less"(%arg2, %cst)  : (tensor<i32>, tensor<i32>) -> tensor<i1>
+  %1 = "tf.Less"(%arg0, %arg1)  : (tensor<i32>, tensor<i32>) -> tensor<i1>
+  %2 = "tf.LogicalAnd"(%1, %0)  : (tensor<i1>, tensor<i1>) -> tensor<i1>
+  %3 = "tf.Identity"(%2)  : (tensor<i1>) -> tensor<i1>
+  return %3 : tensor<i1>
+}
+
+// CHECK-LABEL: @main
+// CHECK:       tf.Cast
+// CHECK-NEXT:  tf.TensorListReserve
+// CHECK-NEXT:  tf.Transpose
+// CHECK-NEXT:  tf.TensorListFromTensor
+// CHECK-NEXT:  tf_mlrt.tf_map_fn
+// CHECK-SAME:   {body_fn = @"while_map_while_body_884030/MapFnBody", num_tensor_list_or_flow_in = 1 : i32} : (tensor<i32>, tensor<!tf_type.variant<tensor<*x!tf_type.string>>>, tensor<i32>, tensor<!tf_type.variant<tensor<?x?x1xui8>>>) -> tensor<!tf_type.variant<tensor<*x!tf_type.string>>>
+// CHECK-NEXT:  tf.StopGradient
+// CHECK-NEXT:  tf.TensorListStack
+func.func @main(%arg0: tensor<1x?x?x11xf32>) -> tensor<11x!tf_type.string> {
+  %cst_0 = "tf.Const"() <{value = dense<[3, 1, 2, 0]> : tensor<4xi32>}>  : () -> tensor<4xi32>
+  %cst_10 = "tf.Const"() <{value = dense<0> : tensor<i32>}>  : () -> tensor<i32>
+  %cst_11 = "tf.Const"() <{value = dense<2> : tensor<i32>}>  : () -> tensor<i32>
+  %cst_12 = "tf.Const"() <{value = dense<1> : tensor<i32>}>  : () -> tensor<i32>
+  %cst_13 = "tf.Const"() <{value = dense<[-1, -1, 1]> : tensor<3xi32>}>  : () -> tensor<3xi32>
+  %cst_14 = "tf.Const"() <{value = dense<> : tensor<0xi32>}>  : () -> tensor<0xi32>
+  %cst_15 = "tf.Const"() <{value = dense<-1> : tensor<i32>}>  : () -> tensor<i32>
+  %cst_16 = "tf.Const"() <{value = dense<11> : tensor<i32>}>  : () -> tensor<i32>
+  %92 = "tf.Cast"(%arg0) <{Truncate = false}>  : (tensor<1x?x?x11xf32>) -> tensor<1x?x?x11xui8>
+  %0 = "tf.TensorListReserve"(%cst_15, %cst_16)  : (tensor<i32>, tensor<i32>) -> tensor<!tf_type.variant<tensor<*x!tf_type.string>>>
+  %93 = "tf.Transpose"(%92, %cst_0)  : (tensor<1x?x?x11xui8>, tensor<4xi32>) -> tensor<11x?x?x1xui8>
+  %94 = "tf.TensorListFromTensor"(%93, %cst_13)  : (tensor<11x?x?x1xui8>, tensor<3xi32>) -> tensor<!tf_type.variant<tensor<?x?x1xui8>>>
+  %95:5 = "tf.While"(%cst_10, %cst_16, %cst_10, %0, %94) <{body = @while_map_while_body_884030, cond = @while_map_while_cond_884020, is_stateless = true, parallel_iterations = 16 : i64, shape_invariant}> {T = [i32, i32, i32, !tf_type.variant, !tf_type.variant], _lower_using_switch_merge = true, _num_original_outputs = 5 : i64, _read_only_resource_inputs = [], device = "", output_shapes = [#tf_type.shape<>, #tf_type.shape<>, #tf_type.shape<>, #tf_type.shape<>, #tf_type.shape<>]} : (tensor<i32>, tensor<i32>, tensor<i32>, tensor<!tf_type.variant<tensor<*x!tf_type.string>>>, tensor<!tf_type.variant<tensor<?x?x1xui8>>>) -> (tensor<i32>, tensor<i32>, tensor<i32>, tensor<!tf_type.variant<tensor<*x!tf_type.string>>>, tensor<!tf_type.variant<tensor<?x?x1xui8>>>)
+  %96 = "tf.StopGradient"(%95#3)  : (tensor<!tf_type.variant<tensor<*x!tf_type.string>>>) -> tensor<!tf_type.variant<tensor<*x!tf_type.string>>>
+  %97 = "tf.TensorListStack"(%96, %cst_14) <{num_elements = 11 : i64}>  : (tensor<!tf_type.variant<tensor<*x!tf_type.string>>>, tensor<0xi32>) -> tensor<11x!tf_type.string>
+  return %97 : tensor<11x!tf_type.string>
+}

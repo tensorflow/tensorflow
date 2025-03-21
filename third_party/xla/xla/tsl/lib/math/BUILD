@@ -13,6 +13,13 @@ package(
     licenses = ["notice"],
 )
 
+filegroup(
+    name = "xla_cpu_runtime_hdrs",
+    srcs = [
+        "math_util.h",
+    ],
+)
+
 cc_library(
     name = "math_util",
     hdrs = ["math_util.h"],

@@ -46,6 +46,7 @@ cc_library(
         "//xla/pjrt/plugin/xla_gpu:xla_gpu_allocator_config",
         "//xla/pjrt/plugin/xla_gpu:xla_gpu_client_options",
         "//xla/service:cpu_plugin",
+        "//xla/service:hlo_module_util",
         "//xla/tsl/platform:statusor",
         "//xla/tsl/util:command_line_flags",
         "@com_google_absl//absl/log",
@@ -67,7 +68,7 @@ cc_library(
         "//xla/stream_executor:cuda_platform",
     ] + if_google(
         [
-            "//third_party/py/jax/jaxlib:gpu_kernels",  # fixdeps: keep
+            "//third_party/py/jax/jaxlib/cuda:cuda_gpu_kernels",  # fixdeps: keep
         ],
     )) + if_rocm([
         "//xla/stream_executor:rocm_platform",
@@ -99,7 +100,7 @@ xla_cc_binary(
         "//xla/service:gpu_plugin",
         "//xla/stream_executor:cuda_platform",
     ] + if_google([
-        "//third_party/py/jax/jaxlib:gpu_kernels",  # fixdeps: keep
+        "//third_party/py/jax/jaxlib/cuda:cuda_gpu_kernels",  # fixdeps: keep
     ]),
 )
 
@@ -150,6 +151,7 @@ cc_library(
         "//xla/hlo/ir:hlo",
         "//xla/hlo/parser:hlo_parser",
         "//xla/hlo/pass:hlo_pass_pipeline",
+        "//xla/hlo/transforms:while_loop_trip_count_annotator",
         "//xla/hlo/translate:stablehlo",
         "//xla/hlo/translate/hlo_to_mhlo:translate",
         "//xla/pjrt:host_memory_spaces",
@@ -159,11 +161,12 @@ cc_library(
         "//xla/pjrt:pjrt_future",
         "//xla/pjrt:pjrt_layout",
         "//xla/pjrt/distributed:key_value_store_interface",
+        "//xla/runtime/large_hlo_snapshot_serialization:serialization",
         "//xla/service:computation_layout",
         "//xla/service:computation_placer_hdr",
         "//xla/service:hlo_module_config",
+        "//xla/service:hlo_module_util",
         "//xla/service:hlo_proto_cc",
-        "//xla/service:hlo_runner_interface",
         "//xla/tests:test_utils",
         "//xla/tools:hlo_control_flow_flattening",
         "//xla/tsl/platform:env",
@@ -182,11 +185,7 @@ cc_library(
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:span",
         "@llvm-project//mlir:FuncExtensions",
-        "@local_tsl//tsl/platform:env",
-        "@local_tsl//tsl/platform:errors",
-        "@local_tsl//tsl/platform:logging",
-        "@local_tsl//tsl/platform:status",
-        "@local_tsl//tsl/platform:statusor",
+        "@local_tsl//tsl/platform:protobuf",
         "@local_tsl//tsl/profiler/lib:profiler_factory_impl",
         "@local_tsl//tsl/profiler/lib:profiler_session",
         "@local_tsl//tsl/profiler/lib:profiler_session_impl",
@@ -218,6 +217,7 @@ xla_test(
         "data/single_device.hlo",
         "data/single_device_tupled.hlo",
         "data/single_gemm_fusion.hlo",
+        "data/while_with_known_trip_count.hlo",
     ],
     tags = ["no_mac"],
     deps = [
@@ -232,6 +232,7 @@ xla_test(
         "//xla/pjrt:pjrt_executable",
         "//xla/pjrt/plugin/xla_gpu:xla_gpu_client_options",
         "//xla/runtime/large_hlo_snapshot_serialization:serialization",
+        "//xla/service:computation_layout",
         "//xla/service:hlo_proto_cc",
         "//xla/tsl/lib/core:status_test_util",
         "//xla/tsl/platform:env",

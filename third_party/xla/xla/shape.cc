@@ -19,6 +19,7 @@ limitations under the License.
 #include <cstdint>
 #include <ostream>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/algorithm/container.h"
@@ -44,6 +45,33 @@ Shape::Shape(Shape&&) noexcept = default;
 Shape& Shape::operator=(const Shape&) = default;
 Shape& Shape::operator=(Shape&&) noexcept = default;
 
+Shape::Shape(const PrimitiveType element_type) : element_type_(element_type) {
+  CHECK(element_type_ == TOKEN || element_type_ == OPAQUE_TYPE)
+      << "Invalid element type for token or opaque shape: " << element_type_;
+}
+
+Shape::Shape(const PrimitiveType element_type,
+             const absl::Span<const int64_t> dimensions,
+             const absl::Span<const bool> dynamic_dimensions)
+    : element_type_(element_type),
+      dimensions_(dimensions.begin(), dimensions.end()),
+      dynamic_dimensions_(dynamic_dimensions.begin(),
+                          dynamic_dimensions.end()) {
+  CHECK(primitive_util::IsArrayType(element_type_))
+      << "Invalid element type for array shape: " << element_type_;
+  if (dynamic_dimensions_.empty()) {
+    // Assume all dimensions are static.
+    dynamic_dimensions_.resize(dimensions_.size(), false);
+  } else {
+    CHECK_EQ(dimensions_.size(), dynamic_dimensions_.size())
+        << "If dynamic_dimensions is provided, it must have the same size as "
+           "dimensions.";
+  }
+}
+
+Shape::Shape(std::vector<Shape> tuple_shapes)
+    : element_type_(TUPLE), tuple_shapes_(std::move(tuple_shapes)) {}
+
 Shape::Shape(const ShapeProto& shape_proto) {
   set_element_type(shape_proto.element_type());
   dimensions_.reserve(shape_proto.dimensions_size());
@@ -64,7 +92,7 @@ Shape::Shape(const ShapeProto& shape_proto) {
       LOG(WARNING) << "Malformed shape proto: is_dynamic_dimension is empty";
     }
   }
-  int64_t num_dynamic_dimension_fields = std::min(
+  const int64_t num_dynamic_dimension_fields = std::min(
       shape_proto.dimensions_size(), shape_proto.is_dynamic_dimension_size());
   for (int i = 0; i < num_dynamic_dimension_fields; i++) {
     dynamic_dimensions_[i] = shape_proto.is_dynamic_dimension(i);
@@ -87,7 +115,7 @@ Shape::Shape(const ShapeProto& shape_proto) {
 void Shape::SetProto(ShapeProto& proto) const {
   proto.Clear();
   proto.set_element_type(element_type_);
-  proto.mutable_dimensions()->Reserve(dimensions_size());
+  proto.mutable_dimensions()->Reserve(rank());
   for (const int64_t dimension : dimensions()) {
     proto.add_dimensions(dimension);
   }
@@ -125,10 +153,10 @@ std::string Shape::ToString(bool print_layout) const {
   }
 }
 
-bool Shape::IsInteger() const {
+bool Shape::AreAllLeavesIntegers() const {
   if (IsTuple()) {
-    return absl::c_all_of(tuple_shapes_,
-                          [](const Shape& s) { return s.IsInteger(); });
+    return absl::c_all_of(
+        tuple_shapes_, [](const Shape& s) { return s.AreAllLeavesIntegers(); });
   }
   return primitive_util::IsIntegralType(element_type());
 }

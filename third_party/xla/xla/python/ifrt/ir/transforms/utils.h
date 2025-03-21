@@ -17,6 +17,7 @@ limitations under the License.
 #define XLA_PYTHON_IFRT_IR_TRANSFORMS_UTILS_H_
 
 #include <string>
+#include <vector>
 
 #include "absl/status/statusor.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
@@ -24,6 +25,7 @@ limitations under the License.
 #include "mlir/IR/OpDefinition.h"
 #include "mlir/IR/OperationSupport.h"
 #include "mlir/IR/Types.h"
+#include "mlir/Pass/Pass.h"
 #include "xla/python/ifrt/dtype.h"
 #include "xla/python/ifrt/ir/ifrt_dialect.h"
 #include "xla/python/ifrt/ir/ifrt_ops.h"
@@ -60,6 +62,11 @@ std::string OperationToString(mlir::Operation* op,
 // builder. For other cases, regular mlir::ModuleOp::clone() should be used.
 mlir::ModuleOp CloneModuleUsingBuilder(mlir::ModuleOp module,
                                        mlir::OpBuilder& builder);
+
+// Expands a vector of platform names from short format (e.g., tpu:2,host:2) to
+// long format with an entry for each platform instance.
+absl::StatusOr<std::vector<std::string>> ExpandPlatformNames(
+    const mlir::Pass::ListOption<std::string>& platform_names);
 
 }  // namespace ifrt
 }  // namespace xla

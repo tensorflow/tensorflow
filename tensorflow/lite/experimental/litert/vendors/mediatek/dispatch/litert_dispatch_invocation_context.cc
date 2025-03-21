@@ -26,7 +26,6 @@
 #include "tensorflow/lite/experimental/litert/c/litert_logging.h"
 #include "tensorflow/lite/experimental/litert/c/litert_model.h"
 #include "tensorflow/lite/experimental/litert/c/litert_tensor_buffer.h"
-#include "tensorflow/lite/experimental/litert/c/litert_tensor_buffer_requirements.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
 #include "tensorflow/lite/experimental/litert/vendors/c/litert_dispatch.h"
 #include "tensorflow/lite/experimental/litert/vendors/mediatek/dispatch/litert_dispatch_device_context.h"
@@ -229,11 +228,15 @@ Expected<LiteRtDispatchInvocationContextT::Ptr>
 LiteRtDispatchInvocationContextT::Create(
     litert::mediatek::NeuronAdapterApi& neuron_adapter_api,
     LiteRtDispatchDeviceContext device_context,
-    LiteRtDispatchExecutableType exec_type, const void* bytecode_ptr,
-    size_t bytecode_size, const char* function_name, int num_inputs,
-    int num_outputs) {
+    LiteRtDispatchExecutableType exec_type,
+    const LiteRtMemBuffer* exec_bytecode_buffer, const char* function_name,
+    int num_inputs, int num_outputs) {
+  auto exec_bytecode_ptr =
+      static_cast<const uint8_t*>(exec_bytecode_buffer->base_addr) +
+      exec_bytecode_buffer->offset;
   auto model_and_compilation = LoadModelAndCompilation(
-      neuron_adapter_api, bytecode_ptr, bytecode_size, num_inputs, num_outputs);
+      neuron_adapter_api, exec_bytecode_ptr, exec_bytecode_buffer->size,
+      num_inputs, num_outputs);
   if (!model_and_compilation) {
     return model_and_compilation.Error();
   }

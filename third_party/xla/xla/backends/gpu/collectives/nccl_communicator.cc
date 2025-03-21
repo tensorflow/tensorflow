@@ -169,17 +169,31 @@ NcclCommunicator::NcclCommunicator(ncclComm_t comm) : comm_(comm) {
 }
 
 NcclCommunicator::~NcclCommunicator() {
-  VLOG(1) << "Destroy " << *this;
-  XLA_NCCL_LOG_IF_ERROR(ncclCommDestroy(comm_));
+  if (!aborted_) {
+    // Don't destroy the communicator if it has already been aborted.
+    VLOG(1) << "Destroy " << *this;
+    XLA_NCCL_LOG_IF_ERROR(ncclCommDestroy(comm_));
+  } else {
+    VLOG(1) << "Skipping destruction; already aborted " << *this;
+  }
 }
 
 absl::Status NcclCommunicator::Abort() {
   VLOG(1) << "Abort NCCL communicator: " << ToString();
+  if (aborted_) {
+    return FailedPrecondition("NcclCommunicator aborted");
+  }
+  aborted_ = true;
+  // TODO(mwhittaker): It is only safe to abort a non-blocking communicator.
+  // Ensure that comm_ is non-blocking.
   return XLA_NCCL_STATUS(ncclCommAbort(comm_));
 }
 
 absl::Status NcclCommunicator::HealthCheck() const {
   VLOG(5) << "Get last async error for NCCL communicator: " << ToString();
+  if (aborted_) {
+    return absl::FailedPreconditionError("NcclCommunicator aborted");
+  }
 
   ncclResult_t async_err;
   XLA_NCCL_RETURN_IF_ERROR(ncclCommGetAsyncError(comm_, &async_err));
@@ -191,6 +205,9 @@ absl::Status NcclCommunicator::HealthCheck() const {
 
 absl::StatusOr<size_t> NcclCommunicator::NumRanks() const {
   VLOG(5) << "Get the number of ranks in NCCL communicator: " << ToString();
+  if (aborted_) {
+    return absl::FailedPreconditionError("NcclCommunicator aborted");
+  }
   int32_t count;
   XLA_NCCL_RETURN_IF_ERROR(ncclCommCount(comm_, &count));
   return count;
@@ -201,6 +218,9 @@ NcclCommunicator::RegisterBuffer(stream_executor::DeviceMemoryBase buffer) {
   VLOG(3) << absl::StreamFormat(
       "Register buffer for NCCL communicator; buffer=%p; size=%d; comm=%p",
       buffer.opaque(), buffer.size(), comm_);
+  if (aborted_) {
+    return absl::FailedPreconditionError("NcclCommunicator aborted");
+  }
 #if (NCCL_VERSION_CODE >= 21901)
   void* handle = nullptr;
   XLA_NCCL_RETURN_IF_ERROR(
@@ -215,6 +235,9 @@ absl::Status NcclCommunicator::AllReduce(
     se::DeviceMemoryBase send_buffer, se::DeviceMemoryBase recv_buffer,
     PrimitiveType dtype, size_t count, ReductionKind reduction_kind,
     const Communicator::Executor& executor) {
+  if (aborted_) {
+    return absl::FailedPreconditionError("NcclCommunicator aborted");
+  }
   TF_ASSIGN_OR_RETURN(se::Stream * stream, ToStream(executor));
 
   VLOG(3) << absl::StreamFormat(
@@ -238,6 +261,9 @@ absl::Status NcclCommunicator::Broadcast(se::DeviceMemoryBase send_buffer,
                                          PrimitiveType dtype, size_t count,
                                          RankId root,
                                          const Executor& executor) {
+  if (aborted_) {
+    return absl::FailedPreconditionError("NcclCommunicator aborted");
+  }
   TF_ASSIGN_OR_RETURN(se::Stream * stream, ToStream(executor));
 
   VLOG(3) << absl::StreamFormat(
@@ -260,6 +286,9 @@ absl::Status NcclCommunicator::ReduceScatter(se::DeviceMemoryBase send_buffer,
                                              PrimitiveType dtype, size_t count,
                                              ReductionKind reduction_kind,
                                              const Executor& executor) {
+  if (aborted_) {
+    return absl::FailedPreconditionError("NcclCommunicator aborted");
+  }
   TF_ASSIGN_OR_RETURN(se::Stream * stream, ToStream(executor));
 
   VLOG(3) << absl::StreamFormat(
@@ -282,6 +311,9 @@ absl::Status NcclCommunicator::AllGather(se::DeviceMemoryBase send_buffer,
                                          se::DeviceMemoryBase recv_buffer,
                                          PrimitiveType dtype, size_t count,
                                          const Executor& executor) {
+  if (aborted_) {
+    return absl::FailedPreconditionError("NcclCommunicator aborted");
+  }
   TF_ASSIGN_OR_RETURN(se::Stream * stream, ToStream(executor));
 
   VLOG(3) << absl::StreamFormat(
@@ -302,6 +334,9 @@ absl::Status NcclCommunicator::AllToAll(
     absl::Span<const se::DeviceMemoryBase> send_buffers,
     absl::Span<const se::DeviceMemoryBase> recv_buffers, PrimitiveType dtype,
     size_t count, const Executor& executor) {
+  if (aborted_) {
+    return absl::FailedPreconditionError("NcclCommunicator aborted");
+  }
   TF_ASSIGN_OR_RETURN(se::Stream * stream, ToStream(executor));
 
   auto buffer_formatter = [](std::string* out, se::DeviceMemoryBase buffer) {
@@ -357,6 +392,9 @@ absl::Status NcclCommunicator::CollectivePermute(
     se::DeviceMemoryBase send_buffer, se::DeviceMemoryBase recv_buffer,
     PrimitiveType dtype, size_t count, std::optional<RankId> source_rank,
     absl::Span<const RankId> target_ranks, const Executor& executor) {
+  if (aborted_) {
+    return absl::FailedPreconditionError("NcclCommunicator aborted");
+  }
   TF_ASSIGN_OR_RETURN(se::Stream * stream, ToStream(executor));
 
   auto rank_formatter = [](std::string* out, RankId rank) {
@@ -401,6 +439,9 @@ absl::Status NcclCommunicator::CollectivePermute(
 absl::Status NcclCommunicator::Send(se::DeviceMemoryBase send_buffer,
                                     PrimitiveType dtype, size_t count,
                                     RankId peer, const Executor& executor) {
+  if (aborted_) {
+    return absl::FailedPreconditionError("NcclCommunicator aborted");
+  }
   TF_ASSIGN_OR_RETURN(se::Stream * stream, ToStream(executor));
 
   VLOG(3) << absl::StreamFormat(
@@ -420,6 +461,9 @@ absl::Status NcclCommunicator::Send(se::DeviceMemoryBase send_buffer,
 absl::Status NcclCommunicator::Recv(se::DeviceMemoryBase recv_buffer,
                                     PrimitiveType dtype, size_t count,
                                     RankId peer, const Executor& executor) {
+  if (aborted_) {
+    return absl::FailedPreconditionError("NcclCommunicator aborted");
+  }
   TF_ASSIGN_OR_RETURN(se::Stream * stream, ToStream(executor));
 
   VLOG(3) << absl::StreamFormat(

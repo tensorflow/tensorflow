@@ -40,11 +40,35 @@ limitations under the License.
 #include "xla/python/sharded_device_array.h"
 #include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/platform/logging.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
 
 namespace jax {
 
 namespace nb = nanobind;
+
+// Gets `jax::PyDeviceList` from a JAX Sharding.
+absl::StatusOr<xla::nb_class_ptr<jax::PyDeviceList>> GetPyDeviceList(
+    nb::handle sharding_py) {
+  nb::handle sharding(sharding_py.ptr());
+  if (sharding.type().is(jax::NamedSharding::type())) {
+    TF_ASSIGN_OR_RETURN(
+        auto ns_device_list,
+        nb::cast<const jax::NamedSharding*>(sharding)->internal_device_list());
+    return ns_device_list;
+  } else if (sharding.type().is(jax::SingleDeviceSharding::type())) {
+    return nb::cast<const jax::SingleDeviceSharding*>(sharding)
+        ->internal_device_list();
+  } else if (sharding.type().is(jax::PmapSharding::type())) {
+    return nb::cast<const jax::PmapSharding*>(sharding)->internal_device_list();
+  } else if (sharding.type().is(jax::GSPMDSharding::type())) {
+    return nb::cast<const jax::GSPMDSharding*>(sharding)
+        ->internal_device_list();
+  } else {
+    return nb::cast<xla::nb_class_ptr<jax::PyDeviceList>>(
+        sharding.attr("_internal_device_list"));
+  }
+}
 
 nb::object CheckAndCanonicalizeMemoryKind(
     nb::object memory_kind,
@@ -170,8 +194,7 @@ bool ShardingEqual(nb::handle a, nb::handle b) {
 }
 
 NamedSharding::NamedSharding(nb::object mesh, nb::object spec,
-                             nb::object memory_kind, nb::object parsed_pspec,
-                             nb::object manual_axes,
+                             nb::object memory_kind, nb::object manual_axes,
                              nb::object logical_device_ids)
     : Sharding(/*num_devices=*/[&mesh]() {
         return nb::cast<int>(mesh.attr("size"));
@@ -179,7 +202,6 @@ NamedSharding::NamedSharding(nb::object mesh, nb::object spec,
       mesh_(std::move(mesh)),
       spec_(std::move(spec)),
       memory_kind_(std::move(memory_kind)),
-      parsed_pspec_(std::move(parsed_pspec)),
       manual_axes_(std::move(manual_axes)),
       logical_device_ids_(std::move(logical_device_ids)) {
   if (spec_.is_none()) {
@@ -190,8 +212,7 @@ NamedSharding::NamedSharding(nb::object mesh, nb::object spec,
   if (idl.is_none()) {
     internal_device_list_ = std::nullopt;
   } else {
-    internal_device_list_ = nb::cast<xla::nb_class_ptr<jax::PyDeviceList>>(
-        nb::object(mesh_.attr("_internal_device_list")));
+    internal_device_list_ = nb::cast<xla::nb_class_ptr<jax::PyDeviceList>>(idl);
   }
   if (internal_device_list_) {
     memory_kind_ =
@@ -200,9 +221,14 @@ NamedSharding::NamedSharding(nb::object mesh, nb::object spec,
     memory_kind_ = nb::none();
   }
 
-  nb::module_ si = nb::module_::import_("jax._src.sharding_impls");
-  parsed_pspec_ =
-      si.attr("preprocess")(mesh_, spec_, parsed_pspec_, manual_axes_);
+  // TODO(phawkins): this leaks a reference to the check_pspec function.
+  // A better way to fix this would be to move PartitionSpec and this check into
+  // C++.
+  static nb::object* check_pspec = []() {
+    nb::module_ si = nb::module_::import_("jax._src.named_sharding");
+    return new nb::object(si.attr("check_pspec"));
+  }();
+  (*check_pspec)(mesh_, spec_, manual_axes_);
 }
 
 SingleDeviceSharding::SingleDeviceSharding(nb::object device,
@@ -218,7 +244,7 @@ SingleDeviceSharding::SingleDeviceSharding(nb::object device,
 
 SingleDeviceSharding::SingleDeviceSharding(
     xla::nb_class_ptr<xla::PyClient> client,
-    tsl::RCReference<xla::ifrt::DeviceList> device_list, nb::object memory_kind)
+    xla::ifrt::DeviceListRef device_list, nb::object memory_kind)
     : Sharding(/*num_devices=*/1),
       device_(client->GetPyDevice(device_list->devices().front())),
       memory_kind_(std::move(memory_kind)),
@@ -263,11 +289,10 @@ void RegisterSharding(nb::module_& m) {
   nb::class_<Sharding>(m, "Sharding").def(nb::init<>());
 
   nb::class_<NamedSharding, Sharding>(m, "NamedSharding", nb::dynamic_attr())
-      .def(nb::init<nb::object, nb::object, nb::object, nb::object, nb::object,
+      .def(nb::init<nb::object, nb::object, nb::object, nb::object,
                     nb::object>(),
            nb::arg("mesh"), nb::arg("spec").none(),
            nb::arg("memory_kind").none() = nb::none(),
-           nb::arg("_parsed_pspec").none() = nb::none(),
            nb::arg("_manual_axes") = nb::steal(PyFrozenSet_New(nullptr)),
            nb::arg("_logical_device_ids").none() = nb::none())
       .def_prop_ro("mesh", &NamedSharding::mesh)
@@ -275,8 +300,6 @@ void RegisterSharding(nb::module_& m) {
       .def_prop_ro("_memory_kind", &NamedSharding::memory_kind)
       .def_prop_ro("_manual_axes", &NamedSharding::manual_axes)
       .def_prop_ro("_logical_device_ids", &NamedSharding::logical_device_ids)
-      .def_prop_rw("_parsed_pspec", &NamedSharding::parsed_pspec,
-                   &NamedSharding::set_parsed_pspec)
       .def_prop_ro("_internal_device_list", [](const NamedSharding& s) {
         return xla::ValueOrThrow(s.internal_device_list());
       });

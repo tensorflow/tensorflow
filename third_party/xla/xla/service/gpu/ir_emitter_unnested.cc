@@ -119,7 +119,14 @@ limitations under the License.
 #ifdef TENSORFLOW_USE_ROCM
 #include "xla/stream_executor/rocm/rocm_solver_context.h"
 #endif  // TENSORFLOW_USE_ROCM
+#include "xla/backends/gpu/runtime/all_gather_thunk.h"
+#include "xla/backends/gpu/runtime/all_reduce_thunk.h"
+#include "xla/backends/gpu/runtime/all_to_all_thunk.h"
 #include "xla/backends/gpu/runtime/cholesky_thunk.h"
+#include "xla/backends/gpu/runtime/collective_broadcast_thunk.h"
+#include "xla/backends/gpu/runtime/collective_group_thunk.h"
+#include "xla/backends/gpu/runtime/collective_permute_thunk.h"
+#include "xla/backends/gpu/runtime/collective_thunk.h"
 #include "xla/backends/gpu/runtime/command_buffer_cmd.h"
 #include "xla/backends/gpu/runtime/command_buffer_cmd_emitter.h"
 #include "xla/backends/gpu/runtime/command_buffer_thunk.h"
@@ -133,23 +140,16 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/fft_thunk.h"
 #include "xla/backends/gpu/runtime/gemm_thunk.h"
 #include "xla/backends/gpu/runtime/gpublas_lt_matmul_thunk.h"
+#include "xla/backends/gpu/runtime/host_send_recv_thunk.h"
 #include "xla/backends/gpu/runtime/infeed_thunk.h"
 #include "xla/backends/gpu/runtime/kernel_thunk.h"
-#include "xla/backends/gpu/runtime/nccl_all_gather_thunk.h"
-#include "xla/backends/gpu/runtime/nccl_all_reduce_thunk.h"
-#include "xla/backends/gpu/runtime/nccl_all_to_all_thunk.h"
-#include "xla/backends/gpu/runtime/nccl_collective_broadcast_thunk.h"
-#include "xla/backends/gpu/runtime/nccl_collective_permute_thunk.h"
-#include "xla/backends/gpu/runtime/nccl_collective_thunk.h"
-#include "xla/backends/gpu/runtime/nccl_group_thunk.h"
-#include "xla/backends/gpu/runtime/nccl_p2p_thunk_common.h"
-#include "xla/backends/gpu/runtime/nccl_ragged_all_to_all_thunk.h"
-#include "xla/backends/gpu/runtime/nccl_recv_thunk.h"
-#include "xla/backends/gpu/runtime/nccl_send_thunk.h"
 #include "xla/backends/gpu/runtime/norm_thunk.h"
 #include "xla/backends/gpu/runtime/outfeed_thunk.h"
+#include "xla/backends/gpu/runtime/p2p_thunk_common.h"
+#include "xla/backends/gpu/runtime/ragged_all_to_all_thunk.h"
+#include "xla/backends/gpu/runtime/recv_thunk.h"
 #include "xla/backends/gpu/runtime/replica_id_thunk.h"
-#include "xla/backends/gpu/runtime/send_recv_thunk.h"
+#include "xla/backends/gpu/runtime/send_thunk.h"
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/triangular_solve_thunk.h"
@@ -172,12 +172,12 @@ limitations under the License.
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/protobuf/dnn.pb.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/errors.h"
 #include "tsl/platform/human_readable_json.h"
-#include "tsl/platform/statusor.h"
 #include "triton/Dialect/Triton/IR/Dialect.h"
 
 namespace xla {
@@ -185,7 +185,7 @@ namespace gpu {
 
 IrEmitterUnnested::IrEmitterUnnested(IrEmitterContext* ir_emitter_context)
     : IrEmitter(ir_emitter_context, /*is_nested=*/false),
-      send_recv_events_(std::make_shared<SendRecvAsyncEvents>()),
+      send_recv_events_(std::make_shared<HostSendRecvAsyncEvents>()),
       copy_events_(std::make_shared<CopyThunk::AsyncEvents>()),
       call_graph_(CallGraph::Build(&ir_emitter_context->hlo_module())) {}
 
@@ -1029,7 +1029,7 @@ absl::Status IrEmitterUnnested::EmitCholeskyThunk(const HloInstruction* instr) {
   TF_ASSIGN_OR_RETURN(CholeskyOptions options,
                       instr->backend_config<CholeskyOptions>());
   const Shape& shape = instr->operand(0)->shape();
-  int ndim = shape.dimensions_size();
+  int ndim = shape.rank();
   CHECK_GE(ndim, 2);
   int64_t n = shape.dimensions(ndim - 1);
 
@@ -1672,10 +1672,12 @@ absl::Status IrEmitterUnnested::EmitSort(const HloSortInstruction* sort) {
         sort->operand_count() > 1 ? ShapeIndex({i}) : ShapeIndex({});
     // We assume that the layout of all involved operands and outputs is the
     // same.
-    TF_RET_CHECK(LayoutUtil::LayoutsInShapesEqual(keys_shape,
-                                                  sort->operand(i)->shape()));
+    TF_RET_CHECK(
+        LayoutUtil::LayoutsInShapesEqual(keys_shape, sort->operand(i)->shape(),
+                                         Layout::Equal().IgnoreMemorySpace()));
     TF_RET_CHECK(LayoutUtil::LayoutsInShapesEqual(
-        keys_shape, ShapeUtil::GetSubshape(sort->shape(), shape_index)));
+        keys_shape, ShapeUtil::GetSubshape(sort->shape(), shape_index),
+        Layout::Equal().IgnoreMemorySpace()));
 
     BufferAllocation::Slice destination_buffer;
     BufferAllocation::Slice source_address;
@@ -1863,7 +1865,7 @@ absl::Status IrEmitterUnnested::EmitCollectivePermute(
   const int64_t partition_count = hlo_config.num_partitions();
 
   auto operands = instr->operands();
-  std::vector<NcclCollectiveThunk::Buffer> buffers;
+  std::vector<CollectiveThunk::Buffer> buffers;
   for (int oprd_idx = 0; oprd_idx < operands.size(); ++oprd_idx) {
     const auto operand = operands.at(oprd_idx);
     const ShapeIndex nested_shape_idx = {1, oprd_idx}, normal_shape_idx = {1};
@@ -1882,8 +1884,8 @@ absl::Status IrEmitterUnnested::EmitCollectivePermute(
 
     TF_ASSIGN_OR_RETURN(BufferAllocation::Slice source_slice,
                         GetAllocationSliceForHlo(operand));
-    if (NcclCollectivePermuteStartThunk::IsDegenerate(instr, replica_count,
-                                                      partition_count)) {
+    if (CollectivePermuteStartThunk::IsDegenerate(instr, replica_count,
+                                                  partition_count)) {
       // For a degenerate collective permute, just generate a copy thunk.
       AddThunkToThunkSequence(std::make_unique<DeviceToDeviceCopyThunk>(
           Thunk::ThunkInfo::WithProfileAnnotation(instr),
@@ -1893,7 +1895,7 @@ absl::Status IrEmitterUnnested::EmitCollectivePermute(
       // Signal that start thunk not created with nullptr.
       GetCollectivesAsyncEvents().try_emplace(instr, nullptr);
     } else {
-      const NcclCollectiveThunk::Buffer buffer = {
+      const CollectiveThunk::Buffer buffer = {
           /*element_count=*/ShapeUtil::ElementsIn(operand_shape),
           /*source_buffer=*/source_slice,
           /*destination_buffer=*/result_slice,
@@ -1902,26 +1904,27 @@ absl::Status IrEmitterUnnested::EmitCollectivePermute(
       buffers.push_back(buffer);
     }
   }
-  if (!NcclCollectivePermuteStartThunk::IsDegenerate(instr, replica_count,
-                                                     partition_count)) {
-    auto thunk = std::make_unique<NcclCollectivePermuteStartThunk>(
+  if (!CollectivePermuteStartThunk::IsDegenerate(instr, replica_count,
+                                                 partition_count)) {
+    auto thunk = std::make_unique<CollectivePermuteStartThunk>(
         Thunk::ThunkInfo::WithProfileAnnotation(instr), instr, replica_count,
         partition_count, buffers,
-        ir_emitter_context_->debug_options().xla_gpu_use_memcpy_local_p2p());
+        ir_emitter_context_->debug_options().xla_gpu_use_memcpy_local_p2p(),
+        GetStreamKindForP2P(instr));
     GetCollectivesAsyncEvents().try_emplace(instr, thunk->async_events());
     AddThunkToThunkSequence(std::move(thunk));
   }
   return absl::OkStatus();
 }
 
-template <typename NcclThunkType, typename HloInstType>
-absl::Status IrEmitterUnnested::EmitNcclThunk(
+template <typename CollectiveThunkType, typename HloInstType>
+absl::Status IrEmitterUnnested::EmitCollectiveThunk(
     Thunk::Kind kind, const HloInstruction* async_start,
     const HloInstType* inst, std::optional<bool> use_global_device_ids) {
   const auto& hlo_config = ir_emitter_context_->hlo_module().config();
   int64_t replica_count = hlo_config.replica_count();
   int64_t partition_count = hlo_config.num_partitions();
-  VLOG(2) << NcclThunkType::GetHloOpName()
+  VLOG(2) << CollectiveThunkType::GetHloOpName()
           << "; replica count: " << replica_count
           << "; partition count: " << partition_count
           << "; operand count: " << inst->operand_count();
@@ -1936,16 +1939,16 @@ absl::Status IrEmitterUnnested::EmitNcclThunk(
   // statically known. This operation can not be expressed in term of standard
   // HLO instructions, so the best solution we have is to use NCCL thunk even
   // for degenerate cases.
-  bool is_degenerate = kind != Thunk::Kind::kNcclRaggedAllToAll &&
-                       GetNcclCollectiveConfig(inst, use_global_device_ids)
+  bool is_degenerate = kind != Thunk::Kind::kRaggedAllToAll &&
+                       GetCollectiveConfig(inst, use_global_device_ids)
                            .IsDegenerate(replica_count, partition_count);
-  absl::Status implementable_status =
-      NcclThunkType::CheckImplementable(inst, replica_count, partition_count);
+  absl::Status implementable_status = CollectiveThunkType::CheckImplementable(
+      inst, replica_count, partition_count);
   bool should_use_nccl_thunk = !is_degenerate && implementable_status.ok();
 
-  // Stash relevant information in NcclCollectiveThunk::Buffer even if we may
-  // not generate an NcclCollectiveThunk.
-  std::vector<NcclCollectiveThunk::Buffer> buffers;
+  // Stash relevant information in CollectiveThunk::Buffer even if we may
+  // not generate an CollectiveThunk.
+  std::vector<CollectiveThunk::Buffer> buffers;
 
   int64_t operand_count = inst->operand_count();
   buffers.reserve(operand_count);
@@ -1954,17 +1957,17 @@ absl::Status IrEmitterUnnested::EmitNcclThunk(
   auto add_buffer = [&](int64_t element_count, BufferAllocation::Slice src,
                         int64_t src_memory_space, BufferAllocation::Slice dst,
                         int64_t dst_memory_space) {
-    buffers.push_back(NcclCollectiveThunk::Buffer{
-        /*element_count=*/element_count,
-        /*source_buffer=*/src,
-        /*destination_buffer=*/dst,
-        /*source_memory_space=*/src_memory_space,
-        /*destination_memory_space=*/dst_memory_space,
-        /*source_value=*/nullptr,
-        /*destination_value=*/nullptr});
+    buffers.push_back(
+        CollectiveThunk::Buffer{/*element_count=*/element_count,
+                                /*source_buffer=*/src,
+                                /*destination_buffer=*/dst,
+                                /*source_memory_space=*/src_memory_space,
+                                /*destination_memory_space=*/dst_memory_space,
+                                /*source_value=*/nullptr,
+                                /*destination_value=*/nullptr});
   };
 
-  if (kind == Thunk::Kind::kNcclAllGatherStart) {
+  if (kind == Thunk::Kind::kAllGatherStart) {
     // Start operations return a tuple of (<<inputs>>, <<outputs>>) where
     // outputs can be a tuple itself (if operation has multiple operands).
     for (int64_t i = 0; i < operand_count; i++) {
@@ -1977,25 +1980,27 @@ absl::Status IrEmitterUnnested::EmitNcclThunk(
                  src_shape.layout().memory_space(), dst,
                  dst_shape.layout().memory_space());
     }
-  } else if (kind == Thunk::Kind::kNcclRaggedAllToAll) {
+  } else if (kind == Thunk::Kind::kRaggedAllToAll) {
     // RaggedAllToAll operation has 6 operands: input, output, input_offset,
     // send_size, output_offset, recv_size.
+    // `output` operand is aliased with the instruction result. All other
+    // operands are not aliased.
     const Shape& input_shape = inst->operand(0)->shape();
-    const Shape& result_shape = inst->shape();
     TF_ASSIGN_OR_RETURN(auto input_buffer,
                         GetAllocationSliceForHlo(inst->operand(0)));
-    TF_ASSIGN_OR_RETURN(auto result_buffer, GetAllocationSliceForHlo(inst));
     add_buffer(ShapeUtil::ElementsIn(input_shape), input_buffer,
-               input_shape.layout().memory_space(), result_buffer,
-               result_shape.layout().memory_space());
+               input_shape.layout().memory_space(), input_buffer,
+               input_shape.layout().memory_space());
 
     const Shape& output_shape = inst->operand(1)->shape();
+    const Shape& result_shape = inst->shape();
     TF_ASSIGN_OR_RETURN(auto output_buffer,
                         GetAllocationSliceForHlo(inst->operand(1)));
+    TF_ASSIGN_OR_RETURN(auto result_buffer, GetAllocationSliceForHlo(inst));
 
     add_buffer(ShapeUtil::ElementsIn(result_shape), output_buffer,
-               output_shape.layout().memory_space(), output_buffer,
-               output_shape.layout().memory_space());
+               output_shape.layout().memory_space(), result_buffer,
+               result_shape.layout().memory_space());
 
     for (int64_t i = 2; i < operand_count; i++) {
       const Shape& shape = inst->operand(i)->shape();
@@ -2008,7 +2013,8 @@ absl::Status IrEmitterUnnested::EmitNcclThunk(
   } else {
     // For other operations simply zip operands with results.
     for (int64_t i = 0; i < operand_count; i++) {
-      ShapeIndex idx = operand_count > 1 ? ShapeIndex({i}) : ShapeIndex({});
+      ShapeIndex idx =
+          inst->shape().IsTuple() ? ShapeIndex({i}) : ShapeIndex({});
       const Shape& src_shape = inst->operand(i)->shape();
       const Shape& dst_shape = ShapeUtil::GetSubshape(inst->shape(), idx);
       TF_ASSIGN_OR_RETURN(auto src, GetAllocationSliceForHlo(inst->operand(i)));
@@ -2025,7 +2031,7 @@ absl::Status IrEmitterUnnested::EmitNcclThunk(
     if (ir_emitter_context_->debug_options().xla_syntax_sugar_async_ops()) {
       thunk_info.profile_annotation = async_start->name();
     }
-    auto thunk = std::make_unique<NcclThunkType>(
+    auto thunk = std::make_unique<CollectiveThunkType>(
         thunk_info, inst, /*buffers=*/std::move(buffers),
         ir_emitter_context_->debug_options().xla_gpu_use_memcpy_local_p2p());
     GetCollectivesAsyncEvents().insert({async_start, thunk->async_events()});
@@ -2111,8 +2117,10 @@ static const HloInstruction* FindCanonicalSendRecvStartOp(
           unique_user->opcode() == HloOpcode::kWhile);
     if (unique_user->IsRoot()) {
       // send/recv op in the loop body.
-      CHECK(unique_user->parent()->IsWhileBodyComputation());
-      while_op = unique_user->parent()->WhileCallInstruction();
+      auto maybe_while_op =
+          unique_user->parent()->GetUniqueCaller(HloOpcode::kWhile);
+      CHECK(maybe_while_op);
+      while_op = *maybe_while_op;
       i = unique_user->operand_index(inst);
     } else {
       // send/recv leading into the loop.
@@ -2142,8 +2150,10 @@ static const HloInstruction* FindCanonicalSendRecvStartOp(
     if (iter_tuple->opcode() == HloOpcode::kParameter) {
       // send-done/recv-done in the loop body.
       CHECK(Cast<HloParameterInstruction>(iter_tuple)->parameter_number() == 0);
-      CHECK(operand->parent()->IsWhileBodyComputation());
-      while_op = iter_tuple->parent()->WhileCallInstruction();
+      auto maybe_while =
+          iter_tuple->parent()->GetUniqueCaller(HloOpcode::kWhile);
+      CHECK(maybe_while);
+      while_op = *maybe_while;
       i = gte->tuple_index();
     } else {
       // send-done/recv-done proceeding the loop.
@@ -2163,7 +2173,7 @@ static const HloInstruction* FindCanonicalSendRecvStartOp(
   return canonical_start_op;
 }
 
-absl::Status IrEmitterUnnested::EmitNcclGroupStartThunk(
+absl::Status IrEmitterUnnested::EmitCollectiveGroupStartThunk(
     const HloInstruction* instr) {
   emit_group_thunks_ = true;
   std::optional<AsyncStreamKind> stream_kind;
@@ -2175,12 +2185,11 @@ absl::Status IrEmitterUnnested::EmitNcclGroupStartThunk(
         !stream_kind.has_value()) {
       // We only need to modify the stream kind once, since all send/recv
       // instructions in a group should have the same stream kind.
-      stream_kind = GetStreamKindForSendRecv(
-          Cast<HloSendRecvInstruction>(nested_instruction));
+      stream_kind = GetStreamKindForP2P(nested_instruction);
     }
   }
-  auto thunk = std::make_unique<NcclGroupThunk>(
-      instr, Thunk::Kind::kNcclGroupStart, std::move(scoped_thunk_sequence_),
+  auto thunk = std::make_unique<CollectiveGroupThunk>(
+      instr, Thunk::Kind::kGroupStart, std::move(scoped_thunk_sequence_),
       stream_kind.value_or(AsyncStreamKind::kCollective));
   emit_group_thunks_ = false;
 
@@ -2189,11 +2198,11 @@ absl::Status IrEmitterUnnested::EmitNcclGroupStartThunk(
   return absl::OkStatus();
 }
 
-absl::Status IrEmitterUnnested::EmitNcclAsyncDone(Thunk::Kind kind,
-                                                  const HloInstruction* inst) {
+absl::Status IrEmitterUnnested::EmitCollectiveAsyncDone(
+    Thunk::Kind kind, const HloInstruction* inst) {
   // Partial pipelining is only implemented for send/recv.
   bool is_send_recv =
-      kind == Thunk::Kind::kNcclRecvDone || kind == Thunk::Kind::kNcclSendDone;
+      kind == Thunk::Kind::kRecvDone || kind == Thunk::Kind::kSendDone;
   const HloInstruction* start =
       is_send_recv ? FindCanonicalSendRecvStartOp(inst) : inst->operand(0);
 
@@ -2210,9 +2219,9 @@ absl::Status IrEmitterUnnested::EmitNcclAsyncDone(Thunk::Kind kind,
 
   AsyncStreamKind stream_kind = AsyncStreamKind::kCollective;
   if (is_send_recv) {
-    stream_kind = GetStreamKindForSendRecv(Cast<HloSendRecvInstruction>(start));
+    stream_kind = GetStreamKindForP2P(start);
   }
-  AddThunkToThunkSequence(std::make_unique<NcclCollectiveDoneThunk>(
+  AddThunkToThunkSequence(std::make_unique<CollectiveDoneThunk>(
       kind, Thunk::ThunkInfo::WithProfileAnnotation(inst),
       async_events_it->second, stream_kind));
   return absl::OkStatus();
@@ -2328,7 +2337,7 @@ absl::StatusOr<std::unique_ptr<Thunk>> IrEmitterUnnested::BuildWhileThunk(
   body_thunk_info.profile_annotation += "_body";
 
   return std::unique_ptr<Thunk>(new WhileThunk(
-      thunk_info, pred,
+      thunk_info, instr, pred,
       ir_emitter_condition->ConsumeThunkSequence(cond_thunk_info),
       ir_emitter_body->ConsumeThunkSequence(body_thunk_info), trip_count));
 }
@@ -2448,13 +2457,13 @@ absl::Status IrEmitterUnnested::EmitSendThunk(const HloSendInstruction* instr) {
         instr->shape().IsTuple()
             ? instr->shape().tuple_shapes(0).layout().memory_space()
             : instr->shape().layout().memory_space();
-    const NcclCollectiveThunk::Buffer nccl_buffer = {
+    const CollectiveThunk::Buffer nccl_buffer = {
         /*element_count=*/ShapeUtil::ElementsIn(src->shape()),
         /*source_buffer=*/buffer,
         /*destination_buffer=*/buffer,
         /*source_memory_space=*/memory_space,
         /*destination_memory_space=*/memory_space};
-    auto thunk = std::make_unique<NcclSendThunk>(
+    auto thunk = std::make_unique<SendThunk>(
         Thunk::ThunkInfo::WithProfileAnnotation(instr), instr, replica_count,
         partition_count, nccl_buffer);
     CollectivesAsyncEvents& collectives_async_events =
@@ -2480,7 +2489,7 @@ absl::Status IrEmitterUnnested::EmitSendThunk(const HloSendInstruction* instr) {
         "Unknown channel id in host transfer send instruction");
   }
 
-  AddThunkToThunkSequence(std::make_unique<SendThunk>(
+  AddThunkToThunkSequence(std::make_unique<HostSendThunk>(
       Thunk::ThunkInfo::WithProfileAnnotation(instr), src->shape(), buffer,
       *instr->channel_id(), send_recv_events_,
       ConvertFrontendAttributes(instr->frontend_attributes()),
@@ -2492,7 +2501,7 @@ absl::Status IrEmitterUnnested::EmitSendThunk(const HloSendInstruction* instr) {
 absl::Status IrEmitterUnnested::EmitSendDoneThunk(
     const HloSendDoneInstruction* instr) {
   if (!instr->is_host_transfer()) {
-    return EmitNcclAsyncDone(Thunk::kNcclSendDone, instr);
+    return EmitCollectiveAsyncDone(Thunk::kSendDone, instr);
   }
 
   if (!instr->channel_id().has_value()) {
@@ -2500,7 +2509,7 @@ absl::Status IrEmitterUnnested::EmitSendDoneThunk(
         "Unknown channel id in host transfer send done instruction");
   }
 
-  AddThunkToThunkSequence(std::make_unique<SendDoneThunk>(
+  AddThunkToThunkSequence(std::make_unique<HostSendDoneThunk>(
       Thunk::ThunkInfo::WithProfileAnnotation(instr), *instr->channel_id(),
       send_recv_events_, DeviceConstraint(instr)));
 
@@ -2522,13 +2531,13 @@ absl::Status IrEmitterUnnested::EmitRecvThunk(const HloRecvInstruction* instr) {
             ? instr->shape().tuple_shapes(0).layout().memory_space()
             : instr->shape().layout().memory_space();
 
-    const NcclCollectiveThunk::Buffer nccl_buffer = {
+    const CollectiveThunk::Buffer nccl_buffer = {
         /*element_count=*/ShapeUtil::ElementsIn(instr->shape().tuple_shapes(0)),
         /*source_buffer=*/buffer,
         /*destination_buffer=*/buffer,
         /*source_memory_space=*/memory_space,
         /*destination_memory_space=*/memory_space};
-    auto thunk = std::make_unique<NcclRecvThunk>(
+    auto thunk = std::make_unique<RecvThunk>(
         Thunk::ThunkInfo::WithProfileAnnotation(instr), instr, replica_count,
         partition_count, nccl_buffer);
     CollectivesAsyncEvents& collectives_async_events =
@@ -2553,7 +2562,7 @@ absl::Status IrEmitterUnnested::EmitRecvThunk(const HloRecvInstruction* instr) {
         "Unknown channel id in host transfer recv instruction");
   }
 
-  AddThunkToThunkSequence(std::make_unique<RecvThunk>(
+  AddThunkToThunkSequence(std::make_unique<HostRecvThunk>(
       Thunk::ThunkInfo::WithProfileAnnotation(instr),
       instr->shape().tuple_shapes()[0], buffer, *instr->channel_id(),
       send_recv_events_,
@@ -2566,13 +2575,13 @@ absl::Status IrEmitterUnnested::EmitRecvThunk(const HloRecvInstruction* instr) {
 absl::Status IrEmitterUnnested::EmitRecvDoneThunk(
     const HloRecvDoneInstruction* instr) {
   if (!instr->is_host_transfer()) {
-    return EmitNcclAsyncDone(Thunk::kNcclRecvDone, instr);
+    return EmitCollectiveAsyncDone(Thunk::kRecvDone, instr);
   }
   if (!instr->channel_id().has_value()) {
     return absl::InternalError(
         "Unknown channel id in host transfer recv done instruction");
   }
-  AddThunkToThunkSequence(std::make_unique<RecvDoneThunk>(
+  AddThunkToThunkSequence(std::make_unique<HostRecvDoneThunk>(
       Thunk::ThunkInfo::WithProfileAnnotation(instr), *instr->channel_id(),
       send_recv_events_, DeviceConstraint(instr)));
 
@@ -2596,37 +2605,38 @@ absl::Status IrEmitterUnnested::EmitHloInstruction(
     const HloInstruction* instr) {
   switch (instr->opcode()) {
     case HloOpcode::kAllGatherDone:
-      return EmitNcclAsyncDone(Thunk::kNcclAllGatherDone, instr);
+      return EmitCollectiveAsyncDone(Thunk::kAllGatherDone, instr);
     case HloOpcode::kAllGatherStart: {
       auto* all_gather = Cast<HloAllGatherInstruction>(instr);
-      return EmitNcclThunk<NcclAllGatherStartThunk, HloAllGatherInstruction>(
-          Thunk::kNcclAllGatherStart, all_gather, all_gather,
+      return EmitCollectiveThunk<AllGatherStartThunk, HloAllGatherInstruction>(
+          Thunk::kAllGatherStart, all_gather, all_gather,
           all_gather->use_global_device_ids());
     }
 
     case HloOpcode::kAllReduceDone:
-      return EmitNcclAsyncDone(Thunk::kNcclAllReduceDone, instr);
+      return EmitCollectiveAsyncDone(Thunk::kAllReduceDone, instr);
     case HloOpcode::kAllReduceStart: {
       auto* all_reduce = Cast<HloAllReduceInstruction>(instr);
-      return EmitNcclThunk<NcclAllReduceStartThunk, HloAllReduceInstruction>(
-          Thunk::kNcclAllReduceStart, all_reduce, all_reduce,
+      return EmitCollectiveThunk<AllReduceStartThunk, HloAllReduceInstruction>(
+          Thunk::kAllReduceStart, all_reduce, all_reduce,
           all_reduce->use_global_device_ids());
     }
     case HloOpcode::kAsyncDone: {
       if (!instr->async_wrapped_computation()
                ->CanExpandIntoSingleInstruction()) {
-        return EmitNcclAsyncDone(Thunk::kNcclGroupDone, instr);
+        return EmitCollectiveAsyncDone(Thunk::kGroupDone, instr);
       }
       const HloInstruction* wrapped = instr->async_wrapped_instruction();
       switch (wrapped->opcode()) {
         case HloOpcode::kReduceScatter:
-          return EmitNcclAsyncDone(Thunk::kNcclReduceScatterDone, instr);
+          return EmitCollectiveAsyncDone(Thunk::kReduceScatterDone, instr);
         case HloOpcode::kAllToAll:
-          return EmitNcclAsyncDone(Thunk::kNcclAllToAllDone, instr);
+          return EmitCollectiveAsyncDone(Thunk::kAllToAllDone, instr);
         case HloOpcode::kRaggedAllToAll:
-          return EmitNcclAsyncDone(Thunk::kNcclRaggedAllToAllDone, instr);
+          return EmitCollectiveAsyncDone(Thunk::kRaggedAllToAllDone, instr);
         case HloOpcode::kCollectiveBroadcast:
-          return EmitNcclAsyncDone(Thunk::kNcclCollectiveBroadcastDone, instr);
+          return EmitCollectiveAsyncDone(Thunk::kCollectiveBroadcastDone,
+                                         instr);
         case HloOpcode::kFusion: {
           auto collective_hero = GetCollectiveHeroForDynamicSliceFusion(
               Cast<HloFusionInstruction>(wrapped));
@@ -2634,7 +2644,7 @@ absl::Status IrEmitterUnnested::EmitHloInstruction(
             switch ((*collective_hero)->opcode()) {
               case HloOpcode::kReduceScatter:
                 TF_RETURN_IF_ERROR(
-                    EmitNcclAsyncDone(Thunk::kNcclReduceScatterDone, instr));
+                    EmitCollectiveAsyncDone(Thunk::kReduceScatterDone, instr));
                 break;
               default:
                 return absl::InternalError(absl::StrFormat(
@@ -2671,35 +2681,35 @@ absl::Status IrEmitterUnnested::EmitHloInstruction(
       // Multi-op async start will emit a NCCL group thunk.
       if (!instr->async_wrapped_computation()
                ->CanExpandIntoSingleInstruction()) {
-        return EmitNcclGroupStartThunk(instr);
+        return EmitCollectiveGroupStartThunk(instr);
       }
       const HloInstruction* wrapped = instr->async_wrapped_instruction();
       switch (wrapped->opcode()) {
         case HloOpcode::kReduceScatter: {
           auto* reduce_scatter = Cast<HloReduceScatterInstruction>(wrapped);
-          return EmitNcclThunk<NcclReduceScatterStartThunk,
-                               HloReduceScatterInstruction>(
-              Thunk::kNcclReduceScatter, instr, reduce_scatter,
+          return EmitCollectiveThunk<ReduceScatterStartThunk,
+                                     HloReduceScatterInstruction>(
+              Thunk::kReduceScatter, instr, reduce_scatter,
               reduce_scatter->use_global_device_ids());
         }
         case HloOpcode::kAllToAll: {
           auto* all_to_all = Cast<HloAllToAllInstruction>(wrapped);
-          return EmitNcclThunk<NcclAllToAllStartThunk, HloAllToAllInstruction>(
-              Thunk::kNcclAllToAll, instr, all_to_all, std::nullopt);
+          return EmitCollectiveThunk<AllToAllStartThunk,
+                                     HloAllToAllInstruction>(
+              Thunk::kAllToAll, instr, all_to_all, std::nullopt);
         }
         case HloOpcode::kRaggedAllToAll: {
           auto* ragged_all_to_all = Cast<HloRaggedAllToAllInstruction>(wrapped);
-          return EmitNcclThunk<NcclRaggedAllToAllStartThunk,
-                               HloRaggedAllToAllInstruction>(
-              Thunk::kNcclRaggedAllToAll, instr, ragged_all_to_all,
-              std::nullopt);
+          return EmitCollectiveThunk<RaggedAllToAllStartThunk,
+                                     HloRaggedAllToAllInstruction>(
+              Thunk::kRaggedAllToAll, instr, ragged_all_to_all, std::nullopt);
         }
         case HloOpcode::kCollectiveBroadcast: {
           auto* collective_broadcast =
               Cast<HloCollectiveBroadcastInstruction>(wrapped);
-          return EmitNcclThunk<NcclCollectiveBroadcastStartThunk,
-                               HloCollectiveBroadcastInstruction>(
-              Thunk::kNcclCollectiveBroadcast, instr, collective_broadcast,
+          return EmitCollectiveThunk<CollectiveBroadcastStartThunk,
+                                     HloCollectiveBroadcastInstruction>(
+              Thunk::kCollectiveBroadcast, instr, collective_broadcast,
               std::nullopt);
         }
         case HloOpcode::kFusion: {
@@ -2734,7 +2744,7 @@ absl::Status IrEmitterUnnested::EmitHloInstruction(
     case HloOpcode::kCall:
       return EmitCommandBufferThunk(instr);
     case HloOpcode::kCollectivePermuteDone:
-      return EmitNcclAsyncDone(Thunk::kNcclCollectivePermuteDone, instr);
+      return EmitCollectiveAsyncDone(Thunk::kCollectivePermuteDone, instr);
     case HloOpcode::kCollectivePermuteStart:
       return EmitCollectivePermute(
           Cast<HloCollectivePermuteInstruction>(instr));

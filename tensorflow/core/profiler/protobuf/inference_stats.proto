@@ -104,7 +104,7 @@ message RequestDetail {
 }
 
 // Detail of a batch.
-// Next ID: 12
+// Next ID: 13
 message BatchDetail {
   // Batch id.
   optional int64 batch_id = 1 [default = -1];
@@ -141,6 +141,9 @@ message BatchDetail {
 
   // Percentile of this batch in all batches in the profile duration.
   optional double percentile = 11;
+
+  // Total time in picosecs in this batch spent on device.
+  optional uint64 device_time_ps = 12 [default = 0];
 }
 
 // Per-host data for inference analysis.

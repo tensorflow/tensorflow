@@ -19,7 +19,10 @@ limitations under the License.
 #include <vector>
 
 #include "oneapi/dnnl/dnnl_graph.hpp"
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "xla/shape.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla::cpu {
 
@@ -33,6 +36,12 @@ struct OneDnnFusion {
   std::vector<dnnl::graph::logical_tensor> results;
   dnnl::graph::graph graph;
 };
+
+// Returns true if the dot operation is supported by oneDNN. Returns an error
+// if the dot operation shape is invalid.
+absl::StatusOr<bool> IsOneDnnDotSupported(
+    const DotDimensionNumbers& dot_dimensions, const Shape& lhs_shape,
+    const Shape& rhs_shape, const Shape& out_shape);
 
 }  // namespace xla::cpu
 

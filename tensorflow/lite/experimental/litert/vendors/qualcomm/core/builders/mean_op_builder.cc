@@ -1,7 +1,20 @@
-//  Copyright (c) Qualcomm Innovation Center, Inc.
-//  All Rights Reserved.
+// Copyright (c) Qualcomm Innovation Center, Inc. All Rights Reserved.
+// SPDX-License-Identifier: Apache-2.0
 
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/builders/mean_op_builder.h"
+
+#include <algorithm>
+#include <cstddef>
+#include <cstdint>
+#include <vector>
+
+#include "third_party/qairt/latest/include/QNN/QnnOpDef.h"
+#include "third_party/qairt/latest/include/QNN/QnnTypes.h"
+#include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/builders/op_builder.h"
+#include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/tensor_pool.h"
+#include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/utils/log.h"
+#include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/wrappers/op_wrapper.h"
+#include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/wrappers/tensor_wrapper.h"
 
 namespace qnn {
 
@@ -13,20 +26,24 @@ std::vector<OpWrapper> BuildMeanOp(TensorPool& tensor_pool,
 
   TensorWrapper& axis_tensor = inputs[1];
   if (!axis_tensor.IsTensorStatic() || axis_tensor.GetRank() != 1) {
-    // TODO: error log
+    QNN_LOG_ERROR(
+        "The axis tensor is not static, or the rank of axis tensor is not "
+        "equal to 1.");
     return res;
   }
 
   TensorWrapper& input_tensor = inputs[0];
 
-  // TODO: cannot direcly cast
-  auto* axis_data =
-      reinterpret_cast<const std::int32_t*>(axis_tensor.GetStaticTensorData());
+  auto axis_data = axis_tensor.GetStaticTensorData<std::int32_t>();
+  if (!axis_data.has_value()) {
+    QNN_LOG_ERROR("Get axis_data failed.");
+    return res;
+  }
   std::vector<std::uint32_t> adjusted_axis_data;
   for (size_t i = 0; i < axis_tensor.GetDim(0); ++i) {
-    std::uint32_t adjusted_axis = axis_data[i] >= 0
-                                      ? axis_data[i]
-                                      : axis_data[i] + input_tensor.GetRank();
+    std::uint32_t adjusted_axis =
+        (*axis_data)[i] >= 0 ? (*axis_data)[i]
+                             : (*axis_data)[i] + input_tensor.GetRank();
     if (std::find(adjusted_axis_data.begin(), adjusted_axis_data.end(),
                   adjusted_axis) == adjusted_axis_data.end()) {
       adjusted_axis_data.emplace_back(adjusted_axis);

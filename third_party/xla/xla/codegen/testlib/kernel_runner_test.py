@@ -33,12 +33,15 @@ class HloModuleParse(absltest.TestCase):
     hlo_op = _extension.HloInstruction.create_variadic(
         shape, _extension.HloOpcode.sine, [hlo_parameter]
     )
-    hlo_module = _extension.HloModule.build(hlo_op, hlo_parameter)
+    hlo_module = _extension.HloModule(hlo_op.name() + "_module")
+    hlo_module.add_entry_computation(
+        _extension.build_hlo_computation(hlo_op, hlo_parameter)
+    )
     expected_parts = [
         "HloModule sine_module,",
         "{",
         "%input = s32[4]{0} parameter(0)",
-        "ROOT %sine = s32[4]{0} sine(s32[4]{0} %input)",
+        "ROOT %sine = s32[4]{0} sine(%input)",
         "}",
     ]
     self.assertContainsInOrder(

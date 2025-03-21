@@ -70,22 +70,31 @@ class AutotuneCacheKey {
                             absl::string_view hlo_canonical)
       : model_str_(model_str), hlo_canonical_(hlo_canonical) {}
 
+  explicit AutotuneCacheKey(absl::string_view model_str,
+                            absl::string_view hlo_canonical, int version)
+      : model_str_(model_str),
+        hlo_canonical_(hlo_canonical),
+        version_(version) {}
+
   absl::string_view GetModelStr() const { return model_str_; }
 
   absl::string_view GetHlo() const { return hlo_canonical_; }
 
+  int GetVersion() const { return version_; }
+
   template <typename H>
   friend H AbslHashValue(H h, const AutotuneCacheKey& w) {
-    return H::combine(std::move(h), w.model_str_, w.hlo_canonical_);
+    return H::combine(std::move(h), w.model_str_, w.hlo_canonical_, w.version_);
   }
 
   bool operator==(const AutotuneCacheKey& w) const {
-    return model_str_ == w.model_str_ && hlo_canonical_ == w.hlo_canonical_;
+    return model_str_ == w.model_str_ && hlo_canonical_ == w.hlo_canonical_ &&
+           version_ == w.version_;
   }
 
   std::string ToString() const {
-    return absl::StrFormat("<key model='%s', hlo='%s'>", model_str_,
-                           hlo_canonical_);
+    return absl::StrFormat("<key model='%s', hlo='%s', version=%d>", model_str_,
+                           hlo_canonical_, version_);
   }
 
   static std::string DeviceDescriptionToCacheKey(
@@ -94,6 +103,10 @@ class AutotuneCacheKey {
  private:
   std::string model_str_;
   std::string hlo_canonical_;
+  // Tie a version to the cache key in order to invalidate the cache when
+  // necessary. This should be done on triton upgrades or any other changes
+  // that may affect the autotuning results.
+  int version_ = 0;
 };
 
 using AutotuneCacheKeySet = absl::flat_hash_set<AutotuneCacheKey>;

@@ -141,7 +141,7 @@ Status ReadMetaGraphDefFromSavedModel(absl::string_view export_dir,
   return absl::OkStatus();
 }
 
-Status ReadSavedModelDebugInfoIfPresent(
+absl::Status ReadSavedModelDebugInfoIfPresent(
     absl::string_view export_dir,
     std::unique_ptr<GraphDebugInfo>* debug_info_proto) {
   LOG(INFO) << "Reading SavedModel debug info (if present) from: "

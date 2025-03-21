@@ -11,6 +11,12 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/kernels/data/interleave_dataset_op.h"
 
+#include <cstdint>
+#include <memory>
+#include <string>
+#include <utility>
+#include <vector>
+
 #include "tensorflow/core/data/dataset_test_base.h"
 
 namespace tensorflow {

@@ -498,8 +498,8 @@ class PartitionedHlo {
   // Returns the sharding of the SPMD instruction.
   const HloSharding& sharding() const { return hlo_->sharding(); }
 
-  // Returns the rank of the SPMD instruction.
-  const int64_t rank() const { return base_shape_.rank(); }
+  // Returns the SPMD instruction's number of dimensions.
+  int64_t num_dimensions() const { return base_shape_.dimensions().size(); }
 
   // Original full shape of the data.
   const Shape& base_shape() const { return base_shape_; }
@@ -514,6 +514,8 @@ class PartitionedHlo {
       bool force_mask_in_compact = false);
 
   const PartitioningState& state() const { return state_; }
+
+  void AddReshardCache(const HloSharding& sharding, const PartitionedHlo& phlo);
 
   // Helper function to replicate the data on all devices. Could only modify
   // the reshard cache.

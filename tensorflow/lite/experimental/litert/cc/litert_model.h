@@ -39,60 +39,6 @@
 
 namespace litert {
 
-using Dimensions = absl::InlinedVector<int32_t, kExpectedMaxTensorRank>;
-using Strides = absl::InlinedVector<uint32_t, kExpectedMaxTensorRank>;
-
-// Tensor layout. C++ equivalent to LiteRtLayout.
-class Layout {
- public:
-  explicit Layout(litert::Dimensions&& dimensions,
-                  litert::Strides&& strides = litert::Strides())
-      : dimensions_(std::move(dimensions)), strides_(std::move(strides)) {}
-
-  explicit Layout(const LiteRtLayout& layout)
-      : dimensions_(layout.dimensions, layout.dimensions + layout.rank) {
-    if (layout.strides) {
-      strides_.reserve(layout.rank);
-      std::copy(layout.strides, layout.strides + layout.rank,
-                std::back_inserter(strides_));
-    }
-  }
-
-  explicit operator LiteRtLayout() const {
-    auto res = BuildLayout(dimensions_);
-    res.strides = HasStrides() ? strides_.data() : nullptr;
-    return res;
-  }
-
-  bool operator==(const Layout& other) const {
-    return dimensions_ == other.dimensions_ && strides_ == other.strides_;
-  }
-
-  uint32_t Rank() const { return dimensions_.size(); }
-
-  absl::Span<const int32_t> Dimensions() const {
-    return absl::MakeSpan(dimensions_.data(), dimensions_.size());
-  }
-
-  bool HasStrides() const { return !strides_.empty(); }
-
-  absl::Span<const uint32_t> Strides() const {
-    const uint32_t* data = HasStrides() ? strides_.data() : nullptr;
-    auto size = HasStrides() ? Rank() : 0;
-    return absl::MakeSpan(data, size);
-  }
-
-  // Get the number of scalar elements in this tensor type. std::nullopt if
-  // not fully static.
-  std::optional<size_t> NumElements() const {
-    return ::litert::NumElements(dimensions_.cbegin(), dimensions_.cend());
-  }
-
- private:
-  litert::Dimensions dimensions_;
-  litert::Strides strides_;
-};
-
 // Type for tensors with known dimensions. C++ equivalent to
 // LiteRtRankedTensorType.
 class RankedTensorType {
@@ -126,7 +72,6 @@ class RankedTensorType {
 // Tensor weights. C++ equivalent of LiteRtWeights.
 class Weights : public internal::NonOwnedHandle<LiteRtWeights> {
  public:
-  Weights() = default;
   explicit Weights(LiteRtWeights weights)
       : internal::NonOwnedHandle<LiteRtWeights>(weights) {}
 
@@ -141,7 +86,6 @@ class Weights : public internal::NonOwnedHandle<LiteRtWeights> {
 // Tensor. C++ equivalent of LiteRtTensor.
 class Tensor : public internal::NonOwnedHandle<LiteRtTensor> {
  public:
-  Tensor() = default;
   explicit Tensor(LiteRtTensor tensor)
       : internal::NonOwnedHandle<LiteRtTensor>(tensor) {}
 
@@ -286,7 +230,6 @@ using OpOutputs = absl::InlinedVector<Tensor, kExpectedMaxNumOfOpOutputs>;
 // Operator. C++ equivalent of LiteRtOp.
 class Op : public internal::NonOwnedHandle<LiteRtOp> {
  public:
-  Op() = default;
   explicit Op(LiteRtOp op) : internal::NonOwnedHandle<LiteRtOp>(op) {}
 
   LiteRtOpCode Code() const {
@@ -312,7 +255,6 @@ using SubgraphOutputs =
 // Model subgraph. C++ equivalent of LiteRtSubgraph.
 class Subgraph : public internal::NonOwnedHandle<LiteRtSubgraph> {
  public:
-  Subgraph() = default;
   explicit Subgraph(LiteRtSubgraph subgraph)
       : internal::NonOwnedHandle<LiteRtSubgraph>(subgraph) {}
 
@@ -330,7 +272,6 @@ class Subgraph : public internal::NonOwnedHandle<LiteRtSubgraph> {
 // Model signature. C++ equivalent of LiteRtSignature.
 class Signature : public internal::NonOwnedHandle<LiteRtSignature> {
  public:
-  Signature() = default;
   explicit Signature(LiteRtSignature signature)
       : internal::NonOwnedHandle<LiteRtSignature>(signature) {}
 
@@ -416,7 +357,7 @@ class Model : public internal::Handle<LiteRtModel, LiteRtDestroyModel> {
     return absl::MakeSpan(static_cast<const uint8_t*>(buffer), buffer_size);
   }
 
-  Expected<class Subgraph> MainSubgraph() {
+  Expected<class Subgraph> MainSubgraph() const {
     LiteRtParamIndex main_subgraph_index;
     internal::AssertOk(LiteRtGetMainModelSubgraphIndex, Get(),
                        &main_subgraph_index);
@@ -429,7 +370,7 @@ class Model : public internal::Handle<LiteRtModel, LiteRtDestroyModel> {
     return num_subgraphs;
   }
 
-  Expected<class Subgraph> Subgraph(size_t subgraph_index) {
+  Expected<class Subgraph> Subgraph(size_t subgraph_index) const {
     LiteRtSubgraph subgraph;
     if (LiteRtGetModelSubgraph(Get(), subgraph_index, &subgraph) !=
         kLiteRtStatusOk) {
@@ -519,6 +460,12 @@ class Model : public internal::Handle<LiteRtModel, LiteRtDestroyModel> {
   // ownership of the provided `tensor_buffer` handle.
   Model(LiteRtModel model, bool owned)
       : internal::Handle<LiteRtModel, LiteRtDestroyModel>(model, owned) {}
+};
+
+struct SerializationOptions {
+  static LiteRtModelSerializationOptions Defaults() {
+    return LiteRtModelSerializationOptions{};
+  }
 };
 
 }  // namespace litert

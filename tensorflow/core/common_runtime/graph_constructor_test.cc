@@ -38,6 +38,7 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/public/release_version.h"
 #include "tensorflow/core/public/session.h"
 #include "tensorflow/core/public/version.h"
 

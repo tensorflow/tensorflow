@@ -55,6 +55,7 @@ limitations under the License.
 #include "tsl/platform/bfloat16.h"
 #include "tsl/platform/casts.h"
 #include "tsl/platform/ml_dtypes.h"
+#include "tsl/platform/protobuf.h"
 
 namespace xla {
 
@@ -252,8 +253,8 @@ absl::Status AppendStatus(absl::Status prior, absl::string_view context);
   /*Deduction guide to make variadic arguments play nice with default */ \
   /* absl::SourceLocation argument. */                                   \
   template <typename... Args>                                            \
-  error_type(const absl::FormatSpec<Args...>& format,                    \
-             Args&&...) -> error_type<Args...>;
+  error_type(const absl::FormatSpec<Args...>& format, Args&&...)         \
+      -> error_type<Args...>;
 
 #if defined(PLATFORM_GOOGLE)
 #define XLA_ERROR_WITH_STRFORMAT_AND_BACKTRACE(error_type)               \
@@ -846,12 +847,15 @@ absl::Status EraseElementFromVector(std::vector<T>* container, const T& value) {
   return absl::OkStatus();
 }
 
-// Takes a sequence of unpacked n-bit values, such that every byte stores one
-// value in the low-order bits, and packs them so every byte stores as many
-// which will fit. `output` should have ceil((input.size()*kBitsPerElement)/8)
-// bytes. The high-order bits of each byte in `input` are ignored.
+// Takes a sequence of unpacked kBitsPerElement-bit values (kBitsPerElement must
+// be between 1 and 7), such that every byte stores one value in the low-order
+// bits, and packs them so every byte stores as many which will fit. `output`
+// should have at least ceil((input.size()*kBitsPerElement)/8.0) bytes. The
+// high-order bits of each byte in `input` are ignored.
 template <size_t kBitsPerElement>
 void PackIntN(absl::Span<const char> input, absl::Span<char> output) {
+  static_assert(1 <= kBitsPerElement);
+  static_assert(kBitsPerElement <= 7);
   constexpr auto kElementsPerByte = 8 / kBitsPerElement;
   const size_t aligned_inputs = input.size() / kElementsPerByte;
   for (size_t i = 0; i < aligned_inputs; ++i) {
@@ -859,21 +863,24 @@ void PackIntN(absl::Span<const char> input, absl::Span<char> output) {
     for (size_t j = 0; j < kElementsPerByte; ++j) {
       byte |=
           (input[i * kElementsPerByte + j] & LsbMask<uint8_t>(kBitsPerElement))
-          << (kBitsPerElement * (kElementsPerByte - j - 1));
+          << (kBitsPerElement * j);
     }
     output[i] = byte;
   }
-  if (size_t remainder = input.size() % kElementsPerByte; remainder != 0) {
+  if (const size_t remainder = input.size() % kElementsPerByte;
+      remainder != 0) {
     char byte = 0;
     for (size_t j = 0; j < remainder; ++j) {
       byte |= (input[aligned_inputs * kElementsPerByte + j] &
                LsbMask<uint8_t>(kBitsPerElement))
-              << (kBitsPerElement * (kElementsPerByte - j - 1));
+              << (kBitsPerElement * j);
     }
     output[aligned_inputs] = byte;
   }
 }
 
+// Same as above, but takes the number of bits per element as an argument.
+// `bits_per_element` must be 2 or 4, or this function will crash.
 inline void PackIntN(int bits_per_element, absl::Span<const char> input,
                      absl::Span<char> output) {
   if (bits_per_element == 2) {
@@ -888,30 +895,32 @@ inline void PackIntN(int bits_per_element, absl::Span<const char> input,
 // Takes a sequence of packed values, such that every byte stores multiple
 // values, and unpacks them so every byte stores one value in the low-order
 // bits. `input` should have
-// ceil(output.size()*8/kBitsPerElement) bytes. The high-order bits in each
-// output are zero.
+// ceil(output.size()*8.0/kBitsPerElement) bytes. kBitsPerElement must be
+// between 1 and 7. ßThe high-order bits in each output are zero.
 template <size_t kBitsPerElement>
 void UnpackIntN(absl::Span<const char> input, absl::Span<char> output) {
+  static_assert(1 <= kBitsPerElement);
+  static_assert(kBitsPerElement <= 7);
   constexpr auto kElementsPerByte = 8 / kBitsPerElement;
   const size_t aligned_outputs = output.size() / kElementsPerByte;
   for (size_t i = 0; i < aligned_outputs; ++i) {
     const char byte = input[i];
     for (int j = 0; j < kElementsPerByte; ++j) {
       output[i * kElementsPerByte + j] =
-          (byte >> (kBitsPerElement * (kElementsPerByte - j - 1))) &
-          LsbMask<uint8_t>(kBitsPerElement);
+          (byte >> (kBitsPerElement * j)) & LsbMask<uint8_t>(kBitsPerElement);
     }
   }
   if (size_t remainder = output.size() % kElementsPerByte; remainder != 0) {
     const char byte = input[aligned_outputs];
     for (size_t j = 0; j < remainder; ++j) {
       output[aligned_outputs * kElementsPerByte + j] =
-          (byte >> (kBitsPerElement * (kElementsPerByte - j - 1))) &
-          LsbMask<uint8_t>(kBitsPerElement);
+          (byte >> (kBitsPerElement * j)) & LsbMask<uint8_t>(kBitsPerElement);
     }
   }
 }
 
+// Same as above, but takes the number of bits per element as an argument.
+// `bits_per_element` must be 2 or 4, or this function will crash.
 inline void UnpackIntN(int bits_per_element, absl::Span<const char> input,
                        absl::Span<char> output) {
   if (bits_per_element == 2) {
@@ -951,6 +960,8 @@ inline bool HloPredicateFalse(const HloInstruction*) { return false; }
 
 using Vector2 = std::array<int64_t, 2>;
 using Vector3 = std::array<int64_t, 3>;
+
+std::string PrintAllFields(const tsl::protobuf::Message& message);
 
 }  // namespace xla
 

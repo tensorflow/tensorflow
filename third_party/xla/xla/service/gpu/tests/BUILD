@@ -124,6 +124,7 @@ xla_cc_test(
         "//xla:debug_options_flags",
         "//xla:literal",
         "//xla:literal_util",
+        "//xla:xla_proto_cc",
         "//xla/service:gpu_plugin",
         "//xla/service:hlo_module_config",
         "//xla/tests:hlo_test_base",
@@ -281,6 +282,7 @@ xla_test(
         "//xla:literal_util",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:verified_hlo_module",
+        "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/platform:test",
@@ -401,6 +403,7 @@ xla_test(
         ":gpu_codegen_test",
         "//xla:error_spec",
         "//xla/service:hlo_module_config",
+        "//xla/service:platform_util",
         "//xla/tests:hlo_test_base",
         "@com_google_absl//absl/status",
         "@com_google_googletest//:gtest_main",
@@ -536,11 +539,12 @@ xla_test(
         "//xla:shape_util",
         "//xla:types",
         "//xla:xla_data_proto_cc",
+        "//xla/hlo/ir:hlo",
+        "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest_main",
         "@eigen_archive//:eigen3",
-        "@local_tsl//tsl/platform:statusor",
     ],
 )
 
@@ -617,7 +621,9 @@ lit_test_suite(
 #         "//xla/backends/gpu/codegen/triton/transforms:passes",
 #         "//xla/codegen/emitters/transforms:passes",
 #         "@llvm-project//mlir:AllExtensions",
+#         "@llvm-project//mlir:FuncDialect",
 #         "@llvm-project//mlir:MlirOptLib",
+#         "@llvm-project//mlir:TensorDialect",
 #         "@triton//:AllPassesAndDialects",
 #     ],
 # )
@@ -699,30 +705,6 @@ xla_test(
 )
 
 xla_test(
-    name = "gpu_sparse_dot_test",
-    srcs = if_cuda_is_configured(["gpu_sparse_dot_test.cc"]),
-    backends = [
-        "gpu_a100",
-        "gpu_h100",
-        "gpu_b200",
-    ],
-    tags = ["cuda-only"],
-    deps = if_cuda_is_configured(
-        [
-            ":gpu_codegen_test",
-            "@com_google_googletest//:gtest",
-            "@com_google_absl//absl/strings",
-            "@com_google_absl//absl/types:span",
-            "//xla:literal",
-            "//xla:literal_util",
-            "//xla/tests:xla_internal_test_main",
-            "//xla/tsl/lib/core:status_test_util",
-        ],
-        ["@com_google_googletest//:gtest_main"],  # b/317293391
-    ),
-)
-
-xla_test(
     name = "gpu_cub_sort_test",
     size = "medium",
     srcs = ["gpu_cub_sort_test.cc"],
@@ -796,6 +778,7 @@ cc_library(
         "//xla/tsl/lib/core:status_test_util",
         "@com_google_absl//absl/strings",
     ],
+    alwayslink = True,  # This library registers test cases at static initialization time.
 )
 
 # This shows that tests can load an autotune cache.

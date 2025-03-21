@@ -125,6 +125,10 @@ message DebugOptions {
   bool xla_hlo_pass_fix_detect_cycles = 370;
   // Crash if HloPassFix can not converge after a fixed number of iterations.
   bool xla_unsupported_crash_on_hlo_pass_fix_max_iterations = 363;
+  // Crash if a pass reports that it changes the HLO but in fact it did not.
+  bool xla_unsupported_crash_on_hlo_pass_noop_change = 379;
+  // Crash if a pass reports that it did not change the HLO but in fact it did.
+  bool xla_unsupported_crash_on_hlo_pass_silent_hlo_change = 380;
   // go/keep-sorted end
 
   reserved 346;  // xla_experimental_exec_time_optimization_effort
@@ -190,6 +194,11 @@ message DebugOptions {
   // false.
   bool xla_cpu_fast_math_honor_nans = 120;
 
+  // When true, XLA:CPU all LLVM kernels entry points will be prefixed with the
+  // module name. They will also be converted to C style names. This is required
+  // for AOT compilation.
+  bool xla_cpu_generate_unique_c_style_kernel_entry_points = 372;
+
   // When set, XLA:CPU will only generate code up to the specified ISA.
   // (It will not use newer ISAs.) Using the string format allows us to extend
   // the flag for more flexible control if necessary.
@@ -203,6 +212,9 @@ message DebugOptions {
   // A `prefer-vector-width` value that is passed to the LLVM backend. Default
   // value is `256` (AVX2 on x86 platforms).
   int32 xla_cpu_prefer_vector_width = 308;
+
+  // If set, XLA:CPU uses "fusion emitters" for codegen.
+  bool xla_cpu_use_fusion_emitters = 376;
 
   // When true, XLA:CPU uses the thunk runtime to execute compiled program.
   bool xla_cpu_use_thunk_runtime = 298;
@@ -219,8 +231,10 @@ message DebugOptions {
   // XLA:GPU options.
   //--------------------------------------------------------------------------//
   // clang-format off
-  // go/keep-sorted start newline_separated=yes skip_lines=2 ignore_prefixes=["AutotuneCacheMode","bool","float","int32","int64","LibNvJitLinkMode","map<string, string>","PGLEStrictnessLevel","repeated CollectiveOpType","repeated CommandBufferCmdType","repeated string","ShapeChecks","string","WhileLoopUnrolling"] // NOLINT
+  // go/keep-sorted start newline_separated=yes skip_lines=2 ignore_prefixes=["AutotuneCacheMode","bool","float","int32","int64","LibNvJitLinkMode","map<string, string>","PGLEStrictnessLevel","repeated CollectiveOpType","repeated CommandBufferCmdType","repeated string","ShapeChecks","string","WhileLoopUnrolling","reserved"] // NOLINT
   // clang-format on
+
+  reserved 160;  // Was xla_gpu_enable_cudnn_frontend
 
   PipelineParallelismOptLevel
       xla_gpu_experimental_pipeline_parallelism_opt_level = 351;
@@ -300,6 +314,9 @@ message DebugOptions {
 
   // Inflate collective cost by running each collective multiple times.
   int32 xla_gpu_collective_inflation_factor = 205;
+
+  // Size threshold (in bytes) for the GPU collective-permute combiner.
+  int64 xla_gpu_collective_permute_combine_threshold_bytes = 378;
 
   // The minimum data size in bytes to trigger collective-permute-decomposer
   // transformation.
@@ -389,9 +406,6 @@ message DebugOptions {
   // Whether to use cuBLASLt for GEMMs on GPUs.
   bool xla_gpu_enable_cublaslt = 166;
 
-  // Whether to use the cuDNN frontend API for convolutions when possible.
-  bool xla_gpu_enable_cudnn_frontend = 160;
-
   bool xla_gpu_enable_cudnn_int8x32_convolution_reordering = 189;
 
   // Rewrite layer norm patterns into cuDNN library calls.
@@ -434,9 +448,6 @@ message DebugOptions {
 
   // Enable NCCL communicator splitting.
   bool xla_gpu_enable_nccl_comm_splitting = 272;
-
-  // Enable NCCL per stream communicators.
-  bool xla_gpu_enable_nccl_per_stream_comms = 276;
 
   // Enable NCCL user buffers.
   bool xla_gpu_enable_nccl_user_buffers = 267;
@@ -511,6 +522,12 @@ message DebugOptions {
   // Specifies the behavior of per kernel autotuning cache.
   AutotuneCacheMode xla_gpu_experimental_autotune_cache_mode = 324;
 
+  // Specifies the distance threshold in ScheduleAwareCollectiveOpsCSE
+  int64 xla_gpu_experimental_collective_cse_distance_threshold = 374;
+
+  // Path to experimental collective perf tables.
+  string xla_gpu_experimental_collective_perf_table_path = 377;
+
   // Experimentally disables binary libraries in GPU compiler passes.
   bool xla_gpu_experimental_disable_binary_libraries = 329;
 
@@ -535,8 +552,7 @@ message DebugOptions {
 
   // Enable fusion for the subchannel dequantisation sequences like
   // [x,z]param -> [x,y,z]broadcast -> [x*y,z]bitcast -> multiply -> dot.
-  // Compilation can fail with Broadcast has a different size than the block
-  // size. Performance can be worse, because some block sizes / split-k > 1 is
+  // Performance can be worse, because some block sizes / split-k > 1 is
   // not considered for subchannel dequant fusions.
   bool xla_gpu_experimental_enable_subchannel_dequantisation_fusion = 368;
 
@@ -765,6 +781,10 @@ message DebugOptions {
   // around this bug. The can be removed once the bug is fixed.
   bool xla_gpu_unsupported_force_triton_gemm = 369;
 
+  // Internal testing flag to enable one-shot kernel for single-host
+  // ragged-all-to-all operations.
+  bool xla_gpu_unsupported_use_ragged_all_to_all_one_shot_kernel = 375;
+
   // This instructs the runtime whether to use memcpy for p2p communication when
   // source and target are located within a node(nvlink).
   bool xla_gpu_use_memcpy_local_p2p = 287;
@@ -778,6 +798,8 @@ message DebugOptions {
   bool xla_gpu_verify_triton_fusion_numerics = 291;
 
   // go/keep-sorted end
+
+  reserved 276;  // xla_gpu_enable_nccl_per_stream_comms
 
   //--------------------------------------------------------------------------//
   // XLA:TPU options.
@@ -988,6 +1010,9 @@ message DebugOptions {
   // Whether to dump mlir using pretty print form.
   bool xla_dump_enable_mlir_pretty_form = 185;
 
+  // Whether to dump mlir using pretty print form.
+  bool xla_dump_full_hlo_config = 381;
+
   reserved 130;  // Was xla_gpu_deterministic_reductions
 
   // Debug options that trigger execution errors when NaN or Inf are detected.
@@ -1159,9 +1184,19 @@ message DebugOptions {
 
   bool xla_pjrt_allow_auto_layout_in_hlo = 344;
 
+  // If false, platform_util::GetDefaultPlatform() will return an error. Used as
+  // a safeguard for tests where GetDefaultPlatform() won't work properly and
+  // its use indicates an error in test setup.
+  bool xla_allow_get_default_platform = 371;
+
+  // If true, the test launched with ClientLibraryTestBase will also try to
+  // use command buffer mode to run.
+  bool xla_test_add_command_buffer_mode = 373;
+
   // Note: when adding a new flag, please add it to one of the hardware-specific
   // or hardware-agnostic sections at the top of this proto message.
-  // Next id: 371
+
+  // Next id: 382
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.

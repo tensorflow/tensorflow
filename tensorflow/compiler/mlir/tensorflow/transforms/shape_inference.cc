@@ -2615,7 +2615,7 @@ bool ShapeInference::InferShapeForSingleOperation(Operation* op,
   // (handle shapes) for resource and variant types. We use a simple passthrough
   // to make sure they are preserved in the output.
   if (isa<TF::IdentityOp, TF::IdentityNOp, TF::StopGradientOp, TF::ZerosLikeOp,
-          TF::XlaShardingOp>(op)) {
+          TF::TPUPartitionedInputV2Op, TF::XlaShardingOp>(op)) {
     return RefineTypeForPassThroughOperands(op, op->getOperands(),
                                             op->getResults());
   }

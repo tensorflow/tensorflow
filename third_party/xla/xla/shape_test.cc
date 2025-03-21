@@ -46,6 +46,16 @@ class ShapeTest : public ::testing::Test {
       ShapeUtil::MakeShape(F32, {Shape::kUnboundedSize, 784}, {true, false});
 };
 
+// Tests that if the dynamic_dimensions parameter empty in the Shape
+// constructor, it's treated as all dimensions are static.
+TEST(Shape, ArrayCtorTreatsEmptyDynamicDimensionsAsAllStatic) {
+  const Shape shape(F32, {1, 2, 3}, {});
+  EXPECT_TRUE(shape.is_static());
+  EXPECT_TRUE(shape.is_static_dimension(0));
+  EXPECT_TRUE(shape.is_static_dimension(1));
+  EXPECT_TRUE(shape.is_static_dimension(2));
+}
+
 TEST_F(ShapeTest, ShapeToFromProto) {
   for (const Shape& shape :
        {opaque_, token_, scalar_, matrix_, matrix2_, tuple_, nested_tuple_,
@@ -116,24 +126,24 @@ TEST_F(ShapeTest, EqualityTest) {
             ShapeUtil::MakeShapeWithDenseLayout(F32, {23, 44}, {1, 0}));
 }
 
-TEST_F(ShapeTest, IsInteger) {
-  EXPECT_FALSE(opaque_.IsInteger());
-  EXPECT_FALSE(token_.IsInteger());
-  EXPECT_TRUE(matrix_.IsInteger());
-  EXPECT_FALSE(tuple_.IsInteger());
-  EXPECT_FALSE(nested_tuple_.IsInteger());
+TEST_F(ShapeTest, AreAllLeavesIntegers) {
+  EXPECT_FALSE(opaque_.AreAllLeavesIntegers());
+  EXPECT_FALSE(token_.AreAllLeavesIntegers());
+  EXPECT_TRUE(matrix_.AreAllLeavesIntegers());
+  EXPECT_FALSE(tuple_.AreAllLeavesIntegers());
+  EXPECT_FALSE(nested_tuple_.AreAllLeavesIntegers());
 
   Shape u32_shape = ShapeUtil::MakeShape(U32, {1});
-  EXPECT_TRUE(u32_shape.IsInteger());
+  EXPECT_TRUE(u32_shape.AreAllLeavesIntegers());
 
   Shape f32_shape = ShapeUtil::MakeShape(F32, {1});
-  EXPECT_FALSE(f32_shape.IsInteger());
+  EXPECT_FALSE(f32_shape.AreAllLeavesIntegers());
 
   Shape integer_tuple = ShapeUtil::MakeTupleShape({u32_shape, u32_shape});
-  EXPECT_TRUE(integer_tuple.IsInteger());
+  EXPECT_TRUE(integer_tuple.AreAllLeavesIntegers());
 
   Shape mixed_type_tuple = ShapeUtil::MakeTupleShape({u32_shape, f32_shape});
-  EXPECT_FALSE(mixed_type_tuple.IsInteger());
+  EXPECT_FALSE(mixed_type_tuple.AreAllLeavesIntegers());
 }
 
 TEST_F(ShapeTest, IsStatic) {
@@ -298,13 +308,13 @@ void BM_ShapeCopy(::testing::benchmark::State& state) {
     }
     case 1: {
       // f32[1,2,2]{2,1,0}
-      shape = Shape(F32, {1, 2, 2}, {false, false, false}, {});
+      shape = Shape(F32, {1, 2, 2}, {false, false, false});
       *shape.mutable_layout() = Layout({2, 1, 0});
       break;
     }
     case 2: {
       // f32[1,2,2]{2,1,0:T(2,128)}
-      shape = Shape(F32, {1, 2, 2}, {false, false, false}, {});
+      shape = Shape(F32, {1, 2, 2}, {false, false, false});
       *shape.mutable_layout() = Layout({2, 1, 0}, {}, {}, {}, {Tile({2, 128})});
       break;
     }

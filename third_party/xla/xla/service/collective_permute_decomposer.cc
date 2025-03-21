@@ -66,7 +66,9 @@ static bool ShouldDecompose(
   }
 
   // Respect threshold to limit this pass.
-  if (ShapeUtil::ByteSizeOf(result_shape) < threshold_in_bytes) {
+  if (pipeline_parallelism_opt_level ==
+          DebugOptions::PIPELINE_PARALLELISM_OPT_LEVEL_DISABLE &&
+      ShapeUtil::ByteSizeOf(result_shape) < threshold_in_bytes) {
     return false;
   }
 
@@ -175,18 +177,26 @@ static absl::StatusOr<DecomposedCp> DecomposeCollectivePermute(
   TF_RETURN_IF_ERROR(cp->ReplaceAllUsesWith(recv_data));
   TF_RETURN_IF_ERROR(computation->RemoveInstructionAndUnusedOperands(cp));
 
-  // Control dependencies are require to assure order of the instructions.
-  // To avoid deadlocks as the program runs on multiple devices, we need to
-  // assure that we initiate receival before initiating sending and that receive
-  // done is executed after send is initiated.
-  TF_RETURN_IF_ERROR(recv->AddControlDependencyTo(send));
-  if (pipeline_parallelism_opt_level !=
-      DebugOptions::PIPELINE_PARALLELISM_OPT_LEVEL_DISABLE) {
-    TF_RETURN_IF_ERROR(recv_done->AddControlDependencyTo(send_done));
-  }
-  if (pipeline_parallelism_opt_level ==
-      DebugOptions::PIPELINE_PARALLELISM_OPT_LEVEL_DISABLE) {
-    TF_RETURN_IF_ERROR(send->AddControlDependencyTo(recv_done));
+  // We choose to run recv before send as an invariant, which helps avoid
+  // deadlocks. At the same time, running recv before send allows for pipelining
+  // recv into prior loop iterations, which is especially beneficial for
+  // pipeline parallelism.
+  switch (pipeline_parallelism_opt_level) {
+    case DebugOptions::PIPELINE_PARALLELISM_OPT_LEVEL_DISABLE:
+      TF_RETURN_IF_ERROR(recv->AddControlDependencyTo(send));
+      TF_RETURN_IF_ERROR(send->AddControlDependencyTo(recv_done));
+      break;
+    case DebugOptions::PIPELINE_PARALLELISM_OPT_LEVEL_ENABLE:
+      TF_RETURN_IF_ERROR(recv_done->AddControlDependencyTo(send));
+      break;
+    case DebugOptions::PIPELINE_PARALLELISM_OPT_LEVEL_ENABLE_CYCLE_DECOMPOSER:
+      TF_RETURN_IF_ERROR(recv->AddControlDependencyTo(send));
+      TF_RETURN_IF_ERROR(recv_done->AddControlDependencyTo(send_done));
+      break;
+    default:
+      return absl::InvalidArgumentError(
+          absl::StrCat("Unsupported pipeline parallelism opt level: ",
+                       pipeline_parallelism_opt_level));
   }
 
   if (!pipeline_decision.empty()) {
@@ -285,6 +295,22 @@ static absl::Status EnforceOrderOfSendRecvChainRelativeToConflictingCollectives(
   return absl::OkStatus();
 }
 
+// TODO(b/399486412) clean up collective permute decomposer and only return one
+// CP op
+void RemoveAllButOne(std::vector<HloCollectivePermuteInstruction*>& cps) {
+  // This is a heuristic that chooses the collective permute with the highest
+  // number of source-target pairs.
+  int cp_index = 0;
+  int max_num_pairs = 0;
+  for (int i = 0; i < cps.size(); ++i) {
+    if (cps[i]->source_target_pairs().size() > max_num_pairs) {
+      max_num_pairs = cps[i]->source_target_pairs().size();
+      cp_index = i;
+    }
+  }
+  cps = {cps[cp_index]};
+}
+
 absl::StatusOr<bool> CollectivePermuteDecomposer::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
@@ -363,6 +389,12 @@ absl::StatusOr<bool> CollectivePermuteDecomposer::Run(
         cp1_to_pipeline = optional_pair.value().second;
       }
     }  // for MakeInstructionPostOrder
+
+    if (cps_to_decompose.size() > 1 &&
+        pipeline_parallelism_opt_level_ !=
+            DebugOptions::PIPELINE_PARALLELISM_OPT_LEVEL_DISABLE) {
+      RemoveAllButOne(cps_to_decompose);
+    }
 
     // Find all collectives conflicting with the collective permutes that we
     // want to decompose. We need this information to achieve two things:

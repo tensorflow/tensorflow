@@ -1599,6 +1599,14 @@ func.func @testBatchMatmulHybridQuant(%arg0 : tensor<1x4x384x32xf32>, %arg1 : te
 
 // -----
 
+func.func @testBatchMatmulHybridBf16F32(%arg0 : tensor<1x4x384x32xbf16>, %arg1 : tensor<1x4x384x32xbf16>) -> tensor<1x4x384x384xf32> {
+  // expected-error @+1 {{'tfl.batch_matmul' op operand #0 must be tensor of 32-bit float or QI8 type or QI16 type or 8-bit signless integer values}}
+  %0 = "tfl.batch_matmul"(%arg0, %arg1) {adj_x = false, adj_y = true} : (tensor<1x4x384x32xbf16>, tensor<1x4x384x32xbf16>) -> tensor<1x4x384x384xf32>
+  func.return %0 : tensor<1x4x384x384xf32>
+}
+
+// -----
+
 func.func @testConcat(%arg0: tensor<1x2xi32>, %arg1: tensor<1x2xi32>) -> tensor<2x2xi32> {
   // CHECK: "tfl.concatenation"(%arg0, %arg1) <{axis = 0 : i32, fused_activation_function = "NONE"}>
   %0 = "tfl.concatenation"(%arg0, %arg1) {axis = 0 : i32, fused_activation_function = "NONE"} : (tensor<1x2xi32>, tensor<1x2xi32>) -> tensor<2x2xi32>
@@ -1832,6 +1840,15 @@ func.func @transpose(%arg0 : tensor<2x2xi32>, %arg1 : tensor<2xi32>) -> tensor<2
 
 // -----
 
+// CHECK-LABEL: transpose_int4
+func.func @transpose_int4(%arg0 : tensor<2x2xi4>, %arg1 : tensor<2xi32>) -> tensor<2x2xi4> {
+  // CHECK: "tfl.transpose"(%arg0, %arg1)
+  %0 = "tfl.transpose"(%arg0, %arg1) : (tensor<2x2xi4>, tensor<2xi32>) -> tensor<2x2xi4>
+  func.return %0 : tensor<2x2xi4>
+}
+
+// -----
+
 // CHECK-LABEL: transpose_with_output_that_has_dynamic_sizes
 func.func @transpose_with_output_that_has_dynamic_sizes(%arg0 : tensor<2x2xi32>, %arg1 : tensor<2xi32>) -> tensor<?x?xi32> {
   // CHECK: "tfl.transpose"(%arg0, %arg1)
@@ -1929,6 +1946,25 @@ func.func @transpose_uniform_per_axis_qtype(%arg0 : tensor<2x1x1x3x!quant.unifor
   // CHECK: "tfl.transpose"
   %0  = "tfl.transpose"(%arg0, %cst) : (tensor<2x1x1x3x!quant.uniform<i8<-127:127>:f32:0, {0.072314441204071045,0.050758145749568939}>>, tensor<4xi32>) -> tensor<1x1x3x2x!quant.uniform<i8<-127:127>:f32:3, {0.072314441204071045,0.050758145749568939}>>
   func.return %0 : tensor<1x1x3x2x!quant.uniform<i8<-127:127>:f32:3, {0.072314441204071045,0.050758145749568939}>>
+}
+
+// -----
+
+func.func @transpose_uniform_qtype_int4(%arg0 : tensor<1x3x4x3xf32>) -> tensor<3x4x3x1x!quant.uniform<i4:f32, 0.0078356266021728515:-1>> {
+  %cst = arith.constant dense<[1, 2, 3, 0]> : tensor<4xi32>
+  %0 = "tfl.quantize"(%arg0) {qtype = tensor<1x3x4x3x!quant.uniform<i4:f32, 0.0078356266021728515:-1>>} : (tensor<1x3x4x3xf32>) -> tensor<1x3x4x3x!quant.uniform<i4:f32, 0.0078356266021728515:-1>>
+  // CHECK: "tfl.transpose"
+  %1 = "tfl.transpose"(%0, %cst) : (tensor<1x3x4x3x!quant.uniform<i4:f32, 0.0078356266021728515:-1>>, tensor<4xi32>) -> tensor<3x4x3x1x!quant.uniform<i4:f32, 0.0078356266021728515:-1>>
+  func.return %1 : tensor<3x4x3x1x!quant.uniform<i4:f32, 0.0078356266021728515:-1>>
+}
+
+// -----
+
+func.func @transpose_uniform_per_axis_qtype_int4(%arg0 : tensor<2x1x1x3x!quant.uniform<i4<-7:7>:f32:0, {0.072314441204071045,0.050758145749568939}>>) -> tensor<1x1x3x2x!quant.uniform<i4<-7:7>:f32:3, {0.072314441204071045,0.050758145749568939}>> {
+  %cst = arith.constant dense<[1, 2, 3, 0]> : tensor<4xi32>
+  // CHECK: "tfl.transpose"
+  %0  = "tfl.transpose"(%arg0, %cst) : (tensor<2x1x1x3x!quant.uniform<i4<-7:7>:f32:0, {0.072314441204071045,0.050758145749568939}>>, tensor<4xi32>) -> tensor<1x1x3x2x!quant.uniform<i4<-7:7>:f32:3, {0.072314441204071045,0.050758145749568939}>>
+  func.return %0 : tensor<1x1x3x2x!quant.uniform<i4<-7:7>:f32:3, {0.072314441204071045,0.050758145749568939}>>
 }
 
 // -----
@@ -2772,6 +2808,24 @@ func.func @if_then(%arg0: tensor<i1>, %arg1: tensor<1xf32>) -> tensor<1xf32> {
     "tfl.yield"(%1) : (tensor<1xf32>) -> ()
   }) : (tensor<i1>) -> (tensor<1xf32>)
   func.return %0 : tensor<1xf32>
+}
+
+// -----
+
+func.func @test_reshape_with_per_axis_quant_dim(%arg0: tensor<1x2x3x4x5x!quant.uniform<i4:f32:4, {0.2345, 0.2345, 0.2345, 0.2345, 0.2345}>>) -> tensor<24x5x!quant.uniform<i4:f32:1, {0.2345, 0.2345, 0.2345, 0.2345, 0.2345}>> {
+  %cst = arith.constant dense<[24, 5]> : tensor<2xi32>
+  // CHECK: "tfl.reshape"(%arg0, %cst)
+  %0 = "tfl.reshape"(%arg0, %cst) : (tensor<1x2x3x4x5x!quant.uniform<i4:f32:4, {0.2345, 0.2345, 0.2345, 0.2345, 0.2345}>>, tensor<2xi32>) -> tensor<24x5x!quant.uniform<i4:f32:1, {0.2345, 0.2345, 0.2345, 0.2345, 0.2345}>>
+  func.return %0 : tensor<24x5x!quant.uniform<i4:f32:1, {0.2345, 0.2345, 0.2345, 0.2345, 0.2345}>>
+}
+
+// -----
+
+func.func @test_reshape_with_per_axis_quant_dim_1(%arg0: tensor<1x2x3x4x5x!quant.uniform<i4<-7:7>:f32:4, {0.2345, 0.2345, 0.2345, 0.2345, 0.2345}>>) -> tensor<24x5x!quant.uniform<i4<-7:7>:f32:1, {0.2345, 0.2345, 0.2345, 0.2345, 0.2345}>> {
+  %cst = arith.constant dense<[24, 5]> : tensor<2xi32>
+  // CHECK: "tfl.reshape"(%arg0, %cst)
+  %0 = "tfl.reshape"(%arg0, %cst) : (tensor<1x2x3x4x5x!quant.uniform<i4<-7:7>:f32:4, {0.2345, 0.2345, 0.2345, 0.2345, 0.2345}>>, tensor<2xi32>) -> tensor<24x5x!quant.uniform<i4<-7:7>:f32:1, {0.2345, 0.2345, 0.2345, 0.2345, 0.2345}>>
+  func.return %0 : tensor<24x5x!quant.uniform<i4<-7:7>:f32:1, {0.2345, 0.2345, 0.2345, 0.2345, 0.2345}>>
 }
 
 // -----

@@ -33,8 +33,6 @@ limitations under the License.
 #include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
-#include "tsl/platform/env.h"
-#include "tsl/platform/threadpool.h"
 #include "tsl/profiler/lib/traceme.h"
 #include "tsl/profiler/lib/traceme_encode.h"
 
@@ -42,11 +40,6 @@ namespace xla::cpu {
 
 using ::tsl::profiler::TraceMe;
 using ::tsl::profiler::TraceMeEncode;
-
-NanoRtClient::NanoRtClient()
-    : intra_op_thread_pool_(
-          new tsl::thread::ThreadPool(tsl::Env::Default(), tsl::ThreadOptions(),
-                                      "nanort", DefaultThreadPoolSize())) {}
 
 absl::StatusOr<std::unique_ptr<NanoRtExecutable>> NanoRtClient::Compile(
     const XlaComputation& computation) {
@@ -83,7 +76,7 @@ absl::StatusOr<std::unique_ptr<NanoRtExecutable>> NanoRtClient::Compile(
       compiler.RunBackend(std::move(hlo_module), /*stream_exec=*/nullptr,
                           compile_options));
 
-  return NanoRtExecutable::Create(std::move(executable), intra_op_thread_pool_);
+  return NanoRtExecutable::Create(std::move(executable));
 }
 
 }  // namespace xla::cpu

@@ -26,7 +26,7 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "flatbuffers/vector.h"  // from @flatbuffers
 #include "tensorflow/compiler/mlir/lite/schema/schema_utils.h"
-#include "tensorflow/core/public/version.h"
+#include "tensorflow/core/public/release_version.h"
 #include "tensorflow/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/core/model_builder.h"
 #include "tensorflow/lite/schema/schema_generated.h"

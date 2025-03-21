@@ -124,6 +124,8 @@ static absl::StatusOr<std::string> BuildHLOString(
       }
 
       xla::HloPrintOptions opts;
+      opts.set_print_large_constants(false);
+      opts.set_print_operand_shape(true);
       if (stage == IrExportStage::HLO_NO_METADATA) {
         opts.set_print_metadata(false);
       }

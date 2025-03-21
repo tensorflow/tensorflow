@@ -218,9 +218,10 @@ absl::Status ConvertSavedModelToTFLiteFlatBuffer(
   pass_config.canonicalizing_inf_as_min_max_float =
       converter_flags.canonicalizing_inf_as_min_max_float();
 
-  pass_config.quant_specs.strict_qdq_mode = converter_flags.strict_qdq_mode();
-
-  if (converter_flags.qdq_conversion_mode() == "STATIC") {
+  if (converter_flags.strict_qdq_mode()) {
+    pass_config.quant_specs.qdq_conversion_mode =
+        mlir::quant::QDQConversionMode::kQDQStrict;
+  } else if (converter_flags.qdq_conversion_mode() == "STATIC") {
     pass_config.quant_specs.qdq_conversion_mode =
         mlir::quant::QDQConversionMode::kQDQStatic;
   } else if (converter_flags.qdq_conversion_mode() == "DYNAMIC") {

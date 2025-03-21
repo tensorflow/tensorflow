@@ -32,84 +32,50 @@ std::unique_ptr<HloInstruction> CreateCP() {
   Shape shape = ShapeUtil::MakeShape(F32, {4, 4});
   std::unique_ptr<HloInstruction> p0 =
       HloInstruction::CreateParameter(0, shape, "param");
-  return HloInstruction::CreateCollectivePermute(shape, p0.get(), {{0, 1}}, 1);
+  std::unique_ptr<HloInstruction> cp =
+      HloInstruction::CreateCollectivePermute(shape, p0.get(), {{0, 1}}, 1);
+  cp->SetAndSanitizeName("test_cp");
+  return cp;
 }
+
+const char* kWrongCastError =
+    ".*ClassOf.*'test_cp'.*HloCollectivePermuteInstruction.*"
+    "HloAllReduceInstruction.*";
+const char* kNullptrError = ".*nullptr.*";
 
 TEST(HloCastingUtilsTest, Cast) {
   std::unique_ptr<HloInstruction> cp = CreateCP();
-  HloCollectivePermuteInstruction* casted =
-      Cast<HloCollectivePermuteInstruction>(cp.get());
-  EXPECT_NE(casted, nullptr);
-
-  std::unique_ptr<const HloInstruction> const_cp = CreateCP();
-  const HloCollectivePermuteInstruction* const_casted =
-      Cast<const HloCollectivePermuteInstruction>(const_cp.get());
-  EXPECT_NE(const_casted, nullptr);
-}
-
-TEST(HloCastingUtilsTest, CastDeath) {
-  std::unique_ptr<HloInstruction> cp = CreateCP();
-  // wrong type
-  EXPECT_DEATH(Cast<HloAllReduceInstruction>(cp.get()), ".*ClassOf.*");
-  // nullptr
+  EXPECT_NE(Cast<HloCollectivePermuteInstruction>(cp.get()), nullptr);
+  EXPECT_DEATH(Cast<HloAllReduceInstruction>(cp.get()), kWrongCastError);
   cp.reset();
-  EXPECT_DEATH(Cast<HloCollectivePermuteInstruction>(cp.get()), ".*nullptr.*");
+  EXPECT_DEATH(Cast<HloCollectivePermuteInstruction>(cp.get()), kNullptrError);
 }
 
-TEST(HloCastingUtilsTest, CastOrNull) {
-  std::unique_ptr<HloInstruction> cp = CreateCP();
-  HloCollectivePermuteInstruction* casted =
-      CastOrNull<HloCollectivePermuteInstruction>(cp.get());
-  EXPECT_NE(casted, nullptr);
-
-  std::unique_ptr<const HloInstruction> const_cp = CreateCP();
-  const HloCollectivePermuteInstruction* const_casted =
-      CastOrNull<const HloCollectivePermuteInstruction>(const_cp.get());
-  EXPECT_NE(const_casted, nullptr);
-
+TEST(HloCastingUtilsTest, CastConst) {
+  std::unique_ptr<const HloInstruction> cp = CreateCP();
+  EXPECT_NE(Cast<const HloCollectivePermuteInstruction>(cp.get()), nullptr);
+  EXPECT_DEATH(Cast<const HloAllReduceInstruction>(cp.get()), kWrongCastError);
   cp.reset();
-  HloCollectivePermuteInstruction* casted2 =
-      CastOrNull<HloCollectivePermuteInstruction>(cp.get());
-  EXPECT_EQ(casted2, nullptr);
-}
-
-TEST(HloCastingUtilsTest, CastOrNullDeath) {
-  // wrong type
-  EXPECT_DEATH(Cast<HloAllReduceInstruction>(CreateCP().get()), ".*ClassOf.*");
+  EXPECT_DEATH(Cast<const HloCollectivePermuteInstruction>(cp.get()),
+               kNullptrError);
 }
 
 TEST(HloCastingUtilsTest, DynCast) {
   std::unique_ptr<HloInstruction> cp = CreateCP();
-  HloCollectivePermuteInstruction* casted =
-      DynCast<HloCollectivePermuteInstruction>(cp.get());
-  EXPECT_NE(casted, nullptr);
-
-  std::unique_ptr<const HloInstruction> const_cp = CreateCP();
-  const HloCollectivePermuteInstruction* const_casted =
-      DynCast<const HloCollectivePermuteInstruction>(const_cp.get());
-  EXPECT_NE(const_casted, nullptr);
-
-  // wrong type
-  EXPECT_EQ(DynCast<HloAllReduceInstruction>(CreateCP().get()), nullptr);
-}
-
-TEST(HloCastingUtilsTest, DynCastDeath) {
-  std::unique_ptr<HloInstruction> cp = CreateCP();
+  EXPECT_NE(DynCast<HloCollectivePermuteInstruction>(cp.get()), nullptr);
+  EXPECT_EQ(DynCast<HloAllReduceInstruction>(cp.get()), nullptr);
   cp.reset();
   EXPECT_DEATH(DynCast<HloCollectivePermuteInstruction>(cp.get()),
-               ".*nullptr.*");
+               kNullptrError);
 }
 
-TEST(HloCastingUtilsTest, DynCastOrNull) {
-  std::unique_ptr<HloInstruction> cp = CreateCP();
-  HloCollectivePermuteInstruction* casted =
-      DynCastOrNull<HloCollectivePermuteInstruction>(cp.get());
-  EXPECT_NE(casted, nullptr);
-
-  EXPECT_EQ(DynCastOrNull<HloAllReduceInstruction>(CreateCP().get()), nullptr);
-
+TEST(HloCastingUtilsTest, DynCastConst) {
+  std::unique_ptr<const HloInstruction> cp = CreateCP();
+  EXPECT_NE(DynCast<const HloCollectivePermuteInstruction>(cp.get()), nullptr);
+  EXPECT_EQ(DynCast<const HloAllReduceInstruction>(cp.get()), nullptr);
   cp.reset();
-  EXPECT_EQ(DynCastOrNull<HloCollectivePermuteInstruction>(cp.get()), nullptr);
+  EXPECT_DEATH(DynCast<const HloCollectivePermuteInstruction>(cp.get()),
+               kNullptrError);
 }
 
 void BM_Cast(benchmark::State& state) {

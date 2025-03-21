@@ -37,3 +37,9 @@ bzl_library(
     srcs = ["litert_build_defs.bzl"],
     visibility = ["//visibility:private"],
 )
+
+bzl_library(
+    name = "tfl_model_gen_bzl",
+    srcs = ["tfl_model_gen.bzl"],
+    visibility = ["//visibility:private"],
+)

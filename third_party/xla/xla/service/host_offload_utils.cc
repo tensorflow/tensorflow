@@ -32,7 +32,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/call_graph.h"
-#include "xla/service/host_memory_offload_annotations.h"
+#include "xla/service/memory_annotations.h"
 #include "xla/shape_util.h"
 #include "xla/side_effect_util.h"
 #include "xla/util.h"
@@ -42,8 +42,8 @@ namespace host_offload_utils {
 
 namespace {
 
-using ::xla::host_memory_offload_annotations::kMoveToDeviceCustomCallTarget;
-using ::xla::host_memory_offload_annotations::kMoveToHostCustomCallTarget;
+using ::xla::memory_annotations::kMoveToDeviceCustomCallTarget;
+using ::xla::memory_annotations::kMoveToHostCustomCallTarget;
 
 bool CustomCallReusesBuffer(const HloInstruction* custom_call,
                             int64_t operand_index) {

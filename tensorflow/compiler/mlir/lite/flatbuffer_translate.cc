@@ -157,8 +157,14 @@ static opt<bool, true> disable_vhlo_to_stablehlo_flag(
 // NOLINTNEXTLINE
 static opt<bool, true> serialize_debug_metadata_flag(
     "serialize-debug-metadata",
-    llvm::cl::desc("Wether to serialize debug metadata or not"),
+    llvm::cl::desc("Whether to serialize debug metadata or not"),
     llvm::cl::location(serialize_debug_metadata), llvm::cl::init(false));
+
+// NOLINTNEXTLINE
+static opt<bool> disable_buffer_deduping_flag(
+    "disable-buffer-deduping",
+    llvm::cl::desc("Whether to disable buffer deduping or not"),
+    llvm::cl::init(false));
 
 namespace mlir {
 namespace {
@@ -212,6 +218,7 @@ static LogicalResult MlirToFlatBufferFileTranslateFunction(
   options.op_or_arg_name_mapper = op_or_arg_name_mapper.get();
   options.converter_flags.set_serialize_debug_metadata(
       serialize_debug_metadata);
+  options.disable_buffer_deduping = disable_buffer_deduping_flag.getValue();
   if (!tflite::MlirToFlatBufferTranslateFunction(
           module, options, &serialized_flatbuffer, emit_stablehlo_ops))
     return mlir::failure();

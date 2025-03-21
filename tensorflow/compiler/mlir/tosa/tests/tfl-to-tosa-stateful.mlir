@@ -39,10 +39,10 @@ module {
     // CHECK-LABEL: readAssignQuant
     // CHECK: %[[VAL_0:.*]] = tosa.variable.read @Variable : tensor<2x3xi8>
     // CHECK: %[[VAL_1:.*]] = builtin.unrealized_conversion_cast %[[VAL_0]] : tensor<2x3xi8> to tensor<2x3x!quant.uniform<i8:f32, 1.000000e-01:2>>
-    // CHECK: %[[VAL_2:.*]] = tosa.rescale %[[VAL_1]] {double_round = true, input_zp = 2 : i32, multiplier = array<i32: 1073741824>, output_zp = 0 : i32, per_channel = false, scale32 = true, shift = array<i8: 11>} : (tensor<2x3x!quant.uniform<i8:f32, 1.000000e-01:2>>) -> tensor<2x3xi32>
-    // CHECK: %[[VAL_3:.*]] = tosa.rescale %[[VAL_4:.*]] {double_round = true, input_zp = 2 : i32, multiplier = array<i32: 1073741824>, output_zp = 0 : i32, per_channel = false, scale32 = true, shift = array<i8: 11>} : (tensor<2x3x!quant.uniform<i8:f32, 1.000000e-01:2>>) -> tensor<2x3xi32>
+    // CHECK: %[[VAL_2:.*]] = tosa.rescale %[[VAL_1]] {double_round = true, input_unsigned = false, input_zp = 2 : i32, multiplier = array<i32: 1073741824>, output_unsigned = false, output_zp = 0 : i32, per_channel = false, scale32 = true, shift = array<i8: 11>} : (tensor<2x3x!quant.uniform<i8:f32, 1.000000e-01:2>>) -> tensor<2x3xi32>
+    // CHECK: %[[VAL_3:.*]] = tosa.rescale %[[VAL_4:.*]] {double_round = true, input_unsigned = false, input_zp = 2 : i32, multiplier = array<i32: 1073741824>, output_unsigned = false, output_zp = 0 : i32, per_channel = false, scale32 = true, shift = array<i8: 11>} : (tensor<2x3x!quant.uniform<i8:f32, 1.000000e-01:2>>) -> tensor<2x3xi32>
     // CHECK: %[[VAL_5:.*]] = tosa.add %[[VAL_2]], %[[VAL_3]] : (tensor<2x3xi32>, tensor<2x3xi32>) -> tensor<2x3xi32>
-    // CHECK: %[[VAL_6:.*]] = tosa.rescale %[[VAL_5]] {double_round = true, input_zp = 0 : i32, multiplier = array<i32: 1073741824>, output_zp = 2 : i32, per_channel = false, scale32 = true, shift = array<i8: 49>} : (tensor<2x3xi32>) -> tensor<2x3x!quant.uniform<i8:f32, 1.000000e-01:2>>
+    // CHECK: %[[VAL_6:.*]] = tosa.rescale %[[VAL_5]] {double_round = true, input_unsigned = false, input_zp = 0 : i32, multiplier = array<i32: 1073741824>, output_unsigned = false, output_zp = 2 : i32, per_channel = false, scale32 = true, shift = array<i8: 49>} : (tensor<2x3xi32>) -> tensor<2x3x!quant.uniform<i8:f32, 1.000000e-01:2>>
     // CHECK: %[[VAL_7:.*]] = builtin.unrealized_conversion_cast %[[VAL_6]] : tensor<2x3x!quant.uniform<i8:f32, 1.000000e-01:2>> to tensor<2x3xi8>
     // CHECK: tosa.variable.write @Variable, %[[VAL_7]] : tensor<2x3xi8>
     // CHECK: return %[[VAL_6]] : tensor<2x3x!quant.uniform<i8:f32, 1.000000e-01:2>>

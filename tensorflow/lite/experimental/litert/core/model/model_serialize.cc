@@ -26,8 +26,14 @@
 #include <utility>
 #include <vector>
 
-#include "absl/container/flat_hash_map.h"
+// schema/mutable/schema_generated.h and schema/schema_generated.h (included
+// through flatbuffer_tools.h via model.h) have the same #ifdef, thus this line
+// need to be put at the top to ensure we get the "mutable" version.
+#if 1
 #include "tensorflow/compiler/mlir/lite/schema/mutable/schema_generated.h"
+#endif
+
+#include "absl/container/flat_hash_map.h"
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
 #include "tensorflow/lite/experimental/litert/c/litert_logging.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_buffer_ref.h"
@@ -40,7 +46,6 @@
 #include "tensorflow/lite/experimental/litert/core/model/model.h"
 #include "tensorflow/lite/experimental/litert/core/util/flatbuffer_tools.h"
 #include "tensorflow/lite/schema/mutable/schema_generated.h"
-#include "tensorflow/lite/schema/schema_generated.h"
 
 namespace litert::internal {
 namespace {
@@ -70,10 +75,12 @@ class SerializationContext {
       absl::flat_hash_map<LiteRtModelT::BufferId, TflBufferInd>;
 
   explicit SerializationContext(uint32_t dispatch_op_code_ind,
-                                LiteRtModelT& litert_model)
+                                LiteRtModelT& litert_model,
+                                size_t bytecode_alignment)
       : tfl_model_(std::make_unique<TflModel>()),
         dispatch_op_code_ind_(dispatch_op_code_ind),
-        litert_model_(litert_model) {
+        litert_model_(litert_model),
+        bytecode_alignment_(bytecode_alignment) {
     // Tfl expects empty buffer 0.
     tfl_model_->buffers.push_back(std::make_unique<TflBuffer>());
   }
@@ -83,6 +90,8 @@ class SerializationContext {
   TflModelPtr Release() && { return std::move(tfl_model_); }
 
   LiteRtModelT& LitertModel() { return litert_model_; }
+
+  size_t BytecodeAlignment() const { return bytecode_alignment_; }
 
   LiteRtStatus HandleTensorBuffer(TflTensor& tfl_tensor,
                                   const LiteRtTensorT& litert_tensor) {
@@ -166,10 +175,11 @@ class SerializationContext {
   TflOpAssetMap op_asset_map_;
   TflOffsetTensorMap offset_tensor_map_;
   TflBufferIdMap buffer_id_map_;
+  size_t bytecode_alignment_ = 0;
 };
 
 void SetOptions(const LiteRtOpT& litert_op, TflOp& tfl_op) {
-  tfl_op.builtin_options = detail::GetTflOptions(litert_op);
+  tfl_op.builtin_options = litert::internal::GetTflOptions(litert_op);
   if (litert_op.CustomOptions().Size() != 0) {
     tfl_op.custom_options = litert_op.CustomOptions().ToVec();
     tfl_op.custom_options_format = tflite::CustomOptionsFormat_FLEXBUFFERS;
@@ -179,8 +189,9 @@ void SetOptions(const LiteRtOpT& litert_op, TflOp& tfl_op) {
 LiteRtStatus PackOp(SerializationContext& builder, LiteRtOpT& litert_op,
                     TflOp& tfl_op, const TensorMap& tensor_map) {
   // Get index of the op code in the tfl model.
-  auto tfl_op_code_ind = detail::GetTflOpCodeInd(litert_op);
-  const bool is_dispatch_op = tfl_op_code_ind == detail::kDispatchOpCodeTflInd;
+  auto tfl_op_code_ind = litert::internal::GetTflOpCodeInd(litert_op);
+  const bool is_dispatch_op =
+      tfl_op_code_ind == litert::internal::kDispatchOpCodeTflInd;
 
   if (is_dispatch_op) {
     tfl_op_code_ind = builder.DispatchOpCodeInd();
@@ -197,7 +208,7 @@ LiteRtStatus PackOp(SerializationContext& builder, LiteRtOpT& litert_op,
   }
 
   // Set generic options.
-  tfl_op.builtin_options = detail::GetTflOptions(litert_op);
+  tfl_op.builtin_options = litert::internal::GetTflOptions(litert_op);
 
   return kLiteRtStatusOk;
 }
@@ -356,7 +367,14 @@ Expected<OwningBufferRef<uint8_t>> SerializeWithAppendedBuffers(
     return serialized_tfl;
   }
 
+  const auto align = builder.BytecodeAlignment();
+  // Pad the original model to the next multiple of the alignment.
+  auto align_offset = [align](size_t& cur_offset) {
+    cur_offset = (cur_offset + align - 1) & ~(align - 1);
+  };
+
   size_t cur_offset = serialized_tfl.Size();
+  align_offset(cur_offset);
 
   // Calculate the offset and size of each op asset.
   InsertOrderMap<LiteRtModelT::BufferId, std::pair<size_t, size_t>>
@@ -374,6 +392,7 @@ Expected<OwningBufferRef<uint8_t>> SerializeWithAppendedBuffers(
     asset_buffer_offsets.InsertOrAssign(buf_id,
                                         {cur_offset, asset_buf->Size()});
     cur_offset += asset_buf->Size();
+    align_offset(cur_offset);
   }
 
   // Calculate the offset and size of each offset tensor.
@@ -466,11 +485,10 @@ Expected<OwningBufferRef<uint8_t>> SerializeWithAppendedBuffers(
   OwningBufferRef<uint8_t> final_model(cur_offset);
 
   // Copy serialized tflite model.
-  uint8_t* start = final_model.Data();
+  uint8_t* const start = final_model.Data();
   std::memcpy(start, serialized_tfl.Data(), serialized_tfl.Size());
-  start += serialized_tfl.Size();
 
-  // Copy asset buffers.
+  // Copy asset buffers (aligned).
   for (auto it = asset_buffer_offsets.Begin(); it != asset_buffer_offsets.End();
        ++it) {
     const auto buf_id = it->first;
@@ -480,12 +498,11 @@ Expected<OwningBufferRef<uint8_t>> SerializeWithAppendedBuffers(
       LITERT_LOG(LITERT_ERROR, "Failed to find asset buffer");
       return asset_buf.Error();
     }
-
-    std::memcpy(start, asset_buf->Data(), asset_buf->Size());
-    start += asset_buf->Size();
+    uint8_t* const offset = start + it->second.first;
+    std::memcpy(offset, asset_buf->Data(), asset_buf->Size());
   }
 
-  // Copy offset buffers.
+  // Copy offset tensor buffers.
   for (auto it = offset_tensor_offsets.Begin();
        it != offset_tensor_offsets.End(); ++it) {
     const auto buf_id = it->first;
@@ -496,8 +513,8 @@ Expected<OwningBufferRef<uint8_t>> SerializeWithAppendedBuffers(
       return offset_buf.Error();
     }
 
-    std::memcpy(start, offset_buf->Data(), offset_buf->Size());
-    start += offset_buf->Size();
+    uint8_t* const offset = start + it->second.first;
+    std::memcpy(offset, offset_buf->Data(), offset_buf->Size());
   }
 
   return final_model;
@@ -505,14 +522,16 @@ Expected<OwningBufferRef<uint8_t>> SerializeWithAppendedBuffers(
 
 }  // namespace
 
-Expected<OwningBufferRef<uint8_t>> SerializeModel(LiteRtModelT&& model) {
+Expected<OwningBufferRef<uint8_t>> SerializeModel(LiteRtModelT&& model,
+                                                  size_t bytecode_alignment) {
   // Pass the op code list through that was saved during loading. Add one more
   // op code for the dispatch ops
-  auto tfl_op_codes = detail::TakeTflOpCodes(model);
+  auto tfl_op_codes = litert::internal::TakeTflOpCodes(model);
   tfl_op_codes.push_back(
       MakeCustomOpCode(std::string(kLiteRtDispatchOpCustomCode)));
 
-  SerializationContext builder(tfl_op_codes.size() - 1, model);
+  SerializationContext builder(tfl_op_codes.size() - 1, model,
+                               bytecode_alignment);
   builder.Model().operator_codes = std::move(tfl_op_codes);
 
   auto tfl_model = PackAsTflite(builder);
@@ -522,27 +541,19 @@ Expected<OwningBufferRef<uint8_t>> SerializeModel(LiteRtModelT&& model) {
   }
 
   auto serialized_tfl = SerializeFlatbuffer(**tfl_model);
-  if (!VerifyFlatbuffer(serialized_tfl.Span())) {
+  auto serialized_with_buffers =
+      SerializeWithAppendedBuffers(builder, std::move(serialized_tfl), model);
+  if (!serialized_with_buffers) {
+    LITERT_LOG(LITERT_ERROR, "Failed to serialize with appended buffers");
+    return serialized_with_buffers.Error();
+  }
+
+  if (!VerifyFlatbuffer(serialized_with_buffers->Span())) {
     LITERT_LOG(LITERT_ERROR, "Failed to verify flatbuffer");
     return Error(kLiteRtStatusErrorInvalidFlatbuffer);
   }
 
-  return SerializeWithAppendedBuffers(builder, std::move(serialized_tfl),
-                                      model);
+  return serialized_with_buffers;
 }
 
 }  // namespace litert::internal
-
-LiteRtStatus LiteRtSerializeModel(LiteRtModel model, uint8_t** buf,
-                                  size_t* size, size_t* offset,
-                                  bool destroy_model) {
-  auto serialized = litert::internal::SerializeModel(std::move(*model));
-  if (destroy_model) {
-    delete model;
-  }
-  if (!serialized) {
-    return serialized.Error().Status();
-  }
-  std::tie(*buf, *size, *offset) = serialized->Release();
-  return kLiteRtStatusOk;
-}

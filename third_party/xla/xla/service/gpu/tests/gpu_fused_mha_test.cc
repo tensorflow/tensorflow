@@ -1320,6 +1320,10 @@ class FlashAttentionBMMScaleSegmentMaskSoftmaxBMM
         se::dnn::VersionInfo(9, 6, 0)) {
       GTEST_SKIP() << "Flash Attention requires cuDNN >= 9.6.0.";
     }
+    auto cc = GetCudaComputeCapability();
+    if (!cc.IsAtLeastHopper()) {
+      GTEST_SKIP() << "Flash Attention segment mask requires at least Hopper.";
+    }
     XlaBuilder builder(TestName());
     // Cudnn sequence packing packs multiple batches(segments) into one batch
     // using offsets and seqlen tensors to indicate where each segment begins

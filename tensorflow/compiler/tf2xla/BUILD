@@ -227,6 +227,7 @@ filegroup(
         "@local_xla//xla/tsl/concurrency:xla_cpu_runtime_hdrs",
         "@local_xla//xla/tsl/framework:xla_cpu_runtime_hdrs",
         "@local_xla//xla/tsl/framework/fixedpoint:xla_cpu_runtime_hdrs",
+        "@local_xla//xla/tsl/lib/math:xla_cpu_runtime_hdrs",
     ],
     visibility = [
         "//tensorflow/tools/pip_package:__pkg__",
@@ -1040,6 +1041,7 @@ tf_cc_test(
         "@local_xla//xla/client:local_client",
         "@local_xla//xla/hlo/builder:xla_builder",
         "@local_xla//xla/service:cpu_plugin",
+        "@local_xla//xla/service:hlo_module_util",
         "@local_xla//xla/service:hlo_proto_cc",
         "@local_xla//xla/service:hlo_proto_util",
         "@local_xla//xla/tests:literal_test_util",

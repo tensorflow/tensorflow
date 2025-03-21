@@ -16,6 +16,10 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PROFILER_CONVERT_OP_STATS_TO_HLO_STATS_H_
 #define TENSORFLOW_CORE_PROFILER_CONVERT_OP_STATS_TO_HLO_STATS_H_
 
+#include <memory>
+#include <string>
+
+#include "tensorflow/core/profiler/convert/data_table_utils.h"
 #include "tensorflow/core/profiler/protobuf/hlo_stats.pb.h"
 #include "tensorflow/core/profiler/protobuf/op_stats.pb.h"
 
@@ -23,6 +27,14 @@ namespace tensorflow {
 namespace profiler {
 tensorflow::profiler::hlo_stats::HloStatsDatabase ConvertOpStatsToHloStats(
     const tensorflow::profiler::OpStats& op_stats);
+
+// Converts to JSON align with current DataTable JSON format.
+std::string HloStatsToDataTableJson(
+    const hlo_stats::HloStatsDatabase& hlo_stats_db);
+
+// Construct a DataTable object from HloStatsDatabase.
+std::unique_ptr<tensorflow::profiler::DataTable> CreateHloStatsDataTable(
+    const hlo_stats::HloStatsDatabase& hlo_stats_db);
 
 }  // namespace profiler
 }  // namespace tensorflow

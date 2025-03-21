@@ -15,6 +15,7 @@
 #include "tensorflow/lite/experimental/litert/core/model/model.h"
 
 #include <algorithm>
+#include <cstddef>
 #include <cstdint>
 #include <optional>
 #include <string>
@@ -29,7 +30,7 @@
 #include "tensorflow/lite/experimental/litert/c/litert_op_code.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_buffer_ref.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
-#include "tensorflow/lite/experimental/litert/core/util/flatbuffer_tools.h"
+#include "tensorflow/lite/experimental/litert/core/build_stamp.h"
 
 using ::litert::BufferRef;
 using ::litert::internal::TflBuffer;
@@ -37,14 +38,36 @@ using ::litert::internal::TflBufferPtr;
 using ::litert::internal::TflOpCode;
 using ::litert::internal::TflOpCodePtr;
 using ::litert::internal::TflOptions;
+using ::litert::internal::TflOptions2;
+
+std::optional<LiteRtModelT::BuildStamp> GetBuildStamp(
+    const LiteRtModelT& model) {
+  using ::litert::internal::kLiteRtBuildStampKey;
+  using ::litert::internal::ParseBuildStamp;
+
+  auto stamp_meta = model.FindMetadata(kLiteRtBuildStampKey);
+  if (!stamp_meta) {
+    return std::nullopt;
+  }
+  auto parsed_stamp = ParseBuildStamp(*stamp_meta);
+  if (!parsed_stamp) {
+    return std::nullopt;
+  }
+  auto [soc_manufacturer, soc_model] = *parsed_stamp;
+  return LiteRtModelT::BuildStamp{soc_manufacturer, soc_model};
+}
+
+bool IsCompiled(const LiteRtModelT& model) {
+  return GetBuildStamp(model).has_value();
+}
 
 std::optional<std::string> GetCustomOpCode(const LiteRtModelT& model,
                                            const LiteRtOpT& op) {
   if (op.OpCode() != kLiteRtOpCodeTflCustom) {
     return {};
   }
-  const auto& tfl_op_codes = detail::GetTflOpCodes(model);
-  const auto tfl_op_code_ind = detail::GetTflOpCodeInd(op);
+  const auto& tfl_op_codes = litert::internal::GetTflOpCodes(model);
+  const auto tfl_op_code_ind = litert::internal::GetTflOpCodeInd(op);
   return tfl_op_codes[tfl_op_code_ind]->custom_code;
 }
 
@@ -97,7 +120,48 @@ LiteRtSignatureT MakeDefaultSignature(LiteRtSubgraph subgraph) {
   return &sig->get().GetSubgraph();
 }
 
-namespace detail {
+void LiteRtModelT::TransferSubgraphTo(LiteRtSubgraphT::Alloc& dest,
+                                      std::vector<size_t> indices) {
+  if (indices.empty()) {
+    return;
+  }
+  std::sort(indices.begin(), indices.end());
+  std::vector<int> new_inds(subgraphs_.Size(), 0);
+  auto num_removed = 0;
+  auto i = indices.begin();
+  for (size_t j = 0; j < new_inds.size(); ++j) {
+    if (i != indices.end() && *i == j) {
+      ++num_removed;
+      // Keep track of removed sgs just for dcheck.
+      new_inds[j] = -1;
+      ++i;
+      continue;
+    }
+    new_inds[j] = j - num_removed;
+  }
+
+  ForEachIr(
+      this, [&](LiteRtSubgraph subgraph, int32_t subgraph_index, LiteRtOp op) {
+        if (op->OpCode() != kLiteRtOpCodeShloComposite) {
+          return;
+        }
+        auto opts = litert::internal::TakeTflOptions2(*op);
+        auto& decomp_ind =
+            opts.AsStableHLOCompositeOptions()->decomposition_subgraph_index;
+        const auto new_ind = new_inds[decomp_ind];
+
+        // This op is either in a removed subgraph or refers to a subgraph that
+        // is not being removed.
+        ABSL_DCHECK((subgraph_index == -1) || (new_ind >= 0));
+
+        decomp_ind = new_ind;
+        litert::internal::SetTflOptions2(*op, std::move(opts));
+      });
+
+  subgraphs_.TransferTo(dest, std::move(indices));
+}
+
+namespace litert::internal {
 
 void SetTflOpCodeInd(LiteRtOpT& litert_op, int32_t tfl_op_code_ind) {
   litert_op.tfl_op_code_ind_ = tfl_op_code_ind;
@@ -111,8 +175,16 @@ const TflOptions& GetTflOptions(const LiteRtOpT& litert_op) {
   return litert_op.tfl_option_;
 }
 
+const TflOptions2& GetTflOptions2(const LiteRtOpT& litert_op) {
+  return litert_op.tfl_option_2_;
+}
+
 TflOptions&& TakeTflOptions(LiteRtOpT& litert_op) {
   return std::move(litert_op.tfl_option_);
+}
+
+TflOptions2&& TakeTflOptions2(LiteRtOpT& litert_op) {
+  return std::move(litert_op.tfl_option_2_);
 }
 
 const std::vector<TflOpCodePtr>& GetTflOpCodes(
@@ -136,4 +208,4 @@ const LiteRtModelT::TflFlatbuffer& GetTflFlatbuffer(
 }
 // new stuff end
 
-}  // namespace detail
+}  // namespace litert::internal

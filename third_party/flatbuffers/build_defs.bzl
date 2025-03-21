@@ -508,7 +508,6 @@ def flatbuffer_java_library(
     java_library(
         name = name,
         srcs = [out_srcjar],
-        javacopts = ["-source 7 -target 7"],
         deps = [
             "@flatbuffers//:runtime_java",
         ],
@@ -639,7 +638,6 @@ def flatbuffer_android_library(
     android_library(
         name = name,
         srcs = [out_srcjar],
-        javacopts = ["-source 7 -target 7"],
         visibility = visibility,
         deps = [
             "@flatbuffers//:runtime_android",

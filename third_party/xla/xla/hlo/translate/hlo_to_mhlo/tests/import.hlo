@@ -1181,6 +1181,17 @@ add {
   ROOT %outfeed.3 = token[] outfeed(s32[3] %Arg_0.1, token[] %Arg_1.2), outfeed_config="foobar", sharding={maximal device=0}
 }
 
+// CHECK-LABEL:  func private @test_outfeed_with_multiple_shardings
+// TODO(b/260756663): Disallow this mhlo.token to have mismatched sharding.
+%test_outfeed_with_multiple_shardings (Arg_0.1: s32[3], Arg_1.2: token[]) -> token[] {
+  %Arg_0.1 = s32[3] parameter(0)
+  %Arg_1.2 = token[] parameter(1)
+  // CHECK-NEXT:  "mhlo.outfeed"
+  // CHECK-SAME:  outfeed_config = "foobar"
+  // CHECK-SAME{LITERAL}:  mhlo.sharding = "{{maximal device=1}, {maximal device=1}}"
+  ROOT %outfeed.3 = token[] outfeed(s32[3] %Arg_0.1, token[] %Arg_1.2), outfeed_config="foobar", sharding={{maximal device=1}, {maximal device=1}}
+}
+
 // CHECK-LABEL:  func private @test_outfeed_with_empty_data
 // CHECK-SAME: ([[TOKEN:%.*]]: !mhlo.token) -> !mhlo.token
 %test_outfeed_with_empty_data (Arg_0.1: token[]) -> token[] {

@@ -14,13 +14,15 @@
 
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/qnn_manager.h"
 
+#include <stdlib.h>
+
 #include <cstdint>
-#include <cstdlib>
 #include <filesystem>  // NOLINT
 #include <optional>
 #include <string>
 #include <vector>
 
+#include "absl/strings/match.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
@@ -40,6 +42,7 @@
 #include "tensorflow/lite/experimental/litert/c/litert_logging.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_macros.h"
+#include "tensorflow/lite/experimental/litert/cc/litert_shared_library.h"
 #include "tensorflow/lite/experimental/litert/core/dynamic_loading.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/common.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/qnn_log.h"
@@ -59,38 +62,31 @@ typedef Qnn_ErrorHandle_t (*QnnInterfaceGetProvidersFn_t)(
 typedef Qnn_ErrorHandle_t (*QnnSystemInterfaceGetProvidersFn_t)(
     const QnnSystemInterface_t***, uint32_t*);
 
-absl::Span<const QnnInterface_t*> LoadProvidersFromLib(void* lib_so) {
+Expected<absl::Span<const QnnInterface_t*>> LoadProvidersFromLib(
+    SharedLibrary& lib) {
   QnnInterfaceGetProvidersFn_t get_providers = nullptr;
-  LITERT_RETURN_IF_ERROR(
-      litert::internal::ResolveLibSymbol<QnnInterfaceGetProvidersFn_t>(
-          lib_so, kLibQnnGetProvidersSymbol, &get_providers),
-      {});
-
+  LITERT_ASSIGN_OR_RETURN(get_providers,
+                          lib.LookupSymbol<QnnInterfaceGetProvidersFn_t>(
+                              kLibQnnGetProvidersSymbol));
   const QnnInterface_t** interface_providers = nullptr;
   uint32_t num_providers = 0;
   if (QNN_SUCCESS != get_providers(&interface_providers, &num_providers)) {
-    LITERT_LOG(LITERT_ERROR, "%s", "Failed to get providers\n");
-    return {};
+    return Error(kLiteRtStatusErrorRuntimeFailure, "Failed to get providers");
   }
-
   return absl::MakeSpan(interface_providers, num_providers);
 }
 
-absl::Span<const QnnSystemInterface_t*> LoadSystemProvidersFromLib(
-    void* lib_so) {
-  QnnSystemInterfaceGetProvidersFn_t get_providers = nullptr;
-  LITERT_RETURN_IF_ERROR(
-      litert::internal::ResolveLibSymbol<QnnSystemInterfaceGetProvidersFn_t>(
-          lib_so, kLibQnnSystemGetProvidersSymbol, &get_providers),
-      {});
-
+Expected<absl::Span<const QnnSystemInterface_t*>> LoadSystemProvidersFromLib(
+    SharedLibrary& lib) {
+  LITERT_ASSIGN_OR_RETURN(QnnSystemInterfaceGetProvidersFn_t get_providers,
+                          lib.LookupSymbol<QnnSystemInterfaceGetProvidersFn_t>(
+                              kLibQnnSystemGetProvidersSymbol));
   const QnnSystemInterface_t** interface_providers = nullptr;
   uint32_t num_providers = 0;
   if (QNN_SUCCESS != get_providers(&interface_providers, &num_providers)) {
-    LITERT_LOG(LITERT_ERROR, "%s", "Failed to get system providers\n");
-    return {};
+    return Error(kLiteRtStatusErrorRuntimeFailure,
+                 "Failed to get system providers");
   }
-
   return absl::MakeSpan(interface_providers, num_providers);
 }
 
@@ -105,13 +101,15 @@ QnnManager::~QnnManager() {
 LiteRtStatus QnnManager::LoadLib(absl::string_view path) {
   LITERT_LOG(LITERT_INFO, "Loading qnn shared library from \"%s\"",
              path.data());
-  LITERT_RETURN_IF_ERROR(litert::internal::OpenLib(path, &lib_so_));
+  LITERT_ASSIGN_OR_RETURN(lib_,
+                          SharedLibrary::Load(path, RtldFlags::Default()));
   LITERT_LOG(LITERT_INFO, "Loaded qnn shared library", "");
   return kLiteRtStatusOk;
 }
 
 LiteRtStatus QnnManager::LoadSystemLib(absl::string_view path) {
-  LITERT_RETURN_IF_ERROR(litert::internal::OpenLib(path, &lib_system_so_));
+  LITERT_ASSIGN_OR_RETURN(lib_system_,
+                          SharedLibrary::Load(path, RtldFlags::Default()));
   return kLiteRtStatusOk;
 }
 
@@ -123,13 +121,13 @@ const QnnApi* QnnManager::Api() const {
 }
 
 LiteRtStatus QnnManager::ResolveApi() {
-  if (lib_so_ == nullptr) {
+  if (!lib_.Loaded()) {
     LITERT_LOG(LITERT_ERROR, "%s",
                "Cannot resolve functions: libQnn*.so has not been loaded.\n");
     return kLiteRtStatusErrorDynamicLoading;
   }
 
-  auto providers = LoadProvidersFromLib(lib_so_);
+  LITERT_ASSIGN_OR_RETURN(auto providers, LoadProvidersFromLib(lib_));
   for (const auto& prov : providers) {
     const bool major =
         prov->apiVersion.coreApiVersion.major == QNN_API_VERSION_MAJOR;
@@ -155,13 +153,14 @@ LiteRtStatus QnnManager::ResolveApi() {
 }
 
 LiteRtStatus QnnManager::ResolveSystemApi() {
-  if (lib_so_ == nullptr) {
+  if (!lib_.Loaded()) {
     LITERT_LOG(LITERT_ERROR, "%s",
                "Cannot resolve functions: libQnn*.so has not been loaded.\n");
     return kLiteRtStatusErrorDynamicLoading;
   }
 
-  auto system_providers = LoadSystemProvidersFromLib(lib_system_so_);
+  LITERT_ASSIGN_OR_RETURN(auto system_providers,
+                          LoadSystemProvidersFromLib(lib_system_));
   for (const auto& system_prov : system_providers) {
     const bool major =
         system_prov->systemApiVersion.major == QNN_SYSTEM_API_VERSION_MAJOR;
@@ -265,42 +264,26 @@ LiteRtStatus QnnManager::ValidateOp(const Qnn_OpConfig_t& op_config) {
 LiteRtStatus QnnManager::Init(absl::Span<const QnnBackend_Config_t*> configs,
                               std::optional<std::string> shared_library_dir,
                               std::optional<QnnHtpDevice_Arch_t> soc_model) {
-  // We must change the variable environment used to load DSP libraries.
-  std::string new_adsp_library_path;
-  if (auto* adsp_library_path = getenv("ADSP_LIBRARY_PATH");
-      adsp_library_path != nullptr) {
-    new_adsp_library_path =
-        absl::StrFormat("%s:%s", shared_library_dir->data(), adsp_library_path);
-  } else {
-    new_adsp_library_path = shared_library_dir->data();
-  }
-  LITERT_LOG(LITERT_INFO, "Setting ADSP_LIBRARY_PATH to %s",
-             new_adsp_library_path.data());
-  setenv("ADSP_LIBRARY_PATH", new_adsp_library_path.data(), /*overwrite=*/1);
+  // If shared_library_dir is provided, add it to the path as it may contain
+  // libs to be loaded.
+  // TOOD: This should probably be done upstream in litert_dispatch.
+  if (shared_library_dir) {
+    LITERT_LOG(LITERT_INFO, "Adding shared library dir to path: %s",
+               shared_library_dir->c_str());
 
-  auto lib_qnn_htp_so_path = kLibQnnHtpSo;
-  // If shared_library_dir is provided, we will try to find the libQnnHtp.so
-  // in the directory.
-  if (shared_library_dir.has_value()) {
-    std::vector<std::string> results;
-    litert::internal::FindLiteRtSharedLibsHelper(
-        shared_library_dir->data(), kLibQnnHtpSo, /*full_match=*/true, results);
-    if (!results.empty()) {
-      lib_qnn_htp_so_path = results[0].c_str();
-      shared_library_dir =
-          std::filesystem::path(lib_qnn_htp_so_path).parent_path();
+    static constexpr char kAdsp[] = "ADSP_LIBRARY_PATH";
+    if (getenv(kAdsp) == nullptr) {
+      setenv(kAdsp, shared_library_dir->data(), /*overwrite=*/1);
     }
+
+    // TODO: Put dynamic loading module in cc or vendor/cc.
+    litert::internal::PutLibOnLdPath(shared_library_dir->data(), kLibQnnHtpSo);
   }
 
-  LITERT_RETURN_IF_ERROR(LoadLib(lib_qnn_htp_so_path));
+  LITERT_RETURN_IF_ERROR(LoadLib(kLibQnnHtpSo));
   LITERT_RETURN_IF_ERROR(ResolveApi());
 
-  auto lib_qnn_system_so_path =
-      shared_library_dir.has_value()
-          ? absl::StrFormat("%s/%s", shared_library_dir->data(),
-                            kLibQnnSystemSo)
-          : kLibQnnSystemSo;
-  LITERT_RETURN_IF_ERROR(LoadSystemLib(lib_qnn_system_so_path));
+  LITERT_RETURN_IF_ERROR(LoadSystemLib(kLibQnnSystemSo));
   LITERT_RETURN_IF_ERROR(ResolveSystemApi());
 
   if (auto status = Api()->logCreate(GetDefaultStdOutLogger(),
@@ -318,6 +301,7 @@ LiteRtStatus QnnManager::Init(absl::Span<const QnnBackend_Config_t*> configs,
   }
 
   if (soc_model.has_value()) {
+    soc_model_ = *soc_model;
     LITERT_LOG(LITERT_INFO,
                "Initializing QNN backend for device architecture %d",
                *soc_model);
@@ -370,7 +354,7 @@ Expected<QnnManager::ContextHandle> QnnManager::CreateContextHandle(
                       "Failed to create QNN context");
   }
   auto deleter = Api()->contextFree;
-  return ContextHandle{context_handle, /*profile_handle=*/nullptr, deleter};
+  return ContextHandle{context_handle, /*profile=*/nullptr, deleter};
 }
 
 Expected<QnnManager::ContextHandle> QnnManager::CreateContextHandle(

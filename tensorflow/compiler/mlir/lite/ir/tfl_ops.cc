@@ -34,6 +34,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/escaping.h"
 #include "Eigen/Core"  // from @eigen_archive
 #include "llvm/ADT/APFloat.h"
@@ -81,7 +82,7 @@ limitations under the License.
 #include "mlir/Transforms/FoldUtils.h"  // from @llvm-project
 #include "mlir/Transforms/InliningUtils.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/utils/arithmetic_count_util.h"
-#include "tensorflow/compiler/mlir/lite/utils/size_utils.h"
+#include "tensorflow/compiler/mlir/lite/utils/shape_and_size_utils.h"
 #include "tensorflow/compiler/mlir/lite/utils/utils.h"
 #include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_traits.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_op_interfaces.h"
@@ -95,15 +96,17 @@ limitations under the License.
 namespace mlir {
 namespace TFL {
 
+// go/keep-sorted start
 INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(CeilOp);
 INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(CosOp);
-INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(LocalResponseNormalizationOp);
 INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(FloorOp);
-INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(RoundOp);
+INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(LocalResponseNormalizationOp);
 INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(NegOp);
+INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(RoundOp);
 INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(SinOp);
 INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(SqrtOp);
 INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(SquareOp);
+// go/keep-sorted end
 
 namespace {
 
@@ -2227,9 +2230,10 @@ namespace {
 // * The input's defining op is another tfl.reshape.
 // TODO(antiagainst): This pattern probably should be moved to the peephole
 // category, after we have the infra for peephole passes.
-struct RemoveAdjacentReshape : public RewritePattern {
+struct RemoveAdjacentReshape : public RewritePattern::SplitMatchAndRewrite {
   explicit RemoveAdjacentReshape(MLIRContext* context)
-      : RewritePattern(ReshapeOp::getOperationName(), 1, context) {}
+      : RewritePattern::SplitMatchAndRewrite(ReshapeOp::getOperationName(), 1,
+                                             context) {}
 
   LogicalResult match(Operation* op) const override {
     auto thisOp = cast<ReshapeOp>(op);
@@ -2429,6 +2433,32 @@ LogicalResult GetReshapeOutputType(Value input, Value shape,
     output_ty_shape[unknown_index] = missing_dim;
   }
 
+  if (quant::UniformQuantizedPerAxisType per_axis_quant =
+          dyn_cast_or_null<quant::UniformQuantizedPerAxisType>(element_ty)) {
+    // Get the updated quantization dimension if the reshape op changes the
+    // quantization dimension.
+
+    int32_t input_quant_dim = per_axis_quant.getQuantizedDimension();
+    auto input_shape = mlir::cast<ShapedType>(input.getType()).getShape();
+    absl::StatusOr<int32_t> new_quant_dim = GetQuantDimensionAfterReshape(
+        input_shape, output_ty_shape, input_quant_dim);
+    if (!new_quant_dim.ok()) return failure();
+    if (*new_quant_dim != input_quant_dim) {
+      // Use the default storage bound
+      quant::UniformQuantizedPerAxisType new_element_type =
+          mlir::quant::UniformQuantizedPerAxisType::getChecked(
+              input.getLoc(), per_axis_quant.getFlags(),
+              per_axis_quant.getStorageType(),
+              per_axis_quant.getExpressedType(), per_axis_quant.getScales(),
+              per_axis_quant.getZeroPoints(), *new_quant_dim,
+              per_axis_quant.getStorageTypeMin(),
+              per_axis_quant.getStorageTypeMax());
+
+      output_ty = RankedTensorType::getChecked(input.getLoc(), output_ty_shape,
+                                               new_element_type);
+      return success();
+    }
+  }
   output_ty = tensorflow::GetTypeFromTFTensorShape(output_ty_shape, element_ty);
 
   return success();
@@ -2933,9 +2963,10 @@ namespace {
 
 /// This pattern matches and remove a tfl.fake_quant if all the users of this op
 /// and itself have "minmax" attribute set.
-struct DropFakeQuant : public RewritePattern {
+struct DropFakeQuant : public RewritePattern::SplitMatchAndRewrite {
   explicit DropFakeQuant(MLIRContext* context)
-      : RewritePattern(FakeQuantOp::getOperationName(), 1, context) {}
+      : RewritePattern::SplitMatchAndRewrite(FakeQuantOp::getOperationName(), 1,
+                                             context) {}
 
   LogicalResult match(Operation* op) const override {
     // We only match the op with valid "minmax" attribute.
@@ -4547,7 +4578,7 @@ void ComputePermutation(ArrayRef<int64_t> perms, ArrayRef<int64_t> output_shape,
 
 void TransposeOp::getCanonicalizationPatterns(RewritePatternSet& results,
                                               MLIRContext* context) {
-  results.add<ConvertTransposeToDecreaseRank>(context);
+  results.add<ConvertTransposeToDecreaseRank, RemoveNoopTranspose>(context);
 }
 
 OpFoldResult TransposeOp::fold(FoldAdaptor adaptor) {

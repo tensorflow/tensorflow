@@ -28,7 +28,6 @@
 #include "tensorflow/lite/experimental/litert/c/litert_tensor_buffer.h"
 #include "tensorflow/lite/experimental/litert/c/litert_tensor_buffer_requirements.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
-#include "tensorflow/lite/experimental/litert/cc/litert_tensor_buffer.h"
 #include "tensorflow/lite/experimental/litert/vendors/c/litert_dispatch.h"
 #include "tensorflow/lite/experimental/litert/vendors/c/litert_dispatch_api.h"
 #include "tensorflow/lite/experimental/litert/vendors/mediatek/dispatch/litert_dispatch_device_context.h"
@@ -172,8 +171,7 @@ LiteRtStatus LiteRtRegisterTensorBuffer(
     LiteRtDispatchDeviceContext device_context,
     LiteRtTensorBuffer tensor_buffer,
     LiteRtTensorBufferHandle* tensor_buffer_handle) {
-  litert::TensorBuffer tensor_buffer_(tensor_buffer, /*owned=*/false);
-  if (auto result = device_context->RegisterTensorBuffer(tensor_buffer_);
+  if (auto result = device_context->RegisterTensorBuffer(tensor_buffer);
       result) {
     *tensor_buffer_handle = *result;
     return kLiteRtStatusOk;
@@ -199,12 +197,13 @@ LiteRtStatus LiteRtUnregisterTensorBuffer(
 
 LiteRtStatus LiteRtInvocationContextCreate(
     LiteRtDispatchDeviceContext device_context,
-    LiteRtDispatchExecutableType exec_type, const void* exec_bytecode_ptr,
-    size_t exec_bytecode_size, const char* function_name, int num_inputs,
-    int num_outputs, LiteRtDispatchInvocationContext* invocation_context) {
+    LiteRtDispatchExecutableType exec_type,
+    const LiteRtMemBuffer* exec_bytecode_buffer, const char* function_name,
+    int num_inputs, int num_outputs,
+    LiteRtDispatchInvocationContext* invocation_context) {
   auto context = LiteRtDispatchInvocationContextT::Create(
-      *TheNeuronAdapter, device_context, exec_type, exec_bytecode_ptr,
-      exec_bytecode_size, function_name, num_inputs, num_outputs);
+      *TheNeuronAdapter, device_context, exec_type, exec_bytecode_buffer,
+      function_name, num_inputs, num_outputs);
   if (!context) {
     LITERT_LOG(LITERT_ERROR, "Failed to create context from context binary: %s",
                context.Error().Message().c_str());

@@ -308,6 +308,14 @@ TEST(CcTensorTest, QuantizationPerChannel) {
   EXPECT_EQ(per_channel_quantization.quantized_dimension, kQuantizedDimension);
 }
 
+TEST(CcTensorTest, ZeroSizeTensorTest) {
+  auto litert_model = testing::LoadTestFileModel("scala_reshape.tflite");
+  auto subgraph = litert_model.MainSubgraph();
+  const auto ops = subgraph->Ops();
+  const auto& op = ops.front();
+  EXPECT_FALSE(op.Inputs().at(1).IsSubgraphInput());
+}
+
 //===----------------------------------------------------------------------===//
 //                               CC Subgraph                                  //
 //===----------------------------------------------------------------------===//

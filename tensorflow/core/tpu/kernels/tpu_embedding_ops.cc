@@ -523,7 +523,7 @@ class SplitDedupDataOp : public XlaOpKernel {
               "enum = ", element_type));
       OP_REQUIRES_VALUE(auto element_shape, ctx, builder->GetShape(element));
       OP_REQUIRES(
-          ctx, element_shape.dimensions_size() == 1,
+          ctx, element_shape.dimensions().size() == 1,
           errors::InvalidArgument("Elements of input tuple should be 1-D."));
 
       if (element_type == DedupTupleElementType::kInteger) {

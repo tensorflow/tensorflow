@@ -16,8 +16,11 @@ limitations under the License.
 #include "tensorflow/lite/delegates/xnnpack/quantized_unary_elementwise_tester.h"
 
 #include <array>
+#include <cstddef>
 #include <cstdint>
+#include <cstdlib>
 #include <functional>
+#include <limits>
 #include <memory>
 #include <numeric>
 #include <random>

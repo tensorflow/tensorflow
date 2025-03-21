@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include <cstddef>
 #include <cstring>
 #include <memory>
 #include <utility>
@@ -27,7 +28,10 @@
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
 #include "tensorflow/lite/experimental/litert/c/litert_dispatch_delegate.h"
+#include "tensorflow/lite/experimental/litert/c/litert_environment.h"
+#include "tensorflow/lite/experimental/litert/c/litert_environment_options.h"
 #include "tensorflow/lite/experimental/litert/c/litert_tensor_buffer.h"
+#include "tensorflow/lite/experimental/litert/cc/litert_compilation_options.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_compiled_model.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_dispatch_delegate.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_environment.h"
@@ -74,12 +78,15 @@ TEST(DispatchDelegate, QualcommCpuBuffer) {
   EXPECT_EQ(interpreter.outputs().size(), 1);
   ASSERT_EQ(interpreter.execution_plan().size(), 1);
 
+  LiteRtEnvironmentOptions env_options;
+  LiteRtGetEnvironmentOptions(env->Get(), &env_options);
+
   auto dispatch_delegate_options =
-      CreateDispatchDelegateOptionsPtr(*env->Get());
+      CreateDispatchDelegateOptionsPtr(env_options);
   LiteRtDispatchDelegateAddAllocBaseOption(dispatch_delegate_options.get(),
                                            rt.Flatbuffer().Buf().Data());
   auto dispatch_delegate = CreateDispatchDelegatePtr(
-      *env->Get(), std::move(dispatch_delegate_options));
+      env_options, std::move(dispatch_delegate_options));
 
 #if !defined(__ANDROID__)
   GTEST_SKIP() << "The rest of this test is specific to Android devices with a "
@@ -148,12 +155,15 @@ TEST(DispatchDelegate, QualcommHwBuffer) {
   EXPECT_EQ(interpreter.outputs().size(), 1);
   ASSERT_EQ(interpreter.execution_plan().size(), 1);
 
+  LiteRtEnvironmentOptions env_options;
+  LiteRtGetEnvironmentOptions(env->Get(), &env_options);
+
   auto dispatch_delegate_options =
-      CreateDispatchDelegateOptionsPtr(*env->Get());
+      CreateDispatchDelegateOptionsPtr(env_options);
   LiteRtDispatchDelegateAddAllocBaseOption(dispatch_delegate_options.get(),
                                            rt.Flatbuffer().Buf().Data());
   auto dispatch_delegate = CreateDispatchDelegatePtr(
-      *env->Get(), std::move(dispatch_delegate_options));
+      env_options, std::move(dispatch_delegate_options));
 
 #if !defined(__ANDROID__)
   GTEST_SKIP() << "The rest of this test is specific to Android devices with a "
@@ -254,9 +264,10 @@ TEST(DispatchDelegate, CompiledModel) {
   GTEST_SKIP() << "The rest of this test is specific to Android devices with a "
                   "Qualcomm HTP";
 #endif
-  auto options = CompiledModel::Options::Create();
-  ASSERT_TRUE(options);
-  ASSERT_TRUE(options->SetHardwareAccelerators(kLiteRtHwAcceleratorCpu));
+  auto jit_compilation_options = CompilationOptions::Create();
+  ASSERT_TRUE(jit_compilation_options);
+  ASSERT_TRUE(jit_compilation_options->SetHardwareAccelerators(
+      kLiteRtHwAcceleratorCpu));
 
   const std::vector<litert::Environment::Option> environment_options = {
       litert::Environment::Option{
@@ -268,7 +279,7 @@ TEST(DispatchDelegate, CompiledModel) {
       litert::Environment::Create(absl::MakeConstSpan(environment_options));
   ASSERT_TRUE(env);
   auto res_compiled_model =
-      CompiledModel::Create(*env, *model, std::move(*options));
+      CompiledModel::Create(*env, *model, *jit_compilation_options);
   ASSERT_TRUE(res_compiled_model) << "Failed to initialize CompiledModel";
   auto& compiled_model = *res_compiled_model;
 
@@ -313,6 +324,82 @@ TEST(DispatchDelegate, CompiledModel) {
                    << kTestOutputTensor[i];
   }
   EXPECT_THAT(output_span, Pointwise(FloatNear(1e-5), kTestOutputTensor));
+}
+
+TEST(DispatchDelegate, QualcommSharedInput) {
+  auto model_with_byte_code = internal::GetModelBufWithByteCode(
+      testing::GetTestFilePath("shared_input_cpu_npu.tflite"),
+      testing::GetTestFilePath(kNpuFile));
+  ASSERT_TRUE(model_with_byte_code);
+  auto model = Model::CreateFromBuffer(*model_with_byte_code);
+  ASSERT_TRUE(model);
+
+#if !defined(__ANDROID__)
+  GTEST_SKIP() << "The rest of this test is specific to Android devices with a "
+                  "Qualcomm HTP";
+#endif
+  auto jit_compilation_options = CompilationOptions::Create();
+  ASSERT_TRUE(jit_compilation_options);
+  ASSERT_TRUE(jit_compilation_options->SetHardwareAccelerators(
+      kLiteRtHwAcceleratorCpu));
+
+  const std::vector<litert::Environment::Option> environment_options = {
+      litert::Environment::Option{
+          litert::Environment::OptionTag::DispatchLibraryDir,
+          kDispatchLibraryDir,
+      },
+  };
+  auto env =
+      litert::Environment::Create(absl::MakeConstSpan(environment_options));
+  ASSERT_TRUE(env);
+  auto res_compiled_model =
+      CompiledModel::Create(*env, *model, *jit_compilation_options);
+  ASSERT_TRUE(res_compiled_model) << "Failed to initialize CompiledModel";
+  auto& compiled_model = *res_compiled_model;
+
+  size_t signature_index = 0;
+  auto signature = *model->GetSignature(signature_index);
+  auto input_buffers = *compiled_model.CreateInputBuffers(signature_index);
+  auto output_buffers = *compiled_model.CreateOutputBuffers(signature_index);
+
+  // Fill model inputs.
+  auto input_names = signature.InputNames();
+  EXPECT_EQ(input_names.size(), 2);
+  EXPECT_EQ(input_names.at(0), "arg0");
+  EXPECT_EQ(input_names.at(1), "arg1");
+  ASSERT_TRUE(input_buffers[0].Write<float>(
+      absl::MakeConstSpan(kTestInput0Tensor, kTestInput0Size)));
+  ASSERT_TRUE(input_buffers[1].Write<float>(
+      absl::MakeConstSpan(kTestInput1Tensor, kTestInput1Size)));
+
+  // Execute model.
+  compiled_model.Run(signature_index, input_buffers, output_buffers);
+
+  // Check model output.
+  auto output_names = signature.OutputNames();
+  EXPECT_EQ(output_names.size(), 2);
+  {
+    EXPECT_EQ(output_names.at(0), "tfl.add");
+    float output_buffer_data[kTestOutputSize];
+    auto output_span = absl::MakeSpan(output_buffer_data, kTestOutputSize);
+    ASSERT_TRUE(output_buffers[0].Read(output_span));
+    for (auto i = 0; i < kTestOutputSize; ++i) {
+      ABSL_LOG(INFO) << "Result: " << output_span.at(i) << "\t"
+                     << kTestOutputTensor[i];
+    }
+    EXPECT_THAT(output_span, Pointwise(FloatNear(1e-5), kTestOutputTensor));
+  }
+  {
+    EXPECT_EQ(output_names.at(1), "tfl.custom");
+    float output_buffer_data[kTestOutputSize];
+    auto output_span = absl::MakeSpan(output_buffer_data, kTestOutputSize);
+    ASSERT_TRUE(output_buffers[1].Read(output_span));
+    for (auto i = 0; i < kTestOutputSize; ++i) {
+      ABSL_LOG(INFO) << "Result: " << output_span.at(i) << "\t"
+                     << kTestOutputTensor[i];
+    }
+    EXPECT_THAT(output_span, Pointwise(FloatNear(1e-5), kTestOutputTensor));
+  }
 }
 
 }  // namespace

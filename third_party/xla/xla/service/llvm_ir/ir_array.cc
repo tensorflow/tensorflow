@@ -92,7 +92,7 @@ void IrArray::Index::Delinearize(std::vector<llvm::Value*>* multidim,
                                  llvm::Value* linear, const Shape& shape,
                                  absl::Span<llvm::Value*> dynamic_dims,
                                  llvm::IRBuilderBase* b) const {
-  CHECK_EQ(shape.dimensions_size(), dynamic_dims.size());
+  CHECK_EQ(shape.rank(), dynamic_dims.size());
   CHECK_EQ(multidim_.size(), shape.rank());
   llvm::Value* divisor = GetConstantWithIndexType(1);
   const Layout& layout = shape.layout();
@@ -186,7 +186,7 @@ IrArray::Index::Index(absl::Span<llvm::Value* const> multidim,
       dims_(shape.dimensions().begin(), shape.dimensions().end()),
       index_type_(index_type) {
   CHECK_NE(index_type_, nullptr);
-  CHECK_EQ(shape.dimensions_size(), multidim.size());
+  CHECK_EQ(shape.rank(), multidim.size());
   for (const auto* dim : multidim) {
     CHECK_NE(dim, nullptr);
   }
@@ -199,7 +199,7 @@ IrArray::IrArray(llvm::Value* base_ptr, llvm::Type* pointee_type, Shape shape)
     : base_ptr_(base_ptr),
       pointee_type_(pointee_type),
       shape_(std::move(shape)) {
-  TF_CHECK_OK(ShapeUtil::ValidateShape(shape));
+  TF_CHECK_OK(ShapeUtil::ValidateShape(shape_));
   CHECK(base_ptr_->getType()->isPointerTy());
   int depth = 0;
   element_type_ = pointee_type;
@@ -212,7 +212,7 @@ IrArray::IrArray(llvm::Value* base_ptr, llvm::Type* pointee_type, Shape shape)
   if (!shape_.IsArray() || ShapeUtil::IsScalar(shape_)) {
     DCHECK(depth == 1 || depth == 0) << depth;
   } else {
-    DCHECK_EQ(depth, shape_.rank()) << shape.ShortDebugString();
+    DCHECK_EQ(depth, shape_.rank()) << shape_.ShortDebugString();
   }
 }
 
@@ -504,8 +504,7 @@ llvm::Value* IrArray::EmitArrayElementAddress(const IrArray::Index& index,
   if (ShapeUtil::IsScalar(shape_)) {
     if (primitive_util::IsSubByteNonPredType(shape_.element_type())) {
       CHECK_NE(bit_offset, nullptr);
-      *bit_offset =
-          b->getInt8(8 - primitive_util::BitWidth(shape_.element_type()));
+      *bit_offset = b->getInt8(0);
     }
     // Special handling of scalars: a scalar pretends to have the same value for
     // every index, thus effectively implementing broadcasting of its value
@@ -598,9 +597,7 @@ llvm::Value* IrArray::EmitLinearArrayElementAddress(
 
   CHECK_NE(bit_offset, nullptr);
   *bit_offset = b->CreateIntCast(
-      b->CreateSub(llvm::ConstantInt::get(index_type, 8 - bit_width),
-                   b->CreateMul(remainder,
-                                llvm::ConstantInt::get(index_type, bit_width))),
+      b->CreateMul(remainder, llvm::ConstantInt::get(index_type, bit_width)),
       b->getInt8Ty(), /*isSigned=*/false);
   return b->CreateInBoundsGEP(b->getInt8Ty(), base_ptr_, byte_offset,
                               llvm_ir::AsStringRef(name));

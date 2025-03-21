@@ -220,26 +220,28 @@ message SplitConfigProto {
 // computation. Layouts specified in interior operations which take Shapes (for
 // example, Convert) are ignored.
 //
-// See the XLA documentation for more information on shapes and layouts.
+// See https://openxla.org/xla/shapes for more information on shapes and
+// layouts.
 //
 // LINT.IfChange
 message LayoutProto {
+  // Sequence of dimension indices, from minor (fastest varying index) to major
+  // (slowest varying index). The size of this field must equal the table's
+  // rank.
+  repeated int64 minor_to_major = 1;
+
   // The dimension level type list for this array, specifying the way in which
   // each array dimension is represented in memory. If this list is empty, the
   // array is assumed to be dense.
   repeated DimLevelType dim_level_types = 9;
 
   // Whether each dimension is unique or ordered.  Each of the following lists
-  // must be empty, or have one entry for each entry of dim_level_types.  If
-  // either list is empty, all dimensions are assumed to be unique and ordered,
-  // respectively.  Entries in this list may not be false for some DimLevelType
-  // values (such as DIM_DENSE in particular).
+  // must either be empty or have one entry for each entry of dim_level_types.
+  // If either list is empty, all dimensions are assumed to be unique or
+  // ordered, respectively.  Entries in this list may not be false for some
+  // DimLevelType values (such as DIM_DENSE in particular).
   repeated bool dim_unique = 13;
   repeated bool dim_ordered = 14;
-
-  // Sequence of dimension numbers, from minor (fastest varying index) to major
-  // (slowest varying index). This field is required.
-  repeated int64 minor_to_major = 1;
 
   // A sequence of tiles, starting from the tile that's applied first to the
   // Shape.
@@ -248,13 +250,15 @@ message LayoutProto {
   // error.
   repeated TileProto tiles = 6;
 
-  // The shape is padded at the end to multiple of, in terms of number of
-  // elements. This is useful when tiling does not bring the shape to certain
-  // desired granules. Tiling effectively pads/reshapes/transposes the shape
-  // to another shape. This field pads the total number of elements of that
-  // new shape to a multiple of certain number of elements. This is useful such
-  // as we want a layout which does not tile the data but still requires it to
-  // be padded to certain number of elements.
+  // The shape is padded at the end to the smallest multiple of, in terms of
+  // number of elements, this value. This is useful when tiling does not bring
+  // the shape to certain desired granules. Tiling effectively
+  // pads/reshapes/transposes the shape to another shape. This field pads the
+  // total number of elements of that new shape to a multiple of certain number
+  // of elements. This is useful such as we want a layout which does not tile
+  // the data but still requires it to be padded to certain number of elements.
+  //
+  // If omitted or set to 0, it's treated as 1.
   int64 tail_padding_alignment_in_elements = 16;
 
   // (Optional) Bit size of each element. When unspecified or being 0, default
@@ -311,41 +315,51 @@ message LayoutProto {
 // Tuples are a special case in that they have rank zero and have tuple_shapes
 // defined.
 //
-// See the XLA documentation for more information on shapes and layouts.
+// See https://openxla.org/xla/shapes for more information on shapes and
+// layouts.
 //
 // LINT.IfChange
 message ShapeProto {
   reserved 1;
   reserved "rank";
 
-  // The element type for this shape.
+  // If this is TUPLE/TOKEN/OPAQUE_TYPE, the shape is a tuple/token/opaque shape
+  // respectively. Otherwise, the shape is an array shape and this is its
+  // element type.
   PrimitiveType element_type = 2;
 
+  // Used only for an array shape.
+  //
   // The size (number of elements) for each dimension, or an upper bound on the
   // size if the dimension is dynamic.  In XLA, dimensions are numbered from 0
   // to N-1 for an N-dimensional array. The first element of 'dimensions' is the
   // size of dimension 0, the second element is the size of dimension 1, and so
   // forth.  Empty list indicates a scalar.
   //
-  // If the respective element in 'is_dimension_dynamic' is true then the value
-  // in this field represents an upper bound on the size of the dimension.
+  // Each element in this list must be >= 0. In particular, 0 is a valid value
+  // for a dimension size.
+  //
+  // If a dimension is dynamic (see `is_dynamic_dimension` below), its value
+  // in this list is an upper bound on the size of the dimension.
   repeated int64 dimensions = 3;
 
-  // For tuples only, the shapes of constituent shapes in the tuple sequence.
+  // Used only for an array shape.
+  //
+  // Indicates whether or not each dimension is dynamically-sized. If this list
+  // is empty, all dimensions are statically-sized. Otherwise, this must have
+  // the same size as 'dimensions' and the value at index i indicates whether
+  // or not the dimension at index i is dynamically-sized.
+  repeated bool is_dynamic_dimension = 6;
+
+  // For tuples only. The constituent shapes in the tuple.
   repeated ShapeProto tuple_shapes = 4;
 
   // The layout used to back this shape.
   LayoutProto layout = 5;
 
-  // For arrays, this indicates whether or not each dimension is
-  // dynamically-sized. The number of elements in this repeated field should be
-  // zero (indicating that no dimensions are dynamic) or equal to the number of
-  // elements in the 'dimensions' field.
-  repeated bool is_dynamic_dimension = 6;
-
   // Important: if any field is added, be sure to modify ShapeUtil::Equal(),
-  // ShapeUtil::Compatible() and ShapeUtil::Hash() appropriately to account for
-  // the new field.
+  // ShapeUtil::Compatible() and Shape::Hash() appropriately to account for the
+  // new field.
 }
 // LINT.ThenChange( \
 //     https://www.tensorflow.org/code/tensorflow/compiler/xla/shape_util.cc)
@@ -1105,8 +1119,9 @@ message PrecisionConfig {
     ALG_DOT_TF32_TF32_F32_X3 = 10;
     ALG_DOT_F32_F32_F32 = 11;
     ALG_DOT_F64_F64_F64 = 12;
+    ALG_DOT_BF16_BF16_F32_X9 = 13;
 
-    // Next: 13
+    // Next: 14
   }
 
   repeated Precision operand_precision = 1;
@@ -1144,12 +1159,30 @@ message ParameterReplication {
 // whereas implementing a `while` loop requires a host-device sync on each
 // iteration.
 message WhileLoopBackendConfig {
+  message KnownInitStep {
+    int64 init = 1;
+    int64 step = 2;
+  }
+
   message KnownTripCount {
     int64 n = 1;
   }
+
+  message KnownInductionVariable {
+    int64 tuple_index = 1;
+  }
+
   // This indirection lets us distinguish between known-trip-count == 0 and
   // unknown-trip-count.
   KnownTripCount known_trip_count = 1;
+
+  // Independently from the known trip count, we may also know the start and
+  // step of the induction variable.
+  KnownInitStep known_init_step = 2;
+
+  // This lets us distinguish between an unknown induction variable (or none)
+  // and tuple index 0.
+  KnownInductionVariable known_induction_variable = 3;
 }
 
 // Specifies a pair of output/operand buffers that alias each other for

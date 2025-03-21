@@ -468,17 +468,22 @@ typedef XLA_FFI_Error* XLA_FFI_Handler_Register(
 // TypeId
 //===----------------------------------------------------------------------===//
 
+#define XLA_FFI_UNKNOWN_TYPE_ID XLA_FFI_TypeId{0}
+
 struct XLA_FFI_TypeId_Register_Args {
   size_t struct_size;
   XLA_FFI_Extension_Base* extension_start;
 
   XLA_FFI_ByteSpan name;
-  XLA_FFI_TypeId* type_id;  // out
+  XLA_FFI_TypeId* type_id;  // in-out
 };
 
 XLA_FFI_DEFINE_STRUCT_TRAITS(XLA_FFI_TypeId_Register_Args, type_id);
 
-// Registers user type `name` and returns a unique `type_id`.
+// Registers user type `name` with XLA. If type id is `XLA_FFI_UNKNOWN_TYPE_ID`,
+// XLA will assign a unique type id and return it in `type_id` out argument,
+// otherwise XLA will verify that type id is unique and matches the type id of
+// the type registered with the same `name` earlier.
 typedef XLA_FFI_Error* XLA_FFI_TypeId_Register(
     XLA_FFI_TypeId_Register_Args* args);
 

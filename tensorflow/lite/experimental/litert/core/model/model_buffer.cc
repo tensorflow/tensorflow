@@ -14,6 +14,7 @@
 
 #include "tensorflow/lite/experimental/litert/core/model/model_buffer.h"
 
+#include <cstddef>
 #include <cstdint>
 #include <string>
 #include <utility>
@@ -36,7 +37,8 @@ namespace internal {
 Expected<OwningBufferRef<uint8_t>> GetModelBufWithByteCode(
     LiteRtModelT&& model,
     const absl::flat_hash_map<std::string, OwningBufferRef<uint8_t>>&
-        custom_code_to_npu_bytecode) {
+        custom_code_to_npu_bytecode,
+    size_t bytecode_alignment) {
   for (const auto& subgraph : model.Subgraphs()) {
     for (auto op : subgraph->Ops()) {
       if (op->OpCode() == kLiteRtOpCodeTflCustom) {
@@ -61,13 +63,14 @@ Expected<OwningBufferRef<uint8_t>> GetModelBufWithByteCode(
     }
   }
 
-  return SerializeModel(std::move(model));
+  return SerializeModel(std::move(model), bytecode_alignment);
 }
 
 Expected<OwningBufferRef<uint8_t>> GetModelBufWithByteCode(
     absl::string_view tfl_file,
     const absl::flat_hash_map<std::string, std::string>&
-        custom_code_to_npu_file) {
+        custom_code_to_npu_file,
+    size_t bytecode_alignment) {
   auto model = LoadModelFromFile(tfl_file);
   if (!model) {
     return model.Error();
@@ -83,12 +86,13 @@ Expected<OwningBufferRef<uint8_t>> GetModelBufWithByteCode(
     custom_code_to_npu_bytecode[iter.first] = std::move(*npu_file_buf);
   }
 
-  return GetModelBufWithByteCode(std::move(**model),
-                                 custom_code_to_npu_bytecode);
+  return GetModelBufWithByteCode(
+      std::move(**model), custom_code_to_npu_bytecode, bytecode_alignment);
 }
 
 Expected<OwningBufferRef<uint8_t>> GetModelBufWithByteCode(
-    LiteRtModelT&& model, BufferRef<uint8_t> npu_byte_code) {
+    LiteRtModelT&& model, BufferRef<uint8_t> npu_byte_code,
+    size_t bytecode_alignment) {
   absl::flat_hash_map<std::string, OwningBufferRef<uint8_t>>
       custom_code_to_npu_bytecode;
   for (const auto& subgraph : model.Subgraphs()) {
@@ -105,11 +109,13 @@ Expected<OwningBufferRef<uint8_t>> GetModelBufWithByteCode(
     }
   }
 
-  return GetModelBufWithByteCode(std::move(model), custom_code_to_npu_bytecode);
+  return GetModelBufWithByteCode(std::move(model), custom_code_to_npu_bytecode,
+                                 bytecode_alignment);
 }
 
 Expected<OwningBufferRef<uint8_t>> GetModelBufWithByteCode(
-    absl::string_view tfl_file, absl::string_view npu_file) {
+    absl::string_view tfl_file, absl::string_view npu_file,
+    size_t bytecode_alignment) {
   auto model = LoadModelFromFile(tfl_file);
   if (!model) {
     return model.Error();
@@ -120,7 +126,8 @@ Expected<OwningBufferRef<uint8_t>> GetModelBufWithByteCode(
     return npu_file_buf.Error();
   }
 
-  return GetModelBufWithByteCode(std::move(**model), std::move(*npu_file_buf));
+  return GetModelBufWithByteCode(std::move(**model), std::move(*npu_file_buf),
+                                 bytecode_alignment);
 }
 
 }  // namespace internal

@@ -15,12 +15,25 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/function_body.h"
 
+#include <algorithm>
+#include <iterator>
+#include <unordered_set>
 #include <utility>
+#include <vector>
 
+#include "absl/log/check.h"
+#include "absl/status/status.h"
+#include "absl/strings/string_view.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/status.h"
+#include "tensorflow/core/common_runtime/arg_ret_placement.h"
+#include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/graph/graph.h"
+#include "tensorflow/core/lib/gtl/inlined_vector.h"
+#include "tensorflow/core/platform/hash.h"
 #include "tensorflow/core/platform/refcount.h"
 
 namespace tensorflow {
@@ -66,5 +79,40 @@ FunctionBody::FunctionBody(core::RefCountPtr<FunctionRecord>&& record,
 }
 
 FunctionBody::~FunctionBody() { delete this->graph; }
+
+absl::Status FunctionBody::Finalize() {
+  // Get the allocator attributes for the function body args and rets first to
+  // avoid mutating the struct in case of an error.
+  std::vector<AllocatorAttributes> args_alloc_attrs;
+  std::vector<AllocatorAttributes> rets_alloc_attrs;
+  TF_RETURN_IF_ERROR(full_type::SetAllocAttrsForArgs(
+      this->arg_nodes, this->arg_types, args_alloc_attrs));
+  TF_RETURN_IF_ERROR(full_type::SetAllocAttrsForRets(
+      this->ret_nodes, this->ret_types, rets_alloc_attrs));
+  // Move them to the struct.
+  this->args_alloc_attrs.clear();
+  this->rets_alloc_attrs.clear();
+  std::move(args_alloc_attrs.begin(), args_alloc_attrs.end(),
+            std::back_inserter(this->args_alloc_attrs));
+  std::move(rets_alloc_attrs.begin(), rets_alloc_attrs.end(),
+            std::back_inserter(this->rets_alloc_attrs));
+
+  // Unreference the function record.
+  this->record.reset();
+
+  // Destruct the owned graph.
+  if (this->graph != nullptr) {
+    delete this->graph;
+    this->graph = nullptr;
+  }
+
+  // Clear the vectors holding the pointers to the nodes in the destructed
+  // graph.
+  this->arg_nodes.clear();
+  this->ret_nodes.clear();
+  this->control_ret_nodes.clear();
+
+  return absl::OkStatus();
+}
 
 }  // end namespace tensorflow

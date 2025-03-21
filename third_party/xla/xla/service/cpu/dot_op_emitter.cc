@@ -165,7 +165,8 @@ bool CanEmitTiledLlvmIrGemm(
 // Returns dot implementation strategy for non-batch dot operations.
 DotImplementationStrategy GetNonBatchDotImplementationStrategy(
     const HloModuleConfig& config, const DotInfo& dot_info,
-    const TargetMachineFeatures& target_machine_features) {
+    const TargetMachineFeatures& target_machine_features,
+    bool allow_runtime_calls) {
   PrimitiveType element_type = dot_info.result_shape.element_type();
 
   // Batched dot either handled by a runtime call or expanded into a sequence
@@ -177,8 +178,8 @@ DotImplementationStrategy GetNonBatchDotImplementationStrategy(
   // Any Matrix-Vector product of floating point or integral type, or
   // a transpose-dot fusion of the same can be lowered to a tiled LLVM
   // IR implementation.
-  if ((dot_info.result_shape.dimensions_size() <= 1 ||
-       (dot_info.result_shape.dimensions_size() == 2 &&
+  if ((dot_info.result_shape.rank() <= 1 ||
+       (dot_info.result_shape.rank() == 2 &&
         (dot_info.result_shape.dimensions(0) == 1 ||
          dot_info.result_shape.dimensions(1) == 1))) &&
       (primitive_util::IsFloatingPointType(element_type) ||
@@ -187,12 +188,12 @@ DotImplementationStrategy GetNonBatchDotImplementationStrategy(
   }
 
   // MatMul smaller than 3x3 should use naive nested loop.
-  if ((dot_info.lhs_shape.dimensions_size() <= 1 ||
-       (dot_info.lhs_shape.dimensions_size() == 2 &&
+  if ((dot_info.lhs_shape.rank() <= 1 ||
+       (dot_info.lhs_shape.rank() == 2 &&
         (dot_info.lhs_shape.dimensions(0) <= 3 ||
          dot_info.lhs_shape.dimensions(1) <= 3))) &&
-      (dot_info.rhs_shape.dimensions_size() <= 1 ||
-       (dot_info.rhs_shape.dimensions_size() == 2 &&
+      (dot_info.rhs_shape.rank() <= 1 ||
+       (dot_info.rhs_shape.rank() == 2 &&
         (dot_info.rhs_shape.dimensions(0) <= 3 ||
          dot_info.rhs_shape.dimensions(1) <= 3))) &&
       (primitive_util::IsFloatingPointType(element_type) ||
@@ -203,8 +204,9 @@ DotImplementationStrategy GetNonBatchDotImplementationStrategy(
   if (IsAlignedGemm(dot_info, target_machine_features)) {
     if (CanEmitTiledLlvmIrGemm(config, dot_info, target_machine_features)) {
       return DotImplementationStrategy::kTiledLlvmIrGemm;
+    } else if (allow_runtime_calls) {
+      return DotImplementationStrategy::kEigen;
     }
-    return DotImplementationStrategy::kEigen;
   }
 
   return DotImplementationStrategy::kNaiveLlvmIr;
@@ -528,7 +530,8 @@ absl::Status DotOpEmitter::Emit() {
   }
 
   switch (GetNonBatchDotImplementationStrategy(hlo_module_config_, dot_info_,
-                                               target_machine_features_)) {
+                                               target_machine_features_,
+                                               allow_runtime_calls_)) {
     case DotImplementationStrategy::kNaiveLlvmIr:
       EmitNaiveLlvmIrGemm();
       return absl::OkStatus();
@@ -959,7 +962,7 @@ absl::Status DotOpEmitter::EmitCallToBatchRuntime() {
 }
 
 DotOpEmitter::MatMultDims DotOpEmitter::GetMatMultDims() const {
-  CHECK_LE(dot_info_.result_shape.dimensions_size(), 2);
+  CHECK_LE(dot_info_.result_shape.rank(), 2);
 
   const Shape& lhs_shape = lhs_array_.GetShape();
   const Shape& rhs_shape = rhs_array_.GetShape();
@@ -989,7 +992,7 @@ DotOpEmitter::MatMultDims DotOpEmitter::GetMatMultDims() const {
 }
 
 DotOpEmitter::MatMultDims DotOpEmitter::GetBatchMatMultDims() const {
-  CHECK_LE(dot_info_.result_shape.dimensions_size(), 2);
+  CHECK_LE(dot_info_.result_shape.rank(), 2);
 
   const Shape& lhs_shape = lhs_array_.GetShape();
   const Shape& rhs_shape = rhs_array_.GetShape();
@@ -1022,7 +1025,7 @@ DotOpEmitter::MatMultDims DotOpEmitter::GetBatchMatMultDims() const {
 // column major.
 std::optional<int64_t> ProfitableToMakeDotOperandColumnMajor(
     const HloInstruction& hlo) {
-  if (hlo.opcode() == HloOpcode::kDot && hlo.shape().dimensions_size() <= 1) {
+  if (hlo.opcode() == HloOpcode::kDot && hlo.shape().rank() <= 1) {
     if (hlo.operand(0)->shape().rank() != 1 ||
         hlo.dot_dimension_numbers().rhs_contracting_dimensions(0) != 0) {
       return {};
@@ -1113,7 +1116,7 @@ llvm_ir::IrArray CollapseFirstNDims(llvm::IRBuilderBase* b,
   const Shape& shape = array.GetShape();
   CHECK(shape.has_layout() &&
         LayoutUtil::IsMonotonicWithDim0Major(shape.layout()));
-  CHECK_GE(shape.dimensions_size(), n);
+  CHECK_GE(shape.rank(), n);
   Shape new_shape = CollapseFirstNDims(shape, n);
   llvm::Type* new_ir_type = llvm_ir::ShapeToIrType(new_shape, b->getContext());
   return llvm_ir::IrArray(array.GetBasePointer(), new_ir_type,
@@ -1156,7 +1159,8 @@ bool PotentiallyImplementedAsEigenMatmul(
     const llvm_ir::IrArray& lhs_array, const llvm_ir::IrArray& rhs_array,
     llvm::Value* executable_run_options_value, llvm::IRBuilderBase* b,
     const HloModuleConfig& hlo_module_config,
-    const TargetMachineFeatures& target_machine_features, DotInfo& dot_info) {
+    const TargetMachineFeatures& target_machine_features, DotInfo& dot_info,
+    bool allow_runtime_calls) {
   int64_t num_batch_dims =
       dot.dot_dimension_numbers().lhs_batch_dimensions_size();
 
@@ -1203,7 +1207,8 @@ bool PotentiallyImplementedAsEigenMatmul(
 
   DotImplementationStrategy impl_strategy =
       GetNonBatchDotImplementationStrategy(dot.GetModule()->config(), dot_info,
-                                           target_machine_features);
+                                           target_machine_features,
+                                           allow_runtime_calls);
 
   return impl_strategy == DotImplementationStrategy::kEigen;
 }
@@ -1223,7 +1228,8 @@ absl::Status EmitBatchDotOperation(
   if (ShouldUseMultiThreadedEigen(hlo_module_config) &&
       PotentiallyImplementedAsEigenMatmul(
           dot, target_array, lhs_array, rhs_array, executable_run_options_value,
-          b, hlo_module_config, target_machine_features, dot_info)) {
+          b, hlo_module_config, target_machine_features, dot_info,
+          allow_runtime_calls)) {
     DotOpEmitter dot_emitter(dot_info, std::string(dot.name()), target_array,
                              lhs_array, rhs_array, nullptr /*addend_array*/,
                              executable_run_options_value, b, hlo_module_config,
@@ -1336,23 +1342,25 @@ DotInfo InnerDotInfo(const DotInfo& batch_dot) {
 
 DotImplementationStrategy GetDotImplementationStrategy(
     const HloModuleConfig& config, const HloInstruction& instr,
-    const TargetMachineFeatures& target_machine_features) {
+    const TargetMachineFeatures& target_machine_features,
+    bool allow_runtime_calls) {
   DotInfo dot_info(instr);
   return GetNonBatchDotImplementationStrategy(
       config, IsBatchDot(dot_info) ? InnerDotInfo(dot_info) : dot_info,
-      target_machine_features);
+      target_machine_features, allow_runtime_calls);
 }
 
 bool DotImplementationCanHandleTranspose(
     const HloInstruction& dot_instr,
-    const TargetMachineFeatures& target_machine_features) {
+    const TargetMachineFeatures& target_machine_features,
+    bool allow_runtime_calls) {
   DotInfo dot_info(dot_instr);
 
   DotImplementationStrategy impl_strategy =
       GetNonBatchDotImplementationStrategy(
           dot_instr.GetModule()->config(),
           IsBatchDot(dot_info) ? InnerDotInfo(dot_info) : dot_info,
-          target_machine_features);
+          target_machine_features, allow_runtime_calls);
 
   return impl_strategy == DotImplementationStrategy::kNaiveLlvmIr ||
          impl_strategy == DotImplementationStrategy::kTiledLlvmIrGemv ||
@@ -1361,7 +1369,8 @@ bool DotImplementationCanHandleTranspose(
 
 bool DotOperandsAndResultMustHaveRowMajorLayout(
     const HloInstruction& dot_instr,
-    const TargetMachineFeatures& target_machine_features) {
+    const TargetMachineFeatures& target_machine_features,
+    bool allow_runtime_calls) {
   // Batched dots require the batch dimensions to be major. DotDecomposer always
   // moves batch dimensions to the front of the shape, so force a row-major
   // layout.
@@ -1370,9 +1379,9 @@ bool DotOperandsAndResultMustHaveRowMajorLayout(
   }
 
   DotImplementationStrategy impl_strategy =
-      GetNonBatchDotImplementationStrategy(dot_instr.GetModule()->config(),
-                                           DotInfo(dot_instr),
-                                           target_machine_features);
+      GetNonBatchDotImplementationStrategy(
+          dot_instr.GetModule()->config(), DotInfo(dot_instr),
+          target_machine_features, allow_runtime_calls);
 
   return impl_strategy == DotImplementationStrategy::kTiledLlvmIrGemm ||
          impl_strategy == DotImplementationStrategy::kEigen;

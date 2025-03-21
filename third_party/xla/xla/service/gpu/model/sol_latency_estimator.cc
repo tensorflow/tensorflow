@@ -92,6 +92,8 @@ int GetNumGpus(const HloInstruction& instr) {
   SolGPUCostModel sol_model(sol_flags);
   const int64_t msg_size = analysis.BytesTransferred(instr);
 
+  // TODO(b/385111575): We should call just `.exec_time` but we need to better
+  // (more granularly) model bytes accessed (input + output) for collectives.
   absl::Duration result = absl::Seconds(1.0f * analysis.bytes_accessed(instr) /
                                         gpu_device_info.memory_bandwidth());
   switch (instr.opcode()) {
@@ -103,18 +105,28 @@ int GetNumGpus(const HloInstruction& instr) {
     }
     case HloOpcode::kAllReduce:
     case HloOpcode::kAllReduceStart: {
+      result += GpuPerformanceModel::EstimateRunTimeForInstruction(
+                    &instr, gpu_device_info, &analysis, /*config=*/{})
+                    .compute_time;
       result += sol_model.RingLatency(
           msg_size, num_nodes, SolGPUCostModel::CollectiveType::kAllReduce);
       break;
     }
     case HloOpcode::kReduceScatter: {
+      result += GpuPerformanceModel::EstimateRunTimeForInstruction(
+                    &instr, gpu_device_info, &analysis, {})
+                    .compute_time;
       result += sol_model.RingLatency(
           msg_size, num_nodes, SolGPUCostModel::CollectiveType::kReduceScatter);
       break;
     }
     case HloOpcode::kAsyncStart: {
       if (instr.async_wrapped_opcode() == HloOpcode::kReduceScatter) {
-        result = sol_model.RingLatency(
+        result += GpuPerformanceModel::EstimateRunTimeForInstruction(
+                      instr.async_wrapped_instruction(), gpu_device_info,
+                      &analysis, {})
+                      .compute_time;
+        result += sol_model.RingLatency(
             msg_size, num_nodes,
             SolGPUCostModel::CollectiveType::kReduceScatter);
       }

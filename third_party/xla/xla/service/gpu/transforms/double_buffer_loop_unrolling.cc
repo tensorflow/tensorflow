@@ -430,8 +430,8 @@ absl::Status PeelInstructionsForOddTripCount(HloModule* module,
       HloInstruction* new_instr = old_to_new_map[old_instr];
       VLOG(2) << "Processing control predecessors for peeled instruction "
               << new_instr->ToString();
-      std::vector<HloInstruction*> new_control_pred(
-          old_instr->control_predecessors().size());
+      std::vector<HloInstruction*> new_control_pred;
+      new_control_pred.reserve(old_instr->control_predecessors().size());
       for (HloInstruction* pred : old_instr->control_predecessors()) {
         new_control_pred.push_back(old_to_new_map[pred]);
       }

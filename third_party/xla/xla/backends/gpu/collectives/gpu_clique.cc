@@ -38,8 +38,12 @@ namespace xla::gpu {
 
 GpuClique::GpuClique(
     GpuCliqueKey key, std::optional<CliqueIds> ids,
-    absl::btree_map<RankId, std::unique_ptr<Communicator>> communicators)
-    : Clique(std::move(communicators)), key_(key), ids_(ids) {}
+    absl::btree_map<RankId, std::unique_ptr<Communicator>> communicators,
+    bool peer_access_enabled)
+    : Clique(std::move(communicators)),
+      key_(key),
+      ids_(ids),
+      peer_access_enabled_(peer_access_enabled) {}
 
 std::string GpuClique::DebugString() const {
   std::string out = absl::StrFormat(
@@ -71,8 +75,10 @@ std::string GpuClique::LockableName::ToString(const GpuClique& clique) {
 
 LockableGpuClique::LockableGpuClique(
     GpuCliqueKey clique_key, std::optional<CliqueIds> clique_ids,
-    absl::btree_map<RankId, std::unique_ptr<Communicator>> communicators)
-    : Lockable(std::move(clique_key), clique_ids, std::move(communicators)) {}
+    absl::btree_map<RankId, std::unique_ptr<Communicator>> communicators,
+    bool peer_access_enabled)
+    : Lockable(std::move(clique_key), clique_ids, std::move(communicators),
+               peer_access_enabled) {}
 
 absl::Status LockableGpuClique::HealthCheck() const {
   return value().HealthCheck();

@@ -34,6 +34,8 @@ LogicalResult FillCompositeParams(stablehlo::CompositeOp op,
                                   int& num_bits, bool& is_signed,
                                   bool& is_narrow_range);
 
+bool IsDrqFakeQuant(stablehlo::CompositeOp op);
+
 LogicalResult GetStorageParams(unsigned num_bits, bool narrow_range,
                                bool is_signed, MLIRContext* ctx,
                                Type& storage_type, int64_t& qmin,

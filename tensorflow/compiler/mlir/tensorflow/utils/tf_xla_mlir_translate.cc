@@ -114,7 +114,9 @@ mlir::LogicalResult PrintHloModuleText(
 
   xla::HloModule* hlo_module = status_or_hlo_module.value().get();
 
-  output << hlo_module->ToString();
+  output << hlo_module->ToString(xla::HloPrintOptions()
+                                     .set_print_large_constants(false)
+                                     .set_print_operand_shape(true));
 
   if (!compilation_result.input_mapping.empty())
     output << "// InputMapping {"

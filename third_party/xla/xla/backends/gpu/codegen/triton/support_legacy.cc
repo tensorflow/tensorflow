@@ -244,6 +244,7 @@ bool IsDotAlgorithmSupportedByTriton(
     case PrecisionConfig::ALG_DOT_BF16_BF16_F32:
     case PrecisionConfig::ALG_DOT_BF16_BF16_F32_X3:
     case PrecisionConfig::ALG_DOT_BF16_BF16_F32_X6:
+    case PrecisionConfig::ALG_DOT_BF16_BF16_F32_X9:
       if (cuda_compute_capability) {
         return true;
       }
@@ -365,7 +366,7 @@ CodegenDecision IsTritonSupportedDynamicSlice(
   int64_t majormost_dim_id =
       in_layout.minor_to_major(in_layout.minor_to_major_size() - 1);
 
-  for (int i = 0; i < input->shape().dimensions_size(); ++i) {
+  for (int i = 0; i < input->shape().rank(); ++i) {
     if (i == majormost_dim_id) {
       continue;
     } else if (input->shape().dimensions(i) != instr.slice_sizes(i)) {

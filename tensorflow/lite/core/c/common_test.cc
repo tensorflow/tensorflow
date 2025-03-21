@@ -378,6 +378,40 @@ TEST(TestTensorRealloc, TensorReallocLargeBytesFails) {
   free(tensor);
 }
 
+TEST(TestTfLiteTensorGetDimsSignature, NullDimsSignatureReturnsDims) {
+  TfLiteTensor t{
+      .dims = ConvertVectorToTfLiteIntArray({1, 2, 3}),
+      .dims_signature = nullptr,
+  };
+
+  EXPECT_THAT(TfLiteTensorGetDimsSignature(&t), TfLiteArrayIs({1, 2, 3}));
+
+  TfLiteTensorFree(&t);
+}
+
+TEST(TestTfLiteTensorGetDimsSignature, EmptyDimsSignatureReturnsDims) {
+  TfLiteTensor t{
+      .dims = ConvertVectorToTfLiteIntArray({1, 2, 3}),
+      .dims_signature = ConvertVectorToTfLiteIntArray({}),
+  };
+
+  EXPECT_THAT(TfLiteTensorGetDimsSignature(&t), TfLiteArrayIs({1, 2, 3}));
+
+  TfLiteTensorFree(&t);
+}
+
+TEST(TestTfLiteTensorGetDimsSignature,
+     NonEmptyDimsSignatureReturnsDimsSignature) {
+  TfLiteTensor t{
+      .dims = ConvertVectorToTfLiteIntArray({1, 2, 3}),
+      .dims_signature = ConvertVectorToTfLiteIntArray({4, -1, 5}),
+  };
+
+  EXPECT_THAT(TfLiteTensorGetDimsSignature(&t), TfLiteArrayIs({4, -1, 5}));
+
+  TfLiteTensorFree(&t);
+}
+
 TEST(TestTfLiteTensorGetAllocationStrategy, MemNoneIsAllocatedWithNone) {
   TfLiteTensor t;
   t.allocation_type = kTfLiteMemNone;

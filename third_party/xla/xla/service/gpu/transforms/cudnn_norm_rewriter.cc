@@ -159,10 +159,10 @@ class UniqueHloInstruction {
 // bound for the size of the scratch space for layer norm kernels.
 absl::StatusOr<int64_t> CConstant(
     se::CudaComputeCapability cuda_compute_capability) {
-  if (cuda_compute_capability.major == se::CudaComputeCapability::AMPERE) {
+  if (cuda_compute_capability.major == se::CudaComputeCapability::kAmpere) {
     return 32 * 128;
   } else if (cuda_compute_capability.major ==
-             se::CudaComputeCapability::HOPPER) {
+             se::CudaComputeCapability::kHopper) {
     return 32 * 144;
   }
   return xla::Internal("Norm kernels require Ampere or Hopper architecture.");
@@ -826,7 +826,7 @@ auto F1(UniqueHloInstruction* x, UniqueHloInstruction* x_center,
                                        .GetAsDouble({})
                                        .value();
     int64_t nelems = 1;
-    for (int i = 0; i < instr->shape().dimensions_size(); ++i) {
+    for (int i = 0; i < instr->shape().rank(); ++i) {
       if (!absl::c_linear_search(instr->dimensions(), i)) {
         nelems *= instr->shape().dimensions()[i];
       }
@@ -919,8 +919,10 @@ class CudnnNormRewriterVisitor : public DfsHloRewriteVisitor {
       }
 
       // Layer norm kernels require Ampere or Hopper architectures.
-      if (cuda_compute_capability_.major != se::CudaComputeCapability::AMPERE &&
-          cuda_compute_capability_.major != se::CudaComputeCapability::HOPPER) {
+      if (cuda_compute_capability_.major !=
+              se::CudaComputeCapability::kAmpere &&
+          cuda_compute_capability_.major !=
+              se::CudaComputeCapability::kHopper) {
         VLOG(1) << "Layer norm Custom Calls require Ampere or Hopper "
                    "architectures.";
         return absl::OkStatus();
@@ -990,8 +992,7 @@ class CudnnNormRewriterVisitor : public DfsHloRewriteVisitor {
                                      reduce->dimensions().end());
       std::vector<int64_t> norm_dims_adjusted = AdjustedDimensions(reduce);
       if (norm_dims_adjusted.size() !=
-          ShapeUtil::DropDegenerateDimensions(scale->shape())
-              .dimensions_size()) {
+          ShapeUtil::DropDegenerateDimensions(scale->shape()).rank()) {
         VLOG(1) << "Layer norm input dimensions not supported.";
         return absl::OkStatus();
       }
@@ -1346,7 +1347,7 @@ class CudnnNormRewriterVisitor : public DfsHloRewriteVisitor {
       // broadcasted dimensions.
       float actual_r_nelems = scalar->literal().GetAsDouble({}).value();
       int64_t nelems = 1;
-      for (int i = 0; i < broadcast->shape().dimensions_size(); ++i) {
+      for (int i = 0; i < broadcast->shape().rank(); ++i) {
         if (!absl::c_linear_search(broadcast->dimensions(), i)) {
           nelems *= broadcast->shape().dimensions()[i];
         }

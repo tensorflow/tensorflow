@@ -15,8 +15,10 @@ limitations under the License.
 
 #include "xla/tsl/lib/core/bitmap.h"
 
+#include <cstddef>
+
+#include "xla/tsl/lib/random/philox_random.h"
 #include "xla/tsl/lib/random/simple_philox.h"
-#include "xla/tsl/platform/macros.h"
 #include "xla/tsl/platform/test.h"
 
 namespace tsl {
@@ -43,6 +45,71 @@ TEST(BitmapTest, Basic) {
       EXPECT_TRUE(bits.get(i)) << n << " " << i << " " << bits.ToString();
       bits.clear(i);
       EXPECT_FALSE(bits.get(i)) << n << " " << i << " " << bits.ToString();
+    }
+  }
+}
+
+TEST(BitmapTest, Copy) {
+  for (size_t n = 0; n < 200; n = NextSize(n)) {
+    for (size_t i = 0; i < n; i++) {
+      Bitmap bits(n);
+      bits.set(i);
+      Bitmap bits_copy(bits);
+      EXPECT_EQ(bits.ToString(), bits_copy.ToString());
+    }
+  }
+}
+
+TEST(BitmapTest, Assign) {
+  for (size_t n = 0; n < 200; n = NextSize(n)) {
+    for (size_t i = 0; i < n; i++) {
+      Bitmap bits(n);
+      bits.set(i);
+      Bitmap bits_copy = bits;
+      EXPECT_EQ(bits.ToString(), bits_copy.ToString());
+    }
+  }
+}
+
+TEST(BitmapTest, CountOnesBasic) {
+  for (size_t n = 0; n < 200; n = NextSize(n)) {
+    Bitmap bits(n);
+    EXPECT_EQ(bits.CountOnes(), 0) << " " << bits.ToString();
+    for (size_t i = 0; i < n; i++) {
+      bits.set(i);
+      EXPECT_EQ(bits.CountOnes(), i + 1) << " " << bits.ToString();
+    }
+  }
+}
+
+TEST(BitmapTest, CountOnesRandom) {
+  random::PhiloxRandom philox(301, 17);
+  random::SimplePhilox rnd(&philox);
+  for (int iter = 0; iter < 10000; iter++) {
+    Bitmap bitmap;
+    MakeRandomBitmap(&rnd, &bitmap);
+
+    size_t count = bitmap.CountOnes();
+
+    size_t brute_force_count = 0;
+    for (size_t i = 0; i < bitmap.bits(); i++) {
+      if (bitmap.get(i)) brute_force_count++;
+    }
+
+    EXPECT_EQ(count, brute_force_count) << " " << bitmap.ToString();
+  }
+}
+
+TEST(BitmapTest, IsAllSet) {
+  for (size_t n = 0; n < 200; n = NextSize(n)) {
+    Bitmap bits(n);
+    for (size_t i = 0; i < n; i++) {
+      bits.set(i);
+      if (i == n - 1) {
+        EXPECT_TRUE(bits.IsAllSet()) << n << " " << bits.ToString();
+      } else {
+        EXPECT_FALSE(bits.IsAllSet()) << n << " " << bits.ToString();
+      }
     }
   }
 }

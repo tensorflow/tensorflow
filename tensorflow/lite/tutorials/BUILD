@@ -12,6 +12,7 @@ py_strict_binary(
     deps = [
         ":dataset",
         "//tensorflow:tensorflow_py",
+        "//tensorflow/lite/python:lite",
         "//third_party/py/numpy",
     ],
 )

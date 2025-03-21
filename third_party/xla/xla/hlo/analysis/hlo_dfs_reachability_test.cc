@@ -19,6 +19,7 @@ limitations under the License.
 #include <memory>
 #include <string>
 
+#include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -29,8 +30,10 @@ limitations under the License.
 #include "xla/service/hlo_module_config.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "tsl/platform/status.h"
-#include "tsl/platform/test_benchmark.h"
+#include "xla/tsl/platform/status.h"
+#include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/platform/test_benchmark.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 
@@ -114,6 +117,33 @@ TEST_F(HloDfsReachabilityTest, NonTrivialReachability) {
   EXPECT_TRUE(reachability->IsConnected(copy, constant1));
   EXPECT_FALSE(reachability->IsConnected(negate, add));
   EXPECT_FALSE(reachability->IsConnected(add, negate));
+}
+
+TEST_F(HloDfsReachabilityTest, ReplaceInstructionAfterFusion) {
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+  HloModule m
+
+  ENTRY main {
+    param = f32[10]{0} parameter(0)
+    abs = f32[10]{0} abs(param)
+    ROOT negate = f32[10]{0} negate(abs)
+  })"));
+  auto computation = module->entry_computation();
+  auto reachability = HloDfsReachability::Build(computation);
+  auto neg = computation->root_instruction();
+  auto abs = neg->mutable_operand(0);
+  auto p0 = abs->operand(0);
+  EXPECT_TRUE(reachability->IsPresent(neg));
+  EXPECT_TRUE(reachability->IsPresent(abs));
+  EXPECT_TRUE(reachability->IsPresent(p0));
+  EXPECT_TRUE(reachability->IsReachable(p0, neg));
+  auto fusion = computation->AddInstruction(HloInstruction::CreateFusion(
+      neg->shape(), HloInstruction::FusionKind::kLoop, neg));
+  fusion->FuseInstruction(abs);
+  reachability->OnInstructionReplaced(neg, fusion);
+  EXPECT_FALSE(reachability->IsPresent(neg));
+  EXPECT_TRUE(reachability->IsPresent(fusion));
+  EXPECT_TRUE(reachability->IsReachable(p0, fusion));
 }
 
 TEST_F(HloDfsReachabilityTest, ChannelReachability) {

@@ -32,15 +32,13 @@ limitations under the License.
 #include "xla/debug_options_flags.h"
 #include "xla/pjrt/plugin/xla_gpu/xla_gpu_allocator_config.h"
 #include "xla/pjrt/plugin/xla_gpu/xla_gpu_client_options.h"
+#include "xla/service/hlo_module_util.h"
 #include "xla/tools/multihost_hlo_runner/create_client.h"
 #include "xla/tools/multihost_hlo_runner/functional_hlo_runner.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/util/command_line_flags.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/errors.h"
 #include "tsl/platform/init_main.h"
-#include "tsl/platform/logging.h"
-#include "tsl/platform/statusor.h"
 
 namespace {
 const char* const kUsage = R"(
@@ -135,10 +133,10 @@ ArgumentModeFromString(absl::string_view text) {
     return FunctionalHloRunner::ModuleArgumentMode::kUninitialized;
   }
   return absl::InvalidArgumentError(
-      absl::StrCat("Unrecognized module argument mode specified. Expect "
-                   "\"use_device_id_as_input\", \"use_random_inputs\", or "
-                   "\"use_shared_random_inputs\"., got: ",
-                   text));
+      absl::StrCat(R"(Invalid --hlo_argument_mode specified. Expected one of: )"
+                   R"("use_device_id_as_input", "use_random_inputs", )"
+                   R"("use_shared_random_inputs", "use_zeros_as_input", or )",
+                   R"("uninitialized". Got: )", text));
 }
 
 static absl::StatusOr<FunctionalHloRunner::PreprocessingOptions>
@@ -220,6 +218,7 @@ static absl::Status RunMultihostHloRunner(int argc, char** argv,
   TF_ASSIGN_OR_RETURN(
       xla::FunctionalHloRunner::PreprocessingOptions preproc_options,
       PreprocessingOptionsFromFlags(opts));
+  preproc_options.annotate_while_loop_trip_count = true;
   TF_ASSIGN_OR_RETURN(
       xla::FunctionalHloRunner::RawCompileOptions raw_compile_options,
       RawCompileOptionsFromFlags(opts));
@@ -270,22 +269,22 @@ static absl::Status RunMultihostHloRunner(int argc, char** argv,
   }
 
   for (int c = 1; c < argc; c++) {
-    const char* filename = argv[c];
+    const char* hlo_file = argv[c];
     execution_profiles.clear();
     if (opts.should_run) {
-      std::cout << "\n** Running " << filename << " **\n";
+      std::cout << "\n** Running " << hlo_file << " **\n";
       TF_RETURN_IF_ERROR(xla::FunctionalHloRunner::LoadAndRunAndDump(
           *env.client, GetDebugOptionsFromFlags(), preproc_options,
-          raw_compile_options, running_options, filename, opts.input_format,
+          raw_compile_options, running_options, hlo_file, opts.input_format,
           opts.dump_output_literal_to, opts.task_id));
     } else {
-      std::cout << "\n** Compiling " << filename << " **\n";
+      std::cout << "\n** Compiling " << hlo_file << " **\n";
       TF_RETURN_IF_ERROR(FunctionalHloRunner::LoadAndCompile(
           *env.client, GetDebugOptionsFromFlags(), preproc_options,
           raw_compile_options, argv[c], opts.input_format, opts.task_id));
     }
     for (int i = 0; i < execution_profiles.size(); ++i) {
-      std::cout << "## Execution time, file=" << filename << " repeat=" << i
+      std::cout << "## Execution time, file=" << hlo_file << " repeat=" << i
                 << " duration=" << execution_profiles[i].compute_time_ns()
                 << "ns" << std::endl;
     }
@@ -299,8 +298,9 @@ int main(int argc, char** argv) {
   HloRunnerConfig opts;
   std::vector<tsl::Flag> flag_list = {
       tsl::Flag("input_format", &opts.input_format_str,
-                "HLO input mode: text, proto_text, proto_binary, or "
-                "snapshot_proto_binary"),
+                "HLO input mode: text, proto_text, proto_binary, "
+                "snapshot_proto_binary, unoptimized_snapshot_proto_binary, or "
+                "unoptimized_snapshot_proto_text"),
       tsl::Flag("run", &opts.should_run, "Should we run the compiled HLO?"),
       tsl::Flag("dump_output_literal_to", &opts.dump_output_literal_to,
                 "A path to which the HLO output will be dumped. "

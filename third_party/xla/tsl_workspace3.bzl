@@ -1,7 +1,7 @@
 """TensorFlow workspace initialization. Consult the WORKSPACE on how to use it."""
 
 load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
-load("@local_tsl//third_party/llvm:workspace.bzl", llvm = "repo")
+load("//third_party/llvm:workspace.bzl", llvm = "repo")
 
 def workspace():
     http_archive(
@@ -31,6 +31,13 @@ def workspace():
             "https://github.com/bazelbuild/rules_pkg/releases/download/0.7.1/rules_pkg-0.7.1.tar.gz",
         ],
         sha256 = "451e08a4d78988c06fa3f9306ec813b836b1d076d0f055595444ba4ff22b867f",
+    )
+
+    http_archive(
+        name = "bazel_features",
+        sha256 = "4fd9922d464686820ffd8fcefa28ccffa147f7cdc6b6ac0d8b07fde565c65d66",
+        strip_prefix = "bazel_features-1.25.0",
+        url = "https://github.com/bazel-contrib/bazel_features/releases/download/v1.25.0/bazel_features-v1.25.0.tar.gz",
     )
 
     # Maven dependencies.

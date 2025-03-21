@@ -408,8 +408,8 @@ class ZerosLikeOp : public XlaOpKernel {
         std::vector<xla::XlaOp> dynamic_dims;
         const xla::Shape& shape = list_shape.tuple_shapes(i);
         auto sub_element = xla::GetTupleElement(list, i);
-        dynamic_dims.reserve(shape.dimensions_size());
-        for (int64_t dim = 0; dim < shape.dimensions_size(); ++dim) {
+        dynamic_dims.reserve(shape.dimensions().size());
+        for (int64_t dim = 0; dim < shape.dimensions().size(); ++dim) {
           dynamic_dims.push_back(xla::GetDimensionSize(sub_element, dim));
         }
         list_dynamic_dims.push_back(dynamic_dims);
@@ -433,7 +433,7 @@ class ZerosLikeOp : public XlaOpKernel {
       auto result = xla::Broadcast(zero, input_shape.dimensions());
 
       // Setting up dynamic dimensions of the broadcast.
-      for (int64_t i = 0; i < input_shape.dimensions_size(); ++i) {
+      for (int64_t i = 0; i < input_shape.dimensions().size(); ++i) {
         if (input_shape.is_dynamic_dimension(i)) {
           xla::XlaOp input_dynamic_dim = xla::GetDimensionSize(input, i);
           result = xla::SetDimensionSize(result, input_dynamic_dim, i);

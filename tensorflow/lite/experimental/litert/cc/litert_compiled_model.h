@@ -25,9 +25,11 @@
 #include "absl/strings/string_view.h"
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
 #include "tensorflow/lite/experimental/litert/c/litert_compiled_model.h"
-#include "tensorflow/lite/experimental/litert/c/litert_compiled_model_options.h"
 #include "tensorflow/lite/experimental/litert/c/litert_environment.h"
+#include "tensorflow/lite/experimental/litert/c/litert_model.h"
+#include "tensorflow/lite/experimental/litert/c/litert_tensor_buffer.h"
 #include "tensorflow/lite/experimental/litert/c/litert_tensor_buffer_requirements.h"
+#include "tensorflow/lite/experimental/litert/cc/litert_compilation_options.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_environment.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_handle.h"
@@ -57,65 +59,12 @@ namespace litert {
 class CompiledModel
     : public internal::Handle<LiteRtCompiledModel, LiteRtDestroyCompiledModel> {
  public:
-  class Options {
-    struct Deleter {
-      void operator()(LiteRtCompilationOptions options) {
-        LiteRtDestroyCompilationOptions(options);
-      }
-    };
-
-    // Were making the default constructor private to avoid  null options
-    // created by mistake.
-    Options() = default;
-    explicit Options(LiteRtCompilationOptions options) : impl_(options) {}
-
-   public:
-    using Ptr = std::unique_ptr<LiteRtCompilationOptionsT, Deleter>;
-
-    // Creates a new LiteRtCompilationOptions object wrapped in a `unique_ptr`.
-    static Expected<Options> Create() {
-      LiteRtCompilationOptions options;
-      if (auto status = LiteRtCreateCompilationOptions(&options);
-          status != kLiteRtStatusOk) {
-        return Error(status, "Could not create default compilation options");
-      }
-      return Options(options);
-    }
-
-    // Create a NULL pointer.
-    static Options None() { return {}; }
-
-    Ptr GetUnderlyingPtr() { return Ptr(release()); }
-
-    Expected<void> SetHardwareAccelerators(
-        LiteRtHwAcceleratorSet accelerators) {
-      if (auto status = LiteRtSetCompilationOptionsHardwareAccelerators(
-              get(), accelerators);
-          status != kLiteRtStatusOk) {
-        return Error(
-            status,
-            "Could not set hardware accelerators in compilation options");
-      }
-      return {};
-    }
-
-    // Mimic unique_ptr API.
-
-    Ptr::pointer release() noexcept { return impl_.release(); }
-    void reset(Ptr::pointer ptr = nullptr) noexcept { return impl_.reset(ptr); }
-
-    Ptr::pointer get() const noexcept { return impl_.get(); }
-    Ptr::pointer operator->() const noexcept { return impl_.operator->(); }
-    auto& operator*() const noexcept { return impl_.operator*(); }
-
-   private:
-    Ptr impl_;
-  };
-
   CompiledModel() = default;
 
-  // Parameter `owned` indicates if the created CompiledModel object should take
-  // ownership of the provided `compiled_model` handle.
+  // Creates a CompiledModel instance.
+  //
+  // If `owned` is `true`, then the created object takes ownership of the
+  // `compiled_model` handle.
   explicit CompiledModel(LiteRtModel litert_model,
                          LiteRtCompiledModel compiled_model, bool owned = true)
       : internal::Handle<LiteRtCompiledModel, LiteRtDestroyCompiledModel>(
@@ -123,29 +72,49 @@ class CompiledModel
         model_(Model::CreateFromNonOwnedHandle(litert_model)) {}
 
   // Creates a CompiledModel from a TFLite file.
+  //
   // The model is loaded into memory and the caller takes ownership of the
   // returned CompiledModel object. The caller should keep the model alive
   // until the CompiledModel is destroyed.
-  static Expected<CompiledModel> Create(litert::Environment& env,
-                                        litert::Model& model,
-                                        Options&& compilation_options) {
+  // The given `compilation_options` is used for JIT compilation of the model.
+  //
+  // Note: The given environment must outlive the compiled model and any
+  // execution running it.
+  // Note: If the model is fully AOT compiled for NPU, NPU accelerator is used
+  // automatically which means the provided `compilation_options` are
+  // meaningless.
+  static Expected<CompiledModel> Create(
+      litert::Environment& env, litert::Model& model,
+      const CompilationOptions& jit_compilation_options) {
     LiteRtModel litert_model = model.Get();
     LiteRtCompiledModel compiled_model;
-    if (auto status = LiteRtCreateCompiledModel(env.Get(), litert_model,
-                                                compilation_options.release(),
-                                                &compiled_model);
-        status != kLiteRtStatusOk) {
-      return Unexpected(status, "Failed to create compiled model");
-    }
+    LITERT_RETURN_IF_ERROR(LiteRtCreateCompiledModel(
+        env.Get(), litert_model, jit_compilation_options.Get(),
+        &compiled_model));
     return CompiledModel(litert_model, compiled_model);
   }
 
+  // Simpler version of Create() that uses the default compilation options.
+  // The provided hardware accelerator is used for JIT compilation of the model.
+  //
+  // Note: If the model is fully AOT compiled for NPU, NPU accelerator
+  // is used automatically which means the provided `hardware_accelerator` is
+  // meaningless.
   static Expected<CompiledModel> Create(
       litert::Environment& env, litert::Model& model,
       LiteRtHwAccelerators hardware_accelerator = kLiteRtHwAcceleratorCpu) {
-    LITERT_ASSIGN_OR_RETURN(auto options, Options::Create());
-    options.SetHardwareAccelerators(hardware_accelerator);
-    return Create(env, model, std::move(options));
+    LITERT_ASSIGN_OR_RETURN(auto jit_compilation_options,
+                            CompilationOptions::Create());
+    jit_compilation_options.SetHardwareAccelerators(hardware_accelerator);
+    return Create(env, model, jit_compilation_options);
+  }
+
+  // Get input buffer requirements for the given signature and input name.
+  Expected<TensorBufferRequirements> GetInputBufferRequirements(
+      absl::string_view signature_name, absl::string_view input_name) {
+    LITERT_ASSIGN_OR_RETURN(size_t signature_index,
+                            model_.GetSignatureIndex(signature_name));
+    return GetInputBufferRequirements(signature_index, input_name);
   }
 
   // Returns the buffer requirements for the given n-th input tensor. The
@@ -154,23 +123,38 @@ class CompiledModel
   Expected<TensorBufferRequirements> GetInputBufferRequirements(
       size_t signature_index, size_t input_index) const {
     LiteRtTensorBufferRequirements buffer_requirements;
-    if (auto status = LiteRtGetCompiledModelInputBufferRequirements(
-            Get(), signature_index, input_index, &buffer_requirements);
-        status != kLiteRtStatusOk) {
-      return Unexpected(status, "Failed to get input buffer requirements");
-    }
+    LITERT_RETURN_IF_ERROR(LiteRtGetCompiledModelInputBufferRequirements(
+        Get(), signature_index, input_index, &buffer_requirements));
     return TensorBufferRequirements(buffer_requirements, /*owned=*/false);
   }
 
   // The same as above except this function takes input tensor name.
   Expected<TensorBufferRequirements> GetInputBufferRequirements(
       size_t signature_index, absl::string_view input_name) const {
-    auto signature = model_.GetSignature(signature_index);
-    auto input_index = FindInputIndex(signature_index, input_name);
-    if (!input_index) {
-      return Unexpected(kLiteRtStatusErrorNotFound, "Failed to find input");
-    }
-    return GetInputBufferRequirements(signature_index, *input_index);
+    LITERT_ASSIGN_OR_RETURN(size_t input_index,
+                            FindInputIndex(signature_index, input_name));
+    return GetInputBufferRequirements(signature_index, input_index);
+  }
+
+  // Get input buffer requirements of the default signature for the given n-th
+  // input tensor.
+  Expected<TensorBufferRequirements> GetInputBufferRequirements(
+      size_t input_index) const {
+    return GetInputBufferRequirements(/*signature_index=*/0, input_index);
+  }
+
+  // Get input buffer requirements of the default signature for input name.
+  Expected<TensorBufferRequirements> GetInputBufferRequirements(
+      absl::string_view input_name) const {
+    return GetInputBufferRequirements(/*signature_index=*/0, input_name);
+  }
+
+  // Get output buffer requirements for the given signature and output name.
+  Expected<TensorBufferRequirements> GetOutputBufferRequirements(
+      absl::string_view signature_name, absl::string_view output_name) {
+    LITERT_ASSIGN_OR_RETURN(size_t signature_index,
+                            model_.GetSignatureIndex(signature_name));
+    return GetOutputBufferRequirements(signature_index, output_name);
   }
 
   // Returns the buffer requirements for the given output tensor. The returned
@@ -179,29 +163,43 @@ class CompiledModel
   Expected<TensorBufferRequirements> GetOutputBufferRequirements(
       size_t signature_index, size_t output_index) const {
     LiteRtTensorBufferRequirements buffer_requirements;
-    if (auto status = LiteRtGetCompiledModelOutputBufferRequirements(
-            Get(), signature_index, output_index, &buffer_requirements);
-        status != kLiteRtStatusOk) {
-      return Unexpected(status, "Failed to get output buffer requirements");
-    }
+    LITERT_RETURN_IF_ERROR(LiteRtGetCompiledModelOutputBufferRequirements(
+        Get(), signature_index, output_index, &buffer_requirements));
     return TensorBufferRequirements(buffer_requirements, /*owned=*/false);
   }
 
   // The same as above except this function takes output tensor name.
   Expected<TensorBufferRequirements> GetOutputBufferRequirements(
       size_t signature_index, absl::string_view output_name) const {
-    auto signature = model_.GetSignature(signature_index);
-    auto output_index = FindOutputIndex(signature_index, output_name);
-    if (!output_index) {
-      return Unexpected(kLiteRtStatusErrorNotFound, "Failed to find output");
-    }
-    return GetOutputBufferRequirements(signature_index, *output_index);
+    LITERT_ASSIGN_OR_RETURN(size_t output_index,
+                            FindOutputIndex(signature_index, output_name));
+    return GetOutputBufferRequirements(signature_index, output_index);
+  }
+
+  // Get input buffer requirements of the default signature for the given n-th
+  // input tensor.
+  Expected<TensorBufferRequirements> GetOutputBufferRequirements(
+      size_t output_index) const {
+    return GetOutputBufferRequirements(/*signature_index=*/0, output_index);
+  }
+
+  // Get input buffer requirements of the default signature for input name.
+  Expected<TensorBufferRequirements> GetOutputBufferRequirements(
+      absl::string_view output_name) const {
+    return GetOutputBufferRequirements(/*signature_index=*/0, output_name);
   }
 
   // Creates an input tensor buffer for the given signature and input name.
   Expected<TensorBuffer> CreateInputBuffer(absl::string_view signature_name,
                                            absl::string_view input_name) const {
     return CreateInputOutputBuffer(signature_name, input_name,
+                                   /*is_input=*/true);
+  }
+
+  // Creates an input tensor buffer of the default signature for the given input
+  // name.
+  Expected<TensorBuffer> CreateInputBuffer(absl::string_view input_name) const {
+    return CreateInputOutputBuffer(/*signature_index=*/0, input_name,
                                    /*is_input=*/true);
   }
 
@@ -212,12 +210,47 @@ class CompiledModel
                                    /*is_input=*/false);
   }
 
+  // Creates an output tensor buffer of the default signature for the given
+  // output name.
+  Expected<TensorBuffer> CreateOutputBuffer(
+      absl::string_view output_name) const {
+    return CreateInputOutputBuffer(/*signature_index=*/0, output_name,
+                                   /*is_input=*/false);
+  }
+
+  // A helper function to create input tensor buffers for the given signature.
+  // It uses BufferRequirements and RankedTensorType to create the input tensor
+  // buffers.
+  Expected<std::vector<TensorBuffer>> CreateInputBuffers(
+      absl::string_view signature_name) const {
+    LITERT_ASSIGN_OR_RETURN(size_t signature_index,
+                            model_.GetSignatureIndex(signature_name));
+    return CreateInputOutputBuffers(signature_index, /*is_input=*/true);
+  }
+
   // A helper function to creates the input tensor buffers for the given
   // signature. It uses BufferRequirements and RankedTensorType to create the
   // input tensor buffers.
   Expected<std::vector<TensorBuffer>> CreateInputBuffers(
       size_t signature_index) const {
     return CreateInputOutputBuffers(signature_index, /*is_input=*/true);
+  }
+
+  // A helper function to creates the input tensor buffers for the default
+  // signature. It uses BufferRequirements and RankedTensorType to create the
+  // input tensor buffers.
+  Expected<std::vector<TensorBuffer>> CreateInputBuffers() const {
+    return CreateInputOutputBuffers(/*signature_index=*/0, /*is_input=*/true);
+  }
+
+  // A helper function to create output tensor buffers for the given signature.
+  // It uses BufferRequirements and RankedTensorType to create the output tensor
+  // buffers.
+  Expected<std::vector<TensorBuffer>> CreateOutputBuffers(
+      absl::string_view signature_name) const {
+    LITERT_ASSIGN_OR_RETURN(size_t signature_index,
+                            model_.GetSignatureIndex(signature_name));
+    return CreateOutputBuffers(signature_index);
   }
 
   // A helper function to creates the output tensor buffers for the given
@@ -228,6 +261,13 @@ class CompiledModel
     return CreateInputOutputBuffers(signature_index, /*is_input=*/false);
   }
 
+  // A helper function to creates the output tensor buffers for the default
+  // signature. It uses BufferRequirements and RankedTensorType to create the
+  // output tensor buffers.
+  Expected<std::vector<TensorBuffer>> CreateOutputBuffers() const {
+    return CreateInputOutputBuffers(/*signature_index=*/0, /*is_input=*/false);
+  }
+
   // Runs the model of the given signature index synchronously with the provided
   // input/output TensorBuffers.
   Expected<void> Run(size_t signature_index,
@@ -235,6 +275,15 @@ class CompiledModel
                      const std::vector<TensorBuffer>& output_buffers) const {
     bool async = false;
     return RunHelper(signature_index, input_buffers, output_buffers, async);
+  }
+
+  // Runs the model of the default signature synchronously with the provided
+  // input/output TensorBuffers.
+  Expected<void> Run(const std::vector<TensorBuffer>& input_buffers,
+                     const std::vector<TensorBuffer>& output_buffers) const {
+    bool async = false;
+    return RunHelper(/*signature_index=*/0, input_buffers, output_buffers,
+                     async);
   }
 
   // Runs the model of the given signature index asynchronously, if possible,
@@ -249,6 +298,42 @@ class CompiledModel
     return RunHelper(signature_index, input_buffers, output_buffers, async);
   }
 
+  // Runs the model of the default signature asynchronously, if possible,
+  // with the provided input/output TensorBuffers. If asynchronous execution is
+  // possible then the function returns true in parameter `async`; otherwise the
+  // function runs the model synchronously.
+  Expected<void> RunAsync(const std::vector<TensorBuffer>& input_buffers,
+                          const std::vector<TensorBuffer>& output_buffers,
+                          bool& async) const {
+    async = true;
+    return RunHelper(/*signature_index=*/0, input_buffers, output_buffers,
+                     async);
+  }
+
+  // Runs the model of the given signature key synchronously with the provided
+  // input/output TensorBuffers.
+  Expected<void> Run(absl::string_view signature_key,
+                     const std::vector<TensorBuffer>& input_buffers,
+                     const std::vector<TensorBuffer>& output_buffers) const {
+    LITERT_ASSIGN_OR_RETURN(size_t signature_index,
+                            model_.GetSignatureIndex(signature_key));
+    return Run(signature_index, input_buffers, output_buffers);
+  }
+
+  // Runs the model of the given signature key asynchronously, if possible, with
+  // the provided input/output TensorBuffers. If asynchronous execution is
+  // possible then the function returns true in parameter `async`; otherwise the
+  // function runs the model synchronously.
+  Expected<void> RunAsync(absl::string_view signature_key,
+                          const std::vector<TensorBuffer>& input_buffers,
+                          const std::vector<TensorBuffer>& output_buffers,
+                          bool& async) const {
+    async = true;
+    LITERT_ASSIGN_OR_RETURN(size_t signature_index,
+                            model_.GetSignatureIndex(signature_key));
+    return RunAsync(signature_index, input_buffers, output_buffers, async);
+  }
+
   // Runs the model of the given signature key synchronously with the provided
   // input/output TensorBuffer map.
   Expected<void> Run(
@@ -257,7 +342,23 @@ class CompiledModel
       const absl::flat_hash_map<absl::string_view, TensorBuffer>& output_map)
       const {
     bool async = false;
-    return RunHelper(signature_key, input_map, output_map, async);
+    return RunMapHelper(signature_key, input_map, output_map, async);
+  }
+
+  // Runs the model of the default signature synchronously with the provided
+  // input/output TensorBuffer map.
+  Expected<void> Run(
+      const absl::flat_hash_map<absl::string_view, TensorBuffer>& input_map,
+      const absl::flat_hash_map<absl::string_view, TensorBuffer>& output_map)
+      const {
+    bool async = false;
+    auto subgraph = model_.MainSubgraph();
+    if (!subgraph) {
+      return Unexpected(kLiteRtStatusErrorNotFound,
+                        "Failed to get main subgraph");
+    }
+    return RunMapWithIndexHelper(/*signature_index=*/0, *subgraph, input_map,
+                                 output_map, async);
   }
 
   // Runs the model of the given signature key asynchronously, if possible, with
@@ -270,7 +371,7 @@ class CompiledModel
       const absl::flat_hash_map<absl::string_view, TensorBuffer>& output_map,
       bool& async) const {
     async = true;
-    return RunHelper(signature_key, input_map, output_map, async);
+    return RunMapHelper(signature_key, input_map, output_map, async);
   }
 
  private:
@@ -287,10 +388,19 @@ class CompiledModel
       const TensorBufferRequirements& buffer_requirements,
       const RankedTensorType& tensor_type);
 
+  // Creates a TensorBuffer for the given signature index and tensor name.
+  Expected<TensorBuffer> CreateInputOutputBuffer(size_t signature_index,
+                                                 absl::string_view tensor_name,
+                                                 bool is_input) const;
+
   // Creates a TensorBuffer for the given signature and tensor name.
   Expected<TensorBuffer> CreateInputOutputBuffer(
       absl::string_view signature_name, absl::string_view tensor_name,
-      bool is_input) const;
+      bool is_input) const {
+    LITERT_ASSIGN_OR_RETURN(size_t signature_index,
+                            model_.GetSignatureIndex(signature_name));
+    return CreateInputOutputBuffer(signature_index, tensor_name, is_input);
+  }
 
   // Creates a vector of TensorBuffers for the given signature subgraph.
   Expected<std::vector<TensorBuffer>> CreateInputOutputBuffers(
@@ -308,8 +418,14 @@ class CompiledModel
                            const std::vector<TensorBuffer>& output_buffers,
                            bool& async) const;
 
-  Expected<void> RunHelper(
+  Expected<void> RunMapHelper(
       absl::string_view signature_key,
+      const absl::flat_hash_map<absl::string_view, TensorBuffer>& input_map,
+      const absl::flat_hash_map<absl::string_view, TensorBuffer>& output_map,
+      bool& async) const;
+
+  Expected<void> RunMapWithIndexHelper(
+      size_t signature_index, const Subgraph& subgraph,
       const absl::flat_hash_map<absl::string_view, TensorBuffer>& input_map,
       const absl::flat_hash_map<absl::string_view, TensorBuffer>& output_map,
       bool& async) const;

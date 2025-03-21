@@ -15,18 +15,21 @@ limitations under the License.
 #include "tensorflow/core/profiler/convert/dcn_analysis.h"
 
 #include <algorithm>
+#include <cstdint>
 #include <functional>
 #include <memory>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include "absl/log/log.h"
 #include "absl/strings/string_view.h"
 #include "xla/tsl/profiler/utils/math_utils.h"
 #include "xla/tsl/profiler/utils/tpu_xplane_utils.h"
 #include "xla/tsl/profiler/utils/xplane_schema.h"
 #include "tensorflow/core/profiler/convert/dcn_utils.h"
 #include "tensorflow/core/profiler/utils/xplane_builder.h"
+#include "tensorflow/core/profiler/utils/xplane_visitor.h"
 
 namespace tensorflow {
 namespace profiler {

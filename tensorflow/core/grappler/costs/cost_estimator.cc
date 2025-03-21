@@ -33,6 +33,8 @@ Costs CombineCosts(const Costs& left, const Costs& right) {
   result.intermediate_memory_write_time += right.intermediate_memory_write_time;
   result.hbm_read_time += right.hbm_read_time;
   result.hbm_write_time += right.hbm_write_time;
+  result.hbm_read_time_noderate += right.hbm_read_time_noderate;
+  result.hbm_write_time_noderate += right.hbm_write_time_noderate;
 
   if (right.max_per_op_buffers != kMemoryUnknown) {
     result.max_per_op_buffers =
@@ -73,6 +75,8 @@ Costs MultiplyCosts(const Costs& costs, int multiplier) {
   result.memory_time *= multiplier;
   result.hbm_read_time *= multiplier;
   result.hbm_write_time *= multiplier;
+  result.hbm_read_time_noderate *= multiplier;
+  result.hbm_write_time_noderate *= multiplier;
   result.network_time *= multiplier;
   result.intermediate_memory_time *= multiplier;
   result.intermediate_memory_read_time *= multiplier;

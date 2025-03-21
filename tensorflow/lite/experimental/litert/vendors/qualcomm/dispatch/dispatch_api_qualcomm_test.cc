@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include <any>
 #include <cstddef>
 #include <cstring>
 
@@ -23,6 +24,7 @@
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
 #include "tensorflow/lite/experimental/litert/c/litert_tensor_buffer.h"
 #include "tensorflow/lite/experimental/litert/c/litert_tensor_buffer_requirements.h"
+#include "tensorflow/lite/experimental/litert/cc/litert_any.h"
 #include "tensorflow/lite/experimental/litert/core/filesystem.h"
 #include "tensorflow/lite/experimental/litert/test/common.h"
 #include "tensorflow/lite/experimental/litert/test/testdata/simple_model_test_vectors.h"
@@ -36,8 +38,13 @@ TEST(Qualcomm, DispatchApiWithFastRpc) {
       << "This test is specific to Android devices with a Qualcomm NPU";
 #endif
 
-  EXPECT_EQ(LiteRtDispatchInitialize(/*options=*/nullptr, /*num_options=*/0),
-            kLiteRtStatusOk);
+  LiteRtDispatchOption dispatch_option = {
+      /*.name=*/kDispatchOptionSharedLibraryDir,
+      /*.value=*/*litert::ToLiteRtAny(std::any("/data/local/tmp")),
+  };
+  ASSERT_EQ(
+      LiteRtDispatchInitialize(/*options=*/&dispatch_option, /*num_options=*/1),
+      kLiteRtStatusOk);
 
   const char* vendor_id;
   EXPECT_EQ(LiteRtDispatchGetVendorId(&vendor_id), kLiteRtStatusOk);
@@ -72,10 +79,14 @@ TEST(Qualcomm, DispatchApiWithFastRpc) {
   // Set up an invocation context for a given model.
   // ///////////////////////////////////////////////////////////////////////////
 
+  LiteRtMemBuffer exec_bytecode_buffer = {/*.fd=*/-1,
+                                          /*.base_addr=*/model->Data(),
+                                          /*.offset=*/0,
+                                          /*.size=*/model->Size()};
   LiteRtDispatchInvocationContext invocation_context = nullptr;
   EXPECT_EQ(LiteRtDispatchInvocationContextCreate(
                 device_context, kLiteRtDispatchExecutableTypeMlModel,
-                model->Data(), model->Size(), /*function_name=*/"simple",
+                &exec_bytecode_buffer, /*function_name=*/"simple",
                 /*num_inputs=*/2, /*num_outputs=*/1, &invocation_context),
             kLiteRtStatusOk);
   ABSL_LOG(INFO) << "Invocation context: " << invocation_context;
@@ -321,10 +332,14 @@ TEST(Qualcomm, DispatchApiWithDmaBuf) {
   // Set up an invocation context for a given model.
   // ///////////////////////////////////////////////////////////////////////////
 
+  LiteRtMemBuffer exec_bytecode_buffer = {/*.fd=*/-1,
+                                          /*.base_addr=*/model->Data(),
+                                          /*.offset=*/0,
+                                          /*.size=*/model->Size()};
   LiteRtDispatchInvocationContext invocation_context = nullptr;
   EXPECT_EQ(LiteRtDispatchInvocationContextCreate(
                 device_context, kLiteRtDispatchExecutableTypeMlModel,
-                model->Data(), model->Size(), /*function_name=*/"simple",
+                &exec_bytecode_buffer, /*function_name=*/"simple",
                 /*num_inputs=*/2, /*num_outputs=*/1, &invocation_context),
             kLiteRtStatusOk);
   ABSL_LOG(INFO) << "Invocation context: " << invocation_context;

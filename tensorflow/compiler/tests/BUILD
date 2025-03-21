@@ -390,7 +390,6 @@ tf_xla_py_strict_test(
         "gpu_a100",
         "gpu_h100",
     ],
-    shard_count = 2,
     tags = [
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
         "optonly",  # Times out frequently in fastbuild mode.
@@ -1551,6 +1550,12 @@ tf_xla_py_strict_test(
     name = "stack_ops_test",
     size = "small",
     srcs = ["stack_ops_test.py"],
+    enabled_backends = [
+        "cpu",
+        "gpu",
+        "gpu_a100",
+        "gpu_h100",
+    ],
     tags = [
         "config-cuda-only",
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
@@ -1677,8 +1682,12 @@ tf_xla_py_strict_test(
     name = "tensor_array_ops_test",
     size = "medium",
     srcs = ["tensor_array_ops_test.py"],
-    # TensorArray ops are not implemented in the on-demand compilation model yet.
-    disabled_backends = ["cpu_ondemand"],
+    enabled_backends = [
+        "cpu",
+        "gpu",
+        "gpu_a100",
+        "gpu_h100",
+    ],
     tags = [
         "config-cuda-only",
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
@@ -2419,12 +2428,14 @@ tf_xla_py_strict_test(
     shard_count = 10,
     tags = [
         "notap",
+        "optonly",
     ],
     deps = [
         ":xla_test",
         "//tensorflow/python/client:session",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:tensor",
         "//tensorflow/python/ops:math_ops",
         "//tensorflow/python/ops:resource_variable_ops",
         "//tensorflow/python/ops:tpu_ops_gen",

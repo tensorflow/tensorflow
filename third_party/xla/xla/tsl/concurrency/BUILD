@@ -17,6 +17,7 @@ filegroup(
         "concurrent_vector.h",
         "ref_count.h",
     ],
+    compatible_with = get_compatible_with_portable(),
 )
 
 filegroup(
@@ -25,6 +26,7 @@ filegroup(
         "async_value.cc",
         "async_value_ref.cc",
     ],
+    compatible_with = get_compatible_with_portable(),
 )
 
 cc_library(
@@ -60,8 +62,9 @@ tsl_cc_test(
     deps = [
         ":async_value",
         "//xla/tsl/platform:test",
+        "//xla/tsl/platform:test_benchmark",
+        "//xla/tsl/platform:test_main",
         "@com_google_absl//absl/status",
-        "@com_google_googletest//:gtest_main",
     ],
 )
 

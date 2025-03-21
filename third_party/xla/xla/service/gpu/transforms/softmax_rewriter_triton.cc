@@ -594,7 +594,7 @@ SoftmaxRewriterTriton::FindAllFusibleNormalizationDiamonds(
 
   for (HloComputation* comp :
        module.MakeNonfusionComputations(execution_threads)) {
-    if (comp->IsCustomCallComputation()) {
+    if (!comp->caller_instructions(HloOpcode::kCustomCall).empty()) {
       continue;
     }
     for (HloInstruction* instr : comp->MakeInstructionPostOrder()) {

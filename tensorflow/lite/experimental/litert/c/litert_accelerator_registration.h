@@ -16,8 +16,9 @@
 #define TENSORFLOW_LITE_EXPERIMENTAL_LITERT_C_LITERT_ACCELERATOR_REGISTRATION_H_
 
 #include "tensorflow/lite/experimental/litert/c/litert_accelerator.h"
+#include "tensorflow/lite/experimental/litert/c/litert_accelerator_compilation_options.h"
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
-#include "tensorflow/lite/experimental/litert/c/litert_compiled_model.h"
+#include "tensorflow/lite/experimental/litert/c/litert_environment.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -67,15 +68,28 @@ LiteRtStatus LiteRtSetAcceleratorGetHardwareSupport(
         LiteRtAccelerator accelerator,
         LiteRtHwAcceleratorSet* supported_hardware));
 
-// Set the function used to return a Delegate to apply the accelerator by the
+// Sets the function used to return a Delegate to apply the accelerator by the
 // compiled model and its destructor. The returned Delegate object is owned by
 // the compiled model. Used void** for the Delegate instead of
 // TfLiteOpaqueDelegate** to avoid TFLite dependency.
 LiteRtStatus LiteRtSetDelegateFunction(
     LiteRtAccelerator accelerator,
     LiteRtStatus (*CreateDelegate)(LiteRtAccelerator accelerator,
+                                   LiteRtAcceleratorCompilationOptions options,
                                    void** delegate),
     void (*DestroyDelegate)(void* delegate));
+
+// Sets the function used to surface whether the delegate created by the
+// accelerator does JIT compilation or not.
+//
+// This affects whether the compiled model creation will apply the accelerator
+// without an explicit request in the JIT compilation options.
+//
+// If this isn't set, the result will be treated as `false`.
+LiteRtStatus LiteRtSetIsAcceleratorDelegateResponsibleForJitCompilation(
+    LiteRtAccelerator accelerator,
+    LiteRtStatus (*IsTfLiteDelegateResponsibleForJitCompilation)(
+        LiteRtAccelerator accelerator, bool* does_jit_compilation));
 
 #ifdef __cplusplus
 }  // extern "C"

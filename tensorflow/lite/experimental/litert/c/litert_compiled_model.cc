@@ -17,10 +17,9 @@
 #include <stddef.h>
 
 #include <memory>
-#include <utility>
 
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
-#include "tensorflow/lite/experimental/litert/c/litert_compiled_model_options.h"
+#include "tensorflow/lite/experimental/litert/c/litert_compilation_options.h"
 #include "tensorflow/lite/experimental/litert/c/litert_environment.h"
 #include "tensorflow/lite/experimental/litert/c/litert_logging.h"
 #include "tensorflow/lite/experimental/litert/c/litert_model.h"
@@ -28,20 +27,19 @@
 #include "tensorflow/lite/experimental/litert/c/litert_tensor_buffer_requirements.h"
 #include "tensorflow/lite/experimental/litert/runtime/compiled_model.h"
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 LiteRtStatus LiteRtCreateCompiledModel(
     LiteRtEnvironment environment, LiteRtModel model,
-    LiteRtCompilationOptions compilation_options,
+    LiteRtCompilationOptions jit_compilation_options,
     LiteRtCompiledModel* compiled_model) {
-  // We guard the compilation options. Since we consume them, we still need to
-  // release them if there's an error.
-  LiteRtCompiledModelT::OptionsPtr compilation_options_guard(
-      compilation_options);
-
-  if (!model || !compiled_model) {
+  if (!environment || !model || !compiled_model) {
     return kLiteRtStatusErrorInvalidArgument;
   }
-  auto created_compiled_model = LiteRtCompiledModelT::Create(
-      environment, model, std::move(compilation_options_guard));
+  auto created_compiled_model =
+      LiteRtCompiledModelT::Create(environment, model, jit_compilation_options);
   if (!created_compiled_model) {
     LITERT_LOG(LITERT_ERROR, "%s",
                created_compiled_model.Error().Message().c_str());
@@ -140,3 +138,7 @@ LiteRtStatus LiteRtRunCompiledModelAsync(LiteRtCompiledModel compiled_model,
 void LiteRtDestroyCompiledModel(LiteRtCompiledModel compiled_model) {
   delete compiled_model;
 }
+
+#ifdef __cplusplus
+}  // extern "C"
+#endif

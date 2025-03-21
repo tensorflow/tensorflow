@@ -206,6 +206,36 @@ static CustomKernel Load(std::string name, GemmMode mode, int32_t batch_count,
   }
 }
 
+namespace {
+std::vector<CustomKernel> GetF32xBF16ToF32Kernels(
+    std::string name, int32_t m, int32_t n, int32_t k,
+    const ArgsIndices& indices, const DynamicSliceIndices& slices,
+    const se::DeviceDescription& device) {
+  std::vector<CustomKernel> kernels{Load<F32xBf16ToF32<Default>>(
+      name, GemmMode::kGemm, 1, m, n, k, indices, slices, device)};
+  if (k == 32 || k == 64) {
+    kernels.push_back(Load<F32xBf16ToF32<Default>>(
+        name, GemmMode::kGemmSplitKParallel,
+        /*batch_count=*/16, m, n, k, indices, slices, device));
+  }
+  return kernels;
+}
+
+std::vector<CustomKernel> GetBF16xS8ToF32Kernels(
+    std::string name, int32_t m, int32_t n, int32_t k,
+    const ArgsIndices& indices, const DynamicSliceIndices& slices,
+    const se::DeviceDescription& device) {
+  std::vector<CustomKernel> kernels{Load<Bf16xS8ToF32<Default>>(
+      name, GemmMode::kGemm, 1, m, n, k, indices, slices, device)};
+  if (k == 64 || k == 128) {
+    kernels.push_back(Load<Bf16xS8ToF32<Default>>(
+        name, GemmMode::kGemmSplitKParallel,
+        /*batch_count=*/16, m, n, k, indices, slices, device));
+  }
+  return kernels;
+}
+}  // namespace
+
 absl::StatusOr<std::vector<CustomKernel>> GetCutlassGemmKernels(
     std::string name, PrimitiveType dot_type, PrimitiveType lhs_type,
     PrimitiveType rhs_type, int32_t m, int32_t n, int32_t k,
@@ -217,26 +247,18 @@ absl::StatusOr<std::vector<CustomKernel>> GetCutlassGemmKernels(
                       std::vector<CustomKernel>>
       kernels = {
           {{BF16, BF16, BF16},
-           {{Load<Bf16xBf16ToBf16<Default>>(name, GemmMode::kGemm, 1, m, n, k,
-                                            indices, slices, device)}}},
+           {Load<Bf16xBf16ToBf16<Default>>(name, GemmMode::kGemm, 1, m, n, k,
+                                           indices, slices, device)}},
           {{BF16, BF16, F32},
-           {{Load<Bf16xBf16ToF32<Default>>(name, GemmMode::kGemm, 1, m, n, k,
-                                           indices, slices, device)}}},
+           {Load<Bf16xBf16ToF32<Default>>(name, GemmMode::kGemm, 1, m, n, k,
+                                          indices, slices, device)}},
           {{F32, BF16, F32},
-           {{Load<F32xBf16ToF32<Default>>(name, GemmMode::kGemm, 1, m, n, k,
-                                          indices, slices, device)},
-            {Load<F32xBf16ToF32<Default>>(name, GemmMode::kGemmSplitKParallel,
-                                          /*batch_count=*/16, m, n, k, indices,
-                                          slices, device)}}},
+           GetF32xBF16ToF32Kernels(name, m, n, k, indices, slices, device)},
           {{BF16, S8, F32},
-           {{Load<Bf16xS8ToF32<Default>>(name, GemmMode::kGemm, 1, m, n, k,
-                                         indices, slices, device)},
-            {Load<Bf16xS8ToF32<Default>>(name, GemmMode::kGemmSplitKParallel,
-                                         /*batch_count=*/16, m, n, k, indices,
-                                         slices, device)}}},
+           GetBF16xS8ToF32Kernels(name, m, n, k, indices, slices, device)},
           {{F32, F32, F32},
-           {{Load<F32xF32ToF32<Default>>(name, GemmMode::kGemm, 1, m, n, k,
-                                         indices, slices, device)}}}};
+           {Load<F32xF32ToF32<Default>>(name, GemmMode::kGemm, 1, m, n, k,
+                                        indices, slices, device)}}};
 
   auto loaded_kernels = kernels.find({lhs_type, rhs_type, dot_type});
   if (loaded_kernels != kernels.end()) {

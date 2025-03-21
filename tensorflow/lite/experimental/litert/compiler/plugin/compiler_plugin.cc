@@ -14,16 +14,20 @@
 
 #include "tensorflow/lite/experimental/litert/compiler/plugin/compiler_plugin.h"
 
+#include <stdlib.h>
+
 #include <algorithm>
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <cstring>
 #include <memory>
 #include <optional>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_set.h"
 #include "absl/log/absl_check.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
@@ -36,9 +40,12 @@
 #include "tensorflow/lite/experimental/litert/c/litert_logging.h"
 #include "tensorflow/lite/experimental/litert/c/litert_model.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_buffer_ref.h"
+#include "tensorflow/lite/experimental/litert/cc/litert_detail.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_macros.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_model.h"
+#include "tensorflow/lite/experimental/litert/cc/litert_op_options.h"
+#include "tensorflow/lite/experimental/litert/cc/litert_shared_library.h"
 #include "tensorflow/lite/experimental/litert/compiler/plugin/algo.h"
 #include "tensorflow/lite/experimental/litert/core/build_stamp.h"
 #include "tensorflow/lite/experimental/litert/core/dynamic_loading.h"
@@ -47,8 +54,8 @@
 #include "tensorflow/lite/experimental/litert/core/model/buffer_manager.h"
 #include "tensorflow/lite/experimental/litert/core/model/ir_allocator.h"
 #include "tensorflow/lite/experimental/litert/core/model/model.h"
-#include "tensorflow/lite/experimental/litert/core/model/model_serialize.h"
 #include "tensorflow/lite/experimental/litert/core/util/flatbuffer_tools.h"
+#include "tensorflow/lite/experimental/litert/core/version.h"
 #include "tensorflow/lite/experimental/litert/vendors/c/litert_compiler_plugin.h"
 #include "tensorflow/lite/experimental/litert/vendors/c/litert_compiler_plugin_api.h"
 
@@ -124,10 +131,9 @@ CompiledResult& CompiledResult::operator=(CompiledResult&& other) {
 namespace {
 
 #define RESOLVE_API_FUNC(name, dest) \
-  LITERT_RETURN_IF_ERROR(            \
-      ResolveLibSymbol<decltype(dest)>(lib_handle, name, &dest));
+  LITERT_ASSIGN_OR_RETURN(dest, lib.LookupSymbol<decltype(dest)>(name.data()));
 
-LiteRtStatus ResolvePluginApi(void* lib_handle,
+LiteRtStatus ResolvePluginApi(SharedLibrary& lib,
                               LiteRtCompilerPluginApi& result) {
   RESOLVE_API_FUNC(kLiteRtGetCompilerPluginVersion,
                    result.get_compiler_plugin_version);
@@ -159,6 +165,7 @@ LiteRtStatus ResolvePluginApi(void* lib_handle,
                    result.get_compiled_result_call_info);
   RESOLVE_API_FUNC(kLiteRtGetNumCompiledResultCalls,
                    result.get_compiled_result_num_calls);
+  RESOLVE_API_FUNC(kLiteRtCompilerPluginSetFlags, result.set_flags);
 
   return kLiteRtStatusOk;
 }
@@ -212,11 +219,12 @@ Expected<CompilerPlugin> CompilerPlugin::LoadPlugin(
   CompilerPlugin plugin;
   LITERT_LOG(LITERT_INFO, "Loading plugin at: %s", lib_path.data());
 
-  LITERT_RETURN_IF_ERROR(OpenLib(lib_path, &plugin.lib_handle_));
+  LITERT_ASSIGN_OR_RETURN(
+      plugin.lib_,
+      SharedLibrary::Load(lib_path, RtldFlags::Now().Local().DeepBind()));
   LITERT_LOG(LITERT_INFO, "Loaded plugin at: %s", lib_path.data());
 
-  LITERT_RETURN_IF_ERROR(
-      ResolvePluginApi(plugin.lib_handle_, plugin.plugin_api_));
+  LITERT_RETURN_IF_ERROR(ResolvePluginApi(plugin.lib_, plugin.plugin_api_));
   LITERT_LOG(LITERT_INFO, "Resolved plugin api at: %s", lib_path.data());
 
   LITERT_RETURN_IF_ERROR(
@@ -228,16 +236,9 @@ Expected<CompilerPlugin> CompilerPlugin::LoadPlugin(
     return api_version.Error();
   }
 
-  if (api_version->major != LITERT_API_VERSION_MAJOR) {
-    LITERT_LOG(
-        LITERT_ERROR,
-        "Unsupported Compiler Plugin version, found version %d.%d.%d and "
-        "expected version %d.%d.%d",
-        api_version.Value().major, api_version.Value().minor,
-        api_version.Value().patch, LITERT_API_VERSION_MAJOR,
-        LITERT_API_VERSION_MINOR, LITERT_API_VERSION_PATCH);
-    return Unexpected(kLiteRtStatusErrorRuntimeFailure);
-  }
+  LITERT_RETURN_IF_ERROR(litert::internal::IsSameVersionAsRuntime(*api_version),
+                         Unexpected(kLiteRtStatusErrorWrongVersion,
+                                    "Unsupported compiler plugin version"));
 
   // This should never change throughout the lifetime of the compiler
   // plugin so save to avoid recalling.
@@ -281,19 +282,19 @@ Expected<std::vector<CompilerPlugin>> CompilerPlugin::LoadPlugins(
 
 CompilerPlugin::CompilerPlugin(CompilerPlugin&& other)
     : soc_models_(std::move(other.soc_models_)),
-      lib_handle_(std::move(other.lib_handle_)),
+      lib_(std::move(other.lib_)),
       plugin_api_(std::move(other.plugin_api_)),
       plugin_handle_(std::move(other.plugin_handle_)) {
   other.soc_models_ = {};
   other.plugin_api_ = {};
-  other.lib_handle_ = nullptr;
+  other.lib_.Close();
   other.plugin_handle_ = nullptr;
 }
 
 CompilerPlugin& CompilerPlugin::operator=(CompilerPlugin&& other) {
   if (this != &other) {
     std::swap(soc_models_, other.soc_models_);
-    std::swap(lib_handle_, other.lib_handle_);
+    std::swap(lib_, other.lib_);
     std::swap(plugin_api_, other.plugin_api_);
     std::swap(plugin_handle_, other.plugin_handle_);
   }
@@ -303,11 +304,6 @@ CompilerPlugin& CompilerPlugin::operator=(CompilerPlugin&& other) {
 CompilerPlugin::~CompilerPlugin() {
   if (plugin_handle_ != nullptr) {
     plugin_api_.destroy_compiler_plugin(plugin_handle_);
-  }
-  if (lib_handle_ != nullptr) {
-    if (kLiteRtStatusOk != CloseLib(lib_handle_)) {
-      LITERT_LOG(LITERT_WARNING, "%s", "Failed to close shared library\n");
-    }
   }
 }
 
@@ -334,12 +330,13 @@ Expected<LiteRtHwAccelerators> CompilerPlugin::SupportedHardware() const {
   return supported_hardware;
 }
 
-Expected<std::vector<LiteRtOp>> CompilerPlugin::Partition(
-    const Subgraph& subgraph) {
+Expected<std::vector<LiteRtOpWithPartitionIndex>> CompilerPlugin::Partition(
+    const Subgraph& subgraph, absl::string_view soc_model) {
   LiteRtOpListT ops;
+  const char* soc_model_str = !soc_model.empty() ? soc_model.data() : nullptr;
   LITERT_RETURN_IF_ERROR(plugin_api_.compiler_plugin_partition(
-      plugin_handle_, subgraph.Get(), &ops));
-  return ops.Vec();
+      plugin_handle_, soc_model_str, subgraph.Get(), &ops));
+  return ops.Values();
 }
 
 Expected<CompiledResult> CompilerPlugin::Compile(LiteRtModel partitions,
@@ -358,15 +355,14 @@ Expected<CompiledResult> CompilerPlugin::Compile(LiteRtModel partitions,
 
 namespace {
 
-LiteRtStatus PartitionSubgraph(std::vector<LiteRtOp> selected_ops,
-                               LiteRtSubgraphT& subgraph,
-                               PartitionResult& result,
-                               BufferManager* buffer_manager) {
+LiteRtStatus PartitionSubgraph(
+    std::vector<LiteRtOpWithPartitionIndex> selected_ops,
+    LiteRtSubgraphT& subgraph, PartitionResult& result,
+    BufferManager* buffer_manager) {
   // Group selected ops into connected islands.
   auto islands = GroupPartitions(selected_ops);
   if (islands.empty()) {
-    LITERT_LOG(LITERT_ERROR, "Failed to group partitions");
-    return kLiteRtStatusErrorRuntimeFailure;
+    return kLiteRtStatusOk;
   }
 
   // For each connected island, slice into new subgraph and replace use with
@@ -382,27 +378,98 @@ LiteRtStatus PartitionSubgraph(std::vector<LiteRtOp> selected_ops,
 
 }  // namespace
 
-Expected<PartitionResult> PartitionModel(CompilerPlugin& compiler_plugin,
-                                         LiteRtModelT& model) {
-  // Accumulate partition results for each subgraph in model.
+Expected<PartitionResult> PartitionModel(
+    CompilerPlugin& compiler_plugin, LiteRtModelT& model,
+    const absl::flat_hash_set<uint32_t>& subgraphs_to_partition) {
+  // This algorithm decides the subgraphs to be partitioned by the plugin. This
+  // is a trivial process with the exception of composite ops and their
+  // decomposition subgraphs. Currently, we deploy the most naive approach to
+  // handling composite ops.
+  //
+  // There are two cases to consider:
+  // 1. The composite op is an "odml.npu_call", in which case it represents a
+  // parition which was explictly requested by the model author.
+  //
+  // In this case, the the composite itself is always selected, regardless of
+  // whether the plugin selects it. Its subgraph is not passed to the partition
+  // function and it is passed in its entirety to the compilation function.
+  //
+  // More advanced behavior could include:
+  // * Ensuring the plugin can compile the entire partition, and inlining it if
+  // not.
+  //
+  // 2. Standard non npu_call composite ops. Currently these are treated as a
+  // regular op, and their decomposition subgraphs are completely ignored in all
+  // phases of plugin application.
+  //
+  // More advanced behavior could include:
+  // * Allowing the plugin to compile the decomposition subgraph in the case
+  // it cannot lower the composite directly. Potentially inline in this case
+  // contingent on the availability of a suitable CPU kernel for the composite
+  // op.
+  //
+  // ASSUMPTIONS:
+  // * npu_call ops ARE NOT nested within decompositions of other npu_call ops.
+  // * Standard composite ops ARE allowed to be nested within decompositions of
+  // npu_call ops.
+  // * No two npu_call ops share the same subgraph.
+
+  // Find decomposition subgraphs and npu_call ops. These will be used to filter
+  // subgraphs passed to the plugin and pass on auto-selected npu_call
+  // partitions.
+  absl::flat_hash_set<uint32_t> decomp_subgraphs;
+  std::vector<CompositeOptions> npu_calls;
+
+  ForEachIr(&model, [&](LiteRtOp op) {
+    auto info = GetOptionsAs<CompositeOptions>(op);
+    if (!info) {
+      return;
+    }
+    decomp_subgraphs.insert(info->subgraph);
+    if (info->name == CompositeOptions::kNpuCall) {
+      npu_calls.push_back(std::move(*info));
+    }
+  });
+
+  // Build partition result via calling plugin on non-decomposition subgraphs.
   PartitionResult result;
-  for (auto* subgraph : model.Subgraphs()) {
-    // Get selected ops from plugin.
+  for (auto i = 0; i < model.Subgraphs().size(); ++i) {
+    if (decomp_subgraphs.contains(i)) {
+      continue;
+    }
+    if (!subgraphs_to_partition.empty() &&
+        !subgraphs_to_partition.contains(i)) {
+      continue;
+    }
+    auto* subgraph = model.Subgraphs()[i];
     auto selected_ops = compiler_plugin.Partition(Subgraph(subgraph));
+    // TODO ensure selected ops don't contain npu_calls.
     if (!selected_ops) {
-      LITERT_LOG(LITERT_ERROR, "Failed to get partitions from plugin");
       return selected_ops.Error();
     }
 
-    LITERT_RETURN_IF_ERROR(
-        PartitionSubgraph(*selected_ops, *subgraph, result, model.Buffers()));
+    LITERT_LOG(LITERT_INFO, "PartitionSubgraph: %d, selected num ops: %lu", i,
+               selected_ops->size());
+    LITERT_RETURN_IF_ERROR(PartitionSubgraph(
+        std::move(*selected_ops), *subgraph, result, model.Buffers()));
   }
-  ABSL_DCHECK_EQ(result.first.size(), result.second.Size());
+
+  // Add npu_call partitions to result. Update the npu_call ops to be dispatch
+  // ops.
+  std::vector<size_t> decomps_to_compile;
+  for (auto& npu_call : npu_calls) {
+    auto* op = npu_call.op;
+    MakeDispatchOp(*op);
+    result.first.push_back(op);
+    decomps_to_compile.push_back(npu_call.subgraph);
+  }
+  model.TransferSubgraphTo(result.second, std::move(decomps_to_compile));
+
   return result;
 }
 
 Expected<PartitionResult> PartitionModelDirect(
-    std::vector<LiteRtOp> selected_ops, LiteRtModelT& model) {
+    std::vector<LiteRtOpWithPartitionIndex> selected_ops, LiteRtModelT& model) {
   if (model.Subgraphs().size() != 1) {
     // Only single subgraphs supported for direct partitioning.
     return Unexpected(kLiteRtStatusErrorRuntimeFailure);
@@ -425,10 +492,10 @@ Expected<void> ApplyPluginWithPartition(CompilerPlugin& compiler_plugin,
 
   // Wrap the partitioned subgraphs in a LiteRtModel.
   LiteRtModelT sliced_model;
-  sliced_model.TransferSubgraphs(std::move(subgraphs));
+  sliced_model.TransferSubgraphsFrom(std::move(subgraphs));
 
   // Copy op codes.
-  const auto& op_codes = detail::GetTflOpCodes(model);
+  const auto& op_codes = litert::internal::GetTflOpCodes(model);
 
   LiteRtModelT::TflOpCodes codes;
   codes.reserve(op_codes.size());
@@ -436,7 +503,7 @@ Expected<void> ApplyPluginWithPartition(CompilerPlugin& compiler_plugin,
     codes.emplace_back(std::make_unique<TflOpCode>(*op_code));
   }
 
-  detail::SetTflOpCodes(sliced_model, std::move(codes));
+  litert::internal::SetTflOpCodes(sliced_model, std::move(codes));
 
   // Pass sliced subgraphs to plugin for compilation.
   auto compiled_result = compiler_plugin.Compile(&sliced_model, soc_model);
@@ -498,10 +565,13 @@ Expected<void> ApplyPluginWithPartition(CompilerPlugin& compiler_plugin,
   return {};
 }
 
-Expected<void> ApplyPlugin(CompilerPlugin& compiler_plugin, LiteRtModelT& model,
-                           absl::string_view soc_model) {
+Expected<void> ApplyPlugin(
+    CompilerPlugin& compiler_plugin, LiteRtModelT& model,
+    absl::string_view soc_model,
+    const absl::flat_hash_set<uint32_t>& subgraphs_to_partition) {
   // Collect partitions to pass to compilation.
-  auto partitions = PartitionModel(compiler_plugin, model);
+  auto partitions =
+      PartitionModel(compiler_plugin, model, subgraphs_to_partition);
   if (!partitions) {
     return partitions.Error();
   }
@@ -511,13 +581,14 @@ Expected<void> ApplyPlugin(CompilerPlugin& compiler_plugin, LiteRtModelT& model,
 
 Expected<ApplyPluginsResult> ApplyPlugins(
     LiteRtEnvironment environment, LiteRtModel model,
-    LiteRtHwAcceleratorSet selected_hw_accelerators) {
-  std::string compiler_plugin_lib_path = ".";
+    LiteRtHwAcceleratorSet selected_hw_accelerators, bool* mutated) {
   auto option =
-      environment->GetOption(kLiteRtEnvOptionTagCompilerPluginLibraryPath);
-  if (option.has_value() && option->type == kLiteRtAnyTypeString) {
-    compiler_plugin_lib_path = option->str_value;
+      environment->GetOption(kLiteRtEnvOptionTagCompilerPluginLibraryDir);
+  if (!option.has_value() || option->type != kLiteRtAnyTypeString) {
+    return litert::Error(kLiteRtStatusErrorRuntimeFailure,
+                         "Compiler plugin is not configured");
   }
+  std::string compiler_plugin_lib_path = option->str_value;
 
   const std::array<const absl::string_view, 1>
       compiler_plugin_lib_search_paths = {compiler_plugin_lib_path};
@@ -532,7 +603,6 @@ Expected<ApplyPluginsResult> ApplyPlugins(
                          "No compiler plugin found");
   }
 
-  OwningBufferRef<uint8_t> new_flatbuffer;
   std::vector<std::string> success_messages;
   std::vector<std::string> error_messages;
 
@@ -549,7 +619,11 @@ Expected<ApplyPluginsResult> ApplyPlugins(
     }
 
     if (*plugin_supported_hardware & selected_hw_accelerators) {
-      if (auto status = ApplyPlugin(compiler_plugin, *model); !status) {
+      auto status = ApplyPlugin(compiler_plugin, *model);
+      if (mutated != nullptr) {
+        *mutated = true;
+      }
+      if (!status) {
         error_messages.push_back(
             absl::StrCat(plugin_name, " ", status.Error().Message()));
         continue;
@@ -560,7 +634,6 @@ Expected<ApplyPluginsResult> ApplyPlugins(
     }
   }
 
-  result.new_flatbuffer = std::move(new_flatbuffer);
   result.success_message = absl::StrJoin(success_messages, ", ");
   result.error_message = absl::StrJoin(error_messages, ", ");
 

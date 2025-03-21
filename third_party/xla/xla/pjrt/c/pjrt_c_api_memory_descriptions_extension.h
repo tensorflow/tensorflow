@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef XLA_PJRT_C_PJRT_C_API_MEMORY_DESCRIPTIONS_EXTENSION_H_
 #define XLA_PJRT_C_PJRT_C_API_MEMORY_DESCRIPTIONS_EXTENSION_H_
 
-#include <cstddef>
+#include <stddef.h>
 
 #include "xla/pjrt/c/pjrt_c_api.h"
 

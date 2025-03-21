@@ -58,6 +58,10 @@ CHECK: call void @__xla_cpu_runtime_KeyValueSort
       /*entry_point_name=*/"entry",
       /*relocation_model=*/CpuAotCompilationOptions::RelocationModel::Static};
 
+  module->mutable_config()
+      .mutable_debug_options()
+      .set_xla_cpu_use_thunk_runtime(false);
+
   CompileAheadOfTimeAndVerifyIr(std::move(module), options, filecheck_pattern,
                                 /*match_optimized_ir=*/true);
 }

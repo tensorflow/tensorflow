@@ -852,12 +852,13 @@ class TPUEmbeddingV3Test(parameterized.TestCase, test.TestCase):
         )
 
   @parameterized.parameters(
-      *list(itertools.product([True, False], [True, False]))
+      *list(itertools.product([True, False], [True, False], [True, False]))
   )
   def test_pipelining_and_summary_recording(
       self,
       record_summaries,
       is_enqueue_separated,
+      use_predicate_function,
   ):
     """Test that pipelining is disabled when summaries are recorded and vice versa."""
     num_steps = 10
@@ -940,11 +941,29 @@ class TPUEmbeddingV3Test(parameterized.TestCase, test.TestCase):
           inner_result = strategy.run(step, args=(next(tpu_iter),))
         return inner_result
 
-    with summary_ops_v2.record_if(record_summaries):
-      is_pipelined = self.is_function_pipelined(tpu_test_fn, tpu_iter)
-      # If we are recording summaries the function should not be pipelined and
-      # vice versa.
-      self.assertNotEqual(is_pipelined, record_summaries)
+    class MockSummaryWriter(summary_ops_v2.SummaryWriter):
+
+      def init(self):
+        pass
+
+      def flush(self):
+        pass
+
+      def close(self):
+        pass
+
+    if use_predicate_function:
+      should_record_summaries = lambda: record_summaries
+      should_be_pipelined = True
+    else:
+      should_record_summaries = record_summaries
+      should_be_pipelined = not record_summaries
+    with MockSummaryWriter().as_default():
+      with summary_ops_v2.record_if(should_record_summaries):
+        is_pipelined = self.is_function_pipelined(tpu_test_fn, tpu_iter)
+        # If we are recording summaries the function should not be pipelined and
+        # vice versa.
+        self.assertEqual(is_pipelined, should_be_pipelined)
 
   def is_function_pipelined(self, tf_function, *args):
     """Returns whether the tf_function is flagged for embedding pipelining.
@@ -1003,20 +1022,23 @@ class TPUEmbeddingV3Test(parameterized.TestCase, test.TestCase):
     while_body_graph = while_body_func.graph
 
     ############################################################################
-    # Finally, find any forward pass op by looking for the pipelining attribute.
+    # Finally, find any pipelined SC op by looking for a pipelining attribute.
     ############################################################################
-    pipelined_op = None
+    attr_value = None
     for op in while_body_graph.get_operations():
       try:
         attr = op.get_attr(attr_name)
-        pipelined_op = op
         logging.info(
             'Op "%s" has pipelining attr: %s : %s', op.name, attr_name, attr
         )
+        attr_value = attr.decode('utf-8')
         break
       except ValueError:
         pass
-    has_pipelining_attr = pipelined_op is not None
+    has_pipelining_attr = attr_value in [
+        tpu_embedding_v3._PIPELINE_MODE_FORWARD,
+        tpu_embedding_v3._PIPELINE_MODE_BACKWARD,
+    ]
     return has_pipelining_attr
 
 

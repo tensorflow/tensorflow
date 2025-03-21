@@ -65,38 +65,19 @@ limitations under the License.
 
 namespace xla {
 namespace gpu {
-namespace {
-
-void AnnotateWithInt32Value(std::string name, int64_t value,
-                            const std::string& kernel_name,
-                            llvm::Module* llvm_module) {
-  llvm::NamedMDNode* nvvm_annotations_node =
-      llvm_module->getOrInsertNamedMetadata("nvvm.annotations");
-  llvm::Function* ir_kernel = llvm_module->getFunction(kernel_name.c_str());
-  llvm::LLVMContext& llvm_context = llvm_module->getContext();
-
-  nvvm_annotations_node->addOperand(llvm::MDNode::get(
-      llvm_context,
-      {llvm::ConstantAsMetadata::get(ir_kernel),
-       llvm::MDString::get(llvm_context, name),
-       llvm::ConstantAsMetadata::get(llvm::ConstantInt::get(
-           llvm::IntegerType::get(llvm_context, /*NumBits=*/32), value))}));
-}
-
-}  // namespace
 
 // Annotates the launch dimensions of the corresponding IR kernel in
 // `llvm_module`.
 absl::Status AnnotateKernelLaunchDimensions(
     const se::DeviceDescription& device_info,
-    const LaunchDimensions& launch_dims, const std::string& kernel_name,
+    const LaunchDimensions& launch_dims, llvm::Function* kernel,
     llvm::Module* llvm_module) {
   TF_RET_CHECK(
       (device_info.block_dim_limit().x == 0 ||
        launch_dims.block_counts().x < device_info.block_dim_limit().x) &&
       (device_info.block_dim_limit().y == 0 ||
        launch_dims.block_counts().y < device_info.block_dim_limit().y))
-      << "Kernel '" << kernel_name << "' launch needs more blocks ("
+      << "Kernel '" << kernel->getName().str() << "' launch needs more blocks ("
       << launch_dims.block_counts().x << ", " << launch_dims.block_counts().y
       << ") than allowed by hardware (" << device_info.block_dim_limit().x
       << ", " << device_info.block_dim_limit().y << ").";
@@ -105,16 +86,11 @@ absl::Status AnnotateKernelLaunchDimensions(
 
   // Our launch bounds are exact, so we can specify them as
   // reqntid[xyz] rather than maxntid[xyz].
-  AnnotateWithInt32Value("reqntidx", launch_dims.thread_counts_per_block().x,
-                         kernel_name, llvm_module);
-  if (launch_dims.thread_counts_per_block().y > 1) {
-    AnnotateWithInt32Value("reqntidy", launch_dims.thread_counts_per_block().y,
-                           kernel_name, llvm_module);
-  }
-  if (launch_dims.thread_counts_per_block().z > 1) {
-    AnnotateWithInt32Value("reqntidz", launch_dims.thread_counts_per_block().z,
-                           kernel_name, llvm_module);
-  }
+  const std::string attr =
+      absl::StrCat(launch_dims.thread_counts_per_block().x, ",",
+                   launch_dims.thread_counts_per_block().y, ",",
+                   launch_dims.thread_counts_per_block().z);
+  kernel->addFnAttr("nvvm.reqntid", attr);
   // Maybe we want to set "reqnctapercluster" here, but not sure if needed or if
   // LLVM supports that yet. Let's do that later when needed.
   return absl::OkStatus();
@@ -254,9 +230,9 @@ BuildKernelPrototypeFromUniqueName(IrEmitterContext& ir_emitter_context,
                              unique_kernel_name, llvm_module);
 
   AnnotateFunctionAsGpuKernel(llvm_module, kernel, builder);
-  TF_RETURN_IF_ERROR(AnnotateKernelLaunchDimensions(
-      ir_emitter_context.gpu_device_info(), launch_dimensions,
-      unique_kernel_name, llvm_module));
+  TF_RETURN_IF_ERROR(
+      AnnotateKernelLaunchDimensions(ir_emitter_context.gpu_device_info(),
+                                     launch_dimensions, kernel, llvm_module));
 
   // TODO(b/65380986): Investigate if adding fast math flags for generated
   // kernels makes sense.

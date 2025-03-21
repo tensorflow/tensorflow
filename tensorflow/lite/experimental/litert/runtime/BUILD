@@ -13,7 +13,7 @@
 # limitations under the License.
 
 load("//tensorflow/lite/experimental/litert/build_common:litert_build_defs.bzl", "gtest_main_no_heapcheck_deps")
-load("//tensorflow/lite/experimental/litert/build_common:special_rule.bzl", "gles_deps", "gles_linkopts")
+load("//tensorflow/lite/experimental/litert/build_common:special_rule.bzl", "gles_deps", "gles_linkopts", "lite_rt_friends")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -29,9 +29,13 @@ cc_library(
         "event.h",
     ],
     deps = [
+        ":gpu_environment",
         "//tensorflow/lite/experimental/litert/c:litert_common",
-        "//tensorflow/lite/experimental/litert/c:litert_logging",
+        "//tensorflow/lite/experimental/litert/c:litert_event_type",
         "//tensorflow/lite/experimental/litert/cc:litert_expected",
+        "//tensorflow/lite/experimental/litert/cc:litert_macros",
+        "//tensorflow/lite/experimental/litert/runtime/opencl:cl_event",
+        "@com_google_absl//absl/strings:str_format",
     ],
 )
 
@@ -42,6 +46,7 @@ cc_library(
         "dmabuf_buffer.cc",
         "fastrpc_buffer.cc",
         "gl_buffer.cc",
+        "gl_texture.cc",
         "ion_buffer.cc",
         "open_cl_buffer.cc",
         "tensor_buffer.cc",
@@ -52,27 +57,36 @@ cc_library(
         "event.h",
         "fastrpc_buffer.h",
         "gl_buffer.h",
+        "gl_texture.h",
         "ion_buffer.h",
         "open_cl_buffer.h",
         "tensor_buffer.h",
+        "tensor_buffer_requirements.h",
         "//tensorflow/lite/experimental/litert/c:litert_event.h",
         "//tensorflow/lite/experimental/litert/c:litert_tensor_buffer.h",
         "//tensorflow/lite/experimental/litert/c:litert_tensor_buffer_requirements.h",
     ],
     linkopts = gles_linkopts(),
     deps = [
-        ":environment",
+        ":gpu_environment",
         "//tensorflow/lite/experimental/litert/c:litert_common",
+        "//tensorflow/lite/experimental/litert/c:litert_event_type",
+        "//tensorflow/lite/experimental/litert/c:litert_gl_types",
         "//tensorflow/lite/experimental/litert/c:litert_layout",
+        "//tensorflow/lite/experimental/litert/c:litert_logging",
         "//tensorflow/lite/experimental/litert/c:litert_model",
+        "//tensorflow/lite/experimental/litert/c:litert_tensor_buffer_types",
         "//tensorflow/lite/experimental/litert/cc:litert_event",
         "//tensorflow/lite/experimental/litert/cc:litert_expected",
+        "//tensorflow/lite/experimental/litert/cc:litert_macros",
+        "//tensorflow/lite/experimental/litert/cc:litert_tensor_buffer_utils",
         "//tensorflow/lite/experimental/litert/core/util:tensor_type_util",
         "//tensorflow/lite/experimental/litert/runtime/opencl:buffer",
         "//tensorflow/lite/experimental/litert/runtime/opencl:cl_command_queue",
         "//tensorflow/lite/experimental/litert/runtime/opencl:cl_context",
         "//tensorflow/lite/experimental/litert/runtime/opencl:opencl_wrapper",
         "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:node_hash_map",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
@@ -82,20 +96,24 @@ cc_library(
     ] + gles_deps() + select({
         "//tensorflow:android": [
             "//tensorflow/lite/delegates/gpu/gl:gl_buffer",
+            "//tensorflow/lite/delegates/gpu/gl:gl_texture",
         ],
         "//conditions:default": [],
     }),
 )
 
 cc_library(
-    name = "environment",
+    name = "gpu_environment",
     srcs = [
-        "environment.cc",
+        "gpu_environment.cc",
     ],
     hdrs = [
-        "environment.h",
+        "gpu_environment.h",
     ],
-    visibility = ["//third_party/odml/infra/ml_drift_delegate/litert:__subpackages__"],
+    visibility = [
+        "//tensorflow/lite/experimental/litert:__subpackages__",
+        "//tensorflow/lite/experimental/litert/c:__subpackages__",
+    ],
     deps = [
         "//tensorflow/lite/experimental/litert/c:litert_any",
         "//tensorflow/lite/experimental/litert/c:litert_common",
@@ -111,8 +129,8 @@ cc_library(
 )
 
 cc_test(
-    name = "environment_test",
-    srcs = ["environment_test.cc"],
+    name = "gpu_environment_test",
+    srcs = ["gpu_environment_test.cc"],
     linkopts = select({
         "//tensorflow:android": ["-landroid"],
         "//conditions:default": [],
@@ -121,7 +139,7 @@ cc_test(
         "requires-gpu-nvidia",
     ],
     deps = [
-        ":environment",
+        ":gpu_environment",
         "@com_google_googletest//:gtest_main",
         # copybara:uncomment_begin(google-only)
         # "//third_party/ml_drift/cl:environment",
@@ -158,6 +176,9 @@ cc_library(
     name = "external_litert_buffer_context",
     srcs = ["external_litert_buffer_context.cc"],
     hdrs = ["external_litert_buffer_context.h"],
+    visibility = [
+        "//tensorflow/lite/experimental/litert:__subpackages__",
+    ] + lite_rt_friends(),
     deps = [
         ":tfl_utils",
         "//tensorflow/lite/c:c_api",
@@ -171,7 +192,6 @@ cc_library(
         "//tensorflow/lite/experimental/litert/cc:litert_expected",
         "//tensorflow/lite/experimental/litert/cc:litert_tensor_buffer",
         "//tensorflow/lite/experimental/litert/cc:litert_tensor_buffer_requirements",
-        "@com_google_absl//absl/container:flat_hash_map",
     ],
 )
 
@@ -180,34 +200,43 @@ cc_library(
     srcs = ["compiled_model.cc"],
     hdrs = ["compiled_model.h"],
     deps = [
+        ":accelerator",
+        ":accelerator_model_compilation_data",
+        ":compilation_options",
         ":external_litert_buffer_context",
         ":tensor_buffer",
         "//tensorflow/compiler/mlir/lite:allocation",
+        "//tensorflow/lite:builtin_ops",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:model_builder",
         "//tensorflow/lite/c:c_api_opaque",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/core:cc_api_stable",
         "//tensorflow/lite/delegates/utils:simple_opaque_delegate",
+        "//tensorflow/lite/experimental/litert/c:litert_accelerator",
+        "//tensorflow/lite/experimental/litert/c:litert_accelerator_compilation_options",
         "//tensorflow/lite/experimental/litert/c:litert_common",
-        "//tensorflow/lite/experimental/litert/c:litert_compiled_model_options",
-        "//tensorflow/lite/experimental/litert/c:litert_dispatch_delegate",
+        "//tensorflow/lite/experimental/litert/c:litert_compilation_options",
         "//tensorflow/lite/experimental/litert/c:litert_logging",
         "//tensorflow/lite/experimental/litert/c:litert_model",
         "//tensorflow/lite/experimental/litert/c:litert_tensor_buffer",
         "//tensorflow/lite/experimental/litert/cc:litert_buffer_ref",
         "//tensorflow/lite/experimental/litert/cc:litert_event",
         "//tensorflow/lite/experimental/litert/cc:litert_expected",
+        "//tensorflow/lite/experimental/litert/cc:litert_macros",
+        "//tensorflow/lite/experimental/litert/cc:litert_model",
         "//tensorflow/lite/experimental/litert/cc:litert_tensor_buffer",
         "//tensorflow/lite/experimental/litert/cc:litert_tensor_buffer_requirements",
         "//tensorflow/lite/experimental/litert/compiler/plugin:compiler_plugin",
+        "//tensorflow/lite/experimental/litert/core:build_stamp",
         "//tensorflow/lite/experimental/litert/core:environment",
         "//tensorflow/lite/experimental/litert/core/model",
         "//tensorflow/lite/experimental/litert/core/model:model_serialize",
-        "//tensorflow/lite/experimental/litert/runtime/dispatch:dispatch_delegate",
+        "//tensorflow/lite/experimental/litert/core/util:flatbuffer_tools",
         "//tensorflow/lite/kernels:builtin_ops",
         "@com_google_absl//absl/cleanup",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
     ],
@@ -234,14 +263,16 @@ cc_test(
         "//tensorflow/lite/c:c_api_opaque",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/experimental/litert/c:litert_common",
-        "//tensorflow/lite/experimental/litert/c:litert_compiled_model_options",
+        "//tensorflow/lite/experimental/litert/c:litert_compilation_options",
         "//tensorflow/lite/experimental/litert/c:litert_environment",
         "//tensorflow/lite/experimental/litert/c:litert_model",
         "//tensorflow/lite/experimental/litert/c:litert_tensor_buffer",
         "//tensorflow/lite/experimental/litert/cc:litert_expected",
+        "//tensorflow/lite/experimental/litert/cc:litert_macros",
         "//tensorflow/lite/experimental/litert/cc:litert_tensor_buffer",
         "//tensorflow/lite/experimental/litert/core/model",
         "//tensorflow/lite/experimental/litert/test:common",
+        "//tensorflow/lite/experimental/litert/test:matchers",
         "//tensorflow/lite/experimental/litert/test:simple_model",
         "//tensorflow/lite/kernels:builtin_ops",
         "@com_google_absl//absl/log:absl_log",
@@ -251,14 +282,37 @@ cc_test(
     ],
 )
 
+cc_library(
+    name = "compilation_options",
+    hdrs = [
+        "compilation_options.h",
+        "//tensorflow/lite/experimental/litert/c:litert_compilation_options.h",
+    ],
+    deps = [
+        "//tensorflow/lite/experimental/litert/c:litert_accelerator_compilation_options",
+        "//tensorflow/lite/experimental/litert/c:litert_common",
+        "//tensorflow/lite/experimental/litert/c:litert_layout",
+        "//tensorflow/lite/experimental/litert/c:litert_tensor_buffer",
+        "//tensorflow/lite/experimental/litert/cc:litert_accelerator_compilation_options",
+    ],
+)
+
 cc_test(
     name = "gl_buffer_test",
     srcs = ["gl_buffer_test.cc"],
+    linkopts = select({
+        "//tensorflow:android": [
+            "-landroid",
+        ],
+        "//conditions:default": [],
+    }),
     tags = [
         "notap",
     ],
     deps = [
         ":tensor_buffer",
+        "//tensorflow/lite/experimental/litert/c:litert_common",
+        "//tensorflow/lite/experimental/litert/test:matchers",
     ] + gtest_main_no_heapcheck_deps() + select({
         "//tensorflow:android": [
             "//tensorflow/lite/delegates/gpu/gl:egl_environment",
@@ -266,4 +320,95 @@ cc_test(
         ],
         "//conditions:default": [],
     }),
+)
+
+cc_library(
+    name = "tensor_buffer_conversion",
+    srcs = ["tensor_buffer_conversion.cc"],
+    hdrs = ["tensor_buffer_conversion.h"],
+    linkopts = gles_linkopts(),
+    deps = [
+        ":tensor_buffer",
+        "//tensorflow/lite/experimental/litert/c:litert_common",
+        "//tensorflow/lite/experimental/litert/c:litert_environment",
+        "//tensorflow/lite/experimental/litert/c:litert_tensor_buffer_types",
+        "//tensorflow/lite/experimental/litert/cc:litert_expected",
+        "//tensorflow/lite/experimental/litert/cc:litert_macros",
+        "//tensorflow/lite/experimental/litert/cc:litert_tensor_buffer_utils",
+        "@com_google_absl//absl/strings:str_format",
+    ] + gles_deps(),
+)
+
+cc_test(
+    name = "tensor_buffer_conversion_test",
+    srcs = ["tensor_buffer_conversion_test.cc"],
+    linkopts = select({
+        "//tensorflow:android": ["-landroid"],
+        "//conditions:default": [],
+    }),
+    tags = [
+        "notap",
+    ],
+    deps = [
+        ":tensor_buffer",
+        ":tensor_buffer_conversion",
+        "//tensorflow/lite/experimental/litert/c:litert_common",
+        "//tensorflow/lite/experimental/litert/c:litert_environment",
+        "//tensorflow/lite/experimental/litert/c:litert_model",
+        "//tensorflow/lite/experimental/litert/c:litert_tensor_buffer_types",
+        "//tensorflow/lite/experimental/litert/cc:litert_layout",
+        "//tensorflow/lite/experimental/litert/core:environment",
+        "//tensorflow/lite/experimental/litert/test:matchers",
+        "@com_google_googletest//:gtest_main",
+    ] + select({
+        "//tensorflow:android": [
+            "//tensorflow/lite/delegates/gpu/gl:egl_environment",
+        ],
+        "//conditions:default": [],
+    }),
+)
+
+cc_library(
+    name = "accelerator",
+    hdrs = ["accelerator.h"],
+    deps = [
+        "//tensorflow/lite/experimental/litert/c:litert_accelerator_compilation_options",
+        "//tensorflow/lite/experimental/litert/c:litert_common",
+    ],
+)
+
+cc_library(
+    name = "accelerator_registry",
+    srcs = ["accelerator_registry.cc"],
+    hdrs = ["accelerator_registry.h"],
+    deps = [
+        ":accelerator",
+        "//tensorflow/lite/experimental/litert/c:litert_accelerator_compilation_options",
+        "//tensorflow/lite/experimental/litert/c:litert_common",
+        "//tensorflow/lite/experimental/litert/cc:litert_expected",
+        "//tensorflow/lite/experimental/litert/cc:litert_shared_library",
+    ],
+)
+
+cc_library(
+    name = "accelerator_model_compilation_data",
+    hdrs = ["accelerator_model_compilation_data.h"],
+    deps = [
+        "//tensorflow/lite/experimental/litert/c:litert_common",
+        "//tensorflow/lite/experimental/litert/cc:litert_accelerator_compilation_options",
+        "//tensorflow/lite/experimental/litert/cc:litert_expected",
+    ],
+)
+
+cc_test(
+    name = "accelerator_model_compilation_data_test",
+    srcs = ["accelerator_model_compilation_data_test.cc"],
+    deps = [
+        ":accelerator_model_compilation_data",
+        "//tensorflow/lite/experimental/litert/c:litert_accelerator_compilation_options",
+        "//tensorflow/lite/experimental/litert/c:litert_common",
+        "//tensorflow/lite/experimental/litert/core:version",
+        "//tensorflow/lite/experimental/litert/test:matchers",
+        "@com_google_googletest//:gtest_main",
+    ],
 )

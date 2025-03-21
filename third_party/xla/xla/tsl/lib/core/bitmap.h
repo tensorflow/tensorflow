@@ -16,6 +16,9 @@ limitations under the License.
 #ifndef XLA_TSL_LIB_CORE_BITMAP_H_
 #define XLA_TSL_LIB_CORE_BITMAP_H_
 
+#include <cstddef>
+#include <cstdint>
+#include <cstring>
 #include <string>
 
 #include "xla/tsl/platform/logging.h"
@@ -33,8 +36,8 @@ class Bitmap {
 
   ~Bitmap();
 
-  Bitmap(const Bitmap&) = delete;
-  Bitmap& operator=(const Bitmap&) = delete;
+  Bitmap(const Bitmap&);
+  Bitmap& operator=(const Bitmap&);
 
   // Return the number of bits that the bitmap can hold.
   size_t bits() const;
@@ -58,6 +61,12 @@ class Bitmap {
   // Returns bits() if no such i exists.
   size_t FirstUnset(size_t start) const;
 
+  // Returns true if all bits are set.
+  bool IsAllSet() const;
+
+  // Returns the number of one bits in the bitmap.
+  size_t CountOnes() const;
+
   // Returns the bitmap as an ascii string of '0' and '1' characters, bits()
   // characters in length.
   std::string ToString() const;
@@ -79,6 +88,21 @@ class Bitmap {
 // Implementation details follow.  Clients should ignore.
 
 inline Bitmap::Bitmap() : nbits_(0), word_(nullptr) {}
+
+inline Bitmap::Bitmap(const Bitmap& other) {
+  nbits_ = 0;
+  word_ = nullptr;
+  Reset(other.bits());
+  memcpy(this->word_, other.word_, sizeof(Word) * NumWords(bits()));
+}
+
+inline Bitmap& Bitmap::operator=(const Bitmap& other) {
+  if (this != &other) {
+    Reset(other.bits());
+    memcpy(this->word_, other.word_, sizeof(Word) * NumWords(bits()));
+  }
+  return *this;
+}
 
 inline Bitmap::Bitmap(size_t n) : Bitmap() { Reset(n); }
 

@@ -490,17 +490,9 @@ PyObject* InterpreterWrapper::TensorSizeSignature(int tensor_index,
 
   const Subgraph* subgraph = interpreter_->subgraph(subgraph_index);
   const TfLiteTensor* tensor = subgraph->tensor(tensor_index);
-  const int32_t* size_signature_data = nullptr;
-  int32_t size_signature_size = 0;
-  if (tensor->dims_signature != nullptr && tensor->dims_signature->size != 0) {
-    size_signature_data = tensor->dims_signature->data;
-    size_signature_size = tensor->dims_signature->size;
-  } else {
-    size_signature_data = tensor->dims->data;
-    size_signature_size = tensor->dims->size;
-  }
+  const TfLiteIntArray* dims_signature = TfLiteTensorGetDimsSignature(tensor);
   PyObject* np_array =
-      PyArrayFromIntVector(size_signature_data, size_signature_size);
+      PyArrayFromIntVector(dims_signature->data, dims_signature->size);
 
   return PyArray_Return(reinterpret_cast<PyArrayObject*>(np_array));
 }

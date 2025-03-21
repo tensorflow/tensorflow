@@ -35,9 +35,31 @@ def append_rule_kwargs(rule_kwargs, **append):
         append_to += v
         rule_kwargs[k] = append_to
 
+def absolute_label(label, package_name = None):
+    """Get the absolute label for a given label.
+
+    Args:
+      label: The label to convert to absolute.
+      package_name: The package name to use if the label is relative.
+
+    Returns:
+      The absolute label.
+    """
+    if label.startswith("//"):
+        if ":" in label:
+            return label
+        return "%s:%s" % (label, label.rsplit("/", 1)[-1])
+    if not package_name:
+        package_name = native.package_name()
+    if label.startswith(":"):
+        return "//%s%s" % (package_name, label)
+    if ":" in label:
+        return "//%s/%s" % (package_name, label)
+    return "//%s:%s" % (package_name, label)
+
 # Private
 
-def _valild_shared_lib_name(name):
+def _valid_shared_lib_name(name):
     return name.endswith(_SHARED_LIB_SUFFIX)
 
 def _valid_so_name(name):
@@ -242,7 +264,7 @@ def litert_dynamic_lib(
       ungrte: Whether to link against system libraries ("ungrte").
       **cc_lib_kwargs: Keyword arguments to pass to the underlying rule.
     """
-    if not _valild_shared_lib_name(shared_lib_name):
+    if not _valid_shared_lib_name(shared_lib_name):
         fail("\"shared_lib_name\" must end with \"_so\"")
     if not _valid_so_name(so_name):
         fail("\"so_name\" must be \"libLiteRt*.so\"")

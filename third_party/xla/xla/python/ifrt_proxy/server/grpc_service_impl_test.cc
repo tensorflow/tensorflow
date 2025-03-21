@@ -30,6 +30,7 @@
 #include "grpcpp/server_builder.h"
 #include "grpcpp/support/channel_arguments.h"
 #include "grpcpp/support/status.h"
+#include "xla/python/ifrt/attribute_map.h"
 #include "xla/python/ifrt_proxy/client/grpc_host_buffer.h"
 #include "xla/python/ifrt_proxy/common/grpc_ifrt_service.grpc.pb.h"
 #include "xla/python/ifrt_proxy/common/ifrt_service.pb.h"
@@ -59,11 +60,12 @@ absl::StatusOr<std::unique_ptr<GrpcServer>> MakeGrpcServer() {
   // TODO(b/282993619): For external/GKE uses, we may need to find (or build)
   // a utility function that works similar to PickUnusedPortorDie().
   auto addr = absl::StrCat("[::1]:", tsl::testing::PickUnusedPortOrDie());
-  return GrpcServer::CreateFromIfrtClientFactory(addr, []() {
-    return absl::UnimplementedError(
-        "IFRT client creation fails. This test is not expected to "
-        "instantiate any IFRT client");
-  });
+  return GrpcServer::CreateFromIfrtClientFactory(
+      addr, [](AttributeMap initialization_data) {
+        return absl::UnimplementedError(
+            "IFRT client creation fails. This test is not expected to "
+            "instantiate any IFRT client");
+      });
 }
 
 TEST(GrpcServiceImplTest, CanBeUsedToSetupAnGrpcServer) {
@@ -77,7 +79,8 @@ class GrpcIfrtServiceImplHostBufferTest
  protected:
   GrpcIfrtServiceImplHostBufferTest()
       : impl_([](IfrtProxyVersion version, uint64_t session_id,
-                 std::shared_ptr<HostBufferStore> host_buffer_store) {
+                 std::shared_ptr<HostBufferStore> host_buffer_store,
+                 AttributeMap initialization_data) {
           return absl::UnimplementedError(
               "IFRT backend creation is not implemented");
         }) {

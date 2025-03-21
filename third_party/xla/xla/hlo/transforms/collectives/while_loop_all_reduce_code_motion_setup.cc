@@ -26,6 +26,7 @@ limitations under the License.
 #include "xla/service/hlo_creation_utils.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/xla_data.pb.h"
 #include "tsl/platform/statusor.h"
 
 namespace xla {
@@ -33,7 +34,7 @@ namespace xla {
 bool ReorderReduceTranspose::InstructionMatchesPattern(
     HloInstruction* instruction) {
   // Instruction must be in while loop body.
-  if (!instruction->parent()->IsWhileBodyComputation()) {
+  if (!instruction->parent()->GetUniqueCaller(HloOpcode::kWhile)) {
     return false;
   }
   // Search for Reduce Scatter Transpose pairs with optional convert in between
@@ -158,7 +159,7 @@ absl::StatusOr<HloInstruction*> ReorderReduceTranspose::ExpandInstruction(
 bool ReorderConvertReduceAdd::InstructionMatchesPattern(
     HloInstruction* instruction) {
   // Instruction must be in while loop body.
-  if (!instruction->parent()->IsWhileBodyComputation()) {
+  if (!instruction->parent()->GetUniqueCaller(HloOpcode::kWhile)) {
     return false;
   }
   // Check if the instruction is an add operation

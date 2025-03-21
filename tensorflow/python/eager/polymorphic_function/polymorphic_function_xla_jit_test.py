@@ -47,7 +47,7 @@ from tensorflow.python.util import nest
 class FunctionTest(xla_test.XLATestCase):
 
   def _compareTwoMethodsCompilerIROutput(self, f, args, kwargs):
-    """Assert the two differnet methods (tensor_spec inputs or tensor inputs) experimental_get_compiler give same HLO text."""
+    """Assert the two different methods (tensor_spec inputs or tensor inputs) experimental_get_compiler give same HLO text."""
     flat_args = list(args) + list(kwargs.values())
     if not all([isinstance(x, tensor.Tensor) for x in flat_args]):
       self.skipTest('It only support args and kwargs are all tf.Tensor types.')
@@ -1019,7 +1019,7 @@ class FunctionTest(xla_test.XLATestCase):
       val1 = constant_op.constant(2)
       val2 = constant_op.constant(50)
 
-      # Returns an error, since the value known at compile time was overriden.
+      # Returns an error, since the value known at compile time was overridden.
       with self.assertRaisesRegex(errors.InvalidArgumentError,
                                   'concrete values at compile time'):
         f(random_ops.random_normal([10, 10]), val1, val2)

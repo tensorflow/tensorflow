@@ -15,16 +15,21 @@
 #ifndef TENSORFLOW_LITE_EXPERIMENTAL_LITERT_TOOLS_APPLY_PLUGIN_H_
 #define TENSORFLOW_LITE_EXPERIMENTAL_LITERT_TOOLS_APPLY_PLUGIN_H_
 
+#include <cstdint>
 #include <iostream>
 #include <memory>
 #include <optional>
 #include <vector>
 
+#include "absl/container/flat_hash_set.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
+#include "tensorflow/lite/experimental/litert/compiler/plugin/compiler_flags.h"
 #include "tensorflow/lite/experimental/litert/tools/outstream.h"
 
 namespace litert::tools {
+
+using ::litert::internal::CompilerFlags;
 
 struct ApplyPluginRun {
   // NOTE: All StrFlagT are expected to have static storage duration.
@@ -138,6 +143,14 @@ struct ApplyPluginRun {
   // "silent" behavior and should only be used when this tool is part of a
   // larger pipeline like an end2end test.
   UserStream dump_out;
+
+  // Compiler flags to pass to the plugin. Only relevant for "APPLY" and
+  // "COMPILE" commands.
+  CompilerFlags compiler_flags;
+
+  // If provided, only the subgraphs with the given indices are applied with the
+  // plugin.
+  absl::flat_hash_set<uint32_t> subgraphs = {};
 };
 
 LiteRtStatus ApplyPlugin(ApplyPluginRun::Ptr run);

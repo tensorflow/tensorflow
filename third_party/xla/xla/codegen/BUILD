@@ -1,4 +1,4 @@
-load("//xla/tests:build_defs.bzl", "xla_test")
+load("//xla:xla.bzl", "xla_cc_test")
 load("//xla/tsl:tsl.bzl", "if_google")
 load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
 
@@ -16,6 +16,18 @@ package_group(
 )
 
 cc_library(
+    name = "autotuner",
+    hdrs = ["autotuner.h"],
+    deps = [
+        "//xla/hlo/ir:hlo",
+        "//xla/runtime:thunk",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/time",
+    ],
+)
+
+cc_library(
     name = "device_spec",
     hdrs = ["device_spec.h"],
     deps = [
@@ -29,7 +41,8 @@ cc_library(
     srcs = ["emitter_loc_op_builder.cc"],
     hdrs = ["emitter_loc_op_builder.h"],
     visibility = [
-        "//xla/backends/gpu/codegen:__subpackages__",
+        "//xla/backends:__subpackages__",
+        "//xla/codegen/emitters/transforms:__pkg__",
     ],
     deps = [
         "@com_google_absl//absl/strings",
@@ -39,10 +52,10 @@ cc_library(
     ] + if_google(["@com_google_absl//absl/types:source_location"]),
 )
 
-xla_test(
+xla_cc_test(
     name = "emitter_loc_op_builder_test",
     srcs = ["emitter_loc_op_builder_test.cc"],
-    backends = ["gpu"],
+    tags = ["gpu"],
     deps = [
         ":emitter_loc_op_builder",
         "//xla/backends/gpu/codegen/triton:fusion_emitter",
@@ -71,8 +84,9 @@ cc_library(
     srcs = ["kernel_spec.cc"],
     hdrs = ["kernel_spec.h"],
     deps = [
-        "//xla/runtime:buffer_use",
+        "//xla/service:buffer_assignment",
         "//xla/stream_executor:launch_dim",
+        "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/strings:string_view",
     ],

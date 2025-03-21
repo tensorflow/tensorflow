@@ -9,7 +9,7 @@ package(
 package_group(
     name = "friends",
     packages = [
-        "//xla/service/spmd/shardy/...",
+        "//xla/...",
     ],
 )
 
@@ -22,6 +22,7 @@ cc_library(
         "//xla/service/spmd/shardy:constants",
         "//xla/service/spmd/shardy:utils",
         "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/strings:string_view",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
@@ -48,9 +49,9 @@ cc_library(
 )
 
 cc_library(
-    name = "import_backend_func_calls",
-    srcs = ["import_backend_func_calls.cc"],
-    hdrs = ["import_backend_func_calls.h"],
+    name = "import_uninlineable_func_calls",
+    srcs = ["import_uninlineable_func_calls.cc"],
+    hdrs = ["import_uninlineable_func_calls.h"],
     deps = [
         "//xla/service/spmd/shardy:constants",
         "//xla/service/spmd/shardy:utils",
@@ -103,15 +104,13 @@ cc_library(
     srcs = ["pipeline_passes.cc"],
     hdrs = ["pipeline_passes.h"],
     deps = [
-        ":import_backend_func_calls",
         ":import_constants",
         ":import_sdy_custom_calls",
+        ":import_uninlineable_func_calls",
         ":open_while_free_vars_sharding",
         "//xla/mlir_hlo:stablehlo_extension_passes",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:Pass",
-        "@llvm-project//mlir:TransformUtils",
         "@llvm-project//mlir:Transforms",
-        "@stablehlo//:stablehlo_passes",
     ],
 )

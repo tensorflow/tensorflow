@@ -150,7 +150,10 @@ void TransposeOp::Compute(OpKernelContext* ctx) {
   bool is_identity = true;
   for (int i = 0; i < dims; ++i) {
     int32_t d = permutation[i];
-    if (d < 0) d += dims;
+    if (d < 0) {
+      d += dims;
+      permutation[i] = d;
+    }
     OP_REQUIRES(
         ctx, 0 <= d && d < dims,
         errors::InvalidArgument(d, " is out of range [0 .. ", dims, ")"));

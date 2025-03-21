@@ -39,6 +39,8 @@ class SymbolicTiledHloInstruction {
                               IndexingMap indexing_map)
       : hlo_(hlo), indexing_map_(std::move(indexing_map)) {}
 
+  virtual ~SymbolicTiledHloInstruction() = default;
+
   const HloInstruction* hlo() const { return hlo_; }
   const IndexingMap& indexing_map() const { return indexing_map_; }
   void set_symbolic_tile(SymbolicTile symbolic_tile) {

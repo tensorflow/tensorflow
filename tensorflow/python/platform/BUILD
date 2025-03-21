@@ -76,7 +76,13 @@ py_strict_library(
 py_strict_library(
     name = "test",
     srcs = ["googletest.py"],
-    visibility = visibility + ["//tensorflow:internal"],
+    # copybara:uncomment_begin(google-only)
+    # visibility = visibility + ["//tensorflow:internal"],
+    # copybara:uncomment_end_and_comment_begin
+    visibility = [
+        "//visibility:public",
+    ],
+    # copybara:comment_end
     deps = [
         ":benchmark",
         ":flags",
@@ -297,11 +303,17 @@ py_strict_library(
 py_strict_library(
     name = "tf_logging",
     srcs = ["tf_logging.py"],
-    visibility = visibility + [
-        "//learning/brain/contrib/learn:__pkg__",
-        "//learning/brain/mobile/lite/lstm:__pkg__",
-        "//third_party/py/tf_slim/training:__pkg__",
+    # copybara:uncomment_begin(google-only)
+    # visibility = visibility + [
+    # "//learning/brain/contrib/learn:__pkg__",
+    # "//learning/brain/mobile/lite/lstm:__pkg__",
+    # "//third_party/py/tf_slim/training:__pkg__",
+    # ],
+    # copybara:uncomment_end_and_comment_begin
+    visibility = [
+        "//visibility:public",
     ],
+    # copybara:comment_end
     deps = [
         "//tensorflow/python/util:tf_export",
         "@absl_py//absl/logging",

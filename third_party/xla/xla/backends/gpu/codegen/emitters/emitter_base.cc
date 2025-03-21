@@ -260,7 +260,7 @@ absl::StatusOr<FusionEmissionResult> EmitterBase::Emit(
               AnnotateFunctionAsGpuKernel(module.get(), kernel_func, &builder);
               TF_RETURN_IF_ERROR(AnnotateKernelLaunchDimensions(
                   ir_emitter_context.gpu_device_info(), launch_dims,
-                  kernel_name, module.get()));
+                  kernel_func, module.get()));
 
               // Use override flag because libdevice functions can be present in
               // both.
@@ -605,7 +605,7 @@ void AddLoopTransformationPasses(mlir::OpPassManager& pm,
   // opportunities for LICM. This would not be necessary if LICM also moved
   // instructions over ifs.
   pm.addPass(mlir::createLoopInvariantCodeMotionPass());
-  pm.addNestedPass<FuncOp>(CreateVectorizeLoadsAndStoresPass(device));
+  pm.addNestedPass<FuncOp>(emitters::CreateVectorizeLoadsAndStoresPass(device));
   pm.addNestedPass<FuncOp>(CreateOptimizeLoopsPass());
   pm.addPass(mlir::createCanonicalizerPass());
   pm.addPass(mlir::createCSEPass());
@@ -641,7 +641,7 @@ void AddLoweringPasses(mlir::OpPassManager& pm,
 
   pm.addPass(emitters::CreateExpandFloatOpsPass());
   pm.addPass(mlir::createLowerAffinePass());
-  pm.addPass(mlir::createConvertSCFToCFPass());
+  pm.addPass(mlir::createSCFToControlFlowPass());
   pm.addPass(emitters::CreateLowerToLLVMPass(device));
   pm.addPass(mlir::createReconcileUnrealizedCastsPass());
 }

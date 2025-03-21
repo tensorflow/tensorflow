@@ -628,7 +628,7 @@ class ThunkSequenceSerdesTest : public ::testing::Test {
             buffer_allocations_[buffer_allocations_.size() - 1])},
         /*kernel_name=*/"test",
         /*thread_dim=*/se::ThreadDim(1),
-        /*invariant_arguments=*/{{0}},
+        /*invariant_arguments=*/{0},
         /*min_alignment=*/8);
   }
 
@@ -1154,7 +1154,8 @@ class ThunkSequenceSerdesTest : public ::testing::Test {
                          [this](const BufferAllocation::Slice& slice_1,
                                 const BufferAllocation::Slice& slice_2) {
                            return VerifySliceEquality(slice_1, slice_2);
-                         });
+                         }) &&
+           thunk_1.invariant_arguments() == thunk_2.invariant_arguments();
   }
 
   bool VerifyConvolutionThunkEquality(const ConvolutionThunk& thunk_1,

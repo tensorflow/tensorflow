@@ -299,7 +299,7 @@ InterpreterValue Extract(InterpreterState& state, vector::ExtractOp extract,
   for (int64_t offset : extract.getStaticPosition()) {
     state.CheckSuccess(result_view.Slice(0, offset), "index out of bounds");
   }
-  return result_view.Rank() == 0 ? result.ExtractElement({}) : result;
+  return result_view.num_dimensions() == 0 ? result.ExtractElement({}) : result;
 }
 
 InterpreterValue ExtractElement(InterpreterState& state,
@@ -635,7 +635,7 @@ InterpreterValue Shuffle(InterpreterState& state, vector::ShuffleOp shuffle,
   result_view.is_vector = true;
 
   auto mask = shuffle.getMask();
-  bool is_zero_dim = v0.View().Rank() == 0;
+  bool is_zero_dim = v0.View().num_dimensions() == 0;
   int64_t size0 = is_zero_dim ? 1 : v0.View().sizes[0];
   for (auto [dst_index, src_index] : llvm::enumerate(mask)) {
     auto src = src_index < size0 ? v0 : v1;
@@ -698,9 +698,9 @@ std::optional<InterpreterValue> ExtractMemorySlice(
   auto mem_slice = memory;
   auto& mem_slice_view = mem_slice.View();
   auto& vector_view = vector.View();
-  for (int64_t i = 0; i < mem_slice_view.Rank(); ++i) {
+  for (int64_t i = 0; i < mem_slice_view.num_dimensions(); ++i) {
     bool found = false;
-    for (int64_t j = 0; !found && j < vector_view.Rank(); ++j) {
+    for (int64_t j = 0; !found && j < vector_view.num_dimensions(); ++j) {
       if (map.getResult(j).isFunctionOfDim(i)) {
         int64_t size = mem_slice_view.sizes[i] - offsets[i];
         bool is_in_bounds = size >= vector_view.sizes[j];
@@ -801,7 +801,8 @@ llvm::SmallVector<InterpreterValue> TransferWrite(
   }
 
   const auto& src_view = src.View();
-  assert(transfer.getPermutationMap().getNumResults() == src_view.Rank() &&
+  assert(transfer.getPermutationMap().getNumResults() ==
+             src_view.num_dimensions() &&
          "expected matching number of results");
 
   dst = transfer.getSource().getType().isa<TensorType>() ? dst.Clone() : dst;
@@ -832,7 +833,7 @@ InterpreterValue Transpose(InterpreterState&, vector::TransposeOp transpose,
 
 InterpreterValue TypeCast(InterpreterState&, vector::TypeCastOp,
                           InterpreterValue vector) {
-  vector.View().num_vector_dims = vector.View().Rank();
+  vector.View().num_vector_dims = vector.View().num_dimensions();
   return vector;
 }
 

@@ -58,6 +58,10 @@ class CpuEigenDotOperationTest
     auto hlo_module = CreateNewVerifiedModule();
     hlo_module->AddEntryComputation(std::move(entry_computation));
 
+    hlo_module->mutable_config()
+        .mutable_debug_options()
+        .set_xla_cpu_use_thunk_runtime(false);
+
     CompileAheadOfTimeAndVerifyIr(std::move(hlo_module), options,
                                   filecheck_lines,
                                   /*match_optimized_ir=*/true);
@@ -65,9 +69,9 @@ class CpuEigenDotOperationTest
 };
 
 TEST_P(CpuEigenDotOperationTest, SimpleDotOp) {
-#if defined(INTEL_MKL) && defined(ENABLE_ONEDNN_V3)
+#if defined(INTEL_MKL)
   GTEST_SKIP() << "OneDNN rewrites dot instruction to custom-call.";
-#endif  // INTEL_MKL && ENABLE_ONEDNN_V3
+#endif  // INTEL_MKL
   HloComputation::Builder builder(TestName());
   DotTestSpec spec = GetParam();
 
@@ -83,9 +87,9 @@ TEST_P(CpuEigenDotOperationTest, SimpleDotOp) {
 }
 
 TEST_P(CpuEigenDotOperationTest, DotTransposeOp) {
-#if defined(INTEL_MKL) && defined(ENABLE_ONEDNN_V3)
+#if defined(INTEL_MKL)
   GTEST_SKIP() << "OneDNN rewrites dot instruction to custom-call.";
-#endif  // INTEL_MKL && ENABLE_ONEDNN_V3
+#endif  // INTEL_MKL
   HloComputation::Builder builder(TestName());
   DotTestSpec spec = GetParam();
 

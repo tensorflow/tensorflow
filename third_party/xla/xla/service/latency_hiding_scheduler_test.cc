@@ -37,6 +37,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_schedule.h"
+#include "xla/hlo/testlib/test_helpers.h"
 #include "xla/hlo/transforms/collectives/async_collective_creator.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/service/legalize_scheduling_annotations.h"
@@ -2113,11 +2114,13 @@ while_body {
   gte0 = bf16[8]{0} get-tuple-element(param), index=0
   gte1 = pred[] get-tuple-element(param), index=2
   bitcast = bf16[8]{0} bitcast(gte0)
-  collective-permute.1 = bf16[8]{0} collective-permute(gte0), source_target_pairs={{0,1},{1,2},{2,3}}
-  add0 = bf16[8]{0} add(collective-permute.1, bitcast)
+  cps.1 = (bf16[8]{0}, bf16[8]{0}, u32[], u32[]) collective-permute-start(gte0), source_target_pairs={{0,1},{1,2},{2,3}}
+  cpd.1 = bf16[8]{0} collective-permute-done(cps.1)
+  add0 = bf16[8]{0} add(cpd.1, bitcast)
   negate = bf16[8]{0} negate(add0)
-  collective-permute.2 = bf16[8]{0} collective-permute(collective-permute.1), source_target_pairs={{1,0},{0,3},{3,2}}
-  ROOT tuple = (bf16[8]{0}, bf16[8]{0}, pred[]) tuple(collective-permute.2, negate, gte1)
+  cps.2 = (bf16[8]{0}, bf16[8]{0}, u32[], u32[]) collective-permute-start(gte0), source_target_pairs={{1,0},{0,3},{3,2}}
+  cpd.2 = bf16[8]{0} collective-permute-done(cps.2)
+  ROOT tuple = (bf16[8]{0}, bf16[8]{0}, pred[]) tuple(cpd.2, negate, gte1)
 }
 
 ENTRY entry {
@@ -2126,22 +2129,21 @@ ENTRY entry {
   p2 = pred[] parameter(2)
   tuple = (bf16[8]{0}, bf16[8]{0}, pred[]) tuple(p0, p1, p2)
   while = (bf16[8]{0}, bf16[8]{0}, pred[]) while(tuple), condition=while_cond, body=while_body
-  collective-permute.3 = bf16[8]{0} collective-permute(p1), source_target_pairs={{0,1},{1,2},{2,3}}
-  gte0 = bf16[8]{0} get-tuple-element(while), index=0
-  gte1 = bf16[8]{0} get-tuple-element(while), index=1
-  add = bf16[8]{0} add(gte0, gte1)
-  ROOT add2 = bf16[8]{0} add(add, collective-permute.3)
+  cps.3 = (bf16[8]{0}, bf16[8]{0}, u32[], u32[]) collective-permute-start(p1), source_target_pairs={{0,1},{1,2},{2,3}}
+  cpd.3 = bf16[8]{0} collective-permute-done(cps.3)
+  gte = bf16[8]{0} get-tuple-element(while), index=0
+  ROOT add = bf16[8]{0} add(gte, cpd.3)
 }
 )";
 
   TF_ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
   HloSchedule& module_schedule = hlo_module->schedule();
-  EXPECT_TRUE(hlo_module->has_entry_computation());
   auto sched_config = GetDefaultSchedConfig();
-  sched_config.collective_permute_overlap_limit = 2;
-  TF_EXPECT_OK(RunScheduler(hlo_module.get(), sched_config));
-  EXPECT_TRUE(hlo_module->has_entry_computation());
 
+  // With collective-permute overlap limit of 1, (cps.3, cpd.3) cannot overlap
+  // the while, due to the two collective-permutes in the while body.
+  sched_config.collective_permute_overlap_limit = 1;
+  TF_EXPECT_OK(RunScheduler(hlo_module.get(), sched_config));
   std::vector<HloInstruction*> new_instruction_sequence =
       module_schedule.sequence(hlo_module->entry_computation()).instructions();
   if (VLOG_IS_ON(1)) {
@@ -2149,11 +2151,27 @@ ENTRY entry {
       VLOG(1) << new_i->ToString();
     }
   }
+  EXPECT_TRUE(GetIndex(new_instruction_sequence, "cpd.3") <
+                  GetIndex(new_instruction_sequence, "while") ||
+              GetIndex(new_instruction_sequence, "while") <
+                  GetIndex(new_instruction_sequence, "cps.3"));
 
-  // Do not overlap if the sum of collectives inside the loop + the collective
-  // we are trying to overlap would go beyond the overlap limit.
-  EXPECT_GT(GetIndex(new_instruction_sequence, "collective-permute-start.2"),
-            GetIndex(new_instruction_sequence, "while"));
+  // With collective-permute overlap limit of 2, (cps.3, cpd.3) can overlap the
+  // while as the two collective-permutes in the while body can be scheduled
+  // sequentially.
+  sched_config.collective_permute_overlap_limit = 2;
+  TF_EXPECT_OK(RunScheduler(hlo_module.get(), sched_config));
+  new_instruction_sequence =
+      module_schedule.sequence(hlo_module->entry_computation()).instructions();
+  if (VLOG_IS_ON(1)) {
+    for (auto* new_i : new_instruction_sequence) {
+      VLOG(1) << new_i->ToString();
+    }
+  }
+  EXPECT_TRUE(GetIndex(new_instruction_sequence, "cps.3") <
+                  GetIndex(new_instruction_sequence, "while") &&
+              GetIndex(new_instruction_sequence, "while") <
+                  GetIndex(new_instruction_sequence, "cpd.3"));
 }
 
 TEST_F(LatencyHidingSchedulerTest, WhileNestedOverlapLimit) {
@@ -2210,7 +2228,7 @@ ENTRY entry {
   HloSchedule& module_schedule = hlo_module->schedule();
   EXPECT_TRUE(hlo_module->has_entry_computation());
   auto sched_config = GetDefaultSchedConfig();
-  sched_config.collective_permute_overlap_limit = 2;
+  sched_config.collective_permute_overlap_limit = 1;
   TF_EXPECT_OK(RunScheduler(hlo_module.get(), sched_config));
   EXPECT_TRUE(hlo_module->has_entry_computation());
 
@@ -2222,8 +2240,8 @@ ENTRY entry {
     }
   }
 
-  // Do not overlap if the sum of collectives inside the loop + the collective
-  // we are trying to overlap would go beyond the overlap limit.
+  // Since there is at least one collective permute in the while op, overlapping
+  // it with the outer collective permute is not possible for the limit of 1.
   EXPECT_GT(GetIndex(new_instruction_sequence, "collective-permute-start.2"),
             GetIndex(new_instruction_sequence, "while"));
 }
@@ -2398,6 +2416,77 @@ ENTRY entry {
   // we are trying to overlap would go beyond the overlap limit.
   EXPECT_LT(GetIndex(new_instruction_sequence, "all-gather-start.1"),
             GetIndex(new_instruction_sequence, "while"));
+}
+
+TEST_F(LatencyHidingSchedulerTest, ConditionalOverlapLimit) {
+  constexpr absl::string_view hlo_string = R"(
+  HloModule test, is_scheduled=true
+
+  region_true {
+    p0 = (s8[], s8[64,128]) parameter(0)
+    gte = s8[64,128] get-tuple-element(p0), index=1
+    ags = (s8[64,128], s8[128,128]) all-gather-start(gte), replica_groups={{0,1}}, dimensions={0}
+    ROOT agd = s8[128,128] all-gather-done(ags)
+  }
+
+  region_false {
+    p0 = (s8[], s8[64,128]) parameter(0)
+    gte = s8[64,128] get-tuple-element(p0), index=1
+    ags.1 = (s8[64,128], s8[128,128]) all-gather-start(gte), replica_groups={{0,1}}, dimensions={0}
+    ROOT agd.1 = s8[128,128] all-gather-done(ags.1)
+  }
+
+  ENTRY test {
+    param = s8[64,128] parameter(0)
+    ags.2 = (s8[64,128], s8[128,128]) all-gather-start(param), replica_groups={{0,1}}, dimensions={0}
+    agd.2 = s8[128,128] all-gather-done(ags.2)
+    constant = s8[] parameter(1)
+    cond_p0 = (s8[], s8[64,128]) tuple(constant, param)
+    cond_p1 = (s8[], s8[64,128]) tuple(constant, param)
+    or = pred[] parameter(2)
+    cond = s8[128,128] conditional(or, cond_p0, cond_p1), true_computation=region_true, false_computation=region_false
+    ROOT add = s8[128,128] add(cond, agd.2)
+  }
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
+  HloSchedule& module_schedule = hlo_module->schedule();
+  auto sched_config = GetDefaultSchedConfig();
+  sched_config.aggressive_scheduling_policies = true;
+
+  // With all-gather overlap limit of 1, (ags.2, agd.2) cannot overlap cond.
+  sched_config.all_gather_overlap_limit = 1;
+  EXPECT_TRUE(RunScheduler(hlo_module.get(), sched_config,
+                           std::make_unique<TestLatencyEstimator>())
+                  .ok());
+  std::vector<HloInstruction*> new_instruction_sequence =
+      module_schedule.sequence(hlo_module->entry_computation()).instructions();
+  if (VLOG_IS_ON(1)) {
+    for (auto* new_i : new_instruction_sequence) {
+      VLOG(1) << new_i->ToString();
+    }
+  }
+  EXPECT_TRUE(GetIndex(new_instruction_sequence, "agd.2") <
+                  GetIndex(new_instruction_sequence, "cond") ||
+              GetIndex(new_instruction_sequence, "cond") <
+                  GetIndex(new_instruction_sequence, "ags.2"));
+
+  // With all-gather overlap limit of 2, (ags.2, agd.2) can overlap cond.
+  sched_config.all_gather_overlap_limit = 2;
+  EXPECT_TRUE(RunScheduler(hlo_module.get(), sched_config,
+                           std::make_unique<TestLatencyEstimator>())
+                  .ok());
+
+  new_instruction_sequence =
+      module_schedule.sequence(hlo_module->entry_computation()).instructions();
+  if (VLOG_IS_ON(1)) {
+    for (auto* new_i : new_instruction_sequence) {
+      VLOG(1) << new_i->ToString();
+    }
+  }
+  EXPECT_TRUE(GetIndex(new_instruction_sequence, "ags.2") <
+                  GetIndex(new_instruction_sequence, "cond") &&
+              GetIndex(new_instruction_sequence, "cond") <
+                  GetIndex(new_instruction_sequence, "agd.2"));
 }
 
 TEST_F(LatencyHidingSchedulerTest, AllToAllAsyncBalance) {
@@ -4009,15 +4098,46 @@ TEST_F(LatencyHidingSchedulerTest, InvalidAnnotationOverlap) {
   }
 )";
   TF_ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
-  HloSchedule& module_schedule = hlo_module->schedule();
-  EXPECT_TRUE(hlo_module->has_entry_computation());
   auto sched_config = GetDefaultSchedConfig();
   sched_config.all_gather_overlap_limit = 1;
-  EXPECT_TRUE(RunScheduler(hlo_module.get(), sched_config,
-                           std::make_unique<TestLatencyEstimator>())
-                  .ok());
-  EXPECT_TRUE(hlo_module->has_entry_computation());
+  auto status = RunScheduler(hlo_module.get(), sched_config,
+                             std::make_unique<TestLatencyEstimator>())
+                    .status();
+  EXPECT_IS_NOT_OK(status);
+  EXPECT_EQ(status.message(),
+            "There is a scheduling group which exceeds the overlap limits. "
+            "Annotation id: 1. It needs 2 kAllGather resources, but the limit "
+            "is 1. ");
+}
 
+TEST_F(LatencyHidingSchedulerTest, AnnotatedProducerOpNotReady) {
+  absl::string_view hlo_string = R"(
+HloModule module, is_scheduled=true
+
+ENTRY entry {
+  p0 = f32[16,64,256]{2,1,0} parameter(0)
+  p1 = f32[128,2048,2048]{2,1,0} parameter(1)
+  p2 = f32[16,16,256]{2,1,0} parameter(2)
+  c0 = f32[16,256,256]{2,1,0} convolution(p2, p2),
+    window={size=16 stride=15 lhs_dilate=16}, dim_labels=0fb_0io->0fb, frontend_attributes={_scheduling_group_id="1"}
+  a0 = f32[16,256,256]{2,1,0} add(c0, c0), frontend_attributes={_scheduling_group_id="1"}
+  cp1s = (f32[16,256,256]{2,1,0}, f32[16,256,256]{2,1,0}, u32[], u32[]) collective-permute-start(c0), source_target_pairs={{1,0},{0,3},{3,2}}
+  cp1d = f32[16,256,256]{2,1,0} collective-permute-done(cp1s)
+  cp2s = (f32[128,2048,2048]{2,1,0}, f32[128,2048,2048]{2,1,0}, u32[], u32[]) collective-permute-start(p1), source_target_pairs={{1,0},{0,3},{3,2}}, frontend_attributes={_scheduling_group_id="1"}
+  cp2d = f32[128,2048,2048]{2,1,0} collective-permute-done(cp2s), frontend_attributes={_scheduling_group_id="1"}
+  slice = f32[16,64,256]{2,1,0} slice(cp1d), slice={[0:16], [0:64], [0:256]}
+  c1 = f32[16,256,256]{2,1,0} convolution(p0, slice),
+    window={size=16 stride=15 lhs_dilate=16}, dim_labels=0fb_0io->0fb
+  ROOT tuple.2 = (f32[16,256,256]{2,1,0}, f32[16,256,256]{2,1,0}, f32[128,2048,2048]{2,1,0}) tuple(c0, c1, cp2d)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
+  auto sched_config = GetDefaultSchedConfig();
+  sched_config.aggressive_scheduling_policies = true;
+  TF_EXPECT_OK(RunScheduler(hlo_module.get(), sched_config,
+                            std::make_unique<TestLatencyEstimator>()));
+  HloSchedule& module_schedule = hlo_module->schedule();
   std::vector<HloInstruction*> new_instruction_sequence =
       module_schedule.sequence(hlo_module->entry_computation()).instructions();
   if (VLOG_IS_ON(1)) {
@@ -4025,15 +4145,72 @@ TEST_F(LatencyHidingSchedulerTest, InvalidAnnotationOverlap) {
       VLOG(1) << new_i->ToString();
     }
   }
-
-  EXPECT_LT(GetIndex(new_instruction_sequence, "ags0"),
+  EXPECT_LT(GetIndex(new_instruction_sequence, "cp2s"),
             GetIndex(new_instruction_sequence, "c0"));
-  EXPECT_LT(GetIndex(new_instruction_sequence, "c0"),
-            GetIndex(new_instruction_sequence, "agd0"));
-  EXPECT_TRUE((GetIndex(new_instruction_sequence, "ags0") >
-               GetIndex(new_instruction_sequence, "agd1")) ||
-              (GetIndex(new_instruction_sequence, "ags1") >
-               GetIndex(new_instruction_sequence, "agd0")));
+  EXPECT_LT(GetIndex(new_instruction_sequence, "a0"),
+            GetIndex(new_instruction_sequence, "cp2d"));
+}
+
+TEST_F(LatencyHidingSchedulerTest, WhileLoopImpossibleScheduleSend) {
+  // For async instructions we can create impossible to schedule situations
+  // where there is no way to schedule a start without going beyond the schedule
+  // because of edges added by the aliasing detection logic in the scheduler.
+  // Encountered this only on send/send-done so far because of tokens being
+  // piped through the send.
+  absl::string_view hlo_string = R"(
+HloModule module, is_scheduled=true
+
+while_cond {
+  param = (bf16[8]{0}, bf16[8]{0}, pred[], token[], token[]) parameter(0)
+  ROOT gte = pred[] get-tuple-element(param), index=2
+}
+
+while_body {
+  param = (bf16[8]{0}, bf16[8]{0}, pred[], token[], token[]) parameter(0)
+  gte0 = bf16[8]{0} get-tuple-element(param), index=0
+  gte2 = bf16[8]{0} get-tuple-element(param), index=1
+  gte1 = pred[] get-tuple-element(param), index=2
+  gte3 = token[] get-tuple-element(param), index=3
+  gte4 = token[] get-tuple-element(param), index=4
+  bitcast = bf16[8]{0} bitcast(gte0)
+  s.1 = (bf16[8]{0}, token[]) send(gte0, gte3)
+  sd.1 = bf16[8]{0} send-done(s.1)
+  s.2 = (bf16[8]{0}, token[]) send(gte2, gte4)
+  sd.2 = bf16[8]{0} send-done(s.2)
+  ROOT tuple = (bf16[8]{0}, bf16[8]{0}, pred[], token[], token[]) tuple(gte2, gte0, gte1, sd.2, sd.1)
+}
+
+ENTRY entry {
+  p0 = bf16[8]{0} parameter(0)
+  p1 = bf16[8]{0} parameter(1)
+  p2 = pred[] parameter(2)
+  after-all0 = token[] after-all()
+  after-all1 = token[] after-all()
+  tuple = (bf16[8]{0}, bf16[8]{0}, pred[], token[], token[]) tuple(p0, p1, p2, after-all0, after-all1)
+  while = (bf16[8]{0}, bf16[8]{0}, pred[], token[], token[]) while(tuple), condition=while_cond, body=while_body
+  gte0 = bf16[8]{0} get-tuple-element(while), index=0
+  gte1 = bf16[8]{0} get-tuple-element(while), index=1
+  ROOT add = bf16[8]{0} add(gte0, gte1)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
+  HloSchedule& module_schedule = hlo_module->schedule();
+  auto sched_config = GetDefaultSchedConfig();
+  sched_config.send_recv_overlap_limit = 1;
+  sched_config.schedule_send_recvs = true;
+  EXPECT_TRUE(hlo_module->has_entry_computation());
+  TF_EXPECT_OK(RunScheduler(hlo_module.get(), sched_config));
+  EXPECT_TRUE(hlo_module->has_entry_computation());
+  HloComputation* while_body = hlo_module->GetComputationWithName("while_body");
+
+  std::vector<HloInstruction*> new_instruction_sequence =
+      module_schedule.sequence(while_body).instructions();
+  if (VLOG_IS_ON(1)) {
+    for (auto* new_i : new_instruction_sequence) {
+      VLOG(1) << new_i->ToString();
+    }
+  }
 }
 
 }  // namespace xla

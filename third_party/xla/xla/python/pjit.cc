@@ -40,6 +40,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
+#include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/synchronization/notification.h"
 #include "absl/types/span.h"
@@ -52,12 +53,12 @@ limitations under the License.
 #include "xla/layout.h"
 #include "xla/pjrt/exceptions.h"
 #include "xla/pjrt/lru_cache.h"
-#include "xla/pjrt/pjrt_layout.h"
 #include "xla/python/config.h"
 #include "xla/python/guard_lib.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/device_list.h"
+#include "xla/python/ifrt/executable.h"
 #include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/sharding.h"
 #include "xla/python/jax_jit.h"
@@ -72,6 +73,7 @@ limitations under the License.
 #include "xla/python/sharding.h"
 #include "xla/python/traceback.h"
 #include "xla/tsl/concurrency/ref_count.h"
+#include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/statusor.h"
@@ -150,6 +152,8 @@ class PjitFunctionCache {
     // otherwise part of CallSignature.
     nb::object global_cache_key;
 
+    size_t cached_hash;
+
     bool operator==(const Key& other) const {
       bool global_cache_eq;
       try {
@@ -162,6 +166,10 @@ class PjitFunctionCache {
       }
       return function.ptr() == other.function.ptr() && global_cache_eq;
     }
+
+    struct Hash {
+      size_t operator()(const Key& key) const { return key.cached_hash; }
+    };
   };
 
   template <typename H>
@@ -196,7 +204,7 @@ class PjitFunctionCache {
   // self object lock in freethreading mode.
   Cache::LRUList lru_list_;
   // We use std::unordered_map because ABSL containers are not exception safe:
-  std::unordered_map<Key, std::unique_ptr<Value>, absl::Hash<Key>> functions_;
+  std::unordered_map<Key, std::unique_ptr<Value>, Key::Hash> functions_;
   // mu_ prevents concurrent insertions into functions_ if the gil or critical
   // section lock is released during insertion.
   absl::Mutex mu_;
@@ -229,6 +237,7 @@ std::shared_ptr<PjitFunctionCache::Cache> PjitFunctionCache::DefaultCache() {
   Key key;
   key.function = function;
   key.global_cache_key = global_cache_key;
+  key.cached_hash = absl::HashOf(key);
   auto insert = self->functions_.emplace(key, nullptr);
   if (!insert.second) {
     return insert.first->second->cache;
@@ -553,7 +562,7 @@ PrepareIfrtInputs(const xla::PyLoadedExecutable& executable,
   if (!copy_groups.empty()) {
     xla::ifrt::Client* const ifrt_client =
         executable.ifrt_loaded_executable()->client();
-    tsl::RCReference<xla::ifrt::DeviceList> ifrt_devices =
+    xla::ifrt::DeviceListRef ifrt_devices =
         ifrt_client->MakeDeviceList({addressable_devices[0]});
     for (auto& [key, group] : copy_groups) {
       TF_ASSIGN_OR_RETURN(
@@ -744,14 +753,19 @@ absl::StatusOr<nb::object> PjitFunction::Call(nb::handle callable,
     return fallback_to_cache_miss();
   }
 
+  xla::ifrt::ExecuteOptions execute_options =
+      cache_entry->executable->options();
+  execute_options.launch_id = cache_entry->executable->GetNextLaunchId();
+  execute_options.execution_stream_id =
+      tsl::Env::Default()->GetCurrentThreadId();
+
   // A vector of [num_outputs].
   std::vector<tsl::RCReference<xla::ifrt::Array>> output_arrays;
   {
     nb::gil_scoped_release gil_release;
     TF_ASSIGN_OR_RETURN(auto result,
                         cache_entry->executable->ifrt_executable()->Execute(
-                            absl::MakeSpan(*num_args_arrays),
-                            cache_entry->executable->options(),
+                            absl::MakeSpan(*num_args_arrays), execute_options,
                             /*devices=*/std::nullopt));
     output_arrays = std::move(result.outputs);
   }

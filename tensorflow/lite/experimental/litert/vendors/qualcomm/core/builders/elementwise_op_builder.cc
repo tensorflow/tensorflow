@@ -1,7 +1,16 @@
-//  Copyright (c) Qualcomm Innovation Center, Inc.
-//  All Rights Reserved.
+// Copyright (c) Qualcomm Innovation Center, Inc.
+// All Rights Reserved.
 
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/builders/elementwise_op_builder.h"
+
+#include <cstdint>
+#include <vector>
+
+#include "third_party/qairt/latest/include/QNN/QnnOpDef.h"
+#include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/builders/op_builder.h"
+#include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/tensor_pool.h"
+#include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/wrappers/op_wrapper.h"
+#include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/wrappers/tensor_wrapper.h"
 
 namespace qnn {
 
@@ -183,6 +192,40 @@ std::vector<OpWrapper> BuildElementwiseAndOp(
   elementwise_op.AddScalarParam<std::uint32_t>(
       QNN_OP_ELEMENT_WISE_BINARY_PARAM_OPERATION,
       QNN_OP_ELEMENT_WISE_BINARY_OPERATION_AND);
+
+  return res;
+}
+
+std::vector<OpWrapper> BuildElementwiseMinimumOp(
+    TensorPool& tensor_pool, const std::vector<TensorWrapperRef>& inputs,
+    const std::vector<TensorWrapperRef>& outputs) {
+  std::vector<OpWrapper> res;
+
+  auto& elementwise_op = CreateOpWrapper(res, QNN_OP_ELEMENT_WISE_BINARY);
+  for (const auto& input : inputs) {
+    elementwise_op.AddInputTensor(input);
+  }
+  elementwise_op.AddOutputTensor(outputs[0]);
+  elementwise_op.AddScalarParam<std::uint32_t>(
+      QNN_OP_ELEMENT_WISE_BINARY_PARAM_OPERATION,
+      QNN_OP_ELEMENT_WISE_BINARY_OPERATION_MINIMUM);
+
+  return res;
+}
+
+std::vector<OpWrapper> BuildElementwiseMaximumOp(
+    TensorPool& tensor_pool, const std::vector<TensorWrapperRef>& inputs,
+    const std::vector<TensorWrapperRef>& outputs) {
+  std::vector<OpWrapper> res;
+
+  auto& elementwise_op = CreateOpWrapper(res, QNN_OP_ELEMENT_WISE_BINARY);
+  for (const auto& input : inputs) {
+    elementwise_op.AddInputTensor(input);
+  }
+  elementwise_op.AddOutputTensor(outputs[0]);
+  elementwise_op.AddScalarParam<std::uint32_t>(
+      QNN_OP_ELEMENT_WISE_BINARY_PARAM_OPERATION,
+      QNN_OP_ELEMENT_WISE_BINARY_OPERATION_MAXIMUM);
 
   return res;
 }

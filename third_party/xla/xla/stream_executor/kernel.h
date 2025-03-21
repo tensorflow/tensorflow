@@ -220,9 +220,7 @@ class Kernel {
       ThreadDim threads, size_t dynamic_shared_memory_bytes) const = 0;
 
   const KernelMetadata &metadata() const { return metadata_; }
-  void set_metadata(KernelMetadata metadata) {
-    metadata_ = std::move(metadata);
-  }
+  void set_metadata(KernelMetadata metadata) { metadata_ = metadata; }
 
   const KernelArgsPacking &args_packing() const { return args_packing_; }
   void set_args_packing(KernelArgsPacking args_packing) {
@@ -430,9 +428,9 @@ class PodArgs {
  protected:
   template <typename T>
   const std::byte *add_pod_argument(const T &arg) {
-    static_assert(
-        std::is_pod_v<T> && sizeof(T) <= size & alignof(T) <= alignment,
-        "Type is not compatible with POD arguments storage");
+    static_assert(std::is_trivially_copyable_v<T> &&
+                      sizeof(T) <= size & alignof(T) <= alignment,
+                  "Type is not compatible with POD arguments storage");
 
     assert(num_args_ < capacity && "pod args overflow");
     std::byte *arg_storage = args_storage_[num_args_++].storage;

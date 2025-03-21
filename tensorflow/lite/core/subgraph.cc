@@ -1237,13 +1237,8 @@ TfLiteStatus Subgraph::ResizeInputTensorStrict(int tensor_index,
   // Ensure that only unknown dimensions can be resized.
   TF_LITE_ENSURE_EQ(&context_, tensor->dims->size, dims.size());
   for (size_t idx = 0; idx < dims.size(); idx++) {
-    // `dims_signature` is not defined when no unknown dimensions are present.
-    int dim_signature;
-    if (tensor->dims_signature && tensor->dims_signature->size) {
-      dim_signature = tensor->dims_signature->data[idx];
-    } else {
-      dim_signature = tensor->dims->data[idx];
-    }
+    const TfLiteIntArray* dims_signature = TfLiteTensorGetDimsSignature(tensor);
+    const int dim_signature = dims_signature->data[idx];
 
     if (dim_signature != -1 && dim_signature != dims[idx]) {
       ReportError(
@@ -2563,7 +2558,8 @@ TfLiteStatus Subgraph::SetCustomAllocationForTensor(
   TF_LITE_ENSURE(context(),
                  (tensor->allocation_type == kTfLiteArenaRw ||
                   tensor->allocation_type == kTfLiteArenaRwPersistent ||
-                  tensor->allocation_type == kTfLiteCustom));
+                  tensor->allocation_type == kTfLiteCustom ||
+                  tensor->allocation_type == kTfLiteNonCpu));
   // Don't check allocation.bytes here, we do that after all ops are prepared
   // to allow tensor shape propagation.
   TF_LITE_ENSURE(context(), allocation.data != nullptr);

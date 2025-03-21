@@ -15,6 +15,7 @@ limitations under the License.
 
 #include <cstdint>
 
+#include "absl/container/node_hash_map.h"
 #include "absl/status/statusor.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/gpu/redzone_allocator_kernel.h"
@@ -35,17 +36,36 @@ __global__ void redzone_checker_kernel(uint8_t* input_buffer,
 }  // namespace
 
 namespace stream_executor {
+template <typename... Args>
+static absl::StatusOr<TypedKernel<Args...>*> LoadKernelOrGetPtr(
+    StreamExecutor* executor, absl::string_view kernel_name, void* kernel_ptr) {
+  using KernelPtrCacheKey =
+      std::tuple<StreamExecutor*, absl::string_view, void*>;
 
+  static absl::Mutex kernel_ptr_cache_mutex(absl::kConstInit);
+  static auto& kernel_ptr_cache ABSL_GUARDED_BY(kernel_ptr_cache_mutex) =
+      *new absl::node_hash_map<KernelPtrCacheKey, TypedKernel<Args...>>();
+  KernelPtrCacheKey kernel_ptr_cache_key{executor, kernel_name, kernel_ptr};
+  absl::MutexLock lock(&kernel_ptr_cache_mutex);
+
+  auto it = kernel_ptr_cache.find(kernel_ptr_cache_key);
+  if (it == kernel_ptr_cache.end()) {
+    TF_ASSIGN_OR_RETURN(TypedKernel<Args...> loaded,
+                        (TypedKernelFactory<Args...>::Create(
+                            executor, kernel_name, kernel_ptr)));
+    it =
+        kernel_ptr_cache.emplace(kernel_ptr_cache_key, std::move(loaded)).first;
+  }
+
+  CHECK(it != kernel_ptr_cache.end());
+  return &it->second;
+}
 absl::StatusOr<ComparisonKernel*> GetComparisonKernel(
     StreamExecutor* executor, GpuAsmOpts /*gpu_asm_opts*/) {
-  static auto kernel = TypedKernelFactory<
-      DeviceMemory<uint8_t>, uint8_t, uint64_t,
-      DeviceMemory<uint64_t>>::Create(executor, "redzone_checker",
-                                      reinterpret_cast<void*>(
-                                          redzone_checker_kernel));
-
-  if (!kernel.ok()) return kernel.status();
-  return &kernel.value();
+  return LoadKernelOrGetPtr<DeviceMemory<uint8_t>, uint8_t, uint64_t,
+                            DeviceMemory<uint64_t>>(
+      executor, "redzone_checker",
+      reinterpret_cast<void*>(redzone_checker_kernel));
 }
 
 }  // namespace stream_executor

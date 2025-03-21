@@ -46,15 +46,20 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/runtime/large_hlo_snapshot_serialization/serialization.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_graph_dumper.h"
 #include "xla/service/hlo_proto_util.h"
 #include "xla/tsl/lib/io/zlib_compression_options.h"
 #include "xla/tsl/lib/io/zlib_outputbuffer.h"
 #include "xla/tsl/lib/strings/proto_serialization.h"
+#include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/file_system.h"
+#include "xla/tsl/platform/file_system_helper.h"
 #include "xla/util.h"
 #include "tsl/platform/path.h"
 #include "tsl/platform/platform.h"
+#include "tsl/platform/protobuf.h"
 #include "tsl/platform/regexp.h"
 #include "tsl/profiler/lib/scoped_annotation.h"
 
@@ -75,7 +80,8 @@ absl::Status CreateDirIfNeeded(const std::string& dir, tsl::Env* env) {
     if (!status.ok()) {
       status = env->IsDirectory(dir);
       if (!status.ok()) {
-        LOG(ERROR) << "Could not create directory " << dir;
+        LOG(ERROR) << "Could not create directory: " << dir
+                   << ". Error: " << status;
         return status;
       }
     }
@@ -118,14 +124,10 @@ struct CanonicalDebugOptions {
             opts.xla_gpu_dump_hlo_unoptimized_snapshots()),
         dump_include_timestamp(opts.xla_dump_include_timestamp()),
         dump_max_hlo_modules(opts.xla_dump_max_hlo_modules()),
-        dump_module_metadata(opts.xla_dump_module_metadata()),
         dump_compress_protos(opts.xla_dump_compress_protos()),
-        dump_hlo_metadata(!opts.xla_dump_disable_metadata()),
         dump_fdo_profiles(opts.xla_gpu_experimental_dump_fdo_profiles()),
-        dump_as_long_text(opts.xla_dump_hlo_as_long_text()),
         dump_mlir_pretty_form(opts.xla_dump_enable_mlir_pretty_form()),
-        dump_large_constants(opts.xla_dump_large_constants()),
-        syntax_sugar_async_ops(opts.xla_syntax_sugar_async_ops()) {
+        dump_full_hlo_config(opts.xla_dump_full_hlo_config()) {
     // This constructor examines the values in `opts` and turns on other flags
     // based on what we think is the user's intent.  To reduce confusion about
     // what was a user-specified value versus an extrapolated value, within this
@@ -247,14 +249,10 @@ struct CanonicalDebugOptions {
   bool dump_unoptimized_snapshots;
   bool dump_include_timestamp;
   int64_t dump_max_hlo_modules;
-  bool dump_module_metadata;
   bool dump_compress_protos;
-  bool dump_hlo_metadata;
   bool dump_fdo_profiles;
-  bool dump_as_long_text;
   bool dump_mlir_pretty_form;
-  bool dump_large_constants;
-  bool syntax_sugar_async_ops;
+  bool dump_full_hlo_config;
 };
 
 // Helper class to hold a list of functions that produces data to be written to
@@ -462,18 +460,8 @@ static std::vector<std::string> DumpHloModuleImpl(
   std::vector<std::optional<std::string>> file_paths;
 
   if (opts.dump_as_text) {
-    auto print_options = opts.dump_as_long_text
-                             ? HloPrintOptions::Default()
-                             : HloPrintOptions::ShortParsable();
-    print_options.set_print_large_constants(opts.dump_large_constants);
-    print_options.set_print_control_dependencies(true);
-    print_options.set_print_operand_index_annotation_interval(5);
-    print_options.set_print_backend_config(true);
-    print_options.set_print_metadata(opts.dump_hlo_metadata);
-    print_options.set_print_name_after_closing_brace(true);
-    print_options.set_syntax_sugar_async_ops(opts.syntax_sugar_async_ops);
-    file_paths.push_back(DumpToFileInDirOrStdoutImpl(
-        StrCat(filename, ".txt"), module.ToString(print_options), opts));
+    file_paths.push_back(DumpToFileInDirOrStdoutImpl(StrCat(filename, ".txt"),
+                                                     module.ToString(), opts));
     if (buffer_assn) {
       DataProducer buffer_assignment;
       buffer_assignment.Append([&] { return buffer_assn->ToString(); });
@@ -546,6 +534,18 @@ static std::vector<std::string> DumpHloModuleImpl(
     file_paths.push_back(
         DumpToFileInDirImpl(StrFormat("%s.fdo_profile", filename),
                             module.config().fdo_profile(), opts));
+  }
+
+  if (opts.dump_full_hlo_config) {
+    std::string config_str;
+    if (tsl::protobuf::TextFormat::PrintToString(module.config().ToProto(),
+                                                 &config_str)) {
+      file_paths.push_back(DumpToFileInDirImpl(
+          StrFormat("%s.config.pbtxt", filename), config_str, opts));
+    } else {
+      VLOG(1) << "Failed to convert HloModuleConfig to text. Module: "
+              << module.name();
+    }
   }
 
   // Special case for rendering graphs as URLs.  We'll dump them to a file
@@ -944,14 +944,44 @@ void DumpHloUnoptimizedSnapshotIfEnabled(
       hlo_snapshot.hlo_module().id(), hlo_snapshot.hlo_module().name(), "",
       absl::StrFormat("execution_%04d.hlo_unoptimized_snapshot",
                       execution_count));
-  DumpProtobufToFile(hlo_snapshot, opts, filename, nullptr);
+  // We use a custom proto binary serialization for HloUnoptimizedSnapshot to
+  // bypass the 2GiB proto size limitation.
+  if (canonical_opts.dump_as_proto && !canonical_opts.dump_as_text) {
+    tsl::Env* env = tsl::Env::Default();
+    const std::string& dir = canonical_opts.dump_to;
+    if (dir.empty()) {
+      return;
+    }
+    if (!CreateDirIfNeeded(dir, env).ok()) {
+      return;
+    }
+    const std::string path = tsl::io::JoinPath(dir, filename);
+
+    std::unique_ptr<tsl::WritableFile> file;
+    absl::Status s = env->NewWritableFile(absl::StrCat(path, ".pb"), &file);
+    if (!s.ok()) {
+      LOG(ERROR) << "Could not create file " << filename << ": " << s;
+      return;
+    }
+    tsl::WritableFileCopyingOutputStream output_stream(file.get());
+    tsl::protobuf::io::CopyingOutputStreamAdaptor adaptor(&output_stream);
+    if (!SerializeHloUnoptimizedSnapshot(hlo_snapshot, &adaptor).ok()) {
+      LOG(ERROR) << "Failed to serialize HLO unoptimized snapshot proto";
+    }
+    adaptor.Flush();
+    if (!file->Close().ok()) {
+      LOG(ERROR) << "Failed to close HLO unoptimized snapshot proto file";
+    }
+  } else {
+    DumpProtobufToFile(hlo_snapshot, opts, filename, nullptr);
+  }
 }
 
 void DumpHloModuleMetadataIfEnabled(const std::vector<HloModule*>& modules) {
   absl::flat_hash_set<int64_t> dumped_module_ids;
   for (const HloModule* module : modules) {
     CanonicalDebugOptions opts(module->config().debug_options());
-    if (!opts.dump_module_metadata) {
+    if (!module->config().debug_options().xla_dump_module_metadata()) {
       continue;
     }
     DumpHloModuleMetadata(module->metadata().proto(), opts, &dumped_module_ids);

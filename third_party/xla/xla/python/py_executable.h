@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_PYTHON_PY_EXECUTABLE_H_
 #define XLA_PYTHON_PY_EXECUTABLE_H_
 
+#include <atomic>
 #include <cstddef>
 #include <cstdint>
 #include <memory>
@@ -217,7 +218,14 @@ class PyLoadedExecutable {
     return exec->shared_ptr_pjrt_loaded_executable();
   }
 
+  // Returns a template of execute options to pass to
+  // `ifrt_executable()->Execute()`. Note that the caller may need to override
+  // some options such as `launch_id` that change at each execution.
   const ifrt::ExecuteOptions& options() const { return options_; }
+
+  // Returns a unique launch ID to use for the next execution.
+  int64_t GetNextLaunchId();
+
   const std::optional<std::string>& fingerprint() const { return fingerprint_; }
 
   // Keep `obj` alive as long as PyLoadedExecutable.
@@ -234,6 +242,9 @@ class PyLoadedExecutable {
   // same fingerprint. nullopt on platforms or executables where fingerprints
   // aren't implemented.
   std::optional<std::string> fingerprint_;
+
+  // Launch ID to use for the next execution.
+  std::atomic<int64_t> next_launch_id_;
 
   // The options to pass to `executable_.Execute`.
   ifrt::ExecuteOptions options_;

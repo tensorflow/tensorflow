@@ -108,6 +108,10 @@ RemoteProfilerSessionManagerOptions GetRemoteSessionManagerOptionsLocked(
       int value = std::get<int>(kw.second);
       options.set_delay_ms(value);
       VLOG(1) << "delay_ms was set to " << value;
+    } else if (key == "ignore_start_error") {
+      int value = std::get<int>(kw.second);
+      options.mutable_profiler_options()->set_ignore_start_error(value);
+      VLOG(1) << "ignore_start_error was set to " << value;
     } else {
       LOG(WARNING) << "Unrecognised key: " << key;
     }

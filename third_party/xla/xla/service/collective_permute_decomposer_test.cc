@@ -29,6 +29,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/tsl/lib/core/status_test_util.h"
@@ -135,8 +136,27 @@ TEST_F(DecomposerTest, ThresholdNotTransformed) {
   TF_ASSERT_OK(RunAndCheckHloRewrite(
       hlo,
       Pass(/*threshold_in_bytes=*/kThreshold,
-           DebugOptions::PIPELINE_PARALLELISM_OPT_LEVEL_ENABLE),
+           DebugOptions::PIPELINE_PARALLELISM_OPT_LEVEL_DISABLE),
       false));
+}
+
+TEST_F(DecomposerTest, ThresholdIgnoredWhenPipelineParallelismOptEnabled) {
+  const int64_t kThreshold = 64 * 8;
+  std::string hlo = GetSimpleHloWhileLoopStr(R"(
+  body {
+    param = (u32[], f32[64]) parameter(0)
+    i = get-tuple-element(param), index=0
+    data = get-tuple-element(param), index=1
+    cp = f32[64] collective-permute(data),
+        source_target_pairs={{0,1}, {1,2}, {2,3}}
+    ROOT result = tuple(i, cp)
+  }
+  )");
+  TF_ASSERT_OK(RunAndCheckHloRewrite(
+      hlo,
+      Pass(/*threshold_in_bytes=*/kThreshold,
+           DebugOptions::PIPELINE_PARALLELISM_OPT_LEVEL_ENABLE),
+      true));
 }
 
 TEST_F(DecomposerTest, Basic) {
@@ -227,13 +247,17 @@ TEST_F(DecomposerTest, ControlDependency_IndependentCPs) {
           Pass(/*threshold_in_bytes=*/0,
                DebugOptions::PIPELINE_PARALLELISM_OPT_LEVEL_ENABLE),
           true));
-  Decomposed cp1 = FindComponents(module.get(), "cp1");
+  // cp1 and cp3 won't get decomposed.
+  HloInstruction* cp1 = FindInstruction(module.get(), "cp1");
+  HloInstruction* cp3 = FindInstruction(module.get(), "cp3");
+  ASSERT_THAT(cp1, NotNull());
+  ASSERT_THAT(cp3, NotNull());
+  EXPECT_EQ(cp1->opcode(), HloOpcode::kCollectivePermute);
+  EXPECT_EQ(cp3->opcode(), HloOpcode::kCollectivePermute);
   Decomposed cp2 = FindComponents(module.get(), "cp2");
-  Decomposed cp3 = FindComponents(module.get(), "cp3");
   // Sequence in tuple determines the port order and therefore control
   // dependency of consecutive CPs.
-  EXPECT_THAT(cp3.recv->control_predecessors(), ElementsAre(cp2.send));
-  EXPECT_THAT(cp1.recv->control_predecessors(), ElementsAre(cp3.send));
+  EXPECT_THAT(cp1->control_predecessors(), ElementsAre(cp2.send_done));
 }
 
 TEST_F(DecomposerTest, ControlDependency_BasicDependency) {
@@ -468,18 +492,13 @@ TEST_F(DecomposerTest, ForwardPipeline2) {
           Pass(/*threshold_in_bytes=*/0,
                DebugOptions::PIPELINE_PARALLELISM_OPT_LEVEL_ENABLE),
           true));
-
-  Decomposed cp_back = FindComponents(module.get(), "cp_back");
+  HloInstruction* cp_back = FindInstruction(module.get(), "cp_back");
+  ASSERT_THAT(cp_back, NotNull());
+  EXPECT_EQ(cp_back->opcode(), HloOpcode::kCollectivePermute);
   Decomposed cp_fwd = FindComponents(module.get(), "cp_fwd");
-
-  EXPECT_EQ(cp_back.recv->channel_id().value(), 1);
+  EXPECT_THAT(cp_back->control_predecessors(), ElementsAre(cp_fwd.send_done));
   EXPECT_EQ(cp_fwd.recv->channel_id().value(), 2);
-  EnsurePipelineAttr(cp_back, "0");
   EnsurePipelineAttr(cp_fwd, "1");
-  EnsureControlDependency(cp_back);
-  EnsureControlDependency(cp_fwd);
-  EXPECT_THAT(cp_fwd.recv->control_predecessors(), ElementsAre(cp_back.send))
-      << "Per sequence of select operands, cp_back should come before cp_fwd";
 }
 
 TEST_F(DecomposerTest, ForwardPipelineWithMatmul) {
@@ -542,15 +561,13 @@ TEST_F(DecomposerTest, ForwardPipelineWithMatmul) {
           Pass(/*threshold_in_bytes=*/0,
                DebugOptions::PIPELINE_PARALLELISM_OPT_LEVEL_ENABLE),
           true));
-  Decomposed cp_back = FindComponents(module.get(), "cp_back");
+  HloInstruction* cp_back = FindInstruction(module.get(), "cp_back");
+  ASSERT_THAT(cp_back, NotNull());
+  EXPECT_EQ(cp_back->opcode(), HloOpcode::kCollectivePermute);
   Decomposed cp_fwd = FindComponents(module.get(), "cp_fwd");
-  EXPECT_EQ(cp_back.recv->channel_id().value(), 1);
   EXPECT_EQ(cp_fwd.recv->channel_id().value(), 2);
-  EnsurePipelineAttr(cp_back, "0");
+  EXPECT_THAT(cp_back->control_predecessors(), ElementsAre(cp_fwd.send_done));
   EnsurePipelineAttr(cp_fwd, "1");
-  EnsureControlDependency(cp_back);
-  EnsureControlDependency(cp_fwd);
-  EXPECT_THAT(cp_fwd.recv->control_predecessors(), ElementsAre(cp_back.send));
 }
 
 TEST_F(DecomposerTest, BackwardPipeline2) {
@@ -607,17 +624,14 @@ TEST_F(DecomposerTest, BackwardPipeline2) {
           Pass(/*threshold_in_bytes=*/0,
                DebugOptions::PIPELINE_PARALLELISM_OPT_LEVEL_ENABLE),
           true));
-  Decomposed cp_back = FindComponents(module.get(), "cp_back");
+  HloInstruction* cp_back = FindInstruction(module.get(), "cp_back");
+  ASSERT_THAT(cp_back, NotNull());
+  EXPECT_EQ(cp_back->opcode(), HloOpcode::kCollectivePermute);
   Decomposed cp_fwd = FindComponents(module.get(), "cp_fwd");
-  EXPECT_EQ(cp_back.recv->channel_id().value(), 2);
+  EXPECT_THAT(cp_back->control_predecessors(), ElementsAre(cp_fwd.send_done));
   EXPECT_EQ(cp_fwd.recv->channel_id().value(), 1);
-
-  EnsurePipelineAttr(cp_back, "0");
   EnsurePipelineAttr(cp_fwd, "1");
-  EnsureControlDependency(cp_back);
   EnsureControlDependency(cp_fwd);
-  EXPECT_THAT(cp_back.recv->control_predecessors(), ElementsAre(cp_fwd.send))
-      << "Per sequence of select operands, cp_fwd should come before cp_back";
 }
 
 TEST_F(DecomposerTest, OneSendRecvWithOneConflictingCollectivePermute) {
@@ -680,9 +694,11 @@ TEST_F(DecomposerTest, OneSendRecvWithOneConflictingCollectivePermute) {
   HloInstruction* cp_fwd_send_done =
       FindInstruction(module.get(), "cp_fwd-send-done");
   ASSERT_THAT(cp_cycle, NotNull());
+  ASSERT_THAT(cp_fwd_recv, NotNull());
   ASSERT_THAT(cp_fwd_recv_done, NotNull());
+  ASSERT_THAT(cp_fwd_send, NotNull());
   ASSERT_THAT(cp_fwd_send_done, NotNull());
-  EXPECT_THAT(cp_fwd_send_done->control_predecessors(),
+  EXPECT_THAT(cp_fwd_send->control_predecessors(),
               ElementsAre(cp_fwd_recv_done));
   EXPECT_THAT(cp_cycle->control_predecessors(), ElementsAre(cp_fwd_send_done));
 
@@ -764,9 +780,11 @@ TEST_F(DecomposerTest, OneSendRecvWithOneConflictingAllReduce) {
   HloInstruction* cp_fwd_send_done =
       FindInstruction(module.get(), "cp_fwd-send-done");
   ASSERT_THAT(ar, NotNull());
+  ASSERT_THAT(cp_fwd_recv, NotNull());
   ASSERT_THAT(cp_fwd_recv_done, NotNull());
+  ASSERT_THAT(cp_fwd_send, NotNull());
   ASSERT_THAT(cp_fwd_send_done, NotNull());
-  EXPECT_THAT(cp_fwd_send_done->control_predecessors(),
+  EXPECT_THAT(cp_fwd_send->control_predecessors(),
               ElementsAre(cp_fwd_recv_done));
   EXPECT_THAT(ar->control_predecessors(), ElementsAre(cp_fwd_send_done));
 
@@ -851,9 +869,11 @@ TEST_F(DecomposerTest, OneSendRecvWithConflictingSendRecv) {
       FindInstruction(module.get(), "cp_fwd-send-done");
   ASSERT_THAT(conflicting_recv, NotNull());
   ASSERT_THAT(conflicting_send, NotNull());
+  ASSERT_THAT(cp_fwd_recv, NotNull());
   ASSERT_THAT(cp_fwd_recv_done, NotNull());
+  ASSERT_THAT(cp_fwd_send, NotNull());
   ASSERT_THAT(cp_fwd_send_done, NotNull());
-  EXPECT_THAT(cp_fwd_send_done->control_predecessors(),
+  EXPECT_THAT(cp_fwd_send->control_predecessors(),
               ElementsAre(cp_fwd_recv_done));
   EXPECT_THAT(conflicting_recv->control_predecessors(),
               ElementsAre(cp_fwd_send_done));
@@ -942,9 +962,11 @@ TEST_F(DecomposerTest, OneSendRecvWithNonConflictingAllReduce) {
   HloInstruction* cp_fwd_send_done =
       FindInstruction(module.get(), "cp_fwd-send-done");
   ASSERT_THAT(ar, NotNull());
+  ASSERT_THAT(cp_fwd_recv, NotNull());
   ASSERT_THAT(cp_fwd_recv_done, NotNull());
+  ASSERT_THAT(cp_fwd_send, NotNull());
   ASSERT_THAT(cp_fwd_send_done, NotNull());
-  EXPECT_THAT(cp_fwd_send_done->control_predecessors(),
+  EXPECT_THAT(cp_fwd_send->control_predecessors(),
               ElementsAre(cp_fwd_recv_done));
   EXPECT_THAT(ar->control_predecessors(), ElementsAre());
 
@@ -1042,13 +1064,18 @@ TEST_F(DecomposerTest, OneSendRecvWithConflictingAndNonConflictingCollectives) {
   HloInstruction* cp_fwd_send = FindInstruction(module.get(), "cp_fwd-send");
   HloInstruction* cp_fwd_send_done =
       FindInstruction(module.get(), "cp_fwd-send-done");
+  ASSERT_THAT(cp_fwd_recv, NotNull());
+  ASSERT_THAT(cp_fwd_recv_done, NotNull());
+  ASSERT_THAT(cp_fwd_send, NotNull());
+  ASSERT_THAT(cp_fwd_send_done, NotNull());
   ASSERT_THAT(cp_cycle, NotNull());
   ASSERT_THAT(ar, NotNull());
   ASSERT_THAT(arc, NotNull());
-  ASSERT_THAT(cp_fwd_recv_done, NotNull());
-  ASSERT_THAT(cp_fwd_send_done, NotNull());
-  EXPECT_THAT(cp_fwd_send_done->control_predecessors(),
+  EXPECT_THAT(cp_fwd_recv->control_predecessors(), ElementsAre());
+  EXPECT_THAT(cp_fwd_recv_done->control_predecessors(), ElementsAre());
+  EXPECT_THAT(cp_fwd_send->control_predecessors(),
               ElementsAre(cp_fwd_recv_done));
+  EXPECT_THAT(cp_fwd_send_done->control_predecessors(), ElementsAre());
   EXPECT_THAT(cp_cycle->control_predecessors(), ElementsAre(cp_fwd_send_done));
   EXPECT_THAT(ar->control_predecessors(), ElementsAre());
   EXPECT_THAT(arc->control_predecessors(), ElementsAre(cp_fwd_send_done));
@@ -1145,11 +1172,15 @@ TEST_F(DecomposerTest, OneSendRecvWithIndirectlyConflictingCollectives) {
       FindInstruction(module.get(), "cp_fwd-send-done");
   ASSERT_THAT(cp_cycle, NotNull());
   ASSERT_THAT(cp_cycle2, NotNull());
+  ASSERT_THAT(cp_fwd_recv, NotNull());
   ASSERT_THAT(cp_fwd_recv_done, NotNull());
+  ASSERT_THAT(cp_fwd_send, NotNull());
   ASSERT_THAT(cp_fwd_send_done, NotNull());
+  ASSERT_THAT(cp_fwd_recv->control_predecessors(), ElementsAre());
   ASSERT_THAT(cp_fwd_recv_done->control_predecessors(), ElementsAre());
-  EXPECT_THAT(cp_fwd_send_done->control_predecessors(),
+  EXPECT_THAT(cp_fwd_send->control_predecessors(),
               ElementsAre(cp_fwd_recv_done));
+  EXPECT_THAT(cp_fwd_send_done->control_predecessors(), ElementsAre());
   EXPECT_THAT(cp_cycle->control_predecessors(), ElementsAre(cp_fwd_send_done));
   EXPECT_THAT(cp_cycle2->control_predecessors(), ElementsAre(cp_fwd_send_done));
 

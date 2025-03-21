@@ -151,7 +151,11 @@ def _legacy_contrib_should_record_summaries():
 
 def is_recording_summaries():
   """Returns non-Tensor boolean indicating if summaries are being recorded."""
-  return _summary_state.is_recording is not None and _summary_state.is_recording
+  if _summary_state.writer is None:
+    return False
+  if _summary_state.is_recording is None:
+    return False
+  return _summary_state.is_recording
 
 
 @tf_export("summary.record_if", v1=[])

@@ -248,8 +248,8 @@ ENTRY entry () -> s32[] {
   HloInstruction* cloned_custom_call =
       cloned_module->entry_computation()->GetInstructionWithName("custom-call");
 
-  EXPECT_TRUE(cloned_computation->IsCustomCallComputation());
-  EXPECT_EQ(cloned_computation->CustomCallInstruction(), cloned_custom_call);
+  EXPECT_EQ(cloned_computation->GetUniqueCaller(HloOpcode::kCustomCall),
+            cloned_custom_call);
 }
 
 TEST_F(HloModuleTest, CloneCustomCallComputationCalledComputations) {
@@ -288,10 +288,10 @@ ENTRY entry () -> s32[] {
   HloInstruction* cloned_custom_call =
       cloned_module->entry_computation()->GetInstructionWithName("custom-call");
 
-  EXPECT_TRUE(cloned_computation_0->IsCustomCallComputation());
-  EXPECT_EQ(cloned_computation_0->CustomCallInstruction(), cloned_custom_call);
-  EXPECT_TRUE(cloned_computation_1->IsCustomCallComputation());
-  EXPECT_EQ(cloned_computation_1->CustomCallInstruction(), cloned_custom_call);
+  EXPECT_EQ(cloned_computation_0->GetUniqueCaller(HloOpcode::kCustomCall),
+            cloned_custom_call);
+  EXPECT_EQ(cloned_computation_1->GetUniqueCaller(HloOpcode::kCustomCall),
+            cloned_custom_call);
 }
 
 TEST_F(HloModuleTest, CloneFusionComputation) {
@@ -710,13 +710,16 @@ TEST_F(HloModuleTest, TwoComputationsFilterexecution_threads) {
   auto* parallel_thread_computation = async_done->async_wrapped_computation();
 
   EXPECT_THAT(
-      module->MakeComputationPostOrder({HloInstruction::kMainExecutionThread}),
+      module->MakeComputationPostOrder(absl::flat_hash_set<absl::string_view>(
+          {HloInstruction::kMainExecutionThread})),
       ::testing::ElementsAre(main_thread_computation));
   EXPECT_THAT(module->MakeComputationPostOrder(),
               ::testing::ElementsAre(parallel_thread_computation,
                                      main_thread_computation));
-  EXPECT_THAT(module->MakeComputationPostOrder({kParallelThreadName}),
-              ::testing::ElementsAre(parallel_thread_computation));
+  EXPECT_THAT(
+      module->MakeComputationPostOrder(
+          absl::flat_hash_set<absl::string_view>({kParallelThreadName})),
+      ::testing::ElementsAre(parallel_thread_computation));
   // Test that computations(execution_thread) return the expected values.
   int num_all_computations = 0;
   for ([[maybe_unused]] const HloComputation* comp :

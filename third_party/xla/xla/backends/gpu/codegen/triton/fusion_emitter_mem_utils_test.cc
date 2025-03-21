@@ -159,7 +159,7 @@ TritonMakeTensorPtrTest::CreateTestTensorPtr(
       CreateAndTileHloComputation(parent_shape, tile_sizes, tile_strides);
 
   const TiledHloInstruction* tiled_parameter =
-      tiled_hlo_computation.GetRoot()->operand(0);
+      tiled_hlo_computation.GetRoots()[0]->operand(0);
   const HloInstruction* parameter = tiled_parameter->hlo();
 
   OpBuilder builder(&mlir_context_);

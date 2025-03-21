@@ -52,9 +52,9 @@ limitations under the License.
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_common.h"
 #include "xla/pjrt/pjrt_compiler.h"
-#include "xla/pjrt/pjrt_device_description.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/pjrt_future.h"
+#include "xla/pjrt/pjrt_stream_executor_device_description.h"
 #include "xla/pjrt/tracked_device_buffer.h"
 #include "xla/pjrt/transpose.h"
 #include "xla/pjrt/utils.h"
@@ -77,52 +77,20 @@ limitations under the License.
 
 namespace xla {
 
-class PjRtStreamExecutorDeviceDescription : public PjRtDeviceDescription {
- public:
-  explicit PjRtStreamExecutorDeviceDescription(int id, std::string device_kind,
-                                               int process_index = 0)
-      : id_(id),
-        process_index_(process_index),
-        device_kind_(std::move(device_kind)) {}
+struct PjRtStreamExecutorExecutionInput {
+  // Donation is not complete until ReleaseDeviceMemory() is called on the
+  // TrackedDeviceBuffer that provides buf.
+  bool is_donated;
+  tsl::RCReference<RawSEDeviceMemory> buf;
+};
 
-  int id() const override { return id_; }
-
-  int process_index() const override { return process_index_; }
-
-  absl::string_view device_kind() const override { return device_kind_; }
-
-  absl::string_view ToString() const override { return to_string_; }
-
-  absl::string_view DebugString() const override { return debug_string_; }
-
-  absl::Span<int const> coords() const { return absl::MakeSpan(coords_); }
-
-  const absl::flat_hash_map<std::string, PjRtDeviceAttribute>& Attributes()
-      const override {
-    return attributes_;
-  }
-
-  void SetAttributes(
-      absl::flat_hash_map<std::string, PjRtDeviceAttribute> attributes) {
-    attributes_ = std::move(attributes);
-  }
-
-  void SetDebugString(std::string debug_string) {
-    debug_string_ = std::move(debug_string);
-  }
-
-  void SetToString(std::string to_string) { to_string_ = std::move(to_string); }
-
-  void SetCoords(std::array<int, 1> coords) { coords_ = coords; }
-
- private:
-  const int id_;
-  const int process_index_;
-  const std::string device_kind_;
-  std::string debug_string_ = "<unknown SE device>";
-  std::string to_string_ = "<unknown SE device>";
-  absl::flat_hash_map<std::string, PjRtDeviceAttribute> attributes_;
-  std::array<int, 1> coords_;
+struct PjRtStreamExecutorExecutionOutput {
+  ShapeTree<tsl::RCReference<RawSEDeviceMemory>> result;
+  // Donated inputs which must be freed.
+  std::vector<tsl::RCReference<RawSEDeviceMemory>> to_be_released;
+  // For PjRtStreamExecutorClient implementations that
+  // use OwningDeviceMemory for donated inputs.
+  std::vector<se::OwningDeviceMemory> se_to_be_released;
 };
 
 class PjRtStreamExecutorDevice : public PjRtDevice {
@@ -308,9 +276,9 @@ class PjRtStreamExecutorClient : public PjRtClient {
   absl::StatusOr<Layout> GetDefaultLayout(
       PrimitiveType element_type, absl::Span<const int64_t> dims) override;
 
-  absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> Compile(
+  absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> CompileAndLoad(
       const XlaComputation& computation, CompileOptions options) override;
-  absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> Compile(
+  absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> CompileAndLoad(
       mlir::ModuleOp mlir_module, CompileOptions options) override;
 
   virtual absl::StatusOr<std::string> SerializeExecutable(
@@ -319,10 +287,6 @@ class PjRtStreamExecutorClient : public PjRtClient {
   // For PjRtStreamExecutorClient, `options` is mandatory.
   // This function returns an InvalidArgument error if `std::nullopt` is passed.
   // TODO(b/237720161): make it actually optional
-  absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> DeserializeExecutable(
-      absl::string_view serialized,
-      std::optional<CompileOptions> options) override;
-
   absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
   LoadSerializedExecutable(absl::string_view serialized,
                            std::optional<CompileOptions> options,
@@ -360,15 +324,18 @@ class PjRtStreamExecutorClient : public PjRtClient {
                               PjRtDevice* device,
                               PjRtCrossHostRecvNotifier notifier) override;
 
-  absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>
-  MakeCrossHostReceiveBuffersForGather(
-      absl::Span<const Shape> shapes, std::vector<GatherDetails> gather_details,
-      PjRtDevice* device, PjRtCrossHostRecvNotifier notifier) override;
-
   absl::StatusOr<std::unique_ptr<PjRtBuffer>> CreateViewOfDeviceBuffer(
       void* device_ptr, const Shape& shape, PjRtMemorySpace* memory_space,
       std::function<void()> on_delete_callback,
       std::optional<std::intptr_t> stream) override;
+
+  // Caller is responsible to ensure that `data` has allocated enough memory
+  // for `buffer_size` to do DMA mapping.
+  absl::Status DmaMap(void* data, size_t buffer_size) override;
+
+  absl::Status DmaUnmap(void* data) override;
+
+  bool IsDmaMapped(const void* data_start, int64_t transfer_size);
 
   // TODO(zhangqiaorjc): Experimental. Will be removed.
   absl::Status Defragment() override {
@@ -396,14 +363,19 @@ class PjRtStreamExecutorClient : public PjRtClient {
 
   tsl::thread::ThreadPool* thread_pool() { return &thread_pool_; }
 
+  virtual absl::StatusOr<PjRtStreamExecutorExecutionOutput> RunAsync(
+      LocalExecutable& exec, PjRtDevice* device,
+      std::vector<ShapeTree<PjRtStreamExecutorExecutionInput>> arguments,
+      ExecutableRunOptions run_options);
+
  protected:
   friend class PjRtStreamExecutorBuffer;
+  friend class PjRtStreamExecutorRawBuffer;
 
   virtual absl::Status EnqueueCrossHostReceive(
       absl::Span<const std::unique_ptr<PjRtBuffer>> buffers,
       std::shared_ptr<BufferSequencingEvent> definition_event,
-      PjRtCrossHostRecvNotifier notifier,
-      std::optional<std::vector<GatherDetails>> gather_details) const {
+      PjRtCrossHostRecvNotifier notifier) const {
     return Unimplemented("Cross host receives not implemented.");
   }
 
@@ -414,21 +386,25 @@ class PjRtStreamExecutorClient : public PjRtClient {
             /*sends_were_enqueued=*/false);
   }
 
-  virtual void CopyToRemoteDeviceScattered(
-      PjRtBuffer* buffer, std::vector<std::string> serialized_descriptors,
-      std::vector<PjRtBuffer::RemoteSendCallback> callbacks,
-      const PjRtBuffer::ScatterDetails& scatter_details) const {
-    for (const auto& cb : callbacks) {
-      cb(Unimplemented("Scattered cross host sends not implemented."),
-         /*sends_were_enqueued=*/false);
-    }
-  }
-
   virtual PjRtFuture<> CopyRawSubBufferToHost(PjRtBuffer* buffer,
                                               PjRtFuture<void*> dst,
                                               int64_t offset,
                                               int64_t transfer_size) {
     return PjRtFuture<>(Unimplemented("Raw copies to host not implemented."));
+  }
+
+  virtual PjRtFuture<> CopyRawHostToDevice(
+      LocalDeviceState* local_device,
+      tsl::RCReference<RawSEDeviceMemory> device_buffer, const void* src,
+      int64_t offset, int64_t transfer_size) {
+    return PjRtFuture<>(Unimplemented("Raw copies h2d not implemented."));
+  }
+
+  virtual PjRtFuture<> CopyRawDeviceToHost(
+      LocalDeviceState* local_device,
+      tsl::RCReference<RawSEDeviceMemory> device_buffer, void* dst,
+      int64_t offset, int64_t transfer_size) {
+    return PjRtFuture<>(Unimplemented("Raw copies d2h not implemented."));
   }
 
   // Helper function for creating PjRtStreamExecutorExecutables. Modifies
@@ -493,6 +469,10 @@ class PjRtStreamExecutorClient : public PjRtClient {
 
   absl::Mutex transpose_mu_;
   TransposePlanCache transpose_cache_ ABSL_GUARDED_BY(transpose_mu_);
+
+  absl::Mutex dma_maps_mutex_;
+  // Maps dma mapped start pointers to their sizes.
+  absl::flat_hash_map<void*, size_t> dma_maps_ ABSL_GUARDED_BY(dma_maps_mutex_);
 };
 
 // Converts a 2D set of Device objects indexed by [replica][partition] into an
@@ -621,8 +601,7 @@ class PjRtStreamExecutorBuffer : public PjRtBuffer {
     // Confirms that the buffer was successfully donated to an execution.
     // Only valid for holds of type kDonation. Causes the buffer to become
     // invalid.
-    // TODO(parkers): Only allow safe releases.
-    void ConfirmDonation(bool unsafe_release);
+    void ConfirmDonation();
 
     // Adds the held device buffers in order to 'iterator'. Used to add the
     // buffers to an ExecutionInput. We require but do not verify that
@@ -756,11 +735,6 @@ class PjRtStreamExecutorBuffer : public PjRtBuffer {
   void CopyToRemoteDevice(PjRtFuture<std::string> serialized_descriptor,
                           RemoteSendCallback on_done) override;
 
-  void CopyToRemoteDeviceScattered(
-      PjRtFuture<std::vector<std::string>> serialized_descriptors,
-      std::vector<RemoteSendCallback> callbacks,
-      const ScatterDetails& scatter_details) override;
-
   PjRtFuture<> GetReadyFuture() override;
 
   bool IsOnCpu() const override;
@@ -820,7 +794,7 @@ class PjRtStreamExecutorBuffer : public PjRtBuffer {
   // Drops a donation hold and makes *this invalid for further use. Does a
   // sanity check that buffer==device_buffer_. Called after device_buffer_ was
   // successfully donated to an execution.
-  void ConfirmDonation(TrackedDeviceBuffer* device_buffer, bool unsafe_release);
+  void ConfirmDonation(TrackedDeviceBuffer* device_buffer);
 
   // Drops a hold without taking any other action. Does a sanity check that
   // buffer==device_buffer_ or device_buffer_==nullptr.
@@ -967,8 +941,6 @@ class PjRtStreamExecutorLoadedExecutable : public PjRtLoadedExecutable {
     return client_->SerializeExecutable(*this);
   }
 
-  bool IsReturnedFutureSupported() const override { return true; }
-
   absl::Span<const std::shared_ptr<LocalExecutable>> executables() const {
     return executables_;
   }
@@ -1007,7 +979,8 @@ class PjRtStreamExecutorLoadedExecutable : public PjRtLoadedExecutable {
   virtual absl::Span<int const> ParametersThatMustBeDonated(
       int executable_idx) const;
 
-  virtual absl::StatusOr<std::vector<ExecutionInput>>
+  virtual absl::StatusOr<
+      std::vector<ShapeTree<PjRtStreamExecutorExecutionInput>>>
   MakeExecutionInputsAndWaitForEvents(
       int device_ordinal, const ExecuteOptions& options,
       absl::Span<const Shape> executable_parameter_shapes,
@@ -1015,22 +988,24 @@ class PjRtStreamExecutorLoadedExecutable : public PjRtLoadedExecutable {
       absl::Span<const PjRtStreamExecutorBuffer::ScopedHold> device_buffers,
       absl::flat_hash_set<BufferSequencingEvent*>& events) const;
 
-  absl::StatusOr<ScopedShapedBuffer> EnqueueExecution(
+  absl::StatusOr<ShapeTree<tsl::RCReference<RawSEDeviceMemory>>>
+  EnqueueExecution(
       absl::Span<PjRtBuffer* const> argument_handles, int replica,
       int partition, int executable_idx, const RunId& run_id,
       const ExecuteOptions& options, PjRtDevice* device,
       std::vector<PjRtStreamExecutorBuffer::ScopedHold>* device_buffers,
       std::shared_ptr<DeviceAssignment> device_assignment,
-      std::vector<std::function<void()>>& compute_callbacks) const;
+      std::vector<absl::AnyInvocable<void() &&>>& compute_callbacks) const;
 
   virtual absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>
-  MakeOutputBuffers(int device_ordinal, const ExecuteOptions& options,
-                    ScopedShapedBuffer result_buffer,
-                    std::shared_ptr<BufferSequencingEvent> definition_event,
-                    PjRtDevice* device,
-                    std::vector<std::function<void()>>& compute_callbacks,
-                    std::vector<std::shared_ptr<TrackedDeviceBuffer>>&
-                        buffers_to_release) const;
+  MakeOutputBuffers(
+      int device_ordinal, const ExecuteOptions& options,
+      ShapeTree<tsl::RCReference<RawSEDeviceMemory>> result_buffer,
+      std::shared_ptr<BufferSequencingEvent> definition_event,
+      PjRtDevice* device,
+      std::vector<absl::AnyInvocable<void() &&>>& compute_callbacks,
+      std::vector<std::shared_ptr<TrackedDeviceBuffer>>& buffers_to_release)
+      const;
 
   absl::StatusOr<Result> ExecuteHelper(
       absl::Span<PjRtBuffer* const> argument_handles, int replica,

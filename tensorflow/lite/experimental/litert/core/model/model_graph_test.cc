@@ -14,6 +14,7 @@
 
 #include "tensorflow/lite/experimental/litert/core/model/model_graph.h"
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
 
@@ -25,6 +26,7 @@
 #include "tensorflow/lite/experimental/litert/c/litert_op_code.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_buffer_ref.h"
 #include "tensorflow/lite/experimental/litert/core/model/graph_validation.h"
+#include "tensorflow/lite/experimental/litert/core/model/ir_allocator.h"
 #include "tensorflow/lite/experimental/litert/core/model/model.h"
 
 namespace litert::internal {
@@ -118,6 +120,42 @@ TEST(ModelGraphTest, CloneTensor) {
   LiteRtTensorT dest;
   CloneTo(TestTensor(), dest);
   EXPECT_THAT(dest, HasRankedType(kType, kDimsSpan));
+}
+
+TEST(ModelQuantizationTypeTest, ClonePerChannelQuantization) {
+  static constexpr std::array kScale = {1.0f, 2.0f};
+  static constexpr std::array kZero = {1L, 2L};
+  static constexpr int32_t kQdim = 0;
+
+  IrAllocator<LiteRtTensorT> tensor_allocator;
+  auto& tensor = tensor_allocator.EmplaceBack();
+  LiteRtTensorT dest;
+  const auto quant = MakePerChannelQuantization(
+      kScale, kZero, kQdim,
+      [&tensor](auto s) { return tensor.RequestScratchBuffer(s); });
+
+  ASSERT_EQ(quant.first, kLiteRtQuantizationPerChannel);
+  const auto& per_channel = quant.second.per_channel;
+
+  const auto size = per_channel.num_channels;
+  ASSERT_EQ(size, 2);
+  EXPECT_EQ(per_channel.quantized_dimension, 0);
+  tensor.SetQarams(quant);
+
+  CloneTo(tensor, dest);
+  // Mimic DCE.
+  tensor_allocator.RemoveIf([](auto& t) { return true; });
+  auto dest_quant = dest.Qparams();
+
+  auto scales = absl::MakeConstSpan(dest_quant.second.per_channel.scales,
+                                    dest_quant.second.per_channel.num_channels);
+  auto zeros = absl::MakeConstSpan(dest_quant.second.per_channel.zero_points,
+                                   dest_quant.second.per_channel.num_channels);
+
+  ASSERT_EQ(scales.size(), 2);
+  ASSERT_EQ(zeros.size(), 2);
+  EXPECT_THAT(scales, ElementsAreArray(kScale));
+  EXPECT_THAT(zeros, ElementsAreArray(kZero));
 }
 
 TEST(ModelGraphTest, MakeCloneTensor) {

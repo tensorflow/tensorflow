@@ -629,13 +629,13 @@ class LayoutNormalizationVisitor : public DfsHloRewriteVisitor {
     auto layout_as_permutation = ToTransposeDimensions(s.layout());
 
     PaddingConfig new_padding;
-    new_padding.mutable_dimensions()->Reserve(s_normalized.dimensions_size());
-    for (int dim = 0; dim < s_normalized.dimensions_size(); dim++) {
+    new_padding.mutable_dimensions()->Reserve(s_normalized.rank());
+    for (int dim = 0; dim < s_normalized.rank(); dim++) {
       new_padding.add_dimensions();
     }
 
     auto inverse_perm = InversePermutation(layout_as_permutation);
-    for (int dim = 0; dim < s.dimensions_size(); dim++) {
+    for (int dim = 0; dim < s.rank(); dim++) {
       int tr_dim = static_cast<int>(inverse_perm[dim]);
       *new_padding.mutable_dimensions(tr_dim) = padded_config.dimensions(dim);
     }
