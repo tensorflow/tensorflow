@@ -101,6 +101,7 @@ absl::StatusOr<JitCompiler> KernelRunner::CreateJitCompiler(
   IrCompiler::Options ir_compiler_options{
       /*optimization_level=*/IrCompiler::GetCodeGenOptLevel(config),
       /*optimize_for_size=*/options::OptimizeForSizeRequested(config),
+      /*max_cpu_isa=*/CpuFeatureFromString(debug_options.xla_cpu_max_isa()),
       /*fast_math_flags=*/llvm_ir::GetCpuFastMathFlags(config),
       /*disable_expensive_passes=*/
       debug_options.xla_llvm_disable_expensive_passes(),
@@ -117,17 +118,19 @@ absl::StatusOr<JitCompiler> KernelRunner::CreateJitCompiler(
       };
 
   JitCompiler::Options jit_compiler_options{
-      std::move(ir_compiler_options),
-      std::move(ir_compiler_hooks),
       /*num_dylibs=*/1,
       /*definition_generator=*/std::move(definition_generator),
-      /*max_cpu_isa=*/CpuFeatureFromString(debug_options.xla_cpu_max_isa()),
   };
 
   llvm::TargetOptions target_options;
   target_options.AllowFPOpFusion = llvm::FPOpFusion::Fast;
 
-  return JitCompiler::Create(target_options, jit_compiler_options);
+  std::unique_ptr<IrCompiler> ir_compiler =
+      IrCompiler::Create(target_options, std::move(ir_compiler_options),
+                         std::move(ir_compiler_hooks));
+
+  return JitCompiler::Create(std::move(jit_compiler_options),
+                             std::move(ir_compiler));
 }
 
 }  // namespace xla::cpu

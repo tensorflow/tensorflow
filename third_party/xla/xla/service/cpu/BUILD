@@ -469,6 +469,7 @@ cc_library(
         ":cpu_aot_compilation_result",
         ":executable_proto_cc",
         "//xla:util",
+        "//xla/backends/cpu/codegen:ir_compiler",
         "//xla/backends/cpu/codegen:target_machine_features",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/ir:hlo_module_group",

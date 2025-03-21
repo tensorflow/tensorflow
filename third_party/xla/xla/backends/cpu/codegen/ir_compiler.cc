@@ -16,10 +16,12 @@ limitations under the License.
 #include "xla/backends/cpu/codegen/ir_compiler.h"
 
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include "absl/base/call_once.h"
 #include "absl/base/nullability.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
@@ -32,6 +34,7 @@ limitations under the License.
 #include "llvm/Analysis/CGSCCPassManager.h"
 #include "llvm/Analysis/LoopAnalysisManager.h"
 #include "llvm/Analysis/TargetLibraryInfo.h"
+#include "llvm/ExecutionEngine/ExecutionEngine.h"
 #include "llvm/ExecutionEngine/Orc/Mangling.h"
 #include "llvm/IR/LegacyPassManager.h"
 #include "llvm/IR/Metadata.h"
@@ -49,15 +52,19 @@ limitations under the License.
 #include "llvm/Support/Error.h"
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/SmallVectorMemoryBuffer.h"
+#include "llvm/Support/TargetSelect.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Target/TargetMachine.h"
+#include "llvm/TargetParser/Host.h"
 #include "llvm/TargetParser/Triple.h"
 #include "llvm/Transforms/Instrumentation/DataFlowSanitizer.h"
+#include "xla/backends/cpu/codegen/cpu_features.h"
 #include "xla/backends/cpu/codegen/polynomial_approximations.h"
 #include "xla/service/cpu/cpu_options.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/util.h"
+#include "tsl/platform/cpu_info.h"
 
 namespace xla::cpu {
 
@@ -138,12 +145,73 @@ static llvm::PipelineTuningOptions GetPipelineTuningOptions(
   return pto_from_options(with_overrides);
 }
 
+std::unique_ptr<IrCompiler> IrCompiler::Create(
+    llvm::TargetOptions target_options, Options options,
+    CompilationHooks hooks) {
+  TargetMachineBuilder target_machine_builder =
+      IrCompiler::InferTargetMachineBuilder(std::move(target_options),
+                                            options.opt_level,
+                                            options.max_cpu_feature);
+
+  return std::make_unique<IrCompiler>(target_machine_builder,
+                                      std::move(options), std::move(hooks));
+}
+
 IrCompiler::IrCompiler(TargetMachineBuilder target_machine_builder,
                        Options options, CompilationHooks hooks)
     : IRCompiler(llvm::orc::IRSymbolMapper::ManglingOptions()),
       target_machine_builder_(std::move(target_machine_builder)),
       options_(std::move(options)),
       hooks_(std::move(hooks)) {}
+
+// Initialize LLVM the first time `InferTargetMachine` is called.
+static void InitializeLLVMTarget() {
+  llvm::InitializeNativeTarget();
+  llvm::InitializeNativeTargetAsmPrinter();
+}
+
+absl::once_flag initialize_llvm_flag;
+
+absl::StatusOr<std::unique_ptr<llvm::TargetMachine>>
+IrCompiler::InferTargetMachine(
+    const llvm::TargetOptions& target_options, llvm::CodeGenOptLevel opt_level,
+    std::optional<tsl::port::CPUFeature> max_cpu_feature) {
+  // Detect machine attributes for the target CPU.
+  auto result = DetectMachineAttributes(max_cpu_feature);
+  llvm::SmallVector<std::string> attrs(result.features.begin(),
+                                       result.features.end());
+
+  // If `max_cpu_feature` is newer than the host CPU, we should keep the host
+  // CPU name, e.g., we don't want to set the target CPU to Skylake when we are
+  // on a Broadwell host.
+  absl::string_view cpu = result.num_filtered_features
+                              ? CpuTargetFromMaxFeature(*max_cpu_feature)
+                              : absl::string_view(llvm::sys::getHostCPUName());
+
+  absl::call_once(initialize_llvm_flag, InitializeLLVMTarget);
+  std::unique_ptr<llvm::TargetMachine> target_machine(
+      llvm::EngineBuilder()
+          .setTargetOptions(target_options)
+          .setOptLevel(opt_level)
+          .selectTarget(
+              /*TargetTriple=*/llvm::Triple(), /*MArch=*/"",
+              /*MCPU=*/cpu,
+              /*MAttrs=*/attrs));
+
+  if (target_machine == nullptr) {
+    return Internal("Failed to create target machine for CPU %s", cpu);
+  }
+
+  return std::move(target_machine);
+}
+
+IrCompiler::TargetMachineBuilder IrCompiler::InferTargetMachineBuilder(
+    const llvm::TargetOptions& target_options, llvm::CodeGenOptLevel opt_level,
+    std::optional<tsl::port::CPUFeature> max_cpu_feature) {
+  return [target_options, opt_level, max_cpu_feature] {
+    return InferTargetMachine(target_options, opt_level, max_cpu_feature);
+  };
+}
 
 llvm::Expected<std::unique_ptr<llvm::MemoryBuffer>> IrCompiler::operator()(
     llvm::Module& module) {
@@ -154,8 +222,8 @@ llvm::Expected<std::unique_ptr<llvm::MemoryBuffer>> IrCompiler::operator()(
   // multiple threads, `IrCompiler` user (in most cases `SimpleOrcJIT`)
   // must guarantee that target machine builder will return a unique
   // TargetMachine for each compilation, as it is not thread safe.
-  absl::StatusOr<std::shared_ptr<llvm::TargetMachine>> target_machine =
-      target_machine_builder_();
+  absl::StatusOr<std::unique_ptr<llvm::TargetMachine>> target_machine =
+      build_target_machine();
 
   if (!target_machine.ok()) {
     return llvm::make_error<llvm::StringError>(

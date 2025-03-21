@@ -1016,7 +1016,7 @@ absl::StatusOr<std::unique_ptr<HloModule>> CpuCompiler::RunHloPasses(
 
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<llvm::TargetMachine> jit_target_machine,
-      JitCompiler::InferTargetMachine(
+      IrCompiler::InferTargetMachine(
           CompilerTargetOptions(config), IrCompiler::GetCodeGenOptLevel(config),
           CpuFeatureFromString(config.debug_options().xla_cpu_max_isa())));
 
@@ -1352,6 +1352,7 @@ CpuCompiler::CompileCpuExecutable(std::unique_ptr<HloModule> module) {
   IrCompiler::Options ir_compiler_options{
       /*optimization_level=*/IrCompiler::GetCodeGenOptLevel(config),
       /*optimize_for_size=*/options::OptimizeForSizeRequested(config),
+      /*max_cpu_isa=*/CpuFeatureFromString(debug_options.xla_cpu_max_isa()),
       /*fast_math_flags=*/llvm_ir::GetCpuFastMathFlags(config),
       /*disable_expensive_passes=*/
       debug_options.xla_llvm_disable_expensive_passes(),
@@ -1374,18 +1375,18 @@ CpuCompiler::CompileCpuExecutable(std::unique_ptr<HloModule> module) {
 
   // Options for orchestrating the JIT compilation process.
   JitCompiler::Options jit_compiler_options{
-      std::move(ir_compiler_options),
-      std::move(ir_compiler_hooks),
       /*num_dylibs=*/parallel_codegen_split_count,
       /*definition_generator=*/std::move(definition_generator),
-      /*max_cpu_isa=*/CpuFeatureFromString(debug_options.xla_cpu_max_isa()),
   };
+
+  std::unique_ptr<IrCompiler> ir_compiler = IrCompiler::Create(
+      CompilerTargetOptions(module->config()), std::move(ir_compiler_options),
+      std::move(ir_compiler_hooks));
 
   TF_ASSIGN_OR_RETURN(
       JitCompiler jit_compiler,
-      JitCompiler::Create(CompilerTargetOptions(module->config()),
-                          std::move(jit_compiler_options),
-                          GetCompilationTaskRunner()));
+      JitCompiler::Create(std::move(jit_compiler_options),
+                          std::move(ir_compiler), GetCompilationTaskRunner()));
 
   HloComputation* entry_computation = module->entry_computation();
   absl::flat_hash_map<const HloInstruction*, int64_t>
@@ -1869,11 +1870,15 @@ CpuCompiler::CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
   }
   llvm::CodeGenOptLevel opt_level =
       IrCompiler::GetCodeGenOptLevel(modules[0]->config());
-  std::shared_ptr<llvm::TargetMachine> target_machine =
-      absl::WrapUnique(target->createTargetMachine(
-          triple.getTriple(), options.cpu_name(), options.features(),
-          CompilerTargetOptions(modules[0]->config()), reloc_model,
-          std::nullopt, opt_level));
+  auto target_machine_builder = [&]() {
+    return absl::WrapUnique(target->createTargetMachine(
+        triple.getTriple(), options.cpu_name(), options.features(),
+        CompilerTargetOptions(modules[0]->config()), reloc_model, std::nullopt,
+        opt_level));
+  };
+
+  std::unique_ptr<llvm::TargetMachine> target_machine =
+      target_machine_builder();
 
   // Compile must be thread-safe so create a new LLVM context for the module.
   mlir::MLIRContext mlir_context;
@@ -1891,15 +1896,15 @@ CpuCompiler::CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
                                     /*dummy*/ CompileOptions{}));
 
     if (hlo_module->config().debug_options().xla_cpu_use_thunk_runtime()) {
-      TF_ASSIGN_OR_RETURN(
-          results.emplace_back(),
-          CompileAheadOfTimeThunks(std::move(hlo_module), target_machine,
-                                   options, triple, pic_level, pie_level));
+      TF_ASSIGN_OR_RETURN(results.emplace_back(),
+                          CompileAheadOfTimeThunks(
+                              std::move(hlo_module), target_machine_builder,
+                              options, triple, pic_level, pie_level));
     } else {
-      TF_ASSIGN_OR_RETURN(
-          results.emplace_back(),
-          CompileAheadOfTimeLegacy(std::move(hlo_module), target_machine,
-                                   options, triple, pic_level, pie_level));
+      TF_ASSIGN_OR_RETURN(results.emplace_back(),
+                          CompileAheadOfTimeLegacy(
+                              std::move(hlo_module), target_machine_builder,
+                              options, triple, pic_level, pie_level));
     }
   }
 
@@ -1910,7 +1915,7 @@ CpuCompiler::CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
 absl::StatusOr<std::unique_ptr<AotCompilationResult>>
 CpuCompiler::CompileAheadOfTimeLegacy(
     std::unique_ptr<HloModule> module,
-    std::shared_ptr<llvm::TargetMachine> target_machine,
+    IrCompiler::TargetMachineBuilder target_machine_builder,
     const CpuAotCompilationOptions& aot_options, const llvm::Triple& triple,
     const llvm::PICLevel::Level& pic_level,
     const llvm::PIELevel::Level& pie_level) {
@@ -1947,6 +1952,8 @@ CpuCompiler::CompileAheadOfTimeLegacy(
         &hlo_profile_index_map, &hlo_profile_printer_data));
   }
 
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<llvm::TargetMachine> target_machine,
+                      target_machine_builder());
   TargetMachineFeatures target_machine_features(target_machine.get());
   std::vector<cpu_function_runtime::BufferInfo> buffer_infos =
       CreateBufferInfosFromBufferAssignment(*module, *assignment);
@@ -2025,13 +2032,15 @@ CpuCompiler::CompileAheadOfTimeLegacy(
     DumpModuleToFile(llvm_module, obj_file, *module);
   };
 
+  DebugOptions debug_options = module->config().debug_options();
   IrCompiler::Options ir_compiler_options = {
       /*optimization_level=*/target_machine->getOptLevel(),
       /*optimize_for_size=*/
       options::OptimizeForSizeRequested(module->config()),
+      /*max_cpu_isa=*/CpuFeatureFromString(debug_options.xla_cpu_max_isa()),
       /*fast_math_flags=*/llvm_ir::GetCpuFastMathFlags(module->config()),
       /*disable_expensive_passes=*/
-      module->config().debug_options().xla_llvm_disable_expensive_passes(),
+      debug_options.xla_llvm_disable_expensive_passes(),
       /*disable_slp_vectorizer=*/
       options::SlpVectorizerDisabled(module->config()),
       /*disable_loop_unrolling=*/
@@ -2045,7 +2054,7 @@ CpuCompiler::CompileAheadOfTimeLegacy(
       post_codegen_hook,
   };
 
-  IrCompiler ir_compiler([&] { return target_machine; },
+  IrCompiler ir_compiler(std::move(target_machine_builder),
                          std::move(ir_compiler_options),
                          std::move(ir_compiler_hooks));
 
@@ -2066,7 +2075,7 @@ CpuCompiler::CompileAheadOfTimeLegacy(
 absl::StatusOr<std::unique_ptr<AotCompilationResult>>
 CpuCompiler::CompileAheadOfTimeThunks(
     std::unique_ptr<HloModule> module,
-    std::shared_ptr<llvm::TargetMachine> target_machine,
+    IrCompiler::TargetMachineBuilder target_machine_builder,
     const CpuAotCompilationOptions& aot_options, const llvm::Triple& triple,
     const llvm::PICLevel::Level& pic_level,
     const llvm::PIELevel::Level& pie_level) {
@@ -2102,6 +2111,8 @@ CpuCompiler::CompileAheadOfTimeThunks(
   }
   // probably delete this end
 
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<llvm::TargetMachine> target_machine,
+                      target_machine_builder());
   TargetMachineFeatures target_machine_features(target_machine.get());
 
   auto llvm_module =
@@ -2203,6 +2214,7 @@ CpuCompiler::CompileAheadOfTimeThunks(
       /*optimization_level=*/target_machine->getOptLevel(),
       /*optimize_for_size=*/
       options::OptimizeForSizeRequested(module->config()),
+      /*max_cpu_isa=*/CpuFeatureFromString(debug_options.xla_cpu_max_isa()),
       /*fast_math_flags=*/llvm_ir::GetCpuFastMathFlags(module->config()),
       /*disable_expensive_passes=*/
       module->config().debug_options().xla_llvm_disable_expensive_passes(),
@@ -2219,7 +2231,7 @@ CpuCompiler::CompileAheadOfTimeThunks(
       post_codegen_hook,
   };
 
-  IrCompiler ir_compiler([&] { return target_machine; },
+  IrCompiler ir_compiler(std::move(target_machine_builder),
                          std::move(ir_compiler_options),
                          std::move(ir_compiler_hooks));
 
@@ -2484,12 +2496,12 @@ CpuExecutableAotCompilationResult::LoadExecutable(
   const HloModuleConfig& config = module->config();
 
   // Infer target machine from the current host CPU.
-  IrCompiler::TargetMachineBuilder target_machine_builder =
-      JitCompiler::InferTargetMachineBuilder(
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<llvm::TargetMachine> target_machine,
+      IrCompiler::InferTargetMachine(
           std::move(CompilerTargetOptions(module->config())),
           IrCompiler::GetCodeGenOptLevel(config),
-          CpuFeatureFromString(debug_options.xla_cpu_max_isa()));
-  TF_ASSIGN_OR_RETURN(auto target_machine, target_machine_builder());
+          CpuFeatureFromString(debug_options.xla_cpu_max_isa())));
 
   // Definition generator to link with XLA:CPU host runtime symbols.
   ExecutionEngine::DefinitionGenerator definition_generator =

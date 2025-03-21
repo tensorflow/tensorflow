@@ -106,12 +106,17 @@ TEST_P(ObjectLoaderTest, Load) {
 
   JitCompiler::Options options;
   options.num_dylibs = kNumDyLibs;
-  options.ir_compiler_hooks.post_codegen = object_files_saver;
   options.definition_generator = params.definition_generator;
+
+  IrCompiler::CompilationHooks ir_compiler_hooks;
+  ir_compiler_hooks.post_codegen = object_files_saver;
+
+  std::unique_ptr<IrCompiler> ir_compiler = IrCompiler::Create(
+      llvm::TargetOptions(), IrCompiler::Options(), ir_compiler_hooks);
 
   TF_ASSERT_OK_AND_ASSIGN(
       auto compiler,
-      JitCompiler::Create(llvm::TargetOptions(), std::move(options)));
+      JitCompiler::Create(std::move(options), std::move(ir_compiler)));
 
   auto add_module = [&](absl::string_view ir, absl::string_view name,
                         size_t dylib_index) -> absl::Status {

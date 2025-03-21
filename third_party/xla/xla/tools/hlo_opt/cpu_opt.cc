@@ -27,6 +27,7 @@ limitations under the License.
 #include "llvm/Support/CodeGen.h"
 #include "llvm/Target/TargetOptions.h"
 #include "xla/backends/cpu/codegen/cpu_features.h"
+#include "xla/backends/cpu/codegen/ir_compiler.h"
 #include "xla/backends/cpu/codegen/jit_compiler.h"
 #include "xla/backends/cpu/codegen/target_machine_features.h"
 #include "xla/debug_options_flags.h"
@@ -108,7 +109,7 @@ class CpuOptProvider : public CompiledOptProvider {
     auto executor = GetExecutor();
     HloModuleConfig module_config = module.config();
     absl::StatusOr<std::unique_ptr<llvm::TargetMachine>> jit_target_machine =
-        cpu::JitCompiler::InferTargetMachine(
+        cpu::IrCompiler::InferTargetMachine(
             CompilerTargetOptions(module_config),
             CodeGenOptLevel(module_config),
             cpu::CpuFeatureFromString(

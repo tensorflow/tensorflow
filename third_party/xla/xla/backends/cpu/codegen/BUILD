@@ -58,12 +58,14 @@ cc_library(
     srcs = ["ir_compiler.cc"],
     hdrs = ["ir_compiler.h"],
     deps = [
+        ":cpu_features",
         ":polynomial_approximations",
         "//xla:debug_options_flags",
         "//xla:util",
         "//xla/service:hlo_module_config",
         "//xla/service/cpu:cpu_options",
         "//xla/service/llvm_ir:llvm_util",
+        "@com_google_absl//absl/base",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/base:nullability",
         "@com_google_absl//absl/log",
@@ -75,6 +77,7 @@ cc_library(
         "@com_google_absl//absl/synchronization",
         "@llvm-project//llvm:Analysis",
         "@llvm-project//llvm:Core",
+        "@llvm-project//llvm:ExecutionEngine",
         "@llvm-project//llvm:Instrumentation",
         "@llvm-project//llvm:MC",
         "@llvm-project//llvm:Object",
@@ -83,6 +86,7 @@ cc_library(
         "@llvm-project//llvm:Support",
         "@llvm-project//llvm:Target",
         "@llvm-project//llvm:TargetParser",
+        "@local_tsl//tsl/platform:platform_port",
     ],
 )
 
@@ -141,10 +145,14 @@ xla_cc_test(
     name = "jit_compiler_test",
     srcs = ["jit_compiler_test.cc"],
     deps = [
+        ":ir_compiler",
         ":jit_compiler",
         "//xla:util",
         "//xla/backends/cpu/runtime:function_library",
         "//xla/tsl/lib/core:status_test_util",
+        "//xla/tsl/platform:env",
+        "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
@@ -156,10 +164,6 @@ xla_cc_test(
         "@llvm-project//llvm:OrcShared",
         "@llvm-project//llvm:Support",
         "@llvm-project//llvm:Target",
-        "@local_tsl//tsl/platform:env",
-        "@local_tsl//tsl/platform:errors",
-        "@local_tsl//tsl/platform:statusor",
-        "@local_tsl//tsl/platform:test",
     ],
 )
 
