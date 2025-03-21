@@ -1805,10 +1805,7 @@ GetReshardAllToAllSourceTargetDims(const HloSharding& source,
   std::vector<std::pair<int64_t, int64_t>> result;
   auto remove_entry = [](int64_t size, int64_t dim,
                          std::map<int64_t, std::vector<int64_t>>& size_to_dim) {
-    size_to_dim[size].erase(
-        std::remove_if(size_to_dim[size].begin(), size_to_dim[size].end(),
-                       [dim](int64_t a) { return a == dim; }),
-        size_to_dim[size].end());
+    std::erase_if(size_to_dim[size], [dim](int64_t a) { return a == dim; });
     if (size_to_dim[size].empty()) {
       size_to_dim.erase(size);
     }

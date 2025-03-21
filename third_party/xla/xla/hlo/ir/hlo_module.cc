@@ -970,13 +970,9 @@ std::vector<HloComputation*> HloModule::MakeComputationPostOrder(
     bool dfs_postorder) const {
   std::vector<HloComputation*> post_order =
       this->MakeComputationPostOrder(execution_threads, dfs_postorder);
-
-  post_order.erase(std::remove_if(post_order.begin(), post_order.end(),
-                                  [&allow_list](HloComputation* computation) {
-                                    return !allow_list.contains(computation);
-                                  }),
-                   post_order.end());
-
+  std::erase_if(post_order, [&allow_list](HloComputation* computation) {
+    return !allow_list.contains(computation);
+  });
   return post_order;
 }
 
@@ -1041,12 +1037,9 @@ std::vector<HloComputation*> HloModule::MakeComputationPostOrder(
                  << " computation_count=" << computations_.size();
     }
     if (!execution_threads.empty()) {
-      post_order.erase(std::remove_if(post_order.begin(), post_order.end(),
-                                      [&](HloComputation* computation) {
-                                        return !execution_threads.contains(
-                                            computation->execution_thread());
-                                      }),
-                       post_order.end());
+      std::erase_if(post_order, [&](HloComputation* computation) {
+        return !execution_threads.contains(computation->execution_thread());
+      });
     }
     return post_order;
   } else {
@@ -1135,10 +1128,8 @@ std::vector<HloComputation*> HloModule::MakeNonfusionComputations(
     const absl::flat_hash_set<absl::string_view>& execution_threads) const {
   std::vector<HloComputation*> result =
       MakeComputationPostOrder(execution_threads);
-  result.erase(std::remove_if(
-                   result.begin(), result.end(),
-                   [](HloComputation* c) { return c->IsFusionComputation(); }),
-               result.end());
+  std::erase_if(result,
+                [](HloComputation* c) { return c->IsFusionComputation(); });
   return result;
 }
 

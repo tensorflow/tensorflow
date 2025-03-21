@@ -1047,10 +1047,7 @@ std::vector<SymbolicTileAnalysis::Tiling> GetGoodTilings(
     tilings = std::move(extended_tilings);
   }
 
-  tilings.erase(
-      std::remove_if(tilings.begin(), tilings.end(), std::not_fn(is_valid)),
-      tilings.end());
-
+  std::erase_if(tilings, std::not_fn(is_valid));
   return tilings;
 }
 }  // namespace detail

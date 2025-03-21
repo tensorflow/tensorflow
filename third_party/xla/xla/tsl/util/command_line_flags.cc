@@ -310,8 +310,7 @@ bool Flag::Parse(string arg, bool* value_parsing_ok) const {
       }
     }
   }
-  auto IsEmpty = [](const std::string& flag) { return flag.empty(); };
-  flags.erase(std::remove_if(flags.begin(), flags.end(), IsEmpty), flags.end());
+  std::erase_if(flags, [](const std::string& flag) { return flag.empty(); });
   return result;
 }
 

@@ -318,10 +318,8 @@ void CommandBufferThunk::EvictCommandBuffers() {
           << global_state->state.size();
 
   // Erase state for already destroyed thunks.
-  global_state->state.erase(
-      std::remove_if(global_state->state.begin(), global_state->state.end(),
-                     [](auto& weak_ptr) { return weak_ptr.expired(); }),
-      global_state->state.end());
+  std::erase_if(global_state->state,
+                [](auto& weak_ptr) { return weak_ptr.expired(); });
 
   // Evict command buffers for all tracked thunks.
   int64_t num_evicted = 0;

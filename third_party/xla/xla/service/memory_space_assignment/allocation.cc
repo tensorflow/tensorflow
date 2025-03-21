@@ -139,9 +139,7 @@ bool Allocation::is_in_default_mem() const {
 }
 
 void Allocation::RemoveUse(HloUse use) {
-  uses_.erase(std::remove_if(uses_.begin(), uses_.end(),
-                             [=](const auto& u) { return u == use; }),
-              uses_.end());
+  std::erase_if(uses_, [&use](const HloUse& u) { return u == use; });
 }
 
 void Allocation::AddUse(HloUse use) {

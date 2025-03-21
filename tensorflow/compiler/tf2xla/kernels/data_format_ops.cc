@@ -153,13 +153,10 @@ class DataFormatVecPermuteOp : public XlaOpKernel {
       // as spatial dimensions.
       auto keep_only_spatial_dimensions =
           [spatial_dim_count](string* format_str) -> void {
-        auto new_end =
-            std::remove_if(format_str->begin(), format_str->end(),
-                           [spatial_dim_count](const char dim) {
-                             return dim != 'H' && dim != 'W' &&
-                                    (spatial_dim_count == 2 || dim != 'D');
-                           });
-        format_str->erase(new_end, format_str->end());
+        std::erase_if(*format_str, [spatial_dim_count](const char dim) {
+          return dim != 'H' && dim != 'W' &&
+                 (spatial_dim_count == 2 || dim != 'D');
+        });
       };
       keep_only_spatial_dimensions(&src_format_str);
       keep_only_spatial_dimensions(&dst_format_str);

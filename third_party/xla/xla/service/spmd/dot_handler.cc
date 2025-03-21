@@ -2748,11 +2748,7 @@ GetDotGroupPartitionContractingOutputShardings(
   if (output_slice_dims_out) {
     if (output_sharding.ReplicateOnLastTileDim()) {
       // Remove the replication group dim.
-      output_slice_dims.erase(
-          std::remove_if(
-              output_slice_dims.begin(), output_slice_dims.end(),
-              [&](int64_t dim) { return dim == output_base_shape.rank(); }),
-          output_slice_dims.end());
+      std::erase(output_slice_dims, output_base_shape.rank());
     }
     (*output_slice_dims_out) = std::move(output_slice_dims);
   }

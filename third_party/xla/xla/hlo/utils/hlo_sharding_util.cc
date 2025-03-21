@@ -2358,11 +2358,9 @@ GroupedSharding GroupShardingOnAllDimsExcept(
   std::vector<int64_t> group_dims(sharding.tile_assignment().num_dimensions());
   absl::c_iota(group_dims, 0);
 
-  group_dims.erase(
-      std::remove_if(
-          group_dims.begin(), group_dims.end(),
-          [&](int64_t i) { return absl::c_linear_search(non_group_dims, i); }),
-      group_dims.end());
+  std::erase_if(group_dims, [&](int64_t i) {
+    return absl::c_linear_search(non_group_dims, i);
+  });
   return GroupShardingOnDims(sharding, group_dims, subgroup_manual);
 }
 
