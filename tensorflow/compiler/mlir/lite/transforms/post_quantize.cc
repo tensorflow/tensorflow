@@ -188,6 +188,13 @@ struct RemoveVolatileOps : public OpRewritePattern<DequantizeOp> {
 
       op.replaceAllUsesWith(q.getInput());
       return success();
+    } else if (auto qconst_op = llvm::dyn_cast_or_null<QConstOp>(input_op)) {
+      if (!qconst_op->getAttr(mlir::quant::kVolatileOpAttrName))
+        return failure();
+
+      op.replaceAllUsesWith(qconst_op.getOutput());
+      op->erase();
+      return success();
     }
     return failure();
   }
