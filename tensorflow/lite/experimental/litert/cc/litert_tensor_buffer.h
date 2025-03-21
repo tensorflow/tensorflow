@@ -244,13 +244,23 @@ class TensorBuffer
     return Event(event, /*owned=*/false);
   }
 
-  // The function takes ownership of the passed event e.
-  Expected<void> SetEvent(Event&& e) {
-    if (!e.IsOwned()) {
+  // Set the C++ Event object for the tensor buffer.
+  // The function takes ownership of the passed Event object.
+  Expected<void> SetEvent(Event&& event) {
+    if (!event.IsOwned()) {
       return Error(kLiteRtStatusErrorInvalidArgument,
                    "Expected an owned event");
     }
-    LITERT_RETURN_IF_ERROR(LiteRtSetTensorBufferEvent(Get(), e.Release()));
+    LITERT_RETURN_IF_ERROR(LiteRtSetTensorBufferEvent(
+        Get(), event.Release(), /*transfer_ownership=*/true));
+    return {};
+  }
+
+  // Set the C LiteRtEvent object for the tensor buffer. `transfer_ownership`
+  // indicates if the tensor buffer should take ownership of the event.
+  Expected<void> SetEvent(LiteRtEvent& litert_event, bool transfer_ownership) {
+    LITERT_RETURN_IF_ERROR(
+        LiteRtSetTensorBufferEvent(Get(), litert_event, transfer_ownership));
     return {};
   }
 

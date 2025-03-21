@@ -72,6 +72,8 @@ LiteRtTensorBufferT::LiteRtTensorBufferT(
       buffer_type_(buffer_type),
       buffer_size_(buffer_size),
       buffer_offset_(buffer_offset),
+      event_(nullptr),
+      has_event_ownership_(false),
       ref_(1) {
   // Copy local memory passed by the caller.
   Copy(tensor_type_.layout.rank, tensor_type_.layout.dimensions, dimensions_);
@@ -81,6 +83,8 @@ LiteRtTensorBufferT::LiteRtTensorBufferT(
 }
 
 LiteRtTensorBufferT::~LiteRtTensorBufferT() {
+  ClearEvent();
+
   switch (buffer_type()) {
     case kLiteRtTensorBufferTypeUnknown:
       // Nothing to do.
@@ -583,8 +587,7 @@ Expected<void*> LiteRtTensorBufferT::Lock() {
     case kLiteRtTensorBufferTypeHostMemory:
       return *GetHostBuffer();
     case kLiteRtTensorBufferTypeAhwb:
-      return litert::internal::AhwbBuffer::Lock(
-          *GetAhwbBuffer(), event_ != nullptr ? event_.get() : nullptr);
+      return litert::internal::AhwbBuffer::Lock(*GetAhwbBuffer(), event_);
     case kLiteRtTensorBufferTypeIon:
       return GetIonBuffer()->first;
     case kLiteRtTensorBufferTypeDmaBuf:

@@ -214,10 +214,11 @@ LiteRtStatus LiteRtHasTensorBufferEvent(LiteRtTensorBuffer tensor_buffer,
 LiteRtStatus LiteRtGetTensorBufferEvent(LiteRtTensorBuffer tensor_buffer,
                                         LiteRtEvent* event);
 
-// Attach a given event to a given tensor buffer. The tensor buffer takes
-// ownership of the event.
+// Attach a given event to a given tensor buffer. `transfer_ownership` indicates
+// if the tensor buffer should take ownership of the event or not.
 LiteRtStatus LiteRtSetTensorBufferEvent(LiteRtTensorBuffer tensor_buffer,
-                                        LiteRtEvent event);
+                                        LiteRtEvent event,
+                                        bool transfer_ownership);
 
 // Remove any event that may have been previously attached to the given tensor
 // buffer and deallocate such event.
