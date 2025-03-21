@@ -48,13 +48,13 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Tools/mlir-translate/Translation.h"  // from @llvm-project
 #include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo
-#include "tensorflow/compiler/mlir/lite/tools/tf_mlir_translate_cl.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/tools/parsers.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/serialize_mlir_module_utils.h"
 #include "tensorflow/compiler/mlir/tf2xla/api/v1/compile_mlir_util.h"
+#include "tensorflow/compiler/mlir/tools/tf_mlir_translate_cl.h"
 #include "tensorflow/compiler/mlir/utils/string_container_utils.h"
 #include "tensorflow/compiler/tf2xla/layout_util.h"
 #include "tensorflow/compiler/tf2xla/xla_argument.h"
@@ -333,8 +333,8 @@ static mlir::LogicalResult MlirTfToHloTextTranslateFunctionImpl(
   if (!module_op) return mlir::failure();
 
   llvm::SmallVector<TensorOrResourceShape, 4> arg_shapes;
-  auto args_status =
-      ParseArgumentShapes(mlir::StringRefToView(input_shapes), arg_shapes);
+  auto args_status = ParseArgumentShapes(
+      mlir::StringRefToView(mlir_tools::input_shapes), arg_shapes);
   if (!args_status.ok()) {
     LOG(ERROR) << args_status;
     return mlir::failure();
@@ -368,9 +368,10 @@ static mlir::LogicalResult MlirTfGraphToHloTextTranslateFunction(
   if (!module_op) return mlir::failure();
 
   llvm::SmallVector<XlaArgument, 4> xla_arguments;
-  auto args_status = ParseXlaArguments(
-      mlir::StringRefToView(input_shapes), mlir::StringRefToView(input_dtypes),
-      mlir::StringRefToView(input_types), xla_arguments);
+  auto args_status =
+      ParseXlaArguments(mlir::StringRefToView(mlir_tools::input_shapes),
+                        mlir::StringRefToView(mlir_tools::input_dtypes),
+                        mlir::StringRefToView(input_types), xla_arguments);
   if (!args_status.ok()) {
     LOG(ERROR) << args_status;
     return mlir::failure();
