@@ -14,8 +14,6 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/benchmark_result_evaluator.h"
 
-#include <memory>
-
 #include "tensorflow/lite/acceleration/configuration/configuration_generated.h"
 
 namespace tflite {
