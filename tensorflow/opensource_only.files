@@ -127,8 +127,6 @@ tf_staging/tensorflow/lite/signature_runner.h:
 tf_staging/tensorflow/lite/special_rules.bzl:
 tf_staging/tensorflow/lite/tools/benchmark/experimental/delegate_performance/android/AndroidManifest.xml:
 tf_staging/tensorflow/lite/tools/benchmark/experimental/delegate_performance/android/build_defs.bzl:
-tf_staging/tensorflow/lite/tools/pip_package/BUILD:
-tf_staging/tensorflow/lite/tools/pip_package/utils/BUILD:
 tf_staging/tensorflow/lite/tools/verifier.h:
 tf_staging/tensorflow/lite/tools/verifier_internal.h:
 tf_staging/tensorflow/python/autograph/core/config:.py
