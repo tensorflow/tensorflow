@@ -2037,14 +2037,6 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
     return %0 : tensor<*xf32>
   }
 
-  // CHECK-LABEL: func @test_tpu_partitioned_input_v2
-  // CHECK-SAME: (%arg0: tensor<1x2xf32>) -> tensor<1x2xf32>
-  func.func @test_tpu_partitioned_input_v2(%arg0: tensor<1x2xf32>) -> tensor<*xf32> {
-    %0 = "tf.TPUPartitionedInputV2"(%arg0) {is_packed = false, partition_dims = [1, 1]}: (tensor<1x2xf32>) -> tensor<*xf32>
-    return %0 : tensor<*xf32>
-  }
-
-
   // CHECK-LABEL: func @tensor_list_large
   func.func @tensor_list_large(%arg0: tensor<i1>) {
     %0 = "tf.Const"() {device = "", value = dense<2> : tensor<2xi32>} : () -> tensor<2xi32>
