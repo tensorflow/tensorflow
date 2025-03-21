@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include <cstdint>
+#include <memory>
 
 #include <gtest/gtest.h>
 #include "absl/status/statusor.h"

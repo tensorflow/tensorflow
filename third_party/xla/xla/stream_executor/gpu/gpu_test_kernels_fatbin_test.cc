@@ -18,6 +18,7 @@ limitations under the License.
 #include <cstdint>
 #include <vector>
 
+#include <gtest/gtest.h>
 #include "tsl/platform/statusor.h"
 #include "tsl/platform/test.h"
 
