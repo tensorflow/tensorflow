@@ -79,6 +79,19 @@ class CmInvoker {
   std::vector<TensorBuffer> output_buffers_;
 };
 
+class SkippedCmInvoker : public CmInvoker {
+ public:
+  SkippedCmInvoker(Environment&& env, Model&& model)
+      : CmInvoker(std::move(env), std::move(model)) {}
+  void MaybeSkip() const override {
+    GTEST_SKIP() << "User requested skip for this model.";
+  }
+
+  LiteRtHwAccelerators Accelerator() const override {
+    return kLiteRtHwAcceleratorNone;
+  };
+};
+
 // Invocation of the compiled model API for the NPU accelerator. This handles
 // both JIT and pre-compiled models.
 class CmNpuInvoker : public CmInvoker {
