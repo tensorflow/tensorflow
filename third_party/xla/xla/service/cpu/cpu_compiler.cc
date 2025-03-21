@@ -1870,11 +1870,12 @@ CpuCompiler::CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
   }
   llvm::CodeGenOptLevel opt_level =
       IrCompiler::GetCodeGenOptLevel(modules[0]->config());
+  llvm::TargetOptions target_options =
+      CompilerTargetOptions(modules[0]->config());
   auto target_machine_builder = [&]() {
     return absl::WrapUnique(target->createTargetMachine(
         triple.getTriple(), options.cpu_name(), options.features(),
-        CompilerTargetOptions(modules[0]->config()), reloc_model, std::nullopt,
-        opt_level));
+        target_options, reloc_model, std::nullopt, opt_level));
   };
 
   std::unique_ptr<llvm::TargetMachine> target_machine =

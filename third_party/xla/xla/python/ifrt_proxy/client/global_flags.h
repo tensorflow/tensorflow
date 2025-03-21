@@ -34,7 +34,9 @@ struct GlobalClientFlags {
   // codepath works well.
   bool synchronous_host_buffer_store;
 
-  // TODO(b/393445969): Implement faster is_delete without needing a hack.
+  // Setting to true assumes that if the `IsDeleted()` status of an Array cannot
+  // be determined at the IFRT proxy client (ie, it needs an RPC to the server),
+  // return False for `IsDeleted()`.
   bool array_is_deleted_hack;
 };
 
