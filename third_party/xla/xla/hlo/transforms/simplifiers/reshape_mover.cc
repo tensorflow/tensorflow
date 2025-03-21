@@ -162,7 +162,7 @@ bool ReshapeMover::CanTriviallyRearrange(const HloInstruction* instr,
     if (rearrange->opcode() == HloOpcode::kReshape) {
       return ShapeUtil::IsScalar(instr->operand(0)->shape()) ||
              (options_.reshape_of_1d_broadcast_is_cheap &&
-              ShapeUtil::TrueRank(instr->operand(0)->shape()) <= 1) ||
+              ShapeUtil::TrueNumDimensions(instr->operand(0)->shape()) <= 1) ||
              (options_.reshape_of_1d_broadcast_is_cheap &&
               ShapeUtil::ReshapeLeavesDimensionsUnmodified(
                   /*from_shape=*/rearrange->shape(),

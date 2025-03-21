@@ -286,7 +286,7 @@ TopKCustomCall CreateTopKCustomCall(HloSortInstruction* sort, const int64_t k) {
   HloInstruction* input = sort->mutable_operand(0);
   Shape data_shape = input->shape();
   PrimitiveType element_type = data_shape.element_type();
-  bool has_batch = data_shape.rank() >= 2;
+  bool has_batch = data_shape.dimensions_size() >= 2;
   int64_t sort_dim = sort->sort_dimension();
   int64_t input_size = data_shape.dimensions(sort_dim);
   int64_t batch_size = 1;
@@ -303,7 +303,7 @@ TopKCustomCall CreateTopKCustomCall(HloSortInstruction* sort, const int64_t k) {
     topk_input_shape =
         ShapeUtil::MakeShape(element_type, {batch_size, input_size});
 
-    if (data_shape.rank() > 2) {
+    if (data_shape.dimensions_size() > 2) {
       // Reshape to 2d.
       input = sort->AddInstruction(HloInstruction::CreateReshape(
           sort_dim == 0
@@ -346,7 +346,7 @@ TopKCustomCall CreateTopKCustomCall(HloSortInstruction* sort, const int64_t k) {
       index_gte = sort->AddInstruction(HloInstruction::CreateTranspose(
           ShapeUtil::MakeShape(S32, {k, batch_size}), index_gte, {1, 0}));
     }
-    if (data_shape.rank() > 2) {
+    if (data_shape.dimensions_size() > 2) {
       // Reshape back.
       std::vector<int64_t> shape_dim(data_shape.dimensions().begin(),
                                      data_shape.dimensions().end());
@@ -378,7 +378,7 @@ absl::StatusOr<HloInstruction*> TopkRewriter::TransformPatternToCustomCall(
 
   // Sort dimension must be the first or last dimension.
   const int64_t sort_dim = sort->sort_dimension();
-  if (sort_dim != 0 && sort_dim != data->shape().rank() - 1) {
+  if (sort_dim != 0 && sort_dim != data->shape().dimensions_size() - 1) {
     return nullptr;
   }
 
@@ -496,9 +496,9 @@ class TopkDecomposerVisitor : public DfsHloRewriteVisitor {
     HloInstruction* input = call->mutable_operand(0);
     Shape iota_shape = input->shape();
     iota_shape.set_element_type(S32);
-    size_t sort_dimension = input->shape().rank() - 1;
-    std::vector<int64_t> zeroes(iota_shape.rank(), 0);
-    std::vector<int64_t> ones(iota_shape.rank(), 1);
+    size_t sort_dimension = input->shape().dimensions_size() - 1;
+    std::vector<int64_t> zeroes(iota_shape.dimensions_size(), 0);
+    std::vector<int64_t> ones(iota_shape.dimensions_size(), 1);
     CHECK_NE(variadic_comparator, nullptr);
     // If only the topk values are necessary, skip the iota.
     if (HasSingleUserReadingOnlyTheValueOutput(call) &&
@@ -512,8 +512,8 @@ class TopkDecomposerVisitor : public DfsHloRewriteVisitor {
               call->shape().tuple_shapes(0), sort, zeroes,
               call->shape().tuple_shapes(0).dimensions(), ones))));
     } else {
-      HloInstruction* iota = call->AddInstruction(
-          HloInstruction::CreateIota(iota_shape, iota_shape.rank() - 1));
+      HloInstruction* iota = call->AddInstruction(HloInstruction::CreateIota(
+          iota_shape, iota_shape.dimensions_size() - 1));
       HloInstruction* sort = call->AddInstruction(HloInstruction::CreateSort(
           ShapeUtil::MakeTupleShape({input->shape(), iota_shape}),
           sort_dimension, {input, iota}, variadic_comparator,

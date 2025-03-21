@@ -113,7 +113,7 @@ absl::StatusOr<AffineMap> GetPermutationIfAvailable(const Shape& shape,
     return Internal("Permutations for dynamic shapes are not yet supported");
   }
   int64_t accumulated_stride = 1;
-  llvm::SmallVector<int64_t, 4> strides(shape.rank(), 1);
+  llvm::SmallVector<int64_t, 4> strides(shape.dimensions_size(), 1);
   for (int64_t dim : LayoutUtil::MinorToMajor(shape)) {
     strides[dim] = accumulated_stride;
     accumulated_stride *= shape.dimensions(dim);

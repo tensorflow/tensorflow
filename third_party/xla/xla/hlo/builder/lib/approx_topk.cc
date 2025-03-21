@@ -49,7 +49,7 @@ absl::StatusOr<std::vector<PrimitiveType>> GetOperandTypes(
   for (int i = 0; i < num_operands; ++i) {
     const auto& op_shape = operands_shapes[i];
     const auto& init_shape = init_values_shapes[i];
-    if (op_shape.rank() == 0) {
+    if (op_shape.dimensions_size() == 0) {
       return InvalidArgument("ApproxTopK operands must have rank 1+.");
     }
     if (!ShapeUtil::CompatibleIgnoringElementType(operands_shapes[0],
@@ -115,7 +115,7 @@ XlaOp AggregateToTopKBuilder(XlaBuilder* builder,
                              int64_t reduction_dim,
                              const XlaComputation& comparator) {
   auto operands_shapes = builder->GetOperandShapes(operands).value();
-  int64_t rank = operands_shapes[0].rank();
+  int64_t rank = operands_shapes[0].dimensions_size();
   int64_t num_operands = operands.size();
 
   if (top_k == 1) {
@@ -176,7 +176,7 @@ XlaOp ApproxTopK(XlaBuilder* builder, absl::Span<const XlaOp> operands,
     return builder->ReportError(status_or_optypes.status());
   }
   auto op_types = status_or_optypes.value();
-  int64_t rank = operands_shapes[0].rank();
+  int64_t rank = operands_shapes[0].dimensions_size();
   if (reduction_dim < 0 || reduction_dim >= rank) {
     return builder->ReportError(
         InvalidArgument("reduction_dim should range in [0,%d)", rank));
@@ -263,7 +263,7 @@ XlaOp ApproxTopKFallback(XlaBuilder* builder, absl::Span<const XlaOp> operands,
                          bool aggregate_to_topk,
                          int64_t reduction_input_size_override) {
   auto operands_shapes = builder->GetOperandShapes(operands).value();
-  int64_t rank = operands_shapes[0].rank();
+  int64_t rank = operands_shapes[0].dimensions_size();
   uint64_t n = operands_shapes[0].dimensions(reduction_dim);
   // Align the output size with ApproxTopK.
   auto status_or_approx_output_size = ApproxTopKReductionOutputSize(

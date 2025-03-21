@@ -660,7 +660,7 @@ absl::StatusOr<Value> MaskDotOperand(EmitterLocOpBuilder& b,
   llvm::ArrayRef<int64_t> tile_shape =
       mlir::cast<ShapedType>(dot_operand_value.getType()).getShape();
 
-  int64_t rank = dot_operand.hlo()->shape().rank();
+  int64_t rank = dot_operand.hlo()->shape().dimensions_size();
   int64_t contracting_dimension_size =
       dot_operand.hlo()->shape().dimensions(contraction_dimension_index);
   int64_t tile_size = tile_shape[contraction_dimension_index];
@@ -1302,7 +1302,8 @@ absl::Status EmitGeneric(mlir::OpBuilder builder,
       return absl::OkStatus();
     }
 
-    CHECK(root->hlo()->shape().IsArray() && root->hlo()->shape().rank() > 0);
+    CHECK(root->hlo()->shape().IsArray() &&
+          root->hlo()->shape().dimensions_size() > 0);
     TF_ASSIGN_OR_RETURN(auto make_tensor,
                         ir_emitter_triton_internal::CreateMakeTensorPtrOp(
                             b, tile_multi_index, *root, parent_base_ptr));

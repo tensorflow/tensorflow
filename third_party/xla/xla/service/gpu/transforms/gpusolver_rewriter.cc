@@ -60,7 +60,7 @@ absl::StatusOr<HloInstruction*> CreateCholesky(
   HloComputation* computation = operand->parent();
 
   Shape a_shape = operand->shape();
-  int ndim = a_shape.rank();
+  int ndim = a_shape.dimensions_size();
   CHECK_GE(ndim, 2);
   int64_t n = a_shape.dimensions(ndim - 1);
 

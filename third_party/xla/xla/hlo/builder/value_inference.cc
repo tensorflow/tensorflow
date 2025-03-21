@@ -1714,7 +1714,7 @@ absl::StatusOr<Literal> ValueInference::SimplifyOp(int64_t handle) {
     case HloOpcode::kAdd: {
       // a + (b - a) => b
       // a + b + (c - a) => b + c
-      if (output_shape->rank() == 0) {
+      if (output_shape->dimensions_size() == 0) {
         TF_ASSIGN_OR_RETURN(auto lhs, SimplifyOp(inst->operand_ids(0)));
         TF_ASSIGN_OR_RETURN(auto rhs, SimplifyOp(inst->operand_ids(1)));
         int64_t lhs_handle = lhs.Get<int64_t>({});

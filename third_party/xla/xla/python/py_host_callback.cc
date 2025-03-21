@@ -69,7 +69,7 @@ absl::StatusOr<std::vector<CpuCallback::Arg>> CreateCallbackArgs(
       Shape layout =
           (shape.has_layout() ? shape
                               : LayoutUtil::GetWithDefaultLayout(shape));
-      callback_args[i].dims.resize(shape.rank());
+      callback_args[i].dims.resize(shape.dimensions_size());
       absl::c_copy(shape.dimensions(), callback_args[i].dims.begin());
       callback_args[i].strides = ByteStridesForShape(layout);
       callback_args[i].type = shape.element_type();
@@ -97,13 +97,13 @@ absl::StatusOr<std::vector<CpuCallback::Result>> CreateCallbackResults(
           result_shapes[i].has_layout()
               ? result_shapes[i]
               : LayoutUtil::GetWithDefaultLayout(result_shapes[i]);
-      callback_results[i].expected_dims.resize(shape.rank());
+      callback_results[i].expected_dims.resize(shape.dimensions_size());
       absl::c_copy(shape.dimensions(),
                    callback_results[i].expected_dims.begin());
       callback_results[i].expected_strides = ByteStridesForShape(shape);
       callback_results[i].type = shape.element_type();
       callback_results[i].size_in_bytes = ShapeUtil::ByteSizeOf(shape);
-      callback_results[i].reversed_layout.resize(shape.rank());
+      callback_results[i].reversed_layout.resize(shape.dimensions_size());
       absl::c_reverse_copy(shape.layout().minor_to_major(),
                            callback_results[i].reversed_layout.begin());
     } else if (result_shapes[i].IsToken()) {

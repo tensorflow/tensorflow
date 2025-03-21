@@ -50,8 +50,8 @@ absl::StatusOr<HloInstruction*> SelectAndScatterExpander::ExpandInstruction(
   // Construct one iota for each dimension. This will reduced in the reduction
   // to determine the indices to be scattered to.
   std::vector<HloInstruction*> iotas;
-  iotas.reserve(operand_shape.rank());
-  for (int i = 0; i < operand_shape.rank(); ++i) {
+  iotas.reserve(operand_shape.dimensions_size());
+  for (int i = 0; i < operand_shape.dimensions_size(); ++i) {
     iotas.push_back(
         computation->AddInstruction(HloInstruction::CreateIota(iota_shape, i)));
   }
@@ -165,7 +165,7 @@ absl::StatusOr<HloInstruction*> SelectAndScatterExpander::ExpandInstruction(
   // Handle the results of the reduction
   std::vector<HloInstruction*> iota_indices;
   std::vector<int64_t> broadcasted_iota_dims;
-  broadcasted_iota_dims.reserve(iota_shape_reduced.rank() + 1);
+  broadcasted_iota_dims.reserve(iota_shape_reduced.dimensions_size() + 1);
   broadcasted_iota_dims.insert(broadcasted_iota_dims.end(),
                                iota_shape_reduced.dimensions().begin(),
                                iota_shape_reduced.dimensions().end());
@@ -181,20 +181,21 @@ absl::StatusOr<HloInstruction*> SelectAndScatterExpander::ExpandInstruction(
   }
 
   // Prepare scatter inputs
-  std::vector<int64_t> scatter_dims(operand->shape().rank());
+  std::vector<int64_t> scatter_dims(operand->shape().dimensions_size());
   std::iota(scatter_dims.begin(), scatter_dims.end(), 0);
   auto* broadcasted_init_value = computation->AddInstruction(
       HloInstruction::CreateBroadcast(instruction->shape(), init_value, {}));
 
   std::vector<int64_t> concatenated_iotas_dims;
-  concatenated_iotas_dims.reserve(iota_indices.front()->shape().rank());
+  concatenated_iotas_dims.reserve(
+      iota_indices.front()->shape().dimensions_size());
   concatenated_iotas_dims.insert(concatenated_iotas_dims.end(),
                                  broadcasted_iota_dims.begin(),
                                  broadcasted_iota_dims.end());
   concatenated_iotas_dims.back() = static_cast<int64_t>(iota_indices.size());
   auto* indices = computation->AddInstruction(HloInstruction::CreateConcatenate(
       ShapeUtil::MakeShape(iota_shape.element_type(), concatenated_iotas_dims),
-      iota_indices, iota_shape.rank()));
+      iota_indices, iota_shape.dimensions_size()));
 
   // Scatter
   ScatterDimensionNumbers dim_nums =
@@ -202,7 +203,7 @@ absl::StatusOr<HloInstruction*> SelectAndScatterExpander::ExpandInstruction(
           /*update_window_dims=*/{},
           /*inserted_window_dims=*/scatter_dims,
           /*scatter_dims_to_operand_dims=*/scatter_dims,
-          /*index_vector_dim=*/source->shape().rank());
+          /*index_vector_dim=*/source->shape().dimensions_size());
   return computation->AddInstruction(HloInstruction::CreateScatter(
       /*shape=*/sas->shape(), /*operand=*/broadcasted_init_value,
       /*scatter_indices=*/indices, /*updates=*/source,

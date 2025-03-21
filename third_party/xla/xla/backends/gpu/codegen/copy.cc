@@ -202,7 +202,7 @@ bool DynamicMemcpyFusion::IsCandidateFusion(
     }
   }
 
-  int rank = root->operand(0)->shape().rank();
+  int rank = root->operand(0)->shape().dimensions_size();
   for (int i = 0; i < rank; ++i) {
     auto* operand = root->operand(i + first_offset_index);
     if (!IsZeroOffset(root, i) && operand->opcode() != HloOpcode::kConstant &&
@@ -233,7 +233,7 @@ DynamicMemcpyFusion::GetMemcpyDescriptorForFusion(
   }
 
   int first_offset_index = GetFirstOffsetOperandIndex(slice);
-  int rank = slice_input_shape.rank();
+  int rank = slice_input_shape.dimensions_size();
   auto stack = GetCallStack(fusion);
 
   VLOG(5) << "Preconditions passed, trying to build a memcpy descriptor.";

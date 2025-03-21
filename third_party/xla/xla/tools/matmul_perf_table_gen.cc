@@ -309,12 +309,12 @@ int64_t GetFlops(const HloDotInstruction& dot) {
   const HloInstruction& rhs = *dot.operand(1);
 
   // Get non-contracting dims
-  for (int dim : GetNonContractingDims(lhs.shape().rank(),
+  for (int dim : GetNonContractingDims(lhs.shape().dimensions_size(),
                                        dot_dims.lhs_contracting_dimensions(),
                                        dot_dims.lhs_batch_dimensions())) {
     fmas *= dim_size(lhs, dim);
   }
-  for (int dim : GetNonContractingDims(rhs.shape().rank(),
+  for (int dim : GetNonContractingDims(rhs.shape().dimensions_size(),
                                        dot_dims.rhs_contracting_dimensions(),
                                        dot_dims.rhs_batch_dimensions())) {
     fmas *= dim_size(rhs, dim);

@@ -33,11 +33,11 @@ namespace gpu {
 absl::StatusOr<std::vector<int64_t>> GetNonContractingDims(
     const Shape& shape, absl::Span<const int64_t> batch_dims,
     absl::Span<const int64_t> contracting_dims) {
-  auto nc =
-      ::xla::GetNonContractingDims(shape.rank(), contracting_dims, batch_dims);
+  auto nc = ::xla::GetNonContractingDims(shape.dimensions_size(),
+                                         contracting_dims, batch_dims);
 
   TF_RET_CHECK(batch_dims.size() + contracting_dims.size() + nc.size() ==
-               shape.rank());
+               shape.dimensions_size());
   return std::vector<int64_t>(nc.begin(), nc.end());
 }
 

@@ -99,7 +99,7 @@ absl::Status AnnotateKernelLaunchDimensions(
 IndexingMap KernelFusionInterface::GetDefaultThreadIdIndexingMap(
     const LaunchDimensions& launch_dims, int unroll_factor, const Shape& shape,
     mlir::MLIRContext* ctx) {
-  std::vector<mlir::AffineExpr> output_dims(shape.rank());
+  std::vector<mlir::AffineExpr> output_dims(shape.dimensions_size());
 
   std::array<uint64_t, 3> thread_counts{
       launch_dims.thread_counts_per_block().x,

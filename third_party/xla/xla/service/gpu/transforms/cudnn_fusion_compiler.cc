@@ -243,9 +243,10 @@ class GemmDimensionAdapter {
                            .value()[0]};
         break;
       case TritonFusionAnalysis::Scope::OUTPUT:
-        lhs_noncontracting_index = dot_.shape().rank() - 2;
+        lhs_noncontracting_index = dot_.shape().dimensions_size() - 2;
         dim_indices = {dims.lhs_batch_dimensions().empty() ? -1 : 0,
-                       lhs_noncontracting_index, dot_.shape().rank() - 1};
+                       lhs_noncontracting_index,
+                       dot_.shape().dimensions_size() - 1};
         break;
       case TritonFusionAnalysis::Scope::META:
         LOG(FATAL) << "Unsupported scope.";

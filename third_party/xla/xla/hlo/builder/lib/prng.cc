@@ -156,7 +156,7 @@ std::pair<ThreeFry2x32State, XlaOp> GetThreeFryInputsAndUpdatedState(
   // initial_state is an R1, so reshape it to a scalar.
   auto input_u64 = Broadcast(Reshape(initial_state, {}), shape.dimensions());
   int64_t trailing_dims_product = 1;
-  for (int64_t i = shape.rank() - 1; i >= 0; --i) {
+  for (int64_t i = shape.dimensions_size() - 1; i >= 0; --i) {
     if (shape.dimensions(i) < 2) {
       continue;
     }
@@ -181,7 +181,7 @@ struct SplitShapePair {
 // Split the shape on a dimension > 1 into two halves.
 SplitShapePair SplitShapeIntoHalves(const Shape& shape) {
   SplitShapePair pair;
-  if (shape.rank() == 0) {
+  if (shape.dimensions_size() == 0) {
     pair.half_shape = ShapeUtil::MakeShape(shape.element_type(), {1});
     pair.concat_shape = ShapeUtil::MakeShape(shape.element_type(), {2});
     pair.split_dim = 0;
@@ -189,7 +189,7 @@ SplitShapePair SplitShapeIntoHalves(const Shape& shape) {
     return pair;
   }
   pair.split_dim = -1;
-  for (int64_t i = 0; i < shape.rank(); ++i) {
+  for (int64_t i = 0; i < shape.dimensions_size(); ++i) {
     if (shape.dimensions(i) % 2 == 0) {
       pair.split_dim = i;
       break;
@@ -197,7 +197,7 @@ SplitShapePair SplitShapeIntoHalves(const Shape& shape) {
   }
   if (pair.split_dim == -1) {
     // No even dims. Find a dimension with maximum size.
-    for (int64_t i = 0; i < shape.rank(); ++i) {
+    for (int64_t i = 0; i < shape.dimensions_size(); ++i) {
       if (pair.split_dim == -1 ||
           shape.dimensions(i) > shape.dimensions(pair.split_dim)) {
         pair.split_dim = i;
@@ -209,7 +209,7 @@ SplitShapePair SplitShapeIntoHalves(const Shape& shape) {
   }
   std::vector<int64_t> half_shape_dims;
   std::vector<int64_t> concat_shape_dims;
-  const auto rank = shape.rank();
+  const auto rank = shape.dimensions_size();
   half_shape_dims.reserve(rank + 1);
   concat_shape_dims.reserve(rank + 1);
   for (int64_t i = 0; i < rank; ++i) {
@@ -236,7 +236,7 @@ SplitShapePair SplitShapeIntoHalves(const Shape& shape) {
 XlaOp CombineShapePair(absl::Span<const XlaOp> pair,
                        const SplitShapePair& shape_pair,
                        const Shape& original_shape) {
-  if (original_shape.rank() == 0) {
+  if (original_shape.dimensions_size() == 0) {
     return Reshape(pair[0], {});
   }
   XlaBuilder* builder = pair[0].builder();
@@ -248,9 +248,10 @@ XlaOp CombineShapePair(absl::Span<const XlaOp> pair,
   reshape_dims[shape_pair.split_dim] = RoundUpTo<int64_t>(pre_split_size, 2);
   result = Reshape(result, reshape_dims);
   if (reshape_dims[shape_pair.split_dim] != pre_split_size) {
-    result = Slice(result, std::vector<int64_t>(original_shape.rank(), 0),
-                   original_shape.dimensions(),
-                   std::vector<int64_t>(original_shape.rank(), 1));
+    result =
+        Slice(result, std::vector<int64_t>(original_shape.dimensions_size(), 0),
+              original_shape.dimensions(),
+              std::vector<int64_t>(original_shape.dimensions_size(), 1));
   }
   return result;
 }
@@ -732,15 +733,17 @@ RngOutput NormalFloatingPointDistribution(XlaOp key, XlaOp initial_state,
       shape_pair.concat_shape);
 
   // Separate the bits into two groups to perform the Box-Muller transform.
-  XlaOp bits_0 = Slice(bits_state.value,
-                       std::vector<int64_t>(shape_pair.half_shape.rank(), 0),
-                       shape_pair.half_shape.dimensions(),
-                       std::vector<int64_t>(shape_pair.half_shape.rank(), 1));
-  std::vector<int64_t> bits_1_starts(shape_pair.half_shape.rank(), 0);
+  XlaOp bits_0 =
+      Slice(bits_state.value,
+            std::vector<int64_t>(shape_pair.half_shape.dimensions_size(), 0),
+            shape_pair.half_shape.dimensions(),
+            std::vector<int64_t>(shape_pair.half_shape.dimensions_size(), 1));
+  std::vector<int64_t> bits_1_starts(shape_pair.half_shape.dimensions_size(),
+                                     0);
   bits_1_starts[shape_pair.new_concat_dim] = 1;
-  XlaOp bits_1 = Slice(bits_state.value, bits_1_starts,
-                       shape_pair.concat_shape.dimensions(),
-                       std::vector<int64_t>(shape_pair.half_shape.rank(), 1));
+  XlaOp bits_1 = Slice(
+      bits_state.value, bits_1_starts, shape_pair.concat_shape.dimensions(),
+      std::vector<int64_t>(shape_pair.half_shape.dimensions_size(), 1));
   std::tie(bits_0, bits_1) = BoxMullerTransform(bits_0, bits_1);
 
   // Put the numbers in the two groups back to form the requested shape.

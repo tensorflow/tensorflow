@@ -126,7 +126,7 @@ std::optional<int> GetSplitDim(const HloAllReduceInstruction& ar,
                                const HloDynamicSliceInstruction& ds) {
   int split_dim = -1;
   int num_dims = 0;
-  for (int64_t dim = 0; dim < ar.shape().rank(); ++dim) {
+  for (int64_t dim = 0; dim < ar.shape().dimensions_size(); ++dim) {
     if (ar.shape().dimensions(dim) != ds.shape().dimensions(dim)) {
       num_dims++;
       split_dim = dim;

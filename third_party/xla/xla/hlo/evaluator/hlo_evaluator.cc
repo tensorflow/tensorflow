@@ -402,7 +402,7 @@ std::optional<WhileCondComparisonOrNoOp> PatternMatchLoopCondRoot(
   if (Match(loop_cond_root, match::GetTupleElement().WithOperand(
                                 0, match::Parameter().WithParameterNum(0)))) {
     if (loop_cond_root->shape().element_type() != PrimitiveType::PRED &&
-        loop_cond_root->shape().rank() != 0) {
+        loop_cond_root->shape().dimensions_size() != 0) {
       return std::nullopt;
     }
     return ParamIndexAndValue{{/*param_index=*/loop_cond_root->tuple_index()}};
@@ -1221,7 +1221,7 @@ std::vector<int64_t> HloEvaluator::GetS64Indices(
 }
 
 DimensionVector HloEvaluator::MakeDimMultipliers(const Shape& shape) {
-  DimensionVector v(shape.rank());
+  DimensionVector v(shape.dimensions_size());
   int64_t scale = 1;
   for (auto dim : LayoutUtil::MinorToMajor(shape)) {
     v[dim] = scale;
@@ -1480,7 +1480,7 @@ absl::Status HloEvaluator::HandleConcatenate(
   // concatenate dimensions of the operands taking part of the operation.
   const Shape& reference_shape = operands[0]->shape();
   CHECK(reference_shape.IsArray());
-  const int64_t rank = reference_shape.rank();
+  const int64_t rank = reference_shape.dimensions_size();
   const int64_t concat_dim = concatenate->dimensions()[0];
   CHECK_GE(concat_dim, 0);
   CHECK_LT(concat_dim, rank);
@@ -1857,7 +1857,8 @@ class FftTransform {
         return false;
       };
       GenerateIndices(output_lengths, output_strides, input_lengths,
-                      input_strides, input_shape.rank(), 0, 0, base_case);
+                      input_strides, input_shape.dimensions_size(), 0, 0,
+                      base_case);
     }
 
     return absl::OkStatus();
@@ -2321,7 +2322,7 @@ class FftTransform {
       return InvalidArgument("Invalid input type: %d, must be %d (complex64).",
                              input_elt_type, PrimitiveType::C64);
     }
-    const int64_t input_rank = input_shape.rank();
+    const int64_t input_rank = input_shape.dimensions_size();
     if (input_rank < fft_rank_) {
       return InvalidArgument("Input shape rank is smaller than FFT rank.");
     }
@@ -2340,7 +2341,7 @@ class FftTransform {
       return InvalidArgument("Invalid output type: %d, must be %d (complex64).",
                              output_elt_type, PrimitiveType::C64);
     }
-    const int64_t output_rank = output_shape.rank();
+    const int64_t output_rank = output_shape.dimensions_size();
     if (output_rank < fft_rank_) {
       return InvalidArgument("Output shape rank is smaller than FFT rank.");
     }
@@ -2385,7 +2386,7 @@ absl::Status HloEvaluator::HandleFft(const HloInstruction* fft) {
 // dimensions while keeping the rest of the output dimensions clamped to 0.
 ShapeUtil::IndexIterationSpace IterationSpaceForOutputBatchIndices(
     const Shape& output_shape, const GatherDimensionNumbers& dim_numbers) {
-  int64_t output_rank = output_shape.rank();
+  int64_t output_rank = output_shape.dimensions_size();
   std::vector<int64_t> index_base(output_rank, 0);
   std::vector<int64_t> index_count;
   index_count.reserve(output_rank);
@@ -2436,12 +2437,12 @@ class OutputBatchIndexToInputIndex {
       const GatherDimensionNumbers* dim_numbers, const Shape& input_shape,
       const Shape& output_shape, const Literal* start_indices)
       : dim_numbers_(*dim_numbers), start_indices_(*start_indices) {
-    for (int64_t i = 0; i < output_shape.rank(); i++) {
+    for (int64_t i = 0; i < output_shape.dimensions_size(); i++) {
       output_dim_is_batch_dims_.push_back(
           !absl::c_binary_search(dim_numbers_.offset_dims(), i));
     }
 
-    for (int64_t i = 0; i < input_shape.rank(); i++) {
+    for (int64_t i = 0; i < input_shape.dimensions_size(); i++) {
       int64_t index_of_input_dim_in_index_vector =
           std::distance(dim_numbers_.start_index_map().begin(),
                         absl::c_find(dim_numbers_.start_index_map(), i));
@@ -2454,8 +2455,8 @@ class OutputBatchIndexToInputIndex {
       }
     }
 
-    index_vector_index_.resize(start_indices_.shape().rank());
-    input_index_.resize(input_shape.rank());
+    index_vector_index_.resize(start_indices_.shape().dimensions_size());
+    input_index_.resize(input_shape.dimensions_size());
     int64_t index_vector_size =
         start_indices_.shape().dimensions(dim_numbers_.index_vector_dim());
     index_vector_.resize(index_vector_size);
@@ -2464,7 +2465,8 @@ class OutputBatchIndexToInputIndex {
         GetStartIndicesDimToOutputDimForExplicitBatchingDims(
             dim_numbers_.start_indices_batching_dims(),
             dim_numbers_.index_vector_dim(), dim_numbers_.offset_dims(),
-            start_indices_.shape().rank(), output_shape.rank());
+            start_indices_.shape().dimensions_size(),
+            output_shape.dimensions_size());
     for (int64_t i = 0; i < dim_numbers->operand_batching_dims().size(); ++i) {
       int64_t operand_dim = dim_numbers->operand_batching_dims(i);
       int64_t start_indices_dim = dim_numbers->start_indices_batching_dims(i);
@@ -2588,7 +2590,7 @@ class OutputOffsetIndexToInputIndex {
       const GatherDimensionNumbers& dim_numbers, const Shape& input_shape) {
     CHECK(absl::c_is_sorted(dim_numbers.offset_dims()));
     int64_t window_dim_count = 0;
-    for (int64_t i = 0; i < input_shape.rank(); i++) {
+    for (int64_t i = 0; i < input_shape.dimensions_size(); i++) {
       if (IsCollapsedOrBatchingDim(dim_numbers.collapsed_slice_dims(),
                                    dim_numbers.operand_batching_dims(), i)) {
         input_dim_value_to_output_index_.push_back(-1);
@@ -2598,7 +2600,7 @@ class OutputOffsetIndexToInputIndex {
       }
     }
 
-    input_index_.resize(input_shape.rank());
+    input_index_.resize(input_shape.dimensions_size());
   }
 
   // Returns the contribution of the window indices to the input index
@@ -2653,7 +2655,7 @@ class OutputOffsetIndexToInputIndex {
 static absl::StatusOr<std::reference_wrapper<const Literal>>
 ReshapedGatherIndices(int64_t index_vector_dim, const Literal& start_indices,
                       Literal* reshaped_start_indices) {
-  if (start_indices.shape().rank() != index_vector_dim) {
+  if (start_indices.shape().dimensions_size() != index_vector_dim) {
     return std::cref(start_indices);
   }
 
@@ -2693,13 +2695,13 @@ absl::Status HloEvaluator::HandleGather(const HloInstruction* gather) {
       IterationSpaceForOutputBatchIndices(shape, dim_numbers);
   ShapeUtil::IndexIterationSpace offset_indices_iteration_space =
       IterationSpaceForOutputOffsetIndices(
-          shape.rank(), gather->gather_slice_sizes(), dim_numbers);
+          shape.dimensions_size(), gather->gather_slice_sizes(), dim_numbers);
 
   // Scratch buffers that hold an index in the output shape and the
   // corresponding index in the input shape.
-  std::vector<int64_t> input_index(operand.shape().rank());
-  std::vector<int64_t> output_index(gather->shape().rank());
-  std::vector<int64_t> input_index_clamped(operand.shape().rank());
+  std::vector<int64_t> input_index(operand.shape().dimensions_size());
+  std::vector<int64_t> output_index(gather->shape().dimensions_size());
+  std::vector<int64_t> input_index_clamped(operand.shape().dimensions_size());
 
   OutputBatchIndexToInputIndex output_batch_index_to_input_index(
       &gather->gather_dimension_numbers(), /*input_shape=*/operand.shape(),
@@ -2775,7 +2777,7 @@ namespace {
 absl::StatusOr<std::reference_wrapper<const Literal>> ReshapedScatterIndices(
     int64_t index_vector_dim, const Literal& indices,
     Literal* reshaped_indices) {
-  if (indices.shape().rank() != index_vector_dim) {
+  if (indices.shape().dimensions_size() != index_vector_dim) {
     return std::cref(indices);
   }
 
@@ -2873,7 +2875,7 @@ class UpdateScatterIndexToInputIndex {
       }
     }
 
-    index_vector_index_.resize(scatter_indices_.shape().rank());
+    index_vector_index_.resize(scatter_indices_.shape().dimensions_size());
     input_index_.resize(input_rank);
     int64_t index_vector_size =
         scatter_indices_.shape().dimensions(dim_numbers_.index_vector_dim());
@@ -2883,7 +2885,7 @@ class UpdateScatterIndexToInputIndex {
         GetStartIndicesDimToOutputDimForExplicitBatchingDims(
             dim_numbers_.scatter_indices_batching_dims(),
             dim_numbers_.index_vector_dim(), dim_numbers_.update_window_dims(),
-            scatter_indices_.shape().rank(), updates_rank);
+            scatter_indices_.shape().dimensions_size(), updates_rank);
     for (int64_t i = 0; i < dim_numbers.input_batching_dims().size(); ++i) {
       int64_t input_dim = dim_numbers.input_batching_dims(i);
       int64_t scatter_indices_dim =
@@ -3226,9 +3228,11 @@ absl::Status HloEvaluator::HandleBroadcast(const HloInstruction* broadcast) {
   TF_RET_CHECK(broadcast->shape().element_type() ==
                operand.shape().element_type())
       << " broadcast from a different data type is not supported";
-  TF_RET_CHECK(broadcast->dimensions().size() == operand.shape().rank())
+  TF_RET_CHECK(broadcast->dimensions().size() ==
+               operand.shape().dimensions_size())
       << "broadcast dimensions is of size: " << broadcast->dimensions().size()
-      << " and rank of operand_to_broadcast is: " << operand.shape().rank();
+      << " and rank of operand_to_broadcast is: "
+      << operand.shape().dimensions_size();
   // Checks that operand's dimensions are the same as the broadcast's
   // dimensions along the dimensions to be broadcasted.
   for (int64_t i = 0; i < broadcast->dimensions().size(); ++i) {
@@ -3578,7 +3582,7 @@ absl::Status HloEvaluator::HandleDynamicUpdateSlice(const HloInstruction* dus) {
   const Literal& update_literal = GetEvaluatedLiteralFor(update);
 
   auto result = operand_literal.Clone();
-  const auto rank = result.shape().rank();
+  const auto rank = result.shape().dimensions_size();
   std::vector<int64_t> start =
       GetS64Indices(absl::MakeConstSpan(dus->operands()).subspan(2));
 
@@ -3598,8 +3602,8 @@ absl::Status HloEvaluator::HandleDynamicUpdateSlice(const HloInstruction* dus) {
     return true;
   };
 
-  std::vector<int64_t> base(update_literal.shape().rank(), 0);
-  std::vector<int64_t> step(update_literal.shape().rank(), 1);
+  std::vector<int64_t> base(update_literal.shape().dimensions_size(), 0);
+  std::vector<int64_t> step(update_literal.shape().dimensions_size(), 1);
   ShapeUtil::ForEachIndexNoStatus(update_literal.shape(), base,
                                   update_literal.shape().dimensions(), step,
                                   func);
@@ -3783,7 +3787,7 @@ void IterateThroughWindow(
     const Shape& window_shape, const Window& window, const Shape& base_shape,
     const absl::Span<const int64_t> window_count_index,
     const std::function<void(absl::Span<const int64_t>)>& f) {
-  const int64_t rank = base_shape.rank();
+  const int64_t rank = base_shape.dimensions_size();
   DimensionVector window_index(rank);
   std::fill(window_index.begin(), window_index.end(), 0);
   do {
@@ -4006,7 +4010,7 @@ absl::Status HloEvaluator::HandleSelectAndScatter(
   const Literal& operand_literal = GetEvaluatedLiteralFor(operand);
   const Literal& source_literal = GetEvaluatedLiteralFor(source);
 
-  int64_t rank = operand_literal.shape().rank();
+  int64_t rank = operand_literal.shape().dimensions_size();
 
   HloEvaluator embedded_evaluator(max_loop_iterations_);
   DimensionVector source_index(rank, 0);
@@ -4085,7 +4089,7 @@ absl::Status HloEvaluator::HandleSlice(const HloInstruction* slice) {
       << " but is inferred to be: "
       << ShapeUtil::HumanString(inferred_return_shape);
 
-  const int64_t rank = operand->shape().rank();
+  const int64_t rank = operand->shape().dimensions_size();
   const Literal& operand_literal = GetEvaluatedLiteralFor(operand);
   const size_t element_byte_size =
       primitive_util::ByteWidth(shape.element_type());
@@ -4124,7 +4128,7 @@ absl::Status HloEvaluator::HandleSort(const HloInstruction* sort) {
     }
   }
   Shape key_shape = sort->operand(0)->shape();
-  auto rank = key_shape.rank();
+  auto rank = key_shape.dimensions_size();
   std::vector<Literal> result_literals;
   result_literals.reserve(sort->operand_count());
   for (int64_t i = 0; i < sort->operand_count(); ++i) {

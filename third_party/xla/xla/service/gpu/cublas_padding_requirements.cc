@@ -59,7 +59,7 @@ bool ShapeRequiresPadding(const Shape& shape, int batch_dimensions_size,
   // Non-batch dimensions requiring potential padding are placed at higher
   // indices than batch dimensions. This is because dots are canonicalized prior
   // to padding.
-  for (int i = batch_dimensions_size; i < shape.rank(); i++) {
+  for (int i = batch_dimensions_size; i < shape.dimensions_size(); i++) {
     if (DimensionRequiresPadding(shape.dimensions(i), shape.element_type(),
                                  cc)) {
       return true;

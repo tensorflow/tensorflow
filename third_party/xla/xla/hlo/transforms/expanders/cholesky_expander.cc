@@ -66,7 +66,7 @@ absl::StatusOr<std::pair<XlaOp, XlaOp>> CholeskyExpander::CholeskyUnblocked(
     XlaOp a, PrecisionConfig::Precision precision) {
   XlaBuilder* builder = a.builder();
   TF_ASSIGN_OR_RETURN(Shape a_shape, builder->GetShape(a));
-  const int ndims = a_shape.rank();
+  const int ndims = a_shape.dimensions_size();
   const int64_t n = ShapeUtil::GetDimension(a_shape, -1);
   std::vector<int64_t> error_dims(a_shape.dimensions().begin(),
                                   a_shape.dimensions().end());
@@ -139,7 +139,7 @@ XlaOp CholeskyExpander::BuildCholesky(XlaOp a, int64_t block_size,
   XlaBuilder* builder = a.builder();
   return builder->ReportErrorOrReturn([&]() -> absl::StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(Shape a_shape, builder->GetShape(a));
-    const int ndims = a_shape.rank();
+    const int ndims = a_shape.dimensions_size();
     if (ndims < 2) {
       return InvalidArgument(
           "Argument to Cholesky must have rank >= 2; shape was %s",

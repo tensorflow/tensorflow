@@ -201,8 +201,8 @@ absl::StatusOr<bool> TransposeFolding::Run(
                                HloInstruction* instruction) {
     if (instruction->opcode() == HloOpcode::kDot) {
       // Don't fold dots with a 1D operand.
-      if ((instruction->operand(0)->shape().rank() < 2) ||
-          (instruction->operand(1)->shape().rank() < 2)) {
+      if ((instruction->operand(0)->shape().dimensions_size() < 2) ||
+          (instruction->operand(1)->shape().dimensions_size() < 2)) {
         return absl::OkStatus();
       }
 
@@ -268,7 +268,7 @@ TransposeFolding::IsRowColumnTransposeDotOperand(const HloInstruction& dot,
                               ? dot_dims.lhs_contracting_dimensions()
                               : dot_dims.rhs_contracting_dimensions();
 
-  return (batch_dims.size() == transpose.shape().rank() - 2) &&
+  return (batch_dims.size() == transpose.shape().dimensions_size() - 2) &&
          (contracting_dims.size() == 1) &&
          absl::c_all_of(batch_dims, [&](int64_t dim) {
            return transpose.dimensions(dim) == dim;

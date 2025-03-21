@@ -47,7 +47,7 @@ using InstructionFusionTest = HloTestBase;
 std::unique_ptr<HloInstruction> MakeDot(const Shape& shape, HloInstruction* lhs,
                                         HloInstruction* rhs) {
   DotDimensionNumbers dot_dnums;
-  dot_dnums.add_lhs_contracting_dimensions(lhs->shape().rank() - 1);
+  dot_dnums.add_lhs_contracting_dimensions(lhs->shape().dimensions_size() - 1);
   dot_dnums.add_rhs_contracting_dimensions(0);
   PrecisionConfig precision_config;
   precision_config.mutable_operand_precision()->Resize(

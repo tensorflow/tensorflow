@@ -103,7 +103,7 @@ std::vector<HloInstruction*> FindAndSortFusionCandidates(
                 // shapes will be placed adjacent each other.
                 // Sort `fusion_instrs` according to instruction counts, because
                 // we'd like to fuse together computations of similar sizes.
-                return std::tuple{shape.rank(), shape.dimensions(),
+                return std::tuple{shape.dimensions_size(), shape.dimensions(),
                                   GetInstrCountOfFusible(*op), op->unique_id()};
               };
               return tuple_for_op(shape_a, a) < tuple_for_op(shape_b, b);

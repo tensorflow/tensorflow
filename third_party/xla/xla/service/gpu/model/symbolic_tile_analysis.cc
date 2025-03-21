@@ -697,7 +697,7 @@ bool TilingCoversWholeShapeUniquely(TiledHloInstruction* tiled_hlo_instr) {
     return false;
   }
   auto range_evaluator = tile_offset_indexing.GetRangeEvaluator();
-  for (int64_t i = 0; i < output_shape.rank(); ++i) {
+  for (int64_t i = 0; i < output_shape.dimensions_size(); ++i) {
     // For now, all strides need to be 0 or 1. With stride 0, we also need to
     // check whether the tile covers the whole dimension.
     // TODO(b/390559452): If we allow strides with absolute value > 1, we

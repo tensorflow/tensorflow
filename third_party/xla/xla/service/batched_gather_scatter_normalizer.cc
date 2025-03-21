@@ -97,7 +97,7 @@ HloInstruction* CreateConcatIndices(
 
   Shape iota_shape = indices->shape();
   const bool index_vector_dim_on_last_dim =
-      index_vector_dim == iota_shape.rank();
+      index_vector_dim == iota_shape.dimensions_size();
   if (index_vector_dim_on_last_dim) {
     std::vector<int64_t> dimensions(iota_shape.dimensions().begin(),
                                     iota_shape.dimensions().end());

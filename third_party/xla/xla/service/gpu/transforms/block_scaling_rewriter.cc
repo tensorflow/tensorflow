@@ -59,8 +59,8 @@ absl::StatusOr<HloInstruction*> ExpandInstructionUsingBuilder(
 // Determine block size from the shapes.
 absl::StatusOr<int> GetBlockSize(const Shape& quant_shape,
                                  const Shape& scale_shape) {
-  int rank = quant_shape.rank();
-  TF_RET_CHECK(rank >= 1 && rank == scale_shape.rank());
+  int rank = quant_shape.dimensions_size();
+  TF_RET_CHECK(rank >= 1 && rank == scale_shape.dimensions_size());
   TF_RET_CHECK(quant_shape.dimensions().subspan(0, rank - 1) ==
                scale_shape.dimensions().subspan(0, rank - 1));
   int m = quant_shape.dimensions(rank - 1);
@@ -94,7 +94,7 @@ absl::StatusOr<XlaOp> BuildQuantize(XlaBuilder& builder,
                   Abs(Parameter(&amax_builder, 1, scalar, "b")));
   TF_ASSIGN_OR_RETURN(XlaComputation amax_comp, amax_builder.Build(out));
   XlaOp amax = Reduce(input_blocks, ConstantLiteral(&builder, Literal(scalar)),
-                      amax_comp, {scale_shape.rank()});
+                      amax_comp, {scale_shape.dimensions_size()});
 
   // Use EMAX of the quantization type as the denominator.
   double emax_value =
@@ -109,7 +109,7 @@ absl::StatusOr<XlaOp> BuildQuantize(XlaBuilder& builder,
   XlaOp scale_cvt = ConvertElementType(scale, scalar.element_type());
 
   // Broadcast scale to input shape.
-  std::vector<int64_t> broadcast_dims(scale_shape.rank());
+  std::vector<int64_t> broadcast_dims(scale_shape.dimensions_size());
   absl::c_iota(broadcast_dims, 0);
   XlaOp scale_bc = BroadcastInDim(scale_cvt, new_dims, broadcast_dims);
   new_dims.pop_back();
@@ -162,7 +162,7 @@ absl::StatusOr<XlaOp> BuildDequantize(XlaOp input_op, XlaOp scale_op,
   std::vector<int64_t> new_dims(scale_shape.dimensions().begin(),
                                 scale_shape.dimensions().end());
   new_dims.push_back(block_size);
-  std::vector<int64_t> broadcast_dims(scale_shape.rank());
+  std::vector<int64_t> broadcast_dims(scale_shape.dimensions_size());
   absl::c_iota(broadcast_dims, 0);
   scale_op = BroadcastInDim(scale_op, new_dims, broadcast_dims);
   new_dims.pop_back();
@@ -252,16 +252,19 @@ absl::StatusOr<std::tuple<XlaOp, XlaOp, int64_t>> BuildScaledDotInputs(
   XlaBuilder& builder = *input_op.builder();
   TF_ASSIGN_OR_RETURN(Shape input_shape, builder.GetShape(input_op));
   TF_ASSIGN_OR_RETURN(Shape scale_shape, builder.GetShape(scale_op));
-  TF_RET_CHECK(input_shape.rank() == 2 || input_shape.rank() == 3);
+  TF_RET_CHECK(input_shape.dimensions_size() == 2 ||
+               input_shape.dimensions_size() == 3);
 
   // Calculate output shape size.
-  int64_t batch_size = input_shape.rank() == 3 ? input_shape.dimensions(0) : 1;
+  int64_t batch_size =
+      input_shape.dimensions_size() == 3 ? input_shape.dimensions(0) : 1;
   int64_t size_contracting = input_shape.dimensions().back();
-  int64_t size_noncontracting = input_shape.dimensions(input_shape.rank() - 2);
+  int64_t size_noncontracting =
+      input_shape.dimensions(input_shape.dimensions_size() - 2);
   int64_t scale_contracting = scale_shape.dimensions().back();
 
   // Reshape inputs, if necessary.
-  if (input_shape.rank() != 3) {
+  if (input_shape.dimensions_size() != 3) {
     input_op = Reshape(input_op, {1, size_noncontracting, size_contracting});
     scale_op = Reshape(scale_op, {1, size_noncontracting, scale_contracting});
   }
@@ -413,9 +416,9 @@ absl::StatusOr<HloInstruction*> ExpandBlockScaledDotCustomCall(
   const Shape& lhs_shape = instruction->operand(0)->shape();
   const Shape& rhs_shape = instruction->operand(1)->shape();
   DotDimensionNumbers dnums;
-  dnums.add_lhs_contracting_dimensions(lhs_shape.rank() - 1);
-  dnums.add_rhs_contracting_dimensions(rhs_shape.rank() - 1);
-  if (lhs_shape.rank() == 3) {
+  dnums.add_lhs_contracting_dimensions(lhs_shape.dimensions_size() - 1);
+  dnums.add_rhs_contracting_dimensions(rhs_shape.dimensions_size() - 1);
+  if (lhs_shape.dimensions_size() == 3) {
     dnums.add_lhs_batch_dimensions(0);
     dnums.add_rhs_batch_dimensions(0);
   }

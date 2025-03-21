@@ -103,7 +103,7 @@ FusionDecision ParameterSlicesAreNonOverlapping(const HloInstruction& instr1,
   auto& limits1 = slice1->slice_limits();
   auto& limits2 = slice2->slice_limits();
 
-  for (int64_t dim = 0; dim < parent->shape().rank(); ++dim) {
+  for (int64_t dim = 0; dim < parent->shape().dimensions_size(); ++dim) {
     bool overlap = starts1[dim] < limits2[dim] && starts2[dim] < limits1[dim];
     if (!overlap) {
       return FusionDecision::Forbid("slices are non-overlapping");

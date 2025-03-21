@@ -319,7 +319,7 @@ absl::StatusOr<SmallVector<Value, 1>> EmitDynamicSlice(
   SmallVector<Value, 3> input_indices(indices);
 
   const auto& input_shape = instr->operand(0)->shape();
-  for (int i = 0; i < input_shape.rank(); ++i) {
+  for (int i = 0; i < input_shape.dimensions_size(); ++i) {
     TF_ASSIGN_OR_RETURN(
         auto offset, GetSingleOperandValue(operand_provider, instr, i + 1, {}));
     offset =
@@ -343,7 +343,7 @@ absl::StatusOr<SmallVector<Value, 1>> EmitDynamicUpdateSlice(
   Value is_in_bounds = b.create<ConstantOp>(b.getIntegerAttr(b.getI1Type(), 1));
   mlir::SmallVector<Value, 3> update_indices;
   const auto& updates_shape = instr->operand(1)->shape();
-  for (int i = 0; i < instr->shape().rank(); ++i) {
+  for (int i = 0; i < instr->shape().dimensions_size(); ++i) {
     int64_t update_size = updates_shape.dimensions(i);
     TF_ASSIGN_OR_RETURN(
         auto start_index,
@@ -391,25 +391,26 @@ absl::StatusOr<SmallVector<Value, 1>> EmitGather(
   auto zero = b.create<ConstantIndexOp>(0);
   // Gather allows the index vector to contain fewer elements than the rank
   // of the input. In that case, the remaining indices are 0.
-  SmallVector<Value, 3> operand_indices(instr->operand(0)->shape().rank(),
-                                        zero);
+  SmallVector<Value, 3> operand_indices(
+      instr->operand(0)->shape().dimensions_size(), zero);
 
   // Produce start indices.
   // HLO allows the index vector dimension to be implicit, and the algebraic
   // simplifier prefers this form. Therefore, we need to check the rank of the
   // indices here and do the implicit reshape in place.
   const auto& indices_shape = instr->operand(1)->shape();
-  int num_indices = indices_shape.rank() == 1 ? 1 : indices_shape.dimensions(1);
+  int num_indices =
+      indices_shape.dimensions_size() == 1 ? 1 : indices_shape.dimensions(1);
   for (int i = 0; i < num_indices; ++i) {
     auto i_val = i == 0 ? zero : b.create<ConstantIndexOp>(i);
     int64_t slice_size = instr->gather_slice_sizes()[i];
     int64_t input_size = instr->operand(0)->shape().dimensions()[i];
     // Read and clamp index.
-    TF_ASSIGN_OR_RETURN(
-        auto input_index,
-        operand_provider(instr, 1,
-                         indices_shape.rank() == 1 ? ValueRange{row}
-                                                   : ValueRange{row, i_val}));
+    TF_ASSIGN_OR_RETURN(auto input_index,
+                        operand_provider(instr, 1,
+                                         indices_shape.dimensions_size() == 1
+                                             ? ValueRange{row}
+                                             : ValueRange{row, i_val}));
     TF_RET_CHECK(input_index.size() == 1)
         << "Expected operand to be a single value.";
     operand_indices[i] =
@@ -690,7 +691,7 @@ absl::StatusOr<SmallVector<Value, 1>> EmitTuple(
   while (first_shape->IsTuple()) {
     first_shape = &first_shape->tuple_shapes(0);
   }
-  CHECK_EQ(first_shape->rank(), indices.size())
+  CHECK_EQ(first_shape->dimensions_size(), indices.size())
       << "Indices for tuple must be for the first tuple element";
   SmallVector<Value, 1> operands;
   for (int i = 0; i < instr->operand_count(); ++i) {
@@ -757,10 +758,10 @@ absl::StatusOr<SmallVector<Value, 2>> GetOperands(
   if (is_elementwise && instr->shape().IsArray()) {
     // Check if the instruction is really elementwise. There may be some
     // broadcasting.
-    int64_t rank = instr->shape().rank();
+    int64_t rank = instr->shape().dimensions_size();
     is_elementwise &=
         absl::c_all_of(instr->operands(), [&](const HloInstruction* operand) {
-          return operand->shape().rank() == rank;
+          return operand->shape().dimensions_size() == rank;
         });
   }
 

@@ -309,7 +309,7 @@ absl::Status ReadDynamicShapesOnCpu(
             reinterpret_cast<const int32_t*>(buffer_8 + offset);
 
         // Update shape size from metadata.
-        for (int64_t i = 0; i < device_sub_shape.rank(); ++i) {
+        for (int64_t i = 0; i < device_sub_shape.dimensions_size(); ++i) {
           device_sub_shape.mutable_dimensions()[i] = metadata_buffer[i];
         }
         return absl::OkStatus();

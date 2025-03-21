@@ -159,7 +159,7 @@ absl::StatusOr<bool> ReduceWindowRewriter::TryOptimizeCumSumOrProd(
 
   // Try to find the scan axis. We expect all window dimensions to be trivial,
   // except for one.
-  int64_t rank = operand_shape.rank();
+  int64_t rank = operand_shape.dimensions_size();
   const Window& window = reduce_window->window();
   int64_t scan_dim_num = -1;
   for (int i = 0; i < rank; ++i) {
@@ -531,7 +531,7 @@ absl::StatusOr<bool> ReduceWindowRewriter::Run(
         continue;
       }
 
-      if (reduce_window->inputs().front()->shape().rank() != 1) {
+      if (reduce_window->inputs().front()->shape().dimensions_size() != 1) {
         continue;
       }
       TF_RETURN_IF_ERROR(ReplaceReduceWindowWithReshape(reduce_window));

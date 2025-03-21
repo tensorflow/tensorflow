@@ -65,7 +65,7 @@ OpSharding Tile1D(const Shape& tile_shape, int64_t num_tiles) {
   OpSharding result;
   result.set_type(OpSharding::OTHER);
 
-  CHECK_EQ(tile_shape.rank(), 1);
+  CHECK_EQ(tile_shape.dimensions_size(), 1);
   std::vector<int64_t> dimensions(1, num_tiles);
   *result.mutable_tile_shape() = tile_shape.ToProto();
   auto& tile_dimension =

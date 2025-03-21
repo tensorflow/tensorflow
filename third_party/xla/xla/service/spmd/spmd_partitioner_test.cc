@@ -14797,10 +14797,10 @@ TEST_P(SpmdPartitioningTest, CustomCallShardingRegistration) {
     }
     absl::Status Partition(spmd::SpmdPartitioningVisitor* partitioner,
                            HloInstruction* hlo) const override {
-      if (hlo->shape().rank() <= 2) {
+      if (hlo->shape().dimensions_size() <= 2) {
         return partitioner->DefaultAction(hlo);
       }
-      const int first_non_batch_dim = hlo->shape().rank() - 2;
+      const int first_non_batch_dim = hlo->shape().dimensions_size() - 2;
       HloInstruction* operand = hlo->mutable_operand(0);
       HloSharding target_sharding =
           hlo_sharding_util::PartiallyReplicateTiledShardingOnDims(

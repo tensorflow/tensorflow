@@ -53,8 +53,8 @@ class GemmBroadcastFoldingVisitor : public DfsHloRewriteVisitor {
       GemmBackendConfig &config = *gpu_config.mutable_gemm_backend_config();
       DotDimensionNumbers *dim_nums = config.mutable_dot_dimension_numbers();
       int bcast_operand_index = instr->operand_index(bcast);
-      int num_bcast_dims =
-          (bcast->shape().rank() - bcast->operand(0)->shape().rank());
+      int num_bcast_dims = (bcast->shape().dimensions_size() -
+                            bcast->operand(0)->shape().dimensions_size());
       int num_batch_dims = dim_nums->lhs_batch_dimensions_size();
 
       const tsl::protobuf::RepeatedField<int64_t> &batch_dimensions =

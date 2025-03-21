@@ -3252,7 +3252,8 @@ absl::StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalConcatenate(
     llvm_ir::IrArray::Index operand_index(source_index.GetType());
     // If we are concatenating the fastest varying dimension, we can reuse the
     // linear index.
-    if (source_index.linear() != nullptr && operand->shape().rank() > 1 &&
+    if (source_index.linear() != nullptr &&
+        operand->shape().dimensions_size() > 1 &&
         concat_dim == operand->shape().layout().minor_to_major(0)) {
       llvm::Value* linear_without_concat_dim = b_->CreateUDiv(
           source_index.linear(), source_index.GetConstantWithIndexType(
@@ -3342,7 +3343,7 @@ absl::StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalDynamicSlice(
     const llvm_ir::IrArray::Index& index) {
   // Emit IR to read dynamic start indices from hlo->operand(1).
   const HloInstruction* input_hlo = hlo->operand(0);
-  const int64_t rank = input_hlo->shape().rank();
+  const int64_t rank = input_hlo->shape().dimensions_size();
   // Use the same index type for all tensor accesses in the same kernel.
   llvm::Type* index_type = index.GetType();
   std::vector<llvm::Value*> slice_start_multi_index(rank);
@@ -3407,9 +3408,11 @@ absl::StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalGather(
   // First copy in the window indices to operand_index. Also collect a mapping
   // from operand dimension to output window dimension. Elided window dimensions
   // map to -1.
-  std::vector<int64_t> operand_to_output_dim(operand_shape.rank(), -1);
-  for (int64_t i = 0, e = operand_shape.rank(), operand_index_dim = 0; i < e;
-       i++) {
+  std::vector<int64_t> operand_to_output_dim(operand_shape.dimensions_size(),
+                                             -1);
+  for (int64_t i = 0, e = operand_shape.dimensions_size(),
+               operand_index_dim = 0;
+       i < e; i++) {
     if (absl::c_binary_search(dim_numbers.collapsed_slice_dims(), i)) {
       operand_multi_index.push_back(index.GetConstantWithIndexType(0));
     } else {
@@ -3422,13 +3425,14 @@ absl::StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalGather(
   // This is the index of the index vector in the start_indices tensor.
   std::vector<llvm::Value*> gather_index_index_components;
   {
-    for (int64_t i = 0, e = output_shape.rank(); i < e; i++) {
+    for (int64_t i = 0, e = output_shape.dimensions_size(); i < e; i++) {
       if (!absl::c_binary_search(dim_numbers.offset_dims(), i)) {
         gather_index_index_components.push_back(index[i]);
       }
     }
 
-    if (gather_index_index_components.size() != indices_shape.rank()) {
+    if (gather_index_index_components.size() !=
+        indices_shape.dimensions_size()) {
       gather_index_index_components.insert(
           gather_index_index_components.begin() +
               dim_numbers.index_vector_dim(),
@@ -3477,7 +3481,7 @@ absl::StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalGather(
         Add(operand_multi_index[operand_dim], maybe_truncated_clamped_index);
   };
 
-  if (indices_shape.rank() == dim_numbers.index_vector_dim()) {
+  if (indices_shape.dimensions_size() == dim_numbers.index_vector_dim()) {
     IrArray::Index gather_index_index(gather_index_index_components,
                                       indices_shape, index_type);
     TF_ASSIGN_OR_RETURN(llvm::Value * gather_dim_component,
@@ -3509,7 +3513,7 @@ ElementalIrEmitter::EmitElementalDynamicUpdateSlice(
   const HloInstruction* update_hlo = hlo->operand(1);
   const HloInstruction* start_hlo = hlo->operand(2);
   // Calculate slice start/end indices.
-  const int64_t rank = input_hlo->shape().rank();
+  const int64_t rank = input_hlo->shape().dimensions_size();
   std::vector<llvm::Value*> slice_start_multi_index(rank);
   std::vector<llvm::Value*> slice_limit_multi_index(rank);
   // Slice intersection gathers (ANDs) conditions on all ranks for which
@@ -3675,8 +3679,8 @@ absl::StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalDot(
 
   int64_t contracted_dim_size =
       hlo->operand(0)->shape().dimensions(lhs_contracting_dim);
-  int64_t lhs_dims = hlo->operand(0)->shape().rank();
-  int64_t rhs_dims = hlo->operand(1)->shape().rank();
+  int64_t lhs_dims = hlo->operand(0)->shape().dimensions_size();
+  int64_t rhs_dims = hlo->operand(1)->shape().dimensions_size();
 
   llvm::Type* index_type = dot_result_index.GetType();
   auto index_typed_const = [&](uint64_t c) -> llvm::Constant* {
@@ -3740,8 +3744,10 @@ absl::StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalDot(
   // There are rhs_dims - 1 - num_batch_dims non-contracting dimensions for the
   // rhs operand. We can assume they have the same relative order as in the
   // output.
-  DCHECK_EQ(hlo->shape().rank(), lhs_dims + rhs_dims - 2 - num_batch_dims);
-  for (int64_t i = lhs_dims - 1, j = 0; i < hlo->shape().rank(); ++i, ++j) {
+  DCHECK_EQ(hlo->shape().dimensions_size(),
+            lhs_dims + rhs_dims - 2 - num_batch_dims);
+  for (int64_t i = lhs_dims - 1, j = 0; i < hlo->shape().dimensions_size();
+       ++i, ++j) {
     // Skip the positions which have already been filled with contracting
     // dimension and batch dimensions.
     while (j < rhs_dims && rhs_multi_index[j] != nullptr) {
@@ -3902,7 +3908,7 @@ llvm_ir::ElementGenerator ElementalIrEmitter::MakeElementGenerator(
         auto* iota = Cast<HloIotaInstruction>(hlo);
         PrimitiveType element_type = iota->shape().element_type();
         IrArray::Index elem_index =
-            iota->shape().rank() > 1
+            iota->shape().dimensions_size() > 1
                 ? target_index.SourceIndexOfBroadcast(
                       iota->shape(),
                       ShapeUtil::MakeShapeWithDescendingLayout(

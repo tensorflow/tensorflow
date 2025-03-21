@@ -180,7 +180,7 @@ ParallelLoopEmitter::EmitIndexAndSetExitBasicBlock(absl::string_view loop_name,
 
   llvm::Value* linear_index_base = linear_base_and_thread_idx.linear_base;
 
-  std::vector<llvm::Value*> multidim(shape_.rank(), nullptr);
+  std::vector<llvm::Value*> multidim(shape_.dimensions_size(), nullptr);
   for (int i = 0; i < launch_config_.unroll_factor; ++i) {
     // The add operation is needed even if the offset is 0, since when the
     // kernel is unrolled, the following GEP instruction shares the same pointer

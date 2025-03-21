@@ -38,17 +38,17 @@ absl::StatusOr<HloInstruction*> TransposeIndexVectorDimToLast(
     HloInstruction* start_indices, int64_t index_vector_dim) {
   const Shape& start_indices_shape = start_indices->shape();
 
-  if (start_indices_shape.rank() == index_vector_dim) {
+  if (start_indices_shape.dimensions_size() == index_vector_dim) {
     return start_indices;
   }
 
-  if (index_vector_dim == (start_indices_shape.rank() - 1)) {
+  if (index_vector_dim == (start_indices_shape.dimensions_size() - 1)) {
     return start_indices;
   }
 
   std::vector<int64_t> permutation;
-  permutation.reserve(start_indices_shape.rank());
-  for (int64_t i = 0, e = start_indices_shape.rank(); i < e; i++) {
+  permutation.reserve(start_indices_shape.dimensions_size());
+  for (int64_t i = 0, e = start_indices_shape.dimensions_size(); i < e; i++) {
     if (i != index_vector_dim) {
       permutation.push_back(i);
     }
@@ -67,7 +67,8 @@ absl::StatusOr<HloInstruction*> CanonicalizeGatherIndices(
   TF_ASSIGN_OR_RETURN(
       HloInstruction * transposed_start_indices,
       TransposeIndexVectorDimToLast(start_indices, index_vector_dim));
-  bool indices_are_scalar = index_vector_dim == start_indices->shape().rank();
+  bool indices_are_scalar =
+      index_vector_dim == start_indices->shape().dimensions_size();
 
   // The number of dimensions in start_indices that are index dimensions.
   const int64_t index_dims_in_start_indices = indices_are_scalar ? 0 : 1;
@@ -77,13 +78,14 @@ absl::StatusOr<HloInstruction*> CanonicalizeGatherIndices(
   // uniformity.  Otherwise create a "collapsed" leading dimension that subsumes
   // all of the non-index-vector dimensions.
   const Shape& shape = transposed_start_indices->shape();
-  if (shape.rank() == index_dims_in_start_indices) {
+  if (shape.dimensions_size() == index_dims_in_start_indices) {
     return PrependDegenerateDims(transposed_start_indices, 1);
   } else {
     // Collapse all but the dimensions (0 or 1) in start_indices containing the
     // index vectors.
-    return CollapseFirstNDims(transposed_start_indices,
-                              shape.rank() - index_dims_in_start_indices);
+    return CollapseFirstNDims(
+        transposed_start_indices,
+        shape.dimensions_size() - index_dims_in_start_indices);
   }
 }
 
@@ -93,8 +95,8 @@ absl::StatusOr<HloInstruction*> AdjustBatchDimsInAccumulator(
     const Shape& start_indices_shape, HloInstruction* accumulator,
     int64_t index_vector_dim) {
   std::vector<int64_t> batch_dim_bounds;
-  batch_dim_bounds.reserve(start_indices_shape.rank());
-  for (int64_t i = 0, e = start_indices_shape.rank(); i < e; i++) {
+  batch_dim_bounds.reserve(start_indices_shape.dimensions_size());
+  for (int64_t i = 0, e = start_indices_shape.dimensions_size(); i < e; i++) {
     if (i != index_vector_dim) {
       batch_dim_bounds.push_back(start_indices_shape.dimensions(i));
     }
@@ -137,9 +139,9 @@ absl::StatusOr<std::vector<HloInstruction*>> GatherLoopBody(
   HloInstruction* const output_accumulator = incoming_loop_state[2];
   const Shape& orig_start_indices_shape = gather.operand(1)->shape();
 
-  bool has_scalar_indices = start_indices->shape().rank() == 1;
-  CHECK_EQ(has_scalar_indices,
-           dim_numbers.index_vector_dim() == orig_start_indices_shape.rank());
+  bool has_scalar_indices = start_indices->shape().dimensions_size() == 1;
+  CHECK_EQ(has_scalar_indices, dim_numbers.index_vector_dim() ==
+                                   orig_start_indices_shape.dimensions_size());
 
   HloInstruction* induction_var_as_vector =
       MakeBroadcastHlo(induction_var, /*broadcast_dimensions=*/{},
@@ -175,7 +177,7 @@ absl::StatusOr<std::vector<HloInstruction*>> GatherLoopBody(
   TF_ASSIGN_OR_RETURN(
       HloInstruction * gathered_slice_start,
       ExpandIndexVectorIntoOperandSpace(
-          orig_start_indices_shape, operand->shape().rank(),
+          orig_start_indices_shape, operand->shape().dimensions_size(),
           dim_numbers.index_vector_dim(), dim_numbers.start_index_map(),
           dim_numbers.start_indices_batching_dims(),
           dim_numbers.operand_batching_dims(), index_vector, induction_var));
@@ -195,9 +197,10 @@ absl::StatusOr<std::vector<HloInstruction*>> GatherLoopBody(
 
   TF_ASSIGN_OR_RETURN(
       HloInstruction* const index_vector_into_accumulator,
-      PadVectorWithZeros(induction_var_as_vector, /*zeros_to_prepend=*/0,
-                         /*zeros_to_append=*/
-                         gathered_slice_with_dims_collapsed->shape().rank()));
+      PadVectorWithZeros(
+          induction_var_as_vector, /*zeros_to_prepend=*/0,
+          /*zeros_to_append=*/
+          gathered_slice_with_dims_collapsed->shape().dimensions_size()));
 
   TF_ASSIGN_OR_RETURN(
       HloInstruction* const updated_accumulator,
@@ -260,7 +263,7 @@ int64_t GatherLoopTripCount(HloInstruction* gather_instr) {
       gather_instr->gather_dimension_numbers();
 
   int64_t trip_count = 1;
-  for (int64_t i = 0, e = start_indices_shape.rank(); i < e; i++) {
+  for (int64_t i = 0, e = start_indices_shape.dimensions_size(); i < e; i++) {
     if (i != dim_numbers.index_vector_dim()) {
       trip_count *= start_indices_shape.dimensions(i);
     }
@@ -335,7 +338,7 @@ absl::StatusOr<HloInstruction*> GatherExpander::ExpandInstruction(
   HloInstruction* operand = gather_instr->mutable_operand(0);
   HloInstruction* start_indices = gather_instr->mutable_operand(1);
   const Shape& output_shape = gather_instr->shape();
-  int64_t output_rank = output_shape.rank();
+  int64_t output_rank = output_shape.dimensions_size();
 
   const GatherDimensionNumbers& dim_numbers =
       gather_instr->gather_dimension_numbers();

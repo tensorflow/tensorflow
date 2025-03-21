@@ -90,7 +90,7 @@ static dnnl::graph::logical_tensor::dims OneDnnDimensions(const Shape& shape) {
 }
 
 static dnnl::graph::logical_tensor::dims OneDnnStrides(const Shape& shape) {
-  dnnl::graph::logical_tensor::dims strides(shape.rank());
+  dnnl::graph::logical_tensor::dims strides(shape.dimensions_size());
   int64_t stride = 1;
   for (int i : shape.layout().minor_to_major()) {
     strides.at(i) = stride;

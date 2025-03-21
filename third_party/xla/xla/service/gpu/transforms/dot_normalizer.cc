@@ -51,8 +51,8 @@ absl::StatusOr<HloInstruction*> DotNormalizer::ExpandInstruction(
       dot->AddInstruction(HloInstruction::CreateBitcast(new_rhs_shape, rhs));
   TF_RETURN_IF_ERROR(dot->ReplaceOperandWithDifferentShape(1, normalized_rhs));
   DotDimensionNumbers* dnums = dot->mutable_dot_dimension_numbers();
-  dnums->add_lhs_contracting_dimensions(new_lhs_shape.rank() - 1);
-  dnums->add_rhs_contracting_dimensions(new_rhs_shape.rank() - 1);
+  dnums->add_lhs_contracting_dimensions(new_lhs_shape.dimensions_size() - 1);
+  dnums->add_rhs_contracting_dimensions(new_rhs_shape.dimensions_size() - 1);
   return nullptr;
 }
 

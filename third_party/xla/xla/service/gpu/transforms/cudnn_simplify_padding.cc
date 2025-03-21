@@ -70,7 +70,7 @@ std::optional<int64_t> FindFalseIndex(absl::Span<const bool> vals) {
 std::optional<int64_t> FindOutputVectCDim(HloInstruction* conv) {
   const ConvolutionDimensionNumbers& dnums =
       conv->convolution_dimension_numbers();
-  int64_t num_dims = conv->shape().tuple_shapes(0).rank();
+  int64_t num_dims = conv->shape().tuple_shapes(0).dimensions_size();
   absl::InlinedVector<bool, 5> seen_dims(num_dims);
   seen_dims[dnums.output_batch_dimension()] = true;
   seen_dims[dnums.output_feature_dimension()] = true;
@@ -84,7 +84,7 @@ std::optional<int64_t> FindOutputVectCDim(HloInstruction* conv) {
 std::optional<int64_t> FindKernelVectCDim(HloInstruction* conv) {
   const ConvolutionDimensionNumbers& dnums =
       conv->convolution_dimension_numbers();
-  int64_t num_dims = conv->operand(1)->shape().rank();
+  int64_t num_dims = conv->operand(1)->shape().dimensions_size();
   absl::InlinedVector<bool, 5> seen_dims(num_dims);
   seen_dims[dnums.kernel_input_feature_dimension()] = true;
   seen_dims[dnums.kernel_output_feature_dimension()] = true;
@@ -123,7 +123,8 @@ std::optional<int64_t> NumTrailingZeroOutputFeatures(HloInstruction* conv) {
     // If these don't hold, it means that some pass (e.g. constant folding)
     // has modified the filter, making making it infeasible to get the original,
     // un-reordered value.
-    if (!matched || feature_dim != 0 || transpose->shape().rank() != 8) {
+    if (!matched || feature_dim != 0 ||
+        transpose->shape().dimensions_size() != 8) {
       VLOG(2) << "The filter output feature dimension cannot be determined, as "
                  "the reordering sequence is modified";
       return std::nullopt;

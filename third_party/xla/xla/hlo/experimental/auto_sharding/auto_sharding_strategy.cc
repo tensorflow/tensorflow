@@ -91,8 +91,8 @@ void EnumerateHelper(std::function<void(const DimMap&)> split_func,
   }
 }
 
-// Map tensor dims from [0, tensor_shape.rank() - 1] to (atmost one or more,
-// depending on the value of allow_mixed_mesh_shape) mesh dims.
+// Map tensor dims from [0, tensor_shape.dimensions_size() - 1] to (atmost one
+// or more, depending on the value of allow_mixed_mesh_shape) mesh dims.
 void Enumerate(std::function<void(const DimMap&)> split_func,
                int64_t tensor_rank,
                const std::vector<int>& unassigned_mesh_dims,
@@ -133,14 +133,14 @@ ComputeSliceShardingAndCommunicationCostFromOperand(
 
   CHECK(old_shape.IsArray());
 
-  std::vector<int64_t> tensor_to_mesh_dim =
-      GetTensorDimToMeshDim(new_shape.rank(), input_spec, device_mesh,
-                            /* consider_reverse_device_meshes */ true);
+  std::vector<int64_t> tensor_to_mesh_dim = GetTensorDimToMeshDim(
+      new_shape.dimensions_size(), input_spec, device_mesh,
+      /* consider_reverse_device_meshes */ true);
 
   std::vector<int64_t> mesh_dims_for_communication;
   std::vector<int64_t> tensor_dims;
   std::vector<int64_t> mesh_dims;
-  for (size_t i = 0; i < new_shape.rank(); ++i) {
+  for (size_t i = 0; i < new_shape.dimensions_size(); ++i) {
     if (tensor_to_mesh_dim[i] == -1) {
       continue;
     }

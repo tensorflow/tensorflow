@@ -249,7 +249,8 @@ bool InstructionFusion::EffectivelyAtMostUnary(HloInstruction* hlo) {
       hlo->shape(),
       [&output_rank](const Shape& subshape, const ShapeIndex& shape_index) {
         if (subshape.IsArray()) {
-          output_rank = std::max(output_rank, ShapeUtil::TrueRank(subshape));
+          output_rank =
+              std::max(output_rank, ShapeUtil::TrueNumDimensions(subshape));
         }
       });
   return absl::c_count_if(
@@ -262,7 +263,8 @@ bool InstructionFusion::EffectivelyAtMostUnary(HloInstruction* hlo) {
                    ShapeUtil::IsEffectiveScalar(operand->shape())) {
                  return false;
                }
-               return ShapeUtil::TrueRank(operand->shape()) >= output_rank;
+               return ShapeUtil::TrueNumDimensions(operand->shape()) >=
+                      output_rank;
              }) <= 1;
 }
 
@@ -1029,7 +1031,7 @@ bool IsSafeToFuseSliceIntoDusFusion(const HloInstruction* producer,
               "Slice op has a different shape than the update shape of the "
               "dus op, bailing.");
         }
-        for (int i = 0; i < dus->shape().rank(); ++i) {
+        for (int i = 0; i < dus->shape().dimensions_size(); ++i) {
           const HloInstruction* dus_operand =
               get_real_operand(consumer, dus->operand(2 + i));
           auto constant_operand = get_constant_operand(dus_operand);
@@ -1054,7 +1056,7 @@ bool IsSafeToFuseSliceIntoDusFusion(const HloInstruction* producer,
               "Dynamic slice op has a different shape than the update shape "
               "of the dus op, bailing.");
         }
-        for (int i = 0; i < dus->shape().rank(); ++i) {
+        for (int i = 0; i < dus->shape().dimensions_size(); ++i) {
           const HloInstruction* ds_operand = get_real_operand(
               producer, producer_nonelementwise->operand(1 + i));
           const HloInstruction* dus_operand =

@@ -127,7 +127,7 @@ bool IsF8Type(const HloInstruction *instr) {
 Shape PadShapeToMultipleOf16(const Shape old_shape,
                              const absl::Span<const int64_t> batch_dims) {
   Shape padded_shape = old_shape;
-  for (int i = 0; i < old_shape.rank(); ++i) {
+  for (int i = 0; i < old_shape.dimensions_size(); ++i) {
     if (!absl::c_linear_search(batch_dims, i)) {
       int64_t padded_dimension =
           RoundUpTo<int64_t>(old_shape.dimensions(i), 16);
@@ -146,7 +146,7 @@ HloInstruction *PadOperandToTargetShape(const Shape &target,
   }
 
   PaddingConfig padding_config;
-  for (int i = 0; i < x->shape().rank(); ++i) {
+  for (int i = 0; i < x->shape().dimensions_size(); ++i) {
     auto dimension = padding_config.add_dimensions();
     dimension->set_edge_padding_low(0);
     dimension->set_edge_padding_high(target.dimensions(i) -
@@ -356,14 +356,14 @@ HloInstruction *TransposeMatrix(HloInstruction *instr, int64_t contracting_dim,
   auto input_shape = instr->shape();
   // Identify the dimensional order which describes a transpose of the
   // contracting and non-contracting dimensions of the GEMM.
-  std::vector<int64_t> permutation(input_shape.rank(), -1);
+  std::vector<int64_t> permutation(input_shape.dimensions_size(), -1);
   // Discard the batch dimensions.
   for (int64_t batch_dim : batch_dims) {
     permutation[batch_dim] = batch_dim;
   }
   // Identify the non-contracting dimension.
   int non_contracting_dim;
-  for (int i = 0; i < input_shape.rank(); ++i) {
+  for (int i = 0; i < input_shape.dimensions_size(); ++i) {
     if (permutation[i] == -1 && contracting_dim != i) {
       non_contracting_dim = i;
     }
@@ -627,8 +627,10 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
 
     int64_t lhs_batch_dims_size =
         instr->dot_dimension_numbers().lhs_batch_dimensions_size();
-    bool is_lhs_vector = lhs->shape().rank() == lhs_batch_dims_size + 1;
-    bool is_rhs_vector = rhs->shape().rank() == lhs_batch_dims_size + 1;
+    bool is_lhs_vector =
+        lhs->shape().dimensions_size() == lhs_batch_dims_size + 1;
+    bool is_rhs_vector =
+        rhs->shape().dimensions_size() == lhs_batch_dims_size + 1;
     int64_t lhs_stride =
         is_lhs_vector ? lhs->shape().dimensions(lhs_batch_dims_size)
                       : lhs->shape().dimensions(lhs_batch_dims_size) *
@@ -1207,7 +1209,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
       const HloInstruction *input = param.commutative_ops.empty()
                                         ? param.fp8_input
                                         : param.commutative_ops.back().first;
-      if (input->shape().rank() != num_batch_dims + 2) {
+      if (input->shape().dimensions_size() != num_batch_dims + 2) {
         VLOG(1) << "Failed to rewrite " << instr->ToShortString()
                 << "into FP8 Custom Call. Inputs must have exactly one "
                    "contracting and one non-contracting dimension.";
@@ -1322,8 +1324,8 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     // Slice the result of the GEMM if the operands were padded.
     HloInstruction *slice = nullptr;
     if (new_output_shape.dimensions() != instr->shape().dimensions()) {
-      std::vector<int64_t> start_indices(instr->shape().rank(), 0);
-      std::vector<int64_t> strides(instr->shape().rank(), 1);
+      std::vector<int64_t> start_indices(instr->shape().dimensions_size(), 0);
+      std::vector<int64_t> strides(instr->shape().dimensions_size(), 1);
       slice = instr->AddInstruction(HloInstruction::CreateSlice(
           instr->shape(), new_custom_call, start_indices,
           instr->shape().dimensions(), strides));
@@ -1557,7 +1559,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     // To ensure correctness, only slices that chop off the ends of dimensions
     // are supported.
     if (slice) {
-      int slice_op_dim = slice->operand(0)->shape().rank();
+      int slice_op_dim = slice->operand(0)->shape().dimensions_size();
       if (slice->slice_starts() != std::vector<int64_t>(slice_op_dim, 0) ||
           slice->slice_strides() != std::vector<int64_t>(slice_op_dim, 1)) {
         return absl::OkStatus();
@@ -1695,13 +1697,13 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     GemmBackendConfig &config = *gpu_config.mutable_gemm_backend_config();
     // # output column dims == # non-contracting rhs operand dims.
     const DotDimensionNumbers &dot_dims = config.dot_dimension_numbers();
-    size_t num_col_dims = gemm->operand(1)->shape().rank() -
+    size_t num_col_dims = gemm->operand(1)->shape().dimensions_size() -
                           dot_dims.rhs_batch_dimensions_size() -
                           dot_dims.rhs_contracting_dimensions_size();
 
     if ((gemm->user_count() != 1) ||
         (config.epilogue() != GemmBackendConfig::DEFAULT) ||
-        (bias->shape().rank() != num_col_dims)) {
+        (bias->shape().dimensions_size() != num_col_dims)) {
       return false;
     }
     // We require the bias vector to have been broadcast in the most major

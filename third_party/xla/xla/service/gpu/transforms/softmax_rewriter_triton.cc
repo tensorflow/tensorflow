@@ -461,7 +461,8 @@ FusionDecision ShouldFuseReduction(const HloInstruction& reduce,
   }
 
   if (reduce.dimensions().size() != 1 ||
-      reduce.dimensions(0) != reduce.operand(0)->shape().rank() - 1) {
+      reduce.dimensions(0) !=
+          reduce.operand(0)->shape().dimensions_size() - 1) {
     return FusionDecision::Forbid(
         "The reductions in the diamond must reduce 1 dimension and that "
         "dimension must be the last dimension of the operand.");
@@ -545,7 +546,7 @@ DiamondMatchingDecision MatchesTritonCompatibleClosedReductionDiamondImpl(
   producer = reduce->mutable_operand(0);
 
   if (absl::c_linear_search(broadcast->dimensions(),
-                            broadcast->shape().rank() - 1)) {
+                            broadcast->shape().dimensions_size() - 1)) {
     return FusionDecision::Forbid(
         "Broadcast is not along the reduction dimension.");
   }

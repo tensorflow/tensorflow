@@ -392,8 +392,8 @@ using AliasSet = StableSet<std::pair<NodeIdx, NodeIdx>>;
 using MeshDimSet = StableSet<int>;
 using DimMap = StableMap</*tensor dim*/ int, /*mesh dims*/ MeshDimSet>;
 
-// Map tensor dims from [0, tensor_shape.rank() - 1] to (atmost one or more,
-// depending on the value of allow_mixed_mesh_shape) mesh dims.
+// Map tensor dims from [0, tensor_shape.dimensions_size() - 1] to (atmost one
+// or more, depending on the value of allow_mixed_mesh_shape) mesh dims.
 void Enumerate(std::function<void(const DimMap&)> split_func,
                int64_t tensor_rank,
                const std::vector<int>& unassigned_mesh_dims,

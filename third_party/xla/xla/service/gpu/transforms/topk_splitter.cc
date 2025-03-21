@@ -60,7 +60,7 @@ class TopkSplitterVisitor : public DfsHloRewriteVisitor {
     }
     HloComputation* comp = inst->parent();
     Shape data_shape = topk->operand(0)->shape();
-    bool has_batch = data_shape.rank() == 2;
+    bool has_batch = data_shape.dimensions_size() == 2;
     // TODO(doak): Support multiple batches.
     if (has_batch && data_shape.dimensions(0) != 1) {
       return absl::OkStatus();

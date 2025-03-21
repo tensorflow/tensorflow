@@ -223,7 +223,7 @@ GenerateReshardingCostsAndMissingShardingsForAllOperands(
     const StrategyGroup& operand_strategy_group = *strategy_map.at(operand);
     const auto& operand_strategies = operand_strategy_group.GetStrategies();
     const std::vector<double> zeros(operand_strategies.size(), 0.0);
-    if (operand_shape.IsToken() || operand_shape.rank() == 0) {
+    if (operand_shape.IsToken() || operand_shape.dimensions_size() == 0) {
       communication_resharding_costs.push_back(zeros);
       memory_resharding_costs.push_back(zeros);
       if (!input_shardings.shardings[k].has_value()) {
@@ -480,9 +480,9 @@ absl::StatusOr<std::unique_ptr<StrategyGroup>> FollowReduceStrategy(
     // op_dim_to_output_dim = [0, 1, -1]
     std::vector<int64_t> op_dim_to_output_dim =
         GetDimensionMapping(/*reduced_dimensions=*/ins->dimensions(),
-                            /*op_count*/ operand->shape().rank());
-    CHECK_EQ(ins->dimensions().size() + output_shape.rank(),
-             operand->shape().rank())
+                            /*op_count*/ operand->shape().dimensions_size());
+    CHECK_EQ(ins->dimensions().size() + output_shape.dimensions_size(),
+             operand->shape().dimensions_size())
         << "Invalid kReduce: output size + reduced dimensions size != op count";
 
     for (const auto& src_strategy : src_strategy_group->GetStrategies()) {
@@ -491,12 +491,13 @@ absl::StatusOr<std::unique_ptr<StrategyGroup>> FollowReduceStrategy(
           operand->shape(), input_sharding,
           /* consider_reverse_device_meshes */ true,
           /* crash_at_error */ crash_at_error);
-      if (tensor_dim_to_mesh.size() != operand->shape().rank()) {
+      if (tensor_dim_to_mesh.size() != operand->shape().dimensions_size()) {
         return absl::InvalidArgumentError(
             "Cannot generate tensor dim to mesh dim mapping");
       }
       std::vector<int64_t> all_reduce_dims;
-      for (int64_t op_dim = 0; op_dim < operand->shape().rank(); ++op_dim) {
+      for (int64_t op_dim = 0; op_dim < operand->shape().dimensions_size();
+           ++op_dim) {
         int64_t mesh_dim = tensor_dim_to_mesh[op_dim];
         // Replicates on this mesh dim.
         if (mesh_dim == -1) {
@@ -878,7 +879,7 @@ void EnumerateAll1DPartition(
     bool allow_shardings_small_dims_across_many_devices,
     const std::string& suffix, const CallGraph& call_graph,
     StrategyGroup& strategy_group) {
-  for (int64_t i = 0; i < shape.rank(); ++i) {
+  for (int64_t i = 0; i < shape.dimensions_size(); ++i) {
     for (int64_t j = 0; j < device_mesh.num_dimensions(); ++j) {
       bool small_dims_sharding_check =
           !allow_shardings_small_dims_across_many_devices &&
@@ -937,7 +938,8 @@ void EnumerateAll1DPartition(
         // the cost model for sort (which, as noted above in the comments for
         // the function) is also an approximation.
         communication_cost = ComputeSortCommunicationCost(
-            ins->operand(0)->shape().rank() - 1, i, j, shape, cluster_env);
+            ins->operand(0)->shape().dimensions_size() - 1, i, j, shape,
+            cluster_env);
       }
       strategy_group.AddStrategy(
           ShardingStrategy({output_spec, compute_cost, communication_cost,
@@ -972,7 +974,7 @@ void EnumerateAllPartition(
     return;
   }
   // Fully tile the buffer to the mesh
-  for (int64_t i = 0; i < shape.rank(); ++i) {
+  for (int64_t i = 0; i < shape.dimensions_size(); ++i) {
     auto tensor_it = std::find(tensor_dims.begin(), tensor_dims.end(), i);
     if (tensor_it != tensor_dims.end()) {
       continue;
@@ -1041,7 +1043,7 @@ void BuildStrategyAndCostForOp(const HloInstruction* ins, const Shape& shape,
     CHECK(sort_ins);
     sort_or_topk_dim = sort_ins->sort_dimension();
   } else if (IsTopKCustomCall(ins)) {
-    sort_or_topk_dim = ins->operand(0)->shape().rank() - 1;
+    sort_or_topk_dim = ins->operand(0)->shape().dimensions_size() - 1;
   }
 
   if (sort_or_topk_dim != -1) {
@@ -1069,7 +1071,7 @@ void EnumerateAll1DPartitionReshape(const HloInstruction* ins,
   const Shape& operand_shape = operand->shape();
   const StrategyGroup& operand_strategy_group = *strategy_map.at(operand);
 
-  for (int64_t i = 0; i < ins->shape().rank(); ++i) {
+  for (int64_t i = 0; i < ins->shape().dimensions_size(); ++i) {
     for (int64_t j = 0; j < device_mesh.num_dimensions(); ++j) {
       if (device_mesh.dim(j) == 1 ||
           (only_allow_divisible &&
@@ -1531,7 +1533,7 @@ void RemoveShardingsWhereSmallDimsShardedAcrossManyDevices(
       continue;
     }
     const auto& tile_assignment = strategy.output_sharding.tile_assignment();
-    for (int64_t i = 0; i < shape.rank(); ++i) {
+    for (int64_t i = 0; i < shape.dimensions_size(); ++i) {
       if (tile_assignment.dim(i) > 1 &&
           tile_assignment.dim(i) > shape.dimensions(i)) {
         invalid_strategy_indices.push_back(sid);
@@ -2187,8 +2189,8 @@ absl::Status InsertReshardReshapes(
               rhs->shape(), rhs_sharding,
               /*consider_reverse_device_meshes=*/true, crash_at_error);
 
-      if (lhs_tensor_dim_to_mesh_dim.size() != lhs->shape().rank() ||
-          rhs_tensor_dim_to_mesh_dim.size() != rhs->shape().rank()) {
+      if (lhs_tensor_dim_to_mesh_dim.size() != lhs->shape().dimensions_size() ||
+          rhs_tensor_dim_to_mesh_dim.size() != rhs->shape().dimensions_size()) {
         return absl::InvalidArgumentError(
             "Cannot generate tensor dim to mesh dim mapping");
       }
@@ -3201,7 +3203,7 @@ HloSharding GetReduceScatterOutput(const HloInstruction* ins,
     }
   } else if (ins->opcode() == HloOpcode::kReduce) {
     // TODO(zhuohan): support more cases.
-    CHECK_EQ(ins->shape().rank(), 1);
+    CHECK_EQ(ins->shape().dimensions_size(), 1);
 
     int mesh_dim;
     if (absl::StrContains(input_shardings.name, "allreduce @ [0]")) {
@@ -3256,7 +3258,8 @@ bool HasReduceScatterOpportunity(const HloInstruction* inst,
     return false;
   }
 
-  if (inst->opcode() == HloOpcode::kReduce && inst->shape().rank() == 1) {
+  if (inst->opcode() == HloOpcode::kReduce &&
+      inst->shape().dimensions_size() == 1) {
     return true;
   }
   if (inst->opcode() == HloOpcode::kDot) {

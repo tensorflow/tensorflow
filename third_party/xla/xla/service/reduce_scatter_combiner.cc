@@ -67,7 +67,8 @@ int64_t FindMostFrequentScatterDim(
     frequency.resize(std::max(dim + 1, static_cast<int64_t>(frequency.size())),
                      0);
     frequency[dim]++;
-    min_rank = std::min(min_rank, it->shape().rank());
+    min_rank =
+        std::min(min_rank, static_cast<int64_t>(it->shape().dimensions_size()));
   }
 
   int64_t most_frequent_dim = std::distance(
@@ -125,7 +126,7 @@ absl::Status CombineReduceScatters(
 
       // Build permutation to align gather dimension.
       auto& perm = operand_permutations.back();
-      perm = std::vector<int64_t>(operand_shape.rank());
+      perm = std::vector<int64_t>(operand_shape.dimensions_size());
       std::iota(perm->begin(), perm->end(), 0);
       std::swap((*perm)[most_frequent_dim], (*perm)[rs->scatter_dimension()]);
 
