@@ -1,4 +1,4 @@
-# Copyright 2024 Google LLC.
+# Copyright (c) 2025 MediaTek Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,33 +12,32 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-load("//tensorflow/lite/experimental/litert/vendors/mediatek:mediatek_build_defs.bzl", "litert_cc_lib_with_mtk")
+load("@flatbuffers//:build_defs.bzl", "flatbuffer_cc_library")
+load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//tensorflow/lite/experimental/litert:__subpackages__"],
 )
 
-litert_cc_lib_with_mtk(
-    name = "neuron_adapter_api",
-    srcs = [
-        "neuron_adapter_api.cc",
-    ],
+flatbuffer_cc_library(
+    name = "neuron_litert_schema",
+    srcs = ["neuron_schema.fbs"],
+    compatible_with = get_compatible_with_portable(),
+)
+
+cc_library(
+    name = "mediatek_litert_schema",
     hdrs = [
-        "neuron_adapter_api.h",
+        "schema_resolver.h",
     ],
-    tags = [
-        # Don't build/test in OS until neuron is available.
-        "nobuilder",
-        "notap",
-    ],
+    visibility = ["//visibility:public"],
     deps = [
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/strings:string_view",
-        # copybara:uncomment "//third_party/neuro_pilot:latest_host_headers",
+        "neuron_litert_schema",
         "//tensorflow/lite/experimental/litert/c:litert_common",
         "//tensorflow/lite/experimental/litert/c:litert_logging",
         "//tensorflow/lite/experimental/litert/cc:litert_expected",
-        "//tensorflow/lite/experimental/litert/cc:litert_shared_library",
+        "@com_google_absl//absl/strings:str_format",
+        "@flatbuffers//:runtime_cc",
     ],
 )

@@ -1,4 +1,4 @@
-// Copyright 2024 Google LLC.
+// Copyright (c) 2025 MediaTek Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "tensorflow/lite/experimental/litert/vendors/mediatek/compiler/legalizations/add_op_legalization.h"
+#include "tensorflow/lite/experimental/litert/vendors/mediatek/compiler/legalizations/common_op_legalization.h"
 
 #include <cstdint>
 #include <vector>
@@ -27,10 +27,16 @@
 
 namespace litert::mediatek {
 
-Expected<void> LegalizeAddOp(const NeuronAdapterApi& neuron_adapter_api,
-                             NeuronModel* model, OperandMap& operand_map,
-                             const litert::Op& op) {
-  LITERT_LOG(LITERT_INFO, "Legalize Add");
+bool VerifyCommonOp(const litert::Op& op, LiteRtOpCode op_code) {
+  // Do some common check
+  return true;
+}
+
+Expected<void> LegalizeCommonOp(const NeuronAdapterApi& neuron_adapter_api,
+                                NeuronModel* model, OperandMap& operand_map,
+                                const litert::Op& op,
+                                NeuronOperationType mtk_operation_type) {
+  LITERT_LOG(LITERT_INFO, "Legalize Op: %d", mtk_operation_type);
   std::vector<uint32_t> input_indices;
   for (auto& input : op.Inputs()) {
     auto id = operand_map.GetOperandIndex(input);
@@ -39,21 +45,6 @@ Expected<void> LegalizeAddOp(const NeuronAdapterApi& neuron_adapter_api,
     }
     input_indices.push_back(*id);
   }
-
-  // A NEURON_ADD operation takes a 3rd scalar operand, which is used to pass a
-  // TfLiteFusedActivation value.
-  uint32_t tfl_fused_activation;
-  if (auto status =
-          LiteRtGetAddFusedActivationOption(op.Get(), &tfl_fused_activation);
-      status != kLiteRtStatusOk) {
-    return Error(status, "Failed to get fused activation");
-  }
-  auto fused_activation_operand_index =
-      operand_map.AddScalarInt32(tfl_fused_activation);
-  if (!fused_activation_operand_index) {
-    return fused_activation_operand_index.Error();
-  }
-  input_indices.push_back(*fused_activation_operand_index);
 
   std::vector<uint32_t> output_indices;
   for (auto& output : op.Outputs()) {
@@ -64,10 +55,9 @@ Expected<void> LegalizeAddOp(const NeuronAdapterApi& neuron_adapter_api,
     output_indices.push_back(*id);
   }
 
-  if (ModelAddOperation(neuron_adapter_api, model, /*type=*/NEURON_ADD,
+  if (ModelAddOperation(neuron_adapter_api, model, /*type=*/mtk_operation_type,
                         input_indices, output_indices) != NEURON_NO_ERROR) {
-    return Error(kLiteRtStatusErrorRuntimeFailure,
-                 "Failed to add NEURON_ADD op");
+    return Error(kLiteRtStatusErrorRuntimeFailure, "Failed to add operation");
   }
 
   return {};

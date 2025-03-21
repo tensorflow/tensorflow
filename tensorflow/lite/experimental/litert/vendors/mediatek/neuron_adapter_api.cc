@@ -131,6 +131,8 @@ litert::Expected<void> NeuronAdapterApi::LoadSymbols(
             api_->model_restore_from_compiled_network);
   LOAD_SYMB(NeuronModel_setName, api_->model_set_name);
   LOAD_SYMB(NeuronModel_setOperandValue, api_->model_set_operand_value);
+  LOAD_SYMB(NeuronModel_setOperandSymmPerChannelQuantParams,
+            api_->model_set_symm_per_channel_quant_params);
   LOAD_SYMB(Neuron_getVersion, api_->get_version);
 
   LITERT_LOG(LITERT_INFO, "NeuronAdapter symbols loaded");

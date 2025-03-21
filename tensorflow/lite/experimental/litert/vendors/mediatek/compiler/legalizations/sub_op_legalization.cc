@@ -1,4 +1,4 @@
-// Copyright 2024 Google LLC.
+// Copyright (c) 2025 MediaTek Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "tensorflow/lite/experimental/litert/vendors/mediatek/compiler/legalizations/add_op_legalization.h"
+#include "tensorflow/lite/experimental/litert/vendors/mediatek/compiler/legalizations/sub_op_legalization.h"
 
 #include <cstdint>
 #include <vector>
@@ -27,10 +27,10 @@
 
 namespace litert::mediatek {
 
-Expected<void> LegalizeAddOp(const NeuronAdapterApi& neuron_adapter_api,
+Expected<void> LegalizeSubOp(const NeuronAdapterApi& neuron_adapter_api,
                              NeuronModel* model, OperandMap& operand_map,
                              const litert::Op& op) {
-  LITERT_LOG(LITERT_INFO, "Legalize Add");
+  LITERT_LOG(LITERT_INFO, "Legalize Sub");
   std::vector<uint32_t> input_indices;
   for (auto& input : op.Inputs()) {
     auto id = operand_map.GetOperandIndex(input);
@@ -40,11 +40,11 @@ Expected<void> LegalizeAddOp(const NeuronAdapterApi& neuron_adapter_api,
     input_indices.push_back(*id);
   }
 
-  // A NEURON_ADD operation takes a 3rd scalar operand, which is used to pass a
+  // A NEURON_SUB operation takes a 3rd scalar operand, which is used to pass a
   // TfLiteFusedActivation value.
   uint32_t tfl_fused_activation;
   if (auto status =
-          LiteRtGetAddFusedActivationOption(op.Get(), &tfl_fused_activation);
+          LiteRtGetSubFusedActivationOption(op.Get(), &tfl_fused_activation);
       status != kLiteRtStatusOk) {
     return Error(status, "Failed to get fused activation");
   }
@@ -64,10 +64,10 @@ Expected<void> LegalizeAddOp(const NeuronAdapterApi& neuron_adapter_api,
     output_indices.push_back(*id);
   }
 
-  if (ModelAddOperation(neuron_adapter_api, model, /*type=*/NEURON_ADD,
+  if (ModelAddOperation(neuron_adapter_api, model, /*type=*/NEURON_SUB,
                         input_indices, output_indices) != NEURON_NO_ERROR) {
     return Error(kLiteRtStatusErrorRuntimeFailure,
-                 "Failed to add NEURON_ADD op");
+                 "Failed to add value of NEURON_SUB fused activation");
   }
 
   return {};

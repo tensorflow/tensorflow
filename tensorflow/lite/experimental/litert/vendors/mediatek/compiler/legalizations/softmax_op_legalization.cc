@@ -1,4 +1,4 @@
-// Copyright 2024 Google LLC.
+// Copyright (c) 2025 MediaTek Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "tensorflow/lite/experimental/litert/vendors/mediatek/compiler/legalizations/add_op_legalization.h"
+#include "tensorflow/lite/experimental/litert/vendors/mediatek/compiler/legalizations/softmax_op_legalization.h"
 
 #include <cstdint>
 #include <vector>
@@ -27,10 +27,10 @@
 
 namespace litert::mediatek {
 
-Expected<void> LegalizeAddOp(const NeuronAdapterApi& neuron_adapter_api,
-                             NeuronModel* model, OperandMap& operand_map,
-                             const litert::Op& op) {
-  LITERT_LOG(LITERT_INFO, "Legalize Add");
+Expected<void> LegalizeSoftmaxOp(const NeuronAdapterApi& neuron_adapter_api,
+                                 NeuronModel* model, OperandMap& operand_map,
+                                 const litert::Op& op) {
+  LITERT_LOG(LITERT_INFO, "Legalize Softmax");
   std::vector<uint32_t> input_indices;
   for (auto& input : op.Inputs()) {
     auto id = operand_map.GetOperandIndex(input);
@@ -40,20 +40,18 @@ Expected<void> LegalizeAddOp(const NeuronAdapterApi& neuron_adapter_api,
     input_indices.push_back(*id);
   }
 
-  // A NEURON_ADD operation takes a 3rd scalar operand, which is used to pass a
-  // TfLiteFusedActivation value.
-  uint32_t tfl_fused_activation;
-  if (auto status =
-          LiteRtGetAddFusedActivationOption(op.Get(), &tfl_fused_activation);
+  // A NEURON_Softmax operation takes an additional scalar operand, which is
+  // used to pass a Beta value.
+  float beta;
+  if (auto status = LiteRtGetSoftmaxBetaOption(op.Get(), &beta);
       status != kLiteRtStatusOk) {
-    return Error(status, "Failed to get fused activation");
+    return Error(status, "Failed to get beta");
   }
-  auto fused_activation_operand_index =
-      operand_map.AddScalarInt32(tfl_fused_activation);
-  if (!fused_activation_operand_index) {
-    return fused_activation_operand_index.Error();
+  auto beta_operand = operand_map.AddScalarFloat32(beta);
+  if (!beta_operand) {
+    return beta_operand.Error();
   }
-  input_indices.push_back(*fused_activation_operand_index);
+  input_indices.push_back(*beta_operand);
 
   std::vector<uint32_t> output_indices;
   for (auto& output : op.Outputs()) {
@@ -64,10 +62,10 @@ Expected<void> LegalizeAddOp(const NeuronAdapterApi& neuron_adapter_api,
     output_indices.push_back(*id);
   }
 
-  if (ModelAddOperation(neuron_adapter_api, model, /*type=*/NEURON_ADD,
+  if (ModelAddOperation(neuron_adapter_api, model, /*type=*/NEURON_SOFTMAX,
                         input_indices, output_indices) != NEURON_NO_ERROR) {
     return Error(kLiteRtStatusErrorRuntimeFailure,
-                 "Failed to add NEURON_ADD op");
+                 "Failed to add NEURON_SOFTMAX operation");
   }
 
   return {};
