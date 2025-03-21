@@ -27,8 +27,14 @@ limitations under the License.
 //      and descriptions in api_def_*.pbtxt file automatically.
 //      Note that .Doc() call must have the following format for this to work:
 //      .Doc(R"doc(<doc goes here>)doc").
+#include <iostream>
+#include <ostream>
+#include <string>
+#include <vector>
+
 #include "tensorflow/core/api_def/update_api_def.h"
 #include "tensorflow/core/framework/op.h"
+#include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/platform/init_main.h"
 #include "tensorflow/core/util/command_line_flags.h"
 
