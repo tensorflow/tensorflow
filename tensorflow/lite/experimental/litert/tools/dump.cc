@@ -181,6 +181,9 @@ void Dump(LiteRtOpCode code, std::ostream& out) {
     case kLiteRtOpCodeTflAveragePool2d:
       out << "AVERAGE_POOL_2D";
       break;
+    case kLiteRtOpCodeTflMaxPool2d:
+      out << "MAX_POOL_2D";
+      break;
     case kLiteRtOpCodeTflDepthwiseConv2d:
       out << "DEPTHWISE_CONV_2D";
       break;
@@ -205,11 +208,20 @@ void Dump(LiteRtOpCode code, std::ostream& out) {
     case kLiteRtOpCodeTflResizeNearestNeighbor:
       out << "RESIZE_NEAREST_NEIGHBOR";
       break;
-    default:
-      out << "UKNOWN_OP_CODE: " << code;
-      break;
     case kLiteRtOpCodeTflRelu:
       out << "TFL_RELU";
+      break;
+    case kLiteRtOpCodeTflLogistic:
+      out << "TFL_LOGISTIC";
+      break;
+    case kLiteRtOpCodeTflFloorDiv:
+      out << "TFL_FLOOR_DIV";
+      break;
+    case kLiteRtOpCodeTflNotEqual:
+      out << "TFL_NOT_EQUAL";
+      break;
+    default:
+      out << "UKNOWN_OP_CODE: " << code;
       break;
   }
 };
