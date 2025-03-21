@@ -20,7 +20,6 @@ limitations under the License.
 #include <functional>
 #include <optional>
 
-#include "absl/types/optional.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/Casting.h"
