@@ -190,6 +190,11 @@ absl::Status CollectivePermuteStartThunk::Initialize(
                             params.executor->CreateEvent());
         receiver_barrier_events_.emplace(current_id, std::move(receiver_event));
       }
+      if (sender_barrier_events_.find(current_id) ==
+          sender_barrier_events_.end()) {
+        TF_ASSIGN_OR_RETURN(auto sender_event, params.executor->CreateEvent());
+        sender_barrier_events_.emplace(current_id, std::move(sender_event));
+      }
     }
     TF_ASSIGN_OR_RETURN(
         std::vector<DeviceBufferPair> device_buffers,
@@ -273,7 +278,7 @@ absl::Status CollectivePermuteStartThunk::RunCollective(
                                 config().replica_groups, config().group_mode));
 
     auto rendezvous_name = absl::StrFormat(
-        "rendezvous of collective-permute; run_id=%d; op id:%d; "
+        "rendezvous before calling collective-permute; run_id=%d; op id:%d; "
         "num_local_participants:%d",
         params.collective_params->run_id.ToInt(), config_.config.op_id,
         num_local_participants);
@@ -293,9 +298,48 @@ absl::Status CollectivePermuteStartThunk::RunCollective(
     }
   }
 
-  return ::xla::gpu::RunCollectivePermute(
+  auto status = ::xla::gpu::RunCollectivePermute(
       collectives, source_target, device_buffers, stream, comm_handle.comm,
       device_string, current_id, use_memcpy, recv_ptr_map_);
+
+  if (use_memcpy) {
+    std::optional<int64_t> source_id = source_target.source;
+    std::optional<int64_t> target_id = source_target.target;
+    // After the memcpy p2p is dispatched, the receiver needs to
+    // wait for the sender's event before proceeding to ensure
+    // data has been copied.
+    if (target_id) {
+      absl::MutexLock lock(&barrier_mutex_);
+      auto sender_event = sender_barrier_events_.find(current_id);
+      TF_RETURN_IF_ERROR(stream.RecordEvent(sender_event->second.get()));
+    }
+    TF_ASSIGN_OR_RETURN(
+        size_t num_local_participants,
+        GetNumLocalParticipants(*params.collective_params,
+                                config().replica_groups, config().group_mode));
+
+    auto rendezvous_name = absl::StrFormat(
+        "rendezvous after calling collective-permute; run_id=%d; op id:%d; "
+        "num_local_participants:%d",
+        params.collective_params->run_id.ToInt(), config_.config.op_id,
+        num_local_participants);
+    auto rendezvous_key = CallRendezvousKey{params.collective_params->run_id};
+
+    // Perform a rendezvous to make sure all senders have their events
+    // recorded.
+    Rendezvous(rendezvous_name, rendezvous_key, num_local_participants,
+               /*warn_stuck_timeout=*/absl::Seconds(20),
+               /*terminate_timeout=*/absl::Seconds(40));
+
+    // For receiving side, wait for the recorded event from the sending side.
+    if (source_id) {
+      absl::MutexLock lock(&barrier_mutex_);
+      auto sender_event = sender_barrier_events_.find(*source_id);
+      TF_RETURN_IF_ERROR(stream.WaitFor(sender_event->second.get()));
+    }
+  }
+
+  return status;
 }
 
 absl::Status RunCollectivePermute(
