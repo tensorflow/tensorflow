@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_MLIR_LITE_TOOLS_TF_MLIR_TRANSLATE_CL_H_
-#define TENSORFLOW_COMPILER_MLIR_LITE_TOOLS_TF_MLIR_TRANSLATE_CL_H_
+#ifndef TENSORFLOW_COMPILER_MLIR_TOOLS_TF_MLIR_TRANSLATE_CL_H_
+#define TENSORFLOW_COMPILER_MLIR_TOOLS_TF_MLIR_TRANSLATE_CL_H_
 
 // This file contains command-line options aimed to provide the parameters
 // required by the TensorFlow Graph(Def) to MLIR module conversion. It is only
@@ -51,4 +51,4 @@ extern llvm::cl::opt<bool> set_original_tf_func_name;
 extern llvm::cl::opt<bool> export_entry_func_to_flib;
 extern llvm::cl::opt<bool> export_original_tf_func_name;
 
-#endif  // TENSORFLOW_COMPILER_MLIR_LITE_TOOLS_TF_MLIR_TRANSLATE_CL_H_
+#endif  // TENSORFLOW_COMPILER_MLIR_TOOLS_TF_MLIR_TRANSLATE_CL_H_
