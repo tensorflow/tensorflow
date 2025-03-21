@@ -114,6 +114,7 @@ cc_library(
         "//xla:literal",
         "//xla:shape_util",
         "//xla:util",
+        "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/service:buffer_assignment",
         "//xla/stream_executor:device_memory",
