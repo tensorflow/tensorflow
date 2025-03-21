@@ -62,6 +62,7 @@
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/builders/pool2d_op_builder.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/builders/quantize_op_builder.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/builders/reduce_op_builder.h"
+#include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/builders/relu_op_builder.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/builders/reshape_op_builder.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/builders/resize_op_builder.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/builders/rms_norm_op_builder.h"
@@ -336,6 +337,16 @@ LiteRtStatus ConvertOp(
                                                  output_tensors);
       break;
     }
+    case LiteRtOpCode::kLiteRtOpCodeTflMinimum: {
+      op_wrappers = ::qnn::BuildElementwiseMinimumOp(tensor_pool, input_tensors,
+                                                     output_tensors);
+      break;
+    }
+    case LiteRtOpCode::kLiteRtOpCodeTflMaximum: {
+      op_wrappers = ::qnn::BuildElementwiseMaximumOp(tensor_pool, input_tensors,
+                                                     output_tensors);
+      break;
+    }
     case LiteRtOpCode::kLiteRtOpCodeTflEmbeddingLookup: {
       op_wrappers = ::qnn::BuildEmbeddingLookupOp(tensor_pool, input_tensors,
                                                   output_tensors);
@@ -375,6 +386,11 @@ LiteRtStatus ConvertOp(
           ::qnn::BuildGeluOp(tensor_pool, input_tensors, output_tensors);
       break;
     }
+    case LiteRtOpCode::kLiteRtOpCodeTflRelu: {
+      op_wrappers =
+          ::qnn::BuildReluOp(tensor_pool, input_tensors, output_tensors);
+      break;
+    }
     case LiteRtOpCode::kLiteRtOpCodeTflBatchMatmul: {
       bool adj_x{};
       LITERT_RETURN_IF_ERROR(
@@ -397,6 +413,11 @@ LiteRtStatus ConvertOp(
     case LiteRtOpCode::kLiteRtOpCodeTflQuantize: {
       op_wrappers =
           ::qnn::BuildQuantizeOp(tensor_pool, input_tensors, output_tensors);
+      break;
+    }
+    case LiteRtOpCode::kLiteRtOpCodeTflDequantize: {
+      op_wrappers =
+          ::qnn::BuildDequantizeOp(tensor_pool, input_tensors, output_tensors);
       break;
     }
     case LiteRtOpCode::kLiteRtOpCodeTflSum: {
@@ -579,6 +600,19 @@ LiteRtStatus ConvertOp(
       op_wrappers = ::qnn::BuildResizeBilinearOp(tensor_pool, input_tensors,
                                                  output_tensors, align_corners,
                                                  half_pixel_centers);
+      break;
+    }
+    case LiteRtOpCode::kLiteRtOpCodeTflResizeNearestNeighbor: {
+      bool align_corners;
+      LITERT_RETURN_IF_ERROR(LiteRtGetResizeNearestNeighborAlignCornersOption(
+          litert_op.Get(), &align_corners));
+      bool half_pixel_centers;
+      LITERT_RETURN_IF_ERROR(
+          LiteRtGetResizeNearestNeighborHalfPixelCenterOption(
+              litert_op.Get(), &half_pixel_centers));
+      op_wrappers = ::qnn::BuildResizeNearestOp(tensor_pool, input_tensors,
+                                                output_tensors, align_corners,
+                                                half_pixel_centers);
       break;
     }
     default: {

@@ -137,6 +137,9 @@ class TensorWrapper final {
            GetDataType() == QNN_DATATYPE_UFIXED_POINT_16;
   }
 
+  bool IsF32() const { return GetDataType() == QNN_DATATYPE_FLOAT_32; }
+  bool IsF16() const { return GetDataType() == QNN_DATATYPE_FLOAT_16; }
+
   Qnn_DataType_t GetDataType() const;
 
   void SetDataType(Qnn_DataType_t data_type);
