@@ -1035,8 +1035,8 @@ int CuptiTracer::NumGpus() {
   return num_gpus;
 }
 
-void CuptiTracer::Enable(const CuptiTracerOptions &option,
-                         CuptiTraceCollector *collector) {
+absl::Status CuptiTracer::Enable(const CuptiTracerOptions &option,
+                                 CuptiTraceCollector *collector) {
   option_ = option;
   collector_ = collector;
 
@@ -1058,10 +1058,13 @@ void CuptiTracer::Enable(const CuptiTracerOptions &option,
 
   absl::Status status = EnableApiTracing();
   need_root_access_ |= status.code() == tsl::error::PERMISSION_DENIED;
-  if (!status.ok()) return;
+  if (!status.ok()) {
+    return status;
+  }
 
   EnableActivityTracing().IgnoreError();
   tsl::profiler::AnnotationStack::Enable(true);
+  return status;
 }
 
 void CuptiTracer::Disable() {
