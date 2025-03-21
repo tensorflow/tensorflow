@@ -1207,6 +1207,7 @@ TEST(ShapeUtilTest, IsEffectivelyMostMajorDimension) {
 TEST(ShapeUtilTest, B_250640044) {
   // This case failed the fuzzer; see b/250640044.
   ShapeProto proto;
+  // TODO(wan): understand why this shape is invalid.
   EXPECT_TRUE(tsl::protobuf::TextFormat::ParseFromString(
       R"pb(element_type: TUPLE
            tuple_shapes {

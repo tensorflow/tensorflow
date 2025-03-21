@@ -27,6 +27,7 @@ limitations under the License.
 #include <string>
 #include <tuple>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include "absl/algorithm/container.h"
@@ -40,7 +41,6 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
-#include "absl/synchronization/blocking_counter.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/index_util.h"
@@ -160,8 +160,7 @@ const T& Deref(const T& ref) {
 
 template <typename ShapePtrOrRef>
 Shape MakeTupleShapeImpl(absl::Span<ShapePtrOrRef> shapes) {
-  Shape result;
-  result.set_element_type(TUPLE);
+  Shape result(std::vector<Shape>{});
   result.mutable_tuple_shapes()->reserve(shapes.size());
   for (const auto& shape : shapes) {
     ShapeUtil::AppendShapeToTuple(Deref(shape), &result);
@@ -228,8 +227,13 @@ std::ostream& operator<<(std::ostream& out, const ShapeIndex& shape_index) {
 }
 
 /* static */ int64_t ShapeUtil::TrueRank(const Shape& shape) {
+  if (!shape.IsArray()) {
+    // TODO(b/404276923): enforce that this is never called on non-array shapes.
+    return 0;
+  }
+
   int64_t accum = 0;
-  for (int64_t dimension : shape.dimensions()) {
+  for (const int64_t dimension : shape.dimensions()) {
     // We do not count unit dimensions.
     if (dimension != 1) {
       accum += 1;
@@ -450,10 +454,12 @@ ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
     Shape* shape) {
   shape->Clear();
   shape->set_element_type(element_type);
-  for (int64_t dimension : dimensions) {
-    shape->add_dimensions(dimension);
+  if (shape->IsArray()) {
+    for (int64_t dimension : dimensions) {
+      shape->add_dimensions(dimension);
+    }
+    LayoutUtil::SetToDefaultLayout(shape);
   }
-  LayoutUtil::SetToDefaultLayout(shape);
   return ValidateShape(*shape);
 }
 
@@ -483,19 +489,9 @@ ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
   return MakeTupleShape(shapes);
 }
 
-/* static */ Shape ShapeUtil::MakeOpaqueShape() {
-  Shape result;
-  result.set_element_type(OPAQUE_TYPE);
-  TF_DCHECK_OK(ValidateShapeWithOptionalLayout(result));
-  return result;
-}
+/* static */ Shape ShapeUtil::MakeOpaqueShape() { return Shape(OPAQUE_TYPE); }
 
-/* static */ Shape ShapeUtil::MakeTokenShape() {
-  Shape result;
-  result.set_element_type(TOKEN);
-  TF_DCHECK_OK(ValidateShapeWithOptionalLayout(result));
-  return result;
-}
+/* static */ Shape ShapeUtil::MakeTokenShape() { return Shape(TOKEN); }
 
 /* static */ void ShapeUtil::AppendShapeToTuple(const Shape& shape,
                                                 Shape* tuple_shape) {
@@ -687,9 +683,11 @@ Shape ShapeUtil::PrependMajorDimension(int64_t bound, Shape shape) {
   if (shape.element_type() == primitive_type) {
     return true;
   }
-  for (const Shape& element_shape : shape.tuple_shapes()) {
-    if (HasPrimitiveType(element_shape, primitive_type)) {
-      return true;
+  if (shape.IsTuple()) {
+    for (const Shape& element_shape : shape.tuple_shapes()) {
+      if (HasPrimitiveType(element_shape, primitive_type)) {
+        return true;
+      }
     }
   }
   return false;
@@ -712,7 +710,7 @@ Shape ShapeUtil::PrependMajorDimension(int64_t bound, Shape shape) {
   }
   printer->Append(
       primitive_util::LowercasePrimitiveTypeName(shape.element_type()));
-  if (shape.dimensions().empty()) {
+  if (!shape.IsArray() || shape.dimensions().empty()) {
     printer->Append("[]");
     return;
   }
@@ -743,6 +741,7 @@ Shape ShapeUtil::PrependMajorDimension(int64_t bound, Shape shape) {
     return;
   }
   PrintHumanString(printer, shape);
+  if (!shape.IsArray()) return;
   if (!shape.has_layout()) return;
   if (IsScalar(shape)) {
     std::string layout_str = LayoutUtil::HumanString(shape.layout());
@@ -750,7 +749,7 @@ Shape ShapeUtil::PrependMajorDimension(int64_t bound, Shape shape) {
     if (layout_str != "{}") {
       printer->Append(layout_str);
     }
-  } else if (shape.IsArray()) {
+  } else {
     LayoutUtil::PrintHumanString(printer, shape.layout());
   }
 }
@@ -1001,17 +1000,21 @@ absl::Status ValidateDimensions(const Shape& shape) {
   }
   return absl::OkStatus();
 }
+}  // namespace
 
 // Validates all of the non-layout properties of the shape -- this is a helper
 // used by both the layout-optional and layout-required public method.
 absl::Status ValidateNonLayoutProperties(const Shape& shape) {
+  // Make sure the element type is valid.
   if (shape.element_type() == PRIMITIVE_TYPE_INVALID ||
       !PrimitiveType_IsValid(shape.element_type())) {
     return ShapeError(shape, "Invalid element type.");
   }
+
+  // Validate tuple shapes.
   if (shape.element_type() == TUPLE) {
-    if (shape.rank() != 0) {
-      return ShapeError(shape, "This type cannot have dimensions.");
+    if (!std::holds_alternative<Shape::TupleState>(shape.state_)) {
+      return ShapeError(shape, "This type must have a tuple state.");
     }
     for (auto& element_shape : shape.tuple_shapes()) {
       TF_RETURN_IF_ERROR(ValidateNonLayoutProperties(element_shape));
@@ -1019,27 +1022,34 @@ absl::Status ValidateNonLayoutProperties(const Shape& shape) {
     return absl::OkStatus();
   }
 
-  // Non-tuple shape.
-  if (shape.tuple_shapes_size() > 0) {
-    return ShapeError(shape, "Non-tuple type contains tuple_shapes.");
-  }
-
-  // Tokens and opaques should not have layout or dimensions.
-  if (shape.element_type() == TOKEN || shape.element_type() == OPAQUE_TYPE) {
-    if (shape.rank() != 0) {
-      return ShapeError(shape, "This type cannot have dimensions.");
-    }
-    if (shape.has_layout()) {
-      return ShapeError(shape, "This type cannot have a layout.");
+  // Validate token shapes.
+  if (shape.element_type() == TOKEN) {
+    if (!std::holds_alternative<Shape::TokenState>(shape.state_)) {
+      return ShapeError(shape, "This type must have a token state.");
     }
     return absl::OkStatus();
   }
 
-  TF_RETURN_IF_ERROR(ValidateDimensions(shape));
-  TF_RETURN_IF_ERROR(ValidateShapeSize(shape));
-  return absl::OkStatus();
+  // Validate opaque shapes.
+  if (shape.element_type() == OPAQUE_TYPE) {
+    if (!std::holds_alternative<Shape::OpaqueState>(shape.state_)) {
+      return ShapeError(shape, "This type must have an opaque state.");
+    }
+    return absl::OkStatus();
+  }
+
+  // Validate array shapes.
+  if (primitive_util::IsArrayType(shape.element_type())) {
+    if (!std::holds_alternative<Shape::ArrayState>(shape.state_)) {
+      return ShapeError(shape, "This type must have an array state.");
+    }
+    TF_RETURN_IF_ERROR(ValidateDimensions(shape));
+    TF_RETURN_IF_ERROR(ValidateShapeSize(shape));
+    return absl::OkStatus();
+  }
+
+  return ShapeError(shape, "Unsupported element type.");
 }
-}  // namespace
 
 /* static */ absl::Status ShapeUtil::ValidateShapeWithOptionalLayout(
     const Shape& shape) {

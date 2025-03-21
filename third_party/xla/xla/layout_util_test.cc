@@ -519,7 +519,7 @@ TEST_F(LayoutUtilTest, ValidateLayout_TupleSubshapesWithMissingLayouts) {
 
   auto status =
       LayoutUtil::ValidateLayoutInShape(shape, /*allow_missing_layouts=*/false);
-  EXPECT_FALSE(status.ok());
+  EXPECT_FALSE(status.ok());  // TODO(wan): understand why this is not true.
   EXPECT_THAT(status.message(),
               ::testing::HasSubstr("shape f32[1,2] does not have a layout"));
   status =
