@@ -1011,6 +1011,7 @@ xla_test(
 
 xla_test(
     name = "dot_operation_test",
+    timeout = "long",
     srcs = ["dot_operation_test.cc"],
     shard_count = 20,
     tags = [
@@ -1234,6 +1235,7 @@ xla_test(
 # Repeat dot_operation_runtime_test with single-threaded eigen.
 xla_test(
     name = "dot_operation_single_threaded_runtime_test",
+    timeout = "long",
     srcs = ["dot_operation_test.cc"],
     backend_args = {
         "cpu": [
@@ -1813,6 +1815,7 @@ xla_test(
     name = "slice_test",
     timeout = "long",
     srcs = ["slice_test.cc"],
+    # placeholder for extra args for slice_test
     shard_count = 40,
     tags = ["test_xla_cpu_no_thunks"],
     deps = [
