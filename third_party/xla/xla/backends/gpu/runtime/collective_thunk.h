@@ -38,12 +38,9 @@ limitations under the License.
 #include "xla/core/collectives/communicator.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
-#include "xla/hlo/translate/mhlo_to_hlo/attribute_exporter.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/collective_ops_utils.h"
-#include "xla/service/global_device_id.h"
 #include "xla/service/gpu/buffer_allocations.h"
-#include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/service/rendezvous.h"
 #include "xla/shape.h"
@@ -179,6 +176,8 @@ class CollectiveThunk : public Thunk {
                              nccl_stream_id().value());
   }
 
+  bool is_local() const { return is_local_; }
+
  protected:
   virtual absl::Status RunCollective(const ExecuteParams& params,
                                      se::Stream& stream,
@@ -198,6 +197,8 @@ class CollectiveThunk : public Thunk {
 
  private:
   const AsyncStreamKind stream_kind_;
+
+  bool is_local_;
 
   bool IsAsync() const { return async_events_ != nullptr; }
   std::shared_ptr<AsyncEvents> async_events_;

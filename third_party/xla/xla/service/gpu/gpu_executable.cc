@@ -293,7 +293,8 @@ absl::Status ExecuteThunksImpl(
   ResourceRequests resource_requests;
 
   {  // Collect resource requirements from thunks.
-    Thunk::PrepareParams prepare_params{&collective_params};
+    Thunk::PrepareParams prepare_params{&collective_params,
+                                        run_options->local_device_count()};
 
     tsl::profiler::TraceMe trace([&] { return "Thunks::Prepare"; });
     TF_RETURN_IF_ERROR(
