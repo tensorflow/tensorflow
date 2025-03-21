@@ -164,6 +164,7 @@ package_group(
         "//tensorflow/...",
         "@tf_runtime//...",
         "//third_party/tf_runtime_google/...",
+        "//waymo/...",
     ]),
 )
 
