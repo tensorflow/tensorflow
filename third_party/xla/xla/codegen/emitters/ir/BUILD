@@ -112,6 +112,7 @@ cc_library(
         ":xla_attrs_inc_gen",
         ":xla_dialect_inc_gen",
         ":xla_ops_inc_gen",
+        "//xla/codegen/emitters:type_util",
         "//xla/hlo/analysis:indexing_analysis",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",

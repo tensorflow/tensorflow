@@ -24,6 +24,7 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"
 #include "mlir/Transforms/InliningUtils.h"
 #include "xla/codegen/emitters/ir/xla_ops.h"
+#include "xla/codegen/emitters/type_util.h"
 
 // The order of these includes is important.
 #define GET_ATTRDEF_CLASSES
@@ -45,6 +46,7 @@ struct XlaInlinerInterface : public mlir::DialectInlinerInterface {
   bool isLegalToInline(mlir::Operation* call, mlir::Operation* callable,
                        bool wouldBeCloned) const final {
     if (call->hasAttr("noinline")) return false;
+    if (callable->hasAttr(emitters::kHasNoCompute)) return true;
     if (!wouldBeCloned) {
       // If no duplicate would be created, 'call' is likely the only caller of
       // 'callable'.
