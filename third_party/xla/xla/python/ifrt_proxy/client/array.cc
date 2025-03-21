@@ -36,6 +36,7 @@
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/strings/substitute.h"
+#include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "llvm/Support/Casting.h"
 #include "xla/python/ifrt/array.h"
@@ -393,6 +394,13 @@ Future<> Array::GetReadyFuture() const {
   tsl::profiler::TraceMe traceme_ifrt_entrypoint(
       "IfrtProxyEntrypointArrayGetReadyFuture");
 
+  {
+    absl::MutexLock lock(&mu_);
+    if (deleted_ == DeletionState::kDeleted) {
+      return Future<>(absl::InvalidArgumentError("Already deleted array."));
+    }
+  }
+
   auto req = std::make_unique<CheckValueReadyRequest>();
   req->add_value_handles(handle_.handle);
 
@@ -405,6 +413,10 @@ Future<> Array::GetReadyFuture() const {
 }
 
 Future<> Array::Delete() {
+  {
+    absl::MutexLock lock(&mu_);
+    deleted_ = DeletionState::kDeleted;
+  }
   if (rpc_helper_->version().protocol_version() >= 5) {
     rpc_helper_->Batch(RpcHelper::kDeleteArray, handle_);
     return Future<>(absl::OkStatus());
@@ -429,6 +441,15 @@ Future<> Array::Delete() {
 bool Array::IsDeleted() const {
   tsl::profiler::TraceMe traceme_ifrt_entrypoint(
       "IfrtProxyEntrypointIsDeleted");
+  {
+    absl::MutexLock lock(&mu_);
+    if (deleted_ == DeletionState::kDeleted) {
+      return true;
+    }
+    if (deleted_ == DeletionState::kAlive) {
+      return false;
+    }
+  }
   if (GetGlobalClientFlags()->array_is_deleted_hack) {
     return false;
   }
@@ -438,6 +459,12 @@ bool Array::IsDeleted() const {
   absl::StatusOr<std::shared_ptr<IsArrayDeletedResponse>> response =
       rpc_helper_->IsArrayDeleted(std::move(req)).Await();
   if (response.ok()) {
+    absl::MutexLock lock(&mu_);
+    if ((*response)->deleted()) {
+      deleted_ = DeletionState::kDeleted;
+    } else {
+      deleted_ = DeletionState::kAlive;
+    }
     return (*response)->deleted();
   } else {
     LOG(ERROR) << "Internal error from proxy server during Array::IsDeleted(): "
@@ -486,7 +513,9 @@ Array::AssembleArrayFromSingleDeviceArrays(
           "not a xla::ifrt::proxy::Array.",
           rcref.get()));
     }
-    req->add_single_device_array_handles(array->handle_.handle);
+    TF_ASSIGN_OR_RETURN(ArrayHandle handle,
+                        array->GetHandle(array_copy_semantics));
+    req->add_single_device_array_handles(handle.handle);
   }
 
   ArrayHandle result_handle;
@@ -569,8 +598,8 @@ Array::RemapArrays(xla::ifrt::Client* client,
                           *arrays[i]->sharding().devices(),
                           arrays[i]->sharding().memory_kind()));
     }
-
-    req->add_array_handles(array->handle_.handle);
+    TF_ASSIGN_OR_RETURN(ArrayHandle handle, array->GetHandle(semantics));
+    req->add_array_handles(handle.handle);
   }
 
   std::vector<ArrayHandle> result_handles;
@@ -617,7 +646,8 @@ Array::DisassembleIntoSingleDeviceArrays(
         "version < 8");
   }
   auto req = std::make_unique<DisassembleIntoSingleDeviceArraysRequest>();
-  req->set_array_handle(handle_.handle);
+  TF_ASSIGN_OR_RETURN(ArrayHandle handle, GetHandle(array_copy_semantics));
+  req->set_array_handle(handle.handle);
   req->set_copy_semantics(ToArrayCopySemanticsProto(array_copy_semantics));
   req->set_single_device_shard_semantics(
       ToSingleDeviceShardSemanticsProto(single_device_shard_semantics));
@@ -665,7 +695,8 @@ absl::StatusOr<tsl::RCReference<xla::ifrt::Array>> Array::FullyReplicatedShard(
   tsl::profiler::TraceMe traceme_ifrt_entrypoint(
       "IfrtProxyEntrypointFullyReplicatedShard");
   auto req = std::make_unique<FullyReplicatedShardRequest>();
-  req->set_array_handle(handle_.handle);
+  TF_ASSIGN_OR_RETURN(ArrayHandle handle, GetHandle(semantics));
+  req->set_array_handle(handle.handle);
   req->set_copy_semantics(ToArrayCopySemanticsProto(semantics));
 
   ArrayHandle result_handle;
@@ -706,7 +737,11 @@ Future<> Array::CopyToStringHostBuffer(
         "String arrays are not supported in ifrt-proxy version < 9"));
   }
   auto req = std::make_unique<CopyToHostBufferRequest>();
-  req->set_array_handle(handle_.handle);
+  absl::StatusOr<ArrayHandle> handle = GetHandle(semantics);
+  if (!handle.ok()) {
+    return Future<>(handle.status());
+  }
+  req->set_array_handle(handle->handle);
   if (byte_strides.has_value()) {
     return Future<>(absl::InvalidArgumentError(
         "Byte strides are not supported for string arrays."));
@@ -768,7 +803,11 @@ Future<> Array::CopyToHostBuffer(
   }
 
   auto req = std::make_unique<CopyToHostBufferRequest>();
-  req->set_array_handle(handle_.handle);
+  absl::StatusOr<ArrayHandle> handle = GetHandle(semantics);
+  if (!handle.ok()) {
+    return Future<>(handle.status());
+  }
+  req->set_array_handle(handle->handle);
   if (byte_strides.has_value()) {
     *req->mutable_byte_strides() = ToByteStridesProto(*byte_strides);
   }
@@ -829,8 +868,23 @@ Future<> Array::CopyToHostBuffer(
 xla::ifrt::Client* Array::client() const { return client_; }
 
 std::string Array::DebugString() const {
-  return absl::Substitute("proxy::Array, this=$0, handle=$1", this,
-                          handle_.handle);
+  std::string is_deleted;
+  {
+    absl::MutexLock l(&mu_);
+    switch (deleted_) {
+      case DeletionState::kUnknown:
+        is_deleted = "unknown";
+        break;
+      case DeletionState::kDeleted:
+        is_deleted = "true";
+        break;
+      case DeletionState::kAlive:
+        is_deleted = "false";
+        break;
+    }
+  }
+  return absl::Substitute("proxy::Array, this=$0, handle=$1, deleted=$2", this,
+                          handle_.handle, is_deleted);
 }
 
 }  // namespace proxy

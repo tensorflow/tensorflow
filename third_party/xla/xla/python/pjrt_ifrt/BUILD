@@ -124,6 +124,7 @@ cc_library(
     srcs = ["xla_executable_impl_test_lib.cc"],
     deps = [
         ":xla_ifrt",
+        "//testing/base/public:gunit_for_library_testonly",
         "//xla/client:executable_build_options",
         "//xla/pjrt:mlir_to_hlo",
         "//xla/pjrt:pjrt_executable",
@@ -133,6 +134,7 @@ cc_library(
         "//xla/tsl/lib/core:status_test_util",
         "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:test",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",

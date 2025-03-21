@@ -29,6 +29,7 @@
 #include "absl/base/thread_annotations.h"
 #include "absl/cleanup/cleanup.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/functional/bind_front.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
@@ -309,6 +310,8 @@ struct IfrtBackend::LoadedExecutableWithInfo {
   std::optional<std::vector<xla::ifrt::ArraySpec>> output_spec
       ABSL_GUARDED_BY(mu);
   const std::unique_ptr<xla::ifrt::LoadedExecutable> executable;
+
+  absl::flat_hash_set<int> donatable_indices ABSL_GUARDED_BY(mu);
 };
 
 class IfrtBackend::InOrderRequestsProcessor {
@@ -1577,6 +1580,17 @@ IfrtBackend::HandleLoadedExecutableExecuteRequest(
             << "LoadedExecutable::Execute output " << i
             << "mismatched shape across invocations";
       }
+
+      // Check that only donatable arguments were deleted. The following assumes
+      // that there was no other concurrent operation issued that would delete
+      // the array. As of March 2025, the proxy-server issues operations in
+      // sequence, so this assumption is satisfied.
+      for (int i = 0; i < args.size(); ++i) {
+        if (execute_options.non_donatable_input_indices.contains(i) ||
+            !executable_info->donatable_indices.contains(i)) {
+          CHECK(!args[i]->IsDeleted());
+        }
+      }
     } else {
       // First `Execute()` call.
       executable_info->output_spec.emplace();
@@ -1586,6 +1600,16 @@ IfrtBackend::HandleLoadedExecutableExecuteRequest(
             ArraySpec{/*dtype=*/output->dtype(), /*shape=*/output->shape(),
                       /*sharding=*/output->shared_ptr_sharding()});
       }
+      executable_info->donatable_indices = [&] {
+        absl::flat_hash_set<int> result;
+        absl::StatusOr<absl::Span<const int>> donatable_input_indices =
+            executable_info->executable->GetDonatableInputIndices();
+        if (donatable_input_indices.ok()) {
+          result.insert(donatable_input_indices->begin(),
+                        donatable_input_indices->end());
+        }
+        return result;
+      }();
     }
   }
 

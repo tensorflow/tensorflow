@@ -277,7 +277,9 @@ Client::CopyArrays(absl::Span<tsl::RCReference<xla::ifrt::Array>> arrays,
   for (const auto& array : arrays) {
     if (auto* proxy_array =
             llvm::dyn_cast<xla::ifrt::proxy::Array>(array.get())) {
-      req->add_array_handles(proxy_array->handle().handle);
+      TF_ASSIGN_OR_RETURN(ArrayHandle handle,
+                          proxy_array->GetHandle(semantics));
+      req->add_array_handles(handle.handle);
     } else {
       return absl::InvalidArgumentError(
           "CopyArrays only supports arrays created via IFRT Proxy client");
@@ -351,7 +353,13 @@ xla::ifrt::Future<> Client::GetReadyFuture(
     // type, but this may be extended later to other types such as Tuples.
     if (auto proxy_array =
             llvm::dyn_cast<xla::ifrt::proxy::Array>(value.get())) {
-      req->add_value_handles(proxy_array->handle().handle);
+      absl::StatusOr<ArrayHandle> handle =
+          proxy_array->GetHandle(ArrayCopySemantics::kAlwaysCopy);
+      if (!handle.ok()) {
+        futures.push_back(Future<>(handle.status()));
+      } else {
+        req->add_value_handles(handle->handle);
+      }
     } else {
       futures.push_back(value->GetReadyFuture());
     }

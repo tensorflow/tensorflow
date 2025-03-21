@@ -176,6 +176,28 @@ TEST_F(LoadedExecutableTest, Metadata) {
 #if defined(PLATFORM_GOOGLE)
 TEST_F(LoadedExecutableTest, Execute) {
   MockClient client;
+
+  IfrtResponse response;
+  ASSERT_TRUE(TextFormat::ParseFromString(
+      R"pb(
+        loaded_executable_metadata_response {
+          parameter_shardings {
+            shardings { type: REPLICATED }
+            shardings { type: REPLICATED }
+          }
+          output_shardings {
+            shardings { type: REPLICATED }
+            shardings { type: REPLICATED }
+          }
+        }
+      )pb",
+      &response));
+  EXPECT_CALL(*session_, Enqueue(Pointee(Partially(EquivToProto(
+                             R"pb(loaded_executable_metadata_request {
+                                    loaded_executable_handle: 1234
+                                  })pb")))))
+      .WillOnce(MockClientSessionReturnResponse(response));
+
   ON_CALL(client, MakeDeviceList(_))
       .WillByDefault([](absl::Span<xla::ifrt::Device* const> devices) {
         return xla::ifrt::BasicDeviceList::Create(devices);
@@ -270,12 +292,18 @@ TEST_F(LoadedExecutableTest, Execute) {
   const auto output0 = result.outputs[0];
   EXPECT_EQ(output0->dtype(), DType(DType::kF32));
   EXPECT_EQ(output0->shape(), Shape({4, 4}));
-  EXPECT_EQ(llvm::cast<Array>(output0.get())->handle().handle, 3000);
+  EXPECT_EQ(llvm::cast<Array>(output0.get())
+                ->GetHandleUnknownIfBeingDonated()
+                ->handle,
+            3000);
 
   const auto output1 = result.outputs[1];
   EXPECT_EQ(output1->dtype(), DType(DType::kF16));
   EXPECT_EQ(output1->shape(), Shape({8}));
-  EXPECT_EQ(llvm::cast<Array>(output1.get())->handle().handle, 3001);
+  EXPECT_EQ(llvm::cast<Array>(output1.get())
+                ->GetHandleUnknownIfBeingDonated()
+                ->handle,
+            3001);
 
   // Execute again. This time, the client already knows the output spec and so
   // will supply client-generated handles.
@@ -307,9 +335,13 @@ TEST_F(LoadedExecutableTest, Execute) {
 
   ASSERT_THAT(result.outputs, SizeIs(2));
   ASSERT_THAT(execute_req.result_array_handle(), SizeIs(2));
-  EXPECT_EQ(llvm::cast<Array>(result.outputs[0].get())->handle().handle,
+  EXPECT_EQ(llvm::cast<Array>(result.outputs[0].get())
+                ->GetHandleUnknownIfBeingDonated()
+                ->handle,
             execute_req.result_array_handle()[0]);
-  EXPECT_EQ(llvm::cast<Array>(result.outputs[1].get())->handle().handle,
+  EXPECT_EQ(llvm::cast<Array>(result.outputs[1].get())
+                ->GetHandleUnknownIfBeingDonated()
+                ->handle,
             execute_req.result_array_handle()[1]);
 }
 #endif

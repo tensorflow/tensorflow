@@ -25,6 +25,7 @@
 
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/container/node_hash_set.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -125,7 +126,9 @@ class LoadedExecutable final
     absl::StatusOr<std::vector<std::vector<absl::string_view>>>
         output_memory_kinds;
 
-    absl::StatusOr<std::vector<int>> donated_input_indices;
+    absl::StatusOr<std::vector<int>> donatable_input_indices;
+
+    std::optional<absl::flat_hash_set<int>> donatable_input_indices_set;
   };
 
   void PollLoadedHostCallback(

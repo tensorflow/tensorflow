@@ -26,6 +26,7 @@
 #include "absl/base/thread_annotations.h"
 #include "absl/cleanup/cleanup.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
@@ -359,7 +360,7 @@ LoadedExecutable::LoadedExecutable(
         }
 
         if (response.value()->has_donated_input_indices()) {
-          info->donated_input_indices =
+          info->donatable_input_indices =
               std::vector<int>(response.value()
                                    ->donated_input_indices()
                                    .donated_input_indices()
@@ -368,11 +369,14 @@ LoadedExecutable::LoadedExecutable(
                                    ->donated_input_indices()
                                    .donated_input_indices()
                                    .end());
+          info->donatable_input_indices_set =
+              absl::flat_hash_set<int>(info->donatable_input_indices->begin(),
+                                       info->donatable_input_indices->end());
         } else if (response.value()->has_donated_input_indices_error()) {
-          info->donated_input_indices = tsl::StatusFromProto(
+          info->donatable_input_indices = tsl::StatusFromProto(
               response.value()->donated_input_indices_error());
         } else {
-          info->donated_input_indices = absl::UnimplementedError(
+          info->donatable_input_indices = absl::UnimplementedError(
               "IFRT Proxy server did not return donated input indices");
         }
 
@@ -444,7 +448,7 @@ LoadedExecutable::GetDonatableInputIndices() const {
   tsl::profiler::TraceMe traceme_ifrt_entrypoint(
       "IfrtProxyEntrypointLoadedExecutableDonatableInputIndices");
   TF_ASSIGN_OR_RETURN(auto info, metadata_future_.Await());
-  return info->donated_input_indices;
+  return info->donatable_input_indices;
 }
 
 std::optional<std::vector<OpSharding>> LoadedExecutable::GetOutputShardings()
@@ -502,13 +506,32 @@ LoadedExecutable::Execute(absl::Span<tsl::RCReference<xla::ifrt::Array>> args,
       "IfrtProxyEntrypointLoadedExecutableExecute");
   auto req = std::make_unique<LoadedExecutableExecuteRequest>();
   req->set_loaded_executable_handle(handle_);
-  for (const auto& arg : args) {
+
+  TF_ASSIGN_OR_RETURN(auto info, metadata_future_.Await());
+  for (int i = 0; i < args.size(); ++i) {
+    tsl::RCReference<xla::ifrt::Array>& arg = args[i];
     auto* array = llvm::dyn_cast_or_null<Array>(arg.get());
     if (array == nullptr) {
       return absl::InvalidArgumentError(
           "Invalid IFRT array type provided to `LoadedExecutable::Execute`");
     }
-    req->add_args_handles(array->handle().handle);
+    if (options.non_donatable_input_indices.contains(i)) {
+      TF_ASSIGN_OR_RETURN(ArrayHandle handle,
+                          array->GetHandle(ArrayCopySemantics::kAlwaysCopy));
+      req->add_args_handles(handle.handle);
+    } else if (!info->donatable_input_indices_set.has_value()) {
+      TF_ASSIGN_OR_RETURN(ArrayHandle handle,
+                          array->GetHandleUnknownIfBeingDonated());
+      req->add_args_handles(handle.handle);
+    } else if (info->donatable_input_indices_set->contains(i)) {
+      TF_ASSIGN_OR_RETURN(ArrayHandle handle,
+                          array->GetHandle(ArrayCopySemantics::kDonateInput));
+      req->add_args_handles(handle.handle);
+    } else {
+      TF_ASSIGN_OR_RETURN(ArrayHandle handle,
+                          array->GetHandle(ArrayCopySemantics::kAlwaysCopy));
+      req->add_args_handles(handle.handle);
+    }
   }
   TF_ASSIGN_OR_RETURN(*req->mutable_execute_options(), options.ToProto());
   if (devices.has_value()) {
