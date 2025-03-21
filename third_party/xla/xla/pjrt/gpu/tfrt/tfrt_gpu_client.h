@@ -63,6 +63,7 @@ limitations under the License.
 #include "xla/service/computation_placer.h"
 #include "xla/service/gpu/gpu_executable_run_options.h"
 #include "xla/service/hlo.pb.h"
+#include "xla/service/hlo_cost_analysis.h"
 #include "xla/shape.h"
 #include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/platform.h"
@@ -275,6 +276,9 @@ class TfrtGpuClient final : public PjRtClient {
   absl::StatusOr<PjRtDevice*> LookupDevice(
       PjRtGlobalDeviceId global_device_id) const override;
 
+  absl::StatusOr<PjRtDevice*> LookupAddressableDevice(
+      PjRtLocalDeviceId local_device_id) const override;
+
   absl::Span<PjRtMemorySpace* const> memory_spaces() const override;
 
   xla::LocalClient* xla_client() const { return xla_client_; }
@@ -300,6 +304,12 @@ class TfrtGpuClient final : public PjRtClient {
 
   absl::StatusOr<DeviceAssignment> GetDefaultDeviceAssignment(
       int num_replicas, int num_partitions) const override;
+
+  absl::StatusOr<Layout> GetDefaultLayout(
+      PrimitiveType element_type, absl::Span<const int64_t> dims) override;
+
+  absl::StatusOr<std::unique_ptr<HloCostAnalysis>> GetHloCostAnalysis()
+      const override;
 
   tsl::thread::ThreadPool* blocking_thread_pool() const {
     return blocking_thread_pool_.get();

@@ -44,6 +44,7 @@ limitations under the License.
 #include "xla/pjrt/gpu/tfrt/tracked_tfrt_gpu_device_buffer.h"
 #include "xla/pjrt/host_memory_spaces.h"
 #include "xla/pjrt/pjrt_client.h"
+#include "xla/pjrt/pjrt_common.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/plugin/xla_gpu/xla_gpu_client_options.h"
 #include "xla/shape.h"
@@ -484,6 +485,22 @@ TEST(TfrtGpuClientTest, CreateMixOfErrorBuffers) {
     absl::MutexLock l(&mu);
     QCHECK(mu.AwaitWithTimeout(absl::Condition(&done), absl::Seconds(60)));
   }
+}
+
+TEST(TfrtGpuClientTest, LookupDevice) {
+  TF_ASSERT_OK_AND_ASSIGN(auto client, GetTfrtGpuClient(GpuClientOptions()));
+  ASSERT_GE(client->devices().size(), 2);
+  TfrtGpuDevice* device =
+      tensorflow::down_cast<TfrtGpuDevice*>(client->devices()[0]);
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto* looked_up_device,
+      client->LookupDevice(PjRtGlobalDeviceId(device->id())));
+  EXPECT_EQ(looked_up_device, device);
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto* addressable_device,
+      client->LookupAddressableDevice(device->local_device_id()));
+  EXPECT_EQ(addressable_device, device);
 }
 
 }  // namespace

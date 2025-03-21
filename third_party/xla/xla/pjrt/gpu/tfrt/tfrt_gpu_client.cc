@@ -74,6 +74,7 @@ limitations under the License.
 #include "xla/service/computation_placer.h"
 #include "xla/service/executable.h"
 #include "xla/service/generic_transfer_manager.h"
+#include "xla/service/hlo_cost_analysis.h"
 #include "xla/service/maybe_owning_device_memory.h"
 #include "xla/service/shaped_buffer.h"
 #include "xla/service/transfer_manager.h"
@@ -761,6 +762,33 @@ absl::StatusOr<PjRtDevice*> TfrtGpuClient::LookupDevice(
   }
   return InvalidArgument("No matching device found for device_id %d",
                          global_device_id.value());
+}
+
+absl::StatusOr<PjRtDevice*> TfrtGpuClient::LookupAddressableDevice(
+    PjRtLocalDeviceId local_device_id) const {
+  for (auto* device : addressable_devices_) {
+    if (local_device_id == device->local_device_id()) {
+      return device;
+    }
+  }
+  return InvalidArgument("No matching device found for local_hardware_id %d",
+                         local_device_id.value());
+}
+
+absl::StatusOr<Layout> TfrtGpuClient::GetDefaultLayout(
+    PrimitiveType element_type, absl::Span<const int64_t> dims) {
+  Shape shape = ShapeUtil::MakeShape(element_type, dims);
+  TF_ASSIGN_OR_RETURN(
+      shape,
+      xla_client_->backend().transfer_manager()->ChooseCompactLayoutForShape(
+          shape));
+  return shape.layout();
+}
+
+absl::StatusOr<std::unique_ptr<HloCostAnalysis>>
+TfrtGpuClient::GetHloCostAnalysis() const {
+  return std::make_unique<HloCostAnalysis>(
+      xla_client_->backend().compiler()->ShapeSizeBytesFunction());
 }
 
 absl::Span<PjRtMemorySpace* const> TfrtGpuClient::memory_spaces() const {
