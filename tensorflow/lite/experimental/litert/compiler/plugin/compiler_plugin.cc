@@ -447,11 +447,17 @@ Expected<PartitionResult> PartitionModel(
     if (!selected_ops) {
       return selected_ops.Error();
     }
+    auto num_selected_ops = selected_ops->size();
+    auto num_ops = subgraph->Ops().size();
 
-    LITERT_LOG(LITERT_INFO, "PartitionSubgraph: %d, selected num ops: %lu", i,
-               selected_ops->size());
+    auto num_partitions = result.first.size();
     LITERT_RETURN_IF_ERROR(PartitionSubgraph(
         std::move(*selected_ops), *subgraph, result, model.Buffers()));
+    num_partitions = result.first.size() - num_partitions;
+    LITERT_LOG(LITERT_INFO,
+               "PartitionSubgraph: %d, selected num ops: %lu, from totoal ops: "
+               "%lu, num partitions: %lu",
+               i, num_selected_ops, num_ops, num_partitions);
   }
 
   // Add npu_call partitions to result. Update the npu_call ops to be dispatch
