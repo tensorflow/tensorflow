@@ -18,7 +18,6 @@ limitations under the License.
 
 #include <cstddef>
 #include <functional>
-#include <utility>
 
 #include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
@@ -27,36 +26,35 @@ limitations under the License.
 #include "xla/pjrt/gpu/tfrt/gpu_event.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/service/shaped_buffer.h"
-#include "xla/service/stream_pool.h"
 #include "xla/shape.h"
-#include "xla/shape_tree.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/framework/allocator.h"
-#include "xla/util.h"
 
 namespace xla {
 // TODO(b/400541410): Refactor and Merge this with MaybeOwningDeviceMemory.
+
+// MaybeOwningGpuMemory represents either an owned or unowned GPU memory. It
+// owns GPU memory if an allocator is provided. When the object goes output of
+// scope, it will free the underlying memory if it owns it.
 class MaybeOwningGpuMemory {
  public:
   MaybeOwningGpuMemory() = default;
 
-  // Non-owning.
+  // Non-owning underlying GPU memory `buffer`.
   explicit MaybeOwningGpuMemory(stream_executor::DeviceMemoryBase buffer)
       : allocator_(nullptr), buffer_(buffer) {}
 
-  // Owning.
+  // Owning underlying GPU memory `buffer`. When the object goes out of scope,
+  // it will free the underlying memory.
   explicit MaybeOwningGpuMemory(tsl::Allocator* allocator,
                                 stream_executor::DeviceMemoryBase buffer)
       : allocator_(allocator), buffer_(buffer) {
     DCHECK(allocator != nullptr);
   }
 
-  ~MaybeOwningGpuMemory() {
-    if (owns_data()) {
-      allocator_->DeallocateRaw(buffer_.opaque());
-    }
-  }
+  MaybeOwningGpuMemory(const MaybeOwningGpuMemory&) = delete;
+  MaybeOwningGpuMemory& operator=(const MaybeOwningGpuMemory&) = delete;
 
   // Move-only.
   MaybeOwningGpuMemory(MaybeOwningGpuMemory&& other) {
@@ -74,14 +72,17 @@ class MaybeOwningGpuMemory {
     return *this;
   }
 
+  ~MaybeOwningGpuMemory() {
+    if (owns_data()) {
+      allocator_->DeallocateRaw(buffer_.opaque());
+    }
+  }
+
   ShapedBuffer AsShapedBuffer(const Shape& on_device_shape,
                               const PjRtDevice* device) const;
 
   // Change ownership from owning to non-owning. Used for buffer donation.
   void SetUnOwned();
-
-  MaybeOwningGpuMemory(const MaybeOwningGpuMemory&) = delete;
-  MaybeOwningGpuMemory& operator=(const MaybeOwningGpuMemory&) = delete;
 
   // Owning.
   static absl::StatusOr<MaybeOwningGpuMemory> AllocateShared(
@@ -133,8 +134,13 @@ class TrackedTfrtGpuDeviceBuffer {
     return deallocation_event_;
   }
 
+  // Adds usage events to the buffer. This usage events could be any device
+  // buffer related events, e.g. D2H/D2D
   void AddUsageEvents(absl::Span<tsl::AsyncValueRef<GpuEvent>> events);
 
+  // Returns an AsyncValueRef<GpuEvent> that will be ready after all the async
+  // values in usage events are ready. If errors occurs, one of the errors will
+  // be propagated through the returned async value.
   tsl::AsyncValueRef<GpuEvent> AfterAllUsageEvents();
 
   // Return the usage events for the buffers. After

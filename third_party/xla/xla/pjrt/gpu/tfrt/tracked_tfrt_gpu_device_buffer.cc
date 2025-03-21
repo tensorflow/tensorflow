@@ -71,8 +71,10 @@ TrackedTfrtGpuDeviceBuffer::TrackedTfrtGpuDeviceBuffer(
     std::function<void()> on_delete_callback)
     : TrackedTfrtGpuDeviceBuffer(std::move(buffer), AfterAll(definition_events),
                                  std::move(on_delete_callback)) {
-  VLOG(4) << "TrackedTfrtGpuDeviceBuffer::TrackedTfrtGpuDeviceBuffer: " << this
-          << "\n " << tsl::CurrentStackTrace();
+  if (VLOG_IS_ON(4)) {
+    LOG(INFO) << "TrackedTfrtGpuDeviceBuffer::TrackedTfrtGpuDeviceBuffer: "
+              << this << "\n " << tsl::CurrentStackTrace();
+  }
 }
 
 TrackedTfrtGpuDeviceBuffer::TrackedTfrtGpuDeviceBuffer(
@@ -83,15 +85,20 @@ TrackedTfrtGpuDeviceBuffer::TrackedTfrtGpuDeviceBuffer(
       definition_event_(std::move(definition_event)),
       deallocation_event_(tsl::MakeConstructedAsyncValueRef<GpuEvent>()),
       on_delete_callback_(std::move(on_delete_callback)) {
-  VLOG(4) << "TrackedTfrtGpuDeviceBuffer::TrackedTfrtGpuDeviceBuffer: " << this
-          << "\n " << tsl::CurrentStackTrace();
+  if (VLOG_IS_ON(4)) {
+    LOG(INFO) << "TrackedTfrtGpuDeviceBuffer::TrackedTfrtGpuDeviceBuffer: "
+              << this << "\n " << tsl::CurrentStackTrace();
+  }
   DCHECK(definition_event_);
 }
 
 TrackedTfrtGpuDeviceBuffer::~TrackedTfrtGpuDeviceBuffer() {
-  VLOG(4) << "TrackedTfrtGpuDeviceBuffer::~TrackedTfrtGpuDeviceBuffer: " << this
-          << " opaque: " << buffer_->buffer().opaque() << "\n "
-          << tsl::CurrentStackTrace();
+  if (VLOG_IS_ON(4)) {
+    LOG(INFO) << "TrackedTfrtGpuDeviceBuffer::~TrackedTfrtGpuDeviceBuffer: "
+              << this << " opaque: " << buffer_->buffer().opaque() << "\n "
+              << tsl::CurrentStackTrace();
+  }
+
   ReleaseDeviceMemory();
   if (on_delete_callback_) {
     on_delete_callback_();
@@ -109,6 +116,11 @@ tsl::AsyncValueRef<GpuEvent> TrackedTfrtGpuDeviceBuffer::AfterAllUsageEvents() {
   return usage_events_.AfterAll();
 }
 
+// Schedule tasks to wait for all usage events to be ready. Clear all the usage
+// events that are scheduled and return the ready event. Since all usage events
+// are AsyncValueRef, even TrackedTfrtGpuDeviceBuffer no longer holds the usage
+// events, the usage events must be still alive and held by someone who is
+// responsible to set event ready.
 tsl::AsyncValueRef<GpuEvent>
 TrackedTfrtGpuDeviceBuffer::LockUseAndTransferUsageEvents() {
   auto after_all = usage_events_.AfterAll();

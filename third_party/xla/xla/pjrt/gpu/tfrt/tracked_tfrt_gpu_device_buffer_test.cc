@@ -22,6 +22,7 @@ limitations under the License.
 #include <cstring>
 #include <memory>
 #include <string>
+#include <utility>
 
 #include <gtest/gtest.h>
 #include "absl/log/log.h"
@@ -42,6 +43,7 @@ limitations under the License.
 #include "xla/stream_executor/device_memory.h"
 #include "xla/tsl/concurrency/async_value.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
+#include "xla/tsl/framework/allocator.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/threadpool.h"
@@ -101,9 +103,20 @@ class TestDevice : public PjRtDevice {
   }
 };
 
+TEST(MaybeOwningGpuMemoryTest, MoveConstructorSetOriginalToNull) {
+  TestAllocator allocator;
+  size_t size = sizeof(int);
+  void* data = allocator.AllocateRaw(tsl::Allocator::kAllocatorAlignment, size);
+  se::DeviceMemoryBase device_memory(data, size);
+  MaybeOwningGpuMemory memory(&allocator, device_memory);
+  MaybeOwningGpuMemory another_memory = std::move(memory);
+  EXPECT_TRUE(another_memory.owns_data());
+  EXPECT_EQ(another_memory.buffer(), device_memory);
+}
+
 TEST(MaybeOwningGpuMemoryTest, OwningToNonOwning) {
-  auto allocator = std::make_unique<TestAllocator>();
-  auto memory = MaybeOwningGpuMemory(allocator.get(), se::DeviceMemoryBase());
+  TestAllocator allocator;
+  MaybeOwningGpuMemory memory(&allocator, se::DeviceMemoryBase());
   EXPECT_TRUE(memory.owns_data());
   memory.SetUnOwned();
   EXPECT_FALSE(memory.owns_data());
@@ -114,24 +127,24 @@ TEST(MaybeOwningGpuMemoryTest, AsShapeBuffer) {
   LocalClient* client = ClientLibrary::LocalClientOrDie();
   TestDevice device;
   Shape shape = ShapeUtil::MakeShape(F32, {1, 2, 3});
-  auto allocator = std::make_unique<TestAllocator>();
+  TestAllocator allocator;
   int64_t byte_size =
       client->backend().transfer_manager()->GetByteSizeRequirement(shape);
-  TF_ASSERT_OK_AND_ASSIGN(auto memory, MaybeOwningGpuMemory::AllocateShared(
-                                           allocator.get(), byte_size));
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto memory, MaybeOwningGpuMemory::AllocateShared(&allocator, byte_size));
   ShapedBuffer result_shaped_buffer = memory.AsShapedBuffer(
       client->backend().transfer_manager()->HostShapeToDeviceShape(shape),
       &device);
   EXPECT_EQ(result_shaped_buffer.root_buffer().size(), byte_size);
 }
 
-TEST(TrackedTfrtGpuDeviceBufferTest, Basic) {
+TEST(TrackedTfrtGpuDeviceBufferTest, TrackedDeviceBufferUsageEndToEnd) {
   std::string expected = "tracked_tfrt_gpu_device_buffer_test";
   auto usage_event = MakeConstructedAsyncValueRef<GpuEvent>();
 
-  auto allocator = std::make_unique<TestAllocator>();
+  TestAllocator allocator;
   auto test_buffer = MakeConstructedAsyncValueRef<MaybeOwningGpuMemory>(
-      allocator.get(), se::DeviceMemoryBase(expected.data(), expected.size()));
+      &allocator, se::DeviceMemoryBase(expected.data(), expected.size()));
 
   auto definition_event = MakeConstructedAsyncValueRef<GpuEvent>();
 
@@ -156,9 +169,10 @@ TEST(TrackedTfrtGpuDeviceBufferTest, Basic) {
     EXPECT_EQ(tracked_buffer.buffer()->size(), expected.size());
     auto result = tracked_buffer.buffer();
     ASSERT_TRUE(result.IsAvailable());
-    EXPECT_EQ(std::string(static_cast<const char*>(result->buffer().opaque()),
-                          result->size()),
-              expected);
+    EXPECT_FALSE(result->owns_data());
+    EXPECT_EQ(std::memcmp(expected.data(), result->buffer().opaque(),
+                          expected.size()),
+              0);
   }
   BlockUntilReady(tracked_buffer.AfterAllUsageEvents());
   BlockUntilReady(tracked_buffer.LockUseAndTransferUsageEvents());
