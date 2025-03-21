@@ -8,15 +8,3 @@ package(
     ]),
     licenses = ["notice"],
 )
-
-alias(
-    name = "xla-translate",
-    actual = "//xla/hlo/translate:xla-translate",
-    deprecation = "This library is deprecated and will be removed in February 2025. Use //third_party/tensorflow/compiler/xla/hlo/translate:xla-translate instead.",
-)
-
-alias(
-    name = "xla-translate-opt",
-    actual = "//xla/hlo/translate:xla-translate-opt",
-    deprecation = "This library is deprecated and will be removed in February 2025. Use //third_party/tensorflow/compiler/xla/hlo/translate:xla-translate-opt instead.",
-)

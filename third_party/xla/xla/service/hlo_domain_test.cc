@@ -21,12 +21,12 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_domain_metadata.h"
 #include "xla/hlo/ir/hlo_sharding_metadata.h"
 #include "xla/hlo/parser/hlo_parser.h"
+#include "xla/hlo/testlib/test.h"
 #include "xla/service/call_inliner.h"
 #include "xla/service/hlo_domain_isolator.h"
 #include "xla/service/hlo_domain_remover.h"
 #include "xla/service/hlo_domain_verifier.h"
 #include "xla/service/sharding_propagation.h"
-#include "xla/test.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 
