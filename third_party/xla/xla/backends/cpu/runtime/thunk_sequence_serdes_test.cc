@@ -22,9 +22,12 @@ limitations under the License.
 
 #include <gtest/gtest.h>
 #include "absl/algorithm/container.h"
+#include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/backends/cpu/runtime/all_gather_thunk.h"
 #include "xla/backends/cpu/runtime/all_reduce_thunk.h"
@@ -113,6 +116,32 @@ class ThunkSequenceSerdesTest : public ::testing::Test {
       // allocations owned by the thunks.
       : buffer_allocations_(10000) {};
 
+  absl::StatusOr<ThunkSequence> CreateThunkSequenceFromCollectiveThunkTypes(
+      const absl::flat_hash_map<CollectiveThunk::CollectiveKind,
+                                std::shared_ptr<Resource>>&
+          collective_thunk_resources) {
+    ThunkSequence thunk_sequence;
+
+    TF_ASSIGN_OR_RETURN(thunk_sequence.emplace_back(),
+                        CreateAllGatherThunk(collective_thunk_resources.at(
+                            CollectiveThunk::CollectiveKind::kAllGather)));
+    TF_ASSIGN_OR_RETURN(thunk_sequence.emplace_back(),
+                        CreateAllReduceThunk(collective_thunk_resources.at(
+                            CollectiveThunk::CollectiveKind::kAllReduce)));
+    TF_ASSIGN_OR_RETURN(thunk_sequence.emplace_back(),
+                        CreateAllToAllThunk(collective_thunk_resources.at(
+                            CollectiveThunk::CollectiveKind::kAllToAll)));
+    TF_ASSIGN_OR_RETURN(thunk_sequence.emplace_back(),
+                        CreateReduceScatterThunk(collective_thunk_resources.at(
+                            CollectiveThunk::CollectiveKind::kReduceScatter)));
+    TF_ASSIGN_OR_RETURN(
+        thunk_sequence.emplace_back(),
+        CreateCollectivePermuteThunk(collective_thunk_resources.at(
+            CollectiveThunk::CollectiveKind::kCollectivePermute)));
+
+    return thunk_sequence;
+  }
+
   absl::StatusOr<ThunkSequence> CreateThunkSequenceFromAllThunkTypes() {
     // NOTE create buffer allocations using thunk_testlib
     ThunkSequence thunk_sequence;
@@ -189,7 +218,8 @@ class ThunkSequenceSerdesTest : public ::testing::Test {
     return absl::OkStatus();
   }
   // Thunk creation helper functions.
-  absl::StatusOr<std::unique_ptr<Thunk>> CreateAllGatherThunk() {
+  absl::StatusOr<std::unique_ptr<Thunk>> CreateAllGatherThunk(
+      std::shared_ptr<Resource> communicator_resource = nullptr) {
     TF_RETURN_IF_ERROR(AddBufferAllocations(2));
 
     return AllGatherThunk::Create(
@@ -213,11 +243,12 @@ class ThunkSequenceSerdesTest : public ::testing::Test {
         },
         /*op_resources=*/
         {
-            /*communicator_resource=*/nullptr,
+            /*communicator_resource=*/communicator_resource,
         });
   }
 
-  absl::StatusOr<std::unique_ptr<Thunk>> CreateAllReduceThunk() {
+  absl::StatusOr<std::unique_ptr<Thunk>> CreateAllReduceThunk(
+      std::shared_ptr<Resource> communicator_resource = nullptr) {
     TF_RETURN_IF_ERROR(AddBufferAllocations(2));
 
     return AllReduceThunk::Create(
@@ -241,12 +272,13 @@ class ThunkSequenceSerdesTest : public ::testing::Test {
         },
         /*op_resources=*/
         {
-            /*communicator_resource=*/nullptr,
+            /*communicator_resource=*/communicator_resource,
         },
         /*single_replica=*/false);
   }
 
-  absl::StatusOr<std::unique_ptr<Thunk>> CreateAllToAllThunk() {
+  absl::StatusOr<std::unique_ptr<Thunk>> CreateAllToAllThunk(
+      std::shared_ptr<Resource> communicator_resource = nullptr) {
     TF_RETURN_IF_ERROR(AddBufferAllocations(2));
 
     return AllToAllThunk::Create(
@@ -270,11 +302,12 @@ class ThunkSequenceSerdesTest : public ::testing::Test {
         },
         /*op_resources=*/
         {
-            /*communicator_resource=*/nullptr,
+            /*communicator_resource=*/communicator_resource,
         });
   }
 
-  absl::StatusOr<std::unique_ptr<Thunk>> CreateReduceScatterThunk() {
+  absl::StatusOr<std::unique_ptr<Thunk>> CreateReduceScatterThunk(
+      std::shared_ptr<Resource> communicator_resource = nullptr) {
     TF_RETURN_IF_ERROR(AddBufferAllocations(2));
 
     return ReduceScatterThunk::Create(
@@ -298,7 +331,7 @@ class ThunkSequenceSerdesTest : public ::testing::Test {
         },
         /*op_resources=*/
         {
-            /*communicator_resource=*/nullptr,
+            /*communicator_resource=*/communicator_resource,
         });
   }
 
@@ -312,7 +345,8 @@ class ThunkSequenceSerdesTest : public ::testing::Test {
                              std::move(called_sequence));
   }
 
-  absl::StatusOr<std::unique_ptr<Thunk>> CreateCollectivePermuteThunk() {
+  absl::StatusOr<std::unique_ptr<Thunk>> CreateCollectivePermuteThunk(
+      std::shared_ptr<Resource> communicator_resource = nullptr) {
     TF_RETURN_IF_ERROR(AddBufferAllocations(2));
 
     return CollectivePermuteThunk::Create(
@@ -336,7 +370,7 @@ class ThunkSequenceSerdesTest : public ::testing::Test {
         },
         /*op_resources=*/
         {
-            /*communicator_resource=*/nullptr,
+            /*communicator_resource=*/communicator_resource,
         },
         {{0, 0}});
   }
@@ -1392,6 +1426,85 @@ TYPED_TEST(ThunkSequenceSerdesTest, SerializeAndDeserialize) {
   EXPECT_TRUE(this->VerifyThunkSequenceEquality(thunk_sequence, *deserialized));
 }
 
+TYPED_TEST(ThunkSequenceSerdesTest, ResourceSharingRecounstruction) {
+  ThunkSequence collectives_thunk_sequence;
+  absl::flat_hash_set<CollectiveThunk::CollectiveKind> first_group_collectives{
+      CollectiveThunk::CollectiveKind::kAllGather,
+      CollectiveThunk::CollectiveKind::kAllReduce,
+      CollectiveThunk::CollectiveKind::kAllToAll,
+  };
+
+  absl::flat_hash_set<CollectiveThunk::CollectiveKind> second_group_collectives{
+      CollectiveThunk::CollectiveKind::kReduceScatter,
+      CollectiveThunk::CollectiveKind::kCollectivePermute};
+
+  {
+    std::shared_ptr<Resource> first_collective_group_communicator =
+        Resource::Create(Resource::Kind::kCollectiveCommunicator);
+    std::shared_ptr<Resource> second_collective_group_communicator =
+        Resource::Create(Resource::Kind::kCollectiveCommunicator);
+
+    absl::flat_hash_map<CollectiveThunk::CollectiveKind,
+                        std::shared_ptr<Resource>>
+        collective_kind_to_communicator_resource;
+    for (const auto& collective_kind : first_group_collectives) {
+      collective_kind_to_communicator_resource[collective_kind] =
+          first_collective_group_communicator;
+    }
+    for (const auto& collective_kind : second_group_collectives) {
+      collective_kind_to_communicator_resource[collective_kind] =
+          second_collective_group_communicator;
+    }
+
+    // We share one communicator resource between All* thunks and the other with
+    // ReduceScatter and CollectivePermute.
+    TF_ASSERT_OK_AND_ASSIGN(
+        collectives_thunk_sequence,
+        this->CreateThunkSequenceFromCollectiveThunkTypes(
+            std::move(collective_kind_to_communicator_resource)));
+  }
+
+  TF_ASSERT_OK_AND_ASSIGN(std::string serialized,
+                          this->Serialize(collectives_thunk_sequence));
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<ThunkSequence> deserialized,
+                          this->Deserialize(serialized));
+  EXPECT_TRUE(this->VerifyThunkSequenceEquality(collectives_thunk_sequence,
+                                                *deserialized));
+
+  std::shared_ptr<Resource> first_collective_group_communicator = nullptr;
+  std::shared_ptr<Resource> second_collective_group_communicator = nullptr;
+
+  auto set_or_compare_communicator_resource =
+      [](absl::string_view test_name,
+         const std::shared_ptr<Resource>& thunk_resource,
+         std::shared_ptr<Resource>& group_resource) {
+        SCOPED_TRACE(test_name);
+        if (!group_resource) {
+          group_resource = thunk_resource;
+        }
+        EXPECT_EQ(thunk_resource.get(), group_resource.get());
+      };
+
+  for (const auto& thunk : *deserialized) {
+    CollectiveThunk* collective_thunk =
+        tsl::down_cast<CollectiveThunk*>(thunk.get());
+    EXPECT_FALSE(collective_thunk == nullptr);
+
+    if (first_group_collectives.contains(collective_thunk->collective_kind())) {
+      set_or_compare_communicator_resource(
+          "First group communicator resource",
+          collective_thunk->op_resources().communicator_resource,
+          first_collective_group_communicator);
+    } else {
+      EXPECT_TRUE(second_group_collectives.contains(
+          collective_thunk->collective_kind()));
+      set_or_compare_communicator_resource(
+          "Second group communicator resource",
+          collective_thunk->op_resources().communicator_resource,
+          second_collective_group_communicator);
+    }
+  }
+}
 }  // namespace
 
 }  // namespace xla::cpu

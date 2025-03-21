@@ -254,18 +254,17 @@ class MultiBenchmarkConfig {
 // Benchmarks 'fn' in JIT and AOT modes. The JIT benchmark
 // keeps the given 'name'; AOT is suffixed with '_Aot'.
 inline MultiBenchmarkConfig* RegisterJitAndAotBenchmarks(
-    absl::string_view name,
-    void(fn)(benchmark::State&, const HloBenchmarkOptions&)) {
+    absl::string_view name, void(fn)(benchmark::State&, HloBenchmarkOptions)) {
   std::string jit_name(name);
   std::string aot_name = jit_name + "_Aot";
   auto jit_fn = [fn](benchmark::State& state) {
     HloBenchmarkOptions options;
-    fn(state, options);
+    fn(state, std::move(options));
   };
   auto aot_fn = [fn](benchmark::State& state) {
     HloBenchmarkOptions options;
     options.aot_options = GetAotCompilationOptions();
-    fn(state, options);
+    fn(state, std::move(options));
   };
   benchmark::internal::Benchmark* jit =
       benchmark::RegisterBenchmark(jit_name, jit_fn);
@@ -279,6 +278,9 @@ inline MultiBenchmarkConfig* RegisterJitAndAotBenchmarks(
 // `void BenchmarkFunc(benchmark::State&, const HloBenchmarkOptions&)`.
 #define XLA_CPU_BENCHMARK(n) \
   static MultiBenchmarkConfig* n##_ptr = RegisterJitAndAotBenchmarks(#n, n)
+
+#define XLA_CPU_NAMED_BENCHMARK(name, n) \
+  static MultiBenchmarkConfig* name##_ptr = RegisterJitAndAotBenchmarks(#n, n)
 
 }  // namespace xla::cpu
 

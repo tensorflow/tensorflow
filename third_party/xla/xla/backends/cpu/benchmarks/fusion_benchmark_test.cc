@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/backends/cpu/benchmarks/hlo_benchmark_runner.h"
+#include "xla/backends/cpu/benchmarks/multi_benchmark_config.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/shape_util.h"
@@ -32,7 +33,7 @@ limitations under the License.
 
 namespace xla::cpu {
 
-static void BM_FusionF32(benchmark::State& state) {
+static void BM_FusionF32(benchmark::State& state, HloBenchmarkOptions options) {
   int64_t d0 = state.range(0);
 
   absl::string_view hlo = R"(
@@ -62,10 +63,12 @@ static void BM_FusionF32(benchmark::State& state) {
   auto p2 = *LiteralUtil::CreateRandomLiteral<F32>(scalar, &engine, 1.0f, 0.1f);
 
   std::vector<const Literal*> args = {&p0, &p1, &p2};
-  CHECK_OK(RunHloBenchmark(state, hlo, args, {{"$d0", absl::StrCat(d0)}}));
+  CHECK_OK(
+      RunHloBenchmark(state, hlo, args, {{"$d0", absl::StrCat(d0)}}, options));
 }
 
-static void BM_FusionF32_2(benchmark::State& state) {
+static void BM_FusionF32_2(benchmark::State& state,
+                           HloBenchmarkOptions options) {
   int64_t d0 = state.range(0);
 
   absl::string_view hlo = R"(
@@ -138,10 +141,12 @@ static void BM_FusionF32_2(benchmark::State& state) {
   auto p6 = *LiteralUtil::CreateRandomLiteral<F32>(shape3, &engine, 1.0f, 0.1f);
 
   std::vector<const Literal*> args = {&p0, &p1, &p2, &p3, &p4, &p5, &p6};
-  CHECK_OK(RunHloBenchmark(state, hlo, args, {{"$d0", absl::StrCat(d0)}}));
+  CHECK_OK(
+      RunHloBenchmark(state, hlo, args, {{"$d0", absl::StrCat(d0)}}, options));
 }
 
-static void BM_BcastFusionF32(benchmark::State& state) {
+static void BM_BcastFusionF32(benchmark::State& state,
+                              HloBenchmarkOptions options) {
   int64_t d0 = state.range(0);
 
   absl::string_view hlo = R"(
@@ -163,10 +168,12 @@ static void BM_BcastFusionF32(benchmark::State& state) {
   auto p1 = *LiteralUtil::CreateRandomLiteral<F32>(scalar, &engine, 1.0f, 0.1f);
 
   std::vector<const Literal*> args = {&p0, &p1};
-  CHECK_OK(RunHloBenchmark(state, hlo, args, {{"$d0", absl::StrCat(d0)}}));
+  CHECK_OK(
+      RunHloBenchmark(state, hlo, args, {{"$d0", absl::StrCat(d0)}}, options));
 }
 
-static void BM_DynamicUpdateSliceFusionF32(benchmark::State& state) {
+static void BM_DynamicUpdateSliceFusionF32(benchmark::State& state,
+                                           HloBenchmarkOptions options) {
   int64_t d0 = state.range(0);
 
   absl::string_view hlo = R"(
@@ -190,10 +197,12 @@ static void BM_DynamicUpdateSliceFusionF32(benchmark::State& state) {
   auto p2 = LiteralUtil::CreateR0<int32_t>(0);
 
   std::vector<const Literal*> args = {&p0, &p1, &p2};
-  CHECK_OK(RunHloBenchmark(state, hlo, args, {{"$d0", absl::StrCat(d0)}}));
+  CHECK_OK(
+      RunHloBenchmark(state, hlo, args, {{"$d0", absl::StrCat(d0)}}, options));
 }
 
-static void BM_ChainOfAddF32(benchmark::State& state) {
+static void BM_ChainOfAddF32(benchmark::State& state,
+                             HloBenchmarkOptions options) {
   int64_t size = state.range(0);
 
   // In this benchmark we create a chain of additions starting from `p2` and
@@ -242,10 +251,11 @@ static void BM_ChainOfAddF32(benchmark::State& state) {
   CHECK_OK(RunHloBenchmark(state, hlo, args,
                            {{"$size", absl::StrCat(size)},
                             {"$parameters", parameters},
-                            {"$additions", additions}}));
+                            {"$additions", additions}},
+                           options));
 }
 
-BENCHMARK(BM_FusionF32)
+XLA_CPU_BENCHMARK(BM_FusionF32)
     ->MeasureProcessCPUTime()
     ->Arg(128)
     ->Arg(256)
@@ -254,14 +264,14 @@ BENCHMARK(BM_FusionF32)
     ->Arg(8192)
     ->Arg(16384);
 
-BENCHMARK(BM_FusionF32_2)
+XLA_CPU_BENCHMARK(BM_FusionF32_2)
     ->MeasureProcessCPUTime()
     ->Arg(40)
     ->Arg(80)
     ->Arg(160)
     ->Arg(240);
 
-BENCHMARK(BM_BcastFusionF32)
+XLA_CPU_BENCHMARK(BM_BcastFusionF32)
     ->MeasureProcessCPUTime()
     ->Arg(128)
     ->Arg(256)
@@ -270,7 +280,7 @@ BENCHMARK(BM_BcastFusionF32)
     ->Arg(8192)
     ->Arg(16384);
 
-BENCHMARK(BM_DynamicUpdateSliceFusionF32)
+XLA_CPU_BENCHMARK(BM_DynamicUpdateSliceFusionF32)
     ->MeasureProcessCPUTime()
     ->Arg(128)
     ->Arg(256)
@@ -279,7 +289,7 @@ BENCHMARK(BM_DynamicUpdateSliceFusionF32)
     ->Arg(8192)
     ->Arg(16384);
 
-BENCHMARK(BM_ChainOfAddF32)
+XLA_CPU_BENCHMARK(BM_ChainOfAddF32)
     ->MeasureProcessCPUTime()
     ->Arg(64)
     ->Arg(128)
