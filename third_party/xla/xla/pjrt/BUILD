@@ -432,7 +432,7 @@ cc_library(
 cc_library(
     name = "pjrt_layout",
     hdrs = ["pjrt_layout.h"],
-    visibility = ["//xla:friends"],
+    visibility = internal_visibility(["//xla:friends"]),
     deps = [
         "//xla:shape_util",
         "//xla/hlo/parser:hlo_parser",
@@ -616,7 +616,7 @@ cc_library(
     name = "mlir_to_hlo",
     srcs = ["mlir_to_hlo.cc"],
     hdrs = ["mlir_to_hlo.h"],
-    visibility = [":friends"],
+    visibility = internal_visibility([":friends"]),
     deps = [
         "//xla:debug_options_flags",
         "//xla:util",

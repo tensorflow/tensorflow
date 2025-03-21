@@ -13,11 +13,11 @@
 # limitations under the License.
 
 load("//xla/python/ifrt_proxy/common:ifrt_proxy.bzl", "default_ifrt_proxy_visibility", "ifrt_proxy_cc_test")
-load("//xla/tsl:tsl.bzl", "if_google")
+load("//xla/tsl:tsl.bzl", "if_google", "internal_visibility")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
-    default_visibility = default_ifrt_proxy_visibility,
+    default_visibility = internal_visibility(default_ifrt_proxy_visibility),
 )
 
 cc_library(
