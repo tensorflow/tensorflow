@@ -57,15 +57,8 @@ jobs:
           },
           {
             pool: "linux-x86-g2-16-l4-1gpu",
-            container: "us-central1-docker.pkg.dev/tensorflow-sigs/tensorflow/ml-build:latest",
-            pretty_name: "XLA Linux x86 GPU T4 16 vcpu Presubmit",
-            bazel_arch_dir: "k8-opt",
-            platform: "GPU"
-          },
-          {
-            pool: "linux-x86-g2-48-l4-4gpu",
-            container: "us-central1-docker.pkg.dev/tensorflow-sigs/tensorflow/ml-build:latest",
-            pretty_name: "XLA Linux x86 GPU T4 48 vcpu Presubmit",
+            container: "us-central1-docker.pkg.dev/tensorflow-sigs/tensorflow/ml-build-cuda12.8-cudnn9.8:latest",
+            pretty_name: "XLA Linux x86 GPU L4 16 vcpu Presubmit",
             bazel_arch_dir: "k8-opt",
             platform: "GPU"
           },
@@ -80,13 +73,6 @@ jobs:
     env:
       OUTPUT_FILE_PATH: ${{ github.workspace }}/hlo_test_output.txt
     steps:
-      - name: Print machine specs
-        run: |
-          lscpu
-          free -h  # Memory information
-          df -h    # Disk space information
-          uname -a # Kernel information
-
       - name: Print GitHub Context
         run: |
           echo "GitHub SHA: ${{ github.sha }}"
@@ -106,19 +92,28 @@ jobs:
             echo "Pull Request Base Ref: ${{ github.event.pull_request.base.ref }}"
           fi
       # Find the current PR number, if any, because github context doesn't have it for push events.
-      - uses: jwalton/gh-find-current-pr@master
-        id: findPr
+      - uses: jwalton/gh-find-current-pr@2f6a0c6ed5c54c19f04d8411e0723b3de68f464a # v1.3.3
+        id: find_pr
         with:
           # Can be "open", "closed", or "all".  Defaults to "open".
           state: all
       # This will echo "Your PR is 7", or be skipped if there is no current PR.
-      - run: echo "PR_NUMBER=${{ steps.findPr.outputs.pr }}"
-        if: success() && steps.findPr.outputs.number
+      - run: echo "PR_NUMBER=${{ steps.find_pr.outputs.pr }}"
+        if: success() && steps.find_pr.outputs.number
         env:
-          PR: ${{ steps.findPr.outputs.pr }}
+          PR: ${{ steps.find_pr.outputs.pr }}
 
       - name: Checkout OpenXLA
         uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4.1.1
+      - name: Wait For Connection
+        uses: google-ml-infra/actions/ci_connection@main
+        with:
+          halt-dispatch-input: ${{ inputs.halt-for-connection }}
+
+      - name: Configure GPU backend
+        if: ${{ matrix.job_info.platform == 'GPU' }}
+        run: |
+          ./configure.py --backend=CUDA --cuda_compiler=nvcc
 
       - name: "Run build.py"
         run: |
@@ -145,6 +140,7 @@ jobs:
             pwd #print working directory
             $binary_dir/multihost_hlo_runner/hlo_runner_main_gpu --device_type=gpu --use_spmd_partitioning --profile_execution=True  --xla_gpu_dump_xspace_to="$GITHUB_WORKSPACE/$test_hlo_file"_xspace.pb "$test_hlo_file" > "$OUTPUT_FILE_PATH"
             $binary_dir/compute_gpu_device_stats_main_gpu --input="$GITHUB_WORKSPACE/$test_hlo_file"_xspace.pb >> "$OUTPUT_FILE_PATH"
+
             cat "$OUTPUT_FILE_PATH"
           else
             echo "Unsupported platform: ${{ matrix.job_info.platform }}"
@@ -160,7 +156,7 @@ jobs:
           FILENAME="hlo_test_output.txt"
           COMMIT_SHA="${{ github.sha }}"
           RUN_ID="${{ github.run_id }}"
-          PR_NUMBER="${{ steps.findPr.outputs.pr }}"
+          PR_NUMBER="${{ steps.find_pr.outputs.pr }}"
           PR_SUFFIX=""
           if [[ -n "$PR_NUMBER" ]]; then
             PR_SUFFIX="_pr_${PR_NUMBER}"

@@ -31,12 +31,17 @@ jobs:
           {
             os: "linux-x86-g2-48-l4-4gpu",
             container: "us-central1-docker.pkg.dev/tensorflow-sigs/tensorflow/ml-build:latest",
-            pretty_name: "XLA Linux x86 GPU T4 48 vcpu Presubmit",
+            pretty_name: "XLA Linux x86 GPU L4 48 vcpu Presubmit",
           },
           {
             os: "linux-x86-g2-16-l4-1gpu",
             container: "us-central1-docker.pkg.dev/tensorflow-sigs/tensorflow/ml-build:latest",
-            pretty_name: "XLA Linux x86 GPU T4 16 vcpu Presubmit",
+            pretty_name: "XLA Linux x86 GPU L4 16 vcpu Presubmit",
+          },
+          {
+            os: "linux-x86-a4-224-b200-1gpu",
+            container: "us-central1-docker.pkg.dev/tensorflow-sigs/tensorflow/ml-build-cuda12.8-cudnn9.8:latest",
+            pretty_name: "XLA Linux x86 GPU A4 224 vcpu Presubmit",
           },
           # Expect more GPU types in the future.
         ]
@@ -53,19 +58,16 @@ jobs:
       - name: Checkout XLA
         uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4.1.1
 
-      - name: Print machine specs
-        run: |
-          nvidia-smi
-          free -h  # Memory information
-          df -h    # Disk space information
-          uname -a # Kernel information
-
       - name: Download Gemma2 2B HLO
         run: |
           mkdir -p tmp_hlo
           cd tmp_hlo
           wget https://storage.googleapis.com/xla-benchmarking-temp/gemma2_2b_keras_jax.hlo
           cd ..
+
+      - name: Configure GPU backend
+        run: |
+          ./configure.py --backend=CUDA --cuda_compiler=nvcc
 
       - name: "Run build.py"
         run: |

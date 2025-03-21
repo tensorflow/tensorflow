@@ -73,13 +73,6 @@ jobs:
         run:
           mkdir results
 
-      - name: Print machine specs
-        run: |
-          lscpu
-          free -h  # Memory information
-          df -h    # Disk space information
-          uname -a # Kernel information
-
       - name: Run E2E benchmarks flax_2b
         timeout-minutes: 60
         run: |
@@ -105,9 +98,12 @@ jobs:
           cd ..
           ./bazel-bin/xla/tools/run_hlo_module --input_format=hlo --platform=CPU --reference_platform="" tmp_hlo/gemma2_2b_keras_jax.hlo
 
+     # TODO(juliagmt): Remove this once the ARM64 can run gemma2_2b_keras_jax.hlo.
       - name: Build hlo_runner_main
+        if: ${{ matrix.job_info.os != 'linux-arm64-t2a-48' }}
         run: bazel build -c opt --dynamic_mode=off //xla/tools/multihost_hlo_runner:hlo_runner_main
 
       - name: Run hlo_runner_main on gemma2_2b_keras_jax.hlo and collect profile stats
+        if: ${{ matrix.job_info.os != 'linux-arm64-t2a-48' }}
         run: |
           ./bazel-bin/xla/tools/multihost_hlo_runner/hlo_runner_main --device_type=host --use_spmd_partitioning --profile_execution=True tmp_hlo/gemma2_2b_keras_jax.hlo
