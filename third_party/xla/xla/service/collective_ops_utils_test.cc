@@ -453,6 +453,10 @@ std::vector<TestCaseForInstruction> GetTestCasesForInstruction() {
       {HloOpcode::kCollectivePermute, true, std::nullopt,
        CollectiveOpGroupMode::kCrossPartition},
       {HloOpcode::kCollectivePermute, false, std::nullopt,
+       CollectiveOpGroupMode::kCrossReplica},
+      {HloOpcode::kRaggedAllToAll, true, std::nullopt,
+       CollectiveOpGroupMode::kCrossPartition},
+      {HloOpcode::kRaggedAllToAll, false, std::nullopt,
        CollectiveOpGroupMode::kCrossReplica}};
 }
 
@@ -532,6 +536,20 @@ TEST_P(GetCollectOpGroupModeTestForInstruction, Test) {
           builder.AddInstruction(HloInstruction::CreateCollectivePermute(
               two_elements, parameter, source_target_pairs, channel_id()));
       break;
+    case HloOpcode::kRaggedAllToAll: {
+      // Create a parameter with s64 to use a offset and size operands.
+      TF_ASSERT_OK_AND_ASSIGN(
+          HloInstruction * offset_size_parameter,
+          builder.AddParameter(HloInstruction::CreateParameter(
+              1, ShapeUtil::MakeShape(S64, {4}), "offset_size_parameter")));
+
+      collective = builder.AddInstruction(HloInstruction::CreateRaggedAllToAll(
+          eight_elements,
+          {parameter, parameter, offset_size_parameter, offset_size_parameter,
+           offset_size_parameter, offset_size_parameter},
+          {group}, channel_id()));
+      break;
+    }
     default:
       LOG(FATAL) << "Unexpected opcode.";
   }

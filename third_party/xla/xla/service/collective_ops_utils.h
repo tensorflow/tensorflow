@@ -129,19 +129,19 @@ absl::StatusOr<std::vector<int>> GetParticipatingIDs(
 absl::string_view CollectiveOpGroupModeToString(
     CollectiveOpGroupMode group_mode);
 
-absl::StatusOr<bool> GetCollectiveUseGlobalDeviceIds(const HloInstruction* hlo);
-
-std::optional<int64_t> GetCollectiveChannelId(const HloInstruction* hlo);
-
 const CollectiveDeviceList& GetCollectiveDeviceList(const HloInstruction* hlo);
 
 const std::vector<ReplicaGroup>& GetCollectiveReplicaGroups(
     const HloInstruction* hlo);
 
 // Returns the group formation mode of instr, assuming that instr is, or is
-// dervied from, an HloAllGatherInstruction, HloAllReduceInstructionBase,
-// HloAllToAllInstruction, HloCollectiveBroadcastInstruction or
-// HloCollectivePermuteInstruction.
+// derived from on the following instructions:
+//   * HloAllGatherInstruction
+//   * HloAllReduceInstructionBase
+//   * HloAllToAllInstruction
+//   * HloCollectiveBroadcastInstruction
+//   * HloCollectivePermuteInstruction
+//   * HloRaggedAllToAllInstruction
 absl::StatusOr<CollectiveOpGroupMode> GetCollectiveOpGroupMode(
     const HloInstruction* instr);
 
