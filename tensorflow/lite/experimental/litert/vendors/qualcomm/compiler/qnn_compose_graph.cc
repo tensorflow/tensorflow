@@ -45,6 +45,7 @@
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/builders/cast_op_builder.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/builders/concatenation_op_builder.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/builders/conv2d_op_builder.h"
+#include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/builders/cumsum_op_builder.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/builders/depthwise_conv2d_op_builder.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/builders/dynamic_update_slice_op_builder.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/builders/elementwise_op_builder.h"
@@ -52,13 +53,16 @@
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/builders/fully_connected_op_builder.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/builders/fully_connected_op_builder_htp.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/builders/gather_op_builder.h"
+#include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/builders/gathernd_op_builder.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/builders/gelu_op_builder.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/builders/hard_swish_op_builder.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/builders/leaky_relu_op_builder.h"
+#include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/builders/logistic_op_builder.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/builders/matmul_op_builder.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/builders/mean_op_builder.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/builders/op_builder.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/builders/pack_op_builder.h"
+#include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/builders/pad_op_builder.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/builders/pool2d_op_builder.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/builders/quantize_op_builder.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/builders/reduce_op_builder.h"
@@ -348,6 +352,16 @@ LiteRtStatus ConvertOp(
                                                      output_tensors);
       break;
     }
+    case LiteRtOpCode::kLiteRtOpCodeTflFloorDiv: {
+      op_wrappers = ::qnn::BuildElementwiseFloorDivOp(
+          tensor_pool, input_tensors, output_tensors);
+      break;
+    }
+    case LiteRtOpCode::kLiteRtOpCodeTflNotEqual: {
+      op_wrappers = ::qnn::BuildElementwiseNotEqualOp(
+          tensor_pool, input_tensors, output_tensors);
+      break;
+    }
     case LiteRtOpCode::kLiteRtOpCodeTflEmbeddingLookup: {
       op_wrappers = ::qnn::BuildEmbeddingLookupOp(tensor_pool, input_tensors,
                                                   output_tensors);
@@ -395,6 +409,11 @@ LiteRtStatus ConvertOp(
     case LiteRtOpCode::kLiteRtOpCodeTflRelu6: {
       op_wrappers =
           ::qnn::BuildRelu6Op(tensor_pool, input_tensors, output_tensors);
+      break;
+    }
+    case LiteRtOpCode::kLiteRtOpCodeTflLogistic: {
+      op_wrappers =
+          ::qnn::BuildLogisticOp(tensor_pool, input_tensors, output_tensors);
       break;
     }
     case LiteRtOpCode::kLiteRtOpCodeTflBatchMatmul: {
@@ -567,6 +586,30 @@ LiteRtStatus ConvertOp(
           filter_height, filter_width, qnn_padding);
       break;
     }
+    case LiteRtOpCode::kLiteRtOpCodeTflMaxPool2d: {
+      uint32_t padding;
+      LITERT_RETURN_IF_ERROR(
+          LiteRtGetMaxPool2dPaddingOption(litert_op.Get(), &padding));
+      int32_t stride_w;
+      LITERT_RETURN_IF_ERROR(
+          LiteRtGetMaxPool2dStrideWOption(litert_op.Get(), &stride_w));
+      int32_t stride_h;
+      LITERT_RETURN_IF_ERROR(
+          LiteRtGetMaxPool2dStrideHOption(litert_op.Get(), &stride_h));
+      int32_t filter_width;
+      LITERT_RETURN_IF_ERROR(
+          LiteRtGetMaxPool2dFilterWidthOption(litert_op.Get(), &filter_width));
+      int32_t filter_height;
+      LITERT_RETURN_IF_ERROR(LiteRtGetMaxPool2dFilterHeightOption(
+          litert_op.Get(), &filter_height));
+
+      ::qnn::PaddingType qnn_padding;
+      LITERT_RETURN_IF_ERROR(ConvertPaddingType(padding, qnn_padding));
+      op_wrappers = ::qnn::BuildMaxPoolOp(
+          tensor_pool, input_tensors, output_tensors, stride_h, stride_w,
+          filter_height, filter_width, qnn_padding);
+      break;
+    }
     case LiteRtOpCode::kLiteRtOpCodeTflDepthToSpace: {
       int32_t block_size;
       LITERT_RETURN_IF_ERROR(
@@ -619,6 +662,28 @@ LiteRtStatus ConvertOp(
       op_wrappers = ::qnn::BuildResizeNearestOp(tensor_pool, input_tensors,
                                                 output_tensors, align_corners,
                                                 half_pixel_centers);
+      break;
+    }
+    case LiteRtOpCode::kLiteRtOpCodeTflPad:
+    case LiteRtOpCode::kLiteRtOpCodeTflPadv2: {
+      op_wrappers =
+          ::qnn::BuildPadOp(tensor_pool, input_tensors, output_tensors);
+      break;
+    }
+    case LiteRtOpCode::kLiteRtOpCodeTflCumsum: {
+      bool exclusive;
+      LITERT_RETURN_IF_ERROR(
+          LiteRtGetCumsumExclusiveOption(litert_op.Get(), &exclusive));
+      bool reverse;
+      LITERT_RETURN_IF_ERROR(
+          LiteRtGetCumsumReverseOption(litert_op.Get(), &reverse));
+      op_wrappers = ::qnn::BuildCumsumOp(tensor_pool, input_tensors,
+                                         output_tensors, exclusive, reverse);
+      break;
+    }
+    case LiteRtOpCode::kLiteRtOpCodeTflGatherNd: {
+      op_wrappers =
+          ::qnn::BuildGatherNdOp(tensor_pool, input_tensors, output_tensors);
       break;
     }
     default: {

@@ -379,6 +379,35 @@ TEST(GetOpOptionTest, TestGetAveragePool2dOptions) {
   ASSERT_EQ(fused_activation_function, 0);
 }
 
+TEST(GetOpOptionTest, TestGetMaxPool2dOptions) {
+  auto model = litert::testing::LoadTestFileModel("simple_max_pool_2d.tflite");
+  auto subgraph = model.MainSubgraph();
+  EXPECT_TRUE(subgraph);
+
+  auto ops = subgraph->Ops();
+  auto op = ops.front().Get();
+
+  uint32_t padding;
+  LITERT_ASSERT_OK(LiteRtGetMaxPool2dPaddingOption(op, &padding));
+  ASSERT_EQ(padding, 1);
+  int32_t stride_w;
+  LITERT_ASSERT_OK(LiteRtGetMaxPool2dStrideWOption(op, &stride_w));
+  ASSERT_EQ(stride_w, 2);
+  int32_t stride_h;
+  LITERT_ASSERT_OK(LiteRtGetMaxPool2dStrideHOption(op, &stride_h));
+  ASSERT_EQ(stride_h, 4);
+  int32_t filter_width;
+  LITERT_ASSERT_OK(LiteRtGetMaxPool2dFilterWidthOption(op, &filter_width));
+  ASSERT_EQ(filter_width, 2);
+  int32_t filter_height;
+  LITERT_ASSERT_OK(LiteRtGetMaxPool2dFilterHeightOption(op, &filter_height));
+  ASSERT_EQ(filter_height, 4);
+  uint32_t fused_activation_function;
+  LITERT_ASSERT_OK(
+      LiteRtGetMaxPool2dFusedActivationOption(op, &fused_activation_function));
+  ASSERT_EQ(fused_activation_function, 0);
+}
+
 TEST(GetOpOptionTest, TestGetResizeBilinearOptions) {
   auto model =
       litert::testing::LoadTestFileModel("simple_resize_bilinear_op.tflite");
@@ -457,6 +486,22 @@ TEST(GetOpOptionTest, TestGetResizeNearestNeighborOptions) {
   LITERT_ASSERT_OK(LiteRtGetResizeNearestNeighborHalfPixelCenterOption(
       op, &half_pixel_centers));
   ASSERT_EQ(half_pixel_centers, true);
+}
+
+TEST(GetOpOptionTest, TestGetCumsumOptions) {
+  auto model = litert::testing::LoadTestFileModel("simple_cumsum.tflite");
+  auto subgraph = model.MainSubgraph();
+  EXPECT_TRUE(subgraph);
+
+  auto ops = subgraph->Ops();
+  auto op = ops.front().Get();
+
+  bool exclusive;
+  LITERT_ASSERT_OK(LiteRtGetCumsumExclusiveOption(op, &exclusive));
+  ASSERT_EQ(exclusive, false);
+  bool reverse;
+  LITERT_ASSERT_OK(LiteRtGetCumsumReverseOption(op, &reverse));
+  ASSERT_EQ(reverse, true);
 }
 
 }  // namespace

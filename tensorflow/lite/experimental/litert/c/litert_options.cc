@@ -675,6 +675,82 @@ LiteRtStatus LiteRtGetAveragePool2dFusedActivationOption(
   return kLiteRtStatusOk;
 }
 
+LiteRtStatus LiteRtGetMaxPool2dPaddingOption(LiteRtOp op, uint32_t* padding) {
+  if (op->OpCode() != kLiteRtOpCodeTflMaxPool2d) {
+    return kLiteRtStatusErrorInvalidArgument;
+  }
+  auto& opts = litert::internal::GetTflOptions(*op);
+  if (opts.value == nullptr) {
+    return kLiteRtStatusErrorInvalidArgument;
+  }
+  *padding = opts.AsPool2DOptions()->padding;
+  return kLiteRtStatusOk;
+}
+
+LiteRtStatus LiteRtGetMaxPool2dStrideWOption(LiteRtOp op, int32_t* stride_w) {
+  if (op->OpCode() != kLiteRtOpCodeTflMaxPool2d) {
+    return kLiteRtStatusErrorInvalidArgument;
+  }
+  auto& opts = litert::internal::GetTflOptions(*op);
+  if (opts.value == nullptr) {
+    return kLiteRtStatusErrorInvalidArgument;
+  }
+  *stride_w = opts.AsPool2DOptions()->stride_w;
+  return kLiteRtStatusOk;
+}
+
+LiteRtStatus LiteRtGetMaxPool2dStrideHOption(LiteRtOp op, int32_t* stride_h) {
+  if (op->OpCode() != kLiteRtOpCodeTflMaxPool2d) {
+    return kLiteRtStatusErrorInvalidArgument;
+  }
+  auto& opts = litert::internal::GetTflOptions(*op);
+  if (opts.value == nullptr) {
+    return kLiteRtStatusErrorInvalidArgument;
+  }
+  *stride_h = opts.AsPool2DOptions()->stride_h;
+  return kLiteRtStatusOk;
+}
+
+LiteRtStatus LiteRtGetMaxPool2dFilterWidthOption(LiteRtOp op,
+                                                 int32_t* filter_width) {
+  if (op->OpCode() != kLiteRtOpCodeTflMaxPool2d) {
+    return kLiteRtStatusErrorInvalidArgument;
+  }
+  auto& opts = litert::internal::GetTflOptions(*op);
+  if (opts.value == nullptr) {
+    return kLiteRtStatusErrorInvalidArgument;
+  }
+  *filter_width = opts.AsPool2DOptions()->filter_width;
+  return kLiteRtStatusOk;
+}
+
+LiteRtStatus LiteRtGetMaxPool2dFilterHeightOption(LiteRtOp op,
+                                                  int32_t* filter_height) {
+  if (op->OpCode() != kLiteRtOpCodeTflMaxPool2d) {
+    return kLiteRtStatusErrorInvalidArgument;
+  }
+  auto& opts = litert::internal::GetTflOptions(*op);
+  if (opts.value == nullptr) {
+    return kLiteRtStatusErrorInvalidArgument;
+  }
+  *filter_height = opts.AsPool2DOptions()->filter_height;
+  return kLiteRtStatusOk;
+}
+
+LiteRtStatus LiteRtGetMaxPool2dFusedActivationOption(
+    LiteRtOp op, uint32_t* fused_activation_function) {
+  if (op->OpCode() != kLiteRtOpCodeTflMaxPool2d) {
+    return kLiteRtStatusErrorInvalidArgument;
+  }
+  auto& opts = litert::internal::GetTflOptions(*op);
+  if (opts.value == nullptr) {
+    return kLiteRtStatusErrorInvalidArgument;
+  }
+  *fused_activation_function =
+      opts.AsPool2DOptions()->fused_activation_function;
+  return kLiteRtStatusOk;
+}
+
 LiteRtStatus LiteRtGetResizeBilinearAlignCornersOption(LiteRtOp op,
                                                        bool* align_corners) {
   if (op->OpCode() != kLiteRtOpCodeTflResizeBilinear) {
@@ -763,6 +839,30 @@ LiteRtStatus LiteRtGetResizeNearestNeighborHalfPixelCenterOption(
   }
   *half_pixel_centers =
       opts.AsResizeNearestNeighborOptions()->half_pixel_centers;
+  return kLiteRtStatusOk;
+}
+
+LiteRtStatus LiteRtGetCumsumExclusiveOption(LiteRtOp op, bool* exclusive) {
+  if (op->OpCode() != kLiteRtOpCodeTflCumsum) {
+    return kLiteRtStatusErrorInvalidArgument;
+  }
+  auto& opts = litert::internal::GetTflOptions(*op);
+  if (opts.value == nullptr) {
+    return kLiteRtStatusErrorInvalidArgument;
+  }
+  *exclusive = opts.AsCumsumOptions()->exclusive;
+  return kLiteRtStatusOk;
+}
+
+LiteRtStatus LiteRtGetCumsumReverseOption(LiteRtOp op, bool* reverse) {
+  if (op->OpCode() != kLiteRtOpCodeTflCumsum) {
+    return kLiteRtStatusErrorInvalidArgument;
+  }
+  auto& opts = litert::internal::GetTflOptions(*op);
+  if (opts.value == nullptr) {
+    return kLiteRtStatusErrorInvalidArgument;
+  }
+  *reverse = opts.AsCumsumOptions()->reverse;
   return kLiteRtStatusOk;
 }
 

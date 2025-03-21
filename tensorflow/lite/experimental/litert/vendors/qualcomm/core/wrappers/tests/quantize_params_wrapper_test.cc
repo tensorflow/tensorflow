@@ -84,6 +84,7 @@ TEST(ScaleOffsetQuantizeParamsWrapperTest, GetterTest) {
   ScaleOffsetQuantizeParamsWrapper wrapper(scale, zero_point);
   EXPECT_FLOAT_EQ(wrapper.GetScale(), scale);
   EXPECT_EQ(wrapper.GetZeroPoint(), zero_point);
+  EXPECT_EQ(wrapper.GetOffset(), -zero_point);
 }
 
 TEST(AxisScaleOffsetQuantizeParamsWrapperTest, ConstructorTest) {

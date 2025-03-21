@@ -181,6 +181,9 @@ void Dump(LiteRtOpCode code, std::ostream& out) {
     case kLiteRtOpCodeTflAveragePool2d:
       out << "AVERAGE_POOL_2D";
       break;
+    case kLiteRtOpCodeTflMaxPool2d:
+      out << "MAX_POOL_2D";
+      break;
     case kLiteRtOpCodeTflDepthwiseConv2d:
       out << "DEPTHWISE_CONV_2D";
       break;
@@ -210,6 +213,27 @@ void Dump(LiteRtOpCode code, std::ostream& out) {
       break;
     case kLiteRtOpCodeTflRelu6:
       out << "TFL_RELU6";
+      break;
+    case kLiteRtOpCodeTflLogistic:
+      out << "TFL_LOGISTIC";
+      break;
+    case kLiteRtOpCodeTflFloorDiv:
+      out << "TFL_FLOOR_DIV";
+      break;
+    case kLiteRtOpCodeTflNotEqual:
+      out << "TFL_NOT_EQUAL";
+      break;
+    case kLiteRtOpCodeTflPad:
+      out << "TFL_PAD";
+      break;
+    case kLiteRtOpCodeTflPadv2:
+      out << "TFL_PAD_V2";
+      break;
+    case kLiteRtOpCodeTflGatherNd:
+      out << "TFL_GATHER_ND";
+      break;
+    case kLiteRtOpCodeTflCumsum:
+      out << "TFL_CUMSUM";
       break;
     default:
       out << "UKNOWN_OP_CODE: " << code;

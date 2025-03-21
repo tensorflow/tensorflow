@@ -45,6 +45,10 @@ class ScaleOffsetQuantizeParamsWrapper final {
     return -1 * qnn_quantize_param_.scaleOffsetEncoding.offset;
   }
 
+  std::int32_t GetOffset() const {
+    return qnn_quantize_param_.scaleOffsetEncoding.offset;
+  }
+
  private:
   Qnn_QuantizeParams_t qnn_quantize_param_ = QNN_QUANTIZE_PARAMS_INIT;
 };
