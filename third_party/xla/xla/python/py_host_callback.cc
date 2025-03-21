@@ -54,6 +54,7 @@ namespace nb = nanobind;
 
 namespace xla {
 
+char PyFfiLoadedHostCallback::ID = 0;
 char PyCpuLoadedHostCallback::ID = 0;
 char PyHostSendAndRecvLoadedHostCallback::ID = 0;
 
@@ -120,6 +121,14 @@ absl::StatusOr<std::vector<CpuCallback::Result>> CreateCallbackResults(
 
 }  // namespace
 
+PyFfiLoadedHostCallback::~PyFfiLoadedHostCallback() {
+  // The destructor may be called without GIL held. In that case, we defer it
+  // to GlobalPyRefManager.
+  std::vector<nb::object> objects;
+  objects.push_back(std::move(callable_));
+  GlobalPyRefManager()->AddGarbage(absl::MakeSpan(objects));
+}
+
 absl::StatusOr<tsl::RCReference<PyCpuLoadedHostCallback>>
 PyCpuLoadedHostCallback::Create(ifrt::Client* ifrt_client,
                                 nb::callable callable,
@@ -146,7 +155,7 @@ PyCpuLoadedHostCallback::Create(ifrt::Client* ifrt_client,
 
 absl::StatusOr<std::string> PyCpuLoadedHostCallback::Serialize() const {
   return Unimplemented(
-      "PyHostSendAndRecvLoadedHostCallback serialization is not supported");
+      "PyCpuLoadedHostCallback serialization is not supported");
 }
 
 absl::StatusOr<tsl::RCReference<PyHostSendAndRecvLoadedHostCallback>>

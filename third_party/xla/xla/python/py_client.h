@@ -171,6 +171,10 @@ class PyClient {
       nb_class_ptr<PyClient> client, std::string mlir_module,
       CompileOptions options, std::vector<nanobind::capsule> host_callbacks);
 
+  static absl::StatusOr<nb_class_ptr<PyLoadedExecutable>> Compile(
+      nb_class_ptr<PyClient> client, std::string mlir_module,
+      CompileOptions options, std::vector<nanobind::callable> host_callbacks);
+
   absl::StatusOr<nanobind::bytes> SerializeExecutable(
       const PyLoadedExecutable& executable) const;
   static absl::StatusOr<nb_class_ptr<PyLoadedExecutable>> DeserializeExecutable(
@@ -196,15 +200,6 @@ class PyClient {
   GetEmitPythonCallbackDescriptor(nanobind::callable callable,
                                   absl::Span<Shape const> operand_shapes,
                                   absl::Span<Shape const> result_shapes);
-
-  // `GetEmitPythonCallback` takes in an input Python callable. It returns a
-  // Python object whose reference will keep the Python callback alive.
-  //
-  // The callable receives as arguments NumPy arrays for arguments with array
-  // types, and None for Token argument. The callable must return a tuple of
-  // either arrays or None values.
-  absl::StatusOr<nanobind::object> GetEmitPythonCallback(
-      nanobind::callable callable);
 
   // `MakePythonCallbackUsingHostSendAndRecv` takes in an input Python callable
   // that takes in arguments of shapes `operand_shapes` and returns results of

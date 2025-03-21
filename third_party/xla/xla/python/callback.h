@@ -69,14 +69,13 @@ class CpuCallback {
 
   const std::vector<Result>& results() const { return results_; }
   size_t num_results() const { return results_.size(); }
+  void* callback() const { return callable_.ptr(); }
 
   xla::TransposePlanCache& transpose_cache() { return transpose_cache_; }
 
   absl::Status PrepareAndCall(void* result, void** arg_ptrs);
 
   absl::StatusOr<nanobind::tuple> Call(nanobind::tuple args);
-
-  absl::StatusOr<nanobind::tuple> FfiCall(nanobind::tuple args);
 
  private:
   nanobind::callable callable_;
