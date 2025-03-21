@@ -37,7 +37,6 @@ limitations under the License.
 #include "xla/stream_executor/bit_pattern.h"
 #include "xla/stream_executor/command_buffer.h"
 #include "xla/stream_executor/device_memory.h"
-#include "xla/stream_executor/gpu/gpu_command_buffer.h"
 #include "xla/stream_executor/gpu/scoped_update_mode.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/launch_dim.h"
@@ -65,33 +64,32 @@ hipDeviceptr_t AsDevicePtr(const DeviceMemoryBase& mem) {
   return absl::bit_cast<hipDeviceptr_t>(mem.opaque());
 }
 
-using GraphNodeHandle = GpuCommandBuffer::GraphNodeHandle;
+using NodeHandle = CommandBuffer::NodeHandle;
 
-// Converts a platform independent GraphNodeHandle into a HIP specific
+// Converts a platform independent NodeHandle into a HIP specific
 // hipGraphNode_t.
-hipGraphNode_t ToHipGraphHandle(GpuCommandBuffer::GraphNodeHandle handle) {
+hipGraphNode_t ToHipGraphHandle(CommandBuffer::NodeHandle handle) {
   return absl::bit_cast<hipGraphNode_t>(handle);
 }
 
-// Converts a list of platform independent GraphNodeHandles into a list of
-// HIP specific hipGraphNode_t.
-std::vector<hipGraphNode_t> ToHipGraphHandles(
-    absl::Span<const GraphNodeHandle> opaque_handles) {
+// Converts a HIP specific hipGraphNode_t into a platform independent
+// NodeHandle. This function will be removed once all Node factory
+// functions have been migrated into the subclasses.
+NodeHandle FromHipGraphHandle(hipGraphNode_t handle) {
+  return absl::bit_cast<CommandBuffer::NodeHandle>(handle);
+}
+}  // namespace
+
+// Converts a list of platform independent std::vector<NodeHandle>
+// into a list of Rocm specific hipGraphNode_t.
+absl::StatusOr<std::vector<hipGraphNode_t>> ToHipGraphHandles(
+    absl::Span<const NodeHandle> opaque_handles) {
   std::vector<hipGraphNode_t> handles;
-  handles.reserve(opaque_handles.size());
-  for (const GraphNodeHandle opaque_handle : opaque_handles) {
+  for (const NodeHandle opaque_handle : opaque_handles) {
     handles.push_back(ToHipGraphHandle(opaque_handle));
   }
   return handles;
 }
-
-// Converts a HIP specific hipGraphNode_t into a platform independent
-// GraphNodeHandle. This function will be removed once all Node factory
-// functions have been migrated into the subclasses.
-GraphNodeHandle FromHipGraphHandle(hipGraphNode_t handle) {
-  return absl::bit_cast<GpuCommandBuffer::GraphNodeHandle>(handle);
-}
-}  // namespace
 
 absl::StatusOr<std::unique_ptr<RocmCommandBuffer>> RocmCommandBuffer::Create(
     Mode mode, StreamExecutor* parent) {
@@ -101,49 +99,13 @@ absl::StatusOr<std::unique_ptr<RocmCommandBuffer>> RocmCommandBuffer::Create(
                             /*is_owned_graph=*/true));
 }
 
-absl::StatusOr<GpuCommandBuffer::ConditionalNodeResult>
-RocmCommandBuffer::CreateConditionalNode(const Dependencies& dependencies,
-                                         GraphConditionalHandle conditional,
-                                         ConditionType type) {
-  return absl::UnimplementedError("Conditionals are not supported on ROCM.");
-}
-
-absl::Status RocmCommandBuffer::LaunchSetIfConditionKernel(
-    GraphConditionalHandle if_conditional, DeviceMemory<bool> predicate) {
-  return absl::UnimplementedError("Conditionals are not supported on ROCM.");
-}
-
-absl::Status RocmCommandBuffer::LaunchSetIfElseConditionKernel(
-    GraphConditionalHandle if_conditional,
-    GraphConditionalHandle else_conditional, DeviceMemory<bool> predicate) {
-  return absl::UnimplementedError("Conditionals are not supported on ROCM.");
-}
-
-absl::Status RocmCommandBuffer::LaunchSetCaseConditionKernel(
-    GraphConditionalHandles conditionals, DeviceMemory<uint8_t> index,
-    bool index_is_bool, int32_t batch_offset, bool enable_conditional_default) {
-  return absl::UnimplementedError("Conditionals are not supported on ROCM.");
-}
-
-absl::Status RocmCommandBuffer::LaunchSetForConditionKernel(
-    GraphConditionalHandle conditional, DeviceMemory<int32_t> loop_counter,
-    int32_t iterations) {
-  return absl::UnimplementedError("Conditionals are not supported on ROCM.");
-}
-
-absl::Status RocmCommandBuffer::LaunchSetWhileConditionKernel(
-    GraphConditionalHandle conditional, DeviceMemory<bool> predicate) {
-  return absl::UnimplementedError("Conditionals are not supported on ROCM.");
-}
-
-absl::StatusOr<GraphNodeHandle> RocmCommandBuffer::CreateMemsetNode(
-    const Dependencies& dependencies, DeviceMemoryBase destination,
+absl::StatusOr<NodeHandle> RocmCommandBuffer::CreateMemsetNode(
+    Dependencies dependencies, DeviceMemoryBase destination,
     BitPattern bit_pattern, size_t num_elements) {
   VLOG(2) << "Add memset node to a graph " << graph_
           << "; dst: " << destination.opaque()
           << "; bit_pattern: " << bit_pattern.ToString()
-          << "; num_elements: " << num_elements
-          << "; deps: " << dependencies.size();
+          << "; num_elements: " << num_elements;
 
   hipMemsetParams params{};
   params.dst = AsDevicePtr(destination);
@@ -153,7 +115,8 @@ absl::StatusOr<GraphNodeHandle> RocmCommandBuffer::CreateMemsetNode(
   params.value = bit_pattern.GetPatternBroadcastedToUint32();
   params.width = num_elements;
 
-  std::vector<hipGraphNode_t> deps = ToHipGraphHandles(dependencies);
+  TF_ASSIGN_OR_RETURN(std::vector<hipGraphNode_t> deps,
+                      ToHipGraphHandles(dependencies));
 
   hipGraphNode_t node_handle = nullptr;
   TF_RETURN_IF_ERROR(
@@ -163,7 +126,7 @@ absl::StatusOr<GraphNodeHandle> RocmCommandBuffer::CreateMemsetNode(
   return FromHipGraphHandle(node_handle);
 }
 
-absl::Status RocmCommandBuffer::UpdateMemsetNode(GraphNodeHandle node_handle,
+absl::Status RocmCommandBuffer::UpdateMemsetNode(NodeHandle node_handle,
                                                  DeviceMemoryBase destination,
                                                  BitPattern bit_pattern,
                                                  size_t num_elements) {
@@ -185,14 +148,15 @@ absl::Status RocmCommandBuffer::UpdateMemsetNode(GraphNodeHandle node_handle,
                   "Failed to set memset node params");
 }
 
-absl::StatusOr<GraphNodeHandle> RocmCommandBuffer::CreateMemcpyD2DNode(
-    const Dependencies& dependencies, DeviceMemoryBase destination,
+absl::StatusOr<NodeHandle> RocmCommandBuffer::CreateMemcpyD2DNode(
+    Dependencies dependencies, DeviceMemoryBase destination,
     DeviceMemoryBase source, uint64_t size) {
   VLOG(2) << "Add memcpy d2d node to a graph " << graph_
           << "; dst: " << destination.opaque() << "; src: " << source.opaque()
-          << "; size: " << size << "; deps: " << dependencies.size();
+          << "; size: " << size;
 
-  std::vector<hipGraphNode_t> deps = ToHipGraphHandles(dependencies);
+  TF_ASSIGN_OR_RETURN(std::vector<hipGraphNode_t> deps,
+                      ToHipGraphHandles(dependencies));
 
   hipGraphNode_t node_handle = nullptr;
   TF_RETURN_IF_ERROR(ToStatus(
@@ -205,7 +169,7 @@ absl::StatusOr<GraphNodeHandle> RocmCommandBuffer::CreateMemcpyD2DNode(
 }
 
 absl::Status RocmCommandBuffer::UpdateMemcpyD2DNode(
-    GraphNodeHandle node_handle, DeviceMemoryBase destination,
+    NodeHandle node_handle, DeviceMemoryBase destination,
     DeviceMemoryBase source, uint64_t size) {
   VLOG(2) << "Set memcpy d2d node params " << node_handle
           << " in graph executable " << exec_
@@ -219,14 +183,15 @@ absl::Status RocmCommandBuffer::UpdateMemcpyD2DNode(
       "Failed to set memcpy d2d node params");
 }
 
-absl::StatusOr<GraphNodeHandle> RocmCommandBuffer::CreateChildNode(
-    const Dependencies& dependencies, const CommandBuffer& nested) {
+absl::StatusOr<NodeHandle> RocmCommandBuffer::CreateChildNode(
+    Dependencies dependencies, const CommandBuffer& nested) {
   hipGraph_t child_graph =
       tensorflow::down_cast<const RocmCommandBuffer&>(nested).graph_;
   VLOG(2) << "Create a new node by cloning the child graph " << child_graph
-          << " and add it to " << graph_ << "; deps: " << dependencies.size();
+          << " and add it to " << graph_;
 
-  std::vector<hipGraphNode_t> deps = ToHipGraphHandles(dependencies);
+  TF_ASSIGN_OR_RETURN(std::vector<hipGraphNode_t> deps,
+                      ToHipGraphHandles(dependencies));
 
   hipGraphNode_t node_handle = nullptr;
   TF_RETURN_IF_ERROR(ToStatus(
@@ -236,7 +201,7 @@ absl::StatusOr<GraphNodeHandle> RocmCommandBuffer::CreateChildNode(
   return FromHipGraphHandle(node_handle);
 }
 
-absl::Status RocmCommandBuffer::UpdateChildNode(GraphNodeHandle node_handle,
+absl::Status RocmCommandBuffer::UpdateChildNode(NodeHandle node_handle,
                                                 const CommandBuffer& nested) {
   hipGraph_t child_graph =
       tensorflow::down_cast<const RocmCommandBuffer&>(nested).graph_;
@@ -249,18 +214,65 @@ absl::Status RocmCommandBuffer::UpdateChildNode(GraphNodeHandle node_handle,
                   "Failed to set HIP graph child node params");
 }
 
-absl::StatusOr<GraphNodeHandle> RocmCommandBuffer::CreateKernelNode(
-    const Dependencies& dependencies, const ThreadDim& threads,
-    const BlockDim& blocks, const Kernel& kernel,
-    const KernelArgsPackedArrayBase& args) {
+absl::StatusOr<NodeHandle> RocmCommandBuffer::CreateLaunchNode(
+    Dependencies dependencies, const ThreadDim& threads, const BlockDim& blocks,
+    const Kernel& kernel, const KernelArgs& args) {
+  // If arguments are already packed we can just launch the kernel.
+  if (auto* packed = DynCast<KernelArgsPackedArrayBase>(&args)) {
+    return CreateKernelNode(dependencies, threads, blocks, kernel, *packed);
+  }
+
+  // For device memory array we rely on a custom kernel arguments packing.
+  if (auto* device_mem = DynCast<KernelArgsDeviceMemoryArray>(&args)) {
+    auto& pack = kernel.args_packing();
+    if (!pack) {
+      return absl::InternalError(
+          "Kernel is missing a custom arguments packing function for device "
+          "memory arguments array");
+    }
+
+    TF_ASSIGN_OR_RETURN(auto packed, pack(kernel, *device_mem));
+    return CreateKernelNode(dependencies, threads, blocks, kernel, *packed);
+  }
+
+  return absl::InternalError("Unsupported kernel arguments type");
+}
+
+absl::Status RocmCommandBuffer::UpdateLaunchNode(NodeHandle node,
+                                                 const ThreadDim& threads,
+                                                 const BlockDim& blocks,
+                                                 const Kernel& kernel,
+                                                 const KernelArgs& args) {
+  // If arguments are already packed we can just launch the kernel.
+  if (auto* packed = DynCast<KernelArgsPackedArrayBase>(&args)) {
+    return UpdateKernelNode(node, threads, blocks, kernel, *packed);
+  }
+
+  // For device memory array we rely on a custom kernel arguments packing.
+  if (auto* device_mem = DynCast<KernelArgsDeviceMemoryArray>(&args)) {
+    auto& pack = kernel.args_packing();
+    if (!pack) {
+      return absl::InternalError(
+          "Kernel is missing a custom arguments packing function for device "
+          "memory arguments array");
+    }
+
+    TF_ASSIGN_OR_RETURN(auto packed, pack(kernel, *device_mem));
+    return UpdateKernelNode(node, threads, blocks, kernel, *packed);
+  }
+  return absl::InternalError("Unsupported kernel arguments type");
+}
+
+absl::StatusOr<NodeHandle> RocmCommandBuffer::CreateKernelNode(
+    Dependencies dependencies, const ThreadDim& threads, const BlockDim& blocks,
+    const Kernel& kernel, const KernelArgsPackedArrayBase& args) {
   const uint64_t shared_mem_bytes = args.number_of_shared_bytes();
 
   VLOG(2) << "Add kernel node to a graph " << graph_
           << "; kernel: " << kernel.name() << "; gdx: " << blocks.x
           << " gdy: " << blocks.y << " gdz: " << blocks.z
           << " bdx: " << threads.x << " bdy: " << threads.y
-          << " bdz: " << threads.z << "; shmem: " << shared_mem_bytes
-          << "; deps: " << dependencies.size();
+          << " bdz: " << threads.z << "; shmem: " << shared_mem_bytes;
 
   hipKernelNodeParams params{};
 
@@ -285,7 +297,8 @@ absl::StatusOr<GraphNodeHandle> RocmCommandBuffer::CreateKernelNode(
         "Failed to set shared memory size"));
   }
 
-  std::vector<hipGraphNode_t> deps = ToHipGraphHandles(dependencies);
+  TF_ASSIGN_OR_RETURN(std::vector<hipGraphNode_t> deps,
+                      ToHipGraphHandles(dependencies));
 
   hipGraphNode_t node_handle = nullptr;
   TF_RETURN_IF_ERROR(
@@ -297,9 +310,8 @@ absl::StatusOr<GraphNodeHandle> RocmCommandBuffer::CreateKernelNode(
 }
 
 absl::Status RocmCommandBuffer::UpdateKernelNode(
-    GraphNodeHandle node_handle, const ThreadDim& threads,
-    const BlockDim& blocks, const Kernel& kernel,
-    const KernelArgsPackedArrayBase& args) {
+    NodeHandle node_handle, const ThreadDim& threads, const BlockDim& blocks,
+    const Kernel& kernel, const KernelArgsPackedArrayBase& args) {
   const uint64_t shared_mem_bytes = args.number_of_shared_bytes();
 
   VLOG(2) << "Set kernel node params " << node_handle << " in graph executable "
@@ -336,13 +348,13 @@ absl::Status RocmCommandBuffer::UpdateKernelNode(
                   "Failed to set HIP graph kernel node params");
 }
 
-absl::StatusOr<GraphNodeHandle> RocmCommandBuffer::CreateBarrierNode(
-    const Dependencies& dependencies) {
-  VLOG(2) << "Add empty node to a graph " << graph_
-          << "; deps: " << dependencies.size();
+absl::StatusOr<NodeHandle> RocmCommandBuffer::CreateEmptyNode(
+    Dependencies dependencies) {
+  VLOG(2) << "Add empty node to a graph " << graph_;
 
   hipGraphNode_t barrier_handle = nullptr;
-  std::vector<hipGraphNode_t> deps = ToHipGraphHandles(dependencies);
+  TF_ASSIGN_OR_RETURN(std::vector<hipGraphNode_t> deps,
+                      ToHipGraphHandles(dependencies));
 
   TF_RETURN_IF_ERROR(
       ToStatus(wrap::hipGraphAddEmptyNode(&barrier_handle, graph_, deps.data(),
@@ -354,7 +366,6 @@ absl::StatusOr<GraphNodeHandle> RocmCommandBuffer::CreateBarrierNode(
 
 absl::Status RocmCommandBuffer::Trace(
     Stream* stream, absl::AnyInvocable<absl::Status()> function) {
-  TF_RETURN_IF_ERROR(CheckNotFinalized());
   TF_ASSIGN_OR_RETURN(size_t count, GetNodeCount());
   if (count != 0 || !is_owned_graph_)
     return absl::InternalError(
@@ -395,8 +406,8 @@ absl::Status RocmCommandBuffer::Trace(
   return absl::OkStatus();
 }
 
-absl::Status RocmCommandBuffer::SetNodeExecutionEnabled(
-    GraphNodeHandle node_handle, bool enabled) {
+absl::Status RocmCommandBuffer::SetNodeExecutionEnabled(NodeHandle node_handle,
+                                                        bool enabled) {
   // Node is enabled if value != 0, otherwise the node is disabled.
   unsigned value = enabled ? 1 : 0;
   VLOG(2) << "Set HIP executable graph " << exec_ << " node " << node_handle
@@ -427,7 +438,7 @@ absl::Status RocmCommandBuffer::PrepareFinalization() {
   return absl::OkStatus();
 }
 
-absl::StatusOr<GpuCommandBuffer::GraphConditionalHandle>
+absl::StatusOr<CommandBuffer::ConditionalHandle>
 RocmCommandBuffer::CreateConditionalHandle() {
   return absl::UnimplementedError(
       "Graph conditionals are not yet supported on HIP graphs.");
@@ -449,25 +460,66 @@ absl::Status RocmCommandBuffer::InstantiateGraph() {
       "Failed to instantiate HIP graph");
 }
 
-std::unique_ptr<ScopedUpdateMode> RocmCommandBuffer::ActivateUpdateMode(
-    GpuCommandBuffer* nested_cmd_buffer) {
-  auto nested_rocm_cmd_buffer =
-      static_cast<RocmCommandBuffer*>(nested_cmd_buffer);
-  auto scoped_graph_exec = std::make_unique<ScopedRocmGraphExec>(
-      &nested_rocm_cmd_buffer->exec_,
-      &nested_rocm_cmd_buffer->is_owned_graph_exec_);
+absl::Status RocmCommandBuffer::Finalize() {
+  TF_RETURN_IF_ERROR(PrepareFinalization());
 
-  nested_rocm_cmd_buffer->exec_ = exec_;
-  nested_rocm_cmd_buffer->is_owned_graph_exec_ = false;
+  size_t num_nodes = 0, num_cond_cmd_buffers = 0;
 
-  return std::move(scoped_graph_exec);
+  if (mode() == Mode::kPrimary) {
+    uint64_t start_nanos = tsl::Env::Default()->NowNanos();
+
+    if (exec_ == nullptr) {
+      // If this is the first time we finalize command buffer after
+      // construction, we need to instantiate it to an executable graph.
+      auto instantiated = InstantiateGraph();
+
+      if (instantiated.code() == absl::StatusCode::kResourceExhausted) {
+        return absl::ResourceExhaustedError(absl::StrFormat(
+            "Underlying backend ran out of memory trying to instantiate "
+            "graph "
+            "with %d nodes and %d conditionals. Give more memory to the "
+            "driver by reducing XLA_CLIENT_MEM_FRACTION (b) Disable "
+            "command buffers with "
+            "'XLA_FLAGS=--xla_gpu_enable_command_buffer=' "
+            "(empty set). Original error: %s",
+            num_nodes, num_cond_cmd_buffers, instantiated.message()));
+      }
+      TF_RETURN_IF_ERROR(instantiated);
+
+      uint64_t end_nanos = tsl::Env::Default()->NowNanos();
+      TF_ASSIGN_OR_RETURN(auto node_count, GetNodeCount());
+      VLOG(5) << "Instantiated executable graph in "
+              << (end_nanos - start_nanos) / 1000 << " μs"
+              << "; nodes: " << node_count
+              << "; conditionals: " << num_cond_cmd_buffers;
+    } else {
+      VLOG(5) << "Update existing executor " << exec_
+              << " by updating with graph " << graph_;
+      hipGraphExecUpdateResult resultInfo;
+      hipGraphNode_t errNode;
+      TF_RETURN_IF_ERROR(
+          ToStatus(hipGraphExecUpdate(exec_, graph_, &errNode, &resultInfo),
+                   "Failed to update HIP graph executable"));
+      VLOG(5) << "Updated HIP graph executable " << exec_;
+    }
+  } else {
+    // Nested command buffers do not have executable graphs.
+    VLOG(5) << "Finalize nested command buffer without instantiating "
+               "executable graph";
+  }
+  return absl::OkStatus();
+}
+
+absl::Status RocmCommandBuffer::Submit(Stream* stream) {
+  if (mode() != Mode::kPrimary) {
+    return absl::InvalidArgumentError(
+        "Can't submit non-primary command buffer for execution");
+  }
+  return LaunchGraph(stream);
 }
 
 RocmCommandBuffer::~RocmCommandBuffer() {
   if (exec_ != nullptr && is_owned_graph_exec_) {
-    auto exec_num = NotifyExecDestroyed();
-    VLOG(5) << "Destroy GPU command buffer executable graph " << exec_ << " "
-            << "(remaining alive executable graphs: " << exec_num << ")";
     if (auto status = ToStatus(hipGraphExecDestroy(exec_),
                                "Failed to destroy HIP executable graph");
         !status.ok()) {
@@ -490,29 +542,4 @@ absl::Status RocmCommandBuffer::CheckCanBeUpdated() {
   return absl::OkStatus();
 }
 
-absl::StatusOr<std::vector<GraphNodeHandle>>
-RocmCommandBuffer::GetNodeDependencies(const GraphNodeHandle node) {
-  VLOG(2) << "Get HIP graph node " << node << " dependencies";
-
-  std::vector<hipGraphNode_t> dependencies;
-
-  size_t num_dependencies = 0;
-  TF_RETURN_IF_ERROR(
-      ToStatus(hipGraphNodeGetDependencies(ToHipGraphHandle(node), nullptr,
-                                           &num_dependencies),
-               "Failed to get HIP graph node depedencies size"));
-
-  dependencies.resize(num_dependencies, nullptr);
-  TF_RETURN_IF_ERROR(ToStatus(
-      hipGraphNodeGetDependencies(ToHipGraphHandle(node), dependencies.data(),
-                                  &num_dependencies),
-      "Failed to get HIP graph node depedencies"));
-
-  std::vector<GraphNodeHandle> result;
-  result.reserve(dependencies.size());
-  absl::c_transform(
-      dependencies, std::back_inserter(result),
-      static_cast<GraphNodeHandle (*)(hipGraphNode_t)>(&FromHipGraphHandle));
-  return result;
-}
 }  // namespace stream_executor::gpu

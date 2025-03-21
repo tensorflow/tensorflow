@@ -53,8 +53,10 @@ using tsl::profiler::TraceMeEncode;
 //===----------------------------------------------------------------------===//
 
 CommandBufferThunk::ExecutorCommandBuffer::ExecutorCommandBuffer(
-    std::unique_ptr<se::CommandBuffer> command_buffer)
-    : command_buffer(std::move(command_buffer)) {}
+    std::unique_ptr<se::CommandBuffer> command_buffer,
+    std::unique_ptr<CommandBufferCmdSequence> commands)
+    : command_buffer(std::move(command_buffer)),
+      commands(std::move(commands)) {}
 
 CommandBufferThunk::CommandBufferThunk(
     CommandBufferCmdSequence commands, ThunkInfo thunk_info,
@@ -83,9 +85,9 @@ CommandBufferThunk::CommandBufferThunk(
 }
 
 bool CommandBufferThunk::ExecutorCommandBuffer::ShouldUpdateCommandBuffer(
-    const CommandBufferCmdSequence& commands,
     const Thunk::ExecuteParams& params) {
-  if (commands.force_update()) {
+  if (commands->force_update()) {
+    VLOG(2) << "Force update command buffer";
     return true;
   }
 
@@ -94,7 +96,7 @@ bool CommandBufferThunk::ExecutorCommandBuffer::ShouldUpdateCommandBuffer(
 
   // We check only allocations referenced by commands in a cmd sequence, and
   // leave every other entry default initialized (nullptr device memory).
-  for (BufferAllocation::Index index : commands.allocs_indices()) {
+  for (BufferAllocation::Index index : commands->allocs_indices()) {
     se::DeviceMemoryBase alloc = allocs->GetDeviceAddress(index);
 
     if (recorded_allocs.size() <= index) {
@@ -103,11 +105,13 @@ bool CommandBufferThunk::ExecutorCommandBuffer::ShouldUpdateCommandBuffer(
     }
 
     if (!recorded_allocs[index].IsSameAs(alloc)) {
+      VLOG(2) << "Command buffer allocation changed, command buffer should be "
+                 "updated, recorded: "
+              << recorded_allocs[index].opaque() << " new: " << alloc.opaque();
       recorded_allocs[index] = alloc;
       should_update = true;
     }
   }
-
   return should_update;
 }
 
@@ -137,15 +141,6 @@ absl::Status CommandBufferThunk::Initialize(const InitializeParams& params) {
                       GetOrCreateCommandBuffer(params.executor));
   absl::MutexLock lock(&cmd_buffer->mutex);
 
-  // Initialize commands.
-  TF_RETURN_IF_ERROR(commands_.Initialize(params, cmd_buffer->state));
-
-  // Always initialize thunks if they are present so we are ready to fall back
-  // on them if we detect profiling activity.
-  if (thunks_) {
-    TF_RETURN_IF_ERROR(thunks_->Initialize(params));
-  }
-
   // Construct ExecuteParams with empty fields for everything that is not needed
   // for recording commands.
   Thunk::ExecuteParams execute_params(
@@ -158,6 +153,15 @@ absl::Status CommandBufferThunk::Initialize(const InitializeParams& params) {
       /*additional_compute_streams=*/{}, /*mock_collectives=*/false,
       /*requires_exclusive_lock_on_gpu=*/params.requires_exclusive_lock_on_gpu);
 
+  // Initialize commands.
+  TF_RETURN_IF_ERROR(cmd_buffer->Initialize(params));
+
+  // Always initialize thunks if they are present so we are ready to fall back
+  // on them if we detect profiling activity.
+  if (thunks_) {
+    TF_RETURN_IF_ERROR(thunks_->Initialize(params));
+  }
+
   // If command buffer is in `kCreate` state it means that command buffer
   // sequence was never recorded into it. We initialize all command buffers
   // before execution, because command buffers when instantiated will allocate
@@ -167,10 +171,7 @@ absl::Status CommandBufferThunk::Initialize(const InitializeParams& params) {
   // If command buffer in any other state we check it is has to be updated, i.e.
   // if captured pointers changed or command buffer has commands that require
   // update on each call.
-  if ((cmd_buffer->command_buffer->state() ==
-           se::CommandBuffer::State::kCreate ||
-       params.requires_exclusive_lock_on_gpu) &&
-      cmd_buffer->ShouldUpdateCommandBuffer(commands_, execute_params)) {
+  if (cmd_buffer->ShouldUpdateCommandBuffer(execute_params)) {
     VLOG(3) << "Initialize/Update command buffer on device #"
             << params.executor->device_ordinal()
             << " by recoding command buffer cmd sequence"
@@ -187,8 +188,7 @@ absl::Status CommandBufferThunk::Initialize(const InitializeParams& params) {
     uint64_t start_micros = tsl::Env::Default()->NowMicros();
 
     CommandBufferCmd::RecordParams record_params = {cmd_buffer->state};
-    TF_RETURN_IF_ERROR(commands_.Record(execute_params, record_params,
-                                        cmd_buffer->command_buffer.get()));
+    TF_RETURN_IF_ERROR(cmd_buffer->Record(execute_params, record_params));
 
     uint64_t end_micros = tsl::Env::Default()->NowMicros();
     VLOG(3) << "Initialized command buffer on device #"
@@ -197,7 +197,6 @@ absl::Status CommandBufferThunk::Initialize(const InitializeParams& params) {
             << " μs; num_commands=" << commands_.size();
     cmd_buffer->num_executions = 0;
   }
-
   return absl::OkStatus();
 }
 
@@ -223,8 +222,8 @@ absl::Status CommandBufferThunk::ExecuteOnStream(const ExecuteParams& params) {
 
   absl::MutexLock lock(&cmd_buffer->mutex);
 
-  if ((!params.requires_exclusive_lock_on_gpu) &&
-      cmd_buffer->ShouldUpdateCommandBuffer(commands_, params)) {
+  if (!params.requires_exclusive_lock_on_gpu &&
+      cmd_buffer->ShouldUpdateCommandBuffer(params)) {
     VLOG(3) << "Update command buffer on device #" << executor->device_ordinal()
             << " by recoding command buffer cmd sequence after "
             << cmd_buffer->num_executions << " executions since last update"
@@ -241,8 +240,7 @@ absl::Status CommandBufferThunk::ExecuteOnStream(const ExecuteParams& params) {
     uint64_t start_micros = tsl::Env::Default()->NowMicros();
 
     CommandBufferCmd::RecordParams record_params = {cmd_buffer->state};
-    TF_RETURN_IF_ERROR(commands_.Record(params, record_params,
-                                        cmd_buffer->command_buffer.get()));
+    TF_RETURN_IF_ERROR(cmd_buffer->Record(params, record_params));
 
     uint64_t end_micros = tsl::Env::Default()->NowMicros();
     VLOG(3) << "Updated command buffer in " << (end_micros - start_micros)
@@ -263,7 +261,7 @@ absl::Status CommandBufferThunk::ExecuteOnStream(const ExecuteParams& params) {
                           {"num_executions", cmd_buffer->num_executions}});
   });
 
-  return cmd_buffer->command_buffer->Submit(params.stream);
+  return cmd_buffer->Submit(params.stream);
 }
 
 absl::StatusOr<std::shared_ptr<CommandBufferThunk::ExecutorCommandBuffer>>
@@ -281,8 +279,8 @@ CommandBufferThunk::GetOrCreateCommandBuffer(se::StreamExecutor* executor) {
       auto command_buffer,
       executor->CreateCommandBuffer(se::CommandBuffer::Mode::kPrimary));
   auto emplaced = state_->command_buffers.emplace(
-      executor,
-      std::make_shared<ExecutorCommandBuffer>(std::move(command_buffer)));
+      executor, std::make_shared<ExecutorCommandBuffer>(
+                    std::move(command_buffer), commands_.Clone()));
 
   return emplaced.first->second;
 }

@@ -78,6 +78,11 @@ class BufferUse {
     return H::combine(std::move(h), use.slice_, use.access_);
   }
 
+  std::string ToString() const {
+    return absl::StrCat("BufferUse(", slice_.ToString(), ", ",
+                        access_ == MemoryAccess::kRead ? "Read" : "Write", ")");
+  }
+
  private:
   BufferAllocation::Slice slice_;
   MemoryAccess access_;

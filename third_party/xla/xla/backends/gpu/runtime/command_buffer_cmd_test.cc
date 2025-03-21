@@ -47,7 +47,6 @@ limitations under the License.
 namespace xla::gpu {
 
 using BufferUseVector = CommandBufferCmd::BufferUseVector;
-using MemoryAccess = BufferUse::MemoryAccess;
 
 static se::StreamExecutor* GpuExecutor() {
   auto name =
@@ -64,34 +63,25 @@ static constexpr auto s1 = ExecutionStreamId(1);
 // buffer cmd sequence. We never execute this command, we need it only to pass
 // buffer usage vector to the command buffer cmd sequence.
 struct TestOnlyCommandBufferCmd : public CommandBufferCmd {
-  TestOnlyCommandBufferCmd(ExecutionStreamId execution_stream_id,
-                           BufferUseVector buffer_usage)
-      : CommandBufferCmd(CommandBufferCmdType::kUnknownCmd,
-                         execution_stream_id),
-        buffer_usage(buffer_usage) {}
+  TestOnlyCommandBufferCmd(BufferUseVector buffer_usage)
+      : CommandBufferCmd(CommandBufferCmdType::kUnknownCmd),
+        buffer_usage_(buffer_usage) {}
 
   absl::Status Record(const Thunk::ExecuteParams&, const RecordParams&,
-                      se::CommandBuffer*) override {
+                      se::CommandBuffer*, bool create) override {
     return absl::OkStatus();
   }
 
-  BufferUseVector buffers() override { return buffer_usage; }
-
-  BufferUseVector buffer_usage;
-};
-
-class FakeCmd : public CommandBufferCmd {
- public:
-  FakeCmd(ExecutionStreamId execution_stream_id)
-      : CommandBufferCmd(CommandBufferCmdType::kTracedCommandBufferCmd,
-                         execution_stream_id) {}
-
-  absl::Status Record(const Thunk::ExecuteParams& execute_params,
-                      const RecordParams& record_params,
-                      se::CommandBuffer* command_buffer) override {
-    return absl::OkStatus();
+  std::unique_ptr<CommandBufferCmd> Clone() const override {
+    return std::make_unique<TestOnlyCommandBufferCmd>(buffer_usage_);
   }
-  BufferUseVector buffers() override { return BufferUseVector{}; }
+
+  std::vector<CommandBufferNodeHandle> leaf_nodes() const override {
+    return std::vector<CommandBufferNodeHandle>{};
+  }
+
+  BufferUseVector buffers() override { return buffer_usage_; }
+  BufferUseVector buffer_usage_;
 };
 
 TEST(CommandBufferCmdTest, SerializeExecution) {
@@ -106,12 +96,9 @@ TEST(CommandBufferCmdTest, SerializeExecution) {
 
   CommandBufferCmdSequence commands(
       CommandBufferCmdSequence::SynchronizationMode::kSerialize);
-  commands.Emplace<TestOnlyCommandBufferCmd>(s0, BufferUseVector{use0});
-  commands.Emplace<TestOnlyCommandBufferCmd>(s0, BufferUseVector{use1});
-
-  ASSERT_EQ(commands.barriers().size(), 2);
-  EXPECT_EQ(commands.barriers().at(0), false);
-  EXPECT_EQ(commands.barriers().at(1), true);
+  commands.Emplace<TestOnlyCommandBufferCmd>(BufferUseVector{use0});
+  commands.Emplace<TestOnlyCommandBufferCmd>(BufferUseVector{use1});
+  ASSERT_EQ(commands.size(), 2);
 }
 
 TEST(CommandBufferCmdTest, NoReadBarrier) {
@@ -125,12 +112,12 @@ TEST(CommandBufferCmdTest, NoReadBarrier) {
   auto use1 = BufferUse(slice1, BufferUse::kRead);
 
   CommandBufferCmdSequence commands;
-  commands.Emplace<TestOnlyCommandBufferCmd>(s0, BufferUseVector{use0});
-  commands.Emplace<TestOnlyCommandBufferCmd>(s0, BufferUseVector{use1});
+  commands.Emplace<TestOnlyCommandBufferCmd>(BufferUseVector{use0});
+  commands.Emplace<TestOnlyCommandBufferCmd>(BufferUseVector{use1});
 
-  ASSERT_EQ(commands.barriers().size(), 2);
-  EXPECT_EQ(commands.barriers().at(0), false);
-  EXPECT_EQ(commands.barriers().at(1), false);
+  ASSERT_EQ(commands.size(), 2);
+  ASSERT_EQ(commands.get_command(0)->dependencies().size(), 0);
+  ASSERT_EQ(commands.get_command(1)->dependencies().size(), 0);
 }
 
 TEST(CommandBufferCmdTest, NoWriteBarrier) {
@@ -144,12 +131,12 @@ TEST(CommandBufferCmdTest, NoWriteBarrier) {
   auto use1 = BufferUse(slice1, BufferUse::kWrite);
 
   CommandBufferCmdSequence commands;
-  commands.Emplace<TestOnlyCommandBufferCmd>(s0, BufferUseVector{use0});
-  commands.Emplace<TestOnlyCommandBufferCmd>(s0, BufferUseVector{use1});
+  commands.Emplace<TestOnlyCommandBufferCmd>(BufferUseVector{use0});
+  commands.Emplace<TestOnlyCommandBufferCmd>(BufferUseVector{use1});
 
-  ASSERT_EQ(commands.barriers().size(), 2);
-  EXPECT_EQ(commands.barriers().at(0), false);
-  EXPECT_EQ(commands.barriers().at(1), false);
+  ASSERT_EQ(commands.size(), 2);
+  ASSERT_EQ(commands.get_command(0)->dependencies().size(), 0);
+  ASSERT_EQ(commands.get_command(1)->dependencies().size(), 0);
 }
 
 TEST(CommandBufferCmdTest, WriteConflictBarrier) {
@@ -165,14 +152,34 @@ TEST(CommandBufferCmdTest, WriteConflictBarrier) {
   auto use2 = BufferUse(slice1, BufferUse::kWrite);
 
   CommandBufferCmdSequence commands;
-  commands.Emplace<TestOnlyCommandBufferCmd>(s0, BufferUseVector{use0});
-  commands.Emplace<TestOnlyCommandBufferCmd>(s0, BufferUseVector{use1});
-  commands.Emplace<TestOnlyCommandBufferCmd>(s0, BufferUseVector{use2});
+  commands.Emplace<TestOnlyCommandBufferCmd>(BufferUseVector{use0});
+  commands.Emplace<TestOnlyCommandBufferCmd>(BufferUseVector{use1});
+  commands.Emplace<TestOnlyCommandBufferCmd>(BufferUseVector{use2});
 
-  ASSERT_EQ(commands.barriers().size(), 3);
-  EXPECT_EQ(commands.barriers().at(0), false);
-  EXPECT_EQ(commands.barriers().at(1), false);
-  EXPECT_EQ(commands.barriers().at(2), true);
+  ASSERT_EQ(commands.size(), 3);
+  ASSERT_EQ(commands.get_command(0)->dependencies().size(), 0);
+  ASSERT_EQ(commands.get_command(1)->dependencies().size(), 0);
+  ASSERT_EQ(commands.get_command(2)->dependencies().size(), 2);
+}
+
+TEST(CommandBufferCmdTest, NoWriteConflictsAcrossStreams) {
+  BufferAllocation alloc0(/*index=*/0, /*size=*/1024, /*color=*/0);
+
+  auto slice0 = BufferAllocation::Slice(&alloc0, 0, 100);
+  auto slice1 = BufferAllocation::Slice(&alloc0, 50, 100);
+
+  // Read and write happens on different execution streams and we do not insert
+  // any automatic barriers between streams.
+  auto use0 = BufferUse(slice0, BufferUse::kRead);
+  auto use1 = BufferUse(slice1, BufferUse::kWrite);
+
+  CommandBufferCmdSequence commands;
+  commands.Emplace<TestOnlyCommandBufferCmd>(BufferUseVector{use0});
+  commands.Emplace<TestOnlyCommandBufferCmd>(BufferUseVector{use1});
+
+  ASSERT_EQ(commands.size(), 2);
+  EXPECT_EQ(commands.get_command(0)->dependencies().size(), 0);
+  EXPECT_EQ(commands.get_command(1)->dependencies().size(), 1);
 }
 
 TEST(CommandBufferCmdTest, MemcpyCmd) {
@@ -198,7 +205,7 @@ TEST(CommandBufferCmdTest, MemcpyCmd) {
 
   // Prepare commands sequence for constructing command buffer.
   CommandBufferCmdSequence commands;
-  commands.Emplace<MemcpyDeviceToDeviceCmd>(s0, slice_b, slice_a, byte_length);
+  commands.Emplace<MemcpyDeviceToDeviceCmd>(slice_b, slice_a, byte_length);
 
   ServiceExecutableRunOptions run_options;
   se::StreamExecutorMemoryAllocator allocator(executor);
@@ -225,6 +232,87 @@ TEST(CommandBufferCmdTest, MemcpyCmd) {
   ASSERT_EQ(dst, std::vector<int32_t>(4, 42));
 }
 
+TEST(CommandBufferCmdTest, BarrierCmd) {
+  // This test covers both CUDA version < 12040 (use empty kernel node as
+  // barrier node) and >=12040 (use cuda graph empty node as barrier node).
+  se::StreamExecutor* executor = GpuExecutor();
+
+  auto stream = executor->CreateStream().value();
+
+  int64_t length = 4;
+  int64_t byte_length = sizeof(int32_t) * length;
+
+  // Prepare arguments: a=42, b=0
+  se::DeviceMemory<int32_t> a = executor->AllocateArray<int32_t>(length, 0);
+  se::DeviceMemory<int32_t> b = executor->AllocateArray<int32_t>(length, 0);
+  se::DeviceMemory<int32_t> c = executor->AllocateArray<int32_t>(length, 0);
+  se::DeviceMemory<int32_t> d = executor->AllocateArray<int32_t>(length, 0);
+  se::DeviceMemory<int32_t> e = executor->AllocateArray<int32_t>(length, 0);
+
+  TF_ASSERT_OK(stream->Memset32(&a, 42, byte_length));
+  TF_ASSERT_OK(stream->MemZero(&b, byte_length));
+  TF_ASSERT_OK(stream->MemZero(&c, byte_length));
+  TF_ASSERT_OK(stream->MemZero(&d, byte_length));
+  TF_ASSERT_OK(stream->MemZero(&e, byte_length));
+
+  // Prepare buffer allocations for recording command buffer.
+  BufferAllocation alloc_a(/*index=*/0, byte_length, /*color=*/0);
+  BufferAllocation alloc_b(/*index=*/1, byte_length, /*color=*/0);
+  BufferAllocation alloc_c(/*index=*/2, byte_length, /*color=*/0);
+  BufferAllocation alloc_d(/*index=*/3, byte_length, /*color=*/0);
+  BufferAllocation alloc_e(/*index=*/4, byte_length, /*color=*/0);
+
+  BufferAllocation::Slice slice_a(&alloc_a, 0, byte_length);
+  BufferAllocation::Slice slice_b(&alloc_b, 0, byte_length);
+  BufferAllocation::Slice slice_c(&alloc_c, 0, byte_length);
+  BufferAllocation::Slice slice_d(&alloc_d, 0, byte_length);
+  BufferAllocation::Slice slice_e(&alloc_e, 0, byte_length);
+
+  // Prepare commands sequence for constructing command buffer.
+  CommandBufferCmdSequence commands;
+  commands.Emplace<MemcpyDeviceToDeviceCmd>(slice_b, slice_a, byte_length);
+  commands.Emplace<BarrierCmd>();
+  commands.Emplace<MemcpyDeviceToDeviceCmd>(slice_c, slice_b, byte_length);
+  commands.Emplace<BarrierCmd>();
+  commands.Emplace<MemcpyDeviceToDeviceCmd>(slice_d, slice_c, byte_length);
+  commands.Emplace<BarrierCmd>();
+  commands.Emplace<MemcpyDeviceToDeviceCmd>(slice_e, slice_d, byte_length);
+
+  ServiceExecutableRunOptions run_options;
+  se::StreamExecutorMemoryAllocator allocator(executor);
+  BufferAllocations allocations({a, b, c, d, e}, 0, &allocator);
+
+  CommandBufferCmd::StateManager state;
+
+  Thunk::ExecuteParams params = Thunk::ExecuteParams::Create(
+      run_options, allocations, stream.get(), stream.get(), nullptr, nullptr);
+
+  CommandBufferCmd::RecordParams record_params = {state};
+
+  auto command_buffer =
+      executor->CreateCommandBuffer(se::CommandBuffer::Mode::kPrimary).value();
+  TF_ASSERT_OK(commands.Record(params, record_params, command_buffer.get()));
+
+  // Execute command buffer and verify that it copied the memory.
+  TF_ASSERT_OK(command_buffer->Submit(stream.get()));
+
+  // Copy data back to host, correct executor order should populate all buffers
+  // with expected value.
+  std::vector<int32_t> dst_b(4, 0);
+  std::vector<int32_t> dst_c(4, 0);
+  std::vector<int32_t> dst_d(4, 0);
+  std::vector<int32_t> dst_e(4, 0);
+  TF_ASSERT_OK(stream->Memcpy(dst_b.data(), b, byte_length));
+  TF_ASSERT_OK(stream->Memcpy(dst_c.data(), c, byte_length));
+  TF_ASSERT_OK(stream->Memcpy(dst_d.data(), d, byte_length));
+  TF_ASSERT_OK(stream->Memcpy(dst_e.data(), e, byte_length));
+
+  ASSERT_EQ(dst_b, std::vector<int32_t>(4, 42));
+  ASSERT_EQ(dst_c, std::vector<int32_t>(4, 42));
+  ASSERT_EQ(dst_d, std::vector<int32_t>(4, 42));
+  ASSERT_EQ(dst_e, std::vector<int32_t>(4, 42));
+}
+
 TEST(CommandBufferCmdTest, LaunchCmd) {
   se::StreamExecutor* executor = GpuExecutor();
 
@@ -247,11 +335,11 @@ TEST(CommandBufferCmdTest, LaunchCmd) {
   BufferAllocation::Slice slice_b(&alloc_b, 0, byte_length);
 
   auto args = {slice_a, slice_a, slice_b};  // b = a + a
-  auto args_access = {BufferUse::kRead, MemoryAccess::kRead, BufferUse::kWrite};
+  auto args_access = {BufferUse::kRead, BufferUse::kRead, BufferUse::kWrite};
 
   // Prepare commands sequence for constructing command buffer.
   CommandBufferCmdSequence commands;
-  commands.Emplace<LaunchCmd>(s0, "AddI32", args, args_access,
+  commands.Emplace<LaunchCmd>("AddI32", args, args_access,
                               LaunchDimensions(1, 4),
                               /*shmem_bytes=*/0);
 
@@ -314,7 +402,7 @@ TEST(TracedCommandBuffer, GetOrUpdateCommandBuffer) {
     se::StreamExecutor* executor = GpuExecutor();
 
     auto stream = executor->CreateStream().value();
-    auto traced_cmd = FakeCmd(ExecutionStreamId(0));
+    auto traced_cmd = EmptyCmd(CommandBufferCmd::DependencyCmdSet{});
     BufferAllocation alloc0(/*index=*/0, /*size=*/1024, /*color=*/0);
     BufferAllocation alloc1(/*index=*/1, /*size=*/1024, /*color=*/0);
 
@@ -424,7 +512,7 @@ static void BM_GetOrTraceCommandBuffer(benchmark::State& state) {
   };
 
   int32_t index = 0;
-  auto traced_cmd = FakeCmd(ExecutionStreamId(0));
+  auto traced_cmd = EmptyCmd(CommandBufferCmd::DependencyCmdSet{});
   TracedCommandBuffer traced_cmd_buffer(&traced_cmd, buffers);
 
   auto trace = [](se::Stream*) { return absl::OkStatus(); };
