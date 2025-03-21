@@ -137,7 +137,7 @@ class SourceLocation {
   }
 
   constexpr const char* file_name() const { return file_; }
-  constexpr uint32_t line() const { return line_; };
+  constexpr uint32_t line() const { return line_; }
 
  private:
   // Builds a SourceLocation object.
