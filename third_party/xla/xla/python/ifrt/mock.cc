@@ -36,6 +36,7 @@ limitations under the License.
 #include "xla/python/ifrt/remap_plan.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
+#include "xla/python/ifrt/user_context.h"
 #include "xla/python/ifrt/value.h"
 #include "xla/tsl/concurrency/ref_count.h"
 
@@ -112,7 +113,9 @@ MockClient::MockClient(std::unique_ptr<xla::ifrt::Client> delegated)
                  std::optional<absl::Span<const int64_t>> byte_strides,
                  absl::Nonnull<std::shared_ptr<const Sharding>> sharding,
                  HostBufferSemantics semantics,
-                 std::function<void()> on_done_with_host_buffer) {
+                 std::function<void()> on_done_with_host_buffer,
+                 tsl::RCReference<UserContext> user_context) {
+            // Currently the `user_context` parameter is ignored.
             return delegated_->MakeArrayFromHostBuffer(
                 data, dtype, std::move(shape), byte_strides,
                 std::move(sharding), semantics,

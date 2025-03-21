@@ -47,6 +47,7 @@ limitations under the License.
 #include "xla/python/ifrt/sharding.h"
 #include "xla/python/ifrt/topology.h"
 #include "xla/python/ifrt/tuple.h"
+#include "xla/python/ifrt/user_context.h"
 #include "xla/python/ifrt/value.h"
 #include "xla/service/computation_placer.h"
 #include "xla/tsl/concurrency/ref_count.h"
@@ -109,6 +110,9 @@ class Client : public llvm::RTTIExtends<Client, llvm::RTTIRoot> {
   // `on_done_with_host_buffer` is optional and may be null.
   // `on_done_with_host_buffer` will be called iff OK is returned.
   //
+  //  `user_context` is attached to all the runtime actions triggered by this
+  //  call and thus simpifies performance analysis and debugging.
+  //
   // TODO(hyeontaek): Consider changing `on_done_with_host_buffer` into a
   // returned `Future<absl::Status>` for consistency with other IFRT APIs.
   virtual absl::StatusOr<tsl::RCReference<Array>> MakeArrayFromHostBuffer(
@@ -116,8 +120,21 @@ class Client : public llvm::RTTIExtends<Client, llvm::RTTIRoot> {
       std::optional<absl::Span<const int64_t>> byte_strides,
       absl::Nonnull<std::shared_ptr<const Sharding>> sharding,
       HostBufferSemantics semantics,
-      std::function<void()> on_done_with_host_buffer) = 0;
+      std::function<void()> on_done_with_host_buffer,
+      tsl::RCReference<UserContext> user_context) = 0;
 
+  // Soon to be deprecated. Please use the version above that accepts a
+  // `UserContext`.
+  absl::StatusOr<tsl::RCReference<Array>> MakeArrayFromHostBuffer(
+      const void* data, DType dtype, Shape shape,
+      std::optional<absl::Span<const int64_t>> byte_strides,
+      absl::Nonnull<std::shared_ptr<const Sharding>> sharding,
+      HostBufferSemantics semantics,
+      std::function<void()> on_done_with_host_buffer) {
+    return MakeArrayFromHostBuffer(data, dtype, shape, byte_strides, sharding,
+                                   semantics, on_done_with_host_buffer,
+                                   CreateUserContext());
+  }
   // Represents a host buffer.
   //
   // TODO(hyeontaek): Consider evolving this structure to `Literal` once it is
@@ -338,6 +355,11 @@ class Client : public llvm::RTTIExtends<Client, llvm::RTTIRoot> {
   virtual absl::StatusOr<std::shared_ptr<const PjRtLayout>> GetDefaultLayout(
       DType dtype, absl::Span<const int64_t> dims, Device* device,
       xla::ifrt::MemoryKind memory_kind) const = 0;
+
+  // Returns a UserContext that captures the current context information such as
+  // the stack trace. IFRT implementations that do not support UserContext will
+  // return a nullptr.
+  virtual tsl::RCReference<UserContext> CreateUserContext() = 0;
 
   static char ID;  // NOLINT
 };

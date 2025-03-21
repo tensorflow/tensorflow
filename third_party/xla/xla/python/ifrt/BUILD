@@ -83,6 +83,7 @@ cc_library(
         ":serdes",
         ":shape_proto_cc",
         ":sharding_proto_cc",
+        ":user_context",
         "//xla:shape_util",
         "//xla:status_macros",
         "//xla:util",
@@ -500,6 +501,7 @@ cc_library(
         ":attribute_map",
         ":basic_device_list",
         ":ifrt",
+        ":user_context",
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:test",
@@ -950,7 +952,6 @@ cc_library(
         ":users",
     ],
     deps = [
-        ":ifrt",
         "//xla/tsl/concurrency:ref_count",
         "@llvm-project//llvm:Support",
     ],

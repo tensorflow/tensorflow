@@ -45,6 +45,7 @@
 #include "xla/python/ifrt/remap_plan.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
+#include "xla/python/ifrt/user_context.h"
 #include "xla/python/ifrt/value.h"
 #include "xla/python/ifrt_proxy/client/array.h"
 #include "xla/python/ifrt_proxy/client/device.h"
@@ -225,7 +226,9 @@ Client::MakeArrayFromHostBuffer(
     std::optional<absl::Span<const int64_t>> byte_strides,
     std::shared_ptr<const Sharding> sharding,
     xla::ifrt::Client::HostBufferSemantics semantics,
-    std::function<void()> on_done_with_host_buffer) {
+    std::function<void()> on_done_with_host_buffer,
+    tsl::RCReference<xla::ifrt::UserContext> user_context) {
+  // Currently the `user_context` parameter is ignored.
   return Array::MakeArrayFromHostBuffer(
       this, rpc_helper_, data, dtype, std::move(shape), std::move(byte_strides),
       std::move(sharding), semantics, std::move(on_done_with_host_buffer));

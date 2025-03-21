@@ -54,6 +54,7 @@ limitations under the License.
 #include "xla/python/ifrt/sharding.h"
 #include "xla/python/ifrt/topology.h"
 #include "xla/python/ifrt/tuple.h"
+#include "xla/python/ifrt/user_context.h"
 #include "xla/python/ifrt/value.h"
 #include "xla/tsl/concurrency/ref_count.h"
 #include "xla/xla_data.pb.h"
@@ -118,7 +119,8 @@ class MockClient : public llvm::RTTIExtends<MockClient, Client> {
                std::optional<absl::Span<const int64_t>> byte_strides,
                absl::Nonnull<std::shared_ptr<const Sharding>> sharding,
                HostBufferSemantics semantics,
-               std::function<void()> on_done_with_host_buffer),
+               std::function<void()> on_done_with_host_buffer,
+               tsl::RCReference<UserContext> user_context),
               (final));
   MOCK_METHOD(absl::StatusOr<std::vector<tsl::RCReference<Array>>>,
               MakeArraysFromHostBufferShards,
@@ -177,6 +179,8 @@ class MockClient : public llvm::RTTIExtends<MockClient, Client> {
               (xla::ifrt::DType dtype, absl::Span<const int64_t> dims,
                xla::ifrt::Device* device, xla::ifrt::MemoryKind memory_kind),
               (const, final));
+  MOCK_METHOD(tsl::RCReference<xla::ifrt::UserContext>, CreateUserContext, (),
+              (final));
   // LINT.ThenChange(mock.cc:MockClientDelegation)
 
   xla::ifrt::Client* delegated() const { return delegated_.get(); }

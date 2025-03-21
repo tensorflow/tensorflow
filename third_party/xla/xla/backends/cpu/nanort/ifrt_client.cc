@@ -77,6 +77,7 @@ limitations under the License.
 #include "xla/python/ifrt/sharding.h"
 #include "xla/python/ifrt/topology.h"
 #include "xla/python/ifrt/tuple.h"
+#include "xla/python/ifrt/user_context.h"
 #include "xla/python/ifrt/value.h"
 #include "xla/python/pjrt_ifrt/pjrt_dtype.h"
 #include "xla/python/pjrt_ifrt/xla_sharding.h"
@@ -1242,7 +1243,9 @@ NanoIfrtClient::MakeArrayFromHostBuffer(
     std::optional<absl::Span<const int64_t>> byte_strides,
     absl::Nonnull<std::shared_ptr<const ifrt::Sharding>> sharding,
     HostBufferSemantics semantics,
-    std::function<void()> on_done_with_host_buffer) {
+    std::function<void()> on_done_with_host_buffer,
+    tsl::RCReference<xla::ifrt::UserContext> user_context) {
+  // Currently the `user_context` parameter is ignored.
   bool make_copy = false;
   switch (semantics) {
     case HostBufferSemantics::kImmutableUntilTransferCompletes:
