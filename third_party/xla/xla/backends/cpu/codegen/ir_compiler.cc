@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/base/nullability.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_split.h"
@@ -47,7 +48,6 @@ limitations under the License.
 #include "llvm/Passes/StandardInstrumentations.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/CodeGen.h"
-#include "llvm/Support/Debug.h"
 #include "llvm/Support/Errc.h"
 #include "llvm/Support/Error.h"
 #include "llvm/Support/MemoryBuffer.h"
@@ -240,6 +240,42 @@ llvm::Expected<std::unique_ptr<llvm::MemoryBuffer>> IrCompiler::operator()(
     }
   }
 
+  if (llvm::Error ir_passes_error =
+          RunIrPasses(module, target_machine->get())) {
+    return ir_passes_error;
+  }
+
+  VLOG(2) << "IR after optimizations";
+  XLA_VLOG_LINES(2, llvm_ir::DumpToString(&module));
+
+  {  // Synchronize access to user-defined hooks.
+    absl::MutexLock lock(&mutex_);
+    if (hooks_.post_optimization) {
+      hooks_.post_optimization(module);
+    }
+  }
+
+  std::unique_ptr<llvm::MemoryBuffer> mc_memory_buffer =
+      EmitMachineCode(module, target_machine->get());
+
+  {  // Synchronize access to user-defined hooks.
+    absl::MutexLock lock(&mutex_);
+    if (hooks_.post_codegen) {
+      llvm::Expected<std::unique_ptr<llvm::object::ObjectFile>> obj_file =
+          llvm::object::ObjectFile::createObjectFile(*mc_memory_buffer);
+      if (obj_file) {
+        hooks_.post_codegen(module, *obj_file.get());
+      } else {
+        LOG(WARNING) << "Could not convert memory buffer to object file";
+      }
+    }
+  }
+
+  return std::move(mc_memory_buffer);
+}
+
+llvm::Error IrCompiler::RunIrPasses(llvm::Module& module,
+                                    llvm::TargetMachine* target_machine) const {
   llvm::PipelineTuningOptions pto = GetPipelineTuningOptions(module, options_);
   llvm::LoopAnalysisManager lam;
   llvm::FunctionAnalysisManager fam;
@@ -250,10 +286,10 @@ llvm::Expected<std::unique_ptr<llvm::MemoryBuffer>> IrCompiler::operator()(
   llvm::StandardInstrumentations si(module.getContext(), false);
   si.registerCallbacks(pic, &mam);
 
-  llvm::PassBuilder pb(target_machine->get(), pto, {}, &pic);
+  llvm::PassBuilder pb(target_machine, pto, {}, &pic);
 
   // Add the appropriate TargetLibraryInfo.
-  llvm::Triple target_triple((*target_machine)->getTargetTriple());
+  llvm::Triple target_triple(target_machine->getTargetTriple());
   auto target_library_info_impl =
       std::make_unique<llvm::TargetLibraryInfoImpl>(target_triple);
   target_library_info_impl->addVectorizableFunctions(
@@ -281,51 +317,49 @@ llvm::Expected<std::unique_ptr<llvm::MemoryBuffer>> IrCompiler::operator()(
     pm.addPass(pb.buildPerModuleDefaultPipeline(opt_level));
   }
 
-  CHECK(!llvm::verifyModule(module, &llvm::dbgs()));
+  {
+    std::string error_string;
+    llvm::raw_string_ostream error_stream(error_string);
+    if (llvm::verifyModule(module, &error_stream)) {
+      return llvm::make_error<llvm::StringError>(
+          llvm::errc::invalid_argument,
+          absl::StrFormat("Invalid LLVM IR before optimizations:\n%s",
+                          error_stream.str()));
+    }
+  }
 
   pm.run(module, mam);
 
-  CHECK(!llvm::verifyModule(module, &llvm::dbgs()));
+  {
+    std::string error_string;
+    llvm::raw_string_ostream error_stream(error_string);
+    if (llvm::verifyModule(module, &error_stream)) {
+      return llvm::make_error<llvm::StringError>(
+          llvm::errc::invalid_argument,
+          absl::StrFormat("Invalid LLVM IR after optimizations:\n%s",
+                          error_stream.str()));
+    }
+  }
 
   RewriteToPolynomialApproximations(&module, options_.fast_math_flags);
 
+  return llvm::Error::success();
+}
+
+std::unique_ptr<llvm::MemoryBuffer> IrCompiler::EmitMachineCode(
+    llvm::Module& module, llvm::TargetMachine* target_machine) const {
   // Buffer for holding machine code prior to constructing the ObjectFile.
   llvm::SmallVector<char, 0> mc_stream_buffer;
   llvm::raw_svector_ostream ostream(mc_stream_buffer);
 
-  VLOG(2) << "IR after optimizations";
-  XLA_VLOG_LINES(2, llvm_ir::DumpToString(&module));
-
-  {  // Synchronize access to user-defined hooks.
-    absl::MutexLock lock(&mutex_);
-    if (hooks_.post_optimization) {
-      hooks_.post_optimization(module);
-    }
-  }
-
   // Generate code.
   llvm::MCContext* mc_context;
   llvm::legacy::PassManager codegen_passes;
-  (*target_machine)->addPassesToEmitMC(codegen_passes, mc_context, ostream);
+  target_machine->addPassesToEmitMC(codegen_passes, mc_context, ostream);
   codegen_passes.run(module);
 
-  std::unique_ptr<llvm::MemoryBuffer> mc_memory_buffer(
-      new llvm::SmallVectorMemoryBuffer(std::move(mc_stream_buffer)));
-
-  {  // Synchronize access to user-defined hooks.
-    absl::MutexLock lock(&mutex_);
-    if (hooks_.post_codegen) {
-      llvm::Expected<std::unique_ptr<llvm::object::ObjectFile>> obj_file =
-          llvm::object::ObjectFile::createObjectFile(*mc_memory_buffer);
-      if (obj_file) {
-        hooks_.post_codegen(module, *obj_file.get());
-      } else {
-        LOG(WARNING) << "Could not convert memory buffer to object file";
-      }
-    }
-  }
-
-  return std::move(mc_memory_buffer);
+  return std::make_unique<llvm::SmallVectorMemoryBuffer>(
+      std::move(mc_stream_buffer));
 }
 
 llvm::CodeGenOptLevel IrCompiler::GetCodeGenOptLevel(

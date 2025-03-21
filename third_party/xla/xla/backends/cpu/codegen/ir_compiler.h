@@ -111,6 +111,14 @@ class IrCompiler : public llvm::orc::IRCompileLayer::IRCompiler {
   llvm::Expected<std::unique_ptr<llvm::MemoryBuffer>> operator()(
       llvm::Module& module) final;
 
+  // Runs the IR passes on the given module.
+  llvm::Error RunIrPasses(llvm::Module& module,
+                          llvm::TargetMachine* target_machine) const;
+
+  // Emits machine code for the given module.
+  std::unique_ptr<llvm::MemoryBuffer> EmitMachineCode(
+      llvm::Module& module, llvm::TargetMachine* target_machine) const;
+
   static llvm::CodeGenOptLevel GetCodeGenOptLevel(
       const HloModuleConfig& module_config);
 
