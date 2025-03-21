@@ -17,7 +17,7 @@ load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
-    default_visibility = internal_visibility(["//visibility:private"]),
+    default_visibility = internal_visibility([":jax"]),
     licenses = ["notice"],
 )
 
@@ -26,6 +26,13 @@ package_group(
     includes = [
         "//xla:friends",
         "//xla:internal",
+    ],
+)
+
+package_group(
+    name = "jax",
+    packages = [
+        "//third_party/py/jax/...",
     ],
 )
 
@@ -40,7 +47,6 @@ tsl_pybind_extension(
     name = "status_casters_ext",
     testonly = 1,
     srcs = ["status_casters_ext.cc"],
-    visibility = ["//visibility:private"],
     deps = [
         "//xla/pjrt:exceptions",
         "//xla/pjrt:status_casters",
@@ -482,7 +488,6 @@ cc_library(
         "-fno-strict-aliasing",
     ],
     features = ["-use_header_modules"],
-    visibility = ["//visibility:private"],  # For the functions to access C++ flags/thread-local variables
     deps = [
         ":nb_absl_inlined_vector",
         ":nb_absl_span",
@@ -583,7 +588,6 @@ cc_library(
         "-fno-strict-aliasing",
     ],
     features = ["-use_header_modules"],
-    visibility = ["//visibility:private"],
     deps = [
         ":custom_call_batch_partitioner",
         ":custom_partition_callback",
@@ -650,7 +654,6 @@ cc_library(
         "-fno-strict-aliasing",
     ],
     features = ["-use_header_modules"],
-    visibility = ["//visibility:private"],
     deps = [
         ":config",
         ":guard_lib",
@@ -700,7 +703,6 @@ cc_library(
         "-fno-strict-aliasing",
     ],
     features = ["-use_header_modules"],
-    visibility = ["//visibility:private"],
     deps = [
         ":config",
         ":jax_jit",
@@ -785,7 +787,6 @@ cc_library(
         "-fno-strict-aliasing",
     ],
     features = ["-use_header_modules"],
-    visibility = ["//visibility:private"],
     deps = [
         ":python_ref_manager",
         # placeholder for index annotation deps
@@ -977,7 +978,6 @@ cc_library(
         "-fno-strict-aliasing",
     ],
     features = ["-use_header_modules"],
-    visibility = ["//visibility:private"],
     deps = [
         # placeholder for index annotation deps
         "@com_google_absl//absl/base:core_headers",
@@ -1018,7 +1018,6 @@ cc_library(
         "-fno-strict-aliasing",
     ],
     features = ["-use_header_modules"],
-    visibility = ["//visibility:private"],
     deps = [
         # placeholder for index annotation deps
         "@com_google_absl//absl/base:core_headers",
