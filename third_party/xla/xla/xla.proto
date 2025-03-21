@@ -1010,6 +1010,9 @@ message DebugOptions {
   // Whether to dump mlir using pretty print form.
   bool xla_dump_enable_mlir_pretty_form = 185;
 
+  // Whether to dump mlir using pretty print form.
+  bool xla_dump_full_hlo_config = 381;
+
   reserved 130;  // Was xla_gpu_deterministic_reductions
 
   // Debug options that trigger execution errors when NaN or Inf are detected.
@@ -1193,7 +1196,7 @@ message DebugOptions {
   // Note: when adding a new flag, please add it to one of the hardware-specific
   // or hardware-agnostic sections at the top of this proto message.
 
-  // Next id: 381
+  // Next id: 382
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.
