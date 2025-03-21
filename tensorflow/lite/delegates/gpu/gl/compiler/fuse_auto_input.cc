@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <any>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"
