@@ -37,6 +37,7 @@ namespace sdy {
 namespace {
 
 using ::mlir::ArrayRef;
+using ::mlir::sdy::FactorType;
 using ::mlir::sdy::kNullDim;
 
 enum RaggedDotMode {
@@ -96,15 +97,11 @@ struct RaggedDotShardingRuleOpInterface
     int64_t outputDim = (mode == RaggedDotMode::kContracting) ? 1 : 0;
 
     // batching dimensions
-    bool addBatchingDimsInGroupSizes = true;
     for (auto [lhsDim, rhsDim] :
          llvm::zip_equal(lhsBatchingDims, rhsBatchingDims)) {
-      if (lhsDim == lhsRaggedDim) {
-        addBatchingDimsInGroupSizes = false;
-      }
       builder.addFactor(
           {lhsDim, rhsDim,
-           addBatchingDimsInGroupSizes ? groupSizesDim++ : kNullDim},
+           mode != RaggedDotMode::kBatch ? groupSizesDim++ : kNullDim},
           outputDim++, lhsType.getDimSize(lhsDim));
     }
 
@@ -114,15 +111,17 @@ struct RaggedDotShardingRuleOpInterface
     for (int64_t i = 0; i < lhsType.getRank(); i++) {
       if (!llvm::is_contained(lhsContractingDims, i) &&
           !llvm::is_contained(lhsBatchingDims, i)) {
+        FactorType factorType = FactorType::kPassThrough;
         if (i == lhsRaggedDim) {
           // We only add the non-contracting dimensions before the lhs ragged
           // dimension to the group sizes in the kNonContracting mode.
           addLhsNonContractingDimsInGroupSizes = false;
+          factorType = FactorType::kNeedReplication;
         }
         builder.addFactor(
             {i, kNullDim,
              addLhsNonContractingDimsInGroupSizes ? groupSizesDim++ : kNullDim},
-            outputDim++, lhsType.getDimSize(i));
+            outputDim++, lhsType.getDimSize(i), factorType);
       }
     }
 
@@ -140,30 +139,33 @@ struct RaggedDotShardingRuleOpInterface
     bool addContractingDimsInGroupSizes = mode == RaggedDotMode::kContracting;
     for (auto [lhsDim, rhsDim] :
          llvm::zip_equal(lhsContractingDims, rhsContractingDims)) {
+      FactorType factorType = FactorType::kReduction;
       if (lhsDim == lhsRaggedDim) {
         // We only add the contracting dimensions before the lhs ragged
         // dimension to the group sizes in the kContracting mode.
         addContractingDimsInGroupSizes = false;
+        factorType = FactorType::kNeedReplication;
       }
       builder.addFactor(
           {lhsDim, rhsDim,
            addContractingDimsInGroupSizes ? groupSizesDim++ : kNullDim},
-          kNullDim, lhsType.getDimSize(lhsDim),
-          mlir::sdy::FactorType::kReduction);
+          kNullDim, lhsType.getDimSize(lhsDim), factorType);
     }
 
-    // group dimension
-    CHECK_EQ(groupSizesDim, groupSizesType.getRank() - 1);
     switch (mode) {
       case RaggedDotMode::kNonContracting: {
+        CHECK_EQ(groupSizesDim, groupSizesType.getRank() - 1);
         int64_t rhsGroupDim = rhsGroupDims.front();
         builder.addFactor({kNullDim, rhsGroupDim, groupSizesDim}, kNullDim,
-                          rhsType.getDimSize(rhsGroupDim));
+                          rhsType.getDimSize(rhsGroupDim),
+                          FactorType::kNeedReplication);
         break;
       }
       case RaggedDotMode::kContracting: {
+        CHECK_EQ(groupSizesDim, groupSizesType.getRank() - 1);
         builder.addFactor({kNullDim, kNullDim, groupSizesDim}, 0,
-                          groupSizesType.getDimSize(groupSizesDim));
+                          groupSizesType.getDimSize(groupSizesDim),
+                          FactorType::kNeedReplication);
         break;
       }
       case RaggedDotMode::kBatch: {
