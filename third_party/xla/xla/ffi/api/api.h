@@ -1181,9 +1181,7 @@ class DictionaryBase {
 
   size_t size() const { return attrs_->size; }
 
-  bool contains(std::string_view name) const {
-    return Find(name) < attrs_->size;
-  }
+  bool contains(std::string_view name) const { return Find(name).has_value(); }
 
  protected:
   template <typename T, typename... Ts>
@@ -1192,29 +1190,35 @@ class DictionaryBase {
   template <typename T>
   std::optional<T> get(std::string_view name,
                        DiagnosticEngine& diagnostic) const {
-    size_t idx = Find(name);
-    if (XLA_FFI_PREDICT_FALSE(idx >= attrs_->size)) {
+    std::optional<size_t> idx = Find(name);
+    if (XLA_FFI_PREDICT_FALSE(!idx.has_value())) {
       return diagnostic.Emit("Unexpected attribute: ") << name;
     }
 
-    XLA_FFI_AttrType attr_type = attrs_->types[idx];
-    void* attr = attrs_->attrs[idx];
+    XLA_FFI_AttrType attr_type = attrs_->types[*idx];
+    void* attr = attrs_->attrs[*idx];
     return AttrDecoding<T>::Decode(attr_type, attr, diagnostic);
   }
 
  private:
-  size_t Find(std::string_view name) const {
+  std::optional<size_t> Find(std::string_view name) const {
     XLA_FFI_ByteSpan** begin = attrs_->names;
     XLA_FFI_ByteSpan** end = begin + attrs_->size;
 
-    auto name_eq = [&](XLA_FFI_ByteSpan* attr) {
-      std::string_view name_view = {attr->ptr, attr->len};
-      return name_view == name;
+    auto eq = [](XLA_FFI_ByteSpan* a, std::string_view b) {
+      return std::string_view{a->ptr, a->len} == b;
     };
 
-    // TODO(ezhulenev): Attributes names sorted by name. We can use a binary
-    // search here instead of a linear scan.
-    return std::distance(begin, std::find_if(begin, end, name_eq));
+    auto cmp = [](XLA_FFI_ByteSpan* a, std::string_view b) {
+      return std::string_view{a->ptr, a->len} < b;
+    };
+
+    // Lower bound can be `end` if the attribute is not found, or the first
+    // attribute not ordered before the `name`.
+    auto lower_bound = std::lower_bound(begin, end, name, cmp);
+    return lower_bound == end || !eq(*lower_bound, name)
+               ? std::nullopt
+               : std::make_optional(std::distance(begin, lower_bound));
   }
 
   const XLA_FFI_Attrs* attrs_;
