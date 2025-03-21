@@ -328,6 +328,12 @@ class TfrtGpuClient final : public PjRtClient {
       absl::AnyInvocable<void() &&> on_done_with_host_buffer,
       PjRtMemorySpace* memory_space, const Layout* device_layout) override;
 
+  absl::StatusOr<std::unique_ptr<AsyncHostToDeviceTransferManager>>
+  CreateBuffersForAsyncHostToDevice(
+      absl::Span<const ShapeSpec> shape_specs,
+      std::optional<absl::Span<const std::optional<Layout>>> device_layouts,
+      PjRtMemorySpace* memory_space) override;
+
  private:
   // Helper function for creating PjRtStreamExecutorExecutables. Modifies
   // `options` in-place.
@@ -413,17 +419,11 @@ class TfrtGpuBuffer final : public PjRtBuffer {
   ReleaseDeviceMemoryOwnership(bool wait_for_operations_to_complete) override;
 
   using PjRtBuffer::ToLiteralSync;
-  PjRtFuture<> ToLiteral(MutableLiteralBase* literal) override {
-    // TODO(b/382117736): Implement ToLiteral.
-    return PjRtFuture<>(Unimplemented("ToLiteral not implemented."));
-  }
+  PjRtFuture<> ToLiteral(MutableLiteralBase* literal) override;
 
   PjRtFuture<> LazyToLiteral(
       absl::AnyInvocable<absl::StatusOr<MutableLiteralBase*>() &&> generator)
-      override {
-    // TODO(b/382117736): Implement LazyToLiteral.
-    return PjRtFuture<>(Unimplemented("LazyToLiteral not implemented."));
-  }
+      override;
 
   absl::StatusOr<size_t> GetOnDeviceSizeInBytes() const override;
 
@@ -434,7 +434,7 @@ class TfrtGpuBuffer final : public PjRtBuffer {
 
   PjRtFuture<> CopyRawToHostFuture(PjRtFuture<void*> dst, int64_t offset,
                                    int64_t transfer_size) override {
-    // TODO(b/382117736): Implement CopyRawToHostFuture.
+    // TODO: b/400541410 - Implement CopyRawToHostFuture.
     return PjRtFuture<>(Unimplemented("CopyRawToHostFuture not implemented."));
   }
 
@@ -444,7 +444,7 @@ class TfrtGpuBuffer final : public PjRtBuffer {
 
   absl::StatusOr<std::unique_ptr<PjRtBuffer>> CopyToMemorySpace(
       PjRtMemorySpace* dst_memory_space) override {
-    // TODO(b/382117736): Implement CopyToMemorySpace.
+    // TODO: b/400541410 - Implement CopyToMemorySpace.
     return Unimplemented("CopyToMemorySpace not implemented.");
   }
 
