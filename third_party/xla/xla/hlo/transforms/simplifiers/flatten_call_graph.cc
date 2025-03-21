@@ -138,11 +138,6 @@ absl::Status AnnotateNode(const CallGraphNode& node) {
         computation->SetFusionInstruction(instruction);
       }
 
-    } else if (instruction->opcode() == HloOpcode::kCustomCall) {
-      for (HloComputation* computation : instruction->called_computations()) {
-        computation->SetCustomCallInstruction(instruction);
-      }
-
     } else if (hlo_query::IsCollectiveCommunicationOp(instruction->opcode())) {
       for (HloComputation* computation : instruction->called_computations()) {
         computation->SetCollectiveCallInstruction(instruction);

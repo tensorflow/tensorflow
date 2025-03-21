@@ -4283,7 +4283,8 @@ bool RecursivelyCheckForCustomCall(
     return itr->second;
   }
 
-  bool contains_custom_call = computation.IsCustomCallComputation();
+  bool contains_custom_call =
+      !computation.caller_instructions(HloOpcode::kCustomCall).empty();
 
   for (const HloInstruction* instruction : computation.instructions()) {
     contains_custom_call |= instruction->opcode() == HloOpcode::kCustomCall;

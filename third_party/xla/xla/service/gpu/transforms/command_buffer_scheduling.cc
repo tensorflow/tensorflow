@@ -891,7 +891,7 @@ absl::StatusOr<bool> CommandBufferScheduling::Run(
   for (HloComputation* comp : order) {
     // Skip special computations that do not have lowering to thunks.
     if (comp->IsFusionComputation() || comp->IsAsyncComputation() ||
-        comp->IsCustomCallComputation())
+        !comp->caller_instructions(HloOpcode::kCustomCall).empty())
       continue;
 
     // Skip computations that already part of command buffers.
