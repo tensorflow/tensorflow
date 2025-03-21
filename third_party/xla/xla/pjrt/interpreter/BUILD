@@ -1,3 +1,4 @@
+load("//third_party/bazel_rules/rules_cc/cc:cc_library.bzl", "cc_library")
 load("//xla/tsl:tsl.bzl", "internal_visibility")
 load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
 
@@ -64,4 +65,10 @@ cc_library(
         "@llvm-project//mlir:IR",
         "@local_tsl//tsl/platform:fingerprint",
     ],
+)
+
+cc_library(
+    name = "test",
+    testonly = True,
+    srcs = ["test.cc"],
 )

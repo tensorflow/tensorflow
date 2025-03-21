@@ -22,6 +22,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/memory/memory.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
@@ -35,6 +36,7 @@ limitations under the License.
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_executable.h"
+#include "xla/pjrt/pjrt_stream_executor_client.h"
 #include "xla/pjrt/stream_executor_executable.h"
 #include "xla/pjrt/utils.h"
 #include "xla/service/compiler.h"
@@ -129,8 +131,9 @@ StreamExecutorGpuCompiler::Compile(CompileOptions options,
   CompileOptions input_options = options;
   if (!options.target_config) {
     if (client != nullptr) {
-      TF_RETURN_IF_ERROR(IsValidTopologyAndClientForCompile(topology, client));
-      return client->CompileAndLoad(computation, options);
+      return absl::UnimplementedError(
+          "Cannot compile without target_config and client does not have a "
+          "compile_only method.");
     }
     const auto& gpu_topology =
         tensorflow::down_cast<const xla::StreamExecutorGpuTopologyDescription&>(
