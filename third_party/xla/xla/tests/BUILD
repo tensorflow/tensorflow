@@ -1311,6 +1311,7 @@ xla_test(
         "//xla:array4d",
         "//xla:literal_util",
         "//xla:types",
+        "//xla:xla_data_proto_cc",
         "//xla/client:local_client",
         "//xla/hlo/builder:xla_builder",
         "//xla/hlo/builder/lib:constants",
