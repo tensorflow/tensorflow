@@ -71,7 +71,7 @@ class MlirPythonPass
     pyfunc.inc_ref();
   }
 
-  ~MlirPythonPass() = default;
+  ~MlirPythonPass() override = default;
 
   mlir::StringRef getName() const override { return name_; }
   mlir::StringRef getArgument() const override { return name_; }
