@@ -53,7 +53,6 @@ tf_staging/tensorflow/go/stream_executor/BUILD:
 tf_staging/tensorflow/go/tsl/profiler/protobuf/BUILD:
 tf_staging/tensorflow/go/tsl/protobuf/BUILD:
 tf_staging/tensorflow/java/README.md:
-tf_staging/tensorflow/java/src/main/native/BUILD:
 tf_staging/tensorflow/lite/acceleration/configuration/c/delegate_plugin.h:
 tf_staging/tensorflow/lite/acceleration/configuration/c/gpu_plugin.h:
 tf_staging/tensorflow/lite/acceleration/configuration/c/nnapi_plugin.h:
@@ -113,7 +112,6 @@ tf_staging/tensorflow/lite/experimental/litert/build_common/special_rule.bzl:
 tf_staging/tensorflow/lite/interpreter.h:
 tf_staging/tensorflow/lite/interpreter_builder.h:
 tf_staging/tensorflow/lite/ios/BUILD:
-tf_staging/tensorflow/lite/java/jni/BUILD:
 tf_staging/tensorflow/lite/kernels/builtin_op_kernels.h:
 tf_staging/tensorflow/lite/kernels/register.h:
 tf_staging/tensorflow/lite/lib_package/BUILD:
