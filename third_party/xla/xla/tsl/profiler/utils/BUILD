@@ -604,3 +604,23 @@ tsl_cc_test(
         "@com_google_googletest//:gtest_main",
     ],
 )
+
+cc_library(
+    name = "profiler_options_util",
+    srcs = ["profiler_options_util.cc"],
+    hdrs = ["profiler_options_util.h"],
+    deps = [
+        "@local_tsl//tsl/profiler/protobuf:profiler_options_proto_cc",
+    ],
+)
+
+tsl_cc_test(
+    name = "profiler_options_util_test",
+    srcs = ["profiler_options_util_test.cc"],
+    deps = [
+        ":profiler_options_util",
+        "//xla/tsl/platform:test",
+        "@com_google_googletest//:gtest_main",
+        "@local_tsl//tsl/profiler/protobuf:profiler_options_proto_cc",
+    ],
+)
