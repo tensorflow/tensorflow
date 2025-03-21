@@ -1283,6 +1283,13 @@ TEST(FfiTest, ScratchAllocatorUnimplemented) {
   TF_ASSERT_OK(status);
 }
 
+TEST(FfiTest, BindFfiInternals) {
+  (void)Ffi::Bind().Ctx<FfiApi>().Ctx<FfiExecutionContext>().To(
+      +[](const XLA_FFI_Api* api, XLA_FFI_ExecutionContext* ctx) {
+        return Error::Success();
+      });
+}
+
 TEST(FfiTest, ThreadPool) {
   tsl::thread::ThreadPool pool(tsl::Env::Default(), "ffi-test", 2);
   Eigen::ThreadPoolDevice device(pool.AsEigenThreadPool(), pool.NumThreads());
