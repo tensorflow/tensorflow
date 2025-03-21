@@ -311,7 +311,7 @@ LiteRtStatus Partition(Context& ctx) {
   auto& model = *model_wrap->Get();
 
   ctx.Dump().Start("Partitioning model");
-  auto partition_result = PartitionModel(*plugin, model);
+  auto partition_result = PartitionModel(*plugin, model, ctx.Run().subgraphs);
   if (!partition_result) {
     return partition_result.Error().Status();
   }
@@ -433,8 +433,8 @@ LiteRtStatus Apply(Context& ctx) {
 
   ctx.Dump().Start("Applying plugin");
   plugin->SetFlags(ctx.Flags());
-  if (auto status =
-          litert::internal::ApplyPlugin(*plugin, model, ctx.SocModelTarget());
+  if (auto status = litert::internal::ApplyPlugin(
+          *plugin, model, ctx.SocModelTarget(), ctx.Run().subgraphs);
       !status) {
     LITERT_LOG(LITERT_ERROR, "%s", status.Error().Message().c_str());
     return status.Error().Status();

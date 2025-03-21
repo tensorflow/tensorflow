@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <utility>
@@ -86,6 +87,13 @@ static llvm::cl::opt<std::string> compiler_flags(
                    "in the format of \"key=value\", or just \"key\". E.g. "
                    "\"--compiler-flags=key1=value1,key2\""));
 
+// NOLINTNEXTLINE
+static llvm::cl::list<uint32_t> subgraphs(
+    "subgraphs",
+    llvm::cl::desc("If provides, only the subgraphs with the given indices "
+                   "are applied with the plugin."),
+    llvm::cl::list_init(llvm::ArrayRef<uint32_t>{}));
+
 ApplyPluginRun::Ptr ParseFlags() {
   auto res = std::make_unique<ApplyPluginRun>();
 
@@ -112,6 +120,10 @@ ApplyPluginRun::Ptr ParseFlags() {
     res->cmd = ApplyPluginRun::Cmd::NOOP;
   } else {
     return nullptr;
+  }
+
+  for (auto subgraph_idx : subgraphs) {
+    res->subgraphs.insert(subgraph_idx);
   }
 
   return res;

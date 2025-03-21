@@ -15,11 +15,13 @@
 #ifndef TENSORFLOW_LITE_EXPERIMENTAL_LITERT_TOOLS_APPLY_PLUGIN_H_
 #define TENSORFLOW_LITE_EXPERIMENTAL_LITERT_TOOLS_APPLY_PLUGIN_H_
 
+#include <cstdint>
 #include <iostream>
 #include <memory>
 #include <optional>
 #include <vector>
 
+#include "absl/container/flat_hash_set.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
 #include "tensorflow/lite/experimental/litert/compiler/plugin/compiler_flags.h"
@@ -145,6 +147,10 @@ struct ApplyPluginRun {
   // Compiler flags to pass to the plugin. Only relevant for "APPLY" and
   // "COMPILE" commands.
   CompilerFlags compiler_flags;
+
+  // If provided, only the subgraphs with the given indices are applied with the
+  // plugin.
+  absl::flat_hash_set<uint32_t> subgraphs = {};
 };
 
 LiteRtStatus ApplyPlugin(ApplyPluginRun::Ptr run);

@@ -378,8 +378,9 @@ LiteRtStatus PartitionSubgraph(
 
 }  // namespace
 
-Expected<PartitionResult> PartitionModel(CompilerPlugin& compiler_plugin,
-                                         LiteRtModelT& model) {
+Expected<PartitionResult> PartitionModel(
+    CompilerPlugin& compiler_plugin, LiteRtModelT& model,
+    const absl::flat_hash_set<uint32_t>& subgraphs_to_partition) {
   // This algorithm decides the subgraphs to be partitioned by the plugin. This
   // is a trivial process with the exception of composite ops and their
   // decomposition subgraphs. Currently, we deploy the most naive approach to
@@ -434,6 +435,10 @@ Expected<PartitionResult> PartitionModel(CompilerPlugin& compiler_plugin,
   PartitionResult result;
   for (auto i = 0; i < model.Subgraphs().size(); ++i) {
     if (decomp_subgraphs.contains(i)) {
+      continue;
+    }
+    if (!subgraphs_to_partition.empty() &&
+        !subgraphs_to_partition.contains(i)) {
       continue;
     }
     auto* subgraph = model.Subgraphs()[i];
@@ -560,10 +565,13 @@ Expected<void> ApplyPluginWithPartition(CompilerPlugin& compiler_plugin,
   return {};
 }
 
-Expected<void> ApplyPlugin(CompilerPlugin& compiler_plugin, LiteRtModelT& model,
-                           absl::string_view soc_model) {
+Expected<void> ApplyPlugin(
+    CompilerPlugin& compiler_plugin, LiteRtModelT& model,
+    absl::string_view soc_model,
+    const absl::flat_hash_set<uint32_t>& subgraphs_to_partition) {
   // Collect partitions to pass to compilation.
-  auto partitions = PartitionModel(compiler_plugin, model);
+  auto partitions =
+      PartitionModel(compiler_plugin, model, subgraphs_to_partition);
   if (!partitions) {
     return partitions.Error();
   }
