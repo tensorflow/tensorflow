@@ -77,6 +77,7 @@ cc_test(
     ],
 )
 
+# TODO - @lukeboyer: Figure out some selective inclusiion of the data deps, some are very large.
 litert_cc_bin_with_qnn(
     name = "apply_plugin_main",
     srcs = ["apply_plugin_main.cc"],
