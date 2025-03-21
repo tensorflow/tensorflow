@@ -28,8 +28,8 @@ limitations under the License.
 
 namespace toco {
 
-::tensorflow::Status RemoveUnusedOp::Run(Model* model, std::size_t op_index,
-                                         bool* modified) {
+absl::Status RemoveUnusedOp::Run(Model* model, std::size_t op_index,
+                                 bool* modified) {
   *modified = false;
   const auto it = model->operators.begin() + op_index;
   const auto* op = it->get();
