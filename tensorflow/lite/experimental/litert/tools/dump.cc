@@ -205,11 +205,14 @@ void Dump(LiteRtOpCode code, std::ostream& out) {
     case kLiteRtOpCodeTflResizeNearestNeighbor:
       out << "RESIZE_NEAREST_NEIGHBOR";
       break;
-    default:
-      out << "UKNOWN_OP_CODE: " << code;
-      break;
     case kLiteRtOpCodeTflRelu:
       out << "TFL_RELU";
+      break;
+    case kLiteRtOpCodeTflRelu6:
+      out << "TFL_RELU6";
+      break;
+    default:
+      out << "UKNOWN_OP_CODE: " << code;
       break;
   }
 };

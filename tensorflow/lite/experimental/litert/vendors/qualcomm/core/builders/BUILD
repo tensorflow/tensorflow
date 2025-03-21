@@ -182,6 +182,23 @@ cc_library(
 )
 
 cc_library(
+    name = "relu6_op_builder",
+    srcs = ["relu6_op_builder.cc"],
+    hdrs = ["relu6_op_builder.h"],
+    tags = [
+        # Don't build/test in OS until qnn is available.
+        "nobuilder",
+    ],
+    deps = [
+        ":op_builder",
+        # copybara:uncomment "//third_party/qairt/latest:qnn_lib_headers",
+        "//tensorflow/lite/experimental/litert/vendors/qualcomm/core:tensor_pool",
+        "//tensorflow/lite/experimental/litert/vendors/qualcomm/core/wrappers:op_wrapper",
+        "//tensorflow/lite/experimental/litert/vendors/qualcomm/core/wrappers:tensor_wrapper",
+    ],
+)
+
+cc_library(
     name = "matmul_op_builder",
     srcs = ["matmul_op_builder.cc"],
     hdrs = ["matmul_op_builder.h"],
