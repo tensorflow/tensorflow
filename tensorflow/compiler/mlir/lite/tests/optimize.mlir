@@ -4556,3 +4556,18 @@ func.func @PushTransposeThroughSqueeze2(%arg0: tensor<1x1x2x3xf32>) -> (tensor<2
   // CHECK: %0 = "tfl.reshape"(%arg0, %cst) : (tensor<1x1x2x3xf32>, tensor<2xi32>) -> tensor<2x3xf32>
   // CHECK: return
 }
+
+
+// CHECK-LABEL: sum_mul_to_mean
+func.func @sum_mul_to_mean(%arg0: tensor<3x77xf32>) ->tensor<1x1xf32> {
+  %cst = arith.constant dense<1> : tensor<2xi32>
+  %cst_0 = arith.constant dense<[1, 0]> : tensor<2xi32>
+  %cst_1 = arith.constant dense<2.310000e+02> : tensor<1x1xf32>
+  %0 = "tfl.sum"(%arg0, %cst_0) <{keep_dims = false}> : (tensor<3x77xf32>, tensor<2xi32>) -> tensor<f32>
+  %1 = "tfl.reshape"(%0, %cst) : (tensor<f32>, tensor<2xi32>) -> tensor<1x1xf32>
+  %2 = tfl.div %1, %cst_1 {fused_activation_function = "NONE"} : tensor<1x1xf32>
+  return %2 : tensor<1x1xf32>
+  // CHECK: %cst = arith.constant dense<[1, 0]> : tensor<2xi32>
+  // CHECK: %0 = "tfl.mean"(%arg0, %cst) <{keep_dims = true}> : (tensor<3x77xf32>, tensor<2xi32>) -> tensor<1x1xf32>
+  // CHECK: return %0 : tensor<1x1xf32>
+}
