@@ -7,7 +7,7 @@ load(
 )
 load("//xla:lit.bzl", "enforce_glob", "lit_test_suite")
 load(
-    "//xla:xla.bzl",
+    "//xla:xla.default.bzl",
     "xla_cc_test",
 )
 load("//xla/stream_executor:build_defs.bzl", "if_gpu_is_configured")

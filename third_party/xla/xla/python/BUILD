@@ -1,7 +1,7 @@
-load("//xla:pytype.default.bzl", "pytype_strict_library")
-load("//xla:strict.default.bzl", "py_strict_test")
+load("//xla:py_strict.bzl", "py_strict_test")
+load("//xla:pytype.bzl", "pytype_strict_library")
 load(
-    "//xla:xla.bzl",
+    "//xla:xla.default.bzl",
     "xla_cc_test",
     "xla_py_test_deps",
 )

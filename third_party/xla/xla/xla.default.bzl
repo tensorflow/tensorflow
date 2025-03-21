@@ -104,7 +104,7 @@ def tests_build_defs_bzl_deps():
 def xla_bzl_library(name = "xla_bzl_library"):
     bzl_library(
         name = "xla_bzl",
-        srcs = ["xla.bzl"],
+        srcs = ["xla.default.bzl"],
         deps = [
             "//xla/tsl:tsl_bzl",
             "@local_config_rocm//rocm:build_defs_bzl",

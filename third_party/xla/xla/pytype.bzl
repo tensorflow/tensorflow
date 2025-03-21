@@ -1,6 +1,6 @@
 """Default (OSS) build versions of Python pytype rules."""
 
-load("//xla/tsl:package_groups.bzl", "DEFAULT_LOAD_VISIBILITY")
+load("@local_xla//xla/tsl:package_groups.bzl", "DEFAULT_LOAD_VISIBILITY")
 
 visibility(DEFAULT_LOAD_VISIBILITY)
 

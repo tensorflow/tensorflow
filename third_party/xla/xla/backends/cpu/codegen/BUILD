@@ -1,5 +1,5 @@
-load("//xla:strict.default.bzl", "py_strict_test")
-load("//xla:xla.bzl", "xla_cc_test", "xla_internal")
+load("//xla:py_strict.bzl", "py_strict_test")
+load("//xla:xla.default.bzl", "xla_cc_test", "xla_internal")
 load(
     "//xla/tsl/platform:build_config_root.bzl",
     "if_llvm_aarch64_available",

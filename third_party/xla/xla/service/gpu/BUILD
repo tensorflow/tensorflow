@@ -8,7 +8,7 @@ load(
     "if_rocm_is_configured",
     "rocm_copts",
 )
-load("//xla:xla.bzl", "xla_cc_test", "xla_internal")
+load("//xla:xla.default.bzl", "xla_cc_test", "xla_internal")
 load(
     "//xla/service/gpu:build_defs.bzl",
     "build_cub_sort_kernels",

@@ -2,7 +2,7 @@
 #   Implementation of XLA’s HLO utilities used for higher-level transformations.
 
 load(
-    "//xla:xla.bzl",
+    "//xla:xla.default.bzl",
     "xla_cc_test",
 )
 load("//xla/tsl:tsl.default.bzl", "get_compatible_with_portable")

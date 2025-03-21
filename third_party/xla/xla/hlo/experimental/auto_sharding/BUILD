@@ -1,7 +1,7 @@
 # Automatic sharding annotation
 
 load("@bazel_skylib//rules:build_test.bzl", "build_test")
-load("//xla:xla.bzl", "xla_cc_binary", "xla_cc_test", "xla_internal")
+load("//xla:xla.default.bzl", "xla_cc_binary", "xla_cc_test", "xla_internal")
 load("//xla/tsl:tsl.bzl", "if_google")
 load("//xla/tsl:tsl.default.bzl", "get_compatible_with_libtpu_portable")
 load("//xla/tsl/platform:build_config.bzl", "tf_proto_library")

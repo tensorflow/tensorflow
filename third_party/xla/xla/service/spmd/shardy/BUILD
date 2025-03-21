@@ -1,6 +1,6 @@
 # Integrates Shardy into the current XLA pipeline.
 
-load("//xla:xla.bzl", "xla_cc_binary", "xla_cc_test", "xla_internal")
+load("//xla:xla.default.bzl", "xla_cc_binary", "xla_cc_test", "xla_internal")
 load("//xla/tsl:tsl.bzl", "internal_visibility")
 load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
 

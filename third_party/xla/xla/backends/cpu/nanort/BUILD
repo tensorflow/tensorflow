@@ -1,4 +1,4 @@
-load("//xla:xla.bzl", "xla_cc_test")
+load("//xla:xla.default.bzl", "xla_cc_test")
 load("//xla/backends/cpu/nanort:package_groups.bzl", "xla_cpu_nanort_packages")
 load("//xla/tsl:tsl.bzl", "internal_visibility")
 load("//xla/tsl/platform/default:rules_cc.bzl", "cc_library")

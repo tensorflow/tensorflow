@@ -1,5 +1,5 @@
-load("//xla:pytype.default.bzl", "pytype_strict_library")
-load("//xla:strict.default.bzl", "py_strict_test")
+load("//xla:py_strict.bzl", "py_strict_test")
+load("//xla:pytype.bzl", "pytype_strict_library")
 load("//xla/tsl:tsl.default.bzl", "tsl_pybind_extension")
 load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
 

@@ -4,7 +4,7 @@ load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 # Description:
 #   A tool for reducing a HLO module that produces incorrect results.
 load(
-    "//xla:xla.bzl",
+    "//xla:xla.default.bzl",
     "xla_cc_binary",
     "xla_cc_test",
 )

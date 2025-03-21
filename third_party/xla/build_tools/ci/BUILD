@@ -14,7 +14,7 @@
 # ============================================================================
 
 load("@bazel_skylib//rules:diff_test.bzl", "diff_test")
-load("//xla:pytype.default.bzl", "pytype_strict_binary")
+load("//xla:pytype.bzl", "pytype_strict_binary")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],

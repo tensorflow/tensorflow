@@ -3,7 +3,7 @@ load(
     "if_rocm_is_configured",
 )
 load(
-    "//xla:xla.bzl",
+    "//xla:xla.default.bzl",
     "xla_cc_binary",
     "xla_cc_test",
 )

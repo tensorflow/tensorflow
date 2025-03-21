@@ -14,7 +14,7 @@ load(
     "@local_config_sycl//sycl:build_defs.bzl",
     "if_sycl_is_configured",
 )
-load("//xla:xla.bzl", "xla_cc_test")
+load("//xla:xla.default.bzl", "xla_cc_test")
 load(
     "//xla/service/gpu:build_defs.bzl",
     "gpu_kernel_library",

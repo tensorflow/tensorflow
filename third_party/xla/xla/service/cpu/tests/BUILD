@@ -1,7 +1,7 @@
 # Description:
 #    Tests for LLVM-based CPU backend for XLA.
 
-load("//xla:xla.bzl", "xla_cc_test")
+load("//xla:xla.default.bzl", "xla_cc_test")
 load("//xla/tsl:tsl.bzl", "tsl_copts")
 load("//xla/tsl:tsl.default.bzl", "filegroup")
 load("//xla/tsl/mkl:build_defs.bzl", "if_graph_api")

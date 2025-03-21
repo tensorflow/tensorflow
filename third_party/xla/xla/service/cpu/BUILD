@@ -8,7 +8,7 @@ load(
     "if_enable_acl",
 )
 load(
-    "//xla:xla.bzl",
+    "//xla:xla.default.bzl",
     "xla_cc_binary",
     "xla_cc_test",
 )

@@ -1,6 +1,6 @@
 load("@bazel_skylib//rules:build_test.bzl", "build_test")
 load("//xla:lit.bzl", "enforce_glob", "lit_test_suite")
-load("//xla:strict.default.bzl", "py_strict_test")
+load("//xla:py_strict.bzl", "py_strict_test")
 load("//xla/tsl:tsl.bzl", "if_oss")
 load("//xla/tsl:tsl.default.bzl", "filegroup")
 

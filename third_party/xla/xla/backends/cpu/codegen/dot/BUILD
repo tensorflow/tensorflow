@@ -1,4 +1,4 @@
-load("//xla:strict.default.bzl", "py_strict_test")
+load("//xla:py_strict.bzl", "py_strict_test")
 load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
 
 package(
