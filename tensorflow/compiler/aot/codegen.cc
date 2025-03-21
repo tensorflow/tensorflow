@@ -143,11 +143,11 @@ absl::Status AddRewritesForShape(
   string dim_sizes, indices;
   int count = 1;
   if (shape.rank() == 0 ||
-      (shape.dimensions_size() == 1 && shape.dimensions(0) == 1)) {
+      (shape.dimensions().size() == 1 && shape.dimensions(0) == 1)) {
     dim_sizes = "[1]";
     indices = "[0]";
   } else {
-    for (int dim = 0; dim < shape.dimensions_size(); ++dim) {
+    for (int dim = 0; dim < shape.dimensions().size(); ++dim) {
       dim_vars.push_back(absl::StrCat("size_t dim", dim));
       dim_sizes += absl::StrCat("[", shape.dimensions(dim), "]");
       indices += absl::StrCat("[dim", dim, "]");

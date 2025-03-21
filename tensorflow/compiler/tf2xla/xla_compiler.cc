@@ -935,7 +935,7 @@ absl::Status XlaCompiler::XLAShapeForArgument(
         if (std::holds_alternative<xla::Shape>(arg.shape) &&
             std::get<xla::Shape>(arg.shape).is_dynamic()) {
           xla::Shape dynamic_shape = std::get<xla::Shape>(arg.shape);
-          for (int i = 0; i < xla_shape->dimensions_size(); ++i) {
+          for (int i = 0; i < xla_shape->dimensions().size(); ++i) {
             xla_shape->set_dynamic_dimension(
                 i, dynamic_shape.is_dynamic_dimension(i));
           }

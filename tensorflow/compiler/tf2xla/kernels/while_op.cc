@@ -596,7 +596,7 @@ void XlaWhileOp::Compile(XlaOpKernelContext* ctx) {
           // Set dynamic dimension size to 0 for element value. Inside the while
           // loop, TensorlistSetItem will properly set the element shape's
           // dynamic dimension.
-          for (int64_t dim = 1; dim < shape.dimensions_size(); ++dim) {
+          for (int64_t dim = 1; dim < shape.dimensions().size(); ++dim) {
             int32_t dim_size = shape.dimensions(dim);
             if (shape.is_dynamic_dimension(dim)) {
               dim_size = 0;

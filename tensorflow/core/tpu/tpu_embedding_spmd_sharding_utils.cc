@@ -54,7 +54,7 @@ absl::StatusOr<xla::OpSharding> SpmdShardingAnnotationOnFirstDim(
           shape.dimensions(0), core_count_per_replica));
     }
 
-    std::vector<int> tile_assignment_dimensions(shape.dimensions_size(), 1);
+    std::vector<int> tile_assignment_dimensions(shape.dimensions().size(), 1);
     tile_assignment_dimensions[0] = core_count_per_replica;
 
     op_sharding.set_type(xla::OpSharding::OTHER);
