@@ -1374,7 +1374,6 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtGpuExecutable::ExecuteHelper(
   std::vector<std::unique_ptr<PjRtBuffer>> outputs;
   Executable* executable = executables_[0]->executable();
   const Shape& result_shape = executable->result_shape();
-  LOG(INFO) << "[hhb-test] " << result_shape.ToString();
   bool untuple_result = options.untuple_result;
   bool result_is_tuple = result_shape.IsTuple();
   if (options.untuple_result && result_shape.IsTuple()) {
@@ -1784,6 +1783,76 @@ TfrtGpuExecutable::Execute(
   VLOG(1) << "Replicated execution complete.";
 
   return wrapped_results;
+}
+
+absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>
+TfrtGpuExecutable::ExecuteSharded(
+    absl::Span<PjRtBuffer* const> argument_handles, PjRtDevice* device,
+    const ExecuteOptions& options, std::optional<PjRtFuture<>>& returned_future,
+    bool fill_future) {
+  RunId run_id(options.launch_id);
+  tsl::profiler::TraceMeProducer activity("TfrtGpuExecutable::ExecuteSharded",
+                                          tsl::profiler::ContextType::kPjRt,
+                                          run_id.ToInt());
+  if (device_assignment_ == nullptr) {
+    return InvalidArgument("ExecuteShard expects a non-null device_assignment");
+  }
+  for (int i = 0; i < addressable_devices_.size(); ++i) {
+    if (addressable_devices_[i] == device) {
+      VLOG(1) << "ExecuteShard executes computation " << name()
+              << " on assigned replica/partition on device "
+              << device->DebugString();
+      TF_ASSIGN_OR_RETURN(
+          auto result,
+          ExecuteHelper(
+              argument_handles, addressable_device_logical_ids_[i].replica,
+              addressable_device_logical_ids_[i].partition, run_id, options,
+              tsl::down_cast<TfrtGpuDevice*>(device)
+                  ->GetLastCollectiveLaunchEvent(),
+              fill_future));
+      returned_future = std::move(result.future);
+      return std::move(result.buffers);
+    }
+  }
+  return InvalidArgument(
+      "ExecuteShard attempted to execute on device id %d which is not "
+      "addressable by this client",
+      device->global_device_id().value());
+}
+
+absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>
+TfrtGpuExecutable::ExecutePortable(
+    absl::Span<PjRtBuffer* const> argument_handles, PjRtDevice* device,
+    const ExecuteOptions& options, std::optional<PjRtFuture<>>& returned_future,
+    bool fill_future) {
+  RunId run_id(options.launch_id);
+  tsl::profiler::TraceMeProducer activity("TfrtGpuExecutable::ExecutePortable",
+                                          tsl::profiler::ContextType::kPjRt,
+                                          run_id.ToInt());
+  if (device_assignment_ != nullptr) {
+    return InvalidArgument("ExecutePortable gets a non-portable executable");
+  }
+  if (num_replicas() != 1 || num_partitions() != 1) {
+    return InvalidArgument(
+        "ExecutePortable expects a single-core executable but gets "
+        "one with %d replica %d partition",
+        num_replicas(), num_partitions());
+  }
+  if (device == nullptr) {
+    return InvalidArgument("ExecutePortable expects a device to be specified");
+  }
+  VLOG(1) << "ExecutePortable executes single-core portable executable "
+          << name();
+  TF_ASSIGN_OR_RETURN(
+      auto result,
+      ExecuteHelper(
+          argument_handles,
+          /*replica=*/0,
+          /*partition=*/0, run_id, options,
+          /*last_collective_launch_event=*/tsl::AsyncValueRef<GpuEvent>(),
+          fill_future, tsl::down_cast<TfrtGpuDevice*>(device)));
+  returned_future = std::move(result.future);
+  return std::move(result.buffers);
 }
 
 absl::string_view TfrtGpuExecutable::name() const {
