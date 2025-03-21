@@ -124,7 +124,6 @@ cc_library(
     srcs = ["xla_executable_impl_test_lib.cc"],
     deps = [
         ":xla_ifrt",
-        "//testing/base/public:gunit_for_library_testonly",
         "//xla/client:executable_build_options",
         "//xla/pjrt:mlir_to_hlo",
         "//xla/pjrt:pjrt_executable",
