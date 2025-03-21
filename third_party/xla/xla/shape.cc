@@ -59,7 +59,10 @@ Shape::Shape(const PrimitiveType element_type,
                           dynamic_dimensions.end()) {
   CHECK(primitive_util::IsArrayType(element_type_))
       << "Invalid element type for array shape: " << element_type_;
-  if (!dynamic_dimensions.empty()) {
+  if (dynamic_dimensions_.empty()) {
+    // Assume all dimensions are static.
+    dynamic_dimensions_.resize(dimensions_.size(), false);
+  } else {
     CHECK_EQ(dimensions_.size(), dynamic_dimensions_.size())
         << "If dynamic_dimensions is provided, it must have the same size as "
            "dimensions.";
