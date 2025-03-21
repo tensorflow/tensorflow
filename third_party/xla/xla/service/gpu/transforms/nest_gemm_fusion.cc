@@ -155,7 +155,8 @@ absl::Status AnnotateDotOperandNestedFusionImpl(
 
   // We have a single contracting dimension, and a single non-contracting
   // dimension. All the other output tile sizes are set to 1.
-  std::vector<int64_t> output_tile_sizes(dot.operand(0)->shape().rank(), 1);
+  std::vector<int64_t> output_tile_sizes(
+      dot.operand(0)->shape().dimensions_size(), 1);
   output_tile_sizes[contracting_dimensions[0]] = contracting_dim_size;
   output_tile_sizes[non_contracting_dimensions[0]] = non_contracting_dim_size;
 
@@ -227,7 +228,7 @@ absl::StatusOr<llvm::SmallVector<int64_t>> FindOutputTileSizesForEpilogue(
     return tile_sizes;
   };
 
-  auto expected_dot_tile_sizes = get_tile_sizes(dot->shape().rank());
+  auto expected_dot_tile_sizes = get_tile_sizes(dot->shape().dimensions_size());
   if (VLOG_IS_ON(2)) {
     std::ostringstream oss;
     for (const auto& size : expected_dot_tile_sizes) {
@@ -240,7 +241,7 @@ absl::StatusOr<llvm::SmallVector<int64_t>> FindOutputTileSizesForEpilogue(
 
   // Try all permutations of the dot tile sizes to see if any of them satisfy
   // the constraints of the analysis and map to the given config of the dot.
-  int64_t out_rank = computation->root_instruction()->shape().rank();
+  int64_t out_rank = computation->root_instruction()->shape().dimensions_size();
   auto output_tile_sizes = get_tile_sizes(out_rank);
   std::sort(output_tile_sizes.begin(), output_tile_sizes.end());
   do {

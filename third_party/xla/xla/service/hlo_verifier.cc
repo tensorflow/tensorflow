@@ -147,7 +147,8 @@ absl::Status ShapeVerifier::Preprocess(HloInstruction* hlo) {
                            hlo->ToString());
   }
   if (hlo->shape().has_layout()) {
-    if (hlo->shape().layout().minor_to_major_size() != hlo->shape().rank()) {
+    if (hlo->shape().layout().minor_to_major_size() !=
+        hlo->shape().dimensions_size()) {
       return InvalidArgument(
           "Instruction has mismatched minor-to-major size and dimension size: "
           "%s",
@@ -454,7 +455,8 @@ static absl::Status CheckCommonAllGatherInvariants(
 
   int64_t shard_count;
   for (int64_t i = 0; i < ag->operand_count(); ++i) {
-    TF_RET_CHECK(ag->all_gather_dimension() < ag->operand(i)->shape().rank());
+    TF_RET_CHECK(ag->all_gather_dimension() <
+                 ag->operand(i)->shape().dimensions_size());
 
     Shape output_shape;
     if (hlo->opcode() == HloOpcode::kAllGather) {
@@ -466,7 +468,7 @@ static absl::Status CheckCommonAllGatherInvariants(
                          ? ag->shape().tuple_shapes(1)
                          : ag->shape().tuple_shapes(1).tuple_shapes(i);
     }
-    TF_RET_CHECK(ag->all_gather_dimension() < output_shape.rank());
+    TF_RET_CHECK(ag->all_gather_dimension() < output_shape.dimensions_size());
     if (i == 0) {
       shard_count = CeilOfRatio(
           output_shape.dimensions(ag->all_gather_dimension()),
@@ -541,12 +543,13 @@ absl::Status ShapeVerifier::HandleReduceScatter(HloInstruction* hlo) {
   TF_RET_CHECK(ars->operand_count() >= 1);
 
   for (int64_t i = 0; i < ars->operand_count(); ++i) {
-    TF_RET_CHECK(ars->scatter_dimension() < ars->operand(i)->shape().rank());
+    TF_RET_CHECK(ars->scatter_dimension() <
+                 ars->operand(i)->shape().dimensions_size());
 
     const Shape& output_shape = (ars->operand_count() == 1)
                                     ? ars->shape()
                                     : ars->shape().tuple_shapes(i);
-    TF_RET_CHECK(ars->scatter_dimension() < output_shape.rank());
+    TF_RET_CHECK(ars->scatter_dimension() < output_shape.dimensions_size());
   }
 
   const Shape& output0_shape =
@@ -640,8 +643,8 @@ absl::Status ShapeVerifier::HandleRaggedAllToAll(HloInstruction* hlo) {
   const int64_t kOffsetsSizesOperandsStart = 2;
   for (int64_t i = kOffsetsSizesOperandsStart + 1; i < kNumRaggedOperands;
        ++i) {
-    if (operand_shapes[i - 1]->rank() != 1 &&
-        operand_shapes[i - 1]->rank() != 2) {
+    if (operand_shapes[i - 1]->dimensions_size() != 1 &&
+        operand_shapes[i - 1]->dimensions_size() != 2) {
       return Internal("RaggedAllToAll operand %d must be rank 1 or 2: %s",
                       i - 1, hlo->ToString());
     }
@@ -687,14 +690,15 @@ absl::Status CheckBufferOffset(const Shape& buffer_shape,
     if (absl::c_any_of(buffer_offset_shape.tuple_shapes(),
                        [&buffer_shape](const Shape& shape) {
                          return ShapeUtil::TupleElementCount(shape) !=
-                                buffer_shape.rank();
+                                buffer_shape.dimensions_size();
                        })) {
       return Internal(
           "Buffer offset index should have the same number of "
           "elements as the buffer's rank.");
     }
   } else {
-    if (buffer_offset_shape.tuple_shapes_size() != buffer_shape.rank()) {
+    if (buffer_offset_shape.tuple_shapes_size() !=
+        buffer_shape.dimensions_size()) {
       return Internal(
           "Buffer offset index should have the same number of "
           "elements as the buffer's rank.");
@@ -1120,11 +1124,11 @@ absl::Status ShapeVerifier::HandleSort(HloInstruction* hlo) {
   }
 
   // Verify the sort_dimension.
-  if (sort->sort_dimension() >= sort->operand(0)->shape().rank()) {
+  if (sort->sort_dimension() >= sort->operand(0)->shape().dimensions_size()) {
     return Internal(
         "Expected the sort_dimension %d of sort to be smaller than the rank %d "
         "of the operand(s).",
-        sort->sort_dimension(), sort->shape().rank());
+        sort->sort_dimension(), sort->shape().dimensions_size());
   }
 
   return CheckVariadicShape(sort);
@@ -1144,7 +1148,7 @@ absl::Status ShapeVerifier::HandleIota(HloInstruction* hlo) {
   if (!iota->shape().IsArray()) {
     return Internal("Iota does not support non-array result.");
   }
-  const int64_t rank = iota->shape().rank();
+  const int64_t rank = iota->shape().dimensions_size();
   if (rank == 0) {
     return Internal("Iota does not support scalars.");
   }
@@ -1246,12 +1250,14 @@ absl::Status ShapeVerifier::HandleBroadcast(HloInstruction* broadcast) {
   // Check for mixed precision.
   TF_RET_CHECK(SameElementType(broadcast->shape(), operand_shape))
       << broadcast->ToString();
-  TF_RET_CHECK(operand_shape.rank() == broadcast->dimensions().size())
+  TF_RET_CHECK(operand_shape.dimensions_size() ==
+               broadcast->dimensions().size())
       << broadcast->ToString();
-  for (int64_t operand_dimension = 0; operand_dimension < operand_shape.rank();
+  for (int64_t operand_dimension = 0;
+       operand_dimension < operand_shape.dimensions_size();
        ++operand_dimension) {
     int64_t output_dimension = broadcast->dimensions()[operand_dimension];
-    TF_RET_CHECK((output_dimension < broadcast->shape().rank()) &&
+    TF_RET_CHECK((output_dimension < broadcast->shape().dimensions_size()) &&
                  output_dimension >= 0 &&
                  (broadcast->shape().dimensions(output_dimension) ==
                   operand_shape.dimensions(operand_dimension)))
@@ -1267,7 +1273,7 @@ absl::Status ShapeVerifier::HandleDynamicReshape(
   TF_RET_CHECK(SameElementType(dynamic_reshape->shape(), operand_shape));
   TF_RET_CHECK(ShapeUtil::ElementsIn(dynamic_reshape->shape()) ==
                ShapeUtil::ElementsIn(operand_shape));
-  TF_RET_CHECK(dynamic_reshape->shape().rank() + 1 ==
+  TF_RET_CHECK(dynamic_reshape->shape().dimensions_size() + 1 ==
                dynamic_reshape->operand_count());
   for (int64_t i = 1; i < dynamic_reshape->operand_count(); ++i) {
     TF_RET_CHECK(dynamic_reshape->operand(i)->shape().element_type() == S32);
@@ -1487,7 +1493,9 @@ absl::Status ShapeVerifier::HandleMap(HloInstruction* map) {
   int64_t max_operand_rank = 0;
   for (const HloInstruction* operand : map->operands()) {
     operand_shapes.push_back(&operand->shape());
-    max_operand_rank = std::max(max_operand_rank, operand->shape().rank());
+    max_operand_rank =
+        std::max(max_operand_rank,
+                 static_cast<int64_t>(operand->shape().dimensions_size()));
   }
   // TODO(b/65689298) Remove code below once Map is generalized to accept
   // arbitrary map dimensions.
@@ -2763,11 +2771,11 @@ class InstructionVerifier : public DfsHloVisitorWithDefault {
     // op. See https://groups.google.com/forum/#!topic/xla-dev/9LqijHmTt_I
     // or ComputationLowerer::Visit()
     TF_RET_CHECK(broadcast->dimensions().size() ==
-                 broadcast->operand(0)->shape().rank())
+                 broadcast->operand(0)->shape().dimensions_size())
         << "Broadcast HLO (" << broadcast->ToShortString()
         << ") has invalid number of dimensions: "
         << broadcast->dimensions().size()
-        << " != " << broadcast->operand(0)->shape().rank();
+        << " != " << broadcast->operand(0)->shape().dimensions_size();
     if (opts_.verify_broadcast_dimensions_order) {
       TF_RET_CHECK(absl::c_is_sorted(broadcast->dimensions()))
           << "Broadcast dimensions should be ordered, got: "
@@ -2904,7 +2912,7 @@ class InstructionVerifier : public DfsHloVisitorWithDefault {
   }
 
   absl::Status HandleScatter(HloInstruction* scatter) override {
-    int64_t rank = scatter->operand(0)->shape().rank();
+    int64_t rank = scatter->operand(0)->shape().dimensions_size();
     for (int64_t operand_dim :
          scatter->scatter_dimension_numbers().scatter_dims_to_operand_dims()) {
       if (operand_dim > rank) {
@@ -2962,7 +2970,7 @@ class InstructionVerifier : public DfsHloVisitorWithDefault {
       for (HloInstruction* operand : instruction->operands()) {
         const Shape& operand_shape = operand->shape();
         if (LayoutUtil::IsDenseArray(operand_shape) &&
-            operand_shape.rank() == result_shape.rank() &&
+            operand_shape.dimensions_size() == result_shape.dimensions_size() &&
             operand_shape.has_layout()) {
           const Layout& operand_layout = operand_shape.layout();
           Layout::Equal equal_predicate =

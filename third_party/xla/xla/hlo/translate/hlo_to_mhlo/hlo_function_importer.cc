@@ -121,14 +121,15 @@ std::string SanitizeFunctionName(llvm::StringRef name) {
 bool DotIsDefault(const HloInstruction* instruction) {
   // If LHS/RHS has rank greater than 2, not default dot
   const auto& operands = instruction->operands();
-  if (operands[0]->shape().rank() > 2 || operands[1]->shape().rank() > 2) {
+  if (operands[0]->shape().dimensions_size() > 2 ||
+      operands[1]->shape().dimensions_size() > 2) {
     return false;
   }
 
   auto dnums = instruction->dot_dimension_numbers();
   DotDimensionNumbers default_dimension_numbers;
   default_dimension_numbers.add_lhs_contracting_dimensions(
-      instruction->operand(0)->shape().rank() == 1 ? 0 : 1);
+      instruction->operand(0)->shape().dimensions_size() == 1 ? 0 : 1);
   default_dimension_numbers.add_rhs_contracting_dimensions(0);
   return protobuf_util::ProtobufEquals(dnums, default_dimension_numbers);
 }

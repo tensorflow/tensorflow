@@ -71,7 +71,8 @@ class ReductionRewriterVisitor : public DfsHloRewriteVisitor {
 
     std::vector<int64_t> window_dimensions;
     std::vector<int64_t> window_strides;
-    for (int64_t dim_idx = 0; dim_idx < input_shape.rank(); dim_idx++) {
+    for (int64_t dim_idx = 0; dim_idx < input_shape.dimensions_size();
+         dim_idx++) {
       if (!absl::c_linear_search(hlo->dimensions(), dim_idx)) {
         window_dimensions.push_back(1);
         window_strides.push_back(1);

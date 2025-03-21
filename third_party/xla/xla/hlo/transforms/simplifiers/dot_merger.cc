@@ -170,7 +170,7 @@ absl::StatusOr<HloInstruction*> TryMergeSameOperand(HloInstruction* a,
            dnums.rhs_batch_dimensions_size());
   std::set<int64_t> used_dims;
   int64_t shared_op_num_non_contracting_dims =
-      shared_op->shape().rank() - dnums.lhs_batch_dimensions_size();
+      shared_op->shape().dimensions_size() - dnums.lhs_batch_dimensions_size();
   if (lhs_same) {
     shared_op_num_non_contracting_dims -=
         dnums.lhs_contracting_dimensions_size();
@@ -186,7 +186,7 @@ absl::StatusOr<HloInstruction*> TryMergeSameOperand(HloInstruction* a,
     used_dims.insert(dnums.lhs_batch_dimensions().begin(),
                      dnums.lhs_batch_dimensions().end());
   }
-  if (used_dims.size() + 1 != diff_op_a->shape().rank()) {
+  if (used_dims.size() + 1 != diff_op_a->shape().dimensions_size()) {
     VLOG(3)
         << "Can't merge dots because the different operands don't have exactly "
            "one non-contracting dimension:\n"
@@ -257,12 +257,12 @@ absl::StatusOr<HloInstruction*> TryMergeSameOperand(HloInstruction* a,
   }
 
   // Slice the outputs.
-  DimensionVector start_indices(new_dot_shape.rank(), 0);
+  DimensionVector start_indices(new_dot_shape.dimensions_size(), 0);
   DimensionVector limit_indices(new_dot_shape.dimensions().begin(),
                                 new_dot_shape.dimensions().end());
-  DimensionVector strides(new_dot_shape.rank(), 1);
+  DimensionVector strides(new_dot_shape.dimensions_size(), 1);
 
-  int64_t slice_dim = new_dot_shape.rank() -
+  int64_t slice_dim = new_dot_shape.dimensions_size() -
                       (lhs_same ? 1 : 1 + shared_op_num_non_contracting_dims);
   limit_indices[slice_dim] = a->shape().dimensions(slice_dim);
   // Important: We do RAUW, not ReplaceInstruction, because the old instruction

@@ -76,7 +76,8 @@ HloInstruction* MaybePaddedAndSlicedInput(
     // padding inside of cudnn as possible, on the assumption that padding
     // within cudnn is basically free, whereas a kPad's cost increases as the
     // amount of padding increases.
-    PaddingConfig padding_config = MakeNoPaddingConfig(input->shape().rank());
+    PaddingConfig padding_config =
+        MakeNoPaddingConfig(input->shape().dimensions_size());
     for (size_t i = 0; i < conv_dnums.input_spatial_dimensions().size(); ++i) {
       int64_t dim = conv_dnums.input_spatial_dimensions(i);
       if (conv_window->dimensions(i).padding_low() > 0) {
@@ -108,10 +109,10 @@ HloInstruction* MaybePaddedAndSlicedInput(
     //
     // For each dimension, initialize the start index to 0 and the limit index
     // to the size of that dimension.
-    std::vector<int64_t> start_indices(input->shape().rank(), 0);
+    std::vector<int64_t> start_indices(input->shape().dimensions_size(), 0);
     std::vector<int64_t> limit_indices(input->shape().dimensions().begin(),
                                        input->shape().dimensions().end());
-    std::vector<int64_t> strides(input->shape().rank(), 1);
+    std::vector<int64_t> strides(input->shape().dimensions_size(), 1);
     for (size_t i = 0; i < conv_dnums.input_spatial_dimensions().size(); ++i) {
       int64_t dim = conv_dnums.input_spatial_dimensions(i);
       // If dimension "dim" has negative padding, increase the start index or
@@ -145,8 +146,9 @@ HloInstruction* MaybePaddedKernel(const Window& conv_window,
 
   // Compute the shape and padding config of the pad to be inserted.
   PaddingConfig padding_config;
-  padding_config.mutable_dimensions()->Reserve(kernel->shape().rank());
-  for (size_t i = 0; i < kernel->shape().rank(); ++i) {
+  padding_config.mutable_dimensions()->Reserve(
+      kernel->shape().dimensions_size());
+  for (size_t i = 0; i < kernel->shape().dimensions_size(); ++i) {
     padding_config.add_dimensions();
   }
   for (size_t i = 0; i < conv_dnums.kernel_spatial_dimensions().size(); ++i) {
@@ -237,7 +239,7 @@ bool ConvPaddingLegalization::CanonicalizeBackwardFilterConvolution(
   Window new_backward_conv_window = backward_conv->window();
   // input_padding_config is the config of the kPad to be inserted.
   PaddingConfig input_padding_config =
-      MakeNoPaddingConfig(input->shape().rank());
+      MakeNoPaddingConfig(input->shape().dimensions_size());
   ConvolutionDimensionNumbers backward_conv_dnums =
       backward_conv->convolution_dimension_numbers();
   for (size_t i = 0; i < backward_conv->window().dimensions_size(); ++i) {
@@ -366,11 +368,13 @@ bool ConvPaddingLegalization::CanonicalizeBackwardInputConvolution(
   // Slice the new backward convolution.
   //
   // Initialize start_indices and limit_indices as no slicing.
-  std::vector<int64_t> start_indices(new_backward_conv->shape().rank(), 0LL);
+  std::vector<int64_t> start_indices(
+      new_backward_conv->shape().dimensions_size(), 0LL);
   std::vector<int64_t> limit_indices(
       new_backward_conv->shape().dimensions().begin(),
       new_backward_conv->shape().dimensions().end());
-  std::vector<int64_t> strides(new_backward_conv->shape().rank(), 1LL);
+  std::vector<int64_t> strides(new_backward_conv->shape().dimensions_size(),
+                               1LL);
   for (size_t i = 0; i < backward_conv->window().dimensions_size(); ++i) {
     int64_t padding_low = backward_conv->window().dimensions(i).padding_low();
     int64_t padding_high = backward_conv->window().dimensions(i).padding_high();

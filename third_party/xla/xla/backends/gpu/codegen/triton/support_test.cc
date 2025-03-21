@@ -193,7 +193,8 @@ class TritonSupportTest : public TritonSupportTestBase {
     // output shapes, since we have no meaningful way of providing tile sizes
     // for them at the moment.
     if (ti.Instruction().shape().IsArray()) {
-      ASSERT_EQ(output_tile_sizes.size(), ti.Instruction().shape().rank());
+      ASSERT_EQ(output_tile_sizes.size(),
+                ti.Instruction().shape().dimensions_size());
     }
     BlockLevelParameters block_level_parameters =
         FromOutputTileSizes(std::move(output_tile_sizes));

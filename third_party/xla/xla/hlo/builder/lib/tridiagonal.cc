@@ -69,10 +69,10 @@ absl::StatusOr<int64_t> CheckSystemAndReturnNumEquations(XlaOp lower_diagonal,
                       builder->GetShape(upper_diagonal));
   TF_ASSIGN_OR_RETURN(Shape rhs_shape, builder->GetShape(rhs));
 
-  const auto lower_diagonal_rank = lower_diagonal_shape.rank();
-  const auto main_diagonal_rank = main_diagonal_shape.rank();
-  const auto upper_diagonal_rank = upper_diagonal_shape.rank();
-  const auto rhs_rank = rhs_shape.rank();
+  const auto lower_diagonal_rank = lower_diagonal_shape.dimensions_size();
+  const auto main_diagonal_rank = main_diagonal_shape.dimensions_size();
+  const auto upper_diagonal_rank = upper_diagonal_shape.dimensions_size();
+  const auto rhs_rank = rhs_shape.dimensions_size();
   if (!((lower_diagonal_rank == main_diagonal_rank) &&
         (lower_diagonal_rank == upper_diagonal_rank) &&
         (lower_diagonal_rank == rhs_rank))) {
@@ -127,8 +127,8 @@ struct TridiagonalMatMulShapeParams {
 absl::Status ValidateTridiagonalMatMulDiagonal(
     const Shape& diagonal_shape, const absl::string_view diagonal_name,
     const Shape& rhs_shape) {
-  const int64_t diagonal_rank = diagonal_shape.rank();
-  const int64_t rhs_rank = rhs_shape.rank();
+  const int64_t diagonal_rank = diagonal_shape.dimensions_size();
+  const int64_t rhs_rank = rhs_shape.dimensions_size();
   if (diagonal_rank != rhs_rank) {
     return InvalidArgument("%s must have same rank as rhs, but got %d and %d.",
                            diagonal_name, diagonal_rank, rhs_rank);
@@ -178,7 +178,7 @@ CheckMatMulSystemAndReturnShapeParams(XlaOp upper_diagonal, XlaOp main_diagonal,
                       builder->GetShape(lower_diagonal));
   TF_ASSIGN_OR_RETURN(const Shape rhs_shape, builder->GetShape(rhs));
 
-  const int64_t rank = rhs_shape.rank();
+  const int64_t rank = rhs_shape.dimensions_size();
   if (rank < 2) {
     return InvalidArgument("Input must have rank >= 2, but got %d.", rank);
   }
@@ -405,7 +405,7 @@ absl::StatusOr<XlaOp> TridiagonalSolver(SolverAlgorithm algo, XlaOp diagonals,
                                         XlaOp rhs) {
   XlaBuilder* builder = diagonals.builder();
   TF_ASSIGN_OR_RETURN(Shape diagonals_shape, builder->GetShape(diagonals));
-  const int64_t rank = diagonals_shape.rank();
+  const int64_t rank = diagonals_shape.dimensions_size();
 
   auto upper_diagonal =
       SliceInDim(diagonals, /*start_index=*/0, /*limit_index=*/1,

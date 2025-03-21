@@ -108,7 +108,8 @@ std::optional<IndexingMap> CpuScatterFusion::ComputeThreadIdToInputIndexing(
   Shape scatter_update_shape = scatter->scatter_updates().front()->shape();
 
   auto root_shape = scatter->scatter_operands().front()->shape();
-  SmallVector<int64_t> outer_dimension_partitions(root_shape.rank(), 1);
+  SmallVector<int64_t> outer_dimension_partitions(root_shape.dimensions_size(),
+                                                  1);
   auto backend_config = fusion_->backend_config<BackendConfig>();
   if (backend_config.ok() &&
       !backend_config->outer_dimension_partitions().empty()) {
@@ -293,7 +294,7 @@ absl::Status CpuScatterFusion::EmitEntryFunction(
         Value in_bounds = nested_b.create<ma::ConstantIntOp>(1, b.getI1Type());
 
         SmallVector<Value, 4> update_offsets(
-            scatter_operands.front()->shape().rank(), c0);
+            scatter_operands.front()->shape().dimensions_size(), c0);
         for (int i = 0; i < scatter_indices->shape().dimensions(1); ++i) {
           SmallVector<Value, 4> indices_tensor_indices = {
               update_id, b.create<ma::ConstantIndexOp>(i)};

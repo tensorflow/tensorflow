@@ -167,7 +167,7 @@ ENTRY main {
   for (auto* inst : module->entry_computation()->instructions()) {
     if (inst->opcode() == HloOpcode::kRng) {
       const Shape& shape = inst->shape();
-      ASSERT_EQ(shape.rank(), 3);
+      ASSERT_EQ(shape.dimensions_size(), 3);
       ASSERT_TRUE(shape.dimensions(1) == 2000 || shape.dimensions(1) == 1000);
       if (shape.dimensions(1) == 2000) {
         rng0 = inst;

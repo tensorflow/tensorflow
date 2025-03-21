@@ -286,7 +286,7 @@ int64_t GenericTransferManager::GetByteSizeRequirement(
   if (shape.IsTuple() || shape.is_static()) {
     return ShapeUtil::ByteSizeOf(shape, pointer_size_);
   }
-  int64_t metadata_size = sizeof(int32_t) * shape.rank();
+  int64_t metadata_size = sizeof(int32_t) * shape.dimensions_size();
   return ShapeUtil::ByteSizeOf(shape, pointer_size_) + metadata_size;
 }
 

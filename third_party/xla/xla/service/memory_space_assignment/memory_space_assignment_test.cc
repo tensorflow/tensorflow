@@ -11682,7 +11682,8 @@ class SlicedPrefetchTest : public MemorySpaceAssignmentTestBase {
               << "), with an inconsistent number slice starts/limits/strides";
           return false;
         }
-        if (slice->slice_starts().size() != copy_operand->shape().rank()) {
+        if (slice->slice_starts().size() !=
+            copy_operand->shape().dimensions_size()) {
           *listener
               << " has slice (" << slice->name() << "), with "
               << slice->slice_starts().size()

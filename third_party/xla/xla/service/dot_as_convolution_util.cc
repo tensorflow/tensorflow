@@ -130,9 +130,9 @@ bool SpatialIsContracting(int64_t lhs_spatial_size, int64_t rhs_spatial_size,
     }
   }
 
-  dims.lhs_shape_rank = conv->operand(0)->shape().rank();
-  dims.rhs_shape_rank = conv->operand(1)->shape().rank();
-  dims.output_shape_rank = conv->shape().rank();
+  dims.lhs_shape_rank = conv->operand(0)->shape().dimensions_size();
+  dims.rhs_shape_rank = conv->operand(1)->shape().dimensions_size();
+  dims.output_shape_rank = conv->shape().dimensions_size();
   return dims;
 }
 
@@ -204,7 +204,7 @@ DotConvolutionDimsInfo ParseDotGeneralFromDot(const HloInstruction* dot) {
     dnums.contracting_dims.back().spatial_dim = -1;
   }
   for (auto i :
-       GetNonContractingDims(dot->operand(0)->shape().rank(),
+       GetNonContractingDims(dot->operand(0)->shape().dimensions_size(),
                              dot_dim_numbs.lhs_contracting_dimensions(),
                              dot_dim_numbs.lhs_batch_dimensions())) {
     dnums.lhs_non_contracting_dims.emplace_back();
@@ -216,7 +216,7 @@ DotConvolutionDimsInfo ParseDotGeneralFromDot(const HloInstruction* dot) {
     dnums.lhs_non_contracting_dims.back().spatial_dim = -1;
   }
   for (auto i :
-       GetNonContractingDims(dot->operand(1)->shape().rank(),
+       GetNonContractingDims(dot->operand(1)->shape().dimensions_size(),
                              dot_dim_numbs.rhs_contracting_dimensions(),
                              dot_dim_numbs.rhs_batch_dimensions())) {
     dnums.rhs_non_contracting_dims.emplace_back();
@@ -229,9 +229,9 @@ DotConvolutionDimsInfo ParseDotGeneralFromDot(const HloInstruction* dot) {
     dnums.rhs_non_contracting_dims.back().spatial_dim = -1;
   }
 
-  dnums.lhs_shape_rank = dot->operand(0)->shape().rank();
-  dnums.rhs_shape_rank = dot->operand(1)->shape().rank();
-  dnums.output_shape_rank = dot->shape().rank();
+  dnums.lhs_shape_rank = dot->operand(0)->shape().dimensions_size();
+  dnums.rhs_shape_rank = dot->operand(1)->shape().dimensions_size();
+  dnums.output_shape_rank = dot->shape().dimensions_size();
   return dnums;
 }
 

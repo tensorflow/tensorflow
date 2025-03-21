@@ -54,7 +54,7 @@ bool CanBeLoopFused(const HloInstruction& hlo) {
 bool IsNonComplexNonBatchedMatrixVectorDot(const HloInstruction* hlo) {
   const Shape& hlo_shape = hlo->shape();
   return !ShapeUtil::ElementIsComplex(hlo_shape) &&
-         hlo->opcode() == HloOpcode::kDot && hlo_shape.rank() <= 1 &&
+         hlo->opcode() == HloOpcode::kDot && hlo_shape.dimensions_size() <= 1 &&
          hlo->dot_dimension_numbers().lhs_batch_dimensions_size() == 0;
 }
 
@@ -161,7 +161,7 @@ FusionDecision CpuInstructionFusion::ShouldFuse(HloInstruction* consumer,
   // better job with pure data movement loops.
   auto is_minor_dim_concatenate = [](const HloInstruction* hlo) {
     // For vectors it's always beneficial to fuse concatenations.
-    if (hlo->shape().rank() <= 1) return false;
+    if (hlo->shape().dimensions_size() <= 1) return false;
 
     // For small concatenated dimensions we don't loose any performance by
     // fusing the concatenation as we don't have opportunities for vectorization
@@ -231,18 +231,19 @@ FusionDecision CpuInstructionFusion::ShouldFuse(HloInstruction* consumer,
     // fusion can easily be overshadowed by the overhead of a naive GEMM
     // algorithm in the IR.
     const Shape& output_shape = consumer->shape();
-    if (output_shape.rank() <= 1) {
+    if (output_shape.dimensions_size() <= 1) {
       // We fuse in cases where we have a matrix*vector or vector*matrix dot and
       // fusion can get rid of the larger tensor.  We assume that a naive
       // traversal of a small enough (to fit in L1) column or row tensor is
       // "good enough" from the perspective of cache management; and calling out
       // to an optimized GEMM kernel is not a huge win.
-      if (consumer->operand(0)->shape().rank() == 1 && operand_index == 1 &&
+      if (consumer->operand(0)->shape().dimensions_size() == 1 &&
+          operand_index == 1 &&
           ShapeUtil::ByteSizeOfElements(consumer->operand(0)->shape()) <
               kFusionThresholdBytes) {
         VLOG(2) << "Fusing small matrix-vector product.";
         return FusionDecision::Allow();
-      } else if (consumer->operand(1)->shape().rank() == 1 &&
+      } else if (consumer->operand(1)->shape().dimensions_size() == 1 &&
                  operand_index == 0 &&
                  ShapeUtil::ByteSizeOfElements(consumer->operand(1)->shape()) <
                      kFusionThresholdBytes) {

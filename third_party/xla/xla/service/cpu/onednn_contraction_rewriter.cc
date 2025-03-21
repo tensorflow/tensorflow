@@ -335,7 +335,7 @@ absl::StatusOr<Shape> AdjustAddendShape(const HloInstruction* contraction,
     // Add is enabled.
     if (IsOneDnnConvolutionInstr(contraction) &&
         ShapeUtil::TrueRank(addend->shape()) == 1 &&
-        addend->shape().rank() != 1) {
+        addend->shape().dimensions_size() != 1) {
       return ShapeUtil::FilterDimensions(
           [&addend](int64_t dim) {
             return ShapeUtil::GetDimension(addend->shape(), dim) != 1;
@@ -361,7 +361,7 @@ absl::StatusOr<Shape> AdjustAddendShape(const HloInstruction* contraction,
   //      bitcast = f32[3,1,1,6]{3,2,1,0} bitcast(arg)
   //      fused = f32[3,4,5,6]{3,2,1,0} custom-call((..., bitcast)
   auto kept_dimensions = bcast->dimensions();
-  for (int i = 0; i < new_shape.rank(); i++) {
+  for (int i = 0; i < new_shape.dimensions_size(); i++) {
     if (!absl::c_linear_search(kept_dimensions, i)) {
       new_shape.set_dimensions(i, 1);
     }
@@ -370,7 +370,8 @@ absl::StatusOr<Shape> AdjustAddendShape(const HloInstruction* contraction,
   // If rank(new_shape) > rank(instr), extra dimensions with value = 1 can be
   // deleted from the new_shape.
   auto instr_shape = contraction->shape();
-  int64_t rank_difference = new_shape.rank() - instr_shape.rank();
+  int64_t rank_difference =
+      new_shape.dimensions_size() - instr_shape.dimensions_size();
   auto new_dims = new_shape.dimensions();
   std::vector<int64_t> dims_to_delete;
   for (int i = 0; i < rank_difference; ++i) {
@@ -382,7 +383,7 @@ absl::StatusOr<Shape> AdjustAddendShape(const HloInstruction* contraction,
 
   // New shape for bias should satisfy the condition:
   //   rank(new_shape) <= rank(instr).
-  if (new_shape.rank() > instr_shape.rank()) {
+  if (new_shape.dimensions_size() > instr_shape.dimensions_size()) {
     return absl::CancelledError(
         "Bias shape could not be adjusted for a fusion.");
   }
@@ -455,10 +456,13 @@ bool OneDnnContractionRewriter::ShouldRewriteDot(
   }
   // OneDNN only supports rank <= kOneDnnMaxNDims and singular non-contracting
   // dimensions. We should not rewrite if any of these conditions are violated.
-  if (lhs_shape.rank() <= 0 || lhs_shape.rank() > kOneDnnMaxNDims ||
-      rhs_shape.rank() <= 0 || rhs_shape.rank() > kOneDnnMaxNDims ||
-      output_shape.rank() > std::min({lhs_shape.rank(), rhs_shape.rank(),
-                                      static_cast<int64_t>(kOneDnnMaxNDims)})) {
+  if (lhs_shape.dimensions_size() <= 0 ||
+      lhs_shape.dimensions_size() > kOneDnnMaxNDims ||
+      rhs_shape.dimensions_size() <= 0 ||
+      rhs_shape.dimensions_size() > kOneDnnMaxNDims ||
+      output_shape.dimensions_size() >
+          std::min({lhs_shape.dimensions_size(), rhs_shape.dimensions_size(),
+                    kOneDnnMaxNDims})) {
     return false;
   }
 
@@ -477,7 +481,8 @@ bool OneDnnContractionRewriter::ShouldRewriteDot(
   int64_t lhs_dim_k = dot_dim_numbers.lhs_contracting_dimensions(0);
   int64_t rhs_dim_k = dot_dim_numbers.rhs_contracting_dimensions(0);
   // Supported contraction is only in one of last two dimensions.
-  if (lhs_dim_k < lhs_shape.rank() - 2 || rhs_dim_k < rhs_shape.rank() - 2) {
+  if (lhs_dim_k < lhs_shape.dimensions_size() - 2 ||
+      rhs_dim_k < rhs_shape.dimensions_size() - 2) {
     return false;
   }
 
@@ -488,7 +493,7 @@ bool OneDnnContractionRewriter::ShouldRewriteDot(
   // matmul is achieved.
   auto num_flops = xla::HloCostAnalysis::GetDotFlops(lhs_shape, output_shape,
                                                      dot_dim_numbers);
-  auto rank = output_shape.rank();
+  auto rank = output_shape.dimensions_size();
   auto flops_threshold = (rank <= 2) ? (1 << 24) : (1 << 19);
   return (num_flops >= flops_threshold);
 }
@@ -516,8 +521,8 @@ bool OneDnnContractionRewriter::ShouldRewriteConv(
   auto dims = conv_instr->window().dimensions().size();
   if (dims >= 4 || dims <= 0) return false;
 
-  if (inp_shape.rank() != ker_shape.rank() ||
-      inp_shape.rank() != out_shape.rank()) {
+  if (inp_shape.dimensions_size() != ker_shape.dimensions_size() ||
+      inp_shape.dimensions_size() != out_shape.dimensions_size()) {
     return false;
   }
 
@@ -557,8 +562,8 @@ class OneDnnContractionRewriteVisitor : public DfsHloRewriteVisitor {
     BackendConfig backend_config;
     OneDnnMatMulConfig* matmul_config =
         backend_config.mutable_onednn_matmul_config();
-    bool transpose_a = (lhs_dim_k != lhs_shape.rank() - 1);
-    bool transpose_b = (rhs_dim_k != rhs_shape.rank() - 2);
+    bool transpose_a = (lhs_dim_k != lhs_shape.dimensions_size() - 1);
+    bool transpose_b = (rhs_dim_k != rhs_shape.dimensions_size() - 2);
     matmul_config->set_transpose_a(transpose_a);
     matmul_config->set_transpose_b(transpose_b);
     TF_RETURN_IF_ERROR(matmul_call->set_backend_config(backend_config));
@@ -580,7 +585,7 @@ class OneDnnContractionRewriteVisitor : public DfsHloRewriteVisitor {
     OneDnnConvolutionConfig* conv_config =
         backend_config.mutable_onednn_conv_config();
 
-    conv_config->set_dims(conv_shape.rank());
+    conv_config->set_dims(conv_shape.dimensions_size());
     conv_config->set_feature_groups(conv->feature_group_count());
     conv_config->mutable_input()->mutable_data()->set_batch_dim(
         conv_dims.input_batch_dimension());
@@ -705,7 +710,8 @@ class OneDnnContractionRewriteVisitor : public DfsHloRewriteVisitor {
 
       // oneDNN library requires Convolution biases to always have rank 1.
       // Therefore, these bias shapes should remain unchanged.
-      if (IsOneDnnMatmulInstr(contraction) || addend->shape().rank() != 1) {
+      if (IsOneDnnMatmulInstr(contraction) ||
+          addend->shape().dimensions_size() != 1) {
         auto new_shape =
             AdjustAddendShape(contraction, addend, optional_addend_broadcast);
         if (!new_shape.ok()) {
@@ -1022,12 +1028,12 @@ class OneDnnContractionRewriteVisitor : public DfsHloRewriteVisitor {
 
     auto lhs_batch_dims = dim_numbers.lhs_batch_dimensions();
     auto lhs_contraction_dims = dim_numbers.lhs_contracting_dimensions();
-    bool is_lhs_vector = lhs->shape().rank() ==
+    bool is_lhs_vector = lhs->shape().dimensions_size() ==
                          (lhs_batch_dims.size() + lhs_contraction_dims.size());
 
     auto rhs_batch_dims = dim_numbers.rhs_batch_dimensions();
     auto rhs_contraction_dims = dim_numbers.rhs_contracting_dimensions();
-    bool is_rhs_vector = rhs->shape().rank() ==
+    bool is_rhs_vector = rhs->shape().dimensions_size() ==
                          (rhs_batch_dims.size() + rhs_contraction_dims.size());
 
     if (!is_lhs_vector && !is_rhs_vector) return dot_instr;
@@ -1208,7 +1214,7 @@ class OneDnnPostRewriteVisitor : public DfsHloRewriteVisitor {
     auto weights = custom_call->operand(1);
     auto weights_shape = weights->shape();
     Literal weights_literal;
-    if (!(weights_shape.rank() == 2 &&
+    if (!(weights_shape.dimensions_size() == 2 &&
           evaluator_.TryEvaluate(weights, &weights_literal, true))) {
       return absl::CancelledError(
           "Cannot prepack weights. Not constant 2D weights.");

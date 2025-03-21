@@ -77,7 +77,7 @@ TEST_F(AllToAllDecomposerTest, RaggedAllToAllRank1) {
   }
   EXPECT_EQ(reshapes.size(), 3);
   EXPECT_EQ(ragged_all_to_alls.size(), 1);
-  EXPECT_EQ(ragged_all_to_alls[0]->shape().rank(), 3);
+  EXPECT_EQ(ragged_all_to_alls[0]->shape().dimensions_size(), 3);
 }
 
 TEST_F(AllToAllDecomposerTest, RaggedAllToAllRank3) {

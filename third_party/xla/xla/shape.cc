@@ -115,7 +115,7 @@ Shape::Shape(const ShapeProto& shape_proto) {
 void Shape::SetProto(ShapeProto& proto) const {
   proto.Clear();
   proto.set_element_type(element_type_);
-  proto.mutable_dimensions()->Reserve(rank());
+  proto.mutable_dimensions()->Reserve(dimensions_size());
   for (const int64_t dimension : dimensions()) {
     proto.add_dimensions(dimension);
   }
@@ -255,7 +255,7 @@ bool Shape::Equal::operator()(const Shape& lhs, const Shape& rhs) {
       VLOG(3) << "CompareShapes: lhs rank != rhs rank";
       return false;
     }
-    for (int i = 0; i < lhs.rank(); ++i) {
+    for (int i = 0; i < lhs.dimensions_size(); ++i) {
       if (ignore_dynamic_dimension_ &&
           (lhs.is_unbounded_dynamic_dimension(i) ||
            rhs.is_unbounded_dynamic_dimension(i))) {
@@ -305,7 +305,7 @@ bool Shape::Equal::operator()(const Shape& lhs, const Shape& rhs) {
   }
 
   if (!ignore_dynamic_dimension_) {
-    for (int i = 0; i < lhs.rank(); ++i) {
+    for (int i = 0; i < lhs.dimensions_size(); ++i) {
       if (lhs.is_dynamic_dimension(i) != rhs.is_dynamic_dimension(i)) {
         VLOG(3)
             << "CompareShapes: lhs and rhs have different dynamic dimensions.";
