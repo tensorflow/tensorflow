@@ -64,7 +64,6 @@ limitations under the License.
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_future.h"
-#include "xla/pjrt/pjrt_layout.h"
 #include "xla/pjrt/status_casters.h"
 #include "xla/primitive_util.h"
 #include "xla/python/guard_lib.h"
@@ -1237,7 +1236,6 @@ absl::StatusOr<PyArray> PyArray::BatchedDevicePut(
       (!force_copy && (host_buffer_semantics ==
                        ifrt::Client::HostBufferSemantics::kImmutableZeroCopy));
 
-  nb::list owning_pylist;
   std::vector<tsl::RCReference<ifrt::Array>> ifrt_arrays;
 
   absl::InlinedVector<ifrt::Device*, 1> devices;
@@ -1264,59 +1262,26 @@ absl::StatusOr<PyArray> PyArray::BatchedDevicePut(
                   dst_devices[i]->device(), options, dst_memory_kind));
     ++i;
   }
-  std::vector<DevicePutResult> device_puts;
-  device_puts.reserve(device_put_fns.size());
+  auto dtype = aval.attr("dtype");
+  auto shape = nb::cast<std::vector<int64_t>>(aval.attr("shape"));
+  TF_ASSIGN_OR_RETURN(nb_class_ptr<jax::PyDeviceList> py_device_list,
+                      jax::GetPyDeviceList(sharding));
+
+  tsl::RCReference<ifrt::Array> ifrt_array;
   {
     // TODO(b/318709106): This is a temporary solution to propagate a hint to
     // backends that the current traceback does not change within the scope.
     // This should be removed once context propagation from IFRT API is
     // implemented.
     TracebackCacheScope traceback_cache_scope;
-    nb::gil_scoped_release gil_release;
-    for (auto& device_put_fn : device_put_fns) {
-      TF_ASSIGN_OR_RETURN(auto device_put, std::move(device_put_fn)());
-      device_puts.push_back(std::move(device_put));
-    }
-  }
-  for (auto& device_put : device_puts) {
-    ifrt_arrays.push_back(std::move(device_put.ifrt_array));
-    devices.push_back(
-        ifrt_arrays.back()->sharding().devices()->devices().front());
-    shapes.push_back(ifrt_arrays.back()->shape());
-    if (device_put.owning_pybuffer) {
-      owning_pylist.append(device_put.owning_pybuffer);
-    }
-  }
 
-  // TODO(phawkins): it's highly suspicious to me that owning_pylist isn't
-  // consumed here. Look into this.
+    TF_ASSIGN_OR_RETURN(ifrt_array,
+                        MakeIfrtArrayFromBatchedDevicePut(
+                            py_device_list->py_client()->ifrt_client(), dtype,
+                            shape, sharding, absl::MakeSpan(device_put_fns)));
+  }
 
   auto weak_type = nb::cast<bool>(aval.attr("weak_type"));
-  auto dtype = aval.attr("dtype");
-  auto shape = nb::cast<std::vector<int64_t>>(aval.attr("shape"));
-
-  TF_ASSIGN_OR_RETURN(
-      auto ifrt_sharding,
-      sharding.type().is(jax::PmapSharding::type())
-          ? xla::GetIfrtConcreteSharding(sharding, ifrt::Shape(shape),
-                                         std::move(shapes))
-          : xla::GetIfrtHloSharding(sharding, ifrt::Shape(shape)));
-  TF_ASSIGN_OR_RETURN(auto ifrt_dtype, DtypeToIfRtDType(dtype));
-  // TODO(emilyaf): Remove the following and just use ifrt_dtype when tokens are
-  // supported.
-  ifrt::DType array_dtype =
-      ifrt_arrays.empty() ? ifrt_dtype : ifrt_arrays.front()->dtype();
-  TF_ASSIGN_OR_RETURN(auto py_device_list, jax::GetPyDeviceList(sharding));
-  TF_ASSIGN_OR_RETURN(
-      auto ifrt_array,
-      py_device_list->py_client()
-          ->ifrt_client()
-          ->AssembleArrayFromSingleDeviceArrays(
-              array_dtype, ifrt::Shape(shape), std::move(ifrt_sharding),
-              absl::MakeSpan(ifrt_arrays),
-              xla::ifrt::ArrayCopySemantics::kReuseInput,
-              xla::ifrt::SingleDeviceShardSemantics::kAddressableShards));
-
   return PyArray(aval, weak_type, dtype, std::move(shape), sharding,
                  py_device_list->py_client(), Traceback::Get(),
                  std::move(ifrt_array), committed, /*skip_checks=*/true);

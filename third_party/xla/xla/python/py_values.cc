@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <Python.h>
 
+#include <algorithm>
 #include <cstdint>
 #include <exception>
 #include <functional>
@@ -30,6 +31,7 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/inlined_vector.h"
+#include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -43,6 +45,7 @@ limitations under the License.
 #include "nanobind/stl/string_view.h"  // IWYU pragma: keep
 #include "xla/primitive_util.h"
 #include "xla/python/ifrt/array.h"
+#include "xla/python/ifrt/array_spec.h"
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/dtype.h"
@@ -54,9 +57,11 @@ limitations under the License.
 #include "xla/python/py_array.h"
 #include "xla/python/python_ref_manager.h"
 #include "xla/python/sharding.h"
+#include "xla/python/to_ifrt_sharding.h"
 #include "xla/python/types.h"
 #include "xla/shape.h"
 #include "xla/tsl/concurrency/ref_count.h"
+#include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/python/lib/core/numpy.h"
 #include "xla/types.h"
@@ -97,6 +102,127 @@ absl::StatusOr<std::vector<absl::Cord>> StringDTypeArrayToCords(
   return cords;
 }
 
+// Validates that `device_put_result_fns` is consistent with the target sharding
+// type and devices.
+absl::Status ValidateDevicePutResultFns(
+    ifrt::DeviceList* ifrt_device_list,
+    ifrt::DeviceList* ifrt_addressable_device_list, bool is_pmap_sharding,
+    absl::Span<const DevicePutResultFn> device_put_result_fns) {
+  if (device_put_result_fns.size() != ifrt_addressable_device_list->size()) {
+    // Try to generate a friendly error message if the user attempted to copy to
+    // a non-addressable device.
+    if (device_put_result_fns.size() > ifrt_addressable_device_list->size()) {
+      for (ifrt::Device* device : ifrt_device_list->devices()) {
+        if (!device->IsAddressable()) {
+          return InvalidArgument(
+              "Cannot copy array to non-addressable device: %s",
+              device->DebugString());
+        }
+      }
+    }
+    // Otherwise, generate a generic error message.
+    return InvalidArgument(
+        "Number of addressable shard data does not match the number "
+        "of addressable devices in the sharding: %d vs. %d",
+        device_put_result_fns.size(), ifrt_addressable_device_list->size());
+  }
+
+  if (is_pmap_sharding && device_put_result_fns.empty()) {
+    return InvalidArgument(
+        "Pmap sharding requires at least one addressable shard.");
+  }
+  return absl::OkStatus();
+}
+
+// Shared logic that makes a single-device IFRT array from a `DevicePutResult`.
+// Expected to be called without holding GIL.
+absl::StatusOr<tsl::RCReference<ifrt::Array>>
+MakeSingleDeviceIfrtArrayFromDevicePutResult(
+    xla::ifrt::Client* ifrt_client, xla::ifrt::Device* ifrt_device,
+    xla::ifrt::MemoryKind ifrt_memory_kind, DevicePutResult device_put_result) {
+  if (const auto* ifrt_array = std::get_if<tsl::RCReference<ifrt::Array>>(
+          &device_put_result.ifrt_array_or_host_buffer)) {
+    return std::move(*ifrt_array);
+  }
+  const auto& host_buffer_shard = std::get<ifrt::Client::HostBuffer>(
+      device_put_result.ifrt_array_or_host_buffer);
+  std::shared_ptr<const ifrt::Sharding> ifrt_sharding =
+      ifrt::SingleDeviceSharding::Create(ifrt_device, ifrt_memory_kind);
+  return ifrt_client->MakeArrayFromHostBuffer(
+      host_buffer_shard.data, host_buffer_shard.dtype,
+      std::move(host_buffer_shard.shape),
+      std::move(host_buffer_shard.byte_strides), std::move(ifrt_sharding),
+      device_put_result.host_buffer_semantics,
+      std::move(host_buffer_shard.on_done));
+}
+
+// Makes an IFRT Array from `DevicePutResult`s using a batched array creation
+// API.
+// Expected to be called without holding GIL.
+absl::StatusOr<tsl::RCReference<ifrt::Array>>
+MakeIfrtArraysFromDevicePutResultsInBatch(
+    ifrt::Client* ifrt_client, ifrt::DType ifrt_dtype, ifrt::Shape ifrt_shape,
+    std::shared_ptr<const ifrt::Sharding> ifrt_sharding,
+    absl::Span<DevicePutResult> device_put_results) {
+  absl::InlinedVector<
+      std::pair<absl::InlinedVector<int64_t, 1>, ifrt::Client::HostBuffer>, 1>
+      host_buffers;
+  host_buffers.reserve(device_put_results.size());
+  ifrt::Client::HostBufferSemantics safe_host_semantics =
+      ifrt::Client::HostBufferSemantics::kImmutableZeroCopy;
+  // TODO(hyeontaek): Deduplicate shards here or early on to create a unique
+  // HostBuffer for each set of replicated shards.
+  for (int64_t i = 0; i < device_put_results.size(); ++i) {
+    host_buffers.push_back(
+        {{i},
+         std::get<ifrt::Client::HostBuffer>(
+             std::move(device_put_results[i].ifrt_array_or_host_buffer))});
+    // The minimum host buffer semantics is a safe semantics that can be used
+    // for all shards when they are created in a single batch.
+    safe_host_semantics = std::min(safe_host_semantics,
+                                   device_put_results[i].host_buffer_semantics);
+  }
+
+  std::vector<ifrt::Client::MakeArraysFromHostBufferShardsSpec> specs;
+  specs.push_back(ifrt::Client::MakeArraysFromHostBufferShardsSpec{
+      std::move(host_buffers),
+      ifrt::ArraySpec{/*dtype=*/ifrt_dtype,
+                      /*shape=*/std::move(ifrt_shape),
+                      /*sharding=*/std::move(ifrt_sharding),
+                      /*layout=*/nullptr}});
+  TF_ASSIGN_OR_RETURN(auto ifrt_arrays,
+                      ifrt_client->MakeArraysFromHostBufferShards(
+                          absl::MakeSpan(specs), safe_host_semantics));
+  return std::move(ifrt_arrays.front());
+}
+
+// Makes an IFRT Array from `DevicePutResult`s using an array assembly API.
+// Expected to be called without holding GIL.
+absl::StatusOr<tsl::RCReference<ifrt::Array>>
+MakeIfrtArraysFromDevicePutResultsWithAssembly(
+    ifrt::Client* ifrt_client, ifrt::DType ifrt_dtype, ifrt::Shape ifrt_shape,
+    std::shared_ptr<const ifrt::Sharding> ifrt_sharding,
+    ifrt::DeviceList* ifrt_addressable_device_list,
+    ifrt::MemoryKind ifrt_memory_kind,
+    absl::Span<DevicePutResult> device_put_results) {
+  absl::Span<ifrt::Device* const> ifrt_addressable_devices =
+      ifrt_addressable_device_list->devices();
+  std::vector<tsl::RCReference<ifrt::Array>> ifrt_array_shards;
+  ifrt_array_shards.reserve(device_put_results.size());
+  for (int64_t i = 0; i < device_put_results.size(); ++i) {
+    TF_ASSIGN_OR_RETURN(
+        tsl::RCReference<ifrt::Array> ifrt_array_shard,
+        MakeSingleDeviceIfrtArrayFromDevicePutResult(
+            ifrt_client, ifrt_addressable_devices[i], ifrt_memory_kind,
+            std::move(device_put_results[i])));
+    ifrt_array_shards.push_back(std::move(ifrt_array_shard));
+  }
+  return ifrt_client->AssembleArrayFromSingleDeviceArrays(
+      ifrt_dtype, std::move(ifrt_shape), std::move(ifrt_sharding),
+      absl::MakeSpan(ifrt_array_shards), ifrt::ArrayCopySemantics::kReuseInput,
+      ifrt::SingleDeviceShardSemantics::kAddressableShards);
+}
+
 using DevicePutFunc = std::function<absl::StatusOr<DevicePutResultFn>(
     nb::handle, ifrt::Client*, ifrt::Device*, const DevicePutOptions& options,
     ifrt::MemoryKind to_memory_kind)>;
@@ -128,21 +254,18 @@ absl::StatusOr<DevicePutResultFn> HandlePythonScalar(
     data.template emplace<1>(static_cast<SquashedT>(value));
     type = primitive_util::NativeToPrimitiveType<SquashedT>();
   }
+  TF_ASSIGN_OR_RETURN(auto ifrt_dtype, ifrt::ToDType(type));
 
-  return [client, data, type, to_device,
-          to_memory_kind]() -> absl::StatusOr<DevicePutResult> {
+  return [data, ifrt_dtype]() -> absl::StatusOr<DevicePutResult> {
     const void* ptr = std::visit(
         [](const auto& v) { return static_cast<const void*>(&v); }, data);
-    TF_ASSIGN_OR_RETURN(auto ifrt_dtype, xla::ifrt::ToDType(type));
-    // TODO(yashkatariya): Plumb sharding or memory_kind here.
-    TF_ASSIGN_OR_RETURN(
-        auto ifrt_array,
-        client->MakeArrayFromHostBuffer(
-            ptr, ifrt_dtype, /*shape=*/ifrt::Shape({}), /*byte_strides=*/{},
-            ifrt::SingleDeviceSharding::Create(to_device, to_memory_kind),
-            ifrt::Client::HostBufferSemantics::kImmutableOnlyDuringCall,
-            /*on_done_with_host_buffer=*/{}));
-    return DevicePutResult(std::move(ifrt_array), /*weak_type=*/true);
+    ifrt::Client::HostBuffer ifrt_host_buffer{
+        ptr, ifrt_dtype, ifrt::Shape({}),
+        /*byte_strides=*/std::nullopt,
+        /*on_done_with_host_buffer=*/nullptr};
+    return DevicePutResult(
+        std::move(ifrt_host_buffer), /*weak_type=*/true,
+        ifrt::Client::HostBufferSemantics::kImmutableOnlyDuringCall);
   };
 }
 
@@ -175,21 +298,18 @@ absl::StatusOr<DevicePutResultFn> HandlePythonInt(
     }
     type = S64;
   }
-  return [client, data, type, to_device,
-          to_memory_kind]() -> absl::StatusOr<DevicePutResult> {
+  TF_ASSIGN_OR_RETURN(auto ifrt_dtype, ifrt::ToDType(type));
+  return [data, ifrt_dtype]() -> absl::StatusOr<DevicePutResult> {
     const void* ptr = std::visit(
         [](const auto& v) { return static_cast<const void*>(&v); }, data);
-    TF_ASSIGN_OR_RETURN(auto ifrt_dtype, xla::ifrt::ToDType(type));
     // TODO(yashkatariya): Plumb sharding or memory_kind here.
-    TF_ASSIGN_OR_RETURN(
-        auto ifrt_array,
-        client->MakeArrayFromHostBuffer(
-            ptr, ifrt_dtype, /*shape=*/xla::ifrt::Shape({}),
-            /*byte_strides=*/{},
-            ifrt::SingleDeviceSharding::Create(to_device, to_memory_kind),
-            ifrt::Client::HostBufferSemantics::kImmutableOnlyDuringCall,
-            /*on_done_with_host_buffer=*/nullptr));
-    return DevicePutResult(std::move(ifrt_array), /*weak_type=*/true);
+    ifrt::Client::HostBuffer ifrt_host_buffer{
+        ptr, ifrt_dtype, ifrt::Shape({}),
+        /*byte_strides=*/std::nullopt,
+        /*on_done_with_host_buffer=*/nullptr};
+    return DevicePutResult(
+        std::move(ifrt_host_buffer), /*weak_type=*/true,
+        ifrt::Client::HostBufferSemantics::kImmutableOnlyDuringCall);
   };
 }
 
@@ -256,8 +376,9 @@ absl::StatusOr<DevicePutResultFn> HandleNumpyScalar(
     py_buffer_ref =
         GlobalPyRefManager()->ManageReference(nb::cast<nb::object>(h));
   }
-  return [client, data, py_buffer_ref, type, to_device,
-          to_memory_kind]() mutable -> absl::StatusOr<DevicePutResult> {
+  TF_ASSIGN_OR_RETURN(auto ifrt_dtype, ifrt::ToDType(type));
+  return [data, py_buffer_ref = std::move(py_buffer_ref),
+          ifrt_dtype]() mutable -> absl::StatusOr<DevicePutResult> {
     const void* ptr = std::visit(
         [](const auto& v) -> const void* {
           if constexpr (std::is_same_v<std::decay_t<decltype(v)>, void*>) {
@@ -267,19 +388,15 @@ absl::StatusOr<DevicePutResultFn> HandleNumpyScalar(
           }
         },
         data);
-    TF_ASSIGN_OR_RETURN(auto ifrt_dtype, xla::ifrt::ToDType(type));
-    // TODO(yashkatariya): Plumb sharding or memory_kind here.
-    TF_ASSIGN_OR_RETURN(
-        auto ifrt_array,
-        client->MakeArrayFromHostBuffer(
-            ptr, ifrt_dtype, /*shape=*/xla::ifrt::Shape({}),
-            /*byte_strides=*/{},
-            ifrt::SingleDeviceSharding::Create(to_device, to_memory_kind),
-            ifrt::Client::HostBufferSemantics::kImmutableOnlyDuringCall,
-            /*on_done_with_host_buffer=*/
-            [py_buffer_ref = std::move(
-                 py_buffer_ref)]() { /* keeps py_buffer_ref alive */ }));
-    return DevicePutResult(std::move(ifrt_array), /*weak_type=*/false);
+    ifrt::Client::HostBuffer ifrt_host_buffer{
+        ptr, ifrt_dtype, ifrt::Shape({}),
+        /*byte_strides=*/std::nullopt,
+        /*on_done_with_host_buffer=*/
+        [py_buffer_ref =
+             std::move(py_buffer_ref)]() { /* keeps py_buffer_ref alive */ }};
+    return DevicePutResult(
+        std::move(ifrt_host_buffer), /*weak_type=*/false,
+        ifrt::Client::HostBufferSemantics::kImmutableOnlyDuringCall);
   };
 }
 
@@ -291,7 +408,7 @@ absl::StatusOr<DevicePutResultFn> HandleStringNumpyArray(
   TF_ASSIGN_OR_RETURN(auto cords, StringDTypeArrayToCords(py_array_obj));
 
   // Assemble all the parameters of MakeArrayFromHostBuffer
-  void* data = cords.data();
+  const void* data = cords.data();
 
   // Make an explicit copy of the shape elements so we won't run into complex
   // endianness and precision issues that might arise if we reinterpret-casted
@@ -304,25 +421,18 @@ absl::StatusOr<DevicePutResultFn> HandleStringNumpyArray(
   }
   ifrt::Shape shape(std::move(dims));
 
-  std::shared_ptr<xla::ifrt::Sharding> sharding =
-      xla::ifrt::SingleDeviceSharding::Create(to_device, to_memory_kind);
-
   auto on_done_with_host_buffer = [cords = std::move(cords)] {};
 
-  return [client, data = data, shape = std::move(shape),
-          sharding = std::move(sharding),
+  return [data, shape = std::move(shape),
           on_done_with_host_buffer =
               std::move(on_done_with_host_buffer)]() mutable
              -> absl::StatusOr<DevicePutResult> {
-    TF_ASSIGN_OR_RETURN(
-        auto ifrt_array,
-        client->MakeArrayFromHostBuffer(
-            data, ifrt::DType(ifrt::DType::kString), std::move(shape),
-            /*byte_strides=*/std::nullopt, std::move(sharding),
-            ifrt::Client::HostBufferSemantics::kImmutableUntilTransferCompletes,
-            std::move(on_done_with_host_buffer)));
-
-    return DevicePutResult(std::move(ifrt_array), /*weak_type=*/false);
+    ifrt::Client::HostBuffer ifrt_host_buffer{
+        data, ifrt::DType(ifrt::DType::kString), std::move(shape),
+        /*byte_strides=*/std::nullopt, std::move(on_done_with_host_buffer)};
+    return DevicePutResult(
+        std::move(ifrt_host_buffer), /*weak_type=*/false,
+        ifrt::Client::HostBufferSemantics::kImmutableUntilTransferCompletes);
   };
 }
 
@@ -355,7 +465,7 @@ absl::StatusOr<DevicePutResultFn> HandleNumpyArray(
   }
 
   absl::InlinedVector<int64_t, 4> dims(array.ndim());
-  absl::InlinedVector<int64_t, 4> byte_strides(array.ndim());
+  ifrt::Client::HostBuffer::ByteStrides byte_strides(array.ndim());
   for (int i = 0; i < array.ndim(); ++i) {
     dims[i] = array.shape(i);
     byte_strides[i] = array.strides(i);
@@ -363,13 +473,12 @@ absl::StatusOr<DevicePutResultFn> HandleNumpyArray(
   const void* data = array.data();
   std::shared_ptr<PythonRefManager::ManagedPyObjects> py_buffer_ref =
       GlobalPyRefManager()->ManageReference(std::move(array));
-  return [client, data, squashed_type, dims = std::move(dims),
+  TF_ASSIGN_OR_RETURN(auto ifrt_dtype, ifrt::ToDType(squashed_type));
+  return [data, ifrt_dtype, dims = std::move(dims),
           byte_strides = std::move(byte_strides),
           py_buffer_ref = std::move(py_buffer_ref),
-          allow_zero_copy = options.allow_zero_copy, to_device,
-          to_memory_kind]() mutable -> absl::StatusOr<DevicePutResult> {
-    TF_ASSIGN_OR_RETURN(auto ifrt_dtype, xla::ifrt::ToDType(squashed_type));
-
+          allow_zero_copy = options.allow_zero_copy]() mutable
+             -> absl::StatusOr<DevicePutResult> {
     ifrt::Client::HostBufferSemantics host_buffer_semantics =
         ifrt::Client::HostBufferSemantics::kImmutableOnlyDuringCall;
     std::function<void()> on_done_with_host_buffer;
@@ -381,13 +490,11 @@ absl::StatusOr<DevicePutResultFn> HandleNumpyArray(
           ifrt::Client::HostBufferSemantics::kImmutableZeroCopy;
     }
 
-    TF_ASSIGN_OR_RETURN(
-        auto ifrt_array,
-        client->MakeArrayFromHostBuffer(
-            data, ifrt_dtype, ifrt::Shape(dims), byte_strides,
-            xla::ifrt::SingleDeviceSharding::Create(to_device, to_memory_kind),
-            host_buffer_semantics, std::move(on_done_with_host_buffer)));
-    return DevicePutResult(std::move(ifrt_array), /*weak_type=*/false);
+    ifrt::Client::HostBuffer ifrt_host_buffer{
+        data, ifrt_dtype, ifrt::Shape(dims), std::move(byte_strides),
+        std::move(on_done_with_host_buffer)};
+    return DevicePutResult(std::move(ifrt_host_buffer), /*weak_type=*/false,
+                           host_buffer_semantics);
   };
 }
 
@@ -421,12 +528,11 @@ absl::StatusOr<DevicePutResultFn> HandlePyArray(
       (!to_memory_kind.memory_kind().has_value() ||
        !ifrt_array->sharding().memory_kind().memory_kind().has_value() ||
        ifrt_array->sharding().memory_kind() == to_memory_kind)) {
-    DevicePutResult result(tsl::FormRef(ifrt_array), py_array.weak_type(),
-                           /*owning_pybuffer=*/nb::borrow<nb::object>(obj));
+    DevicePutResult result(tsl::FormRef(ifrt_array), py_array.weak_type());
     return [result = std::move(result)]() mutable { return std::move(result); };
   } else {
     return [ifrt_array = tsl::FormRef(ifrt_array), to_device, to_memory_kind,
-            owning_pybuffer = py_array.weak_type()]() mutable
+            weak_type = py_array.weak_type()]() mutable
                -> absl::StatusOr<DevicePutResult> {
       auto* ifrt_client = ifrt_array->client();
       TF_ASSIGN_OR_RETURN(
@@ -435,13 +541,30 @@ absl::StatusOr<DevicePutResultFn> HandlePyArray(
                                   ifrt_client->MakeDeviceList({to_device}),
                                   to_memory_kind,
                                   ifrt::ArrayCopySemantics::kReuseInput));
-      return DevicePutResult(std::move(copied_ifrt_arrays[0]),
-                             std::move(owning_pybuffer));
+      return DevicePutResult(std::move(copied_ifrt_arrays[0]), weak_type);
     };
   }
 }
 
 }  // namespace
+
+ifrt::DType DevicePutResult::ifrt_dtype() const {
+  if (std::get_if<tsl::RCReference<ifrt::Array>>(&ifrt_array_or_host_buffer)) {
+    return std::get<tsl::RCReference<ifrt::Array>>(ifrt_array_or_host_buffer)
+        ->dtype();
+  } else {
+    return std::get<ifrt::Client::HostBuffer>(ifrt_array_or_host_buffer).dtype;
+  }
+}
+
+const ifrt::Shape& DevicePutResult::ifrt_shape() const {
+  if (std::get_if<tsl::RCReference<ifrt::Array>>(&ifrt_array_or_host_buffer)) {
+    return std::get<tsl::RCReference<ifrt::Array>>(ifrt_array_or_host_buffer)
+        ->shape();
+  } else {
+    return std::get<ifrt::Client::HostBuffer>(ifrt_array_or_host_buffer).shape;
+  }
+}
 
 absl::StatusOr<DevicePutResultFn> DevicePut(nb::handle arg,
                                             ifrt::Client* client,
@@ -548,6 +671,105 @@ absl::StatusOr<DevicePutResultFn> DevicePut(nb::handle arg,
                   nb::cast<absl::string_view>(nb::str(arg.type()))));
   }
   return res->second(arg, client, to_device, options, to_memory_kind);
+}
+
+absl::StatusOr<tsl::RCReference<ifrt::Array>> MakeIfrtArrayFromDevicePut(
+    ifrt::Client* ifrt_client, nb::handle sharding,
+    DevicePutResultFn device_put_result_fn) {
+  TF_ASSIGN_OR_RETURN(ifrt::DeviceListRef ifrt_device_list,
+                      GetIfrtDeviceList(sharding));
+  if (ifrt_device_list->size() != 1) {
+    return InvalidArgument("Expected a single device, got %d devices",
+                           ifrt_device_list->size());
+  }
+  ifrt::DeviceList* ifrt_addressable_device_list =
+      ifrt_device_list->AddressableDeviceList();
+  if (ifrt_addressable_device_list->size() == 0) {
+    return InvalidArgument("Cannot copy array to non-addressable device: %s",
+                           ifrt_device_list->devices().front()->DebugString());
+  }
+  ifrt::MemoryKind ifrt_memory_kind = GetMemoryKind(sharding);
+
+  nb::gil_scoped_release gil_release;
+
+  TF_ASSIGN_OR_RETURN(DevicePutResult device_put_result,
+                      std::move(device_put_result_fn)());
+  return MakeSingleDeviceIfrtArrayFromDevicePutResult(
+      ifrt_client, ifrt_addressable_device_list->devices().front(),
+      ifrt_memory_kind, std::move(device_put_result));
+}
+
+absl::StatusOr<tsl::RCReference<ifrt::Array>> MakeIfrtArrayFromBatchedDevicePut(
+    ifrt::Client* ifrt_client, nb_dtype dtype, absl::Span<const int64_t> shape,
+    nb::handle sharding, absl::Span<DevicePutResultFn> device_put_result_fns) {
+  TF_ASSIGN_OR_RETURN(ifrt::DeviceListRef ifrt_device_list,
+                      GetIfrtDeviceList(sharding));
+  ifrt::DeviceList* ifrt_addressable_device_list =
+      ifrt_device_list->AddressableDeviceList();
+  const bool is_pmap_sharding = sharding.type().is(jax::PmapSharding::type());
+  TF_RETURN_IF_ERROR(ValidateDevicePutResultFns(
+      ifrt_device_list.get(), ifrt_addressable_device_list, is_pmap_sharding,
+      device_put_result_fns));
+
+  TF_ASSIGN_OR_RETURN(ifrt::DType ifrt_dtype, DtypeToIfRtDType(dtype));
+  ifrt::Shape ifrt_shape(shape);
+  ifrt::MemoryKind ifrt_memory_kind = GetMemoryKind(sharding);
+
+  std::shared_ptr<const ifrt::Sharding> ifrt_sharding;
+  if (is_pmap_sharding) {
+    // IFRT Sharding will be determined once we discover the shard shape.
+  } else {
+    TF_ASSIGN_OR_RETURN(ifrt_sharding,
+                        GetIfrtHloSharding(sharding, ifrt_shape));
+  }
+
+  nb::gil_scoped_release gil_release;
+
+  // Whether to build an IFRT array from host buffers as a single batch. We do
+  // not batch any shard is already an IFRT array.
+  bool should_batch = true;
+
+  std::vector<DevicePutResult> device_put_results;
+  device_put_results.reserve(device_put_result_fns.size());
+  for (int64_t i = 0; i < device_put_result_fns.size(); ++i) {
+    TF_ASSIGN_OR_RETURN(DevicePutResult device_put_result,
+                        std::move(device_put_result_fns[i])());
+    if (std::get_if<tsl::RCReference<ifrt::Array>>(
+            &device_put_result.ifrt_array_or_host_buffer)) {
+      // If any shard is an IFRT array, we should assemble shards.
+      should_batch = false;
+    }
+    device_put_results.push_back(std::move(device_put_result));
+  }
+
+  if (is_pmap_sharding) {
+    if (device_put_results.empty()) {
+      return InvalidArgument(
+          "Pmap sharding requires at least one addressable shard.");
+    }
+    ifrt::Shape ifrt_shard_shape = device_put_results.front().ifrt_shape();
+    ifrt_sharding = ifrt::ConcreteEvenSharding::Create(
+        ifrt::DeviceListRef(tsl::FormRef(ifrt_addressable_device_list)),
+        ifrt_memory_kind, ifrt_shape, std::move(ifrt_shard_shape),
+        /*is_fully_replicated=*/false);
+  }
+
+  // TODO(emilyaf): Remove the following and just use ifrt_dtype when tokens are
+  // supported.
+  if (!device_put_results.empty()) {
+    ifrt_dtype = device_put_results.front().ifrt_dtype();
+  }
+
+  if (should_batch) {
+    return MakeIfrtArraysFromDevicePutResultsInBatch(
+        ifrt_client, ifrt_dtype, std::move(ifrt_shape),
+        std::move(ifrt_sharding), absl::MakeSpan(device_put_results));
+  } else {
+    return MakeIfrtArraysFromDevicePutResultsWithAssembly(
+        ifrt_client, ifrt_dtype, std::move(ifrt_shape),
+        std::move(ifrt_sharding), ifrt_addressable_device_list,
+        ifrt_memory_kind, absl::MakeSpan(device_put_results));
+  }
 }
 
 bool IsFloat0(xla::nb_numpy_ndarray arg) {

@@ -127,7 +127,9 @@ std::unique_ptr<HloSharding> HloSharding::Create(
 HloSharding::HloSharding(DeviceListRef devices, MemoryKind memory_kind,
                          xla::HloSharding xla_hlo_sharding)
     : llvm::RTTIExtends<HloSharding, XlaCompatibleSharding>(
-          std::move(devices), memory_kind, xla_hlo_sharding.IsReplicated()),
+          std::move(devices), memory_kind,
+          (xla_hlo_sharding.IsReplicated() ||
+           (xla_hlo_sharding.IsTiled() && xla_hlo_sharding.NumTiles() == 1))),
       xla_hlo_sharding_(std::move(xla_hlo_sharding)) {}
 
 absl::StatusOr<Shape> HloSharding::GetShardShape(const Shape& shape) const {
