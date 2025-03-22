@@ -22,6 +22,7 @@ limitations under the License.
 
 #include "absl/base/macros.h"
 #include "absl/status/statusor.h"
+#include "absl/types/span.h"
 #include "xla/stream_executor/cuda/cubin_or_ptx_image.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/gpu/gpu_asm_opts.h"
