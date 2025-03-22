@@ -216,7 +216,7 @@ TEST_F(DynamicSliceFusionTest, CublasGemmWithWorkspace) {
     %slice.14 = f16[1,8,8]{2,1,0} slice(%p1), slice={[1:2], [0:8], [0:8]}
     %bitcast.42 = f16[8,8]{1,0} bitcast(%slice.14)
 
-    ROOT %custom-call.1 = (f16[8,8]{1,0}, s8[256]{0}) custom-call(%bitcast.41, %bitcast.42),
+    %custom-call.1 = (f16[8,8]{1,0}, s8[256]{0}) custom-call(%bitcast.41, %bitcast.42),
       custom_call_target="__cublas$gemm",
       backend_config={"gemm_backend_config":{
         "alpha_real":1,
@@ -235,6 +235,7 @@ TEST_F(DynamicSliceFusionTest, CublasGemmWithWorkspace) {
         "grad_x":false,
         "grad_y":false
       }}
+    ROOT %get-tuple-element.0 = f16[8,8]{1,0} get-tuple-element(%custom-call.1), index=0
   })";
 
   const char* hlo_opt = R"(
@@ -275,8 +276,9 @@ TEST_F(DynamicSliceFusionTest, CublasGemmWithWorkspace) {
   ENTRY %main.9 {
     %p0 = f16[2,8,8]{2,1,0} parameter(0), sharding={replicated}
     %p1 = f16[2,8,8]{2,1,0} parameter(1), sharding={replicated}
-    ROOT %fusion.2 = (f16[8,8]{1,0}, s8[256]{0}) fusion(%p0, %p1), kind=kCustom, calls=%fused_computation,
+    %fusion.2 = (f16[8,8]{1,0}, s8[256]{0}) fusion(%p0, %p1), kind=kCustom, calls=%fused_computation,
         backend_config={"fusion_backend_config":{"kind":"__custom_fusion","custom_fusion_config":{"name":"dynamic_address_computation"}}}
+    ROOT %get-tuple-element.0 = f16[8,8]{1,0} get-tuple-element(%fusion.2), index=0
   })";
 
   EXPECT_TRUE(RunAndCompareTwoModules(
@@ -563,7 +565,7 @@ TEST_F(DynamicSliceFusionTest, OperandIsSlicedGetTupleElement) {
       }
     %get-tuple-element.97 = f32[200,100]{1,0} get-tuple-element(%custom-call.16), index=0
     %slice.26 = f32[100,100]{1,0} slice(%get-tuple-element.97), slice={[0:100], [0:100]}
-    ROOT %custom-call.17 = (f32[100,100]{1,0}, s8[80000]{0}) custom-call(%slice.26, %get-tuple-element.240),
+    %custom-call.17 = (f32[100,100]{1,0}, s8[80000]{0}) custom-call(%slice.26, %get-tuple-element.240),
       custom_call_target="__cublas$gemm",
       backend_config={
         "gemm_backend_config":{
@@ -584,6 +586,7 @@ TEST_F(DynamicSliceFusionTest, OperandIsSlicedGetTupleElement) {
           "grad_y":false
         }
       }
+    ROOT %get-tuple-element.221 = f32[100,100]{1,0} get-tuple-element(%custom-call.17), index=0
   })";
 
   const char* hlo_opt = R"(
@@ -646,7 +649,7 @@ TEST_F(DynamicSliceFusionTest, OperandIsSlicedGetTupleElement) {
         }
       }
     %get-tuple-element.97 = f32[200,100]{1,0} get-tuple-element(%custom-call.16), index=0
-    ROOT %dynamic-slice-fusion.6 = (f32[100,100]{1,0}, s8[80000]{0}) fusion(%get-tuple-element.97, %get-tuple-element.240),
+    %dynamic-slice-fusion.6 = (f32[100,100]{1,0}, s8[80000]{0}) fusion(%get-tuple-element.97, %get-tuple-element.240),
       kind=kCustom,
       calls=%dynamic-slice-fusion,
       backend_config={
@@ -654,6 +657,7 @@ TEST_F(DynamicSliceFusionTest, OperandIsSlicedGetTupleElement) {
           "kind":"__custom_fusion","custom_fusion_config":{"name":"dynamic_address_computation"}
         }
       }
+    ROOT %get-tuple-element.221 = f32[100,100]{1,0} get-tuple-element(%dynamic-slice-fusion.6), index=0
   })";
 
   EXPECT_TRUE(RunAndCompareTwoModules(hlo_ref, hlo_opt, error_spec,
@@ -779,7 +783,7 @@ TEST_F(DynamicSliceFusionTest, SingleOperandComputation) {
       }
     %get-tuple-element.97 = f32[200,100]{1,0} get-tuple-element(%custom-call.16), index=0
     %slice.26 = f32[100,100]{1,0} slice(%get-tuple-element.97), slice={[0:100], [0:100]}
-    ROOT %custom-call.17 = (f32[100,100]{1,0}, s8[80000]{0}) custom-call(%slice.26, %slice.26),
+    %custom-call.17 = (f32[100,100]{1,0}, s8[80000]{0}) custom-call(%slice.26, %slice.26),
       custom_call_target="__cublas$gemm",
       backend_config={
         "gemm_backend_config":{
@@ -800,6 +804,7 @@ TEST_F(DynamicSliceFusionTest, SingleOperandComputation) {
           "grad_y":false
         }
       }
+    ROOT %get-tuple-element.221 = f32[100,100]{1,0} get-tuple-element(%custom-call.17), index=0
   })";
 
   const char* hlo_opt = R"(
@@ -861,7 +866,7 @@ TEST_F(DynamicSliceFusionTest, SingleOperandComputation) {
         }
       }
     %get-tuple-element.97 = f32[200,100]{1,0} get-tuple-element(%custom-call.16), index=0
-    ROOT %dynamic-slice-fusion.6 = (f32[100,100]{1,0}, s8[80000]{0}) fusion(%get-tuple-element.97),
+    %dynamic-slice-fusion.6 = (f32[100,100]{1,0}, s8[80000]{0}) fusion(%get-tuple-element.97),
       kind=kCustom,
       calls=%dynamic-slice-fusion,
       backend_config={
@@ -869,6 +874,7 @@ TEST_F(DynamicSliceFusionTest, SingleOperandComputation) {
           "kind":"__custom_fusion","custom_fusion_config":{"name":"dynamic_address_computation"}
         }
       }
+    ROOT %get-tuple-element.221 = f32[100,100]{1,0} get-tuple-element(%dynamic-slice-fusion.6), index=0
   })";
 
   EXPECT_TRUE(RunAndCompareTwoModules(hlo_ref, hlo_opt, error_spec,
@@ -888,7 +894,7 @@ TEST_F(DynamicSliceFusionTest, SlicedOperandAliasingOutput) {
       %concatenate.12 = f32[200,100]{1,0} concatenate(%get-tuple-element.287, %get-tuple-element.288), dimensions={0}
       %slice.30 = f32[100,100]{1,0} slice(%concatenate.12), slice={[20:120], [0:100]}
       %slice.34 = f32[100,100]{1,0} slice(%concatenate.12), slice={[99:199], [0:100]}
-      ROOT %cublas-gemm.15 = (f32[100,100]{1,0}, s8[120000]{0}) custom-call(%get-tuple-element.287, %slice.30, %slice.34),
+      %cublas-gemm.15 = (f32[100,100]{1,0}, s8[120000]{0}) custom-call(%get-tuple-element.287, %slice.30, %slice.34),
         custom_call_target="__cublas$gemm",
         output_to_operand_aliasing={{0}: (2, {})},
         backend_config={"gemm_backend_config":{
@@ -908,6 +914,7 @@ TEST_F(DynamicSliceFusionTest, SlicedOperandAliasingOutput) {
           "grad_x":false,
           "grad_y":false
         }}
+      ROOT %get-tuple-element.289 = f32[100,100]{1,0} get-tuple-element(%cublas-gemm.15), index=0
   })";
 
   const char* hlo_opt = R"(
@@ -950,7 +957,7 @@ TEST_F(DynamicSliceFusionTest, SlicedOperandAliasingOutput) {
     %get-tuple-element.288 = f32[100,100]{1,0} get-tuple-element(%p0), index=1
     %concatenate.12 = f32[200,100]{1,0} concatenate(%get-tuple-element.287, %get-tuple-element.288), dimensions={0}
     %slice.34 = f32[100,100]{1,0} slice(%concatenate.12), slice={[99:199], [0:100]}
-    ROOT %dynamic-slice-fusion.6 = (f32[100,100]{1,0}, s8[120000]{0}) fusion(%get-tuple-element.287, %slice.34, %concatenate.12),
+    %dynamic-slice-fusion.6 = (f32[100,100]{1,0}, s8[120000]{0}) fusion(%get-tuple-element.287, %slice.34, %concatenate.12),
       kind=kCustom,
       calls=%dynamic-slice-fusion,
       output_to_operand_aliasing={{0}: (1, {})},
@@ -959,6 +966,7 @@ TEST_F(DynamicSliceFusionTest, SlicedOperandAliasingOutput) {
           "kind":"__custom_fusion","custom_fusion_config":{"name":"dynamic_address_computation"}
         }
       }
+    ROOT %get-tuple-element.289 = f32[100,100]{1,0} get-tuple-element(%dynamic-slice-fusion.6), index=0
   })";
 
   EXPECT_TRUE(RunAndCompareTwoModules(hlo_ref, hlo_opt, error_spec,
@@ -1392,7 +1400,7 @@ TEST_F(DynamicSliceFusionTest, CublasGemmDynamicWithWorkspace) {
     %slice.14 = f16[1,8,8]{2,1,0} dynamic-slice(%p1, %c1_s32, %c0_s32, %c0_s32), dynamic_slice_sizes={1,8,8}
     %bitcast.42 = f16[8,8]{1,0} bitcast(%slice.14)
 
-    ROOT %custom-call.1 = (f16[8,8]{1,0}, s8[256]{0}) custom-call(%bitcast.41, %bitcast.42),
+    %custom-call.1 = (f16[8,8]{1,0}, s8[256]{0}) custom-call(%bitcast.41, %bitcast.42),
       custom_call_target="__cublas$gemm",
       backend_config={"gemm_backend_config":{
         "alpha_real":1,
@@ -1411,6 +1419,7 @@ TEST_F(DynamicSliceFusionTest, CublasGemmDynamicWithWorkspace) {
         "grad_x":false,
         "grad_y":false
       }}
+    ROOT %gte = f16[8,8]{1,0} get-tuple-element(%custom-call.1), index=0
   })";
 
   const char* hlo_opt = R"(
@@ -1455,8 +1464,9 @@ TEST_F(DynamicSliceFusionTest, CublasGemmDynamicWithWorkspace) {
     %p1 = f16[2,8,8]{2,1,0} parameter(1), sharding={replicated}
     %c1_s32 = s32[] constant(1)
     %c0_s32 = s32[] constant(0)
-    ROOT %fusion.2 = (f16[8,8]{1,0}, s8[256]{0}) fusion(%p0, %p1, %c1_s32, %c0_s32), kind=kCustom, calls=%fused_computation,
+    %fusion.2 = (f16[8,8]{1,0}, s8[256]{0}) fusion(%p0, %p1, %c1_s32, %c0_s32), kind=kCustom, calls=%fused_computation,
         backend_config={"fusion_backend_config":{"kind":"__custom_fusion","custom_fusion_config":{"name":"dynamic_address_computation"}}}
+    ROOT %gte = f16[8,8]{1,0} get-tuple-element(%fusion.2), index=0
   })";
 
   EXPECT_TRUE(RunAndCompareTwoModules(
@@ -1681,7 +1691,7 @@ TEST_F(DynamicSliceFusionTest, DynamicOperandIsSlicedGetTupleElement) {
       }
     %get-tuple-element.97 = f32[200,100]{1,0} get-tuple-element(%custom-call.16), index=0
     %slice.26 = f32[100,100]{1,0} dynamic-slice(%get-tuple-element.97, %c0_s32, %c0_s32), dynamic_slice_sizes={100,100}
-    ROOT %custom-call.17 = (f32[100,100]{1,0}, s8[80000]{0}) custom-call(%slice.26, %get-tuple-element.240),
+    %custom-call.17 = (f32[100,100]{1,0}, s8[80000]{0}) custom-call(%slice.26, %get-tuple-element.240),
       custom_call_target="__cublas$gemm",
       backend_config={
         "gemm_backend_config":{
@@ -1702,6 +1712,7 @@ TEST_F(DynamicSliceFusionTest, DynamicOperandIsSlicedGetTupleElement) {
           "grad_y":false
         }
       }
+    ROOT %get-tuple-element.221 = f32[100,100]{1,0} get-tuple-element(%custom-call.17), index=0
   })";
 
   const char* hlo_opt = R"(
@@ -1766,7 +1777,7 @@ TEST_F(DynamicSliceFusionTest, DynamicOperandIsSlicedGetTupleElement) {
         }
       }
     %get-tuple-element.97 = f32[200,100]{1,0} get-tuple-element(%custom-call.16), index=0
-    ROOT %dynamic-slice-fusion.6 = (f32[100,100]{1,0}, s8[80000]{0}) fusion(%get-tuple-element.97, %get-tuple-element.240, %c0_s32),
+    %dynamic-slice-fusion.6 = (f32[100,100]{1,0}, s8[80000]{0}) fusion(%get-tuple-element.97, %get-tuple-element.240, %c0_s32),
       kind=kCustom,
       calls=%dynamic-slice-fusion,
       backend_config={
@@ -1774,6 +1785,7 @@ TEST_F(DynamicSliceFusionTest, DynamicOperandIsSlicedGetTupleElement) {
           "kind":"__custom_fusion","custom_fusion_config":{"name":"dynamic_address_computation"}
         }
       }
+    ROOT %get-tuple-element.221 = f32[100,100]{1,0} get-tuple-element(%dynamic-slice-fusion.6), index=0
   })";
 
   EXPECT_TRUE(RunAndCompareTwoModules(hlo_ref, hlo_opt, error_spec,
@@ -1906,7 +1918,7 @@ TEST_F(DynamicSliceFusionTest, DynamicSingleOperandComputation) {
       }
     %get-tuple-element.97 = f32[200,100]{1,0} get-tuple-element(%custom-call.16), index=0
     %slice.26 = f32[100,100]{1,0} dynamic-slice(%get-tuple-element.97, %c0_s32, %c0_s32), dynamic_slice_sizes={100,100}
-    ROOT %custom-call.17 = (f32[100,100]{1,0}, s8[80000]{0}) custom-call(%slice.26, %slice.26),
+    %custom-call.17 = (f32[100,100]{1,0}, s8[80000]{0}) custom-call(%slice.26, %slice.26),
       custom_call_target="__cublas$gemm",
       backend_config={
         "gemm_backend_config":{
@@ -1927,6 +1939,7 @@ TEST_F(DynamicSliceFusionTest, DynamicSingleOperandComputation) {
           "grad_y":false
         }
       }
+    ROOT %get-tuple-element.221 = f32[100,100]{1,0} get-tuple-element(%custom-call.17), index=0
   })";
 
   const char* hlo_opt = R"(
@@ -1990,7 +2003,7 @@ TEST_F(DynamicSliceFusionTest, DynamicSingleOperandComputation) {
         }
       }
     %get-tuple-element.97 = f32[200,100]{1,0} get-tuple-element(%custom-call.16), index=0
-    ROOT %dynamic-slice-fusion.6 = (f32[100,100]{1,0}, s8[80000]{0}) fusion(%get-tuple-element.97, %c0_s32),
+    %dynamic-slice-fusion.6 = (f32[100,100]{1,0}, s8[80000]{0}) fusion(%get-tuple-element.97, %c0_s32),
       kind=kCustom,
       calls=%dynamic-slice-fusion,
       backend_config={
@@ -1998,6 +2011,7 @@ TEST_F(DynamicSliceFusionTest, DynamicSingleOperandComputation) {
           "kind":"__custom_fusion","custom_fusion_config":{"name":"dynamic_address_computation"}
         }
       }
+    ROOT %get-tuple-element.221 = f32[100,100]{1,0} get-tuple-element(%dynamic-slice-fusion.6), index=0
   })";
 
   EXPECT_TRUE(RunAndCompareTwoModules(hlo_ref, hlo_opt, error_spec,
@@ -2020,7 +2034,7 @@ TEST_F(DynamicSliceFusionTest, DynamicSlicedOperandAliasingOutput) {
       %concatenate.12 = f32[200,100]{1,0} concatenate(%get-tuple-element.287, %get-tuple-element.288), dimensions={0}
       %slice.30 = f32[100,100]{1,0} dynamic-slice(%concatenate.12, %c20_s32, %c0_s32), dynamic_slice_sizes={100,100}
       %slice.34 = f32[100,100]{1,0} dynamic-slice(%concatenate.12, %c99_s32, %c0_s32), dynamic_slice_sizes={100,100}
-      ROOT %cublas-gemm.15 = (f32[100,100]{1,0}, s8[120000]{0}) custom-call(%get-tuple-element.287, %slice.30, %slice.34),
+      %cublas-gemm.15 = (f32[100,100]{1,0}, s8[120000]{0}) custom-call(%get-tuple-element.287, %slice.30, %slice.34),
         custom_call_target="__cublas$gemm",
         output_to_operand_aliasing={{0}: (2, {})},
         backend_config={"gemm_backend_config":{
@@ -2040,6 +2054,7 @@ TEST_F(DynamicSliceFusionTest, DynamicSlicedOperandAliasingOutput) {
           "grad_x":false,
           "grad_y":false
         }}
+      ROOT %get-tuple-element.289 = f32[100,100]{1,0} get-tuple-element(%cublas-gemm.15), index=0
   })";
 
   const char* hlo_opt = R"(
@@ -2087,7 +2102,7 @@ TEST_F(DynamicSliceFusionTest, DynamicSlicedOperandAliasingOutput) {
     %get-tuple-element.288 = f32[100,100]{1,0} get-tuple-element(%p0), index=1
     %concatenate.12 = f32[200,100]{1,0} concatenate(%get-tuple-element.287, %get-tuple-element.288), dimensions={0}
     %slice.34 = f32[100,100]{1,0} dynamic-slice(%concatenate.12, %c99_s32, %c0_s32), dynamic_slice_sizes={100,100}
-    ROOT %dynamic-slice-fusion.6 = (f32[100,100]{1,0}, s8[120000]{0}) fusion(%get-tuple-element.287, %slice.34, %concatenate.12, %c0_s32, %c20_s32),
+    %dynamic-slice-fusion.6 = (f32[100,100]{1,0}, s8[120000]{0}) fusion(%get-tuple-element.287, %slice.34, %concatenate.12, %c0_s32, %c20_s32),
       kind=kCustom,
       calls=%dynamic-slice-fusion,
       output_to_operand_aliasing={{0}: (1, {})},
@@ -2096,6 +2111,7 @@ TEST_F(DynamicSliceFusionTest, DynamicSlicedOperandAliasingOutput) {
           "kind":"__custom_fusion","custom_fusion_config":{"name":"dynamic_address_computation"}
         }
       }
+    ROOT %get-tuple-element.289 = f32[100,100]{1,0} get-tuple-element(%dynamic-slice-fusion.6), index=0
   })";
 
   EXPECT_TRUE(RunAndCompareTwoModules(hlo_ref, hlo_opt, error_spec,
@@ -2202,7 +2218,6 @@ TEST_F(DynamicSliceFusionTest, CublasGemmDUSWithWorkspace) {
 
   const char* hlo_ref = R"(
   HloModule jit_slice
-
   ENTRY %main.9 {
     %p0 = f16[2,8,8]{2,1,0} parameter(0)
     %p1 = f16[2,8,8]{2,1,0} parameter(1)
@@ -2213,7 +2228,6 @@ TEST_F(DynamicSliceFusionTest, CublasGemmDUSWithWorkspace) {
     %bitcast.41 = f16[8,8]{1,0} bitcast(%slice.13)
     %slice.14 = f16[1,8,8]{2,1,0} dynamic-slice(%p1, %c1_s32, %c0_s32, %c0_s32), dynamic_slice_sizes={1,8,8}
     %bitcast.42 = f16[8,8]{1,0} bitcast(%slice.14)
-
     %custom-call.1 = (f16[8,8]{1,0}, s8[256]{0}) custom-call(%bitcast.41, %bitcast.42),
       custom_call_target="__cublas$gemm",
       backend_config={"gemm_backend_config":{
@@ -2235,14 +2249,11 @@ TEST_F(DynamicSliceFusionTest, CublasGemmDUSWithWorkspace) {
       }}
     %get-tuple-element.0 = f16[8,8]{1,0} get-tuple-element(%custom-call.1), index=0
     %bitcast.43 = f16[1,8,8]{2,1,0} bitcast(%get-tuple-element.0)
-    %dus = f16[4,8,8]{2,1,0} dynamic-update-slice(%p2, %bitcast.43, %c1_s32, %c0_s32, %c0_s32)
-    %get-tuple-element.1 = s8[256]{0} get-tuple-element(%custom-call.1), index=1
-    ROOT %tuple = (f16[4,8,8]{2,1,0}, s8[256]{0}) tuple(%dus, %get-tuple-element.1)
+    ROOT %dus = f16[4,8,8]{2,1,0} dynamic-update-slice(%p2, %bitcast.43, %c1_s32, %c0_s32, %c0_s32)
   })";
 
   const char* hlo_opt = R"(
   HloModule jit_slice
-
   %fused_computation {
     %p0 = f16[2,8,8]{2,1,0} parameter(0)
     %p1 = f16[2,8,8]{2,1,0} parameter(1)
@@ -2253,7 +2264,6 @@ TEST_F(DynamicSliceFusionTest, CublasGemmDUSWithWorkspace) {
     %bitcast.41 = f16[8,8]{1,0} bitcast(%slice.13)
     %slice.14 = f16[1,8,8]{2,1,0} dynamic-slice(%p1, %c1_s32, %c0_s32, %c0_s32), dynamic_slice_sizes={1,8,8}
     %bitcast.42 = f16[8,8]{1,0} bitcast(%slice.14)
-
     %custom-call.1 = (f16[8,8]{1,0}, s8[256]{0}) custom-call(%bitcast.41, %bitcast.42),
       custom_call_target="__cublas$gemm",
       backend_config={"gemm_backend_config":{
@@ -2279,15 +2289,15 @@ TEST_F(DynamicSliceFusionTest, CublasGemmDUSWithWorkspace) {
     %get-tuple-element.1 = s8[256]{0} get-tuple-element(%custom-call.1), index=1
     ROOT %tuple = (f16[4,8,8]{2,1,0}, s8[256]{0}) tuple(%dus, %get-tuple-element.1)
   }
-
   ENTRY %main.9 {
     %p0 = f16[2,8,8]{2,1,0} parameter(0)
     %p1 = f16[2,8,8]{2,1,0} parameter(1)
     %p2 = f16[4,8,8]{2,1,0} parameter(2)
     %c1_s32 = s32[] constant(1)
     %c0_s32 = s32[] constant(0)
-    ROOT %fusion.2 = (f16[4,8,8]{2,1,0}, s8[256]{0}) fusion(%p0, %p1, %p2, %c1_s32, %c0_s32), kind=kCustom, calls=%fused_computation,
+    %fusion.2 = (f16[4,8,8]{2,1,0}, s8[256]{0}) fusion(%p0, %p1, %p2, %c1_s32, %c0_s32), kind=kCustom, calls=%fused_computation,
         backend_config={"fusion_backend_config":{"kind":"__custom_fusion","custom_fusion_config":{"name":"dynamic_address_computation"}}}
+    ROOT %gte = f16[4,8,8]{2,1,0} get-tuple-element(%fusion.2), index=0
   })";
 
   EXPECT_TRUE(RunAndCompareTwoModules(
@@ -2421,9 +2431,7 @@ TEST_F(DynamicSliceFusionTest, CublasGemmDUSOffsetS32NotConstant) {
       }}
     %get-tuple-element.0 = f16[8,8]{1,0} get-tuple-element(%custom-call.1), index=0
     %bitcast.43 = f16[1,8,8]{2,1,0} bitcast(%get-tuple-element.0)
-    %dus = f16[4,8,8]{2,1,0} dynamic-update-slice(%p2, %bitcast.43, %c1_s32, %c0_s32, %c0_s32)
-    %get-tuple-element.1 = s8[256]{0} get-tuple-element(%custom-call.1), index=1
-    ROOT %tuple = (f16[4,8,8]{2,1,0}, s8[256]{0}) tuple(%dus, %get-tuple-element.1)
+    ROOT %dus = f16[4,8,8]{2,1,0} dynamic-update-slice(%p2, %bitcast.43, %c1_s32, %c0_s32, %c0_s32)
   })";
 
   const char* hlo_opt = R"(
@@ -2461,9 +2469,7 @@ TEST_F(DynamicSliceFusionTest, CublasGemmDUSOffsetS32NotConstant) {
       }}
     %get-tuple-element.0 = f16[8,8]{1,0} get-tuple-element(%custom-call.1), index=0
     %bitcast.43 = f16[1,8,8]{2,1,0} bitcast(%get-tuple-element.0)
-    %dus = f16[4,8,8]{2,1,0} dynamic-update-slice(%p2, %bitcast.43, %c1_s32, %c0_s32, %c0_s32)
-    %get-tuple-element.1 = s8[256]{0} get-tuple-element(%custom-call.1), index=1
-    ROOT %tuple = (f16[4,8,8]{2,1,0}, s8[256]{0}) tuple(%dus, %get-tuple-element.1)
+    ROOT %dus = f16[4,8,8]{2,1,0} dynamic-update-slice(%p2, %bitcast.43, %c1_s32, %c0_s32, %c0_s32)
   }
 
   ENTRY %main.9 {
@@ -2472,7 +2478,7 @@ TEST_F(DynamicSliceFusionTest, CublasGemmDUSOffsetS32NotConstant) {
     %p2 = f16[4,8,8]{2,1,0} parameter(2)
     %c1_s32 = s32[] parameter(3)
     %c0_s32 = s32[] parameter(4)
-    ROOT %fusion.2 = (f16[4,8,8]{2,1,0}, s8[256]{0}) fusion(%p0, %p1, %p2, %c1_s32, %c0_s32), kind=kCustom, calls=%fused_computation,
+    ROOT %fusion.2 = f16[4,8,8]{2,1,0} fusion(%p0, %p1, %p2, %c1_s32, %c0_s32), kind=kCustom, calls=%fused_computation,
         backend_config={"fusion_backend_config":{"kind":"__custom_fusion","custom_fusion_config":{"name":"dynamic_address_computation"}}}
   })";
 
@@ -2518,9 +2524,7 @@ TEST_F(DynamicSliceFusionTest, CublasGemmDUSOffsetOOB) {
       }}
     %get-tuple-element.0 = f16[8,8]{1,0} get-tuple-element(%custom-call.1), index=0
     %bitcast.43 = f16[1,8,8]{2,1,0} bitcast(%get-tuple-element.0)
-    %dus = f16[4,8,8]{2,1,0} dynamic-update-slice(%p2, %bitcast.43, %c1_s32, %c0_s32, %c0_s32)
-    %get-tuple-element.1 = s8[256]{0} get-tuple-element(%custom-call.1), index=1
-    ROOT %tuple = (f16[4,8,8]{2,1,0}, s8[256]{0}) tuple(%dus, %get-tuple-element.1)
+    ROOT %dus = f16[4,8,8]{2,1,0} dynamic-update-slice(%p2, %bitcast.43, %c1_s32, %c0_s32, %c0_s32)
   })";
 
   const char* hlo_opt = R"(
@@ -2558,9 +2562,7 @@ TEST_F(DynamicSliceFusionTest, CublasGemmDUSOffsetOOB) {
       }}
     %get-tuple-element.0 = f16[8,8]{1,0} get-tuple-element(%custom-call.1), index=0
     %bitcast.43 = f16[1,8,8]{2,1,0} bitcast(%get-tuple-element.0)
-    %dus = f16[4,8,8]{2,1,0} dynamic-update-slice(%p2, %bitcast.43, %c1_s32, %c0_s32, %c0_s32)
-    %get-tuple-element.1 = s8[256]{0} get-tuple-element(%custom-call.1), index=1
-    ROOT %tuple = (f16[4,8,8]{2,1,0}, s8[256]{0}) tuple(%dus, %get-tuple-element.1)
+    ROOT %dus = f16[4,8,8]{2,1,0} dynamic-update-slice(%p2, %bitcast.43, %c1_s32, %c0_s32, %c0_s32)
   }
 
   ENTRY %main.9 {
@@ -2569,7 +2571,7 @@ TEST_F(DynamicSliceFusionTest, CublasGemmDUSOffsetOOB) {
     %p2 = f16[4,8,8]{2,1,0} parameter(2)
     %c1_s32 = s64[] constant(10)
     %c0_s32 = s64[] constant(-1)
-    ROOT %fusion.2 = (f16[4,8,8]{2,1,0}, s8[256]{0}) fusion(%p0, %p1, %p2, %c1_s32, %c0_s32), kind=kCustom, calls=%fused_computation,
+    ROOT %fusion.2 = f16[4,8,8]{2,1,0} fusion(%p0, %p1, %p2, %c1_s32, %c0_s32), kind=kCustom, calls=%fused_computation,
         backend_config={"fusion_backend_config":{"kind":"__custom_fusion","custom_fusion_config":{"name":"dynamic_address_computation"}}}
   })";
 
