@@ -4,8 +4,4 @@ syntax = "proto3";
 
 package tensorflow.profiler;
 
-message Diagnostics {
-  repeated string info = 1;
-  repeated string warnings = 2;
-  repeated string errors = 3;
-}
+import public "plugin/tensorboard_plugin_profile/protobuf/diagnostics.proto";
