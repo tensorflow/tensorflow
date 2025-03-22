@@ -5,31 +5,31 @@ tf_class {
   is_instance: "<type \'tuple\'>"
   member {
     name: "axis"
-    mtype: "<type \'property\'>"
+    mtype: "<class \'collections._tuplegetter\'>"
   }
   member {
     name: "backup_initializer"
-    mtype: "<type \'property\'>"
+    mtype: "<class \'collections._tuplegetter\'>"
   }
   member {
     name: "new_vocab"
-    mtype: "<type \'property\'>"
+    mtype: "<class \'collections._tuplegetter\'>"
   }
   member {
     name: "new_vocab_size"
-    mtype: "<type \'property\'>"
+    mtype: "<class \'collections._tuplegetter\'>"
   }
   member {
     name: "num_oov_buckets"
-    mtype: "<type \'property\'>"
+    mtype: "<class \'collections._tuplegetter\'>"
   }
   member {
     name: "old_vocab"
-    mtype: "<type \'property\'>"
+    mtype: "<class \'collections._tuplegetter\'>"
   }
   member {
     name: "old_vocab_size"
-    mtype: "<type \'property\'>"
+    mtype: "<class \'collections._tuplegetter\'>"
   }
   member_method {
     name: "__init__"
