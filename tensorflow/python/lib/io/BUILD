@@ -72,6 +72,7 @@ py_strict_library(
     # copybara:comment_end
     deps = [
         ":_pywrap_file_io",
+        "//cloud/bigstore/util:bigstore_file_register",
         "//tensorflow/python/framework:errors",
         "//tensorflow/python/util:compat",
         "//tensorflow/python/util:deprecation",
