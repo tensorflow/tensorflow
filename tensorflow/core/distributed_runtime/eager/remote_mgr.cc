@@ -147,6 +147,7 @@ absl::Status RemoteMgr::DeleteTensorHandle(
     mutex_lock l(remote_tensor_handle_mu_);
     auto iter = remote_tensor_handle_map_.find(remote_handle);
     if (iter != remote_tensor_handle_map_.end()) {
+      deleted_remote_tensor_handles_.emplace(iter->first);
       iter->second->Unref();
       remote_tensor_handle_map_.erase(iter);
       return absl::OkStatus();
