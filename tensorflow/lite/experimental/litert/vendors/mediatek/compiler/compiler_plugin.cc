@@ -310,6 +310,15 @@ Expected<std::vector<uint8_t>> CompilePartition(
 LiteRtStatus LiteRtCompilerPluginCompile(
     LiteRtCompilerPlugin compiler_plugin, const char* soc_model,
     LiteRtModel partitions, LiteRtCompiledResult* compiled_result) {
+  static constexpr char dla_directory_template[] = "/tmp/tempdir_dla.XXXXXX";
+  char* dla_directory_name = mkdtemp(const_cast<char*>(dla_directory_template));
+  if (dla_directory_name == nullptr) {
+    LITERT_LOG(LITERT_ERROR, "Failed to make DLA temporary directory")
+    return kLiteRtStatusErrorFileIO;
+  }
+  setenv("MTKNN_ADAPTER_DLA_PLATFORM", soc_model, 1);
+  setenv("MTKNN_ADAPTER_DLA_DIR", dla_directory_name, 1);
+
   auto model = litert::Model::CreateFromNonOwnedHandle(partitions);
   const auto num_partitions = model.NumSubgraphs();
 
@@ -323,13 +332,15 @@ LiteRtStatus LiteRtCompilerPluginCompile(
                *opt_soc_model);
   } else if (soc_model) {
     LITERT_LOG(LITERT_ERROR, "Unexpected SoC model: %s", soc_model);
+    rmdir(dla_directory_name);
     return kLiteRtStatusErrorInvalidArgument;
   }
 
-  // Initialize SDK and load qnn shared libraries.
+  // Initialize SDK and load mediatek shared libraries.
 
   auto api = NeuronAdapterApi::Create(/*shared_library_dir=*/std::nullopt);
   if (!api) {
+    rmdir(dla_directory_name);
     return api.Error().Status();
   }
 
@@ -339,6 +350,7 @@ LiteRtStatus LiteRtCompilerPluginCompile(
     auto graph_name = absl::StrFormat("Partition_%d", i);
     auto bytecode =
         CompilePartition(**api, *model.Subgraph(i), graph_name, opt_soc_model);
+    rmdir(dla_directory_name);
     if (!bytecode) {
       LITERT_LOG(LITERT_INFO, "%s", bytecode.Error().Message().c_str());
       return bytecode.Error().Status();

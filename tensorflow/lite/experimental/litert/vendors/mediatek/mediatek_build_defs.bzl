@@ -14,7 +14,7 @@
 
 """Build definitions for Mediatek backend."""
 
-load("//tensorflow/lite/experimental/litert/build_common:litert_build_defs.bzl", "append_rule_kwargs", "litert_lib", "make_rpaths")
+load("//tensorflow/lite/experimental/litert/build_common:litert_build_defs.bzl", "append_rule_kwargs", "litert_bin", "litert_lib", "make_rpaths")
 
 _MTK_STD_LIBS_HOST = [
     # copybara:uncomment_begin(google-only)
@@ -38,16 +38,18 @@ _MTK_HOST_RPATHS = [
 
 def _litert_with_mtk_base(
         litert_rule,
-        use_custom_std_libs = False,
+        use_custom_libcc,
         **litert_rule_kwargs):
-    if use_custom_std_libs:
+    if use_custom_libcc:
         # TODO: Figure out strategy for custom libcc.
         fail("Custom libcc not yet supported")
 
+    data_x86_64 = []
+    data_x86_64.extend(_MTK_NEURON_ADAPTER_SO)
     append_rule_kwargs(
         litert_rule_kwargs,
         data = select({
-            "//tensorflow:linux_x86_64": _MTK_NEURON_ADAPTER_SO,
+            "//tensorflow:linux_x86_64": data_x86_64,
             "//conditions:default": [],
         }),
         linkopts = select({
@@ -59,16 +61,31 @@ def _litert_with_mtk_base(
     litert_rule(**litert_rule_kwargs)
 
 def litert_cc_lib_with_mtk(
-        use_custom_std_libs = False,
+        use_custom_libcc = False,
         **litert_lib_kwargs):
-    """Creates a litert_lib target with mtk dependencies.
+    """Creates a litert_lib target with Mediatek backend dependencies.
 
     Args:
-        use_custom_std_libs: Whether to use a custom libcc provided by vendor. Not yet supported.
+        use_custom_libcc: Whether to use a custom libcc. Not yet supported.
         **litert_lib_kwargs: Keyword arguments passed to litert_lib.
     """
     _litert_with_mtk_base(
         litert_lib,
-        use_custom_std_libs,
+        use_custom_libcc,
         **litert_lib_kwargs
+    )
+
+def litert_cc_bin_with_mtk(
+        use_custom_libcc = False,
+        **litert_bin_kwargs):
+    """Creates a litert_bin target with Mediatek backend dependencies.
+
+    Args:
+        use_custom_libcc: Whether to use a custom libcc. Not yet supported.
+        **litert_bin_kwargs: Keyword arguments passed to litert_bin.
+    """
+    _litert_with_mtk_base(
+        litert_bin,
+        use_custom_libcc,
+        **litert_bin_kwargs
     )

@@ -62,6 +62,8 @@ static llvm::cl::list<std::string> libs(
         "third_party/tensorflow/lite/experimental/litert/vendors/examples",
         "third_party/tensorflow/lite/experimental/litert/vendors/qualcomm/"
         "compiler",
+        "third_party/tensorflow/lite/experimental/litert/vendors/mediatek/"
+        "compiler",
         "third_party/tensorflow/lite/experimental/litert/vendors/"
         "google_tensor/compiler"}));
 

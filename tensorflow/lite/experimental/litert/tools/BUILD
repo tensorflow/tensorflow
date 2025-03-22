@@ -88,6 +88,7 @@ litert_cc_bin_with_qnn(
         "//tensorflow/lite/experimental/litert/vendors/examples:example_plugin_so",
         "//tensorflow/lite/experimental/litert/vendors/google_tensor/compiler:google_tensor_compiler_plugin_so",
         "//tensorflow/lite/experimental/litert/vendors/qualcomm/compiler:qnn_compiler_plugin_so",
+        "//tensorflow/lite/experimental/litert/vendors/mediatek/compiler:compiler_plugin_so",
     ],
     export_litert_only = 1,
     include_system = 1,

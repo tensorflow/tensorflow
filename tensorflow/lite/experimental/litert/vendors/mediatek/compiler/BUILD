@@ -127,10 +127,8 @@ litert_test(
         # Tests with ungrte deps do not currently work on forge.
         "no-remote-exec",
         "notap",
-        # Don't build/test in OS until qnn is available.
         "nobuilder",
         "no_oss",
-        # Sanitizer runtime doesn't work with anything that loads libQnnHtp.so.
         "nosan",
     ],
     # Currently this test can only be run on Android because we don't have x86 shared libraries for
