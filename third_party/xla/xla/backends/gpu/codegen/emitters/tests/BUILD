@@ -15,6 +15,8 @@ lit_test_suite(
     srcs = glob(["**/*.hlo"]),
     cfg = "//xla:lit.cfg.py",
     default_tags = tf_cuda_tests_tags(),
+    # TODO(b/404266433): Reenable once the test is fixed.
+    exclude = ["scatter/scatter_s8.hlo"],
     exec_properties = tf_exec_properties({"tags": tf_cuda_tests_tags()}),
     hermetic_cuda_data_dir = "%S/../../../../../../../cuda_nvcc",
     tools = [
