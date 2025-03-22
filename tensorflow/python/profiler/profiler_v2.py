@@ -74,7 +74,7 @@ class ProfilerOptions(
               python_tracer_level=0,
               device_tracer_level=1,
               delay_ms=None,
-              ignore_start_error=False):
+              ignore_start_error=True):
     return super(ProfilerOptions,
                  cls).__new__(cls, host_tracer_level, python_tracer_level,
                               device_tracer_level, delay_ms,
