@@ -36,7 +36,9 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/layout.h"
 #include "xla/layout_util.h"
@@ -215,6 +217,13 @@ absl::Status Allocation::UpdateUses(HloComputation* computation,
     }
     TF_RETURN_IF_ERROR(use.instruction->ReplaceOperandWith(
         use.operand_number, replacement_instruction));
+    if (use.instruction->opcode() == HloOpcode::kFusion &&
+        replacement_instruction->shape().has_layout() &&
+        replacement_instruction->shape().layout().split_configs_size() > 0) {
+      HloInstruction* fusion = Cast<HloFusionInstruction>(use.instruction);
+      HloInstruction* param = fusion->fused_parameter(use.operand_number);
+      *param->mutable_shape() = replacement_instruction->shape();
+    }
   }
   return absl::OkStatus();
 }
@@ -398,6 +407,10 @@ absl::Status CopyAllocation::Process(const BitcastSplitFn& bitcast_split_fn) {
     if (memory_space() == MemorySpace::kAlternate &&
         mutable_split_shape().has_value()) {
       dest_shape = mutable_split_shape().value();
+    } else if (memory_space() == MemorySpace::kDefault && shape.has_layout() &&
+               shape.layout().split_configs_size() > 0) {
+      dest_shape = shape;
+      dest_shape.mutable_layout()->clear_split_configs();
     } else {
       dest_shape = shape;
     }
