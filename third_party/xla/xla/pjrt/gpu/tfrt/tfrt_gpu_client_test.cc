@@ -503,5 +503,30 @@ TEST(TfrtGpuClientTest, LookupDevice) {
   EXPECT_EQ(addressable_device, device);
 }
 
+TEST(TfrtGpuClientTest, CreateViewOfDeviceBuffer) {
+  TF_ASSERT_OK_AND_ASSIGN(auto client, GetTfrtGpuClient(GpuClientOptions()));
+
+  Shape on_device_shape = ShapeUtil::MakeShapeWithType<int32_t>({4, 4});
+  void* device_ptr = (void*)0x12345678;
+  TF_ASSERT_OK_AND_ASSIGN(
+      PjRtMemorySpace * memory_space,
+      client->addressable_devices()[0]->default_memory_space());
+  bool deleted = false;
+  auto on_delete_callback = [&]() { deleted = true; };
+  TF_ASSERT_OK_AND_ASSIGN(auto buffer,
+                          client->CreateViewOfDeviceBuffer(
+                              device_ptr, on_device_shape, memory_space,
+                              on_delete_callback, /*stream=*/std::nullopt));
+  EXPECT_EQ(buffer->on_device_shape(), on_device_shape);
+  EXPECT_EQ(buffer->memory_space(), memory_space);
+  {
+    TF_ASSERT_OK_AND_ASSIGN(auto ref, buffer->AcquireExternalReference());
+    EXPECT_EQ(ref->OpaqueDeviceMemoryDataPointer(), device_ptr);
+  }
+  EXPECT_FALSE(deleted);
+  buffer.reset();
+  EXPECT_TRUE(deleted);
+}
+
 }  // namespace
 }  // namespace xla
