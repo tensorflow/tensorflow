@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/pjrt/cpu/tfrt_cpu_async_execution_tracker.h"
+#include "xla/pjrt/cpu/cpu_async_execution_tracker.h"
 
 #include <cstdint>
 #include <utility>
@@ -22,52 +22,51 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/synchronization/mutex.h"
-#include "xla/service/cpu/cpu_event.h"
+#include "xla/pjrt/cpu/cpu_event.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 
 namespace xla {
 
-TfrtCpuScopedAsyncExecution::TfrtCpuScopedAsyncExecution(
-    TfrtCpuAsyncExecutionTracker* tracker, int32_t launch_id, Key key)
+CpuScopedAsyncExecution::CpuScopedAsyncExecution(
+    CpuAsyncExecutionTracker* tracker, int32_t launch_id, Key key)
     : tracker_(tracker), launch_id_(launch_id), key_(key) {}
 
-TfrtCpuScopedAsyncExecution::TfrtCpuScopedAsyncExecution(
-    TfrtCpuScopedAsyncExecution&& other)
+CpuScopedAsyncExecution::CpuScopedAsyncExecution(
+    CpuScopedAsyncExecution&& other)
     : tracker_(other.tracker_), launch_id_(other.launch_id_), key_(other.key_) {
   other.tracker_ = nullptr;
 }
 
-TfrtCpuScopedAsyncExecution::~TfrtCpuScopedAsyncExecution() {
+CpuScopedAsyncExecution::~CpuScopedAsyncExecution() {
   if (tracker_ != nullptr) {
     tracker_->RemoveAsyncExecution(launch_id_, key_);
   }
 }
 
-void TfrtCpuScopedAsyncExecution::SetStateConcrete() {
+void CpuScopedAsyncExecution::SetStateConcrete() {
   if (tracker_ != nullptr) {
     tracker_->SetStateConcrete(launch_id_, key_);
     tracker_ = nullptr;
   }
 }
 
-void TfrtCpuScopedAsyncExecution::SetError(absl::Status error) {
+void CpuScopedAsyncExecution::SetError(absl::Status error) {
   if (tracker_ != nullptr) {
     tracker_->SetError(launch_id_, key_, std::move(error));
     tracker_ = nullptr;
   }
 }
 
-TfrtCpuScopedAsyncExecution TfrtCpuAsyncExecutionTracker::NewAsyncExecution(
+CpuScopedAsyncExecution CpuAsyncExecutionTracker::NewAsyncExecution(
     int32_t launch_id, tsl::AsyncValueRef<CpuEvent> execute_event) {
   absl::MutexLock lock(&mu_);
   Key async_execution_key = execute_event.GetAsyncValue();
   executions_[launch_id].insert(
       {async_execution_key, std::move(execute_event)});
-  return TfrtCpuScopedAsyncExecution(this, launch_id, async_execution_key);
+  return CpuScopedAsyncExecution(this, launch_id, async_execution_key);
 }
 
-bool TfrtCpuAsyncExecutionTracker::SetError(int32_t launch_id,
-                                            absl::Status error) {
+bool CpuAsyncExecutionTracker::SetError(int32_t launch_id, absl::Status error) {
   absl::ReleasableMutexLock lock(&mu_);
   auto it = executions_.find(launch_id);
   if (it != executions_.end()) {
@@ -99,8 +98,8 @@ bool TfrtCpuAsyncExecutionTracker::SetError(int32_t launch_id,
   return false;
 }
 
-void TfrtCpuAsyncExecutionTracker::SetError(int32_t launch_id, Key key,
-                                            absl::Status error) {
+void CpuAsyncExecutionTracker::SetError(int32_t launch_id, Key key,
+                                        absl::Status error) {
   absl::ReleasableMutexLock lock(&mu_);
   auto it = executions_.find(launch_id);
   if (it != executions_.end()) {
@@ -120,8 +119,7 @@ void TfrtCpuAsyncExecutionTracker::SetError(int32_t launch_id, Key key,
   }
 }
 
-void TfrtCpuAsyncExecutionTracker::SetStateConcrete(int32_t launch_id,
-                                                    Key key) {
+void CpuAsyncExecutionTracker::SetStateConcrete(int32_t launch_id, Key key) {
   absl::ReleasableMutexLock lock(&mu_);
   auto it = executions_.find(launch_id);
   if (it != executions_.end()) {
@@ -141,8 +139,8 @@ void TfrtCpuAsyncExecutionTracker::SetStateConcrete(int32_t launch_id,
   }
 }
 
-void TfrtCpuAsyncExecutionTracker::RemoveAsyncExecution(int32_t launch_id,
-                                                        Key key) {
+void CpuAsyncExecutionTracker::RemoveAsyncExecution(int32_t launch_id,
+                                                    Key key) {
   absl::MutexLock lock(&mu_);
   auto it = executions_.find(launch_id);
   if (it != executions_.end()) {

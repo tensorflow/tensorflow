@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_PJRT_CPU_TFRT_CPU_ASYNC_EXECUTION_TRACKER_H_
-#define XLA_PJRT_CPU_TFRT_CPU_ASYNC_EXECUTION_TRACKER_H_
+#ifndef XLA_PJRT_CPU_CPU_ASYNC_EXECUTION_TRACKER_H_
+#define XLA_PJRT_CPU_CPU_ASYNC_EXECUTION_TRACKER_H_
 
 #include <cstdint>
 
@@ -22,32 +22,32 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
 #include "absl/synchronization/mutex.h"
-#include "xla/service/cpu/cpu_event.h"
+#include "xla/pjrt/cpu/cpu_event.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 
 namespace xla {
 
-class TfrtCpuAsyncExecutionTracker;
+class CpuAsyncExecutionTracker;
 
 // RAII wrapper for an async execution. It reports the completion of the async
 // execution to the tracker and acts as a helper to set the state of the execute
 // event only if it is not set yet. Typically, either `SetStateConcrete()` or
 // `SetError()` should be called before the destruction of
-// `TfrtCpuScopedAsyncExecution`.
+// `CpuScopedAsyncExecution`.
 //
 // Not thread-safe.
-class TfrtCpuScopedAsyncExecution {
+class CpuScopedAsyncExecution {
  public:
   // Opaque key that uniquely identifies an async execution for tracking
   // purposes.
   using Key = const void*;
 
-  TfrtCpuScopedAsyncExecution(TfrtCpuAsyncExecutionTracker* tracker,
-                              int32_t launch_id, Key key);
-  TfrtCpuScopedAsyncExecution(TfrtCpuScopedAsyncExecution&& other);
-  ~TfrtCpuScopedAsyncExecution();
+  CpuScopedAsyncExecution(CpuAsyncExecutionTracker* tracker, int32_t launch_id,
+                          Key key);
+  CpuScopedAsyncExecution(CpuScopedAsyncExecution&& other);
+  ~CpuScopedAsyncExecution();
 
-  TfrtCpuScopedAsyncExecution(const TfrtCpuScopedAsyncExecution&) = delete;
+  CpuScopedAsyncExecution(const CpuScopedAsyncExecution&) = delete;
 
   // Sets the state of the execution to a ready state. No-op if the execute
   // event is already set.
@@ -58,7 +58,7 @@ class TfrtCpuScopedAsyncExecution {
   void SetError(absl::Status error);
 
  private:
-  TfrtCpuAsyncExecutionTracker* tracker_;
+  CpuAsyncExecutionTracker* tracker_;
   int32_t launch_id_;
   Key key_;
 };
@@ -68,12 +68,12 @@ class TfrtCpuScopedAsyncExecution {
 // teardown of the runtime state.
 //
 // Thread-safe.
-class TfrtCpuAsyncExecutionTracker {
+class CpuAsyncExecutionTracker {
  public:
-  using Key = TfrtCpuScopedAsyncExecution::Key;
+  using Key = CpuScopedAsyncExecution::Key;
 
   // Registers a new execution dispatched to a device.
-  TfrtCpuScopedAsyncExecution NewAsyncExecution(
+  CpuScopedAsyncExecution NewAsyncExecution(
       int32_t launch_id, tsl::AsyncValueRef<CpuEvent> execute_event);
 
   // Sets the state of any executions with `launch_id` to an error. Returns true
@@ -81,7 +81,7 @@ class TfrtCpuAsyncExecutionTracker {
   // removed or their execute event is already set.
   bool SetError(int32_t launch_id, absl::Status error);
 
-  // Below is used by `TfrtCpuScopedAsyncExecution`.
+  // Below is used by `CpuScopedAsyncExecution`.
 
   // Sets the state of the execute event to an error. Returns true if it
   // succeeds to set the state. Returns false if the execution has been removed
@@ -110,4 +110,4 @@ class TfrtCpuAsyncExecutionTracker {
 
 }  // namespace xla
 
-#endif  // XLA_PJRT_CPU_TFRT_CPU_ASYNC_EXECUTION_TRACKER_H_
+#endif  // XLA_PJRT_CPU_CPU_ASYNC_EXECUTION_TRACKER_H_

@@ -27,7 +27,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/literal.h"
-#include "xla/pjrt/cpu/tfrt_cpu_async_execution_tracker.h"
+#include "xla/pjrt/cpu/cpu_async_execution_tracker.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_common.h"
 #include "xla/pjrt/pjrt_future.h"
@@ -92,7 +92,7 @@ class TfrtCpuDevice final : public PjRtDevice {
   absl::StatusOr<bool> PoisonExecution(int32_t launch_id,
                                        absl::Status error) override;
 
-  TfrtCpuAsyncExecutionTracker* async_execution_tracker() {
+  CpuAsyncExecutionTracker* async_execution_tracker() {
     return async_execution_tracker_.get();
   }
 
@@ -107,7 +107,7 @@ class TfrtCpuDevice final : public PjRtDevice {
   // ahead of the device.
   Semaphore max_inflight_computations_semaphore_;
 
-  std::unique_ptr<TfrtCpuAsyncExecutionTracker> async_execution_tracker_;
+  std::unique_ptr<CpuAsyncExecutionTracker> async_execution_tracker_;
 };
 
 }  // namespace xla

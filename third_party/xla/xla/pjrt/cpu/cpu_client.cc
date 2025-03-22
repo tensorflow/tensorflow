@@ -71,8 +71,9 @@ limitations under the License.
 #include "xla/literal_util.h"
 #include "xla/pjrt/compile_options.pb.h"
 #include "xla/pjrt/cpu/abstract_tfrt_cpu_buffer.h"
+#include "xla/pjrt/cpu/cpu_async_execution_tracker.h"
 #include "xla/pjrt/cpu/cpu_device.h"
-#include "xla/pjrt/cpu/tfrt_cpu_async_execution_tracker.h"
+#include "xla/pjrt/cpu/cpu_event.h"
 #include "xla/pjrt/cpu/tracked_cpu_device_buffer.h"
 #include "xla/pjrt/host_callback.h"
 #include "xla/pjrt/host_memory_spaces.h"
@@ -96,7 +97,6 @@ limitations under the License.
 #include "xla/service/compiler.h"
 #include "xla/service/computation_placer.h"
 #include "xla/service/cpu/cpu_compiler.h"
-#include "xla/service/cpu/cpu_event.h"
 #include "xla/service/cpu/cpu_executable.h"
 #include "xla/service/cpu/cpu_executable_run_options.h"
 #include "xla/service/cpu/cpu_runtime.h"
@@ -218,11 +218,10 @@ class ThreadPoolAsyncWorkRunner : public AsyncWorkRunner {
   tsl::thread::ThreadPool* pool_;
 };
 
-class TfrtCpuAsyncHostToDeviceTransferManager
+class CpuAsyncHostToDeviceTransferManager
     : public AbstractAsyncHostToHostMemoryTransferManager {
  public:
-  static absl::StatusOr<
-      std::unique_ptr<TfrtCpuAsyncHostToDeviceTransferManager>>
+  static absl::StatusOr<std::unique_ptr<CpuAsyncHostToDeviceTransferManager>>
   Create(absl::Span<const Shape> shapes, TfrtCpuDevice* device,
          TfrtCpuClient* client) {
     absl::InlinedVector<std::unique_ptr<AbstractTfrtCpuBuffer>, 4> buffers;
@@ -233,7 +232,7 @@ class TfrtCpuAsyncHostToDeviceTransferManager
       if (shape.IsTuple()) {
         return Unimplemented(
             "Tuples are not supported by "
-            "TfrtCpuAsyncHostToDeviceTransferManager");
+            "CpuAsyncHostToDeviceTransferManager");
       }
       absl::InlinedVector<tsl::RCReference<tsl::AsyncValue>, 4> local_avs;
       TF_ASSIGN_OR_RETURN(auto buffer, AllocateDestinationBufferAndAvs(
@@ -254,7 +253,7 @@ class TfrtCpuAsyncHostToDeviceTransferManager
                 buffers, device_buffers, buffer_sizes,
                 buffer_transfers_in_flight, last_transfer_finished));
 
-    return absl::WrapUnique(new TfrtCpuAsyncHostToDeviceTransferManager(
+    return absl::WrapUnique(new CpuAsyncHostToDeviceTransferManager(
         std::move(avs), std::move(buffers), std::move(device_buffers),
         std::move(buffer_sizes), std::move(buffer_transfers_in_flight),
         std::move(last_transfer_finished), client->async_work_runner(),
@@ -264,7 +263,7 @@ class TfrtCpuAsyncHostToDeviceTransferManager
   PjRtDevice* device() const override { return device_; }
 
  private:
-  TfrtCpuAsyncHostToDeviceTransferManager(
+  CpuAsyncHostToDeviceTransferManager(
       absl::InlinedVector<tsl::RCReference<tsl::AsyncValue>, 4> avs,
       absl::InlinedVector<std::unique_ptr<AbstractTfrtCpuBuffer>, 4> buffers,
       absl::InlinedVector<TrackedCpuDeviceBuffer*, 4> device_buffers,
@@ -1046,8 +1045,7 @@ TfrtCpuClient::CreateBuffersForAsyncHostToDevice(
   CHECK_EQ(memory_space->devices().size(), 1);
   auto* tfrt_device =
       tensorflow::down_cast<TfrtCpuDevice*>(memory_space->devices().front());
-  return TfrtCpuAsyncHostToDeviceTransferManager::Create(shapes, tfrt_device,
-                                                         this);
+  return CpuAsyncHostToDeviceTransferManager::Create(shapes, tfrt_device, this);
 }
 
 absl::StatusOr<std::unique_ptr<PjRtClient::AsyncHostToDeviceTransferManager>>
@@ -1768,7 +1766,7 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtCpuExecutable::ExecuteHelper(
     }
     std::vector<tsl::RCReference<tsl::AsyncValue>> input_deps_avs_copy =
         CopyAsyncValues(input_deps);
-    TfrtCpuScopedAsyncExecution scoped_async_execution =
+    CpuScopedAsyncExecution scoped_async_execution =
         device->async_execution_tracker()->NewAsyncExecution(
             run_id.ToInt(), std::move(ready_on_exit).Release());
     EnqueueWorkWhenReady(
