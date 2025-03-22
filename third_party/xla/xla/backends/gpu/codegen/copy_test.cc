@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "xla/backends/gpu/codegen/copy.h"
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
