@@ -155,7 +155,6 @@ static bufferization::BufferizationOptions getPartialBufferizationOptions() {
   bufferization::BufferizationOptions options;
   options.allowUnknownOps = true;
   options.copyBeforeWrite = true;
-  options.enforceAliasingInvariants = false;
   options.unknownTypeConverterFn =
       [](Value value, Attribute memorySpace,
          const bufferization::BufferizationOptions& options) {
