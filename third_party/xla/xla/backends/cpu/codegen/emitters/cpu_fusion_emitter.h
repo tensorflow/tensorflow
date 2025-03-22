@@ -120,19 +120,7 @@ class CpuFusionEmitterBase {
   absl::Status EmitMlir(mlir::ModuleOp module,
                         mlir::func::FuncOp entry_function,
                         const HloFusionInstruction& fusion) const;
-  absl::Status RunPassPipeline(
-      mlir::ModuleOp module, mlir::PassManager& pm,
-      mlir::interpreter::MlirCompilationTrace* trace) const;
 };
-
-// Adds passes that simplify arithmetic operations and remove dead code.
-void AddXlaOpsOptimizationPasses(mlir::OpPassManager& pm);
-
-// Adds passes that transform XLA and SCF loops, e.g. pipeline, vectorize.
-void AddLoopTransformationPasses(mlir::OpPassManager& pm);
-
-// Adds passes that lower transformed loops to LLVM.
-void AddLoweringPasses(mlir::OpPassManager& pm);
 
 int64_t CeilDiv(int64_t a, int64_t b);
 
