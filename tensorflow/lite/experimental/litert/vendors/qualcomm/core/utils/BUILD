@@ -28,12 +28,14 @@ cc_library(
 
 cc_library(
     name = "miscs",
+    srcs = ["miscs.cc"],
     hdrs = ["miscs.h"],
     tags = [
         # Don't build/test in OS until qnn is available.
         "nobuilder",
     ],
     deps = [
+        "@com_google_absl//absl/types:span",
     ],
 )
 

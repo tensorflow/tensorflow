@@ -21,10 +21,18 @@ typedef enum LiteRtQnnLogLevel {  // NOLINT(modernize-use-using)
 typedef struct {  // NOLINT(modernize-use-using)
   /// Apply HTP-friendly op builder.
   bool useHtpPreferencs;
+  /// This option will treat quantized int16 tensor as quantized uint16 tensor
+  /// for better backend compatibility.
+  bool useQInt16AsQUint16;
 } LiteRtQnnOptions;
 
-#define LITERT_QNN_OPTIONS_INIT {false, /*useHtpPreferencs*/}
-
+// clang-format off
+#define LITERT_QNN_OPTIONS_INIT      \
+  {                                  \
+    false,    /*useHtpPreferencs*/   \
+    true,     /*useQInt16AsQUint16*/ \
+  }
+// clang-format on
 #ifdef __cplusplus
 }
 #endif  // __cplusplus

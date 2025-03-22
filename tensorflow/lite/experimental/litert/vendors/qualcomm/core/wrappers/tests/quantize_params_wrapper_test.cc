@@ -78,6 +78,14 @@ TEST(ScaleOffsetQuantizeParamsWrapperTest, MoveConstructorTest) {
   EXPECT_EQ(dst.scaleOffsetEncoding.offset, -zero_point);
 }
 
+TEST(ScaleOffsetQuantizeParamsWrapperTest, GetterTest) {
+  float scale = 1.5f;
+  std::int32_t zero_point = 10;
+  ScaleOffsetQuantizeParamsWrapper wrapper(scale, zero_point);
+  EXPECT_FLOAT_EQ(wrapper.GetScale(), scale);
+  EXPECT_EQ(wrapper.GetZeroPoint(), zero_point);
+}
+
 TEST(AxisScaleOffsetQuantizeParamsWrapperTest, ConstructorTest) {
   std::int32_t axis = 1;
   std::vector<float> scales = {1.5f, 2.5f};
@@ -138,6 +146,18 @@ TEST(AxisScaleOffsetQuantizeParamsWrapperTest, MoveConstructorTest) {
     EXPECT_EQ(dst.axisScaleOffsetEncoding.scaleOffset[i].offset,
               -zero_points[i]);
   }
+}
+TEST(AxisScaleOffsetQuantizeParamsWrapperTest, GetterTest) {
+  std::int32_t axis = 1;
+  std::vector<float> scales = {1.5f, 2.5f};
+  std::vector<std::int32_t> zero_points = {10, 20};
+  AxisScaleOffsetQuantizeParamsWrapper wrapper(axis, scales, zero_points);
+  std::vector<float> scales_out;
+  wrapper.GetScales(scales_out);
+  EXPECT_EQ(scales, scales_out);
+  std::vector<std::int32_t> zero_points_out;
+  wrapper.GetZeroPoints(zero_points_out);
+  EXPECT_EQ(zero_points, zero_points_out);
 }
 }  // namespace
 }  // namespace qnn
