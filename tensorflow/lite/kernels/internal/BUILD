@@ -318,7 +318,6 @@ cc_library(
 cc_library(
     name = "optimized_base",
     hdrs = [
-        "optimized/batch_matmul.h",
         "optimized/depthwiseconv_3x3_filter_common.h",
         "optimized/depthwiseconv_float.h",
         "optimized/depthwiseconv_multithread.h",
