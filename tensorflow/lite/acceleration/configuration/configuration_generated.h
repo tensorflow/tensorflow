@@ -93,6 +93,10 @@ struct MtkNeuronSettings;
 struct MtkNeuronSettingsBuilder;
 struct MtkNeuronSettingsT;
 
+struct IntelOpenVINOSettings;
+struct IntelOpenVINOSettingsBuilder;
+struct IntelOpenVINOSettingsT;
+
 struct TFLiteSettings;
 struct TFLiteSettingsBuilder;
 struct TFLiteSettingsT;
@@ -197,6 +201,8 @@ bool operator==(const ArmNNSettingsT &lhs, const ArmNNSettingsT &rhs);
 bool operator!=(const ArmNNSettingsT &lhs, const ArmNNSettingsT &rhs);
 bool operator==(const MtkNeuronSettingsT &lhs, const MtkNeuronSettingsT &rhs);
 bool operator!=(const MtkNeuronSettingsT &lhs, const MtkNeuronSettingsT &rhs);
+bool operator==(const IntelOpenVINOSettingsT &lhs, const IntelOpenVINOSettingsT &rhs);
+bool operator!=(const IntelOpenVINOSettingsT &lhs, const IntelOpenVINOSettingsT &rhs);
 bool operator==(const TFLiteSettingsT &lhs, const TFLiteSettingsT &rhs);
 bool operator!=(const TFLiteSettingsT &lhs, const TFLiteSettingsT &rhs);
 bool operator==(const FallbackSettingsT &lhs, const FallbackSettingsT &rhs);
@@ -283,11 +289,12 @@ enum Delegate : int32_t {
   Delegate_CORE_ML = 7,
   Delegate_ARMNN = 8,
   Delegate_MTK_NEURON = 9,
+  Delegate_INTEL_OPENVINO = 10,
   Delegate_MIN = Delegate_NONE,
-  Delegate_MAX = Delegate_MTK_NEURON
+  Delegate_MAX = Delegate_INTEL_OPENVINO
 };
 
-inline const Delegate (&EnumValuesDelegate())[10] {
+inline const Delegate (&EnumValuesDelegate())[11] {
   static const Delegate values[] = {
     Delegate_NONE,
     Delegate_NNAPI,
@@ -298,13 +305,14 @@ inline const Delegate (&EnumValuesDelegate())[10] {
     Delegate_EDGETPU_CORAL,
     Delegate_CORE_ML,
     Delegate_ARMNN,
-    Delegate_MTK_NEURON
+    Delegate_MTK_NEURON,
+    Delegate_INTEL_OPENVINO
   };
   return values;
 }
 
 inline const char * const *EnumNamesDelegate() {
-  static const char * const names[11] = {
+  static const char * const names[12] = {
     "NONE",
     "NNAPI",
     "GPU",
@@ -315,13 +323,14 @@ inline const char * const *EnumNamesDelegate() {
     "CORE_ML",
     "ARMNN",
     "MTK_NEURON",
+    "INTEL_OPENVINO",
     nullptr
   };
   return names;
 }
 
 inline const char *EnumNameDelegate(Delegate e) {
-  if (::flatbuffers::IsOutRange(e, Delegate_NONE, Delegate_MTK_NEURON)) return "";
+  if (::flatbuffers::IsOutRange(e, Delegate_NONE, Delegate_INTEL_OPENVINO)) return "";
   const size_t index = static_cast<size_t>(e);
   return EnumNamesDelegate()[index];
 }
@@ -3029,6 +3038,58 @@ inline ::flatbuffers::Offset<MtkNeuronSettings> CreateMtkNeuronSettingsDirect(
 
 ::flatbuffers::Offset<MtkNeuronSettings> CreateMtkNeuronSettings(::flatbuffers::FlatBufferBuilder &_fbb, const MtkNeuronSettingsT *_o, const ::flatbuffers::rehasher_function_t *_rehasher = nullptr);
 
+struct IntelOpenVINOSettingsT : public ::flatbuffers::NativeTable {
+  typedef IntelOpenVINOSettings TableType;
+  bool allow_fp16_precision_for_fp32 = false;
+};
+
+struct IntelOpenVINOSettings FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
+  typedef IntelOpenVINOSettingsT NativeTableType;
+  typedef IntelOpenVINOSettingsBuilder Builder;
+  enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
+    VT_ALLOW_FP16_PRECISION_FOR_FP32 = 4
+  };
+  bool allow_fp16_precision_for_fp32() const {
+    return GetField<uint8_t>(VT_ALLOW_FP16_PRECISION_FOR_FP32, 0) != 0;
+  }
+  bool Verify(::flatbuffers::Verifier &verifier) const {
+    return VerifyTableStart(verifier) &&
+           VerifyField<uint8_t>(verifier, VT_ALLOW_FP16_PRECISION_FOR_FP32, 1) &&
+           verifier.EndTable();
+  }
+  IntelOpenVINOSettingsT *UnPack(const ::flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  void UnPackTo(IntelOpenVINOSettingsT *_o, const ::flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  static ::flatbuffers::Offset<IntelOpenVINOSettings> Pack(::flatbuffers::FlatBufferBuilder &_fbb, const IntelOpenVINOSettingsT* _o, const ::flatbuffers::rehasher_function_t *_rehasher = nullptr);
+};
+
+struct IntelOpenVINOSettingsBuilder {
+  typedef IntelOpenVINOSettings Table;
+  ::flatbuffers::FlatBufferBuilder &fbb_;
+  ::flatbuffers::uoffset_t start_;
+  void add_allow_fp16_precision_for_fp32(bool allow_fp16_precision_for_fp32) {
+    fbb_.AddElement<uint8_t>(IntelOpenVINOSettings::VT_ALLOW_FP16_PRECISION_FOR_FP32, static_cast<uint8_t>(allow_fp16_precision_for_fp32), 0);
+  }
+  explicit IntelOpenVINOSettingsBuilder(::flatbuffers::FlatBufferBuilder &_fbb)
+        : fbb_(_fbb) {
+    start_ = fbb_.StartTable();
+  }
+  ::flatbuffers::Offset<IntelOpenVINOSettings> Finish() {
+    const auto end = fbb_.EndTable(start_);
+    auto o = ::flatbuffers::Offset<IntelOpenVINOSettings>(end);
+    return o;
+  }
+};
+
+inline ::flatbuffers::Offset<IntelOpenVINOSettings> CreateIntelOpenVINOSettings(
+    ::flatbuffers::FlatBufferBuilder &_fbb,
+    bool allow_fp16_precision_for_fp32 = false) {
+  IntelOpenVINOSettingsBuilder builder_(_fbb);
+  builder_.add_allow_fp16_precision_for_fp32(allow_fp16_precision_for_fp32);
+  return builder_.Finish();
+}
+
+::flatbuffers::Offset<IntelOpenVINOSettings> CreateIntelOpenVINOSettings(::flatbuffers::FlatBufferBuilder &_fbb, const IntelOpenVINOSettingsT *_o, const ::flatbuffers::rehasher_function_t *_rehasher = nullptr);
+
 struct TFLiteSettingsT : public ::flatbuffers::NativeTable {
   typedef TFLiteSettings TableType;
   tflite::Delegate delegate = tflite::Delegate_NONE;
@@ -3048,6 +3109,7 @@ struct TFLiteSettingsT : public ::flatbuffers::NativeTable {
   std::unique_ptr<tflite::CompilationCachingSettingsT> compilation_caching_settings{};
   std::unique_ptr<tflite::ArmNNSettingsT> armnn_settings{};
   std::unique_ptr<tflite::MtkNeuronSettingsT> mtk_neuron_settings{};
+  std::unique_ptr<tflite::IntelOpenVINOSettingsT> intel_openvino_settings{};
   TFLiteSettingsT() = default;
   TFLiteSettingsT(const TFLiteSettingsT &o);
   TFLiteSettingsT(TFLiteSettingsT&&) FLATBUFFERS_NOEXCEPT = default;
@@ -3074,7 +3136,8 @@ struct TFLiteSettings FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
     VT_GOOGLE_EDGETPU_SETTINGS = 30,
     VT_COMPILATION_CACHING_SETTINGS = 32,
     VT_ARMNN_SETTINGS = 34,
-    VT_MTK_NEURON_SETTINGS = 36
+    VT_MTK_NEURON_SETTINGS = 36,
+    VT_INTEL_OPENVINO_SETTINGS = 38
   };
   tflite::Delegate delegate() const {
     return static_cast<tflite::Delegate>(GetField<int32_t>(VT_DELEGATE, 0));
@@ -3127,6 +3190,9 @@ struct TFLiteSettings FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
   const tflite::MtkNeuronSettings *mtk_neuron_settings() const {
     return GetPointer<const tflite::MtkNeuronSettings *>(VT_MTK_NEURON_SETTINGS);
   }
+  const tflite::IntelOpenVINOSettings *intel_openvino_settings() const {
+    return GetPointer<const tflite::IntelOpenVINOSettings *>(VT_INTEL_OPENVINO_SETTINGS);
+  }
   bool Verify(::flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
            VerifyField<int32_t>(verifier, VT_DELEGATE, 4) &&
@@ -3160,6 +3226,8 @@ struct TFLiteSettings FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
            verifier.VerifyTable(armnn_settings()) &&
            VerifyOffset(verifier, VT_MTK_NEURON_SETTINGS) &&
            verifier.VerifyTable(mtk_neuron_settings()) &&
+           VerifyOffset(verifier, VT_INTEL_OPENVINO_SETTINGS) &&
+           verifier.VerifyTable(intel_openvino_settings()) &&
            verifier.EndTable();
   }
   TFLiteSettingsT *UnPack(const ::flatbuffers::resolver_function_t *_resolver = nullptr) const;
@@ -3222,6 +3290,9 @@ struct TFLiteSettingsBuilder {
   void add_mtk_neuron_settings(::flatbuffers::Offset<tflite::MtkNeuronSettings> mtk_neuron_settings) {
     fbb_.AddOffset(TFLiteSettings::VT_MTK_NEURON_SETTINGS, mtk_neuron_settings);
   }
+  void add_intel_openvino_settings(::flatbuffers::Offset<tflite::IntelOpenVINOSettings> intel_openvino_settings) {
+    fbb_.AddOffset(TFLiteSettings::VT_INTEL_OPENVINO_SETTINGS, intel_openvino_settings);
+  }
   explicit TFLiteSettingsBuilder(::flatbuffers::FlatBufferBuilder &_fbb)
         : fbb_(_fbb) {
     start_ = fbb_.StartTable();
@@ -3251,8 +3322,10 @@ inline ::flatbuffers::Offset<TFLiteSettings> CreateTFLiteSettings(
     ::flatbuffers::Offset<tflite::GoogleEdgeTpuSettings> google_edgetpu_settings = 0,
     ::flatbuffers::Offset<tflite::CompilationCachingSettings> compilation_caching_settings = 0,
     ::flatbuffers::Offset<tflite::ArmNNSettings> armnn_settings = 0,
-    ::flatbuffers::Offset<tflite::MtkNeuronSettings> mtk_neuron_settings = 0) {
+    ::flatbuffers::Offset<tflite::MtkNeuronSettings> mtk_neuron_settings = 0,
+    ::flatbuffers::Offset<tflite::IntelOpenVINOSettings> intel_openvino_settings = 0) {
   TFLiteSettingsBuilder builder_(_fbb);
+  builder_.add_intel_openvino_settings(intel_openvino_settings);
   builder_.add_mtk_neuron_settings(mtk_neuron_settings);
   builder_.add_armnn_settings(armnn_settings);
   builder_.add_compilation_caching_settings(compilation_caching_settings);
@@ -5623,6 +5696,43 @@ inline ::flatbuffers::Offset<MtkNeuronSettings> CreateMtkNeuronSettings(::flatbu
 }
 
 
+inline bool operator==(const IntelOpenVINOSettingsT &lhs, const IntelOpenVINOSettingsT &rhs) {
+  return
+      (lhs.allow_fp16_precision_for_fp32 == rhs.allow_fp16_precision_for_fp32);
+}
+
+inline bool operator!=(const IntelOpenVINOSettingsT &lhs, const IntelOpenVINOSettingsT &rhs) {
+    return !(lhs == rhs);
+}
+
+
+inline IntelOpenVINOSettingsT *IntelOpenVINOSettings::UnPack(const ::flatbuffers::resolver_function_t *_resolver) const {
+  auto _o = std::unique_ptr<IntelOpenVINOSettingsT>(new IntelOpenVINOSettingsT());
+  UnPackTo(_o.get(), _resolver);
+  return _o.release();
+}
+
+inline void IntelOpenVINOSettings::UnPackTo(IntelOpenVINOSettingsT *_o, const ::flatbuffers::resolver_function_t *_resolver) const {
+  (void)_o;
+  (void)_resolver;
+  { auto _e = allow_fp16_precision_for_fp32(); _o->allow_fp16_precision_for_fp32 = _e; }
+}
+
+inline ::flatbuffers::Offset<IntelOpenVINOSettings> IntelOpenVINOSettings::Pack(::flatbuffers::FlatBufferBuilder &_fbb, const IntelOpenVINOSettingsT* _o, const ::flatbuffers::rehasher_function_t *_rehasher) {
+  return CreateIntelOpenVINOSettings(_fbb, _o, _rehasher);
+}
+
+inline ::flatbuffers::Offset<IntelOpenVINOSettings> CreateIntelOpenVINOSettings(::flatbuffers::FlatBufferBuilder &_fbb, const IntelOpenVINOSettingsT *_o, const ::flatbuffers::rehasher_function_t *_rehasher) {
+  (void)_rehasher;
+  (void)_o;
+  struct _VectorArgs { ::flatbuffers::FlatBufferBuilder *__fbb; const IntelOpenVINOSettingsT* __o; const ::flatbuffers::rehasher_function_t *__rehasher; } _va = { &_fbb, _o, _rehasher}; (void)_va;
+  auto _allow_fp16_precision_for_fp32 = _o->allow_fp16_precision_for_fp32;
+  return tflite::CreateIntelOpenVINOSettings(
+      _fbb,
+      _allow_fp16_precision_for_fp32);
+}
+
+
 inline bool operator==(const TFLiteSettingsT &lhs, const TFLiteSettingsT &rhs) {
   return
       (lhs.delegate == rhs.delegate) &&
@@ -5641,7 +5751,8 @@ inline bool operator==(const TFLiteSettingsT &lhs, const TFLiteSettingsT &rhs) {
       ((lhs.google_edgetpu_settings == rhs.google_edgetpu_settings) || (lhs.google_edgetpu_settings && rhs.google_edgetpu_settings && *lhs.google_edgetpu_settings == *rhs.google_edgetpu_settings)) &&
       ((lhs.compilation_caching_settings == rhs.compilation_caching_settings) || (lhs.compilation_caching_settings && rhs.compilation_caching_settings && *lhs.compilation_caching_settings == *rhs.compilation_caching_settings)) &&
       ((lhs.armnn_settings == rhs.armnn_settings) || (lhs.armnn_settings && rhs.armnn_settings && *lhs.armnn_settings == *rhs.armnn_settings)) &&
-      ((lhs.mtk_neuron_settings == rhs.mtk_neuron_settings) || (lhs.mtk_neuron_settings && rhs.mtk_neuron_settings && *lhs.mtk_neuron_settings == *rhs.mtk_neuron_settings));
+      ((lhs.mtk_neuron_settings == rhs.mtk_neuron_settings) || (lhs.mtk_neuron_settings && rhs.mtk_neuron_settings && *lhs.mtk_neuron_settings == *rhs.mtk_neuron_settings)) &&
+      ((lhs.intel_openvino_settings == rhs.intel_openvino_settings) || (lhs.intel_openvino_settings && rhs.intel_openvino_settings && *lhs.intel_openvino_settings == *rhs.intel_openvino_settings));
 }
 
 inline bool operator!=(const TFLiteSettingsT &lhs, const TFLiteSettingsT &rhs) {
@@ -5666,7 +5777,8 @@ inline TFLiteSettingsT::TFLiteSettingsT(const TFLiteSettingsT &o)
         google_edgetpu_settings((o.google_edgetpu_settings) ? new tflite::GoogleEdgeTpuSettingsT(*o.google_edgetpu_settings) : nullptr),
         compilation_caching_settings((o.compilation_caching_settings) ? new tflite::CompilationCachingSettingsT(*o.compilation_caching_settings) : nullptr),
         armnn_settings((o.armnn_settings) ? new tflite::ArmNNSettingsT(*o.armnn_settings) : nullptr),
-        mtk_neuron_settings((o.mtk_neuron_settings) ? new tflite::MtkNeuronSettingsT(*o.mtk_neuron_settings) : nullptr) {
+        mtk_neuron_settings((o.mtk_neuron_settings) ? new tflite::MtkNeuronSettingsT(*o.mtk_neuron_settings) : nullptr),
+        intel_openvino_settings((o.intel_openvino_settings) ? new tflite::IntelOpenVINOSettingsT(*o.intel_openvino_settings) : nullptr) {
 }
 
 inline TFLiteSettingsT &TFLiteSettingsT::operator=(TFLiteSettingsT o) FLATBUFFERS_NOEXCEPT {
@@ -5687,6 +5799,7 @@ inline TFLiteSettingsT &TFLiteSettingsT::operator=(TFLiteSettingsT o) FLATBUFFER
   std::swap(compilation_caching_settings, o.compilation_caching_settings);
   std::swap(armnn_settings, o.armnn_settings);
   std::swap(mtk_neuron_settings, o.mtk_neuron_settings);
+  std::swap(intel_openvino_settings, o.intel_openvino_settings);
   return *this;
 }
 
@@ -5716,6 +5829,7 @@ inline void TFLiteSettings::UnPackTo(TFLiteSettingsT *_o, const ::flatbuffers::r
   { auto _e = compilation_caching_settings(); if (_e) { if(_o->compilation_caching_settings) { _e->UnPackTo(_o->compilation_caching_settings.get(), _resolver); } else { _o->compilation_caching_settings = std::unique_ptr<tflite::CompilationCachingSettingsT>(_e->UnPack(_resolver)); } } else if (_o->compilation_caching_settings) { _o->compilation_caching_settings.reset(); } }
   { auto _e = armnn_settings(); if (_e) { if(_o->armnn_settings) { _e->UnPackTo(_o->armnn_settings.get(), _resolver); } else { _o->armnn_settings = std::unique_ptr<tflite::ArmNNSettingsT>(_e->UnPack(_resolver)); } } else if (_o->armnn_settings) { _o->armnn_settings.reset(); } }
   { auto _e = mtk_neuron_settings(); if (_e) { if(_o->mtk_neuron_settings) { _e->UnPackTo(_o->mtk_neuron_settings.get(), _resolver); } else { _o->mtk_neuron_settings = std::unique_ptr<tflite::MtkNeuronSettingsT>(_e->UnPack(_resolver)); } } else if (_o->mtk_neuron_settings) { _o->mtk_neuron_settings.reset(); } }
+  { auto _e = intel_openvino_settings(); if (_e) { if(_o->intel_openvino_settings) { _e->UnPackTo(_o->intel_openvino_settings.get(), _resolver); } else { _o->intel_openvino_settings = std::unique_ptr<tflite::IntelOpenVINOSettingsT>(_e->UnPack(_resolver)); } } else if (_o->intel_openvino_settings) { _o->intel_openvino_settings.reset(); } }
 }
 
 inline ::flatbuffers::Offset<TFLiteSettings> TFLiteSettings::Pack(::flatbuffers::FlatBufferBuilder &_fbb, const TFLiteSettingsT* _o, const ::flatbuffers::rehasher_function_t *_rehasher) {
@@ -5743,6 +5857,7 @@ inline ::flatbuffers::Offset<TFLiteSettings> CreateTFLiteSettings(::flatbuffers:
   auto _compilation_caching_settings = _o->compilation_caching_settings ? CreateCompilationCachingSettings(_fbb, _o->compilation_caching_settings.get(), _rehasher) : 0;
   auto _armnn_settings = _o->armnn_settings ? CreateArmNNSettings(_fbb, _o->armnn_settings.get(), _rehasher) : 0;
   auto _mtk_neuron_settings = _o->mtk_neuron_settings ? CreateMtkNeuronSettings(_fbb, _o->mtk_neuron_settings.get(), _rehasher) : 0;
+  auto _intel_openvino_settings = _o->intel_openvino_settings ? CreateIntelOpenVINOSettings(_fbb, _o->intel_openvino_settings.get(), _rehasher) : 0;
   return tflite::CreateTFLiteSettings(
       _fbb,
       _delegate,
@@ -5761,7 +5876,8 @@ inline ::flatbuffers::Offset<TFLiteSettings> CreateTFLiteSettings(::flatbuffers:
       _google_edgetpu_settings,
       _compilation_caching_settings,
       _armnn_settings,
-      _mtk_neuron_settings);
+      _mtk_neuron_settings,
+      _intel_openvino_settings);
 }
 
 
