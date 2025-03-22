@@ -208,6 +208,7 @@ cc_library(
         ":strcat",
         ":stringpiece",
         "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/types:span",
         "@local_xla//xla/tsl/platform:logging",
         "@local_xla//xla/tsl/platform:types",
     ],
@@ -223,6 +224,7 @@ cc_library(
     hdrs = ["protobuf.h"],
     deps = [
         ":platform",
+        "@com_google_absl//absl/strings:cord",
         "@local_xla//xla/tsl/platform:types",
     ] + tsl_protobuf_deps(),
 )
@@ -1098,6 +1100,7 @@ tsl_cc_test(
     srcs = ["hash_test.cc"],
     deps = [
         ":hash",
+        "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",
         "@local_xla//xla/tsl/platform:logging",
         "@local_xla//xla/tsl/platform:test",
@@ -1139,6 +1142,7 @@ tsl_cc_test(
         ":platform",
         ":stringpiece",
         ":tstring",
+        "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest_main",
         "@local_xla//xla/tsl/platform:test",
     ],
@@ -1276,6 +1280,7 @@ tsl_cc_test(
     ],
     deps = [
         ":refcount",
+        "@com_google_absl//absl/log",
         "@com_google_googletest//:gtest_main",
         "@local_xla//xla/tsl/platform:env",
         "@local_xla//xla/tsl/platform:env_impl",
@@ -1362,6 +1367,7 @@ tsl_cc_test(
     ],
     deps = [
         ":scanner",
+        "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",
         "@local_xla//xla/tsl/platform:test",
     ],
@@ -1448,6 +1454,7 @@ cc_library(
     copts = tsl_copts(),
     deps = [
         ":random",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/time",
         "@local_xla//xla/tsl/platform:env",
         "@local_xla//xla/tsl/platform:errors",
@@ -1478,6 +1485,9 @@ tsl_cc_test(
     deps = [
         ":retrying_file_system",
         ":str_util",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",
         "@local_xla//xla/tsl/lib/core:status_test_util",
         "@local_xla//xla/tsl/platform:env_impl",
