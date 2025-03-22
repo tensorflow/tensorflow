@@ -42,18 +42,17 @@ using MemorySchedulerPostprocessor =
 // 'computation' that minimizes peak memory (or finds a balance between memory
 // and available concurrency), given a points-to analysis result that describes
 // buffer aliasing, together with a target-specific size function that maps a
-// tensor's logical size to its padded size. peak_memory (may be nullptr) is set
-// to the peak memory of the resulting schedule according to the HeapSimulator.
+// tensor's logical size to its padded size.
 //
 // TODO(yunxing): Cleanup usage of TuplePointsToAnalysis.
 using MemorySchedulerAlgorithm =
     std::function<absl::StatusOr<HloInstructionSequence>(
         HloComputation*, const TuplePointsToAnalysis&, const HloAliasAnalysis&,
         const LogicalBuffer::SizeFunction&,
-        const MemorySchedulerPostprocessor&,
-        /*peak_memory*/ int64_t*)>;
+        const MemorySchedulerPostprocessor&)>;
 
-// Scheduler for the entire module.
+// Scheduler for the entire module. peak_memory (may be nullptr) is set to the
+// peak memory of the resulting schedule according to the HeapSimulator.
 using ModuleSchedulerAlgorithm = std::function<absl::StatusOr<HloSchedule>(
     const HloModule*, const TuplePointsToAnalysis&, const HloAliasAnalysis&,
     const LogicalBuffer::SizeFunction&,
@@ -71,7 +70,7 @@ absl::StatusOr<HloInstructionSequence> ListMemoryScheduler(
     const TuplePointsToAnalysis& points_to_analysis,
     const HloAliasAnalysis& alias_analysis,
     const LogicalBuffer::SizeFunction& size_function,
-    const MemorySchedulerPostprocessor& postprocessor, int64_t* peak_memory);
+    const MemorySchedulerPostprocessor& postprocessor);
 
 // DFS-order scheduler
 absl::StatusOr<HloInstructionSequence> DFSMemoryScheduler(
@@ -79,7 +78,7 @@ absl::StatusOr<HloInstructionSequence> DFSMemoryScheduler(
     const TuplePointsToAnalysis& points_to_analysis,
     const HloAliasAnalysis& alias_analysis,
     const LogicalBuffer::SizeFunction& size_function,
-    const MemorySchedulerPostprocessor& postprocessor, int64_t* peak_memory);
+    const MemorySchedulerPostprocessor& postprocessor);
 
 // BFS-order scheduler
 //
@@ -96,7 +95,7 @@ absl::StatusOr<HloInstructionSequence> BFSMemoryScheduler(
     const TuplePointsToAnalysis& points_to_analysis,
     const HloAliasAnalysis& alias_analysis,
     const LogicalBuffer::SizeFunction& size_function,
-    const MemorySchedulerPostprocessor& postprocessor, int64_t* peak_memory);
+    const MemorySchedulerPostprocessor& postprocessor);
 
 // Naive Post Order scheduler
 absl::StatusOr<HloInstructionSequence> PostOrderMemoryScheduler(
@@ -104,18 +103,17 @@ absl::StatusOr<HloInstructionSequence> PostOrderMemoryScheduler(
     const TuplePointsToAnalysis& points_to_analysis,
     const HloAliasAnalysis& alias_analysis,
     const LogicalBuffer::SizeFunction& size_function,
-    const MemorySchedulerPostprocessor& postprocessor, int64_t* peak_memory);
+    const MemorySchedulerPostprocessor& postprocessor);
 
 // The default scheduling algorithm. Runs the list scheduler, the DFS scheduler,
 // and the post-order scheduler and chooses whichever returns a lower min-
-// memory, not accounting for fragmentation. peak_memory (may be nullptr) is set
-// to the peak memory of the resulting schedule according to the HeapSimulator.
+// memory, not accounting for fragmentation.
 absl::StatusOr<HloInstructionSequence> DefaultMemoryScheduler(
     HloComputation* computation,
     const TuplePointsToAnalysis& points_to_analysis,
     const HloAliasAnalysis& alias_analysis,
     const LogicalBuffer::SizeFunction& size_function,
-    const MemorySchedulerPostprocessor& postprocessor, int64_t* peak_memory);
+    const MemorySchedulerPostprocessor& postprocessor);
 
 absl::StatusOr<HloSchedule> DefaultModuleScheduler(
     const HloModule* module, const TuplePointsToAnalysis& points_to_analysis,
