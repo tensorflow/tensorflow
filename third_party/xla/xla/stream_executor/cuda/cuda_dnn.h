@@ -28,6 +28,7 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "third_party/gpus/cudnn/cudnn_version.h"
 #include "xla/stream_executor/device_description.h"
