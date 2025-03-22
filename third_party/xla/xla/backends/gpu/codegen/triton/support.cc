@@ -249,7 +249,8 @@ CodegenDecision CanTritonHandleReduce(
 CodegenDecision IsTritonSupportedInstructionImpl(
     const HloInstruction& instr, const se::GpuComputeCapability& gpu_version) {
   if (internal::IsTritonUnsupportedOpcode(instr.opcode())) {
-    return CodegenDecision::Forbid("Unsupported opcode.");
+    return CodegenDecision::Forbid(
+        absl::StrCat("Unsupported opcode ", HloOpcodeString(instr.opcode())));
   }
 
   // Special handling for the kConvert instruction, which has a non-standard
@@ -308,7 +309,6 @@ CodegenDecision IsTritonSupportedInstructionImpl(
     return CodegenDecision::Allow();
   }
 
-  // TODO(bchetioui): support kDot, kPad, and kDynamicSlice.
   switch (instr.opcode()) {
     case HloOpcode::kReduce: {
       return CanTritonHandleReduce(*Cast<HloReduceInstruction>(&instr),
@@ -321,11 +321,21 @@ CodegenDecision IsTritonSupportedInstructionImpl(
     case HloOpcode::kSlice:
     case HloOpcode::kTranspose:
       return CodegenDecision::Allow();
+    case HloOpcode::kDot:
+      if (instr.GetModule()
+              ->config()
+              .debug_options()
+              .xla_gpu_unsupported_enable_generic_triton_emitter_for_gemms()) {
+        return CodegenDecision::Allow();
+      }
+      return CodegenDecision::Forbid(
+          "Dot operation is only supported with "
+          "--xla_gpu_unsupported_enable_generic_triton_emitter_for_gemms.");
     default:
       VLOG(2) << "Unsupported instruction: " << instr.ToString();
       break;
   }
-  return CodegenDecision::Forbid("Unsupported opcode.");
+  return CodegenDecision::Forbid("Unsupported instruction.");
 }
 
 }  // namespace
@@ -348,7 +358,6 @@ bool IsTritonUnsupportedOpcode(HloOpcode opcode) {
     case HloOpcode::kCopyStart:
     case HloOpcode::kCustomCall:
     case HloOpcode::kDomain:
-    case HloOpcode::kDot:
     case HloOpcode::kDynamicReshape:
     case HloOpcode::kDynamicSlice:
     case HloOpcode::kDynamicUpdateSlice:
@@ -412,8 +421,9 @@ CodegenDecision IsTritonSupportedInstruction(
     const HloInstruction& instr, const se::GpuComputeCapability& gpu_version) {
   CodegenDecision decision =
       IsTritonSupportedInstructionImpl(instr, gpu_version);
-  VLOG(2) << "IsTritonSupportedInstruction: " << instr.ToString() << " "
-          << bool(decision);
+  VLOG(2) << absl::StrCat("IsTritonSupportedInstruction: ", instr.ToString(),
+                          " ",
+                          (decision.CanFuse() ? "yes" : decision.Explain()));
   return decision;
 }
 

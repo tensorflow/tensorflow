@@ -23,7 +23,10 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/testlib/pattern_matcher_gmock.h"
 #include "xla/service/gpu/backend_configs.pb.h"
+#include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/service/pattern_matcher.h"
+#include "xla/stream_executor/cuda/cuda_compute_capability.h"
+#include "xla/stream_executor/device_description.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/statusor.h"
@@ -65,7 +68,19 @@ MATCHER_P(OutputTileSizesIs, matcher, "") {
   return ExplainMatchResult(matcher, output_tile_sizes, result_listener);
 }
 
-class NestGemmFusionTest : public HloTestBase {};
+class NestGemmFusionTest : public HloTestBase {
+ protected:
+  const se::GpuComputeCapability compute_capability_{
+      TestGpuDeviceInfo::RTXA6000DeviceInfo(se::CudaComputeCapability::Ampere())
+          .gpu_compute_capability()};
+
+  DebugOptions GetDebugOptionsForTest() const override {
+    DebugOptions debug_options = HloTestBase::GetDebugOptionsForTest();
+    debug_options
+        .set_xla_gpu_unsupported_enable_generic_triton_emitter_for_gemms(true);
+    return debug_options;
+  }
+};
 
 TEST_F(NestGemmFusionTest, BasicTest) {
   absl::string_view hlo = R"(
@@ -91,7 +106,8 @@ ENTRY entry {
 })";
 
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
-  EXPECT_THAT(NestGemmFusion().Run(module.get()), IsOkAndHolds(true));
+  ASSERT_THAT(NestGemmFusion(compute_capability_).Run(module.get()),
+              IsOkAndHolds(true));
   TF_ASSERT_OK(verifier().Run(module.get()).status());
 
   const HloInstruction* fusion = nullptr;
@@ -140,7 +156,8 @@ ENTRY entry {
 )";
 
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
-  EXPECT_THAT(NestGemmFusion().Run(module.get()), IsOkAndHolds(true));
+  ASSERT_THAT(NestGemmFusion(compute_capability_).Run(module.get()),
+              IsOkAndHolds(true));
   TF_ASSERT_OK(verifier().Run(module.get()).status());
 
   const HloInstruction* fusion = nullptr;
@@ -182,7 +199,8 @@ ENTRY entry {
 )";
 
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
-  EXPECT_THAT(NestGemmFusion().Run(module.get()), IsOkAndHolds(true));
+  ASSERT_THAT(NestGemmFusion(compute_capability_).Run(module.get()),
+              IsOkAndHolds(true));
   TF_ASSERT_OK(verifier().Run(module.get()).status());
 
   const HloInstruction* fusion = nullptr;
@@ -224,7 +242,8 @@ ENTRY entry {
 }
 )";
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
-  EXPECT_THAT(NestGemmFusion().Run(module.get()), IsOkAndHolds(true));
+  EXPECT_THAT(NestGemmFusion(compute_capability_).Run(module.get()),
+              IsOkAndHolds(true));
   TF_ASSERT_OK(verifier().Run(module.get()).status());
 }
 
@@ -254,7 +273,8 @@ ENTRY entry {
 }
 )";
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
-  EXPECT_THAT(NestGemmFusion().Run(module.get()), IsOkAndHolds(true));
+  EXPECT_THAT(NestGemmFusion(compute_capability_).Run(module.get()),
+              IsOkAndHolds(true));
   TF_ASSERT_OK(verifier().Run(module.get()).status());
 }
 
@@ -289,7 +309,8 @@ ENTRY entry {
 }
 )";
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
-  EXPECT_THAT(NestGemmFusion().Run(module.get()), IsOkAndHolds(true));
+  EXPECT_THAT(NestGemmFusion(compute_capability_).Run(module.get()),
+              IsOkAndHolds(true));
   TF_ASSERT_OK(verifier().Run(module.get()).status());
 }
 
@@ -321,7 +342,8 @@ ENTRY entry {
 }
 )";
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
-  EXPECT_THAT(NestGemmFusion().Run(module.get()), IsOkAndHolds(true));
+  EXPECT_THAT(NestGemmFusion(compute_capability_).Run(module.get()),
+              IsOkAndHolds(true));
   TF_ASSERT_OK(verifier().Run(module.get()).status());
 }
 
@@ -356,7 +378,8 @@ ENTRY entry_computation {
 )";
   // Note: block sizes were 16,16,32, but that now fails to satisfy constraints.
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
-  EXPECT_THAT(NestGemmFusion().Run(module.get()), IsOkAndHolds(true));
+  EXPECT_THAT(NestGemmFusion(compute_capability_).Run(module.get()),
+              IsOkAndHolds(true));
   TF_ASSERT_OK(verifier().Run(module.get()).status());
 }
 
@@ -388,15 +411,20 @@ ENTRY entry_computation {
 }
 )";
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
-  EXPECT_THAT(NestGemmFusion().Run(module.get()), IsOkAndHolds(true));
+  EXPECT_THAT(NestGemmFusion(compute_capability_).Run(module.get()),
+              IsOkAndHolds(true));
   TF_ASSERT_OK(verifier().Run(module.get()).status());
 }
 
-// TODO(b/393299275): correctly hoist bitcast through compare.
-// Fails with: "... [Unknown]: Expected comparison type UNSIGNED.".
-TEST_F(NestGemmFusionTest, DISABLED_BitcastsAreHoistedPastCompare) {
+TEST_F(NestGemmFusionTest, UnsupportedComputationsAreRejected) {
+  // kFusion is not supported according to IsTritonSupportedInstruction().
+  // Replace it with a different unsupported one if need be.
   absl::string_view hlo = R"(
 HloModule t
+
+foo {
+  ROOT result = f32[128,8]{1,0} parameter(0)
+}
 
 triton_dot {
   p0 = s32[11,24,128]{2,1,0} parameter(0)
@@ -405,7 +433,8 @@ triton_dot {
   eq_reshape = pred[264,128]{1,0} bitcast(eq)
   eq_f32 = f32[264,128]{1,0} convert(eq_reshape)
   p2 = f32[128,8]{1,0} parameter(2)
-  ROOT result = f32[264,8]{1,0} dot(eq_f32, p2),
+  p2f = f32[128,8]{1,0} fusion(p2), kind=kCustom, calls=foo
+  ROOT result = f32[264,8]{1,0} dot(eq_f32, p2f),
     lhs_contracting_dims={1}, rhs_contracting_dims={0}
 }
 
@@ -420,8 +449,8 @@ ENTRY e {
       "split_k":1,"num_stages":1,"num_warps":4, "num_ctas":1}}}}
 )";
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
-  EXPECT_THAT(NestGemmFusion().Run(module.get()), IsOkAndHolds(true));
-  TF_ASSERT_OK(verifier().Run(module.get()).status());
+  EXPECT_THAT(NestGemmFusion(compute_capability_).Run(module.get()),
+              IsOkAndHolds(false));
 }
 
 // TODO(b/393299275): correctly hoist bitcasts through broadcast.
@@ -448,7 +477,8 @@ ENTRY e {
     "split_k":1,"num_stages":1,"num_warps":4,"num_ctas":1}}}}
 )";
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
-  EXPECT_THAT(NestGemmFusion().Run(module.get()), IsOkAndHolds(true));
+  EXPECT_THAT(NestGemmFusion(compute_capability_).Run(module.get()),
+              IsOkAndHolds(true));
   TF_ASSERT_OK(verifier().Run(module.get()).status());
 }
 

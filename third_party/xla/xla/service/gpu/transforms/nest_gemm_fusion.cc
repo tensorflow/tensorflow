@@ -37,6 +37,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/IR/MLIRContext.h"
+#include "xla/backends/gpu/codegen/triton/support.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -55,6 +56,7 @@ limitations under the License.
 #include "xla/service/gpu/model/tiled_hlo_computation.h"
 #include "xla/service/instruction_fusion.h"
 #include "xla/shape.h"
+#include "xla/stream_executor/device_description.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 
@@ -517,22 +519,34 @@ absl::Status TryHoistBitcastsInComputationToCallers(HloInstruction* dot,
 
 class NestGemmFusionVisitor : public DfsHloRewriteVisitor {
  public:
-  explicit NestGemmFusionVisitor(mlir::MLIRContext* ctx, CallGraph* call_graph)
-      : ctx_(ctx), call_graph_(call_graph) {}
+  explicit NestGemmFusionVisitor(
+      mlir::MLIRContext* ctx, CallGraph* call_graph,
+      const se::GpuComputeCapability compute_capability)
+      : ctx_(ctx),
+        call_graph_(call_graph),
+        compute_capability_(compute_capability) {}
 
   absl::Status HandleFusion(HloInstruction* instruction) override {
     HloFusionInstruction* fusion = Cast<HloFusionInstruction>(instruction);
 
     absl::StatusOr<TritonGemmConfig> config = GetTritonGemmConfig(*fusion);
     if (!config.ok()) {
+      VLOG(2) << "Skipping fusion as does not have a TritonGemmConfig";
       return absl::OkStatus();  // Skip because it's not a Triton gemm fusion.
     }
 
     HloComputation* computation = fusion->called_computation();
+    if (!IsTritonSupportedComputation(*computation, compute_capability_)) {
+      VLOG(2)
+          << "Skipping fusion as its computation is not supported by Triton:\n"
+          << computation->ToString();
+      return absl::OkStatus();
+    }
     HloInstruction* dot =
         hlo_query::GetFirstInstructionWithOpcode(*computation, HloOpcode::kDot);
     if (dot == nullptr) {
-      return absl::OkStatus();  // Skip because fusion has no dot.
+      VLOG(2) << "Skipping fusion as it has no dot instruction";
+      return absl::OkStatus();
     }
     DCHECK_EQ(GetDotCount(computation), 1) << "Fusion has more than one dot.";
 
@@ -549,6 +563,7 @@ class NestGemmFusionVisitor : public DfsHloRewriteVisitor {
  private:
   mlir::MLIRContext* ctx_;
   CallGraph* call_graph_;
+  const se::GpuComputeCapability compute_capability_;
 };
 
 }  // namespace
@@ -561,7 +576,7 @@ absl::StatusOr<bool> NestGemmFusion::Run(
   mlir::MLIRContext ctx;
   for (HloComputation* computation :
        module->MakeNonfusionComputations(execution_threads)) {
-    NestGemmFusionVisitor visitor(&ctx, call_graph.get());
+    NestGemmFusionVisitor visitor(&ctx, call_graph.get(), compute_capability_);
     TF_RETURN_IF_ERROR(computation->Accept(&visitor));
     changed |= visitor.changed();
   }
