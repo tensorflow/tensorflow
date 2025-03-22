@@ -18,9 +18,9 @@ import datetime
 import os
 import statistics
 
-from gemma import params as params_lib
-from gemma import sampler as sampler_lib
-from gemma import transformer as transformer_lib
+from gemma.deprecated import params as params_lib
+from gemma.deprecated import sampler as sampler_lib
+from gemma.deprecated import transformer as transformer_lib
 import sentencepiece as spm
 
 
