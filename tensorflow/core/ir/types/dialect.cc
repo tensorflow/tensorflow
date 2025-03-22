@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/ir/types/dialect.h"
 
+#include <cassert>
 #include <cstdint>
 #include <optional>
 #include <string>

@@ -69,7 +69,7 @@ static_assert(!std::is_default_constructible<NoDefaultConstructor>(),
 
 absl::StatusOr<std::unique_ptr<int>> ReturnUniquePtr() {
   // Uses implicit constructor from T&&
-  return std::unique_ptr<int>(new int(0));
+  return std::make_unique<int>(0);
 }
 
 TEST(StatusOr, NullPointerStatusOr) {
