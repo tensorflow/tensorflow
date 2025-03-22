@@ -348,6 +348,10 @@ class SpmdPartitioner : public HloModulePass {
     return execution_threads_;
   }
 
+  // Update module's parameter and output sharding information, based on the
+  // sharding information of the module's parameters and outptuts.
+  static void RecordInputsOutputsSharding(HloModule* module);
+
  protected:
   // This is the internal implementation for AllGatherShards(), returns a pair
   // of hlo instructions whose first element is the result of the all-gather
