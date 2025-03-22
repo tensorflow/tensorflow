@@ -284,7 +284,7 @@ TEST(TfrtGpuBufferTest, IsDeviceShapeWhenStaticShape) {
   for (PrimitiveType t : {F32, F16, S8, BF16}) {
     Shape shape = ShapeUtil::MakeShape(t, {3, 2});
     TF_ASSERT_OK_AND_ASSIGN(
-        auto buffer,
+        std::unique_ptr<PjRtBuffer> buffer,
         client->BufferFromHostBuffer(
             data.data(), shape.element_type(), shape.dimensions(),
             /*byte_strides=*/std::nullopt,
@@ -295,7 +295,7 @@ TEST(TfrtGpuBufferTest, IsDeviceShapeWhenStaticShape) {
   }
 }
 
-// TODO(b/382117736): Add test for logical shape when shape is dynamic after
+// TODO: b/382117736 - Add test for logical shape when shape is dynamic after
 // TfrtGpuClient::Execute() is ready.
 
 }  // namespace
