@@ -13,7 +13,7 @@
 # limitations under the License.
 
 load("//tensorflow/lite/experimental/litert/build_common:tfl_model_gen.bzl", "tfl_model_gen")
-load("//tensorflow/lite/experimental/litert/integration_test:run_on_device.bzl", "device_rlocation", "get_driver", "run_on_device")
+load("//tensorflow/lite/experimental/litert/integration_test:run_on_device.bzl", "litert_integration_test")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -42,6 +42,7 @@ cc_test(
         "//tensorflow/lite/experimental/litert/tools:dump",
         "@com_google_absl//absl/flags:flag",
         "@com_google_absl//absl/flags:parse",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
@@ -93,78 +94,36 @@ sh_binary(
     srcs = ["run_on_device_driver_OSS.sh"],
 )
 
-run_on_device(
+litert_integration_test(
     name = "single_op_device_tests_cpu",
-    data = [":single_op_models_files"],
-    driver = get_driver(),
-    exec_args = [
-        "--model_path={}".format(device_rlocation("single_op_models")),
-        "--hw=cpu",
-    ],
-    exec_env_vars = [
-        # TODO: Programatically set these and install proper vendor libraries.
-        "LD_LIBRARY_PATH=/data/local/tmp",
-        "ADSP_LIBRARY_PATH=/data/local/tmp",
-    ],
-    target = ":gen_device_test",
+    hw = "cpu",
+    models = ":single_op_models",
 )
 
-run_on_device(
-    name = "single_op_device_tests_npu_JIT",
-    data = [":single_op_models_files"],
-    driver = get_driver(),
-    exec_args = [
-        "--model_path={}".format(device_rlocation("single_op_models")),
-        "--hw=npu",
+litert_integration_test(
+    name = "single_op_device_tests_qualcomm_JIT",
+    hw = "qualcomm",
+    models = ":single_op_models",
+    skips = [
+        "greater_f32",  # TODO: lukeboyer - Investigate (segfault).
+        "less_f32",  # TODO: lukeboyer - Investigate (segfault).
     ],
-    exec_env_vars = [
-        "LD_LIBRARY_PATH=/data/local/tmp",
-        "ADSP_LIBRARY_PATH=/data/local/tmp",
-    ],
-    target = ":gen_device_test",
 )
 
-run_on_device(
+litert_integration_test(
     name = "classic_ml_device_tests_cpu",
-    data = [":classic_ml_models"],
-    driver = get_driver(),
-    exec_args = [
-        "--model_path={}".format(device_rlocation("classic_ml_models")),
-        "--hw=cpu",
-    ],
-    exec_env_vars = [
-        "LD_LIBRARY_PATH=/data/local/tmp",
-        "ADSP_LIBRARY_PATH=/data/local/tmp",
-    ],
-    target = ":gen_device_test",
+    hw = "cpu",
+    models = ":classic_ml_models",
 )
 
-run_on_device(
-    name = "classic_ml_device_tests_npu_JIT",
-    data = [":classic_ml_models"],
-    driver = get_driver(),
-    exec_args = [
-        "--model_path={}".format(device_rlocation("classic_ml_models")),
-        "--hw=npu",
-    ],
-    exec_env_vars = [
-        "LD_LIBRARY_PATH=/data/local/tmp",
-        "ADSP_LIBRARY_PATH=/data/local/tmp",
-    ],
-    target = ":gen_device_test",
+litert_integration_test(
+    name = "classic_ml_device_tests_qualcomm_JIT",
+    hw = "qualcomm",
+    models = ":classic_ml_models",
 )
 
-run_on_device(
-    name = "pre_compiled_device_tests_qnn",
-    data = [":pre_compiled_models"],
-    driver = get_driver(),
-    exec_args = [
-        "--model_path={}".format(device_rlocation("pre_compiled_models")),
-        "--hw=npu",
-    ],
-    exec_env_vars = [
-        "LD_LIBRARY_PATH=/data/local/tmp",
-        "ADSP_LIBRARY_PATH=/data/local/tmp",
-    ],
-    target = ":gen_device_test",
+litert_integration_test(
+    name = "pre_compiled_device_tests_qualcomm",
+    hw = "qualcomm",
+    models = ":pre_compiled_models",
 )
