@@ -23,7 +23,6 @@ limitations under the License.
 #include <string>
 
 #include "xla/literal.h"
-#include "xla/types.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/init_main.h"
