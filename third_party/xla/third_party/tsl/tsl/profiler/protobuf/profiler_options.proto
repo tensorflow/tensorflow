@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package tensorflow;
 
-// Next ID: 14
+// Next ID: 13
 message ProfileOptions {
   // Some default value of option are not proto3 default value. Use this version
   // to determine if we should use default option value instead of proto3
@@ -94,8 +94,6 @@ message ProfileOptions {
   //   }
   // }
   map<string, AdvancedConfigValue> advanced_configuration = 12;
-
-  bool ignore_start_error = 13;
 }
 
 // Options for remote profiler session manager.

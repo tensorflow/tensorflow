@@ -80,7 +80,7 @@ class CuptiErrorManagerTest : public ::testing::Test {
   }
 
   void EnableProfiling(const CuptiTracerOptions& option) {
-    cupti_tracer_->Enable(option, cupti_collector_.get()).IgnoreError();
+    cupti_tracer_->Enable(option, cupti_collector_.get());
   }
 
   void DisableProfiling() { cupti_tracer_->Disable(); }

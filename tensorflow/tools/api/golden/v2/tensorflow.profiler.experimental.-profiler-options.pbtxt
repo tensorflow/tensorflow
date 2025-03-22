@@ -16,10 +16,6 @@ tf_class {
     mtype: "<type \'property\'>"
   }
   member {
-    name: "ignore_start_error"
-    mtype: "<type \'property\'>"
-  }
-  member {
     name: "python_tracer_level"
     mtype: "<type \'property\'>"
   }

@@ -152,7 +152,7 @@ absl::Status GpuTracer::DoStart() {
   cupti_collector_ = CreateCuptiCollector(collector_options, start_walltime_ns,
                                           start_gputime_ns);
 
-  cupti_tracer_->Enable(options_, cupti_collector_.get()).IgnoreError();
+  cupti_tracer_->Enable(options_, cupti_collector_.get());
   return absl::OkStatus();
 }
 

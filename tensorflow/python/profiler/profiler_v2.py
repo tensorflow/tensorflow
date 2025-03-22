@@ -46,7 +46,7 @@ _profiler_lock = threading.Lock()
 class ProfilerOptions(
     collections.namedtuple('ProfilerOptions', [
         'host_tracer_level', 'python_tracer_level', 'device_tracer_level',
-        'delay_ms', 'ignore_start_error'
+        'delay_ms'
     ])):
   """Options for finer control over the profiler.
 
@@ -65,20 +65,16 @@ class ProfilerOptions(
       zero, each host will start profiling immediately upon receiving the
       request. Default value is `None`, allowing the profiler guess the best
       value.
-    ignore_start_error: If true, the profiler will ignore errors when starting
-      profiling.
   """
 
   def __new__(cls,
               host_tracer_level=2,
               python_tracer_level=0,
               device_tracer_level=1,
-              delay_ms=None,
-              ignore_start_error=False):
+              delay_ms=None):
     return super(ProfilerOptions,
                  cls).__new__(cls, host_tracer_level, python_tracer_level,
-                              device_tracer_level, delay_ms,
-                              ignore_start_error)
+                              device_tracer_level, delay_ms)
 
 
 @tf_export('profiler.experimental.start', v1=[])

@@ -68,7 +68,7 @@ class CuptiKernelTracer : public HloOpProfiler::KernelTracer,
         // Not interested in API callbacks, but empty list enables them all.
         CUPTI_DRIVER_TRACE_CBID_cu64GLMapBufferObject);
     options.activities_selected.push_back(CUPTI_ACTIVITY_KIND_KERNEL);
-    cupti_tracer_->Enable(options, this).IgnoreError();
+    cupti_tracer_->Enable(options, this);
   }
 
   uint64_t getMedianKernelTimeNs() && override {
