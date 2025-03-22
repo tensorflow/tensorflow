@@ -162,5 +162,49 @@ def StablehloAddQDQAfterConvPass : Pass<"stablehlo-ext-add-qdq-after-conv", "Mod
     "mlir::quant::QuantDialect",
     "stablehlo::StablehloDialect"
   ];
-} 
+}
+
+def SinkConstantsToControlFlowPass : Pass<"stablehlo-ext-sink-constants-to-control-flow", "func::FuncOp"> {
+  let summary = "Sink constants implicitly captured in control flow regions. This "
+    "is necessary to export to XLA.";
+  let description = [{
+    A pass that sinks constants implicitly captured in control flow regions. This
+    is necessary to export to XLA, because XLA's representation of control flow
+    doesn't have the notion of implicit capture.
+
+    For example given this function:
+
+    ```mlir
+      func @sink_const_to_sort(%arg0: tensor<16xf32>) {
+        %c0 = stablehlo.constant dense<1.0> : tensor<f32>
+        %0 = "stablehlo.sort"(%arg0) ( {
+        ^bb0(%arg1: tensor<f32>, %arg2: tensor<f32>):
+          %1 = "stablehlo.divide"(%arg1, %c0) : (tensor<f32>, tensor<f32>) -> tensor<f32>
+          %2 = "stablehlo.divide"(%arg2, %c0) : (tensor<f32>, tensor<f32>) -> tensor<f32>
+          %3 = "stablehlo.compare"(%1, %2) {comparison_direction = "GT"} : (tensor<f32>, tensor<f32>) -> tensor<i1>
+          "stablehlo.return"(%3) : (tensor<i1>) -> ()
+        }) {is_stable = true} : (tensor<16xf32>) -> tensor<16xi32>
+        return
+      }
+    ```
+
+    Observe how the arith.constant is moved into the region it's used in:
+
+    ```mlir
+      module  {
+        func @sink_const_to_sort(%arg0: tensor<16xf32>) {
+          %0 = "stablehlo.sort"(%arg0) ( {
+          ^bb0(%arg1: tensor<f32>, %arg2: tensor<f32>):
+            %cst = stablehlo.constant dense<1.000000e+00> : tensor<f32>
+            %1 = stablehlo.divide %arg1, %cst : tensor<f32>
+            %2 = stablehlo.divide %arg2, %cst : tensor<f32>
+            %3 = "stablehlo.compare"(%1, %2) {comparison_direction = "GT"} : (tensor<f32>, tensor<f32>) -> tensor<i1>
+            "stablehlo.return"(%3) : (tensor<i1>) -> ()
+          }) {is_stable = true} : (tensor<16xf32>) -> tensor<16xi32>
+          return
+        }
+      }
+    ```
+  }];
+}
 

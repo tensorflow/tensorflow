@@ -1086,6 +1086,7 @@ cc_library(
         "stablehlo_ext/transforms/chlo_preserve_high_level_ops.cpp",
         "stablehlo_ext/transforms/chlo_recompose_ops.cpp",
         "stablehlo_ext/transforms/sdy_refine_shapes.cpp",
+        "stablehlo_ext/transforms/sink_constants_to_control_flow.cpp",
         "stablehlo_ext/transforms/stablehlo_add_quant_dequant_conv.cpp",
         "stablehlo_ext/transforms/stablehlo_canonicalize_dynamism.cpp",
         "stablehlo_ext/transforms/stablehlo_canonicalize_from_hlo_import.cpp",
