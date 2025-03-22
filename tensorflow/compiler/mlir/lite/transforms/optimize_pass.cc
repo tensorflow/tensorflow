@@ -26,7 +26,6 @@ limitations under the License.
 #include <cstdlib>
 #include <functional>
 #include <iterator>
-#include <memory>
 #include <numeric>
 #include <optional>
 #include <utility>
