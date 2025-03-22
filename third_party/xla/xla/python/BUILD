@@ -8,7 +8,6 @@ load(
 load(
     "//xla/tsl:tsl.bzl",
     "if_google",
-    "if_oss",
     "internal_visibility",
 )
 load("//xla/tsl:tsl.default.bzl", "get_compatible_with_portable", "tsl_pybind_extension")
@@ -41,6 +40,13 @@ pytype_strict_library(
     srcs = ["xla_client.py"],
     visibility = ["//visibility:public"],
     deps = if_google(["//third_party/py/jax/jaxlib/xla:xla_client"]),
+)
+
+pytype_strict_library(
+    name = "xla_extension",
+    srcs = ["xla_extension.py"],
+    visibility = ["//visibility:public"],
+    deps = if_google(["//third_party/py/jax/jaxlib/xla:xla_extension"]),
 )
 
 tsl_pybind_extension(
@@ -1112,122 +1118,6 @@ cc_library(
     deps = [
         "@com_google_absl//absl/log:initialize",
     ],
-)
-
-tsl_pybind_extension(
-    name = "xla_extension",
-    srcs = ["xla.cc"],
-    copts = [
-        "-fexceptions",
-        "-fno-strict-aliasing",
-    ],
-    features = ["-use_header_modules"],
-    pytype_deps = [
-        "//third_party/py/numpy",
-    ],
-    pytype_srcs = glob(["xla_extension/*.pyi"]),
-    visibility = ["//visibility:public"],
-    deps = [
-        ":config",
-        ":custom_call_sharding",
-        ":dlpack",
-        ":guard_lib",
-        ":jax_jit",
-        ":logging",
-        ":mlir",
-        ":nb_absl_flat_hash_map",
-        ":nb_absl_span",
-        ":nb_class_ptr",
-        ":ops",
-        ":pjit",
-        ":pmap_lib",
-        ":pprof_profile_builder",
-        ":profiler",
-        ":py_client",
-        ":python_ref_manager",
-        ":pytree",
-        ":refine_polymorphic_shapes",
-        ":sdy",
-        ":traceback",
-        ":types",
-        ":util",
-        ":weakref_lru_cache",
-        ":xla_compiler",
-        # placeholder for index annotation deps
-        "@com_google_absl//absl/base",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/hash",
-        "@com_google_absl//absl/log:initialize",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/strings:str_format",
-        "@com_google_absl//absl/synchronization",
-        "@com_google_absl//absl/time",
-        "@com_google_absl//absl/types:span",
-        "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:IR",
-        "@nanobind",
-        "@local_config_python//:python_headers",  # buildcleaner: keep
-        "//xla:literal",
-        "//xla:shape_util",
-        "//xla:types",
-        "//xla:util",
-        "//xla/backends/cpu/collectives:cpu_collectives",
-        "//xla/ffi:ffi_api",
-        "//xla/pjrt:exceptions",
-        "//xla/pjrt:mlir_to_hlo",
-        "//xla/pjrt:pjrt_api",
-        "//xla/pjrt:pjrt_c_api_client",
-        "//xla/pjrt:pjrt_client",
-        "//xla/pjrt:pjrt_common",
-        "//xla/pjrt:pjrt_compiler",
-        "//xla/pjrt:pjrt_executable",
-        "//xla/pjrt:pjrt_layout",
-        "//xla/pjrt:status_casters",
-        "//xla/pjrt/c:pjrt_c_api_hdrs",
-        "//xla/pjrt/distributed",
-        "//xla/pjrt/distributed:client",
-        "//xla/pjrt/distributed:key_value_store_interface",
-        "//xla/pjrt/distributed:protocol_proto_cc",
-        "//xla/pjrt/distributed:service",
-        "//xla/pjrt/plugin/xla_cpu:cpu_client_options",
-        "//xla/pjrt/plugin/xla_cpu:xla_cpu_pjrt_client",
-        "//xla/python/ifrt",
-        "//xla/python/ifrt:plugin_program",
-        "//xla/python/ifrt:plugin_program_serdes",
-        "//xla/python/ifrt_proxy/client:py_module",
-        "//xla/python/pjrt_ifrt",
-        "//xla/python/pjrt_ifrt:pjrt_attribute_map_util",
-        "//xla/python/pjrt_ifrt:xla_ifrt",
-        "//xla/tsl/concurrency:ref_count",
-        "//xla/tsl/distributed_runtime/preemption:preemption_sync_manager",
-        "//xla/tsl/platform:logging",
-        "//xla/tsl/platform:status",
-        "//xla/tsl/platform:statusor",
-        "//xla/tsl/platform/cloud:gcs_file_system",
-        "//xla/tsl/python/lib/core:numpy",
-        "@local_tsl//tsl/platform",
-    ] + select({
-        # gloo tcp transport only builds on linux
-        "//xla/tsl:macos": [
-            "//xla/backends/cpu/collectives:gloo_collectives",
-            "//xla/backends/cpu/collectives:gloo_kv_store",
-            "@gloo//:transport_uv",
-        ],
-        "//xla/tsl:windows": [],
-        "//conditions:default": [
-            "//xla/backends/cpu/collectives:gloo_collectives",
-            "//xla/backends/cpu/collectives:gloo_kv_store",
-            "//xla/python/transfer:py_socket_transfer",
-            "@gloo//:transport_tcp",
-        ],
-    }) + select({
-        # mpitrampoline does not build on windows
-        "//xla/tsl:windows": [],
-        # we support MPI collectives only in OSS builds
-        "//conditions:default": if_oss(["//xla/backends/cpu/collectives:mpi_collectives"]),
-    }),
 )
 
 cc_library(
