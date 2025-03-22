@@ -428,13 +428,15 @@ void CallShardArgFallback(
 // Prepares the input PjRtBuffers from the python arguments. This is equivalent
 // to shard_args() in pxla.py but for only a few supported cases.
 absl::StatusOr<std::vector<tsl::RCReference<xla::ifrt::Array>>>
-PrepareIfrtInputs(const xla::PyLoadedExecutable& executable,
-                  absl::Span<nb::object const> flat_dynamic_args,
-                  bool enable_x64, const std::vector<bool>& kept_args,
-                  const std::vector<nb::object>& in_shardings,
-                  const std::vector<nb::object>& in_device_local_layouts,
-                  const nb::callable& shard_arg_fallback,
-                  std::vector<nb::object>& keep_alive_objects) {
+PrepareIfrtInputs(
+    const xla::PyLoadedExecutable& executable,
+    absl::Span<nb::object const> flat_dynamic_args,
+    absl::Span<xla::PyArgSignature const> flat_dynamic_arg_signatures,
+    bool enable_x64, const std::vector<bool>& kept_args,
+    const std::vector<nb::object>& in_shardings,
+    const std::vector<nb::object>& in_device_local_layouts,
+    const nb::callable& shard_arg_fallback,
+    std::vector<nb::object>& keep_alive_objects) {
   const auto& addressable_devices =
       executable.ifrt_loaded_executable()->addressable_devices();
   const auto& num_global_devices =
@@ -481,17 +483,16 @@ PrepareIfrtInputs(const xla::PyLoadedExecutable& executable,
             auto on_device_fn,
             DevicePut(arg, executable.ifrt_loaded_executable()->client(),
                       data_device, options, xla::ifrt::MemoryKind()));
-        TF_ASSIGN_OR_RETURN(xla::DevicePutResult on_device, [&]() {
-          // Must release the GIL before calling IFRT because backends may
-          // decide to block/sleep for device buffer allocation.
-          nb::gil_scoped_release gil_release;
-          return std::move(on_device_fn)();
-        }());
 
-        num_args_arrays.push_back(std::move(on_device.ifrt_array));
-        if (on_device.owning_pybuffer) {
-          keep_alive_objects.push_back(std::move(on_device.owning_pybuffer));
-        }
+        auto sharding = xla::make_nb_class<jax::SingleDeviceSharding>(
+            executable.client(),
+            executable.client()->ifrt_client()->MakeDeviceList({data_device}),
+            /*memory_kind=*/nb::none());
+        TF_ASSIGN_OR_RETURN(
+            auto ifrt_array,
+            MakeIfrtArrayFromDevicePut(executable.client()->ifrt_client(),
+                                       sharding, std::move(on_device_fn)));
+        num_args_arrays.push_back(std::move(ifrt_array));
         continue;
       } else {
         CallShardArgFallback(arg, in_shardings[dce_index],
@@ -744,9 +745,10 @@ absl::StatusOr<nb::object> PjitFunction::Call(nb::handle callable,
   // A vector of [num_inputs].
   auto num_args_arrays = PrepareIfrtInputs(
       *cache_entry->executable, flat_dynamic_args,
-      call_signature.jax_enable_x64, cache_entry->kept_var_bitvec,
-      cache_entry->in_shardings, cache_entry->in_device_local_layouts,
-      shard_arg_fallback_, keep_alive_objects);
+      call_signature.dynamic_arg_signatures, call_signature.jax_enable_x64,
+      cache_entry->kept_var_bitvec, cache_entry->in_shardings,
+      cache_entry->in_device_local_layouts, shard_arg_fallback_,
+      keep_alive_objects);
 
   if (!num_args_arrays.ok()) {
     VLOG(2) << "Failed to prepare IFRT inputs: " << num_args_arrays.status();

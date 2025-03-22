@@ -22,6 +22,7 @@ limitations under the License.
 #include <string>
 #include <tuple>
 #include <utility>
+#include <variant>
 
 #include "absl/container/inlined_vector.h"
 #include "absl/functional/any_invocable.h"
@@ -29,8 +30,11 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "nanobind/nanobind.h"
 #include "xla/python/ifrt/array.h"
+#include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/device.h"
+#include "xla/python/ifrt/dtype.h"
 #include "xla/python/ifrt/memory.h"
+#include "xla/python/ifrt/shape.h"
 #include "xla/python/nb_numpy.h"
 #include "xla/tsl/concurrency/ref_count.h"
 #include "xla/xla_data.pb.h"
@@ -38,12 +42,19 @@ limitations under the License.
 namespace xla {
 
 struct DevicePutResult {
-  explicit DevicePutResult(
-      tsl::RCReference<ifrt::Array> ifrt_array, bool weak_type,
-      nanobind::object owning_pybuffer = nanobind::object())
-      : ifrt_array(std::move(ifrt_array)),
+  DevicePutResult(tsl::RCReference<ifrt::Array> ifrt_array, bool weak_type)
+      : ifrt_array_or_host_buffer(std::move(ifrt_array)),
         weak_type(weak_type),
-        owning_pybuffer(owning_pybuffer) {}
+        // host_buffer_semantics is not meaningful when
+        // `ifrt_array_or_host_buffer` is an IFRT Array.
+        host_buffer_semantics(
+            ifrt::Client::HostBufferSemantics::kImmutableOnlyDuringCall) {}
+
+  DevicePutResult(ifrt::Client::HostBuffer ifrt_host_buffer, bool weak_type,
+                  ifrt::Client::HostBufferSemantics host_buffer_semantics)
+      : ifrt_array_or_host_buffer(std::move(ifrt_host_buffer)),
+        weak_type(weak_type),
+        host_buffer_semantics(host_buffer_semantics) {}
 
   // Disallow copy since copying `DevicePutResult` without holding GIL may be
   // dangerous due to `owning_pybuffer`.
@@ -52,11 +63,14 @@ struct DevicePutResult {
   DevicePutResult(DevicePutResult&&) noexcept = default;
   DevicePutResult& operator=(DevicePutResult&&) noexcept = default;
 
-  // Points to the on-device array. Not owned.
-  tsl::RCReference<ifrt::Array> ifrt_array;
-  bool weak_type;
+  ifrt::DType ifrt_dtype() const;
+  const ifrt::Shape& ifrt_shape() const;
 
-  nanobind::object owning_pybuffer;
+  // Points to the on-device array or on-host buffer.
+  std::variant<tsl::RCReference<ifrt::Array>, ifrt::Client::HostBuffer>
+      ifrt_array_or_host_buffer;
+  bool weak_type;
+  ifrt::Client::HostBufferSemantics host_buffer_semantics;
 };
 
 // Copies a buffer-like object to be on device.
@@ -84,6 +98,36 @@ absl::StatusOr<DevicePutResultFn> DevicePut(nanobind::handle arg,
                                             ifrt::Device* to_device,
                                             const DevicePutOptions& options,
                                             ifrt::MemoryKind to_memory_kind);
+
+// Runs `device_put_result_fn` for a single addressable shard, and constructs an
+// IFRT Array from the per-shard array or host buffer. The return value is a
+// constructed IFRT Array.
+//
+// This function requires less array metadata and has lower overhead than
+// `MakeIfrtArrayFromBatchedDevicePut` as it is specialized for a single
+// addressable shard.
+//
+// `sharding` determines the sharding of the returned IFRT Array.
+//
+// Requires GIL. Will release GIL while calling `device_put_result_fn` and
+// constructing the IFRT Array.
+absl::StatusOr<tsl::RCReference<ifrt::Array>> MakeIfrtArrayFromDevicePut(
+    ifrt::Client* ifrt_client, nanobind::handle sharding,
+    DevicePutResultFn device_put_result_fn);
+
+// Runs `device_put_result_fns` for each addressable shard, and constructs an
+// IFRT Array from these per-shard arrays or host buffers. The return value is a
+// constructed IFRT Array.
+//
+// `shape` and `sharding` determine the shape and sharding of the returned
+// IFRT Array.
+//
+// Requires GIL. Will release GIL while calling `device_put_result_fns` and
+// constructing the IFRT Array.
+absl::StatusOr<tsl::RCReference<ifrt::Array>> MakeIfrtArrayFromBatchedDevicePut(
+    ifrt::Client* ifrt_client, nb_dtype dtype, absl::Span<const int64_t> shape,
+    nanobind::handle sharding,
+    absl::Span<DevicePutResultFn> device_put_result_fns);
 
 // Returns `true` if `arg` is a JAX float0 array.
 bool IsFloat0(xla::nb_numpy_ndarray arg);

@@ -906,7 +906,10 @@ absl::StatusOr<tsl::RCReference<Array>> PjRtClient::MakeArrayFromHostBuffer(
   }
   TF_ASSIGN_OR_RETURN(auto primitive_type, ToPrimitiveType(dtype));
 
-  auto count = std::make_shared<std::atomic<int>>(sharding->devices()->size());
+  absl::Span<xla::ifrt::Device* const> ifrt_addressable_devices =
+      sharding->devices()->AddressableDeviceList()->devices();
+  auto count =
+      std::make_shared<std::atomic<int>>(ifrt_addressable_devices.size());
   std::function<void()> on_done_with_host_buffer_per_device;
   if (on_done_with_host_buffer) {
     on_done_with_host_buffer_per_device =
@@ -921,8 +924,8 @@ absl::StatusOr<tsl::RCReference<Array>> PjRtClient::MakeArrayFromHostBuffer(
   }
 
   PjRtArray::PjRtBuffers buffers;
-  buffers.reserve(sharding->devices()->size());
-  for (xla::ifrt::Device* const device : sharding->devices()->devices()) {
+  buffers.reserve(ifrt_addressable_devices.size());
+  for (xla::ifrt::Device* const device : ifrt_addressable_devices) {
     std::unique_ptr<PjRtBuffer> buffer;
     // If the sharding has memory_kind specified, use a version of
     // `PjRtClient::BufferFromHostBuffer` that accepts `PjRtMemorySpace`.
@@ -942,8 +945,8 @@ absl::StatusOr<tsl::RCReference<Array>> PjRtClient::MakeArrayFromHostBuffer(
         return InvalidArgument(
             "Invalid memory kind: %s; available memory kinds: %s",
             *sharding->memory_kind().memory_kind(),
-            absl::StrJoin(sharding->devices()->devices().front()->Memories(),
-                          ", ", [](std::string* out, Memory* ms) {
+            absl::StrJoin(ifrt_addressable_devices.front()->Memories(), ", ",
+                          [](std::string* out, Memory* ms) {
                             absl::StrAppend(out, *ms->Kind().memory_kind());
                           }));
       }
@@ -954,10 +957,6 @@ absl::StatusOr<tsl::RCReference<Array>> PjRtClient::MakeArrayFromHostBuffer(
                       tensorflow::down_cast<PjRtMemory*>(memory)->pjrt_memory(),
                       /*device_layout=*/nullptr));
     } else {
-      if (!device->IsAddressable()) {
-        return InvalidArgument("Cannot copy array to non-addressable device %s",
-                               device->DebugString());
-      }
       TF_ASSIGN_OR_RETURN(xla::PjRtMemorySpace * memory_space,
                           tensorflow::down_cast<PjRtDevice*>(device)
                               ->pjrt_device()
