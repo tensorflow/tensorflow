@@ -17,10 +17,15 @@
 
 # pylint: disable=g-import-not-at-top
 # pylint: disable=unused-import
+# pylint: disable=consider-using-from-import
 
 
 def smoketest():
-  import tensorflow.compiler.mlir.lite.integrations.python.mlir
+  import tensorflow.compiler.mlir.lite.integrations.python.mlir as mlir
+  import tensorflow.compiler.mlir.lite.integrations.python.mlir.ir as ir
+  import tensorflow.compiler.mlir.lite.integrations.python.mlir.passmanager as pm
+
+  assert "Context" in dir(ir)
 
 
 if __name__ == "__main__":
