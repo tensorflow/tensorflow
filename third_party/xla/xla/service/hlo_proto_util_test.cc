@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "xla/service/hlo_proto_util.h"
 
+#include <gmock/gmock.h>
+#include <gtest/gtest.h>
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/shape_util.h"
