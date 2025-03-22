@@ -18,7 +18,6 @@ limitations under the License.
 #include <Python.h>
 
 #include <cstddef>
-#include <cstdint>
 #include <optional>
 #include <string>
 #include <utility>
@@ -46,36 +45,10 @@ limitations under the License.
 #endif  // PLATFORM_GOOGLE
 
 namespace xla {
-namespace {
 
 namespace nb = nanobind;
 
-// TODO(b/318709106): This is a temporary solution to propagate a hint to
-// backends that the current traceback does not change within the scope.
-// This should be removed once context propagation from IFRT API is
-// implemented.
-constexpr uint64_t kInvalidCacheId = ~0;
-thread_local uint64_t next_cache_id = 0;
-uint64_t GetAndIncNextCacheId() {
-  if (next_cache_id == kInvalidCacheId) {
-    ++next_cache_id;
-  }
-  return next_cache_id++;
-}
-thread_local uint64_t current_cache_id = kInvalidCacheId;
-
-}  // namespace
-
 bool Traceback::enabled_ = true;
-
-TracebackCacheScope::TracebackCacheScope()
-    : id_(GetAndIncNextCacheId()), previous_id_(current_cache_id) {
-  current_cache_id = id_;
-}
-
-TracebackCacheScope::~TracebackCacheScope() { current_cache_id = previous_id_; }
-
-uint64_t CurrentTracebackCacheId() { return current_cache_id; }
 
 Traceback::Traceback() {
   DCHECK(PyGILState_Check());
