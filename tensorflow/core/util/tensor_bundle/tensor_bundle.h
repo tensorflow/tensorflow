@@ -69,9 +69,13 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/base/call_once.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/functional/function_ref.h"
+#include "absl/status/status.h"
 #include "absl/strings/string_view.h"
+#include "absl/synchronization/mutex.h"
+#include "absl/types/span.h"
 #include "xla/tsl/lib/io/buffered_file.h"
 #include "xla/tsl/platform/errors.h"
 #include "tensorflow/core/framework/tensor.h"
