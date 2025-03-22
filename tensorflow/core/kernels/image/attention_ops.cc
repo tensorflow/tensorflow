@@ -15,10 +15,13 @@ limitations under the License.
 
 // See docs in ../ops/image_ops.cc.
 
+#include "unsupported/Eigen/CXX11/src/Tensor/TensorMeta.h"  // from @eigen_archive
+#include "tensorflow/core/framework/op_requires.h"
+#include "tensorflow/core/platform/errors.h"
 #define EIGEN_USE_THREADS
 
 #include <vector>
-#include "tensorflow/core/framework/op.h"
+
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
