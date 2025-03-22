@@ -370,7 +370,9 @@ absl::StatusOr<nb_dtype> IfrtDtypeToNbDtype(ifrt::DType dtype) {
       // part of dtype. Using 'O' allows us to represent variable-length bytes
       // and is also consistent with TensorFlow's tensor -> ndarray conversion
       // logic (see `TF_DataType_to_PyArray_TYPE`).
-      return to_nb_dtype(NPY_OBJECT);
+
+      // 2DO
+      return to_nb_dtype(NPY_VSTRING);
     default:
       break;
   }
