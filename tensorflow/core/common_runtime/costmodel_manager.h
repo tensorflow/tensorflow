@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <unordered_map>
 
+#include "absl/status/status.h"
 #include "tensorflow/core/framework/cost_graph.pb.h"
 #include "tensorflow/core/graph/costmodel.h"
 #include "tensorflow/core/graph/graph.h"
