@@ -106,8 +106,12 @@ inline void Softmax(const SoftmaxParams& params,
                 input_diff, input_beta_multiplier, input_beta_left_shift);
         const FixedPointScaledDiff scaled_diff_f8 =
             FixedPointScaledDiff::FromRaw(input_diff_rescaled);
+        // Compute exp once and store it
+        output_data[i * depth + c] = exp_on_negative_values(scaled_diff_f8).raw();
         sum_of_exps = sum_of_exps + gemmlowp::Rescale<kAccumulationIntegerBits>(
-                                        exp_on_negative_values(scaled_diff_f8));
+                                        FixedPointAccum::FromRaw(output_data[i * depth + c]));
+      } else {
+        output_data[i * depth + c] = 0;
       }
     }
 
@@ -122,15 +126,11 @@ inline void Softmax(const SoftmaxParams& params,
       int32_t input_diff =
           static_cast<int32_t>(input_data[i * depth + c]) - max_in_row;
       if (input_diff >= diff_min) {
-        const int32_t input_diff_rescaled =
-            MultiplyByQuantizedMultiplierGreaterThanOne(
-                input_diff, input_beta_multiplier, input_beta_left_shift);
-        const FixedPointScaledDiff scaled_diff_f8 =
-            FixedPointScaledDiff::FromRaw(input_diff_rescaled);
 
-        FixedPoint0 exp_in_0 = exp_on_negative_values(scaled_diff_f8);
+        // Reusing Precomputed values and scaling them
         int32_t unsat_output = gemmlowp::RoundingDivideByPOT(
-            (shifted_scale * exp_in_0).raw(), exponent);
+            (shifted_scale * FixedPoint0::FromRaw(output_data[i * depth + c])).raw(), exponent);
+
 
         const int32_t shifted_output =
             unsat_output +
