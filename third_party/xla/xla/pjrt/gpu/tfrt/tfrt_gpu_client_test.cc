@@ -46,15 +46,18 @@ limitations under the License.
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_common.h"
 #include "xla/pjrt/pjrt_executable.h"
+#include "xla/pjrt/pjrt_future.h"
 #include "xla/pjrt/plugin/xla_gpu/xla_gpu_client_options.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tests/literal_test_util.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
+#include "xla/tsl/framework/allocator.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "tsl/platform/casts.h"
+#include "tsl/platform/mem.h"
 
 namespace xla {
 
@@ -73,6 +76,7 @@ namespace {
 
 using ::testing::HasSubstr;
 using ::testing::status::IsOkAndHolds;
+using ::testing::status::StatusIs;
 
 absl::StatusOr<std::unique_ptr<xla::PjRtLoadedExecutable>> CompileExecutable(
     absl::string_view program, xla::PjRtClient& client,
@@ -501,6 +505,92 @@ TEST(TfrtGpuClientTest, LookupDevice) {
       auto* addressable_device,
       client->LookupAddressableDevice(device->local_device_id()));
   EXPECT_EQ(addressable_device, device);
+}
+
+TEST(TfrtGpuClientTest, CopyRawToHostFullBuffer) {
+  TF_ASSERT_OK_AND_ASSIGN(auto client, GetTfrtGpuClient(GpuClientOptions()));
+  auto literal = xla::LiteralUtil::CreateR1<float>({41.0f, 42.0f});
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<PjRtBuffer> buffer,
+      client->BufferFromHostLiteral(literal, client->memory_spaces()[0]));
+
+  TF_ASSERT_OK_AND_ASSIGN(int64_t size, buffer->GetOnDeviceSizeInBytes());
+  void* dst =
+      tsl::port::AlignedMalloc(size, tsl::Allocator::kAllocatorAlignment);
+
+  auto result = buffer->CopyRawToHost(dst, 0, size);
+  TF_EXPECT_OK(result.Await());
+  EXPECT_EQ(*(static_cast<float*>(dst)), 41.0f);
+  EXPECT_EQ(*(static_cast<float*>(dst) + 1), 42.0f);
+
+  tsl::port::AlignedSizedFree(dst, tsl::Allocator::kAllocatorAlignment, size);
+}
+
+TEST(TfrtGpuClientTest, CopyRawToHostSubBuffer) {
+  TF_ASSERT_OK_AND_ASSIGN(auto client, GetTfrtGpuClient(GpuClientOptions()));
+  auto literal = xla::LiteralUtil::CreateR1<float>({41.0f, 42.0f});
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<PjRtBuffer> buffer,
+      client->BufferFromHostLiteral(literal, client->memory_spaces()[0]));
+  TF_ASSERT_OK_AND_ASSIGN(int64_t size, buffer->GetOnDeviceSizeInBytes());
+  void* dst =
+      tsl::port::AlignedMalloc(size, tsl::Allocator::kAllocatorAlignment);
+
+  auto result = buffer->CopyRawToHost(dst, 0, sizeof(float));
+  TF_EXPECT_OK(result.Await());
+  EXPECT_EQ(*(static_cast<float*>(dst)), 41.0f);
+
+  tsl::port::AlignedSizedFree(dst, tsl::Allocator::kAllocatorAlignment, size);
+}
+
+TEST(TfrtGpuClientTest, CopyRawToHostOutOfRange) {
+  TF_ASSERT_OK_AND_ASSIGN(auto client, GetTfrtGpuClient(GpuClientOptions()));
+  auto literal = xla::LiteralUtil::CreateR1<float>({41.0f, 42.0f});
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<PjRtBuffer> buffer,
+      client->BufferFromHostLiteral(literal, client->memory_spaces()[0]));
+  TF_ASSERT_OK_AND_ASSIGN(int64_t size, buffer->GetOnDeviceSizeInBytes());
+  void* dst =
+      tsl::port::AlignedMalloc(size, tsl::Allocator::kAllocatorAlignment);
+
+  auto result = buffer->CopyRawToHost(dst, 1, size);
+  EXPECT_THAT(result.Await(), StatusIs(absl::StatusCode::kInvalidArgument,
+                                       HasSubstr("invalid offset 1")));
+  tsl::port::AlignedSizedFree(dst, tsl::Allocator::kAllocatorAlignment, size);
+}
+
+TEST(TfrtGpuClientTest, CopyRawToHostFuture) {
+  TF_ASSERT_OK_AND_ASSIGN(auto client, GetTfrtGpuClient(GpuClientOptions()));
+  auto literal = xla::LiteralUtil::CreateR1<float>({41.0f, 42.0f});
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<PjRtBuffer> buffer,
+      client->BufferFromHostLiteral(literal, client->memory_spaces()[0]));
+
+  auto dst_promise = xla::PjRtFuture<void*>::CreatePromise();
+  xla::PjRtFuture<void*> dst_future(dst_promise);
+
+  TF_ASSERT_OK_AND_ASSIGN(int64_t size, buffer->GetOnDeviceSizeInBytes());
+  auto ready = buffer->GetReadyFuture();
+  auto result = buffer->CopyRawToHostFuture(dst_future, 0, size);
+
+  // Drop the buffer before fulfilling `dst`. The transfer should still keep the
+  // buffer alive.
+  buffer.reset();
+  ready.OnReady([dst_promise = std::move(dst_promise),
+                 size](absl::Status status) mutable {
+    void* dst =
+        tsl::port::AlignedMalloc(size, tsl::Allocator::kAllocatorAlignment);
+    dst_promise.Set(dst);
+  });
+
+  TF_EXPECT_OK(result.Await());
+  TF_ASSERT_OK_AND_ASSIGN(auto* dst, dst_future.Await());
+  EXPECT_EQ(*(static_cast<float*>(dst)), 41.0f);
+  EXPECT_EQ(*(static_cast<float*>(dst) + 1), 42.0f);
+
+  tsl::port::AlignedSizedFree(dst, tsl::Allocator::kAllocatorAlignment, size);
 }
 
 }  // namespace
