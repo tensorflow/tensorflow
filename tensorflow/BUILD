@@ -571,11 +571,12 @@ config_setting(
 
 config_setting(
     name = "linux_x86_64",
-    constraint_values = if_google(
-        ["//third_party/bazel_platforms/os:linux"],
-        [],
-    ),
-    values = {"cpu": "k8"},
+    constraint_values =
+        [
+            "//third_party/bazel_platforms/cpu:x86_64",
+            "//third_party/bazel_platforms/os:linux",
+        ],
+    # values = {"cpu": "k8"},
     visibility = ["//visibility:public"],
 )
 
