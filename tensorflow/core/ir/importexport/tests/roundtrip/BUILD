@@ -19,6 +19,7 @@ cc_library(
         "//tensorflow/core:core_cpu_base",
         "//tensorflow/core:framework",
         "//tensorflow/core:protos_all_cc",
+        "@com_google_absl//absl/log",
         "@llvm-project//llvm:Support",
     ],
 )
