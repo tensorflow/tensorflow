@@ -21,10 +21,10 @@
 
 #include "absl/synchronization/mutex.h"
 #include <CL/cl.h>
+#include "tensorflow/lite/delegates/gpu/cl/buffer.h"
 #include "tensorflow/lite/experimental/litert/c/litert_tensor_buffer.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
-#include "tensorflow/lite/experimental/litert/runtime/opencl/buffer.h"
-#include "tensorflow/lite/experimental/litert/runtime/opencl/opencl_wrapper.h"
+#include "tensorflow/lite/experimental/litert/runtime/ahwb_buffer.h"
 
 namespace litert::internal {
 
@@ -40,17 +40,22 @@ class OpenClBuffer {
     size_ = other.size_;
     other.data_ = nullptr;
     other.size_ = 0;
+    ahwb_ = other.ahwb_;
+    other.ahwb_ = nullptr;
   }
 
-  OpenClBuffer(litert::cl::Buffer buffer, size_t size)
-      : buffer_(std::move(buffer)), size_(size) {}
+  explicit OpenClBuffer(tflite::gpu::cl::Buffer buffer,
+                        AHardwareBuffer* ahwb = nullptr)
+      : buffer_(std::move(buffer)),
+        size_(buffer_.GetMemorySizeInBytes()),
+        ahwb_(ahwb) {}
 
   OpenClBuffer(cl_mem buffer, size_t size, LiteRtOpenClDeallocator deallocator)
       : deallocator_(deallocator), size_(size) {
     if (deallocator_ != nullptr) {
-      buffer_ = litert::cl::CreateBufferShared(buffer);
+      buffer_ = tflite::gpu::cl::CreateBufferShared(buffer);
     } else {  // The buffer will be deallocated automatically.
-      buffer_ = litert::cl::Buffer(buffer, size);
+      buffer_ = tflite::gpu::cl::Buffer(buffer, size);
     }
   }
 
@@ -75,16 +80,18 @@ class OpenClBuffer {
 
   static bool IsSupported();
   static Expected<OpenClBuffer> Alloc(size_t bytes_size);
+  static Expected<OpenClBuffer> AllocFromAhwbBuffer(AhwbBuffer& ahwb_buffer);
   size_t size_bytes() const { return size_; }
 
  private:
   absl::Mutex mutex_;
   // The cpu memory buffer pointer.
   void* data_ = nullptr;
-  litert::cl::Buffer buffer_;
+  tflite::gpu::cl::Buffer buffer_;
   LiteRtOpenClDeallocator deallocator_ = nullptr;
   // The size of the buffer in bytes.
   size_t size_ = 0;
+  AHardwareBuffer* ahwb_ = nullptr;
 };
 
 }  // namespace litert::internal

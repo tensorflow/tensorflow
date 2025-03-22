@@ -21,17 +21,22 @@
 #include <utility>
 #include <vector>
 
+#include "absl/strings/str_cat.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
+#include <CL/cl.h>
+#include <CL/cl_ext.h>
+#include <CL/cl_platform.h>
+#include "tensorflow/lite/delegates/gpu/cl/buffer.h"
+#include "tensorflow/lite/delegates/gpu/cl/cl_command_queue.h"
+#include "tensorflow/lite/delegates/gpu/cl/cl_context.h"
+#include "tensorflow/lite/delegates/gpu/cl/opencl_wrapper.h"
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
 #include "tensorflow/lite/experimental/litert/c/litert_tensor_buffer.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_macros.h"
+#include "tensorflow/lite/experimental/litert/runtime/ahwb_buffer.h"
 #include "tensorflow/lite/experimental/litert/runtime/gpu_environment.h"
-#include "tensorflow/lite/experimental/litert/runtime/opencl/buffer.h"
-#include "tensorflow/lite/experimental/litert/runtime/opencl/cl_command_queue.h"
-#include "tensorflow/lite/experimental/litert/runtime/opencl/cl_context.h"
-#include "tensorflow/lite/experimental/litert/runtime/opencl/opencl_wrapper.h"
 
 namespace litert {
 namespace internal {
@@ -47,7 +52,7 @@ Expected<T*> OpenClBuffer::Lock() {
   // The buffer has not been locked, so we need to read from the OpenCL
   // buffer.
   if (data_ == nullptr) {
-    litert::cl::ClCommandQueue* queue =
+    tflite::gpu::cl::CLCommandQueue* queue =
         GpuEnvironmentSingleton::GetInstance().getCommandQueue();
     std::vector<T> result;
     auto status = buffer_.ReadData(queue, &result);
@@ -73,7 +78,7 @@ Expected<T*> OpenClBuffer::Lock() {
 template <typename T>
 Expected<void> OpenClBuffer::Unlock() {
   absl::MutexLock lock(&mutex_);
-  litert::cl::ClCommandQueue* queue =
+  tflite::gpu::cl::CLCommandQueue* queue =
       GpuEnvironmentSingleton::GetInstance().getCommandQueue();
   // The buffer has not been locked, so we don't need to write back.
   if (data_ == nullptr) {
@@ -94,7 +99,7 @@ Expected<void> OpenClBuffer::Unlock() {
 }
 
 bool OpenClBuffer::IsSupported() {
-  static bool is_supported = ::litert::cl::LoadOpenCL().ok();
+  static bool is_supported = ::tflite::gpu::cl::LoadOpenCL().ok();
   return is_supported;
 }
 
@@ -103,18 +108,54 @@ Expected<OpenClBuffer> OpenClBuffer::Alloc(size_t bytes_size) {
       IsSupported(),
       Unexpected(kLiteRtStatusErrorRuntimeFailure, "OpenCL is not supported"));
 
-  litert::cl::Buffer buffer;
+  tflite::gpu::cl::Buffer buffer;
 
-  litert::cl::ClContext* cl_context =
+  tflite::gpu::cl::CLContext* cl_context =
       GpuEnvironmentSingleton::GetInstance().getContext();
   auto result =
-      litert::cl::CreateReadWriteBuffer(bytes_size, cl_context, &buffer);
+      tflite::gpu::cl::CreateReadWriteBuffer(bytes_size, cl_context, &buffer);
   if (!result.ok()) {
     return Unexpected(kLiteRtStatusErrorRuntimeFailure,
                       "Failed to create OpenCL buffer");
   }
 
-  return Expected<OpenClBuffer>(std::move(buffer), bytes_size);
+  return Expected<OpenClBuffer>(std::move(buffer));
 }
+
+bool IsAhwbToClInteropSupported() {
+  return ::tflite::gpu::cl::clImportMemoryARM != nullptr;
+}
+
+Expected<OpenClBuffer> OpenClBuffer::AllocFromAhwbBuffer(
+    AhwbBuffer& ahwb_buffer) {
+  cl_int error = CL_SUCCESS;
+  const cl_import_properties_arm properties[] = {
+      CL_IMPORT_TYPE_ARM,
+      CL_IMPORT_TYPE_ANDROID_HARDWARE_BUFFER_ARM,
+      0,
+  };
+
+  cl_context context =
+      GpuEnvironmentSingleton::GetInstance().getContext()->context();
+  LITERT_RETURN_IF_ERROR(IsAhwbToClInteropSupported(),
+                         Unexpected(kLiteRtStatusErrorRuntimeFailure,
+                                    "clImportMemoryARM is not supported"));
+  LITERT_ASSIGN_OR_RETURN(size_t size_bytes,
+                          AhwbBuffer::GetSize(ahwb_buffer.ahwb));
+  cl_mem buffer =
+      tflite::gpu::cl::clImportMemoryARM(context, CL_MEM_READ_WRITE, properties,
+                                         ahwb_buffer.ahwb, size_bytes, &error);
+  LITERT_RETURN_IF_ERROR(
+      error == CL_SUCCESS,
+      Unexpected(kLiteRtStatusErrorRuntimeFailure,
+                 absl::StrCat("Failed to create OpenCL buffer from "
+                              "AHardwareBuffer, cl_int error code:",
+                              error)));
+
+  tflite::gpu::cl::Buffer cl_buffer(buffer, size_bytes);
+
+  return OpenClBuffer(std::move(cl_buffer), ahwb_buffer.ahwb);
+}
+
 }  // namespace internal
 }  // namespace litert

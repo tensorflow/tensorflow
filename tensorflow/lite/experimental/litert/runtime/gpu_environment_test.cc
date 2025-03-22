@@ -23,8 +23,8 @@
 #include "third_party/ml_drift/cl/environment.h"
 #include "third_party/ml_drift/cl/opencl_wrapper.h"
 #include "tensorflow/lite/experimental/litert/c/litert_environment.h"
+#include "tensorflow/lite/experimental/litert/c/litert_environment_options.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_any.h"
-#include "tensorflow/lite/experimental/litert/runtime/opencl/opencl_wrapper.h"
 
 namespace litert {
 namespace {
@@ -37,9 +37,6 @@ TEST(EnvironmentSingletonTest, OpenClEnvironment) {
 
   if (!ml_drift::cl::LoadOpenCL().ok()) {
     GTEST_SKIP() << "OpenCL not loaded for ml_drift";
-  }
-  if (!litert::cl::LoadOpenCL().ok()) {
-    GTEST_SKIP() << "OpenCL not loaded for litert";
   }
 
   ml_drift::cl::Environment env;

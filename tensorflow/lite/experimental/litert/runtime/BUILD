@@ -30,12 +30,13 @@ cc_library(
     ],
     deps = [
         ":gpu_environment",
+        "//tensorflow/lite/delegates/gpu/cl:opencl_wrapper",
         "//tensorflow/lite/experimental/litert/c:litert_common",
         "//tensorflow/lite/experimental/litert/c:litert_event_type",
         "//tensorflow/lite/experimental/litert/cc:litert_expected",
         "//tensorflow/lite/experimental/litert/cc:litert_macros",
-        "//tensorflow/lite/experimental/litert/runtime/opencl:cl_event",
         "@com_google_absl//absl/strings:str_format",
+        "@opencl_headers",
     ],
 )
 
@@ -69,6 +70,10 @@ cc_library(
     linkopts = gles_linkopts(),
     deps = [
         ":gpu_environment",
+        "//tensorflow/lite/delegates/gpu/cl:buffer",
+        "//tensorflow/lite/delegates/gpu/cl:cl_command_queue",
+        "//tensorflow/lite/delegates/gpu/cl:cl_context",
+        "//tensorflow/lite/delegates/gpu/cl:opencl_wrapper",
         "//tensorflow/lite/experimental/litert/c:litert_common",
         "//tensorflow/lite/experimental/litert/c:litert_event_type",
         "//tensorflow/lite/experimental/litert/c:litert_gl_types",
@@ -81,10 +86,6 @@ cc_library(
         "//tensorflow/lite/experimental/litert/cc:litert_macros",
         "//tensorflow/lite/experimental/litert/cc:litert_tensor_buffer_utils",
         "//tensorflow/lite/experimental/litert/core/util:tensor_type_util",
-        "//tensorflow/lite/experimental/litert/runtime/opencl:buffer",
-        "//tensorflow/lite/experimental/litert/runtime/opencl:cl_command_queue",
-        "//tensorflow/lite/experimental/litert/runtime/opencl:cl_context",
-        "//tensorflow/lite/experimental/litert/runtime/opencl:opencl_wrapper",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:node_hash_map",
@@ -115,15 +116,16 @@ cc_library(
         "//tensorflow/lite/experimental/litert/c:__subpackages__",
     ],
     deps = [
+        "//tensorflow/lite/delegates/gpu/cl:cl_command_queue",
+        "//tensorflow/lite/delegates/gpu/cl:cl_context",
+        "//tensorflow/lite/delegates/gpu/cl:cl_device",
+        "//tensorflow/lite/delegates/gpu/cl:opencl_wrapper",
         "//tensorflow/lite/experimental/litert/c:litert_any",
         "//tensorflow/lite/experimental/litert/c:litert_common",
+        "//tensorflow/lite/experimental/litert/c:litert_environment_options",
         "//tensorflow/lite/experimental/litert/c:litert_logging",
         "//tensorflow/lite/experimental/litert/cc:litert_expected",
         "//tensorflow/lite/experimental/litert/core:environment",
-        "//tensorflow/lite/experimental/litert/runtime/opencl:cl_command_queue",
-        "//tensorflow/lite/experimental/litert/runtime/opencl:cl_context",
-        "//tensorflow/lite/experimental/litert/runtime/opencl:cl_device",
-        "//tensorflow/lite/experimental/litert/runtime/opencl:opencl_wrapper",
         "@opencl_headers",
     ],
 )
@@ -146,8 +148,8 @@ cc_test(
         # "//third_party/ml_drift/cl:opencl_wrapper",
         # copybara:uncomment_end
         "//tensorflow/lite/experimental/litert/c:litert_environment",
+        "//tensorflow/lite/experimental/litert/c:litert_environment_options",
         "//tensorflow/lite/experimental/litert/cc:litert_any",
-        "//tensorflow/lite/experimental/litert/runtime/opencl:opencl_wrapper",
     ],
 )
 

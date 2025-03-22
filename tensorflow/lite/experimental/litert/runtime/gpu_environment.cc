@@ -15,14 +15,15 @@
 #include "tensorflow/lite/experimental/litert/runtime/gpu_environment.h"
 
 #include <CL/cl.h>
+#include "tensorflow/lite/delegates/gpu/cl/cl_command_queue.h"
+#include "tensorflow/lite/delegates/gpu/cl/cl_context.h"
+#include "tensorflow/lite/delegates/gpu/cl/cl_device.h"
+#include "tensorflow/lite/delegates/gpu/cl/opencl_wrapper.h"
 #include "tensorflow/lite/experimental/litert/c/litert_any.h"
 #include "tensorflow/lite/experimental/litert/c/litert_environment.h"
+#include "tensorflow/lite/experimental/litert/c/litert_environment_options.h"
 #include "tensorflow/lite/experimental/litert/c/litert_logging.h"
 #include "tensorflow/lite/experimental/litert/core/environment.h"
-#include "tensorflow/lite/experimental/litert/runtime/opencl/cl_command_queue.h"
-#include "tensorflow/lite/experimental/litert/runtime/opencl/cl_context.h"
-#include "tensorflow/lite/experimental/litert/runtime/opencl/cl_device.h"
-#include "tensorflow/lite/experimental/litert/runtime/opencl/opencl_wrapper.h"
 
 namespace litert {
 namespace internal {
@@ -33,6 +34,9 @@ GpuEnvironmentSingleton::GpuEnvironmentSingleton(
   cl_platform_id platform_id = nullptr;
   cl_context context = nullptr;
   cl_command_queue command_queue = nullptr;
+  if (!tflite::gpu::cl::LoadOpenCL().ok()) {
+    LITERT_LOG(LITERT_ERROR, "Failed to load OpenCL for LiteRT.");
+  }
   if (environment) {
     auto device_option =
         environment->GetOption(kLiteRtEnvOptionTagOpenClDeviceId);
@@ -61,27 +65,27 @@ GpuEnvironmentSingleton::GpuEnvironmentSingleton(
     }
   }
   if (device_id && platform_id) {
-    device_ = litert::cl::ClDevice(device_id, platform_id);
+    device_ = tflite::gpu::cl::CLDevice(device_id, platform_id);
   } else {
-    auto status = litert::cl::CreateDefaultGPUDevice(&device_);
+    auto status = tflite::gpu::cl::CreateDefaultGPUDevice(&device_);
     if (!status.ok()) {
       LITERT_LOG(LITERT_ERROR, "Failed to create OpenCL device");
     }
   }
   if (context) {
-    context_ = litert::cl::ClContext(context, /*has_ownership=*/false);
+    context_ = tflite::gpu::cl::CLContext(context, /*has_ownership=*/false);
   } else {
-    auto status = litert::cl::CreateClContext(device_, &context_);
+    auto status = tflite::gpu::cl::CreateCLContext(device_, &context_);
     if (!status.ok()) {
       LITERT_LOG(LITERT_ERROR, "Failed to create OpenCL contxt");
     }
   }
   if (command_queue) {
     command_queue_ =
-        litert::cl::ClCommandQueue(command_queue, /*has_ownership=*/false);
+        tflite::gpu::cl::CLCommandQueue(command_queue, /*has_ownership=*/false);
   } else {
-    auto status =
-        litert::cl::CreateClCommandQueue(device_, context_, &command_queue_);
+    auto status = tflite::gpu::cl::CreateCLCommandQueue(device_, context_,
+                                                        &command_queue_);
     if (!status.ok()) {
       LITERT_LOG(LITERT_ERROR, "Failed to create OpenCL command queue");
     }
