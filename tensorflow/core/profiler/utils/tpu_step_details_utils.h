@@ -1,4 +1,4 @@
-/* Copyright 2024 The OpenXLA Authors.
+/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,35 +15,6 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PROFILER_UTILS_TPU_STEP_DETAILS_UTILS_H_
 #define TENSORFLOW_CORE_PROFILER_UTILS_TPU_STEP_DETAILS_UTILS_H_
 
-#include "tensorflow/core/profiler/protobuf/tpu_input_pipeline.pb.h"
-
-namespace tensorflow {
-namespace profiler {
-
-inline double ComputeTimeMs(const PerTpuStepDetails& details) {
-  return details.tc_compute_time_ms() + details.scv0_compute_time_ms();
-}
-
-inline double InfeedTimeMs(const PerTpuStepDetails& details) {
-  return details.tc_infeed_time_ms() + details.scv0_infeed_time_ms();
-}
-
-inline double AllReduceTimeMs(const PerTpuStepDetails& details) {
-  return details.all_reduce_compute_time_ms() +
-         details.all_reduce_sync_time_ms();
-}
-
-inline double NonIdleTimeMs(const PerTpuStepDetails& details) {
-  return ComputeTimeMs(details) + InfeedTimeMs(details) +
-         AllReduceTimeMs(details) + details.tc_outfeed_time_ms();
-}
-
-// Time spent by a training step on TPU.
-inline double StepTimeMs(const PerTpuStepDetails& details) {
-  return NonIdleTimeMs(details) + details.tc_idle_time_ms();
-}
-
-}  // namespace profiler
-}  // namespace tensorflow
+#include "xprof/utils/tpu_step_details_utils.h"  // from @org_xprof  // IWYU pragma: export
 
 #endif  // TENSORFLOW_CORE_PROFILER_UTILS_TPU_STEP_DETAILS_UTILS_H_

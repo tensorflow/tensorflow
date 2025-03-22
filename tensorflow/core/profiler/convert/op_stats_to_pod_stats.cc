@@ -28,8 +28,8 @@ limitations under the License.
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/profiler/protobuf/steps_db.pb.h"
-#include "tensorflow/core/profiler/utils/diagnostics.h"
-#include "tensorflow/core/profiler/utils/event_span.h"
+#include "xprof/utils/diagnostics.h"  // from @org_xprof
+#include "xprof/utils/event_span.h"  // from @org_xprof
 
 namespace tensorflow {
 namespace profiler {

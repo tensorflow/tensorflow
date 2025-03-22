@@ -24,7 +24,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/convert/op_metrics_db_combiner.h"
 #include "tensorflow/core/profiler/protobuf/hardware_types.pb.h"
 #include "tensorflow/core/profiler/protobuf/op_stats.pb.h"
-#include "tensorflow/core/profiler/utils/step_intersection.h"
+#include "xprof/utils/step_intersection.h"  // from @org_xprof
 
 namespace tensorflow {
 namespace profiler {

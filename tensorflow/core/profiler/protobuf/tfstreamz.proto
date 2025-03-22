@@ -4,30 +4,4 @@ syntax = "proto3";
 
 package tensorflow.profiler.tfstreamz;
 
-// A proxy proto to serialize tensorflow::monitoring::Percentiles
-
-enum UnitOfMeasure {
-  NUMBER = 0;
-  TIME = 1;
-  BYTES = 2;
-}
-
-message PercentilePoint {
-  // In the [0, 100] range.
-  double percentile = 1;
-  double value = 2;
-}
-
-message Percentiles {
-  UnitOfMeasure unit_of_measure = 1;
-  uint64 start_nstime = 2;
-  uint64 end_nstime = 3;
-  double min_value = 4;
-  double max_value = 5;
-  double mean = 6;
-  double stddev = 7;
-  uint64 num_samples = 8;
-  uint64 total_samples = 9;
-  double accumulator = 10;
-  repeated PercentilePoint points = 11;
-}
+import public "plugin/tensorboard_plugin_profile/protobuf/tfstreamz.proto";

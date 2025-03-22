@@ -45,18 +45,18 @@ limitations under the License.
 #include "tensorflow/core/profiler/protobuf/op_stats.pb.h"
 #include "tensorflow/core/profiler/protobuf/steps_db.pb.h"
 #include "tensorflow/core/profiler/protobuf/tf_function.pb.h"
-#include "tensorflow/core/profiler/utils/device_caps_utils.h"
-#include "tensorflow/core/profiler/utils/event_span.h"
-#include "tensorflow/core/profiler/utils/gpu_event_stats.h"
-#include "tensorflow/core/profiler/utils/hardware_type_utils.h"
-#include "tensorflow/core/profiler/utils/hlo_module_map.h"
 #include "tensorflow/core/profiler/utils/hlo_proto_map.h"
-#include "tensorflow/core/profiler/utils/kernel_stats_utils.h"
-#include "tensorflow/core/profiler/utils/op_utils.h"
 #include "tensorflow/core/profiler/utils/xplane_schema.h"
 #include "tensorflow/core/profiler/utils/xplane_utils.h"
 #include "tensorflow/core/profiler/utils/xplane_visitor.h"
 #include "tsl/profiler/protobuf/xplane.pb.h"
+#include "xprof/utils/device_caps_utils.h"  // from @org_xprof
+#include "xprof/utils/event_span.h"  // from @org_xprof
+#include "xprof/utils/gpu_event_stats.h"  // from @org_xprof
+#include "xprof/utils/hardware_type_utils.h"  // from @org_xprof
+#include "xprof/utils/hlo_module_map.h"  // from @org_xprof
+#include "xprof/utils/kernel_stats_utils.h"  // from @org_xprof
+#include "xprof/utils/op_utils.h"  // from @org_xprof
 
 namespace tensorflow {
 namespace profiler {

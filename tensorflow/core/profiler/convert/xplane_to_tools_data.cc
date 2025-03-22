@@ -66,13 +66,13 @@ limitations under the License.
 #include "tensorflow/core/profiler/protobuf/roofline_model.pb.h"
 #include "tensorflow/core/profiler/protobuf/tf_data_stats.pb.h"
 #include "tensorflow/core/profiler/protobuf/tf_stats.pb.h"
-#include "tensorflow/core/profiler/utils/hardware_type_utils.h"
 #include "tensorflow/core/profiler/utils/xplane_schema.h"
 #include "tensorflow/core/profiler/utils/xplane_utils.h"
 #include "tsl/platform/protobuf.h"
 #include "tsl/profiler/protobuf/xplane.pb.h"
 #include "xprof/convert/trace_viewer/trace_events_to_json.h"  // from @org_xprof
 #include "xprof/convert/trace_viewer/trace_viewer_visibility.h"  // from @org_xprof
+#include "xprof/utils/hardware_type_utils.h"  // from @org_xprof
 
 namespace tensorflow {
 namespace profiler {

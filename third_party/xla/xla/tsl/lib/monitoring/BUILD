@@ -28,8 +28,8 @@ package(
         "//xla/tsl/distributed_runtime:__subpackages__",
         "//tensorflow/compiler/mlir/tf2xla:__subpackages__",
         "//tensorflow_serving/model_servers:__subpackages__",
-        # xprof/pywrap depends on this package
-        "//third_party/xprof/pywrap:__pkg__",
+        # xprof depends on this package
+        "//third_party/xprof:__subpackages__",
         "//tensorflow/python/profiler/internal:__pkg__",
     ]),
     licenses = ["notice"],
