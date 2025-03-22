@@ -100,7 +100,7 @@ absl::StatusOr<bool> MultiOutputFusion::Run(
             continue;
           }
           if (instruction_id < user_id &&
-              user->opcode() == HloOpcode::kFusion) {
+              HloPredicateIsOp<HloOpcode::kFusion>(user)) {
             VLOG(10) << "User ID for user: " << user->name() << " is "
                      << user_id << " which is higher than " << instruction_id;
             continue;
@@ -151,13 +151,13 @@ HloInstruction* MultiOutputFusion::Fuse(HloInstruction* instr1,
   HloInstruction* fused = instr2;
   // Make sure that if only one of the instructions is a fusion, or if only one
   // of the instructions is a multi-output fusion, it's what will be fused into.
-  if (fused->opcode() == HloOpcode::kFusion) {
+  if (HloPredicateIsOp<HloOpcode::kFusion>(fused)) {
     std::swap(remaining, fused);
   }
   if (fused->IsMultiOutputFusion()) {
     std::swap(remaining, fused);
   }
-  if (fused->opcode() == HloOpcode::kFusion) {
+  if (HloPredicateIsOp<HloOpcode::kFusion>(fused)) {
     remaining->MergeFusionInstructionIntoMultiOutput(fused);
   } else {
     remaining->FuseInstructionIntoMultiOutput(fused);
@@ -187,7 +187,7 @@ HloInstruction* MultiOutputFusion::CreateFusion(HloInstruction* base,
 bool MultiOutputFusion::IsProfitableOperand(HloInstruction* instr) {
   // kConstant instruction will not have memory reads, so it won't be a profit
   // source. Skip them.
-  if (instr->opcode() == HloOpcode::kConstant &&
+  if (HloPredicateIsOp<HloOpcode::kConstant>(instr) &&
       ShapeUtil::IsEffectiveScalar(instr->shape())) {
     return false;
   }
@@ -302,7 +302,7 @@ void MultiOutputFusion::UpdateAfterFuse(
 
 bool MultiOutputFusion::LegalToFuse(HloInstruction* instr1,
                                     HloInstruction* instr2) {
-  if (instr1->opcode() != HloOpcode::kFusion) {
+  if (HloPredicateIsNotOp<HloOpcode::kFusion>(instr1)) {
     return false;
   }
   return LegalToFuseMainConstraints(instr1, instr2);
@@ -328,7 +328,7 @@ bool MultiOutputFusion::LegalToFuseMainConstraints(HloInstruction* instr1,
       return false;
     }
     for (auto user : instr->users()) {
-      if (user->opcode() != HloOpcode::kGetTupleElement) {
+      if (HloPredicateIsNotOp<HloOpcode::kGetTupleElement>(user)) {
         return true;
       }
     }
@@ -424,13 +424,13 @@ bool MultiOutputFusion::Perform() {
       VLOG(1) << "Fuse!";
       VLOG(2) << "Before multi_output_fusion:";
       VLOG(2) << "instr1: " << instr1->ToString();
-      if (instr1->opcode() == HloOpcode::kFusion) {
+      if (HloPredicateIsOp<HloOpcode::kFusion>(instr1)) {
         VLOG(2) << "\n"
                 << instr1->fused_instructions_computation()->ToString(
                        HloPrintOptions().set_indent_amount(1));
       }
       VLOG(2) << "instr2: " << instr2->ToString();
-      if (instr2->opcode() == HloOpcode::kFusion) {
+      if (HloPredicateIsOp<HloOpcode::kFusion>(instr2)) {
         VLOG(2) << "\n"
                 << instr2->fused_instructions_computation()->ToString(
                        HloPrintOptions().set_indent_amount(1));

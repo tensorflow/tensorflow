@@ -49,7 +49,7 @@ static void FindOnlyWhileInstruction(HloComputation* computation,
                                      HloInstruction** while_instruction) {
   *while_instruction = nullptr;
   for (auto* instr : computation->instructions()) {
-    if (instr->opcode() == HloOpcode::kWhile) {
+    if (HloPredicateIsOp<HloOpcode::kWhile>(instr)) {
       ASSERT_EQ(*while_instruction, nullptr);
       *while_instruction = instr;
     }
