@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_PYTHON_TO_IFRT_SHARDING_H_
 #define XLA_PYTHON_TO_IFRT_SHARDING_H_
 
+#include "absl/status/statusor.h"
 #include "nanobind/nanobind.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/python/ifrt/device_list.h"

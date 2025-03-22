@@ -418,6 +418,7 @@ cc_library(
         ":types",
         "//xla:comparison_util",
         "//xla:shape_util",
+        "//xla:xla_data_proto_cc",
         "//xla/ffi",
         "//xla/ffi:ffi_api",
         "//xla/pjrt:exceptions",

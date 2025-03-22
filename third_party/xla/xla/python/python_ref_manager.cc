@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "xla/python/python_ref_manager.h"
 
+#include <Python.h>
+
 #include <atomic>
 #include <deque>
 #include <memory>
