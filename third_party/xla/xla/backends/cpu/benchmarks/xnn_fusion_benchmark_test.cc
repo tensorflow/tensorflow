@@ -22,6 +22,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/strings/substitute.h"
 #include "absl/types/span.h"
+#include "xla/backends/cpu/benchmarks/aot_benchmark_helper.h"
 #include "xla/backends/cpu/benchmarks/hlo_benchmark_runner.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
@@ -37,6 +38,7 @@ static absl::Status RunFusionBenchmark(benchmark::State& state,
                                        bool is_xnn_fusion = false) {
   int64_t d0 = state.range(0);  // Tensor size.
   int64_t n = state.range(1);   // Number of add-multiply iterations.
+  bool is_aot = static_cast<bool>(state.range(2));
 
   // Adding `n` iterations of `add` and `multiply`.
   std::string repeat;
@@ -57,6 +59,8 @@ static absl::Status RunFusionBenchmark(benchmark::State& state,
 
   HloBenchmarkOptions options;
   if (is_xnn_fusion) options.disable_parallel_task_assigner = true;
+  options.aot_options = is_aot ? GetAotCompilationOptions() : nullptr;
+
   return RunHloBenchmark(state, hlo, args,
                          {{"$d0", absl::StrCat(d0)},
                           {"$n", absl::StrCat(n)},
@@ -154,17 +158,24 @@ static void BM_XnnDotAndEltwiseF32(benchmark::State& state) {
   CHECK_OK(RunFusionBenchmark(state, hlo, /*is_xnn_fusion=*/true));
 }
 
-#define BENCHMARK_FUSION(name)  \
-  BENCHMARK(name)               \
-      ->MeasureProcessCPUTime() \
-      ->Args({1024, 4})         \
-      ->Args({1024, 8})         \
-      ->Args({1024, 16})        \
-      ->Args({1024, 32})
+void GenerateFusionArgs(benchmark::internal::Benchmark* benchmark) {
+  benchmark->MeasureProcessCPUTime();
+  benchmark->ArgNames({"d0", "n", "is_aot"});
+  const std::vector<int64_t> d0_values = {1024};
+  const std::vector<int64_t> n_values = {4, 8, 16, 32};
+  const std::vector<bool> is_aot_values = {false, true};
+  for (const auto& d0 : d0_values) {
+    for (const auto& n : n_values) {
+      for (const auto& is_aot : is_aot_values) {
+        benchmark->Args({d0, n, is_aot});
+      }
+    }
+  }
+}
 
-BENCHMARK_FUSION(BM_EltwiseF32);
-BENCHMARK_FUSION(BM_XnnEltwiseF32);
-BENCHMARK_FUSION(BM_DotAndEltwiseF32);
-BENCHMARK_FUSION(BM_XnnDotAndEltwiseF32);
+BENCHMARK(BM_EltwiseF32)->Apply(GenerateFusionArgs);
+BENCHMARK(BM_XnnEltwiseF32)->Apply(GenerateFusionArgs);
+BENCHMARK(BM_DotAndEltwiseF32)->Apply(GenerateFusionArgs);
+BENCHMARK(BM_XnnDotAndEltwiseF32)->Apply(GenerateFusionArgs);
 
 }  // namespace xla::cpu

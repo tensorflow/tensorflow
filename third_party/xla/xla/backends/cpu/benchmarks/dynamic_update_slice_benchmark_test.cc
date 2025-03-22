@@ -20,6 +20,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/backends/cpu/benchmarks/aot_benchmark_helper.h"
 #include "xla/backends/cpu/benchmarks/hlo_benchmark_runner.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
@@ -32,6 +33,7 @@ namespace xla::cpu {
 
 static void BM_DynamicUpdateSliceF32(benchmark::State& state) {
   int64_t d0 = state.range(0);
+  bool is_aot = static_cast<bool>(state.range(1));
 
   absl::string_view hlo = R"(
     HloModule dynamic_update_slice_f32_$d0
@@ -55,16 +57,27 @@ static void BM_DynamicUpdateSliceF32(benchmark::State& state) {
   auto p3 = LiteralUtil::CreateR0<int32_t>(0);
 
   std::vector<const Literal*> args = {&p0, &p1, &p2, &p3};
-  CHECK_OK(RunHloBenchmark(state, hlo, args, {{"$d0", absl::StrCat(d0)}}));
+
+  HloBenchmarkOptions benchmark_options;
+  benchmark_options.aot_options = is_aot ? GetAotCompilationOptions() : nullptr;
+
+  CHECK_OK(RunHloBenchmark(state, hlo, args, {{"$d0", absl::StrCat(d0)}},
+                           benchmark_options));
 }
 
-BENCHMARK(BM_DynamicUpdateSliceF32)
-    ->MeasureProcessCPUTime()
-    ->Arg(128)
-    ->Arg(256)
-    ->Arg(512)
-    ->Arg(1024)
-    ->Arg(8192)
-    ->Arg(16384);
+void GenerateDynamicUpdateSliceArgs(benchmark::internal::Benchmark* benchmark) {
+  benchmark->MeasureProcessCPUTime();
+  benchmark->ArgNames({"d0"});
+  const std::vector<int64_t> args_values = {128, 256, 512, 1024, 8192, 16384};
+  const std::vector<bool> is_aot_values = {false, true};
+
+  for (int64_t d0 : args_values) {
+    for (bool is_aot : is_aot_values) {
+      benchmark->Args({d0, is_aot});
+    }
+  }
+}
+
+BENCHMARK(BM_DynamicUpdateSliceF32)->Apply(GenerateDynamicUpdateSliceArgs);
 
 }  // namespace xla::cpu

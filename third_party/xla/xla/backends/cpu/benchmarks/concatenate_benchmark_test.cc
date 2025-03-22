@@ -13,7 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <array>
 #include <cstdint>
+#include <memory>
 #include <random>
 #include <vector>
 
@@ -21,6 +23,7 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/backends/cpu/benchmarks/aot_benchmark_helper.h"
 #include "xla/backends/cpu/benchmarks/hlo_benchmark_runner.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
@@ -37,6 +40,7 @@ static void BM_ConcatenateTwoR3F32(benchmark::State& state) {
   int64_t dims[3] = {state.range(1), state.range(2), state.range(3)};
   Shape shape = ShapeUtil::MakeShape(F32, dims);
   int64_t axis = state.range(4);
+  const bool is_aot = static_cast<bool>(state.range(5));
 
   absl::string_view hlo = R"(
     HloModule concatenate_r3f32_$shape_repr
@@ -59,6 +63,7 @@ static void BM_ConcatenateTwoR3F32(benchmark::State& state) {
 
   HloBenchmarkOptions benchmark_options;
   benchmark_options.disable_parallel_task_assigner = disable_parallel_backend;
+  benchmark_options.aot_options = is_aot ? GetAotCompilationOptions() : nullptr;
 
   std::vector<const Literal*> args = {&p0, &p1};
   CHECK_OK(RunHloBenchmark(state, hlo, args,
@@ -69,34 +74,28 @@ static void BM_ConcatenateTwoR3F32(benchmark::State& state) {
                            benchmark_options));
 }
 
-BENCHMARK(BM_ConcatenateTwoR3F32)
-    ->MeasureProcessCPUTime()
-    ->ArgNames({"parallel", "batch", "width", "height", "axis"})
-    // Fast Concat (memcpy, no parallelism)
-    //   axis=0
-    ->Args({false, 256, 128, 64, 0})
-    ->Args({false, 64, 256, 128, 0})
-    ->Args({false, 128, 64, 256, 0})
-    //   axis=1
-    ->Args({false, 256, 128, 64, 1})
-    ->Args({false, 64, 256, 128, 1})
-    ->Args({false, 128, 64, 256, 1})
-    //   axis=2
-    ->Args({false, 256, 128, 64, 2})
-    ->Args({false, 64, 256, 128, 2})
-    ->Args({false, 128, 64, 256, 2})
-    // Parallel Concat
-    //   axis=0
-    ->Args({true, 256, 128, 64, 0})
-    ->Args({true, 64, 256, 128, 0})
-    ->Args({true, 128, 64, 256, 0})
-    //   axis=1
-    ->Args({true, 256, 128, 64, 1})
-    ->Args({true, 64, 256, 128, 1})
-    ->Args({true, 128, 64, 256, 1})
-    //   axis=2
-    ->Args({true, 256, 128, 64, 2})
-    ->Args({true, 64, 256, 128, 2})
-    ->Args({true, 128, 64, 256, 2});
+void GenerateArgs(benchmark::internal::Benchmark* benchmark) {
+  benchmark->ArgNames(
+      {"parallel", "batch", "width", "height", "axis", "is_aot"});
+  const std::vector<bool> parralel_values = {false, true};
+  const std::vector<std::array<int64_t, 3>> batch_height_width_values = {
+      {256, 128, 64}, {64, 256, 128}, {128, 64, 256}};
+  const std::vector<int64_t> axis_values = {0, 1, 2};
+  const std::vector<bool> is_aot_values = {false, true};
+
+  for (bool parallel : parralel_values) {
+    for (const auto& [batch, height, width] : batch_height_width_values) {
+      for (int64_t axis : axis_values) {
+        for (bool is_aot : is_aot_values) {
+          benchmark->Args({parallel, batch, height, width, axis, is_aot});
+        }
+      }
+    }
+  }
+
+  benchmark->MeasureProcessCPUTime();
+}
+
+BENCHMARK(BM_ConcatenateTwoR3F32)->Apply(GenerateArgs);
 
 }  // namespace xla::cpu

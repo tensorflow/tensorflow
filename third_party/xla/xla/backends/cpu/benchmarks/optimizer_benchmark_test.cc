@@ -20,6 +20,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/backends/cpu/benchmarks/aot_benchmark_helper.h"
 #include "xla/backends/cpu/benchmarks/hlo_benchmark_runner.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
@@ -32,6 +33,7 @@ namespace xla::cpu {
 
 static void BM_Optimizer0(benchmark::State& state) {
   int64_t d0 = state.range(0);
+  bool is_aot = static_cast<bool>(state.range(1));
 
   absl::string_view hlo = R"(
     HloModule jit_update_fn_$d0
@@ -107,16 +109,27 @@ static void BM_Optimizer0(benchmark::State& state) {
   auto p1 = *LiteralUtil::CreateRandomLiteral<S32>(scalar, &engine, 1, 2);
 
   std::vector<const Literal*> args = {&p0, &p0, &p0, &p1};
-  CHECK_OK(RunHloBenchmark(state, hlo, args, {{"$d0", absl::StrCat(d0)}}));
+
+  HloBenchmarkOptions benchmark_options;
+  benchmark_options.aot_options = is_aot ? GetAotCompilationOptions() : nullptr;
+
+  CHECK_OK(RunHloBenchmark(state, hlo, args, {{"$d0", absl::StrCat(d0)}},
+                           benchmark_options));
 }
 
-BENCHMARK(BM_Optimizer0)
-    ->MeasureProcessCPUTime()
-    ->Arg(128)
-    ->Arg(256)
-    ->Arg(512)
-    ->Arg(1024)
-    ->Arg(8192)
-    ->Arg(16384);
+void GenerateOptimizerArgs(benchmark::internal::Benchmark* benchmark) {
+  benchmark->MeasureProcessCPUTime();
+  benchmark->ArgNames({"d0", "is_aot"});
+  const std::vector<int64_t> args_values = {128, 256, 512, 1024, 8192, 16384};
+  const std::vector<bool> is_aot_values = {false, true};
+
+  for (const auto& arg_value : args_values) {
+    for (const auto& is_aot : is_aot_values) {
+      benchmark->Args({arg_value, is_aot});
+    }
+  }
+}
+
+BENCHMARK(BM_Optimizer0)->Apply(GenerateOptimizerArgs);
 
 }  // namespace xla::cpu
