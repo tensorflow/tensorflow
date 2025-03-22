@@ -22,12 +22,12 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "xla/tsl/lib/io/buffered_inputstream.h"
 #include "xla/tsl/lib/io/random_inputstream.h"
+#include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/file_system.h"
+#include "xla/tsl/platform/logging.h"
+#include "xla/tsl/platform/status.h"
 #include "xla/tsl/util/command_line_flags.h"
-#include "tsl/platform/env.h"
-#include "tsl/platform/file_system.h"
 #include "tsl/platform/init_main.h"
-#include "tsl/platform/logging.h"
-#include "tsl/platform/status.h"
 
 using std::string;
 
