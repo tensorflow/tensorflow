@@ -153,6 +153,7 @@ cc_library(
         "//xla/service/gpu:stream_executor_util",
     ]) + if_cuda([
         # keep sorted
+        "//xla/service/gpu/model:gpu_collective_performance_model",
         "//xla/stream_executor/gpu:gpu_cudamallocasync_allocator",
         "@local_config_cuda//cuda:cuda_headers",
     ]) + if_rocm([

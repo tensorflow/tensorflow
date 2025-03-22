@@ -19,6 +19,7 @@ limitations under the License.
 #include <array>
 #include <cstdint>
 
+#include "absl/status/statusor.h"
 #include "absl/time/time.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/gpu/model/gpu_hlo_cost_analysis.h"
@@ -26,6 +27,7 @@ limitations under the License.
 #include "xla/stream_executor/device_description.h"
 
 #if GOOGLE_CUDA
+#include "third_party/gpus/cuda/include/cuda.h"
 #if defined(PLATFORM_POSIX) || defined(PLATFORM_GOOGLE)
 #include <dlfcn.h>
 #endif
@@ -43,6 +45,15 @@ NVML_FUNCTOR(nvmlDeviceGetHandleByIndex, nvmlReturn_t,
 NVML_FUNCTOR(nvmlDeviceGetNvLinkCapability, nvmlReturn_t,
              (nvmlDevice_t device, unsigned int link,
               nvmlNvLinkCapability_t capability, unsigned int* capResult))
+NVML_FUNCTOR(nvmlSystemGetNVMLVersion, nvmlReturn_t,
+             (char* version, size_t versionSize))
+
+#if CUDA_VERSION >= 12040
+NVML_FUNCTOR(nvmlDeviceGetHandleByPciBusId_v2, nvmlReturn_t,
+             (const char* pciBusId, nvmlDevice_t* device))
+NVML_FUNCTOR(nvmlDeviceGetGpuFabricInfoV, nvmlReturn_t,
+             (nvmlDevice_t device, nvmlGpuFabricInfoV_t* gpuFabricInfo))
+#endif  // CUDA_VERSION >= 12040
 
 #endif
 
