@@ -15,6 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_DELEGATES_FLEX_KERNEL_H_
 #define TENSORFLOW_LITE_DELEGATES_FLEX_KERNEL_H_
 
+#include <map>
 #include <memory>
 
 #include "tensorflow/core/platform/status.h"
