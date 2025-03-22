@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <Python.h>
 
+#include "absl/strings/string_view.h"
 #include "nanobind/nanobind.h"
 #include "xla/python/ifrt/memory.h"
 #include "xla/python/nb_class_ptr.h"
