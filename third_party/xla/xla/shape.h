@@ -90,7 +90,7 @@ class Shape {
 
   // Returns the rank (number of dimensions) of the given shape. Returns 0 for
   // non-array shapes.
-  ABSL_DEPRECATED("Use dimensions().size() instead.")
+  ABSL_DEPRECATED("Use dimensions().size() instead please.")
   int64_t rank() const { return dimensions().size(); }
 
   // Returns whether the shape is of the specified type (array, tuple, etc).
