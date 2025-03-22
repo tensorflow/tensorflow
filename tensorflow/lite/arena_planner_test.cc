@@ -310,6 +310,14 @@ TEST_F(ArenaPlannerTest, ZeroSizedTensors) {
   EXPECT_EQ((*graph_->tensors())[1].data.raw, nullptr);
 }
 
+TEST_F(ArenaPlannerTest, TensorWithBufferHandle) {
+  TestGraph graph({1}, {{{1}, {2}, {}}}, {2});
+  (*graph.tensors())[1].buffer_handle = 1;
+  SetGraph(&graph);
+  Execute(0, graph.nodes().size() - 1);
+  EXPECT_EQ((*graph_->tensors())[1].data.raw, nullptr);
+}
+
 TEST_F(ArenaPlannerTest, SimpleGraph) {
   TestGraph graph({0, 1},
                   {
