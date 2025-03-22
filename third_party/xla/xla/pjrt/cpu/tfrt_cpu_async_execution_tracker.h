@@ -44,7 +44,7 @@ class TfrtCpuScopedAsyncExecution {
 
   TfrtCpuScopedAsyncExecution(TfrtCpuAsyncExecutionTracker* tracker,
                               int32_t launch_id, Key key);
-  TfrtCpuScopedAsyncExecution(TfrtCpuScopedAsyncExecution&& other);
+  TfrtCpuScopedAsyncExecution(TfrtCpuScopedAsyncExecution&& other) noexcept;
   ~TfrtCpuScopedAsyncExecution();
 
   TfrtCpuScopedAsyncExecution(const TfrtCpuScopedAsyncExecution&) = delete;
