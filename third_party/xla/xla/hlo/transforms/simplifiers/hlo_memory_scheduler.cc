@@ -757,9 +757,8 @@ absl::StatusOr<HloSchedule> ScheduleModule(
                       HloAliasAnalysis::Run(module));
 
   TF_ASSIGN_OR_RETURN(HloSchedule schedule,
-                      (algorithm ? algorithm : DefaultModuleScheduler)(
-                          module, *points_to_analysis, *alias_analysis,
-                          size_function, execution_threads, peak_memory));
+                      algorithm(module, *points_to_analysis, *alias_analysis,
+                                size_function, execution_threads, peak_memory));
 
   TF_RETURN_IF_ERROR(schedule.Verify());
 
