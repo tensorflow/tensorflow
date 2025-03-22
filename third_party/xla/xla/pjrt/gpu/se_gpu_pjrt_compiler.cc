@@ -181,6 +181,7 @@ StreamExecutorGpuCompiler::Compile(CompileOptions options,
                               : 1;
   auto unique_module_group =
       std::make_unique<HloModuleGroup>(std::move(hlo_module));
+  // compile to executables instead?? http://shortn/_QXFNLfoc4c
   TF_ASSIGN_OR_RETURN(
       std::vector<std::unique_ptr<AotCompilationResult>> aot_results,
       gpu_compiler->CompileAheadOfTime(std::move(unique_module_group),
@@ -189,8 +190,9 @@ StreamExecutorGpuCompiler::Compile(CompileOptions options,
   output_memory_kinds[0].resize(num_outputs,
                                 StreamExecutorGpuHbmMemorySpace::kKind);
   return std::make_unique<StreamExecutorExecutable>(
-      std::move(input_options), std::move(aot_results), num_replicas,
-      num_partitions, name, fingerprint, std::move(output_memory_kinds));
+      std::move(input_options), std::move(aot_results), std::move(hlo_module),
+      num_replicas, num_partitions, name, fingerprint,
+      std::move(output_memory_kinds));
 }
 
 absl::StatusOr<std::unique_ptr<PjRtExecutable>>
