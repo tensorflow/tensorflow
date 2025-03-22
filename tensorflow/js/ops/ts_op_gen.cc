@@ -19,11 +19,17 @@ limitations under the License.
 #include <unordered_map>
 #include <vector>
 
+#include "absl/log/log.h"
 #include "tensorflow/core/framework/api_def.pb.h"
+#include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/framework/op_def_util.h"
-#include "tensorflow/core/lib/gtl/map_util.h"
+#include "tensorflow/core/framework/op_gen_lib.h"
 #include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/file_system.h"
+#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/public/version.h"
+#include "tsl/platform/status.h"
 
 namespace tensorflow {
 namespace {
