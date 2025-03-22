@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/util/presized_cuckoo_map.h"
 
-#include <array>
+#include <cstdint>
 #include <vector>
 
 #include "tensorflow/core/platform/env.h"
