@@ -107,7 +107,7 @@ Status ExportShapeFunction(InferenceContext* c) {
   // Different lookup tables have different output shapes.
   c->set_output(0, c->UnknownShape());
   c->set_output(1, c->UnknownShape());
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status ImportShapeFunction(InferenceContext* c) {
