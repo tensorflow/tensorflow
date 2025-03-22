@@ -1111,6 +1111,7 @@ cc_library(
         ":cuda_platform",
         ":cudnn_plugin",
         ":cufft_plugin",
+        ":make_batch_pointers_kernel_cuda",
         "//xla/tsl/cuda:cusolver",
         "//xla/tsl/cuda:cusparse",
         "//xla/tsl/cuda:tensorrt_rpath",
@@ -1955,4 +1956,25 @@ xla_cc_test(
         "@com_google_absl//absl/status",
         "@com_google_googletest//:gtest_main",
     ],
+)
+
+cuda_library(
+    name = "make_batch_pointers_kernel_cuda",
+    srcs = ["make_batch_pointers_kernel_cuda.cu.cc"],
+    # copybara:uncomment compatible_with = ["//buildenv/target:non_prod"],
+    tags = [
+        "cuda-only",
+        "gpu",
+    ],
+    deps = [
+        "//xla/stream_executor:kernel_spec",
+        "//xla/stream_executor/cuda:cuda_platform_id",
+        "//xla/stream_executor/gpu:gpu_kernel_registry",
+        "//xla/stream_executor/gpu:make_batch_pointers_kernel",
+        "//xla/stream_executor/platform:initialize",
+        "@com_google_absl//absl/base",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
+    ],
+    alwayslink = 1,
 )

@@ -15,7 +15,12 @@ limitations under the License.
 
 #include <cstddef>
 
-namespace xla::gpu {
+#include "xla/stream_executor/cuda/cuda_platform_id.h"
+#include "xla/stream_executor/gpu/gpu_kernel_registry.h"
+#include "xla/stream_executor/gpu/make_batch_pointers_kernel.h"
+#include "xla/stream_executor/kernel_spec.h"
+
+namespace stream_executor::cuda {
 namespace {
 __global__ void MakeBatchPointers(char* base, size_t stride, size_t n,
                                   void** ptrs_out) {
@@ -25,8 +30,14 @@ __global__ void MakeBatchPointers(char* base, size_t stride, size_t n,
 }
 }  // namespace
 
-namespace make_batch_pointers {
-void* kernel() { return reinterpret_cast<void*>(MakeBatchPointers); }
-}  // namespace make_batch_pointers
+}  // namespace stream_executor::cuda
 
-}  // namespace xla::gpu
+GPU_KERNEL_REGISTRY_REGISTER_KERNEL_STATICALLY(
+    MakeBatchPointersKernelCuda, stream_executor::gpu::MakeBatchPointersKernel,
+    stream_executor::cuda::kCudaPlatformId, ([] {
+      stream_executor::MultiKernelLoaderSpec spec(4);
+      spec.AddInProcessSymbol(
+          reinterpret_cast<void*>(&stream_executor::cuda::MakeBatchPointers),
+          "make_batch_pointers");
+      return spec;
+    }));

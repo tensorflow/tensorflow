@@ -825,6 +825,7 @@ cc_library(
     deps = [
         ":amdhipblaslt_plugin",
         ":hipfft_plugin",
+        ":make_batch_pointers_kernel_rocm",
         ":miopen_plugin",
         ":rocblas_plugin",
         ":rocm_helpers",
@@ -1072,4 +1073,26 @@ cc_library(
         "@local_config_rocm//rocm:rocm_headers",
         "@local_tsl//tsl/platform:casts",
     ],
+)
+
+rocm_library(
+    name = "make_batch_pointers_kernel_rocm",
+    srcs = ["make_batch_pointers_kernel_rocm.cu.cc"],
+    # copybara:uncomment compatible_with = ["//buildenv/target:non_prod"],
+    tags = [
+        "gpu",
+        "rocm-only",
+    ],
+    deps = [
+        "//xla/stream_executor:kernel_spec",
+        "//xla/stream_executor/gpu:gpu_kernel_registry",
+        "//xla/stream_executor/gpu:make_batch_pointers_kernel",
+        "//xla/stream_executor/platform:initialize",
+        "//xla/stream_executor/rocm:rocm_platform_id",
+        "@com_google_absl//absl/base",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
+        "@local_config_rocm//rocm:rocm_headers",
+    ],
+    alwayslink = 1,
 )
