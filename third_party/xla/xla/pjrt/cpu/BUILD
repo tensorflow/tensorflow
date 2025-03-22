@@ -24,15 +24,15 @@ xla_cc_test(
 )
 
 cc_library(
-    name = "tracked_tfrt_cpu_device_buffer",
-    srcs = ["tracked_tfrt_cpu_device_buffer.cc"],
-    hdrs = ["tracked_tfrt_cpu_device_buffer.h"],
+    name = "tracked_cpu_device_buffer",
+    srcs = ["tracked_cpu_device_buffer.cc"],
+    hdrs = ["tracked_cpu_device_buffer.h"],
     visibility =
         internal_visibility(["//xla/pjrt/cpu:legacy_cpu_buffer_internal_users"]),
     deps = [
-        "//xla:cpu_function_runtime",
         "//xla:shape_util",
         "//xla:util",
+        "//xla/backends/cpu:alignment",
         "//xla/service/cpu:cpu_event",
         "//xla/tsl/concurrency:async_value",
         "//xla/tsl/platform:statusor",
@@ -49,10 +49,10 @@ cc_library(
 )
 
 xla_cc_test(
-    name = "tracked_tfrt_cpu_device_buffer_test",
-    srcs = ["tracked_tfrt_cpu_device_buffer_test.cc"],
+    name = "tracked_cpu_device_buffer_test",
+    srcs = ["tracked_cpu_device_buffer_test.cc"],
     deps = [
-        ":tracked_tfrt_cpu_device_buffer",
+        ":tracked_cpu_device_buffer",
         "//xla:util",
         "//xla/service/cpu:cpu_event",
         "//xla/tsl/concurrency:async_value",
@@ -68,7 +68,7 @@ cc_library(
     hdrs = ["abstract_tfrt_cpu_buffer.h"],
     visibility = internal_visibility(["//xla/pjrt/cpu:legacy_cpu_buffer_internal_users"]),
     deps = [
-        ":tracked_tfrt_cpu_device_buffer",
+        ":tracked_cpu_device_buffer",
         "//xla:cpu_function_runtime",
         "//xla:literal",
         "//xla:shape_tree",
@@ -143,7 +143,7 @@ cc_library(
         ":abstract_tfrt_cpu_buffer",
         ":cpu_device",
         ":tfrt_cpu_async_execution_tracker",
-        ":tracked_tfrt_cpu_device_buffer",
+        ":tracked_cpu_device_buffer",
         "//xla:array",
         "//xla:cpu_function_runtime",
         "//xla:debug_options_flags",

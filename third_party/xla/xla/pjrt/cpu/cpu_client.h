@@ -47,7 +47,7 @@ limitations under the License.
 #include "xla/literal.h"
 #include "xla/pjrt/cpu/abstract_tfrt_cpu_buffer.h"
 #include "xla/pjrt/cpu/cpu_device.h"
-#include "xla/pjrt/cpu/tracked_tfrt_cpu_device_buffer.h"
+#include "xla/pjrt/cpu/tracked_cpu_device_buffer.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_common.h"
 #include "xla/pjrt/pjrt_compiler.h"
@@ -296,11 +296,10 @@ class TfrtCpuClient final : public PjRtClient {
 
 class TfrtCpuBuffer final : public AbstractTfrtCpuBuffer {
  public:
-  TfrtCpuBuffer(
-      Shape on_device_shape,
-      std::unique_ptr<TrackedTfrtCpuDeviceBuffer> tracked_device_buffer,
-      TfrtCpuClient* client, TfrtCpuDevice* device,
-      PjRtMemorySpace* memory_space);
+  TfrtCpuBuffer(Shape on_device_shape,
+                std::unique_ptr<TrackedCpuDeviceBuffer> tracked_device_buffer,
+                TfrtCpuClient* client, TfrtCpuDevice* device,
+                PjRtMemorySpace* memory_space);
 
   TfrtCpuBuffer(const TfrtCpuBuffer&) = delete;
   TfrtCpuBuffer(TfrtCpuBuffer&&) = delete;
@@ -443,8 +442,8 @@ class TfrtCpuExecutable final : public PjRtLoadedExecutable {
   // Checks that the input buffers passed in by the user have the correct size
   // on device for the compiled program.
   absl::Status CheckBufferCompatibilities(
-      absl::Span<std::pair<bool, TrackedTfrtCpuDeviceBuffer*> const>
-          input_buffers) const;
+      absl::Span<std::pair<bool, TrackedCpuDeviceBuffer*> const> input_buffers)
+      const;
 
   absl::StatusOr<Result> ExecuteHelper(
       absl::Span<PjRtBuffer* const> argument_handles, int replica,

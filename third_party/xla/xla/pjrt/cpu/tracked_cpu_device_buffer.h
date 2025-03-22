@@ -13,80 +13,61 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_PJRT_CPU_TRACKED_TFRT_CPU_DEVICE_BUFFER_H_
-#define XLA_PJRT_CPU_TRACKED_TFRT_CPU_DEVICE_BUFFER_H_
+#ifndef XLA_PJRT_CPU_TRACKED_CPU_DEVICE_BUFFER_H_
+#define XLA_PJRT_CPU_TRACKED_CPU_DEVICE_BUFFER_H_
 
 #include <cstddef>
 #include <cstdint>
 #include <cstdlib>
 #include <memory>
-#include <utility>
 
 #include "absl/container/inlined_vector.h"
 #include "absl/functional/any_invocable.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
-#include "xla/cpu_function_runtime.h"
 #include "xla/service/cpu/cpu_event.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
-#include "xla/tsl/platform/statusor.h"
-#include "xla/util.h"
-#include "tsl/platform/mem.h"
 
 namespace xla {
 
-class MaybeOwningCpuMemory {
+// A region of device memory that can be used to construct PjRt buffers. Device
+// memory can be either owned or non-owned.
+class CpuDeviceMemory {
  public:
-  using OwnedDataPtr = std::unique_ptr<uint8_t[], void (*)(void*)>;
+  using OwnedData = std::unique_ptr<uint8_t[], void (*)(void*)>;
 
-  MaybeOwningCpuMemory() = default;
+  CpuDeviceMemory() = default;
+  CpuDeviceMemory(CpuDeviceMemory&&) = default;
+  CpuDeviceMemory& operator=(CpuDeviceMemory&&) = default;
 
-  // Non-owning.
-  MaybeOwningCpuMemory(void* buf, size_t size) : buf_(buf), size_(size) {}
+  // Creates non-owning CPU device memory from a raw data pointer.
+  CpuDeviceMemory(void* data, size_t size_bytes);
 
-  // Owning.
-  MaybeOwningCpuMemory(OwnedDataPtr data, size_t size)
-      : buf_(data.get()), data_(std::move(data)), size_(size) {}
-
-  // Move-only.
-  MaybeOwningCpuMemory(MaybeOwningCpuMemory&&) = default;
-  MaybeOwningCpuMemory& operator=(MaybeOwningCpuMemory&&) = default;
-  MaybeOwningCpuMemory(const MaybeOwningCpuMemory&) = delete;
-  MaybeOwningCpuMemory& operator=(const MaybeOwningCpuMemory&) = delete;
+  // Creates owning CPU device memory from an owned data pointer.
+  CpuDeviceMemory(OwnedData data, size_t size_bytes);
 
   // Allocates owning memory wrapped in an available `AsyncValueRef`.
-  static absl::StatusOr<tsl::AsyncValueRef<MaybeOwningCpuMemory>>
-  AllocateAvailableAvr(size_t size) {
-    TF_ASSIGN_OR_RETURN(auto memory, Allocate(size));
-    return tsl::MakeAvailableAsyncValueRef<MaybeOwningCpuMemory>(
-        std::move(memory));
-  }
+  static absl::StatusOr<tsl::AsyncValueRef<CpuDeviceMemory>> AllocateAvailable(
+      size_t size_bytes);
 
   // Allocates raw owning memory. The typical usage is for delayed allocation.
-  static absl::StatusOr<MaybeOwningCpuMemory> Allocate(size_t size) {
-    uint8_t* data = static_cast<uint8_t*>(
-        tsl::port::AlignedMalloc(size, cpu_function_runtime::MinAlign()));
-    if (!data) {
-      return ResourceExhausted("Out of memory allocating %d bytes.", size);
-    }
-    return MaybeOwningCpuMemory(OwnedDataPtr{data, tsl::port::AlignedFree},
-                                size);
-  }
+  static absl::StatusOr<CpuDeviceMemory> Allocate(size_t size_bytes);
 
-  void* data() const { return buf_; }
-  size_t size() const { return size_; }
+  void* untyped_data() const { return data_; }
+  size_t size_bytes() const { return size_bytes_; }
 
  private:
-  void* buf_ = nullptr;                  // Non-owning data pointer.
-  OwnedDataPtr data_ = {nullptr, free};  // Owning data pointer;
-  size_t size_ = 0;                      // Size in number of bytes.
+  void* data_ = nullptr;                    // non-owning data pointer
+  OwnedData owned_data_ = {nullptr, free};  // optional owning data pointer
+  size_t size_bytes_ = 0;
 };
 
-// Class that represents CPU buffers. It optionally owns the buffers. It also
-// tracks the definition and usage of the memory to allow for synchronized usage
-// and deletion of CPU memory. This class is thread-compatible.
-class TrackedTfrtCpuDeviceBuffer {
+// A class that represents a CPU device buffer: it can be a single memory region
+// or multiple memory regions for a tuple buffers. It also tracks the definition
+// and usage of the memory to allow for synchronized usage and deletion of CPU
+// memory. This class is thread-compatible.
+class TrackedCpuDeviceBuffer {
  public:
   // For non-tuple, takes a single buffer.
   // For tuple, takes the leaf buffers. Tuple index table created internally.
@@ -94,16 +75,16 @@ class TrackedTfrtCpuDeviceBuffer {
 
   // Constructor for allocated cpu memory, i.e., `buffers` should have concrete
   // states. Definition event is after the list of `definition_events`.
-  TrackedTfrtCpuDeviceBuffer(
+  TrackedCpuDeviceBuffer(
       bool is_tuple, bool owns_buffers,
-      absl::InlinedVector<tsl::AsyncValueRef<MaybeOwningCpuMemory>, 4> buffers,
+      absl::InlinedVector<tsl::AsyncValueRef<CpuDeviceMemory>, 4> buffers,
       absl::InlinedVector<tsl::AsyncValueRef<CpuEvent>, 4> definition_events,
       absl::AnyInvocable<void() &&> on_delete_callback = nullptr);
 
   // Variant with single definition event.
-  TrackedTfrtCpuDeviceBuffer(
+  TrackedCpuDeviceBuffer(
       bool is_tuple, bool owns_buffers,
-      absl::InlinedVector<tsl::AsyncValueRef<MaybeOwningCpuMemory>, 4> buffers,
+      absl::InlinedVector<tsl::AsyncValueRef<CpuDeviceMemory>, 4> buffers,
       tsl::AsyncValueRef<CpuEvent> definition_event,
       absl::AnyInvocable<void() &&> on_delete_callback = nullptr);
 
@@ -112,39 +93,34 @@ class TrackedTfrtCpuDeviceBuffer {
   // the `buffers` after allocation. Definition event is after the list of
   // `definition_events`. Callers need to ensure cpu memory is allocated before
   // the definition event is ready.
-  TrackedTfrtCpuDeviceBuffer(
+  TrackedCpuDeviceBuffer(
       bool is_tuple, bool owns_buffers,
-      absl::InlinedVector<tsl::AsyncValueRef<MaybeOwningCpuMemory>, 4> buffers,
+      absl::InlinedVector<tsl::AsyncValueRef<CpuDeviceMemory>, 4> buffers,
       absl::InlinedVector<size_t, 4> buffer_sizes,
       absl::InlinedVector<tsl::AsyncValueRef<CpuEvent>, 4> definition_events,
       absl::AnyInvocable<void() &&> on_delete_callback = nullptr);
 
   // Variant with single definition event.
-  TrackedTfrtCpuDeviceBuffer(
+  TrackedCpuDeviceBuffer(
       bool is_tuple, bool owns_buffers,
-      absl::InlinedVector<tsl::AsyncValueRef<MaybeOwningCpuMemory>, 4> buffers,
+      absl::InlinedVector<tsl::AsyncValueRef<CpuDeviceMemory>, 4> buffers,
       absl::InlinedVector<size_t, 4> buffer_sizes,
       tsl::AsyncValueRef<CpuEvent> definition_event,
       absl::AnyInvocable<void() &&> on_delete_callback = nullptr);
 
-  // Move-only.
-  TrackedTfrtCpuDeviceBuffer(TrackedTfrtCpuDeviceBuffer&&) noexcept = default;
-  TrackedTfrtCpuDeviceBuffer& operator=(TrackedTfrtCpuDeviceBuffer&&) noexcept =
+  TrackedCpuDeviceBuffer(TrackedCpuDeviceBuffer&&) noexcept = default;
+  TrackedCpuDeviceBuffer& operator=(TrackedCpuDeviceBuffer&&) noexcept =
       default;
-  TrackedTfrtCpuDeviceBuffer(const TrackedTfrtCpuDeviceBuffer&) = delete;
-  TrackedTfrtCpuDeviceBuffer& operator=(const TrackedTfrtCpuDeviceBuffer&) =
-      delete;
 
-  ~TrackedTfrtCpuDeviceBuffer();
+  ~TrackedCpuDeviceBuffer();
 
-  absl::Span<const tsl::AsyncValueRef<MaybeOwningCpuMemory>> Buffers() {
+  absl::Span<const tsl::AsyncValueRef<CpuDeviceMemory>> Buffers() {
     return buffers_;
   }
 
   absl::Span<const size_t> BufferSizes() { return buffer_sizes_; }
 
-  tsl::AsyncValueRef<MaybeOwningCpuMemory> Buffer(
-      const ShapeIndex& shape_index);
+  tsl::AsyncValuePtr<CpuDeviceMemory> Buffer(const ShapeIndex& shape_index);
 
   size_t BufferSize(const ShapeIndex& shape_index);
 
@@ -163,19 +139,20 @@ class TrackedTfrtCpuDeviceBuffer {
   absl::InlinedVector<tsl::AsyncValueRef<CpuEvent>, 4>
   LockUseAndTransferUsageEvents();
 
+  bool owns_buffers() const { return owns_buffers_; }
+
+ private:
   // Relinquishes ownership of the buffer's device memory, e.g., after the
   // buffer is passed to a computation that aliases its inputs to outputs.
   void ReleaseDeviceMemory();
 
-  bool owns_buffers() const { return owns_buffers_; }
-
- private:
   bool is_tuple_;
   bool owns_buffers_;
+
   // If tuple, tuple index table is created and stored.
-  tsl::AsyncValueRef<MaybeOwningCpuMemory> tuple_index_table_;
+  tsl::AsyncValueRef<CpuDeviceMemory> tuple_index_table_;
   // If non-tuple, `buffers_` contains 1 buffer; otherwise all leaf buffers.
-  absl::InlinedVector<tsl::AsyncValueRef<MaybeOwningCpuMemory>, 4> buffers_;
+  absl::InlinedVector<tsl::AsyncValueRef<CpuDeviceMemory>, 4> buffers_;
   // Should correspond to size of each buffer in `buffers_` when `buffers_` is
   // available.
   absl::InlinedVector<size_t, 4> buffer_sizes_;
@@ -184,10 +161,10 @@ class TrackedTfrtCpuDeviceBuffer {
   tsl::AsyncValueRef<CpuEvent> definition_event_;
   // Usage events are associated with CPU operations that read from the buffers.
   absl::InlinedVector<tsl::AsyncValueRef<CpuEvent>, 4> usage_events_;
-  // A callback to call when the TrackedTfrtCpuDeviceBuffer is about to be
+  // A callback to call when the TrackedCpuDeviceBuffer is about to be
   // destroyed.
   absl::AnyInvocable<void() &&> on_delete_callback_;
 };
 }  // namespace xla
 
-#endif  // XLA_PJRT_CPU_TRACKED_TFRT_CPU_DEVICE_BUFFER_H_
+#endif  // XLA_PJRT_CPU_TRACKED_CPU_DEVICE_BUFFER_H_

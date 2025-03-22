@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/pjrt/cpu/tracked_tfrt_cpu_device_buffer.h"
+#include "xla/pjrt/cpu/tracked_cpu_device_buffer.h"
 
 #include <atomic>
 #include <cstddef>
@@ -27,9 +27,13 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
+#include "xla/backends/cpu/alignment.h"
 #include "xla/service/cpu/cpu_event.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
+#include "xla/tsl/platform/statusor.h"
+#include "xla/util.h"
+#include "tsl/platform/mem.h"
 
 namespace xla {
 namespace {
@@ -77,28 +81,55 @@ tsl::AsyncValueRef<CpuEvent> AfterAll(
 
 }  // namespace
 
-TrackedTfrtCpuDeviceBuffer::TrackedTfrtCpuDeviceBuffer(
+// Creates non-owning CPU device memory from a raw data pointer.
+CpuDeviceMemory::CpuDeviceMemory(void* data, size_t size_bytes)
+    : data_(data), size_bytes_(size_bytes) {}
+
+// Creates owning CPU device memory from an owned data pointer.
+CpuDeviceMemory::CpuDeviceMemory(OwnedData data, size_t size_bytes)
+    : data_(data.get()),
+      owned_data_(std::move(data)),
+      size_bytes_(size_bytes) {}
+
+// Allocates owning memory wrapped in an available `AsyncValueRef`.
+absl::StatusOr<tsl::AsyncValueRef<CpuDeviceMemory>>
+CpuDeviceMemory::AllocateAvailable(size_t size_bytes) {
+  TF_ASSIGN_OR_RETURN(CpuDeviceMemory memory, Allocate(size_bytes));
+  return tsl::MakeAvailableAsyncValueRef<CpuDeviceMemory>(std::move(memory));
+}
+
+// Allocates raw owning memory. The typical usage is for delayed allocation.
+absl::StatusOr<CpuDeviceMemory> CpuDeviceMemory::Allocate(size_t size_bytes) {
+  if (void* data = tsl::port::AlignedMalloc(size_bytes, cpu::MinAlign())) {
+    return CpuDeviceMemory(
+        OwnedData{static_cast<uint8_t*>(data), tsl::port::AlignedFree},
+        size_bytes);
+  }
+  return ResourceExhausted("Out of memory allocating %d bytes.", size_bytes);
+}
+
+TrackedCpuDeviceBuffer::TrackedCpuDeviceBuffer(
     bool is_tuple, bool owns_buffers,
-    absl::InlinedVector<tsl::AsyncValueRef<MaybeOwningCpuMemory>, 4> buffers,
+    absl::InlinedVector<tsl::AsyncValueRef<CpuDeviceMemory>, 4> buffers,
     absl::InlinedVector<tsl::AsyncValueRef<CpuEvent>, 4> definition_events,
     absl::AnyInvocable<void() &&> on_delete_callback)
-    : TrackedTfrtCpuDeviceBuffer(is_tuple, owns_buffers, std::move(buffers),
-                                 AfterAll(definition_events),
-                                 std::move(on_delete_callback)) {}
+    : TrackedCpuDeviceBuffer(is_tuple, owns_buffers, std::move(buffers),
+                             AfterAll(definition_events),
+                             std::move(on_delete_callback)) {}
 
-TrackedTfrtCpuDeviceBuffer::TrackedTfrtCpuDeviceBuffer(
+TrackedCpuDeviceBuffer::TrackedCpuDeviceBuffer(
     bool is_tuple, bool owns_buffers,
-    absl::InlinedVector<tsl::AsyncValueRef<MaybeOwningCpuMemory>, 4> buffers,
+    absl::InlinedVector<tsl::AsyncValueRef<CpuDeviceMemory>, 4> buffers,
     absl::InlinedVector<size_t, 4> buffer_sizes,
     absl::InlinedVector<tsl::AsyncValueRef<CpuEvent>, 4> definition_events,
     absl::AnyInvocable<void() &&> on_delete_callback)
-    : TrackedTfrtCpuDeviceBuffer(
+    : TrackedCpuDeviceBuffer(
           is_tuple, owns_buffers, std::move(buffers), std::move(buffer_sizes),
           AfterAll(definition_events), std::move(on_delete_callback)) {}
 
-TrackedTfrtCpuDeviceBuffer::TrackedTfrtCpuDeviceBuffer(
+TrackedCpuDeviceBuffer::TrackedCpuDeviceBuffer(
     bool is_tuple, bool owns_buffers,
-    absl::InlinedVector<tsl::AsyncValueRef<MaybeOwningCpuMemory>, 4> buffers,
+    absl::InlinedVector<tsl::AsyncValueRef<CpuDeviceMemory>, 4> buffers,
     tsl::AsyncValueRef<CpuEvent> definition_event,
     absl::AnyInvocable<void() &&> on_delete_callback)
     : is_tuple_(is_tuple),
@@ -109,25 +140,24 @@ TrackedTfrtCpuDeviceBuffer::TrackedTfrtCpuDeviceBuffer(
   DCHECK(definition_event_);
   for (const auto& buffer : buffers_) {
     CHECK(buffer.IsConcrete());
-    buffer_sizes_.push_back(buffer->size());
+    buffer_sizes_.push_back(buffer->size_bytes());
   }
   if (is_tuple) {
     size_t index_table_byte_size = buffers_.size() * sizeof(void*);
     // We assume tuple table allocations will not fail.
     tuple_index_table_ =
-        MaybeOwningCpuMemory::AllocateAvailableAvr(index_table_byte_size)
-            .value();
+        CpuDeviceMemory::AllocateAvailable(index_table_byte_size).value();
     uintptr_t* index_table =
-        reinterpret_cast<uintptr_t*>(tuple_index_table_->data());
+        reinterpret_cast<uintptr_t*>(tuple_index_table_->untyped_data());
     for (int i = 0; i < buffers_.size(); ++i) {
-      index_table[i] = absl::bit_cast<uintptr_t>(buffers_[i]->data());
+      index_table[i] = absl::bit_cast<uintptr_t>(buffers_[i]->untyped_data());
     }
   }
 }
 
-TrackedTfrtCpuDeviceBuffer::TrackedTfrtCpuDeviceBuffer(
+TrackedCpuDeviceBuffer::TrackedCpuDeviceBuffer(
     bool is_tuple, bool owns_buffers,
-    absl::InlinedVector<tsl::AsyncValueRef<MaybeOwningCpuMemory>, 4> buffers,
+    absl::InlinedVector<tsl::AsyncValueRef<CpuDeviceMemory>, 4> buffers,
     absl::InlinedVector<size_t, 4> buffer_sizes,
     tsl::AsyncValueRef<CpuEvent> definition_event,
     absl::AnyInvocable<void() &&> on_delete_callback)
@@ -139,45 +169,45 @@ TrackedTfrtCpuDeviceBuffer::TrackedTfrtCpuDeviceBuffer(
       on_delete_callback_(std::move(on_delete_callback)) {
   DCHECK(definition_event_);
   if (is_tuple) {
-    tuple_index_table_ =
-        tsl::MakeUnconstructedAsyncValueRef<MaybeOwningCpuMemory>();
+    tuple_index_table_ = tsl::MakeUnconstructedAsyncValueRef<CpuDeviceMemory>();
     tsl::RunWhenReady(
         absl::MakeConstSpan(buffers_),
         [buffers = buffers_, tuple_index_table = tuple_index_table_] {
           size_t index_table_byte_size = buffers.size() * sizeof(void*);
           // We assume tuple table allocations will not fail.
           tuple_index_table.emplace(
-              MaybeOwningCpuMemory::Allocate(index_table_byte_size).value());
+              CpuDeviceMemory::Allocate(index_table_byte_size).value());
           uintptr_t* index_table =
-              reinterpret_cast<uintptr_t*>(tuple_index_table->data());
+              reinterpret_cast<uintptr_t*>(tuple_index_table->untyped_data());
           for (int i = 0; i < buffers.size(); ++i) {
-            index_table[i] = absl::bit_cast<uintptr_t>(buffers[i]->data());
+            index_table[i] =
+                absl::bit_cast<uintptr_t>(buffers[i]->untyped_data());
           }
         });
   }
 }
 
-TrackedTfrtCpuDeviceBuffer::~TrackedTfrtCpuDeviceBuffer() {
+TrackedCpuDeviceBuffer::~TrackedCpuDeviceBuffer() {
   ReleaseDeviceMemory();
   if (on_delete_callback_) {
     std::move(on_delete_callback_)();
   }
 }
 
-tsl::AsyncValueRef<MaybeOwningCpuMemory> TrackedTfrtCpuDeviceBuffer::Buffer(
+tsl::AsyncValuePtr<CpuDeviceMemory> TrackedCpuDeviceBuffer::Buffer(
     const ShapeIndex& shape_index) {
   if (shape_index.empty()) {
     // shape_index={}
-    if (is_tuple_) return tuple_index_table_;
-    return buffers_[0];
+    if (is_tuple_) return tuple_index_table_.AsPtr();
+    return buffers_[0].AsPtr();
   }
   // shape_index={i}
   CHECK(is_tuple_);
   CHECK_EQ(shape_index.size(), 1) << "nested tuple not supported";
-  return buffers_[shape_index[0]];
+  return buffers_[shape_index[0]].AsPtr();
 }
 
-size_t TrackedTfrtCpuDeviceBuffer::BufferSize(const ShapeIndex& shape_index) {
+size_t TrackedCpuDeviceBuffer::BufferSize(const ShapeIndex& shape_index) {
   if (shape_index.empty()) {
     // shape_index={}
     if (is_tuple_) return buffers_.size() * sizeof(void*);
@@ -189,7 +219,7 @@ size_t TrackedTfrtCpuDeviceBuffer::BufferSize(const ShapeIndex& shape_index) {
   return buffer_sizes_[shape_index[0]];
 }
 
-void TrackedTfrtCpuDeviceBuffer::AddUsageEvents(
+void TrackedCpuDeviceBuffer::AddUsageEvents(
     absl::Span<tsl::AsyncValueRef<CpuEvent>> events) {
   // Periodically remove available usage events to prevent memory blowup.
   if (usage_events_.size() >= 1024) {
@@ -211,11 +241,11 @@ void TrackedTfrtCpuDeviceBuffer::AddUsageEvents(
 }
 
 absl::InlinedVector<tsl::AsyncValueRef<CpuEvent>, 4>
-TrackedTfrtCpuDeviceBuffer::LockUseAndTransferUsageEvents() {
+TrackedCpuDeviceBuffer::LockUseAndTransferUsageEvents() {
   return std::move(usage_events_);
 }
 
-void TrackedTfrtCpuDeviceBuffer::ReleaseDeviceMemory() {
+void TrackedCpuDeviceBuffer::ReleaseDeviceMemory() {
   tuple_index_table_.reset();
   buffers_.clear();
   definition_event_.reset();

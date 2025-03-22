@@ -36,7 +36,7 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/literal.h"
-#include "xla/pjrt/cpu/tracked_tfrt_cpu_device_buffer.h"
+#include "xla/pjrt/cpu/tracked_cpu_device_buffer.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_future.h"
 #include "xla/pjrt/transpose.h"
@@ -92,7 +92,7 @@ class AbstractTfrtCpuBuffer : public PjRtBuffer {
  public:
   AbstractTfrtCpuBuffer(
       Shape on_device_shape,
-      std::unique_ptr<TrackedTfrtCpuDeviceBuffer> tracked_device_buffer);
+      std::unique_ptr<TrackedCpuDeviceBuffer> tracked_device_buffer);
   ~AbstractTfrtCpuBuffer() override;
 
   const Shape& on_device_shape() const override { return on_device_shape_; }
@@ -136,7 +136,7 @@ class AbstractTfrtCpuBuffer : public PjRtBuffer {
   // serialized after all the usage events added through this method. Returns
   // nullptr if the buffer is already donated or there is outstanding external
   // references.
-  TrackedTfrtCpuDeviceBuffer* AcquireUsage(
+  TrackedCpuDeviceBuffer* AcquireUsage(
       tsl::AsyncValueRef<CpuEvent> usage_event);
 
   // A helper class for managing a pending donation. It should be committed upon
@@ -146,7 +146,7 @@ class AbstractTfrtCpuBuffer : public PjRtBuffer {
    public:
     explicit DonationTransaction(
         AbstractTfrtCpuBuffer* buffer,
-        std::unique_ptr<TrackedTfrtCpuDeviceBuffer> device_buffer)
+        std::unique_ptr<TrackedCpuDeviceBuffer> device_buffer)
         : buffer_(buffer), device_buffer_(std::move(device_buffer)) {
       CHECK(buffer_);
     }
@@ -170,7 +170,7 @@ class AbstractTfrtCpuBuffer : public PjRtBuffer {
       device_buffer_.reset();
     }
 
-    TrackedTfrtCpuDeviceBuffer* device_buffer() const {
+    TrackedCpuDeviceBuffer* device_buffer() const {
       return device_buffer_.get();
     }
 
@@ -180,7 +180,7 @@ class AbstractTfrtCpuBuffer : public PjRtBuffer {
     }
 
     AbstractTfrtCpuBuffer* buffer_ = nullptr;
-    std::unique_ptr<TrackedTfrtCpuDeviceBuffer> device_buffer_;
+    std::unique_ptr<TrackedCpuDeviceBuffer> device_buffer_;
   };
 
   // Acquires the device buffer for exclusive donation. The caller of this
@@ -199,9 +199,9 @@ class AbstractTfrtCpuBuffer : public PjRtBuffer {
       absl::InlinedVector<tsl::RCReference<tsl::AsyncValue>, 4>* avs,
       AsyncWorkRunner* async_work_runner);
 
-  // Allocates a new `TrackedTfrtCpuDeviceBuffer` with the given shape and
+  // Allocates a new `TrackedCpuDeviceBuffer` with the given shape and
   // definition events.
-  static absl::StatusOr<std::unique_ptr<TrackedTfrtCpuDeviceBuffer>>
+  static absl::StatusOr<std::unique_ptr<TrackedCpuDeviceBuffer>>
   AllocateTrackedDeviceBuffer(
       const Shape& on_device_shape,
       absl::InlinedVector<tsl::AsyncValueRef<CpuEvent>, 4> definition_events);
@@ -218,7 +218,7 @@ class AbstractTfrtCpuBuffer : public PjRtBuffer {
   // device buffer from the host buffer (maybe zero-copy or async).
   // `transpose_mu` and `transpose_cache` are used to transpose the input
   // layout.
-  static absl::StatusOr<std::unique_ptr<TrackedTfrtCpuDeviceBuffer>>
+  static absl::StatusOr<std::unique_ptr<TrackedCpuDeviceBuffer>>
   BufferFromHostBufferHelper(
       const void* data, PrimitiveType type, absl::Span<int64_t const> dims,
       std::optional<absl::Span<int64_t const>> byte_strides,
@@ -235,9 +235,8 @@ class AbstractTfrtCpuBuffer : public PjRtBuffer {
 
   PjRtFuture<> DoAsyncWorkOnBuffer(
       absl::string_view method_name,
-      absl::AnyInvocable<
-          absl::Status(const Shape& device_shape,
-                       TrackedTfrtCpuDeviceBuffer* device_buffer) &&>
+      absl::AnyInvocable<absl::Status(const Shape& device_shape,
+                                      TrackedCpuDeviceBuffer* device_buffer) &&>
           work_on_buffer,
       bool should_do_work_sync, AsyncWorkRunner* async_work_runner);
 
@@ -248,8 +247,8 @@ class AbstractTfrtCpuBuffer : public PjRtBuffer {
   absl::StatusOr<std::unique_ptr<PjRtBuffer>> CopyToDeviceAcrossClients(
       PjRtDevice* dst_device);
 
-  absl::StatusOr<std::unique_ptr<TrackedTfrtCpuDeviceBuffer>>
-  CopyToDeviceHelper(AsyncWorkRunner* async_work_runner);
+  absl::StatusOr<std::unique_ptr<TrackedCpuDeviceBuffer>> CopyToDeviceHelper(
+      AsyncWorkRunner* async_work_runner);
 
   bool IsEmptyTuple() const {
     return on_device_shape_.IsTuple() &&
@@ -265,11 +264,11 @@ class AbstractTfrtCpuBuffer : public PjRtBuffer {
   // Aborts the pending donation by returning the donated buffer, and setting
   // `pending_donation_` to false. `pending_donation_` must be true before
   // calling this method.
-  void AbortDonation(std::unique_ptr<TrackedTfrtCpuDeviceBuffer> device_buffer);
+  void AbortDonation(std::unique_ptr<TrackedCpuDeviceBuffer> device_buffer);
 
   // Similar to Delete, drops the buffer's reference to its associated device
   // memory, leaving the buffer in an invalid state, but returns the
-  // TrackedTfrtCpuDeviceBuffer rather than freeing the device memory, so that
+  // TrackedCpuDeviceBuffer rather than freeing the device memory, so that
   // another framework can take ownership of it. The buffer returned from
   // Release may be safely dropped at any time even if it still has pending
   // async operations. The client should call Await before calling Release with
@@ -281,19 +280,19 @@ class AbstractTfrtCpuBuffer : public PjRtBuffer {
   // If the buffer was shared via an external reference it is the client's
   // responsibility that accesses via that reference do not interfere with
   // accesses via the buffer returned from Release.
-  absl::StatusOr<std::unique_ptr<TrackedTfrtCpuDeviceBuffer>> Release(
+  absl::StatusOr<std::unique_ptr<TrackedCpuDeviceBuffer>> Release(
       bool wait_for_operations_to_complete);
 
   // Releases the device buffer by returning a unique_ptr of it. If there is
   // outstanding donation or usage holds, this method blocks until those holds
   // are committed or dropped.
-  std::unique_ptr<TrackedTfrtCpuDeviceBuffer> ReleaseBufferLocked()
+  std::unique_ptr<TrackedCpuDeviceBuffer> ReleaseBufferLocked()
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   const Shape on_device_shape_;
 
   mutable absl::Mutex mu_;
-  std::unique_ptr<TrackedTfrtCpuDeviceBuffer> tracked_device_buffer_
+  std::unique_ptr<TrackedCpuDeviceBuffer> tracked_device_buffer_
       ABSL_GUARDED_BY(mu_);
   // Count of external references on the buffer.
   int external_reference_counter_ ABSL_GUARDED_BY(mu_) = 0;
@@ -345,7 +344,7 @@ class AbstractAsyncHostToHostMemoryTransferManager
   AbstractAsyncHostToHostMemoryTransferManager(
       absl::InlinedVector<tsl::RCReference<tsl::AsyncValue>, 4> avs,
       absl::InlinedVector<std::unique_ptr<AbstractTfrtCpuBuffer>, 4> buffers,
-      absl::InlinedVector<TrackedTfrtCpuDeviceBuffer*, 4> device_buffers,
+      absl::InlinedVector<TrackedCpuDeviceBuffer*, 4> device_buffers,
       absl::InlinedVector<size_t, 4> buffer_sizes,
       absl::InlinedVector<int64_t, 4> buffer_transfers_in_flight,
       absl::InlinedVector<bool, 4> last_transfer_finished,
@@ -355,7 +354,7 @@ class AbstractAsyncHostToHostMemoryTransferManager
   // and `last_transfer_finished` from `buffers`.
   static absl::Status PopulateAsyncTransferManagerData(
       absl::Span<const std::unique_ptr<AbstractTfrtCpuBuffer>> buffers,
-      absl::InlinedVector<TrackedTfrtCpuDeviceBuffer*, 4>& device_buffers,
+      absl::InlinedVector<TrackedCpuDeviceBuffer*, 4>& device_buffers,
       absl::InlinedVector<size_t, 4>& buffer_sizes,
       absl::InlinedVector<int64_t, 4>& buffer_transfers_in_flight,
       absl::InlinedVector<bool, 4>& last_transfer_finished);
@@ -381,7 +380,7 @@ class AbstractAsyncHostToHostMemoryTransferManager
   absl::InlinedVector<std::unique_ptr<AbstractTfrtCpuBuffer>, 4> buffers_
       ABSL_GUARDED_BY(mu_);
   // Device buffers which we use to get the underlying memory to populate.
-  absl::InlinedVector<TrackedTfrtCpuDeviceBuffer*, 4> device_buffers_
+  absl::InlinedVector<TrackedCpuDeviceBuffer*, 4> device_buffers_
       ABSL_GUARDED_BY(mu_);
   // Cached versions of the sizes of all the buffers. Not modified after
   // creation, so not guarded by mu_.
