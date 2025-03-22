@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/lite/tools/tf_mlir_translate_cl.h"
 
+#include <string>
+
 #include "llvm/Support/CommandLine.h"
 
 // These command-line options are following LLVM conventions because we also
