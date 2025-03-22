@@ -39,6 +39,7 @@ package(
 
 exports_files(
     [
+        "criticality.h",
         "subprocess.h",
         "env_time.h",
         "crash_analysis.h",
@@ -121,6 +122,7 @@ filegroup(
     name = "lib_hdrs",
     srcs = [
         "crash_analysis.h",
+        "criticality.h",
         "dynamic_annotations.h",
         "env.h",
         "errors.h",
@@ -167,6 +169,7 @@ filegroup(
     name = "mobile_srcs_no_runtime",
     srcs = [
         "byte_order.h",
+        "criticality.h",
         "dynamic_annotations.h",
         "env.cc",
         "env.h",
@@ -813,4 +816,24 @@ cc_library(
     name = "stack_frame",
     hdrs = ["stack_frame.h"],
     compatible_with = get_compatible_with_portable(),
+)
+
+cc_library(
+    name = "criticality",
+    compatible_with = get_compatible_with_portable(),
+    textual_hdrs = ["criticality.h"],
+    deps = tf_platform_deps("criticality"),
+)
+
+tsl_cc_test(
+    name = "criticality_test",
+    size = "small",
+    srcs = [
+        "criticality_test.cc",
+    ],
+    deps = [
+        ":criticality",
+        "//xla/tsl/platform:test",
+        "@com_google_googletest//:gtest_main",
+    ],
 )

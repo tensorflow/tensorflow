@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/time/time.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/criticality.h"
 #include "tensorflow/core/kernels/batching_util/batch_scheduler.h"
 #include "tensorflow/core/kernels/batching_util/batch_scheduler_utils.h"
 #include "tensorflow/core/kernels/batching_util/fake_clock_env.h"
@@ -44,7 +45,6 @@ limitations under the License.
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
-#include "tsl/platform/criticality.h"
 
 namespace tensorflow {
 namespace serving {

@@ -50,7 +50,7 @@ cc_library(
 
 cc_library(
     name = "criticality",
-    hdrs = ["@local_tsl//tsl/platform:criticality.h"],
+    hdrs = ["//xla/tsl/platform:criticality.h"],
     tags = [
         "manual",
         "nobuilder",

@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/blocking_counter.h"
+#include "xla/tsl/platform/criticality.h"
 #include "tensorflow/core/common_runtime/cost_measurement_registry.h"
 #include "tensorflow/core/common_runtime/request_cost.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -42,7 +43,6 @@ limitations under the License.
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/protobuf/config.pb.h"
-#include "tsl/platform/criticality.h"
 
 namespace tensorflow {
 namespace serving {

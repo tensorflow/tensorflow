@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_TSL_PLATFORM_CRITICALITY_H_
-#define TENSORFLOW_TSL_PLATFORM_CRITICALITY_H_
+#ifndef XLA_TSL_PLATFORM_CRITICALITY_H_
+#define XLA_TSL_PLATFORM_CRITICALITY_H_
 
 #include "tsl/platform/platform.h"
 
@@ -47,4 +47,4 @@ enum class Criticality {
 #include "xla/tsl/platform/default/criticality.h"  // IWYU pragma: export
 #endif
 
-#endif  // TENSORFLOW_TSL_PLATFORM_CRITICALITY_H_
+#endif  // XLA_TSL_PLATFORM_CRITICALITY_H_

@@ -123,8 +123,8 @@ cc_library(
         "//tensorflow/core/platform:thread_annotations",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
-        "@local_tsl//tsl/platform:criticality",
         "@local_tsl//tsl/profiler/lib:traceme",
+        "@local_xla//xla/tsl/platform:criticality",
     ],
 )
 
@@ -138,8 +138,8 @@ cc_library(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/strings:string_view",
-        "@local_tsl//tsl/platform:criticality",
         "@local_tsl//tsl/profiler/lib:traceme",
+        "@local_xla//xla/tsl/platform:criticality",
     ],
 )
 
@@ -217,11 +217,11 @@ cc_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/time",
-        "@local_tsl//tsl/platform:criticality",
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/profiler/lib:connected_traceme",
         "@local_tsl//tsl/profiler/lib:context_types_hdrs",
         "@local_tsl//tsl/profiler/lib:traceme",
+        "@local_xla//xla/tsl/platform:criticality",
     ],
 )
 
@@ -240,10 +240,10 @@ cc_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/time",
-        "@local_tsl//tsl/platform:criticality",
         "@local_tsl//tsl/profiler/lib:connected_traceme",
         "@local_tsl//tsl/profiler/lib:context_types_hdrs",
         "@local_tsl//tsl/profiler/lib:traceme",
+        "@local_xla//xla/tsl/platform:criticality",
     ],
     alwayslink = 1,
 )
@@ -466,7 +466,7 @@ cc_library(
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
         "@com_google_absl//absl/types:optional",
-        "@local_tsl//tsl/platform:criticality",
+        "@local_xla//xla/tsl/platform:criticality",
     ],
 )
 
@@ -514,8 +514,8 @@ tf_cc_test(
         "@com_google_absl//absl/time",
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_main",
-        "@local_tsl//tsl/platform:criticality",
         "@local_tsl//tsl/platform:status",
+        "@local_xla//xla/tsl/platform:criticality",
     ],
 )
 

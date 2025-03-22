@@ -26,11 +26,11 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
+#include "xla/tsl/platform/criticality.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/notification.h"
 #include "tensorflow/core/platform/status_matchers.h"
 #include "tensorflow/core/platform/test.h"
-#include "tsl/platform/criticality.h"
 
 namespace tensorflow {
 namespace serving {
