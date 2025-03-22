@@ -77,7 +77,7 @@ absl::StatusOr<bool> TryRemoveUnusedConditionalOperands(
   for (HloInstruction* user : param->users()) {
     // If the user is not a get tuple element, assume it is unsafe to remove
     // elements from the tuple.
-    if (user->opcode() != HloOpcode::kGetTupleElement) {
+    if (HloPredicateIsNotOp<HloOpcode::kGetTupleElement>(user)) {
       return false;
     }
     tuple_indices_to_keep.insert(user->tuple_index());
@@ -215,7 +215,7 @@ bool RemoveUnusedTupleElements(HloInstruction* conditional_op) {
   std::vector<bool> used_indices(old_tuple_shapes_size, false);
   for (const HloInstruction* user : conditional_op->users()) {
     // We only deal with the case where all users are GTE instructions.
-    if (user->opcode() != HloOpcode::kGetTupleElement) {
+    if (HloPredicateIsNotOp<HloOpcode::kGetTupleElement>(user)) {
       VLOG(3) << "Skip RemoveUnusedTupleElements due to non-GTE user:\n"
               << user->ToShortString();
       return false;
@@ -363,7 +363,7 @@ bool MergeDuplicateTupleElements(HloInstruction* conditional) {
   }
 
   for (const HloInstruction* user : conditional->users()) {
-    if (user->opcode() != HloOpcode::kGetTupleElement) {
+    if (HloPredicateIsNotOp<HloOpcode::kGetTupleElement>(user)) {
       VLOG(3) << "Skip MergeDuplicateTupleElements due not all users are "
                  "kGetTupleElement:\n"
               << conditional->ToShortString();
@@ -614,7 +614,7 @@ absl::StatusOr<bool> ConditionalSimplifier::Run(
   std::vector<HloInstruction*> conditional_ops;
   for (auto* comp : module->computations(execution_threads)) {
     for (auto* instr : comp->MakeInstructionPostOrder()) {
-      if (instr->opcode() == HloOpcode::kConditional) {
+      if (HloPredicateIsOp<HloOpcode::kConditional>(instr)) {
         // Verifier wants a single send/recv with a given channel. This pass
         // clones computations which can result in that getting violated.
         if (InstructionCallsChannelInstructions(*instr)) {
