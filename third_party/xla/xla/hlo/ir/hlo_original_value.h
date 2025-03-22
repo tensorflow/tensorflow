@@ -35,6 +35,9 @@ using OriginalValue = ShapeTree<std::optional<OriginalArray>>;
 std::string OriginalValueToString(const OriginalValue& original_value);
 
 OriginalValueProto OriginalValueToProto(const OriginalValue& original_value);
+
+void CopyOriginalValue(const HloInstruction* old_instruction,
+                       HloInstruction* new_instruction);
 }  // namespace xla
 
 #endif  // XLA_HLO_IR_HLO_ORIGINAL_VALUE_H_

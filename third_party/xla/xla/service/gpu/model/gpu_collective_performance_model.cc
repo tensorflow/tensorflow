@@ -33,6 +33,7 @@ limitations under the License.
 #include "xla/util.h"
 
 #if GOOGLE_CUDA
+#include "third_party/gpus/cuda/include/cuda.h"
 #include "third_party/gpus/cuda/nvml/include/nvml.h"
 #endif  // GOOGLE_CUDA
 namespace xla {
@@ -151,9 +152,22 @@ float GpuPerformanceWithCollectiveModel::GetNvlinkBw(
       {(void**)&xla_nvmlDeviceGetHandleByIndex, "nvmlDeviceGetHandleByIndex"},
       {(void**)&xla_nvmlDeviceGetNvLinkCapability,
        "nvmlDeviceGetNvLinkCapability"},
+      {(void**)&xla_nvmlSystemGetNVMLVersion, "nvmlSystemGetNVMLVersion"},
   };
+#if GOOGLE_CUDA && CUDA_VERSION >= 12040
+  symbols.push_back({(void**)&xla_nvmlDeviceGetHandleByPciBusId_v2,
+                     "nvmlDeviceGetHandleByPciBusId_v2"});
+  symbols.push_back({(void**)&xla_nvmlDeviceGetGpuFabricInfoV,
+                     "nvmlDeviceGetGpuFabricInfoV"});
+#endif  // CUDA_VERSION >= 12040
   for (SymbolEntry se : symbols) {
     *se.functor = dlsym(libhandle, se.name);
+    if (*se.functor == nullptr) {
+      const char* dlsym_error = dlerror();
+      if (dlsym_error) {
+        VLOG(0) << "Error: " << dlsym_error;
+      }
+    }
   }
   nvmlReturn_t init_result = xla_nvmlInit();
   return init_result == NVML_SUCCESS;

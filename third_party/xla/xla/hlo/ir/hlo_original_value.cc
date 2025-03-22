@@ -21,6 +21,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/strings/str_cat.h"
+#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/xla_data.pb.h"
@@ -86,6 +87,24 @@ OriginalValueProto OriginalValueToProto(const OriginalValue& original_value) {
     }
   }
   return original_value_proto;
+}
+
+void CopyOriginalValue(const HloInstruction* old_instruction,
+                       HloInstruction* new_instruction) {
+  if (auto original_value = old_instruction->original_value()) {
+    // Skip if the target is a fusion as the original value of fused
+    // instructions is copied when they are added into the fused computation.
+    if (new_instruction->opcode() != HloOpcode::kFusion) {
+      if (ShapeUtil::Compatible(old_instruction->shape(),
+                                new_instruction->shape())) {
+        new_instruction->set_original_value(original_value);
+      } else {
+        LOG(WARNING)
+            << "Expect the new instruction to have the same shape with the old "
+               "instruction when copying over original_value";
+      }
+    }
+  }
 }
 
 }  // namespace xla
