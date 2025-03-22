@@ -104,11 +104,11 @@ void RecordTFDataGetNextDuration(uint64 duration_us);
 
 // Records the histogram of ratios of tf.data autotune algorithm used RAM over
 // the ram budget.
-void RecordTFDataAutotuneUsedRamBudgetRatio(const double ratio);
+void RecordTFDataAutotuneUsedRamBudgetRatio(double ratio);
 
 // Records the histogram of ratios of tf.data autotune algorithm max buffer
 // bytes over the ram budget.
-void RecordTFDataAutotuneMaxBufferBudgetRatio(const double ratio);
+void RecordTFDataAutotuneMaxBufferBudgetRatio(double ratio);
 
 // Records the number of times each tf.data fingerprint is used
 // to measure duplicate pre-processing.
@@ -260,13 +260,13 @@ void RecordParseSparseFeature(int64_t num_features);
 void RecordParseRaggedFeature(int64_t num_features);
 
 // Records the size of input/output tensors in bytes.
-void RecordGraphInputTensors(const size_t size);
-void RecordGraphOutputTensors(const size_t size);
+void RecordGraphInputTensors(size_t size);
+void RecordGraphOutputTensors(size_t size);
 
 // Records the number of cores requested by graphs with XLA SPMD enabled.
 void RecordTPUXlaSpmdCoresPerReplica(int64_t cores_per_replica);
 
-void UpdateGraphExecTime(const uint64 running_time_usecs);
+void UpdateGraphExecTime(uint64 running_time_usecs);
 void UpdateGraphPendingQueueLength(uint64 len);
 
 // Records that one output of an op of type `op_name` was unused.
@@ -295,10 +295,10 @@ void UpdateAotBefMlirLoadCount();
 // When executing eagerly, this will not record any activity.
 //
 // TODO(jtkeeling): Should we record building/optimizing tf.functions?
-void UpdateGraphBuildTime(const uint64 running_time_usecs);
+void UpdateGraphBuildTime(uint64 running_time_usecs);
 
 // Updates the metric stored for time spent optimizing function graphs.
-void UpdateFunctionGraphOptimizationTime(const uint64 running_time_usecs);
+void UpdateFunctionGraphOptimizationTime(uint64 running_time_usecs);
 
 // Updates the metric stored for time saved by caching graph optimization.
 void UpdateFunctionGraphOptimizationSavingTime(uint64 saving_time_usec,
@@ -517,10 +517,10 @@ class ScopedCounter final {
 monitoring::Counter<2>* GetGraphOptimizationCounter();
 
 // Updates metrics for time to distribute variables to all TPU hosts.
-void UpdateTpuVariableDistributionTime(const uint64 distribution_time_usecs);
+void UpdateTpuVariableDistributionTime(uint64 distribution_time_usecs);
 
 // Updates the metrics stored about time XLA spents compiling graphs.
-void UpdateXlaCompilationTime(const uint64 compilation_time_usecs);
+void UpdateXlaCompilationTime(uint64 compilation_time_usecs);
 
 // Increments (by 1) a simple integer counter that is exposed for testing.
 void IncrementTestCounter(const string& name, const string& label);

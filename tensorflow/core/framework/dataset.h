@@ -177,11 +177,9 @@ class IteratorStateReader {
 class IteratorStateWriter {
  public:
   // Writes an integer for the given key.
-  virtual absl::Status WriteScalar(absl::string_view key,
-                                   const int64_t val) = 0;
+  virtual absl::Status WriteScalar(absl::string_view key, int64_t val) = 0;
   virtual absl::Status WriteScalar(absl::string_view name,
-                                   absl::string_view key,
-                                   const int64_t val) = 0;
+                                   absl::string_view key, int64_t val) = 0;
 
   // Writes a string for the given key.
   virtual absl::Status WriteScalar(absl::string_view key,
@@ -594,10 +592,10 @@ class SerializationContext {
     }
     switch (params_.external_state_policy) {
       case ExternalStatePolicy::POLICY_WARN:
-        LOG(WARNING) << s.ToString();
+        LOG(WARNING) << s;
         return absl::OkStatus();
       case ExternalStatePolicy::POLICY_IGNORE:
-        VLOG(2) << "Ignoring error status: " << s.ToString();
+        VLOG(2) << "Ignoring error status: " << s;
         return absl::OkStatus();
       case ExternalStatePolicy::POLICY_FAIL:
         return s;
@@ -1417,7 +1415,7 @@ class DatasetBase : public core::RefCounted {
   virtual absl::Status CheckExternalState() const = 0;
 
   // Indicates whether the dataset is compatible with random access.
-  absl::Status CheckRandomAccessCompatible(const int64 index) const;
+  absl::Status CheckRandomAccessCompatible(int64 index) const;
 
   // Return the element at a particular index for a randomly accessible dataset.
   virtual absl::Status Get(OpKernelContext* ctx, int64 index,
@@ -1717,7 +1715,7 @@ class DatasetIterator : public DatasetBaseIterator {
 
 template <typename T>
 absl::Status ParseScalarArgument(OpKernelContext* ctx,
-                                 const absl::string_view& argument_name,
+                                 const absl::string_view argument_name,
                                  T* output) {
   const Tensor* argument_t;
   TF_RETURN_IF_ERROR(ctx->input(argument_name, &argument_t));
@@ -1730,7 +1728,7 @@ absl::Status ParseScalarArgument(OpKernelContext* ctx,
 
 template <typename T>
 absl::Status ParseVectorArgument(OpKernelContext* ctx,
-                                 const absl::string_view& argument_name,
+                                 const absl::string_view argument_name,
                                  std::vector<T>* output) {
   const Tensor* argument_t;
   TF_RETURN_IF_ERROR(ctx->input(argument_name, &argument_t));
