@@ -227,6 +227,7 @@ cc_library(
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
+        "@com_googlesource_code_re2//:re2",
         "@local_tsl//tsl/platform:fingerprint",
         "@local_tsl//tsl/profiler/lib:context_types",
         "@local_tsl//tsl/profiler/protobuf:xplane_proto_cc",
