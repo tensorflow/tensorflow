@@ -23,6 +23,8 @@
 #include "tensorflow/lite/experimental/litert/c/litert_model.h"
 #if LITERT_HAS_OPENCL_SUPPORT
 #include <CL/cl.h>
+#else
+typedef struct _cl_mem* cl_mem;
 #endif  // LITERT_HAS_OPENCL_SUPPORT
 #include "tensorflow/lite/experimental/litert/c/litert_gl_types.h"
 #include "tensorflow/lite/experimental/litert/c/litert_tensor_buffer_types.h"
@@ -146,7 +148,6 @@ LiteRtStatus LiteRtGetTensorBufferFastRpcBuffer(
     int* fastrpc_buffer_fd);
 #endif  // LITERT_HAS_FASTRPC_SUPPORT
 
-#if LITERT_HAS_OPENCL_SUPPORT
 // Create a tensor buffer from an existing OpenCL buffer of a given size, with
 // optional opencl memory buffer deallocator (it can be NULL). An non-zero
 // `opencl_buffer_offset` can be used to specify multiple tensor buffers sharing
@@ -162,7 +163,6 @@ LiteRtStatus LiteRtCreateTensorBufferFromOpenClBuffer(
 // Return an error if the backing buffer is not a OpenCL buffer.
 LiteRtStatus LiteRtGetTensorBufferOpenClBuffer(LiteRtTensorBuffer tensor_buffer,
                                                cl_mem* cl_mem_addr);
-#endif  // LITERT_HAS_OPENCL_SUPPORT
 
 LiteRtStatus LiteRtCreateTensorBufferFromGlBuffer(
     const LiteRtRankedTensorType* tensor_type, LiteRtGLenum target,
