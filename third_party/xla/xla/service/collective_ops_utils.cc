@@ -158,10 +158,6 @@ absl::StatusOr<std::vector<int>> GetParticipatingIDs(
                           group->replica_ids().end());
 }
 
-// Returns the group formation mode of instr, assuming that instr is, or is
-// derived from, an HloAllGatherInstruction, HloAllReduceInstructionBase,
-// HloAllToAllInstruction, HloCollectiveBroadcastInstruction or
-// HloCollectivePermuteInstruction.
 absl::StatusOr<CollectiveOpGroupMode> GetCollectiveOpGroupMode(
     const HloInstruction* instr) {
   if (auto collective = DynCast<HloAllGatherInstruction>(instr)) {
@@ -181,28 +177,11 @@ absl::StatusOr<CollectiveOpGroupMode> GetCollectiveOpGroupMode(
                  DynCast<HloCollectivePermuteInstruction>(instr)) {
     return GetCollectiveOpGroupMode(collective->channel_id().has_value(),
                                     std::nullopt);
+  } else if (auto collective = DynCast<HloRaggedAllToAllInstruction>(instr)) {
+    return GetCollectiveOpGroupMode(collective->channel_id().has_value(),
+                                    std::nullopt);
   }
   return Internal("Unexpected instruction type.");
-}
-
-absl::StatusOr<bool> GetCollectiveUseGlobalDeviceIds(
-    const HloInstruction* hlo) {
-  const bool is_all_reduce = (hlo->opcode() == HloOpcode::kAllReduce ||
-                              hlo->opcode() == HloOpcode::kAllReduceStart ||
-                              hlo->opcode() == HloOpcode::kReduceScatter);
-  const bool is_all_gather = (hlo->opcode() == HloOpcode::kAllGather ||
-                              hlo->opcode() == HloOpcode::kAllGatherStart);
-  if (!is_all_reduce && !is_all_gather) {
-    return absl::InvalidArgumentError(
-        "GetReplicaGroupCountAndSize only supports AllReduce and AllGather.");
-  }
-  return is_all_reduce
-             ? Cast<HloAllReduceInstructionBase>(hlo)->use_global_device_ids()
-             : Cast<HloAllGatherInstruction>(hlo)->use_global_device_ids();
-}
-
-std::optional<int64_t> GetCollectiveChannelId(const HloInstruction* hlo) {
-  return Cast<HloCollectiveInstruction>(hlo)->channel_id();
 }
 
 const CollectiveDeviceList& GetCollectiveDeviceList(const HloInstruction* hlo) {
@@ -364,12 +343,8 @@ GetParticipatingDevicesGroups(const HloInstruction* collective) {
   CHECK(collective->GetModule()->config().has_static_device_assignment());
   const DeviceAssignment& device_assignment =
       collective->GetModule()->config().static_device_assignment();
-  TF_ASSIGN_OR_RETURN(bool use_global_device_ids,
-                      GetCollectiveUseGlobalDeviceIds(collective));
-  TF_ASSIGN_OR_RETURN(
-      CollectiveOpGroupMode mode,
-      GetCollectiveOpGroupMode(GetCollectiveChannelId(collective).has_value(),
-                               use_global_device_ids));
+  TF_ASSIGN_OR_RETURN(CollectiveOpGroupMode mode,
+                      GetCollectiveOpGroupMode(collective));
   return GetParticipatingDevicesGroups(
       device_assignment, GetCollectiveReplicaGroups(collective), mode);
 }
@@ -474,12 +449,8 @@ absl::StatusOr<std::vector<ReplicaGroup>> GetParticipatingFlattenedIdGroups(
 
 absl::StatusOr<std::vector<ReplicaGroup>> GetParticipatingFlattenedIdGroups(
     const HloInstruction* hlo, const DeviceAssignment& device_assignment) {
-  TF_ASSIGN_OR_RETURN(bool use_global_device_ids,
-                      GetCollectiveUseGlobalDeviceIds(hlo));
-  TF_ASSIGN_OR_RETURN(
-      CollectiveOpGroupMode mode,
-      GetCollectiveOpGroupMode(GetCollectiveChannelId(hlo).has_value(),
-                               use_global_device_ids));
+  TF_ASSIGN_OR_RETURN(CollectiveOpGroupMode mode,
+                      GetCollectiveOpGroupMode(hlo));
   TF_ASSIGN_OR_RETURN(
       std::vector<ReplicaGroup> replica_groups,
       GetParticipatingFlattenedIdGroups(device_assignment,
@@ -490,12 +461,8 @@ absl::StatusOr<std::vector<ReplicaGroup>> GetParticipatingFlattenedIdGroups(
 // Same as above, used for cases where static_device_assignment is not present.
 absl::StatusOr<std::vector<ReplicaGroup>> GetParticipatingFlattenedIdGroups(
     const HloInstruction* hlo, int replica_count, int partition_count) {
-  TF_ASSIGN_OR_RETURN(bool use_global_device_ids,
-                      GetCollectiveUseGlobalDeviceIds(hlo));
-  TF_ASSIGN_OR_RETURN(
-      CollectiveOpGroupMode mode,
-      GetCollectiveOpGroupMode(GetCollectiveChannelId(hlo).has_value(),
-                               use_global_device_ids));
+  TF_ASSIGN_OR_RETURN(CollectiveOpGroupMode mode,
+                      GetCollectiveOpGroupMode(hlo));
   TF_ASSIGN_OR_RETURN(
       std::vector<ReplicaGroup> replica_groups,
       GetParticipatingFlattenedIdGroups(GetCollectiveReplicaGroups(hlo), mode,
@@ -681,12 +648,8 @@ GetReplicaGroupCountAndSize(const HloInstruction* hlo) {
         device_list.iota_replica_group_list()->num_replica_groups(),
         device_list.iota_replica_group_list()->num_devices_per_group());
   }
-  TF_ASSIGN_OR_RETURN(bool use_global_device_ids,
-                      GetCollectiveUseGlobalDeviceIds(hlo));
-  TF_ASSIGN_OR_RETURN(
-      CollectiveOpGroupMode group_mode,
-      GetCollectiveOpGroupMode(GetCollectiveChannelId(hlo).has_value(),
-                               use_global_device_ids));
+  TF_ASSIGN_OR_RETURN(CollectiveOpGroupMode group_mode,
+                      GetCollectiveOpGroupMode(hlo));
   TF_ASSIGN_OR_RETURN(std::vector<int64_t> participant_counts,
                       GetPariticipantCountsForReplicaGroups(
                           config.replica_count(), config.num_partitions(),
