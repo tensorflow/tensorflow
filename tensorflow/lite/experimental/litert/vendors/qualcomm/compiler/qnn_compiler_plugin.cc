@@ -71,36 +71,6 @@ constexpr const char* kSocModelsSupportsWeightSharing[] = {
   "V75",
   "V79",
 };
-
-constexpr LiteRtOpCode kSupportedOps[] = {
-  kLiteRtOpCodeTflAdd,
-  kLiteRtOpCodeTflDiv,
-  kLiteRtOpCodeTflMul,
-  kLiteRtOpCodeTflRsqrt,
-  kLiteRtOpCodeTflSlice,
-  kLiteRtOpCodeTflSelect,
-  kLiteRtOpCodeTflSelectV2,
-  kLiteRtOpCodeTflSub,
-  kLiteRtOpCodeTflTanh,
-  kLiteRtOpCodeTflBatchMatmul,
-  kLiteRtOpCodeTflReshape,
-  kLiteRtOpCodeTflSum,
-  kLiteRtOpCodeTflConcatenation,
-  kLiteRtOpCodeTflSoftmax,
-  kLiteRtOpCodeTflCast,
-  kLiteRtOpCodeTflTranspose,
-  kLiteRtOpCodeTflSin,
-  kLiteRtOpCodeTflCos,
-  kLiteRtOpCodeTflFullyConnected,
-  kLiteRtOpCodeTflEmbeddingLookup,
-  kLiteRtOpCodeTflLogicalAnd,
-  kLiteRtOpCodeTflLess,
-  kLiteRtOpCodeTflGreater,
-  kLiteRtOpCodeTflGelu,
-  kLiteRtOpCodeTflDynamicUpdateSlice,
-  kLiteRtOpCodeTflPack,
-  kLiteRtOpCodeTflQuantize,
-};
 // clang-format on
 
 static constexpr absl::string_view kEntryPointNameFmt = "qnn_partition_%d";
