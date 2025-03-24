@@ -900,6 +900,28 @@ TfrtGpuClient::CompileAndLoad(mlir::ModuleOp module, CompileOptions options) {
   return CompileAndLoad(xla_computation, options);
 }
 
+absl::StatusOr<std::unique_ptr<PjRtBuffer>>
+TfrtGpuClient::CreateViewOfDeviceBuffer(
+    void* device_ptr, const Shape& shape, PjRtMemorySpace* memory_space,
+    std::function<void()> on_delete_callback,
+    std::optional<std::intptr_t> stream) {
+  CHECK_EQ(memory_space->devices().size(), 1);
+  auto* device = memory_space->devices().front();
+  size_t byte_size = ShapeUtil::ByteSizeOf(shape);
+  se::DeviceMemoryBase device_memory(device_ptr, byte_size);
+  auto non_owning_buffer = MaybeOwningGpuMemory(device_memory);
+  auto buffer_async_value_ref =
+      tsl::MakeAvailableAsyncValueRef<MaybeOwningGpuMemory>(
+          std::move(non_owning_buffer));
+  auto tracked_device_buffer = std::make_unique<TrackedTfrtGpuDeviceBuffer>(
+      std::move(buffer_async_value_ref),
+      /*definition_event=*/tsl::MakeAvailableAsyncValueRef<GpuEvent>(),
+      std::move(on_delete_callback));
+  return std::make_unique<TfrtGpuBuffer>(
+      shape, std::move(tracked_device_buffer), this,
+      tsl::down_cast<TfrtGpuDevice*>(device), memory_space);
+}
+
 absl::StatusOr<std::unique_ptr<PjRtBuffer>> TfrtGpuClient::CreateErrorBuffer(
     absl::Status error, const Shape& shape, PjRtMemorySpace* memory_space) {
   CHECK_EQ(memory_space->devices().size(), 1);
