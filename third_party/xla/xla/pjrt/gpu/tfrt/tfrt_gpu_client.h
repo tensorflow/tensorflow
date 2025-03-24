@@ -338,9 +338,6 @@ class TfrtGpuClient final : public PjRtClient {
       absl::AnyInvocable<void() &&> on_done_with_host_buffer,
       PjRtMemorySpace* memory_space, const Layout* device_layout) override;
 
-  absl::StatusOr<std::unique_ptr<PjRtBuffer>> BufferFromHostLiteral(
-      const LiteralSlice& literal, PjRtMemorySpace* memory_space) override;
-
   absl::StatusOr<std::unique_ptr<AsyncHostToDeviceTransferManager>>
   CreateBuffersForAsyncHostToDevice(
       absl::Span<const ShapeSpec> shape_specs,
@@ -446,7 +443,10 @@ class TfrtGpuBuffer final : public PjRtBuffer {
   }
 
   PjRtFuture<> CopyRawToHostFuture(PjRtFuture<void*> dst, int64_t offset,
-                                   int64_t transfer_size) override;
+                                   int64_t transfer_size) override {
+    // TODO: b/400541410 - Implement CopyRawToHostFuture.
+    return PjRtFuture<>(Unimplemented("CopyRawToHostFuture not implemented."));
+  }
 
   void Delete() override;
 
@@ -595,12 +595,6 @@ class TfrtGpuBuffer final : public PjRtBuffer {
   friend class TfrtGpuExecutable;
   friend class DonationTransactionPeer;
 };
-
-absl::StatusOr<std::unique_ptr<TfrtGpuBuffer>> AllocateTfrtGpuDestinationBuffer(
-    const Shape& on_device_shape,
-    absl::InlinedVector<tsl::AsyncValueRef<GpuEvent>, 4> definition_events,
-    TfrtGpuDevice* device, TfrtGpuClient* client,
-    PjRtMemorySpace* memory_space);
 
 class TfrtGpuExecutable final : public PjRtLoadedExecutable {
  public:
