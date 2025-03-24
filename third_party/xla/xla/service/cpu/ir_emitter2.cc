@@ -220,6 +220,8 @@ absl::StatusOr<IrEmitter2::KernelInfo> IrEmitter2::EmitFusionWithFusionEmitters(
   }
 
   TF_ASSIGN_OR_RETURN(auto fusion_result, emitter->Emit());
+  // Match data layouts to avoid warning messages.
+  fusion_result.llvm_module->setDataLayout(module_->getDataLayout());
   if (llvm::Linker::linkModules(*module_,
                                 std::move(fusion_result.llvm_module))) {
     return Internal("Cannot link additional LLVM module for fusion %s",
