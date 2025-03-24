@@ -826,7 +826,7 @@ TfrtGpuClient::CompileAndLoad(const XlaComputation& computation,
                          /* layout_canonicalization_callback = */ nullptr,
                          options);
 
-  // TODO(b/382117736): Record free gpu memory.
+  // TODO: b/382117736 - Record free gpu memory.
   // Ref:
   // https://github.com/openxla/xla/blob/b729ae319d85d5ec1ec11c488092c2d6683a63f2/xla/pjrt/gpu/se_gpu_pjrt_client.cc#L792-L809
 }
@@ -894,7 +894,7 @@ TfrtGpuClient::CompileAndLoad(mlir::ModuleOp module, CompileOptions options) {
       /*use_tuple_args=*/options.parameter_is_tupled_arguments,
       /*return_tuple=*/false, exec_build_options.use_shardy_partitioner()));
 
-  // TODO(b/382117736): Add support for LayoutModesToXlaShapes
+  // TODO: b/382117736 - Add support for LayoutModesToXlaShapes
   // Ref:
   // https://github.com/openxla/xla/blob/b729ae319d85d5ec1ec11c488092c2d6683a63f2/xla/pjrt/pjrt_stream_executor_client.cc#L3538-L3586
   return CompileAndLoad(xla_computation, options);
@@ -1064,16 +1064,16 @@ absl::StatusOr<std::unique_ptr<PjRtBuffer>> TfrtGpuClient::BufferFromHostBuffer(
     HostBufferSemantics host_buffer_semantics,
     absl::AnyInvocable<void() &&> on_done_with_host_buffer,
     PjRtMemorySpace* memory_space, const Layout* device_layout) {
-  // TODO(b/382117736): support device_layout
-  // TODO(b/382117736): support non-default memory_space (e.g. pinned)
+  // TODO: b/382117736 - support device_layout
+  // TODO: b/382117736 - support non-default memory_space (e.g. pinned)
   PjRtDevice* device = memory_space->devices()[0];
   tsl::profiler::TraceMe traceme("TfrtGpuClient::BufferFromHostBuffer");
-  VLOG(2) << "TfrtGpuClient::BufferFromHostBuffer: "
-          << " device: " << device->DebugString();
   Shape device_shape = ShapeUtil::MakeShape(type, dims);
-  VLOG(1) << "PjRtStreamExecutorClient::BufferFromHostBuffer: shape: "
-          << device_shape.ToString() << " device: " << device->DebugString();
-
+  if (VLOG_IS_ON(2)) {
+    LOG(INFO) << "TfrtGpuClient::BufferFromHostBuffer: shape: "
+              << device_shape.ToString()
+              << " device: " << device->DebugString();
+  }
   absl::InlinedVector<int64_t, 4> tmp_strides;
   if (!byte_strides) {
     tmp_strides.resize(dims.size());
@@ -1108,7 +1108,7 @@ absl::StatusOr<std::unique_ptr<PjRtBuffer>> TfrtGpuClient::BufferFromHostBuffer(
     TF_ASSIGN_OR_RETURN(transpose, transpose_cache_.GetOrCreate(options));
   }
 
-  // TODO(b/382117736): support SubByteNonPredType
+  // TODO: b/382117736 - support SubByteNonPredType
   if (primitive_util::IsSubByteNonPredType(type)) {
     return absl::UnimplementedError(
         "SubByteNonPredType is not supported in TfrtGpuClient.");
@@ -1122,13 +1122,15 @@ absl::StatusOr<std::unique_ptr<PjRtBuffer>> TfrtGpuClient::BufferFromHostBuffer(
       tsl::MakeConstructedAsyncValueRef<GpuEvent>();
   definition_events.push_back(copy_event.CopyRef());
 
-  // TODO(b/382117736): support DmaMapping
+  // TODO: b/382117736 - support DmaMapping
   const bool should_sync_copy =
       (host_buffer_semantics ==
        HostBufferSemantics::kImmutableOnlyDuringCall) ||
       should_stage_host_to_device_transfers();
 
-  auto copy_to_staging_buffer =
+  // Define H2D copy lambda. First, copy host data to staging buffer, then copy
+  // staging buffer to GPU device.
+  auto h2d_copy =
       [this, data, byte_size, gpu_device, transpose(std::move(transpose)),
        copy_event(std::move(copy_event)), gpu_buffer{gpu_buffer.CopyRef()},
        on_done_with_host_buffer = std::move(on_done_with_host_buffer),
@@ -1136,7 +1138,6 @@ absl::StatusOr<std::unique_ptr<PjRtBuffer>> TfrtGpuClient::BufferFromHostBuffer(
         tsl::profiler::TraceMe traceme("H2D staging copy");
         HostMemoryAllocator::OwnedPtr staging_buffer =
             host_memory_allocator->Allocate(byte_size);
-
         if (transpose) {
           transpose->Execute(data, staging_buffer.get());
         } else {
@@ -1144,7 +1145,6 @@ absl::StatusOr<std::unique_ptr<PjRtBuffer>> TfrtGpuClient::BufferFromHostBuffer(
         }
         if (on_done_with_host_buffer) {
           std::move(on_done_with_host_buffer)();
-          on_done_with_host_buffer = nullptr;
         }
 
         auto copy_to_gpu = [gpu_device, byte_size,
@@ -1189,10 +1189,9 @@ absl::StatusOr<std::unique_ptr<PjRtBuffer>> TfrtGpuClient::BufferFromHostBuffer(
       };
 
   if (should_sync_copy) {
-    copy_to_staging_buffer();
+    h2d_copy();
   } else {
-    EnqueueWork(non_blocking_thread_pool_.get(),
-                std::move(copy_to_staging_buffer));
+    EnqueueWork(non_blocking_thread_pool_.get(), std::move(h2d_copy));
   }
 
   std::function<void()> on_delete_callback;
@@ -1223,7 +1222,7 @@ GetTfrtGpuDevices(LocalClient* xla_client) {
   int i = 0;
   for (se::StreamExecutor* executor :
        xla_client->backend().stream_executors()) {
-    // TODO(b/382117736): allow GPU allocator parameters to be configurable.
+    // TODO: b/382117736 - allow GPU allocator parameters to be configurable.
     TF_ASSIGN_OR_RETURN(auto allocator,
                         CreateBFCAllocator(executor, /*memory_fraction=*/0.9,
                                            /*preallocate=*/true, std::nullopt));
@@ -1273,7 +1272,7 @@ absl::StatusOr<std::unique_ptr<PjRtClient>> GetTfrtGpuClient(
     gpu_topology_proto.add_device_ids(device->id());
   }
 
-  // TODO(b/382117736): Support multi-host
+  // TODO: b/382117736 - Support multi-host
   gpu_topology_proto.set_num_slices(1);
   gpu_topology_proto.set_num_hosts_per_slice(1);
   gpu_topology_proto.set_num_devices_per_host(devices.size());
@@ -1679,7 +1678,7 @@ TfrtGpuExecutable::TfrtGpuExecutable(
     std::vector<Shape> parameter_shapes;
     parameter_shapes.reserve(computation_layout.parameter_count());
     for (int i = 0; i < computation_layout.parameter_count(); ++i) {
-      // TODO(b/382117736): Convert to device shape when we have transfer
+      // TODO: b/400541410 - Convert to device shape when we have transfer
       // manager.
       // parameter_shapes.push_back(transfer_manager->HostShapeToDeviceShape(
       // computation_layout.parameter_shape(i)));
