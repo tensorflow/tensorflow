@@ -3,7 +3,11 @@ load("//xla/service/cpu:build_defs.bzl", "runtime_copts")
 load("//xla/tsl:tsl.bzl", "if_google", "if_windows", "internal_visibility")
 load("//xla/tsl:tsl.default.bzl", "filegroup")
 load("//xla/tsl/platform:build_config.bzl", "tf_proto_library")
-load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
+load(
+    "//xla/tsl/platform:rules_cc.bzl",
+    "cc_library",
+    "cc_library_optional_no_mkl",
+)
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -436,7 +440,7 @@ cc_library(
     ],
 )
 
-cc_library(
+cc_library_optional_no_mkl(
     name = "convolution_thunk_internal",
     srcs = [
         "convolution_thunk_f16.cc",
@@ -444,25 +448,27 @@ cc_library(
     ],
     hdrs = ["convolution_thunk_internal.h"],
     copts = runtime_copts(),
+    mkl_deps = [
+        "//xla/tsl/framework/contraction:eigen_contraction_kernel",
+        "//xla/tsl/framework/convolution:eigen_helpers",
+    ],
     visibility = internal_visibility([":friends"]),
     deps = [
         ":work_queue",
         "//xla/tsl/concurrency:async_value",
-        "//xla/tsl/framework/contraction:eigen_contraction_kernel",
-        "//xla/tsl/framework/convolution:eigen_helpers",
         "//xla/tsl/platform:logging",
         "@eigen_archive//:eigen3",
     ],
 )
 
-cc_library(
+cc_library_optional_no_mkl(
     name = "convolution_thunk",
     srcs = ["convolution_thunk.cc"],
     hdrs = ["convolution_thunk.h"],
     copts = runtime_copts(),
+    mkl_deps = [":convolution_thunk_internal"],
     deps = [
         ":convolution_lib",
-        ":convolution_thunk_internal",
         ":thunk",
         "//xla:executable_run_options",
         "//xla:shape_util",
@@ -781,7 +787,7 @@ cc_library(
     ],
 )
 
-cc_library(
+cc_library_optional_no_mkl(
     name = "dot_thunk",
     srcs = [
         "dot_thunk.cc",
@@ -793,6 +799,7 @@ cc_library(
         "dot_thunk_s32.cc",
     ],
     hdrs = ["dot_thunk.h"],
+    mkl_deps = ["//xla/tsl/framework/contraction:eigen_contraction_kernel"],
     deps = [
         ":dot_lib",
         ":thunk",
@@ -803,7 +810,6 @@ cc_library(
         "//xla/service:buffer_assignment",
         "//xla/stream_executor:device_memory",
         "//xla/tsl/concurrency:async_value",
-        "//xla/tsl/framework/contraction:eigen_contraction_kernel",
         "//xla/tsl/platform:logging",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/base:core_headers",
@@ -1225,10 +1231,14 @@ cc_library(
     deps = ["@com_google_absl//absl/status:statusor"],
 )
 
-cc_library(
+cc_library_optional_no_mkl(
     name = "thunk_proto_serdes",
     srcs = ["thunk_proto_serdes.cc"],
     hdrs = ["thunk_proto_serdes.h"],
+    mkl_deps = [
+        ":convolution_thunk",
+        ":dot_thunk",
+    ],
     deps = [
         ":all_gather_thunk",
         ":all_reduce_thunk",
@@ -1238,10 +1248,8 @@ cc_library(
         ":collective_thunk",
         ":conditional_thunk",
         ":convolution_lib",
-        ":convolution_thunk",
         ":copy_thunk",
         ":custom_call_thunk",
-        ":dot_thunk",
         ":fft_thunk",
         ":infeed_thunk",
         ":kernel_thunk",

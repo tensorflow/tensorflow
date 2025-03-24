@@ -3,7 +3,11 @@ load(
     "//xla/tsl/platform:build_config.bzl",
     "tsl_cc_test",
 )
-load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
+load(
+    "//xla/tsl/platform:rules_cc.bzl",
+    "cc_library",
+    "cc_library_optional_no_mkl",
+)
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -37,15 +41,15 @@ cc_library(
 )
 
 # Tensorflow also has an eigen_helpers that is closely related, so maintain the same name.
-cc_library(
+cc_library_optional_no_mkl(
     name = "eigen_helpers",
     hdrs = [
         "eigen_spatial_convolutions.h",
     ],
     compatible_with = get_compatible_with_portable(),
     defines = ["EIGEN_NEON_GEBP_NR=4"],
+    mkl_deps = ["//xla/tsl/framework/contraction:eigen_contraction_kernel"],
     deps = [
-        "//xla/tsl/framework/contraction:eigen_contraction_kernel",
         "//xla/tsl/framework/convolution:eigen_convolution_helpers",
         "//xla/tsl/framework/convolution:eigen_spatial_convolutions-inl",
         "@eigen_archive//:eigen3",
