@@ -19,6 +19,7 @@ package_group(
         "//learning/deepmind/jax/ocean/...",
         "//learning/deepmind/partir/...",
         "//third_party/openxla/shardy/...",
+        "//third_party/py/jax/...",
     ],
 )
 

@@ -730,6 +730,9 @@ cc_library(
 cc_library(
     name = "lru_cache",
     hdrs = ["lru_cache.h"],
+    visibility = internal_visibility([
+        "//xla:friends",
+    ]),
     deps = [
         "@com_google_absl//absl/container:node_hash_map",
         "@local_tsl//tsl/platform:logging",
