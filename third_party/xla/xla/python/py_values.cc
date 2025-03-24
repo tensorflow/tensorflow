@@ -129,8 +129,8 @@ absl::StatusOr<DevicePutResultFn> HandlePythonScalar(
     type = primitive_util::NativeToPrimitiveType<SquashedT>();
   }
 
-  return [client, data, type, to_device,
-          to_memory_kind]() -> absl::StatusOr<DevicePutResult> {
+  return [client, data, type, to_device, to_memory_kind,
+          options]() -> absl::StatusOr<DevicePutResult> {
     const void* ptr = std::visit(
         [](const auto& v) { return static_cast<const void*>(&v); }, data);
     TF_ASSIGN_OR_RETURN(auto ifrt_dtype, xla::ifrt::ToDType(type));
@@ -141,7 +141,7 @@ absl::StatusOr<DevicePutResultFn> HandlePythonScalar(
             ptr, ifrt_dtype, /*shape=*/ifrt::Shape({}), /*byte_strides=*/{},
             ifrt::SingleDeviceSharding::Create(to_device, to_memory_kind),
             ifrt::Client::HostBufferSemantics::kImmutableOnlyDuringCall,
-            /*on_done_with_host_buffer=*/{}));
+            /*on_done_with_host_buffer=*/{}, options.ifrt_user_context));
     return DevicePutResult(std::move(ifrt_array), /*weak_type=*/true);
   };
 }
@@ -175,8 +175,8 @@ absl::StatusOr<DevicePutResultFn> HandlePythonInt(
     }
     type = S64;
   }
-  return [client, data, type, to_device,
-          to_memory_kind]() -> absl::StatusOr<DevicePutResult> {
+  return [client, data, type, to_device, to_memory_kind,
+          options]() -> absl::StatusOr<DevicePutResult> {
     const void* ptr = std::visit(
         [](const auto& v) { return static_cast<const void*>(&v); }, data);
     TF_ASSIGN_OR_RETURN(auto ifrt_dtype, xla::ifrt::ToDType(type));
@@ -188,7 +188,7 @@ absl::StatusOr<DevicePutResultFn> HandlePythonInt(
             /*byte_strides=*/{},
             ifrt::SingleDeviceSharding::Create(to_device, to_memory_kind),
             ifrt::Client::HostBufferSemantics::kImmutableOnlyDuringCall,
-            /*on_done_with_host_buffer=*/nullptr));
+            /*on_done_with_host_buffer=*/nullptr, options.ifrt_user_context));
     return DevicePutResult(std::move(ifrt_array), /*weak_type=*/true);
   };
 }
@@ -256,7 +256,7 @@ absl::StatusOr<DevicePutResultFn> HandleNumpyScalar(
     py_buffer_ref =
         GlobalPyRefManager()->ManageReference(nb::cast<nb::object>(h));
   }
-  return [client, data, py_buffer_ref, type, to_device,
+  return [client, data, py_buffer_ref, type, to_device, options,
           to_memory_kind]() mutable -> absl::StatusOr<DevicePutResult> {
     const void* ptr = std::visit(
         [](const auto& v) -> const void* {
@@ -278,7 +278,8 @@ absl::StatusOr<DevicePutResultFn> HandleNumpyScalar(
             ifrt::Client::HostBufferSemantics::kImmutableOnlyDuringCall,
             /*on_done_with_host_buffer=*/
             [py_buffer_ref = std::move(
-                 py_buffer_ref)]() { /* keeps py_buffer_ref alive */ }));
+                 py_buffer_ref)]() { /* keeps py_buffer_ref alive */ },
+            options.ifrt_user_context));
     return DevicePutResult(std::move(ifrt_array), /*weak_type=*/false);
   };
 }
@@ -311,16 +312,15 @@ absl::StatusOr<DevicePutResultFn> HandleStringNumpyArray(
 
   return [client, data = data, shape = std::move(shape),
           sharding = std::move(sharding),
-          on_done_with_host_buffer =
-              std::move(on_done_with_host_buffer)]() mutable
-             -> absl::StatusOr<DevicePutResult> {
+          on_done_with_host_buffer = std::move(on_done_with_host_buffer),
+          options]() mutable -> absl::StatusOr<DevicePutResult> {
     TF_ASSIGN_OR_RETURN(
         auto ifrt_array,
         client->MakeArrayFromHostBuffer(
             data, ifrt::DType(ifrt::DType::kString), std::move(shape),
             /*byte_strides=*/std::nullopt, std::move(sharding),
             ifrt::Client::HostBufferSemantics::kImmutableUntilTransferCompletes,
-            std::move(on_done_with_host_buffer)));
+            std::move(on_done_with_host_buffer), options.ifrt_user_context));
 
     return DevicePutResult(std::move(ifrt_array), /*weak_type=*/false);
   };
@@ -365,15 +365,14 @@ absl::StatusOr<DevicePutResultFn> HandleNumpyArray(
       GlobalPyRefManager()->ManageReference(std::move(array));
   return [client, data, squashed_type, dims = std::move(dims),
           byte_strides = std::move(byte_strides),
-          py_buffer_ref = std::move(py_buffer_ref),
-          allow_zero_copy = options.allow_zero_copy, to_device,
+          py_buffer_ref = std::move(py_buffer_ref), options, to_device,
           to_memory_kind]() mutable -> absl::StatusOr<DevicePutResult> {
     TF_ASSIGN_OR_RETURN(auto ifrt_dtype, xla::ifrt::ToDType(squashed_type));
 
     ifrt::Client::HostBufferSemantics host_buffer_semantics =
         ifrt::Client::HostBufferSemantics::kImmutableOnlyDuringCall;
     std::function<void()> on_done_with_host_buffer;
-    if (allow_zero_copy) {
+    if (options.allow_zero_copy) {
       on_done_with_host_buffer =
           [py_buffer_ref{
               std::move(py_buffer_ref)}]() { /* keeps py_buffer_ref alive */ };
@@ -386,7 +385,8 @@ absl::StatusOr<DevicePutResultFn> HandleNumpyArray(
         client->MakeArrayFromHostBuffer(
             data, ifrt_dtype, ifrt::Shape(dims), byte_strides,
             xla::ifrt::SingleDeviceSharding::Create(to_device, to_memory_kind),
-            host_buffer_semantics, std::move(on_done_with_host_buffer)));
+            host_buffer_semantics, std::move(on_done_with_host_buffer),
+            options.ifrt_user_context));
     return DevicePutResult(std::move(ifrt_array), /*weak_type=*/false);
   };
 }

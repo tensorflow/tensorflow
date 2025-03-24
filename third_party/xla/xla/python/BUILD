@@ -290,6 +290,7 @@ cc_library(
         "//xla/python/ifrt:custom_call_program",
         "//xla/python/ifrt:plugin_program",
         "//xla/python/ifrt:plugin_program_serdes",
+        "//xla/python/ifrt:user_context",
         "//xla/python/ifrt/hlo:hlo_program",
         "//xla/python/pjrt_ifrt",
         "//xla/python/pjrt_ifrt:pjrt_attribute_map_util",

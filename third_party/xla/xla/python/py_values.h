@@ -31,6 +31,7 @@ limitations under the License.
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/memory.h"
+#include "xla/python/ifrt/user_context.h"
 #include "xla/python/nb_numpy.h"
 #include "xla/tsl/concurrency/ref_count.h"
 #include "xla/xla_data.pb.h"
@@ -76,6 +77,7 @@ struct DevicePutResult {
 struct DevicePutOptions {
   bool squash_64bit_types = false;
   bool allow_zero_copy = true;
+  tsl::RCReference<xla::ifrt::UserContext> ifrt_user_context;
 };
 using DevicePutResultFn =
     absl::AnyInvocable<absl::StatusOr<DevicePutResult>() &&>;

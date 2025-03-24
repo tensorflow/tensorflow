@@ -1236,6 +1236,10 @@ absl::StatusOr<PyArray> PyArray::BatchedDevicePut(
   options.allow_zero_copy =
       (!force_copy && (host_buffer_semantics ==
                        ifrt::Client::HostBufferSemantics::kImmutableZeroCopy));
+  if (!dst_devices.empty()) {
+    options.ifrt_user_context =
+        dst_devices.front()->client()->ifrt_client()->CreateUserContext();
+  }
 
   nb::list owning_pylist;
   std::vector<tsl::RCReference<ifrt::Array>> ifrt_arrays;
@@ -1267,11 +1271,6 @@ absl::StatusOr<PyArray> PyArray::BatchedDevicePut(
   std::vector<DevicePutResult> device_puts;
   device_puts.reserve(device_put_fns.size());
   {
-    // TODO(b/318709106): This is a temporary solution to propagate a hint to
-    // backends that the current traceback does not change within the scope.
-    // This should be removed once context propagation from IFRT API is
-    // implemented.
-    TracebackCacheScope traceback_cache_scope;
     nb::gil_scoped_release gil_release;
     for (auto& device_put_fn : device_put_fns) {
       TF_ASSIGN_OR_RETURN(auto device_put, std::move(device_put_fn)());
