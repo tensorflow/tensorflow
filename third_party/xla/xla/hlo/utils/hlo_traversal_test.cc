@@ -130,8 +130,7 @@ TEST_F(HloTraversalTest, AdaptorUsers) {
   HloInstructionAdaptor add{*module->GetComputationWithName("computation1")
                                  ->GetInstructionWithName("add.1"),
                             fusion_adaptor1.get()};
-  EXPECT_THAT(add.GetUsers(), ElementsAre(InstructionAdaptorName("mul"),
-                                          InstructionAdaptorName("tuple.3")));
+  EXPECT_THAT(add.GetUsers(), ElementsAre(InstructionAdaptorName("mul")));
 
   auto fusion_adaptor2 = HloFusionAdaptor::ForInstruction(
       module->entry_computation()->GetInstructionWithName("fusion2"));
