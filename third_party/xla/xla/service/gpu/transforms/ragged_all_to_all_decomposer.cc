@@ -39,6 +39,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/literal_util.h"
+#include "xla/service/collective_ops_utils.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/platform/errors.h"
@@ -47,30 +48,6 @@ limitations under the License.
 
 namespace xla {
 namespace gpu {
-
-// Returns the number of devices that participate in the ragged-all-to-all based
-// on the replica groups. Returns nullopt if replica groups are not present or
-// have different numbers of devices.
-std::optional<int64_t> GetNumParticipatingDevices(
-    HloRaggedAllToAllInstruction* ragged_all_to_all) {
-  absl::Span<const ReplicaGroup> replica_groups =
-      ragged_all_to_all->device_list().replica_groups();
-
-  if (replica_groups.empty()) {
-    return std::nullopt;
-  }
-
-  int64_t num_participating_devices =
-      replica_groups.begin()->replica_ids_size();
-
-  if (!absl::c_all_of(replica_groups, [&](const ReplicaGroup& replica_group) {
-        return replica_group.replica_ids_size() == num_participating_devices;
-      })) {
-    return std::nullopt;
-  }
-
-  return num_participating_devices;
-}
 
 // Runs all-to-all to exchange output offsets for each participating device.
 HloInstruction* RunAllToAllOnOutputOffsets(HloComputation* computation,
@@ -367,11 +344,13 @@ absl::StatusOr<bool> DecomposeRaggedAllToAll(HloInstruction* hlo,
   HloRaggedAllToAllInstruction* all_to_all =
       Cast<HloRaggedAllToAllInstruction>(hlo);
 
-  std::optional<int64_t> num_participating_devices =
-      GetNumParticipatingDevices(all_to_all);
-  if (!num_participating_devices.has_value()) {
+  TF_ASSIGN_OR_RETURN(auto replica_group_count_and_size,
+                      GetReplicaGroupCountAndSize(all_to_all));
+  if (!replica_group_count_and_size.has_value()) {
     return false;
   }
+
+  int64_t num_participating_devices = replica_group_count_and_size->second;
 
   HloInstruction* input_operand = all_to_all->mutable_operand(0);
   HloInstruction* output_operand = all_to_all->mutable_operand(1);
@@ -382,7 +361,7 @@ absl::StatusOr<bool> DecomposeRaggedAllToAll(HloInstruction* hlo,
 
   int64_t num_total_updates = input_offsets->shape().dimensions(0);
   int64_t num_updates_per_replica =
-      num_total_updates / *num_participating_devices;
+      num_total_updates / num_participating_devices;
   int64_t max_update_size = input_operand->shape().dimensions(0);
 
   // Runs all-to-all to exchange output offsets for each participating device.
@@ -392,7 +371,7 @@ absl::StatusOr<bool> DecomposeRaggedAllToAll(HloInstruction* hlo,
   // from the perspective of the local buffer.
   output_offsets = RunAllToAllOnOutputOffsets(
       computation, all_to_all, output_offsets, num_updates_per_replica,
-      *num_participating_devices);
+      num_participating_devices);
 
   auto dense_input = RaggedToDense(computation, input_operand, input_offsets,
                                    num_updates_per_replica, max_update_size);

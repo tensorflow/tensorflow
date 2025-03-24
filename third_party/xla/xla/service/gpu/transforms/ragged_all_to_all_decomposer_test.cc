@@ -82,9 +82,9 @@ ENTRY main {
 }
 
 TEST_F(RaggedAllToAllDecomposerTest,
-       RaggedAllToAllWithoutReplicaGroupsIsNotSupported) {
+       RaggedAllToAllWithoutReplicaGroupsIsSupported) {
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
-HloModule module
+HloModule module, replica_count=2
 
 ENTRY main {
   input = bf16[16] parameter(0)
@@ -100,7 +100,25 @@ ENTRY main {
 
   RaggedAllToAllDecomposer decomposer;
   TF_ASSERT_OK_AND_ASSIGN(bool changed, decomposer.Run(module.get(), {}));
-  EXPECT_FALSE(changed);
+  EXPECT_TRUE(changed);
+  TF_EXPECT_OK(VerifyHloModule(module.get(), true, true));
+  TF_EXPECT_OK(HloCSE(true).Run(module.get()));
+
+  EXPECT_TRUE(*RunFileCheck(module->ToString(), R"(
+    // CHECK: s64[2,1]{1,0} all-to-all
+    // CHECK: dynamic-slice
+    // CHECK: reshape
+    // CHECK: concatenate
+    // CHECK: dynamic-slice
+    // CHECK: reshape
+    // CHECK: concatenate
+    // CHECK: (bf16[1,16]{1,0}, bf16[1,16]{1,0}) all-to-all
+    // CHECK: dynamic-update-slice
+    // CHECK: iota
+    // CHECK: compare
+    // CHECK: select
+    // CHECK: select
+  )"));
 }
 
 TEST_F(RaggedAllToAllDecomposerTest,
