@@ -6957,8 +6957,8 @@ absl::Status AlgebraicSimplifierVisitor::HandleSlice(HloInstruction* slice) {
     // dimensions. Otherwise, it will conflict with an existing optimization
     // that converts dot to mul(broadcast)
     if (!DotHasOnlyBatchAndContractingOnOneOperand(
-            ShapeUtil::TrueRank(new_lhs->shape()),
-            ShapeUtil::TrueRank(new_rhs->shape()), dnums)) {
+            ShapeUtil::TrueNumDimensions(new_lhs->shape()),
+            ShapeUtil::TrueNumDimensions(new_rhs->shape()), dnums)) {
       VLOG(10) << "Reordering slice into dot operands";
       return ReplaceInstruction(slice, new_dot);
     }

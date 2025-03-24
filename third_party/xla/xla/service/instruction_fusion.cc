@@ -249,7 +249,8 @@ bool InstructionFusion::EffectivelyAtMostUnary(HloInstruction* hlo) {
       hlo->shape(),
       [&output_rank](const Shape& subshape, const ShapeIndex& shape_index) {
         if (subshape.IsArray()) {
-          output_rank = std::max(output_rank, ShapeUtil::TrueRank(subshape));
+          output_rank =
+              std::max(output_rank, ShapeUtil::TrueNumDimensions(subshape));
         }
       });
   return absl::c_count_if(
@@ -262,7 +263,8 @@ bool InstructionFusion::EffectivelyAtMostUnary(HloInstruction* hlo) {
                    ShapeUtil::IsEffectiveScalar(operand->shape())) {
                  return false;
                }
-               return ShapeUtil::TrueRank(operand->shape()) >= output_rank;
+               return ShapeUtil::TrueNumDimensions(operand->shape()) >=
+                      output_rank;
              }) <= 1;
 }
 

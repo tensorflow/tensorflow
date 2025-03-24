@@ -227,7 +227,7 @@ std::ostream& operator<<(std::ostream& out, const ShapeIndex& shape_index) {
   return equal;
 }
 
-/* static */ int64_t ShapeUtil::TrueRank(const Shape& shape) {
+/* static */ int64_t ShapeUtil::TrueNumDimensions(const Shape& shape) {
   int64_t accum = 0;
   for (int64_t dimension : shape.dimensions()) {
     // We do not count unit dimensions.

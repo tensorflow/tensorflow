@@ -334,7 +334,7 @@ absl::StatusOr<Shape> AdjustAddendShape(const HloInstruction* contraction,
     // TODO(intel-tf): Modify this condition when Contraction + Bias +
     // Add is enabled.
     if (IsOneDnnConvolutionInstr(contraction) &&
-        ShapeUtil::TrueRank(addend->shape()) == 1 &&
+        ShapeUtil::TrueNumDimensions(addend->shape()) == 1 &&
         addend->shape().dimensions_size() != 1) {
       return ShapeUtil::FilterDimensions(
           [&addend](int64_t dim) {
@@ -742,7 +742,7 @@ class OneDnnContractionRewriteVisitor : public DfsHloRewriteVisitor {
       // fused op. Remove this restriction once oneDNN has an optimized
       // implementation for broadcasted add across all dimensions.
       OneDnnFusionConfig_FusionKind kind =
-          (ShapeUtil::TrueRank(addend->shape()) == 1)
+          (ShapeUtil::TrueNumDimensions(addend->shape()) == 1)
               ? (fusions_config->ops().empty() ? OneDnnFusionConfig::BIAS
                                                : OneDnnFusionConfig::UNDEFINED)
               : OneDnnFusionConfig::BINARY_ADD;

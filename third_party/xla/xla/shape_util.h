@@ -292,10 +292,10 @@ class ShapeUtil {
   static bool EqualStructure(const Shape& lhs, const Shape& rhs);
 
   // Returns the number of dimensions for which the dimension is not (trivially)
-  // 1. e.g., f32[2x1x1] has a true rank of 1D, the other dimensions are just
-  // fluff. Note that zero dimensions are included in the true rank, e.g.,
-  // f32[3,0,1] has a true rank of 2D.
-  static int64_t TrueRank(const Shape& shape);
+  // 1. e.g., f32[2x1x1] has a true dimensionality of 1D, the other dimensions
+  // are just fluff. Note that zero dimensions are included in the true
+  // dimensionality, e.g., f32[3,0,1] has a true dimensionality of 2D.
+  static int64_t TrueNumDimensions(const Shape& shape);
 
   static ProgramShape MakeProgramShape(std::initializer_list<Shape> parameters,
                                        Shape result);
@@ -307,7 +307,7 @@ class ShapeUtil {
     return shape.IsArray() && shape.dimensions_size() == 0;
   }
   static bool IsEffectiveScalar(const Shape& shape) {
-    return shape.IsArray() && TrueRank(shape) == 0;
+    return shape.IsArray() && TrueNumDimensions(shape) == 0;
   }
 
   // Returns whether "shape" is a scalar (array) with the given element_type.
