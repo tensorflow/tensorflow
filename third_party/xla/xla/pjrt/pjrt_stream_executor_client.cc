@@ -1885,12 +1885,6 @@ PjRtStreamExecutorBuffer::CopyToDeviceHelper(
 absl::StatusOr<std::unique_ptr<PjRtBuffer>>
 PjRtStreamExecutorBuffer::CopyToDeviceMemorySpace(
     PjRtDevice* dst_device, PjRtMemorySpace* dst_memory_space) {
-  if (dst_device == device_ && dst_memory_space == memory_space() &&
-      dst_memory_space->kind_id() != PinnedHostMemorySpace::kKindId) {
-    return InvalidArgument(
-        "CopyToDeviceMemorySpace cannot accept the same source and destination "
-        "devices/memory");
-  }
   // Copying across PjRtClients involves a copy through the host.
   if (dst_device->client() != client_) {
     TF_ASSIGN_OR_RETURN(std::shared_ptr<Literal> literal, ToLiteralSync());

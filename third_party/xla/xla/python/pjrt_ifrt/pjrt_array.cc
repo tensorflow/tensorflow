@@ -449,27 +449,18 @@ absl::StatusOr<tsl::RCReference<Array>> PjRtArray::Copy(
     // No need for data transfer.
     if (devices_equal && (!new_sharding_has_memory_kind || memory_kind_equal)) {
       switch (semantics) {
-        case ArrayCopySemantics::kAlwaysCopy:
-          // HBM is the only thing that doesn't support same-device copy and
-          // both pinned_host and unpinned_host support it. But unpinned_host
-          // support is unimplemented.
-          if (canonicalized_sharding_memory_kind == kPinnedHostMemoryKind) {
-            TF_ASSIGN_OR_RETURN(auto memory,
-                                GetMemorySpaceFromMemoryKind(
-                                    new_sharding_devices[i],
-                                    canonicalized_sharding_memory_kind));
-            PjRtMemory* pjrt_memory = llvm::dyn_cast<PjRtMemory>(memory);
-            TF_ASSIGN_OR_RETURN(auto copied_buffer,
-                                pjrt_buffers_[i]->CopyToMemorySpace(
-                                    pjrt_memory->pjrt_memory()));
-            buffers.push_back(std::move(copied_buffer));
-          } else {
-            // TODO(hyeontaek): kAlwaysCopy should clone the buffer, but the
-            // PjRt API does not have efficient buffer cloning on the same
-            // device.
-            buffers.push_back(pjrt_buffers_[i]);
-          }
+        case ArrayCopySemantics::kAlwaysCopy: {
+          TF_ASSIGN_OR_RETURN(
+              auto memory,
+              GetMemorySpaceFromMemoryKind(new_sharding_devices[i],
+                                           canonicalized_sharding_memory_kind));
+          PjRtMemory* pjrt_memory = llvm::dyn_cast<PjRtMemory>(memory);
+          TF_ASSIGN_OR_RETURN(
+              auto copied_buffer,
+              pjrt_buffers_[i]->CopyToMemorySpace(pjrt_memory->pjrt_memory()));
+          buffers.push_back(std::move(copied_buffer));
           break;
+        }
         case ArrayCopySemantics::kReuseInput:
           buffers.push_back(pjrt_buffers_[i]);
           break;
