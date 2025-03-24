@@ -532,6 +532,9 @@ cc_test(
 #     data = [
 #         "//tensorflow/lite/experimental/litert/test:testdata/simple_model.tflite",
 #     ],
+#     env = {
+#         "ASAN_OPTIONS": "detect_odr_violation=0",
+#     },
 #     tags = [
 #         "requires-gpu-nvidia",
 #     ],
