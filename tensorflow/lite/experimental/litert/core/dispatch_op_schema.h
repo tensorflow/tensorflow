@@ -21,8 +21,7 @@
 // functions leverage the flexbuffer api under the hood which allows for inplace
 // updates.
 
-namespace litert {
-namespace internal {
+namespace litert::internal {
 
 // Schema representing the custom options data for dispatch ops. Primarly used
 // to for tracking location of bytecode.
@@ -53,7 +52,6 @@ bool UpdateDispatchOpOptionsInPlace(DispatchOpOptions options,
 // custom options buffer of the dispatch op.
 DispatchOpOptions GetDispatchOpOptions(BufferRef<uint8_t> buffer);
 
-}  // namespace internal
-}  // namespace litert
+}  // namespace litert::internal
 
 #endif  // TENSORFLOW_LITE_EXPERIMENTAL_LITERT_CORE_DISPATCH_OP_SCHEMA_H_

@@ -22,12 +22,14 @@
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
 
+using litert::Error;
+using litert::Expected;
+using litert::Unexpected;
 using testing::Not;
 using testing::StrEq;
 using testing::litert::IsError;
 using testing::litert::IsOk;
 
-namespace litert {
 namespace {
 
 struct CopyOnly {
@@ -180,4 +182,3 @@ TEST(AssertOkAndAssign, FailuresStopsExecution) {
 }
 
 }  // namespace
-}  // namespace litert

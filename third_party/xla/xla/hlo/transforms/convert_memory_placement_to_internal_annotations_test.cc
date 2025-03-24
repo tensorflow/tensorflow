@@ -23,7 +23,7 @@
 #include "absl/strings/string_view.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/verified_hlo_module.h"
-#include "xla/service/host_memory_offload_annotations.h"
+#include "xla/service/memory_annotations.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
@@ -250,9 +250,9 @@ ENTRY main.183 {
   for (auto* c : module->computations()) {
     for (auto* instr : c->instructions()) {
       if (instr->IsCustomCall(
-              host_memory_offload_annotations::kMoveToHostCustomCallTarget) ||
+              memory_annotations::kMoveToHostCustomCallTarget) ||
           instr->IsCustomCall(
-              host_memory_offload_annotations::kMoveToDeviceCustomCallTarget)) {
+              memory_annotations::kMoveToDeviceCustomCallTarget)) {
         ++custom_calls_count;
       }
     }
@@ -474,9 +474,9 @@ ENTRY main.183 {
   for (auto* c : module->computations()) {
     for (auto* instr : c->instructions()) {
       if (instr->IsCustomCall(
-              host_memory_offload_annotations::kMoveToHostCustomCallTarget) ||
+              memory_annotations::kMoveToHostCustomCallTarget) ||
           instr->IsCustomCall(
-              host_memory_offload_annotations::kMoveToDeviceCustomCallTarget)) {
+              memory_annotations::kMoveToDeviceCustomCallTarget)) {
         ++custom_calls_count;
       }
     }
@@ -503,8 +503,8 @@ TEST_F(ConvertMemoryPlacementToInternalAnnotationsTest,
   int64_t move_to_host_count = 0;
   for (auto* c : module->computations()) {
     for (auto* instr : c->instructions()) {
-      move_to_host_count += instr->IsCustomCall(
-          host_memory_offload_annotations::kMoveToHostCustomCallTarget);
+      move_to_host_count +=
+          instr->IsCustomCall(memory_annotations::kMoveToHostCustomCallTarget);
     }
   }
   EXPECT_EQ(move_to_host_count, 1);
@@ -534,7 +534,7 @@ TEST_F(ConvertMemoryPlacementToInternalAnnotationsTest,
   for (auto* c : module->computations()) {
     for (auto* instr : c->instructions()) {
       pin_to_vmem_count += instr->IsCustomCall(
-          host_memory_offload_annotations::kPinToDeviceSramCustomCallTarget);
+          memory_annotations::kPinToDeviceSramCustomCallTarget);
     }
   }
   EXPECT_EQ(pin_to_vmem_count, 1);
@@ -563,8 +563,8 @@ TEST_F(ConvertMemoryPlacementToInternalAnnotationsTest,
   int64_t pin_todevice_count = 0;
   for (auto* c : module->computations()) {
     for (auto* instr : c->instructions()) {
-      pin_todevice_count += instr->IsCustomCall(
-          host_memory_offload_annotations::kPinToDeviceCustomCallTarget);
+      pin_todevice_count +=
+          instr->IsCustomCall(memory_annotations::kPinToDeviceCustomCallTarget);
     }
   }
   EXPECT_EQ(pin_todevice_count, 1);

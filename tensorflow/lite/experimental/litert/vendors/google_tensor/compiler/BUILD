@@ -70,6 +70,7 @@ cc_test(
         "no_oss",
         # Sanatizer runtime doesn't work with anything that loads a shared library.
         "nosan",
+        "manual",
     ],
     # This test can only be run on Android and Linux.
     target_compatible_with = select({

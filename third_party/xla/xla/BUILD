@@ -348,6 +348,7 @@ cc_library(
         "@local_tsl//tsl/platform:casts",
         "@local_tsl//tsl/platform:ml_dtypes",
         "@local_tsl//tsl/platform:numbers",
+        "@local_tsl//tsl/platform:protobuf",
         "@local_tsl//tsl/platform:stacktrace",
     ],
 )
@@ -358,12 +359,14 @@ xla_cc_test(
     deps = [
         ":types",
         ":util",
+        ":xla_data_proto_cc",
         "//xla/hlo/testlib:test",
         "//xla/tsl/platform:logging",
         "//xla/tsl/platform:test_main",
         "@com_google_absl//absl/base:log_severity",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest",
@@ -1390,6 +1393,31 @@ xla_cc_test(
         "//xla/tsl/platform:test",
         "//xla/tsl/platform:test_main",
         "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_library(
+    name = "online_topsort",
+    hdrs = ["online_topsort.h"],
+    deps = [
+        "//xla/tsl/platform:logging",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+xla_cc_test(
+    name = "online_topsort_test",
+    srcs = ["online_topsort_test.cc"],
+    deps = [
+        ":online_topsort",
+        "//xla/tsl/platform:test",
+        "//xla/tsl/platform:test_main",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/log:log_streamer",
+        "@com_google_absl//absl/random",
+        "@com_google_absl//absl/strings",
     ],
 )
 

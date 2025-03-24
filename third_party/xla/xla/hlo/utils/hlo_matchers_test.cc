@@ -69,36 +69,30 @@ TEST_F(HloMatchersTest, Test) {
               op::Add(op::Parameter(), op::Multiply(_, op::Parameter())));
 
   // Negative matches: check the explanation string.
-  EXPECT_THAT(
-      Explain(add.get(), op::Parameter()),
-      Eq("(%add = f32[1]{0} add(f32[1]{0} %param, f32[1]{0} %multiply))"));
-  EXPECT_THAT(
-      Explain(add.get(), op::Add(op::Parameter())),
-      Eq("(%add = f32[1]{0} add(f32[1]{0} %param, f32[1]{0} %multiply)) "
-         "has too many operands (got 2, want 1)"));
-  EXPECT_THAT(
-      Explain(add.get(), op::Add(op::Parameter(), op::Parameter())),
-      Eq("(%add = f32[1]{0} add(f32[1]{0} %param, f32[1]{0} %multiply))"
-         "\noperand 1:\n\t"
-         "%multiply = f32[1]{0} multiply(f32[1]{0} %param, f32[1]{0} %param)\n"
-         "doesn't match expected:\n\t"
-         "parameter"
-         ", (%multiply = f32[1]{0} multiply(f32[1]{0} %param, f32[1]{0} "
-         "%param))"));
-  EXPECT_THAT(
-      Explain(add.get(),
-              op::Add(op::Parameter(), op::Multiply(op::Add(), op::Add()))),
-      Eq("(%add = f32[1]{0} add(f32[1]{0} %param, f32[1]{0} %multiply))"
-         "\noperand 1:\n\t"
-         "%multiply = f32[1]{0} multiply(f32[1]{0} %param, f32[1]{0} %param)\n"
-         "doesn't match expected:\n\t"
-         "multiply(add, add)"
-         ", (%multiply = f32[1]{0} multiply(f32[1]{0} %param, f32[1]{0} "
-         "%param))\n"
-         "operand 0:\n\t"
-         "%param = f32[1]{0} parameter(0)\n"
-         "doesn't match expected:\n\t"
-         "add, (%param = f32[1]{0} parameter(0))"));
+  EXPECT_THAT(Explain(add.get(), op::Parameter()),
+              Eq("(%add = f32[1]{0} add(%param, %multiply))"));
+  EXPECT_THAT(Explain(add.get(), op::Add(op::Parameter())),
+              Eq("(%add = f32[1]{0} add(%param, %multiply)) "
+                 "has too many operands (got 2, want 1)"));
+  EXPECT_THAT(Explain(add.get(), op::Add(op::Parameter(), op::Parameter())),
+              Eq("(%add = f32[1]{0} add(%param, %multiply))"
+                 "\noperand 1:\n\t"
+                 "%multiply = f32[1]{0} multiply(%param, %param)\n"
+                 "doesn't match expected:\n\t"
+                 "parameter"
+                 ", (%multiply = f32[1]{0} multiply(%param, %param))"));
+  EXPECT_THAT(Explain(add.get(), op::Add(op::Parameter(),
+                                         op::Multiply(op::Add(), op::Add()))),
+              Eq("(%add = f32[1]{0} add(%param, %multiply))"
+                 "\noperand 1:\n\t"
+                 "%multiply = f32[1]{0} multiply(%param, %param)\n"
+                 "doesn't match expected:\n\t"
+                 "multiply(add, add)"
+                 ", (%multiply = f32[1]{0} multiply(%param, %param))\n"
+                 "operand 0:\n\t"
+                 "%param = f32[1]{0} parameter(0)\n"
+                 "doesn't match expected:\n\t"
+                 "add, (%param = f32[1]{0} parameter(0))"));
 }
 
 TEST_F(HloMatchersTest, CustomCallMatcher) {
@@ -125,8 +119,8 @@ TEST_F(HloMatchersTest, CustomCallMatcher) {
               ::testing::Not(op::CustomCall(::testing::StartsWith("bar"))));
 
   EXPECT_THAT(Explain(call.get(), op::CustomCall("bar")),
-              "(%custom-call = f32[1]{0} custom-call(f32[3]{0} %constant, "
-              "s32[3]{0} %constant), custom_call_target=\"foo_target\") "
+              "(%custom-call = f32[1]{0} custom-call(%constant, %constant), "
+              "custom_call_target=\"foo_target\") "
               "custom-call with call target that isn't equal to \"bar\"");
   EXPECT_THAT(DescribeHloMatcher(op::CustomCall("foo_target")),
               R"(custom-call with call target that is equal to "foo_target")");
@@ -231,21 +225,19 @@ ENTRY DotOperationFusion_TransposeFusion {
                             /*lhs_contracting_dim=*/1,
                             /*rhs_contracting_dim=*/0));
 
-  EXPECT_THAT(
-      Explain(root, op::Dot(op::Parameter(0), op::Parameter(1),
-                            /*lhs_contracting_dim=*/0,
-                            /*rhs_contracting_dim=*/0)),
-      "(%dot = f32[1,1024]{1,0} dot(f32[1,256]{1,0} %arg0, f32[256,1024]{1,0} "
-      "%arg1), lhs_contracting_dims={1}, rhs_contracting_dims={0}) has wrong "
-      "lhs_contracting_dimensions (got {1} want {0})");
+  EXPECT_THAT(Explain(root, op::Dot(op::Parameter(0), op::Parameter(1),
+                                    /*lhs_contracting_dim=*/0,
+                                    /*rhs_contracting_dim=*/0)),
+              "(%dot = f32[1,1024]{1,0} dot(%arg0, %arg1), "
+              "lhs_contracting_dims={1}, rhs_contracting_dims={0}) has wrong "
+              "lhs_contracting_dimensions (got {1} want {0})");
 
-  EXPECT_THAT(
-      Explain(root, op::Dot(op::Parameter(0), op::Parameter(1),
-                            /*lhs_contracting_dim=*/1,
-                            /*rhs_contracting_dim=*/1)),
-      "(%dot = f32[1,1024]{1,0} dot(f32[1,256]{1,0} %arg0, f32[256,1024]{1,0} "
-      "%arg1), lhs_contracting_dims={1}, rhs_contracting_dims={0}) has wrong "
-      "rhs_contracting_dimensions (got {0} want {1})");
+  EXPECT_THAT(Explain(root, op::Dot(op::Parameter(0), op::Parameter(1),
+                                    /*lhs_contracting_dim=*/1,
+                                    /*rhs_contracting_dim=*/1)),
+              "(%dot = f32[1,1024]{1,0} dot(%arg0, %arg1), "
+              "lhs_contracting_dims={1}, rhs_contracting_dims={0}) has wrong "
+              "rhs_contracting_dimensions (got {0} want {1})");
 }
 
 TEST_F(HloMatchersTest, ComparisonMatcher) {
@@ -272,12 +264,12 @@ TEST_F(HloMatchersTest, ComparisonMatcher) {
                                op::Add(op::Parameter(0), op::Parameter(1))));
 
   EXPECT_THAT(Explain(eq.get(), op::Add()),
-              Eq("(%compare = f32[1]{0} compare(f32[1]{0} %param.0, "
-                 "f32[1]{0} %param.1), direction=EQ)"));
-  EXPECT_THAT(Explain(eq.get(), op::Ne()),
-              Eq("(%compare = f32[1]{0} compare(f32[1]{0} %param.0, "
-                 "f32[1]{0} %param.1), direction=EQ) "
-                 "has wrong comparison direction (got EQ, want NE)"));
+              Eq("(%compare = f32[1]{0} compare(%param.0, %param.1), "
+                 "direction=EQ)"));
+  EXPECT_THAT(
+      Explain(eq.get(), op::Ne()),
+      Eq("(%compare = f32[1]{0} compare(%param.0, %param.1), "
+         "direction=EQ) has wrong comparison direction (got EQ, want NE)"));
 }
 
 TEST_F(HloMatchersTest, AsyncCopyMatcher) {
@@ -304,16 +296,12 @@ TEST_F(HloMatchersTest, AsyncCopyMatcher) {
 
   EXPECT_THAT(Explain(copy_start.get(), op::AsyncCopy(2, 1, op::Parameter(0))),
               Eq("(%copy-start = (f32[16]{0:S(2)}, f32[16]{0:S(1)}, u32[]) "
-                 "copy-start(f32[16]{0:S(1)} %p0))"));
+                 "copy-start(%p0))"));
   EXPECT_THAT(Explain(copy_done.get(), op::AsyncCopy(3, 1, op::Parameter(0))),
-              "(%copy-done = f32[16]{0:S(2)} copy-done((f32[16]{0:S(2)}, "
-              "f32[16]{0:S(1)}, u32[]) "
-              "%copy-start)) "
+              "(%copy-done = f32[16]{0:S(2)} copy-done(%copy-start)) "
               "copies to memory space 2, expected 3");
   EXPECT_THAT(Explain(copy_done.get(), op::AsyncCopy(2, 3, op::Parameter(0))),
-              "(%copy-done = f32[16]{0:S(2)} copy-done((f32[16]{0:S(2)}, "
-              "f32[16]{0:S(1)}, u32[]) "
-              "%copy-start)) "
+              "(%copy-done = f32[16]{0:S(2)} copy-done(%copy-start)) "
               "is in the memory space 1, expected 3");
 }
 
@@ -358,7 +346,7 @@ TEST_F(HloMatchersTest, ReplicaGroupsMatcher) {
   EXPECT_THAT(Explain(p0.get(), op::ReplicaGroups({})),
               "%param = f32[5,7]{1,0} parameter(0) not a collective op");
   EXPECT_THAT(Explain(all_to_all.get(), op::ReplicaGroups({{0, 1}, {2, 3}})),
-              "%all-to-all = f32[5,7]{1,0} all-to-all(f32[5,7]{1,0} %param), "
+              "%all-to-all = f32[5,7]{1,0} all-to-all(%param), "
               "replica_groups={{0,2},{1,3}} has incorrect replica_groups "
               "(expected: {{0,1},{2,3}})");
   EXPECT_THAT(all_to_all.get(), op::ReplicaGroups({{0, 2}, {1, 3}}));

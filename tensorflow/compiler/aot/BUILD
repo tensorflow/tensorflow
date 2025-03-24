@@ -101,6 +101,7 @@ cc_library(
         "@local_xla//xla/hlo/builder:xla_computation",
         "@local_xla//xla/service:compiler",
         "@local_xla//xla/service/cpu:buffer_info_util",
+        "@local_xla//xla/service/cpu:cpu_aot_compilation_result",
         "@local_xla//xla/service/cpu:cpu_compiler",
         "@local_xla//xla/stream_executor:platform_manager",
     ],
@@ -121,10 +122,12 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core/platform:resource_loader",
+        "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Support",  # fixdeps: keep
         "@local_xla//xla:cpu_function_runtime",
         "@local_xla//xla:shape_util",
+        "@local_xla//xla/service/cpu:cpu_aot_compilation_result",
     ] + if_llvm_x86_available([
         "@llvm-project//llvm:X86CodeGen",  # fixdeps: keep
     ]),

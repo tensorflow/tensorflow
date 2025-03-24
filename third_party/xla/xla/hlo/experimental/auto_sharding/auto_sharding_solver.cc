@@ -198,6 +198,11 @@ std::vector<NodeStrategyIdx> GetChosenNodeStrategy(
         break;
       }
     }
+    if (chosen_node_strategy[node_idx] == -1) {
+      LOG(WARNING) << "No strategy chosen for node " << node_idx
+                   << ", replacing with zero.";
+      chosen_node_strategy[node_idx] = 0;
+    }
   }
   return chosen_node_strategy;
 }
@@ -600,8 +605,13 @@ absl::StatusOr<AutoShardingSolverOutput> FormulateAndSolveMIPFromSolverRequest(
           ",share_binary_clauses:false,random_seed:1,interleave_search:true");
     }
     if (request.has_solver_timeout()) {
-      absl::StrAppend(&solver_parameter_str, ",max_deterministic_time:",
-                      request.solver_timeout().solver_timeout_in_seconds());
+      if (request.deterministic_mode()) {
+        absl::StrAppend(&solver_parameter_str, ",max_deterministic_time:",
+                        request.solver_timeout().solver_timeout_in_seconds());
+      } else {
+        solver->SetTimeLimit(absl::Seconds(
+            request.solver_timeout().solver_timeout_in_seconds()));
+      }
     }
     solver->SetSolverSpecificParametersAsString(solver_parameter_str);
   }
@@ -1238,6 +1248,7 @@ AutoShardingEvaluation Evaluate(const AutoShardingSolverRequest& request,
     }
   }
   for (NodeIdx node_idx = 0; node_idx < request.num_nodes(); ++node_idx) {
+    if (p.empty()) continue;
     evaluation.total_departures += p.at(node_idx).costs(s_val[node_idx]);
     if (request.has_max_departures() &&
         evaluation.total_departures > request.max_departures().coeff()) {

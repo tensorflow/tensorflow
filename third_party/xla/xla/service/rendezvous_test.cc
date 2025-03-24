@@ -25,10 +25,10 @@ limitations under the License.
 #include "absl/synchronization/notification.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
-#include "tsl/platform/env.h"
-#include "tsl/platform/test.h"
-#include "tsl/platform/test_benchmark.h"
-#include "tsl/platform/threadpool.h"
+#include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/test.h"
+#include "xla/tsl/platform/test_benchmark.h"
+#include "xla/tsl/platform/threadpool.h"
 
 namespace xla {
 namespace {

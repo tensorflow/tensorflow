@@ -68,8 +68,9 @@ TEST(TestQnnPlugin, PartitionAdd) {
   auto model = testing::LoadTestFileModel("add_simple.tflite");
 
   LiteRtOpListT selected_op_list;
-  ASSERT_EQ(LiteRtCompilerPluginPartition(
-                plugin.get(), model.Subgraph(0)->Get(), &selected_op_list),
+  ASSERT_EQ(LiteRtCompilerPluginPartition(plugin.get(), /*soc_model=*/nullptr,
+                                          model.Subgraph(0)->Get(),
+                                          &selected_op_list),
             kLiteRtStatusOk);
   const auto selected_ops = selected_op_list.Values();
 

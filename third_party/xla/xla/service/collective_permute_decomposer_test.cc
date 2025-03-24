@@ -675,9 +675,11 @@ TEST_F(DecomposerTest, OneSendRecvWithOneConflictingCollectivePermute) {
   HloInstruction* cp_fwd_send_done =
       FindInstruction(module.get(), "cp_fwd-send-done");
   ASSERT_THAT(cp_cycle, NotNull());
+  ASSERT_THAT(cp_fwd_recv, NotNull());
   ASSERT_THAT(cp_fwd_recv_done, NotNull());
+  ASSERT_THAT(cp_fwd_send, NotNull());
   ASSERT_THAT(cp_fwd_send_done, NotNull());
-  EXPECT_THAT(cp_fwd_send_done->control_predecessors(),
+  EXPECT_THAT(cp_fwd_send->control_predecessors(),
               ElementsAre(cp_fwd_recv_done));
   EXPECT_THAT(cp_cycle->control_predecessors(), ElementsAre(cp_fwd_send_done));
 
@@ -759,9 +761,11 @@ TEST_F(DecomposerTest, OneSendRecvWithOneConflictingAllReduce) {
   HloInstruction* cp_fwd_send_done =
       FindInstruction(module.get(), "cp_fwd-send-done");
   ASSERT_THAT(ar, NotNull());
+  ASSERT_THAT(cp_fwd_recv, NotNull());
   ASSERT_THAT(cp_fwd_recv_done, NotNull());
+  ASSERT_THAT(cp_fwd_send, NotNull());
   ASSERT_THAT(cp_fwd_send_done, NotNull());
-  EXPECT_THAT(cp_fwd_send_done->control_predecessors(),
+  EXPECT_THAT(cp_fwd_send->control_predecessors(),
               ElementsAre(cp_fwd_recv_done));
   EXPECT_THAT(ar->control_predecessors(), ElementsAre(cp_fwd_send_done));
 
@@ -846,9 +850,11 @@ TEST_F(DecomposerTest, OneSendRecvWithConflictingSendRecv) {
       FindInstruction(module.get(), "cp_fwd-send-done");
   ASSERT_THAT(conflicting_recv, NotNull());
   ASSERT_THAT(conflicting_send, NotNull());
+  ASSERT_THAT(cp_fwd_recv, NotNull());
   ASSERT_THAT(cp_fwd_recv_done, NotNull());
+  ASSERT_THAT(cp_fwd_send, NotNull());
   ASSERT_THAT(cp_fwd_send_done, NotNull());
-  EXPECT_THAT(cp_fwd_send_done->control_predecessors(),
+  EXPECT_THAT(cp_fwd_send->control_predecessors(),
               ElementsAre(cp_fwd_recv_done));
   EXPECT_THAT(conflicting_recv->control_predecessors(),
               ElementsAre(cp_fwd_send_done));
@@ -937,9 +943,11 @@ TEST_F(DecomposerTest, OneSendRecvWithNonConflictingAllReduce) {
   HloInstruction* cp_fwd_send_done =
       FindInstruction(module.get(), "cp_fwd-send-done");
   ASSERT_THAT(ar, NotNull());
+  ASSERT_THAT(cp_fwd_recv, NotNull());
   ASSERT_THAT(cp_fwd_recv_done, NotNull());
+  ASSERT_THAT(cp_fwd_send, NotNull());
   ASSERT_THAT(cp_fwd_send_done, NotNull());
-  EXPECT_THAT(cp_fwd_send_done->control_predecessors(),
+  EXPECT_THAT(cp_fwd_send->control_predecessors(),
               ElementsAre(cp_fwd_recv_done));
   EXPECT_THAT(ar->control_predecessors(), ElementsAre());
 
@@ -1037,13 +1045,18 @@ TEST_F(DecomposerTest, OneSendRecvWithConflictingAndNonConflictingCollectives) {
   HloInstruction* cp_fwd_send = FindInstruction(module.get(), "cp_fwd-send");
   HloInstruction* cp_fwd_send_done =
       FindInstruction(module.get(), "cp_fwd-send-done");
+  ASSERT_THAT(cp_fwd_recv, NotNull());
+  ASSERT_THAT(cp_fwd_recv_done, NotNull());
+  ASSERT_THAT(cp_fwd_send, NotNull());
+  ASSERT_THAT(cp_fwd_send_done, NotNull());
   ASSERT_THAT(cp_cycle, NotNull());
   ASSERT_THAT(ar, NotNull());
   ASSERT_THAT(arc, NotNull());
-  ASSERT_THAT(cp_fwd_recv_done, NotNull());
-  ASSERT_THAT(cp_fwd_send_done, NotNull());
-  EXPECT_THAT(cp_fwd_send_done->control_predecessors(),
+  EXPECT_THAT(cp_fwd_recv->control_predecessors(), ElementsAre());
+  EXPECT_THAT(cp_fwd_recv_done->control_predecessors(), ElementsAre());
+  EXPECT_THAT(cp_fwd_send->control_predecessors(),
               ElementsAre(cp_fwd_recv_done));
+  EXPECT_THAT(cp_fwd_send_done->control_predecessors(), ElementsAre());
   EXPECT_THAT(cp_cycle->control_predecessors(), ElementsAre(cp_fwd_send_done));
   EXPECT_THAT(ar->control_predecessors(), ElementsAre());
   EXPECT_THAT(arc->control_predecessors(), ElementsAre(cp_fwd_send_done));
@@ -1140,11 +1153,15 @@ TEST_F(DecomposerTest, OneSendRecvWithIndirectlyConflictingCollectives) {
       FindInstruction(module.get(), "cp_fwd-send-done");
   ASSERT_THAT(cp_cycle, NotNull());
   ASSERT_THAT(cp_cycle2, NotNull());
+  ASSERT_THAT(cp_fwd_recv, NotNull());
   ASSERT_THAT(cp_fwd_recv_done, NotNull());
+  ASSERT_THAT(cp_fwd_send, NotNull());
   ASSERT_THAT(cp_fwd_send_done, NotNull());
+  ASSERT_THAT(cp_fwd_recv->control_predecessors(), ElementsAre());
   ASSERT_THAT(cp_fwd_recv_done->control_predecessors(), ElementsAre());
-  EXPECT_THAT(cp_fwd_send_done->control_predecessors(),
+  EXPECT_THAT(cp_fwd_send->control_predecessors(),
               ElementsAre(cp_fwd_recv_done));
+  EXPECT_THAT(cp_fwd_send_done->control_predecessors(), ElementsAre());
   EXPECT_THAT(cp_cycle->control_predecessors(), ElementsAre(cp_fwd_send_done));
   EXPECT_THAT(cp_cycle2->control_predecessors(), ElementsAre(cp_fwd_send_done));
 

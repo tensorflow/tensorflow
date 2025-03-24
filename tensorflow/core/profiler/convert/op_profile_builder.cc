@@ -51,6 +51,7 @@ double CapUtilization(double utilization) { return std::min(utilization, 1.0); }
 void PopulateSymbolNode(const OpMetrics& op_metrics, Node* node) {
   node->set_name(op_metrics.name());
   Node::XLAInstruction& xla = *node->mutable_xla();
+  xla.set_program_id(op_metrics.hlo_module_id());
   xla.set_expression(op_metrics.long_name());
   xla.set_fingerprint(op_metrics.fingerprint());
   xla.set_category(op_metrics.category());
@@ -89,6 +90,7 @@ void CopySymbolDetailsToDeduplicatedNode(Node* top_child_node,
       absl::StrCat(top_child_node->name(), " and its duplicate(s)"));
   Node::XLAInstruction& xla = *deduplicated_node->mutable_xla();
   const Node::XLAInstruction& top_child_node_xla = top_child_node->xla();
+  xla.set_program_id(top_child_node_xla.program_id());
   xla.set_expression(top_child_node_xla.expression());
   xla.set_fingerprint(top_child_node_xla.fingerprint());
   xla.set_category(top_child_node_xla.category());

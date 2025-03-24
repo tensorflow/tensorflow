@@ -93,6 +93,8 @@ class JsonEventCounter {
     return output;
   }
 
+  size_t GetCounterEventCount() const { return event_count_[kCounterEvent]; }
+
  private:
   static constexpr absl::string_view kEventTypeName[] = {
       "complete",
@@ -251,6 +253,10 @@ class JsonEventWriter {
       output_->Append(",");
       WriteEvent(*async_event);
     }
+  }
+
+  size_t GetCounterEventCount() const {
+    return counter_.GetCounterEventCount();
   }
 
  private:
@@ -503,6 +509,7 @@ void TraceEventsToJson(const JsonTraceOptions& options,
 
   output->Append(absl::StrFormat(R"("useNewBackend": %s,)",
                                  options.use_new_backend ? "true" : "false"));
+
   WriteDetails(options.details, output);
   WriteReturnedEventsSize(events.NumEvents(), output);
   WriteFilteredByVisibility(events.FilterByVisibility(), output);
@@ -563,7 +570,14 @@ void TraceEventsToJson(const JsonTraceOptions& options,
     separator.Add();
     writer.WriteEvent(event);
   });
-  output->Append("]}");
+  size_t counter_event_count = writer.GetCounterEventCount();
+  VLOG(1) << "Counter event count: " << counter_event_count;
+  if (counter_event_count == 2000000) {
+    output->Append(
+        R"(], "showCounterMessage": "Only 2M counter events are shown. Zoom in or pan to see more." })");
+  } else {
+    output->Append(R"(], "showCounterMessage": "" })");
+  }
 }
 
 class IOBufferAdapter {

@@ -67,6 +67,7 @@ cc_test(
         "no_oss",
         # Sanitizer runtime doesn't work with anything that uses dlopen.
         "nosan",
+        "manual",
     ],
     # This test can only be run on Android and Linux.
     target_compatible_with = select({

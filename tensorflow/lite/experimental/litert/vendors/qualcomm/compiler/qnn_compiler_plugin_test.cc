@@ -132,7 +132,8 @@ TEST(TestQnnPlugin, PartitionMulOps) {
 
   LiteRtOpListT selected_op_list;
   LITERT_ASSERT_OK(LiteRtCompilerPluginPartition(
-      plugin.get(), model.Subgraph(0)->Get(), &selected_op_list));
+      plugin.get(), /*soc_model=*/nullptr, model.Subgraph(0)->Get(),
+      &selected_op_list));
   const auto selected_ops = selected_op_list.Values();
 
   ASSERT_EQ(selected_ops.size(), 1);
@@ -344,8 +345,8 @@ TEST_P(QnnPluginOpValidationTest, SupportedOpsTest) {
   LiteRtSubgraph litert_subgraph = subgraph->Get();
 
   LiteRtOpListT selected_ops;
-  LITERT_ASSERT_OK(LiteRtCompilerPluginPartition(plugin.get(), litert_subgraph,
-                                                 &selected_ops));
+  LITERT_ASSERT_OK(LiteRtCompilerPluginPartition(
+      plugin.get(), /*soc_model=*/nullptr, litert_subgraph, &selected_ops));
 
   EXPECT_EQ(selected_ops.Values().size(), litert_subgraph->Ops().size());
 }

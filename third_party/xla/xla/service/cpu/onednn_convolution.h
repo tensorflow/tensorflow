@@ -25,7 +25,8 @@ namespace cpu {
 constexpr auto kOnednnConvConfig = BackendConfigOneofCase::kOnednnConvConfig;
 
 extern "C" {
-extern void __xla_cpu_runtime_OneDnnConvolution(void* result, void** args);
+extern void __xla_cpu_runtime_OneDnnConvolution(void* result, void* scratch,
+                                                void** args);
 }  // extern "C"
 
 template <>

@@ -24,10 +24,10 @@ limitations under the License.
 // clang-format on
 
 #include "Python.h"
-#include "absl/strings/match.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/str_split.h"
+#include "include/dlpack/dlpack.h"  // from @dlpack
 #include "pybind11/chrono.h"  // from @pybind11
 #include "pybind11/complex.h"  // from @pybind11
 #include "pybind11/functional.h"  // from @pybind11
@@ -1827,6 +1827,24 @@ PYBIND11_MODULE(_pywrap_tfe, m) {
         py::return_value_policy::reference);
 
   // DLPack functions
+  m.def("TFE_DlpackDevice", [](py::handle& o) {
+    PyObject* eager_tensor_pyobject_ptr = o.ptr();
+    tensorflow::Safe_TF_StatusPtr status =
+        tensorflow::make_safe(TF_NewStatus());
+
+    if (!EagerTensor_CheckExact(eager_tensor_pyobject_ptr)) {
+      status->status = tensorflow::errors::InvalidArgument(
+          "The argument to `to_dlpack` must be a TF tensor, not Python object");
+      tensorflow::MaybeRaiseRegisteredFromTFStatus(status.get());
+    }
+
+    TFE_TensorHandle* thandle = EagerTensor_Handle(eager_tensor_pyobject_ptr);
+    auto dl_device = std::unique_ptr<DLDevice>(static_cast<DLDevice*>(
+        tensorflow::TFE_GetDLDevice(thandle, status.get())));
+    tensorflow::MaybeRaiseRegisteredFromTFStatus(status.get());
+    return py::make_tuple(dl_device->device_type, dl_device->device_id);
+  });
+
   m.def("TFE_ToDlpackCapsule", [](py::handle& o) {
     PyObject* eager_tensor_pyobject_ptr = o.ptr();
     tensorflow::Safe_TF_StatusPtr status =

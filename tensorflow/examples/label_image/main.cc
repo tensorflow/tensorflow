@@ -43,6 +43,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/match.h"
 #include "tensorflow/cc/framework/ops.h"

@@ -51,7 +51,7 @@ class ExampleBinOpLegalization : public Legalization<ExampleOp, ExampleTensor> {
   static Ptr Make() { return std::make_unique<Self>(); }
 
   // Return the litert op code to match on.
-  constexpr LiteRtOpCode OpToMatch() const override { return LiteRtOpType; }
+  LiteRtOpCode OpToMatch() const override { return LiteRtOpType; }
 
   // Determines if the given litert op has a fused relu attribute.
   bool HasFusedRelu(const Op& litert_op) const {

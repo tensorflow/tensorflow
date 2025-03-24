@@ -40,11 +40,35 @@ limitations under the License.
 #include "xla/python/sharded_device_array.h"
 #include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/platform/logging.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
 
 namespace jax {
 
 namespace nb = nanobind;
+
+// Gets `jax::PyDeviceList` from a JAX Sharding.
+absl::StatusOr<xla::nb_class_ptr<jax::PyDeviceList>> GetPyDeviceList(
+    nb::handle sharding_py) {
+  nb::handle sharding(sharding_py.ptr());
+  if (sharding.type().is(jax::NamedSharding::type())) {
+    TF_ASSIGN_OR_RETURN(
+        auto ns_device_list,
+        nb::cast<const jax::NamedSharding*>(sharding)->internal_device_list());
+    return ns_device_list;
+  } else if (sharding.type().is(jax::SingleDeviceSharding::type())) {
+    return nb::cast<const jax::SingleDeviceSharding*>(sharding)
+        ->internal_device_list();
+  } else if (sharding.type().is(jax::PmapSharding::type())) {
+    return nb::cast<const jax::PmapSharding*>(sharding)->internal_device_list();
+  } else if (sharding.type().is(jax::GSPMDSharding::type())) {
+    return nb::cast<const jax::GSPMDSharding*>(sharding)
+        ->internal_device_list();
+  } else {
+    return nb::cast<xla::nb_class_ptr<jax::PyDeviceList>>(
+        sharding.attr("_internal_device_list"));
+  }
+}
 
 nb::object CheckAndCanonicalizeMemoryKind(
     nb::object memory_kind,
@@ -188,8 +212,7 @@ NamedSharding::NamedSharding(nb::object mesh, nb::object spec,
   if (idl.is_none()) {
     internal_device_list_ = std::nullopt;
   } else {
-    internal_device_list_ = nb::cast<xla::nb_class_ptr<jax::PyDeviceList>>(
-        nb::object(mesh_.attr("_internal_device_list")));
+    internal_device_list_ = nb::cast<xla::nb_class_ptr<jax::PyDeviceList>>(idl);
   }
   if (internal_device_list_) {
     memory_kind_ =
@@ -198,8 +221,14 @@ NamedSharding::NamedSharding(nb::object mesh, nb::object spec,
     memory_kind_ = nb::none();
   }
 
-  nb::module_ si = nb::module_::import_("jax._src.named_sharding");
-  si.attr("check_pspec")(mesh_, spec_, manual_axes_);
+  // TODO(phawkins): this leaks a reference to the check_pspec function.
+  // A better way to fix this would be to move PartitionSpec and this check into
+  // C++.
+  static nb::object* check_pspec = []() {
+    nb::module_ si = nb::module_::import_("jax._src.named_sharding");
+    return new nb::object(si.attr("check_pspec"));
+  }();
+  (*check_pspec)(mesh_, spec_, manual_axes_);
 }
 
 SingleDeviceSharding::SingleDeviceSharding(nb::object device,

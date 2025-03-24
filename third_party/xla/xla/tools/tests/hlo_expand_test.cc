@@ -66,7 +66,7 @@ TEST_F(HloExpandTest, CholeskyHlo) {
 
 ENTRY %main.3 () -> f64[3,3] {
   %constant.1 = f64[3,3]{1,0} constant({ { 1, 2, 3 }, { 2, 20, 26 }, { 3, 26, 70 } })
-  ROOT %cholesky.2 = f64[3,3]{1,0} cholesky(f64[3,3]{1,0} %constant.1), lower=true
+  ROOT %cholesky.2 = f64[3,3]{1,0} cholesky(%constant.1), lower=true
 })";
 
   EXPECT_TRUE(exited_normally_);
@@ -85,16 +85,16 @@ TEST_F(HloExpandTest, SpmdHlo) {
 
 ENTRY %entry_spmd (param: f32[24,64], param.1: f32[39296,64]) -> f32[24,19648] {
   %param = f32[24,64]{1,0} parameter(0), sharding={replicated}
-  %lhs.copy.1 = f32[24,64]{1,0} copy(f32[24,64]{1,0} %param)
+  %lhs.copy.1 = f32[24,64]{1,0} copy(%param)
   %param.1 = f32[39296,64]{1,0} parameter(1), sharding={replicated}
   %constant = s32[2]{0} constant({0, 19648})
   %partition-id = u32[] partition-id()
-  %dynamic-slice = s32[1]{0} dynamic-slice(s32[2]{0} %constant, u32[] %partition-id), dynamic_slice_sizes={1}
-  %reshape = s32[] reshape(s32[1]{0} %dynamic-slice)
+  %dynamic-slice = s32[1]{0} dynamic-slice(%constant, %partition-id), dynamic_slice_sizes={1}
+  %reshape = s32[] reshape(%dynamic-slice)
   %constant.1 = s32[] constant(0)
-  %dynamic-slice.1 = f32[19648,64]{1,0} dynamic-slice(f32[39296,64]{1,0} %param.1, s32[] %reshape, s32[] %constant.1), dynamic_slice_sizes={19648,64}
-  %rhs.copy.1 = f32[19648,64]{1,0} copy(f32[19648,64]{1,0} %dynamic-slice.1)
-  ROOT %dot.1 = f32[24,19648]{1,0} dot(f32[24,64]{1,0} %lhs.copy.1, f32[19648,64]{1,0} %rhs.copy.1), lhs_contracting_dims={1}, rhs_contracting_dims={1}
+  %dynamic-slice.1 = f32[19648,64]{1,0} dynamic-slice(%param.1, %reshape, %constant.1), dynamic_slice_sizes={19648,64}
+  %rhs.copy.1 = f32[19648,64]{1,0} copy(%dynamic-slice.1)
+  ROOT %dot.1 = f32[24,19648]{1,0} dot(%lhs.copy.1, %rhs.copy.1), lhs_contracting_dims={1}, rhs_contracting_dims={1}
 })";
 
   EXPECT_TRUE(exited_normally_);

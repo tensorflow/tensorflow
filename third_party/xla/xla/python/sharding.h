@@ -52,6 +52,10 @@ class Sharding {
   std::optional<int> num_devices_;
 };
 
+// Gets `jax::PyDeviceList` from a JAX Sharding.
+absl::StatusOr<xla::nb_class_ptr<jax::PyDeviceList>> GetPyDeviceList(
+    nanobind::handle sharding_py);
+
 // Checks if the memory kind is valid, and canonicalizes the
 // memory kind to default memory on backends that support memories.
 nanobind::object CheckAndCanonicalizeMemoryKind(

@@ -379,6 +379,7 @@ cc_library(
         "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:test",
         "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/synchronization",
@@ -916,6 +917,22 @@ cc_library(
         "@llvm-project//llvm:Support",
     ],
     alwayslink = True,
+)
+
+cc_library(
+    name = "user_context",
+    srcs = ["user_context.cc"],
+    hdrs = ["user_context.h"],
+    visibility = [
+        ":friends",
+        ":internal",
+        ":users",
+    ],
+    deps = [
+        ":ifrt",
+        "//xla/tsl/concurrency:ref_count",
+        "@llvm-project//llvm:Support",
+    ],
 )
 
 xla_cc_test(

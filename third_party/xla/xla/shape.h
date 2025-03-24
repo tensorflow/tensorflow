@@ -24,6 +24,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/base/attributes.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
 #include "absl/types/span.h"
@@ -48,9 +49,9 @@ class Shape {
   Shape& operator=(const Shape&);
   Shape& operator=(Shape&&) noexcept;
 
-  // Construct a shape from a ShapeProto.
-  explicit Shape(const ShapeProto& shape_proto);
-
+  ABSL_DEPRECATED(
+      "This ctor is unsafe as it allows invalid combinations of the "
+      "parameters. Use the other ctors instead.")
   Shape(PrimitiveType element_type, absl::Span<const int64_t> dimensions,
         absl::Span<const bool> dynamic_dimensions,
         std::vector<Shape> tuple_shapes)
@@ -59,6 +60,32 @@ class Shape {
         dynamic_dimensions_(dynamic_dimensions.begin(),
                             dynamic_dimensions.end()),
         tuple_shapes_(std::move(tuple_shapes)) {}
+
+  // Construct a shape from a ShapeProto.
+  explicit Shape(const ShapeProto& shape_proto);
+
+  // Creates a token or opaque shape.
+  // Precondition:
+  //  - `element_type` must be TOKEN or OPAQUE_TYPE.
+  explicit Shape(PrimitiveType element_type) : element_type_(element_type) {}
+
+  // Creates an array shape. `dimensions` can be empty, in which case the shape
+  // is a scalar (degenerated array).
+  // Precondition:
+  //  - `element_type` must be a valid array type.
+  //  - `dynamic_dimensions` must be either empty or have the same size as
+  //    `dimensions`.
+  Shape(PrimitiveType element_type, absl::Span<const int64_t> dimensions,
+        absl::Span<const bool> dynamic_dimensions)
+      : element_type_(element_type),
+        dimensions_(dimensions.begin(), dimensions.end()),
+        dynamic_dimensions_(dynamic_dimensions.begin(),
+                            dynamic_dimensions.end()) {}
+
+  // Creates a tuple shape. `tuple_shapes` can be empty, in which case the
+  // shape is a nil shape (empty tuple).
+  explicit Shape(std::vector<Shape> tuple_shapes)
+      : element_type_(TUPLE), tuple_shapes_(std::move(tuple_shapes)) {}
 
   // Returns a ShapeProto representation of the Shape.
   ShapeProto ToProto() const;
@@ -73,11 +100,9 @@ class Shape {
   // without layout. e.g. "F32[42,12] {0, 1}" or "F32[64]".
   std::string ToString(bool print_layout = false) const;
 
-  // Returns the rank (number of dimensions) of the given shape. Shape must be
-  // an array.
-  int64_t rank() const {
-    return dimensions_.size();
-  }
+  // Returns the rank (number of dimensions) of the given shape. Returns 0 for
+  // non-array shapes.
+  int64_t rank() const { return dimensions_.size(); }
 
   // Returns whether the shape is of the specified type (array, tuple, etc).
   bool IsArray() const { return primitive_util::IsArrayType(element_type()); }
@@ -85,9 +110,9 @@ class Shape {
   bool IsToken() const { return element_type() == TOKEN; }
   bool IsOpaque() const { return element_type() == OPAQUE_TYPE; }
 
-  // Returns whether all elements in the shape are integer.
-  // A nested tuple of integers is considered as integer.
-  bool IsInteger() const;
+  // Returns whether all elements in the shape are integers.
+  // Tuple shapes are traversed recursively.
+  bool AreAllLeavesIntegers() const;
 
   // Returns true if no array dimension in the shape is dynamically sized. Tuple
   // shapes are traversed recursively.
@@ -162,7 +187,8 @@ class Shape {
   void set_element_type(PrimitiveType value) { element_type_ = value; }
 
   // Methods for accessing the dimensions array.
-  int dimensions_size() const { return dimensions_.size(); }
+  ABSL_DEPRECATED("Use rank() instead.")
+  int dimensions_size() const { return rank(); }
   int64_t dimensions(int index) const { return dimensions_[index]; }
 
   int64_t dimensions_minor(int index) const {

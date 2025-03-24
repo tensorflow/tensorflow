@@ -17,6 +17,7 @@ limitations under the License.
 #define XLA_PJRT_GPU_TFRT_GPU_EVENT_H_
 
 #include <cstddef>
+#include <utility>
 
 #include "absl/container/inlined_vector.h"
 #include "absl/types/span.h"
@@ -61,6 +62,31 @@ class TfrtEventSet {
 
  private:
   absl::InlinedVector<tsl::AsyncValueRef<GpuEvent>, 4> events_;
+};
+
+// A RAII helper class used to set an AsyncValueRef<GpuEvent> to a ready state
+// upon destruction. In many cases in PjRt implementation, there will be
+// multiple return statements in the function, all of which require setting
+// some AsyncValueRef<GpuEvent> to be ready. This class could make such code
+// more robust by using setting the AsyncValue in the destructor.
+class MarkEventReadyOnExit {
+ public:
+  explicit MarkEventReadyOnExit(tsl::AsyncValueRef<GpuEvent> event)
+      : event_(std::move(event)) {}
+
+  MarkEventReadyOnExit(const MarkEventReadyOnExit&) = delete;
+  MarkEventReadyOnExit& operator=(const MarkEventReadyOnExit&) = delete;
+  MarkEventReadyOnExit(MarkEventReadyOnExit&&) = default;
+  MarkEventReadyOnExit& operator=(MarkEventReadyOnExit&&) = default;
+
+  ~MarkEventReadyOnExit() {
+    if (event_) event_.SetStateConcrete();
+  }
+
+  tsl::AsyncValueRef<GpuEvent> Release() && { return std::move(event_); }
+
+ private:
+  tsl::AsyncValueRef<GpuEvent> event_;
 };
 
 }  // namespace xla

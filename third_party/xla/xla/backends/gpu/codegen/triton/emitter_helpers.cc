@@ -460,7 +460,7 @@ absl::StatusOr<ScalarOrTensor> EmitConstant(EmitterLocOpBuilder& b,
   llvm::SmallVector<int64_t> shape{constant.shape().dimensions().begin(),
                                    constant.shape().dimensions().end()};
 
-  if (constant.shape().IsInteger()) {
+  if (constant.shape().AreAllLeavesIntegers()) {
     if (constant.shape().element_type() == U64) {
       return CreateConst(b, ty, ScalarConstantValue<uint64_t>(constant, U64),
                          shape);

@@ -513,7 +513,7 @@ absl::StatusOr<ExecutionOutput> CpuExecutable::ExecuteAsyncOnStream(
     return ShapeUtil::ByteSizeOf(shape, sizeof(void*));
   }
   // Each dynamic dimension size is represented as a S32.
-  int64_t metadata_size = sizeof(int32_t) * shape.dimensions_size();
+  int64_t metadata_size = sizeof(int32_t) * shape.rank();
   return ShapeUtil::ByteSizeOf(shape, sizeof(void*)) + metadata_size;
 }
 

@@ -1376,9 +1376,8 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
       return true;
     };
 
-    std::vector<int64_t> zero_base(evaluated_operand.shape().dimensions_size(),
-                                   0);
-    std::vector<int64_t> step(evaluated_operand.shape().dimensions_size(), 1);
+    std::vector<int64_t> zero_base(evaluated_operand.shape().rank(), 0);
+    std::vector<int64_t> step(evaluated_operand.shape().rank(), 1);
 
     ShapeUtil::ForEachIndexNoStatus(evaluated_operand.shape(), zero_base,
                                     evaluated_operand.shape().dimensions(),

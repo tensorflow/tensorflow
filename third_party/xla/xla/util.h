@@ -55,6 +55,7 @@ limitations under the License.
 #include "tsl/platform/bfloat16.h"
 #include "tsl/platform/casts.h"
 #include "tsl/platform/ml_dtypes.h"
+#include "tsl/platform/protobuf.h"
 
 namespace xla {
 
@@ -949,6 +950,8 @@ inline bool HloPredicateFalse(const HloInstruction*) { return false; }
 
 using Vector2 = std::array<int64_t, 2>;
 using Vector3 = std::array<int64_t, 3>;
+
+std::string PrintAllFields(const tsl::protobuf::Message& message);
 
 }  // namespace xla
 

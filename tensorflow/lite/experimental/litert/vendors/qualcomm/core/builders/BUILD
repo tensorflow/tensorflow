@@ -86,6 +86,7 @@ cc_library(
         ":op_builder",
         # copybara:uncomment "//third_party/qairt/latest:qnn_lib_headers",
         "//tensorflow/lite/experimental/litert/vendors/qualcomm/core:tensor_pool",
+        "//tensorflow/lite/experimental/litert/vendors/qualcomm/core/utils:log",
         "//tensorflow/lite/experimental/litert/vendors/qualcomm/core/wrappers:op_wrapper",
         "//tensorflow/lite/experimental/litert/vendors/qualcomm/core/wrappers:tensor_wrapper",
     ],
@@ -294,6 +295,7 @@ cc_library(
         ":op_builder",
         # copybara:uncomment "//third_party/qairt/latest:qnn_lib_headers",
         "//tensorflow/lite/experimental/litert/vendors/qualcomm/core:tensor_pool",
+        "//tensorflow/lite/experimental/litert/vendors/qualcomm/core/utils:log",
         "//tensorflow/lite/experimental/litert/vendors/qualcomm/core/wrappers:op_wrapper",
         "//tensorflow/lite/experimental/litert/vendors/qualcomm/core/wrappers:tensor_wrapper",
     ],
@@ -383,6 +385,7 @@ cc_library(
         # copybara:uncomment "//third_party/qairt/latest:qnn_lib_headers",
         "//tensorflow/lite/experimental/litert/vendors/qualcomm/core:tensor_pool",
         "//tensorflow/lite/experimental/litert/vendors/qualcomm/core/wrappers:op_wrapper",
+        "//tensorflow/lite/experimental/litert/vendors/qualcomm/core/wrappers:quantize_params_wrapper",
         "//tensorflow/lite/experimental/litert/vendors/qualcomm/core/wrappers:tensor_wrapper",
     ],
 )

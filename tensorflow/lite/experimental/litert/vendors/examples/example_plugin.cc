@@ -41,6 +41,7 @@ void LiteRtDestroyCompilerPlugin(LiteRtCompilerPlugin compiler_plugin) {
 }
 
 LiteRtStatus LiteRtCompilerPluginPartition(LiteRtCompilerPlugin compiler_plugin,
+                                           const char* soc_model,
                                            LiteRtSubgraph subgraph,
                                            LiteRtOpList selected_ops) {
   ::litert::Subgraph main_subgraph(subgraph);

@@ -15,8 +15,10 @@ limitations under the License.
 
 #include "xla/tsl/lib/core/bitmap.h"
 
+#include <cstddef>
+
+#include "xla/tsl/lib/random/philox_random.h"
 #include "xla/tsl/lib/random/simple_philox.h"
-#include "xla/tsl/platform/macros.h"
 #include "xla/tsl/platform/test.h"
 
 namespace tsl {
@@ -43,6 +45,28 @@ TEST(BitmapTest, Basic) {
       EXPECT_TRUE(bits.get(i)) << n << " " << i << " " << bits.ToString();
       bits.clear(i);
       EXPECT_FALSE(bits.get(i)) << n << " " << i << " " << bits.ToString();
+    }
+  }
+}
+
+TEST(BitmapTest, Copy) {
+  for (size_t n = 0; n < 200; n = NextSize(n)) {
+    for (size_t i = 0; i < n; i++) {
+      Bitmap bits(n);
+      bits.set(i);
+      Bitmap bits_copy(bits);
+      EXPECT_EQ(bits.ToString(), bits_copy.ToString());
+    }
+  }
+}
+
+TEST(BitmapTest, Assign) {
+  for (size_t n = 0; n < 200; n = NextSize(n)) {
+    for (size_t i = 0; i < n; i++) {
+      Bitmap bits(n);
+      bits.set(i);
+      Bitmap bits_copy = bits;
+      EXPECT_EQ(bits.ToString(), bits_copy.ToString());
     }
   }
 }

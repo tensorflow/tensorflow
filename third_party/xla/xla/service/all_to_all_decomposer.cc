@@ -86,7 +86,7 @@ absl::StatusOr<HloInstruction*> AllToAllDecomposer::ExpandRaggedAllToAll(
     new_input_shape.add_dimensions(input_shape.dimensions(i));
     new_output_shape.add_dimensions(output_shape.dimensions(i));
   }
-  while (new_input_shape.dimensions_size() < min_array_rank_) {
+  while (new_input_shape.rank() < min_array_rank_) {
     new_input_shape.add_dimensions(1);
     new_output_shape.add_dimensions(1);
   }

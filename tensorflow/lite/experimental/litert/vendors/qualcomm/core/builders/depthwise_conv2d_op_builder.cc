@@ -46,10 +46,8 @@ std::vector<OpWrapper> BuildDepthwiseConv2dOp(
       filter_tensor.GetDim(kBatchIndex), filter_tensor.GetDim(kChannelIndex)};
   TensorWrapper* reshaped_filter_tensor = nullptr;
   if (filter_tensor.IsTensorStatic()) {
-    reshaped_filter_tensor = &(tensor_pool.CreateStaticTensor(
-        filter_tensor.GetDataType(), filter_tensor.GetQuantParams(),
-        reshape_dims, filter_tensor.GetTensorSize(),
-        filter_tensor.GetStaticTensorData()));
+    reshaped_filter_tensor =
+        &(tensor_pool.CloneStaticTensorFrom(filter_tensor, reshape_dims));
   } else {
     reshaped_filter_tensor =
         &(tensor_pool.CloneNativeTensorFrom(filter_tensor, reshape_dims));

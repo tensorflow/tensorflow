@@ -177,8 +177,8 @@ DotImplementationStrategy GetNonBatchDotImplementationStrategy(
   // Any Matrix-Vector product of floating point or integral type, or
   // a transpose-dot fusion of the same can be lowered to a tiled LLVM
   // IR implementation.
-  if ((dot_info.result_shape.dimensions_size() <= 1 ||
-       (dot_info.result_shape.dimensions_size() == 2 &&
+  if ((dot_info.result_shape.rank() <= 1 ||
+       (dot_info.result_shape.rank() == 2 &&
         (dot_info.result_shape.dimensions(0) == 1 ||
          dot_info.result_shape.dimensions(1) == 1))) &&
       (primitive_util::IsFloatingPointType(element_type) ||
@@ -187,12 +187,12 @@ DotImplementationStrategy GetNonBatchDotImplementationStrategy(
   }
 
   // MatMul smaller than 3x3 should use naive nested loop.
-  if ((dot_info.lhs_shape.dimensions_size() <= 1 ||
-       (dot_info.lhs_shape.dimensions_size() == 2 &&
+  if ((dot_info.lhs_shape.rank() <= 1 ||
+       (dot_info.lhs_shape.rank() == 2 &&
         (dot_info.lhs_shape.dimensions(0) <= 3 ||
          dot_info.lhs_shape.dimensions(1) <= 3))) &&
-      (dot_info.rhs_shape.dimensions_size() <= 1 ||
-       (dot_info.rhs_shape.dimensions_size() == 2 &&
+      (dot_info.rhs_shape.rank() <= 1 ||
+       (dot_info.rhs_shape.rank() == 2 &&
         (dot_info.rhs_shape.dimensions(0) <= 3 ||
          dot_info.rhs_shape.dimensions(1) <= 3))) &&
       (primitive_util::IsFloatingPointType(element_type) ||
@@ -959,7 +959,7 @@ absl::Status DotOpEmitter::EmitCallToBatchRuntime() {
 }
 
 DotOpEmitter::MatMultDims DotOpEmitter::GetMatMultDims() const {
-  CHECK_LE(dot_info_.result_shape.dimensions_size(), 2);
+  CHECK_LE(dot_info_.result_shape.rank(), 2);
 
   const Shape& lhs_shape = lhs_array_.GetShape();
   const Shape& rhs_shape = rhs_array_.GetShape();
@@ -989,7 +989,7 @@ DotOpEmitter::MatMultDims DotOpEmitter::GetMatMultDims() const {
 }
 
 DotOpEmitter::MatMultDims DotOpEmitter::GetBatchMatMultDims() const {
-  CHECK_LE(dot_info_.result_shape.dimensions_size(), 2);
+  CHECK_LE(dot_info_.result_shape.rank(), 2);
 
   const Shape& lhs_shape = lhs_array_.GetShape();
   const Shape& rhs_shape = rhs_array_.GetShape();
@@ -1022,7 +1022,7 @@ DotOpEmitter::MatMultDims DotOpEmitter::GetBatchMatMultDims() const {
 // column major.
 std::optional<int64_t> ProfitableToMakeDotOperandColumnMajor(
     const HloInstruction& hlo) {
-  if (hlo.opcode() == HloOpcode::kDot && hlo.shape().dimensions_size() <= 1) {
+  if (hlo.opcode() == HloOpcode::kDot && hlo.shape().rank() <= 1) {
     if (hlo.operand(0)->shape().rank() != 1 ||
         hlo.dot_dimension_numbers().rhs_contracting_dimensions(0) != 0) {
       return {};
@@ -1113,7 +1113,7 @@ llvm_ir::IrArray CollapseFirstNDims(llvm::IRBuilderBase* b,
   const Shape& shape = array.GetShape();
   CHECK(shape.has_layout() &&
         LayoutUtil::IsMonotonicWithDim0Major(shape.layout()));
-  CHECK_GE(shape.dimensions_size(), n);
+  CHECK_GE(shape.rank(), n);
   Shape new_shape = CollapseFirstNDims(shape, n);
   llvm::Type* new_ir_type = llvm_ir::ShapeToIrType(new_shape, b->getContext());
   return llvm_ir::IrArray(array.GetBasePointer(), new_ir_type,

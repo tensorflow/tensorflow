@@ -64,7 +64,7 @@ struct RootWithWorkspace {
   HloInstruction* workspace;
 };
 
-static RootWithWorkspace MatchRootWithWorkspace(HloInstruction* root) {
+RootWithWorkspace MatchRootWithWorkspace(HloInstruction* root) {
   RootWithWorkspace result;
   if (Match(root, match::Tuple(match::Op(&result.root),
                                match::CustomCall(
@@ -104,8 +104,8 @@ struct GemmWithDynamicSlice {
 
 // Returns OK if dot instruction is a simple 2D row-major gemm.
 absl::Status MatchRowMajorGemm(HloDotInstruction* dot) {
-  if (dot->operand(0)->shape().dimensions_size() != 2 ||
-      dot->operand(1)->shape().dimensions_size() != 2) {
+  if (dot->operand(0)->shape().rank() != 2 ||
+      dot->operand(1)->shape().rank() != 2) {
     return absl::InternalError("operands must have rank 2");
   }
 

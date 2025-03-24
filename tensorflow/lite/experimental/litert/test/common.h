@@ -25,8 +25,7 @@
 #include "tensorflow/lite/experimental/litert/core/util/flatbuffer_tools.h"
 #include "tensorflow/lite/interpreter.h"
 
-namespace litert {
-namespace testing {
+namespace litert::testing {
 
 // A x-platform compatible replacement for testing::UniqueTestDirectory.
 class UniqueTestDirectory {
@@ -47,8 +46,14 @@ class UniqueTestDirectory {
   std::string tmpdir_;
 };
 
+// Gets the path to the given filename in the testdata directory.
 std::string GetTestFilePath(absl::string_view filename);
+
+// Gets a path to the given filename in the tflite directory.
 std::string GetTfliteFilePath(absl::string_view filename);
+
+// Gets a full path given a path relative to the litert directory.
+std::string GetLiteRtPath(absl::string_view rel_path);
 
 Model LoadTestFileModel(absl::string_view filename);
 
@@ -98,7 +103,6 @@ inline Expected<TflRuntime::Ptr> MakeRuntimeFromTestFileWithNpuModel(
   return TflRuntime::CreateFromFlatBuffer(std::move(*flatbuffer));
 }
 
-}  // namespace testing
-}  // namespace litert
+}  // namespace litert::testing
 
 #endif  // TENSORFLOW_LITE_EXPERIMENTAL_LITERT_TEST_COMMON_H_

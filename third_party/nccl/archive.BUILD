@@ -93,7 +93,8 @@ genrule(
     cmd = """
     mkdir -p src/device/generated
     $(location :generate) src/device/generated
-    tar --warning=no-file-changed -cf $@ src
+    # Retry the tar command three times to avoid flakiness.
+    (r=3;while ! tar --warning=no-file-changed -cf $@ src ; do ((--r))||exit;sleep 1;done)
     """,
     tools = [":generate"],
 )

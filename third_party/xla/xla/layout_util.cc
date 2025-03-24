@@ -155,7 +155,7 @@ Layout CreateDefaultLayoutForRank(int64_t rank) {
 
   // A Layout proto corresponds to a single array, not a tuple.
   CHECK(shape.IsArray());
-  return CreateDefaultLayoutForRank(shape.dimensions_size());
+  return CreateDefaultLayoutForRank(shape.rank());
 }
 
 /* static */ Layout LayoutUtil::GetDefaultLayoutForRank(int64_t rank) {
@@ -183,7 +183,7 @@ Layout CreateDefaultLayoutForRank(int64_t rank) {
     shape->clear_layout();
   } else if (shape->IsArray()) {
     auto* minor_to_major = shape->mutable_layout()->mutable_minor_to_major();
-    minor_to_major->resize(shape->dimensions_size(), 0);
+    minor_to_major->resize(shape->rank(), 0);
     SetDefaultLayoutToContainer(minor_to_major);
   } else {
     // Opaque, token types etc. have no layout.

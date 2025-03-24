@@ -27,7 +27,7 @@ limitations under the License.
 #include "xla/python/profiler/internal/python_hooks.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/types.h"
-#include "tensorflow/core/profiler/protobuf/xplane.pb.h"
+#include "tsl/profiler/protobuf/xplane.pb.h"
 
 namespace tensorflow {
 namespace profiler {

@@ -32,6 +32,7 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/match.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/strings/substitute.h"
 #include "xla/autotune_results.pb.h"
@@ -719,6 +720,9 @@ ENTRY main {
   const std::string fallback_convert_to_f16 =
       R"(CHECK: dot(f16{{[^)]*}}, f16{{[^)]*}}))";
 
+  HloPrintOptions print_options =
+      HloPrintOptions().set_print_operand_shape(true);
+
   {
     // Triton enabled, no fallback.
     TF_ASSERT_OK_AND_ASSIGN(auto optimized_module_no_fallback,
@@ -733,7 +737,7 @@ ENTRY main {
             : cublas_convert_to_f16;
     TF_ASSERT_OK_AND_ASSIGN(
         bool filecheck_matched,
-        RunFileCheck(optimized_module_no_fallback->ToString(),
+        RunFileCheck(optimized_module_no_fallback->ToString(print_options),
                      triton_expected_check));
     EXPECT_TRUE(filecheck_matched);
   }
@@ -751,9 +755,10 @@ ENTRY main {
             ? cublaslt_keep_types
             : cublas_convert_to_f16;
 
-    TF_ASSERT_OK_AND_ASSIGN(bool filecheck_matched,
-                            RunFileCheck(optimized_module_no_triton->ToString(),
-                                         blas_expected_check));
+    TF_ASSERT_OK_AND_ASSIGN(
+        bool filecheck_matched,
+        RunFileCheck(optimized_module_no_triton->ToString(print_options),
+                     blas_expected_check));
     EXPECT_TRUE(filecheck_matched);
   }
 
@@ -763,9 +768,10 @@ ENTRY main {
                             optimize_module(/*enable_triton=*/false,
                                             /*enable_blas=*/false,
                                             /*enable_blas_fallback=*/false));
-    TF_ASSERT_OK_AND_ASSIGN(bool filecheck_matched,
-                            RunFileCheck(optimized_module_nothing->ToString(),
-                                         fallback_convert_to_f16));
+    TF_ASSERT_OK_AND_ASSIGN(
+        bool filecheck_matched,
+        RunFileCheck(optimized_module_nothing->ToString(print_options),
+                     fallback_convert_to_f16));
     EXPECT_TRUE(filecheck_matched);
   }
 }
@@ -1044,7 +1050,8 @@ ENTRY e {
 
     TF_ASSERT_OK_AND_ASSIGN(
         std::unique_ptr<Executable> executable,
-        aot_result->LoadExecutable(compiler, aot_options.executor()));
+        std::move(*aot_result)
+            .LoadExecutable(compiler, aot_options.executor()));
     std::unique_ptr<OpaqueExecutable> wrapped_executable =
         test_runner_as_hlo_runner().WrapExecutable(std::move(executable));
 
@@ -1497,9 +1504,12 @@ class PassOrderTest : public GpuCompilerTest {
   // or if none of the executed passes matches `first_pass_regex` or
   // `last_pass_regex`. Returns a PassRange with the latest run index of any
   // passes with names matching `first_pass_regex` and the earliest run index of
-  // any passes with names matching 'last_pass_regex'.
+  // any passes with names matching 'last_pass_regex'. Passes matching both
+  // regexes will be counted towards last_pass (i.e., overlap of the two ranges
+  // is allowed).
   PassRange VerifyPassOrder(absl::string_view first_pass_regex,
-                            absl::string_view last_pass_regex) {
+                            absl::string_view last_pass_regex,
+                            bool include_pipeline_name = false) {
     if (!optimized_module_) {
       CompileModule(GetModuleConfigForTest());
     }
@@ -1508,15 +1518,19 @@ class PassOrderTest : public GpuCompilerTest {
     int run_index = 0;
     for (const HloPassMetadata& pass_metadata :
          optimized_module_->metadata()->proto().pass_metadata()) {
-      if (RE2::FullMatch(pass_metadata.pass_name(), first_pass_regex)) {
-        VLOG(2) << "Pass " << pass_metadata.pass_name()
-                << " matches first_pass_regex." << std::endl;
-        first_pass_latest_run = std::max(first_pass_latest_run, run_index);
+      std::string name = pass_metadata.pass_name();
+      if (include_pipeline_name) {
+        name = absl::StrCat(pass_metadata.pipeline_name(), ".",
+                            pass_metadata.pass_name());
       }
-      if (RE2::FullMatch(pass_metadata.pass_name(), last_pass_regex)) {
+      if (RE2::FullMatch(name, last_pass_regex)) {
         VLOG(2) << "Pass " << pass_metadata.pass_name()
                 << " matches last_pass_regex." << std::endl;
         last_pass_earliest_run = std::min(last_pass_earliest_run, run_index);
+      } else if (RE2::FullMatch(name, first_pass_regex)) {
+        VLOG(2) << "Pass " << pass_metadata.pass_name()
+                << " matches first_pass_regex." << std::endl;
+        first_pass_latest_run = std::max(first_pass_latest_run, run_index);
       }
       ++run_index;
     }
@@ -1525,7 +1539,7 @@ class PassOrderTest : public GpuCompilerTest {
         << "Did not run a pass matching " << first_pass_regex;
     EXPECT_LT(last_pass_earliest_run, std::numeric_limits<int>::max())
         << "Did not run a pass matching " << last_pass_regex;
-    EXPECT_LE(first_pass_latest_run, last_pass_earliest_run)
+    EXPECT_LT(first_pass_latest_run, last_pass_earliest_run)
         << "One or more passes matching " << first_pass_regex
         << " ran after passes matching " << last_pass_regex;
     return {first_pass_latest_run, last_pass_earliest_run};
@@ -1592,13 +1606,13 @@ TEST_F(PassOrderTest, OffloadingPassesAreRunInCorrectOrder) {
   VerifyNotRunInBetween(pass_range, /*pass_regex=*/"cse");
 }
 
-TEST_F(PassOrderTest, FusionBlockLevelRewriterRunsAfterAllFusionPasses) {
+TEST_F(PassOrderTest, FusionDispatchRunsAfterAllFusionPasses) {
   auto cc = backend()
                 .default_stream_executor()
                 ->GetDeviceDescription()
                 .cuda_compute_capability();
   if (!cc.IsAtLeastAmpere()) {
-    GTEST_SKIP() << "FusionBlockLevelRewriter requires Ampere+ to run.";
+    GTEST_SKIP() << "fusion-dispatch requires Ampere+ to run.";
   }
 
   DebugOptions debug_options = GetDebugOptionsForTest();
@@ -1607,7 +1621,8 @@ TEST_F(PassOrderTest, FusionBlockLevelRewriterRunsAfterAllFusionPasses) {
   SetDebugOptions(debug_options);
 
   VerifyPassOrder(/*first_pass_regex=*/".*fusion.*",
-                  /*last_pass_regex=*/"fusion-block-level-rewriter");
+                  /*last_pass_regex=*/"fusion-dispatch-pipeline.*",
+                  /*include_pipeline_name=*/true);
 }
 
 TEST_F(PassOrderTest, CollectivePipelinerRunsAfterCollectiveQuantizer) {
@@ -1901,7 +1916,7 @@ TEST_F(GpuCompilerTest, DynamicSliceFusionReduceScatterMultipleBuffers) {
     // CHECK: dynamic-slice-fusion{{.*}} {
     // CHECK-DAG: %[[slice1:.+]] = {{.+}} slice({{.+}}), slice={[4:8], [0:32]}
     // CHECK-DAG: %[[slice2:.+]] = {{.+}} slice({{.+}}), slice={[0:4], [0:32]}
-    // CHECK-DAG: ROOT %[[rs:.+]] = {{.+}} reduce-scatter({{.*}} %[[slice1]], {{.*}} %[[slice2]]),
+    // CHECK-DAG: ROOT %[[rs:.+]] = {{.+}} reduce-scatter(%[[slice1]], %[[slice2]]),
     // CHECK-SAME{LITERAL}:                                      replica_groups={{0,1}}, dimensions={0}, to_apply=%add
     // CHECK: ENTRY
   )";

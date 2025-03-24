@@ -58,29 +58,8 @@ xla::HloSharding GetXlaHloSharding(nb::handle sharding,
 // Gets `xla::ifrt::DeviceList` from a JAX Sharding.
 absl::StatusOr<xla::ifrt::DeviceListRef> GetIfrtDeviceList(
     nb::handle sharding_py) {
-  nb::handle sharding(sharding_py.ptr());
-  if (sharding.type().is(jax::NamedSharding::type())) {
-    TF_ASSIGN_OR_RETURN(
-        auto ns_device_list,
-        nb::cast<const jax::NamedSharding*>(sharding)->internal_device_list());
-    return ns_device_list->ifrt_device_list();
-  } else if (sharding.type().is(jax::SingleDeviceSharding::type())) {
-    return nb::cast<const jax::SingleDeviceSharding*>(sharding)
-        ->internal_device_list()
-        ->ifrt_device_list();
-  } else if (sharding.type().is(jax::PmapSharding::type())) {
-    return nb::cast<const jax::PmapSharding*>(sharding)
-        ->internal_device_list()
-        ->ifrt_device_list();
-  } else if (sharding.type().is(jax::GSPMDSharding::type())) {
-    return nb::cast<const jax::GSPMDSharding*>(sharding)
-        ->internal_device_list()
-        ->ifrt_device_list();
-  } else {
-    return nb::cast<const jax::PyDeviceList*>(
-               sharding.attr("_internal_device_list"))
-        ->ifrt_device_list();
-  }
+  TF_ASSIGN_OR_RETURN(auto py_device_list, jax::GetPyDeviceList(sharding_py));
+  return py_device_list->ifrt_device_list();
 }
 
 // Gets `xla::ifrt::MemoryKind` from a JAX Sharding.

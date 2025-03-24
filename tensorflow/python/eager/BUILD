@@ -200,6 +200,7 @@ py_strict_library(
     # copybara:uncomment_begin(google-only)
     # visibility = [
     # "//smartass/brain/ops:__subpackages__",
+    # "//third_party/py/courier:__subpackages__",
     # "//third_party/py/jax_tpu_embedding:__subpackages__",
     # "//tensorflow:internal",
     # ],

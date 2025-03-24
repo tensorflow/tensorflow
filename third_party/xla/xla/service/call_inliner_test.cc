@@ -526,9 +526,9 @@ TEST_F(CallInlinerTest, DontInlineStreamAnnotationCall) {
   TF_ASSERT_OK_AND_ASSIGN(bool mutated, call_inliner.Run(module.get()));
   absl::StatusOr<bool> filecheck_result = RunFileCheck(module->ToString({}), R"(
   //CHECK: %lhs.2 = f32[] constant(42)
-  //CHECK: %call1 = f32[] call(f32[] %lhs.2), to_apply=%sub, frontend_attributes={_xla_stream_annotation="1"}
+  //CHECK: %call1 = f32[] call(%lhs.2), to_apply=%sub, frontend_attributes={_xla_stream_annotation="1"}
   //CHECK: %rhs.2 = f32[] constant(2)
-  //CHECK: ROOT %add.1 = f32[] add(f32[] %call1, f32[] %rhs.2)
+  //CHECK: ROOT %add.1 = f32[] add(%call1, %rhs.2)
   )");
   TF_ASSERT_OK(filecheck_result.status());
   EXPECT_TRUE(*filecheck_result);

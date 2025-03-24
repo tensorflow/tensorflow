@@ -3696,3 +3696,23 @@ func.func @ragged_dot_batch(%lhs : tensor<19x17x11x5xf32>, %rhs : tensor<19x17x5
   } : (tensor<19x17x11x5xf32>, tensor<19x17x5x7xf32>, tensor<19x3xi64>) -> tensor<19x17x11x7xf32>
   func.return %0 : tensor<19x17x11x7xf32>
 }
+
+// -----
+
+func.func @ragged_dot_frontend_attributes(%lhs : tensor<2x11x5xf32>, %rhs : tensor<3x2x5x7xf32>, %group_sizes : tensor<3xi64>) -> tensor<2x11x7xf32> {
+  // CHECK-HIGH-LEVEL: mhlo.ragged_dot
+  // CHECK-HIGH-LEVEL: mhlo.frontend_attributes = {foo = "bar"}
+  %0 = "chlo.ragged_dot"(%lhs, %rhs, %group_sizes) {
+    ragged_dot_dimension_numbers = #chlo.ragged_dot<
+      lhs_batching_dimensions = [0],
+      rhs_batching_dimensions = [1],
+      lhs_contracting_dimensions = [2],
+      rhs_contracting_dimensions = [2],
+      lhs_ragged_dimensions = [1],
+      rhs_group_dimensions = [0]
+    >,
+    precision_config = [#chlo<precision DEFAULT>, #chlo<precision DEFAULT>],
+    mhlo.frontend_attributes = {foo = "bar"}
+  } : (tensor<2x11x5xf32>, tensor<3x2x5x7xf32>, tensor<3xi64>) -> tensor<2x11x7xf32>
+  func.return %0 : tensor<2x11x7xf32>
+}

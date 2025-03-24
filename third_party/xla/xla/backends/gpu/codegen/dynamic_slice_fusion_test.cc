@@ -3148,12 +3148,11 @@ TEST_F(DynamicSliceFusionTest, ReduceScatterSlice) {
   // is converted into an async operation. The kWaitForStreams thunks are
   // expected because of the async operation.
   ASSERT_EQ(gpu_exec->GetThunk().thunks().size(), 4ul);
-  EXPECT_THAT(
-      gpu_exec->GetThunk().thunks(),
-      ::testing::ElementsAre(ThunkKindIs(Thunk::kWaitForStreams),
-                             ThunkKindIs(Thunk::kNcclReduceScatterStart),
-                             ThunkKindIs(Thunk::kNcclReduceScatterDone),
-                             ThunkKindIs(Thunk::kWaitForStreams)));
+  EXPECT_THAT(gpu_exec->GetThunk().thunks(),
+              ::testing::ElementsAre(ThunkKindIs(Thunk::kWaitForStreams),
+                                     ThunkKindIs(Thunk::kReduceScatterStart),
+                                     ThunkKindIs(Thunk::kReduceScatterDone),
+                                     ThunkKindIs(Thunk::kWaitForStreams)));
 
   ErrorSpec error{/*aabs=*/1e-3, /*arel=*/1e-3};
   EXPECT_TRUE(RunAndCompareTwoModulesReplicated(std::move(module_ref_opt),
@@ -3346,7 +3345,7 @@ TEST_F(DynamicSliceFusionTest,
                                      ThunkKindIs(Thunk::kWaitForStreams),
                                      ThunkKindIs(Thunk::kDynamicSlice),
                                      ThunkKindIs(Thunk::kKernel),
-                                     ThunkKindIs(Thunk::kNcclReduceScatterDone),
+                                     ThunkKindIs(Thunk::kReduceScatterDone),
                                      ThunkKindIs(Thunk::kWaitForStreams)));
 
   // Check that the dynamic slice thunk only produces a start thunk, and not a
@@ -3357,9 +3356,8 @@ TEST_F(DynamicSliceFusionTest,
   const SequentialThunk* embedded_thunk = dynamic_cast<const SequentialThunk*>(
       dynamic_slice_thunk->embedded_thunk());
   ASSERT_NE(embedded_thunk, nullptr);
-  EXPECT_THAT(
-      embedded_thunk->thunks(),
-      ::testing::ElementsAre(ThunkKindIs(Thunk::kNcclReduceScatterStart)));
+  EXPECT_THAT(embedded_thunk->thunks(),
+              ::testing::ElementsAre(ThunkKindIs(Thunk::kReduceScatterStart)));
 
   // Check that the offsets were propagated as constants, and not as device
   // allocated buffers.

@@ -55,7 +55,7 @@ class FlatbufferContext {
     const auto builtin_code =
         PackedModel()->operator_codes()->Get(ind)->builtin_code();
     litert_op.SetOpCode(static_cast<LiteRtOpCode>(builtin_code));
-    detail::SetTflOpCodeInd(litert_op, ind);
+    litert::internal::SetTflOpCodeInd(litert_op, ind);
   }
 
   // Get the buffer at the given index in the tflite model.
@@ -132,8 +132,10 @@ LiteRtStatus UnpackOp(FlatbufferContext& context, LiteRtSubgraphT& parent,
 
   // TODO figure out how to parse builtins with the packed flatbuffer api.
   TflOpPtr tfl_op_ptr(tfl_op.UnPack());
-  detail::SetTflOptions(litert_op, std::move(tfl_op_ptr->builtin_options));
-  detail::SetTflOptions2(litert_op, std::move(tfl_op_ptr->builtin_options_2));
+  litert::internal::SetTflOptions(litert_op,
+                                  std::move(tfl_op_ptr->builtin_options));
+  litert::internal::SetTflOptions2(litert_op,
+                                   std::move(tfl_op_ptr->builtin_options_2));
 
   // OP CODE
 
@@ -142,8 +144,14 @@ LiteRtStatus UnpackOp(FlatbufferContext& context, LiteRtSubgraphT& parent,
   return kLiteRtStatusOk;
 }
 
-Expected<BufferRef<uint8_t>> ReadBuffer(FlatbufferContext& context,
-                                        uint32_t buffer_ind) {
+struct TflBufferContext {
+  BufferRef<uint8_t> buffer;
+  // Is buffer appended to the flatbuffer?
+  bool is_external;
+};
+
+Expected<TflBufferContext> ReadBuffer(FlatbufferContext& context,
+                                      uint32_t buffer_ind) {
   auto buffer = context.GetTflBuffer(buffer_ind);
   if (!buffer) {
     return buffer.Error();
@@ -158,16 +166,17 @@ Expected<BufferRef<uint8_t>> ReadBuffer(FlatbufferContext& context,
     const auto offset = tfl_buffer.offset();
     const auto size = tfl_buffer.size();
 
-    return BufferRef<uint8_t>(alloc_base + offset, size);
+    return TflBufferContext{BufferRef<uint8_t>(alloc_base + offset, size),
+                            true};
   } else if (tfl_buffer.data()) {
     // Data is in the flatbuffer.
 
     const auto* start = tfl_buffer.data()->data();
     const auto size = tfl_buffer.data()->size();
 
-    return BufferRef<uint8_t>(start, size);
+    return TflBufferContext{BufferRef<uint8_t>(start, size), false};
   } else {
-    return BufferRef<uint8_t>();
+    return TflBufferContext{};
   }
 }
 
@@ -185,7 +194,10 @@ LiteRtStatus UnpackTensor(FlatbufferContext& context,
     if (it != context.RegisteredTflBufferIds().end()) {
       litert_tensor.Weights().SetBufferId(it->second);
     } else {
-      SetWeightsFromUnownedBuffer(litert_tensor.Weights(), *buffer);
+      BufferContext lrt_buf_ctx;
+      lrt_buf_ctx.should_append = buffer->is_external;
+      SetWeightsFromUnownedBuffer(litert_tensor.Weights(), buffer->buffer,
+                                  lrt_buf_ctx);
       context.RegisteredTflBufferIds()[buffer_ind] =
           litert_tensor.Weights().GetBufferId();
     }
@@ -344,7 +356,7 @@ LiteRtStatus UnpackSignatures(std::vector<TflSignaturePtr>& tfl_signatures,
 Expected<LiteRtModelT::Ptr> UnpackModel(FlatbufferWrapper&& flatbuffer) {
   auto litert_model = std::make_unique<LiteRtModelT>(std::move(flatbuffer));
 
-  FlatbufferContext context(detail::GetTflFlatbuffer(*litert_model),
+  FlatbufferContext context(litert::internal::GetTflFlatbuffer(*litert_model),
                             litert_model->Buffers());
   const auto* packed_model = context.PackedModel();
 
@@ -381,7 +393,7 @@ Expected<LiteRtModelT::Ptr> UnpackModel(FlatbufferWrapper&& flatbuffer) {
         return buf.Error();
       }
 
-      litert_model->PushMetadata(name, buf->Data(), buf->Size());
+      litert_model->PushMetadata(name, buf->buffer.Data(), buf->buffer.Size());
     }
   }
 
@@ -393,7 +405,7 @@ Expected<LiteRtModelT::Ptr> UnpackModel(FlatbufferWrapper&& flatbuffer) {
       TflOpCodePtr tfl_op_code_ptr(tfl_op_code->UnPack());
       tfl_op_codes[i] = std::move(tfl_op_code_ptr);
     }
-    detail::SetTflOpCodes(*litert_model, std::move(tfl_op_codes));
+    litert::internal::SetTflOpCodes(*litert_model, std::move(tfl_op_codes));
   }
 
   return litert_model;

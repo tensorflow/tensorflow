@@ -62,6 +62,7 @@ cc_library(
         "simplify_affine.cc",
         "simplify_arith.cc",
         "unswitch_loops.cc",
+        "vectorize_loads_stores.cc",
     ],
     hdrs = ["passes.h"],
     deps = [
@@ -101,6 +102,7 @@ cc_library(
         "@llvm-project//mlir:ComplexToLLVM",
         "@llvm-project//mlir:ControlFlowToLLVM",
         "@llvm-project//mlir:DataLayoutInterfaces",
+        "@llvm-project//mlir:DialectUtils",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:FuncToLLVM",
         "@llvm-project//mlir:GPUDialect",

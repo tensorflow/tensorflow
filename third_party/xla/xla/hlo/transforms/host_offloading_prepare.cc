@@ -29,14 +29,14 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/call_graph.h"
-#include "xla/service/host_memory_offload_annotations.h"
+#include "xla/service/memory_annotations.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
 
-using xla::host_memory_offload_annotations::kMoveToHostCustomCallTarget;
+using xla::memory_annotations::kMoveToHostCustomCallTarget;
 
 bool IsHostAsyncStart(const HloInstruction* instruction) {
   return instruction->opcode() == HloOpcode::kAsyncStart &&

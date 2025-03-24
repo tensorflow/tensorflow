@@ -89,6 +89,11 @@ class LoadedExecutable final
 
   absl::StatusOr<xla::ifrt::AttributeMap> GetCostAnalysis() const override;
 
+  // The following may return an OK status even if the underlying IFRT backend
+  // would (eagerly) return an error. If that happens, the fields of the
+  // returned `ExecuteResult` will resolve to the error (for example,
+  // `result->status.Await()` will return the error, where `result` is the
+  // returned value from the `Execute()` call).
   absl::StatusOr<ExecuteResult> Execute(
       absl::Span<tsl::RCReference<xla::ifrt::Array>> args,
       const ExecuteOptions& options,

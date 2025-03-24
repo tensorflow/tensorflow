@@ -68,6 +68,7 @@ cc_library(
         "//xla:literal",
         "//xla:literal_pool",
         "//xla:literal_util",
+        "//xla:online_topsort",
         "//xla:printer",
         "//xla:protobuf_util",
         "//xla:shape_layout",

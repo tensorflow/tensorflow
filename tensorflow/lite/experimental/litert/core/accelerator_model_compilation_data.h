@@ -23,7 +23,7 @@
 #include "tensorflow/lite/experimental/litert/cc/litert_macros.h"
 #include "tensorflow/lite/experimental/litert/core/accelerator.h"
 
-namespace litert {
+namespace litert::internal {
 
 // Holds environment data that accelerators may need to prepare their
 // delegates.
@@ -61,6 +61,6 @@ struct ModelCompilationData : public LiteRtAcceleratorCompilationOptionsHeader {
   ModelCompilationData() = default;
 };
 
-}  // namespace litert
+}  // namespace litert::internal
 
 #endif  // TENSORFLOW_LITE_EXPERIMENTAL_LITERT_CORE_ACCELERATOR_MODEL_COMPILATION_DATA_H_

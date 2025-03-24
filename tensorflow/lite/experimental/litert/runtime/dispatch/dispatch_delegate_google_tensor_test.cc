@@ -18,7 +18,10 @@
 #include <utility>
 #include <vector>
 
+#include "tensorflow/lite/experimental/litert/c/litert_environment.h"
+#include "tensorflow/lite/experimental/litert/c/litert_environment_options.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_buffer_ref.h"
+#include "tensorflow/lite/experimental/litert/cc/litert_compilation_options.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_tensor_buffer_requirements.h"
 
@@ -35,7 +38,6 @@
 #include "tensorflow/lite/c/c_api_opaque.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
-#include "tensorflow/lite/experimental/litert/c/litert_compiled_model_options.h"
 #include "tensorflow/lite/experimental/litert/c/litert_dispatch_delegate.h"
 #include "tensorflow/lite/experimental/litert/c/litert_tensor_buffer.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_compiled_model.h"
@@ -92,12 +94,14 @@ TEST(DispatchDelegate, GoogleTensorCpuBuffer) {
   EXPECT_EQ(interpreter.outputs().size(), 1);
   ASSERT_EQ(interpreter.execution_plan().size(), 1);
 
+  LiteRtEnvironmentOptions env_options = nullptr;
+  LiteRtGetEnvironmentOptions(env.Get(), &env_options);
   DispatchDelegateOptionsPtr dispatch_delegate_options =
-      CreateDispatchDelegateOptionsPtr(*env.Get());
+      CreateDispatchDelegateOptionsPtr(env_options);
   LiteRtDispatchDelegateAddAllocBaseOption(dispatch_delegate_options.get(),
                                            runtime->Flatbuffer().Buf().Data());
   DispatchDelegatePtr dispatch_delegate = CreateDispatchDelegatePtr(
-      *env.Get(), std::move(dispatch_delegate_options));
+      env_options, std::move(dispatch_delegate_options));
 
 #if !defined(__ANDROID__)
   GTEST_SKIP() << "The rest of this test is specific to Android devices with a "
@@ -160,12 +164,15 @@ TEST(DispatchDelegate, GoogleTensorHwBuffer) {
   EXPECT_EQ(interpreter.outputs().size(), 1);
   ASSERT_EQ(interpreter.execution_plan().size(), 1);
 
+  LiteRtEnvironmentOptions env_options = nullptr;
+  LiteRtGetEnvironmentOptions(env.Get(), &env_options);
+
   DispatchDelegateOptionsPtr dispatch_delegate_options =
-      CreateDispatchDelegateOptionsPtr(*env.Get());
+      CreateDispatchDelegateOptionsPtr(env_options);
   LiteRtDispatchDelegateAddAllocBaseOption(dispatch_delegate_options.get(),
                                            runtime->Flatbuffer().Buf().Data());
   DispatchDelegatePtr dispatch_delegate = CreateDispatchDelegatePtr(
-      *env.Get(), std::move(dispatch_delegate_options));
+      env_options, std::move(dispatch_delegate_options));
 
 #if !defined(__ANDROID__)
   GTEST_SKIP() << "The rest of this test is specific to Android devices with a "
@@ -242,7 +249,7 @@ TEST(DispatchDelegate, GoogleTensorHwBuffer) {
 
   // Check model output.
   ASSERT_STREQ(runner->output_names()[0], "tfl.custom");
-  TensorBuffer& output_buffer = output_buffers[0];
+  auto& output_buffer = output_buffers[0];
   float output_buffer_data[kTestOutputSize];
   auto output_span = absl::MakeSpan(output_buffer_data, kTestOutputSize);
   auto read_success = output_buffer.Read<float>(output_span);
@@ -357,9 +364,10 @@ TEST(DispatchDelegate, CompiledModelSharedInput) {
   GTEST_SKIP() << "The rest of this test is specific to Android devices with a "
                   "GoogleTensor eTPU";
 #endif
-  auto options = CompiledModel::Options::Create();
-  ASSERT_TRUE(options);
-  ASSERT_TRUE(options->SetHardwareAccelerators(kLiteRtHwAcceleratorCpu));
+  auto jit_compilation_options = CompilationOptions::Create();
+  ASSERT_TRUE(jit_compilation_options);
+  ASSERT_TRUE(jit_compilation_options->SetHardwareAccelerators(
+      kLiteRtHwAcceleratorCpu));
 
   const std::vector<litert::Environment::Option> environment_options = {
       litert::Environment::Option{
@@ -371,7 +379,7 @@ TEST(DispatchDelegate, CompiledModelSharedInput) {
       litert::Environment::Create(absl::MakeConstSpan(environment_options));
   ASSERT_TRUE(env);
   auto res_compiled_model =
-      CompiledModel::Create(*env, *model, std::move(*options));
+      CompiledModel::Create(*env, *model, *jit_compilation_options);
   ASSERT_TRUE(res_compiled_model) << "Failed to initialize CompiledModel";
   auto& compiled_model = *res_compiled_model;
 

@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/file_system.h"
 #include "xla/tsl/platform/statusor.h"
@@ -131,7 +132,7 @@ absl::StatusOr<std::string> ConvertXSpaceToTraceEvents(
       ConvertXSpaceToTraceEventsContainer(host_name, *xspace, &trace_container);
       std::unique_ptr<tsl::WritableFile> file;
       TF_RETURN_IF_ERROR(
-          tensorflow::Env::Default()->NewWritableFile(*sstable_path, &file));
+          tsl::Env::Default()->NewWritableFile(*sstable_path, &file));
       TF_RETURN_IF_ERROR(trace_container.StoreAsLevelDbTable(std::move(file)));
     }
     TF_ASSIGN_OR_RETURN(TraceViewOption trace_option,

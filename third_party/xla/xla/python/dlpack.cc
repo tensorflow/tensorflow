@@ -111,14 +111,32 @@ absl::StatusOr<DLDataType> PrimitiveTypeToDLDataType(PrimitiveType type) {
       return DLDataType{kDLUInt, 32, 1};
     case U64:
       return DLDataType{kDLUInt, 64, 1};
+    case F4E2M1FN:
+      return DLDataType{kDLFloat4_e2m1fn, 4, 1};
+    case F8E3M4:
+      return DLDataType{kDLFloat8_e3m4, 8, 1};
+    case F8E4M3:
+      return DLDataType{kDLFloat8_e4m3, 8, 1};
+    case F8E4M3B11FNUZ:
+      return DLDataType{kDLFloat8_e4m3b11fnuz, 8, 1};
+    case F8E4M3FN:
+      return DLDataType{kDLFloat8_e4m3fn, 8, 1};
+    case F8E4M3FNUZ:
+      return DLDataType{kDLFloat8_e4m3fnuz, 8, 1};
+    case F8E5M2:
+      return DLDataType{kDLFloat8_e5m2, 8, 1};
+    case F8E5M2FNUZ:
+      return DLDataType{kDLFloat8_e5m2fnuz, 8, 1};
+    case F8E8M0FNU:
+      return DLDataType{kDLFloat8_e8m0fnu, 8, 1};
+    case BF16:
+      return DLDataType{kDLBfloat, 16, 1};
     case F16:
       return DLDataType{kDLFloat, 16, 1};
     case F32:
       return DLDataType{kDLFloat, 32, 1};
     case F64:
       return DLDataType{kDLFloat, 64, 1};
-    case BF16:
-      return DLDataType{kDLBfloat, 16, 1};
     case PRED:
       return DLDataType{kDLBool, 8, 1};
     case C64:
@@ -176,6 +194,75 @@ absl::StatusOr<PrimitiveType> DLDataTypeToPrimitiveType(DLDataType type) {
               "Invalid or unsupported DLPack unsigned integer width: %d bits",
               type.bits);
       }
+    case kDLFloat4_e2m1fn:
+      if (type.bits == 4) {
+        return F4E2M1FN;
+      }
+      return Unimplemented(
+          "Invalid or unsupported DLPack float4_e2m1fn width: %d bits",
+          type.bits);
+    case kDLFloat8_e3m4:
+      if (type.bits == 8) {
+        return F8E3M4;
+      }
+      return Unimplemented(
+          "Invalid or unsupported DLPack float8_e3m4 width: %d bits",
+          type.bits);
+    case kDLFloat8_e4m3:
+      if (type.bits == 8) {
+        return F8E4M3;
+      }
+      return Unimplemented(
+          "Invalid or unsupported DLPack float8_e4m3 width: %d bits",
+          type.bits);
+    case kDLFloat8_e4m3b11fnuz:
+      if (type.bits == 8) {
+        return F8E4M3B11FNUZ;
+      }
+      return Unimplemented(
+          "Invalid or unsupported DLPack float8_e4m3b11fnuz width: %d bits",
+          type.bits);
+    case kDLFloat8_e4m3fn:
+      if (type.bits == 8) {
+        return F8E4M3FN;
+      }
+      return Unimplemented(
+          "Invalid or unsupported DLPack float8_e4m3fn width: %d bits",
+          type.bits);
+    case kDLFloat8_e4m3fnuz:
+      if (type.bits == 8) {
+        return F8E4M3FNUZ;
+      }
+      return Unimplemented(
+          "Invalid or unsupported DLPack float8_e4m3fnuz width: %d bits",
+          type.bits);
+    case kDLFloat8_e5m2:
+      if (type.bits == 8) {
+        return F8E5M2;
+      }
+      return Unimplemented(
+          "Invalid or unsupported DLPack float8_e5m2 width: %d bits",
+          type.bits);
+    case kDLFloat8_e5m2fnuz:
+      if (type.bits == 8) {
+        return F8E5M2FNUZ;
+      }
+      return Unimplemented(
+          "Invalid or unsupported DLPack float8_e5m2fnuz width: %d bits",
+          type.bits);
+    case kDLFloat8_e8m0fnu:
+      if (type.bits == 8) {
+        return F8E8M0FNU;
+      }
+      return Unimplemented(
+          "Invalid or unsupported DLPack float8_e8m0fnu width: %d bits",
+          type.bits);
+    case kDLBfloat:
+      if (type.bits == 16) {
+        return BF16;
+      }
+      return Unimplemented(
+          "Invalid or unsupported DLPack bfloat width: %d bits", type.bits);
     case kDLFloat:
       switch (type.bits) {
         case 16:
@@ -187,14 +274,6 @@ absl::StatusOr<PrimitiveType> DLDataTypeToPrimitiveType(DLDataType type) {
         default:
           return Unimplemented(
               "Invalid or unsupported DLPack float width: %d bits", type.bits);
-      }
-    case kDLBfloat:
-      switch (type.bits) {
-        case 16:
-          return BF16;
-        default:
-          return Unimplemented(
-              "Invalid or unsupported DLPack Bfloat width: %d bits", type.bits);
       }
     case kDLComplex:
       switch (type.bits) {

@@ -33,7 +33,7 @@ LiteRtStatus LiteRtGetAddFusedActivationOption(LiteRtOp op,
   if (op->OpCode() != kLiteRtOpCodeTflAdd) {
     return kLiteRtStatusErrorInvalidArgument;
   }
-  const auto& opts = detail::GetTflOptions(*op);
+  const auto& opts = litert::internal::GetTflOptions(*op);
   if (opts.value == nullptr) {
     return kLiteRtStatusErrorNotFound;
   }
@@ -45,7 +45,7 @@ LiteRtStatus LiteRtGetBatchMatmulAdjXOption(LiteRtOp op, bool* adj_x) {
   if (op->OpCode() != kLiteRtOpCodeTflBatchMatmul) {
     return kLiteRtStatusErrorInvalidArgument;
   }
-  auto& opts = detail::GetTflOptions(*op);
+  auto& opts = litert::internal::GetTflOptions(*op);
   if (opts.value == nullptr) {
     return kLiteRtStatusErrorInvalidArgument;
   }
@@ -57,7 +57,7 @@ LiteRtStatus LiteRtGetBatchMatmulAdjYOption(LiteRtOp op, bool* adj_y) {
   if (op->OpCode() != kLiteRtOpCodeTflBatchMatmul) {
     return kLiteRtStatusErrorInvalidArgument;
   }
-  auto& opts = detail::GetTflOptions(*op);
+  auto& opts = litert::internal::GetTflOptions(*op);
   if (opts.value == nullptr) {
     return kLiteRtStatusErrorInvalidArgument;
   }
@@ -70,7 +70,7 @@ LiteRtStatus LiteRtGetBatchMatmulAsymmetricQuantizeInputOption(
   if (op->OpCode() != kLiteRtOpCodeTflBatchMatmul) {
     return kLiteRtStatusErrorInvalidArgument;
   }
-  auto& opts = detail::GetTflOptions(*op);
+  auto& opts = litert::internal::GetTflOptions(*op);
   if (opts.value == nullptr) {
     return kLiteRtStatusErrorInvalidArgument;
   }
@@ -84,7 +84,7 @@ LiteRtStatus LiteRtGetConcatenationFusedActivationOption(
   if (op->OpCode() != kLiteRtOpCodeTflConcatenation) {
     return kLiteRtStatusErrorInvalidArgument;
   }
-  auto& opts = detail::GetTflOptions(*op);
+  auto& opts = litert::internal::GetTflOptions(*op);
   if (opts.value == nullptr) {
     return kLiteRtStatusErrorInvalidArgument;
   }
@@ -96,7 +96,7 @@ LiteRtStatus LiteRtGetConcatenationAxisOption(LiteRtOp op, int32_t* axis) {
   if (op->OpCode() != kLiteRtOpCodeTflConcatenation) {
     return kLiteRtStatusErrorInvalidArgument;
   }
-  auto& opts = detail::GetTflOptions(*op);
+  auto& opts = litert::internal::GetTflOptions(*op);
   if (opts.value == nullptr) {
     return kLiteRtStatusErrorInvalidArgument;
   }
@@ -109,7 +109,7 @@ LiteRtStatus LiteRtGetDivFusedActivationOption(LiteRtOp op,
   if (op->OpCode() != kLiteRtOpCodeTflDiv) {
     return kLiteRtStatusErrorInvalidArgument;
   }
-  auto& opts = detail::GetTflOptions(*op);
+  auto& opts = litert::internal::GetTflOptions(*op);
   if (opts.value == nullptr) {
     return kLiteRtStatusErrorInvalidArgument;
   }
@@ -122,7 +122,7 @@ LiteRtStatus LiteRtGetFullyConnectedFusedActivationOption(
   if (op->OpCode() != kLiteRtOpCodeTflFullyConnected) {
     return kLiteRtStatusErrorInvalidArgument;
   }
-  auto& opts = detail::GetTflOptions(*op);
+  auto& opts = litert::internal::GetTflOptions(*op);
   if (opts.value == nullptr) {
     return kLiteRtStatusErrorInvalidArgument;
   }
@@ -135,7 +135,7 @@ LiteRtStatus LiteRtGetFullyConnectedKeepNumDimsOption(LiteRtOp op,
   if (op->OpCode() != kLiteRtOpCodeTflFullyConnected) {
     return kLiteRtStatusErrorInvalidArgument;
   }
-  auto& opts = detail::GetTflOptions(*op);
+  auto& opts = litert::internal::GetTflOptions(*op);
   if (opts.value == nullptr) {
     return kLiteRtStatusErrorInvalidArgument;
   }
@@ -148,7 +148,7 @@ LiteRtStatus LiteRtFullyConnectedGetQuantizedBiasTypeOption(
   if (op->OpCode() != kLiteRtOpCodeTflFullyConnected) {
     return kLiteRtStatusErrorInvalidArgument;
   }
-  auto& opts = detail::GetTflOptions(*op);
+  auto& opts = litert::internal::GetTflOptions(*op);
   if (opts.value == nullptr) {
     return kLiteRtStatusErrorInvalidArgument;
   }
@@ -161,7 +161,7 @@ LiteRtStatus LiteRtGetFullyConnectedAsymmetricQuantizeInputOption(
   if (op->OpCode() != kLiteRtOpCodeTflFullyConnected) {
     return kLiteRtStatusErrorInvalidArgument;
   }
-  auto& opts = detail::GetTflOptions(*op);
+  auto& opts = litert::internal::GetTflOptions(*op);
   if (opts.value == nullptr) {
     return kLiteRtStatusErrorInvalidArgument;
   }
@@ -175,7 +175,7 @@ LiteRtStatus LiteRtGetFullyConnectedWeightsFormatOption(
   if (op->OpCode() != kLiteRtOpCodeTflFullyConnected) {
     return kLiteRtStatusErrorInvalidArgument;
   }
-  auto& opts = detail::GetTflOptions(*op);
+  auto& opts = litert::internal::GetTflOptions(*op);
   if (opts.value == nullptr) {
     return kLiteRtStatusErrorInvalidArgument;
   }
@@ -188,7 +188,7 @@ LiteRtStatus LiteRtGetMulFusedActivationOption(LiteRtOp op,
   if (op->OpCode() != kLiteRtOpCodeTflMul) {
     return kLiteRtStatusErrorInvalidArgument;
   }
-  auto& opts = detail::GetTflOptions(*op);
+  auto& opts = litert::internal::GetTflOptions(*op);
   if (opts.value == nullptr) {
     return kLiteRtStatusErrorInvalidArgument;
   }
@@ -200,7 +200,7 @@ LiteRtStatus LiteRtGetSoftmaxBetaOption(LiteRtOp op, float* beta) {
   if (op->OpCode() != kLiteRtOpCodeTflSoftmax) {
     return kLiteRtStatusErrorInvalidArgument;
   }
-  auto& opts = detail::GetTflOptions(*op);
+  auto& opts = litert::internal::GetTflOptions(*op);
   if (opts.value == nullptr) {
     return kLiteRtStatusErrorInvalidArgument;
   }
@@ -213,7 +213,7 @@ LiteRtStatus LiteRtGetStridedSliceBeginMaskOption(LiteRtOp op,
   if (op->OpCode() != kLiteRtOpCodeTflStridedSlice) {
     return kLiteRtStatusErrorInvalidArgument;
   }
-  auto& opts = detail::GetTflOptions(*op);
+  auto& opts = litert::internal::GetTflOptions(*op);
   if (opts.value == nullptr) {
     return kLiteRtStatusErrorInvalidArgument;
   }
@@ -226,7 +226,7 @@ LiteRtStatus LiteRtGetStridedSliceEndMaskOption(LiteRtOp op,
   if (op->OpCode() != kLiteRtOpCodeTflStridedSlice) {
     return kLiteRtStatusErrorInvalidArgument;
   }
-  auto& opts = detail::GetTflOptions(*op);
+  auto& opts = litert::internal::GetTflOptions(*op);
   if (opts.value == nullptr) {
     return kLiteRtStatusErrorInvalidArgument;
   }
@@ -239,7 +239,7 @@ LiteRtStatus LiteRtGetStridedSliceEllipsisMaskOption(LiteRtOp op,
   if (op->OpCode() != kLiteRtOpCodeTflStridedSlice) {
     return kLiteRtStatusErrorInvalidArgument;
   }
-  auto& opts = detail::GetTflOptions(*op);
+  auto& opts = litert::internal::GetTflOptions(*op);
   if (opts.value == nullptr) {
     return kLiteRtStatusErrorInvalidArgument;
   }
@@ -252,7 +252,7 @@ LiteRtStatus LiteRtGetStridedSliceNewAxisMaskOption(LiteRtOp op,
   if (op->OpCode() != kLiteRtOpCodeTflStridedSlice) {
     return kLiteRtStatusErrorInvalidArgument;
   }
-  auto& opts = detail::GetTflOptions(*op);
+  auto& opts = litert::internal::GetTflOptions(*op);
   if (opts.value == nullptr) {
     return kLiteRtStatusErrorInvalidArgument;
   }
@@ -265,7 +265,7 @@ LiteRtStatus LiteRtGetStridedSliceShrinkAxisMaskOption(
   if (op->OpCode() != kLiteRtOpCodeTflStridedSlice) {
     return kLiteRtStatusErrorInvalidArgument;
   }
-  auto& opts = detail::GetTflOptions(*op);
+  auto& opts = litert::internal::GetTflOptions(*op);
   if (opts.value == nullptr) {
     return kLiteRtStatusErrorInvalidArgument;
   }
@@ -277,7 +277,7 @@ LiteRtStatus LiteRtGetStridedSliceOffsetOption(LiteRtOp op, bool* offset) {
   if (op->OpCode() != kLiteRtOpCodeTflStridedSlice) {
     return kLiteRtStatusErrorInvalidArgument;
   }
-  auto& opts = detail::GetTflOptions(*op);
+  auto& opts = litert::internal::GetTflOptions(*op);
   if (opts.value == nullptr) {
     return kLiteRtStatusErrorInvalidArgument;
   }
@@ -290,7 +290,7 @@ LiteRtStatus LiteRtGetSubFusedActivationOption(LiteRtOp op,
   if (op->OpCode() != kLiteRtOpCodeTflSub) {
     return kLiteRtStatusErrorInvalidArgument;
   }
-  auto& opts = detail::GetTflOptions(*op);
+  auto& opts = litert::internal::GetTflOptions(*op);
   if (opts.value == nullptr) {
     return kLiteRtStatusErrorInvalidArgument;
   }
@@ -304,7 +304,7 @@ LiteRtStatus LiteRtGetReshapeNewShapeOption(LiteRtOp op,
   if (op->OpCode() != kLiteRtOpCodeTflReshape) {
     return kLiteRtStatusErrorInvalidArgument;
   }
-  auto& opts = detail::GetTflOptions(*op);
+  auto& opts = litert::internal::GetTflOptions(*op);
   if (opts.value == nullptr) {
     *new_shape_size = -1;
     return kLiteRtStatusErrorInvalidArgument;
@@ -323,7 +323,7 @@ LiteRtStatus LiteRtGetSumKeepDimsOption(LiteRtOp op, bool* keepdims) {
   if (op->OpCode() != kLiteRtOpCodeTflSum) {
     return kLiteRtStatusErrorInvalidArgument;
   }
-  auto& opts = detail::GetTflOptions(*op);
+  auto& opts = litert::internal::GetTflOptions(*op);
   if (opts.value == nullptr) {
     return kLiteRtStatusErrorInvalidArgument;
   }
@@ -336,7 +336,7 @@ LiteRtStatus LiteRtGetPackAxisOption(LiteRtOp op, int32_t* axis) {
   if (op->OpCode() != kLiteRtOpCodeTflPack) {
     return kLiteRtStatusErrorInvalidArgument;
   }
-  auto& opts = detail::GetTflOptions(*op);
+  auto& opts = litert::internal::GetTflOptions(*op);
   if (opts.value == nullptr) {
     return kLiteRtStatusErrorInvalidArgument;
   }
@@ -348,7 +348,7 @@ LiteRtStatus LiteRtGetGatherAxisOption(LiteRtOp op, int32_t* axis) {
   if (op->OpCode() != kLiteRtOpCodeTflGather) {
     return kLiteRtStatusErrorInvalidArgument;
   }
-  auto& opts = detail::GetTflOptions(*op);
+  auto& opts = litert::internal::GetTflOptions(*op);
   if (opts.value == nullptr) {
     return kLiteRtStatusErrorInvalidArgument;
   }
@@ -360,7 +360,7 @@ LiteRtStatus LiteRtGetGatherBatchDimsOption(LiteRtOp op, int32_t* batch_dims) {
   if (op->OpCode() != kLiteRtOpCodeTflGather) {
     return kLiteRtStatusErrorInvalidArgument;
   }
-  auto& opts = detail::GetTflOptions(*op);
+  auto& opts = litert::internal::GetTflOptions(*op);
   if (opts.value == nullptr) {
     return kLiteRtStatusErrorInvalidArgument;
   }
@@ -372,7 +372,7 @@ LiteRtStatus LiteRtGetMeanKeepDimsOption(LiteRtOp op, bool* keepdims) {
   if (op->OpCode() != kLiteRtOpCodeTflMean) {
     return kLiteRtStatusErrorInvalidArgument;
   }
-  auto& opts = detail::GetTflOptions(*op);
+  auto& opts = litert::internal::GetTflOptions(*op);
   if (opts.value == nullptr) {
     return kLiteRtStatusErrorInvalidArgument;
   }
@@ -385,7 +385,7 @@ LiteRtStatus LiteRtGetSplitNumSplitsOption(LiteRtOp op, int32_t* num_splits) {
   if (op->OpCode() != kLiteRtOpCodeTflSplit) {
     return kLiteRtStatusErrorInvalidArgument;
   }
-  auto& opts = detail::GetTflOptions(*op);
+  auto& opts = litert::internal::GetTflOptions(*op);
   if (opts.value == nullptr) {
     return kLiteRtStatusErrorInvalidArgument;
   }
@@ -397,7 +397,7 @@ LiteRtStatus LiteRtGetSHLOCompositeOpName(LiteRtOp op, const char** name) {
   if (op->OpCode() != kLiteRtOpCodeShloComposite) {
     return kLiteRtStatusErrorInvalidArgument;
   }
-  auto& opts = detail::GetTflOptions2(*op);
+  auto& opts = litert::internal::GetTflOptions2(*op);
   if (opts.value == nullptr) {
     return kLiteRtStatusErrorInvalidArgument;
   }
@@ -410,7 +410,7 @@ LiteRtStatus LiteRtGetSHLOCompositeOpDecompositionSubgraphIndex(
   if (op->OpCode() != kLiteRtOpCodeShloComposite) {
     return kLiteRtStatusErrorInvalidArgument;
   }
-  auto& opts = detail::GetTflOptions2(*op);
+  auto& opts = litert::internal::GetTflOptions2(*op);
   if (opts.value == nullptr) {
     return kLiteRtStatusErrorInvalidArgument;
   }
@@ -423,7 +423,7 @@ LiteRtStatus LiteRtGetConv2dPaddingOption(LiteRtOp op, uint32_t* padding) {
   if (op->OpCode() != kLiteRtOpCodeTflConv2d) {
     return kLiteRtStatusErrorInvalidArgument;
   }
-  auto& opts = detail::GetTflOptions(*op);
+  auto& opts = litert::internal::GetTflOptions(*op);
   if (opts.value == nullptr) {
     return kLiteRtStatusErrorInvalidArgument;
   }
@@ -435,7 +435,7 @@ LiteRtStatus LiteRtGetConv2dStrideWOption(LiteRtOp op, int32_t* stride_w) {
   if (op->OpCode() != kLiteRtOpCodeTflConv2d) {
     return kLiteRtStatusErrorInvalidArgument;
   }
-  auto& opts = detail::GetTflOptions(*op);
+  auto& opts = litert::internal::GetTflOptions(*op);
   if (opts.value == nullptr) {
     return kLiteRtStatusErrorInvalidArgument;
   }
@@ -447,7 +447,7 @@ LiteRtStatus LiteRtGetConv2dStrideHOption(LiteRtOp op, int32_t* stride_h) {
   if (op->OpCode() != kLiteRtOpCodeTflConv2d) {
     return kLiteRtStatusErrorInvalidArgument;
   }
-  auto& opts = detail::GetTflOptions(*op);
+  auto& opts = litert::internal::GetTflOptions(*op);
   if (opts.value == nullptr) {
     return kLiteRtStatusErrorInvalidArgument;
   }
@@ -460,7 +460,7 @@ LiteRtStatus LiteRtGetConv2dFusedActivationOption(
   if (op->OpCode() != kLiteRtOpCodeTflConv2d) {
     return kLiteRtStatusErrorInvalidArgument;
   }
-  auto& opts = detail::GetTflOptions(*op);
+  auto& opts = litert::internal::GetTflOptions(*op);
   if (opts.value == nullptr) {
     return kLiteRtStatusErrorInvalidArgument;
   }
@@ -474,7 +474,7 @@ LiteRtStatus LiteRtGetConv2dDilationWOption(LiteRtOp op,
   if (op->OpCode() != kLiteRtOpCodeTflConv2d) {
     return kLiteRtStatusErrorInvalidArgument;
   }
-  auto& opts = detail::GetTflOptions(*op);
+  auto& opts = litert::internal::GetTflOptions(*op);
   if (opts.value == nullptr) {
     return kLiteRtStatusErrorInvalidArgument;
   }
@@ -487,7 +487,7 @@ LiteRtStatus LiteRtGetConv2dDilationHOption(LiteRtOp op,
   if (op->OpCode() != kLiteRtOpCodeTflConv2d) {
     return kLiteRtStatusErrorInvalidArgument;
   }
-  auto& opts = detail::GetTflOptions(*op);
+  auto& opts = litert::internal::GetTflOptions(*op);
   if (opts.value == nullptr) {
     return kLiteRtStatusErrorInvalidArgument;
   }
@@ -500,7 +500,7 @@ LiteRtStatus LiteRtGetDepthwiseConv2dPaddingOption(LiteRtOp op,
   if (op->OpCode() != kLiteRtOpCodeTflDepthwiseConv2d) {
     return kLiteRtStatusErrorInvalidArgument;
   }
-  auto& opts = detail::GetTflOptions(*op);
+  auto& opts = litert::internal::GetTflOptions(*op);
   if (opts.value == nullptr) {
     return kLiteRtStatusErrorInvalidArgument;
   }
@@ -513,7 +513,7 @@ LiteRtStatus LiteRtGetDepthwiseConv2dStrideWOption(LiteRtOp op,
   if (op->OpCode() != kLiteRtOpCodeTflDepthwiseConv2d) {
     return kLiteRtStatusErrorInvalidArgument;
   }
-  auto& opts = detail::GetTflOptions(*op);
+  auto& opts = litert::internal::GetTflOptions(*op);
   if (opts.value == nullptr) {
     return kLiteRtStatusErrorInvalidArgument;
   }
@@ -526,7 +526,7 @@ LiteRtStatus LiteRtGetDepthwiseConv2dStrideHOption(LiteRtOp op,
   if (op->OpCode() != kLiteRtOpCodeTflDepthwiseConv2d) {
     return kLiteRtStatusErrorInvalidArgument;
   }
-  auto& opts = detail::GetTflOptions(*op);
+  auto& opts = litert::internal::GetTflOptions(*op);
   if (opts.value == nullptr) {
     return kLiteRtStatusErrorInvalidArgument;
   }
@@ -539,7 +539,7 @@ LiteRtStatus LiteRtGetDepthwiseConv2dFusedActivationOption(
   if (op->OpCode() != kLiteRtOpCodeTflDepthwiseConv2d) {
     return kLiteRtStatusErrorInvalidArgument;
   }
-  auto& opts = detail::GetTflOptions(*op);
+  auto& opts = litert::internal::GetTflOptions(*op);
   if (opts.value == nullptr) {
     return kLiteRtStatusErrorInvalidArgument;
   }
@@ -553,7 +553,7 @@ LiteRtStatus LiteRtGetDepthwiseConv2dDilationWOption(
   if (op->OpCode() != kLiteRtOpCodeTflDepthwiseConv2d) {
     return kLiteRtStatusErrorInvalidArgument;
   }
-  auto& opts = detail::GetTflOptions(*op);
+  auto& opts = litert::internal::GetTflOptions(*op);
   if (opts.value == nullptr) {
     return kLiteRtStatusErrorInvalidArgument;
   }
@@ -566,7 +566,7 @@ LiteRtStatus LiteRtGetDepthwiseConv2dDilationHOptions(
   if (op->OpCode() != kLiteRtOpCodeTflDepthwiseConv2d) {
     return kLiteRtStatusErrorInvalidArgument;
   }
-  auto& opts = detail::GetTflOptions(*op);
+  auto& opts = litert::internal::GetTflOptions(*op);
   if (opts.value == nullptr) {
     return kLiteRtStatusErrorInvalidArgument;
   }
@@ -582,7 +582,7 @@ LiteRtStatus LiteRtGetAveragePool2dOptions(LiteRtOp op, int8_t* padding,
   if (op->OpCode() != kLiteRtOpCodeTflAveragePool2d) {
     return kLiteRtStatusErrorInvalidArgument;
   }
-  auto& opts = detail::GetTflOptions(*op);
+  auto& opts = litert::internal::GetTflOptions(*op);
   if (opts.value == nullptr) {
     return kLiteRtStatusErrorInvalidArgument;
   }
@@ -601,7 +601,7 @@ LiteRtStatus LiteRtGetAveragePool2dPaddingOption(LiteRtOp op,
   if (op->OpCode() != kLiteRtOpCodeTflAveragePool2d) {
     return kLiteRtStatusErrorInvalidArgument;
   }
-  auto& opts = detail::GetTflOptions(*op);
+  auto& opts = litert::internal::GetTflOptions(*op);
   if (opts.value == nullptr) {
     return kLiteRtStatusErrorInvalidArgument;
   }
@@ -614,7 +614,7 @@ LiteRtStatus LiteRtGetAveragePool2dStrideWOption(LiteRtOp op,
   if (op->OpCode() != kLiteRtOpCodeTflAveragePool2d) {
     return kLiteRtStatusErrorInvalidArgument;
   }
-  auto& opts = detail::GetTflOptions(*op);
+  auto& opts = litert::internal::GetTflOptions(*op);
   if (opts.value == nullptr) {
     return kLiteRtStatusErrorInvalidArgument;
   }
@@ -627,7 +627,7 @@ LiteRtStatus LiteRtGetAveragePool2dStrideHOption(LiteRtOp op,
   if (op->OpCode() != kLiteRtOpCodeTflAveragePool2d) {
     return kLiteRtStatusErrorInvalidArgument;
   }
-  auto& opts = detail::GetTflOptions(*op);
+  auto& opts = litert::internal::GetTflOptions(*op);
   if (opts.value == nullptr) {
     return kLiteRtStatusErrorInvalidArgument;
   }
@@ -640,7 +640,7 @@ LiteRtStatus LiteRtGetAveragePool2dFilterWidthOption(LiteRtOp op,
   if (op->OpCode() != kLiteRtOpCodeTflAveragePool2d) {
     return kLiteRtStatusErrorInvalidArgument;
   }
-  auto& opts = detail::GetTflOptions(*op);
+  auto& opts = litert::internal::GetTflOptions(*op);
   if (opts.value == nullptr) {
     return kLiteRtStatusErrorInvalidArgument;
   }
@@ -653,7 +653,7 @@ LiteRtStatus LiteRtGetAveragePool2dFilterHeightOption(LiteRtOp op,
   if (op->OpCode() != kLiteRtOpCodeTflAveragePool2d) {
     return kLiteRtStatusErrorInvalidArgument;
   }
-  auto& opts = detail::GetTflOptions(*op);
+  auto& opts = litert::internal::GetTflOptions(*op);
   if (opts.value == nullptr) {
     return kLiteRtStatusErrorInvalidArgument;
   }
@@ -666,7 +666,7 @@ LiteRtStatus LiteRtGetAveragePool2dFusedActivationOption(
   if (op->OpCode() != kLiteRtOpCodeTflAveragePool2d) {
     return kLiteRtStatusErrorInvalidArgument;
   }
-  auto& opts = detail::GetTflOptions(*op);
+  auto& opts = litert::internal::GetTflOptions(*op);
   if (opts.value == nullptr) {
     return kLiteRtStatusErrorInvalidArgument;
   }
@@ -680,7 +680,7 @@ LiteRtStatus LiteRtGetResizeBilinearAlignCornersOption(LiteRtOp op,
   if (op->OpCode() != kLiteRtOpCodeTflResizeBilinear) {
     return kLiteRtStatusErrorInvalidArgument;
   }
-  auto& opts = detail::GetTflOptions(*op);
+  auto& opts = litert::internal::GetTflOptions(*op);
   if (opts.value == nullptr) {
     return kLiteRtStatusErrorInvalidArgument;
   }
@@ -693,7 +693,7 @@ LiteRtStatus LiteRtGetResizeBilinearHalfPixelCenterOption(
   if (op->OpCode() != kLiteRtOpCodeTflResizeBilinear) {
     return kLiteRtStatusErrorInvalidArgument;
   }
-  auto& opts = detail::GetTflOptions(*op);
+  auto& opts = litert::internal::GetTflOptions(*op);
   if (opts.value == nullptr) {
     return kLiteRtStatusErrorInvalidArgument;
   }
@@ -705,7 +705,7 @@ LiteRtStatus LiteRtGetLeakyReluAlphaOption(LiteRtOp op, float* alpha) {
   if (op->OpCode() != kLiteRtOpCodeTflLeakyRelu) {
     return kLiteRtStatusErrorInvalidArgument;
   }
-  auto& opts = detail::GetTflOptions(*op);
+  auto& opts = litert::internal::GetTflOptions(*op);
   if (opts.value == nullptr) {
     return kLiteRtStatusErrorInvalidArgument;
   }
@@ -718,7 +718,7 @@ LiteRtStatus LiteRtGetDepthToSpaceBlockSizeOption(LiteRtOp op,
   if (op->OpCode() != kLiteRtOpCodeTflDepthToSpace) {
     return kLiteRtStatusErrorInvalidArgument;
   }
-  auto& opts = detail::GetTflOptions(*op);
+  auto& opts = litert::internal::GetTflOptions(*op);
   if (opts.value == nullptr) {
     return kLiteRtStatusErrorInvalidArgument;
   }
@@ -731,7 +731,7 @@ LiteRtStatus LiteRtGetSpaceToDepthBlockSizeOption(LiteRtOp op,
   if (op->OpCode() != kLiteRtOpCodeTflSpaceToDepth) {
     return kLiteRtStatusErrorInvalidArgument;
   }
-  auto& opts = detail::GetTflOptions(*op);
+  auto& opts = litert::internal::GetTflOptions(*op);
   if (opts.value == nullptr) {
     return kLiteRtStatusErrorInvalidArgument;
   }

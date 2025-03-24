@@ -70,7 +70,7 @@ std::optional<int64_t> FindFalseIndex(absl::Span<const bool> vals) {
 std::optional<int64_t> FindOutputVectCDim(HloInstruction* conv) {
   const ConvolutionDimensionNumbers& dnums =
       conv->convolution_dimension_numbers();
-  int64_t num_dims = conv->shape().tuple_shapes(0).dimensions_size();
+  int64_t num_dims = conv->shape().tuple_shapes(0).rank();
   absl::InlinedVector<bool, 5> seen_dims(num_dims);
   seen_dims[dnums.output_batch_dimension()] = true;
   seen_dims[dnums.output_feature_dimension()] = true;
@@ -84,7 +84,7 @@ std::optional<int64_t> FindOutputVectCDim(HloInstruction* conv) {
 std::optional<int64_t> FindKernelVectCDim(HloInstruction* conv) {
   const ConvolutionDimensionNumbers& dnums =
       conv->convolution_dimension_numbers();
-  int64_t num_dims = conv->operand(1)->shape().dimensions_size();
+  int64_t num_dims = conv->operand(1)->shape().rank();
   absl::InlinedVector<bool, 5> seen_dims(num_dims);
   seen_dims[dnums.kernel_input_feature_dimension()] = true;
   seen_dims[dnums.kernel_output_feature_dimension()] = true;

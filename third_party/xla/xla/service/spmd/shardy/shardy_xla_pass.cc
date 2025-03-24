@@ -36,14 +36,13 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinOps.h"
-#include "mlir/IR/Location.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OwningOpRef.h"
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Support/LLVM.h"
 #include "shardy/common/file_utils.h"
-#include "shardy/dialect/sdy/transforms/propagation/basic_propagation.h"
 #include "shardy/dialect/sdy/transforms/propagation/passes.h"
+#include "re2/re2.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_input_output_alias_config.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -55,7 +54,6 @@ limitations under the License.
 #include "xla/map_util.h"
 #include "xla/service/computation_layout.h"
 #include "xla/service/hlo.pb.h"
-#include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/service/spmd/shardy/constants.h"
 #include "xla/service/spmd/shardy/sdy_round_trip/pipelines.h"
 #include "xla/service/spmd/shardy/stablehlo_round_trip/stablehlo_export.h"
@@ -65,12 +63,12 @@ limitations under the License.
 #include "xla/shape_layout.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/framework/mlir/status_scoped_diagnostic_handler.h"
+#include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/env.h"
-#include "tsl/platform/errors.h"
 #include "tsl/platform/path.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace sdy {
@@ -309,7 +307,14 @@ absl::StatusOr<bool> ShardyXLA::Run(
   TF_ASSIGN_OR_RETURN(
       mlir::OwningOpRef<mlir::ModuleOp> mlirModule,
       xla::ConvertHloToStablehlo(*mlirContext.get(), hloModule));
-  std::string shardyDir = hloModule->config().debug_options().xla_dump_to();
+
+  const DebugOptions& debugOptions = hloModule->config().debug_options();
+  std::string shardyDir = debugOptions.xla_dump_to();
+
+  if (!shardyDir.empty() &&
+      !RE2::PartialMatch(name(), debugOptions.xla_dump_hlo_pass_re())) {
+    shardyDir.clear();
+  }
 
   if (shardyDir == "sponge") {
     shardyDir = getenv("TEST_UNDECLARED_OUTPUTS_DIR");

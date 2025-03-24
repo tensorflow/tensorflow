@@ -23,6 +23,10 @@ limitations under the License.
 #include "absl/container/inlined_vector.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "xla/backends/gpu/runtime/all_gather_thunk.h"
+#include "xla/backends/gpu/runtime/all_reduce_thunk.h"
+#include "xla/backends/gpu/runtime/all_to_all_thunk.h"
+#include "xla/backends/gpu/runtime/collective_thunk.h"
 #include "xla/backends/gpu/runtime/command_buffer_cmd.h"
 #include "xla/backends/gpu/runtime/conditional_thunk.h"
 #include "xla/backends/gpu/runtime/copy_thunk.h"
@@ -32,10 +36,6 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/gpublas_lt_matmul_thunk.h"
 #include "xla/backends/gpu/runtime/kernel_thunk.h"
 #include "xla/backends/gpu/runtime/memset_thunk.h"
-#include "xla/backends/gpu/runtime/nccl_all_gather_thunk.h"
-#include "xla/backends/gpu/runtime/nccl_all_reduce_thunk.h"
-#include "xla/backends/gpu/runtime/nccl_all_to_all_thunk.h"
-#include "xla/backends/gpu/runtime/nccl_collective_thunk.h"
 #include "xla/backends/gpu/runtime/replica_id_thunk.h"
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
@@ -172,39 +172,38 @@ static absl::StatusOr<Command> Convert(
       thunk.branch_index_is_bool(), std::move(branch_cmds));
 }
 
-static absl::StatusOr<Command> Convert(const NcclAllReduceStartThunk& thunk) {
+static absl::StatusOr<Command> Convert(const AllReduceStartThunk& thunk) {
   return std::make_unique<AllReduceCmd>(
       thunk.nccl_execution_stream_id(), thunk.execution_stream_id(),
       thunk.config(), thunk.reduction_kind(), thunk.buffers());
 }
 
-static absl::StatusOr<Command> Convert(
-    const NcclReduceScatterStartThunk& thunk) {
+static absl::StatusOr<Command> Convert(const ReduceScatterStartThunk& thunk) {
   return std::make_unique<ReduceScatterCmd>(
       thunk.nccl_execution_stream_id(), thunk.execution_stream_id(),
       thunk.config(), thunk.reduction_kind(), thunk.buffers());
 }
 
-static absl::StatusOr<Command> Convert(const NcclAllToAllStartThunk& thunk) {
+static absl::StatusOr<Command> Convert(const AllToAllStartThunk& thunk) {
   return std::make_unique<AllToAllCmd>(
       thunk.nccl_execution_stream_id(), thunk.execution_stream_id(),
       thunk.config(), thunk.has_split_dimension(), thunk.buffers());
 }
 
-static absl::StatusOr<Command> Convert(const NcclAllGatherStartThunk& thunk) {
+static absl::StatusOr<Command> Convert(const AllGatherStartThunk& thunk) {
   return std::make_unique<AllGatherCmd>(thunk.nccl_execution_stream_id(),
                                         thunk.execution_stream_id(),
                                         thunk.config(), thunk.buffers());
 }
 
-static absl::StatusOr<Command> Convert(const NcclCollectiveDoneThunk& thunk) {
+static absl::StatusOr<Command> Convert(const CollectiveDoneThunk& thunk) {
   return std::make_unique<BarrierCmd>(thunk.execution_stream_id(),
                                       thunk.nccl_execution_stream_id());
 }
 
 static absl::StatusOr<Command> Convert(const DynamicSliceThunk& thunk) {
   auto cmd_sequence = std::make_unique<CommandBufferCmdSequence>();
-  auto embed_thunk = thunk.get_embeded_thunk();
+  auto embed_thunk = thunk.get_embedded_thunk();
   TF_RETURN_IF_ERROR(AppendCommands(
       *cmd_sequence, embed_thunk->thunks(),
       CommandBufferCmdSequence::SynchronizationMode::kAutomatic));
@@ -309,14 +308,14 @@ static absl::Status AppendCommands(
       return append(Convert<Memset32BitValueThunk>(thunk));
     case Thunk::Kind::kMemzero:
       return append(Convert<MemzeroThunk>(thunk));
-    case Thunk::Kind::kNcclAllGatherStart:
-      return append(Convert<NcclAllGatherStartThunk>(thunk));
-    case Thunk::Kind::kNcclAllReduceStart:
-      return append(Convert<NcclAllReduceStartThunk>(thunk));
-    case Thunk::Kind::kNcclReduceScatterStart:
-      return append(Convert<NcclReduceScatterStartThunk>(thunk));
-    case Thunk::Kind::kNcclAllToAllStart:
-      return append(Convert<NcclAllToAllStartThunk>(thunk));
+    case Thunk::Kind::kAllGatherStart:
+      return append(Convert<AllGatherStartThunk>(thunk));
+    case Thunk::Kind::kAllReduceStart:
+      return append(Convert<AllReduceStartThunk>(thunk));
+    case Thunk::Kind::kReduceScatterStart:
+      return append(Convert<ReduceScatterStartThunk>(thunk));
+    case Thunk::Kind::kAllToAllStart:
+      return append(Convert<AllToAllStartThunk>(thunk));
     case Thunk::Kind::kPartitionId:
       return append(Convert<PartitionIdThunk>(thunk));
     case Thunk::Kind::kReplicaId:
@@ -333,11 +332,11 @@ static absl::Status AppendCommands(
                             static_cast<const SequentialThunk&>(thunk).thunks(),
                             synchronization_mode);
 
-    case Thunk::Kind::kNcclAllGatherDone:
-    case Thunk::Kind::kNcclAllReduceDone:
-    case Thunk::Kind::kNcclReduceScatterDone:
-    case Thunk::Kind::kNcclAllToAllDone:
-      return append(Convert<NcclCollectiveDoneThunk>(thunk));
+    case Thunk::Kind::kAllGatherDone:
+    case Thunk::Kind::kAllReduceDone:
+    case Thunk::Kind::kReduceScatterDone:
+    case Thunk::Kind::kAllToAllDone:
+      return append(Convert<CollectiveDoneThunk>(thunk));
 
     case Thunk::Kind::kDynamicSlice:
       return append(Convert<DynamicSliceThunk>(thunk));

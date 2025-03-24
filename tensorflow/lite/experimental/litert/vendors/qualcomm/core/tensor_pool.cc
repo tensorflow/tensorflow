@@ -1,18 +1,18 @@
-// Copyright (c) Qualcomm Innovation Center, Inc.
-// All Rights Reserved.
+// Copyright (c) Qualcomm Innovation Center, Inc. All Rights Reserved.
+// SPDX-License-Identifier: Apache-2.0
 
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/tensor_pool.h"
 
 #include <cstdint>
-#include <functional>
 #include <vector>
+
+#include "third_party/qairt/latest/include/QNN/QnnTypes.h"
+#include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/wrappers/quantize_params_wrapper.h"
+#include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/wrappers/tensor_wrapper.h"
 
 namespace qnn {
 
 TensorPool::TensorPool() = default;
-
-TensorPool::TensorPool(std::function<void(TensorWrapper&)> tensor_callback)
-    : tensor_callback_{tensor_callback}, tensor_wrappers_{} {}
 
 TensorWrapper& TensorPool::CreateInputTensor(
     Qnn_DataType_t data_type, const QuantizeParamsWrapperVariant& quant_params,
@@ -20,11 +20,6 @@ TensorWrapper& TensorPool::CreateInputTensor(
   const auto id = tensor_wrappers_.size();
   auto& back = tensor_wrappers_.emplace_back(
       id, QNN_TENSOR_TYPE_APP_WRITE, data_type, quant_params, dimentions);
-
-  if (tensor_callback_) {
-    tensor_callback_(back);
-  }
-
   return back;
 }
 
@@ -34,11 +29,6 @@ TensorWrapper& TensorPool::CreateOutpuTensor(
   const auto id = tensor_wrappers_.size();
   auto& back = tensor_wrappers_.emplace_back(
       id, QNN_TENSOR_TYPE_APP_READ, data_type, quant_params, dimentions);
-
-  if (tensor_callback_) {
-    tensor_callback_(back);
-  }
-
   return back;
 }
 
@@ -48,11 +38,6 @@ TensorWrapper& TensorPool::CreateNativeTensor(
   const auto id = tensor_wrappers_.size();
   auto& back = tensor_wrappers_.emplace_back(
       id, QNN_TENSOR_TYPE_NATIVE, data_type, quant_params, dimentions);
-
-  if (tensor_callback_) {
-    tensor_callback_(back);
-  }
-
   return back;
 }
 
@@ -64,11 +49,6 @@ TensorWrapper& TensorPool::CreateStaticTensor(
   auto& back =
       tensor_wrappers_.emplace_back(id, QNN_TENSOR_TYPE_STATIC, data_type,
                                     quant_params, dimentions, bytes, data);
-
-  if (tensor_callback_) {
-    tensor_callback_(back);
-  }
-
   return back;
 }
 
@@ -77,11 +57,6 @@ TensorWrapper& TensorPool::CloneNativeTensorFrom(const TensorWrapper& src) {
   auto& back = tensor_wrappers_.emplace_back(
       id, QNN_TENSOR_TYPE_NATIVE, src.GetDataType(), src.quantize_params_,
       src.dimentions_);
-
-  if (tensor_callback_) {
-    tensor_callback_(back);
-  }
-
   return back;
 }
 
@@ -91,11 +66,6 @@ TensorWrapper& TensorPool::CloneNativeTensorFrom(
   auto& back = tensor_wrappers_.emplace_back(id, QNN_TENSOR_TYPE_NATIVE,
                                              src.GetDataType(),
                                              src.quantize_params_, dimentions);
-
-  if (tensor_callback_) {
-    tensor_callback_(back);
-  }
-
   return back;
 }
 
@@ -105,10 +75,16 @@ TensorWrapper& TensorPool::CloneStaticTensorFrom(const TensorWrapper& src,
   auto& back = tensor_wrappers_.emplace_back(
       id, QNN_TENSOR_TYPE_STATIC, data_type, src.quantize_params_,
       src.dimentions_, src.owned_data_.size(), src.owned_data_.data());
+  return back;
+}
 
-  if (tensor_callback_) {
-    tensor_callback_(back);
-  }
+TensorWrapper& TensorPool::CloneStaticTensorFrom(
+    const TensorWrapper& src, const std::vector<std::uint32_t>& dimentions) {
+  const auto id = tensor_wrappers_.size();
+  auto& back = tensor_wrappers_.emplace_back(
+      id, QNN_TENSOR_TYPE_STATIC, src.qnn_tensor_.v2.dataType,
+      src.quantize_params_, dimentions, src.qnn_tensor_.v2.clientBuf.dataSize,
+      src.qnn_tensor_.v2.clientBuf.data);
 
   return back;
 }

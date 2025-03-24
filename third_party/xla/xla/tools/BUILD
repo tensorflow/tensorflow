@@ -635,6 +635,7 @@ cc_library(
         "//xla:debug_options_flags",
         "//xla:literal",
         "//xla:shape_util",
+        "//xla:util",
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/parser:hlo_parser",
@@ -792,6 +793,20 @@ xla_cc_test(
 xla_cc_binary(
     name = "compute_gpu_device_stats_main",
     srcs = ["compute_gpu_device_stats_main.cc"],
+    deps = [
+        ":compute_gpu_device_stats",
+        "//xla:debug_options_flags",
+        "//xla/tsl/util:command_line_flags",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/strings",
+        "@local_tsl//tsl/platform:platform_port",
+    ],
+)
+
+xla_cc_binary(
+    name = "compute_gpu_device_stats_main_gpu",
+    srcs = ["compute_gpu_device_stats_main.cc"],
+    tags = ["gpu"],
     deps = [
         ":compute_gpu_device_stats",
         "//xla:debug_options_flags",

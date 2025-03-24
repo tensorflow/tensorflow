@@ -110,7 +110,7 @@ bool ConvolutionVisitor::Run(
 
 Shape ExpandedFilterShape(const Shape& shape, int64_t group_count,
                           int64_t input_feature_dim) {
-  int64_t num_dims = shape.dimensions_size();
+  int64_t num_dims = shape.rank();
   CHECK_GE(num_dims, 2);
   Shape expanded_shape = shape;
   expanded_shape.set_dimensions(
@@ -391,7 +391,7 @@ absl::Status ConvolutionVisitor::HandleBatchGroupCount(
 
     // Create the reduce window.
     Window window;
-    for (int64_t i = 0; i < new_convolution->shape().dimensions_size(); ++i) {
+    for (int64_t i = 0; i < new_convolution->shape().rank(); ++i) {
       auto* dim = window.add_dimensions();
       dim->set_padding_low(0);
       dim->set_padding_high(0);
@@ -473,7 +473,7 @@ absl::Status ConvolutionVisitor::HandleConvolution(
       auto reshaped_filter =
           add(HloInstruction::CreateReshape(reshaped_filter_shape, filter));
       std::vector<int64_t> broadcast_dims;
-      for (int64_t i = 0; i < filter->shape().dimensions_size(); ++i) {
+      for (int64_t i = 0; i < filter->shape().rank(); ++i) {
         if (i == kernel_input_feature_dim) {
           continue;
         }

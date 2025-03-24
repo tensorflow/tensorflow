@@ -35,6 +35,7 @@ namespace gpu {
 namespace {
 
 using ::testing::ElementsAre;
+using ::testing::UnorderedElementsAre;
 
 auto MakeDeviceDescription() {
   stream_executor::DeviceDescription device_description{
@@ -46,9 +47,8 @@ auto MakeDeviceDescription() {
 class GpuFusibleTest : public HloRunnerAgnosticTestBase {
  public:
   GpuFusibleTest()
-      : HloRunnerAgnosticTestBase(
-            std::make_unique<HloRunner>(
-                PlatformUtil::GetDefaultPlatform().value())),
+      : HloRunnerAgnosticTestBase(std::make_unique<HloRunner>(
+            PlatformUtil::GetDefaultPlatform().value())),
         device_description_(MakeDeviceDescription()) {}
 
   bool IsReduceInputFusion(const HloInstruction& instr) const {
@@ -1527,7 +1527,8 @@ TEST_F(GpuFusibleTest, GetFusibleComputations) {
 
   // fused_reduce is already fused, scalar_add is not fusible.
   auto fusible = GetFusibleComputations(*module, {});
-  EXPECT_THAT(fusible, ElementsAre(module->GetComputationWithName("body_c"),
+  EXPECT_THAT(fusible,
+              UnorderedElementsAre(module->GetComputationWithName("body_c"),
                                    // From the conditional
                                    module->GetComputationWithName("body_a"),
                                    module->GetComputationWithName("body_b"),

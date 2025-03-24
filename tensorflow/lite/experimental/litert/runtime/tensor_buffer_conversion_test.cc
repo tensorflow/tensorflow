@@ -23,6 +23,7 @@
 #include "tensorflow/lite/experimental/litert/c/litert_environment.h"
 #include "tensorflow/lite/experimental/litert/c/litert_model.h"
 #include "tensorflow/lite/experimental/litert/c/litert_tensor_buffer.h"
+#include "tensorflow/lite/experimental/litert/c/litert_tensor_buffer_types.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_layout.h"
 #include "tensorflow/lite/experimental/litert/core/environment.h"
 #include "tensorflow/lite/experimental/litert/runtime/tensor_buffer.h"

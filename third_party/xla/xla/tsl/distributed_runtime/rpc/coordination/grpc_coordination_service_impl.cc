@@ -50,6 +50,7 @@ void GrpcCoordinationServiceImpl::HandleRPCsLoop() {
   ENQUEUE_REQUEST(ReportErrorToTask);
   ENQUEUE_REQUEST(ReportErrorToService);
   ENQUEUE_REQUEST(GetTaskState);
+  ENQUEUE_REQUEST(GetJobState);
   ENQUEUE_REQUEST(InsertKeyValue);
   ENQUEUE_REQUEST(GetKeyValue);
   ENQUEUE_REQUEST(TryGetKeyValue);

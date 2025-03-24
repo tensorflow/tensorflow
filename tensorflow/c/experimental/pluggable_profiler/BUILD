@@ -43,9 +43,9 @@ cc_library(
         "//tensorflow/core/common_runtime/device:device_utils",
         "//tensorflow/core/profiler/lib:profiler_factory",
         "//tensorflow/core/profiler/lib:profiler_interface",
-        "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/status",
+        "@local_tsl//tsl/profiler/protobuf:xplane_proto_cc",
     ],
 )
 
@@ -65,7 +65,7 @@ cc_library(
         "//tensorflow/c:tf_status_helper",
         "//tensorflow/core/platform:status",
         "//tensorflow/core/profiler/lib:profiler_interface",
-        "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
         "@local_tsl//tsl/profiler/protobuf:profiler_options_proto_cc",
+        "@local_tsl//tsl/profiler/protobuf:xplane_proto_cc",
     ],
 )

@@ -15,17 +15,15 @@
 #ifndef TENSORFLOW_LITE_EXPERIMENTAL_LITERT_CORE_ENVIRONMENT_H_
 #define TENSORFLOW_LITE_EXPERIMENTAL_LITERT_CORE_ENVIRONMENT_H_
 
-#include <map>
 #include <memory>
 #include <optional>
-#include <string>
-#include <vector>
 
 #include "absl/types/span.h"
 #include "tensorflow/lite/experimental/litert/c/litert_any.h"
-#include "tensorflow/lite/experimental/litert/c/litert_environment.h"
+#include "tensorflow/lite/experimental/litert/c/litert_environment_options.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
 #include "tensorflow/lite/experimental/litert/core/accelerator.h"
+#include "tensorflow/lite/experimental/litert/core/environment_options.h"
 
 // A singleton class that contains global LiteRT environment options.
 class LiteRtEnvironmentT {
@@ -40,22 +38,21 @@ class LiteRtEnvironmentT {
   ~LiteRtEnvironmentT() = default;
 
   std::optional<LiteRtAny> GetOption(LiteRtEnvOptionTag tag) const {
-    auto i = options_.find(tag);
-    if (i != options_.end()) {
-      return i->second;
-    } else {
-      return std::nullopt;
-    }
+    auto opt = options_.GetOption(tag);
+    return opt.HasValue() ? std::optional<LiteRtAny>(opt.Value())
+                          : std::nullopt;
   }
+
+  LiteRtEnvironmentOptionsT& GetOptions() { return options_; }
+  const LiteRtEnvironmentOptionsT& GetOptions() const { return options_; }
 
   litert::internal::AcceleratorRegistry& GetAcceleratorRegistry() {
     return accelerators_;
   }
 
  private:
-  std::map<LiteRtEnvOptionTag, LiteRtAny> options_;
   litert::internal::AcceleratorRegistry accelerators_;
-  std::vector<std::string> string_options_;
+  LiteRtEnvironmentOptionsT options_;
 };
 
 #endif  // TENSORFLOW_LITE_EXPERIMENTAL_LITERT_CORE_ENVIRONMENT_H_

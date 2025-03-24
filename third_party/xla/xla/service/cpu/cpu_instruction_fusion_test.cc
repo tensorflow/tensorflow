@@ -1028,5 +1028,55 @@ ENTRY %main (Arg_0: f32[10,10], Arg_1: f32[10,10]) -> f32[10,10] {
   EXPECT_FALSE(changed);
 }
 
+static constexpr absl::string_view kScatterModuleString = R"(
+HloModule module
+
+%scatter_max (param0: f32[], param1: f32[]) -> f32[] {
+  %lhs = f32[] parameter(0)
+  %rhs = f32[] parameter(1)
+  %maximum.1 = f32[] maximum(f32[] lhs, f32[] rhs)
+  %convert.8 = bf16[] convert(f32[] maximum.1)
+  ROOT %convert.9 = f32[] convert(bf16[] convert.8)
+}
+
+ENTRY %main (arg0: f32[13,5,10,62], arg1: s32[3,1], arg2: f32[3,1,5,10,62])
+    -> f32[13,5,10,62] {
+  %arg0 = f32[13,5,10,62]{3,2,1,0} parameter(0)
+  %arg1 = s32[3,1]{1,0} parameter(1)
+  %arg2 = f32[3,1,5,10,62]{4,3,2,1,0} parameter(2)
+  ROOT %scatter.2 = f32[13,5,10,62]{3,2,1,0} scatter(
+      f32[13,5,10,62]{3,2,1,0} %arg0,
+      s32[3,1]{1,0} %arg1,
+      f32[3,1,5,10,62]{4,3,2,1,0} %arg2),
+    update_window_dims={1,2,3,4}, inserted_window_dims={},
+    scatter_dims_to_operand_dims={0}, index_vector_dim=1, to_apply=scatter_max
+}
+)";
+
+TEST_F(InstructionFusionTest, SkipScatterComputationsIfFusionEmitters) {
+  auto mod_config = GetModuleConfigForTest();
+  auto debug_options = GetDebugOptionsForTest();
+  debug_options.set_xla_cpu_use_thunk_runtime(true);
+  debug_options.set_xla_cpu_use_fusion_emitters(true);
+  mod_config.set_debug_options(debug_options);
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(
+                                           kScatterModuleString, mod_config));
+  TF_ASSERT_OK_AND_ASSIGN(bool changed,
+                          CpuInstructionFusion().Run(module.get()));
+  EXPECT_FALSE(changed);
+}
+
+TEST_F(InstructionFusionTest, NoSkipScatterComputationsIfNoFusionEmitters) {
+  auto mod_config = GetModuleConfigForTest();
+  auto debug_options = GetDebugOptionsForTest();
+  debug_options.set_xla_cpu_use_fusion_emitters(false);
+  mod_config.set_debug_options(debug_options);
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(
+                                           kScatterModuleString, mod_config));
+  TF_ASSERT_OK_AND_ASSIGN(bool changed,
+                          CpuInstructionFusion().Run(module.get()));
+  EXPECT_TRUE(changed);
+}
+
 }  // namespace
 }  // namespace xla::cpu

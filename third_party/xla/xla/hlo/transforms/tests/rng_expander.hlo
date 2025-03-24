@@ -5,362 +5,362 @@
 
 // CHECK:       %[[$rng_358:[^ ]+]]
 // CHECK-NEXT:  %[[state_2:[^ ]+]] = u64[2]{0} parameter(1)
-// CHECK-NEXT:  %[[slice_9:[^ ]+]] = u64[1]{0} slice(u64[2]{0} %[[state_2]]), slice={[0:1]}
-// CHECK-NEXT:  %[[reshape_10:[^ ]+]] = u64[] reshape(u64[1]{0} %[[slice_9]])
-// CHECK-NEXT:  %[[convert_14:[^ ]+]] = u32[] convert(u64[] %[[reshape_10]])
-// CHECK-NEXT:  %[[convert_22:[^ ]+]] = u64[] convert(u32[] %[[convert_14]])
+// CHECK-NEXT:  %[[slice_9:[^ ]+]] = u64[1]{0} slice(%[[state_2]]), slice={[0:1]}
+// CHECK-NEXT:  %[[reshape_10:[^ ]+]] = u64[] reshape(%[[slice_9]])
+// CHECK-NEXT:  %[[convert_14:[^ ]+]] = u32[] convert(%[[reshape_10]])
+// CHECK-NEXT:  %[[convert_22:[^ ]+]] = u64[] convert(%[[convert_14]])
 // CHECK-NEXT:  %[[constant_13:[^ ]+]] = u64[] constant(32)
-// CHECK-NEXT:  %[[shift_right_logical_15:[^ ]+]] = u64[] shift-right-logical(u64[] %[[reshape_10]], u64[] %[[constant_13]])
-// CHECK-NEXT:  %[[convert_16:[^ ]+]] = u32[] convert(u64[] %[[shift_right_logical_15]])
-// CHECK-NEXT:  %[[convert_23:[^ ]+]] = u64[] convert(u32[] %[[convert_16]])
+// CHECK-NEXT:  %[[shift_right_logical_15:[^ ]+]] = u64[] shift-right-logical(%[[reshape_10]], %[[constant_13]])
+// CHECK-NEXT:  %[[convert_16:[^ ]+]] = u32[] convert(%[[shift_right_logical_15]])
+// CHECK-NEXT:  %[[convert_23:[^ ]+]] = u64[] convert(%[[convert_16]])
 // CHECK-NEXT:  %[[constant_24:[^ ]+]] = u64[] constant(32)
-// CHECK-NEXT:  %[[shift_left_25:[^ ]+]] = u64[] shift-left(u64[] %[[convert_23]], u64[] %[[constant_24]])
-// CHECK-NEXT:  %[[or_26:[^ ]+]] = u64[] or(u64[] %[[convert_22]], u64[] %[[shift_left_25]])
+// CHECK-NEXT:  %[[shift_left_25:[^ ]+]] = u64[] shift-left(%[[convert_23]], %[[constant_24]])
+// CHECK-NEXT:  %[[or_26:[^ ]+]] = u64[] or(%[[convert_22]], %[[shift_left_25]])
 // CHECK-NEXT:  %[[constant_51:[^ ]+]] = u64[] constant(1)
-// CHECK-NEXT:  %[[add_52:[^ ]+]] = u64[] add(u64[] %[[or_26]], u64[] %[[constant_51]])
-// CHECK-NEXT:  %[[reshape_59:[^ ]+]] = u64[1]{0} reshape(u64[] %[[add_52]])
-// CHECK-NEXT:  %[[compare_54:[^ ]+]] = pred[] compare(u64[] %[[add_52]], u64[] %[[or_26]]), direction=LT
-// CHECK-NEXT:  %[[slice_11:[^ ]+]] = u64[1]{0} slice(u64[2]{0} %[[state_2]]), slice={[1:2]}
-// CHECK-NEXT:  %[[reshape_12:[^ ]+]] = u64[] reshape(u64[1]{0} %[[slice_11]])
-// CHECK-NEXT:  %[[convert_18:[^ ]+]] = u32[] convert(u64[] %[[reshape_12]])
-// CHECK-NEXT:  %[[convert_27:[^ ]+]] = u64[] convert(u32[] %[[convert_18]])
+// CHECK-NEXT:  %[[add_52:[^ ]+]] = u64[] add(%[[or_26]], %[[constant_51]])
+// CHECK-NEXT:  %[[reshape_59:[^ ]+]] = u64[1]{0} reshape(%[[add_52]])
+// CHECK-NEXT:  %[[compare_54:[^ ]+]] = pred[] compare(%[[add_52]], %[[or_26]]), direction=LT
+// CHECK-NEXT:  %[[slice_11:[^ ]+]] = u64[1]{0} slice(%[[state_2]]), slice={[1:2]}
+// CHECK-NEXT:  %[[reshape_12:[^ ]+]] = u64[] reshape(%[[slice_11]])
+// CHECK-NEXT:  %[[convert_18:[^ ]+]] = u32[] convert(%[[reshape_12]])
+// CHECK-NEXT:  %[[convert_27:[^ ]+]] = u64[] convert(%[[convert_18]])
 // CHECK-NEXT:  %[[constant_17:[^ ]+]] = u64[] constant(32)
-// CHECK-NEXT:  %[[shift_right_logical_19:[^ ]+]] = u64[] shift-right-logical(u64[] %[[reshape_12]], u64[] %[[constant_17]])
-// CHECK-NEXT:  %[[convert_20:[^ ]+]] = u32[] convert(u64[] %[[shift_right_logical_19]])
-// CHECK-NEXT:  %[[convert_28:[^ ]+]] = u64[] convert(u32[] %[[convert_20]])
+// CHECK-NEXT:  %[[shift_right_logical_19:[^ ]+]] = u64[] shift-right-logical(%[[reshape_12]], %[[constant_17]])
+// CHECK-NEXT:  %[[convert_20:[^ ]+]] = u32[] convert(%[[shift_right_logical_19]])
+// CHECK-NEXT:  %[[convert_28:[^ ]+]] = u64[] convert(%[[convert_20]])
 // CHECK-NEXT:  %[[constant_29:[^ ]+]] = u64[] constant(32)
-// CHECK-NEXT:  %[[shift_left_30:[^ ]+]] = u64[] shift-left(u64[] %[[convert_28]], u64[] %[[constant_29]])
-// CHECK-NEXT:  %[[or_31:[^ ]+]] = u64[] or(u64[] %[[convert_27]], u64[] %[[shift_left_30]])
+// CHECK-NEXT:  %[[shift_left_30:[^ ]+]] = u64[] shift-left(%[[convert_28]], %[[constant_29]])
+// CHECK-NEXT:  %[[or_31:[^ ]+]] = u64[] or(%[[convert_27]], %[[shift_left_30]])
 // CHECK-NEXT:  %[[constant_53:[^ ]+]] = u64[] constant(1)
-// CHECK-NEXT:  %[[add_55:[^ ]+]] = u64[] add(u64[] %[[or_31]], u64[] %[[constant_53]])
-// CHECK-NEXT:  %[[broadcast_56:[^ ]+]] = u64[] broadcast(u64[] %[[add_55]]), dimensions={}
-// CHECK-NEXT:  %[[broadcast_57:[^ ]+]] = u64[] broadcast(u64[] %[[or_31]]), dimensions={}
-// CHECK-NEXT:  %[[select_58:[^ ]+]] = u64[] select(pred[] %[[compare_54]], u64[] %[[broadcast_56]], u64[] %[[broadcast_57]])
-// CHECK-NEXT:  %[[reshape_60:[^ ]+]] = u64[1]{0} reshape(u64[] %[[select_58]])
-// CHECK-NEXT:  %[[concatenate_61:[^ ]+]] = u64[2]{0} concatenate(u64[1]{0} %[[reshape_59]], u64[1]{0} %[[reshape_60]]), dimensions={0}
+// CHECK-NEXT:  %[[add_55:[^ ]+]] = u64[] add(%[[or_31]], %[[constant_53]])
+// CHECK-NEXT:  %[[broadcast_56:[^ ]+]] = u64[] broadcast(%[[add_55]]), dimensions={}
+// CHECK-NEXT:  %[[broadcast_57:[^ ]+]] = u64[] broadcast(%[[or_31]]), dimensions={}
+// CHECK-NEXT:  %[[select_58:[^ ]+]] = u64[] select(%[[compare_54]], %[[broadcast_56]], %[[broadcast_57]])
+// CHECK-NEXT:  %[[reshape_60:[^ ]+]] = u64[1]{0} reshape(%[[select_58]])
+// CHECK-NEXT:  %[[concatenate_61:[^ ]+]] = u64[2]{0} concatenate(%[[reshape_59]], %[[reshape_60]]), dimensions={0}
 // CHECK-NEXT:  %[[key_1:[^ ]+]] = u64[] parameter(0)
-// CHECK-NEXT:  %[[convert_6:[^ ]+]] = u32[] convert(u64[] %[[key_1]])
+// CHECK-NEXT:  %[[convert_6:[^ ]+]] = u32[] convert(%[[key_1]])
 // CHECK-NEXT:  %[[constant_86:[^ ]+]] = u32[] constant(2654435769)
-// CHECK-NEXT:  %[[add_87:[^ ]+]] = u32[] add(u32[] %[[convert_6]], u32[] %[[constant_86]])
+// CHECK-NEXT:  %[[add_87:[^ ]+]] = u32[] add(%[[convert_6]], %[[constant_86]])
 // CHECK-NEXT:  %[[constant_114:[^ ]+]] = u32[] constant(2654435769)
-// CHECK-NEXT:  %[[add_115:[^ ]+]] = u32[] add(u32[] %[[add_87]], u32[] %[[constant_114]])
+// CHECK-NEXT:  %[[add_115:[^ ]+]] = u32[] add(%[[add_87]], %[[constant_114]])
 // CHECK-NEXT:  %[[constant_142:[^ ]+]] = u32[] constant(2654435769)
-// CHECK-NEXT:  %[[add_143:[^ ]+]] = u32[] add(u32[] %[[add_115]], u32[] %[[constant_142]])
+// CHECK-NEXT:  %[[add_143:[^ ]+]] = u32[] add(%[[add_115]], %[[constant_142]])
 // CHECK-NEXT:  %[[constant_170:[^ ]+]] = u32[] constant(2654435769)
-// CHECK-NEXT:  %[[add_171:[^ ]+]] = u32[] add(u32[] %[[add_143]], u32[] %[[constant_170]])
+// CHECK-NEXT:  %[[add_171:[^ ]+]] = u32[] add(%[[add_143]], %[[constant_170]])
 // CHECK-NEXT:  %[[constant_198:[^ ]+]] = u32[] constant(2654435769)
-// CHECK-NEXT:  %[[add_199:[^ ]+]] = u32[] add(u32[] %[[add_171]], u32[] %[[constant_198]])
+// CHECK-NEXT:  %[[add_199:[^ ]+]] = u32[] add(%[[add_171]], %[[constant_198]])
 // CHECK-NEXT:  %[[constant_226:[^ ]+]] = u32[] constant(2654435769)
-// CHECK-NEXT:  %[[add_227:[^ ]+]] = u32[] add(u32[] %[[add_199]], u32[] %[[constant_226]])
+// CHECK-NEXT:  %[[add_227:[^ ]+]] = u32[] add(%[[add_199]], %[[constant_226]])
 // CHECK-NEXT:  %[[constant_254:[^ ]+]] = u32[] constant(2654435769)
-// CHECK-NEXT:  %[[add_255:[^ ]+]] = u32[] add(u32[] %[[add_227]], u32[] %[[constant_254]])
+// CHECK-NEXT:  %[[add_255:[^ ]+]] = u32[] add(%[[add_227]], %[[constant_254]])
 // CHECK-NEXT:  %[[constant_282:[^ ]+]] = u32[] constant(2654435769)
-// CHECK-NEXT:  %[[add_283:[^ ]+]] = u32[] add(u32[] %[[add_255]], u32[] %[[constant_282]])
+// CHECK-NEXT:  %[[add_283:[^ ]+]] = u32[] add(%[[add_255]], %[[constant_282]])
 // CHECK-NEXT:  %[[constant_310:[^ ]+]] = u32[] constant(2654435769)
-// CHECK-NEXT:  %[[add_311:[^ ]+]] = u32[] add(u32[] %[[add_283]], u32[] %[[constant_310]])
+// CHECK-NEXT:  %[[add_311:[^ ]+]] = u32[] add(%[[add_283]], %[[constant_310]])
 // CHECK-NEXT:  %[[constant_338:[^ ]+]] = u32[] constant(2654435769)
-// CHECK-NEXT:  %[[add_339:[^ ]+]] = u32[] add(u32[] %[[add_311]], u32[] %[[constant_338]])
+// CHECK-NEXT:  %[[add_339:[^ ]+]] = u32[] add(%[[add_311]], %[[constant_338]])
 // CHECK-NEXT:  %[[constant_5:[^ ]+]] = u64[] constant(32)
-// CHECK-NEXT:  %[[shift_right_logical_7:[^ ]+]] = u64[] shift-right-logical(u64[] %[[key_1]], u64[] %[[constant_5]])
-// CHECK-NEXT:  %[[convert_8:[^ ]+]] = u32[] convert(u64[] %[[shift_right_logical_7]])
+// CHECK-NEXT:  %[[shift_right_logical_7:[^ ]+]] = u64[] shift-right-logical(%[[key_1]], %[[constant_5]])
+// CHECK-NEXT:  %[[convert_8:[^ ]+]] = u32[] convert(%[[shift_right_logical_7]])
 // CHECK-NEXT:  %[[constant_88:[^ ]+]] = u32[] constant(3144134277)
-// CHECK-NEXT:  %[[add_89:[^ ]+]] = u32[] add(u32[] %[[convert_8]], u32[] %[[constant_88]])
+// CHECK-NEXT:  %[[add_89:[^ ]+]] = u32[] add(%[[convert_8]], %[[constant_88]])
 // CHECK-NEXT:  %[[constant_116:[^ ]+]] = u32[] constant(3144134277)
-// CHECK-NEXT:  %[[add_117:[^ ]+]] = u32[] add(u32[] %[[add_89]], u32[] %[[constant_116]])
+// CHECK-NEXT:  %[[add_117:[^ ]+]] = u32[] add(%[[add_89]], %[[constant_116]])
 // CHECK-NEXT:  %[[constant_144:[^ ]+]] = u32[] constant(3144134277)
-// CHECK-NEXT:  %[[add_145:[^ ]+]] = u32[] add(u32[] %[[add_117]], u32[] %[[constant_144]])
+// CHECK-NEXT:  %[[add_145:[^ ]+]] = u32[] add(%[[add_117]], %[[constant_144]])
 // CHECK-NEXT:  %[[constant_172:[^ ]+]] = u32[] constant(3144134277)
-// CHECK-NEXT:  %[[add_173:[^ ]+]] = u32[] add(u32[] %[[add_145]], u32[] %[[constant_172]])
+// CHECK-NEXT:  %[[add_173:[^ ]+]] = u32[] add(%[[add_145]], %[[constant_172]])
 // CHECK-NEXT:  %[[constant_200:[^ ]+]] = u32[] constant(3144134277)
-// CHECK-NEXT:  %[[add_201:[^ ]+]] = u32[] add(u32[] %[[add_173]], u32[] %[[constant_200]])
+// CHECK-NEXT:  %[[add_201:[^ ]+]] = u32[] add(%[[add_173]], %[[constant_200]])
 // CHECK-NEXT:  %[[constant_228:[^ ]+]] = u32[] constant(3144134277)
-// CHECK-NEXT:  %[[add_229:[^ ]+]] = u32[] add(u32[] %[[add_201]], u32[] %[[constant_228]])
+// CHECK-NEXT:  %[[add_229:[^ ]+]] = u32[] add(%[[add_201]], %[[constant_228]])
 // CHECK-NEXT:  %[[constant_256:[^ ]+]] = u32[] constant(3144134277)
-// CHECK-NEXT:  %[[add_257:[^ ]+]] = u32[] add(u32[] %[[add_229]], u32[] %[[constant_256]])
+// CHECK-NEXT:  %[[add_257:[^ ]+]] = u32[] add(%[[add_229]], %[[constant_256]])
 // CHECK-NEXT:  %[[constant_284:[^ ]+]] = u32[] constant(3144134277)
-// CHECK-NEXT:  %[[add_285:[^ ]+]] = u32[] add(u32[] %[[add_257]], u32[] %[[constant_284]])
+// CHECK-NEXT:  %[[add_285:[^ ]+]] = u32[] add(%[[add_257]], %[[constant_284]])
 // CHECK-NEXT:  %[[constant_312:[^ ]+]] = u32[] constant(3144134277)
-// CHECK-NEXT:  %[[add_313:[^ ]+]] = u32[] add(u32[] %[[add_285]], u32[] %[[constant_312]])
+// CHECK-NEXT:  %[[add_313:[^ ]+]] = u32[] add(%[[add_285]], %[[constant_312]])
 // CHECK-NEXT:  %[[constant_340:[^ ]+]] = u32[] constant(3144134277)
-// CHECK-NEXT:  %[[add_341:[^ ]+]] = u32[] add(u32[] %[[add_313]], u32[] %[[constant_340]])
-// CHECK-NEXT:  %[[broadcast_32:[^ ]+]] = u64[1]{0} broadcast(u64[] %[[or_26]]), dimensions={}
+// CHECK-NEXT:  %[[add_341:[^ ]+]] = u32[] add(%[[add_313]], %[[constant_340]])
+// CHECK-NEXT:  %[[broadcast_32:[^ ]+]] = u64[1]{0} broadcast(%[[or_26]]), dimensions={}
 // CHECK-NEXT:  %[[iota_21:[^ ]+]] = u64[1]{0} iota(), iota_dimension=0
-// CHECK-NEXT:  %[[add_33:[^ ]+]] = u64[1]{0} add(u64[1]{0} %[[broadcast_32]], u64[1]{0} %[[iota_21]])
-// CHECK-NEXT:  %[[convert_42:[^ ]+]] = u32[1]{0} convert(u64[1]{0} %[[add_33]])
-// CHECK-NEXT:  %[[convert_62:[^ ]+]] = u64[1]{0} convert(u32[1]{0} %[[convert_42]])
+// CHECK-NEXT:  %[[add_33:[^ ]+]] = u64[1]{0} add(%[[broadcast_32]], %[[iota_21]])
+// CHECK-NEXT:  %[[convert_42:[^ ]+]] = u32[1]{0} convert(%[[add_33]])
+// CHECK-NEXT:  %[[convert_62:[^ ]+]] = u64[1]{0} convert(%[[convert_42]])
 // CHECK-NEXT:  %[[constant_63:[^ ]+]] = u64[] constant(3528531795)
-// CHECK-NEXT:  %[[broadcast_64:[^ ]+]] = u64[1]{0} broadcast(u64[] %[[constant_63]]), dimensions={}
-// CHECK-NEXT:  %[[multiply_65:[^ ]+]] = u64[1]{0} multiply(u64[1]{0} %[[convert_62]], u64[1]{0} %[[broadcast_64]])
+// CHECK-NEXT:  %[[broadcast_64:[^ ]+]] = u64[1]{0} broadcast(%[[constant_63]]), dimensions={}
+// CHECK-NEXT:  %[[multiply_65:[^ ]+]] = u64[1]{0} multiply(%[[convert_62]], %[[broadcast_64]])
 // CHECK-NEXT:  %[[constant_67:[^ ]+]] = u64[] constant(32)
-// CHECK-NEXT:  %[[broadcast_68:[^ ]+]] = u64[1]{0} broadcast(u64[] %[[constant_67]]), dimensions={}
-// CHECK-NEXT:  %[[shift_right_logical_69:[^ ]+]] = u64[1]{0} shift-right-logical(u64[1]{0} %[[multiply_65]], u64[1]{0} %[[broadcast_68]])
-// CHECK-NEXT:  %[[convert_70:[^ ]+]] = u32[1]{0} convert(u64[1]{0} %[[shift_right_logical_69]])
-// CHECK-NEXT:  %[[broadcast_35:[^ ]+]] = u64[1]{0} broadcast(u64[] %[[or_26]]), dimensions={}
-// CHECK-NEXT:  %[[compare_36:[^ ]+]] = pred[1]{0} compare(u64[1]{0} %[[add_33]], u64[1]{0} %[[broadcast_35]]), direction=LT
+// CHECK-NEXT:  %[[broadcast_68:[^ ]+]] = u64[1]{0} broadcast(%[[constant_67]]), dimensions={}
+// CHECK-NEXT:  %[[shift_right_logical_69:[^ ]+]] = u64[1]{0} shift-right-logical(%[[multiply_65]], %[[broadcast_68]])
+// CHECK-NEXT:  %[[convert_70:[^ ]+]] = u32[1]{0} convert(%[[shift_right_logical_69]])
+// CHECK-NEXT:  %[[broadcast_35:[^ ]+]] = u64[1]{0} broadcast(%[[or_26]]), dimensions={}
+// CHECK-NEXT:  %[[compare_36:[^ ]+]] = pred[1]{0} compare(%[[add_33]], %[[broadcast_35]]), direction=LT
 // CHECK-NEXT:  %[[constant_34:[^ ]+]] = u64[] constant(1)
-// CHECK-NEXT:  %[[add_37:[^ ]+]] = u64[] add(u64[] %[[or_31]], u64[] %[[constant_34]])
-// CHECK-NEXT:  %[[broadcast_38:[^ ]+]] = u64[1]{0} broadcast(u64[] %[[add_37]]), dimensions={}
-// CHECK-NEXT:  %[[broadcast_39:[^ ]+]] = u64[1]{0} broadcast(u64[] %[[or_31]]), dimensions={}
-// CHECK-NEXT:  %[[select_40:[^ ]+]] = u64[1]{0} select(pred[1]{0} %[[compare_36]], u64[1]{0} %[[broadcast_38]], u64[1]{0} %[[broadcast_39]])
+// CHECK-NEXT:  %[[add_37:[^ ]+]] = u64[] add(%[[or_31]], %[[constant_34]])
+// CHECK-NEXT:  %[[broadcast_38:[^ ]+]] = u64[1]{0} broadcast(%[[add_37]]), dimensions={}
+// CHECK-NEXT:  %[[broadcast_39:[^ ]+]] = u64[1]{0} broadcast(%[[or_31]]), dimensions={}
+// CHECK-NEXT:  %[[select_40:[^ ]+]] = u64[1]{0} select(%[[compare_36]], %[[broadcast_38]], %[[broadcast_39]])
 // CHECK-NEXT:  %[[constant_46:[^ ]+]] = u64[] constant(32)
-// CHECK-NEXT:  %[[broadcast_48:[^ ]+]] = u64[1]{0} broadcast(u64[] %[[constant_46]]), dimensions={}
-// CHECK-NEXT:  %[[shift_right_logical_49:[^ ]+]] = u64[1]{0} shift-right-logical(u64[1]{0} %[[select_40]], u64[1]{0} %[[broadcast_48]])
-// CHECK-NEXT:  %[[convert_50:[^ ]+]] = u32[1]{0} convert(u64[1]{0} %[[shift_right_logical_49]])
-// CHECK-NEXT:  %[[xor_83:[^ ]+]] = u32[1]{0} xor(u32[1]{0} %[[convert_70]], u32[1]{0} %[[convert_50]])
-// CHECK-NEXT:  %[[broadcast_84:[^ ]+]] = u32[1]{0} broadcast(u32[] %[[convert_8]]), dimensions={}
-// CHECK-NEXT:  %[[xor_85:[^ ]+]] = u32[1]{0} xor(u32[1]{0} %[[xor_83]], u32[1]{0} %[[broadcast_84]])
-// CHECK-NEXT:  %[[convert_99:[^ ]+]] = u64[1]{0} convert(u32[1]{0} %[[xor_85]])
+// CHECK-NEXT:  %[[broadcast_48:[^ ]+]] = u64[1]{0} broadcast(%[[constant_46]]), dimensions={}
+// CHECK-NEXT:  %[[shift_right_logical_49:[^ ]+]] = u64[1]{0} shift-right-logical(%[[select_40]], %[[broadcast_48]])
+// CHECK-NEXT:  %[[convert_50:[^ ]+]] = u32[1]{0} convert(%[[shift_right_logical_49]])
+// CHECK-NEXT:  %[[xor_83:[^ ]+]] = u32[1]{0} xor(%[[convert_70]], %[[convert_50]])
+// CHECK-NEXT:  %[[broadcast_84:[^ ]+]] = u32[1]{0} broadcast(%[[convert_8]]), dimensions={}
+// CHECK-NEXT:  %[[xor_85:[^ ]+]] = u32[1]{0} xor(%[[xor_83]], %[[broadcast_84]])
+// CHECK-NEXT:  %[[convert_99:[^ ]+]] = u64[1]{0} convert(%[[xor_85]])
 // CHECK-NEXT:  %[[constant_100:[^ ]+]] = u64[] constant(3449720151)
-// CHECK-NEXT:  %[[broadcast_101:[^ ]+]] = u64[1]{0} broadcast(u64[] %[[constant_100]]), dimensions={}
-// CHECK-NEXT:  %[[multiply_102:[^ ]+]] = u64[1]{0} multiply(u64[1]{0} %[[convert_99]], u64[1]{0} %[[broadcast_101]])
+// CHECK-NEXT:  %[[broadcast_101:[^ ]+]] = u64[1]{0} broadcast(%[[constant_100]]), dimensions={}
+// CHECK-NEXT:  %[[multiply_102:[^ ]+]] = u64[1]{0} multiply(%[[convert_99]], %[[broadcast_101]])
 // CHECK-NEXT:  %[[constant_104:[^ ]+]] = u64[] constant(32)
-// CHECK-NEXT:  %[[broadcast_105:[^ ]+]] = u64[1]{0} broadcast(u64[] %[[constant_104]]), dimensions={}
-// CHECK-NEXT:  %[[shift_right_logical_106:[^ ]+]] = u64[1]{0} shift-right-logical(u64[1]{0} %[[multiply_102]], u64[1]{0} %[[broadcast_105]])
-// CHECK-NEXT:  %[[convert_107:[^ ]+]] = u32[1]{0} convert(u64[1]{0} %[[shift_right_logical_106]])
-// CHECK-NEXT:  %[[convert_47:[^ ]+]] = u32[1]{0} convert(u64[1]{0} %[[select_40]])
-// CHECK-NEXT:  %[[convert_71:[^ ]+]] = u64[1]{0} convert(u32[1]{0} %[[convert_47]])
+// CHECK-NEXT:  %[[broadcast_105:[^ ]+]] = u64[1]{0} broadcast(%[[constant_104]]), dimensions={}
+// CHECK-NEXT:  %[[shift_right_logical_106:[^ ]+]] = u64[1]{0} shift-right-logical(%[[multiply_102]], %[[broadcast_105]])
+// CHECK-NEXT:  %[[convert_107:[^ ]+]] = u32[1]{0} convert(%[[shift_right_logical_106]])
+// CHECK-NEXT:  %[[convert_47:[^ ]+]] = u32[1]{0} convert(%[[select_40]])
+// CHECK-NEXT:  %[[convert_71:[^ ]+]] = u64[1]{0} convert(%[[convert_47]])
 // CHECK-NEXT:  %[[constant_72:[^ ]+]] = u64[] constant(3449720151)
-// CHECK-NEXT:  %[[broadcast_73:[^ ]+]] = u64[1]{0} broadcast(u64[] %[[constant_72]]), dimensions={}
-// CHECK-NEXT:  %[[multiply_74:[^ ]+]] = u64[1]{0} multiply(u64[1]{0} %[[convert_71]], u64[1]{0} %[[broadcast_73]])
-// CHECK-NEXT:  %[[convert_75:[^ ]+]] = u32[1]{0} convert(u64[1]{0} %[[multiply_74]])
-// CHECK-NEXT:  %[[xor_108:[^ ]+]] = u32[1]{0} xor(u32[1]{0} %[[convert_107]], u32[1]{0} %[[convert_75]])
-// CHECK-NEXT:  %[[broadcast_109:[^ ]+]] = u32[1]{0} broadcast(u32[] %[[add_87]]), dimensions={}
-// CHECK-NEXT:  %[[xor_110:[^ ]+]] = u32[1]{0} xor(u32[1]{0} %[[xor_108]], u32[1]{0} %[[broadcast_109]])
-// CHECK-NEXT:  %[[convert_118:[^ ]+]] = u64[1]{0} convert(u32[1]{0} %[[xor_110]])
+// CHECK-NEXT:  %[[broadcast_73:[^ ]+]] = u64[1]{0} broadcast(%[[constant_72]]), dimensions={}
+// CHECK-NEXT:  %[[multiply_74:[^ ]+]] = u64[1]{0} multiply(%[[convert_71]], %[[broadcast_73]])
+// CHECK-NEXT:  %[[convert_75:[^ ]+]] = u32[1]{0} convert(%[[multiply_74]])
+// CHECK-NEXT:  %[[xor_108:[^ ]+]] = u32[1]{0} xor(%[[convert_107]], %[[convert_75]])
+// CHECK-NEXT:  %[[broadcast_109:[^ ]+]] = u32[1]{0} broadcast(%[[add_87]]), dimensions={}
+// CHECK-NEXT:  %[[xor_110:[^ ]+]] = u32[1]{0} xor(%[[xor_108]], %[[broadcast_109]])
+// CHECK-NEXT:  %[[convert_118:[^ ]+]] = u64[1]{0} convert(%[[xor_110]])
 // CHECK-NEXT:  %[[constant_119:[^ ]+]] = u64[] constant(3528531795)
-// CHECK-NEXT:  %[[broadcast_120:[^ ]+]] = u64[1]{0} broadcast(u64[] %[[constant_119]]), dimensions={}
-// CHECK-NEXT:  %[[multiply_121:[^ ]+]] = u64[1]{0} multiply(u64[1]{0} %[[convert_118]], u64[1]{0} %[[broadcast_120]])
+// CHECK-NEXT:  %[[broadcast_120:[^ ]+]] = u64[1]{0} broadcast(%[[constant_119]]), dimensions={}
+// CHECK-NEXT:  %[[multiply_121:[^ ]+]] = u64[1]{0} multiply(%[[convert_118]], %[[broadcast_120]])
 // CHECK-NEXT:  %[[constant_123:[^ ]+]] = u64[] constant(32)
-// CHECK-NEXT:  %[[broadcast_124:[^ ]+]] = u64[1]{0} broadcast(u64[] %[[constant_123]]), dimensions={}
-// CHECK-NEXT:  %[[shift_right_logical_125:[^ ]+]] = u64[1]{0} shift-right-logical(u64[1]{0} %[[multiply_121]], u64[1]{0} %[[broadcast_124]])
-// CHECK-NEXT:  %[[convert_126:[^ ]+]] = u32[1]{0} convert(u64[1]{0} %[[shift_right_logical_125]])
+// CHECK-NEXT:  %[[broadcast_124:[^ ]+]] = u64[1]{0} broadcast(%[[constant_123]]), dimensions={}
+// CHECK-NEXT:  %[[shift_right_logical_125:[^ ]+]] = u64[1]{0} shift-right-logical(%[[multiply_121]], %[[broadcast_124]])
+// CHECK-NEXT:  %[[convert_126:[^ ]+]] = u32[1]{0} convert(%[[shift_right_logical_125]])
 // CHECK-NEXT:  %[[constant_76:[^ ]+]] = u64[] constant(32)
-// CHECK-NEXT:  %[[broadcast_77:[^ ]+]] = u64[1]{0} broadcast(u64[] %[[constant_76]]), dimensions={}
-// CHECK-NEXT:  %[[shift_right_logical_78:[^ ]+]] = u64[1]{0} shift-right-logical(u64[1]{0} %[[multiply_74]], u64[1]{0} %[[broadcast_77]])
-// CHECK-NEXT:  %[[convert_79:[^ ]+]] = u32[1]{0} convert(u64[1]{0} %[[shift_right_logical_78]])
+// CHECK-NEXT:  %[[broadcast_77:[^ ]+]] = u64[1]{0} broadcast(%[[constant_76]]), dimensions={}
+// CHECK-NEXT:  %[[shift_right_logical_78:[^ ]+]] = u64[1]{0} shift-right-logical(%[[multiply_74]], %[[broadcast_77]])
+// CHECK-NEXT:  %[[convert_79:[^ ]+]] = u32[1]{0} convert(%[[shift_right_logical_78]])
 // CHECK-NEXT:  %[[constant_41:[^ ]+]] = u64[] constant(32)
-// CHECK-NEXT:  %[[broadcast_43:[^ ]+]] = u64[1]{0} broadcast(u64[] %[[constant_41]]), dimensions={}
-// CHECK-NEXT:  %[[shift_right_logical_44:[^ ]+]] = u64[1]{0} shift-right-logical(u64[1]{0} %[[add_33]], u64[1]{0} %[[broadcast_43]])
-// CHECK-NEXT:  %[[convert_45:[^ ]+]] = u32[1]{0} convert(u64[1]{0} %[[shift_right_logical_44]])
-// CHECK-NEXT:  %[[xor_80:[^ ]+]] = u32[1]{0} xor(u32[1]{0} %[[convert_79]], u32[1]{0} %[[convert_45]])
-// CHECK-NEXT:  %[[broadcast_81:[^ ]+]] = u32[1]{0} broadcast(u32[] %[[convert_6]]), dimensions={}
-// CHECK-NEXT:  %[[xor_82:[^ ]+]] = u32[1]{0} xor(u32[1]{0} %[[xor_80]], u32[1]{0} %[[broadcast_81]])
-// CHECK-NEXT:  %[[convert_90:[^ ]+]] = u64[1]{0} convert(u32[1]{0} %[[xor_82]])
+// CHECK-NEXT:  %[[broadcast_43:[^ ]+]] = u64[1]{0} broadcast(%[[constant_41]]), dimensions={}
+// CHECK-NEXT:  %[[shift_right_logical_44:[^ ]+]] = u64[1]{0} shift-right-logical(%[[add_33]], %[[broadcast_43]])
+// CHECK-NEXT:  %[[convert_45:[^ ]+]] = u32[1]{0} convert(%[[shift_right_logical_44]])
+// CHECK-NEXT:  %[[xor_80:[^ ]+]] = u32[1]{0} xor(%[[convert_79]], %[[convert_45]])
+// CHECK-NEXT:  %[[broadcast_81:[^ ]+]] = u32[1]{0} broadcast(%[[convert_6]]), dimensions={}
+// CHECK-NEXT:  %[[xor_82:[^ ]+]] = u32[1]{0} xor(%[[xor_80]], %[[broadcast_81]])
+// CHECK-NEXT:  %[[convert_90:[^ ]+]] = u64[1]{0} convert(%[[xor_82]])
 // CHECK-NEXT:  %[[constant_91:[^ ]+]] = u64[] constant(3528531795)
-// CHECK-NEXT:  %[[broadcast_92:[^ ]+]] = u64[1]{0} broadcast(u64[] %[[constant_91]]), dimensions={}
-// CHECK-NEXT:  %[[multiply_93:[^ ]+]] = u64[1]{0} multiply(u64[1]{0} %[[convert_90]], u64[1]{0} %[[broadcast_92]])
-// CHECK-NEXT:  %[[convert_94:[^ ]+]] = u32[1]{0} convert(u64[1]{0} %[[multiply_93]])
-// CHECK-NEXT:  %[[xor_139:[^ ]+]] = u32[1]{0} xor(u32[1]{0} %[[convert_126]], u32[1]{0} %[[convert_94]])
-// CHECK-NEXT:  %[[broadcast_140:[^ ]+]] = u32[1]{0} broadcast(u32[] %[[add_117]]), dimensions={}
-// CHECK-NEXT:  %[[xor_141:[^ ]+]] = u32[1]{0} xor(u32[1]{0} %[[xor_139]], u32[1]{0} %[[broadcast_140]])
-// CHECK-NEXT:  %[[convert_155:[^ ]+]] = u64[1]{0} convert(u32[1]{0} %[[xor_141]])
+// CHECK-NEXT:  %[[broadcast_92:[^ ]+]] = u64[1]{0} broadcast(%[[constant_91]]), dimensions={}
+// CHECK-NEXT:  %[[multiply_93:[^ ]+]] = u64[1]{0} multiply(%[[convert_90]], %[[broadcast_92]])
+// CHECK-NEXT:  %[[convert_94:[^ ]+]] = u32[1]{0} convert(%[[multiply_93]])
+// CHECK-NEXT:  %[[xor_139:[^ ]+]] = u32[1]{0} xor(%[[convert_126]], %[[convert_94]])
+// CHECK-NEXT:  %[[broadcast_140:[^ ]+]] = u32[1]{0} broadcast(%[[add_117]]), dimensions={}
+// CHECK-NEXT:  %[[xor_141:[^ ]+]] = u32[1]{0} xor(%[[xor_139]], %[[broadcast_140]])
+// CHECK-NEXT:  %[[convert_155:[^ ]+]] = u64[1]{0} convert(%[[xor_141]])
 // CHECK-NEXT:  %[[constant_156:[^ ]+]] = u64[] constant(3449720151)
-// CHECK-NEXT:  %[[broadcast_157:[^ ]+]] = u64[1]{0} broadcast(u64[] %[[constant_156]]), dimensions={}
-// CHECK-NEXT:  %[[multiply_158:[^ ]+]] = u64[1]{0} multiply(u64[1]{0} %[[convert_155]], u64[1]{0} %[[broadcast_157]])
+// CHECK-NEXT:  %[[broadcast_157:[^ ]+]] = u64[1]{0} broadcast(%[[constant_156]]), dimensions={}
+// CHECK-NEXT:  %[[multiply_158:[^ ]+]] = u64[1]{0} multiply(%[[convert_155]], %[[broadcast_157]])
 // CHECK-NEXT:  %[[constant_160:[^ ]+]] = u64[] constant(32)
-// CHECK-NEXT:  %[[broadcast_161:[^ ]+]] = u64[1]{0} broadcast(u64[] %[[constant_160]]), dimensions={}
-// CHECK-NEXT:  %[[shift_right_logical_162:[^ ]+]] = u64[1]{0} shift-right-logical(u64[1]{0} %[[multiply_158]], u64[1]{0} %[[broadcast_161]])
-// CHECK-NEXT:  %[[convert_163:[^ ]+]] = u32[1]{0} convert(u64[1]{0} %[[shift_right_logical_162]])
+// CHECK-NEXT:  %[[broadcast_161:[^ ]+]] = u64[1]{0} broadcast(%[[constant_160]]), dimensions={}
+// CHECK-NEXT:  %[[shift_right_logical_162:[^ ]+]] = u64[1]{0} shift-right-logical(%[[multiply_158]], %[[broadcast_161]])
+// CHECK-NEXT:  %[[convert_163:[^ ]+]] = u32[1]{0} convert(%[[shift_right_logical_162]])
 // CHECK-NEXT:  %[[constant_95:[^ ]+]] = u64[] constant(32)
-// CHECK-NEXT:  %[[broadcast_96:[^ ]+]] = u64[1]{0} broadcast(u64[] %[[constant_95]]), dimensions={}
-// CHECK-NEXT:  %[[shift_right_logical_97:[^ ]+]] = u64[1]{0} shift-right-logical(u64[1]{0} %[[multiply_93]], u64[1]{0} %[[broadcast_96]])
-// CHECK-NEXT:  %[[convert_98:[^ ]+]] = u32[1]{0} convert(u64[1]{0} %[[shift_right_logical_97]])
-// CHECK-NEXT:  %[[convert_66:[^ ]+]] = u32[1]{0} convert(u64[1]{0} %[[multiply_65]])
-// CHECK-NEXT:  %[[xor_111:[^ ]+]] = u32[1]{0} xor(u32[1]{0} %[[convert_98]], u32[1]{0} %[[convert_66]])
-// CHECK-NEXT:  %[[broadcast_112:[^ ]+]] = u32[1]{0} broadcast(u32[] %[[add_89]]), dimensions={}
-// CHECK-NEXT:  %[[xor_113:[^ ]+]] = u32[1]{0} xor(u32[1]{0} %[[xor_111]], u32[1]{0} %[[broadcast_112]])
-// CHECK-NEXT:  %[[convert_127:[^ ]+]] = u64[1]{0} convert(u32[1]{0} %[[xor_113]])
+// CHECK-NEXT:  %[[broadcast_96:[^ ]+]] = u64[1]{0} broadcast(%[[constant_95]]), dimensions={}
+// CHECK-NEXT:  %[[shift_right_logical_97:[^ ]+]] = u64[1]{0} shift-right-logical(%[[multiply_93]], %[[broadcast_96]])
+// CHECK-NEXT:  %[[convert_98:[^ ]+]] = u32[1]{0} convert(%[[shift_right_logical_97]])
+// CHECK-NEXT:  %[[convert_66:[^ ]+]] = u32[1]{0} convert(%[[multiply_65]])
+// CHECK-NEXT:  %[[xor_111:[^ ]+]] = u32[1]{0} xor(%[[convert_98]], %[[convert_66]])
+// CHECK-NEXT:  %[[broadcast_112:[^ ]+]] = u32[1]{0} broadcast(%[[add_89]]), dimensions={}
+// CHECK-NEXT:  %[[xor_113:[^ ]+]] = u32[1]{0} xor(%[[xor_111]], %[[broadcast_112]])
+// CHECK-NEXT:  %[[convert_127:[^ ]+]] = u64[1]{0} convert(%[[xor_113]])
 // CHECK-NEXT:  %[[constant_128:[^ ]+]] = u64[] constant(3449720151)
-// CHECK-NEXT:  %[[broadcast_129:[^ ]+]] = u64[1]{0} broadcast(u64[] %[[constant_128]]), dimensions={}
-// CHECK-NEXT:  %[[multiply_130:[^ ]+]] = u64[1]{0} multiply(u64[1]{0} %[[convert_127]], u64[1]{0} %[[broadcast_129]])
-// CHECK-NEXT:  %[[convert_131:[^ ]+]] = u32[1]{0} convert(u64[1]{0} %[[multiply_130]])
-// CHECK-NEXT:  %[[xor_164:[^ ]+]] = u32[1]{0} xor(u32[1]{0} %[[convert_163]], u32[1]{0} %[[convert_131]])
-// CHECK-NEXT:  %[[broadcast_165:[^ ]+]] = u32[1]{0} broadcast(u32[] %[[add_143]]), dimensions={}
-// CHECK-NEXT:  %[[xor_166:[^ ]+]] = u32[1]{0} xor(u32[1]{0} %[[xor_164]], u32[1]{0} %[[broadcast_165]])
-// CHECK-NEXT:  %[[convert_174:[^ ]+]] = u64[1]{0} convert(u32[1]{0} %[[xor_166]])
+// CHECK-NEXT:  %[[broadcast_129:[^ ]+]] = u64[1]{0} broadcast(%[[constant_128]]), dimensions={}
+// CHECK-NEXT:  %[[multiply_130:[^ ]+]] = u64[1]{0} multiply(%[[convert_127]], %[[broadcast_129]])
+// CHECK-NEXT:  %[[convert_131:[^ ]+]] = u32[1]{0} convert(%[[multiply_130]])
+// CHECK-NEXT:  %[[xor_164:[^ ]+]] = u32[1]{0} xor(%[[convert_163]], %[[convert_131]])
+// CHECK-NEXT:  %[[broadcast_165:[^ ]+]] = u32[1]{0} broadcast(%[[add_143]]), dimensions={}
+// CHECK-NEXT:  %[[xor_166:[^ ]+]] = u32[1]{0} xor(%[[xor_164]], %[[broadcast_165]])
+// CHECK-NEXT:  %[[convert_174:[^ ]+]] = u64[1]{0} convert(%[[xor_166]])
 // CHECK-NEXT:  %[[constant_175:[^ ]+]] = u64[] constant(3528531795)
-// CHECK-NEXT:  %[[broadcast_176:[^ ]+]] = u64[1]{0} broadcast(u64[] %[[constant_175]]), dimensions={}
-// CHECK-NEXT:  %[[multiply_177:[^ ]+]] = u64[1]{0} multiply(u64[1]{0} %[[convert_174]], u64[1]{0} %[[broadcast_176]])
+// CHECK-NEXT:  %[[broadcast_176:[^ ]+]] = u64[1]{0} broadcast(%[[constant_175]]), dimensions={}
+// CHECK-NEXT:  %[[multiply_177:[^ ]+]] = u64[1]{0} multiply(%[[convert_174]], %[[broadcast_176]])
 // CHECK-NEXT:  %[[constant_179:[^ ]+]] = u64[] constant(32)
-// CHECK-NEXT:  %[[broadcast_180:[^ ]+]] = u64[1]{0} broadcast(u64[] %[[constant_179]]), dimensions={}
-// CHECK-NEXT:  %[[shift_right_logical_181:[^ ]+]] = u64[1]{0} shift-right-logical(u64[1]{0} %[[multiply_177]], u64[1]{0} %[[broadcast_180]])
-// CHECK-NEXT:  %[[convert_182:[^ ]+]] = u32[1]{0} convert(u64[1]{0} %[[shift_right_logical_181]])
+// CHECK-NEXT:  %[[broadcast_180:[^ ]+]] = u64[1]{0} broadcast(%[[constant_179]]), dimensions={}
+// CHECK-NEXT:  %[[shift_right_logical_181:[^ ]+]] = u64[1]{0} shift-right-logical(%[[multiply_177]], %[[broadcast_180]])
+// CHECK-NEXT:  %[[convert_182:[^ ]+]] = u32[1]{0} convert(%[[shift_right_logical_181]])
 // CHECK-NEXT:  %[[constant_132:[^ ]+]] = u64[] constant(32)
-// CHECK-NEXT:  %[[broadcast_133:[^ ]+]] = u64[1]{0} broadcast(u64[] %[[constant_132]]), dimensions={}
-// CHECK-NEXT:  %[[shift_right_logical_134:[^ ]+]] = u64[1]{0} shift-right-logical(u64[1]{0} %[[multiply_130]], u64[1]{0} %[[broadcast_133]])
-// CHECK-NEXT:  %[[convert_135:[^ ]+]] = u32[1]{0} convert(u64[1]{0} %[[shift_right_logical_134]])
-// CHECK-NEXT:  %[[convert_103:[^ ]+]] = u32[1]{0} convert(u64[1]{0} %[[multiply_102]])
-// CHECK-NEXT:  %[[xor_136:[^ ]+]] = u32[1]{0} xor(u32[1]{0} %[[convert_135]], u32[1]{0} %[[convert_103]])
-// CHECK-NEXT:  %[[broadcast_137:[^ ]+]] = u32[1]{0} broadcast(u32[] %[[add_115]]), dimensions={}
-// CHECK-NEXT:  %[[xor_138:[^ ]+]] = u32[1]{0} xor(u32[1]{0} %[[xor_136]], u32[1]{0} %[[broadcast_137]])
-// CHECK-NEXT:  %[[convert_146:[^ ]+]] = u64[1]{0} convert(u32[1]{0} %[[xor_138]])
+// CHECK-NEXT:  %[[broadcast_133:[^ ]+]] = u64[1]{0} broadcast(%[[constant_132]]), dimensions={}
+// CHECK-NEXT:  %[[shift_right_logical_134:[^ ]+]] = u64[1]{0} shift-right-logical(%[[multiply_130]], %[[broadcast_133]])
+// CHECK-NEXT:  %[[convert_135:[^ ]+]] = u32[1]{0} convert(%[[shift_right_logical_134]])
+// CHECK-NEXT:  %[[convert_103:[^ ]+]] = u32[1]{0} convert(%[[multiply_102]])
+// CHECK-NEXT:  %[[xor_136:[^ ]+]] = u32[1]{0} xor(%[[convert_135]], %[[convert_103]])
+// CHECK-NEXT:  %[[broadcast_137:[^ ]+]] = u32[1]{0} broadcast(%[[add_115]]), dimensions={}
+// CHECK-NEXT:  %[[xor_138:[^ ]+]] = u32[1]{0} xor(%[[xor_136]], %[[broadcast_137]])
+// CHECK-NEXT:  %[[convert_146:[^ ]+]] = u64[1]{0} convert(%[[xor_138]])
 // CHECK-NEXT:  %[[constant_147:[^ ]+]] = u64[] constant(3528531795)
-// CHECK-NEXT:  %[[broadcast_148:[^ ]+]] = u64[1]{0} broadcast(u64[] %[[constant_147]]), dimensions={}
-// CHECK-NEXT:  %[[multiply_149:[^ ]+]] = u64[1]{0} multiply(u64[1]{0} %[[convert_146]], u64[1]{0} %[[broadcast_148]])
-// CHECK-NEXT:  %[[convert_150:[^ ]+]] = u32[1]{0} convert(u64[1]{0} %[[multiply_149]])
-// CHECK-NEXT:  %[[xor_195:[^ ]+]] = u32[1]{0} xor(u32[1]{0} %[[convert_182]], u32[1]{0} %[[convert_150]])
-// CHECK-NEXT:  %[[broadcast_196:[^ ]+]] = u32[1]{0} broadcast(u32[] %[[add_173]]), dimensions={}
-// CHECK-NEXT:  %[[xor_197:[^ ]+]] = u32[1]{0} xor(u32[1]{0} %[[xor_195]], u32[1]{0} %[[broadcast_196]])
-// CHECK-NEXT:  %[[convert_211:[^ ]+]] = u64[1]{0} convert(u32[1]{0} %[[xor_197]])
+// CHECK-NEXT:  %[[broadcast_148:[^ ]+]] = u64[1]{0} broadcast(%[[constant_147]]), dimensions={}
+// CHECK-NEXT:  %[[multiply_149:[^ ]+]] = u64[1]{0} multiply(%[[convert_146]], %[[broadcast_148]])
+// CHECK-NEXT:  %[[convert_150:[^ ]+]] = u32[1]{0} convert(%[[multiply_149]])
+// CHECK-NEXT:  %[[xor_195:[^ ]+]] = u32[1]{0} xor(%[[convert_182]], %[[convert_150]])
+// CHECK-NEXT:  %[[broadcast_196:[^ ]+]] = u32[1]{0} broadcast(%[[add_173]]), dimensions={}
+// CHECK-NEXT:  %[[xor_197:[^ ]+]] = u32[1]{0} xor(%[[xor_195]], %[[broadcast_196]])
+// CHECK-NEXT:  %[[convert_211:[^ ]+]] = u64[1]{0} convert(%[[xor_197]])
 // CHECK-NEXT:  %[[constant_212:[^ ]+]] = u64[] constant(3449720151)
-// CHECK-NEXT:  %[[broadcast_213:[^ ]+]] = u64[1]{0} broadcast(u64[] %[[constant_212]]), dimensions={}
-// CHECK-NEXT:  %[[multiply_214:[^ ]+]] = u64[1]{0} multiply(u64[1]{0} %[[convert_211]], u64[1]{0} %[[broadcast_213]])
+// CHECK-NEXT:  %[[broadcast_213:[^ ]+]] = u64[1]{0} broadcast(%[[constant_212]]), dimensions={}
+// CHECK-NEXT:  %[[multiply_214:[^ ]+]] = u64[1]{0} multiply(%[[convert_211]], %[[broadcast_213]])
 // CHECK-NEXT:  %[[constant_216:[^ ]+]] = u64[] constant(32)
-// CHECK-NEXT:  %[[broadcast_217:[^ ]+]] = u64[1]{0} broadcast(u64[] %[[constant_216]]), dimensions={}
-// CHECK-NEXT:  %[[shift_right_logical_218:[^ ]+]] = u64[1]{0} shift-right-logical(u64[1]{0} %[[multiply_214]], u64[1]{0} %[[broadcast_217]])
-// CHECK-NEXT:  %[[convert_219:[^ ]+]] = u32[1]{0} convert(u64[1]{0} %[[shift_right_logical_218]])
+// CHECK-NEXT:  %[[broadcast_217:[^ ]+]] = u64[1]{0} broadcast(%[[constant_216]]), dimensions={}
+// CHECK-NEXT:  %[[shift_right_logical_218:[^ ]+]] = u64[1]{0} shift-right-logical(%[[multiply_214]], %[[broadcast_217]])
+// CHECK-NEXT:  %[[convert_219:[^ ]+]] = u32[1]{0} convert(%[[shift_right_logical_218]])
 // CHECK-NEXT:  %[[constant_151:[^ ]+]] = u64[] constant(32)
-// CHECK-NEXT:  %[[broadcast_152:[^ ]+]] = u64[1]{0} broadcast(u64[] %[[constant_151]]), dimensions={}
-// CHECK-NEXT:  %[[shift_right_logical_153:[^ ]+]] = u64[1]{0} shift-right-logical(u64[1]{0} %[[multiply_149]], u64[1]{0} %[[broadcast_152]])
-// CHECK-NEXT:  %[[convert_154:[^ ]+]] = u32[1]{0} convert(u64[1]{0} %[[shift_right_logical_153]])
-// CHECK-NEXT:  %[[convert_122:[^ ]+]] = u32[1]{0} convert(u64[1]{0} %[[multiply_121]])
-// CHECK-NEXT:  %[[xor_167:[^ ]+]] = u32[1]{0} xor(u32[1]{0} %[[convert_154]], u32[1]{0} %[[convert_122]])
-// CHECK-NEXT:  %[[broadcast_168:[^ ]+]] = u32[1]{0} broadcast(u32[] %[[add_145]]), dimensions={}
-// CHECK-NEXT:  %[[xor_169:[^ ]+]] = u32[1]{0} xor(u32[1]{0} %[[xor_167]], u32[1]{0} %[[broadcast_168]])
-// CHECK-NEXT:  %[[convert_183:[^ ]+]] = u64[1]{0} convert(u32[1]{0} %[[xor_169]])
+// CHECK-NEXT:  %[[broadcast_152:[^ ]+]] = u64[1]{0} broadcast(%[[constant_151]]), dimensions={}
+// CHECK-NEXT:  %[[shift_right_logical_153:[^ ]+]] = u64[1]{0} shift-right-logical(%[[multiply_149]], %[[broadcast_152]])
+// CHECK-NEXT:  %[[convert_154:[^ ]+]] = u32[1]{0} convert(%[[shift_right_logical_153]])
+// CHECK-NEXT:  %[[convert_122:[^ ]+]] = u32[1]{0} convert(%[[multiply_121]])
+// CHECK-NEXT:  %[[xor_167:[^ ]+]] = u32[1]{0} xor(%[[convert_154]], %[[convert_122]])
+// CHECK-NEXT:  %[[broadcast_168:[^ ]+]] = u32[1]{0} broadcast(%[[add_145]]), dimensions={}
+// CHECK-NEXT:  %[[xor_169:[^ ]+]] = u32[1]{0} xor(%[[xor_167]], %[[broadcast_168]])
+// CHECK-NEXT:  %[[convert_183:[^ ]+]] = u64[1]{0} convert(%[[xor_169]])
 // CHECK-NEXT:  %[[constant_184:[^ ]+]] = u64[] constant(3449720151)
-// CHECK-NEXT:  %[[broadcast_185:[^ ]+]] = u64[1]{0} broadcast(u64[] %[[constant_184]]), dimensions={}
-// CHECK-NEXT:  %[[multiply_186:[^ ]+]] = u64[1]{0} multiply(u64[1]{0} %[[convert_183]], u64[1]{0} %[[broadcast_185]])
-// CHECK-NEXT:  %[[convert_187:[^ ]+]] = u32[1]{0} convert(u64[1]{0} %[[multiply_186]])
-// CHECK-NEXT:  %[[xor_220:[^ ]+]] = u32[1]{0} xor(u32[1]{0} %[[convert_219]], u32[1]{0} %[[convert_187]])
-// CHECK-NEXT:  %[[broadcast_221:[^ ]+]] = u32[1]{0} broadcast(u32[] %[[add_199]]), dimensions={}
-// CHECK-NEXT:  %[[xor_222:[^ ]+]] = u32[1]{0} xor(u32[1]{0} %[[xor_220]], u32[1]{0} %[[broadcast_221]])
-// CHECK-NEXT:  %[[convert_230:[^ ]+]] = u64[1]{0} convert(u32[1]{0} %[[xor_222]])
+// CHECK-NEXT:  %[[broadcast_185:[^ ]+]] = u64[1]{0} broadcast(%[[constant_184]]), dimensions={}
+// CHECK-NEXT:  %[[multiply_186:[^ ]+]] = u64[1]{0} multiply(%[[convert_183]], %[[broadcast_185]])
+// CHECK-NEXT:  %[[convert_187:[^ ]+]] = u32[1]{0} convert(%[[multiply_186]])
+// CHECK-NEXT:  %[[xor_220:[^ ]+]] = u32[1]{0} xor(%[[convert_219]], %[[convert_187]])
+// CHECK-NEXT:  %[[broadcast_221:[^ ]+]] = u32[1]{0} broadcast(%[[add_199]]), dimensions={}
+// CHECK-NEXT:  %[[xor_222:[^ ]+]] = u32[1]{0} xor(%[[xor_220]], %[[broadcast_221]])
+// CHECK-NEXT:  %[[convert_230:[^ ]+]] = u64[1]{0} convert(%[[xor_222]])
 // CHECK-NEXT:  %[[constant_231:[^ ]+]] = u64[] constant(3528531795)
-// CHECK-NEXT:  %[[broadcast_232:[^ ]+]] = u64[1]{0} broadcast(u64[] %[[constant_231]]), dimensions={}
-// CHECK-NEXT:  %[[multiply_233:[^ ]+]] = u64[1]{0} multiply(u64[1]{0} %[[convert_230]], u64[1]{0} %[[broadcast_232]])
+// CHECK-NEXT:  %[[broadcast_232:[^ ]+]] = u64[1]{0} broadcast(%[[constant_231]]), dimensions={}
+// CHECK-NEXT:  %[[multiply_233:[^ ]+]] = u64[1]{0} multiply(%[[convert_230]], %[[broadcast_232]])
 // CHECK-NEXT:  %[[constant_235:[^ ]+]] = u64[] constant(32)
-// CHECK-NEXT:  %[[broadcast_236:[^ ]+]] = u64[1]{0} broadcast(u64[] %[[constant_235]]), dimensions={}
-// CHECK-NEXT:  %[[shift_right_logical_237:[^ ]+]] = u64[1]{0} shift-right-logical(u64[1]{0} %[[multiply_233]], u64[1]{0} %[[broadcast_236]])
-// CHECK-NEXT:  %[[convert_238:[^ ]+]] = u32[1]{0} convert(u64[1]{0} %[[shift_right_logical_237]])
+// CHECK-NEXT:  %[[broadcast_236:[^ ]+]] = u64[1]{0} broadcast(%[[constant_235]]), dimensions={}
+// CHECK-NEXT:  %[[shift_right_logical_237:[^ ]+]] = u64[1]{0} shift-right-logical(%[[multiply_233]], %[[broadcast_236]])
+// CHECK-NEXT:  %[[convert_238:[^ ]+]] = u32[1]{0} convert(%[[shift_right_logical_237]])
 // CHECK-NEXT:  %[[constant_188:[^ ]+]] = u64[] constant(32)
-// CHECK-NEXT:  %[[broadcast_189:[^ ]+]] = u64[1]{0} broadcast(u64[] %[[constant_188]]), dimensions={}
-// CHECK-NEXT:  %[[shift_right_logical_190:[^ ]+]] = u64[1]{0} shift-right-logical(u64[1]{0} %[[multiply_186]], u64[1]{0} %[[broadcast_189]])
-// CHECK-NEXT:  %[[convert_191:[^ ]+]] = u32[1]{0} convert(u64[1]{0} %[[shift_right_logical_190]])
-// CHECK-NEXT:  %[[convert_159:[^ ]+]] = u32[1]{0} convert(u64[1]{0} %[[multiply_158]])
-// CHECK-NEXT:  %[[xor_192:[^ ]+]] = u32[1]{0} xor(u32[1]{0} %[[convert_191]], u32[1]{0} %[[convert_159]])
-// CHECK-NEXT:  %[[broadcast_193:[^ ]+]] = u32[1]{0} broadcast(u32[] %[[add_171]]), dimensions={}
-// CHECK-NEXT:  %[[xor_194:[^ ]+]] = u32[1]{0} xor(u32[1]{0} %[[xor_192]], u32[1]{0} %[[broadcast_193]])
-// CHECK-NEXT:  %[[convert_202:[^ ]+]] = u64[1]{0} convert(u32[1]{0} %[[xor_194]])
+// CHECK-NEXT:  %[[broadcast_189:[^ ]+]] = u64[1]{0} broadcast(%[[constant_188]]), dimensions={}
+// CHECK-NEXT:  %[[shift_right_logical_190:[^ ]+]] = u64[1]{0} shift-right-logical(%[[multiply_186]], %[[broadcast_189]])
+// CHECK-NEXT:  %[[convert_191:[^ ]+]] = u32[1]{0} convert(%[[shift_right_logical_190]])
+// CHECK-NEXT:  %[[convert_159:[^ ]+]] = u32[1]{0} convert(%[[multiply_158]])
+// CHECK-NEXT:  %[[xor_192:[^ ]+]] = u32[1]{0} xor(%[[convert_191]], %[[convert_159]])
+// CHECK-NEXT:  %[[broadcast_193:[^ ]+]] = u32[1]{0} broadcast(%[[add_171]]), dimensions={}
+// CHECK-NEXT:  %[[xor_194:[^ ]+]] = u32[1]{0} xor(%[[xor_192]], %[[broadcast_193]])
+// CHECK-NEXT:  %[[convert_202:[^ ]+]] = u64[1]{0} convert(%[[xor_194]])
 // CHECK-NEXT:  %[[constant_203:[^ ]+]] = u64[] constant(3528531795)
-// CHECK-NEXT:  %[[broadcast_204:[^ ]+]] = u64[1]{0} broadcast(u64[] %[[constant_203]]), dimensions={}
-// CHECK-NEXT:  %[[multiply_205:[^ ]+]] = u64[1]{0} multiply(u64[1]{0} %[[convert_202]], u64[1]{0} %[[broadcast_204]])
-// CHECK-NEXT:  %[[convert_206:[^ ]+]] = u32[1]{0} convert(u64[1]{0} %[[multiply_205]])
-// CHECK-NEXT:  %[[xor_251:[^ ]+]] = u32[1]{0} xor(u32[1]{0} %[[convert_238]], u32[1]{0} %[[convert_206]])
-// CHECK-NEXT:  %[[broadcast_252:[^ ]+]] = u32[1]{0} broadcast(u32[] %[[add_229]]), dimensions={}
-// CHECK-NEXT:  %[[xor_253:[^ ]+]] = u32[1]{0} xor(u32[1]{0} %[[xor_251]], u32[1]{0} %[[broadcast_252]])
-// CHECK-NEXT:  %[[convert_267:[^ ]+]] = u64[1]{0} convert(u32[1]{0} %[[xor_253]])
+// CHECK-NEXT:  %[[broadcast_204:[^ ]+]] = u64[1]{0} broadcast(%[[constant_203]]), dimensions={}
+// CHECK-NEXT:  %[[multiply_205:[^ ]+]] = u64[1]{0} multiply(%[[convert_202]], %[[broadcast_204]])
+// CHECK-NEXT:  %[[convert_206:[^ ]+]] = u32[1]{0} convert(%[[multiply_205]])
+// CHECK-NEXT:  %[[xor_251:[^ ]+]] = u32[1]{0} xor(%[[convert_238]], %[[convert_206]])
+// CHECK-NEXT:  %[[broadcast_252:[^ ]+]] = u32[1]{0} broadcast(%[[add_229]]), dimensions={}
+// CHECK-NEXT:  %[[xor_253:[^ ]+]] = u32[1]{0} xor(%[[xor_251]], %[[broadcast_252]])
+// CHECK-NEXT:  %[[convert_267:[^ ]+]] = u64[1]{0} convert(%[[xor_253]])
 // CHECK-NEXT:  %[[constant_268:[^ ]+]] = u64[] constant(3449720151)
-// CHECK-NEXT:  %[[broadcast_269:[^ ]+]] = u64[1]{0} broadcast(u64[] %[[constant_268]]), dimensions={}
-// CHECK-NEXT:  %[[multiply_270:[^ ]+]] = u64[1]{0} multiply(u64[1]{0} %[[convert_267]], u64[1]{0} %[[broadcast_269]])
+// CHECK-NEXT:  %[[broadcast_269:[^ ]+]] = u64[1]{0} broadcast(%[[constant_268]]), dimensions={}
+// CHECK-NEXT:  %[[multiply_270:[^ ]+]] = u64[1]{0} multiply(%[[convert_267]], %[[broadcast_269]])
 // CHECK-NEXT:  %[[constant_272:[^ ]+]] = u64[] constant(32)
-// CHECK-NEXT:  %[[broadcast_273:[^ ]+]] = u64[1]{0} broadcast(u64[] %[[constant_272]]), dimensions={}
-// CHECK-NEXT:  %[[shift_right_logical_274:[^ ]+]] = u64[1]{0} shift-right-logical(u64[1]{0} %[[multiply_270]], u64[1]{0} %[[broadcast_273]])
-// CHECK-NEXT:  %[[convert_275:[^ ]+]] = u32[1]{0} convert(u64[1]{0} %[[shift_right_logical_274]])
+// CHECK-NEXT:  %[[broadcast_273:[^ ]+]] = u64[1]{0} broadcast(%[[constant_272]]), dimensions={}
+// CHECK-NEXT:  %[[shift_right_logical_274:[^ ]+]] = u64[1]{0} shift-right-logical(%[[multiply_270]], %[[broadcast_273]])
+// CHECK-NEXT:  %[[convert_275:[^ ]+]] = u32[1]{0} convert(%[[shift_right_logical_274]])
 // CHECK-NEXT:  %[[constant_207:[^ ]+]] = u64[] constant(32)
-// CHECK-NEXT:  %[[broadcast_208:[^ ]+]] = u64[1]{0} broadcast(u64[] %[[constant_207]]), dimensions={}
-// CHECK-NEXT:  %[[shift_right_logical_209:[^ ]+]] = u64[1]{0} shift-right-logical(u64[1]{0} %[[multiply_205]], u64[1]{0} %[[broadcast_208]])
-// CHECK-NEXT:  %[[convert_210:[^ ]+]] = u32[1]{0} convert(u64[1]{0} %[[shift_right_logical_209]])
-// CHECK-NEXT:  %[[convert_178:[^ ]+]] = u32[1]{0} convert(u64[1]{0} %[[multiply_177]])
-// CHECK-NEXT:  %[[xor_223:[^ ]+]] = u32[1]{0} xor(u32[1]{0} %[[convert_210]], u32[1]{0} %[[convert_178]])
-// CHECK-NEXT:  %[[broadcast_224:[^ ]+]] = u32[1]{0} broadcast(u32[] %[[add_201]]), dimensions={}
-// CHECK-NEXT:  %[[xor_225:[^ ]+]] = u32[1]{0} xor(u32[1]{0} %[[xor_223]], u32[1]{0} %[[broadcast_224]])
-// CHECK-NEXT:  %[[convert_239:[^ ]+]] = u64[1]{0} convert(u32[1]{0} %[[xor_225]])
+// CHECK-NEXT:  %[[broadcast_208:[^ ]+]] = u64[1]{0} broadcast(%[[constant_207]]), dimensions={}
+// CHECK-NEXT:  %[[shift_right_logical_209:[^ ]+]] = u64[1]{0} shift-right-logical(%[[multiply_205]], %[[broadcast_208]])
+// CHECK-NEXT:  %[[convert_210:[^ ]+]] = u32[1]{0} convert(%[[shift_right_logical_209]])
+// CHECK-NEXT:  %[[convert_178:[^ ]+]] = u32[1]{0} convert(%[[multiply_177]])
+// CHECK-NEXT:  %[[xor_223:[^ ]+]] = u32[1]{0} xor(%[[convert_210]], %[[convert_178]])
+// CHECK-NEXT:  %[[broadcast_224:[^ ]+]] = u32[1]{0} broadcast(%[[add_201]]), dimensions={}
+// CHECK-NEXT:  %[[xor_225:[^ ]+]] = u32[1]{0} xor(%[[xor_223]], %[[broadcast_224]])
+// CHECK-NEXT:  %[[convert_239:[^ ]+]] = u64[1]{0} convert(%[[xor_225]])
 // CHECK-NEXT:  %[[constant_240:[^ ]+]] = u64[] constant(3449720151)
-// CHECK-NEXT:  %[[broadcast_241:[^ ]+]] = u64[1]{0} broadcast(u64[] %[[constant_240]]), dimensions={}
-// CHECK-NEXT:  %[[multiply_242:[^ ]+]] = u64[1]{0} multiply(u64[1]{0} %[[convert_239]], u64[1]{0} %[[broadcast_241]])
-// CHECK-NEXT:  %[[convert_243:[^ ]+]] = u32[1]{0} convert(u64[1]{0} %[[multiply_242]])
-// CHECK-NEXT:  %[[xor_276:[^ ]+]] = u32[1]{0} xor(u32[1]{0} %[[convert_275]], u32[1]{0} %[[convert_243]])
-// CHECK-NEXT:  %[[broadcast_277:[^ ]+]] = u32[1]{0} broadcast(u32[] %[[add_255]]), dimensions={}
-// CHECK-NEXT:  %[[xor_278:[^ ]+]] = u32[1]{0} xor(u32[1]{0} %[[xor_276]], u32[1]{0} %[[broadcast_277]])
-// CHECK-NEXT:  %[[convert_286:[^ ]+]] = u64[1]{0} convert(u32[1]{0} %[[xor_278]])
+// CHECK-NEXT:  %[[broadcast_241:[^ ]+]] = u64[1]{0} broadcast(%[[constant_240]]), dimensions={}
+// CHECK-NEXT:  %[[multiply_242:[^ ]+]] = u64[1]{0} multiply(%[[convert_239]], %[[broadcast_241]])
+// CHECK-NEXT:  %[[convert_243:[^ ]+]] = u32[1]{0} convert(%[[multiply_242]])
+// CHECK-NEXT:  %[[xor_276:[^ ]+]] = u32[1]{0} xor(%[[convert_275]], %[[convert_243]])
+// CHECK-NEXT:  %[[broadcast_277:[^ ]+]] = u32[1]{0} broadcast(%[[add_255]]), dimensions={}
+// CHECK-NEXT:  %[[xor_278:[^ ]+]] = u32[1]{0} xor(%[[xor_276]], %[[broadcast_277]])
+// CHECK-NEXT:  %[[convert_286:[^ ]+]] = u64[1]{0} convert(%[[xor_278]])
 // CHECK-NEXT:  %[[constant_287:[^ ]+]] = u64[] constant(3528531795)
-// CHECK-NEXT:  %[[broadcast_288:[^ ]+]] = u64[1]{0} broadcast(u64[] %[[constant_287]]), dimensions={}
-// CHECK-NEXT:  %[[multiply_289:[^ ]+]] = u64[1]{0} multiply(u64[1]{0} %[[convert_286]], u64[1]{0} %[[broadcast_288]])
+// CHECK-NEXT:  %[[broadcast_288:[^ ]+]] = u64[1]{0} broadcast(%[[constant_287]]), dimensions={}
+// CHECK-NEXT:  %[[multiply_289:[^ ]+]] = u64[1]{0} multiply(%[[convert_286]], %[[broadcast_288]])
 // CHECK-NEXT:  %[[constant_291:[^ ]+]] = u64[] constant(32)
-// CHECK-NEXT:  %[[broadcast_292:[^ ]+]] = u64[1]{0} broadcast(u64[] %[[constant_291]]), dimensions={}
-// CHECK-NEXT:  %[[shift_right_logical_293:[^ ]+]] = u64[1]{0} shift-right-logical(u64[1]{0} %[[multiply_289]], u64[1]{0} %[[broadcast_292]])
-// CHECK-NEXT:  %[[convert_294:[^ ]+]] = u32[1]{0} convert(u64[1]{0} %[[shift_right_logical_293]])
+// CHECK-NEXT:  %[[broadcast_292:[^ ]+]] = u64[1]{0} broadcast(%[[constant_291]]), dimensions={}
+// CHECK-NEXT:  %[[shift_right_logical_293:[^ ]+]] = u64[1]{0} shift-right-logical(%[[multiply_289]], %[[broadcast_292]])
+// CHECK-NEXT:  %[[convert_294:[^ ]+]] = u32[1]{0} convert(%[[shift_right_logical_293]])
 // CHECK-NEXT:  %[[constant_244:[^ ]+]] = u64[] constant(32)
-// CHECK-NEXT:  %[[broadcast_245:[^ ]+]] = u64[1]{0} broadcast(u64[] %[[constant_244]]), dimensions={}
-// CHECK-NEXT:  %[[shift_right_logical_246:[^ ]+]] = u64[1]{0} shift-right-logical(u64[1]{0} %[[multiply_242]], u64[1]{0} %[[broadcast_245]])
-// CHECK-NEXT:  %[[convert_247:[^ ]+]] = u32[1]{0} convert(u64[1]{0} %[[shift_right_logical_246]])
-// CHECK-NEXT:  %[[convert_215:[^ ]+]] = u32[1]{0} convert(u64[1]{0} %[[multiply_214]])
-// CHECK-NEXT:  %[[xor_248:[^ ]+]] = u32[1]{0} xor(u32[1]{0} %[[convert_247]], u32[1]{0} %[[convert_215]])
-// CHECK-NEXT:  %[[broadcast_249:[^ ]+]] = u32[1]{0} broadcast(u32[] %[[add_227]]), dimensions={}
-// CHECK-NEXT:  %[[xor_250:[^ ]+]] = u32[1]{0} xor(u32[1]{0} %[[xor_248]], u32[1]{0} %[[broadcast_249]])
-// CHECK-NEXT:  %[[convert_258:[^ ]+]] = u64[1]{0} convert(u32[1]{0} %[[xor_250]])
+// CHECK-NEXT:  %[[broadcast_245:[^ ]+]] = u64[1]{0} broadcast(%[[constant_244]]), dimensions={}
+// CHECK-NEXT:  %[[shift_right_logical_246:[^ ]+]] = u64[1]{0} shift-right-logical(%[[multiply_242]], %[[broadcast_245]])
+// CHECK-NEXT:  %[[convert_247:[^ ]+]] = u32[1]{0} convert(%[[shift_right_logical_246]])
+// CHECK-NEXT:  %[[convert_215:[^ ]+]] = u32[1]{0} convert(%[[multiply_214]])
+// CHECK-NEXT:  %[[xor_248:[^ ]+]] = u32[1]{0} xor(%[[convert_247]], %[[convert_215]])
+// CHECK-NEXT:  %[[broadcast_249:[^ ]+]] = u32[1]{0} broadcast(%[[add_227]]), dimensions={}
+// CHECK-NEXT:  %[[xor_250:[^ ]+]] = u32[1]{0} xor(%[[xor_248]], %[[broadcast_249]])
+// CHECK-NEXT:  %[[convert_258:[^ ]+]] = u64[1]{0} convert(%[[xor_250]])
 // CHECK-NEXT:  %[[constant_259:[^ ]+]] = u64[] constant(3528531795)
-// CHECK-NEXT:  %[[broadcast_260:[^ ]+]] = u64[1]{0} broadcast(u64[] %[[constant_259]]), dimensions={}
-// CHECK-NEXT:  %[[multiply_261:[^ ]+]] = u64[1]{0} multiply(u64[1]{0} %[[convert_258]], u64[1]{0} %[[broadcast_260]])
-// CHECK-NEXT:  %[[convert_262:[^ ]+]] = u32[1]{0} convert(u64[1]{0} %[[multiply_261]])
-// CHECK-NEXT:  %[[xor_307:[^ ]+]] = u32[1]{0} xor(u32[1]{0} %[[convert_294]], u32[1]{0} %[[convert_262]])
-// CHECK-NEXT:  %[[broadcast_308:[^ ]+]] = u32[1]{0} broadcast(u32[] %[[add_285]]), dimensions={}
-// CHECK-NEXT:  %[[xor_309:[^ ]+]] = u32[1]{0} xor(u32[1]{0} %[[xor_307]], u32[1]{0} %[[broadcast_308]])
-// CHECK-NEXT:  %[[convert_323:[^ ]+]] = u64[1]{0} convert(u32[1]{0} %[[xor_309]])
+// CHECK-NEXT:  %[[broadcast_260:[^ ]+]] = u64[1]{0} broadcast(%[[constant_259]]), dimensions={}
+// CHECK-NEXT:  %[[multiply_261:[^ ]+]] = u64[1]{0} multiply(%[[convert_258]], %[[broadcast_260]])
+// CHECK-NEXT:  %[[convert_262:[^ ]+]] = u32[1]{0} convert(%[[multiply_261]])
+// CHECK-NEXT:  %[[xor_307:[^ ]+]] = u32[1]{0} xor(%[[convert_294]], %[[convert_262]])
+// CHECK-NEXT:  %[[broadcast_308:[^ ]+]] = u32[1]{0} broadcast(%[[add_285]]), dimensions={}
+// CHECK-NEXT:  %[[xor_309:[^ ]+]] = u32[1]{0} xor(%[[xor_307]], %[[broadcast_308]])
+// CHECK-NEXT:  %[[convert_323:[^ ]+]] = u64[1]{0} convert(%[[xor_309]])
 // CHECK-NEXT:  %[[constant_324:[^ ]+]] = u64[] constant(3449720151)
-// CHECK-NEXT:  %[[broadcast_325:[^ ]+]] = u64[1]{0} broadcast(u64[] %[[constant_324]]), dimensions={}
-// CHECK-NEXT:  %[[multiply_326:[^ ]+]] = u64[1]{0} multiply(u64[1]{0} %[[convert_323]], u64[1]{0} %[[broadcast_325]])
+// CHECK-NEXT:  %[[broadcast_325:[^ ]+]] = u64[1]{0} broadcast(%[[constant_324]]), dimensions={}
+// CHECK-NEXT:  %[[multiply_326:[^ ]+]] = u64[1]{0} multiply(%[[convert_323]], %[[broadcast_325]])
 // CHECK-NEXT:  %[[constant_328:[^ ]+]] = u64[] constant(32)
-// CHECK-NEXT:  %[[broadcast_329:[^ ]+]] = u64[1]{0} broadcast(u64[] %[[constant_328]]), dimensions={}
-// CHECK-NEXT:  %[[shift_right_logical_330:[^ ]+]] = u64[1]{0} shift-right-logical(u64[1]{0} %[[multiply_326]], u64[1]{0} %[[broadcast_329]])
-// CHECK-NEXT:  %[[convert_331:[^ ]+]] = u32[1]{0} convert(u64[1]{0} %[[shift_right_logical_330]])
+// CHECK-NEXT:  %[[broadcast_329:[^ ]+]] = u64[1]{0} broadcast(%[[constant_328]]), dimensions={}
+// CHECK-NEXT:  %[[shift_right_logical_330:[^ ]+]] = u64[1]{0} shift-right-logical(%[[multiply_326]], %[[broadcast_329]])
+// CHECK-NEXT:  %[[convert_331:[^ ]+]] = u32[1]{0} convert(%[[shift_right_logical_330]])
 // CHECK-NEXT:  %[[constant_263:[^ ]+]] = u64[] constant(32)
-// CHECK-NEXT:  %[[broadcast_264:[^ ]+]] = u64[1]{0} broadcast(u64[] %[[constant_263]]), dimensions={}
-// CHECK-NEXT:  %[[shift_right_logical_265:[^ ]+]] = u64[1]{0} shift-right-logical(u64[1]{0} %[[multiply_261]], u64[1]{0} %[[broadcast_264]])
-// CHECK-NEXT:  %[[convert_266:[^ ]+]] = u32[1]{0} convert(u64[1]{0} %[[shift_right_logical_265]])
-// CHECK-NEXT:  %[[convert_234:[^ ]+]] = u32[1]{0} convert(u64[1]{0} %[[multiply_233]])
-// CHECK-NEXT:  %[[xor_279:[^ ]+]] = u32[1]{0} xor(u32[1]{0} %[[convert_266]], u32[1]{0} %[[convert_234]])
-// CHECK-NEXT:  %[[broadcast_280:[^ ]+]] = u32[1]{0} broadcast(u32[] %[[add_257]]), dimensions={}
-// CHECK-NEXT:  %[[xor_281:[^ ]+]] = u32[1]{0} xor(u32[1]{0} %[[xor_279]], u32[1]{0} %[[broadcast_280]])
-// CHECK-NEXT:  %[[convert_295:[^ ]+]] = u64[1]{0} convert(u32[1]{0} %[[xor_281]])
+// CHECK-NEXT:  %[[broadcast_264:[^ ]+]] = u64[1]{0} broadcast(%[[constant_263]]), dimensions={}
+// CHECK-NEXT:  %[[shift_right_logical_265:[^ ]+]] = u64[1]{0} shift-right-logical(%[[multiply_261]], %[[broadcast_264]])
+// CHECK-NEXT:  %[[convert_266:[^ ]+]] = u32[1]{0} convert(%[[shift_right_logical_265]])
+// CHECK-NEXT:  %[[convert_234:[^ ]+]] = u32[1]{0} convert(%[[multiply_233]])
+// CHECK-NEXT:  %[[xor_279:[^ ]+]] = u32[1]{0} xor(%[[convert_266]], %[[convert_234]])
+// CHECK-NEXT:  %[[broadcast_280:[^ ]+]] = u32[1]{0} broadcast(%[[add_257]]), dimensions={}
+// CHECK-NEXT:  %[[xor_281:[^ ]+]] = u32[1]{0} xor(%[[xor_279]], %[[broadcast_280]])
+// CHECK-NEXT:  %[[convert_295:[^ ]+]] = u64[1]{0} convert(%[[xor_281]])
 // CHECK-NEXT:  %[[constant_296:[^ ]+]] = u64[] constant(3449720151)
-// CHECK-NEXT:  %[[broadcast_297:[^ ]+]] = u64[1]{0} broadcast(u64[] %[[constant_296]]), dimensions={}
-// CHECK-NEXT:  %[[multiply_298:[^ ]+]] = u64[1]{0} multiply(u64[1]{0} %[[convert_295]], u64[1]{0} %[[broadcast_297]])
-// CHECK-NEXT:  %[[convert_299:[^ ]+]] = u32[1]{0} convert(u64[1]{0} %[[multiply_298]])
-// CHECK-NEXT:  %[[xor_332:[^ ]+]] = u32[1]{0} xor(u32[1]{0} %[[convert_331]], u32[1]{0} %[[convert_299]])
-// CHECK-NEXT:  %[[broadcast_333:[^ ]+]] = u32[1]{0} broadcast(u32[] %[[add_311]]), dimensions={}
-// CHECK-NEXT:  %[[xor_334:[^ ]+]] = u32[1]{0} xor(u32[1]{0} %[[xor_332]], u32[1]{0} %[[broadcast_333]])
-// CHECK-NEXT:  %[[reshape_342:[^ ]+]] = u32[1,1]{1,0} reshape(u32[1]{0} %[[xor_334]])
-// CHECK-NEXT:  %[[convert_327:[^ ]+]] = u32[1]{0} convert(u64[1]{0} %[[multiply_326]])
-// CHECK-NEXT:  %[[reshape_343:[^ ]+]] = u32[1,1]{1,0} reshape(u32[1]{0} %[[convert_327]])
+// CHECK-NEXT:  %[[broadcast_297:[^ ]+]] = u64[1]{0} broadcast(%[[constant_296]]), dimensions={}
+// CHECK-NEXT:  %[[multiply_298:[^ ]+]] = u64[1]{0} multiply(%[[convert_295]], %[[broadcast_297]])
+// CHECK-NEXT:  %[[convert_299:[^ ]+]] = u32[1]{0} convert(%[[multiply_298]])
+// CHECK-NEXT:  %[[xor_332:[^ ]+]] = u32[1]{0} xor(%[[convert_331]], %[[convert_299]])
+// CHECK-NEXT:  %[[broadcast_333:[^ ]+]] = u32[1]{0} broadcast(%[[add_311]]), dimensions={}
+// CHECK-NEXT:  %[[xor_334:[^ ]+]] = u32[1]{0} xor(%[[xor_332]], %[[broadcast_333]])
+// CHECK-NEXT:  %[[reshape_342:[^ ]+]] = u32[1,1]{1,0} reshape(%[[xor_334]])
+// CHECK-NEXT:  %[[convert_327:[^ ]+]] = u32[1]{0} convert(%[[multiply_326]])
+// CHECK-NEXT:  %[[reshape_343:[^ ]+]] = u32[1,1]{1,0} reshape(%[[convert_327]])
 // CHECK-NEXT:  %[[constant_300:[^ ]+]] = u64[] constant(32)
-// CHECK-NEXT:  %[[broadcast_301:[^ ]+]] = u64[1]{0} broadcast(u64[] %[[constant_300]]), dimensions={}
-// CHECK-NEXT:  %[[shift_right_logical_302:[^ ]+]] = u64[1]{0} shift-right-logical(u64[1]{0} %[[multiply_298]], u64[1]{0} %[[broadcast_301]])
-// CHECK-NEXT:  %[[convert_303:[^ ]+]] = u32[1]{0} convert(u64[1]{0} %[[shift_right_logical_302]])
-// CHECK-NEXT:  %[[convert_271:[^ ]+]] = u32[1]{0} convert(u64[1]{0} %[[multiply_270]])
-// CHECK-NEXT:  %[[xor_304:[^ ]+]] = u32[1]{0} xor(u32[1]{0} %[[convert_303]], u32[1]{0} %[[convert_271]])
-// CHECK-NEXT:  %[[broadcast_305:[^ ]+]] = u32[1]{0} broadcast(u32[] %[[add_283]]), dimensions={}
-// CHECK-NEXT:  %[[xor_306:[^ ]+]] = u32[1]{0} xor(u32[1]{0} %[[xor_304]], u32[1]{0} %[[broadcast_305]])
-// CHECK-NEXT:  %[[convert_314:[^ ]+]] = u64[1]{0} convert(u32[1]{0} %[[xor_306]])
+// CHECK-NEXT:  %[[broadcast_301:[^ ]+]] = u64[1]{0} broadcast(%[[constant_300]]), dimensions={}
+// CHECK-NEXT:  %[[shift_right_logical_302:[^ ]+]] = u64[1]{0} shift-right-logical(%[[multiply_298]], %[[broadcast_301]])
+// CHECK-NEXT:  %[[convert_303:[^ ]+]] = u32[1]{0} convert(%[[shift_right_logical_302]])
+// CHECK-NEXT:  %[[convert_271:[^ ]+]] = u32[1]{0} convert(%[[multiply_270]])
+// CHECK-NEXT:  %[[xor_304:[^ ]+]] = u32[1]{0} xor(%[[convert_303]], %[[convert_271]])
+// CHECK-NEXT:  %[[broadcast_305:[^ ]+]] = u32[1]{0} broadcast(%[[add_283]]), dimensions={}
+// CHECK-NEXT:  %[[xor_306:[^ ]+]] = u32[1]{0} xor(%[[xor_304]], %[[broadcast_305]])
+// CHECK-NEXT:  %[[convert_314:[^ ]+]] = u64[1]{0} convert(%[[xor_306]])
 // CHECK-NEXT:  %[[constant_315:[^ ]+]] = u64[] constant(3528531795)
-// CHECK-NEXT:  %[[broadcast_316:[^ ]+]] = u64[1]{0} broadcast(u64[] %[[constant_315]]), dimensions={}
-// CHECK-NEXT:  %[[multiply_317:[^ ]+]] = u64[1]{0} multiply(u64[1]{0} %[[convert_314]], u64[1]{0} %[[broadcast_316]])
+// CHECK-NEXT:  %[[broadcast_316:[^ ]+]] = u64[1]{0} broadcast(%[[constant_315]]), dimensions={}
+// CHECK-NEXT:  %[[multiply_317:[^ ]+]] = u64[1]{0} multiply(%[[convert_314]], %[[broadcast_316]])
 // CHECK-NEXT:  %[[constant_319:[^ ]+]] = u64[] constant(32)
-// CHECK-NEXT:  %[[broadcast_320:[^ ]+]] = u64[1]{0} broadcast(u64[] %[[constant_319]]), dimensions={}
-// CHECK-NEXT:  %[[shift_right_logical_321:[^ ]+]] = u64[1]{0} shift-right-logical(u64[1]{0} %[[multiply_317]], u64[1]{0} %[[broadcast_320]])
-// CHECK-NEXT:  %[[convert_322:[^ ]+]] = u32[1]{0} convert(u64[1]{0} %[[shift_right_logical_321]])
-// CHECK-NEXT:  %[[convert_290:[^ ]+]] = u32[1]{0} convert(u64[1]{0} %[[multiply_289]])
-// CHECK-NEXT:  %[[xor_335:[^ ]+]] = u32[1]{0} xor(u32[1]{0} %[[convert_322]], u32[1]{0} %[[convert_290]])
-// CHECK-NEXT:  %[[broadcast_336:[^ ]+]] = u32[1]{0} broadcast(u32[] %[[add_313]]), dimensions={}
-// CHECK-NEXT:  %[[xor_337:[^ ]+]] = u32[1]{0} xor(u32[1]{0} %[[xor_335]], u32[1]{0} %[[broadcast_336]])
-// CHECK-NEXT:  %[[reshape_344:[^ ]+]] = u32[1,1]{1,0} reshape(u32[1]{0} %[[xor_337]])
-// CHECK-NEXT:  %[[convert_318:[^ ]+]] = u32[1]{0} convert(u64[1]{0} %[[multiply_317]])
-// CHECK-NEXT:  %[[reshape_345:[^ ]+]] = u32[1,1]{1,0} reshape(u32[1]{0} %[[convert_318]])
-// CHECK-NEXT:  %[[concatenate_346:[^ ]+]] = u32[1,4]{1,0} concatenate(u32[1,1]{1,0} %[[reshape_342]], u32[1,1]{1,0} %[[reshape_343]], u32[1,1]{1,0} %[[reshape_344]], u32[1,1]{1,0} %[[reshape_345]]), dimensions={1}
-// CHECK-NEXT:  %[[reshape_347:[^ ]+]] = u32[4]{0} reshape(u32[1,4]{1,0} %[[concatenate_346]])
-// CHECK-NEXT:  %[[slice_348:[^ ]+]] = u32[1]{0} slice(u32[4]{0} %[[reshape_347]]), slice={[0:1]}
-// CHECK-NEXT:  %[[reshape_349:[^ ]+]] = u32[] reshape(u32[1]{0} %[[slice_348]])
+// CHECK-NEXT:  %[[broadcast_320:[^ ]+]] = u64[1]{0} broadcast(%[[constant_319]]), dimensions={}
+// CHECK-NEXT:  %[[shift_right_logical_321:[^ ]+]] = u64[1]{0} shift-right-logical(%[[multiply_317]], %[[broadcast_320]])
+// CHECK-NEXT:  %[[convert_322:[^ ]+]] = u32[1]{0} convert(%[[shift_right_logical_321]])
+// CHECK-NEXT:  %[[convert_290:[^ ]+]] = u32[1]{0} convert(%[[multiply_289]])
+// CHECK-NEXT:  %[[xor_335:[^ ]+]] = u32[1]{0} xor(%[[convert_322]], %[[convert_290]])
+// CHECK-NEXT:  %[[broadcast_336:[^ ]+]] = u32[1]{0} broadcast(%[[add_313]]), dimensions={}
+// CHECK-NEXT:  %[[xor_337:[^ ]+]] = u32[1]{0} xor(%[[xor_335]], %[[broadcast_336]])
+// CHECK-NEXT:  %[[reshape_344:[^ ]+]] = u32[1,1]{1,0} reshape(%[[xor_337]])
+// CHECK-NEXT:  %[[convert_318:[^ ]+]] = u32[1]{0} convert(%[[multiply_317]])
+// CHECK-NEXT:  %[[reshape_345:[^ ]+]] = u32[1,1]{1,0} reshape(%[[convert_318]])
+// CHECK-NEXT:  %[[concatenate_346:[^ ]+]] = u32[1,4]{1,0} concatenate(%[[reshape_342]], %[[reshape_343]], %[[reshape_344]], %[[reshape_345]]), dimensions={1}
+// CHECK-NEXT:  %[[reshape_347:[^ ]+]] = u32[4]{0} reshape(%[[concatenate_346]])
+// CHECK-NEXT:  %[[slice_348:[^ ]+]] = u32[1]{0} slice(%[[reshape_347]]), slice={[0:1]}
+// CHECK-NEXT:  %[[reshape_349:[^ ]+]] = u32[] reshape(%[[slice_348]])
 // CHECK-NEXT:  %[[constant_350:[^ ]+]] = u32[] constant(9)
-// CHECK-NEXT:  %[[shift_right_logical_351:[^ ]+]] = u32[] shift-right-logical(u32[] %[[reshape_349]], u32[] %[[constant_350]])
-// CHECK-NEXT:  %[[convert_352:[^ ]+]] = f32[] convert(u32[] %[[shift_right_logical_351]])
+// CHECK-NEXT:  %[[shift_right_logical_351:[^ ]+]] = u32[] shift-right-logical(%[[reshape_349]], %[[constant_350]])
+// CHECK-NEXT:  %[[convert_352:[^ ]+]] = f32[] convert(%[[shift_right_logical_351]])
 // CHECK-NEXT:  %[[constant_353:[^ ]+]] = f32[] constant(1.1920929e-07)
-// CHECK-NEXT:  %[[multiply_354:[^ ]+]] = f32[] multiply(f32[] %[[convert_352]], f32[] %[[constant_353]])
+// CHECK-NEXT:  %[[multiply_354:[^ ]+]] = f32[] multiply(%[[convert_352]], %[[constant_353]])
 // CHECK-NEXT:  %[[b_or_sigma_4:[^ ]+]] = f32[] parameter(3)
 // CHECK-NEXT:  %[[a_or_mean_3:[^ ]+]] = f32[] parameter(2)
-// CHECK-NEXT:  %[[subtract_355:[^ ]+]] = f32[] subtract(f32[] %[[b_or_sigma_4]], f32[] %[[a_or_mean_3]])
-// CHECK-NEXT:  %[[multiply_356:[^ ]+]] = f32[] multiply(f32[] %[[multiply_354]], f32[] %[[subtract_355]])
-// CHECK-NEXT:  ROOT %[[add_357:[^ ]+]] = f32[] add(f32[] %[[multiply_356]], f32[] %[[a_or_mean_3]])
+// CHECK-NEXT:  %[[subtract_355:[^ ]+]] = f32[] subtract(%[[b_or_sigma_4]], %[[a_or_mean_3]])
+// CHECK-NEXT:  %[[multiply_356:[^ ]+]] = f32[] multiply(%[[multiply_354]], %[[subtract_355]])
+// CHECK-NEXT:  ROOT %[[add_357:[^ ]+]] = f32[] add(%[[multiply_356]], %[[a_or_mean_3]])
 
 // CHECK-LABEL: ENTRY %test_uniform
 // CHECK-NEXT:  %[[shape:[^ ]+]] = u64[3]{0} constant({2, 4, 8})
@@ -368,7 +368,7 @@
 // CHECK-NEXT:  %[[rng_get_and_update_state:[^ ]+]] = u64[2]{0} rng-get-and-update-state(), delta=1
 // CHECK-NEXT:  %[[min:[^ ]+]] = f32[] constant(0)
 // CHECK-NEXT:  %[[max:[^ ]+]] = f32[] constant(1)
-// CHECK-NEXT:  ROOT %[[call:[^ ]+]] = f32[] call(u64[] %[[constant]], u64[2]{0} %[[rng_get_and_update_state]], f32[] %[[min]], f32[] %[[max]]), to_apply=%[[$rng_358]]
+// CHECK-NEXT:  ROOT %[[call:[^ ]+]] = f32[] call(%[[constant]], %[[rng_get_and_update_state]], %[[min]], %[[max]]), to_apply=%[[$rng_358]]
 
 HloModule TestUniformDistribution
 
@@ -385,388 +385,388 @@ ENTRY test_uniform {
 
 // CHECK:       %[[$rng_384:[^ ]+]]
 // CHECK-NEXT:  %[[state_2:[^ ]+]] = u64[2]{0} parameter(1)
-// CHECK-NEXT:  %[[slice_11:[^ ]+]] = u64[1]{0} slice(u64[2]{0} %[[state_2]]), slice={[0:1]}
-// CHECK-NEXT:  %[[reshape_12:[^ ]+]] = u64[] reshape(u64[1]{0} %[[slice_11]])
-// CHECK-NEXT:  %[[convert_16:[^ ]+]] = u32[] convert(u64[] %[[reshape_12]])
-// CHECK-NEXT:  %[[convert_24:[^ ]+]] = u64[] convert(u32[] %[[convert_16]])
+// CHECK-NEXT:  %[[slice_11:[^ ]+]] = u64[1]{0} slice(%[[state_2]]), slice={[0:1]}
+// CHECK-NEXT:  %[[reshape_12:[^ ]+]] = u64[] reshape(%[[slice_11]])
+// CHECK-NEXT:  %[[convert_16:[^ ]+]] = u32[] convert(%[[reshape_12]])
+// CHECK-NEXT:  %[[convert_24:[^ ]+]] = u64[] convert(%[[convert_16]])
 // CHECK-NEXT:  %[[constant_15:[^ ]+]] = u64[] constant(32)
-// CHECK-NEXT:  %[[shift_right_logical_17:[^ ]+]] = u64[] shift-right-logical(u64[] %[[reshape_12]], u64[] %[[constant_15]])
-// CHECK-NEXT:  %[[convert_18:[^ ]+]] = u32[] convert(u64[] %[[shift_right_logical_17]])
-// CHECK-NEXT:  %[[convert_25:[^ ]+]] = u64[] convert(u32[] %[[convert_18]])
+// CHECK-NEXT:  %[[shift_right_logical_17:[^ ]+]] = u64[] shift-right-logical(%[[reshape_12]], %[[constant_15]])
+// CHECK-NEXT:  %[[convert_18:[^ ]+]] = u32[] convert(%[[shift_right_logical_17]])
+// CHECK-NEXT:  %[[convert_25:[^ ]+]] = u64[] convert(%[[convert_18]])
 // CHECK-NEXT:  %[[constant_26:[^ ]+]] = u64[] constant(32)
-// CHECK-NEXT:  %[[shift_left_27:[^ ]+]] = u64[] shift-left(u64[] %[[convert_25]], u64[] %[[constant_26]])
-// CHECK-NEXT:  %[[or_28:[^ ]+]] = u64[] or(u64[] %[[convert_24]], u64[] %[[shift_left_27]])
+// CHECK-NEXT:  %[[shift_left_27:[^ ]+]] = u64[] shift-left(%[[convert_25]], %[[constant_26]])
+// CHECK-NEXT:  %[[or_28:[^ ]+]] = u64[] or(%[[convert_24]], %[[shift_left_27]])
 // CHECK-NEXT:  %[[constant_53:[^ ]+]] = u64[] constant(1)
-// CHECK-NEXT:  %[[add_54:[^ ]+]] = u64[] add(u64[] %[[or_28]], u64[] %[[constant_53]])
-// CHECK-NEXT:  %[[reshape_61:[^ ]+]] = u64[1]{0} reshape(u64[] %[[add_54]])
-// CHECK-NEXT:  %[[compare_56:[^ ]+]] = pred[] compare(u64[] %[[add_54]], u64[] %[[or_28]]), direction=LT
-// CHECK-NEXT:  %[[slice_13:[^ ]+]] = u64[1]{0} slice(u64[2]{0} %[[state_2]]), slice={[1:2]}
-// CHECK-NEXT:  %[[reshape_14:[^ ]+]] = u64[] reshape(u64[1]{0} %[[slice_13]])
-// CHECK-NEXT:  %[[convert_20:[^ ]+]] = u32[] convert(u64[] %[[reshape_14]])
-// CHECK-NEXT:  %[[convert_29:[^ ]+]] = u64[] convert(u32[] %[[convert_20]])
+// CHECK-NEXT:  %[[add_54:[^ ]+]] = u64[] add(%[[or_28]], %[[constant_53]])
+// CHECK-NEXT:  %[[reshape_61:[^ ]+]] = u64[1]{0} reshape(%[[add_54]])
+// CHECK-NEXT:  %[[compare_56:[^ ]+]] = pred[] compare(%[[add_54]], %[[or_28]]), direction=LT
+// CHECK-NEXT:  %[[slice_13:[^ ]+]] = u64[1]{0} slice(%[[state_2]]), slice={[1:2]}
+// CHECK-NEXT:  %[[reshape_14:[^ ]+]] = u64[] reshape(%[[slice_13]])
+// CHECK-NEXT:  %[[convert_20:[^ ]+]] = u32[] convert(%[[reshape_14]])
+// CHECK-NEXT:  %[[convert_29:[^ ]+]] = u64[] convert(%[[convert_20]])
 // CHECK-NEXT:  %[[constant_19:[^ ]+]] = u64[] constant(32)
-// CHECK-NEXT:  %[[shift_right_logical_21:[^ ]+]] = u64[] shift-right-logical(u64[] %[[reshape_14]], u64[] %[[constant_19]])
-// CHECK-NEXT:  %[[convert_22:[^ ]+]] = u32[] convert(u64[] %[[shift_right_logical_21]])
-// CHECK-NEXT:  %[[convert_30:[^ ]+]] = u64[] convert(u32[] %[[convert_22]])
+// CHECK-NEXT:  %[[shift_right_logical_21:[^ ]+]] = u64[] shift-right-logical(%[[reshape_14]], %[[constant_19]])
+// CHECK-NEXT:  %[[convert_22:[^ ]+]] = u32[] convert(%[[shift_right_logical_21]])
+// CHECK-NEXT:  %[[convert_30:[^ ]+]] = u64[] convert(%[[convert_22]])
 // CHECK-NEXT:  %[[constant_31:[^ ]+]] = u64[] constant(32)
-// CHECK-NEXT:  %[[shift_left_32:[^ ]+]] = u64[] shift-left(u64[] %[[convert_30]], u64[] %[[constant_31]])
-// CHECK-NEXT:  %[[or_33:[^ ]+]] = u64[] or(u64[] %[[convert_29]], u64[] %[[shift_left_32]])
+// CHECK-NEXT:  %[[shift_left_32:[^ ]+]] = u64[] shift-left(%[[convert_30]], %[[constant_31]])
+// CHECK-NEXT:  %[[or_33:[^ ]+]] = u64[] or(%[[convert_29]], %[[shift_left_32]])
 // CHECK-NEXT:  %[[constant_55:[^ ]+]] = u64[] constant(1)
-// CHECK-NEXT:  %[[add_57:[^ ]+]] = u64[] add(u64[] %[[or_33]], u64[] %[[constant_55]])
-// CHECK-NEXT:  %[[broadcast_58:[^ ]+]] = u64[] broadcast(u64[] %[[add_57]]), dimensions={}
-// CHECK-NEXT:  %[[broadcast_59:[^ ]+]] = u64[] broadcast(u64[] %[[or_33]]), dimensions={}
-// CHECK-NEXT:  %[[select_60:[^ ]+]] = u64[] select(pred[] %[[compare_56]], u64[] %[[broadcast_58]], u64[] %[[broadcast_59]])
-// CHECK-NEXT:  %[[reshape_62:[^ ]+]] = u64[1]{0} reshape(u64[] %[[select_60]])
-// CHECK-NEXT:  %[[concatenate_63:[^ ]+]] = u64[2]{0} concatenate(u64[1]{0} %[[reshape_61]], u64[1]{0} %[[reshape_62]]), dimensions={0}
+// CHECK-NEXT:  %[[add_57:[^ ]+]] = u64[] add(%[[or_33]], %[[constant_55]])
+// CHECK-NEXT:  %[[broadcast_58:[^ ]+]] = u64[] broadcast(%[[add_57]]), dimensions={}
+// CHECK-NEXT:  %[[broadcast_59:[^ ]+]] = u64[] broadcast(%[[or_33]]), dimensions={}
+// CHECK-NEXT:  %[[select_60:[^ ]+]] = u64[] select(%[[compare_56]], %[[broadcast_58]], %[[broadcast_59]])
+// CHECK-NEXT:  %[[reshape_62:[^ ]+]] = u64[1]{0} reshape(%[[select_60]])
+// CHECK-NEXT:  %[[concatenate_63:[^ ]+]] = u64[2]{0} concatenate(%[[reshape_61]], %[[reshape_62]]), dimensions={0}
 // CHECK-NEXT:  %[[key_1:[^ ]+]] = u64[] parameter(0)
-// CHECK-NEXT:  %[[convert_8:[^ ]+]] = u32[] convert(u64[] %[[key_1]])
+// CHECK-NEXT:  %[[convert_8:[^ ]+]] = u32[] convert(%[[key_1]])
 // CHECK-NEXT:  %[[constant_88:[^ ]+]] = u32[] constant(2654435769)
-// CHECK-NEXT:  %[[add_89:[^ ]+]] = u32[] add(u32[] %[[convert_8]], u32[] %[[constant_88]])
+// CHECK-NEXT:  %[[add_89:[^ ]+]] = u32[] add(%[[convert_8]], %[[constant_88]])
 // CHECK-NEXT:  %[[constant_116:[^ ]+]] = u32[] constant(2654435769)
-// CHECK-NEXT:  %[[add_117:[^ ]+]] = u32[] add(u32[] %[[add_89]], u32[] %[[constant_116]])
+// CHECK-NEXT:  %[[add_117:[^ ]+]] = u32[] add(%[[add_89]], %[[constant_116]])
 // CHECK-NEXT:  %[[constant_144:[^ ]+]] = u32[] constant(2654435769)
-// CHECK-NEXT:  %[[add_145:[^ ]+]] = u32[] add(u32[] %[[add_117]], u32[] %[[constant_144]])
+// CHECK-NEXT:  %[[add_145:[^ ]+]] = u32[] add(%[[add_117]], %[[constant_144]])
 // CHECK-NEXT:  %[[constant_172:[^ ]+]] = u32[] constant(2654435769)
-// CHECK-NEXT:  %[[add_173:[^ ]+]] = u32[] add(u32[] %[[add_145]], u32[] %[[constant_172]])
+// CHECK-NEXT:  %[[add_173:[^ ]+]] = u32[] add(%[[add_145]], %[[constant_172]])
 // CHECK-NEXT:  %[[constant_200:[^ ]+]] = u32[] constant(2654435769)
-// CHECK-NEXT:  %[[add_201:[^ ]+]] = u32[] add(u32[] %[[add_173]], u32[] %[[constant_200]])
+// CHECK-NEXT:  %[[add_201:[^ ]+]] = u32[] add(%[[add_173]], %[[constant_200]])
 // CHECK-NEXT:  %[[constant_228:[^ ]+]] = u32[] constant(2654435769)
-// CHECK-NEXT:  %[[add_229:[^ ]+]] = u32[] add(u32[] %[[add_201]], u32[] %[[constant_228]])
+// CHECK-NEXT:  %[[add_229:[^ ]+]] = u32[] add(%[[add_201]], %[[constant_228]])
 // CHECK-NEXT:  %[[constant_256:[^ ]+]] = u32[] constant(2654435769)
-// CHECK-NEXT:  %[[add_257:[^ ]+]] = u32[] add(u32[] %[[add_229]], u32[] %[[constant_256]])
+// CHECK-NEXT:  %[[add_257:[^ ]+]] = u32[] add(%[[add_229]], %[[constant_256]])
 // CHECK-NEXT:  %[[constant_284:[^ ]+]] = u32[] constant(2654435769)
-// CHECK-NEXT:  %[[add_285:[^ ]+]] = u32[] add(u32[] %[[add_257]], u32[] %[[constant_284]])
+// CHECK-NEXT:  %[[add_285:[^ ]+]] = u32[] add(%[[add_257]], %[[constant_284]])
 // CHECK-NEXT:  %[[constant_312:[^ ]+]] = u32[] constant(2654435769)
-// CHECK-NEXT:  %[[add_313:[^ ]+]] = u32[] add(u32[] %[[add_285]], u32[] %[[constant_312]])
+// CHECK-NEXT:  %[[add_313:[^ ]+]] = u32[] add(%[[add_285]], %[[constant_312]])
 // CHECK-NEXT:  %[[constant_340:[^ ]+]] = u32[] constant(2654435769)
-// CHECK-NEXT:  %[[add_341:[^ ]+]] = u32[] add(u32[] %[[add_313]], u32[] %[[constant_340]])
+// CHECK-NEXT:  %[[add_341:[^ ]+]] = u32[] add(%[[add_313]], %[[constant_340]])
 // CHECK-NEXT:  %[[constant_7:[^ ]+]] = u64[] constant(32)
-// CHECK-NEXT:  %[[shift_right_logical_9:[^ ]+]] = u64[] shift-right-logical(u64[] %[[key_1]], u64[] %[[constant_7]])
-// CHECK-NEXT:  %[[convert_10:[^ ]+]] = u32[] convert(u64[] %[[shift_right_logical_9]])
+// CHECK-NEXT:  %[[shift_right_logical_9:[^ ]+]] = u64[] shift-right-logical(%[[key_1]], %[[constant_7]])
+// CHECK-NEXT:  %[[convert_10:[^ ]+]] = u32[] convert(%[[shift_right_logical_9]])
 // CHECK-NEXT:  %[[constant_90:[^ ]+]] = u32[] constant(3144134277)
-// CHECK-NEXT:  %[[add_91:[^ ]+]] = u32[] add(u32[] %[[convert_10]], u32[] %[[constant_90]])
+// CHECK-NEXT:  %[[add_91:[^ ]+]] = u32[] add(%[[convert_10]], %[[constant_90]])
 // CHECK-NEXT:  %[[constant_118:[^ ]+]] = u32[] constant(3144134277)
-// CHECK-NEXT:  %[[add_119:[^ ]+]] = u32[] add(u32[] %[[add_91]], u32[] %[[constant_118]])
+// CHECK-NEXT:  %[[add_119:[^ ]+]] = u32[] add(%[[add_91]], %[[constant_118]])
 // CHECK-NEXT:  %[[constant_146:[^ ]+]] = u32[] constant(3144134277)
-// CHECK-NEXT:  %[[add_147:[^ ]+]] = u32[] add(u32[] %[[add_119]], u32[] %[[constant_146]])
+// CHECK-NEXT:  %[[add_147:[^ ]+]] = u32[] add(%[[add_119]], %[[constant_146]])
 // CHECK-NEXT:  %[[constant_174:[^ ]+]] = u32[] constant(3144134277)
-// CHECK-NEXT:  %[[add_175:[^ ]+]] = u32[] add(u32[] %[[add_147]], u32[] %[[constant_174]])
+// CHECK-NEXT:  %[[add_175:[^ ]+]] = u32[] add(%[[add_147]], %[[constant_174]])
 // CHECK-NEXT:  %[[constant_202:[^ ]+]] = u32[] constant(3144134277)
-// CHECK-NEXT:  %[[add_203:[^ ]+]] = u32[] add(u32[] %[[add_175]], u32[] %[[constant_202]])
+// CHECK-NEXT:  %[[add_203:[^ ]+]] = u32[] add(%[[add_175]], %[[constant_202]])
 // CHECK-NEXT:  %[[constant_230:[^ ]+]] = u32[] constant(3144134277)
-// CHECK-NEXT:  %[[add_231:[^ ]+]] = u32[] add(u32[] %[[add_203]], u32[] %[[constant_230]])
+// CHECK-NEXT:  %[[add_231:[^ ]+]] = u32[] add(%[[add_203]], %[[constant_230]])
 // CHECK-NEXT:  %[[constant_258:[^ ]+]] = u32[] constant(3144134277)
-// CHECK-NEXT:  %[[add_259:[^ ]+]] = u32[] add(u32[] %[[add_231]], u32[] %[[constant_258]])
+// CHECK-NEXT:  %[[add_259:[^ ]+]] = u32[] add(%[[add_231]], %[[constant_258]])
 // CHECK-NEXT:  %[[constant_286:[^ ]+]] = u32[] constant(3144134277)
-// CHECK-NEXT:  %[[add_287:[^ ]+]] = u32[] add(u32[] %[[add_259]], u32[] %[[constant_286]])
+// CHECK-NEXT:  %[[add_287:[^ ]+]] = u32[] add(%[[add_259]], %[[constant_286]])
 // CHECK-NEXT:  %[[constant_314:[^ ]+]] = u32[] constant(3144134277)
-// CHECK-NEXT:  %[[add_315:[^ ]+]] = u32[] add(u32[] %[[add_287]], u32[] %[[constant_314]])
+// CHECK-NEXT:  %[[add_315:[^ ]+]] = u32[] add(%[[add_287]], %[[constant_314]])
 // CHECK-NEXT:  %[[constant_342:[^ ]+]] = u32[] constant(3144134277)
-// CHECK-NEXT:  %[[add_343:[^ ]+]] = u32[] add(u32[] %[[add_315]], u32[] %[[constant_342]])
+// CHECK-NEXT:  %[[add_343:[^ ]+]] = u32[] add(%[[add_315]], %[[constant_342]])
 // CHECK-NEXT:  %[[constant_369:[^ ]+]] = f32[] constant(6.28318548)
-// CHECK-NEXT:  %[[broadcast_370:[^ ]+]] = f32[1]{0} broadcast(f32[] %[[constant_369]]), dimensions={}
-// CHECK-NEXT:  %[[broadcast_34:[^ ]+]] = u64[1]{0} broadcast(u64[] %[[or_28]]), dimensions={}
+// CHECK-NEXT:  %[[broadcast_370:[^ ]+]] = f32[1]{0} broadcast(%[[constant_369]]), dimensions={}
+// CHECK-NEXT:  %[[broadcast_34:[^ ]+]] = u64[1]{0} broadcast(%[[or_28]]), dimensions={}
 // CHECK-NEXT:  %[[iota_23:[^ ]+]] = u64[1]{0} iota(), iota_dimension=0
-// CHECK-NEXT:  %[[add_35:[^ ]+]] = u64[1]{0} add(u64[1]{0} %[[broadcast_34]], u64[1]{0} %[[iota_23]])
-// CHECK-NEXT:  %[[convert_44:[^ ]+]] = u32[1]{0} convert(u64[1]{0} %[[add_35]])
-// CHECK-NEXT:  %[[convert_64:[^ ]+]] = u64[1]{0} convert(u32[1]{0} %[[convert_44]])
+// CHECK-NEXT:  %[[add_35:[^ ]+]] = u64[1]{0} add(%[[broadcast_34]], %[[iota_23]])
+// CHECK-NEXT:  %[[convert_44:[^ ]+]] = u32[1]{0} convert(%[[add_35]])
+// CHECK-NEXT:  %[[convert_64:[^ ]+]] = u64[1]{0} convert(%[[convert_44]])
 // CHECK-NEXT:  %[[constant_65:[^ ]+]] = u64[] constant(3528531795)
-// CHECK-NEXT:  %[[broadcast_66:[^ ]+]] = u64[1]{0} broadcast(u64[] %[[constant_65]]), dimensions={}
-// CHECK-NEXT:  %[[multiply_67:[^ ]+]] = u64[1]{0} multiply(u64[1]{0} %[[convert_64]], u64[1]{0} %[[broadcast_66]])
+// CHECK-NEXT:  %[[broadcast_66:[^ ]+]] = u64[1]{0} broadcast(%[[constant_65]]), dimensions={}
+// CHECK-NEXT:  %[[multiply_67:[^ ]+]] = u64[1]{0} multiply(%[[convert_64]], %[[broadcast_66]])
 // CHECK-NEXT:  %[[constant_69:[^ ]+]] = u64[] constant(32)
-// CHECK-NEXT:  %[[broadcast_70:[^ ]+]] = u64[1]{0} broadcast(u64[] %[[constant_69]]), dimensions={}
-// CHECK-NEXT:  %[[shift_right_logical_71:[^ ]+]] = u64[1]{0} shift-right-logical(u64[1]{0} %[[multiply_67]], u64[1]{0} %[[broadcast_70]])
-// CHECK-NEXT:  %[[convert_72:[^ ]+]] = u32[1]{0} convert(u64[1]{0} %[[shift_right_logical_71]])
-// CHECK-NEXT:  %[[broadcast_37:[^ ]+]] = u64[1]{0} broadcast(u64[] %[[or_28]]), dimensions={}
-// CHECK-NEXT:  %[[compare_38:[^ ]+]] = pred[1]{0} compare(u64[1]{0} %[[add_35]], u64[1]{0} %[[broadcast_37]]), direction=LT
+// CHECK-NEXT:  %[[broadcast_70:[^ ]+]] = u64[1]{0} broadcast(%[[constant_69]]), dimensions={}
+// CHECK-NEXT:  %[[shift_right_logical_71:[^ ]+]] = u64[1]{0} shift-right-logical(%[[multiply_67]], %[[broadcast_70]])
+// CHECK-NEXT:  %[[convert_72:[^ ]+]] = u32[1]{0} convert(%[[shift_right_logical_71]])
+// CHECK-NEXT:  %[[broadcast_37:[^ ]+]] = u64[1]{0} broadcast(%[[or_28]]), dimensions={}
+// CHECK-NEXT:  %[[compare_38:[^ ]+]] = pred[1]{0} compare(%[[add_35]], %[[broadcast_37]]), direction=LT
 // CHECK-NEXT:  %[[constant_36:[^ ]+]] = u64[] constant(1)
-// CHECK-NEXT:  %[[add_39:[^ ]+]] = u64[] add(u64[] %[[or_33]], u64[] %[[constant_36]])
-// CHECK-NEXT:  %[[broadcast_40:[^ ]+]] = u64[1]{0} broadcast(u64[] %[[add_39]]), dimensions={}
-// CHECK-NEXT:  %[[broadcast_41:[^ ]+]] = u64[1]{0} broadcast(u64[] %[[or_33]]), dimensions={}
-// CHECK-NEXT:  %[[select_42:[^ ]+]] = u64[1]{0} select(pred[1]{0} %[[compare_38]], u64[1]{0} %[[broadcast_40]], u64[1]{0} %[[broadcast_41]])
+// CHECK-NEXT:  %[[add_39:[^ ]+]] = u64[] add(%[[or_33]], %[[constant_36]])
+// CHECK-NEXT:  %[[broadcast_40:[^ ]+]] = u64[1]{0} broadcast(%[[add_39]]), dimensions={}
+// CHECK-NEXT:  %[[broadcast_41:[^ ]+]] = u64[1]{0} broadcast(%[[or_33]]), dimensions={}
+// CHECK-NEXT:  %[[select_42:[^ ]+]] = u64[1]{0} select(%[[compare_38]], %[[broadcast_40]], %[[broadcast_41]])
 // CHECK-NEXT:  %[[constant_48:[^ ]+]] = u64[] constant(32)
-// CHECK-NEXT:  %[[broadcast_50:[^ ]+]] = u64[1]{0} broadcast(u64[] %[[constant_48]]), dimensions={}
-// CHECK-NEXT:  %[[shift_right_logical_51:[^ ]+]] = u64[1]{0} shift-right-logical(u64[1]{0} %[[select_42]], u64[1]{0} %[[broadcast_50]])
-// CHECK-NEXT:  %[[convert_52:[^ ]+]] = u32[1]{0} convert(u64[1]{0} %[[shift_right_logical_51]])
-// CHECK-NEXT:  %[[xor_85:[^ ]+]] = u32[1]{0} xor(u32[1]{0} %[[convert_72]], u32[1]{0} %[[convert_52]])
-// CHECK-NEXT:  %[[broadcast_86:[^ ]+]] = u32[1]{0} broadcast(u32[] %[[convert_10]]), dimensions={}
-// CHECK-NEXT:  %[[xor_87:[^ ]+]] = u32[1]{0} xor(u32[1]{0} %[[xor_85]], u32[1]{0} %[[broadcast_86]])
-// CHECK-NEXT:  %[[convert_101:[^ ]+]] = u64[1]{0} convert(u32[1]{0} %[[xor_87]])
+// CHECK-NEXT:  %[[broadcast_50:[^ ]+]] = u64[1]{0} broadcast(%[[constant_48]]), dimensions={}
+// CHECK-NEXT:  %[[shift_right_logical_51:[^ ]+]] = u64[1]{0} shift-right-logical(%[[select_42]], %[[broadcast_50]])
+// CHECK-NEXT:  %[[convert_52:[^ ]+]] = u32[1]{0} convert(%[[shift_right_logical_51]])
+// CHECK-NEXT:  %[[xor_85:[^ ]+]] = u32[1]{0} xor(%[[convert_72]], %[[convert_52]])
+// CHECK-NEXT:  %[[broadcast_86:[^ ]+]] = u32[1]{0} broadcast(%[[convert_10]]), dimensions={}
+// CHECK-NEXT:  %[[xor_87:[^ ]+]] = u32[1]{0} xor(%[[xor_85]], %[[broadcast_86]])
+// CHECK-NEXT:  %[[convert_101:[^ ]+]] = u64[1]{0} convert(%[[xor_87]])
 // CHECK-NEXT:  %[[constant_102:[^ ]+]] = u64[] constant(3449720151)
-// CHECK-NEXT:  %[[broadcast_103:[^ ]+]] = u64[1]{0} broadcast(u64[] %[[constant_102]]), dimensions={}
-// CHECK-NEXT:  %[[multiply_104:[^ ]+]] = u64[1]{0} multiply(u64[1]{0} %[[convert_101]], u64[1]{0} %[[broadcast_103]])
+// CHECK-NEXT:  %[[broadcast_103:[^ ]+]] = u64[1]{0} broadcast(%[[constant_102]]), dimensions={}
+// CHECK-NEXT:  %[[multiply_104:[^ ]+]] = u64[1]{0} multiply(%[[convert_101]], %[[broadcast_103]])
 // CHECK-NEXT:  %[[constant_106:[^ ]+]] = u64[] constant(32)
-// CHECK-NEXT:  %[[broadcast_107:[^ ]+]] = u64[1]{0} broadcast(u64[] %[[constant_106]]), dimensions={}
-// CHECK-NEXT:  %[[shift_right_logical_108:[^ ]+]] = u64[1]{0} shift-right-logical(u64[1]{0} %[[multiply_104]], u64[1]{0} %[[broadcast_107]])
-// CHECK-NEXT:  %[[convert_109:[^ ]+]] = u32[1]{0} convert(u64[1]{0} %[[shift_right_logical_108]])
-// CHECK-NEXT:  %[[convert_49:[^ ]+]] = u32[1]{0} convert(u64[1]{0} %[[select_42]])
-// CHECK-NEXT:  %[[convert_73:[^ ]+]] = u64[1]{0} convert(u32[1]{0} %[[convert_49]])
+// CHECK-NEXT:  %[[broadcast_107:[^ ]+]] = u64[1]{0} broadcast(%[[constant_106]]), dimensions={}
+// CHECK-NEXT:  %[[shift_right_logical_108:[^ ]+]] = u64[1]{0} shift-right-logical(%[[multiply_104]], %[[broadcast_107]])
+// CHECK-NEXT:  %[[convert_109:[^ ]+]] = u32[1]{0} convert(%[[shift_right_logical_108]])
+// CHECK-NEXT:  %[[convert_49:[^ ]+]] = u32[1]{0} convert(%[[select_42]])
+// CHECK-NEXT:  %[[convert_73:[^ ]+]] = u64[1]{0} convert(%[[convert_49]])
 // CHECK-NEXT:  %[[constant_74:[^ ]+]] = u64[] constant(3449720151)
-// CHECK-NEXT:  %[[broadcast_75:[^ ]+]] = u64[1]{0} broadcast(u64[] %[[constant_74]]), dimensions={}
-// CHECK-NEXT:  %[[multiply_76:[^ ]+]] = u64[1]{0} multiply(u64[1]{0} %[[convert_73]], u64[1]{0} %[[broadcast_75]])
-// CHECK-NEXT:  %[[convert_77:[^ ]+]] = u32[1]{0} convert(u64[1]{0} %[[multiply_76]])
-// CHECK-NEXT:  %[[xor_110:[^ ]+]] = u32[1]{0} xor(u32[1]{0} %[[convert_109]], u32[1]{0} %[[convert_77]])
-// CHECK-NEXT:  %[[broadcast_111:[^ ]+]] = u32[1]{0} broadcast(u32[] %[[add_89]]), dimensions={}
-// CHECK-NEXT:  %[[xor_112:[^ ]+]] = u32[1]{0} xor(u32[1]{0} %[[xor_110]], u32[1]{0} %[[broadcast_111]])
-// CHECK-NEXT:  %[[convert_120:[^ ]+]] = u64[1]{0} convert(u32[1]{0} %[[xor_112]])
+// CHECK-NEXT:  %[[broadcast_75:[^ ]+]] = u64[1]{0} broadcast(%[[constant_74]]), dimensions={}
+// CHECK-NEXT:  %[[multiply_76:[^ ]+]] = u64[1]{0} multiply(%[[convert_73]], %[[broadcast_75]])
+// CHECK-NEXT:  %[[convert_77:[^ ]+]] = u32[1]{0} convert(%[[multiply_76]])
+// CHECK-NEXT:  %[[xor_110:[^ ]+]] = u32[1]{0} xor(%[[convert_109]], %[[convert_77]])
+// CHECK-NEXT:  %[[broadcast_111:[^ ]+]] = u32[1]{0} broadcast(%[[add_89]]), dimensions={}
+// CHECK-NEXT:  %[[xor_112:[^ ]+]] = u32[1]{0} xor(%[[xor_110]], %[[broadcast_111]])
+// CHECK-NEXT:  %[[convert_120:[^ ]+]] = u64[1]{0} convert(%[[xor_112]])
 // CHECK-NEXT:  %[[constant_121:[^ ]+]] = u64[] constant(3528531795)
-// CHECK-NEXT:  %[[broadcast_122:[^ ]+]] = u64[1]{0} broadcast(u64[] %[[constant_121]]), dimensions={}
-// CHECK-NEXT:  %[[multiply_123:[^ ]+]] = u64[1]{0} multiply(u64[1]{0} %[[convert_120]], u64[1]{0} %[[broadcast_122]])
+// CHECK-NEXT:  %[[broadcast_122:[^ ]+]] = u64[1]{0} broadcast(%[[constant_121]]), dimensions={}
+// CHECK-NEXT:  %[[multiply_123:[^ ]+]] = u64[1]{0} multiply(%[[convert_120]], %[[broadcast_122]])
 // CHECK-NEXT:  %[[constant_125:[^ ]+]] = u64[] constant(32)
-// CHECK-NEXT:  %[[broadcast_126:[^ ]+]] = u64[1]{0} broadcast(u64[] %[[constant_125]]), dimensions={}
-// CHECK-NEXT:  %[[shift_right_logical_127:[^ ]+]] = u64[1]{0} shift-right-logical(u64[1]{0} %[[multiply_123]], u64[1]{0} %[[broadcast_126]])
-// CHECK-NEXT:  %[[convert_128:[^ ]+]] = u32[1]{0} convert(u64[1]{0} %[[shift_right_logical_127]])
+// CHECK-NEXT:  %[[broadcast_126:[^ ]+]] = u64[1]{0} broadcast(%[[constant_125]]), dimensions={}
+// CHECK-NEXT:  %[[shift_right_logical_127:[^ ]+]] = u64[1]{0} shift-right-logical(%[[multiply_123]], %[[broadcast_126]])
+// CHECK-NEXT:  %[[convert_128:[^ ]+]] = u32[1]{0} convert(%[[shift_right_logical_127]])
 // CHECK-NEXT:  %[[constant_78:[^ ]+]] = u64[] constant(32)
-// CHECK-NEXT:  %[[broadcast_79:[^ ]+]] = u64[1]{0} broadcast(u64[] %[[constant_78]]), dimensions={}
-// CHECK-NEXT:  %[[shift_right_logical_80:[^ ]+]] = u64[1]{0} shift-right-logical(u64[1]{0} %[[multiply_76]], u64[1]{0} %[[broadcast_79]])
-// CHECK-NEXT:  %[[convert_81:[^ ]+]] = u32[1]{0} convert(u64[1]{0} %[[shift_right_logical_80]])
+// CHECK-NEXT:  %[[broadcast_79:[^ ]+]] = u64[1]{0} broadcast(%[[constant_78]]), dimensions={}
+// CHECK-NEXT:  %[[shift_right_logical_80:[^ ]+]] = u64[1]{0} shift-right-logical(%[[multiply_76]], %[[broadcast_79]])
+// CHECK-NEXT:  %[[convert_81:[^ ]+]] = u32[1]{0} convert(%[[shift_right_logical_80]])
 // CHECK-NEXT:  %[[constant_43:[^ ]+]] = u64[] constant(32)
-// CHECK-NEXT:  %[[broadcast_45:[^ ]+]] = u64[1]{0} broadcast(u64[] %[[constant_43]]), dimensions={}
-// CHECK-NEXT:  %[[shift_right_logical_46:[^ ]+]] = u64[1]{0} shift-right-logical(u64[1]{0} %[[add_35]], u64[1]{0} %[[broadcast_45]])
-// CHECK-NEXT:  %[[convert_47:[^ ]+]] = u32[1]{0} convert(u64[1]{0} %[[shift_right_logical_46]])
-// CHECK-NEXT:  %[[xor_82:[^ ]+]] = u32[1]{0} xor(u32[1]{0} %[[convert_81]], u32[1]{0} %[[convert_47]])
-// CHECK-NEXT:  %[[broadcast_83:[^ ]+]] = u32[1]{0} broadcast(u32[] %[[convert_8]]), dimensions={}
-// CHECK-NEXT:  %[[xor_84:[^ ]+]] = u32[1]{0} xor(u32[1]{0} %[[xor_82]], u32[1]{0} %[[broadcast_83]])
-// CHECK-NEXT:  %[[convert_92:[^ ]+]] = u64[1]{0} convert(u32[1]{0} %[[xor_84]])
+// CHECK-NEXT:  %[[broadcast_45:[^ ]+]] = u64[1]{0} broadcast(%[[constant_43]]), dimensions={}
+// CHECK-NEXT:  %[[shift_right_logical_46:[^ ]+]] = u64[1]{0} shift-right-logical(%[[add_35]], %[[broadcast_45]])
+// CHECK-NEXT:  %[[convert_47:[^ ]+]] = u32[1]{0} convert(%[[shift_right_logical_46]])
+// CHECK-NEXT:  %[[xor_82:[^ ]+]] = u32[1]{0} xor(%[[convert_81]], %[[convert_47]])
+// CHECK-NEXT:  %[[broadcast_83:[^ ]+]] = u32[1]{0} broadcast(%[[convert_8]]), dimensions={}
+// CHECK-NEXT:  %[[xor_84:[^ ]+]] = u32[1]{0} xor(%[[xor_82]], %[[broadcast_83]])
+// CHECK-NEXT:  %[[convert_92:[^ ]+]] = u64[1]{0} convert(%[[xor_84]])
 // CHECK-NEXT:  %[[constant_93:[^ ]+]] = u64[] constant(3528531795)
-// CHECK-NEXT:  %[[broadcast_94:[^ ]+]] = u64[1]{0} broadcast(u64[] %[[constant_93]]), dimensions={}
-// CHECK-NEXT:  %[[multiply_95:[^ ]+]] = u64[1]{0} multiply(u64[1]{0} %[[convert_92]], u64[1]{0} %[[broadcast_94]])
-// CHECK-NEXT:  %[[convert_96:[^ ]+]] = u32[1]{0} convert(u64[1]{0} %[[multiply_95]])
-// CHECK-NEXT:  %[[xor_141:[^ ]+]] = u32[1]{0} xor(u32[1]{0} %[[convert_128]], u32[1]{0} %[[convert_96]])
-// CHECK-NEXT:  %[[broadcast_142:[^ ]+]] = u32[1]{0} broadcast(u32[] %[[add_119]]), dimensions={}
-// CHECK-NEXT:  %[[xor_143:[^ ]+]] = u32[1]{0} xor(u32[1]{0} %[[xor_141]], u32[1]{0} %[[broadcast_142]])
-// CHECK-NEXT:  %[[convert_157:[^ ]+]] = u64[1]{0} convert(u32[1]{0} %[[xor_143]])
+// CHECK-NEXT:  %[[broadcast_94:[^ ]+]] = u64[1]{0} broadcast(%[[constant_93]]), dimensions={}
+// CHECK-NEXT:  %[[multiply_95:[^ ]+]] = u64[1]{0} multiply(%[[convert_92]], %[[broadcast_94]])
+// CHECK-NEXT:  %[[convert_96:[^ ]+]] = u32[1]{0} convert(%[[multiply_95]])
+// CHECK-NEXT:  %[[xor_141:[^ ]+]] = u32[1]{0} xor(%[[convert_128]], %[[convert_96]])
+// CHECK-NEXT:  %[[broadcast_142:[^ ]+]] = u32[1]{0} broadcast(%[[add_119]]), dimensions={}
+// CHECK-NEXT:  %[[xor_143:[^ ]+]] = u32[1]{0} xor(%[[xor_141]], %[[broadcast_142]])
+// CHECK-NEXT:  %[[convert_157:[^ ]+]] = u64[1]{0} convert(%[[xor_143]])
 // CHECK-NEXT:  %[[constant_158:[^ ]+]] = u64[] constant(3449720151)
-// CHECK-NEXT:  %[[broadcast_159:[^ ]+]] = u64[1]{0} broadcast(u64[] %[[constant_158]]), dimensions={}
-// CHECK-NEXT:  %[[multiply_160:[^ ]+]] = u64[1]{0} multiply(u64[1]{0} %[[convert_157]], u64[1]{0} %[[broadcast_159]])
+// CHECK-NEXT:  %[[broadcast_159:[^ ]+]] = u64[1]{0} broadcast(%[[constant_158]]), dimensions={}
+// CHECK-NEXT:  %[[multiply_160:[^ ]+]] = u64[1]{0} multiply(%[[convert_157]], %[[broadcast_159]])
 // CHECK-NEXT:  %[[constant_162:[^ ]+]] = u64[] constant(32)
-// CHECK-NEXT:  %[[broadcast_163:[^ ]+]] = u64[1]{0} broadcast(u64[] %[[constant_162]]), dimensions={}
-// CHECK-NEXT:  %[[shift_right_logical_164:[^ ]+]] = u64[1]{0} shift-right-logical(u64[1]{0} %[[multiply_160]], u64[1]{0} %[[broadcast_163]])
-// CHECK-NEXT:  %[[convert_165:[^ ]+]] = u32[1]{0} convert(u64[1]{0} %[[shift_right_logical_164]])
+// CHECK-NEXT:  %[[broadcast_163:[^ ]+]] = u64[1]{0} broadcast(%[[constant_162]]), dimensions={}
+// CHECK-NEXT:  %[[shift_right_logical_164:[^ ]+]] = u64[1]{0} shift-right-logical(%[[multiply_160]], %[[broadcast_163]])
+// CHECK-NEXT:  %[[convert_165:[^ ]+]] = u32[1]{0} convert(%[[shift_right_logical_164]])
 // CHECK-NEXT:  %[[constant_97:[^ ]+]] = u64[] constant(32)
-// CHECK-NEXT:  %[[broadcast_98:[^ ]+]] = u64[1]{0} broadcast(u64[] %[[constant_97]]), dimensions={}
-// CHECK-NEXT:  %[[shift_right_logical_99:[^ ]+]] = u64[1]{0} shift-right-logical(u64[1]{0} %[[multiply_95]], u64[1]{0} %[[broadcast_98]])
-// CHECK-NEXT:  %[[convert_100:[^ ]+]] = u32[1]{0} convert(u64[1]{0} %[[shift_right_logical_99]])
-// CHECK-NEXT:  %[[convert_68:[^ ]+]] = u32[1]{0} convert(u64[1]{0} %[[multiply_67]])
-// CHECK-NEXT:  %[[xor_113:[^ ]+]] = u32[1]{0} xor(u32[1]{0} %[[convert_100]], u32[1]{0} %[[convert_68]])
-// CHECK-NEXT:  %[[broadcast_114:[^ ]+]] = u32[1]{0} broadcast(u32[] %[[add_91]]), dimensions={}
-// CHECK-NEXT:  %[[xor_115:[^ ]+]] = u32[1]{0} xor(u32[1]{0} %[[xor_113]], u32[1]{0} %[[broadcast_114]])
-// CHECK-NEXT:  %[[convert_129:[^ ]+]] = u64[1]{0} convert(u32[1]{0} %[[xor_115]])
+// CHECK-NEXT:  %[[broadcast_98:[^ ]+]] = u64[1]{0} broadcast(%[[constant_97]]), dimensions={}
+// CHECK-NEXT:  %[[shift_right_logical_99:[^ ]+]] = u64[1]{0} shift-right-logical(%[[multiply_95]], %[[broadcast_98]])
+// CHECK-NEXT:  %[[convert_100:[^ ]+]] = u32[1]{0} convert(%[[shift_right_logical_99]])
+// CHECK-NEXT:  %[[convert_68:[^ ]+]] = u32[1]{0} convert(%[[multiply_67]])
+// CHECK-NEXT:  %[[xor_113:[^ ]+]] = u32[1]{0} xor(%[[convert_100]], %[[convert_68]])
+// CHECK-NEXT:  %[[broadcast_114:[^ ]+]] = u32[1]{0} broadcast(%[[add_91]]), dimensions={}
+// CHECK-NEXT:  %[[xor_115:[^ ]+]] = u32[1]{0} xor(%[[xor_113]], %[[broadcast_114]])
+// CHECK-NEXT:  %[[convert_129:[^ ]+]] = u64[1]{0} convert(%[[xor_115]])
 // CHECK-NEXT:  %[[constant_130:[^ ]+]] = u64[] constant(3449720151)
-// CHECK-NEXT:  %[[broadcast_131:[^ ]+]] = u64[1]{0} broadcast(u64[] %[[constant_130]]), dimensions={}
-// CHECK-NEXT:  %[[multiply_132:[^ ]+]] = u64[1]{0} multiply(u64[1]{0} %[[convert_129]], u64[1]{0} %[[broadcast_131]])
-// CHECK-NEXT:  %[[convert_133:[^ ]+]] = u32[1]{0} convert(u64[1]{0} %[[multiply_132]])
-// CHECK-NEXT:  %[[xor_166:[^ ]+]] = u32[1]{0} xor(u32[1]{0} %[[convert_165]], u32[1]{0} %[[convert_133]])
-// CHECK-NEXT:  %[[broadcast_167:[^ ]+]] = u32[1]{0} broadcast(u32[] %[[add_145]]), dimensions={}
-// CHECK-NEXT:  %[[xor_168:[^ ]+]] = u32[1]{0} xor(u32[1]{0} %[[xor_166]], u32[1]{0} %[[broadcast_167]])
-// CHECK-NEXT:  %[[convert_176:[^ ]+]] = u64[1]{0} convert(u32[1]{0} %[[xor_168]])
+// CHECK-NEXT:  %[[broadcast_131:[^ ]+]] = u64[1]{0} broadcast(%[[constant_130]]), dimensions={}
+// CHECK-NEXT:  %[[multiply_132:[^ ]+]] = u64[1]{0} multiply(%[[convert_129]], %[[broadcast_131]])
+// CHECK-NEXT:  %[[convert_133:[^ ]+]] = u32[1]{0} convert(%[[multiply_132]])
+// CHECK-NEXT:  %[[xor_166:[^ ]+]] = u32[1]{0} xor(%[[convert_165]], %[[convert_133]])
+// CHECK-NEXT:  %[[broadcast_167:[^ ]+]] = u32[1]{0} broadcast(%[[add_145]]), dimensions={}
+// CHECK-NEXT:  %[[xor_168:[^ ]+]] = u32[1]{0} xor(%[[xor_166]], %[[broadcast_167]])
+// CHECK-NEXT:  %[[convert_176:[^ ]+]] = u64[1]{0} convert(%[[xor_168]])
 // CHECK-NEXT:  %[[constant_177:[^ ]+]] = u64[] constant(3528531795)
-// CHECK-NEXT:  %[[broadcast_178:[^ ]+]] = u64[1]{0} broadcast(u64[] %[[constant_177]]), dimensions={}
-// CHECK-NEXT:  %[[multiply_179:[^ ]+]] = u64[1]{0} multiply(u64[1]{0} %[[convert_176]], u64[1]{0} %[[broadcast_178]])
+// CHECK-NEXT:  %[[broadcast_178:[^ ]+]] = u64[1]{0} broadcast(%[[constant_177]]), dimensions={}
+// CHECK-NEXT:  %[[multiply_179:[^ ]+]] = u64[1]{0} multiply(%[[convert_176]], %[[broadcast_178]])
 // CHECK-NEXT:  %[[constant_181:[^ ]+]] = u64[] constant(32)
-// CHECK-NEXT:  %[[broadcast_182:[^ ]+]] = u64[1]{0} broadcast(u64[] %[[constant_181]]), dimensions={}
-// CHECK-NEXT:  %[[shift_right_logical_183:[^ ]+]] = u64[1]{0} shift-right-logical(u64[1]{0} %[[multiply_179]], u64[1]{0} %[[broadcast_182]])
-// CHECK-NEXT:  %[[convert_184:[^ ]+]] = u32[1]{0} convert(u64[1]{0} %[[shift_right_logical_183]])
+// CHECK-NEXT:  %[[broadcast_182:[^ ]+]] = u64[1]{0} broadcast(%[[constant_181]]), dimensions={}
+// CHECK-NEXT:  %[[shift_right_logical_183:[^ ]+]] = u64[1]{0} shift-right-logical(%[[multiply_179]], %[[broadcast_182]])
+// CHECK-NEXT:  %[[convert_184:[^ ]+]] = u32[1]{0} convert(%[[shift_right_logical_183]])
 // CHECK-NEXT:  %[[constant_134:[^ ]+]] = u64[] constant(32)
-// CHECK-NEXT:  %[[broadcast_135:[^ ]+]] = u64[1]{0} broadcast(u64[] %[[constant_134]]), dimensions={}
-// CHECK-NEXT:  %[[shift_right_logical_136:[^ ]+]] = u64[1]{0} shift-right-logical(u64[1]{0} %[[multiply_132]], u64[1]{0} %[[broadcast_135]])
-// CHECK-NEXT:  %[[convert_137:[^ ]+]] = u32[1]{0} convert(u64[1]{0} %[[shift_right_logical_136]])
-// CHECK-NEXT:  %[[convert_105:[^ ]+]] = u32[1]{0} convert(u64[1]{0} %[[multiply_104]])
-// CHECK-NEXT:  %[[xor_138:[^ ]+]] = u32[1]{0} xor(u32[1]{0} %[[convert_137]], u32[1]{0} %[[convert_105]])
-// CHECK-NEXT:  %[[broadcast_139:[^ ]+]] = u32[1]{0} broadcast(u32[] %[[add_117]]), dimensions={}
-// CHECK-NEXT:  %[[xor_140:[^ ]+]] = u32[1]{0} xor(u32[1]{0} %[[xor_138]], u32[1]{0} %[[broadcast_139]])
-// CHECK-NEXT:  %[[convert_148:[^ ]+]] = u64[1]{0} convert(u32[1]{0} %[[xor_140]])
+// CHECK-NEXT:  %[[broadcast_135:[^ ]+]] = u64[1]{0} broadcast(%[[constant_134]]), dimensions={}
+// CHECK-NEXT:  %[[shift_right_logical_136:[^ ]+]] = u64[1]{0} shift-right-logical(%[[multiply_132]], %[[broadcast_135]])
+// CHECK-NEXT:  %[[convert_137:[^ ]+]] = u32[1]{0} convert(%[[shift_right_logical_136]])
+// CHECK-NEXT:  %[[convert_105:[^ ]+]] = u32[1]{0} convert(%[[multiply_104]])
+// CHECK-NEXT:  %[[xor_138:[^ ]+]] = u32[1]{0} xor(%[[convert_137]], %[[convert_105]])
+// CHECK-NEXT:  %[[broadcast_139:[^ ]+]] = u32[1]{0} broadcast(%[[add_117]]), dimensions={}
+// CHECK-NEXT:  %[[xor_140:[^ ]+]] = u32[1]{0} xor(%[[xor_138]], %[[broadcast_139]])
+// CHECK-NEXT:  %[[convert_148:[^ ]+]] = u64[1]{0} convert(%[[xor_140]])
 // CHECK-NEXT:  %[[constant_149:[^ ]+]] = u64[] constant(3528531795)
-// CHECK-NEXT:  %[[broadcast_150:[^ ]+]] = u64[1]{0} broadcast(u64[] %[[constant_149]]), dimensions={}
-// CHECK-NEXT:  %[[multiply_151:[^ ]+]] = u64[1]{0} multiply(u64[1]{0} %[[convert_148]], u64[1]{0} %[[broadcast_150]])
-// CHECK-NEXT:  %[[convert_152:[^ ]+]] = u32[1]{0} convert(u64[1]{0} %[[multiply_151]])
-// CHECK-NEXT:  %[[xor_197:[^ ]+]] = u32[1]{0} xor(u32[1]{0} %[[convert_184]], u32[1]{0} %[[convert_152]])
-// CHECK-NEXT:  %[[broadcast_198:[^ ]+]] = u32[1]{0} broadcast(u32[] %[[add_175]]), dimensions={}
-// CHECK-NEXT:  %[[xor_199:[^ ]+]] = u32[1]{0} xor(u32[1]{0} %[[xor_197]], u32[1]{0} %[[broadcast_198]])
-// CHECK-NEXT:  %[[convert_213:[^ ]+]] = u64[1]{0} convert(u32[1]{0} %[[xor_199]])
+// CHECK-NEXT:  %[[broadcast_150:[^ ]+]] = u64[1]{0} broadcast(%[[constant_149]]), dimensions={}
+// CHECK-NEXT:  %[[multiply_151:[^ ]+]] = u64[1]{0} multiply(%[[convert_148]], %[[broadcast_150]])
+// CHECK-NEXT:  %[[convert_152:[^ ]+]] = u32[1]{0} convert(%[[multiply_151]])
+// CHECK-NEXT:  %[[xor_197:[^ ]+]] = u32[1]{0} xor(%[[convert_184]], %[[convert_152]])
+// CHECK-NEXT:  %[[broadcast_198:[^ ]+]] = u32[1]{0} broadcast(%[[add_175]]), dimensions={}
+// CHECK-NEXT:  %[[xor_199:[^ ]+]] = u32[1]{0} xor(%[[xor_197]], %[[broadcast_198]])
+// CHECK-NEXT:  %[[convert_213:[^ ]+]] = u64[1]{0} convert(%[[xor_199]])
 // CHECK-NEXT:  %[[constant_214:[^ ]+]] = u64[] constant(3449720151)
-// CHECK-NEXT:  %[[broadcast_215:[^ ]+]] = u64[1]{0} broadcast(u64[] %[[constant_214]]), dimensions={}
-// CHECK-NEXT:  %[[multiply_216:[^ ]+]] = u64[1]{0} multiply(u64[1]{0} %[[convert_213]], u64[1]{0} %[[broadcast_215]])
+// CHECK-NEXT:  %[[broadcast_215:[^ ]+]] = u64[1]{0} broadcast(%[[constant_214]]), dimensions={}
+// CHECK-NEXT:  %[[multiply_216:[^ ]+]] = u64[1]{0} multiply(%[[convert_213]], %[[broadcast_215]])
 // CHECK-NEXT:  %[[constant_218:[^ ]+]] = u64[] constant(32)
-// CHECK-NEXT:  %[[broadcast_219:[^ ]+]] = u64[1]{0} broadcast(u64[] %[[constant_218]]), dimensions={}
-// CHECK-NEXT:  %[[shift_right_logical_220:[^ ]+]] = u64[1]{0} shift-right-logical(u64[1]{0} %[[multiply_216]], u64[1]{0} %[[broadcast_219]])
-// CHECK-NEXT:  %[[convert_221:[^ ]+]] = u32[1]{0} convert(u64[1]{0} %[[shift_right_logical_220]])
+// CHECK-NEXT:  %[[broadcast_219:[^ ]+]] = u64[1]{0} broadcast(%[[constant_218]]), dimensions={}
+// CHECK-NEXT:  %[[shift_right_logical_220:[^ ]+]] = u64[1]{0} shift-right-logical(%[[multiply_216]], %[[broadcast_219]])
+// CHECK-NEXT:  %[[convert_221:[^ ]+]] = u32[1]{0} convert(%[[shift_right_logical_220]])
 // CHECK-NEXT:  %[[constant_153:[^ ]+]] = u64[] constant(32)
-// CHECK-NEXT:  %[[broadcast_154:[^ ]+]] = u64[1]{0} broadcast(u64[] %[[constant_153]]), dimensions={}
-// CHECK-NEXT:  %[[shift_right_logical_155:[^ ]+]] = u64[1]{0} shift-right-logical(u64[1]{0} %[[multiply_151]], u64[1]{0} %[[broadcast_154]])
-// CHECK-NEXT:  %[[convert_156:[^ ]+]] = u32[1]{0} convert(u64[1]{0} %[[shift_right_logical_155]])
-// CHECK-NEXT:  %[[convert_124:[^ ]+]] = u32[1]{0} convert(u64[1]{0} %[[multiply_123]])
-// CHECK-NEXT:  %[[xor_169:[^ ]+]] = u32[1]{0} xor(u32[1]{0} %[[convert_156]], u32[1]{0} %[[convert_124]])
-// CHECK-NEXT:  %[[broadcast_170:[^ ]+]] = u32[1]{0} broadcast(u32[] %[[add_147]]), dimensions={}
-// CHECK-NEXT:  %[[xor_171:[^ ]+]] = u32[1]{0} xor(u32[1]{0} %[[xor_169]], u32[1]{0} %[[broadcast_170]])
-// CHECK-NEXT:  %[[convert_185:[^ ]+]] = u64[1]{0} convert(u32[1]{0} %[[xor_171]])
+// CHECK-NEXT:  %[[broadcast_154:[^ ]+]] = u64[1]{0} broadcast(%[[constant_153]]), dimensions={}
+// CHECK-NEXT:  %[[shift_right_logical_155:[^ ]+]] = u64[1]{0} shift-right-logical(%[[multiply_151]], %[[broadcast_154]])
+// CHECK-NEXT:  %[[convert_156:[^ ]+]] = u32[1]{0} convert(%[[shift_right_logical_155]])
+// CHECK-NEXT:  %[[convert_124:[^ ]+]] = u32[1]{0} convert(%[[multiply_123]])
+// CHECK-NEXT:  %[[xor_169:[^ ]+]] = u32[1]{0} xor(%[[convert_156]], %[[convert_124]])
+// CHECK-NEXT:  %[[broadcast_170:[^ ]+]] = u32[1]{0} broadcast(%[[add_147]]), dimensions={}
+// CHECK-NEXT:  %[[xor_171:[^ ]+]] = u32[1]{0} xor(%[[xor_169]], %[[broadcast_170]])
+// CHECK-NEXT:  %[[convert_185:[^ ]+]] = u64[1]{0} convert(%[[xor_171]])
 // CHECK-NEXT:  %[[constant_186:[^ ]+]] = u64[] constant(3449720151)
-// CHECK-NEXT:  %[[broadcast_187:[^ ]+]] = u64[1]{0} broadcast(u64[] %[[constant_186]]), dimensions={}
-// CHECK-NEXT:  %[[multiply_188:[^ ]+]] = u64[1]{0} multiply(u64[1]{0} %[[convert_185]], u64[1]{0} %[[broadcast_187]])
-// CHECK-NEXT:  %[[convert_189:[^ ]+]] = u32[1]{0} convert(u64[1]{0} %[[multiply_188]])
-// CHECK-NEXT:  %[[xor_222:[^ ]+]] = u32[1]{0} xor(u32[1]{0} %[[convert_221]], u32[1]{0} %[[convert_189]])
-// CHECK-NEXT:  %[[broadcast_223:[^ ]+]] = u32[1]{0} broadcast(u32[] %[[add_201]]), dimensions={}
-// CHECK-NEXT:  %[[xor_224:[^ ]+]] = u32[1]{0} xor(u32[1]{0} %[[xor_222]], u32[1]{0} %[[broadcast_223]])
-// CHECK-NEXT:  %[[convert_232:[^ ]+]] = u64[1]{0} convert(u32[1]{0} %[[xor_224]])
+// CHECK-NEXT:  %[[broadcast_187:[^ ]+]] = u64[1]{0} broadcast(%[[constant_186]]), dimensions={}
+// CHECK-NEXT:  %[[multiply_188:[^ ]+]] = u64[1]{0} multiply(%[[convert_185]], %[[broadcast_187]])
+// CHECK-NEXT:  %[[convert_189:[^ ]+]] = u32[1]{0} convert(%[[multiply_188]])
+// CHECK-NEXT:  %[[xor_222:[^ ]+]] = u32[1]{0} xor(%[[convert_221]], %[[convert_189]])
+// CHECK-NEXT:  %[[broadcast_223:[^ ]+]] = u32[1]{0} broadcast(%[[add_201]]), dimensions={}
+// CHECK-NEXT:  %[[xor_224:[^ ]+]] = u32[1]{0} xor(%[[xor_222]], %[[broadcast_223]])
+// CHECK-NEXT:  %[[convert_232:[^ ]+]] = u64[1]{0} convert(%[[xor_224]])
 // CHECK-NEXT:  %[[constant_233:[^ ]+]] = u64[] constant(3528531795)
-// CHECK-NEXT:  %[[broadcast_234:[^ ]+]] = u64[1]{0} broadcast(u64[] %[[constant_233]]), dimensions={}
-// CHECK-NEXT:  %[[multiply_235:[^ ]+]] = u64[1]{0} multiply(u64[1]{0} %[[convert_232]], u64[1]{0} %[[broadcast_234]])
+// CHECK-NEXT:  %[[broadcast_234:[^ ]+]] = u64[1]{0} broadcast(%[[constant_233]]), dimensions={}
+// CHECK-NEXT:  %[[multiply_235:[^ ]+]] = u64[1]{0} multiply(%[[convert_232]], %[[broadcast_234]])
 // CHECK-NEXT:  %[[constant_237:[^ ]+]] = u64[] constant(32)
-// CHECK-NEXT:  %[[broadcast_238:[^ ]+]] = u64[1]{0} broadcast(u64[] %[[constant_237]]), dimensions={}
-// CHECK-NEXT:  %[[shift_right_logical_239:[^ ]+]] = u64[1]{0} shift-right-logical(u64[1]{0} %[[multiply_235]], u64[1]{0} %[[broadcast_238]])
-// CHECK-NEXT:  %[[convert_240:[^ ]+]] = u32[1]{0} convert(u64[1]{0} %[[shift_right_logical_239]])
+// CHECK-NEXT:  %[[broadcast_238:[^ ]+]] = u64[1]{0} broadcast(%[[constant_237]]), dimensions={}
+// CHECK-NEXT:  %[[shift_right_logical_239:[^ ]+]] = u64[1]{0} shift-right-logical(%[[multiply_235]], %[[broadcast_238]])
+// CHECK-NEXT:  %[[convert_240:[^ ]+]] = u32[1]{0} convert(%[[shift_right_logical_239]])
 // CHECK-NEXT:  %[[constant_190:[^ ]+]] = u64[] constant(32)
-// CHECK-NEXT:  %[[broadcast_191:[^ ]+]] = u64[1]{0} broadcast(u64[] %[[constant_190]]), dimensions={}
-// CHECK-NEXT:  %[[shift_right_logical_192:[^ ]+]] = u64[1]{0} shift-right-logical(u64[1]{0} %[[multiply_188]], u64[1]{0} %[[broadcast_191]])
-// CHECK-NEXT:  %[[convert_193:[^ ]+]] = u32[1]{0} convert(u64[1]{0} %[[shift_right_logical_192]])
-// CHECK-NEXT:  %[[convert_161:[^ ]+]] = u32[1]{0} convert(u64[1]{0} %[[multiply_160]])
-// CHECK-NEXT:  %[[xor_194:[^ ]+]] = u32[1]{0} xor(u32[1]{0} %[[convert_193]], u32[1]{0} %[[convert_161]])
-// CHECK-NEXT:  %[[broadcast_195:[^ ]+]] = u32[1]{0} broadcast(u32[] %[[add_173]]), dimensions={}
-// CHECK-NEXT:  %[[xor_196:[^ ]+]] = u32[1]{0} xor(u32[1]{0} %[[xor_194]], u32[1]{0} %[[broadcast_195]])
-// CHECK-NEXT:  %[[convert_204:[^ ]+]] = u64[1]{0} convert(u32[1]{0} %[[xor_196]])
+// CHECK-NEXT:  %[[broadcast_191:[^ ]+]] = u64[1]{0} broadcast(%[[constant_190]]), dimensions={}
+// CHECK-NEXT:  %[[shift_right_logical_192:[^ ]+]] = u64[1]{0} shift-right-logical(%[[multiply_188]], %[[broadcast_191]])
+// CHECK-NEXT:  %[[convert_193:[^ ]+]] = u32[1]{0} convert(%[[shift_right_logical_192]])
+// CHECK-NEXT:  %[[convert_161:[^ ]+]] = u32[1]{0} convert(%[[multiply_160]])
+// CHECK-NEXT:  %[[xor_194:[^ ]+]] = u32[1]{0} xor(%[[convert_193]], %[[convert_161]])
+// CHECK-NEXT:  %[[broadcast_195:[^ ]+]] = u32[1]{0} broadcast(%[[add_173]]), dimensions={}
+// CHECK-NEXT:  %[[xor_196:[^ ]+]] = u32[1]{0} xor(%[[xor_194]], %[[broadcast_195]])
+// CHECK-NEXT:  %[[convert_204:[^ ]+]] = u64[1]{0} convert(%[[xor_196]])
 // CHECK-NEXT:  %[[constant_205:[^ ]+]] = u64[] constant(3528531795)
-// CHECK-NEXT:  %[[broadcast_206:[^ ]+]] = u64[1]{0} broadcast(u64[] %[[constant_205]]), dimensions={}
-// CHECK-NEXT:  %[[multiply_207:[^ ]+]] = u64[1]{0} multiply(u64[1]{0} %[[convert_204]], u64[1]{0} %[[broadcast_206]])
-// CHECK-NEXT:  %[[convert_208:[^ ]+]] = u32[1]{0} convert(u64[1]{0} %[[multiply_207]])
-// CHECK-NEXT:  %[[xor_253:[^ ]+]] = u32[1]{0} xor(u32[1]{0} %[[convert_240]], u32[1]{0} %[[convert_208]])
-// CHECK-NEXT:  %[[broadcast_254:[^ ]+]] = u32[1]{0} broadcast(u32[] %[[add_231]]), dimensions={}
-// CHECK-NEXT:  %[[xor_255:[^ ]+]] = u32[1]{0} xor(u32[1]{0} %[[xor_253]], u32[1]{0} %[[broadcast_254]])
-// CHECK-NEXT:  %[[convert_269:[^ ]+]] = u64[1]{0} convert(u32[1]{0} %[[xor_255]])
+// CHECK-NEXT:  %[[broadcast_206:[^ ]+]] = u64[1]{0} broadcast(%[[constant_205]]), dimensions={}
+// CHECK-NEXT:  %[[multiply_207:[^ ]+]] = u64[1]{0} multiply(%[[convert_204]], %[[broadcast_206]])
+// CHECK-NEXT:  %[[convert_208:[^ ]+]] = u32[1]{0} convert(%[[multiply_207]])
+// CHECK-NEXT:  %[[xor_253:[^ ]+]] = u32[1]{0} xor(%[[convert_240]], %[[convert_208]])
+// CHECK-NEXT:  %[[broadcast_254:[^ ]+]] = u32[1]{0} broadcast(%[[add_231]]), dimensions={}
+// CHECK-NEXT:  %[[xor_255:[^ ]+]] = u32[1]{0} xor(%[[xor_253]], %[[broadcast_254]])
+// CHECK-NEXT:  %[[convert_269:[^ ]+]] = u64[1]{0} convert(%[[xor_255]])
 // CHECK-NEXT:  %[[constant_270:[^ ]+]] = u64[] constant(3449720151)
-// CHECK-NEXT:  %[[broadcast_271:[^ ]+]] = u64[1]{0} broadcast(u64[] %[[constant_270]]), dimensions={}
-// CHECK-NEXT:  %[[multiply_272:[^ ]+]] = u64[1]{0} multiply(u64[1]{0} %[[convert_269]], u64[1]{0} %[[broadcast_271]])
+// CHECK-NEXT:  %[[broadcast_271:[^ ]+]] = u64[1]{0} broadcast(%[[constant_270]]), dimensions={}
+// CHECK-NEXT:  %[[multiply_272:[^ ]+]] = u64[1]{0} multiply(%[[convert_269]], %[[broadcast_271]])
 // CHECK-NEXT:  %[[constant_274:[^ ]+]] = u64[] constant(32)
-// CHECK-NEXT:  %[[broadcast_275:[^ ]+]] = u64[1]{0} broadcast(u64[] %[[constant_274]]), dimensions={}
-// CHECK-NEXT:  %[[shift_right_logical_276:[^ ]+]] = u64[1]{0} shift-right-logical(u64[1]{0} %[[multiply_272]], u64[1]{0} %[[broadcast_275]])
-// CHECK-NEXT:  %[[convert_277:[^ ]+]] = u32[1]{0} convert(u64[1]{0} %[[shift_right_logical_276]])
+// CHECK-NEXT:  %[[broadcast_275:[^ ]+]] = u64[1]{0} broadcast(%[[constant_274]]), dimensions={}
+// CHECK-NEXT:  %[[shift_right_logical_276:[^ ]+]] = u64[1]{0} shift-right-logical(%[[multiply_272]], %[[broadcast_275]])
+// CHECK-NEXT:  %[[convert_277:[^ ]+]] = u32[1]{0} convert(%[[shift_right_logical_276]])
 // CHECK-NEXT:  %[[constant_209:[^ ]+]] = u64[] constant(32)
-// CHECK-NEXT:  %[[broadcast_210:[^ ]+]] = u64[1]{0} broadcast(u64[] %[[constant_209]]), dimensions={}
-// CHECK-NEXT:  %[[shift_right_logical_211:[^ ]+]] = u64[1]{0} shift-right-logical(u64[1]{0} %[[multiply_207]], u64[1]{0} %[[broadcast_210]])
-// CHECK-NEXT:  %[[convert_212:[^ ]+]] = u32[1]{0} convert(u64[1]{0} %[[shift_right_logical_211]])
-// CHECK-NEXT:  %[[convert_180:[^ ]+]] = u32[1]{0} convert(u64[1]{0} %[[multiply_179]])
-// CHECK-NEXT:  %[[xor_225:[^ ]+]] = u32[1]{0} xor(u32[1]{0} %[[convert_212]], u32[1]{0} %[[convert_180]])
-// CHECK-NEXT:  %[[broadcast_226:[^ ]+]] = u32[1]{0} broadcast(u32[] %[[add_203]]), dimensions={}
-// CHECK-NEXT:  %[[xor_227:[^ ]+]] = u32[1]{0} xor(u32[1]{0} %[[xor_225]], u32[1]{0} %[[broadcast_226]])
-// CHECK-NEXT:  %[[convert_241:[^ ]+]] = u64[1]{0} convert(u32[1]{0} %[[xor_227]])
+// CHECK-NEXT:  %[[broadcast_210:[^ ]+]] = u64[1]{0} broadcast(%[[constant_209]]), dimensions={}
+// CHECK-NEXT:  %[[shift_right_logical_211:[^ ]+]] = u64[1]{0} shift-right-logical(%[[multiply_207]], %[[broadcast_210]])
+// CHECK-NEXT:  %[[convert_212:[^ ]+]] = u32[1]{0} convert(%[[shift_right_logical_211]])
+// CHECK-NEXT:  %[[convert_180:[^ ]+]] = u32[1]{0} convert(%[[multiply_179]])
+// CHECK-NEXT:  %[[xor_225:[^ ]+]] = u32[1]{0} xor(%[[convert_212]], %[[convert_180]])
+// CHECK-NEXT:  %[[broadcast_226:[^ ]+]] = u32[1]{0} broadcast(%[[add_203]]), dimensions={}
+// CHECK-NEXT:  %[[xor_227:[^ ]+]] = u32[1]{0} xor(%[[xor_225]], %[[broadcast_226]])
+// CHECK-NEXT:  %[[convert_241:[^ ]+]] = u64[1]{0} convert(%[[xor_227]])
 // CHECK-NEXT:  %[[constant_242:[^ ]+]] = u64[] constant(3449720151)
-// CHECK-NEXT:  %[[broadcast_243:[^ ]+]] = u64[1]{0} broadcast(u64[] %[[constant_242]]), dimensions={}
-// CHECK-NEXT:  %[[multiply_244:[^ ]+]] = u64[1]{0} multiply(u64[1]{0} %[[convert_241]], u64[1]{0} %[[broadcast_243]])
-// CHECK-NEXT:  %[[convert_245:[^ ]+]] = u32[1]{0} convert(u64[1]{0} %[[multiply_244]])
-// CHECK-NEXT:  %[[xor_278:[^ ]+]] = u32[1]{0} xor(u32[1]{0} %[[convert_277]], u32[1]{0} %[[convert_245]])
-// CHECK-NEXT:  %[[broadcast_279:[^ ]+]] = u32[1]{0} broadcast(u32[] %[[add_257]]), dimensions={}
-// CHECK-NEXT:  %[[xor_280:[^ ]+]] = u32[1]{0} xor(u32[1]{0} %[[xor_278]], u32[1]{0} %[[broadcast_279]])
-// CHECK-NEXT:  %[[convert_288:[^ ]+]] = u64[1]{0} convert(u32[1]{0} %[[xor_280]])
+// CHECK-NEXT:  %[[broadcast_243:[^ ]+]] = u64[1]{0} broadcast(%[[constant_242]]), dimensions={}
+// CHECK-NEXT:  %[[multiply_244:[^ ]+]] = u64[1]{0} multiply(%[[convert_241]], %[[broadcast_243]])
+// CHECK-NEXT:  %[[convert_245:[^ ]+]] = u32[1]{0} convert(%[[multiply_244]])
+// CHECK-NEXT:  %[[xor_278:[^ ]+]] = u32[1]{0} xor(%[[convert_277]], %[[convert_245]])
+// CHECK-NEXT:  %[[broadcast_279:[^ ]+]] = u32[1]{0} broadcast(%[[add_257]]), dimensions={}
+// CHECK-NEXT:  %[[xor_280:[^ ]+]] = u32[1]{0} xor(%[[xor_278]], %[[broadcast_279]])
+// CHECK-NEXT:  %[[convert_288:[^ ]+]] = u64[1]{0} convert(%[[xor_280]])
 // CHECK-NEXT:  %[[constant_289:[^ ]+]] = u64[] constant(3528531795)
-// CHECK-NEXT:  %[[broadcast_290:[^ ]+]] = u64[1]{0} broadcast(u64[] %[[constant_289]]), dimensions={}
-// CHECK-NEXT:  %[[multiply_291:[^ ]+]] = u64[1]{0} multiply(u64[1]{0} %[[convert_288]], u64[1]{0} %[[broadcast_290]])
+// CHECK-NEXT:  %[[broadcast_290:[^ ]+]] = u64[1]{0} broadcast(%[[constant_289]]), dimensions={}
+// CHECK-NEXT:  %[[multiply_291:[^ ]+]] = u64[1]{0} multiply(%[[convert_288]], %[[broadcast_290]])
 // CHECK-NEXT:  %[[constant_293:[^ ]+]] = u64[] constant(32)
-// CHECK-NEXT:  %[[broadcast_294:[^ ]+]] = u64[1]{0} broadcast(u64[] %[[constant_293]]), dimensions={}
-// CHECK-NEXT:  %[[shift_right_logical_295:[^ ]+]] = u64[1]{0} shift-right-logical(u64[1]{0} %[[multiply_291]], u64[1]{0} %[[broadcast_294]])
-// CHECK-NEXT:  %[[convert_296:[^ ]+]] = u32[1]{0} convert(u64[1]{0} %[[shift_right_logical_295]])
+// CHECK-NEXT:  %[[broadcast_294:[^ ]+]] = u64[1]{0} broadcast(%[[constant_293]]), dimensions={}
+// CHECK-NEXT:  %[[shift_right_logical_295:[^ ]+]] = u64[1]{0} shift-right-logical(%[[multiply_291]], %[[broadcast_294]])
+// CHECK-NEXT:  %[[convert_296:[^ ]+]] = u32[1]{0} convert(%[[shift_right_logical_295]])
 // CHECK-NEXT:  %[[constant_246:[^ ]+]] = u64[] constant(32)
-// CHECK-NEXT:  %[[broadcast_247:[^ ]+]] = u64[1]{0} broadcast(u64[] %[[constant_246]]), dimensions={}
-// CHECK-NEXT:  %[[shift_right_logical_248:[^ ]+]] = u64[1]{0} shift-right-logical(u64[1]{0} %[[multiply_244]], u64[1]{0} %[[broadcast_247]])
-// CHECK-NEXT:  %[[convert_249:[^ ]+]] = u32[1]{0} convert(u64[1]{0} %[[shift_right_logical_248]])
-// CHECK-NEXT:  %[[convert_217:[^ ]+]] = u32[1]{0} convert(u64[1]{0} %[[multiply_216]])
-// CHECK-NEXT:  %[[xor_250:[^ ]+]] = u32[1]{0} xor(u32[1]{0} %[[convert_249]], u32[1]{0} %[[convert_217]])
-// CHECK-NEXT:  %[[broadcast_251:[^ ]+]] = u32[1]{0} broadcast(u32[] %[[add_229]]), dimensions={}
-// CHECK-NEXT:  %[[xor_252:[^ ]+]] = u32[1]{0} xor(u32[1]{0} %[[xor_250]], u32[1]{0} %[[broadcast_251]])
-// CHECK-NEXT:  %[[convert_260:[^ ]+]] = u64[1]{0} convert(u32[1]{0} %[[xor_252]])
+// CHECK-NEXT:  %[[broadcast_247:[^ ]+]] = u64[1]{0} broadcast(%[[constant_246]]), dimensions={}
+// CHECK-NEXT:  %[[shift_right_logical_248:[^ ]+]] = u64[1]{0} shift-right-logical(%[[multiply_244]], %[[broadcast_247]])
+// CHECK-NEXT:  %[[convert_249:[^ ]+]] = u32[1]{0} convert(%[[shift_right_logical_248]])
+// CHECK-NEXT:  %[[convert_217:[^ ]+]] = u32[1]{0} convert(%[[multiply_216]])
+// CHECK-NEXT:  %[[xor_250:[^ ]+]] = u32[1]{0} xor(%[[convert_249]], %[[convert_217]])
+// CHECK-NEXT:  %[[broadcast_251:[^ ]+]] = u32[1]{0} broadcast(%[[add_229]]), dimensions={}
+// CHECK-NEXT:  %[[xor_252:[^ ]+]] = u32[1]{0} xor(%[[xor_250]], %[[broadcast_251]])
+// CHECK-NEXT:  %[[convert_260:[^ ]+]] = u64[1]{0} convert(%[[xor_252]])
 // CHECK-NEXT:  %[[constant_261:[^ ]+]] = u64[] constant(3528531795)
-// CHECK-NEXT:  %[[broadcast_262:[^ ]+]] = u64[1]{0} broadcast(u64[] %[[constant_261]]), dimensions={}
-// CHECK-NEXT:  %[[multiply_263:[^ ]+]] = u64[1]{0} multiply(u64[1]{0} %[[convert_260]], u64[1]{0} %[[broadcast_262]])
-// CHECK-NEXT:  %[[convert_264:[^ ]+]] = u32[1]{0} convert(u64[1]{0} %[[multiply_263]])
-// CHECK-NEXT:  %[[xor_309:[^ ]+]] = u32[1]{0} xor(u32[1]{0} %[[convert_296]], u32[1]{0} %[[convert_264]])
-// CHECK-NEXT:  %[[broadcast_310:[^ ]+]] = u32[1]{0} broadcast(u32[] %[[add_287]]), dimensions={}
-// CHECK-NEXT:  %[[xor_311:[^ ]+]] = u32[1]{0} xor(u32[1]{0} %[[xor_309]], u32[1]{0} %[[broadcast_310]])
-// CHECK-NEXT:  %[[convert_325:[^ ]+]] = u64[1]{0} convert(u32[1]{0} %[[xor_311]])
+// CHECK-NEXT:  %[[broadcast_262:[^ ]+]] = u64[1]{0} broadcast(%[[constant_261]]), dimensions={}
+// CHECK-NEXT:  %[[multiply_263:[^ ]+]] = u64[1]{0} multiply(%[[convert_260]], %[[broadcast_262]])
+// CHECK-NEXT:  %[[convert_264:[^ ]+]] = u32[1]{0} convert(%[[multiply_263]])
+// CHECK-NEXT:  %[[xor_309:[^ ]+]] = u32[1]{0} xor(%[[convert_296]], %[[convert_264]])
+// CHECK-NEXT:  %[[broadcast_310:[^ ]+]] = u32[1]{0} broadcast(%[[add_287]]), dimensions={}
+// CHECK-NEXT:  %[[xor_311:[^ ]+]] = u32[1]{0} xor(%[[xor_309]], %[[broadcast_310]])
+// CHECK-NEXT:  %[[convert_325:[^ ]+]] = u64[1]{0} convert(%[[xor_311]])
 // CHECK-NEXT:  %[[constant_326:[^ ]+]] = u64[] constant(3449720151)
-// CHECK-NEXT:  %[[broadcast_327:[^ ]+]] = u64[1]{0} broadcast(u64[] %[[constant_326]]), dimensions={}
-// CHECK-NEXT:  %[[multiply_328:[^ ]+]] = u64[1]{0} multiply(u64[1]{0} %[[convert_325]], u64[1]{0} %[[broadcast_327]])
+// CHECK-NEXT:  %[[broadcast_327:[^ ]+]] = u64[1]{0} broadcast(%[[constant_326]]), dimensions={}
+// CHECK-NEXT:  %[[multiply_328:[^ ]+]] = u64[1]{0} multiply(%[[convert_325]], %[[broadcast_327]])
 // CHECK-NEXT:  %[[constant_330:[^ ]+]] = u64[] constant(32)
-// CHECK-NEXT:  %[[broadcast_331:[^ ]+]] = u64[1]{0} broadcast(u64[] %[[constant_330]]), dimensions={}
-// CHECK-NEXT:  %[[shift_right_logical_332:[^ ]+]] = u64[1]{0} shift-right-logical(u64[1]{0} %[[multiply_328]], u64[1]{0} %[[broadcast_331]])
-// CHECK-NEXT:  %[[convert_333:[^ ]+]] = u32[1]{0} convert(u64[1]{0} %[[shift_right_logical_332]])
+// CHECK-NEXT:  %[[broadcast_331:[^ ]+]] = u64[1]{0} broadcast(%[[constant_330]]), dimensions={}
+// CHECK-NEXT:  %[[shift_right_logical_332:[^ ]+]] = u64[1]{0} shift-right-logical(%[[multiply_328]], %[[broadcast_331]])
+// CHECK-NEXT:  %[[convert_333:[^ ]+]] = u32[1]{0} convert(%[[shift_right_logical_332]])
 // CHECK-NEXT:  %[[constant_265:[^ ]+]] = u64[] constant(32)
-// CHECK-NEXT:  %[[broadcast_266:[^ ]+]] = u64[1]{0} broadcast(u64[] %[[constant_265]]), dimensions={}
-// CHECK-NEXT:  %[[shift_right_logical_267:[^ ]+]] = u64[1]{0} shift-right-logical(u64[1]{0} %[[multiply_263]], u64[1]{0} %[[broadcast_266]])
-// CHECK-NEXT:  %[[convert_268:[^ ]+]] = u32[1]{0} convert(u64[1]{0} %[[shift_right_logical_267]])
-// CHECK-NEXT:  %[[convert_236:[^ ]+]] = u32[1]{0} convert(u64[1]{0} %[[multiply_235]])
-// CHECK-NEXT:  %[[xor_281:[^ ]+]] = u32[1]{0} xor(u32[1]{0} %[[convert_268]], u32[1]{0} %[[convert_236]])
-// CHECK-NEXT:  %[[broadcast_282:[^ ]+]] = u32[1]{0} broadcast(u32[] %[[add_259]]), dimensions={}
-// CHECK-NEXT:  %[[xor_283:[^ ]+]] = u32[1]{0} xor(u32[1]{0} %[[xor_281]], u32[1]{0} %[[broadcast_282]])
-// CHECK-NEXT:  %[[convert_297:[^ ]+]] = u64[1]{0} convert(u32[1]{0} %[[xor_283]])
+// CHECK-NEXT:  %[[broadcast_266:[^ ]+]] = u64[1]{0} broadcast(%[[constant_265]]), dimensions={}
+// CHECK-NEXT:  %[[shift_right_logical_267:[^ ]+]] = u64[1]{0} shift-right-logical(%[[multiply_263]], %[[broadcast_266]])
+// CHECK-NEXT:  %[[convert_268:[^ ]+]] = u32[1]{0} convert(%[[shift_right_logical_267]])
+// CHECK-NEXT:  %[[convert_236:[^ ]+]] = u32[1]{0} convert(%[[multiply_235]])
+// CHECK-NEXT:  %[[xor_281:[^ ]+]] = u32[1]{0} xor(%[[convert_268]], %[[convert_236]])
+// CHECK-NEXT:  %[[broadcast_282:[^ ]+]] = u32[1]{0} broadcast(%[[add_259]]), dimensions={}
+// CHECK-NEXT:  %[[xor_283:[^ ]+]] = u32[1]{0} xor(%[[xor_281]], %[[broadcast_282]])
+// CHECK-NEXT:  %[[convert_297:[^ ]+]] = u64[1]{0} convert(%[[xor_283]])
 // CHECK-NEXT:  %[[constant_298:[^ ]+]] = u64[] constant(3449720151)
-// CHECK-NEXT:  %[[broadcast_299:[^ ]+]] = u64[1]{0} broadcast(u64[] %[[constant_298]]), dimensions={}
-// CHECK-NEXT:  %[[multiply_300:[^ ]+]] = u64[1]{0} multiply(u64[1]{0} %[[convert_297]], u64[1]{0} %[[broadcast_299]])
-// CHECK-NEXT:  %[[convert_301:[^ ]+]] = u32[1]{0} convert(u64[1]{0} %[[multiply_300]])
-// CHECK-NEXT:  %[[xor_334:[^ ]+]] = u32[1]{0} xor(u32[1]{0} %[[convert_333]], u32[1]{0} %[[convert_301]])
-// CHECK-NEXT:  %[[broadcast_335:[^ ]+]] = u32[1]{0} broadcast(u32[] %[[add_313]]), dimensions={}
-// CHECK-NEXT:  %[[xor_336:[^ ]+]] = u32[1]{0} xor(u32[1]{0} %[[xor_334]], u32[1]{0} %[[broadcast_335]])
-// CHECK-NEXT:  %[[reshape_344:[^ ]+]] = u32[1,1]{1,0} reshape(u32[1]{0} %[[xor_336]])
-// CHECK-NEXT:  %[[convert_329:[^ ]+]] = u32[1]{0} convert(u64[1]{0} %[[multiply_328]])
-// CHECK-NEXT:  %[[reshape_345:[^ ]+]] = u32[1,1]{1,0} reshape(u32[1]{0} %[[convert_329]])
+// CHECK-NEXT:  %[[broadcast_299:[^ ]+]] = u64[1]{0} broadcast(%[[constant_298]]), dimensions={}
+// CHECK-NEXT:  %[[multiply_300:[^ ]+]] = u64[1]{0} multiply(%[[convert_297]], %[[broadcast_299]])
+// CHECK-NEXT:  %[[convert_301:[^ ]+]] = u32[1]{0} convert(%[[multiply_300]])
+// CHECK-NEXT:  %[[xor_334:[^ ]+]] = u32[1]{0} xor(%[[convert_333]], %[[convert_301]])
+// CHECK-NEXT:  %[[broadcast_335:[^ ]+]] = u32[1]{0} broadcast(%[[add_313]]), dimensions={}
+// CHECK-NEXT:  %[[xor_336:[^ ]+]] = u32[1]{0} xor(%[[xor_334]], %[[broadcast_335]])
+// CHECK-NEXT:  %[[reshape_344:[^ ]+]] = u32[1,1]{1,0} reshape(%[[xor_336]])
+// CHECK-NEXT:  %[[convert_329:[^ ]+]] = u32[1]{0} convert(%[[multiply_328]])
+// CHECK-NEXT:  %[[reshape_345:[^ ]+]] = u32[1,1]{1,0} reshape(%[[convert_329]])
 // CHECK-NEXT:  %[[constant_302:[^ ]+]] = u64[] constant(32)
-// CHECK-NEXT:  %[[broadcast_303:[^ ]+]] = u64[1]{0} broadcast(u64[] %[[constant_302]]), dimensions={}
-// CHECK-NEXT:  %[[shift_right_logical_304:[^ ]+]] = u64[1]{0} shift-right-logical(u64[1]{0} %[[multiply_300]], u64[1]{0} %[[broadcast_303]])
-// CHECK-NEXT:  %[[convert_305:[^ ]+]] = u32[1]{0} convert(u64[1]{0} %[[shift_right_logical_304]])
-// CHECK-NEXT:  %[[convert_273:[^ ]+]] = u32[1]{0} convert(u64[1]{0} %[[multiply_272]])
-// CHECK-NEXT:  %[[xor_306:[^ ]+]] = u32[1]{0} xor(u32[1]{0} %[[convert_305]], u32[1]{0} %[[convert_273]])
-// CHECK-NEXT:  %[[broadcast_307:[^ ]+]] = u32[1]{0} broadcast(u32[] %[[add_285]]), dimensions={}
-// CHECK-NEXT:  %[[xor_308:[^ ]+]] = u32[1]{0} xor(u32[1]{0} %[[xor_306]], u32[1]{0} %[[broadcast_307]])
-// CHECK-NEXT:  %[[convert_316:[^ ]+]] = u64[1]{0} convert(u32[1]{0} %[[xor_308]])
+// CHECK-NEXT:  %[[broadcast_303:[^ ]+]] = u64[1]{0} broadcast(%[[constant_302]]), dimensions={}
+// CHECK-NEXT:  %[[shift_right_logical_304:[^ ]+]] = u64[1]{0} shift-right-logical(%[[multiply_300]], %[[broadcast_303]])
+// CHECK-NEXT:  %[[convert_305:[^ ]+]] = u32[1]{0} convert(%[[shift_right_logical_304]])
+// CHECK-NEXT:  %[[convert_273:[^ ]+]] = u32[1]{0} convert(%[[multiply_272]])
+// CHECK-NEXT:  %[[xor_306:[^ ]+]] = u32[1]{0} xor(%[[convert_305]], %[[convert_273]])
+// CHECK-NEXT:  %[[broadcast_307:[^ ]+]] = u32[1]{0} broadcast(%[[add_285]]), dimensions={}
+// CHECK-NEXT:  %[[xor_308:[^ ]+]] = u32[1]{0} xor(%[[xor_306]], %[[broadcast_307]])
+// CHECK-NEXT:  %[[convert_316:[^ ]+]] = u64[1]{0} convert(%[[xor_308]])
 // CHECK-NEXT:  %[[constant_317:[^ ]+]] = u64[] constant(3528531795)
-// CHECK-NEXT:  %[[broadcast_318:[^ ]+]] = u64[1]{0} broadcast(u64[] %[[constant_317]]), dimensions={}
-// CHECK-NEXT:  %[[multiply_319:[^ ]+]] = u64[1]{0} multiply(u64[1]{0} %[[convert_316]], u64[1]{0} %[[broadcast_318]])
+// CHECK-NEXT:  %[[broadcast_318:[^ ]+]] = u64[1]{0} broadcast(%[[constant_317]]), dimensions={}
+// CHECK-NEXT:  %[[multiply_319:[^ ]+]] = u64[1]{0} multiply(%[[convert_316]], %[[broadcast_318]])
 // CHECK-NEXT:  %[[constant_321:[^ ]+]] = u64[] constant(32)
-// CHECK-NEXT:  %[[broadcast_322:[^ ]+]] = u64[1]{0} broadcast(u64[] %[[constant_321]]), dimensions={}
-// CHECK-NEXT:  %[[shift_right_logical_323:[^ ]+]] = u64[1]{0} shift-right-logical(u64[1]{0} %[[multiply_319]], u64[1]{0} %[[broadcast_322]])
-// CHECK-NEXT:  %[[convert_324:[^ ]+]] = u32[1]{0} convert(u64[1]{0} %[[shift_right_logical_323]])
-// CHECK-NEXT:  %[[convert_292:[^ ]+]] = u32[1]{0} convert(u64[1]{0} %[[multiply_291]])
-// CHECK-NEXT:  %[[xor_337:[^ ]+]] = u32[1]{0} xor(u32[1]{0} %[[convert_324]], u32[1]{0} %[[convert_292]])
-// CHECK-NEXT:  %[[broadcast_338:[^ ]+]] = u32[1]{0} broadcast(u32[] %[[add_315]]), dimensions={}
-// CHECK-NEXT:  %[[xor_339:[^ ]+]] = u32[1]{0} xor(u32[1]{0} %[[xor_337]], u32[1]{0} %[[broadcast_338]])
-// CHECK-NEXT:  %[[reshape_346:[^ ]+]] = u32[1,1]{1,0} reshape(u32[1]{0} %[[xor_339]])
-// CHECK-NEXT:  %[[convert_320:[^ ]+]] = u32[1]{0} convert(u64[1]{0} %[[multiply_319]])
-// CHECK-NEXT:  %[[reshape_347:[^ ]+]] = u32[1,1]{1,0} reshape(u32[1]{0} %[[convert_320]])
-// CHECK-NEXT:  %[[concatenate_348:[^ ]+]] = u32[1,4]{1,0} concatenate(u32[1,1]{1,0} %[[reshape_344]], u32[1,1]{1,0} %[[reshape_345]], u32[1,1]{1,0} %[[reshape_346]], u32[1,1]{1,0} %[[reshape_347]]), dimensions={1}
-// CHECK-NEXT:  %[[reshape_349:[^ ]+]] = u32[4]{0} reshape(u32[1,4]{1,0} %[[concatenate_348]])
-// CHECK-NEXT:  %[[slice_350:[^ ]+]] = u32[2]{0} slice(u32[4]{0} %[[reshape_349]]), slice={[0:2]}
-// CHECK-NEXT:  %[[reshape_351:[^ ]+]] = u32[2]{0} reshape(u32[2]{0} %[[slice_350]])
+// CHECK-NEXT:  %[[broadcast_322:[^ ]+]] = u64[1]{0} broadcast(%[[constant_321]]), dimensions={}
+// CHECK-NEXT:  %[[shift_right_logical_323:[^ ]+]] = u64[1]{0} shift-right-logical(%[[multiply_319]], %[[broadcast_322]])
+// CHECK-NEXT:  %[[convert_324:[^ ]+]] = u32[1]{0} convert(%[[shift_right_logical_323]])
+// CHECK-NEXT:  %[[convert_292:[^ ]+]] = u32[1]{0} convert(%[[multiply_291]])
+// CHECK-NEXT:  %[[xor_337:[^ ]+]] = u32[1]{0} xor(%[[convert_324]], %[[convert_292]])
+// CHECK-NEXT:  %[[broadcast_338:[^ ]+]] = u32[1]{0} broadcast(%[[add_315]]), dimensions={}
+// CHECK-NEXT:  %[[xor_339:[^ ]+]] = u32[1]{0} xor(%[[xor_337]], %[[broadcast_338]])
+// CHECK-NEXT:  %[[reshape_346:[^ ]+]] = u32[1,1]{1,0} reshape(%[[xor_339]])
+// CHECK-NEXT:  %[[convert_320:[^ ]+]] = u32[1]{0} convert(%[[multiply_319]])
+// CHECK-NEXT:  %[[reshape_347:[^ ]+]] = u32[1,1]{1,0} reshape(%[[convert_320]])
+// CHECK-NEXT:  %[[concatenate_348:[^ ]+]] = u32[1,4]{1,0} concatenate(%[[reshape_344]], %[[reshape_345]], %[[reshape_346]], %[[reshape_347]]), dimensions={1}
+// CHECK-NEXT:  %[[reshape_349:[^ ]+]] = u32[4]{0} reshape(%[[concatenate_348]])
+// CHECK-NEXT:  %[[slice_350:[^ ]+]] = u32[2]{0} slice(%[[reshape_349]]), slice={[0:2]}
+// CHECK-NEXT:  %[[reshape_351:[^ ]+]] = u32[2]{0} reshape(%[[slice_350]])
 // CHECK-NEXT:  %[[constant_352:[^ ]+]] = u32[] constant(9)
-// CHECK-NEXT:  %[[broadcast_353:[^ ]+]] = u32[2]{0} broadcast(u32[] %[[constant_352]]), dimensions={}
-// CHECK-NEXT:  %[[shift_right_logical_354:[^ ]+]] = u32[2]{0} shift-right-logical(u32[2]{0} %[[reshape_351]], u32[2]{0} %[[broadcast_353]])
-// CHECK-NEXT:  %[[convert_355:[^ ]+]] = f32[2]{0} convert(u32[2]{0} %[[shift_right_logical_354]])
+// CHECK-NEXT:  %[[broadcast_353:[^ ]+]] = u32[2]{0} broadcast(%[[constant_352]]), dimensions={}
+// CHECK-NEXT:  %[[shift_right_logical_354:[^ ]+]] = u32[2]{0} shift-right-logical(%[[reshape_351]], %[[broadcast_353]])
+// CHECK-NEXT:  %[[convert_355:[^ ]+]] = f32[2]{0} convert(%[[shift_right_logical_354]])
 // CHECK-NEXT:  %[[constant_356:[^ ]+]] = f32[] constant(1.1920929e-07)
-// CHECK-NEXT:  %[[broadcast_357:[^ ]+]] = f32[2]{0} broadcast(f32[] %[[constant_356]]), dimensions={}
-// CHECK-NEXT:  %[[multiply_358:[^ ]+]] = f32[2]{0} multiply(f32[2]{0} %[[convert_355]], f32[2]{0} %[[broadcast_357]])
+// CHECK-NEXT:  %[[broadcast_357:[^ ]+]] = f32[2]{0} broadcast(%[[constant_356]]), dimensions={}
+// CHECK-NEXT:  %[[multiply_358:[^ ]+]] = f32[2]{0} multiply(%[[convert_355]], %[[broadcast_357]])
 // CHECK-NEXT:  %[[constant_6:[^ ]+]] = f32[] constant(1)
 // CHECK-NEXT:  %[[constant_5:[^ ]+]] = f32[] constant(0)
-// CHECK-NEXT:  %[[subtract_359:[^ ]+]] = f32[] subtract(f32[] %[[constant_6]], f32[] %[[constant_5]])
-// CHECK-NEXT:  %[[broadcast_360:[^ ]+]] = f32[2]{0} broadcast(f32[] %[[subtract_359]]), dimensions={}
-// CHECK-NEXT:  %[[multiply_361:[^ ]+]] = f32[2]{0} multiply(f32[2]{0} %[[multiply_358]], f32[2]{0} %[[broadcast_360]])
-// CHECK-NEXT:  %[[broadcast_362:[^ ]+]] = f32[2]{0} broadcast(f32[] %[[constant_5]]), dimensions={}
-// CHECK-NEXT:  %[[add_363:[^ ]+]] = f32[2]{0} add(f32[2]{0} %[[multiply_361]], f32[2]{0} %[[broadcast_362]])
-// CHECK-NEXT:  %[[slice_365:[^ ]+]] = f32[1]{0} slice(f32[2]{0} %[[add_363]]), slice={[1:2]}
-// CHECK-NEXT:  %[[multiply_371:[^ ]+]] = f32[1]{0} multiply(f32[1]{0} %[[broadcast_370]], f32[1]{0} %[[slice_365]])
-// CHECK-NEXT:  %[[cosine_379:[^ ]+]] = f32[1]{0} cosine(f32[1]{0} %[[multiply_371]])
+// CHECK-NEXT:  %[[subtract_359:[^ ]+]] = f32[] subtract(%[[constant_6]], %[[constant_5]])
+// CHECK-NEXT:  %[[broadcast_360:[^ ]+]] = f32[2]{0} broadcast(%[[subtract_359]]), dimensions={}
+// CHECK-NEXT:  %[[multiply_361:[^ ]+]] = f32[2]{0} multiply(%[[multiply_358]], %[[broadcast_360]])
+// CHECK-NEXT:  %[[broadcast_362:[^ ]+]] = f32[2]{0} broadcast(%[[constant_5]]), dimensions={}
+// CHECK-NEXT:  %[[add_363:[^ ]+]] = f32[2]{0} add(%[[multiply_361]], %[[broadcast_362]])
+// CHECK-NEXT:  %[[slice_365:[^ ]+]] = f32[1]{0} slice(%[[add_363]]), slice={[1:2]}
+// CHECK-NEXT:  %[[multiply_371:[^ ]+]] = f32[1]{0} multiply(%[[broadcast_370]], %[[slice_365]])
+// CHECK-NEXT:  %[[cosine_379:[^ ]+]] = f32[1]{0} cosine(%[[multiply_371]])
 // CHECK-NEXT:  %[[constant_372:[^ ]+]] = f32[] constant(-2)
-// CHECK-NEXT:  %[[broadcast_374:[^ ]+]] = f32[1]{0} broadcast(f32[] %[[constant_372]]), dimensions={}
-// CHECK-NEXT:  %[[slice_364:[^ ]+]] = f32[1]{0} slice(f32[2]{0} %[[add_363]]), slice={[0:1]}
+// CHECK-NEXT:  %[[broadcast_374:[^ ]+]] = f32[1]{0} broadcast(%[[constant_372]]), dimensions={}
+// CHECK-NEXT:  %[[slice_364:[^ ]+]] = f32[1]{0} slice(%[[add_363]]), slice={[0:1]}
 // CHECK-NEXT:  %[[constant_366:[^ ]+]] = f32[] constant(1e-07)
-// CHECK-NEXT:  %[[broadcast_367:[^ ]+]] = f32[1]{0} broadcast(f32[] %[[constant_366]]), dimensions={}
-// CHECK-NEXT:  %[[maximum_368:[^ ]+]] = f32[1]{0} maximum(f32[1]{0} %[[slice_364]], f32[1]{0} %[[broadcast_367]])
-// CHECK-NEXT:  %[[log_373:[^ ]+]] = f32[1]{0} log(f32[1]{0} %[[maximum_368]])
-// CHECK-NEXT:  %[[multiply_375:[^ ]+]] = f32[1]{0} multiply(f32[1]{0} %[[broadcast_374]], f32[1]{0} %[[log_373]])
-// CHECK-NEXT:  %[[sqrt_376:[^ ]+]] = f32[1]{0} sqrt(f32[1]{0} %[[multiply_375]])
-// CHECK-NEXT:  %[[multiply_380:[^ ]+]] = f32[1]{0} multiply(f32[1]{0} %[[cosine_379]], f32[1]{0} %[[sqrt_376]])
+// CHECK-NEXT:  %[[broadcast_367:[^ ]+]] = f32[1]{0} broadcast(%[[constant_366]]), dimensions={}
+// CHECK-NEXT:  %[[maximum_368:[^ ]+]] = f32[1]{0} maximum(%[[slice_364]], %[[broadcast_367]])
+// CHECK-NEXT:  %[[log_373:[^ ]+]] = f32[1]{0} log(%[[maximum_368]])
+// CHECK-NEXT:  %[[multiply_375:[^ ]+]] = f32[1]{0} multiply(%[[broadcast_374]], %[[log_373]])
+// CHECK-NEXT:  %[[sqrt_376:[^ ]+]] = f32[1]{0} sqrt(%[[multiply_375]])
+// CHECK-NEXT:  %[[multiply_380:[^ ]+]] = f32[1]{0} multiply(%[[cosine_379]], %[[sqrt_376]])
 // CHECK-NEXT:  %[[a_or_mean_3:[^ ]+]] = f32[] parameter(2)
 // CHECK-NEXT:  %[[b_or_sigma_4:[^ ]+]] = f32[] parameter(3)
-// CHECK-NEXT:  %[[sine_377:[^ ]+]] = f32[1]{0} sine(f32[1]{0} %[[multiply_371]])
-// CHECK-NEXT:  %[[multiply_378:[^ ]+]] = f32[1]{0} multiply(f32[1]{0} %[[sine_377]], f32[1]{0} %[[sqrt_376]])
-// CHECK-NEXT:  %[[reshape_381:[^ ]+]] = f32[] reshape(f32[1]{0} %[[multiply_378]])
-// CHECK-NEXT:  %[[multiply_382:[^ ]+]] = f32[] multiply(f32[] %[[b_or_sigma_4]], f32[] %[[reshape_381]])
-// CHECK-NEXT:  ROOT %[[add_383:[^ ]+]] = f32[] add(f32[] %[[a_or_mean_3]], f32[] %[[multiply_382]])
+// CHECK-NEXT:  %[[sine_377:[^ ]+]] = f32[1]{0} sine(%[[multiply_371]])
+// CHECK-NEXT:  %[[multiply_378:[^ ]+]] = f32[1]{0} multiply(%[[sine_377]], %[[sqrt_376]])
+// CHECK-NEXT:  %[[reshape_381:[^ ]+]] = f32[] reshape(%[[multiply_378]])
+// CHECK-NEXT:  %[[multiply_382:[^ ]+]] = f32[] multiply(%[[b_or_sigma_4]], %[[reshape_381]])
+// CHECK-NEXT:  ROOT %[[add_383:[^ ]+]] = f32[] add(%[[a_or_mean_3]], %[[multiply_382]])
 
 // CHECK-LABEL: ENTRY %test_normal
 // CHECK-NEXT:  %[[shape:[^ ]+]] = u64[3]{0} constant({8, 4, 2})
@@ -774,7 +774,7 @@ ENTRY test_uniform {
 // CHECK-NEXT:  %[[rng_get_and_update_state:[^ ]+]] = u64[2]{0} rng-get-and-update-state(), delta=1
 // CHECK-NEXT:  %[[mean:[^ ]+]] = f32[] constant(0)
 // CHECK-NEXT:  %[[stdev:[^ ]+]] = f32[] constant(1)
-// CHECK-NEXT:  ROOT %[[call:[^ ]+]] = f32[] call(u64[] %[[constant]], u64[2]{0} %[[rng_get_and_update_state]], f32[] %[[mean]], f32[] %[[stdev]]), to_apply=%[[$rng_384]]
+// CHECK-NEXT:  ROOT %[[call:[^ ]+]] = f32[] call(%[[constant]], %[[rng_get_and_update_state]], %[[mean]], %[[stdev]]), to_apply=%[[$rng_384]]
 
 HloModule TestNormalDistribution
 

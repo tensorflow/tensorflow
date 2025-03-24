@@ -107,7 +107,7 @@ absl::Status XlaFfiPythonCpuCallback(
           reinterpret_cast<const int64_t*>(array.shape()), array.ndim());
       options.dims = dims;
       absl::InlinedVector<int64_t, 4> reversed_layout;
-      reversed_layout.resize(expected_shape.dimensions_size());
+      reversed_layout.resize(expected_shape.rank());
       absl::c_reverse_copy(expected_shape.layout().minor_to_major(),
                            reversed_layout.begin());
       options.permutation = reversed_layout;

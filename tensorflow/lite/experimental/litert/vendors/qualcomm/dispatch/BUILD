@@ -31,12 +31,22 @@ litert_dynamic_lib(
         "litert_dispatch_invocation_context.h",
         "registry.h",
     ],
+    copts = [
+        "-Os",
+        "-fno-exceptions",
+        "-fno-unwind-tables",
+        "-fno-asynchronous-unwind-tables",
+        "-ffunction-sections",
+        "-fdata-sections",
+    ],
     export_litert_only = True,
     linkopts = select({
         "//tensorflow:android": ["-landroid"],
         "//conditions:default": [],
-    }) + ["-Wl,-soname=libLiteRtDispatch_Qualcomm.so"],
-    linkstatic = 1,
+    }) + [
+        "-Wl,-soname=libLiteRtDispatch_Qualcomm.so",
+        "-Wl,-lc++abi",
+    ],
     shared_lib_name = "dispatch_api_so",
     so_name = "libLiteRtDispatch_Qualcomm.so",
     tags = [
@@ -62,7 +72,6 @@ litert_dynamic_lib(
 cc_library(
     name = "dispatch_api_shared_lib",
     srcs = [":dispatch_api_so"],
-    linkstatic = 1,
 )
 
 # Copies the shared library so that it is available for use in test data as libLiteRtDispatch_Qualcomm.so.

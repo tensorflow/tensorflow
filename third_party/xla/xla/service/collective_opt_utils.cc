@@ -47,8 +47,7 @@ bool IsTableLookup(const HloInstruction* hlo) {
 std::optional<int64_t> GetScalarInt64Value(const HloInstruction* constant) {
   CHECK_EQ(constant->opcode(), HloOpcode::kConstant);
   CHECK(ShapeUtil::IsEffectiveScalar(constant->shape()));
-  absl::InlinedVector<int64_t, 8> multi_index(
-      constant->shape().dimensions_size());
+  absl::InlinedVector<int64_t, 8> multi_index(constant->shape().rank());
   return constant->literal().GetIntegralAsS64(multi_index);
 }
 
@@ -197,7 +196,7 @@ bool IsPerIdOffset(const HloInstruction* offset, int64_t shard_size,
   }
 
   if (offset->opcode() == HloOpcode::kConvert &&
-      offset->operand(0)->shape().IsInteger() &&
+      offset->operand(0)->shape().AreAllLeavesIntegers() &&
       primitive_util::BitWidth(offset->operand(0)->shape().element_type()) <=
           primitive_util::BitWidth(offset->shape().element_type())) {
     return IsPerIdOffset(offset->operand(0), shard_size, map_id, group_size,

@@ -603,6 +603,53 @@ TEST_F(HloCseTest, DoNotCombineCallsToImpureFunctions) {
   EXPECT_THAT(root, op::Add(op::Map(op::Constant()), op::Map(op::Constant())));
 }
 
+TEST_F(HloCseTest, CopyOpCSE) {
+  // cp1 can be replaced with cp0
+  const char* const kModuleStr = R"(
+  HloModule m
+  ENTRY main {
+    c = f32[] constant(0)
+    b = f32[4,4] broadcast(c), dimensions={}
+    cp0 = f32[4,4] copy(b)
+    cp1 = f32[4,4] copy(b)
+    ROOT t = (f32[4,4], f32[4,4]) tuple(cp0, cp1)
+  })";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kModuleStr));
+  HloCSE cse(/*is_layout_sensitive=*/false);
+  TF_ASSERT_OK_AND_ASSIGN(bool result, RunHloPass(&cse, module.get()));
+  EXPECT_TRUE(result);
+  HloInstruction* cp0;
+  HloInstruction* cp1;
+
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              GmockMatch(m::Tuple(m::Copy(&cp0), m::Copy(&cp1))));
+  // compare Op pointers to make sure it the same single copyOp
+  EXPECT_TRUE(cp0 == cp1);
+}
+
+TEST_F(HloCseTest, DontCSE_NonSafelyRemovableOp) {
+  // cp1 is not SafelyRemovable (has control-predecessors)
+  // Skip CSE
+  const char* const kModuleStr = R"(
+  HloModule m
+  ENTRY main {
+    p0 = f32[4,4] parameter(0)
+    p1 = f32[4,4] parameter(1)
+    c = f32[] constant(0)
+    b = f32[4,4] broadcast(c), dimensions={}
+    cp0 = f32[4,4] copy(b), control-predecessors={p0}
+    cp1 = f32[4,4] copy(b), control-predecessors={p1}
+    ROOT t = (f32[4,4], f32[4,4]) tuple(cp0, cp1)
+  })";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kModuleStr));
+  // ignore_control_dependencies = false by default
+  HloCSE cse(/*is_layout_sensitive=*/false);
+  TF_ASSERT_OK_AND_ASSIGN(bool result, RunHloPass(&cse, module.get()));
+  EXPECT_FALSE(result);
+}
+
 TEST_F(HloCseTest, CompareComputations) {
   const char* const hlo_string = R"(
     HloModule m

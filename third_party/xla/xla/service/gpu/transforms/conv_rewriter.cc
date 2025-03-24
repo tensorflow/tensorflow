@@ -629,7 +629,7 @@ ConvolutionMatch MatchBackwardInput(HloInstruction* conv) {
 
   // Transpose [H, W, ..., G, in_depth/G, out_depth / G] -> [H, W, ...,
   // in_depth/G, G, out_depth / G]
-  std::vector<int64_t> transpose_dims(rhs->shape().dimensions_size());
+  std::vector<int64_t> transpose_dims(rhs->shape().rank());
   std::iota(transpose_dims.begin(), transpose_dims.end(), 0);
   transpose_dims.erase(transpose_dims.begin() + input_feature_dimension);
   transpose_dims.insert(transpose_dims.begin() + output_feature_dimension,
@@ -728,7 +728,7 @@ HloInstruction* ConvertBatchGroupedToFeatureGroupedConvolution(
 
   // Transpose G to the axis before C, For eg: [G, N/G, H, W, C ] -> [N/G, H,
   // W, G, C]
-  std::vector<int64_t> transpose_dims(lhs->shape().dimensions_size());
+  std::vector<int64_t> transpose_dims(lhs->shape().rank());
   std::iota(transpose_dims.begin(), transpose_dims.end(), 0);
   transpose_dims.erase(transpose_dims.begin() + input_batch_dimension);
   transpose_dims.insert(transpose_dims.begin() + input_feature_dimension,

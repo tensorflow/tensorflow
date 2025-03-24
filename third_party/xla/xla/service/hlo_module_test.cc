@@ -710,13 +710,16 @@ TEST_F(HloModuleTest, TwoComputationsFilterexecution_threads) {
   auto* parallel_thread_computation = async_done->async_wrapped_computation();
 
   EXPECT_THAT(
-      module->MakeComputationPostOrder({HloInstruction::kMainExecutionThread}),
+      module->MakeComputationPostOrder(absl::flat_hash_set<absl::string_view>(
+          {HloInstruction::kMainExecutionThread})),
       ::testing::ElementsAre(main_thread_computation));
   EXPECT_THAT(module->MakeComputationPostOrder(),
               ::testing::ElementsAre(parallel_thread_computation,
                                      main_thread_computation));
-  EXPECT_THAT(module->MakeComputationPostOrder({kParallelThreadName}),
-              ::testing::ElementsAre(parallel_thread_computation));
+  EXPECT_THAT(
+      module->MakeComputationPostOrder(
+          absl::flat_hash_set<absl::string_view>({kParallelThreadName})),
+      ::testing::ElementsAre(parallel_thread_computation));
   // Test that computations(execution_thread) return the expected values.
   int num_all_computations = 0;
   for ([[maybe_unused]] const HloComputation* comp :

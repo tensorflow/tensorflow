@@ -102,58 +102,58 @@ absl::StatusOr<bool> CollectivePermuteValidIterationAnnotator::Run(
         continue;
       }
 
-      HloInstruction* whileOp = inst->parent()->WhileCallInstruction();
-      if (whileOp == nullptr) {
-        VLOG(2) << "No surrounding while op found. Ignoring " << inst->name();
-        continue;
-      }
-      if (!whileOp->frontend_attributes().map().contains(
-              "is_pipelined_while_loop")) {
-        continue;
-      }
+      for (auto* while_op :
+           inst->parent()->caller_instructions(HloOpcode::kWhile)) {
+        if (!while_op->frontend_attributes().map().contains(
+                "is_pipelined_while_loop")) {
+          continue;
+        }
 
-      TF_ASSIGN_OR_RETURN(WhileLoopBackendConfig config,
-                          whileOp->backend_config<WhileLoopBackendConfig>());
-      if (!config.has_known_trip_count()) {
-        VLOG(2) << "Trip count for while loop (" << whileOp->name()
-                << "): unknown";
-        continue;
-      }
+        TF_ASSIGN_OR_RETURN(WhileLoopBackendConfig config,
+                            while_op->backend_config<WhileLoopBackendConfig>());
+        if (!config.has_known_trip_count()) {
+          VLOG(2) << "Trip count for while loop (" << while_op->name()
+                  << "): unknown";
+          continue;
+        }
 
-      int64_t trip_count = config.known_trip_count().n();
-      std::optional<int64_t> step = GetStep(whileOp);
-      VLOG(2) << "Trip count for while loop (" << whileOp->name()
-              << "): " << trip_count;
-      if (!step) {
-        VLOG(2) << "Could not find step for while operation";
-        continue;
-      }
-      VLOG(2) << "Step for while loop (" << whileOp->name() << "): " << *step;
-      if (*step != 1) {
-        VLOG(2) << "Step is not 1. Skipping...";
-        continue;
-      }
+        int64_t trip_count = config.known_trip_count().n();
+        std::optional<int64_t> step = GetStep(while_op);
+        VLOG(2) << "Trip count for while loop (" << while_op->name()
+                << "): " << trip_count;
+        if (!step) {
+          VLOG(2) << "Could not find step for while operation";
+          continue;
+        }
+        VLOG(2) << "Step for while loop (" << while_op->name()
+                << "): " << *step;
+        if (*step != 1) {
+          VLOG(2) << "Step is not 1. Skipping...";
+          continue;
+        }
 
-      // For each source i, the send/recv iteration instances are {i, i+offset}
-      // where offset is `number of microbatches * CR - 1`. We know that
-      // `trip_count = number_of_microbatches * CR + num_devices - 1` So, offset
-      // = number_of_microbatches * CR - 1 = trip_count - num_devices.
-      SourceTargetPairs sourceTargetPairs(inst->source_target_pairs());
-      int64_t num_devices = sourceTargetPairs.GetMaxDeviceNum() + 1;
-      int64_t offset = trip_count - num_devices;
-      SourceTargetPairs sendRecvValidation;
-      for (int64_t currIdx = 0; currIdx < sourceTargetPairs.size(); currIdx++) {
-        sendRecvValidation.emplace_back(currIdx, currIdx + offset);
-      }
+        // For each source i, the send/recv iteration instances are {i,
+        // i+offset} where offset is `number of microbatches * CR - 1`. We know
+        // that `trip_count = number_of_microbatches * CR + num_devices - 1` So,
+        // offset = number_of_microbatches * CR - 1 = trip_count - num_devices.
+        SourceTargetPairs sourceTargetPairs(inst->source_target_pairs());
+        int64_t num_devices = sourceTargetPairs.GetMaxDeviceNum() + 1;
+        int64_t offset = trip_count - num_devices;
+        SourceTargetPairs sendRecvValidation;
+        for (int64_t currIdx = 0; currIdx < sourceTargetPairs.size();
+             currIdx++) {
+          sendRecvValidation.emplace_back(currIdx, currIdx + offset);
+        }
 
-      if (cycleType == CycleType::kBackward) {
-        std::reverse(sendRecvValidation.data().begin(),
-                     sendRecvValidation.data().end());
-      }
+        if (cycleType == CycleType::kBackward) {
+          std::reverse(sendRecvValidation.data().begin(),
+                       sendRecvValidation.data().end());
+        }
 
-      inst->set_frontend_attribute(kSendRecvValidationAttr,
-                                   sendRecvValidation.ToString());
-      changed = true;
+        inst->set_frontend_attribute(kSendRecvValidationAttr,
+                                     sendRecvValidation.ToString());
+        changed = true;
+      }
     }
   }
   return changed;
