@@ -89,12 +89,11 @@ static const float kTestAccuracy = 1E-5F;
 
 #pragma mark - Tests
 
-// Disable below test for now to validate TFLite ios tests.
-// - (void)testTFLVersion {
-//   NSLog(@"TFLVersion: %@", TFLVersion);
-//   NSRange range = [TFLVersion rangeOfString:kTFLVersionRegex options:NSRegularExpressionSearch];
-//   XCTAssertNotEqual(range.location, NSNotFound);
-// }
+- (void)testTFLVersion {
+  NSLog(@"TFLVersion: %@", TFLVersion);
+  NSRange range = [TFLVersion rangeOfString:kTFLVersionRegex options:NSRegularExpressionSearch];
+  XCTAssertNotEqual(range.location, NSNotFound);
+}
 
 - (void)testSuccessfulFullRunAddFloatModel {
   // Shape for both input and output tensor.
