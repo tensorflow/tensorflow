@@ -242,7 +242,6 @@ absl::StatusOr<std::string> SerializeUsingVersionedStablehlo(
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::stablehlo::createStablehloComplexMathExpanderPass());
 
-  xla::sdy::addSdyRoundTripExportPipeline(pm);
   pm.addPass(mlir::stablehlo_ext::createChloPreserveHighLevelOpsPass());
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::stablehlo::createChloLegalizeToStablehloPass());
@@ -273,7 +272,7 @@ absl::StatusOr<std::string> SerializeUsingVersionedStablehlo(
   std::string buffer;
   llvm::raw_string_ostream os(buffer);
   if (mlir::failed(mlir::stablehlo::serializePortableArtifact(
-          mlir_module, target.value(), os))) {
+          mlir_module, target.value(), os, /*allowOtherDialects=*/true))) {
     const absl::Status status = diagnostic_handler.ConsumeStatus();
     return absl::InvalidArgumentError(absl::StrCat(
         "Failed to serialize StableHLO;\n\nDetailed error from MLIR: ",
@@ -309,21 +308,6 @@ absl::StatusOr<std::string> Serialize(mlir::ModuleOp module,
                                       absl::string_view target, bool inplace) {
   // Current PJRT users expect 12 weeks forward compat, VHLO provides this
   // compat.
-  // TODO (b/344930098): Allow VHLO interop and remove the all_stablehlo check
-  bool all_stablehlo_or_shardy = true;
-  module->walk([&](mlir::Operation* op) {
-    if (!llvm::isa<mlir::ModuleOp>(op) &&
-        !llvm::isa<mlir::stablehlo::StablehloDialect, mlir::func::FuncDialect,
-                   mlir::chlo::ChloDialect, mlir::sdy::SdyDialect>(
-            op->getDialect())) {
-      all_stablehlo_or_shardy = false;
-      return mlir::WalkResult::interrupt();
-    }
-    return mlir::WalkResult::advance();
-  });
-  if (!all_stablehlo_or_shardy) {
-    return SerializeUsingNativeBytecode(module);
-  }
   return SerializeUsingVersionedStablehlo(module, target, inplace);
 }
 
