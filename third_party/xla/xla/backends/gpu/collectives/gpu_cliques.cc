@@ -243,12 +243,10 @@ InitializeGpuClique(GpuCollectives* collectives, se::StreamExecutor* device,
       xla::GetDebugOptionsFromFlags()
           .xla_gpu_nccl_init_max_rank_per_root_ratio();
   int64_t nranks = clique_key.num_devices();
-  int64_t nroots = 1;
-  // Ceiling division to get number of roots
-  if (nccl_init_rank_per_root_ratio > 0) {
-    nroots = (nranks + nccl_init_rank_per_root_ratio - 1) /
-             nccl_init_rank_per_root_ratio;
-  }
+  int64_t nroots = nccl_init_rank_per_root_ratio != 0
+                       ? CeilOfRatio(nranks, nccl_init_rank_per_root_ratio)
+                       : 1;
+
   // Initializes a GpuClique for given device ranks and returns a lock that
   // gives access to clique communicators.
   auto initialize = [&](absl::Span<const RendezvousArg* const> args)
