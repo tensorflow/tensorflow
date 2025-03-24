@@ -830,4 +830,12 @@ bool LayoutUtil::ValidateDimLevel(DimLevelType dim_level_type, bool dim_unique,
   return max_elements_in;
 }
 
+/*static*/ std::optional<SplitConfig> LayoutUtil::GetSplitConfig(
+    const Shape& shape) {
+  CHECK_LE(shape.layout().split_configs_size(), 1);
+  return shape.layout().split_configs_size() > 0
+             ? std::make_optional(shape.layout().split_configs(0))
+             : std::nullopt;
+}
+
 }  // namespace xla
