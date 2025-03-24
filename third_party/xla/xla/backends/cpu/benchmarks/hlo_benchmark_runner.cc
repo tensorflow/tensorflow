@@ -16,9 +16,12 @@ limitations under the License.
 #include "xla/backends/cpu/benchmarks/hlo_benchmark_runner.h"
 
 #include <cstddef>
+#include <cstdint>
 #include <memory>
+#include <utility>
 #include <vector>
 
+#include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_replace.h"
@@ -26,24 +29,110 @@ limitations under the License.
 #include "absl/synchronization/blocking_counter.h"
 #include "absl/types/span.h"
 #include "xla/hlo/builder/xla_computation.h"
+#include "xla/hlo/ir/hlo_input_output_alias_config.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/literal.h"
+#include "xla/pjrt/cpu/abstract_tfrt_cpu_buffer.h"
 #include "xla/pjrt/cpu/cpu_client.h"
+#include "xla/pjrt/cpu/cpu_device.h"
+#include "xla/pjrt/cpu/tracked_cpu_device_buffer.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/plugin/xla_cpu/cpu_client_options.h"
 #include "xla/pjrt/plugin/xla_cpu/xla_cpu_pjrt_client.h"
+#include "xla/service/cpu/cpu_event.h"
 #include "xla/service/hlo_module_config.h"
+#include "xla/shape_util.h"
 #include "xla/tests/test_utils.h"
+#include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test_benchmark.h"
 #include "xla/tsl/platform/threadpool.h"
+#include "xla/util.h"
 #include "tsl/platform/casts.h"
 
 namespace xla::cpu {
+
+namespace {
+
+// Helper class for replacing output buffers with input buffers if there is
+// aliasing.
+// This class is required for benchmarking models where outputs are aliased to
+// inputs. This returns ownership of the aliased memory to the input buffers
+// so that it can be reused for the next iteration, otherwise we'd have invalid
+// input buffers.
+// Alternatively, we could turn off aliasing but that wouldn't be representative
+// of production performance.
+class AliasHelper {
+ public:
+  AliasHelper(HloModule* hlo_module, PjRtClient* client, PjRtDevice* device,
+              PjRtMemorySpace* memory_space)
+      : client_(client), device_(device), memory_space_(memory_space) {
+    hlo_module->input_output_alias_config().ForEachAlias(
+        [this](const ShapeIndex& output_index,
+               const HloInputOutputAliasConfig::Alias& alias) {
+          aliased_output_index_to_argument_index_.push_back(
+              std::make_pair(output_index, alias.parameter_number));
+        });
+  }
+
+  bool ComputationHasAliasing() const {
+    return !aliased_output_index_to_argument_index_.empty();
+  }
+
+  absl::Status SwapOutputAliasedBuffersToArgumentBuffers(
+      PjRtBuffer* result,
+      std::vector<std::unique_ptr<PjRtBuffer>>& args_buffers,
+      std::vector<PjRtBuffer*>& args_ptrs) {
+    if (!ComputationHasAliasing()) {
+      return absl::OkStatus();
+    }
+    TfrtCpuBuffer* result_tfrt_cpu_buffer =
+        tsl::down_cast<TfrtCpuBuffer*>(result);
+
+    TF_ASSIGN_OR_RETURN(
+        AbstractTfrtCpuBuffer::DonationTransaction buffer_donation,
+        result_tfrt_cpu_buffer->AcquireDonation());
+    TrackedCpuDeviceBuffer* tracked_tfrt_cpu_device_buffer =
+        buffer_donation.device_buffer();
+
+    for (const auto& [output_index, arg_index] :
+         aliased_output_index_to_argument_index_) {
+      // we don't need the entire buffer just the one at the output index
+      tsl::AsyncValuePtr<CpuDeviceMemory> output_cpu_memory =
+          tracked_tfrt_cpu_device_buffer->Buffer(output_index);
+
+      auto tracked_device_buffer = std::make_unique<TrackedCpuDeviceBuffer>(
+          /*is_tuple=*/false, /*owns_buffers=*/true,
+          absl::InlinedVector<tsl::AsyncValueRef<CpuDeviceMemory>, 4>{
+              output_cpu_memory.CopyRef()},
+          tsl::MakeAvailableAsyncValueRef<CpuEvent>());
+
+      args_buffers[arg_index] = std::make_unique<TfrtCpuBuffer>(
+          tsl::down_cast<AbstractTfrtCpuBuffer*>(args_buffers[arg_index].get())
+              ->on_device_shape(),
+          std::move(tracked_device_buffer),
+          tsl::down_cast<TfrtCpuClient*>(client_),
+          tsl::down_cast<TfrtCpuDevice*>(device_), memory_space_);
+
+      args_ptrs[arg_index] = args_buffers[arg_index].get();
+    }
+    return absl::OkStatus();
+  }
+
+ private:
+  std::vector<std::pair<ShapeIndex, int64_t>>
+      aliased_output_index_to_argument_index_;
+
+  PjRtClient* client_;
+  PjRtDevice* device_;
+  PjRtMemorySpace* memory_space_;
+};
+
+}  // namespace
 
 absl::Status RunHloBenchmark(benchmark::State& state,
                              absl::string_view hlo_module,
@@ -81,8 +170,13 @@ absl::Status RunHloBenchmark(benchmark::State& state,
                         client->CompileAndLoad(computation, compile_options));
   }
 
-  // Convert literals to PjRtBuffers.
-  std::vector<std::unique_ptr<PjRtBuffer>> args_buffers;
+  CHECK_GE(benchmark_options.num_executions, 1);
+
+  // For every parallel execution, we need to have a copy of the arguments in
+  // case there is aliasing. This also makes the benchmark more realistic,
+  // since in production each call would have separate argument buffers.
+  std::vector<std::vector<std::unique_ptr<PjRtBuffer>>> execution_args_buffers(
+      benchmark_options.num_executions);
 
   size_t expected_arg_count =
       module->entry_computation()->parameter_instructions().size();
@@ -92,11 +186,13 @@ absl::Status RunHloBenchmark(benchmark::State& state,
   if (args.empty()) {
     TF_ASSIGN_OR_RETURN(std::vector<Literal> fake_args,
                         MakeFakeArguments(module.get()));
-    args_buffers.reserve(fake_args.size());
-    for (const Literal& arg : fake_args) {
-      TF_ASSIGN_OR_RETURN(args_buffers.emplace_back(),
-                          client->BufferFromHostLiteral(arg, memory_space));
-      TF_RETURN_IF_ERROR(args_buffers.back()->GetReadyFuture().Await());
+    for (auto& args_buffers : execution_args_buffers) {
+      args_buffers.reserve(fake_args.size());
+      for (const Literal& arg : fake_args) {
+        TF_ASSIGN_OR_RETURN(args_buffers.emplace_back(),
+                            client->BufferFromHostLiteral(arg, memory_space));
+        TF_RETURN_IF_ERROR(args_buffers.back()->GetReadyFuture().Await());
+      }
     }
   } else {
     if (expected_arg_count != args.size()) {
@@ -105,11 +201,13 @@ absl::Status RunHloBenchmark(benchmark::State& state,
           "the HLO module.");
     }
 
-    args_buffers.reserve(args.size());
-    for (const Literal* arg : args) {
-      TF_ASSIGN_OR_RETURN(args_buffers.emplace_back(),
-                          client->BufferFromHostLiteral(*arg, memory_space));
-      TF_RETURN_IF_ERROR(args_buffers.back()->GetReadyFuture().Await());
+    for (auto& args_buffers : execution_args_buffers) {
+      args_buffers.reserve(args.size());
+      for (const Literal* arg : args) {
+        TF_ASSIGN_OR_RETURN(args_buffers.emplace_back(),
+                            client->BufferFromHostLiteral(*arg, memory_space));
+        TF_RETURN_IF_ERROR(args_buffers.back()->GetReadyFuture().Await());
+      }
     }
   }
 
@@ -118,34 +216,32 @@ absl::Status RunHloBenchmark(benchmark::State& state,
   ExecuteOptions execute_options;
   execute_options.execution_mode = ExecuteOptions::ExecutionMode::kSynchronous;
 
-  std::vector<PjRtBuffer*> args_ptrs;
-  args_ptrs.reserve(args_buffers.size());
-  for (const auto& arg : args_buffers) {
-    args_ptrs.push_back(arg.get());
+  std::vector<std::vector<PjRtBuffer*>> execution_args_ptrs(
+      benchmark_options.num_executions);
+  for (int i = 0; i < benchmark_options.num_executions; ++i) {
+    std::vector<PjRtBuffer*>& args_ptrs = execution_args_ptrs[i];
+    const std::vector<std::unique_ptr<PjRtBuffer>>& args_buffers =
+        execution_args_buffers[i];
+    args_ptrs.reserve(args_buffers.size());
+    for (const auto& arg : args_buffers) {
+      args_ptrs.push_back(arg.get());
+    }
   }
 
-  CHECK_GE(benchmark_options.num_executions, 1);
-  std::vector<std::vector<std::unique_ptr<PjRtBuffer>>> results(
+  AliasHelper alias_helper(module.get(), client.get(), device, memory_space);
+  std::vector<std::vector<std::unique_ptr<PjRtBuffer>>> execution_results(
       benchmark_options.num_executions);
 
   // Thread pool for dispatching multiple executions in parallel.
   tsl::thread::ThreadPool threads(tsl::Env::Default(), "hlo_benchmark_runner",
                                   benchmark_options.num_executions);
 
-  // Warmup executable.
-  TF_ASSIGN_OR_RETURN(results[0], executable->ExecuteSharded(args_ptrs, device,
-                                                             execute_options));
-
-  for (const auto& result : results[0]) {
-    CHECK_OK(result->GetReadyFuture().Await());
-  }
-
-  // Benchmark executable.
-  for (auto _ : state) {
+  auto run_benchmark_once = [&]() -> absl::Status {
     if (benchmark_options.num_executions == 1) {
       // Single execution always runs in the caller thread.
-      results[0] =
-          executable->ExecuteSharded(args_ptrs, device, execute_options)
+      execution_results[0] =
+          executable
+              ->ExecuteSharded(execution_args_ptrs[0], device, execute_options)
               .value();
     } else {
       // Multiple executions run in parallel.
@@ -153,7 +249,10 @@ absl::Status RunHloBenchmark(benchmark::State& state,
 
       for (size_t i = 0; i < benchmark_options.num_executions; ++i) {
         threads.Schedule([&, i]() {
-          results[i] =
+          const std::vector<PjRtBuffer*>& args_ptrs = execution_args_ptrs[i];
+          std::vector<std::unique_ptr<PjRtBuffer>>& results =
+              execution_results[i];
+          results =
               executable->ExecuteSharded(args_ptrs, device, execute_options)
                   .value();
           counter.DecrementCount();
@@ -165,10 +264,33 @@ absl::Status RunHloBenchmark(benchmark::State& state,
 
     // Wait for all results to be ready.
     for (size_t i = 0; i < benchmark_options.num_executions; ++i) {
-      for (const auto& result : results[i]) {
+      for (const auto& result : execution_results[i]) {
         CHECK_OK(result->GetReadyFuture().Await());
+        CHECK(!alias_helper.ComputationHasAliasing() ||
+              result->IsTuple() && execution_results[i].size() == 1)
+            << "Only single output tuple is supported in benchmarking aliased "
+               "models. "
+               "result->IsTuple(): "
+            << result->IsTuple()
+            << " execution_results size: " << execution_results[i].size();
+        std::vector<std::unique_ptr<PjRtBuffer>>& args_buffers =
+            execution_args_buffers[i];
+        std::vector<PjRtBuffer*>& args_ptrs = execution_args_ptrs[i];
+        TF_RETURN_IF_ERROR(
+            alias_helper.SwapOutputAliasedBuffersToArgumentBuffers(
+                result.get(), args_buffers, args_ptrs));
       }
     }
+
+    return absl::OkStatus();
+  };
+
+  // Warm up executable.
+  TF_RETURN_IF_ERROR(run_benchmark_once());
+
+  // Benchmark executable.
+  for (auto _ : state) {
+    TF_RETURN_IF_ERROR(run_benchmark_once());
   }
 
   return absl::OkStatus();
