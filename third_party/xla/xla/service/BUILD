@@ -2906,7 +2906,6 @@ cc_library(
     srcs = ["scan_loop_accumulator_input_unification.cc"],
     hdrs = ["scan_loop_accumulator_input_unification.h"],
     deps = [
-        ":call_graph",
         ":pattern_matcher",
         ":while_loop_simplifier",
         ":while_loop_unroller",
