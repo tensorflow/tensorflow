@@ -25,7 +25,7 @@ limitations under the License.
 #include "absl/functional/any_invocable.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
-#include "xla/service/cpu/cpu_event.h"
+#include "xla/pjrt/cpu/cpu_event.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 

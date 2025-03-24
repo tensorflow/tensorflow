@@ -28,7 +28,7 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/backends/cpu/alignment.h"
-#include "xla/service/cpu/cpu_event.h"
+#include "xla/pjrt/cpu/cpu_event.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/platform/statusor.h"

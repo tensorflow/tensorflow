@@ -127,11 +127,6 @@ filegroup(
 )
 
 cc_library(
-    name = "cpu_event",
-    hdrs = ["cpu_event.h"],
-)
-
-cc_library(
     name = "cpu_xfeed",
     srcs = ["cpu_xfeed.cc"],
     hdrs = ["cpu_xfeed.h"],

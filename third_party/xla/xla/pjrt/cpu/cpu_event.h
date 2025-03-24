@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_SERVICE_CPU_CPU_EVENT_H_
-#define XLA_SERVICE_CPU_CPU_EVENT_H_
+#ifndef XLA_PJRT_CPU_CPU_EVENT_H_
+#define XLA_PJRT_CPU_CPU_EVENT_H_
 
 namespace xla {
 
@@ -26,4 +26,4 @@ struct CpuEvent {
 
 }  // namespace xla
 
-#endif  // XLA_SERVICE_CPU_CPU_EVENT_H_
+#endif  // XLA_PJRT_CPU_CPU_EVENT_H_

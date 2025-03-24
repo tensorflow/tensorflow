@@ -19,7 +19,7 @@ limitations under the License.
 #include <string>
 
 #include <gtest/gtest.h>
-#include "xla/service/cpu/cpu_event.h"
+#include "xla/pjrt/cpu/cpu_event.h"
 #include "xla/tsl/concurrency/async_value.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/platform/env.h"

@@ -22,7 +22,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
 #include "absl/synchronization/mutex.h"
-#include "xla/service/cpu/cpu_event.h"
+#include "xla/pjrt/cpu/cpu_event.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 
 namespace xla {
