@@ -1,0 +1,2 @@
+// This blueprint file is deprecated.
+// litert.blueprint has been moved to third_party/odml/litert/litert/litert.blueprint
