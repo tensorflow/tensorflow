@@ -24,6 +24,8 @@ limitations under the License.
 #include "absl/base/nullability.h"
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
@@ -230,6 +232,16 @@ class HloRunner : public HloRunnerInterface {
   // TODO: b/393183864 - Remove this API.
   absl::StatusOr<absl::Nonnull<const HloProto*>> HloProtoFromWrapped(
       const OpaqueExecutable* wrapped) const;
+
+  // Returns true if the two given OpaqueExecutables originate from the same
+  // runner and are equivalent according to some notion specific to that runner.
+  // Executables that were created by different runners can never be equivalent.
+  bool ExecutablesAreEquivalent(
+      absl::Nonnull<const OpaqueExecutable*> lhs,
+      absl::Nonnull<const OpaqueExecutable*> rhs) const override {
+    LOG(FATAL) << "ExecutablesAreEquivalent is not implemented for HloRunner.";
+    return false;
+  }
 
  private:
   absl::StatusOr<ScopedShapedBuffer> TransferLiteralToDevice(

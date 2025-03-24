@@ -347,6 +347,13 @@ class HloRunnerInterface {
   // HloModule.
   virtual absl::StatusOr<absl::Nonnull<const HloModule*>> HloModuleFromWrapped(
       const OpaqueExecutable* wrapped) const = 0;
+
+  // Returns true if the two given OpaqueExecutables originate from the same
+  // runner and are equivalent according to some notion specific to that runner.
+  // Executables that were created by different runners can never be equivalent.
+  virtual bool ExecutablesAreEquivalent(
+      absl::Nonnull<const OpaqueExecutable*> lhs,
+      absl::Nonnull<const OpaqueExecutable*> rhs) const = 0;
 };
 
 }  // namespace xla

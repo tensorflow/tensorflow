@@ -828,4 +828,28 @@ HloRunnerPjRt::HloModuleFromWrapped(const OpaqueExecutable* wrapped) const {
   return absl::NotFoundError("PjRtLoadedExecutable has no modules.");
 }
 
+bool HloRunnerPjRt::ExecutablesAreEquivalent(
+    absl::Nonnull<const OpaqueExecutable*> lhs,
+    absl::Nonnull<const OpaqueExecutable*> rhs) const {
+  constexpr auto kFingerprint =
+      [](const absl::StatusOr<const HloRunnerPjRtExecutable*> wrapped)
+      -> absl::StatusOr<std::string> {
+    TF_ASSIGN_OR_RETURN(const HloRunnerPjRtExecutable* const executable,
+                        wrapped);
+    return executable->pjrt_loaded_executable()->FingerprintExecutable();
+  };
+
+  const absl::StatusOr<std::string> lhs_fingerprint =
+      kFingerprint(HloRunnerPjRtExecutable::TryUnwrap(*this, lhs));
+  if (!lhs_fingerprint.ok()) {
+    return false;
+  }
+  const absl::StatusOr<std::string> rhs_fingerprint =
+      kFingerprint(HloRunnerPjRtExecutable::TryUnwrap(*this, rhs));
+  if (!rhs_fingerprint.ok()) {
+    return false;
+  }
+  return *lhs_fingerprint == *rhs_fingerprint;
+}
+
 }  // namespace xla
