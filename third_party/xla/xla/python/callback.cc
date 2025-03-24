@@ -35,7 +35,6 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "nanobind/nanobind.h"
 #include "nanobind/stl/string_view.h"  // IWYU pragma: keep
-#include "xla/ffi/ffi.h"
 #include "xla/pjrt/host_callback.h"
 #include "xla/pjrt/transpose.h"
 #include "xla/primitive_util.h"
@@ -180,18 +179,6 @@ void XlaPythonCpuCallback(void* output, void** inputs,
     auto msg = s.message();
     XlaCustomCallStatusSetFailure(status, msg.data(), msg.length());
   }
-}
-
-absl::StatusOr<nb::tuple> CpuCallback::FfiCall(nb::tuple args) {
-  nb::tuple result_tuple;
-  try {
-    auto result_object = callable_(*nb::borrow<nb::args>(args));
-    result_tuple = nb::cast<nb::tuple>(result_object);
-  } catch (nb::python_error& e) {
-    return absl::InternalError(
-        absl::StrFormat("CpuCallback error calling callback: %s", e.what()));
-  }
-  return result_tuple;
 }
 
 }  // namespace xla
