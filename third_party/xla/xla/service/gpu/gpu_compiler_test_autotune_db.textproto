@@ -106,3 +106,27 @@ results {
     }
   }
 }
+results {
+  device: "CUDA: 10.0, Cores: 148, GPU clock: 1.65 GHz, Memory bandwidth: 8192 GB/s, L2 cache: 126.5 MB"
+  hlo: "{\n  tmp_0 = bf16[1,4,32,1024,1024]{4,3,2,1,0} parameter(0)\n  tmp_1 = bf16[] constant({...})\n  tmp_2 = bf16[1,4,32,1024,1024]{4,3,2,1,0} broadcast(bf16[] tmp_1), dimensions={}\n  tmp_3 = bf16[1,4,32,1024,1024]{4,3,2,1,0} multiply(bf16[1,4,32,1024,1024]{4,3,2,1,0} tmp_0, bf16[1,4,32,1024,1024]{4,3,2,1,0} tmp_2)\n  tmp_4 = bf16[4,32,1024,1024]{3,2,1,0} bitcast(bf16[1,4,32,1024,1024]{4,3,2,1,0} tmp_3)\n  tmp_5 = bf16[4,32,1024,1024]{3,2,1,0} transpose(bf16[4,32,1024,1024]{3,2,1,0} tmp_4), dimensions={0,1,3,2}\n  tmp_6 = bf16[128,1024,1024]{2,1,0} bitcast(bf16[4,32,1024,1024]{3,2,1,0} tmp_5)\n  tmp_7 = bf16[1,4,32,1024,1024]{4,3,2,1,0} parameter(1)\n  tmp_8 = bf16[128,1024,1024]{2,1,0} bitcast(bf16[1,4,32,1024,1024]{4,3,2,1,0} tmp_7)\n  tmp_9 = bf16[128,1024,1024]{2,1,0} dot(bf16[128,1024,1024]{2,1,0} tmp_6, bf16[128,1024,1024]{2,1,0} tmp_8), lhs_batch_dims={0}, lhs_contracting_dims={2}, rhs_batch_dims={0}, rhs_contracting_dims={1}\n  ROOT tmp_10 = bf16[4,32,1024,1024]{3,2,1,0} bitcast(bf16[128,1024,1024]{2,1,0} tmp_9)\n}"
+  result {
+    gemm {
+      algorithm: -1
+    }
+    run_time {
+      nanos: 1
+    }
+  }
+}
+results {
+  device: "CUDA: 10.0, Cores: 148, GPU clock: 1.65 GHz, Memory bandwidth: 8192 GB/s, L2 cache: 126.5 MB",
+  hlo: "{\n  tmp_0 = f8e4m3fn[12288,4096]{0,1} parameter(0)\n  tmp_1 = f8e4m3fn[4096,16384]{0,1} parameter(1)\n  tmp_2 = bf16[12288,16384]{1,0} dot(f8e4m3fn[12288,4096]{0,1} tmp_0, f8e4m3fn[4096,16384]{0,1} tmp_1), lhs_contracting_dims={1}, rhs_contracting_dims={0}\n  tmp_3 = bf16[] constant({...})\n  tmp_4 = bf16[12288,16384]{1,0} broadcast(bf16[] tmp_3), dimensions={}\n  ROOT tmp_5 = bf16[12288,16384]{1,0} multiply(bf16[12288,16384]{1,0} tmp_2, bf16[12288,16384]{1,0} tmp_4)\n}"
+  result {
+    gemm {
+      algorithm: -1
+    }
+    run_time {
+      nanos: 1
+    }
+  }
+}
