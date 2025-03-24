@@ -55,8 +55,8 @@ from setuptools.dist import Distribution
 _VERSION = '0.0.0'
 
 # Update this version when a new libtpu stable version is released.
-LATEST_RELEASE_LIBTPU_VERSION = '0.0.12'
-NEXT_LIBTPU_VERSION = '0.0.13'
+LATEST_RELEASE_LIBTPU_VERSION = '0.0.11'
+NEXT_LIBTPU_VERSION = '0.0.12'
 
 # We use the same setup.py for all tensorflow_* packages and for the nightly
 # equivalents (tf_nightly_*). The package is controlled from the argument line
