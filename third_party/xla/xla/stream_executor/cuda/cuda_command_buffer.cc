@@ -51,10 +51,10 @@ limitations under the License.
 #include "xla/stream_executor/semantic_version.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/stream_executor/typed_kernel_factory.h"  // IWYU pragma: keep
+#include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "tsl/platform/casts.h"
-#include "tsl/platform/env.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/statusor.h"
 
 namespace stream_executor::gpu {
 namespace {
@@ -143,7 +143,7 @@ absl::StatusOr<std::unique_ptr<CudaCommandBuffer>> CudaCommandBuffer::Create(
 }
 
 absl::Status CudaCommandBuffer::LaunchSetIfElseConditionKernel(
-    ExecutionScopeId execution_scope_id, GraphConditionalHandle if_conditional,
+    GraphConditionalHandle if_conditional,
     GraphConditionalHandle else_conditional, DeviceMemory<bool> predicate) {
   if (!set_if_else_condition_kernel_) {
     TF_ASSIGN_OR_RETURN(auto spec,
@@ -152,25 +152,24 @@ absl::Status CudaCommandBuffer::LaunchSetIfElseConditionKernel(
         set_if_else_condition_kernel_,
         SetIfElseConditionKernel::FactoryType::Create(parent_, spec));
   }
-  return Launch(set_if_else_condition_kernel_, execution_scope_id, ThreadDim(),
-                BlockDim(), ToCudaGraphHandle(if_conditional),
+  return Launch(set_if_else_condition_kernel_, ThreadDim(), BlockDim(),
+                ToCudaGraphHandle(if_conditional),
                 ToCudaGraphHandle(else_conditional), predicate);
 }
 absl::Status CudaCommandBuffer::LaunchSetIfConditionKernel(
-    ExecutionScopeId execution_scope_id, GraphConditionalHandle if_conditional,
-    DeviceMemory<bool> predicate) {
+    GraphConditionalHandle if_conditional, DeviceMemory<bool> predicate) {
   if (!set_if_condition_kernel_) {
     TF_ASSIGN_OR_RETURN(auto spec, cuda::GetSetIfConditionKernelLoaderSpec());
     TF_ASSIGN_OR_RETURN(
         set_if_condition_kernel_,
         SetIfConditionKernel::FactoryType::Create(parent_, spec));
   }
-  return Launch(set_if_condition_kernel_, execution_scope_id, ThreadDim(),
-                BlockDim(), ToCudaGraphHandle(if_conditional), predicate);
+  return Launch(set_if_condition_kernel_, ThreadDim(), BlockDim(),
+                ToCudaGraphHandle(if_conditional), predicate);
 }
 absl::Status CudaCommandBuffer::LaunchSetForConditionKernel(
-    ExecutionScopeId execution_scope_id, GraphConditionalHandle conditional,
-    DeviceMemory<int32_t> loop_counter, int32_t iterations) {
+    GraphConditionalHandle conditional, DeviceMemory<int32_t> loop_counter,
+    int32_t iterations) {
   if (!set_for_condition_kernel_) {
     TF_ASSIGN_OR_RETURN(auto spec, cuda::GetSetForConditionKernelLoaderSpec());
     TF_ASSIGN_OR_RETURN(
@@ -178,13 +177,12 @@ absl::Status CudaCommandBuffer::LaunchSetForConditionKernel(
         SetForConditionKernel::FactoryType::Create(parent_, spec));
   }
 
-  return CommandBuffer::Launch(
-      set_for_condition_kernel_, execution_scope_id, ThreadDim(), BlockDim(),
-      ToCudaGraphHandle(conditional), loop_counter, iterations);
+  return CommandBuffer::Launch(set_for_condition_kernel_, ThreadDim(),
+                               BlockDim(), ToCudaGraphHandle(conditional),
+                               loop_counter, iterations);
 }
 absl::Status CudaCommandBuffer::LaunchSetWhileConditionKernel(
-    ExecutionScopeId execution_scope_id, GraphConditionalHandle conditional,
-    DeviceMemory<bool> predicate) {
+    GraphConditionalHandle conditional, DeviceMemory<bool> predicate) {
   if (!set_while_condition_kernel_) {
     TF_ASSIGN_OR_RETURN(auto spec,
                         cuda::GetSetWhileConditionKernelLoaderSpec());
@@ -193,14 +191,13 @@ absl::Status CudaCommandBuffer::LaunchSetWhileConditionKernel(
         SetWhileConditionKernel::FactoryType::Create(parent_, spec));
   }
 
-  return Launch(set_while_condition_kernel_, execution_scope_id, ThreadDim(),
-                BlockDim(), ToCudaGraphHandle(conditional), predicate);
+  return Launch(set_while_condition_kernel_, ThreadDim(), BlockDim(),
+                ToCudaGraphHandle(conditional), predicate);
 }
 
 absl::Status CudaCommandBuffer::LaunchSetCaseConditionKernel(
-    ExecutionScopeId execution_scope_id, GraphConditionalHandles conditionals,
-    DeviceMemory<uint8_t> index, bool index_is_bool, int32_t batch_offset,
-    bool enable_conditional_default) {
+    GraphConditionalHandles conditionals, DeviceMemory<uint8_t> index,
+    bool index_is_bool, int32_t batch_offset, bool enable_conditional_default) {
   constexpr int kCaseBranchBatchSize = 8;
   CHECK(conditionals.size() <= kCaseBranchBatchSize);
 
@@ -220,12 +217,12 @@ absl::Status CudaCommandBuffer::LaunchSetCaseConditionKernel(
                    return ToCudaGraphHandle(conditional);
                  });
 
-  return Launch(
-      set_case_condition_kernel_, execution_scope_id, ThreadDim(), BlockDim(),
-      padded_handles[0], padded_handles[1], padded_handles[2],
-      padded_handles[3], padded_handles[4], padded_handles[5],
-      padded_handles[6], padded_handles[7], index, index_is_bool, batch_offset,
-      static_cast<int32_t>(conditionals.size()), enable_conditional_default);
+  return Launch(set_case_condition_kernel_, ThreadDim(), BlockDim(),
+                padded_handles[0], padded_handles[1], padded_handles[2],
+                padded_handles[3], padded_handles[4], padded_handles[5],
+                padded_handles[6], padded_handles[7], index, index_is_bool,
+                batch_offset, static_cast<int32_t>(conditionals.size()),
+                enable_conditional_default);
 }
 
 absl::StatusOr<CudaCommandBuffer::NoOpKernel*>
@@ -618,8 +615,7 @@ absl::Status CudaCommandBuffer::PrepareFinalization() {
   }
 
   TF_ASSIGN_OR_RETURN(NoOpKernel * noop, GetNoOpKernel());
-  TF_RETURN_IF_ERROR(CommandBuffer::Launch(*noop, kDefaultExecutionScope,
-                                           ThreadDim(), BlockDim()));
+  TF_RETURN_IF_ERROR(CommandBuffer::Launch(*noop, ThreadDim(), BlockDim()));
 
   return absl::OkStatus();
 }

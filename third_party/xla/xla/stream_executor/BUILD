@@ -609,12 +609,10 @@ cc_library(
         ":device_memory",
         ":kernel",
         ":launch_dim",
-        "//xla/tsl/lib/gtl:int_type",
+        "//xla/tsl/platform:errors",
         "@com_google_absl//absl/functional:any_invocable",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings:string_view",
-        "@com_google_absl//absl/types:span",
-        "@local_tsl//tsl/platform:errors",
     ],
 )
 

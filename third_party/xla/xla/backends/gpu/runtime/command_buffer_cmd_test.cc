@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/strings/ascii.h"
 #include "absl/types/span.h"
 #include "xla/backends/gpu/runtime/thunk.h"
+#include "xla/runtime/buffer_use.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/buffer_allocations.h"
 #include "xla/service/gpu/launch_dimensions.h"
@@ -37,15 +38,14 @@ limitations under the License.
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/stream_executor/stream_executor_memory_allocator.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/status.h"
+#include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/platform/test.h"
+#include "xla/tsl/platform/test_benchmark.h"
 #include "xla/types.h"  // IWYU pragma: keep
-#include "tsl/platform/status.h"
-#include "tsl/platform/statusor.h"
-#include "tsl/platform/test.h"
-#include "tsl/platform/test_benchmark.h"
 
 namespace xla::gpu {
 
-using xla::BufferUse;
 using BufferUseVector = CommandBufferCmd::BufferUseVector;
 using MemoryAccess = BufferUse::MemoryAccess;
 
@@ -175,26 +175,6 @@ TEST(CommandBufferCmdTest, WriteConflictBarrier) {
   EXPECT_EQ(commands.barriers().at(2), true);
 }
 
-TEST(CommandBufferCmdTest, NoWriteConflictsAcrossStreams) {
-  BufferAllocation alloc0(/*index=*/0, /*size=*/1024, /*color=*/0);
-
-  auto slice0 = BufferAllocation::Slice(&alloc0, 0, 100);
-  auto slice1 = BufferAllocation::Slice(&alloc0, 50, 100);
-
-  // Read and write happens on different execution streams and we do not insert
-  // any automatic barriers between streams.
-  auto use0 = BufferUse(slice0, BufferUse::kRead);
-  auto use1 = BufferUse(slice1, BufferUse::kWrite);
-
-  CommandBufferCmdSequence commands;
-  commands.Emplace<TestOnlyCommandBufferCmd>(s0, BufferUseVector{use0});
-  commands.Emplace<TestOnlyCommandBufferCmd>(s1, BufferUseVector{use1});
-
-  ASSERT_EQ(commands.barriers().size(), 2);
-  EXPECT_EQ(commands.barriers().at(0), false);
-  EXPECT_EQ(commands.barriers().at(1), false);
-}
-
 TEST(CommandBufferCmdTest, MemcpyCmd) {
   se::StreamExecutor* executor = GpuExecutor();
 
@@ -243,87 +223,6 @@ TEST(CommandBufferCmdTest, MemcpyCmd) {
   TF_ASSERT_OK(stream->Memcpy(dst.data(), b, byte_length));
 
   ASSERT_EQ(dst, std::vector<int32_t>(4, 42));
-}
-
-TEST(CommandBufferCmdTest, BarrierCmd) {
-  // This test covers both CUDA version < 12040 (use empty kernel node as
-  // barrier node) and >=12040 (use cuda graph empty node as barrier node).
-  se::StreamExecutor* executor = GpuExecutor();
-
-  auto stream = executor->CreateStream().value();
-
-  int64_t length = 4;
-  int64_t byte_length = sizeof(int32_t) * length;
-
-  // Prepare arguments: a=42, b=0
-  se::DeviceMemory<int32_t> a = executor->AllocateArray<int32_t>(length, 0);
-  se::DeviceMemory<int32_t> b = executor->AllocateArray<int32_t>(length, 0);
-  se::DeviceMemory<int32_t> c = executor->AllocateArray<int32_t>(length, 0);
-  se::DeviceMemory<int32_t> d = executor->AllocateArray<int32_t>(length, 0);
-  se::DeviceMemory<int32_t> e = executor->AllocateArray<int32_t>(length, 0);
-
-  TF_ASSERT_OK(stream->Memset32(&a, 42, byte_length));
-  TF_ASSERT_OK(stream->MemZero(&b, byte_length));
-  TF_ASSERT_OK(stream->MemZero(&c, byte_length));
-  TF_ASSERT_OK(stream->MemZero(&d, byte_length));
-  TF_ASSERT_OK(stream->MemZero(&e, byte_length));
-
-  // Prepare buffer allocations for recording command buffer.
-  BufferAllocation alloc_a(/*index=*/0, byte_length, /*color=*/0);
-  BufferAllocation alloc_b(/*index=*/1, byte_length, /*color=*/0);
-  BufferAllocation alloc_c(/*index=*/2, byte_length, /*color=*/0);
-  BufferAllocation alloc_d(/*index=*/3, byte_length, /*color=*/0);
-  BufferAllocation alloc_e(/*index=*/4, byte_length, /*color=*/0);
-
-  BufferAllocation::Slice slice_a(&alloc_a, 0, byte_length);
-  BufferAllocation::Slice slice_b(&alloc_b, 0, byte_length);
-  BufferAllocation::Slice slice_c(&alloc_c, 0, byte_length);
-  BufferAllocation::Slice slice_d(&alloc_d, 0, byte_length);
-  BufferAllocation::Slice slice_e(&alloc_e, 0, byte_length);
-
-  // Prepare commands sequence for constructing command buffer.
-  CommandBufferCmdSequence commands;
-  commands.Emplace<MemcpyDeviceToDeviceCmd>(s0, slice_b, slice_a, byte_length);
-  commands.Emplace<BarrierCmd>(s1, s0);
-  commands.Emplace<MemcpyDeviceToDeviceCmd>(s1, slice_c, slice_b, byte_length);
-  commands.Emplace<BarrierCmd>(s0, s1);
-  commands.Emplace<MemcpyDeviceToDeviceCmd>(s0, slice_d, slice_c, byte_length);
-  commands.Emplace<BarrierCmd>(s1, s0);
-  commands.Emplace<MemcpyDeviceToDeviceCmd>(s1, slice_e, slice_d, byte_length);
-
-  ServiceExecutableRunOptions run_options;
-  se::StreamExecutorMemoryAllocator allocator(executor);
-  BufferAllocations allocations({a, b, c, d, e}, 0, &allocator);
-
-  CommandBufferCmd::StateManager state;
-
-  Thunk::ExecuteParams params = Thunk::ExecuteParams::Create(
-      run_options, allocations, stream.get(), stream.get(), nullptr, nullptr);
-
-  CommandBufferCmd::RecordParams record_params = {state};
-
-  auto command_buffer =
-      executor->CreateCommandBuffer(se::CommandBuffer::Mode::kPrimary).value();
-  TF_ASSERT_OK(commands.Record(params, record_params, command_buffer.get()));
-
-  // Execute command buffer and verify that it copied the memory.
-  TF_ASSERT_OK(command_buffer->Submit(stream.get()));
-
-  // Copy data back to host, correct executor order should populate all buffers
-  // with expected value.
-  std::vector<int32_t> dst_b(4, 0);
-  std::vector<int32_t> dst_c(4, 0);
-  std::vector<int32_t> dst_d(4, 0);
-  std::vector<int32_t> dst_e(4, 0);
-  TF_ASSERT_OK(stream->Memcpy(dst_b.data(), b, byte_length));
-  TF_ASSERT_OK(stream->Memcpy(dst_c.data(), c, byte_length));
-  TF_ASSERT_OK(stream->Memcpy(dst_d.data(), d, byte_length));
-  TF_ASSERT_OK(stream->Memcpy(dst_e.data(), e, byte_length));
-
-  ASSERT_EQ(dst_b, std::vector<int32_t>(4, 42));
-  ASSERT_EQ(dst_c, std::vector<int32_t>(4, 42));
-  ASSERT_EQ(dst_d, std::vector<int32_t>(4, 42));
-  ASSERT_EQ(dst_e, std::vector<int32_t>(4, 42));
 }
 
 TEST(CommandBufferCmdTest, LaunchCmd) {

@@ -22,7 +22,6 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
-#include "absl/container/flat_hash_map.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -98,56 +97,38 @@ class GpuCommandBuffer : public CommandBuffer {
 
   GpuCommandBuffer(Mode mode, StreamExecutor* parent);
 
-  using CommandBuffer::Barrier;
-  absl::Status Barrier(ExecutionScopeId execution_scope_id) override;
-
-  absl::Status Barrier(
-      absl::Span<const ExecutionScopeId> execution_scope_ids) override;
-
-  absl::Status Barrier(ExecutionScopeId from_execution_scope_id,
-                       ExecutionScopeId to_execution_scope_id) override;
+  absl::Status Barrier() override;
 
   using CommandBuffer::Launch;
-  absl::Status Launch(ExecutionScopeId execution_scope_id,
-                      const ThreadDim& threads, const BlockDim& blocks,
+  absl::Status Launch(const ThreadDim& threads, const BlockDim& blocks,
                       const Kernel& kernel, const KernelArgs& args) override;
 
-  absl::Status AddNestedCommandBuffer(ExecutionScopeId execution_scope_id,
-                                      const CommandBuffer& nested) override;
+  absl::Status AddNestedCommandBuffer(const CommandBuffer& nested) override;
 
-  absl::Status MemcpyDeviceToDevice(ExecutionScopeId execution_scope_id,
-                                    DeviceMemoryBase* dst,
+  absl::Status MemcpyDeviceToDevice(DeviceMemoryBase* dst,
                                     const DeviceMemoryBase& src,
                                     uint64_t size) override;
 
-  absl::Status Memset(ExecutionScopeId execution_scope_id,
-                      DeviceMemoryBase* dst, BitPattern bit_pattern,
+  absl::Status Memset(DeviceMemoryBase* dst, BitPattern bit_pattern,
                       size_t num_elements) override;
 
-  absl::Status If(ExecutionScopeId execution_scope_id,
-                  DeviceMemory<bool> predicate, Builder then_builder) override;
+  absl::Status If(DeviceMemory<bool> predicate, Builder then_builder) override;
 
-  absl::Status IfElse(ExecutionScopeId execution_scope_id,
-                      DeviceMemory<bool> predicate, Builder then_builder,
+  absl::Status IfElse(DeviceMemory<bool> predicate, Builder then_builder,
                       Builder else_builder) override;
 
   // Case operation that uses bool value as branch index
-  absl::Status Case(ExecutionScopeId execution_scope_id,
-                    DeviceMemory<bool> index,
+  absl::Status Case(DeviceMemory<bool> index,
                     std::vector<Builder> branches) override;
 
   // Case operation that uses int32 value as branch index
-  absl::Status Case(ExecutionScopeId execution_scope_id,
-                    DeviceMemory<int32_t> index,
+  absl::Status Case(DeviceMemory<int32_t> index,
                     std::vector<Builder> branches) override;
 
-  absl::Status For(ExecutionScopeId execution_scope_id, int32_t num_iteration,
-                   DeviceMemory<int32_t> loop_counter,
+  absl::Status For(int32_t num_iteration, DeviceMemory<int32_t> loop_counter,
                    Builder body_builder) override;
 
-  absl::Status While(ExecutionScopeId execution_scope_id,
-                     DeviceMemory<bool> pred,
-                     ExecutionScopeBuilder cond_builder,
+  absl::Status While(DeviceMemory<bool> pred, Builder cond_builder,
                      Builder body_builder) override;
 
   absl::Status Finalize() override;
@@ -157,16 +138,8 @@ class GpuCommandBuffer : public CommandBuffer {
   Mode mode() const override { return mode_; }
   State state() const override { return state_; }
 
-  absl::Span<const GpuGraphNodeInfo> nodes(ExecutionScopeId id) const;
-  absl::Span<const GpuGraphBarrierInfo> barriers(ExecutionScopeId id) const;
-
-  absl::Span<const GpuGraphNodeInfo> nodes() const {
-    return nodes(kDefaultExecutionScope);
-  }
-
-  absl::Span<const GpuGraphBarrierInfo> barriers() const {
-    return barriers(kDefaultExecutionScope);
-  }
+  absl::Span<const GpuGraphNodeInfo> nodes() const;
+  absl::Span<const GpuGraphBarrierInfo> barriers() const;
 
   // Returns the list of dependencies for a given node. `node` must be a node
   // added to the current command buffer. The returned node pointer's lifetimes
@@ -190,8 +163,8 @@ class GpuCommandBuffer : public CommandBuffer {
 
  private:
   // A callback to launch a kernel that updates conditional handles state.
-  using SetConditionFn = std::function<absl::Status(
-      ExecutionScopeId, absl::Span<const GraphConditionalHandle>)>;
+  using SetConditionFn =
+      std::function<absl::Status(absl::Span<const GraphConditionalHandle>)>;
 
   // An extension of `Builder` for building conditional command buffers tied to
   // conditional handles.
@@ -224,8 +197,7 @@ class GpuCommandBuffer : public CommandBuffer {
 
   absl::StatusOr<std::vector<std::unique_ptr<GpuCommandBuffer>>>
   CreateConditionalCommandBuffers(
-      ExecutionScopeId execution_scope_id, ConditionType type,
-      absl::Span<const GraphConditionalHandle> conditionals,
+      ConditionType type, absl::Span<const GraphConditionalHandle> conditionals,
       absl::Span<const ConditionBuilder> builders);
 
   absl::Status UpdateConditionalCommandBuffers(
@@ -234,31 +206,28 @@ class GpuCommandBuffer : public CommandBuffer {
       absl::Span<const ConditionBuilder> builders);
 
   absl::StatusOr<std::unique_ptr<GpuCommandBuffer>>
-  CreateConditionalCommandBuffer(ExecutionScopeId execution_scope_id,
-                                 ConditionType type,
+  CreateConditionalCommandBuffer(ConditionType type,
                                  GraphConditionalHandle conditional);
 
   // Adds a new conditional command (If, IfElse, Case, While, For) to the
   // command buffer.
   absl::Status AddConditionalCommandNode(
-      ExecutionScopeId execution_scope_id, ConditionType type,
-      SetConditionFn set_condition,
+      ConditionType type, SetConditionFn set_condition,
       absl::Span<const ConditionBuilder> builders);
 
-  Dependencies GetBarrier(ExecutionScopeId execution_scope_id);
+  Dependencies GetBarrier();
 
   // Launches a kernels that updates the state of the given graph conditional
   // based on the predicate. If the predicate is true, `if_conditional` is set
   // to 1, otherwise to 0.
   virtual absl::Status LaunchSetIfConditionKernel(
-      ExecutionScopeId execution_scope_id,
       GraphConditionalHandle if_conditional, DeviceMemory<bool> predicate) = 0;
   // Launches a kernels that updates the state of the given graph conditionals
   // based on the predicate. If the predicate is true, `if_conditional` is set
   // to 1 and `else_conditional` to 0. If the predicate is false,
   // `if_conditional` is set to 0 and `else_conditional` to 1.
   virtual absl::Status LaunchSetIfElseConditionKernel(
-      ExecutionScopeId execution_scope_id,
+
       GraphConditionalHandle if_conditional,
       GraphConditionalHandle else_conditional,
       DeviceMemory<bool> predicate) = 0;
@@ -267,22 +236,21 @@ class GpuCommandBuffer : public CommandBuffer {
   // == x + batch_offset and 0 otherwise. `conditionals` may contain up to 8
   // conditionals
   virtual absl::Status LaunchSetCaseConditionKernel(
-      ExecutionScopeId execution_scope_id, GraphConditionalHandles conditionals,
-      DeviceMemory<uint8_t> index, bool index_is_bool, int32_t batch_offset,
+      GraphConditionalHandles conditionals, DeviceMemory<uint8_t> index,
+      bool index_is_bool, int32_t batch_offset,
       bool enable_conditional_default) = 0;
   // Launches a kernel that updates the state of the given graph conditional
   // based on the loop counter and the total number of iterations. If the loop
   // counter is less than the number of iterations, `conditional` is set to 1,
   // otherwise to 0. The loop counter is also incremented by 1.
   virtual absl::Status LaunchSetForConditionKernel(
-      ExecutionScopeId execution_scope_id, GraphConditionalHandle conditional,
-      DeviceMemory<int32_t> loop_counter, int32_t iterations) = 0;
+      GraphConditionalHandle conditional, DeviceMemory<int32_t> loop_counter,
+      int32_t iterations) = 0;
   // Launches a kernel that updates the state of the given graph conditional
   // based on the predicate. If the predicate is true, `conditional` is set to
   // 1, otherwise to 0.
   virtual absl::Status LaunchSetWhileConditionKernel(
-      ExecutionScopeId execution_scope_id, GraphConditionalHandle conditional,
-      DeviceMemory<bool> predicate) = 0;
+      GraphConditionalHandle conditional, DeviceMemory<bool> predicate) = 0;
 
   // Recursively disable all nodes corresponding to barriers (including nested
   // conditional command buffers). This is work around the fact that we can't
@@ -294,11 +262,17 @@ class GpuCommandBuffer : public CommandBuffer {
 
   // Launches CUDA kernels with packed arguments.
   absl::Status LaunchWithPackedArgs(
-      ExecutionScopeId execution_scope_id, const ThreadDim& threads,
-      const BlockDim& blocks, const Kernel& kernel,
+      const ThreadDim& threads, const BlockDim& blocks, const Kernel& kernel,
       const KernelArgsPackedArrayBase& packed_args);
 
  protected:
+  // Creates a nested command buffer, associated with the same executor.
+  // The given graph will not be owned by the created command buffer.
+  struct ConditionalNodeResult {
+    GraphNodeHandle node_handle;
+    std::unique_ptr<GpuCommandBuffer> command_buffer;
+  };
+
   // Returns OK status if command buffer is not finalized and it is still
   // possible to add new commands to it, otherwise returns internal error.
   absl::Status CheckNotFinalized();
@@ -313,64 +287,47 @@ class GpuCommandBuffer : public CommandBuffer {
       const ConditionalCommandBuffers& cmd_buffers, size_t num_cmd_buffers);
 
   // Collects a set of dependencies for a new barrier.
-  Dependencies GetBarrierDependencies(ExecutionScopeId execution_scope_id);
+  Dependencies GetBarrierDependencies();
 
   Mode mode_;
   State state_ = State::kCreate;
 
   StreamExecutor* parent_;  // not owned, must outlive *this
 
- private:
-  // ExecutionScope holds the state of an underlying CUDA graph (nodes an
-  // barriers added to a graph) for a single execution scope.
-  struct ExecutionScope {
-    // Tracks indices into data structures during command buffer updates.
-    struct UpdateState {
-      // Index points to the graph node inside `nodes` that will be updated
-      // next.
-      int64_t node_idx = 0;
-
-      // Index points to the barrier node inside `barriers` that will be updated
-      // on a next call to `Barrier(...)`.
-      int64_t barrier_idx = 0;
-
-      // Index points to the conditional command buffers that will be updated
-      // next when we'll be updating next conditional command (If, Case, While).
-      int64_t conditional_idx = 0;
-    };
-
-    // Gpu graph nodes corresponding to recorded commands (launch, memcpy,
-    // etc.).
-    std::vector<GpuGraphNodeInfo> nodes;
-
-    // Gpu graph barriers that define recorded commands execution order.
-    std::vector<GpuGraphBarrierInfo> barriers;
-
-    // Command buffers for conditional nodes in the Gpu graph. Underlying Gpu
-    // graphs owned by the `graph_` instance.
-    std::vector<ConditionalCommandBuffers> conditional_command_buffers;
-
-    // Tracks execution scope update state.
-    UpdateState update_state;
-  };
-
-  // Execution scopes recorded into the command buffer.
-  absl::flat_hash_map<ExecutionScopeId, ExecutionScope> execution_scopes_;
-
   // Track the number of command buffer updates for debugging.
   int64_t num_updates_ = 0;
 
-  // Creates a nested command buffer, associated with the same executor.
-  // The given graph will not be owned by the created command buffer.
- protected:
-  struct ConditionalNodeResult {
-    GraphNodeHandle node_handle;
-    std::unique_ptr<GpuCommandBuffer> command_buffer;
+  // Gpu graph nodes corresponding to recorded commands (launch, memcpy,
+  // etc.).
+  std::vector<GpuGraphNodeInfo> nodes_;
+
+  // Gpu graph barriers that define recorded commands execution order.
+  std::vector<GpuGraphBarrierInfo> barriers_;
+
+  // Command buffers for conditional nodes in the Gpu graph. Underlying Gpu
+  // graphs owned by the `graph_` instance.
+  std::vector<ConditionalCommandBuffers> conditional_command_buffers_;
+
+  // Tracks indices into data structures during command buffer updates.
+  struct UpdateState {
+    // Index points to the graph node inside `nodes` that will be updated
+    // next.
+    int64_t node_idx = 0;
+
+    // Index points to the barrier node inside `barriers` that will be updated
+    // on a next call to `Barrier(...)`.
+    int64_t barrier_idx = 0;
+
+    // Index points to the conditional command buffers that will be updated
+    // next when we'll be updating next conditional command (If, Case, While).
+    int64_t conditional_idx = 0;
   };
 
+  // Tracks execution scope update state.
+  UpdateState update_state_;
+
  private:
-  absl::Status Case(ExecutionScopeId execution_scope_id,
-                    DeviceMemory<uint8_t> index, bool index_is_bool,
+  absl::Status Case(DeviceMemory<uint8_t> index, bool index_is_bool,
                     std::vector<Builder> branches);
 
   // Adds a new conditional node to the graph and creates a corresponding nested
