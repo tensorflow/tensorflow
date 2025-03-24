@@ -1,3 +1,4 @@
+load("//xla/tsl:tsl.bzl", "internal_visibility")
 load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
 
 package(
@@ -56,6 +57,7 @@ cc_library(
     name = "import_shardy_attrs",
     srcs = ["import_shardy_attrs.cc"],
     hdrs = ["import_shardy_attrs.h"],
+    visibility = internal_visibility([":friends"]),
     deps = [
         "//xla/service/spmd/shardy:constants",
         "//xla/service/spmd/shardy:utils",
@@ -164,6 +166,7 @@ cc_library(
     name = "pipelines",
     srcs = ["pipelines.cc"],
     hdrs = ["pipelines.h"],
+    visibility = internal_visibility([":friends"]),
     deps = [
         ":dedup_meshes",
         ":export_ops",

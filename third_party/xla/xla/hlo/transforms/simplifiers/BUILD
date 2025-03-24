@@ -2,7 +2,7 @@
 #   Implementation of XLA’s HLO simplifier transformations.
 
 load("//xla:xla.default.bzl", "xla_cc_test")
-load("//xla/tsl:tsl.bzl", "tsl_copts")
+load("//xla/tsl:tsl.bzl", "internal_visibility", "tsl_copts")
 load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
 load(
     "//xla/tsl/platform/default:cuda_build_defs.bzl",
@@ -251,6 +251,7 @@ cc_library(
     name = "flatten_call_graph",
     srcs = ["flatten_call_graph.cc"],
     hdrs = ["flatten_call_graph.h"],
+    visibility = internal_visibility([":friends"]),
     deps = [
         "//xla:util",
         "//xla/hlo/ir:hlo",
@@ -694,6 +695,7 @@ cc_library(
     name = "tuple_simplifier",
     srcs = ["tuple_simplifier.cc"],
     hdrs = ["tuple_simplifier.h"],
+    visibility = internal_visibility([":friends"]),
     deps = [
         "//xla:shape_util",
         "//xla/hlo/ir:hlo",
@@ -808,6 +810,7 @@ cc_library(
     name = "hlo_dce",
     srcs = ["hlo_dce.cc"],
     hdrs = ["hlo_dce.h"],
+    visibility = internal_visibility([":friends"]),
     deps = [
         "//xla:shape_util",
         "//xla:util",
