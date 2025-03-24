@@ -103,6 +103,7 @@ cc_library(
     srcs = ["read_numa_node.cc"],
     hdrs = ["read_numa_node.h"],
     deps = [
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@local_tsl//tsl/platform:logging",
@@ -117,6 +118,7 @@ cc_library(
     deps = [
         ":context",
         "//xla/stream_executor:activate_context",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@local_tsl//tsl/platform:logging",
     ],
@@ -484,6 +486,8 @@ cc_library(
         "//xla/tsl/util:env_var",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
         "@local_config_cuda//cuda:cuda_headers",
