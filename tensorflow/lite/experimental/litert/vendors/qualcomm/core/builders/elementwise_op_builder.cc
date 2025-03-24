@@ -262,4 +262,17 @@ std::vector<OpWrapper> BuildElementwiseNotEqualOp(
   return res;
 }
 
+std::vector<OpWrapper> BuildElementwisePower(
+    TensorPool& tensor_pool, const std::vector<TensorWrapperRef>& inputs,
+    const std::vector<TensorWrapperRef>& outputs) {
+  std::vector<OpWrapper> res;
+
+  auto& elementwise_op = CreateOpWrapper(res, QNN_OP_ELEMENT_WISE_POWER);
+  for (const auto& input : inputs) {
+    elementwise_op.AddInputTensor(input);
+  }
+  elementwise_op.AddOutputTensor(outputs[0]);
+  return res;
+}
+
 }  // namespace qnn

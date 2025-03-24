@@ -686,6 +686,11 @@ LiteRtStatus ConvertOp(
           ::qnn::BuildGatherNdOp(tensor_pool, input_tensors, output_tensors);
       break;
     }
+    case LiteRtOpCode::kLiteRtOpCodeTflPow: {
+      op_wrappers = ::qnn::BuildElementwisePower(tensor_pool, input_tensors,
+                                                 output_tensors);
+      break;
+    }
     default: {
       LITERT_LOG(LITERT_ERROR,
                  "LiteRT Op Code: %d is not supported in Qualcomm Compiler.",
