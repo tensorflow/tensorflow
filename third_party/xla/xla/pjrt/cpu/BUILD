@@ -112,7 +112,7 @@ cc_library(
     hdrs = ["cpu_device.h"],
     visibility = internal_visibility(["//xla/pjrt/cpu:legacy_cpu_topology_users"]),
     deps = [
-        ":tfrt_cpu_async_execution_tracker",
+        ":cpu_async_execution_tracker",
         "//xla:literal",
         "//xla/pjrt:host_memory_spaces",
         "//xla/pjrt:pjrt_client",
@@ -141,8 +141,8 @@ cc_library(
     visibility = internal_visibility(["//xla/pjrt/cpu:legacy_cpu_client_users"]),
     deps = [
         ":abstract_tfrt_cpu_buffer",
+        ":cpu_async_execution_tracker",
         ":cpu_device",
-        ":tfrt_cpu_async_execution_tracker",
         ":tracked_cpu_device_buffer",
         "//xla:array",
         "//xla:cpu_function_runtime",
@@ -277,9 +277,9 @@ xla_cc_test(
 )
 
 cc_library(
-    name = "tfrt_cpu_async_execution_tracker",
-    srcs = ["tfrt_cpu_async_execution_tracker.cc"],
-    hdrs = ["tfrt_cpu_async_execution_tracker.h"],
+    name = "cpu_async_execution_tracker",
+    srcs = ["cpu_async_execution_tracker.cc"],
+    hdrs = ["cpu_async_execution_tracker.h"],
     deps = [
         "//xla/service/cpu:cpu_event",
         "//xla/tsl/concurrency:async_value",
