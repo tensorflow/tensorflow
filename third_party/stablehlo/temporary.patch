@@ -12,4 +12,25 @@ diff --ruN a/stablehlo/stablehlo/conversions/tosa/tests/unary.mlir b/stablehlo/s
    // CHECK: tosa.slice %arg0, %[[SIZE]], %[[START]]
    %0 = "stablehlo.slice"(%arg) {
      start_indices = array<i64: 2, 1>,
+diff --ruN a/stablehlo/stablehlo/tests/ops_stablehlo_quantized.mlir b/stablehlo/stablehlo/tests/ops_stablehlo_quantized.mlir
+--- stablehlo/stablehlo/tests/ops_stablehlo_quantized.mlir
++++ stablehlo/stablehlo/tests/ops_stablehlo_quantized.mlir
+@@ -1338,7 +1338,7 @@
+ 
+ // -----
+ 
+-// expected-error@+1 {{scale out of expressed type range}}
++// expected-error@+1 {{scale 1.055040e+05 out of expressed type range}}
+ func.func @quantized_element_type_c6(%arg0: tensor<1x2x!quant.uniform<i4:f16, 10.550400e+04>>) {
+    %0 = stablehlo.add %arg0,  %arg0 : tensor<1x2x!quant.uniform<i4:f16, 10.550400e+04>>
+    func.return
+@@ -1346,7 +1346,7 @@
+ 
+ // -----
+ 
+-// expected-error@+1 {{scale out of expressed type range}}
++// expected-error@+1 {{scale 4.960464e-08 out of expressed type range}}
+ func.func @quantized_element_type_c6(%arg0: tensor<1x2x!quant.uniform<i4:f16, 4.960464e-08>>) {
+    %0 = stablehlo.add %arg0,  %arg0 : tensor<1x2x!quant.uniform<i4:f16, 4.960464e-08>>
+    func.return
 

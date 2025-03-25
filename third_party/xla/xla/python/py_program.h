@@ -16,12 +16,6 @@ limitations under the License.
 #ifndef XLA_PYTHON_PY_PROGRAM_H_
 #define XLA_PYTHON_PY_PROGRAM_H_
 
-#include "nanobind/nanobind.h"
-
-namespace xla {
-
-void BuildIfrtProgramsSubmodule(nanobind::module_& m);
-
-}  // namespace xla
+#include "third_party/py/jax/jaxlib/xla/py_program.h"  // IWYU pragma: export
 
 #endif  // XLA_PYTHON_PY_PROGRAM_H_
