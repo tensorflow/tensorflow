@@ -37,7 +37,6 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/blocking_counter.h"
 #include "absl/types/span.h"
-#include "absl/types/variant.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/SmallString.h"
 #include "llvm/ADT/StringRef.h"
@@ -188,7 +187,6 @@ limitations under the License.
 #include "xla/service/gpu/transforms/all_reduce_splitter.h"
 #include "xla/service/gpu/transforms/async_wrapper.h"
 #include "xla/service/gpu/transforms/collective_permute_cycle_decomposer.h"
-#include "xla/service/gpu/transforms/collective_permute_valid_iteration_annotator.h"
 #include "xla/service/gpu/transforms/collective_select_folder.h"
 #include "xla/service/gpu/transforms/collectives/all_gather_combiner.h"
 #include "xla/service/gpu/transforms/collectives/all_reduce_combiner.h"
@@ -637,12 +635,6 @@ absl::Status RunSPMDPasses(
 #else
         std::nullopt);
 #endif  // PLATFORM_GOOGLE
-    if (hlo_module->config()
-            .debug_options()
-            .xla_gpu_unsafe_pipelined_loop_annotator()) {
-      spmd_pipeline.AddPass<WhileLoopTripCountAnnotator>();
-      spmd_pipeline.AddPass<CollectivePermuteValidIterationAnnotator>();
-    }
     return spmd_pipeline.Run(hlo_module).status();
   } else {
     HloPassPipeline sharding_removal_pipeline("sharding-removal");
