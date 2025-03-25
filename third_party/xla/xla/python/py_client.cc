@@ -367,8 +367,7 @@ std::unique_ptr<ifrt::CompileOptions> MakeIfrtCompileOptions(
       ifrt_loaded_host_callbacks;
   ifrt_loaded_host_callbacks.reserve(host_callbacks.size());
   // Extract `ifrt::LoadedHostCallback`s from host callback capsules that were
-  // created by `PyClient::MakePythonCallbackUsingHostSendAndRecv()` or
-  // `PyClient::GetEmitPythonCallbackDescriptor()`.
+  // created by `PyClient::MakePythonCallbackUsingHostSendAndRecv()`.
   for (auto& host_callback : host_callbacks) {
     ifrt_loaded_host_callbacks.push_back(tsl::FormRef(
         static_cast<ifrt::LoadedHostCallback*>(host_callback.data())));
@@ -386,8 +385,7 @@ MakeIfrtDeserializeExecutableOptions(std::optional<CompileOptions> options,
       ifrt_loaded_host_callbacks;
   ifrt_loaded_host_callbacks.reserve(host_callbacks.size());
   // Extract `ifrt::LoadedHostCallback`s from host callback capsules that were
-  // created by `PyClient::MakePythonCallbackUsingHostSendAndRecv()` or
-  // `PyClient::GetEmitPythonCallbackDescriptor()`.
+  // created by `PyClient::MakePythonCallbackUsingHostSendAndRecv()`.
   for (auto& host_callback : host_callbacks) {
     ifrt_loaded_host_callbacks.push_back(tsl::FormRef(
         static_cast<ifrt::LoadedHostCallback*>(host_callback.data())));
@@ -480,8 +478,7 @@ PyClient::CompileIfrtProgram(
       ifrt_loaded_host_callbacks;
   ifrt_loaded_host_callbacks.reserve(host_callbacks.size());
   // Extract `ifrt::LoadedHostCallback`s from host callback capsules that were
-  // created by `PyClient::MakePythonCallbackUsingHostSendAndRecv()` or
-  // `PyClient::GetEmitPythonCallbackDescriptor()`.
+  // created by `PyClient::MakePythonCallbackUsingHostSendAndRecv()`.
   for (auto& host_callback : host_callbacks) {
     auto callback = tsl::MakeRef<PyFfiLoadedHostCallback>(
         client->ifrt_client(), std::move(host_callback));
@@ -660,28 +657,6 @@ absl::StatusOr<nb::object> PyClient::MakePythonCallbackUsingHostSendAndRecv(
   return callback_capsule;
 }
 
-// TODO(b/394595987): Remove this API method once we remove the call from
-// mlir.py's get_emit_python_callback.
-absl::StatusOr<std::pair<uint64_t, nb::object>>
-PyClient::GetEmitPythonCallbackDescriptor(
-    nb::callable callable, absl::Span<Shape const> operand_shapes,
-    absl::Span<Shape const> result_shapes) {
-  TF_ASSIGN_OR_RETURN(
-      auto loaded_host_callback,
-      PyCpuLoadedHostCallback::Create(ifrt_client(), std::move(callable),
-                                      operand_shapes, result_shapes));
-  const uint64_t descriptor = loaded_host_callback->descriptor();
-
-  nb::capsule callback_capsule(
-      loaded_host_callback.release(), [](void* ptr) noexcept {
-        static_cast<ifrt::LoadedHostCallback*>(ptr)->DropRef();
-      });
-  return std::make_pair(descriptor, nb::object(std::move(callback_capsule)));
-}
-
-XLA_CPU_REGISTER_CUSTOM_CALL_TARGET_WITH_SYM("xla_python_cpu_callback",
-                                             &XlaPythonCpuCallback);
-
 /* static */ int PyClient::tp_traverse(PyObject* self, visitproc visit,
                                        void* arg) {
   PyClient* c = nb::inst_ptr<PyClient>(self);
@@ -813,10 +788,6 @@ PyType_Slot PyClient::slots_[] = {
       // TODO(zhangqiaorjc): Experimental.
       .def("defragment",
            [](PyClient& self) { xla::ThrowIfError(self.Defragment()); })
-      .def("get_emit_python_callback_descriptor",
-           xla::ValueOrThrowWrapper(&PyClient::GetEmitPythonCallbackDescriptor),
-           nb::arg("callable"), nb::arg("operand_shapes"),
-           nb::arg("result_shapes").none() = nb::none())
       .def("make_python_callback_from_host_send_and_recv",
            xla::ValueOrThrowWrapper(
                &PyClient::MakePythonCallbackUsingHostSendAndRecv),

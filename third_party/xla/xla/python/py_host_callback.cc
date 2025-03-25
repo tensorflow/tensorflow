@@ -33,7 +33,6 @@ limitations under the License.
 #include "nanobind/nanobind.h"
 #include "xla/layout_util.h"
 #include "xla/pjrt/host_callback.h"
-#include "xla/pjrt/pjrt_compiler.h"
 #include "xla/python/callback.h"
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/host_callback.h"
@@ -55,7 +54,6 @@ namespace nb = nanobind;
 namespace xla {
 
 char PyFfiLoadedHostCallback::ID = 0;
-char PyCpuLoadedHostCallback::ID = 0;
 char PyHostSendAndRecvLoadedHostCallback::ID = 0;
 
 namespace {
@@ -127,35 +125,6 @@ PyFfiLoadedHostCallback::~PyFfiLoadedHostCallback() {
   std::vector<nb::object> objects;
   objects.push_back(std::move(callable_));
   GlobalPyRefManager()->AddGarbage(absl::MakeSpan(objects));
-}
-
-absl::StatusOr<tsl::RCReference<PyCpuLoadedHostCallback>>
-PyCpuLoadedHostCallback::Create(ifrt::Client* ifrt_client,
-                                nb::callable callable,
-                                absl::Span<const Shape> operand_shapes,
-                                absl::Span<const Shape> result_shapes) {
-  ifrt::PlatformId platform_id = ifrt_client->platform_id();
-  if (platform_id != CpuId() && platform_id != CudaId() &&
-      platform_id != RocmId() && platform_id != SyclId()) {
-    return Unimplemented("CpuCallback supports CPU and GPU only");
-  }
-
-  TF_ASSIGN_OR_RETURN(auto callback_args, CreateCallbackArgs(operand_shapes));
-  TF_ASSIGN_OR_RETURN(auto callback_results,
-                      CreateCallbackResults(result_shapes));
-
-  // `callable` will be destroyed safely with `PythonRefManager` when
-  // `CpuCallback` is destroyed.
-  auto cpu_callback = std::make_unique<CpuCallback>(
-      std::move(callable), callback_args, callback_results);
-  return tsl::RCReference<PyCpuLoadedHostCallback>(
-      tsl::MakeRef<PyCpuLoadedHostCallback>(ifrt_client,
-                                            std::move(cpu_callback)));
-}
-
-absl::StatusOr<std::string> PyCpuLoadedHostCallback::Serialize() const {
-  return Unimplemented(
-      "PyCpuLoadedHostCallback serialization is not supported");
 }
 
 absl::StatusOr<tsl::RCReference<PyHostSendAndRecvLoadedHostCallback>>

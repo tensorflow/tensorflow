@@ -28,7 +28,6 @@ limitations under the License.
 #include "nanobind/nanobind.h"
 #include "xla/pjrt/transpose.h"
 #include "xla/python/nb_numpy.h"
-#include "xla/service/custom_call_status.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -83,9 +82,6 @@ class CpuCallback {
   std::vector<Result> results_;
   xla::TransposePlanCache transpose_cache_;
 };
-
-void XlaPythonCpuCallback(void* output, void** inputs,
-                          XlaCustomCallStatus* status);
 
 }  // namespace xla
 
