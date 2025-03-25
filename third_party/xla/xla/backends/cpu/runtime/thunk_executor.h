@@ -19,11 +19,9 @@ limitations under the License.
 #include <atomic>
 #include <cstddef>
 #include <cstdint>
-#include <limits>
 #include <new>
 #include <queue>
 #include <string>
-#include <tuple>
 #include <type_traits>
 #include <vector>
 
@@ -36,6 +34,7 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/backends/cpu/runtime/thunk.h"
+#include "xla/runtime/execution_graph.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 
 namespace xla::cpu {
@@ -71,38 +70,11 @@ class ThunkExecutor {
   using ExecuteEvent = Thunk::ExecuteEvent;
   using Options = internal::ThunkExecutorOptions;
 
-  // Nodes identified by their index in the captured ThunkSequence.
-  using NodeId = int32_t;
-
-  static constexpr NodeId kInvalidNodeId = std::numeric_limits<NodeId>::min();
-
   ThunkExecutor(ThunkExecutor&&) = default;
   ThunkExecutor& operator=(ThunkExecutor&&) = default;
 
   static absl::StatusOr<ThunkExecutor> Create(
       ThunkSequence thunk_sequence, const Options& options = Options());
-
-  // We store all `in_edges` and `out_edges` referenced by the `NodeDef` inside
-  // large vectors to optimize for data locality on a hot path.
-  using NodesEdges = std::vector<NodeId>;
-
-  // NodeDef defines an execution order for all thunks in a sequence.
-  struct NodeDef {
-    NodeId id = kInvalidNodeId;
-    int64_t priority = 0;
-    absl::Span<const NodeId> in_edges;
-    absl::Span<const NodeId> out_edges;
-  };
-
-  // A NodeDef builder to collect all in-edges and out-edges before constructing
-  // a NodeDef. We use it at ThunkExecutor creation time when we don't know how
-  // many in-edges and out-edges we have in total.
-  struct NodeDefBuilder {
-    NodeId id = kInvalidNodeId;
-    int64_t priority = 0;
-    std::vector<NodeId> in_edges;
-    std::vector<NodeId> out_edges;
-  };
 
   // Executes the thunk sequence using the prepared dataflow graph. Executor
   // uses runner to execute ready tasks concurrently. If runner is not provided,
@@ -114,18 +86,16 @@ class ThunkExecutor {
 
   const ThunkSequence& thunk_sequence() const { return thunk_sequence_; }
 
-  absl::Span<const NodeDef> nodes_defs() const { return nodes_defs_; }
-  const NodeDef& node_def(NodeId id) const { return nodes_defs_[id]; }
-
-  absl::Span<const NodeId> source() const { return source_; }
-  absl::Span<const NodeId> sink() const { return sink_; }
-
   BufferUses buffer_uses() const { return thunk_sequence_.buffer_uses(); }
   ResourceUses resource_uses() const { return thunk_sequence_.resource_uses(); }
 
   std::string ToString() const;
 
   bool is_sequential() const { return is_sequential_; }
+
+  // We use underlying execution graph nodes to index into the thunk sequence.
+  using NodeId = ExecutionGraph::NodeId;
+  using NodeDef = ExecutionGraph::NodeDef;
 
   // A ready queue that executes nodes in FIFO order.
   class FifoReadyQueue {
@@ -253,8 +223,7 @@ class ThunkExecutor {
     absl::Status abort_status ABSL_GUARDED_BY(abort_mutex);
   };
 
-  ThunkExecutor(ThunkSequence thunk_sequence, NodesEdges nodes_in_edges,
-                NodesEdges nodes_out_edges, std::vector<NodeDef> nodes_defs,
+  ThunkExecutor(ThunkSequence thunk_sequence, ExecutionGraph execution_graph,
                 const Options& options);
 
   // Executes given `thunk` with `params` and adds tracing annotation to capture
@@ -292,33 +261,15 @@ class ThunkExecutor {
                        tsl::AsyncValuePtr<Thunk::ExecuteEvent> node_event,
                        ExecuteState::Node& node, ReadyQueue& ready_queue);
 
-  // Converts a vector of NodeDefBuilder to a tuple of NodesEdges and a vector
-  // of NodeDef.
-  static std::tuple<NodesEdges, NodesEdges, std::vector<NodeDef>>
-  CreateNodeDefs(std::vector<NodeDefBuilder> builders);
-
-  // Runs a transitive reduction on the NodeDefBuilder graph to remove redundant
-  // edges, and updates nodes priorities. Returns the number of removed edges.
-  //
-  // See: https://en.wikipedia.org/wiki/Transitive_reduction
-  static int64_t RunTransitiveReductionAndUpdatePriorities(
-      absl::Span<NodeDefBuilder> builders);
-
   ThunkSequence thunk_sequence_;
+  ExecutionGraph execution_graph_;
   Options options_;
 
   int64_t num_thunks_;
 
-  NodesEdges nodes_in_edges_;   // `in_edges` referenced by `nodes_defs_`
-  NodesEdges nodes_out_edges_;  // `out_edges` referenced by `nodes_defs_`
-  std::vector<NodeDef> nodes_defs_;
-
-  std::vector<NodeId> source_;
-  std::vector<NodeId> sink_;
-
-  // If NodeDef graph dependency structure is sequential and does not have any
-  // opportunities for executing thunks concurrently, we skip the expensive
-  // async execution and simply run thunks in the `thunk_sequence_` one by one.
+  // In addition to the execution graph sequential ordering property, we use
+  // heuristics to use sequential execution for sequences of small thunks where
+  // async execution overhead will likely dominate the overall execution time.
   bool is_sequential_;
 };
 
