@@ -526,41 +526,6 @@ cc_library(
     ],
 )
 
-tf_proto_library(
-    name = "pytree_proto",
-    srcs = ["pytree.proto"],
-    visibility = ["//visibility:public"],
-)
-
-cc_library(
-    name = "pytree",
-    srcs = ["pytree.cc"],
-    hdrs = ["pytree.h"],
-    compatible_with = [],
-    copts = [
-        "-fexceptions",
-        "-fno-strict-aliasing",
-    ],
-    features = ["-use_header_modules"],
-    visibility = internal_visibility([":friends"]),
-    deps = [
-        ":nb_class_ptr",
-        ":pytree_proto_cc",
-        # placeholder for index annotation deps
-        "@com_google_absl//absl/algorithm:container",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/container:inlined_vector",
-        "@com_google_absl//absl/hash",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/strings:str_format",
-        "@com_google_absl//absl/types:span",
-        "@nanobind",
-        "@local_config_python//:python_headers",  # buildcleaner: keep
-        "//xla/pjrt:exceptions",
-        "//xla/tsl/platform:logging",
-    ],
-)
-
 cc_library(
     name = "refine_polymorphic_shapes",
     srcs = ["refine_polymorphic_shapes.cc"],
