@@ -946,11 +946,11 @@ cc_library(
     name = "user_context",
     srcs = ["user_context.cc"],
     hdrs = ["user_context.h"],
-    visibility = [
+    visibility = internal_visibility([
         ":friends",
         ":internal",
         ":users",
-    ],
+    ]),
     deps = [
         "//xla/tsl/concurrency:ref_count",
         "@llvm-project//llvm:Support",

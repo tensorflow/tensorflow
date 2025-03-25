@@ -3,6 +3,7 @@ load("//xla/tsl:tsl.bzl", "internal_visibility")
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = internal_visibility([
+        "//third_party/py/jax:__subpackages__",
         "//xla/python:__subpackages__",
     ]),
 )

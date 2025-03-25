@@ -338,6 +338,7 @@ xla_cc_test(
 cc_library(
     name = "pjrt_device_description",
     hdrs = ["pjrt_device_description.h"],
+    visibility = internal_visibility([":friends"]),
     deps = [
         ":pjrt_common",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -705,6 +706,7 @@ cc_library(
     name = "host_memory_spaces",
     srcs = ["host_memory_spaces.cc"],
     hdrs = ["host_memory_spaces.h"],
+    visibility = internal_visibility([":friends"]),
     deps = [
         ":pjrt_client",
         "@com_google_absl//absl/log:check",
