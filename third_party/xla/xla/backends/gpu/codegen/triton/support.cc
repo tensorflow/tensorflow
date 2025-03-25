@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -32,6 +33,7 @@ limitations under the License.
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/shape_util.h"
+#include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/xla_data.pb.h"
 
@@ -246,6 +248,31 @@ CodegenDecision CanTritonHandleReduce(
       "Reduction is not a row-reduction of a single operand.");
 }
 
+CodegenDecision IsTritonSupportedConcatenate(const HloInstruction& hlo) {
+  CHECK(hlo.opcode() == HloOpcode::kConcatenate);
+  const HloComputation* computation = hlo.parent();
+  if (computation->IsFusionComputation()) {
+    const GpuBackendConfig backend_config =
+        *computation->FusionInstruction()->backend_config<GpuBackendConfig>();
+    absl::string_view fusion_kind =
+        backend_config.fusion_backend_config().kind();
+    if (fusion_kind == kTritonNestedGemmFusionKind) {
+      // TODO(b/393299275): remove this operand filter once migration is
+      // complete and priority fusion can produce nests.
+      if (absl::c_any_of(hlo.operands(), [](const HloInstruction* operand) {
+            return operand->opcode() != HloOpcode::kFusion;
+          })) {
+        return CodegenDecision::Forbid(
+            "Only support concatenates with nested GEMM fusions as a "
+            "parameter.");
+      }
+      return CodegenDecision::Allow();
+    }
+  }
+
+  return CodegenDecision::Forbid("Unsupported concatenate.");
+}
+
 CodegenDecision IsTritonSupportedInstructionImpl(
     const HloInstruction& instr, const se::GpuComputeCapability& gpu_version) {
   if (internal::IsTritonUnsupportedOpcode(instr.opcode())) {
@@ -275,6 +302,10 @@ CodegenDecision IsTritonSupportedInstructionImpl(
 
   if (!input_types_are_supported) {
     return CodegenDecision::Forbid("Unsupported input data type.");
+  }
+
+  if (instr.opcode() == HloOpcode::kConcatenate) {
+    return IsTritonSupportedConcatenate(instr);
   }
 
   // Const is technically an elementwise op, so this check must be before the
@@ -341,7 +372,6 @@ bool IsTritonUnsupportedOpcode(HloOpcode opcode) {
     case HloOpcode::kBitcastConvert:
     case HloOpcode::kCall:
     case HloOpcode::kCholesky:
-    case HloOpcode::kConcatenate:
     case HloOpcode::kConditional:
     case HloOpcode::kConvolution:
     case HloOpcode::kCopyDone:

@@ -842,6 +842,140 @@ absl::StatusOr<ScalarOrTensor> EmitDot(EmitterLocOpBuilder& b,
   return ScalarOrTensor(for_op.getResult(0));
 }
 
+absl::StatusOr<ScalarOrTensor> EmitConcatenate(
+    EmitterLocOpBuilder& b, absl::string_view libdevice_path,
+    const se::DeviceDescription& device_info,
+    const HloFusionInstruction* fusion,
+    const TiledHloInstruction& tiled_concatenate, mlir::triton::FuncOp fn,
+    ValueRange tile_multi_index) {
+  const int64_t concatenate_dimension =
+      tiled_concatenate.hlo()->concatenate_dimension();
+
+  // TODO(b/393299275): get rid of calls to `GetPaddedTileSizes` once tiling
+  // is using power of twos everywhere, including when propagating into the
+  // prologue of reductions.
+  SmallVector<int64_t> padded_tile_sizes =
+      GetPaddedTileSizes(tiled_concatenate.tile_sizes());
+  int64_t concatenate_dimension_tile_size =
+      padded_tile_sizes[concatenate_dimension];
+
+  for (const TiledHloInstruction* operand : tiled_concatenate.operands()) {
+    if (operand->hlo()->opcode() != HloOpcode::kFusion) {
+      // Sanity check: all operands should be nested fusions.
+      return absl::FailedPreconditionError(
+          "Expected concatenate operands to be nested fusions.");
+    }
+
+    int64_t operand_concatenate_dimension_size =
+        tiled_concatenate.hlo()->shape().dimensions(concatenate_dimension);
+
+    if (operand_concatenate_dimension_size % concatenate_dimension_tile_size !=
+        0) {
+      // Sanity check: concatenation dimension should be divisible by the tile
+      // size for each operand. This is not a fundamental limitation, but this
+      // lowering will emit incorrect code if this does not hold---so we gate
+      // against it explicitly.
+      return absl::FailedPreconditionError(absl::StrCat(
+          "Expected the tile size of the concatenation dimension of operand ",
+          operand->ToString(), "to divide the dimension size exactly, but got",
+          operand_concatenate_dimension_size, " % ",
+          concatenate_dimension_tile_size, " != 0"));
+    }
+  }
+  TF_ASSIGN_OR_RETURN(
+      Type element_type,
+      TritonType(b, tiled_concatenate.hlo()->shape().element_type()));
+  Type result_type =
+      mlir::RankedTensorType::get(padded_tile_sizes, element_type);
+
+  // We will load and compute from a single operand, so we need to figure out
+  // which one by looking at the offset within the concatenation dimension.
+  TF_ASSIGN_OR_RETURN(IndexingMap tile_offsets_indexing,
+                      tiled_concatenate.tile_offsets_indexing());
+
+  Value concatenate_dimension_offset =
+      emitters::ApplyIndexing(tile_offsets_indexing, /*dims=*/tile_multi_index,
+                              /*symbols=*/{}, b)[concatenate_dimension];
+
+  // It would have been nice to be able to use `scf::IndexSwitchOp`, but Triton
+  // does not want to deal with the `Index` type, and does not support the op.
+  // Instead, we generate a sequence of nested `scf::IfOp`s.
+  SmallVector<mlir::scf::IfOp, 4> if_ops;
+  int64_t limit = 0;
+  for (auto [i, operand] : llvm::enumerate(tiled_concatenate.operands())) {
+    // Write in the else branch of the previous if op if one exists.
+    if (!if_ops.empty()) {
+      b.setInsertionPointToStart(if_ops.back().elseBlock());
+    }
+
+    // Add an `if_op` if we have not reached the last operand. The last operand
+    // directly populates the `else` block of the previous `if_op`.
+    if (if_ops.size() < tiled_concatenate.operands().size() - 1) {
+      limit += operand->hlo()->shape().dimensions()[concatenate_dimension];
+      Value offset_limit =
+          CreateConst(b, b.getIndexType(), limit, {}).UnwrapScalar();
+
+      auto cond =
+          b.create<arith::CmpIOp>(arith::CmpIPredicate::slt,
+                                  concatenate_dimension_offset, offset_limit);
+      auto if_op = b.create<mlir::scf::IfOp>(mlir::TypeRange(result_type), cond,
+                                             /*withElseRegion=*/true);
+
+      // Propagate the result from the nested `if_op` if we were already within
+      // an `if_op`.
+      if (!if_ops.empty()) {
+        b.create<mlir::scf::YieldOp>(if_op.getResult(0));
+      }
+
+      b.setInsertionPointToStart(if_op.thenBlock());
+      if_ops.push_back(if_op);
+    }
+
+    const TiledHloFusionInstruction* tiled_fusion_operand =
+        static_cast<const TiledHloFusionInstruction*>(
+            tiled_concatenate.operand(i));
+    TF_ASSIGN_OR_RETURN(
+        std::vector<ScalarOrTensor> result,
+        EmitTiledComputation(
+            b, libdevice_path, device_info,
+            ::xla::Cast<HloFusionInstruction>(tiled_fusion_operand->hlo()),
+            *tiled_fusion_operand->called_computation(), fn, tile_multi_index));
+    CHECK_EQ(result.size(), 1);
+    b.create<mlir::scf::YieldOp>(result.front().UnwrapTensor());
+  }
+
+  b.setInsertionPointAfter(if_ops.front());
+
+  return ScalarOrTensor(if_ops.front().getResult(0));
+}
+
+// Given an operand to a (potentially nested) fusion instruction, finds the
+// index of the operand to the outermost fusion it corresponds to.
+//
+// Nested fusion parameter chains should always only traverse parameter nodes.
+int64_t GetOutermostFusionOperandParameterIndex(
+    const HloFusionInstruction* fusion, const HloInstruction* operand) {
+  CHECK(fusion->IsUserOf(operand));
+
+  // Simple case: `fusion` is the outermost fusion.
+  if (!operand->parent()->IsFusionComputation()) {
+    return fusion->operand_index(operand);
+  }
+
+  // While operand is in a nested fusion, walk up to the outermost fusion.
+  while (
+      operand->parent()->FusionInstruction()->parent()->IsFusionComputation()) {
+    // Nests operands should always point to parameters.
+    CHECK(operand->opcode() == HloOpcode::kParameter);
+    int64_t param_number = operand->parameter_number();
+    operand = operand->parent()->FusionInstruction()->operand(param_number);
+  }
+
+  CHECK(operand->parent()->IsFusionComputation());
+  CHECK(operand->opcode() == HloOpcode::kParameter);
+  return operand->parameter_number();
+}
+
 absl::StatusOr<ScalarOrTensor> EmitTiledHloInstruction(
     EmitterLocOpBuilder& b, absl::string_view libdevice_path,
     const se::DeviceDescription& device_info,
@@ -852,23 +986,9 @@ absl::StatusOr<ScalarOrTensor> EmitTiledHloInstruction(
   VLOG(4) << "EmitTiledHloInstruction: " << hlo->ToString();
 
   if (fusion->IsUserOf(hlo)) {
-    // If the fusion instruction is a user of hlo, then hlo is defined outside
-    // of the fusion, and it is passed as a parameter. hlo itself might not
-    // necessarily be a kParameter but the instruction that produced the
-    // argument of the fusion. In the emitted code, its value will be passed as
-    // a parameter, load it.
-    int64_t arg_index = [&]() {
-      bool is_nested_fusion = fusion->parent()->IsFusionComputation();
-      if (is_nested_fusion) {
-        // Nested fusion is a special case: the parameter it receives MUST be
-        // a kParameter of the real fusion. We load it in the context of the
-        // real fusion.
-        QCHECK(hlo->opcode() == HloOpcode::kParameter);
-        return hlo->parameter_number();
-      }
-      return fusion->operand_index(hlo);
-    }();
-
+    // If the fusion instruction is a user of `hlo`, then `hlo` is an operand
+    // to the fusion instruction.
+    int64_t arg_index = GetOutermostFusionOperandParameterIndex(fusion, hlo);
     TF_ASSIGN_OR_RETURN(
         auto make_tensor,
         ir_emitter_triton_internal::CreateMakeTensorPtrOp(
@@ -899,6 +1019,11 @@ absl::StatusOr<ScalarOrTensor> EmitTiledHloInstruction(
     }
 
     return parameter;
+  }
+
+  if (hlo->opcode() == HloOpcode::kConcatenate) {
+    return EmitConcatenate(b, libdevice_path, device_info, fusion, tiled_hlo,
+                           fn, tile_multi_index);
   }
 
   if (hlo->opcode() == HloOpcode::kDot) {
@@ -981,25 +1106,30 @@ absl::StatusOr<std::vector<ScalarOrTensor>> EmitTiledComputation(
   for (const TiledHloInstruction* tiled_hlo :
        tiled_computation.instructions()) {
     const HloInstruction* hlo = tiled_hlo->hlo();
-    bool is_nested_fusion = hlo->opcode() == HloOpcode::kFusion &&
-                            hlo->parent()->IsFusionComputation();
-    if (is_nested_fusion) {
-      // We should only see nested fusions with with a dot user.
-      // TODO(b/393299275): remove check once flag is default.
-      QCHECK(UseGenericTritonEmitterForGemms(hlo));
+    // We skip generating code for nested fusions, since they are always
+    // generated by their consumer.
+    if (hlo->parent()->IsFusionComputation() &&
+        hlo->opcode() == HloOpcode::kFusion) {
+      // Currently, we expect nested fusions to have a single user that is
+      // either a `dot`, or a `concatenate`. Later, we will also support
+      // reductions here.
+      //
       // TODO(b/393299275): test cases when there are multiple dot users of the
       // same fusion.
-      if (hlo->users().size() != 1) {
+      if (hlo->user_count() != 1) {
         return absl::FailedPreconditionError(
-            absl::StrCat("Expected only one dot user for fusion ",
-                         hlo->ToString(), " but got ", hlo->users().size()));
+            absl::StrCat("Expected only one user for fusion ", hlo->ToString(),
+                         " but got ", hlo->user_count()));
       }
-      for (const HloInstruction* user : tiled_hlo->hlo()->users()) {
-        if (user->opcode() != HloOpcode::kDot) {
+      const HloInstruction* user = hlo->users().front();
+      switch (user->opcode()) {
+        case HloOpcode::kDot:
+        case HloOpcode::kConcatenate:
+          break;
+        default:
           return absl::FailedPreconditionError(absl::StrCat(
-              "Expected only dot users for fusion ",
-              tiled_hlo->hlo()->ToString(), " but got ", user->ToString()));
-        }
+              "Expected only a single dot or concatenate user for fusion ",
+              hlo->ToString(), " but got ", user->ToString()));
       }
       VLOG(1) << "Skipping nested fusion: " << hlo->ToString();
       continue;

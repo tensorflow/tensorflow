@@ -118,9 +118,12 @@ class TritonSupportTestBase : public HloTestBase {
   // `triton_computation` with the generic Triton emitter. Tests that need
   // the `__triton_gemm` backend kind should provide their own ENTRY
   // computation.
+  //
+  // TODO(b/393299275): remove `use_nested_gemm_fusions` once the migration is
+  // complete.
   absl::StatusOr<TestedInstruction> ParseTemplateAndGetInstruction(
       absl::string_view hlo_template, xla::PrimitiveType data_type,
-      xla::HloOpcode opcode);
+      xla::HloOpcode opcode, bool use_nested_gemm_fusions = false);
 
   llvm::LLVMContext llvm_ctx_;
   llvm::Module llvm_module_{"module", llvm_ctx_};
