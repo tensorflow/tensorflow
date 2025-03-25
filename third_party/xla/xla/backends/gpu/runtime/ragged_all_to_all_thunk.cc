@@ -449,7 +449,6 @@ RaggedAllToAllStartThunk::RaggedAllToAllStartThunk(
 absl::Status RaggedAllToAllStartThunk::Initialize(
     const InitializeParams& params) {
   TF_RETURN_IF_ERROR(CollectiveThunk::Initialize(params));
-  device_count_ = params.local_device_count;
 
   // Allocate temp buffers in the host memory to load the sizes and offsets of
   // ragged tensors from device memory.
@@ -496,20 +495,6 @@ absl::Status RaggedAllToAllStartThunk::Initialize(
     }
   }
   return absl::OkStatus();
-}
-
-bool RaggedAllToAllStartThunk::is_local() const {
-  CHECK_NE(device_count_, -1);
-  for (const auto& replica_group : config_.config.replica_groups) {
-    const int64_t node_id = replica_group.replica_ids().at(0) / device_count_;
-    if (!absl::c_all_of(replica_group.replica_ids(),
-                        [this, node_id](const int64_t rank) {
-                          return rank / device_count_ == node_id;
-                        })) {
-      return false;
-    }
-  }
-  return true;
 }
 
 absl::Status RaggedAllToAllStartThunk::RunCollective(

@@ -73,12 +73,10 @@ class RaggedAllToAllStartThunk : public CollectiveThunk {
                              CommunicatorHandle comm_handle) override;
 
  private:
-  bool is_local() const;
   bool should_use_memcpy() const { return p2p_memcpy_enabled_ && is_local(); }
 
   const RaggedAllToAllConfig config_;
   const std::vector<Buffer> buffers_;
-  int64_t device_count_ = -1;
   const bool p2p_memcpy_enabled_;
   const bool one_shot_kernel_enabled_;
 
