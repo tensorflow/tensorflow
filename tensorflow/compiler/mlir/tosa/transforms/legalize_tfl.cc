@@ -349,7 +349,7 @@ LogicalResult ConvertTFLReluOp::matchAndRewrite(
         buildRescale(rewriter, op, output_type, tfl_relu_op.getX(),
                      input_qtype.getScale() / output_qtype.getScale(),
                      input_qtype.getZeroPoint(), output_qtype.getZeroPoint(),
-                     /*double_round=*/false, /*scale32=*/true);
+                     /*double_round=*/"SINGLE_ROUND", /*scale32=*/true);
   }
 
   auto element_type = input_type.getElementType();
@@ -419,7 +419,7 @@ LogicalResult ConvertTFLRelu1Op::matchAndRewrite(
         buildRescale(rewriter, op, output_type, tfl_relu1_op.getX(),
                      input_qtype.getScale() / output_qtype.getScale(),
                      input_qtype.getZeroPoint(), output_qtype.getZeroPoint(),
-                     /*double_round=*/false, /*scale32=*/true);
+                     /*double_round=*/"SINGLE_ROUND", /*scale32=*/true);
   }
 
   auto element_type = input_type.getElementType();
@@ -486,7 +486,7 @@ LogicalResult ConvertTFLRelu0To1Op::matchAndRewrite(
         buildRescale(rewriter, op, output_type, tfl_relu0to1_op.getX(),
                      input_qtype.getScale() / output_qtype.getScale(),
                      input_qtype.getZeroPoint(), output_qtype.getZeroPoint(),
-                     /*double_round=*/false, /*scale32=*/true);
+                     /*double_round=*/"SINGLE_ROUND", /*scale32=*/true);
   }
 
   auto element_type = input_type.getElementType();
@@ -553,7 +553,7 @@ LogicalResult ConvertTFLRelu6Op::matchAndRewrite(
         buildRescale(rewriter, op, output_type, tfl_relu6_op.getX(),
                      input_qtype.getScale() / output_qtype.getScale(),
                      input_qtype.getZeroPoint(), output_qtype.getZeroPoint(),
-                     /*double_round=*/false, /*scale32=*/true);
+                     /*double_round=*/"SINGLE_ROUND", /*scale32=*/true);
   }
 
   auto element_type = input_type.getElementType();
@@ -3743,7 +3743,7 @@ LogicalResult ConvertTFLLogisticOp::matchAndRewrite(
 
       Value op2_rescale_op1 =
           buildRescale(rewriter, op, output_type, op1_table_in.getResult(),
-                       1.0 / 128.0, 0, 0, false, true);
+                       1.0 / 128.0, 0, 0, "SINGLE_ROUND", true);
 
       rewriter.replaceOp(op, {op2_rescale_op1});
     }
@@ -3815,7 +3815,7 @@ LogicalResult ConvertTFLTanhOp::matchAndRewrite(
 
       Value op2_rescale_op1 =
           buildRescale(rewriter, op, output_type, op1_table_in.getResult(),
-                       1.0 / 128.0, 0, 0, false, true);
+                       1.0 / 128.0, 0, 0, "SINGLE_ROUND", true);
 
       rewriter.replaceOp(op, {op2_rescale_op1});
     }
@@ -3891,7 +3891,7 @@ static LogicalResult LegalizeQuantizedPrelu(Operation* op,
   // Initalize the negative values to the slope of leaky ReLU.
   Value op_rescale_slope_in = buildRescale(
       rewriter, op, output_type, input, scale_alpha, input_qtype.getZeroPoint(),
-      output_qtype.getZeroPoint(), true, true);
+      output_qtype.getZeroPoint(), "DOUBLE_ROUND", true);
 
   // Perform an element-wise multiplication on rescaled alpha and input for
   // PReLU.
@@ -3908,11 +3908,11 @@ static LogicalResult LegalizeQuantizedPrelu(Operation* op,
 
   op_rescale_slope_in =
       buildRescale(rewriter, op, output_type, op_mul, scale_alpha,
-                   /* input_zp = */ 0, output_qtype.getZeroPoint(), true, true);
+                   /* input_zp = */ 0, output_qtype.getZeroPoint(), "DOUBLE_ROUND", true);
 
   Value op_rescale_identity_in = buildRescale(
       rewriter, op, output_type, input, scale_identity,
-      input_qtype.getZeroPoint(), output_qtype.getZeroPoint(), true, true);
+      input_qtype.getZeroPoint(), output_qtype.getZeroPoint(), "DOUBLE_ROUND", true);
 
   CreateReplaceOpAndInfer<tosa::SelectOp>(rewriter, op, output_type, op_ge,
                                           op_rescale_identity_in,
@@ -3976,11 +3976,11 @@ static LogicalResult LegalizeQuantizedLeakyRelu(Operation* op,
 
   Value op_rescale_alpha_in =
       buildRescale(rewriter, op, rescale_type, input, scale_alpha,
-                   input_qtype.getZeroPoint(), 0, true, true);
+                   input_qtype.getZeroPoint(), 0, "DOUBLE_ROUND", true);
 
   Value op_rescale_identity_in =
       buildRescale(rewriter, op, rescale_type, input, scale_identity,
-                   input_qtype.getZeroPoint(), 0, true, true);
+                   input_qtype.getZeroPoint(), 0, "DOUBLE_ROUND", true);
 
   Value result_int32;
   if (alpha <= 1.0) {
@@ -4182,7 +4182,7 @@ LogicalResult ConvertTFLQuantizeOp::matchAndRewrite(
     Value rescale_op =
         buildRescale(rewriter, op, output_type, tfl_quantize_op.getInput(),
                      rescale_scale, input_element_type.getZeroPoint(),
-                     element_type.getZeroPoint(), true, true);
+                     element_type.getZeroPoint(), "DOUBLE_ROUND", true);
 
     rewriter.replaceOp(op, {rescale_op});
     return success();
@@ -4583,7 +4583,7 @@ LogicalResult ConvertTFLArgMinOp::matchAndRewrite(
     result = buildRescale(rewriter, op, arg_min_op.getType(), result,
                           /* sclae = */ 1.0,
                           /* input_zp = */ 0,
-                          /* output_zp = */ output_zp, false, true);
+                          /* output_zp = */ output_zp, "SINGLE_ROUND", true);
   }
 
   rewriter.replaceOp(op, {result});

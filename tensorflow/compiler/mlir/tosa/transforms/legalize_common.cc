@@ -592,9 +592,6 @@ std::optional<Value> convertMultiplyOp(PatternRewriter& rewriter, Operation* op,
     return std::nullopt;
   }
 
-  if (EqualizeRanks(rewriter, op->getLoc(), input_lhs_val, input_rhs_val)
-          .failed())
-    return std::nullopt;
   input_lhs_type = dyn_cast<ShapedType>(input_lhs_val.getType());
   input_rhs_type = dyn_cast<ShapedType>(input_rhs_val.getType());
 
@@ -628,7 +625,7 @@ std::optional<Value> convertMultiplyOp(PatternRewriter& rewriter, Operation* op,
         rewriter, op, rescale_type, op1_rescale_lhs, op2_rescale_rhs);
     return buildRescale(rewriter, op, output_type, op3_mul_op1_op2.getResult(),
                         output_rescale_scale, 0, output_qtype.getZeroPoint(),
-                        true, scale32);
+                        "DOUBLE_ROUND", scale32);
   }
 
   return CreateMulOpAndInfer(rewriter, op, output_type, input_lhs_val,
@@ -669,12 +666,6 @@ std::optional<Value> convertSquaredDifferenceOp(PatternRewriter& rewriter,
     return std::nullopt;
   }
 
-  if (EqualizeRanks(rewriter, op->getLoc(), x, y)
-          .failed())
-    return std::nullopt;
-  x_type = dyn_cast<ShapedType>(x.getType());
-  y_type = dyn_cast<ShapedType>(y.getType());
-
   // If the output is I8 then we need to rescale to I32
   // Then scale back to I8
   if (result_is_qtype) {
@@ -706,14 +697,15 @@ std::optional<Value> convertSquaredDifferenceOp(PatternRewriter& rewriter,
           (twice_max_input_scale * twice_max_input_scale) /
           ((static_cast<double>(1 << LEFT_SHIFT * 2)) * result_scale);
 
-      Value x_scaled = buildRescaleToInt32(
-          rewriter, op, x,
-          x_rescale_scale * static_cast<double>(1 << LEFT_SHIFT),
-          x_qtype.getZeroPoint());
-      Value y_scaled = buildRescaleToInt32(
-          rewriter, op, y,
-          y_rescale_scale * static_cast<double>(1 << LEFT_SHIFT),
-          y_qtype.getZeroPoint());
+      Value x_shift = buildRescaleToInt32(rewriter, op, x, (1 << LEFT_SHIFT),
+                                          x_qtype.getZeroPoint());
+      Value y_shift = buildRescaleToInt32(rewriter, op, y, (1 << LEFT_SHIFT),
+                                          y_qtype.getZeroPoint());
+
+      Value x_scaled =
+          buildRescaleToInt32(rewriter, op, x_shift, x_rescale_scale, 0);
+      Value y_scaled =
+          buildRescaleToInt32(rewriter, op, y_shift, y_rescale_scale, 0);
 
       auto sub_op = CreateOpAndInfer<tosa::SubOp>(
           rewriter, op->getLoc(), rescale_type, x_scaled, y_scaled);
@@ -809,7 +801,7 @@ std::optional<Value> convertConcatV2Op(PatternRewriter& rewriter, Operation* op,
             operand_type.getShape(), result_quant_type);
         Value rescale_op = buildRescale(
             rewriter, op, rescale_type, v, operand_scale / result_scale,
-            operand_zeropoint, result_zeropoint, false, true);
+            operand_zeropoint, result_zeropoint, "SINGLE_ROUND", true);
         values_rescaled.push_back(rescale_op);
       } else {
         values_rescaled.push_back(v);
@@ -1585,7 +1577,7 @@ std::optional<Value> convertSoftmaxOp(PatternRewriter& rewriter, Operation* op,
   }
 
   // reduce_sum on last dimension
-  int32_t input_rank = input_type.getShape().size();
+  int32_t input_rank = input_type.getRank();
   ArrayRef<int64_t> logits_shape = output_type.getShape();
 
   if (mlir::isa<mlir::quant::QuantizedType>(input_type.getElementType()) &&
@@ -1618,7 +1610,7 @@ std::optional<Value> convertSoftmaxOp(PatternRewriter& rewriter, Operation* op,
       // Step 1. get x - max(x)
       Value op1_rescale_in =
           buildRescale(rewriter, op, int32_logits_type, logits_value, 1.0f,
-                       in_quant_type.getZeroPoint(), 0, false, true);
+                       in_quant_type.getZeroPoint(), 0, "SINGLE_ROUND", true);
 
       auto op2_reducemax_op1 = CreateOpAndInfer<tosa::ReduceMaxOp>(
           rewriter, op->getLoc(), int32_rsum_type, op1_rescale_in,
@@ -1643,7 +1635,7 @@ std::optional<Value> convertSoftmaxOp(PatternRewriter& rewriter, Operation* op,
 
       Value op4_rescale_op3 =
           buildRescale(rewriter, op, int16_logits_type,
-                       op3_sub_op1_op2.getResult(), 128.0, 0, 0, false, true);
+                       op3_sub_op1_op2.getResult(), 128.0, 0, 0, "SINGLE_ROUND", true);
 
       // Input is 9.7, where lower 7 bits are all zeros.
       // Output is 23 bits, where lower 7 bits should be all zeros as well,
@@ -1706,11 +1698,11 @@ std::optional<Value> convertSoftmaxOp(PatternRewriter& rewriter, Operation* op,
           rewriter, op->getLoc(), int32_logits_type,
           op12_add_op11_op9.getResult(), op10_rshift_op8.getResult());
 
-      // Step 3. get sum(exp()). output 12.19
+      // Step 3. get sum(exp()). output 13.18
       auto op14_rshift_op13_12 = CreateOpAndInfer<tosa::ArithmeticRightShiftOp>(
           rewriter, op->getLoc(), int32_logits_type,
           op13_add_op12_op10.getResult(),
-          getTosaConstTensorSingleI32(rewriter, op, 12, input_rank), true);
+          getTosaConstTensorSingleI32(rewriter, op, 13, input_rank), true);
 
       auto op15_reducesum_op14 = CreateOpAndInfer<tosa::ReduceSumOp>(
           rewriter, op->getLoc(), int32_rsum_type,
@@ -1797,27 +1789,42 @@ std::optional<Value> convertSoftmaxOp(PatternRewriter& rewriter, Operation* op,
 
       // Right shift amount is
       // num_bits_over_unit + 31 - (sizeof(OutputT) * 8 =
-      // (12 - headroom_plus_one) + 31 - 8 =
-      // (12 + 31 - 8) - headroom_plus_one
+      // (13 - headroom_plus_one) + 31 - 8 =
+      // (13 + 31 - 8) - headroom_plus_one
+
+      // The calculated shift amount can be larger than 31, which is invalid
+      // in TOSA. In this case, the output should be the quantized equivalent
+      // to all 0's. To emulate this behaviour, we can use two shifts:
+      // 1. Right shift of 5, calculated by:
+      //       max_headroom_plus_one_value = 31;
+      //       13 + 31 - 8 - max_headroom_plus_one_value
+      // 2. Right shift by the remainder
+      constexpr int constant_shift_amount = 5;
+
       auto op27_sub_op16 = CreateOpAndInfer<tosa::SubOp>(
           rewriter, op->getLoc(), int32_rsum_type,
-          getTosaConstTensorSingleI32(rewriter, op, 12 + 31 - 8, input_rank),
+          getTosaConstTensorSingleI32(rewriter, op, 13 + 31 - 8 - constant_shift_amount, input_rank),
           op16_clz_op15.getResult());
+
+      auto constant_shift = CreateOpAndInfer<tosa::ArithmeticRightShiftOp>(
+          rewriter, op->getLoc(), int32_logits_type,
+          op26_mul_op13_x.getResult(), getTosaConstTensorSingleI32(rewriter, op, constant_shift_amount, input_rank),
+          false);
 
       auto op28_rshift_op26_op27 =
           CreateOpAndInfer<tosa::ArithmeticRightShiftOp>(
               rewriter, op->getLoc(), int32_logits_type,
-              op26_mul_op13_x.getResult(), op27_sub_op16.getResult(), true);
+              constant_shift.getResult(), op27_sub_op16.getResult(), true);
 
       return buildRescale(rewriter, op, output_type,
                           op28_rshift_op26_op27.getResult(), 1.0, 0,
-                          out_quant_type.getZeroPoint(), false, true);
+                          out_quant_type.getZeroPoint(), "SINGLE_ROUND", true);
 
     } else if (in_quant_type.getStorageTypeIntegralWidth() == 16) {
       // Step 1. get x - max(x)
       Value op1_rescale_in =
           buildRescale(rewriter, op, int32_logits_type, logits_value, 1.0f,
-                       in_quant_type.getZeroPoint(), 0, false, true);
+                       in_quant_type.getZeroPoint(), 0, "SINGLE_ROUND", true);
 
       auto op2_reducemax_op1 = CreateOpAndInfer<tosa::ReduceMaxOp>(
           rewriter, op->getLoc(), int32_rsum_type, op1_rescale_in,
@@ -1841,7 +1848,7 @@ std::optional<Value> convertSoftmaxOp(PatternRewriter& rewriter, Operation* op,
       Value op4_rescale_op3 = buildRescale(
           rewriter, op, int32_logits_type, op3_sub_op1_op2.getResult(),
           /*scale=*/input_diff_scale, /*input_zp=*/0, /*output_zp=*/0,
-          /*double_round=*/true, /*scale32=*/true);
+          /*rounding_mode=*/"DOUBLE_ROUND", /*scale32=*/true);
       auto op5_add_op4 = CreateOpAndInfer<tosa::AddOp>(
           rewriter, op->getLoc(), int32_logits_type, op4_rescale_op3,
           getTosaConstTensorSingleI32(rewriter, op, 32767, input_rank));
@@ -1939,7 +1946,7 @@ std::optional<Value> convertSoftmaxOp(PatternRewriter& rewriter, Operation* op,
       return buildRescale(rewriter, op, output_type,
                           op21_rshift_op19_op20.getResult(),
                           (1.0 / out_quant_type.getScale()) * (1.0 / 32768.0),
-                          0, out_quant_type.getZeroPoint(), false, true);
+                          0, out_quant_type.getZeroPoint(), "SINGLE_ROUND", true);
     } else {
       (void)rewriter.notifyMatchFailure(op, "unknown quantization bitwidth");
       return std::nullopt;
@@ -2985,11 +2992,12 @@ std::optional<Value> convertReduceOpCommon(
   }
 
   if (is_quantized) {
+    std::string rounding_mode = IsTFLDoubleRoundingMode() ? "DOUBLE_ROUND" : "SINGLE_ROUND";
     UnrankedTensorType output_rescale_type =
         UnrankedTensorType::get(output_type.getElementType());
     val = buildRescale(rewriter, op, output_rescale_type, val,
                        output_scale_multiplier, output_scale_shift,
-                       /*input_zp=*/0, output_zp, IsTFLDoubleRoundingMode(),
+                       /*input_zp=*/0, output_zp, rounding_mode,
                        /*scale32=*/true);
   }
 
@@ -3493,7 +3501,7 @@ std::optional<Value> convertResizeOp(PatternRewriter& rewriter, Operation* op,
       // This should be the expected lowering, but is +-1 within compared to
       // TFLite reference.
       return buildRescale(rewriter, op, output_type, resize_op.getResult(),
-                          1.0 / (scale_y_n * scale_x_n), 0, 0, false,
+                          1.0 / (scale_y_n * scale_x_n), 0, 0, "SINGLE_ROUND",
                           is_scale32);
 #endif
 
