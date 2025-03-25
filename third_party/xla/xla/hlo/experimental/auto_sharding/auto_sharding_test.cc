@@ -52,7 +52,7 @@ limitations under the License.
 #include "xla/service/buffer_value.h"
 #include "xla/service/hlo_value.h"
 #include "xla/tsl/lib/core/status_test_util.h"
-#include "tsl/platform/statusor.h"
+#include "xla/tsl/platform/statusor.h"
 
 namespace op = xla::testing::opcode_matchers;
 
@@ -515,10 +515,7 @@ TEST_F(AutoShardingTest, MemoryBudgetTest) {
       return spmd::ByteSizeOfShape(buffer.shape());
     };
     TF_ASSIGN_OR_RETURN(HloSchedule schedule,
-                        ScheduleModule(&module, size_fn,
-                                       ComputationSchedulerToModuleScheduler(
-                                           DFSMemoryScheduler),
-                                       /* execution_threads */ {}));
+                        ScheduleModule(&module, DFSMemoryScheduler(size_fn)));
     const HloComputation* entry_computation = module.entry_computation();
     std::unique_ptr<HloAliasAnalysis> alias_analysis =
         HloAliasAnalysis::Run(&module).value();

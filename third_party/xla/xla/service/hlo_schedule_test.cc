@@ -395,7 +395,7 @@ ENTRY %WhileLoop () -> (s32[], f32[10]) {
                            buffer.shape(),
                            /*pointer_size=*/sizeof(void*));
                      },
-                     /*algorithm=*/{}, {HloInstruction::kMainExecutionThread}));
+                     {HloInstruction::kMainExecutionThread}));
 
   HloInstruction* xla_while = module->entry_computation()
                                   ->root_instruction()
@@ -475,7 +475,7 @@ ENTRY %WhileLoop () -> (s32[], f32[10]) {
                            buffer.shape(),
                            /*pointer_size=*/sizeof(void*));
                      },
-                     /*algorithm=*/{}, {HloInstruction::kMainExecutionThread}));
+                     {HloInstruction::kMainExecutionThread}));
 
   HloComputation* entry_computation = module->entry_computation();
   // Insert computation

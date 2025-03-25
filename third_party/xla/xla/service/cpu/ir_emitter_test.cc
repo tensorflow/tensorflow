@@ -265,19 +265,17 @@ CreateIrEmitterForConstantEmissionTests(HloModule& module,
       JitCompiler jit_compiler,
       JitCompiler::Create(std::move(jit_compiler_options),
                           std::move(ir_compiler), compilation_task_runner));
-
-  auto scheduler =
-      debug_options.xla_cpu_enable_concurrency_optimized_scheduler()
-          ? BFSMemoryScheduler
-          : DFSMemoryScheduler;
-
   auto buffer_size_bytes_function = [](const BufferValue& buffer) {
     return CpuExecutable::ShapeSizeBytes(buffer.shape());
   };
-  TF_ASSIGN_OR_RETURN(
-      HloSchedule schedule,
-      ScheduleModule(&module, buffer_size_bytes_function,
-                     ComputationSchedulerToModuleScheduler(scheduler)));
+  auto scheduler =
+      debug_options.xla_cpu_enable_concurrency_optimized_scheduler()
+          ? std::unique_ptr<ModuleSchedulerAlgorithm>(
+                std::make_unique<BFScheduler>(buffer_size_bytes_function))
+          : std::make_unique<DFSMemoryScheduler>(buffer_size_bytes_function);
+
+  TF_ASSIGN_OR_RETURN(HloSchedule schedule,
+                      ScheduleModule(&module, *scheduler));
   TF_RETURN_IF_ERROR(module.set_schedule(schedule));
 
   auto memory_alignment = [](LogicalBuffer::Color) {

@@ -55,11 +55,10 @@ class GpuOffloadingTest : public HloTestBase {
                                                int64_t min_remat_size = 0) {
     TF_EXPECT_OK(verifier().Run(module).status());
     if (!module->has_schedule()) {
-      HloMemoryScheduler scheduler(
+      HloMemoryScheduler scheduler(std::make_unique<DefaultMemoryScheduler>(
           [](const BufferValue& buffer) {
             return ::xla::ShapeUtil::ByteSizeOf(buffer.shape());
-          },
-          ComputationSchedulerToModuleScheduler(DefaultMemoryScheduler));
+          }));
       TF_EXPECT_OK(scheduler.Run(module).status());
     }
     // Create a configuration where any compute is much much slower than any

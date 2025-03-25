@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 """Crosstool wrapper for compiling ROCm programs.
 
 SYNOPSIS:
@@ -20,7 +20,7 @@ import os
 import subprocess
 import re
 import sys
-import pipes
+import shlex
 
 # Template values set by rocm_configure.bzl.
 CPU_COMPILER = ('%{cpu_compiler}')
@@ -228,13 +228,13 @@ def main():
   if args.x and args.x[0] == 'rocm':
     # compilation for GPU objects
     if args.rocm_log: Log('-x rocm')
-    leftover = [pipes.quote(s) for s in leftover]
+    leftover = [shlex.quote(s) for s in leftover]
     if args.rocm_log: Log('using hipcc')
     return InvokeHipcc(leftover, log=args.rocm_log)
 
   elif args.pass_exit_codes:
     # link
-    # with hipcc compiler invoked with -fno-gpu-rdc by default now, it's ok to 
+    # with hipcc compiler invoked with -fno-gpu-rdc by default now, it's ok to
     # use host compiler as linker, but we have to link with HCC/HIP runtime.
     # Such restriction would be revised further as the bazel script get
     # improved to fine tune dependencies to ROCm libraries.

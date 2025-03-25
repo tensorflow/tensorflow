@@ -1,12 +1,1 @@
 Auto generated patch. Do not edit or delete it, even if empty.
-diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/libc/test/UnitTest/BUILD.bazel b/utils/bazel/llvm-project-overlay/libc/test/UnitTest/BUILD.bazel
---- a/utils/bazel/llvm-project-overlay/libc/test/UnitTest/BUILD.bazel
-+++ b/utils/bazel/llvm-project-overlay/libc/test/UnitTest/BUILD.bazel
-@@ -80,6 +80,7 @@
-     ],
-     deps = [
-         ":LibcUnitTest",
-+        "//libc:__support_macros_config",
-         "//libc:errno",
-     ],
- )
