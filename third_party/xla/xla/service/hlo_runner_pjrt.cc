@@ -278,6 +278,8 @@ absl::StatusOr<CompileOptions> HloRunnerPjRt::GenerateDefaultCompileOptions(
       !run_hlo_passes);
   *compile_options.executable_build_options.mutable_debug_options() =
       module->config().debug_options();
+  *compile_options.executable_build_options.mutable_comp_envs() =
+      module->comp_envs();
 
   std::vector<Shape> parameter_shapes;
   parameter_shapes.reserve(
