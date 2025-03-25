@@ -186,6 +186,10 @@ absl::StatusOr<DeviceTopologyPair> BuildDistributedDevices(
 absl::StatusOr<std::unique_ptr<PjRtClient>> GetStreamExecutorGpuClient(
     const GpuClientOptions& options);
 
+// Get the fabric info of a local device ordinal in the format of
+// "clusterUuid/cliqueId". Empty on SM90 or lower.
+absl::StatusOr<std::string> GetDeviceFabricInfo(int device_ordinal);
+
 }  // namespace xla
 
 #endif  // XLA_PJRT_GPU_SE_GPU_PJRT_CLIENT_H_

@@ -529,6 +529,9 @@ cc_library(
         "//tensorflow/dtensor/cc:dtensor_ops",
     ] + select({
         # Non-tpu platforms don't need tpu dependency.
+        # copybara:uncomment_begin(google-only)
+        # "//buildenv/platforms/settings:chrome_linux": [],
+        # copybara:uncomment_end
         "//tensorflow:chromiumos": [],
         "//tensorflow:fuchsia": [],
         "//conditions:default": [
@@ -1014,6 +1017,9 @@ cc_library(
     hdrs = if_mobile(["//tensorflow/core/config:flags_headers_filegroup"]),
     copts = tf_copts(android_optimization_level_override = None) + tf_opts_nortti_if_lite_protos() + if_ios(["-Os"]),
     defines = ["SUPPORT_SELECTIVE_REGISTRATION"] + select({
+                  # copybara:uncomment_begin(google-only)
+                  # "//buildenv/platforms/settings:chrome_linux": ["IS_MOBILE_PLATFORM"],
+                  # copybara:uncomment_end
                   "//tensorflow:chromiumos": ["IS_MOBILE_PLATFORM"],
                   "//tensorflow:fuchsia": ["IS_MOBILE_PLATFORM"],
                   "//conditions:default": [],
@@ -1046,6 +1052,7 @@ cc_library(
 #         "EIGEN_NEON_GEBP_NR=4",
 #     ] + select({
 #         "//tensorflow:chromiumos": ["IS_MOBILE_PLATFORM"],
+#         "//buildenv/platforms/settings:chrome_linux": ["IS_MOBILE_PLATFORM"],
 #         "//tensorflow:fuchsia": ["IS_MOBILE_PLATFORM"],
 #         "//conditions:default": [],
 #     }) + tf_defines_nortti_if_lite_protos() + select({
