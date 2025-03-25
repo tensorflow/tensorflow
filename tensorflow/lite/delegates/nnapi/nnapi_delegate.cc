@@ -773,12 +773,12 @@ namespace delegate {
 namespace nnapi {
 
 #ifdef TFLITE_NNAPI_ALLOW_MMAP_SHARING
-NNMemory::NNMemory(const NnApi* nnapi, const char* name, size_t size) {
-  if (name && size > 0) {
-    nnapi_ = nnapi;
-    byte_size_ = size;
+std::unique_ptr<NNMemory> NNMemory::Create(const NnApi* nnapi, const char* name,
+                                           size_t size) {
+  if (nnapi && name && size > 0) {
+    int fd = 0;
 #ifdef __ANDROID__
-    fd_ = nnapi_->ASharedMemory_create(name, size);
+    fd = nnapi->ASharedMemory_create(name, size);
 #else
     // For non-Android platforms ASharedMemory_create needs unique name to
     // create a shared memory object (see nnapi_implementation.cc).
@@ -788,21 +788,33 @@ NNMemory::NNMemory(const NnApi* nnapi, const char* name, size_t size) {
     }
     // tmpnam will produce a string containing with slashes, but shm_open
     // won't like that.
-    shm_region_name_ = std::string(name) + std::string(shm_name_buffer);
-    std::replace(shm_region_name_.begin(), shm_region_name_.end(), '/', '-');
-    fd_ = nnapi_->ASharedMemory_create(shm_region_name_.c_str(), size);
+    std::string shm_region_name =
+        std::string(name) + std::string(shm_name_buffer);
+    std::replace(shm_region_name.begin(), shm_region_name.end(), '/', '-');
+    fd = nnapi->ASharedMemory_create(shm_region_name.c_str(), size);
 #endif
-
-    data_ptr_ = reinterpret_cast<uint8_t*>(
-        mmap(nullptr, size, PROT_READ | PROT_WRITE, MAP_SHARED, fd_, 0));
-    nnapi_->ANeuralNetworksMemory_createFromFd(size, PROT_READ | PROT_WRITE,
-                                               fd_, 0, &nn_memory_handle_);
+    if (fd < 0) {
+      return nullptr;
+    }
+    uint8_t* data_ptr = reinterpret_cast<uint8_t*>(
+        mmap(nullptr, size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0));
+    if (data_ptr == MAP_FAILED) {
+      return nullptr;
+    }
+    ANeuralNetworksMemory* nn_memory_handle = nullptr;
+    nnapi->ANeuralNetworksMemory_createFromFd(size, PROT_READ | PROT_WRITE, fd,
+                                              0, &nn_memory_handle);
+    return std::unique_ptr<NNMemory>(
+        new NNMemory(nnapi, fd, size, data_ptr, nn_memory_handle));
   }
+  return nullptr;
 }
 #else
-NNMemory::NNMemory(const NnApi* /*nnapi*/, const char* /*name*/,
-                   size_t /*size*/)
-    : nnapi_(nullptr) {}
+std::unique_ptr<NNMemory> NNMemory::Create(const NnApi* /*nnapi*/,
+                                           const char* /*name*/,
+                                           size_t /*size*/) {
+  return nullptr;
+}
 #endif
 
 NNMemory::~NNMemory() {
@@ -4961,8 +4973,13 @@ TfLiteStatus NNAPIDelegateKernel::Invoke(TfLiteContext* context,
         }
       }
       if (total_input_byte_size > nn_input_memory_->get_byte_size()) {
-        nn_input_memory_ = std::make_unique<NNMemory>(nnapi_, "input_pool",
-                                                      total_input_byte_size);
+        nn_input_memory_ =
+            NNMemory::Create(nnapi_, "input_pool", total_input_byte_size);
+        if (nn_input_memory_ == nullptr) {
+          TF_LITE_KERNEL_LOG(context, "Failed to create input memory pool.");
+          return kTfLiteError;
+        }
+
         // Reset all cached executions when the memory pool is recreated.
         nn_execution_cache_.Clear();
       }
@@ -4989,8 +5006,13 @@ TfLiteStatus NNAPIDelegateKernel::Invoke(TfLiteContext* context,
         total_output_byte_size += GetNumPaddingBytes(tensor_size);
       }
       if (total_output_byte_size > nn_output_memory_->get_byte_size()) {
-        nn_output_memory_ = std::make_unique<NNMemory>(nnapi_, "output_pool",
-                                                       total_output_byte_size);
+        nn_output_memory_ =
+            NNMemory::Create(nnapi_, "output_pool", total_output_byte_size);
+        if (nn_output_memory_ == nullptr) {
+          TF_LITE_KERNEL_LOG(context, "Failed to create output memory pool.");
+          return kTfLiteError;
+        }
+
         // Reset all cached executions when the memory pool is recreated.
         nn_execution_cache_.Clear();
       }
@@ -6339,9 +6361,13 @@ TfLiteStatus NNAPIDelegateKernel::BuildGraph(
 
   // Create shared memory pool for inputs and outputs.
   nn_input_memory_ =
-      std::make_unique<NNMemory>(nnapi_, "input_pool", total_input_byte_size);
+      NNMemory::Create(nnapi_, "input_pool", total_input_byte_size);
   nn_output_memory_ =
-      std::make_unique<NNMemory>(nnapi_, "output_pool", total_output_byte_size);
+      NNMemory::Create(nnapi_, "output_pool", total_output_byte_size);
+
+  if (nn_input_memory_ == nullptr || nn_output_memory_ == nullptr) {
+    return kTfLiteError;
+  }
 
   return kTfLiteOk;
 }
