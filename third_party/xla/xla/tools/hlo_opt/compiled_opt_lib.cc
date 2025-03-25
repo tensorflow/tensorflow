@@ -39,7 +39,6 @@ limitations under the License.
 #include "xla/service/gather_expander.h"
 #include "xla/service/gpu/transforms/all_gather_dynamic_slice_simplifier.h"
 #include "xla/service/gpu/transforms/all_reduce_splitter.h"
-#include "xla/service/gpu/transforms/collective_permute_valid_iteration_annotator.h"
 #include "xla/service/gpu/transforms/scatter_expander.h"
 #include "xla/service/gpu/transforms/scatter_slice_simplifier.h"
 #include "xla/service/map_inliner.h"
@@ -156,7 +155,6 @@ void CompiledOptProvider::RegisterSharedHardwareSpecificPasses() {
   RegisterPass<BatchedGatherScatterNormalizer>();
   RegisterPass<BitcastDtypesExpander>();
   RegisterPass<CallInliner>();
-  RegisterPass<CollectivePermuteValidIterationAnnotator>();
   RegisterPass<ConditionalSimplifier>();
   RegisterPass<ConditionalToSelect>();
   RegisterPass<CopyInsertion>();
