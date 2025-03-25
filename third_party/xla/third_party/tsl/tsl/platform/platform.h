@@ -58,6 +58,10 @@ limitations under the License.
 // files.
 #define PLATFORM_GOOGLE
 
+#elif defined(__CHROME__)
+#define PLATFORM_POSIX
+#define PLATFORM_PORTABLE_GOOGLE
+
 #else
 // If no platform specified, use:
 #define PLATFORM_POSIX
