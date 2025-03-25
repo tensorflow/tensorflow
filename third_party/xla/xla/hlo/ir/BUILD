@@ -130,6 +130,7 @@ xla_cc_test(
         "//xla:shape_util",
         "//xla:side_effect_util",
         "//xla:xla_data_proto_cc",
+        "//xla/service:hlo_proto_cc",
         "//xla/tsl/platform:test_main",
         "@com_google_googletest//:gtest",
     ],
