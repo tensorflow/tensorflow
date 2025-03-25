@@ -1729,6 +1729,7 @@ def FuseTransposeIntoBatchMatMulRHS: Pat<
     $input, (CreateNoneValue $lhs), TFL_AF_None, TFL_FCWO_Default,
     ConstBoolAttrTrue, $asymmetric_quantize_inputs),
   [(HasRank<2> $input),
+   (AnyStaticShapeTensor $input),
    (AreLastTwoDimsTransposed $perm_value),
    (IsBoolAttrEqual<"false"> $adj_x),
    (IsBoolAttrEqual<"false"> $adj_y)]>;
