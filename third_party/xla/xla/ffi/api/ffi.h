@@ -58,10 +58,16 @@ using TypeId = XLA_FFI_TypeId;  // NOLINT
 enum class DataType : uint8_t {
   INVALID = XLA_FFI_DataType_INVALID,
   PRED = XLA_FFI_DataType_PRED,
+  S1 = XLA_FFI_DataType_S1,
+  S2 = XLA_FFI_DataType_S2,
+  S4 = XLA_FFI_DataType_S4,
   S8 = XLA_FFI_DataType_S8,
   S16 = XLA_FFI_DataType_S16,
   S32 = XLA_FFI_DataType_S32,
   S64 = XLA_FFI_DataType_S64,
+  U1 = XLA_FFI_DataType_U1,
+  U2 = XLA_FFI_DataType_U2,
+  U4 = XLA_FFI_DataType_U4,
   U8 = XLA_FFI_DataType_U8,
   U16 = XLA_FFI_DataType_U16,
   U32 = XLA_FFI_DataType_U32,
@@ -87,10 +93,16 @@ enum class DataType : uint8_t {
 // Create aliases in ::xla::ffi namespace for all DataTypes, for consistency
 // with xla that defines PrimitiveType enums in ::xla namespace.
 inline constexpr DataType PRED = DataType::PRED;
+inline constexpr DataType S1 = DataType::S1;
+inline constexpr DataType S2 = DataType::S2;
+inline constexpr DataType S4 = DataType::S4;
 inline constexpr DataType S8 = DataType::S8;
 inline constexpr DataType S16 = DataType::S16;
 inline constexpr DataType S32 = DataType::S32;
 inline constexpr DataType S64 = DataType::S64;
+inline constexpr DataType U1 = DataType::U1;
+inline constexpr DataType U2 = DataType::U2;
+inline constexpr DataType U4 = DataType::U4;
 inline constexpr DataType U8 = DataType::U8;
 inline constexpr DataType U16 = DataType::U16;
 inline constexpr DataType U32 = DataType::U32;
@@ -123,7 +135,13 @@ constexpr size_t ByteWidth(DataType dtype) {
       return 0;
     case DataType::PRED:
       return 1;
+    case DataType::S1:
+    case DataType::S2:
+    case DataType::S4:
     case DataType::S8:
+    case DataType::U1:
+    case DataType::U2:
+    case DataType::U4:
     case DataType::U8:
     case DataType::F8E5M2:
     case DataType::F8E4M3:

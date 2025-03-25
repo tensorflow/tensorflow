@@ -249,10 +249,16 @@ static XLA_FFI_DataType ToDataType(PrimitiveType primitive_type) {
   switch (primitive_type) {
     case PrimitiveType::PRIMITIVE_TYPE_INVALID:
     case PrimitiveType::PRED:
+    case PrimitiveType::S1:
+    case PrimitiveType::S2:
+    case PrimitiveType::S4:
     case PrimitiveType::S8:
     case PrimitiveType::S16:
     case PrimitiveType::S32:
     case PrimitiveType::S64:
+    case PrimitiveType::U1:
+    case PrimitiveType::U2:
+    case PrimitiveType::U4:
     case PrimitiveType::U8:
     case PrimitiveType::U16:
     case PrimitiveType::U32:
@@ -273,6 +279,8 @@ static XLA_FFI_DataType ToDataType(PrimitiveType primitive_type) {
     case PrimitiveType::F8E4M3FNUZ:
     case PrimitiveType::F8E3M4:
     case PrimitiveType::F8E8M0FNU:
+    case PrimitiveType::TUPLE:
+    case PrimitiveType::OPAQUE_TYPE:
       return static_cast<XLA_FFI_DataType>(primitive_type);
     default:
       DCHECK(false) << "Unsupported primitive type "

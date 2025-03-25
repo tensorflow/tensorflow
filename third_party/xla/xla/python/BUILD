@@ -297,6 +297,7 @@ cc_library(
         ":nb_numpy",
         ":types",
         "//xla:shape_util",
+        "//xla:xla_data_proto_cc",
         "//xla/ffi:ffi_api",
         "//xla/ffi/api:ffi",
         "//xla/pjrt:host_callback",
