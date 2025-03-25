@@ -90,20 +90,14 @@ jobs:
       - name: Run xla/tests/fuzz/rand_000001.hlo and collect runtime and compile time
         run: ./bazel-bin/xla/tools/run_hlo_module --input_format=hlo --platform=CPU xla/tests/fuzz/rand_000001.hlo
 
-      - name: Download and run Gemma2 2B HLO and collect runtime and compile time
+      - name: Download and run Gemma HLO files and collect runtime and compile time stats
         run: |
           mkdir -p tmp_hlo
           cd tmp_hlo
           wget https://storage.googleapis.com/xla-benchmarking-temp/gemma2_2b_keras_jax.hlo
+          wget https://storage.googleapis.com/xla-benchmarking-temp/gemma3_1b_flax_call.hlo
           cd ..
           ./bazel-bin/xla/tools/run_hlo_module --input_format=hlo --platform=CPU --reference_platform="" tmp_hlo/gemma2_2b_keras_jax.hlo
+          ./bazel-bin/xla/tools/run_hlo_module --input_format=hlo --platform=CPU --reference_platform="" tmp_hlo/gemma3_1b_flax_call.hlo
 
-     # TODO(juliagmt): Remove this once the ARM64 can run gemma2_2b_keras_jax.hlo.
-      - name: Build hlo_runner_main
-        if: ${{ matrix.job_info.os != 'linux-arm64-t2a-48' }}
-        run: bazel build -c opt --dynamic_mode=off //xla/tools/multihost_hlo_runner:hlo_runner_main
-
-      - name: Run hlo_runner_main on gemma2_2b_keras_jax.hlo and collect profile stats
-        if: ${{ matrix.job_info.os != 'linux-arm64-t2a-48' }}
-        run: |
-          ./bazel-bin/xla/tools/multihost_hlo_runner/hlo_runner_main --device_type=host --use_spmd_partitioning --profile_execution=True tmp_hlo/gemma2_2b_keras_jax.hlo
+    # TODO(juliagmt): Add CPU XSpace collection support to hlo_runner_main.

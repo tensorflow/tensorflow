@@ -63,6 +63,8 @@ jobs:
           mkdir -p tmp_hlo
           cd tmp_hlo
           wget https://storage.googleapis.com/xla-benchmarking-temp/gemma2_2b_keras_jax.hlo
+          wget https://storage.googleapis.com/xla-benchmarking-temp/gemma3_1b_flax_call.hlo
+          wget https://storage.googleapis.com/xla-benchmarking-temp/gemma3_1b_flax_sample_loop.hlo
           cd ..
 
       - name: Configure GPU backend
@@ -116,6 +118,46 @@ jobs:
 
           echo "Output written to: ${OUTPUT_PREFIX_GB}.txt and ${OUTPUT_PREFIX_GEMMA}.txt"
 
+          # Run gemma3_1b_flax_call.hlo
+          HLO_FILE_GEMMA3_CALL="tmp_hlo/gemma3_1b_flax_call.hlo"
+          OUTPUT_PREFIX_GEMMA3_CALL="$OUTPUT_DIR/gemma3_1b_flax_call"
+          echo "Running GPU test: $HLO_FILE_GEMMA3_CALL"
+          $binary_dir/multihost_hlo_runner/hlo_runner_main_gpu \
+            --device_type=gpu \
+            --use_spmd_partitioning \
+            --profile_execution=True \
+            --xla_gpu_dump_xspace_to="${OUTPUT_PREFIX_GEMMA3_CALL}_xspace.pb" \
+            "$HLO_FILE_GEMMA3_CALL" \
+            > "${OUTPUT_PREFIX_GEMMA3_CALL}.txt"
+
+            $binary_dir/compute_gpu_device_stats_main_gpu \
+            --input="${OUTPUT_PREFIX_GEMMA3_CALL}_xspace.pb" \
+            >> "${OUTPUT_PREFIX_GEMMA3_CALL}.txt"
+
+            cat "${OUTPUT_PREFIX_GEMMA3_CALL}.txt"
+
+            echo "Output written to: ${OUTPUT_PREFIX_GEMMA3_CALL}.txt"
+
+            # Run gemma3_1b_flax_sample_loop.hlo
+          HLO_FILE_GEMMA3_SAMPLE_LOOP="tmp_hlo/gemma3_1b_flax_sample_loop.hlo"
+          OUTPUT_PREFIX_GEMMA3_SAMPLE_LOOP="$OUTPUT_DIR/gemma3_1b_flax_sample_loop"
+          echo "Running GPU test: $HLO_FILE_GEMMA3_SAMPLE_LOOP"
+          $binary_dir/multihost_hlo_runner/hlo_runner_main_gpu \
+            --device_type=gpu \
+            --use_spmd_partitioning \
+            --profile_execution=True \
+            --xla_gpu_dump_xspace_to="${OUTPUT_PREFIX_GEMMA3_SAMPLE_LOOP}_xspace.pb" \
+            "$HLO_FILE_GEMMA3_SAMPLE_LOOP" \
+            > "${OUTPUT_PREFIX_GEMMA3_SAMPLE_LOOP}.txt"
+
+            $binary_dir/compute_gpu_device_stats_main_gpu \
+            --input="${OUTPUT_PREFIX_GEMMA3_SAMPLE_LOOP}_xspace.pb" \
+            >> "${OUTPUT_PREFIX_GEMMA3_SAMPLE_LOOP}.txt"
+
+            cat "${OUTPUT_PREFIX_GEMMA3_SAMPLE_LOOP}.txt"
+
+            echo "Output written to: ${OUTPUT_PREFIX_GEMMA3_SAMPLE_LOOP}.txt"
+
       - name: Upload HLO test output to GCS
         run: |
           GCS_BUCKET="gs://openxla-nightly-transient"
@@ -124,17 +166,28 @@ jobs:
           COMMIT_SHA="${{ github.sha }}"
           RUN_ID="${{ github.run_id }}"
 
+          upload_to_gcs() {
+            local base_name="$1"
+            local gcs_file_name="${DATE_FOLDER}/${TIMESTAMP}_${{ matrix.job_info.os }}_run_${RUN_ID}_commit_${COMMIT_SHA}_${base_name}.txt"
+            echo "Uploading $OUTPUT_DIR/${base_name}.txt to $GCS_BUCKET/$gcs_file_name"
+            gsutil cp "$OUTPUT_DIR/${base_name}.txt" "$GCS_BUCKET/$gcs_file_name"
+          }
+
           # Upload output for gpu_hlo_backend
           GB_BASE_NAME="gpu_hlo_backend"
-          GCS_FILE_NAME_GB="${DATE_FOLDER}/${TIMESTAMP}_${{ matrix.job_info.os }}_run_${RUN_ID}_commit_${COMMIT_SHA}$_${GB_BASE_NAME}.txt"
-          echo "Uploading $OUTPUT_DIR/${GB_BASE_NAME}.txt to $GCS_BUCKET/$GCS_FILE_NAME_GB"
-          gsutil cp "$OUTPUT_DIR/${GB_BASE_NAME}.txt" "$GCS_BUCKET/$GCS_FILE_NAME_GB"
+          upload_to_gcs "$GB_BASE_NAME"
 
           # Upload output for gemma2_2b_keras_jax
           GEMMA_BASE_NAME="gemma2_2b_keras_jax"
-          GCS_FILE_NAME_GEMMA="${DATE_FOLDER}/${TIMESTAMP}_${{ matrix.job_info.os }}_run_${RUN_ID}_commit_${COMMIT_SHA}_${GEMMA_BASE_NAME}.txt"
-          echo "Uploading $OUTPUT_DIR/${GEMMA_BASE_NAME}.txt to $GCS_BUCKET/$GCS_FILE_NAME_GEMMA"
-          gsutil cp "$OUTPUT_DIR/${GEMMA_BASE_NAME}.txt" "$GCS_BUCKET/$GCS_FILE_NAME_GEMMA"
+          upload_to_gcs "$GEMMA_BASE_NAME"
+
+          # Upload output for gemma3_1b_flax_call
+          GEMMA3_CALL_BASE_NAME="gemma3_1b_flax_call"
+          upload_to_gcs "$GEMMA3_CALL_BASE_NAME"
+
+          # Upload output for gemma3_1b_flax_sample_loop
+          GEMMA3_SAMPLE_LOOP_BASE_NAME="gemma3_1b_flax_sample_loop"
+          upload_to_gcs "$GEMMA3_SAMPLE_LOOP_BASE_NAME"
 
       - name: Upload XSpace artifacts
         uses: actions/upload-artifact@4cec3d8aa04e39d1a68397de0c4cd6fb9dce8ec1 # v4.6.1
