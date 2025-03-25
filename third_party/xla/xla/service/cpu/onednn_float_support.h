@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_SERVICE_CPU_CPU_FLOAT_SUPPORT_H_
-#define XLA_SERVICE_CPU_CPU_FLOAT_SUPPORT_H_
+#ifndef XLA_SERVICE_CPU_ONEDNN_FLOAT_SUPPORT_H_
+#define XLA_SERVICE_CPU_ONEDNN_FLOAT_SUPPORT_H_
 
 #if defined(INTEL_MKL)
 
@@ -23,9 +23,9 @@ limitations under the License.
 namespace xla {
 namespace cpu {
 
-class CpuFloatSupport : public FloatSupport {
+class OneDnnFloatSupport : public FloatSupport {
  public:
-  explicit CpuFloatSupport(PrimitiveType low_precision_type)
+  explicit OneDnnFloatSupport(PrimitiveType low_precision_type)
       : FloatSupport(low_precision_type) {}
 
   bool SupportsLowPrecisionOperand(const HloInstruction& hlo,
@@ -49,4 +49,4 @@ class CpuFloatSupport : public FloatSupport {
 }  // namespace xla
 
 #endif  // INTEL_MKL
-#endif  // XLA_SERVICE_CPU_CPU_FLOAT_SUPPORT_H_
+#endif  // XLA_SERVICE_CPU_ONEDNN_FLOAT_SUPPORT_H_

@@ -15,14 +15,14 @@ limitations under the License.
 
 #if defined(INTEL_MKL)
 
-#include "xla/service/cpu/cpu_float_support.h"
+#include "xla/service/cpu/onednn_float_support.h"
 
 #include "xla/service/cpu/onednn_contraction_rewriter.h"
 
 namespace xla {
 namespace cpu {
 
-bool CpuFloatSupport::IsSupported(const HloInstruction& hlo) const {
+bool OneDnnFloatSupport::IsSupported(const HloInstruction& hlo) const {
   switch (hlo.opcode()) {
     // oneDNN rewritable ops
     case HloOpcode::kDot:

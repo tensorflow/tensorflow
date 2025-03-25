@@ -204,7 +204,6 @@ cc_library(
         ":conv_canonicalization",
         ":cpu_aot_compilation_result",
         ":cpu_executable",
-        ":cpu_float_support",
         ":cpu_instruction_fusion",
         ":cpu_layout_assignment",
         ":cpu_options",
@@ -215,6 +214,7 @@ cc_library(
         ":ir_emitter2",
         ":metrics",
         ":onednn_contraction_rewriter",
+        ":onednn_float_support",
         ":onednn_ops_rewriter",
         ":parallel_task_assignment",
         ":runtime_symbol_generator",
@@ -2059,9 +2059,9 @@ cc_library(
 )
 
 cc_library(
-    name = "cpu_float_support",
-    srcs = ["cpu_float_support.cc"],
-    hdrs = ["cpu_float_support.h"],
+    name = "onednn_float_support",
+    srcs = ["onednn_float_support.cc"],
+    hdrs = ["onednn_float_support.h"],
     copts = tsl_copts(),
     deps = [
         ":onednn_contraction_rewriter",
