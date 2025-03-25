@@ -79,7 +79,7 @@ se::DeviceMemoryBase BufferAllocations::GetDeviceAddress(
   int64_t extent = offset + buffer_slice.size();
   CHECK_LE(extent, base.size())
       << "slice extent " << extent << " must be smaller than buffer #" << index
-      << " size " << base.size();
+      << " size " << base.size() << " base address " << base.opaque();
 
   return base.GetByteSlice(buffer_slice.offset(), buffer_slice.size());
 }

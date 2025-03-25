@@ -62,18 +62,43 @@ class CommandBufferThunk : public Thunk {
   // auxiliary state required for efficient command buffer updates.
   struct ExecutorCommandBuffer {
     explicit ExecutorCommandBuffer(
-        std::unique_ptr<se::CommandBuffer> command_buffer);
-
-    // Returns true if `commands` cmd sequence has to be recorded into
-    // `command_buffer` to update it (see `recorded_allocs` below).
-    bool ShouldUpdateCommandBuffer(const CommandBufferCmdSequence& commands,
-                                   const Thunk::ExecuteParams& params)
-        ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex);
+        std::unique_ptr<se::CommandBuffer> command_buffer,
+        std::unique_ptr<CommandBufferCmdSequence> commands);
 
     // se::CommandBuffer is not thread safe, and we guard it with a mutex to
     // guarantee that we do not mutate it concurrently.
     absl::Mutex mutex;
+
+    // Returns true if `commands` cmd sequence has to be recorded into
+    // `command_buffer` to update it (see `recorded_allocs` below).
+    bool ShouldUpdateCommandBuffer(const Thunk::ExecuteParams& params)
+        ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex);
+
     std::unique_ptr<se::CommandBuffer> command_buffer ABSL_GUARDED_BY(mutex);
+
+    // We now save the lowered command buffer nodes in CommandBufferCmd object,
+    // so CommandBufferCmdSequence is per-executor object.
+    std::unique_ptr<CommandBufferCmdSequence> commands ABSL_GUARDED_BY(mutex);
+
+    absl::Status Initialize(const InitializeParams& params)
+        ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex) {
+      return commands->Initialize(params, state);
+    }
+
+    absl::Status Record(const Thunk::ExecuteParams& params,
+                        const CommandBufferCmd::RecordParams& record_params)
+        ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex) {
+      return commands->Record(params, record_params, command_buffer.get());
+    }
+
+    absl::Status Submit(se::Stream* stream)
+        ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex) {
+      return command_buffer->Submit(stream);
+    }
+
+    bool created() const ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex) {
+      return commands->created();
+    }
 
     // A manager for an external state attached by commands in a command
     // sequence to a command buffer.
@@ -124,7 +149,9 @@ class CommandBufferThunk : public Thunk {
   // Evicts all previously instantiated command buffers.
   static void EvictCommandBuffers();
 
-  // Command sequence that initializes command buffers on each executor.
+  // Command sequence that is shared across all executors. We use this object
+  // to do tasks that are not specific to an executor. For record operation
+  // performed by each executor, use ExecutorCommandBuffer object.
   CommandBufferCmdSequence commands_;
 
   // Thunk sequence that executes the same commands as in `commands_` but using
