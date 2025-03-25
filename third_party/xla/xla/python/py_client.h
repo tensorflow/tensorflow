@@ -184,23 +184,6 @@ class PyClient {
 
   absl::StatusOr<nanobind::bytes> HeapProfile();
 
-  // `GetEmitPythonCallbackDescriptor` takes in an input Python callable that
-  // takes in arguments of shapes `operand_shapes` and returns values of shapes
-  // `result_shapes`. It returns a pair of a `uint64_t` descriptor and a Python
-  // object whose reference will keep the Python callback alive. The descriptor
-  // should be passed into a 'xla_python_cpu_callback' or
-  // 'xla_python_gpu_callback' CustomCall as its first argument. Typically the
-  // callback may be kept alive by attaching the keep-alive object to the
-  // executable built from this computation.
-  //
-  // The callable receives as arguments NumPy arrays for arguments with array
-  // types, and None for Token argument. The callable must return a tuple of
-  // either arrays or None values.
-  absl::StatusOr<std::pair<uint64_t, nanobind::object>>
-  GetEmitPythonCallbackDescriptor(nanobind::callable callable,
-                                  absl::Span<Shape const> operand_shapes,
-                                  absl::Span<Shape const> result_shapes);
-
   // `MakePythonCallbackUsingHostSendAndRecv` takes in an input Python callable
   // that takes in arguments of shapes `operand_shapes` and returns results of
   // shapes `result_shapes`. The arguments correspond to Send ops in the HLO

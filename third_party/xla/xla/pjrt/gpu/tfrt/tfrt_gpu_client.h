@@ -312,6 +312,14 @@ class TfrtGpuClient final : public PjRtClient {
   absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> CompileAndLoad(
       mlir::ModuleOp mlir_module, CompileOptions options) override;
 
+  absl::StatusOr<std::unique_ptr<PjRtBuffer>> CreateUninitializedBuffer(
+      const Shape& shape, PjRtMemorySpace* memory_space) override;
+
+  absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
+  LoadSerializedExecutable(absl::string_view serialized,
+                           std::optional<CompileOptions> options,
+                           const LoadOptions& load_options) override;
+
   absl::StatusOr<std::unique_ptr<PjRtBuffer>> CreateErrorBuffer(
       absl::Status error, const Shape& shape, PjRtMemorySpace* memory) override;
 
@@ -589,12 +597,6 @@ class TfrtGpuBuffer final : public PjRtBuffer {
   friend class DonationTransactionPeer;
 };
 
-absl::StatusOr<std::unique_ptr<TfrtGpuBuffer>> AllocateTfrtGpuDestinationBuffer(
-    const Shape& on_device_shape,
-    absl::InlinedVector<tsl::AsyncValueRef<GpuEvent>, 4> definition_events,
-    TfrtGpuDevice* device, TfrtGpuClient* client,
-    PjRtMemorySpace* memory_space);
-
 class TfrtGpuExecutable final : public PjRtLoadedExecutable {
  public:
   TfrtGpuExecutable(
@@ -665,6 +667,8 @@ class TfrtGpuExecutable final : public PjRtLoadedExecutable {
   void Delete() override { executables_.clear(); }
 
   bool IsDeleted() override { return executables_.empty(); }
+
+  absl::StatusOr<std::string> SerializeExecutable() const override;
 
   absl::StatusOr<CompileOptions> GetCompileOptions() const override {
     return compile_options_;

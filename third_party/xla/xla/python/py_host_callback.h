@@ -22,14 +22,11 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "absl/base/casts.h"
-#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "llvm/Support/ExtensibleRTTI.h"
 #include "nanobind/nanobind.h"
 #include "xla/pjrt/host_callback.h"
-#include "xla/python/callback.h"
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/host_callback.h"
 #include "xla/python/pjrt_ifrt/pjrt_host_callback.h"
@@ -64,54 +61,6 @@ class PyFfiLoadedHostCallback final
  private:
   ifrt::Client* ifrt_client_;
   nanobind::callable callable_;
-};
-
-// `PyCpuLoadedHostCallback` implements a Python host callback that uses a
-// descriptor (a raw pointer to JAX `CpuCallback`). The descriptor should be
-// passed into a 'xla_python_cpu_callback' or 'xla_python_gpu_callback'
-// CustomCall as its first argument.
-//
-// Serialization is not supported. Once the descriptor is embedded in
-// CustomCall in an XLA computation, the computation will not be serializable.
-class PyCpuLoadedHostCallback final
-    : public llvm::RTTIExtends<PyCpuLoadedHostCallback,
-                               ifrt::PjRtFfiLoadedHostCallback> {
- public:
-  static absl::StatusOr<tsl::RCReference<PyCpuLoadedHostCallback>> Create(
-      ifrt::Client* ifrt_client, nanobind::callable callable,
-      absl::Span<const Shape> operand_shapes,
-      absl::Span<const Shape> result_shapes);
-
-  // Returns the descriptor of `CpuCallback`.
-  uint64_t descriptor() const {
-    return absl::bit_cast<uint64_t>(cpu_callback_.get());
-  }
-
-  CpuCallback* cpu_callback() { return cpu_callback_.get(); }
-
-  // LoadedHostCallback implementation.
-
-  ~PyCpuLoadedHostCallback() override = default;
-
-  ifrt::Client* client() const override { return ifrt_client_; }
-
-  absl::StatusOr<std::string> Serialize() const override;
-
-  static char ID;  // NOLINT
-
- private:
-  PyCpuLoadedHostCallback(ifrt::Client* ifrt_client,
-                          std::unique_ptr<CpuCallback> cpu_callback)
-      : llvm::RTTIExtends<PyCpuLoadedHostCallback,
-                          ifrt::PjRtFfiLoadedHostCallback>(
-            ifrt_client, cpu_callback->callback()),
-        cpu_callback_(std::move(cpu_callback)) {}
-
-  template <typename T, typename... Args>
-  friend tsl::RCReference<T> tsl::MakeRef(Args&&... args);
-
-  ifrt::Client* ifrt_client_;
-  std::unique_ptr<CpuCallback> cpu_callback_;
 };
 
 // `PyHostSendAndRecvLoadedHostCallback` implements a Python host callback that
