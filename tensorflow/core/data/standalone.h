@@ -18,6 +18,7 @@ limitations under the License.
 #include <functional>
 #include <memory>
 #include <optional>
+#include <string>
 #include <vector>
 
 #include "xla/tsl/platform/status.h"
@@ -113,9 +114,15 @@ class Iterator {
 // plan of transformations that operate over the data.
 class Dataset {
  public:
+  // Metadata options for `Dataset` creation.
+  struct MetadataOptions {
+    std::string data_service_address;
+  };
+
   // Parameters for `Dataset` creation (e.g. TensorFlow runtime configuration).
   struct Params {
     SessionOptions session_options;
+    MetadataOptions metadata_options;
   };
 
   // Creates a new `Dataset` instance by running the given dataset graph.
