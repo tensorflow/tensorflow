@@ -71,6 +71,7 @@ limitations under the License.
 #include "xla/pjrt/utils.h"
 #include "xla/pjrt/worker_thread.h"
 #include "xla/primitive_util.h"
+#include "xla/service/compiler.h"
 #include "xla/service/computation_placer.h"
 #include "xla/service/executable.h"
 #include "xla/service/generic_transfer_manager.h"
@@ -109,6 +110,29 @@ limitations under the License.
 
 namespace xla {
 namespace {
+
+absl::StatusOr<std::unique_ptr<TfrtGpuBuffer>> AllocateTfrtGpuDestinationBuffer(
+    const Shape& on_device_shape,
+    absl::InlinedVector<tsl::AsyncValueRef<GpuEvent>, 4> definition_events,
+    TfrtGpuDevice* device, TfrtGpuClient* client,
+    PjRtMemorySpace* memory_space) {
+  if (!on_device_shape.IsTuple()) {
+    size_t byte_size = ShapeUtil::ByteSizeOf(on_device_shape);
+    TF_ASSIGN_OR_RETURN(
+        auto device_buffer,
+        MaybeOwningGpuMemory::AllocateShared(device->allocator(), byte_size));
+    auto buffer_async_value_ref =
+        tsl::MakeAvailableAsyncValueRef<MaybeOwningGpuMemory>(
+            std::move(device_buffer));
+    return std::make_unique<TfrtGpuBuffer>(
+        on_device_shape,
+        std::make_unique<TrackedTfrtGpuDeviceBuffer>(
+            buffer_async_value_ref, std::move(definition_events)),
+        client, device, memory_space);
+  }
+  return Unimplemented(
+      "tuple case not implemented for AllocateTfrtGpuDestinationBuffer");
+}
 
 void EnqueueWork(tsl::thread::ThreadPool* pool,
                  absl::AnyInvocable<void()> callee) {
@@ -935,6 +959,98 @@ TfrtGpuClient::CreateViewOfDeviceBuffer(
       tsl::down_cast<TfrtGpuDevice*>(device), memory_space);
 }
 
+absl::StatusOr<std::unique_ptr<PjRtBuffer>>
+TfrtGpuClient::CreateUninitializedBuffer(const Shape& shape,
+                                         PjRtMemorySpace* memory_space) {
+  tsl::profiler::TraceMe traceme("TfrtGpuClient::CreateUninitializedBuffer");
+  if (VLOG_IS_ON(1)) {
+    LOG(INFO) << "TfrtGpuClient::CreateUninitializedBuffer: shape: "
+              << shape.DebugString()
+              << " memory_space: " << memory_space->DebugString();
+  }
+  return AllocateTfrtGpuDestinationBuffer(
+      shape, /*definition_events=*/{},
+      tsl::down_cast<TfrtGpuDevice*>(memory_space->devices()[0]), this,
+      memory_space);
+}
+
+absl::StatusOr<std::string> TfrtGpuExecutable::SerializeExecutable() const {
+  if (executables_.size() != 1) {
+    // TODO(b/382117736): Change SerializeExecutable interface to support
+    // multiple partitions.
+    return absl::FailedPreconditionError(
+        "SerializeExecutable with >1 partitions not yet supported");
+  }
+  Executable* built_executable = executables_[0]->executable();
+  Compiler* compiler = client_->xla_client()->backend().compiler();
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<AotCompilationResult> aot_result,
+                      compiler->Export(built_executable));
+  TF_ASSIGN_OR_RETURN(std::string serialized, aot_result->SerializeAsString());
+  if (serialized.empty()) {
+    return Internal(
+        "TfrtGpuExecutable::SerializeExecutable proto serialization "
+        "failed");
+  }
+  ExecutableAndOptionsProto proto;
+  *proto.mutable_serialized_executable() = std::move(serialized);
+  TF_ASSIGN_OR_RETURN(*proto.mutable_compile_options(),
+                      compile_options_.ToProto());
+  return proto.SerializeAsString();
+}
+
+absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
+TfrtGpuClient::LoadSerializedExecutable(absl::string_view serialized,
+                                        std::optional<CompileOptions> options,
+                                        const LoadOptions& load_options) {
+  ExecutableAndOptionsProto proto;
+  if (serialized.size() > std::numeric_limits<int>::max()) {
+    return Internal(
+        "TfrtGpuClient::LoadSerializedExecutable proto too large "
+        "(>2GB)");
+  }
+  if (!proto.ParseFromArray(serialized.data(), serialized.size())) {
+    return Internal(
+        "TfrtGpuClient::LoadSerializedExecutable proto "
+        "deserialization "
+        "failed");
+  }
+
+  CompileOptions compile_options;
+  if (options.has_value()) {
+    compile_options = *std::move(options);
+  } else {
+    TF_ASSIGN_OR_RETURN(compile_options,
+                        CompileOptions::FromProto(proto.compile_options()));
+  }
+  auto input_options = compile_options;
+
+  tsl::profiler::TraceMe traceme("TfrtGpuClient::LoadSerializedExecutable");
+
+  TF_ASSIGN_OR_RETURN(ExecutableExtras extras,
+                      GetExecutableExtras(&compile_options));
+  std::shared_ptr<DeviceAssignment>& device_assignment =
+      extras.device_assignment;
+  std::vector<TfrtGpuExecutable::LogicalDeviceIds>&
+      addressable_device_logical_ids = extras.addressable_device_logical_ids;
+  std::vector<PjRtDevice*>& addressable_devices = extras.addressable_devices;
+
+  std::string str = std::move(*proto.mutable_serialized_executable());
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<LocalExecutable> loaded,
+      xla_client_->Load(str, compile_options.executable_build_options));
+  std::vector<std::unique_ptr<LocalExecutable>> executables;
+  executables.push_back(std::move(loaded));
+
+  auto executable = std::make_unique<TfrtGpuExecutable>(
+      std::move(executables), compile_options.parameter_is_tupled_arguments,
+      std::move(device_assignment), std::move(input_options),
+      addressable_device_logical_ids, addressable_devices, this);
+
+  TF_RETURN_IF_ERROR(
+      executable->SetUpDonation(compile_options.parameter_is_tupled_arguments));
+  return std::unique_ptr<PjRtLoadedExecutable>(std::move(executable));
+}
+
 absl::StatusOr<std::unique_ptr<PjRtBuffer>> TfrtGpuClient::CreateErrorBuffer(
     absl::Status error, const Shape& shape, PjRtMemorySpace* memory_space) {
   CHECK_EQ(memory_space->devices().size(), 1);
@@ -1215,29 +1331,6 @@ absl::StatusOr<std::unique_ptr<PjRtBuffer>> TfrtGpuClient::BufferFromHostBuffer(
   return std::unique_ptr<PjRtBuffer>(std::make_unique<TfrtGpuBuffer>(
       device_shape, std::move(tracked_device_buffer), this, gpu_device,
       memory_space));
-}
-
-absl::StatusOr<std::unique_ptr<TfrtGpuBuffer>> AllocateTfrtGpuDestinationBuffer(
-    const Shape& on_device_shape,
-    absl::InlinedVector<tsl::AsyncValueRef<GpuEvent>, 4> definition_events,
-    TfrtGpuDevice* device, TfrtGpuClient* client,
-    PjRtMemorySpace* memory_space) {
-  if (!on_device_shape.IsTuple()) {
-    size_t byte_size = ShapeUtil::ByteSizeOf(on_device_shape);
-    TF_ASSIGN_OR_RETURN(
-        auto device_buffer,
-        MaybeOwningGpuMemory::AllocateShared(device->allocator(), byte_size));
-    auto buffer_async_value_ref =
-        tsl::MakeAvailableAsyncValueRef<MaybeOwningGpuMemory>(
-            std::move(device_buffer));
-    return std::make_unique<TfrtGpuBuffer>(
-        on_device_shape,
-        std::make_unique<TrackedTfrtGpuDeviceBuffer>(
-            buffer_async_value_ref, std::move(definition_events)),
-        client, device, memory_space);
-  }
-  return Unimplemented(
-      "Tuple case not implemented for AllocateTfrtGpuDestinationBuffer");
 }
 
 absl::StatusOr<std::unique_ptr<PjRtBuffer>>
