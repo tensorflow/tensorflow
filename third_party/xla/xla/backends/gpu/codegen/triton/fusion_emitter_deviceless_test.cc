@@ -13,23 +13,28 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <memory>
 #include <string>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/status/status.h"
 #include "absl/strings/string_view.h"
+#include "llvm/IR/LLVMContext.h"
 #include "mlir/IR/MLIRContext.h"
 #include "xla/backends/gpu/codegen/triton/fusion_emitter.h"
 #include "xla/codegen/emitter_loc_op_builder.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/testlib/filecheck.h"
+#include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/service/gpu/model/tiled_hlo_computation.h"
 #include "xla/service/gpu/tests/gpu_codegen_test.h"
+#include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
-#include "tsl/platform/status_matchers.h"
-#include "tsl/platform/statusor.h"
-#include "tsl/platform/test.h"
+#include "xla/tsl/platform/status_matchers.h"
+#include "xla/tsl/platform/statusor.h"
 
 #if defined(PLATFORM_GOOGLE)
 #else
@@ -119,6 +124,48 @@ TEST_F(AnnotationsTest, Annotations) {
     )"),
                 IsOkAndHolds(true));
   }
+}
+
+using TritonEmitterDevicelessTest = GpuCodegenTest;
+
+TEST_F(TritonEmitterDevicelessTest, FailsGracefullyIfNumWarpsIsMissing) {
+  constexpr absl::string_view kHloText = R"(
+triton_computation {
+  p0 = f32[10,10] parameter(0)
+  p1 = f32[10,10] parameter(1)
+  ROOT add = f32[10,10] add(p0, p1)
+}
+
+ENTRY entry {
+  p0 = f32[10,10] parameter(0)
+  p1 = f32[10,10] parameter(1)
+  ROOT r = f32[10,10] fusion(p0, p1),
+    kind=kCustom, calls=triton_computation,
+    backend_config={"fusion_backend_config": {
+      "kind":"__triton",
+      "block_level_fusion_config": {"output_tiles":[{"sizes": ["1","1"]}]}}}
+})";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> hlo_module,
+                          ParseAndReturnVerifiedModule(kHloText));
+  const HloFusionInstruction* triton_fusion = Cast<HloFusionInstruction>(
+      hlo_module->entry_computation()->root_instruction());
+  const se::DeviceDescription dev_info =
+      TestGpuDeviceInfo::RTXA6000DeviceInfo();
+  llvm::LLVMContext llvm_ctx;
+  llvm::Module llvm_module("module", llvm_ctx);
+  mlir::MLIRContext mlir_context;
+
+  BlockLevelParameters block_level_parameters;
+  block_level_parameters.output_tile_sizes = {{1, 1}};
+  block_level_parameters.num_warps = 0;
+
+  EXPECT_THAT(TritonWrapper("test_fn", triton_fusion,
+                            se::CudaComputeCapability::Hopper(), dev_info,
+                            block_level_parameters, &llvm_module, mlir_context),
+              tsl::testing::StatusIs(
+                  absl::StatusCode::kFailedPrecondition,
+                  ::testing::HasSubstr(
+                      "(num_warps, num_ctas, num_stages) must be positive")));
 }
 
 }  // namespace

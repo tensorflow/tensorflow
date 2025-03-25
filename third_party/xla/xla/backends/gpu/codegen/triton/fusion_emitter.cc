@@ -1737,11 +1737,19 @@ absl::StatusOr<TritonWrapperResult> CompileTritonToLLVM(
   pm.addPass(emitters::CreateSimplifyAffinePass());
   pm.addPass(CreateConvertIndexTypePass());
 
+  int64_t num_warps = block_level_parameters.num_warps;
+  int num_ctas = block_level_parameters.num_ctas;
+  int num_stages = block_level_parameters.num_stages;
+
+  if (num_warps <= 0 || num_ctas <= 0 || num_stages <= 0) {
+    return absl::FailedPreconditionError(absl::StrCat(
+        "(num_warps, num_ctas, num_stages) must be positive, but got: (",
+        num_warps, ", ", num_ctas, ", ", num_stages, ")"));
+  }
+
   mlir::triton::nvidia_gpu::ClusterInfo cluster_info;
-  if (!CreateTritonPipeline(&pm, arch_name, block_level_parameters.num_warps,
-                            block_level_parameters.num_ctas,
-                            block_level_parameters.num_stages, cluster_info,
-                            is_xla_fusion)
+  if (!CreateTritonPipeline(&pm, arch_name, num_warps, num_ctas, num_stages,
+                            cluster_info, is_xla_fusion)
            .ok()) {
     return Internal("Failed to create Triton pipeline.");
   }
