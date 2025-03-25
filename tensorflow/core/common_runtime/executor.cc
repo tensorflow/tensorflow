@@ -94,9 +94,9 @@ static const Tensor* const kEmptyTensor = new Tensor;
 namespace nodestats {
 inline int64_t NowInNsec() { return EnvTime::NowNanos(); }
 
-void SetScheduled(NodeExecStatsInterface* stats, int64_t micros) {
+void SetScheduled(NodeExecStatsInterface* stats, int64_t nanos) {
   if (!stats) return;
-  stats->SetScheduled(micros * EnvTime::kMicrosToNanos);
+  stats->SetScheduled(nanos);
 }
 
 void SetAllStart(NodeExecStatsInterface* stats) {

@@ -104,6 +104,11 @@ class ExecutorTest : public ::testing::Test {
     return exec_->Run(args);
   }
 
+  const StepStats& GetStepStats() {
+    step_stats_collector_.Finalize();
+    return step_stats_;
+  }
+
   thread::ThreadPool* thread_pool_ = nullptr;
   std::unique_ptr<Device> device_;
   Executor* exec_ = nullptr;
@@ -183,6 +188,60 @@ TEST_F(ExecutorTest, SimpleAdd) {
   TF_ASSERT_OK(
       rendez_->Recv(Key(BOB, kIncarnation, ALICE, "c"), args, &out, &is_dead));
   EXPECT_EQ(2.0, V(out));  // out = 1.0 + 1.0 = 2.0
+}
+
+TEST_F(ExecutorTest, StepStatsNumerical) {
+  // Similar to SimpleAdd, but tests numerical values in StepStats
+
+  // c = a + b
+  auto g = std::make_unique<Graph>(OpRegistry::Global());
+  auto in0 = test::graph::Recv(g.get(), "a", "float", ALICE, 1, BOB);
+  auto in1 = test::graph::Recv(g.get(), "b", "float", ALICE, 1, BOB);
+  auto tmp = test::graph::Add(g.get(), in0, in1);
+  test::graph::Send(g.get(), tmp, "c", BOB, 1, ALICE);
+  Create(std::move(g));
+  Rendezvous::Args args;
+  TF_ASSERT_OK(rendez_->Send(Key(ALICE, kIncarnation, BOB, "a"), args, V(1.0),
+                             false));  // in0 = 1.0
+  TF_ASSERT_OK(rendez_->Send(Key(ALICE, kIncarnation, BOB, "b"), args, V(1.0),
+                             false));  // in1 = 1.0
+  TF_ASSERT_OK(Run(rendez_));
+  Tensor out = V(-1);
+  bool is_dead = false;
+  TF_ASSERT_OK(
+      rendez_->Recv(Key(BOB, kIncarnation, ALICE, "c"), args, &out, &is_dead));
+  EXPECT_EQ(2.0, V(out));  // out = 1.0 + 1.0 = 2.0
+
+  auto& step_stats = GetStepStats();
+  EXPECT_EQ(1, step_stats.dev_stats_size());
+  for (const auto& dev_stat : step_stats.dev_stats()) {
+    EXPECT_EQ(2, dev_stat.node_stats_size());
+    for (const auto& node_stat : dev_stat.node_stats()) {
+      // scheduled_nanos <= all_start_nanos <= op_start_nanos <= op_end_nanos <=
+      // all_end_nanos
+      auto scheduled_nanos = node_stat.scheduled_nanos();
+      auto all_start_nanos = node_stat.all_start_nanos();
+      auto op_start_nanos = all_start_nanos + node_stat.op_start_rel_nanos();
+      auto op_end_nanos = all_start_nanos + node_stat.op_end_rel_nanos();
+      auto all_end_nanos = all_start_nanos + node_stat.all_end_rel_nanos();
+      EXPECT_LE(scheduled_nanos, all_start_nanos);
+      EXPECT_LE(all_start_nanos, op_start_nanos);
+      EXPECT_LE(op_start_nanos, op_end_nanos);
+      EXPECT_LE(op_end_nanos, all_end_nanos);
+
+      auto scheduled_micros = node_stat.scheduled_micros();
+      auto all_start_micros = node_stat.all_start_micros();
+      auto op_start_micros = all_start_micros + node_stat.op_start_rel_micros();
+      auto op_end_micros = all_start_micros + node_stat.op_end_rel_micros();
+      auto all_end_micros = all_start_micros + node_stat.all_end_rel_micros();
+      const int64_t kMicrosToNanos = 1000;
+      EXPECT_EQ(scheduled_nanos / kMicrosToNanos, scheduled_micros);
+      EXPECT_EQ(all_start_nanos / kMicrosToNanos, all_start_micros);
+      EXPECT_EQ(op_start_nanos / kMicrosToNanos, op_start_micros);
+      EXPECT_EQ(op_end_nanos / kMicrosToNanos, op_end_micros);
+      EXPECT_EQ(all_end_nanos / kMicrosToNanos, all_end_micros);
+    }
+  }
 }
 
 TEST_F(ExecutorTest, SelfAdd) {
