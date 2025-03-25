@@ -580,6 +580,35 @@ class HloGraphNode {
   bool DoesReleaseResource(ResourceType res) const {
     return DoesReleaseResource(ResourceTypeToIndex(res));
   }
+  bool DoesOccupyResource(int64_t res) const {
+    return absl::c_any_of(resources_, [res](const ResourcePair& resource) {
+      return resource.second == ResourceUsageType::kResourceOccupy &&
+             resource.first == res;
+    });
+  }
+  bool DoesOccupyResource(ResourceType res) const {
+    return DoesOccupyResource(ResourceTypeToIndex(res));
+  }
+  // Returns the net resources used by the node. For a while loop, it computes
+  // the net resources used by the instructions in the while body. Otherwise, it
+  // returns the readily-available resources vector.
+  ResourcesVector GetNetResources() const {
+    if (GetInstr().opcode() != HloOpcode::kWhile) {
+      return resources_;
+    }
+    ResourcesVector result;
+    for (const auto& [resource, usage] : resources_) {
+      if (usage == ResourceUsageType::kResourceOccupy &&
+          !DoesReleaseResource(resource)) {
+        result.push_back(std::make_pair(resource, usage));
+      }
+      if (usage == ResourceUsageType::kResourceRelease &&
+          !DoesOccupyResource(resource)) {
+        result.push_back(std::make_pair(resource, usage));
+      }
+    }
+    return result;
+  }
   std::optional<ResourceUsageType> UsesResourceType(ResourceType res) const {
     int64_t res_type = ResourceTypeToIndex(res);
     for (const auto& [resource_type, usage_type] : resources_) {

@@ -26,7 +26,6 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "absl/base/casts.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
@@ -40,7 +39,6 @@ limitations under the License.
 #include "xla/primitive_util.h"
 #include "xla/python/nb_numpy.h"
 #include "xla/python/python_ref_manager.h"
-#include "xla/service/custom_call_status.h"
 #include "xla/tsl/platform/statusor.h"
 
 namespace nb = nanobind;
@@ -168,17 +166,6 @@ absl::StatusOr<nb::tuple> CpuCallback::Call(nb::tuple args) {
     }
   }
   return result_tuple;
-}
-
-void XlaPythonCpuCallback(void* output, void** inputs,
-                          XlaCustomCallStatus* status) {
-  CpuCallback* callback =
-      absl::bit_cast<CpuCallback*>(*static_cast<uintptr_t*>(inputs[0]));
-  auto s = callback->PrepareAndCall(output, inputs + 1);
-  if (!s.ok()) {
-    auto msg = s.message();
-    XlaCustomCallStatusSetFailure(status, msg.data(), msg.length());
-  }
 }
 
 }  // namespace xla

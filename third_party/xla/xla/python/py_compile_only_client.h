@@ -16,30 +16,6 @@ limitations under the License.
 #ifndef XLA_PYTHON_PY_COMPILE_ONLY_CLIENT_H_
 #define XLA_PYTHON_PY_COMPILE_ONLY_CLIENT_H_
 
-#include <memory>
-
-// placeholder for index annotation headers
-#include "nanobind/nanobind.h"
-#include "xla/python/nb_class_ptr.h"
-#include "xla/python/pjrt_ifrt/pjrt_topology.h"
-#include "xla/python/py_client.h"
-
-namespace xla {
-
-// This is a workaround for AOT compilation until topologies and device
-// descriptions are better integrated into jax's Python code. It returns a
-// PyClient that will return errors for all non-AOT methods. It also exposes a
-// different compile method that returns an unloaded executable (vs. PyClient
-// usually returns a loaded executable). RegisterCompileOnlyClient() overloads
-// the Python "compile" method to return the unloaded executable, and we rely on
-// Python duck typing to treat the unloaded executable like a loaded executable
-// (except it will raise errors if you try to run it, which is what we want for
-// AOT environments).
-nb_class_ptr<PyClient> MakeCompileOnlyClient(
-    std::shared_ptr<ifrt::PjRtTopology>);
-
-void RegisterCompileOnlyClient(nanobind::module_& m);
-
-}  // namespace xla
+#include "third_party/py/jax/jaxlib/xla/py_compile_only_client.h"  // IWYU pragma: export
 
 #endif  // XLA_PYTHON_PY_COMPILE_ONLY_CLIENT_H_
