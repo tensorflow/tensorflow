@@ -76,7 +76,7 @@ RUN curl https://dl.google.com/dl/cloudsdk/channels/rapid/downloads/google-cloud
     tar zxf - google-cloud-sdk && \
     google-cloud-sdk/install.sh --quiet && \
     ln -s /google-cloud-sdk/bin/gcloud /usr/bin/gcloud
-ENV PATH="$PATH:/google-cloud-sdk/bin/"
+ENV PATH="$PATH:/google-cloud-sdk/bin/:/usr/local/cuda/bin/"
 
 # Download and install patchelf v0.18.0 from GitHub. The default Ubuntu focal
 # packages only provide the "0.10-2build1" version. We use patchelf to manipulate
