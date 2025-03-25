@@ -342,6 +342,34 @@ ResourcesVector AsyncTracker::GetResourcesFromInstructionImpl(
               : std::make_pair(ResourceTypeToIndex(ResourceType::kSendRecv),
                                ResourceUsageType::kResourceOccupy)};
     }
+    case HloOpcode::kWhile: {
+      ResourcesVector result;
+      absl::flat_hash_set<int64_t> seen_occupied_resources;
+      absl::flat_hash_set<int64_t> seen_released_resources;
+      absl::flat_hash_set<int64_t> seen_no_resource;
+      for (const HloInstruction* instr : hlo.while_body()->instructions()) {
+        ResourcesVector rv = GetResourcesFromInstructionImpl(*instr);
+        if (rv.empty()) {
+          continue;
+        }
+        for (const auto& [resource, usage] : rv) {
+          if (usage == ResourceUsageType::kResourceOccupy &&
+              !seen_occupied_resources.contains(resource)) {
+            seen_occupied_resources.insert(resource);
+            result.push_back(std::make_pair(resource, usage));
+          } else if (usage == ResourceUsageType::kResourceRelease &&
+                     !seen_released_resources.contains(resource)) {
+            seen_released_resources.insert(resource);
+            result.push_back(std::make_pair(resource, usage));
+          } else if (usage == ResourceUsageType::kNoResource &&
+                     !seen_no_resource.contains(resource)) {
+            seen_no_resource.insert(resource);
+            result.push_back(std::make_pair(resource, usage));
+          }
+        }
+      }
+      return result;
+    }
     default:
       return ResourcesVector{};
   }
@@ -1817,9 +1845,9 @@ absl::StatusOr<HloGraphNode::TimeCost> DefaultSchedulerCore::ScheduleNode(
     }
   }
 
-  // If this node is an async start/done handle the increase/decrease the number
-  // of outstanding async ops.
-  for (auto& resource : n->GetResources()) {
+  // If this node is an instruction that occupies/releases resource(s), then
+  // handle the increase/decrease.
+  for (auto& resource : n->GetNetResources()) {
     if (resource.second == ResourceUsageType::kResourceRelease) {
       ++(sched_state->max_concurrent_resource[resource.first]);
     } else if (resource.second == ResourceUsageType::kResourceOccupy) {
