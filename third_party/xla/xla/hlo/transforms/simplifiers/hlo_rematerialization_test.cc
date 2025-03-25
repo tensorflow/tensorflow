@@ -22,6 +22,7 @@ limitations under the License.
 #include <string>
 
 #include <gmock/gmock.h>
+#include <gtest/gtest.h>
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/statusor.h"
@@ -34,14 +35,14 @@ limitations under the License.
 #include "xla/hlo/transforms/simplifiers/hlo_rematerialization_test_utils.h"
 #include "xla/hlo/utils/hlo_matchers.h"
 #include "xla/layout.h"
+#include "xla/service/buffer_value.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/statusor.h"
-#include "tsl/platform/test.h"
 
 namespace xla {
 namespace {
@@ -59,9 +60,10 @@ class AsyncRematerializationTest : public RematerializationTestBase {
       int64_t min_remat_size = 0) {
     TF_EXPECT_OK(verifier().Run(module).status());
     if (!module->has_schedule()) {
-      HloMemoryScheduler scheduler(
-          [](const BufferValue& buffer) { return ByteSizeOf(buffer.shape()); },
-          ComputationSchedulerToModuleScheduler(DefaultMemoryScheduler));
+      HloMemoryScheduler scheduler(std::make_unique<DefaultMemoryScheduler>(
+          [](const BufferValue& buffer) {
+            return ByteSizeOf(buffer.shape());
+          }));
       TF_EXPECT_OK(scheduler.Run(module).status());
     }
     HloRematerialization::RematerializationModeConfig config(
@@ -142,9 +144,10 @@ class RecomputeAndCompressHloRematerializationTest
                                                int64_t min_remat_size = 0) {
     TF_EXPECT_OK(verifier().Run(module).status());
     if (!module->has_schedule()) {
-      HloMemoryScheduler scheduler(
-          [](const BufferValue& buffer) { return ByteSizeOf(buffer.shape()); },
-          ComputationSchedulerToModuleScheduler(DefaultMemoryScheduler));
+      HloMemoryScheduler scheduler(std::make_unique<DefaultMemoryScheduler>(
+          [](const BufferValue& buffer) {
+            return ByteSizeOf(buffer.shape());
+          }));
       TF_EXPECT_OK(scheduler.Run(module).status());
     }
 
@@ -1378,9 +1381,10 @@ class OffloadingRematerializationTest : public RematerializationTestBase {
                                                int64_t min_remat_size = 0) {
     TF_EXPECT_OK(verifier().Run(module).status());
     if (!module->has_schedule()) {
-      HloMemoryScheduler scheduler(
-          [](const BufferValue& buffer) { return ByteSizeOf(buffer.shape()); },
-          ComputationSchedulerToModuleScheduler(DefaultMemoryScheduler));
+      HloMemoryScheduler scheduler(std::make_unique<DefaultMemoryScheduler>(
+          [](const BufferValue& buffer) {
+            return ByteSizeOf(buffer.shape());
+          }));
       TF_EXPECT_OK(scheduler.Run(module).status());
     }
     // Create a configuration where any compute is much much slower than any

@@ -2647,17 +2647,18 @@ CpuCompiler::LoadAotCompilationResult(
 absl::StatusOr<HloSchedule> CpuCompiler::CreateHloSchedule(
     const HloModule& hlo_module) const {
   // Select a memory scheduler optimized for concurrency vs minimal memory.
-  auto scheduler = hlo_module.config()
-                           .debug_options()
-                           .xla_cpu_enable_concurrency_optimized_scheduler()
-                       ? BFSMemoryScheduler
-                       : DFSMemoryScheduler;
+  auto scheduler =
+      hlo_module.config()
+              .debug_options()
+              .xla_cpu_enable_concurrency_optimized_scheduler()
+          ? std::unique_ptr<ModuleSchedulerAlgorithm>(
+                std::make_unique<BFScheduler>(BufferSizeBytesFunction()))
+          : std::make_unique<DFSMemoryScheduler>(BufferSizeBytesFunction());
 
   // Select an order for emitting the HLO instructions for each
   // computation. Using this sequence enables tighter buffer liveness analysis
   // and reduced memory usage (as compared to using `DependencyHloOrdering`).
-  return ScheduleModule(&hlo_module, BufferSizeBytesFunction(),
-                        ComputationSchedulerToModuleScheduler(scheduler));
+  return ScheduleModule(&hlo_module, *scheduler);
 }
 
 absl::StatusOr<std::unique_ptr<BufferAssignment>>

@@ -3557,9 +3557,7 @@ absl::StatusOr<bool> AutoShardingImplementation::RunAutoSharding(
   };
   TF_ASSIGN_OR_RETURN(
       HloSchedule schedule,
-      ScheduleModule(module, size_fn,
-                     ComputationSchedulerToModuleScheduler(DFSMemoryScheduler),
-                     execution_threads));
+      ScheduleModule(module, DFSMemoryScheduler(size_fn), execution_threads));
   const HloComputation* entry_computation = module->entry_computation();
   std::unique_ptr<HloAliasAnalysis> alias_analysis =
       HloAliasAnalysis::Run(module).value();
