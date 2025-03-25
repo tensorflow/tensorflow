@@ -207,8 +207,7 @@ class Thunk {
   class ResourceRequestsInterface {
    public:
     virtual ~ResourceRequestsInterface() = default;
-    virtual absl::Status AddClique(const GpuCliqueKey& clique_key,
-                                   int32_t num_local_participants) = 0;
+    virtual absl::Status AddClique(const GpuCliqueKey& clique_key) = 0;
   };
 
   //===--------------------------------------------------------------------===//

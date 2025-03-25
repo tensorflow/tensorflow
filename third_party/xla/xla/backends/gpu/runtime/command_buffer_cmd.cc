@@ -1512,11 +1512,7 @@ absl::Status CollectiveCmd::Prepare(
       GetGpuCliqueKey(collectives, *params.collective_params,
                       config().replica_groups, config().group_mode,
                       GetAsyncStreamKind()));
-  TF_ASSIGN_OR_RETURN(
-      size_t num_local_participants,
-      GetNumLocalParticipants(*params.collective_params,
-                              config().replica_groups, config().group_mode));
-  return resource_requests.AddClique(clique_key, num_local_participants);
+  return resource_requests.AddClique(clique_key);
 }
 
 absl::Status CollectiveCmd::AddTracedCommandBuffer(

@@ -65,8 +65,7 @@ absl::StatusOr<std::shared_ptr<LockableGpuClique::Lock>> AcquireGpuClique(
     GpuCollectives* collectives, se::StreamExecutor* device, RunId run_id,
     const GpuCliqueKey& clique_key,
     const GpuCollectives::CliqueIdCallback& clique_id_callback, RankId rank,
-    size_t num_local_participants, const AcquiredCliquesMap& acquired_cliques,
-    int64_t max_nchannels = 0);
+    const AcquiredCliquesMap& acquired_cliques, int64_t max_nchannels = 0);
 
 }  // namespace xla::gpu
 

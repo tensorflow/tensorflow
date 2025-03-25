@@ -282,11 +282,6 @@ absl::StatusOr<GpuCliqueKey> GetGpuCliqueKey(
     const std::vector<ReplicaGroup>& replica_groups,
     CollectiveOpGroupMode group_mode, AsyncStreamKind stream_kind);
 
-absl::StatusOr<size_t> GetNumLocalParticipants(
-    const Thunk::CollectiveExecuteParams& params,
-    const std::vector<ReplicaGroup>& replica_groups,
-    CollectiveOpGroupMode group_mode);
-
 // Returns a communicator and a flag indicating if it's a local communicator.
 absl::StatusOr<CommunicatorHandle> GetComm(
     GpuCollectives* collectives, const Thunk::CollectiveExecuteParams& params,

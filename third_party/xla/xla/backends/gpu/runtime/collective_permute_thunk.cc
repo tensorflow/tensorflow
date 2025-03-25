@@ -272,10 +272,9 @@ absl::Status CollectivePermuteStartThunk::RunCollective(
       auto receiver_event = receiver_barrier_events_.find(current_id);
       TF_RETURN_IF_ERROR(stream.RecordEvent(receiver_event->second.get()));
     }
-    TF_ASSIGN_OR_RETURN(
-        size_t num_local_participants,
-        GetNumLocalParticipants(*params.collective_params,
-                                config().replica_groups, config().group_mode));
+
+    TF_ASSIGN_OR_RETURN(size_t num_local_participants,
+                        comm_handle.comm->NumRanks());
 
     auto rendezvous_name = absl::StrFormat(
         "rendezvous before calling collective-permute; run_id=%d; op id:%d; "
@@ -313,10 +312,9 @@ absl::Status CollectivePermuteStartThunk::RunCollective(
       auto sender_event = sender_barrier_events_.find(current_id);
       TF_RETURN_IF_ERROR(stream.RecordEvent(sender_event->second.get()));
     }
-    TF_ASSIGN_OR_RETURN(
-        size_t num_local_participants,
-        GetNumLocalParticipants(*params.collective_params,
-                                config().replica_groups, config().group_mode));
+
+    TF_ASSIGN_OR_RETURN(size_t num_local_participants,
+                        comm_handle.comm->NumRanks());
 
     auto rendezvous_name = absl::StrFormat(
         "rendezvous after calling collective-permute; run_id=%d; op id:%d; "
