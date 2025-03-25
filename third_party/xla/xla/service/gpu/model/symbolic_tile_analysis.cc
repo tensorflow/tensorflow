@@ -34,12 +34,14 @@ limitations under the License.
 #include "absl/container/inlined_vector.h"
 #include "absl/hash/hash.h"
 #include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/numeric/bits.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallPtrSet.h"
@@ -57,6 +59,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/utils/hlo_traversal.h"
 #include "xla/service/gpu/backend_configs.pb.h"
+#include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/model/constraint_expression.h"
 #include "xla/service/gpu/model/symbolic_tile.h"
 #include "xla/service/gpu/model/symbolic_tiled_hlo_instruction.h"
@@ -248,6 +251,20 @@ class OrderedUniquePtrValueHashSet {
   std::vector<std::unique_ptr<T>> data_;
 };
 
+// Whether the given HLO instruction is part of a nested GEMM fusion.
+bool IsWithinNestedGemmFusion(const HloInstruction* hlo) {
+  const HloComputation* computation = hlo->parent();
+  if (computation->IsFusionComputation()) {
+    const GpuBackendConfig backend_config =
+        *computation->FusionInstruction()->backend_config<GpuBackendConfig>();
+    absl::string_view fusion_kind =
+        backend_config.fusion_backend_config().kind();
+    return fusion_kind == kTritonNestedGemmFusionKind;
+  }
+
+  return false;
+}
+
 // Detects pathological cases on which symbolic tile derivation should bail out.
 // Note that this function bypasses temporary limitations of the infrastructure,
 // and not actual fundamental limitations.
@@ -255,11 +272,14 @@ FusionDecision ShouldProceedWithSymbolicTileDerivation(
     const SymbolicTiledHloInstruction& tiled_hlo_instruction) {
   const HloInstruction* hlo = tiled_hlo_instruction.hlo();
   const IndexingMap& indexing_map = tiled_hlo_instruction.indexing_map();
-
-  // Bail out on instructions that are known to cause problems down the
-  // line. This is not an inherent limitation of the approach, but simply
-  // issues to be resolved in the current implementation.
-  if (hlo->opcode() == HloOpcode::kConcatenate) {
+  // Bail out on concatenates in the general path for now, but allow a
+  // restricted form of concatenates for the nested GEMM fusion path.
+  //
+  // Relaxing this restriction will require making sure that the cost model
+  // works well with concatenates, and that we always construct nested fusions
+  // for concatenates.
+  if (hlo->opcode() == HloOpcode::kConcatenate &&
+      !IsWithinNestedGemmFusion(hlo)) {
     return FusionDecision::Forbid("Bailing out on ") << hlo->ToString();
   }
 
@@ -267,7 +287,7 @@ FusionDecision ShouldProceedWithSymbolicTileDerivation(
   // deriving a standalone symbolic tile when constructing Triton-specific
   // constraints, reshapes and bitcasts may cause problems down the line.
   // The added check here allows us to bail out early when we reach such a
-  // a problematic.
+  // a problematic case.
   //
   // TODO(b/365727080): get rid of this filter once the issue is properly
   // fixed.
@@ -935,14 +955,6 @@ SymbolicTileAnalysis::ComputeTiledHloInstructions(
             dynamic_cast<const SymbolicTiledHloFusionInstruction*>(
                 symbolic_tiled_hlo.get())) {
       // Instruction is a nested fusion, compute tiled instructions recursively.
-      const HloModule* hlo_module = GetRoot(0)->GetModule();
-      if (hlo_module) {
-        auto debug_options = hlo_module->config().debug_options();
-        QCHECK(
-            debug_options
-                .xla_gpu_unsupported_enable_generic_triton_emitter_for_gemms())
-            << "Nested fusions should only appear for Triton GEMMs.";
-      }
       std::vector<int64_t> nested_tiling_parameters(tile_parameters.begin(),
                                                     tile_parameters.end());
       TF_ASSIGN_OR_RETURN(int64_t reduction_tile_size,

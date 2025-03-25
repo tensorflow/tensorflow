@@ -36,7 +36,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/hlo/utils/hlo_traversal.h"
-#include "xla/service/gpu/model/symbolic_tile.h"
+#include "xla/service/gpu/model/constraint_expression.h"
 #include "xla/service/gpu/model/symbolic_tiled_hlo_instruction.h"
 #include "xla/service/gpu/model/tiled_hlo_computation.h"
 #include "xla/service/gpu/model/tiled_hlo_instruction.h"
@@ -44,9 +44,9 @@ limitations under the License.
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/status_matchers.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
-#include "tsl/platform/status_matchers.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {
@@ -58,7 +58,6 @@ using ::testing::ExplainMatchResult;
 using ::testing::IsEmpty;
 using ::testing::Matcher;
 using ::testing::Not;
-using ::testing::SizeIs;
 using ::tsl::testing::IsOkAndHolds;
 using ::tsl::testing::StatusIs;
 using TilingVector = std::vector<SymbolicTileAnalysis::Tiling>;
@@ -1185,7 +1184,8 @@ ENTRY main {
   param_1 = s32[] parameter(1)
   param_2 = s32[] parameter(2)
   param_3 = s32[] parameter(3)
-  ROOT fusion = s32[1,2] fusion(param_0, param_1, param_2, param_3), kind=kLoop, calls=fused_computation
+  ROOT fusion = s32[1,2] fusion(param_0, param_1, param_2, param_3), kind=kLoop,
+      calls=fused_computation
 }
 )"));
 
@@ -1325,44 +1325,40 @@ TEST_F(SymbolicTileAnalysisTest, TileNestedDotFusions) {
   // M is tiled to 128, K: 8, N: 32.
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(R"(
-    lhs {
-      lhs.p0 = bf16[8192,256]{1,0} parameter(0)
-      ROOT lhs.root = bf16[8192,256]{1,0} negate(lhs.p0)
-    }
+lhs {
+  lhs.p0 = bf16[8192,256]{1,0} parameter(0)
+  ROOT lhs.root = bf16[8192,256]{1,0} negate(lhs.p0)
+}
 
-    rhs {
-      ROOT rhs.p0 = bf16[256,512]{1,0} parameter(0)
-    }
+rhs {
+  ROOT rhs.p0 = bf16[256,512]{1,0} parameter(0)
+}
 
-    dot {
-      dot.p0 = bf16[8192,256]{1,0} parameter(0)
-      dot.p1 = bf16[256,512]{1,0} parameter(1)
+dot {
+  dot.p0 = bf16[8192,256]{1,0} parameter(0)
+  dot.p1 = bf16[256,512]{1,0} parameter(1)
 
-      dot.lhs = bf16[8192,256]{1,0} fusion(dot.p0),
-        kind=kCustom, calls=lhs, backend_config={
-          "fusion_backend_config":{
-            "block_level_fusion_config":{
-              "output_tiles":[{"sizes":["128","8"]}]}}}
-      dot.rhs = bf16[256,512]{1,0} fusion(dot.p1),
-        kind=kCustom, calls=rhs, backend_config={
-          "fusion_backend_config":{
-            "block_level_fusion_config":{
-              "output_tiles":[{"sizes":["8","32"]}]}}}
+  dot.lhs = bf16[8192,256]{1,0} fusion(dot.p0),
+    kind=kCustom, calls=lhs, backend_config={
+      "fusion_backend_config":{
+        "block_level_fusion_config":{
+          "output_tiles":[{"sizes":["128","8"]}]}}}
+  dot.rhs = bf16[256,512]{1,0} fusion(dot.p1),
+    kind=kCustom, calls=rhs, backend_config={
+      "fusion_backend_config":{
+        "block_level_fusion_config":{
+          "output_tiles":[{"sizes":["8","32"]}]}}}
 
-      ROOT dot = bf16[8192,512]{1,0} dot(dot.lhs, dot.rhs),
-        lhs_contracting_dims={1}, rhs_contracting_dims={0}
-    }
+  ROOT dot = bf16[8192,512]{1,0} dot(dot.lhs, dot.rhs),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+}
 
-    ENTRY main {
-      main.p0 = bf16[8192,256]{1,0} parameter(0)
-      main.p1 = bf16[256,512]{1,0} parameter(1)
-      ROOT fusion = bf16[8192,512]{1,0} fusion(main.p0, main.p1),
-        kind=kCustom, calls=dot
-    }
-  )"));
-  module->mutable_config()
-      .mutable_debug_options()
-      .set_xla_gpu_unsupported_enable_generic_triton_emitter_for_gemms(true);
+ENTRY main {
+  main.p0 = bf16[8192,256]{1,0} parameter(0)
+  main.p1 = bf16[256,512]{1,0} parameter(1)
+  ROOT fusion = bf16[8192,512]{1,0} fusion(main.p0, main.p1),
+    kind=kCustom, calls=dot
+})"));
   std::optional<SymbolicTileAnalysis> analysis = TryAnalyzeModule(module.get());
   ASSERT_TRUE(analysis.has_value());
   TF_ASSERT_OK_AND_ASSIGN(TiledHloComputation tiled_hlo_computation,
@@ -1446,6 +1442,51 @@ ENTRY main {
                          /*tile_sizes=*/{2}, /*tile_strides=*/{1},
                          /*tile_offsets_indexing=*/
                          "(pid_0) -> (pid_0 * 2), domain: pid_0 in [0, 3]"));
+}
+
+TEST_F(SymbolicTileAnalysisTest,
+       ConcatenatesInNestedGemmFusionsAllowSymbolicTileDerivation) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(R"(
+concatenate {
+  p0 = bf16[6] parameter(0)
+  p1 = bf16[6] parameter(1)
+  p2 = bf16[6] parameter(2)
+  ROOT concatenate = bf16[18] concatenate(p0, p1, p2), dimensions={0}
+}
+
+ENTRY main {
+  p0 = bf16[6] parameter(0)
+  p1 = bf16[6] parameter(1)
+  p2 = bf16[6] parameter(2)
+  ROOT fusion = bf16[18] fusion(p0, p1, p2),
+    kind=kCustom, calls=concatenate, backend_config={"fusion_backend_config":{
+      "kind":"__triton_nested_gemm_fusion"}}
+})"));
+  std::optional<SymbolicTileAnalysis> analysis = TryAnalyzeModule(module.get());
+  EXPECT_TRUE(analysis.has_value());
+}
+
+TEST_F(SymbolicTileAnalysisTest,
+       ConcatenatesOutsideOfNestedGemmFusionsForbidSymbolicTileDerivation) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(R"(
+concatenate {
+  p0 = bf16[6] parameter(0)
+  p1 = bf16[6] parameter(1)
+  p2 = bf16[6] parameter(2)
+  ROOT concatenate = bf16[18] concatenate(p0, p1, p2), dimensions={0}
+}
+
+ENTRY main {
+  p0 = bf16[6] parameter(0)
+  p1 = bf16[6] parameter(1)
+  p2 = bf16[6] parameter(2)
+  ROOT fusion = bf16[18] fusion(p0, p1, p2),
+    kind=kCustom, calls=concatenate
+})"));
+  std::optional<SymbolicTileAnalysis> analysis = TryAnalyzeModule(module.get());
+  EXPECT_FALSE(analysis.has_value());
 }
 
 }  // namespace
