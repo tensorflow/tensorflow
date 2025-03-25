@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <optional>
 #include <random>
@@ -33,7 +34,6 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
@@ -59,7 +59,6 @@ limitations under the License.
 #include "xla/pjrt/plugin/xla_gpu/xla_gpu_client_options.h"
 #include "xla/pjrt/semaphore.h"
 #include "xla/pjrt/transpose.h"
-#include "xla/pjrt/utils.h"
 #include "xla/service/computation_placer.h"
 #include "xla/service/gpu/gpu_executable_run_options.h"
 #include "xla/service/hlo.pb.h"
@@ -131,18 +130,7 @@ class TfrtGpuDevice final : public PjRtDevice {
 
   explicit TfrtGpuDevice(Options&& options);
 
-  void SetClient(PjRtClient* client) {
-    CHECK(client_ == nullptr);
-    client_ = client;
-
-    // We have to define debug_string_ and to_string_ here, because
-    // platform_name() requires client_ to be set.
-    std::string device_name =
-        absl::StrCat(MakeAsciiTitlecase(client_->platform_name()), "Device");
-    description_.SetDebugString(
-        absl::StrCat(client_->platform_name(), ":", id()));
-    description_.SetToString(absl::StrCat(device_name, "(id=", id(), ")"));
-  }
+  void SetClient(PjRtClient* client);
 
   const PjRtStreamExecutorDeviceDescription& description() const override {
     return description_;

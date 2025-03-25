@@ -594,6 +594,19 @@ TfrtGpuDevice::TfrtGpuDevice(Options&& options)
       allocator_.get(), const_cast<se::Platform*>(executor_->GetPlatform()));
 }
 
+void TfrtGpuDevice::SetClient(PjRtClient* client) {
+  CHECK(client_ == nullptr);
+  client_ = client;
+
+  // We have to define debug_string_ and to_string_ here, because
+  // platform_name() requires client_ to be set.
+  std::string device_name =
+      absl::StrCat(MakeAsciiTitlecase(client_->platform_name()), "Device");
+  description_.SetDebugString(
+      absl::StrCat(client_->platform_name(), ":", id()));
+  description_.SetToString(absl::StrCat(device_name, "(id=", id(), ")"));
+}
+
 absl::Status TfrtGpuDevice::TransferToInfeed(const LiteralSlice& literal) {
   return Unimplemented("TransferToInfeed");
 }
@@ -616,7 +629,7 @@ void TfrtGpuDevice::AttachMemorySpace(PjRtMemorySpace* memory_space,
                                       bool is_default) {
   CHECK(memory_space != nullptr);
   CHECK(client_ == memory_space->client()) << absl::StrFormat(
-      "Could not attach a PjRtStreamExecutorDevice to a PjRtMemorySpace owned "
+      "Could not attach a TfrtGpuExecutable to a PjRtMemorySpace owned "
       "by a different client, the device's client: %s, the memory space's "
       "client: %s.",
       client_->platform_name(), memory_space->client()->platform_name());
@@ -1377,7 +1390,7 @@ PjRtFuture<> TfrtGpuBuffer::GetReadyFuture() {
            definition_promise = definition_promise_]() mutable {
             if (definition_event.IsError()) {
               VLOG(2) << "definition_event.GetError(): "
-                      << definition_event.GetError().message();
+                      << definition_event.GetError();
               definition_promise.Set(definition_event.GetError());
             } else {
               definition_promise.Set(absl::OkStatus());
@@ -1489,10 +1502,8 @@ PjRtFuture<> TfrtGpuBuffer::ToLiteral(MutableLiteralBase* literal) {
         tsl::profiler::TraceMe traceme("D2H copy");
         if (device_buffer->definition_event().IsError()) {
           usage_event.SetStateConcrete();
-          if (VLOG_IS_ON(2)) {
-            LOG(INFO) << "device_buffer->definition_event().GetError(): "
-                      << device_buffer->definition_event().GetError();
-          }
+          VLOG(2) << "device_buffer->definition_event().GetError(): "
+                  << device_buffer->definition_event().GetError();
 
           promise.Set(device_buffer->definition_event().GetError());
           return;
@@ -1517,19 +1528,14 @@ PjRtFuture<> TfrtGpuBuffer::ToLiteral(MutableLiteralBase* literal) {
               << "stream->Memcpy failed copying from GPU to host";
           absl::Status status = stream->BlockHostUntilDone();
           if (!status.ok()) {
-            if (VLOG_IS_ON(2)) {
-              LOG(INFO) << "stream->BlockHostUntilDone failed: " << status;
-            }
-
+            VLOG(2) << "stream->BlockHostUntilDone failed: " << status;
             promise.Set(status);
             return;
           }
         }
         tsl::profiler::TraceMe traceme3("D2H staging copy");
         std::memcpy(literal->untyped_data(), staging_buffer.get(), byte_size);
-        if (VLOG_IS_ON(2)) {
-          LOG(INFO) << "D2H staging copy done";
-        }
+        VLOG(2) << "D2H staging copy done";
         promise.Set(absl::OkStatus());
       });
 
@@ -1724,13 +1730,15 @@ TfrtGpuExecutable::TfrtGpuExecutable(
   int num_partitions;
   if (device_assignment_ == nullptr) {
     // This must go after `executables_` is initialized.
-    VLOG(3) << "PjRtStreamExecutorLoadedExecutable portable single-core";
+    VLOG(3) << "TfrtGpuExecutable portable single-core";
     num_partitions = 1;
     CHECK(addressable_devices_.empty());
   } else {
     // This must go after `executables_` is initialized.
-    VLOG(3) << "PjRtStreamExecutorLoadedExecutable device_assignment:\n"
-            << device_assignment_->ToString();
+    if (VLOG_IS_ON(3)) {
+      VLOG(3) << "TfrtGpuExecutable device_assignment:\n"
+              << device_assignment_->ToString();
+    }
     CHECK_GE(addressable_devices_.size(), 1) << device_assignment_->ToString();
 
     if ((device_assignment_->replica_count() > 1 ||
