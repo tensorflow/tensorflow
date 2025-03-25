@@ -430,8 +430,9 @@ DataServiceWorkerImpl::MakeDataset(const DatasetDef& dataset_def,
   // `ApplyAutoShardRewrite` does nothing if auto-sharding is disabled.
   TF_ASSIGN_OR_RETURN(graph, auto_shard_rewriter.ApplyAutoShardRewrite(graph));
   std::unique_ptr<standalone::Dataset> dataset;
-  TF_RETURN_IF_ERROR(standalone::Dataset::FromGraph(
-      standalone::Dataset::Params(), graph, &dataset));
+  standalone::Dataset::Params params;
+  params.metadata_options.data_service_address = config_.dispatcher_address();
+  TF_RETURN_IF_ERROR(standalone::Dataset::FromGraph(params, graph, &dataset));
   return dataset;
 }
 
