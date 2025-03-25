@@ -11,6 +11,9 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+#
+# Copyright (c) Qualcomm Innovation Center, Inc. All Rights Reserved.
+# SPDX-License-Identifier: Apache-2.0
 
 load("//tensorflow/lite/experimental/litert/build_common:litert_build_defs.bzl", "litert_dynamic_lib", "litert_lib", "litert_test")
 
@@ -140,6 +143,7 @@ litert_lib(
         "//tensorflow/lite/experimental/litert/vendors/qualcomm/core/builders:conv2d_op_builder",
         "//tensorflow/lite/experimental/litert/vendors/qualcomm/core/builders:cumsum_op_builder",
         "//tensorflow/lite/experimental/litert/vendors/qualcomm/core/builders:depthwise_conv2d_op_builder",
+        "//tensorflow/lite/experimental/litert/vendors/qualcomm/core/builders:transpose_conv_op_builder",
         "//tensorflow/lite/experimental/litert/vendors/qualcomm/core/builders:dynamic_update_slice_op_builder",
         "//tensorflow/lite/experimental/litert/vendors/qualcomm/core/builders:elementwise_op_builder",
         "//tensorflow/lite/experimental/litert/vendors/qualcomm/core/builders:embedding_lookup_op_builder",

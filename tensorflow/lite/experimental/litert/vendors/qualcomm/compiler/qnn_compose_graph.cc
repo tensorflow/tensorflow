@@ -11,6 +11,9 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
+//
+// Copyright (c) Qualcomm Innovation Center, Inc. All Rights Reserved.
+// SPDX-License-Identifier: Apache-2.0
 
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/compiler/qnn_compose_graph.h"
 
@@ -77,6 +80,7 @@
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/builders/spatial_transform_op_builder.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/builders/split_op_builder.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/builders/tanh_op_builder.h"
+#include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/builders/transpose_conv_op_builder.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/builders/transpose_op_builder.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/common.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/wrappers/op_wrapper.h"
@@ -536,6 +540,25 @@ LiteRtStatus ConvertOp(
       op_wrappers = ::qnn::BuildConv2dOp(
           tensor_pool, input_tensors, output_tensors, stride_h, stride_w,
           dilation_h_factor, dilation_w_factor, qnn_padding);
+      break;
+    }
+    //
+    case LiteRtOpCode::kLiteRtOpCodeTflTransposeConv: {
+      uint32_t padding;
+      LITERT_RETURN_IF_ERROR(
+          LiteRtGetTransposeConvPaddingOption(litert_op.Get(), &padding));
+      int32_t stride_w;
+      LITERT_RETURN_IF_ERROR(
+          LiteRtGetTransposeConvStrideWOption(litert_op.Get(), &stride_w));
+      int32_t stride_h;
+      LITERT_RETURN_IF_ERROR(
+          LiteRtGetTransposeConvStrideHOption(litert_op.Get(), &stride_h));
+
+      ::qnn::PaddingType qnn_padding;
+      LITERT_RETURN_IF_ERROR(ConvertPaddingType(padding, qnn_padding));
+      op_wrappers = ::qnn::BuildTransposeConvOp(tensor_pool, input_tensors,
+                                                output_tensors, stride_h,
+                                                stride_w, qnn_padding);
       break;
     }
     case LiteRtOpCode::kLiteRtOpCodeTflDepthwiseConv2d: {

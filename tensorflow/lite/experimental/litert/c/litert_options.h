@@ -11,6 +11,9 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
+//
+// Copyright (c) Qualcomm Innovation Center, Inc. All Rights Reserved.
+// SPDX-License-Identifier: Apache-2.0
 
 #ifndef TENSORFLOW_LITE_EXPERIMENTAL_LITERT_C_LITERT_OPTIONS_H_
 #define TENSORFLOW_LITE_EXPERIMENTAL_LITERT_C_LITERT_OPTIONS_H_
@@ -263,6 +266,25 @@ LiteRtStatus LiteRtGetDepthwiseConv2dDilationWOption(
     LiteRtOp op, int32_t* dilation_w_factor);
 LiteRtStatus LiteRtGetDepthwiseConv2dDilationHOptions(
     LiteRtOp op, int32_t* dilation_h_factor);
+
+//==============================================================================
+//
+// Get option APIs for LiteRt TransposeConv op.
+//  Options:
+// - padding : uint32_t
+// - stride_w : int32_t
+// - stride_h : int32_t
+// - fused_activation_function : uint32_t
+//
+//==============================================================================
+LiteRtStatus LiteRtGetTransposeConvPaddingOption(LiteRtOp op,
+                                                   uint32_t* padding);
+LiteRtStatus LiteRtGetTransposeConvStrideWOption(LiteRtOp op,
+                                                   int32_t* stride_w);
+LiteRtStatus LiteRtGetTransposeConvStrideHOption(LiteRtOp op,
+                                                   int32_t* stride_h);
+LiteRtStatus LiteRtGetTransposeConvFusedActivationOption(
+    LiteRtOp op, uint32_t* fused_activation_function);
 
 //==============================================================================
 //

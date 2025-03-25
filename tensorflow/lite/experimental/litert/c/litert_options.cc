@@ -11,6 +11,9 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
+//
+// Copyright (c) Qualcomm Innovation Center, Inc. All Rights Reserved.
+// SPDX-License-Identifier: Apache-2.0
 
 #include "tensorflow/lite/experimental/litert/c/litert_options.h"
 
@@ -492,6 +495,59 @@ LiteRtStatus LiteRtGetConv2dDilationHOption(LiteRtOp op,
     return kLiteRtStatusErrorInvalidArgument;
   }
   *dilation_h_factor = opts.AsConv2DOptions()->dilation_h_factor;
+  return kLiteRtStatusOk;
+}
+
+LiteRtStatus LiteRtGetTransposeConvPaddingOption(LiteRtOp op,
+                                                 uint32_t* padding) {
+  if (op->OpCode() != kLiteRtOpCodeTflTransposeConv) {
+    return kLiteRtStatusErrorInvalidArgument;
+  }
+  auto& opts = litert::internal::GetTflOptions(*op);
+  if (opts.value == nullptr) {
+    return kLiteRtStatusErrorInvalidArgument;
+  }
+  *padding = opts.AsTransposeConvOptions()->padding;
+  return kLiteRtStatusOk;
+}
+
+LiteRtStatus LiteRtGetTransposeConvStrideWOption(LiteRtOp op,
+                                                 int32_t* stride_w) {
+  if (op->OpCode() != kLiteRtOpCodeTflTransposeConv) {
+    return kLiteRtStatusErrorInvalidArgument;
+  }
+  auto& opts = litert::internal::GetTflOptions(*op);
+  if (opts.value == nullptr) {
+    return kLiteRtStatusErrorInvalidArgument;
+  }
+  *stride_w = opts.AsTransposeConvOptions()->stride_w;
+  return kLiteRtStatusOk;
+}
+
+LiteRtStatus LiteRtGetTransposeConvStrideHOption(LiteRtOp op,
+                                                 int32_t* stride_h) {
+  if (op->OpCode() != kLiteRtOpCodeTflTransposeConv) {
+    return kLiteRtStatusErrorInvalidArgument;
+  }
+  auto& opts = litert::internal::GetTflOptions(*op);
+  if (opts.value == nullptr) {
+    return kLiteRtStatusErrorInvalidArgument;
+  }
+  *stride_h = opts.AsTransposeConvOptions()->stride_h;
+  return kLiteRtStatusOk;
+}
+
+LiteRtStatus LiteRtGetTransposeConvFusedActivationOption(
+    LiteRtOp op, uint32_t* fused_activation_function) {
+  if (op->OpCode() != kLiteRtOpCodeTflTransposeConv) {
+    return kLiteRtStatusErrorInvalidArgument;
+  }
+  auto& opts = litert::internal::GetTflOptions(*op);
+  if (opts.value == nullptr) {
+    return kLiteRtStatusErrorInvalidArgument;
+  }
+  *fused_activation_function =
+      opts.AsTransposeConvOptions()->fused_activation_function;
   return kLiteRtStatusOk;
 }
 
