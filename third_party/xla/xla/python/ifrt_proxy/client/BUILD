@@ -578,37 +578,6 @@ ifrt_proxy_cc_test(
     ],
 )
 
-cc_library(
-    name = "py_module",
-    srcs = ["py_module.cc"],
-    hdrs = ["py_module.h"],
-    compatible_with = [],
-    copts = [
-        "-fexceptions",
-        "-fno-strict-aliasing",
-    ],
-    features = ["-use_header_modules"],
-    deps = [
-        ":grpc_client",
-        ":registry",
-        "//xla/pjrt:status_casters",
-        "//xla/python:nb_class_ptr",
-        "//xla/python:py_client",
-        "//xla/python/ifrt",
-        "//xla/python/ifrt:attribute_map",
-        "@com_google_absl//absl/log",
-        "@com_google_absl//absl/log:check",
-        "@com_google_absl//absl/log:log_entry",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings:string_view",
-        "@com_google_absl//absl/time",
-        "@local_tsl//tsl/platform:env",
-        "@local_tsl//tsl/platform:statusor",
-        "@nanobind",
-    ],
-)
-
 # Export headers referenced by the google-internal-version of global_flags.
 exports_files(
     ["global_flags.h"],
