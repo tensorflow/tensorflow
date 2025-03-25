@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/backends/cpu/runtime/resource_use.h"
+#include "xla/runtime/resource_use.h"
 
 #include <memory>
 
@@ -23,7 +23,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/xla_data.pb.h"
 
-namespace xla::cpu {
+namespace xla {
 
 std::shared_ptr<Resource> Resource::Create(Kind kind) {
   return absl::WrapUnique(new Resource(kind));
@@ -75,4 +75,4 @@ bool ResourceUse::ReadWriteSet::HasConflicts(const ReadWriteSet& other) {
                         });
 }
 
-}  // namespace xla::cpu
+}  // namespace xla

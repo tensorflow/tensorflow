@@ -13,11 +13,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/backends/cpu/runtime/resource_use.h"
+#include "xla/runtime/resource_use.h"
 
-#include "tsl/platform/test.h"
+#include "xla/tsl/platform/test.h"
 
-namespace xla::cpu {
+namespace xla {
 namespace {
 
 TEST(ResourceUseTest, Equality) {
@@ -50,4 +50,4 @@ TEST(ResourceUseTest, ReadWriteSet) {
 }
 
 }  // namespace
-}  // namespace xla::cpu
+}  // namespace xla

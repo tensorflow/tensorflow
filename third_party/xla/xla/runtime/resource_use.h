@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_BACKENDS_CPU_RUNTIME_RESOURCE_USE_H_
-#define XLA_BACKENDS_CPU_RUNTIME_RESOURCE_USE_H_
+#ifndef XLA_RUNTIME_RESOURCE_USE_H_
+#define XLA_RUNTIME_RESOURCE_USE_H_
 
 #include <memory>
 #include <utility>
@@ -22,7 +22,7 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/types/span.h"
 
-namespace xla::cpu {
+namespace xla {
 
 // `Resource` models a run time resource that imposes ordering on the thunk
 // execution in addition to thunk buffer uses.
@@ -109,6 +109,6 @@ class ResourceUse {
   ResourceAccess access_;
 };
 
-}  // namespace xla::cpu
+}  // namespace xla
 
-#endif  // XLA_BACKENDS_CPU_RUNTIME_RESOURCE_USE_H_
+#endif  // XLA_RUNTIME_RESOURCE_USE_H_
