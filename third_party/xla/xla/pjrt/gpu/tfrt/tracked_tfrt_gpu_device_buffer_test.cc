@@ -156,7 +156,7 @@ TEST(TrackedTfrtGpuDeviceBufferTest, TrackedDeviceBufferUsageEndToEnd) {
                                             /*on_delete_callback_=*/nullptr);
   tracked_buffer.SetUnOwned();
   {
-    MarkEventReadyOnExit ready_on_exit(usage_event);
+    MarkGpuEventReadyOnExit ready_on_exit(usage_event);
     tracked_buffer.AddUsageEvents(absl::MakeSpan(&usage_event, 1));
     // Mimic transfer event in a thread pool.
     thread_pool.Schedule([&]() {

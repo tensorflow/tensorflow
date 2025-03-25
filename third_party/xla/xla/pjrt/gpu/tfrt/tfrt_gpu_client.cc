@@ -1327,7 +1327,7 @@ absl::StatusOr<Shape> TfrtGpuBuffer::logical_on_device_shape() {
     return InvalidArgument(
         "logical_on_device_shape() called on deleted or donated buffer");
   }
-  MarkEventReadyOnExit ready_on_exit(std::move(usage_event));
+  MarkGpuEventReadyOnExit ready_on_exit(std::move(usage_event));
 
   // Wait for the definition event.
   const auto& av = device_buffer->definition_event();
@@ -1503,7 +1503,7 @@ PjRtFuture<> TfrtGpuBuffer::ToLiteral(MutableLiteralBase* literal) {
 
         {
           tsl::profiler::TraceMe traceme2("D2H GPU copy");
-          MarkEventReadyOnExit ready_on_exit(std::move(usage_event));
+          MarkGpuEventReadyOnExit ready_on_exit(std::move(usage_event));
 
           auto stream_or = device->stream_pool().Borrow();
           if (!stream_or.ok()) {
