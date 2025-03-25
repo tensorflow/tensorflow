@@ -130,7 +130,7 @@ absl::StatusOr<HloSchedule> DefaultModuleScheduler(
 // memory (according to the HeapSimulator) of all computations in the module.
 absl::StatusOr<HloSchedule> ScheduleModule(
     const HloModule* module, const LogicalBuffer::SizeFunction& size_function,
-    const ModuleSchedulerAlgorithm& algorithm = {},
+    const ModuleSchedulerAlgorithm& algorithm = DefaultModuleScheduler,
     const absl::flat_hash_set<absl::string_view>& execution_threads = {},
     int64_t* peak_memory = nullptr);
 
