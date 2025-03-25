@@ -23,7 +23,6 @@ limitations under the License.
 #include <cassert>
 #include <cstddef>
 #include <cstdint>
-#include <cstdlib>
 #include <functional>
 #include <iterator>
 #include <memory>
@@ -689,44 +688,6 @@ bool HasOneUseOrUsedByOnlyBinaryOps(Value out_value) {
   }
 
   return true;
-}
-
-// Fuse Sum -> Mul into Mean if the  RHS of Mul is a constant equals to scale
-// where scale = 1.0 / (product of the summed dimensions that are part of the
-// sum op).
-bool IsScaleOfSum(mlir::Value sum_input, const mlir::Attribute &axes,
-                  const mlir::Attribute &provided_scale) {
-  auto sum_input_type = mlir::dyn_cast<ShapedType>(sum_input.getType());
-  auto axes_attr = mlir::dyn_cast<DenseIntElementsAttr>(axes);
-  auto provided_scale_attr =
-      mlir::dyn_cast<DenseFPElementsAttr>(provided_scale);
-
-  // checks to see if the scale is a scalar or if the sum has dynamic dims
-  bool is_not_scalar_scale = provided_scale_attr.getNumElements() > 1;
-  bool sum_has_dynamic_dims = sum_input_type.getNumDynamicDims() > 0;
-
-  if (!sum_input_type || !axes_attr || !provided_scale_attr ||
-      is_not_scalar_scale || sum_has_dynamic_dims) {
-    return false;
-  }
-
-  double provided_scale_value =
-      provided_scale_attr.getValues<APFloat>()[0].convertToDouble();
-  double actual_scale_value = 1;
-
-  for (auto axis : axes_attr.getValues<APInt>()) {
-    int64_t axis_value = axis.getSExtValue();
-    if (axis_value < 0) {
-      axis_value += sum_input_type.getRank();
-    }
-    if (axis_value < 0 || axis_value >= sum_input_type.getRank()) {
-      return false;
-    }
-
-    actual_scale_value /= sum_input_type.getDimSize(axis_value);
-  }
-
-  return std::abs(actual_scale_value - provided_scale_value) < 1e-6;
 }
 
 // Returns true if attr is a DenseIntElementsAttr of int32 or int64 values or
