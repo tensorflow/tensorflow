@@ -269,7 +269,6 @@ cc_library(
         "//xla:xla_data_proto_cc",
         "//xla/pjrt:host_callback",
         "//xla/pjrt:transpose",
-        "//xla/service:custom_call_status",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/container:inlined_vector",
