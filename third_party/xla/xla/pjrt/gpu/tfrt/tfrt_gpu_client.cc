@@ -116,7 +116,10 @@ absl::StatusOr<std::unique_ptr<TfrtGpuBuffer>> AllocateTfrtGpuDestinationBuffer(
     absl::InlinedVector<tsl::AsyncValueRef<GpuEvent>, 4> definition_events,
     TfrtGpuDevice* device, TfrtGpuClient* client,
     PjRtMemorySpace* memory_space) {
-  if (!on_device_shape.IsTuple()) {
+  if (on_device_shape.IsTuple()) {
+    return Unimplemented(
+        "tuple case not implemented for AllocateTfrtGpuDestinationBuffer");
+  }
     size_t byte_size = ShapeUtil::ByteSizeOf(on_device_shape);
     TF_ASSIGN_OR_RETURN(
         auto device_buffer,
@@ -129,9 +132,6 @@ absl::StatusOr<std::unique_ptr<TfrtGpuBuffer>> AllocateTfrtGpuDestinationBuffer(
         std::make_unique<TrackedTfrtGpuDeviceBuffer>(
             buffer_async_value_ref, std::move(definition_events)),
         client, device, memory_space);
-  }
-  return Unimplemented(
-      "tuple case not implemented for AllocateTfrtGpuDestinationBuffer");
 }
 
 void EnqueueWork(tsl::thread::ThreadPool* pool,
@@ -1365,46 +1365,45 @@ TfrtGpuClient::BufferFromHostLiteral(const LiteralSlice& literal,
   auto usage_event = tsl::MakeConstructedAsyncValueRef<GpuEvent>();
   auto* device_buffer = output_buffer->AcquireUsage(usage_event);
   CHECK(device_buffer);
-  if (!shape.IsTuple()) {
-    // It is OK to capture `buffer` pointer because the `output_buffer` can't
-    // be deleted until all the usage holds have gone away.
-    VLOG(2) << "BufferFromHostLiteral for device_buffer: " << device_buffer;
-    EnqueueWork(
-        non_blocking_thread_pool_.get(),
-        [literal, av = avs[0], device_buffer, shape, this,
-         device = tsl::down_cast<TfrtGpuDevice*>(device),
-         usage_event = std::move(usage_event)]() mutable {
-          tsl::profiler::TraceMe traceme("H2D Dispatch");
-          TransferManager* transfer_manager =
-              xla_client()->backend().transfer_manager();
-
-          absl::StatusOr<BoundedStreamPool::Handle> handle_or =
-              device->stream_pool().Borrow();
-          CHECK_OK(handle_or.status())
-              << "Failed to borrow a stream from the pool";
-          BoundedStreamPool::Handle stream = std::move(handle_or.value());
-
-          const auto& buffer = device_buffer->buffer();
-          CHECK_EQ(literal.size_bytes(), buffer->size());
-
-          ShapedBuffer shaped_buffer = buffer->AsShapedBuffer(shape, device);
-
-          CHECK_NE(stream.get(), nullptr);
-          TF_CHECK_OK(transfer_manager->TransferLiteralToDeviceAsync(
-              stream.get(), literal, shaped_buffer));
-
-          auto status = stream->BlockHostUntilDone();
-          CHECK_OK(status) << "Failed to block host until done";
-          VLOG(2) << "BufferFromHostLiteral done for device_buffer: "
-                  << device_buffer << " AsyncValue: " << av.get();
-
-          av->SetStateConcrete();
-          usage_event.SetStateConcrete();
-        });
-  } else {
+  if (shape.IsTuple()) {
     return Unimplemented(
         "Tuple case is not supported in TfrtGpuClient::BufferFromHostLiteral");
   }
+  // It is OK to capture `buffer` pointer because the `output_buffer` can't
+  // be deleted until all the usage holds have gone away.
+  VLOG(2) << "BufferFromHostLiteral for device_buffer: " << device_buffer;
+  EnqueueWork(non_blocking_thread_pool_.get(),
+              [literal, av = avs[0], device_buffer, shape, this,
+               device = tsl::down_cast<TfrtGpuDevice*>(device),
+               usage_event = std::move(usage_event)]() mutable {
+                tsl::profiler::TraceMe traceme("H2D Dispatch");
+                TransferManager* transfer_manager =
+                    xla_client()->backend().transfer_manager();
+
+                absl::StatusOr<BoundedStreamPool::Handle> handle_or =
+                    device->stream_pool().Borrow();
+                CHECK_OK(handle_or.status())
+                    << "Failed to borrow a stream from the pool";
+                BoundedStreamPool::Handle stream = std::move(handle_or.value());
+
+                const auto& buffer = device_buffer->buffer();
+                CHECK_EQ(literal.size_bytes(), buffer->size());
+
+                ShapedBuffer shaped_buffer =
+                    buffer->AsShapedBuffer(shape, device);
+
+                CHECK_NE(stream.get(), nullptr);
+                TF_CHECK_OK(transfer_manager->TransferLiteralToDeviceAsync(
+                    stream.get(), literal, shaped_buffer));
+
+                auto status = stream->BlockHostUntilDone();
+                CHECK_OK(status) << "Failed to block host until done";
+                VLOG(2) << "BufferFromHostLiteral done for device_buffer: "
+                        << device_buffer << " AsyncValue: " << av.get();
+
+                av->SetStateConcrete();
+                usage_event.SetStateConcrete();
+              });
   return std::unique_ptr<PjRtBuffer>(std::move(output_buffer));
 }
 
@@ -1755,6 +1754,7 @@ PjRtFuture<> TfrtGpuBuffer::LazyToLiteral(
   return ToLiteral(buffer.value());
 }
 
+// TODO - b/383558503: Fix cognitive complexity from ClangTidy.
 PjRtFuture<> TfrtGpuBuffer::CopyRawToHostFuture(PjRtFuture<void*> dst,
                                                 int64_t offset,
                                                 int64_t transfer_size) {
@@ -1782,7 +1782,6 @@ PjRtFuture<> TfrtGpuBuffer::CopyRawToHostFuture(PjRtFuture<void*> dst,
         se::DeviceMemoryBase device_memory = device_buffer->buffer()->buffer();
         if (offset < 0 || offset > device_memory.size() ||
             device_memory.size() - offset < transfer_size) {
-          usage_event.SetStateConcrete();
           LOG(ERROR) << "Copy raw buffer called on buffer size "
                      << device_memory.size() << " with invalid offset "
                      << offset << ", transfer size " << transfer_size;
