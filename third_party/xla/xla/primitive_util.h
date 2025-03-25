@@ -417,13 +417,6 @@ template <PrimitiveType kPrimitiveType>
 using PrimitiveTypeConstant =
     std::integral_constant<PrimitiveType, kPrimitiveType>;
 
-// Returns true if values of the given primitive type are held in array shapes.
-inline constexpr bool IsArrayType(PrimitiveType primitive_type) {
-  return primitive_type != TUPLE && primitive_type != OPAQUE_TYPE &&
-         primitive_type != TOKEN && primitive_type > PRIMITIVE_TYPE_INVALID &&
-         primitive_type < PrimitiveType_ARRAYSIZE;
-}
-
 // Returns true if the given primitive type is a MX floating-point type.
 constexpr bool IsMXType(PrimitiveType type) {
   return type == F4E2M1FN || type == F8E8M0FNU;
@@ -467,6 +460,12 @@ constexpr bool IsIntegralType(PrimitiveType type) {
 // Returns true if the given primitive type is an 8-bit integral type.
 constexpr bool Is8BitIntegralType(PrimitiveType type) {
   return type == S8 || type == U8;
+}
+
+// Returns true if values of the given primitive type are held in array shapes.
+constexpr bool IsArrayType(PrimitiveType primitive_type) {
+  return primitive_type == PRED || IsIntegralType(primitive_type) ||
+         IsFloatingPointType(primitive_type) || IsComplexType(primitive_type);
 }
 
 // The following *TypeSwitch functions are used to dispatch on the run-time
