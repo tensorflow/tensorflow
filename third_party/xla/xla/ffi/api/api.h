@@ -101,6 +101,12 @@ inline std::ostream& operator<<(std::ostream& os,
       return os << "INVALID";
     case XLA_FFI_DataType_PRED:
       return os << "PRED";
+    case XLA_FFI_DataType_S1:
+      return os << "S1";
+    case XLA_FFI_DataType_S2:
+      return os << "S2";
+    case XLA_FFI_DataType_S4:
+      return os << "S4";
     case XLA_FFI_DataType_S8:
       return os << "S8";
     case XLA_FFI_DataType_S16:
@@ -109,6 +115,12 @@ inline std::ostream& operator<<(std::ostream& os,
       return os << "S32";
     case XLA_FFI_DataType_S64:
       return os << "S64";
+    case XLA_FFI_DataType_U1:
+      return os << "U1";
+    case XLA_FFI_DataType_U2:
+      return os << "U2";
+    case XLA_FFI_DataType_U4:
+      return os << "U4";
     case XLA_FFI_DataType_U8:
       return os << "U8";
     case XLA_FFI_DataType_U16:

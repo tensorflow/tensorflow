@@ -41,6 +41,7 @@ limitations under the License.
 #include "xla/python/nb_numpy.h"
 #include "xla/python/types.h"
 #include "xla/shape_util.h"
+#include "xla/xla_data.pb.h"
 
 namespace nb = nanobind;
 
@@ -77,6 +78,12 @@ ffi::Error XlaFfiPythonCpuCallback(FfiLoadedHostCallbacks* callbacks,
   for (size_t i = 0; i < args.size(); ++i) {
     auto arg = args.get<ffi::AnyBuffer>(i);
     auto ptype = static_cast<PrimitiveType>(arg->element_type());
+    // TODO(b/395428868): Remove this check once we support subbyte types.
+    if (ptype == S1 || ptype == S2 || ptype == S4 || ptype == U1 ||
+        ptype == U2 || ptype == U4) {
+      return ffi::Error::Internal(absl::StrFormat(
+          "Unsupported primitive type: %s", PrimitiveType_Name(ptype)));
+    }
     if (ptype == TOKEN) {
       PyTuple_SET_ITEM(nb_args.ptr(), i, nb::none().release().ptr());
       continue;
@@ -111,6 +118,12 @@ ffi::Error XlaFfiPythonCpuCallback(FfiLoadedHostCallbacks* callbacks,
   for (size_t i = 0; i < rets.size(); ++i) {
     auto ret = rets.get<ffi::AnyBuffer>(i).value();
     auto ptype = static_cast<PrimitiveType>(ret->element_type());
+    // TODO(b/395428868): Remove this check once we support subbyte types.
+    if (ptype == S1 || ptype == S2 || ptype == S4 || ptype == U1 ||
+        ptype == U2 || ptype == U4) {
+      return ffi::Error::Internal(absl::StrFormat(
+          "Unsupported primitive type: %s", PrimitiveType_Name(ptype)));
+    }
     if (ptype == TOKEN) continue;
     nb::object output =
         nb::borrow<nb::object>(PyTuple_GetItem(result_tuple.ptr(), i));
