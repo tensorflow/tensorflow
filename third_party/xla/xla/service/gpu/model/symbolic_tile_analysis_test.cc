@@ -1489,6 +1489,100 @@ ENTRY main {
   EXPECT_FALSE(analysis.has_value());
 }
 
+TEST_F(SymbolicTileAnalysisTest,
+       ConcatenateOperandsInNestedGemmFusionsAreProvidedCorrectTilingBounds) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(R"(
+nest0 {
+  ROOT p0 = s32[128] parameter(0)
+}
+
+nest1 {
+  ROOT p0 = s32[128] parameter(0)
+}
+
+nest2 {
+  ROOT p0 = s32[128] parameter(0)
+}
+
+concatenate {
+  p0 = s32[128] parameter(0)
+  p1 = s32[128] parameter(1)
+  p2 = s32[128] parameter(2)
+
+  fusion0 = s32[128] fusion(p0), kind=kCustom, calls=nest0
+  fusion1 = s32[128] fusion(p1), kind=kCustom, calls=nest1
+  fusion2 = s32[128] fusion(p2), kind=kCustom, calls=nest2
+
+  ROOT concatenate = s32[384] concatenate(fusion0, fusion1, fusion2), dimensions={0}
+}
+
+ENTRY main {
+  p0 = s32[128] parameter(0)
+  p1 = s32[128] parameter(1)
+  p2 = s32[128] parameter(2)
+  ROOT fusion = s32[384] fusion(p0, p1, p2),
+    kind=kCustom, calls=concatenate, backend_config={"fusion_backend_config":{
+      "kind":"__triton_nested_gemm_fusion"}}
+})"));
+  std::optional<SymbolicTileAnalysis> analysis = TryAnalyzeModule(module.get());
+  EXPECT_TRUE(analysis.has_value());
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      TiledHloComputation tiled_hlo_computation,
+      analysis->ComputeTiledHloInstructions(
+          /*tile_parameters=*/{32}, /*constraints_are_known_satisfied=*/false,
+          /*compute_all_tile_offset_indexing_maps=*/true));
+
+  // Gather the three nested fusions present in the module, in order.
+  std::vector<const TiledHloFusionInstruction*> nested_fusions(3, nullptr);
+  for (const TiledHloInstruction* tiled_instr :
+       tiled_hlo_computation.instructions()) {
+    if (auto tiled_fusion =
+            dynamic_cast<const TiledHloFusionInstruction*>(tiled_instr)) {
+      nested_fusions[tiled_fusion->operand(0)->hlo()->parameter_number()] =
+          tiled_fusion;
+    }
+  }
+
+  // Ensure that each parameter has domain bounds with the proper offsets.
+  // Concatenate creates partial functions,
+  const TiledHloInstruction* nested_p0 =
+      nested_fusions[0]->called_computation()->GetRoots()[0];
+  EXPECT_THAT(*nested_p0,
+              MatchTiledHloInstruction(
+                  /*tile_sizes=*/{32}, /*tile_strides=*/{1},
+                  /*tile_offsets_indexing=*/
+                  "(pid_0) -> (pid_0 * 32), domain: pid_0 in [0, 3]"));
+  const TiledHloInstruction* nested_p1 =
+      nested_fusions[1]->called_computation()->GetRoots()[0];
+  EXPECT_THAT(*nested_p1,
+              MatchTiledHloInstruction(
+                  /*tile_sizes=*/{32}, /*tile_strides=*/{1},
+                  /*tile_offsets_indexing=*/
+                  "(pid_0) -> (pid_0 * 32 - 128), domain: pid_0 in [4, 7]"));
+
+  const TiledHloInstruction* nested_p2 =
+      nested_fusions[2]->called_computation()->GetRoots()[0];
+  EXPECT_THAT(*nested_p2,
+              MatchTiledHloInstruction(
+                  /*tile_sizes=*/{32}, /*tile_strides=*/{1},
+                  /*tile_offsets_indexing=*/
+                  "(pid_0) -> (pid_0 * 32 - 256), domain: pid_0 in [8, 11]"));
+
+  // Ensure that providing tile sizes that do not divide the resulting offsets
+  // results in the tiling being rejected, even if we pretend that `33`
+  // satisfies the constraints.
+  auto tiled_hlo_computation_or = analysis->ComputeTiledHloInstructions(
+      /*tile_parameters=*/{33}, /*constraints_are_known_satisfied=*/true,
+      /*compute_all_tile_offset_indexing_maps=*/false);
+
+  EXPECT_THAT(tiled_hlo_computation_or,
+              tsl::testing::StatusIs(
+                  absl::StatusCode::kUnimplemented,
+                  ::testing::HasSubstr("not divisible by tile size")));
+}
+
 }  // namespace
 }  // namespace gpu
 }  // namespace xla
