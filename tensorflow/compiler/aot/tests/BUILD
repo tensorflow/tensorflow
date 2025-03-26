@@ -125,9 +125,10 @@ genrule(
 # This list is used to run tf_compile on the compiled graphs used by
 # tfcompile_test. The test is run for several different configurations of
 # tf_compile, so this allows the configurations to be specified in one place.
-# suffix, mlir_component
+# suffix, mlir_component, xla_flags
 tfcompile_test_dep_configs = [
-    ("", "None"),
+    ("", "None", "--xla_cpu_use_thunk_runtime=false"),
+    ("_thunks", "None", "--xla_cpu_use_thunk_runtime=true"),
 ]
 
 [
@@ -148,6 +149,7 @@ tfcompile_test_dep_configs = [
                 "manual",
                 "no_mac",  # TODO(b/228273415)
             ],
+            xla_flags = xla_flags,
         ),
         tf_library(
             name = "test_graph_tfadd_with_ckpt" + suffix,
@@ -161,6 +163,7 @@ tfcompile_test_dep_configs = [
                 "manual",
                 "no_mac",  # TODO(b/228273415)
             ],
+            xla_flags = xla_flags,
         ),
         tf_library(
             name = "test_graph_tfadd_with_ckpt_saver" + suffix,
@@ -175,6 +178,7 @@ tfcompile_test_dep_configs = [
                 "manual",
                 "no_mac",  # TODO(b/228273415)
             ],
+            xla_flags = xla_flags,
         ),
         tf_library(
             name = "test_graph_tfassert_eq" + suffix,
@@ -187,6 +191,7 @@ tfcompile_test_dep_configs = [
                 "manual",
                 "no_mac",  # TODO(b/228273415)
             ],
+            xla_flags = xla_flags,
         ),
         tf_library(
             name = "test_graph_tfcond" + suffix,
@@ -199,6 +204,7 @@ tfcompile_test_dep_configs = [
                 "manual",
                 "no_mac",  # TODO(b/228273415)
             ],
+            xla_flags = xla_flags,
         ),
         tf_library(
             name = "test_graph_tffunction" + suffix,
@@ -211,6 +217,7 @@ tfcompile_test_dep_configs = [
                 "manual",
                 "no_mac",  # TODO(b/228273415)
             ],
+            xla_flags = xla_flags,
         ),
         tf_library(
             name = "test_graph_tfgather" + suffix,
@@ -223,6 +230,7 @@ tfcompile_test_dep_configs = [
                 "manual",
                 "no_mac",  # TODO(b/228273415)
             ],
+            xla_flags = xla_flags,
         ),
         tf_library(
             name = "test_graph_tfmatmul" + suffix,
@@ -235,6 +243,7 @@ tfcompile_test_dep_configs = [
                 "manual",
                 "no_mac",  # TODO(b/228273415)
             ],
+            xla_flags = xla_flags,
         ),
         tf_library(
             name = "test_graph_tfmatmulandadd" + suffix,
@@ -248,6 +257,7 @@ tfcompile_test_dep_configs = [
                 "no_mac",  # TODO(b/228273415)
             ],
             tfcompile_flags = "--gen_name_to_index --gen_program_shape",
+            xla_flags = xla_flags,
         ),
         tf_library(
             name = "test_graph_tfsplits" + suffix,
@@ -260,6 +270,7 @@ tfcompile_test_dep_configs = [
                 "manual",
                 "no_mac",  # TODO(b/228273415)
             ],
+            xla_flags = xla_flags,
         ),
         tf_library(
             name = "test_graph_tftop_k" + suffix,
@@ -272,6 +283,7 @@ tfcompile_test_dep_configs = [
                 "manual",
                 "no_mac",  # TODO(b/228273415)
             ],
+            xla_flags = xla_flags,
         ),
         tf_library(
             name = "test_graph_tfvariable" + suffix,
@@ -284,6 +296,7 @@ tfcompile_test_dep_configs = [
                 "manual",
                 "no_mac",  # TODO(b/228273415)
             ],
+            xla_flags = xla_flags,
         ),
         tf_library(
             name = "test_graph_tfvariable_readonly" + suffix,
@@ -296,6 +309,7 @@ tfcompile_test_dep_configs = [
                 "manual",
                 "no_mac",  # TODO(b/228273415)
             ],
+            xla_flags = xla_flags,
         ),
         tf_library(
             name = "test_graph_tfvariable_sequential_updates" + suffix,
@@ -308,22 +322,10 @@ tfcompile_test_dep_configs = [
                 "manual",
                 "no_mac",  # TODO(b/228273415)
             ],
-        ),
-        tf_library(
-            name = "test_graph_tfmatmulandadd_with_profiling" + suffix,
-            testonly = 1,
-            config = "test_graph_tfmatmulandadd.config.pbtxt",
-            cpp_class = "MatMulAndAddCompWithProfiling",
-            enable_xla_hlo_profiling = True,
-            graph = "test_graph_tfmatmulandadd.pb",
-            mlir_components = mlir_component,
-            tags = [
-                "manual",
-                "no_mac",  # TODO(b/228273415)
-            ],
+            xla_flags = xla_flags,
         ),
     ]
-    for suffix, mlir_component in tfcompile_test_dep_configs
+    for suffix, mlir_component, xla_flags in tfcompile_test_dep_configs
 ]
 
 tfcompile_bench_tfmatmul_mkn = [
@@ -395,21 +397,54 @@ tf_cc_test(
         ":test_graph_tfgather",
         ":test_graph_tfmatmul",
         ":test_graph_tfmatmulandadd",
-        ":test_graph_tfmatmulandadd_with_profiling",
         ":test_graph_tfsplits",
         ":test_graph_tftop_k",
         ":test_graph_tfvariable",
         ":test_graph_tfvariable_readonly",
         ":test_graph_tfvariable_sequential_updates",
-        "//tensorflow/core:lib",
+        "//tensorflow/compiler/tf2xla:xla_compiled_cpu_function",
+        "//tensorflow/core:portable_gif_internal",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
-        "//tensorflow/core/platform:regexp",
-        "@com_google_absl//absl/strings",
         "@eigen_archive//:eigen3",
         "@local_xla//xla:shape_util",
-        "@local_xla//xla:xla_data_proto_cc",
         "@local_xla//xla/hlo/testlib:test",
-        "@local_xla//xla/service:hlo_profile_printer",
+        "@local_xla//xla/tsl/platform:env",
+    ],
+)
+
+# TODO(basioli): We are still supporting both runtimes. Remove once we fully migrate to thunks.
+tf_cc_test(
+    name = "tfcompile_test_thunks",
+    srcs = ["tfcompile_test.cc"],
+    extra_copts = ["-DENABLE_XLA_THUNK_TEST"],
+    tags = [
+        "manual",
+        "no_mac",  # TODO(b/228273415)
+        "not_run:arm",
+    ],
+    deps = [
+        ":test_graph_tfadd_thunks",
+        ":test_graph_tfadd_with_ckpt_saver_thunks",
+        ":test_graph_tfadd_with_ckpt_thunks",
+        ":test_graph_tfassert_eq_thunks",
+        ":test_graph_tfcond_thunks",
+        ":test_graph_tffunction_thunks",
+        ":test_graph_tfgather_thunks",
+        ":test_graph_tfmatmul_thunks",
+        ":test_graph_tfmatmulandadd_thunks",
+        ":test_graph_tfsplits_thunks",
+        ":test_graph_tftop_k_thunks",
+        ":test_graph_tfvariable_readonly_thunks",
+        ":test_graph_tfvariable_sequential_updates_thunks",
+        ":test_graph_tfvariable_thunks",
+        "//tensorflow/compiler/tf2xla:xla_compiled_cpu_function",
+        "//tensorflow/core:portable_gif_internal",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "@eigen_archive//:eigen3",
+        "@local_xla//xla:shape_util",
+        "@local_xla//xla/hlo/testlib:test",
+        "@local_xla//xla/tsl/platform:env",
     ],
 )

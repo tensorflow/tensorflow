@@ -9,6 +9,10 @@ load("@local_xla//xla/service/cpu:build_defs.bzl", "runtime_copts")
 load("@local_xla//xla/tsl/mkl:build_defs.bzl", "mkl_deps")
 load("@local_xla//xla/tsl/platform:build_config_root.bzl", "if_static")
 load(
+    "@local_xla//xla/tsl/platform:rules_cc.bzl",
+    "cc_library_optional_no_mkl",
+)
+load(
     "@local_xla//xla/tsl/platform/default:cuda_build_defs.bzl",
     "if_cuda_is_configured",
 )
@@ -391,11 +395,12 @@ cc_library(
 # )
 # copybara:uncomment_end
 
-cc_library(
+cc_library_optional_no_mkl(
     name = "xla_compiled_cpu_function",
     srcs = ["xla_compiled_cpu_function.cc"],
     hdrs = ["xla_compiled_cpu_function.h"],
     compatible_with = get_compatible_with_portable(),
+    mkl_deps = ["@local_xla//xla/service/cpu:cpu_aot_compilation_result"],
     visibility = ["//visibility:public"],
     deps = [
         "@local_xla//xla/service:custom_call_status_internal",
@@ -403,8 +408,20 @@ cc_library(
         # binary produced by tfcompile.
         "@local_xla//xla:cpu_function_runtime",
         "@local_xla//xla:executable_run_options",
+        "@local_xla//xla/backends/cpu/codegen:aot_compiled_function_library",
         "@local_xla//xla/service/cpu:buffer_desc",
         "//tensorflow/core/platform:types",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/log",
+        "@local_xla//xla/backends/cpu/runtime:function_library",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/types:span",
+        "@local_xla//xla/service/cpu:executable_proto_cc",
+        "@local_xla//xla/backends/cpu/nanort:nanort_executable",
+        "@local_xla//xla/service:executable",  # IWYU pragma: keep (b/404179184)
+        "@local_xla//xla/tsl/concurrency:async_value",
+        "@local_xla//xla/tsl/platform:env",
+        "//tensorflow/core:portable_gif_internal",
     ],
 )
 
@@ -431,17 +448,23 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/platform:errors",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/types:span",
+        "@local_tsl//tsl/platform:casts",
         "@local_xla//xla:cpu_function_runtime",
         "@local_xla//xla:shape_util",
         "@local_xla//xla:xla_data_proto_cc",
+        "@local_xla//xla/backends/cpu/codegen:compiled_function_library",
         "@local_xla//xla/client:client_library",
         "@local_xla//xla/client:executable_build_options",
         "@local_xla//xla/client:local_client",
         "@local_xla//xla/hlo/builder:xla_computation",
         "@local_xla//xla/service:platform_util",
+        "@local_xla//xla/service/cpu:cpu_aot_compilation_result",
+        "@local_xla//xla/service/cpu:executable_proto_cc",
         "@local_xla//xla/stream_executor:platform",
     ] + if_libtpu(
         if_false = [
@@ -973,33 +996,48 @@ tf_cc_test(
     ] + if_static(["@local_tsl//tsl/platform:tensor_float_32_utils"]),
 )
 
-tf_cc_test(
-    name = "xla_jit_compiled_cpu_function_test",
-    srcs = ["xla_jit_compiled_cpu_function_test.cc"],
-    deps = [
-        ":tf2xla_proto_cc",
-        ":xla_compiled_cpu_function",
-        ":xla_jit_compiled_cpu_function",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
-        "@com_google_absl//absl/log:check",
-        "@com_google_absl//absl/memory",
-        "@com_google_absl//absl/status:statusor",
-        "@local_xla//xla:shape_util",
-        "@local_xla//xla:status_macros",
-        "@local_xla//xla:xla_data_proto_cc",
-        "@local_xla//xla/client:executable_build_options",
-        "@local_xla//xla/client:local_client",
-        "@local_xla//xla/hlo/testlib:test",
-        "@local_xla//xla/service:compiler",
-        "@local_xla//xla/service:platform_util",
-        "@local_xla//xla/stream_executor:platform",
-        "@local_xla//xla/stream_executor:platform_manager",
-    ],
-)
+# TODO(basioli): This is used while both runtimes are supported. Remove once we
+# only support the thunk runtime.
+xla_jit_compiled_cpu_function_test_configuration = [
+    # suffix, xla_flags
+    ("", "--xla_cpu_use_thunk_runtime=false"),
+    ("_thunks", "--xla_cpu_use_thunk_runtime=true"),
+]
+
+[[
+    tf_cc_test(
+        name = "xla_jit_compiled_cpu_function_test" + suffix,
+        srcs = ["xla_jit_compiled_cpu_function_test.cc"],
+        env = {
+            "XLA_FLAGS": xla_flags,
+        },
+        deps = [
+            ":tf2xla_proto_cc",
+            ":xla_compiled_cpu_function",
+            ":xla_jit_compiled_cpu_function",
+            "//tensorflow/core:framework",
+            "//tensorflow/core:lib",
+            "//tensorflow/core:protos_all_cc",
+            "//tensorflow/core:test",
+            "//tensorflow/core:test_main",
+            "@com_google_absl//absl/log:check",
+            "@com_google_absl//absl/memory",
+            "@com_google_absl//absl/status:statusor",
+            "@local_tsl//tsl/platform:casts",
+            "@local_xla//xla:shape_util",
+            "@local_xla//xla:status_macros",
+            "@local_xla//xla:xla_data_proto_cc",
+            "@local_xla//xla/client:executable_build_options",
+            "@local_xla//xla/client:local_client",
+            "@local_xla//xla/hlo/testlib:test",
+            "@local_xla//xla/service:compiler",
+            "@local_xla//xla/service:platform_util",
+            "@local_xla//xla/service/cpu:cpu_executable",
+            "@local_xla//xla/stream_executor:platform",
+            "@local_xla//xla/stream_executor:platform_manager",
+        ],
+    ),
+] for suffix, xla_flags in xla_jit_compiled_cpu_function_test_configuration]
 
 tf_cc_test(
     name = "xla_compiler_test",

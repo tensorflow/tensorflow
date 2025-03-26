@@ -50,6 +50,16 @@ def _tfcompile_model_library_rule_impl(ctx):
         "--out_session_module=" + session_module_pb.path,
     ]
 
+    additional_xla_flags = ctx.attr.xla_flags
+
+    # TODO(basioli): Remove this once the thunk runtime is the default for tfcompile.
+    default_xla_flags = ["--xla_cpu_use_thunk_runtime=false"]
+
+    # If user didn't specify a flag, add the default.
+    for flag in default_xla_flags:
+        if flag.split("=")[0] not in ctx.attr.xla_flags:
+            additional_xla_flags += " " + flag
+
     tfcompile_env = {
         "XLA_FLAGS": ("--xla_cpu_enable_fast_math=true " +
                       "--xla_cpu_fast_math_honor_nans=false " +
@@ -57,7 +67,7 @@ def _tfcompile_model_library_rule_impl(ctx):
                       "--xla_cpu_fast_math_honor_functions=false " +
                       "--xla_cpu_fast_math_honor_division=false " +
                       "--xla_cpu_enable_fast_min_max=true " +
-                      ctx.attr.xla_flags + " " +
+                      additional_xla_flags + " " +
                       "$${XLA_FLAGS:-}' "),
         "CUDA_VISIBLE_DEVICES": "",
     }
@@ -311,6 +321,8 @@ def _tf_library(
             # include_standard_runtime_deps is False.  Without them, the
             # generated code will fail to compile.
             "//tensorflow/compiler/tf2xla:xla_compiled_cpu_function",
+            "@local_xla//xla/backends/cpu/runtime:kernel_c_api",
+            "@local_xla//xla/service/cpu:executable_proto_cc",
             "//tensorflow/core:framework_lite",
         ] + (need_xla_data_proto and [
             # If we're generating the program shape, we must depend on the

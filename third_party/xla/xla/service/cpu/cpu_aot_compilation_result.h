@@ -97,6 +97,8 @@ class CpuAotCompilationOptions : public AotCompilationOptions {
 // name once legacy runtime is removed.
 class CpuAotCompilationResult : public AotCompilationResult {
  public:
+  virtual const std::vector<cpu_function_runtime::BufferInfo>& buffer_infos()
+      const = 0;
   // NOLINTNEXTLINE clang-tidy complains that `override` should be used here.
   virtual ~CpuAotCompilationResult() = default;
 };
@@ -115,7 +117,8 @@ class CpuAotCompilationResultLegacy : public CpuAotCompilationResult {
   }
 
   const ObjectFileData& object_file_data() const { return object_file_data_; }
-  const std::vector<cpu_function_runtime::BufferInfo>& buffer_infos() const {
+  const std::vector<cpu_function_runtime::BufferInfo>& buffer_infos()
+      const override {
     return buffer_infos_;
   }
   int64_t result_buffer_index() const { return result_buffer_index_; }
@@ -185,7 +188,8 @@ class CpuAotCompilationResultThunks : public CpuAotCompilationResult {
     return temp_allocation_index_;
   }
 
-  const std::vector<cpu_function_runtime::BufferInfo>& buffer_infos() const {
+  const std::vector<cpu_function_runtime::BufferInfo>& buffer_infos()
+      const override {
     return buffer_infos_;
   }
 
