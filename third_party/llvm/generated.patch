@@ -1,12 +1,246 @@
 Auto generated patch. Do not edit or delete it, even if empty.
-diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/libc/test/UnitTest/BUILD.bazel b/utils/bazel/llvm-project-overlay/libc/test/UnitTest/BUILD.bazel
---- a/utils/bazel/llvm-project-overlay/libc/test/UnitTest/BUILD.bazel
-+++ b/utils/bazel/llvm-project-overlay/libc/test/UnitTest/BUILD.bazel
-@@ -80,6 +80,7 @@
-     ],
-     deps = [
-         ":LibcUnitTest",
-+        "//libc:__support_macros_config",
-         "//libc:errno",
-     ],
+diff -ruN --strip-trailing-cr a/mlir/include/mlir/IR/MLIRContext.h b/mlir/include/mlir/IR/MLIRContext.h
+--- a/mlir/include/mlir/IR/MLIRContext.h
++++ b/mlir/include/mlir/IR/MLIRContext.h
+@@ -153,14 +153,6 @@
+     disableMultithreading(!enable);
+   }
+ 
+-  /// Set the flag specifying if thread-local storage should be used by storage
+-  /// allocators in this context. Note that disabling mutlithreading implies
+-  /// thread-local storage is also disabled.
+-  void disableThreadLocalStorage(bool disable = true);
+-  void enableThreadLocalStorage(bool enable = true) {
+-    disableThreadLocalStorage(!enable);
+-  }
+-
+   /// Set a new thread pool to be used in this context. This method requires
+   /// that multithreading is disabled for this context prior to the call. This
+   /// allows to share a thread pool across multiple contexts, as well as
+diff -ruN --strip-trailing-cr a/mlir/lib/IR/AttributeDetail.h b/mlir/lib/IR/AttributeDetail.h
+--- a/mlir/lib/IR/AttributeDetail.h
++++ b/mlir/lib/IR/AttributeDetail.h
+@@ -24,7 +24,6 @@
+ #include "llvm/ADT/APFloat.h"
+ #include "llvm/ADT/PointerIntPair.h"
+ #include "llvm/Support/TrailingObjects.h"
+-#include <mutex>
+ 
+ namespace mlir {
+ namespace detail {
+@@ -402,8 +401,7 @@
+ /// is freed after the destruction of the distinct attribute allocator.
+ class DistinctAttributeAllocator {
+ public:
+-  DistinctAttributeAllocator(bool threadingIsEnabled)
+-      : threadingIsEnabled(threadingIsEnabled), useThreadLocalAllocator(true) {};
++  DistinctAttributeAllocator() = default;
+ 
+   DistinctAttributeAllocator(DistinctAttributeAllocator &&) = delete;
+   DistinctAttributeAllocator(const DistinctAttributeAllocator &) = delete;
+@@ -413,49 +411,12 @@
+   /// Allocates a distinct attribute storage using a thread local bump pointer
+   /// allocator to enable synchronization free parallel allocations.
+   DistinctAttrStorage *allocate(Attribute referencedAttr) {
+-    if (!useThreadLocalAllocator && threadingIsEnabled) {
+-      std::scoped_lock<std::mutex> lock(allocatorMutex);
+-      return allocateImpl(referencedAttr);
+-    }
+-    return allocateImpl(referencedAttr);
+-  }
+-
+-  /// Sets a flag that stores if multithreading is enabled. The flag is used to
+-  /// decide if locking is needed when using a non thread-safe allocator.
+-  void disableMultiThreading(bool disable = true) {
+-    threadingIsEnabled = !disable;
+-  }
+-
+-  /// Sets a flag to disable using thread local bump pointer allocators and use
+-  /// a single thread-safe allocator. Use this to persist allocated storage
+-  /// beyond the lifetime of a child thread calling this function while ensuring
+-  /// thread-safe allocation.
+-  void disableThreadLocalStorage(bool disable = true) {
+-    useThreadLocalAllocator = !disable;
+-  }
+-
+-private:
+-  DistinctAttrStorage *allocateImpl(Attribute referencedAttr) {
+-    return new (getAllocatorInUse().Allocate<DistinctAttrStorage>())
++    return new (allocatorCache.get().Allocate<DistinctAttrStorage>())
+         DistinctAttrStorage(referencedAttr);
+   }
+ 
+-  /// If threading is disabled on the owning MLIR context, a normal non
+-  /// thread-local, non-thread safe bump pointer allocator is used instead to
+-  /// prevent use-after-free errors whenever attribute storage created on a
+-  /// crash recover thread is accessed after the thread joins.
+-  llvm::BumpPtrAllocator &getAllocatorInUse() {
+-    if (useThreadLocalAllocator)
+-      return allocatorCache.get();
+-    return allocator;
+-  }
+-
++private:
+   ThreadLocalCache<llvm::BumpPtrAllocator> allocatorCache;
+-  llvm::BumpPtrAllocator allocator;
+-  std::mutex allocatorMutex;
+-
+-  bool threadingIsEnabled : 1;
+-  bool useThreadLocalAllocator : 1;
+ };
+ } // namespace detail
+ } // namespace mlir
+diff -ruN --strip-trailing-cr a/mlir/lib/IR/MLIRContext.cpp b/mlir/lib/IR/MLIRContext.cpp
+--- a/mlir/lib/IR/MLIRContext.cpp
++++ b/mlir/lib/IR/MLIRContext.cpp
+@@ -268,8 +268,7 @@
+ 
+ public:
+   MLIRContextImpl(bool threadingIsEnabled)
+-      : threadingIsEnabled(threadingIsEnabled),
+-        distinctAttributeAllocator(threadingIsEnabled) {
++      : threadingIsEnabled(threadingIsEnabled) {
+     if (threadingIsEnabled) {
+       ownedThreadPool = std::make_unique<llvm::DefaultThreadPool>();
+       threadPool = ownedThreadPool.get();
+@@ -597,7 +596,6 @@
+   // Update the threading mode for each of the uniquers.
+   impl->affineUniquer.disableMultithreading(disable);
+   impl->attributeUniquer.disableMultithreading(disable);
+-  impl->distinctAttributeAllocator.disableMultiThreading(disable);
+   impl->typeUniquer.disableMultithreading(disable);
+ 
+   // Destroy thread pool (stop all threads) if it is no longer needed, or create
+@@ -719,10 +717,6 @@
+   return RegisteredOperationName::lookup(name, this).has_value();
+ }
+ 
+-void MLIRContext::disableThreadLocalStorage(bool disable) {
+-  getImpl().distinctAttributeAllocator.disableThreadLocalStorage(disable);
+-}
+-
+ void Dialect::addType(TypeID typeID, AbstractType &&typeInfo) {
+   auto &impl = context->getImpl();
+   assert(impl.multiThreadedExecutionContext == 0 &&
+diff -ruN --strip-trailing-cr a/mlir/lib/Pass/PassCrashRecovery.cpp b/mlir/lib/Pass/PassCrashRecovery.cpp
+--- a/mlir/lib/Pass/PassCrashRecovery.cpp
++++ b/mlir/lib/Pass/PassCrashRecovery.cpp
+@@ -414,15 +414,6 @@
+ 
+ LogicalResult PassManager::runWithCrashRecovery(Operation *op,
+                                                 AnalysisManager am) {
+-  // Notify the context to disable the use of thread-local storage while the
+-  // pass manager is running in a crash recovery context thread. Re-enable the
+-  // thread local storage upon function exit. This is required to persist any
+-  // attribute storage allocated during passes beyond the lifetime of the
+-  // recovery context thread.
+-  MLIRContext *ctx = getContext();
+-  ctx->disableThreadLocalStorage();
+-  auto guard =
+-      llvm::make_scope_exit([ctx]() { ctx->enableThreadLocalStorage(); });
+   crashReproGenerator->initialize(getPasses(), op, verifyPasses);
+ 
+   // Safely invoke the passes within a recovery context.
+diff -ruN --strip-trailing-cr a/mlir/test/Dialect/LLVMIR/add-debuginfo-func-scope-with-crash-reproduction.mlir b/mlir/test/Dialect/LLVMIR/add-debuginfo-func-scope-with-crash-reproduction.mlir
+--- a/mlir/test/Dialect/LLVMIR/add-debuginfo-func-scope-with-crash-reproduction.mlir
++++ b/mlir/test/Dialect/LLVMIR/add-debuginfo-func-scope-with-crash-reproduction.mlir
+@@ -1,22 +0,0 @@
+-// Test that the enable-debug-info-scope-on-llvm-func pass can create its
+-// distinct attributes when running in the crash reproducer thread.
+-
+-// RUN: mlir-opt --mlir-disable-threading --mlir-pass-pipeline-crash-reproducer=. \
+-// RUN:          --pass-pipeline="builtin.module(ensure-debug-info-scope-on-llvm-func)" \
+-// RUN:          --mlir-print-debuginfo %s | FileCheck %s
+-
+-// RUN: mlir-opt --mlir-pass-pipeline-crash-reproducer=. \
+-// RUN:          --pass-pipeline="builtin.module(ensure-debug-info-scope-on-llvm-func)" \
+-// RUN:          --mlir-print-debuginfo %s | FileCheck %s
+-
+-module {
+-  llvm.func @func_no_debug() {
+-    llvm.return loc(unknown)
+-  } loc(unknown)
+-} loc(unknown)
+-
+-// CHECK-LABEL: llvm.func @func_no_debug()
+-// CHECK: llvm.return loc(#loc
+-// CHECK: loc(#loc[[LOC:[0-9]+]])
+-// CHECK: #di_compile_unit = #llvm.di_compile_unit<id = distinct[{{.*}}]<>,
+-// CHECK: #di_subprogram = #llvm.di_subprogram<id = distinct[{{.*}}]<>
+diff -ruN --strip-trailing-cr a/mlir/test/IR/test-builtin-distinct-attrs-with-crash-reproduction.mlir b/mlir/test/IR/test-builtin-distinct-attrs-with-crash-reproduction.mlir
+--- a/mlir/test/IR/test-builtin-distinct-attrs-with-crash-reproduction.mlir
++++ b/mlir/test/IR/test-builtin-distinct-attrs-with-crash-reproduction.mlir
+@@ -1,18 +0,0 @@
+-// This test verifies that when running with crash reproduction enabled, distinct
+-// attribute storage is not allocated in thread-local storage. Since crash
+-// reproduction runs the pass manager in a separate thread, using thread-local
+-// storage for distinct attributes causes use-after-free errors once the thread
+-// that runs the pass manager joins.
+-
+-// RUN: mlir-opt --mlir-disable-threading --mlir-pass-pipeline-crash-reproducer=. %s -test-distinct-attrs | FileCheck %s
+-// RUN: mlir-opt --mlir-pass-pipeline-crash-reproducer=. %s -test-distinct-attrs | FileCheck %s
+-
+-// CHECK: #[[DIST0:.*]] = distinct[0]<42 : i32>
+-// CHECK: #[[DIST1:.*]] = distinct[1]<42 : i32>
+-#distinct = distinct[0]<42 : i32>
+-
+-// CHECK: @foo_1
+-func.func @foo_1() {
+-  // CHECK: "test.op"() {distinct.input = #[[DIST0]], distinct.output = #[[DIST1]]}
+-  "test.op"() {distinct.input = #distinct} : () -> ()
+-}
+diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/libc/test/src/math/smoke/BUILD.bazel b/utils/bazel/llvm-project-overlay/libc/test/src/math/smoke/BUILD.bazel
+--- a/utils/bazel/llvm-project-overlay/libc/test/src/math/smoke/BUILD.bazel
++++ b/utils/bazel/llvm-project-overlay/libc/test/src/math/smoke/BUILD.bazel
+@@ -204,20 +204,21 @@
+     hdrs = ["FmaTest.h"],
  )
+ 
+-math_test(
+-    name = "f16fma",
+-    hdrs = ["FmaTest.h"],
+-)
+-
+-math_test(
+-    name = "f16fmaf",
+-    hdrs = ["FmaTest.h"],
+-)
+-
+-math_test(
+-    name = "f16fmal",
+-    hdrs = ["FmaTest.h"],
+-)
++# TODO: Reenable these tests once they pass at Google.
++# math_test(
++#     name = "f16fma",
++#     hdrs = ["FmaTest.h"],
++# )
++# 
++# math_test(
++#     name = "f16fmaf",
++#     hdrs = ["FmaTest.h"],
++# )
++# 
++# math_test(
++#     name = "f16fmal",
++#     hdrs = ["FmaTest.h"],
++# )
+ 
+ math_test(
+     name = "dmull",
+@@ -476,10 +477,11 @@
+ 
+ # TODO: Add fma, fmaf, fmal, fmaf128 tests.
+ 
+-math_test(
+-    name = "fmaf16",
+-    hdrs = ["FmaTest.h"],
+-)
++# TODO: Reenable this test once it passes at Google.
++# math_test(
++#     name = "fmaf16",
++#     hdrs = ["FmaTest.h"],
++# )
+ 
+ math_test(
+     name = "fmax",
