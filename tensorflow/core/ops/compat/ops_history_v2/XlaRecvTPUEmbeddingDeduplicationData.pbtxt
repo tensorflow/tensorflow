@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "XlaRecvTPUEmbeddingDeduplicationData"
   output_arg {
     name: "output"

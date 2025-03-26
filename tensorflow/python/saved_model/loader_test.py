@@ -23,8 +23,8 @@ from tensorflow.python.client import session
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import resource_variables_toggle
 from tensorflow.python.ops import state_ops
-from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variable_v1
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
@@ -40,7 +40,7 @@ def _get_export_dir(label):
 
 
 def _tensor_name(name):
-  if variable_scope.resource_variables_enabled():
+  if resource_variables_toggle.resource_variables_enabled():
     return name + "/Read/ReadVariableOp:0"
   return name + ":0"
 

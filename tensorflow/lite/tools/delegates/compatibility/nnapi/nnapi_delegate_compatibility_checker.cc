@@ -16,25 +16,25 @@ limitations under the License.
 #include "tensorflow/lite/tools/delegates/compatibility/nnapi/nnapi_delegate_compatibility_checker.h"
 
 #include <cctype>
-#include <cstdlib>
 #include <functional>
-#include <limits>
 #include <memory>
-#include <sstream>
 #include <string>
 #include <unordered_map>
 #include <vector>
 
 #include "absl/status/status.h"
 #include "absl/strings/match.h"
+#include "tensorflow/lite/core/interpreter_builder.h"
 #include "tensorflow/lite/core/kernels/register.h"
+#include "tensorflow/lite/delegates/nnapi/nnapi_delegate.h"
 #include "tensorflow/lite/delegates/nnapi/nnapi_delegate_kernel.h"
 #include "tensorflow/lite/interpreter.h"
+#include "tensorflow/lite/model_builder.h"
 #include "tensorflow/lite/nnapi/NeuralNetworksTypes.h"
 #include "tensorflow/lite/tools/delegates/compatibility/common/delegate_compatibility_checker_util.h"
 #include "tensorflow/lite/tools/delegates/compatibility/common/online_helper_delegate.h"
 #include "tensorflow/lite/tools/delegates/compatibility/protos/compatibility_result.pb.h"
-#include "tensorflow/lite/util.h"
+#include "tensorflow/lite/tools/versioning/op_signature.h"
 
 namespace tflite {
 namespace tools {

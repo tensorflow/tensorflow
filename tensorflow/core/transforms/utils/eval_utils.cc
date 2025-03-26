@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/control_flow.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/ir/importexport/convert_tensor.h"
 #include "tensorflow/core/ir/importexport/graphdef_export.h"
 #include "tensorflow/core/platform/logging.h"
@@ -62,7 +63,7 @@ tensorflow::Allocator *SimpleDevice::GetAllocator(
   return tensorflow::cpu_allocator();
 }
 
-tensorflow::Status SimpleDevice::MakeTensorFromProto(
+absl::Status SimpleDevice::MakeTensorFromProto(
     const tensorflow::TensorProto &tensor_proto,
     const tensorflow::AllocatorAttributes alloc_attrs,
     tensorflow::Tensor *tensor) {
@@ -72,7 +73,7 @@ tensorflow::Status SimpleDevice::MakeTensorFromProto(
         "Cannot parse tensor from tensor_proto.");
   }
   *tensor = std::move(parsed);
-  return ::tensorflow::OkStatus();
+  return absl::OkStatus();
 }
 
 LogicalResult EvaluateOperation(tensorflow::DeviceBase *cpu_device,
@@ -99,7 +100,7 @@ LogicalResult EvaluateOperation(tensorflow::DeviceBase *cpu_device,
   absl::InlinedVector<tensorflow::TensorValue, 4> input_tensor_values(
       operands.size());
   // For each operand, convert its ElementsAttr to a Tensor and the Tensor will
-  // be referenced by a TensorValue. To ensure Tensor/TensorValue have thier
+  // be referenced by a TensorValue. To ensure Tensor/TensorValue have their
   // lifecycle across the later evaluation. They are stored in
   // `input_tensors`\`input_tensor_values` respectively. The following loop zips
   // them together so that the bundled values are related. Note that the
@@ -110,10 +111,10 @@ LogicalResult EvaluateOperation(tensorflow::DeviceBase *cpu_device,
     input_tensor_value.tensor = &input_tensor;
   }
 
-  tensorflow::Status status;
+  absl::Status status;
   std::unique_ptr<tensorflow::OpKernel> op_kernel = tensorflow::CreateOpKernel(
-      "CPU", cpu_device, cpu_device->GetAllocator({}), node_def,
-      TF_GRAPH_DEF_VERSION, &status);
+      tensorflow::DEVICE_CPU, cpu_device, cpu_device->GetAllocator({}),
+      node_def, TF_GRAPH_DEF_VERSION, &status);
   if (!status.ok()) {
     VLOG(3) << status.message();
     return failure();
@@ -148,7 +149,7 @@ LogicalResult EvaluateOperation(tensorflow::DeviceBase *cpu_device,
       continue;
     }
 
-    tensorflow::StatusOr<ElementsAttr> attr_or =
+    absl::StatusOr<ElementsAttr> attr_or =
         ConvertTensor(*(op_context.mutable_output(i)), builder);
     if (!attr_or.status().ok()) {
       VLOG(3) << attr_or.status().message();

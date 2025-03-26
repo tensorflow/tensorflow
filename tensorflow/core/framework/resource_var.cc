@@ -20,7 +20,7 @@ limitations under the License.
 
 namespace tensorflow {
 
-Status Var::AsGraphDef(GraphDefBuilder* builder, Node** out) const {
+absl::Status Var::AsGraphDef(GraphDefBuilder* builder, Node** out) const {
   // Set a shared_name so that the created resource can outlive the graph that
   // created it.
   Node* var = ops::SourceOp(
@@ -37,7 +37,7 @@ Status Var::AsGraphDef(GraphDefBuilder* builder, Node** out) const {
                     builder->opts().WithAttr("dtype", tensor_.dtype()));
   *out =
       ops::UnaryOp("Identity", var, builder->opts().WithControlInput(assign));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 std::string Var::MakeRefCountingHandleName(int64_t resource_id) const {

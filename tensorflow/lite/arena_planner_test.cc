@@ -18,6 +18,7 @@ limitations under the License.
 #include <cstdarg>
 #include <cstddef>
 #include <cstdint>
+#include <cstdio>
 #include <initializer_list>
 #include <memory>
 #include <set>
@@ -25,11 +26,12 @@ limitations under the License.
 #include <vector>
 
 #include <gtest/gtest.h>
-#include "tensorflow/core/platform/logging.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "tensorflow/lite/builtin_ops.h"
+#include "tensorflow/lite/c/c_api_types.h"
 #include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/graph_info.h"
-#include "tensorflow/lite/testing/util.h"
 
 namespace tflite {
 
@@ -1072,6 +1074,33 @@ TEST_F(ArenaPlannerTest, DebugTensors) {
   EXPECT_EQ(tensorOffsets.size(), 8);
 }
 
+TEST_F(ArenaPlannerTest, DebugTensorsInputReuse) {
+  TestGraph graph({0, 1},
+                  {
+                      /* in, out, tmp */
+                      {{0, 1}, {2, 3}, {}},
+                      {{2, 3}, {4}, {}, kTfLiteBuiltinMul},
+                      {{4, 2}, {5}, {}, kTfLiteBuiltinSub},
+                      {{5}, {6}, {}},
+                  },
+                  {6});
+
+  (*graph.tensors())[4].bytes = 200;
+  (*graph.tensors())[5].bytes = 200;
+
+  SetGraph(&graph, /*preserve_all_tensors=*/false);
+  Execute(0, graph.nodes().size() - 1);
+
+  // Output of mul node should be reused for output of sub node.
+  EXPECT_EQ(GetOffset(4), GetOffset(5));
+
+  SetGraph(&graph, /*preserve_all_tensors=*/true);
+  Execute(0, graph.nodes().size() - 1);
+
+  // Output of mul node should not be reused for output of sub node.
+  EXPECT_NE(GetOffset(4), GetOffset(5));
+}
+
 TEST_F(ArenaPlannerTest, SimpleProfilerTest) {
   gNumAlloc = 0;
   gNumDealloc = 0;
@@ -1079,10 +1108,10 @@ TEST_F(ArenaPlannerTest, SimpleProfilerTest) {
   SetGraph(&graph);
   Execute(0, graph.nodes().size() - 1);
 
-  EXPECT_EQ(gNumAlloc, 2);
+  EXPECT_EQ(gNumAlloc, 1);
   EXPECT_EQ(gNumDealloc, 0);
   Destroy();
-  EXPECT_EQ(gNumDealloc, 2);
+  EXPECT_EQ(gNumDealloc, 1);
 }
 
 }  // namespace

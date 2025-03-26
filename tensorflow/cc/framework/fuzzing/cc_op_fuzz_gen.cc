@@ -15,25 +15,27 @@ limitations under the License.
 
 #include "tensorflow/cc/framework/fuzzing/cc_op_fuzz_gen.h"
 
-#include <algorithm>
 #include <iostream>
-#include <memory>
 #include <set>
 #include <string>
 #include <unordered_map>
-#include <unordered_set>
 #include <utility>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/log/log.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/substitute.h"
 #include "tensorflow/cc/framework/cc_op_gen_util.h"
+#include "tensorflow/core/framework/api_def.pb.h"
 #include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/framework/op_def_util.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/platform/hash.h"
 #include "tensorflow/core/platform/strcat.h"
+#include "tensorflow/core/platform/stringpiece.h"
+#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/public/version.h"
 
 namespace tensorflow {
@@ -42,7 +44,8 @@ namespace {
 
 string DefaultValue(OpDef_AttrDef attr) {
   static const auto* attr_default_value_map =
-      new absl::flat_hash_map<StringPiece, StringPiece, StringPieceHasher>{
+      new absl::flat_hash_map<absl::string_view, absl::string_view,
+                              StringPieceHasher>{
           {"int", "0"},
           {"string", "\"\""},
           {"list(int)", "{ 0, 1 }"},

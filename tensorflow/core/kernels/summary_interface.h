@@ -32,28 +32,31 @@ class SummaryWriterInterface : public ResourceBase {
   virtual ~SummaryWriterInterface() override {}
 
   // Flushes all unwritten messages in the queue.
-  virtual Status Flush() = 0;
+  virtual absl::Status Flush() = 0;
 
   // These are called in the OpKernel::Compute methods for the summary ops.
-  virtual Status WriteTensor(int64_t global_step, Tensor t, const string& tag,
-                             const string& serialized_metadata) = 0;
+  virtual absl::Status WriteTensor(int64_t global_step, Tensor t,
+                                   const string& tag,
+                                   const string& serialized_metadata) = 0;
 
-  virtual Status WriteScalar(int64_t global_step, Tensor t,
-                             const string& tag) = 0;
+  virtual absl::Status WriteScalar(int64_t global_step, Tensor t,
+                                   const string& tag) = 0;
 
-  virtual Status WriteHistogram(int64_t global_step, Tensor t,
-                                const string& tag) = 0;
+  virtual absl::Status WriteHistogram(int64_t global_step, Tensor t,
+                                      const string& tag) = 0;
 
-  virtual Status WriteImage(int64_t global_step, Tensor t, const string& tag,
-                            int max_images, Tensor bad_color) = 0;
+  virtual absl::Status WriteImage(int64_t global_step, Tensor t,
+                                  const string& tag, int max_images,
+                                  Tensor bad_color) = 0;
 
-  virtual Status WriteAudio(int64_t global_step, Tensor t, const string& tag,
-                            int max_outputs_, float sample_rate) = 0;
+  virtual absl::Status WriteAudio(int64_t global_step, Tensor t,
+                                  const string& tag, int max_outputs_,
+                                  float sample_rate) = 0;
 
-  virtual Status WriteGraph(int64_t global_step,
-                            std::unique_ptr<GraphDef> graph) = 0;
+  virtual absl::Status WriteGraph(int64_t global_step,
+                                  std::unique_ptr<GraphDef> graph) = 0;
 
-  virtual Status WriteEvent(std::unique_ptr<Event> e) = 0;
+  virtual absl::Status WriteEvent(std::unique_ptr<Event> e) = 0;
 };
 
 }  // namespace tensorflow

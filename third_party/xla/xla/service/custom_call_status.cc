@@ -1,4 +1,4 @@
-/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2021 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -31,5 +31,5 @@ void XlaCustomCallStatusSetSuccess(XlaCustomCallStatus* status) {
 
 void XlaCustomCallStatusSetFailure(XlaCustomCallStatus* status,
                                    const char* message, size_t message_len) {
-  status->message = std::string(message, strnlen(message, message_len));
+  status->message = std::string(message, 0, message_len);
 }

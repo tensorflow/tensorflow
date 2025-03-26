@@ -212,6 +212,21 @@ class MetricsTest(test.TestCase):
     metrics.SetFoundFingerprintOnLoad(found_status="found")
     self.assertEqual(metrics.GetFoundFingerprintOnLoad(), "")
 
+  def test_checkpoint_sharding_callback_duration(self):
+    self.assertEqual(metrics.GetShardingCallbackDuration(), 0)
+    metrics.AddShardingCallbackDuration(callback_duration=100)
+    self.assertEqual(metrics.GetShardingCallbackDuration(), 100)
+
+  def test_num_checkpoint_shards_written(self):
+    self.assertEqual(metrics.GetNumCheckpointShardsWritten(), 0)
+    metrics.AddNumCheckpointShardsWritten(num_shards=10)
+    self.assertEqual(metrics.GetNumCheckpointShardsWritten(), 10)
+
+  def test_sharding_callback_description(self):
+    self.assertEqual(metrics.GetShardingCallbackDescription(), "")
+    metrics.SetShardingCallbackDescription(description="foo")
+    self.assertEqual(metrics.GetShardingCallbackDescription(), "foo")
+
 
 if __name__ == "__main__":
   test.main()

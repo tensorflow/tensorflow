@@ -35,7 +35,7 @@ void OptimizationPassRegistry::Register(
   groups_[grouping][phase].push_back(std::move(pass));
 }
 
-Status OptimizationPassRegistry::RunGrouping(
+absl::Status OptimizationPassRegistry::RunGrouping(
     Grouping grouping, const GraphOptimizationPassOptions& options) {
   const char* grouping_name = GetGroupingName(grouping);
 
@@ -78,7 +78,7 @@ Status OptimizationPassRegistry::RunGrouping(
         tensorflow::metrics::ScopedCounter<2> pass_timings(
             tensorflow::metrics::GetGraphOptimizationCounter(),
             {kGraphOptimizationCategory, pass->name()});
-        Status s = pass->Run(options);
+        absl::Status s = pass->Run(options);
 
         if (!s.ok()) return s;
         pass_timings.ReportAndStop();
@@ -103,7 +103,7 @@ Status OptimizationPassRegistry::RunGrouping(
              VLOG_IS_ON(3) || (VLOG_IS_ON(2) &&
                                grouping == Grouping::POST_REWRITE_FOR_EXEC));
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 void OptimizationPassRegistry::LogGrouping(Grouping grouping, int vlog_level) {

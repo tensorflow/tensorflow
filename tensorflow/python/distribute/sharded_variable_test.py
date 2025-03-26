@@ -569,13 +569,19 @@ class ShardedVariableTest(test.TestCase, parameterized.TestCase):
     self.assertAllClose(safe_sparse_lookup(), [[1., 2.], [0., 0.], [3., 4.]])
 
   def test_slicing(self):
+    data = [[1, 2], [3, 4], [5, 6], [7, 8], [9, 10], [11, 12], [13, 14],
+            [15, 16]]
     v = [
-        variables_lib.Variable([[1, 2], [3, 4], [5, 6]]),
-        variables_lib.Variable([[7, 8], [9, 10], [11, 12]]),
-        variables_lib.Variable([[13, 14], [15, 16]])
+        variables_lib.Variable(data[:3]),
+        variables_lib.Variable(data[3:6]),
+        variables_lib.Variable(data[6:])
     ]
     sv = sharded_variable.ShardedVariable(v)
     empty = v[0][0:0]
+
+    # Test cases: all individual indices
+    for ix in range(len(data)):
+      self.assertAllEqual(sv[ix].numpy(), data[ix])
 
     # Test cases: positive step
     self.assertAllEqual(sv[:], array_ops.concat(v, axis=0))

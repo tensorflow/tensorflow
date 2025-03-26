@@ -27,7 +27,6 @@ avoid / minimize further divergence between the two APIs over time.
 import collections as _collections
 import enum
 
-import six as _six
 import wrapt as _wrapt
 
 from tensorflow.python import pywrap_tensorflow  # pylint: disable=unused-import
@@ -236,7 +235,7 @@ def sequence_like(instance, args):
     # Pack a CompositeTensor's components according to a TypeSpec.
     assert len(args) == 1
     return instance._from_components(args[0])  # pylint: disable=protected-access
-  elif isinstance(instance, _six.moves.range):
+  elif isinstance(instance, range):
     return sequence_like(list(instance), args)
   elif isinstance(instance, _wrapt.ObjectProxy):
     # For object proxies, first create the underlying type and then re-wrap it
@@ -554,7 +553,7 @@ def _tf_core_packed_nest_with_indices(
     index: Index at which to start reading from flat.
     is_nested_fn: Function used to test if a value should be treated as a nested
       structure.
-    sequence_fn: Function used to generate a new strcuture instance.
+    sequence_fn: Function used to generate a new structure instance.
 
   Returns:
     The tuple (new_index, child), where:

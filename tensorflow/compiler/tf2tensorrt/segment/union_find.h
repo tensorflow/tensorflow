@@ -37,7 +37,7 @@ namespace segment {
 // currently treat -1 as an equivalent class for simple implementation. We may
 // need to revise this if it causes performance issues.
 // If the number is strictly less than -1, then it represents a equivalent
-// class. It is infered that all the nodes with the same equivalent class
+// class. It is inferred that all the nodes with the same equivalent class
 // (strictly less than -1) shall have the same batch size at runtime.
 //
 // When constructing clusters for implicit batch mode, we support both

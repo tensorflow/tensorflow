@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2024 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,48 +16,59 @@ limitations under the License.
 #ifndef XLA_SERVICE_CPU_ELEMENTAL_IR_EMITTER_H_
 #define XLA_SERVICE_CPU_ELEMENTAL_IR_EMITTER_H_
 
+#include <utility>
+#include <vector>
+
+#include "absl/functional/any_invocable.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Value.h"
-#include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/service/cpu/ir_emitter.h"
+#include "xla/hlo/ir/hlo_computation.h"
 #include "xla/service/elemental_ir_emitter.h"
-#include "xla/statusor.h"
 
-namespace xla {
-namespace cpu {
+namespace xla::cpu {
 
-class CpuElementalIrEmitter : public ElementalIrEmitter {
+class CpuElementalIrEmitter final : public ElementalIrEmitter {
  public:
-  CpuElementalIrEmitter(const HloModuleConfig& module_config,
-                        IrEmitter* ir_emitter, llvm::Module* module)
-      : ElementalIrEmitter(module, ir_emitter->b()),
-        hlo_module_config_(module_config),
-        ir_emitter_(ir_emitter) {}
-
- protected:
-  StatusOr<llvm::Value*> EmitAtan2(PrimitiveType prim_type, llvm::Value* lhs,
-                                   llvm::Value* rhs,
-                                   absl::string_view name) override;
-  StatusOr<llvm::Value*> EmitTanh(PrimitiveType prim_type,
-                                  llvm::Value* value) override;
-
-  StatusOr<std::vector<llvm::Value*>> EmitThreadLocalCall(
+  using ThreadLocalCallPrototype = absl::StatusOr<std::vector<llvm::Value*>>(
       const HloComputation& callee, absl::Span<llvm::Value* const> parameters,
-      absl::string_view name, bool is_reducer) override {
-    return ir_emitter_->EmitThreadLocalCall(callee, parameters, name,
-                                            is_reducer);
-  }
+      absl::string_view name, bool is_reducer);
+  using ThreadLocalCallCallback = absl::AnyInvocable<ThreadLocalCallPrototype>;
 
-  bool fast_min_max() override {
-    return hlo_module_config_.debug_options().xla_cpu_enable_fast_min_max();
-  }
+  CpuElementalIrEmitter(llvm::Module* llvm_module, llvm::IRBuilderBase* builder,
+                        ThreadLocalCallCallback thread_local_call_fn,
+                        bool use_truncate_f32_to_bf16_conversion,
+                        bool fast_min_max)
+      : ElementalIrEmitter(llvm_module, builder,
+                           Options{use_truncate_f32_to_bf16_conversion}),
+        thread_local_call_fn_(std::move(thread_local_call_fn)),
+        fast_min_max_(fast_min_max) {}
 
-  const HloModuleConfig& hlo_module_config_;
-  IrEmitter* ir_emitter_;
+ private:
+  absl::StatusOr<llvm::Value*> EmitAtan2(PrimitiveType prim_type,
+                                         llvm::Value* lhs, llvm::Value* rhs,
+                                         absl::string_view) override;
+
+  absl::StatusOr<llvm::Value*> EmitTanh(PrimitiveType prim_type,
+                                        llvm::Value* value) override;
+
+  absl::StatusOr<llvm::Value*> EmitErf(PrimitiveType prim_type,
+                                       llvm::Value* value) override;
+
+  absl::StatusOr<std::vector<llvm::Value*>> EmitThreadLocalCall(
+      const HloComputation& callee, absl::Span<llvm::Value* const> parameters,
+      absl::string_view name, bool is_reducer) override;
+
+  bool fast_min_max() override { return fast_min_max_; }
+
+ private:
+  ThreadLocalCallCallback thread_local_call_fn_;
+  bool fast_min_max_;
 };
 
-}  // namespace cpu
-}  // namespace xla
+}  // namespace xla::cpu
 
 #endif  // XLA_SERVICE_CPU_ELEMENTAL_IR_EMITTER_H_

@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -17,19 +17,22 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
-#include "xla/client/xla_builder.h"
-#include "xla/test.h"
+#include <gtest/gtest.h>
+#include "xla/hlo/builder/xla_builder.h"
+#include "xla/hlo/testlib/test.h"
 #include "xla/tests/client_library_test_base.h"
 #include "xla/tests/test_macros.h"
+#include "tsl/platform/ml_dtypes.h"
 
 namespace xla {
 namespace {
 
-// Test FP8 floating-point types (F8E5M2, F8E4M3FN)
+// Test FP8 floating-point types
 template <typename T>
 class Float8Test : public ClientLibraryTestBase {};
 
-using DataTypes = ::testing::Types<tsl::float8_e5m2, tsl::float8_e4m3fn>;
+using DataTypes = ::testing::Types<tsl::float8_e5m2, tsl::float8_e4m3,
+                                   tsl::float8_e4m3fn, tsl::float8_e3m4>;
 TYPED_TEST_SUITE(Float8Test, DataTypes);
 
 XLA_TYPED_TEST(Float8Test, ScalarOperation) {

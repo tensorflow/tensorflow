@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2019 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -19,7 +19,6 @@ limitations under the License.
 #define MLIR_HLO_MHLO_IR_HLO_OPS_H
 
 #include "llvm/ADT/StringRef.h"
-#include "mlir/Dialect/Quant/QuantTypes.h"
 #include "mlir/Dialect/Shape/IR/Shape.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/BuiltinTypes.h"
@@ -89,6 +88,7 @@ class MhloDialect : public Dialect {
 class TokenType : public Type::TypeBase<TokenType, Type, TypeStorage> {
  public:
   using Base::Base;
+  static constexpr StringLiteral name = "mhlo.token";
 };
 
 void printConvolutionDimensions(AsmPrinter &p, ConvDimensionNumbersAttr dnums);

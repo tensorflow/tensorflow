@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_RPC_GRPC_CHANNEL_H_
 #define TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_RPC_GRPC_CHANNEL_H_
 
-#include "tsl/distributed_runtime/rpc/grpc_channel.h"
+#include "xla/tsl/distributed_runtime/rpc/grpc_channel.h"
 
 namespace tensorflow {
 // NOLINTBEGIN(misc-unused-using-decls)

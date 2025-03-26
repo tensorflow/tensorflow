@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "RiscBinaryComparison"
   input_arg {
     name: "x"

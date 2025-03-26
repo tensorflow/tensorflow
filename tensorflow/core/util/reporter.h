@@ -21,11 +21,11 @@ limitations under the License.
 #include <string>
 #include <unordered_set>
 
+#include "xla/tsl/util/reporter.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/types.h"
-#include "tsl/util/reporter.h"
 
 namespace tensorflow {
 

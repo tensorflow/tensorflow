@@ -16,6 +16,10 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_KERNELS_DATA_RANDOM_SEED_OPS_H_
 #define TENSORFLOW_CORE_KERNELS_DATA_RANDOM_SEED_OPS_H_
 
+#include <memory>
+#include <string>
+#include <utility>
+
 #include "tensorflow/core/data/dataset_utils.h"
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/lib/random/philox_random.h"
@@ -136,11 +140,10 @@ class AnonymousSeedGeneratorHandleOp
 
  private:
   string name() override;
-  Status CreateResource(OpKernelContext* ctx,
-                        std::unique_ptr<FunctionLibraryDefinition> flib_def,
-                        std::unique_ptr<ProcessFunctionLibraryRuntime> pflr,
-                        FunctionLibraryRuntime* lib,
-                        SeedGeneratorManager** manager) override;
+  absl::Status CreateResource(
+      OpKernelContext* ctx, std::unique_ptr<FunctionLibraryDefinition> flib_def,
+      std::unique_ptr<ProcessFunctionLibraryRuntime> pflr,
+      FunctionLibraryRuntime* lib, SeedGeneratorManager** manager) override;
 
   mutex mu_;
   std::unique_ptr<RandomSeeds> seeds_ TF_GUARDED_BY(mu_);

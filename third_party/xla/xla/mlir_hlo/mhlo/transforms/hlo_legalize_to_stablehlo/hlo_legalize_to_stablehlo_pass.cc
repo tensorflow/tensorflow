@@ -1,4 +1,4 @@
-/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,7 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <memory>
 #include <utility>
 
 #include "llvm/ADT/SmallVector.h"
@@ -41,10 +40,26 @@ namespace {
 
 struct HloLegalizeToStablehloPass
     : public impl::HloLegalizeToStablehloPassBase<HloLegalizeToStablehloPass> {
+  HloLegalizeToStablehloPass()
+      : HloLegalizeToStablehloPassBase<HloLegalizeToStablehloPass>() {}
+  explicit HloLegalizeToStablehloPass(
+      const HloLegalizeToStablehloPassOptions& opts)
+      : HloLegalizeToStablehloPassBase<HloLegalizeToStablehloPass>(opts) {}
+
   void runOnOperation() override {
     ConversionTarget target(getContext());
     target.addIllegalDialect<mhlo::MhloDialect>();
     target.addLegalDialect<stablehlo::StablehloDialect>();
+
+    if (allow_xla_features_) {
+      // These ops do not exist in StableHLO.
+      target.addLegalOp<
+          mhlo::AddDependencyOp, mhlo::AsyncDoneOp, mhlo::AsyncStartOp,
+          mhlo::AsyncUpdateOp, mhlo::BitcastOp, mhlo::CopyOp, mhlo::DomainOp,
+          mhlo::ErfOp, mhlo::FusionOp, mhlo::MinimumBroadcastShapesOp,
+          mhlo::RaggedDotOp, mhlo::SparseDotOp, mhlo::StochasticConvertOp,
+          mhlo::TopKOp, mhlo::TraceOp, mhlo::XlaRngGetAndUpdateStateOp>();
+    }
 
     stablehlo::HloToStablehloTypeConverter converter;
     RewritePatternSet patterns(&getContext());
@@ -59,11 +74,6 @@ struct HloLegalizeToStablehloPass
 };
 
 }  // namespace
-
-std::unique_ptr<mlir::OperationPass<ModuleOp>>
-createHloLegalizeToStablehloPass() {
-  return std::make_unique<HloLegalizeToStablehloPass>();
-}
 
 }  // namespace mhlo
 }  // namespace mlir

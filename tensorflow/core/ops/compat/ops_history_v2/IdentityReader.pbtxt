@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "IdentityReader"
   output_arg {
     name: "reader_handle"

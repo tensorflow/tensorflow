@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -83,8 +83,8 @@ std::string NameUniquer::GetUniqueName(absl::string_view prefix) {
   int64_t numeric_suffix = 0;
   size_t separator_index = root.rfind(separator_);
   if (separator_index != std::string::npos && (separator_index > 0) &&
-      (separator_index < root.size() - 1)) {
-    std::string after_suffix = root.substr(separator_index + 1);
+      (separator_index < root.size() - separator_.size())) {
+    std::string after_suffix = root.substr(separator_index + separator_.size());
     if (absl::SimpleAtoi(after_suffix, &numeric_suffix)) {
       has_numeric_suffix = true;
       // Remove numeric suffix from root.

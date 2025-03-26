@@ -24,7 +24,7 @@ using shape_inference::ShapeHandle;
 
 namespace {
 
-Status CandidateSamplerShapeFn(InferenceContext* c) {
+absl::Status CandidateSamplerShapeFn(InferenceContext* c) {
   int64_t num_sampled;
   TF_RETURN_IF_ERROR(c->GetAttr("num_sampled", &num_sampled));
   int64_t num_true;
@@ -38,7 +38,7 @@ Status CandidateSamplerShapeFn(InferenceContext* c) {
   c->set_output(0, num_sampled_v);
   c->set_output(1, c->Matrix(batch_size, num_true));
   c->set_output(2, num_sampled_v);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace
@@ -160,7 +160,7 @@ REGISTER_OP("ComputeAccidentalHits")
       c->set_output(0, v);
       c->set_output(1, v);
       c->set_output(2, v);
-      return OkStatus();
+      return absl::OkStatus();
     });
 
 }  // namespace tensorflow

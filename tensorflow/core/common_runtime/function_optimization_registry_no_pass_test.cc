@@ -29,14 +29,14 @@ TEST(FunctionOptimizationPassRegistry, NoPassSet) {
   DeviceSet device_set;
   ConfigProto config_proto;
   FunctionOptimizationPass::FunctionOptions function_options;
-  Status status = FunctionOptimizationPassRegistry::Global().Run(
+  absl::Status status = FunctionOptimizationPassRegistry::Global().Run(
       "test_func", device_set, config_proto,
       /*function_options=*/function_options,
       /*graph=*/nullptr,
       /*flib_def=*/nullptr,
       /*control_ret_node_names=*/nullptr, /*control_rets_updated=*/nullptr);
 
-  EXPECT_EQ(status, OkStatus());
+  EXPECT_EQ(status, absl::OkStatus());
 }
 
 }  // namespace tensorflow

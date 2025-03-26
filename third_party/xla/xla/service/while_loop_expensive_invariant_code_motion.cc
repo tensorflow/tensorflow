@@ -1,4 +1,4 @@
-/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2021 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -23,7 +23,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
-#include "xla/service/while_loop_analysis.h"
+#include "xla/hlo/analysis/while_loop_analysis.h"
 #include "xla/service/while_util.h"
 #include "xla/shape_util.h"
 #include "xla/util.h"
@@ -116,7 +116,7 @@ static void CreateLoopInvariantCopy(
 }
 }  // namespace
 
-StatusOr<bool> WhileLoopExpensiveInvariantCodeMotion::
+absl::StatusOr<bool> WhileLoopExpensiveInvariantCodeMotion::
     TryHoistingInvariantInstructionsFromWhileBody(HloInstruction* while_instr) {
   auto print_no_metadata = HloPrintOptions{}.set_print_metadata(false);
 
@@ -225,7 +225,7 @@ StatusOr<bool> WhileLoopExpensiveInvariantCodeMotion::
         instruction, InvariantInfo(/*user_count=*/instruction->user_count()));
     CHECK(emplace_result.second);
     InvariantInfo& instr_info = emplace_result.first->second;
-    // If root is a users of it, substract 1 from remaining user count as we
+    // If root is a users of it, subtract 1 from remaining user count as we
     // don't want root to be blocking other users from being hoisted. Note that
     // for invariant parameter GTEs, they will skip the iteration because their
     // operand parameter(0) is not invariant, and they are put into
@@ -337,7 +337,7 @@ StatusOr<bool> WhileLoopExpensiveInvariantCodeMotion::
   return true;
 }
 
-StatusOr<bool> WhileLoopExpensiveInvariantCodeMotion::Run(
+absl::StatusOr<bool> WhileLoopExpensiveInvariantCodeMotion::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   VLOG(2) << "HLO module before WhileLoopExpensiveInvariantCodeMotion:";

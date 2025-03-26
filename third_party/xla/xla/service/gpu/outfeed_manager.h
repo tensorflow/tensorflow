@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,9 +16,11 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_OUTFEED_MANAGER_H_
 #define XLA_SERVICE_GPU_OUTFEED_MANAGER_H_
 
+#include <cstdint>
 #include <memory>
 #include <utility>
 
+#include "absl/status/status.h"
 #include "xla/literal.h"
 #include "xla/service/gpu/xfeed_queue.h"
 #include "xla/shape_tree.h"
@@ -61,12 +63,9 @@ class OutfeedBuffer {
 class OutfeedManager
     : public XfeedQueue<ShapeTree<std::unique_ptr<OutfeedBuffer>>*> {
  public:
-  Status TransferLiteralFromOutfeed(se::StreamExecutor* executor,
-                                    MutableBorrowingLiteral literal);
+  absl::Status TransferLiteralFromOutfeed(se::StreamExecutor* executor,
+                                          MutableBorrowingLiteral literal);
 };
-
-// Returns the GPU outfeed manager for the given stream executor.
-OutfeedManager* GetOrCreateOutfeedManager(se::StreamExecutor* executor);
 
 }  // namespace gpu
 }  // namespace xla

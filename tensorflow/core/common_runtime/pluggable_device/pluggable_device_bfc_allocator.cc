@@ -16,8 +16,13 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/pluggable_device/pluggable_device_bfc_allocator.h"
 
 #include <cstdlib>
+#include <cstring>
 
-#include "tensorflow/core/lib/strings/strcat.h"
+#include "absl/log/log.h"
+#include "absl/memory/memory.h"
+#include "xla/tsl/framework/bfc_allocator.h"
+#include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/protobuf/config.pb.h"
 
 namespace tensorflow {
 
@@ -89,13 +94,13 @@ bool PluggableDeviceBFCAllocator::GetGarbageCollectionValue() {
 }
 
 PluggableDeviceBFCAllocator::PluggableDeviceBFCAllocator(
-    DeviceMemAllocator* sub_allocator, size_t total_memory, const string& name,
+    tsl::SubAllocator* sub_allocator, size_t total_memory, const string& name,
     bool force_memory_growth_requested)
     : PluggableDeviceBFCAllocator(sub_allocator, total_memory, GPUOptions(),
                                   name, force_memory_growth_requested) {}
 
 PluggableDeviceBFCAllocator::PluggableDeviceBFCAllocator(
-    DeviceMemAllocator* sub_allocator, size_t total_memory,
+    tsl::SubAllocator* sub_allocator, size_t total_memory,
     const GPUOptions& gpu_options, const string& name,
     bool force_memory_growth_requested)
     : BFCAllocator(absl::WrapUnique(sub_allocator), total_memory, name, [&] {

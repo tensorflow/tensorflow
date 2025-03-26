@@ -92,8 +92,8 @@ class EagerClientCache {
   // increment the refcount of the client. The reference ownership is
   // transferred to the caller, and the unref should automatically happen when
   // destructing the RefCountPtr object from the caller's side.
-  virtual Status GetClient(const string& target,
-                           core::RefCountPtr<EagerClient>* client) = 0;
+  virtual absl::Status GetClient(const string& target,
+                                 core::RefCountPtr<EagerClient>* client) = 0;
 };
 
 }  // namespace eager

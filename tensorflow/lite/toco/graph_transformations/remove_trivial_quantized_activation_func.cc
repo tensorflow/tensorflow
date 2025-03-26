@@ -12,19 +12,22 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <cstddef>
 #include <limits>
 #include <memory>
 #include <string>
 #include <vector>
 
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/lite/toco/graph_transformations/graph_transformations.h"
 #include "tensorflow/lite/toco/graph_transformations/quantization_util.h"
 #include "tensorflow/lite/toco/graph_transformations/remove_trivial_passthrough.h"
 #include "tensorflow/lite/toco/model.h"
 #include "tensorflow/lite/toco/runtime/types.h"
-#include "tensorflow/lite/toco/toco_types.h"
 #include "tensorflow/lite/toco/tooling_util.h"
-#include "tensorflow/core/platform/logging.h"
 
 namespace toco {
 
@@ -94,13 +97,14 @@ bool IsTrivialFusedActivationFunc(
 // Attempts to remove both fused and unfused activation functions if the
 // quantization params indicate that the representable values fall inside the
 // activation range.
-::tensorflow::Status RemoveTrivialQuantizedActivationFunc::Run(
-    Model* model, std::size_t op_index, bool* modified) {
+absl::Status RemoveTrivialQuantizedActivationFunc::Run(Model* model,
+                                                       std::size_t op_index,
+                                                       bool* modified) {
   *modified = false;
   const auto it = model->operators.begin() + op_index;
   auto* op = it->get();
   if (op->inputs.empty()) {
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
 
   if (IsTrivialUnfusedActivationFunc(this, *model, op->type, op->inputs[0])) {
@@ -109,7 +113,7 @@ bool IsTrivialFusedActivationFunc(
         "minmax imply at least as tight a clamp anyway.",
         LogName(*op));
     *modified = RemoveTrivialPassthroughOp(this, model, op_index);
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
   if (IsTrivialFusedActivationFunc(this, *model, op->fused_activation_function,
                                    op->outputs[0])) {
@@ -120,9 +124,9 @@ bool IsTrivialFusedActivationFunc(
         "a clamp anyway.",
         LogName(*op));
     *modified = true;
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
-  return ::tensorflow::OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace toco

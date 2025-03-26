@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -18,15 +18,21 @@ limitations under the License.
 
 #include <cstdint>
 #include <string>
+#include <utility>
+#include <vector>
 
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/Hashing.h"
 #include "llvm/ADT/STLFunctionalExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/raw_ostream.h"
-#include "mlir/IR/Diagnostics.h"  // from @llvm-project
-#include "mlir/IR/OpImplementation.h"  // from @llvm-project
-#include "mlir/Support/LogicalResult.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"
+#include "mlir/IR/Diagnostics.h"
+#include "mlir/IR/OpImplementation.h"
+#include "mlir/Support/LogicalResult.h"
+#include "xla/python/ifrt/ir/sharding_param.pb.h"
 
 namespace xla {
 namespace ifrt {
@@ -66,8 +72,6 @@ namespace ifrt {
 //   in axis-0.
 //
 // See `support` directory for conversions with other sharding annotations.
-//
-// TODO(b/271129892): Should we support maximal sharding here?
 class ShardingParam {
  public:
   // Represents a permutation of mesh dimensions from minor to major.
@@ -79,6 +83,7 @@ class ShardingParam {
     // The size of mesh dimensions before the permutation.
     llvm::SmallVector<int, 4> axis_sizes;
 
+    absl::Status verify() const;
     mlir::LogicalResult verify(
         llvm::function_ref<mlir::InFlightDiagnostic()> emit_error) const;
 
@@ -90,12 +95,38 @@ class ShardingParam {
     void ToDeviceList(llvm::SmallVectorImpl<int>& out_devices) const;
   };
 
-  ShardingParam(llvm::ArrayRef<int64_t> dim_shards, MinorToMajor minor_to_major)
-      : dim_shards_(dim_shards), minor_to_major_(minor_to_major) {}
+  ShardingParam(std::vector<int64_t> dim_shards, MinorToMajor minor_to_major)
+      : dim_shards_(std::move(dim_shards)),
+        minor_to_major_(std::move(minor_to_major)) {}
 
   static mlir::FailureOr<ShardingParam> Parse(mlir::AsmParser& ods_parser);
+
+  // Parses V1 of ShardingParam. This method is meant to be used in the VIFRT
+  // dialect to parse versioned ShardingParams.
+  static mlir::FailureOr<ShardingParam> ParseV1(mlir::AsmParser& ods_parser);
+
+  // Prints V1 of ShardingParam. This method is meant to be used in the VIFRT
+  // dialect to print versioned ShardingParams.
+  static void PrintV1(mlir::AsmPrinter& ods_printer,
+                      const ShardingParam& sharding);
+
+  absl::Status verify() const;
   mlir::LogicalResult verify(
       llvm::function_ref<mlir::InFlightDiagnostic()> emit_error) const;
+
+  // Verifies if the sharding can be applied to the array.
+  mlir::LogicalResult CanApplyTo(
+      llvm::function_ref<mlir::InFlightDiagnostic()> emitError,
+      mlir::RankedTensorType shape, llvm::ArrayRef<int> device_ids) const;
+
+  absl::StatusOr<llvm::SmallVector<int64_t>> GlobalShapeFromLocalShape(
+      llvm::ArrayRef<int64_t> local_shape) const;
+
+  absl::StatusOr<llvm::SmallVector<int64_t>> LocalShapeFromGlobalShape(
+      llvm::ArrayRef<int64_t> global_shape) const;
+
+  // Returns the number of devices the array is sharded over.
+  int NumDevices() const;
 
   llvm::ArrayRef<int64_t> dim_shards() const { return dim_shards_; }
   const MinorToMajor& minor_to_major() const { return minor_to_major_; }
@@ -115,10 +146,28 @@ class ShardingParam {
                               llvm::ArrayRef<int>(minor_to_major_.axis_sizes));
   }
 
+  template <typename H>
+  friend H AbslHashValue(H h, const ShardingParam& value) {
+    h = H::combine(std::move(h), value.dim_shards_);
+    h = H::combine_contiguous(std::move(h),
+                              value.minor_to_major_.permutation.data(),
+                              value.minor_to_major_.permutation.size());
+    return H::combine_contiguous(std::move(h),
+                                 value.minor_to_major_.axis_sizes.data(),
+                                 value.minor_to_major_.axis_sizes.size());
+  }
+
   std::string DebugString() const;
 
+  // Returns a `ShardingParamProto` representation.
+  absl::StatusOr<ShardingParamProto> ToProto() const;
+
+  // Constructs `ShardingParam` from `ShardingParamProto`.
+  static absl::StatusOr<ShardingParam> FromProto(
+      const ShardingParamProto& proto);
+
  private:
-  llvm::SmallVector<int64_t, 4> dim_shards_;
+  std::vector<int64_t> dim_shards_;
   MinorToMajor minor_to_major_;
 };
 

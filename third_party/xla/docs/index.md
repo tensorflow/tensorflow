@@ -4,10 +4,6 @@ XLA (Accelerated Linear Algebra) is an open-source compiler for machine
 learning. The XLA compiler takes models from popular frameworks such as PyTorch,
 TensorFlow, and JAX, and optimizes the models for high-performance execution
 across different hardware platforms including GPUs, CPUs, and ML accelerators.
-For example, in a
-[BERT MLPerf submission](https://blog.tensorflow.org/2020/07/tensorflow-2-mlperf-submissions.html),
-using XLA with 8 Volta V100 GPUs achieved a ~7x performance improvement and ~5x
-batch-size improvement compared to the same GPUs without XLA.
 
 As a part of the OpenXLA project, XLA is built collaboratively by
 industry-leading ML hardware and software companies, including
@@ -37,16 +33,6 @@ Alibaba, Amazon Web Services, AMD, Apple, Arm, Google, Intel, Meta, and NVIDIA.
 
 ## Documentation
 
-To learn more about XLA, check out the guides below. If you're a new XLA
+To learn more about XLA, check out the links on the left. If you're a new XLA
 developer, you might want to start with [XLA architecture](architecture.md) and
-then read [Code reviews](code_reviews.md).
-
--   [Aliasing in XLA](aliasing.md)
--   [XLA architecture](architecture.md)
--   [Broadcasting](broadcasting.md)
--   [Code reviews](code_reviews.md)
--   [XLA custom calls](custom_call.md)
--   [Developing a new backend for XLA](developing_new_backend.md)
--   [Operation semantics](operation_semantics.md)
--   [Shapes and layout](shapes.md)
--   [Tiled layout](tiled_layout.md)
+then read [Contributing](contributing.md).

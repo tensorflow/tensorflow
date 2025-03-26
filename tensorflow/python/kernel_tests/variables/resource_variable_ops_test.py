@@ -36,7 +36,6 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import extension_type
 from tensorflow.python.framework import indexed_slices
-from tensorflow.python.framework import memory_checker
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor as tensor_lib
 from tensorflow.python.framework import tensor_shape
@@ -141,6 +140,7 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
                                                    dtype=dtypes.int32)).run()
 
   @parameterized.parameters(dtypes.int4, dtypes.uint4)
+  @test_util.disable_xla("b/183567451: XLA doesn't yet support int4")
   def testInt4(self, dtype):
     with context.eager_mode():
       v = resource_variable_ops.ResourceVariable(1, dtype=dtype)
@@ -347,8 +347,8 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
     with context.eager_mode():
       v = resource_variable_ops.ResourceVariable(1)
       text = "%r" % v
-      self.assertEqual(
-          "<tf.Variable 'Variable:0' shape=() dtype=int32, numpy=1>", text)
+      error_msg = "<tf.Variable 'Variable:0' shape=() dtype=int32, numpy=1>"
+      self.assertEqual(error_msg, text)
 
   def testReprUnavailable(self):
     with context.eager_mode():
@@ -1775,31 +1775,6 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
     self.assertAllEqual(expected, result)
 
   @test_util.run_v2_only
-  def testUninitializedVariableMemoryUsage(self):
-    if test_util.is_gpu_available():
-      # TODO(allenl): Investigate possible GPU-specific memory leaks
-      self.skipTest("Disabled when a GPU is available")
-    # TODO(kkb): Python memory checker complains continuous `weakref`
-    # allocations, investigate.
-    if memory_checker.CppMemoryChecker is None:
-      self.skipTest("Requires the C++ memory checker")
-
-    def _create_and_delete_variable():
-      resource_variable_ops.UninitializedVariable(
-          shape=[100, 100],
-          dtype=dtypes.float32)
-
-    _create_and_delete_variable()
-    checker = memory_checker.CppMemoryChecker(
-        "ResourceVariableOps.testUninitializedVariableMemoryUsage")
-    for _ in range(2):
-      _create_and_delete_variable()
-      checker.record_snapshot()
-    checker.stop()
-    checker.report()
-    checker.assert_no_leak_if_all_possibly_except_one()
-
-  @test_util.run_v2_only
   def testIterateVariable(self):
     v = variables.Variable([1., 2.])
     self.assertAllClose([1., 2.], list(iter(v)))
@@ -1870,6 +1845,24 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
         nest.flatten(v, expand_composites=True),
         expand_composites=True)
     self.assertEqual(reconstructed_v._handle_name, expected_handle_name)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testGatherBatchDimsNeg(self):
+    var = resource_variable_ops.ResourceVariable(
+        [1], dtype=dtypes.int32, name="var0"
+    )
+    with ops.control_dependencies([var.initializer]):
+      with self.assertRaisesRegex(
+          (ValueError, errors.InvalidArgumentError),
+          "(batch_dims is negative)|(Expected batch_dims in the range)"
+      ):
+        result = resource_variable_ops.resource_gather(
+            var.handle,
+            indices=[1],
+            dtype=var.dtype,
+            batch_dims=-42,
+        )
+        self.evaluate(result)
 
 if __name__ == "__main__":
   test.main()

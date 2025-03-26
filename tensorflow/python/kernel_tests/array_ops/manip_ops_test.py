@@ -14,6 +14,7 @@
 # ==============================================================================
 """Tests for manip_ops."""
 import numpy as np
+from packaging.version import Version
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -24,14 +25,8 @@ from tensorflow.python.ops import gradient_checker
 from tensorflow.python.ops import manip_ops
 from tensorflow.python.platform import test as test_lib
 
-# pylint: disable=g-import-not-at-top
-try:
-  from distutils.version import StrictVersion as Version
-  # numpy.roll for multiple shifts was introduced in numpy version 1.12.0
-  NP_ROLL_CAN_MULTISHIFT = Version(np.version.version) >= Version("1.12.0")
-except ImportError:
-  NP_ROLL_CAN_MULTISHIFT = False
-# pylint: enable=g-import-not-at-top
+# numpy.roll for multiple shifts was introduced in numpy version 1.12.0
+NP_ROLL_CAN_MULTISHIFT = Version(np.version.version) >= Version("1.12.0")
 
 
 class RollTest(test_util.TensorFlowTestCase):
@@ -105,11 +100,25 @@ class RollTest(test_util.TensorFlowTestCase):
     self._testAll(np.zeros([0, 1]), 1, 1)
     self._testAll(np.zeros([1, 0]), 1, 1)
 
+  @test_util.run_v2_only
+  def testLargeInput(self):
+    with test_util.force_cpu():
+      # Num elements just over INT_MAX for int32 to ensure no overflow
+      np_input = np.arange(0, 128 * 524289 * 33, dtype=np.int8).reshape(
+          128, -1, 33
+      )
+
+      for shift in range(-5, 5):
+        roll = manip_ops.roll(np_input, shift, 0)
+        self.assertAllEqual(roll[shift], np_input[0], msg=f"shift={shift}")
+        self.assertAllEqual(roll[0], np_input[-shift], msg=f"shift={shift}")
+
   @test_util.run_deprecated_v1
   def testInvalidInputShape(self):
     # The input should be 1-D or higher, checked in shape function.
-    with self.assertRaisesRegex(ValueError,
-                                "Shape must be at least rank 1 but is rank 0"):
+    with self.assertRaisesRegex(
+        ValueError, "Shape must be at least rank 1 but is rank 0"
+    ):
       manip_ops.roll(7, 1, 0)
 
   @test_util.run_deprecated_v1

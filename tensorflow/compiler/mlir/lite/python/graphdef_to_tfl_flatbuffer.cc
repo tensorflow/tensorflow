@@ -15,113 +15,119 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/lite/python/graphdef_to_tfl_flatbuffer.h"
 
+#include <memory>
 #include <optional>
-#include <ostream>
 #include <string>
 #include <utility>
 #include <vector>
 
-#include "llvm/Support/ToolOutputFile.h"
-#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
-#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "absl/status/status.h"
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
-#include "mlir/Pass/Pass.h"  // from @llvm-project
-#include "mlir/Support/FileUtilities.h"  // from @llvm-project
-#include "mlir/Transforms/ViewOpGraph.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/common/tfl_pass_config.h"
+#include "tensorflow/compiler/mlir/lite/converter_flags.pb.h"
+#include "tensorflow/compiler/mlir/lite/model_flags.pb.h"
 #include "tensorflow/compiler/mlir/lite/python/tf_tfl_flatbuffer_helpers.h"
-#include "tensorflow/compiler/mlir/lite/tf_tfl_passes.h"
-#include "tensorflow/compiler/mlir/lite/tf_to_tfl_flatbuffer.h"
-#include "tensorflow/compiler/mlir/lite/transforms/passes.h"
-#include "tensorflow/compiler/mlir/tensorflow/translate/import_model.h"
+#include "tensorflow/compiler/mlir/lite/types.pb.h"
+#include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_config.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
+#include "tensorflow/compiler/mlir/tensorflow/translate/tools/parsers.h"
+#include "tensorflow/compiler/mlir/tf2xla/api/v2/graph_to_tf_executor.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
+#include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/graph_debug_info.pb.h"
+#include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/types.pb.h"
-#include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/platform/status.h"
-#include "tensorflow/lite/toco/model_flags.pb.h"
-#include "tensorflow/lite/toco/toco_flags.pb.h"
-#include "tensorflow/lite/toco/types.pb.h"
-#include "tsl/platform/statusor.h"
+#include "tensorflow/core/graph/graph.h"
 
 namespace tensorflow {
-Status ConvertGraphDefToTFLiteFlatBuffer(const toco::ModelFlags& model_flags,
-                                         const toco::TocoFlags& toco_flags,
-                                         const GraphDebugInfo& debug_info,
-                                         const GraphDef& input,
-                                         string* result) {
-  using ::tflite::optimize::ReducedPrecisionSupport;
-  mlir::MLIRContext context;
+
+absl::Status ConvertGraphDefToTFLiteFlatBuffer(
+    const tflite::ModelFlags& model_flags,
+    tflite::ConverterFlags& converter_flags, const GraphDebugInfo& debug_info,
+    const GraphDef& input, std::string* result) {
+  auto context = std::make_unique<mlir::MLIRContext>();
   GraphImportConfig specs;
   mlir::quant::QuantizationSpecs quant_specs;
 
   // Parse input arrays.
-  std::vector<string> node_names;
-  std::vector<string> node_dtypes;
+  std::vector<std::string> node_names;
+  std::vector<std::string> node_dtypes;
   std::vector<std::optional<std::vector<int>>> node_shapes;
   std::vector<std::optional<double>> node_mins;
   std::vector<std::optional<double>> node_maxs;
 
   // Populate quantization specs.
   TF_RETURN_IF_ERROR(internal::PopulateQuantizationSpecs(
-      model_flags, toco_flags, &quant_specs, &node_names, &node_dtypes,
+      model_flags, converter_flags, &quant_specs, &node_names, &node_dtypes,
       &node_shapes, &node_mins, &node_maxs));
 
-  TF_RETURN_IF_ERROR(tensorflow::ParseInputArrayInfo(
-      node_names, node_dtypes, node_shapes, &specs.inputs));
+  TF_RETURN_IF_ERROR(
+      ParseInputArrayInfo(node_names, node_dtypes, node_shapes, &specs.inputs));
 
   // Parse output arrays.
-  std::vector<string> output_arrays(model_flags.output_arrays().begin(),
-                                    model_flags.output_arrays().end());
-  TF_RETURN_IF_ERROR(
-      tensorflow::ParseOutputArrayInfo(output_arrays, &specs.outputs));
+  std::vector<std::string> output_arrays(model_flags.output_arrays().begin(),
+                                         model_flags.output_arrays().end());
+  TF_RETURN_IF_ERROR(ParseOutputArrayInfo(output_arrays, &specs.outputs));
 
   // Parse control output arrays.
-  std::vector<string> control_output_arrays(
+  std::vector<std::string> control_output_arrays(
       model_flags.control_output_arrays().begin(),
       model_flags.control_output_arrays().end());
-  TF_RETURN_IF_ERROR(tensorflow::ParseOutputArrayInfo(control_output_arrays,
-                                                      &specs.control_outputs));
+  TF_RETURN_IF_ERROR(
+      ParseOutputArrayInfo(control_output_arrays, &specs.control_outputs));
 
   specs.prune_unused_nodes = true;
   specs.convert_legacy_fed_inputs = true;
   specs.graph_as_function = false;
   specs.upgrade_legacy = true;
   specs.unconditionally_use_set_output_shapes = true;
-  internal::WarningUnusedFlags(model_flags, toco_flags);
+  internal::WarningUnusedFlags(model_flags, converter_flags);
 
   // Register all custom ops, including user-specified custom ops.
-  TF_RETURN_IF_ERROR(internal::RegisterAllCustomOps(toco_flags));
-
+  TF_RETURN_IF_ERROR(internal::RegisterAllCustomOps(converter_flags));
+  GraphConstructorOptions options;
+  options.allow_internal_ops = true;
+  options.upgrade_legacy = specs.upgrade_legacy;
+  Graph graph(OpRegistry::Global());
+  TF_RETURN_IF_ERROR(ConvertGraphDefToGraph(options, input, &graph));
   TF_ASSIGN_OR_RETURN(
-      auto module, ConvertGraphdefToMlir(input, debug_info, specs, &context));
+      auto module,
+      tensorflow::tf2xla::v2::ConvertGraphToTfExecutor(
+          graph, debug_info, graph.flib_def(), specs, context.get()));
 
   mlir::TFL::PassConfig pass_config(quant_specs);
-  bool emit_builtin_tflite_ops = !toco_flags.force_select_tf_ops();
+  bool emit_builtin_tflite_ops = !converter_flags.force_select_tf_ops();
   pass_config.emit_builtin_tflite_ops = emit_builtin_tflite_ops;
-  pass_config.unfold_batch_matmul = toco_flags.unfold_batchmatmul();
-  pass_config.lower_tensor_list_ops = toco_flags.lower_tensor_list_ops();
+  pass_config.unfold_batch_matmul = converter_flags.unfold_batchmatmul();
+  pass_config.lower_tensor_list_ops = converter_flags.lower_tensor_list_ops();
   pass_config.legalize_custom_tensor_list_ops =
-      toco_flags.legalize_custom_tensor_list_ops();
+      converter_flags.legalize_custom_tensor_list_ops();
   // Disable the unfolding of the 16x16 TF::BatchMatMulOp to avoid the
   // conversion to an unsupported 16x16 TFL::FullyConnectedOp.
-  if (toco_flags.inference_type() == toco::IODataType::QUANTIZED_INT16) {
+  if (converter_flags.inference_type() == tflite::IODataType::QUANTIZED_INT16) {
     pass_config.unfold_batch_matmul = false;
   }
   pass_config.unfold_large_splat_constant =
-      toco_flags.unfold_large_splat_constant();
+      converter_flags.unfold_large_splat_constant();
   pass_config.enable_dynamic_update_slice =
-      toco_flags.enable_dynamic_update_slice();
-  pass_config.preserve_assert_op = toco_flags.preserve_assert_op();
+      converter_flags.enable_dynamic_update_slice();
+  pass_config.preserve_assert_op = converter_flags.preserve_assert_op();
   pass_config.guarantee_all_funcs_one_use =
-      toco_flags.guarantee_all_funcs_one_use();
-  pass_config.enable_stablehlo_conversion = toco_flags.convert_to_stablehlo();
+      converter_flags.guarantee_all_funcs_one_use();
+  pass_config.enable_stablehlo_conversion =
+      converter_flags.convert_to_stablehlo();
+  pass_config.canonicalizing_inf_as_min_max_float =
+      converter_flags.canonicalizing_inf_as_min_max_float();
 
+  // StableHLO Quantizer is not supported for GraphDef inputs, so
+  // quantization_py_function_lib is set to nullptr.
   return internal::ConvertMLIRToTFLiteFlatBuffer(
-      model_flags, toco_flags, std::move(module), pass_config,
+      model_flags, converter_flags, std::move(context), std::move(module),
+      pass_config,
       /*saved_model_tags=*/{}, result,
-      /*session=*/std::nullopt);
+      /*quantization_py_function_lib=*/nullptr);
 }
 
 }  // namespace tensorflow

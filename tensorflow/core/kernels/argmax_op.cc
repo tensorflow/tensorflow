@@ -111,7 +111,8 @@ class ArgOp : public OpKernel {
 #undef HANDLE_DIM
 
  private:
-  TF_DISALLOW_COPY_AND_ASSIGN(ArgOp);
+  ArgOp(const ArgOp&) = delete;
+  void operator=(const ArgOp&) = delete;
 };
 
 template <typename Device, typename T, typename Tout>

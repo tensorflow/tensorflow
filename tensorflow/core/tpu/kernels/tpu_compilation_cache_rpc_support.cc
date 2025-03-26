@@ -67,7 +67,7 @@ Status DeserializeRpcResponseToCacheEntry<GetTpuProgramResponseExternal>(
   return OkStatus();
 }
 
-xla::StatusOr<std::vector<::grpc::Slice>> SerializeCacheEntryToBufferSlices(
+absl::StatusOr<std::vector<::grpc::Slice>> SerializeCacheEntryToBufferSlices(
     const TpuCompilationCacheEntry& cache_entry) {
   if (cache_entry.tpu_program_group() == nullptr) {
     // It's possible that the sharding/unsharding entry does not exist, but the

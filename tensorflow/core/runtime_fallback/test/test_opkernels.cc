@@ -18,13 +18,16 @@ limitations under the License.
 #include <memory>
 #include <string>
 
+#include "absl/log/log.h"
 #include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
-#include "tensorflow/core/framework/shape_inference.h"
+#include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/thread_annotations.h"
+#include "tsl/platform/env.h"
 
 namespace tensorflow {
 
@@ -48,7 +51,8 @@ class TestAsyncIdentityKernel : public AsyncOpKernel {
   }
 
  private:
-  TF_DISALLOW_COPY_AND_ASSIGN(TestAsyncIdentityKernel);
+  TestAsyncIdentityKernel(const TestAsyncIdentityKernel&) = delete;
+  void operator=(const TestAsyncIdentityKernel&) = delete;
 };
 
 REGISTER_KERNEL_BUILDER(Name("TestAsyncIdentity").Device(DEVICE_CPU),
@@ -89,7 +93,9 @@ class TestAsyncTfrtAsyncThreadKernel : public AsyncOpKernel {
  private:
   mutex mu_;
   std::unique_ptr<Thread> thread_ TF_GUARDED_BY(mu_);
-  TF_DISALLOW_COPY_AND_ASSIGN(TestAsyncTfrtAsyncThreadKernel);
+  TestAsyncTfrtAsyncThreadKernel(const TestAsyncTfrtAsyncThreadKernel&) =
+      delete;
+  void operator=(const TestAsyncTfrtAsyncThreadKernel&) = delete;
 };
 
 REGISTER_KERNEL_BUILDER(Name("TestAsyncTfrtAsyncThread").Device(DEVICE_CPU),
@@ -112,7 +118,8 @@ class TestPrintThreadNameKernel : public OpKernel {
   }
 
  private:
-  TF_DISALLOW_COPY_AND_ASSIGN(TestPrintThreadNameKernel);
+  TestPrintThreadNameKernel(const TestPrintThreadNameKernel&) = delete;
+  void operator=(const TestPrintThreadNameKernel&) = delete;
 };
 
 REGISTER_KERNEL_BUILDER(Name("TestPrintThreadName").Device(DEVICE_CPU),

@@ -15,7 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_VERSION_H_
 #define TENSORFLOW_LITE_VERSION_H_
 
-#include "tensorflow/core/public/version.h"
+#include "tensorflow/core/public/release_version.h"
 
 // The version number of the Schema. Ideally all changes will be backward
 // compatible. If that ever changes, we must ensure that version is the first
@@ -25,5 +25,10 @@ limitations under the License.
 // TensorFlow Lite Runtime version.
 // This value is currently shared with that of TensorFlow.
 #define TFLITE_VERSION_STRING TF_VERSION_STRING
+
+// TensorFlow Lite Extension APIs version.
+// This is the semantic version number for the custom op and delegate APIs.
+// This value is currently shared with that of TensorFlow Lite.
+#define TFLITE_EXTENSION_APIS_VERSION_STRING TFLITE_VERSION_STRING
 
 #endif  // TENSORFLOW_LITE_VERSION_H_

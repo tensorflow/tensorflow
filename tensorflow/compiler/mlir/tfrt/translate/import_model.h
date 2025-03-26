@@ -20,6 +20,8 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/functional/function_ref.h"
+#include "absl/status/status.h"
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
@@ -37,33 +39,23 @@ namespace tensorflow {
 
 struct FunctionBody;
 
-// Converts FunctionDef to TFRT's Binary Executable Format. This is the entry
-// point of tf.function to TFRT. function_name and device_name are given from
-// the Python context. The lowered BEF will be stored in an external buffer
-// pointed by bef_buffer.
-Status ConvertFunctionToBef(
-    mlir::StringRef function_name, const tensorflow::FunctionBody* fbody,
-    const FunctionLibraryDefinition& flib_def,
-    tfrt::ArrayRef<tfrt::string_view> devices,
-    const tensorflow::TfrtFunctionCompileOptions& options,
-    tfrt::BefBuffer* bef_buffer);
-
 // Converts an MLIR `module` in TF dialect to TFRT's Binary Executable Format.
 // If `fallback_state` is not null, the MLIR functions for XLA clusters in
 // the form of XlaLaunch will be exported and added to the function library when
 // needed. The nested functions will also be exported. If
 // `added_xla_function_names` is not null, it will be populated with the names
 // of the added XLA functions.
-Status ConvertTfMlirToBef(
+absl::Status ConvertTfMlirToBef(
     const TfrtCompileOptions& options, mlir::ModuleOp module,
     tfrt::BefBuffer* bef_buffer, tfrt_stub::ModelRuntimeContext& model_context,
     tfrt_stub::FallbackState* fallback_state = nullptr,
     std::vector<std::string>* added_xla_function_names = nullptr);
 
-Status ConvertTfMlirToRuntimeExecutable(
+absl::Status ConvertTfMlirToRuntimeExecutable(
     const TfrtCompileOptions& options, mlir::ModuleOp module,
-    absl::FunctionRef<Status(mlir::PassManager&, mlir::ModuleOp,
-                             const tensorflow::TfrtPipelineOptions& options)>
+    absl::FunctionRef<
+        absl::Status(mlir::PassManager&, mlir::ModuleOp,
+                     const tensorflow::TfrtPipelineOptions& options)>
         emit_executable,
     tfrt_stub::ModelRuntimeContext& model_context,
     tfrt_stub::FallbackState* fallback_state = nullptr,
@@ -73,7 +65,7 @@ std::unique_ptr<tensorflow::TfrtPipelineOptions> GetTfrtPipelineOptions(
     const TfrtCompileOptions& options);
 
 // Adds MLIR functions for XLA clusters to the function library.
-tensorflow::Status AddXlaFunctions(
+absl::Status AddXlaFunctions(
     tfrt_stub::FallbackState* fallback_state, mlir::ModuleOp mlir_module,
     std::vector<std::string>* added_xla_function_names = nullptr);
 

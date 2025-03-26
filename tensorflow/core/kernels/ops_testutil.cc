@@ -82,7 +82,7 @@ OpsTestBase::OpsTestBase() : device_type_(DEVICE_CPU) {
   allocator_ = device_->GetAllocator(AllocatorAttributes());
 
   flib_def_ = std::make_unique<FunctionLibraryDefinition>(OpRegistry::Global(),
-                                                          FunctionDefLibrary{});
+                                                          FunctionDefLibrary());
   pflr_ = std::make_unique<ProcessFunctionLibraryRuntime>(
       device_mgr_.get(), Env::Default(), /*config=*/nullptr,
       TF_GRAPH_DEF_VERSION, flib_def_.get(), OptimizerOptions());
@@ -135,11 +135,11 @@ void OpsTestBase::set_node_def(const NodeDef& node_def) {
 
 NodeDef* OpsTestBase::node_def() { return &node_def_; }
 
-Status OpsTestBase::InitOp() {
+absl::Status OpsTestBase::InitOp() {
   return InitOpWithGraphVersion(TF_GRAPH_DEF_VERSION);
 }
 
-Status OpsTestBase::InitOpWithGraphVersion(int graph_def_version) {
+absl::Status OpsTestBase::InitOpWithGraphVersion(int graph_def_version) {
   std::shared_ptr<const NodeProperties> props;
   TF_RETURN_IF_ERROR(NodeProperties::CreateFromNodeDef(
       node_def_, OpRegistry::Global(), &props));
@@ -149,7 +149,7 @@ Status OpsTestBase::InitOpWithGraphVersion(int graph_def_version) {
       device_->resource_manager(), props, graph_def_version, &kernel));
   kernel_.reset(kernel);
   input_types_ = kernel_->input_types();
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 static std::function<void(std::function<void()>)>* GetDefaultRunner() {
@@ -189,7 +189,7 @@ void OpsTestBase::CreateContext() {
   context_.reset(new OpKernelContext(params_.get()));
 }
 
-Status OpsTestBase::RunOpKernel() {
+absl::Status OpsTestBase::RunOpKernel() {
   CreateContext();
   device_->Compute(kernel_.get(), context_.get());
   return context_->status();

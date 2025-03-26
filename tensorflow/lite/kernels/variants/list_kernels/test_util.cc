@@ -14,14 +14,21 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/kernels/variants/list_kernels/test_util.h"
 
+#include <cstddef>
 #include <cstdint>
+#include <cstring>
 #include <optional>
 #include <utility>
+#include <vector>
 
+#include "absl/types/span.h"
+#include "tensorflow/lite/array.h"
+#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/core/c/c_api_types.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/kernels/op_macros.h"
 #include "tensorflow/lite/kernels/variants/tensor_array.h"
+#include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/util.h"
 
 using ::tflite::variants::TensorArray;
@@ -116,6 +123,21 @@ std::optional<size_t> TfLiteTypeSizeOf(TfLiteType type) {
       return sizeof(int8_t);
     case kTfLiteUInt16:
       return sizeof(uint16_t);
+    default:
+      return std::nullopt;
+  }
+}
+
+std::optional<TensorType> TflToTensorType(TfLiteType tfl_type) {
+  switch (tfl_type) {
+    case kTfLiteInt32:
+      return TensorType_INT32;
+    case kTfLiteFloat32:
+      return TensorType_FLOAT32;
+    case kTfLiteInt64:
+      return TensorType_INT64;
+    case kTfLiteBool:
+      return TensorType_BOOL;
     default:
       return std::nullopt;
   }

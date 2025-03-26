@@ -17,7 +17,8 @@ limitations under the License.
 
 #include <cstddef>
 #include <map>
-#include <set>
+#include <memory>
+#include <vector>
 
 #include "llvm/ADT/DenseMap.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
@@ -94,7 +95,7 @@ GlobalTensorUsesMap CreateGlobalTensorUsesMap(ModuleOp module) {
         continue;
       }
       auto global_tensor = symbol_table.lookup<GlobalTensorOp>(
-          sym.cast<FlatSymbolRefAttr>().getValue());
+          mlir::cast<FlatSymbolRefAttr>(sym).getValue());
       if (!global_tensor) {
         continue;
       }

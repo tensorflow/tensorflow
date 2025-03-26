@@ -23,11 +23,11 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_replace.h"
 #include "absl/types/any.h"
-#include "absl/types/variant.h"
 #include "tensorflow/lite/delegates/gpu/common/model.h"
-#include "tensorflow/lite/delegates/gpu/common/operations.h"
+#include "tensorflow/lite/delegates/gpu/common/model_transformer.h"
 #include "tensorflow/lite/delegates/gpu/common/types.h"
 #include "tensorflow/lite/delegates/gpu/gl/compiler/compiled_node.h"
+#include "tensorflow/lite/delegates/gpu/gl/node_shader.h"
 
 namespace tflite {
 namespace gpu {

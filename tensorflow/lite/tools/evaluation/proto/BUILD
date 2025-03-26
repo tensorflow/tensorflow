@@ -14,10 +14,13 @@
 # ==============================================================================
 
 # Placeholder: load py_proto_library
+# Placeholder: load java_proto_library
+# Placeholder: load proto_library
 load(
     "//tensorflow/core/platform:build_config.bzl",
     "tf_proto_library",
 )
+# copybara:uncomment load("//tools/build_defs/proto/cpp:cc_proto_library.bzl", "cc_proto_library")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -91,7 +94,6 @@ cc_proto_library(
 # copybara:uncomment_begin(google-only)
 # py_proto_library(
 #     name = "evaluation_stages_py_pb2",
-#     api_version = 2,
 #     visibility = ["//visibility:public"],
 #     deps = [":evaluation_stages_proto"],
 # )

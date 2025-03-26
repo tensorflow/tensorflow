@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -39,7 +39,7 @@ class HloOp {
   void SetName(const std::string& name) {
     inst_->SetAndSanitizeName(name);
     if (inst_->GetModule() != nullptr) {
-      inst_->UniquifyName(&inst_->GetModule()->instruction_name_uniquer());
+      inst_->UniquifyName(inst_->GetModule());
     }
   }
   HloInstruction* get() { return inst_; }

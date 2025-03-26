@@ -17,18 +17,20 @@ limitations under the License.
 
 #include <vector>
 
+#include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
-#include "xla/client/xla_builder.h"
+#include "xla/hlo/builder/xla_builder.h"
 #include "xla/shape.h"
+#include "xla/tsl/platform/logging.h"  // IWYU pragma: keep
 #include "xla/xla_data.pb.h"
 #include "tensorflow/core/platform/statusor.h"
-#include "tsl/platform/logging.h"  // IWYU pragma: keep
 
 namespace tensorflow {
 namespace tpu {
 
-StatusOr<xla::OpSharding> SpmdShardingAnnotationOnFirstDim(
+absl::StatusOr<xla::OpSharding> SpmdShardingAnnotationOnFirstDim(
     const xla::Shape& shape, int core_count_per_replica,
     xla::XlaBuilder* builder) {
   if (!shape.IsArray()) {
@@ -52,7 +54,7 @@ StatusOr<xla::OpSharding> SpmdShardingAnnotationOnFirstDim(
           shape.dimensions(0), core_count_per_replica));
     }
 
-    std::vector<int> tile_assignment_dimensions(shape.dimensions_size(), 1);
+    std::vector<int> tile_assignment_dimensions(shape.dimensions().size(), 1);
     tile_assignment_dimensions[0] = core_count_per_replica;
 
     op_sharding.set_type(xla::OpSharding::OTHER);

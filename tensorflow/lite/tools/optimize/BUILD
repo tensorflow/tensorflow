@@ -1,10 +1,6 @@
-load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
+load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
 load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite")
-load(
-    "//tensorflow/lite:build_def.bzl",
-    "tflite_copts",
-)
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -14,10 +10,6 @@ package(
     licenses = ["notice"],
 )
 
-exports_files(glob([
-    "testdata/*.bin",
-]))
-
 cc_library(
     name = "reduced_precision_support",
     srcs = [],
@@ -26,7 +18,7 @@ cc_library(
     ],
     compatible_with = get_compatible_with_portable(),
     deps = [
-        "//tensorflow/lite/kernels/internal:compatibility",
+        "//tensorflow/compiler/mlir/lite/tools/optimize:reduced_precision_metadata",
     ],
 )
 
@@ -39,7 +31,6 @@ tf_cc_test(
     ],
     deps = [
         ":reduced_precision_support",
-        ":test_util",
         "//tensorflow/core/platform:platform_port",
         "//tensorflow/lite:framework",
         "//tensorflow/lite/core:framework",
@@ -184,6 +175,7 @@ cc_library(
         ":model_utils",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:minimal_logging",
+        "//tensorflow/lite/c:c_api_types",
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/kernels/internal:cppmath",
@@ -191,7 +183,6 @@ cc_library(
         "//tensorflow/lite/kernels/internal:tensor_utils",
         "//tensorflow/lite/kernels/internal:types",
         "//tensorflow/lite/schema:schema_fbs",
-        "@com_google_absl//absl/memory",
         "@eigen_archive//:eigen3",
     ],
 )
@@ -223,7 +214,6 @@ tf_cc_test(
     ],
     deps = [
         ":model_utils",
-        ":test_util",
         "//tensorflow/lite:framework",
         "//tensorflow/lite/core:framework",
         "//tensorflow/lite/schema:schema_fbs",
@@ -232,28 +222,19 @@ tf_cc_test(
     ],
 )
 
-cc_library(
+alias(
     name = "operator_property",
-    srcs = ["operator_property.cc"],
-    hdrs = ["operator_property.h"],
-    compatible_with = get_compatible_with_portable(),
-    copts = tflite_copts(),
-    deps = [
-        "//tensorflow/lite:framework",
-        "//tensorflow/lite/core:framework",
-        "//tensorflow/lite/schema:schema_fbs",
-        "//tensorflow/lite/schema:schema_utils",
-    ],
+    actual = "//tensorflow/compiler/mlir/lite/tools/optimize:operator_property",
 )
 
 tf_cc_test(
     name = "quantization_utils_test",
     srcs = ["quantization_utils_test.cc"],
     args = [
-        "--test_model_file=$(location //tensorflow/lite/tools/optimize:testdata/single_conv_weights_min_0_max_plus_10.bin)",
+        "--test_model_file=$(location //tensorflow/compiler/mlir/lite/quantization/lite:testdata/single_conv_weights_min_0_max_plus_10.bin)",
     ],
     data = [
-        ":testdata/single_conv_weights_min_0_max_plus_10.bin",
+        "//tensorflow/compiler/mlir/lite/quantization/lite:testdata/single_conv_weights_min_0_max_plus_10.bin",
     ],
     tags = [
         "tflite_not_portable_android",
@@ -261,7 +242,7 @@ tf_cc_test(
     ],
     deps = [
         ":quantization_utils",
-        ":test_util",
+        "//tensorflow/compiler/mlir/lite/quantization/lite:test_util",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
         "//tensorflow/lite:framework",
@@ -273,82 +254,6 @@ tf_cc_test(
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest",
         "@eigen_archive//:eigen3",
-        "@flatbuffers",
-    ],
-)
-
-cc_library(
-    name = "quantize_weights",
-    srcs = select({
-        "//tensorflow:ios": ["quantize_weights_portable.cc"],
-        "//tensorflow:android": ["quantize_weights_portable.cc"],
-        "//conditions:default": ["quantize_weights.cc"],
-    }),
-    hdrs = ["quantize_weights.h"],
-    compatible_with = get_compatible_with_portable(),
-    deps = [
-        ":quantization_utils",
-        ":model_utils",
-        "@com_google_absl//absl/memory",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/container:flat_hash_set",
-        "@flatbuffers",
-        "//tensorflow/lite:framework",
-        "//tensorflow/lite/core:framework",
-        # TODO(suharshs): Move the relevant quantization utils to a non-internal location.
-        "//tensorflow/lite/kernels/internal:tensor_utils",
-        "//tensorflow/lite/schema:schema_fbs",
-        "//tensorflow/lite/schema:schema_utils",
-        "//tensorflow/core:tflite_portable_logging",
-    ] + select({
-        "//tensorflow:android": [],
-        "//tensorflow:ios": [],
-        "//conditions:default": [
-            "//tensorflow/compiler/mlir/lite/quantization/lite:quantize_weights",
-        ],
-    }),
-)
-
-tf_cc_test(
-    name = "quantize_weights_test",
-    srcs = ["quantize_weights_test.cc"],
-    args = [
-        "--test_model_file=$(location //tensorflow/lite/tools/optimize:testdata/single_conv_weights_min_0_max_plus_10.bin)",
-    ],
-    data = [
-        "//tensorflow/lite/tools/optimize:testdata/custom_op.bin",
-        "//tensorflow/lite/tools/optimize:testdata/quantized_with_gather.bin",
-        "//tensorflow/lite/tools/optimize:testdata/single_conv_weights_min_0_max_plus_10.bin",
-        "//tensorflow/lite/tools/optimize:testdata/weight_shared_between_convs.bin",
-    ],
-    tags = [
-        "tflite_not_portable_android",
-        "tflite_not_portable_ios",
-    ],
-    deps = [
-        ":quantize_weights",
-        ":test_util",
-        "//tensorflow/core:framework_internal",
-        "//tensorflow/core:lib",
-        "//tensorflow/lite:framework",
-        "//tensorflow/lite/core:framework",
-        "//tensorflow/lite/schema:schema_fbs",
-        "//tensorflow/lite/schema:schema_utils",
-        "@com_google_googletest//:gtest",
-        "@flatbuffers",
-    ],
-)
-
-cc_library(
-    name = "test_util",
-    testonly = 1,
-    srcs = ["test_util.cc"],
-    hdrs = ["test_util.h"],
-    deps = [
-        "//tensorflow/lite:framework",
-        "//tensorflow/lite/core/api",
-        "@com_google_googletest//:gtest",
         "@flatbuffers",
     ],
 )
@@ -377,40 +282,40 @@ tf_cc_test(
     name = "quantize_model_test",
     srcs = ["quantize_model_test.cc"],
     args = [
-        "--test_model_file=$(location //tensorflow/lite/tools/optimize:testdata/single_conv_weights_min_0_max_plus_10.bin)",
+        "--test_model_file=$(location //tensorflow/compiler/mlir/lite/quantization/lite:testdata/single_conv_weights_min_0_max_plus_10.bin)",
     ],
     data = [
-        "//tensorflow/lite/tools/optimize:testdata/add_with_const_input.bin",
-        "//tensorflow/lite/tools/optimize:testdata/argmax.bin",
-        "//tensorflow/lite/tools/optimize:testdata/broadcast_to.bin",
-        "//tensorflow/lite/tools/optimize:testdata/concat.bin",
-        "//tensorflow/lite/tools/optimize:testdata/fc.bin",
-        "//tensorflow/lite/tools/optimize:testdata/fc_qat.bin",
-        "//tensorflow/lite/tools/optimize:testdata/gather_nd.bin",
-        "//tensorflow/lite/tools/optimize:testdata/lstm_calibrated.bin",
-        "//tensorflow/lite/tools/optimize:testdata/lstm_calibrated2.bin",
-        "//tensorflow/lite/tools/optimize:testdata/lstm_quantized.bin",
-        "//tensorflow/lite/tools/optimize:testdata/lstm_quantized2.bin",
-        "//tensorflow/lite/tools/optimize:testdata/maximum.bin",
-        "//tensorflow/lite/tools/optimize:testdata/minimum.bin",
-        "//tensorflow/lite/tools/optimize:testdata/mixed.bin",
-        "//tensorflow/lite/tools/optimize:testdata/mixed16x8.bin",
-        "//tensorflow/lite/tools/optimize:testdata/multi_input_add_reshape.bin",
-        "//tensorflow/lite/tools/optimize:testdata/pack.bin",
-        "//tensorflow/lite/tools/optimize:testdata/resource_vars_calibrated.bin",
-        "//tensorflow/lite/tools/optimize:testdata/single_avg_pool_min_minus_5_max_plus_5.bin",
-        "//tensorflow/lite/tools/optimize:testdata/single_conv_no_bias.bin",
-        "//tensorflow/lite/tools/optimize:testdata/single_conv_weights_min_0_max_plus_10.bin",
-        "//tensorflow/lite/tools/optimize:testdata/single_conv_weights_min_minus_127_max_plus_127.bin",
-        "//tensorflow/lite/tools/optimize:testdata/single_softmax_min_minus_5_max_plus_5.bin",
-        "//tensorflow/lite/tools/optimize:testdata/split.bin",
-        "//tensorflow/lite/tools/optimize:testdata/svdf_calibrated.bin",
-        "//tensorflow/lite/tools/optimize:testdata/svdf_quantized.bin",
-        "//tensorflow/lite/tools/optimize:testdata/transpose.bin",
-        "//tensorflow/lite/tools/optimize:testdata/unidirectional_sequence_lstm_calibrated.bin",
-        "//tensorflow/lite/tools/optimize:testdata/unidirectional_sequence_lstm_quantized.bin",
-        "//tensorflow/lite/tools/optimize:testdata/unpack.bin",
-        "//tensorflow/lite/tools/optimize:testdata/where.bin",
+        "//tensorflow/compiler/mlir/lite/quantization/lite:testdata/add_with_const_input.bin",
+        "//tensorflow/compiler/mlir/lite/quantization/lite:testdata/argmax.bin",
+        "//tensorflow/compiler/mlir/lite/quantization/lite:testdata/broadcast_to.bin",
+        "//tensorflow/compiler/mlir/lite/quantization/lite:testdata/concat.bin",
+        "//tensorflow/compiler/mlir/lite/quantization/lite:testdata/fc.bin",
+        "//tensorflow/compiler/mlir/lite/quantization/lite:testdata/fc_qat.bin",
+        "//tensorflow/compiler/mlir/lite/quantization/lite:testdata/gather_nd.bin",
+        "//tensorflow/compiler/mlir/lite/quantization/lite:testdata/lstm_calibrated.bin",
+        "//tensorflow/compiler/mlir/lite/quantization/lite:testdata/lstm_calibrated2.bin",
+        "//tensorflow/compiler/mlir/lite/quantization/lite:testdata/lstm_quantized.bin",
+        "//tensorflow/compiler/mlir/lite/quantization/lite:testdata/lstm_quantized2.bin",
+        "//tensorflow/compiler/mlir/lite/quantization/lite:testdata/maximum.bin",
+        "//tensorflow/compiler/mlir/lite/quantization/lite:testdata/minimum.bin",
+        "//tensorflow/compiler/mlir/lite/quantization/lite:testdata/mixed.bin",
+        "//tensorflow/compiler/mlir/lite/quantization/lite:testdata/mixed16x8.bin",
+        "//tensorflow/compiler/mlir/lite/quantization/lite:testdata/multi_input_add_reshape.bin",
+        "//tensorflow/compiler/mlir/lite/quantization/lite:testdata/pack.bin",
+        "//tensorflow/compiler/mlir/lite/quantization/lite:testdata/resource_vars_calibrated.bin",
+        "//tensorflow/compiler/mlir/lite/quantization/lite:testdata/single_avg_pool_min_minus_5_max_plus_5.bin",
+        "//tensorflow/compiler/mlir/lite/quantization/lite:testdata/single_conv_no_bias.bin",
+        "//tensorflow/compiler/mlir/lite/quantization/lite:testdata/single_conv_weights_min_0_max_plus_10.bin",
+        "//tensorflow/compiler/mlir/lite/quantization/lite:testdata/single_conv_weights_min_minus_127_max_plus_127.bin",
+        "//tensorflow/compiler/mlir/lite/quantization/lite:testdata/single_softmax_min_minus_5_max_plus_5.bin",
+        "//tensorflow/compiler/mlir/lite/quantization/lite:testdata/split.bin",
+        "//tensorflow/compiler/mlir/lite/quantization/lite:testdata/svdf_calibrated.bin",
+        "//tensorflow/compiler/mlir/lite/quantization/lite:testdata/svdf_quantized.bin",
+        "//tensorflow/compiler/mlir/lite/quantization/lite:testdata/transpose.bin",
+        "//tensorflow/compiler/mlir/lite/quantization/lite:testdata/unidirectional_sequence_lstm_calibrated.bin",
+        "//tensorflow/compiler/mlir/lite/quantization/lite:testdata/unidirectional_sequence_lstm_quantized.bin",
+        "//tensorflow/compiler/mlir/lite/quantization/lite:testdata/unpack.bin",
+        "//tensorflow/compiler/mlir/lite/quantization/lite:testdata/where.bin",
     ],
     tags = [
         "tflite_not_portable_android",
@@ -418,7 +323,7 @@ tf_cc_test(
     ],
     deps = [
         ":quantize_model",
-        ":test_util",
+        "//tensorflow/compiler/mlir/lite/quantization/lite:test_util",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
         "//tensorflow/lite:framework",

@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,28 +16,48 @@ limitations under the License.
 // Tests of 2+D convolution with trivial kernels and no special variations (like
 // strides and padding).
 
-#include <memory>
+#include <cstdint>
+#include <numeric>
+#include <string>
+#include <tuple>
+#include <variant>
+#include <vector>
 
+#include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_replace.h"
+#include "Eigen/Core"
 #include "xla/array2d.h"
 #include "xla/array4d.h"
-#include "xla/client/global_data.h"
-#include "xla/client/local_client.h"
-#include "xla/client/padding.h"
-#include "xla/client/xla_builder.h"
+#include "xla/error_spec.h"
+#include "xla/hlo/builder/padding.h"
+#include "xla/hlo/builder/xla_builder.h"
 #include "xla/layout_util.h"
 #include "xla/literal.h"
+#include "xla/literal_util.h"
+#include "xla/service/hlo_runner_interface.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/statusor.h"
-#include "xla/tests/client_library_test_base.h"
-#include "xla/tests/hlo_test_base.h"
+#include "xla/stream_executor/device_description.h"
+#include "xla/tests/client_library_test_runner_mixin.h"
+#include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
+#include "xla/tests/hlo_pjrt_test_base.h"
 #include "xla/tests/test_macros.h"
+#include "xla/types.h"
+#include "xla/window_util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/test.h"
 
 namespace xla {
 namespace {
 
-class ConvolutionTest : public ClientLibraryTestBase {
+class ConvolutionTest : public ClientLibraryTestRunnerMixin<
+                            HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>> {
+ public:
+  // Returns true if the test is running on ROCm.
+  bool IsRocm() {
+    return test_runner().HasProperty(HloRunnerPropertyTag::kUsingGpuRocm);
+  }
+
  protected:
 #if XLA_TEST_BACKEND_GPU
   // XLA:GPU sometimes uses FFT convolution which isn't as precise as spatial
@@ -123,14 +143,14 @@ class Convolve_1x1x1x2_1x1x1x2_Valid : public ConvolutionTest {
     input_data.FillWithYX(Array2D<T>({
         {static_cast<T>(1.0f), static_cast<T>(2.0f)},
     }));
+    Literal input_data_literal = LiteralUtil::CreateFromArray(input_data);
     Array4D<T> filter_data(1, 1, 1, 2);
     filter_data.FillWithYX(Array2D<T>({
         {static_cast<T>(5.0f), static_cast<T>(6.0f)},
     }));
+    Literal filter_data_literal = LiteralUtil::CreateFromArray(filter_data);
 
-    ComputeAndCompare(&builder,
-                      {LiteralUtil::CreateFromArray(input_data),
-                       LiteralUtil::CreateFromArray(filter_data)},
+    ComputeAndCompare(&builder, {&input_data_literal, &filter_data_literal},
                       error_spec_);
   }
 };
@@ -161,14 +181,14 @@ class Convolve_1x1x4x4_1x1x2x2_Valid : public ConvolutionTest {
         {static_cast<T>(13.0f), static_cast<T>(14.0f), static_cast<T>(15.0f),
          static_cast<T>(16.0f)},
     }));
+    Literal input_data_literal = LiteralUtil::CreateFromArray(input_data);
     Array4D<T> filter_data(1, 1, 2, 2);
     filter_data.FillWithYX(Array2D<T>({
         {static_cast<T>(5.0f), static_cast<T>(6.0f)},
         {static_cast<T>(7.0f), static_cast<T>(8.0f)},
     }));
-    ComputeAndCompare(&builder,
-                      {LiteralUtil::CreateFromArray(input_data),
-                       LiteralUtil::CreateFromArray(filter_data)},
+    Literal filter_data_literal = LiteralUtil::CreateFromArray(filter_data);
+    ComputeAndCompare(&builder, {&input_data_literal, &filter_data_literal},
                       error_spec_);
   }
 };
@@ -199,15 +219,15 @@ class Convolve_1x1x4x4_1x1x2x2_Same : public ConvolutionTest {
         {static_cast<T>(13.0f), static_cast<T>(14.0f), static_cast<T>(15.0f),
          static_cast<T>(16.0f)},
     }));
+    Literal input_data_literal = LiteralUtil::CreateFromArray(input_data);
     Array4D<T> filter_data(1, 1, 2, 2);
     filter_data.FillWithYX(Array2D<T>({
         {static_cast<T>(5.0f), static_cast<T>(6.0f)},
         {static_cast<T>(7.0f), static_cast<T>(8.0f)},
     }));
+    Literal filter_data_literal = LiteralUtil::CreateFromArray(filter_data);
 
-    ComputeAndCompare(&builder,
-                      {LiteralUtil::CreateFromArray(input_data),
-                       LiteralUtil::CreateFromArray(filter_data)},
+    ComputeAndCompare(&builder, {&input_data_literal, &filter_data_literal},
                       error_spec_);
   }
 };
@@ -238,16 +258,16 @@ class Convolve_1x1x4x4_1x1x3x3_Same : public ConvolutionTest {
                      static_cast<T>(11.0f), static_cast<T>(12.0f)},
                     {static_cast<T>(13.0f), static_cast<T>(14.0f),
                      static_cast<T>(15.0f), static_cast<T>(16.0f)}}));
+    Literal input_data_literal = LiteralUtil::CreateFromArray(input_data);
     Array4D<T> filter_data(1, 1, 3, 3);
     filter_data.FillWithYX(Array2D<T>(
         {{static_cast<T>(5.0f), static_cast<T>(6.0f), static_cast<T>(7.0f)},
          {static_cast<T>(8.0f), static_cast<T>(9.0f), static_cast<T>(10.0f)},
          {static_cast<T>(11.0f), static_cast<T>(12.0f),
           static_cast<T>(13.0f)}}));
+    Literal filter_data_literal = LiteralUtil::CreateFromArray(filter_data);
     // clang-format on
-    ComputeAndCompare(&builder,
-                      {LiteralUtil::CreateFromArray(input_data),
-                       LiteralUtil::CreateFromArray(filter_data)},
+    ComputeAndCompare(&builder, {&input_data_literal, &filter_data_literal},
                       error_spec_);
   }
 };
@@ -301,11 +321,7 @@ XLA_TEST_F(ConvolutionTest, Convolve3D_1x4x2x3x3_2x2x2x3x3_Valid) {
        38358, 39270, 50226, 51498, 52770, 52782, 54126, 55470});
   auto expected_r5 = expected_r1.Reshape({1, 3, 1, 2, 3}).value();
 
-  auto input_literal = client_->TransferToServer(input_r5).value();
-  auto filter_literal = client_->TransferToServer(filter_r5).value();
-
-  ComputeAndCompareLiteral(&builder, expected_r5,
-                           {input_literal.get(), filter_literal.get()},
+  ComputeAndCompareLiteral(&builder, expected_r5, {&input_r5, &filter_r5},
                            error_spec_);
 }
 
@@ -362,17 +378,132 @@ class Convolve2D_1x3x3x5_3x3x5x3_Valid : public ConvolutionTest {
         {static_cast<T>(92115), static_cast<T>(93150), static_cast<T>(94185)});
     auto expected_r4 = expected_r1.Reshape({1, 1, 1, 3}).value();
 
-    auto input_literal = client_->TransferToServer(input_r4).value();
-    auto filter_literal = client_->TransferToServer(filter_r4).value();
-
-    ComputeAndCompareLiteral(&builder, expected_r4,
-                             {input_literal.get(), filter_literal.get()},
+    ComputeAndCompareLiteral(&builder, expected_r4, {&input_r4, &filter_r4},
                              error_spec_);
   }
 };
 
 TYPED_TEST_CASE(Convolve2D_1x3x3x5_3x3x5x3_Valid, TestTypes);
 TYPED_TEST(Convolve2D_1x3x3x5_3x3x5x3_Valid, Types) { this->RunTest(); }
+
+// Test same padding for 2D convolution with kernel of such size, that every
+// single pad value is different (low and high, in x and y dimension).
+// Intention of this test is to verify that padding is implemented correctly.
+template <typename T>
+class Convolve2D_1x6x6x1_6x2x1x1_Same : public ConvolutionTest {
+ public:
+  void RunTest() {
+    XlaBuilder builder(TestName());
+    std::vector<int64_t> input_dims = {1, 6, 6, 1};
+    std::vector<int64_t> filter_dims = {6, 2, 1, 1};
+    Shape input_shape = ShapeUtil::MakeShapeWithType<T>(input_dims);
+    Shape filter_shape = ShapeUtil::MakeShapeWithType<T>(filter_dims);
+    {
+      auto input = Parameter(&builder, 0, input_shape, "input");
+      auto filter = Parameter(&builder, 1, filter_shape, "filter");
+
+      // Tensorflow dimension numbers for 2D convolution.
+      ConvolutionDimensionNumbers dnums;
+      dnums.set_input_batch_dimension(0);
+      dnums.add_input_spatial_dimensions(1);
+      dnums.add_input_spatial_dimensions(2);
+      dnums.set_input_feature_dimension(3);
+      dnums.add_kernel_spatial_dimensions(0);
+      dnums.add_kernel_spatial_dimensions(1);
+      dnums.set_kernel_input_feature_dimension(2);
+      dnums.set_kernel_output_feature_dimension(3);
+      dnums.set_output_batch_dimension(0);
+      dnums.add_output_spatial_dimensions(1);
+      dnums.add_output_spatial_dimensions(2);
+      dnums.set_output_feature_dimension(3);
+
+      ConvWithGeneralDimensions(input, filter, {1, 1}, Padding::kSame, dnums);
+    }
+
+    std::vector<T> input_elems(ShapeUtil::ElementsIn(input_shape));
+    iota_int_init_value(input_elems, 1);
+    auto input_r1 = LiteralUtil::CreateR1<T>(input_elems);
+    auto input_r4 = input_r1.Reshape(input_dims).value();
+
+    std::vector<T> filter_elems(ShapeUtil::ElementsIn(filter_shape));
+    iota_int_init_value(filter_elems, 1);
+    auto filter_r1 = LiteralUtil::CreateR1<T>(filter_elems);
+    auto filter_r4 = filter_r1.Reshape(filter_dims).value();
+
+    auto expected_r1 = LiteralUtil::CreateR1<T>(
+        {static_cast<T>(836),  static_cast<T>(904),  static_cast<T>(972),
+         static_cast<T>(1040), static_cast<T>(1108), static_cast<T>(540),
+         static_cast<T>(1255), static_cast<T>(1330), static_cast<T>(1405),
+         static_cast<T>(1480), static_cast<T>(1555), static_cast<T>(750),
+         static_cast<T>(1710), static_cast<T>(1788), static_cast<T>(1866),
+         static_cast<T>(1944), static_cast<T>(2022), static_cast<T>(966),
+         static_cast<T>(1315), static_cast<T>(1370), static_cast<T>(1425),
+         static_cast<T>(1480), static_cast<T>(1535), static_cast<T>(720),
+         static_cast<T>(932),  static_cast<T>(968),  static_cast<T>(1004),
+         static_cast<T>(1040), static_cast<T>(1076), static_cast<T>(492),
+         static_cast<T>(585),  static_cast<T>(606),  static_cast<T>(627),
+         static_cast<T>(648),  static_cast<T>(669),  static_cast<T>(294)});
+
+    auto expected_r4 = expected_r1.Reshape({1, 6, 6, 1}).value();
+
+    ComputeAndCompareLiteral(&builder, expected_r4, {&input_r4, &filter_r4},
+                             error_spec_);
+  }
+};
+
+TYPED_TEST_CASE(Convolve2D_1x6x6x1_6x2x1x1_Same, TestTypes);
+TYPED_TEST(Convolve2D_1x6x6x1_6x2x1x1_Same, Types) { this->RunTest(); }
+
+template <typename T>
+class Convolve1D_1x3x5_3x5x3_Valid : public ConvolutionTest {
+ public:
+  void RunTest() {
+    XlaBuilder builder(TestName());
+    std::vector<int64_t> input_dims = {1, 3, 5};
+    std::vector<int64_t> filter_dims = {3, 5, 3};
+    Shape input_shape = ShapeUtil::MakeShapeWithType<T>(input_dims);
+    Shape filter_shape = ShapeUtil::MakeShapeWithType<T>(filter_dims);
+    {
+      auto input = Parameter(&builder, 0, input_shape, "input");
+      auto filter = Parameter(&builder, 1, filter_shape, "filter");
+
+      // Tensorflow dimension numbers for 1D convolution.
+      // Layout as supported by Eigen convolution.
+      ConvolutionDimensionNumbers dnums;
+      dnums.set_input_batch_dimension(0);
+      dnums.add_input_spatial_dimensions(1);
+      dnums.set_input_feature_dimension(2);
+      dnums.add_kernel_spatial_dimensions(0);
+      dnums.set_kernel_input_feature_dimension(1);
+      dnums.set_kernel_output_feature_dimension(2);
+      dnums.set_output_batch_dimension(0);
+      dnums.add_output_spatial_dimensions(1);
+      dnums.set_output_feature_dimension(2);
+
+      ConvWithGeneralDimensions(input, filter, {1}, Padding::kValid, dnums);
+    }
+
+    std::vector<T> input_elems(ShapeUtil::ElementsIn(input_shape));
+    iota_int_init_value(input_elems, 1);
+    auto input_r1 = LiteralUtil::CreateR1<T>(input_elems);
+    auto input_r3 = input_r1.Reshape(input_dims).value();
+
+    std::vector<T> filter_elems(ShapeUtil::ElementsIn(filter_shape));
+    iota_int_init_value(filter_elems, 1);
+    auto filter_r1 = LiteralUtil::CreateR1<T>(filter_elems);
+    auto filter_r3 = filter_r1.Reshape(filter_dims).value();
+
+    auto expected_r1 = LiteralUtil::CreateR1<T>(
+        {static_cast<T>(3480), static_cast<T>(3600), static_cast<T>(3720)});
+    auto expected_r3 = expected_r1.Reshape({1, 1, 3}).value();
+
+    ComputeAndCompareLiteral(&builder, expected_r3, {&input_r3, &filter_r3},
+                             error_spec_);
+  }
+};
+
+TYPED_TEST_CASE(Convolve1D_1x3x5_3x5x3_Valid, TestTypes);
+TYPED_TEST(Convolve1D_1x3x5_3x5x3_Valid, Types) { this->RunTest(); }
 
 template <typename T>
 class Convolve2D_1x3x3x5_3x3x1x15_Depthwise_Valid : public ConvolutionTest {
@@ -424,11 +555,7 @@ class Convolve2D_1x3x3x5_3x3x1x15_Depthwise_Valid : public ConvolutionTest {
          static_cast<T>(20925), static_cast<T>(21150), static_cast<T>(21375)});
     auto expected_r4 = expected_r1.Reshape({1, 1, 1, 15}).value();
 
-    auto input_literal = client_->TransferToServer(input_r4).value();
-    auto filter_literal = client_->TransferToServer(filter_r4).value();
-
-    ComputeAndCompareLiteral(&builder, expected_r4,
-                             {input_literal.get(), filter_literal.get()},
+    ComputeAndCompareLiteral(&builder, expected_r4, {&input_r4, &filter_r4},
                              error_spec_);
   }
 };
@@ -490,11 +617,7 @@ class Convolve2D_1x4x4x5_3x3x1x5_Depthwise_Valid : public ConvolutionTest {
          static_cast<T>(13614), static_cast<T>(14325)});
     auto expected_r4 = expected_r1.Reshape({1, 2, 2, 5}).value();
 
-    auto input_literal = client_->TransferToServer(input_r4).value();
-    auto filter_literal = client_->TransferToServer(filter_r4).value();
-
-    ComputeAndCompareLiteral(&builder, expected_r4,
-                             {input_literal.get(), filter_literal.get()},
+    ComputeAndCompareLiteral(&builder, expected_r4, {&input_r4, &filter_r4},
                              error_spec_);
 
     auto filter_r = filter_r1.Reshape(filter_dims);
@@ -553,11 +676,7 @@ class Convolve2D_1x4x4x512_3x3x1x512_Depthwise_Valid : public ConvolutionTest {
     auto expected_r1 = LiteralUtil::CreateR1<T>(output_elems);
     auto expected_r4 = expected_r1.Reshape({1, 2, 2, 512}).value();
 
-    auto input_literal = client_->TransferToServer(input_r4).value();
-    auto filter_literal = client_->TransferToServer(filter_r4).value();
-
-    ComputeAndCompareLiteral(&builder, expected_r4,
-                             {input_literal.get(), filter_literal.get()},
+    ComputeAndCompareLiteral(&builder, expected_r4, {&input_r4, &filter_r4},
                              error_spec_);
   }
 };
@@ -617,12 +736,8 @@ class Convolve2D_1x4x4x512_3x3x1x512_Depthwise_Valid_Output_Batch_In_Lanes
     auto expected_r4_relaid =
         expected_r4.Relayout(LayoutUtil::MakeLayout({0, 3, 2, 1}));
 
-    auto input_literal = client_->TransferToServer(input_r4).value();
-    auto filter_literal = client_->TransferToServer(filter_r4).value();
-
     ComputeAndCompareLiteral(&builder, expected_r4_relaid,
-                             {input_literal.get(), filter_literal.get()},
-                             error_spec_, &expected_r4_relaid.shape());
+                             {&input_r4, &filter_r4}, error_spec_);
   }
 };
 
@@ -671,8 +786,6 @@ class Convolve2D_256x4x4x512_3x3x1x512_Depthwise_Input_Batch_in_Lanes
                                static_cast<T>(1));
     auto input_r1 = LiteralUtil::CreateR1<T>(input_elems);
     auto input_r4 = input_r1.Reshape(input_dims).value();
-    auto input_r4_relaid =
-        input_r4.Relayout(LayoutUtil::MakeLayout({0, 3, 2, 1}));
 
     std::vector<T> filter_elems(ShapeUtil::ElementsIn(filter_shape),
                                 static_cast<T>(2));
@@ -684,11 +797,7 @@ class Convolve2D_256x4x4x512_3x3x1x512_Depthwise_Input_Batch_in_Lanes
     auto expected_r1 = LiteralUtil::CreateR1<T>(output_elems);
     auto expected_r4 = expected_r1.Reshape({256, 2, 2, 512}).value();
 
-    auto input_literal = client_->TransferToServer(input_r4_relaid).value();
-    auto filter_literal = client_->TransferToServer(filter_r4).value();
-
-    ComputeAndCompareLiteral(&builder, expected_r4,
-                             {input_literal.get(), filter_literal.get()},
+    ComputeAndCompareLiteral(&builder, expected_r4, {&input_r4, &filter_r4},
                              error_spec_);
   }
 };
@@ -737,8 +846,6 @@ class Convolve2D_256x4x4x512_3x3x1x512_Depthwise_Both_Batch_in_Lanes
                                static_cast<T>(1));
     auto input_r1 = LiteralUtil::CreateR1<T>(input_elems);
     auto input_r4 = input_r1.Reshape(input_dims).value();
-    auto input_r4_relaid =
-        input_r4.Relayout(LayoutUtil::MakeLayout({0, 3, 2, 1}));
 
     std::vector<T> filter_elems(ShapeUtil::ElementsIn(filter_shape),
                                 static_cast<T>(2));
@@ -752,12 +859,8 @@ class Convolve2D_256x4x4x512_3x3x1x512_Depthwise_Both_Batch_in_Lanes
     auto expected_r4_relaid =
         expected_r4.Relayout(LayoutUtil::MakeLayout({0, 3, 2, 1}));
 
-    auto input_literal = client_->TransferToServer(input_r4_relaid).value();
-    auto filter_literal = client_->TransferToServer(filter_r4).value();
-
     ComputeAndCompareLiteral(&builder, expected_r4_relaid,
-                             {input_literal.get(), filter_literal.get()},
-                             error_spec_, &expected_r4_relaid.shape());
+                             {&input_r4, &filter_r4}, error_spec_);
   }
 };
 
@@ -805,8 +908,6 @@ class Convolve2D_1x4x4x5_3x3x1x5_Depthwise_Valid_Output_Batch_In_Lanes
     iota_int_init_value(input_elems, 1);
     auto input_r1 = LiteralUtil::CreateR1<T>(input_elems);
     auto input_r4 = input_r1.Reshape(input_dims).value();
-    auto input_r4_relaid =
-        input_r4.Relayout(LayoutUtil::MakeLayout({0, 3, 2, 1}));
 
     std::vector<T> filter_elems(ShapeUtil::ElementsIn(filter_shape));
     iota_int_init_value(filter_elems, 1);
@@ -825,12 +926,8 @@ class Convolve2D_1x4x4x5_3x3x1x5_Depthwise_Valid_Output_Batch_In_Lanes
     auto expected_r4_relaid =
         expected_r4.Relayout(LayoutUtil::MakeLayout({0, 3, 2, 1}));
 
-    auto input_literal = client_->TransferToServer(input_r4_relaid).value();
-    auto filter_literal = client_->TransferToServer(filter_r4).value();
-
     ComputeAndCompareLiteral(&builder, expected_r4_relaid,
-                             {input_literal.get(), filter_literal.get()},
-                             error_spec_, &expected_r4_relaid.shape());
+                             {&input_r4, &filter_r4}, error_spec_);
   }
 };
 
@@ -889,11 +986,7 @@ class Convolve2D_1x4x4x160_3x3x1x160_Depthwise_Valid : public ConvolutionTest {
     auto expected_r1 = LiteralUtil::CreateR1<T>(output_elems);
     auto expected_r4 = expected_r1.Reshape({1, 2, 2, 160}).value();
 
-    auto input_literal = client_->TransferToServer(input_r4).value();
-    auto filter_literal = client_->TransferToServer(filter_r4).value();
-
-    ComputeAndCompareLiteral(&builder, expected_r4,
-                             {input_literal.get(), filter_literal.get()},
+    ComputeAndCompareLiteral(&builder, expected_r4, {&input_r4, &filter_r4},
                              error_spec_);
   }
 };
@@ -940,8 +1033,6 @@ class Convolve2D_1x4x4x160_3x3x1x160_Depthwise_Input_Batch_In_Lanes
                                static_cast<T>(1));
     auto input_r1 = LiteralUtil::CreateR1<T>(input_elems);
     auto input_r4 = input_r1.Reshape(input_dims).value();
-    auto input_r4_relaid =
-        input_r4.Relayout(LayoutUtil::MakeLayout({0, 3, 2, 1}));
 
     std::vector<T> filter_elems(ShapeUtil::ElementsIn(filter_shape),
                                 static_cast<T>(2));
@@ -955,12 +1046,8 @@ class Convolve2D_1x4x4x160_3x3x1x160_Depthwise_Input_Batch_In_Lanes
     auto expected_r4_relaid =
         expected_r4.Relayout(LayoutUtil::MakeLayout({3, 0, 2, 1}));
 
-    auto input_literal = client_->TransferToServer(input_r4_relaid).value();
-    auto filter_literal = client_->TransferToServer(filter_r4).value();
-
     ComputeAndCompareLiteral(&builder, expected_r4_relaid,
-                             {input_literal.get(), filter_literal.get()},
-                             error_spec_, &expected_r4_relaid.shape());
+                             {&input_r4, &filter_r4}, error_spec_);
   }
 };
 
@@ -1008,8 +1095,6 @@ class Convolve2D_1x4x4x160_3x3x1x160_Depthwise_Both_Batch_In_Lanes
                                static_cast<T>(1));
     auto input_r1 = LiteralUtil::CreateR1<T>(input_elems);
     auto input_r4 = input_r1.Reshape(input_dims).value();
-    auto input_r4_relaid =
-        input_r4.Relayout(LayoutUtil::MakeLayout({0, 3, 2, 1}));
 
     std::vector<T> filter_elems(ShapeUtil::ElementsIn(filter_shape),
                                 static_cast<T>(2));
@@ -1023,12 +1108,8 @@ class Convolve2D_1x4x4x160_3x3x1x160_Depthwise_Both_Batch_In_Lanes
     auto expected_r4_relaid =
         expected_r4.Relayout(LayoutUtil::MakeLayout({0, 3, 2, 1}));
 
-    auto input_literal = client_->TransferToServer(input_r4_relaid).value();
-    auto filter_literal = client_->TransferToServer(filter_r4).value();
-
     ComputeAndCompareLiteral(&builder, expected_r4_relaid,
-                             {input_literal.get(), filter_literal.get()},
-                             error_spec_, &expected_r4_relaid.shape());
+                             {&input_r4, &filter_r4}, error_spec_);
   }
 };
 
@@ -1087,11 +1168,7 @@ class Convolve2D_1x4x4x1024_3x3x1x1024_Depthwise_Valid
     auto expected_r1 = LiteralUtil::CreateR1<T>(output_elems);
     auto expected_r4 = expected_r1.Reshape({1, 2, 2, 1024}).value();
 
-    auto input_literal = client_->TransferToServer(input_r4).value();
-    auto filter_literal = client_->TransferToServer(filter_r4).value();
-
-    ComputeAndCompareLiteral(&builder, expected_r4,
-                             {input_literal.get(), filter_literal.get()},
+    ComputeAndCompareLiteral(&builder, expected_r4, {&input_r4, &filter_r4},
                              error_spec_);
   }
 };
@@ -1150,11 +1227,7 @@ class Convolve2D_1x2x2x6_2x2x2x12_Grouped_Valid : public ConvolutionTest {
          static_cast<T>(7496), static_cast<T>(7612), static_cast<T>(7728)});
     auto expected_r4 = expected_r1.Reshape({1, 1, 1, 12}).value();
 
-    auto input_literal = client_->TransferToServer(input_r4).value();
-    auto filter_literal = client_->TransferToServer(filter_r4).value();
-
-    ComputeAndCompareLiteral(&builder, expected_r4,
-                             {input_literal.get(), filter_literal.get()},
+    ComputeAndCompareLiteral(&builder, expected_r4, {&input_r4, &filter_r4},
                              error_spec_);
   }
 };
@@ -1212,11 +1285,7 @@ class Convolve2D_1x2x2x1024_2x2x128x512_Grouped_Valid : public ConvolutionTest {
     auto expected_r1 = LiteralUtil::CreateR1<T>(output_elems);
     auto expected_r4 = expected_r1.Reshape({1, 1, 1, 512}).value();
 
-    auto input_literal = client_->TransferToServer(input_r4).value();
-    auto filter_literal = client_->TransferToServer(filter_r4).value();
-
-    ComputeAndCompareLiteral(&builder, expected_r4,
-                             {input_literal.get(), filter_literal.get()},
+    ComputeAndCompareLiteral(&builder, expected_r4, {&input_r4, &filter_r4},
                              error_spec_);
   }
 };
@@ -1274,11 +1343,7 @@ class Convolve2D_1x2x2x1024_2x2x128x8_Grouped_Valid : public ConvolutionTest {
     auto expected_r1 = LiteralUtil::CreateR1<T>(output_elems);
     auto expected_r4 = expected_r1.Reshape({1, 1, 1, 8}).value();
 
-    auto input_literal = client_->TransferToServer(input_r4).value();
-    auto filter_literal = client_->TransferToServer(filter_r4).value();
-
-    ComputeAndCompareLiteral(&builder, expected_r4,
-                             {input_literal.get(), filter_literal.get()},
+    ComputeAndCompareLiteral(&builder, expected_r4, {&input_r4, &filter_r4},
                              error_spec_);
   }
 };
@@ -1335,11 +1400,7 @@ class Convolve2D_1x2x2x12_2x2x3x4_Grouped_Valid : public ConvolutionTest {
                                   static_cast<T>(9992), static_cast<T>(11240)});
     auto expected_r4 = expected_r1.Reshape({1, 1, 1, 4}).value();
 
-    auto input_literal = client_->TransferToServer(input_r4).value();
-    auto filter_literal = client_->TransferToServer(filter_r4).value();
-
-    ComputeAndCompareLiteral(&builder, expected_r4,
-                             {input_literal.get(), filter_literal.get()},
+    ComputeAndCompareLiteral(&builder, expected_r4, {&input_r4, &filter_r4},
                              error_spec_);
   }
 };
@@ -1398,12 +1459,8 @@ class Convolve2D_1x2x2x12_2x2x3x4_Grouped_Valid_Filter_OF_In_Sublanes
          static_cast<T>(12260)});
     auto expected_r4 = expected_r1.Reshape({1, 1, 1, 4}).value();
 
-    auto input_literal = client_->TransferToServer(input_r4).value();
-    auto filter_literal = client_->TransferToServer(filter_r4_relaid).value();
-
     ComputeAndCompareLiteral(&builder, expected_r4,
-                             {input_literal.get(), filter_literal.get()},
-                             error_spec_);
+                             {&input_r4, &filter_r4_relaid}, error_spec_);
   }
 };
 
@@ -1461,11 +1518,7 @@ class Convolve2D_1x1x1x12_1x1x3x4_Grouped_Valid : public ConvolutionTest {
                                   static_cast<T>(176), static_cast<T>(272)});
     auto expected_r4 = expected_r1.Reshape({1, 1, 1, 4}).value();
 
-    auto input_literal = client_->TransferToServer(input_r4).value();
-    auto filter_literal = client_->TransferToServer(filter_r4).value();
-
-    ComputeAndCompareLiteral(&builder, expected_r4,
-                             {input_literal.get(), filter_literal.get()},
+    ComputeAndCompareLiteral(&builder, expected_r4, {&input_r4, &filter_r4},
                              error_spec_);
   }
 };
@@ -1483,7 +1536,7 @@ class ConvolveWithAndWithoutCanonicalization
 
 XLA_TEST_P(ConvolveWithAndWithoutCanonicalization, Convolve2D_NoSpatialDims) {
   if (GetParam()) {
-    execution_options_.mutable_debug_options()->add_xla_disable_hlo_passes(
+    mutable_debug_options()->add_xla_disable_hlo_passes(
         "convolution-canonicalization");
   }
   XlaBuilder builder(TestName());
@@ -1504,17 +1557,16 @@ XLA_TEST_P(ConvolveWithAndWithoutCanonicalization, Convolve2D_NoSpatialDims) {
 
   Array2D<float> param0(4, 29);
   param0.FillUnique();
+  Literal param0_literal = LiteralUtil::CreateFromArray(param0);
 
   Array2D<float> param1(4, 10);
   param1.FillUnique();
+  Literal param1_literal = LiteralUtil::CreateFromArray(param1);
 
   Array2D<float> expected_result(29, 10);
   expected_result.Fill(0);
 
-  ComputeAndCompare(&builder,
-                    {LiteralUtil::CreateFromArray(param0),
-                     LiteralUtil::CreateFromArray(param1)},
-                    error_spec_);
+  ComputeAndCompare(&builder, {&param0_literal, &param1_literal}, error_spec_);
 }
 
 INSTANTIATE_TEST_CASE_P(ConvolveWithAndWithoutCanonicalization_Instantiation,
@@ -1533,21 +1585,23 @@ XLA_TEST_F(ConvolutionTest, Convolve_bf16_1x1x1x2_1x1x1x2_Valid) {
   input_data.FillWithYX(Array2D<bfloat16>({
       {bfloat16(1), bfloat16(2)},
   }));
+  Literal input_data_literal = LiteralUtil::CreateFromArray(input_data);
   Array4D<bfloat16> filter_data(1, 1, 1, 2);
   filter_data.FillWithYX(Array2D<bfloat16>({
       {bfloat16(5), bfloat16(6)},
   }));
-
-  ComputeAndCompare(&builder,
-                    {LiteralUtil::CreateFromArray(input_data),
-                     LiteralUtil::CreateFromArray(filter_data)},
+  Literal filter_data_literal = LiteralUtil::CreateFromArray(filter_data);
+  ComputeAndCompare(&builder, {&input_data_literal, &filter_data_literal},
                     error_spec_);
 }
 
 // Check that GPU convs still work if the CudnnAlgorithmPicker pass is disabled.
 // (We run this test on all platforms, because, what the heck.)
-XLA_TEST_F(ConvolutionTest, DISABLED_ON_GPU_ROCM(NoCudnnAlgorithmPicker)) {
-  execution_options_.mutable_debug_options()->add_xla_disable_hlo_passes(
+XLA_TEST_F(ConvolutionTest, NoCudnnAlgorithmPicker) {
+  if (IsRocm()) {
+    GTEST_SKIP();
+  }
+  mutable_debug_options()->add_xla_disable_hlo_passes(
       "gpu-conv-algorithm-picker");
 
   XlaBuilder builder(TestName());
@@ -1559,11 +1613,12 @@ XLA_TEST_F(ConvolutionTest, DISABLED_ON_GPU_ROCM(NoCudnnAlgorithmPicker)) {
 
   Array4D<float> input_data(1, 1, 1, 2);
   input_data.FillIota(0);
+  Literal input_data_literal = LiteralUtil::CreateFromArray(input_data);
   Array4D<float> filter_data(1, 1, 1, 2);
   filter_data.FillIota(10);
+  Literal filter_data_literal = LiteralUtil::CreateFromArray(filter_data);
 
-  ComputeAndCompare(&builder, {LiteralUtil::CreateFromArray(input_data),
-                               LiteralUtil::CreateFromArray(filter_data)});
+  ComputeAndCompare(&builder, {&input_data_literal, &filter_data_literal});
 }
 
 XLA_TEST_F(ConvolutionTest, ConvolveF32BackwardInputGroupedConvolution) {
@@ -1571,6 +1626,7 @@ XLA_TEST_F(ConvolutionTest, ConvolveF32BackwardInputGroupedConvolution) {
   Shape input_shape = ShapeUtil::MakeShape(F32, {1, 64, 100, 100});
   Array4D<float> input_data(1, 64, 100, 100);
   input_data.FillRandom(/*stddev=*/0.023, 0.001, /*seed=*/45321);
+  Literal input_data_literal = LiteralUtil::CreateFromArray(input_data);
   Shape filter_shape = ShapeUtil::MakeShape(F32, {7, 7, 1, 64});
   Array4D<float> filter_data(7, 7, 1, 64);
   filter_data.FillRandom(/*stddev=*/0.023, 0.001, /*seed=*/45320);
@@ -1598,14 +1654,22 @@ XLA_TEST_F(ConvolutionTest, ConvolveF32BackwardInputGroupedConvolution) {
               /*padding=*/{{3, 3}, {3, 3}}, /*dimension_numbers=*/dnums,
               /*feature_group_count=*/64);
 
-  ComputeAndCompare(&builder, {LiteralUtil::CreateFromArray(input_data)},
-                    error_spec_);
+  ComputeAndCompare(&builder, {&input_data_literal}, error_spec_);
 }
 
-class ConvolutionHloTest : public HloTestBase {};
+class ConvolutionHloTest
+    : public HloPjRtInterpreterReferenceMixin<HloPjRtTestBase> {
+ public:
+  // Returns true if the test is running on ROCm.
+  bool IsRocm() {
+    return test_runner().HasProperty(HloRunnerPropertyTag::kUsingGpuRocm);
+  }
+};
 
-// double datatype is not yet supported in ROCm
-XLA_TEST_F(ConvolutionHloTest, DISABLED_ON_GPU_ROCM(ConvolveF64Forward)) {
+XLA_TEST_F(ConvolutionHloTest, DISABLED_ON_TPU(ConvolveF64Forward)) {
+  if (IsRocm()) {
+    GTEST_SKIP() << "double datatype is not yet supported in ROCm";
+  }
   constexpr char kHlo[] = R"(
 HloModule TestModule
 
@@ -1629,8 +1693,11 @@ ENTRY Test {
   EXPECT_TRUE(RunAndCompare(kHlo, ErrorSpec{0.01, 0.01}));
 }
 
-XLA_TEST_F(ConvolutionHloTest,
-           DISABLED_ON_GPU_ROCM(ConvolveF32ForwardReversed)) {
+XLA_TEST_F(ConvolutionHloTest, ConvolveF32ForwardReversed) {
+  if (IsRocm()) {
+    GTEST_SKIP() << "Not supported on ROCm";
+  }
+
   constexpr char kHlo[] = R"(
 HloModule TestModule
 
@@ -1642,9 +1709,10 @@ ENTRY Test {
   EXPECT_TRUE(RunAndCompare(kHlo, ErrorSpec{0.001}));
 }
 
-// double datatype is not yet supported in ROCm
-XLA_TEST_F(ConvolutionHloTest,
-           DISABLED_ON_GPU_ROCM(ConvolveF64BackwardFilter)) {
+XLA_TEST_F(ConvolutionHloTest, DISABLED_ON_TPU(ConvolveF64BackwardFilter)) {
+  if (IsRocm()) {
+    GTEST_SKIP() << "double datatype is not yet supported in ROCm";
+  }
   constexpr char kHlo[] = R"(
 HloModule TestModule
 
@@ -1656,8 +1724,10 @@ ENTRY Test {
   EXPECT_TRUE(RunAndCompare(kHlo, ErrorSpec{0.001}));
 }
 
-// double datatype is not yet supported in ROCm
-XLA_TEST_F(ConvolutionHloTest, DISABLED_ON_GPU_ROCM(ConvolveF64BackwardInput)) {
+XLA_TEST_F(ConvolutionHloTest, DISABLED_ON_TPU(ConvolveF64BackwardInput)) {
+  if (IsRocm()) {
+    GTEST_SKIP() << "double datatype is not yet supported in ROCm";
+  }
   constexpr char kHlo[] = R"(
 HloModule TestModule
 
@@ -1752,8 +1822,21 @@ ENTRY TestComputation {
   EXPECT_TRUE(RunAndCompare(kHlo, ErrorSpec{0.01, 0.01}));
 }
 
+XLA_TEST_F(ConvolutionHloTest, TestConv2DF16) {
+  std::string kHlo = R"(
+HloModule TestModule
+
+ENTRY TestComputation {
+  %p0 = f16[8,5,5,1] parameter(0)
+  %p1 = f16[3,3,1,32] parameter(1)
+  ROOT %conv = f16[8,5,5,32] convolution(p0, p1), window={size=3x3 pad=1_1x1_1}, dim_labels=b01f_01io->b01f
+})";
+
+  EXPECT_TRUE(RunAndCompare(kHlo, ErrorSpec{0.01, 0.01}));
+}
+
 XLA_TEST_F(ConvolutionHloTest, TestFusedConv2D) {
-  constexpr char kHlo[] = R"(
+  std::string kHlo = R"(
 HloModule TestModule
 
 ENTRY TestComputation {
@@ -1763,11 +1846,51 @@ ENTRY TestComputation {
   %bias = f32[32] parameter(2)
   %broadcasted_bias = f32[8,5,5,32] broadcast(%bias), dimensions={3}
   %add = f32[8,5,5,32] add(%conv, %broadcasted_bias)
+)";
+
+  std::string kHloNoPad = R"(
+HloModule TestModule
+
+ENTRY TestComputation {
+  %p0 = f32[8,7,7,1] parameter(0)
+  %p1 = f32[3,3,1,32] parameter(1)
+  %conv = f32[8,5,5,32] convolution(p0, p1), window={size=3x3 pad=0_0x0_0}, dim_labels=b01f_01io->b01f
+  %bias = f32[32] parameter(2)
+  %broadcasted_bias = f32[8,5,5,32] broadcast(%bias), dimensions={3}
+  %add = f32[8,5,5,32] add(%conv, %broadcasted_bias)
+)";
+
+  std::string kHloRELU = R"(
+
   %zero = f32[] constant(0)
   %zeros = f32[8,5,5,32] broadcast(%zero), dimensions={}
   ROOT relu = f32[8,5,5,32] maximum(%zeros, %add)
 })";
-  EXPECT_TRUE(RunAndCompare(kHlo, ErrorSpec{0.01, 0.01}));
+
+  std::string kHloTANH = R"(
+  ROOT result = f32[8,5,5,32] tanh(%add)
+})";
+
+  std::string kHloELU = R"(
+  %zero = f32[] constant(0)
+  %zeros = f32[8,5,5,32] broadcast(%zero), dimensions={}
+  %one = f32[] constant(1)
+  %ones = f32[8,5,5,32] broadcast(%one), dimensions={}
+  %exp = f32[8,5,5,32] exponential(%add)
+  %expm1 = f32[8,5,5,32] subtract(%exp, %ones)
+  %sgn = pred[8,5,5,32] compare(%add, %zeros), direction=GT
+  ROOT elu = f32[8,5,5,32] select(%sgn, %add, %expm1)
+})";
+
+  EXPECT_TRUE(RunAndCompare(kHlo + kHloRELU, ErrorSpec{0.01, 0.01}));
+  EXPECT_TRUE(RunAndCompare(kHlo + kHloTANH, ErrorSpec{0.01, 0.01}));
+  EXPECT_TRUE(RunAndCompare(kHlo + kHloELU, ErrorSpec{0.01, 0.01}));
+  EXPECT_TRUE(
+      RunAndCompare(absl::StrReplaceAll(kHlo + kHloRELU, {{"f32", "f16"}}),
+                    ErrorSpec{0.03, 0.03}));
+  EXPECT_TRUE(
+      RunAndCompare(absl::StrReplaceAll(kHloNoPad + kHloRELU, {{"f32", "f16"}}),
+                    ErrorSpec{0.03, 0.03}));
 }
 
 XLA_TEST_F(ConvolutionHloTest, TestFusedConv3D) {
@@ -1800,6 +1923,124 @@ ENTRY TestComputation {
 })";
   EXPECT_TRUE(RunAndCompare(kHlo, ErrorSpec{0.01, 0.01}));
 }
+
+enum class PaddingMode {
+  kFull,
+  kHalf,  // also called 'same' padding
+  kNo,    // also called 'valid' padding
+};
+
+// Convolution with LHS dilation, i.e. strided transposed convolution. We use
+// a custom convolution algorithm for this case, so we need to test all cases
+// (batch, input channels, output channels, etc.)
+// Parameters are: batch size, input channels, output channels, padding mode,
+// and whether to use asymmetric shapes (i.e. x != y)
+class Transposed2DConvHloTest
+    : public ConvolutionHloTest,
+      public ::testing::WithParamInterface<
+          std::tuple<int, int, int, PaddingMode, bool>> {
+ public:
+  Transposed2DConvHloTest()
+      : batch_(std::get<0>(GetParam())),
+        input_channels_(std::get<1>(GetParam())),
+        output_channels_(std::get<2>(GetParam())),
+        padding_mode_(std::get<3>(GetParam())),
+        asymmetric_shapes_(std::get<4>(GetParam())),
+        input_x_(5),
+        input_y_(asymmetric_shapes_ ? input_x_ + 1 : input_x_),
+        kernel_x_(3),
+        kernel_y_(asymmetric_shapes_ ? kernel_x_ + 1 : kernel_x_),
+        lhs_dilation_x_(2),
+        lhs_dilation_y_(asymmetric_shapes_ ? lhs_dilation_x_ + 1
+                                           : lhs_dilation_x_) {}
+
+ public:
+  int GetPaddingValue(int kernel_size, bool low) {
+    switch (padding_mode_) {
+      case PaddingMode::kFull:
+        return 0;
+      case PaddingMode::kHalf:
+        if (low) {
+          // Padding on the low side (i.e. before the first element in given
+          // dimension)
+          return kernel_size / 2;
+        } else {
+          // Padding on the high side (i.e. after the last element in given
+          // dimension)
+          return (kernel_size - 1) / 2;
+        }
+      case PaddingMode::kNo:
+        return kernel_size - 1;
+    }
+  }
+
+  auto GetWindow() {
+    Window window;
+
+    auto add_dim = [&](int size, int lhs_dilation) {
+      auto dim = window.add_dimensions();
+      dim->set_size(size);
+      dim->set_stride(1);
+      dim->set_padding_low(GetPaddingValue(size, /*low=*/true));
+      dim->set_padding_high(GetPaddingValue(size, /*low=*/false));
+      dim->set_window_dilation(1);
+      dim->set_base_dilation(lhs_dilation);
+    };
+
+    add_dim(kernel_x_, lhs_dilation_x_);
+    add_dim(kernel_y_, lhs_dilation_y_);
+
+    return window;
+  }
+
+ public:
+  int batch_;
+  int input_channels_;
+  int output_channels_;
+  PaddingMode padding_mode_;
+  bool asymmetric_shapes_;
+  int input_x_;
+  int input_y_;
+  int kernel_x_;
+  int kernel_y_;
+  int lhs_dilation_x_;
+  int lhs_dilation_y_;
+};
+
+XLA_TEST_P(Transposed2DConvHloTest, Simple) {
+  const auto input_shape =
+      ShapeUtil::MakeShape(F32, {batch_, input_channels_, input_x_, input_y_});
+  const auto kernel_shape = ShapeUtil::MakeShape(
+      F32, {output_channels_, input_channels_, kernel_x_, kernel_y_});
+
+  const auto window = GetWindow();
+
+  // clang-format off
+  const std::string hlo = absl::StrCat(R"(
+    HloModule TestModule
+
+    ENTRY TestComputation {
+      input.1 = )", input_shape.ToString(), R"( parameter(0)
+      filter.2 = )", kernel_shape.ToString(), R"( parameter(1)
+      ROOT conv.3 = convolution(input.1, filter.2),
+        window={)", window_util::ToString(window), R"(},
+        dim_labels=bf01_oi01->bf01
+    }
+  )");
+  // clang-format on
+
+  EXPECT_TRUE(RunAndCompare(hlo, ErrorSpec{0.01, 0.01}));
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    Transposed2DConvHloTest, Transposed2DConvHloTest,
+    ::testing::Combine(::testing::Values(1, 2),  // Batch size
+                       ::testing::Values(1, 3),  // Input channels
+                       ::testing::Values(1, 5),  // Output channels
+                       ::testing::Values(PaddingMode::kFull, PaddingMode::kNo,
+                                         PaddingMode::kHalf),  // Padding mode
+                       ::testing::Bool()  // Asymmetric shapes
+                       ));
 
 }  // namespace
 }  // namespace xla

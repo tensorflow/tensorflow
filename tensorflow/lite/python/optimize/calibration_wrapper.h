@@ -98,9 +98,10 @@ class CalibrationWrapper {
 
   // Disables per-channel quantization, can be used to produce smaller
   // models but may cause accuracy issues.
-  PyObject* QuantizeModel(int input_py_type, int output_py_type,
-                          bool allow_float, int activations_py_type,
-                          int bias_py_type, bool disable_per_channel);
+  PyObject* QuantizeModel(
+      int input_py_type, int output_py_type, bool allow_float,
+      int activations_py_type, int bias_py_type, bool disable_per_channel,
+      bool disable_per_channel_quantization_for_dense_layers);
 
   // Writes the in-memory calibration results to the model flatbuffer. The
   // produced model is as same as the original input model, but the min/max

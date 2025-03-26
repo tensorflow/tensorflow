@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,6 +16,13 @@ limitations under the License.
 #ifndef XLA_SERVICE_CPU_IR_FUNCTION_H_
 #define XLA_SERVICE_CPU_IR_FUNCTION_H_
 
+#include <cstdint>
+#include <string>
+#include <vector>
+
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/IRBuilder.h"
@@ -24,7 +31,6 @@ limitations under the License.
 #include "xla/service/cpu/ir_emission_utils.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/shape_util.h"
-#include "xla/statusor.h"
 #include "xla/types.h"
 
 namespace xla {
@@ -55,7 +61,20 @@ class IrFunction {
   IrFunction(const std::string& function_name,
              llvm::Function::LinkageTypes linkage,
              const HloModuleConfig& module_config, llvm::Module* llvm_module,
-             llvm::IRBuilder<>* b, int64_t num_dynamic_loop_bounds);
+             llvm::IRBuilderBase* b, int64_t num_dynamic_loop_bounds);
+
+  // Initialize an llvm::Function with existing function, created somewhere
+  // else, omit any extra work.
+  IrFunction(llvm::IRBuilderBase* b, llvm::Module* llvm_module,
+             int64_t num_dynamic_loop_bounds, llvm::Function* function,
+             // Function argument IR values.
+             // llvm::Argument* result_arg, llvm::Value* exec_run_options_arg,
+             // llvm::Value* parameters_arg, llvm::Value* buffer_table_arg,
+             llvm::Value* dynamic_loop_bounds_arg,
+             // llvm::Value* profile_counters_arg, llvm::Value* status_arg,
+             //  Basic block containing return.
+             llvm::BasicBlock* return_block);
+
   ~IrFunction();
 
   // Emit IR to read and return the set of IR values representing the dynamic
@@ -111,9 +130,9 @@ class IrFunction {
   // 'offset' from the "dynamic_loop_bounds" argument of this function.
   llvm::Value* GetDynamicLoopBound(int64_t offset);
 
-  llvm::IRBuilder<>* b_;
+  llvm::IRBuilderBase* b_;
   llvm::Module* llvm_module_;
-  llvm::IRBuilder<>::InsertPointGuard caller_insert_point_guard_;
+  llvm::IRBuilderBase::InsertPointGuard caller_insert_point_guard_;
 
   int64_t num_dynamic_loop_bounds_ = 0;
   // Encapsulated llvm::Function.
@@ -134,21 +153,22 @@ class IrFunction {
 // function call.
 llvm::Value* EncodeArrayFunctionArguments(
     absl::Span<llvm::Value* const> arguments, absl::string_view name,
-    llvm::IRBuilder<>* b);
+    llvm::IRBuilderBase* b);
 
 // Returns an array of compute function call argument ir values.
 std::vector<llvm::Value*> GetArrayFunctionCallArguments(
-    absl::Span<llvm::Value* const> parameter_addresses, llvm::IRBuilder<>* b,
+    absl::Span<llvm::Value* const> parameter_addresses, llvm::IRBuilderBase* b,
     absl::string_view name, llvm::Value* return_value_buffer,
     llvm::Value* exec_run_options_arg, llvm::Value* buffer_table_arg,
     llvm::Value* status_arg, llvm::Value* profile_counters_arg);
 
 // Emits a call to a runtime fork/join function which dispatches parallel
 // calls to 'parallel_function' (and joins threads before returning).
-Status EmitCallToParallelForkJoin(
+absl::Status EmitCallToParallelForkJoin(
     const std::vector<llvm::Value*>& arguments, const Shape& shape,
-    absl::Span<const int64_t> dimension_partition_counts, llvm::IRBuilder<>* b,
-    llvm::Function* parallel_function, absl::string_view name);
+    absl::Span<const int64_t> dimension_partition_counts,
+    llvm::IRBuilderBase* b, llvm::Function* parallel_function,
+    absl::string_view name);
 
 }  // namespace cpu
 }  // namespace xla

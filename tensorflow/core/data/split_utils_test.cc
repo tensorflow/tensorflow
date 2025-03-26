@@ -32,18 +32,18 @@ std::string full_name(const std::string& name) {
   return FullName("test", name);
 }
 
-Status SaveAndRestore(SplitProvider* split_provider) {
+absl::Status SaveAndRestore(SplitProvider* split_provider) {
   VariantTensorDataWriter writer;
   TF_RETURN_IF_ERROR(split_provider->Save(full_name, &writer));
   std::vector<const VariantTensorData*> variants;
   writer.GetData(&variants);
   VariantTensorDataReader reader(variants);
   TF_RETURN_IF_ERROR(split_provider->Restore(full_name, &reader));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status CheckOutput(SplitProvider* split_provider,
-                   std::vector<Tensor> expected) {
+absl::Status CheckOutput(SplitProvider* split_provider,
+                         std::vector<Tensor> expected) {
   int64_t next = 0;
   bool end_of_splits = false;
   while (!end_of_splits) {
@@ -54,7 +54,7 @@ Status CheckOutput(SplitProvider* split_provider,
     }
   }
   EXPECT_EQ(next, expected.size());
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 TEST(IndexSplitProviderTest, Empty) {

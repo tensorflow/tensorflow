@@ -478,7 +478,7 @@ def string_to_number(input, out_type=dtypes.float32, name=None):
   Args:
     input: A `Tensor` of type `string`.
     out_type: An optional `tf.DType` from: `tf.float32, tf.float64, tf.int32,
-      tf.int64`. Defaults to `tf.float32`.
+      tf.int64, tf.uint32, tf.uint64`. Defaults to `tf.float32`.
       The numeric type to interpret each string in `string_tensor` as.
     name: A name for the operation (optional).
 

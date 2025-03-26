@@ -15,22 +15,27 @@ limitations under the License.
 
 #include "tensorflow/dtensor/mlir/expansions/slice_spmd_expander.h"
 
-#include <algorithm>
+#include <cstdint>
 #include <string>
-#include <utility>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "llvm/ADT/SmallVector.h"
-#include "llvm/Support/FormatVariadic.h"
+#include "llvm/Support/Casting.h"
+#include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypeInterfaces.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
+#include "mlir/IR/Value.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/types.h"
 #include "tensorflow/dtensor/cc/dstatus.h"
+#include "tensorflow/dtensor/cc/tensor_layout.h"
 #include "tensorflow/dtensor/mlir/collectives.h"
 #include "tensorflow/dtensor/mlir/layout_parsing.h"
 #include "tensorflow/dtensor/mlir/shape_utils.h"
-#include "tensorflow/dtensor/mlir/spmd_expander_common.h"
 #include "tensorflow/dtensor/mlir/value_utils.h"
 #include "tensorflow/dtensor/proto/layout.pb.h"
 
@@ -38,11 +43,11 @@ namespace tensorflow {
 namespace dtensor {
 namespace {
 
-Status GetSliceOpArguments(mlir::TF::SliceOp slice_op,
-                           llvm::SmallVector<int64_t, 4>& begins,
-                           bool& dynamic_begins,
-                           llvm::SmallVector<int64_t, 4>& sizes) {
-  Status begins_result =
+absl::Status GetSliceOpArguments(mlir::TF::SliceOp slice_op,
+                                 llvm::SmallVector<int64_t, 4>& begins,
+                                 bool& dynamic_begins,
+                                 llvm::SmallVector<int64_t, 4>& sizes) {
+  absl::Status begins_result =
       ExtractConstVectorFromValue(slice_op.getBegin(), &begins);
   dynamic_begins = !begins_result.ok();
 
@@ -50,7 +55,7 @@ Status GetSliceOpArguments(mlir::TF::SliceOp slice_op,
       ExtractConstVectorFromValue(slice_op.getSize(), &sizes),
       "expected constant argument for SliceOp::size()");
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 StatusOr<Layout> VerifySliceLayout(
@@ -116,7 +121,7 @@ StatusOr<mlir::Operation*> SliceSPMDExpander::ExpandOp(mlir::Operation* op) {
   // The dyn_cast will never be nullptr as it is checked in
   // GetLayoutFromOperands.
   auto input_type =
-      slice_op.getInput().getType().dyn_cast<mlir::RankedTensorType>();
+      mlir::dyn_cast<mlir::RankedTensorType>(slice_op.getInput().getType());
   if (!input_type)
     return errors::InvalidArgument(
         "rank of input tensor must be statically known for slice op.");
@@ -172,10 +177,10 @@ StatusOr<mlir::Operation*> SliceSPMDExpander::ExpandOp(mlir::Operation* op) {
   auto loc = op->getLoc();
   // Both begin and size need to be the same type, so we must match the new
   // size input with the type of begin.
-  if (!slice_op.getBegin().getType().isa<mlir::ShapedType>())
+  if (!mlir::isa<mlir::ShapedType>(slice_op.getBegin().getType()))
     return errors::Internal("type of begin is not a ShapedType");
   mlir::ShapedType type =
-      slice_op.getBegin().getType().cast<mlir::ShapedType>();
+      mlir::cast<mlir::ShapedType>(slice_op.getBegin().getType());
   if (type.getElementType().isInteger(32))
     new_size = IntConst(
         builder, loc, llvm::SmallVector<int32, 4>(sizes.begin(), sizes.end()));

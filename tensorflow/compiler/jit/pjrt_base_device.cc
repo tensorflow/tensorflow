@@ -43,7 +43,7 @@ PjRtBaseDevice::PjRtBaseDevice(const SessionOptions& session_options,
           << " device_name: " << name();
 }
 
-/*static*/ StatusOr<const PjRtBaseDevice::Metadata*>
+/*static*/ absl::StatusOr<const PjRtBaseDevice::Metadata*>
 PjRtBaseDevice::GetMetadataFromDevice(DeviceBase* device) {
   PjRtBaseDevice* pjrt_device =
       dynamic_cast<PjRtBaseDevice*>(device->UnderlyingDevice());

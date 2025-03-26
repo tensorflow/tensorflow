@@ -16,27 +16,32 @@ limitations under the License.
 
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
 #include <string>
 #include <vector>
 
-#include "absl/strings/str_format.h"
+#include "absl/container/inlined_vector.h"
+#include "absl/log/check.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/jit/xla_activity.pb.h"
-#include "tensorflow/compiler/jit/xla_activity_listener.h"
-#include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/type_util.h"
-#include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
-#include "xla/array4d.h"
-#include "xla/client/lib/constants.h"
-#include "xla/client/xla_builder.h"
+#include "xla/hlo/builder/lib/constants.h"
+#include "xla/hlo/builder/xla_builder.h"
+#include "xla/hlo/builder/xla_computation.h"
+#include "xla/primitive_util.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tensorflow/core/framework/kernel_def_builder.h"
-#include "tensorflow/core/framework/register_types.h"
+#include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/op_requires.h"
+#include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/math/math_util.h"
 #include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 namespace {
@@ -743,31 +748,12 @@ ResizeBilinearGradOp::ResizeBilinearGradOp(OpKernelConstruction* ctx)
   OP_REQUIRES(ctx, !half_pixel_centers_ || !align_corners_,
               errors::Unimplemented("If half_pixel_centers is True, "
                                     "align_corners must be False."));
-
-  // TODO(b/288101036): Currently light outside compilation is used for GPU. The
-  // same general compiled implementation should be used for all devices.
-  if ((!align_corners_ || half_pixel_centers_) &&
-      ctx->device_type().type_string() == DEVICE_GPU_XLA_JIT) {
-#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-    // Use light outside compilation on GPU only.
-    fallback_tf_kernel_.emplace(ctx);
-    return;
-#endif
-  }
-
   DataType output_dtype;
   OP_REQUIRES_OK(ctx, ctx->GetAttr("T", &output_dtype));
   OP_REQUIRES_OK(ctx, DataTypeToPrimitiveType(output_dtype, &output_type_));
 }
 
 void ResizeBilinearGradOp::Compile(XlaOpKernelContext* ctx) {
-#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-  if (fallback_tf_kernel_.has_value()) {
-    fallback_tf_kernel_->Compile(ctx);
-    return;
-  }
-#endif
-
   TensorShape input_shape = ctx->InputShape(1);
   OP_REQUIRES(ctx, input_shape.dims() == 4,
               errors::InvalidArgument("input must be 4-dimensional",

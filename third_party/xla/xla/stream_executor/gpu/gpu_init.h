@@ -1,4 +1,4 @@
-/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2015 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -18,14 +18,14 @@ limitations under the License.
 
 #include <string>
 
-#include "tsl/platform/status.h"
+#include "absl/status/status.h"
 
 namespace stream_executor {
 class Platform;
 
 // Initializes the GPU platform and returns OK if the GPU
 // platform could be initialized.
-tsl::Status ValidateGPUMachineManager();
+absl::Status ValidateGPUMachineManager();
 
 // Returns the GPU machine manager singleton, creating it and
 // initializing the GPUs on the machine if needed the first time it is

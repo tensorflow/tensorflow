@@ -18,14 +18,22 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/gather_nd_op.h"
 
+#include <string>
+
 #include "tensorflow/core/framework/bounds_check.h"
+#include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/mem.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/util/bad_indices_policy.h"
 
 namespace tensorflow {
+
+namespace {
+constexpr char kBadIndicesPolicyAtrr[] = "bad_indices_policy";
+}  // namespace
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
@@ -37,6 +45,15 @@ class GatherNdOp : public OpKernel {
     const DataType dt = DataTypeToEnum<T>::v();
     const DataType index_t = DataTypeToEnum<Index>::v();
     OP_REQUIRES_OK(c, c->MatchSignature({dt, index_t}, {dt}));
+    if (c->HasAttr(kBadIndicesPolicyAtrr)) {
+      std::string bad_indices_policy_str;
+      OP_REQUIRES_OK(
+          c, c->GetAttr(kBadIndicesPolicyAtrr, &bad_indices_policy_str));
+      absl::StatusOr<BadIndicesPolicy> bad_indices_policy =
+          BadIndicesPolicyFromString(bad_indices_policy_str);
+      OP_REQUIRES_OK(c, bad_indices_policy.status());
+      bad_indices_policy_ = *bad_indices_policy;
+    }
   }
 
   void Compute(OpKernelContext* c) override {
@@ -44,18 +61,25 @@ class GatherNdOp : public OpKernel {
     const Tensor& indices = c->input(1);
 
     Tensor out;
-    OP_REQUIRES_OK(
-        c, functor::DoGatherNd<Device, T, Index>(c, params, indices, &out));
+    OP_REQUIRES_OK(c, functor::DoGatherNd<Device, T, Index>(
+                          c, params, indices, &out, bad_indices_policy_));
     c->set_output(0, out);
   }
+
+ private:
+  BadIndicesPolicy bad_indices_policy_ = BadIndicesPolicy::kDefault;
 };
 
-#define REGISTER_GATHER_ND_FULL(dev, type, index_type)                 \
-  REGISTER_KERNEL_BUILDER(Name("GatherNd")                             \
-                              .Device(DEVICE_##dev)                    \
-                              .TypeConstraint<type>("Tparams")         \
-                              .TypeConstraint<index_type>("Tindices"), \
-                          GatherNdOp<dev##Device, type, index_type>)
+#define REGISTER_GATHER_ND_FULL(dev, type, index_type)         \
+  REGISTER_KERNEL_BUILDER(                                     \
+      Name("GatherNd")                                         \
+          .Device(DEVICE_##dev)                                \
+          .TypeConstraint<type>("Tparams")                     \
+          .TypeConstraint<index_type>("Tindices")              \
+          .AttrConstraint<std::string>(                        \
+              "bad_indices_policy",                            \
+              {/*default=*/"", "DEFAULT", "ERROR", "IGNORE"}), \
+      GatherNdOp<dev##Device, type, index_type>)
 
 #define REGISTER_GATHER_ND_CPU(type)         \
   REGISTER_GATHER_ND_FULL(CPU, type, int16); \
@@ -114,7 +138,21 @@ TF_CALL_COMPLEX_TYPES(DECLARE_GPU_SPECS);
 }  // namespace functor
 
 // Registration of the GPU implementations.
-// Registration of the GPU implementations.
+
+// On GPU, "ERROR" bad_indices_policy is not supported.
+// Because macro argument doesn't recognize comma in the initializer list,
+// simply redefine `REGISTER_GATHER_ND_FULL`.
+#undef REGISTER_GATHER_ND_FULL
+#define REGISTER_GATHER_ND_FULL(dev, type, index_type)                         \
+  REGISTER_KERNEL_BUILDER(                                                     \
+      Name("GatherNd")                                                         \
+          .Device(DEVICE_##dev)                                                \
+          .TypeConstraint<type>("Tparams")                                     \
+          .TypeConstraint<index_type>("Tindices")                              \
+          .AttrConstraint<std::string>("bad_indices_policy",                   \
+                                       {/*default=*/"", "DEFAULT", "IGNORE"}), \
+      GatherNdOp<dev##Device, type, index_type>)
+
 #define REGISTER_GATHER_ND_GPU(type)         \
   REGISTER_GATHER_ND_FULL(GPU, type, int32); \
   REGISTER_GATHER_ND_FULL(GPU, type, int64_t)

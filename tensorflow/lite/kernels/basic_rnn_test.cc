@@ -309,7 +309,7 @@ TEST_P(HybridRnnOpTest, BlackBoxTestUint8) {
     expected.insert(expected.end(), golden_start, golden_end);
 
     EXPECT_THAT(rnn.GetOutput(), ElementsAreArray(ArrayFloatNear(
-                                     expected, /*max_abs_error=*/0.0104)));
+                                     expected, /*max_abs_err=*/0.0104)));
   }
 }
 
@@ -337,7 +337,7 @@ TEST_P(HybridRnnOpTest, BlackBoxTestInt8) {
     expected.insert(expected.end(), golden_start, golden_end);
 
     EXPECT_THAT(rnn.GetOutput(), ElementsAreArray(ArrayFloatNear(
-                                     expected, /*max_abs_error=*/0.0104)));
+                                     expected, /*max_abs_err=*/0.0104)));
   }
 }
 

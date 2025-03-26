@@ -16,6 +16,7 @@
 
 import functools
 import math
+import sys
 
 from absl.testing import parameterized
 import numpy as np
@@ -1062,11 +1063,12 @@ class GeluTest(test_lib.TestCase):
         from scipy.stats import norm  # pylint: disable=g-import-not-at-top
         return x * norm.cdf(x)
 
-    np.random.seed(1)  # Make it reproducible.
-    x = np.random.randn(3, 4).astype(np.float32)
+    # Make sure we test for negative arguments where GeLU is difficult to
+    # evaluate accurately.
+    x = np.linspace(-12, 5, 1000).astype(np.float32)
     y = gelu(x)
     z = self.evaluate(nn_ops.gelu(x))
-    self.assertAllClose(y, z)
+    self.assertAllClose(y, z, atol=0, rtol=2e-5)
 
     y = gelu(x, True)
     z = self.evaluate(nn_ops.gelu(x, True))
@@ -1748,6 +1750,27 @@ class MaxPoolTest(test_lib.TestCase):
         ValueError,
         "`input.shape.rank` must be 3, 4 or 5.*of rank 6."):
       nn_ops.max_pool_v2(x, 2, 2, "SAME")
+
+  @test_util.disable_xla("XLA catches the error and rethrows as different one")
+  def testIncoorectKSize(self):
+    with self.assertRaisesRegex(
+        errors.InvalidArgumentError, "Sliding window ksize must be positive."
+    ):
+      op = nn_ops.max_pool_v2(
+          array_ops.ones([3, 4, 4, 5]), [1, -1, -1, 1], 2, "SAME"
+      )
+      with test_util.use_gpu():
+        self.evaluate(op)
+
+    ksize = sys.maxsize + 100  # Set to a value larger than sys.maxsize
+    with self.assertRaises(
+        OverflowError if context.executing_eagerly() else ValueError
+    ):
+      op = nn_ops.max_pool_v2(
+          array_ops.ones([3, 4, 4, 5]), ksize=ksize, strides=2, padding="SAME"
+      )
+      with test_util.use_gpu():
+        self.evaluate(op)
 
 
 @test_util.run_all_in_graph_and_eager_modes

@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 from tensorflow.python.distribute import device_util
 from tensorflow.python.distribute import packed_distributed_variable
 from tensorflow.python.eager import context
@@ -23,6 +22,30 @@ from tensorflow.python.framework import test_util
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.platform import test
+from tensorflow.python.saved_model import load
+from tensorflow.python.saved_model import save
+from tensorflow.python.trackable import autotrackable
+
+
+class TestExportArchive(autotrackable.AutoTrackable):
+
+  def __init__(self):
+    with ops.device('/cpu:0'):
+      v0 = resource_variable_ops.ResourceVariable(1.0, name='var0')
+    with ops.device('/cpu:1'):
+      v1 = resource_variable_ops.ResourceVariable(2.0, name='var1')
+
+    self._packed_var = packed_distributed_variable.PackedDistributedVariable(
+        [v0, v1]
+    )
+    self._fn = def_function.function(self.update_var)
+
+  @def_function.function
+  def update_var(self):
+    self._packed_var.assign_add(3.0).assign_sub(1.0)
+
+  def save_function(self, directory):
+    save.save(self, directory)
 
 
 class PackedDistributedVariableTest(test.TestCase):
@@ -69,6 +92,38 @@ class PackedDistributedVariableTest(test.TestCase):
       return read0, read1
 
     self.assertAllEqual(update_var(), (5.0, -3.0))
+
+  def testPackedVariableSaveAndRestore(self):
+    with ops.device('/cpu:0'):
+      v0 = resource_variable_ops.ResourceVariable(1.0, name='var0')
+    with ops.device('/cpu:1'):
+      v1 = resource_variable_ops.ResourceVariable(2.0, name='var1')
+
+    packed_var = packed_distributed_variable.PackedDistributedVariable([v0, v1])
+
+    with ops.device('/cpu:0'):
+      self.assertAllEqual(packed_var.get_var_on_current_device(), v0)
+      val0 = packed_var.assign(2.0).assign_add(1.0)
+      self.assertAllEqual(val0, 3.0)
+
+    with ops.device('/cpu:1'):
+      self.assertAllEqual(packed_var.get_var_on_current_device(), v1)
+      val0 = packed_var.assign(2.0).assign_add(1.0)
+      self.assertAllEqual(val0, 3.0)
+
+    export_dir = self.get_temp_dir()
+    save.save(packed_var, export_dir)
+
+    restored_packed_var = load.load(export_dir)
+    self.assertAllEqual(restored_packed_var, packed_var)
+
+  def testPackedVariableExport(self):
+    export_dir = self.get_temp_dir()
+    export_archive = TestExportArchive()
+    export_archive.save_function(export_dir)
+
+    # restored_packed_var = load.load(export_dir)
+    # logging.info(f'Restored var {restored_packed_var} ')
 
   def testPackedVarAndDevice(self):
     device0 = device_util.canonicalize('/cpu:0')

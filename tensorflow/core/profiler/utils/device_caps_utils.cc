@@ -15,10 +15,12 @@ limitations under the License.
 
 #include "tensorflow/core/profiler/utils/device_caps_utils.h"
 
+#include <string>
+
+#include "xla/tsl/profiler/utils/tf_xplane_visitor.h"
 #include "tensorflow/core/profiler/utils/xplane_builder.h"
 #include "tensorflow/core/profiler/utils/xplane_schema.h"
 #include "tensorflow/core/profiler/utils/xplane_visitor.h"
-#include "tsl/profiler/utils/tf_xplane_visitor.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -81,7 +83,6 @@ DeviceCapabilities GetDeviceCaps(const XPlane& plane) {
         break;
     }
   });
-
   return caps;
 }
 

@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,9 +16,13 @@ limitations under the License.
 #ifndef XLA_SERVICE_CPU_IR_EMISSION_UTILS_H_
 #define XLA_SERVICE_CPU_IR_EMISSION_UTILS_H_
 
+#include <cstdint>
+#include <utility>
+#include <vector>
+
 #include "llvm/IR/Value.h"
+#include "xla/backends/cpu/codegen/target_machine_features.h"
 #include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/service/cpu/target_machine_features.h"
 
 namespace xla {
 namespace cpu {

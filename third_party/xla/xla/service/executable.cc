@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,16 +16,18 @@ limitations under the License.
 #include "xla/service/executable.h"
 
 #include <memory>
+#include <utility>
 
+#include "absl/status/status.h"
 #include "absl/strings/str_format.h"
+#include "absl/types/span.h"
 #include "xla/debug_options_flags.h"
 #include "xla/service/dump.h"
 #include "xla/service/hlo_graph_dumper.h"
 #include "xla/service/maybe_owning_device_memory.h"
-#include "xla/status.h"
+#include "xla/service/shaped_buffer.h"
 #include "xla/status_macros.h"
 #include "xla/stream_executor/device_description.h"
-#include "tsl/lib/strings/proto_serialization.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/status.h"
@@ -41,7 +43,7 @@ ExecutionInput::~ExecutionInput() {
   }
 }
 
-Status ExecutionInput::SetDynamicShape(Shape dynamic_shape) {
+absl::Status ExecutionInput::SetDynamicShape(Shape dynamic_shape) {
   const Shape& input_shape = shape();
   if (!ShapeUtil::DynamicShapeIsCompatible(input_shape, dynamic_shape)) {
     return tsl::errors::InvalidArgument(
@@ -49,7 +51,7 @@ Status ExecutionInput::SetDynamicShape(Shape dynamic_shape) {
         dynamic_shape.DebugString());
   }
   dynamic_shape_ = std::make_unique<Shape>(std::move(dynamic_shape));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 void ExecutionInput::SetUnownedBuffer(const ShapeIndex& index,
@@ -58,32 +60,12 @@ void ExecutionInput::SetUnownedBuffer(const ShapeIndex& index,
   unowned_indices_.insert(index);
 }
 
-StatusOr<ShapedBuffer> ExecutionInput::ToShapedBuffer(
-    se::DeviceMemoryAllocator* allocator, int device_ordinal) const {
-  const Shape& input_shape = shape();
-  ShapedBuffer shaped_buffer(input_shape, device_ordinal);
-  for (const auto& index_buffer : Buffers()) {
-    const tensorflow::se::OwningDeviceMemory* mem =
-        index_buffer.second.AsOwningDeviceMemory();
-    if (mem != nullptr && (mem->allocator() != allocator ||
-                           mem->device_ordinal() != device_ordinal)) {
-      return tsl::errors::InvalidArgument("Device buffer at index ",
-                                          index_buffer.first.ToString(),
-                                          " has mismatching allocator/device");
-    }
-    shaped_buffer.set_buffer(index_buffer.second.AsDeviceMemoryBase(),
-                             index_buffer.first);
-  }
-  return std::move(shaped_buffer);
-}
-
-StatusOr<ScopedShapedBuffer> Executable::ExecuteOnStream(
+absl::StatusOr<ScopedShapedBuffer> Executable::ExecuteOnStream(
     const ServiceExecutableRunOptions* run_options,
-    absl::Span<const ShapedBuffer* const> arguments,
-    HloExecutionProfile* hlo_execution_profile) {
-  StatusOr<ScopedShapedBuffer> result =
-      ExecuteAsyncOnStream(run_options, arguments, hlo_execution_profile);
-  Status blocking_status = run_options->stream()->BlockHostUntilDone();
+    absl::Span<const ShapedBuffer* const> arguments) {
+  absl::StatusOr<ScopedShapedBuffer> result =
+      ExecuteAsyncOnStream(run_options, arguments);
+  absl::Status blocking_status = run_options->stream()->BlockHostUntilDone();
   TF_RETURN_IF_ERROR(result.status());
   TF_RETURN_IF_ERROR(blocking_status);
   return result;
@@ -99,34 +81,31 @@ static ExecutionInput MakeMaybeOwningDeviceMemoryTree(
   return result;
 }
 
-StatusOr<ScopedShapedBuffer> Executable::ExecuteAsyncOnStream(
+absl::StatusOr<ScopedShapedBuffer> Executable::ExecuteAsyncOnStream(
     const ServiceExecutableRunOptions* run_options,
-    absl::Span<const ShapedBuffer* const> arguments,
-    HloExecutionProfile* hlo_execution_profile) {
+    absl::Span<const ShapedBuffer* const> arguments) {
   std::vector<ExecutionInput> args;
   args.reserve(arguments.size());
   for (const ShapedBuffer* arg : arguments) {
     args.emplace_back(MakeMaybeOwningDeviceMemoryTree(*arg));
   }
   TF_ASSIGN_OR_RETURN(ExecutionOutput out,
-                      ExecuteAsyncOnStream(run_options, std::move(args),
-                                           hlo_execution_profile));
+                      ExecuteAsyncOnStream(run_options, std::move(args)));
   return out.ConsumeResult();
 }
 
-StatusOr<ExecutionOutput> Executable::ExecuteOnStream(
+absl::StatusOr<ExecutionOutput> Executable::ExecuteOnStream(
     const ServiceExecutableRunOptions* run_options,
-    std::vector<ExecutionInput> arguments,
-    HloExecutionProfile* hlo_execution_profile) {
-  StatusOr<ExecutionOutput> result = ExecuteAsyncOnStream(
-      run_options, std::move(arguments), hlo_execution_profile);
-  Status blocking_status = run_options->stream()->BlockHostUntilDone();
+    std::vector<ExecutionInput> arguments) {
+  absl::StatusOr<ExecutionOutput> result =
+      ExecuteAsyncOnStream(run_options, std::move(arguments));
+  absl::Status blocking_status = run_options->stream()->BlockHostUntilDone();
   TF_RETURN_IF_ERROR(result.status());
   TF_RETURN_IF_ERROR(blocking_status);
   return result;
 }
 
-StatusOr<std::vector<ScopedShapedBuffer>> Executable::ExecuteOnStreams(
+absl::StatusOr<std::vector<ScopedShapedBuffer>> Executable::ExecuteOnStreams(
     absl::Span<const ServiceExecutableRunOptions> run_options,
     absl::Span<const absl::Span<const ShapedBuffer* const>> arguments) {
   TF_RET_CHECK(run_options.size() == arguments.size());
@@ -136,8 +115,7 @@ StatusOr<std::vector<ScopedShapedBuffer>> Executable::ExecuteOnStreams(
 
   if (run_options.size() == 1) {
     TF_ASSIGN_OR_RETURN(auto rv,
-                        ExecuteOnStream(&run_options[0], arguments[0],
-                                        /*hlo_execution_profile=*/nullptr));
+                        ExecuteOnStream(&run_options[0], arguments[0]));
     return_values.push_back(std::move(rv));
     return std::move(return_values);
   }
@@ -146,9 +124,8 @@ StatusOr<std::vector<ScopedShapedBuffer>> Executable::ExecuteOnStreams(
     // We cannot BlockHostUntilDone() on the already-launched executions in case
     // of error, since if the executions communicate, the initially launched
     // executions may never complete if not all executions are running.
-    TF_ASSIGN_OR_RETURN(
-        auto rv, ExecuteAsyncOnStream(&run_options[i], arguments[i],
-                                      /*hlo_execution_profile=*/nullptr));
+    TF_ASSIGN_OR_RETURN(auto rv,
+                        ExecuteAsyncOnStream(&run_options[i], arguments[i]));
     return_values.push_back(std::move(rv));
   }
   for (const auto& options : run_options) {
@@ -158,23 +135,23 @@ StatusOr<std::vector<ScopedShapedBuffer>> Executable::ExecuteOnStreams(
   return std::move(return_values);
 }
 
-StatusOr<ScopedShapedBuffer> Executable::ExecuteOnStreamWrapper(
+absl::StatusOr<ScopedShapedBuffer> Executable::ExecuteOnStreamWrapper(
     const ServiceExecutableRunOptions* run_options,
     absl::Span<const ShapedBuffer* const> arguments) {
-  StatusOr<ScopedShapedBuffer> result =
+  absl::StatusOr<ScopedShapedBuffer> result =
       ExecuteAsyncOnStreamWrapper(run_options, arguments);
-  Status block_status = run_options->stream()->BlockHostUntilDone();
+  absl::Status block_status = run_options->stream()->BlockHostUntilDone();
   TF_RETURN_IF_ERROR(result.status());
   TF_RETURN_IF_ERROR(block_status);
   return result;
 }
 
-StatusOr<ExecutionOutput> Executable::ExecuteOnStreamWrapper(
+absl::StatusOr<ExecutionOutput> Executable::ExecuteOnStreamWrapper(
     const ServiceExecutableRunOptions* run_options,
     std::vector<ExecutionInput> arguments) {
-  StatusOr<ExecutionOutput> result =
+  absl::StatusOr<ExecutionOutput> result =
       ExecuteAsyncOnStreamWrapper(run_options, std::move(arguments));
-  Status block_status = run_options->stream()->BlockHostUntilDone();
+  absl::Status block_status = run_options->stream()->BlockHostUntilDone();
   TF_RETURN_IF_ERROR(result.status());
   TF_RETURN_IF_ERROR(block_status);
   return result;
@@ -194,12 +171,12 @@ static ExecuteAsyncOnStreamWrapperState ExecuteWrapperBeforeExecution(
   return state;
 }
 
-Status ExecuteWrapperAfterExecution(
+absl::Status ExecuteWrapperAfterExecution(
     Executable* executable, const ExecuteAsyncOnStreamWrapperState& state,
-    Status return_status, se::Stream* stream) {
+    absl::Status return_status, se::Stream* stream) {
   if (!return_status.ok()) {
     if (state.profile != nullptr) {
-      Status status = stream->BlockHostUntilDone();
+      absl::Status status = stream->BlockHostUntilDone();
       if (!status.ok()) {
         LOG(ERROR) << "Failed to BlockHostUntilDone: " << status;
       }
@@ -233,23 +210,23 @@ Status ExecuteWrapperAfterExecution(
   return return_status;
 }
 
-StatusOr<ScopedShapedBuffer> Executable::ExecuteAsyncOnStreamWrapper(
+absl::StatusOr<ScopedShapedBuffer> Executable::ExecuteAsyncOnStreamWrapper(
     const ServiceExecutableRunOptions* run_options,
     absl::Span<const ShapedBuffer* const> arguments) {
   auto state = ExecuteWrapperBeforeExecution(*this, run_options);
-  StatusOr<ScopedShapedBuffer> return_value =
-      ExecuteAsyncOnStream(run_options, arguments, nullptr);
+  absl::StatusOr<ScopedShapedBuffer> return_value =
+      ExecuteAsyncOnStream(run_options, arguments);
   TF_RETURN_IF_ERROR(ExecuteWrapperAfterExecution(
       this, state, return_value.status(), run_options->stream()));
   return return_value;
 }
 
-StatusOr<ExecutionOutput> Executable::ExecuteAsyncOnStreamWrapper(
+absl::StatusOr<ExecutionOutput> Executable::ExecuteAsyncOnStreamWrapper(
     const ServiceExecutableRunOptions* run_options,
     std::vector<ExecutionInput> arguments) {
   auto state = ExecuteWrapperBeforeExecution(*this, run_options);
-  StatusOr<ExecutionOutput> return_value =
-      ExecuteAsyncOnStream(run_options, std::move(arguments), nullptr);
+  absl::StatusOr<ExecutionOutput> return_value =
+      ExecuteAsyncOnStream(run_options, std::move(arguments));
   TF_RETURN_IF_ERROR(ExecuteWrapperAfterExecution(
       this, state, return_value.status(), run_options->stream()));
   return return_value;

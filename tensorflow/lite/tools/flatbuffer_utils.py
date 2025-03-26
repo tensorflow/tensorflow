@@ -25,6 +25,7 @@ import random
 import re
 import struct
 import sys
+from typing import Optional, Type, TypeVar, Union
 
 import flatbuffers
 
@@ -58,9 +59,38 @@ def read_model(input_tflite_file):
     raise RuntimeError('Input file not found at %r\n' % input_tflite_file)
   with gfile.GFile(input_tflite_file, 'rb') as input_file_handle:
     model_bytearray = bytearray(input_file_handle.read())
+  return read_model_from_bytearray(model_bytearray)
+
+
+def read_model_from_bytearray(model_bytearray):
+  """Reads a tflite model as a python object.
+
+  Args:
+    model_bytearray: TFLite model in bytearray format.
+
+  Returns:
+    A python object corresponding to the input tflite file.
+  """
   model = convert_bytearray_to_object(model_bytearray)
   if sys.byteorder == 'big':
     byte_swap_tflite_model_obj(model, 'little', 'big')
+
+  # Offset handling for models > 2GB
+  for buffer in model.buffers:
+    if buffer.offset:
+      buffer.data = model_bytearray[buffer.offset : buffer.offset + buffer.size]
+      buffer.offset = 0
+      buffer.size = 0
+  for subgraph in model.subgraphs:
+    for op in subgraph.operators:
+      if op.largeCustomOptionsOffset:
+        op.customOptions = model_bytearray[
+            op.largeCustomOptionsOffset : op.largeCustomOptionsOffset
+            + op.largeCustomOptionsSize
+        ]
+        op.largeCustomOptionsOffset = 0
+        op.largeCustomOptionsSize = 0
+
   return model
 
 
@@ -294,14 +324,29 @@ def byte_swap_buffer_content(buffer, chunksize, from_endiness, to_endiness):
       buffer.data[i : i + chunksize]
       for i in range(0, len(buffer.data), chunksize)
   ]
-  buffer.data = b''.join(
-      [
-          int.from_bytes(byteswap, from_endiness).to_bytes(
-              chunksize, to_endiness
-          )
-          for byteswap in to_swap
-      ]
-  )
+  buffer.data = b''.join([
+      int.from_bytes(byteswap, from_endiness).to_bytes(chunksize, to_endiness)
+      for byteswap in to_swap
+  ])
+
+
+def byte_swap_string_content(buffer, from_endiness, to_endiness):
+  """Helper function for byte-swapping the string buffer.
+
+  Args:
+    buffer: TFLite string buffer of from_endiness format.
+    from_endiness: The original endianness format of the string buffer.
+    to_endiness: The destined endianness format of the string buffer.
+  """
+  num_of_strings = int.from_bytes(buffer.data[0:4], from_endiness)
+  string_content = bytearray(buffer.data[4 * (num_of_strings + 2) :])
+  prefix_data = b''.join([
+      int.from_bytes(buffer.data[i : i + 4], from_endiness).to_bytes(
+          4, to_endiness
+      )
+      for i in range(0, (num_of_strings + 1) * 4 + 1, 4)
+  ])
+  buffer.data = prefix_data + string_content
 
 
 def byte_swap_tflite_model_obj(model, from_endiness, to_endiness):
@@ -341,7 +386,11 @@ def byte_swap_tflite_model_obj(model, from_endiness, to_endiness):
           and tensor.buffer not in buffer_swapped
           and model.buffers[tensor.buffer].data is not None
       ):
-        if tensor.type in types_of_16_bits:
+        if tensor.type == schema_fb.TensorType.STRING:
+          byte_swap_string_content(
+              model.buffers[tensor.buffer], from_endiness, to_endiness
+          )
+        elif tensor.type in types_of_16_bits:
           byte_swap_buffer_content(
               model.buffers[tensor.buffer], 2, from_endiness, to_endiness
           )
@@ -405,3 +454,64 @@ def count_resource_variables(model):
       if builtin_code == schema_fb.BuiltinOperator.VAR_HANDLE:
         unique_shared_names.add(op.builtinOptions.sharedName)
   return len(unique_shared_names)
+
+
+OptsT = TypeVar('OptsT')
+
+
+def get_options_as(
+    op: Union[schema_fb.Operator, schema_fb.OperatorT], opts_type: Type[OptsT]
+) -> Optional[OptsT]:
+  """Get the options of an operator as the specified type.
+
+  Requested type must be an object-api type (ends in 'T').
+
+  Args:
+    op: The operator to get the options from.
+    opts_type: The type of the options to get.
+
+  Returns:
+    The options as the specified type, or None if the options are not of the
+    specified type.
+
+  Raises:
+    ValueError: If the specified type is not a valid options type.
+  """
+
+  err = ValueError(f'Unsupported options type: {opts_type}')
+  type_name: str = opts_type.__name__
+  if not type_name.endswith('T'):
+    raise err
+  base_type_name = type_name.removesuffix('T')
+  is_opt_1_type = hasattr(schema_fb.BuiltinOptions, base_type_name)
+  if not is_opt_1_type and not hasattr(
+      schema_fb.BuiltinOptions2, base_type_name
+  ):
+    raise err
+
+  if isinstance(op, schema_fb.Operator):
+    if not is_opt_1_type:
+      enum_val = getattr(schema_fb.BuiltinOptions2, base_type_name)
+      opts_creator = schema_fb.BuiltinOptions2Creator
+      raw_ops = op.BuiltinOptions2()
+      actual_enum_val = op.BuiltinOptions2Type()
+    else:
+      enum_val = getattr(schema_fb.BuiltinOptions, base_type_name)
+      opts_creator = schema_fb.BuiltinOptionsCreator
+      raw_ops = op.BuiltinOptions()
+      actual_enum_val = op.BuiltinOptionsType()
+    if raw_ops is None or actual_enum_val != enum_val:
+      return None
+    return opts_creator(enum_val, raw_ops)
+
+  elif isinstance(op, schema_fb.OperatorT):
+    if is_opt_1_type:
+      raw_ops_t = op.builtinOptions
+    else:
+      raw_ops_t = op.builtinOptions2
+    if raw_ops_t is None or not isinstance(raw_ops_t, opts_type):
+      return None
+    return raw_ops_t
+
+  else:
+    return None

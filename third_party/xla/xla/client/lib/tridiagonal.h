@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2019 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,25 +16,7 @@ limitations under the License.
 #ifndef XLA_CLIENT_LIB_TRIDIAGONAL_H_
 #define XLA_CLIENT_LIB_TRIDIAGONAL_H_
 
-#include "xla/client/xla_builder.h"
-#include "xla/xla_data.pb.h"
-
-namespace xla {
-namespace tridiagonal {
-
-enum SolverAlgorithm { kThomas };
-
-StatusOr<XlaOp> TridiagonalSolver(SolverAlgorithm algo, XlaOp lower_diagonal,
-                                  XlaOp main_diagonal, XlaOp upper_diagonal,
-                                  XlaOp rhs);
-
-StatusOr<XlaOp> TridiagonalSolver(SolverAlgorithm algo, XlaOp diagonals,
-                                  XlaOp rhs);
-
-StatusOr<XlaOp> TridiagonalMatMul(XlaOp upper_diagonal, XlaOp main_diagonal,
-                                  XlaOp lower_diagonal, XlaOp rhs);
-
-}  // namespace tridiagonal
-}  // namespace xla
+// The current header will be deprecated in favour of the following.
+#include "xla/hlo/builder/lib/tridiagonal.h"
 
 #endif  // XLA_CLIENT_LIB_TRIDIAGONAL_H_

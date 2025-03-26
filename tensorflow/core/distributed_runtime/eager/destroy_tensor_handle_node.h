@@ -50,7 +50,7 @@ class DestroyTensorHandleNode : public tensorflow::AsyncEagerNode {
     // safe to ignore a failing destroy tensor handle request.
     eager_client_->EnqueueAsync(
         /*call_opts=*/nullptr, request_.get(), response,
-        [response, ready, done](const tensorflow::Status& s) {
+        [response, ready, done](const absl::Status& s) {
           // Omit the warning if:
           // 1. The remote tensor isn't ready.
           // 2. Lost connection to remote worker. In this case client will
@@ -61,12 +61,12 @@ class DestroyTensorHandleNode : public tensorflow::AsyncEagerNode {
                    "remote tensors handles: "
                 << s.ToString();
           }
-          done(OkStatus());
+          done(absl::OkStatus());
           delete response;
         });
   }
 
-  void Abort(Status status) override {}
+  void Abort(absl::Status status) override {}
 
   // Remote node deletions are best effort
   bool Fatal() const override { return false; }

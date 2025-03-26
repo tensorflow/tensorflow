@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,10 +16,8 @@ limitations under the License.
 #include "xla/service/hlo_proto_util.h"
 
 #include <memory>
-#include <string>
 #include <vector>
 
-#include "xla/service/hlo_verifier.h"
 #include "xla/util.h"
 
 namespace xla {
@@ -39,21 +37,7 @@ HloProto MakeHloProto(const HloModule& module) {
   return proto;
 }
 
-StatusOr<std::unique_ptr<HloModule>> CreateModuleFromProto(
-    const HloModuleProto& proto, const HloModuleConfig& module_config,
-    bool is_module_post_optimizations) {
-  VLOG(4) << proto.ShortDebugString();
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
-                      HloModule::CreateFromProto(proto, module_config));
-  TF_RETURN_IF_ERROR(
-      HloVerifier(/*layout_sensitive=*/false,
-                  /*allow_mixed_precision=*/is_module_post_optimizations)
-          .Run(module.get())
-          .status());
-  return module;
-}
-
-StatusOr<std::vector<const ShapeProto*>> EntryComputationParameterShapes(
+absl::StatusOr<std::vector<const ShapeProto*>> EntryComputationParameterShapes(
     const HloProto& hlo_proto) {
   if (!hlo_proto.has_hlo_module()) {
     return NotFound("HloProto missing HloModuleProto.");
@@ -70,7 +54,7 @@ StatusOr<std::vector<const ShapeProto*>> EntryComputationParameterShapes(
   return parameter_shapes;
 }
 
-StatusOr<const ShapeProto*> EntryComputationOutputShape(
+absl::StatusOr<const ShapeProto*> EntryComputationOutputShape(
     const HloProto& hlo_proto) {
   if (!hlo_proto.has_hlo_module()) {
     return NotFound("HloProto missing HloModuleProto.");

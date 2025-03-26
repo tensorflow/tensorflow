@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -19,8 +19,8 @@ limitations under the License.
 #include <string>
 #include <vector>
 
-#include "xla/service/hlo_pass_pipeline.h"
-#include "tsl/util/command_line_flags.h"
+#include "xla/hlo/pass/hlo_pass_pipeline.h"
+#include "xla/tsl/util/command_line_flags.h"
 
 namespace xla {
 
@@ -45,11 +45,14 @@ struct HloExpandConfig {
   bool rng_bit_generator_philox_expander{false};
   bool rng_bit_generator_three_fry_expander{false};
   bool triangular_solve_expander{false};
+  bool spmd_expander{false};
+  bool verify_hlo{false};
 };
 
 // Adds passes to the `pipeline` for flags set in `config`.
 void AddPassesToPipeline(xla::HloExpandConfig& config,
-                         xla::HloPassPipeline& pipeline);
+                         xla::HloPassPipeline& pipeline,
+                         const xla::HloModuleConfig& hlo_module_config);
 
 // Wraps `config` with flag descriptions and returns a vector of `tsl::Flag`s.
 std::vector<tsl::Flag> GetFlags(xla::HloExpandConfig& config);

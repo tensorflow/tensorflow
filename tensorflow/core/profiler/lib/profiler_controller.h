@@ -15,17 +15,15 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PROFILER_LIB_PROFILER_CONTROLLER_H_
 #define TENSORFLOW_CORE_PROFILER_LIB_PROFILER_CONTROLLER_H_
 
-#include <memory>
-
-#include "tensorflow/core/platform/status.h"
-#include "tensorflow/core/profiler/lib/profiler_interface.h"
-#include "tensorflow/core/profiler/protobuf/xplane.pb.h"
+#include "absl/base/macros.h"
 #include "tsl/profiler/lib/profiler_controller.h"
+#include "tsl/profiler/protobuf/xplane.pb.h"
 
 namespace tensorflow {
 namespace profiler {
 
-using tsl::profiler::ProfilerController;  // NOLINT
+using ProfilerController ABSL_DEPRECATE_AND_INLINE() =
+    tsl::profiler::ProfilerController;  // NOLINT
 
 }  // namespace profiler
 }  // namespace tensorflow

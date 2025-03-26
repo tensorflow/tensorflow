@@ -17,40 +17,41 @@ limitations under the License.
 
 #include <algorithm>
 #include <cstdint>
+#include <limits>
 #include <memory>
 #include <optional>
-#include <string>
 #include <utility>
 #include <vector>
 
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/log/log.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
-#include "absl/types/optional.h"
+#include "xla/tsl/profiler/utils/tf_op_utils.h"
+#include "xla/tsl/profiler/utils/tf_xplane_visitor.h"
+#include "xla/tsl/profiler/utils/timespan.h"
+#include "xla/tsl/profiler/utils/xplane_schema.h"
+#include "xla/tsl/profiler/utils/xplane_utils.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/convert/op_metrics_db_combiner.h"
 #include "tensorflow/core/profiler/convert/op_stack.h"
 #include "tensorflow/core/profiler/protobuf/op_metrics.pb.h"
-#include "tensorflow/core/profiler/protobuf/xplane.pb.h"
 #include "tensorflow/core/profiler/utils/cost_utils.h"
 #include "tensorflow/core/profiler/utils/op_metrics_db_utils.h"
 #include "tensorflow/core/profiler/utils/op_utils.h"
 #include "tensorflow/core/profiler/utils/trace_utils.h"
 #include "tensorflow/core/profiler/utils/xplane_schema.h"
 #include "tensorflow/core/profiler/utils/xplane_visitor.h"
-#include "tsl/profiler/utils/tf_op_utils.h"
-#include "tsl/profiler/utils/tf_xplane_visitor.h"
-#include "tsl/profiler/utils/timespan.h"
-#include "tsl/profiler/utils/xplane_schema.h"
+#include "tsl/profiler/protobuf/xplane.pb.h"
 
 namespace tensorflow {
 namespace profiler {
 namespace {
 
-constexpr uint64_t kRootSymbolId = 0;
+using tsl::profiler::GetDeviceEventTimespan;
 
 // Type of a TensorFlow Op activity, which is either beginning or ending an Op.
 enum TfActivityType { kTfOpBegin, kTfOpEnd };
@@ -139,24 +140,36 @@ void CollectTfActivities(
     const absl::flat_hash_map<int64_t, tsl::profiler::TfOp>& tf_ops,
     std::vector<TfActivity>* tf_activities) {
   uint32 tf_op_id = 0;
+  if (IsDerivedThreadId(line.Id())) return;
   tf_activities->reserve(line.NumEvents() * 2);
-  line.ForEachEvent([&tf_ops, &tf_op_id,
-                     &tf_activities](const XEventVisitor& event) {
-    const tsl::profiler::TfOp* tf_op = gtl::FindOrNull(tf_ops, event.Id());
-    if (tf_op != nullptr) {
-      ++tf_op_id;
-      bool is_eager = false;
-      if (std::optional<XStatVisitor> stat =
-              event.GetStat(StatType::kIsEager)) {
-        is_eager = stat->IntValue();
-      }
-      tsl::profiler::Timespan span = event.GetTimespan();
-      tf_activities->push_back(
-          {span.begin_ps(), tf_op_id, kTfOpBegin, *tf_op, is_eager});
-      tf_activities->push_back(
-          {span.end_ps(), tf_op_id, kTfOpEnd, *tf_op, is_eager});
-    }
-  });
+  line.ForEachEvent(
+      [&tf_ops, &tf_op_id, &tf_activities](const XEventVisitor& event) {
+        const tsl::profiler::TfOp* tf_op = gtl::FindOrNull(tf_ops, event.Id());
+        if (tf_op != nullptr) {
+          ++tf_op_id;
+          bool is_eager = false;
+          if (std::optional<XStatVisitor> stat =
+                  event.GetStat(StatType::kIsEager)) {
+            is_eager = stat->IntValue();
+          }
+          tsl::profiler::Timespan span = event.GetTimespan();
+          tf_activities->push_back(
+              {span.begin_ps(), tf_op_id, kTfOpBegin, *tf_op, is_eager});
+          tf_activities->push_back(
+              {span.end_ps(), tf_op_id, kTfOpEnd, *tf_op, is_eager});
+        }
+        if (auto tf_op_stat = event.GetStat(StatType::kTfOp);
+            tf_op_stat.has_value()) {
+          ++tf_op_id;
+          tsl::profiler::TfOp tf_op =
+              tsl::profiler::ParseTfOpFullname(tf_op_stat->StrOrRefValue());
+          tsl::profiler::Timespan span = event.GetTimespan();
+          tf_activities->push_back(
+              {span.begin_ps(), tf_op_id, kTfOpBegin, tf_op, false});
+          tf_activities->push_back(
+              {span.end_ps(), tf_op_id, kTfOpEnd, tf_op, false});
+        }
+      });
 }
 
 }  // namespace
@@ -183,11 +196,9 @@ TfMetricsDbData ConvertHostThreadsXLineToTfMetricsDbData(
     const XLineVisitor& line,
     const absl::flat_hash_map<int64_t, tsl::profiler::TfOp>& tf_ops) {
   TfMetricsDbData tf_metrics_db_data;
-  if (!tf_ops.empty()) {
-    std::vector<TfActivity> tf_activities;
-    CollectTfActivities(line, tf_ops, &tf_activities);
-    ProcessTfActivities(&tf_activities, &tf_metrics_db_data);
-  }
+  std::vector<TfActivity> tf_activities;
+  CollectTfActivities(line, tf_ops, &tf_activities);
+  ProcessTfActivities(&tf_activities, &tf_metrics_db_data);
   return tf_metrics_db_data;
 }
 
@@ -215,19 +226,54 @@ OpMetricsDb ConvertHostThreadsXPlaneToOpMetricsDb(const XPlane& host_trace) {
 OpMetricsDb ConvertTpuDeviceTraceXPlaneToOpMetricsDb(
     const XPlane& device_trace) {
   XPlaneVisitor plane = tsl::profiler::CreateTfXPlaneVisitor(&device_trace);
-  using OpMetricBySymbol =
-      absl::flat_hash_map</*symbol_id=*/uint64_t, OpMetrics>;
-  absl::flat_hash_map</*program_id=*/uint64_t, OpMetricBySymbol> flat_op_metric;
-
   XEventsOpMetricsDbBuilder builder;
+  uint64_t first_op_timestamp_ps = std::numeric_limits<uint64_t>::max();
+  uint64_t last_op_timestamp_ps = 0;
+
+  struct ParentReference {
+    const XEventVisitor event;
+    tsl::profiler::Timespan device_timespan;
+    uint64_t children_duration_ps = 0;
+  };
+
+  tsl::profiler::AncestorStack<ParentReference> event_stack(
+      [&](const ParentReference& parent) {
+        OpMetrics op_metrics = FromXEvent(parent.event);
+        op_metrics.set_time_ps(parent.device_timespan.duration_ps());
+        op_metrics.set_self_time_ps(op_metrics.time_ps() -
+                                    parent.children_duration_ps);
+        builder.AddOpMetric(op_metrics, GetOpKeyFromXEvent(parent.event));
+      },
+      [](const ParentReference& parent, const ParentReference& child) {
+        return parent.device_timespan.Includes(child.device_timespan);
+      },
+      [](ParentReference& parent, ParentReference& child) {
+        parent.children_duration_ps += child.device_timespan.duration_ps();
+      });
+
+  auto track_first_and_last_op_timestamps = [&](const XEventVisitor& event) {
+    tsl::profiler::Timespan timespan = GetDeviceEventTimespan(event);
+    first_op_timestamp_ps =
+        std::min(first_op_timestamp_ps, timespan.begin_ps());
+    last_op_timestamp_ps = std::max(last_op_timestamp_ps, timespan.end_ps());
+  };
 
   plane.ForEachLine([&](const XLineVisitor& line) {
-    line.ForEachEvent(
-        [&](const XEventVisitor& event) { builder.AddOpMetric(event); });
+    if (line.Name() == tsl::profiler::kSparseCoreStepLineName ||
+        line.Name() == tsl::profiler::kStepLineName) {
+      line.ForEachEvent(track_first_and_last_op_timestamps);
+    }
+    if (!tsl::profiler::IsOpLineName(line.Name())) return;
+    line.ForEachEvent([&](const XEventVisitor& event) {
+      tsl::profiler::Timespan timespan = GetDeviceEventTimespan(event);
+      track_first_and_last_op_timestamps(event);
+
+      event_stack.Push({.event = event, .device_timespan = timespan});
+    });
+    event_stack.Flush();
   });
 
-  return builder.Finalize(
-      plane.GetStat(StatType::kTotalProfileDurationPs)->IntOrUintValue());
+  return builder.Finalize(last_op_timestamp_ps - first_op_timestamp_ps);
 }
 
 OpMetricsDb ConvertDeviceTraceXPlaneToOpMetricsDb(const XPlane& device_trace) {
@@ -247,11 +293,17 @@ OpMetricsDb ConvertDeviceTraceXPlaneToOpMetricsDb(const XPlane& device_trace) {
 
       absl::string_view tf_op_full_name;
       bool is_eager = false;
+      int64_t program_id = 0;
+      absl::string_view deduplicated_name = "";
       event.ForEachStat([&](const XStatVisitor& stat) {
         if (stat.Type() == StatType::kTfOp) {
           tf_op_full_name = stat.StrOrRefValue();
         } else if (stat.Type() == StatType::kIsEager) {
           is_eager = stat.IntValue();
+        } else if (stat.Type() == StatType::kProgramId) {
+          program_id = stat.IntOrUintValue();
+        } else if (stat.Type() == StatType::kDeduplicatedName) {
+          deduplicated_name = stat.StrOrRefValue();
         }
       });
       if (tf_op_full_name.empty()) return;
@@ -262,8 +314,10 @@ OpMetricsDb ConvertDeviceTraceXPlaneToOpMetricsDb(const XPlane& device_trace) {
         costs = op_level_cost_estimator.Predict(event);
       }
       device_op_metrics_db_builder.EnterOp(
-          /*program_id=*/0, absl::StrCat(tf_op.name, "/", event.Name()),
-          tf_op.type, tf_op_full_name, is_eager,
+          /*program_id=*/program_id,
+          /**name=*/absl::StrCat(tf_op.name, "/", event.Name()),
+          /**category=*/tf_op.type,
+          /*provenance=*/tf_op_full_name, deduplicated_name, is_eager,
           /*occurrences=*/1, event.DurationPs(),
           /*children_time_ps=*/0, costs.flops, costs.bytes_accessed);
     });

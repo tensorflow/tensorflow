@@ -85,7 +85,7 @@ TEST(TFGOptimizerTest, TestCustomPipeline) {
         std::make_unique<mlir::tfg::TestPass>());
   });
   GraphDef output;
-  const Status status = optimizer.Optimize(nullptr, item, &output);
+  const absl::Status status = optimizer.Optimize(nullptr, item, &output);
   TF_ASSERT_OK(status);
   EXPECT_EQ("a_visited", output.node(0).name());
   EXPECT_EQ("b_visited", output.node(1).name());
@@ -115,7 +115,7 @@ TEST(TFGOptimizerTest, TestImportErrorReturnsAborted) {
   // Run the optimizer.
   mlir::tfg::TFGGrapplerOptimizer optimizer([](mlir::PassManager &mgr) {});
   GraphDef output;
-  Status status = optimizer.Optimize(nullptr, item, &output);
+  absl::Status status = optimizer.Optimize(nullptr, item, &output);
 
   // Expect an aborted error.
   EXPECT_FALSE(status.ok());
@@ -135,7 +135,7 @@ TEST(TFGOptimizerTest, TestPassErrorIsFatal) {
 
   // Run the optimizer.
   GraphDef output;
-  Status status = optimizer.Optimize(nullptr, item, &output);
+  absl::Status status = optimizer.Optimize(nullptr, item, &output);
 
   // Expect a non-aborted, non-timeout error.
   EXPECT_FALSE(status.ok());
@@ -161,7 +161,7 @@ TEST(TFGOptimizerTest, TestImportErrorMetaOptimizerIsNotFatal) {
 
   // Check that running the meta-optimizer soft-fails due to the import error.
   GraphDef output;
-  Status status =
+  absl::Status status =
       RunMetaOptimizer(std::move(item), {}, nullptr, nullptr, &output);
   TF_EXPECT_OK(status);
 }

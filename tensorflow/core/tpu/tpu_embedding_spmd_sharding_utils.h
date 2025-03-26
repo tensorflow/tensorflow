@@ -16,7 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_TPU_TPU_EMBEDDING_SPMD_SHARDING_UTILS_H_
 #define TENSORFLOW_CORE_TPU_TPU_EMBEDDING_SPMD_SHARDING_UTILS_H_
 
-#include "xla/client/xla_builder.h"
+#include "absl/status/statusor.h"
+#include "xla/hlo/builder/xla_builder.h"
 #include "xla/shape.h"
 #include "xla/xla_data.pb.h"
 #include "tensorflow/core/platform/statusor.h"
@@ -28,7 +29,7 @@ namespace tpu {
 // scalar (rank = 0), the tensor is replicated across all the cores within the
 // replica. If the shape is a non-scalar (rank >= 1), the tensor is sharded on
 // dimension `0' across all the cores within the same replica.
-StatusOr<xla::OpSharding> SpmdShardingAnnotationOnFirstDim(
+absl::StatusOr<xla::OpSharding> SpmdShardingAnnotationOnFirstDim(
     const xla::Shape& shape, int core_count_per_replica,
     xla::XlaBuilder* builder);
 

@@ -45,7 +45,6 @@ cc_test(
         ":resize",
         "//tensorflow/lite/experimental/ml_adjacent:lib",
         "//tensorflow/lite/experimental/ml_adjacent/data:owning_vector_ref",
-        "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_main",
     ],
 )

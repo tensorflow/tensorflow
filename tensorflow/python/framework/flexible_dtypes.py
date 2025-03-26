@@ -368,11 +368,13 @@ def _initialize():
 
 _initialize()
 
-
+# The name np.string_ and np.unicode_ were available as aliases to np.bytes_ and
+# np.str_; however, they are removed in numpy 2.0. See
+# https://numpy.org/devdocs/numpy_2_0_migration_guide.html#changes-to-namespaces.
 _all_str_dtypes = (
     np.dtype('object_'),
-    np.dtype('string_'),
-    np.dtype('unicode_'),
+    np.dtype('bytes_'),
+    np.dtype('str_'),
     dtypes.string,
 )
 

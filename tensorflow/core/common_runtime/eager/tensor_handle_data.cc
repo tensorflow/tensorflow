@@ -24,66 +24,66 @@ limitations under the License.
 
 namespace tensorflow {
 
-Status LocalTensorHandleData::Tensor(const tensorflow::Tensor** t) const {
+absl::Status LocalTensorHandleData::Tensor(const tensorflow::Tensor** t) const {
   TF_RETURN_IF_ERROR(WaitReady("Tensor"));
 
   *t = &tensor_;
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status LocalTensorHandleData::TensorValue(tensorflow::TensorValue* t) {
+absl::Status LocalTensorHandleData::TensorValue(tensorflow::TensorValue* t) {
   TF_RETURN_IF_ERROR(WaitReady("TensorValue"));
 
   tensorflow::Tensor& tensor = tensor_;
   *t = tensorflow::TensorValue(&tensor);
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status LocalTensorHandleData::Shape(TensorShape* shape) const {
+absl::Status LocalTensorHandleData::Shape(TensorShape* shape) const {
   TF_RETURN_IF_ERROR(WaitReady("Shape"));
 
   *shape = tensor_.shape();
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status LocalTensorHandleData::NumDims(int* num_dims) const {
+absl::Status LocalTensorHandleData::NumDims(int* num_dims) const {
   TF_RETURN_IF_ERROR(WaitReady("NumDims"));
 
   *num_dims = tensor_.dims();
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status LocalTensorHandleData::Dim(int dim_index, int64_t* dim) const {
+absl::Status LocalTensorHandleData::Dim(int dim_index, int64_t* dim) const {
   TF_RETURN_IF_ERROR(WaitReady("Dim"));
 
   *dim = tensor_.dim_size(dim_index);
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status LocalTensorHandleData::NumElements(int64_t* num_elements) const {
+absl::Status LocalTensorHandleData::NumElements(int64_t* num_elements) const {
   TF_RETURN_IF_ERROR(WaitReady("NumElements"));
 
   *num_elements = tensor_.NumElements();
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status LocalTensorHandleData::Unprotect() {
+absl::Status LocalTensorHandleData::Unprotect() {
   if (!IsReady()) {
     return errors::Internal("Cannot unprotect a non-ready tensor");
   }
 
   forwarding_protection_tensor_ = tensorflow::Tensor();
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status LocalTensorHandleData::SetTensor(tensorflow::Tensor&& t) {
+absl::Status LocalTensorHandleData::SetTensor(tensorflow::Tensor&& t) {
   DCHECK(!IsReady()) << "SetTensor is only called on non-ready handles.";
 
   tensor_ = std::move(t);
@@ -93,7 +93,7 @@ Status LocalTensorHandleData::SetTensor(tensorflow::Tensor&& t) {
   auto& state = std::get<BlockingControl>(ctrl_);
   state.SetReady();
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 string LocalTensorHandleData::DebugString() const {
@@ -109,14 +109,14 @@ void LocalTensorHandleData::BlockingControl::SetReady() {
   is_ready_ = true;
 }
 
-Status LocalTensorHandleData::BlockingControl::WaitReady(
+absl::Status LocalTensorHandleData::BlockingControl::WaitReady(
     const char* caller) const {
   tf_shared_lock l(mu_);
   if (!is_ready_) {
-    profiler::TraceMe activity(
+    tsl::profiler::TraceMe activity(
         [caller] { return absl::StrCat(caller, " WaitReady"); },
 
-        profiler::TraceMeLevel::kInfo);
+        tsl::profiler::TraceMeLevel::kInfo);
     DVLOG(3) << "WaitReady: " << caller << " " << this;
     mu_.Await(Condition(&is_ready_));
   }
@@ -124,7 +124,7 @@ Status LocalTensorHandleData::BlockingControl::WaitReady(
   return is_poisoned_;
 }
 
-void LocalTensorHandleData::BlockingControl::Poison(Status status) {
+void LocalTensorHandleData::BlockingControl::Poison(absl::Status status) {
   mutex_lock l(mu_);
   if (is_ready_) {
     LOG(ERROR) << "Poison can only be called on non-ready handle: " << this;

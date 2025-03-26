@@ -22,17 +22,18 @@ limitations under the License.
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/time/time.h"
+#include "xla/tsl/platform/env.h"
+#include "tensorflow/core/data/service/byte_size.h"
 #include "tensorflow/core/data/service/common.pb.h"
 #include "tensorflow/core/data/service/snapshot/file_utils.h"
 #include "tensorflow/core/data/service/snapshot/path_utils.h"
 #include "tensorflow/core/data/service/task_runner.h"
 #include "tensorflow/core/data/snapshot_utils.h"
 #include "tensorflow/core/framework/tensor.h"
-#include "tsl/platform/env.h"
-#include "tsl/platform/errors.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tsl/platform/path.h"
-#include "tsl/platform/status.h"
-#include "tsl/platform/statusor.h"
 
 namespace tensorflow {
 namespace data {
@@ -40,11 +41,11 @@ namespace testing {
 
 // Reads the records from a distributed tf.data snapshot written at `base_path`.
 template <class T>
-tsl::StatusOr<std::vector<T>> ReadSnapshot(const std::string& base_path,
-                                           const std::string& compression) {
+absl::StatusOr<std::vector<T>> ReadSnapshot(const std::string& base_path,
+                                            const std::string& compression) {
   std::vector<T> result;
   std::string chunks_directory = CommittedChunksDirectory(base_path);
-  TF_ASSIGN_OR_RETURN(std::vector<string> chunk_files,
+  TF_ASSIGN_OR_RETURN(std::vector<std::string> chunk_files,
                       GetChildren(chunks_directory, Env::Default()));
   for (const std::string& chunk_file : chunk_files) {
     std::string chunk_file_path =
@@ -55,7 +56,7 @@ tsl::StatusOr<std::vector<T>> ReadSnapshot(const std::string& base_path,
 
     while (true) {
       std::vector<Tensor> tensors;
-      Status status = tfrecord_reader.ReadTensors(&tensors);
+      absl::Status status = tfrecord_reader.ReadTensors(&tensors);
       if (absl::IsOutOfRange(status)) {
         break;
       }
@@ -71,10 +72,10 @@ tsl::StatusOr<std::vector<T>> ReadSnapshot(const std::string& base_path,
 // checkpoints.
 class PartialSnapshotWriter {
  public:
-  static tsl::StatusOr<PartialSnapshotWriter> Create(
+  static absl::StatusOr<PartialSnapshotWriter> Create(
       const DatasetDef& dataset, const std::string& snapshot_path,
       int64_t stream_index, const std::string& compression,
-      int64_t max_chunk_size_bytes = 1,
+      ByteSize max_chunk_size = ByteSize::Bytes(1),
       absl::Duration checkpoint_interval = absl::Microseconds(1));
   virtual ~PartialSnapshotWriter() = default;
   PartialSnapshotWriter(const PartialSnapshotWriter&) = delete;
@@ -83,31 +84,30 @@ class PartialSnapshotWriter {
   PartialSnapshotWriter& operator=(PartialSnapshotWriter&&) = delete;
 
   // Writes the specified chunks.
-  tsl::Status WriteCommittedChunks(
+  absl::Status WriteCommittedChunks(
       const absl::flat_hash_set<int64_t>& committed_chunk_indexes) const;
 
   // Writes the specified uncommitted chunks.
-  tsl::Status WriteUncommittedChunks(
+  absl::Status WriteUncommittedChunks(
       const absl::flat_hash_set<int64_t>& uncommitted_chunk_indexes) const;
 
   // Writes the specified checkpoints.
-  tsl::Status WriteCheckpoints(
+  absl::Status WriteCheckpoints(
       const absl::flat_hash_set<int64_t>& checkpoint_indexes) const;
 
  private:
   PartialSnapshotWriter(const DatasetDef& dataset,
                         const std::string& snapshot_path, int64_t stream_index,
-                        const std::string& compression,
-                        int64_t max_chunk_size_bytes,
+                        const std::string& compression, ByteSize max_chunk_size,
                         absl::Duration checkpoint_interval);
 
-  tsl::Status Initialize();
+  absl::Status Initialize();
 
   const DatasetDef dataset_;
   const std::string snapshot_path_;
   const int64_t stream_index_;
   const std::string compression_;
-  const int64_t max_chunk_size_bytes_;
+  const ByteSize max_chunk_size_;
   const absl::Duration checkpoint_interval_;
 
   std::string tmp_snapshot_path_;
@@ -115,7 +115,7 @@ class PartialSnapshotWriter {
 
 // Creates a test iterator for the input dataset. The iterator will generate all
 // elements of the dataset.
-tsl::StatusOr<std::unique_ptr<StandaloneTaskIterator>> TestIterator(
+absl::StatusOr<std::unique_ptr<StandaloneTaskIterator>> TestIterator(
     const DatasetDef& dataset_def);
 
 }  // namespace testing

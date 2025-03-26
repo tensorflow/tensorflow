@@ -39,7 +39,7 @@ void FuzzGraphEndToEndSimpleFixedInput(const GraphDef& graph_def) {
   // Load an arbitrary graph and run a session on it using simple input.
   ImportGraphDefOptions options;
   auto graph = std::make_unique<Graph>(OpRegistry::Global());
-  Status status =
+  absl::Status status =
       ImportGraphDef(options, graph_def, graph.get(), nullptr, nullptr);
   if (!status.ok()) {
     return;
@@ -77,7 +77,7 @@ void FuzzGraphEndToEndAllStatic(const GraphDef& graph_def) {
   // to explore any arbitrary graph computation.
   ImportGraphDefOptions options;
   auto graph = std::make_unique<Graph>(OpRegistry::Global());
-  Status status =
+  absl::Status status =
       ImportGraphDef(options, graph_def, graph.get(), nullptr, nullptr);
   if (!status.ok()) {
     return;
@@ -290,7 +290,7 @@ void FuzzGraphEndToEndFDP(std::vector<uint8_t> data) {
 
   // Create a set of nodes for the graph
   // Max number of nodes in the graph
-  int MAX_NODES = 10;
+  int MAX_NODES = 8;
 
   // The actual number of nodes in the graph
   int nodes_in_graph = fdp.ConsumeIntegralInRange<int>(3, MAX_NODES);
@@ -309,7 +309,7 @@ void FuzzGraphEndToEndFDP(std::vector<uint8_t> data) {
   names_used.push_back("N1");
 
   // Create all the nodes in the graph that will do computations.
-  // We start at the third node because we've alrady added 2.
+  // We start at the third node because we've already added 2.
   std::string last_node = "";
   for (int i = 2; i < nodes_in_graph; i++) {
     std::string name = "N" + std::to_string(i);
@@ -353,7 +353,7 @@ void FuzzGraphEndToEndFDP(std::vector<uint8_t> data) {
   }
 
   std::unique_ptr<Graph> graph = std::make_unique<Graph>(OpRegistry::Global());
-  Status s = ImportGraphDef(opts, gdef_, graph.get(), nullptr, nullptr);
+  absl::Status s = ImportGraphDef(opts, gdef_, graph.get(), nullptr, nullptr);
   if (!s.ok()) {
     return;
   }

@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/profiler/convert/repository.h"
 
-#include <cstdint>
+#include <cstddef>
 #include <memory>
 #include <optional>
 #include <string>
@@ -23,28 +23,31 @@ limitations under the License.
 #include <vector>
 
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
-#include "tensorflow/core/platform/env.h"
+#include "absl/strings/string_view.h"
+#include "absl/strings/strip.h"
+#include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/profiler/utils/file_system_utils.h"
 #include "tensorflow/core/platform/errors.h"
-#include "tensorflow/core/platform/path.h"
-#include "tensorflow/core/platform/status.h"
-#include "tensorflow/core/platform/statusor.h"
-#include "tsl/platform/errors.h"
+#include "tsl/platform/path.h"
 #include "tsl/profiler/protobuf/xplane.pb.h"
-#include "tsl/profiler/utils/file_system_utils.h"
 
 namespace tensorflow {
 namespace profiler {
 namespace {
 std::string GetHostnameByPath(absl::string_view xspace_path) {
-  std::string file_name = std::string(tensorflow::io::Basename(xspace_path));
-  std::vector<std::string> parts = absl::StrSplit(file_name, '.');
-  return parts[0];
+  std::string_view file_name = tsl::io::Basename(xspace_path);
+  // Remove suffix from file_name, preserving entire prefix.
+  absl::ConsumeSuffix(&file_name, ".xplane.pb");
+  return std::string(file_name);
 }
 }  // namespace
 
-StatusOr<SessionSnapshot> SessionSnapshot::Create(
+absl::StatusOr<SessionSnapshot> SessionSnapshot::Create(
     std::vector<std::string> xspace_paths,
     std::optional<std::vector<std::unique_ptr<XSpace>>> xspaces) {
   if (xspace_paths.empty()) {
@@ -76,7 +79,7 @@ StatusOr<SessionSnapshot> SessionSnapshot::Create(
   return SessionSnapshot(std::move(xspace_paths), std::move(xspaces));
 }
 
-StatusOr<std::unique_ptr<XSpace>> SessionSnapshot::GetXSpace(
+absl::StatusOr<std::unique_ptr<XSpace>> SessionSnapshot::GetXSpace(
     size_t index) const {
   if (index >= xspace_paths_.size()) {
     return errors::InvalidArgument("Can not get the ", index,
@@ -94,13 +97,12 @@ StatusOr<std::unique_ptr<XSpace>> SessionSnapshot::GetXSpace(
 
   // Return the XSpace proto from file.
   auto xspace_from_file = std::make_unique<XSpace>();
-  TF_RETURN_IF_ERROR(tensorflow::ReadBinaryProto(tensorflow::Env::Default(),
-                                                 xspace_paths_.at(index),
-                                                 xspace_from_file.get()));
+  TF_RETURN_IF_ERROR(tsl::ReadBinaryProto(
+      tsl::Env::Default(), xspace_paths_.at(index), xspace_from_file.get()));
   return xspace_from_file;
 }
 
-StatusOr<std::unique_ptr<XSpace>> SessionSnapshot::GetXSpaceByName(
+absl::StatusOr<std::unique_ptr<XSpace>> SessionSnapshot::GetXSpaceByName(
     absl::string_view name) const {
   if (auto it = hostname_map_.find(name); it != hostname_map_.end()) {
     return GetXSpace(it->second);
@@ -121,12 +123,11 @@ std::optional<std::string> SessionSnapshot::GetFilePath(
   std::string file_name = "";
   if (toolname == "trace_viewer@")
     file_name = absl::StrCat(hostname, ".", "SSTABLE");
-  if (!file_name.empty())
-    return tensorflow::io::JoinPath(session_run_dir_, file_name);
+  if (!file_name.empty()) return tsl::io::JoinPath(session_run_dir_, file_name);
   return std::nullopt;
 }
 
-StatusOr<std::string> SessionSnapshot::GetHostDataFileName(
+absl::StatusOr<std::string> SessionSnapshot::GetHostDataFileName(
     const StoredDataType data_type, const std::string host) const {
   for (const auto& format : *kHostDataSuffixes) {
     if (data_type == format.first) return absl::StrCat(host, format.second);
@@ -134,7 +135,7 @@ StatusOr<std::string> SessionSnapshot::GetHostDataFileName(
   return absl::InternalError(&"Unknown StoredDataType: "[data_type]);
 }
 
-StatusOr<std::optional<std::string>> SessionSnapshot::GetHostDataFilePath(
+absl::StatusOr<std::optional<std::string>> SessionSnapshot::GetHostDataFilePath(
     const StoredDataType data_type, const std::string host) const {
   // Gets all the files in session run directory.
   std::vector<std::string> results;
@@ -153,7 +154,7 @@ StatusOr<std::optional<std::string>> SessionSnapshot::GetHostDataFilePath(
   return std::nullopt;
 }
 
-StatusOr<std::pair<bool, std::string>> SessionSnapshot::HasCacheFile(
+absl::StatusOr<std::pair<bool, std::string>> SessionSnapshot::HasCacheFile(
     const StoredDataType data_type) const {
   std::optional<std::string> filepath;
   TF_ASSIGN_OR_RETURN(filepath,

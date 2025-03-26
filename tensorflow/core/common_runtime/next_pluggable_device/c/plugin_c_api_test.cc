@@ -21,6 +21,8 @@ limitations under the License.
 #include <utility>
 
 #include <gtest/gtest.h>
+#include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "tensorflow/c/tf_status.h"
 #include "tensorflow/core/common_runtime/next_pluggable_device/c/example_plugin.h"
 #include "tensorflow/core/platform/status.h"
@@ -32,8 +34,8 @@ limitations under the License.
 namespace {
 
 struct CallbackParams {
-  std::function<void(const tensorflow::Status&)> callback;
-  tensorflow::Status status;
+  std::function<void(const absl::Status&)> callback;
+  absl::Status status;
   const TFNPD_Api* api;
   TFNPD_DeviceEvent* event;
 
@@ -107,7 +109,7 @@ TEST_F(PluginEventTestFixture, TestInvokeCallback) {
   std::string tennis_goat = "Sampras";
 
   auto done = [result_avref = result_avref.CopyRef(),
-               &tennis_goat](const tensorflow::Status& status) {
+               &tennis_goat](const absl::Status& status) {
     result_avref.emplace(42);
     LOG(INFO) << "Invoking status callback. Tennis goat is: "
               << status.message();
@@ -117,7 +119,7 @@ TEST_F(PluginEventTestFixture, TestInvokeCallback) {
   TFNPD_DeviceEvent* event =
       example_plugin::CreateDeviceEventAndSetAvailable(host_.get());
 
-  tensorflow::Status status(absl::StatusCode::kInternal, "Federer");
+  absl::Status status(absl::StatusCode::kInternal, "Federer");
 
   // CallbackParams stores the "done" callback function passed in by TF, and
   // status, which is "done"'s arg. We need to add another indirection since we

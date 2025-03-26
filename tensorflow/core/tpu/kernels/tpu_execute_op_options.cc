@@ -24,7 +24,7 @@ static TpuCancellationClosesChipsMode tpu_cancellation_closes_chips =
     TpuCancellationClosesChipsMode::kUnset;
 }  // namespace
 
-Status SetTpuCancellationClosesChips(int val) {
+absl::Status SetTpuCancellationClosesChips(int val) {
   if (val < 0 || val > 2) {
     return errors::InvalidArgument(
         "SetTpuCancellationClosesChips: input must be 0 (kUnset), 1 (kEnabled) "
@@ -33,7 +33,7 @@ Status SetTpuCancellationClosesChips(int val) {
   }
   tpu_cancellation_closes_chips =
       static_cast<TpuCancellationClosesChipsMode>(val);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 bool TpuCancellationClosesChipsGetOrDefault(bool default_value) {

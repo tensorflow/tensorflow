@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,11 +15,22 @@ limitations under the License.
 
 #include "xla/service/while_loop_invariant_code_motion.h"
 
+#include "absl/log/log.h"
+#include "xla/hlo/ir/hlo_computation.h"
+#include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/ir/hlo_sharding.h"
+#include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/utils/hlo_matchers.h"
-#include "xla/service/hlo_parser.h"
+#include "xla/literal_util.h"
+#include "xla/shape.h"
+#include "xla/shape_util.h"
 #include "xla/test.h"
 #include "xla/tests/hlo_test_base.h"
-#include "tsl/lib/core/status_test_util.h"
+#include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/xla_data.pb.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
@@ -504,31 +515,22 @@ TEST_F(WhileLoopInvariantCodeMotionTest, HoistsConstantWhenAsked) {
   // We expect the while body to be the equivalent of:
   //
   //  wide.body {
-  //    wide_param.1 = (f32[2]{0}, f32[2]{0}) parameter(0)
-  //    get-tuple-element.1 = f32[2]{0} get-tuple-element(wide_param.1), index=0
-  //    tuple.1 = (f32[2]{0}) tuple(get-tuple-element.1)
-  //    get-tuple-element.4 = f32[2]{0} get-tuple-element(tuple.1), index=0
-  //    get-tuple-element.7 = f32[2]{0} get-tuple-element(wide_param.1), index=1
-  //    add.1 = f32[2]{0} add(get-tuple-element.4, get-tuple-element.7)
-  //    tuple.3 = (f32[2]{0}) tuple(add.1)
-  //    get-tuple-element.8 = f32[2]{0} get-tuple-element(tuple.3), index=0
-  //    get-tuple-element.9 = f32[2]{0} get-tuple-element(wide_param.1), index=1
-  //    ROOT tuple.4 = (f32[2]{0}, f32[2]{0}) tuple(get-tuple-element.8,
-  //                                                get-tuple-element.9)
+  //    wide.p_body = (f32[2]{0}, f32[2]{0}) parameter(0)
+  //    p_body.2 = get-tuple-element(wide.p_body), index=0
+  //    wide.body.in.0 = get-tuple-element(wide.p_body), index=1
+  //    add.1 = add(p_body.2, wide.body.in.0)
+  //    wide.body.through.0 = get-tuple-element(wide.p_body), index=1
+  //    ROOT tuple = (f32[2]{0}, f32[2]{0}) tuple(add.1, wide.body.through.0)
   //  }
 
-  auto wide_param_1 = op::Parameter(0);
-  auto get_tuple_element_1 = op::GetTupleElement(wide_param_1, 0);
-  auto tuple_1 = op::Tuple(get_tuple_element_1);
-  auto get_tuple_element_4 = op::GetTupleElement(tuple_1, 0);
-  auto get_tuple_element_7 = op::GetTupleElement(wide_param_1, 1);
-  auto add_1 = op::Add(get_tuple_element_4, get_tuple_element_7);
-  auto tuple_3 = op::Tuple(add_1);
-  auto get_tuple_element_8 = op::GetTupleElement(tuple_3, 0);
-  auto get_tuple_element_9 = op::GetTupleElement(wide_param_1, 1);
-  auto tuple_4 = op::Tuple(get_tuple_element_8, get_tuple_element_9);
+  auto wide_p_body = op::Parameter(0);
+  auto p_body_2 = op::GetTupleElement(wide_p_body, 0);
+  auto wide_body_in_0 = op::GetTupleElement(wide_p_body, 1);
+  auto add_1 = op::Add(p_body_2, wide_body_in_0);
+  auto wide_body_through_0 = op::GetTupleElement(wide_p_body, 1);
+  auto tuple = op::Tuple(add_1, wide_body_through_0);
 
-  EXPECT_THAT(while_body->root_instruction(), tuple_4);
+  EXPECT_THAT(while_body->root_instruction(), tuple);
 }
 
 TEST_F(WhileLoopInvariantCodeMotionTest, DoesNotHoistConstantByDefault) {
@@ -628,7 +630,7 @@ TEST_F(WhileLoopInvariantCodeMotionTest, NoHoistInflating) {
   EXPECT_FALSE(simplified_loop);
 }
 
-TEST_F(WhileLoopInvariantCodeMotionTest, DoesNotHoistShardingCustomCalls) {
+TEST_F(WhileLoopInvariantCodeMotionTest, DoesNotHoistSPMDFullToShardShape) {
   auto m = CreateNewVerifiedModule();
   auto array_s32 = ShapeUtil::MakeShape(S32, {4});
   Shape while_shape =
@@ -676,6 +678,44 @@ TEST_F(WhileLoopInvariantCodeMotionTest, DoesNotHoistShardingCustomCalls) {
   LOG(INFO) << "my_test: " << m->ToString();
   TF_ASSERT_OK_AND_ASSIGN(bool simplified_loop,
                           WhileLoopInvariantCodeMotion{}.Run(m.get()));
+  EXPECT_FALSE(simplified_loop);
+}
+
+TEST_F(WhileLoopInvariantCodeMotionTest, DoesNotHoistShardingCustomCalls) {
+  const char* const kHloModule = R"(
+    HloModule ModuleWithWhile
+
+    body {
+      p_body = (f32[2], f32[2], s32[]) parameter(0)
+      gte.0 = f32[2] get-tuple-element(p_body), index=0
+      gte.1 = f32[2] get-tuple-element(p_body), index=1
+      sharding.0 = f32[2] custom-call(gte.0), custom_call_target="Sharding", sharding={devices=[2]<=[2]}
+      sharding.1 = f32[2] custom-call(gte.1), custom_call_target="Sharding", sharding={replicated}
+      add.0 = f32[2] add(sharding.0, sharding.1)
+      gte.2 = s32[] get-tuple-element(p_body), index=2
+      const = s32[] constant(1)
+      add.1 = s32[] add(gte.2, const)
+      ROOT root = (f32[2], f32[2], s32[]) tuple(gte.0, add.0, add.1)
+    }
+
+    condition {
+      p_cond = (f32[2], f32[2], s32[]) parameter(0)
+      gte = s32[] get-tuple-element(p_cond), index=2
+      const = s32[] constant(5)
+      ROOT result = pred[] compare(gte, const), direction=LT
+    }
+
+    ENTRY entry {
+      param.0 = f32[2] parameter(0)
+      param.1 = s32[] parameter(1)
+      while_init = (f32[2], f32[2], s32[]) tuple(param.0, param.0, param.1)
+      ROOT while = (f32[2], f32[2], s32[]) while(while_init), condition=condition, body=body
+    })";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(kHloModule));
+
+  TF_ASSERT_OK_AND_ASSIGN(bool simplified_loop,
+                          WhileLoopInvariantCodeMotion{}.Run(module.get()));
   EXPECT_FALSE(simplified_loop);
 }
 

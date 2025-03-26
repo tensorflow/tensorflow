@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/platform/path.h"
 #include "tensorflow/core/protobuf/meta_graph.pb.h"
@@ -32,7 +33,6 @@ limitations under the License.
 #include "tensorflow/tools/proto_splitter/cc/util.h"
 #include "tensorflow/tools/proto_splitter/chunk.pb.h"
 #include "tensorflow/tools/proto_splitter/testdata/test_message.pb.h"
-#include "tsl/lib/core/status_test_util.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/status_matchers.h"
 #include "tsl/platform/statusor.h"
@@ -51,12 +51,12 @@ using fingerprinting_utils_internal::HashSavedObjectGraph;
 using fingerprinting_utils_internal::HashSignatureDef;
 using fingerprinting_utils_internal::PruneChunkedMessage;
 using fingerprinting_utils_internal::SerializeProto;
-using ::proto_splitter::ChunkedField;
-using ::proto_splitter::ChunkedMessage;
-using ::proto_splitter::ChunkInfo;
-using ::proto_splitter::ChunkMetadata;
-using ::proto_splitter::FieldIndex;
-using ::proto_splitter_testdata::ManyFields;
+using ::tensorflow::proto_splitter::ChunkedField;
+using ::tensorflow::proto_splitter::ChunkedMessage;
+using ::tensorflow::proto_splitter::ChunkInfo;
+using ::tensorflow::proto_splitter::ChunkMetadata;
+using ::tensorflow::proto_splitter::FieldIndex;
+using ::tensorflow::proto_splitter_testdata::ManyFields;
 using ::tensorflow::protobuf::Message;
 using ::tensorflow::protobuf::RepeatedPtrField;
 using ::tensorflow::protobuf::TextFormat;
@@ -82,8 +82,8 @@ absl::Status ParseTextProto(absl::string_view text_proto,
       absl::StrCat("Could not parse text proto: ", text_proto));
 }
 
-absl::StatusOr<RepeatedPtrField<::proto_splitter::FieldIndex>> ExtractFieldTags(
-    absl::string_view chunked_field_text_proto) {
+absl::StatusOr<RepeatedPtrField<::tensorflow::proto_splitter::FieldIndex>>
+ExtractFieldTags(absl::string_view chunked_field_text_proto) {
   ChunkedField chunked_field;
   TF_RETURN_IF_ERROR(ParseTextProto(chunked_field_text_proto, &chunked_field));
   return chunked_field.field_tag();

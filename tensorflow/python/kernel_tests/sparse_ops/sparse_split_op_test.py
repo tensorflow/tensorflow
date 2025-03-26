@@ -245,7 +245,7 @@ class SparseSplitOpTest(test.TestCase):
 
   def testInvalidAxis(self):
     for axis in (-3, 2):
-      with self.assertRaisesRegexp(errors.InvalidArgumentError,
+      with self.assertRaisesRegex(errors.InvalidArgumentError,
                                    r'axis should be in range \[-2, 2\)'):
         self.evaluate(
             sparse_ops.sparse_split(
@@ -284,7 +284,7 @@ class SparseSplitOpTest(test.TestCase):
   def testInvalidArgumentError(self):
     # Test case for GitHub issue 53660.
     axis = [1, 2]
-    with self.assertRaisesRegexp(errors.InvalidArgumentError,
+    with self.assertRaisesRegex(errors.InvalidArgumentError,
                                  r'axis should be a scalar'):
       self.evaluate(
           sparse_ops.sparse_split(

@@ -4,7 +4,7 @@ tf_class {
   is_instance: "<type \'object\'>"
   member {
     name: "EmbeddingFeature"
-    mtype: "<class \'enum.EnumMeta\'>"
+    mtype: "<class \'enum.EnumType\'>"
   }
   member {
     name: "embedding_feature"

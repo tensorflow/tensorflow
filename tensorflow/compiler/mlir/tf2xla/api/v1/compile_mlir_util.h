@@ -17,7 +17,12 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_MLIR_TF2XLA_API_V1_COMPILE_MLIR_UTIL_H_
 
 #include <memory>
+#include <string>
+#include <vector>
 
+#include "absl/base/attributes.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/StringRef.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
@@ -27,9 +32,8 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/layout_util.h"
 #include "tensorflow/compiler/tf2xla/xla_argument.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
-#include "xla/client/xla_computation.h"
+#include "xla/hlo/builder/xla_computation.h"
 #include "tensorflow/core/common_runtime/device.h"
-#include "tensorflow/core/framework/graph_debug_info.pb.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 
 namespace tensorflow {
@@ -63,14 +67,12 @@ namespace tensorflow {
 //   result shapes.
 // custom_legalization_passes: passes to run before the default TF legalization
 //   passes for backend-specific ops.
-//
-// TODO(hinsu): Migrate options to a separate struct.
-Status ConvertMLIRToXlaComputation(
+ABSL_DEPRECATED("Use v2/legalize_tf.h::LegalizeMlirToHlo instead.")
+absl::Status ConvertMLIRToXlaComputation(
     mlir::ModuleOp module_op, llvm::StringRef device_type,
     xla::XlaComputation* xla_computation, bool use_tuple_args,
     bool enable_op_fallback, bool return_tuple,
-    const XlaShapeLayoutHelpers::ShapeDeterminationFns shape_determination_fns =
-        {},
+    XlaShapeLayoutHelpers::ShapeDeterminationFns shape_determination_fns = {},
     llvm::MutableArrayRef<std::unique_ptr<mlir::Pass>>
         custom_legalization_passes = {},
     llvm::StringRef module_name = llvm::StringRef());
@@ -98,6 +100,7 @@ Status ConvertMLIRToXlaComputation(
 //   true, includes legalization and MHLO lowering passes.
 // allow_partial_conversion: when this is true, allow operations that can't be
 //   legalized.
+ABSL_DEPRECATED("Use v2/legalize_tf.h::LegalizeMlirToHlo instead.")
 void CreateConvertMlirToXlaHloPipeline(
     mlir::OpPassManager& pm, llvm::StringRef device_type,
     bool enable_op_fallback,
@@ -112,28 +115,53 @@ struct TensorOrResourceShape {
 };
 
 // Refine MLIR types based on new shape information.
-Status RefineShapes(llvm::ArrayRef<TensorOrResourceShape> arg_shapes,
-                    mlir::ModuleOp module);
+ABSL_DEPRECATED("Not meant to be used directly and should be a util.")
+absl::Status RefineShapes(llvm::ArrayRef<TensorOrResourceShape> arg_shapes,
+                          mlir::ModuleOp module);
 
 // Lower TF to MHLO and insert HLO into the XlaBuilder. xla_params are HLO-level
 // inputs to module_op that have already been added to the XlaBuilder. returns
 // are the returned XlaOps.
-Status BuildHloFromTf(mlir::ModuleOp module_op, xla::XlaBuilder& builder,
-                      llvm::ArrayRef<xla::XlaOp> xla_params,
-                      std::vector<xla::XlaOp>& returns,
-                      llvm::ArrayRef<TensorOrResourceShape> arg_shapes,
-                      llvm::StringRef device_type,
-                      llvm::MutableArrayRef<std::unique_ptr<mlir::Pass>>
-                          custom_legalization_passes);
+ABSL_DEPRECATED("Use v2/legalize_tf.h::LegalizeMlirToHlo instead.")
+absl::Status BuildHloFromTf(mlir::ModuleOp module_op, xla::XlaBuilder& builder,
+                            llvm::ArrayRef<xla::XlaOp> xla_params,
+                            std::vector<xla::XlaOp>& returns,
+                            llvm::ArrayRef<TensorOrResourceShape> arg_shapes,
+                            llvm::StringRef device_type,
+                            llvm::MutableArrayRef<std::unique_ptr<mlir::Pass>>
+                                custom_legalization_passes);
 
 // Apply shape, description, and resource information to inputs and outputs
 // in the XlaCompilationResult. This should be called after
 // compilation_result->computation was set.
-Status PopulateResultIOInfo(
+ABSL_DEPRECATED("Not meant to be used directly and should be a util.")
+absl::Status PopulateResultIOInfo(
     mlir::ModuleOp module_op, llvm::ArrayRef<TensorOrResourceShape> arg_shapes,
     bool use_tuple_args, bool use_resource_updates_for_aliases,
-    const XlaShapeLayoutHelpers::ShapeDeterminationFns shape_determination_fns,
+    XlaShapeLayoutHelpers::ShapeDeterminationFns shape_determination_fns,
     XlaCompilationResult* compilation_result);
+
+// Runs MLIR Bridge on an MLIR module.
+//
+// If lower_to_xla_hlo is true then compiles down into XLA HLO, generates all
+// accompanying metadata and stores them in CompilationResult.
+//
+// If enable_op_fallback is set to false, graph is legalized only if the graph
+// analysis for the graph is successful. Otherwise, an error is returned.
+//
+// Running the MLIR Bridge performs many transformations on the input module
+// which is modified in place.
+ABSL_DEPRECATED("Use v2/legalize_tf.h::LegalizeMlirToHlo instead.")
+absl::Status CompileMlirToXlaHlo(
+    mlir::ModuleOp module_op, llvm::ArrayRef<TensorOrResourceShape> arg_shapes,
+    llvm::StringRef device_type, bool use_tuple_args, bool enable_op_fallback,
+    bool use_return_tuple, bool use_resource_updates_for_aliases,
+    XlaShapeLayoutHelpers::ShapeDeterminationFns shape_determination_fns,
+    XlaCompilationResult* compilation_result,
+    llvm::MutableArrayRef<std::unique_ptr<mlir::Pass>>
+        custom_legalization_passes,
+    llvm::StringRef module_name = llvm::StringRef(),
+    bool lower_to_xla_hlo = true);
 
 // Runs MLIR Bridge on a MLIR module.
 //
@@ -142,7 +170,10 @@ Status PopulateResultIOInfo(
 //
 // If enable_op_fallback is set to false, graph is legalized only if the graph
 // analysis for the graph is successful. Otherwise, an error is returned.
-StatusOr<std::string> CompileMlirToXlaHlo(
+//
+// On success, returns the serialized MLIR module.
+ABSL_DEPRECATED("Use v2/legalize_tf.h::LegalizeMlirToHlo instead.")
+absl::StatusOr<std::string> CompileMlirToXlaHloAndSerialize(
     mlir::ModuleOp module_op, llvm::ArrayRef<TensorOrResourceShape> arg_shapes,
     llvm::StringRef device_type, bool use_tuple_args, bool enable_op_fallback,
     bool use_return_tuple, bool use_resource_updates_for_aliases,
@@ -157,10 +188,11 @@ StatusOr<std::string> CompileMlirToXlaHlo(
 //
 // If lower_to_xla_hlo is true then compiles down into XLA HLO, generates all
 // accompanying metadata and stores them in CompilationResult.
-StatusOr<std::string> CompileSerializedMlirToXlaHlo(
+ABSL_DEPRECATED("Use v2/legalize_tf.h::LegalizeMlirToHlo instead.")
+absl::StatusOr<std::string> CompileSerializedMlirToXlaHlo(
     llvm::StringRef mlir_module_string, llvm::ArrayRef<TensorShape> arg_shapes,
     llvm::StringRef device_type, bool use_tuple_args, bool enable_op_fallback,
-    const XlaShapeLayoutHelpers::ShapeDeterminationFns shape_determination_fns,
+    XlaShapeLayoutHelpers::ShapeDeterminationFns shape_determination_fns,
     XlaCompilationResult* compilation_result,
     llvm::MutableArrayRef<std::unique_ptr<mlir::Pass>>
         custom_legalization_passes = {},
@@ -172,41 +204,32 @@ StatusOr<std::string> CompileSerializedMlirToXlaHlo(
 // metadata and stores them in CompilationResult. This will rewrite arguments
 // and run the TensorFlow standard pipeline prior to invoking
 // `CompileMlirToXlaHlo`.
-Status CompileGraphToXlaHlo(
+ABSL_DEPRECATED("Use v2/legalize_tf.h::LegalizeMlirToHlo instead.")
+absl::Status CompileGraphToXlaHlo(
     mlir::ModuleOp module_op, llvm::ArrayRef<XlaArgument> args,
     llvm::StringRef device_type, bool use_tuple_args, bool enable_op_fallback,
     bool use_return_tuple,
-    const XlaShapeLayoutHelpers::ShapeDeterminationFns shape_determination_fns,
+    XlaShapeLayoutHelpers::ShapeDeterminationFns shape_determination_fns,
     XlaCompilationResult* compilation_result,
     llvm::MutableArrayRef<std::unique_ptr<mlir::Pass>>
         custom_legalization_passes);
-
-// Compiles a TensorFlow Graph into XLA HLO, generates all accompanying metadata
-// and stores them in CompilationResult.
-Status CompileGraphToXlaHlo(
-    const Graph& graph, llvm::ArrayRef<XlaArgument> args,
-    llvm::ArrayRef<std::string> control_rets, llvm::StringRef device_type,
-    bool use_tuple_args, bool enable_op_fallback,
-    const FunctionLibraryDefinition& flib_def, const GraphDebugInfo& debug_info,
-    const XlaShapeLayoutHelpers::ShapeDeterminationFns shape_determination_fns,
-    XlaCompilationResult* compilation_result,
-    llvm::MutableArrayRef<std::unique_ptr<mlir::Pass>>
-        custom_legalization_passes = {});
 
 // Compiles a Graph from TF to HLO and adds the resulting HLO to the
 // XlaBuilder. This function adds HLO to a larger HLO computation, so
 // HLO-level inputs are supplied, and HLO-level outputs are produced.
 // xla_params is the HLO-level inputs and returns is the HLO-level outputs.
-Status BuildHloFromGraph(
+// If unconditionally_use_output_shapes is true then the unregistered
+// attribute _output_shapes is always used to set the output shapes of the ops.
+ABSL_DEPRECATED(
+    "Use v1/compile_tf_graph.h::CompileTensorflowGraphToHlo instead.")
+absl::Status BuildHloFromGraph(
     const Graph& graph, xla::XlaBuilder& builder,
     mlir::MLIRContext& mlir_context, llvm::ArrayRef<xla::XlaOp> xla_params,
-    std::vector<xla::XlaOp>& returns, llvm::ArrayRef<XlaArgument> args,
-    llvm::ArrayRef<std::string> control_rets, llvm::StringRef device_type,
-    const FunctionLibraryDefinition& flib_def, const GraphDebugInfo& debug_info,
-    llvm::MutableArrayRef<std::unique_ptr<mlir::Pass>>
-        custom_legalization_passes = {});
+    std::vector<xla::XlaOp>& returns, bool unconditionally_use_output_shapes,
+    llvm::ArrayRef<XlaArgument> args, llvm::ArrayRef<std::string> control_rets,
+    llvm::StringRef device_type, const FunctionLibraryDefinition& flib_def);
 
-static inline Status CompileToHloGraphAnalysisFailedError() {
+static inline absl::Status CompileToHloGraphAnalysisFailedError() {
   return errors::Internal("disabled after graph analysis");
 }
 

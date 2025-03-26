@@ -14,9 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include <memory>
-#include <string>
 
-#include "absl/types/optional.h"
 #include "pybind11/pybind11.h"  // from @pybind11
 #include "pybind11/pytypes.h"  // from @pybind11
 #include "pybind11/stl.h"  // from @pybind11
@@ -51,6 +49,12 @@ PYBIND11_MODULE(flags_pybind, m) {
   TF_PY_DECLARE_FLAG(saved_model_fingerprinting);
   TF_PY_DECLARE_FLAG(tf_shape_default_int64);
   TF_PY_DECLARE_FLAG(more_stack_traces);
-  TF_PY_DECLARE_FLAG(replicate_small_constants);
+  TF_PY_DECLARE_FLAG(publish_function_graphs);
+  TF_PY_DECLARE_FLAG(enable_aggressive_constant_replication);
+  TF_PY_DECLARE_FLAG(enable_colocation_key_propagation_in_while_op_lowering);
+  TF_PY_DECLARE_FLAG(enable_tf2min_ici_weight)
+  TF_PY_DECLARE_FLAG(enable_function_pruning_before_inlining)
+  TF_PY_DECLARE_FLAG(enable_skip_encapsulation_for_non_tpu_graphs)
+  TF_PY_DECLARE_FLAG(enable_graph_debug_info_caching_for_stack_frames)
   // LINT.ThenChange(//tensorflow/core/config/flag_defs.h)
 };

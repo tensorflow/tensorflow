@@ -15,29 +15,35 @@ limitations under the License.
 
 // XLA-specific sequence and range Ops.
 
-#include "tensorflow/compiler/tf2xla/xla_helpers.h"
+#include <cstdint>
+#include <type_traits>
+
+#include "absl/status/statusor.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
-#include "xla/client/lib/constants.h"
-#include "xla/client/xla_builder.h"
+#include "xla/hlo/builder/lib/constants.h"
+#include "xla/hlo/builder/value_inference.h"
+#include "xla/hlo/builder/xla_builder.h"
 #include "xla/literal.h"
 #include "xla/primitive_util.h"
 #include "xla/xla_data.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
-#include "tensorflow/core/framework/register_types.h"
-#include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/op_requires.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 namespace {
 
 // The type-specific part of the implementation of Range.
 template <typename T>
-StatusOr<xla::XlaOp> CreateRangeTensor(const xla::LiteralSlice& start_literal,
-                                       const xla::LiteralSlice& limit_literal,
-                                       const xla::LiteralSlice& delta_literal,
-                                       xla::XlaBuilder* builder) {
+absl::StatusOr<xla::XlaOp> CreateRangeTensor(
+    const xla::LiteralSlice& start_literal,
+    const xla::LiteralSlice& limit_literal,
+    const xla::LiteralSlice& delta_literal, xla::XlaBuilder* builder) {
   T start = start_literal.Get<T>({});
   T limit = limit_literal.Get<T>({});
   T delta = delta_literal.Get<T>({});
@@ -95,7 +101,7 @@ class RangeOp : public XlaOpKernel {
     OP_REQUIRES_OK(ctx, ctx->ConstantInput(2, &delta));
 
     DataType type = input_type(0);
-    StatusOr<xla::XlaOp> output;
+    absl::StatusOr<xla::XlaOp> output;
     switch (type) {
       case DT_INT32:
         output = CreateRangeTensor<int32>(start, limit, delta, ctx->builder());

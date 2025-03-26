@@ -483,25 +483,16 @@ Status LaunchSortKernel(OpKernelContext* ctx, const T* input, int num_rows,
 
   bool ran_nonsegmented_version = false;
   if (num_rows == 1) {
-#if GOOGLE_CUDA
-    constexpr bool is_supported = true;
-#else
-    // GpuRadixSortDescending is not supported on ROCm for fp16/bf16.
-    constexpr bool is_supported = !std::is_same<T, Eigen::half>::value &&
-                                  !std::is_same<T, Eigen::bfloat16>::value;
-#endif
-    if constexpr (is_supported) {
-      // Note: DeviceSegmentedRadixSort is very slow when num_segments=1 because
-      // it only uses 1 SM per segment. Calling the un-segmented version is much
-      // faster in this case.
-      TF_RETURN_IF_ERROR(
-          GpuRadixSortDescending(ctx, num_cols, /*keys_in=*/input,
-                                 /*keys_out=*/sorted_values_ptr,
-                                 /*indices_in=*/input_indices_t.data(),
-                                 /*indices_out=*/sorted_indices_ptr,
-                                 /*num_bits=*/sizeof(T) * 8));
-      ran_nonsegmented_version = true;
-    }
+    // Note: DeviceSegmentedRadixSort is very slow when num_segments=1 because
+    // it only uses 1 SM per segment. Calling the un-segmented version is much
+    // faster in this case.
+    TF_RETURN_IF_ERROR(
+        GpuRadixSortDescending(ctx, num_cols, /*keys_in=*/input,
+                               /*keys_out=*/sorted_values_ptr,
+                               /*indices_in=*/input_indices_t.data(),
+                               /*indices_out=*/sorted_indices_ptr,
+                               /*num_bits=*/sizeof(T) * 8));
+    ran_nonsegmented_version = true;
   }
   if (!ran_nonsegmented_version) {
     auto err = gpuprim::DeviceSegmentedRadixSort::SortPairsDescending(

@@ -401,7 +401,7 @@ public class CameraConnectionFragment extends Fragment {
       // reuse throughout app.
       ErrorDialog.newInstance(getString(R.string.camera_error))
           .show(getChildFragmentManager(), FRAGMENT_DIALOG);
-      throw new RuntimeException(getString(R.string.camera_error));
+      throw new RuntimeException(getString(R.string.camera_error), e);
     }
 
     cameraConnectionCallback.onPreviewSizeChosen(previewSize, sensorOrientation);

@@ -153,7 +153,8 @@ class MatrixDiagPartOp : public OpKernel {
   bool left_align_superdiagonal_ = true;
   bool left_align_subdiagonal_ = true;
   static constexpr int kNumV1Inputs = 1;
-  TF_DISALLOW_COPY_AND_ASSIGN(MatrixDiagPartOp);
+  MatrixDiagPartOp(const MatrixDiagPartOp&) = delete;
+  void operator=(const MatrixDiagPartOp&) = delete;
 };
 
 template <typename Device, typename T>
@@ -235,12 +236,13 @@ class MatrixDiagOp : public OpKernel {
         errors::InvalidArgument(
             "lower_diag_index must not be larger than upper_diag_index: ",
             lower_diag_index, " > ", upper_diag_index));
-    OP_REQUIRES(context,
-                lower_diag_index == upper_diag_index ||
-                    diagonal_shape.dim_size(diag_rank - 2) == num_diags,
-                errors::InvalidArgument(
-                    "The number of diagonals provided in the input does not "
-                    "match the lower_diag_index and upper_diag_index range."));
+    OP_REQUIRES(
+        context,
+        lower_diag_index == upper_diag_index ||
+            diagonal_shape.dim_size(std::max(diag_rank - 2, 0)) == num_diags,
+        errors::InvalidArgument(
+            "The number of diagonals provided in the input does not "
+            "match the lower_diag_index and upper_diag_index range."));
 
     const Eigen::Index max_diag_len = diagonal_shape.dim_size(diag_rank - 1);
     const Eigen::Index min_num_rows =
@@ -290,7 +292,8 @@ class MatrixDiagOp : public OpKernel {
   bool left_align_superdiagonal_ = true;
   bool left_align_subdiagonal_ = true;
   static constexpr int kNumV1Inputs = 1;
-  TF_DISALLOW_COPY_AND_ASSIGN(MatrixDiagOp);
+  MatrixDiagOp(const MatrixDiagOp&) = delete;
+  void operator=(const MatrixDiagOp&) = delete;
 };
 
 #define REGISTER_MATRIX_DIAG(type)                                           \

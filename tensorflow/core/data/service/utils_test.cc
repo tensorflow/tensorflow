@@ -64,7 +64,7 @@ TEST(Utils, ReadDatasetNotFound) {
   std::string filename = testing::TmpDir();
   ASSERT_TRUE(Env::Default()->CreateUniqueFileName(&filename, "journal_dir"));
   DatasetDef result;
-  Status s = ReadDatasetDef(filename, result);
+  absl::Status s = ReadDatasetDef(filename, result);
   EXPECT_EQ(s.code(), error::NOT_FOUND);
 }
 

@@ -33,7 +33,7 @@ limitations under the License.
   TypeName(const TypeName&) = delete;         \
   void operator=(const TypeName&) = delete
 
-#if defined(COMPILER_GCC3)
+#if defined(__GNUC__)
 #define TF_PREDICT_FALSE(x) (__builtin_expect(x, 0))
 #define TF_PREDICT_TRUE(x) (__builtin_expect(!!(x), 1))
 #else

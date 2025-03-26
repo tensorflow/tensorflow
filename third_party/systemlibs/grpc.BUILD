@@ -24,11 +24,6 @@ cc_library(
 )
 
 cc_library(
-    name = "grpc++_public_hdrs",
-    visibility = ["//visibility:public"],
-)
-
-cc_library(
     name = "grpc++_codegen_proto",
     visibility = ["//visibility:public"],
 )

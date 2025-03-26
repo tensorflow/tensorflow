@@ -71,7 +71,7 @@ commands.
 
 *Nightly binaries are available for testing using the
 [tf-nightly](https://pypi.python.org/pypi/tf-nightly) and
-[tf-nightly-cpu](https://pypi.python.org/pypi/tf-nightly-cpu) packages on PyPi.*
+[tf-nightly-cpu](https://pypi.python.org/pypi/tf-nightly-cpu) packages on PyPI.*
 
 #### *Try your first TensorFlow program*
 
@@ -114,7 +114,7 @@ apply fixes to bugs or security vulnerabilities:
 
 *   Clone the TensorFlow repo and switch to the corresponding branch for your
     desired TensorFlow version, for example, branch `r2.8` for version 2.8.
-*   Apply (that is, cherry pick) the desired changes and resolve any code
+*   Apply (that is, cherry-pick) the desired changes and resolve any code
     conflicts.
 *   Run TensorFlow tests and ensure they pass.
 *   [Build](https://www.tensorflow.org/install/source) the TensorFlow pip

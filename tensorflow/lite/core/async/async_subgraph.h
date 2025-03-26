@@ -109,6 +109,24 @@ class AsyncSubgraph {
   // Returns true if all backends accept the `attrs`.
   TfLiteStatus SetAttributes(int tensor_index, const TfLiteAttributeMap* attrs);
 
+  // Set the attributes for a specific buffer. `attrs` should be initialized
+  // before calling this function and could be constructed by calling
+  // TfLiteAttributeMapCreate(). The attributes will be sent to backend kernels
+  // and stored in the map with the buffer. `buffer` and `attrs` should not be
+  // nullptr. The buffer needs to be registered before calling this function.
+  TfLiteStatus SetBufferAttributes(const TfLiteBackendBuffer* buffer,
+                                   const TfLiteAttributeMap* attrs);
+
+  // Get the attributes for a specific buffer. `attrs` should be initialized
+  // before calling this function and could be constructed by calling
+  // TfLiteAttributeMapCreate(). `attrs` will be used to store the attributes
+  // obtained from the backend kernel. If `attrs` is a non-empty map, it will be
+  // overwritten by the attributes of the buffer. `buffer` and `attrs` should
+  // not be nullptr. The buffer needs to be registered before calling this
+  // function.
+  TfLiteStatus GetBufferAttributes(const TfLiteBackendBuffer* buffer,
+                                   TfLiteAttributeMap* attrs);
+
   // Prepares delegate backends for execution.
   // Must be called after calling `SetAttributes`.
   TfLiteStatus Prepare();

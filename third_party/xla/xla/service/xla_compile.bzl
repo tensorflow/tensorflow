@@ -14,6 +14,10 @@ xla_aot_compile(
 
 """
 
+load("//xla/tsl:package_groups.bzl", "DEFAULT_LOAD_VISIBILITY")
+
+visibility(DEFAULT_LOAD_VISIBILITY)
+
 xla_compile_tool = "//xla/service:xla_compile"
 
 def xla_aot_compile_cpu(
@@ -45,8 +49,7 @@ def xla_aot_compile_gpu(
         module,
         gpu_target_config,
         autotune_results):
-    """Runs xla_compile to compile an MHLO, StableHLO or HLO module into an
-    AotCompilationResult for GPU
+    """Runs xla_compile to compile an MHLO, StableHLO or HLO module into an AotCompilationResult for GPU
 
     Args:
         name: The name of the build rule.

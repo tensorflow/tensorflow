@@ -13,14 +13,15 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/lite/toco/model_cmdline_flags.h"
+
 #include <string>
 #include <unordered_map>
+#include <vector>
 
-#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "tensorflow/lite/testing/util.h"
 #include "tensorflow/lite/toco/args.h"
-#include "tensorflow/lite/toco/model_cmdline_flags.h"
 
 namespace toco {
 namespace {

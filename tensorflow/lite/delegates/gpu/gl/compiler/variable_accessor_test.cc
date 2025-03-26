@@ -15,12 +15,13 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/gl/compiler/variable_accessor.h"
 
+#include <cstdint>
 #include <string>
 #include <vector>
 
-#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "tensorflow/lite/delegates/gpu/common/types.h"
+#include "tensorflow/lite/delegates/gpu/gl/compiler/preprocessor.h"
 
 namespace tflite {
 namespace gpu {

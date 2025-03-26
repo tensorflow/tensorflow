@@ -48,7 +48,7 @@ limitations under the License.
 #include "tensorflow/core/util/work_sharder.h"
 
 #if defined(TENSORFLOW_USE_CUSTOM_CONTRACTION_KERNEL)
-#include "tsl/framework/contraction/eigen_contraction_kernel.h"
+#include "xla/tsl/framework/contraction/eigen_contraction_kernel.h"
 #endif
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
@@ -59,7 +59,7 @@ limitations under the License.
 #if GOOGLE_CUDA
 #include "xla/stream_executor/gpu/gpu_asm_opts.h"
 #include "xla/stream_executor/gpu/redzone_allocator.h"
-#include "xla/stream_executor/tf_allocator_adapter.h"
+#include "xla/stream_executor/integrations/tf_allocator_adapter.h"
 #endif  // GOOGLE_CUDA
 
 namespace tensorflow {
@@ -411,7 +411,8 @@ class Conv2DBackpropInputOp : public OpKernel {
   bool use_cudnn_ = false;
   bool cudnn_use_autotune_ = false;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(Conv2DBackpropInputOp);
+  Conv2DBackpropInputOp(const Conv2DBackpropInputOp&) = delete;
+  void operator=(const Conv2DBackpropInputOp&) = delete;
 };
 
 // Based on implementation written by Yangqing Jia (jiayq).
@@ -690,7 +691,8 @@ class Conv2DCustomBackpropInputOp : public OpKernel {
   std::vector<int64_t> explicit_paddings_;
   TensorFormat data_format_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(Conv2DCustomBackpropInputOp);
+  Conv2DCustomBackpropInputOp(const Conv2DCustomBackpropInputOp&) = delete;
+  void operator=(const Conv2DCustomBackpropInputOp&) = delete;
 };
 
 // TODO(ezhulenev): Add a cost model to switch between custom/Eigen ops.

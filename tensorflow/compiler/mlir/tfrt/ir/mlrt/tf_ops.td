@@ -134,7 +134,6 @@ def TFTPUCompileAndExecuteOp : TensorflowMlrt_Op<"tf_tpu_compile_and_execute", [
     StrAttr:$metadata,
     StrAttr:$mlir_module,
     UI32Attr:$num_operands,
-    UI32Attr:$num_operands_per_execute,
     DenseI32ArrayAttr:$operands_with_static_shape,
     StrAttr:$producer_name
   );
@@ -148,6 +147,36 @@ def TFTPUCompileAndExecuteOp : TensorflowMlrt_Op<"tf_tpu_compile_and_execute", [
     `(` $operands_and_static_shapes `)` attr-dict `:` functional-type($operands_and_static_shapes, results)
   }];
 }
+
+def TFIfrtLoadVariableOp: TensorflowMlrt_Op<"tf_ifrt_load_variable", [Pure]> {
+  let summary = "Loads a variable tensor as an IFRT array for mlrt";
+
+  let description = [{
+    This is the MLRT version of tf.IfrtLoadVariableOp.
+
+    This op loads a variable tensor as an IFRT array and binds it with the specified name.
+
+    This op is an replacement of `tf.ReadVariableOp` in the case that a constant
+    variable tensor is an input to the tpu program invoked by `tf.IfrtCall`.
+
+    After a `tf.ReadVariableOp` is lowered into `tf.IfrtLoadVariableOp`, the `tf.IfrtCall` kernel
+    will bind the loaded IFRT array by name with the tpu program's input.
+
+    This op returns a scalar string tensor as a key for user to look for the loaded array
+    and a future containing the restored tensor.
+  }];
+
+  let arguments = (ins
+    TF_Tensor:$variable,
+    DefaultValuedAttr<BoolAttr, "false">:$used_by_host
+  );
+
+  let results = (outs
+    TF_Tensor:$array_key,
+    MlrtFutureType: $tensor_future
+  );
+}
+
 
 
 #endif

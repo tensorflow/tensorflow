@@ -26,12 +26,12 @@ namespace tensorflow {
 
 // Validates that all the combiners passed are one of the following: sum, mean,
 // or sqrtn.
-Status ValidateCombiners(absl::Span<const std::string> combiners);
+absl::Status ValidateCombiners(absl::Span<const std::string> combiners);
 
 // Validates the `mode_override` input of the TPUEnqueue* ops, and, if correct,
 // sets the `mode` to pass on to the TPU Embedding manager.
-Status GetValidatedModeOverride(const string& mode_override,
-                                tpu::TPUEmbeddingConfiguration::Mode* mode);
+absl::Status GetValidatedModeOverride(
+    const string& mode_override, tpu::TPUEmbeddingConfiguration::Mode* mode);
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_CORE_TPU_KERNELS_TPU_EMBEDDING_ENQUEUE_OPS_H_

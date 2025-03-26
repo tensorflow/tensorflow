@@ -16,25 +16,27 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PROFILER_UTILS_TRACE_UTILS_H_
 #define TENSORFLOW_CORE_PROFILER_UTILS_TRACE_UTILS_H_
 
-#include "tsl/profiler/utils/trace_utils.h"
+#include "xla/tsl/profiler/utils/trace_utils.h"
 
 namespace tensorflow {
 namespace profiler {
 
-using tsl::profiler::IsDerivedThreadId;      // NOLINT
-using tsl::profiler::kFirstDeviceId;         // NOLINT
-using tsl::profiler::kHostThreadsDeviceId;   // NOLINT
-using tsl::profiler::kLastDeviceId;          // NOLINT
-using tsl::profiler::kThreadIdDerivedMax;    // NOLINT
-using tsl::profiler::kThreadIdDerivedMin;    // NOLINT
-using tsl::profiler::kThreadIdHloModule;     // NOLINT
-using tsl::profiler::kThreadIdHloOp;         // NOLINT
-using tsl::profiler::kThreadIdKernelLaunch;  // NOLINT
-using tsl::profiler::kThreadIdOverhead;      // NOLINT
-using tsl::profiler::kThreadIdSource;        // NOLINT
-using tsl::profiler::kThreadIdStepInfo;      // NOLINT
-using tsl::profiler::kThreadIdTfNameScope;   // NOLINT
-using tsl::profiler::kThreadIdTfOp;          // NOLINT
+using tsl::profiler::IsDerivedThreadId;            // NOLINT
+using tsl::profiler::kFirstDeviceId;               // NOLINT
+using tsl::profiler::kHostThreadsDeviceId;         // NOLINT
+using tsl::profiler::kLastDeviceId;                // NOLINT
+using tsl::profiler::kThreadIdDerivedMax;          // NOLINT
+using tsl::profiler::kThreadIdDerivedMin;          // NOLINT
+using tsl::profiler::kThreadIdHloModule;           // NOLINT
+using tsl::profiler::kThreadIdHloOp;               // NOLINT
+using tsl::profiler::kThreadIdHostOffloadOpEnd;    // NOLINT
+using tsl::profiler::kThreadIdHostOffloadOpStart;  // NOLINT
+using tsl::profiler::kThreadIdKernelLaunch;        // NOLINT
+using tsl::profiler::kThreadIdOverhead;            // NOLINT
+using tsl::profiler::kThreadIdSource;              // NOLINT
+using tsl::profiler::kThreadIdStepInfo;            // NOLINT
+using tsl::profiler::kThreadIdTfNameScope;         // NOLINT
+using tsl::profiler::kThreadIdTfOp;                // NOLINT
 
 }  // namespace profiler
 }  // namespace tensorflow

@@ -26,9 +26,9 @@ namespace tensorflow {
 namespace graph_transforms {
 
 // Clears the device field of all ops in the graph.
-Status RemoveDevice(const GraphDef& input_graph_def,
-                    const TransformFuncContext& context,
-                    GraphDef* output_graph_def) {
+absl::Status RemoveDevice(const GraphDef& input_graph_def,
+                          const TransformFuncContext& context,
+                          GraphDef* output_graph_def) {
   output_graph_def->Clear();
   for (const NodeDef& node : input_graph_def.node()) {
     NodeDef* new_node = output_graph_def->mutable_node()->Add();
@@ -36,7 +36,7 @@ Status RemoveDevice(const GraphDef& input_graph_def,
     new_node->set_device("");
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 REGISTER_GRAPH_TRANSFORM("remove_device", RemoveDevice);

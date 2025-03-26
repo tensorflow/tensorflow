@@ -17,25 +17,6 @@ limitations under the License.
 
 include "mlir/Pass/PassBase.td"
 
-def ConvertMHLOQuantToInt : Pass<"convert-mhlo-quant-to-int", "mlir::func::FuncOp"> {
-  let summary = "Convert from MHLO quantized ops to MHLO primitive ops.";
-
-  let description = [{
-    Convert from MHLO quantized ops with MHLO quant types to MHLO primitive ops
-    like int ops.
-  }];
-  let options = [
-    Option<"legalize_chlo_", "legalize-chlo", "bool", /*default=*/"true",
-        "Legalizes intermediate chlo ops to hlo">
-    ];
-
-  let constructor = "mlir::quant::stablehlo::createConvertMHLOQuantToIntPass()";
-  let dependentDialects = ["chlo::ChloDialect", "mhlo::MhloDialect",
-                           "quant::QuantizationDialect",
-                           "shape::ShapeDialect",
-                           "func::FuncDialect"];
-}
-
 def ConvertTFQuantOpsToMHLO : Pass<"quant-convert-tf-quant-ops-to-mhlo", "mlir::func::FuncOp"> {
   let summary = "Convert TF Quant ops to MHLO quantizated ops.";
 
@@ -46,7 +27,7 @@ def ConvertTFQuantOpsToMHLO : Pass<"quant-convert-tf-quant-ops-to-mhlo", "mlir::
   let constructor = "mlir::quant::stablehlo::CreateConvertTFQuantOpsToMHLOPass()";
   let dependentDialects = ["TF::TensorFlowDialect", "chlo::ChloDialect",
                            "mhlo::MhloDialect", "tf_type::TFTypeDialect",
-                           "quant::QuantizationDialect"];
+                           "quant::QuantDialect"];
 }
 
 def ConvertTFQuantTypes : Pass<"convert-tf-quant-types", "mlir::func::FuncOp"> {
@@ -72,6 +53,17 @@ def VerifyQuantLegalization : Pass<"verify-quant-legalization", "mlir::func::Fun
 
   let constructor = "mlir::quant::stablehlo::CreateVerifyQuantLegalizationPass()";
   let dependentDialects =  ["tf_type::TFTypeDialect",
-                            "quant::QuantizationDialect"];
+                            "quant::QuantDialect"];
 
+}
+
+def OptimizeIntGraph : Pass<"optimize-int-graph", "mlir::func::FuncOp"> {
+  let summary = "Optimization patterns for quantized integer graph";
+
+  let description = [{
+    This includes patterns for merging addition of zp offset and bias.
+  }];
+
+  let constructor = "mlir::quant::stablehlo::CreateOptimizeIntGraphPass()";
+  let dependentDialects = ["mhlo::MhloDialect"];
 }

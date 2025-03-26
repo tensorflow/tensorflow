@@ -1,9 +1,8 @@
-load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
-
 # Experimental filesystem C APIs for TensorFlow.
 # Will be moved in proper place once all filesystems are converted to the
 # modular framework.
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -37,12 +36,21 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":filesystem_interface",
+        "//tensorflow/c:tf_file_statistics",
         "//tensorflow/c:tf_status_helper",
         "//tensorflow/c:tf_status_internal",
+        "//tensorflow/core:portable_gif_internal",
         "//tensorflow/core/platform:env",
         "//tensorflow/core/platform:errors",
+        "//tensorflow/core/platform:file_statistics",
         "//tensorflow/core/platform:status",
-        "@local_tsl//tsl/platform:errors",
+        "//tensorflow/core/platform:strcat",
+        "//tensorflow/core/platform:stringpiece",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@local_xla//xla/tsl/platform:env",
+        "@local_xla//xla/tsl/platform:errors",
     ],
 )
 

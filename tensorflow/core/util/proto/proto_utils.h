@@ -17,10 +17,10 @@ limitations under the License.
 #define TENSORFLOW_CORE_UTIL_PROTO_PROTO_UTILS_H_
 
 #include "absl/strings/string_view.h"
+#include "xla/tsl/util/proto/proto_utils.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/protobuf.h"
-#include "tsl/util/proto/proto_utils.h"
 
 namespace tensorflow {
 namespace proto_utils {
@@ -37,8 +37,8 @@ bool IsCompatibleType(FieldDescriptor::Type field_type, DataType dtype);
 // Parses a text-formatted protobuf from a string into the given Message* output
 // and returns status OK if valid, or INVALID_ARGUMENT with an accompanying
 // parser error message if the text format is invalid.
-Status ParseTextFormatFromString(absl::string_view input,
-                                 protobuf::Message* output);
+absl::Status ParseTextFormatFromString(absl::string_view input,
+                                       protobuf::Message* output);
 
 class StringErrorCollector : public protobuf::io::ErrorCollector {
  public:

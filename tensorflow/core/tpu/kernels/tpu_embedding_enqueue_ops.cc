@@ -34,7 +34,7 @@ limitations under the License.
 
 namespace tensorflow {
 
-Status ValidateCombiners(absl::Span<const std::string> combiners) {
+absl::Status ValidateCombiners(absl::Span<const std::string> combiners) {
   for (const std::string& combiner : combiners) {
     if (combiner != "sum" && combiner != "mean" && combiner != "sqrtn") {
       return absl::InvalidArgumentError(
@@ -45,8 +45,9 @@ Status ValidateCombiners(absl::Span<const std::string> combiners) {
   return absl::OkStatus();
 }
 
-Status GetValidatedModeOverride(const std::string& mode_override,
-                                tpu::TPUEmbeddingConfiguration::Mode* mode) {
+absl::Status GetValidatedModeOverride(
+    const std::string& mode_override,
+    tpu::TPUEmbeddingConfiguration::Mode* mode) {
   if (mode_override == "train") {
     *mode = tpu::TPUEmbeddingConfiguration::TRAINING;
   } else if (mode_override == "inference") {
@@ -142,7 +143,7 @@ class EnqueueTPUEmbeddingArbitraryTensorBatchOp : public OpKernel {
     std::vector<TF_Tensor*> aggregation_weights_tensors(num_input_features);
 
     for (int i = 0; i < num_input_features; ++i) {
-      Status tf_status;
+      absl::Status tf_status;
       sample_indices_or_row_splits_tensors[i] = TF_TensorFromTensorShallow(
           sample_indices_or_row_splits_list[i], &tf_status);
       OP_REQUIRES_OK(ctx, tf_status);
@@ -169,18 +170,16 @@ class EnqueueTPUEmbeddingArbitraryTensorBatchOp : public OpKernel {
     params.mode = mode;
 
     {
-      tensorflow::profiler::TraceMe enqueue_batch_trace(
-          [] { return "EnqueueBatch"; },
-          tensorflow::profiler::TraceMeLevel::kInfo);
+      tsl::profiler::TraceMe enqueue_batch_trace(
+          [] { return "EnqueueBatch"; }, tsl::profiler::TraceMeLevel::kInfo);
       stream_executor::tpu::OpsApiFn()->TpuEmbeddingEngine_EnqueueTensorBatchFn(
           &params);
       OP_REQUIRES_OK(ctx, status.status());
     }
 
     {
-      tensorflow::profiler::TraceMe delete_tensors_trace(
-          [] { return "DeleteTensors"; },
-          tensorflow::profiler::TraceMeLevel::kInfo);
+      tsl::profiler::TraceMe delete_tensors_trace(
+          [] { return "DeleteTensors"; }, tsl::profiler::TraceMeLevel::kInfo);
 
       DeleteTensors(sample_indices_or_row_splits_tensors);
       DeleteTensors(embedding_indices_tensors);
@@ -200,7 +199,9 @@ class EnqueueTPUEmbeddingArbitraryTensorBatchOp : public OpKernel {
   bool device_ordinal_set_ = false;
   TpuEmbedding_TensorBatchFixedState* fixed_state_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(EnqueueTPUEmbeddingArbitraryTensorBatchOp);
+  EnqueueTPUEmbeddingArbitraryTensorBatchOp(
+      const EnqueueTPUEmbeddingArbitraryTensorBatchOp&) = delete;
+  void operator=(const EnqueueTPUEmbeddingArbitraryTensorBatchOp&) = delete;
 };
 
 #ifdef LIBTPU_ON_GCE

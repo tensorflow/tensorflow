@@ -1,4 +1,4 @@
-/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,27 +15,33 @@ limitations under the License.
 
 #include "xla/python/pjrt_ifrt/pjrt_tuple.h"
 
-#include <memory>
-#include <optional>
 #include <string>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/container/inlined_vector.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/str_format.h"
+#include "absl/strings/str_join.h"
+#include "absl/synchronization/mutex.h"
+#include "absl/types/span.h"
 #include "llvm/Support/ExtensibleRTTI.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/client.h"
-#include "tfrt/concurrency/ref_count.h"  // from @tf_runtime
+#include "xla/python/ifrt/future.h"
+#include "xla/tsl/concurrency/ref_count.h"
 
 namespace xla {
 namespace ifrt {
 
-/*static*/ StatusOr<tsl::RCReference<PjRtTuple>> PjRtTuple::Create(
+/*static*/ absl::StatusOr<tsl::RCReference<PjRtTuple>> PjRtTuple::Create(
     PjRtCompatibleClient* client, absl::Span<tsl::RCReference<Value>> values) {
   return tsl::MakeRef<PjRtTuple>(client, values);
 }
 
-Future<Status> PjRtTuple::GetReadyFuture() const {
-  std::vector<Future<Status>> futures;
+Future<> PjRtTuple::GetReadyFuture() const {
+  std::vector<Future<>> futures;
   futures.reserve(values_.size());
   for (const auto& value : values_) {
     futures.push_back(value->GetReadyFuture());
@@ -43,14 +49,14 @@ Future<Status> PjRtTuple::GetReadyFuture() const {
   return JoinFutures(absl::MakeSpan(futures));
 }
 
-Future<Status> PjRtTuple::Delete() {
+Future<> PjRtTuple::Delete() {
   {
     absl::MutexLock lock(&mu_);
     if (!is_deleted_.HasBeenNotified()) {
       is_deleted_.Notify();
     }
   }
-  std::vector<Future<Status>> futures;
+  std::vector<Future<>> futures;
   futures.reserve(values_.size());
   for (const auto& value : values_) {
     futures.push_back(value->Delete());
@@ -80,7 +86,7 @@ std::string PjRtTuple::DebugString() const {
 }
 int PjRtTuple::Arity() { return values_.size(); }
 
-Status PjRtTuple::Unpack(absl::Span<tsl::RCReference<Value>> values_out) {
+absl::Status PjRtTuple::Unpack(absl::Span<tsl::RCReference<Value>> values_out) {
   if (values_out.size() != values_.size()) {
     return InvalidArgument(
         "Wrong number of output values for "
@@ -88,7 +94,7 @@ Status PjRtTuple::Unpack(absl::Span<tsl::RCReference<Value>> values_out) {
         values_out.size(), values_.size());
   }
   absl::c_copy(values_, values_out.begin());
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 char PjRtTuple::ID = 0;

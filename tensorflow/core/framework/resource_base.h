@@ -19,9 +19,9 @@ limitations under the License.
 #include <cstdint>
 #include <string>
 
+#include "absl/status/status.h"
 #include "absl/strings/str_format.h"
 #include "tensorflow/core/lib/core/refcount.h"
-#include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/errors.h"
 
 namespace tensorflow {
@@ -52,10 +52,13 @@ class ResourceBase : public core::WeakRefCounted {
   // should not be tied to the graph that created it, since the graph may be
   // destroyed before the resource is used. To avoid this lifetime issue, you
   // can usually set a unique `shared_name` attribute for the resource.
-  virtual Status AsGraphDef(GraphDefBuilder* builder, Node** out) const {
+  virtual absl::Status AsGraphDef(GraphDefBuilder* builder, Node** out) const {
     return errors::Unimplemented("AsGraphDef not implemented for resource ",
                                  DebugString());
   }
+
+  // Releases temporary resources held by this resource created during warmup.
+  virtual void Finalize() {}
 };
 }  //  end namespace tensorflow
 

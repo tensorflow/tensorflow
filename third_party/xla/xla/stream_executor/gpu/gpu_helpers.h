@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2019 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -23,15 +23,9 @@ limitations under the License.
 
 #include <stddef.h>
 
-#include <complex>
-
-#include "xla/stream_executor/gpu/gpu_types.h"
-#include "tsl/platform/logging.h"
+#include "xla/stream_executor/device_memory.h"
 
 namespace stream_executor {
-
-template <typename ElemT>
-class DeviceMemory;
 
 namespace gpu {
 
@@ -47,65 +41,6 @@ const T* GpuMemory(const DeviceMemory<T>& mem) {
 template <typename T>
 T* GpuMemoryMutable(DeviceMemory<T>* mem) {
   return static_cast<T*>(mem->opaque());
-}
-
-static_assert(
-    sizeof(std::complex<float>) == sizeof(GpuComplexType),
-    "std::complex<float> and GpuComplexType should have the same size");
-static_assert(offsetof(GpuComplexType, x) == 0,
-              "The real part of GpuComplexType should appear first.");
-static_assert(
-    sizeof(std::complex<double>) == sizeof(GpuDoubleComplexType),
-    "std::complex<double> and GpuDoubleComplexType should have the same "
-    "size");
-static_assert(offsetof(GpuDoubleComplexType, x) == 0,
-              "The real part of GpuDoubleComplexType should appear first.");
-
-// Type traits to get CUDA complex types from std::complex<>.
-
-template <typename T>
-struct GpuComplexT {
-  typedef T type;
-};
-
-template <>
-struct GpuComplexT<std::complex<float>> {
-  typedef GpuComplexType type;
-};
-
-template <>
-struct GpuComplexT<std::complex<double>> {
-  typedef GpuDoubleComplexType type;
-};
-
-// Converts pointers of std::complex<> to pointers of
-// GpuComplexType/GpuDoubleComplexType. No type conversion for non-complex
-// types.
-
-template <typename T>
-inline const typename GpuComplexT<T>::type* GpuComplex(const T* p) {
-  auto* result = reinterpret_cast<const typename GpuComplexT<T>::type*>(p);
-  CHECK_EQ(reinterpret_cast<uintptr_t>(p) % alignof(decltype(*result)), 0)
-      << "Source pointer is not aligned by " << alignof(decltype(*result));
-  return result;
-}
-
-template <typename T>
-inline typename GpuComplexT<T>::type* GpuComplex(T* p) {
-  auto* result = reinterpret_cast<typename GpuComplexT<T>::type*>(p);
-  CHECK_EQ(reinterpret_cast<uintptr_t>(p) % alignof(decltype(*result)), 0)
-      << "Source pointer is not aligned by " << alignof(decltype(*result));
-  return result;
-}
-
-// Converts values of std::complex<float/double> to values of
-// GpuComplexType/GpuDoubleComplexType.
-inline GpuComplexType GpuComplexValue(std::complex<float> val) {
-  return {val.real(), val.imag()};
-}
-
-inline GpuDoubleComplexType GpuComplexValue(std::complex<double> val) {
-  return {val.real(), val.imag()};
 }
 
 }  // namespace gpu

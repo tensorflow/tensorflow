@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -17,27 +17,13 @@ limitations under the License.
 
 #include <string>
 
+#include "xla/tests/test_utils.h"
 #include "xla/xla.pb.h"
-#include "tsl/platform/errors.h"
+#include "tsl/platform/statusor.h"
 #include "tsl/platform/test.h"
 
 namespace xla {
 namespace {
-
-using ::testing::EqualsProto;
-
-template <typename MessageType>
-StatusOr<MessageType> ParseTextProto(const std::string& text_proto) {
-  tsl::protobuf::TextFormat::Parser parser;
-  MessageType parsed_proto;
-  tsl::protobuf::io::ArrayInputStream input_stream(text_proto.data(),
-                                                   text_proto.size());
-  if (!parser.Parse(&input_stream, &parsed_proto)) {
-    return tsl::errors::InvalidArgument("Could not parse text proto: ",
-                                        text_proto);
-  }
-  return parsed_proto;
-}
 
 TEST(HloModuleConfigTest, ShardableValueUpdatePairProtoRoundTrip) {
   const std::string text_proto = R"(
@@ -65,7 +51,7 @@ TEST(HloModuleConfigTest, ShardableValueUpdatePairProtoRoundTrip) {
   HloModuleConfig::AssignProtoShardableValueUpdatePairs(
       output_proto.mutable_shardable_value_update_pairs(),
       config.shardable_value_update_pairs());
-  EXPECT_THAT(input_proto, EqualsProto(output_proto));
+  EXPECT_EQ(input_proto.SerializeAsString(), output_proto.SerializeAsString());
 }
 
 }  // namespace

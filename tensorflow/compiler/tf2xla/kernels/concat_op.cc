@@ -15,15 +15,17 @@ limitations under the License.
 
 // XLA-specific Concat Ops.
 
-#include <limits>
+#include <cstdint>
 #include <vector>
 
+#include "absl/log/log.h"
+#include "absl/strings/str_join.h"
 #include "tensorflow/compiler/tf2xla/kernels/shape_util.h"
 #include "tensorflow/compiler/tf2xla/type_util.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
-#include "xla/client/xla_builder.h"
+#include "xla/hlo/builder/xla_builder.h"
 #include "xla/literal_util.h"
 #include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -32,6 +34,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -41,7 +44,7 @@ namespace {
 // --------------------------------------------------------------------------
 class ConcatBaseOp : public XlaOpKernel {
  public:
-  ConcatBaseOp(OpKernelConstruction* c, int axis_index)
+  ConcatBaseOp(OpKernelConstruction* c, int64_t axis_index)
       : XlaOpKernel(c), axis_index_(axis_index) {}
 
   void Compile(XlaOpKernelContext* ctx) override {
@@ -61,7 +64,7 @@ class ConcatBaseOp : public XlaOpKernel {
     const int input_dims = shapes[0].dims();
     const TensorShape& input_shape = shapes[0];
 
-    int32_t axis = concat_dim < 0 ? concat_dim + input_dims : concat_dim;
+    int64_t axis = concat_dim < 0 ? concat_dim + input_dims : concat_dim;
     OP_REQUIRES(ctx, 0 <= axis && axis < input_dims,
                 errors::InvalidArgument(
                     "ConcatOp : Expected concatenating dimensions in the range "
@@ -115,7 +118,7 @@ class ConcatV2Op : public ConcatBaseOp {
 REGISTER_XLA_OP(Name("Concat").CompileTimeConstantInput("concat_dim"),
                 ConcatOp);
 REGISTER_XLA_OP(Name("ConcatV2")
-                    .TypeConstraint("Tidx", DT_INT32)
+                    .TypeConstraint("Tidx", {DT_INT32, DT_INT64})
                     .CompileTimeConstantInput("axis"),
                 ConcatV2Op);
 

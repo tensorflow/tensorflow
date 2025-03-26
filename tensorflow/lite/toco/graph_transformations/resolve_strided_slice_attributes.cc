@@ -12,10 +12,16 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <cstddef>
+#include <vector>
+
+#include "absl/log/check.h"
+#include "absl/status/status.h"
+#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/lite/toco/graph_transformations/graph_transformations.h"
 #include "tensorflow/lite/toco/model.h"
 #include "tensorflow/lite/toco/tooling_util.h"
-#include "tensorflow/core/platform/logging.h"
 
 namespace toco {
 
@@ -37,47 +43,43 @@ int PadAttributeArray(Array* attribute_array, std::vector<int> pad_values,
   return mask;
 }
 
-::tensorflow::Status ResolveStridedSliceAttributes::Run(Model* model,
-                                                        std::size_t op_index,
-                                                        bool* modified) {
+absl::Status ResolveStridedSliceAttributes::Run(Model* model,
+                                                std::size_t op_index,
+                                                bool* modified) {
   *modified = false;
   const auto slice_it = model->operators.begin() + op_index;
   auto* slice_op = slice_it->get();
-  if (slice_op->type != OperatorType::kStridedSlice)
-    return ::tensorflow::OkStatus();
+  if (slice_op->type != OperatorType::kStridedSlice) return absl::OkStatus();
 
   auto* op = static_cast<StridedSliceOperator*>(slice_op);
   if (!op->start_indices.empty()) {
     // We have already resolved these attributes
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
 
   CHECK_EQ(op->inputs.size(), 4);
   const auto& input_array = model->GetArray(op->inputs[0]);
   if (!input_array.has_shape()) {
     // We require the dimensionality of the input to pad the indices
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
 
   auto& start_array = model->GetArray(op->inputs[1]);
-  if (!start_array.has_shape()) return ::tensorflow::OkStatus();
+  if (!start_array.has_shape()) return absl::OkStatus();
   if (toco::RequiredBufferSizeForShape(start_array.shape()) > 4) {
     // Only 1-4D arrays are supported for now.
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
 
   auto& stop_array = model->GetArray(op->inputs[2]);
-  if (!stop_array.has_shape()) return ::tensorflow::OkStatus();
+  if (!stop_array.has_shape()) return absl::OkStatus();
 
   auto& stride_array = model->GetArray(op->inputs[3]);
-  if (!stride_array.has_shape()) return ::tensorflow::OkStatus();
+  if (!stride_array.has_shape()) return absl::OkStatus();
 
-  if (!IsConstantParameterArray(*model, op->inputs[1]))
-    return ::tensorflow::OkStatus();
-  if (!IsConstantParameterArray(*model, op->inputs[2]))
-    return ::tensorflow::OkStatus();
-  if (!IsConstantParameterArray(*model, op->inputs[3]))
-    return ::tensorflow::OkStatus();
+  if (!IsConstantParameterArray(*model, op->inputs[1])) return absl::OkStatus();
+  if (!IsConstantParameterArray(*model, op->inputs[2])) return absl::OkStatus();
+  if (!IsConstantParameterArray(*model, op->inputs[3])) return absl::OkStatus();
 
   int num_input_axes = input_array.shape().dimensions_count();
   int start_indices_size = start_array.shape().dims(0);
@@ -120,6 +122,6 @@ int PadAttributeArray(Array* attribute_array, std::vector<int> pad_values,
   op->strides = stride_array.GetBuffer<ArrayDataType::kInt32>().data;
 
   *modified = true;
-  return ::tensorflow::OkStatus();
+  return absl::OkStatus();
 }
 }  // namespace toco

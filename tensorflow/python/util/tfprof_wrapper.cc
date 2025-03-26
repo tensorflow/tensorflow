@@ -16,7 +16,6 @@ limitations under the License.
 #include <string>
 
 #include "pybind11/pybind11.h"  // from @pybind11
-#include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/profiler/internal/print_model_analysis.h"
 
 namespace py = pybind11;

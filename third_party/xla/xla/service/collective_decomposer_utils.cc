@@ -1,4 +1,4 @@
-/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2021 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -30,7 +30,7 @@ limitations under the License.
 namespace xla {
 
 // Create the start indices for decompositing the given collective.
-StatusOr<std::vector<HloInstruction *>>
+absl::StatusOr<std::vector<HloInstruction *>>
 CreateStartIndicesForCollectiveDecomposition(
     CollectiveOpGroupMode group_mode,
     absl::Span<const ReplicaGroup> replica_groups, const Shape &shard_shape,
@@ -41,7 +41,8 @@ CreateStartIndicesForCollectiveDecomposition(
   if (update_layout) {
     update_layout(*zero->mutable_shape());
   }
-  std::vector<HloInstruction *> start_indices(shard_shape.rank(), zero);
+  std::vector<HloInstruction *> start_indices(shard_shape.dimensions_size(),
+                                              zero);
   const Shape &scalar_shape = zero->shape();
 
   auto create_flattened_id = [&](HloInstruction *replica_index) {

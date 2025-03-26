@@ -11,8 +11,11 @@ cc_library(
     linkstatic = 1,
     deps = [
         ":host_compute_ops",
+        ":sparse_core_ops",
+        ":sparse_core_preprocess_ops",
         ":topk_ops",
         ":tpu_compile_op",
+        ":tpu_copy_with_dynamic_shape_op",
         ":tpu_embedding_ops",
         ":tpu_execute_op",
         ":tpu_handle_to_key_op",
@@ -37,7 +40,7 @@ cc_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
-        "@local_tsl//tsl/platform:status",
+        "@local_xla//xla/tsl/platform:status",
     ],
     alwayslink = 1,
 )
@@ -51,6 +54,7 @@ cc_library(
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "@com_google_absl//absl/status",
     ],
     alwayslink = 1,
 )
@@ -74,6 +78,7 @@ cc_library(
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "@com_google_absl//absl/status",
     ],
     alwayslink = 1,
 )
@@ -103,6 +108,7 @@ cc_library(
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "@com_google_absl//absl/status",
     ],
     alwayslink = 1,
 )
@@ -116,6 +122,7 @@ cc_library(
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "@com_google_absl//absl/status",
     ],
     alwayslink = 1,
 )
@@ -167,12 +174,14 @@ cc_library(
         "//tensorflow/core/protobuf/tpu:tpu_embedding_configuration_proto_cc",
         "//tensorflow/core/tpu:tpu_embedding_optimization_parameters_utils",
         "//tensorflow/core/tpu:tpu_embedding_output_layout_utils",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
-        "@local_tsl//tsl/platform:errors",
-        "@local_tsl//tsl/platform:logging",
         "@local_xla//xla:status_macros",
+        "@local_xla//xla/tsl/platform:errors",
+        "@local_xla//xla/tsl/platform:logging",
     ],
     alwayslink = 1,
 )
@@ -186,8 +195,36 @@ cc_library(
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-        "//tensorflow/core/tpu/kernels:sparse_core_ops_utils",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
         "@local_xla//xla:util",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
+    name = "sparse_core_ops",
+    srcs = [
+        "sparse_core_ops.cc",
+    ],
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "@com_google_absl//absl/status",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
+    name = "tpu_copy_with_dynamic_shape_op",
+    srcs = [
+        "tpu_copy_with_dynamic_shape_op.cc",
+    ],
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core/lib/core:status",
+        "@com_google_absl//absl/status",
+        "@local_xla//xla/tsl/platform:errors",
     ],
     alwayslink = 1,
 )

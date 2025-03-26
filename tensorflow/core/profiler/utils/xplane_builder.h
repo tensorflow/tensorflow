@@ -17,12 +17,7 @@ limitations under the License.
 
 #include <stddef.h>
 
-#include <cstdint>
-#include <string>
-#include <utility>
-#include <vector>
-
-#include "tsl/profiler/utils/xplane_builder.h"
+#include "xla/tsl/profiler/utils/xplane_builder.h"
 
 namespace tensorflow {
 namespace profiler {

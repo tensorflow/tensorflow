@@ -14,6 +14,7 @@
 # ==============================================================================
 """Base test class for quantize_model Tests."""
 import os
+import re
 from typing import Collection, Iterable, Mapping, Sequence, Tuple, Optional, Union, List
 
 from absl.testing import parameterized
@@ -43,7 +44,7 @@ from tensorflow.python.ops import variables
 from tensorflow.python.ops import while_loop as while_loop_ops
 from tensorflow.python.ops.ragged import ragged_string_ops
 from tensorflow.python.platform import test
-from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.platform import tf_logging as logging  # pylint: disable=unused-import
 from tensorflow.python.saved_model import builder
 from tensorflow.python.saved_model import save as saved_model_save
 from tensorflow.python.saved_model import signature_def_utils_impl
@@ -107,40 +108,6 @@ class QuantizedModelTest(test.TestCase, parameterized.TestCase):
         )
     )
 
-  def assertSizeRatioGreaterThan(
-      self, path_a: str, path_b: str, threshold: float
-  ):
-    """Check if the size ratio of the given paths is greater than the threshold.
-
-    Args:
-      path_a: Path of a directory or a file to be the nominator of the ratio.
-      path_b: Path of a directory or a file to be the denominator of the ratio.
-      threshold: a number to compare with.
-
-    Returns:
-      True if the size ratio of path_a / path_b is greater than threshold.
-    """
-    size_a = self._get_dir_size(path_a)
-    size_b = self._get_dir_size(path_b)
-    size_ratio = size_a / size_b
-    return self.assertGreater(size_ratio, threshold)
-
-  def assertSizeRatioLessThan(self, path_a: str, path_b: str, threshold: float):
-    """Check if the size ratio of the given paths is less than the threshold.
-
-    Args:
-      path_a: Path of a directory or a file to be the nominator of the ratio.
-      path_b: Path of a directory or a file to be the denominator of the ratio.
-      threshold: a number to compare with.
-
-    Returns:
-      True if the size ratio of path_a / path_b is less than threshold.
-    """
-    size_a = self._get_dir_size(path_a)
-    size_b = self._get_dir_size(path_b)
-    size_ratio = size_a / size_b
-    return self.assertLess(size_ratio, threshold)
-
   def _is_quantized_function(self, func: function_pb2.FunctionDef) -> bool:
     """Determine whether a FunctionDef is quantized.
 
@@ -169,6 +136,7 @@ class QuantizedModelTest(test.TestCase, parameterized.TestCase):
       op_name: str,
       attr_name: str,
       attr_val: _AttrValType,
+      node_name: str = '',
   ) -> bool:
     """Determine whether there is a node whose operation name matches `op_name`.
 
@@ -180,15 +148,24 @@ class QuantizedModelTest(test.TestCase, parameterized.TestCase):
       op_name: Name of the op to match.
       attr_name: Name of the attribute of the op to match.
       attr_val: Value of the attr_name to check.
+      node_name: Name of the node to match. Accepts regex2 format.
 
     Returns:
       True if there exists a node whose name matches `op_name` and 'attr_val' if
       'attr_name' is given.
     """
+
+    def match_node_name(name):
+      if not node_name:
+        return True
+      compiled_regex = re.compile(node_name)
+      match = re.fullmatch(compiled_regex, name)
+      return match is not None
+
     return any(
         node.attr.get(attr_name) == attr_val
         for node in nodes
-        if node.op == op_name
+        if node.op == op_name and match_node_name(node.name)
     )
 
   def _contains_quantized_function_call(
@@ -223,6 +200,7 @@ class QuantizedModelTest(test.TestCase, parameterized.TestCase):
       op_name: str,
       attr_name: str = '',
       attr_val: _AttrValType = None,
+      node_name: str = '',
   ) -> bool:
     """Determines if the graph def contains the given op.
 
@@ -231,6 +209,7 @@ class QuantizedModelTest(test.TestCase, parameterized.TestCase):
       op_name: Name of the operation to find within the graph.
       attr_name: Name of the attribute of the op to match.
       attr_val: Value of the attr_name to check.
+      node_name: Name of the node to match. Accepts regex2 format.
 
     Returns:
       True if and only if the graph def contains an op named `op_name`. If
@@ -243,6 +222,7 @@ class QuantizedModelTest(test.TestCase, parameterized.TestCase):
         op_name=op_name,
         attr_name=attr_name,
         attr_val=attr_val,
+        node_name=node_name,
     ):
       return True
 
@@ -253,6 +233,7 @@ class QuantizedModelTest(test.TestCase, parameterized.TestCase):
           op_name=op_name,
           attr_name=attr_name,
           attr_val=attr_val,
+          node_name=node_name,
       ):
         return True
     return False
@@ -950,6 +931,7 @@ class QuantizedModelTest(test.TestCase, parameterized.TestCase):
       def __init__(self):
         """Initializes a SimpleGatherAndConvModel."""
         self.embedding_w = np.random.randn(1024, 3, 4, 3).astype('f4')
+        self.embedding_w = np.minimum(np.maximum(self.embedding_w, -4), 4)
 
         self.conv_filters = np.random.uniform(
             low=-10, high=10, size=filter_shape
@@ -963,7 +945,7 @@ class QuantizedModelTest(test.TestCase, parameterized.TestCase):
       @def_function.function(
           input_signature=[
               tensor_spec.TensorSpec(
-                  shape=[1], dtype=input_type, name='input_tensor'
+                  shape=[None], dtype=input_type, name='input_tensor'
               )
           ]
       )
@@ -1303,7 +1285,7 @@ class QuantizedModelTest(test.TestCase, parameterized.TestCase):
         Returns:
           A map of: output key -> output result.
         """
-        out = math_ops.matmul(input_tensor, self.filters)
+        out = math_ops.matmul(input_tensor, self.filters, name='sample/matmul')
 
         if self.has_reshape():
           input_shape = input_tensor.shape
@@ -1325,7 +1307,7 @@ class QuantizedModelTest(test.TestCase, parameterized.TestCase):
 
         return {'output': out}
 
-    # If bias_size is not explictly given, it should default to width of weight.
+    # If bias_size is not explicitly given, it should default to width of weight.
     if bias_size is None and has_bias:
       bias_size = weight_shape[-1]
 

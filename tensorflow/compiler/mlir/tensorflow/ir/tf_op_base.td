@@ -48,7 +48,6 @@ TODO: Make invariants more structured so that we can reference them in ops.
   }];
 
   let cppNamespace = "::mlir::TF";
-  let usePropertiesForAttributes = 0;
 }
 
 //===----------------------------------------------------------------------===//
@@ -253,16 +252,7 @@ def TF_RecvSideEffect : MemoryEffects<[MemWrite<TF_RecvResource>]>;
 def TF_XlaHostComputeSideEffect : MemoryEffects<[MemWrite<TF_XlaHostComputeResource>]>;
 
 def TF_WriteTrainingPredictions : MemoryEffects<[MemWrite<TF_WriteTrainingPredictionsResource>]>;
-
-// The state among all RNG ops is shared in a single global variable. When an
-// RNG op runs, it uses the global variable to produce a random number, then
-// updates the global variable. This would be nondeterministic if the RNG ops
-// ran in a nondeterministic order, but XLA scheduler is deterministic so the
-// order is always determinstic. However, we cannot mark such ops as Pure as
-// that may lead to incorrect optimization, e.g. two instances of the same op
-// with the same constant input may end up returning
-// the same value, even though they should have not.
-def TF_RandomGeneratorSideEffect : MemoryEffects<[MemRead<TF_RandomGeneratorResource>]>;
+def TF_RandomGeneratorSideEffect : MemoryEffects<[MemWrite<TF_RandomGeneratorResource>]>;
 
 // Special effect for keeping `CollectiveReduce` ops in order.
 def TF_CollectiveReduceOrderingEffect : MemoryEffects<[MemWrite<TF_CollectiveReduceOrderingResource>]>;
@@ -337,6 +327,9 @@ def TF_Float64Ref : TF_TensorFlowType<"DoubleRef", "f64ref">;
 def TF_Bfloat16Ref : TF_TensorFlowType<"Bfloat16Ref", "bf16ref">;
 def TF_Float8E4M3FNRef : TF_TensorFlowType<"Float8E4M3FNRef", "float8e4m3fnref">;
 def TF_Float8E5M2Ref : TF_TensorFlowType<"Float8E5M2Ref", "float8e5m2ref">;
+def TF_Float8E4M3FNUZRef : TF_TensorFlowType<"Float8E4M3FNUZRef", "float8e4m3fnuzref">;
+def TF_Float8E4M3B11FNUZRef : TF_TensorFlowType<"Float8E4M3B11FNUZRef", "float8e4m3b11fnuzref">;
+def TF_Float8E5M2FNUZRef : TF_TensorFlowType<"Float8E5M2FNUZRef", "float8e5m2fnuzref">;
 
 // Complex reference types
 def TF_Complex64Ref : TF_TensorFlowType<"Complex64Ref", "complex64ref">;
@@ -453,6 +446,9 @@ def TF_Float64 : AnyTypeOf<[F64, TF_Float64Ref], "64-bit float">;
 def TF_Bfloat16 : AnyTypeOf<[BF16, TF_Bfloat16Ref], "bfloat16">;
 def TF_Float8E4M3FN : AnyTypeOf<[F8E4M3FN, TF_Float8E4M3FNRef], "float8e4m3fn">;
 def TF_Float8E5M2 : AnyTypeOf<[F8E5M2, TF_Float8E5M2Ref], "float8e5m2">;
+def TF_Float8E4M3FNUZ : AnyTypeOf<[F8E4M3FNUZ, TF_Float8E4M3FNUZRef], "float8e4m3fnuz">;
+def TF_Float8E4M3B11FNUZ : AnyTypeOf<[F8E4M3B11FNUZ, TF_Float8E4M3B11FNUZRef], "float8e4m3b11fnuz">;
+def TF_Float8E5M2FNUZ : AnyTypeOf<[F8E5M2FNUZ, TF_Float8E5M2FNUZRef], "float8e5m2fnuz">;
 
 def TF_F32OrF64 : AnyTypeOf<[TF_Float32, TF_Float64], "32/64-bit float">;
 
@@ -470,6 +466,9 @@ def TF_Float64Tensor : TensorOf<[TF_Float64]>;
 def TF_Bfloat16Tensor : TensorOf<[TF_Bfloat16]>;
 def TF_Float8E4M3FNTensor : TensorOf<[TF_Float8E4M3FN]>;
 def TF_Float8E5M2Tensor : TensorOf<[TF_Float8E5M2]>;
+def TF_Float8E4M3FNUZTensor : TensorOf<[TF_Float8E4M3FNUZ]>;
+def TF_Float8E4M3B11FNUZTensor : TensorOf<[TF_Float8E4M3B11FNUZ]>;
+def TF_Float8E5M2FNUZTensor : TensorOf<[TF_Float8E5M2FNUZ]>;
 
 //===----------------------------------------------------------------------===//
 // Complex types (including corresponding reference types)
@@ -510,6 +509,7 @@ def TF_FpOrI32OrI64Tensor : TensorOf<[TF_Float, TF_I32OrI64]>;
 def TF_IntOrFpTensor : TensorOf<[TF_Int, TF_Float]>;
 def TF_SintOrFpTensor : TensorOf<[TF_SInt, TF_Float]>;
 def TF_FpOrComplexTensor : TensorOf<[TF_Float, TF_Complex]>;
+def TF_BoolOrFpTensor: TensorOf<[TF_Bool, TF_Float]>;
 
 def TF_Number : AnyTypeOf<
   [TF_Int, TF_Float, TF_Quantized, TF_Complex], "number">;

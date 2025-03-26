@@ -1,5 +1,5 @@
-load("//tensorflow/lite/core/shims:cc_library_with_tflite.bzl", "cc_library_with_tflite")
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
+load("//tensorflow/lite/core/shims:cc_library_with_tflite.bzl", "cc_library_with_tflite")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -19,6 +19,7 @@ cc_library(
     ],
     compatible_with = get_compatible_with_portable(),
     deps = [
+        "//tensorflow/lite:array",
         "//tensorflow/lite:kernel_api",
         "//tensorflow/lite:minimal_logging",
         "//tensorflow/lite/core/c:common",
@@ -52,6 +53,7 @@ cc_library_with_tflite(
         "//tensorflow/lite/c:common",
     ],
     deps = [
+        "//tensorflow/lite:array",
         "//tensorflow/lite:builtin_ops",
         "//tensorflow/lite:minimal_logging",
         "//tensorflow/lite:util",
@@ -75,6 +77,8 @@ cc_test(
     data = [":c_api_test_builtin_op_models"],
     deps = [
         ":simple_opaque_delegate",
+        "//tensorflow/lite:builtin_ops",
+        "//tensorflow/lite:framework_stable",
         "//tensorflow/lite/c:c_api",
         "//tensorflow/lite/c:c_api_experimental",
         "//tensorflow/lite/c:c_api_types",
@@ -83,6 +87,7 @@ cc_test(
         "//tensorflow/lite/delegates/utils/experimental/sample_stable_delegate",
         "//tensorflow/lite/kernels:builtin_ops",
         "//tensorflow/lite/kernels:kernel_util",
+        "//tensorflow/lite/kernels/internal:compatibility",
         "@com_google_googletest//:gtest_main",
     ],
 )

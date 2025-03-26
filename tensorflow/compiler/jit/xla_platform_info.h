@@ -23,7 +23,7 @@ limitations under the License.
 #include "tensorflow/compiler/jit/device_compiler.h"
 #include "tensorflow/compiler/jit/pjrt_base_device.h"
 #include "tensorflow/compiler/jit/xla_device.h"
-#include "xla/stream_executor/tf_allocator_adapter.h"
+#include "xla/stream_executor/integrations/tf_allocator_adapter.h"
 #include "tensorflow/core/framework/op_kernel.h"
 
 namespace tensorflow {
@@ -96,22 +96,29 @@ class XlaPlatformInfo {
   // set an artificial refcount of one.
   std::shared_ptr<se::DeviceMemoryAllocator> device_allocator_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(XlaPlatformInfo);
+  XlaPlatformInfo(const XlaPlatformInfo&) = delete;
+  void operator=(const XlaPlatformInfo&) = delete;
 };
 
 // Returns a set containing the device ids contained in visible_device_list or
 // nullopt if it is empty. It returns error in case of malformed configuration
 // string.
-StatusOr<std::optional<std::set<int>>> ParseVisibleDeviceList(
+absl::StatusOr<std::optional<std::set<int>>> ParseVisibleDeviceList(
     absl::string_view visible_device_list);
 
+// Returns the device type for building a DeviceCompiler from the given platform
+// type.
+absl::StatusOr<DeviceType> GetCompilationDeviceType(
+    const DeviceType& platform_device_type);
+
 // Builds a DeviceCompiler that uses xla::LocalClient using `platform_info` and
-// sets *xla_device_compiler to point to it. Uses flags from
-// `MarkForCompilationPassFlags` for configuring the persistor used in the
-// DeviceCompiler.
-Status BuildXlaDeviceCompiler(
+// `compilation_device_type` (in non-TPU case) and sets *xla_device_compiler to
+// point to it. Uses flags from `MarkForCompilationPassFlags` for configuring
+// the persistor used in the DeviceCompiler. The platform ID from
+// `platform_info` must not be null in CPU case.
+absl::Status BuildXlaDeviceCompiler(
     DeviceBase* dev, FunctionLibraryRuntime* flr,
-    const XlaPlatformInfo& platform_info,
+    const XlaPlatformInfo& platform_info, DeviceType compilation_device_type,
     DeviceCompiler<xla::LocalExecutable, xla::LocalClient>**
         xla_device_compiler);
 
@@ -125,7 +132,7 @@ Status BuildXlaDeviceCompiler(
 // non-XLA devices aren't supported yet. This is because:
 // 1. PjRtClient doesn't support data transfer for non-XLA devices yet
 // 2. Fetching the PjRtClient for non-XLA devices is also not supported yet
-Status GetOrCreatePjRtDeviceCompilerAndProfiler(
+absl::Status GetOrCreatePjRtDeviceCompilerAndProfiler(
     const OpKernelContext& ctx, const XlaPlatformInfo& platform_info,
     FunctionLibraryRuntime* flr,
     DeviceCompiler<xla::PjRtLoadedExecutable, xla::PjRtClient>**
@@ -134,7 +141,7 @@ Status GetOrCreatePjRtDeviceCompilerAndProfiler(
 
 // Same as the above function but takes the resource manager `rm` instead of an
 // OpKernelContext.
-Status GetOrCreatePjRtDeviceCompilerAndProfiler(
+absl::Status GetOrCreatePjRtDeviceCompilerAndProfiler(
     const XlaPlatformInfo& platform_info, ResourceMgr* rm,
     FunctionLibraryRuntime* flr,
     DeviceCompiler<xla::PjRtLoadedExecutable, xla::PjRtClient>**

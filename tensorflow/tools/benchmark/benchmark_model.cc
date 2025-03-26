@@ -26,38 +26,48 @@ limitations under the License.
 #include <unordered_set>
 #include <vector>
 
-#include "tensorflow/core/common_runtime/graph_constructor.h"
+#include "absl/status/status.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/status.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
+#include "tensorflow/core/framework/numeric_types.h"
 #include "tensorflow/core/framework/step_stats.pb.h"
 #include "tensorflow/core/framework/tensor.h"
-#include "tensorflow/core/graph/algorithm.h"
+#include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/graph/graph.h"
-#include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/init_main.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/platform.h"
+#include "tensorflow/core/platform/numbers.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/tstring.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/public/session.h"
+#include "tensorflow/core/public/session_options.h"
 #include "tensorflow/core/util/command_line_flags.h"
 #include "tensorflow/core/util/reporter.h"
 #include "tensorflow/core/util/stat_summarizer.h"
+#include "tensorflow/core/util/stat_summarizer_options.h"
+#include "tensorflow/core/util/stats_calculator.h"
 
 namespace tensorflow {
 namespace benchmark_model {
 
 namespace {
 
-Status InitializeVariables(Session* session,
-                           const std::vector<string>& init_ops) {
+absl::Status InitializeVariables(Session* session,
+                                 const std::vector<string>& init_ops) {
   LOG(INFO) << "Initializing graph variables";
   for (const string& init_op : init_ops) {
     TF_RETURN_IF_ERROR(session->Run({}, {}, {init_op}, nullptr));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 template <class T>
@@ -118,9 +128,10 @@ void CreateTensorsFromInputInfo(
   }
 }
 
-Status GetOutputShapes(const std::vector<InputLayerInfo>& inputs,
-                       const std::set<string>& wanted_shapes, Session* session,
-                       std::unordered_map<string, TensorShape>* node_shapes) {
+absl::Status GetOutputShapes(
+    const std::vector<InputLayerInfo>& inputs,
+    const std::set<string>& wanted_shapes, Session* session,
+    std::unordered_map<string, TensorShape>* node_shapes) {
   std::vector<std::pair<string, tensorflow::Tensor> > input_tensors;
   CreateTensorsFromInputInfo(inputs, &input_tensors);
   std::vector<tensorflow::Tensor> output_tensors;
@@ -147,13 +158,13 @@ Status GetOutputShapes(const std::vector<InputLayerInfo>& inputs,
     const TensorShape& found_shape = output_tensors[i].shape();
     (*node_shapes)[wanted_shape_name] = found_shape;
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status CalculateFlops(const GraphDef& graph,
-                      const std::vector<InputLayerInfo>& inputs,
-                      Session* session, int64_t* total_flops,
-                      std::unordered_map<string, int64_t>* flops_by_op) {
+absl::Status CalculateFlops(const GraphDef& graph,
+                            const std::vector<InputLayerInfo>& inputs,
+                            Session* session, int64_t* total_flops,
+                            std::unordered_map<string, int64_t>* flops_by_op) {
   std::unordered_set<string> floppable_ops = {
       "Conv2D", "MatMul", "QuantizedConv2D", "QuantizedMatMul",
       "DepthwiseConv2dNative"};
@@ -213,7 +224,7 @@ Status CalculateFlops(const GraphDef& graph,
       *total_flops += current_flops;
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 void RecordBenchmarkEntry(const string& output_prefix,
@@ -250,9 +261,9 @@ void SleepSeconds(double sleep_seconds) {
 
 }  // namespace
 
-Status InitializeSession(int num_threads, const string& graph,
-                         std::unique_ptr<Session>* session,
-                         std::unique_ptr<GraphDef>* graph_def) {
+absl::Status InitializeSession(int num_threads, const string& graph,
+                               std::unique_ptr<Session>* session,
+                               std::unique_ptr<GraphDef>* graph_def) {
   LOG(INFO) << "Loading TensorFlow.";
 
   tensorflow::SessionOptions options;
@@ -264,9 +275,9 @@ Status InitializeSession(int num_threads, const string& graph,
   LOG(INFO) << "Got config, " << config.device_count_size() << " devices";
 
   session->reset(tensorflow::NewSession(options));
-  graph_def->reset(new GraphDef());
+  *graph_def = std::make_unique<GraphDef>();
   tensorflow::GraphDef tensorflow_graph;
-  Status s = ReadBinaryProto(Env::Default(), graph, graph_def->get());
+  absl::Status s = ReadBinaryProto(Env::Default(), graph, graph_def->get());
   if (!s.ok()) {
     s = ReadTextProto(Env::Default(), graph, graph_def->get());
   }
@@ -282,19 +293,19 @@ Status InitializeSession(int num_threads, const string& graph,
     return s;
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status RunBenchmark(const std::vector<InputLayerInfo>& inputs,
-                    const std::vector<string>& outputs,
-                    const std::vector<string>& targets, Session* session,
-                    StatSummarizer* stats, int64_t* inference_time_us) {
+absl::Status RunBenchmark(const std::vector<InputLayerInfo>& inputs,
+                          const std::vector<string>& outputs,
+                          const std::vector<string>& targets, Session* session,
+                          StatSummarizer* stats, int64_t* inference_time_us) {
   std::vector<std::pair<string, tensorflow::Tensor> > input_tensors;
   CreateTensorsFromInputInfo(inputs, &input_tensors);
 
   std::vector<tensorflow::Tensor> output_tensors;
 
-  tensorflow::Status s;
+  absl::Status s;
 
   RunOptions run_options;
   if (stats != nullptr) {
@@ -322,12 +333,14 @@ Status RunBenchmark(const std::vector<InputLayerInfo>& inputs,
   return s;
 }
 
-Status TimeMultipleRuns(double sleep_seconds, int num_runs, double max_time_s,
-                        const std::vector<InputLayerInfo>& inputs,
-                        const std::vector<string>& outputs,
-                        const std::vector<string>& targets, Session* session,
-                        StatSummarizer* stats, int64_t* total_time_us,
-                        int64_t* actual_num_runs) {
+absl::Status TimeMultipleRuns(double sleep_seconds, int num_runs,
+                              double max_time_s,
+                              const std::vector<InputLayerInfo>& inputs,
+                              const std::vector<string>& outputs,
+                              const std::vector<string>& targets,
+                              Session* session, StatSummarizer* stats,
+                              int64_t* total_time_us,
+                              int64_t* actual_num_runs) {
   *total_time_us = 0;
 
   LOG(INFO) << "Running benchmark for max " << num_runs << " iterations, max "
@@ -340,7 +353,7 @@ Status TimeMultipleRuns(double sleep_seconds, int num_runs, double max_time_s,
   const bool until_max_time = num_runs <= 0;
   for (int i = 0; until_max_time || i < num_runs; ++i) {
     int64_t time;
-    Status run_status =
+    absl::Status run_status =
         RunBenchmark(inputs, outputs, targets, session, stats, &time);
     stat.UpdateStat(time);
     (*total_time_us) += time;
@@ -366,7 +379,7 @@ Status TimeMultipleRuns(double sleep_seconds, int num_runs, double max_time_s,
   stat.OutputToStream(&stream);
   LOG(INFO) << stream.str() << std::endl;
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 int Main(int argc, char** argv) {
@@ -494,7 +507,7 @@ int Main(int argc, char** argv) {
   std::unique_ptr<GraphDef> graph_def;
 
   int64_t initialization_start_us = Env::Default()->NowMicros();
-  Status initialize_status =
+  absl::Status initialize_status =
       InitializeSession(num_threads, graph, &session, &graph_def);
   int64_t initialization_end_us = Env::Default()->NowMicros();
   double initialization_time_s =
@@ -505,7 +518,7 @@ int Main(int argc, char** argv) {
   }
 
   if (!init_ops.empty()) {
-    Status initialize_variables_status =
+    absl::Status initialize_variables_status =
         InitializeVariables(session.get(), init_ops);
     if (!initialize_variables_status.ok()) {
       LOG(ERROR) << "Graph variables initialization failed with "
@@ -523,7 +536,7 @@ int Main(int argc, char** argv) {
   stats_options.memory_limit = memory_limit;
   stats_options.show_type = show_type;
   stats_options.show_summary = show_summary;
-  stats.reset(new tensorflow::StatSummarizer(stats_options));
+  stats = std::make_unique<tensorflow::StatSummarizer>(stats_options);
 
   const double inter_inference_sleep_seconds =
       std::strtod(inference_delay.c_str(), nullptr);
@@ -542,7 +555,7 @@ int Main(int argc, char** argv) {
         str_util::Split(input_layer_shapes[n], ',');
     for (const string& layer_shape : split_layer_shapes) {
       int32_t tmp;
-      CHECK(strings::safe_strto32(layer_shape, &tmp))
+      CHECK(absl::SimpleAtoi(layer_shape, &tmp))
           << "Incorrect size string specified: " << input_layer_shapes[n];
       if (tmp == -1) {
         LOG(ERROR) << "Any unknown sizes in the shapes (-1's) must be replaced"
@@ -560,7 +573,7 @@ int Main(int argc, char** argv) {
       input.initialization_values.reserve(string_tokens.size());
       for (const string& str_val : string_tokens) {
         float val;
-        CHECK(strings::safe_strtof(str_val, &val))
+        CHECK(absl::SimpleAtof(str_val, &val))
             << "Incorrect initialization values string specified: "
             << input_layer_values[n];
         input.initialization_values.push_back(val);
@@ -574,7 +587,7 @@ int Main(int argc, char** argv) {
   int64_t warmup_time_us = 0;
   int64_t num_warmup_runs = 0;
   if (warmup_runs > 0) {
-    Status warmup_time_status =
+    absl::Status warmup_time_status =
         TimeMultipleRuns(inter_inference_sleep_seconds, warmup_runs, -1.0,
                          inputs, output_layers, target_layers, session.get(),
                          nullptr, &warmup_time_us, &num_warmup_runs);
@@ -589,7 +602,7 @@ int Main(int argc, char** argv) {
   SleepSeconds(inter_benchmark_sleep_seconds);
   int64_t no_stat_time_us = 0;
   int64_t no_stat_num_runs = 0;
-  Status no_stat_time_status = TimeMultipleRuns(
+  absl::Status no_stat_time_status = TimeMultipleRuns(
       inter_inference_sleep_seconds, max_num_runs, max_benchmark_time_seconds,
       inputs, output_layers, target_layers, session.get(), nullptr,
       &no_stat_time_us, &no_stat_num_runs);
@@ -604,7 +617,7 @@ int Main(int argc, char** argv) {
   SleepSeconds(inter_benchmark_sleep_seconds);
   int64_t stat_time_us = 0;
   int64_t stat_num_runs = 0;
-  Status stat_time_status = TimeMultipleRuns(
+  absl::Status stat_time_status = TimeMultipleRuns(
       inter_inference_sleep_seconds, max_num_runs, max_benchmark_time_seconds,
       inputs, output_layers, target_layers, session.get(), stats.get(),
       &stat_time_us, &stat_num_runs);
@@ -628,8 +641,8 @@ int Main(int argc, char** argv) {
   if (show_flops) {
     int64_t total_flops;
     std::unordered_map<string, int64_t> flops_by_op;
-    Status flop_status = CalculateFlops(*graph_def, inputs, session.get(),
-                                        &total_flops, &flops_by_op);
+    absl::Status flop_status = CalculateFlops(*graph_def, inputs, session.get(),
+                                              &total_flops, &flops_by_op);
     if (!flop_status.ok()) {
       LOG(ERROR) << "FLOPs calculation failed with " << flop_status;
       return -1;

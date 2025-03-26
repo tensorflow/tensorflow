@@ -30,12 +30,19 @@ limitations under the License.
 #include "tensorflow/compiler/jit/device_compilation_cluster_signature.h"
 #include "tensorflow/compiler/jit/device_compiler_client.h"
 #include "tensorflow/compiler/jit/tests/device_compiler_test_helper.h"
+#include "tensorflow/compiler/jit/xla_compile_util.h"
 #include "tensorflow/compiler/jit/xla_device_compiler_client.h"
+#include "tensorflow/compiler/tf2xla/xla_compiler.h"
 #include "xla/client/client_library.h"
+#include "xla/client/local_client.h"
+#include "xla/hlo/builder/xla_computation.h"
+#include "xla/stream_executor/platform_manager.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "tensorflow/core/framework/fake_input.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/graph_to_functiondef.h"
 #include "tensorflow/core/framework/node_def_builder.h"
+#include "tensorflow/core/framework/resource_base.h"
 #include "tensorflow/core/kernels/ops_testutil.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/errors.h"
@@ -58,7 +65,7 @@ using Signature = DeviceCompilationClusterSignature;
 xla::LocalClient* GetLocalClient() {
   // TODO(b/255826209): Figure out how to run this test with the CPU client as
   // well.
-  auto platform = se::MultiPlatformManager::PlatformWithName("cuda").value();
+  auto platform = se::PlatformManager::PlatformWithName("cuda").value();
   return xla::ClientLibrary::GetOrCreateLocalClient(platform).value();
 }
 
@@ -73,7 +80,7 @@ XlaDeviceCompiler* CreateXlaDeviceCompiler(bool enable_persistence = false) {
                                std::move(xla_compiler_client));
 }
 
-StatusOr<std::unique_ptr<Graph>> SampleGraphAddXY() {
+absl::StatusOr<std::unique_ptr<Graph>> SampleGraphAddXY() {
   std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
   Scope scope = Scope::NewRootScope().ExitOnError();
   auto a = ops::_Arg(scope.WithOpName("A"), DT_INT32, 0);
@@ -84,7 +91,7 @@ StatusOr<std::unique_ptr<Graph>> SampleGraphAddXY() {
   return graph;
 }
 
-StatusOr<FunctionDef> SampleFuntionAddXY(const std::string& name) {
+absl::StatusOr<FunctionDef> SampleFuntionAddXY(const std::string& name) {
   TF_ASSIGN_OR_RETURN(auto graph, SampleGraphAddXY());
   FunctionDef fdef;
   TF_RETURN_IF_ERROR(GraphToFunctionDef(*graph, name, &fdef));
@@ -109,7 +116,7 @@ class MockXlaDeviceExecutablePersistor
       : DeviceExecutablePersistor<xla::LocalExecutable, xla::LocalClient>(
             Config{testing::TmpDir(), false, "xla"},
             DeviceType(DEVICE_CPU_XLA_JIT)) {}
-  MOCK_METHOD(Status, TryToPersistExecutable,
+  MOCK_METHOD(absl::Status, TryToPersistExecutable,
               (uint64, const std::string&, const XlaCompiler::Options&,
                const XlaCompiler::CompilationResult&,
                const xla::LocalExecutable&,
@@ -123,7 +130,7 @@ class MockDeviceCompilationProfiler : public DeviceCompilationProfiler {
               (const NameAttrList& function, DeviceCompileMode compile_mode,
                int64_t current_request_count),
               (override));
-  MOCK_METHOD(Status, RegisterCompilation,
+  MOCK_METHOD(absl::Status, RegisterCompilation,
               (const NameAttrList& function, int64_t compile_time_us,
                bool used_persistent_cache),
               (override));
@@ -160,7 +167,8 @@ class DeviceCompilerTest : public ::testing::Test {
     return options;
   }
 
-  StatusOr<std::unique_ptr<xla::LocalExecutable>> BuildSampleXlaExecutable() {
+  absl::StatusOr<std::unique_ptr<xla::LocalExecutable>>
+  BuildSampleXlaExecutable() {
     TF_ASSIGN_OR_RETURN(auto graph, SampleGraphAddXY());
     auto args = SampleArgsForAddXY();
 
@@ -284,7 +292,7 @@ TEST_F(DeviceCompilerTest, CompileAsyncSuccess) {
   EXPECT_CALL(*mock_profiler_, RegisterCompilation(_, _, false))
       .WillOnce([&done] {
         done.Notify();
-        return OkStatus();
+        return absl::OkStatus();
       });
 
   auto args = SampleArgsForAddXY();
@@ -512,6 +520,40 @@ TEST_F(OpsTestBase, CompileSingleOpSuccess) {
 
   EXPECT_TRUE(compilation_result != nullptr);
   EXPECT_TRUE(xla_executable != nullptr);
+}
+
+TEST_F(DeviceCompilerTest, Finalize) {
+  XlaCompiler::Options options = GetDefaultXlaOptions();
+
+  NameAttrList fn;
+  fn.set_name("foo");
+
+  const XlaCompiler::CompilationResult* compilation_result = nullptr;
+  xla::LocalExecutable* xla_executable = nullptr;
+  TF_EXPECT_OK(xla_device_compiler_->CompileIfNeeded(
+      options, fn, SampleArgsForAddXY(), XlaCompiler::CompileOptions{},
+      DeviceCompileMode::kStrict, profiler_, &compilation_result,
+      &xla_executable));
+
+  ASSERT_TRUE(compilation_result != nullptr);
+  ASSERT_TRUE(compilation_result->computation != nullptr);
+
+  const std::shared_ptr<xla::XlaComputation> computation =
+      compilation_result->computation;
+
+  // Cast to `ResourceBase` to verify that the `Finalize` implementation
+  // overrides the base class's.
+  static_cast<ResourceBase*>(xla_device_compiler_)->Finalize();
+
+  TF_EXPECT_OK(xla_device_compiler_->CompileIfNeeded(
+      options, fn, SampleArgsForAddXY(), XlaCompiler::CompileOptions{},
+      DeviceCompileMode::kStrict, profiler_, &compilation_result,
+      &xla_executable));
+
+  ASSERT_TRUE(compilation_result != nullptr);
+
+  EXPECT_TRUE(compilation_result->computation == nullptr);
+  EXPECT_EQ(computation.use_count(), 1);
 }
 
 }  // namespace

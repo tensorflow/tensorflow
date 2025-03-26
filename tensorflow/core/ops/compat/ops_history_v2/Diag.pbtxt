@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "Diag"
   input_arg {
     name: "diagonal"

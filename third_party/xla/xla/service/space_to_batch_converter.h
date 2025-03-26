@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,9 +15,13 @@ limitations under the License.
 #ifndef XLA_SERVICE_SPACE_TO_BATCH_CONVERTER_H_
 #define XLA_SERVICE_SPACE_TO_BATCH_CONVERTER_H_
 
+#include <stdbool.h>
+
+#include "absl/container/flat_hash_set.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_module.h"
-#include "xla/service/hlo_pass_interface.h"
+#include "xla/hlo/pass/hlo_pass_interface.h"
 #include "xla/status_macros.h"
 
 namespace xla {
@@ -44,8 +48,6 @@ enum class SpaceToBatchDimMap : uint8_t {
   kSpace0 = 2,
 };
 
-inline constexpr int64_t NumMappedDims() { return 3; }
-
 // A pass which rewrites convolutions such that space dimension is turned into
 // batch.
 class SpaceToBatchConverter : public HloModulePass {
@@ -57,7 +59,7 @@ class SpaceToBatchConverter : public HloModulePass {
   // Run convolution rewriting on the given computation. Returns whether the
   // computation was changed.
   using HloPassInterface::Run;
-  StatusOr<bool> Run(
+  absl::StatusOr<bool> Run(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 

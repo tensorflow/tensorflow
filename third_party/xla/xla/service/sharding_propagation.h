@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -22,14 +22,37 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/hlo/ir/hlo_computation.h"
+#include "xla/hlo/ir/hlo_domain_metadata.h"
+#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/ir/hlo_sharding.h"
+#include "xla/hlo/pass/hlo_pass_interface.h"
 #include "xla/service/call_graph.h"
 #include "xla/service/custom_call_sharding_helper.h"
-#include "xla/service/hlo_pass_interface.h"
-#include "xla/statusor.h"
+#include "xla/service/dot_as_convolution_util.h"
 
 namespace xla {
+
+// Infers the shardings for a dot HLO op from the shardings on its operands,
+// which are expected to have sharding annotations.
+bool InferDotShardingFromOperands(
+    HloInstruction* instruction, const CallGraph& call_graph,
+    const dot_as_convolution_util::DotConvolutionDimsInfo& dnums,
+    bool may_combine_partial_sharding, bool is_spmd);
+
+// Infers the shardings for a convolution HLO op from the shardings on its
+// operands, which are expected to have sharding annotations.
+bool InferConvolutionShardingFromOperands(HloInstruction* instruction,
+                                          const CallGraph& call_graph,
+                                          bool may_combine_partial_sharding,
+                                          bool is_spmd);
 
 // Remove Sharding custom-call instruction by folding the sharding attribute
 // to its operand. If the operand already has a different sharding, insert a
@@ -41,7 +64,7 @@ namespace xla {
 // operand's existing sharding.
 // unspecified_dims will be populated with the converted copies if the custom
 // call is partially specified.
-StatusOr<bool> ProcessShardingInstruction(
+absl::StatusOr<bool> ProcessShardingInstruction(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads,
     bool replace_sharding_with_copy,
@@ -54,7 +77,10 @@ StatusOr<bool> ProcessShardingInstruction(
     absl::flat_hash_map<int64_t, absl::flat_hash_set<HloInstruction*>>*
         shard_group_id_to_shard_as_group = nullptr,
     absl::flat_hash_map<int64_t, absl::flat_hash_set<HloInstruction*>>*
-        shard_group_id_to_shard_like_group = nullptr);
+        shard_group_id_to_shard_like_group = nullptr,
+    const std::vector<bool>*
+        allow_spmd_sharding_propagation_to_parameters_vector = nullptr,
+    bool remove_unknown_shardings = false);
 
 int64_t ComputeNonRootUsers(const HloInstruction* instr);
 
@@ -104,7 +130,7 @@ class ShardingPropagation : public HloModulePass {
   }
   absl::string_view name() const override { return "sharding-propagation"; }
   using HloPassInterface::Run;
-  StatusOr<bool> Run(
+  absl::StatusOr<bool> Run(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
@@ -112,36 +138,58 @@ class ShardingPropagation : public HloModulePass {
   // given domain. It will apply the sharding into the exit edges of the domain
   // and then rely on the rest of sharding propagation to ensure that the
   // intermediate nodes get the correct sharding.
-  static Status NormalizeDomain(const DomainMetadata::Domain& domain,
-                                const DomainMetadata* metadata);
+  static absl::Status NormalizeDomain(const DomainMetadata::Domain& domain,
+                                      const DomainMetadata* metadata);
 
   static std::optional<HloSharding> GetShardingFromUser(
       const HloInstruction& instruction, const HloInstruction& user,
-      int64_t aggressiveness, bool is_spmd, const CallGraph& call_graph);
-
-  // Canonicalizes entry_computation_layouts by calling
-  // module.layout_canonicalization_callback(), which gives canolicalized
-  // argument and result layouts based on current module. Currently used by
-  // PJRT which assigns layouts based on runtime shapes: see
-  // DetermineArgumentLayoutsFromCompileOptions() in
-  //     tensorflow/compiler/xla/pjrt/utils.cc
-  Status CanonicalizeLayouts(HloModule* module);
+      int64_t aggressiveness, bool is_spmd, const CallGraph& call_graph,
+      const CustomCallShardingHelper* sharding_helper);
 
  private:
   bool InferShardingFromShardGroup(
-      HloInstruction* instruction, const ComputationMap& computation_map,
-      int64_t aggressiveness,
+      HloInstruction* instruction, int64_t aggressiveness,
       const absl::flat_hash_set<HloInstruction*>& shard_group);
-  bool InferShardingFromOperands(HloInstruction* instruction,
-                                 const ComputationMap& computation_map,
-                                 int64_t aggressiveness,
-                                 const CallGraph& call_graph);
+  bool InferShardingFromOperands(
+      HloInstruction* instruction, const ComputationMap& computation_map,
+      int64_t aggressiveness, const CallGraph& call_graph,
+      const absl::flat_hash_set<absl::string_view>& execution_threads);
   bool InferShardingFromUsers(
       HloInstruction* instruction,
       const ShardingPropagation::ComputationMap& computation_map,
       int64_t aggressiveness, bool is_spmd,
       const CustomCallShardingHelper* sharding_helper,
       const CallGraph& call_graph);
+
+  absl::StatusOr<bool> RunToFixPoint(
+      int64_t aggressiveness, bool propagate_shard_group,
+      const ComputationMap& computation_map,
+      const absl::flat_hash_set<const HloInstruction*>& provided_shardings,
+      const CallGraph& call_graph, HloModule* module,
+      const absl::flat_hash_set<absl::string_view>& execution_threads,
+      absl::flat_hash_map<const HloInstruction*, std::vector<int64_t>>&
+          unspecified_dims,
+      absl::flat_hash_map<HloInstruction*, int64_t>&
+          instruction_to_shard_group_id,
+      absl::flat_hash_map<int64_t, absl::flat_hash_set<HloInstruction*>>&
+          shard_group_id_to_shard_as_group,
+      absl::flat_hash_map<int64_t, absl::flat_hash_set<HloInstruction*>>&
+          shard_group_id_to_shard_like_group,
+      int64_t& iterations);
+
+  // If instruction is a while, or the root or a parameter of a while body,
+  // then propagate its sharding to the while instruction, to its body root,
+  // and to its condition parameter.
+  void MaybeComputationPropagation(
+      const ComputationMap& computation_map,
+      const absl::flat_hash_set<const HloInstruction*>& provided_shardings,
+      HloInstruction* instruction,
+      absl::flat_hash_set<HloInstruction*>* changed);
+
+  // Gets instructions that are related through a computation and need to share
+  // the same sharding.
+  std::vector<HloInstruction*> GetRelatedInstructions(
+      HloInstruction* inst, const ComputationMap& computation_map);
 
   std::unique_ptr<CustomCallShardingHelper> sharding_helper_;
   bool is_spmd_;

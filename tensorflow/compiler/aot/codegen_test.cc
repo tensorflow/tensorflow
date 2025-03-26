@@ -19,10 +19,13 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/memory/memory.h"
 #include "absl/strings/match.h"
 #include "absl/strings/string_view.h"
 #include "llvm/Support/TargetSelect.h"
+#include "tensorflow/compiler/aot/compile.h"
 #include "xla/cpu_function_runtime.h"
+#include "xla/service/cpu/cpu_aot_compilation_result.h"
 #include "xla/shape_util.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/framework/types.pb.h"
@@ -39,8 +42,8 @@ namespace {
 
 using ::xla::cpu_function_runtime::BufferInfo;
 
-void ExpectErrorContains(const Status& status, absl::string_view str) {
-  EXPECT_NE(OkStatus(), status);
+void ExpectErrorContains(const absl::Status& status, absl::string_view str) {
+  EXPECT_NE(absl::OkStatus(), status);
   EXPECT_TRUE(absl::StrContains(status.message(), str))
       << "expected error: " << status.message() << " to contain: " << str;
 }
@@ -88,7 +91,8 @@ class ParseCppClassTest : public ::testing::Test {
   void ExpectFail(const string& cpp_class) {
     string class_name;
     std::vector<string> namespaces;
-    EXPECT_NE(ParseCppClass(cpp_class, &class_name, &namespaces), OkStatus())
+    EXPECT_NE(ParseCppClass(cpp_class, &class_name, &namespaces),
+              absl::OkStatus())
         << cpp_class;
   }
 };
@@ -153,7 +157,7 @@ static void CompareWithGoldenFile(
 
   // To update the golden file, flip update_golden to true and run the
   // following:
-  // bazel test --test_strategy=local \
+  // blaz test --test_strategy=local \
   //   "third_party/tensorflow/compiler/aot:codegen_test"
   const bool update_golden = false;
   string golden_file_name =
@@ -175,6 +179,7 @@ static void CompareWithGoldenFile(
   EXPECT_EQ(golden_file_contents, expected_contents);
 }
 
+#if TF_LLVM_X86_AVAILABLE
 TEST(CodegenTest, Golden) {
   // Normally CpuCompiler::CpuCompiler does this, but in this test we've
   // bypassed the Cpu compiler so we have to do this manually.
@@ -213,24 +218,30 @@ TEST(CodegenTest, Golden) {
   variable3->mutable_shape()->add_dim()->set_size(5);
   variable3->set_type(DT_INT32);
   CompileResult compile_result;
-  compile_result.aot.reset(new xla::cpu::CpuAotCompilationResult(
-      {},
-      {BufferInfo::MakeTempBuffer(3 * 8),
-       BufferInfo::MakeEntryParameter(/*size=*/8, /*entry_param_number=*/0),
-       BufferInfo::MakeTempBuffer(1),
-       BufferInfo::MakeEntryParameter(/*size=*/96, /*entry_param_number=*/1),
-       BufferInfo::MakeTempBuffer(1),
-       BufferInfo::MakeEntryParameter(/*size=*/96, /*entry_param_number=*/2),
-       BufferInfo::MakeTempBuffer(1),
-       BufferInfo::MakeEntryParameter(/*size=*/96, /*entry_param_number=*/3),
-       BufferInfo::MakeResultParameter(/*size=*/5 * 6 * 4,
-                                       /*result_param_number=*/0),
-       BufferInfo::MakeEntryParameter(/*size=*/96, /*entry_param_number=*/4),
-       BufferInfo::MakeResultParameter(/*size=*/1 * 4,
-                                       /*result_param_number=*/1),
-       BufferInfo::MakeResultParameter(/*size=*/5 * 4,
-                                       /*result_param_number=*/2)},
-      0, {}));
+  compile_result.aot =
+      absl::WrapUnique(new xla::cpu::CpuAotCompilationResultLegacy(
+          {},
+          {BufferInfo::MakeTempBuffer(3 * 8),
+           BufferInfo::MakeEntryParameter(/*size=*/8,
+                                          /*entry_param_number=*/0),
+           BufferInfo::MakeTempBuffer(1),
+           BufferInfo::MakeEntryParameter(/*size=*/96,
+                                          /*entry_param_number=*/1),
+           BufferInfo::MakeTempBuffer(1),
+           BufferInfo::MakeEntryParameter(/*size=*/96,
+                                          /*entry_param_number=*/2),
+           BufferInfo::MakeTempBuffer(1),
+           BufferInfo::MakeEntryParameter(/*size=*/96,
+                                          /*entry_param_number=*/3),
+           BufferInfo::MakeResultParameter(/*size=*/5 * 6 * 4,
+                                           /*result_param_number=*/0),
+           BufferInfo::MakeEntryParameter(/*size=*/96,
+                                          /*entry_param_number=*/4),
+           BufferInfo::MakeResultParameter(/*size=*/1 * 4,
+                                           /*result_param_number=*/1),
+           BufferInfo::MakeResultParameter(/*size=*/5 * 4,
+                                           /*result_param_number=*/2)},
+          0, nullptr, {}));
   compile_result.program_shape =
       xla::ShapeUtil::MakeProgramShape(
           {
@@ -268,6 +279,7 @@ TEST(CodegenTest, Golden) {
   CompareWithGoldenFile("tensorflow/compiler/aot/codegen_test_h.golden", header,
                         true);
 }
+#endif
 }  // namespace
 }  // namespace tfcompile
 }  // namespace tensorflow

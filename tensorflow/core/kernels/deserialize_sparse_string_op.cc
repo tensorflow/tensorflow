@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <numeric>
+#include <optional>
 #include <utility>
 #include <vector>
 
@@ -30,7 +31,6 @@ limitations under the License.
 #include "tensorflow/core/framework/variant_encode_decode.h"
 #include "tensorflow/core/kernels/reshape_util.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
-#include "tensorflow/core/lib/gtl/optional.h"
 #include "tensorflow/core/util/sparse/sparse_tensor.h"
 
 namespace tensorflow {
@@ -161,7 +161,7 @@ class DeserializeSparseOp : public OpKernel {
 
     // Dimension 0 is the primary dimension.
     int rank = shape.dims();
-    gtl::InlinedVector<int64_t, 8> std_order(rank);
+    absl::InlinedVector<int64_t, 8UL> std_order(rank);
     std::iota(std_order.begin(), std_order.end(), 0);
 
     std::vector<SparseTensor> tensors;
@@ -173,7 +173,7 @@ class DeserializeSparseOp : public OpKernel {
       tensors.push_back(std::move(tensor));
     }
 
-    gtl::optional<SparseTensor> maybe_output;
+    std::optional<SparseTensor> maybe_output;
 #define HANDLE_TYPE(T)                               \
   case DataTypeToEnum<T>::value: {                   \
     maybe_output = SparseTensor::Concat<T>(tensors); \
@@ -213,7 +213,7 @@ class DeserializeSparseOp : public OpKernel {
   }
 
  private:
-  Status Deserialize(const tstring& serialized, Tensor* result) {
+  absl::Status Deserialize(const tstring& serialized, Tensor* result) {
     TensorProto proto;
     if (!ParseProtoUnlimited(&proto, serialized)) {
       return errors::InvalidArgument("Could not parse serialized proto");
@@ -223,10 +223,10 @@ class DeserializeSparseOp : public OpKernel {
       return errors::InvalidArgument("Could not construct tensor from proto");
     }
     *result = tensor;
-    return OkStatus();
+    return absl::OkStatus();
   }
 
-  Status GetAndValidateSparseTensor(
+  absl::Status GetAndValidateSparseTensor(
       const tstring& serialized_indices, const tstring& serialized_values,
       const tstring& serialized_shape, DataType values_dtype, int index,
       Tensor* output_indices, Tensor* output_values, Tensor* output_shape) {
@@ -278,7 +278,7 @@ class DeserializeSparseOp : public OpKernel {
                                      index, "].shape but they do not: ", rank,
                                      " vs. ", output_shape->dim_size(0));
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   DataType dtype_;

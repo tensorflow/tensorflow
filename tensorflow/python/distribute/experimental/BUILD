@@ -20,7 +20,6 @@ py_strict_library(
     srcs = [
         "__init__.py",
     ],
-    srcs_version = "PY3",
     deps = [
         ":mirrored_strategy",
         ":multi_worker_mirrored_strategy",

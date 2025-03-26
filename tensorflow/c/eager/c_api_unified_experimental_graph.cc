@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/c/tf_datatype.h"
 #include "tensorflow/c/tf_status.h"
 #include "tensorflow/c/tf_status_helper.h"
+#include "xla/tsl/c/tsl_status_internal.h"
 #include "tensorflow/core/framework/full_type.pb.h"
 #include "tensorflow/core/framework/shape_inference.h"
 #include "tensorflow/core/framework/tensor_shape.h"
@@ -35,7 +36,6 @@ limitations under the License.
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/strcat.h"
 #include "tensorflow/core/platform/types.h"
-#include "tsl/c/tsl_status_internal.h"
 
 using tensorflow::dyn_cast;
 using tensorflow::string;
@@ -63,15 +63,14 @@ class GraphTensor : public TracingTensorHandle {
     return static_cast<tensorflow::DataType>(TF_OperationOutputType(output_));
   }
 
-  tensorflow::Status Shape(
-      tensorflow::PartialTensorShape* shape) const override {
+  absl::Status Shape(tensorflow::PartialTensorShape* shape) const override {
     DCHECK(shape != nullptr);
     TF_Status status;
     int num_dims = TF_GraphGetTensorNumDims(graph_, output_, &status);
     DCHECK_GE(num_dims, -1);
     TF_RETURN_IF_ERROR(StatusFromTF_Status(&status));
     if (num_dims == kUnknownRank) {
-      return OkStatus();
+      return absl::OkStatus();
     }
 
     std::vector<int64_t> dims(num_dims, kUnknownDim);
@@ -81,7 +80,7 @@ class GraphTensor : public TracingTensorHandle {
     TF_RETURN_IF_ERROR(StatusFromTF_Status(&status));
     TF_RETURN_IF_ERROR(tensorflow::TensorShapeUtils::MakeShape(dims, shape));
 
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   tensorflow::FullTypeDef FullType() const override {
@@ -111,7 +110,7 @@ class GraphOperation : public TracingOperation {
  public:
   explicit GraphOperation(TF_Graph* g) : TracingOperation(kGraph), g_(g) {}
   void Release() override { delete this; }
-  Status Reset(const char* op, const char* raw_device_name) override {
+  absl::Status Reset(const char* op, const char* raw_device_name) override {
     if (op_) {
       return errors::FailedPrecondition("Reset called on already built op.");
     }
@@ -119,9 +118,9 @@ class GraphOperation : public TracingOperation {
       device_name_ = raw_device_name;
     }
     op_type_ = op;
-    return OkStatus();
+    return absl::OkStatus();
   }
-  Status SetOpName(const char* const op_name) override {
+  absl::Status SetOpName(const char* const op_name) override {
     if (op_) {
       return errors::FailedPrecondition(
           "SetOpName called on already built op.");
@@ -135,27 +134,28 @@ class GraphOperation : public TracingOperation {
     mutex_lock l(g_->mu);
     op_.reset(new TF_OperationDescription(g_, op_type_.c_str(),
                                           g_->graph.NewName(op_name).c_str()));
-    return OkStatus();
+    return absl::OkStatus();
   }
   const string& Name() const override { return op_type_; }
   const string& DeviceName() const override { return device_name_; }
 
-  Status SetDeviceName(const char* name) override {
+  absl::Status SetDeviceName(const char* name) override {
     // TODO(srbs): Implement this.
     device_name_ = name;
-    return OkStatus();
+    return absl::OkStatus();
   }
 
-  Status AddInput(AbstractTensorHandle* input) override {
+  absl::Status AddInput(AbstractTensorHandle* input) override {
     GraphTensor* t = dyn_cast<GraphTensor>(input);
     if (!t) {
       return tensorflow::errors::InvalidArgument(
           "Unable to cast input to GraphTensor");
     }
     TF_AddInput(op_.get(), t->output_);
-    return OkStatus();
+    return absl::OkStatus();
   }
-  Status AddInputList(absl::Span<AbstractTensorHandle* const> inputs) override {
+  absl::Status AddInputList(
+      absl::Span<AbstractTensorHandle* const> inputs) override {
     std::vector<TF_Output> tf_outputs(inputs.size());
     for (int i = 0; i < inputs.size(); i++) {
       GraphTensor* t = dyn_cast<GraphTensor>(inputs[i]);
@@ -166,10 +166,10 @@ class GraphOperation : public TracingOperation {
       tf_outputs[i] = t->output_;
     }
     TF_AddInputList(op_.get(), tf_outputs.data(), tf_outputs.size());
-    return OkStatus();
+    return absl::OkStatus();
   }
-  Status Execute(absl::Span<AbstractTensorHandle*> retvals,
-                 int* num_retvals) override {
+  absl::Status Execute(absl::Span<AbstractTensorHandle*> retvals,
+                       int* num_retvals) override {
     auto* tf_opdesc = op_.release();
     if (tf_opdesc == nullptr) {
       return errors::InvalidArgument("AbstractOp is incomplete.");
@@ -182,65 +182,68 @@ class GraphOperation : public TracingOperation {
     for (int i = 0; i < *num_retvals; ++i) {
       retvals[i] = new GraphTensor({operation, i}, g_);
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
-  Status SetAttrString(const char* attr_name, const char* data,
-                       size_t length) override {
-    tensorflow::StringPiece s(data, length);
+  absl::Status SetAttrString(const char* attr_name, const char* data,
+                             size_t length) override {
+    absl::string_view s(data, length);
     op_->node_builder.Attr(attr_name, s);
-    return OkStatus();
+    return absl::OkStatus();
   }
-  Status SetAttrInt(const char* attr_name, int64_t value) override {
+  absl::Status SetAttrInt(const char* attr_name, int64_t value) override {
     op_->node_builder.Attr(attr_name, static_cast<int64_t>(value));
-    return OkStatus();
+    return absl::OkStatus();
   }
-  Status SetAttrFloat(const char* attr_name, float value) override {
+  absl::Status SetAttrFloat(const char* attr_name, float value) override {
     op_->node_builder.Attr(attr_name, value);
-    return OkStatus();
+    return absl::OkStatus();
   }
-  Status SetAttrBool(const char* attr_name, bool value) override {
+  absl::Status SetAttrBool(const char* attr_name, bool value) override {
     op_->node_builder.Attr(attr_name, value);
-    return OkStatus();
+    return absl::OkStatus();
   }
-  Status SetAttrType(const char* const attr_name, DataType value) override {
+  absl::Status SetAttrType(const char* const attr_name,
+                           DataType value) override {
     if (!op_) {
-      return Status(
+      return absl::Status(
           absl::StatusCode::kFailedPrecondition,
           "op_type and op_name must be specified before specifying attrs.");
     }
     op_->node_builder.Attr(attr_name, value);
-    return OkStatus();
+    return absl::OkStatus();
   }
-  Status SetAttrShape(const char* attr_name, const int64_t* dims,
-                      const int num_dims) override {
+  absl::Status SetAttrShape(const char* attr_name, const int64_t* dims,
+                            const int num_dims) override {
     PartialTensorShape shape;
     if (num_dims >= 0) {
       shape = PartialTensorShape(ArraySlice<int64_t>(
           reinterpret_cast<const int64_t*>(dims), num_dims));
     }
     op_->node_builder.Attr(attr_name, shape);
-    return OkStatus();
+    return absl::OkStatus();
   }
-  Status SetAttrFunction(const char* attr_name,
-                         const AbstractOperation* value) override {
+  absl::Status SetAttrFunction(const char* attr_name,
+                               const AbstractOperation* value) override {
     return tensorflow::errors::Unimplemented(
         "SetAttrFunction has not been implemented yet.");
   }
-  Status SetAttrFunctionName(const char* attr_name, const char* value,
-                             size_t length) override {
+  absl::Status SetAttrFunctionName(const char* attr_name, const char* value,
+                                   size_t length) override {
     tensorflow::NameAttrList func_name;
     func_name.set_name(string(value, value + length));
     op_->node_builder.Attr(attr_name, func_name);
-    return OkStatus();
+    return absl::OkStatus();
   }
-  Status SetAttrTensor(const char* attr_name,
-                       AbstractTensorInterface* tensor) override {
+  absl::Status SetAttrTensor(const char* attr_name,
+                             AbstractTensorInterface* tensor) override {
     return tensorflow::errors::Unimplemented(
         "SetAttrTensor has not been implemented yet.");
   }
-  Status SetAttrStringList(const char* attr_name, const void* const* values,
-                           const size_t* lengths, int num_values) override {
+  absl::Status SetAttrStringList(const char* attr_name,
+                                 const void* const* values,
+                                 const size_t* lengths,
+                                 int num_values) override {
     if (strcmp(attr_name, tensorflow::kColocationAttrName) == 0) {
       op_->colocation_constraints.clear();
       for (int i = 0; i < num_values; ++i) {
@@ -248,36 +251,37 @@ class GraphOperation : public TracingOperation {
                                             lengths[i]);
       }
     } else {
-      std::vector<tensorflow::StringPiece> v;
+      std::vector<absl::string_view> v;
       v.reserve(num_values);
       for (int i = 0; i < num_values; ++i) {
         v.emplace_back(static_cast<const char*>(values[i]), lengths[i]);
       }
       op_->node_builder.Attr(attr_name, v);
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
-  Status SetAttrFloatList(const char* attr_name, const float* values,
-                          int num_values) override {
+  absl::Status SetAttrFloatList(const char* attr_name, const float* values,
+                                int num_values) override {
     op_->node_builder.Attr(attr_name,
                            ArraySlice<const float>(values, num_values));
-    return OkStatus();
+    return absl::OkStatus();
   }
-  Status SetAttrIntList(const char* attr_name, const int64_t* values,
-                        int num_values) override {
+  absl::Status SetAttrIntList(const char* attr_name, const int64_t* values,
+                              int num_values) override {
     op_->node_builder.Attr(
         attr_name, ArraySlice<const int64_t>(
                        reinterpret_cast<const int64_t*>(values), num_values));
-    return OkStatus();
+    return absl::OkStatus();
   }
-  Status SetAttrTypeList(const char* attr_name, const DataType* values,
-                         int num_values) override {
+  absl::Status SetAttrTypeList(const char* attr_name, const DataType* values,
+                               int num_values) override {
     op_->node_builder.Attr(attr_name,
                            ArraySlice<const DataType>(values, num_values));
-    return OkStatus();
+    return absl::OkStatus();
   }
-  Status SetAttrBoolList(const char* attr_name, const unsigned char* values,
-                         int num_values) override {
+  absl::Status SetAttrBoolList(const char* attr_name,
+                               const unsigned char* values,
+                               int num_values) override {
     std::unique_ptr<bool[]> b(new bool[num_values]);
     for (int i = 0; i < num_values; ++i) {
       b[i] = values[i];
@@ -285,10 +289,10 @@ class GraphOperation : public TracingOperation {
     op_->node_builder.Attr(attr_name,
                            ArraySlice<const bool>(b.get(), num_values));
 
-    return OkStatus();
+    return absl::OkStatus();
   }
-  Status SetAttrShapeList(const char* attr_name, const int64_t** dims,
-                          const int* num_dims, int num_values) override {
+  absl::Status SetAttrShapeList(const char* attr_name, const int64_t** dims,
+                                const int* num_dims, int num_values) override {
     std::vector<PartialTensorShape> shapes;
     shapes.reserve(num_values);
     for (int i = 0; i < num_values; ++i) {
@@ -300,9 +304,9 @@ class GraphOperation : public TracingOperation {
       }
     }
     op_->node_builder.Attr(attr_name, shapes);
-    return OkStatus();
+    return absl::OkStatus();
   }
-  Status SetAttrFunctionList(
+  absl::Status SetAttrFunctionList(
       const char* attr_name,
       absl::Span<const AbstractOperation*> values) override {
     return tensorflow::errors::Unimplemented(
@@ -341,8 +345,8 @@ class GraphContext : public TracingContext {
     return new GraphOperation(graph_.get());
   }
 
-  Status AddParameter(DataType dtype, const PartialTensorShape& shape,
-                      TracingTensorHandle** output) override {
+  absl::Status AddParameter(DataType dtype, const PartialTensorShape& shape,
+                            TracingTensorHandle** output) override {
     TracingOperationPtr operation(CreateOperation());
     TF_RETURN_IF_ERROR(operation->Reset("Placeholder", nullptr));
     TF_RETURN_IF_ERROR(
@@ -368,10 +372,10 @@ class GraphContext : public TracingContext {
     }
     inputs_.push_back(t->output_);
     *output = tensorflow::down_cast<TracingTensorHandle*>(outputs[0]);
-    return OkStatus();
+    return absl::OkStatus();
   }
 
-  Status Finalize(OutputList* outputs, AbstractFunction** f) override {
+  absl::Status Finalize(OutputList* outputs, AbstractFunction** f) override {
     std::vector<TF_Output> graph_outputs;
     graph_outputs.reserve(outputs->outputs.size());
     for (auto* abstract_output : outputs->outputs) {
@@ -393,15 +397,15 @@ class GraphContext : public TracingContext {
     TF_DeleteFunction(func);
     TF_RETURN_IF_ERROR(StatusFromTF_Status(s));
     TF_DeleteStatus(s);
-    return OkStatus();
+    return absl::OkStatus();
   }
 
-  Status RegisterFunction(AbstractFunction* func) override {
+  absl::Status RegisterFunction(AbstractFunction* func) override {
     return errors::Unimplemented(
         "Registering graph functions has not been implemented yet.");
   }
 
-  Status RemoveFunction(const string& func) override {
+  absl::Status RemoveFunction(const string& func) override {
     return errors::Unimplemented(
         "GraphContext::RemoveFunction has not been implemented yet.");
   }

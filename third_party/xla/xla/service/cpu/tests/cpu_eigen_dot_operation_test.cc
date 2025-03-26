@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -18,13 +18,16 @@ limitations under the License.
 #include <algorithm>
 #include <string>
 
-#include "absl/strings/str_cat.h"
+#include <gtest/gtest.h>
 #include "xla/hlo/ir/hlo_computation.h"
+#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/cpu/cpu_compiler.h"
 #include "xla/service/cpu/test_target_triple_helper.h"
 #include "xla/service/cpu/tests/cpu_codegen_test.h"
+#include "xla/shape_util.h"
 #include "xla/tests/test_utils.h"
-#include "tsl/platform/test.h"
+#include "xla/tsl/platform/test.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace cpu {
@@ -55,6 +58,10 @@ class CpuEigenDotOperationTest
     auto hlo_module = CreateNewVerifiedModule();
     hlo_module->AddEntryComputation(std::move(entry_computation));
 
+    hlo_module->mutable_config()
+        .mutable_debug_options()
+        .set_xla_cpu_use_thunk_runtime(false);
+
     CompileAheadOfTimeAndVerifyIr(std::move(hlo_module), options,
                                   filecheck_lines,
                                   /*match_optimized_ir=*/true);
@@ -62,9 +69,9 @@ class CpuEigenDotOperationTest
 };
 
 TEST_P(CpuEigenDotOperationTest, SimpleDotOp) {
-#if defined(INTEL_MKL) && defined(ENABLE_ONEDNN_V3)
+#if defined(INTEL_MKL)
   GTEST_SKIP() << "OneDNN rewrites dot instruction to custom-call.";
-#endif  // INTEL_MKL && ENABLE_ONEDNN_V3
+#endif  // INTEL_MKL
   HloComputation::Builder builder(TestName());
   DotTestSpec spec = GetParam();
 
@@ -80,9 +87,9 @@ TEST_P(CpuEigenDotOperationTest, SimpleDotOp) {
 }
 
 TEST_P(CpuEigenDotOperationTest, DotTransposeOp) {
-#if defined(INTEL_MKL) && defined(ENABLE_ONEDNN_V3)
+#if defined(INTEL_MKL)
   GTEST_SKIP() << "OneDNN rewrites dot instruction to custom-call.";
-#endif  // INTEL_MKL && ENABLE_ONEDNN_V3
+#endif  // INTEL_MKL
   HloComputation::Builder builder(TestName());
   DotTestSpec spec = GetParam();
 

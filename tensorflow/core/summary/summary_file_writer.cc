@@ -14,17 +14,25 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/summary/summary_file_writer.h"
 
+#include <atomic>
+#include <cstdint>
 #include <memory>
+#include <utility>
+#include <vector>
 
+#include "absl/status/status.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
+#include "xla/tsl/protobuf/error_codes.pb.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/framework/summary.pb.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/summary/summary_converter.h"
+#include "tensorflow/core/util/event.pb.h"
 #include "tensorflow/core/util/events_writer.h"
 
 namespace tensorflow {
@@ -39,8 +47,8 @@ class SummaryFileWriter : public SummaryWriterInterface {
         flush_millis_(flush_millis),
         env_(env) {}
 
-  Status Initialize(const string& logdir, const string& filename_suffix) {
-    const Status is_dir = env_->IsDirectory(logdir);
+  absl::Status Initialize(const string& logdir, const string& filename_suffix) {
+    const absl::Status is_dir = env_->IsDirectory(logdir);
     if (!is_dir.ok()) {
       if (is_dir.code() != tensorflow::error::NOT_FOUND) {
         return is_dir;
@@ -63,10 +71,10 @@ class SummaryFileWriter : public SummaryWriterInterface {
         "Could not initialize events writer.");
     last_flush_ = env_->NowMicros();
     is_initialized_ = true;
-    return OkStatus();
+    return absl::OkStatus();
   }
 
-  Status Flush() override {
+  absl::Status Flush() override {
     mutex_lock ml(mu_);
     if (!is_initialized_) {
       return errors::FailedPrecondition("Class was not properly initialized.");
@@ -78,8 +86,8 @@ class SummaryFileWriter : public SummaryWriterInterface {
     (void)Flush();  // Ignore errors.
   }
 
-  Status WriteTensor(int64_t global_step, Tensor t, const string& tag,
-                     const string& serialized_metadata) override {
+  absl::Status WriteTensor(int64_t global_step, Tensor t, const string& tag,
+                           const string& serialized_metadata) override {
     std::unique_ptr<Event> e{new Event};
     e->set_step(global_step);
     e->set_wall_time(GetWallTime());
@@ -101,8 +109,8 @@ class SummaryFileWriter : public SummaryWriterInterface {
     return WriteEvent(std::move(e));
   }
 
-  Status WriteScalar(int64_t global_step, Tensor t,
-                     const string& tag) override {
+  absl::Status WriteScalar(int64_t global_step, Tensor t,
+                           const string& tag) override {
     std::unique_ptr<Event> e{new Event};
     e->set_step(global_step);
     e->set_wall_time(GetWallTime());
@@ -111,8 +119,8 @@ class SummaryFileWriter : public SummaryWriterInterface {
     return WriteEvent(std::move(e));
   }
 
-  Status WriteHistogram(int64_t global_step, Tensor t,
-                        const string& tag) override {
+  absl::Status WriteHistogram(int64_t global_step, Tensor t,
+                              const string& tag) override {
     std::unique_ptr<Event> e{new Event};
     e->set_step(global_step);
     e->set_wall_time(GetWallTime());
@@ -121,8 +129,8 @@ class SummaryFileWriter : public SummaryWriterInterface {
     return WriteEvent(std::move(e));
   }
 
-  Status WriteImage(int64_t global_step, Tensor t, const string& tag,
-                    int max_images, Tensor bad_color) override {
+  absl::Status WriteImage(int64_t global_step, Tensor t, const string& tag,
+                          int max_images, Tensor bad_color) override {
     std::unique_ptr<Event> e{new Event};
     e->set_step(global_step);
     e->set_wall_time(GetWallTime());
@@ -131,8 +139,8 @@ class SummaryFileWriter : public SummaryWriterInterface {
     return WriteEvent(std::move(e));
   }
 
-  Status WriteAudio(int64_t global_step, Tensor t, const string& tag,
-                    int max_outputs, float sample_rate) override {
+  absl::Status WriteAudio(int64_t global_step, Tensor t, const string& tag,
+                          int max_outputs, float sample_rate) override {
     std::unique_ptr<Event> e{new Event};
     e->set_step(global_step);
     e->set_wall_time(GetWallTime());
@@ -141,8 +149,8 @@ class SummaryFileWriter : public SummaryWriterInterface {
     return WriteEvent(std::move(e));
   }
 
-  Status WriteGraph(int64_t global_step,
-                    std::unique_ptr<GraphDef> graph) override {
+  absl::Status WriteGraph(int64_t global_step,
+                          std::unique_ptr<GraphDef> graph) override {
     std::unique_ptr<Event> e{new Event};
     e->set_step(global_step);
     e->set_wall_time(GetWallTime());
@@ -150,14 +158,14 @@ class SummaryFileWriter : public SummaryWriterInterface {
     return WriteEvent(std::move(e));
   }
 
-  Status WriteEvent(std::unique_ptr<Event> event) override {
+  absl::Status WriteEvent(std::unique_ptr<Event> event) override {
     mutex_lock ml(mu_);
     queue_.emplace_back(std::move(event));
     if (queue_.size() > max_queue_ ||
         env_->NowMicros() - last_flush_ > 1000 * flush_millis_) {
       return InternalFlush();
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   string DebugString() const override { return "SummaryFileWriter"; }
@@ -167,7 +175,7 @@ class SummaryFileWriter : public SummaryWriterInterface {
     return static_cast<double>(env_->NowMicros()) / 1.0e6;
   }
 
-  Status InternalFlush() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+  absl::Status InternalFlush() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
     for (const std::unique_ptr<Event>& e : queue_) {
       events_writer_->WriteEvent(*e);
     }
@@ -175,7 +183,7 @@ class SummaryFileWriter : public SummaryWriterInterface {
     TF_RETURN_WITH_CONTEXT_IF_ERROR(events_writer_->Flush(),
                                     "Could not flush events file.");
     last_flush_ = env_->NowMicros();
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   bool is_initialized_;
@@ -193,19 +201,19 @@ class SummaryFileWriter : public SummaryWriterInterface {
 
 }  // namespace
 
-Status CreateSummaryFileWriter(int max_queue, int flush_millis,
-                               const string& logdir,
-                               const string& filename_suffix, Env* env,
-                               SummaryWriterInterface** result) {
+absl::Status CreateSummaryFileWriter(int max_queue, int flush_millis,
+                                     const string& logdir,
+                                     const string& filename_suffix, Env* env,
+                                     SummaryWriterInterface** result) {
   SummaryFileWriter* w = new SummaryFileWriter(max_queue, flush_millis, env);
-  const Status s = w->Initialize(logdir, filename_suffix);
+  const absl::Status s = w->Initialize(logdir, filename_suffix);
   if (!s.ok()) {
     w->Unref();
     *result = nullptr;
     return s;
   }
   *result = w;
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace tensorflow

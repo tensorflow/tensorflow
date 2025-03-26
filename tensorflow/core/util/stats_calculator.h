@@ -26,13 +26,14 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "xla/tsl/util/stats_calculator.h"
 #include "tensorflow/core/util/stat_summarizer_options.h"
-#include "tsl/util/stats_calculator.h"
 
 namespace tensorflow {
 
 using tsl::Stat;
 using tsl::StatsCalculator;
+using tsl::StatWithPercentiles;
 
 }  // namespace tensorflow
 

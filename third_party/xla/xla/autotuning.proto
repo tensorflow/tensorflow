@@ -9,9 +9,7 @@ package xla;
 
 import "google/protobuf/any.proto";
 import "google/protobuf/duration.proto";
-import "tsl/protobuf/dnn.proto";
-
-option go_package = "github.com/google/tsl/tsl/go/protobuf/for_core_protos_go_proto";
+import "xla/tsl/protobuf/dnn.proto";
 
 message CudnnVersion {
   int32 major = 1;
@@ -73,6 +71,8 @@ message AutotuneResult {
     string exec_plan_id = 1;
   }
 
+  // If you don't need a proto in your code, please use TritonGemmConfig instead
+  // of using this proto directly.
   message TritonGemmKey {
     int64 block_m = 1;
     int64 block_n = 2;
@@ -80,6 +80,11 @@ message AutotuneResult {
     int64 split_k = 4;
     int64 num_stages = 5;
     int64 num_warps = 6;
+    int64 num_ctas = 7;
+  }
+
+  message CustomKernelFusionKey {
+    int64 kernel_index = 1;
   }
 
   int64 scratch_bytes = 8;
@@ -92,10 +97,11 @@ message AutotuneResult {
     GemmKey gemm = 6;
     TritonGemmKey triton = 17;
     CudaConvPlanKey cuda_conv_plan = 15;
+    CustomKernelFusionKey custom_kernel_fusion = 18;
     stream_executor.dnn.AlgorithmProto algorithm = 16;
   }
 
-  // Next ID: 17
+  // Next ID: 19
 }
 
 message AutotuningLog {
@@ -112,5 +118,9 @@ message AutotuningLog {
 
   string blas_version = 6;
 
-  // Next ID: 7
+  string fusion_name = 7;
+
+  int64 fusion_count = 8;
+
+  // Next ID: 9
 }

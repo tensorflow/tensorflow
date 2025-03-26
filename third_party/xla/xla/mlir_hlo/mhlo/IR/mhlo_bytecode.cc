@@ -1,4 +1,4 @@
-/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,12 +15,15 @@ limitations under the License.
 
 #include "mhlo/IR/mhlo_bytecode.h"
 
+#include "llvm/ADT/APFloat.h"
 #include "llvm/ADT/TypeSwitch.h"
 #include "llvm/Support/Compiler.h"
 #include "llvm/Support/Debug.h"
 #include "mhlo/IR/hlo_ops.h"
 #include "mlir/Bytecode/BytecodeImplementation.h"
 #include "mlir/IR/Diagnostics.h"
+#include "mlir/Support/LLVM.h"
+#include "mlir/Support/LogicalResult.h"
 #include "stablehlo/dialect/Base.h"
 
 //===----------------------------------------------------------------------===//
@@ -173,6 +176,18 @@ enum AttributeCode {
   ///     operandTupleIndices : svarint[]
   ///   }
   kOutputOperandAlias = 16,
+
+  // ResultAccuracyModeAttr {
+  //   mode: varint (encoded enum)
+  // }
+  kResultAccuracyModeAttr = 17,
+
+  // ResultAccuracyAttr {
+  //   atol: APFloat
+  //   rtol: APFloat
+  //   ulps: svarint
+  // }
+  kResultAccuracyAttr = 18,
 };
 
 /// This enum contains marker codes used to indicate which type is
@@ -243,6 +258,10 @@ class MhloBytecodeInterface : public BytecodeDialectInterface {
   OutputOperandAliasAttr readOutputOperandAliasAttr(
       DialectBytecodeReader &reader) const;
   PrecisionAttr readPrecisionAttr(DialectBytecodeReader &reader) const;
+  ResultAccuracyAttr readResultAccuracyAttr(
+      DialectBytecodeReader &reader) const;
+  ResultAccuracyModeAttr readResultAccuracyModeAttr(
+      DialectBytecodeReader &reader) const;
   RngAlgorithmAttr readRngAlgorithmAttr(DialectBytecodeReader &reader) const;
   RngDistributionAttr readRngDistributionAttr(
       DialectBytecodeReader &reader) const;
@@ -268,6 +287,8 @@ class MhloBytecodeInterface : public BytecodeDialectInterface {
              DialectBytecodeWriter &writer) const;
   void write(OutputOperandAliasAttr attr, DialectBytecodeWriter &writer) const;
   void write(PrecisionAttr attr, DialectBytecodeWriter &writer) const;
+  void write(ResultAccuracyAttr attr, DialectBytecodeWriter &writer) const;
+  void write(ResultAccuracyModeAttr attr, DialectBytecodeWriter &writer) const;
   void write(RngAlgorithmAttr attr, DialectBytecodeWriter &writer) const;
   void write(RngDistributionAttr attr, DialectBytecodeWriter &writer) const;
   void write(ScatterDimensionNumbersAttr attr,
@@ -331,6 +352,10 @@ Attribute MhloBytecodeInterface::readAttribute(
       return readOutputOperandAliasAttr(reader);
     case mhlo_encoding::kPrecisionAttr:
       return readPrecisionAttr(reader);
+    case mhlo_encoding::kResultAccuracyAttr:
+      return readResultAccuracyAttr(reader);
+    case mhlo_encoding::kResultAccuracyModeAttr:
+      return readResultAccuracyModeAttr(reader);
     case mhlo_encoding::kRngAlgorithmAttr:
       return readRngAlgorithmAttr(reader);
     case mhlo_encoding::kRngDistributionAttr:
@@ -471,19 +496,22 @@ GatherDimensionNumbersAttr
 MhloBytecodeInterface::readGatherDimensionNumbersAttr(
     DialectBytecodeReader &reader) const {
   LOG_READ_CALL;
-  llvm::SmallVector<int64_t> offsetDims, collapsedSliceDims, startIndexMap;
+  llvm::SmallVector<int64_t> offsetDims, collapsedSliceDims,
+      operandBatchingDims, startIndicesBatchingDims, startIndexMap;
   int64_t indexVectorDim;
 
   if (failed(reader.readSignedVarInts(offsetDims)) ||
       failed(reader.readSignedVarInts(collapsedSliceDims)) ||
+      failed(reader.readSignedVarInts(operandBatchingDims)) ||
+      failed(reader.readSignedVarInts(startIndicesBatchingDims)) ||
       failed(reader.readSignedVarInts(startIndexMap)) ||
       failed(reader.readSignedVarInt(indexVectorDim))) {
     return GatherDimensionNumbersAttr();
   }
 
-  return GatherDimensionNumbersAttr::get(getContext(), offsetDims,
-                                         collapsedSliceDims, startIndexMap,
-                                         indexVectorDim);
+  return GatherDimensionNumbersAttr::get(
+      getContext(), offsetDims, collapsedSliceDims, operandBatchingDims,
+      startIndicesBatchingDims, startIndexMap, indexVectorDim);
 }
 
 OutputOperandAliasAttr MhloBytecodeInterface::readOutputOperandAliasAttr(
@@ -531,19 +559,21 @@ MhloBytecodeInterface::readScatterDimensionNumbersAttr(
     DialectBytecodeReader &reader) const {
   LOG_READ_CALL;
   llvm::SmallVector<int64_t> updateWindowDims, insertedWindowDims,
-      scatterDimsToOperandDims;
+      inputBatchingDims, scatterIndicesBatchingDims, scatterDimsToOperandDims;
   int64_t indexVectorDim;
 
   if (failed(reader.readSignedVarInts(updateWindowDims)) ||
       failed(reader.readSignedVarInts(insertedWindowDims)) ||
+      failed(reader.readSignedVarInts(inputBatchingDims)) ||
+      failed(reader.readSignedVarInts(scatterIndicesBatchingDims)) ||
       failed(reader.readSignedVarInts(scatterDimsToOperandDims)) ||
       failed(reader.readSignedVarInt(indexVectorDim))) {
     return ScatterDimensionNumbersAttr();
   }
 
   return ScatterDimensionNumbersAttr::get(
-      getContext(), updateWindowDims, insertedWindowDims,
-      scatterDimsToOperandDims, indexVectorDim);
+      getContext(), updateWindowDims, insertedWindowDims, inputBatchingDims,
+      scatterIndicesBatchingDims, scatterDimsToOperandDims, indexVectorDim);
 }
 
 TransposeAttr MhloBytecodeInterface::readTransposeAttr(
@@ -577,8 +607,9 @@ LogicalResult MhloBytecodeInterface::writeAttribute(
             ConvDimensionNumbersAttr, ChannelHandleAttr, DomainKindAttr,
             DotDimensionNumbersAttr, FftTypeAttr, FusionKindAttr,
             GatherDimensionNumbersAttr, OutputOperandAliasAttr, PrecisionAttr,
-            RngAlgorithmAttr, RngDistributionAttr, ScatterDimensionNumbersAttr,
-            TransposeAttr, TypeExtensionsAttr>([&](auto attr) {
+            ResultAccuracyAttr, ResultAccuracyModeAttr, RngAlgorithmAttr,
+            RngDistributionAttr, ScatterDimensionNumbersAttr, TransposeAttr,
+            TypeExtensionsAttr>([&](auto attr) {
         LOG_WRITE_CALL;
         write(attr, writer);
         return success();
@@ -587,6 +618,21 @@ LogicalResult MhloBytecodeInterface::writeAttribute(
         LOG_NOT_IMPLEMENTED;
         return failure();
       });
+}
+
+void MhloBytecodeInterface::write(ResultAccuracyModeAttr attr,
+                                  DialectBytecodeWriter &writer) const {
+  writer.writeVarInt(mhlo_encoding::kResultAccuracyModeAttr);
+  hlo::bytecode::writeEnumAttribute<ResultAccuracyMode>(attr, writer);
+}
+
+void MhloBytecodeInterface::write(ResultAccuracyAttr attr,
+                                  DialectBytecodeWriter &writer) const {
+  writer.writeVarInt(mhlo_encoding::kResultAccuracyAttr);
+  writer.writeAPFloatWithKnownSemantics(attr.getAtol());
+  writer.writeAPFloatWithKnownSemantics(attr.getRtol());
+  writer.writeSignedVarInt(attr.getUlps());
+  writer.writeAttribute(attr.getMode());
 }
 
 void MhloBytecodeInterface::write(ArgResultAliasAttr attr,
@@ -663,6 +709,8 @@ void MhloBytecodeInterface::write(GatherDimensionNumbersAttr attr,
   writer.writeVarInt(mhlo_encoding::kGatherDimensionNumbers);
   writer.writeSignedVarInts(attr.getOffsetDims());
   writer.writeSignedVarInts(attr.getCollapsedSliceDims());
+  writer.writeSignedVarInts(attr.getOperandBatchingDims());
+  writer.writeSignedVarInts(attr.getStartIndicesBatchingDims());
   writer.writeSignedVarInts(attr.getStartIndexMap());
   writer.writeSignedVarInt(attr.getIndexVectorDim());
 }
@@ -698,6 +746,8 @@ void MhloBytecodeInterface::write(ScatterDimensionNumbersAttr attr,
   writer.writeVarInt(mhlo_encoding::kScatterDimensionNumbersAttr);
   writer.writeSignedVarInts(attr.getUpdateWindowDims());
   writer.writeSignedVarInts(attr.getInsertedWindowDims());
+  writer.writeSignedVarInts(attr.getInputBatchingDims());
+  writer.writeSignedVarInts(attr.getScatterIndicesBatchingDims());
   writer.writeSignedVarInts(attr.getScatterDimsToOperandDims());
   writer.writeSignedVarInt(attr.getIndexVectorDim());
 }
@@ -779,6 +829,39 @@ void MhloBytecodeInterface::write(AsyncBundleType type,
 void MhloBytecodeInterface::write(TokenType type,
                                   DialectBytecodeWriter &writer) const {
   writer.writeVarInt(mhlo_encoding::kTokenType);
+}
+
+//===----------------------------------------------------------------------===//
+// ResultAccuracyModeAttr
+
+ResultAccuracyModeAttr MhloBytecodeInterface::readResultAccuracyModeAttr(
+    DialectBytecodeReader &reader) const {
+  LOG_READ_CALL;
+  return hlo::bytecode::readEnumAttribute<ResultAccuracyModeAttr>(
+      reader, getContext(),
+      [](uint32_t val) { return symbolizeResultAccuracyMode(val); });
+}
+
+//===----------------------------------------------------------------------===//
+// ResultAccuracyAttr
+
+ResultAccuracyAttr MhloBytecodeInterface::readResultAccuracyAttr(
+    DialectBytecodeReader &reader) const {
+  LOG_READ_CALL;
+  FailureOr<APFloat> atol;
+  FailureOr<APFloat> rtol;
+  int64_t ulps = 0;
+  ResultAccuracyModeAttr mode;
+  if (failed(atol =
+                 reader.readAPFloatWithKnownSemantics(APFloat::IEEEdouble())) ||
+      failed(rtol =
+                 reader.readAPFloatWithKnownSemantics(APFloat::IEEEdouble())) ||
+      failed(reader.readSignedVarInt(ulps)) ||
+      failed(reader.readAttribute(mode))) {
+    reader.emitError() << "failed to read APFloat for atol";
+    return ResultAccuracyAttr();
+  }
+  return ResultAccuracyAttr::get(getContext(), *atol, *rtol, ulps, mode);
 }
 
 }  // namespace

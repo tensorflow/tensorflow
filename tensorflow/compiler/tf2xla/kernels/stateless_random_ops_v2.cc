@@ -15,8 +15,13 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/stateless_random_ops_v2.h"
 
-#include <cmath>
+#include <functional>
+#include <tuple>
 
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/compiler/tf2xla/kernels/random_ops_util.h"
 #include "tensorflow/compiler/tf2xla/kernels/rng_converter_utils.h"
 #include "tensorflow/compiler/tf2xla/lib/random.h"
@@ -24,14 +29,23 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
-#include "xla/client/lib/constants.h"
-#include "xla/client/lib/dynamic_shaped_ops.h"
-#include "xla/client/lib/prng.h"
-#include "xla/client/xla_builder.h"
+#include "xla/hlo/builder/lib/constants.h"
+#include "xla/hlo/builder/lib/dynamic_shaped_ops.h"
+#include "xla/hlo/builder/lib/prng.h"
+#include "xla/hlo/builder/value_inference.h"
+#include "xla/hlo/builder/xla_builder.h"
+#include "xla/primitive_util.h"
+#include "xla/shape.h"
+#include "xla/shape_util.h"
+#include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/op_requires.h"
 #include "tensorflow/core/framework/rng_alg.h"
 #include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 
@@ -92,7 +106,7 @@ class StatelessRandomUniformOp : public XlaOpKernel {
     TensorShape shape;
     OP_REQUIRES_OK(ctx, ctx->ConstantInputAsShape(
                             0, &shape, xla::ValueInferenceMode::kUpperBound));
-    StatusOr<xla::XlaOp> randoms_or = BuildUniformRandoms(
+    absl::StatusOr<xla::XlaOp> randoms_or = BuildUniformRandoms(
         ctx, dtype_, device_type_string_, shape, xla::Zero, xla::One);
     OP_REQUIRES_OK(ctx, randoms_or.status());
     xla::XlaOp uniform = MaybeConvertF32ToBF16(randoms_or.value(), dtype_);
@@ -100,7 +114,7 @@ class StatelessRandomUniformOp : public XlaOpKernel {
     // If the input shape is constant, no need to set dimension sizes.
     // TODO(hinsu): Simplify this once MLIR bridge can handle bounded types.
     TensorShape static_shape;
-    Status status = ctx->ConstantInputAsShape(0, &static_shape);
+    absl::Status status = ctx->ConstantInputAsShape(0, &static_shape);
     if (status.ok()) {
       ctx->SetOutput(0, uniform);
       return;
@@ -116,7 +130,8 @@ class StatelessRandomUniformOp : public XlaOpKernel {
   DataType dtype_;
   string device_type_string_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(StatelessRandomUniformOp);
+  StatelessRandomUniformOp(const StatelessRandomUniformOp&) = delete;
+  void operator=(const StatelessRandomUniformOp&) = delete;
 };
 
 REGISTER_XLA_OP(Name("StatelessRandomUniformV2")
@@ -154,7 +169,7 @@ class StatelessRandomUniformIntOp : public XlaOpKernel {
     xla::Shape xla_shape;
     OP_REQUIRES_OK(ctx, TensorShapeToXLAShape(dtype_, shape, &xla_shape));
 
-    StatusOr<xla::XlaOp> result_or = BuildUniformRandoms(
+    absl::StatusOr<xla::XlaOp> result_or = BuildUniformRandoms(
         ctx, dtype_, device_type_string_, xla_shape, minval, maxval);
     OP_REQUIRES_OK(ctx, result_or.status());
     ctx->SetOutput(0, result_or.value());
@@ -164,7 +179,8 @@ class StatelessRandomUniformIntOp : public XlaOpKernel {
   DataType dtype_;
   string device_type_string_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(StatelessRandomUniformIntOp);
+  StatelessRandomUniformIntOp(const StatelessRandomUniformIntOp&) = delete;
+  void operator=(const StatelessRandomUniformIntOp&) = delete;
 };
 
 REGISTER_XLA_OP(Name("StatelessRandomUniformIntV2")
@@ -211,7 +227,9 @@ class StatelessRandomUniformFullIntOp : public XlaOpKernel {
   DataType dtype_;
   string device_type_string_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(StatelessRandomUniformFullIntOp);
+  StatelessRandomUniformFullIntOp(const StatelessRandomUniformFullIntOp&) =
+      delete;
+  void operator=(const StatelessRandomUniformFullIntOp&) = delete;
 };
 
 REGISTER_XLA_OP(Name("StatelessRandomUniformFullIntV2")
@@ -263,7 +281,7 @@ class StatelessRandomNormalOp : public XlaOpKernel {
     // If the input shape is constant, no need to set dimension sizes.
     // TODO(hinsu): Simplify this once MLIR bridge can handle bounded types.
     TensorShape static_shape;
-    Status status = ctx->ConstantInputAsShape(0, &static_shape);
+    absl::Status status = ctx->ConstantInputAsShape(0, &static_shape);
     if (status.ok()) {
       ctx->SetOutput(0, normal);
       return;
@@ -279,7 +297,8 @@ class StatelessRandomNormalOp : public XlaOpKernel {
   DataType dtype_;
   string device_type_string_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(StatelessRandomNormalOp);
+  StatelessRandomNormalOp(const StatelessRandomNormalOp&) = delete;
+  void operator=(const StatelessRandomNormalOp&) = delete;
 };
 
 REGISTER_XLA_OP(Name("StatelessRandomNormalV2")
@@ -313,7 +332,8 @@ class StatelessTruncatedNormalOp : public XlaOpKernel {
   DataType dtype_;
   string device_type_string_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(StatelessTruncatedNormalOp);
+  StatelessTruncatedNormalOp(const StatelessTruncatedNormalOp&) = delete;
+  void operator=(const StatelessTruncatedNormalOp&) = delete;
 };
 
 REGISTER_XLA_OP(Name("StatelessTruncatedNormalV2")
@@ -351,7 +371,8 @@ class GetKeyCounterOp : public XlaOpKernel {
  private:
   string device_type_string_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(GetKeyCounterOp);
+  GetKeyCounterOp(const GetKeyCounterOp&) = delete;
+  void operator=(const GetKeyCounterOp&) = delete;
 };
 
 // TODO(hinsu): Dis-allow unsupported int64 seed types.
@@ -373,7 +394,8 @@ class GetAlgOp : public XlaOpKernel {
  private:
   string device_type_string_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(GetAlgOp);
+  GetAlgOp(const GetAlgOp&) = delete;
+  void operator=(const GetAlgOp&) = delete;
 };
 
 REGISTER_XLA_OP(Name("StatelessRandomGetAlg"), GetAlgOp);
@@ -410,7 +432,8 @@ class GetKeyCounterAlgOp : public XlaOpKernel {
  private:
   string device_type_string_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(GetKeyCounterAlgOp);
+  GetKeyCounterAlgOp(const GetKeyCounterAlgOp&) = delete;
+  void operator=(const GetKeyCounterAlgOp&) = delete;
 };
 
 // TODO(hinsu): Dis-allow unsupported int64 seed types.
@@ -419,7 +442,7 @@ REGISTER_XLA_OP(Name("StatelessRandomGetKeyCounterAlg"), GetKeyCounterAlgOp);
 REGISTER_XLA_OP(Name("XlaRngBitGenerator")
                     .CompileTimeConstantInput("algorithm")
                     .CompileTimeConstantInput("shape")
-                    .TypeConstraint("dtype", {DT_UINT32, DT_UINT64}),
+                    .TypeConstraint("dtype", {DT_UINT8, DT_UINT32, DT_UINT64}),
                 MlirXlaOpKernel);
 
 }  // namespace

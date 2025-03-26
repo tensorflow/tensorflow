@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,20 +16,26 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_GPU_CONV_RUNNER_H_
 #define XLA_SERVICE_GPU_GPU_CONV_RUNNER_H_
 
+#include <cstddef>
+#include <cstdint>
+#include <memory>
 #include <optional>
 #include <string>
+#include <utility>
+#include <variant>
 #include <vector>
 
-#include "xla/hlo/ir/hlo_instruction.h"
+#include "absl/status/status.h"
+#include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/cublas_cudnn.h"
-#include "xla/status.h"
-#include "xla/statusor.h"
+#include "xla/shape.h"
+#include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/lazy_op_runner.h"
 #include "xla/stream_executor/stream_executor.h"
-#include "xla/types.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -200,8 +206,6 @@ struct RunConvOptions {
   GenericConvRunner* runner_cache;
 };
 
-// This file contains low-level routines for running cudnn convolutions.
-
 // Calls into cudnn to run the specified convolution.
 //
 // We provide one overload which takes a scratch buffer, and another which takes
@@ -214,11 +218,11 @@ struct RunConvOptions {
 // allocator and take note of how much memory is used.  The next time you call
 // the same conv, you can provide an explicitly preallocated scratch buffer of
 // that size, if you like.
-Status RunGpuConv(const GpuConvConfig& conv_config,
-                  absl::Span<const se::DeviceMemoryBase> operand_buffers,
-                  absl::Span<const se::DeviceMemoryBase> result_buffers,
-                  se::DeviceMemoryBase scratch_memory, se::Stream* stream,
-                  RunConvOptions = {});
+absl::Status RunGpuConv(const GpuConvConfig& conv_config,
+                        absl::Span<const se::DeviceMemoryBase> operand_buffers,
+                        absl::Span<const se::DeviceMemoryBase> result_buffers,
+                        se::DeviceMemoryBase scratch_memory, se::Stream* stream,
+                        RunConvOptions = {});
 
 // Struct to describe properties of a convolution without being tied to specific
 // IR. Will be used to help build Convolution thunks from either XLA HLO or
@@ -236,17 +240,17 @@ struct GpuConvDescriptor {
 };
 
 // Returns the convolution configuration given a XLA HLO instruction.
-StatusOr<GpuConvConfig> GetGpuConvConfig(
+absl::StatusOr<GpuConvConfig> GetGpuConvConfig(
     const HloCustomCallInstruction* cudnn_call);
 
 // Returns the convolution configuration given a convolution descriptor `desc`
 // and a string representation of the convolution instruction `inst_as_string`
 // (for error reporting).
-StatusOr<GpuConvConfig> GetGpuConvConfig(const GpuConvDescriptor& desc,
-                                         absl::string_view inst_as_string);
+absl::StatusOr<GpuConvConfig> GetGpuConvConfig(
+    const GpuConvDescriptor& desc, absl::string_view inst_as_string);
 
 // Implementation details exposed for debugging and log analysis.
-StatusOr<GpuConvParams> GetGpuConvParams(
+absl::StatusOr<GpuConvParams> GetGpuConvParams(
     const GpuConvConfig& conv_config,
     absl::Span<const se::DeviceMemoryBase> operand_buffers,
     absl::Span<const se::DeviceMemoryBase> result_buffers);

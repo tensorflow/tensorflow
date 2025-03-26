@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "ApplyFtrl"
   input_arg {
     name: "var"

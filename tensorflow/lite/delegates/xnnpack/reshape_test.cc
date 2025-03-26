@@ -16,13 +16,17 @@ limitations under the License.
 #include <algorithm>
 #include <cstdint>
 #include <functional>
+#include <iterator>
 #include <memory>
 #include <random>
 #include <vector>
 
 #include <gtest/gtest.h>
+#include "xnnpack.h"  // from @XNNPACK
+#include "tensorflow/lite/c/c_api_types.h"
 #include "tensorflow/lite/delegates/xnnpack/reshape_tester.h"
 #include "tensorflow/lite/delegates/xnnpack/xnnpack_delegate.h"
+#include "tensorflow/lite/schema/schema_generated.h"
 
 namespace tflite {
 namespace xnnpack {
@@ -219,6 +223,31 @@ TEST(Reshape, MultiThreading) {
       .InputShape(input_shape)
       .OutputShape(output_shape)
       .OutputShapeAsInput(true)
+      .Test(TensorType_FLOAT32, xnnpack_delegate.get());
+}
+
+TEST(Reshape, UnsupportedOutputRank) {
+  std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
+      xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
+                       TfLiteXNNPackDelegateDelete);
+
+  std::random_device random_device;
+  auto rng = std::mt19937(random_device());
+  auto shape_rng =
+      std::bind(std::uniform_int_distribution<int32_t>(2, 10), std::ref(rng));
+  std::vector<int32_t> input_shape;
+  std::generate_n(std::back_inserter(input_shape), XNN_MAX_TENSOR_DIMS,
+                  shape_rng);
+
+  // Construct an output shape greater than XNN_MAX_TENSOR_DIMS. This will
+  // prevent this node from being delegated to XNNPACK.
+  std::vector<int32_t> output_shape = input_shape;
+  output_shape.push_back(1);
+  std::shuffle(output_shape.begin(), output_shape.end(), rng);
+
+  ReshapeTester()
+      .InputShape(input_shape)
+      .OutputShape(output_shape)
       .Test(TensorType_FLOAT32, xnnpack_delegate.get());
 }
 

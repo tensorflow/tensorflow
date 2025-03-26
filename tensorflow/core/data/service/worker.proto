@@ -26,7 +26,12 @@ message GetElementRequest {
   // Whether the previous round was skipped. This information is needed by the
   // worker to recover after restarts.
   bool skipped_previous_round = 4;
-  // Whether to skip the round if data isn't ready fast enough.
+  // For the case of coordinated data read:
+  //   Whether to skip the round if data isn't ready fast enough.
+  // In other cases:
+  //   When true, the underlying GetNext will be nonblocking and return
+  //   immediately when there is no data ready on tf.data service worker side.
+  //   If false, GetNext will block until there is data to return.
   bool allow_skip = 5;
   // The trainer ID used to read elements from a multi-trainer cache. This cache
   // enables sharing data across concurrent training iterations. If set, this

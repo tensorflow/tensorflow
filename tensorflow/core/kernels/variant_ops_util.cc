@@ -31,12 +31,12 @@ namespace tensorflow {
 //                     : ctx->input(ix).scalar<Variant>()())
 // This reduces (possibly expensive) copying of Variants from
 // the inputs into temp at the lowest levels of the summation tree.
-static inline Status AddVariantTo(
+static inline absl::Status AddVariantTo(
     OpKernelContext* ctx, const int lhs_ix, const int rhs_ix,
-    gtl::InlinedVector<Variant, 4>* temp,
-    gtl::InlinedVector<bool, 4>* temp_filled,
-    std::function<Status(OpKernelContext*, const Variant&, const Variant&,
-                         Variant*)>
+    absl::InlinedVector<Variant, 4UL>* temp,
+    absl::InlinedVector<bool, 4UL>* temp_filled,
+    std::function<absl::Status(OpKernelContext*, const Variant&, const Variant&,
+                               Variant*)>
         binary_add_variant) {
   Variant tmp;
   if (temp_filled->at(lhs_ix)) tmp = std::move(temp->at(lhs_ix));
@@ -49,12 +49,12 @@ static inline Status AddVariantTo(
   Variant* c = &temp->at(lhs_ix);
   TF_RETURN_IF_ERROR(binary_add_variant(ctx, a, b, c));
   temp_filled->at(lhs_ix) = true;
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 void AddNVariant(OpKernelContext* ctx,
-                 std::function<Status(OpKernelContext*, const Variant&,
-                                      const Variant&, Variant*)>
+                 std::function<absl::Status(OpKernelContext*, const Variant&,
+                                            const Variant&, Variant*)>
                      binary_add_variant) {
   const Tensor& input0 = ctx->input(0);
   const int num = ctx->num_inputs();
@@ -84,8 +84,8 @@ void AddNVariant(OpKernelContext* ctx,
   //   https://en.wikipedia.org/wiki/Pairwise_summation
   //
   // These two vectors are used to store and mark intermediate sums.
-  gtl::InlinedVector<bool, 4> temp_filled(num, false);
-  gtl::InlinedVector<Variant, 4> temp(num);
+  absl::InlinedVector<bool, 4UL> temp_filled(num, false);
+  absl::InlinedVector<Variant, 4UL> temp(num);
 
   // Tree-based summation.
   int skip = 1;

@@ -26,8 +26,9 @@ limitations under the License.
 #include "third_party/gpus/cuda/extras/CUPTI/include/cupti_activity.h"
 #include "third_party/gpus/cuda/include/cuda.h"
 #include "third_party/gpus/cuda/include/cuda_runtime.h"
-#include "tensorflow/core/profiler/backends/gpu/cupti_collector.h"
+#include "xla/backends/profiler/gpu/cupti_collector.h"
 #endif  // GOOGLE_CUDA
+#include "xla/tsl/profiler/utils/tf_xplane_visitor.h"
 #include "tensorflow/core/common_runtime/direct_session.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/graph.pb.h"
@@ -50,7 +51,6 @@ limitations under the License.
 #include "tensorflow/core/profiler/utils/xplane_visitor.h"
 #include "tensorflow/core/public/session_options.h"
 #include "tensorflow/core/util/device_name_utils.h"
-#include "tsl/profiler/utils/tf_xplane_visitor.h"
 
 // TODO(b/186367334)
 #define CUPTI_NVBUG_3299481_WAR (10000 <= CUDA_VERSION && CUDA_VERSION < 11000)
@@ -74,7 +74,9 @@ std::unique_ptr<ProfilerInterface> CreateGpuTracer() {
 
 #else
 // We don't have device tracer for non-cuda case.
-std::unique_ptr<ProfilerInterface> CreateGpuTracer() { return nullptr; }
+std::unique_ptr<tsl::profiler::ProfilerInterface> CreateGpuTracer() {
+  return nullptr;
+}
 #endif
 
 namespace {
@@ -118,7 +120,7 @@ class DeviceTracerTest : public ::testing::Test {
   }
 
  protected:
-  void ExpectFailure(const Status& status, error::Code code) {
+  void ExpectFailure(const absl::Status& status, error::Code code) {
     EXPECT_FALSE(status.ok()) << status;
     if (!status.ok()) {
       LOG(INFO) << "Status message: " << status.message();
@@ -159,7 +161,7 @@ TEST_F(DeviceTracerTest, CollectBeforeStop) {
   if (!tracer) return;
   TF_EXPECT_OK(tracer->Start());
   XSpace space;
-  Status status = tracer->CollectData(&space);
+  absl::Status status = tracer->CollectData(&space);
   ExpectFailure(status, tensorflow::error::FAILED_PRECONDITION);
   TF_EXPECT_OK(tracer->Stop());
 }
@@ -170,7 +172,7 @@ TEST_F(DeviceTracerTest, StartTwoTracers) {
   if (!tracer1 || !tracer2) return;
 
   TF_EXPECT_OK(tracer1->Start());
-  Status status = tracer2->Start();
+  absl::Status status = tracer2->Start();
   ExpectFailure(status, tensorflow::error::UNAVAILABLE);
   TF_EXPECT_OK(tracer1->Stop());
   TF_EXPECT_OK(tracer2->Start());
@@ -194,7 +196,7 @@ TEST_F(DeviceTracerTest, RunWithTracer) {
   std::vector<Tensor> outputs;
 
   TF_ASSERT_OK(tracer->Start());
-  Status s = session->Run(inputs, output_names, target_nodes, &outputs);
+  absl::Status s = session->Run(inputs, output_names, target_nodes, &outputs);
   TF_ASSERT_OK(s);
   TF_ASSERT_OK(tracer->Stop());
   ASSERT_EQ(1, outputs.size());
@@ -221,8 +223,8 @@ TEST_F(DeviceTracerTest, RunWithTraceOption) {
   RunOptions run_options;
   run_options.set_trace_level(RunOptions::FULL_TRACE);
   RunMetadata run_metadata;
-  Status s = session->Run(run_options, inputs, output_names, target_nodes,
-                          &outputs, &run_metadata);
+  absl::Status s = session->Run(run_options, inputs, output_names, target_nodes,
+                                &outputs, &run_metadata);
   TF_ASSERT_OK(s);
   ASSERT_TRUE(run_metadata.has_step_stats());
   // Depending on whether this runs on CPU or GPU, we will have a
@@ -383,15 +385,21 @@ TEST_F(DeviceTracerTest, CudaRuntimeResource) {
   host_plane.ForEachLine([&](const tensorflow::profiler::XLineVisitor& line) {
     VLOG(3) << "Line " << line.Id() << "\n";
     line.ForEachEvent([&](const tensorflow::profiler::XEventVisitor& event) {
-      VLOG(3) << " Event " << *event.Type() << "\n";
+      if (event_idx < expected_event_stat_type.size()) {
+        VLOG(3) << " Event "
+                << (event.Type().has_value() ? std::to_string(*event.Type())
+                                             : "UNKNOWN_TYPE")
+                << "\n";
 
-      absl::optional<XStatVisitor> stat =
-          event.GetStat(expected_event_stat_type[event_idx]);
-      // The stat may not exist if we're looking at the wrong line.
-      if (stat.has_value()) {
-        event_idx += 1;
-        VLOG(3) << "  Stat name=" << stat->Name() << " type=" << *stat->Type()
-                << " " << stat->ToString() << "\n";
+        absl::optional<XStatVisitor> stat =
+            event.GetStat(expected_event_stat_type[event_idx]);
+        // The stat may not exist if we're looking at the wrong line.
+        if (stat.has_value()) {
+          event_idx += 1;
+          VLOG(3) << "  Stat name=" << stat->Name() << " type=" << *stat->Type()
+                  << " " << stat->ToString() << ", event_idx:" << event_idx
+                  << "\n";
+        }
       }
     });
   });
@@ -439,13 +447,13 @@ TEST_F(DeviceTracerTest, CudaRuntimeResource) {
           if (addr == reinterpret_cast<size_t>(devptr) &&
               num_bytes == size_in_bytes) {
             found_activity_memory_device = true;
-            EXPECT_EQ(kind,
-                      GetMemoryKindName(CUPTI_ACTIVITY_MEMORY_KIND_DEVICE));
+            EXPECT_EQ(kind, xla::profiler::GetMemoryKindName(
+                                CUPTI_ACTIVITY_MEMORY_KIND_DEVICE));
           } else if (addr == reinterpret_cast<size_t>(hostptr) &&
                      num_bytes == size_in_bytes) {
             found_activity_memory_host = true;
-            EXPECT_EQ(kind,
-                      GetMemoryKindName(CUPTI_ACTIVITY_MEMORY_KIND_PINNED));
+            EXPECT_EQ(kind, xla::profiler::GetMemoryKindName(
+                                CUPTI_ACTIVITY_MEMORY_KIND_PINNED));
           }
         } else if (stat.Type() == StatType::kMemsetDetails) {
           CHECK(!found_activity_memset);
@@ -459,8 +467,8 @@ TEST_F(DeviceTracerTest, CudaRuntimeResource) {
               (void)absl::SimpleAtoi(name_value[1], &num_bytes);
               EXPECT_EQ(num_bytes, 8);
             } else if (absl::StartsWith(detail, "kind:")) {
-              EXPECT_EQ(name_value[1],
-                        GetMemoryKindName(CUPTI_ACTIVITY_MEMORY_KIND_DEVICE));
+              EXPECT_EQ(name_value[1], xla::profiler::GetMemoryKindName(
+                                           CUPTI_ACTIVITY_MEMORY_KIND_DEVICE));
             }
           }
         } else if (stat.Type() == StatType::kMemcpyDetails) {
@@ -475,11 +483,11 @@ TEST_F(DeviceTracerTest, CudaRuntimeResource) {
               (void)absl::SimpleAtoi(name_value[1], &num_bytes);
               EXPECT_EQ(num_bytes, 8);
             } else if (absl::StartsWith(detail, "kind_src:")) {
-              EXPECT_EQ(name_value[1],
-                        GetMemoryKindName(CUPTI_ACTIVITY_MEMORY_KIND_DEVICE));
+              EXPECT_EQ(name_value[1], xla::profiler::GetMemoryKindName(
+                                           CUPTI_ACTIVITY_MEMORY_KIND_DEVICE));
             } else if (absl::StartsWith(detail, "kind_dst:")) {
-              EXPECT_EQ(name_value[1],
-                        GetMemoryKindName(CUPTI_ACTIVITY_MEMORY_KIND_PINNED));
+              EXPECT_EQ(name_value[1], xla::profiler::GetMemoryKindName(
+                                           CUPTI_ACTIVITY_MEMORY_KIND_PINNED));
             }
           }
         }

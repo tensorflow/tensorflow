@@ -120,20 +120,20 @@ class DenseToSparseBatchDatasetOp : public UnaryDatasetOpKernel {
       return n / batch_size_ + (n % batch_size_ == 0 ? 0 : 1);
     }
 
-    Status InputDatasets(
+    absl::Status InputDatasets(
         std::vector<const DatasetBase*>* inputs) const override {
       inputs->push_back(input_);
-      return OkStatus();
+      return absl::OkStatus();
     }
 
-    Status CheckExternalState() const override {
+    absl::Status CheckExternalState() const override {
       return input_->CheckExternalState();
     }
 
    protected:
-    Status AsGraphDefInternal(SerializationContext* ctx,
-                              DatasetGraphDefBuilder* b,
-                              Node** output) const override {
+    absl::Status AsGraphDefInternal(SerializationContext* ctx,
+                                    DatasetGraphDefBuilder* b,
+                                    Node** output) const override {
       Node* input_node;
       TF_RETURN_IF_ERROR(b->AddInputDataset(ctx, input_, &input_node));
       Node* batch_size_node;
@@ -147,7 +147,7 @@ class DenseToSparseBatchDatasetOp : public UnaryDatasetOpKernel {
       TF_RETURN_IF_ERROR(b->AddVector(row_shape, &row_shape_node));
       TF_RETURN_IF_ERROR(b->AddDataset(
           this, {input_node, batch_size_node, row_shape_node}, output));
-      return OkStatus();
+      return absl::OkStatus();
     }
 
    private:
@@ -156,14 +156,14 @@ class DenseToSparseBatchDatasetOp : public UnaryDatasetOpKernel {
       explicit Iterator(const typename Iterator::Params& params)
           : DatasetIterator<Dataset<T>>(params) {}
 
-      Status Initialize(IteratorContext* ctx) override {
+      absl::Status Initialize(IteratorContext* ctx) override {
         return DatasetIterator<Dataset<T>>::dataset()->input_->MakeIterator(
             ctx, this, DatasetIterator<Dataset<T>>::prefix(), &input_impl_);
       }
 
-      Status GetNextInternal(IteratorContext* ctx,
-                             std::vector<Tensor>* out_tensors,
-                             bool* end_of_sequence) override {
+      absl::Status GetNextInternal(IteratorContext* ctx,
+                                   std::vector<Tensor>* out_tensors,
+                                   bool* end_of_sequence) override {
         // Each row of the output SparseTensor is an individual tensor
         // from the input iterator.
         std::vector<Tensor> batch_elements;
@@ -231,7 +231,7 @@ class DenseToSparseBatchDatasetOp : public UnaryDatasetOpKernel {
 
         if (batch_elements.empty()) {
           DCHECK(*end_of_sequence);
-          return OkStatus();
+          return absl::OkStatus();
         }
 
         // * indices will be [`total_elements`, `row_shape + 1`].
@@ -251,7 +251,7 @@ class DenseToSparseBatchDatasetOp : public UnaryDatasetOpKernel {
           const auto& t_flat = t.flat<T>();
           // TODO(mrry): Replace with a memcpy or something more
           // efficient. (Maybe an Eigen assign op?)
-          gtl::InlinedVector<int64_t, 4> strides(row_ndims);
+          absl::InlinedVector<int64_t, 4UL> strides(row_ndims);
           if (!strides.empty()) {
             strides[row_ndims - 1] = 1;
             for (int64_t row_dim = strides.size() - 2; row_dim >= 0;
@@ -284,7 +284,7 @@ class DenseToSparseBatchDatasetOp : public UnaryDatasetOpKernel {
         out_tensors->push_back(std::move(serialized_sparse));
 
         *end_of_sequence = false;
-        return OkStatus();
+        return absl::OkStatus();
       }
 
      protected:
@@ -295,18 +295,18 @@ class DenseToSparseBatchDatasetOp : public UnaryDatasetOpKernel {
             DatasetIterator<Dataset<T>>::dataset()->batch_size_);
       }
 
-      Status SaveInternal(SerializationContext* ctx,
-                          IteratorStateWriter* writer) override {
+      absl::Status SaveInternal(SerializationContext* ctx,
+                                IteratorStateWriter* writer) override {
         mutex_lock l(mu_);
         TF_RETURN_IF_ERROR(Iterator::SaveInput(ctx, writer, input_impl_));
-        return OkStatus();
+        return absl::OkStatus();
       }
 
-      Status RestoreInternal(IteratorContext* ctx,
-                             IteratorStateReader* reader) override {
+      absl::Status RestoreInternal(IteratorContext* ctx,
+                                   IteratorStateReader* reader) override {
         mutex_lock l(mu_);
         TF_RETURN_IF_ERROR(Iterator::RestoreInput(ctx, reader, input_impl_));
-        return OkStatus();
+        return absl::OkStatus();
       }
 
      private:

@@ -987,7 +987,7 @@ REGISTER_KERNEL_BUILDER(
     Name("TestCommUnavailable").Device(tensorflow::DEVICE_DEFAULT),
     TestUnavailableErrorOp);
 
-string FunctionWithErrorOp(const tensorflow::StringPiece op_name) {
+string FunctionWithErrorOp(const absl::string_view op_name) {
   const std::string& func_str =
       "    signature {"
       "      name: 'FunctionWith__OP_NAME__'"

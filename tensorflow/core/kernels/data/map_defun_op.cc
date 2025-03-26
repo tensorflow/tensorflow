@@ -92,7 +92,7 @@ class MapDefunOp::MapFunctionCallFrame : public CallFrameInterface {
     return static_cast<size_t>(kernel_->num_outputs());
   }
 
-  Status GetArg(int index, const Tensor** val) override {
+  absl::Status GetArg(int index, const Tensor** val) override {
     if (index < 0 || index >= compute_opts_->args.size() +
                                   compute_opts_->captured_inputs.size()) {
       return errors::InvalidArgument("Mismatch in number of function inputs.");
@@ -102,7 +102,7 @@ class MapDefunOp::MapFunctionCallFrame : public CallFrameInterface {
       // The function is calling for a captured input
       *val =
           &compute_opts_->captured_inputs[index - compute_opts_->args.size()];
-      return OkStatus();
+      return absl::OkStatus();
     }
 
     // NOTE: If contention on mu_ becomes problematic, we could create a vector
@@ -118,10 +118,10 @@ class MapDefunOp::MapFunctionCallFrame : public CallFrameInterface {
       sliced_args_[index] = tensor::DeepCopy(sliced_args_[index]);
     }
     *val = &sliced_args_[index];
-    return OkStatus();
+    return absl::OkStatus();
   }
 
-  Status SetRetval(int index, const Tensor& val) override {
+  absl::Status SetRetval(int index, const Tensor& val) override {
     if (index < 0 || index >= kernel_->num_outputs()) {
       return errors::InvalidArgument("Mismatch in number of function outputs.");
     }
@@ -193,7 +193,7 @@ void MapDefunOp::ComputeAsync(OpKernelContext* ctx, DoneCallback done) {
 
   OP_REQUIRES_OK_ASYNC(ctx, SetupArgs(ctx, &compute_opts), done);
 
-  Status s = SetupOutputs(ctx, compute_opts);
+  absl::Status s = SetupOutputs(ctx, compute_opts);
   if (!s.ok()) delete compute_opts;
   OP_REQUIRES_OK_ASYNC(ctx, s, done);
 
@@ -203,7 +203,7 @@ void MapDefunOp::ComputeAsync(OpKernelContext* ctx, DoneCallback done) {
   // Run loop
   StatusCallback callback = std::bind(
       [](OpKernelContext* ctx, ComputeOptions* compute_opts, DoneCallback& done,
-         const Status& status) {
+         const absl::Status& status) {
         delete compute_opts;
         ctx->SetStatus(status);
         done();
@@ -226,7 +226,7 @@ void MapDefunOp::ComputeAsync(OpKernelContext* ctx, DoneCallback done) {
     refcounted->Ref();
     ctx->function_library()->Run(
         opts, func_handle_, call_frame,
-        [call_frame, refcounted, c_mgr](const Status& func_status) {
+        [call_frame, refcounted, c_mgr](const absl::Status& func_status) {
           delete c_mgr;
           delete call_frame;
           refcounted->UpdateStatus(func_status);
@@ -254,8 +254,8 @@ void MapDefunOp::SetRunOptions(OpKernelContext* ctx,
   opts->run_all_kernels_inline = ctx->run_all_kernels_inline();
 }
 
-Status MapDefunOp::SetupArgs(OpKernelContext* ctx,
-                             ComputeOptions** compute_opts) {
+absl::Status MapDefunOp::SetupArgs(OpKernelContext* ctx,
+                                   ComputeOptions** compute_opts) {
   OpInputList arguments;
   TF_RETURN_IF_ERROR(ctx->input_list(kArguments, &arguments));
   OpInputList captured_inputs;
@@ -287,10 +287,11 @@ Status MapDefunOp::SetupArgs(OpKernelContext* ctx,
   *compute_opts =
       new ComputeOptions(ctx, arguments, captured_inputs, std::move(arg_shapes),
                          batch_size, output_shapes_, max_intra_op_parallelism_);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status MapDefunOp::SetupOutputs(OpKernelContext* ctx, ComputeOptions* opts) {
+absl::Status MapDefunOp::SetupOutputs(OpKernelContext* ctx,
+                                      ComputeOptions* opts) {
   mutex_lock l(opts->mu);
   TF_RETURN_IF_ERROR(ctx->output_list(kOutput, &opts->output));
 
@@ -303,7 +304,7 @@ Status MapDefunOp::SetupOutputs(OpKernelContext* ctx, ComputeOptions* opts) {
       TF_RETURN_IF_ERROR(opts->output.allocate(i, output_shape, &out));
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 namespace {

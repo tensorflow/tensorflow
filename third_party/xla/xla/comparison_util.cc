@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2019 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -19,13 +19,15 @@ limitations under the License.
 #include <string>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "xla/primitive_util.h"
-#include "xla/statusor.h"
+#include "xla/tsl/platform/logging.h"  // IWYU pragma: keep
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/logging.h"  // IWYU pragma: keep
 
 namespace xla {
 namespace {
@@ -163,7 +165,7 @@ absl::string_view ComparisonOrderToString(Comparison::Order order) {
   }
 }
 
-StatusOr<Comparison::Direction> StringToComparisonDirection(
+absl::StatusOr<Comparison::Direction> StringToComparisonDirection(
     absl::string_view direction) {
   static auto* map =
       new absl::flat_hash_map<std::string, Comparison::Direction>({
@@ -181,19 +183,7 @@ StatusOr<Comparison::Direction> StringToComparisonDirection(
   return it->second;
 }
 
-StatusOr<Comparison::Order> StringToComparisonOrder(absl::string_view order) {
-  static auto* map = new absl::flat_hash_map<std::string, Comparison::Order>({
-      {"TOTALORDER", Comparison::Order::kTotal},
-      {"PARTIALORDER", Comparison::Order::kPartial},
-  });
-  auto it = map->find(order);
-  if (it == map->end()) {
-    return InvalidArgument("Unknown comparison type: %s", order);
-  }
-  return it->second;
-}
-
-StatusOr<Comparison::Type> StringToComparisonType(
+absl::StatusOr<Comparison::Type> StringToComparisonType(
     absl::string_view comparison) {
   static auto* map = new absl::flat_hash_map<std::string, Comparison::Type>({
       {"FLOAT", Comparison::Type::kFloat},

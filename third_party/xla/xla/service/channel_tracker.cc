@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -19,7 +19,7 @@ limitations under the License.
 
 namespace xla {
 
-StatusOr<ChannelHandle> ChannelTracker::NewChannel(
+absl::StatusOr<ChannelHandle> ChannelTracker::NewChannel(
     ChannelHandle::ChannelType type) {
   if (type != ChannelHandle::DEVICE_TO_DEVICE &&
       type != ChannelHandle::HOST_TO_DEVICE &&

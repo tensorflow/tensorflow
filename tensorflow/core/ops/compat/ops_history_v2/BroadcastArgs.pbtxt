@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "BroadcastArgs"
   input_arg {
     name: "s0"

@@ -2,6 +2,7 @@
 # Update cuda_configure.bzl#verify_build_defines when adding new variables.
 
 load(":cc_toolchain_config.bzl", "cc_toolchain_config")
+load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 
 licenses(["restricted"])
 
@@ -134,8 +135,16 @@ filegroup(
 )
 
 filegroup(
+    name = "cuda_nvcc_files",
+    srcs = %{cuda_nvcc_files},
+)
+
+filegroup(
     name = "crosstool_wrapper_driver_is_not_gcc",
-    srcs = ["clang/bin/crosstool_wrapper_driver_is_not_gcc"],
+    srcs = [
+      ":cuda_nvcc_files",
+      ":clang/bin/crosstool_wrapper_driver_is_not_gcc"
+    ],
 )
 
 filegroup(

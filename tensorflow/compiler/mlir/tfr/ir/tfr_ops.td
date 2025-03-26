@@ -21,7 +21,7 @@ limitations under the License.
 include "mlir/Dialect/Shape/IR/ShapeBase.td"
 include "mlir/IR/OpBase.td"
 include "mlir/Interfaces/FunctionInterfaces.td"
-include "mlir/Dialect/Quant/QuantOpsBase.td"
+include "mlir/Dialect/Quant/IR/QuantBase.td"
 include "mlir/IR/SymbolInterfaces.td"
 include "mlir/Interfaces/CallInterfaces.td"
 include "mlir/Interfaces/ControlFlowInterfaces.td"
@@ -41,7 +41,6 @@ def TFR_Dialect : Dialect {
   }];
 
   let cppNamespace = "::mlir::TFR";
-  let usePropertiesForAttributes = 0;
 }
 
 //===----------------------------------------------------------------------===//
@@ -62,7 +61,7 @@ def TFR_AllTensorTypes : Type<Or<[
 // attribute argument types
 def TFR_AttrType : TFR_Type<"TFRAttr">;
 def TFR_AttrScalarType: TypeAlias<TF_ElementType, "scalar attribute">;
-def TFR_AttrVectorType : VectorOf<[TF_ElementType, TFR_AttrType]>;
+def TFR_AttrVectorType : VectorOfNonZeroRankOf<[TF_ElementType, TFR_AttrType]>;
 def TFR_AllAttrTypes : Type<Or<[
     TFR_AttrType.predicate,
     Index.predicate,
@@ -133,7 +132,9 @@ def TFR_CallOp : TFR_Op<"call", [CallOpInterface]> {
 
   let arguments = (ins
     FlatSymbolRefAttr:$callee,
-    Variadic<TFR_allowedArgType>:$args);
+    Variadic<TFR_allowedArgType>:$args,
+    OptionalAttr<DictArrayAttr>:$arg_attrs,
+    OptionalAttr<DictArrayAttr>:$res_attrs);
 
   let results = (outs
     Variadic<TFR_allowedResultType>:$outs);

@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "SparseAdd"
   input_arg {
     name: "a_indices"

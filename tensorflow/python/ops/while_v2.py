@@ -142,8 +142,6 @@ def while_loop(cond,
         return math_ops.logical_and(
             loop_counter < maximum_iterations_arg, pred)
 
-    # NOTE(skyewm): we set collections to the outer graph's collections for
-    # compatibility with TPUEstimator.
     cond_graph = func_graph_module.func_graph_from_py_func(
         cond_name,
         wrapped_cond,

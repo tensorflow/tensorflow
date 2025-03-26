@@ -572,21 +572,6 @@ class _CapturedObject(object):
     return self._object
 
 
-def _get_scaffold(captured_scaffold_fn):
-  """Retrieves the Scaffold from `captured_scaffold_fn`."""
-  scaffold_fn = captured_scaffold_fn.get()
-
-  if not scaffold_fn:
-    return None
-
-  scaffold = scaffold_fn()
-  if scaffold is None:
-    raise ValueError(
-        'TPUEstimatorSpec.scaffold_fn returns None, which is not allowed')
-
-  return scaffold
-
-
 def check_function_argument_count(func, input_arity, infeed_queue):
   """Validate the number of input arguments to an XLA function.
 

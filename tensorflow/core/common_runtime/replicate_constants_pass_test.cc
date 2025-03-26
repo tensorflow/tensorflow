@@ -22,6 +22,9 @@ limitations under the License.
 #include "tensorflow/cc/framework/scope.h"
 #include "tensorflow/cc/ops/const_op.h"
 #include "tensorflow/cc/ops/math_ops.h"
+#include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/status.h"
+#include "xla/tsl/platform/test.h"
 #include "tensorflow/core/common_runtime/optimization_registry.h"
 #include "tensorflow/core/config/flag_defs.h"
 #include "tensorflow/core/config/flags.h"
@@ -29,9 +32,6 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/platform/test.h"
-#include "tsl/lib/core/status_test_util.h"
-#include "tsl/platform/status.h"
-#include "tsl/platform/test.h"
 
 namespace tensorflow {
 
@@ -84,9 +84,6 @@ TEST(ReplicateConstantsPassTest, TestSmallConstant) {
   GetNode(*graph, "dst1")->set_assigned_device_name(kCpu1);
   GetNode(*graph, "dst2")->set_assigned_device_name(kCpu1);
 
-  // Enable the pass.
-  flags::Global().replicate_small_constants.reset(true);
-
   GraphDef before;
   graph->ToGraphDef(&before);
   GraphOptimizationPassOptions options;
@@ -124,9 +121,6 @@ TEST(ReplicateConstantsPassTest, TestLargeConstant) {
   GetNode(*graph, "dst0")->set_assigned_device_name(kCpu0);
   GetNode(*graph, "dst1")->set_assigned_device_name(kCpu1);
   GetNode(*graph, "dst2")->set_assigned_device_name(kCpu1);
-
-  // Enable the pass.
-  flags::Global().replicate_small_constants.reset(true);
 
   GraphDef before;
   graph->ToGraphDef(&before);
@@ -170,9 +164,6 @@ TEST(ReplicateConstantsPassTest, TestControlOut) {
   graph->AddControlEdge(GetNode(*graph, "const0"),
                         GetNode(*graph, "ctrl_succ"));
 
-  // Enable the pass.
-  flags::Global().replicate_small_constants.reset(true);
-
   GraphDef before;
   graph->ToGraphDef(&before);
   GraphOptimizationPassOptions options;
@@ -209,9 +200,6 @@ TEST(ReplicateConstantsPassTest, TestTpuConst) {
   GetNode(*graph, "dst0")->set_assigned_device_name(kTpu00);
   GetNode(*graph, "dst1")->set_assigned_device_name(kTpu10);
   GetNode(*graph, "dst2")->set_assigned_device_name(kTpu10);
-
-  // Enable the pass.
-  flags::Global().replicate_small_constants.reset(true);
 
   GraphDef before;
   graph->ToGraphDef(&before);
@@ -252,9 +240,6 @@ TEST(ReplicateConstantsPassTest, TestSmallAndLargeConstants) {
   GetNode(*graph, "dst0")->set_assigned_device_name(kCpu0);
   GetNode(*graph, "dst1")->set_assigned_device_name(kCpu1);
   GetNode(*graph, "dst2")->set_assigned_device_name(kCpu1);
-
-  // Enable the pass.
-  flags::Global().replicate_small_constants.reset(true);
 
   GraphDef before;
   graph->ToGraphDef(&before);
@@ -304,9 +289,6 @@ TEST(ReplicateConstantsPassTest, TestTpuDestinations) {
   GetNode(*graph, "dst01")->set_assigned_device_name(kTpu01);
   GetNode(*graph, "dst10")->set_assigned_device_name(kTpu10);
   GetNode(*graph, "dst11")->set_assigned_device_name(kTpu11);
-
-  // Enable the pass.
-  flags::Global().replicate_small_constants.reset(true);
 
   GraphDef before;
   graph->ToGraphDef(&before);

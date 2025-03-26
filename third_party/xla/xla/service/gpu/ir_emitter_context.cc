@@ -1,4 +1,4 @@
-/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,11 +16,24 @@ limitations under the License.
 #include "xla/service/gpu/ir_emitter_context.h"
 
 #include <algorithm>
-#include <iterator>
+#include <cstdint>
 #include <utility>
 #include <vector>
 
+#include "absl/algorithm/container.h"
+#include "absl/strings/string_view.h"
+#include "llvm/ADT/ArrayRef.h"
+#include "llvm/IR/Constant.h"
+#include "llvm/IR/Constants.h"
+#include "llvm/IR/DerivedTypes.h"
+#include "llvm/IR/GlobalValue.h"
+#include "llvm/IR/GlobalVariable.h"
+#include "llvm/IR/IRBuilder.h"
+#include "llvm/Support/Alignment.h"
+#include "llvm/TargetParser/Triple.h"
 #include "xla/service/gpu/gpu_constants.h"
+#include "xla/service/gpu/gpu_executable.h"
+#include "xla/service/gpu/ir_emission_utils.h"
 
 namespace xla {
 namespace gpu {
@@ -29,8 +42,8 @@ void IrEmitterContext::emit_constant(int64_t num_elements,
                                      int64_t bytes_per_element,
                                      absl::string_view symbol_name,
                                      int allocation_idx,
-                                     llvm::ArrayRef<uint8_t> content,
-                                     llvm::IRBuilder<>* b) {
+                                     DenseDataIntermediate content,
+                                     llvm::IRBuilderBase* b) {
   // LLVM and PTXAS don't deal well with large constants, so we only emit very
   // small constants directly in LLVM IR.  Larger constants are emitted with
   // zero initializers in LLVM IR and are later overwritten when the PTX/CUBIN
@@ -50,17 +63,22 @@ void IrEmitterContext::emit_constant(int64_t num_elements,
   GpuExecutable::ConstantInfo info;
   llvm::Constant* initializer = [&]() -> llvm::Constant* {
     if (!should_emit_initializer) {
-      info.content = content;
+      info.content = std::move(content);
       return llvm::ConstantAggregateZero::get(global_type);
     }
 
     std::vector<uint8_t> padded(kMinConstAllocationInBytes, 0);
-    absl::c_copy(content, padded.begin());
+    absl::c_copy(content.span(), padded.begin());
     return llvm::ConstantDataArray::get<uint8_t>(
-        llvm_module_->getContext(),
-        needs_padding ? llvm::ArrayRef<uint8_t>(padded) : content);
+        llvm_module_constants()->getContext(),
+        needs_padding ? llvm::ArrayRef<uint8_t>(padded)
+                      : llvm::ArrayRef<uint8_t>(content.span().data(),
+                                                content.span().size()));
   }();
 
+  // Explicitly set global addrspace for SPIR backend.
+  int addrspace =
+      llvm::Triple(llvm_module_constants()->getTargetTriple()).isSPIR() ? 1 : 0;
   // These globals will be looked up by name by GpuExecutable so we need to
   // give them an external linkage.  Not all of their uses are visible in
   // the LLVM IR so we can't give then a linkage that merely preserves their
@@ -74,10 +92,10 @@ void IrEmitterContext::emit_constant(int64_t num_elements,
       llvm::GlobalValue::ExternalLinkage,
       /*Initializer=*/initializer, symbol_name,
       /*TLMode=*/llvm::GlobalValue::NotThreadLocal,
-      /*AddressSpace=*/0,
+      /*AddressSpace=*/addrspace,
       /*isExternallyInitialized=*/false);
   global_for_const->setAlignment(llvm::Align(kConstantBufferAlignBytes));
-  llvm_module_->insertGlobalVariable(global_for_const);
+  llvm_module_constants()->insertGlobalVariable(global_for_const);
 
   info.symbol_name.assign(symbol_name);
   info.allocation_index = allocation_idx;

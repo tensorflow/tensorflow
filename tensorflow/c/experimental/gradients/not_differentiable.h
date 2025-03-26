@@ -22,12 +22,13 @@ namespace tensorflow {
 namespace gradients {
 // Ignores `grad_outputs` and sets all entries in grad_inputs to nullptr.
 class NotDifferentiableGradientFunction : public GradientFunction {
-  Status Compute(AbstractContext* ctx,
-                 absl::Span<AbstractTensorHandle* const> grad_outputs,
-                 absl::Span<AbstractTensorHandle*> grad_inputs) override;
+  absl::Status Compute(AbstractContext* ctx,
+                       absl::Span<AbstractTensorHandle* const> grad_outputs,
+                       absl::Span<AbstractTensorHandle*> grad_inputs) override;
 };
 // Shorthand for registry->Register(op, new NotDifferentiableGradientFunction)
-Status RegisterNotDifferentiable(GradientRegistry* registry, const string& op);
+absl::Status RegisterNotDifferentiable(GradientRegistry* registry,
+                                       const string& op);
 }  // namespace gradients
 }  // namespace tensorflow
 

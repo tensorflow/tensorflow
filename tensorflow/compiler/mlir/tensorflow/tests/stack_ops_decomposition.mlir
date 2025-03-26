@@ -4,15 +4,15 @@
 
 // CHECK-LABEL: func @main
 func.func @main() -> tensor<f32> {
-  // CHECK-NEXT: "tf.Const"() {value = dense<10> : tensor<i32>}
+  // CHECK-NEXT: "tf.Const"() <{value = dense<10> : tensor<i32>}>
   %max_size = "tf.Const"() {value = dense<10> : tensor<i32>} : () -> tensor<i32>
-  // CHECK-NEXT: %[[ZERO_SCALAR:.*]] = "tf.Const"() {value = dense<0> : tensor<i32>} : () -> tensor<i32>
+  // CHECK-NEXT: %[[ZERO_SCALAR:.*]] = "tf.Const"() <{value = dense<0> : tensor<i32>}> : () -> tensor<i32>
   // CHECK-NEXT: %[[CAST_ZERO:.*]] = "tf.Cast"(%[[ZERO_SCALAR]]) : (tensor<i32>) -> tensor<f32>
-  // CHECK-NEXT: %[[CONST10:.*]] = "tf.Const"() {value = dense<10> : tensor<1xi32>} : () -> tensor<1xi32>
+  // CHECK-NEXT: %[[CONST10:.*]] = "tf.Const"() <{value = dense<10> : tensor<1xi32>}> : () -> tensor<1xi32>
   // CHECK-NEXT: %[[BROADCAST:.*]] = "tf.BroadcastTo"(%[[CAST_ZERO]], %[[CONST10]]) : (tensor<f32>, tensor<1xi32>) -> tensor<10xf32>
   // CHECK-NEXT: %[[BUFFER:.*]] = "tf.MlirLocalVarOp"() : () -> tensor<!tf_type.resource<tensor<10xf32>>>
   // CHECK-NEXT: %[[SIZE:.*]] = "tf.MlirLocalVarOp"() : () -> tensor<!tf_type.resource<tensor<1xi32>>>
-  // CHECK-NEXT: %[[ZERO:.*]] = "tf.Const"() {value = dense<0> : tensor<1xi32>} : () -> tensor<1xi32>
+  // CHECK-NEXT: %[[ZERO:.*]] = "tf.Const"() <{value = dense<0> : tensor<1xi32>}> : () -> tensor<1xi32>
   // CHECK-NEXT: "tf.AssignVariableOp"(%[[SIZE]], %[[ZERO]])
   // CHECK-NEXT: "tf.AssignVariableOp"(%[[BUFFER]], %[[BROADCAST]])
   %stack = "tf.StackV2"(%max_size) {elem_type = f32, stack_name = "s"} : (tensor<i32>) -> tensor<!tf_type.resource>
@@ -21,22 +21,22 @@ func.func @main() -> tensor<f32> {
   %elem = "tf._SomeOp"() : () -> tensor<f32>
   // CHECK-NEXT: %[[READ_VAL:.*]] = "tf.ReadVariableOp"(%[[BUFFER]])
   // CHECK-NEXT: %[[READ_SIZE:.*]] = "tf.ReadVariableOp"(%[[SIZE]])
-  // CHECK-NEXT: %[[UPDATE_SHAPE:.*]] = "tf.Const"() {value = dense<1> : tensor<1xi32>} : () -> tensor<1xi32>
+  // CHECK-NEXT: %[[UPDATE_SHAPE:.*]] = "tf.Const"() <{value = dense<1> : tensor<1xi32>}> : () -> tensor<1xi32>
   // CHECK-NEXT: %[[UPDATE_SLICE:.*]] = "tf.Reshape"(%[[PUSHVAL]], %[[UPDATE_SHAPE]]) : (tensor<f32>, tensor<1xi32>) -> tensor<1xf32>
   // CHECK-NEXT: %[[UPDATE:.*]] = "tf.XlaDynamicUpdateSlice"(%[[READ_VAL]], %[[UPDATE_SLICE]], %[[READ_SIZE]]) : (tensor<10xf32>, tensor<1xf32>, tensor<1xi32>) -> tensor<10xf32>
   // CHECK-NEXT: "tf.AssignVariableOp"(%[[BUFFER]], %[[UPDATE]]) : (tensor<!tf_type.resource<tensor<10xf32>>>, tensor<10xf32>) -> ()
-  // CHECK-NEXT: %[[CONST1:.*]] = "tf.Const"() {value = dense<1> : tensor<1xi32>} : () -> tensor<1xi32>
+  // CHECK-NEXT: %[[CONST1:.*]] = "tf.Const"() <{value = dense<1> : tensor<1xi32>}> : () -> tensor<1xi32>
   // CHECK-NEXT: %[[NEW_SIZE:.*]] = "tf.AddV2"(%[[READ_SIZE]], %[[CONST1]]) : (tensor<1xi32>, tensor<1xi32>) -> tensor<1xi32>
   // CHECK-NEXT: "tf.AssignVariableOp"(%[[SIZE]], %[[NEW_SIZE]]) : (tensor<!tf_type.resource<tensor<1xi32>>>, tensor<1xi32>) -> ()
   %push = "tf.StackPushV2"(%id, %elem) {swap_memory = false} : (tensor<!tf_type.resource>, tensor<f32>) -> tensor<f32>
   %pop = "tf.StackPopV2"(%stack) : (tensor<!tf_type.resource>) -> tensor<f32>
   // CHECK-NEXT: %[[READ_VAL1:.*]] = "tf.ReadVariableOp"(%[[BUFFER]])
   // CHECK-NEXT: %[[READ_SIZE1:.*]] = "tf.ReadVariableOp"(%[[SIZE]])
-  // CHECK-NEXT: %[[CONST1_1:.*]] = "tf.Const"() {value = dense<1> : tensor<1xi32>} : () -> tensor<1xi32>
+  // CHECK-NEXT: %[[CONST1_1:.*]] = "tf.Const"() <{value = dense<1> : tensor<1xi32>}> : () -> tensor<1xi32>
   // CHECK-NEXT: %[[SUB:.*]] = "tf.Sub"(%[[READ_SIZE1]], %[[CONST1_1]])
-  // CHECK-NEXT: %[[SLICE_SIZE:.*]] = "tf.Const"() {value = dense<1> : tensor<1xi32>} : () -> tensor<1xi32>
+  // CHECK-NEXT: %[[SLICE_SIZE:.*]] = "tf.Const"() <{value = dense<1> : tensor<1xi32>}> : () -> tensor<1xi32>
   // CHECK-NEXT: %[[SLICE:.*]] = "tf.Slice"(%[[READ_VAL1]], %[[SUB]], %[[SLICE_SIZE]]) : (tensor<10xf32>, tensor<1xi32>, tensor<1xi32>) -> tensor<1xf32>
-  // CHECK-NEXT: %[[ELEM_SHAPE:.*]] = "tf.Const"() {value = dense<> : tensor<0xi32>} : () -> tensor<0xi32>
+  // CHECK-NEXT: %[[ELEM_SHAPE:.*]] = "tf.Const"() <{value = dense<> : tensor<0xi32>}> : () -> tensor<0xi32>
   // CHECK-NEXT: %[[ELEM:.*]] = "tf.Reshape"(%[[SLICE]], %[[ELEM_SHAPE]]) : (tensor<1xf32>, tensor<0xi32>) -> tensor<f32>
   // CHECK-NEXT: "tf.AssignVariableOp"(%[[SIZE]], %[[SUB]]) : (tensor<!tf_type.resource<tensor<1xi32>>>, tensor<1xi32>) -> ()
   "tf.StackCloseV2"(%stack) : (tensor<!tf_type.resource>) -> ()
@@ -50,14 +50,14 @@ func.func @main() -> tensor<f32> {
 
 // CHECK-LABEL: func @main
 func.func @main() -> tensor<2xi32> {
-  // CHECK-NEXT: "tf.Const"() {value = dense<10> : tensor<i32>} : () -> tensor<i32>
+  // CHECK-NEXT: "tf.Const"() <{value = dense<10> : tensor<i32>}> : () -> tensor<i32>
   %size = "tf.Const"() {value = dense<10> : tensor<i32>} : () -> tensor<i32>
-  // CHECK-NEXT: %[[ZERO_CONST:.*]] = "tf.Const"() {value = dense<0> : tensor<i32>} : () -> tensor<i32>
-  // CHECK-NEXT: %[[STACK_SHAPE:.*]] = "tf.Const"() {value = dense<[10, 2]> : tensor<2xi32>} : () -> tensor<2xi32>
+  // CHECK-NEXT: %[[ZERO_CONST:.*]] = "tf.Const"() <{value = dense<0> : tensor<i32>}> : () -> tensor<i32>
+  // CHECK-NEXT: %[[STACK_SHAPE:.*]] = "tf.Const"() <{value = dense<[10, 2]> : tensor<2xi32>}> : () -> tensor<2xi32>
   // CHECK-NEXT: %[[BROADCAST:.*]] = "tf.BroadcastTo"(%[[ZERO_CONST]], %[[STACK_SHAPE]]) : (tensor<i32>, tensor<2xi32>) -> tensor<10x2xi32>
   // CHECK-NEXT: %[[BUFFER:.*]] = "tf.MlirLocalVarOp"() : () -> tensor<!tf_type.resource<tensor<10x2xi32>>>
   // CHECK-NEXT: %[[SIZE:.*]] = "tf.MlirLocalVarOp"() : () -> tensor<!tf_type.resource<tensor<1xi32>>>
-  // CHECK-NEXT: %[[ZERO_SIZE:.*]] = "tf.Const"() {value = dense<0> : tensor<1xi32>} : () -> tensor<1xi32>
+  // CHECK-NEXT: %[[ZERO_SIZE:.*]] = "tf.Const"() <{value = dense<0> : tensor<1xi32>}> : () -> tensor<1xi32>
   // CHECK-NEXT: "tf.AssignVariableOp"(%[[SIZE]], %[[ZERO_SIZE]]) : (tensor<!tf_type.resource<tensor<1xi32>>>, tensor<1xi32>) -> ()
   // CHECK-NEXT: "tf.AssignVariableOp"(%[[BUFFER]], %[[BROADCAST]]) : (tensor<!tf_type.resource<tensor<10x2xi32>>>, tensor<10x2xi32>) -> ()
   %stack = "tf.StackV2"(%size) {elem_type = i32, stack_name = "s"} : (tensor<i32>) -> tensor<!tf_type.resource>
@@ -65,14 +65,14 @@ func.func @main() -> tensor<2xi32> {
   %elem = "tf._SomeOp"() : () -> tensor<2xi32>
   // CHECK-NEXT: %[[STACK_VAL:.*]] = "tf.ReadVariableOp"(%[[BUFFER]]) : (tensor<!tf_type.resource<tensor<10x2xi32>>>) -> tensor<10x2xi32>
   // CHECK-NEXT: %[[STACK_SIZE:.*]] = "tf.ReadVariableOp"(%[[SIZE]]) : (tensor<!tf_type.resource<tensor<1xi32>>>) -> tensor<1xi32>
-  // CHECK-NEXT: %[[UPDATE_SHAPE:.*]] = "tf.Const"() {value = dense<[1, 2]> : tensor<2xi32>} : () -> tensor<2xi32>
+  // CHECK-NEXT: %[[UPDATE_SHAPE:.*]] = "tf.Const"() <{value = dense<[1, 2]> : tensor<2xi32>}> : () -> tensor<2xi32>
   // CHECK-NEXT: %[[UPDATE_SLICE:.*]] = "tf.Reshape"(%[[PUSH_VAL]], %[[UPDATE_SHAPE]]) : (tensor<2xi32>, tensor<2xi32>) -> tensor<1x2xi32>
-  // CHECK-NEXT: %[[ZERO_INDS:.*]] = "tf.Const"() {value = dense<0> : tensor<1xi32>} : () -> tensor<1xi32>
-  // CHECK-NEXT: %[[CONCAT_DIM:.*]] = "tf.Const"() {value = dense<0> : tensor<i32>} : () -> tensor<i32>
+  // CHECK-NEXT: %[[ZERO_INDS:.*]] = "tf.Const"() <{value = dense<0> : tensor<1xi32>}> : () -> tensor<1xi32>
+  // CHECK-NEXT: %[[CONCAT_DIM:.*]] = "tf.Const"() <{value = dense<0> : tensor<i32>}> : () -> tensor<i32>
   // CHECK-NEXT: %[[CONCAT_OFFETS:.*]] = "tf.ConcatV2"(%[[STACK_SIZE]], %[[ZERO_INDS]], %[[CONCAT_DIM]]) : (tensor<1xi32>, tensor<1xi32>, tensor<i32>) -> tensor<2xi32>
   // CHECK-NEXT: %[[UPDATE:.*]] = "tf.XlaDynamicUpdateSlice"(%[[STACK_VAL]], %[[UPDATE_SLICE]], %[[CONCAT_OFFETS]]) : (tensor<10x2xi32>, tensor<1x2xi32>, tensor<2xi32>) -> tensor<10x2xi32>
   // CHECK-NEXT: "tf.AssignVariableOp"(%[[BUFFER]], %[[UPDATE]]) : (tensor<!tf_type.resource<tensor<10x2xi32>>>, tensor<10x2xi32>) -> ()
-  // CHECK-NEXT: %[[CONST1:.*]] = "tf.Const"() {value = dense<1> : tensor<1xi32>} : () -> tensor<1xi32>
+  // CHECK-NEXT: %[[CONST1:.*]] = "tf.Const"() <{value = dense<1> : tensor<1xi32>}> : () -> tensor<1xi32>
   // CHECK-NEXT: %[[NEW_SIZE:.*]] = "tf.AddV2"(%[[STACK_SIZE]], %[[CONST1]]) : (tensor<1xi32>, tensor<1xi32>) -> tensor<1xi32>
   // CHECK-NEXT: "tf.AssignVariableOp"(%[[SIZE]], %[[NEW_SIZE]]) : (tensor<!tf_type.resource<tensor<1xi32>>>, tensor<1xi32>) -> ()
   %push = "tf.StackPushV2"(%stack, %elem) {swap_memory = false} : (tensor<!tf_type.resource>, tensor<2xi32>) -> tensor<2xi32>
@@ -102,7 +102,7 @@ func.func @main() -> () {
 }
 // CHECK: func @while_body(%[[BARG0:.*]]: tensor<!tf_type.resource<tensor<10xf32>>>, %[[BARG1:.*]]: tensor<i32>, %[[BARG2:.*]]: tensor<!tf_type.resource<tensor<1xi32>>>)
 func.func @while_body(%arg0: tensor<!tf_type.resource>, %arg1: tensor<i32>) -> (tensor<!tf_type.resource>, tensor<i32>) {
-  // CHECK: %[[CONST1:.*]] = "tf.Const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
+  // CHECK: %[[CONST1:.*]] = "tf.Const"() <{value = dense<1> : tensor<i32>}> : () -> tensor<i32>
   %const1 = "tf.Const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
   // CHECK: %[[SUB:.*]] = "tf.Sub"(%[[BARG1]], %[[CONST1]])
   %sub = "tf.Sub"(%arg1, %const1) : (tensor<i32>, tensor<i32>) -> tensor<i32>
@@ -143,7 +143,7 @@ func.func @main() -> () {
   }, {
     // CHECK: ^bb0(%[[BARG0:.*]]: tensor<i32>
     ^bb0(%barg0: tensor<i32>):
-    // CHECK: %[[CONST1:.*]] = "tf.Const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
+    // CHECK: %[[CONST1:.*]] = "tf.Const"() <{value = dense<1> : tensor<i32>}> : () -> tensor<i32>
     %const1 = "tf.Const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
     // CHECK: %[[SUB:.*]] = "tf.Sub"(%[[BARG0]], %[[CONST1]])
     %sub = "tf.Sub"(%barg0, %const1) : (tensor<i32>, tensor<i32>) -> tensor<i32>
@@ -185,7 +185,7 @@ func.func @main(%arg0: tensor<i32>) -> () {
   // CHECK: tf.AssignVariableOp
   // CHECK: tf.AssignVariableOp
   %stack = "tf.StackV2"(%max_size) {elem_type = f32, stack_name = "s"} : (tensor<i32>) -> tensor<!tf_type.resource>
-  // CHECK: %[[CASE_OUTPUT:.*]] = "tf.CaseRegion"(%[[BRANCH_INDEX]]) ({
+  // CHECK: %[[CASE_OUTPUT:.*]] = "tf.CaseRegion"(%[[BRANCH_INDEX]]) {{.*}} ({
   %case_op = "tf.CaseRegion"(%arg0) ({
     %elem = "tf._SomeOp"() : () -> tensor<f32>
     // CHECK-NOT: tf.StackPushV2

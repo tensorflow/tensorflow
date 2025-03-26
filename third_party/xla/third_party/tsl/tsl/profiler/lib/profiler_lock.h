@@ -17,7 +17,9 @@ limitations under the License.
 
 #include <utility>
 
-#include "tsl/platform/statusor.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
+#include "xla/tsl/platform/statusor.h"
 
 namespace tsl {
 namespace profiler {
@@ -34,7 +36,7 @@ class ProfilerLock {
 
   // Acquires the profiler lock if no other profiler session is currently
   // active.
-  static StatusOr<ProfilerLock> Acquire();
+  static absl::StatusOr<ProfilerLock> Acquire();
 
   // Default constructor creates an inactive instance.
   ProfilerLock() = default;
@@ -44,9 +46,9 @@ class ProfilerLock {
   ProfilerLock& operator=(const ProfilerLock&) = delete;
 
   // Movable.
-  ProfilerLock(ProfilerLock&& other)
+  ProfilerLock(ProfilerLock&& other) noexcept
       : active_(std::exchange(other.active_, false)) {}
-  ProfilerLock& operator=(ProfilerLock&& other) {
+  ProfilerLock& operator=(ProfilerLock&& other) noexcept {
     active_ = std::exchange(other.active_, false);
     return *this;
   }

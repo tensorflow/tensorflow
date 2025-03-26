@@ -1,5 +1,17 @@
 # TensorFlow Lite NNAPI delegate
 
+<aside class="warning">
+  <p><b>Warning:</b> The
+  <a href="https://www.tensorflow.org/lite/android/delegates/nnapi">
+  NNAPI</a> and <a href="https://www.tensorflow.org/lite/android/delegates/hexagon">
+  Hexagon</a> delegates are deprecated and no longer supported by TensorFlow
+  Lite. For more information, see the
+  <a href="https://developer.android.com/ndk/guides/neuralnetworks/migration-guide">
+  NNAPI Migration Guide</a> and
+  <a href="https://www.tensorflow.org/lite/performance/delegates">TF Lite
+  delegates documentation</a>.</p>
+</aside>
+
 The
 [Android Neural Networks API (NNAPI)](https://developer.android.com/ndk/guides/neuralnetworks)
 is available on all Android devices running Android 8.1 (API level 27) or
@@ -26,7 +38,7 @@ your module gradle file:
 
 ```groovy
 dependencies {
-   implementation 'org.tensorflow:tensorflow-lite:2.0.0'
+   implementation 'org.tensorflow:tensorflow-lite:+'
 }
 ```
 
@@ -40,9 +52,69 @@ support for operations improved significantly for API Level 28 (Android Pie)
 onwards. As a result, we recommend developers use the NNAPI delegate for Android
 Pie or above for most scenarios.
 
+#### kotlin
+
+```kotlin
+import android.content.res.AssetManager
+import org.tensorflow.lite.Interpreter
+import org.tensorflow.lite.nnapi.NnApiDelegate
+import java.io.FileInputStream
+import java.io.IOException
+import java.nio.MappedByteBuffer
+import java.nio.channels.FileChannel
+...
+
+val options = Interpreter.Options()
+var nnApiDelegate: NnApiDelegate? = null
+// Initialize interpreter with NNAPI delegate for Android Pie or above
+if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+    nnApiDelegate = NnApiDelegate()
+    options.addDelegate(nnApiDelegate)
+}
+val assetManager = assets
+
+// Initialize TFLite interpreter
+val tfLite: Interpreter
+try {
+    tfLite = Interpreter(loadModelFile(assetManager, "model.tflite"), options)
+} catch (e: Exception) {
+    throw RuntimeException(e)
+}
+
+// Run inference
+// ...
+
+// Unload delegate
+tfLite.close()
+nnApiDelegate?.close()
+
+...
+
+@Throws(IOException::class)
+private fun loadModelFile(assetManager: AssetManager, modelFilename: String): MappedByteBuffer {
+    val fileDescriptor = assetManager.openFd(modelFilename)
+    val inputStream = FileInputStream(fileDescriptor.fileDescriptor)
+    val fileChannel = inputStream.channel
+    val startOffset = fileDescriptor.startOffset
+    val declaredLength = fileDescriptor.declaredLength
+    return fileChannel.map(FileChannel.MapMode.READ_ONLY, startOffset, declaredLength)
+}
+
+...
+
+```
+
+#### java
+
 ```java
+import android.content.res.AssetManager;
 import org.tensorflow.lite.Interpreter;
 import org.tensorflow.lite.nnapi.NnApiDelegate;
+import java.io.FileInputStream;
+import java.io.IOException;
+import java.nio.MappedByteBuffer;
+import java.nio.channels.FileChannel;
+...
 
 Interpreter.Options options = (new Interpreter.Options());
 NnApiDelegate nnApiDelegate = null;
@@ -52,9 +124,10 @@ if(Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
     options.addDelegate(nnApiDelegate);
 }
 
+AssetManager assetManager = getAssets();
 // Initialize TFLite interpreter
 try {
-    tfLite = new Interpreter(loadModelFile(assetManager, modelFilename), options);
+    tfLite = new Interpreter(loadModelFile(assetManager, "model.tflite"), options);
 } catch (Exception e) {
     throw new RuntimeException(e);
 }
@@ -67,6 +140,19 @@ tfLite.close();
 if(null != nnApiDelegate) {
     nnApiDelegate.close();
 }
+
+...
+
+private MappedByteBuffer loadModelFile(AssetManager assetManager, String modelFilename) throws IOException {
+    AssetFileDescriptor fileDescriptor = assetManager.openFd(modelFilename);
+    FileInputStream inputStream = new FileInputStream(fileDescriptor.getFileDescriptor());
+    FileChannel fileChannel = inputStream.getChannel();
+    long startOffset = fileDescriptor.getStartOffset();
+    long declaredLength = fileDescriptor.getDeclaredLength();
+    return fileChannel.map(FileChannel.MapMode.READ_ONLY, startOffset, declaredLength);
+}
+
+...
 ```
 
 ## Best practices

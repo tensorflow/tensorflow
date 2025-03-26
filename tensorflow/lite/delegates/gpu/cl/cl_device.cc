@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_split.h"
+#include "tensorflow/lite/delegates/gpu/cl/opencl_wrapper.h"
 #include "tensorflow/lite/delegates/gpu/cl/util.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 #include "tensorflow/lite/experimental/acceleration/compatibility/android_info.h"
@@ -309,7 +310,15 @@ GpuInfo GpuInfoFromDeviceID(cl_device_id id, cl_platform_id platform_id) {
   info.opencl_info.max_work_group_size_z = max_work_group_sizes.z;
   info.opencl_info.max_work_group_total_size =
       GetDeviceInfo<size_t>(id, CL_DEVICE_MAX_WORK_GROUP_SIZE);
-
+  info.opencl_info.dedicated_local_memory =
+      (GetDeviceInfo<cl_device_local_mem_type>(id, CL_DEVICE_LOCAL_MEM_TYPE) ==
+       CL_LOCAL);
+  if (info.IsCL30OrHigher()) {
+    info.opencl_info.preferred_work_group_size_multiple =
+        GetDeviceInfo<size_t>(id, CL_DEVICE_PREFERRED_WORK_GROUP_SIZE_MULTIPLE);
+  } else {
+    info.opencl_info.preferred_work_group_size_multiple = 0;
+  }
   info.opencl_info.base_addr_align_in_bits =
       GetDeviceInfo<cl_uint>(id, CL_DEVICE_MEM_BASE_ADDR_ALIGN);
   info.opencl_info.image_pitch_alignment = 0;
@@ -335,21 +344,28 @@ GpuInfo GpuInfoFromDeviceID(cl_device_id id, cl_platform_id platform_id) {
     }
   }
 
-  if (info.IsIntel()) {
-    if (info.SupportsExtension("cl_intel_required_subgroup_size")) {
-      size_t sub_groups_count;
-      cl_int status =
-          clGetDeviceInfo(id, 0x4108 /*CL_DEVICE_SUB_GROUP_SIZES_INTEL*/, 0,
-                          nullptr, &sub_groups_count);
+  if (info.SupportsExtension("cl_arm_scheduling_controls")) {
+    auto capabilities =
+        GetDeviceInfo<cl_device_scheduling_controls_capabilities_arm>(
+            id, CL_DEVICE_SCHEDULING_CONTROLS_CAPABILITIES_ARM);
+    info.opencl_info.supports_register_allocation_arm =
+        capabilities & CL_DEVICE_SCHEDULING_REGISTER_ALLOCATION_ARM;
+  }
+
+  if (info.SupportsExtension("cl_intel_required_subgroup_size")) {
+    size_t sub_groups_ret_size;
+    cl_int status =
+        clGetDeviceInfo(id, 0x4108 /*CL_DEVICE_SUB_GROUP_SIZES_INTEL*/, 0,
+                        nullptr, &sub_groups_ret_size);
+    if (status == CL_SUCCESS) {
+      size_t sub_groups_count = sub_groups_ret_size / sizeof(size_t);
+      std::vector<size_t> sub_group_sizes(sub_groups_count);
+      status =
+          clGetDeviceInfo(id, 0x4108 /*CL_DEVICE_SUB_GROUP_SIZES_INTEL*/,
+                          sub_groups_ret_size, sub_group_sizes.data(), nullptr);
       if (status == CL_SUCCESS) {
-        std::vector<size_t> sub_group_sizes(sub_groups_count);
-        status = clGetDeviceInfo(id, 0x4108 /*CL_DEVICE_SUB_GROUP_SIZES_INTEL*/,
-                                 sizeof(size_t) * sub_groups_count,
-                                 sub_group_sizes.data(), nullptr);
-        if (status == CL_SUCCESS) {
-          for (int i = 0; i < sub_groups_count; ++i) {
-            info.supported_subgroup_sizes.push_back(sub_group_sizes[i]);
-          }
+        for (int i = 0; i < sub_groups_count; ++i) {
+          info.supported_subgroup_sizes.push_back(sub_group_sizes[i]);
         }
       }
     }
@@ -457,6 +473,9 @@ absl::Status CreateDefaultGPUDevice(CLDevice* result) {
   }
 
   *result = CLDevice(devices[0], platform_id);
+
+  LoadOpenCLFunctionExtensions(platform_id);
+
   return absl::OkStatus();
 }
 

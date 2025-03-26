@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -40,8 +40,7 @@ def MHLO_PrecisionAttr : EnumAttr<MHLO_Dialect, MHLO_Precision, "precision">;
 
 // TODO(b/129153247) See if it's possible to also validate the size.
 def MHLO_PrecisionConfigAttr:
-    OptionalAttr<
-          TypedArrayAttrBase<MHLO_PrecisionAttr, "Precision Config attribute">>;
+    TypedArrayAttrBase<MHLO_PrecisionAttr, "Precision Config attribute">;
 
 //===----------------------------------------------------------------------===//
 // Custom call schedule hints
@@ -260,5 +259,29 @@ def MHLO_RngAlgorithm : I32EnumAttr<"RngAlgorithm",
 def MHLO_RngAlgorithmAttr : EnumAttr<MHLO_Dialect, MHLO_RngAlgorithm, "rng_algorithm"> {
   let assemblyFormat = "`<` $value `>`";
 }
+
+//===----------------------------------------------------------------------===//
+// Result Accuracy enum definitions.
+//===----------------------------------------------------------------------===//
+
+def MHLO_RESULT_ACCURACY_DEFAULT : I32EnumAttrCase<"DEFAULT", 0>;
+def MHLO_RESULT_ACCURACY_HIGHEST : I32EnumAttrCase<"HIGHEST", 1>;
+def MHLO_RESULT_ACCURACY_TOLERANCE: I32EnumAttrCase<"TOLERANCE", 2>;
+
+def MHLO_ResultAccuracyMode : I32EnumAttr<"ResultAccuracyMode",
+    "XLA result accuracy mode.",
+    [
+      MHLO_RESULT_ACCURACY_DEFAULT,
+      MHLO_RESULT_ACCURACY_HIGHEST,
+      MHLO_RESULT_ACCURACY_TOLERANCE
+    ]> {
+  let genSpecializedAttr = 0;
+  let cppNamespace = "::mlir::mhlo";
+}
+
+def MHLO_ResultAccuracyModeAttr : EnumAttr<MHLO_Dialect, MHLO_ResultAccuracyMode, "result_accuracy_mode"> {
+  let assemblyFormat = "`<` $value `>`";
+}
+
 
 #endif // MLIR_HLO_DIALECT_MHLO_IR_HLO_OPS_ENUMS

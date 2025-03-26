@@ -101,7 +101,7 @@ class AbsoluteDifferenceLossTest(test.TestCase):
     with self.cached_session():
       self.assertAlmostEqual(0.0, self.evaluate(loss), 3)
 
-  @test_util.assert_no_new_pyobjects_executing_eagerly
+  @test_util.assert_no_new_pyobjects_executing_eagerly()
   def testEagerNoMemoryLeaked(self):
     # This is a somewhat convoluted way of testing that nothing gets added to
     # a global collection.
@@ -244,7 +244,7 @@ class SparseSoftmaxCrossEntropyLossTest(test.TestCase):
       self.assertEqual(loss.op.name, 'sparse_softmax_cross_entropy_loss/value')
       self.assertAlmostEqual(self.evaluate(loss), 0.0, 3)
 
-  @test_util.assert_no_new_pyobjects_executing_eagerly
+  @test_util.assert_no_new_pyobjects_executing_eagerly()
   def testEagerNoMemoryLeaked(self):
     logits = constant_op.constant([[10.0, 0.0, 0.0], [0.0, 10.0, 0.0],
                                    [0.0, 0.0, 10.0]])

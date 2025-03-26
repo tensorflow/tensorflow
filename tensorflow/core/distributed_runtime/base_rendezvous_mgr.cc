@@ -67,13 +67,13 @@ void BaseRendezvousMgr::RecvLocalAsync(int64_t step_id,
   FindOrCreate(step_id)->RecvLocalAsync(parsed, std::move(done));
 }
 
-Status BaseRendezvousMgr::RecvLocal(int64_t step_id,
-                                    const Rendezvous::ParsedKey& parsed,
-                                    Tensor* val, bool* is_dead) {
-  Status ret;
+absl::Status BaseRendezvousMgr::RecvLocal(int64_t step_id,
+                                          const Rendezvous::ParsedKey& parsed,
+                                          Tensor* val, bool* is_dead) {
+  absl::Status ret;
   Notification n;
   RecvLocalAsync(step_id, parsed,
-                 [val, is_dead, &ret, &n](const Status& s,
+                 [val, is_dead, &ret, &n](const absl::Status& s,
                                           const Rendezvous::Args& send_args,
                                           const Rendezvous::Args& recv_args,
                                           const Tensor& v, const bool dead) {
@@ -107,8 +107,8 @@ BaseRemoteRendezvous::~BaseRemoteRendezvous() {
 // Returns true if "device_name" is a valid full name of local device
 // of the "worker". This helper is purely based on the worker name
 // and device name and does no lookups in the worker->device_mgr.
-static bool IsLocalDevice(const StringPiece worker_name,
-                          const StringPiece device_name) {
+static bool IsLocalDevice(const absl::string_view worker_name,
+                          const absl::string_view device_name) {
   return absl::StartsWith(device_name, worker_name);
 }
 
@@ -121,7 +121,7 @@ static bool IsImplicitLocalDevice(
   return !DeviceNameUtils::HasSomeDetails(parsed_device_name);
 }
 
-Status BaseRemoteRendezvous::Initialize(WorkerSession* session) {
+absl::Status BaseRemoteRendezvous::Initialize(WorkerSession* session) {
   CHECK_NE(session, nullptr) << "session must not be null!";
   std::vector<DeferredCall> deferred_calls;
   {
@@ -129,9 +129,9 @@ Status BaseRemoteRendezvous::Initialize(WorkerSession* session) {
     if (session_ != nullptr) {
       if (session_->worker_name() == session->worker_name()) {
         VLOG(1) << "Skipping rendezvous re-initialization.";
-        return OkStatus();
+        return absl::OkStatus();
       }
-      Status s = errors::Internal(
+      absl::Status s = errors::Internal(
           "Double init! Worker names would have changed from: ",
           session_->worker_name(), " -> ", session->worker_name());
       LOG(WARNING) << s;
@@ -143,7 +143,7 @@ Status BaseRemoteRendezvous::Initialize(WorkerSession* session) {
   for (auto& call : deferred_calls) {
     RecvLocalAsyncInternal(call.parsed, std::move(call.done));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 WorkerSession* BaseRemoteRendezvous::session() {
@@ -156,9 +156,9 @@ bool BaseRemoteRendezvous::is_initialized() {
   return is_initialized_locked();
 }
 
-Status BaseRemoteRendezvous::Send(const Rendezvous::ParsedKey& parsed,
-                                  const Rendezvous::Args& args,
-                                  const Tensor& val, const bool is_dead) {
+absl::Status BaseRemoteRendezvous::Send(const Rendezvous::ParsedKey& parsed,
+                                        const Rendezvous::Args& args,
+                                        const Tensor& val, const bool is_dead) {
   VLOG(1) << "BaseRemoteRendezvous Send " << this << " " << parsed.FullKey();
   WorkerSession* sess = nullptr;
   {
@@ -179,8 +179,8 @@ Status BaseRemoteRendezvous::Send(const Rendezvous::ParsedKey& parsed,
   return local_.Send(parsed, args, val, is_dead);
 }
 
-Status BaseRemoteRendezvous::ValidateDevices(const ParsedKey& parsed,
-                                             bool is_src) {
+absl::Status BaseRemoteRendezvous::ValidateDevices(const ParsedKey& parsed,
+                                                   bool is_src) {
   // Cache session pointer to avoid repeatedly taking & releasing the lock
   // (e.g. calling session())
   WorkerSession* sess = nullptr;
@@ -203,7 +203,7 @@ Status BaseRemoteRendezvous::ValidateDevices(const ParsedKey& parsed,
         "Invalid rendezvous key (dst): ", parsed.FullKey(), " @ ",
         sess->worker_name());
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 void BaseRemoteRendezvous::SameWorkerRecvDone(
@@ -218,7 +218,7 @@ void BaseRemoteRendezvous::SameWorkerRecvDone(
       (recv_args.alloc_attrs.on_host() || parsed.dst.type == "CPU");
   if (src_host && dst_host) {
     *out = in;
-    done(OkStatus());
+    done(absl::OkStatus());
     return;
   }
 
@@ -235,7 +235,8 @@ void BaseRemoteRendezvous::SameWorkerRecvDone(
 
   WorkerSession* sess = session();
   Device* src_device;
-  Status s = sess->device_mgr()->LookupDevice(parsed.src_device, &src_device);
+  absl::Status s =
+      sess->device_mgr()->LookupDevice(parsed.src_device, &src_device);
   if (!s.ok()) {
     done(s);
     return;
@@ -247,7 +248,7 @@ void BaseRemoteRendezvous::SameWorkerRecvDone(
     return;
   }
 
-  profiler::ScopedMemoryDebugAnnotation op_annotation(
+  tsl::profiler::ScopedMemoryDebugAnnotation op_annotation(
       "SameWorkerRecvDone", step_id_, "dynamic", in.dtype(),
       [&in]() { return in.shape().DebugString(); });
   AllocatorAttributes attr = recv_args.alloc_attrs;
@@ -287,7 +288,7 @@ void BaseRemoteRendezvous::RecvAsync(const ParsedKey& parsed,
                                      const Rendezvous::Args& recv_args,
                                      DoneCallback done) {
   VLOG(1) << "RemoteRendezvous Recv " << this << " " << parsed.FullKey();
-  Status s = ValidateDevices(parsed, false /*!is_src*/);
+  absl::Status s = ValidateDevices(parsed, false /*!is_src*/);
   if (!s.ok()) {
     done(s, Args(), recv_args, Tensor(), false);
     return;
@@ -298,7 +299,8 @@ void BaseRemoteRendezvous::RecvAsync(const ParsedKey& parsed,
   DCHECK(is_initialized()) << "RecvAsync called when uninitialized (key: "
                            << parsed.FullKey() << ").";
 
-  profiler::ScopedMemoryDebugAnnotation op_annotation("RecvAsync", step_id_);
+  tsl::profiler::ScopedMemoryDebugAnnotation op_annotation("RecvAsync",
+                                                           step_id_);
   // Are src and dst in the same worker?
   // At this point parsed.dst must be a local device asserted by the previous
   // call to ValidateDevices.
@@ -308,13 +310,13 @@ void BaseRemoteRendezvous::RecvAsync(const ParsedKey& parsed,
     local_.RecvAsync(
         parsed, recv_args,
         [this, parsed, done](
-            const Status& status, const Rendezvous::Args& send_args,
+            const absl::Status& status, const Rendezvous::Args& send_args,
             const Rendezvous::Args& recv_args, const Tensor& in, bool is_dead) {
           VLOG(2) << "RemoteRendezvous Finished Local Recv " << this << " "
                   << parsed.FullKey();
           Tensor* out = new Tensor;
           StatusCallback final_callback = [done, send_args, recv_args, out,
-                                           is_dead](const Status& s) {
+                                           is_dead](const absl::Status& s) {
             done(s, send_args, recv_args, *out, is_dead);
             delete out;
           };
@@ -331,7 +333,7 @@ void BaseRemoteRendezvous::RecvAsync(const ParsedKey& parsed,
     // Keep current rendezvous alive while the recv is inflight.
     this->Ref();
     RecvFromRemoteAsync(parsed, recv_args,
-                        [this, parsed, done](const Status& status,
+                        [this, parsed, done](const absl::Status& status,
                                              const Rendezvous::Args& send_args,
                                              const Rendezvous::Args& recv_args,
                                              const Tensor& in, bool is_dead) {
@@ -367,7 +369,7 @@ void BaseRemoteRendezvous::RecvLocalAsync(const ParsedKey& parsed,
 
 void BaseRemoteRendezvous::RecvLocalAsyncInternal(const ParsedKey& parsed,
                                                   DoneCallback done) {
-  Status s = ValidateDevices(parsed, true /* is_src */);
+  absl::Status s = ValidateDevices(parsed, true /* is_src */);
   if (!s.ok()) {
     done(s, Args(), Args(), Tensor(), false);
     return;
@@ -375,13 +377,13 @@ void BaseRemoteRendezvous::RecvLocalAsyncInternal(const ParsedKey& parsed,
   local_.RecvAsync(parsed, Args(), std::move(done));
 }
 
-void BaseRemoteRendezvous::StartAbort(const Status& s) {
+void BaseRemoteRendezvous::StartAbort(const absl::Status& s) {
   CHECK(!s.ok());
   // If the status passed in is a cancelled or aborted error, mark it as
   // "derived" for the rendezvous. Derived status messages are ignored when
   // aggregating errors across devices: this allows us to prefer our original
   // status message over any cancellation related errors.
-  Status derived_status = s;
+  absl::Status derived_status = s;
   if (absl::IsCancelled(s) || absl::IsAborted(s)) {
     derived_status = StatusGroup::MakeDerived(s);
   }

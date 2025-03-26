@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -17,21 +17,24 @@ limitations under the License.
 
 #include <string>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/algorithm/container.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_replace.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/parser/hlo_parser.h"
+#include "xla/hlo/transforms/simplifiers/hlo_dce.h"
+#include "xla/hlo/transforms/simplifiers/tuple_simplifier.h"
 #include "xla/hlo/utils/hlo_matchers.h"
-#include "xla/service/algebraic_simplifier.h"
-#include "xla/service/hlo_cse.h"
-#include "xla/service/hlo_dce.h"
-#include "xla/service/hlo_parser.h"
-#include "xla/service/tuple_simplifier.h"
+#include "xla/literal_util.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/test.h"
 #include "xla/tests/hlo_test_base.h"
-#include "tsl/lib/core/status_test_util.h"
+#include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace {
@@ -193,8 +196,9 @@ TEST_F(WhileLoopSimplifierTest, LoopWithSendNotSimplified) {
       while_body->AddInstruction(
           HloInstruction::CreateConstant(LiteralUtil::CreateR0<bool>(true))),
       token,
-      /*channel_id=*/0));
-  while_body->AddInstruction(HloInstruction::CreateSendDone(send));
+      /*channel_id=*/0, /*is_host_transfer=*/false));
+  while_body->AddInstruction(HloInstruction::CreateSendDone(
+      send, /*channel_id=*/0, /*is_host_transfer=*/false));
   EXPECT_FALSE(WhileLoopSimplifier().Run(m.get()).value());
 }
 
@@ -207,8 +211,9 @@ TEST_F(WhileLoopSimplifierTest, LoopWithRecvNotSimplified) {
   auto* token = while_body->AddInstruction(HloInstruction::CreateToken());
   auto* recv = while_body->AddInstruction(
       HloInstruction::CreateRecv(ShapeUtil::MakeShape(F32, {1}), token,
-                                 /*channel_id=*/0));
-  while_body->AddInstruction(HloInstruction::CreateRecvDone(recv));
+                                 /*channel_id=*/0, /*is_host_transfer=*/false));
+  while_body->AddInstruction(HloInstruction::CreateRecvDone(
+      recv, /*channel_id=*/0, /*is_host_transfer=*/false));
   EXPECT_FALSE(WhileLoopSimplifier().Run(m.get()).value());
 }
 
@@ -482,6 +487,54 @@ TEST_F(WhileLoopSimplifierTest, RemoveUnusedLoopOperands) {
   EXPECT_THAT(new_while_op->while_condition()->root_instruction(),
               op::Eq(op::Constant(),
                      op::GetTupleElement(op::Parameter(0), /*tuple_index=*/1)));
+}
+
+// This while loop has three tuple elements.  Element 0 is unused and should be
+// removed. Element 1 is used by the loop body, and element 2 is used by the
+// loop condition; these two should stay.
+TEST_F(WhileLoopSimplifierTest, RemoveUnusedLoopOperandsCheckMetadata) {
+  const std::string hlo_string = R"(
+  HloModule RemoveUnusedOperands
+  RemoveUnusedOperands.body {
+    loop_var = (s32[], s32[], s32[]) parameter(0)
+    get-tuple-element.1 = s32[] get-tuple-element((s32[], s32[],
+      s32[]) loop_var), index=0
+    get-tuple-element.2 = s32[] get-tuple-element((s32[], s32[],
+      s32[]) loop_var), index=1
+    constant.1 = s32[] constant(1)
+    add = s32[] add(s32[] get-tuple-element.2, s32[] constant.1)
+    get-tuple-element.3 = s32[] get-tuple-element((s32[], s32[], s32[])
+      loop_var), index=2
+    ROOT tuple = (s32[], s32[], s32[]) tuple(s32[] get-tuple-element.1,
+      s32[] add, s32[] get-tuple-element.3)
+  }
+  RemoveUnusedOperands.loop_condition {
+    constant.2 = s32[] constant(0)
+    param0 = (s32[], s32[], s32[]) parameter(0)
+    get-tuple-element = s32[] get-tuple-element((s32[], s32[], s32[]) param0),
+      index=2
+    ROOT equal-to = pred[] compare(s32[] constant.2, s32[] get-tuple-element), direction=EQ
+  }
+  ENTRY RemoveUnusedOperands {
+    x = s32[] parameter(0)
+    constant.3 = s32[] constant(0)
+    y = s32[] parameter(1)
+    tuple.1 = (s32[], s32[], s32[]) tuple(s32[] x, s32[] constant.3,
+      s32[] y)
+    ROOT while = (s32[], s32[], s32[]) while((s32[], s32[], s32[]) tuple.1),
+      condition=RemoveUnusedOperands.loop_condition,
+      body=RemoveUnusedOperands.body, metadata={op_name="while"}
+  }
+  )";
+
+  auto m = ParseAndReturnVerifiedModule(hlo_string).value();
+  EXPECT_TRUE(WhileLoopSimplifier().Run(m.get()).value());
+  OpMetadata while_metadata;
+  while_metadata.set_op_name("while");
+  EXPECT_THAT(m->entry_computation()->root_instruction(),
+              AllOf(op::Tuple(), op::Metadata(while_metadata)));
+  EXPECT_THAT(m->entry_computation()->GetInstructionWithName("while.1"),
+              AllOf(op::While(), op::Metadata(while_metadata)));
 }
 
 // Check that we can remove unused loop operands even if the loop contains a
@@ -1001,6 +1054,178 @@ TEST_F(WhileLoopSimplifierTest, RemoveUnusedParamsDespiteSendRecv) {
   ASSERT_TRUE(WhileLoopSimplifier().Run(m.get()).value());
   HloInstruction* new_while = FindFirstWhile(m.get());
   Shape new_while_shape = ParseShape("(s32[], s32[])").value();
+  EXPECT_TRUE(ShapeUtil::Equal(new_while->shape(), new_while_shape));
+  EXPECT_TRUE(ShapeUtil::Equal(
+      new_while->while_body()->root_instruction()->shape(), new_while_shape));
+  EXPECT_TRUE(ShapeUtil::Equal(
+      new_while->while_body()->parameter_instruction(0)->shape(),
+      new_while_shape));
+  EXPECT_TRUE(ShapeUtil::Equal(
+      new_while->while_condition()->parameter_instruction(0)->shape(),
+      new_while_shape));
+}
+
+TEST_F(WhileLoopSimplifierTest, RemoveTrivialCompare) {
+  const std::string hlo_template = R"(
+  HloModule RemoveTrivialCompare
+  RemoveTrivialCompare.body {
+    loop_var = (pred[], s32[]) parameter(0)
+
+    get-tuple-element.2 = s32[] get-tuple-element((pred[], s32[]) loop_var), index=1
+
+    cons = s32[] constant({{LOOP_CONSTANT}})
+    comp = pred[] compare(get-tuple-element.2, cons), direction={{DIRECTION}}
+
+    constant.1 = s32[] constant(1)
+    add = s32[] add(s32[] get-tuple-element.2, s32[] constant.1)
+    ROOT tuple = (pred[], s32[]) tuple(comp,
+      s32[] add)
+  }
+  RemoveTrivialCompare.loop_condition {
+    constant.2 = s32[] constant(10)
+    param0 = (pred[], s32[]) parameter(0)
+    get-tuple-element = s32[] get-tuple-element((pred[], s32[]) param0),
+      index=1
+    ROOT equal-to = pred[] compare(s32[] get-tuple-element, s32[] constant.2), direction=LT
+  }
+  ENTRY RemoveTrivialCompare {
+    constant.3 = s32[] constant(1)
+    t = pred[] constant(true)
+    tuple.1 = (pred[], s32[]) tuple(t, s32[] constant.3)
+    ROOT while = (pred[], s32[]) while((pred[], s32[]) tuple.1),
+      condition=RemoveTrivialCompare.loop_condition,
+      body=RemoveTrivialCompare.body
+  }
+  )";
+
+  for (std::string dir : {"LT", "GT"}) {
+    for (int i = 1; i > -5; i--) {
+      std::string hlo_string = absl::StrReplaceAll(
+          hlo_template,
+          {{"{{LOOP_CONSTANT}}", absl::StrCat(i)}, {"{{DIRECTION}}", dir}});
+
+      auto m = ParseAndReturnVerifiedModule(hlo_string).value();
+      EXPECT_TRUE(WhileLoopSimplifier(/*simplify_compare_instrs=*/true)
+                      .Run(m.get())
+                      .value());
+      HloInstruction* while_instr = FindFirstWhile(m.get());
+      EXPECT_THAT(while_instr->while_body()->root_instruction(),
+                  op::Tuple(op::Constant(), _));
+      EXPECT_TRUE(while_instr->while_body()
+                      ->root_instruction()
+                      ->operand(0)
+                      ->literal()
+                      .IsAll(dir == "GT"));
+    }
+
+    for (int i = 11; i < 15; i++) {
+      std::string hlo_string = absl::StrReplaceAll(
+          hlo_template,
+          {{"{{LOOP_CONSTANT}}", absl::StrCat(i)}, {"{{DIRECTION}}", dir}});
+
+      auto m = ParseAndReturnVerifiedModule(hlo_string).value();
+      EXPECT_TRUE(WhileLoopSimplifier(/*simplify_compare_instrs=*/true)
+                      .Run(m.get())
+                      .value());
+      HloInstruction* while_instr = FindFirstWhile(m.get());
+      EXPECT_THAT(while_instr->while_body()->root_instruction(),
+                  op::Tuple(op::Constant(), _));
+      EXPECT_TRUE(while_instr->while_body()
+                      ->root_instruction()
+                      ->operand(0)
+                      ->literal()
+                      .IsAll(dir == "LT"));
+    }
+  }
+}
+
+TEST_F(WhileLoopSimplifierTest, NotRemoveCompare) {
+  const std::string hlo_string = R"(
+  HloModule RemoveTrivialCompare
+  RemoveTrivialCompare.body {
+    loop_var = (pred[], s32[]) parameter(0)
+
+    get-tuple-element.2 = s32[] get-tuple-element((pred[], s32[]) loop_var), index=1
+
+    five = s32[] constant(5)
+    comp = pred[] compare(get-tuple-element.2, five), direction=LT
+
+    constant.1 = s32[] constant(1)
+    add = s32[] add(s32[] get-tuple-element.2, s32[] constant.1)
+    ROOT tuple = (pred[], s32[]) tuple(comp,
+      s32[] add)
+  }
+  RemoveTrivialCompare.loop_condition {
+    constant.2 = s32[] constant(10)
+    param0 = (pred[], s32[]) parameter(0)
+    get-tuple-element = s32[] get-tuple-element((pred[], s32[]) param0),
+      index=1
+    ROOT equal-to = pred[] compare(s32[] get-tuple-element, s32[] constant.2), direction=LT
+  }
+  ENTRY RemoveTrivialCompare {
+    constant.3 = s32[] constant(0)
+    t = pred[] constant(true)
+    tuple.1 = (pred[], s32[]) tuple(t, s32[] constant.3)
+    ROOT while = (pred[], s32[]) while((pred[], s32[]) tuple.1),
+      condition=RemoveTrivialCompare.loop_condition,
+      body=RemoveTrivialCompare.body
+  }
+  )";
+
+  auto m = ParseAndReturnVerifiedModule(hlo_string).value();
+  EXPECT_FALSE(WhileLoopSimplifier(/*simplify_compare_instrs=*/true)
+                   .Run(m.get())
+                   .value());
+}
+
+TEST_F(WhileLoopSimplifierTest, RemoveDynUpdSlice) {
+  const std::string hlo_string = R"(
+HloModule jit_scan
+
+%region_0.6 (arg_tuple.7: (s32[], f32[], f32[3], f32[3])) -> (s32[], f32[], f32[3], f32[3]) {
+  %arg_tuple.7 = (s32[], f32[], f32[3]{0}, f32[3]{0}) parameter(0)
+  %get-tuple-element.8 = s32[] get-tuple-element((s32[], f32[], f32[3]{0}, f32[3]{0}) %arg_tuple.7), index=0
+  %constant.12 = s32[] constant(1)
+  %add.28 = s32[] add(s32[] %get-tuple-element.8, s32[] %constant.12)
+  %get-tuple-element.9 = f32[] get-tuple-element((s32[], f32[], f32[3]{0}, f32[3]{0}) %arg_tuple.7), index=1
+  %sine.15 = f32[] sine(f32[] %get-tuple-element.9)
+  %get-tuple-element.10 = f32[3]{0} get-tuple-element((s32[], f32[], f32[3]{0}, f32[3]{0}) %arg_tuple.7), index=2
+  %cosine.16 = f32[] cosine(f32[] %get-tuple-element.9)
+  %reshape.18 = f32[1]{0} reshape(f32[] %cosine.16)
+  %constant.14 = s32[] constant(0)
+  %compare.19 = pred[] compare(s32[] %get-tuple-element.8, s32[] %constant.14), direction=LT
+  %constant.13 = s32[] constant(3)
+  %add.20 = s32[] add(s32[] %get-tuple-element.8, s32[] %constant.13)
+  %select.21 = s32[] select(pred[] %compare.19, s32[] %add.20, s32[] %get-tuple-element.8)
+  %dynamic-update-slice.22 = f32[3]{0} dynamic-update-slice(f32[3]{0} %get-tuple-element.10, f32[1]{0} %reshape.18, s32[] %select.21)
+  %get-tuple-element.11 = f32[3]{0} get-tuple-element((s32[], f32[], f32[3]{0}, f32[3]{0}) %arg_tuple.7), index=3
+  %dynamic-update-slice.27 = f32[3]{0} dynamic-update-slice(f32[3]{0} %get-tuple-element.11, f32[1]{0} %reshape.18, s32[] %select.21)
+  ROOT %tuple.29 = (s32[], f32[], f32[3]{0}, f32[3]{0}) tuple(s32[] %add.28, f32[] %sine.15, f32[3]{0} %dynamic-update-slice.22, f32[3]{0} %dynamic-update-slice.27)
+}
+
+%region_1.30 (arg_tuple.31: (s32[], f32[], f32[3], f32[3])) -> pred[] {
+  %arg_tuple.31 = (s32[], f32[], f32[3]{0}, f32[3]{0}) parameter(0)
+  %get-tuple-element.32 = s32[] get-tuple-element((s32[], f32[], f32[3]{0}, f32[3]{0}) %arg_tuple.31), index=0
+  %constant.36 = s32[] constant(3)
+  ROOT %compare.37 = pred[] compare(s32[] %get-tuple-element.32, s32[] %constant.36), direction=LT
+}
+
+ENTRY %main.44 (Arg_0.1: f32[]) -> (f32[], f32[3], f32[3]) {
+  %constant.4 = s32[] constant(0)
+  %Arg_0.1 = f32[] parameter(0), sharding={replicated}
+  %constant.2 = f32[] constant(0)
+  %broadcast.3 = f32[3]{0} broadcast(f32[] %constant.2), dimensions={}
+  %tuple.5 = (s32[], f32[], f32[3]{0}, f32[3]{0}) tuple(s32[] %constant.4, f32[] %Arg_0.1, f32[3]{0} %broadcast.3, f32[3]{0} %broadcast.3)
+  %while.38 = (s32[], f32[], f32[3]{0}, f32[3]{0}) while((s32[], f32[], f32[3]{0}, f32[3]{0}) %tuple.5), condition=%region_1.30, body=%region_0.6
+  %get-tuple-element.40 = f32[] get-tuple-element((s32[], f32[], f32[3]{0}, f32[3]{0}) %while.38), index=1
+  %get-tuple-element.41 = f32[3]{0} get-tuple-element((s32[], f32[], f32[3]{0}, f32[3]{0}) %while.38), index=2
+  %get-tuple-element.42 = f32[3]{0} get-tuple-element((s32[], f32[], f32[3]{0}, f32[3]{0}) %while.38), index=3
+  ROOT %tuple.43 = (f32[], f32[3]{0}, f32[3]{0}) tuple(f32[] %get-tuple-element.40, f32[3]{0} %get-tuple-element.41, f32[3]{0} %get-tuple-element.42)
+})";
+  auto m = ParseAndReturnVerifiedModule(hlo_string).value();
+  ASSERT_TRUE(WhileLoopSimplifier().Run(m.get()).value());
+  HloInstruction* new_while = FindFirstWhile(m.get());
+  Shape new_while_shape = ParseShape("(s32[], f32[], f32[3]{0})").value();
   EXPECT_TRUE(ShapeUtil::Equal(new_while->shape(), new_while_shape));
   EXPECT_TRUE(ShapeUtil::Equal(
       new_while->while_body()->root_instruction()->shape(), new_while_shape));

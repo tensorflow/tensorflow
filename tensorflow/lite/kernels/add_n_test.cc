@@ -16,6 +16,7 @@ limitations under the License.
 
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "flatbuffers/flatbuffers.h"  // from @flatbuffers
 #include "tensorflow/lite/kernels/add_n_test_common.h"
@@ -36,7 +37,8 @@ TEST(FloatAddNOpModel, AddMultipleTensors) {
   m.PopulateTensor<float>(m.input(1), {0.1, 0.2, 0.3, 0.5});
   m.PopulateTensor<float>(m.input(2), {0.5, 0.1, 0.1, 0.2});
   ASSERT_EQ(m.Invoke(), kTfLiteOk);
-  EXPECT_THAT(m.GetOutput(), ElementsAreArray({-1.4, 0.5, 1.1, 1.5}));
+  EXPECT_THAT(m.GetOutput(),
+              Pointwise(FloatingPointEq(), {-1.4, 0.5, 1.1, 1.5}));
 }
 
 TEST(FloatAddNOpModel, Add2Tensors) {
@@ -46,7 +48,8 @@ TEST(FloatAddNOpModel, Add2Tensors) {
   m.PopulateTensor<float>(m.input(0), {-2.0, 0.2, 0.7, 0.8});
   m.PopulateTensor<float>(m.input(1), {0.1, 0.2, 0.3, 0.5});
   ASSERT_EQ(m.Invoke(), kTfLiteOk);
-  EXPECT_THAT(m.GetOutput(), ElementsAreArray({-1.9, 0.4, 1.0, 1.3}));
+  EXPECT_THAT(m.GetOutput(),
+              Pointwise(FloatingPointEq(), {-1.9, 0.4, 1.0, 1.3}));
 }
 
 TEST(IntegerAddNOpModel, AddMultipleTensors) {

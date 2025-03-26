@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -18,9 +18,10 @@ limitations under the License.
 #include <functional>
 #include <utility>
 
+#include "absl/status/status.h"
+#include "xla/hlo/testlib/filecheck.h"
 #include "xla/service/llvm_ir/llvm_util.h"
-#include "xla/tests/filecheck.h"
-#include "tsl/lib/core/status_test_util.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "tsl/platform/test.h"
 
 namespace xla {
@@ -50,13 +51,13 @@ void LlvmIrGenTestBase::CompileAndVerifyIr(
     std::unique_ptr<HloModule> hlo_module, const std::string& pattern,
     bool match_optimized_ir, bool run_optimization_passes) {
   SetIrHook(match_optimized_ir);
-  Status status =
+  absl::Status status =
       CompileToExecutable(std::move(hlo_module), run_optimization_passes)
           .status();
   ResetIrHook();
   TF_ASSERT_OK(status);
 
-  StatusOr<bool> filecheck_result = RunFileCheck(ir_, pattern);
+  absl::StatusOr<bool> filecheck_result = RunFileCheck(ir_, pattern);
   TF_ASSERT_OK(filecheck_result.status());
   EXPECT_TRUE(filecheck_result.value()) << "Full IR: " << ir_;
 }
@@ -77,12 +78,12 @@ void LlvmIrGenTestBase::CompileAheadOfTimeAndVerifyIr(
     std::unique_ptr<HloModule> hlo_module, const AotCompilationOptions& options,
     const std::string& pattern, bool match_optimized_ir) {
   SetIrHook(match_optimized_ir);
-  Status status =
+  absl::Status status =
       CompileToAotCompilationResult(std::move(hlo_module), options).status();
   ResetIrHook();
   TF_ASSERT_OK(status);
 
-  StatusOr<bool> filecheck_result = RunFileCheck(ir_, pattern);
+  absl::StatusOr<bool> filecheck_result = RunFileCheck(ir_, pattern);
   ASSERT_TRUE(filecheck_result.ok());
   EXPECT_TRUE(filecheck_result.value()) << "Full IR: " << ir_;
 }
@@ -91,9 +92,9 @@ LLVMCompiler* LlvmIrGenTestBase::GetLLVMCompiler() {
   return static_cast<LLVMCompiler*>(backend().compiler());
 }
 
-Status LlvmIrGenTestBase::IrHook(const llvm::Module& module) {
+absl::Status LlvmIrGenTestBase::IrHook(const llvm::Module& module) {
   ir_ = llvm_ir::DumpToString(&module);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace xla

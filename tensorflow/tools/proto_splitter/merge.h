@@ -20,6 +20,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/status/status.h"
+#include "absl/strings/string_view.h"
 #include "riegeli/bytes/fd_reader.h"  // from @riegeli
 #include "riegeli/records/record_reader.h"  // from @riegeli
 #include "tensorflow/tools/proto_splitter/chunk.pb.h"
@@ -41,7 +42,7 @@ class Merger {
   // TODO(b/282775853): Integrate Splitter return type with Merge input type
   static absl::Status Merge(
       const std::vector<std::unique_ptr<tsl::protobuf::Message>>& chunks,
-      const ::proto_splitter::ChunkedMessage& chunked_message,
+      const ::tensorflow::proto_splitter::ChunkedMessage& chunked_message,
       tsl::protobuf::Message* merged_message);
 
   // Reads a TF SavedModel chunked protobuf from `prefix` (must be .pb or .cpb)
@@ -56,7 +57,7 @@ class Merger {
   // Like `Merger::Read`, but only reads what's specified in `chunk_metadata`.
   static absl::Status ReadPartial(
       absl::string_view prefix,
-      const ::proto_splitter::ChunkMetadata& chunk_metadata,
+      const ::tensorflow::proto_splitter::ChunkMetadata& chunk_metadata,
       tsl::protobuf::Message* merged_message);
 
  private:
@@ -67,9 +68,9 @@ class Merger {
   // Uses metadata contained in `chunked_message` to fill `merged_message` with
   // data accessed by the `reader` using `chunks_info`.
   static absl::Status ReadFields(
-      const ::proto_splitter::ChunkedMessage& chunked_message,
+      const ::tensorflow::proto_splitter::ChunkedMessage& chunked_message,
       riegeli::RecordReader<riegeli::FdReader<>>& reader,
-      const std::vector<::proto_splitter::ChunkInfo>&
+      const std::vector<::tensorflow::proto_splitter::ChunkInfo>&
           chunks_info,  // TODO(adamcogdell): this can just be a
                         // RepeatedPtrField
       tsl::protobuf::Message* merged_message);
@@ -80,9 +81,9 @@ class Merger {
   // value of `op`) to add those fields to `merged_message`. Otherwise, the
   // field is simply added to `merged_message` using reflection.
   static absl::Status ProcessField(
-      const ::proto_splitter::ChunkedField& chunked_field,
+      const ::tensorflow::proto_splitter::ChunkedField& chunked_field,
       tsl::protobuf::Message* merged_message,
-      const std::vector<::proto_splitter::ChunkInfo>& chunks_info,
+      const std::vector<::tensorflow::proto_splitter::ChunkInfo>& chunks_info,
       const std::vector<std::unique_ptr<tsl::protobuf::Message>>& chunks,
       riegeli::RecordReader<riegeli::FdReader<>>& reader, MergerOp op);
 };

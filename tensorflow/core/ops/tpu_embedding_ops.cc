@@ -62,7 +62,7 @@ REGISTER_OP("RecvTPUEmbeddingActivations")
     .Attr("num_outputs: int >= 1")
     .Attr("config: string")
     .SetIsStateful()
-    .SetShapeFn([](shape_inference::InferenceContext* c) -> Status {
+    .SetShapeFn([](shape_inference::InferenceContext* c) -> absl::Status {
       std::string config_string;
       TF_RETURN_IF_ERROR(c->GetAttr("config", &config_string));
       tpu::TPUEmbeddingConfiguration config;
@@ -80,7 +80,7 @@ REGISTER_OP("RecvTPUEmbeddingActivations")
             c->MakeShapeFromShapeProto(output_shapes[i], &output_shape));
         c->set_output(i, output_shape);
       }
-      return OkStatus();
+      return absl::OkStatus();
     });
 
 REGISTER_OP("TPUEmbeddingActivations")
@@ -91,7 +91,7 @@ REGISTER_OP("TPUEmbeddingActivations")
     .Attr("lookup_id: int >= 0")
     .SetShapeFn([](shape_inference::InferenceContext *c) {
       c->set_output(0, c->input(1));
-      return OkStatus();
+      return absl::OkStatus();
     });
 
 REGISTER_OP("SendTPUEmbeddingGradients")
@@ -101,7 +101,7 @@ REGISTER_OP("SendTPUEmbeddingGradients")
     .Attr("NN: int >= 0 = 0")
     .Attr("config: string")
     .SetIsStateful()
-    .SetShapeFn([](shape_inference::InferenceContext* c) -> Status {
+    .SetShapeFn([](shape_inference::InferenceContext* c) -> absl::Status {
       int nn;
       TF_RETURN_IF_ERROR(c->GetAttr("NN", &nn));
       std::vector<shape_inference::ShapeHandle> learning_rates;
@@ -113,7 +113,7 @@ REGISTER_OP("SendTPUEmbeddingGradients")
             c->WithRank(learning_rates[i], 0, &learning_rates_shape));
       }
 
-      return OkStatus();
+      return absl::OkStatus();
     });
 
 REGISTER_OP("EnqueueTPUEmbeddingIntegerBatch")
@@ -136,7 +136,7 @@ REGISTER_OP("EnqueueTPUEmbeddingSparseBatch")
     .Attr("device_ordinal: int = -1")
     .Attr("combiners: list(string) = []")
     .SetIsStateful()
-    .SetShapeFn([](shape_inference::InferenceContext* c) -> Status {
+    .SetShapeFn([](shape_inference::InferenceContext* c) -> absl::Status {
       std::vector<string> combiners;
       TF_RETURN_IF_ERROR(c->GetAttr("combiners", &combiners));
       int n;
@@ -147,7 +147,7 @@ REGISTER_OP("EnqueueTPUEmbeddingSparseBatch")
                                        n);
       }
 
-      return OkStatus();
+      return absl::OkStatus();
     });
 
 REGISTER_OP("EnqueueTPUEmbeddingSparseTensorBatch")

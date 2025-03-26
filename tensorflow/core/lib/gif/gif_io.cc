@@ -20,6 +20,7 @@ limitations under the License.
 #include <algorithm>
 
 #include "absl/strings/str_cat.h"
+#include "gif_lib.h"  // from @gif
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/platform/gif.h"
 #include "tensorflow/core/platform/logging.h"
@@ -78,11 +79,14 @@ uint8* Decode(const void* srcdata, int datasize,
   if (DGifSlurp(gif_file) != GIF_OK) {
     *error_string = absl::StrCat("failed to slurp gif file: ",
                                  GifErrorStringNonNull(gif_file->Error));
-    // Only stop load if no images are detected.
-    if (gif_file->ImageCount <= 0) {
+    // Stop load if no images are detected or the allocation of the last image
+    // buffer was failed.
+    if (gif_file->ImageCount <= 0 ||
+        gif_file->SavedImages[gif_file->ImageCount - 1].RasterBits == nullptr ||
+        gif_file->Error == D_GIF_ERR_EOF_TOO_SOON) {
       return nullptr;
     }
-    LOG(WARNING) << *error_string;
+    LOG(ERROR) << *error_string;
   }
 
   if (gif_file->ImageCount <= 0) {
@@ -178,13 +182,6 @@ uint8* Decode(const void* srcdata, int datasize,
             this_image->RasterBits[(i - img_desc->Top) * (img_desc->Width) +
                                    (j - img_desc->Left)];
 
-        if (color_index >= color_map->ColorCount) {
-          *error_string = absl::StrCat("found color index ", color_index,
-                                       " outside of color map range ",
-                                       color_map->ColorCount);
-          return nullptr;
-        }
-
         if (color_index == gcb.TransparentColor) {
           // Use the pixel from the previous frame, or 0 if there was no
           // previous frame.
@@ -194,6 +191,13 @@ uint8* Decode(const void* srcdata, int datasize,
             p_dst[j * channel + 2] = 0;
           }
           continue;
+        }
+
+        if (color_index >= color_map->ColorCount) {
+          *error_string = absl::StrCat("found color index ", color_index,
+                                       " outside of color map range ",
+                                       color_map->ColorCount);
+          return nullptr;
         }
 
         const GifColorType& gif_color = color_map->Colors[color_index];

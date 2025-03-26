@@ -16,12 +16,13 @@ limitations under the License.
 #ifndef TENSORFLOW_TSL_PLATFORM_FINGERPRINT_H_
 #define TENSORFLOW_TSL_PLATFORM_FINGERPRINT_H_
 
+#include "xla/tsl/platform/types.h"
+#include "tsl/platform/platform.h"
 #include "tsl/platform/stringpiece.h"
-#include "tsl/platform/types.h"
 
-// The following line is used by copybara to set or unset the USE_OSS_FARMHASH
-// preprocessor symbol as needed. Please do not remove.
+#if TSL_IS_IN_OSS
 #define USE_OSS_FARMHASH
+#endif  // TSL_IS_IN_OSS
 
 #ifdef USE_OSS_FARMHASH
 #include <farmhash.h>
@@ -77,7 +78,7 @@ inline uint64_t FingerprintCat64(const uint64_t fp1, const uint64_t fp2) {
 
 // This is a portable fingerprint interface for strings that will never change.
 // However, it is not suitable for cryptography.
-inline uint64_t Fingerprint64(const tsl::StringPiece s) {
+inline uint64_t Fingerprint64(const absl::string_view s) {
 #ifdef USE_OSS_FARMHASH
   return ::util::Fingerprint64(s.data(), s.size());
 #else
@@ -91,7 +92,7 @@ inline uint64_t Fingerprint64(const tsl::StringPiece s) {
 }
 
 // 32-bit variant of Fingerprint64 above (same properties and caveats apply).
-inline uint32_t Fingerprint32(const tsl::StringPiece s) {
+inline uint32_t Fingerprint32(const absl::string_view s) {
 #ifdef USE_OSS_FARMHASH
   return ::util::Fingerprint32(s.data(), s.size());
 #else
@@ -100,7 +101,7 @@ inline uint32_t Fingerprint32(const tsl::StringPiece s) {
 }
 
 // 128-bit variant of Fingerprint64 above (same properties and caveats apply).
-inline Fprint128 Fingerprint128(const tsl::StringPiece s) {
+inline Fprint128 Fingerprint128(const absl::string_view s) {
 #ifdef USE_OSS_FARMHASH
   const auto fingerprint = ::util::Fingerprint128(s.data(), s.size());
   return {::util::Uint128Low64(fingerprint),

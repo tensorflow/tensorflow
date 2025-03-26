@@ -32,11 +32,11 @@ limitations under the License.
 namespace tflite {
 namespace {
 
-void RunSoftmaxFloatReference(const uint8* input_data,
+void RunSoftmaxFloatReference(const uint8_t* input_data,
                               const RuntimeShape& shape_common,
-                              int32 input_offset, const double input_scale,
+                              int32_t input_offset, const double input_scale,
                               int stride, float beta,
-                              uint8* reference_output_data) {
+                              uint8_t* reference_output_data) {
   const int ref_buffer_size = shape_common.FlatSize();
   std::vector<float> reference_dequant_data(ref_buffer_size);
   std::vector<float> reference_output_float_data(ref_buffer_size);
@@ -103,18 +103,18 @@ void CheckOutputData(const T* test_output, const T* reference_output,
 
 // Runs the Softmax and compares against the float reference implementation and
 // the quantized reference implementation.
-void RunOneSoftmaxTest(const uint8* input_data,
-                       const RuntimeShape& shape_common, int32 input_offset,
+void RunOneSoftmaxTest(const uint8_t* input_data,
+                       const RuntimeShape& shape_common, int32_t input_offset,
                        const double input_scale, int stride, float beta) {
   const int buffer_size = shape_common.FlatSize();
-  std::vector<uint8> optimized_softmax_output(buffer_size);
-  std::vector<uint8> reference_float_softmax_output(buffer_size);
-  std::vector<uint8> reference_quant_softmax_output(buffer_size);
+  std::vector<uint8_t> optimized_softmax_output(buffer_size);
+  std::vector<uint8_t> reference_float_softmax_output(buffer_size);
+  std::vector<uint8_t> reference_quant_softmax_output(buffer_size);
 
   RunSoftmaxFloatReference(input_data, shape_common, input_offset, input_scale,
                            stride, beta, reference_float_softmax_output.data());
 
-  int32 input_beta_multiplier;
+  int32_t input_beta_multiplier;
   int input_beta_left_shift;
   static const int kScaledDiffIntegerBits = 5;
   tflite::PreprocessSoftmaxScaling(beta, input_scale, kScaledDiffIntegerBits,
@@ -180,14 +180,14 @@ bool TryOneUniformSoftmax() {
   const int input_height = ExponentialRandomPositiveInt(0.8f, 20, 200);
   const int stride = ExponentialRandomPositiveInt(0.9f, 3, 8);
   const double input_scale = std::pow(10.0, UniformRandomFloat(-2.0, 1.0));
-  const int32 input_offset = UniformRandomInt(-256, 0);
+  const int32_t input_offset = UniformRandomInt(-256, 0);
   const float beta = 1.0f + ExponentialRandomPositiveFloat(0.9f, 2, 10);
 
   auto shape_common =
       RuntimeShape({batch, input_height, input_width, input_depth});
   const int buffer_size = shape_common.FlatSize();
 
-  std::vector<uint8> input_data(buffer_size);
+  std::vector<uint8_t> input_data(buffer_size);
   FillRandom(&input_data);
   RunOneSoftmaxTest(input_data.data(), shape_common, input_offset, input_scale,
                     stride, beta);
@@ -213,7 +213,7 @@ bool TryOneSkyscraperSoftmax(bool small_depth) {
   const int input_height = ExponentialRandomPositiveInt(0.7f, 20, 200);
   const int stride = ExponentialRandomPositiveInt(0.9f, 3, 8);
   const double input_scale = std::pow(10.0, UniformRandomFloat(-2.0, 1.0));
-  const int32 input_offset = UniformRandomInt(-256, 0);
+  const int32_t input_offset = UniformRandomInt(-256, 0);
   const float beta = 1.0f + ExponentialRandomPositiveFloat(0.9f, 2, 10);
   // Extra parameters for skyscraper input patterns.
   const double middle_proportion =
@@ -225,7 +225,7 @@ bool TryOneSkyscraperSoftmax(bool small_depth) {
       RuntimeShape({batch, input_height, input_width, input_depth});
   const int buffer_size = shape_common.FlatSize();
 
-  std::vector<uint8> input_data(buffer_size);
+  std::vector<uint8_t> input_data(buffer_size);
   FillRandomSkyscraper(&input_data, input_depth, middle_proportion, middle_min,
                        sides_max);
   RunOneSoftmaxTest(input_data.data(), shape_common, input_offset, input_scale,

@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,11 +13,23 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cstddef>
 #include <memory>
+#include <utility>
+#include <vector>
 
+#include <gtest/gtest.h>
+#include "xla/error_spec.h"
+#include "xla/hlo/ir/hlo_computation.h"
+#include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/testlib/verified_hlo_module.h"
+#include "xla/literal_util.h"
 #include "xla/service/gpu/tests/gpu_codegen_test.h"
-#include "xla/service/hlo_parser.h"
-#include "xla/tests/filecheck.h"
+#include "xla/shape.h"
+#include "xla/shape_util.h"
+#include "xla/tests/hlo_test_base.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {
@@ -25,7 +37,8 @@ namespace gpu {
 namespace {
 
 class ParallelReductionTest : public GpuCodegenTest {
-  DebugOptions GetDebugOptionsForTest() override {
+ protected:
+  DebugOptions GetDebugOptionsForTest() const override {
     DebugOptions debug_options = GpuCodegenTest::GetDebugOptionsForTest();
     // The test contains a MOF fusion and the XLA optimizer passes
     // don't like this.
@@ -63,13 +76,12 @@ ENTRY %cluster {
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> hlo_module,
                           ParseAndReturnVerifiedModule(hlo_text));
-  CompileAndVerifyIr(std::move(hlo_module),
-                     R"(
-CHECK: reduce-group-0
-CHECK: reduce-group-1
-CHECK-NOT: reduce-group-2
-)",
-                     /*match_optimized_ir=*/false);
+
+    CompileAndVerifyIr(std::move(hlo_module),
+                       R"(CHECK:      switch {{.*}} label {{.*}} [
+                          CHECK-NEXT:   label
+                          CHECK-NEXT: ])",
+                       /*match_optimized_ir=*/false);
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
 }
 
@@ -104,54 +116,12 @@ ENTRY %cluster {
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> hlo_module,
                           ParseAndReturnVerifiedModule(hlo_text));
-  CompileAndVerifyIr(std::move(hlo_module),
-                     R"(
-CHECK: reduce-group-0
-CHECK: reduce-group-1
-CHECK-NOT: reduce-group-2
-)",
-                     /*match_optimized_ir=*/false);
+    CompileAndVerifyIr(std::move(hlo_module),
+                       R"(CHECK:      switch {{.*}} label {{.*}} [
+                          CHECK-NEXT:   label
+                          CHECK-NEXT: ])",
+                       /*match_optimized_ir=*/false);
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
-}
-
-TEST_F(ParallelReductionTest,
-       UnnestedReductionWithLoopReductionDifferentShape) {
-  const char* hlo = R"(
-
-HloModule module
-
-max {
-  a = f32[] parameter(0)
-  b = f32[] parameter(1)
-  ROOT c = f32[] maximum(a, b)
-}
-
-fused_computation {
-  one_1_clone_1 = f32[] constant(1)
-  one_b.1.clone.1 = f32[100,200]{1,0} broadcast(one_1_clone_1), dimensions={}
-  param_1.9 = f16[100,200]{1,0} parameter(1)
-  c.2.clone.1 = f32[100,200]{1,0} convert(param_1.9)
-  param_0.6 = f32[] parameter(0)
-  b.2.clone.1 = f32[100,200]{1,0} broadcast(param_0.6), dimensions={}
-  d.1.clone.1 = f32[100,200]{1,0} divide(c.2.clone.1, b.2.clone.1)
-  a.2.clone.1 = f32[100,200]{1,0} add(one_b.1.clone.1, d.1.clone.1)
-  bitcast.1 = f32[20000]{0} bitcast(a.2.clone.1)
-  z_1 = f32[] constant(0)
-  r.1 = f32[] reduce(bitcast.1, z_1), dimensions={0}, to_apply=max
-  ROOT tuple = (f32[], f32[100,200]{1,0}) tuple(r.1, a.2.clone.1)
-}
-
-ENTRY computation {
-  input_scale = f32[] parameter(1)
-  p = f16[100,200]{1,0} parameter(0)
-  fusion = (f32[], f32[100,200]{1,0}) fusion(input_scale, p), kind=kInput, calls=fused_computation
-  get-tuple-element.1 = f32[100,200]{1,0} get-tuple-element(fusion), index=1
-  get-tuple-element = f32[] get-tuple-element(fusion), index=0
-  ROOT out = (f32[100,200]{1,0}, f32[]) tuple(get-tuple-element.1, get-tuple-element)
-}
-
-  )";
-  EXPECT_TRUE(RunAndCompare(hlo, ErrorSpec{1e-5, 1e-5}));
 }
 
 TEST_F(ParallelReductionTest, UnnestedReductionWithLoopReduction) {
@@ -335,13 +305,12 @@ ENTRY %cluster {
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> hlo_module,
                           ParseAndReturnVerifiedModule(hlo_text));
-  CompileAndVerifyIr(std::move(hlo_module),
-                     R"(
-CHECK: reduce-group-0
-CHECK: reduce-group-1
-CHECK-NOT: reduce-group-2
-)",
-                     /*match_optimized_ir=*/false);
+
+    CompileAndVerifyIr(std::move(hlo_module),
+                       R"(CHECK:      switch {{.*}} label {{.*}} [
+                          CHECK-NEXT:   label
+                          CHECK-NEXT: ])",
+                       /*match_optimized_ir=*/false);
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
 }
 

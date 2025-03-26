@@ -30,7 +30,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/tf2xla_util.h"
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
-#include "xla/client/xla_computation.h"
+#include "xla/hlo/builder/xla_computation.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/graph.pb.h"
@@ -54,9 +54,10 @@ namespace {
 
 // Converts the TensorFlow graph into an XLA computation, by executing the
 // graph symbolically, with each op building up the XLA HLO.
-Status ConvertGraphToXla(std::unique_ptr<Graph> graph,
-                         const tf2xla::Config& config, xla::Client* client,
-                         xla::XlaComputation* computation) {
+absl::Status ConvertGraphToXla(std::unique_ptr<Graph> graph,
+                               const tf2xla::Config& config,
+                               xla::Client* client,
+                               xla::XlaComputation* computation) {
   XlaOpRegistry::RegisterCompilationKernels();
   for (Node* node : graph->nodes()) {
     node->set_assigned_device_name(
@@ -125,11 +126,11 @@ Status ConvertGraphToXla(std::unique_ptr<Graph> graph,
       ++input_index;
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status ConvertVarHandlesToAotVarHandles(GraphDef* graph_def) {
-  auto update_var_handle_op_node = [](NodeDef& node) -> Status {
+absl::Status ConvertVarHandlesToAotVarHandles(GraphDef* graph_def) {
+  auto update_var_handle_op_node = [](NodeDef& node) -> absl::Status {
     if (node.op() == "VarHandleOp") {
       node.set_op(tfcompile::kXlaAotOnlyVarHandleOp);
       const auto& it = node.attr().find("allowed_devices");
@@ -141,7 +142,7 @@ Status ConvertVarHandlesToAotVarHandles(GraphDef* graph_def) {
         node.mutable_attr()->erase("allowed_devices");
       }
     }
-    return OkStatus();
+    return absl::OkStatus();
   };
   for (auto& node : *graph_def->mutable_node()) {
     TF_RETURN_IF_ERROR(update_var_handle_op_node(node));
@@ -151,20 +152,21 @@ Status ConvertVarHandlesToAotVarHandles(GraphDef* graph_def) {
       TF_RETURN_IF_ERROR(update_var_handle_op_node(node));
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace
 
-Status ConvertGraphDefToXla(GraphDef graph_def, const tf2xla::Config& config,
-                            xla::Client* client,
-                            xla::XlaComputation* computation) {
+absl::Status ConvertGraphDefToXla(GraphDef graph_def,
+                                  const tf2xla::Config& config,
+                                  xla::Client* client,
+                                  xla::XlaComputation* computation) {
   std::unique_ptr<Graph> graph;
   TF_RETURN_IF_ERROR(ConvertVarHandlesToAotVarHandles(&graph_def));
   TF_RETURN_IF_ERROR(InitGraph(graph_def, config, &graph));
   TF_RETURN_IF_ERROR(
       ConvertGraphToXla(std::move(graph), config, client, computation));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace tensorflow

@@ -18,17 +18,17 @@ limitations under the License.
 #include <string>
 #include <vector>
 
-#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "tensorflow/core/util/command_line_flags.h"
 #include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/api/op_resolver.h"
 #include "tensorflow/lite/delegates/hexagon/hexagon_delegate.h"
 #include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/interpreter_builder.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/kernels/register.h"
-#include "tensorflow/lite/kernels/test_util.h"
 #include "tensorflow/lite/model_builder.h"
+#include "tensorflow/lite/string_type.h"
 #include "tensorflow/lite/testing/util.h"
 #include "tensorflow/lite/tools/benchmark/benchmark_utils.h"
 #include "tensorflow/lite/tools/logging.h"

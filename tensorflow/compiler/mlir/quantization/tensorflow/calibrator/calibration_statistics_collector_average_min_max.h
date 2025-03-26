@@ -17,6 +17,8 @@ limitations under the License.
 
 #include <optional>
 
+#include "absl/types/span.h"
+#include "tensorflow/compiler/mlir/quantization/stablehlo/quantization_config.pb.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/calibrator/calibration_statistics.pb.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/calibrator/calibration_statistics_collector_base.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/quantization_options.pb.h"
@@ -24,7 +26,7 @@ limitations under the License.
 namespace tensorflow {
 namespace calibrator {
 
-using tensorflow::quantization::CalibrationOptions;
+using ::stablehlo::quantization::CalibrationOptions;
 
 // AverageMinMax calibration calculates the average of min and max values.
 // average of min = sum of min values / number of samples
@@ -36,7 +38,8 @@ class CalibrationStatisticsCollectorAverageMinMax
 
   void ClearData() override;
 
-  void Collect(const float *data, unsigned int N) override;
+  void Collect(float min, float max,
+               absl::Span<const int64_t> histogram) override;
 
   std::optional<CalibrationStatistics> GetStatistics() const override;
 

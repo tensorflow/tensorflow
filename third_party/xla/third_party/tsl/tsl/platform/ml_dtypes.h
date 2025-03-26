@@ -16,20 +16,27 @@ limitations under the License.
 #ifndef TENSORFLOW_TSL_PLATFORM_ML_DTYPES_H_
 #define TENSORFLOW_TSL_PLATFORM_ML_DTYPES_H_
 
-#include "ml_dtypes/include/float8.h"  // from @ml_dtypes
-#include "ml_dtypes/include/int4.h"  // from @ml_dtypes
+#include "ml_dtypes/include/float8.h"  // from @ml_dtypes_py
+#include "ml_dtypes/include/intn.h"  // from @ml_dtypes_py
+#include "ml_dtypes/include/mxfloat.h"  // from @ml_dtypes_py
 
 namespace tsl {
-using float8_e4m3fn = ml_dtypes::float8_e4m3fn;
-using float8_e4m3fnuz = ml_dtypes::float8_e4m3fnuz;
-using float8_e4m3b11fnuz = ml_dtypes::float8_e4m3b11fnuz;
-using float8_e4m3b11 = float8_e4m3b11fnuz;  // Deprecated: old name for
-                                            // backward-compatibility only.
-using float8_e5m2 = ml_dtypes::float8_e5m2;
-using float8_e5m2fnuz = ml_dtypes::float8_e5m2fnuz;
+using float4_e2m1fn = ::ml_dtypes::float4_e2m1fn;
+using float8_e3m4 = ::ml_dtypes::float8_e3m4;
+using float8_e4m3 = ::ml_dtypes::float8_e4m3;
+using float8_e4m3fn = ::ml_dtypes::float8_e4m3fn;
+using float8_e4m3fnuz = ::ml_dtypes::float8_e4m3fnuz;
+using float8_e4m3b11fnuz = ::ml_dtypes::float8_e4m3b11fnuz;
+using float8_e5m2 = ::ml_dtypes::float8_e5m2;
+using float8_e5m2fnuz = ::ml_dtypes::float8_e5m2fnuz;
+using float8_e8m0fnu = ::ml_dtypes::float8_e8m0fnu;
 
-using int4 = ml_dtypes::int4;
-using uint4 = ml_dtypes::uint4;
+using int1 = ::ml_dtypes::int1;
+using uint1 = ::ml_dtypes::uint1;
+using int2 = ::ml_dtypes::int2;
+using uint2 = ::ml_dtypes::uint2;
+using int4 = ::ml_dtypes::int4;
+using uint4 = ::ml_dtypes::uint4;
 }  // namespace tsl
 
 #endif  // TENSORFLOW_TSL_PLATFORM_ML_DTYPES_H_

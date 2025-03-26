@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/c/experimental/saved_model/public/signature_def_param_list.h"
 
+#include <cstddef>
+
 #include "tensorflow/c/experimental/saved_model/internal/signature_def_param_list_type.h"
 #include "tensorflow/c/experimental/saved_model/internal/signature_def_param_type.h"
 

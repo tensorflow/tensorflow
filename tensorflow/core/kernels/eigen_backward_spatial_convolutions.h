@@ -17,7 +17,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_KERNELS_EIGEN_BACKWARD_SPATIAL_CONVOLUTIONS_H_
 
 #include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
-#include "tsl/framework/convolution/eigen_spatial_convolutions.h"
+#include "xla/tsl/framework/convolution/eigen_spatial_convolutions.h"
 
 namespace Eigen {
 
@@ -100,11 +100,12 @@ SpatialConvolutionBackwardInput(
     const DenseIndex row_in_stride = 1, const DenseIndex col_in_stride = 1) {
   typedef typename internal::traits<OutputBackward>::Index TensorIndex;
   typedef typename internal::traits<OutputBackward>::Scalar OutScalar;
-  TensorRef<Tensor<typename internal::traits<Kernel>::Scalar,
-                   internal::traits<Kernel>::NumDimensions,
-                   internal::traits<Kernel>::Layout, TensorIndex>>
+  TensorRef<const Tensor<typename internal::traits<Kernel>::Scalar,
+                         internal::traits<Kernel>::NumDimensions,
+                         internal::traits<Kernel>::Layout, TensorIndex>>
       kern(kernel);
-  TensorRef<Tensor<OutScalar, internal::traits<OutputBackward>::NumDimensions,
+  TensorRef<
+      const Tensor<OutScalar, internal::traits<OutputBackward>::NumDimensions,
                    internal::traits<OutputBackward>::Layout, TensorIndex>>
       out(output_backward);
 
@@ -385,11 +386,12 @@ SpatialConvolutionBackwardKernel(
     const DenseIndex row_in_stride = 1, const DenseIndex col_in_stride = 1) {
   typedef typename internal::traits<Input>::Index TensorIndex;
   typedef typename internal::traits<OutputBackward>::Scalar OutScalar;
-  TensorRef<Tensor<typename internal::traits<Input>::Scalar,
-                   internal::traits<Input>::NumDimensions,
-                   internal::traits<Input>::Layout, TensorIndex>>
+  TensorRef<const Tensor<typename internal::traits<Input>::Scalar,
+                         internal::traits<Input>::NumDimensions,
+                         internal::traits<Input>::Layout, TensorIndex>>
       in(input);
-  TensorRef<Tensor<OutScalar, internal::traits<OutputBackward>::NumDimensions,
+  TensorRef<
+      const Tensor<OutScalar, internal::traits<OutputBackward>::NumDimensions,
                    internal::traits<OutputBackward>::Layout, TensorIndex>>
       out(output_backward);
 

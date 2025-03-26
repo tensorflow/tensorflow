@@ -50,8 +50,8 @@ Node* HostConstant(Graph* g, const Tensor& tensor);
 Node* HostConstant(Graph* g, const Tensor& tensor, const string& name);
 
 // Adds a variable in "g" of the given "shape" and "dtype".
-Node* Var(Graph* g, const DataType dtype, const TensorShape& shape);
-Node* Var(Graph* g, const DataType dtype, const TensorShape& shape,
+Node* Var(Graph* g, DataType dtype, const TensorShape& shape);
+Node* Var(Graph* g, DataType dtype, const TensorShape& shape,
           const string& name);
 
 // Adds an assign node in "g" which assigns "val" into "var".
@@ -60,12 +60,12 @@ Node* Assign(Graph* g, Node* var, Node* val);
 // Adds a send node "g" sending "input" as a named "tensor" from
 // "sender" to "receiver".
 Node* Send(Graph* g, Node* input, const string& tensor, const string& sender,
-           const uint64 sender_incarnation, const string& receiver);
+           uint64 sender_incarnation, const string& receiver);
 
 // Adds a recv node in "g" receiving a named "tensor" from "sender"
 // to "receiver".
 Node* Recv(Graph* g, const string& tensor, const string& type,
-           const string& sender, const uint64 sender_incarnation,
+           const string& sender, uint64 sender_incarnation,
            const string& receiver);
 
 // Adds a cumsum "node" in "g" doing cumsum(data, axes).
@@ -99,7 +99,7 @@ Node* Identity(Graph* g, Node* input, int index = 0);
 Node* Binary(Graph* g, const string& func, Node* in0, Node* in1);
 
 // Adds a function "func" node in "g" taking inputs "ins".
-Node* Multi(Graph* g, const string& func, gtl::ArraySlice<Node*> ins);
+Node* Multi(Graph* g, const string& func, absl::Span<Node* const> ins);
 
 // Adds a binary add node in "g" doing in0 + in1.
 Node* Add(Graph* g, Node* in0, Node* in1);
@@ -160,7 +160,7 @@ Node* Merge(Graph* g, Node* in0, Node* in1);
 
 // Adds a Merge node in "g". The first input is "in0", the remaining
 // inputs are only given by their names in remaining_in.
-Node* Merge(Graph* g, Node* in0, gtl::ArraySlice<string> remaining_in);
+Node* Merge(Graph* g, Node* in0, absl::Span<const string> remaining_in);
 
 // Adds a NextIteration node in "g", which makes its input available
 // to the next iteration.
@@ -189,12 +189,12 @@ Node* GetSessionTensor(Graph* g, Node* in);
 // Adds a Concat node in "g". The first input is "concat_dim", the
 // dimension to concatenate on, and the tensors to concatenate are
 // given in "tensors".
-Node* Concat(Graph* g, Node* concat_dim, gtl::ArraySlice<Node*> tensors);
+Node* Concat(Graph* g, Node* concat_dim, absl::Span<Node* const> tensors);
 
 // Adds a ConcatV2 node in "g". The last input is "concat_dim", the
 // dimension to concatenate on, and the tensors to concatenate are
 // given in "tensors".
-Node* ConcatV2(Graph* g, gtl::ArraySlice<Node*> tensors, Node* concat_dim);
+Node* ConcatV2(Graph* g, absl::Span<Node* const> tensors, Node* concat_dim);
 
 // Add a Relu node in "g".
 Node* Relu(Graph* g, Node* in);

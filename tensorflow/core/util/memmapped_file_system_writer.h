@@ -31,21 +31,22 @@ class MemmappedFileSystemWriter {
  public:
   MemmappedFileSystemWriter() = default;
   ~MemmappedFileSystemWriter() = default;
-  Status InitializeToFile(Env* env, const string& filename);
-  Status SaveTensor(const Tensor& tensor, const string& element_name);
-  Status SaveProtobuf(const protobuf::MessageLite& message,
-                      const string& element_name);
+  absl::Status InitializeToFile(Env* env, const string& filename);
+  absl::Status SaveTensor(const Tensor& tensor, const string& element_name);
+  absl::Status SaveProtobuf(const protobuf::MessageLite& message,
+                            const string& element_name);
   // Writes out the directory of regions and closes the output file.
-  Status FlushAndClose();
+  absl::Status FlushAndClose();
 
  private:
-  Status AdjustAlignment(uint64 alignment);
+  absl::Status AdjustAlignment(uint64 alignment);
   void AddToDirectoryElement(const string& element_name, uint64 length);
   MemmappedFileSystemDirectory directory_;
   // The current offset in the file, to support alignment.
   uint64 output_file_offset_ = 0;
   std::unique_ptr<WritableFile> output_file_;
-  TF_DISALLOW_COPY_AND_ASSIGN(MemmappedFileSystemWriter);
+  MemmappedFileSystemWriter(const MemmappedFileSystemWriter&) = delete;
+  void operator=(const MemmappedFileSystemWriter&) = delete;
 };
 
 }  // namespace tensorflow

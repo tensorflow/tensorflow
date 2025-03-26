@@ -19,6 +19,7 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/sparse_tensor_dense_matmul_op.h"
 
+#include "Eigen/Core"  // from @eigen_archive
 #include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -238,20 +239,20 @@ REGISTER_KERNELS_GPU(complex128);
 namespace functor {
 
 namespace {
-Status KOutOfBoundsError(int64_t k, std::size_t i, int rhs_index_a,
-                         std::size_t lhs_right) {
+absl::Status KOutOfBoundsError(int64_t k, std::size_t i, int rhs_index_a,
+                               std::size_t lhs_right) {
   return errors::InvalidArgument("k (", k, ") from index[", i, ",", rhs_index_a,
                                  "] out of bounds (>=", lhs_right, ")");
 }
 
-Status MOutOfBoundsError(int64_t m, std::size_t i, int lhs_index_a,
-                         int64_t out_dim0) {
+absl::Status MOutOfBoundsError(int64_t m, std::size_t i, int lhs_index_a,
+                               int64_t out_dim0) {
   return errors::InvalidArgument("m (", m, ") from index[", i, ",", lhs_index_a,
                                  "] out of bounds (>=", out_dim0, ")");
 }
 
 template <typename T, typename Tsum, typename Tindices, bool ADJ_A, bool ADJ_B>
-Status SparseTensorDenseMatMulImpl(
+absl::Status SparseTensorDenseMatMulImpl(
     typename TTypes<Tsum>::Matrix out,
     typename TTypes<Tindices>::ConstMatrix a_indices,
     typename TTypes<T>::ConstVec a_values, typename TTypes<T>::ConstMatrix b) {
@@ -310,7 +311,7 @@ Status SparseTensorDenseMatMulImpl(
     if (ADJ_B) {
       // Perform transpose and conjugation on B once, since we chip out B's
       // columns in the nnz loop.
-      Eigen::array<int, 2> shuffle(1, 0);  // preserve dimension order
+      Eigen::array<int, 2> shuffle{1, 0};  // preserve dimension order
       Eigen::Tensor<T, 2, Eigen::ColMajor> col_major_conj_b =
           b.swap_layout().shuffle(shuffle).conjugate();
       LOOP_NNZ(col_major_conj_b);
@@ -319,16 +320,17 @@ Status SparseTensorDenseMatMulImpl(
     }
 #undef LOOP_NNZ
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 }  // namespace
 
 template <typename T, typename Tindices, bool ADJ_A, bool ADJ_B>
 struct SparseTensorDenseMatMulFunctor<CPUDevice, T, Tindices, ADJ_A, ADJ_B> {
-  static Status Compute(OpKernelContext* ctx, typename TTypes<T>::Matrix out,
-                        typename TTypes<Tindices>::ConstMatrix a_indices,
-                        typename TTypes<T>::ConstVec a_values,
-                        typename TTypes<T>::ConstMatrix b) {
+  static absl::Status Compute(OpKernelContext* ctx,
+                              typename TTypes<T>::Matrix out,
+                              typename TTypes<Tindices>::ConstMatrix a_indices,
+                              typename TTypes<T>::ConstVec a_values,
+                              typename TTypes<T>::ConstMatrix b) {
     using Tsum = typename SumType<T>::type;
     Tensor temp_out_t;
     if (!std::is_same<T, Tsum>::value) {
@@ -351,7 +353,7 @@ struct SparseTensorDenseMatMulFunctor<CPUDevice, T, Tindices, ADJ_A, ADJ_B> {
           SparseTensorDenseMatMulImpl<T, Tsum, Tindices, ADJ_A, ADJ_B>(
               out_workaround, a_indices, a_values, b));
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 };
 

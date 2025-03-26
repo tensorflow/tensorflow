@@ -107,7 +107,7 @@ Node* AddNode(Graph& graph, const string& name, const string& node_type,
   NodeDef node_def;
   TF_CHECK_OK(builder.Finalize(&node_def));
 
-  Status s;
+  absl::Status s;
   Node* node = graph.AddNode(node_def, &s);
   TF_CHECK_OK(s);
   return node;
@@ -283,7 +283,7 @@ TEST(CostModelTest, TimeEstimate) {
   EXPECT_EQ(cm.TimeEstimate(C), Microseconds(kMicrosPerCount));
 }
 
-TensorShapeProto CreateTensorShapeProto(gtl::ArraySlice<int64_t> dims) {
+TensorShapeProto CreateTensorShapeProto(absl::Span<const int64_t> dims) {
   TensorShapeProto shape;
   for (int i = 0; i < dims.size(); ++i) {
     shape.add_dim()->set_size(dims[i]);

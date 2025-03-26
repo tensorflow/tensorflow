@@ -89,7 +89,7 @@ TEST(DirectSessionWithTrackingAllocTest, CostModelTest) {
   std::vector<string> target_nodes = {y_neg->name()};
   std::vector<Tensor> outputs;
   const int64_t start_micros = Env::Default()->NowMicros();
-  Status s = session->Run(inputs, output_names, target_nodes, &outputs);
+  absl::Status s = session->Run(inputs, output_names, target_nodes, &outputs);
   const int64_t run_duration_micros =
       Env::Default()->NowMicros() - start_micros;
   TF_ASSERT_OK(s);
@@ -207,8 +207,8 @@ static void TestHWAccelerator(bool enableHWTrace) {
     run_options.set_trace_level(RunOptions::FULL_TRACE);
   }
   RunMetadata run_metadata;
-  Status s = session->Run(run_options, inputs, output_names, target_nodes,
-                          &outputs, &run_metadata);
+  absl::Status s = session->Run(run_options, inputs, output_names, target_nodes,
+                                &outputs, &run_metadata);
   const int64_t run_duration_micros =
       Env::Default()->NowMicros() - start_micros;
   TF_ASSERT_OK(s);
@@ -287,8 +287,8 @@ TEST(DirectSessionWithTrackingAllocTest, CostGraph) {
   std::vector<Tensor> outputs;
   RunMetadata run_metadata;
   const int64_t start_micros = Env::Default()->NowMicros();
-  Status s = session->Run(run_options, inputs, output_names, target_nodes,
-                          &outputs, &run_metadata);
+  absl::Status s = session->Run(run_options, inputs, output_names, target_nodes,
+                                &outputs, &run_metadata);
   const int64_t run_duration_micros =
       Env::Default()->NowMicros() - start_micros;
   TF_ASSERT_OK(s);
@@ -344,8 +344,8 @@ TEST(DirectSessionWithTrackingAllocTest, TrackMemoryAllocation) {
   std::vector<string> output_names = {y->name() + ":0"};
   std::vector<Tensor> outputs;
   RunMetadata run_metadata;
-  Status s = session->Run(run_options, inputs, output_names, {}, &outputs,
-                          &run_metadata);
+  absl::Status s = session->Run(run_options, inputs, output_names, {}, &outputs,
+                                &run_metadata);
   TF_ASSERT_OK(s);
 
   for (const auto& dev_stat : run_metadata.step_stats().dev_stats()) {

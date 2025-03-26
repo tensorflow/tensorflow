@@ -76,7 +76,7 @@ class InterpreterBuilder {
   /// For this constructor, the ErrorReporter will be extracted from the
   /// FlatBufferModel.
   /// `options` object is copied during construction. So caller can release it
-  // after calling the constructor.
+  /// after calling the constructor.
   InterpreterBuilder(const FlatBufferModel& model,
                      const OpResolver& op_resolver,
                      const InterpreterOptions* options_experimental = nullptr);
@@ -84,7 +84,7 @@ class InterpreterBuilder {
   /// of a FlatBufferModel). Mostly used for testing.
   /// If `error_reporter` is null, then DefaultErrorReporter() is used.
   /// `options` object is copied during construction. So caller can release it
-  // after calling the constructor.
+  /// after calling the constructor.
   InterpreterBuilder(const ::tflite::Model* model,
                      const OpResolver& op_resolver,
                      ErrorReporter* error_reporter = DefaultErrorReporter(),

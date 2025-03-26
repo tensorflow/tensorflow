@@ -12,7 +12,15 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <string>
+#include <vector>
+
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/strings/str_cat.h"
+#include "tensorflow/c/experimental/ops/gen/common/path_config.h"
 #include "tensorflow/c/experimental/ops/gen/cpp/cpp_generator.h"
+#include "tensorflow/c/experimental/ops/gen/cpp/renderers/cpp_config.h"
 #include "tensorflow/core/platform/init_main.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/util/command_line_flags.h"

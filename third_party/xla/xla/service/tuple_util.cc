@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,13 +15,33 @@ limitations under the License.
 
 #include "xla/service/tuple_util.h"
 
+#include <cstdint>
+#include <string>
+#include <vector>
+
+#include "absl/algorithm/container.h"
+#include "absl/container/inlined_vector.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_computation.h"
+#include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/service/hlo_value.h"
+#include "xla/shape.h"
+#include "xla/shape_tree.h"
+#include "xla/shape_util.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 
 /*static*/ HloInstruction* TupleUtil::ExtractPrefix(HloInstruction* input_tuple,
-                                                    int64_t elements) {
+                                                    int64_t elements,
+                                                    absl::string_view name) {
   CHECK(input_tuple->shape().IsTuple());
 
   HloComputation* computation = input_tuple->parent();
@@ -30,13 +50,18 @@ namespace xla {
   std::vector<HloInstruction*> tuple_elements;
   tuple_elements.reserve(elements);
   for (int i = 0; i < elements; i++) {
-    tuple_elements.push_back(
-        computation->AddInstruction(HloInstruction::CreateGetTupleElement(
-            input_shape.tuple_shapes(i), input_tuple, i)));
+    std::string element_name;
+    if (!name.empty()) {
+      element_name = absl::StrCat(name, ".element.", i);
+    }
+    tuple_elements.push_back(computation->AddInstruction(
+        HloInstruction::CreateGetTupleElement(input_shape.tuple_shapes(i),
+                                              input_tuple, i),
+        element_name));
   }
 
   return computation->AddInstruction(
-      HloInstruction::CreateTuple(tuple_elements));
+      HloInstruction::CreateTuple(tuple_elements), name);
 }
 
 /*static*/ HloInstruction* TupleUtil::AppendSuffix(
@@ -59,7 +84,7 @@ namespace xla {
       HloInstruction::CreateTuple(tuple_elements));
 }
 
-/*static*/ StatusOr<HloInstruction*> TupleUtil::ReplaceTupleWith(
+/*static*/ absl::StatusOr<HloInstruction*> TupleUtil::ReplaceTupleWith(
     HloInstruction* new_instruction, HloInstruction* tuple,
     ShapeIndex shape_index, bool insert_bitcast_if_different_shape) {
   const Shape& tuple_shape = tuple->shape();
@@ -169,6 +194,80 @@ namespace xla {
     }
   }
   return instruction;
+}
+
+ShapeTree<HloInstruction*> TupleUtil::DisassembleTupleInstruction(
+    HloInstruction* tuple) {
+  const Shape& shape = tuple->shape();
+  ShapeTree<HloInstruction*> result(shape);
+  result.ForEachMutableElement([&](ShapeIndexView index,
+                                   HloInstruction** element) {
+    if (index.empty()) {
+      *element = tuple;
+    } else {
+      ShapeIndexView parent_index = index.subspan(0, index.size() - 1);
+      HloInstruction* parent = result.element(parent_index);
+      std::string name = absl::StrCat(tuple->name(), ".disassembled.",
+                                      absl::StrJoin(index, "."));
+      *element = tuple->parent()->AddInstruction(
+          HloInstruction::CreateGetTupleElement(parent, index.back()), name);
+    }
+  });
+  return result;
+}
+
+HloInstruction* TupleUtil::AssembleTupleInstruction(
+    HloComputation* computation, ShapeTree<HloInstruction*> elements,
+    absl::string_view name) {
+  elements.ForEachMutableElementPostOrder(
+      [&](const ShapeIndex& index, HloInstruction** element) {
+        const Shape& subshape = ShapeUtil::GetSubshape(elements.shape(), index);
+        if (subshape.IsTuple()) {
+          absl::InlinedVector<HloInstruction*, 2> children;
+          ShapeIndex child_index = index;
+          for (int i = 0; i < subshape.tuple_shapes_size(); ++i) {
+            child_index.push_back(i);
+            children.push_back(elements.element(child_index));
+            child_index.pop_back();
+          }
+          std::string new_name;
+          if (!name.empty()) {
+            if (index.empty()) {
+              new_name = std::string(name);
+            } else {
+              new_name =
+                  absl::StrCat(name, ".assembled.", absl::StrJoin(index, "."));
+            }
+          }
+          *element = computation->AddInstruction(
+              HloInstruction::CreateTuple(children), new_name);
+        }
+      });
+  return elements.element({});
+}
+
+HloInstruction* TupleUtil::GetTupleInstructionAtIndex(
+    HloInstruction& tuple, const ShapeIndex& target_index) {
+  HloInstruction* target_index_instr = &tuple;
+
+  for (int32_t tuple_index : target_index) {
+    bool found = false;
+    for (HloInstruction* user : target_index_instr->users()) {
+      if (user->opcode() == HloOpcode::kGetTupleElement &&
+          user->tuple_index() == tuple_index) {
+        target_index_instr = user;
+        found = true;
+        break;
+      }
+    }
+
+    if (!found) {
+      // No GTE found at the target index.
+      return nullptr;
+    }
+  }
+
+  return target_index_instr;
 }
 
 }  // namespace xla

@@ -17,21 +17,24 @@ limitations under the License.
 #define TENSORFLOW_CORE_PROFILER_UTILS_OP_METRICS_DB_UTILS_H_
 
 #include <algorithm>
+#include <cstdint>
+#include <optional>
 #include <string>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/strings/string_view.h"
-#include "absl/types/optional.h"
-#include "tensorflow/core/platform/macros.h"
+#include "xla/tsl/platform/macros.h"
+#include "xla/tsl/profiler/utils/xplane_visitor.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/protobuf/op_metrics.pb.h"
-#include "tsl/profiler/utils/xplane_visitor.h"
 
 namespace tensorflow {
 namespace profiler {
 
 // The name of OpMetrics to represent the idle time.
 TF_CONST_INIT extern const absl::string_view kIdle;
+// The core index to add to sparse core index in op metrics.
+TF_CONST_INIT extern const uint32_t kSparseCoreIndexStart;
 
 // Helps build an op metrics database (borrowed).
 // Enables fast lookup of existing ops and prevents the creation of duplicate
@@ -66,8 +69,16 @@ class OpMetricsDbBuilder {
 // Helps build an op metrics database (borrowed) from XEvents,
 class XEventsOpMetricsDbBuilder {
  public:
+  struct OpKey {
+    std::optional<uint64_t> program_id;
+    std::optional<uint64_t> symbol_id;
+  };
+  // DEPRECATED: Use the OpKey version below.
   // Add OpMetric from XEventVisitor.
   void AddOpMetric(const tsl::profiler::XEventVisitor& xevent);
+
+  // Add an OpMetric to the builder based on the provided key.
+  void AddOpMetric(const OpMetrics& op_metrics, const OpKey& key);
 
   // Finalize OpMetricDb and add total time and Idle op.
   OpMetricsDb Finalize(uint64_t total_time);
@@ -82,6 +93,13 @@ class XEventsOpMetricsDbBuilder {
   absl::flat_hash_map</*program_id=*/uint64_t, OpMetricBySymbol>
       flat_op_metric_;
 };
+
+// Constructs an OpMetrics from the provided XEventVisitor.
+OpMetrics FromXEvent(const tsl::profiler::XEventVisitor& xevent);
+
+// Returns the OpKey for the provided XEventVisitor.
+XEventsOpMetricsDbBuilder::OpKey GetOpKeyFromXEvent(
+    const tsl::profiler::XEventVisitor& event);
 
 // Sets the total time for OpMetricsDb, ensuring idle time is not negative.
 inline void SetTotalTimePs(OpMetricsDb& db, uint64_t total_time_ps) {
@@ -121,7 +139,7 @@ inline uint64_t ChildrenTimePs(const OpMetrics& metrics) {
 
 // Returns the ratio of time spent sending data from the host to the device
 // relative to the total time the host was active.
-absl::optional<double> HostInfeedEnqueueRatio(const OpMetricsDb& db);
+std::optional<double> HostInfeedEnqueueRatio(const OpMetricsDb& db);
 
 // Converts from the device op metrics to Tf-op metrics.
 OpMetricsDb CreateTfMetricsDbFromDeviceOpMetricsDb(

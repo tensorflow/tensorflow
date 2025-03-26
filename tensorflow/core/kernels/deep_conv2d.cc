@@ -82,7 +82,7 @@ static int64_t GetDirectConvCost(int filter_rows, int filter_cols, int in_depth,
 static bool ReadBoolFromEnvVar(const char* env_var_name, bool default_val) {
   const char* tf_env_var_val = getenv(env_var_name);
   if (tf_env_var_val != nullptr) {
-    StringPiece tf_env_var_val_str(tf_env_var_val);
+    absl::string_view tf_env_var_val_str(tf_env_var_val);
     if (tf_env_var_val_str == "0") {
       return false;
     }

@@ -20,6 +20,13 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "absl/time/time.h"
+#include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/lib/io/compression.h"
+#include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/status_matchers.h"
+#include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/platform/test.h"
+#include "tensorflow/core/data/service/common.pb.h"
 #include "tensorflow/core/data/service/dispatcher_client.h"
 #include "tensorflow/core/data/service/snapshot/path_utils.h"
 #include "tensorflow/core/data/service/snapshot/test_utils.h"
@@ -28,19 +35,14 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/protobuf/snapshot.pb.h"
-#include "tsl/lib/core/status_test_util.h"
-#include "tsl/lib/io/compression.h"
-#include "tsl/platform/env.h"
-#include "tsl/platform/status_matchers.h"
-#include "tsl/platform/test.h"
+#include "tsl/platform/path.h"
+#include "tsl/platform/tstring.h"
 
 namespace tensorflow {
 namespace data {
 namespace {
 
-using testing::ChooseFromDatasets;
 using testing::CreateDummyDistributedSnapshotMetadata;
-using ::testing::ElementsAre;
 using ::testing::IsEmpty;
 using testing::LocalTempFilename;
 using testing::RangeDataset;
@@ -55,6 +57,7 @@ class TestSnapshotCluster {
     TestCluster::Config config;
     config.num_workers = num_workers;
     config.worker_heartbeat_interval_ms = 100;
+    config.work_dir = tsl::io::JoinPath(tsl::testing::TmpDir(), "work_dir");
     test_cluster_ = std::make_unique<TestCluster>(config);
     TF_CHECK_OK(test_cluster_->Initialize());
     dispatcher_client_ = std::make_unique<DataServiceDispatcherClient>(
@@ -103,16 +106,9 @@ TEST_P(DistributedSnapshotTest, WriteSnapshot) {
   TF_ASSERT_OK(
       data_service.dispatcher().Snapshot(dataset, snapshot_path, metadata));
   TF_ASSERT_OK(WaitForSnapshotComplete(snapshot_path));
-  if (NumWorkers() == 1) {
-    EXPECT_THAT(testing::ReadSnapshot<int64_t>(snapshot_path,
-                                               tsl::io::compression::kNone),
-                IsOkAndHolds(ElementsAre(0, 1, 2, 3, 4, 5, 6, 7, 8, 9)));
-  } else {  // More than 1 workers: The element order is non-deterministic.
-    EXPECT_THAT(
-        testing::ReadSnapshot<int64_t>(snapshot_path,
-                                       tsl::io::compression::kNone),
-        IsOkAndHolds(UnorderedElementsAre(0, 1, 2, 3, 4, 5, 6, 7, 8, 9)));
-  }
+  EXPECT_THAT(testing::ReadSnapshot<int64_t>(snapshot_path,
+                                             tsl::io::compression::kNone),
+              IsOkAndHolds(UnorderedElementsAre(0, 1, 2, 3, 4, 5, 6, 7, 8, 9)));
 }
 
 TEST_P(DistributedSnapshotTest, WriteMultipleSnapshots) {
@@ -150,7 +146,8 @@ TEST_P(DistributedSnapshotTest, ChooseFromDatasets) {
   // choice_dataset = tf.data.Dataset.range(3).repeat()
   // dataset = tf.data.Dataset.choose_from_datasets(datasets, choice_dataset)
   TestSnapshotCluster data_service(NumWorkers());
-  TF_ASSERT_OK_AND_ASSIGN(DatasetDef dataset, ChooseFromDatasets());
+  TF_ASSERT_OK_AND_ASSIGN(DatasetDef dataset,
+                          testing::GetTestDataset("choose_from_datasets"));
   experimental::DistributedSnapshotMetadata metadata =
       CreateDummyDistributedSnapshotMetadata();
   std::string snapshot_path = LocalTempFilename();
@@ -158,8 +155,8 @@ TEST_P(DistributedSnapshotTest, ChooseFromDatasets) {
       data_service.dispatcher().Snapshot(dataset, snapshot_path, metadata));
   TF_ASSERT_OK(WaitForSnapshotComplete(snapshot_path));
   EXPECT_THAT(
-      testing::ReadSnapshot<tstring>(snapshot_path,
-                                     tsl::io::compression::kNone),
+      testing::ReadSnapshot<tsl::tstring>(snapshot_path,
+                                          tsl::io::compression::kNone),
       IsOkAndHolds(UnorderedElementsAre("a", "b", "c", "a", "b", "c", "a", "b",
                                         "c", "a", "b", "c", "a", "b", "c")));
 }

@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -18,51 +18,50 @@ limitations under the License.
 #include <string>
 #include <utility>
 
-#ifdef NCCL_ENABLED
-#if TENSORFLOW_USE_ROCM
-#include "rocm/rocm_config.h"
-#if (TF_ROCM_VERSION >= 50200)
-#include "rocm/include/rccl/rccl.h"
-#else
-#include "rocm/include/rccl.h"
-#endif
-#else
-#include "third_party/nccl/nccl.h"
-#endif
-#endif  // NCCL_ENABLED
-
+#include "absl/status/statusor.h"
+#include "absl/synchronization/mutex.h"
+#include "absl/time/time.h"
+#include "xla/backends/gpu/collectives/gpu_clique_key.h"
+#include "xla/backends/gpu/collectives/gpu_collectives.h"
+#include "xla/core/collectives/clique_id.h"
+#include "xla/core/collectives/clique_key.h"
+#include "xla/status_macros.h"
 #include "xla/util.h"
+#include "tsl/platform/casts.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 
-StatusOr<std::string> NcclIdStore::GetNcclUniqueId(
-    const gpu::NcclCliqueKey& key) {
+absl::StatusOr<CliqueId> NcclIdStore::GetNcclUniqueId(const CliqueKey& key) {
+  auto* gpu_key = tsl::down_cast<const gpu::GpuCliqueKey*>(&key);
+  if (gpu_key == nullptr) {
+    return InvalidArgument("Expected GPU clique key");
+  }
+
   // The caller must ensure that threads calling this method concurrently have
   // unique keys, otherwise the global key-value store may hold the wrong value.
   {
     absl::MutexLock lock(&mu_);
-    auto it = cache_.find(key);
+    auto it = cache_.find(*gpu_key);
     if (it != cache_.end()) {
       return it->second;
     }
   }
-  std::string id_string;
-  int primary_node_id = device_to_node_.at(key.devices()[0]);
+  CliqueId clique_id;
+  int primary_node_id = device_to_node_.at(gpu_key->root_device());
   if (node_id_ == primary_node_id) {
-#ifdef NCCL_ENABLED
-    ncclUniqueId id;
-    ncclResult_t r = ncclGetUniqueId(&id);
-    TF_RET_CHECK(r == ncclSuccess);
-    id_string = std::string(id.internal, NCCL_UNIQUE_ID_BYTES);
-    TF_RETURN_IF_ERROR(kv_put_(key.ToString(), id_string));
-#else
-    return FailedPrecondition("NCCL support was not built into XLA binary.");
-#endif
+    TF_ASSIGN_OR_RETURN(clique_id,
+                        gpu::GpuCollectives::Default()->CreateUniqueCliqueId());
+    TF_RETURN_IF_ERROR(
+        kv_store_->Set(gpu_key->ToString(), clique_id.ToString()));
   } else {
-    TF_ASSIGN_OR_RETURN(id_string, kv_get_(key.ToString(), absl::Minutes(5)));
+    TF_ASSIGN_OR_RETURN(std::string id_str,
+                        kv_store_->Get(gpu_key->ToString(), absl::Minutes(10)));
+    clique_id = CliqueId(id_str);
   }
   absl::MutexLock lock(&mu_);
-  auto result = cache_.emplace(key, std::move(id_string));
+  auto result = cache_.emplace(*gpu_key, std::move(clique_id));
   TF_RET_CHECK(result.second) << "Unique ID already in cache.";
   return result.first->second;
 }

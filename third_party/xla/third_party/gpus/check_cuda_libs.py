@@ -14,6 +14,9 @@
 # ==============================================================================
 """Verifies that a list of libraries is installed on the system.
 
+NB: DEPRECATED! This script is a part of the deprecated `cuda_configure` rule.
+Please use `hermetic/cuda_configure` instead.
+
 Takes a list of arguments with every two subsequent arguments being a logical
 tuple of (path, check_soname). The path to the library and either True or False
 to indicate whether to check the soname field on the shared library.
@@ -24,15 +27,9 @@ Example Usage:
 import os
 import os.path
 import platform
+import shutil
 import subprocess
 import sys
-
-# pylint: disable=g-import-not-at-top,g-importing-member
-try:
-  from shutil import which
-except ImportError:
-  from distutils.spawn import find_executable as which
-# pylint: enable=g-import-not-at-top,g-importing-member
 
 
 class ConfigError(Exception):
@@ -56,7 +53,7 @@ def check_cuda_lib(path, check_soname=True):
   """
   if not os.path.isfile(path):
     raise ConfigError("No library found under: " + path)
-  objdump = which("objdump")
+  objdump = shutil.which("objdump")
   if check_soname and objdump is not None and not _is_windows():
     # Decode is necessary as in py3 the return type changed from str to bytes
     output = subprocess.check_output([objdump, "-p", path]).decode("utf-8")

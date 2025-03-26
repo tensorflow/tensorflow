@@ -16,9 +16,10 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PROFILER_UTILS_KERNEL_STATS_UTILS_H_
 #define TENSORFLOW_CORE_PROFILER_UTILS_KERNEL_STATS_UTILS_H_
 
-#include <vector>
+#include <cstddef>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/hash/hash.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/protobuf/kernel_stats.pb.h"
@@ -49,7 +50,7 @@ struct KernelReportEqualToComparator {
   bool operator()(const KernelReport& lhs, const KernelReport& rhs) const;
 };
 
-// Sorts kernel reorts by total duration descendingly.
+// Sorts kernel reports by total duration descendingly.
 // Keeps only the top kernel reports with long kernel duration in the given
 // KernelStatsDb. Kernel reports with shorter kernel duration are dropped.
 void SortAndKeepTopKDurationKernelReportsInDb(KernelStatsDb* kernel_stats_db);

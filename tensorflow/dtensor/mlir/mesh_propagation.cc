@@ -19,30 +19,35 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/strings/str_join.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/FormatVariadic.h"
+#include "llvm/Support/LogicalResult.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Diagnostics.h"  // from @llvm-project
+#include "mlir/IR/Dialect.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/IR/Visitors.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
-#include "mlir/Support/DebugStringHelper.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/RegionUtils.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/dtensor/cc/constants.h"
+#include "tensorflow/dtensor/cc/dstatus.h"
 #include "tensorflow/dtensor/cc/tensor_layout.h"
 #include "tensorflow/dtensor/mlir/ir/tf_dtensor.h"
 #include "tensorflow/dtensor/mlir/layout_parsing.h"
-#include "tensorflow/dtensor/mlir/op_utils.h"
 #include "tensorflow/dtensor/mlir/spmd_expander_common.h"
 
 namespace tensorflow {
@@ -101,7 +106,7 @@ mlir::LogicalResult ExtractMeshFromBlockArgumentWhile(
     }
     return mlir::success();
   } else if (auto func_block_arg =
-                 while_op_operand.dyn_cast<mlir::BlockArgument>()) {
+                 mlir::dyn_cast<mlir::BlockArgument>(while_op_operand)) {
     // The while op operand is a block argument of the function, then follow the
     // same routine of getting mesh from function argument.
     auto function_op = mlir::dyn_cast_or_null<mlir::func::FuncOp>(
@@ -183,7 +188,7 @@ mlir::LogicalResult ExtractMeshFromOperand(
 
   // If `operand` is a block argument then extract mesh from `tf._mesh`
   // attribute of the corresponding function argument.
-  if (auto block_arg = operand_value.dyn_cast<mlir::BlockArgument>()) {
+  if (auto block_arg = mlir::dyn_cast<mlir::BlockArgument>(operand_value)) {
     if (mlir::failed(ExtractMeshFromBlockArgument(block_arg, out)))
       return mlir::failure();
 
@@ -193,7 +198,7 @@ mlir::LogicalResult ExtractMeshFromOperand(
         auto producer_values = it->getSecond();
         std::optional<Mesh> operand_mesh;
         for (mlir::Value producer_value : producer_values) {
-          if (auto arg = producer_value.dyn_cast<mlir::BlockArgument>()) {
+          if (auto arg = mlir::dyn_cast<mlir::BlockArgument>(producer_value)) {
             std::optional<Mesh> mesh;
             if (mlir::failed(ExtractMeshFromBlockArgument(arg, &mesh)))
               return mlir::failure();
@@ -206,7 +211,7 @@ mlir::LogicalResult ExtractMeshFromOperand(
                 producer_value.getDefiningOp()
                     ->getParentOfType<mlir::tf_device::ClusterOp>();
             auto output_from_producing_op = input_cluster.getResult(
-                producer_value.cast<mlir::OpResult>().getResultNumber());
+                mlir::cast<mlir::OpResult>(producer_value).getResultNumber());
 
             std::optional<Mesh> mesh;
             if (mlir::failed(

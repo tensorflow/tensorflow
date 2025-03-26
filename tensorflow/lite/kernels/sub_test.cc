@@ -683,7 +683,10 @@ void TestFloatBroadcast(std::vector<int> input1_shape,
   m.PopulateTensor<float>(m.input1(), input1);
   m.PopulateTensor<float>(m.input2(), input2);
   ASSERT_EQ(m.Invoke(), kTfLiteOk);
-  EXPECT_THAT(m.GetOutput(), testing::ContainerEq(output_ref));
+  // While there is no error in FP32 mode, 1e-3 error is expected in FP16 mode.
+  EXPECT_THAT(m.GetOutput(),
+              ElementsAreArray(ArrayFloatNear(output_ref, /*max_abs_err=*/0,
+                                              /*fp16_max_abs_err=*/1e-3)));
 }
 
 template <typename IntegerType>

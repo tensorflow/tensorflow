@@ -15,17 +15,24 @@ limitations under the License.
 
 #include "tensorflow/lite/core/tools/verifier.h"
 
+#include <stdarg.h>
+
 #include <algorithm>
 #include <climits>
 #include <complex>
 #include <cstdint>
 #include <cstring>
+#include <vector>
 
 #include "absl/container/flat_hash_set.h"
+#include "absl/types/optional.h"
+#include "flatbuffers/string.h"  // from @flatbuffers
+#include "tensorflow/compiler/mlir/lite/schema/schema_utils.h"
+#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/api/error_reporter.h"
+#include "tensorflow/lite/core/api/op_resolver.h"
 #include "tensorflow/lite/core/tools/verifier_internal.h"
 #include "tensorflow/lite/schema/schema_generated.h"
-#include "tensorflow/lite/schema/schema_utils.h"
-#include "tensorflow/lite/string_util.h"
 #include "tensorflow/lite/util.h"
 #include "tensorflow/lite/version.h"
 
@@ -53,7 +60,7 @@ void ReportError(ErrorReporter* error_reporter, const char* format, ...) {
 }
 
 // Returns the int32_t value pointed by ptr.
-const uint32_t GetIntPtr(const char* ptr) {
+uint32_t GetIntPtr(const char* ptr) {
 #if defined(__BYTE_ORDER__) && defined(__ORDER_BIG_ENDIAN__) && \
     __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
   return flatbuffers::EndianScalar(*reinterpret_cast<const uint32_t*>(ptr));
@@ -407,6 +414,9 @@ bool VerifyNumericTensorBuffer(const Tensor& tensor, const Buffer& buffer,
       bytes_required *= sizeof(float);
       break;
     case TensorType_FLOAT16:
+      bytes_required *= sizeof(uint16_t);
+      break;
+    case TensorType_BFLOAT16:
       bytes_required *= sizeof(uint16_t);
       break;
     case TensorType_FLOAT64:

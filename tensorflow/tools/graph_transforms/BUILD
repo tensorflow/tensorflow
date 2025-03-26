@@ -218,11 +218,7 @@ filegroup(
         "transform_graph.h",
         "transform_utils.h",
     ],
-    visibility = [
-        "//tensorflow/core:__pkg__",
-        "//tensorflow/python:__pkg__",
-        "//tensorflow/python/util:__pkg__",
-    ],
+    visibility = ["//tensorflow/python/util:__pkg__"],
 )
 
 cc_library(
@@ -332,7 +328,6 @@ tf_cc_binary(
 py_strict_library(
     name = "transform_graph_py",
     srcs = ["__init__.py"],
-    srcs_version = "PY3",
     deps = [
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python/util:_pywrap_transform_graph",

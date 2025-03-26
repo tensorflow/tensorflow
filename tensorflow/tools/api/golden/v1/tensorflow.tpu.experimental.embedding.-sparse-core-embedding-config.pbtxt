@@ -1,0 +1,37 @@
+path: "tensorflow.tpu.experimental.embedding.SparseCoreEmbeddingConfig"
+tf_class {
+  is_instance: "<class \'tensorflow.python.tpu.tpu_embedding_v3.SparseCoreEmbeddingConfig\'>"
+  is_instance: "<type \'object\'>"
+  member {
+    name: "allow_id_dropping"
+    mtype: "<class \'bool\'>"
+  }
+  member {
+    name: "disable_table_stacking"
+    mtype: "<class \'bool\'>"
+  }
+  member {
+    name: "enable_fast_table_initialization"
+    mtype: "<class \'bool\'>"
+  }
+  member {
+    name: "initialize_tables_on_host"
+    mtype: "<class \'bool\'>"
+  }
+  member {
+    name: "max_ids_per_chip_per_sample"
+    mtype: "<type \'int\'>"
+  }
+  member {
+    name: "max_ids_per_table"
+    mtype: "<type \'NoneType\'>"
+  }
+  member {
+    name: "max_unique_ids_per_table"
+    mtype: "<type \'NoneType\'>"
+  }
+  member_method {
+    name: "__init__"
+    argspec: "args=[\'self\', \'disable_table_stacking\', \'max_ids_per_chip_per_sample\', \'max_ids_per_table\', \'max_unique_ids_per_table\', \'allow_id_dropping\', \'initialize_tables_on_host\', \'enable_fast_table_initialization\'], varargs=None, keywords=None, defaults=[\'False\', \'64\', \'None\', \'None\', \'False\', \'True\', \'False\'], "
+  }
+}

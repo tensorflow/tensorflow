@@ -16,11 +16,15 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_TF2XLA_KERNELS_CONV_OP_HELPERS_H_
 #define TENSORFLOW_COMPILER_TF2XLA_KERNELS_CONV_OP_HELPERS_H_
 
+#include <cstdint>
 #include <vector>
 
-#include "xla/client/xla_builder.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
+#include "xla/hlo/builder/xla_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/util/padding.h"
 #include "tensorflow/core/util/tensor_format.h"
@@ -44,8 +48,9 @@ std::vector<DataType> GetXlaConvTypesForGpu();
 // convolution.
 struct ConvOpAttrs {
   // Constructs a ConvOpAttrs, reading most of the attributes from `ctx`.
-  static StatusOr<ConvOpAttrs> Create(int num_spatial_dims, bool depthwise,
-                                      OpKernelConstruction* ctx);
+  static absl::StatusOr<ConvOpAttrs> Create(int num_spatial_dims,
+                                            bool depthwise,
+                                            OpKernelConstruction* ctx);
 
   bool depthwise;
   int num_spatial_dims;
@@ -59,7 +64,7 @@ struct ConvOpAttrs {
 // Helper for the general Conv Op.
 struct ConvNDOpAttrs {
   // Constructs a ConvOpAttrs, reading most of the attributes from `ctx`.
-  static StatusOr<ConvNDOpAttrs> Create(OpKernelConstruction* ctx);
+  static absl::StatusOr<ConvNDOpAttrs> Create(OpKernelConstruction* ctx);
 
   int groups;
   int batch_dims;
@@ -72,19 +77,18 @@ struct ConvNDOpAttrs {
 
 // Creates a new XLA forward or backward convolution with the given inputs and
 // attributes.
-StatusOr<xla::XlaOp> MakeXlaForwardConvOp(StringPiece type_string,
-                                          xla::XlaOp conv_input,
-                                          xla::XlaOp filter,
-                                          const ConvOpAttrs& attrs);
-StatusOr<xla::XlaOp> MakeXlaBackpropInputConvOp(
-    StringPiece type_string, const xla::Shape& input_shape, xla::XlaOp filter,
-    xla::XlaOp out_backprop, const ConvOpAttrs& attrs,
+absl::StatusOr<xla::XlaOp> MakeXlaForwardConvOp(absl::string_view type_string,
+                                                xla::XlaOp conv_input,
+                                                xla::XlaOp filter,
+                                                const ConvOpAttrs& attrs);
+absl::StatusOr<xla::XlaOp> MakeXlaBackpropInputConvOp(
+    absl::string_view type_string, const xla::Shape& input_shape,
+    xla::XlaOp filter, xla::XlaOp out_backprop, const ConvOpAttrs& attrs,
     xla::XlaOp* input_sizes = nullptr);
-StatusOr<xla::XlaOp> MakeXlaBackpropFilterConvOp(StringPiece type_string,
-                                                 xla::XlaOp activations,
-                                                 const xla::Shape& filter_shape,
-                                                 xla::XlaOp gradients,
-                                                 const ConvOpAttrs& attrs);
+absl::StatusOr<xla::XlaOp> MakeXlaBackpropFilterConvOp(
+    absl::string_view type_string, xla::XlaOp activations,
+    const xla::Shape& filter_shape, xla::XlaOp gradients,
+    const ConvOpAttrs& attrs);
 
 }  // namespace tensorflow
 

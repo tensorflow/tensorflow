@@ -15,26 +15,35 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/next_pluggable_device/next_pluggable_device_factory.h"
 
+#include <cstddef>
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "tensorflow/c/tf_status.h"
 #include "tensorflow/c/tf_status_helper.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "xla/stream_executor/tpu/c_api_conversions.h"
+#include "xla/tsl/framework/device_id_utils.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "tensorflow/core/common_runtime/next_pluggable_device/next_pluggable_device.h"
 #include "tensorflow/core/common_runtime/next_pluggable_device/next_pluggable_device_api.h"
-#include "tensorflow/core/common_runtime/next_pluggable_device/pjrt_compile_on_demand_op.h"
 #include "tensorflow/core/common_runtime/next_pluggable_device/utils.h"
-#include "tsl/framework/device_id_utils.h"
-#include "tsl/platform/errors.h"
+#include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/protobuf/config.pb.h"
+#include "tensorflow/core/public/session_options.h"
 
 namespace tensorflow {
 namespace {
-StatusOr<xla::Shape> DeviceShapeRepresentation(
+absl::StatusOr<xla::Shape> DeviceShapeRepresentation(
     const TensorShape& shape, DataType type, bool use_fast_memory,
     XlaLayoutPreference layout_preference) {
   xla::Shape xla_shape;
@@ -47,14 +56,14 @@ StatusOr<xla::Shape> DeviceShapeRepresentation(
       &c_xla_shape.value, type, use_fast_memory,
       ConvertToCXlaLayoutPreference(layout_preference), &c_device_shape.value,
       tf_status);
-  const Status status = StatusFromTF_Status(tf_status);
+  const absl::Status status = StatusFromTF_Status(tf_status);
   TF_DeleteStatus(tf_status);
   TF_RETURN_IF_ERROR(status);
   return c_device_shape.AsCpp<xla::Shape>();
 }
 }  // namespace
 
-Status NextPluggableDeviceFactory::ListPhysicalDevices(
+absl::Status NextPluggableDeviceFactory::ListPhysicalDevices(
     std::vector<string>* devices) {
   TF_Status* c_status = TF_NewStatus();
   int32_t device_count = api_->TFNPD_GetDeviceCount(c_status);
@@ -67,10 +76,10 @@ Status NextPluggableDeviceFactory::ListPhysicalDevices(
     devices->push_back(device_name);
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status NextPluggableDeviceFactory::CreateDevices(
+absl::Status NextPluggableDeviceFactory::CreateDevices(
     const SessionOptions& session_options, const std::string& name_prefix,
     std::vector<std::unique_ptr<Device>>* devices) {
   TF_Status* c_status = TF_NewStatus();
@@ -84,19 +93,20 @@ Status NextPluggableDeviceFactory::CreateDevices(
   TF_DeleteStatus(c_status);
 
   if (visible_device_count <= 0) {
-    return OkStatus();
+    return absl::OkStatus();
   }
   const absl::flat_hash_map<std::string, int64_t> device_count_map(
       session_options.config.device_count().begin(),
       session_options.config.device_count().end());
-  const GPUOptions gpu_options = session_options.config.gpu_options();
-  TF_ASSIGN_OR_RETURN(
-      const size_t num_tf_devices,
-      tsl::GetNumberTfDevicesAndConfigurePlatformDeviceId(
-          device_count_map, device_type_, gpu_options.visible_device_list(),
-          visible_device_count));
+  const GPUOptions pluggable_device_options =
+      session_options.config.pluggable_device_options();
+  TF_ASSIGN_OR_RETURN(const size_t num_tf_devices,
+                      tsl::GetNumberTfDevicesAndConfigurePlatformDeviceId(
+                          device_count_map, device_type_,
+                          pluggable_device_options.visible_device_list(),
+                          visible_device_count));
 
-  if (!gpu_options.experimental().virtual_devices().empty()) {
+  if (!pluggable_device_options.experimental().virtual_devices().empty()) {
     VLOG(2) << "NextPluggableDevice does not support virtual device setting.";
   }
 
@@ -118,7 +128,7 @@ Status NextPluggableDeviceFactory::CreateDevices(
   LOG(INFO) << "Created " << num_tf_devices
             << " TensorFlow NextPluggableDevices. "
             << "Physical device type: " << device_type_;
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace tensorflow

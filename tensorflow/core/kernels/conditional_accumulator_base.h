@@ -73,9 +73,9 @@ class ConditionalAccumulatorBase : public ResourceBase {
   // SetGlobalStep is a modifier method for current_global_step.
   // It returns an InvalidArgument error if the new_global_step is less than
   // current_global_step.
-  Status SetGlobalStep(int64_t new_global_step);
+  absl::Status SetGlobalStep(int64_t new_global_step);
 
-  Status MatchesNodeDef(const NodeDef& node_def);
+  absl::Status MatchesNodeDef(const NodeDef& node_def);
 
  protected:
   // Virtual methods to be implemented by sub-classes for different datatypes.

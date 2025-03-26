@@ -943,7 +943,8 @@ class TensorflowGemmlowpWorkersPool {
   // The BlockingCounter used to wait for the workers.
   gemmlowp::BlockingCounter counter_to_decrement_when_ready_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(TensorflowGemmlowpWorkersPool);
+  TensorflowGemmlowpWorkersPool(const TensorflowGemmlowpWorkersPool&) = delete;
+  void operator=(const TensorflowGemmlowpWorkersPool&) = delete;
 };
 
 class TensorflowGemmContext : public gemmlowp::MultiThreadGemmContextBase {
@@ -958,7 +959,8 @@ class TensorflowGemmContext : public gemmlowp::MultiThreadGemmContextBase {
  private:
   TensorflowGemmlowpWorkersPool workers_pool_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(TensorflowGemmContext);
+  TensorflowGemmContext(const TensorflowGemmContext&) = delete;
+  void operator=(const TensorflowGemmContext&) = delete;
 };
 
 }  // namespace tensorflow

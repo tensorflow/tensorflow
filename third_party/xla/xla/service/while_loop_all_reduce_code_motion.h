@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,9 +16,9 @@ limitations under the License.
 #ifndef XLA_SERVICE_WHILE_LOOP_ALL_REDUCE_CODE_MOTION_H_
 #define XLA_SERVICE_WHILE_LOOP_ALL_REDUCE_CODE_MOTION_H_
 
+#include "absl/status/statusor.h"
 #include "xla/hlo/ir/hlo_module.h"
-#include "xla/service/hlo_pass_interface.h"
-#include "xla/statusor.h"
+#include "xla/hlo/pass/hlo_pass_interface.h"
 
 namespace xla {
 
@@ -44,20 +44,26 @@ namespace xla {
 // a += e
 class WhileLoopAllReduceCodeMotion : public HloModulePass {
  public:
-  explicit WhileLoopAllReduceCodeMotion(bool enable_reduce_scatter = false)
-      : enable_reduce_scatter_(enable_reduce_scatter) {}
+  explicit WhileLoopAllReduceCodeMotion(bool enable_reduce_scatter = false,
+                                        bool run_setup_passes = false)
+      : enable_reduce_scatter_(enable_reduce_scatter),
+        run_setup_passes_(run_setup_passes) {}
   ~WhileLoopAllReduceCodeMotion() override = default;
 
-  absl::string_view name() const override {
-    return "while-loop-all-reduce-code-motion";
-  }
+  static constexpr absl::string_view kName =
+      "while-loop-all-reduce-code-motion";
+  absl::string_view name() const override { return kName; }
   using HloPassInterface::Run;
-  StatusOr<bool> Run(
+  absl::StatusOr<bool> Run(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
  private:
   const bool enable_reduce_scatter_;
+
+  // Whether to run passes that may setup the add(all-reduce/reduce-scatter,
+  // accumulation_buffer) pattern.
+  const bool run_setup_passes_;
 };
 }  // namespace xla
 

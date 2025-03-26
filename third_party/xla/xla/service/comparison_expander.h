@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,32 +16,7 @@ limitations under the License.
 #ifndef XLA_SERVICE_COMPARISON_EXPANDER_H_
 #define XLA_SERVICE_COMPARISON_EXPANDER_H_
 
-#include <utility>
-
-#include "xla/hlo/ir/hlo_module.h"
-#include "xla/service/hlo_pass_interface.h"
-#include "xla/service/op_expander_pass.h"
-
-namespace xla {
-
-// A pass which performs expansion of the comparison operator to support total
-// order comparison of floating point numbers.
-class ComparisonExpander : public OpExpanderPass {
- public:
-  explicit ComparisonExpander() = default;
-  ~ComparisonExpander() override = default;
-  absl::string_view name() const override { return "comparison-expander"; }
-
- private:
-  // Returns `true` if `instruction` should be expanded by this pass.
-  bool InstructionMatchesPattern(HloInstruction* instruction) override;
-  // Returns a replacement for `instruction`, or nullptr if no replacement is
-  // needed (e.g. only the to_apply subcomputation of the instruction was
-  // modified).
-  StatusOr<HloInstruction*> ExpandInstruction(
-      HloInstruction* instruction) override;
-};
-
-}  // namespace xla
+// The current header will be deprecated in favour of the following.
+#include "xla/hlo/transforms/expanders/comparison_expander.h"
 
 #endif  // XLA_SERVICE_COMPARISON_EXPANDER_H_

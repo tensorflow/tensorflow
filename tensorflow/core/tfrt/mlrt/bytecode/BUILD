@@ -8,7 +8,6 @@ package(
     default_visibility = [
         # copybara:uncomment "//learning/brain/experimental/tfrt:__subpackages__",
         # copybara:uncomment "//learning/brain/tfrt:__subpackages__",
-        # copybara:uncomment "//learning/infra/mira/distributed:__subpackages__",
         "//tensorflow/compiler/mlir/tfrt/transforms/mlrt:__subpackages__",
         "//tensorflow/compiler/mlir/tfrt/translate/mlrt:__subpackages__",
         "//tensorflow/core/tfrt:__subpackages__",
@@ -57,6 +56,7 @@ tf_cc_test(
     srcs = ["bytecode_test.cc"],
     deps = [
         ":bytecode",
+        "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -65,6 +65,7 @@ tf_cc_test(
     name = "kernel_test",
     srcs = ["kernel_test.cc"],
     deps = [
+        ":bytecode",
         ":kernel",
         "@com_google_googletest//:gtest_main",
     ],
@@ -74,7 +75,9 @@ tf_cc_test(
     name = "function_test",
     srcs = ["function_test.cc"],
     deps = [
+        ":bytecode",
         ":function",
+        ":kernel",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -83,6 +86,7 @@ tf_cc_test(
     name = "executable_test",
     srcs = ["executable_test.cc"],
     deps = [
+        ":bytecode",
         ":executable",
         "@com_google_googletest//:gtest_main",
     ],
@@ -92,6 +96,7 @@ tf_cc_test(
     name = "span_test",
     srcs = ["span_test.cc"],
     deps = [
+        ":bytecode",
         ":span",
         "@com_google_googletest//:gtest_main",
     ],

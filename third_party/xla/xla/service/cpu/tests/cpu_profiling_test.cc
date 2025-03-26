@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2019 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,16 +13,16 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <algorithm>
 #include <string>
+#include <utility>
 
-#include "absl/strings/ascii.h"
-#include "absl/strings/str_cat.h"
+#include <gtest/gtest.h>
+#include "absl/strings/string_view.h"
 #include "llvm-c/Target.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/service/cpu/cpu_compiler.h"
 #include "xla/service/cpu/tests/cpu_codegen_test.h"
-#include "tsl/platform/test.h"
+#include "xla/tsl/platform/test.h"
 
 namespace xla {
 namespace cpu {
@@ -89,6 +89,11 @@ TEST_P(CpuProfilingTest, DoIt) {
   auto hlo_module = ParseAndReturnVerifiedModule(hlo_text, config);
 
   std::string check_lines{spec.check_lines.data(), spec.check_lines.size()};
+
+  hlo_module.value()
+      ->mutable_config()
+      .mutable_debug_options()
+      .set_xla_cpu_use_thunk_runtime(false);
 
   CompileAheadOfTimeAndVerifyIr(std::move(hlo_module).value(), options,
                                 check_lines,

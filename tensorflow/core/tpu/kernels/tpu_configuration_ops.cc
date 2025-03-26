@@ -25,9 +25,13 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "xla/stream_executor/stream.h"
+#include "xla/stream_executor/stream_executor.h"
 #include "xla/stream_executor/tpu/status_helper.h"
 #include "xla/stream_executor/tpu/tpu_api.h"
 #include "xla/stream_executor/tpu/tpu_ops_c_api.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/logging.h"  // IWYU pragma: keep
+#include "xla/tsl/protobuf/error_codes.pb.h"
 #include "xla/util.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/framework/device_base.h"
@@ -53,16 +57,13 @@ limitations under the License.
 #include "tensorflow/core/tpu/tpu_configuration.h"
 #include "tensorflow/core/tpu/tpu_defs.h"  // IWYU pragma: keep
 #include "tensorflow/core/util/device_name_utils.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/logging.h"  // IWYU pragma: keep
 #include "tsl/platform/tstring.h"
-#include "tsl/protobuf/error_codes.pb.h"
 
 namespace tensorflow {
 
 namespace {
-Status GetTpuMeshStateInterface(const ResourceMgr* rmgr,
-                                tpu::TpuMeshStateInterface** state) {
+absl::Status GetTpuMeshStateInterface(const ResourceMgr* rmgr,
+                                      tpu::TpuMeshStateInterface** state) {
   if (!rmgr->Lookup(rmgr->default_container(),
                     tpu::kTpuMeshStateInterfaceResourceName, state)
            .ok()) {
@@ -72,7 +73,7 @@ Status GetTpuMeshStateInterface(const ResourceMgr* rmgr,
   return absl::OkStatus();
 }
 
-Status CreateTpuFingerprintLookup(ResourceMgr* rmgr) {
+absl::Status CreateTpuFingerprintLookup(ResourceMgr* rmgr) {
   VLOG(1) << "CreateTpuFingerprintLookup";
   tpu::TpuFingerprintLookup* fingerprint_lookup;
   TF_RETURN_IF_ERROR(rmgr->LookupOrCreate<tpu::TpuFingerprintLookup>(
@@ -90,10 +91,10 @@ Status CreateTpuFingerprintLookup(ResourceMgr* rmgr) {
 // Returns OK if the deletion succeeded, or if the resource was not found. Else
 // return the deletion error.
 template <class ResourceT>
-Status DeleteIfExists(ResourceMgr* resource_manager,
-                      const char* resource_name) {
+absl::Status DeleteIfExists(ResourceMgr* resource_manager,
+                            const char* resource_name) {
   VLOG(1) << "Removing resource " << resource_name << " if it exists";
-  Status status = resource_manager->Delete<ResourceT>(
+  absl::Status status = resource_manager->Delete<ResourceT>(
       resource_manager->default_container(), resource_name);
   if (status.ok()) {
     VLOG(1) << "Removed existing resource " << resource_name;
@@ -108,7 +109,7 @@ Status DeleteIfExists(ResourceMgr* resource_manager,
 }
 }  // namespace
 
-Status CreateTpuCompilationCache(
+absl::Status CreateTpuCompilationCache(
     ResourceMgr* rmgr, tpu::TpuCompilationCacheInterface** compilation_cache) {
   return rmgr->LookupOrCreate<tpu::TpuCompilationCacheInterface>(
       rmgr->default_container(), tpu::kCompilationCacheResourceName,
@@ -118,7 +119,8 @@ Status CreateTpuCompilationCache(
       });
 }
 
-StatusOr<std::vector<int32_t>> ConstructDevicesPerHost(OpKernelContext* ctx) {
+absl::StatusOr<std::vector<int32_t>> ConstructDevicesPerHost(
+    OpKernelContext* ctx) {
   std::vector<int32_t> num_devices_per_host;
   int chips_per_host = -1;
   for (int i = 0; i < ctx->num_inputs(); ++i) {
@@ -146,7 +148,7 @@ void ConfigureDistributedTpuOp::Compute(OpKernelContext* ctx) {
   VLOG(1) << "ConfigureDistributedTpuOp";
   XLA_SCOPED_LOGGING_TIMER("ConfigureDistributedTpuOp");
 
-  StatusOr<std::vector<int32_t>> num_devices_per_host =
+  absl::StatusOr<std::vector<int32_t>> num_devices_per_host =
       ConstructDevicesPerHost(ctx);
   OP_REQUIRES_OK(ctx, num_devices_per_host.status());
   ResourceMgr* rmgr = GetTPUConfigResourceMgr();
@@ -323,9 +325,9 @@ void InitializeHostForDistributedTpuOp::Compute(OpKernelContext* ctx) {
                           tpu_cancellation_closes_chips_));
 
   tpu::TpuCompilationCacheInterface* local_compilation_cache;
-  Status s = rmgr->Lookup(rmgr->default_container(),
-                          tpu::kCompilationCacheResourceName,
-                          &local_compilation_cache);
+  absl::Status s = rmgr->Lookup(rmgr->default_container(),
+                                tpu::kCompilationCacheResourceName,
+                                &local_compilation_cache);
   if (!s.ok()) {
     local_compilation_cache = nullptr;
   }

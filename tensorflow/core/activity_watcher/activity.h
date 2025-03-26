@@ -21,8 +21,8 @@ limitations under the License.
 #include <utility>
 
 #include "absl/container/flat_hash_map.h"
-#include "tsl/platform/macros.h"
-#include "tsl/platform/types.h"
+#include "xla/tsl/platform/macros.h"
+#include "xla/tsl/platform/types.h"
 
 namespace tsl {
 class CoordinationServiceAgent;
@@ -176,7 +176,8 @@ class ActivityScope {
 
  private:
   ActivityId activity_id_;
-  TF_DISALLOW_COPY_AND_ASSIGN(ActivityScope);
+  ActivityScope(const ActivityScope&) = delete;
+  void operator=(const ActivityScope&) = delete;
 };
 
 }  // namespace activity_watcher

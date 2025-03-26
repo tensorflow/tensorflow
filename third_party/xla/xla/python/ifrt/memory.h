@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -20,15 +20,12 @@ limitations under the License.
 #include <string>
 
 #include "absl/strings/string_view.h"
-#include "xla/pjrt/pjrt_client.h"
+#include "absl/types/span.h"
+#include "llvm/Support/ExtensibleRTTI.h"
 #include "xla/python/ifrt/device.h"
 
 namespace xla {
 namespace ifrt {
-
-// Short-term alias to reuse `xla::PjRtMemorySpace` without a separate abstract
-// type.
-using Memory = ::xla::PjRtMemorySpace;
 
 // `MemoryKind` uniquely identifies a group of memory spaces with a
 // platform-dependent string. When no specific memory kind is chosen, the
@@ -63,12 +60,17 @@ class MemoryKind {
     return H::combine(std::move(h), memory_kind.memory_kind_);
   }
 
+  template <typename Sink>
+  friend void AbslStringify(Sink& sink, const MemoryKind& memory_kind) {
+    sink.Append(memory_kind.ToString());
+  }
+
   // Returns a platform-dependent identifier of a memory kind.
   std::optional<absl::string_view> memory_kind() const { return memory_kind_; }
 
-  std::string DebugString() const;
-
  private:
+  std::string ToString() const;
+
   std::optional<absl::string_view> memory_kind_;
 };
 
@@ -77,10 +79,60 @@ class MemoryKind {
 // indicated by the device, simply returns `MemoryKind` with no memory kind
 // chosen.
 //
-// TODO(hyeontaek,yashkatariya): Harden `MemoryKind` creation paths so that
-// every `MemoryKind` is canonicalized and does not require on-demand
+// TODO(b/356623715): Harden `MemoryKind` creation paths so that every
+// `MemoryKind` is canonicalized and does not require on-demand
 // canonicalization.
 MemoryKind CanonicalizeMemoryKind(MemoryKind memory_kind, Device* device);
+
+TSL_LIB_GTL_DEFINE_INT_TYPE(MemoryId, int32_t);
+
+// `Memory` represents a memory space that one or more devices can be attached
+// to. A platform may have multiple memory spaces with different backing
+// hardware or memory region types.
+class Memory : public llvm::RTTIExtends<Memory, llvm::RTTIRoot> {
+ public:
+  Memory() = default;
+
+  // Not copyable or movable.
+  Memory(const Memory&) = delete;
+  Memory(Memory&&) = delete;
+  Memory& operator=(const Memory&) = delete;
+  Memory& operator=(Memory&&) = delete;
+
+  virtual MemoryId Id() const = 0;
+
+  // A platform-dependent string that uniquely identifies the kind of the
+  // memory.
+  virtual const MemoryKind& Kind() const = 0;
+
+  // Debug string suitable for reading by end users, should be reasonably terse.
+  virtual absl::string_view ToString() const = 0;
+
+  // Debug string suitable for logging when errors occur. Should be verbose
+  // enough to describe the current device unambiguously.
+  //
+  // TODO(hyeontaek): Remove this method in favor of AbslStringify.
+  virtual absl::string_view DebugString() const = 0;
+
+  // The devices to which this memory space is attached.
+  virtual absl::Span<Device* const> Devices() const = 0;
+
+  template <typename Sink>
+  friend void AbslStringify(Sink& sink, const Memory& memory) {
+    sink.Append(memory.DebugString());
+  }
+
+  template <typename Sink>
+  friend void AbslStringify(Sink& sink, const Memory* memory) {
+    if (memory == nullptr) {
+      sink.Append("<nullptr>");
+    } else {
+      sink.Append(memory->DebugString());
+    }
+  }
+
+  static char ID;  // NOLINT
+};
 
 }  // namespace ifrt
 }  // namespace xla

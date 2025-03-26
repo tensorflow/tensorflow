@@ -15,12 +15,9 @@ limitations under the License.
 #include "tensorflow/lite/experimental/ml_adjacent/algo/resize.h"
 
 #include <cstring>
-#include <numeric>
 #include <vector>
 
-#include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "absl/types/span.h"
 #include "tensorflow/lite/experimental/ml_adjacent/data/owning_vector_ref.h"
 #include "tensorflow/lite/experimental/ml_adjacent/lib.h"
 

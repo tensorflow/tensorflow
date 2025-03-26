@@ -1,4 +1,4 @@
-/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2021 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -33,6 +33,7 @@ limitations under the License.
 #include "mlir/IR/Operation.h"
 #include "mlir/IR/Value.h"
 #include "mlir/Pass/Pass.h"
+#include "mlir/Support/LLVM.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 
 namespace mlir {
@@ -152,7 +153,7 @@ void findBroadcastIntents(
 
   // Derive the broadcast intent associated with the root broadcast operation.
   // Add it to the worklist to seed the analysis.
-  rootBcastIntent = {root.getResult().getType().cast<RankedTensorType>(),
+  rootBcastIntent = {mlir::cast<RankedTensorType>(root.getResult().getType()),
                      root.getOperand(), root.getOutputDimensions(),
                      root.getBroadcastDimensions()};
   addToWorklistIfNew(rootBcastIntent);
@@ -177,7 +178,7 @@ void findBroadcastIntents(
             llvm::dyn_cast<DynamicBroadcastInDimOp>(producerOp)) {
       DenseIntElementsAttr composedBcastDims = composeBroadcastDimensionsAttr(
           builder, producerBcastOp.getBroadcastDimensions(),
-          it.broadcastDimensions.cast<DenseIntElementsAttr>());
+          mlir::cast<DenseIntElementsAttr>(it.broadcastDimensions));
       BroadcastIntent bcastedOperandIntent = {
           it.resultType, producerBcastOp.getOperand(), it.outputDimensions,
           composedBcastDims};
@@ -194,7 +195,7 @@ void findBroadcastIntents(
     assert(allowsForElementwiseBroadcastPropagation(producerOp));
     bcastIntentDependencies[it] = {};
     for (auto operand : producerOp->getOperands()) {
-      auto operandTy = operand.getType().cast<RankedTensorType>();
+      auto operandTy = mlir::cast<RankedTensorType>(operand.getType());
       auto operandBcastDims = operandTy.getRank() == 0
                                   ? builder.getI64TensorAttr({})
                                   : it.broadcastDimensions;
@@ -272,7 +273,7 @@ DenseMap<BroadcastIntent, Value> realizeBroadcastIntents(
       realizations[it] = rewriter.create<DynamicBroadcastInDimOp>(
           it.targetValue.getLoc(), it.resultType, it.targetValue,
           it.outputDimensions,
-          it.broadcastDimensions.cast<DenseIntElementsAttr>());
+          mlir::cast<DenseIntElementsAttr>(it.broadcastDimensions));
       continue;
     }
 
@@ -438,8 +439,8 @@ struct BroadcastPropagationPass
     GreedyRewriteConfig config;
     config.useTopDownTraversal = false;
 
-    if (failed(applyPatternsAndFoldGreedily(getOperation(), std::move(patterns),
-                                            config))) {
+    if (failed(applyPatternsGreedily(getOperation(), std::move(patterns),
+                                     config))) {
       return signalPassFailure();
     }
   }

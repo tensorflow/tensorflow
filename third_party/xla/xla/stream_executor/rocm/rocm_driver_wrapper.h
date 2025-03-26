@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2019 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -20,12 +20,10 @@ limitations under the License.
 #ifndef XLA_STREAM_EXECUTOR_ROCM_ROCM_DRIVER_WRAPPER_H_
 #define XLA_STREAM_EXECUTOR_ROCM_ROCM_DRIVER_WRAPPER_H_
 
-#define __HIP_DISABLE_CPP_FUNCTIONS__
-
 #include "rocm/include/hip/hip_runtime.h"
-#include "xla/stream_executor/platform/dso_loader.h"
-#include "xla/stream_executor/platform/port.h"
-#include "tsl/platform/env.h"
+#include "rocm/rocm_config.h"
+#include "xla/tsl/platform/env.h"
+#include "tsl/platform/dso_loader.h"
 
 namespace stream_executor {
 namespace wrap {
@@ -46,22 +44,21 @@ namespace wrap {
 #define TO_STR_(x) #x
 #define TO_STR(x) TO_STR_(x)
 
-#define STREAM_EXECUTOR_HIP_WRAP(hipSymbolName)                            \
-  template <typename... Args>                                              \
-  auto hipSymbolName(Args... args) -> decltype(::hipSymbolName(args...)) { \
-    using FuncPtrT = std::add_pointer<decltype(::hipSymbolName)>::type;    \
-    static FuncPtrT loaded = []() -> FuncPtrT {                            \
-      static const char *kName = TO_STR(hipSymbolName);                    \
-      void *f;                                                             \
-      auto s = tsl::Env::Default() -> GetSymbolFromLibrary(                \
-          stream_executor::internal::CachedDsoLoader::GetHipDsoHandle()    \
-              .value(),                                                    \
-          kName, &f);                                                      \
-      CHECK(s.ok()) << "could not find " << kName                          \
-                    << " in HIP DSO; dlerror: " << s.message();            \
-      return reinterpret_cast<FuncPtrT>(f);                                \
-    }();                                                                   \
-    return loaded(args...);                                                \
+#define STREAM_EXECUTOR_HIP_WRAP(hipSymbolName)                             \
+  template <typename... Args>                                               \
+  auto hipSymbolName(Args... args) -> decltype(::hipSymbolName(args...)) {  \
+    using FuncPtrT = std::add_pointer<decltype(::hipSymbolName)>::type;     \
+    static FuncPtrT loaded = []() -> FuncPtrT {                             \
+      static const char *kName = TO_STR(hipSymbolName);                     \
+      void *f;                                                              \
+      auto s = tsl::Env::Default()->GetSymbolFromLibrary(                   \
+          tsl::internal::CachedDsoLoader::GetHipDsoHandle().value(), kName, \
+          &f);                                                              \
+      CHECK(s.ok()) << "could not find " << kName                           \
+                    << " in HIP DSO; dlerror: " << s.message();             \
+      return reinterpret_cast<FuncPtrT>(f);                                 \
+    }();                                                                    \
+    return loaded(args...);                                                 \
   }
 #endif
 
@@ -79,8 +76,12 @@ namespace wrap {
   __macro(hipDeviceGetName)                         \
   __macro(hipDeviceGetPCIBusId)                     \
   __macro(hipDeviceGetSharedMemConfig)              \
+  __macro(hipDeviceGetStreamPriorityRange)          \
+  __macro(hipDeviceGraphMemTrim)                    \
   __macro(hipDevicePrimaryCtxGetState)              \
   __macro(hipDevicePrimaryCtxSetFlags)              \
+  __macro(hipDevicePrimaryCtxRetain)                \
+  __macro(hipDevicePrimaryCtxRelease)               \
   __macro(hipDeviceSetSharedMemConfig)              \
   __macro(hipDeviceSynchronize)                     \
   __macro(hipDeviceTotalMem)                        \
@@ -94,27 +95,43 @@ namespace wrap {
   __macro(hipFree)                                  \
   __macro(hipFuncSetCacheConfig)                    \
   __macro(hipFuncGetAttribute)                      \
+  __macro(hipFuncSetAttribute)                      \
   __macro(hipGetDevice)                             \
   __macro(hipGetDeviceCount)                        \
   __macro(hipGetDeviceProperties)                   \
   __macro(hipGetErrorString)                        \
   __macro(hipGraphAddKernelNode)                    \
-  __macro(hipGraphAddMemcpyNode)                    \
+  __macro(hipGraphAddChildGraphNode)                \
+  __macro(hipGraphAddEmptyNode)                     \
+  __macro(hipGraphAddMemAllocNode)                  \
+  __macro(hipGraphAddMemcpyNode1D)                  \
+  __macro(hipGraphAddMemsetNode)                    \
+  __macro(hipGraphAddMemFreeNode)                   \
   __macro(hipGraphCreate)                           \
   __macro(hipGraphDebugDotPrint)                    \
   __macro(hipGraphDestroy)                          \
+  __macro(hipGraphGetNodes)                         \
+  __macro(hipGraphExecChildGraphNodeSetParams)      \
   __macro(hipGraphExecDestroy)                      \
+  __macro(hipGraphExecKernelNodeSetParams)          \
+  __macro(hipGraphExecMemcpyNodeSetParams1D)        \
+  __macro(hipGraphExecMemsetNodeSetParams)          \
   __macro(hipGraphExecUpdate)                       \
   __macro(hipGraphInstantiate)                      \
+  __macro(hipGraphMemAllocNodeGetParams)            \
   __macro(hipGraphLaunch)                           \
   __macro(hipGraphNodeGetType)                      \
+  __macro(hipGraphNodeSetEnabled)                   \
   __macro(hipHostFree)                              \
   __macro(hipHostMalloc)                            \
   __macro(hipHostRegister)                          \
   __macro(hipHostUnregister)                        \
   __macro(hipInit)                                  \
+  __macro(hipKernelNameRefByPtr)                    \
   __macro(hipLaunchHostFunc)                        \
+  __macro(hipLaunchKernel)                          \
   __macro(hipMalloc)                                \
+  __macro(hipMallocManaged)                         \
   __macro(hipMemGetAddressRange)                    \
   __macro(hipMemGetInfo)                            \
   __macro(hipMemcpyDtoD)                            \
@@ -136,9 +153,12 @@ namespace wrap {
   __macro(hipModuleLaunchKernel)                    \
   __macro(hipModuleLoadData)                        \
   __macro(hipModuleUnload)                          \
+  __macro(hipModuleOccupancyMaxActiveBlocksPerMultiprocessor) \
+  __macro(hipModuleOccupancyMaxPotentialBlockSize)  \
+  __macro(hipPointerGetAttribute)                   \
   __macro(hipPointerGetAttributes)                  \
+  __macro(hipRuntimeGetVersion)                     \
   __macro(hipSetDevice)                             \
-  __macro(hipDeviceGetStreamPriorityRange)          \
   __macro(hipStreamAddCallback)                     \
   __macro(hipStreamBeginCapture)                    \
   __macro(hipStreamCreateWithFlags)                 \
@@ -151,6 +171,19 @@ namespace wrap {
   __macro(hipStreamWaitEvent)  // clang-format on
 
 HIP_ROUTINE_EACH(STREAM_EXECUTOR_HIP_WRAP)
+
+#if TF_ROCM_VERSION >= 60200
+
+// clang-format off
+#define HIP_ROUTINE_EACH_62(__macro)            \
+  __macro(hipGetFuncBySymbol)                   \
+  __macro(hipStreamBeginCaptureToGraph)
+// clang-format on
+
+HIP_ROUTINE_EACH_62(STREAM_EXECUTOR_HIP_WRAP)
+
+#undef HIP_ROUTINE_EACH_62
+#endif  // TF_ROCM_VERSION >= 60200
 
 #undef HIP_ROUTINE_EACH
 #undef STREAM_EXECUTOR_HIP_WRAP

@@ -13,6 +13,10 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "CustomOptimizer"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "FTRL"
     mtype: "<type \'type\'>"
   }
@@ -25,7 +29,15 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "RowIdInitializer"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "SGD"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "SparseCoreEmbeddingConfig"
     mtype: "<type \'type\'>"
   }
   member {
@@ -38,6 +50,10 @@ tf_module {
   }
   member {
     name: "TPUEmbeddingV0"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "TPUEmbeddingV2"
     mtype: "<type \'type\'>"
   }
   member {

@@ -17,9 +17,8 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
-#include "absl/memory/memory.h"
 #include "xla/pjrt/utils.h"
-#include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/framework/resource_mgr.h"
 #include "tfrt/host_context/concurrent_work_queue.h"  // from @tf_runtime
 #include "tfrt/host_context/host_allocator.h"  // from @tf_runtime
 #include "tfrt/host_context/host_context.h"  // from @tf_runtime

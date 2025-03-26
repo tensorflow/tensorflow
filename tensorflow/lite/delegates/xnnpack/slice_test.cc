@@ -16,14 +16,14 @@ limitations under the License.
 #include <cstdint>
 #include <functional>
 #include <memory>
-#include <numeric>
 #include <random>
-#include <utility>
 #include <vector>
 
 #include <gtest/gtest.h>
+#include "tensorflow/lite/c/c_api_types.h"
 #include "tensorflow/lite/delegates/xnnpack/slice_tester.h"
 #include "tensorflow/lite/delegates/xnnpack/xnnpack_delegate.h"
+#include "tensorflow/lite/schema/schema_generated.h"
 
 namespace tflite {
 namespace xnnpack {

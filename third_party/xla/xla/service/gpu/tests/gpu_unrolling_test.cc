@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,6 +15,7 @@ limitations under the License.
 
 #include <utility>
 
+#include "xla/debug_options_flags.h"
 #include "xla/service/gpu/tests/gpu_codegen_test.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/tests/hlo_test_base.h"
@@ -50,27 +51,14 @@ TEST_F(GpuUnrollingTest, UnrollDefaultTimes) {
 
   CompileAndVerifyIr(std::move(hlo_module),
                      R"(
-; CHECK-LABEL: @fusion
-; CHECK: load float
-; CHECK: load float
-; CHECK: fadd
-; CHECK: store float
-; CHECK: load float
-; CHECK: load float
-; CHECK: fadd
-; CHECK: store float
-; CHECK: load float
-; CHECK: load float
-; CHECK: fadd
-; CHECK: store float
-; CHECK: load float
-; CHECK: load float
-; CHECK: fadd
-; CHECK: store float
-; CHECK-NOT: fadd
-; CHECK: }
+; CHECK-LABEL: @{{[a-z_]*}}fusion
+; CHECK-NOT: load float
+; CHECK-NOT: store float
+; CHECK: load <4 x float>
+; CHECK: load <4 x float>
+; CHECK: store <4 x float>
       )",
-                     /*match_optimized_ir=*/false);
+                     /*match_optimized_ir=*/true);
 }
 
 TEST_F(GpuUnrollingTest, UnrollUnfusedAdd) {
@@ -91,29 +79,16 @@ TEST_F(GpuUnrollingTest, UnrollUnfusedAdd) {
   CompileAndVerifyIr(std::move(hlo_module),
                      R"(
 ; CHECK-LABEL: @wrapped_add
-; CHECK: load float
-; CHECK: load float
-; CHECK: fadd
-; CHECK: store float
-; CHECK: load float
-; CHECK: load float
-; CHECK: fadd
-; CHECK: store float
-; CHECK: load float
-; CHECK: load float
-; CHECK: fadd
-; CHECK: store float
-; CHECK: load float
-; CHECK: load float
-; CHECK: fadd
-; CHECK: store float
-; CHECK-NOT: fadd
-; CHECK: }
+; CHECK-NOT: load float
+; CHECK-NOT: store float
+; CHECK: load <4 x float>
+; CHECK: load <4 x float>
+; CHECK: store <4 x float>
       )",
-                     /*match_optimized_ir=*/false);
+                     /*match_optimized_ir=*/true);
 }
 
-TEST_F(GpuUnrollingTest, DisabledUnrollUnfusedSine) {
+TEST_F(GpuUnrollingTest, UnrollUnfusedSine) {
   HloModuleConfig config;
   auto debug_options = HloTestBase::GetDebugOptionsForTest();
   config.set_debug_options(debug_options);
@@ -130,85 +105,9 @@ TEST_F(GpuUnrollingTest, DisabledUnrollUnfusedSine) {
 
   CompileAndVerifyIr(std::move(hlo_module),
                      R"(
-; CHECK: load float
-; CHECK-NOT: load float
-; CHECK: }
-      )",
-                     /*match_optimized_ir=*/true);
-}
-
-TEST_F(GpuUnrollingTest, DisabledUnrollUnfusedCosine) {
-  HloModuleConfig config;
-  auto debug_options = HloTestBase::GetDebugOptionsForTest();
-  config.set_debug_options(debug_options);
-
-  const char *const kUnfusedAddModule = R"(
-    HloModule test_module
-
-    ENTRY SineFunc {
-      p0 = f32[1600000]{0} parameter(0)
-      ROOT s = f32[1600000]{0} cosine(p0)
-    })";
-  auto hlo_module =
-      ParseAndReturnVerifiedModule(kUnfusedAddModule, config).value();
-
-  CompileAndVerifyIr(std::move(hlo_module),
-                     R"(
-; CHECK: load float
-; CHECK-NOT: load float
-; CHECK: }
-      )",
-                     /*match_optimized_ir=*/true);
-}
-
-TEST_F(GpuUnrollingTest, DisabledUnrollUnfusedPower) {
-  HloModuleConfig config;
-  auto debug_options = HloTestBase::GetDebugOptionsForTest();
-  config.set_debug_options(debug_options);
-
-  const char *const kUnfusedAddModule = R"(
-    HloModule test_module
-
-    ENTRY SineFunc {
-      p0 = f32[1600000]{0} parameter(0)
-      ROOT s = f32[1600000]{0} power(p0, p0)
-    })";
-  auto hlo_module =
-      ParseAndReturnVerifiedModule(kUnfusedAddModule, config).value();
-
-  // There is only 1 load, because we pass the `p0` parameter to the kernel only
-  // once.
-  CompileAndVerifyIr(std::move(hlo_module),
-                     R"(
-; CHECK: load float
-; CHECK-NOT: load float
-; CHECK: }
-      )",
-                     /*match_optimized_ir=*/true);
-}
-
-TEST_F(GpuUnrollingTest, DisabledUnrollUnfusedAtan2) {
-  HloModuleConfig config;
-  auto debug_options = HloTestBase::GetDebugOptionsForTest();
-  config.set_debug_options(debug_options);
-
-  const char *const kUnfusedAddModule = R"(
-    HloModule test_module
-
-    ENTRY SineFunc {
-      p0 = f32[16000000]{0} parameter(0)
-      ROOT s = f32[16000000]{0} atan2(p0, p0)
-    })";
-  auto hlo_module =
-      ParseAndReturnVerifiedModule(kUnfusedAddModule, config).value();
-
-  // There is only 1 load, because we pass the `p0` parameter to the kernel only
-  // once.
-  CompileAndVerifyIr(std::move(hlo_module),
-                     R"(
-; CHECK: load float
-; CHECK-NOT: load float
-; CHECK: }
+; CHECK: load <4 x float>
+; CHECK-NOT: load <4 x float>
+; CHECK: store <4 x float>
       )",
                      /*match_optimized_ir=*/true);
 }
@@ -243,38 +142,15 @@ TEST_F(GpuUnrollingTest, UnrollMultiOutputFusion) {
 
   CompileAndVerifyIr(std::move(hlo_module),
                      R"(
-; CHECK-LABEL: @fusion
-; CHECK: load float
-; CHECK: load float
+; CHECK-LABEL: @{{[a-z_]*}}fusion
 ; CHECK-NOT: load float
-; CHECK-NOT: load float
-; CHECK: fadd
-; CHECK: load float
-; CHECK: load float
-; CHECK-NOT: load float
-; CHECK-NOT: load float
-; CHECK: fmul
-; CHECK: store float
-; CHECK: store float
 ; CHECK-NOT: store float
-; CHECK-NOT: store float
-; CHECK: load float
-; CHECK: load float
-; CHECK-NOT: load float
-; CHECK-NOT: load float
-; CHECK: fadd
-; CHECK: load float
-; CHECK: load float
-; CHECK-NOT: load float
-; CHECK-NOT: load float
-; CHECK: fmul
-; CHECK: store float
-; CHECK: store float
-; CHECK-NOT: store float
-; CHECK-NOT: store float
-; CHECK: }
+; CHECK: load <4 x float>
+; CHECK: load <4 x float>
+; CHECK: store <4 x float>
+; CHECK: store <4 x float>
       )",
-                     /*match_optimized_ir=*/false);
+                     /*match_optimized_ir=*/true);
 }
 
 }  // namespace

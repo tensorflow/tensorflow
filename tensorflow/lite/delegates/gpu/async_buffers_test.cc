@@ -19,6 +19,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "tensorflow/lite/delegates/gpu/android_hardware_buffer.h"
 #include "tensorflow/lite/delegates/gpu/api.h"
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"
 #include "tensorflow/lite/delegates/gpu/gl/egl_environment.h"
@@ -28,38 +29,44 @@ namespace gpu {
 namespace {
 
 TEST(AsyncBufferTest, DuplicateTest) {
-  // Create tie
-  TensorObjectDef* tie = new TensorObjectDef();
-  tie->object_def.data_type = DataType::FLOAT32;
-  tie->object_def.data_layout = DataLayout::BHWC;
-  tie->dimensions = Dimensions(2, 2, 2, 2);
+  if (__builtin_available(android 26, *)) {
+    auto Instance = OptionalAndroidHardwareBuffer::Instance;
+    // Create tie
+    TensorObjectDef* tie = new TensorObjectDef();
+    tie->object_def.data_type = DataType::FLOAT32;
+    tie->object_def.data_layout = DataLayout::BHWC;
+    tie->dimensions = Dimensions(2, 2, 2, 2);
 
-  // Create AHWB
-  AHardwareBuffer_Desc buffDesc = {};
-  buffDesc.width = 1000;
-  buffDesc.height = 1;
-  buffDesc.layers = 1;
-  buffDesc.format = AHARDWAREBUFFER_FORMAT_BLOB;
-  buffDesc.usage = AHARDWAREBUFFER_USAGE_CPU_WRITE_OFTEN |
-                   AHARDWAREBUFFER_USAGE_CPU_READ_OFTEN |
-                   AHARDWAREBUFFER_USAGE_GPU_DATA_BUFFER;
-  AHardwareBuffer* ahwb;
-  EXPECT_EQ(AHardwareBuffer_allocate(&buffDesc, &ahwb), 0);
+    // Create AHWB
+    AHardwareBuffer_Desc buffDesc = {};
+    buffDesc.width = 1000;
+    buffDesc.height = 1;
+    buffDesc.layers = 1;
+    buffDesc.format = AHARDWAREBUFFER_FORMAT_BLOB;
+    buffDesc.usage = AHARDWAREBUFFER_USAGE_CPU_WRITE_OFTEN |
+                     AHARDWAREBUFFER_USAGE_CPU_READ_OFTEN |
+                     AHARDWAREBUFFER_USAGE_GPU_DATA_BUFFER;
+    AHardwareBuffer* ahwb;
+    EXPECT_TRUE(Instance().IsSupported(&buffDesc));
+    EXPECT_EQ(Instance().Allocate(&buffDesc, &ahwb), 0);
 
-  // Init GL Env to properly use gl fcns
-  std::unique_ptr<gl::EglEnvironment> env;
-  EXPECT_OK(gl::EglEnvironment::NewEglEnvironment(&env));
-  AsyncBuffer async_buffer1 = AsyncBuffer(*tie, ahwb);
-  GLuint buffer1, buffer2;
-  EXPECT_OK(async_buffer1.GetOpenGlBufferReadView(buffer1));
-  EXPECT_GE(buffer1, 0);
-  EXPECT_OK(async_buffer1.GetOpenGlBufferReadView(buffer2));
-  // Check that each instance of AsyncBuffer class has only one id
-  EXPECT_EQ(buffer1, buffer2);
-  AsyncBuffer async_buffer2 = AsyncBuffer(*tie, ahwb);
-  EXPECT_OK(async_buffer2.GetOpenGlBufferReadView(buffer2));
-  // Check that each different instance will produce unique id
-  EXPECT_NE(buffer1, buffer2);
+    // Init GL Env to properly use gl fcns
+    std::unique_ptr<gl::EglEnvironment> env;
+    EXPECT_OK(gl::EglEnvironment::NewEglEnvironment(&env));
+    AsyncBuffer async_buffer1 = AsyncBuffer(*tie, ahwb);
+    GLuint buffer1, buffer2;
+    EXPECT_OK(async_buffer1.GetOpenGlBuffer(buffer1));
+    EXPECT_GE(buffer1, 0);
+    EXPECT_OK(async_buffer1.GetOpenGlBuffer(buffer2));
+    // Check that each instance of AsyncBuffer class has only one id
+    EXPECT_EQ(buffer1, buffer2);
+    AsyncBuffer async_buffer2 = AsyncBuffer(*tie, ahwb);
+    EXPECT_OK(async_buffer2.GetOpenGlBuffer(buffer2));
+    // Check that each different instance will produce unique id
+    EXPECT_NE(buffer1, buffer2);
+  } else {
+    GTEST_SKIP();
+  }
 }
 
 }  // namespace

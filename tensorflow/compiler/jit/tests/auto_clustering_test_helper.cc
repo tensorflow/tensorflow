@@ -15,11 +15,11 @@ limitations under the License.
 
 #include "tensorflow/compiler/jit/tests/auto_clustering_test_helper.h"
 
+#include "absl/status/statusor.h"
 #include "absl/strings/numbers.h"
 #include "tensorflow/compiler/jit/mark_for_compilation_pass.h"
 #include "tensorflow/compiler/jit/xla_cluster_util.h"
 #include "xla/status_macros.h"
-#include "xla/statusor.h"
 #include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/io/random_inputstream.h"
@@ -33,7 +33,8 @@ limitations under the License.
 
 namespace tensorflow {
 namespace {
-StatusOr<string> SummarizeClustering(const GraphDef& auto_clustered_graph_def) {
+absl::StatusOr<string> SummarizeClustering(
+    const GraphDef& auto_clustered_graph_def) {
   testing::ResetClusterSequenceNumber();
   Graph graph(OpRegistry::Global());
   GraphConstructorOptions graph_opts;
@@ -81,7 +82,7 @@ StatusOr<string> SummarizeClustering(const GraphDef& auto_clustered_graph_def) {
   return result;
 }
 
-Status AssertGraphDefIsUnclustered(const GraphDef& graphdef) {
+absl::Status AssertGraphDefIsUnclustered(const GraphDef& graphdef) {
   const char* kXlaClusterAttr = "_XlaCluster";
   const char* kXlaAlreadyClusteredAttr = "_XlaAlreadyClustered";
 
@@ -95,19 +96,19 @@ Status AssertGraphDefIsUnclustered(const GraphDef& graphdef) {
     }
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status ReadTextProtoFromString(Env* env, const string& data,
-                               ::tensorflow::protobuf::Message* proto) {
+absl::Status ReadTextProtoFromString(Env* env, const string& data,
+                                     ::tensorflow::protobuf::Message* proto) {
   if (!::tensorflow::protobuf::TextFormat::ParseFromString(data, proto)) {
     return errors::DataLoss("Can't parse input data as text proto");
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 }  // namespace
 
-Status AutoClusteringTest::RunAutoClusteringTestImpl(
+absl::Status AutoClusteringTest::RunAutoClusteringTestImpl(
     GraphDef graphdef, absl::string_view golden_summary_file_path) {
   if (!IsGoogleCudaEnabled()) {
     // There is some slight change in the clustering decisions under
@@ -121,7 +122,7 @@ Status AutoClusteringTest::RunAutoClusteringTestImpl(
     LOG(INFO) << "Not running "
               << ::testing::UnitTest::GetInstance()->current_test_info()->name()
               << " since test was not built with --config=cuda";
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   TF_RETURN_IF_ERROR(AssertGraphDefIsUnclustered(graphdef));
@@ -158,10 +159,10 @@ Status AutoClusteringTest::RunAutoClusteringTestImpl(
 
   EXPECT_EQ(golden_file_contents, clustering_summary);
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status AutoClusteringTest::RunAutoClusteringTestWithPbtxt(
+absl::Status AutoClusteringTest::RunAutoClusteringTestWithPbtxt(
     absl::string_view pbtxt_file_path,
     absl::string_view golden_summary_file_path) {
   GraphDef graphdef;
@@ -171,7 +172,7 @@ Status AutoClusteringTest::RunAutoClusteringTestWithPbtxt(
                                    golden_summary_file_path);
 }
 
-Status AutoClusteringTest::RunAutoClusteringTestWithGzippedPbtxt(
+absl::Status AutoClusteringTest::RunAutoClusteringTestWithGzippedPbtxt(
     absl::string_view gzipped_pbtxt_file_path,
     absl::string_view golden_summary_file_path) {
   Env* env = Env::Default();
@@ -186,7 +187,7 @@ Status AutoClusteringTest::RunAutoClusteringTestWithGzippedPbtxt(
                          /*output_buffer_bytes=*/k_buffer_size,
                          io::ZlibCompressionOptions::GZIP());
   tstring decompressed_pbtxt_string;
-  Status s = in.ReadNBytes(INT_MAX, &decompressed_pbtxt_string);
+  absl::Status s = in.ReadNBytes(INT_MAX, &decompressed_pbtxt_string);
   if (!s.ok() && !errors::IsOutOfRange(s)) {
     // OutOfRange is fine since we set the number of read bytes to INT_MAX.
     // Only return other kinds of errors.
@@ -201,8 +202,8 @@ Status AutoClusteringTest::RunAutoClusteringTestWithGzippedPbtxt(
 }
 
 #if defined(PLATFORM_GOOGLE)
-Status BenchmarkMarkForCompilation(absl::string_view graph_def_path,
-                                   benchmark::State& state) {
+absl::Status BenchmarkMarkForCompilation(absl::string_view graph_def_path,
+                                         benchmark::State& state) {
   GraphDef graph_def;
   TF_RETURN_IF_ERROR(
       ReadTextProto(Env::Default(), string(graph_def_path), &graph_def));
@@ -221,7 +222,7 @@ Status BenchmarkMarkForCompilation(absl::string_view graph_def_path,
                                   std::move(graph_def_copy), &result));
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 #endif  // PLATFORM_GOOGLE
 

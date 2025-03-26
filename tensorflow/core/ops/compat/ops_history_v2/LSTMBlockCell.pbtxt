@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "LSTMBlockCell"
   input_arg {
     name: "x"

@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -51,18 +51,28 @@ limitations under the License.
 #include <vector>
 
 #include "absl/strings/string_view.h"
+#include "xla/tsl/util/command_line_flags.h"
 #include "xla/types.h"
-#include "tsl/util/command_line_flags.h"
 
 namespace xla {
+
+// Calls tsl::Flags::Parse(argc, argv, flag_list) against any as yet
+// unrecognized flags passed in the environment variable `envvar`.
+//
+// Raises a fatal error if any flags in `envvar` were not recognized, or if flag
+// parsing failed.
+void ParseFlagsFromEnvAndDieIfUnknown(absl::string_view envvar,
+                                      const std::vector<tsl::Flag>& flag_list,
+                                      bool reset_envvar = false);
 
 // Calls tsl::Flags::Parse(argc, argv, flag_list) against any as yet
 // unrecognized flags passed in the environment variable `envvar`, and returns
 // its return value.
 //
-// Raises a fatal error if any flags in `envvar` were not recognized.
-bool ParseFlagsFromEnvAndDieIfUnknown(absl::string_view envvar,
-                                      const std::vector<tsl::Flag>& flag_list);
+// Ignores unknown flags, raises a fatal if flag parsing failed.
+void ParseFlagsFromEnvAndIgnoreUnknown(absl::string_view envvar,
+                                       const std::vector<tsl::Flag>& flag_list,
+                                       bool reset_envvar = false);
 
 // Used only for testing.  Not to be used by clients.
 void ResetFlagsFromEnvForTesting(absl::string_view envvar, int** pargc,

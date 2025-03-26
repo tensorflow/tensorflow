@@ -13,13 +13,16 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cstdint>
 #include <string>
 
-#include "absl/strings/match.h"
+#include "absl/strings/str_format.h"
+#include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
-#include "xla/client/lib/approx_topk.h"
-#include "xla/client/xla_builder.h"
-#include "xla/client/xla_computation.h"
+#include "xla/hlo/builder/lib/approx_topk.h"
+#include "xla/hlo/builder/xla_builder.h"
+#include "xla/hlo/builder/xla_computation.h"
 #include "xla/literal_util.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
@@ -109,7 +112,8 @@ class ApproxTopKOpBase : public XlaOpKernel {
   int64_t reduction_input_size_override_;
   bool aggregate_to_topk_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(ApproxTopKOpBase);
+  ApproxTopKOpBase(const ApproxTopKOpBase&) = delete;
+  void operator=(const ApproxTopKOpBase&) = delete;
 };
 
 class TpuApproxTopKOp : public ApproxTopKOpBase {

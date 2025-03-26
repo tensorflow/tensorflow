@@ -9,9 +9,7 @@ cc_library(
     name = "mla_test_utils",
     testonly = True,
     hdrs = ["mla_test_utils.h"],
-    visibility = [
-        "//visibility:private",  # Only private by automation, not intent. Owner may accept CLs adding visibility. See go/scheuklappen#explicit-private.
-    ],
+    visibility = ["//visibility:private"],
     deps = [
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:status",
@@ -27,9 +25,7 @@ cc_library(
 cc_library(
     name = "mla_utils",
     hdrs = ["mla_utils.h"],
-    visibility = [
-        "//visibility:private",  # Only private by automation, not intent. Owner may accept CLs adding visibility. See go/scheuklappen#explicit-private.
-    ],
+    visibility = ["//visibility:private"],
     deps = [
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:statusor",

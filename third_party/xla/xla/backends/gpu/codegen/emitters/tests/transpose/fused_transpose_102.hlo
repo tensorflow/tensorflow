@@ -1,0 +1,23 @@
+// RUN: fusion_to_mlir %s | emitters_opt -xla-gpu-test-optimize |\
+// RUN:   FileCheck %s
+// RUN: test_correctness %s
+
+fusion {
+  %p0 = s8[160,170,3] parameter(0)
+  ROOT %transpose = s8[170,160,3] transpose(%p0), dimensions={1,0,2}
+}
+// CHECK: func.func @main(
+// CHECK-SAME:   }, %[[OUT:.*]]: tensor<170x160x3xi8>
+
+// CHECK:      %[[SHMEM:.*]] = xla_gpu.allocate_shared : tensor<32x33x3xi8>
+// CHECK:      %[[MATERIALIZED:.*]] = xla_gpu.materialize @fusion_p0
+// CHECK:      %[[SHMEM_WITH_VALS:.*]] = xla_gpu.insert %[[MATERIALIZED]]
+// CHECK-SAME:   into %[[SHMEM]] at #indexing_map
+
+// CHECK:      %[[SYNC:.*]] = xla_gpu.sync_threads %[[SHMEM_WITH_VALS]]
+
+// CHECK:      xla.loop
+// CHECK-SAME:    iter_args(%[[OUT_:.*]] = %[[OUT]])
+// CHECK:       %[[EXTRACTED:.*]] = tensor.extract %[[SYNC]]
+// CHECK:       %[[RES:.*]] = xla.pure_call @fusion__epilogue__transpose
+// CHECK:       tensor.insert %[[RES]] into %[[OUT_]]

@@ -72,8 +72,9 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   const TfLiteTensor* element_shape_tensor;
   TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, kElementShapeInput,
                                           &element_shape_tensor));
-  TF_LITE_ENSURE(context, element_shape_tensor->dims->size == 1 &&
-                              element_shape_tensor->dims->data[0] == rank - 1);
+  TF_LITE_ENSURE(context, (element_shape_tensor->dims->size == 1 &&
+                           element_shape_tensor->dims->data[0] == rank - 1) ||
+                              element_shape_tensor->dims->size == 0);
 
   IntArrayUniquePtr element_shape_for_list =
       TensorAsShape(*element_shape_tensor);

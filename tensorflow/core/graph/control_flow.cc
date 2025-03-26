@@ -38,8 +38,8 @@ struct Frame {
 };
 
 // Verify that the ControlFlowInfo of the graph has valid loop structure.
-Status ValidateControlFlowInfo(const Graph* graph,
-                               const std::vector<ControlFlowInfo>& cf_info) {
+absl::Status ValidateControlFlowInfo(
+    const Graph* graph, const std::vector<ControlFlowInfo>& cf_info) {
   std::unordered_map<string, Frame> frames;
   for (const Node* node : graph->op_nodes()) {
     const ControlFlowInfo& cf = cf_info[node->id()];
@@ -79,12 +79,13 @@ Status ValidateControlFlowInfo(const Graph* graph,
       frame.loop_cond = node;
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 }  // namespace
 
-Status BuildControlFlowInfo(const Graph* g, std::vector<ControlFlowInfo>* info,
-                            std::vector<string>* unreachable_nodes) {
+absl::Status BuildControlFlowInfo(const Graph* g,
+                                  std::vector<ControlFlowInfo>* info,
+                                  std::vector<string>* unreachable_nodes) {
   info->clear();
   info->resize(g->num_node_ids());
 
@@ -180,7 +181,7 @@ Status BuildControlFlowInfo(const Graph* g, std::vector<ControlFlowInfo>* info,
     }
   }
   TF_RETURN_IF_ERROR(ValidateControlFlowInfo(g, *info));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace tensorflow

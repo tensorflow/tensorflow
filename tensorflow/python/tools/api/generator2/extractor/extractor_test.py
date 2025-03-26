@@ -35,14 +35,6 @@ API docstring: tf.test
 """  # 4
         ''',
     )
-    p.process(
-        'test2.py',
-        '''# 1
-"""this is not an exported docstring.
-API docstring: tf_estimator.test2
-"""  # 4
-        ''',
-    )
     self.assertEqual(
         exporter,
         exported_api.ExportedApi(

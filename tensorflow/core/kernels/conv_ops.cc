@@ -39,8 +39,8 @@ typedef Eigen::GpuDevice GPUDevice;
     if (!TF_PREDICT_TRUE(EXP)) return (STATUS); \
   } while (false)
 
-Status InitConv2DParameters(const OpKernelConstruction* context,
-                            Conv2DParameters* params) {
+absl::Status InitConv2DParameters(const OpKernelConstruction* context,
+                                  Conv2DParameters* params) {
   TF_RETURN_IF_ERROR(context->GetAttr("dilations", &params->dilations));
   TF_RETURN_IF_ERROR(context->GetAttr("strides", &params->strides));
   TF_RETURN_IF_ERROR(context->GetAttr("padding", &params->padding));
@@ -91,12 +91,12 @@ Status InitConv2DParameters(const OpKernelConstruction* context,
   TF_RETURN_IF_ERROR(CheckValidPadding(
       params->padding, params->explicit_paddings, num_dims, data_format));
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status ComputeConv2DDimension(const Conv2DParameters& params,
-                              const Tensor& input, const Tensor& filter,
-                              Conv2DDimensions* dimensions) {
+absl::Status ComputeConv2DDimension(const Conv2DParameters& params,
+                                    const Tensor& input, const Tensor& filter,
+                                    Conv2DDimensions* dimensions) {
   int required_dims =
       params.data_format == TensorFormat::FORMAT_NCHW_VECT_C ? 5 : 4;
   // Check that 2D convolution input and filter have exactly required_dims.
@@ -210,7 +210,7 @@ Status ComputeConv2DDimension(const Conv2DParameters& params,
   dimensions->pad_cols_before = pad_cols_before;
   dimensions->pad_cols_after = pad_cols_after;
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 #undef TF_REQUIRES

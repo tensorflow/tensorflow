@@ -20,7 +20,6 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "tensorflow/core/grappler/costs/cost_estimator.h"
 #include "tensorflow/core/grappler/costs/op_level_cost_estimator.h"
-#include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/utils/xplane_visitor.h"
 
@@ -50,7 +49,8 @@ class TfOpRoofLineCostEstimator
   absl::flat_hash_set<std::string>
       unsupported_ops_;  // summary for unsupported ops.
 
-  TF_DISALLOW_COPY_AND_ASSIGN(TfOpRoofLineCostEstimator);
+  TfOpRoofLineCostEstimator(const TfOpRoofLineCostEstimator&) = delete;
+  void operator=(const TfOpRoofLineCostEstimator&) = delete;
 };
 
 }  // namespace profiler

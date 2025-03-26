@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,15 +15,38 @@ limitations under the License.
 
 #include "xla/service/llvm_ir/kernel_support_library.h"
 
+#include <algorithm>
+#include <cstdint>
+#include <functional>
+#include <iterator>
+#include <memory>
+#include <vector>
+
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/strings/string_view.h"
+#include "llvm/IR/BasicBlock.h"
+#include "llvm/IR/DerivedTypes.h"
+#include "llvm/IR/Function.h"
+#include "llvm/IR/GlobalValue.h"
+#include "llvm/IR/IRBuilder.h"
+#include "llvm/IR/Instructions.h"
+#include "llvm/IR/Module.h"
+#include "llvm/IR/Type.h"
+#include "llvm/IR/Value.h"
+#include "xla/service/hlo_module_config.h"
+#include "xla/service/llvm_ir/llvm_loop.h"
 #include "xla/service/llvm_ir/llvm_type_conversion_util.h"
 #include "xla/service/llvm_ir/llvm_util.h"
+#include "xla/tsl/platform/errors.h"
 
 namespace xla {
-Status KernelSupportLibrary::ForWithStatus(
+absl::Status KernelSupportLibrary::ForWithStatus(
     absl::string_view name, llvm::Value* start, llvm::Value* end,
     llvm::Value* step,
-    const std::function<Status(llvm::Value*, bool)>& for_body_generator) {
-  return IfWithStatus(b_->CreateICmpSLT(start, end), [&]() -> Status {
+    const std::function<absl::Status(llvm::Value*, bool)>& for_body_generator) {
+  return IfWithStatus(b_->CreateICmpSLT(start, end), [&]() -> absl::Status {
     TF_RETURN_IF_ERROR(for_body_generator(start, /*is_first_iteration=*/true));
     return ForWithStatus(
         name, b_->CreateAdd(start, step), end, step,
@@ -31,36 +54,24 @@ Status KernelSupportLibrary::ForWithStatus(
   });
 }
 
-Status KernelSupportLibrary::ForWithStatus(
+absl::Status KernelSupportLibrary::ForWithStatus(
     absl::string_view name, llvm::Value* start, llvm::Value* end,
-    llvm::Value* step, bool peel_first_iteration,
-    const std::function<Status(llvm::Value*, llvm::Value*)>&
-        for_body_generator) {
-  if (peel_first_iteration) {
-    return ForWithStatus(
-        name, start, end, step, true,
-        [&](llvm::Value* indvar, bool is_first_iteration) -> Status {
-          return for_body_generator(indvar, b_->getInt1(is_first_iteration));
-        });
-  } else {
-    std::unique_ptr<llvm_ir::ForLoop> loop = llvm_ir::ForLoop::EmitForLoop(
-        name, start, end, step, b_,
-        /*unroll_mode=*/unroll_mode_,
-        /*prevent_vectorization=*/prevent_vectorization_);
-    b_->SetInsertPoint(&loop->GetBodyBasicBlock()->back());
-    TF_RETURN_IF_ERROR(
-        for_body_generator(loop->GetIndVarValue(),
-                           /*is_first_iteration=*/b_->CreateICmpEQ(
-                               loop->GetIndVarValue(), start)));
-    llvm_ir::SetToLastInsertPoint(loop->GetExitBasicBlock(), b_);
-    return OkStatus();
-  }
+    llvm::Value* step,
+    const std::function<absl::Status(llvm::Value*)>& for_body_generator) {
+  std::unique_ptr<llvm_ir::ForLoop> loop = llvm_ir::ForLoop::EmitForLoop(
+      name, start, end, step, b_,
+      /*unroll_mode=*/unroll_mode_,
+      /*prevent_vectorization=*/prevent_vectorization_);
+  b_->SetInsertPoint(&loop->GetBodyBasicBlock()->back());
+  TF_RETURN_IF_ERROR(for_body_generator(loop->GetIndVarValue()));
+  llvm_ir::SetToLastInsertPoint(loop->GetExitBasicBlock(), b_);
+  return absl::OkStatus();
 }
 
-Status KernelSupportLibrary::IfWithStatus(
+absl::Status KernelSupportLibrary::IfWithStatus(
     absl::string_view name, llvm::Value* condition,
-    const std::function<Status()>& true_block_generator,
-    const std::function<Status()>& false_block_generator) {
+    const std::function<absl::Status()>& true_block_generator,
+    const std::function<absl::Status()>& false_block_generator) {
   llvm_ir::LlvmIfData if_data =
       llvm_ir::EmitIfThenElse(condition, name, b_,
                               /*emit_else=*/false_block_generator != nullptr);
@@ -71,11 +82,11 @@ Status KernelSupportLibrary::IfWithStatus(
     TF_RETURN_IF_ERROR(false_block_generator());
   }
   llvm_ir::SetToLastInsertPoint(if_data.after_block, b_);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 void KernelSupportLibrary::EmitAndCallOutlinedKernel(
-    const HloModuleConfig& module_config, llvm::IRBuilder<>* b,
+    const HloModuleConfig& module_config, llvm::IRBuilderBase* b,
     absl::string_view kernel_name,
     KernelSupportLibrary::ArgumentVector arguments,
     const std::function<void(KernelSupportLibrary::ArgumentVector)>&
@@ -110,7 +121,7 @@ void KernelSupportLibrary::EmitAndCallOutlinedKernel(
                                           llvm::GlobalValue::InternalLinkage,
                                           module_config, kernel_name, module);
 
-    llvm::IRBuilder<>::InsertPointGuard guard(*b);
+    llvm::IRBuilderBase::InsertPointGuard guard(*b);
 
     auto* entry_bb =
         llvm::BasicBlock::Create(b->getContext(), "entry", function);

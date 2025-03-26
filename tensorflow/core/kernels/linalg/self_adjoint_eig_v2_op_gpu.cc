@@ -167,7 +167,8 @@ class SelfAdjointEigV2OpGpu : public AsyncOpKernel {
  private:
   bool compute_v_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(SelfAdjointEigV2OpGpu);
+  SelfAdjointEigV2OpGpu(const SelfAdjointEigV2OpGpu&) = delete;
+  void operator=(const SelfAdjointEigV2OpGpu&) = delete;
 };
 
 #define REGISTER(Scalar)                                                       \

@@ -21,7 +21,6 @@ limitations under the License.
 
 namespace tensorflow {
 
-namespace {
 xla::CompileOptions GetPjRtCompileOptions(
     const XlaCompiler::Options& options,
     const XlaCompiler::CompilationResult& result) {
@@ -39,17 +38,17 @@ xla::CompileOptions GetPjRtCompileOptions(
   }
   return pjrt_compile_options;
 }
-}  // namespace
 
-StatusOr<std::unique_ptr<xla::PjRtLoadedExecutable>>
+absl::StatusOr<std::unique_ptr<xla::PjRtLoadedExecutable>>
 PjRtDeviceCompilerClient::BuildExecutable(
     const XlaCompiler::Options& options,
     const XlaCompiler::CompilationResult& result) {
   VLOG(2) << "Compiling to xla::PjRtLoadedExecutable.";
 
-  TF_ASSIGN_OR_RETURN(auto executable,
-                      client_->Compile(*result.computation,
-                                       GetPjRtCompileOptions(options, result)));
+  TF_ASSIGN_OR_RETURN(
+      auto executable,
+      client_->CompileAndLoad(*result.computation,
+                              GetPjRtCompileOptions(options, result)));
 
   VLOG(2) << "Compiled PJRT executable " << executable->name()
           << " num_replicas " << executable->num_replicas()
@@ -58,13 +57,13 @@ PjRtDeviceCompilerClient::BuildExecutable(
   return std::move(executable);
 }
 
-StatusOr<std::string> PjRtDeviceCompilerClient::SerializeExecutable(
+absl::StatusOr<std::string> PjRtDeviceCompilerClient::SerializeExecutable(
     const xla::PjRtLoadedExecutable& executable) {
   VLOG(1) << "Serializing xla::PjRtLoadedExecutable to string.";
   return executable.SerializeExecutable();
 }
 
-StatusOr<std::string> PjRtDeviceCompilerClient::BuildSerializedExecutable(
+absl::StatusOr<std::string> PjRtDeviceCompilerClient::BuildSerializedExecutable(
     const XlaCompiler::Options& options,
     const XlaCompiler::CompilationResult& result) {
   VLOG(1) << "PJRT currently doesn't support AOT compilation. Compiling to "
@@ -73,14 +72,15 @@ StatusOr<std::string> PjRtDeviceCompilerClient::BuildSerializedExecutable(
   return executable->SerializeExecutable();
 }
 
-StatusOr<std::unique_ptr<xla::PjRtLoadedExecutable>>
+absl::StatusOr<std::unique_ptr<xla::PjRtLoadedExecutable>>
 PjRtDeviceCompilerClient::LoadExecutable(
     const XlaCompiler::Options& options,
     const XlaCompiler::CompilationResult& result,
     const std::string& serialized_executable) {
   VLOG(1) << "Deserializing from string to xla::PjRtLoadedExecutable.";
-  return client_->DeserializeExecutable(serialized_executable,
-                                        GetPjRtCompileOptions(options, result));
+  return client_->LoadSerializedExecutable(
+      serialized_executable, GetPjRtCompileOptions(options, result),
+      xla::LoadOptions());
 }
 
 void PjRtDeviceCompilerClient::WaitForProgramsToFinish() {

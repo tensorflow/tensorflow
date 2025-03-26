@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -104,6 +104,12 @@ class IrBuilderMixin {
   template <class... Args>
   llvm::Value* ConstInBoundsGEP1_32(Args&&... args) {
     return mixin_builder()->CreateConstInBoundsGEP1_32(
+        std::forward<Args>(args)...);
+  }
+
+  template <class... Args>
+  llvm::Value* ConstInBoundsGEP1_64(Args&&... args) {
+    return mixin_builder()->CreateConstInBoundsGEP1_64(
         std::forward<Args>(args)...);
   }
 
@@ -436,7 +442,7 @@ class IrBuilderMixin {
   }
 
  private:
-  llvm::IRBuilder<>* mixin_builder() {
+  llvm::IRBuilderBase* mixin_builder() {
     return static_cast<Derived*>(this)->builder();
   }
 };

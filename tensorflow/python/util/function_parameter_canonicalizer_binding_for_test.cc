@@ -15,13 +15,16 @@ limitations under the License.
 
 #include <Python.h>
 
+#include <string>
 #include <vector>
 
+#include "absl/log/check.h"
 #include "absl/types/span.h"
 #include "pybind11/pybind11.h"  // from @pybind11
 #include "pybind11/pytypes.h"  // from @pybind11
 #include "pybind11/stl.h"  // from @pybind11
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/python/lib/core/safe_pyobject_ptr.h"
 #include "tensorflow/python/util/function_parameter_canonicalizer.h"
 
 namespace py = pybind11;

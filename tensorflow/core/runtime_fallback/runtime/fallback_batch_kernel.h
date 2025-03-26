@@ -15,23 +15,30 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_RUNTIME_FALLBACK_RUNTIME_FALLBACK_BATCH_KERNEL_H_
 #define TENSORFLOW_CORE_RUNTIME_FALLBACK_RUNTIME_FALLBACK_BATCH_KERNEL_H_
 
+#include <cstdint>
+#include <functional>
 #include <memory>
 #include <optional>
 #include <string>
 #include <vector>
 
-#include "absl/log/check.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/op_requires.h"
 #include "tensorflow/core/framework/resource_mgr.h"
+#include "tensorflow/core/kernels/batch_kernels.h"
 #include "tensorflow/core/kernels/batching_util/adaptive_shared_batch_scheduler.h"
 #include "tensorflow/core/kernels/batching_util/batch_resource_base.h"
+#include "tensorflow/core/kernels/batching_util/batch_scheduler.h"
+#include "tensorflow/core/kernels/batching_util/batch_stats.h"
 #include "tensorflow/core/kernels/batching_util/warmup.h"
 #include "tensorflow/core/lib/core/refcount.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/random.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/status.h"
@@ -48,7 +55,7 @@ class BatchFunctionFallbackKernelBase : public AsyncOpKernel {
  protected:
   // Validates 'allowed_batch_sizes_'. The entries must increase monotonically,
   // and the last one must equal 'max_batch_size_'.
-  Status ValidateAllowedBatchSizes() const;
+  absl::Status ValidateAllowedBatchSizes() const;
 
   // Initialize vars by reading from op-kernel-construction.
   // Vars
@@ -60,9 +67,6 @@ class BatchFunctionFallbackKernelBase : public AsyncOpKernel {
   void SetAdaptiveBatchSchedulerOptions(OpKernelConstruction* c,
                                         int32_t num_batch_threads);
 
-  static void RecordBatchParamNumBatchThreads(int64_t num_batch_threads,
-                                              absl::string_view model_name);
-  static absl::string_view GetModelName(OpKernelContext* ctx);
   static int32 NumBatchThreadsFromEnvironmentWithDefault(
       int default_num_batch_threads);
   static thread::ThreadPool* GetOrCreateBatchThreadsPool();
@@ -80,8 +84,11 @@ class BatchFunctionFallbackKernelBase : public AsyncOpKernel {
   int32 low_priority_batch_timeout_micros_;
   int32 low_priority_max_enqueued_batches_;
   std::vector<int32> low_priority_allowed_batch_sizes_;
+  std::string mixed_priority_policy_;
   bool enable_large_batch_splitting_;
+  bool has_attribute_enable_large_batch_splitting_;
   bool disable_padding_;
+  std::string batch_padding_policy_;
 
   // Parameters for adaptive batch scheduler only.
   // Note 'num_batch_threads_' above is shared by two implementations of batch
@@ -124,6 +131,10 @@ class BatchFunctionFallbackKernel : public BatchFunctionFallbackKernelBase {
 template <typename BatchResourceType>
 void BatchFunctionFallbackKernel<BatchResourceType>::ComputeAsync(
     OpKernelContext* c, DoneCallback done) {
+  RecordBatchSplitUsage(has_attribute_enable_large_batch_splitting_
+                            ? std::make_optional(enable_large_batch_splitting_)
+                            : std::nullopt,
+                        GetModelName(c));
   RecordBatchParamNumBatchThreads(num_batch_threads_, GetModelName(c));
   OP_REQUIRES_VALUE(tfrt::ResourceContext * client_graph_resource_context, c,
                     BatchResourceType::GetClientGraphResourceContext(c));
@@ -200,10 +211,35 @@ void BatchFunctionFallbackKernel<BatchResourceType>::ComputeAsync(
   } else {
     creator = [this, c]()
         -> absl::StatusOr<tensorflow::core::RefCountPtr<BatchResourceType>> {
+      serving::BatchResourceOptions batch_resource_options;
+      TF_ASSIGN_OR_RETURN(
+          batch_resource_options.mixed_priority_batching_policy,
+          serving::GetMixedPriorityBatchingPolicy(mixed_priority_policy_));
+      batch_resource_options.num_batch_threads = num_batch_threads_;
+      batch_resource_options.max_batch_size = max_batch_size_;
+      batch_resource_options.batch_timeout_micros = batch_timeout_micros_;
+      batch_resource_options.max_enqueued_batches = max_enqueued_batches_;
+      batch_resource_options.allowed_batch_sizes = allowed_batch_sizes_;
+      batch_resource_options.batch_padding_policy = batch_padding_policy_;
+      batch_resource_options.low_priority_max_batch_size =
+          low_priority_max_batch_size_;
+      batch_resource_options.low_priority_batch_timeout_micros =
+          low_priority_batch_timeout_micros_;
+      batch_resource_options.low_priority_max_enqueued_batches =
+          low_priority_max_enqueued_batches_;
+      batch_resource_options.low_priority_allowed_batch_sizes =
+          low_priority_allowed_batch_sizes_;
+
+      serving::ModelBatchStats& model_batch_stats =
+          serving::GlobalBatchStatsRegistry().model(
+              /* model_name= */ std::string(GetModelName(c)),
+              /* op_name= */ c->op_kernel().name());
+      model_batch_stats.SetBatchTimeoutMicros(batch_timeout_micros_);
+      model_batch_stats.SetNumBatchThreads(num_batch_threads_);
+
       std::unique_ptr<BatchResourceType> new_resource;
       auto status = BatchResourceType::Create(
-          c, num_batch_threads_, max_batch_size_, batch_timeout_micros_,
-          max_enqueued_batches_, allowed_batch_sizes_, batch_function_,
+          c, batch_resource_options, batch_function_,
           enable_large_batch_splitting_, disable_padding_, &new_resource);
       if (!status.ok()) return status;
       if (c->session_metadata() != nullptr) {
@@ -233,7 +269,7 @@ void BatchFunctionFallbackKernel<BatchResourceType>::ComputeAsync(
   auto create_batch_task_fn = [c]() {
     return BatchResourceType::CreateBatchTask(c);
   };
-  Status status;
+  absl::Status status;
   if (serving::ShouldWarmupAllBatchSizes(c)) {
     status = (*br)->get()->RegisterWarmupInputs(guid, c, batcher_queue_,
                                                 create_batch_task_fn, done);

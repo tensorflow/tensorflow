@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,10 +16,10 @@ limitations under the License.
 #ifndef XLA_SERVICE_CONDITIONAL_SIMPLIFIER_H_
 #define XLA_SERVICE_CONDITIONAL_SIMPLIFIER_H_
 
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_module.h"
-#include "xla/service/hlo_pass_interface.h"
-#include "xla/statusor.h"
+#include "xla/hlo/pass/hlo_pass_interface.h"
 
 namespace xla {
 
@@ -29,12 +29,12 @@ class ConditionalSimplifier : public HloModulePass {
  public:
   absl::string_view name() const override { return "simplify-conditional"; }
   using HloPassInterface::Run;
-  StatusOr<bool> Run(
+  absl::StatusOr<bool> Run(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
  private:
-  StatusOr<bool> TryRemoveConditional(HloInstruction* conditional);
+  absl::StatusOr<bool> TryRemoveConditional(HloInstruction* conditional);
 };
 
 }  // namespace xla

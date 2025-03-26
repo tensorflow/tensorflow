@@ -22,16 +22,25 @@ limitations under the License.
 #include <unordered_map>
 #include <vector>
 
+#include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/local_device.h"
 #include "tensorflow/core/framework/device_base.h"
+#include "tensorflow/core/framework/kernel_def.pb.h"
+#include "tensorflow/core/framework/node_def.pb.h"
+#include "tensorflow/core/framework/op_def.pb.h"
+#include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/mem.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/thread_annotations.h"
+#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/public/session_options.h"
+#include "tsl/platform/errors.h"
 
 namespace tensorflow {
 
@@ -56,19 +65,57 @@ constexpr std::array<DataType, 14> kNumericTypes = {
      DT_INT64, DT_HALF, DT_FLOAT, DT_DOUBLE, DT_COMPLEX64, DT_COMPLEX128,
      DT_BFLOAT16}};
 
-constexpr std::array<DataType, 22> kCpuAllTypes = {
-    {DT_UINT8,      DT_QUINT8, DT_UINT16,   DT_UINT32,      DT_UINT64,
-     DT_INT8,       DT_QINT8,  DT_INT16,    DT_INT32,       DT_QINT32,
-     DT_INT64,      DT_HALF,   DT_FLOAT,    DT_DOUBLE,      DT_COMPLEX64,
-     DT_COMPLEX128, DT_BOOL,   DT_BFLOAT16, DT_FLOAT8_E5M2, DT_FLOAT8_E4M3FN,
-     DT_INT4,       DT_UINT4}};
+constexpr std::array<DataType, 25> kCpuAllTypes = {{DT_UINT8,
+                                                    DT_QUINT8,
+                                                    DT_UINT16,
+                                                    DT_UINT32,
+                                                    DT_UINT64,
+                                                    DT_INT8,
+                                                    DT_QINT8,
+                                                    DT_INT16,
+                                                    DT_INT32,
+                                                    DT_QINT32,
+                                                    DT_INT64,
+                                                    DT_HALF,
+                                                    DT_FLOAT,
+                                                    DT_DOUBLE,
+                                                    DT_COMPLEX64,
+                                                    DT_COMPLEX128,
+                                                    DT_BOOL,
+                                                    DT_BFLOAT16,
+                                                    DT_FLOAT8_E5M2,
+                                                    DT_FLOAT8_E4M3FN,
+                                                    DT_FLOAT8_E4M3FNUZ,
+                                                    DT_FLOAT8_E4M3B11FNUZ,
+                                                    DT_FLOAT8_E5M2FNUZ,
+                                                    DT_INT4,
+                                                    DT_UINT4}};
 
-constexpr std::array<DataType, 22> kGpuAllTypes = {
-    {DT_UINT8,      DT_QUINT8, DT_UINT16,   DT_UINT32,      DT_UINT64,
-     DT_INT8,       DT_QINT8,  DT_INT16,    DT_INT32,       DT_QINT32,
-     DT_INT64,      DT_HALF,   DT_FLOAT,    DT_DOUBLE,      DT_COMPLEX64,
-     DT_COMPLEX128, DT_BOOL,   DT_BFLOAT16, DT_FLOAT8_E5M2, DT_FLOAT8_E4M3FN,
-     DT_INT4,       DT_UINT4}};
+constexpr std::array<DataType, 25> kGpuAllTypes = {{DT_UINT8,
+                                                    DT_QUINT8,
+                                                    DT_UINT16,
+                                                    DT_UINT32,
+                                                    DT_UINT64,
+                                                    DT_INT8,
+                                                    DT_QINT8,
+                                                    DT_INT16,
+                                                    DT_INT32,
+                                                    DT_QINT32,
+                                                    DT_INT64,
+                                                    DT_HALF,
+                                                    DT_FLOAT,
+                                                    DT_DOUBLE,
+                                                    DT_COMPLEX64,
+                                                    DT_COMPLEX128,
+                                                    DT_BOOL,
+                                                    DT_BFLOAT16,
+                                                    DT_FLOAT8_E5M2,
+                                                    DT_FLOAT8_E4M3FN,
+                                                    DT_FLOAT8_E4M3FNUZ,
+                                                    DT_FLOAT8_E4M3B11FNUZ,
+                                                    DT_FLOAT8_E5M2FNUZ,
+                                                    DT_INT4,
+                                                    DT_UINT4}};
 
 // Class that manages registrations of operators and devices for the XLA JIT.
 // Not thread-safe.
@@ -191,14 +238,14 @@ class XlaOpRegistry {
   // registered.
   //
   // `result` is sorted.
-  static Status CompileTimeConstantInputs(const NodeDef& node_def,
-                                          const OpDef& op_def,
-                                          std::vector<int>* result) {
+  static absl::Status CompileTimeConstantInputs(const NodeDef& node_def,
+                                                const OpDef& op_def,
+                                                std::vector<int>* result) {
     return CompileTimeConstantInputs(node_def, /*op_kernel=*/nullptr, &op_def,
                                      result);
   }
 
-  static StatusOr<std::vector<int>> CompileTimeConstantInputs(
+  static absl::StatusOr<std::vector<int>> CompileTimeConstantInputs(
       const NodeDef& node_def, const OpDef& op_def) {
     std::vector<int> out;
     TF_RETURN_IF_ERROR(CompileTimeConstantInputs(node_def, op_def, &out));
@@ -209,8 +256,8 @@ class XlaOpRegistry {
   // compile-time constants.
   //
   // `result` is sorted.
-  static Status CompileTimeConstantInputs(const OpKernel& op_kernel,
-                                          std::vector<int>* result) {
+  static absl::Status CompileTimeConstantInputs(const OpKernel& op_kernel,
+                                                std::vector<int>* result) {
     return CompileTimeConstantInputs(op_kernel.def(), /*op_kernel=*/&op_kernel,
                                      /*op_def=*/nullptr, result);
   }
@@ -305,10 +352,10 @@ class XlaOpRegistry {
   // their allowlists must not intersect.
   static bool IsCompatible(const OpRegistration& x, const OpRegistration& y);
 
-  static Status CompileTimeConstantInputs(const NodeDef& node_def,
-                                          const OpKernel* op_kernel,
-                                          const OpDef* op_def,
-                                          std::vector<int>* result);
+  static absl::Status CompileTimeConstantInputs(const NodeDef& node_def,
+                                                const OpKernel* op_kernel,
+                                                const OpDef* op_def,
+                                                std::vector<int>* result);
 
   // Map from operator name to OpRegistrations, populated by REGISTER_XLA_OP.
   // Registrations present under the same key must satisfy IsCompatible above,

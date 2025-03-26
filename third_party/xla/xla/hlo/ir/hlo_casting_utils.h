@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,101 +13,74 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// Casting utility functions for HLO instructions.
+// Downcasting functions for HLO instructions similar to LLVM's.
+// Offers nullptr tolerant and dynamic versions.
+// All versions rely on HloInstruction::ClassOf instead of
+// dynamic_cast's runtime type checks for faster performance.
 
 #ifndef XLA_HLO_IR_HLO_CASTING_UTILS_H_
 #define XLA_HLO_IR_HLO_CASTING_UTILS_H_
 
-#include <type_traits>
+#include <string>
 
+#include "absl/base/config.h"
+#include "absl/log/check.h"
+#include "absl/strings/str_format.h"
 #include "xla/hlo/ir/hlo_instruction.h"
-#include "tsl/platform/logging.h"
+#include "xla/tsl/platform/logging.h"
 
 namespace xla {
 
-template <class T>
-using EnableIfDerivedFromHlo =
-    typename std::enable_if<std::is_base_of<HloInstruction, T>::value>::type;
+namespace cast_internal {
 
-// Casts an HloInstruction pointer to one of its subclasses, dies if argument is
-// nullptr or runtime information does not match.
-//
-// Similar to LLVM's cast.
-template <class T, EnableIfDerivedFromHlo<T>* = nullptr>
-const T* Cast(const HloInstruction* instruction) {
-  CHECK(instruction != nullptr);
-  CHECK(T::ClassOf(instruction))
-      << "Invalid HloInstruction casting. Destination type: "
-      << typeid(T).name() << ". Instruction: " << instruction->name();
-  const T* casted = static_cast<const T*>(instruction);
-#ifndef NDEBUG
-  const T* dynamic_casted = dynamic_cast<const T*>(instruction);
-  CHECK(dynamic_casted != nullptr)
-      << "Invalid HloInstruction casting. Destination type: "
-      << typeid(T).name() << ". Instruction: " << instruction->name();
+template <typename T>
+inline const char* TypeName(T* input = nullptr) {
+#ifdef ABSL_INTERNAL_HAS_RTTI
+  return (input != nullptr) ? typeid(*input).name() : typeid(T).name();
+#else
+  return "unknown (no RTTI)";
 #endif
-  return casted;
 }
 
-// Non-const overload of Cast.
-template <class T, EnableIfDerivedFromHlo<T>* = nullptr>
-T* Cast(HloInstruction* instruction) {
-  return const_cast<T*>(
-      Cast<T>(const_cast<const HloInstruction*>(instruction)));
+template <typename T>
+inline std::string WrongCastError(const HloInstruction* instr) {
+  return absl::StrFormat(
+      "HloInstruction '%s' is of type '%s' and cannot be downcasted to '%s.'",
+      instr->name(), TypeName(instr), TypeName<T>());
+}
+}  // namespace cast_internal
+
+// Downcasts a const HloInstruction pointer. Dies if argument is nullptr or
+// TargetClass::ClassOf() does not match. Similar to LLVM's cast.
+template <typename T>
+const T* Cast(const HloInstruction* instr) {
+  CHECK(instr != nullptr);
+  CHECK(T::ClassOf(instr)) << cast_internal::WrongCastError<T>(instr);
+  return tsl::down_cast<const T*>(instr);
 }
 
-// Works just like the Cast, except that it allows for a null pointer as an
-// argument which it then propagates.
-//
-// Similar to LLVM's cast_or_null.
-template <class T, EnableIfDerivedFromHlo<T>* = nullptr>
-const T* CastOrNull(const HloInstruction* instruction) {
-  return instruction != nullptr ? Cast<T>(instruction) : nullptr;
+// Downcasts a non-const HloInstruction pointer. Dies if argument is nullptr or
+// TargetClass::ClassOf() does not match. Similar to LLVM's cast.
+template <typename T>
+T* Cast(HloInstruction* instr) {
+  return const_cast<T*>(Cast<T>(const_cast<const HloInstruction*>(instr)));
 }
 
-// Non-const overload of CastOrNull.
-template <class T, EnableIfDerivedFromHlo<T>* = nullptr>
-T* CastOrNull(HloInstruction* instruction) {
-  return const_cast<T*>(
-      CastOrNull<T>(const_cast<const HloInstruction*>(instruction)));
+// Downcasts a const HloInstruction pointer or returns nullptr if
+// TargetClass::ClassOf() does not match. Dies if argument is nullptr. Similar
+// to LLVM's dyn_cast.
+template <typename T>
+const T* DynCast(const HloInstruction* i) {
+  CHECK(i != nullptr);
+  return !T::ClassOf(i) ? nullptr : tsl::down_cast<const T*>(i);
 }
 
-// Casts an HloInstruction pointer to one of its subclasses, dies if argument is
-// nullptr, returns nullptr if runtime information does not match.
-//
-// Similar to LLVM's dyn_cast.
-template <class T, EnableIfDerivedFromHlo<T>* = nullptr>
-const T* DynCast(const HloInstruction* instruction) {
-  CHECK(instruction != nullptr);
-  const T* casted =
-      T::ClassOf(instruction) ? static_cast<const T*>(instruction) : nullptr;
-#ifndef NDEBUG
-  CHECK_EQ(casted, dynamic_cast<const T*>(instruction));
-#endif
-  return casted;
-}
-
-// Non-const overload of DynCast.
-template <class T, EnableIfDerivedFromHlo<T>* = nullptr>
-T* DynCast(HloInstruction* instruction) {
-  return const_cast<T*>(
-      DynCast<T>(const_cast<const HloInstruction*>(instruction)));
-}
-
-// Works just like the DynCast, except that it allows for a null pointer as an
-// argument which it then propagates.
-//
-// Similar to LLVM's dyn_cast_or_null.
-template <class T, EnableIfDerivedFromHlo<T>* = nullptr>
-const T* DynCastOrNull(const HloInstruction* instruction) {
-  return instruction != nullptr ? DynCast<T>(instruction) : nullptr;
-}
-
-// Non-const overload of DynCastOrNull.
-template <class T, EnableIfDerivedFromHlo<T>* = nullptr>
-T* DynCastOrNull(HloInstruction* instruction) {
-  return const_cast<T*>(
-      DynCastOrNull<T>(const_cast<const HloInstruction*>(instruction)));
+// Downcasts a non-const HloInstruction pointer or returns nullptr if
+// TargetClass::ClassOf() does not match. Dies if argument is nullptr. Similar
+// to LLVM's dyn_cast.
+template <typename T>
+T* DynCast(HloInstruction* i) {
+  return const_cast<T*>(DynCast<T>(const_cast<const HloInstruction*>(i)));
 }
 
 }  // namespace xla

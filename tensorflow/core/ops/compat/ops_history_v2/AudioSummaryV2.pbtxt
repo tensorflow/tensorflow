@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "AudioSummaryV2"
   input_arg {
     name: "tag"

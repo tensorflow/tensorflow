@@ -10,7 +10,6 @@ package(
 py_strict_library(
     name = "feature_column_py",
     srcs = ["feature_column_lib.py"],
-    srcs_version = "PY3",
     deps = [
         ":feature_column",
         ":feature_column_v2",
@@ -22,7 +21,6 @@ py_strict_library(
 py_strict_library(
     name = "feature_column",
     srcs = ["feature_column.py"],
-    srcs_version = "PY3",
     deps = [
         ":utils",
         "//tensorflow/python/eager:context",
@@ -64,7 +62,6 @@ py_strict_library(
     srcs = [
         "feature_column_v2.py",
     ],
-    srcs_version = "PY3",
     deps = [
         ":feature_column",
         ":feature_column_v2_types",
@@ -100,8 +97,8 @@ py_strict_library(
         "//tensorflow/python/util:compat",
         "//tensorflow/python/util:deprecation",
         "//tensorflow/python/util:nest",
-        "//tensorflow/python/util:tf_decorator",
         "//tensorflow/python/util:tf_export",
+        "//tensorflow/python/util:tf_inspect",
         "//tensorflow/tools/docs:doc_controls",
         "//third_party/py/numpy",
         "@six_archive//:six",
@@ -113,13 +110,13 @@ py_strict_library(
     srcs = [
         "serialization.py",
     ],
-    srcs_version = "PY3",
     deps = [
         ":feature_column_v2_types",
         "//tensorflow/python/ops:init_ops",
         "//tensorflow/python/util:deprecation",
-        "//tensorflow/python/util:tf_decorator",
+        "//tensorflow/python/util:tf_decorator_py",
         "//tensorflow/python/util:tf_export",
+        "//tensorflow/python/util:tf_inspect",
         "//tensorflow/tools/docs:doc_controls",
         "@six_archive//:six",
     ],
@@ -128,7 +125,6 @@ py_strict_library(
 py_strict_library(
     name = "sequence_feature_column",
     srcs = ["sequence_feature_column.py"],
-    srcs_version = "PY3",
     deps = [
         ":feature_column_v2",
         ":serialization",
@@ -180,7 +176,6 @@ py_strict_library(
     name = "feature_column_test_main_lib",
     srcs = ["feature_column_test.py"],
     data = [":vocabulary_testdata"],
-    srcs_version = "PY3",
     deps = [
         ":feature_column",
         ":feature_column_v2",
@@ -224,7 +219,6 @@ py_strict_library(
     name = "feature_column_v2_test_main_lib",
     srcs = ["feature_column_v2_test.py"],
     data = [":vocabulary_testdata"],
-    srcs_version = "PY3",
     deps = [
         ":feature_column",
         ":feature_column_v2",
@@ -255,7 +249,6 @@ py_strict_library(
 py_strict_library(
     name = "utils",
     srcs = ["utils.py"],
-    srcs_version = "PY3",
     deps = [
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:ops",
@@ -293,12 +286,11 @@ tf_py_strict_test(
 py_strict_test(
     name = "sequence_feature_column_integration_test",
     srcs = ["sequence_feature_column_integration_test.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
     tags = ["no_pip"],
     deps = [
         ":feature_column_v2",
         ":sequence_feature_column",
+        # copybara:uncomment "//third_party/py/google/protobuf:use_fast_cpp_protos",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python/ops:parsing_ops",
         "//tensorflow/python/platform:client_testlib",

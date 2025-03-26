@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/strings/substitute.h"
 #include "absl/synchronization/notification.h"
 #include "absl/types/span.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "tensorflow/core/framework/device.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/tfrt/fallback/device_with_custom_allocator.h"
@@ -39,7 +40,6 @@ limitations under the License.
 #include "tensorflow/core/tfrt/mlrt/interpreter/interpreter_testutil.h"
 #include "tensorflow/core/tfrt/mlrt/kernel/batch_kernel.h"
 #include "tensorflow/core/tfrt/mlrt/kernel/context.h"
-#include "tsl/lib/core/status_test_util.h"
 #include "tsl/platform/status_matchers.h"
 #include "tfrt/concurrency/ref_count.h"  // from @tf_runtime
 #include "tfrt/host_context/concurrent_work_queue.h"  // from @tf_runtime
@@ -424,7 +424,8 @@ class TestAsyncIdentityKernel : public AsyncOpKernel {
   }
 
  private:
-  TF_DISALLOW_COPY_AND_ASSIGN(TestAsyncIdentityKernel);
+  TestAsyncIdentityKernel(const TestAsyncIdentityKernel&) = delete;
+  void operator=(const TestAsyncIdentityKernel&) = delete;
 };
 
 REGISTER_KERNEL_BUILDER(Name("TestAsyncIdentity").Device(DEVICE_CPU),
@@ -1285,6 +1286,14 @@ mlrt::bc::Buffer CreateExecutableForBatchFunctionOp() {
                       attr {
                         key: "low_priority_max_enqueued_batches"
                         value { i: 1 }
+                      }
+                      attr {
+                        key: "mixed_priority_policy"
+                        value { s: "low_priority_padding_with_max_batch_size" }
+                      }
+                      attr {
+                        key: "batch_padding_policy"
+                        value { s: "PAD_UP" }
                       }
                       attr {
                         key: "container"

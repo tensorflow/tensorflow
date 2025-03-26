@@ -55,8 +55,8 @@ using ::tensorflow::testing::matchers::Op;
 using ::tensorflow::testing::matchers::Out;
 using ::testing::_;
 
-Status BuildXlaOps(const Scope& s, const FunctionDefLibrary& fdef_lib,
-                   std::unique_ptr<Graph>* result) {
+absl::Status BuildXlaOps(const Scope& s, const FunctionDefLibrary& fdef_lib,
+                         std::unique_ptr<Graph>* result) {
   auto graph = std::make_unique<Graph>(OpRegistry::Global());
   TF_RETURN_IF_ERROR(s.ToGraph(graph.get()));
   FunctionLibraryDefinition flib_def(graph->op_registry(), fdef_lib);
@@ -82,12 +82,13 @@ Status BuildXlaOps(const Scope& s, const FunctionDefLibrary& fdef_lib,
   TF_RETURN_IF_ERROR(pass.Run(opt_options));
   VLOG(3) << graph->ToGraphDefDebug().DebugString();
   *result = std::move(graph);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status MakeXlaCompiledKernel(Graph* graph, const string& callee_name,
-                             const string& node_name, int num_constant_args,
-                             int num_resource_args, Node** result) {
+absl::Status MakeXlaCompiledKernel(Graph* graph, const string& callee_name,
+                                   const string& node_name,
+                                   int num_constant_args, int num_resource_args,
+                                   Node** result) {
   NodeDef call_node;
   call_node.set_name(node_name);
   call_node.set_op(callee_name);
@@ -95,11 +96,11 @@ Status MakeXlaCompiledKernel(Graph* graph, const string& callee_name,
   AddNodeAttr(kXlaNumConstantArgsAttr, num_constant_args, &call_node);
   AddNodeAttr(kXlaNumResourceArgsAttr, num_resource_args, &call_node);
   TF_ASSIGN_OR_RETURN(*result, graph->AddNode(call_node));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status MakeXlaCompiledKernel(Graph* graph, const string& callee_name,
-                             const string& node_name, Node** result) {
+absl::Status MakeXlaCompiledKernel(Graph* graph, const string& callee_name,
+                                   const string& node_name, Node** result) {
   return MakeXlaCompiledKernel(graph, callee_name, node_name,
                                /*num_constant_args=*/0, /*num_resource_args=*/0,
                                result);
@@ -167,7 +168,7 @@ TEST_F(BuildXlaOpsTest, CleanFailureOnBogusAttr) {
   root.graph()->AddControlEdge(call, write_op);
 
   std::unique_ptr<Graph> graph;
-  Status failure_status = BuildXlaOps(root, fdef_lib, &graph);
+  absl::Status failure_status = BuildXlaOps(root, fdef_lib, &graph);
   ASSERT_FALSE(failure_status.ok());
   EXPECT_EQ(failure_status.code(), error::INVALID_ARGUMENT);
 }

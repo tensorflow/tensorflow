@@ -20,12 +20,14 @@ limitations under the License.
 #include <cstdint>
 #include <limits>
 
+#include "absl/numeric/bits.h"
 #include "Eigen/Core"  // from @eigen_archive
 #include "sobol_data.h"  // from @sobol_data
 #include "tensorflow/core/framework/device_base.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/lib/core/threadpool.h"
+#include "tensorflow/core/lib/math/math_util.h"
 #include "tensorflow/core/platform/platform_strings.h"
 
 namespace tensorflow {
@@ -43,18 +45,15 @@ constexpr int kMinBlockSize = 512;
 // Returns number of digits in binary representation of n.
 // Example: n=13. Binary representation is 1101. NumBinaryDigits(13) -> 4.
 int NumBinaryDigits(int n) {
-  return static_cast<int>(std::log2(n) + 1);
+  DCHECK_GE(n, 0);
+  return absl::bit_width<uint32_t>(n);
 }
 
 // Returns position of rightmost zero digit in binary representation of n.
 // Example: n=13. Binary representation is 1101. RightmostZeroBit(13) -> 1.
 int RightmostZeroBit(int n) {
-  int k = 0;
-  while (n & 1) {
-    n >>= 1;
-    ++k;
-  }
-  return k;
+  DCHECK_GE(n, 0);
+  return absl::countr_one<uint32_t>(n);
 }
 
 // Returns an integer representation of point `i` in the Sobol sequence of
@@ -171,9 +170,8 @@ class SobolSampleOp : public OpKernel {
     const DeviceBase::CpuWorkerThreads& worker_threads =
         *(context->device()->tensorflow_cpu_worker_threads());
     int num_threads = worker_threads.num_threads;
-    int block_size = std::max(
-        kMinBlockSize, static_cast<int>(std::ceil(
-                           static_cast<float>(num_results) / num_threads)));
+    int block_size = std::max(kMinBlockSize,
+                              MathUtil::CeilOfRatio(num_results, num_threads));
     worker_threads.workers->TransformRangeConcurrently(
         block_size, num_results /* total */,
         [&dim, &skip, &output_flat](const int start, const int end) {

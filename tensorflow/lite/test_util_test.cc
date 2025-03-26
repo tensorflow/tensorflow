@@ -16,12 +16,14 @@ limitations under the License.
 
 #include <sstream>
 #include <string>
+#include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest-spi.h>
 #include <gtest/gtest.h>
 #include "absl/strings/str_format.h"
 #include "tensorflow/lite/array.h"
+#include "tensorflow/lite/c/common.h"
 
 using ::testing::FloatNear;
 

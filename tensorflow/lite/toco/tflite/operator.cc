@@ -14,28 +14,38 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/toco/tflite/operator.h"
 
+#include <cstddef>
 #include <map>
 #include <memory>
 #include <string>
 #include <utility>
+#include <vector>
 
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "flatbuffers/buffer.h"  // from @flatbuffers
+#include "flatbuffers/flatbuffer_builder.h"  // from @flatbuffers
+#include "flatbuffers/flexbuffers.h"  // from @flatbuffers
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_def.pb.h"
 
-// TODO(ycling): Consider refactoring to extract the LSTM definition out of
 // graph_transformation module.
-#include "tensorflow/lite/builtin_op_data.h"
-#include "tensorflow/lite/delegates/flex/allowlisted_flex_ops.h"
+#include "tensorflow/compiler/mlir/lite/delegates/flex/allowlisted_flex_ops.h"
+#include "tensorflow/compiler/mlir/lite/tools/versioning/op_signature.h"
+#include "tensorflow/compiler/mlir/lite/tools/versioning/op_version.h"
+#include "tensorflow/lite/c/c_api_types.h"
+#include "tensorflow/lite/core/c/builtin_op_data.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/toco/graph_transformations/lstm_utils.h"
 #include "tensorflow/lite/toco/model.h"
+#include "tensorflow/lite/toco/runtime/types.h"
 #include "tensorflow/lite/toco/tflite/builtin_operator.h"
 #include "tensorflow/lite/toco/tflite/custom_operator.h"
 #include "tensorflow/lite/toco/tflite/simple_operator.h"
 #include "tensorflow/lite/toco/tflite/types.h"
-#include "tensorflow/lite/tools/versioning/op_version.h"
+#include "tensorflow/lite/toco/toco_types.h"
 
 namespace toco {
 
@@ -1619,8 +1629,6 @@ class TensorFlowUnsupported : public BaseOperator {
       const BuiltinOptions* builtin_options,
       const CustomOptions* custom_options) const override {
     // Deserializing Flex ops doesn't work now.
-    // TODO(ycling): Revisit and decide if we should fix the flow for importing
-    // TFLite models with Flex ops.
     auto op = std::make_unique<TensorFlowUnsupportedOperator>();
     if (custom_options) {
       auto flexbuffer_map =
@@ -1781,8 +1789,6 @@ class TensorFlowUnsupported : public BaseOperator {
   }
 
   int GetVersion(const OperatorSignature& op_signature) const override {
-    // TODO(ycling): Design and implement a way to plumb the version of
-    // custom ops.
     return 1;
   }
 

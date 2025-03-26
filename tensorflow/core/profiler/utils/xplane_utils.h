@@ -15,18 +15,14 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PROFILER_UTILS_XPLANE_UTILS_H_
 #define TENSORFLOW_CORE_PROFILER_UTILS_XPLANE_UTILS_H_
 
-#include <algorithm>
-#include <cstdint>
-#include <optional>
-#include <vector>
-
-#include "tsl/profiler/utils/xplane_utils.h"
+#include "xla/tsl/profiler/utils/xplane_utils.h"
 
 namespace tensorflow {
 namespace profiler {
 
 using tsl::profiler::AddFlowsToXplane;               // NOLINT
 using tsl::profiler::AggregateXPlane;                // NOLINT
+using tsl::profiler::FindLinesWithId;                // NOLINT
 using tsl::profiler::FindLineWithId;                 // NOLINT
 using tsl::profiler::FindLineWithName;               // NOLINT
 using tsl::profiler::FindMutablePlanes;              // NOLINT

@@ -16,10 +16,12 @@ limitations under the License.
 #include "tensorflow/core/lib/core/threadpool.h"
 
 #include <atomic>
+#include <cstdint>
+#include <functional>
+#include <optional>
 
 #include "absl/synchronization/barrier.h"
 #include "absl/synchronization/blocking_counter.h"
-#include "absl/types/optional.h"
 #include "tensorflow/core/platform/context.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/mutex.h"
@@ -33,7 +35,6 @@ static const int kNumThreads = 30;
 
 TEST(ThreadPool, Empty) {
   for (int num_threads = 1; num_threads < kNumThreads; num_threads++) {
-    fprintf(stderr, "Testing with %d threads\n", num_threads);
     ThreadPool pool(Env::Default(), "test", num_threads);
   }
 }
@@ -41,7 +42,6 @@ TEST(ThreadPool, Empty) {
 TEST(ThreadPool, DoWork) {
   Context outer_context(ContextKind::kThread);
   for (int num_threads = 1; num_threads < kNumThreads; num_threads++) {
-    fprintf(stderr, "Testing with %d threads\n", num_threads);
     const int kWorkItems = 15;
     std::atomic<bool> work[kWorkItems];
     for (int i = 0; i < kWorkItems; i++) {
@@ -76,7 +76,7 @@ void RunWithFixedBlockSize(int64_t block_size, int64_t total,
       total,
       ThreadPool::SchedulingParams(
           ThreadPool::SchedulingStrategy::kFixedBlockSize /* strategy */,
-          absl::nullopt /* cost_per_unit */, block_size /* block_size */),
+          std::nullopt /* cost_per_unit */, block_size /* block_size */),
       [=, &mu, &num_shards, &num_done_work, &work](int64_t start, int64_t end) {
         VLOG(1) << "Shard [" << start << "," << end << ")";
         EXPECT_GE(start, 0);
@@ -220,7 +220,7 @@ void RunFixedBlockSizeShardingWithWorkerId(int64_t block_size, int64_t total,
       total,
       ThreadPool::SchedulingParams(
           ThreadPool::SchedulingStrategy::kFixedBlockSize /* strategy */,
-          absl::nullopt /* cost_per_unit */, block_size /* block_size */),
+          std::nullopt /* cost_per_unit */, block_size /* block_size */),
       [=, &mu, &num_done_work, &work, &threads_running](int64_t start,
                                                         int64_t end, int id) {
         VLOG(1) << "Shard [" << start << "," << end << ")";
@@ -264,14 +264,14 @@ TEST(ThreadPool, ParallelFor) {
   // Make ParallelFor use as many threads as possible.
   int64_t kHugeCost = 1 << 30;
   for (int num_threads = 1; num_threads < kNumThreads; num_threads++) {
-    fprintf(stderr, "Testing with %d threads\n", num_threads);
     const int kWorkItems = 15;
     std::atomic<bool> work[kWorkItems];
     ThreadPool pool(Env::Default(), "test", num_threads);
     for (int i = 0; i < kWorkItems; i++) {
       work[i] = false;
     }
-    pool.ParallelFor(kWorkItems, kHugeCost,
+    pool.ParallelFor(kWorkItems,
+                     ThreadPool::SchedulingParams::Adaptive(kHugeCost),
                      [&outer_context, &work](int64_t begin, int64_t end) {
                        Context inner_context(ContextKind::kThread);
                        ASSERT_EQ(outer_context, inner_context);
@@ -290,7 +290,6 @@ TEST(ThreadPool, ParallelForWithAdaptiveSchedulingStrategy) {
   // Make ParallelFor use as many threads as possible.
   int64_t kHugeCost = 1 << 30;
   for (int num_threads = 1; num_threads < kNumThreads; num_threads++) {
-    fprintf(stderr, "Testing with %d threads\n", num_threads);
     const int kWorkItems = 15;
     std::atomic<bool> work[kWorkItems];
     ThreadPool pool(Env::Default(), "test", num_threads);
@@ -301,7 +300,7 @@ TEST(ThreadPool, ParallelForWithAdaptiveSchedulingStrategy) {
         kWorkItems,
         ThreadPool::SchedulingParams(
             ThreadPool::SchedulingStrategy::kAdaptive /* strategy */,
-            kHugeCost /* cost_per_unit */, absl::nullopt /* block_size */),
+            kHugeCost /* cost_per_unit */, std::nullopt /* block_size */),
         [&outer_context, &work](int64_t begin, int64_t end) {
           Context inner_context(ContextKind::kThread);
           ASSERT_EQ(outer_context, inner_context);
@@ -319,7 +318,6 @@ TEST(ThreadPool, ParallelForWithWorkerId) {
   // Make ParallelForWithWorkerId use as many threads as possible.
   int64_t kHugeCost = 1 << 30;
   for (int num_threads = 1; num_threads < kNumThreads; num_threads++) {
-    fprintf(stderr, "Testing with %d threads\n", num_threads);
     const int kWorkItems = 15;
     std::atomic<bool> work[kWorkItems];
     ThreadPool pool(Env::Default(), "test", num_threads);
@@ -331,7 +329,7 @@ TEST(ThreadPool, ParallelForWithWorkerId) {
       threads_running[i] = false;
     }
     pool.ParallelForWithWorkerId(
-        kWorkItems, kHugeCost,
+        kWorkItems, ThreadPool::SchedulingParams::Adaptive(kHugeCost),
         [&threads_running, &work](int64_t begin, int64_t end, int64_t id) {
           // Store true for the current thread, and assert that another thread
           // is not running with the same id.

@@ -15,7 +15,10 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/quantization/stablehlo/utils/math_utils.h"
 
+#include <cstdint>
+
 #include <gtest/gtest.h>
+#include "mlir/Support/LogicalResult.h"  // from @llvm-project
 
 namespace mlir::quant::stablehlo {
 namespace {

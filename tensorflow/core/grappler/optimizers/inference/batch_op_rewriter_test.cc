@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/grappler/optimizers/inference/batch_op_rewriter.h"
 
+#include <string_view>
 #include <vector>
 
 #include "google/protobuf/wrappers.pb.h"
@@ -50,7 +51,12 @@ void AddBatchOp(GraphDef* graph, int num_batch_threads = 16,
                 int max_batch_size = 16, int batch_timeout_micros = 10000,
                 const std::vector<int32>& allowed_batch_sizes = {8, 16},
                 int max_enqueued_batches = 1000,
-                bool disable_large_batch_splitting = false) {
+                bool disable_large_batch_splitting = false,
+                std::string_view mixed_priority_policy = "",
+                int low_priority_max_batch_size = -1,
+                int low_priority_batch_timeout_micros = -1,
+                const std::vector<int32>& low_priority_allowed_batch_sizes = {},
+                int low_priority_max_enqueued_batches = -1) {
   auto set_batch_node_attribute = [&](const int32_t num_batch_threads,
                                       NodeDef* batch_op) {
     batch_op->set_name("cond/batch/BatchFunction");
@@ -68,6 +74,30 @@ void AddBatchOp(GraphDef* graph, int num_batch_threads = 16,
     ::tensorflow::graph_transforms::SetNodeAttr("enable_large_batch_splitting",
                                                 !disable_large_batch_splitting,
                                                 batch_op);
+
+    if (!mixed_priority_policy.empty()) {
+      ::tensorflow::graph_transforms::SetNodeAttr(
+          "mixed_priority_policy", mixed_priority_policy, batch_op);
+    }
+    if (low_priority_max_batch_size != -1) {
+      ::tensorflow::graph_transforms::SetNodeAttr(
+          "low_priority_max_batch_size", low_priority_max_batch_size, batch_op);
+    }
+    if (low_priority_batch_timeout_micros != -1) {
+      ::tensorflow::graph_transforms::SetNodeAttr(
+          "low_priority_batch_timeout_micros",
+          low_priority_batch_timeout_micros, batch_op);
+    }
+    if (!low_priority_allowed_batch_sizes.empty()) {
+      ::tensorflow::graph_transforms::SetNodeAttr(
+          "low_priority_allowed_batch_sizes", low_priority_allowed_batch_sizes,
+          batch_op);
+    }
+    if (low_priority_max_enqueued_batches != -1) {
+      ::tensorflow::graph_transforms::SetNodeAttr(
+          "low_priority_max_enqueued_batches",
+          low_priority_max_enqueued_batches, batch_op);
+    }
 
     if (!reserved_int_attrs.empty()) {
       ::tensorflow::graph_transforms::SetNodeAttr(kEnableAdaptiveSchedulerAttr,
@@ -314,6 +344,49 @@ TEST_F(BatchOpRewriterTest,
   TF_ASSERT_OK(optimizer.InitWithConfig(config_proto, &rewriter_config));
   GraphDef optimized_graph;
   ASSERT_FALSE(optimizer.Optimize(nullptr, item, &optimized_graph).ok());
+}
+
+TEST_F(BatchOpRewriterTest, UpdateToUseGlobalPrioritization) {
+  GrapplerItem item;
+  AddBatchOp(&item.graph, /* num_batch_threads = */ 16,
+             /* reserved_int_attrs = */ {}, /* max_batch_size = */ 16,
+             /* batch_timeout_micros = */ 10000,
+             /* allowed_batch_sizes = */ {8, 16},
+             /* max_enqueued_batches = */ 1000,
+             /* disable_large_batch_splitting = */ false,
+             /* mixed_priority_policy = */ "",
+             /* low_priority_max_batch_size = */ -1,
+             /* low_priority_batch_timeout_micros = */ 20000,
+             /* low_priority_allowed_batch_sizes = */ {},
+             /* low_priority_max_enqueued_batches = */ -1);
+
+  BatchOpRewriteConfig config;
+  config.mutable_global_prioritization()->set_num_threads(4);
+
+  RewriterConfig_CustomGraphOptimizer rewriter_config = MakeConfig(config);
+  ConfigProto config_proto;
+  BatchOpRewriter optimizer;
+  TF_ASSERT_OK(optimizer.InitWithConfig(config_proto, &rewriter_config));
+
+  GraphDef optimized_graph;
+  TF_ASSERT_OK(optimizer.Optimize(nullptr, item, &optimized_graph));
+
+  // NOTE: 'low_priority_batch_timeout_micros' keeps the same value as the
+  // original graph since it had a value explicitly specified.
+  GraphDef expected_graph;
+  AddBatchOp(&expected_graph, /* num_batch_threads = */ 4,
+             /* reserved_int_attrs = */ {}, /* max_batch_size = */ 16,
+             /* batch_timeout_micros = */ 10000,
+             /* allowed_batch_sizes = */ {8, 16},
+             /* max_enqueued_batches = */ 1000,
+             /* disable_large_batch_splitting = */ false,
+             /* mixed_priority_policy = */ "priority_merge",
+             /* low_priority_max_batch_size = */ 16,
+             /* low_priority_batch_timeout_micros = */ 20000,
+             /* low_priority_allowed_batch_sizes = */ {8, 16},
+             /* low_priority_max_enqueued_batches = */ 1000);
+
+  EXPECT_EQ(optimized_graph.DebugString(), expected_graph.DebugString());
 }
 
 }  // namespace

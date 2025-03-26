@@ -21,7 +21,11 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "xla/stream_executor/platform/initialize.h"
 #include "xla/stream_executor/tpu/tpu_ops_c_api.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/logging.h"  // IWYU pragma: keep
+#include "xla/tsl/platform/statusor.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/tpu/kernels/tpu_compilation_cache_key.h"
@@ -30,9 +34,6 @@ limitations under the License.
 #include "tensorflow/core/tpu/kernels/tpu_compile_op_support.h"
 #include "tensorflow/core/tpu/kernels/tpu_program_group.h"
 #include "tensorflow/core/tpu/kernels/tpu_program_group_interface.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/logging.h"  // IWYU pragma: keep
-#include "tsl/platform/statusor.h"
 
 namespace tensorflow {
 namespace tpu {
@@ -89,7 +90,7 @@ class TpuCompileOpImplFactory : public CompileOpImplFactory {
 };
 
 #if defined(LIBTPU_ON_GCE)
-REGISTER_MODULE_INITIALIZER(tpu_compile_op_impl_factory, {
+STREAM_EXECUTOR_REGISTER_MODULE_INITIALIZER(tpu_compile_op_impl_factory, {
   VLOG(1) << "register TpuCompileOpImplFactory()";
   CompileOpImplFactory::Register(new TpuCompileOpImplFactory());
 });

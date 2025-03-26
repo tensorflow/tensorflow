@@ -346,7 +346,7 @@ TEST(TensorSliceWriteTest, SizeErrors) {
     TensorShape shape({300, 1000000});
     TensorSlice slice = TensorSlice::ParseOrDie("-:-");
     const std::vector<int8> data(300000000, -1);
-    Status s = writer.Add("test1", shape, slice, data.data());
+    absl::Status s = writer.Add("test1", shape, slice, data.data());
     EXPECT_EQ(s.code(), error::INVALID_ARGUMENT);
     EXPECT_TRUE(absl::StrContains(s.message(),
                                   "Tensor slice is too large to serialize"));
@@ -357,7 +357,7 @@ TEST(TensorSliceWriteTest, SizeErrors) {
     TensorShape shape({256, 1024});
     TensorSlice slice = TensorSlice::ParseOrDie("-:-");
     const std::vector<tstring> data(256 * 1024, std::string(8192, 'f'));
-    Status s = writer.Add("test2", shape, slice, data.data());
+    absl::Status s = writer.Add("test2", shape, slice, data.data());
     EXPECT_EQ(s.code(), error::INVALID_ARGUMENT);
     EXPECT_TRUE(absl::StrContains(s.message(),
                                   "Tensor slice is too large to serialize"));
@@ -368,7 +368,7 @@ TEST(TensorSliceWriterTest, InvalidInput) {
   SavedSlice ss;
   std::array<uint32_t, 1> data;
   std::fill(data.begin(), data.end(), 1234);
-  Status s = TensorSliceWriter::SaveData(data.data(), data.size(), &ss);
+  absl::Status s = TensorSliceWriter::SaveData(data.data(), data.size(), &ss);
   EXPECT_EQ(s.code(), error::INVALID_ARGUMENT);
   EXPECT_TRUE(absl::StrContains(
       s.message(), "Tensor slice serialization not implemented for dtype"));

@@ -1,4 +1,4 @@
-/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,9 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/python/ifrt/client.h"
+#include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/test_util.h"
-#include "tsl/platform/test.h"
+#include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/platform/test.h"
 
 namespace xla {
 namespace ifrt {
@@ -47,11 +48,23 @@ TEST(ClientImplTest, Devices) {
 
   for (Device* device : client->devices()) {
     TF_ASSERT_OK_AND_ASSIGN(auto* looked_up_device,
-                            client->LookupDevice(device->id()));
+                            client->LookupDevice(device->Id()));
     EXPECT_EQ(device, looked_up_device);
   }
 
   EXPECT_GE(client->process_index(), 0);
+}
+
+TEST(ClientImplTest, GetAllDevices) {
+  TF_ASSERT_OK_AND_ASSIGN(auto client, test_util::GetClient());
+
+  EXPECT_GE(client->GetAllDevices().size(), client->device_count());
+
+  for (Device* device : client->GetAllDevices()) {
+    TF_ASSERT_OK_AND_ASSIGN(auto* looked_up_device,
+                            client->LookupDevice(device->Id()));
+    EXPECT_EQ(device, looked_up_device);
+  }
 }
 
 TEST(ClientImplTest, DefaultCompiler) {

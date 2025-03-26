@@ -17,9 +17,13 @@ limitations under the License.
 // the TensorFlow dialect to their functional counterparts, i.e.,
 // tf.IfRegion ->  tf.If and tf.WhileRegion -> tf.While
 
+#include <iterator>
+#include <memory>
 #include <optional>
+#include <string>
 
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/SetVector.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/FormatVariadic.h"
@@ -27,18 +31,21 @@ limitations under the License.
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/Matchers.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
+#include "mlir/IR/Region.h"  // from @llvm-project
 #include "mlir/IR/SymbolTable.h"  // from @llvm-project
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/IR/Verifier.h"  // from @llvm-project
 #include "mlir/IR/Visitors.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
-#include "mlir/Pass/PassRegistry.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/RegionUtils.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/op_or_arg_name_mapper.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
-#include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/attribute_utils.h"
 
@@ -69,6 +76,8 @@ struct RegionControlFlowToFunctional
                               CaseRegionOp case_region);
   LogicalResult ConvertWhileOp(SymbolTableCollection& symbol_table,
                                WhileRegionOp while_region);
+  LogicalResult ConvertGeneratorDatasetOp(SymbolTableCollection& symbol_table,
+                                          GeneratorDatasetRegionOp regional);
 
   // Get unique name by using the loc to name mapping.
   std::string GetName(Operation* op, StringRef suffix);
@@ -124,6 +133,37 @@ void CopyAndOverrideAttributes(Operation* src, Operation* dst,
   dst->setAttr(kXlaPropagateCompileTimeConsts, builder->getBoolAttr(true));
 }
 
+// If the region only does a single function call whose operands / returns match
+// exactly the block args and results, return the name of the called function.
+std::optional<StringRef> UnwrapSingleFunctionCall(Region& region) {
+  // The pattern we're matching is
+  // ^block(arg0, arg1, ..., argN):
+  //   r0, r1, ..., rN = func.call @foo(arg0, arg1, ..., argN)
+  //   "tf.yield"(r0, r1, ..., rN)
+  if (!region.hasOneBlock()) return std::nullopt;
+  Block& block = region.front();
+  if (std::distance(block.begin(), block.end()) != 2) return std::nullopt;
+  TF::YieldOp yield =
+      llvm::dyn_cast_or_null<TF::YieldOp>(block.getTerminator());
+  if (!yield) return std::nullopt;
+  func::CallOp call = llvm::dyn_cast_or_null<func::CallOp>(*block.begin());
+  if (!call) return std::nullopt;
+  if (block.getNumArguments() != call.getNumOperands() ||
+      call.getNumResults() != yield.getNumOperands())
+    return std::nullopt;
+  for (auto [arg, operand] :
+       llvm::zip(block.getArguments(), call.getOperands())) {
+    if (arg != operand) return std::nullopt;
+  }
+  for (auto [ret, operand] :
+       llvm::zip(call.getResults(), yield.getOperands())) {
+    if (ret != operand) return std::nullopt;
+  }
+  SymbolRefAttr symbol = call.getCallableForCallee().get<SymbolRefAttr>();
+  if (!symbol) return std::nullopt;
+  return symbol.getLeafReference();
+}
+
 // Extracts the contents of a region with a single block into a new function.
 // `extern_values` is the set of external values that the region refers to.
 // Returns the name of the newly created function.
@@ -135,9 +175,15 @@ StringRef ExtractSingleBlockRegion(
     SymbolTableCollection& symbol_table, Region& region, StringRef name,
     llvm::SmallVectorImpl<Value>& extern_values,
     llvm::SmallVectorImpl<func::FuncOp>& worklist,
-    bool extern_values_passthrough, bool only_one_return_value) {
+    bool extern_values_passthrough, bool only_one_return_value,
+    bool allow_return_of_existing = false) {
+  if (allow_return_of_existing && extern_values.empty()) {
+    auto existing = UnwrapSingleFunctionCall(region);
+    if (existing) return *existing;
+  }
+
   ModuleOp module = region.getParentOfType<ModuleOp>();
-  auto builder = OpBuilder::atBlockBegin(module.getBody());
+  OpBuilder builder(module.getContext());
   auto loc = region.getParentOp()->getLoc();
   Block& entry = region.front();
   int num_region_arguments = entry.getNumArguments();
@@ -190,8 +236,9 @@ StringRef ExtractSingleBlockRegion(
 
   outlined_func.setPrivate();
 
-  // Uniquify the function name.
-  symbol_table.getSymbolTable(module).insert(outlined_func);
+  // Uniquify the function name, and insert into module.
+  symbol_table.getSymbolTable(module).insert(outlined_func,
+                                             module.getBody()->begin());
 
   // Add the outlined function to the worklist in case its body has
   // IfRegion or WhileRegion ops that need to converted.
@@ -200,9 +247,10 @@ StringRef ExtractSingleBlockRegion(
 }
 
 // Returns call for region with single call whose result feeds into the
-// terminator of the region. if `allow_to_bool` is true, also allows a single
-// ToBoolOp between the region yield and the call. Returns none if the region
-// does not conform to this pattern.
+// terminator of the region. If `allow_to_bool` is true, it allows patterns used
+// in the condition of While ops, i.e. it allows a single bool (possibly passed
+// through a ToBoolOp) between the region yield and the call. Returns none if
+// the region does not conform to this pattern.
 std::optional<func::CallOp> IsSingleCallRegion(Region& region,
                                                bool allow_to_bool = false) {
   if (!llvm::hasSingleElement(region)) return std::nullopt;
@@ -229,10 +277,23 @@ std::optional<func::CallOp> IsSingleCallRegion(Region& region,
   func::CallOp call = dyn_cast<func::CallOp>(*it++);
   if (!call) return std::nullopt;
 
-  // All call results should feed into expected consumer
-  // All results of the call should feed into the yield.
-  if (call.getNumResults() != call_consumer->getNumOperands())
-    return std::nullopt;
+  if (allow_to_bool && call.getNumResults() == 1 &&
+      yield->getNumOperands() != 1) {
+    // Allow patterns of the form
+    // %cond = call(...)
+    // yield %cond, [...passthrough args...]
+    if (yield->getNumOperands() != block.getNumArguments() + 1)
+      return std::nullopt;
+    for (auto [yield_operand, block_arg] :
+         llvm::zip(yield->getOperands().drop_front(1), block.getArguments())) {
+      if (yield_operand != block_arg) return std::nullopt;
+    }
+  } else {
+    // All call results should feed into expected consumer
+    // All results of the call should feed into the yield.
+    if (call.getNumResults() != call_consumer->getNumOperands())
+      return std::nullopt;
+  }
 
   for (auto res_it : llvm::zip(call.getResults(), call_consumer->getOperands()))
     if (std::get<0>(res_it) != std::get<1>(res_it)) return std::nullopt;
@@ -447,10 +508,10 @@ LogicalResult RegionControlFlowToFunctional::ConvertWhileOp(
   // existing function as is.
   auto while_arg_matcher = [](Value first, Region& first_region, Value second,
                               Region& second_region) {
-    if (!first.isa<BlockArgument>() || !second.isa<BlockArgument>())
+    if (!mlir::isa<BlockArgument>(first) || !mlir::isa<BlockArgument>(second))
       return false;
-    BlockArgument first_block_arg = first.cast<BlockArgument>();
-    BlockArgument second_block_arg = second.cast<BlockArgument>();
+    BlockArgument first_block_arg = mlir::cast<BlockArgument>(first);
+    BlockArgument second_block_arg = mlir::cast<BlockArgument>(second);
 
     // 2 block arguments will match if they are the same argument number, and
     // are block arguments of the corresponding containing regions.
@@ -524,6 +585,52 @@ LogicalResult RegionControlFlowToFunctional::ConvertWhileOp(
   return success();
 }
 
+// Transform GeneratorDatasetRegion to GeneratorDatasetOp.
+LogicalResult RegionControlFlowToFunctional::ConvertGeneratorDatasetOp(
+    SymbolTableCollection& symbol_table, GeneratorDatasetRegionOp regional) {
+  mlir::MLIRContext* ctx = regional.getContext();
+  std::string init_name, next_name, finalize_name;
+
+  llvm::SmallVector<Value, 4> extern_values =
+      CollectExternValues(regional.getRegions());
+
+  if (!extern_values.empty()) return failure();
+
+  init_name = GetName(regional, "_init");
+  init_name = ExtractSingleBlockRegion(symbol_table, regional.getInit(),
+                                       init_name, extern_values, worklist,
+                                       /*extern_values_passthrough=*/false,
+                                       /*only_one_return_value=*/false,
+                                       /*allow_return_of_existing=*/true);
+
+  next_name = GetName(regional, "_next");
+  next_name = ExtractSingleBlockRegion(symbol_table, regional.getNext(),
+                                       next_name, extern_values, worklist,
+                                       /*extern_values_passthrough=*/false,
+                                       /*only_one_return_value=*/false,
+                                       /*allow_return_of_existing=*/true);
+
+  finalize_name = GetName(regional, "_finalize");
+  finalize_name =
+      ExtractSingleBlockRegion(symbol_table, regional.getFinalize(),
+                               finalize_name, extern_values, worklist,
+                               /*extern_values_passthrough=*/false,
+                               /*only_one_return_value=*/false,
+                               /*allow_return_of_existing=*/true);
+
+  auto new_op = OpBuilder(regional).create<TF::GeneratorDatasetOp>(
+      regional.getLoc(), regional->getResultTypes(),
+      regional.getInitFuncOtherArgs(), regional.getNextFuncOtherArgs(),
+      regional.getFinalizeFuncOtherArgs(), SymbolRefAttr::get(ctx, init_name),
+      SymbolRefAttr::get(ctx, next_name),
+      SymbolRefAttr::get(ctx, finalize_name), regional.getOutputTypes(),
+      regional.getOutputShapes(), regional.getMetadata());
+
+  regional->replaceAllUsesWith(new_op->getResults());
+  regional->erase();
+  return success();
+}
+
 void RegionControlFlowToFunctional::runOnOperation() {
   ModuleOp module = getOperation();
   SymbolTableCollection symbol_table;
@@ -546,6 +653,11 @@ void RegionControlFlowToFunctional::runOnOperation() {
         }
       } else if (auto while_region = llvm::dyn_cast<WhileRegionOp>(op)) {
         if (failed(ConvertWhileOp(symbol_table, while_region))) {
+          op->emitOpError() << "failed to convert to functional form";
+          return WalkResult::interrupt();
+        }
+      } else if (auto gen = llvm::dyn_cast<GeneratorDatasetRegionOp>(op)) {
+        if (failed(ConvertGeneratorDatasetOp(symbol_table, gen))) {
           op->emitOpError() << "failed to convert to functional form";
           return WalkResult::interrupt();
         }

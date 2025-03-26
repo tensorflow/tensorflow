@@ -1,4 +1,4 @@
-/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2021 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -36,6 +36,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/Pass/Pass.h"
+#include "mlir/Support/LLVM.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 
 namespace mlir {
@@ -113,8 +114,8 @@ struct SimplifyBroadcasts : public mlir::OpRewritePattern<shape::BroadcastOp> {
         llvm::map_range(symResult, [&](const auto &symResultDim) {
           // If we know the dimension statically, use a constant.
           if (!symResultDim) return findOrCreateConstant(1);
-          if (auto cexpr = symResultDim->expr.expr
-                               .template dyn_cast<AffineConstantExpr>()) {
+          if (auto cexpr =
+                  dyn_cast<AffineConstantExpr>(symResultDim->expr.expr)) {
             return findOrCreateConstant(cexpr.getValue());
           }
 
@@ -208,34 +209,12 @@ struct AnnotateExpandingDimensionsInDynamicBroadcastInDim
     }
 
     // Annotate op in place.
-    rewriter.startRootUpdate(op);
+    rewriter.startOpModification(op);
     op.setKnownExpandingDimensionsAttr(
         rewriter.getI64TensorAttr(knownExpandingDims.takeVector()));
     op.setKnownNonexpandingDimensionsAttr(
         rewriter.getI64TensorAttr(knownNonexpandingDims.takeVector()));
-    rewriter.finalizeRootUpdate(op);
-    return success();
-  }
-};
-
-// Remove compute_reshape_shape if we can prove that the dynamic shape does not
-// contain a `-1` dimension.
-struct RemoveComputeReshapeShape final
-    : public OpRewritePattern<mhlo::ComputeReshapeShapeOp> {
-  using OpRewritePattern::OpRewritePattern;
-  LogicalResult matchAndRewrite(mhlo::ComputeReshapeShapeOp op,
-                                PatternRewriter &rewriter) const override {
-    ShapeComponentAnalysis shapeComponentAnalysis;
-    auto dynamicShape =
-        shapeComponentAnalysis.GetValueInfo(op.getDynamicShape());
-    if (!dynamicShape) return failure();
-
-    if (llvm::any_of(*dynamicShape, [](const auto &dim) {
-          return !dim.isKnownNotNegativeOne();
-        })) {
-      return failure();
-    }
-    rewriter.replaceOp(op, op.getDynamicShape());
+    rewriter.finalizeOpModification(op);
     return success();
   }
 };
@@ -243,16 +222,16 @@ struct RemoveComputeReshapeShape final
 bool isProduct(AffineExpr expr,
                llvm::function_ref<void(AffineConstantExpr)> cbkConstantFactor,
                llvm::function_ref<void(AffineSymbolExpr)> cbkSymbolicFactor) {
-  auto binExpr = expr.dyn_cast<AffineBinaryOpExpr>();
+  auto binExpr = dyn_cast<AffineBinaryOpExpr>(expr);
   if (binExpr && binExpr.getKind() == AffineExprKind::Mul) {
     return isProduct(binExpr.getLHS(), cbkConstantFactor, cbkSymbolicFactor) &&
            isProduct(binExpr.getRHS(), cbkConstantFactor, cbkSymbolicFactor);
   }
-  if (auto symExpr = expr.dyn_cast<AffineSymbolExpr>()) {
+  if (auto symExpr = dyn_cast<AffineSymbolExpr>(expr)) {
     cbkSymbolicFactor(symExpr);
     return true;
   }
-  if (auto constExpr = expr.dyn_cast<AffineConstantExpr>()) {
+  if (auto constExpr = dyn_cast<AffineConstantExpr>(expr)) {
     cbkConstantFactor(constExpr);
     return true;
   }
@@ -286,92 +265,6 @@ bool isSymbolicProduct(const SymbolicExpr &symbolicExpr,
       symbolicExpr, [&](int64_t c) { product->concrete *= c; },
       [&](Symbol s) { product->symbolic.push_back(s); });
 }
-
-struct RemoveRedundantCstrReshapable final
-    : public OpRewritePattern<mhlo::CstrReshapableOp> {
-  using OpRewritePattern::OpRewritePattern;
-  LogicalResult matchAndRewrite(mhlo::CstrReshapableOp op,
-                                PatternRewriter &rewriter) const override {
-    // Get shape analysis info for the number of elements.
-    ShapeComponentAnalysis shapeComponentAnalysis;
-    auto numElementsInfo =
-        shapeComponentAnalysis.GetValueInfo(op.getNumElements());
-    if (!numElementsInfo) return failure();
-    assert(numElementsInfo->size() == 1 && "expect one value for a scalar");
-    auto numElements = numElementsInfo->front();
-
-    // Get shape analysis info for the dynamic shape.
-    auto dynShapeDims =
-        shapeComponentAnalysis.GetValueInfo(op.getDynamicShape());
-    if (!dynShapeDims) return failure();
-
-    // We can handle two cases:
-    //   - there is exactly one -1 in the dynamic shape, i.e. a unique wildcard
-    //     dimension, or
-    //   - there is no -1 in the dynamic shape, i.e. no wildcard dimension.
-    bool uniqueWildcardDimension = false;
-    for (const auto &d : *dynShapeDims) {
-      if (d.isConstant(-1)) {
-        if (uniqueWildcardDimension) return failure();
-        uniqueWildcardDimension = true;
-      } else if (!d.isKnownNotNegativeOne()) {
-        return failure();
-      }
-    }
-
-    // We can only handle simple products with constants and symbols. Find all
-    // the factors based on the number of elements.
-    SymbolicProduct numElementsRemainingFactors;
-    if (!isSymbolicProduct(numElements, &numElementsRemainingFactors)) {
-      return failure();
-    }
-    assert(numElementsRemainingFactors.concrete >= 1 &&
-           "number of elements cannot entail negative or zero factors");
-
-    // Find all factors based on the dynamic shape.
-    //   - Accumulate the conrete product to later compare it against its
-    //     equivalent based on the number of elements.
-    //   - Remove symbolic factors from the list and fail if we find an unknown
-    //     factor, i.e. if the symbolic factors based on the dynamic shape are
-    //     not a subset of the factors based on the number of elements.
-    int64_t concreteProductDynShape = 1;
-    for (const auto &dim : *dynShapeDims) {
-      SmallVector<Symbol> partialSymbolicFactorsDynShape;
-      if (!isSymbolicProduct(
-              dim,
-              [&](int64_t c) {
-                if (c != -1) concreteProductDynShape *= c;
-              },
-              [&](Symbol s) { partialSymbolicFactorsDynShape.push_back(s); })) {
-        return failure();
-      }
-      for (const Symbol &symDynShape : partialSymbolicFactorsDynShape) {
-        auto *it =
-            llvm::find(numElementsRemainingFactors.symbolic, symDynShape);
-        if (it == numElementsRemainingFactors.symbolic.end()) return failure();
-        numElementsRemainingFactors.symbolic.erase(it);
-      }
-    }
-    assert(concreteProductDynShape >= 1 &&
-           "concrete product must not aggregate negative or zero factors");
-
-    // A wildcard dimension can subsume the remaining symbolic factors and
-    // potentially also a concrete factor.
-    if (uniqueWildcardDimension) {
-      if (numElementsRemainingFactors.concrete % concreteProductDynShape != 0)
-        return failure();
-      rewriter.replaceOpWithNewOp<shape::ConstWitnessOp>(op, true);
-      return success();
-    }
-
-    // W/o a wildcard, the symbolic and concrete products must be equal.
-    bool isReshapable =
-        numElementsRemainingFactors.symbolic.empty() &&
-        numElementsRemainingFactors.concrete == concreteProductDynShape;
-    rewriter.replaceOpWithNewOp<shape::ConstWitnessOp>(op, isReshapable);
-    return success();
-  }
-};
 
 LogicalResult materializeReshapeAsScalarExpand(RankedTensorType operandTy,
                                                RankedTensorType resultTy,
@@ -630,7 +523,7 @@ SmallVector<int64_t> concretizeOperandShape(
   for (auto it : llvm::zip(operandShape, operandShapeInfo)) {
     auto dimSize = std::get<0>(it);
     auto sExpr = std::get<1>(it);
-    if (auto cexpr = sExpr.expr.dyn_cast<AffineConstantExpr>()) {
+    if (auto cexpr = dyn_cast<AffineConstantExpr>(sExpr.expr)) {
       int64_t alsoDimSize = cexpr.getValue();
       assert((ShapedType::isDynamic(dimSize) || dimSize == alsoDimSize) &&
              "expect shape analysis result to be compatible with type");
@@ -718,9 +611,10 @@ struct DynamicReshapeToExpandAndCollapseShape final
   using OpRewritePattern::OpRewritePattern;
   LogicalResult matchAndRewrite(mhlo::DynamicReshapeOp op,
                                 PatternRewriter &rewriter) const override {
-    auto operandTy = op.getOperand().getType().dyn_cast<RankedTensorType>();
+    auto operandTy =
+        mlir::dyn_cast<RankedTensorType>(op.getOperand().getType());
     if (!operandTy) return failure();
-    auto resultTy = op.getType().dyn_cast<RankedTensorType>();
+    auto resultTy = mlir::dyn_cast<RankedTensorType>(op.getType());
     if (!resultTy) return failure();
 
     // Handle degenerate scalar expand case.
@@ -837,7 +731,8 @@ std::optional<Value> simplifyBroadcast(ShapeComponentAnalysis &analysis,
     // 1 dimensions are filtered above, recreate the constant.
     if (!shapeAndRankForDim[i].first) {
       auto one = builder->getIntegerAttr(
-          shapes[0].getType().cast<RankedTensorType>().getElementType(), 1);
+          mlir::cast<RankedTensorType>(shapes[0].getType()).getElementType(),
+          1);
       elements.push_back(builder->create<arith::ConstantOp>(loc, one));
       continue;
     }
@@ -891,8 +786,6 @@ class SymbolicShapeOptimizationPass final
         BroadcastOpLowering,
         CstrBroadcastableOpLowering,
         DynamicReshapeToExpandAndCollapseShape,
-        RemoveComputeReshapeShape,
-        RemoveRedundantCstrReshapable,
         SimplifyBroadcasts>(ctx);
     // clang-format on
 
@@ -900,8 +793,8 @@ class SymbolicShapeOptimizationPass final
     shape::AssumingOp::getCanonicalizationPatterns(patterns, ctx);
     shape::ShapeOfOp::getCanonicalizationPatterns(patterns, ctx);
 
-    if (failed(mlir::applyPatternsAndFoldGreedily(getOperation(),
-                                                  std::move(patterns)))) {
+    if (failed(
+            mlir::applyPatternsGreedily(getOperation(), std::move(patterns)))) {
       signalPassFailure();
     }
   }

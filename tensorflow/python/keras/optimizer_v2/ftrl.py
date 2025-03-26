@@ -17,9 +17,9 @@
 
 from tensorflow.python.keras.optimizer_v2 import optimizer_v2
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import gen_training_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
-from tensorflow.python.training import gen_training_ops
 
 
 class Ftrl(optimizer_v2.OptimizerV2):

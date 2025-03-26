@@ -20,9 +20,9 @@ limitations under the License.
 
 namespace tensorflow {
 
-Status InstantiateFunctionForTest(const string& name,
-                                  const FunctionLibraryDefinition& library,
-                                  InstantiationResultForTest* result) {
+absl::Status InstantiateFunctionForTest(
+    const string& name, const FunctionLibraryDefinition& library,
+    InstantiationResultForTest* result) {
   const FunctionDef* fdef = library.Find(name);
   TF_RET_CHECK(fdef != nullptr);
 
@@ -37,7 +37,7 @@ Status InstantiateFunctionForTest(const string& name,
   for (NodeDef& n : inst.nodes) {
     *result->gdef.add_node() = std::move(n);
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace tensorflow

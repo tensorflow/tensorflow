@@ -23,6 +23,10 @@ namespace tflite {
 std::unique_ptr<TfLiteDelegate, void (*)(TfLiteDelegate*)>
 AcquireXNNPACKDelegate() {
   auto opts = TfLiteXNNPackDelegateOptionsDefault();
+#ifdef TFLITE_XNNPACK_DELEGATE_EXPERIMENTAL_WEIGHT_CACHE_FILE_PATH
+  opts.experimental_weight_cache_file_path =
+      TFLITE_XNNPACK_DELEGATE_EXPERIMENTAL_WEIGHT_CACHE_FILE_PATH;
+#endif
   return std::unique_ptr<TfLiteDelegate, void (*)(TfLiteDelegate*)>(
       TfLiteXNNPackDelegateCreate(&opts), TfLiteXNNPackDelegateDelete);
 }

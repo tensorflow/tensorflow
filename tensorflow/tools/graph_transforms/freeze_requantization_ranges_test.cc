@@ -30,16 +30,16 @@ namespace tensorflow {
 namespace graph_transforms {
 
 // Declare here, so we don't need a public header.
-Status FreezeRequantizationRanges(const GraphDef& input_graph_def,
-                                  const TransformFuncContext& context,
-                                  GraphDef* output_graph_def);
+absl::Status FreezeRequantizationRanges(const GraphDef& input_graph_def,
+                                        const TransformFuncContext& context,
+                                        GraphDef* output_graph_def);
 struct MinMaxRecord {
   string name;
   float min;
   float max;
 };
-Status ExtractMinMaxRecords(const string& log_file_name,
-                            std::vector<MinMaxRecord>* records);
+absl::Status ExtractMinMaxRecords(const string& log_file_name,
+                                  std::vector<MinMaxRecord>* records);
 
 class FreezeRequantizationRangesTest : public ::testing::Test {
  protected:

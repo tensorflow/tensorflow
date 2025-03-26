@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/tools/evaluation/tasks/task_executor_c_api.h"
 
+#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <optional>

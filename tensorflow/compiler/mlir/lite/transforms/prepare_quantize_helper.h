@@ -20,32 +20,36 @@ limitations under the License.
 
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
 #include <memory>
-#include <string>
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"
+#include "absl/status/statusor.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/MathExtras.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
-#include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
+#include "mlir/Dialect/Quant/IR/QuantTypes.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
-#include "mlir/IR/OpDefinition.h"  // from @llvm-project
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
-#include "tensorflow/compiler/mlir/lite/quantization/ir/FakeQuantSupport.h"
 #include "tensorflow/compiler/mlir/lite/quantization/ir/QuantOps.h"
-#include "tensorflow/compiler/mlir/lite/quantization/quantization_config.h"
-#include "tensorflow/compiler/mlir/lite/quantization/quantization_traits.h"
-#include "tensorflow/compiler/mlir/lite/quantization/quantization_utils.h"
+#include "tensorflow/compiler/mlir/lite/schema/schema_generated.h"
+#include "tensorflow/compiler/mlir/lite/tools/optimize/operator_property.h"
+#include "tensorflow/compiler/mlir/lite/utils/shape_and_size_utils.h"
+#include "tensorflow/compiler/mlir/quantization/common/ir/FakeQuantSupport.h"
+#include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_config.h"
+#include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_traits.h"
+#include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_utils.h"
+#include "tensorflow/compiler/mlir/quantization/common/uniform_quantized_types.h"
 #include "tensorflow/core/framework/types.pb.h"
-#include "tensorflow/lite/schema/schema_generated.h"
-#include "tensorflow/lite/tools/optimize/operator_property.h"
 
 //===----------------------------------------------------------------------===//
 // The prepare-quantize Pass for LSTM.
@@ -99,19 +103,18 @@ LogicalResult GetLstmProperty(LstmOp op,
     return failure();
   }
   lstm_variant->use_projection =
-      !op.getProjectionWeights().getType().template isa<NoneType>();
+      !mlir::isa<NoneType>(op.getProjectionWeights().getType());
   lstm_variant->use_peephole =
-      !op.getCellToOutputWeights().getType().template isa<NoneType>();
+      !mlir::isa<NoneType>(op.getCellToOutputWeights().getType());
   lstm_variant->use_layer_norm =
-      !op.getForgetLayerNormCoefficients().getType().template isa<NoneType>();
+      !mlir::isa<NoneType>(op.getForgetLayerNormCoefficients().getType());
 
   *op_property = operator_property::GetOperatorProperty(
       *lstm_variant, activation_number_of_bits);
 
   // TODO(b/176258587) move this to operator_property.cc if this is needed in
   // other components, too.
-  bool use_cifg =
-      op.getInputToInputWeights().getType().template isa<NoneType>();
+  bool use_cifg = mlir::isa<NoneType>(op.getInputToInputWeights().getType());
   if (use_cifg) {
     const absl::flat_hash_set<int> cifg_non_inputs = {1, 5, 9, 12, 20};
     const int cifg_non_intermediate = 0;
@@ -196,9 +199,9 @@ class PrepareLstmOutputScale : public OpRewritePattern<SourceOp> {
     llvm::SmallVector<llvm::APFloat, 4> min_max_values;
 
     for (auto& stats_op : stats_ops) {
-      auto values = stats_op.getLayerStats()
-                        .dyn_cast<DenseFPElementsAttr>()
-                        .getValues<llvm::APFloat>();
+      auto values =
+          mlir::dyn_cast<DenseFPElementsAttr>(stats_op.getLayerStats())
+              .getValues<llvm::APFloat>();
       min_max_values.insert(min_max_values.end(), values.begin(), values.end());
     }
 
@@ -284,8 +287,8 @@ class ConvertOpStatsToQDQs : public OpRewritePattern<SourceOp> {
       const operator_property::TensorProperty& tensor_property,
       PatternRewriter& rewriter) const {
     // Non-float tensors are neither weights nor require quantization.
-    auto type = const_op->getResult(0).getType().dyn_cast<ShapedType>();
-    if (!type || !type.getElementType().isa<FloatType>()) return success();
+    auto type = mlir::dyn_cast<ShapedType>(const_op->getResult(0).getType());
+    if (!type || !mlir::isa<FloatType>(type.getElementType())) return success();
 
     DenseFPElementsAttr attr;
     if (!matchPattern(const_op->getResult(0), m_Constant(&attr))) {
@@ -311,12 +314,12 @@ class ConvertOpStatsToQDQs : public OpRewritePattern<SourceOp> {
           rewriter.getIntegerType(16), attr.getType().getElementType(), scale,
           /*zeroPoint=*/0, llvm::minIntN(10), -llvm::minIntN(10));
     } else {
-      quant_type = quant::GetUniformQuantizedTypeForWeight(
-                       attr, /*symmetric=*/true,
-                       /*num_bits=*/tensor_property.number_of_bits,
-                       /*is_signed=*/true,
-                       /*narrow_range=*/true, quant_specs_.legacy_float_scale)
-                       .template dyn_cast<quant::UniformQuantizedType>();
+      quant_type = mlir::dyn_cast<quant::UniformQuantizedType>(
+          quant::GetUniformQuantizedTypeForWeight(
+              attr, /*symmetric=*/true,
+              /*num_bits=*/tensor_property.number_of_bits,
+              /*is_signed=*/true,
+              /*narrow_range=*/true, quant_specs_.legacy_float_scale));
     }
     if (!quant_type) {
       const_op->emitError("Failed to get quantized type");
@@ -345,7 +348,7 @@ class ConvertOpStatsToQDQs : public OpRewritePattern<SourceOp> {
                      << "] is a state tensor, but has more than one use.";
       return failure();
     }
-    auto stats = stats_op.getLayerStats().dyn_cast<DenseFPElementsAttr>();
+    auto stats = mlir::dyn_cast<DenseFPElementsAttr>(stats_op.getLayerStats());
     if (!stats || stats.getNumElements() != 2) {
       stats_op.emitError("Stats should have 2 values.");
       return failure();
@@ -453,7 +456,7 @@ class ConvertLstmStatsToQDQs : public ConvertOpStatsToQDQs<SourceOp> {
         return failure();
       }
       auto calibrated_type =
-          quant_type.template dyn_cast<quant::CalibratedQuantizedType>();
+          mlir::dyn_cast<quant::CalibratedQuantizedType>(quant_type);
       if (!calibrated_type) {
         int num_storage_bits = quant_type.getStorageTypeIntegralWidth();
         if (tensor_property.number_of_bits != num_storage_bits) {
@@ -473,9 +476,9 @@ class ConvertLstmStatsToQDQs : public ConvertOpStatsToQDQs<SourceOp> {
             /*narrowRange=*/false, calibrated_type.getExpressedType(),
             /*isSigned=*/this->quant_specs_.IsSignedInferenceType());
         if (this->quant_specs_.legacy_float_scale) {
-          qtype = quant::DownCastScale(qtype, calibrated_type.getMin(),
-                                       calibrated_type.getMax(), op.getLoc())
-                      .template cast<UniformQuantizedType>();
+          qtype = mlir::cast<UniformQuantizedType>(
+              quant::DownCastScale(qtype, calibrated_type.getMin(),
+                                   calibrated_type.getMax(), op.getLoc()));
         }
       } else if (tensor_property.number_of_bits == 16) {
         double max = std::max(std::abs(calibrated_type.getMin()),
@@ -505,10 +508,11 @@ class ConvertLstmStatsToQDQs : public ConvertOpStatsToQDQs<SourceOp> {
 inline quant::AccumulatorScaleFunc GetUniformQuantizedTypeForBiasWithScale(
     double scale) {
   return [=](const std::vector<quant::QuantParams>& quant_params,
-             bool legacy_float_scale) -> quant::QuantParams {
-    if (auto qtype = quant::GetUniformQuantizedTypeForBias(quant_params,
-                                                           legacy_float_scale)
-                         .dyn_cast_or_null<UniformQuantizedType>()) {
+             const int adjusted_quant_dim,
+             const bool legacy_float_scale) -> quant::QuantParams {
+    if (auto qtype = mlir::dyn_cast_or_null<UniformQuantizedType>(
+            quant::GetUniformQuantizedTypeForBias(
+                quant_params, legacy_float_scale, adjusted_quant_dim))) {
       return quant::UniformQuantizedType::get(
           qtype.getFlags(), qtype.getStorageType(), qtype.getExpressedType(),
           qtype.getScale() * scale, qtype.getZeroPoint(),
@@ -538,14 +542,14 @@ std::unique_ptr<quant::OpQuantSpec> GetLstmOpQuantSpec(LstmOp op) {
            tensor_property.derived_scale.intermediate_tensors) {
         auto quant_type = GetIntermediateElementType<LstmOp>(op, tensor_index);
         if (!quant_type ||
-            !quant_type.template isa<quant::UniformQuantizedType>()) {
+            !mlir::isa<quant::UniformQuantizedType>(quant_type)) {
           op->emitError() << "While processing derived scale, intermediate "
                           << intermediate_attributes[tensor_index]
                           << " is not quantized.";
           return nullptr;
         }
-        scale *= quant_type.template dyn_cast<quant::UniformQuantizedType>()
-                     .getScale();
+        scale *=
+            mlir::dyn_cast<quant::UniformQuantizedType>(quant_type).getScale();
       }
       for (float factor : tensor_property.derived_scale.factors) {
         scale *= factor;
@@ -571,6 +575,171 @@ class ConvertSvdfStatsToQDQs : public ConvertOpStatsToQDQs<TFL::SVDFOp> {
     auto op_property = operator_property::GetOperatorProperty(op_variant);
     return ConvertOpStatsToQDQs<TFL::SVDFOp>::processInputs(
         op, op_variant, op_property, rewriter);
+  }
+};
+
+class PropagateReshapedPerAxisQuantDim
+    : public OpRewritePattern<TFL::ReshapeOp> {
+ public:
+  explicit PropagateReshapedPerAxisQuantDim(MLIRContext* context)
+      : OpRewritePattern<TFL::ReshapeOp>(context) {}
+  LogicalResult matchAndRewrite(TFL::ReshapeOp reshape_op,
+                                PatternRewriter& rewriter) const override {
+    // Check if the quantization is per-axis
+    auto dq_op = dyn_cast_or_null<quantfork::DequantizeCastOp>(
+        reshape_op.getOperand(0).getDefiningOp());
+    if (!dq_op) {
+      return rewriter.notifyMatchFailure(
+          reshape_op, "Per-axis quantized ReshapeOp match failed");
+    }
+    auto q_op = dyn_cast_or_null<quantfork::QuantizeCastOp>(
+        dq_op.getOperand().getDefiningOp());
+    if (!q_op) {
+      return rewriter.notifyMatchFailure(
+          reshape_op, "Per-axis quantized ReshapeOp match failed");
+    }
+    auto qtype =
+        mlir::cast<TensorType>(dq_op.getArg().getType()).getElementType();
+    auto per_axis_quant =
+        dyn_cast_or_null<quant::UniformQuantizedPerAxisType>(qtype);
+    if (!per_axis_quant) {
+      return rewriter.notifyMatchFailure(
+          reshape_op, "ReshapeOp result is not per-axis quantized");
+    }
+
+    // Return if the result of ReshapeOp is already quantized
+    auto next_op = *reshape_op.getResult().getUsers().begin();
+    if (dyn_cast_or_null<quantfork::QuantizeCastOp>(next_op))
+      return rewriter.notifyMatchFailure(
+          reshape_op, "ReshapeOp result is already quantized");
+
+    // Get the new quantization dimension
+    absl::StatusOr<int32_t> new_quant_dim = GetQuantDimensionAfterReshape(
+        reshape_op.getInput().getType().getShape(),
+        reshape_op.getType().getShape(),
+        per_axis_quant.getQuantizedDimension());
+
+    if (!new_quant_dim.ok()) {
+      return rewriter.notifyMatchFailure(
+          reshape_op, "Invalid quantization dimension after ReshapeOp");
+    }
+
+    // Insert a QDQ pair with the new quantized dimension after ReshapeOp
+    auto new_element_type =
+        mlir::quant::UniformQuantizedPerAxisType::getChecked(
+            reshape_op.getLoc(), per_axis_quant.getFlags(),
+            per_axis_quant.getStorageType(), per_axis_quant.getExpressedType(),
+            per_axis_quant.getScales(), per_axis_quant.getZeroPoints(),
+            *new_quant_dim, per_axis_quant.getStorageTypeMin(),
+            per_axis_quant.getStorageTypeMax());
+
+    auto new_tensor_type = RankedTensorType::getChecked(
+        reshape_op.getLoc(), reshape_op.getType().getShape(), new_element_type);
+
+    rewriter.setInsertionPointAfter(reshape_op);
+    auto new_q_op = rewriter.create<quantfork::QuantizeCastOp>(
+        reshape_op.getLoc(), new_tensor_type, q_op.getArg());
+    auto new_dq_op = rewriter.create<quantfork::DequantizeCastOp>(
+        new_q_op.getLoc(), reshape_op.getResult().getType(),
+        new_q_op.getResult());
+    reshape_op.getResult().replaceAllUsesWith(new_dq_op.getResult());
+    new_q_op.setOperand(reshape_op.getResult());
+
+    return success();
+  }
+};
+
+class PropagateTransposedPerAxisQuantDim
+    : public OpRewritePattern<TFL::TransposeOp> {
+ public:
+  explicit PropagateTransposedPerAxisQuantDim(MLIRContext* context)
+      : OpRewritePattern<TFL::TransposeOp>(context) {}
+  LogicalResult matchAndRewrite(TFL::TransposeOp transpose_op,
+                                PatternRewriter& rewriter) const override {
+    // Check if the quantization is per-axis
+    auto dq_op = dyn_cast_or_null<quantfork::DequantizeCastOp>(
+        transpose_op.getOperand(0).getDefiningOp());
+    if (!dq_op) return failure();
+    auto q_op = dyn_cast_or_null<quantfork::QuantizeCastOp>(
+        dq_op.getOperand().getDefiningOp());
+    if (!q_op) return failure();
+    auto qtype =
+        mlir::cast<TensorType>(dq_op.getArg().getType()).getElementType();
+    auto per_axis_quant =
+        dyn_cast_or_null<quant::UniformQuantizedPerAxisType>(qtype);
+    if (!per_axis_quant) return failure();
+
+    // Return if the result of TransposeOp is already quantized
+    if (!transpose_op.getResult().hasOneUse()) return failure();
+    auto next_op = *transpose_op.getResult().getUsers().begin();
+    if (dyn_cast_or_null<quantfork::QuantizeCastOp>(next_op)) return failure();
+
+    auto input_type = mlir::cast<ShapedType>(transpose_op.getInput().getType());
+    auto perm_type = mlir::cast<ShapedType>(transpose_op.getPerm().getType());
+    if (input_type.hasStaticShape() && perm_type.hasStaticShape()) {
+      if (perm_type.getNumElements() != input_type.getRank()) {
+        return transpose_op.emitOpError(
+            "perm tensor elements size is not equal to input tensor rank");
+      }
+    }
+
+    // Get permutation axes of the TransposeOp
+    DenseIntElementsAttr perm;
+    if (!matchPattern(transpose_op.getPerm(), m_Constant(&perm))) {
+      return failure();
+    }
+
+    SmallVector<int64_t, 4> axes;
+    for (const auto& axis_int : perm.getValues<APInt>()) {
+      int64_t axis = axis_int.getSExtValue();
+      if (axis < 0) {
+        axis += input_type.getRank();
+      }
+      if (axis < 0 || (input_type.hasRank() && axis >= input_type.getRank())) {
+        return transpose_op.emitOpError("perm must be in [-rank, rank)");
+      }
+      if (std::count(axes.begin(), axes.end(), axis) > 0) {
+        return transpose_op.emitOpError("perm cannot have duplicated axis");
+      }
+      axes.push_back(axis);
+    }
+
+    // Find what the quantized dimension has been transposed to
+    int new_out_quant_dim = -1;
+    for (int i = 0; i < axes.size(); ++i) {
+      if (axes[i] == per_axis_quant.getQuantizedDimension()) {
+        new_out_quant_dim = i;
+        break;
+      }
+    }
+    if (new_out_quant_dim == -1) {
+      return transpose_op.emitOpError(
+          "new quantization dimension not found in perm");
+    }
+
+    // Insert a QDQ pair with the new quantized dimension after TransposeOp
+    auto new_element_type =
+        mlir::quant::UniformQuantizedPerAxisType::getChecked(
+            transpose_op.getLoc(), per_axis_quant.getFlags(),
+            per_axis_quant.getStorageType(), per_axis_quant.getExpressedType(),
+            per_axis_quant.getScales(), per_axis_quant.getZeroPoints(),
+            new_out_quant_dim, per_axis_quant.getStorageTypeMin(),
+            per_axis_quant.getStorageTypeMax());
+
+    auto new_tensor_type = RankedTensorType::getChecked(
+        transpose_op.getLoc(), transpose_op.getType().getShape(),
+        new_element_type);
+
+    rewriter.setInsertionPointAfter(transpose_op);
+    auto new_q_op = rewriter.create<quantfork::QuantizeCastOp>(
+        transpose_op.getLoc(), new_tensor_type, q_op.getArg());
+    auto new_dq_op = rewriter.create<quantfork::DequantizeCastOp>(
+        new_q_op.getLoc(), transpose_op.getResult().getType(),
+        new_q_op.getResult());
+    transpose_op.getResult().replaceAllUsesWith(new_dq_op.getResult());
+    new_q_op.setOperand(transpose_op.getResult());
+
+    return success();
   }
 };
 

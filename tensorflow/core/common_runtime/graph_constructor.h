@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_COMMON_RUNTIME_GRAPH_CONSTRUCTOR_H_
 
 #include "tensorflow/core/framework/graph.pb.h"
+#include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/tensor_id.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -52,17 +53,27 @@ struct GraphConstructorOptions {
   // If true, GraphConstructor will add attributes with their default
   // value to the Node when they are missing from the NodeDef.
   bool add_default_attributes = true;
+
+  // If true, upgrade legacy features of the graph (for instance, functionalize
+  // control-flow).
+  bool upgrade_legacy = false;
 };
-extern Status ConvertGraphDefToGraph(const GraphConstructorOptions& opts,
-                                     const GraphDef& gdef, Graph* g);
-extern Status ConvertGraphDefToGraph(const GraphConstructorOptions& opts,
-                                     GraphDef&& gdef, Graph* g);
+extern absl::Status ConvertGraphDefToGraph(const GraphConstructorOptions& opts,
+                                           const GraphDef& gdef, Graph* g);
+extern absl::Status ConvertGraphDefToGraph(const GraphConstructorOptions& opts,
+                                           GraphDef&& gdef, Graph* g);
+
+// Generate the shared_name for resource handle ops in the graph and functions
+// if their shared_names are empty. Resource handle ops with empty shared_name
+// may have undesired semantics.
+absl::Status GenerateResourceSharedNameIfEmpty(
+    GraphDef& gdef, const OpRegistryInterface* default_registry);
 
 // Same as ConvertGraphDefToGraph, but takes just nodes.  Used by function
 // instantiation.
 // TODO(irving): This will turn into std::vector<NodeInfoPtr> soon.
-extern Status ConvertNodeDefsToGraph(
-    const GraphConstructorOptions& opts, gtl::ArraySlice<NodeDef> nodes,
+extern absl::Status ConvertNodeDefsToGraph(
+    const GraphConstructorOptions& opts, absl::Span<const NodeDef> nodes,
     Graph* g, const GraphDebugInfo* debug_info = nullptr);
 
 // Options for calling ImportGraphDef().
@@ -194,10 +205,10 @@ struct ImportGraphDefResults {
 //
 // TODO(ashankar): Push this mechanism and get rid of Session::Extend()
 // as a means of enhancing an existing Graph.
-extern Status ImportGraphDef(const ImportGraphDefOptions& opts,
-                             const GraphDef& gdef, Graph* g,
-                             ShapeRefiner* refiner,
-                             ImportGraphDefResults* results = nullptr);
+extern absl::Status ImportGraphDef(const ImportGraphDefOptions& opts,
+                                   const GraphDef& gdef, Graph* g,
+                                   ShapeRefiner* refiner,
+                                   ImportGraphDefResults* results = nullptr);
 
 // Make a copy of "src" into "*dest".
 //

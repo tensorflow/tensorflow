@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,8 +16,8 @@ limitations under the License.
 #ifndef XLA_SERVICE_LAYOUT_ASSIGNMENT_H_
 #define XLA_SERVICE_LAYOUT_ASSIGNMENT_H_
 
+#include <cstdint>
 #include <iosfwd>
-#include <map>
 #include <memory>
 #include <set>
 #include <string>
@@ -28,25 +28,34 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/container/node_hash_map.h"
+#include "absl/log/check.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
+#include "xla/hlo/analysis/tuple_points_to_analysis.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/pass/hlo_pass_interface.h"
+#include "xla/layout.h"
 #include "xla/layout_util.h"
+#include "xla/map_util.h"
 #include "xla/service/call_graph.h"
 #include "xla/service/computation_layout.h"
-#include "xla/service/hlo_pass_interface.h"
 #include "xla/service/logical_buffer.h"
-#include "xla/service/tuple_points_to_analysis.h"
+#include "xla/shape.h"
 #include "xla/shape_layout.h"
 #include "xla/shape_util.h"
-#include "xla/statusor.h"
 #include "xla/types.h"
+#include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/status.h"
 
 namespace xla {
 
 class LayoutAssignment;
+
 // Abstract base class for layout constraints. These constraint objects are
 // gathered together in LayoutConstraints object.
 class LayoutConstraint {
@@ -117,7 +126,7 @@ class OperandLayoutConstraint : public LayoutConstraint {
 
   const ShapeLayout& shape_layout() const { return shape_layout_[0]; }
   const HloInstruction* instruction() const { return instruction_; }
-  const int64_t operand_no() const { return operand_no_; }
+  int64_t operand_no() const { return operand_no_; }
   const HloInstruction* operand() const {
     return instruction_->operand(operand_no_);
   }
@@ -148,8 +157,15 @@ class ComputationLayoutConstraint : public LayoutConstraint {
                           : kComputationLayoutIsSet),
         computation_layout_(
             (computation_layout == nullptr)
-                ? ComputationLayout(computation->ComputeProgramShape(),
-                                    /*ignore_layouts=*/false)
+                ? ComputationLayout(
+                      computation->ComputeProgramShape(),
+                      // Computation callers need layout to be set and
+                      // computation parameters may miss the layout, so we
+                      // cannot rely on them and need to reset/ignore the
+                      // layout. Entry computation is special because unset
+                      // layouts there are used to indicate that the layout
+                      // should be automatically inferred.
+                      /*ignore_layouts=*/!computation->IsEntryComputation())
                 : *computation_layout) {}
 
   const ComputationLayout& computation_layout() const {
@@ -196,7 +212,7 @@ class ComputationLayoutConstraint : public LayoutConstraint {
 class ChannelLayoutConstraints {
  public:
   // Construct an empty constraint set.
-  ChannelLayoutConstraints() {}
+  ChannelLayoutConstraints() = default;
 
   // Returns true if channel_id has a layout constraint.
   bool IsChannelConstrained(int64_t channel_id) const {
@@ -263,7 +279,7 @@ class LayoutAssignment : public HloModulePass {
   // Assign layouts to the given module. Returns whether the module was changed
   // (any layouts were changed).
   using HloPassInterface::Run;
-  StatusOr<bool> Run(
+  absl::StatusOr<bool> Run(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
@@ -273,7 +289,9 @@ class LayoutAssignment : public HloModulePass {
    public:
     explicit LayoutConstraints(HloComputation* computation,
                                ComputationLayout* computation_layout,
-                               int64_t priority);
+                               int64_t priority)
+        : computation_(computation),
+          computation_constraint_(computation, computation_layout, priority) {}
     ~LayoutConstraints() = default;
 
     const HloComputation* computation() const { return computation_; }
@@ -283,14 +301,12 @@ class LayoutAssignment : public HloModulePass {
                                      int64_t operand_no) const;
     const OperandLayoutConstraint* GetOperandLayoutConstraint(
         const HloInstruction* instruction, int64_t operand_no) const;
-    OperandLayoutConstraint* MutableOperandLayoutConstraint(
+    std::unique_ptr<OperandLayoutConstraint>& MutableOperandLayoutConstraint(
         const HloInstruction* instruction, int64_t operand_no);
     const ShapeLayout* ResultLayout() const;
-    OperandLayoutConstraint* InsertOperandLayoutConstraint(
-        const HloInstruction* instruction, int64_t operand_no,
-        const OperandLayoutConstraint& constraint);
-    Status SetResultLayout(LayoutAssignment* assignment,
-                           const Shape& shape_with_layout, int64_t priority);
+    absl::Status SetResultLayout(LayoutAssignment* assignment,
+                                 const Shape& shape_with_layout,
+                                 int64_t priority);
 
     const ComputationLayout& computation_layout() const {
       return computation_constraint_.computation_layout();
@@ -305,7 +321,8 @@ class LayoutAssignment : public HloModulePass {
    private:
     // The set of OperandLayoutConstraints applied to the computation.
     using OperandConstraintKey = std::pair<const HloInstruction*, int64_t>;
-    std::map<OperandConstraintKey, OperandLayoutConstraint>
+    absl::flat_hash_map<OperandConstraintKey,
+                        std::unique_ptr<OperandLayoutConstraint>>
         operand_constraints_;
 
     HloComputation* computation_;
@@ -347,57 +364,65 @@ class LayoutAssignment : public HloModulePass {
   static bool IsAtMostRank1(const Shape& shape);
   // Convenience wrapper around SetOperandLayout for setting the layout of a
   // operand using a Layout object. The operand must be array-shaped.
-  Status SetArrayOperandLayout(const Layout& layout,
-                               const HloInstruction* instruction,
-                               int64_t operand_no, bool mandatory = true,
-                               bool dfs = true) {
+  absl::Status SetArrayOperandLayout(const Layout& layout,
+                                     const HloInstruction* instruction,
+                                     int64_t operand_no, bool mandatory = true,
+                                     bool dfs = true) {
     return SetArrayOperandLayout(layout, instruction, operand_no, mandatory,
                                  dfs, current_priority_);
   }
-  Status SetArrayOperandLayout(const Layout& layout,
-                               const HloInstruction* instruction,
-                               int64_t operand_no, bool mandatory, bool dfs,
-                               int64_t priority);
+  absl::Status SetArrayOperandLayout(const Layout& layout,
+                                     const HloInstruction* instruction,
+                                     int64_t operand_no, bool mandatory,
+                                     bool dfs, int64_t priority);
   // Convenience wrapper around SetBufferLayout. Sets the layouts of all buffers
   // created by the instruction to the layouts in the given shape. The
   // instruction must define every logical buffer in its output.
   // If `allow_alias` is false, the function will check that all output buffers
   // are defined by `instruction`, not aliased to an instruction elsewhere.
-  Status SetInstructionLayout(const Shape& shape_with_layout,
-                              const HloInstruction* instruction,
-                              bool mandatory = true, bool dfs = true,
-                              bool allow_alias = false) {
+  absl::Status SetInstructionLayout(const Shape& shape_with_layout,
+                                    const HloInstruction* instruction,
+                                    bool mandatory = true, bool dfs = true,
+                                    bool allow_alias = false,
+                                    ShapeIndexView subshape_index = {}) {
     return SetInstructionLayout(shape_with_layout, instruction, mandatory, dfs,
-                                allow_alias, current_priority_);
+                                allow_alias, current_priority_, subshape_index);
   }
-  Status SetInstructionLayout(const Shape& shape_with_layout,
-                              const HloInstruction* instruction, bool mandatory,
-                              bool dfs, bool allow_alias, int64_t priority);
+  absl::Status SetInstructionLayout(const Shape& shape_with_layout,
+                                    const HloInstruction* instruction,
+                                    bool mandatory, bool dfs, bool allow_alias,
+                                    int64_t priority,
+                                    ShapeIndexView subshape_index = {});
   // Set the same given layout across all components of the instruction output.
   // It works the same as the API above if the output is a single array.
-  Status SetInstructionLayout(const Layout& layout,
-                              const HloInstruction* instruction,
-                              bool mandatory = true, bool dfs = true,
-                              bool allow_alias = false, int64_t priority = -1);
+  absl::Status SetInstructionLayout(const Layout& layout,
+                                    const HloInstruction* instruction,
+                                    bool mandatory = true, bool dfs = true,
+                                    bool allow_alias = false,
+                                    int64_t priority = -1);
   // Add a constraint on the layout of a LogicalBuffer, the layout of the
   // operand of the instruction, or the layout of the result of the computation,
   // respectively.
-  Status SetBufferLayout(const Layout& layout, const LogicalBuffer& buffer,
-                         bool mandatory = true, bool dfs = true) {
+  absl::Status SetBufferLayout(const Layout& layout,
+                               const LogicalBuffer& buffer,
+                               bool mandatory = true, bool dfs = true) {
     return SetBufferLayout(layout, buffer, mandatory, dfs, current_priority_);
   }
-  Status SetBufferLayout(const Layout& layout, const LogicalBuffer& buffer,
-                         bool mandatory, bool dfs, int64_t priority,
-                         const HloInstruction* from_user = nullptr);
-  Status SetOperandLayout(const Shape& shape_with_layout,
-                          const HloInstruction* instruction, int64_t operand_no,
-                          bool mandatory = true, bool dfs = true) {
+  absl::Status SetBufferLayout(const Layout& layout,
+                               const LogicalBuffer& buffer, bool mandatory,
+                               bool dfs, int64_t priority,
+                               const HloInstruction* from_user = nullptr);
+  absl::Status SetOperandLayout(const Shape& shape_with_layout,
+                                const HloInstruction* instruction,
+                                int64_t operand_no, bool mandatory = true,
+                                bool dfs = true) {
     return SetOperandLayout(shape_with_layout, instruction, operand_no,
                             mandatory, dfs, current_priority_);
   }
-  Status SetOperandLayout(const Shape& shape_with_layout,
-                          const HloInstruction* instruction, int64_t operand_no,
-                          bool mandatory, bool dfs, int64_t priority);
+  absl::Status SetOperandLayout(const Shape& shape_with_layout,
+                                const HloInstruction* instruction,
+                                int64_t operand_no, bool mandatory, bool dfs,
+                                int64_t priority);
   bool reverse_computation_order() const { return reverse_computation_order_; }
 
   ComputationLayout& saved_entry_computation_layout() {
@@ -440,13 +465,13 @@ class LayoutAssignment : public HloModulePass {
   //
   // Backends can override these methods with backend-specific propagation
   // rules.
-  virtual Status PropagateBufferConstraint(
+  virtual absl::Status PropagateBufferConstraint(
       const BufferLayoutConstraint& buffer_constraint,
       LayoutConstraints* constraints);
-  virtual Status PropagateOperandConstraint(
+  virtual absl::Status PropagateOperandConstraint(
       const OperandLayoutConstraint& operand_constraint,
       LayoutConstraints* constraints);
-  virtual Status PropagateResultConstraint(
+  virtual absl::Status PropagateResultConstraint(
       const ComputationLayoutConstraint& layout_constraint,
       LayoutConstraints* constraints);
 
@@ -455,15 +480,15 @@ class LayoutAssignment : public HloModulePass {
   }
   // Called after layouts of an instruction have been finalized to allow
   // subclasses to check for platform specific assumptions.
-  virtual Status Verify(const HloInstruction* instruction) {
-    return OkStatus();
+  virtual absl::Status Verify(const HloInstruction* instruction) {
+    return absl::OkStatus();
   }
 
-  Status PropagateUnconstraintedBuffers(LayoutConstraints* constraints);
+  absl::Status PropagateUnconstraintedBuffers(LayoutConstraints* constraints);
   const BufferLayoutConstraint* GetBufferLayoutConstraint(
       const LogicalBuffer& buffer) const;
-  StatusOr<const BufferLayoutConstraint*> GetInstructionBufferLayoutConstraint(
-      const HloInstruction* instruction) const;
+  absl::StatusOr<const BufferLayoutConstraint*>
+  GetInstructionBufferLayoutConstraint(const HloInstruction* instruction) const;
   // Find a bufferset in the bufferset cache. This is useful since we can
   // currently create the flattened buffer set for the same instruction many
   // times, which is often slow.
@@ -477,22 +502,21 @@ class LayoutAssignment : public HloModulePass {
   // buffers of its operands and would return true for each of its operands.
   bool AnyOperandBufferForwarded(const HloInstruction* instruction,
                                  int64_t operand_no) const;
-  StatusOr<Layout> InferArrayLayout(const HloInstruction* instruction,
-                                    const ShapeIndex& index);
+  absl::StatusOr<Layout> InferArrayLayout(const HloInstruction* instruction,
+                                          const ShapeIndex& index);
 
   // Propagates a buffer layout constraint into the operands that use it.
-  Status PropagateBufferConstraintToUses(
+  absl::Status PropagateBufferConstraintToUses(
       const BufferLayoutConstraint& buffer_constraint,
       LayoutConstraints* constraints);
 
   // Propagates a layout constraint on the use of the result of the given
   // instruction to the definitions of the LogicalBuffers which make up the
   // result.
-  Status PropagateUseConstraintToDefs(const ShapeLayout& shape_layout,
-                                      const HloInstruction* instruction,
-                                      LayoutConstraints* constraints,
-                                      int64_t priority,
-                                      const HloInstruction* user = nullptr);
+  absl::Status PropagateUseConstraintToDefs(
+      const ShapeLayout& shape_layout, const HloInstruction* instruction,
+      LayoutConstraints* constraints, int64_t priority,
+      const HloInstruction* user = nullptr);
 
   // Chooses a layout of operand `operand_no` of `instruction` that minimizes
   // the cost of `instruction`. `output_layout` is the layout of `instruction`.
@@ -514,14 +538,40 @@ class LayoutAssignment : public HloModulePass {
   virtual bool InstructionCanChangeLayoutInstance(
       const HloInstruction* instruction);
 
+  // The shapes in caller can be different from the shapes in callee. For
+  // example, a shape (1024, 128) of an array can be distributed to four threads
+  // so the shape for each thread is (256, 128). When verifying the callee's
+  // shapes based on the caller, we should use this function to compute the
+  // expected shape. The param_id should be the parameter id of the shape or -1
+  // for the result output or unknown.
+  virtual Shape ShardedShape(const HloInstruction* call, const Shape& shape,
+                             int param_id) {
+    return shape;
+  }
+  // When verifying the caller's shapes based on the callee, we should use this
+  // function to compute the expected shape.
+  // The param_id should be the parameter id of the shape or -1 for the result
+  // output or unknown.
+  virtual Shape UnShardedShape(const HloInstruction* call, const Shape& shape,
+                               int param_id) {
+    return shape;
+  }
+
+  // The operands of a call must match the layouts of parameters in the
+  // ComputationLayout, and the call instruction itself must match the result
+  // layout in the ComputationLayout.
+  absl::Status CheckCallLayout(HloInstruction* call,
+                               const ComputationLayout& computation_layout);
+
  private:
   // Initializes the layout assignment object for a new Run() call.
-  Status Init(HloModule* module);
+  absl::Status Init(HloModule* module);
 
   // Adds constraints which must be satisfied for correctness on all
   // backends. Called once prior to propagating constraints.
-  Status AddMandatoryConstraints(ChannelLayoutConstraints* channel_constraints,
-                                 LayoutConstraints* constraints);
+  absl::Status AddMandatoryConstraints(
+      ChannelLayoutConstraints* channel_constraints,
+      LayoutConstraints* constraints);
 
   // Return a vector containing the constraints which have been added to the
   // LayoutConstraints object since the construction of the object or since the
@@ -538,8 +588,8 @@ class LayoutAssignment : public HloModulePass {
   // layout of the instructions of a computation. This method is called after
   // all mandatory constraints have been added via AddMandatoryConstraints
   // and before propagating constraints.
-  virtual Status AddBackendConstraints(LayoutConstraints* constraints) {
-    return OkStatus();
+  virtual absl::Status AddBackendConstraints(LayoutConstraints* constraints) {
+    return absl::OkStatus();
   }
 
   // Construct constraints and assign layouts to all instructions in the
@@ -548,40 +598,40 @@ class LayoutAssignment : public HloModulePass {
   // computation instruction constraints.
   // Layouts constraints are added, then propagated until all LogicalBuffers in
   // the computation are constrained.
-  Status RunOnComputation(LayoutConstraints* constraints,
-                          ChannelLayoutConstraints* channel_constraints);
+  absl::Status RunOnComputation(LayoutConstraints* constraints,
+                                ChannelLayoutConstraints* channel_constraints);
 
   // Assign layouts to the instructions of a computation which satisfy the given
   // layout constraints. Copies may be added to satisfy the constraints. The
   // given LayoutConstraints must have layout constraints every logical buffer
   // in the computation.
-  Status AssignLayouts(LayoutConstraints& constraints);
+  absl::Status AssignLayouts(LayoutConstraints& constraints);
 
   // Propagates layout constraints from a set of initial constraints in order to
   // minimize the local cost of the computation. This propagation is *not*
   // required for correctness.
-  Status PropagateConstraints(LayoutConstraints* constraints);
+  absl::Status PropagateConstraints(LayoutConstraints* constraints);
 
-  Status PropagateBufferConstraintToOperands(
+  absl::Status PropagateBufferConstraintToOperands(
       const BufferLayoutConstraint& buffer_constraint,
       LayoutConstraints* constraints);
 
   // Check that all layouts in the module have been set and satisfy all
   // necessary conditions.
-  Status CheckLayouts(
+  absl::Status CheckLayouts(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads);
 
   // Computes the ComputationLayout of the given constraints based of the
   // layouts assigned to parameters and root instruction. Also propagate
   // constraints to computation nested inside.
-  Status CalculateComputationLayout(LayoutConstraints* constraints);
+  absl::Status CalculateComputationLayout(LayoutConstraints* constraints);
 
   // Clears all the layouts which can be cleared within a computation.
-  Status ClearComputationLayouts(HloComputation* computation);
+  absl::Status ClearComputationLayouts(HloComputation* computation);
 
   // Clears the side effects of a previous pass, like added copy instructions.
-  Status ClearPreviousPassSideEffects(
+  absl::Status ClearPreviousPassSideEffects(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads);
 
@@ -590,8 +640,8 @@ class LayoutAssignment : public HloModulePass {
   // This API propagates missing layout, and also checks that the caller
   // specified have been respected, by comparing those with the parameters and
   // root computation instruction.
-  Status PropagateComputationLayouts(HloComputation* computation,
-                                     ComputationLayout* computation_layout);
+  absl::Status PropagateComputationLayouts(
+      HloComputation* computation, ComputationLayout* computation_layout);
 
   // The pointer to the ComputationLayout passed as constructor parameter.
   ComputationLayout* entry_computation_layout_;
@@ -617,15 +667,15 @@ class LayoutAssignment : public HloModulePass {
   // Creates and returns a copy of the given instruction with a different
   // layout. Tuple-shaped instructions will be deep-copied, and the last Tuple
   // instruction producing the copy is returned.
-  StatusOr<HloInstruction*> CreateCopyWithNewLayout(
+  absl::StatusOr<HloInstruction*> CreateCopyWithNewLayout(
       const Shape& shape_with_layout, HloInstruction* instruction);
 
   // Creates a copy of the given operand if the operand's layout does not match
   // the given layout. This copy replaces the use in the given instruction.
   // Tuple operands will be deep-copied.
-  virtual Status CopyOperandIfLayoutsDiffer(const ShapeLayout& operand_layout,
-                                            HloInstruction* instruction,
-                                            int64_t operand_no);
+  virtual absl::Status CopyOperandIfLayoutsDiffer(
+      const ShapeLayout& operand_layout, HloInstruction* instruction,
+      int64_t operand_no);
 
   // Registers a copy instruction added by the layout assignment pass.
   void RegisterAddedCopy(HloInstruction* copy) {
@@ -636,13 +686,15 @@ class LayoutAssignment : public HloModulePass {
   // Adds a copy for the operand of an instruction, unless such operand is
   // already a copy, and has a single user (which is forcibly the instruction
   // itself).
-  Status AddCopyForOperand(HloInstruction* instruction, int64_t operand_number);
+  absl::Status AddCopyForOperand(HloInstruction* instruction,
+                                 int64_t operand_number);
 
   // Apply the channel layout constraints by populating the channel_constraints
   // data structure passed in at constructor time. Eventually adds copies in
   // case two ends of a channel ended up with a different leyout.
-  Status ConstrainChannelLayouts(HloComputation* computation,
-                                 ChannelLayoutConstraints* channel_constraints);
+  absl::Status ConstrainChannelLayouts(
+      HloComputation* computation,
+      ChannelLayoutConstraints* channel_constraints);
 
   // Resets the input ChannelLayoutConstraints to the original copy received
   // from the constructor input.
@@ -653,7 +705,7 @@ class LayoutAssignment : public HloModulePass {
   }
 
   // Adds constraints related to host Send/Recv instructions.
-  Status BuildHostChannelConstraints(HloComputation* computation);
+  absl::Status BuildHostChannelConstraints(HloComputation* computation);
 
   // Module points to analysis that can be updated for cloned computations.
   std::unique_ptr<TuplePointsToAnalysis> points_to_analysis_;
@@ -707,7 +759,8 @@ class LayoutAssignment : public HloModulePass {
       buffer_sets_cache_;
 
   // The set of BufferLayoutConstraints applied to the computation.
-  absl::node_hash_map<const LogicalBuffer*, BufferLayoutConstraint>
+  absl::flat_hash_map<const LogicalBuffer*,
+                      std::unique_ptr<BufferLayoutConstraint>>
       buffer_constraints_;
 
   // A vector which holds constraints as they are added. Can be cleared with

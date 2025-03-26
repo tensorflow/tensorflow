@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "PlaceholderWithDefault"
   input_arg {
     name: "input"

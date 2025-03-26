@@ -15,24 +15,21 @@ limitations under the License.
 
 // XLA-specific Tile Op.
 
+#include <cstdint>
 #include <vector>
 
 #include "absl/algorithm/container.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/tf2xla/lib/broadcast.h"
-#include "tensorflow/compiler/tf2xla/type_util.h"
-#include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
-#include "xla/client/value_inference.h"
-#include "xla/client/xla_builder.h"
-#include "tensorflow/core/framework/numeric_op.h"
+#include "xla/hlo/builder/value_inference.h"
+#include "xla/hlo/builder/xla_builder.h"
+#include "xla/xla_data.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
-#include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/op_requires.h"
 #include "tensorflow/core/framework/tensor_shape.h"
-#include "tensorflow/core/framework/type_index.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/platform/macros.h"
 
 namespace tensorflow {
 namespace {
@@ -119,7 +116,8 @@ class TileOp : public XlaOpKernel {
   }
 
  private:
-  TF_DISALLOW_COPY_AND_ASSIGN(TileOp);
+  TileOp(const TileOp&) = delete;
+  void operator=(const TileOp&) = delete;
 };
 
 REGISTER_XLA_OP(Name("Tile").CompileTimeConstantInput("multiples"), TileOp);

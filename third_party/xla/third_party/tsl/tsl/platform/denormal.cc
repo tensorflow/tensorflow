@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tsl/platform/denormal.h"
 
+#include <cstdint>
+
 #include "tsl/platform/cpu_info.h"
 #include "tsl/platform/platform.h"
 

@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -17,20 +17,24 @@ limitations under the License.
 #define XLA_SHAPE_H_
 
 #include <cstdint>
+#include <limits>
 #include <optional>
 #include <ostream>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include "absl/base/attributes.h"
+#include "absl/base/macros.h"
 #include "absl/container/inlined_vector.h"
+#include "absl/log/check.h"
 #include "absl/types/span.h"
 #include "xla/layout.h"
 #include "xla/primitive_util.h"
 #include "xla/printer.h"
+#include "xla/tsl/platform/logging.h"  // IWYU pragma: keep
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/logging.h"  // IWYU pragma: keep
 
 namespace xla {
 
@@ -39,26 +43,43 @@ namespace xla {
 // structure (number of elements and nesting).
 class Shape {
  public:
+  // Creates an invalid shape, with element type PRIMITIVE_TYPE_INVALID and the
+  // other fields empty.
   Shape();
-  ~Shape();
-  Shape(const Shape&);
-  Shape(Shape&&);
-  Shape& operator=(const Shape&);
 
-  // Construct a shape from a ShapeProto.
+  ~Shape();
+
+  Shape(const Shape&);
+  Shape(Shape&&) noexcept;
+  Shape& operator=(const Shape&);
+  Shape& operator=(Shape&&) noexcept;
+
+  // Constructs a shape from a ShapeProto. Results in an invalid shape (as
+  // opposed to crashing) if the proto has logically invalid fields.
   explicit Shape(const ShapeProto& shape_proto);
 
+  // Creates a token or opaque shape.
+  // Precondition:
+  //  - `element_type` must be TOKEN or OPAQUE_TYPE.
+  explicit Shape(PrimitiveType element_type);
+
+  // Creates an array shape. `dimensions` can be empty, in which case the shape
+  // is a scalar (degenerated array).
+  // Precondition:
+  //  - `element_type` must be a valid array type.
+  //  - `dynamic_dimensions` must be either empty or have the same size as
+  //    `dimensions`. If it's empty, all dimensions are static.
   Shape(PrimitiveType element_type, absl::Span<const int64_t> dimensions,
-        absl::Span<const bool> dynamic_dimensions,
-        std::vector<Shape> tuple_shapes)
-      : element_type_(element_type),
-        dimensions_(dimensions.begin(), dimensions.end()),
-        dynamic_dimensions_(dynamic_dimensions.begin(),
-                            dynamic_dimensions.end()),
-        tuple_shapes_(std::move(tuple_shapes)) {}
+        absl::Span<const bool> dynamic_dimensions);
+
+  // Creates a tuple shape. `tuple_shapes` can be empty, in which case the
+  // shape is a nil shape (empty tuple).
+  explicit Shape(std::vector<Shape> tuple_shapes);
 
   // Returns a ShapeProto representation of the Shape.
   ShapeProto ToProto() const;
+  // Sets a ShapeProto to the representation of the Shape.
+  void SetProto(ShapeProto& proto) const;
 
   // Prints a human-readable string that represents the given shape, with or
   // without layout. e.g. "F32[42,12] {0, 1}" or "F32[64]".
@@ -68,12 +89,10 @@ class Shape {
   // without layout. e.g. "F32[42,12] {0, 1}" or "F32[64]".
   std::string ToString(bool print_layout = false) const;
 
-  // Returns the rank (number of dimensions) of the given shape. Shape must be
-  // an array.
-  int64_t rank() const {
-    DCHECK(IsArray()) << "Non-arrays do not have a rank, shape: " << ToString();
-    return dimensions_.size();
-  }
+  // Returns the rank (number of dimensions) of the given shape. Returns 0 for
+  // non-array shapes.
+  ABSL_DEPRECATE_AND_INLINE()
+  inline int64_t rank() const { return dimensions().size(); }
 
   // Returns whether the shape is of the specified type (array, tuple, etc).
   bool IsArray() const { return primitive_util::IsArrayType(element_type()); }
@@ -81,9 +100,9 @@ class Shape {
   bool IsToken() const { return element_type() == TOKEN; }
   bool IsOpaque() const { return element_type() == OPAQUE_TYPE; }
 
-  // Returns whether all elements in the shape are integer.
-  // A nested tuple of integers is considered as integer.
-  bool IsInteger() const;
+  // Returns whether all elements in the shape are integers.
+  // Tuple shapes are traversed recursively.
+  bool AreAllLeavesIntegers() const;
 
   // Returns true if no array dimension in the shape is dynamically sized. Tuple
   // shapes are traversed recursively.
@@ -91,9 +110,48 @@ class Shape {
 
   bool is_dynamic() const { return !is_static(); }
 
+  // Unbounded dynamism.
+  // If `dimensions(axis) == kUnboundedSize && is_dynamic_dimension(axis)`,
+  // this means that the axis has unbounded dynamic size.
+  // The sentinel value for kUnboundedSize is chosen to be exactly the same
+  // as the sentinel value mlir::ShapedType::kDynamic.
+  static constexpr int64_t kUnboundedSize = std::numeric_limits<int64_t>::min();
+
+  // Returns true if the shape has one or more dimensions with unbounded sizes.
+  // Tuple shapes are traversed recursively, returns true if any element is
+  // unbounded dynamic.
+  bool is_unbounded_dynamic() const;
+
+  // Returns true if the given dimension is unbounded dynamic.
+  bool is_unbounded_dynamic_dimension(int dimension) const {
+    return dimensions_[dimension] == kUnboundedSize;
+  }
+
+  // Sets a given dimension as unbounded dynamic.
+  void set_unbounded_dynamic_dimension(int dimension) {
+    dynamic_dimensions_[dimension] = true;
+    dimensions_[dimension] = kUnboundedSize;
+  }
+
+  // Returns true if the shape has one or more dimensions with bounded sizes.
+  // Tuple shapes are traversed recursively, returns true if any element is
+  // bounded dynamic.
+  bool is_bounded_dynamic() const;
+
+  // Returns true if the given dimension is bounded dynamic.
+  bool is_bounded_dynamic_dimension(int dimension) const {
+    return is_dynamic_dimension(dimension) &&
+           !is_unbounded_dynamic_dimension(dimension);
+  }
+
   // Returns true if the given dimension is dynamically-sized.
   bool is_dynamic_dimension(int dimension) const {
-    return dynamic_dimensions_.at(dimension);
+    return dynamic_dimensions_[dimension];
+  }
+
+  // Returns true if the given dimension is statically-sized.
+  bool is_static_dimension(int dimension) const {
+    return !dynamic_dimensions_[dimension];
   }
 
   // Sets whether or not the given dimension is dynamically-sized.
@@ -109,36 +167,28 @@ class Shape {
     return absl::MakeSpan(dynamic_dimensions_);
   }
 
-  // Add dimension_upper_bound().
-
   // Removes the given dimension from the shape. Layout, if it exists, is
   // adjusted to match the modified shape.
   void DeleteDimension(int64_t dim_to_delete);
-
-  // The following methods mirror the protobuf generated code interface for the
-  // message ShapeProto. This enabled easy migration of this data structure
-  // from a proto to a proper C++ class.
-  // TODO(b/29771030): Replace or augment these methods with a more ergonomic
-  // interface.
+  void DeleteDimensions(absl::Span<const int64_t> sorted_dims_to_delete);
 
   // Methods for accessing the primitive type.
   PrimitiveType element_type() const { return element_type_; }
   void set_element_type(PrimitiveType value) { element_type_ = value; }
 
   // Methods for accessing the dimensions array.
-  int dimensions_size() const { return dimensions_.size(); }
-  int64_t dimensions(int index) const { return dimensions_.at(index); }
+  ABSL_DEPRECATE_AND_INLINE()
+  inline int dimensions_size() const { return dimensions().size(); }
+  int64_t dimensions(int index) const { return dimensions_[index]; }
 
   int64_t dimensions_minor(int index) const {
     CHECK(has_layout());
-    return dimensions_.at(layout_->minor_to_major(index));
+    return dimensions_[layout_->minor_to_major(index)];
   }
-  void set_dimensions(int index, int64_t value) {
-    dimensions_.at(index) = value;
-  }
+  void set_dimensions(int index, int64_t value) { dimensions_[index] = value; }
   void set_dimensions_minor(int index, int64_t value) {
     CHECK(has_layout());
-    dimensions_.at(layout_->minor_to_major(index)) = value;
+    dimensions_[layout_->minor_to_major(index)] = value;
   }
   void add_dimensions(int64_t value) {
     dimensions_.push_back(value);
@@ -157,7 +207,7 @@ class Shape {
   // tuple shapes.
   int tuple_shapes_size() const { return tuple_shapes_.size(); }
   const Shape& tuple_shapes(int index) const;
-  Shape* mutable_tuple_shapes(int index) { return &tuple_shapes_.at(index); }
+  Shape* mutable_tuple_shapes(int index) { return &tuple_shapes_[index]; }
   Shape* add_tuple_shapes();
   void clear_tuple_shapes() { tuple_shapes_.clear(); }
   const std::vector<Shape>& tuple_shapes() const { return tuple_shapes_; }
@@ -178,7 +228,8 @@ class Shape {
   }
   void clear_layout() { layout_ = std::nullopt; }
 
-  // Recursively clear dynamic dimension of a shape.
+  // Recursively clear all dynamic dimension of a shape, including bounded and
+  // unbounded dynamic dimensions.
   void clear_dynamic_dimensions() {
     if (!IsTuple()) {
       if (is_dynamic()) {
@@ -192,11 +243,6 @@ class Shape {
     for (auto& subshape : tuple_shapes_) {
       subshape.clear_dynamic_dimensions();
     }
-  }
-
-  void Swap(Shape* other) {
-    using std::swap;
-    swap(*this, *other);
   }
 
   void Clear() {
@@ -227,8 +273,8 @@ class Shape {
 
     bool operator()(const Shape& lhs, const Shape& rhs);
 
-    Equal& IgnoreLayout() {
-      ignore_layout_ = true;
+    Equal& IgnoreLayout(bool ignore_layout = true) {
+      ignore_layout_ = ignore_layout;
       return *this;
     }
     Equal& IgnoreTilesInLayout() {
@@ -247,6 +293,8 @@ class Shape {
       ignore_tiles_in_layout_ = true;
       ignore_element_size_in_layout_ = true;
       ignore_memory_space_in_layout_ = true;
+      ignore_tail_padding_alignment_in_elements_in_layout_ = true;
+      ignore_split_config_in_layout_ = true;
       return *this;
     }
     Equal& IgnoreElementType() {
@@ -265,6 +313,14 @@ class Shape {
       ignore_dimensions_ = true;
       return *this;
     }
+    Equal& IgnoreTailPaddingAlignmentInElements() {
+      ignore_tail_padding_alignment_in_elements_in_layout_ = true;
+      return *this;
+    }
+    Equal& IgnoreSplitConfigInLayout() {
+      ignore_split_config_in_layout_ = true;
+      return *this;
+    }
 
    private:
     bool ignore_layout_ = false;
@@ -275,6 +331,8 @@ class Shape {
     bool ignore_fp_precision_ = false;
     bool ignore_dynamic_dimension_ = false;
     bool ignore_dimensions_ = false;
+    bool ignore_tail_padding_alignment_in_elements_in_layout_ = false;
+    bool ignore_split_config_in_layout_ = false;
   };
 
   // Test that all fields of the shape are the same, equivalent to Equal().
@@ -331,6 +389,7 @@ class ProgramShape {
   ProgramShape(const ProgramShape&);
   ProgramShape(ProgramShape&&);
   ProgramShape& operator=(const ProgramShape&);
+  ProgramShape& operator=(ProgramShape&&);
 
   // Creates a ProgramShape from a ProgramShapeProto protobuf.
   explicit ProgramShape(const ProgramShapeProto& program_shape_proto);
@@ -350,8 +409,8 @@ class ProgramShape {
 
   // Methods for accessing and manipulating the Shape of the parameters.
   int parameters_size() const { return parameters_.size(); }
-  const Shape& parameters(int index) const { return parameters_.at(index); }
-  Shape* mutable_parameters(int index) { return &parameters_.at(index); }
+  const Shape& parameters(int index) const { return parameters_[index]; }
+  Shape* mutable_parameters(int index) { return &parameters_[index]; }
   Shape* add_parameters() {
     parameters_.emplace_back();
     return &parameters_.back();
@@ -367,13 +426,13 @@ class ProgramShape {
   // Methods for accessing and manipulating the names of the parameters.
   int parameter_names_size() const { return parameter_names_.size(); }
   const std::string& parameter_names(int index) const {
-    return parameter_names_.at(index);
+    return parameter_names_[index];
   }
   void set_parameter_names(int index, const std::string& value) {
-    parameter_names_.at(index) = value;
+    parameter_names_[index] = value;
   }
   std::string* mutable_parameter_names(int index) {
-    return &parameter_names_.at(index);
+    return &parameter_names_[index];
   }
   void add_parameter_names(const std::string& value) {
     parameter_names_.push_back(value);

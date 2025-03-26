@@ -18,7 +18,9 @@ import random
 import numpy as np
 
 from tensorflow.compiler.mlir.quantization.tensorflow.python import representative_dataset as repr_dataset
+from tensorflow.core.protobuf import meta_graph_pb2
 from tensorflow.python.client import session
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.platform import test
@@ -84,6 +86,18 @@ class RepresentativeDatasetTest(test.TestCase):
         self._assert_tensorlike_all_close(
             sess, sample_1[input_key], sample_2[input_key]
         )
+
+  def test_not_implemented_saver(self):
+    with self.assertRaisesRegex(
+        NotImplementedError, '"save" is not implemented.'
+    ):
+      repr_dataset.RepresentativeDatasetSaver().save(representative_dataset={})
+
+  def test_not_implemented_loader(self):
+    with self.assertRaisesRegex(
+        NotImplementedError, '"load" is not implemented.'
+    ):
+      repr_dataset.RepresentativeDatasetLoader().load()
 
   @test_util.deprecated_graph_mode_only
   def test_replace_tensors_by_numpy_ndarrays_with_tensor_list(self):
@@ -165,12 +179,10 @@ class RepresentativeDatasetTest(test.TestCase):
     ]
 
     # Extend the representative dataset with np.ndarrays.
-    repr_ds.extend(
-        [
-            {'tensor_key': np.random.uniform(low=-1.0, high=1.0, size=(3, 3))}
-            for _ in range(4)
-        ]
-    )
+    repr_ds.extend([
+        {'tensor_key': np.random.uniform(low=-1.0, high=1.0, size=(3, 3))}
+        for _ in range(4)
+    ])
 
     random.shuffle(repr_ds)
 
@@ -224,6 +236,57 @@ class RepresentativeDatasetTest(test.TestCase):
 
     self.assertIsNone(repr_dataset.get_num_samples(LenRaisingError()))
 
+  @test_util.deprecated_graph_mode_only
+  def test_create_feed_dict_from_input_data(self):
+    signature_def = meta_graph_pb2.SignatureDef(
+        inputs={'input_tensor': meta_graph_pb2.TensorInfo(name='input:0')}
+    )
+    rng = np.random.default_rng(seed=14)
+
+    input_tensor_value = rng.random(size=(2, 2))
+    sample = {'input_tensor': input_tensor_value}
+
+    feed_dict = repr_dataset.create_feed_dict_from_input_data(
+        sample, signature_def
+    )
+
+    self.assertLen(feed_dict, 1)
+    self.assertIn('input:0', feed_dict)
+    self.assertAllEqual(feed_dict['input:0'], input_tensor_value)
+
+  @test_util.deprecated_graph_mode_only
+  def test_create_feed_dict_from_input_data_core_tensors(self):
+    signature_def = meta_graph_pb2.SignatureDef(
+        inputs={'input_tensor': meta_graph_pb2.TensorInfo(name='input:0')}
+    )
+
+    with self.session():
+      input_tensor = constant_op.constant([1, 2, 3, 4, 5, 6])
+      sample = {'input_tensor': input_tensor}
+
+      feed_dict = repr_dataset.create_feed_dict_from_input_data(
+          sample, signature_def
+      )
+      input_tensor_data = input_tensor.eval()
+
+    self.assertLen(feed_dict, 1)
+    self.assertIn('input:0', feed_dict)
+    self.assertIsInstance(feed_dict['input:0'], np.ndarray)
+    self.assertAllEqual(feed_dict['input:0'], input_tensor_data)
+
+  @test_util.deprecated_graph_mode_only
+  def test_create_feed_dict_from_input_data_empty(self):
+    signature_def = meta_graph_pb2.SignatureDef(
+        inputs={'input_tensor': meta_graph_pb2.TensorInfo(name='input:0')}
+    )
+
+    sample = {}
+    feed_dict = repr_dataset.create_feed_dict_from_input_data(
+        sample, signature_def
+    )
+
+    self.assertEmpty(feed_dict)
+
 
 class RepresentativeDatasetSaverTest(test.TestCase):
   """Test cases for RepresentativeDatasetSaver."""
@@ -239,7 +302,7 @@ class RepresentativeDatasetSaverTest(test.TestCase):
 
 
 class TfRecordRepresentativeDatasetTest(test.TestCase):
-  """Test cases for RepresentativeDatasetLoader."""
+  """Test cases for TfRecordRepresentativeDatasetLoader."""
 
   def test_tf_record_saver_with_generator_dataset(self):
     tf_record_path = self.create_tempfile().full_path
@@ -255,7 +318,7 @@ class TfRecordRepresentativeDatasetTest(test.TestCase):
     dataset_file_map = saver.save(repr_ds_map)
     self.assertCountEqual(dataset_file_map.keys(), ['serving_default'])
 
-    dataset_map = repr_dataset.RepresentativeDatasetLoader(
+    dataset_map = repr_dataset.TfRecordRepresentativeDatasetLoader(
         dataset_file_map
     ).load()
     self.assertCountEqual(dataset_map.keys(), ['serving_default'])

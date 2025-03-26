@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <cstddef>
+#include <cstdint>
 #include <functional>
 #include <memory>
 #include <string>
@@ -21,13 +21,13 @@ limitations under the License.
 #include <vector>
 
 #include <gtest/gtest.h>
+#include "absl/strings/match.h"
 #define EIGEN_USE_THREADS
 
 #include "tensorflow/core/tfrt/run_handler_thread_pool/run_handler.h"
 
 #define EIGEN_USE_THREADS
 
-#include "absl/memory/memory.h"
 #include "absl/synchronization/barrier.h"
 #include "absl/synchronization/notification.h"
 #include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
@@ -188,6 +188,7 @@ TEST_P(RunHandlerThreadPoolTest, EnqueueTask) {
   EXPECT_EQ(result, 1);
   tws.PopNonBlockingTask(0, true).f->f();
   EXPECT_EQ(result, 2);
+  EXPECT_TRUE(absl::StrContains(tws.ToString(), "traceme_id = 0"));
 }
 
 TEST_P(RunHandlerThreadPoolTest, FindTask) {
@@ -207,6 +208,9 @@ TEST_P(RunHandlerThreadPoolTest, FindTask) {
           /*sub_thread_request_percentage=*/{1}),
       tensorflow::Env::Default(), tensorflow::ThreadOptions(),
       "tf_run_handler_pool", &waiters_mu, &waiters);
+
+  EXPECT_EQ(run_handler_thread_pool.NumBlockingThreads(), 1);
+  EXPECT_EQ(run_handler_thread_pool.NumNonBlockingThreads(), 0);
 
   Eigen::MaxSizeVector<internal::ThreadWorkSource*> thread_work_sources(5);
   thread_work_sources.resize(5);

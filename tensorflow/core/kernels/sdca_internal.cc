@@ -27,7 +27,7 @@ limitations under the License.
 #include "tensorflow/core/lib/random/simple_philox.h"
 
 #if defined(TENSORFLOW_USE_CUSTOM_CONTRACTION_KERNEL)
-#include "tsl/framework/contraction/eigen_contraction_kernel.h"
+#include "xla/tsl/framework/contraction/eigen_contraction_kernel.h"
 #endif
 
 namespace tensorflow {
@@ -92,7 +92,7 @@ void ModelWeights::UpdateDeltaWeights(
   }
 }
 
-Status ModelWeights::Initialize(OpKernelContext* const context) {
+absl::Status ModelWeights::Initialize(OpKernelContext* const context) {
   OpInputList sparse_indices_inputs;
   TF_RETURN_IF_ERROR(
       context->input_list("sparse_indices", &sparse_indices_inputs));
@@ -156,7 +156,7 @@ Status ModelWeights::Initialize(OpKernelContext* const context) {
                   {1, weight_inputs[i].NumElements()}),
               deltas});
         }
-        return OkStatus();
+        return absl::OkStatus();
       };
 
   return initialize_weights(dense_weights_inputs, &dense_weights_outputs,
@@ -246,7 +246,7 @@ const ExampleStatistics Example::ComputeWxAndWeightedExampleNorm(
 }
 
 // Examples contains all the training examples that SDCA uses for a mini-batch.
-Status Examples::SampleAdaptiveProbabilities(
+absl::Status Examples::SampleAdaptiveProbabilities(
     const int num_loss_partitions, const Regularizations& regularization,
     const ModelWeights& model_weights,
     const TTypes<float>::Matrix example_state_data,
@@ -262,7 +262,7 @@ Status Examples::SampleAdaptiveProbabilities(
     const Example& example = examples_[example_id];
     const double example_weight = example.example_weight();
     float label = example.example_label();
-    const Status conversion_status = loss_updater->ConvertLabel(&label);
+    const absl::Status conversion_status = loss_updater->ConvertLabel(&label);
     const ExampleStatistics example_statistics =
         example.ComputeWxAndWeightedExampleNorm(num_loss_partitions,
                                                 model_weights, regularization,
@@ -319,7 +319,7 @@ Status Examples::SampleAdaptiveProbabilities(
   for (int i = id; i < num_examples(); ++i) {
     sampled_count_[i] = examples_not_seen[i - id].first;
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 void Examples::RandomShuffle() {
@@ -331,11 +331,11 @@ void Examples::RandomShuffle() {
 }
 
 // TODO(sibyl-Aix6ihai): Refactor/shorten this function.
-Status Examples::Initialize(OpKernelContext* const context,
-                            const ModelWeights& weights,
-                            const int num_sparse_features,
-                            const int num_sparse_features_with_values,
-                            const int num_dense_features) {
+absl::Status Examples::Initialize(OpKernelContext* const context,
+                                  const ModelWeights& weights,
+                                  const int num_sparse_features,
+                                  const int num_sparse_features_with_values,
+                                  const int num_dense_features) {
   num_features_ = num_sparse_features + num_dense_features;
 
   OpInputList sparse_example_indices_inputs;
@@ -421,10 +421,10 @@ Status Examples::Initialize(OpKernelContext* const context,
   TF_RETURN_IF_ERROR(ComputeSquaredNormPerExample(
       worker_threads, num_examples, num_sparse_features, num_dense_features,
       &examples_));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status Examples::CreateSparseFeatureRepresentation(
+absl::Status Examples::CreateSparseFeatureRepresentation(
     const DeviceBase::CpuWorkerThreads& worker_threads, const int num_examples,
     const int num_sparse_features, const ModelWeights& weights,
     const OpInputList& sparse_example_indices_inputs,
@@ -432,7 +432,7 @@ Status Examples::CreateSparseFeatureRepresentation(
     const OpInputList& sparse_feature_values_inputs,
     std::vector<Example>* const examples) {
   mutex mu;
-  Status result;  // Guarded by mu
+  absl::Status result;  // Guarded by mu
   auto parse_partition = [&](const int64_t begin, const int64_t end) {
     // The static_cast here is safe since begin and end can be at most
     // num_examples which is an int.
@@ -511,13 +511,13 @@ Status Examples::CreateSparseFeatureRepresentation(
   return result;
 }
 
-Status Examples::CreateDenseFeatureRepresentation(
+absl::Status Examples::CreateDenseFeatureRepresentation(
     const DeviceBase::CpuWorkerThreads& worker_threads, const int num_examples,
     const int num_dense_features, const ModelWeights& weights,
     const OpInputList& dense_features_inputs,
     std::vector<Example>* const examples) {
   mutex mu;
-  Status result;  // Guarded by mu
+  absl::Status result;  // Guarded by mu
   auto parse_partition = [&](const int64_t begin, const int64_t end) {
     // The static_cast here is safe since begin and end can be at most
     // num_examples which is an int.
@@ -543,12 +543,12 @@ Status Examples::CreateDenseFeatureRepresentation(
   return result;
 }
 
-Status Examples::ComputeSquaredNormPerExample(
+absl::Status Examples::ComputeSquaredNormPerExample(
     const DeviceBase::CpuWorkerThreads& worker_threads, const int num_examples,
     const int num_sparse_features, const int num_dense_features,
     std::vector<Example>* const examples) {
   mutex mu;
-  Status result;  // Guarded by mu
+  absl::Status result;  // Guarded by mu
   // Compute norm of examples.
   auto compute_example_norm = [&](const int64_t begin, const int64_t end) {
     // The static_cast here is safe since begin and end can be at most

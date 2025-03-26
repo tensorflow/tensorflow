@@ -1,4 +1,4 @@
-// RUN: kernel-gen-opt %s -tf-kernel-to-llvm -split-input-file | FileCheck %s
+// RUN: kernel-gen-opt %s -tf-kernel-to-llvm -reconcile-unrealized-casts -split-input-file | FileCheck %s
 
 // CHECK: llvm.func @_mlir_ciface_tf_alloc
 // CHECK-SAME:  (!llvm.ptr, i64, i64, i32, i32, !llvm.ptr) -> !llvm.ptr
@@ -36,7 +36,7 @@ func.func @alloc(%ctx: !tf_framework.op_kernel_context,
 // CHECK-SAME: [[CANDIDATES_PTR]])
 
 // Build memref descriptor.
-// CHECK: [[DESC_0:%.*]] = llvm.mlir.undef : [[DESC_TY]]
+// CHECK: [[DESC_0:%.*]] = llvm.mlir.poison : [[DESC_TY]]
 
 // Set pointers and offset.
 // CHECK: [[DESC_1:%.*]] = llvm.insertvalue [[BYTES_PTR]], [[DESC_0]][0]
@@ -68,7 +68,7 @@ func.func @dealloc(%ctx: !tf_framework.op_kernel_context,
   func.return
 }
 // Extract allocated ptr from the memref descriptor.
-// CHECK: %{{.*}} = llvm.mlir.undef : [[DESC_TY:!.*]]
+// CHECK: %{{.*}} = llvm.mlir.poison : [[DESC_TY:!.*]]
 // CHECK: [[FLOAT_PTR:%.*]] = llvm.extractvalue %{{.*}}[0] : [[DESC_TY]]
 
 // Deallocate.
@@ -98,7 +98,7 @@ func.func @unranked_null_memref() {
   func.return
 }
 // CHECK: [[C0:%.*]] = llvm.mlir.constant(0 : index) : i64
-// CHECK: [[DESC_0:%.*]] = llvm.mlir.undef : !llvm.struct<(i64, ptr)>
+// CHECK: [[DESC_0:%.*]] = llvm.mlir.poison : !llvm.struct<(i64, ptr)>
 // CHECK: [[DESC_1:%.*]] = llvm.insertvalue [[C0]], [[DESC_0]][0]
 // CHECK: [[PTR:%.*]] = llvm.alloca {{.*}} x i8
 // CHECK: [[DESC_2:%.*]] = llvm.insertvalue [[PTR]], [[DESC_1]][1]
@@ -117,7 +117,7 @@ func.func @ranked_null_memref() {
 
 // CHECK: llvm.mlir.zero
 // CHECK: %[[NULL:.*]] = llvm.mlir.zero : !llvm.ptr
-// CHECK-NEXT: %[[DESC_0:.*]] = llvm.mlir.undef :
+// CHECK-NEXT: %[[DESC_0:.*]] = llvm.mlir.poison :
 // CHECK-SAME:   !llvm.struct<(ptr, ptr, i64, array<2 x i64>, array<2 x i64>)>
 // CHECK-NEXT: %[[DESC_1:.*]] = llvm.insertvalue %[[NULL]], %[[DESC_0]][0]
 // CHECK-NEXT: %[[DESC_2:.*]] = llvm.insertvalue %[[NULL]], %[[DESC_1]][1]
@@ -151,7 +151,7 @@ func.func @is_valid_memref(%buf: memref<?xf32>) -> i1 {
 
 // -----
 
-// CHECK-LABEL: llvm.func @_mlir_ciface_tf_jit_compile(!llvm.ptr, !llvm.ptr, i64, !llvm.ptr, i64, !llvm.ptr, i64, i1, i1, i1) -> !llvm.ptr
+// CHECK-LABEL: llvm.func @_mlir_ciface_tf_jit_compile(!llvm.ptr, !llvm.ptr, i64, !llvm.ptr, i64, !llvm.ptr, i1, i1, i1) -> !llvm.ptr
 // CHECK: llvm.mlir.global internal constant @[[CODE:jit_module_code_[0-9]+]]("placeholder\00")
 
 // CHECK: @jit_compile_from_str(%[[CTX:.*]]: !llvm.ptr)
@@ -184,17 +184,16 @@ func.func @jit_compile_from_str(%ctx: !tf_framework.op_kernel_context)
   // CHECK: %[[C4:.*]] = llvm.mlir.constant(4 : i64)
   // CHECK: llvm.store %[[C4]], %[[PTR]]
 
-  // CHECK-DAG: %[[MAX_RANK:.*]] = llvm.mlir.constant(3 : i64)
   // CHECK-DAG: %[[ENABLE_FTZ:.*]] = llvm.mlir.constant(false)
   // CHECK-DAG: %[[CPU_CODEGEN:.*]] = llvm.mlir.constant(false)
   // CHECK: %[[RES:.*]] = llvm.call @_mlir_ciface_tf_jit_compile
   // CHECK-SAME: %[[CTX]], %[[CODE_PTR]],
   // CHECK-SAME: %[[NUM_TILE_SIZES]], %[[TILE_SIZES]],
   // CHECK-SAME: %[[NUM_UNROLL_FACTORS]], %[[UNROLL_FACTORS]],
-  // CHECK-SAME: %[[MAX_RANK]], %[[ENABLE_FTZ]], %[[CPU_CODEGEN]]
+  // CHECK-SAME: %[[ENABLE_FTZ]], %[[CPU_CODEGEN]]
   // CHECK: llvm.return %[[RES]]
   %0 = tf_framework.jit_compile_from_str %ctx, "placeholder" {
-      tileSizes = [1, 2, 3], unrollFactors = [4], maxSupportedRank = 3 : i64,
+      tileSizes = [1, 2, 3], unrollFactors = [4],
       enableFtz = false, index64Bit = false, cpuCodegen = false }
   func.return %0 : !tf_framework.jit_callable
 }
@@ -208,7 +207,7 @@ func.func @jit_compile_from_str(%ctx: !tf_framework.op_kernel_context)
 func.func @jit_execute(%ctx: !tf_framework.op_kernel_context,
     %callable : !tf_framework.jit_callable, %arg : memref<*xf32>)
     -> memref<*xf32> {
-  // CHECK: %[[T0:.*]] = llvm.mlir.undef
+  // CHECK: %[[T0:.*]] = llvm.mlir.poison
   // CHECK: %[[T1:.*]] = llvm.insertvalue %[[RANK]], %[[T0]][0]
   // CHECK: %[[ARG:.*]] = llvm.insertvalue %[[ARG_DESCR]], %[[T1]][1]
   // CHECK: %[[C1:.*]] = llvm.mlir.constant(1 : i64)
@@ -229,7 +228,7 @@ func.func @jit_execute(%ctx: !tf_framework.op_kernel_context,
   // CHECK: %[[RESULT_DESCR:.*]] = llvm.extractvalue %[[RESULT]][1]
   // CHECK: "llvm.intr.memcpy"(%[[STACK_RESULT_DESCR]], %[[RESULT_DESCR]], %[[RESULT_DESCR_SIZE]]) <{isVolatile = false}>
   // CHECK: llvm.call @free(%[[RESULT_DESCR]])
-  // CHECK: %[[T0:.*]] = llvm.mlir.undef
+  // CHECK: %[[T0:.*]] = llvm.mlir.poison
   // CHECK: %[[RANK:.*]] = llvm.extractvalue %[[RESULT]][0]
   // CHECK: %[[T1:.*]] = llvm.insertvalue %[[RANK]], %[[T0]][0]
   // CHECK: %[[RESULT:.*]] = llvm.insertvalue %[[STACK_RESULT_DESCR]], %[[T1]][1]
@@ -239,7 +238,7 @@ func.func @jit_execute(%ctx: !tf_framework.op_kernel_context,
   // CHECK: %[[HEAP_RESULT_DESCR:.*]] = llvm.call @malloc(%[[RESULT_DESCR_SIZE:[0-9]*]])
   // CHECK: %[[STACK_RESULT_DESCR:.*]] = llvm.extractvalue %[[RESULT]][1]
   // CHECK: "llvm.intr.memcpy"(%[[HEAP_RESULT_DESCR]], %[[STACK_RESULT_DESCR]], %[[RESULT_DESCR_SIZE]]) <{isVolatile = false}>
-  // CHECK: %[[T0:.*]] = llvm.mlir.undef
+  // CHECK: %[[T0:.*]] = llvm.mlir.poison
   // CHECK: %[[RANK:.*]] = llvm.extractvalue %[[RESULT]][0]
   // CHECK: %[[T1:.*]] = llvm.insertvalue %[[RANK]], %[[T0]][0]
   // CHECK: %[[RESULT:.*]] = llvm.insertvalue %[[HEAP_RESULT_DESCR]], %[[T1]][1]

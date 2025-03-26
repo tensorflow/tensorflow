@@ -1,4 +1,4 @@
-/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2021 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -21,6 +21,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/Location.h"
 #include "mlir/Pass/Pass.h"
+#include "mlir/Support/LLVM.h"
 
 using llvm::SmallVector;
 
@@ -28,7 +29,7 @@ namespace mlir {
 namespace codegen_utils {
 
 Value emitNumElementsComputation(OpBuilder& b, Location loc, Value memref) {
-  int rank = memref.getType().cast<MemRefType>().getRank();
+  int rank = mlir::cast<MemRefType>(memref.getType()).getRank();
   Value numElements;
   numElements = b.create<mlir::arith::ConstantOp>(
       loc, b.getIndexType(), b.getIntegerAttr(b.getIndexType(), 1));
@@ -60,10 +61,10 @@ SmallVector<Value> calcMultiDimIndex(OpBuilder& b, Location loc,
   // dim_acc_mul_vec = [d, c*d, b*c*d]
   SmallVector<Value> dimAccMulVec;
   Value tmpAccMul = shape[rank - 1];
-  dimAccMulVec.emplace_back(tmpAccMul);
+  dimAccMulVec.push_back(tmpAccMul);
   for (int i = rank - 2; i > 0; --i) {
     tmpAccMul = b.create<arith::MulIOp>(loc, tmpAccMul, shape[i]);
-    dimAccMulVec.emplace_back(tmpAccMul);
+    dimAccMulVec.push_back(tmpAccMul);
   }
   Value blockIndex = linearIndex;
   for (int i = 0; i < rank; ++i) {
@@ -83,7 +84,7 @@ SmallVector<Value> calcMultiDimIndex(OpBuilder& b, Location loc,
 
 SmallVector<Value> calcMultiDimIndex(OpBuilder& b, Location loc,
                                      Value linearIndex, Value memref) {
-  int rank = memref.getType().cast<MemRefType>().getRank();
+  int rank = mlir::cast<MemRefType>(memref.getType()).getRank();
   SmallVector<Value> result;
   if (rank == 0) return result;
   if (rank == 1) {
@@ -99,9 +100,10 @@ SmallVector<Value> calcMultiDimIndex(OpBuilder& b, Location loc,
   return calcMultiDimIndex(b, loc, linearIndex, shapeVec);
 }
 
-SmallVector<Value> calcMultiDimIndexForFirstOperand(OpBuilder& b, Location loc,
-                                                    Value linearIndex,
-                                                    Operation* op) {
+static SmallVector<Value> calcMultiDimIndexForFirstOperand(OpBuilder& b,
+                                                           Location loc,
+                                                           Value linearIndex,
+                                                           Operation* op) {
   assert(op->getDialect()->getNamespace() == "lmhlo");
   Value operandMemref = op->getOperand(0);
   return calcMultiDimIndex(b, loc, linearIndex, operandMemref);

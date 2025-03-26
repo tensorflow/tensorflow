@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -150,18 +150,6 @@ uint64_t HloExecutionProfile::GetCyclesTakenBy(
 
 uint64_t HloExecutionProfile::GetCyclesTakenBy(size_t index) const {
   return profile_counters_[index];
-}
-
-HloExecutionProfileData HloExecutionProfile::ToProto() const {
-  HloExecutionProfileData hlo_execution_profile_data;
-  hlo_execution_profile_data.mutable_profile_counters()->Reserve(
-      profile_counters_.size());
-  for (const auto& counter : profile_counters_) {
-    hlo_execution_profile_data.add_profile_counters(counter);
-  }
-  *(hlo_execution_profile_data.mutable_printer_data()) =
-      hlo_profile_printer_data_;
-  return hlo_execution_profile_data;
 }
 
 }  // namespace xla

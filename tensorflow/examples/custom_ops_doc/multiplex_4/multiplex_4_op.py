@@ -50,7 +50,7 @@ def multiplex(cond, a, b, name=None):
 
   Args:
     cond: tf.Tensor or list of tf.Tensor of type bool. Where True, yield `a`.
-      When muliple corresponding `cond` elements are true, the first one yield
+      When multiple corresponding `cond` elements are true, the first one yield
       based on the first one encountered.
     a: tf.Tensor or list of tf.Tensor, each with the same type and shape as `b`.
     b: tf.Tensor or list of tf.Tensor with the same type and shape as `a`. Yield

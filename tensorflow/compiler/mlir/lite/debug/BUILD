@@ -4,10 +4,13 @@ load(
     "tf_proto_library",
 )
 
+# OSS only: This target is header-only. Link `debug_options_proto_cc_impl` only to
+# `libtensorflow_framework.so` via `lib_internal_impl`. Do NOT link `debug_options_proto_cc_impl`
+# directly unless the target does not link `libtensorflow_framework.so`.
 tf_proto_library(
     name = "debug_options_proto",
     srcs = ["debug_options.proto"],
-    cc_api_version = 2,
+    make_default_target_header_only = True,
     visibility = ["//visibility:public"],
 )
 
@@ -18,8 +21,10 @@ cc_library(
     visibility = ["//tensorflow/compiler/mlir/lite:__subpackages__"],
     deps = [
         ":debug_options_proto_cc",
+        "//tensorflow/compiler/mlir/lite/metrics:error_collector_inst",
         "//tensorflow/core:portable_gif_internal",
         "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/time",
@@ -28,11 +33,12 @@ cc_library(
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
-        "@local_tsl//tsl/lib/io:buffered_file",
-        "@local_tsl//tsl/platform:env",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:Transforms",
         "@local_tsl//tsl/platform:path",
-        "@local_tsl//tsl/platform:status",
         "@local_tsl//tsl/platform:stringpiece",
+        "@local_xla//xla/tsl/lib/io:buffered_file",
+        "@local_xla//xla/tsl/platform:env",
     ],
 )
 
@@ -53,9 +59,8 @@ tf_cc_test(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Support",
-        "@local_tsl//tsl/lib/core:status_test_util",
-        "@local_tsl//tsl/platform:env",
         "@local_tsl//tsl/platform:path",
-        "@local_tsl//tsl/platform:status",
+        "@local_xla//xla/tsl/lib/core:status_test_util",
+        "@local_xla//xla/tsl/platform:env",
     ],
 )

@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "RewriteDataset"
   input_arg {
     name: "input_dataset"

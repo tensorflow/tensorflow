@@ -19,9 +19,9 @@ limitations under the License.
 namespace tensorflow {
 namespace libexport {
 
-Status Save(const std::string& export_dir) {
+absl::Status Save(const std::string& export_dir) {
   TF_RETURN_IF_ERROR(Env::Default()->RecursivelyCreateDir(export_dir));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace libexport

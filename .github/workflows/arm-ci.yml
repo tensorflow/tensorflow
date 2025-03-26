@@ -20,12 +20,6 @@ on:
     branches:
       - master
       - r2.**
-  pull_request:
-    types: [labeled, opened, synchronize, reopened]
-    branches:
-      - master
-      - r2.**
-
 permissions:
   contents: read
 
@@ -53,7 +47,7 @@ jobs:
         shell: bash
         run: find /home/ubuntu/actions-runner/_work/tensorflow/tensorflow/. -name . -o -prune -exec sudo rm -rf -- {} + || true
       - name: Checkout repository
-        uses: actions/checkout@755da8c3cf115ac066823e79a1e1788f8940201b # v3.2.0
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
       - name: Build binary and run python tests
         shell: bash
         run: |

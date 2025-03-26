@@ -74,19 +74,20 @@ NodeDef* AutoParallel::AddNodeControl(const string& name,
   return node;
 }
 
-Status AutoParallel::Initialize(const GrapplerItem& item) {
+absl::Status AutoParallel::Initialize(const GrapplerItem& item) {
   num_gpus_ = GetNumAvailableGPUs();
   LOG(INFO) << "Number of GPUs: " << num_gpus_;
   item_ = &item;
   graph_ = item.graph;
   LOG(INFO) << "Original graph size: " << graph_.node_size();
   if (item.fetch.empty()) {
-    return Status(absl::StatusCode::kInvalidArgument,
-                  "No fetch nodes provided.");
+    return absl::Status(absl::StatusCode::kInvalidArgument,
+                        "No fetch nodes provided.");
   }
 
   if (item.MainVariables().empty()) {
-    return Status(absl::StatusCode::kInvalidArgument, "No variables provided.");
+    return absl::Status(absl::StatusCode::kInvalidArgument,
+                        "No variables provided.");
   }
 
   for (const auto& init : item.init_ops) {
@@ -198,7 +199,7 @@ Status AutoParallel::Initialize(const GrapplerItem& item) {
     }
   }
   LOG(INFO) << "Number of shared nodes: " << shared_nodes_.size();
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 bool AutoParallel::NotSharedNode(const string& name) {
@@ -264,11 +265,11 @@ void AutoParallel::BuildGraph(GraphDef* graph) {
   LOG(INFO) << "Parallelized graph size: " << graph->node_size();
 }
 
-Status AutoParallel::Optimize(Cluster* cluster, const GrapplerItem& item,
-                              GraphDef* output) {
+absl::Status AutoParallel::Optimize(Cluster* cluster, const GrapplerItem& item,
+                                    GraphDef* output) {
   TF_RETURN_IF_ERROR(Initialize(item));
   BuildGraph(output);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // end namespace grappler

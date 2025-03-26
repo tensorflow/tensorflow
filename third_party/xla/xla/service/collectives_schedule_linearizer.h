@@ -1,4 +1,4 @@
-/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2021 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,37 +16,7 @@ limitations under the License.
 #ifndef XLA_SERVICE_COLLECTIVES_SCHEDULE_LINEARIZER_H_
 #define XLA_SERVICE_COLLECTIVES_SCHEDULE_LINEARIZER_H_
 
-#include "absl/strings/string_view.h"
-#include "xla/hlo/ir/hlo_module.h"
-#include "xla/service/hlo_pass_interface.h"
-#include "xla/statusor.h"
-#include "xla/util.h"
-
-namespace xla {
-
-// Enforces a total order on all collectives present in the module, based on the
-// order given to the instructions.
-//
-// Does not insert inter-computation dependencies, only linearizes the order
-// within each computation.
-class CollectivesScheduleLinearizer : public HloModulePass {
- public:
-  explicit CollectivesScheduleLinearizer(HloModulePredicate is_enabled = {})
-      : is_enabled_(is_enabled) {}
-
-  absl::string_view name() const override {
-    return "collectives-schedule-linearizer";
-  }
-
-  using HloPassInterface::Run;
-  StatusOr<bool> Run(
-      HloModule* module,
-      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
-
- private:
-  HloModulePredicate is_enabled_;
-};
-
-}  // namespace xla
+// The current header will be deprecated in favour of the following.
+#include "xla/hlo/transforms/collectives/collectives_schedule_linearizer.h"
 
 #endif  // XLA_SERVICE_COLLECTIVES_SCHEDULE_LINEARIZER_H_

@@ -129,7 +129,7 @@ class EigenConcatBaseOp : public OpKernel {
       overall_min = std::min(overall_min, input_min);
       overall_max = std::max(overall_max, input_max);
     }
-    if (std::is_signed<T>::value) {
+    if (std::numeric_limits<T>::is_signed) {
       // For signed, we want a symmetrical distribution including zero for the
       // output, so pick a range that meets that need.
       const float largest_value =

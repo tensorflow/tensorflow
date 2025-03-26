@@ -16,11 +16,12 @@ cc_library(
     hdrs = ["pass.h"],
     deps = [
         "//tensorflow/core:framework",
+        "//tensorflow/core/framework:op_def_proto_cc",
         "//tensorflow/core/ir:Dialect",
         "//tensorflow/core/ir:tf_op_registry",
         "//tensorflow/core/ir/importexport:convert_attributes",
-        "//tensorflow/core/platform:statusor",
         "//tensorflow/core/transforms:PassIncGen",
+        "@com_google_absl//absl/status:statusor",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",

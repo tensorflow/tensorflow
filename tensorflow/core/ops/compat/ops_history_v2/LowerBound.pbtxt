@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "LowerBound"
   input_arg {
     name: "sorted_inputs"

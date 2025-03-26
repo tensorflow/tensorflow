@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/kernels/image/sampling_kernels.h"
+#include "tsl/platform/threadpool.h"
 
 namespace tensorflow {
 namespace functor {
@@ -58,7 +59,7 @@ struct Spans {
 //    [batch_size, input_height, output_width, channels]
 template <typename Device, typename T>
 struct GatherSpans {
-  void operator()(const Device& d, int row_span_size,
+  void operator()(OpKernelContext* context, const Device& d, int row_span_size,
                   typename TTypes<int32, 1>::ConstTensor row_starts,
                   typename TTypes<float, 1>::ConstTensor row_weights,
                   int col_span_size,

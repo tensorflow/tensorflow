@@ -541,6 +541,64 @@ TEST_P(MulOpTest, Int32VariousInputShapes) {
   }
 }
 
+// Neon intrinsics are only dispatched when tensor has at least 16 elements.
+TEST_P(MulOpTest, Int32LargeInputShapeNoActivation) {
+  bool constant_tensors = GetParam();
+  if (SingleOpModel::GetForceUseNnapi() && constant_tensors) {
+    // NNAPI does not support graphs with all constant inputs.
+    return;
+  }
+  const std::vector<int> test_shape = {4, 4, 4, 4};
+  constexpr int kFlatSize = 4 * 4 * 4 * 4;
+
+  std::vector<int> lhs_data(kFlatSize);
+  std::iota(lhs_data.begin(), lhs_data.end(), 0);
+
+  std::vector<int> rhs_data(kFlatSize);
+  std::iota(rhs_data.begin(), rhs_data.end(), 0);
+
+  IntegerMulOpModel<int32_t> m(
+      {TensorType_INT32, test_shape}, {TensorType_INT32, test_shape},
+      {TensorType_INT32, {}}, ActivationFunctionType_NONE, lhs_data, rhs_data,
+      constant_tensors);
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+
+  const std::vector<int> output = m.GetOutput();
+  ASSERT_EQ(output.size(), kFlatSize);
+  for (int i = 0; i < kFlatSize; ++i) {
+    EXPECT_EQ(output[i], i * i);
+  }
+}
+
+// Neon intrinsics are only dispatched when tensor has at least 16 elements.
+TEST_P(MulOpTest, Int32LargeInputShapeRELU6) {
+  bool constant_tensors = GetParam();
+  if (SingleOpModel::GetForceUseNnapi() && constant_tensors) {
+    // NNAPI does not support graphs with all constant inputs.
+    return;
+  }
+  const std::vector<int> test_shape = {4, 4, 4, 4};
+  constexpr int kFlatSize = 4 * 4 * 4 * 4;
+
+  std::vector<int> lhs_data(kFlatSize);
+  std::iota(lhs_data.begin(), lhs_data.end(), 0);
+
+  std::vector<int> rhs_data(kFlatSize);
+  std::iota(rhs_data.begin(), rhs_data.end(), 0);
+
+  IntegerMulOpModel<int32_t> m(
+      {TensorType_INT32, test_shape}, {TensorType_INT32, test_shape},
+      {TensorType_INT32, {}}, ActivationFunctionType_RELU6, lhs_data, rhs_data,
+      constant_tensors);
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+
+  const std::vector<int> output = m.GetOutput();
+  ASSERT_EQ(output.size(), kFlatSize);
+  for (int i = 0; i < kFlatSize; ++i) {
+    EXPECT_EQ(output[i], std::min(i * i, 6));
+  }
+}
+
 TEST_P(MulOpTest, Int32WithBroadcast) {
   bool constant_tensors = GetParam();
   if (SingleOpModel::GetForceUseNnapi() && constant_tensors) {
@@ -887,7 +945,7 @@ void TestFloatBroadcast(std::vector<int> input1_shape,
   m.PopulateTensor<float>(m.input1(), input1);
   m.PopulateTensor<float>(m.input2(), input2);
   ASSERT_EQ(m.Invoke(), kTfLiteOk);
-  EXPECT_THAT(m.GetOutput(), testing::ContainerEq(output_ref));
+  EXPECT_THAT(m.GetOutput(), Pointwise(FloatingPointEq(), output_ref));
 }
 
 template <typename IntegerType>
@@ -971,7 +1029,7 @@ void TestIntegerBroadcast(std::vector<int> input1_shape,
   m.template PopulateTensor<IntegerType>(m.input1(), input1);
   m.template PopulateTensor<IntegerType>(m.input2(), input2);
   ASSERT_EQ(m.Invoke(), kTfLiteOk);
-  EXPECT_THAT(m.GetOutput(), testing::ContainerEq(output_ref));
+  EXPECT_THAT(m.GetOutput(), Pointwise(FloatingPointEq(), output_ref));
 }
 
 // To improve automatic test sharding (via shard_count in the BUILD file),

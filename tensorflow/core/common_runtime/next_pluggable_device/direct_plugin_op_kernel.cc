@@ -15,53 +15,58 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/next_pluggable_device/direct_plugin_op_kernel.h"
 
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <string_view>
 #include <utility>
 #include <vector>
 
+#include "absl/log/check.h"
+#include "absl/status/status.h"
+#include "xla/tsl/platform/status.h"
 #include "tensorflow/core/common_runtime/next_pluggable_device/direct_plugin_variable.h"
 #include "tensorflow/core/common_runtime/next_pluggable_device/plugin_resource.h"
 #include "tensorflow/core/common_runtime/next_pluggable_device/plugin_variable.h"
+#include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/resource_mgr.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/status.h"
-#include "tsl/platform/status.h"
 
 namespace tensorflow {
 
-Status DirectPluginOpKernelConstruction::GetBoolAttr(std::string_view attr_name,
-                                                     bool* value) const {
+absl::Status DirectPluginOpKernelConstruction::GetBoolAttr(
+    std::string_view attr_name, bool* value) const {
   return ctx_->GetAttr(attr_name, value);
 }
 
-Status DirectPluginOpKernelConstruction::GetInt32Attr(
+absl::Status DirectPluginOpKernelConstruction::GetInt32Attr(
     std::string_view attr_name, int* value) const {
   return ctx_->GetAttr(attr_name, value);
 }
 
-Status DirectPluginOpKernelConstruction::GetInt32AttrList(
+absl::Status DirectPluginOpKernelConstruction::GetInt32AttrList(
     std::string_view attr_name, std::vector<int32_t>* value) const {
   return ctx_->GetAttr(attr_name, value);
 }
 
-Status DirectPluginOpKernelConstruction::GetInt64Attr(
+absl::Status DirectPluginOpKernelConstruction::GetInt64Attr(
     std::string_view attr_name, int64_t* value) const {
   return ctx_->GetAttr(attr_name, value);
 }
 
-Status DirectPluginOpKernelConstruction::GetStringAttr(
+absl::Status DirectPluginOpKernelConstruction::GetStringAttr(
     std::string_view attr_name, std::string* value) const {
   return ctx_->GetAttr(attr_name, value);
 }
 
-Status DirectPluginOpKernelConstruction::GetFunctionAttr(
+absl::Status DirectPluginOpKernelConstruction::GetFunctionAttr(
     std::string_view attr_name, NameAttrList* function) const {
   return ctx_->GetAttr(attr_name, function);
 }
 
-Status DirectPluginOpKernelContext::CreatePluginVariable(
+absl::Status DirectPluginOpKernelContext::CreatePluginVariable(
     int index, PluginVariable** variable) const {
   const auto& arg_tensor = ctx_->input(index);
   if (arg_tensor.dtype() != DT_RESOURCE) {
@@ -74,10 +79,10 @@ Status DirectPluginOpKernelContext::CreatePluginVariable(
   TF_RETURN_IF_ERROR(LookupResource(ctx_, handle, &var));
 
   *variable = new DirectPluginVariable(index, handle.name(), var);
-  return tsl::OkStatus();
+  return absl::OkStatus();
 }
 
-Status DirectPluginOpKernelContext::AllocateTempForPluginVariable(
+absl::Status DirectPluginOpKernelContext::AllocateTempForPluginVariable(
     PluginVariable* variable) {
   auto* direct_variable = reinterpret_cast<DirectPluginVariable*>(variable);
   if (direct_variable->var_info_.var() == nullptr) {
@@ -95,7 +100,7 @@ DirectPluginOpKernelContext::GetResourceMgrDefaultContainerName() {
   return ctx_->resource_manager()->default_container();
 }
 
-Status DirectPluginOpKernelContext::LookupOrCreateResource(
+absl::Status DirectPluginOpKernelContext::LookupOrCreateResource(
     std::string_view container_name, std::string_view plugin_resource_name,
     void** result_plugin_resource, void* (*create_func)(void*),
     void* create_func_args, void (*delete_func)(void*)) {
@@ -112,24 +117,25 @@ Status DirectPluginOpKernelContext::LookupOrCreateResource(
         void* opaque_plugin_resource = create_func(create_func_args);
         *new_resource = new tensorflow::PluginResource(
             opaque_plugin_resource, plugin_resource_name, delete_func);
-        return tensorflow::OkStatus();
+        return absl::OkStatus();
       }));
   tf_plugin_resource_ptr.reset(tf_plugin_resource);
   *result_plugin_resource = tf_plugin_resource_ptr->GetOpaquePluginResource();
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status DirectPluginOpKernelContext::GetInput(int index, Tensor* tensor) const {
-  *tensor = ctx_->input(index);
-  return OkStatus();
+absl::Status DirectPluginOpKernelContext::GetInput(
+    int index, const Tensor** tensor) const {
+  *tensor = &ctx_->input(index);
+  return absl::OkStatus();
 }
 
-Status DirectPluginOpKernelContext::GetInput(const char* name,
-                                             const Tensor** tensor) {
+absl::Status DirectPluginOpKernelContext::GetInput(
+    const char* name, const Tensor** tensor) const {
   return ctx_->input(name, tensor);
 }
 
-Status DirectPluginOpKernelContext::GetInputRange(
+absl::Status DirectPluginOpKernelContext::GetInputRange(
     std::string_view name, std::pair<int, int>* range) const {
   return ctx_->op_kernel().InputRange(name, &range->first, &range->second);
 }
@@ -138,6 +144,10 @@ int DirectPluginOpKernelContext::GetDeviceId() const {
   const auto* device = ctx_->device();
   CHECK(device->parsed_name().has_id);  // Crash OK.
   return device->parsed_name().id;
+}
+
+std::string_view DirectPluginOpKernelContext::GetDeviceName() const {
+  return ctx_->device()->name();
 }
 
 }  // namespace tensorflow

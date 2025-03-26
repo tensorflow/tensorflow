@@ -49,7 +49,7 @@ class CollectiveRemoteAccessDistributed : public CollectiveRemoteAccessLocal {
   void CheckPeerHealth(const string& peer_task, int64_t timeout_in_ms,
                        const StatusCallback& done) override;
 
-  void StartAbort(const Status& s) override;
+  void StartAbort(const absl::Status& s) override;
 
  protected:
   WorkerCacheInterface* worker_cache_;  // Not owned

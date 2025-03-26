@@ -190,7 +190,7 @@ TEST(SparseTensorTest, SparseTensorConstruction) {
   std::vector<int64_t> order{0, 1, 2};
   SparseTensor st;
   TF_ASSERT_OK(SparseTensor::Create(ix, vals, shape, order, &st));
-  Status st_indices_valid = st.IndicesValid();
+  absl::Status st_indices_valid = st.IndicesValid();
   EXPECT_FALSE(st_indices_valid.ok());
   EXPECT_EQ(
       "indices[2] = [2,0,0] is out of order. "
@@ -296,7 +296,7 @@ TEST(SparseTensorTest, ValidateIndicesFindsInvalid) {
   TF_ASSERT_OK(SparseTensor::Create(ix, vals, shape, order, &st));
 
   st.Reorder<tstring>(order);
-  Status st_indices_valid = st.IndicesValid();
+  absl::Status st_indices_valid = st.IndicesValid();
   EXPECT_FALSE(st_indices_valid.ok());
   EXPECT_EQ("indices[1] = [0,0,0] is repeated", st_indices_valid.message());
 
@@ -337,7 +337,7 @@ TEST(SparseTensorTest, SparseTensorCheckBoundaries) {
   ix_t(0, 0) = 11;
   ix.matrix<int64_t>() = ix_t;
   st.Reorder<tstring>(order);
-  Status st_indices_valid = st.IndicesValid();
+  absl::Status st_indices_valid = st.IndicesValid();
   EXPECT_FALSE(st_indices_valid.ok());
   // Error message references index 4 because of the call to Reorder.
   EXPECT_EQ("[11,0,0] is out of bounds: need 0 <= index < [10,10,10]",
@@ -558,7 +558,7 @@ TEST(SparseTensorTest, Concat) {
 
   SparseTensor concatted = SparseTensor::Concat<tstring>({st, st, st, st});
   EXPECT_EQ(concatted.order(), st.order());
-  gtl::InlinedVector<int64_t, 8> expected_shape{40, 10, 10};
+  absl::InlinedVector<int64_t, 8UL> expected_shape{40, 10, 10};
   EXPECT_EQ(concatted.shape(), expected_shape);
   EXPECT_EQ(concatted.num_entries(), 4 * N);
   TF_EXPECT_OK(concatted.IndicesValid());
@@ -637,7 +637,7 @@ TEST(SparseTensorTest, Split) {
   TF_ASSERT_OK(SparseTensor::Split<int64_t>(st, 0, 2, &st_list));
 
   EXPECT_EQ(st_list.size(), 2);
-  auto expected_shape = gtl::InlinedVector<int64_t, 8>{2, 3};
+  auto expected_shape = absl::InlinedVector<int64_t, 8UL>{2, 3};
 
   EXPECT_EQ(st_list[0].shape(), expected_shape);
   EXPECT_EQ(st_list[0].values().NumElements(), 3);

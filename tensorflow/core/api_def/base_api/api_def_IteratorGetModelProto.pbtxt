@@ -1,0 +1,20 @@
+op {
+  graph_op_name: "IteratorGetModelProto"
+  visibility: HIDDEN
+  in_arg {
+    name: "iterator"
+    description: <<END
+An resource from an dataset iterator.
+END
+  }
+  out_arg {
+    name: "model_proto"
+    description: <<END
+A serialized model proto.
+END
+  }
+  summary: "Returns the serialized model proto of an iterator resource."
+  description: <<END
+Returns the serialized model proto of an iterator resource.
+END
+}

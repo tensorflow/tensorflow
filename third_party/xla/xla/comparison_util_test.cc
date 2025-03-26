@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2019 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -18,7 +18,8 @@ limitations under the License.
 #include <cstdint>
 #include <limits>
 
-#include "xla/test.h"
+#include <gtest/gtest.h>
+#include "xla/hlo/testlib/test.h"
 #include "xla/types.h"
 #include "xla/xla_data.pb.h"
 

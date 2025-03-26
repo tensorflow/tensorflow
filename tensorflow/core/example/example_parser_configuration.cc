@@ -29,19 +29,19 @@ limitations under the License.
 
 namespace tensorflow {
 
-Status FindNodeIndexByName(const tensorflow::GraphDef& graph,
-                           const string& node_name, int* node_idx) {
+absl::Status FindNodeIndexByName(const tensorflow::GraphDef& graph,
+                                 const string& node_name, int* node_idx) {
   for (int i = 0; i < graph.node_size(); ++i) {
     const auto& node = graph.node(i);
     if (node.name() == node_name) {
       *node_idx = i;
-      return OkStatus();
+      return absl::OkStatus();
     }
   }
   return errors::InvalidArgument(node_name, " not found in GraphDef");
 }
 
-Status ExtractExampleParserConfiguration(
+absl::Status ExtractExampleParserConfiguration(
     const tensorflow::GraphDef& graph, const string& node_name,
     tensorflow::Session* session,
     std::vector<FixedLenFeature>* fixed_len_features,
@@ -157,10 +157,10 @@ Status ExtractExampleParserConfiguration(
     (*fixed_len_features)[i].values_output_tensor_name =
         strings::StrCat(node_output_prefix, output_idx);
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status ExampleParserConfigurationProtoToFeatureVectors(
+absl::Status ExampleParserConfigurationProtoToFeatureVectors(
     const ExampleParserConfiguration& config_proto,
     std::vector<FixedLenFeature>* fixed_len_features,
     std::vector<VarLenFeature>* var_len_features) {
@@ -195,7 +195,7 @@ Status ExampleParserConfigurationProtoToFeatureVectors(
       var_len_features->push_back(v);
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace tensorflow

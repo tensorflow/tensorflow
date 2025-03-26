@@ -1,4 +1,4 @@
-/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,6 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <optional>
+
+#include "xla/debug_options_flags.h"
 #include "xla/tests/hlo_test_base.h"
 
 namespace xla {
@@ -21,7 +24,7 @@ namespace {
 
 class InPlaceOpTest : public HloTestBase {
   // Don't override any flags.
-  DebugOptions GetDebugOptionsForTest() override {
+  DebugOptions GetDebugOptionsForTest() const override {
     return GetDebugOptionsFromFlags();
   }
 };

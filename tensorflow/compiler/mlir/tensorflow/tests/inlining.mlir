@@ -71,8 +71,8 @@ func.func @dont_inline_custom_on_duplicated_cases() -> tensor<2xi32> {
 // CHECK-LABEL: func @inline_shape_cast(
 // CHECK-SAME:                          %[[ARG:.*]]: tensor<2xi32>
 func.func @inline_shape_cast(%arg: tensor<2xi32>) -> tensor<2xi32> {
-  // CHECK-NEXT: %[[ARG_CAST:.*]] = "tf.Cast"(%[[ARG]]) {Truncate = false} : (tensor<2xi32>) -> tensor<*xi32>
-  // CHECK-NEXT: %[[RESULT_CAST:.*]] = "tf.Cast"(%[[ARG_CAST]]) {Truncate = false} : (tensor<*xi32>) -> tensor<2xi32>
+  // CHECK-NEXT: %[[ARG_CAST:.*]] = "tf.Cast"(%[[ARG]]) <{Truncate = false}> : (tensor<2xi32>) -> tensor<*xi32>
+  // CHECK-NEXT: %[[RESULT_CAST:.*]] = "tf.Cast"(%[[ARG_CAST]]) <{Truncate = false}> : (tensor<*xi32>) -> tensor<2xi32>
   // CHECK-NEXT: return %[[RESULT_CAST]]
   %result = "tf.PartitionedCall"(%arg) {config = "", config_proto = "", executor_type = "", f = @inline_shape_cast_callee} : (tensor<2xi32>) -> tensor<2xi32>
   func.return %result : tensor<2xi32>

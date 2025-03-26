@@ -17,8 +17,9 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_MLIR_LITE_TF_TFL_PASSES_H_
 
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/common/tfl_pass_config.h"
-#include "tensorflow/lite/toco/toco_flags.pb.h"
+#include "tensorflow/compiler/mlir/lite/converter_flags.pb.h"
 
 namespace tensorflow {
 
@@ -28,9 +29,28 @@ namespace tensorflow {
 // variables. If the `saved_model_dir` directory path is provided, then the
 // `tf_saved_model.asset` ops will be freezed.
 void AddTFToTFLConversionPasses(llvm::StringRef saved_model_dir,
-                                const toco::TocoFlags& toco_flags,
+                                const tflite::ConverterFlags& converter_flags,
                                 const mlir::TFL::PassConfig& pass_config,
                                 mlir::OpPassManager* pass_manager);
+
+// Adds the first portion of StableHLO->TF passes happening before quantization.
+// The `pass_manager` that runs on a `mlir::ModuleOp` expects a graph containing
+// a `mlir::TF::XlaCallModuleOp` with serialized StableHLO module. The resulting
+// `mlir::ModuleOp` after running these passes will be an MHLO module, or a
+// StableHLO module if `pass_config.enable_stablehlo_quantizer` is `true`. This
+// is because StableHLO Quantizer accepts StableHLO modules.
+void AddPreQuantizationStableHloToTfPasses(
+    mlir::StringRef entry_function_name,
+    const mlir::TFL::PassConfig& pass_config,
+    mlir::OpPassManager& pass_manager);
+
+// Adds the second portion of StableHlo->TF passes happening after quantization.
+// The input module is expected to be an MHLO module, or a quantized StableHLO
+// graph (expressed as `mlir::TF::XlaCallModuleOp`s) if
+// `pass_config.enable_stablehlo_quantizer` is `true`.
+void AddPostQuantizationStableHloToTfPasses(
+    const mlir::TFL::PassConfig& pass_config,
+    mlir::OpPassManager& pass_manager);
 
 // This is the early part of the conversion in isolation. This enables a caller
 // to inject more information in the middle of the conversion before resuming it
@@ -43,7 +63,16 @@ void AddPreVariableFreezingTFToTFLConversionPasses(
 // to resume the conversion after injecting more information in the middle of
 // it.
 void AddPostVariableFreezingTFToTFLConversionPasses(
-    llvm::StringRef saved_model_dir, const toco::TocoFlags& toco_flags,
+    llvm::StringRef saved_model_dir,
+    const tflite::ConverterFlags& converter_flags,
+    const mlir::TFL::PassConfig& pass_config,
+    mlir::OpPassManager* pass_manager);
+
+// Adds the passes that freeze variables from global tensors and unfreeze
+// mutable global tensors. `pass_config` is used to determine whether to freeze
+// variables and `pass_manager` will be populated with the passes to run.
+void AddVariableFreezingFromGlobalTensorsPasses(
+    const tflite::ConverterFlags& converter_flags,
     const mlir::TFL::PassConfig& pass_config,
     mlir::OpPassManager* pass_manager);
 

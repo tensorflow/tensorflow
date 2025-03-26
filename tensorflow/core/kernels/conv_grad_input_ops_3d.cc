@@ -43,7 +43,7 @@ limitations under the License.
 #include "tensorflow/core/util/work_sharder.h"
 
 #if defined(TENSORFLOW_USE_CUSTOM_CONTRACTION_KERNEL)
-#include "tsl/framework/contraction/eigen_contraction_kernel.h"
+#include "xla/tsl/framework/contraction/eigen_contraction_kernel.h"
 #endif
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
@@ -59,7 +59,7 @@ using stream_executor::dnn::DimIndex;
 #include "third_party/gpus/cudnn/cudnn.h"
 #include "xla/stream_executor/gpu/gpu_asm_opts.h"
 #include "xla/stream_executor/gpu/redzone_allocator.h"
-#include "xla/stream_executor/tf_allocator_adapter.h"
+#include "xla/stream_executor/integrations/tf_allocator_adapter.h"
 #endif  // GOOGLE_CUDA
 
 namespace {
@@ -247,7 +247,8 @@ class Conv3DBackpropInputOp : public OpKernel {
   TensorFormat data_format_;
   bool takes_shape_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(Conv3DBackpropInputOp);
+  Conv3DBackpropInputOp(const Conv3DBackpropInputOp&) = delete;
+  void operator=(const Conv3DBackpropInputOp&) = delete;
 };
 
 // Custom backprop for input that explicitly does the work sharding and calls
@@ -598,7 +599,8 @@ class Conv3DCustomBackpropInputOp : public OpKernel {
   TensorFormat data_format_;
   bool takes_shape_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(Conv3DCustomBackpropInputOp);
+  Conv3DCustomBackpropInputOp(const Conv3DCustomBackpropInputOp&) = delete;
+  void operator=(const Conv3DCustomBackpropInputOp&) = delete;
 };
 
 // Custom backrop input kernel is 30% - 4x faster when compiled with AVX2 than
@@ -654,7 +656,6 @@ TF_CALL_double(REGISTER_CPU_KERNEL);
 
 TF_CALL_bfloat16(REGISTER_CPU_KERNEL);
 #undef REGISTER_CPU_KERNEL
-
 
 // GPU definitions of both ops.
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
@@ -717,6 +718,9 @@ void LaunchConvBackpropInputOpImpl(
 
   auto* stream = context->op_device_context()->stream();
   OP_REQUIRES(context, stream, errors::Internal("No GPU stream available."));
+  auto* blas = stream->parent()->AsBlas();
+  OP_REQUIRES(context, blas != nullptr,
+              absl::InternalError("No BLAS for stream."));
 
   bool is_grouped_convolution = filter_shape.dim_size(3) != dims.in_depth;
   if (!is_grouped_convolution && dims.filter_size(0) == 1 &&
@@ -739,9 +743,10 @@ void LaunchConvBackpropInputOpImpl(
     auto transpose = se::blas::Transpose::kTranspose;
     auto no_transpose = se::blas::Transpose::kNoTranspose;
 
-    OP_REQUIRES_OK(context, stream->ThenBlasGemm(transpose, no_transpose, n, m,
-                                                 k, b_ptr, k, a_ptr, k, &c_ptr,
-                                                 n, GetNumericOptions()));
+    OP_REQUIRES_OK(
+        context, blas->BlasGemm(stream, transpose, no_transpose, n, m, k, b_ptr,
+                                k, a_ptr, k, &c_ptr, n, GetNumericOptions(),
+                                se::blas::CallContext::kNone));
     return;
   } else if (!is_grouped_convolution &&
              dims.filter_size(0) == dims.input_size(0) &&
@@ -763,9 +768,10 @@ void LaunchConvBackpropInputOpImpl(
     auto transpose = se::blas::Transpose::kTranspose;
     auto no_transpose = se::blas::Transpose::kNoTranspose;
 
-    OP_REQUIRES_OK(context, stream->ThenBlasGemm(transpose, no_transpose, n, m,
-                                                 k, b_ptr, k, a_ptr, k, &c_ptr,
-                                                 n, GetNumericOptions()));
+    OP_REQUIRES_OK(
+        context, blas->BlasGemm(stream, transpose, no_transpose, n, m, k, b_ptr,
+                                k, a_ptr, k, &c_ptr, n, GetNumericOptions(),
+                                se::blas::CallContext::kNone));
     return;
   }
 
@@ -1021,11 +1027,8 @@ struct LaunchConvBackpropInputOp<Eigen::bfloat16> {
                      const std::vector<int32>& dilation,
                      const std::vector<int32>& strides, const Padding& padding,
                      Tensor* in_backprop, TensorFormat data_format) {
-    // Performant bfloat16 operations are supported for Ampere+ GPUs. For
-    // pre-Ampere GPUs, we cast inputs to float and outputs back to bfloat16.
     auto* stream = ctx->op_device_context()->stream();
-    const bool cast_to_float = !stream->GetCudaComputeCapability().IsAtLeast(
-        se::CudaComputeCapability::AMPERE);
+    const bool cast_to_float = !IsBF16SupportedInOps(stream);
 
     if (cast_to_float) {
       Tensor casted_out_backprop = out_backprop;
@@ -1149,15 +1152,14 @@ class Conv3DBackpropInputOp<GPUDevice, T> : public OpKernel {
   bool cudnn_use_autotune_;
 };
 
-
-#define REGISTER_GPU_KERNEL(T)                                                \
-  REGISTER_KERNEL_BUILDER(                                                    \
-      Name("Conv3DBackpropInput").Device(DEVICE_GPU).TypeConstraint<T>("T"),  \
-      Conv3DBackpropInputOp<GPUDevice, T>);                                   \
-  REGISTER_KERNEL_BUILDER(Name("Conv3DBackpropInputV2")                       \
-                              .Device(DEVICE_GPU)                             \
-                              .TypeConstraint<T>("T")                         \
-                              .HostMemory("input_sizes"),                     \
+#define REGISTER_GPU_KERNEL(T)                                               \
+  REGISTER_KERNEL_BUILDER(                                                   \
+      Name("Conv3DBackpropInput").Device(DEVICE_GPU).TypeConstraint<T>("T"), \
+      Conv3DBackpropInputOp<GPUDevice, T>);                                  \
+  REGISTER_KERNEL_BUILDER(Name("Conv3DBackpropInputV2")                      \
+                              .Device(DEVICE_GPU)                            \
+                              .TypeConstraint<T>("T")                        \
+                              .HostMemory("input_sizes"),                    \
                           Conv3DBackpropInputOp<GPUDevice, T>);
 TF_CALL_half(REGISTER_GPU_KERNEL);
 TF_CALL_bfloat16(REGISTER_GPU_KERNEL);

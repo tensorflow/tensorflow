@@ -12,10 +12,11 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include <cstddef>
+#include <cstdint>
 #include <vector>
 
 #include <gtest/gtest.h>
+#include "tensorflow/lite/acceleration/configuration/c/stable_delegate.h"
 #include "tensorflow/lite/acceleration/configuration/configuration_generated.h"
 #include "tensorflow/lite/c/c_api.h"
 #include "tensorflow/lite/c/c_api_opaque.h"
@@ -33,11 +34,29 @@ using tflite::delegates::utils::LoadDelegateFromSharedLibrary;
 
 TEST(SampleStableDelegate, LoadFromSharedLibraryFile) {
   // Load the example stable opaque_delegate that implements the ADD operation
-  // from a shared libary file.
+  // from a shared library file.
   const TfLiteStableDelegate* stable_delegate_handle =
       LoadDelegateFromSharedLibrary(
           "tensorflow/lite/delegates/utils/experimental/"
           "sample_stable_delegate/libtensorflowlite_sample_stable_delegate.so");
+  ASSERT_NE(stable_delegate_handle, nullptr);
+  EXPECT_STREQ(stable_delegate_handle->delegate_abi_version,
+               TFL_STABLE_DELEGATE_ABI_VERSION);
+  EXPECT_STREQ(stable_delegate_handle->delegate_name,
+               tflite::example::kSampleStableDelegateName);
+  EXPECT_STREQ(stable_delegate_handle->delegate_version,
+               tflite::example::kSampleStableDelegateVersion);
+  ASSERT_NE(stable_delegate_handle->delegate_plugin, nullptr);
+}
+
+TEST(SampleStableDelegate, LoadFromSharedLibraryTestFile) {
+  // Load the example stable opaque_delegate that implements the ADD operation
+  // from a shared library file.
+  const TfLiteStableDelegate* stable_delegate_handle =
+      LoadDelegateFromSharedLibrary(
+          "tensorflow/lite/delegates/utils/experimental/"
+          "sample_stable_delegate/"
+          "libtensorflowlite_sample_stable_delegate.so");
   ASSERT_NE(stable_delegate_handle, nullptr);
   EXPECT_STREQ(stable_delegate_handle->delegate_abi_version,
                TFL_STABLE_DELEGATE_ABI_VERSION);
@@ -60,9 +79,7 @@ TEST(SampleStableDelegate, LoadFromSharedLibraryFile) {
       stable_delegate_handle->delegate_plugin->create(settings);
   ASSERT_NE(opaque_delegate, nullptr);
 
-  //
   // Create the model and the interpreter
-  //
   TfLiteModel* model =
       TfLiteModelCreateFromFile("tensorflow/lite/testdata/add.bin");
   ASSERT_NE(model, nullptr);
@@ -74,23 +91,19 @@ TEST(SampleStableDelegate, LoadFromSharedLibraryFile) {
   // The options can be deleted immediately after interpreter creation.
   TfLiteInterpreterOptionsDelete(options);
 
-  //
   // Allocate the tensors and fill the input tensor.
-  //
   ASSERT_EQ(TfLiteInterpreterAllocateTensors(interpreter), kTfLiteOk);
   TfLiteTensor* input_tensor =
       TfLiteInterpreterGetInputTensor(interpreter, /*input_index=*/0);
   ASSERT_NE(input_tensor, nullptr);
   const float kTensorCellValue = 3.f;
-  int64_t n = tflite::NumElements(input_tensor);
+  std::int64_t n = tflite::NumElements(input_tensor);
   std::vector<float> input(n, kTensorCellValue);
   ASSERT_EQ(TfLiteTensorCopyFromBuffer(input_tensor, input.data(),
                                        input.size() * sizeof(float)),
             kTfLiteOk);
 
-  //
   // Run the interpreter and read the output tensor.
-  //
   ASSERT_EQ(TfLiteInterpreterInvoke(interpreter), kTfLiteOk);
 
   const TfLiteTensor* output_tensor =

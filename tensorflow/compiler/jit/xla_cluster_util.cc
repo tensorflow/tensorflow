@@ -47,8 +47,8 @@ const char* const kXlaCompileTimeConstantInputsAttr =
 namespace {
 // Returns a string describing how an edge from src to dst would
 // create a cycle.
-string DescribeCycle(const GraphCycles* cycles, const Graph& graph, int src,
-                     int dst) {
+string DescribeCycle(const xla::GraphCycles* cycles, const Graph& graph,
+                     int src, int dst) {
   int32_t max_path_size = graph.num_node_ids() + 1;
   std::vector<int32> path(max_path_size);
   int32_t path_size = cycles->FindPath(dst, src, max_path_size, path.data());
@@ -107,8 +107,8 @@ bool HasForwardedRefInput(const Node& node) {
   return false;
 }
 
-StatusOr<bool> CreateCycleDetectionGraph(const Graph* graph,
-                                         GraphCycles* cycles) {
+absl::StatusOr<bool> CreateCycleDetectionGraph(const Graph* graph,
+                                               xla::GraphCycles* cycles) {
   for (int i = 0; i < graph->num_node_ids(); ++i) {
     // We rely on the node IDs in the cycle detection graph being consecutive
     // integers starting from 0.
@@ -202,7 +202,7 @@ std::optional<absl::string_view> GetXlaClusterForNode(const Node& node) {
   if (attr_value == nullptr) {
     return std::nullopt;
   }
-  Status s = AttrValueHasType(*attr_value, "string");
+  absl::Status s = AttrValueHasType(*attr_value, "string");
   if (!s.ok()) {
     return std::nullopt;
   }
@@ -420,11 +420,11 @@ CallTargetListTy GetCallTargetListFromNode(
 
 enum class Direction { kForward, kBackward };
 
-Status GetNodesRelatedToRefVariablesInDirection(
+absl::Status GetNodesRelatedToRefVariablesInDirection(
     const Graph& graph, FunctionLibraryRuntime* lib_runtime,
     Direction direction, int depth, absl::flat_hash_set<Node*>* result);
 
-StatusOr<bool> DoesAnyCalleeHaveRefNodes(
+absl::StatusOr<bool> DoesAnyCalleeHaveRefNodes(
     const CallTargetListTy& call_target_list,
     FunctionLibraryRuntime* lib_runtime, Direction direction, int depth) {
   const int kMaxDepth = 10;
@@ -480,7 +480,7 @@ StatusOr<bool> DoesAnyCalleeHaveRefNodes(
 
 // Helper for GetNodesRelatedToRefVariables that traverses the graph in one
 // direction.
-Status GetNodesRelatedToRefVariablesInDirection(
+absl::Status GetNodesRelatedToRefVariablesInDirection(
     const Graph& graph, FunctionLibraryRuntime* lib_runtime,
     Direction direction, int depth, absl::flat_hash_set<Node*>* result) {
   std::vector<Node*> nodes_in_order;
@@ -500,7 +500,7 @@ Status GetNodesRelatedToRefVariablesInDirection(
   std::vector<bool> callee_has_ref_nodes_cache;
   callee_has_ref_nodes_cache.resize(graph.num_node_ids());
 
-  auto does_callee_have_ref_nodes = [&](Node* n) -> StatusOr<bool> {
+  auto does_callee_have_ref_nodes = [&](Node* n) -> absl::StatusOr<bool> {
     if (iterations == 1) {
       TF_ASSIGN_OR_RETURN(
           bool callee_has_ref_nodes,
@@ -557,7 +557,7 @@ Status GetNodesRelatedToRefVariablesInDirection(
 
   VLOG(2) << "# iterations = " << iterations;
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Sorts control inputs of a graphdef so that they are deterministically
@@ -579,7 +579,7 @@ void SortControlInputs(GraphDef* gdef) {
 }
 }  // namespace
 
-StatusOr<absl::flat_hash_set<Node*>> GetNodesRelatedToRefVariables(
+absl::StatusOr<absl::flat_hash_set<Node*>> GetNodesRelatedToRefVariables(
     const Graph& graph, FunctionLibraryRuntime* lib_runtime) {
   absl::flat_hash_set<Node*> result;
   TF_RETURN_IF_ERROR(GetNodesRelatedToRefVariablesInDirection(
@@ -592,7 +592,7 @@ StatusOr<absl::flat_hash_set<Node*>> GetNodesRelatedToRefVariables(
   return result;
 }
 
-StatusOr<std::string> SerializeGraphDeterministic(const Graph& graph) {
+absl::StatusOr<std::string> SerializeGraphDeterministic(const Graph& graph) {
   GraphDef def;
   graph.ToGraphDef(&def);
 
@@ -609,7 +609,7 @@ StatusOr<std::string> SerializeGraphDeterministic(const Graph& graph) {
   return s;
 }
 
-StatusOr<uint64> FingerprintGraph(const Graph& graph) {
+absl::StatusOr<uint64> FingerprintGraph(const Graph& graph) {
   TF_ASSIGN_OR_RETURN(std::string serialized,
                       SerializeGraphDeterministic(graph));
   return Hash64(serialized.data(), serialized.size());

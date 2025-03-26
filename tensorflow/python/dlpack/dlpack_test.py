@@ -13,9 +13,9 @@
 # limitations under the License.
 # ==============================================================================
 """Tests for DLPack functions."""
+
 from absl.testing import parameterized
 import numpy as np
-
 
 from tensorflow.python.dlpack import dlpack
 from tensorflow.python.eager import context
@@ -23,8 +23,9 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
-from tensorflow.python.platform import test
 from tensorflow.python.ops import array_ops
+from tensorflow.python.platform import test
+
 
 int_dtypes = [
     np.int8, np.int16, np.int32, np.int64, np.uint8, np.uint16, np.uint32,
@@ -32,7 +33,9 @@ int_dtypes = [
 ]
 float_dtypes = [np.float16, np.float32, np.float64]
 complex_dtypes = [np.complex64, np.complex128]
-dlpack_dtypes = int_dtypes + float_dtypes + [dtypes.bfloat16] + complex_dtypes
+dlpack_dtypes = (
+    int_dtypes + float_dtypes + [dtypes.bfloat16] + complex_dtypes + [np.bool_]
+)
 
 testcase_shapes = [(), (1,), (2, 3), (2, 0), (0, 7), (4, 1, 2)]
 
@@ -58,7 +61,10 @@ class DLPackTest(parameterized.TestCase, test.TestCase):
   @parameterized.named_parameters(GetNamedTestParameters())
   def testRoundTrip(self, dtype, shape):
     np.random.seed(42)
-    np_array = np.random.randint(0, 10, shape)
+    if dtype == np.bool_:
+      np_array = np.random.randint(0, 1, shape, np.bool_)
+    else:
+      np_array = np.random.randint(0, 10, shape)
     # copy to gpu if available
     tf_tensor = array_ops.identity(constant_op.constant(np_array, dtype=dtype))
     tf_tensor_device = tf_tensor.device
@@ -73,6 +79,12 @@ class DLPackTest(parameterized.TestCase, test.TestCase):
                        "/job:localhost/replica:0/task:0/device:CPU:0")
     else:
       self.assertEqual(tf_tensor_device, tf_tensor2.device)
+
+  def testRoundTripWithoutToDlpack(self):
+    np_array = np.random.randint(0, 10, [42])
+    self.assertAllEqual(
+        np.from_dlpack(constant_op.constant(np_array).cpu()), np_array
+    )
 
   def testTensorsCanBeConsumedOnceOnly(self):
     np.random.seed(42)

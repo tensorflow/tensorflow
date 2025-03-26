@@ -1,4 +1,4 @@
-/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,24 +15,29 @@ limitations under the License.
 
 #include "xla/service/gpu/conv_layout_normalization.h"
 
+#include <cstdint>
 #include <optional>
-#include <tuple>
 #include <vector>
 
+#include "absl/status/statusor.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
-#include "xla/layout_util.h"
 #include "xla/service/gpu/cublas_cudnn.h"
 #include "xla/service/hlo_creation_utils.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/status_macros.h"
+#include "xla/util.h"
+#include "tsl/platform/protobuf.h"  // IWYU pragma: keep
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {
 namespace {
 
-StatusOr<std::optional<HloInstruction*>> UpdateLayoutForCudnnConvolution(
+absl::StatusOr<std::optional<HloInstruction*>> UpdateLayoutForCudnnConvolution(
     HloCustomCallInstruction* hlo) {
   HloInstruction* lhs = hlo->mutable_operand(0);
   HloInstruction* rhs = hlo->mutable_operand(1);
@@ -40,7 +45,7 @@ StatusOr<std::optional<HloInstruction*>> UpdateLayoutForCudnnConvolution(
       hlo->convolution_dimension_numbers();
 
   auto transpose_dim = [&](int64_t dim, const Shape& unnormalized_shape) {
-    return unnormalized_shape.rank() -
+    return unnormalized_shape.dimensions_size() -
            FindIndex(unnormalized_shape.layout().minor_to_major(), dim) - 1;
   };
 
@@ -105,7 +110,7 @@ StatusOr<std::optional<HloInstruction*>> UpdateLayoutForCudnnConvolution(
 
   Shape normalized_shape;
   if (hlo->shape().IsTuple()) {
-    TF_RET_CHECK(hlo->shape().tuple_shapes().back().rank() == 1)
+    TF_RET_CHECK(hlo->shape().tuple_shapes().back().dimensions_size() == 1)
         << "The last element in the tuple returned by a convolution Custom "
            "Call is expected to be an "
            "allocator of rank one";
@@ -131,15 +136,7 @@ StatusOr<std::optional<HloInstruction*>> UpdateLayoutForCudnnConvolution(
     const Shape& s = op->shape();
     Shape s_reordered =
         ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(s);
-    HloInstruction* normalized_op = op->mutable_operand(0);
-    HloInstruction* new_op;
-    if (normalized_op->shape() == s_reordered) {
-      new_op = normalized_op;
-    } else {
-      new_op = MakeBitcastHlo(op, s_reordered);
-      performed_normalization = true;
-    }
-    normalized_operands.push_back(new_op);
+    normalized_operands.emplace_back(MakeBitcastHlo(op, s_reordered));
   }
 
   // Avoid replacing the Custom Call with an identical copy.
@@ -186,7 +183,7 @@ StatusOr<std::optional<HloInstruction*>> UpdateLayoutForCudnnConvolution(
 
 }  // namespace
 
-StatusOr<std::optional<HloInstruction*>> NormalizeLayoutForGpuCustomCalls(
+absl::StatusOr<std::optional<HloInstruction*>> NormalizeLayoutForGpuCustomCalls(
     HloCustomCallInstruction* hlo) {
   if (IsCustomCallToDnnConvolution(*hlo)) {
     TF_ASSIGN_OR_RETURN(std::optional<HloInstruction*> bc_to_orig,

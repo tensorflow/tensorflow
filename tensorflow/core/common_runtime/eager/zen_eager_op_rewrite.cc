@@ -22,7 +22,6 @@ limitations under the License.
 #include "tensorflow/core/graph/zen_graph_util.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/util/port.h"
-#include "tensorflow/core/util/zen_util.h"
 
 namespace tensorflow {
 

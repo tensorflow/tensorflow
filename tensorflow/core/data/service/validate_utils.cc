@@ -29,8 +29,8 @@ namespace {
 
 using ::tensorflow::protobuf::util::MessageDifferencer;
 
-StatusOr<StructuredValue> DecodeElementSpec(const std::string& dataset_id,
-                                            const std::string& encoded_spec) {
+absl::StatusOr<StructuredValue> DecodeElementSpec(
+    const std::string& dataset_id, const std::string& encoded_spec) {
   if (encoded_spec.empty()) {
     return StructuredValue();
   }
@@ -43,11 +43,11 @@ StatusOr<StructuredValue> DecodeElementSpec(const std::string& dataset_id,
   return decoded_spec;
 }
 
-Status ValidateElementSpec(const std::string& dataset_id,
-                           const std::string& encoded_spec1,
-                           const std::string& encoded_spec2) {
+absl::Status ValidateElementSpec(const std::string& dataset_id,
+                                 const std::string& encoded_spec1,
+                                 const std::string& encoded_spec2) {
   if (encoded_spec1.empty() && encoded_spec2.empty()) {
-    return OkStatus();
+    return absl::OkStatus();
   }
   TF_ASSIGN_OR_RETURN(StructuredValue element_spec1,
                       DecodeElementSpec(dataset_id, encoded_spec1));
@@ -67,12 +67,12 @@ Status ValidateElementSpec(const std::string& dataset_id,
         ". To fix this error, make sure you're registering the same dataset ",
         "with the same ID.");
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status ValidateDatasetMetadata(const std::string& dataset_id,
-                               const DataServiceMetadata& metadata1,
-                               const DataServiceMetadata& metadata2) {
+absl::Status ValidateDatasetMetadata(const std::string& dataset_id,
+                                     const DataServiceMetadata& metadata1,
+                                     const DataServiceMetadata& metadata2) {
   TF_RETURN_IF_ERROR(ValidateElementSpec(dataset_id, metadata1.element_spec(),
                                          metadata2.element_spec()));
   MessageDifferencer differ;
@@ -89,14 +89,14 @@ Status ValidateDatasetMetadata(const std::string& dataset_id,
         "for dataset ID ", dataset_id, ": ", diff, ". To fix this error, make ",
         "sure you're registering the same dataset with the same ID.");
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace
 
-Status ValidateMatchingDataset(const std::string& dataset_id,
-                               const DataServiceMetadata& metadata1,
-                               const DataServiceMetadata& metadata2) {
+absl::Status ValidateMatchingDataset(const std::string& dataset_id,
+                                     const DataServiceMetadata& metadata1,
+                                     const DataServiceMetadata& metadata2) {
   return ValidateDatasetMetadata(dataset_id, metadata1, metadata2);
 }
 

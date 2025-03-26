@@ -14,6 +14,11 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/c/experimental/ops/gen/cpp/views/arg_view.h"
 
+#include <vector>
+
+#include "tensorflow/c/experimental/ops/gen/model/arg_spec.h"
+#include "tensorflow/core/platform/types.h"
+
 namespace tensorflow {
 namespace generator {
 namespace cpp {

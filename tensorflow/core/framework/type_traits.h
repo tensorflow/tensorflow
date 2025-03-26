@@ -19,9 +19,9 @@ limitations under the License.
 #include <limits>
 #include <utility>
 
+#include "xla/tsl/framework/type_traits.h"
 #include "tensorflow/core/framework/numeric_types.h"
 #include "tensorflow/core/platform/types.h"
-#include "tsl/framework/type_traits.h"
 
 namespace tensorflow {
 

@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "DepthwiseConv2dNative"
   input_arg {
     name: "input"

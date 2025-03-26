@@ -22,22 +22,23 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "llvm/Support/Casting.h"
-#include "mlir/Dialect/Quant/QuantOps.h"  // from @llvm-project
-#include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
+#include "mlir/Dialect/Quant/IR/Quant.h"  // from @llvm-project
+#include "mlir/Dialect/Quant/IR/QuantTypes.h"  // from @llvm-project
 #include "mlir/Dialect/SparseTensor/IR/SparseTensor.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/register_common_dialects.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/mangling_util.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
+#include "xla/tsl/framework/numeric_types.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/ir/types/dialect.h"
-#include "tsl/framework/numeric_types.h"
 
 namespace mlir::quant::tensorflow {
 namespace {
@@ -84,19 +85,19 @@ std::unique_ptr<MLIRContext> CreateContext() {
   RegisterCommonToolingDialects(mlir_registry);
   context->appendDialectRegistry(mlir_registry);
   context->getOrLoadDialect<tf_type::TFTypeDialect>();
-  context->getOrLoadDialect<quant::QuantizationDialect>();
+  context->getOrLoadDialect<quant::QuantDialect>();
   context->getOrLoadDialect<mlir::mhlo::MhloDialect>();
   context->getOrLoadDialect<sparse_tensor::SparseTensorDialect>();
   return context;
 }
 
-TEST(GetDenseAttrFromTensorProtoAttrTest, Qint8ToUQ8) {
+TEST(GetDenseAttrFromTensorProtoAttrTest, Qint8ToUQ8Succeeds) {
   auto context = CreateContext();
   TensorType result_tensor_type = RankedTensorType::get(
       {2, 2}, quant::UniformQuantizedType::get(
                   quant::QuantizationFlags::FlagValue::Signed,
                   IntegerType::get(context.get(), 8),
-                  FloatType::getF32(context.get()), 3.0, 2, -128, 127));
+                  Float32Type::get(context.get()), 3.0, 2, -128, 127));
 
   auto dense_attr =
       GetDenseAttrFromTensorProtoAttr(GetQint8Tensor(), result_tensor_type);
@@ -109,7 +110,7 @@ TEST(GetDenseAttrFromTensorProtoAttrTest, Qint8ToUQ8) {
   EXPECT_EQ(dense_attr->getValues<int8_t>()[3], 4);
 }
 
-TEST(GetDenseAttrFromTensorProtoAttrTest, Qint8ToInt8) {
+TEST(GetDenseAttrFromTensorProtoAttrTest, Qint8ToInt8Succeeds) {
   auto context = CreateContext();
   TensorType result_tensor_type =
       RankedTensorType::get({2, 2}, IntegerType::get(context.get(), 8));
@@ -125,13 +126,13 @@ TEST(GetDenseAttrFromTensorProtoAttrTest, Qint8ToInt8) {
   EXPECT_EQ(dense_attr->getValues<int8_t>()[3], 4);
 }
 
-TEST(GetDenseAttrFromTensorProtoAttrTest, Qint32ToUQ32) {
+TEST(GetDenseAttrFromTensorProtoAttrTest, Qint32ToUQ32Succeeds) {
   auto context = CreateContext();
   TensorType result_tensor_type = RankedTensorType::get(
       {2, 2},
       quant::UniformQuantizedType::get(
           quant::QuantizationFlags::FlagValue::Signed,
-          IntegerType::get(context.get(), 32), FloatType::getF32(context.get()),
+          IntegerType::get(context.get(), 32), Float32Type::get(context.get()),
           3.0, 2, -2147483648, 2147483647));
 
   auto dense_attr =
@@ -145,7 +146,7 @@ TEST(GetDenseAttrFromTensorProtoAttrTest, Qint32ToUQ32) {
   EXPECT_EQ(dense_attr->getValues<int32_t>()[3], 4);
 }
 
-TEST(GetDenseAttrFromTensorProtoAttrTest, Qint32ToInt32) {
+TEST(GetDenseAttrFromTensorProtoAttrTest, Qint32ToInt32Succeeds) {
   auto context = CreateContext();
   TensorType result_tensor_type =
       RankedTensorType::get({2, 2}, IntegerType::get(context.get(), 32));
@@ -161,7 +162,7 @@ TEST(GetDenseAttrFromTensorProtoAttrTest, Qint32ToInt32) {
   EXPECT_EQ(dense_attr->getValues<int32_t>()[3], 4);
 }
 
-TEST(GetDenseAttrFromTensorProtoAttrTest, UnsupportedQint16) {
+TEST(GetDenseAttrFromTensorProtoAttrTest, UnsupportedQint16Fails) {
   auto context = CreateContext();
   TensorType result_tensor_type =
       RankedTensorType::get({2, 2}, IntegerType::get(context.get(), 16));
@@ -170,7 +171,7 @@ TEST(GetDenseAttrFromTensorProtoAttrTest, UnsupportedQint16) {
       GetDenseAttrFromTensorProtoAttr(GetQint16Tensor(), result_tensor_type)));
 }
 
-TEST(IsTFQintTypeTest, IsTFQintType) {
+TEST(IsTFQintTypeTest, ValidTFQintTypeSucceeds) {
   auto context = CreateContext();
 
   EXPECT_TRUE(IsTFQintType(TF::Qint8Type::get(context.get())));
@@ -183,36 +184,36 @@ TEST(IsTFQintTypeTest, IsTFQintType) {
   EXPECT_FALSE(IsTFQintType(TF::Float8E5M2RefType::get(context.get())));
 }
 
-TEST(GetIntTypeFromTFQintTest, GetIntTypeFromTFQint) {
+TEST(GetIntTypeFromTFQintTest, ChecksIntTypesFromTFQint) {
   auto context = CreateContext();
 
   auto type = GetIntTypeFromTFQint(TF::Qint8Type::get(context.get()));
   EXPECT_TRUE(llvm::isa<IntegerType>(type));
-  EXPECT_EQ(type.dyn_cast<IntegerType>().getWidth(), 8);
-  EXPECT_FALSE(type.dyn_cast<IntegerType>().isSigned());
-  EXPECT_FALSE(type.dyn_cast<IntegerType>().isUnsigned());
+  EXPECT_EQ(mlir::dyn_cast<IntegerType>(type).getWidth(), 8);
+  EXPECT_FALSE(mlir::dyn_cast<IntegerType>(type).isSigned());
+  EXPECT_FALSE(mlir::dyn_cast<IntegerType>(type).isUnsigned());
 
   type = GetIntTypeFromTFQint(TF::Qint16Type::get(context.get()));
   EXPECT_TRUE(llvm::isa<IntegerType>(type));
-  EXPECT_EQ(type.dyn_cast<IntegerType>().getWidth(), 16);
-  EXPECT_FALSE(type.dyn_cast<IntegerType>().isSigned());
-  EXPECT_FALSE(type.dyn_cast<IntegerType>().isUnsigned());
+  EXPECT_EQ(mlir::dyn_cast<IntegerType>(type).getWidth(), 16);
+  EXPECT_FALSE(mlir::dyn_cast<IntegerType>(type).isSigned());
+  EXPECT_FALSE(mlir::dyn_cast<IntegerType>(type).isUnsigned());
 
   type = GetIntTypeFromTFQint(TF::Qint32Type::get(context.get()));
   EXPECT_TRUE(llvm::isa<IntegerType>(type));
-  EXPECT_EQ(type.dyn_cast<IntegerType>().getWidth(), 32);
-  EXPECT_FALSE(type.dyn_cast<IntegerType>().isSigned());
-  EXPECT_FALSE(type.dyn_cast<IntegerType>().isUnsigned());
+  EXPECT_EQ(mlir::dyn_cast<IntegerType>(type).getWidth(), 32);
+  EXPECT_FALSE(mlir::dyn_cast<IntegerType>(type).isSigned());
+  EXPECT_FALSE(mlir::dyn_cast<IntegerType>(type).isUnsigned());
 
   type = GetIntTypeFromTFQint(TF::Quint8Type::get(context.get()));
   EXPECT_TRUE(llvm::isa<IntegerType>(type));
-  EXPECT_EQ(type.dyn_cast<IntegerType>().getWidth(), 8);
-  EXPECT_TRUE(type.dyn_cast<IntegerType>().isUnsigned());
+  EXPECT_EQ(mlir::dyn_cast<IntegerType>(type).getWidth(), 8);
+  EXPECT_TRUE(mlir::dyn_cast<IntegerType>(type).isUnsigned());
 
   type = GetIntTypeFromTFQint(TF::Quint16Type::get(context.get()));
   EXPECT_TRUE(llvm::isa<IntegerType>(type));
-  EXPECT_EQ(type.dyn_cast<IntegerType>().getWidth(), 16);
-  EXPECT_TRUE(type.dyn_cast<IntegerType>().isUnsigned());
+  EXPECT_EQ(mlir::dyn_cast<IntegerType>(type).getWidth(), 16);
+  EXPECT_TRUE(mlir::dyn_cast<IntegerType>(type).isUnsigned());
 
   // Non qint types are returned as is.
   EXPECT_EQ(GetIntTypeFromTFQint(IntegerType::get(type.getContext(), 32)),

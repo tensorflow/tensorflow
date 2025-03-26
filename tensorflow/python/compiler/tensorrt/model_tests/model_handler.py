@@ -80,10 +80,12 @@ def _generate_random_tensor_ops(shape: Sequence[int], dtype: tf_dtypes.DType,
           shape=shape,
           dtype=random_dtype,
           # Limits maximum value as 255 to simulate pixel values, avoid
-          # generating large numbers and casuing overflows.
-          maxval=min(dtype_max, random_dtype.max, 255)),
+          # generating large numbers and causing overflows.
+          maxval=min(dtype_max, random_dtype.max, 255),
+      ),
       dtype=dtype,
-      name=name)
+      name=name,
+  )
 
 
 def _generate_random_tensor_v1(tensor_info: meta_graph_pb2.TensorInfo,
@@ -555,7 +557,7 @@ class TrtModelHandlerV2(_TrtModelHandlerBase, ModelHandlerV2):
 
 
 class _ModelHandlerManagerBase(metaclass=abc.ABCMeta):
-  """Manages a series of ModelHandlers for aggregrated testing/benchmarking."""
+  """Manages a series of ModelHandlers for aggregated testing/benchmarking."""
 
   def __init__(
       self, name: str, model_config: ModelConfig,
@@ -655,14 +657,14 @@ class _ModelHandlerManagerBase(metaclass=abc.ABCMeta):
 
 
 class ModelHandlerManagerV1(_ModelHandlerManagerBase):
-  """Manages a series of ModelHandlers for aggregrated testing/benchmarking in TF1."""
+  """Manages a series of ModelHandlers for aggregated testing/benchmarking in TF1."""
 
   model_handler_cls = ModelHandlerV1
   trt_model_handler_cls = TrtModelHandlerV1
 
 
 class ModelHandlerManagerV2(_ModelHandlerManagerBase):
-  """Manages a series of ModelHandlers for aggregrated testing/benchmarking in TF2."""
+  """Manages a series of ModelHandlers for aggregated testing/benchmarking in TF2."""
 
   model_handler_cls = ModelHandlerV2
   trt_model_handler_cls = TrtModelHandlerV2

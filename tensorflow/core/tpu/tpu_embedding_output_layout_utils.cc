@@ -18,6 +18,7 @@ limitations under the License.
 #include <cstdint>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/protobuf/tpu/tpu_embedding_configuration.pb.h"
@@ -25,13 +26,14 @@ limitations under the License.
 namespace tensorflow {
 namespace tpu {
 
-Status ComputeOutputTensorShapes(
+absl::Status ComputeOutputTensorShapes(
     const tensorflow::tpu::TPUEmbeddingConfiguration& config,
     std::vector<TensorShapeProto>* shapes) {
-  const int64_t core_count_per_replica =
-      config.spmd_sharding().enabled()
-          ? config.spmd_sharding().num_cores_per_replica()
-          : 1;
+  int64_t core_count_per_replica = 1;
+  if (config.spmd_sharding().enabled() &&
+      !config.spmd_sharding().use_manual_partitioning()) {
+    core_count_per_replica = config.spmd_sharding().num_cores_per_replica();
+  }
   if (config.feature_descriptor_size() > 0) {
     for (const TPUEmbeddingConfiguration::FeatureDescriptor& feature :
          config.feature_descriptor()) {
@@ -59,7 +61,7 @@ Status ComputeOutputTensorShapes(
       shapes->push_back(shape);
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace tpu

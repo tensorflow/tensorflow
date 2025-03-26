@@ -160,7 +160,7 @@ REGISTER_OP("Examples>AsyncSleep")
 Pause for `delay` seconds (which need not be an integer).
 
 This is an asynchronous (non-blocking) version of sleep. It is intended to
-be an example of how to implements ops that do I/O or that block on other ops.
+be an example of how to implement ops that do I/O or that block on other ops.
 
 delay: tf.Tensor which is a scalar of type float.
 
@@ -234,7 +234,7 @@ class AsyncSleepOp : public AsyncOpKernel {
   // implementation of ComputeAsync() must not block on the execution of another
   // OpKernel. `done` may be called by the current thread, or by another thread.
   // `context` is guaranteed to stay alive until the `done` callback starts.
-  // For example, use OP_REQUIRES_ASYNC which takes the `done` paramater
+  // For example, use OP_REQUIRES_ASYNC which takes the `done` parameter
   // as an input and calls `done` for the case of exiting early with an error
   // (instead of OP_REQUIRES).
   //
@@ -273,7 +273,7 @@ class AsyncSleepOp : public AsyncOpKernel {
     thread_pool->Schedule([this, output_tensor, when, done] {
       this->sleeper(output_tensor, when, done);
     });
-    // Note that `done` is normaly called by sleeper(), it is not normally
+    // Note that `done` is normally called by sleeper(), it is not normally
     // called by this function.
   }
 
@@ -340,7 +340,7 @@ For normal operations, `done` is called by the sleeper method, not by
     thread_pool->Schedule([this, output_tensor, when, done] {
       this->sleeper(output_tensor, when, done);
     });
-    // Note that `done` is normaly called by sleeper(), it is not normally
+    // Note that `done` is normally called by sleeper(), it is not normally
     // called by this function.
   }
 ```
@@ -426,7 +426,7 @@ def AsyncSleep(delay, name=None):
   any time spent being blocked by another thread in `delay`. If it is blocked
   for a fraction of the time specified by `delay`, it only calls `sleep`
   (actually `usleep`) only for the remainder. If it is blocked for the full
-  time specified by `delay` or more, it returns without explictly calling
+  time specified by `delay` or more, it returns without explicitly calling
   `sleep`.
 
   Args:

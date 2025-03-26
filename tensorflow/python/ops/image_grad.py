@@ -66,6 +66,9 @@ def _ResizeBilinearGrad(op: ops.Operation, grad):
   return [grad0, None]
 
 
+ops.NotDifferentiable("ResizeBilinearGrad")
+
+
 @ops.RegisterGradient("ScaleAndTranslate")
 def _ScaleAndTranslateGrad(op, grad):
   """The derivatives for ScaleAndTranslate transformation op.

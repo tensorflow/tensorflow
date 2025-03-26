@@ -1,6 +1,6 @@
 load("//tensorflow:strict.default.bzl", "py_strict_library")
-load("//tensorflow:tensorflow.default.bzl", "cuda_py_strict_test")
 load("//tensorflow:tensorflow.bzl", "py_test")  # @unused
+load("//tensorflow:tensorflow.default.bzl", "cuda_py_strict_test")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -11,12 +11,8 @@ package(
 py_strict_library(
     name = "test_util",
     srcs = ["test_util.py"],
-    srcs_version = "PY3",
     deps = [
         "//tensorflow/core:protos_all_py",
-        "//tensorflow/lite/python:interpreter",
-        "//tensorflow/lite/python:lite",
-        "//tensorflow/python/eager:def_function",
         "//tensorflow/python/grappler:tf_optimizer",
         "//tensorflow/python/training:saver",
     ],
@@ -25,7 +21,6 @@ py_strict_library(
 cuda_py_strict_test(
     name = "dct_ops_test",
     srcs = ["dct_ops_test.py"],
-    python_version = "PY3",
     shard_count = 16,
     deps = [
         "//tensorflow/python/eager:def_function",
@@ -43,8 +38,7 @@ cuda_py_strict_test(
     name = "fft_ops_test",
     size = "medium",
     srcs = ["fft_ops_test.py"],
-    python_version = "PY3",
-    shard_count = 1,
+    shard_count = 2,
     tags = [
         "optonly",
     ],
@@ -69,7 +63,6 @@ cuda_py_strict_test(
 cuda_py_strict_test(
     name = "mel_ops_test",
     srcs = ["mel_ops_test.py"],
-    python_version = "PY3",
     deps = [
         ":test_util",
         "//tensorflow/python/eager:context",
@@ -89,7 +82,6 @@ cuda_py_strict_test(
 cuda_py_strict_test(
     name = "mfcc_ops_test",
     srcs = ["mfcc_ops_test.py"],
-    python_version = "PY3",
     deps = [
         "//tensorflow/python/eager:context",
         "//tensorflow/python/framework:for_generated_wrappers",
@@ -105,7 +97,6 @@ cuda_py_strict_test(
 cuda_py_strict_test(
     name = "reconstruction_ops_test",
     srcs = ["reconstruction_ops_test.py"],
-    python_version = "PY3",
     deps = [
         "//tensorflow/python/eager:context",
         "//tensorflow/python/framework:constant_op",
@@ -126,7 +117,6 @@ cuda_py_strict_test(
 cuda_py_strict_test(
     name = "shape_ops_test",
     srcs = ["shape_ops_test.py"],
-    python_version = "PY3",
     deps = [
         ":test_util",
         "//tensorflow/python/eager:context",
@@ -145,7 +135,6 @@ cuda_py_strict_test(
     name = "spectral_ops_test",
     size = "large",
     srcs = ["spectral_ops_test.py"],
-    python_version = "PY3",
     tags = [
         "no_rocm",
         "nomac",
@@ -169,7 +158,6 @@ cuda_py_strict_test(
 cuda_py_strict_test(
     name = "window_ops_test",
     srcs = ["window_ops_test.py"],
-    python_version = "PY3",
     shard_count = 4,
     tags = [
         "no_rocm",

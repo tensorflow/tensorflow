@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,49 +13,53 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <gtest/gtest.h>
+#include "absl/strings/string_view.h"
+#include "xla/error_spec.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tests/test_macros.h"
-#include "xla/tests/test_utils.h"
 
 namespace xla {
 namespace {
 
 class TopkTest : public HloTestBase {};
 
-XLA_TEST_F(TopkTest, SimpleTopK) {
-  absl::string_view hlo = R"(
-HloModule topk
+XLA_TEST_F(TopkTest, LargestTopK) {
+  absl::string_view hlo_text_module = R"(
+    HloModule topk
 
-compare {
-  p.0.lhs = bf16[] parameter(0)
-  p.0.rhs = bf16[] parameter(1)
-  ROOT lt = pred[] compare(p.0.lhs, p.0.rhs), direction=GT
+    ENTRY TopK {
+      x = bf16[10,10] parameter(0)
+      ROOT topk = (bf16[10,2], s32[10,2]) topk(x), k=2, largest=true
+    }
+  )";
+  EXPECT_TRUE(RunAndCompare(hlo_text_module, ErrorSpec{1e-5, 1e-5}));
 }
 
-ENTRY TopK {
-  x = bf16[10,10] parameter(0)
-  ROOT topk = (bf16[10,2], s32[10,2]) topk(x), k=2, to_apply=compare
-}
-)";
-  EXPECT_TRUE(RunAndCompare(hlo, ErrorSpec{1e-5, 1e-5}));
+XLA_TEST_F(TopkTest, SmallestTopK) {
+  absl::string_view hlo_text_module = R"(
+    HloModule topk
+
+    ENTRY TopK {
+      x = bf16[10,10] parameter(0)
+      ROOT topk = (bf16[10,2], s32[10,2]) topk(x), k=2, largest=false
+    }
+  )";
+  EXPECT_TRUE(RunAndCompare(hlo_text_module, ErrorSpec{1e-5, 1e-5}));
 }
 
-XLA_TEST_F(TopkTest, SimpleTopKReverseDirection) {
-  absl::string_view hlo = R"(
-HloModule topk
+XLA_TEST_F(TopkTest, TopKOfTranspose) {
+  // Regression test for b/362565176
+  absl::string_view hlo_text_module = R"(
+    HloModule topk
 
-compare {
-  p.0.lhs = bf16[] parameter(0)
-  p.0.rhs = bf16[] parameter(1)
-  ROOT lt = pred[] compare(p.0.lhs, p.0.rhs), direction=LT
-}
-
-ENTRY TopK {
-  x = bf16[10,10] parameter(0)
-  ROOT topk = (bf16[10,2], s32[10,2]) topk(x), k=2, to_apply=compare
-}
-)";
-  EXPECT_TRUE(RunAndCompare(hlo, ErrorSpec{1e-5, 1e-5}));
+    ENTRY main {
+      %Arg_0.1 = f32[2048,6]{1,0} parameter(0)
+      t = f32[6,2048]{0,1} transpose(%Arg_0.1), dimensions={1,0}
+      ROOT %topk.2 = (f32[6,8]{1,0}, s32[6,8]{1,0}) topk(t), k=8, largest=true
+    }
+  )";
+  EXPECT_TRUE(RunAndCompare(hlo_text_module, ErrorSpec{1e-5, 1e-5}));
 }
 
 }  // namespace

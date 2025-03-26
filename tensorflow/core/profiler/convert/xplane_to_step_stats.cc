@@ -21,18 +21,20 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/strings/strip.h"
+#include "xla/tsl/profiler/utils/math_utils.h"
+#include "xla/tsl/profiler/utils/tf_xplane_visitor.h"
 #include "tensorflow/core/framework/step_stats.pb.h"
-#include "tensorflow/core/platform/types.h"
-#include "tensorflow/core/profiler/protobuf/xplane.pb.h"
 #include "tensorflow/core/profiler/utils/gpu_event_stats.h"
-#include "tensorflow/core/profiler/utils/math_utils.h"
 #include "tensorflow/core/profiler/utils/xplane_schema.h"
 #include "tensorflow/core/profiler/utils/xplane_utils.h"
 #include "tensorflow/core/profiler/utils/xplane_visitor.h"
-#include "tsl/profiler/utils/tf_xplane_visitor.h"
+#include "tsl/profiler/protobuf/xplane.pb.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -62,11 +64,15 @@ GpuEventType ParseMemcpyName(absl::string_view memcpy_name) {
   return GpuEventType::kUnknown;
 }
 
-void SetNodeTimes(const XEventVisitor& event, NodeExecStats* ns) {
-  ns->set_all_start_micros(NanoToMicro(event.TimestampNs()));
+void SetNodeTimes(uint64_t start_time, const XEventVisitor& event,
+                  NodeExecStats* ns) {
+  // Since XPlane uses relative times, we need to convert event.TimestampNs() to
+  // absolute times
+  ns->set_all_start_micros(
+      tsl::profiler::NanoToMicro(start_time + event.TimestampNs()));
   ns->set_op_start_rel_micros(0);
-  ns->set_op_end_rel_micros(NanoToMicro(event.DurationNs()));
-  ns->set_all_end_rel_micros(NanoToMicro(event.DurationNs()));
+  ns->set_op_end_rel_micros(tsl::profiler::NanoToMicro(event.DurationNs()));
+  ns->set_all_end_rel_micros(tsl::profiler::NanoToMicro(event.DurationNs()));
 }
 
 }  // namespace
@@ -78,6 +84,13 @@ void ConvertGpuXSpaceToStepStats(const XSpace& xspace, StepStats* step_stats) {
     LOG(WARNING) << "GPU trace was not collected.";
     return;
   }
+
+  const XPlane* env_plane = FindPlaneWithName(xspace, kTaskEnvPlaneName);
+  XPlaneVisitor env_plane_visitor(env_plane, {}, {FindTaskEnvStatType});
+  uint64_t start_time =
+      env_plane_visitor.GetStat(TaskEnvStatType::kEnvProfileStartTime)
+          ->IntOrUintValue();
+
   const XPlane* host_plane = FindPlaneWithName(xspace, kHostThreadsPlaneName);
   DCHECK_NE(host_plane, nullptr);
 
@@ -101,7 +114,7 @@ void ConvertGpuXSpaceToStepStats(const XSpace& xspace, StepStats* step_stats) {
                 absl::StrCat("/device:GPU:", device_ordinal, "/sync"));
           }
           NodeExecStats* ns = sync_dev_stats->add_node_stats();
-          SetNodeTimes(event, ns);
+          SetNodeTimes(start_time, event, ns);
           ns->set_node_name(std::string(event.Name()));
           ns->set_timeline_label(absl::StrCat("ThreadId ", thread_id));
           ns->set_thread_id(thread_id);
@@ -128,7 +141,7 @@ void ConvertGpuXSpaceToStepStats(const XSpace& xspace, StepStats* step_stats) {
         GpuEventStats stats(&event);
 
         auto ns = std::make_unique<NodeExecStats>();
-        SetNodeTimes(event, ns.get());
+        SetNodeTimes(start_time, event, ns.get());
 
         // Get launch information if available.
         if (stats.correlation_id.has_value()) {
@@ -136,7 +149,7 @@ void ConvertGpuXSpaceToStepStats(const XSpace& xspace, StepStats* step_stats) {
           if (it != correlation_info_map.end()) {
             const CorrelationInfo& correlation_info = it->second;
             ns->set_scheduled_micros(
-                NanoToMicro(correlation_info.enqueue_time_ns));
+                tsl::profiler::NanoToMicro(correlation_info.enqueue_time_ns));
             ns->set_thread_id(correlation_info.thread_id);
           }
         }

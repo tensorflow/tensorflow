@@ -31,10 +31,10 @@ class ConvertSelectBase : public OpConverterBase<ConvertSelectBase> {
  public:
   explicit ConvertSelectBase(const OpConverterParams* params,
                              const std::string& layer_name)
-      : layer_name_(layer_name),
-        OpConverterBase<ConvertSelectBase>(
+      : OpConverterBase<ConvertSelectBase>(
             params,
-            {DataType::DT_FLOAT, DataType::DT_HALF, DataType::DT_INT32}) {}
+            {DataType::DT_FLOAT, DataType::DT_HALF, DataType::DT_INT32}),
+        layer_name_(layer_name) {}
 
   static constexpr std::array<InputArgSpec, 3> InputSpec() {
     return std::array<InputArgSpec, 3>{

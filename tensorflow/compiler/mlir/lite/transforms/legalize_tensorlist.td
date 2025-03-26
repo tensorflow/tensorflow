@@ -67,3 +67,7 @@ def LegalizeTensorListEmpty : Pat<(TF_EmptyTensorListOp:$tf_op $element_shape, $
 def LegalizeTensorListElementShape : Pat<(TF_TensorListElementShapeOp $input),
     (TFL_CustomOp (Size1InputRange $input),
     (CreateStringAttr<"\"TensorListElementShape\"">), (EmptyCustomOptions))>;
+
+def LegalizeTensorListLength : Pat<(TF_TensorListLengthOp $input),
+    (TFL_CustomOp (Size1InputRange $input),
+    (CreateStringAttr<"\"TensorListLength\"">), (EmptyCustomOptions))>;

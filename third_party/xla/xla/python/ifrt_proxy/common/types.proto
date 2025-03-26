@@ -1,0 +1,52 @@
+// Copyright 2023 The OpenXLA Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+syntax = "proto3";
+
+package xla.ifrt.proto;
+
+// Mirrors `xla::PjRtValueType`, which is used in IFRT to model
+// polymorphic-typed values, e.g., `xla::ifrt::Executable::CostAnalysisValue`.
+//
+// Deprecated since Version 4. Use `xla::ifrt::AttributeMapProto::Value`
+// instead.
+message Variant {
+  message Int64List {
+    repeated sfixed64 values = 1;
+  }
+
+  oneof value {
+    bytes string_value = 1;
+    sfixed64 int64_value = 2;
+    Int64List int64_list = 3;
+    float float_value = 4;
+  }
+}
+
+enum ArrayCopySemantics {
+  ARRAY_COPY_SEMANTICS_UNSPECIFIED = 0;
+  ARRAY_COPY_SEMANTICS_ALWAYS_COPY = 1;
+  ARRAY_COPY_SEMANTICS_REUSE_INPUT = 2;
+  ARRAY_COPY_SEMANTICS_DONATE_INPUT = 3;
+}
+
+enum SingleDeviceShardSemantics {
+  SINGLE_DEVICE_SHARD_SEMANTICS_UNSPECIFIED = 0;
+  SINGLE_DEVICE_SHARD_SEMANTICS_ADDRESSABLE_SHARDS = 1;
+  SINGLE_DEVICE_SHARD_SEMANTICS_ALL_SHARDS = 2;
+}
+
+message ByteStrides {
+  repeated int64 strides = 1;
+}

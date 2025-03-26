@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,14 +15,16 @@ limitations under the License.
 
 #include <vector>
 
+#include "xla/hlo/experimental/auto_sharding/auto_sharding.pb.h"
 #include "xla/hlo/experimental/auto_sharding/auto_sharding_solver.h"
+#include "xla/hlo/experimental/auto_sharding/auto_sharding_strategy.h"
 #include "ortools/linear_solver/linear_solver.h"
-
-using MPSolver = operations_research::MPSolver;
-using MPVariable = operations_research::MPVariable;
 
 namespace xla {
 namespace spmd {
+
+using ::operations_research::MPSolver;
+using ::operations_research::MPVariable;
 
 MPVariable* CreateMakespanVar(const AutoShardingSolverRequest& request,
                               const std::vector<std::vector<MPVariable*>>& e,
@@ -31,9 +33,26 @@ MPVariable* CreateMakespanVar(const AutoShardingSolverRequest& request,
 }
 
 double EvaluateMakespan(const AutoShardingSolverRequest& request,
-                        const AutoShardingSolverResult& result,
+                        const AutoShardingSolverOutput& result,
                         AutoShardingEvaluation& evaluation) {
   return 0.0;  // TODO(moffitt): Implement this.
+}
+
+StrategyShaver::StrategyShaver(const AutoShardingSolverRequest& request)
+    : request_(request) {}
+
+NodeStrategies StrategyShaver::FindShavedStrategies() const {
+  return {};  // TODO(moffitt): Implement this.
+}
+
+void SolverRequestCallback(const AutoShardingSolverRequest& request) {
+  // TODO(mofftt): Implement this.
+}
+
+AutoShardingSolverOutput SolveBrkga(const AutoShardingSolverRequest& request) {
+  // TODO(fahrbach): Implement this.
+  AutoShardingSolverOutput output;
+  return output;
 }
 
 }  // namespace spmd

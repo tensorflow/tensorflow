@@ -15,8 +15,17 @@ limitations under the License.
 #include "tensorflow/c/experimental/ops/gen/cpp/renderers/op_renderer.h"
 
 #include <iterator>
+#include <vector>
 
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
+#include "absl/strings/substitute.h"
 #include "tensorflow/c/experimental/ops/gen/cpp/renderers/op_implementation_renderer.h"
+#include "tensorflow/c/experimental/ops/gen/cpp/renderers/renderer.h"
+#include "tensorflow/c/experimental/ops/gen/cpp/renderers/renderer_context.h"
+#include "tensorflow/c/experimental/ops/gen/cpp/views/op_argument_view.h"
+#include "tensorflow/c/experimental/ops/gen/cpp/views/op_view.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 namespace generator {

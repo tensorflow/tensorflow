@@ -52,10 +52,7 @@ tf_cc_binary(
         "//conditions:default": [
             "//tensorflow/core:all_kernels",
         ],
-    }) + if_cuda([
-        "//tensorflow/core/runtime_fallback/runtime:runtime_fallback_gpu_alwayslink",
-        "//tensorflow/core/runtime_fallback/kernel:kernel_fallback_gpu_alwayslink",
-    ]),
+    }) + if_cuda([]),
 )
 
 cc_library(
@@ -63,7 +60,7 @@ cc_library(
     testonly = True,
     srcs = ["bef_executor_flags.cc"],
     hdrs = ["bef_executor_flags.h"],
-    visibility = ["//third_party/tf_runtime_google:__pkg__"],
+    visibility = ["//visibility:private"],
     deps = [
         "@com_google_absl//absl/flags:flag",
         "@com_google_absl//absl/strings",

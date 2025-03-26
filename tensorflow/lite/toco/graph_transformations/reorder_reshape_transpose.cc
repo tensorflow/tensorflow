@@ -12,13 +12,17 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include <iterator>
+#include <algorithm>
+#include <cstddef>
 #include <memory>
 #include <string>
-#include <unordered_set>
+#include <unordered_map>
 #include <vector>
 
+#include "absl/log/check.h"
+#include "absl/status/status.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/lite/toco/graph_transformations/graph_transformations.h"
 #include "tensorflow/lite/toco/model.h"
 #include "tensorflow/lite/toco/tooling_util.h"
@@ -101,9 +105,8 @@ std::vector<int> ComputeNewPerm(std::vector<int> input_dims,
 
 // Swaps reshape-transpose to transpose-reshape whenever possible. This is
 // possible when the reshape does not affect memory ordering.
-::tensorflow::Status ReorderReshapeTranspose::Run(Model* model,
-                                                  std::size_t op_index,
-                                                  bool* modified) {
+absl::Status ReorderReshapeTranspose::Run(Model* model, std::size_t op_index,
+                                          bool* modified) {
   *modified = false;
   auto transpose_it = model->operators.begin() + op_index;
 
@@ -111,30 +114,30 @@ std::vector<int> ComputeNewPerm(std::vector<int> input_dims,
       transpose_it->get(), OperatorType::kTranspose);
 
   if (transpose_op == nullptr) {
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
 
   if (!OperatorReady(*model, transpose_op) || transpose_op->perm.empty()) {
     // Wait for values to propagate.
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
 
   // Find the operator that produces the transpose op.
   auto reshape_it = FindOpWithOutput(*model, transpose_op->inputs[0]);
   if (reshape_it == model->operators.end()) {
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
 
   TensorFlowReshapeOperator* reshape_op =
       ConvertOperator<TensorFlowReshapeOperator*>(reshape_it->get(),
                                                   OperatorType::kReshape);
   if (reshape_op == nullptr) {
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
 
   // Ignore if the reshape is uninitialized.
   if (!OperatorReady(*model, reshape_op) || reshape_op->shape.empty()) {
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
 
   // Need to copy to keep static if permutated.
@@ -145,7 +148,7 @@ std::vector<int> ComputeNewPerm(std::vector<int> input_dims,
   // Intermediate should not be consumed by any other operators.
   if (CountOpsWithInput(*model, intermediate_name) != 1) {
     AddMessageF("Input %s used elsewhere", intermediate_name);
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
 
   // Check that the intermediate is not an output array.
@@ -154,7 +157,7 @@ std::vector<int> ComputeNewPerm(std::vector<int> input_dims,
         "Cannot reorder reshape-transpose as it would invalidate %s which is "
         "an output array.",
         intermediate_name);
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
 
   // Get the arrays.
@@ -176,7 +179,7 @@ std::vector<int> ComputeNewPerm(std::vector<int> input_dims,
   // dimensions then it can be moved between the transpose.
   if (!ReshapeIsEquivalentToTranspose(*model, reshape_op,
                                       true /*allow_extra_unary_dims*/)) {
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
 
   if (!IsDiscardableArray(*model, output_name)) {
@@ -247,7 +250,7 @@ std::vector<int> ComputeNewPerm(std::vector<int> input_dims,
   transpose_it->swap(*reshape_it);
 
   *modified = true;
-  return ::tensorflow::OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace toco

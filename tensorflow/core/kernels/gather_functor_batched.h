@@ -16,14 +16,13 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_KERNELS_GATHER_FUNCTOR_BATCHED_H_
 #define TENSORFLOW_CORE_KERNELS_GATHER_FUNCTOR_BATCHED_H_
 
+#include "absl/base/prefetch.h"
 #include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
-
 #include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/framework/type_traits.h"
 #include "tensorflow/core/framework/variant.h"
-#include "tensorflow/core/platform/prefetch.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/work_sharder.h"
 
@@ -81,9 +80,9 @@ SliceIndex HandleCopiesBatched(OpKernelContext* ctx,
         }
       }
       if (start + 1 < end) {
-        port::prefetch<port::PREFETCH_HINT_T0>(
+        absl::PrefetchToLocalCache(
             &params(b_next, o_next, indices(b_offset_next + i_next), 0));
-        port::prefetch<port::PREFETCH_HINT_T0>(&out(b_next, o_next, i_next, 0));
+        absl::PrefetchToLocalCache(&out(b_next, o_next, i_next, 0));
       }
       const Index index = internal::SubtleMustCopy(
           indices(batch_offset + indices_idx));

@@ -197,8 +197,8 @@ class AsStringOp : public OpKernel {
       case (DT_STRING): {
         const auto& input_flat = input_tensor->flat<tstring>();
         for (int i = 0; i < input_flat.size(); ++i) {
-          output_flat(i) = strings::Printf(format_.c_str(),
-                                           StringPiece(input_flat(i)).data());
+          output_flat(i) = strings::Printf(
+              format_.c_str(), absl::string_view(input_flat(i)).data());
         }
       } break;
       case (DT_VARIANT): {

@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "ScaleAndTranslateGrad"
   input_arg {
     name: "grads"

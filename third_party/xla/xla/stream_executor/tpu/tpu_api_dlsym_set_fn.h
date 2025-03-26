@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -21,8 +21,8 @@ limitations under the License.
       reinterpret_cast<decltype(FnName)*>(dlsym(library_handle, #FnName)); \
   if (!(Struct->FnName##Fn)) {                                             \
     LOG(FATAL) << #FnName " not available in this library.";               \
-    return tsl::errors::Unimplemented(#FnName                              \
-                                      " not available in this library.");  \
+    return absl::UnimplementedError(#FnName                                \
+                                    " not available in this library.");    \
   }
 
 #endif  // XLA_STREAM_EXECUTOR_TPU_TPU_API_DLSYM_SET_FN_H_

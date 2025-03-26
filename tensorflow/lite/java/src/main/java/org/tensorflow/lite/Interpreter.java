@@ -17,8 +17,6 @@ package org.tensorflow.lite;
 
 import java.io.File;
 import java.nio.ByteBuffer;
-import java.util.Arrays;
-import java.util.Map;
 import org.checkerframework.checker.nullness.qual.NonNull;
 
 /**
@@ -235,140 +233,6 @@ public final class Interpreter extends InterpreterImpl implements InterpreterApi
   private Interpreter(NativeInterpreterWrapperExperimental wrapper) {
     super(wrapper);
     wrapperExperimental = wrapper;
-    signatureKeyList = getSignatureKeys();
-  }
-
-  /**
-   * Runs model inference based on SignatureDef provided through {@code signatureKey}.
-   *
-   * <p>See {@link Interpreter#run(Object, Object)} for more details on the allowed input and output
-   * data types.
-   *
-   * <p>WARNING: This is an experimental API and subject to change.
-   *
-   * @param inputs A map from input name in the SignatureDef to an input object.
-   * @param outputs A map from output name in SignatureDef to output data. This may be empty if the
-   *     caller wishes to query the {@link Tensor} data directly after inference (e.g., if the
-   *     output shape is dynamic, or output buffer handles are used).
-   * @param signatureKey Signature key identifying the SignatureDef.
-   * @throws IllegalArgumentException if {@code inputs} is null or empty, if {@code outputs} or
-   *     {@code signatureKey} is null, or if an error occurs when running inference.
-   */
-  public void runSignature(
-      @NonNull Map<String, Object> inputs,
-      @NonNull Map<String, Object> outputs,
-      String signatureKey) {
-    checkNotClosed();
-    if (signatureKey == null && signatureKeyList.length == 1) {
-      signatureKey = signatureKeyList[0];
-    }
-    if (signatureKey == null) {
-      throw new IllegalArgumentException(
-          "Input error: SignatureDef signatureKey should not be null. null is only allowed if the"
-              + " model has a single Signature. Available Signatures: "
-              + Arrays.toString(signatureKeyList));
-    }
-    wrapper.runSignature(inputs, outputs, signatureKey);
-  }
-
-  /**
-   * Same as {@link #runSignature(Map, Map, String)} but doesn't require passing a signatureKey,
-   * assuming the model has one SignatureDef. If the model has more than one SignatureDef it will
-   * throw an exception.
-   *
-   * <p>WARNING: This is an experimental API and subject to change.
-   */
-  public void runSignature(
-      @NonNull Map<String, Object> inputs, @NonNull Map<String, Object> outputs) {
-    checkNotClosed();
-    runSignature(inputs, outputs, null);
-  }
-
-  /**
-   * Gets the Tensor associated with the provided input name and signature method name.
-   *
-   * <p>WARNING: This is an experimental API and subject to change.
-   *
-   * @param inputName Input name in the signature.
-   * @param signatureKey Signature key identifying the SignatureDef, can be null if the model has
-   *     one signature.
-   * @throws IllegalArgumentException if {@code inputName} or {@code signatureKey} is null or empty,
-   *     or invalid name provided.
-   */
-  public Tensor getInputTensorFromSignature(String inputName, String signatureKey) {
-    checkNotClosed();
-    if (signatureKey == null && signatureKeyList.length == 1) {
-      signatureKey = signatureKeyList[0];
-    }
-    if (signatureKey == null) {
-      throw new IllegalArgumentException(
-          "Input error: SignatureDef signatureKey should not be null. null is only allowed if the"
-              + " model has a single Signature. Available Signatures: "
-              + Arrays.toString(signatureKeyList));
-    }
-    return wrapper.getInputTensor(inputName, signatureKey);
-  }
-
-  /**
-   * Gets the list of SignatureDef exported method names available in the model.
-   *
-   * <p>WARNING: This is an experimental API and subject to change.
-   */
-  public String[] getSignatureKeys() {
-    checkNotClosed();
-    return wrapper.getSignatureKeys();
-  }
-
-  /**
-   * Gets the list of SignatureDefs inputs for method {@code signatureKey}.
-   *
-   * <p>WARNING: This is an experimental API and subject to change.
-   */
-  public String[] getSignatureInputs(String signatureKey) {
-    checkNotClosed();
-    return wrapper.getSignatureInputs(signatureKey);
-  }
-
-  /**
-   * Gets the list of SignatureDefs outputs for method {@code signatureKey}.
-   *
-   * <p>WARNING: This is an experimental API and subject to change.
-   */
-  public String[] getSignatureOutputs(String signatureKey) {
-    checkNotClosed();
-    return wrapper.getSignatureOutputs(signatureKey);
-  }
-
-  /**
-   * Gets the Tensor associated with the provided output name in specific signature method.
-   *
-   * <p>Note: Output tensor details (e.g., shape) may not be fully populated until after inference
-   * is executed. If you need updated details *before* running inference (e.g., after resizing an
-   * input tensor, which may invalidate output tensor shapes), use {@link #allocateTensors()} to
-   * explicitly trigger allocation and shape propagation. Note that, for graphs with output shapes
-   * that are dependent on input *values*, the output shape may not be fully determined until
-   * running inference.
-   *
-   * <p>WARNING: This is an experimental API and subject to change.
-   *
-   * @param outputName Output name in the signature.
-   * @param signatureKey Signature key identifying the SignatureDef, can be null if the model has
-   *     one signature.
-   * @throws IllegalArgumentException if {@code outputName} or {@code signatureKey} is null or
-   *     empty, or invalid name provided.
-   */
-  public Tensor getOutputTensorFromSignature(String outputName, String signatureKey) {
-    checkNotClosed();
-    if (signatureKey == null && signatureKeyList.length == 1) {
-      signatureKey = signatureKeyList[0];
-    }
-    if (signatureKey == null) {
-      throw new IllegalArgumentException(
-          "Input error: SignatureDef signatureKey should not be null. null is only allowed if the"
-              + " model has a single Signature. Available Signatures: "
-              + Arrays.toString(signatureKeyList));
-    }
-    return wrapper.getOutputTensor(outputName, signatureKey);
   }
 
   /**
@@ -404,5 +268,4 @@ public final class Interpreter extends InterpreterImpl implements InterpreterApi
   }
 
   private final NativeInterpreterWrapperExperimental wrapperExperimental;
-  private final String[] signatureKeyList;
 }

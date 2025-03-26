@@ -1,8 +1,13 @@
-load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite_combined")
 load(
     "//tensorflow/core/platform:build_config_root.bzl",
     "tf_gpu_tests_tags",
 )
+load(
+    "//tensorflow/lite:special_rules.bzl",
+    "tflite_extra_gles_deps",
+    "tflite_portable_test_suite_combined",
+)
+load("//tensorflow/lite/delegates/gpu:build_defs.bzl", "tflite_angle_heapcheck_deps")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -33,18 +38,12 @@ cc_test(
     name = "converter_test",
     size = "small",
     srcs = ["converter_test.cc"],
-    linkopts = [
-        "-lEGL",
-        "-lGLESv3",
-    ],
     tags = tf_gpu_tests_tags() + [
-        "local",
-        "nobuilder",
-        "notap",
         "tflite_not_portable_ios",
     ],
     deps = [
         ":converter",
+        ":test_util",
         "//tensorflow/lite/delegates/gpu/common:convert",
         "//tensorflow/lite/delegates/gpu/common:shape",
         "//tensorflow/lite/delegates/gpu/common:status",
@@ -52,8 +51,7 @@ cc_test(
         "//tensorflow/lite/delegates/gpu/gl:gl_buffer",
         "//tensorflow/lite/delegates/gpu/gl:portable",
         "@com_google_absl//absl/types:span",
-        "@com_google_googletest//:gtest_main",
-    ],
+    ] + tflite_angle_heapcheck_deps(),
 )
 
 cc_library(
@@ -77,15 +75,13 @@ cc_test(
     srcs = ["add_test.cc"],
     linkstatic = True,
     tags = tf_gpu_tests_tags() + [
-        "notap",
         "tflite_not_portable_ios",
     ],
     deps = [
         ":add",
         ":test_util",
         "//tensorflow/lite/delegates/gpu/common:operations",
-        "@com_google_googletest//:gtest",
-    ],
+    ] + tflite_angle_heapcheck_deps(),
 )
 
 cc_library(
@@ -107,15 +103,13 @@ cc_test(
     srcs = ["concat_test.cc"],
     linkstatic = True,
     tags = tf_gpu_tests_tags() + [
-        "notap",
         "tflite_not_portable_ios",
     ],
     deps = [
         ":concat",
         ":test_util",
         "//tensorflow/lite/delegates/gpu/common:operations",
-        "@com_google_googletest//:gtest",
-    ],
+    ] + tflite_angle_heapcheck_deps(),
 )
 
 cc_library(
@@ -142,15 +136,13 @@ cc_test(
     srcs = ["conv_test.cc"],
     linkstatic = True,
     tags = tf_gpu_tests_tags() + [
-        "notap",
         "tflite_not_portable_ios",
     ],
     deps = [
         ":conv",
         ":test_util",
         "//tensorflow/lite/delegates/gpu/common:operations",
-        "@com_google_googletest//:gtest",
-    ],
+    ] + tflite_angle_heapcheck_deps(),
 )
 
 cc_library(
@@ -186,15 +178,13 @@ cc_test(
     srcs = ["depthwise_conv_test.cc"],
     linkstatic = True,
     tags = tf_gpu_tests_tags() + [
-        "notap",
         "tflite_not_portable_ios",
     ],
     deps = [
         ":depthwise_conv",
         ":test_util",
         "//tensorflow/lite/delegates/gpu/common:operations",
-        "@com_google_googletest//:gtest",
-    ],
+    ] + tflite_angle_heapcheck_deps(),
 )
 
 cc_library(
@@ -202,10 +192,15 @@ cc_library(
     srcs = ["elementwise.cc"],
     hdrs = ["elementwise.h"],
     deps = [
+        "//tensorflow/lite/delegates/gpu/common:data_type",
         "//tensorflow/lite/delegates/gpu/common:operations",
+        "//tensorflow/lite/delegates/gpu/common:shape",
         "//tensorflow/lite/delegates/gpu/common:status",
+        "//tensorflow/lite/delegates/gpu/common:tensor",
         "//tensorflow/lite/delegates/gpu/common:types",
         "//tensorflow/lite/delegates/gpu/gl:node_shader",
+        "//tensorflow/lite/delegates/gpu/gl:object",
+        "//tensorflow/lite/delegates/gpu/gl:variable",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
     ],
@@ -216,15 +211,16 @@ cc_test(
     srcs = ["elementwise_test.cc"],
     linkstatic = True,
     tags = tf_gpu_tests_tags() + [
-        "notap",
         "tflite_not_portable_ios",
     ],
     deps = [
         ":elementwise",
         ":test_util",
+        "//tensorflow/lite/delegates/gpu/common:data_type",
         "//tensorflow/lite/delegates/gpu/common:operations",
-        "@com_google_googletest//:gtest",
-    ],
+        "//tensorflow/lite/delegates/gpu/common:shape",
+        "//tensorflow/lite/delegates/gpu/common:tensor",
+    ] + tflite_angle_heapcheck_deps(),
 )
 
 cc_library(
@@ -247,15 +243,13 @@ cc_test(
     srcs = ["fully_connected_test.cc"],
     linkstatic = True,
     tags = tf_gpu_tests_tags() + [
-        "notap",
         "tflite_not_portable_ios",
     ],
     deps = [
         ":fully_connected",
         ":test_util",
         "//tensorflow/lite/delegates/gpu/common:operations",
-        "@com_google_googletest//:gtest",
-    ],
+    ] + tflite_angle_heapcheck_deps(),
 )
 
 cc_library(
@@ -276,15 +270,13 @@ cc_test(
     srcs = ["lstm_test.cc"],
     linkstatic = True,
     tags = tf_gpu_tests_tags() + [
-        "notap",
         "tflite_not_portable_ios",
     ],
     deps = [
         ":lstm",
         ":test_util",
         "//tensorflow/lite/delegates/gpu/common:operations",
-        "@com_google_googletest//:gtest",
-    ],
+    ] + tflite_angle_heapcheck_deps(),
 )
 
 cc_library(
@@ -306,15 +298,13 @@ cc_test(
     srcs = ["max_unpooling_test.cc"],
     linkstatic = True,
     tags = tf_gpu_tests_tags() + [
-        "notap",
         "tflite_not_portable_ios",
     ],
     deps = [
         ":max_unpooling",
         ":test_util",
         "//tensorflow/lite/delegates/gpu/common:operations",
-        "@com_google_googletest//:gtest",
-    ],
+    ] + tflite_angle_heapcheck_deps(),
 )
 
 cc_library(
@@ -337,15 +327,13 @@ cc_test(
     srcs = ["mean_test.cc"],
     linkstatic = True,
     tags = tf_gpu_tests_tags() + [
-        "notap",
         "tflite_not_portable_ios",
     ],
     deps = [
         ":mean",
         ":test_util",
         "//tensorflow/lite/delegates/gpu/common:operations",
-        "@com_google_googletest//:gtest",
-    ],
+    ] + tflite_angle_heapcheck_deps(),
 )
 
 cc_library(
@@ -372,15 +360,13 @@ cc_test(
     srcs = ["mul_test.cc"],
     linkstatic = True,
     tags = tf_gpu_tests_tags() + [
-        "notap",
         "tflite_not_portable_ios",
     ],
     deps = [
         ":mul",
         ":test_util",
         "//tensorflow/lite/delegates/gpu/common:operations",
-        "@com_google_googletest//:gtest",
-    ],
+    ] + tflite_angle_heapcheck_deps(),
 )
 
 cc_library(
@@ -402,15 +388,13 @@ cc_test(
     srcs = ["pad_test.cc"],
     linkstatic = True,
     tags = tf_gpu_tests_tags() + [
-        "notap",
         "tflite_not_portable_ios",
     ],
     deps = [
         ":pad",
         ":test_util",
         "//tensorflow/lite/delegates/gpu/common:operations",
-        "@com_google_googletest//:gtest",
-    ],
+    ] + tflite_angle_heapcheck_deps(),
 )
 
 cc_library(
@@ -432,15 +416,13 @@ cc_test(
     srcs = ["pooling_test.cc"],
     linkstatic = True,
     tags = tf_gpu_tests_tags() + [
-        "notap",
         "tflite_not_portable_ios",
     ],
     deps = [
         ":pooling",
         ":test_util",
         "//tensorflow/lite/delegates/gpu/common:operations",
-        "@com_google_googletest//:gtest",
-    ],
+    ] + tflite_angle_heapcheck_deps(),
 )
 
 cc_library(
@@ -464,15 +446,13 @@ cc_test(
     srcs = ["prelu_test.cc"],
     linkstatic = True,
     tags = tf_gpu_tests_tags() + [
-        "notap",
         "tflite_not_portable_ios",
     ],
     deps = [
         ":prelu",
         ":test_util",
         "//tensorflow/lite/delegates/gpu/common:operations",
-        "@com_google_googletest//:gtest",
-    ],
+    ] + tflite_angle_heapcheck_deps(),
 )
 
 cc_library(
@@ -495,7 +475,6 @@ cc_test(
     srcs = ["quantize_and_dequantize_test.cc"],
     linkstatic = True,
     tags = tf_gpu_tests_tags() + [
-        "notap",
         "tflite_not_portable_ios",
     ],
     deps = [
@@ -503,8 +482,7 @@ cc_test(
         ":test_util",
         "//tensorflow/lite/delegates/gpu/common:operations",
         "//tensorflow/lite/kernels/internal:quantization_util",
-        "@com_google_googletest//:gtest",
-    ],
+    ] + tflite_angle_heapcheck_deps(),
 )
 
 cc_library(
@@ -526,15 +504,13 @@ cc_test(
     srcs = ["relu_test.cc"],
     linkstatic = True,
     tags = tf_gpu_tests_tags() + [
-        "notap",
         "tflite_not_portable_ios",
     ],
     deps = [
         ":relu",
         ":test_util",
         "//tensorflow/lite/delegates/gpu/common:operations",
-        "@com_google_googletest//:gtest",
-    ],
+    ] + tflite_angle_heapcheck_deps(),
 )
 
 cc_library(
@@ -555,15 +531,13 @@ cc_test(
     srcs = ["resampler_test.cc"],
     linkstatic = True,
     tags = tf_gpu_tests_tags() + [
-        "notap",
         "tflite_not_portable_ios",
     ],
     deps = [
         ":resampler",
         ":test_util",
         "//tensorflow/lite/delegates/gpu/common:operations",
-        "@com_google_googletest//:gtest",
-    ],
+    ] + tflite_angle_heapcheck_deps(),
 )
 
 cc_library(
@@ -584,15 +558,13 @@ cc_test(
     srcs = ["reshape_test.cc"],
     linkstatic = True,
     tags = tf_gpu_tests_tags() + [
-        "notap",
         "tflite_not_portable_ios",
     ],
     deps = [
         ":reshape",
         ":test_util",
         "//tensorflow/lite/delegates/gpu/common:operations",
-        "@com_google_googletest//:gtest",
-    ],
+    ] + tflite_angle_heapcheck_deps(),
 )
 
 cc_library(
@@ -613,15 +585,13 @@ cc_test(
     srcs = ["resize_test.cc"],
     linkstatic = True,
     tags = tf_gpu_tests_tags() + [
-        "notap",
         "tflite_not_portable_ios",
     ],
     deps = [
         ":resize",
         ":test_util",
         "//tensorflow/lite/delegates/gpu/common:operations",
-        "@com_google_googletest//:gtest",
-    ],
+    ] + tflite_angle_heapcheck_deps(),
 )
 
 cc_library(
@@ -643,15 +613,13 @@ cc_test(
     srcs = ["slice_test.cc"],
     linkstatic = True,
     tags = tf_gpu_tests_tags() + [
-        "notap",
         "tflite_not_portable_ios",
     ],
     deps = [
         ":slice",
         ":test_util",
         "//tensorflow/lite/delegates/gpu/common:operations",
-        "@com_google_googletest//:gtest",
-    ],
+    ] + tflite_angle_heapcheck_deps(),
 )
 
 cc_library(
@@ -675,7 +643,6 @@ cc_test(
     srcs = ["softmax_test.cc"],
     linkstatic = True,
     tags = tf_gpu_tests_tags() + [
-        "notap",
         "tflite_not_portable_ios",
     ],
     deps = [
@@ -683,8 +650,7 @@ cc_test(
         ":test_util",
         "//tensorflow/lite/delegates/gpu/common:operations",
         "//tensorflow/lite/delegates/gpu/common:shape",
-        "@com_google_googletest//:gtest",
-    ],
+    ] + tflite_angle_heapcheck_deps(),
 )
 
 cc_library(
@@ -705,15 +671,13 @@ cc_test(
     srcs = ["space_to_depth_test.cc"],
     linkstatic = True,
     tags = tf_gpu_tests_tags() + [
-        "notap",
         "tflite_not_portable_ios",
     ],
     deps = [
         ":space_to_depth",
         ":test_util",
         "//tensorflow/lite/delegates/gpu/common:operations",
-        "@com_google_googletest//:gtest",
-    ],
+    ] + tflite_angle_heapcheck_deps(),
 )
 
 cc_library(
@@ -721,10 +685,22 @@ cc_library(
     testonly = 1,
     srcs = ["test_util.cc"],
     hdrs = ["test_util.h"],
-    linkopts = [
-        "-lEGL",
-        "-lGLESv3",
-    ],
+    linkopts = select({
+        "//tensorflow:android": [
+            "-lEGL",
+            "-lGLESv3",
+            "-ldl",
+            "-lm",
+        ],
+        # copybara:uncomment_begin(google-only)
+        # "//tensorflow/lite/delegates/gpu:tflite_gpu_angle": [],
+        # "//tensorflow/lite/delegates/gpu:tflite_gpu_extra_gles_deps": [],
+        # copybara:uncomment_end
+        "//conditions:default": [
+            "-lEGL",
+            "-lGLESv3",
+        ],
+    }),
     deps = [
         "//tensorflow/lite/delegates/gpu/common:model",
         "//tensorflow/lite/delegates/gpu/common:operations",
@@ -742,8 +718,7 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_googletest//:gtest",
-        "@com_google_googletest//:gtest_main",
-    ],
+    ] + tflite_extra_gles_deps(),
 )
 
 cc_library(
@@ -764,15 +739,13 @@ cc_test(
     srcs = ["tile_test.cc"],
     linkstatic = True,
     tags = tf_gpu_tests_tags() + [
-        "notap",
         "tflite_not_portable_ios",
     ],
     deps = [
         ":test_util",
         ":tile",
         "//tensorflow/lite/delegates/gpu/common:operations",
-        "@com_google_googletest//:gtest",
-    ],
+    ] + tflite_angle_heapcheck_deps(),
 )
 
 cc_library(
@@ -797,15 +770,13 @@ cc_test(
     srcs = ["transpose_conv_test.cc"],
     linkstatic = True,
     tags = tf_gpu_tests_tags() + [
-        "notap",
         "tflite_not_portable_ios",
     ],
     deps = [
         ":test_util",
         ":transpose_conv",
         "//tensorflow/lite/delegates/gpu/common:operations",
-        "@com_google_googletest//:gtest",
-    ],
+    ] + tflite_angle_heapcheck_deps(),
 )
 
 TFLITE_GPU_BINARY_RELEASE_OPERATORS = [

@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "tensorflow/compiler/tf2xla/kernels/rng_converter_utils.h"
 
-#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "xla/xla_data.pb.h"

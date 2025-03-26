@@ -80,7 +80,7 @@ void AnonymousSeedGeneratorHandleOp::Compute(OpKernelContext* ctx) {
 
 std::string AnonymousSeedGeneratorHandleOp::name() { return kSeedGenerator; }
 
-Status AnonymousSeedGeneratorHandleOp::CreateResource(
+absl::Status AnonymousSeedGeneratorHandleOp::CreateResource(
     OpKernelContext* ctx, std::unique_ptr<FunctionLibraryDefinition> flib_def,
     std::unique_ptr<ProcessFunctionLibraryRuntime> pflr,
     FunctionLibraryRuntime* lib, SeedGeneratorManager** manager)
@@ -91,7 +91,7 @@ Status AnonymousSeedGeneratorHandleOp::CreateResource(
     *manager = new SeedGeneratorManager(new FixedSeedGenerator(*seeds_));
   }
   seeds_ = nullptr;
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 void DeleteSeedGeneratorOp::Compute(OpKernelContext* ctx) {

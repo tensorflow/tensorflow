@@ -57,7 +57,8 @@ class InterpreterWrapper {
       const std::vector<std::string>& registerers_by_name,
       const std::vector<std::function<void(uintptr_t)>>& registerers_by_func,
       std::string* error_msg, bool preserve_all_tensors,
-      bool disable_delegate_clustering);
+      bool disable_delegate_clustering, int num_threads,
+      bool default_delegate_latest_features);
 
   // SWIG caller takes ownership of pointer.
   static InterpreterWrapper* CreateWrapperCPPFromBuffer(
@@ -69,7 +70,8 @@ class InterpreterWrapper {
       const std::vector<std::string>& registerers_by_name,
       const std::vector<std::function<void(uintptr_t)>>& registerers_by_func,
       std::string* error_msg, bool preserve_all_tensors,
-      bool disable_delegate_clustering);
+      bool disable_delegate_clustering, int num_threads,
+      bool default_delegate_latest_features);
 
   ~InterpreterWrapper();
   PyObject* AllocateTensors(int subgraph_index);
@@ -81,6 +83,7 @@ class InterpreterWrapper {
                               int subgraph_index);
 
   int NumTensors(int subgraph_index) const;
+  int NumSubgraphs() const;
   std::string TensorName(int tensor_index, int subgraph_index) const;
   PyObject* TensorType(int tensor_index, int subgraph_index) const;
   PyObject* TensorSize(int tensor_index, int subgraph_index) const;
@@ -126,7 +129,8 @@ class InterpreterWrapper {
       const std::vector<std::string>& registerers_by_name,
       const std::vector<std::function<void(uintptr_t)>>& registerers_by_func,
       std::string* error_msg, bool preserve_all_tensors,
-      bool disable_delegate_clustering);
+      bool disable_delegate_clustering, int num_threads,
+      bool default_delegate_latest_features);
 
   InterpreterWrapper(std::unique_ptr<Model> model,
                      std::unique_ptr<PythonErrorReporter> error_reporter,

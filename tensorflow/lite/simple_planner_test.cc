@@ -16,16 +16,19 @@ limitations under the License.
 
 #include <algorithm>
 #include <cstdarg>
+#include <cstddef>
+#include <cstdio>
 #include <initializer_list>
 #include <memory>
 #include <utility>
 #include <vector>
 
 #include <gtest/gtest.h>
+#include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/graph_info.h"
-#include "tensorflow/lite/testing/util.h"
 
 namespace tflite {
 namespace {

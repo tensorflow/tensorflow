@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,12 +15,13 @@ limitations under the License.
 
 #include "xla/shape.h"
 
+#include <gtest/gtest.h>
 #include "absl/hash/hash_testing.h"
+#include "xla/hlo/testlib/test.h"
 #include "xla/layout.h"
 #include "xla/shape_util.h"
-#include "xla/test.h"
+#include "xla/tsl/platform/test_benchmark.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/test_benchmark.h"
 
 namespace xla {
 namespace {
@@ -41,11 +42,24 @@ class ShapeTest : public ::testing::Test {
       ShapeUtil::MakeTupleShape({tuple_, matrix_, token_});
   const Shape dynamic_matrix_ =
       ShapeUtil::MakeShape(S32, {5, 2}, {true, false});
+  const Shape unbounded_ =
+      ShapeUtil::MakeShape(F32, {Shape::kUnboundedSize, 784}, {true, false});
 };
 
+// Tests that if the dynamic_dimensions parameter empty in the Shape
+// constructor, it's treated as all dimensions are static.
+TEST(Shape, ArrayCtorTreatsEmptyDynamicDimensionsAsAllStatic) {
+  const Shape shape(F32, {1, 2, 3}, {});
+  EXPECT_TRUE(shape.is_static());
+  EXPECT_TRUE(shape.is_static_dimension(0));
+  EXPECT_TRUE(shape.is_static_dimension(1));
+  EXPECT_TRUE(shape.is_static_dimension(2));
+}
+
 TEST_F(ShapeTest, ShapeToFromProto) {
-  for (const Shape& shape : {opaque_, token_, scalar_, matrix_, matrix2_,
-                             tuple_, nested_tuple_, dynamic_matrix_}) {
+  for (const Shape& shape :
+       {opaque_, token_, scalar_, matrix_, matrix2_, tuple_, nested_tuple_,
+        dynamic_matrix_, unbounded_}) {
     Shape shape_copy(shape.ToProto());
     EXPECT_TRUE(ShapeUtil::Equal(shape, shape_copy))
         << shape << " != " << shape_copy;
@@ -83,6 +97,15 @@ TEST_F(ShapeTest, DynamicShapeToString) {
 
   array_shape.set_dynamic_dimension(2, false);
   EXPECT_EQ("f32[<=23,44,55]", array_shape.ToString());
+
+  EXPECT_EQ("f32[?,784]", unbounded_.ToString());
+}
+
+TEST_F(ShapeTest, DeleteDimensions) {
+  Shape shape = ShapeUtil::MakeShapeWithDenseLayout(F32, {5, 3, 2, 7, 9},
+                                                    {2, 0, 1, 4, 3});
+  shape.DeleteDimensions({1, 2, 3});
+  EXPECT_EQ(shape, ShapeUtil::MakeShapeWithDenseLayout(F32, {5, 9}, {0, 1}));
 }
 
 TEST_F(ShapeTest, EqualityTest) {
@@ -103,6 +126,26 @@ TEST_F(ShapeTest, EqualityTest) {
             ShapeUtil::MakeShapeWithDenseLayout(F32, {23, 44}, {1, 0}));
 }
 
+TEST_F(ShapeTest, AreAllLeavesIntegers) {
+  EXPECT_FALSE(opaque_.AreAllLeavesIntegers());
+  EXPECT_FALSE(token_.AreAllLeavesIntegers());
+  EXPECT_TRUE(matrix_.AreAllLeavesIntegers());
+  EXPECT_FALSE(tuple_.AreAllLeavesIntegers());
+  EXPECT_FALSE(nested_tuple_.AreAllLeavesIntegers());
+
+  Shape u32_shape = ShapeUtil::MakeShape(U32, {1});
+  EXPECT_TRUE(u32_shape.AreAllLeavesIntegers());
+
+  Shape f32_shape = ShapeUtil::MakeShape(F32, {1});
+  EXPECT_FALSE(f32_shape.AreAllLeavesIntegers());
+
+  Shape integer_tuple = ShapeUtil::MakeTupleShape({u32_shape, u32_shape});
+  EXPECT_TRUE(integer_tuple.AreAllLeavesIntegers());
+
+  Shape mixed_type_tuple = ShapeUtil::MakeTupleShape({u32_shape, f32_shape});
+  EXPECT_FALSE(mixed_type_tuple.AreAllLeavesIntegers());
+}
+
 TEST_F(ShapeTest, IsStatic) {
   EXPECT_TRUE(opaque_.is_static());
   EXPECT_TRUE(token_.is_static());
@@ -120,6 +163,28 @@ TEST_F(ShapeTest, IsStatic) {
   ShapeUtil::GetMutableSubshape(&dynamic_tuple, {2})
       ->set_dynamic_dimension(1, true);
   EXPECT_FALSE(dynamic_tuple.is_static());
+
+  EXPECT_FALSE(unbounded_.is_static());
+}
+
+TEST_F(ShapeTest, IsDynamic) {
+  EXPECT_FALSE(matrix_.is_dynamic());
+  EXPECT_FALSE(matrix_.is_unbounded_dynamic());
+
+  EXPECT_TRUE(dynamic_matrix_.is_dynamic());
+  EXPECT_FALSE(dynamic_matrix_.is_unbounded_dynamic());
+
+  EXPECT_TRUE(unbounded_.is_dynamic());
+  EXPECT_TRUE(unbounded_.is_unbounded_dynamic());
+
+  Shape unbounded_tuple = tuple_;
+  EXPECT_FALSE(unbounded_tuple.is_unbounded_dynamic());
+  ShapeUtil::GetMutableSubshape(&unbounded_tuple, {2})
+      ->set_dynamic_dimension(1, true);
+  EXPECT_FALSE(unbounded_tuple.is_unbounded_dynamic());
+  ShapeUtil::GetMutableSubshape(&unbounded_tuple, {2})
+      ->set_dimensions(1, Shape::kUnboundedSize);
+  EXPECT_TRUE(unbounded_tuple.is_unbounded_dynamic());
 }
 
 TEST_F(ShapeTest, IsDynamicDimension) {
@@ -133,6 +198,18 @@ TEST_F(ShapeTest, IsDynamicDimension) {
   ShapeUtil::GetMutableSubshape(&dynamic_tuple, {2})
       ->set_dynamic_dimension(1, true);
   EXPECT_FALSE(dynamic_tuple.is_static());
+
+  EXPECT_TRUE(unbounded_.is_dynamic_dimension(0));
+  EXPECT_FALSE(unbounded_.is_dynamic_dimension(1));
+}
+
+TEST_F(ShapeTest, IsStaticDimension) {
+  Shape dynamic_matrix = matrix_;
+  dynamic_matrix.set_dynamic_dimension(1, true);
+  EXPECT_TRUE(dynamic_matrix.is_static_dimension(0));
+  EXPECT_FALSE(dynamic_matrix.is_static_dimension(1));
+  EXPECT_FALSE(unbounded_.is_static_dimension(0));
+  EXPECT_TRUE(unbounded_.is_static_dimension(1));
 }
 
 TEST_F(ShapeTest, ProgramShapeToFromProto) {
@@ -206,6 +283,15 @@ TEST_F(ShapeTest, ProgramShapeToString) {
       prog.ToString());
 }
 
+TEST_F(ShapeTest, IgnoreSplitsComparison) {
+  Shape shape = ShapeUtil::MakeShapeWithDenseLayout(F32, {256, 256}, {1, 0});
+  Shape other_shape = shape;
+  SplitConfig split_config(/*dimension=*/0, {128});
+  other_shape.mutable_layout()->add_split_configs(split_config);
+
+  EXPECT_TRUE(Shape::Equal().IgnoreSplitConfigInLayout()(shape, other_shape));
+}
+
 TEST_F(ShapeTest, SupportsAbslHash) {
   EXPECT_TRUE(absl::VerifyTypeImplementsAbslHashCorrectly(
       {opaque_, token_, scalar_, scalar_with_tile_, matrix_, matrix2_, tuple_,
@@ -222,13 +308,13 @@ void BM_ShapeCopy(::testing::benchmark::State& state) {
     }
     case 1: {
       // f32[1,2,2]{2,1,0}
-      shape = Shape(F32, {1, 2, 2}, {false, false, false}, {});
+      shape = Shape(F32, {1, 2, 2}, {false, false, false});
       *shape.mutable_layout() = Layout({2, 1, 0});
       break;
     }
     case 2: {
       // f32[1,2,2]{2,1,0:T(2,128)}
-      shape = Shape(F32, {1, 2, 2}, {false, false, false}, {});
+      shape = Shape(F32, {1, 2, 2}, {false, false, false});
       *shape.mutable_layout() = Layout({2, 1, 0}, {}, {}, {}, {Tile({2, 128})});
       break;
     }

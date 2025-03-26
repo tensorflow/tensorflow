@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -17,31 +17,19 @@ limitations under the License.
 
 #include <memory>
 
-#include "xla/map_util.h"
+#include "absl/log/check.h"
+#include "absl/status/status.h"
+#include "xla/literal.h"
+#include "xla/shape.h"
+#include "xla/shape_tree.h"
 #include "xla/shape_util.h"
+#include "xla/stream_executor/stream_executor.h"
 #include "tsl/platform/logging.h"
-
-#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-#include "xla/service/gpu/xla_executor_state.h"
-#include "xla/stream_executor/gpu/gpu_executor.h"
-#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 namespace xla {
 namespace gpu {
 
-OutfeedManager *GetOrCreateOutfeedManager(se::StreamExecutor *executor) {
-#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-  stream_executor::gpu::GpuExecutor *gpu_executor =
-      stream_executor::gpu::ExtractGpuExecutor(executor);
-  auto *xla_state =
-      gpu_executor->getOrCreateXLAState<GpuExecutorXLAState>(executor);
-  return xla_state->getOrCreateOutfeedManager(executor);
-#else   // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-  return nullptr;
-#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-}
-
-Status OutfeedManager::TransferLiteralFromOutfeed(
+absl::Status OutfeedManager::TransferLiteralFromOutfeed(
     se::StreamExecutor* executor, MutableBorrowingLiteral literal) {
   ShapeTree<std::unique_ptr<gpu::OutfeedBuffer>> outfeed_buffers(
       &literal.shape());
@@ -57,9 +45,7 @@ Status OutfeedManager::TransferLiteralFromOutfeed(
 
   // Give the tree of buffers to the outfeed manager. The device will fill it
   // while we're waiting for it below.
-  gpu::OutfeedManager* outfeed_manager =
-      gpu::GetOrCreateOutfeedManager(executor);
-  outfeed_manager->EnqueueDestination(&outfeed_buffers);
+  EnqueueDestination(&outfeed_buffers);
 
   // Now wait till all the buffers are written.
   for (auto& leaf : outfeed_buffers.leaves()) {
@@ -68,7 +54,7 @@ Status OutfeedManager::TransferLiteralFromOutfeed(
     leaf.second->WaitUntilAvailable();
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace gpu

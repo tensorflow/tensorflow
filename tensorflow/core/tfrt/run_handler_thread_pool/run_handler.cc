@@ -15,12 +15,19 @@ limitations under the License.
 
 #include <algorithm>
 #include <atomic>
+#include <cfenv>
+#include <chrono>
+#include <cstddef>
+#include <cstdint>
 #include <functional>
 #include <list>
 #include <memory>
 #include <string>
 #include <utility>
 #include <vector>
+
+#include "absl/log/check.h"
+#include "absl/log/log.h"
 #define EIGEN_USE_THREADS
 
 #include <optional>
@@ -32,13 +39,13 @@ limitations under the License.
 #include "tensorflow/core/platform/denormal.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/setround.h"
-#include "tensorflow/core/platform/tracing.h"
 #include "tensorflow/core/profiler/lib/connected_traceme.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/profiler/lib/traceme_encode.h"
 #include "tensorflow/core/tfrt/run_handler_thread_pool/run_handler.h"
 #include "tensorflow/core/tfrt/run_handler_thread_pool/run_handler_util.h"
 #include "tensorflow/core/tfrt/runtime/work_queue_interface.h"
+#include "tsl/platform/tracing.h"
 #include "tfrt/host_context/async_dispatch.h"  // from @tf_runtime
 
 namespace tfrt {
@@ -72,10 +79,10 @@ RunHandlerEnvironment::EnvThread* RunHandlerEnvironment::CreateThread(
 
 RunHandlerEnvironment::Task RunHandlerEnvironment::CreateTask(TaskFunction f) {
   uint64_t id = 0;
-  if (tensorflow::tracing::EventCollector::IsEnabled()) {
-    id = tensorflow::tracing::GetUniqueArg();
-    tensorflow::tracing::RecordEvent(
-        tensorflow::tracing::EventCategory::kScheduleClosure, id);
+  if (tsl::tracing::EventCollector::IsEnabled()) {
+    id = tsl::tracing::GetUniqueArg();
+    tsl::tracing::RecordEvent(tsl::tracing::EventCategory::kScheduleClosure,
+                              id);
   }
   return Task{
       std::unique_ptr<TaskImpl>(new TaskImpl{
@@ -88,8 +95,8 @@ RunHandlerEnvironment::Task RunHandlerEnvironment::CreateTask(TaskFunction f) {
 
 void RunHandlerEnvironment::ExecuteTask(const Task& t) {
   tensorflow::WithContext wc(t.f->context);
-  tensorflow::tracing::ScopedRegion region(
-      tensorflow::tracing::EventCategory::kRunClosure, t.f->trace_id);
+  tsl::tracing::ScopedRegion region(tsl::tracing::EventCategory::kRunClosure,
+                                    t.f->trace_id);
   t.f->f();
 }
 
@@ -159,12 +166,12 @@ ThreadWorkSource::~ThreadWorkSource() {
 Task ThreadWorkSource::EnqueueTask(Task t, bool is_blocking,
                                    bool enable_wake_up) {
   uint64_t id = t.f->trace_id;
-  tensorflow::profiler::TraceMe activity(
+  tsl::profiler::TraceMe activity(
       [id, is_blocking] {
-        return tensorflow::profiler::TraceMeEncode(
+        return tsl::profiler::TraceMeEncode(
             "Enqueue", {{"id", id}, {"is_blocking", is_blocking}});
       },
-      tensorflow::profiler::TraceMeLevel::kInfo);
+      tsl::profiler::TraceMeLevel::kInfo);
   tensorflow::mutex* mu = nullptr;
   Queue* task_queue = nullptr;
   thread_local int64_t closure_counter = 0;
@@ -586,12 +593,12 @@ void RunHandlerThreadPool::WorkerLoop(int thread_id,
       tws->DecrementInflightTaskCount(task_from_blocking_queue);
       tws->DecrementPendingTaskCount();
     } else {
-      tensorflow::profiler::TraceMe activity(
+      tsl::profiler::TraceMe activity(
           [thread_id] {
-            return tensorflow::profiler::TraceMeEncode(
-                "Sleeping", {{"thread_id", thread_id}});
+            return tsl::profiler::TraceMeEncode("Sleeping",
+                                                {{"thread_id", thread_id}});
           },
-          tensorflow::profiler::TraceMeLevel::kInfo);
+          tsl::profiler::TraceMeLevel::kInfo);
       if (VLOG_IS_ON(4)) {
         for (int i = 0; i < thread_work_sources->size(); ++i) {
           VLOG(4) << "source id " << i << " "
@@ -789,12 +796,12 @@ class RunHandlerPool::Impl {
     {
       tensorflow::mutex_lock l(mu_);
       if (!has_free_handler()) {
-        tensorflow::profiler::TraceMe activity(
+        tsl::profiler::TraceMe activity(
             [step_id] {
-              return tensorflow::profiler::TraceMeEncode(
-                  "WaitingForHandler", {{"step_id", step_id}});
+              return tsl::profiler::TraceMeEncode("WaitingForHandler",
+                                                  {{"step_id", step_id}});
             },
-            tensorflow::profiler::TraceMeLevel::kInfo);
+            tsl::profiler::TraceMeLevel::kInfo);
         if (timeout_in_ms == 0) {
           mu_.Await(tensorflow::Condition(this, &Impl::has_free_handler));
         } else if (!mu_.AwaitWithDeadline(

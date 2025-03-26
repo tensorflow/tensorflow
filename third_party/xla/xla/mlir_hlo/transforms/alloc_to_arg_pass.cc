@@ -1,4 +1,4 @@
-/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -75,7 +75,7 @@ void AllocToArgPass::runOnOperation() {
     // Case: shape-expanded alloc.
     if (auto expandOp =
             llvm::dyn_cast_or_null<memref::ExpandShapeOp>(resultDef)) {
-      Operation *expandDef = expandOp.getOperand().getDefiningOp();
+      Operation *expandDef = expandOp.getOperand(0).getDefiningOp();
       if (auto allocOp = llvm::dyn_cast_or_null<memref::AllocOp>(expandDef)) {
         resultsToErase.set(i);
         auto attrs = funcOp.getResultAttrDict(i);

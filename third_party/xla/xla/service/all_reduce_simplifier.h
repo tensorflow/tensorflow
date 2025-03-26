@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2019 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,9 +16,11 @@ limitations under the License.
 #ifndef XLA_SERVICE_ALL_REDUCE_SIMPLIFIER_H_
 #define XLA_SERVICE_ALL_REDUCE_SIMPLIFIER_H_
 
+#include "absl/container/flat_hash_set.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_module.h"
-#include "xla/service/hlo_pass_interface.h"
-#include "xla/statusor.h"
+#include "xla/hlo/pass/hlo_pass_interface.h"
 
 namespace xla {
 
@@ -28,20 +30,15 @@ namespace xla {
 // replaced by a multiply with the replica count.
 class AllReduceSimplifier : public HloModulePass {
  public:
-  explicit AllReduceSimplifier(int64_t replica_count)
-      : replica_count_(replica_count) {}
-  ~AllReduceSimplifier() override = default;
-  absl::string_view name() const override { return "all-reduce-simp"; }
+  static constexpr absl::string_view kName = "all-reduce-simplifier";
+  absl::string_view name() const override { return kName; }
 
   // Run all-reduce simplification on the given computation. Returns whether the
   // computation was changed.
   using HloPassInterface::Run;
-  StatusOr<bool> Run(
+  absl::StatusOr<bool> Run(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
-
- private:
-  int64_t replica_count_;
 };
 
 }  // namespace xla

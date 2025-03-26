@@ -13,26 +13,29 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <cmath>
 #include <tuple>
 
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/compiler/tf2xla/kernels/random_ops_util.h"
 #include "tensorflow/compiler/tf2xla/lib/broadcast.h"
 #include "tensorflow/compiler/tf2xla/lib/random.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
-#include "tensorflow/compiler/tf2xla/type_util.h"
-#include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
-#include "xla/client/lib/constants.h"
-#include "xla/client/lib/math.h"
-#include "xla/client/lib/prng.h"
-#include "xla/client/xla_builder.h"
+#include "xla/hlo/builder/lib/constants.h"
+#include "xla/hlo/builder/lib/prng.h"
+#include "xla/hlo/builder/xla_builder.h"
+#include "xla/primitive_util.h"
+#include "xla/shape.h"
+#include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
-#include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/op_requires.h"
 #include "tensorflow/core/framework/tensor_shape.h"
-#include "tensorflow/core/lib/math/math_util.h"
+#include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 
@@ -183,7 +186,8 @@ class StatelessRandomUniformOp : public XlaOpKernel {
   DataType dtype_;
   string device_type_string_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(StatelessRandomUniformOp);
+  StatelessRandomUniformOp(const StatelessRandomUniformOp&) = delete;
+  void operator=(const StatelessRandomUniformOp&) = delete;
 };
 
 // TODO(phawkins): generalize to non-float, non-int32 seed types.
@@ -238,7 +242,8 @@ class StatelessRandomUniformIntOp : public XlaOpKernel {
   DataType dtype_;
   string device_type_string_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(StatelessRandomUniformIntOp);
+  StatelessRandomUniformIntOp(const StatelessRandomUniformIntOp&) = delete;
+  void operator=(const StatelessRandomUniformIntOp&) = delete;
 };
 
 // TODO(phawkins): generalize to non-int32 seed types.
@@ -280,7 +285,9 @@ class StatelessRandomUniformFullIntOp : public XlaOpKernel {
   DataType dtype_;
   string device_type_string_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(StatelessRandomUniformFullIntOp);
+  StatelessRandomUniformFullIntOp(const StatelessRandomUniformFullIntOp&) =
+      delete;
+  void operator=(const StatelessRandomUniformFullIntOp&) = delete;
 };
 
 // TODO(phawkins): generalize to non-int32 seed types.
@@ -331,7 +338,8 @@ class StatelessRandomNormalOp : public XlaOpKernel {
   DataType dtype_;
   string device_type_string_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(StatelessRandomNormalOp);
+  StatelessRandomNormalOp(const StatelessRandomNormalOp&) = delete;
+  void operator=(const StatelessRandomNormalOp&) = delete;
 };
 
 // TODO(phawkins): generalize to non-float, non-int32 seed types.
@@ -378,7 +386,8 @@ class StatelessTruncatedNormalOp : public XlaOpKernel {
   DataType dtype_;
   string device_type_string_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(StatelessTruncatedNormalOp);
+  StatelessTruncatedNormalOp(const StatelessTruncatedNormalOp&) = delete;
+  void operator=(const StatelessTruncatedNormalOp&) = delete;
 };
 
 REGISTER_XLA_OP(Name("StatelessTruncatedNormal")
@@ -442,7 +451,9 @@ class StatelessParameterizedTruncatedNormalOp : public XlaOpKernel {
   DataType dtype_;
   string device_type_string_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(StatelessParameterizedTruncatedNormalOp);
+  StatelessParameterizedTruncatedNormalOp(
+      const StatelessParameterizedTruncatedNormalOp&) = delete;
+  void operator=(const StatelessParameterizedTruncatedNormalOp&) = delete;
 };
 
 REGISTER_XLA_OP(Name("StatelessParameterizedTruncatedNormal")

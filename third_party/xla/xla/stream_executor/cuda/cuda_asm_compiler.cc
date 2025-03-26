@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,145 +13,84 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "xla/stream_executor/cuda/cuda_asm_compiler.h"
+
+#include <cassert>
 #include <cstdint>
 #include <string>
+#include <tuple>
+#include <utility>
 #include <vector>
 
-#include "absl/base/attributes.h"
-#include "absl/base/call_once.h"
-#include "absl/cleanup/cleanup.h"
-#include "absl/strings/str_format.h"
-#include "xla/status_macros.h"
-#include "xla/stream_executor/gpu/asm_compiler.h"
-#include "xla/stream_executor/gpu/gpu_diagnostics.h"
-#include "xla/stream_executor/gpu/gpu_driver.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/subprocess.h"
+#include "absl/base/const_init.h"
+#include "absl/base/optimization.h"
+#include "absl/base/thread_annotations.h"
+#include "absl/container/flat_hash_map.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/status/statusor.h"
+#include "absl/synchronization/mutex.h"
+#include "absl/types/span.h"
+#include "xla/stream_executor/cuda/cubin_or_ptx_image.h"
+#include "xla/stream_executor/cuda/ptx_compiler.h"
+#include "xla/stream_executor/cuda/ptx_compiler_support.h"
+#include "xla/stream_executor/cuda/subprocess_compilation.h"
+#include "xla/stream_executor/device_description.h"
+#include "xla/stream_executor/gpu/gpu_asm_opts.h"
+#include "tsl/platform/logging.h"  // IWYU pragma: keep
 
 namespace stream_executor {
 
-#define RETURN_IF_CUDA_ERROR(expr)                                            \
-  do {                                                                        \
-    CUresult _status = expr;                                                  \
-    if (!ABSL_PREDICT_TRUE(_status == CUDA_SUCCESS)) {                        \
-      const char* error_string;                                               \
-      cuGetErrorString(_status, &error_string);                               \
-      std::ostringstream oss;                                                 \
-      oss << error_string << "\nin " << __FILE__ << "(" << __LINE__ << "): '" \
-          << #expr << "'";                                                    \
-      return tsl::Status(absl::StatusCode::kUnknown, oss.str().c_str());      \
-    }                                                                         \
-  } while (false)
-
-tsl::StatusOr<std::vector<uint8_t>> LinkUsingNvlink(
-    absl::string_view preferred_cuda_dir, gpu::GpuContext* context,
-    std::vector<CubinOrPTXImage> images) {
-  {
-    static absl::once_flag log_once;
-    absl::call_once(log_once,
-                    [] { LOG(INFO) << "Using nvlink for parallel linking"; });
-  }
-  const std::string bin_path =
-      FindCudaExecutable("nvlink", std::string(preferred_cuda_dir));
-
-  if (images.empty()) {
-    return std::vector<uint8>();
-  }
-
-  auto env = tsl::Env::Default();
-  std::vector<std::string> temp_files;
-  absl::Cleanup cleaners = [&] {
-    for (auto& f : temp_files) {
-      TF_CHECK_OK(tsl::Env::Default()->DeleteFile(f));
-    }
-  };
-  for (int i = 0; i < images.size(); i++) {
-    temp_files.emplace_back();
-    TF_RET_CHECK(env->LocalTempFilename(&temp_files.back()));
-    temp_files.back() += ".cubin";
-    TF_RETURN_IF_ERROR(tsl::WriteStringToFile(
-        env, temp_files.back(),
-        absl::string_view(reinterpret_cast<const char*>(images[i].bytes.data()),
-                          images[i].bytes.size())));
-  }
-  std::string output_path;
-  TF_RET_CHECK(env->LocalTempFilename(&output_path));
-  absl::Cleanup output_cleaner = [&] {
-    // CUBIN file may never be created, so the failure to delete it should not
-    // produce TF error.
-    tsl::Env::Default()->DeleteFile(output_path).IgnoreError();
-  };
-  int cc_major;
-  int cc_minor;
-  {
-    TF_ASSIGN_OR_RETURN(auto cu_device,
-                        gpu::GpuDriver::DeviceFromContext(context));
-    TF_RETURN_IF_ERROR(
-        gpu::GpuDriver::GetComputeCapability(&cc_major, &cc_minor, cu_device));
-  }
-  std::vector<std::string> args;
-  args.push_back(bin_path);
-  args.push_back(absl::StrCat("-arch=sm_", cc_major, cc_minor));
-  for (int i = 0; i < images.size(); i++) {
-    args.push_back(temp_files[i]);
-  }
-  args.push_back("-o");
-  args.push_back(output_path);
-
-  tsl::SubProcess process;
-  process.SetProgram(bin_path, args);
-  process.SetChannelAction(tsl::CHAN_STDERR, tsl::ACTION_PIPE);
-
-  TF_RET_CHECK(process.Start());
-  std::string stderr_output;
-  int exit_status = process.Communicate(
-      /*stdin_input=*/nullptr, /*stdout_output=*/nullptr, &stderr_output);
-
-  if (exit_status != 0) {
-    return tsl::errors::Internal(
-        absl::StrFormat("nvlink exited with non-zero error code %d, output: %s",
-                        exit_status, stderr_output));
-  }
-
-  if (!stderr_output.empty()) {
-    if (absl::StrContains(stderr_output, "warning")) {
-      LOG(INFO) << stderr_output;
-    } else {
-      VLOG(2) << stderr_output;
-    }
-  }
-
-  // Read in the result of compilation and return it as a byte vector.
-  std::string cubin;
-  TF_RETURN_IF_ERROR(
-      tsl::ReadFileToString(tsl::Env::Default(), output_path, &cubin));
-  std::vector<uint8_t> cubin_vector(cubin.begin(), cubin.end());
-  return cubin_vector;
+absl::StatusOr<std::vector<uint8_t>> BundleGpuAsm(
+    std::vector<CubinOrPTXImage> images, GpuAsmOpts options) {
+  return BundleGpuAsmUsingFatbin(images, options);
 }
 
-tsl::StatusOr<std::vector<uint8_t>> LinkGpuAsm(
-    gpu::GpuContext* context, std::vector<CubinOrPTXImage> images) {
-  gpu::ScopedActivateContext activation(context);
-
-  CUlinkState link_state;
-  RETURN_IF_CUDA_ERROR(cuLinkCreate(0, nullptr, nullptr, &link_state));
-  for (auto& image : images) {
-    auto status = cuLinkAddData(link_state, CU_JIT_INPUT_CUBIN,
-                                static_cast<void*>(image.bytes.data()),
-                                image.bytes.size(), "", 0, nullptr, nullptr);
-    if (status != CUDA_SUCCESS) {
-      LOG(ERROR) << "cuLinkAddData fails. This is usually caused by stale "
-                    "driver version.";
-    }
-    RETURN_IF_CUDA_ERROR(status);
+absl::StatusOr<std::vector<uint8_t>> CompileGpuAsm(
+    const CudaComputeCapability& cc, const std::string& ptx, GpuAsmOpts options,
+    bool cancel_if_reg_spill) {
+  if (IsLibNvPtxCompilerSupported()) {
+    VLOG(3) << "Compiling GPU ASM with libnvptxcompiler";
+    return CompileGpuAsmUsingLibNvPtxCompiler(cc, ptx, options,
+                                              cancel_if_reg_spill);
   }
-  void* cubin_out;
-  size_t cubin_size;
-  RETURN_IF_CUDA_ERROR(cuLinkComplete(link_state, &cubin_out, &cubin_size));
-  std::vector<uint8_t> cubin(static_cast<uint8_t*>(cubin_out),
-                             static_cast<uint8_t*>(cubin_out) + cubin_size);
-  RETURN_IF_CUDA_ERROR(cuLinkDestroy(link_state));
-  return std::move(cubin);
+
+  VLOG(3) << "Compiling GPU ASM with PTXAS. Libnvptxcompiler compilation "
+             "not supported.";
+  return CompileGpuAsmUsingPtxAs(cc, ptx, options, cancel_if_reg_spill);
 }
+
+absl::StatusOr<absl::Span<const uint8_t>> CompileGpuAsmOrGetCached(
+    const CudaComputeCapability& cc, const std::string& ptx,
+    GpuAsmOpts compilation_options) {
+  using PtxCacheKey = std::tuple<CudaComputeCapability, std::string,
+                                 GpuAsmOpts::PtxOptionsTuple>;
+  using PtxCompilerResult = absl::StatusOr<std::vector<uint8_t>>;
+  static absl::Mutex ptx_cache_mutex(absl::kConstInit);
+  static auto& ptx_cache ABSL_GUARDED_BY(ptx_cache_mutex) =
+      *new absl::flat_hash_map<PtxCacheKey, PtxCompilerResult>();
+
+  absl::MutexLock lock(&ptx_cache_mutex);
+  PtxCacheKey cache_key{cc, ptx, compilation_options.ToTuple()};
+  auto it = ptx_cache.find(cache_key);
+  if (it == ptx_cache.end()) {
+    PtxCompilerResult compiled = CompileGpuAsm(cc, ptx, compilation_options);
+    it = ptx_cache.emplace(cache_key, std::move(compiled)).first;
+  }
+
+  CHECK(it != ptx_cache.end());
+
+  // Failed compilation attempts are cached.
+  // Use separate status check and ValueOrDie invocation on ptx_cache
+  // entry to avoid value moving introduced by TF_ASSIGN_OR_RETURN.
+
+  if (ABSL_PREDICT_FALSE(!it->second.ok())) {
+    return it->second.status();
+  }
+
+  const std::vector<uint8_t>& compiled = it->second.value();
+  return absl::MakeSpan(compiled);
+}
+
 
 }  // namespace stream_executor

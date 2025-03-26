@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <memory>
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #define EIGEN_USE_GPU
@@ -28,14 +29,6 @@ limitations under the License.
 #include "tensorflow/core/lib/core/bits.h"
 #include "tensorflow/core/util/gpu_kernel_helper.h"
 #include "tensorflow/core/util/gpu_solvers.h"  // For ScratchSpace
-
-#if GOOGLE_CUDA
-#include "xla/stream_executor/cuda/cuda_activation.h"
-using stream_executor::cuda::ScopedActivateExecutorContext;
-#elif TENSORFLOW_USE_ROCM
-#include "xla/stream_executor/rocm/rocm_activation.h"
-using stream_executor::rocm::ScopedActivateExecutorContext;
-#endif
 
 namespace tensorflow {
 
@@ -291,47 +284,50 @@ struct SparseSplitFunctor<GPUDevice, T> {
 
     // Copy the slice ends to the host so that we can compute the output shapes.
     ScratchSpace<Index> slice_ends_host(context, num_split, /*on_host=*/true);
-    OP_REQUIRES_ASYNC(
+    OP_REQUIRES_OK_ASYNC(
         context,
-        stream
-            ->ThenMemcpy(
-                slice_ends_host.mutable_data(),
-                se::DeviceMemoryBase(slice_ends_ptr,
-                                     num_split * sizeof(*slice_ends_ptr)),
-                num_split * sizeof(*slice_ends_ptr))
-            .ok(),
-        errors::Internal("Failed to copy slice_ends to host"), done);
+        stream->Memcpy(slice_ends_host.mutable_data(),
+                       se::DeviceMemoryBase(
+                           slice_ends_ptr, num_split * sizeof(*slice_ends_ptr)),
+                       num_split * sizeof(*slice_ends_ptr)),
+        done);
 
     auto async_finish_computation =
         [this, context, input_nnz, num_split, rank, axis, dense_shape,
          slice_indexer, slice_ends_host, input_indices, input_indices_ptr,
          input_values, input_values_ptr, sort_permutation, sort_permutation_ptr,
          slice_ends, slice_ends_ptr, done]() -> void {
-      // Ensure that within the callback, the proper GPU settings are
-      // configured.
-      auto stream = context->op_device_context()->stream();
-      ScopedActivateExecutorContext scoped_activation{stream->parent()};
+      {
+        // Ensure that within the callback, the proper GPU settings are
+        // configured.
+        auto stream = context->op_device_context()->stream();
+        std::unique_ptr<se::ActivateContext> scoped_activation =
+            stream->parent()->Activate();
 
-      GpuDeviceArrayOnHost<Index*> output_indices(context, num_split);
-      GpuDeviceArrayOnHost<T*> output_values(context, num_split);
-      OP_REQUIRES_OK_ASYNC(
-          context,
-          AllocateOutputs(context, num_split, rank, axis, dense_shape,
-                          slice_indexer, slice_ends_host.data(),
-                          &output_indices, &output_values),
-          done);
+        GpuDeviceArrayOnHost<Index*> output_indices(context, num_split);
+        GpuDeviceArrayOnHost<T*> output_values(context, num_split);
+        OP_REQUIRES_OK_ASYNC(
+            context,
+            AllocateOutputs(context, num_split, rank, axis, dense_shape,
+                            slice_indexer, slice_ends_host.data(),
+                            &output_indices, &output_values),
+            done);
 
-      const GPUDevice& device = context->eigen_device<GPUDevice>();
+        const GPUDevice& device = context->eigen_device<GPUDevice>();
 
-      // Finally, scatter (and offset) input indices and values to the outputs.
-      OP_REQUIRES_OK_ASYNC(
-          context,
-          LaunchSparseSplitScatterKernel(
-              device, input_nnz, rank, axis, slice_indexer,
-              sort_permutation_ptr, slice_ends_ptr, input_indices_ptr,
-              input_values_ptr, dense_shape.dim_size(axis),
-              output_indices.data(), output_values.data()),
-          done);
+        // Finally, scatter (and offset) input indices and values to the
+        // outputs.
+        OP_REQUIRES_OK_ASYNC(
+            context,
+            LaunchSparseSplitScatterKernel(
+                device, input_nnz, rank, axis, slice_indexer,
+                sort_permutation_ptr, slice_ends_ptr, input_indices_ptr,
+                input_values_ptr, dense_shape.dim_size(axis),
+                output_indices.data(), output_values.data()),
+            done);
+      }  // Release ActivateContext to prevent deadlock when done
+         // inlines another Op kernel, which may assume the original cuda
+         // Context.
 
       done();
     };

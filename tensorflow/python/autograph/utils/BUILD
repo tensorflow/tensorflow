@@ -10,7 +10,6 @@ py_strict_library(
     srcs = [
         "type_registry.py",
     ],
-    srcs_version = "PY3",
     visibility = ["//tensorflow:__subpackages__"],
 )
 
@@ -97,10 +96,9 @@ py_strict_library(
 py_strict_test(
     name = "context_managers_test",
     srcs = ["context_managers_test.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
     deps = [
         ":context_managers",
+        #internal proto upb dep
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/ops:tensor_array_ops",
@@ -111,10 +109,9 @@ py_strict_test(
 py_strict_test(
     name = "misc_test",
     srcs = ["misc_test.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
     deps = [
         ":misc",
+        #internal proto upb dep
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:test_lib",
@@ -126,10 +123,9 @@ py_strict_test(
 py_strict_test(
     name = "tensor_list_test",
     srcs = ["tensor_list_test.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
     deps = [
         ":tensor_list",
+        #internal proto upb dep
         "//tensorflow/python/eager:context",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
@@ -144,10 +140,9 @@ py_strict_test(
 py_strict_test(
     name = "tensors_test",
     srcs = ["tensors_test.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
     deps = [
         ":tensors",
+        #internal proto upb dep
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/ops:list_ops",

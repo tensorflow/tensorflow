@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -19,8 +19,8 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "xla/hlo/testlib/test.h"
 #include "xla/service/platform_util.h"
-#include "xla/test.h"
 #include "xla/tests/hlo_test_base.h"
 #include "tsl/platform/path.h"
 #include "tsl/platform/test.h"

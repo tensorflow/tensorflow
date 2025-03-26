@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,26 +15,33 @@ limitations under the License.
 
 #include "xla/hlo/ir/hlo_computation.h"
 
+#include <cstdint>
 #include <memory>
-#include <set>
 #include <string>
-#include <string_view>
 #include <vector>
 
 #include <gmock/gmock.h>
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/status/status.h"
+#include "xla/comparison_util.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
+#include "xla/hlo/ir/hlo_clone_context.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/utils/hlo_matchers.h"
-#include "xla/literal.h"
+#include "xla/literal_util.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/service/pattern_matcher_gmock.h"
+#include "xla/shape.h"
+#include "xla/shape_tree.h"
 #include "xla/shape_util.h"
 #include "xla/test.h"
 #include "xla/test_helpers.h"
 #include "xla/tests/hlo_test_base.h"
+#include "xla/tsl/lib/core/status_test_util.h"
+#include "tsl/platform/status.h"
 #include "tsl/platform/statusor.h"
 
 namespace xla {
@@ -48,7 +55,7 @@ using ::testing::UnorderedElementsAre;
 
 class HloComputationTest : public HloTestBase {
  protected:
-  HloComputationTest() {}
+  HloComputationTest() = default;
 
   // Create a computation which takes a scalar and returns its negation.
   std::unique_ptr<HloComputation> CreateNegateComputation() {
@@ -251,17 +258,17 @@ TEST_F(HloComputationTest, VisitWithMultipleRoots) {
     explicit TestVisitor(HloComputation* computation)
         : computation_(computation) {}
 
-    Status DefaultAction(HloInstruction* hlo_instruction) override {
+    absl::Status DefaultAction(HloInstruction* hlo_instruction) override {
       EXPECT_FALSE(visited_set_.contains(hlo_instruction));
       visited_set_.insert(hlo_instruction);
       last_visited_ = hlo_instruction;
-      return OkStatus();
+      return absl::OkStatus();
     }
 
-    Status FinishVisit(HloInstruction* root) override {
+    absl::Status FinishVisit(HloInstruction* root) override {
       EXPECT_EQ(computation_->root_instruction(), root);
       ++finish_visit_calls_;
-      return OkStatus();
+      return absl::OkStatus();
     }
 
     HloComputation* computation_;
@@ -452,7 +459,7 @@ TEST_F(HloComputationTest, CycleDetection) {
   EXPECT_EQ(3, instructions.size());
 
   FunctionVisitor visitor(
-      [](HloInstruction* instruction) { return OkStatus(); });
+      [](HloInstruction* instruction) { return absl::OkStatus(); });
   auto visit_status = computation->Accept(&visitor);
   ASSERT_FALSE(visit_status.ok());
   ASSERT_THAT(visit_status.message(),
@@ -485,6 +492,80 @@ TEST_F(HloComputationTest, RemoveInstructionWithDuplicateOperand) {
   EXPECT_THAT(computation->root_instruction(),
               GmockMatch(m::Negate(m::Op().Is(constant))));
   EXPECT_EQ(negate, computation->root_instruction());
+}
+
+TEST_F(HloComputationTest, RemoveSeveralUnusedFusionParameters) {
+  const char* const kHloModule = R"(
+  HloModule test
+
+  f {
+    p0 = f32[] parameter(0)
+    p1 = f32[] parameter(1)
+    p2 = f32[] parameter(2)
+    add = f32[] add(p0, p2)
+    ROOT neg = f32[] negate(p1)
+  }
+
+  ENTRY main {
+    param0 = f32[] parameter(0)
+    param1 = f32[] parameter(1)
+    param2 = f32[] parameter(2)
+    ROOT res = f32[] fusion(param0, param1, param2), kind=kLoop, calls=f
+  }
+  )";
+  // Unverified because we don't allow a fusion with dead instructions. But we
+  // can run into this case if we have a multi-output fusion with an unused
+  // tuple output and then remove the tuple output.
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnUnverifiedModule(kHloModule));
+  auto root = module->entry_computation()->root_instruction();
+  auto dead_add = FindInstruction(module.get(), "add");
+  ASSERT_IS_OK(root->fused_instructions_computation()
+                   ->RemoveInstructionAndUnusedOperands(dead_add));
+  root = module->entry_computation()->root_instruction();
+  // We don't remove unused parameters in entry computations, so we still expect
+  // the parameter number of the remaining fusion operand to be 1.
+  EXPECT_THAT(root, GmockMatch(m::Fusion(m::Parameter(1))));
+  EXPECT_THAT(root->fused_expression_root(),
+              GmockMatch(m::Negate(m::Parameter(0))));
+}
+
+TEST_F(HloComputationTest, ReplaceParameter) {
+  const char* const kHloModule = R"(
+    HloModule ModuleWithWhile
+
+    body {
+      p_body = (f32[2], s32[]) parameter(0)
+      val = f32[2] get-tuple-element(p_body), index=0
+      const = s32[] constant(-1)
+      ROOT root = (f32[2], s32[]) tuple(val, const)
+    }
+
+    condition {
+      p_cond = (f32[2], s32[]) parameter(0)
+      gte = s32[] get-tuple-element(p_cond), index=1
+      const = s32[] constant(42)
+      ROOT result = pred[] compare(gte, const), direction=EQ
+    }
+
+    ENTRY entry {
+      param.1 = s32[] parameter(0)
+      const = f32[2] constant({0,1})
+      while_init = (f32[2], s32[]) tuple(const, param.1)
+      while = (f32[2], s32[]) while(while_init), condition=condition, body=body
+      ROOT out = s32[] get-tuple-element(while), index=1
+    })";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnUnverifiedModule(kHloModule));
+  HloComputation* body = module->GetComputationWithName("body");
+
+  Shape new_param_shape = ShapeUtil::MakeTupleShape(
+      {ShapeUtil::MakeShape(S32, {2}), ShapeUtil::MakeShape(S32, {})});
+  body->ReplaceParameter(
+      0, HloInstruction::CreateParameter(0, new_param_shape, "new_p_body"));
+
+  EXPECT_TRUE(ShapeUtil::Equal(body->parameter_instruction(0)->shape(),
+                               new_param_shape));
 }
 
 TEST_F(HloComputationTest, CloneWithControlDependency) {
@@ -624,8 +705,8 @@ TEST_F(HloComputationTest, Stringification) {
       R"(%TransposeDot (x: f32[5,10], y: f32[20,10]) -> f32[5,20] {
   %x = f32[5,10]{1,0} parameter(0)
   %y = f32[20,10]{1,0} parameter(1)
-  %transpose = f32[10,20]{1,0} transpose(f32[20,10]{1,0} %y), dimensions={1,0}
-  ROOT %dot = f32[5,20]{1,0} dot(f32[5,10]{1,0} %x, f32[10,20]{1,0} %transpose), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  %transpose = f32[10,20]{1,0} transpose(%y), dimensions={1,0}
+  ROOT %dot = f32[5,20]{1,0} dot(%x, %transpose), lhs_contracting_dims={1}, rhs_contracting_dims={0}
 }, execution_thread="MainThread")";
   EXPECT_EQ(computation->ToString(options), expected_computation);
 }
@@ -661,8 +742,8 @@ TEST_F(HloComputationTest, StringificationIndent) {
       R"(    %TransposeDot (x: f32[5,10], y: f32[20,10]) -> f32[5,20] {
       %x = f32[5,10]{1,0} parameter(0)
       %y = f32[20,10]{1,0} parameter(1)
-      %transpose = f32[10,20]{1,0} transpose(f32[20,10]{1,0} %y), dimensions={1,0}
-      ROOT %dot = f32[5,20]{1,0} dot(f32[5,10]{1,0} %x, f32[10,20]{1,0} %transpose), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+      %transpose = f32[10,20]{1,0} transpose(%y), dimensions={1,0}
+      ROOT %dot = f32[5,20]{1,0} dot(%x, %transpose), lhs_contracting_dims={1}, rhs_contracting_dims={0}
     }, execution_thread="MainThread")";
   EXPECT_EQ(computation->ToString(options), expected_computation);
 }
@@ -697,8 +778,8 @@ TEST_F(HloComputationTest, StringificationCanonical) {
       R"(%TransposeDot (x: f32[5,10], y: f32[20,10]) -> f32[5,20] {
   %x = f32[5,10]{1,0} parameter(0)
   %y = f32[20,10]{1,0} parameter(1)
-  %transpose = f32[10,20]{1,0} transpose(f32[20,10]{1,0} %y), dimensions={1,0}
-  ROOT %dot = f32[5,20]{1,0} dot(f32[5,10]{1,0} %x, f32[10,20]{1,0} %transpose), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  %transpose = f32[10,20]{1,0} transpose(%y), dimensions={1,0}
+  ROOT %dot = f32[5,20]{1,0} dot(%x, %transpose), lhs_contracting_dims={1}, rhs_contracting_dims={0}
 }, execution_thread="MainThread")";
   EXPECT_EQ(computation->ToString(options), expected_computation1);
 
@@ -762,12 +843,12 @@ ENTRY entry {
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
   EXPECT_THAT(module->entry_computation()->MakeInstructionPostOrder(),
-              ElementsAre(op::Parameter(), op::AllReduce(), op::AllReduce(),
-                          op::Add(), op::Tuple()));
+              ElementsAre(op::Parameter(), op::AllReduce(), op::Add(),
+                          op::AllReduce(), op::Tuple()));
 }
 
 TEST_F(HloComputationTest, ComparisonWithCustomComparator) {
-  std::string_view mod_txt = R"(
+  absl::string_view mod_txt = R"(
   HloModule Module
   region_X {
     Arg_0.5 = s32[] parameter(0)
@@ -808,7 +889,7 @@ TEST_F(HloComputationTest, ComparisonWithCustomComparator) {
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(mod_txt));
 
-  absl::flat_hash_map<std::string_view, std::string_view> replace_map;
+  absl::flat_hash_map<absl::string_view, absl::string_view> replace_map;
   replace_map["region_X"] = "region_A";
   replace_map["region_Y"] = "region_B";
   auto compare_func = [&replace_map](const HloComputation* a,
@@ -827,6 +908,137 @@ TEST_F(HloComputationTest, ComparisonWithCustomComparator) {
   EXPECT_FALSE(comp_a->Equal(*comp_b, false));
   // Different regions but we are accepting based on the compare_func
   EXPECT_TRUE(comp_a->Equal(*comp_b, false, compare_func));
+}
+
+TEST_F(HloComputationTest, CloneWrappedAsyncInstructionSameWrappedFunc) {
+  const char* const hlo_string = R"(
+  HloModule Module
+    add (lhs: u32[], rhs: u32[]) -> u32[] {
+       lhs = u32[] parameter(0)
+       rhs = u32[] parameter(1)
+       ROOT add = u32[] add(u32[] lhs, u32[] rhs)
+    }
+
+    async_wrapped (async_param.1: u32[8]) -> u32[4] {
+       async_param.1 = u32[8]{0} parameter(0)
+       ROOT reduce-scatter.1 = u32[4]{0} reduce-scatter(u32[8]{0} async_param.1),
+         replica_groups={}, dimensions={0}, to_apply=add
+    }
+
+    ENTRY main (data: u32[8]) -> u32[4] {
+      data = u32[8]{0} parameter(0)
+      reduce-scatter-start = ((u32[8]{0}), u32[4]{0}) async-start(u32[8]{0} data),
+        calls=async_wrapped, backend_config={"collective_backend_config": {"is_sync":false}}
+      ROOT reduce-scatter-done = u32[4]{0} async-done(((u32[8]{0}), u32[4]{0}) reduce-scatter-start),
+        calls=async_wrapped
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  HloInstruction* start = FindInstruction(module.get(), "reduce-scatter-start");
+  HloInstruction* done = FindInstruction(module.get(), "reduce-scatter-done");
+  EXPECT_EQ(start->async_wrapped_computation(),
+            done->async_wrapped_computation());
+  std::unique_ptr<HloInstruction> cloned_start = start->Clone();
+  std::unique_ptr<HloInstruction> cloned_done =
+      done->CloneWithNewOperands(done->shape(), {cloned_start.get()});
+  EXPECT_EQ(cloned_start.get()->async_wrapped_computation(),
+            cloned_done.get()->async_wrapped_computation());
+}
+
+TEST_F(HloComputationTest, CompositeCall) {
+  const char* const hlo_string = R"(
+  HloModule Module
+
+  add (x: f32[]) -> f32[] {
+    %x = f32[] parameter(0)
+    %constant = f32[] constant(2)
+    ROOT %z = f32[] add(f32[] %x, f32[] %constant)
+  }
+
+  ENTRY %CallR0F32AddScalar.v2 () -> f32[] {
+    %constant.1 = f32[] constant(42)
+    ROOT %call = f32[] call(f32[] %constant.1), to_apply=add, is_composite=true,
+      frontend_attributes={
+        composite.attributes={n = 1 : i32, tensor = dense<1> : tensor<i32>},
+        composite.name="foo.bar",
+        composite.version="1"
+      }
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  HloInstruction* composite_call = FindInstruction(module.get(), "call");
+  EXPECT_EQ(composite_call->opcode(), HloOpcode::kCall);
+  EXPECT_TRUE(composite_call->is_composite());
+  EXPECT_EQ(composite_call->frontend_attributes().map().size(), 3);
+}
+
+TEST_F(HloComputationTest, CloneComputationWithAsyncInstructions) {
+  constexpr absl::string_view hlo = R"(
+HloModule main
+
+comp.0 {
+  ROOT custom-call.0 = () custom-call(), custom_call_target="foo"
+}
+
+ENTRY main {
+  in.0 = () parameter(0)
+  call.0 = () call(), to_apply=comp.0
+  ROOT out.0 = () tuple()
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  HloComputation* comp0 = FindComputation(module.get(), "comp.0");
+  HloInstruction* custom_call = FindInstruction(module.get(), "custom-call.0");
+  TF_ASSERT_OK(comp0->CreateAsyncInstructions(
+      custom_call, /*context_shapes=*/{ShapeUtil::MakeScalarShape(U32)},
+      /*async_execution_thread=*/HloInstruction::kMainExecutionThread,
+      /*replace=*/true,
+      /*override_names=*/true));
+
+  HloComputation* comp1 = module->AddEmbeddedComputation(comp0->Clone());
+  HloComputation* comp2 = module->AddEmbeddedComputation(comp0->Clone());
+  EXPECT_NE(comp0->root_instruction()->name(),
+            comp1->root_instruction()->name());
+  EXPECT_NE(comp0->root_instruction()->operand(0)->name(),
+            comp1->root_instruction()->operand(0)->name());
+  EXPECT_NE(comp1->root_instruction()->name(),
+            comp2->root_instruction()->name());
+  EXPECT_NE(comp1->root_instruction()->operand(0)->name(),
+            comp2->root_instruction()->operand(0)->name());
+}
+
+TEST_F(HloComputationTest, ToStringWhileCreatingReplacements) {
+  const char* hlo = R"(
+  ENTRY main {
+    p0 = f32[8,8] parameter(0)
+    p1 = f32[8,8] parameter(1)
+    add = f32[8,8] add(p0, p1)
+    ROOT t = (f32[8,8], f32[8,8]) tuple(add, add)
+  })";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
+                          ParseAndReturnVerifiedModule(hlo));
+  HloComputation* entry = m->entry_computation();
+
+  HloInstruction* add = FindInstruction(m.get(), HloOpcode::kAdd);
+  HloInstruction* convert = entry->AddInstruction(HloInstruction::CreateConvert(
+      ShapeUtil::MakeShape(BF16, add->shape().dimensions()), add));
+  EXPECT_EQ(entry->instruction_count(), 5);
+
+  // This is only to simulate a user outside the computation, which is the case
+  // when trying to collect replacements to eventually clone the computation.
+  absl::flat_hash_map<const HloInstruction*, std::unique_ptr<HloInstruction>>
+      replacements;
+  HloInstruction* root = entry->root_instruction();
+  replacements[root] = HloInstruction::CreateTuple({convert, convert});
+
+  // The instruction `convert` should now be in the post order.
+  std::vector<HloInstruction*> post_order = entry->MakeInstructionPostOrder();
+  EXPECT_EQ(post_order.size(), entry->instruction_count());
+
+  int counter = 0;
+  entry->ForEachInstructionPostOrder(
+      [&counter](HloInstruction* instr) { counter++; });
+  EXPECT_EQ(counter, entry->instruction_count());
 }
 
 }  // namespace

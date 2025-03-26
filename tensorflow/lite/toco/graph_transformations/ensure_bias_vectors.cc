@@ -12,12 +12,14 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include <memory>
+#include <cstddef>
 #include <string>
-#include <unordered_map>
 #include <vector>
 
+#include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/lite/toco/graph_transformations/graph_transformations.h"
 #include "tensorflow/lite/toco/model.h"
 #include "tensorflow/lite/toco/tooling_util.h"
@@ -74,8 +76,8 @@ bool ProcessLinearOperator(Model* model, Operator* op) {
 }
 }  // namespace
 
-::tensorflow::Status EnsureBiasVectors::Run(Model* model, std::size_t op_index,
-                                            bool* modified) {
+absl::Status EnsureBiasVectors::Run(Model* model, std::size_t op_index,
+                                    bool* modified) {
   *modified = false;
   auto* op = model->operators[op_index].get();
   if (op->type == OperatorType::kConv ||
@@ -85,10 +87,10 @@ bool ProcessLinearOperator(Model* model, Operator* op) {
     if (ProcessLinearOperator(model, op)) {
       AddMessageF("Added bias vector to %s as %s", LogName(*op), op->inputs[2]);
       *modified = true;
-      return ::tensorflow::OkStatus();
+      return absl::OkStatus();
     }
   }
-  return ::tensorflow::OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace toco

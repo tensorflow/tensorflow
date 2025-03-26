@@ -47,20 +47,20 @@ class ListDatasetParams : public DatasetParams {
 
   std::vector<Tensor> GetInputTensors() const override { return tensors_; }
 
-  Status GetInputNames(std::vector<string>* input_names) const override {
+  absl::Status GetInputNames(std::vector<string>* input_names) const override {
     input_names->reserve(tensors_.size());
     for (int i = 0; i < tensors_.size(); ++i) {
       input_names->emplace_back(absl::StrCat("tensors_", i));
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
-  Status GetAttributes(AttributeVector* attr_vector) const override {
+  absl::Status GetAttributes(AttributeVector* attr_vector) const override {
     *attr_vector = {{"Tinput_types", input_types_},
                     {"output_types", output_dtypes_},
                     {"output_shapes", output_shapes_},
                     {"metadata", ""}};
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   string dataset_type() const override { return "List"; }
@@ -96,7 +96,7 @@ class ListDatasetParams : public DatasetParams {
       const std::vector<std::vector<Tensor>>& input_elements) {
     std::vector<PartialTensorShape> output_shapes;
     for (const auto& tensor : input_elements.front()) {
-      gtl::InlinedVector<int64_t, 4> partial_dim_sizes;
+      absl::InlinedVector<int64_t, 4UL> partial_dim_sizes;
       partial_dim_sizes.reserve(tensor.dims());
       for (int i = 0; i < tensor.dims(); ++i) {
         partial_dim_sizes.push_back(tensor.dim_size(i));

@@ -22,5 +22,7 @@ limitations under the License.
 #define TF_MIOPEN_VERSION %{miopen_version_number}
 #define TF_HIPRUNTIME_VERSION %{hipruntime_version_number}
 #define TF_HIPBLASLT %{hipblaslt_flag}
+#define TF_HIPRUNTIME_SOVERSION "%{hip_soversion_number}"
+#define TF_ROCBLAS_SOVERSION "%{rocblas_soversion_number}"
 
 #endif  // ROCM_ROCM_CONFIG_H_

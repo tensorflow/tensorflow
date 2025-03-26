@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -26,6 +26,8 @@ limitations under the License.
 #ifndef XLA_SERVICE_CPU_CPU_RUNTIME_H_
 #define XLA_SERVICE_CPU_CPU_RUNTIME_H_
 
+#include <cstdint>
+
 #include "xla/executable_run_options.h"
 #include "xla/service/cpu/xfeed_manager.h"
 
@@ -35,10 +37,8 @@ namespace runtime {
 
 // Names of runtime functions. These get resolved from the generated code to the
 // right symbol at link time in one of two ways:
-// 1. When using the JIT, the symbol resolver (SimpleResolver in
-//    third_party/tensorflow/compiler/xla/service/cpu/simple_orc_jit.cc) maps
-//    this symbol name to
-//    the actual symbol.
+// 1. When using the JIT, the symbol resolver (xla::cpu::RuntimeSymbolGenerator)
+//    maps this symbol name to the actual symbol.
 // 2. When using ahead-of-time compilation, the linker can resolve the name
 //    because it is a symbol in the cpu_runtime library.
 extern const char* const kEigenMatMulF16SymbolName;
@@ -47,6 +47,7 @@ extern const char* const kEigenMatMulF64SymbolName;
 extern const char* const kEigenMatMulC64SymbolName;
 extern const char* const kEigenMatMulC128SymbolName;
 extern const char* const kEigenMatMulS32SymbolName;
+extern const char* const kEigenMatMulU8SymbolName;
 extern const char* const kEigenBatchMatMulF32SymbolName;
 extern const char* const kMKLConv2DF32SymbolName;
 extern const char* const kACLConv2DF32SymbolName;
@@ -56,14 +57,18 @@ extern const char* const kEigenConv2DF16SymbolName;
 extern const char* const kEigenConv2DF32SymbolName;
 extern const char* const kEigenConv3DF16SymbolName;
 extern const char* const kEigenConv3DF32SymbolName;
-extern const char* const kEigenFftSymbolName;
-extern const char* const kEigenSingleThreadedFftSymbolName;
+extern const char* const kLegacyDuccFftSymbolName;
+extern const char* const kDuccFftSymbolName;
+extern const char* const kDuccSingleThreadedFftSymbolName;
 extern const char* const kEigenSingleThreadedMatMulF16SymbolName;
 extern const char* const kEigenSingleThreadedMatMulF32SymbolName;
 extern const char* const kEigenSingleThreadedMatMulF64SymbolName;
+extern const char* const kEigenSingleThreadedMatMulF8E4M3FNSymbolName;
+extern const char* const kEigenSingleThreadedMatMulF8E5M2SymbolName;
 extern const char* const kEigenSingleThreadedMatMulC64SymbolName;
 extern const char* const kEigenSingleThreadedMatMulC128SymbolName;
 extern const char* const kEigenSingleThreadedMatMulS32SymbolName;
+extern const char* const kEigenSingleThreadedMatMulU8SymbolName;
 extern const char* const kEigenSingleThreadedConv2DF16SymbolName;
 extern const char* const kEigenSingleThreadedConv2DF32SymbolName;
 extern const char* const kEigenSingleThreadedConv3DF16SymbolName;
@@ -84,7 +89,14 @@ extern const char* const kReplicaIdSymbolName;
 extern const char* const kTracingStartSymbolName;
 extern const char* const kTracingEndSymbolName;
 extern const char* const kAllToAllSymbolName;
+extern const char* const kAllGatherSymbolName;
+extern const char* const kReduceScatterSymbolName;
 extern const char* const kOneDnnMatMulSymbolName;
+extern const char* const kOneDnnSoftmaxSymbolName;
+extern const char* const kOneDnnLayerNormSymbolName;
+extern const char* const kOneDnnConvolutionSymbolName;
+extern const char* const kOneDnnMatMulReorderSymbolName;
+extern const char* const kHandleFfiCallSymbolName;
 
 // All symbol names for XLA CPU runtime functions need to start with this
 // prefix.
@@ -93,6 +105,8 @@ extern const char* const kXlaCpuRuntimeSymbolNamePrefix;
 // Returns the infeed manager used by the CPU runtime for the CPU device
 // `device_ordinal`.  Note the device ordinal does not name a CPU
 XfeedManager* GetXfeedManager(int device_ordinal);
+
+int GetDeviceOrdinal(const xla::ExecutableRunOptions* run_options);
 
 }  // namespace runtime
 }  // namespace cpu
@@ -104,7 +118,7 @@ extern int __xla_cpu_runtime_PrintfToStderr(const char* format, ...);
 
 extern int64_t __xla_cpu_runtime_TracingStart(
     const void* /* xla::ExecutableRunOptions* */ run_options_ptr,
-    const char* name);
+    const char* name, const char* hlo_module, int64_t program_id);
 extern void __xla_cpu_runtime_TracingEnd(
     const void* /* xla::ExecutableRunOptions* */ run_options_ptr, int64_t id);
 
@@ -194,6 +208,19 @@ extern void __xla_cpu_runtime_AllToAll(
     int64_t op_id, const void* replica_groups_str,
     int32_t replica_groups_str_size, int32_t num_buffers, int64_t buffer_size,
     void** source_buffers, void** destination_buffers);
+
+extern void __xla_cpu_runtime_AllGather(
+    const xla::ExecutableRunOptions* run_options, int32_t channel_id_present,
+    int32_t use_global_device_ids, int64_t op_id,
+    const void* replica_groups_str, int32_t replica_groups_str_size,
+    int64_t buffer_size, void* source_buffer, void* destination_buffer);
+
+void __xla_cpu_runtime_ReduceScatter(
+    const xla::ExecutableRunOptions* run_options,
+    const void* replica_groups_str, int32_t replica_groups_str_size,
+    int32_t channel_id_present, int32_t use_global_device_ids, int64_t op_id,
+    int32_t reduction_kind, int32_t element_type, int64_t chunk_elems,
+    void* input_buffer, void* output_buffer);
 
 // Write the partition ID into the output buffer.
 extern void __xla_cpu_runtime_PartitionId(

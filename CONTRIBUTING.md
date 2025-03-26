@@ -44,7 +44,7 @@ Before sending your pull requests, make sure you do the following:
 -   If a change is needed, the contributor is requested to make the suggested
     change.
 -   You make the change and submit it for the review again.
--   This cycle repeats itself untill the PR gets approved.
+-   This cycle repeats itself until the PR gets approved.
 -   Note: As a friendly reminder, we may reach out to you if the PR is awaiting
     your response for more than 2 weeks.
 
@@ -71,7 +71,7 @@ Before sending your pull requests, make sure you do the following:
 
 In a graphical form, the entire lifetime of a PR looks like
 
-![image](https://user-images.githubusercontent.com/323199/229561784-0a2f5509-b731-493f-ad88-bad487688c8d.png)
+![image](https://github.com/tensorflow/tensorflow/assets/52792999/3eea4ca5-daa0-4570-b0b5-2a2b03a724a3)
 
 ### Contributor License Agreements
 
@@ -89,8 +89,8 @@ Follow either of the two links above to access the appropriate CLA and instructi
 ### Contributing code
 
 If you have improvements to TensorFlow, send us your pull requests! For those
-just getting started, Github has a
-[how to](https://help.github.com/articles/using-pull-requests/).
+just getting started, GitHub has a
+[how-to](https://help.github.com/articles/using-pull-requests/).
 
 TensorFlow team members will be assigned to review your pull requests. Once the
 pull requests are approved and pass continuous integration checks, a TensorFlow
@@ -101,7 +101,7 @@ automatically on GitHub.
 
 If you want to contribute, start working through the TensorFlow codebase,
 navigate to the
-[Github "issues" tab](https://github.com/tensorflow/tensorflow/issues) and start
+[GitHub "issues" tab](https://github.com/tensorflow/tensorflow/issues) and start
 looking through interesting issues. If you are not sure of where to start, then
 start by trying one of the smaller/easier issues here i.e.
 [issues with the "good first issue" label](https://github.com/tensorflow/tensorflow/labels/good%20first%20issue)
@@ -232,27 +232,43 @@ There are two ways to run TensorFlow unit tests.
     and
     [GPU developer Dockerfile](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/tools/dockerfiles/dockerfiles/devel-gpu.Dockerfile)
     for the required packages. Alternatively, use the said
-    [Docker images](https://hub.docker.com/r/tensorflow/tensorflow/tags/), e.g.,
-    `tensorflow/tensorflow:devel` and `tensorflow/tensorflow:devel-gpu` for
+    [tensorflow/build Docker images](https://hub.docker.com/r/tensorflow/build)
+    (`tensorflow/tensorflow:devel` and `tensorflow/tensorflow:devel-gpu` are no
+    longer supported for development). Use TF SIG Build Dockerfiles in
     development to avoid installing the packages directly on your system (in
     which case remember to change the directory from `/root` to `/tensorflow`
     once you get into the running container so `bazel` can find the `tensorflow`
     workspace).
 
+    you can do this by using the following command. As an example-
+
+    ```bash
+    docker run -it --rm -v $PWD:/tmp -w /tmp tensorflow/build:2.15-python3.10
+    ```
+
     Once you have the packages installed, you can run a specific unit test in
     bazel by doing as follows:
 
     ```bash
-    export flags="--config=opt -k"
+    export flags="--config=linux -k"
     ```
 
-    If the tests are to be run on the GPU, add CUDA paths to LD_LIBRARY_PATH and
-    add the `cuda` option flag
+    If the tests are to be run on the GPU:
 
-    ```bash
-    export LD_LIBRARY_PATH="${LD_LIBRARY_PATH}:/usr/local/cuda/lib64:/usr/local/cuda/extras/CUPTI/lib64:$LD_LIBRARY_PATH"
-    export flags="--config=opt --config=cuda -k"
-    ```
+    *   For TensorFlow versions starting from v.2.18.0: Add the `cuda` option
+        flag.
+
+        ```bash
+        export flags="--config=linux --config=cuda -k"
+        ```
+
+    *   For TensorFlow versions prior v.2.18.0: Add CUDA paths to
+        LD_LIBRARY_PATH and add the `cuda` option flag.
+
+        ```bash
+        export LD_LIBRARY_PATH="${LD_LIBRARY_PATH}:/usr/local/cuda/lib64:/usr/local/cuda/extras/CUPTI/lib64:$LD_LIBRARY_PATH"
+        export flags="--config=linux --config=cuda -k"
+        ```
 
     For example, to run all tests under tensorflow/python, do:
 

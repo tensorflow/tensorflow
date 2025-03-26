@@ -1,4 +1,4 @@
-/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -18,6 +18,19 @@ limitations under the License.
 #include <memory>
 #include <string>
 #include <utility>
+
+#include "absl/container/flat_hash_set.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
+#include "absl/types/span.h"
+#include "xla/hlo/ir/hlo_computation.h"
+#include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/shape.h"
+#include "xla/shape_util.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 
@@ -49,6 +62,7 @@ std::unique_ptr<HloInstruction> CloneAllReduce(
     return inst->GetModule()->AddEmbeddedComputation(promoted.Build());
   }();
   new_inst->set_to_apply(to_apply_promoted);
+  to_apply_promoted->SetCollectiveCallInstruction(new_inst.get());
   return new_inst;
 }
 
@@ -60,7 +74,7 @@ AllReducePromotion::AllReducePromotion(
     absl::Span<std::pair<PrimitiveType, PrimitiveType> const> from_to_types)
     : pass_(from_to_types, IsAllReduce, CloneAllReduce) {}
 
-StatusOr<bool> AllReducePromotion::Run(
+absl::StatusOr<bool> AllReducePromotion::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   return pass_.Run(module, execution_threads);

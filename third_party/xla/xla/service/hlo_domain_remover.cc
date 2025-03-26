@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -30,19 +30,19 @@ class HloDomainRemover::RunContext {
   RunContext(HloModule* module, HloDomainRemover* remover)
       : module_(module), remover_(remover) {}
 
-  StatusOr<bool> Run(
+  absl::StatusOr<bool> Run(
       const absl::flat_hash_set<absl::string_view>& execution_threads);
 
  private:
   // Verifies the consistency of the domain, and normalizes the instructions
   // within it.
-  Status VerifyAndNormalizeDomain(const DomainMetadata::Domain& domain);
+  absl::Status VerifyAndNormalizeDomain(const DomainMetadata::Domain& domain);
 
   HloModule* module_;
   HloDomainRemover* remover_;
 };
 
-Status HloDomainRemover::RunContext::VerifyAndNormalizeDomain(
+absl::Status HloDomainRemover::RunContext::VerifyAndNormalizeDomain(
     const DomainMetadata::Domain& domain) {
   TF_ASSIGN_OR_RETURN(const DomainMetadata* ref_metadata,
                       HloDomainVerifier::VerifyDomain(domain));
@@ -55,10 +55,10 @@ Status HloDomainRemover::RunContext::VerifyAndNormalizeDomain(
     VLOG(2) << "Applying domain-less normalization";
     TF_RETURN_IF_ERROR(remover_->normalizer_(domain, nullptr));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-StatusOr<bool> HloDomainRemover::RunContext::Run(
+absl::StatusOr<bool> HloDomainRemover::RunContext::Run(
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   VLOG(4) << "Processing metadata domain: '" << remover_->kind_ << "'";
   int64_t removed_domains = 0;
@@ -100,7 +100,7 @@ StatusOr<bool> HloDomainRemover::RunContext::Run(
   return removed_domains > 0;
 }
 
-StatusOr<int64_t> HloDomainRemover::RemoveExitDomains(
+absl::StatusOr<int64_t> HloDomainRemover::RemoveExitDomains(
     HloInstruction* instruction, absl::string_view domain_kind) {
   int64_t removed_domains = 0;
   HloComputation* computation = instruction->parent();
@@ -120,7 +120,7 @@ StatusOr<int64_t> HloDomainRemover::RemoveExitDomains(
   return removed_domains;
 }
 
-StatusOr<bool> HloDomainRemover::Run(
+absl::StatusOr<bool> HloDomainRemover::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   RunContext run_context(module, this);

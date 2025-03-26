@@ -379,10 +379,11 @@ TEST(ConcatenationOpTest, FourInputs) {
   m0.SetInput(3, {1.3f, 3.3f, 4.3f, 7.3f});
   ASSERT_EQ(m0.Invoke(), kTfLiteOk);
   EXPECT_THAT(m0.GetOutput(),
-              ElementsAreArray({
-                  1.0f, 3.0f, 1.1f, 3.1f, 1.2f, 3.2f, 1.3f, 3.3f,  //
-                  4.0f, 7.0f, 4.1f, 7.1f, 4.2f, 7.2f, 4.3f, 7.3f,  //
-              }));
+              Pointwise(FloatingPointEq(),
+                        {
+                            1.0f, 3.0f, 1.1f, 3.1f, 1.2f, 3.2f, 1.3f, 3.3f,  //
+                            4.0f, 7.0f, 4.1f, 7.1f, 4.2f, 7.2f, 4.3f, 7.3f,  //
+                        }));
 }
 
 TEST(ConcatenationOpTest, FourInputsUInt32) {
@@ -760,6 +761,22 @@ TYPED_TEST(ConcatenationOpPersistentModelTest, PersistentTest) {
         ElementsAreArray(ArrayFloatNear(
             {1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0})));
   }
+}
+
+TYPED_TEST(ConcatenationOpPersistentModelTest, PersistentScalarTest) {
+  PersistentTestCase test_case{TestInputType::kPersistentRo,
+                               GetTensorType<TypeParam>(), false};
+  std::vector<std::vector<TypeParam>> input_data_lists = {{1}, {7}};
+  std::vector<TensorData> input_template = {{GetTensorType<TypeParam>(), {}},
+                                            {GetTensorType<TypeParam>(), {}}};
+  TensorData output_template = {GetTensorType<TypeParam>(), {2}};
+  PersistentConcatenationOpModel<TypeParam> m0(
+      input_template, /*axis=*/0, output_template, test_case, input_data_lists);
+  m0.PopulateInputTensors();
+  ASSERT_EQ(m0.Invoke(), kTfLiteOk);
+  ASSERT_EQ(m0.IsPersistentOutput(),
+            test_case.test_type == TestInputType::kPersistentRo);
+  EXPECT_THAT(m0.GetOutput(), ElementsAreArray(ArrayFloatNear({1.0, 7.0})));
 }
 
 TYPED_TEST(ConcatenationOpPersistentModelTest, QuantizedPersistentTest) {

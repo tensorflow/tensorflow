@@ -1,5 +1,0 @@
-# Python package requirements for building as a user.
-# Usage:
-#   python -m pip install -r build_tools/docker/context/python_build_requirements.txt
-pip>=21.3
-numpy>=1.19.4  # TODO(b/277241075): check if this is necessary.

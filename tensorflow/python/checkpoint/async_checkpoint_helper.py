@@ -263,10 +263,10 @@ class AsyncCheckpointHelper:
     # custom __getattr__ code, see b/152031870 for context.
     for t in all_trackables:
       # Special case 1: TPU Embedding, populate object_map here
-    # Special case 1: Handle TPU Embedding by addnig a dummy instance to the
-    # object map. Also add TPUEmbedding to separate list for special handling
-    # with values copy.
-      if hasattr(t, _TPU_EMBEDDING_ATTR):
+      # Special case 1: Handle TPU Embedding by addnig a dummy instance to the
+      # object map. Also add TPUEmbedding to separate list for special handling
+      # with values copy.
+      if hasattr(type(t), _TPU_EMBEDDING_ATTR):
         self._handle_tpu_embedding(t)
       # Special case 2: handle slot variables. The object_map is populated later
       # when the variable values are being copied to host CPU for the first
@@ -414,9 +414,9 @@ class AsyncCheckpointHelper:
     Raises:
       AttributeError: if the input trackable is not TPUEmbedding type.
     """
-    if not hasattr(
-        tpu_embedding, _TPU_EMBEDDING_ATTR
-    ) or not callable(tpu_embedding._create_copy_for_async_checkpoint):  # pylint: disable=protected-access
+    if not hasattr(type(tpu_embedding), _TPU_EMBEDDING_ATTR) or not callable(
+        tpu_embedding._create_copy_for_async_checkpoint  # pylint: disable=protected-access
+    ):
       raise AttributeError(
           "Expecting TPUEmbedding type; got %s" % type(tpu_embedding)
       )
@@ -442,7 +442,7 @@ class AsyncCheckpointHelper:
   def save_counter(self):
     """An integer variable numbering the checkpoint events.
 
-    This is maintained by the underlying tf.train.Checkpoing object employed by
+    This is maintained by the underlying tf.train.Checkpoint object employed by
     AsyncCheckpoint class. The number starts at 0 and gets incremented for each
     checkpoint event.
 
@@ -488,7 +488,7 @@ class AsyncCheckpointHelper:
       self._copy_to_cpu()
 
     # Surface the error from the async thread, if any.
-    # This step should come after the sem acquision step in the above, so that
+    # This step should come after the sem acquisition step in the above, so that
     # it makes sure it waits until the previous async save finishes storing the
     # error.
     self._check_async_thread_error()
@@ -546,7 +546,7 @@ class AsyncCheckpointHelper:
       self._copy_to_cpu()
 
     # Surface the error from the async thread, if any.
-    # This step should come after the sem acquision step in the above, so that
+    # This step should come after the sem acquisition step in the above, so that
     # it makes sure it waits until the previous async save finishes storing the
     # error.
     self._check_async_thread_error()

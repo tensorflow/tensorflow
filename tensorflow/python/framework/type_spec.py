@@ -33,7 +33,6 @@ from tensorflow.python.saved_model import nested_structure_coder
 from tensorflow.python.types import core as core_types
 from tensorflow.python.types import internal
 from tensorflow.python.types import trace
-from tensorflow.python.util import _pywrap_utils
 from tensorflow.python.util import compat
 from tensorflow.python.util import deprecation
 from tensorflow.python.util import nest
@@ -629,9 +628,11 @@ class TypeSpec(
     if isinstance(value, np.ndarray):
       return (np.ndarray, value.shape,
               TypeSpec.__nested_list_to_tuple(value.tolist()))
-    raise ValueError(f"Cannot generate a hashable key for {self} because "
-                     f"the _serialize() method "
-                     f"returned an unsupproted value of type {type(value)}")
+    raise ValueError(
+        f"Cannot generate a hashable key for {self} because "
+        "the _serialize() method "
+        f"returned an unsupported value of type {type(value)}"
+    )
 
   @staticmethod
   def __nested_list_to_tuple(value):
@@ -783,7 +784,7 @@ class LegacyTypeSpecBatchEncoder(TypeSpecBatchEncoder):
   """TypeSpecBatchEncoder for legacy composite tensor classes.
 
   TODO(edloper): Update existing composite tensors to use non-legacy
-    CompositTensorBatchEncoders.
+    CompositeTensorBatchEncoders.
   """
 
   def batch(self, type_spec, batch_size):
@@ -1057,6 +1058,3 @@ def register_type_spec_from_value_converter(type_object,
   _, type_object = tf_decorator.unwrap(type_object)
   _TYPE_CONVERSION_FUNCTION_REGISTRY.append(
       (type_object, converter_fn, allow_subclass))
-
-
-_pywrap_utils.RegisterType("TypeSpec", TypeSpec)

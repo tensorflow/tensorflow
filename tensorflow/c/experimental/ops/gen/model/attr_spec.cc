@@ -14,7 +14,8 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/c/experimental/ops/gen/model/attr_spec.h"
 
-#include "tensorflow/core/lib/strings/str_util.h"
+#include "absl/strings/match.h"
+#include "tensorflow/core/framework/op_def.pb.h"
 
 namespace tensorflow {
 namespace generator {
@@ -28,7 +29,7 @@ AttrSpec::AttrSpec(const OpDef::AttrDef& attr_def) {
   description_ = attr_def.description();
   full_type_ = attr_def.type();
   default_value_ = attr_def.default_value();
-  if (str_util::StartsWith(full_type_, "list(")) {
+  if (absl::StartsWith(full_type_, "list(")) {
     is_list_ = true;
     // strip surrounding "list(%s)"
     base_type_ = full_type_.substr(5, full_type_.length() - 6);

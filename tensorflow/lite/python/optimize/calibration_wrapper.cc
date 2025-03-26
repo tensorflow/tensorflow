@@ -25,7 +25,7 @@ limitations under the License.
 // (non-virtual) accessor methods and API functions to be declared.
 // The code here uses those methods, so we need to make sure that we get
 // the mutable variant of this header.
-#include "tensorflow/lite/schema/mutable/schema_generated.h"
+#include "tensorflow/compiler/mlir/lite/schema/mutable/schema_generated.h"
 
 #include "tensorflow/lite/python/optimize/calibration_wrapper.h"
 // clang-format on
@@ -36,6 +36,7 @@ limitations under the License.
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
+#include <cstring>
 #include <functional>
 #include <limits>
 #include <memory>
@@ -114,6 +115,8 @@ inline TensorType TfLiteTypeToSchemaType(TfLiteType type) {
       return TensorType_FLOAT32;
     case kTfLiteFloat16:
       return TensorType_FLOAT16;
+    case kTfLiteBFloat16:
+      return TensorType_BFLOAT16;
     case kTfLiteFloat64:
       return TensorType_FLOAT64;
     case kTfLiteInt32:
@@ -698,14 +701,17 @@ PyObject* CalibrationWrapper::QuantizeModel(int input_py_type,
                                             bool allow_float,
                                             int activations_py_type,
                                             int bias_py_type) {
-  return QuantizeModel(input_py_type, output_py_type, allow_float,
-                       activations_py_type, bias_py_type,
-                       /*disable_per_channel=*/false);
+  return QuantizeModel(
+      input_py_type, output_py_type, allow_float, activations_py_type,
+      bias_py_type,
+      /*disable_per_channel=*/false,
+      /*disable_per_channel_quantization_for_dense_layers=*/false);
 }
 
 PyObject* CalibrationWrapper::QuantizeModel(
     int input_py_type, int output_py_type, bool allow_float,
-    int activations_py_type, int bias_py_type, bool disable_per_channel) {
+    int activations_py_type, int bias_py_type, bool disable_per_channel,
+    bool disable_per_channel_quantization_for_dense_layers) {
   if (NoOpModel(*model_)) {
     return ConvertToPyString(model_str_->data(), model_str_->size());
   }
@@ -730,7 +736,7 @@ PyObject* CalibrationWrapper::QuantizeModel(
       TfLiteTypeToSchemaType(output_type), allow_float,
       TfLiteTypeToSchemaType(activations_type),
       TfLiteTypeToSchemaType(bias_type), disable_per_channel,
-      error_reporter_.get());
+      disable_per_channel_quantization_for_dense_layers, error_reporter_.get());
 
   if (status != kTfLiteOk) {
     error_reporter_->exception();

@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -21,22 +21,22 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/client/client_library.h"
 #include "xla/client/local_client.h"
-#include "xla/client/xla_computation.h"
+#include "xla/hlo/builder/xla_computation.h"
+#include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/local_service.h"
 #include "xla/service/platform_util.h"
 #include "xla/service/shaped_buffer.h"
 #include "xla/service/transfer_manager.h"
-#include "xla/statusor.h"
 #include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "xla/stream_executor/stream_executor_memory_allocator.h"
 #include "xla/tests/client_library_test_base.h"
-#include "xla/tests/manifest_checking_test.h"
-#include "xla/tests/verified_hlo_module.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -47,10 +47,11 @@ class TestAllocator : public se::StreamExecutorMemoryAllocator {
       : se::StreamExecutorMemoryAllocator(
             platform, PlatformUtil::GetStreamExecutors(platform).value()) {}
 
-  StatusOr<se::OwningDeviceMemory> Allocate(int device_ordinal, uint64_t size,
-                                            bool retry_on_failure,
-                                            int64_t memory_space) override;
-  Status Deallocate(int device_ordinal, se::DeviceMemoryBase mem) override;
+  absl::StatusOr<se::OwningDeviceMemory> Allocate(
+      int device_ordinal, uint64_t size, bool retry_on_failure,
+      int64_t memory_space) override;
+  absl::Status Deallocate(int device_ordinal,
+                          se::DeviceMemoryBase mem) override;
 
   // Return the number of allocations that have been performed.
   int64_t allocation_count() const;
@@ -74,7 +75,7 @@ class TestAllocator : public se::StreamExecutorMemoryAllocator {
 };
 
 // A base class for tests which exercise the LocalClient interface.
-class LocalClientTestBase : public ManifestCheckingTest {
+class LocalClientTestBase : public ::testing::Test {
  protected:
   struct EigenThreadPoolWrapper;
   explicit LocalClientTestBase(se::Platform* platform = nullptr);
@@ -93,10 +94,10 @@ class LocalClientTestBase : public ManifestCheckingTest {
 
   // Execute the given computation on the local client. With and without
   // options.
-  StatusOr<ScopedShapedBuffer> ExecuteLocally(
+  absl::StatusOr<ScopedShapedBuffer> ExecuteLocally(
       const XlaComputation& computation,
       absl::Span<const ShapedBuffer* const> arguments);
-  StatusOr<ScopedShapedBuffer> ExecuteLocally(
+  absl::StatusOr<ScopedShapedBuffer> ExecuteLocally(
       const XlaComputation& computation,
       absl::Span<const ShapedBuffer* const> arguments,
       const ExecutableBuildOptions& build_options,
@@ -112,10 +113,11 @@ class LocalClientTestBase : public ManifestCheckingTest {
       const ExecutableRunOptions& run_options);
 
   // Parses the given string and returns module as a VerifiedHloModule.
-  StatusOr<std::unique_ptr<VerifiedHloModule>> ParseAndReturnVerifiedModule(
-      absl::string_view hlo_text);
-  StatusOr<std::unique_ptr<VerifiedHloModule>> ParseAndReturnVerifiedModule(
-      absl::string_view hlo_text, const HloModuleConfig& config);
+  absl::StatusOr<std::unique_ptr<VerifiedHloModule>>
+  ParseAndReturnVerifiedModule(absl::string_view hlo_text);
+  absl::StatusOr<std::unique_ptr<VerifiedHloModule>>
+  ParseAndReturnVerifiedModule(absl::string_view hlo_text,
+                               const HloModuleConfig& config);
 
   // Returns a default set of execute options.
   ExecutableBuildOptions DefaultExecutableBuildOptions() const;

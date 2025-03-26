@@ -28,6 +28,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "tensorflow/lite/builtin_ops.h"
 #include "tensorflow/lite/c/c_api_internal.h"
 #include "tensorflow/lite/core/c/builtin_op_data.h"
 #include "tensorflow/lite/core/c/c_api_opaque.h"
@@ -56,6 +57,21 @@ TEST(CApiSimple, Version) {
   EXPECT_GE(patch, 0);
   // Calling the function again should give the same result.
   EXPECT_STREQ(TfLiteVersion(), version);
+}
+
+TEST(CApiSimple, ExtensionApisVersion) {
+  const char* version = TfLiteExtensionApisVersion();
+  ASSERT_NE(version, nullptr);
+  EXPECT_STRNE(version, "");
+  int major = -1, minor = -1, patch = -1;
+  int ret = sscanf(version, "%d.%d.%d", &major, &minor, &patch);
+  // The version number should contain all three components.
+  EXPECT_GE(ret, 3);
+  EXPECT_GE(major, 0);
+  EXPECT_GE(minor, 0);
+  EXPECT_GE(patch, 0);
+  // Calling the function again should give the same result.
+  EXPECT_STREQ(TfLiteExtensionApisVersion(), version);
 }
 
 TEST(CApiSimple, SchemaVersion) {
@@ -276,6 +292,7 @@ TEST(CApiSimple, TfLiteInterpreterGetTensor) {
   TfLiteInterpreterDelete(interpreter);
 }
 
+#if !TFLITE_USE_OPAQUE_DELEGATE
 TEST(CApiSimple, Delegate) {
   TfLiteModel* model =
       TfLiteModelCreateFromFile("tensorflow/lite/testdata/add.bin");
@@ -301,6 +318,7 @@ TEST(CApiSimple, Delegate) {
   EXPECT_EQ(TfLiteInterpreterInvoke(interpreter), kTfLiteOk);
   TfLiteInterpreterDelete(interpreter);
 }
+#endif
 
 TEST(CApiSimple, DelegateExternal_GetExecutionPlan) {
   TfLiteModel* model =
@@ -394,6 +412,7 @@ TEST(CApiSimple, DelegateExternal_MarkSubgraphAsDelegationSkippable) {
   TfLiteOpaqueDelegateDelete(opaque_delegate);
 }
 
+#if !TFLITE_USE_OPAQUE_DELEGATE
 TEST(CApiSimple, DelegateFails) {
   TfLiteModel* model =
       TfLiteModelCreateFromFile("tensorflow/lite/testdata/add.bin");
@@ -413,6 +432,7 @@ TEST(CApiSimple, DelegateFails) {
   TfLiteInterpreterOptionsDelete(options);
   TfLiteModelDelete(model);
 }
+#endif
 
 struct DelegateState {
   bool delegate_prepared;
@@ -425,13 +445,13 @@ struct OpState {
 std::vector<int>* g_nodes_to_replace;
 TfLiteOpaqueDelegate* g_opaque_delegate_struct;
 
-TfLiteRegistrationExternal* CreateDelegateKernelExternalRegistration() {
-  TfLiteRegistrationExternal* delegate_kernel_registration_external =
-      TfLiteRegistrationExternalCreate(kTfLiteBuiltinDelegate,
-                                       "TEST DELEGATE KERNEL", /*version=*/1);
-  TfLiteRegistrationExternalSetInit(
+TfLiteOperator* CreateDelegateKernelExternalRegistration() {
+  TfLiteOperator* delegate_kernel_registration_external = TfLiteOperatorCreate(
+      kTfLiteBuiltinDelegate, "TEST DELEGATE KERNEL", /*version=*/1,
+      /*user_data=*/nullptr);
+  TfLiteOperatorSetInitWithData(
       delegate_kernel_registration_external,
-      [](TfLiteOpaqueContext* context, const char* buffer,
+      [](void* user_data, TfLiteOpaqueContext* context, const char* buffer,
          size_t length) -> void* {
         const TfLiteOpaqueDelegateParams* params =
             reinterpret_cast<const TfLiteOpaqueDelegateParams*>(buffer);
@@ -451,9 +471,9 @@ TfLiteRegistrationExternal* CreateDelegateKernelExternalRegistration() {
         }
         return new OpState{true};
       });
-  TfLiteRegistrationExternalSetFree(
+  TfLiteOperatorSetFreeWithData(
       delegate_kernel_registration_external,
-      [](TfLiteOpaqueContext* context, void* buffer) {
+      [](void* user_data, TfLiteOpaqueContext* context, void* buffer) {
         delete (reinterpret_cast<OpState*>(buffer));
       });
   return delegate_kernel_registration_external;
@@ -480,7 +500,7 @@ TEST(CApiSimple, OpaqueDelegate_ReplaceNodeSubsetsWithDelegateKernels) {
     EXPECT_EQ(execution_plan->size, 2);
 
     TfLiteOpaqueNode* node = nullptr;
-    TfLiteRegistrationExternal* registration_external = nullptr;
+    TfLiteOperator* registration_external = nullptr;
     TfLiteOpaqueContextGetNodeAndRegistration(opaque_context, 0, &node,
                                               &registration_external);
     EXPECT_NE(node, nullptr);
@@ -519,8 +539,7 @@ TEST(CApiSimple, OpaqueDelegate_ReplaceNodeSubsetsWithDelegateKernels) {
   g_opaque_delegate_struct = nullptr;
 }
 
-TEST(CApiSimple,
-     OpaqueDelegate_TransferRegistrationExternalOwnershipWithoutNodeToReplace) {
+TEST(CApiSimple, OpaqueDelegate_TransferOperatorOwnershipWithoutNodeToReplace) {
   g_nodes_to_replace = new std::vector<int>();
 
   TfLiteModel* model =
@@ -537,7 +556,7 @@ TEST(CApiSimple,
     delegate_state->delegate_prepared = true;
 
     TfLiteOpaqueNode* node = nullptr;
-    TfLiteRegistrationExternal* registration_external = nullptr;
+    TfLiteOperator* registration_external = nullptr;
     TfLiteOpaqueContextGetNodeAndRegistration(opaque_context, 0, &node,
                                               &registration_external);
     EXPECT_NE(node, nullptr);
@@ -596,13 +615,13 @@ TEST_F(TestFP16Delegation,
     std::vector<int> nodes_to_replace;
     for (int i = 0; i < execution_plan->size; i++) {
       TfLiteOpaqueNode* node = nullptr;
-      TfLiteRegistrationExternal* registration_external = nullptr;
+      TfLiteOperator* registration_external = nullptr;
       TfLiteOpaqueContextGetNodeAndRegistration(opaque_context,
                                                 execution_plan->data[i], &node,
                                                 &registration_external);
       EXPECT_NE(node, nullptr);
       EXPECT_NE(registration_external, nullptr);
-      if (TfLiteRegistrationExternalGetBuiltInCode(registration_external) ==
+      if (TfLiteOperatorGetBuiltInCode(registration_external) ==
           kTfLiteBuiltinAdd) {
         nodes_to_replace.push_back(execution_plan->data[i]);
       }
@@ -735,19 +754,20 @@ struct DelegateKernelState {
   TfLiteOpaqueTensor* output_tensor = nullptr;
 };
 
-TfLiteRegistrationExternal* CreateReg() {
-  auto reg_ex = TfLiteRegistrationExternalCreate(
-      kTfLiteBuiltinDelegate, "Test driver delegate", /*version=*/1);
-  TfLiteRegistrationExternalSetInit(
+TfLiteOperator* CreateReg() {
+  auto reg_ex = TfLiteOperatorCreate(kTfLiteBuiltinDelegate,
+                                     "Test driver delegate", /*version=*/1,
+                                     /*user_data=*/nullptr);
+  TfLiteOperatorSetInitWithData(
       reg_ex,
-      [](TfLiteOpaqueContext* context, const char* buffer,
+      [](void* user_data, TfLiteOpaqueContext* context, const char* buffer,
          size_t length) -> void* {
         const TfLiteOpaqueDelegateParams* params =
             reinterpret_cast<const TfLiteOpaqueDelegateParams*>(buffer);
 
         for (int i = 0; i < params->nodes_to_replace->size; ++i) {
           TfLiteOpaqueNode* node = nullptr;
-          TfLiteRegistrationExternal* registration_external = nullptr;
+          TfLiteOperator* registration_external = nullptr;
           TfLiteOpaqueContextGetNodeAndRegistration(
               context, params->nodes_to_replace->data[i], &node,
               &registration_external);
@@ -755,8 +775,8 @@ TfLiteRegistrationExternal* CreateReg() {
           EXPECT_NE(nullptr, registration_external);
           EXPECT_EQ(2, TfLiteOpaqueNodeNumberOfInputs(node));
           EXPECT_EQ(1, TfLiteOpaqueNodeNumberOfOutputs(node));
-          EXPECT_EQ(kTfLiteBuiltinAdd, TfLiteRegistrationExternalGetBuiltInCode(
-                                           registration_external));
+          EXPECT_EQ(kTfLiteBuiltinAdd,
+                    TfLiteOperatorGetBuiltInCode(registration_external));
         }
 
         TfLiteIntArray* input_tensors = params->input_tensors;
@@ -771,9 +791,9 @@ TfLiteRegistrationExternal* CreateReg() {
         return new DelegateKernelState{input_tensor, output_tensor};
       });
 
-  TfLiteRegistrationExternalSetInvoke(
+  TfLiteOperatorSetInvokeWithData(
       reg_ex,
-      [](TfLiteOpaqueContext* context,
+      [](void* user_data, TfLiteOpaqueContext* context,
          TfLiteOpaqueNode* opaque_node) -> TfLiteStatus {
         DelegateKernelState* delegate_kernel =
             reinterpret_cast<DelegateKernelState*>(
@@ -789,11 +809,12 @@ TfLiteRegistrationExternal* CreateReg() {
         return kTfLiteOk;
       });
 
-  TfLiteRegistrationExternalSetFree(reg_ex, [](TfLiteOpaqueContext* context,
-                                               void* data) {
-    DelegateKernelState* state = reinterpret_cast<DelegateKernelState*>(data);
-    delete state;
-  });
+  TfLiteOperatorSetFreeWithData(
+      reg_ex, [](void* user_data, TfLiteOpaqueContext* context, void* data) {
+        DelegateKernelState* state =
+            reinterpret_cast<DelegateKernelState*>(data);
+        delete state;
+      });
   return reg_ex;
 }
 
@@ -822,15 +843,15 @@ TEST(CApiSimple, OpaqueDelegate_TfLiteOpaqueTensorGet) {
     std::vector<int> node_ids_to_replace;
     for (int i = 0; i < execution_plan->size; ++i) {
       TfLiteOpaqueNode* node = nullptr;
-      TfLiteRegistrationExternal* registration_external = nullptr;
+      TfLiteOperator* registration_external = nullptr;
       TfLiteOpaqueContextGetNodeAndRegistration(
           context, execution_plan->data[i], &node, &registration_external);
       EXPECT_NE(nullptr, node);
       EXPECT_NE(nullptr, registration_external);
       EXPECT_EQ(2, TfLiteOpaqueNodeNumberOfInputs(node));
       EXPECT_EQ(1, TfLiteOpaqueNodeNumberOfOutputs(node));
-      EXPECT_EQ(kTfLiteBuiltinAdd, TfLiteRegistrationExternalGetBuiltInCode(
-                                       registration_external));
+      EXPECT_EQ(kTfLiteBuiltinAdd,
+                TfLiteOperatorGetBuiltInCode(registration_external));
       node_ids_to_replace.push_back(execution_plan->data[i]);
     }
 
@@ -924,21 +945,21 @@ TEST(CApiSimple, OpaqueContextGetNodeAndRegistration) {
 
     for (int i = 0; i < execution_plan->size; i++) {
       TfLiteOpaqueNode* node = nullptr;
-      TfLiteRegistrationExternal* registration_external = nullptr;
+      TfLiteOperator* registration_external = nullptr;
       TfLiteOpaqueContextGetNodeAndRegistration(opaque_context, 0, &node,
                                                 &registration_external);
       EXPECT_NE(node, nullptr);
       EXPECT_NE(registration_external, nullptr);
-      EXPECT_EQ(kTfLiteBuiltinAdd, TfLiteRegistrationExternalGetBuiltInCode(
-                                       registration_external));
-      EXPECT_EQ(1, TfLiteRegistrationExternalGetVersion(registration_external));
+      EXPECT_EQ(kTfLiteBuiltinAdd,
+                TfLiteOperatorGetBuiltInCode(registration_external));
+      EXPECT_EQ(1, TfLiteOperatorGetVersion(registration_external));
       EXPECT_EQ(2, TfLiteOpaqueNodeNumberOfInputs(node));
       EXPECT_EQ(1, TfLiteOpaqueNodeNumberOfOutputs(node));
     }
 
     {
       TfLiteOpaqueNode* node = nullptr;
-      TfLiteRegistrationExternal* registration_external = nullptr;
+      TfLiteOperator* registration_external = nullptr;
       TfLiteOpaqueContextGetNodeAndRegistration(opaque_context, 0, &node,
                                                 &registration_external);
       EXPECT_EQ(1, TfLiteOpaqueNodeGetInputTensorIndex(node, 0));
@@ -960,7 +981,7 @@ TEST(CApiSimple, OpaqueContextGetNodeAndRegistration) {
     }
     {
       TfLiteOpaqueNode* node = nullptr;
-      TfLiteRegistrationExternal* registration_external = nullptr;
+      TfLiteOperator* registration_external = nullptr;
       TfLiteOpaqueContextGetNodeAndRegistration(opaque_context, 1, &node,
                                                 &registration_external);
       EXPECT_EQ(0, TfLiteOpaqueNodeGetInputTensorIndex(node, 0));
@@ -985,8 +1006,8 @@ TEST(CApiSimple, OpaqueContextGetNodeAndRegistration) {
   TfLiteOpaqueDelegateDelete(opaque_delegate);
 }
 
-TEST(CApiSimple, TfLiteRegistrationExternalGetVersionNullptr) {
-  EXPECT_EQ(TfLiteRegistrationExternalGetVersion(nullptr), -1);
+TEST(CApiSimple, TfLiteOperatorGetVersionNullptr) {
+  EXPECT_EQ(TfLiteOperatorGetVersion(nullptr), -1);
 }
 
 TEST(CApiSimple, TfLiteOpaqueContextResizeTensor) {
@@ -1082,30 +1103,30 @@ struct SinhParams {
   bool use_cosh_instead = false;
 };
 
-void* FlexSinhInit(TfLiteOpaqueContext* context, const char* buffer,
-                   size_t length) {
+void* FlexSinhInit(void* user_data, TfLiteOpaqueContext* context,
+                   const char* buffer, size_t length) {
   auto sinh_params = new SinhParams;
   // The buffer that is passed into here is the custom_options
-  // field from the flatbuffer (tensorflow/lite/schema/schema.fbs)
-  // `Operator` for this node.
-  // Typically it should be stored as a FlexBuffer, but for this test
-  // we assume that it is just a string.
+  // field from the flatbuffer
+  // (third_party/tensorflow/compiler/mlir/lite/schema/schema.fbs) `Operator`
+  // for this node. Typically it should be stored as a FlexBuffer, but for this
+  // test we assume that it is just a string.
   if (std::string(buffer, length) == "use_cosh") {
     sinh_params->use_cosh_instead = true;
   }
   return sinh_params;
 }
 
-void FlexSinhFree(TfLiteOpaqueContext* context, void* data) {
+void FlexSinhFree(void* user_data, TfLiteOpaqueContext* context, void* data) {
   delete static_cast<SinhParams*>(data);
 }
 
-TfLiteStatus FlexSinhPrepare(TfLiteOpaqueContext* context,
+TfLiteStatus FlexSinhPrepare(void* user_data, TfLiteOpaqueContext* context,
                              TfLiteOpaqueNode* node) {
   return kTfLiteOk;
 }
 
-TfLiteStatus FlexSinhEval(TfLiteOpaqueContext* context,
+TfLiteStatus FlexSinhEval(void* user_data, TfLiteOpaqueContext* context,
                           TfLiteOpaqueNode* node) {
   auto sinh_params =
       static_cast<SinhParams*>(TfLiteOpaqueNodeGetUserData(node));
@@ -1129,18 +1150,19 @@ TEST(CApiSimple, CustomOpSupport) {
       "tensorflow/lite/testdata/custom_sinh.bin");
   ASSERT_NE(model, nullptr);
 
-  TfLiteRegistrationExternal* reg =
-      TfLiteRegistrationExternalCreate(kTfLiteBuiltinCustom, "Sinh", 1);
-  TfLiteRegistrationExternalSetPrepare(reg, &FlexSinhPrepare);
-  TfLiteRegistrationExternalSetInit(reg, &FlexSinhInit);
-  TfLiteRegistrationExternalSetFree(reg, &FlexSinhFree);
-  TfLiteRegistrationExternalSetInvoke(reg, &FlexSinhEval);
+  TfLiteOperator* reg =
+      TfLiteOperatorCreate(kTfLiteBuiltinCustom, "Sinh", /*version=*/1,
+                           /*user_data=*/nullptr);
+  TfLiteOperatorSetPrepareWithData(reg, &FlexSinhPrepare);
+  TfLiteOperatorSetInitWithData(reg, &FlexSinhInit);
+  TfLiteOperatorSetFreeWithData(reg, &FlexSinhFree);
+  TfLiteOperatorSetInvokeWithData(reg, &FlexSinhEval);
 
-  const char* kCustomName = TfLiteRegistrationExternalGetCustomName(reg);
+  const char* kCustomName = TfLiteOperatorGetCustomName(reg);
   EXPECT_EQ("Sinh", kCustomName);
 
   TfLiteInterpreterOptions* options = TfLiteInterpreterOptionsCreate();
-  TfLiteInterpreterOptionsAddRegistrationExternal(options, reg);
+  TfLiteInterpreterOptionsAddOperator(options, reg);
 
   TfLiteInterpreter* interpreter = TfLiteInterpreterCreate(model, options);
 
@@ -1160,7 +1182,7 @@ TEST(CApiSimple, CustomOpSupport) {
 
   TfLiteInterpreterDelete(interpreter);
   TfLiteModelDelete(model);
-  TfLiteRegistrationExternalDelete(reg);
+  TfLiteOperatorDelete(reg);
 }
 
 const TfLiteRegistration* find_builtin_op_add(void* user_data,
@@ -1499,13 +1521,14 @@ TEST(CApiSimple, OpaqueApiAccessors) {
     // Define a delegate kernel that checks that the properties of the model
     // are accessible via the opaque API function.
     //
-    TfLiteRegistrationExternal* reg = TfLiteRegistrationExternalCreate(
-        kTfLiteBuiltinDelegate, "my delegate", 123);
-    EXPECT_EQ(123, TfLiteRegistrationExternalGetVersion(reg));
-    TfLiteRegistrationExternalSetInit(
+    TfLiteOperator* reg = TfLiteOperatorCreate(kTfLiteBuiltinDelegate,
+                                               "my delegate", /*version=*/123,
+                                               /*user_data=*/nullptr);
+    EXPECT_EQ(123, TfLiteOperatorGetVersion(reg));
+    TfLiteOperatorSetInitWithData(
         reg,
-        [](TfLiteOpaqueContext* opaque_context, const char* buffer,
-           size_t length) -> void* {
+        [](void* user_data, TfLiteOpaqueContext* opaque_context,
+           const char* buffer, size_t length) -> void* {
           const TfLiteOpaqueDelegateParams* params =
               reinterpret_cast<const TfLiteOpaqueDelegateParams*>(buffer);
           EXPECT_EQ(2, params->input_tensors->size);
@@ -1657,6 +1680,14 @@ TEST(CApiSimple, OpaqueApiAccessors) {
             EXPECT_EQ(
                 new_quantization_params.zero_point,
                 TfLiteOpaqueTensorGetQuantizationParams(new_tensor).zero_point);
+            EXPECT_EQ(kTfLiteArenaRw,
+                      TfLiteOpaqueTensorGetAllocationType(new_tensor));
+
+            // Now switch the tensor's allocation type to dynamic after it has
+            // been created.
+            TfLiteOpaqueTensorSetAllocationTypeToDynamic(new_tensor);
+            EXPECT_EQ(kTfLiteDynamic,
+                      TfLiteOpaqueTensorGetAllocationType(new_tensor));
           }
           //
           // Create and configure a 'kTfLiteVariantObject' tensor, which will
@@ -1692,13 +1723,13 @@ TEST(CApiSimple, OpaqueApiAccessors) {
             TfLiteOpaqueTensorBuilderDelete(builder);
           }
           TfLiteOpaqueNode* node = nullptr;
-          TfLiteRegistrationExternal* registration_external = nullptr;
+          TfLiteOperator* registration_external = nullptr;
           TfLiteOpaqueContextGetNodeAndRegistration(
               opaque_context, params->nodes_to_replace->data[0], &node,
               &registration_external);
           // ADD is a builtin OP, not a custom OP.
           const char* kCustomName =
-              TfLiteRegistrationExternalGetCustomName(registration_external);
+              TfLiteOperatorGetCustomName(registration_external);
           EXPECT_EQ(nullptr, kCustomName);
 
           const void* node_custom_init_data = nullptr;
@@ -1813,12 +1844,13 @@ TEST(CApiSimple, OpaqueApiAccessorsStrings) {
   opaque_delegate_builder.Prepare = [](TfLiteOpaqueContext* context,
                                        TfLiteOpaqueDelegate* delegate,
                                        void* data) -> TfLiteStatus {
-    TfLiteRegistrationExternal* registration = TfLiteRegistrationExternalCreate(
-        kTfLiteBuiltinDelegate, "my delegate", 123);
-    TfLiteRegistrationExternalSetInit(
+    TfLiteOperator* registration = TfLiteOperatorCreate(
+        kTfLiteBuiltinDelegate, "my delegate", /*version=*/123,
+        /*user_data=*/nullptr);
+    TfLiteOperatorSetInitWithData(
         registration,
-        [](TfLiteOpaqueContext* opaque_context, const char* buffer,
-           size_t length) -> void* {
+        [](void* user_data, TfLiteOpaqueContext* opaque_context,
+           const char* buffer, size_t length) -> void* {
           const TfLiteOpaqueDelegateParams* params =
               reinterpret_cast<const TfLiteOpaqueDelegateParams*>(buffer);
           EXPECT_EQ(2, params->input_tensors->size);
@@ -1836,14 +1868,14 @@ TEST(CApiSimple, OpaqueApiAccessorsStrings) {
           return nullptr;
         });
 
-    TfLiteRegistrationExternalSetPrepare(
+    TfLiteOperatorSetPrepareWithData(
         registration,
-        [](TfLiteOpaqueContext* context,
+        [](void* user_data, TfLiteOpaqueContext* context,
            TfLiteOpaqueNode* node) -> TfLiteStatus { return kTfLiteOk; });
 
-    TfLiteRegistrationExternalSetInvoke(
+    TfLiteOperatorSetInvokeWithData(
         registration,
-        [](TfLiteOpaqueContext* context,
+        [](void* user_data, TfLiteOpaqueContext* context,
            TfLiteOpaqueNode* node) -> TfLiteStatus {
           const TfLiteOpaqueTensor* input0 =
               TfLiteOpaqueNodeGetInput(context, node, 0);
@@ -2032,7 +2064,7 @@ TEST(CApiSimple, AddNodesAfterApplyingDelegate) {
     EXPECT_EQ(execution_plan->size, 1);
 
     TfLiteOpaqueNode* node = nullptr;
-    TfLiteRegistrationExternal* registration_external = nullptr;
+    TfLiteOperator* registration_external = nullptr;
     TfLiteOpaqueContextGetNodeAndRegistration(context, execution_plan->data[0],
                                               &node, &registration_external);
     EXPECT_NE(node, nullptr);

@@ -13,8 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/core/ir/dialect.h"
 #include "tensorflow/core/ir/tf_op_wrapper.h"
 
@@ -26,7 +28,7 @@ bool TFGraphDialect::IsAdd(TFOp op) const {
 
   if (op_name == add_v2_) return true;
   if (op_name == add_)
-    return !op->getAttrOfType<TypeAttr>("T").getValue().isa<StringType>();
+    return !mlir::isa<StringType>(op->getAttrOfType<TypeAttr>("T").getValue());
   return false;
 }
 

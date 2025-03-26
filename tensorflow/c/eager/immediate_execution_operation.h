@@ -45,8 +45,8 @@ class ImmediateExecutionOperation : public AbstractOperation {
   // Returns the inputs of this op.
   virtual absl::Span<ImmediateExecutionTensorHandle* const> GetInputs()
       const = 0;
-  virtual Status SetInput(size_t index,
-                          ImmediateExecutionTensorHandle* input) = 0;
+  virtual absl::Status SetInput(size_t index,
+                                ImmediateExecutionTensorHandle* input) = 0;
 
   virtual ImmediateExecutionContext* GetContext() const = 0;
 
@@ -57,8 +57,8 @@ class ImmediateExecutionOperation : public AbstractOperation {
 
   virtual const tensorflow::OpDef* OpDef() const = 0;
 
-  virtual Status InputLength(const char* input_name, int* length) = 0;
-  virtual Status OutputLength(const char* output_name, int* length) = 0;
+  virtual absl::Status InputLength(const char* input_name, int* length) = 0;
+  virtual absl::Status OutputLength(const char* output_name, int* length) = 0;
 
   // Set stack trace to be used for potential async error reporting.
   virtual void SetStackTrace(ManagedStackTrace stack_trace) = 0;

@@ -22,6 +22,7 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/Parser/Parser.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/core/framework/device_base.h"
 #include "tensorflow/core/framework/resource_mgr.h"
@@ -103,8 +104,8 @@ TEST(EvalUtilsTest, EvaluateOperation) {
       {const_0->getAttrOfType<ElementsAttr>("value")}, result)));
 
   ASSERT_EQ(result.size(), 1);
-  ASSERT_TRUE(result[0].isa<ElementsAttr>());
-  EXPECT_EQ(result[0].cast<ElementsAttr>().getValues<int>()[0], 1);
+  ASSERT_TRUE(mlir::isa<ElementsAttr>(result[0]));
+  EXPECT_EQ(mlir::cast<ElementsAttr>(result[0]).getValues<int>()[0], 1);
 
   result.clear();
 
@@ -113,8 +114,8 @@ TEST(EvalUtilsTest, EvaluateOperation) {
       {const_1->getAttrOfType<ElementsAttr>("value")}, result)));
 
   ASSERT_EQ(result.size(), 1);
-  ASSERT_TRUE(result[0].isa<ElementsAttr>());
-  EXPECT_EQ(result[0].cast<ElementsAttr>().getValues<int>()[0], 2);
+  ASSERT_TRUE(mlir::isa<ElementsAttr>(result[0]));
+  EXPECT_EQ(mlir::cast<ElementsAttr>(result[0]).getValues<int>()[0], 2);
 
   result.clear();
 
@@ -125,8 +126,8 @@ TEST(EvalUtilsTest, EvaluateOperation) {
                               result)));
 
   ASSERT_EQ(result.size(), 1);
-  ASSERT_TRUE(result[0].isa<ElementsAttr>());
-  EXPECT_EQ(result[0].cast<ElementsAttr>().getValues<int>()[0], 3);
+  ASSERT_TRUE(mlir::isa<ElementsAttr>(result[0]));
+  EXPECT_EQ(mlir::cast<ElementsAttr>(result[0]).getValues<int>()[0], 3);
 }
 
 TEST(EvalUtilsTest, OutputInvalidation) {
@@ -170,7 +171,7 @@ TEST(EvalUtilsTest, OutputInvalidation) {
   ASSERT_EQ(result.size(), 2);
   // Output 0 is invalidated.
   EXPECT_EQ(result[0], nullptr);
-  EXPECT_EQ(result[1].cast<ElementsAttr>().getValues<int>()[0], 2);
+  EXPECT_EQ(mlir::cast<ElementsAttr>(result[1]).getValues<int>()[0], 2);
 }
 
 }  // namespace tfg

@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "ConfigureTPUEmbedding"
   attr {
     name: "config"

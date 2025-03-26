@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -18,8 +18,6 @@ limitations under the License.
 
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/hlo/ir/hlo_module.h"
-#include "xla/literal.h"
 #include "xla/service/gpu/tests/gpu_codegen_test.h"
 #include "xla/shape_util.h"
 #include "xla/xla_data.pb.h"
@@ -53,10 +51,10 @@ TEST_F(GpuNoAliasTest, Concat) {
   // - We only pass the same parameters once, so the kernel will have these
   // parameters: (x, y, output), and all of them will be noalias.
   auto expected_ir = is_built_with_rocm_ ? R"(
-CHECK: define amdgpu_kernel void @{{[a-zA-Z0-9_]+}}(ptr noalias align 16 dereferenceable(16) %arg0, ptr noalias align 16 dereferenceable(16) %arg1, ptr noalias align 128 dereferenceable(48) %arg2) #0
+CHECK: define amdgpu_kernel void @{{[a-zA-Z0-9_]+}}(ptr noalias align 16 dereferenceable(16) %{{[a-zA-Z0-9_]+}}, ptr noalias align 16 dereferenceable(16) %{{[a-zA-Z0-9_]+}}, ptr noalias align 128 dereferenceable(48) %{{[a-zA-Z0-9_]+}}) #0
   )"
                                          : R"(
-CHECK: define void @{{[a-zA-Z0-9_]+}}(ptr noalias align 16 dereferenceable(16) %arg0, ptr noalias align 16 dereferenceable(16) %arg1, ptr noalias align 128 dereferenceable(48) %arg2)
+CHECK: define ptx_kernel void @{{[a-zA-Z0-9_]+}}(ptr noalias align 16 dereferenceable(16) %{{[a-zA-Z0-9_]+}}, ptr noalias align 16 dereferenceable(16) %{{[a-zA-Z0-9_]+}}, ptr noalias align 128 dereferenceable(48) %{{[a-zA-Z0-9_]+}})
   )";
   CompileAndVerifyIr(std::move(hlo_module), expected_ir,
                      /*match_optimized_ir=*/false);

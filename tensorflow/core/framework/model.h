@@ -24,12 +24,14 @@ limitations under the License.
 #include <memory>
 #include <string>
 // TODO(b/114492873): Move this include into core/platform.
+#include <optional>
 #include <thread>  // NOLINT
 #include <utility>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/types/optional.h"
 #include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/metrics.h"
 #include "tensorflow/core/framework/model.pb.h"
@@ -135,10 +137,16 @@ struct Parameter {
   std::shared_ptr<SharedState> state;
 };
 
-// Returns a new tunable parameter.
+// Returns a new tunable parameter with the value set to `min`.
 std::shared_ptr<Parameter> MakeParameter(const string& name,
                                          std::shared_ptr<SharedState> state,
                                          double min, double max);
+
+// Returns a new tunable parameter with the value set to `value` instead
+// of `min`.
+std::shared_ptr<Parameter> MakeParameter(const string& name,
+                                         std::shared_ptr<SharedState> state,
+                                         double min, double max, double value);
 
 // Returns a new non-tunable parameter.
 std::shared_ptr<Parameter> MakeNonTunableParameter(const string& name,
@@ -233,6 +241,13 @@ class RamBudgetManager {
     mutex_lock l(mu_);
     budget_ = budget;
     VLOG(2) << "Updated ram budget to " << budget;
+  }
+
+  std::string DebugString() {
+    mutex_lock l(mu_);
+    return absl::StrCat("RamBudgetManager: budget_: ", budget_,
+                        " prefetch allocated: ", legacy_prefetch_allocated_,
+                        " model allocated: ", model_allocated_);
   }
 
  private:
@@ -408,7 +423,7 @@ class Node {
 
   // Returns the node output.
   Node* output() const { return output_; }
-  bool output_deleted() { return output_weak_ptr_.expired(); }
+  std::shared_ptr<Node> output_shared() { return output_weak_ptr_.lock(); }
 
   // Returns the parameter value.
   double parameter_value(const string& name) const TF_LOCKS_EXCLUDED(mu_) {
@@ -511,7 +526,7 @@ class Node {
   virtual double ComputeSelfTime() const;
 
   // Returns the parameter value if it exists, not ok status otherwise.
-  StatusOr<double> ParameterValue(const std::string& parameter_name) const
+  absl::StatusOr<double> ParameterValue(const std::string& parameter_name) const
       TF_LOCKS_EXCLUDED(mu_) {
     tf_shared_lock l(mu_);
     if (parameters_.contains(parameter_name)) {
@@ -586,12 +601,12 @@ class Node {
       TF_LOCKS_EXCLUDED(mu_);
 
   // Produces a proto for this node. Does not produce a proto for input nodes.
-  virtual Status ToProto(ModelProto::Node* node_proto) const;
+  virtual absl::Status ToProto(ModelProto::Node* node_proto) const;
 
   // Restores a node from the proto. Does not restore input nodes.
-  static Status FromProto(ModelProto::Node node_proto,
-                          std::shared_ptr<Node> output,
-                          std::shared_ptr<Node>* node);
+  static absl::Status FromProto(ModelProto::Node node_proto,
+                                std::shared_ptr<Node> output,
+                                std::shared_ptr<Node>* node);
 
   // Returns a vector of nodes of the subtree rooted in this node. The nodes are
   // either in breadth-first search or reverse breadth-first search order
@@ -615,6 +630,15 @@ class Node {
   double AverageBufferedElementSize() const {
     tf_shared_lock l(mu_);
     return AverageBufferedElementSizeLocked();
+  }
+
+  // Copies node's parameter state value to parameter value if the parameter
+  // name matches `parameter_name`.
+  void SyncStateValuesToParameterValues(const std::string& parameter_name);
+
+  void SetEstimatedElementSize(std::optional<int64_t> estimated_element_size) {
+    mutex_lock l(mu_);
+    estimated_element_size_ = estimated_element_size;
   }
 
  protected:
@@ -787,8 +811,8 @@ class Node {
 
   // Restores node from the proto. Note that this is not done recursively, i.e.
   // input nodes are not restored.
-  static Status FromProtoHelper(ModelProto::Node node_proto,
-                                std::shared_ptr<Node> node);
+  static absl::Status FromProtoHelper(ModelProto::Node node_proto,
+                                      std::shared_ptr<Node> node);
 
   // Stores the time passed to the last call to `Node::record_start()` on the
   // current thread.
@@ -841,6 +865,8 @@ class Node {
   // node results in recursive deletion of the subtree rooted in the node.
   Node* const output_;
   std::weak_ptr<Node> output_weak_ptr_;
+  std::optional<int64_t> estimated_element_size_ TF_GUARDED_BY(mu_) =
+      std::nullopt;
 };
 
 // InterleaveMany is used to model datasets whose inputs are used to create
@@ -863,10 +889,13 @@ std::shared_ptr<Node> MakeAsyncKnownRatioNode(
     std::vector<std::shared_ptr<Parameter>> parameters,
     bool is_legacy_prefetch_autotuned = false);
 
+// Makes an AsyncKnownRatioNode. If `estimated_element_size` is provided,
+// it will be used during the estimation of maximum buffered bytes.
 std::shared_ptr<Node> MakeAsyncKnownRatioNode(
     Node::Args args, double ratio,
     std::vector<std::shared_ptr<Parameter>> parameters,
-    bool is_legacy_prefetch_autotuned = false);
+    bool is_legacy_prefetch_autotuned = false,
+    std::optional<int64_t> estimated_element_size = std::nullopt);
 
 // Source nodes represent data sources.
 std::shared_ptr<Node> MakeSourceNode(Node::Args args);
@@ -907,7 +936,8 @@ class Model {
   using NodeValues = Node::NodeValues;
   using ParameterGradients = Node::ParameterGradients;
 
-  Model();
+  explicit Model(std::optional<std::string> dataset_name);
+  explicit Model() : Model(std::nullopt) {}
   ~Model();
 
   // Returns a pointer to the model's output node.
@@ -944,17 +974,19 @@ class Model {
   //
   // To terminate the execution of the optimization loop, the caller needs to
   // invoke `cancellation_mgr->StartCancel()`.
-  Status OptimizeLoop(AutotuneAlgorithm algorithm,
-                      std::function<int64_t()> cpu_budget_func,
-                      std::function<int64_t(int64_t)> ram_budget_func,
-                      RamBudgetManager& ram_budget_manager,
-                      CancellationManager* cancellation_manager);
+  absl::Status OptimizeLoop(AutotuneAlgorithm algorithm,
+                            std::function<int64_t()> cpu_budget_func,
+                            double ram_budget_share,
+                            std::optional<int64_t> fixed_ram_budget,
+                            RamBudgetManager& ram_budget_manager,
+                            CancellationManager* cancellation_manager);
 
   // Uses the given algorithm and resource budgets to perform the autotuning
   // optimization.
   void Optimize(AutotuneAlgorithm algorithm,
                 std::function<int64_t()> cpu_budget_func,
-                std::function<int64_t(int64_t)> ram_budget_func,
+                double ram_budget_share,
+                std::optional<int64_t> fixed_ram_budget,
                 double model_input_time, RamBudgetManager& ram_budget_manager,
                 CancellationManager* cancellation_manager);
 
@@ -974,21 +1006,21 @@ class Model {
   void RemoveNode(std::shared_ptr<Node> node) TF_LOCKS_EXCLUDED(mu_);
 
   // Produces a proto for this model.
-  Status ToProto(ModelProto* model_proto);
+  absl::Status ToProto(ModelProto* model_proto);
 
   // Restores a model from the proto.
-  static Status FromProto(ModelProto model_proto,
-                          std::unique_ptr<Model>* model);
+  static absl::Status FromProto(ModelProto model_proto,
+                                std::unique_ptr<Model>* model);
 
   // Saves this model with a given snapshot and its optimization parameters to a
   // file. Note that the file directory must already exist.
-  Status Save(const string& fname, std::shared_ptr<Node> snapshot,
-              const OptimizationParams& optimization_params);
+  absl::Status Save(const string& fname, std::shared_ptr<Node> snapshot,
+                    const OptimizationParams& optimization_params);
 
   // Loads a model and its optimization parameters from a file with the given
   // name.
-  static Status Load(const string& fname, std::unique_ptr<Model>* model,
-                     OptimizationParams* optimization_params);
+  static absl::Status Load(const string& fname, std::unique_ptr<Model>* model,
+                           OptimizationParams* optimization_params);
 
   // Records gap time between consecutive `GetNext()` calls.
   void RecordIteratorGapTime(uint64_t duration_usec);
@@ -1027,7 +1059,7 @@ class Model {
   // nodes, the parameter state values are not tuned by Autotune and hence the
   // parameter values can be stale. We do not sync all parameters because it may
   // increase mutex contention with `GetNext()`.
-  void MaybeSyncStateValuesToValues(ModelParameters* parameters);
+  void MaybeSyncStateValuesToValues(std::shared_ptr<Node> snapshot);
 
   // Downsizes buffers that are too large for all nodes rooted at `snapshot`.
   // Returns true if any buffer is downsized.
@@ -1140,6 +1172,7 @@ class Model {
   // buffers were full.
   double TotalMaximumBufferedBytes(std::shared_ptr<Node> node);
 
+  std::optional<std::string> dataset_name_;
   // Used for coordination between different input pipeline threads. Exclusive
   // access is required only when adding or removing nodes. Concurrent access to
   // existing nodes is protected by a node mutex.
@@ -1165,11 +1198,11 @@ class Model {
   };
   std::shared_ptr<GuardedBool> safe_to_collect_metrics_;
 
-  // Time use for rate limitting the recomputation of human-readable string
-  // represention of the model.
+  // Time use for rate limiting the recomputation of human-readable string
+  // representation of the model.
   absl::Time cache_until_ = absl::InfinitePast();
   // Cached result of the `DebugString()` invocation used to implement rate
-  // limitting of the computation.
+  // limiting of the computation.
   std::string cached_debug_string_ = "";
   // Used to coordinate gap time updates between different threads. Gap time is
   // the time between the completion of the previous `GetNext()` and the start
@@ -1183,6 +1216,8 @@ class Model {
   std::shared_ptr<Node> snapshot_ TF_GUARDED_BY(mu_);
   // Stores the optimization parameters used by autotune.
   OptimizationParams optimization_params_ TF_GUARDED_BY(mu_);
+  // Stores the model id in the string format
+  std::string model_id_;
 };
 
 // Class to compute timing information for a model.

@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "CollectiveGatherV2"
   input_arg {
     name: "input"

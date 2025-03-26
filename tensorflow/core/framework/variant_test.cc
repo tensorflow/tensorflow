@@ -473,7 +473,7 @@ TEST(VariantTest, Tensor) {
 TEST(VariantTest, NontrivialTensorVariantCopy) {
   Tensor variants(DT_VARIANT, {});
   Tensor t(true);
-  test::FillValues<Variant>(&variants, gtl::ArraySlice<Variant>({t}));
+  test::FillValues<Variant>(&variants, absl::Span<const Variant>({t}));
   const Tensor* t_c = variants.flat<Variant>()(0).get<Tensor>();
   EXPECT_EQ(t_c->dtype(), t.dtype());
   EXPECT_EQ(t_c->shape(), t.shape());

@@ -20,9 +20,13 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "absl/log/check.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/lite/string_type.h"
 #include "tensorflow/lite/testing/join.h"
 #include "tensorflow/lite/testing/split.h"
+#include "tensorflow/lite/testing/test_runner.h"
 #include "tensorflow/lite/testing/tf_driver.h"
 #include "tensorflow/lite/testing/tflite_driver.h"
 

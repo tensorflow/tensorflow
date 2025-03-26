@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,14 +15,25 @@ limitations under the License.
 
 #include "xla/service/pattern_matcher.h"
 
+#include <memory>
+#include <sstream>
 #include <string>
 
 #include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
+#include "xla/comparison_util.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
-#include "xla/service/hlo_parser.h"
+#include "xla/hlo/parser/hlo_parser.h"
+#include "xla/layout.h"
+#include "xla/layout_util.h"
+#include "xla/literal_util.h"
+#include "xla/shape.h"
+#include "xla/shape_util.h"
 #include "xla/test.h"
 #include "xla/tests/hlo_test_base.h"
+#include "xla/util.h"
+#include "tsl/platform/statusor.h"
 #include "tsl/platform/test.h"
 
 namespace xla {
@@ -855,7 +866,7 @@ TEST_F(PatternMatcherTest, HloInstructionDescribeToAndExplain) {
       "HloInstruction has opcode constant, expected anything else\n"
       "in c = s32[] constant(0)\n"
       "in operand 1\n"
-      "in a = s32[] add(s32[] c, s32[] c)");
+      "in a = s32[] add(c, c)");
   EXPECT_DESC_AND_EXPLANATION(
       iota, m::Op().WithFusionKind(HloInstruction::FusionKind::kLoop),
       "an HloInstruction with fusion kind kLoop",
@@ -909,7 +920,7 @@ TEST_F(PatternMatcherTest, HloInstructionDescribeToAndExplain) {
       "HloInstruction doesn't have opcode iota\n"
       "in c = s32[] constant(0)\n"
       "in operand 0\n"
-      "in a = s32[] add(s32[] c, s32[] c)");
+      "in a = s32[] add(c, c)");
 
   EXPECT_DESC_AND_EXPLANATION(
       constant, m::Op().WithPredicate(HloPredicateFalse),
@@ -944,7 +955,7 @@ TEST_F(PatternMatcherTest, HloInstructionMatcherAnyOrderDescribeTo) {
       "does not match RHS:\n"
       " - HloInstruction not named \"bar\"\n"
       "   in c = s32[] constant(0)\n"
-      "in a = s32[] add(s32[] b, s32[] c)");
+      "in a = s32[] add(b, c)");
 
   EXPECT_DESC_AND_EXPLANATION(
       SetName("a",
@@ -971,7 +982,7 @@ TEST_F(PatternMatcherTest, HloInstructionMatcherAnyOrderDescribeTo) {
       "does not match LHS:\n"
       " - HloInstruction doesn't have opcode constant\n"
       "   in p = s32[] parameter(0)\n"
-      "in a = s32[] add(s32[] p, s32[] c)");
+      "in a = s32[] add(p, c)");
 }
 
 TEST_F(PatternMatcherTest, AnyOfMatcherDescribeToAndExplain) {
@@ -1053,8 +1064,8 @@ TEST_F(PatternMatcherTest, OneUseAndOneUser) {
     const char* kMultipleUserExplanation =
         "HloInstruction has 2 users, but expected exactly one.\n"
         "All users:\n"
-        " - r = f32[1]{0} reshape(f32[] p0)\n"
-        " - r1 = f32[1]{0} reshape(f32[] p0)\n"
+        " - r = f32[1]{0} reshape(p0)\n"
+        " - r1 = f32[1]{0} reshape(p0)\n"
         "in p0 = f32[] parameter(0)";
     EXPECT_EQ(Explanation(param.get(), m::Op().WithOneUse()),
               kMultipleUserExplanation);
@@ -1069,7 +1080,7 @@ TEST_F(PatternMatcherTest, OneUseAndOneUser) {
   EXPECT_FALSE(Match(param.get(), m::Op().WithOneUse()));
   EXPECT_EQ(Explanation(param.get(), m::Op().WithOneUse()),
             "HloInstruction is used 2 times by its user, but is expected to be "
-            "used just once: add = f32[] add(f32[] p0, f32[] p0)\n"
+            "used just once: add = f32[] add(p0, p0)\n"
             "in p0 = f32[] parameter(0)");
 }
 
@@ -1105,7 +1116,7 @@ TEST_F(PatternMatcherTest, MatchSingleUserOnlyUnaryOpTwoUsers) {
   EXPECT_EQ(Explanation(bitcast.get(), m::Bitcast(m::Op()),
                         /*single_user_only=*/true),
             "Operand 0 of HloInstruction has 2 users. Expected 1.\nin bitcast "
-            "= f32[1]{0} bitcast(f32[] p)");
+            "= f32[1]{0} bitcast(p)");
 }
 
 TEST_F(PatternMatcherTest, MatchSingleUserOnlyBinaryOpOneUser) {
@@ -1142,7 +1153,7 @@ TEST_F(PatternMatcherTest, MatchSingleUserOnlyBinaryOpTwoUsers) {
   EXPECT_EQ(Explanation(mul.get(), m::Multiply(m::Op(), m::Op()),
                         /*single_user_only=*/true),
             "Operand 1 of HloInstruction has 2 users. Expected 1.\nin mul = "
-            "f32[] multiply(f32[] p1, f32[] p0)");
+            "f32[] multiply(p1, p0)");
 
   EXPECT_FALSE(MatchSingleUserOnly(add.get(), m::Add(m::Op(), m::Op())));
   EXPECT_FALSE(
@@ -1150,7 +1161,7 @@ TEST_F(PatternMatcherTest, MatchSingleUserOnlyBinaryOpTwoUsers) {
   EXPECT_EQ(Explanation(add.get(), m::Add(m::Op(), m::Op()),
                         /*single_user_only=*/true),
             "Operand 0 of HloInstruction has 2 users. Expected 1.\nin add = "
-            "f32[] add(f32[] p0, f32[] p0)");
+            "f32[] add(p0, p0)");
 }
 
 TEST_F(PatternMatcherTest, MatchSingleUserOnlyBinaryOpTwoUsersLowerLevel) {
@@ -1184,7 +1195,7 @@ TEST_F(PatternMatcherTest, MatchSingleUserOnlyBinaryOpTwoUsersLowerLevel) {
   EXPECT_EQ(Explanation(add.get(), m::Add(m::Op(), m::Op()),
                         /*single_user_only=*/true),
             "Operand 0 of HloInstruction has 2 users. Expected 1.\nin add = "
-            "f32[] add(f32[] p0, f32[] p0)");
+            "f32[] add(p0, p0)");
 }
 
 TEST_F(PatternMatcherTest, Comparison) {
@@ -1226,8 +1237,7 @@ TEST_F(PatternMatcherTest, Comparison) {
       " * which has exactly one user (but possibly is used "
       "multiple times by that instruction)",
       "HloInstruction is not comparison NE\n"
-      "in compare = f32[1]{0} compare(f32[1]{0} param.0, f32[1]{0} param.1), "
-      "direction=EQ");
+      "in compare = f32[1]{0} compare(param.0, param.1), direction=EQ");
 }
 
 TEST_F(PatternMatcherTest, ConvDnums) {
@@ -1392,9 +1402,8 @@ TEST_F(PatternMatcherTest, TestWithContractingDims) {
       " * with opcode dot AND\n"
       " * with lhs_contracting_dims {1} and rhs_contracting_dims {0,1}",
       "rhs_contracting_dimensions {0} don't match expected {0,1}\n"
-      "in dot1 = f32[2048,33708]{1,0} dot(f32[2048,1024]{1,0} param1, "
-      "f32[1024,33708]{1,0} param2), lhs_contracting_dims={1}, "
-      "rhs_contracting_dims={0}");
+      "in dot1 = f32[2048,33708]{1,0} dot(param1, param2), "
+      "lhs_contracting_dims={1}, rhs_contracting_dims={0}");
 }
 
 TEST_F(PatternMatcherTest, TestWithReplicaGroups) {
@@ -1424,7 +1433,7 @@ TEST_F(PatternMatcherTest, TestWithReplicaGroups) {
       " * with replica_group {{1,0},{3,2}}",
       "replica_group {{0,1},{2,3}} don't match expected with replica_group "
       "{{1,0},{3,2}}\n"
-      "in all-reduce = f32[128,32]{0,1} all-reduce(f32[128,32]{0,1} input), "
+      "in all-reduce = f32[128,32]{0,1} all-reduce(input), "
       "replica_groups={{0,1},{2,3}}, to_apply=add");
 }
 
@@ -1451,6 +1460,35 @@ TEST_F(PatternMatcherTest, TestWithSharding) {
       "{devices=[2,2,1,1]0,1,2,3}\n"
       "in p0 = f32[5,7,11,13]{3,2,1,0} parameter(0), "
       "sharding={devices=[1,2,2,1]0,1,2,3}");
+}
+
+TEST_F(PatternMatcherTest, TestWithControlDeps) {
+  constexpr char kModuleStr[] = R"(
+    HloModule test_module
+    ENTRY test {
+      p0 = f32[4] parameter(0)
+      p1 = f32[4] parameter(1)
+      add = f32[4] add(p0, p1)
+      mul = f32[4] multiply(p0, p1), control-predecessors={add}
+      div = f32[4] divide(p0, p1), control-predecessors={mul}
+      ROOT t = (f32[4], f32[4], f32[4]) tuple(add, mul, div)
+    })";
+  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module,
+                          ParseAndReturnVerifiedModule(kModuleStr));
+  auto* add = FindInstruction(hlo_module.get(), "add");
+  auto* mul = FindInstruction(hlo_module.get(), "mul");
+  auto* div = FindInstruction(hlo_module.get(), "div");
+
+  EXPECT_TRUE(Match(add, m::Op().WithControlDeps({}, {mul})));
+  EXPECT_TRUE(Match(mul, m::Op().WithControlDeps({add}, {div})));
+  EXPECT_TRUE(Match(div, m::Op().WithControlDeps({mul}, {})));
+  EXPECT_FALSE(Match(div, m::Op().WithControlDeps({mul}, {div})));
+  EXPECT_DESC_AND_EXPLANATION(
+      div, m::Op().WithControlDeps({mul}, {div}),
+      "an HloInstruction with control predecessors {mul} and control "
+      "successors {div}",
+      "HloInstruction expected to have control successors {div} but has {}\n"
+      "in div = f32[4]{0} divide(p0, p1), control-predecessors={mul}");
 }
 
 }  // namespace

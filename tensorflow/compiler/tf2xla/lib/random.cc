@@ -16,13 +16,11 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/lib/random.h"
 
 #include <cmath>
-#include <limits>
 
-#include "tensorflow/compiler/tf2xla/xla_helpers.h"
-#include "xla/client/lib/constants.h"
-#include "xla/client/lib/math.h"
-#include "xla/client/xla_builder.h"
-#include "xla/status_macros.h"
+#include "xla/hlo/builder/lib/constants.h"
+#include "xla/hlo/builder/lib/math.h"
+#include "xla/hlo/builder/xla_builder.h"
+#include "xla/xla_data.pb.h"
 
 namespace tensorflow {
 

@@ -17,14 +17,13 @@ exports_files(glob([
 py_strict_library(
     name = "model_handler",
     srcs = ["model_handler.py"],
-    srcs_version = "PY3",
     deps = [
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python/client:session",
         "//tensorflow/python/compiler/tensorrt:trt_convert_py",
-        "//tensorflow/python/framework",
         "//tensorflow/python/framework:convert_to_constants",
         "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:importer",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/ops:math_ops",
         "//tensorflow/python/ops:random_ops",
@@ -40,7 +39,6 @@ py_strict_library(
 py_strict_library(
     name = "result_analyzer",
     srcs = ["result_analyzer.py"],
-    srcs_version = "PY3",
     deps = [
         ":model_handler",
         "//tensorflow/python/compiler/tensorrt:trt_convert_py",
@@ -53,8 +51,6 @@ py_strict_binary(
     name = "run_models",
     srcs = ["run_models.py"],
     data = ["sample_model/saved_model.pb"],
-    python_version = "PY3",
-    srcs_version = "PY3",
     deps = [
         ":model_handler",
         ":result_analyzer",

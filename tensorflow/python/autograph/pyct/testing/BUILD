@@ -10,7 +10,6 @@ py_strict_library(
     srcs = [
         "codegen.py",
     ],
-    srcs_version = "PY3",
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/python/autograph/pyct:templates",
@@ -35,8 +34,6 @@ py_strict_test(
     name = "codegen_test",
     size = "large",
     srcs = ["codegen_test.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
     tags = [
         "manual",
         "no_windows",
@@ -45,7 +42,8 @@ py_strict_test(
     ],
     deps = [
         ":codegen",
-        "//tensorflow/python/platform:client_testlib",
+        #internal proto upb dep
         "//third_party/py/numpy",
+        "//tensorflow/python/platform:client_testlib",
     ],
 )

@@ -9,6 +9,10 @@ glob_lit_tests(
     name = "all_tests",
     data = [":test_utilities"],
     driver = "@llvm-project//mlir:run_lit.sh",
+    exclude = [
+        # TODO(b/305738491): Temporarily excluded until Bridge V1 has all passes as pass pipelines.
+        "end_to_end.mlir",
+    ],
     test_file_exts = [
         "mlir",
         "pbtxt",

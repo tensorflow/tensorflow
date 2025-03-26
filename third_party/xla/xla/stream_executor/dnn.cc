@@ -1,4 +1,4 @@
-/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2015 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,19 +15,38 @@ limitations under the License.
 
 #include "xla/stream_executor/dnn.h"
 
+#include <Eigen/Core>
 #include <algorithm>
+#include <complex>
+#include <cstddef>
 #include <cstdint>
 #include <iterator>
+#include <memory>
+#include <optional>
+#include <ostream>
+#include <string>
+#include <utility>
+#include <vector>
 
 #include "absl/algorithm/container.h"
 #include "absl/container/btree_map.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/types/span.h"
+#include "xla/stream_executor/data_type.h"
+#include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/numeric_options.h"
-#include "tsl/lib/strings/proto_serialization.h"
-#include "tsl/protobuf/dnn.pb.h"
+#include "xla/stream_executor/scratch_allocator.h"
+#include "xla/stream_executor/stream.h"
+#include "xla/tsl/lib/strings/proto_serialization.h"
+#include "xla/tsl/protobuf/dnn.pb.h"
+#include "xla/util.h"
+#include "tsl/platform/ml_dtypes.h"
 
 namespace stream_executor {
 namespace dnn {
@@ -50,10 +69,14 @@ bool ProtoMapsEqual(const google::protobuf::Map<int64_t, int64_t>& x,
 
 }  // namespace
 
+constexpr DataType ToDataType<tsl::float4_e2m1fn>::value;
+constexpr DataType ToDataType<tsl::float8_e3m4>::value;
+constexpr DataType ToDataType<tsl::float8_e4m3>::value;
 constexpr DataType ToDataType<tsl::float8_e4m3fn>::value;
 constexpr DataType ToDataType<tsl::float8_e4m3fnuz>::value;
 constexpr DataType ToDataType<tsl::float8_e5m2>::value;
 constexpr DataType ToDataType<tsl::float8_e5m2fnuz>::value;
+constexpr DataType ToDataType<tsl::float8_e8m0fnu>::value;
 constexpr DataType ToDataType<float>::value;
 constexpr DataType ToDataType<double>::value;
 constexpr DataType ToDataType<Eigen::half>::value;
@@ -122,7 +145,7 @@ std::vector<std::pair<int64_t, int64_t>> AlgorithmDesc::TuningKnobs() const {
   return result;
 }
 
-tsl::Status DnnSupport::GetConvolveRunners(
+absl::Status DnnSupport::GetConvolveRunners(
     bool /* use_cudnn_frontend */, dnn::ConvolutionKind /*kind*/,
     dnn::DataType /*input_type*/, dnn::DataType /*output_type*/,
     Stream* /*stream*/, const dnn::BatchDescriptor& /*input_descriptor*/,
@@ -135,10 +158,10 @@ tsl::Status DnnSupport::GetConvolveRunners(
     bool /*use_fallback*/, ScratchAllocator* /*scratch_allocator*/,
     const NumericOptions& /*numeric_options*/,
     std::vector<std::unique_ptr<const dnn::ConvRunner>>* /*exec_plans*/) {
-  return tsl::errors::Unimplemented("GetConvolveRunners not implemented.");
+  return absl::UnimplementedError("GetConvolveRunners not implemented.");
 }
 
-tsl::StatusOr<std::unique_ptr<const dnn::ConvRunner>>
+absl::StatusOr<std::unique_ptr<const dnn::ConvRunner>>
 DnnSupport::ConvolveRunnerFromDesc(
     Stream* stream, const dnn::AlgorithmDesc& algorithm_desc,
     dnn::ConvolutionKind kind, dnn::DataType element_type,
@@ -146,10 +169,10 @@ DnnSupport::ConvolveRunnerFromDesc(
     const dnn::FilterDescriptor& filter_descriptor,
     const dnn::BatchDescriptor& output_descriptor,
     const dnn::ConvolutionDescriptor& convolution_descriptor) {
-  return tsl::errors::Unimplemented("ConvolveRunnerFromDesc not implemented.");
+  return absl::UnimplementedError("ConvolveRunnerFromDesc not implemented.");
 }
 
-tsl::Status DnnSupport::GetGraphConvolveRunners(
+absl::Status DnnSupport::GetGraphConvolveRunners(
     dnn::ConvolutionKind /*kind*/, dnn::DataType /*input_type*/,
     dnn::DataType /*output_type*/, Stream* /*stream*/,
     const dnn::BatchDescriptor& /*input_descriptor*/,
@@ -159,10 +182,10 @@ tsl::Status DnnSupport::GetGraphConvolveRunners(
     bool /*use_fallback*/, const NumericOptions& /*numeric_options*/,
     std::vector<std::unique_ptr<const dnn::GraphConvRunner>>* /*exec_plans*/,
     std::string /*serialized_graph*/) {
-  return tsl::errors::Unimplemented("GetGraphConvolveRunners not implemented.");
+  return absl::UnimplementedError("GetGraphConvolveRunners not implemented.");
 }
 
-tsl::StatusOr<std::unique_ptr<const dnn::GraphConvRunner>>
+absl::StatusOr<std::unique_ptr<const dnn::GraphConvRunner>>
 DnnSupport::GraphConvolveRunnerFromDesc(
     Stream* stream, const dnn::AlgorithmDesc& algorithm_desc,
     dnn::ConvolutionKind kind, dnn::DataType element_type,
@@ -171,11 +194,11 @@ DnnSupport::GraphConvolveRunnerFromDesc(
     const dnn::BatchDescriptor& output_descriptor,
     const dnn::ConvolutionDescriptor& convolution_descriptor,
     std::string serialized_graph) {
-  return tsl::errors::Unimplemented(
+  return absl::UnimplementedError(
       "GraphConvolveRunnerFromDesc not implemented.");
 }
 
-tsl::Status DnnSupport::GetFusedConvolveRunners(
+absl::Status DnnSupport::GetFusedConvolveRunners(
     bool use_cudnn_frontend, dnn::ConvolutionKind kind,
     dnn::DataType element_type, dnn::DataType bias_type,
     dnn::DataType output_type, double conv_input_scale, double side_input_scale,
@@ -187,10 +210,10 @@ tsl::Status DnnSupport::GetFusedConvolveRunners(
     const dnn::ConvolutionDescriptor& convolution_descriptor, bool use_fallback,
     dnn::ActivationMode activation_mode, const NumericOptions& numeric_options,
     std::vector<std::unique_ptr<const dnn::FusedConvRunner>>* out_exec_plans) {
-  return tsl::errors::Unimplemented("GetFusedConvolveRunners not implemented.");
+  return absl::UnimplementedError("GetFusedConvolveRunners not implemented.");
 }
 
-tsl::Status DnnSupport::GetFusedMatmulRunners(
+absl::Status DnnSupport::GetFusedMatmulRunners(
     bool use_cudnn_frontend, dnn::DataType element_type,
     dnn::DataType bias_type, dnn::DataType output_type, Stream* stream,
     bool trans_a, bool trans_b, uint64_t m, uint64_t n, uint64_t k, int64_t lda,
@@ -198,10 +221,10 @@ tsl::Status DnnSupport::GetFusedMatmulRunners(
     bool use_fallback, const NumericOptions& numeric_options,
     std::vector<std::unique_ptr<const dnn::FusedMatmulRunner>>*
         out_exec_plans) {
-  return tsl::errors::Unimplemented("GetFusedMatmulRunners not implemented.");
+  return absl::UnimplementedError("GetFusedMatmulRunners not implemented.");
 }
 
-tsl::StatusOr<std::unique_ptr<const dnn::FusedConvRunner>>
+absl::StatusOr<std::unique_ptr<const dnn::FusedConvRunner>>
 DnnSupport::FusedConvolveRunnerFromDesc(
     Stream* stream, const dnn::AlgorithmDesc& algorithm_desc,
     dnn::ConvolutionKind kind, dnn::DataType element_type,
@@ -213,49 +236,30 @@ DnnSupport::FusedConvolveRunnerFromDesc(
     const dnn::BatchDescriptor& output_descriptor,
     const dnn::ConvolutionDescriptor& convolution_descriptor,
     dnn::ActivationMode activation_mode) {
-  return tsl::errors::Unimplemented(
+  return absl::UnimplementedError(
       "FusedConvolveRunnerFromDesc not implemented.");
 }
 
-tsl::StatusOr<std::unique_ptr<const dnn::FusedMHARunner>>
-DnnSupport::FusedMHARunnerFromDesc(
+absl::StatusOr<std::unique_ptr<const dnn::NormRunner>>
+DnnSupport::NormRunnerFromDesc(
     Stream* stream, const dnn::AlgorithmDesc& algorithm_desc,
-    dnn::FusedMHAKind kind,
-    const dnn::MatmulTensorDescriptor& bmm1_lhs_descriptor,
-    const dnn::MatmulTensorDescriptor& bmm1_rhs_descriptor,
-    const dnn::MatmulTensorDescriptor& bmm2_rhs_descriptor,
-    const dnn::MatmulTensorDescriptor& intermediate_bmm2_lhs_descriptor,
-    const dnn::TensorDescriptor& output_descriptor,
-    std::optional<dnn::TensorDescriptor> activation_descriptor,
-    std::optional<dnn::TensorDescriptor> mask_descriptor,
-    std::optional<dnn::TensorDescriptor> bias_descriptor, double scale,
-    std::optional<double> dropout_rate, std::optional<int64_t> seed) {
-  return absl::UnimplementedError("FusedMHARunnerFromDesc not implemented.");
-}
-
-tsl::StatusOr<std::unique_ptr<const dnn::FusedMHABackwardRunner>>
-DnnSupport::FusedMHABackwardRunnerFromDesc(
-    Stream* stream, const dnn::AlgorithmDesc& algorithm_desc,
-    dnn::FusedMHAKind kind,
-    const MatmulTensorDescriptor& bmm1_grad_gemm1_rhs_descriptor,
-    const MatmulTensorDescriptor& bmm1_grad_gemm2_rhs_descriptor,
-    const MatmulTensorDescriptor& bmm2_grad_gemm1_lhs_descriptor,
-    const MatmulTensorDescriptor& bmm2_grad_gemm2_rhs_descriptor,
-    const MatmulTensorDescriptor& d_output_descriptor,
-    const TensorDescriptor& d_bmm1_lhs_descriptor,
-    const TensorDescriptor& d_bmm1_rhs_descriptor,
-    const TensorDescriptor& d_bmm2_rhs_descriptor,
-    const TensorDescriptor& d_s_descriptor,
-    std::optional<dnn::TensorDescriptor> mask_descriptor,
-    std::optional<dnn::TensorDescriptor> d_bias_descriptor, double scale,
-    std::optional<double> dropout_rate, std::optional<int64_t> seed) {
-  return absl::UnimplementedError(
-      "FusedMHABackwardRunnerFromDesc not implemented.");
+    dnn::NormKind kind, double epsilon,
+    const dnn::TensorDescriptor& x_descriptor,
+    const dnn::TensorDescriptor& scale_descriptor,
+    const dnn::TensorDescriptor& y_or_dx_descriptor,
+    std::optional<dnn::TensorDescriptor> bias_descriptor,
+    std::optional<dnn::TensorDescriptor> dy_descriptor,
+    std::optional<dnn::TensorDescriptor> expectation_descriptor,
+    std::optional<dnn::TensorDescriptor> norm_factor_descriptor,
+    std::optional<dnn::TensorDescriptor> dscale_descriptor,
+    std::optional<dnn::TensorDescriptor> dbias_descriptor) {
+  return absl::UnimplementedError("NormRunnerFromDesc not implemented.");
 }
 
 bool DnnSupport::GetMIOpenConvolveAlgorithms(
     dnn::ConvolutionKind /*kind*/, dnn::DataType /*element_type*/,
-    Stream* /*stream*/, const dnn::BatchDescriptor& /*input_descriptor*/,
+    dnn::DataType /*output_type*/, Stream* /*stream*/,
+    const dnn::BatchDescriptor& /*input_descriptor*/,
     DeviceMemoryBase input_data,
     const dnn::FilterDescriptor& /*filter_descriptor*/,
     DeviceMemoryBase filter_data,
@@ -271,7 +275,7 @@ bool DnnSupport::GetRnnAlgorithms(std::vector<AlgorithmDesc>* out_algorithms) {
   return false;
 }
 
-tsl::Status DnnSupport::DoPoolForward(
+absl::Status DnnSupport::DoPoolForward(
     DataType element_type, Stream* stream,
     const dnn::PoolingDescriptor& pooling_dimensions,
     const NumericOptions& numeric_options,
@@ -284,7 +288,7 @@ tsl::Status DnnSupport::DoPoolForward(
                        output_data, workspace_allocator);
 }
 
-tsl::Status DnnSupport::DoPoolBackward(
+absl::Status DnnSupport::DoPoolBackward(
     DataType element_type, Stream* stream,
     const dnn::PoolingDescriptor& pooling_dimensions,
     const NumericOptions& numeric_options,
@@ -297,19 +301,6 @@ tsl::Status DnnSupport::DoPoolBackward(
                         input_dimensions, input_data, output_dimensions,
                         output_data, input_diff_data, output_diff_data,
                         workspace_allocator);
-}
-
-std::string QuantizedActivationModeString(QuantizedActivationMode mode) {
-  switch (mode) {
-    case dnn::QuantizedActivationMode::k8Bit:
-      return "uint8";
-    case dnn::QuantizedActivationMode::k16Bit:
-      return "uint16";
-    case dnn::QuantizedActivationMode::k32Bit:
-      return "int32";
-    default:
-      return absl::StrCat("unknown: ", static_cast<int32_t>(mode));
-  }
 }
 
 std::string ActivationModeString(ActivationMode mode) {
@@ -334,17 +325,6 @@ std::string ActivationModeString(ActivationMode mode) {
       return "leakyrelu";
     default:
       return absl::StrCat("unknown: ", static_cast<int32_t>(mode));
-  }
-}
-
-std::string ElementwiseOperationString(ElementwiseOperation op) {
-  switch (op) {
-    case ElementwiseOperation::kAdd:
-      return "add";
-    case ElementwiseOperation::kMultiply:
-      return "multiply";
-    default:
-      return absl::StrCat("unknown: ", static_cast<int32_t>(op));
   }
 }
 
@@ -403,17 +383,6 @@ std::string PadAlignmentString(PadAlignment alignment) {
 
 std::ostream& operator<<(std::ostream& str, dnn::PadAlignment alignment) {
   return str << PadAlignmentString(alignment);
-}
-
-std::string ShortPoolingModeString(PoolingMode mode) {
-  switch (mode) {
-    case PoolingMode::kMaximum:
-      return "Max";
-    case PoolingMode::kAverage:
-      return "Avg";
-    default:
-      return absl::StrCat("unknown: ", static_cast<int32_t>(mode));
-  }
 }
 
 struct ConvDimIndices {
@@ -569,7 +538,7 @@ int TensorDescriptor::ndims() const {
   return dimensions_.size();
 }
 
-tsl::StatusOr<std::vector<int64_t>>
+absl::StatusOr<std::vector<int64_t>>
 TensorDescriptor::GetPhysicalDimensionsMajorToMinor() const {
   std::vector<int64_t> logical_to_physical(minor_to_major_.size());
   for (int64_t physical = 0; physical < logical_to_physical.size();
@@ -578,8 +547,7 @@ TensorDescriptor::GetPhysicalDimensionsMajorToMinor() const {
     logical_to_physical[logical] = physical;
   }
   if (dimensions_.size() != minor_to_major_.size())
-    return tsl::errors::Internal(
-        "Dimensions size should match the layout size.");
+    return absl::InternalError("Dimensions size should match the layout size.");
 
   std::vector<int64_t> physical_dims(dimensions_.size());
   for (int64_t i = 0; i < physical_dims.size(); ++i) {
@@ -629,30 +597,24 @@ std::string TensorDescriptor::ToString() const {
 
 // -- MatmulTensorDescriptor
 
-tsl::StatusOr<std::vector<int64_t>>
+absl::StatusOr<std::vector<int64_t>>
 MatmulTensorDescriptor::GetNonContractingDims() const {
-  std::vector<int64_t> non_contracting_dims;
-  for (int64_t dim = 0; dim < tensor_.dimensions().size(); ++dim) {
-    bool is_batch = absl::c_count(batch_dimension_numbers_, dim) != 0;
-    bool is_contracting = absl::c_count(contracting_dim_, dim) != 0;
-    if (is_batch && is_contracting)
-      return tsl::errors::Internal(
-          "A dimension cannot be both a batch dimension and a contracting "
-          "dimension.");
-    if (!(is_batch || is_contracting)) non_contracting_dims.push_back(dim);
-  }
+  auto nc = xla::GetNonContractingDims(
+      tensor_.dimensions().size(), contracting_dim_, batch_dimension_numbers_);
+  std::vector<int64_t> non_contracting_dims(nc.begin(), nc.end());
 
   if (batch_dimension_numbers_.size() + contracting_dim_.size() +
           non_contracting_dims.size() !=
       tensor_.dimensions().size())
-    return tsl::errors::Internal(
+    return absl::InternalError(
         "Batch_dimension_numbers, contracting_dim and non_contracting_dims "
         "should sum up to the total number of dimensions.");
   return non_contracting_dims;
 }
 
-tsl::StatusOr<std::vector<int64_t>> MatmulTensorDescriptor::MakeCudnnCompatible(
-    const std::vector<int64_t>& vec, bool is_lhs) const {
+absl::StatusOr<std::vector<int64_t>>
+MatmulTensorDescriptor::MakeCudnnCompatible(const std::vector<int64_t>& vec,
+                                            bool is_lhs) const {
   std::vector<int64_t> cudnn_compatible(vec.size());
   int batch_dim_size = batch_dimension_numbers_.size();
   CHECK_LT(batch_dim_size, vec.size());
@@ -663,7 +625,7 @@ tsl::StatusOr<std::vector<int64_t>> MatmulTensorDescriptor::MakeCudnnCompatible(
   if (batch_dimension_numbers_.size() + contracting_dim_.size() +
           non_contracting_dims.size() !=
       vec.size())
-    return tsl::errors::Internal(
+    return absl::InternalError(
         "Batch_dimension_numbers, contracting_dim and non_contracting_dims "
         "should sum up to the total number of dimensions.");
   if (is_lhs) /* lhs -> {b0, b1,....bk, m, k} */ {
@@ -780,13 +742,6 @@ std::vector<int64_t> BatchDescriptor::vectorized_strides(
   return ReorderDims(phys_strides, this->layout(), layout);
 }
 
-void BatchDescriptor::CloneFrom(const BatchDescriptor& other) {
-  tensor_ = other.tensor_;
-  value_max_ = other.value_max_;
-  value_min_ = other.value_min_;
-  quantized_activation_mode_ = other.quantized_activation_mode_;
-}
-
 std::string BatchDescriptor::ToString() const {
   std::string spatial;
   for (int i = 0; i < ndims(); i++) {
@@ -849,34 +804,6 @@ int64_t BatchDescriptor::NodesAcrossFeatureMaps() const {
   return NodesPerFeatureMap() * feature_map_count();
 }
 
-int64_t BatchDescriptor::ElementCount() const {
-  return count() * feature_map_count() * NodesPerFeatureMap();
-}
-
-int64_t BatchDescriptor::FullyConnectedWeightCount(
-    const BatchDescriptor& input, const BatchDescriptor& output) {
-  return input.NodesAcrossFeatureMaps() * output.NodesAcrossFeatureMaps();
-}
-
-int64_t BatchDescriptor::FullyConnectedBiasCount(
-    const BatchDescriptor& output) {
-  return output.NodesAcrossFeatureMaps();
-}
-
-BatchDescriptor BatchDescriptor::DepthConcatenateOutputDescriptor(
-    absl::Span<const dnn::BatchDescriptor> inputs) {
-  if (inputs.empty()) {
-    return BatchDescriptor();
-  }
-  int feature_map_count = 0;
-  for (const auto& dimensions : inputs) {
-    feature_map_count += dimensions.feature_map_count();
-  }
-  BatchDescriptor output = inputs[0];
-  output.set_feature_map_count(feature_map_count);
-  return output;
-}
-
 TensorDescriptorProto BatchDescriptor::ToProto(DataType data_type) const {
   CHECK_EQ(0.0, value_max_);
   CHECK_EQ(0.0, value_min_);
@@ -898,10 +825,6 @@ FilterDescriptor::FilterDescriptor() : FilterDescriptor(/*ndims=*/2) {}
 
 FilterDescriptor::~FilterDescriptor() {}
 
-void FilterDescriptor::CloneFrom(const FilterDescriptor& other) {
-  tensor_ = other.tensor_;
-}
-
 std::string FilterDescriptor::ToString() const {
   std::string desc = absl::StrFormat(
       "{output_feature_map_count: %d input_feature_map_count: %d "
@@ -914,45 +837,6 @@ std::string FilterDescriptor::ToString() const {
   absl::StrAppend(&desc, "}");
 
   return desc;
-}
-
-std::string FilterDescriptor::ToShortString() const {
-  // All the constituent strings are less than 15 characters, so the
-  // small string optimization ensures that there will be at most one
-  // heap memory allocation.
-  std::string od = absl::StrCat("od", output_feature_map_count());
-  std::string id = absl::StrCat("id", input_feature_map_count());
-
-  std::string spatial = "s";
-  for (int i = 0; i < ndims(); i++) {
-    absl::StrAppendFormat(&spatial, "%d ", input_filter_dims()[i]);
-  }
-
-  switch (layout()) {
-    case FilterLayout::kOutputInputYX:
-      return absl::StrCat(od, id, spatial);
-    case FilterLayout::kOutputYXInput:
-      return absl::StrCat(od, spatial, id);
-    case FilterLayout::kOutputInputYX4:
-    case FilterLayout::kOutputInputYX32:
-    case FilterLayout::kOutputInputYX32_CudnnReordered:
-      return absl::StrCat(od, id, spatial, "(VECT_C)");
-    case FilterLayout::kInputYXOutput:
-      return absl::StrCat(id, spatial, od);
-    case FilterLayout::kYXInputOutput:
-      return absl::StrCat(spatial, id, od);
-    default:
-      LOG(FATAL) << "Unknown layout " << static_cast<int32_t>(layout());
-      return "";  // Avoid return warning (unreachable)
-  }
-}
-
-int64_t FilterDescriptor::ComputeWeightCount() const {
-  int64_t ret = output_feature_map_count() * input_feature_map_count();
-  for (int i = 0; i < ndims(); i++) {
-    ret *= input_filter_dims()[i];
-  }
-  return ret;
 }
 
 std::vector<int64_t> FilterDescriptor::full_dims(
@@ -1034,21 +918,6 @@ std::string ConvolutionDescriptor::ToString() const {
       padding, PadAlignmentString(pad_alignment()), strides, dilations);
 }
 
-std::string ConvolutionDescriptor::ToShortString() const {
-  std::string desc;
-  for (int i = 0; i < ndims(); i++) {
-    if (i > 0) absl::StrAppend(&desc, "_");
-    absl::StrAppendFormat(&desc, "p%d:%d", i, padding()[i]);
-  }
-  for (int i = 0; i < ndims(); i++) {
-    absl::StrAppendFormat(&desc, "_s%d:%d", i, strides()[i]);
-  }
-  for (int i = 0; i < ndims(); i++) {
-    absl::StrAppendFormat(&desc, "_d%d:%d", i, dilations()[i]);
-  }
-  return desc;
-}
-
 // -- PoolingDescriptor
 
 PoolingDescriptor::PoolingDescriptor(int ndims)
@@ -1061,45 +930,6 @@ PoolingDescriptor::PoolingDescriptor(int ndims)
 
 PoolingDescriptor::PoolingDescriptor() : PoolingDescriptor(/*ndims=*/2) {}
 
-void PoolingDescriptor::CloneFrom(const PoolingDescriptor& other) {
-  mode_ = other.mode_;
-  ndims_ = other.ndims_;
-  window_ = other.window_;
-  padding_ = other.padding_;
-  strides_ = other.strides_;
-  propagate_nans_ = other.propagate_nans_;
-}
-
-std::string PoolingDescriptor::ToString() const {
-  const char* mode_string =
-      mode_ == dnn::PoolingMode::kMaximum ? "kMaximum" : "kAverage";
-
-  std::string window, strides, padding;
-  for (int i = 0; i < ndims_; i++) {
-    absl::StrAppendFormat(&window, "%d ", window_[i]);
-    absl::StrAppendFormat(&strides, "%d ", strides_[i]);
-    absl::StrAppendFormat(&padding, "%d", padding_[i]);
-  }
-
-  const char* propagate_string = propagate_nans_ ? "Yes" : "No";
-
-  return absl::StrFormat(
-      "{mode: %s window: %s strides: %s padding: %s propagate NaNs: %s}",
-      mode_string, window, strides, padding, propagate_string);
-}
-
-std::string PoolingDescriptor::ToShortString() const {
-  std::string window, strides, padding;
-  for (int i = 0; i < ndims_; i++) {
-    absl::StrAppendFormat(&window, "_w%d:%d", i, window_[i]);
-    absl::StrAppendFormat(&strides, "_s%d:%d", i, strides_[i]);
-    absl::StrAppendFormat(&padding, "_p%d:%d", i, padding_[i]);
-  }
-  return absl::StrCat(mode_ == dnn::PoolingMode::kMaximum ? "max" : "avg",
-                      window, strides, padding,
-                      propagate_nans_ ? "propagate_nans" : "ignore_nans");
-}
-
 // -- NormalizeDescriptor
 
 NormalizeDescriptor::NormalizeDescriptor()
@@ -1110,29 +940,7 @@ NormalizeDescriptor::NormalizeDescriptor()
       wrap_around_(false),
       segment_size_(0) {}
 
-void NormalizeDescriptor::CloneFrom(const NormalizeDescriptor& other) {
-  bias_ = other.bias_;
-  range_ = other.range_;
-  alpha_ = other.alpha_;
-  beta_ = other.beta_;
-  wrap_around_ = other.wrap_around_;
-  segment_size_ = other.segment_size_;
-}
-
-std::string NormalizeDescriptor::ToString() const {
-  return absl::StrFormat(
-      "{bias: %f range: %d alpha: %f beta: %f wrap_around: %d "
-      "segment_size: %d}",
-      bias_, range_, alpha_, beta_, wrap_around_, segment_size_);
-}
-
-std::string NormalizeDescriptor::ToShortString() const {
-  return absl::StrCat("bias:", bias_, "_range:", range_, "_alpha:", alpha_,
-                      "_beta:", beta_, "_wrap:", wrap_around_,
-                      "_size:", segment_size_);
-}
-
-bool DnnSupport::IsStatusOk(const tsl::Status& status, bool report_error) {
+bool DnnSupport::IsStatusOk(const absl::Status& status, bool report_error) {
   if (status.ok()) {
     return true;
   }
@@ -1142,7 +950,7 @@ bool DnnSupport::IsStatusOk(const tsl::Status& status, bool report_error) {
   return false;
 }
 
-tsl::Status DnnSupport::DoCtcLoss(
+absl::Status DnnSupport::DoCtcLoss(
     Stream* stream, dnn::DataType element_type,
     const RnnStateTensorDescriptor& probs_desc,
     const DeviceMemoryBase probs_data, absl::Span<const int> labels_data,
@@ -1150,7 +958,7 @@ tsl::Status DnnSupport::DoCtcLoss(
     absl::Span<const int> input_lengths_data, DeviceMemoryBase costs_data,
     const RnnStateTensorDescriptor& grads_desc, DeviceMemoryBase grads_data,
     DeviceMemory<uint8_t> scratch_memory, int ctc_loss_algo_id) {
-  return tsl::errors::Unimplemented("CtcLoss not implemented");
+  return absl::UnimplementedError("CtcLoss not implemented");
 }
 
 }  // namespace dnn

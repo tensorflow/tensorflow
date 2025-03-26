@@ -18,7 +18,8 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
-#include "tsl/platform/status.h"
+#include "absl/status/status.h"
+#include "xla/tsl/platform/status.h"
 #include "tsl/profiler/lib/profiler_interface.h"
 #include "tsl/profiler/protobuf/xplane.pb.h"
 
@@ -32,11 +33,11 @@ class ProfilerCollection : public ProfilerInterface {
   explicit ProfilerCollection(
       std::vector<std::unique_ptr<ProfilerInterface>> profilers);
 
-  Status Start() override;
+  absl::Status Start() override;
 
-  Status Stop() override;
+  absl::Status Stop() override;
 
-  Status CollectData(tensorflow::profiler::XSpace* space) override;
+  absl::Status CollectData(tensorflow::profiler::XSpace* space) override;
 
  private:
   std::vector<std::unique_ptr<ProfilerInterface>> profilers_;

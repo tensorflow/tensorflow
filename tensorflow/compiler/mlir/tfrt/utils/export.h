@@ -15,7 +15,6 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_TFRT_UTILS_EXPORT_H_
 #define TENSORFLOW_COMPILER_MLIR_TFRT_UTILS_EXPORT_H_
 
-#include <memory>
 
 #include "absl/functional/any_invocable.h"
 #include "absl/status/status.h"
@@ -29,7 +28,8 @@ namespace tensorflow {
 // be suitable for FunctionDef export.
 absl::Status ExportFunctionDefs(
     mlir::ModuleOp module,
-    absl::AnyInvocable<absl::Status(tensorflow::FunctionDef)> callback);
+    absl::AnyInvocable<absl::Status(tensorflow::FunctionDef)> callback,
+    bool export_tf_original_func_name = true);
 
 }  // namespace tensorflow
 

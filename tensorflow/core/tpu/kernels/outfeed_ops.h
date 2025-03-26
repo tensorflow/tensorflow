@@ -25,6 +25,8 @@ limitations under the License.
 #include "xla/literal.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/logging.h"  // IWYU pragma: keep
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/op_requires.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -34,8 +36,6 @@ limitations under the License.
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/tpu/kernels/transfer_ops.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/logging.h"  // IWYU pragma: keep
 
 namespace tensorflow {
 
@@ -53,7 +53,7 @@ class TpuOutfeedDequeueOp : public T {
     OP_REQUIRES_OK(ctx, TensorShapeToXLAShape(dtype_, shape_, &xla_shape_));
   }
 
-  Status DoWork(OpKernelContext* ctx, int device_ordinal) override {
+  absl::Status DoWork(OpKernelContext* ctx, int device_ordinal) override {
     Tensor* output;
     TF_RETURN_IF_ERROR(ctx->allocate_output(0, shape_, &output));
 
@@ -70,7 +70,7 @@ class TpuOutfeedDequeueOp : public T {
 
     VLOG(1) << "TransferLiteralFromOutfeed complete.";
 
-    return OkStatus();
+    return absl::OkStatus();
   }
 
  private:
@@ -107,7 +107,7 @@ class TpuOutfeedDequeueTupleOp : public T {
     tuple_shape_ = xla::ShapeUtil::MakeTupleShape(xla_shapes_);
   }
 
-  Status DoWork(OpKernelContext* ctx, int device_ordinal) override {
+  absl::Status DoWork(OpKernelContext* ctx, int device_ordinal) override {
     VLOG(1) << "TransferLiteralFromOutfeed "
             << xla::ShapeUtil::HumanStringWithLayout(tuple_shape_);
 
@@ -121,7 +121,7 @@ class TpuOutfeedDequeueTupleOp : public T {
       TF_RETURN_IF_ERROR(
           T::transfer_op_->TransferLiteralFromOutfeed(device_ordinal, literal));
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
  private:

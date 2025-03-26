@@ -16,13 +16,17 @@ limitations under the License.
 #ifndef TENSORFLOW_DTENSOR_MLIR_VALUE_UTILS_H_
 #define TENSORFLOW_DTENSOR_MLIR_VALUE_UTILS_H_
 
+#include "absl/status/status.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/ADT/StringRef.h"
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/types.h"
 #include "tensorflow/dtensor/cc/dstatus.h"
 
 namespace tensorflow {
@@ -64,8 +68,8 @@ mlir::Value IntConstWithMatchingType(mlir::OpBuilder& builder,
                                      mlir::Type type);
 
 StatusOr<int64_t> ExtractConstIntFromValue(mlir::Value value);
-Status ExtractConstVectorFromValue(mlir::Value value,
-                                   llvm::SmallVector<int64_t, 4>* out_vector);
+absl::Status ExtractConstVectorFromValue(
+    mlir::Value value, llvm::SmallVector<int64_t, 4>* out_vector);
 
 // Returns a int64 scalar constant with `value`.
 mlir::Value CreateIntScalarConst(int64_t value, mlir::OpBuilder builder,

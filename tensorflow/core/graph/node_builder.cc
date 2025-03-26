@@ -36,18 +36,18 @@ NodeBuilder::NodeOut::NodeOut(Node* n, int32_t i)  // NOLINT(runtime/explicit)
 
 NodeBuilder::NodeOut::NodeOut(OutputTensor t) : NodeOut(t.node, t.index) {}
 
-NodeBuilder::NodeOut::NodeOut(StringPiece n, int32_t i, DataType t)
+NodeBuilder::NodeOut::NodeOut(absl::string_view n, int32_t i, DataType t)
     : node(nullptr), error(false), name(n), index(i), dt(t) {}
 
 NodeBuilder::NodeOut::NodeOut()
     : node(nullptr), error(true), index(0), dt(DT_FLOAT) {}
 
-NodeBuilder::NodeBuilder(StringPiece name, StringPiece op_name,
+NodeBuilder::NodeBuilder(absl::string_view name, absl::string_view op_name,
                          const OpRegistryInterface* op_registry,
                          const NodeDebugInfo* debug)
     : def_builder_(name, op_name, op_registry, debug) {}
 
-NodeBuilder::NodeBuilder(StringPiece name, const OpDef* op_def)
+NodeBuilder::NodeBuilder(absl::string_view name, const OpDef* op_def)
     : def_builder_(name, op_def) {}
 
 NodeBuilder::NodeBuilder(const NodeDefBuilder& def_builder)
@@ -72,7 +72,7 @@ NodeBuilder& NodeBuilder::Input(NodeOut src) {
   return *this;
 }
 
-NodeBuilder& NodeBuilder::Input(gtl::ArraySlice<NodeOut> src_list) {
+NodeBuilder& NodeBuilder::Input(absl::Span<const NodeOut> src_list) {
   std::vector<NodeDefBuilder::NodeOut> srcs;
   srcs.reserve(src_list.size());
   for (const auto& node_out : src_list) {
@@ -83,7 +83,7 @@ NodeBuilder& NodeBuilder::Input(gtl::ArraySlice<NodeOut> src_list) {
       inputs_.emplace_back(node_out.node, node_out.index);
     }
   }
-  def_builder_.Input(gtl::ArraySlice<NodeDefBuilder::NodeOut>(srcs));
+  def_builder_.Input(absl::Span<const NodeDefBuilder::NodeOut>(srcs));
   return *this;
 }
 
@@ -93,7 +93,7 @@ NodeBuilder& NodeBuilder::ControlInput(Node* src_node) {
   return *this;
 }
 
-NodeBuilder& NodeBuilder::ControlInputs(gtl::ArraySlice<Node*> src_nodes) {
+NodeBuilder& NodeBuilder::ControlInputs(absl::Span<Node* const> src_nodes) {
   control_inputs_.insert(control_inputs_.end(), src_nodes.begin(),
                          src_nodes.end());
   for (const Node* src_node : src_nodes) {
@@ -102,28 +102,29 @@ NodeBuilder& NodeBuilder::ControlInputs(gtl::ArraySlice<Node*> src_nodes) {
   return *this;
 }
 
-NodeBuilder& NodeBuilder::Device(StringPiece device_spec) {
+NodeBuilder& NodeBuilder::Device(absl::string_view device_spec) {
   def_builder_.Device(device_spec);
   return *this;
 }
 
-NodeBuilder& NodeBuilder::AssignedDevice(StringPiece device) {
+NodeBuilder& NodeBuilder::AssignedDevice(absl::string_view device) {
   assigned_device_ = string(device);
   return *this;
 }
 
-NodeBuilder& NodeBuilder::XlaCluster(StringPiece xla_cluster) {
+NodeBuilder& NodeBuilder::XlaCluster(absl::string_view xla_cluster) {
   def_builder_.Attr("_XlaCluster", xla_cluster);
   return *this;
 }
 
-StatusOr<Node*> NodeBuilder::Finalize(Graph* graph, bool consume) {
+absl::StatusOr<Node*> NodeBuilder::Finalize(Graph* graph, bool consume) {
   Node* out;
   TF_RETURN_IF_ERROR(Finalize(graph, &out, consume));
   return out;
 }
 
-Status NodeBuilder::Finalize(Graph* graph, Node** created_node, bool consume) {
+absl::Status NodeBuilder::Finalize(Graph* graph, Node** created_node,
+                                   bool consume) {
   // In case of error, set *created_node to nullptr.
   if (created_node != nullptr) {
     *created_node = nullptr;
@@ -153,7 +154,7 @@ Status NodeBuilder::Finalize(Graph* graph, Node** created_node, bool consume) {
 
   if (created_node != nullptr) *created_node = node;
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 void NodeBuilder::AddIndexError(const Node* node, int i) {

@@ -36,7 +36,7 @@ bool IsTFQintType(Type type);
 Type GetIntTypeFromTFQint(Type type);
 
 // Check if an op is TF UniformQuantized op.
-bool IsTFUniformQuantizedOp(Operation *op);
+bool IsTFUniformQuantizedOp(Operation* op);
 
 }  // namespace mlir::quant::tensorflow
 

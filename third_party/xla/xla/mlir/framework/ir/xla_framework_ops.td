@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -27,7 +27,7 @@ def XLAFramework_Dialect : Dialect {
   let summary = "Types and operations for xla_framework dialect";
   let description = [{
     This dialect contains operations and types that correspond to XLA compiled C
-    functions in tensorflow/compiler/xla/service/cpu/ir_function.cc.
+    functions in xla/service/cpu/ir_function.cc.
   }];
   let cppNamespace = "::mlir::xla_framework";
 

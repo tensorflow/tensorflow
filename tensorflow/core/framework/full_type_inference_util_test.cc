@@ -145,7 +145,7 @@ TEST(Merge, UnsetComponents) {
   EXPECT_EQ(rt.type_id(), TFT_UNSET);
 }
 
-void ExpectInferredArrayOfTensor(StatusOr<FullTypeDef> ret) {
+void ExpectInferredArrayOfTensor(absl::StatusOr<FullTypeDef> ret) {
   TF_EXPECT_OK(ret.status());
 
   const FullTypeDef& rt = ret.value();

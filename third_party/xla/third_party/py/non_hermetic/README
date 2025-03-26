@@ -1,3 +1,0 @@
-This is a temporary copy of python_configure repository rule. It allows
-XLA and TSL to keep non-hermetic Python while TF uses hermetic Python.
-DO NOT DEPEND ON THIS COPY as it will be deleted soon.

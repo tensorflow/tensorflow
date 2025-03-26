@@ -16,15 +16,15 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_KERNELS_SCATTER_ND_UTIL_H_
 #define TENSORFLOW_CORE_KERNELS_SCATTER_ND_UTIL_H_
 
+#include "xla/tsl/util/env_var.h"
 #include "tensorflow/core/framework/tensor_shape.h"
-#include "tsl/util/env_var.h"
 
 namespace tensorflow {
 
 // Validates the input shapes for the ScatterNdUpdateOp<scatter_nd_op::UpdateOp>
-Status ValidateScatterNdUpdateShape(const TensorShape& params_shape,
-                                    const TensorShape& indices_shape,
-                                    const TensorShape& updates_shape);
+absl::Status ValidateScatterNdUpdateShape(const TensorShape& params_shape,
+                                          const TensorShape& indices_shape,
+                                          const TensorShape& updates_shape);
 
 inline bool DisableScatterOpDeterminism() {
   static bool cached_disable = [] {

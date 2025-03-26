@@ -15,14 +15,32 @@ limitations under the License.
 
 #include "tensorflow/cc/tools/freeze_saved_model.h"
 
+#include <cstddef>
+#include <memory>
+#include <unordered_set>
+#include <vector>
+
+#include "absl/status/status.h"
+#include "tensorflow/cc/framework/ops.h"
+#include "tensorflow/cc/framework/scope.h"
+#include "tensorflow/cc/ops/array_ops.h"
+#include "tensorflow/cc/ops/const_op.h"
+#include "tensorflow/cc/ops/math_ops.h"
 #include "tensorflow/cc/ops/resource_variable_ops.h"
-#include "tensorflow/cc/ops/standard_ops.h"
+#include "tensorflow/cc/ops/state_ops.h"
+#include "tensorflow/cc/saved_model/loader.h"
+#include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/errors.h"
 #include "tensorflow/core/framework/function_testlib.h"
 #include "tensorflow/core/framework/graph.pb.h"
+#include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/framework/versions.pb.h"
-#include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/protobuf/meta_graph.pb.h"
 #include "tensorflow/core/public/session.h"
 #include "tensorflow/core/public/session_options.h"
 
@@ -58,7 +76,7 @@ class FreezeTest : public ::testing::Test {
 
   // Adds an initialized session to `saved_model_bundle` using `graph_def` and
   // initializing with `init_node`.
-  Status InitializeSavedModelBundleSession(
+  absl::Status InitializeSavedModelBundleSession(
       const GraphDef& graph_def, const string& init_node,
       SavedModelBundle* saved_model_bundle) {
     SessionOptions session_options;
@@ -69,14 +87,14 @@ class FreezeTest : public ::testing::Test {
       return saved_model_bundle->session->Run(
           /* inputs */ {}, /* output_tensors */ {}, {init_node}, &outputs);
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // Adds `graph_def` to `saved_model_bundle` and initializes a session with
   // `init_node`.
-  Status AddGraphDefToSavedModelBundle(const GraphDef& graph_def,
-                                       const string& init_node,
-                                       SavedModelBundle* saved_model_bundle) {
+  absl::Status AddGraphDefToSavedModelBundle(
+      const GraphDef& graph_def, const string& init_node,
+      SavedModelBundle* saved_model_bundle) {
     MetaGraphDef* meta_graph_def = &saved_model_bundle->meta_graph_def;
     *meta_graph_def->mutable_graph_def() = graph_def;
     return InitializeSavedModelBundleSession(graph_def, init_node,
@@ -85,7 +103,7 @@ class FreezeTest : public ::testing::Test {
 
   // Adds `graph_def` and `outputs` as the GraphDef and SignatureDef in
   // `saved_model_bundle` and initializes a session with `init_node`.
-  Status AddGraphDefWithOutputsToSavedModelBundle(
+  absl::Status AddGraphDefWithOutputsToSavedModelBundle(
       const GraphDef& graph_def, const std::unordered_set<string>& outputs,
       const string& init_node, SavedModelBundle* saved_model_bundle) {
     SignatureDef signature_def =

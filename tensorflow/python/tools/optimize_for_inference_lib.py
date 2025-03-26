@@ -25,6 +25,8 @@ the network is used only for inference. These include:
 
  - Removing debug operations like CheckNumerics.
 
+ - Fusing a group of primitive ops for batch normalization to FusedBatchNorm op.
+
  - Folding batch normalization ops into the pre-calculated weights.
 
  - Fusing common operations into unified versions.
@@ -89,6 +91,11 @@ EPSILON_ATTR = {
     "FusedBatchNorm": "epsilon",
     "FusedBatchNormV3": "epsilon",
 }
+# List of standard PlaceholderWithDefault names with default value to be changed to
+# Const nodes for inference.
+PLACEHOLDER_WITH_DEFAULT_LIST = {
+    "keras_learning_phase": "False",
+}
 
 
 def optimize_for_inference(
@@ -97,6 +104,7 @@ def optimize_for_inference(
     output_node_names: Sequence[str],
     placeholder_type_enum: int,
     toco_compatible: bool = False,
+    placeholder_to_const_names=None,
 ) -> graph_pb2.GraphDef:
   """Applies a series of inference optimizations on the input graph.
 
@@ -110,12 +118,17 @@ def optimize_for_inference(
       a list that specifies one value per input node name.
     toco_compatible: Boolean, if True, only runs optimizations that result in
       TOCO compatible graph operations (default=False).
+    placeholder_to_const_names: A list of names of the PlaceholderWithDefault
+      nodes to be converted to Constant.
 
   Returns:
     An optimized version of the input graph.
   """
   ensure_graph_is_valid(input_graph_def)
   optimized_graph_def = input_graph_def
+  optimized_graph_def = convert_placeholder_to_const(
+      optimized_graph_def, placeholder_to_const_names
+  )
   optimized_graph_def = strip_unused_lib.strip_unused(
       optimized_graph_def,
       input_node_names,
@@ -125,6 +138,7 @@ def optimize_for_inference(
   optimized_graph_def = graph_util.remove_training_nodes(
       optimized_graph_def, output_node_names
   )
+  optimized_graph_def = fuse_decomposed_batch_norm(optimized_graph_def)
   optimized_graph_def = fold_batch_norms(optimized_graph_def)
   if not toco_compatible:
     optimized_graph_def = fuse_resize_and_conv(
@@ -132,6 +146,47 @@ def optimize_for_inference(
     )
   ensure_graph_is_valid(optimized_graph_def)
   return optimized_graph_def
+
+
+def strtobool(val_str):
+  """Return boolean value of it's equivalent string representation"""
+  if val_str in ("True", "true"):
+    return True
+  elif val_str in ("False", "false"):
+    return False
+  else:
+    tf_logging.warning(
+        "Wrong string values.       Supports False/false or True/true only."
+        " val_str = ",
+        val_str,
+    )
+    return False
+
+
+def parse_entry(entry):
+  """Parse a "key=value" pair separated by '='
+
+  eg: var_name=False
+  """
+  items = entry.split("=")
+  key = items[0].strip()  # remove blanks around keys
+  if len(items) > 1:
+    value = items[1]
+    return (key, value)
+  else:
+    return (None, None)
+
+
+def parse_nodes_dict(nodes):
+  """Parse a series of key-value pairs and return a dictionary"""
+  d = {}
+
+  if nodes:
+    for node in nodes:
+      key, val = parse_entry(node)
+      if key is not None:
+        d[key] = val
+  return d
 
 
 def ensure_graph_is_valid(graph_def: graph_pb2.GraphDef) -> None:
@@ -591,4 +646,363 @@ def fuse_resize_and_conv(
     result_graph_def.node.extend([new_node])
 
   result_graph_def.node.extend(new_ops)
+  return result_graph_def
+
+
+def convert_placeholder_to_const(input_graph_def, nodes_to_convert=None):
+  """Rename the PlaceHolderWithDefault node to constant
+
+  In a frozen graph, PlaceholderWithDefault nodes can be converted to
+  Constant op nodes with same value. This will help simplify the graph.
+
+  Args:
+    input_graph_def: A GraphDef containing a model.
+    nodes_to_convert: A list of PlaceholderWithDefault or Placeholder nodes to
+      be converted to Constants with their new value.
+
+  Returns:
+    modified graph with PlaceholderWithDefault node converted to Constant node
+  """
+
+  input_node_map = {}
+  for node in input_graph_def.node:
+    if node.name not in input_node_map:
+      input_node_map[node.name] = node
+    else:
+      raise ValueError("Duplicate node names detected for ", node.name)
+
+  # create a dictionary of nodes to be converted to Const
+  dict_to_change = {}
+  for key in PLACEHOLDER_WITH_DEFAULT_LIST:
+    dict_to_change[key] = PLACEHOLDER_WITH_DEFAULT_LIST[key]
+
+  if nodes_to_convert is not None and len(nodes_to_convert) > 0:
+    dict_list = parse_nodes_dict(nodes_to_convert)
+    dict_to_change.update(dict_list)
+
+  ph_node_list = []
+  for ph_node in dict_to_change:
+    if not ph_node and ph_node not in input_node_map:
+      continue
+    ph_node_list.append(ph_node)
+
+  # if no nodes found, then nothing to change
+  if not ph_node_list:
+    tf_logging.warning(
+        "No PlaceholderWithDefault nodes found to convert to "
+        "Constant. Maybe check the spellings"
+    )
+    return input_graph_def
+
+  result_graph_def = graph_pb2.GraphDef()
+  for node in input_graph_def.node:
+    is_replaced = False
+    new_node = node_def_pb2.NodeDef()
+    if node.op == "PlaceholderWithDefault" or node.op == "Placeholder":
+      match_key = [
+          find_key
+          for find_key in dict_to_change.keys()
+          if find_key in node.name
+      ]
+      if len(match_key) > 0:
+        if dtypes.bool.as_datatype_enum == node.attr["dtype"].type:
+          new_val_str = dict_to_change[match_key[0]]
+          new_node.op = "Const"
+          new_node.name = node.name
+          new_node.attr["dtype"].CopyFrom(node.attr["dtype"])
+          new_node.attr["value"].CopyFrom(
+              attr_value_pb2.AttrValue(
+                  tensor=tensor_util.make_tensor_proto(
+                      strtobool(new_val_str), dtype=dtypes.bool, shape=[]
+                  )
+              )
+          )
+          is_replaced = True
+        else:
+          tf_logging.warning(
+              "Not converting to Const. Currently only bool            "
+              " PlaceholderWithDefault or Placeholder can be converted to"
+              " const.             current dtype = ",
+              node.attr["dtype"],
+          )
+
+    if not is_replaced:
+      new_node.CopyFrom(node)
+
+    result_graph_def.node.extend([new_node])
+  return result_graph_def
+
+
+def get_const_dim_count(node_def):
+  """Get the number of dimensions for a Const node.
+
+  Args:
+    node_def: Const NodeDef.
+
+  Returns:
+    Number of dimensions for the Const node.
+  """
+  const_value = values_from_const(node_def)
+  return const_value.ndim
+
+
+def fuse_decomposed_batch_norm(input_graph_def):
+  """Fuse individual ops in batch normalization to FusedBatchNorm.
+
+  In some models, the batch normalization is performed via a group of individual
+  ops instead of using single FusedBatchNorm op. This function identifies a
+  pattern of batch normalization subgraph which is made of multiple ops and
+  transforms the graph by replacing those individual ops with a FusedBatchNorm
+  op. This will provide the opportunity to further fold the FusedBatchNorm with
+  convolution ops to reduce the computation steps during inference.
+  This function currently recognizes batch normalization patterns described
+  below, though this could be extended if newer patterns are seen. Also, the
+  fusion is only attempted if the input graph is in NHWC format.
+
+  Computation function:
+    (X * multiplier) + (Beta - Mean * multiplier)
+      where multiplier = rsqrt (Variance + Epsilon) * Gamma
+                    OR = rsqrt (Variance + Epsilon) when Gamma is 1
+
+  Subgraph:
+  {"Add"
+      {{"Mul"  // mul_0
+          {{"*"},  // input to apply batchnorm
+           {"Mul"  // mul_1, same op is used inside the Sub block
+              {{"Rsqrt"
+                  {"Add"
+                      {{"Const"},  // Variance
+                       {"Const"}  // Epsilon
+                      }
+                  }
+                },  // end - Rsqrt
+                {"Const"}  // Gamma
+              }
+            }  // end - mul_1
+          }
+       },  // end - mul_0
+       {"Sub"
+          {{"Const"},  // Beta
+           {"Mul"  // mul_3
+              {{"Const"},  // Mean
+               {"Mul"  // same mul_1 op as in previous block
+                  {{"Rsqrt"
+                      {"Add"
+                          {{"Const"},  // Variance
+                           {"Const"}  // Epsilon
+                          }
+                      }
+                   },  // end - Rsqrt
+                   {"Const"}  // Gamma
+                  }
+                }  // end - mul_1
+              }
+            }  // end - mul_3
+          }
+        }  // end - Sub
+      }
+  }  // end - Add
+
+  Subgraph pattern when gamma value is 1 and the gamma scaling Mul is skipped
+  {"Add"
+      {{"Mul"  // mul_0
+          {{"*"},  // input to apply batchnorm
+           {"Rsqrt"  // same Rsqrt op used in Sub block
+              {"Add"
+                 {{"Const"},  // Variance
+                  {"Const"}  // Epsilon
+                 }
+              }
+            }  // end - Rsqrt
+          }
+        },  // end - mul_0
+        {"Sub"
+          {{"Const"},  // Beta
+           {"Mul"  // mul_1
+              {{"Const"},  // Mean
+               {"Rsqrt"  // same Rsqrt op as in previous mul_0 block
+                  {"Add"
+                    {{"Const"},  // Variance
+                     {"Const"}  // Epsilon
+                    }
+                  }
+                }  // end - Rsqrt
+              }
+           }  // end - mul_1
+          }
+        }  // end - Sub
+      }
+  }  // end - Add
+
+  Args:
+    input_graph_def: A GraphDef containing a model.
+
+  Returns:
+    Modified graph with individual ops that made up of batch normalization
+    fused to FusedBatchNorm.
+
+  Raises:
+    ValueError: If the graph is badly formed with duplicate node names.
+  """
+  input_node_map = {}
+  for node in input_graph_def.node:
+    if node.name not in input_node_map:
+      input_node_map[node.name] = node
+    else:
+      raise ValueError("Duplicate node names detected for ", node.name)
+
+  nodes_to_skip = {}
+  new_ops = []
+  for node in input_graph_def.node:
+    if node.op != "Add":
+      continue
+
+    # Add (Mul, Sub) or Add (Sub, Mul)
+    input0_op = node_from_map(input_node_map, node.input[0])
+    input1_op = node_from_map(input_node_map, node.input[1])
+
+    if input0_op.op == "Mul" and input1_op.op == "Sub":
+      data_scale_mul_op = input0_op
+      bias_mean_sub_op = input1_op
+    elif input0_op.op == "Sub" and input1_op.op == "Mul":
+      bias_mean_sub_op = input0_op
+      data_scale_mul_op = input1_op
+    else:
+      continue
+
+    # Mul (input, Mul)
+    input_data_op = node_from_map(input_node_map, data_scale_mul_op.input[0])
+    scale_op = node_from_map(input_node_map, data_scale_mul_op.input[1])
+
+    # Check input to batchnorm and only proceed fusion if input is
+    # Conv2D or DepthwiseConv2dNative and data format is NHWC.
+    data_format = None
+    if input_data_op.op in ["Conv2D", "DepthwiseConv2dNative"]:
+      data_format = input_data_op.attr["data_format"]
+    else:
+      for in_node_name in input_data_op.input:
+        in_node = node_from_map(input_node_map, in_node_name)
+        if in_node is None:
+          raise ValueError("The node map has no entry for ", in_node_name)
+        if in_node.op in ["Conv2D", "DepthwiseConv2dNative"]:
+          data_format = in_node.attr["data_format"]
+          break
+
+    if data_format is None or data_format.s != b"NHWC":
+      continue
+
+    if scale_op.op == "Rsqrt":
+      gamma_op = None
+      rsqrt_op = scale_op
+    elif scale_op.op == "Mul":
+      # Mul (Rsqrt, Constant_gamma)
+      rsqrt_op = node_from_map(input_node_map, scale_op.input[0])
+      gamma_op = node_from_map(input_node_map, scale_op.input[1])
+      if rsqrt_op.op != "Rsqrt":
+        continue
+      if gamma_op.op != "Const" or get_const_dim_count(gamma_op) != 1:
+        continue
+    else:
+      continue
+
+    # Sub (Constant_beta, Mul)
+    beta_op = node_from_map(input_node_map, bias_mean_sub_op.input[0])
+    mean_scale_mul_op = node_from_map(input_node_map, bias_mean_sub_op.input[1])
+    if mean_scale_mul_op.op != "Mul":
+      continue
+    if beta_op.op != "Const" or get_const_dim_count(beta_op) != 1:
+      continue
+
+    # Common scale applies to both input and running mean
+    if scale_op != node_from_map(input_node_map, mean_scale_mul_op.input[1]):
+      continue
+
+    mean_op = node_from_map(input_node_map, mean_scale_mul_op.input[0])
+    if mean_op.op != "Const" or get_const_dim_count(mean_op) != 1:
+      continue
+
+    # Add (Constant_variance, Constant_epsilon)
+    variance_epsilon_add_op = node_from_map(input_node_map, rsqrt_op.input[0])
+    if variance_epsilon_add_op.op != "Add":
+      continue
+
+    variance_op = node_from_map(
+        input_node_map, variance_epsilon_add_op.input[0]
+    )
+    epsilon_op = node_from_map(input_node_map, variance_epsilon_add_op.input[1])
+    if epsilon_op.op != "Const" or get_const_dim_count(epsilon_op) != 0:
+      continue
+    if variance_op.op != "Const" or get_const_dim_count(variance_op) != 1:
+      continue
+
+    epsilon = values_from_const(epsilon_op)
+
+    nodes_to_skip[node.name] = True
+    nodes_to_skip[data_scale_mul_op.name] = True
+    nodes_to_skip[bias_mean_sub_op.name] = True
+    nodes_to_skip[mean_scale_mul_op.name] = True
+    nodes_to_skip[scale_op.name] = True
+    if scale_op.op != "Rsqrt":
+      nodes_to_skip[rsqrt_op.name] = True
+    nodes_to_skip[variance_epsilon_add_op.name] = True
+
+    if gamma_op is None:
+      gamma_op = node_def_pb2.NodeDef()
+      gamma_op.op = "Const"
+      # Assign name with same root of Rsqrt op's name plus "gamma"
+      m = re.search(r"(.*)/(.*)", scale_op.name)
+      if m:
+        gamma_op.name = m.group(1) + "/gamma"
+      else:
+        gamma_op.name = scale_op.name + "/gamma"
+      gamma_op.attr["dtype"].CopyFrom(beta_op.attr["dtype"])
+      beta_value = values_from_const(beta_op)
+      gamma_op.attr["value"].CopyFrom(
+          attr_value_pb2.AttrValue(
+              tensor=tensor_util.make_tensor_proto(
+                  1,
+                  beta_value.dtype.type,
+                  beta_value.shape,
+                  allow_broadcast=True,
+              )
+          )
+      )
+      new_ops.append(gamma_op)
+
+    new_fused_batchnorm_op = node_def_pb2.NodeDef()
+    new_fused_batchnorm_op.op = "FusedBatchNorm"
+    new_fused_batchnorm_op.name = node.name
+    new_fused_batchnorm_op.attr["T"].CopyFrom(node.attr["T"])
+    new_fused_batchnorm_op.attr["is_training"].CopyFrom(
+        attr_value_pb2.AttrValue(b=False)
+    )
+    new_fused_batchnorm_op.attr["epsilon"].CopyFrom(
+        attr_value_pb2.AttrValue(f=epsilon.tolist())
+    )
+    new_fused_batchnorm_op.attr["data_format"].CopyFrom(data_format)
+    new_fused_batchnorm_op.input.extend([
+        input_data_op.name,
+        gamma_op.name,
+        beta_op.name,
+        mean_op.name,
+        variance_op.name,
+    ])
+
+    new_ops.append(new_fused_batchnorm_op)
+
+  result_graph_def = graph_pb2.GraphDef()
+  for node in input_graph_def.node:
+    if node.name in nodes_to_skip:
+      continue
+    new_node = node_def_pb2.NodeDef()
+    new_node.CopyFrom(node)
+    retained_input = []
+    for input_node in new_node.input:
+      if not input_node.startswith("^") or input_node[1:] not in nodes_to_skip:
+        retained_input.append(input_node)
+    new_node.input[:] = retained_input
+    result_graph_def.node.append(new_node)
+
+  result_graph_def.node.extend(new_ops)
+  result_graph_def.versions.CopyFrom(input_graph_def.versions)
   return result_graph_def

@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 """Crosstool wrapper for compiling ROCm programs.
 
 SYNOPSIS:
@@ -20,12 +20,15 @@ import os
 import subprocess
 import re
 import sys
-import pipes
+import shlex
 
 # Template values set by rocm_configure.bzl.
 CPU_COMPILER = ('%{cpu_compiler}')
+USE_CLANG = ('%{compiler_is_clang}' == 'True')
+HOST_COMPILER_PATH = ('%{host_compiler_path}')
 
 HIPCC_PATH = '%{hipcc_path}'
+PREFIX_DIR = os.path.dirname(HOST_COMPILER_PATH)
 HIPCC_ENV = '%{hipcc_env}'
 HIP_RUNTIME_PATH = '%{hip_runtime_path}'
 HIP_RUNTIME_LIBRARY = '%{hip_runtime_library}'
@@ -75,6 +78,8 @@ def GetHostCompilerOptions(argv):
   parser.add_argument('--sysroot', nargs=1)
   parser.add_argument('-g', nargs='*', action='append')
   parser.add_argument('-fno-canonical-system-headers', action='store_true')
+  parser.add_argument('-no-canonical-prefixes', action='store_true')
+  parser.add_argument('--genco', action='store_true')
 
   args, _ = parser.parse_known_args(argv)
 
@@ -86,10 +91,12 @@ def GetHostCompilerOptions(argv):
     opts += ' -iquote ' + ' -iquote '.join(sum(args.iquote, []))
   if args.g:
     opts += ' -g' + ' -g'.join(sum(args.g, []))
-  #if args.fno_canonical_system_headers:
-  #  opts += ' -fno-canonical-system-headers'
+  if args.fno_canonical_system_headers or args.no_canonical_prefixes:
+    opts += ' -no-canonical-prefixes'
   if args.sysroot:
     opts += ' --sysroot ' + args.sysroot[0]
+  if args.genco:
+    opts += ' --genco'
 
   return opts
 
@@ -179,6 +186,7 @@ def InvokeHipcc(argv, log=False):
   hipccopts += defines
   hipccopts += std_options
   hipccopts += m_options
+  hipccopts += ' --rocm-path="%{rocm_path}" '
 
   if depfiles:
     # Generate the dependency file
@@ -220,13 +228,13 @@ def main():
   if args.x and args.x[0] == 'rocm':
     # compilation for GPU objects
     if args.rocm_log: Log('-x rocm')
-    leftover = [pipes.quote(s) for s in leftover]
+    leftover = [shlex.quote(s) for s in leftover]
     if args.rocm_log: Log('using hipcc')
     return InvokeHipcc(leftover, log=args.rocm_log)
 
   elif args.pass_exit_codes:
     # link
-    # with hipcc compiler invoked with -fno-gpu-rdc by default now, it's ok to 
+    # with hipcc compiler invoked with -fno-gpu-rdc by default now, it's ok to
     # use host compiler as linker, but we have to link with HCC/HIP runtime.
     # Such restriction would be revised further as the bazel script get
     # improved to fine tune dependencies to ROCm libraries.
@@ -255,6 +263,9 @@ def main():
     # this).
     cpu_compiler_flags = [flag for flag in sys.argv[1:]
                                if not flag.startswith(('--rocm_log'))]
+
+    if not USE_CLANG:
+      cpu_compiler_flags.append('-fno-canonical-system-headers')
 
     # XXX: SE codes need to be built with gcc, but need this macro defined
     cpu_compiler_flags.append("-D__HIP_PLATFORM_HCC__")

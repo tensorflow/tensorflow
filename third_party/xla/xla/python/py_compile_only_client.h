@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,28 +16,6 @@ limitations under the License.
 #ifndef XLA_PYTHON_PY_COMPILE_ONLY_CLIENT_H_
 #define XLA_PYTHON_PY_COMPILE_ONLY_CLIENT_H_
 
-#include <memory>
-
-// placeholder for index annotation headers
-#include "xla/pjrt/pjrt_compiler.h"
-#include "xla/python/py_client.h"
-
-namespace xla {
-
-// This is a workaround for AOT compilation until topologies and device
-// descriptions are better integrated into jax's Python code. It returns a
-// PyClient that will return errors for all non-AOT methods. It also exposes a
-// different compile method that returns an unloaded executable (vs. PyClient
-// usually returns a loaded executable). RegisterCompileOnlyClient() overloads
-// the Python "compile" method to return the unloaded executable, and we rely on
-// Python duck typing to treat the unloaded executable like a loaded executable
-// (except it will raise errors if you try to run it, which is what we want for
-// AOT environments).
-std::shared_ptr<PyClient> MakeCompileOnlyClient(
-    std::shared_ptr<PjRtTopologyDescription>);
-
-void RegisterCompileOnlyClient(pybind11::module& m);
-
-}  // namespace xla
+#include "third_party/py/jax/jaxlib/xla/py_compile_only_client.h"  // IWYU pragma: export
 
 #endif  // XLA_PYTHON_PY_COMPILE_ONLY_CLIENT_H_

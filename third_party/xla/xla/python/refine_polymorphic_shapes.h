@@ -17,8 +17,9 @@ limitations under the License.
 #define XLA_PYTHON_REFINE_POLYMORPHIC_SHAPES_H_
 
 #include "absl/status/status.h"
+#include "llvm/ADT/StringRef.h"
 #include "llvm/Support/raw_ostream.h"
-#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"
 
 namespace xla {
 
@@ -38,7 +39,8 @@ absl::Status RefinePolymorphicShapes(mlir::ModuleOp module,
 absl::Status RefinePolymorphicShapes(llvm::StringRef module_str,
                                      llvm::raw_ostream &os,
                                      bool enable_shape_assertions,
-                                     bool validate_static_shapes);
+                                     bool validate_static_shapes,
+                                     bool enable_shardy);
 
 // Validates that the module has only static shapes.
 absl::Status ValidateStaticShapes(mlir::ModuleOp module);

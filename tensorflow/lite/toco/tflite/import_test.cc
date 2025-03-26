@@ -14,14 +14,21 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/toco/tflite/import.h"
 
+#include <cstdint>
 #include <initializer_list>
 #include <string>
+#include <vector>
 
-#include "flatbuffers/flexbuffers.h"
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "tensorflow/lite/schema/schema_conversion_utils.h"
+#include "flatbuffers/buffer.h"  // from @flatbuffers
+#include "flatbuffers/flatbuffer_builder.h"  // from @flatbuffers
+#include "flatbuffers/vector.h"  // from @flatbuffers
+#include "tensorflow/compiler/mlir/lite/schema/schema_conversion_utils.h"
 #include "tensorflow/lite/schema/schema_generated.h"
+#include "tensorflow/lite/toco/model.h"
+#include "tensorflow/lite/toco/model_flags.pb.h"
+#include "tensorflow/lite/toco/toco_types.h"
 #include "tensorflow/lite/version.h"
 
 namespace toco {

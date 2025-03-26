@@ -1,4 +1,4 @@
-/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2015 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -17,17 +17,12 @@ limitations under the License.
 #define XLA_STREAM_EXECUTOR_CUDA_CUDA_PLATFORM_H_
 
 #include <memory>
-#include <vector>
+#include <string>
 
-#include "absl/base/thread_annotations.h"
+#include "absl/status/statusor.h"
 #include "xla/stream_executor/executor_cache.h"
-#include "xla/stream_executor/multi_platform_manager.h"
 #include "xla/stream_executor/platform.h"
-#include "xla/stream_executor/platform/port.h"
-#include "xla/stream_executor/stream_executor_internal.h"
-#include "xla/stream_executor/stream_executor_pimpl.h"
-#include "xla/stream_executor/trace_listener.h"
-#include "tsl/platform/statusor.h"
+#include "xla/stream_executor/stream_executor.h"
 
 namespace stream_executor {
 namespace cuda {
@@ -43,17 +38,6 @@ namespace gpu {
 class CudaPlatform : public Platform {
  public:
   CudaPlatform();
-  ~CudaPlatform() override;
-
-  // CudaPlatform-specific functionality
-  // Returns the number of distinct buses / NUMA nodes on the machine.
-  int BusCount();
-
-  // Returns the bus/NUMA node for the specified device ordinal.
-  int DeviceToBus(int device_ordinal);
-
-  // Returns the lowest-ordinal-number StreamExecutor on the specified bus.
-  tsl::StatusOr<StreamExecutor*> FirstExecutorForBus(int bus_ordinal);
 
   // Platform interface implementation:
   // Returns the same value as kCudaPlatform above.
@@ -64,20 +48,18 @@ class CudaPlatform : public Platform {
 
   const std::string& Name() const override;
 
-  tsl::StatusOr<std::unique_ptr<DeviceDescription>> DescriptionForDevice(
+  absl::StatusOr<std::unique_ptr<DeviceDescription>> DescriptionForDevice(
       int ordinal) const override;
 
-  tsl::StatusOr<StreamExecutor*> ExecutorForDevice(int ordinal) override;
-
-  tsl::StatusOr<StreamExecutor*> GetExecutor(
-      const StreamExecutorConfig& config) override;
-
-  tsl::StatusOr<std::unique_ptr<StreamExecutor>> GetUncachedExecutor(
-      const StreamExecutorConfig& config) override;
+  absl::StatusOr<StreamExecutor*> ExecutorForDevice(int ordinal) override;
+  absl::StatusOr<StreamExecutor*> FindExisting(int ordinal) override;
 
  private:
-  // Determines the number of NUMA nodes and the assignment of executor to each.
-  void InspectNumaNodes();
+  // Returns a device constructed with the ordinal without
+  // looking in or storing to the Platform's executor cache.
+  // Ownership IS transferred to the caller.
+  absl::StatusOr<std::unique_ptr<StreamExecutor>> GetUncachedExecutor(
+      int ordinal);
 
   // This platform's name.
   std::string name_;
@@ -85,16 +67,8 @@ class CudaPlatform : public Platform {
   // Cache of created executors.
   ExecutorCache executor_cache_;
 
-  // The smallest NUMA node value for any device managed by this machine
-  // manager. Used, along with limit_numa_node_, to convert NUMA nodes into bus
-  // ordinals. The NUMA node space occupied by GPUs is assumed to be dense./
-  int min_numa_node_;
-
-  // Larger than the NUMA node value for any device managed by this machine
-  // manager.
-  int limit_numa_node_;
-
-  SE_DISALLOW_COPY_AND_ASSIGN(CudaPlatform);
+  CudaPlatform(const CudaPlatform&) = delete;
+  void operator=(const CudaPlatform&) = delete;
 };
 
 }  // namespace gpu

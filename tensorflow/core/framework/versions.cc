@@ -14,14 +14,16 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/framework/versions.h"
+
 #include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/public/version.h"
+#include "tensorflow/core/public/release_version.h"
 
 namespace tensorflow {
 
-Status CheckVersions(const VersionDef& versions, int consumer, int min_producer,
-                     const char* upper_name, const char* lower_name) {
+absl::Status CheckVersions(const VersionDef& versions, int consumer,
+                           int min_producer, const char* upper_name,
+                           const char* lower_name) {
   // Guard against the caller misordering the arguments
   if (consumer < min_producer) {
     return errors::Internal(upper_name, " version check has consumer ",
@@ -50,7 +52,7 @@ Status CheckVersions(const VersionDef& versions, int consumer, int min_producer,
   }
 
   // All good!
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace tensorflow

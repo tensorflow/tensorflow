@@ -410,7 +410,7 @@ def add_imports_for_symbol(module_code_builder,
     symbol: A symbol.
     source_module_name: Module that we can import the symbol from.
     source_name: Name we can import the symbol with.
-    api_name: API name. Currently, must be either `tensorflow` or `estimator`.
+    api_name: API name. Currently, must be `tensorflow`.
     api_version: API version.
     output_module_prefix: Prefix to prepend to destination module.
   """
@@ -458,7 +458,7 @@ def get_api_init_text(packages,
       tf_export decorators.
     output_package: Base output python package where generated API will be
       added.
-    api_name: API you want to generate (e.g. `tensorflow` or `estimator`).
+    api_name: API you want to generate Currently, only `tensorflow`.
     api_version: API version you want to generate (1 or 2).
     compat_api_versions: Additional API versions to generate under compat/
       directory.
@@ -552,7 +552,7 @@ def get_module_docstring(module_name, package, api_name):
       prefix) to get a docstring for.
     package: Base python package containing python with target tf_export
       decorators.
-    api_name: API you want to generate (e.g. `tensorflow` or `estimator`).
+    api_name: API you want to generate Currently, only `tensorflow`.
 
   Returns:
     One-line docstring to describe the module.
@@ -609,7 +609,7 @@ def create_primary_api_files(output_files,
       PLACEHOLDER" comment in the template file will be replaced with imports.
     output_dir: output API root directory.
     output_package: Base output package where generated API will be added.
-    api_name: API you want to generate (e.g. `tensorflow` or `estimator`).
+    api_name: API you want to generate Currently, only `tensorflow`.
     api_version: API version to generate (`v1` or `v2`).
     compat_api_versions: Additional API versions to generate in compat/
       subdirectory.
@@ -695,9 +695,7 @@ def create_primary_api_files(output_files,
         f'Missing outputs for genrule:\n{missing_files}. Be sure to add these '
         'targets to tensorflow/python/tools/api/generator/api_init_files_v1.bzl'
         ' and tensorflow/python/tools/api/generator/api_init_files.bzl '
-        '(tensorflow repo), tf_keras/api/api_init_files.bzl (tf_keras repo), '
-        'or tensorflow_estimator/python/estimator/api/api_gen.bzl (estimator '
-        'repo)')
+        '(tensorflow repo), or tf_keras/api/api_init_files.bzl (tf_keras repo)')
 
 
 def create_proxy_api_files(output_files,

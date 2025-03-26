@@ -15,9 +15,12 @@ limitations under the License.
 
 #include "tensorflow/core/platform/tensor_coding.h"
 
+#include <climits>
+#include <cstddef>
 #include <vector>
 
 #include "tensorflow/core/platform/coding.h"
+#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/strcat.h"
 #include "tensorflow/core/platform/stringpiece.h"
@@ -29,11 +32,19 @@ limitations under the License.
 namespace tensorflow {
 namespace port {
 
-void AssignRefCounted(StringPiece src, core::RefCounted* obj, string* out) {
+void AssignRefCounted(absl::string_view src, core::RefCounted* obj,
+                      string* out) {
   out->assign(src.data(), src.size());
 }
 
 void EncodeStringList(const tstring* strings, int64_t n, string* out) {
+  int64_t tot = n * sizeof(size_t);
+  for (int i = 0; i < n; ++i) {
+    tot += strings[i].size();
+  }
+  if (tot > INT_MAX) {
+    LOG(FATAL) << "EncodeStringList size too large: " << tot;  // Crash OK
+  }
   out->clear();
   for (int i = 0; i < n; ++i) {
     core::PutVarint32(out, strings[i].size());
@@ -45,7 +56,7 @@ void EncodeStringList(const tstring* strings, int64_t n, string* out) {
 
 bool DecodeStringList(const string& src, tstring* strings, int64_t n) {
   std::vector<uint32> sizes(n);
-  StringPiece reader(src);
+  absl::string_view reader(src);
   int64_t tot = 0;
   for (auto& v : sizes) {
     if (!core::GetVarint32(&reader, &v)) return false;
@@ -120,7 +131,7 @@ class StringListDecoderImpl : public StringListDecoder {
   }
 
  private:
-  StringPiece reader_;
+  absl::string_view reader_;
 };
 
 std::unique_ptr<StringListEncoder> NewStringListEncoder(string* out) {
@@ -132,7 +143,8 @@ std::unique_ptr<StringListDecoder> NewStringListDecoder(const string& in) {
 }
 
 #if defined(TENSORFLOW_PROTOBUF_USES_CORD)
-void AssignRefCounted(StringPiece src, core::RefCounted* obj, absl::Cord* out) {
+void AssignRefCounted(absl::string_view src, core::RefCounted* obj,
+                      absl::Cord* out) {
   obj->Ref();
   *out = absl::MakeCordFromExternal(src, [obj] { obj->Unref(); });
 }
@@ -194,7 +206,7 @@ bool DecodeStringList(const absl::Cord& src, tstring* strings, int64_t n) {
 }
 
 void CopyFromArray(absl::Cord* c, const char* base, size_t bytes) {
-  c->CopyFrom(base, bytes);
+  *c = absl::string_view(base, bytes);
 }
 
 class CordStringListEncoderImpl : public StringListEncoder {

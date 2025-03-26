@@ -12,35 +12,39 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <cstddef>
 #include <memory>
 #include <string>
-#include <unordered_map>
 #include <vector>
 
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/lite/toco/graph_transformations/graph_transformations.h"
 #include "tensorflow/lite/toco/graph_transformations/remove_trivial_passthrough.h"
 #include "tensorflow/lite/toco/model.h"
-#include "tensorflow/lite/toco/runtime/types.h"
 #include "tensorflow/lite/toco/tooling_util.h"
-#include "tensorflow/core/platform/logging.h"
 
 namespace toco {
 
-::tensorflow::Status PropagateActivationFunctionIntoConstants::Run(
-    Model* model, std::size_t op_index, bool* modified) {
+absl::Status PropagateActivationFunctionIntoConstants::Run(Model* model,
+                                                           std::size_t op_index,
+                                                           bool* modified) {
   *modified = false;
   const auto ac_it = model->operators.begin() + op_index;
   const auto* ac_op = ac_it->get();
   if (ac_op->type != OperatorType::kRelu6 &&
       ac_op->type != OperatorType::kRelu1 &&
       ac_op->type != OperatorType::kRelu) {
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
 
   // Find the op producing the array passed to this activation function.
   auto* src_op = GetOpWithOutput(*model, ac_op->inputs[0]);
   if (!src_op) {
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
 
   // Ensure the src_op is not used without the activation function applied.
@@ -58,7 +62,7 @@ namespace toco {
       src_op_input = src_op->inputs[0];
       break;
     default:
-      return ::tensorflow::OkStatus();
+      return absl::OkStatus();
   }
   CHECK_EQ(src_op->outputs[0], ac_op->inputs[0]);
 
@@ -70,7 +74,7 @@ namespace toco {
         "Not propagating activation function %s into %s:%s because it is not "
         "constant",
         LogName(*ac_op), LogName(*src_op), src_op_input);
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
 
   // Get the array we'll be working with and ensure it's a compatible type.
@@ -80,7 +84,7 @@ namespace toco {
         "Not propagating activation function %s into %s:%s because it is "
         "non-float data",
         LogName(*ac_op), LogName(*src_op), src_op_input);
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
   auto& const_array_data =
       const_array.GetMutableBuffer<ArrayDataType::kFloat>().data;
@@ -109,7 +113,7 @@ namespace toco {
       }
       default:
         LOG(FATAL) << "Unsupported activation function " << LogName(*ac_op);
-        return ::tensorflow::OkStatus();
+        return absl::OkStatus();
     }
     const_array_data[i] = new_value;
   }
@@ -117,7 +121,7 @@ namespace toco {
   AddMessageF("Propagated activation function %s into %s:%s", LogName(*ac_op),
               LogName(*src_op), src_op_input);
   *modified = RemoveTrivialPassthroughOp(this, model, op_index);
-  return ::tensorflow::OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace toco

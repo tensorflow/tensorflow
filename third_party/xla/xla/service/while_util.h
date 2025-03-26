@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,11 +16,20 @@ limitations under the License.
 #ifndef XLA_SERVICE_WHILE_UTIL_H_
 #define XLA_SERVICE_WHILE_UTIL_H_
 
+#include <cstdint>
+#include <memory>
+#include <vector>
+
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/functional/function_ref.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/types/span.h"
+#include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/call_inliner.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 class WhileUtil {
@@ -42,6 +51,11 @@ class WhileUtil {
     // to the corresponding instructions in the body for the newly created while
     // operation.
     CallInliner::InlinedInstructionMap while_body_instruction_map;
+
+    // `while_body_instruction_map` maps instructions in the original while body
+    // to the corresponding instructions in the body for the newly created while
+    // operation.
+    CallInliner::InlinedInstructionMap while_condition_instruction_map;
   };
 
   // Replaces `while_instr` with a new while instruction that is equivalent to
@@ -60,12 +74,12 @@ class WhileUtil {
   //
   //   Every instruction in `instructions` must be contained in the computation
   //   that contains `while_instr`.
-  static StatusOr<MakeInstructionsLiveInResult> MakeInstructionsLiveIn(
+  static absl::StatusOr<MakeInstructionsLiveInResult> MakeInstructionsLiveIn(
       HloInstruction* while_instr,
       absl::Span<HloInstruction* const> instructions);
 
   using LoopStateTy = std::vector<HloInstruction*>;
-  using LoopBodyGeneratorTy = absl::FunctionRef<StatusOr<LoopStateTy>(
+  using LoopBodyGeneratorTy = absl::FunctionRef<absl::StatusOr<LoopStateTy>(
       HloInstruction* /*induction_var*/,
       const LoopStateTy& /*current_values*/)>;
 
@@ -81,7 +95,7 @@ class WhileUtil {
   //    }
   //    return loop_state;
   //  }
-  static StatusOr<LoopStateTy> MakeCountedLoop(
+  static absl::StatusOr<LoopStateTy> MakeCountedLoop(
       HloComputation* computation, int32_t trip_count,
       const LoopStateTy& init_values, LoopBodyGeneratorTy loop_body_generator,
       const OpMetadata& metadata);
@@ -93,7 +107,7 @@ class WhileUtil {
   // As above but does not add the while loop or other instructions created
   // around it in any particular computation. The caller can instead add it to a
   // computation of their choosing.
-  static StatusOr<OwningLoopStateTy> MakeCountedLoop(
+  static absl::StatusOr<OwningLoopStateTy> MakeCountedLoop(
       HloModule* module, int32_t trip_count,
       const WhileUtil::LoopStateTy& init_values,
       WhileUtil::LoopBodyGeneratorTy loop_body_generator,
@@ -111,6 +125,11 @@ class WhileUtil {
   // question.
   static absl::flat_hash_map<int64_t, absl::InlinedVector<HloInstruction*, 1>>
   GetGTEsMapForWhileConditional(const HloComputation& while_conditional);
+
+  // Modifies the trip count of the loop by the given increment.
+  // Requires loop body to be incrementing the induction variable by exactly 1.
+  static absl::Status IncrementWhileLoopTripCount(
+      const HloInstruction& while_instruction, int32_t increment);
 };
 }  // namespace xla
 

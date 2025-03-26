@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2019 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "xla/backends/profiler/gpu/cupti_wrapper.h"
 
-#include <type_traits>
+#include "third_party/gpus/cuda/include/cuda.h"
 
 namespace xla {
 namespace profiler {
@@ -56,8 +56,29 @@ CUptiResult CuptiWrapper::ActivityRegisterCallbacks(
                                         func_buffer_completed);
 }
 
-CUptiResult CuptiWrapper::GetDeviceId(CUcontext context,
-                                      tsl::uint32* deviceId) {
+CUptiResult CuptiWrapper::ActivityUsePerThreadBuffer() {
+#if CUDA_VERSION >= 12030
+  uint8_t use_per_thread_activity_buffer = 1;
+  size_t value_size = sizeof(use_per_thread_activity_buffer);
+  return cuptiActivitySetAttribute(
+      CUPTI_ACTIVITY_ATTR_PER_THREAD_ACTIVITY_BUFFER, &value_size,
+      &use_per_thread_activity_buffer);
+#else
+  // cuptiActivitySetAttribute returns CUPTI_ERROR_INVALID_PARAMETER if invoked
+  // with an invalid first parameter.
+  return CUPTI_ERROR_INVALID_PARAMETER;
+#endif
+}
+
+CUptiResult CuptiWrapper::SetActivityFlushPeriod(uint32_t period_ms) {
+#if CUDA_VERSION >= 11010
+  return cuptiActivityFlushPeriod(period_ms);
+#else
+  return CUPTI_ERROR_NOT_SUPPORTED;
+#endif
+}
+
+CUptiResult CuptiWrapper::GetDeviceId(CUcontext context, uint32_t* deviceId) {
   return cuptiGetDeviceId(context, deviceId);
 }
 
@@ -90,145 +111,6 @@ CUptiResult CuptiWrapper::Unsubscribe(CUpti_SubscriberHandle subscriber) {
   return cuptiUnsubscribe(subscriber);
 }
 
-CUptiResult CuptiWrapper::DeviceEnumEventDomains(
-    CUdevice device, size_t* array_size_bytes,
-    CUpti_EventDomainID* domain_array) {
-  return cuptiDeviceEnumEventDomains(device, array_size_bytes, domain_array);
-}
-
-CUptiResult CuptiWrapper::DeviceGetEventDomainAttribute(
-    CUdevice device, CUpti_EventDomainID event_domain,
-    CUpti_EventDomainAttribute attrib, size_t* value_size, void* value) {
-  return cuptiDeviceGetEventDomainAttribute(device, event_domain, attrib,
-                                            value_size, value);
-}
-
-CUptiResult CuptiWrapper::DisableKernelReplayMode(CUcontext context) {
-  return cuptiDisableKernelReplayMode(context);
-}
-
-CUptiResult CuptiWrapper::EnableKernelReplayMode(CUcontext context) {
-  return cuptiEnableKernelReplayMode(context);
-}
-
-CUptiResult CuptiWrapper::DeviceGetNumEventDomains(CUdevice device,
-                                                   uint32_t* num_domains) {
-  return cuptiDeviceGetNumEventDomains(device, num_domains);
-}
-
-CUptiResult CuptiWrapper::EventDomainEnumEvents(
-    CUpti_EventDomainID event_domain, size_t* array_size_bytes,
-    CUpti_EventID* event_array) {
-  return cuptiEventDomainEnumEvents(event_domain, array_size_bytes,
-                                    event_array);
-}
-
-CUptiResult CuptiWrapper::EventDomainGetNumEvents(
-    CUpti_EventDomainID event_domain, uint32_t* num_events) {
-  return cuptiEventDomainGetNumEvents(event_domain, num_events);
-}
-
-CUptiResult CuptiWrapper::EventGetAttribute(CUpti_EventID event,
-                                            CUpti_EventAttribute attrib,
-                                            size_t* value_size, void* value) {
-  return cuptiEventGetAttribute(event, attrib, value_size, value);
-}
-
-CUptiResult CuptiWrapper::EventGetIdFromName(CUdevice device,
-                                             const char* event_name,
-                                             CUpti_EventID* event) {
-  return cuptiEventGetIdFromName(device, event_name, event);
-}
-
-CUptiResult CuptiWrapper::EventGroupDisable(CUpti_EventGroup event_group) {
-  return cuptiEventGroupDisable(event_group);
-}
-
-CUptiResult CuptiWrapper::EventGroupEnable(CUpti_EventGroup event_group) {
-  return cuptiEventGroupEnable(event_group);
-}
-
-CUptiResult CuptiWrapper::EventGroupGetAttribute(
-    CUpti_EventGroup event_group, CUpti_EventGroupAttribute attrib,
-    size_t* value_size, void* value) {
-  return cuptiEventGroupGetAttribute(event_group, attrib, value_size, value);
-}
-
-CUptiResult CuptiWrapper::EventGroupReadEvent(
-    CUpti_EventGroup event_group, CUpti_ReadEventFlags flags,
-    CUpti_EventID event, size_t* event_value_buffer_size_bytes,
-    uint64_t* event_value_buffer) {
-  return cuptiEventGroupReadEvent(event_group, flags, event,
-                                  event_value_buffer_size_bytes,
-                                  event_value_buffer);
-}
-
-CUptiResult CuptiWrapper::EventGroupSetAttribute(
-    CUpti_EventGroup event_group, CUpti_EventGroupAttribute attrib,
-    size_t value_size, void* value) {
-  return cuptiEventGroupSetAttribute(event_group, attrib, value_size, value);
-}
-
-CUptiResult CuptiWrapper::EventGroupSetsCreate(
-    CUcontext context, size_t event_id_array_size_bytes,
-    CUpti_EventID* event_id_array, CUpti_EventGroupSets** event_group_passes) {
-  return cuptiEventGroupSetsCreate(context, event_id_array_size_bytes,
-                                   event_id_array, event_group_passes);
-}
-
-CUptiResult CuptiWrapper::EventGroupSetsDestroy(
-    CUpti_EventGroupSets* event_group_sets) {
-  return cuptiEventGroupSetsDestroy(event_group_sets);
-}
-
-// CUPTI metric API
-CUptiResult CuptiWrapper::DeviceEnumMetrics(CUdevice device,
-                                            size_t* arraySizeBytes,
-                                            CUpti_MetricID* metricArray) {
-  return cuptiDeviceEnumMetrics(device, arraySizeBytes, metricArray);
-}
-
-CUptiResult CuptiWrapper::DeviceGetNumMetrics(CUdevice device,
-                                              uint32_t* num_metrics) {
-  return cuptiDeviceGetNumMetrics(device, num_metrics);
-}
-
-CUptiResult CuptiWrapper::MetricGetIdFromName(CUdevice device,
-                                              const char* metric_name,
-                                              CUpti_MetricID* metric) {
-  return cuptiMetricGetIdFromName(device, metric_name, metric);
-}
-
-CUptiResult CuptiWrapper::MetricGetNumEvents(CUpti_MetricID metric,
-                                             uint32_t* num_events) {
-  return cuptiMetricGetNumEvents(metric, num_events);
-}
-
-CUptiResult CuptiWrapper::MetricEnumEvents(CUpti_MetricID metric,
-                                           size_t* event_id_array_size_bytes,
-                                           CUpti_EventID* event_id_array) {
-  return cuptiMetricEnumEvents(metric, event_id_array_size_bytes,
-                               event_id_array);
-}
-
-CUptiResult CuptiWrapper::MetricGetAttribute(CUpti_MetricID metric,
-                                             CUpti_MetricAttribute attrib,
-                                             size_t* value_size, void* value) {
-  return cuptiMetricGetAttribute(metric, attrib, value_size, value);
-}
-
-CUptiResult CuptiWrapper::MetricGetValue(CUdevice device, CUpti_MetricID metric,
-                                         size_t event_id_array_size_bytes,
-                                         CUpti_EventID* event_id_array,
-                                         size_t event_value_array_size_bytes,
-                                         uint64_t* event_value_array,
-                                         uint64_t time_duration,
-                                         CUpti_MetricValue* metric_value) {
-  return cuptiMetricGetValue(device, metric, event_id_array_size_bytes,
-                             event_id_array, event_value_array_size_bytes,
-                             event_value_array, time_duration, metric_value);
-}
-
 CUptiResult CuptiWrapper::GetResultString(CUptiResult result,
                                           const char** str) {
   return cuptiGetResultString(result, str);
@@ -237,6 +119,26 @@ CUptiResult CuptiWrapper::GetResultString(CUptiResult result,
 CUptiResult CuptiWrapper::GetContextId(CUcontext context,
                                        uint32_t* context_id) {
   return cuptiGetContextId(context, context_id);
+}
+
+CUptiResult CuptiWrapper::GetGraphId(CUgraph graph, uint32_t* graph_id) {
+#if CUDA_VERSION >= 11010
+  return cuptiGetGraphId(graph, graph_id);
+#else
+  // Do not treat it as error if the interface is not available.
+  if (graph_id) *graph_id = 0;
+  return CUPTI_SUCCESS;
+#endif
+}
+
+CUptiResult CuptiWrapper::GetGraphExecId(CUgraphExec graph_exec,
+                                         uint32_t* graph_id) {
+  // TODO: (b/350105610), Using cuptiGetGraphExecId() for CUDA 12.3 and later
+  return GetGraphId(reinterpret_cast<CUgraph>(graph_exec), graph_id);
+}
+
+CUptiResult CuptiWrapper::SetThreadIdType(CUpti_ActivityThreadIdType type) {
+  return cuptiSetThreadIdType(type);
 }
 
 CUptiResult CuptiWrapper::GetStreamIdEx(CUcontext context, CUstream stream,

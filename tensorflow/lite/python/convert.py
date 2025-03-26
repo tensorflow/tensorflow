@@ -14,39 +14,35 @@
 # ==============================================================================
 """Converts a frozen graph into a TFLite FlatBuffer."""
 
-import distutils.spawn
+
 import enum
 import hashlib
-import os as _os
-import platform as _platform
-import subprocess as _subprocess
-import tempfile as _tempfile
 from typing import Optional
 import warnings
 
+from tensorflow.compiler.mlir.lite import converter_flags_pb2 as _conversion_flags_pb2
+from tensorflow.compiler.mlir.lite import model_flags_pb2 as _model_flags_pb2
+from tensorflow.compiler.mlir.lite import types_pb2 as _types_pb2
+from tensorflow.compiler.mlir.lite.metrics import converter_error_data_pb2
+from tensorflow.compiler.mlir.lite.python import wrap_converter
+from tensorflow.compiler.mlir.quantization.stablehlo import quantization_config_pb2
 from tensorflow.compiler.mlir.quantization.stablehlo import quantization_options_pb2 as quant_opts_pb2
 from tensorflow.lite.python import lite_constants
 from tensorflow.lite.python import util
-from tensorflow.lite.python import wrap_toco
 from tensorflow.lite.python.convert_phase import Component
 from tensorflow.lite.python.convert_phase import convert_phase
 from tensorflow.lite.python.convert_phase import ConverterError
 from tensorflow.lite.python.convert_phase import SubComponent
-from tensorflow.lite.python.metrics import converter_error_data_pb2
 from tensorflow.lite.python.metrics.wrapper import metrics_wrapper as _metrics_wrapper
-from tensorflow.lite.toco import model_flags_pb2 as _model_flags_pb2
-from tensorflow.lite.toco import toco_flags_pb2 as _conversion_flags_pb2
-from tensorflow.lite.toco import types_pb2 as _types_pb2
 from tensorflow.lite.tools import flatbuffer_utils
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import tensor_shape
-from tensorflow.python.platform import resource_loader as _resource_loader
 from tensorflow.python.util import deprecation
 from tensorflow.python.util.tf_export import tf_export as _tf_export
 
 
 def _is_quantized_input_stats_required(
-    conversion_flags: _conversion_flags_pb2.TocoFlags,
+    conversion_flags: _conversion_flags_pb2.ConverterFlags,
 ) -> bool:
   """Checks if the `quantized_input_stats` flag is required for conversion.
 
@@ -80,7 +76,7 @@ def convert_tensor_tf_type_to_tflite_type(
     ValueError: If `tf_type` is unsupported.
 
   Returns:
-    tflite_type: TFLite type. Refer to lite/toco/types.proto.
+    tflite_type: TFLite type. Refer to compiler/mlir/lite/types.proto.
   """
   mapping = {
       dtypes.float16: _types_pb2.FLOAT16,
@@ -124,7 +120,7 @@ def convert_inference_tf_type_to_tflite_type(
     ValueError: If `tf_type` is unsupported.
 
   Returns:
-    tflite_type: TFLite type. Refer to lite/toco/types.proto.
+    tflite_type: TFLite type. Refer to compiler/mlir/lite/types.proto.
   """
   mapping = {
       dtypes.float32: _types_pb2.FLOAT,
@@ -140,18 +136,6 @@ def convert_inference_tf_type_to_tflite_type(
         )
     )
   return tflite_type
-
-
-# Find the deprecated conversion binary using the resource loader if using from
-# bazel, otherwise we are in a pip where console_scripts already has the tool.
-if lite_constants.EXPERIMENTAL_USE_TOCO_API_DIRECTLY:
-  _deprecated_conversion_binary = ""
-else:
-  _deprecated_conversion_binary = _resource_loader.get_path_to_datafile(
-      "../toco/python/toco_from_protos"
-  )
-  if not _os.path.exists(_deprecated_conversion_binary):
-    _deprecated_conversion_binary = "toco_from_protos"
 
 
 def _try_convert_to_unicode(output):
@@ -229,6 +213,8 @@ def mlir_quantize(
     denylisted_ops=None,
     denylisted_nodes=None,
     enable_variable_quantization=False,
+    disable_per_channel_for_dense_layers=False,
+    debug_options_str="",
 ):
   """Quantize `input_data_str` with calibration results.
 
@@ -254,12 +240,17 @@ def mlir_quantize(
     enable_variable_quantization: Experimental. Subject to change. Bool
       indicating whether to enable quantization of the residual variables
       remaining after the variable freezing pass.
+    disable_per_channel_for_dense_layers: Bool indicating whether to do
+      per-channel or per-tensor quantization in Fully Connected layers. Default
+      value is False meaning per-channel quantization is enabled.
+    debug_options_str: Serialized proto describing TFLite converter debug
+      options, see `debug/debug_options.proto`.
 
   Returns:
     Quantized model in serialized form (e.g. a TFLITE model) with floating-point
     inputs and outputs.
   """
-  return wrap_toco.wrapped_experimental_mlir_quantize(
+  return wrap_converter.wrapped_experimental_mlir_quantize(
       input_data_str,
       disable_per_channel,
       fully_quantize,
@@ -271,6 +262,8 @@ def mlir_quantize(
       denylisted_ops,
       denylisted_nodes,
       enable_variable_quantization,
+      disable_per_channel_for_dense_layers,
+      debug_options_str,
   )
 
 
@@ -284,7 +277,7 @@ def mlir_sparsify(input_data_str):
   Returns:
     Sparsified model in serialized form (e.g. a TFLITE model).
   """
-  return wrap_toco.wrapped_experimental_mlir_sparsify(input_data_str)
+  return wrap_converter.wrapped_experimental_mlir_sparsify(input_data_str)
 
 
 def register_custom_opdefs(custom_opdefs_list):
@@ -297,201 +290,64 @@ def register_custom_opdefs(custom_opdefs_list):
   Returns:
     True if the registration is successfully completed.
   """
-  return wrap_toco.wrapped_register_custom_opdefs(custom_opdefs_list)
+  return wrap_converter.wrapped_register_custom_opdefs(custom_opdefs_list)
 
 
 def convert(
     model_flags: _model_flags_pb2.ModelFlags,
-    conversion_flags: _conversion_flags_pb2.TocoFlags,
+    conversion_flags: _conversion_flags_pb2.ConverterFlags,
     input_data_str: Optional[str] = None,
     debug_info_str: Optional[str] = None,
-    enable_mlir_converter: bool = True,
 ):
   """Converts `input_data_str` to a TFLite model.
 
   Args:
     model_flags: Proto describing model properties, see `model_flags.proto`.
     conversion_flags: Proto describing conversion properties, see
-      `toco/toco_flags.proto`.
+      `compiler/mlir/lite/converter_flags.proto`.
     input_data_str: Input data in serialized form (e.g. a graphdef is common, or
       it can be hlo text or proto)
     debug_info_str: Serialized `GraphDebugInfo` proto describing logging
       information.
-    enable_mlir_converter: Enables MLIR-based conversion.
 
   Returns:
     Converted model in serialized form (e.g. a TFLITE model is common).
   Raises:
     ConverterError: When conversion fails in TFLiteConverter, usually due to
       ops not being supported.
-    RuntimeError: When conversion fails, an exception is raised with the error
-      message embedded.
   """
-  # Historically, deprecated conversion failures would trigger a crash, so we
-  # attempt to run the converter out-of-process. The current MLIR conversion
-  # pipeline surfaces errors instead, and can be safely run in-process.
-  if enable_mlir_converter or not _deprecated_conversion_binary:
-    try:
-      return wrap_toco.wrapped_toco_convert(
-          model_flags.SerializeToString(),
-          conversion_flags.SerializeToString(),
-          input_data_str,
-          debug_info_str,
-          enable_mlir_converter,
-      )
-    except Exception as e:
-      converter_error = ConverterError(str(e))
 
-      for error_data in _metrics_wrapper.retrieve_collected_errors():
-        converter_error.append_error(error_data)
-        # Seldom we encounter the case where an unsupported
-        # `StatefulPartitionedCallOp` is not inlined and remains in the final
-        # IR. If this occurs we can set `guarantee_all_funcs_one_use` and retry.
-        # This makes the converter copy functions definitions called by
-        # multiple StatefulPartitionedCall, thus allowing them to be properly
-        # inlined.
-        if (
-            error_data.error_code
-            == converter_error_data_pb2.ConverterErrorData.ERROR_STATEFUL_PARTITIONED_CALL_IN_FINAL_IR
-            and not conversion_flags.guarantee_all_funcs_one_use
-        ):
-          conversion_flags.guarantee_all_funcs_one_use = True
-          return convert(
-              model_flags,
-              conversion_flags,
-              input_data_str,
-              debug_info_str,
-              enable_mlir_converter,
-          )
-      raise converter_error
-
-  return _run_deprecated_conversion_binary(
-      model_flags.SerializeToString(),
-      conversion_flags.SerializeToString(),
-      input_data_str,
-      debug_info_str,
-  )
-
-
-@convert_phase(
-    Component.CONVERT_TF_TO_TFLITE_MODEL,
-    SubComponent.CONVERT_GRAPHDEF_USING_DEPRECATED_CONVERTER,
-)
-def _run_deprecated_conversion_binary(
-    model_flags_str, conversion_flags_str, input_data_str, debug_info_str=None
-):
-  """Convert `input_data_str` using deprecated conversion binary.
-
-  Args:
-    model_flags_str: Serialized proto describing model properties, see
-      `model_flags.proto`.
-    conversion_flags_str: Serialized proto describing TFLite converter
-      properties, see `toco/toco_flags.proto`.
-    input_data_str: Input data in serialized form (e.g. a graphdef is common)
-    debug_info_str: Serialized `GraphDebugInfo` proto describing logging
-      information. (default None)
-
-  Returns:
-    Converted model in serialized form (e.g. a TFLITE model is common).
-  Raises:
-    ConverterError: When cannot find the deprecated conversion binary.
-    RuntimeError: When conversion fails, an exception is raised with the error
-      message embedded.
-  """
-  if distutils.spawn.find_executable(_deprecated_conversion_binary) is None:
-    raise ConverterError("""Could not find `toco_from_protos` binary, make sure
-your virtualenv bin directory or pip local bin directory is in your path.
-In particular, if you have installed TensorFlow with --user, make sure you
-add the install directory to your path.
-
-For example:
-Linux: export PATH=$PATH:~/.local/bin/
-Mac: export PATH=$PATH:~/Library/Python/<version#>/bin
-
-Alternative, use virtualenv.""")
-  # Windows and TemporaryFile are not that useful together,
-  # since you cannot have two readers/writers. So we have to
-  # make the temporaries and close and delete them explicitly.
-  conversion_filename: str = None
-  model_filename: str = None
-  input_filename: str = None
-  output_filename: str = None
   try:
-    # Build all input files
-    with _tempfile.NamedTemporaryFile(
-        delete=False
-    ) as fp_conversion, _tempfile.NamedTemporaryFile(
-        delete=False
-    ) as fp_model, _tempfile.NamedTemporaryFile(
-        delete=False
-    ) as fp_input, _tempfile.NamedTemporaryFile(
-        delete=False
-    ) as fp_debug:
-      conversion_filename = fp_conversion.name
-      input_filename = fp_input.name
-      model_filename = fp_model.name
-      debug_filename = fp_debug.name
-
-      fp_model.write(model_flags_str)
-      fp_conversion.write(conversion_flags_str)
-      fp_input.write(input_data_str)
-      debug_info_str = debug_info_str if debug_info_str else ""
-      # if debug_info_str contains a "string value", then the call to
-      # fp_debug.write(debug_info_str) will fail with the following error
-      #
-      # TypeError: a bytes-like object is required, not 'str'
-      #
-      # Some of the subtests within the "convert_test" unit-test fail
-      # with the error shown above. So watch out for that scenario and
-      # convert debug_info_str to bytes where needed
-      if not isinstance(debug_info_str, bytes):
-        fp_debug.write(debug_info_str.encode("utf-8"))
-      else:
-        fp_debug.write(debug_info_str)
-
-    # Reserve an output file
-    with _tempfile.NamedTemporaryFile(delete=False) as fp:
-      output_filename = fp.name
-
-    # Run
-    cmd = [
-        _deprecated_conversion_binary,
-        model_filename,
-        conversion_filename,
-        input_filename,
-        output_filename,
-        "--debug_proto_file={}".format(debug_filename),
-    ]
-    cmdline = " ".join(cmd)
-    is_windows = _platform.system() == "Windows"
-    proc = _subprocess.Popen(
-        cmdline,
-        shell=True,
-        stdout=_subprocess.PIPE,
-        stderr=_subprocess.STDOUT,
-        close_fds=not is_windows,
+    return wrap_converter.wrapped_convert(
+        model_flags.SerializeToString(),
+        conversion_flags.SerializeToString(),
+        input_data_str,
+        debug_info_str,
     )
-    stdout, stderr = proc.communicate()
-    exitcode = proc.returncode
-    if exitcode == 0:
-      with open(output_filename, "rb") as fp:
-        return fp.read()
-    else:
-      stdout = _try_convert_to_unicode(stdout)
-      stderr = _try_convert_to_unicode(stderr)
-      raise ConverterError("See console for info.\n%s\n%s\n" % (stdout, stderr))
-  finally:
-    # Must manually cleanup files.
-    for filename in [
-        conversion_filename,
-        input_filename,
-        model_filename,
-        output_filename,
-    ]:
-      try:
-        _os.unlink(filename)
-      except (OSError, TypeError):
-        pass
+  except Exception as e:
+    converter_error = ConverterError(str(e))
+
+    for error_data in _metrics_wrapper.retrieve_collected_errors():
+      converter_error.append_error(error_data)
+      # Seldom we encounter the case where an unsupported
+      # `StatefulPartitionedCallOp` is not inlined and remains in the final
+      # IR. If this occurs we can set `guarantee_all_funcs_one_use` and retry.
+      # This makes the converter copy functions definitions called by
+      # multiple StatefulPartitionedCall, thus allowing them to be properly
+      # inlined.
+      if (
+          error_data.error_code
+          == converter_error_data_pb2.ConverterErrorData.ERROR_STATEFUL_PARTITIONED_CALL_IN_FINAL_IR
+          and not conversion_flags.guarantee_all_funcs_one_use
+      ):
+        conversion_flags.guarantee_all_funcs_one_use = True
+        return convert(
+            model_flags,
+            conversion_flags,
+            input_data_str,
+            debug_info_str,
+        )
+    raise converter_error
 
 
 def build_model_flags(
@@ -501,7 +357,7 @@ def build_model_flags(
     saved_model_version=0,
     saved_model_tags=None,
     saved_model_exported_names=None,
-    **_
+    **_,
 ):
   """Builds the model flags object from params.
 
@@ -577,17 +433,27 @@ def build_conversion_flags(
     enable_mlir_variable_quantization=False,
     disable_fuse_mul_and_fc=False,
     quantization_options: Optional[quant_opts_pb2.QuantizationOptions] = None,
-    mlir_dump_dir=None,
-    mlir_dump_pass_regex=None,
-    mlir_dump_func_regex=None,
-    mlir_enable_timing=None,
-    mlir_print_ir_before=None,
-    mlir_print_ir_after=None,
-    mlir_print_ir_module_scope=None,
-    mlir_elide_elementsattrs_if_larger=None,
+    ir_dump_dir=None,
+    ir_dump_pass_regex=None,
+    ir_dump_func_regex=None,
+    enable_timing=None,
+    print_ir_before=None,
+    print_ir_after=None,
+    print_ir_module_scope=None,
+    elide_elementsattrs_if_larger=None,
+    quantization_config: Optional[
+        quantization_config_pb2.QuantizationConfig
+    ] = None,
     use_buffer_offset=False,
     reduce_type_precision=False,
-    **_
+    qdq_conversion_mode=None,
+    strict_qdq_mode=False,
+    disable_per_channel_quantization_for_dense_layers=False,
+    enable_composite_direct_lowering=False,
+    model_origin_framework=lite_constants.UNSET,
+    canonicalizing_inf_as_min_max_float=True,
+    serialize_debug_metadata=False,
+    **_,
 ):
   """Builds protocol buffer describing a conversion of a model.
 
@@ -681,43 +547,59 @@ def build_conversion_flags(
       graph.
     disable_fuse_mul_and_fc: Disable fusing input multiplication with
       fullyconnected operations. Useful when quantizing weights.
-    quantization_options: Config to indicate quantization options of each
-      components (ex: weight, bias, activation). This can be a preset method or
-      a custom method, and allows finer, modular control. This option will
-      override any other existing quantization flags. We plan on gradually
+    quantization_options: [Deprecated] Config to indicate quantization options
+      of each components (ex: weight, bias, activation). This can be a preset
+      method or a custom method, and allows finer, modular control. This option
+      will override any other existing quantization flags. We plan on gradually
       migrating all quantization-related specs into this option.
-    mlir_dump_dir: A string specifying the target directory to output MLIR dumps
+    ir_dump_dir: A string specifying the target directory to output MLIR dumps
       produced during conversion. If populated, enables MLIR dumps.
-    mlir_dump_pass_regex: A string containing a regular expression for filtering
-      the pass names to be dumped. Effective only if `mlir_dump_dir` is
+    ir_dump_pass_regex: A string containing a regular expression for filtering
+      the pass names to be dumped. Effective only if `ir_dump_dir` is populated.
+    ir_dump_func_regex: A string containing a regular expression for filtering
+      the function names to be dumped. Effective only if `ir_dump_dir` is
       populated.
-    mlir_dump_func_regex: A string containing a regular expression for filtering
-      the function names to be dumped. Effective only if `mlir_dump_dir` is
-      populated.
-    mlir_enable_timing: A boolean, if set to true reports the execution time of
-      each MLIR pass.
-    mlir_print_ir_before: A string containing a regular expression. If
-      specified, prints MLIR before passes which match.
-    mlir_print_ir_after: A string containing a regular expression. If specified,
+    enable_timing: A boolean, if set to true reports the execution time of each
+      MLIR pass.
+    print_ir_before: A string containing a regular expression. If specified,
+      prints MLIR before passes which match.
+    print_ir_after: A string containing a regular expression. If specified,
       prints MLIR after passes which match.
-    mlir_print_ir_module_scope: A boolean, if set to true always print the
-      top-level operation when printing IR for print_ir_[before|after].
-    mlir_elide_elementsattrs_if_larger: An int, if specified elides
-      ElementsAttrs with '...' that have more elements than the given upper
-      limit.
+    print_ir_module_scope: A boolean, if set to true always print the top-level
+      operation when printing IR for print_ir_[before|after].
+    elide_elementsattrs_if_larger: An int, if specified elides ElementsAttrs
+      with '...' that have more elements than the given upper limit.
+    quantization_config: Configures the StableHLO Quantizer. See the comments in
+      `QuantizationConfig` protobuf definition for details.
     use_buffer_offset: Force the model use buffer_offset & buffer_size fields
       instead of data. i.e. store the constant tensor and custom op binaries
       outside of Flatbuffers
     reduce_type_precision: Convert some tensor types to a lower precision if all
       values within that tensor are within the range of the lower precision.
       This could have side effects e.g. reduced flatbuffer size.
+    qdq_conversion_mode: If set, assume input model is a quantized model
+      represented with QDQ ops and convert to quantized kernels.
+    strict_qdq_mode: If set, adheres to the QDQ annotations added by the
+      framework when possible rather than quantizing any op that is possible to
+      quantize.
+    disable_per_channel_quantization_for_dense_layers: If set, disables per
+      channel end enables per tensor integer quantization for weights in Dense
+      layers. The flag works only for integer quantized model.
+    enable_composite_direct_lowering: If set, attempts to lower composite ops
+      directly to tflite ops.
+    model_origin_framework: A str specifying the framework of the original
+      model. Can be {TENSORFLOW, KERAS, JAX, PYTORCH}
+    canonicalizing_inf_as_min_max_float: When set to true, convert +Inf/-Inf to
+      MIN/MAX float value and output of converter only contains finite values.
+    serialize_debug_metadata: When set to true, serialize debug metadata in the
+      flatbuffer.
 
   Returns:
     conversion_flags: protocol buffer describing the conversion process.
   Raises:
     ValueError, if the input tensor type is unknown.
   """
-  conversion_flags = _conversion_flags_pb2.TocoFlags()
+  conversion_flags = _conversion_flags_pb2.ConverterFlags()
   conversion_flags.inference_type = convert_inference_tf_type_to_tflite_type(
       inference_type, usage="inference_type flag"
   )
@@ -794,36 +676,58 @@ def build_conversion_flags(
       enable_mlir_variable_quantization
   )
   conversion_flags.disable_fuse_mul_and_fc = disable_fuse_mul_and_fc
-  if quantization_options:
+  if quantization_options:  # Deprecated
     conversion_flags.quantization_options.CopyFrom(quantization_options)
+  if quantization_config:
+    conversion_flags.quantization_config.CopyFrom(quantization_config)
 
   # Transfer debug options. Check for existence before populating in order to
   # leverage defaults specified in proto definition.
-  if mlir_dump_dir is not None:
-    conversion_flags.debug_options.mlir_dump_dir = mlir_dump_dir
-  if mlir_dump_pass_regex is not None:
-    conversion_flags.debug_options.mlir_dump_pass_regex = mlir_dump_pass_regex
-  if mlir_dump_func_regex is not None:
-    conversion_flags.debug_options.mlir_dump_func_regex = mlir_dump_func_regex
-  if mlir_enable_timing is not None:
-    conversion_flags.debug_options.mlir_enable_timing = mlir_enable_timing
-  if mlir_print_ir_before is not None:
-    conversion_flags.debug_options.mlir_print_ir_before = mlir_print_ir_before
-  if mlir_print_ir_after is not None:
-    conversion_flags.debug_options.mlir_print_ir_after = mlir_print_ir_after
-  if mlir_print_ir_module_scope is not None:
-    conversion_flags.debug_options.mlir_print_ir_module_scope = (
-        mlir_print_ir_module_scope
-    )
-  if mlir_elide_elementsattrs_if_larger is not None:
-    conversion_flags.debug_options.mlir_elide_elementsattrs_if_larger = (
-        mlir_elide_elementsattrs_if_larger
+  # TODO: b/319329480 - Match the debug_options fields with the user-facing
+  # flags.
+  if ir_dump_dir is not None:
+    conversion_flags.debug_options.ir_dump_dir = ir_dump_dir
+  if ir_dump_pass_regex is not None:
+    conversion_flags.debug_options.ir_dump_pass_regex = ir_dump_pass_regex
+  if ir_dump_func_regex is not None:
+    conversion_flags.debug_options.ir_dump_func_regex = ir_dump_func_regex
+  if enable_timing is not None:
+    conversion_flags.debug_options.enable_timing = enable_timing
+  if print_ir_before is not None:
+    conversion_flags.debug_options.print_ir_before = print_ir_before
+  if print_ir_after is not None:
+    conversion_flags.debug_options.print_ir_after = print_ir_after
+  if print_ir_module_scope is not None:
+    conversion_flags.debug_options.print_ir_module_scope = print_ir_module_scope
+  if elide_elementsattrs_if_larger is not None:
+    conversion_flags.debug_options.elide_elementsattrs_if_larger = (
+        elide_elementsattrs_if_larger
     )
 
   if use_buffer_offset is not None:
     conversion_flags.use_buffer_offset = use_buffer_offset
   if reduce_type_precision is not None:
     conversion_flags.reduce_type_precision = reduce_type_precision
+  if qdq_conversion_mode is not None:
+    conversion_flags.qdq_conversion_mode = qdq_conversion_mode
+  conversion_flags.strict_qdq_mode = strict_qdq_mode
+  conversion_flags.disable_per_channel_quantization_for_dense_layers = (
+      disable_per_channel_quantization_for_dense_layers
+  )
+  conversion_flags.enable_composite_direct_lowering = (
+      enable_composite_direct_lowering
+  )
+  conversion_flags.model_origin_framework = (
+      _conversion_flags_pb2.ConverterFlags.ModelOriginFramework.Value(
+          model_origin_framework
+      )
+  )
+  conversion_flags.canonicalizing_inf_as_min_max_float = (
+      canonicalizing_inf_as_min_max_float
+  )
+
+  conversion_flags.serialize_debug_metadata = serialize_debug_metadata
+
   return conversion_flags
 
 
@@ -835,7 +739,7 @@ def convert_graphdef_with_arrays(
     input_arrays_with_shape,
     output_arrays,
     control_output_arrays,
-    **kwargs
+    **kwargs,
 ):
   """Convert a frozen GraphDef that can't be loaded in TF.
 
@@ -865,7 +769,6 @@ def convert_graphdef_with_arrays(
   """
   model_flags = build_model_flags(**kwargs)
   conversion_flags = build_conversion_flags(**kwargs)
-  enable_mlir_converter = kwargs.get("enable_mlir_converter", True)
   quantized_input_stats = kwargs.get("quantized_input_stats", None)
 
   for idx, (name, shape) in enumerate(input_arrays_with_shape):
@@ -896,7 +799,6 @@ def convert_graphdef_with_arrays(
       conversion_flags,
       input_data.SerializeToString(),
       debug_info_str=None,
-      enable_mlir_converter=enable_mlir_converter,
   )
   return data
 
@@ -928,7 +830,6 @@ def convert_graphdef(input_data, input_tensors, output_tensors, **kwargs):
   conversion_flags = build_conversion_flags(**kwargs)
   saved_model_dir = kwargs.get("saved_model_dir", None)
   input_shapes = kwargs.get("input_shapes", None)
-  enable_mlir_converter = kwargs.get("enable_mlir_converter", True)
   quantized_input_stats = kwargs.get("quantized_input_stats", None)
   debug_info = kwargs.get("debug_info", None)
 
@@ -986,7 +887,6 @@ def convert_graphdef(input_data, input_tensors, output_tensors, **kwargs):
       conversion_flags,
       input_data.SerializeToString(),
       debug_info_str=debug_info.SerializeToString() if debug_info else None,
-      enable_mlir_converter=enable_mlir_converter,
   )
   return data
 
@@ -1003,7 +903,6 @@ def convert_saved_model(**kwargs):
       conversion_flags,
       input_data_str=None,
       debug_info_str=None,
-      enable_mlir_converter=True,
   )
   return data
 
@@ -1031,7 +930,6 @@ def convert_jax_hlo(input_content, input_names, is_proto_format, **kwargs):
       conversion_flags,
       input_data_str=input_content,
       debug_info_str=None,
-      enable_mlir_converter=True,
   )
   return data
 
@@ -1059,7 +957,6 @@ def toco_convert(input_data, input_tensors, output_tensors, *args, **kwargs):
   Raises:
     Defined in `convert`.
   """
-  kwargs["enable_mlir_converter"] = kwargs.get("enable_mlir_converter", False)
   return convert_graphdef(
       input_data, input_tensors, output_tensors, *args, **kwargs
   )

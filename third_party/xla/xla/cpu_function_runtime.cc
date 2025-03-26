@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -19,7 +19,7 @@ limitations under the License.
 
 namespace xla {
 namespace {
-// Inline memory allocation routines here, because depending on '//base' brings
+// Inline memory allocation routines here, because depending on 'base' brings
 // in libraries which use c++ streams, which adds considerable code size on
 // android.
 void* aligned_malloc(size_t size, int minimum_alignment) {

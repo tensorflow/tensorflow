@@ -1,9 +1,9 @@
 load("@flatbuffers//:build_defs.bzl", "flatbuffer_cc_library")
-load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite")
 load(
     "//tensorflow/core/platform:build_config_root.bzl",
     "tf_gpu_tests_tags",
 )
+load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite")
 load("//tensorflow/lite/delegates/gpu:build_defs.bzl", "gpu_delegate_linkopts")
 
 package(
@@ -242,6 +242,7 @@ cc_test(
     linkopts = [
         "-lEGL",
         "-lGLESv2",
+        "-lm",
     ],
     tags = tf_gpu_tests_tags() + [
         "local",
@@ -475,6 +476,9 @@ cc_library(
 cc_test(
     name = "serialization_test",
     srcs = ["serialization_test.cc"],
+    linkopts = [
+        "-lm",
+    ],
     tags = [
         "local",
         "nobuilder",

@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,20 +15,26 @@ limitations under the License.
 
 #include "xla/service/gather_expander.h"
 
+#include <cstdint>
+#include <iterator>
 #include <utility>
 
 #include "absl/algorithm/container.h"
+#include "absl/log/check.h"
+#include "absl/status/statusor.h"
+#include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/literal_util.h"
+#include "xla/service/gather_scatter_utils.h"
 #include "xla/service/hlo_creation_utils.h"
 #include "xla/service/while_util.h"
-#include "xla/statusor.h"
 #include "xla/util.h"
 
 namespace xla {
 
 namespace {
-StatusOr<HloInstruction*> TransposeIndexVectorDimToLast(
+absl::StatusOr<HloInstruction*> TransposeIndexVectorDimToLast(
     HloInstruction* start_indices, int64_t index_vector_dim) {
   const Shape& start_indices_shape = start_indices->shape();
 
@@ -55,7 +61,7 @@ StatusOr<HloInstruction*> TransposeIndexVectorDimToLast(
 // specific cases in the while loop that does the heavy lifting.
 //
 // See the "High Level Algorithm" section for a broader picture.
-StatusOr<HloInstruction*> CanonicalizeGatherIndices(
+absl::StatusOr<HloInstruction*> CanonicalizeGatherIndices(
     HloInstruction* start_indices, int64_t index_vector_dim) {
   // Transpose the non-index-vector dimensions to the front.
   TF_ASSIGN_OR_RETURN(
@@ -85,7 +91,7 @@ StatusOr<HloInstruction*> CanonicalizeGatherIndices(
 
 // Expands out or contracts away the gather dimensions in the accumulator
 // produced by the while loop.
-StatusOr<HloInstruction*> AdjustBatchDimsInAccumulator(
+absl::StatusOr<HloInstruction*> AdjustBatchDimsInAccumulator(
     const Shape& start_indices_shape, HloInstruction* accumulator,
     int64_t index_vector_dim) {
   std::vector<int64_t> batch_dim_bounds;
@@ -107,50 +113,23 @@ StatusOr<HloInstruction*> AdjustBatchDimsInAccumulator(
   return ExpandFirstDimIntoNDims(accumulator, batch_dim_bounds);
 }
 
-// Expand an index vector from the start_indices tensor into a vector that can
-// be used to dynamic-slice out of the gather operand.
-StatusOr<HloInstruction*> ExpandIndexVectorIntoOperandSpace(
-    HloInstruction* index_vector, const GatherDimensionNumbers& dim_numbers,
-    int64_t operand_rank) {
-  HloComputation* computation = index_vector->parent();
-  const Shape& index_shape = index_vector->shape();
-
-  if (operand_rank == 0) {
-    // This is Gather from a scalar. So, the index vector in operand space must
-    // be a zero-sized vector.
-    return computation->AddInstruction(HloInstruction::CreateConstant(
-        LiteralUtil::CreateFromDimensions(index_shape.element_type(), {0})));
-  }
-
-  HloInstruction* zero =
-      computation->AddInstruction(HloInstruction::CreateConstant(
-          LiteralUtil::CreateFromDimensions(index_shape.element_type(), {1})));
-
-  // We extract out individual components from the smaller index and concatenate
-  // them (interspersing zeros as needed) into the larger index.
-  std::vector<HloInstruction*> expanded_index_components;
-
-  for (int i = 0; i < operand_rank; i++) {
-    int64_t index_vector_dim_index =
-        FindIndex(dim_numbers.start_index_map(), i);
-    if (index_vector_dim_index != dim_numbers.start_index_map_size()) {
-      TF_ASSIGN_OR_RETURN(
-          HloInstruction * component_to_concat,
-          MakeSliceHlo(index_vector, /*start_indices=*/{index_vector_dim_index},
-                       /*limit_indices=*/{index_vector_dim_index + 1},
-                       /*strides=*/{1}));
-      expanded_index_components.push_back(component_to_concat);
-    } else {
-      expanded_index_components.push_back(zero);
-    }
-  }
-
-  return MakeConcatHlo(expanded_index_components, /*dimension=*/0);
+// Returns the dimensions in a slice that are either collapsed or corresponding
+// to an operand batching dimension.
+std::vector<int64_t> GetDegeneratedSliceDims(
+    const GatherDimensionNumbers& dim_numbers) {
+  absl::Span<const int64_t> collapsed_slice_dims =
+      dim_numbers.collapsed_slice_dims();
+  absl::Span<const int64_t> batching_dims = dim_numbers.operand_batching_dims();
+  std::vector<int64_t> removed_dims;
+  removed_dims.reserve(collapsed_slice_dims.size() + batching_dims.size());
+  absl::c_copy(collapsed_slice_dims, std::back_inserter(removed_dims));
+  absl::c_copy(batching_dims, std::back_inserter(removed_dims));
+  return removed_dims;
 }
 
 // This generates the body of the while that implements the main data movement
 // behavior of gather using dynamic-slice and dynamic-update-slice.
-StatusOr<std::vector<HloInstruction*>> GatherLoopBody(
+absl::StatusOr<std::vector<HloInstruction*>> GatherLoopBody(
     const HloInstruction& gather, HloInstruction* induction_var,
     const std::vector<HloInstruction*>& incoming_loop_state) {
   const GatherDimensionNumbers& dim_numbers = gather.gather_dimension_numbers();
@@ -158,11 +137,11 @@ StatusOr<std::vector<HloInstruction*>> GatherLoopBody(
   HloInstruction* const operand = incoming_loop_state[0];
   HloInstruction* const start_indices = incoming_loop_state[1];
   HloInstruction* const output_accumulator = incoming_loop_state[2];
+  const Shape& orig_start_indices_shape = gather.operand(1)->shape();
 
   bool has_scalar_indices = start_indices->shape().dimensions_size() == 1;
-  CHECK_EQ(has_scalar_indices,
-           dim_numbers.index_vector_dim() ==
-               gather.operand(1)->shape().dimensions_size());
+  CHECK_EQ(has_scalar_indices, dim_numbers.index_vector_dim() ==
+                                   orig_start_indices_shape.dimensions_size());
 
   HloInstruction* induction_var_as_vector =
       MakeBroadcastHlo(induction_var, /*broadcast_dimensions=*/{},
@@ -197,8 +176,11 @@ StatusOr<std::vector<HloInstruction*>> GatherLoopBody(
 
   TF_ASSIGN_OR_RETURN(
       HloInstruction * gathered_slice_start,
-      ExpandIndexVectorIntoOperandSpace(index_vector, dim_numbers,
-                                        operand->shape().dimensions_size()));
+      ExpandIndexVectorIntoOperandSpace(
+          orig_start_indices_shape, operand->shape().dimensions_size(),
+          dim_numbers.index_vector_dim(), dim_numbers.start_index_map(),
+          dim_numbers.start_indices_batching_dims(),
+          dim_numbers.operand_batching_dims(), index_vector, induction_var));
 
   TF_ASSIGN_OR_RETURN(HloInstruction * gathered_slice,
                       MakeDynamicSliceHlo(operand, gathered_slice_start,
@@ -206,7 +188,8 @@ StatusOr<std::vector<HloInstruction*>> GatherLoopBody(
 
   TF_ASSIGN_OR_RETURN(
       HloInstruction* const gathered_slice_with_dims_collapsed,
-      ElideDegenerateDims(gathered_slice, dim_numbers.collapsed_slice_dims()));
+      ElideDegenerateDims(gathered_slice,
+                          GetDegeneratedSliceDims(dim_numbers)));
 
   TF_ASSIGN_OR_RETURN(
       HloInstruction* const gathered_slice_for_update,
@@ -227,7 +210,7 @@ StatusOr<std::vector<HloInstruction*>> GatherLoopBody(
   // New loop state -- only the accumulator has changed.  The
   // WhileUtil::MakeCountedLoop functions takes care of the induction variable
   // and the while loop exit condition.
-  return StatusOr<std::vector<HloInstruction*>>{
+  return absl::StatusOr<std::vector<HloInstruction*>>{
       {operand, start_indices, updated_accumulator}};
 }
 
@@ -239,7 +222,8 @@ HloInstruction* CreateGatherLoopAccumulatorInitValue(
   accumulator_state_shape_dims.reserve(1 + slice_sizes.size());
   accumulator_state_shape_dims.push_back(gather_loop_trip_count);
   for (int64_t i = 0; i < slice_sizes.size(); i++) {
-    if (!absl::c_binary_search(dim_numbers.collapsed_slice_dims(), i)) {
+    if (!IsCollapsedOrBatchingDim(dim_numbers.collapsed_slice_dims(),
+                                  dim_numbers.operand_batching_dims(), i)) {
       accumulator_state_shape_dims.push_back(slice_sizes[i]);
     }
   }
@@ -251,7 +235,7 @@ HloInstruction* CreateGatherLoopAccumulatorInitValue(
 // except that it has the dimensions in the wrong order -- the batch dimensions
 // are the major dimensions and the offset dimensions are the minor dimensions.
 // Fix this up with a transpose.
-StatusOr<HloInstruction*> PermuteBatchAndOffsetDims(
+absl::StatusOr<HloInstruction*> PermuteBatchAndOffsetDims(
     HloInstruction* accumulator, absl::Span<const int64_t> offset_dims,
     int64_t output_rank) {
   std::vector<int64_t> permutation;
@@ -287,7 +271,7 @@ int64_t GatherLoopTripCount(HloInstruction* gather_instr) {
   return trip_count;
 }
 
-int64_t GatherIsBroadcast(HloInstruction* gather_instr) {
+bool GatherIsBroadcast(HloInstruction* gather_instr) {
   return absl::c_equal(gather_instr->gather_slice_sizes(),
                        gather_instr->operand(0)->shape().dimensions());
 }
@@ -327,7 +311,7 @@ int64_t GatherIsBroadcast(HloInstruction* gather_instr) {
 // [3,1] out of operand into an accumulator of shape [4,3,1].  We then
 // reshape this result to [2,2,3] and finally transpose it to [2,3,2].
 
-StatusOr<HloInstruction*> GatherExpander::ExpandInstruction(
+absl::StatusOr<HloInstruction*> GatherExpander::ExpandInstruction(
     HloInstruction* gather_instr) {
   CHECK(!ShapeUtil::IsZeroElementArray(gather_instr->shape()));
 
@@ -336,7 +320,7 @@ StatusOr<HloInstruction*> GatherExpander::ExpandInstruction(
       return MakeScalarLike(gather_instr, 0);
     }
     Shape broadcast_operand_shape = ShapeUtil::DeleteDimensions(
-        gather_instr->gather_dimension_numbers().collapsed_slice_dims(),
+        GetDegeneratedSliceDims(gather_instr->gather_dimension_numbers()),
         gather_instr->operand(0)->shape());
     TF_ASSIGN_OR_RETURN(HloInstruction * broadcast_operand,
                         MakeReshapeHlo(broadcast_operand_shape,
@@ -379,7 +363,7 @@ StatusOr<HloInstruction*> GatherExpander::ExpandInstruction(
       gather_instr->gather_slice_sizes(), gather_loop_trip_count,
       gather_instr->gather_dimension_numbers());
 
-  StatusOr<std::vector<HloInstruction*>> gather_loop_result_or_error =
+  absl::StatusOr<std::vector<HloInstruction*>> gather_loop_result_or_error =
       WhileUtil::MakeCountedLoop(
           computation, gather_loop_trip_count,
           {operand, canonical_start_indices, accumulator_init},
@@ -412,8 +396,7 @@ bool GatherExpander::InstructionMatchesPattern(HloInstruction* inst) {
          // which can be represented without a loop -- i.e. we only simplify
          // gathers which have a trip count of 1.
          (mode_ == kEliminateAllGathers || GatherLoopTripCount(inst) == 1 ||
-          absl::c_equal(inst->gather_slice_sizes(),
-                        inst->operand(0)->shape().dimensions()));
+          GatherIsBroadcast(inst));
 }
 
 }  // namespace xla

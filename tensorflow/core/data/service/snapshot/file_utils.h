@@ -15,14 +15,15 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_DATA_SERVICE_SNAPSHOT_FILE_UTILS_H_
 #define TENSORFLOW_CORE_DATA_SERVICE_SNAPSHOT_FILE_UTILS_H_
 
+#include <cstdint>
 #include <string>
 #include <vector>
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/env.h"
 #include "tensorflow/core/framework/tensor.h"
-#include "tsl/platform/env.h"
 #include "tsl/platform/protobuf.h"
 
 namespace tensorflow {
@@ -60,6 +61,12 @@ absl::StatusOr<std::vector<std::string>> GetChildren(
 // Returns true if `filename` is a temporary file and should be ignored in
 // normal data processing.
 bool IsTemporaryFile(absl::string_view filename);
+
+// Returns the total number of chunks for a distributed snapshot:
+// - If the snapshot is finished, returns the number of committed chunks.
+// - If the snapshot is unfinished or has failed, returns kUnknownCardinality.
+int64_t SnapshotChunksCardinality(absl::string_view snapshot_path,
+                                  tsl::Env* env);
 
 }  // namespace data
 }  // namespace tensorflow

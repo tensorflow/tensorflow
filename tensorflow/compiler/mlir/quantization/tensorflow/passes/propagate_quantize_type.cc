@@ -32,8 +32,8 @@ limitations under the License.
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
+#include "tensorflow/compiler/mlir/quantization/common/attrs_and_constraints.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/ops/tf_op_quant_spec.h"
-#include "tensorflow/compiler/mlir/quantization/tensorflow/passes/utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 
 namespace mlir {
@@ -100,7 +100,7 @@ class PropagateDequantizeOpIfAllowed
 
   LogicalResult matchAndRewrite(TF::PartitionedCallOp op,
                                 PatternRewriter& rewriter) const override {
-    const auto f_attr = op.getFAttr().dyn_cast<FlatSymbolRefAttr>();
+    const auto f_attr = mlir::dyn_cast<FlatSymbolRefAttr>(op.getFAttr());
     StringRef function_name = f_attr.getValue();
     if (!function_name.starts_with(kDequantizeFunctionName)) return failure();
 
@@ -127,7 +127,8 @@ class PropagateDequantizeOpIfAllowed
         auto original_result_type = user_op->getResult(0).getType();
         auto new_user_op_type = CloneTypeWithNewElementType(
             original_result_type,
-            op_before_dequantize.getType().cast<ShapedType>().getElementType());
+            mlir::cast<ShapedType>(op_before_dequantize.getType())
+                .getElementType());
         createNewDequantizeOp(rewriter, op, user_op, user_idx,
                               new_user_op_type);
       } else {
@@ -150,7 +151,7 @@ void PropagateQuantizeType::runOnOperation() {
   // Propagation can happen recursively with multiple functions so keep this
   // module level.
   for (auto func : module_op.getOps<func::FuncOp>()) {
-    if (failed(applyPatternsAndFoldGreedily(func, frozen_patterns))) {
+    if (failed(applyPatternsGreedily(func, frozen_patterns))) {
       func.emitError() << "quant-propagate-quantize-type failed.";
       signalPassFailure();
     }

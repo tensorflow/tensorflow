@@ -1,4 +1,4 @@
-/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2021 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,21 +16,7 @@ limitations under the License.
 #ifndef XLA_SERVICE_REAL_IMAG_EXPANDER_H_
 #define XLA_SERVICE_REAL_IMAG_EXPANDER_H_
 
-#include "xla/service/op_expander_pass.h"
-
-namespace xla {
-
-// Expands real/image instructions with non-complex inputs.
-class RealImagExpander : public OpExpanderPass {
- public:
-  absl::string_view name() const override { return "real_imag_expander"; }
-
- protected:
-  bool InstructionMatchesPattern(HloInstruction* inst) override;
-
-  StatusOr<HloInstruction*> ExpandInstruction(HloInstruction* inst) override;
-};
-
-}  // namespace xla
+// The current header will be deprecated in favour of the following.
+#include "xla/hlo/transforms/expanders/real_imag_expander.h"
 
 #endif  // XLA_SERVICE_REAL_IMAG_EXPANDER_H_

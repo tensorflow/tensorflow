@@ -18,15 +18,15 @@ limitations under the License.
 #include <string>
 #include <vector>
 
-#include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "tensorflow/lite/context.h"
-#include "tensorflow/lite/core/model.h"
+#include "tensorflow/lite/c/c_api_types.h"
+#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/kernels/subgraph_test_util.h"
 #include "tensorflow/lite/kernels/test_util.h"
 #include "tensorflow/lite/profiling/buffered_profiler.h"
-#include "tensorflow/lite/version.h"
+#include "tensorflow/lite/schema/schema_generated.h"
 
 namespace tflite {
 namespace profiling {

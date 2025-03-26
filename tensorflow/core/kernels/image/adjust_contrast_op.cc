@@ -248,6 +248,7 @@ class AdjustContrastOpv2<CPUDevice, float> : public AdjustContrastOpV2Base {
     TTypes<float, 1>::Tensor mean_flat(&mean(0, 0), mean.size());
     TTypes<float, 1>::Tensor summation_scratch(&scratch(0, 0, 0),
                                                scratch.size());
+    using Eigen::DenseIndex;
     typedef Eigen::array<Eigen::DenseIndex, 1> Index;
     const int64_t plane_size = image_size * channels;
     // Since the number of channels in the early layers is often small, a
@@ -255,10 +256,10 @@ class AdjustContrastOpv2<CPUDevice, float> : public AdjustContrastOpV2Base {
     // This algorithm repeatedly folds each image plane by half, until
     // only one set of channels remains.
     for (int64_t i = 0; i < batch; i++) {
-      auto input_plane =
-          input_flat.slice(Index(i * plane_size), Index(plane_size));
-      auto summation_plane =
-          summation_scratch.slice(Index(i * plane_size), Index(plane_size));
+      auto input_plane = input_flat.slice(Index{DenseIndex(i * plane_size)},
+                                          Index{DenseIndex(plane_size)});
+      auto summation_plane = summation_scratch.slice(
+          Index{DenseIndex(i * plane_size)}, Index{DenseIndex(plane_size)});
       int64_t remaining_size = image_size;
       int round = 0;
       // Sum the input(i, :, k) into mean(i, k). Repeatedly splits the input
@@ -289,26 +290,29 @@ class AdjustContrastOpv2<CPUDevice, float> : public AdjustContrastOpV2Base {
         if (round == 0) {
           // In the first round, sum the left side and right side of the input
           // array into the summation area.
-          summation_plane.slice(Index(0), Index(right_size * channels)) =
-              input_plane.slice(Index(left_size * channels),
-                                Index(right_size * channels)) +
-              input_plane.slice(Index(0), Index(right_size * channels));
+          summation_plane.slice(Index{0},
+                                Index{DenseIndex(right_size * channels)}) =
+              input_plane.slice(Index{DenseIndex(left_size * channels)},
+                                Index{DenseIndex(right_size * channels)}) +
+              input_plane.slice(Index{0},
+                                Index{DenseIndex(right_size * channels)});
           if (left_size > right_size) {
             DCHECK_EQ(left_size - right_size, 1);
             // Copy over the remaining column if the remaining_size is odd.
             // This also handles the case where image_size == 1.
-            summation_plane.slice(Index(right_size * channels),
-                                  Index(channels)) =
-                input_plane.slice(Index(right_size * channels),
-                                  Index(channels));
+            summation_plane.slice(Index{DenseIndex(right_size * channels)},
+                                  Index{DenseIndex(channels)}) =
+                input_plane.slice(Index{DenseIndex(right_size * channels)},
+                                  Index{DenseIndex(channels)});
           }
         } else {
           // For all the remaining rounds, add the second half of the inputs
           // into the first half of the inputs. With the flat structure and
           // large size, this utilizes vectorization between components.
-          summation_plane.slice(Index(0), Index(right_size * channels)) +=
-              summation_plane.slice(Index(left_size * channels),
-                                    Index(right_size * channels));
+          summation_plane.slice(Index{0},
+                                Index{DenseIndex(right_size * channels)}) +=
+              summation_plane.slice(Index{DenseIndex(left_size * channels)},
+                                    Index{DenseIndex(right_size * channels)});
         }
         remaining_size = left_size;
         round++;
@@ -316,9 +320,11 @@ class AdjustContrastOpv2<CPUDevice, float> : public AdjustContrastOpV2Base {
       const float mean_scaling = 1.0f / image_size;
       // The first channels elements in summation_plane now holds the summation.
       // Scale it with image_size and copy over to the means.
-      auto mean_plane = mean_flat.slice(Index(i * channels), Index(channels));
+      auto mean_plane = mean_flat.slice(Index{DenseIndex(i * channels)},
+                                        Index{DenseIndex(channels)});
       mean_plane =
-          summation_plane.slice(Index(0), Index(channels)) * mean_scaling;
+          summation_plane.slice(Index{0}, Index{DenseIndex(channels)}) *
+          mean_scaling;
     }
   }
 

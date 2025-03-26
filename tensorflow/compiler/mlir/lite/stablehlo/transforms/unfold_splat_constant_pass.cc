@@ -17,7 +17,7 @@ limitations under the License.
 #include <memory>
 
 #include "llvm/ADT/SmallVector.h"
-#include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
+#include "mlir/Dialect/Quant/IR/QuantTypes.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
@@ -28,6 +28,7 @@ limitations under the License.
 #include "mlir/IR/Visitors.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassRegistry.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 
 namespace mlir {
@@ -37,7 +38,7 @@ namespace {
 #define DEBUG_TYPE "unfold-splat-constant-pass"
 
 #define GEN_PASS_DEF_UNFOLDSPLATCONSTANTPASS
-#include "tensorflow/compiler/mlir/lite/stablehlo/transforms/passes.h.inc"
+#include "tensorflow/compiler/mlir/lite/stablehlo/transforms/stablehlo_passes.h.inc"
 
 // Undo the MHLO::BroadcastInDimOp folding pattern on splat tensor.
 // TODO(b/295966255): Remove this pass after moving MHLO folders to a separate
@@ -60,7 +61,7 @@ class UnfoldSplatConstantPass
   void UnfoldSplatConstant(mlir::OpBuilder* op_builder,
                            mhlo::ConstantOp const_op) const {
     auto splat_elements_attr =
-        const_op.getValue().dyn_cast<SplatElementsAttr>();
+        mlir::dyn_cast<SplatElementsAttr>(const_op.getValue());
     if (!splat_elements_attr) {
       return;
     }
@@ -68,8 +69,8 @@ class UnfoldSplatConstantPass
       return;
     }
     auto element_type = splat_elements_attr.getType().getElementType();
-    if (element_type.isa<ComplexType>() ||
-        element_type.isa<quant::QuantizedType>()) {
+    if (mlir::isa<ComplexType>(element_type) ||
+        mlir::isa<quant::QuantizedType>(element_type)) {
       return;
     }
     op_builder->setInsertionPoint(const_op);

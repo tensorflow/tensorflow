@@ -73,9 +73,9 @@ module {
 // Test stateful and stateless partitioned calls.
 // CHECK-LABEL: func @f
 func.func @f() {
-  // CHECK: "tf.PartitionedCall"() {config = "",  config_proto = "", executor_type = "", f = @g} : () -> ()
+  // CHECK: "tf.PartitionedCall"() <{config = "",  config_proto = "", executor_type = "", f = @g}> : () -> ()
   "tf.PartitionedCall"() {config = "",  config_proto = "", executor_type = "", f = @g} : () -> ()
-  // CHECK: "tf.StatefulPartitionedCall"() {config = "",  config_proto = "", executor_type = "", f = @[[NEWG:.+]]} : () -> ()
+  // CHECK: "tf.StatefulPartitionedCall"() <{config = "",  config_proto = "", executor_type = "", f = @[[NEWG:.+]]}> : () -> ()
   "tf.StatefulPartitionedCall"() {config = "",  config_proto = "", executor_type = "", f = @g} : () -> ()
   func.return
 }

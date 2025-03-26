@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,11 +15,17 @@ limitations under the License.
 
 #include "xla/service/cpu/xfeed_manager.h"
 
-#include <memory>
+#include <cstdint>
+#include <string>
 
+#include <gtest/gtest.h>
+#include "absl/log/check.h"
+#include "absl/status/statusor.h"
 #include "xla/service/cpu/cpu_runtime.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "tsl/lib/core/status_test_util.h"
+#include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/xla_data.pb.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/test.h"
@@ -41,7 +47,7 @@ class TestInfeedBuffer : public cpu::runtime::XfeedBuffer {
 
   int32_t length() override { return length_; }
   void* data() override { return nullptr; }
-  void Done(StatusOr<Shape> shape) override {
+  void Done(absl::StatusOr<Shape> shape) override {
     CHECK(!done_called_);
     done_called_ = true;
     TF_ASSERT_OK(shape.status());

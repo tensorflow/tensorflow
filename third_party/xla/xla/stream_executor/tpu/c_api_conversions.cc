@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -23,10 +23,13 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/inlined_vector.h"
+#include "absl/log/check.h"
+#include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/layout.h"
 #include "xla/literal.h"
+#include "xla/primitive_util.h"
 #include "xla/service/computation_layout.h"
 #include "xla/service/computation_placer.h"
 #include "xla/service/hlo.pb.h"
@@ -37,7 +40,6 @@ limitations under the License.
 #include "xla/shape_layout.h"
 #include "xla/shape_tree.h"
 #include "xla/shape_util.h"
-#include "xla/statusor.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/tpu/c_api_decl.h"
@@ -235,6 +237,12 @@ SE_DeviceMemoryAllocator ToC(
   return se_allocator;
 }
 
+stream_executor::DeviceMemoryAllocator* FromC(
+    const SE_DeviceMemoryAllocator& c_allocator) {
+  return reinterpret_cast<stream_executor::DeviceMemoryAllocator*>(
+      c_allocator.ctx);
+}
+
 SE_MaybeOwningDeviceMemory ToC(stream_executor::OwningDeviceMemory* mem) {
   SE_MaybeOwningDeviceMemory se_mem;
   se_mem.device_ordinal = mem->device_ordinal();
@@ -295,8 +303,13 @@ xla::Shape FromC(const XLA_Shape* c_shape) {
     tuple_shapes.push_back(FromC(&c_shape->tuple_shapes[i]));
   }
 
-  xla::Shape result(static_cast<xla::PrimitiveType>(c_shape->element_type),
-                    dims, dynamic_dims, std::move(tuple_shapes));
+  const auto type = static_cast<xla::PrimitiveType>(c_shape->element_type);
+  xla::Shape result = xla::primitive_util::IsArrayType(type)
+                          ? xla::Shape(type, dims, dynamic_dims)
+                      : type == xla::PrimitiveType::TUPLE
+                          ? xla::Shape(std::move(tuple_shapes))
+                          // type is TOKEN or OPAQUE_TYPE.
+                          : xla::Shape(type);
   if (c_shape->has_layout) {
     *result.mutable_layout() = FromC(&c_shape->layout);
   }
@@ -323,9 +336,31 @@ void Destroy(XLA_Shape* c_shape) {
 
 void ToC(const xla::Layout& layout, XLA_Layout* c_layout) {
   CreateVector(layout.minor_to_major(), &c_layout->minor_to_major);
-  CreateVector(layout.dim_level_types(), &c_layout->dim_level_types);
-  CreateVector(layout.dim_unique(), &c_layout->dim_unique);
-  CreateVector(layout.dim_ordered(), &c_layout->dim_ordered);
+  {
+    const int n = layout.dim_level_types_size();
+    absl::InlinedVector<xla::DimLevelType, xla::InlineRank()> dim_level_types(
+        n);
+    for (int i = 0; i < n; i++) {
+      dim_level_types[i] = layout.dim_level_type(i);
+    }
+    CreateVector(dim_level_types, &c_layout->dim_level_types);
+  }
+  {
+    const int n = layout.dim_unique_size();
+    absl::InlinedVector<bool, xla::InlineRank()> dim_unique(n);
+    for (int i = 0; i < n; i++) {
+      dim_unique[i] = layout.dim_unique(i);
+    }
+    CreateVector(dim_unique, &c_layout->dim_unique);
+  }
+  {
+    const int n = layout.dim_ordered_size();
+    absl::InlinedVector<bool, xla::InlineRank()> dim_ordered(n);
+    for (int i = 0; i < n; i++) {
+      dim_ordered[i] = layout.dim_ordered(i);
+    }
+    CreateVector(dim_ordered, &c_layout->dim_ordered);
+  }
   c_layout->index_primitive_type = layout.index_primitive_type();
   c_layout->pointer_primitive_type = layout.pointer_primitive_type();
   c_layout->element_size_in_bits = layout.element_size_in_bits();
@@ -333,6 +368,8 @@ void ToC(const xla::Layout& layout, XLA_Layout* c_layout) {
   c_layout->dynamic_shape_metadata_prefix_bytes =
       layout.dynamic_shape_metadata_prefix_bytes();
   CreateVector(layout.tiles(), &c_layout->tiles);
+  c_layout->tail_padding_alignment_in_elements =
+      layout.tail_padding_alignment_in_elements();
 }
 
 xla::Layout FromC(const XLA_Layout* c_layout) {
@@ -360,9 +397,11 @@ xla::Layout FromC(const XLA_Layout* c_layout) {
   }
   return xla::Layout(
       minor_to_major, dim_level_types, dim_unique, dim_ordered, tiles,
+      c_layout->tail_padding_alignment_in_elements,
       static_cast<xla::PrimitiveType>(c_layout->index_primitive_type),
       static_cast<xla::PrimitiveType>(c_layout->pointer_primitive_type),
       c_layout->element_size_in_bits, c_layout->memory_space,
+      /*split_configs=*/{},
       /*physical_shape=*/nullptr,
       c_layout->dynamic_shape_metadata_prefix_bytes);
 }
@@ -405,8 +444,7 @@ XLA_ShapeIndex ToC(const xla::ShapeIndex& xla_shape) {
 }
 
 xla::ShapeIndex FromC(XLA_ShapeIndex* c_shape) {
-  return xla::ShapeIndex(&c_shape->indices[0],
-                         &c_shape->indices[c_shape->count]);
+  return xla::ShapeIndex(c_shape->indices, c_shape->indices + c_shape->count);
 }
 
 void ToC(const xla::LiteralSlice& literal, XLA_Literal* c_literal) {
@@ -474,7 +512,7 @@ XLA_HloModule ToC(const xla::HloModule& module) {
   return c_module;
 }
 
-xla::StatusOr<std::unique_ptr<xla::HloModule>> FromC(
+absl::StatusOr<std::unique_ptr<xla::HloModule>> FromC(
     const XLA_HloModule& c_module) {
   xla::HloModuleProto module_proto =
       stream_executor::tpu::DeserializeProto<xla::HloModuleProto>(
@@ -509,6 +547,8 @@ XLA_HloModuleConfig ToC(const xla::HloModuleConfig& config) {
   hlo_config.num_partitions = config.num_partitions();
   hlo_config.use_spmd_partitioning = config.use_spmd_partitioning();
   hlo_config.use_auto_spmd_partitioning = config.use_auto_spmd_partitioning();
+  CreateVector(config.allow_spmd_sharding_propagation_to_parameters(),
+               &hlo_config.allow_spmd_sharding_propagation_to_parameters);
   CreateVector(config.allow_spmd_sharding_propagation_to_output(),
                &hlo_config.allow_spmd_sharding_propagation_to_output);
   CreateVector(config.auto_spmd_partitioning_mesh_shape(),
@@ -522,7 +562,7 @@ XLA_HloModuleConfig ToC(const xla::HloModuleConfig& config) {
 
   if (config.has_static_device_assignment()) {
     xla::DeviceAssignmentProto dev_proto;
-    config.static_device_assignment().Serialize(&dev_proto).IgnoreError();
+    config.static_device_assignment().Serialize(&dev_proto);
     hlo_config.static_device_assignment =
         stream_executor::tpu::SerializeProto(dev_proto);
   }
@@ -557,17 +597,18 @@ xla::HloModuleConfig FromC(const XLA_HloModuleConfig& c_config) {
   config.set_num_partitions(c_config.num_partitions);
   config.set_use_spmd_partitioning(c_config.use_spmd_partitioning);
   config.set_use_auto_spmd_partitioning(c_config.use_auto_spmd_partitioning);
+  config.set_allow_spmd_sharding_propagation_to_parameters(
+      MakeSpan(c_config.allow_spmd_sharding_propagation_to_parameters));
   config.set_allow_spmd_sharding_propagation_to_output(
       MakeSpan(c_config.allow_spmd_sharding_propagation_to_output));
   absl::Span<const int64_t> mesh_shape_span =
       MakeSpan(c_config.auto_spmd_partitioning_mesh_shape);
-  std::vector<int64_t> mesh_shape(mesh_shape_span.begin(),
-                                  mesh_shape_span.end());
-  config.set_auto_spmd_partitioning_mesh_shape(mesh_shape);
+  config.set_auto_spmd_partitioning_mesh_shape(
+      std::vector<int64_t>(mesh_shape_span.begin(), mesh_shape_span.end()));
   absl::Span<const int64_t> mesh_ids_span =
       MakeSpan(c_config.auto_spmd_partitioning_mesh_ids);
-  std::vector<int64_t> mesh_ids(mesh_ids_span.begin(), mesh_ids_span.end());
-  config.set_auto_spmd_partitioning_mesh_ids(mesh_ids);
+  config.set_auto_spmd_partitioning_mesh_ids(
+      std::vector<int64_t>(mesh_ids_span.begin(), mesh_ids_span.end()));
   if (c_config.has_static_device_assignment) {
     auto device_assignment = xla::DeviceAssignment::Deserialize(
         stream_executor::tpu::DeserializeProto<xla::DeviceAssignmentProto>(

@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "TakeManySparseFromTensorsMap"
   input_arg {
     name: "sparse_handles"

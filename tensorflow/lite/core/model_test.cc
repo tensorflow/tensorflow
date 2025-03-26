@@ -12,7 +12,6 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "tensorflow/lite/core/model.h"
 
 #include <stddef.h>
 #include <stdint.h>
@@ -27,8 +26,8 @@ limitations under the License.
 #include <vector>
 
 #include <gtest/gtest.h>
-#include "flatbuffers/flatbuffers.h"  // from @flatbuffers
-#include "tensorflow/lite/allocation.h"
+#include "flatbuffers/verifier.h"  // from @flatbuffers
+#include "tensorflow/compiler/mlir/lite/allocation.h"
 #include "tensorflow/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/core/api/op_resolver.h"
 #include "tensorflow/lite/core/api/verifier.h"
@@ -37,9 +36,7 @@ limitations under the License.
 #include "tensorflow/lite/core/interpreter_builder.h"
 #include "tensorflow/lite/core/kernels/register.h"
 #include "tensorflow/lite/core/model_builder.h"
-#include "tensorflow/lite/interpreter_test_util.h"
 #include "tensorflow/lite/schema/schema_generated.h"
-#include "tensorflow/lite/string_type.h"
 #include "tensorflow/lite/string_util.h"
 #include "tensorflow/lite/testing/util.h"
 
@@ -88,6 +85,9 @@ TEST(BasicFlatBufferModel, TestNonExistentFiles) {
   ASSERT_TRUE(!FlatBufferModel::BuildFromFile("/tmp/tflite_model_1234"));
 }
 
+// Test the buffer alignment only for ARM since the test may crash on x86_64
+// with certain compiler option `-fsanitize=alignment`.
+#ifdef __arm__
 TEST(BasicFlatBufferModel, TestBufferAlignment) {
   // On 32-bit ARM buffers are required to be 4-bytes aligned, on other
   // platforms there is no alignment requirement.
@@ -117,14 +117,10 @@ TEST(BasicFlatBufferModel, TestBufferAlignment) {
   char* unaligned =
       reinterpret_cast<char*>(reinterpret_cast<uintptr_t>(buffer.get()) | 0x1);
   memcpy(unaligned, empty_model_data.c_str(), empty_model_data.size());
-#ifdef __arm__
   EXPECT_FALSE(
       FlatBufferModel::BuildFromBuffer(unaligned, empty_model_data.size()));
-#else   // !__arm__
-  EXPECT_TRUE(
-      FlatBufferModel::BuildFromBuffer(unaligned, empty_model_data.size()));
-#endif  // __arm__
 }
+#endif  // __arm__
 
 // Make sure a model with nothing in it loads properly.
 TEST(BasicFlatBufferModel, TestEmptyModels) {

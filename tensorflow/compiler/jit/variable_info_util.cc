@@ -35,19 +35,19 @@ limitations under the License.
 
 namespace tensorflow {
 
-Status GetVariableInfosFromInputs(ResourceMgr* rm, DeviceBase* dev,
-                                  absl::Span<const Tensor* const> inputs,
-                                  absl::Span<const int> variable_indices,
-                                  std::vector<VariableInfo>* result) {
+absl::Status GetVariableInfosFromInputs(ResourceMgr* rm, DeviceBase* dev,
+                                        absl::Span<const Tensor* const> inputs,
+                                        absl::Span<const int> variable_indices,
+                                        std::vector<VariableInfo>* result) {
   return GetVariableInfosFromInputs(rm, dev, inputs, variable_indices, nullptr,
                                     result);
 }
 
-Status GetVariableInfosFromInputs(ResourceMgr* rm, DeviceBase* dev,
-                                  absl::Span<const Tensor* const> inputs,
-                                  absl::Span<const int> variable_indices,
-                                  const std::set<int>* variables_updated,
-                                  std::vector<VariableInfo>* result) {
+absl::Status GetVariableInfosFromInputs(ResourceMgr* rm, DeviceBase* dev,
+                                        absl::Span<const Tensor* const> inputs,
+                                        absl::Span<const int> variable_indices,
+                                        const std::set<int>* variables_updated,
+                                        std::vector<VariableInfo>* result) {
   result->clear();
   result->reserve(variable_indices.size());
   for (int var_idx : variable_indices) {
@@ -73,7 +73,7 @@ Status GetVariableInfosFromInputs(ResourceMgr* rm, DeviceBase* dev,
         handle.container(), handle.name(), &variable, [](Var** ptr) {
           // This var is uninitialized for now.
           *ptr = new Var(DT_INVALID);
-          return OkStatus();
+          return absl::OkStatus();
         }));
     VariableInfo& variable_info = result->emplace_back(
         var_idx, handle.name(), variable, handle.definition_stack_trace());
@@ -82,10 +82,10 @@ Status GetVariableInfosFromInputs(ResourceMgr* rm, DeviceBase* dev,
       variable_info.set_read_only();
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status LockVariables(absl::Span<VariableInfo*> variables) {
+absl::Status LockVariables(absl::Span<VariableInfo*> variables) {
   std::vector<int> lock_order(variables.size());
   std::iota(lock_order.begin(), lock_order.end(), 0);
 
@@ -134,10 +134,10 @@ Status LockVariables(absl::Span<VariableInfo*> variables) {
     prev = mu;
   }
   VLOG(4) << "Finished acquiring variable locks.";
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status LockVariables(absl::Span<VariableInfo> variables) {
+absl::Status LockVariables(absl::Span<VariableInfo> variables) {
   std::vector<VariableInfo*> variable_ptrs;
   variable_ptrs.reserve(variables.size());
   for (auto& var : variables) {
@@ -146,16 +146,16 @@ Status LockVariables(absl::Span<VariableInfo> variables) {
   return LockVariables(absl::MakeSpan(variable_ptrs));
 }
 
-Status SnapshotResourceVariables(OpKernelContext* ctx,
-                                 absl::Span<const int> variable_indices,
-                                 absl::Span<VariableInfo const> variable_infos,
-                                 ResourceVarsSnapshot* result) {
+absl::Status SnapshotResourceVariables(
+    OpKernelContext* ctx, absl::Span<const int> variable_indices,
+    absl::Span<VariableInfo const> variable_infos,
+    ResourceVarsSnapshot* result) {
   for (int i = 0, end = variable_indices.size(); i < end; i++) {
     Var* var = variable_infos[i].var();
     (*result)[variable_indices[i]] =
         var ? std::make_optional(*var->tensor()) : std::nullopt;
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 std::vector<int> GetResourceVariableIndicesFromContext(OpKernelContext* ctx) {
@@ -168,7 +168,7 @@ std::vector<int> GetResourceVariableIndicesFromContext(OpKernelContext* ctx) {
   return out;
 }
 
-Status CreateVariableInfoLookup(
+absl::Status CreateVariableInfoLookup(
     absl::Span<VariableInfo const> variable_args,
     absl::flat_hash_map<int, const VariableInfo*>& variable_info_lookup) {
   for (const VariableInfo& info : variable_args) {
@@ -179,7 +179,7 @@ Status CreateVariableInfoLookup(
     }
     variable_info_lookup.emplace(info.index(), &info);
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace tensorflow

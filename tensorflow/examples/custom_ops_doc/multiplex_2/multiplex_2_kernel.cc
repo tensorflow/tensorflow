@@ -15,6 +15,10 @@ limitations under the License.
 
 #include "tensorflow/examples/custom_ops_doc/multiplex_2/multiplex_2_kernel.h"
 
+#include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/register_types.h"
+#include "tensorflow/core/framework/types.h"
+
 // Please use the appropriate namespace for your project
 namespace tensorflow {
 namespace custom_op_examples {

@@ -24,7 +24,7 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
-SavedObjectGraph ParseSavedObjectGraph(StringPiece text_proto) {
+SavedObjectGraph ParseSavedObjectGraph(absl::string_view text_proto) {
   SavedObjectGraph value;
   CHECK(tensorflow::protobuf::TextFormat::ParseFromString(string(text_proto),
                                                           &value));

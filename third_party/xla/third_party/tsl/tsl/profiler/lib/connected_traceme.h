@@ -15,11 +15,13 @@ limitations under the License.
 #ifndef TENSORFLOW_TSL_PROFILER_LIB_CONNECTED_TRACEME_H_
 #define TENSORFLOW_TSL_PROFILER_LIB_CONNECTED_TRACEME_H_
 
+#include <optional>
 #include <string>
 #include <utility>
 
 #include "absl/strings/string_view.h"
 #include "absl/types/optional.h"
+#include "xla/tsl/platform/types.h"
 #include "tsl/profiler/lib/context_types.h"
 #include "tsl/profiler/lib/traceme.h"
 #include "tsl/profiler/lib/traceme_encode.h"
@@ -79,7 +81,7 @@ class TraceMeProducer : public TraceMe {
   template <typename NameT>
   explicit TraceMeProducer(NameT&& name,
                            ContextType context_type = ContextType::kGeneric,
-                           absl::optional<uint64> context_id = absl::nullopt,
+                           std::optional<uint64> context_id = std::nullopt,
                            int level = 2)
       : TraceMe(std::forward<NameT>(name), level),
         context_id_(context_id.has_value() ? context_id.value()

@@ -60,14 +60,14 @@ class GrpcDispatcherImplTest : public ::testing::Test {
     TF_ASSERT_OK(SetUpDispatcherClientStub());
   }
 
-  Status SetUpDispatcherServer() {
+  absl::Status SetUpDispatcherServer() {
     experimental::DispatcherConfig config;
     config.set_protocol(kProtocol);
     TF_RETURN_IF_ERROR(NewDispatchServer(config, dispatcher_server_));
     return dispatcher_server_->Start();
   }
 
-  Status SetUpDispatcherClientStub() {
+  absl::Status SetUpDispatcherClientStub() {
     std::shared_ptr<ChannelCredentials> credentials;
     TF_RETURN_IF_ERROR(
         CredentialsFactory::CreateClientCredentials(kProtocol, &credentials));
@@ -77,7 +77,7 @@ class GrpcDispatcherImplTest : public ::testing::Test {
     std::shared_ptr<Channel> channel =
         ::grpc::CreateCustomChannel(GetDispatcherAddress(), credentials, args);
     dispatcher_client_stub_ = DispatcherService::NewStub(channel);
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   std::string GetDispatcherAddress() const {

@@ -16,44 +16,46 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_TFRT_SAVED_MODEL_SAVED_MODEL_UTIL_H_
 #define TENSORFLOW_CORE_TFRT_SAVED_MODEL_SAVED_MODEL_UTIL_H_
 
-#include <cstdint>
-#include <functional>
-#include <limits>
-#include <memory>
-#include <optional>
 #include <string>
 #include <unordered_set>
 #include <utility>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
-#include "absl/types/span.h"
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/DialectRegistry.h"  // from @llvm-project
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/OwningOpRef.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/tfrt/translate/tfrt_compile_options.h"
 #include "tensorflow/core/framework/graph.pb.h"
+#include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor.pb.h"
-#include "tensorflow/core/platform/thread_annotations.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/protobuf/meta_graph.pb.h"
 #include "tensorflow/core/tfrt/fallback/fallback_state.h"
-#include "tensorflow/core/tfrt/graph_executor/graph_execution_options.h"
-#include "tensorflow/core/tfrt/graph_executor/graph_executor.h"
-#include "tensorflow/core/tfrt/runtime/runtime.h"
+#include "tensorflow/core/tfrt/graph_executor/config.h"
+#include "tensorflow/core/tfrt/mlrt/bytecode/bytecode.h"
 #include "tsl/platform/protobuf.h"
-#include "tfrt/host_context/function.h"  // from @tf_runtime
-#include "tfrt/host_context/request_deadline_tracker.h"  // from @tf_runtime
-#include "tfrt/host_context/resource_context.h"  // from @tf_runtime
+#include "tfrt/bef/bef_buffer.h"  // from @tf_runtime
 
 namespace tensorflow {
 namespace tfrt_stub {
 
 // Filename for serialized BEF Buffer.
-inline constexpr char kBefBufferFilenameMLIRBEF[] = "serialized_bef.mlir.bef";
+inline constexpr char kBefBufferFileName[] = "serialized_bef.mlir.bef";
+
+// Filename for serialized MLRT bytecode Buffer.
+inline constexpr char kMlrtBufferFileName[] = "serialized_mlrt.mlir.mlrt";
 
 // Filename for serialized MLIR_MODULE.
-inline constexpr char kMLIRModuleFilename[] = "serialized_mlir.mlir";
+inline constexpr char kMlirModuleFilename[] = "serialized_mlir.mlir";
 
 // Subdirectory where AoT Packages are saved
-inline constexpr char kAoTPackagesDirectory[] = "aot_packages";
+inline constexpr char kAotPackagesDirectory[] = "aot_packages";
 
 // TODO(tfrt-dev): Replace tfrt::TensorSpec with tensorflow::TensorSpec once the
 // latter is checked in.
@@ -86,12 +88,16 @@ struct Signature {
 
 }  // namespace internal
 
-StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ImportSavedModel(
+// If `import_signature_names` is non-empty, this function only imports the
+// graph that corresponds to this list.
+absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ImportSavedModel(
     mlir::MLIRContext* context, const tensorflow::MetaGraphDef& meta_graph_def,
     const FallbackState& fallback_state, std::string saved_model_dir,
-    bool import_user_signatures, bool run_placer_grappler_on_functions);
+    bool import_user_signatures, bool run_placer_grappler_on_functions,
+    const std::vector<std::string>& import_signature_names = {},
+    tensorflow::tfrt_stub::RuntimeConfig* runtime_config = nullptr);
 
-StatusOr<tensorflow::MetaGraphDef> ReadSavedModel(
+absl::StatusOr<tensorflow::MetaGraphDef> ReadSavedModel(
     absl::string_view saved_model_dir,
     const std::unordered_set<std::string>& tags);
 
@@ -100,6 +106,7 @@ using ::tensorflow::StatusOr;
 
 struct Initializer {
   std::string name;
+  std::vector<tensorflow::Tensor> inputs;
 };
 
 struct InitializersAndSignatures {
@@ -109,18 +116,25 @@ struct InitializersAndSignatures {
   SignatureMap signature_map;
 };
 
-StatusOr<InitializersAndSignatures> GetInitializersAndSignatures(
-    mlir::ModuleOp module);
+// If `saved_model_dir` is non-empty, this function fills in the Initializer's
+// inputs in the returned result.
+absl::StatusOr<InitializersAndSignatures> GetInitializersAndSignatures(
+    mlir::ModuleOp module, absl::string_view saved_model_dir = "");
 
 std::string GetAotPackagePath(absl::string_view saved_model_dir);
 
-std::string GetBEFFilePath(std::string aot_package_directory);
+std::string GetBefFilePath(std::string aot_package_directory);
 
 std::string GetMlirFilePath(const std::string& aot_package_directory);
 
 // TODO(b/295241000): Implement MLIR deserialization to skip it AoT and remove
 // redundant steps
-absl::StatusOr<tfrt::BefBuffer> LoadAotPackages(
+absl::StatusOr<tfrt::BefBuffer> LoadBefAndMlir(
+    const TfrtCompileOptions& options, mlir::ModuleOp mlir_module,
+    const std::string& saved_model_dir,
+    tfrt_stub::FallbackState* fallback_state);
+
+absl::StatusOr<mlrt::bc::Buffer> LoadMlrtAndMlir(
     const TfrtCompileOptions& options, mlir::ModuleOp mlir_module,
     const std::string& saved_model_dir,
     tfrt_stub::FallbackState* fallback_state);
@@ -129,11 +143,10 @@ absl::Status DeserializeAoTMlirModule(
     absl::string_view saved_model_dir, mlir::MLIRContext* context,
     mlir::OwningOpRef<mlir::ModuleOp>* mlir_module);
 
-void RegisterTFRTDialectsForAoT(mlir::DialectRegistry& registry);
+CallableOptions CombineSignatureDefs(
+    const google::protobuf::Map<std::string, SignatureDef>& signature_defs);
 
-void RecordFreeGpuMemory();
-
-int64_t GetFreeGpuMemory(int gpu_id);
+void RegisterTfrtDialectsForAot(mlir::DialectRegistry& registry);
 
 }  // namespace tfrt_stub
 }  // namespace tensorflow

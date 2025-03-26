@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,23 +16,7 @@ limitations under the License.
 #ifndef XLA_CLIENT_LIB_SORTING_H_
 #define XLA_CLIENT_LIB_SORTING_H_
 
-#include "xla/client/xla_builder.h"
-#include "xla/types.h"
-#include "xla/xla_data.pb.h"
-
-namespace xla {
-
-// Returns a tuple composed of the top `k` values and corresponding indices in
-// `input`.  Output values are in descending order, from largest to smallest.
-XlaOp TopK(XlaOp input, int64_t k,
-           PrimitiveType index_type = PrimitiveType::S32);
-
-// Split sort in TopK into smaller sorts.
-// Returns a tuple composed of the top `k` values and corresponding indices in
-// `input`.  Output values are in descending order, from largest to smallest.
-XlaOp TopKWithPartitions(XlaOp input, int64_t k, int64_t num_partitions = 1,
-                         PrimitiveType index_type = PrimitiveType::S32);
-
-}  // namespace xla
+// The current header will be deprecated in favour of the following.
+#include "xla/hlo/builder/lib/sorting.h"
 
 #endif  // XLA_CLIENT_LIB_SORTING_H_

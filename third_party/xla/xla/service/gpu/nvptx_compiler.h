@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,18 +16,34 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_NVPTX_COMPILER_H_
 #define XLA_SERVICE_GPU_NVPTX_COMPILER_H_
 
+#include <cstdint>
+#include <memory>
 #include <string>
-#include <utility>
 #include <vector>
 
+#include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
-#include "absl/container/node_hash_map.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/synchronization/mutex.h"
+#include "llvm/IR/Module.h"
 #include "xla/autotune_results.pb.h"
+#include "xla/hlo/analysis/hlo_dataflow_analysis.h"
+#include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/pass/hlo_pass_pipeline.h"
+#include "xla/pjrt/distributed/key_value_store_interface.h"
+#include "xla/service/gpu/autotuning/autotuner_util.h"
 #include "xla/service/gpu/gpu_compiler.h"
-#include "xla/statusor.h"
+#include "xla/service/gpu/ir_emission_utils.h"
+#include "xla/service/hlo_module_config.h"
+#include "xla/stream_executor/cuda/compilation_provider.h"
+#include "xla/stream_executor/cuda/compilation_provider_options.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/stream_executor/dnn.h"
+#include "xla/stream_executor/semantic_version.h"
+#include "xla/stream_executor/stream_executor.h"
+#include "xla/tsl/platform/threadpool.h"
 #include "xla/xla.pb.h"
-#include "tsl/platform/threadpool.h"
 
 namespace xla {
 namespace gpu {
@@ -37,125 +53,70 @@ void WarnIfBadDriverJITVersion();
 // NVPTXCompiler generates efficient GPU executables for NVPTX target.
 class NVPTXCompiler : public GpuCompiler {
  public:
-  NVPTXCompiler();
+  explicit NVPTXCompiler();
 
-  Status OptimizeHloConvolutionCanonicalization(
-      HloModule* hlo_module, GpuVersion gpu_version,
+  absl::Status OptimizeHloConvolutionCanonicalization(
+      HloModule* hlo_module, se::GpuComputeCapability gpu_version,
       se::dnn::VersionInfo dnn_version,
-      se::DeviceMemoryAllocator* device_allocator) override;
+      const se::SemanticVersion& toolkit_version) override;
 
-  Status OptimizeHloPostLayoutAssignment(
+  absl::Status OptimizeHloPostLayoutAssignment(
       HloModule* hlo_module, se::StreamExecutor* stream_exec,
-      const CompileOptions& options, const GpuTargetConfig& gpu_target_config,
-      const AutotuneResults* autotune_results,
+      const CompileOptions& options, const TargetConfig& gpu_target_config,
       tsl::thread::ThreadPool* thread_pool) override;
 
   bool RequiresCollectiveScheduleLinearizer(
       const HloModule* module, se::StreamExecutor* stream_exec) override;
 
-  Status AddConvAndGemmAutotuningPasses(
-      HloPassPipeline* pipeline, HloModule* hlo_module,
+  absl::Status AddConvAndGemmAutotuningPasses(
+      HloPassPipeline* pipeline, const se::GpuComputeCapability& gpu_version,
+      const CompileOptions& options, HloModule* hlo_module,
       AutotuneConfig& autotune_config,
       tsl::thread::ThreadPool* thread_pool) override;
 
-  Status AddTritonGemmAutotuningPasses(
+  absl::Status AddGemmFusionAutotuningPasses(
       HloPassPipeline* pipeline, HloModule* hlo_module,
-      AutotuneConfig& autotune_config,
-      tsl::thread::ThreadPool* thread_pool) override;
+      AutotuneConfig& autotune_config, tsl::thread::ThreadPool* thread_pool,
+      const MultiProcessKeyValueStore& key_value_store,
+      const se::SemanticVersion& toolkit_version) override;
 
-  Status LoadAutotuneResultsFromFile(
-      const DebugOptions& debug_options) override;
+  absl::Status RunCudnnCompilerPasses(HloModule* module,
+                                      se::StreamExecutor* stream_exec,
+                                      BinaryMap* dnn_compiled_graphs) override;
 
-  Status SerializeAutotuneResultsToFile(
-      const DebugOptions& debug_options) override;
+  HloDataflowAnalysis::CanShareBuffer GetCanShareBuffer(
+      const se::DeviceDescription& device_description) const override;
 
-  HloDataflowAnalysis::CanShareBuffer GetCanShareBuffer() override;
-
-  GpuVersion GetGpuVersion(se::StreamExecutor* stream_exec) override;
-
-  StatusOr<std::pair<std::string, std::vector<uint8_t>>> CompileTargetBinary(
+  absl::StatusOr<BackendCompileResult> CompileTargetBinary(
       const HloModuleConfig& module_config, llvm::Module* llvm_module,
-      GpuVersion gpu_version, bool relocatable, const HloModule* debug_module,
-      const CompileOptions& options) override;
+      const stream_executor::DeviceDescription& device_description,
+      bool relocatable, const HloModule* debug_module,
+      const CompileOptions& options, std::optional<int> shard_number) override;
+
+  absl::StatusOr<bool> CanUseLinkModules(
+      const HloModuleConfig& module_config,
+      const stream_executor::DeviceDescription& device_description) override;
 
  private:
-  StatusOr<bool> CanUseLinkModules(
-      const HloModuleConfig& module_config) override;
-
-  StatusOr<std::vector<uint8_t>> LinkModules(
+  absl::StatusOr<std::vector<uint8_t>> LinkModules(
+      const stream_executor::DeviceDescription& device_description,
       se::StreamExecutor* stream_exec,
       std::vector<std::vector<uint8_t>> modules,
       const DebugOptions& debug_options) override;
 
-  absl::Mutex mutex_;
+  absl::Mutex compilation_providers_mutex_;
+  absl::flat_hash_map<se::cuda::CompilationProviderOptions,
+                      std::unique_ptr<se::cuda::CompilationProvider>>
+      compilation_providers_ ABSL_GUARDED_BY(compilation_providers_mutex_);
 
-  enum class LinkingMethod {
-    kNone,
-    kNvLink,
-    kDriver,
-  };
-  absl::flat_hash_map<std::string, LinkingMethod> linking_methods_
-      ABSL_GUARDED_BY(mutex_);
-
-  StatusOr<LinkingMethod> ChooseLinkingMethod(
-      const std::string& preferred_cuda_dir);
-
-  // Tries to compile the given ptx string to cubin.  Returns a vector with the
-  // compiled cubin.  If compilation was unsuccessful, returns an empty vector.
-  std::vector<uint8_t> CompileGpuAsmOrGetCachedResult(
-      const std::string& ptx, se::CudaComputeCapability cc,
-      const HloModuleConfig& hlo_module_config, absl::string_view module_name,
-      bool relocatable, const CompileOptions& options);
-
-  // The compilation_cache_ map is a cache from {ptx string, cc_major, cc_minor}
-  // -> cubin so we don't recompile the same ptx twice.  This is important for
-  // some interactive workflows.  (We also cache at the HLO level, but sometimes
-  // we can't realize that two modules are the same until we lower to ptx.)
-  //
-  // Compilation of distinct PTX happens in parallel. If more than one thread
-  // attempts to compile the same PTX, the fist thread to obtain
-  // cache_value_->mutex_ performs the compilation. The rest wait() on
-  // cache_value_->compilation_done_cv_ until the compilation is done.
-  //
-  // If compiling the ptx fails, we return an empty cubin, cross our fingers,
-  // and leave compilation up to the driver.
-  struct CompilationCacheKey {
-    CompilationCacheKey(std::string ptx, int cc_major, int cc_minor,
-                        bool relocatable)
-        : ptx(std::move(ptx)),
-          cc_major(cc_major),
-          cc_minor(cc_minor),
-          relocatable(relocatable) {}
-    template <typename H>
-    friend H AbslHashValue(H h, const CompilationCacheKey& key) {
-      return H::combine(std::move(h), key.ptx, key.cc_major, key.cc_minor,
-                        key.relocatable);
-    }
-    friend bool operator==(const CompilationCacheKey& a,
-                           const CompilationCacheKey& b) {
-      return a.cc_major == b.cc_major && a.cc_minor == b.cc_minor &&
-             a.ptx == b.ptx && a.relocatable == b.relocatable;
-    }
-    std::string ptx;
-    int cc_major;
-    int cc_minor;
-    bool relocatable;
-  };
-  struct CompilationCacheValue {
-    bool compilation_done = false;
-    std::vector<uint8_t> cubin_data;
-    // mutex and condition variable to serialize compilation completing.
-    absl::Mutex mutex;
-    absl::CondVar compilation_done_cv;
-  };
-
-  // Don't even think about switching this to flat_hash_map; iterator stability
-  // is critical here.
-  absl::node_hash_map<CompilationCacheKey, CompilationCacheValue>
-      compilation_cache_ ABSL_GUARDED_BY(mutex_);
+  absl::StatusOr<const se::cuda::CompilationProvider*> GetCompilationProvider(
+      const DebugOptions& debug_options);
 
   NVPTXCompiler(const NVPTXCompiler&) = delete;
   NVPTXCompiler& operator=(const NVPTXCompiler&) = delete;
+
+  std::vector<std::string> GetLLVMCommandLineOptions(
+      const DebugOptions& debug_options) const override;
 };
 
 }  // namespace gpu

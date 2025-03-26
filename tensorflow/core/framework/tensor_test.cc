@@ -254,6 +254,40 @@ TEST(Tensor_Float8_E4m3fn, Simple) {
   TestCopies<float8_e4m3fn>(t);
 }
 
+TEST(Tensor_Float8_E4m3fnuz, Simple) {
+  Tensor t(DT_FLOAT8_E4M3FNUZ, TensorShape({5, 7}));
+  EXPECT_TRUE(t.shape().IsSameSize(TensorShape({5, 7})));
+  for (int64_t a = 0; a < t.shape().dim_size(0); a++) {
+    for (int64_t b = 0; b < t.shape().dim_size(1); b++) {
+      t.matrix<float8_e4m3fnuz>()(a, b) = static_cast<float8_e4m3fnuz>(a * b);
+    }
+  }
+  TestCopies<float8_e4m3fnuz>(t);
+}
+
+TEST(Tensor_Float8_E4m3b11fnuz, Simple) {
+  Tensor t(DT_FLOAT8_E4M3B11FNUZ, TensorShape({5, 7}));
+  EXPECT_TRUE(t.shape().IsSameSize(TensorShape({5, 7})));
+  for (int64_t a = 0; a < t.shape().dim_size(0); a++) {
+    for (int64_t b = 0; b < t.shape().dim_size(1); b++) {
+      t.matrix<float8_e4m3b11fnuz>()(a, b) =
+          static_cast<float8_e4m3b11fnuz>(a * b);
+    }
+  }
+  TestCopies<float8_e4m3b11fnuz>(t);
+}
+
+TEST(Tensor_Float8_E5m2fnuz, Simple) {
+  Tensor t(DT_FLOAT8_E5M2FNUZ, TensorShape({5, 7}));
+  EXPECT_TRUE(t.shape().IsSameSize(TensorShape({5, 7})));
+  for (int64_t a = 0; a < t.shape().dim_size(0); a++) {
+    for (int64_t b = 0; b < t.shape().dim_size(1); b++) {
+      t.matrix<float8_e5m2fnuz>()(a, b) = static_cast<float8_e5m2fnuz>(a * b);
+    }
+  }
+  TestCopies<float8_e5m2fnuz>(t);
+}
+
 TEST(Tensor_Float, Simple) {
   Tensor t(DT_FLOAT, TensorShape({10, 20}));
   EXPECT_TRUE(t.shape().IsSameSize(TensorShape({10, 20})));
@@ -390,7 +424,7 @@ TEST(Tensor_Variant, Simple) {
   }
   {
     LOG(INFO) << "AsTensor";
-    gtl::ArraySlice<Variant> values(t.flat<Variant>().data(), t.NumElements());
+    absl::Span<const Variant> values(t.flat<Variant>().data(), t.NumElements());
     Tensor t2 = test::AsTensor(values, t.shape());
     ExpectEqual<Variant>(t, t2);
   }
@@ -573,9 +607,9 @@ class TensorReshapeTest : public ::testing::Test {
   }
 
   template <typename T>
-  using ReshapeFunc = T (Tensor::*)(gtl::ArraySlice<int64_t>);
+  using ReshapeFunc = T (Tensor::*)(absl::Span<const int64_t>);
   template <typename T>
-  using ConstReshapeFunc = T (Tensor::*)(gtl::ArraySlice<int64_t>) const;
+  using ConstReshapeFunc = T (Tensor::*)(absl::Span<const int64_t>) const;
 
   template <typename T, ReshapeFunc<T> Func>
   void TestReshape(std::initializer_list<int64_t> sizes) {

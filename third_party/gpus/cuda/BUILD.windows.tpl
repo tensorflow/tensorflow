@@ -1,3 +1,7 @@
+# NB: DEPRECATED! This file is a part of the deprecated `cuda_configure` rule.
+# Hermetic CUDA repository rule doesn't support Windows.
+# Please use `hermetic/cuda_configure`.
+
 load(":build_defs.bzl", "cuda_header_library")
 load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
 load("@bazel_skylib//lib:selects.bzl", "selects")
@@ -194,6 +198,14 @@ cuda_header_library(
     hdrs = [":cuda-extras"],
     include_prefix = "third_party/gpus",
     includes = ["cuda/extras/CUPTI/include/"],
+    deps = [":cuda_headers"],
+)
+
+cuda_header_library(
+    name = "nvml_headers",
+    hdrs = [":nvml"],
+    include_prefix = "third_party/gpus",
+    includes = ["cuda/nvml/include/"],
     deps = [":cuda_headers"],
 )
 

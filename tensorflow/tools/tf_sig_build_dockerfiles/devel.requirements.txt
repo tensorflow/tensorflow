@@ -6,25 +6,25 @@
 # This will change in the future.
 absl-py ~= 1.0.0
 astunparse ~= 1.6.3
-flatbuffers ~= 23.5.26
+flatbuffers ~= 24.3.25
 google_pasta ~= 0.2
-h5py ~= 3.8.0 # Earliest version for Python 3.11
-ml_dtypes ~= 0.2
-# TODO(b/262592253): Support older versions of NumPy for Python 3.10 and lower
-# to support TFX. Remove when Apache Beam upgrades to newer NumPy.
-numpy ~= 1.22.0; python_version < '3.11'
-numpy ~= 1.23.2; python_version >= '3.11' # Earliest version for Python 3.11
+h5py ~= 3.11.0 # Earliest version for NumPy 2.0
+ml_dtypes ~= 0.5.1 # Earliest version with mxfloat types
+# TODO(b/366266944): Support older versions of NumPy to support TFX. Remove when
+# Apache Beam upgrades to newer NumPy.
+numpy ~= 1.26.0
 opt_einsum ~= 3.3.0
-packaging ~= 21.3
+packaging ~= 23.2
 protobuf ~= 3.20.3
 six ~= 1.16.0
 termcolor ~= 2.1.1
-typing_extensions ~= 3.10.0.0
-wheel ~= 0.38.1
+typing_extensions ~= 4.8.0
+wheel ~= 0.41.2
+setuptools >= 70.0.0
 wrapt ~= 1.14.1
 # We need to pin the gast dependency exactly
 gast == 0.4.0
-# Finally, install tensorboard and estimator and keras
+# Finally, install tensorboard, and keras
 # Note that here we want the latest version that matches TF major.minor version
 # Note that we must use nightly here as these are used in nightly jobs
 # For release jobs, we will pin these on the release branch
@@ -32,17 +32,13 @@ gast == 0.4.0
 # be the latest version.
 keras-nightly ~= 2.14.0.dev
 tb-nightly ~= 2.13.0.a
-tf-estimator-nightly ~= 2.14.0.dev
 # Test dependencies
-grpcio ~= 1.49.1 # Earliest version for Python 3.11
-portpicker ~= 1.5.2
-scipy ~= 1.7.2; python_version < '3.11'
-scipy ~= 1.9.2; python_version >= '3.11' # Earliest version for Python 3.11
+grpcio ~= 1.59.0 # Earliest version for Python 3.12
+portpicker ~= 1.6.0
+scipy ~= 1.13.0 # Earliest version for NumPy 2.0
 # Required for TFLite import from JAX tests
-jax ~= 0.3.25
-jaxlib ~= 0.3.25 # Earliest version for Python 3.11
-# Needs to be addressed. Unblocked 2.4 branchcut cl/338377048
-PyYAML ~= 6.0
+jax ~= 0.4.1; python_version <= '3.11'
+jaxlib ~= 0.4.1; python_version <= '3.11' # Earliest version for Python 3.11
 # For uploading
 auditwheel ~= 5.0.0
 twine ~= 3.6.0
@@ -52,4 +48,4 @@ lxml ~= 4.9.1
 pylint ~= 2.13.9
 
 # For using Python 3.11 with Bazel 6 (b/286090018)
-lit ~= 16.0.5.post0
+lit ~= 17.0.2

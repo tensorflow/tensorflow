@@ -32,10 +32,11 @@ namespace tensorflow {
 // (flattened) batch index of the input that must be used to compute the i'th
 // batch output.
 //
-inline void ComputeBatchIndices(const int64_t output_batch_size,
-                                const gtl::InlinedVector<int64_t, 4>& reshape,
-                                const gtl::InlinedVector<int64_t, 4>& bcast,
-                                std::vector<int64_t>* out_indices) {
+inline void ComputeBatchIndices(
+    const int64_t output_batch_size,
+    const absl::InlinedVector<int64_t, 4UL>& reshape,
+    const absl::InlinedVector<int64_t, 4UL>& bcast,
+    std::vector<int64_t>* out_indices) {
   // Populates the mapping in out_indices. This algorithm is identical to
   // the following steps:
   //  - Reshape {0, 1, ..., input_batch_size - 1} to the input shape.
@@ -65,7 +66,7 @@ class BCastList {
   // element is the outer-most dimension and the last element is the
   // inner-most dimension. Note that we do not use TensorShape since
   // it's more convenient to manipulate Vec directly for this module.
-  typedef gtl::InlinedVector<int64_t, 4> Vec;
+  typedef absl::InlinedVector<int64_t, 4UL> Vec;
 
   // Constructs all helper shapes, following the aforementioned rules.
   //
@@ -124,7 +125,8 @@ class BCastList {
     std::reverse(shape->begin(), shape->end());
   }
 
-  TF_DISALLOW_COPY_AND_ASSIGN(BCastList);
+  BCastList(const BCastList&) = delete;
+  void operator=(const BCastList&) = delete;
 };
 
 template <int N>
@@ -197,7 +199,6 @@ BCastList<N>::BCastList(const BCastList::Vec (&x)[N],
     prev_is_one[i] = false;
     current_is_one[i] = false;
   }
-  Vec output;
   bool output_dim_set = false;
   int64_t output_dim = -1;
   bool none_is_one = true;
@@ -359,7 +360,7 @@ class BCast : public BCastList<2> {
   //
   // If false, all intermediate shapes (except for grad_{x,y}_reduce_idx()) have
   // the same number of dimensions as the larger of the two inputs.
-  typedef gtl::InlinedVector<int64_t, 4> Vec;
+  typedef absl::InlinedVector<int64_t, 4UL> Vec;
 
   BCast(const Vec& x, const Vec& y, const bool fewer_dims_optimization = true,
         const bool return_flattened_batch_indices = false)
@@ -417,7 +418,8 @@ class BCast : public BCastList<2> {
   static TensorShape ToShape(const Vec& vec);
 
  private:
-  TF_DISALLOW_COPY_AND_ASSIGN(BCast);
+  BCast(const BCast&) = delete;
+  void operator=(const BCast&) = delete;
 };
 
 }  // end namespace tensorflow

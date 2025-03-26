@@ -1,4 +1,4 @@
-// RUN: kernel-gen-opt %s -tf-kernel-to-llvm -split-input-file | FileCheck %s --dump-input=always
+// RUN: kernel-gen-opt %s -tf-kernel-to-llvm -reconcile-unrealized-casts -split-input-file | FileCheck %s --dump-input=always
 
 // CHECK-LABEL: module @main
 module @main attributes {gpu.container_module} {

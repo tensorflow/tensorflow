@@ -16,11 +16,19 @@ limitations under the License.
 #include "tensorflow/c/eager/parallel_device/parallel_device_testlib.h"
 
 #include <array>
+#include <cstddef>
+#include <cstdint>
+#include <cstring>
+#include <functional>
+#include <memory>
+#include <string>
+#include <vector>
 
-#include "tensorflow/c/c_api.h"
-#include "tensorflow/c/c_api_experimental.h"
 #include "tensorflow/c/eager/c_api.h"
-#include "tensorflow/c/eager/c_api_experimental.h"
+#include "tensorflow/c/eager/parallel_device/parallel_device_lib.h"
+#include "tensorflow/c/tf_datatype.h"
+#include "tensorflow/c/tf_status.h"
+#include "tensorflow/c/tf_tensor.h"
 #include "tensorflow/core/platform/test.h"
 
 // NOTE(allenl): These tests currently go through TFE_Execute and so are

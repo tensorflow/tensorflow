@@ -1,6 +1,6 @@
 syntax = "proto3";
 
-package proto_splitter;
+package tensorflow.proto_splitter;
 
 import "tensorflow/tools/proto_splitter/versions.proto";
 

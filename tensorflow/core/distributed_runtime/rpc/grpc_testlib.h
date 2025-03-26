@@ -69,8 +69,9 @@ class TestCluster {
   // processes `n`. On success, the test cluster is stored in
   // *out_cluster, and this function returns OK. Otherwise an error is
   // returned.
-  static Status MakeTestCluster(const TestClusterConfig& config,
-                                std::unique_ptr<TestCluster>* out_cluster);
+  static absl::Status MakeTestCluster(
+      const TestClusterConfig& config,
+      std::unique_ptr<TestCluster>* out_cluster);
   ~TestCluster();
 
   // Returns a vector of string "<hostname>:<port>" pairs that may be
@@ -89,7 +90,8 @@ class TestCluster {
   absl::flat_hash_map<std::string, std::vector<std::string>> targets_;
   std::vector<DeviceAttributes> devices_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(TestCluster);
+  TestCluster(const TestCluster&) = delete;
+  void operator=(const TestCluster&) = delete;
 };
 
 }  // end namespace test

@@ -18,16 +18,16 @@ limitations under the License.
 
 #include <unordered_map>
 
+#include "xla/tsl/framework/tracking_allocator.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/platform/types.h"
-#include "tsl/framework/tracking_allocator.h"
 
 namespace tensorflow {
 
-// NOLINTEND(misc-unused-using-decls)
+// NOLINTBEGIN(misc-unused-using-decls)
 using tsl::AllocRecord;
 using tsl::TrackingAllocator;
 // NOLINTEND(misc-unused-using-decls)

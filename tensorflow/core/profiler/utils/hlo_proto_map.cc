@@ -17,22 +17,22 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
-#include <string>
 #include <utility>
 #include <vector>
 
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "xla/service/hlo.pb.h"
+#include "xla/tsl/profiler/convert/xla_op_utils.h"
+#include "xla/tsl/profiler/utils/tf_xplane_visitor.h"
 #include "tensorflow/core/profiler/utils/xplane_schema.h"
 #include "tensorflow/core/profiler/utils/xplane_utils.h"
 #include "tensorflow/core/profiler/utils/xplane_visitor.h"
-#include "tsl/profiler/convert/xla_op_utils.h"
-#include "tsl/profiler/utils/tf_xplane_visitor.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -135,8 +135,8 @@ std::vector<absl::string_view> HloProtoMap::GetSortedModuleListByHeapTraceSize()
   // Sort the hlo protos by heap trace size and then by hlo module name.
   // This way trivial computations will be on the bottom of the list.
   absl::c_stable_sort(hlo_protos, [](const auto& a, const auto& b) {
-    int num_a = NumHeapSimulatorTraceEvents(a.second);
-    int num_b = NumHeapSimulatorTraceEvents(b.second);
+    int num_a = tensorflow::profiler::NumHeapSimulatorTraceEvents(a.second);
+    int num_b = tensorflow::profiler::NumHeapSimulatorTraceEvents(b.second);
     return std::tie(num_a, b.first) > std::tie(num_b, a.first);
   });
 

@@ -47,7 +47,6 @@ from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.profiler import trace
 from tensorflow.python.trackable import base as trackable
 from tensorflow.python.types import core
-from tensorflow.python.util import _pywrap_utils
 from tensorflow.python.util import compat
 from tensorflow.python.util import nest
 from tensorflow.python.util import object_identity
@@ -1733,11 +1732,6 @@ class ConcreteFunction(core.ConcreteFunction, trackable.Trackable):
     object_map[self] = saved_model_exported_concrete.ExportedConcreteFunction(
         self, tensor_map)
     return []
-
-
-_pywrap_utils.RegisterType("Tensor", tensor_lib.Tensor)
-_pywrap_utils.RegisterType("EagerTensor", ops.EagerTensor)
-_pywrap_utils.RegisterType("IndexedSlices", indexed_slices.IndexedSlices)
 
 
 class ConcreteFunctionGarbageCollector:

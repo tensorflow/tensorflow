@@ -17,27 +17,26 @@ limitations under the License.
 
 #ifdef GOOGLE_CUDA
 #include "third_party/gpus/cuda/include/cuda.h"
-#include "xla/stream_executor/cuda/cuda_activation.h"
 #endif  // GOOGLE_CUDA
 
-#include "xla/stream_executor/device_id_utils.h"
 #include "xla/stream_executor/gpu/gpu_init.h"
-#include "tsl/framework/device_id.h"
-#include "tsl/platform/logging.h"
+#include "xla/tsl/framework/device_id.h"
+#include "xla/tsl/platform/logging.h"
 
 namespace tensorflow {
 
 GPUcudaMallocAllocator::GPUcudaMallocAllocator(
     tsl::PlatformDeviceId platform_device_id) {
-  stream_exec_ = se::DeviceIdUtil::ExecutorForPlatformDeviceId(
-                     se::GPUMachineManager(), platform_device_id)
+  stream_exec_ = se::GPUMachineManager()
+                     ->ExecutorForDevice(platform_device_id.value())
                      .value();
 }
 
 void* GPUcudaMallocAllocator::AllocateRaw(size_t alignment, size_t num_bytes) {
 #ifdef GOOGLE_CUDA
   // allocate with cudaMalloc
-  se::cuda::ScopedActivateExecutorContext scoped_activation{stream_exec_};
+  std::unique_ptr<stream_executor::ActivateContext> scoped_activation =
+      stream_exec_->Activate();
   CUdeviceptr rv = 0;
   CUresult res = cuMemAlloc(&rv, num_bytes);
   if (res != CUDA_SUCCESS) {

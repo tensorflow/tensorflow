@@ -24,8 +24,8 @@ limitations under the License.
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
-#include "tsl/platform/logging.h"
-#include "tsl/platform/macros.h"
+#include "xla/tsl/platform/logging.h"
+#include "xla/tsl/platform/macros.h"
 
 namespace tsl {
 namespace profiler {
@@ -43,7 +43,8 @@ struct TraceMeArg {
              const absl::AlphaNum& v ABSL_ATTRIBUTE_LIFETIME_BOUND)
       : key(k), value(v.Piece()) {}
 
-  TF_DISALLOW_COPY_AND_ASSIGN(TraceMeArg);
+  TraceMeArg(const TraceMeArg&) = delete;
+  void operator=(const TraceMeArg&) = delete;
 
   absl::string_view key;
   absl::string_view value;

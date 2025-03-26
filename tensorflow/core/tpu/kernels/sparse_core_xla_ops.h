@@ -15,9 +15,9 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_TPU_KERNELS_SPARSE_CORE_XLA_OPS_H_
 #define TENSORFLOW_CORE_TPU_KERNELS_SPARSE_CORE_XLA_OPS_H_
 
-#include "xla/client/xla_builder.h"
+#include "xla/hlo/builder/xla_builder.h"
+#include "xla/tsl/platform/macros.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/macros.h"
 
 // RAII helper to set the frontend attribute for the target chip to the SC.
 // Automatically restores the frontend attributes on exit.
@@ -39,7 +39,9 @@ class UseSparseCoreFrontendAttributes {
   xla::XlaBuilder* builder_;
   const xla::FrontendAttributes original_frontend_attributes_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(UseSparseCoreFrontendAttributes);
+  UseSparseCoreFrontendAttributes(const UseSparseCoreFrontendAttributes&) =
+      delete;
+  void operator=(const UseSparseCoreFrontendAttributes&) = delete;
 };
 
 #endif  // TENSORFLOW_CORE_TPU_KERNELS_SPARSE_CORE_XLA_OPS_H_

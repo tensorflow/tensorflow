@@ -40,12 +40,8 @@ limitations under the License.
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #include "tensorflow/core/common_runtime/gpu/gpu_event_mgr.h"
 #include "tensorflow/core/util/gpu_solvers.h"
-#if GOOGLE_CUDA
-#include "xla/stream_executor/cuda/cuda_activation.h"
-using stream_executor::cuda::ScopedActivateExecutorContext;
-#elif TENSORFLOW_USE_ROCM
+#if TENSORFLOW_USE_ROCM
 #include "tensorflow/core/platform/rocm.h"
-using stream_executor::rocm::ScopedActivateExecutorContext;
 #endif  // TENSORFLOW_USE_ROCM
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
@@ -73,11 +69,11 @@ int64_t CountAccumulator<bool>(const bool* begin, const bool* end) {
 
 template <typename T>
 struct NumTrue<CPUDevice, T, int64_t> {
-  static Status Compute(OpKernelContext* ctx, const CPUDevice& d,
-                        typename TTypes<T>::ConstFlat input,
-                        TTypes<int64_t>::UnalignedScalar num_true) {
+  static absl::Status Compute(OpKernelContext* ctx, const CPUDevice& d,
+                              typename TTypes<T>::ConstFlat input,
+                              TTypes<int64_t>::UnalignedScalar num_true) {
     num_true() = CountAccumulator<T>(input.data(), input.data() + input.size());
-    return OkStatus();
+    return absl::OkStatus();
   }
 };
 
@@ -93,7 +89,7 @@ struct Where<CPUDevice, DIMS, T, TIndex> {
     }
   }
 
-  EIGEN_ALWAYS_INLINE static Status Compute(
+  EIGEN_ALWAYS_INLINE static absl::Status Compute(
       OpKernelContext* ctx, const CPUDevice& d,
       typename TTypes<T, DIMS>::ConstTensor input,
       typename TTypes<int64_t>::Matrix output, TIndex* found_true) {
@@ -118,7 +114,7 @@ struct Where<CPUDevice, DIMS, T, TIndex> {
         ++*found_true;
       }
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 };
 
@@ -143,7 +139,7 @@ class WhereCPUOp : public OpKernel {
     int64_t num_true;
     TTypes<int64_t>::UnalignedScalar num_true_t(&num_true);
 
-    Status s = functor::NumTrue<CPUDevice, T, int64_t>::Compute(
+    absl::Status s = functor::NumTrue<CPUDevice, T, int64_t>::Compute(
         context, context->eigen_device<CPUDevice>(), input.flat<T>(),
         num_true_t);
     OP_REQUIRES_OK(context, s);
@@ -191,7 +187,8 @@ class WhereCPUOp : public OpKernel {
   }
 
  private:
-  TF_DISALLOW_COPY_AND_ASSIGN(WhereCPUOp);
+  WhereCPUOp(const WhereCPUOp&) = delete;
+  void operator=(const WhereCPUOp&) = delete;
 };
 
 #define REGISTER_WHERE_OP(T) \
@@ -294,20 +291,22 @@ class WhereGPUOp : public AsyncOpKernel {
       // Ensure that within the callback, the proper GPU settings are
       // configured.
       auto stream = context->op_device_context()->stream();
-      ScopedActivateExecutorContext scoped_activation{stream->parent()};
+      {
+        std::unique_ptr<stream_executor::ActivateContext> scoped_activation =
+            stream->parent()->Activate();
 
-      // TODO(ebrevdo): Properly copy back found_true value to CPU for
-      // validation checking.  Currently Where<GPUDevice>::Compute()
-      // does not perform this copy back to CPU.
-      Tindex found_true = -1;
+        // TODO(ebrevdo): Properly copy back found_true value to CPU for
+        // validation checking.  Currently Where<GPUDevice>::Compute()
+        // does not perform this copy back to CPU.
+        Tindex found_true = -1;
 
-      // Step 1: Allocate the output and perform the selection/copy.
-      Tensor* output;
-      OP_REQUIRES_OK_ASYNC(
-          context,
-          context->allocate_output(
-              0, TensorShape({*num_true.data(), input_dims}), &output),
-          done);
+        // Step 1: Allocate the output and perform the selection/copy.
+        Tensor* output;
+        OP_REQUIRES_OK_ASYNC(
+            context,
+            context->allocate_output(
+                0, TensorShape({*num_true.data(), input_dims}), &output),
+            done);
 
 #define HANDLE_DIM(NDIM)                                                \
   case NDIM: {                                                          \
@@ -317,35 +316,38 @@ class WhereGPUOp : public AsyncOpKernel {
     OP_REQUIRES_OK_ASYNC(context, s, done);                             \
   } break;
 
-      switch (input_dims) {
-        HANDLE_DIM(1);
-        HANDLE_DIM(2);
-        HANDLE_DIM(3);
-        HANDLE_DIM(4);
-        HANDLE_DIM(5);
-        HANDLE_DIM(6);
-        HANDLE_DIM(7);
-        HANDLE_DIM(8);
+        switch (input_dims) {
+          HANDLE_DIM(1);
+          HANDLE_DIM(2);
+          HANDLE_DIM(3);
+          HANDLE_DIM(4);
+          HANDLE_DIM(5);
+          HANDLE_DIM(6);
+          HANDLE_DIM(7);
+          HANDLE_DIM(8);
 
-        default:
-          OP_REQUIRES_ASYNC(
-              context, false,
-              errors::InvalidArgument("WhereOp: Unhandled input dimensions: ",
-                                      input_dims),
-              done);
-      }
+          default:
+            OP_REQUIRES_ASYNC(
+                context, false,
+                errors::InvalidArgument("WhereOp: Unhandled input dimensions: ",
+                                        input_dims),
+                done);
+        }
 #undef HANDLE_DIM
 
-      // TODO(ebrevdo): Fix the copy back to host.
+        // TODO(ebrevdo): Fix the copy back to host.
 
-      // OP_REQUIRES_ASYNC(
-      //     context, found_true == num_true,
-      //     errors::InvalidArgument(
-      //         "WhereOp: Race condition between counting the number of true "
-      //         "elements and writing them.  When counting, saw ",
-      //         num_true, " elements; but when writing their indices, saw ",
-      //         found_true, " elements."),
-      //     done);
+        // OP_REQUIRES_ASYNC(
+        //     context, found_true == num_true,
+        //     errors::InvalidArgument(
+        //         "WhereOp: Race condition between counting the number of true
+        //         " "elements and writing them.  When counting, saw ",
+        //         num_true, " elements; but when writing their indices, saw ",
+        //         found_true, " elements."),
+        //     done);
+      }  // Release ActivateContext to prevent deadlock when done
+         // inlines another Op kernel, which may assume the original cuda
+         // Context.
 
       done();
     };
@@ -357,7 +359,8 @@ class WhereGPUOp : public AsyncOpKernel {
   }
 
  private:
-  TF_DISALLOW_COPY_AND_ASSIGN(WhereGPUOp);
+  WhereGPUOp(const WhereGPUOp&) = delete;
+  void operator=(const WhereGPUOp&) = delete;
 };
 
 #define REGISTER_GPU_WHERE_OP(T) \

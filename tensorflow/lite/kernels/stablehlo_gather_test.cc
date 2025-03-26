@@ -15,7 +15,6 @@ limitations under the License.
 
 #include <cstdint>
 #include <initializer_list>
-#include <memory>
 #include <vector>
 
 #include <gmock/gmock.h>
@@ -96,6 +95,7 @@ TEST(StablehloScatterOpTest, GathersSlices) {
   };
   StablehloGatherOpModel model({TensorType_FLOAT32, {3, 4, 2}},
                                {TensorType_INT64, {2, 3, 2}}, params);
+
   model.SetInput<float>({1,  2,  3,  4,  5,  6,  7,  8,  9,  10, 11, 12,
                          13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24});
   model.SetIndices<int64_t>({0, 0, 1, 0, 2, 1, 0, 1, 1, 1, 0, 2});
@@ -122,6 +122,54 @@ TEST(StablehloScatterOpTest, ClipsStartingIndices) {
   };
   StablehloGatherOpModel model({TensorType_FLOAT32, {3, 4, 2}},
                                {TensorType_INT64, {2, 3, 2}}, params);
+
+  model.SetInput<float>({1,  2,  3,  4,  5,  6,  7,  8,  9,  10, 11, 12,
+                         13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24});
+  model.SetIndices<int64_t>({0, 0, 1, 0, 2, 1, 0, 1, 1, 1, 0, 9});
+
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
+  std::vector<float> expected_values = {1,  2,  3,  4,  3,  4,  5,  6,
+                                        13, 14, 15, 16, 9,  10, 11, 12,
+                                        11, 12, 13, 14, 17, 18, 19, 20};
+  EXPECT_THAT(model.GetOutput<float>(), ElementsAreArray(expected_values));
+}
+
+TEST(StablehloScatterOpTest, WorksWithDynamicShapes) {
+  TfLiteStablehloGatherParams params = {
+      {2, 3},     // offset_dims
+      2,          // num_offset_dims;
+      {0},        // collapsed_slice_dims
+      1,          // num_collapsed_slice_dims;
+      {1, 0},     // start_index_map
+      2,          // num_start_index_map;
+      2,          // index_vector_dim;
+      {1, 2, 2},  // slice_sizes
+      3,          // num_slice_sizes;
+      false       // indices_are_sorted;
+  };
+
+  TensorData indices_tensor = {TensorType_INT64,
+                               /*shape*/ {2, 3, 2},
+                               /*min*/ 0.0f,
+                               /*max*/ 0.0f,
+                               /*scale*/ 0.0f,
+                               /*zero_point*/ 0,
+                               /*per_channel_quantization*/ false,
+                               /*per_channel_quantization_scales*/ {},
+                               /*per_channel_quantization_offsets*/ {},
+                               /*channel_index*/ 0,
+                               /*traversal_order*/ {},
+                               /*format*/ {},
+                               /*block_size*/ {},
+                               /*block_map*/ {},
+                               /*shape_signature*/ {{-1, -1, 2}}};
+
+  // shape_signature when creating the model has -1 for unknown dimension sizes.
+  // After building the interpreter, `model.BuildInterpreter` resizes the
+  // tensors with the actual shape.
+  StablehloGatherOpModel model({TensorType_FLOAT32, {3, 4, 2}}, indices_tensor,
+                               params);
+
   model.SetInput<float>({1,  2,  3,  4,  5,  6,  7,  8,  9,  10, 11, 12,
                          13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24});
   model.SetIndices<int64_t>({0, 0, 1, 0, 2, 1, 0, 1, 1, 1, 0, 9});

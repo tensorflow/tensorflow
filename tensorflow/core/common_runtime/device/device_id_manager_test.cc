@@ -18,11 +18,11 @@ limitations under the License.
 #include <vector>
 
 #include <gmock/gmock.h>
+#include "xla/tsl/platform/statusor.h"
 #include "tensorflow/core/common_runtime/device/device_id.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
-#include "tsl/platform/statusor.h"
 
 namespace tensorflow {
 namespace {

@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -18,10 +18,10 @@ limitations under the License.
 
 #include <string>
 
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_module.h"
-#include "xla/service/hlo_pass_interface.h"
-#include "xla/statusor.h"
+#include "xla/hlo/pass/hlo_pass_interface.h"
 
 namespace xla {
 
@@ -181,7 +181,7 @@ class ConditionalCodeMotion : public HloModulePass {
 
   absl::string_view name() const override { return "conditional-code-motion"; }
   using HloPassInterface::Run;
-  StatusOr<bool> Run(
+  absl::StatusOr<bool> Run(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
@@ -228,13 +228,13 @@ class ConditionalCodeMotion : public HloModulePass {
   // moved.
   int64_t memory_increase_allowance_ = 5000;
   int64_t memory_increase_ = 0;
-  StatusOr<bool> MoveInstructionOut(HloInstruction* conditional,
-                                    std::vector<Boundary>& to_move_out,
-                                    std::vector<Boundary>& new_boundaries);
-  StatusOr<bool> MoveUserInstructionsIn(HloInstruction* conditional,
-                                        std::vector<Boundary>& to_move_in);
-  StatusOr<bool> MoveOperandInstructionsIn(HloInstruction* conditional,
-                                           std::vector<Boundary>& to_move_in);
+  absl::StatusOr<bool> MoveInstructionOut(
+      HloInstruction* conditional, std::vector<Boundary>& to_move_out,
+      std::vector<Boundary>& new_boundaries);
+  absl::StatusOr<bool> MoveUserInstructionsIn(
+      HloInstruction* conditional, std::vector<Boundary>& to_move_in);
+  absl::StatusOr<bool> MoveOperandInstructionsIn(
+      HloInstruction* conditional, std::vector<Boundary>& to_move_in);
   void SetDefaultMoveConfig();
 };
 }  // namespace conditional_opt

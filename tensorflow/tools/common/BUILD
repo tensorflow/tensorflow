@@ -3,6 +3,7 @@
 
 load("//tensorflow:strict.default.bzl", "py_strict_library", "py_strict_test")
 load("//tensorflow:tensorflow.bzl", "VERSION_MAJOR")
+load("//tensorflow/core/platform:build_config_root.bzl", "if_pywrap")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -16,22 +17,22 @@ package(
 py_strict_library(
     name = "public_api",
     srcs = ["public_api.py"],
-    srcs_version = "PY3",
-    deps = ["//tensorflow/python/util:tf_decorator"],
+    deps = ["//tensorflow/python/util:tf_inspect"],
 )
 
 py_strict_test(
     name = "public_api_test",
     srcs = ["public_api_test.py"],
-    data = select({
-        "//tensorflow:macos": ["//tensorflow:libtensorflow_framework.dylib"],
-        "//tensorflow:windows": [],
-        "//conditions:default": ["//tensorflow:libtensorflow_framework.so.%s" % VERSION_MAJOR],
-    }),
-    python_version = "PY3",
-    srcs_version = "PY3",
+    data = if_pywrap(
+        if_false = select({
+            "//tensorflow:macos": ["//tensorflow:libtensorflow_framework.dylib"],
+            "//tensorflow:windows": [],
+            "//conditions:default": ["//tensorflow:libtensorflow_framework.so.%s" % VERSION_MAJOR],
+        }),
+    ),
     deps = [
         ":public_api",
+        # copybara:uncomment "//third_party/py/google/protobuf:use_fast_cpp_protos",
         "//tensorflow/python/platform:test",
     ],
 )
@@ -39,24 +40,24 @@ py_strict_test(
 py_strict_library(
     name = "traverse",
     srcs = ["traverse.py"],
-    srcs_version = "PY3",
-    deps = ["//tensorflow/python/util:tf_decorator"],
+    deps = ["//tensorflow/python/util:tf_inspect"],
 )
 
 py_strict_test(
     name = "traverse_test",
     srcs = ["traverse_test.py"],
-    data = select({
-        "//tensorflow:macos": ["//tensorflow:libtensorflow_framework.dylib"],
-        "//tensorflow:windows": [],
-        "//conditions:default": ["//tensorflow:libtensorflow_framework.so.%s" % VERSION_MAJOR],
-    }),
-    python_version = "PY3",
-    srcs_version = "PY3",
+    data = if_pywrap(
+        if_false = select({
+            "//tensorflow:macos": ["//tensorflow:libtensorflow_framework.dylib"],
+            "//tensorflow:windows": [],
+            "//conditions:default": ["//tensorflow:libtensorflow_framework.so.%s" % VERSION_MAJOR],
+        }),
+    ),
     deps = [
         ":test_module1",
         ":test_module2",
         ":traverse",
+        # copybara:uncomment "//third_party/py/google/protobuf:use_fast_cpp_protos",
         "//tensorflow/python/platform:test",
     ],
 )
@@ -64,7 +65,6 @@ py_strict_test(
 py_strict_library(
     name = "test_module1",
     srcs = ["test_module1.py"],
-    srcs_version = "PY3",
     deps = [
         ":test_module2",
     ],
@@ -73,5 +73,4 @@ py_strict_library(
 py_strict_library(
     name = "test_module2",
     srcs = ["test_module2.py"],
-    srcs_version = "PY3",
 )

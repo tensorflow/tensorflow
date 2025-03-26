@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,8 +16,17 @@ limitations under the License.
 #ifndef XLA_SERVICE_LLVM_COMPILER_H_
 #define XLA_SERVICE_LLVM_COMPILER_H_
 
+#include <functional>
+#include <memory>
+#include <vector>
+
+#include "absl/log/check.h"
+#include "absl/status/statusor.h"
 #include "llvm/IR/Module.h"
+#include "xla/executable_run_options.h"
+#include "xla/hlo/ir/hlo_module_group.h"
 #include "xla/service/compiler.h"
+#include "xla/service/executable.h"
 
 namespace xla {
 
@@ -58,11 +67,11 @@ class LLVMCompiler : public Compiler {
   void RemovePostOptimizationHook() { user_post_optimization_hook_ = nullptr; }
 
   // Bring in
-  //   StatusOr<std::unique_ptr<Executable>> RunBackend(
+  //   absl::StatusOr<std::unique_ptr<Executable>> RunBackend(
   //       std::unique_ptr<HloModule> module,
   //       se::StreamExecutor* stream_exec,
   //       se::DeviceMemoryAllocator* device_allocator)
-  //   StatusOr<std::unique_ptr<HloModule>> RunHloPasses(
+  //   absl::StatusOr<std::unique_ptr<HloModule>> RunHloPasses(
   //       std::unique_ptr<HloModule> module,
   //       se::StreamExecutor* stream_exec,
   //       se::DeviceMemoryAllocator* device_allocator)
@@ -70,7 +79,7 @@ class LLVMCompiler : public Compiler {
   using Compiler::RunBackend;
   using Compiler::RunHloPasses;
 
-  StatusOr<std::vector<std::unique_ptr<Executable>>> Compile(
+  absl::StatusOr<std::vector<std::unique_ptr<Executable>>> Compile(
       std::unique_ptr<HloModuleGroup> module_group,
       std::vector<std::vector<se::StreamExecutor*>> stream_execs,
       const CompileOptions& options) override;

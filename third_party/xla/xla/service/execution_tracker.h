@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -20,10 +20,10 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
+#include "absl/status/statusor.h"
 #include "xla/executable_run_options.h"
 #include "xla/service/backend.h"
 #include "xla/service/stream_pool.h"
-#include "xla/statusor.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
@@ -39,7 +39,7 @@ class AsyncExecution {
   AsyncExecution(Backend* backend, std::vector<StreamPool::Ptr> streams,
                  const ExecutionProfile& profile, GlobalDataHandle result);
 
-  Status BlockUntilDone() const;
+  absl::Status BlockUntilDone() const;
 
   const GlobalDataHandle& result() const { return result_; }
 
@@ -73,12 +73,12 @@ class ExecutionTracker {
                            GlobalDataHandle data);
 
   // Unregisters the execution for the given handle.
-  Status Unregister(const ExecutionHandle& handle);
+  absl::Status Unregister(const ExecutionHandle& handle);
 
   // Resolves the given ExecutionHandle to an AsyncExecution. Returns an
   // error status if the given handle is not found, which means that the
   // execution is not yet registered or already unregistered.
-  StatusOr<const AsyncExecution*> Resolve(const ExecutionHandle& handle);
+  absl::StatusOr<const AsyncExecution*> Resolve(const ExecutionHandle& handle);
 
  private:
   // The next handle to assign to an execution.

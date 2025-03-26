@@ -37,7 +37,7 @@ constexpr char kFallbackResourceArray[] = "FallbackResourceArray";
 
 }  // namespace
 
-Status SetUpKernelFallbackCompatRequestContext(
+absl::Status SetUpKernelFallbackCompatRequestContext(
     tfrt::RequestContextBuilder* builder,
     tfrt_stub::OpKernelRunnerTable* runner_table,
     tensorflow::EagerContext* eager_context,
@@ -73,7 +73,7 @@ Status SetUpKernelFallbackCompatRequestContext(
   fallback_request_state.set_log_device_placement(
       eager_context->LogDevicePlacement());
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace tfd

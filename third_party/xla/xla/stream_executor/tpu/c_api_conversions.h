@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -17,20 +17,25 @@ limitations under the License.
 #define XLA_STREAM_EXECUTOR_TPU_C_API_CONVERSIONS_H_
 
 #include <array>
+#include <cstdint>
 #include <memory>
 #include <vector>
 
+#include "absl/status/statusor.h"
+#include "absl/types/span.h"
 #include "xla/executable_run_options.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/layout.h"
 #include "xla/literal.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/maybe_owning_device_memory.h"
 #include "xla/service/shaped_buffer.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/statusor.h"
 #include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/tpu/c_api_decl.h"
+#include "xla/xla_data.pb.h"
 
 // APIs for converting between internal and external versions of
 // XLA/StreamExecutor data structures.
@@ -118,6 +123,8 @@ xla::MaybeOwningDeviceMemory FromC(
 
 // DeviceMemoryAllocator
 SE_DeviceMemoryAllocator ToC(stream_executor::DeviceMemoryAllocator* allocator);
+stream_executor::DeviceMemoryAllocator* FromC(
+    const SE_DeviceMemoryAllocator& c_allocator);
 
 // OwningDeviceMemory
 SE_MaybeOwningDeviceMemory ToC(stream_executor::OwningDeviceMemory* mem);
@@ -128,7 +135,7 @@ SE_MaybeOwningDeviceMemory ToC(xla::MaybeOwningDeviceMemory& mem, bool aliased);
 
 // HloModule
 XLA_HloModule ToC(const xla::HloModule& module);
-xla::StatusOr<std::unique_ptr<xla::HloModule>> FromC(
+absl::StatusOr<std::unique_ptr<xla::HloModule>> FromC(
     const XLA_HloModule& c_module);
 void Destroy(XLA_HloModule* c_module);
 

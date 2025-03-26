@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "llvm/ADT/DenseMap.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/dtensor/mlir/expansions/argmax_spmd_expander.h"
 #include "tensorflow/dtensor/mlir/expansions/bias_add_spmd_expander.h"
@@ -60,6 +62,7 @@ limitations under the License.
 #include "tensorflow/dtensor/mlir/expansions/trivial_spmd_expander.h"
 #include "tensorflow/dtensor/mlir/expansions/unsupported_op_spmd_expander.h"
 #include "tensorflow/dtensor/mlir/expansions/where_spmd_expander.h"
+#include "tensorflow/dtensor/mlir/ir/tf_dtensor.h"
 #include "tensorflow/dtensor/mlir/spmd_expander.h"
 
 namespace tensorflow {

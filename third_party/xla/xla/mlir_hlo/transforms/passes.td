@@ -1,4 +1,4 @@
-/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2021 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -17,26 +17,6 @@ limitations under the License.
 #define MLIR_HLO_TRANSFORMS_PASSES
 
 include "mlir/Pass/PassBase.td"
-
-def BufferPacking : Pass<"buffer-packing", "func::FuncOp"> {
-  let summary = "Pass to pack allocated buffer to reduce memory consumption.";
-  let description = [{The pass tries to pack smaller buffers into larger buffers.
-  To do this, it sorts all allocated buffers by multiple criteria depends on the
-  selected window-size.
-  After this sorting, the buffers are checked whether subsequent buffers can be
-  packed into them.}];
-  let dependentDialects = ["func::FuncDialect","memref::MemRefDialect",
-    "arith::ArithDialect"];
-  let constructor = "createBufferPackingPass()";
-  let options = [
-   Option<"window_size_", "window-size", "unsigned",
-           /*default=*/"5", "The window size blurs the start position of an"
-           "allocated buffer. Buffers allocated in the same sliding window area"
-           "are treated equally in terms of starting position, withing the"
-           "sliding window area they are sorted by memory size."
-           "A window size of zero sorts the buffers only by memory size.">,
-  ];
-}
 
 def CollapseParallelLoopsTo1DPass : Pass<"collapse-parallel-loops-to-1d"> {
   let summary = "Collapses multidimensional loops.";
@@ -71,24 +51,6 @@ def TileLoopsPass : Pass<"tile-loops", "func::FuncOp"> {
   let dependentDialects = ["affine::AffineDialect"];
 }
 
-def MemoryCount : Pass<"memory-count", "func::FuncOp"> {
-  let summary = "Test pass to count the allocated memory of a module.";
-  let description = [{A test pass that prints the size of allocated memory of a
-  module.}];
-  let constructor = "createMemoryCountPass()";
-}
-
-def TestUserange : Pass<"test-print-userange", "func::FuncOp"> {
-  let summary = "Test pass for checking userange intervals.";
-  let constructor = "createTestUserangePass()";
-}
-
-def TestShapeComponentAnalysis : Pass<"test-print-shape-components",
-                                      "func::FuncOp"> {
-  let summary = "Test pass for analyzing shape components.";
-  let constructor = "createTestShapeComponentAnalysisPass()";
-}
-
 def LowerIndexCastPass
     : Pass<"lower-index-cast", "mlir::func::FuncOp"> {
   let summary = "Lower index cast on tensors to tensor dialect";
@@ -119,15 +81,6 @@ def FinalBufferizePass : Pass<"final-bufferize", "ModuleOp"> {
   ];
 }
 
-def PropagateStaticShapesToKernelPass : Pass<"propagate-static-shapes", "ModuleOp"> {
-  let summary = "Pass to rewrite statically shaped kernel arguments to a pointer.";
-  let constructor = "createPropagateStaticShapesToKernelPass()";
-  let options = [
-      Option<"ptr_type_opt", "convert_pointer_args", "std::string",
-             /*default=*/"", "Pointer type to convert pointer arguments to">,
-  ];
-}
-
 def GenericHostToLLVMPass : Pass<"generic-host-to-llvm", "ModuleOp"> {
   let summary = "Pass to lower common dialects resulting from HLO to LLVM.";
   let constructor = "hlo::createGenericHostToLLVMPass()";
@@ -140,7 +93,6 @@ def GenericHostToLLVMPass : Pass<"generic-host-to-llvm", "ModuleOp"> {
     "::mlir::arith::ArithDialect",
     "::mlir::cf::ControlFlowDialect",
     "::mlir::complex::ComplexDialect",
-    "::mlir::deallocation::DeallocationDialect",
     "::mlir::func::FuncDialect",
     "::mlir::math::MathDialect",
     "::mlir::memref::MemRefDialect",
@@ -152,15 +104,11 @@ def GenericHostToLLVMPass : Pass<"generic-host-to-llvm", "ModuleOp"> {
 def UnbufferizePass : Pass<"unbufferize", "mlir::func::FuncOp"> {
   let summary = "Unbufferize partially bufferized functions.";
   let description = [{
-    Removes bufferization.to_tensor and memref.tensor_store ops that are the
-    result of XLA bufferizing during HLO to MHLO transformation.
+    Removes bufferization.to_tensor and bufferization.materialize_in_destination
+    ops that are the result of XLA bufferizing during HLO to MHLO
+    transformation.
   }];
   let constructor = "hlo::createUnbufferizePass()";
-}
-
-def UnrollLoopsPass : Pass<"unroll-loops"> {
-  let summary = "Unrolls scf.for loops with small static iteration counts.";
-  let constructor = "hlo::createUnrollLoopsPass()";
 }
 
 def AllocToArgPass : Pass<"alloc-to-arg", "mlir::func::FuncOp"> {
@@ -169,6 +117,18 @@ def AllocToArgPass : Pass<"alloc-to-arg", "mlir::func::FuncOp"> {
     Replaces memref.alloc uses with a new argument of the parent function.
   }];
   let constructor = "hlo::createAllocToArgPass()";
+}
+
+def NaiveCopyRemovalPass : Pass<"naive-copy-removal", "mlir::func::FuncOp"> {
+  let summary = "Pass to remove redundant `memref.copy` ops.";
+  let constructor = "createNaiveCopyRemovalPass()";
+  let dependentDialects = ["memref::MemRefDialect"];
+}
+
+def VectorizeCopyPass : Pass<"vectorize-copy", "mlir::func::FuncOp"> {
+  let summary = "Pass to vectorize `memref.copy`.";
+  let constructor = "createVectorizeCopyPass()";
+  let dependentDialects = ["scf::SCFDialect", "vector::VectorDialect"];
 }
 
 #endif // TENSORFLOW_COMPILER_MLIR_HLO_TRANSFORMS_PASSES

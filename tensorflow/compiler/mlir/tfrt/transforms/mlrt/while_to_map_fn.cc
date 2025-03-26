@@ -286,6 +286,10 @@ class WhileToMapFnPass
     for (auto tensor_list_index : loop_info.tensor_list_or_flow_in) {
       mlir::Operation *tensor_list_or_flow_in_defining_op =
           while_op.getOperand(tensor_list_index).getDefiningOp();
+      if (tensor_list_or_flow_in_defining_op == nullptr) {
+        return mlir::failure();
+      }
+
       mlir::Operation *max_iterations = nullptr;
       if (loop_info.max_iterations_arg_idx.has_value()) {
         max_iterations =
@@ -365,8 +369,14 @@ class WhileToMapFnPass
     }
 
     for (auto result_index : loop_info.tensor_list_or_flow_in) {
+      // Finds the use of the tensor list or flow in is a tensor list stack or
+      // tensor array gather. This maybe over-conservative, but we rather be
+      // correct than sorry.
       mlir::Operation *use_op =
           *while_op->getResult(result_index).getUsers().begin();
+      if (llvm::isa<mlir::TF::StopGradientOp>(use_op)) {
+        use_op = *use_op->getUsers().begin();
+      }
 
       if (!llvm::isa<mlir::TF::TensorListStackOp,
                      mlir::TF::TensorArrayGatherV3Op>(use_op)) {

@@ -51,6 +51,9 @@ class AbstractStackTrace {
   // The returned span is alive as long as the AbstractStackTrace is alive.
   virtual absl::Span<StackFrame const> ToFrames() const = 0;
 
+  // Returns the stack frames without caching any generated data.
+  virtual std::vector<StackFrame> ToUncachedFrames() const = 0;
+
   // Returns the last stack frame from user code, attempting to ignore the
   // framework code. Returns an empty frame if no such stack frame was found.
   virtual StackFrame LastUserFrame() const = 0;
@@ -84,6 +87,8 @@ class FrozenStackTrace : public AbstractStackTrace {
 
   absl::Span<StackFrame const> ToFrames() const override;
 
+  std::vector<StackFrame> ToUncachedFrames() const override;
+
   StackFrame LastUserFrame() const override;
 
   std::vector<StackFrame> GetUserFrames(int limit) const override;
@@ -94,21 +99,6 @@ class FrozenStackTrace : public AbstractStackTrace {
   std::vector<StackFrame> frames_;
   std::vector<StackFrame> user_frames_;
 };
-
-// Builder for GraphDebugInfo protos from either an existing map of string keys
-// to stack traces, or individual stack traces, or both. All stack traces in a
-// GraphDebugInfo are stored with a string key in the `traces` field. In the
-// case of an existing map, its keys are used, appended with a key suffix,
-// which may be empty. If it is not empty, it is conventionally of the form
-// "@function_name", although this class doesn't care. In the case of an
-// individual stack trace, a key for `traces` must be provided.
-//
-// This builder will create a list of the unique file names across all stack
-// traces and store it in the `files` field. When storing stack traces into the
-// proto, file names are replaced by their index into `files`.
-//
-// Typical usage is to call one or both of the accumulate methods one or more
-// times and then to call the Build().
 
 // Holder type to use `AbstractStackTrace` as a key.
 struct StackTracePointer {
@@ -143,6 +133,20 @@ absl::StatusOr<StackTracesMap> LoadTracesFromDebugInfoStr(
 GraphDebugInfo StackTracesMapToGraphDebugInfo(const StackTracesMap& map,
                                               bool user_frames = true);
 
+// Builder for GraphDebugInfo protos from either an existing map of string keys
+// to stack traces, or individual stack traces, or both. All stack traces in a
+// GraphDebugInfo are stored with a string key in the `traces` field. In the
+// case of an existing map, its keys are used, appended with a key suffix,
+// which may be empty. If it is not empty, it is conventionally of the form
+// "@function_name", although this class doesn't care. In the case of an
+// individual stack trace, a key for `traces` must be provided.
+//
+// This builder will create a list of the unique file names across all stack
+// traces and store it in the `files` field. When storing stack traces into the
+// proto, file names are replaced by their index into `files`.
+//
+// Typical usage is to call one or both of the accumulate methods one or more
+// times and then to call the Build().
 class GraphDebugInfoBuilder {
  public:
   struct Options {
@@ -197,7 +201,8 @@ class GraphDebugInfoBuilder {
   absl::flat_hash_map<StackFrame, int> frame_to_index_;
   int new_name_index_ = 0;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(GraphDebugInfoBuilder);
+  GraphDebugInfoBuilder(const GraphDebugInfoBuilder&) = delete;
+  void operator=(const GraphDebugInfoBuilder&) = delete;
 };
 
 }  // namespace tensorflow

@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="org.tensorflow.lite.api">
+
+    <!-- TFLite Java Library is built against NDK API 21. -->
+    <uses-sdk
+        android:minSdkVersion="21" />
+
+    <application />
+
+</manifest>

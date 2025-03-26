@@ -18,6 +18,9 @@ limitations under the License.
 #include <string.h>
 #include <sys/types.h>
 #include <zlib.h>
+
+#include <csetjmp>
+#include <cstdint>
 #include <string>
 #include <utility>
 #include <vector>
@@ -25,6 +28,10 @@ limitations under the License.
 // provokes a compile error. We instead let png.h include what is needed.
 
 #include "absl/base/casts.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/strings/string_view.h"
+#include "png.h"  // from @png
 #include "tensorflow/core/lib/png/png_io.h"
 #include "tensorflow/core/platform/byte_order.h"
 #include "tensorflow/core/platform/logging.h"
@@ -77,7 +84,7 @@ static void Convert8to16(const uint8* p8, int num_comps, int p8_row_bytes,
 
 void ErrorHandler(png_structp png_ptr, png_const_charp msg) {
   DecodeContext* const ctx =
-      absl::bit_cast<DecodeContext*>(png_get_io_ptr(png_ptr));
+      absl::bit_cast<DecodeContext*>(png_get_error_ptr(png_ptr));
   ctx->error_condition = true;
   // To prevent log spam, errors are logged as VLOG(1) instead of ERROR.
   VLOG(1) << "PNG error: " << msg;
@@ -136,7 +143,7 @@ void CommonFreeDecode(DecodeContext* context) {
   }
 }
 
-bool DecodeHeader(StringPiece png_string, int* width, int* height,
+bool DecodeHeader(absl::string_view png_string, int* width, int* height,
                   int* components, int* channel_bit_depth,
                   std::vector<std::pair<std::string, std::string> >* metadata) {
   DecodeContext context;
@@ -197,7 +204,7 @@ bool DecodeHeader(StringPiece png_string, int* width, int* height,
   return true;
 }
 
-bool CommonInitDecode(StringPiece png_string, int desired_channels,
+bool CommonInitDecode(absl::string_view png_string, int desired_channels,
                       int desired_channel_bits, DecodeContext* context) {
   CHECK(desired_channel_bits == 8 || desired_channel_bits == 16)
       << "desired_channel_bits = " << desired_channel_bits;
@@ -354,8 +361,9 @@ bool WriteImageToBuffer(
 
   png_string->resize(0);
   png_infop info_ptr = nullptr;
-  png_structp png_ptr = png_create_write_struct(PNG_LIBPNG_VER_STRING, nullptr,
-                                                ErrorHandler, WarningHandler);
+  DecodeContext decode_context;
+  png_structp png_ptr = png_create_write_struct(
+      PNG_LIBPNG_VER_STRING, &decode_context, ErrorHandler, WarningHandler);
   if (png_ptr == nullptr) return false;
   if (setjmp(png_jmpbuf(png_ptr))) {
     png_destroy_write_struct(&png_ptr, info_ptr ? &info_ptr : nullptr);

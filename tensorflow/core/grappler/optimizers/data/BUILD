@@ -1,6 +1,6 @@
-load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 load("//tensorflow/core/platform:build_config.bzl", "tf_protos_all")
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -8,7 +8,6 @@ package(
         "//tensorflow/core/data:__pkg__",
         "//tensorflow/core/data/service:__pkg__",
         "//tensorflow/core/grappler/optimizers/data:__subpackages__",
-        "//tensorflow/core/kernels/data:__pkg__",
         "//tensorflow/core/kernels/data/experimental:__pkg__",
     ],
     licenses = ["notice"],
@@ -38,6 +37,7 @@ cc_library(
         ":parallel_batch",
         ":remove_compression_map",
         ":replicate_on_split",
+        ":seq_interleave_prefetch",
         ":shuffle_and_repeat_fusion",
         ":slack",
         ":use_private_thread_pool",
@@ -373,6 +373,7 @@ cc_library(
         "//tensorflow/core/grappler/optimizers:custom_graph_optimizer_registry",
         "//tensorflow/core/kernels:control_flow_ops",
         "//tensorflow/core/kernels:functional_ops",
+        "@com_google_absl//absl/strings",
     ] + tf_protos_all(),
 )
 
@@ -389,6 +390,9 @@ tf_cc_test(
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
         "//tensorflow/core/grappler:grappler_item",
+        "//tensorflow/core/platform:types",
+        "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest",
     ] + tf_protos_all(),
 )
 
@@ -687,6 +691,8 @@ cc_library(
         "//tensorflow/core/grappler/optimizers:custom_graph_optimizer_registry",
         "//tensorflow/core/grappler/utils:topological_sort",
         "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/strings",
     ] + tf_protos_all(),
     alwayslink = 1,
 )
@@ -706,6 +712,10 @@ tf_cc_test(
         "//tensorflow/core:testlib",
         "//tensorflow/core/grappler:grappler_item",
         "//tensorflow/core/kernels:control_flow_ops",
+        "//tensorflow/core/platform:status",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest_main",
+        "@local_tsl//tsl/platform:errors",
     ],
 )
 
@@ -812,7 +822,9 @@ cc_library(
     deps = [
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
+        "//tensorflow/core/framework:graph_proto_cc",
         "//tensorflow/core/grappler/optimizers:custom_graph_optimizer",
+        "@com_google_absl//absl/status",
     ],
 )
 
@@ -827,6 +839,7 @@ cc_library(
         "//tensorflow/core/grappler:op_types",
         "//tensorflow/core/grappler/clusters:cluster",
         "//tensorflow/core/grappler/optimizers:custom_graph_optimizer_registry",
+        "@com_google_absl//absl/status",
     ] + tf_protos_all(),
     alwayslink = 1,
 )
@@ -843,6 +856,8 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
+        "//tensorflow/core/framework:graph_proto_cc",
+        "//tensorflow/core/framework:types_proto_cc",
         "//tensorflow/core/grappler:grappler_item",
     ],
 )
@@ -885,7 +900,7 @@ tf_cc_test(
         "//tensorflow/core/grappler:grappler_item",
         "//tensorflow/core/platform:status_matchers",
         "@com_google_googletest//:gtest_main",
-        "@local_tsl//tsl/protobuf:error_codes_proto_impl_cc",
+        "@local_xla//xla/tsl/protobuf:error_codes_proto_impl_cc",
     ],
 )
 
@@ -900,6 +915,7 @@ cc_library(
         "//tensorflow/core/grappler:mutable_graph_view",
         "//tensorflow/core/grappler/clusters:cluster",
         "//tensorflow/core/grappler/optimizers:custom_graph_optimizer_registry",
+        "@com_google_absl//absl/log",
     ] + tf_protos_all(),
     alwayslink = 1,
 )
@@ -955,6 +971,62 @@ tf_cc_test(
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
         "//tensorflow/core/grappler:grappler_item",
+    ],
+)
+
+cc_library(
+    name = "seq_interleave_prefetch",
+    srcs = ["seq_interleave_prefetch.cc"],
+    hdrs = ["seq_interleave_prefetch.h"],
+    deps = [
+        ":function_utils",
+        ":fusion_utils",
+        ":graph_utils",
+        ":optimizer_base",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core/data:dataset_utils",
+        "//tensorflow/core/grappler:grappler_item",
+        "//tensorflow/core/grappler:mutable_graph_view",
+        "//tensorflow/core/grappler:op_types",
+        "//tensorflow/core/grappler:utils",
+        "//tensorflow/core/grappler/clusters:cluster",
+        "//tensorflow/core/grappler/optimizers:custom_graph_optimizer_registry",
+        "//tensorflow/core/grappler/utils:topological_sort",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/strings",
+        "@local_xla//xla/tsl/protobuf:error_codes_proto_impl_cc",
+    ] + tf_protos_all(),
+    alwayslink = 1,
+)
+
+tf_cc_test(
+    name = "seq_interleave_prefetch_test",
+    size = "small",
+    srcs = ["seq_interleave_prefetch_test.cc"],
+    deps = [
+        ":function_utils",
+        ":graph_test_utils",
+        ":graph_utils",
+        ":inject_io_prefetch",
+        ":seq_interleave_prefetch",
+        "//tensorflow/core:core_cpu_base",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/data:dataset_utils",
+        "//tensorflow/core/framework:function_proto_cc",
+        "//tensorflow/core/framework:function_testlib",
+        "//tensorflow/core/framework:graph_proto_cc",
+        "//tensorflow/core/framework:node_def_proto_cc",
+        "//tensorflow/core/framework:types_proto_cc",
+        "//tensorflow/core/grappler:grappler_item",
+        "//tensorflow/core/platform:status",
+        "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest_main",
+        "@local_xla//xla/tsl/lib/core:status_test_util",
     ],
 )
 

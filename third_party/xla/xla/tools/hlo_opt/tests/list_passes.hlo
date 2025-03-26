@@ -1,0 +1,9 @@
+// RUN: hlo-opt --list-passes | FileCheck %s --check-prefixes=CHECK-HWI
+// RUN: hlo-opt --platform=gpu --list-passes | FileCheck %s --check-prefixes=CHECK-GPU
+// RUN: hlo-opt --platform=cpu --list-passes | FileCheck %s --check-prefixes=CHECK-CPU
+
+// CHECK-HWI: all-gather-bcast-reorder,
+
+// CHECK-GPU: ,dot-algorithm-rewriter,
+
+// CHECK-CPU: all-gather-bcast-reorder,

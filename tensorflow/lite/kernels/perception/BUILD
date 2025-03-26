@@ -22,13 +22,13 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     deps = [
         "//tensorflow/lite:framework",
+        "//tensorflow/lite/c:common",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/kernels:kernel_util",
         "//tensorflow/lite/kernels:padding",
         "//tensorflow/lite/kernels/internal:common",
         "//tensorflow/lite/kernels/internal:compatibility",
         "//tensorflow/lite/kernels/internal:tensor",
-        "//tensorflow/lite/kernels/internal:tensor_utils",
         "//tensorflow/lite/kernels/internal:types",
         "@flatbuffers",
     ],
@@ -46,9 +46,11 @@ cc_test(
         ":perception_ops",
         "//tensorflow/lite:framework",
         "//tensorflow/lite/core:framework_stable",
+        "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/kernels:test_main",
         "//tensorflow/lite/kernels:test_util",
-        "//tensorflow/lite/testing:util",
+        "//tensorflow/lite/schema:schema_fbs",
+        "@com_google_googletest//:gtest",
         "@flatbuffers",
     ],
 )
@@ -68,7 +70,7 @@ pybind_extension(
     deps = [
         ":perception_ops",
         "//tensorflow/lite:mutable_op_resolver",
-        "//third_party/python_runtime:headers",
+        "//tensorflow/lite/c:common",
         "@pybind11",
     ],
 )

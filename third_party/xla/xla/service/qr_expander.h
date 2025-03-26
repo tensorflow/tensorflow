@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,42 +16,7 @@ limitations under the License.
 #ifndef XLA_SERVICE_QR_EXPANDER_H_
 #define XLA_SERVICE_QR_EXPANDER_H_
 
-#include "absl/container/flat_hash_map.h"
-#include "xla/client/lib/qr.h"
-#include "xla/client/xla_builder.h"
-#include "xla/service/op_expander_pass.h"
-
-namespace xla {
-
-class QrExpander : public OpExpanderPass {
- public:
-  absl::string_view name() const override { return "qr_expander"; }
-
- protected:
-  bool InstructionMatchesPattern(HloInstruction* instruction) override;
-
-  StatusOr<HloInstruction*> ExpandInstruction(
-      HloInstruction* instruction) override;
-
-  virtual StatusOr<QrDecomposition> QrBlock(
-      XlaOp a, PrecisionConfig::Precision precision);
-
-  virtual StatusOr<XlaOp> CompactWYRepresentation(
-      PrimitiveType type, absl::Span<const int64_t> batch_dims, XlaOp vs,
-      XlaOp taus, int64_t m, int64_t n, PrecisionConfig::Precision precision);
-
- private:
-  StatusOr<XlaOp> BuildQrDecomposition(XlaOp a, int64_t block_size,
-                                       PrecisionConfig::Precision precision);
-
-  StatusOr<XlaOp> ProductOfElementaryHouseholderReflectors(
-      XlaOp a, XlaOp taus, int64_t block_size,
-      PrecisionConfig::Precision precision);
-
-  // Mapping from op signatures to existing computations.
-  absl::flat_hash_map<std::string, HloComputation*> computation_cache_;
-};
-
-}  // namespace xla
+// The current header will be deprecated in favour of the following.
+#include "xla/hlo/transforms/expanders/qr_expander.h"
 
 #endif  // XLA_SERVICE_QR_EXPANDER_H_

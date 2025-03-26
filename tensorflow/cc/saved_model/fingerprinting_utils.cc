@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "riegeli/bytes/fd_reader.h"  // from @riegeli
 #include "riegeli/records/record_reader.h"  // from @riegeli
@@ -46,6 +47,7 @@ limitations under the License.
 #include "tensorflow/tools/proto_splitter/chunk.pb.h"
 #include "tensorflow/tools/proto_splitter/merge.h"
 #include "tsl/platform/errors.h"
+#include "tsl/platform/random.h"
 #include "tsl/platform/statusor.h"
 // IWYU pragma: no_include "third_party/protobuf/repeated_ptr_field.h"
 // IWYU pragma: no_include "third_party/protobuf/io/coded_stream.h"
@@ -53,11 +55,11 @@ limitations under the License.
 
 namespace tensorflow::saved_model::fingerprinting {
 
-using ::proto_splitter::ChunkedField;
-using ::proto_splitter::ChunkedMessage;
-using ::proto_splitter::ChunkInfo;
-using ::proto_splitter::ChunkMetadata;
-using ::proto_splitter::FieldIndex;
+using ::tensorflow::proto_splitter::ChunkedField;
+using ::tensorflow::proto_splitter::ChunkedMessage;
+using ::tensorflow::proto_splitter::ChunkInfo;
+using ::tensorflow::proto_splitter::ChunkMetadata;
+using ::tensorflow::proto_splitter::FieldIndex;
 using tools::proto_splitter::Field;
 using tools::proto_splitter::FieldType;
 using tools::proto_splitter::GetChunkMetadata;
@@ -83,54 +85,61 @@ absl::StatusOr<int> fieldTagMatches(const RepeatedPtrField<FieldIndex>& a,
   int matches = 0;
   for (int i = 0; i == matches && i < a.size() && i < b.size(); i++) {
     switch (b[i].kind_case()) {
-      case ::proto_splitter::FieldIndex::KindCase::kField:
+      case ::tensorflow::proto_splitter::FieldIndex::KindCase::kField:
         if (a.at(i).has_field() && a.at(i).field() == b.at(i).field()) {
           matches += 1;
         }
         break;
-      case ::proto_splitter::FieldIndex::KindCase::kIndex:
+      case ::tensorflow::proto_splitter::FieldIndex::KindCase::kIndex:
         if (a.at(i).has_index() && a.at(i).index() == b.at(i).index()) {
           matches += 1;
         }
         break;
-      case ::proto_splitter::FieldIndex::KindCase::kMapKey:
+      case ::tensorflow::proto_splitter::FieldIndex::KindCase::kMapKey:
         if (a.at(i).has_map_key()) {
-          const ::proto_splitter::FieldIndex_MapKey& key = b.at(i).map_key();
-          const ::proto_splitter::FieldIndex_MapKey& chunked_key =
+          const ::tensorflow::proto_splitter::FieldIndex_MapKey& key =
+              b.at(i).map_key();
+          const ::tensorflow::proto_splitter::FieldIndex_MapKey& chunked_key =
               a.at(i).map_key();
           switch (key.type_case()) {
-            case ::proto_splitter::FieldIndex::MapKey::TypeCase::kS:
+            case ::tensorflow::proto_splitter::FieldIndex::MapKey::TypeCase::kS:
               if (chunked_key.has_s() && chunked_key.s() == key.s()) {
                 matches += 1;
               }
               break;
-            case ::proto_splitter::FieldIndex::MapKey::TypeCase::kBoolean:
+            case ::tensorflow::proto_splitter::FieldIndex::MapKey::TypeCase::
+                kBoolean:
               if (chunked_key.has_boolean() &&
                   chunked_key.boolean() == key.boolean()) {
                 matches += 1;
               }
               break;
-            case ::proto_splitter::FieldIndex::MapKey::TypeCase::kUi32:
+            case ::tensorflow::proto_splitter::FieldIndex::MapKey::TypeCase::
+                kUi32:
               if (chunked_key.has_ui32() && chunked_key.ui32() == key.ui32()) {
                 matches += 1;
               }
               break;
-            case ::proto_splitter::FieldIndex::MapKey::TypeCase::kUi64:
+            case ::tensorflow::proto_splitter::FieldIndex::MapKey::TypeCase::
+                kUi64:
               if (chunked_key.has_ui64() && chunked_key.ui64() == key.ui64()) {
                 matches += 1;
               }
               break;
-            case ::proto_splitter::FieldIndex::MapKey::TypeCase::kI32:
+            case ::tensorflow::proto_splitter::FieldIndex::MapKey::TypeCase::
+                kI32:
               if (chunked_key.has_i32() && chunked_key.i32() == key.i32()) {
                 matches += 1;
               }
               break;
-            case ::proto_splitter::FieldIndex::MapKey::TypeCase::kI64:
+            case ::tensorflow::proto_splitter::FieldIndex::MapKey::TypeCase::
+                kI64:
               if (chunked_key.has_i64() && chunked_key.i64() == key.i64()) {
                 matches += 1;
               }
               break;
-            case ::proto_splitter::FieldIndex::MapKey::TypeCase::TYPE_NOT_SET:
+            case ::tensorflow::proto_splitter::FieldIndex::MapKey::TypeCase::
+                TYPE_NOT_SET:
             default:
               return absl::FailedPreconditionError(
                   "Encountered unknown field_tag.map_key type.");
@@ -146,12 +155,13 @@ absl::StatusOr<int> fieldTagMatches(const RepeatedPtrField<FieldIndex>& a,
   return matches;
 }
 
-absl::StatusOr<::proto_splitter::ChunkedMessage> PruneChunkedMessage(
-    const ::proto_splitter::ChunkedMessage& chunked_message,
+absl::StatusOr<::tensorflow::proto_splitter::ChunkedMessage>
+PruneChunkedMessage(
+    const ::tensorflow::proto_splitter::ChunkedMessage& chunked_message,
     riegeli::RecordReader<riegeli::FdReader<>>& reader,
     std::vector<ChunkInfo> chunks_info,
     std::vector<RepeatedPtrField<FieldIndex>> target_fields_list) {
-  ::proto_splitter::ChunkedMessage pruned_chunked_message;
+  ::tensorflow::proto_splitter::ChunkedMessage pruned_chunked_message;
   if (chunked_message.has_chunk_index()) {
     pruned_chunked_message.set_chunk_index(chunked_message.chunk_index());
   }
@@ -465,6 +475,7 @@ absl::StatusOr<FingerprintDef> CreateFingerprintDefCpb(
 
   fingerprint_def.set_checkpoint_hash(HashCheckpointIndexFile(export_dir));
 
+  fingerprint_def.set_uuid(absl::StrFormat("%016d", tsl::random::New64()));
   reader.Close();
 
   // Set version of the fingerprint.

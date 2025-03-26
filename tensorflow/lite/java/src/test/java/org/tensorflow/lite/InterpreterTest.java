@@ -763,10 +763,6 @@ public final class InterpreterTest {
 
   @Test
   public void testModelWithSignatureDef() {
-    if (!SupportedFeatures.supportsSignatures()) {
-      System.err.println("Not testing signature defs, since they aren't supported.");
-      return;
-    }
     try (Interpreter interpreter = new Interpreter(MODEL_WITH_SIGNATURE_BUFFER)) {
       String[] signatureKeys = interpreter.getSignatureKeys();
       String[] expectedSignatureKeys = {"mul_add"};
@@ -832,10 +828,6 @@ public final class InterpreterTest {
 
   @Test
   public void testModelWithSignatureDefNullMethodName() {
-    if (!SupportedFeatures.supportsSignatures()) {
-      System.err.println("Not testing signature defs, since they aren't supported.");
-      return;
-    }
     try (Interpreter interpreter = new Interpreter(MODEL_WITH_SIGNATURE_BUFFER)) {
       String[] signatureKeys = interpreter.getSignatureKeys();
       String[] expectedSignatureKeys = {"mul_add"};
@@ -870,10 +862,6 @@ public final class InterpreterTest {
 
   @Test
   public void testModelWithSignatureDefNoSignatures() {
-    if (!SupportedFeatures.supportsSignatures()) {
-      System.err.println("Not testing signature defs, since they aren't supported.");
-      return;
-    }
     try (Interpreter interpreter = new Interpreter(MODEL_BUFFER)) {
       String[] signatureKeys = interpreter.getSignatureKeys();
       String[] expectedSignatureKeys = {};
@@ -895,10 +883,61 @@ public final class InterpreterTest {
 
   @Test
   public void testModelWithMultiSignatureDef() {
-    if (!SupportedFeatures.supportsSignatures()) {
-      System.err.println("Not testing signature defs, since they aren't supported.");
-      return;
+    try (Interpreter interpreter = new Interpreter(MODEL_WITH_MULTI_SIGNATURE_BUFFER)) {
+      String[] signatureKeys = interpreter.getSignatureKeys();
+      String[] expectedSignatureKeys = {"add", "sub"};
+      assertThat(signatureKeys).isEqualTo(expectedSignatureKeys);
+
+      String[] addSignatureInputs = interpreter.getSignatureInputs(expectedSignatureKeys[0]);
+      String[] expectedAddSignatureInputs = {"a", "b"};
+      assertThat(addSignatureInputs).isEqualTo(expectedAddSignatureInputs);
+
+      String[] addSignatureOutputs = interpreter.getSignatureOutputs(expectedSignatureKeys[0]);
+      String[] expectedAddSignatureOutputs = {"add_result"};
+      assertThat(addSignatureOutputs).isEqualTo(expectedAddSignatureOutputs);
+
+      String[] subSignatureInputs = interpreter.getSignatureInputs(expectedSignatureKeys[1]);
+      String[] expectedSubSignatureInputs = {"x", "y"};
+      assertThat(subSignatureInputs).isEqualTo(expectedSubSignatureInputs);
+
+      String[] subSignatureOutputs = interpreter.getSignatureOutputs(expectedSignatureKeys[1]);
+      String[] expectedSubSignatureOutputs = {"sub_result"};
+      assertThat(subSignatureOutputs).isEqualTo(expectedSubSignatureOutputs);
+
+      // Test "add" signature.
+      FloatBuffer output = FloatBuffer.allocate(1);
+      float inputA = 2.0f;
+      float inputB = 4.0f;
+      Map<String, Object> inputs = new HashMap<>();
+      inputs.put("a", inputA);
+      inputs.put("b", inputB);
+      Map<String, Object> outputs = new HashMap<>();
+      outputs.put("add_result", output);
+      interpreter.runSignature(inputs, outputs, "add");
+      // Result should be a + b
+      FloatBuffer expected = fill(FloatBuffer.allocate(1), 6.0f);
+      assertThat(output.array()).usingTolerance(0.1f).containsExactly(expected.array()).inOrder();
+
+      // Test "sub" signature.
+      output = FloatBuffer.allocate(1);
+      float inputX = 4.0f;
+      float inputY = 2.0f;
+      inputs = new HashMap<>();
+      inputs.put("x", inputX);
+      inputs.put("y", inputY);
+      outputs = new HashMap<>();
+      outputs.put("sub_result", output);
+      interpreter.runSignature(inputs, outputs, "sub");
+      // Result should be x - y
+      expected = fill(FloatBuffer.allocate(1), 2.0f);
+      assertThat(output.array()).usingTolerance(0.1f).containsExactly(expected.array()).inOrder();
     }
+  }
+
+  // This test is the same as testModelWithMultiSignatureDef above,
+  // except that it passes in vectors rather than scalars.
+  @Test
+  public void testImplicitNonstrictResize() {
     try (Interpreter interpreter = new Interpreter(MODEL_WITH_MULTI_SIGNATURE_BUFFER)) {
       String[] signatureKeys = interpreter.getSignatureKeys();
       String[] expectedSignatureKeys = {"add", "sub"};
@@ -929,24 +968,38 @@ public final class InterpreterTest {
       inputs.put("b", inputB);
       Map<String, Object> outputs = new HashMap<>();
       outputs.put("add_result", output);
-      interpreter.runSignature(inputs, outputs, "add");
-      // Result should be a + b
-      FloatBuffer expected = fill(FloatBuffer.allocate(1), 6.0f);
-      assertThat(output.array()).usingTolerance(0.1f).containsExactly(expected.array()).inOrder();
+      if (SupportedFeatures.supportsNonstrictResize()) {
+        interpreter.runSignature(inputs, outputs, "add");
+        // Result should be a + b
+        FloatBuffer expected = fill(FloatBuffer.allocate(1), 6.0f);
+        assertThat(output.array()).usingTolerance(0.1f).containsExactly(expected.array()).inOrder();
 
-      // Test "sub" signature.
-      output = FloatBuffer.allocate(1);
-      float[] inputX = {4.0f};
-      float[] inputY = {2.0f};
-      inputs = new HashMap<>();
-      inputs.put("x", inputX);
-      inputs.put("y", inputY);
-      outputs = new HashMap<>();
-      outputs.put("sub_result", output);
-      interpreter.runSignature(inputs, outputs, "sub");
-      // Result should be x - y
-      expected = fill(FloatBuffer.allocate(1), 2.0f);
-      assertThat(output.array()).usingTolerance(0.1f).containsExactly(expected.array()).inOrder();
+        // Test "sub" signature.
+        output = FloatBuffer.allocate(1);
+        float[] inputX = {4.0f};
+        float[] inputY = {2.0f};
+        inputs = new HashMap<>();
+        inputs.put("x", inputX);
+        inputs.put("y", inputY);
+        outputs = new HashMap<>();
+        outputs.put("sub_result", output);
+        interpreter.runSignature(inputs, outputs, "sub");
+        // Result should be x - y
+        expected = fill(FloatBuffer.allocate(1), 2.0f);
+        assertThat(output.array()).usingTolerance(0.1f).containsExactly(expected.array()).inOrder();
+      } else {
+        try {
+          interpreter.runSignature(inputs, outputs, "add");
+          fail();
+        } catch (IllegalArgumentException e) {
+          // Could report error message for either input 'a' or input 'b'; both have wrong
+          // shape, and we don't want the test to depend on the order of error checking.
+          assertThat(e).hasMessageThat().contains("Tensor passed for input '");
+          assertThat(e)
+              .hasMessageThat()
+              .contains("' of signature 'add' has different shape than expected");
+        }
+      }
     }
   }
 

@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef XLA_SERVICE_GATHER_EXPANDER_H_
 #define XLA_SERVICE_GATHER_EXPANDER_H_
 
-#include "xla/service/op_expander_pass.h"
+#include "xla/hlo/transforms/expanders/op_expander_pass.h"
 
 namespace xla {
 
@@ -30,7 +30,7 @@ namespace xla {
 //
 //  - kEliminateSimpleGathers: For backends that *do* support gather, this pass
 //    can strength-reduce "simple" gathers -- specifically, gathers that can be
-//    represented without a loop -- to dyanmic-slices.
+//    represented without a loop -- to dynamic-slices.
 //
 // Note that even in kEliminateSimpleGathers mode, this pass may still expand a
 // gather into a loop (with a trip-count of 1).  It's up to other simplification
@@ -50,7 +50,7 @@ class GatherExpander : public OpExpanderPass {
  protected:
   bool InstructionMatchesPattern(HloInstruction* instruction) override;
 
-  StatusOr<HloInstruction*> ExpandInstruction(
+  absl::StatusOr<HloInstruction*> ExpandInstruction(
       HloInstruction* gather_inst) override;
 
  private:

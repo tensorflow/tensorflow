@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/async/backend_async_kernel_interface.h"
 
+#include <cstddef>
 #include <vector>
 
 #include "tensorflow/lite/async/c/async_kernel.h"
@@ -152,6 +153,22 @@ TfLiteStatus Finish(TfLiteAsyncKernel* async_kernel,
       ->Finish(context, task);
 }
 
+TfLiteStatus SetBufferAttributes(TfLiteAsyncKernel* async_kernel,
+                                 const TfLiteBackendBuffer* buffer,
+                                 const TfLiteAttributeMap* attrs) {
+  return reinterpret_cast<BackendAsyncKernelInterface*>(
+             TfLiteAsyncKernelGetKernelData(async_kernel))
+      ->SetBufferAttributes(buffer, attrs);
+}
+
+TfLiteStatus GetBufferAttributes(TfLiteAsyncKernel* async_kernel,
+                                 const TfLiteBackendBuffer* buffer,
+                                 TfLiteAttributeMap* attrs) {
+  return reinterpret_cast<BackendAsyncKernelInterface*>(
+             TfLiteAsyncKernelGetKernelData(async_kernel))
+      ->GetBufferAttributes(buffer, attrs);
+}
+
 }  // namespace internal
 
 BackendAsyncKernelInterface::BackendAsyncKernelInterface() {
@@ -167,6 +184,10 @@ BackendAsyncKernelInterface::BackendAsyncKernelInterface() {
   TfLiteAsyncKernelSetReconcileRestrictions(kernel_,
                                             internal::ReconcileRestrictions);
   TfLiteAsyncKernelSetSetAttributes(kernel_, internal::SetAttributes);
+  TfLiteAsyncKernelSetSetBufferAttributes(kernel_,
+                                          internal::SetBufferAttributes);
+  TfLiteAsyncKernelSetGetBufferAttributes(kernel_,
+                                          internal::GetBufferAttributes);
   TfLiteAsyncKernelSetPrepare(kernel_, internal::Prepare);
   TfLiteAsyncKernelSetEval(kernel_, internal::Eval);
   TfLiteAsyncKernelSetWait(kernel_, internal::Wait);

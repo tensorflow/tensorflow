@@ -15,24 +15,32 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/legalize_tf_xla_call_module_to_stablehlo_pass.h"
 
+#include <cassert>
 #include <memory>
 #include <string>
-#include <string_view>
 #include <utility>
 
+#include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
-#include "mlir/Dialect/Quant/QuantOps.h"  // from @llvm-project
+#include "mlir/Dialect/Quant/IR/Quant.h"  // from @llvm-project
 #include "mlir/Dialect/Shape/IR/Shape.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/OwningOpRef.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
+#include "mlir/IR/SymbolTable.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassRegistry.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "stablehlo/dialect/Serialization.h"  // from @stablehlo
 #include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo
@@ -42,18 +50,18 @@ limitations under the License.
 namespace mlir {
 namespace odml {
 
-static constexpr std::string_view kStablehloModuleDefaultEntryFuncName = "main";
-static constexpr std::string_view kStablehloFuncNamePrefix = "XlaCallModule";
+static constexpr absl::string_view kStablehloModuleDefaultEntryFuncName =
+    "main";
+static constexpr absl::string_view kStablehloFuncNamePrefix = "XlaCallModule";
 static constexpr char kShardingAttr[] = "mhlo.sharding";
 static constexpr char kShardingName[] = "Sharding";
 
 class RemoveCustomCallWithSharding
-    : public mlir::OpRewritePattern<mlir::stablehlo::CustomCallOp> {
-  using OpRewritePattern<mlir::stablehlo::CustomCallOp>::OpRewritePattern;
+    : public OpRewritePattern<stablehlo::CustomCallOp> {
+  using OpRewritePattern<stablehlo::CustomCallOp>::OpRewritePattern;
 
-  mlir::LogicalResult matchAndRewrite(
-      mlir::stablehlo::CustomCallOp op,
-      PatternRewriter &rewriter) const override {
+  LogicalResult matchAndRewrite(stablehlo::CustomCallOp op,
+                                PatternRewriter &rewriter) const override {
     // Removes the custom call with sharding op if the operand type is the
     // same as the result type.
     if (op->hasAttr(kShardingAttr) && op.getCallTargetName() == kShardingName &&
@@ -61,15 +69,15 @@ class RemoveCustomCallWithSharding
         op.getOperands().front().getType() ==
             op.getResults().front().getType()) {
       rewriter.replaceOp(op, op.getOperands());
-      return mlir::success();
+      return success();
     }
-    return mlir::failure();
+    return failure();
   }
 };
 
 namespace {
 
-bool IsShloMainFuncOp(mlir::func::FuncOp func_op) {
+bool IsShloMainFuncOp(func::FuncOp func_op) {
   if (func_op == nullptr) {
     return false;
   }
@@ -86,32 +94,40 @@ bool IsShloMainFuncOp(mlir::func::FuncOp func_op) {
   return true;
 }
 
+// Returns true if XlaCallModuleOp has the "platform index argument". The
+// platform index argument is an extra 0-dimensional i32 tensor argument at
+// index 0 when the XlaCallModuleOp contains more than one platform specified at
+// the "platform" attribute.
+//
+// See:
+// https://github.com/tensorflow/tensorflow/blob/eba24f41ba9d661d2f58a515921720cf90708cd4/tensorflow/compiler/tf2xla/ops/xla_ops.cc#L1376-L1385
+bool ContainsPlatformIndexArg(TF::XlaCallModuleOp xla_call_module_op) {
+  return xla_call_module_op.getPlatforms().size() > 1;
+}
+
 }  // namespace
 
-class ConvertTFXlaCallModuleOp
-    : public mlir::OpRewritePattern<mlir::TF::XlaCallModuleOp> {
+class ConvertTFXlaCallModuleOp : public OpRewritePattern<TF::XlaCallModuleOp> {
  public:
   explicit ConvertTFXlaCallModuleOp(MLIRContext *context, ModuleOp module_op)
-      : OpRewritePattern<mlir::TF::XlaCallModuleOp>(context),
-        module_op_(module_op) {}
-  using OpRewritePattern<mlir::TF::XlaCallModuleOp>::OpRewritePattern;
+      : OpRewritePattern<TF::XlaCallModuleOp>(context), module_op_(module_op) {}
+  using OpRewritePattern<TF::XlaCallModuleOp>::OpRewritePattern;
 
  private:
   ModuleOp module_op_;
-  mlir::LogicalResult matchAndRewrite(
-      mlir::TF::XlaCallModuleOp op, PatternRewriter &rewriter) const override {
-    mlir::OwningOpRef<ModuleOp> stablehlo_module_op =
-        mlir::stablehlo::deserializePortableArtifact(op.getModuleAttr(),
-                                                     getContext());
+  LogicalResult matchAndRewrite(TF::XlaCallModuleOp op,
+                                PatternRewriter &rewriter) const override {
+    OwningOpRef<ModuleOp> stablehlo_module_op =
+        stablehlo::deserializePortableArtifact(op.getModuleAttr(),
+                                               getContext());
     if (stablehlo_module_op.get() == nullptr) {
-      return mlir::failure();
+      return failure();
     }
     SymbolTable parent_module_symbol_table(module_op_);
     SymbolTable stablehlo_module_symbol_table(stablehlo_module_op.get());
     {
-      auto main_func_op =
-          stablehlo_module_symbol_table.lookup<mlir::func::FuncOp>(
-              kStablehloModuleDefaultEntryFuncName);
+      auto main_func_op = stablehlo_module_symbol_table.lookup<func::FuncOp>(
+          kStablehloModuleDefaultEntryFuncName);
       // TODO(b/291988976): move enforcement of this variable outside of this
       // rewrite pattern such that it's only checked once. Currently, this
       // approach results in duplicate error messages as this pattern executes
@@ -126,25 +142,23 @@ class ConvertTFXlaCallModuleOp
         return rewriter.notifyMatchFailure(op, error_msg);
       }
     }
-    mlir::Builder stablehlo_builder(stablehlo_module_op.get().getContext());
+    Builder stablehlo_builder(stablehlo_module_op.get().getContext());
     // Rename XlaCallModuleOp's functions to avoid naming conflicts.
-    for (auto func_op :
-         stablehlo_module_op.get().getOps<mlir::func::FuncOp>()) {
+    for (auto func_op : stablehlo_module_op.get().getOps<func::FuncOp>()) {
       const std::string new_func_name =
           CreateNewFuncName(func_op.getSymName(), parent_module_symbol_table);
       if (failed(stablehlo_module_symbol_table.replaceAllSymbolUses(
               func_op, stablehlo_builder.getStringAttr(new_func_name),
               stablehlo_module_op.get()))) {
-        return mlir::failure();
+        return failure();
       }
-      mlir::SymbolTable::setSymbolName(func_op, new_func_name);
+      SymbolTable::setSymbolName(func_op, new_func_name);
     }
     // Move all functions from XlaCallModuleOp's stablehlo module, to parent
     // module. Also marks the stablehlo module entry function as private.
-    mlir::func::FuncOp main_fn;
-    for (auto func_op :
-         stablehlo_module_op.get().getOps<mlir::func::FuncOp>()) {
-      mlir::func::FuncOp cloned_func_op = func_op.clone();
+    func::FuncOp main_fn;
+    for (auto func_op : stablehlo_module_op.get().getOps<func::FuncOp>()) {
+      func::FuncOp cloned_func_op = func_op.clone();
       if (IsShloMainFuncOp(cloned_func_op)) {
         main_fn = cloned_func_op;
       }
@@ -153,14 +167,32 @@ class ConvertTFXlaCallModuleOp
       parent_module_symbol_table.insert(cloned_func_op);
     }
 
+    // When the `XlaCallModuleOp`'s callee accepts a platform index argument,
+    // add a dummy platform index argument in order to match the number of
+    // the arguments of the callee function.
+    //
+    // This is because `XlaCallModuleOp` doesn't explicitly take it as an
+    // operand. See:
+    // https://github.com/tensorflow/tensorflow/blob/eba24f41ba9d661d2f58a515921720cf90708cd4/tensorflow/compiler/tf2xla/ops/xla_ops.cc#L1376-L1385
+
+    SmallVector<Value, 4> call_op_operands(op.getOperands());
+    if (ContainsPlatformIndexArg(op)) {
+      Value dummy_const = rewriter.create<TF::ConstOp>(
+          op.getLoc(),
+          DenseIntElementsAttr::get(
+              RankedTensorType::get({}, rewriter.getIntegerType(32)), {0}));
+      call_op_operands.insert(call_op_operands.begin(), dummy_const);
+    }
+
     // The stablehlo module main function's input tensor types might be
     // different from the XlaCallModuleOp's input tensor types. For example,
     // The XlaCallModuleOp's input is tensor<*xf32> while the function's
     // argument type is tensor<1x2f32>.
-    llvm::SmallVector<Value, 4> casted_operands;
+    SmallVector<Value, 4> casted_operands;
     casted_operands.reserve(main_fn.getNumArguments());
+    assert(call_op_operands.size() == main_fn.getNumArguments());
     for (const auto &operand_and_type :
-         zip(op.getOperands(), main_fn.getFunctionType().getInputs())) {
+         zip(call_op_operands, main_fn.getFunctionType().getInputs())) {
       Value operand = std::get<0>(operand_and_type);
       Type expected_type = std::get<1>(operand_and_type);
       if (operand.getType() != expected_type) {
@@ -176,7 +208,7 @@ class ConvertTFXlaCallModuleOp
         casted_operands);
     rewriter.replaceOp(op, call->getResults());
 
-    return mlir::success();
+    return success();
   }
 
   // Creates a new function name to avoid collision. The naming scheme is
@@ -206,9 +238,9 @@ class TFXlaCallModuleOpToStablehloPass
   StringRef getDescription() const final {
     return "Legalize TF_XlaCallModule Op to stablehlo";
   }
-  void getDependentDialects(::mlir::DialectRegistry &registry) const override {
-    registry.insert<mlir::stablehlo::StablehloDialect, mlir::vhlo::VhloDialect,
-                    mlir::quant::QuantizationDialect, shape::ShapeDialect>();
+  void getDependentDialects(DialectRegistry &registry) const override {
+    registry.insert<stablehlo::StablehloDialect, vhlo::VhloDialect,
+                    quant::QuantDialect, shape::ShapeDialect>();
   }
 
   void runOnOperation() override {
@@ -216,13 +248,13 @@ class TFXlaCallModuleOpToStablehloPass
     RewritePatternSet patterns(&getContext());
     patterns.add<ConvertTFXlaCallModuleOp>(&getContext(), module_op);
     patterns.add<RemoveCustomCallWithSharding>(&getContext());
-    if (failed(applyPatternsAndFoldGreedily(module_op, std::move(patterns)))) {
+    if (failed(applyPatternsGreedily(module_op, std::move(patterns)))) {
       return signalPassFailure();
     }
   }
 };
 
-std::unique_ptr<mlir::OperationPass<ModuleOp>>
+std::unique_ptr<OperationPass<ModuleOp>>
 CreateLegalizeTFXlaCallModuleToStablehloPass() {
   return std::make_unique<TFXlaCallModuleOpToStablehloPass>();
 }

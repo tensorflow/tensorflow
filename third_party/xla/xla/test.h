@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -34,16 +34,7 @@ limitations under the License.
 // Note that while the use of gmock matchers is allowed in the xla project, the
 // use of mocks is disallowed in the whole tensorflow project!
 
-#include "tsl/platform/platform.h"
-
-#if defined(PLATFORM_GOOGLE) || defined(PLATFORM_GOOGLE_ANDROID)
-#include <gmock/gmock.h>  // IWYU pragma: export
-#else
-#include <gmock/gmock-actions.h>
-#include <gmock/gmock-matchers.h>            // IWYU pragma: export
-#include <gmock/gmock-more-matchers.h>       // IWYU pragma: export
-#endif
-
-#include "tsl/platform/test.h"  // IWYU pragma: export
+// The current header will be deprecated in favour of the following.
+#include "xla/hlo/testlib/test.h"
 
 #endif  // XLA_TEST_H_

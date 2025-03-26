@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -21,16 +21,15 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_input_output_alias_config.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/executable.h"
-#include "xla/service/hlo_execution_profile.h"
 #include "xla/service/service_executable_run_options.h"
 #include "xla/shape.h"
-#include "xla/status.h"
-#include "xla/statusor.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/stream_executor.h"
@@ -44,10 +43,9 @@ class TpuExecutableInterface : public Executable {
       : Executable(std::move(hlo_module)) {}
   ~TpuExecutableInterface() override = default;
 
-  StatusOr<ExecutionOutput> ExecuteAsyncOnStream(
+  absl::StatusOr<ExecutionOutput> ExecuteAsyncOnStream(
       const ServiceExecutableRunOptions* run_options,
-      std::vector<ExecutionInput> arguments,
-      HloExecutionProfile* hlo_execution_profile) override;
+      std::vector<ExecutionInput> arguments) override;
 
   // Same as AllocateOutputMemory, except that input buffers can be reused
   // as output buffers. See UserBufferAlias class comment for more details on
@@ -63,13 +61,13 @@ class TpuExecutableInterface : public Executable {
   //
   // The optional 'transfer_stream' parameter enables transfers (for tuple
   // tables) to be performed on a separate stream to 'stream'.
-  StatusOr<ExecutionOutput> AllocateOutputMemoryWithInputReuse(
+  absl::StatusOr<ExecutionOutput> AllocateOutputMemoryWithInputReuse(
       const Shape& shape, const HloInputOutputAliasConfig& alias_config,
       se::DeviceMemoryAllocator* allocator,
       std::vector<ExecutionInput>* arguments, se::Stream* stream,
       se::Stream* transfer_stream = nullptr);
 
-  virtual Status LoadProgramAndEnqueueToStream(
+  virtual absl::Status LoadProgramAndEnqueueToStream(
       const ServiceExecutableRunOptions& run_options,
       absl::Span<const stream_executor::DeviceMemoryBase> arguments,
       stream_executor::DeviceMemoryBase result,

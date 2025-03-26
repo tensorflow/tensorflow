@@ -16,10 +16,6 @@ load(
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//tensorflow/core:__pkg__"],
-    features = [
-        "-layering_check",
-        "-parse_headers",
-    ],
     licenses = ["notice"],
 )
 
@@ -27,8 +23,6 @@ cc_library(
     name = "gif_internal",
     srcs = [
         "gif_io.cc",
-        "//tensorflow/core/platform:gif_hdrs",
-        "@local_tsl//tsl/platform:gif_hdrs",
     ],
     hdrs = ["gif_io.h"],
     copts = tf_copts(),
@@ -42,6 +36,7 @@ cc_library(
         "//tensorflow/core:lib_internal",
         "//tensorflow/core/platform:gif",
         "@com_google_absl//absl/strings",
+        "@gif",
     ],
 )
 
@@ -50,7 +45,6 @@ cc_library(
     srcs = if_mobile([
         "gif_io.cc",
         "//tensorflow/core/platform:gif_hdrs",
-        "@local_tsl//tsl/platform:gif_hdrs",
     ]),
     hdrs = [
         "gif_io.h",
@@ -58,10 +52,11 @@ cc_library(
         "//tensorflow/core/lib/gtl:legacy_android_gif_internal_headers",
         "//tensorflow/core/platform:gif_internal_hdrs",
         "@local_tsl//tsl/platform:gif_internal_hdrs",
-        "@local_tsl//tsl/platform/default:integral_types.h",
-        "@local_tsl//tsl/platform/default:logging.h",
+        "@local_xla//xla/tsl/platform/default:integral_types.h",
+        "@local_xla//xla/tsl/platform/default:logging.h",
     ],
     copts = tf_copts(),
+    features = ["-layering_check"],
     linkopts = if_android(["-ldl"]),
     deps = [
         "//tensorflow/core/platform:dynamic_annotations",

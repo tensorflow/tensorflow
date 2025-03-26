@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "RandomPoissonV2"
   input_arg {
     name: "shape"

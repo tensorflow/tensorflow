@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,11 +15,15 @@ limitations under the License.
 
 #include "xla/array.h"
 
+#include <cstdint>
 #include <initializer_list>
 #include <string>
 #include <vector>
 
-#include "xla/test.h"
+#include "absl/strings/string_view.h"
+#include "absl/types/span.h"
+#include "Eigen/Core"
+#include "xla/hlo/testlib/test.h"
 
 namespace xla {
 namespace {

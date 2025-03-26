@@ -15,8 +15,11 @@ limitations under the License.
 
 #include "tensorflow/c/experimental/saved_model/core/ops/variable_ops.h"
 
+#include <cstdint>
+#include <cstring>
+
+#include "absl/status/status.h"
 #include "absl/types/span.h"
-#include "tensorflow/c/eager/abstract_operation.h"
 #include "tensorflow/c/eager/abstract_tensor_handle.h"
 #include "tensorflow/c/eager/immediate_execution_context.h"
 #include "tensorflow/c/eager/immediate_execution_operation.h"
@@ -28,15 +31,14 @@ limitations under the License.
 #include "tensorflow/core/lib/llvm_rtti/llvm_rtti.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/status.h"
-#include "tensorflow/core/platform/types.h"
+#include "tsl/platform/errors.h"
 
 namespace tensorflow {
 namespace internal {
 
-Status CreateUninitializedResourceVariable(ImmediateExecutionContext* ctx,
-                                           DataType dtype, TensorShape shape,
-                                           const char* raw_device_name,
-                                           ImmediateTensorHandlePtr* handle) {
+absl::Status CreateUninitializedResourceVariable(
+    ImmediateExecutionContext* ctx, DataType dtype, TensorShape shape,
+    const char* raw_device_name, ImmediateTensorHandlePtr* handle) {
   ImmediateOpPtr varhandle_op(ctx->CreateOperation());
 
   TF_RETURN_IF_ERROR(varhandle_op->Reset("VarHandleOp", raw_device_name));
@@ -44,7 +46,7 @@ Status CreateUninitializedResourceVariable(ImmediateExecutionContext* ctx,
 
   // Note that if shape is unknown rank, shape.dim_sizes() will be empty, and
   // shape.dims() will be -1.
-  gtl::InlinedVector<int64_t, 4> dim_sizes = shape.dim_sizes();
+  absl::InlinedVector<int64_t, 4UL> dim_sizes = shape.dim_sizes();
   TF_RETURN_IF_ERROR(varhandle_op->SetAttrShape(
       "shape", reinterpret_cast<const int64_t*>(dim_sizes.data()),
       shape.dims()));
@@ -64,12 +66,13 @@ Status CreateUninitializedResourceVariable(ImmediateExecutionContext* ctx,
   }
   handle->reset(reinterpret_cast<ImmediateExecutionTensorHandle*>(
       owned_var_handle.release()));
-  return Status();
+  return absl::Status();
 }
 
-Status AssignVariable(ImmediateExecutionContext* ctx,
-                      ImmediateExecutionTensorHandle* variable_handle,
-                      DataType dtype, ImmediateExecutionTensorHandle* value) {
+absl::Status AssignVariable(ImmediateExecutionContext* ctx,
+                            ImmediateExecutionTensorHandle* variable_handle,
+                            DataType dtype,
+                            ImmediateExecutionTensorHandle* value) {
   ImmediateOpPtr assign_op(ctx->CreateOperation());
   TF_RETURN_IF_ERROR(assign_op->Reset("AssignVariableOp", nullptr));
   TF_RETURN_IF_ERROR(assign_op->SetAttrType("dtype", dtype));
@@ -78,12 +81,12 @@ Status AssignVariable(ImmediateExecutionContext* ctx,
 
   int num_retvals = 0;
   TF_RETURN_IF_ERROR(assign_op->Execute({}, &num_retvals));
-  return Status();
+  return absl::Status();
 }
 
-Status ReadVariable(ImmediateExecutionContext* ctx,
-                    ImmediateExecutionTensorHandle* variable_handle,
-                    DataType dtype, ImmediateTensorHandlePtr* output) {
+absl::Status ReadVariable(ImmediateExecutionContext* ctx,
+                          ImmediateExecutionTensorHandle* variable_handle,
+                          DataType dtype, ImmediateTensorHandlePtr* output) {
   ImmediateOpPtr read_op(ctx->CreateOperation());
   TF_RETURN_IF_ERROR(read_op->Reset("ReadVariableOp", nullptr));
   TF_RETURN_IF_ERROR(read_op->SetAttrType("dtype", dtype));
@@ -99,11 +102,11 @@ Status ReadVariable(ImmediateExecutionContext* ctx,
   }
   output->reset(
       reinterpret_cast<ImmediateExecutionTensorHandle*>(owned_value.release()));
-  return Status();
+  return absl::Status();
 }
 
-Status DestroyResource(ImmediateExecutionContext* ctx,
-                       ImmediateExecutionTensorHandle* handle) {
+absl::Status DestroyResource(ImmediateExecutionContext* ctx,
+                             ImmediateExecutionTensorHandle* handle) {
   ImmediateOpPtr destroy_op(ctx->CreateOperation());
   TF_RETURN_IF_ERROR(destroy_op->Reset("DestroyResourceOp", nullptr));
   TF_RETURN_IF_ERROR(destroy_op->SetAttrBool("ignore_lookup_error", true));
@@ -111,7 +114,7 @@ Status DestroyResource(ImmediateExecutionContext* ctx,
 
   int num_retvals = 0;
   TF_RETURN_IF_ERROR(destroy_op->Execute({}, &num_retvals));
-  return Status();
+  return absl::Status();
 }
 
 }  // namespace internal

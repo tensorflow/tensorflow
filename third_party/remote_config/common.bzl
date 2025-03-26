@@ -212,7 +212,8 @@ def execute(
         cmdline,
         error_msg = None,
         error_details = None,
-        allow_failure = False):
+        allow_failure = False,
+        env_vars = {}):
     """Executes an arbitrary shell command.
 
     Args:
@@ -222,10 +223,11 @@ def execute(
       error_details: string, details about the error or steps to fix it
       allow_failure: bool, if True, an empty stdout result or output to stderr
         is fine, otherwise either of these is an error
+      env_vars: environment variables
     Returns:
       The result of repository_ctx.execute(cmdline)
     """
-    result = raw_exec(repository_ctx, cmdline)
+    result = raw_exec(repository_ctx, cmdline, env_vars)
     if (result.stderr or not result.stdout) and not allow_failure:
         fail(
             "\n".join([
@@ -236,7 +238,7 @@ def execute(
         )
     return result
 
-def raw_exec(repository_ctx, cmdline):
+def raw_exec(repository_ctx, cmdline, env_vars = {}):
     """Executes a command via repository_ctx.execute() and returns the result.
 
     This method is useful for debugging purposes. For example, to print all
@@ -245,11 +247,12 @@ def raw_exec(repository_ctx, cmdline):
     Args:
       repository_ctx: the repository_ctx
       cmdline: the list of args
+      env_vars: environment variables
 
     Returns:
       The 'exec_result' of repository_ctx.execute().
     """
-    return repository_ctx.execute(cmdline)
+    return repository_ctx.execute(cmdline, environment = env_vars)
 
 def files_exist(repository_ctx, paths, bash_bin = None):
     """Checks which files in paths exists.
@@ -288,6 +291,23 @@ def realpath(repository_ctx, path, bash_bin = None):
         bash_bin = get_bash_bin(repository_ctx)
 
     return execute(repository_ctx, [bash_bin, "-c", "realpath \"%s\"" % path]).stdout.strip()
+
+def relative_to(repository_ctx, base, path, bash_bin = None):
+    """Returns the result of "realpath --relative-to".
+
+    Args:
+      repository_ctx: the repository_ctx
+      base: a path on the file system
+      path: a path on the file system
+      bash_bin: path to the bash interpreter
+
+    Returns:
+      Returns the result of "realpath --relative-to"
+    """
+    if bash_bin == None:
+        bash_bin = get_bash_bin(repository_ctx)
+
+    return execute(repository_ctx, [bash_bin, "-c", "realpath --relative-to \"%s\" \"%s\"" % (base, path)]).stdout.strip()
 
 def err_out(result):
     """Returns stderr if set, else stdout.

@@ -147,11 +147,10 @@ class Regularizer(object):
   training and executing models, exporting to and from SavedModels, or saving
   and loading weight checkpoints.
 
-  Registration is required for Keras `model_to_estimator`, saving and
-  loading models to HDF5 formats, Keras model cloning, some visualization
-  utilities, and exporting models to and from JSON. If using this functionality,
-  you must make sure any python process running your model has also defined
-  and registered your custom regularizer.
+  Registration is required for saving and loading models to HDF5 formats,
+  Keras model cloning, some visualization utilities, and exporting models to and
+  from JSON. If using this functionality, you must make sure any python process
+  running your model has also defined and registered your custom regularizer.
 
   `tf.keras.utils.register_keras_serializable` is only available in TF 2.1 and
   beyond. In earlier versions of TensorFlow you must pass your custom
@@ -171,9 +170,9 @@ class Regularizer(object):
     capable of instantiating the same regularizer from the config
     dictionary.
 
-    This method is used by Keras `model_to_estimator`, saving and
-    loading models to HDF5 formats, Keras model cloning, some visualization
-    utilities, and exporting models to and from JSON.
+    This method is used by saving and loading models to HDF5 formats,
+    Keras model cloning, some visualization utilities,
+    and exporting models to and from JSON.
 
     Args:
         config: A Python dictionary, typically the output of get_config.
@@ -194,9 +193,9 @@ class Regularizer(object):
     This method is optional if you are just training and executing models,
     exporting to and from SavedModels, or using weight checkpoints.
 
-    This method is required for Keras `model_to_estimator`, saving and
-    loading models to HDF5 formats, Keras model cloning, some visualization
-    utilities, and exporting models to and from JSON.
+    This method is required for saving and loading models to HDF5 formats,
+    Keras model cloning, some visualization utilities,
+    and exporting models to and from JSON.
 
     Returns:
         Python dictionary.

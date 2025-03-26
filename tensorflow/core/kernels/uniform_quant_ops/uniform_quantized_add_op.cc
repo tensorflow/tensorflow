@@ -27,8 +27,8 @@ namespace {
 
 using errors::InvalidArgument;
 
-StatusOr<TensorShape> CalculateOutputShape(const TensorShape& lhs_shape,
-                                           const TensorShape& rhs_shape) {
+absl::StatusOr<TensorShape> CalculateOutputShape(const TensorShape& lhs_shape,
+                                                 const TensorShape& rhs_shape) {
   if (lhs_shape.dims() == 0) {
     return rhs_shape;
   } else if (rhs_shape.dims() == 0) {
@@ -114,16 +114,14 @@ void QuantizedAdd(const Tensor& lhs, const Tensor& rhs,
 }
 
 template <typename T>
-Status EvalQuantizedAdd(OpKernelContext* context, const Tensor& lhs,
-                        const Tensor& rhs, const Tensor& lhs_scales,
-                        const Tensor& lhs_zero_points, const Tensor& rhs_scales,
-                        const Tensor& rhs_zero_points,
-                        const Tensor& output_scales,
-                        const Tensor& output_zero_points,
-                        int output_quantization_min_val,
-                        int output_quantization_max_val,
-                        int lhs_quantization_axis, int rhs_quantization_axis,
-                        int output_quantization_axis, Tensor& output) {
+absl::Status EvalQuantizedAdd(
+    OpKernelContext* context, const Tensor& lhs, const Tensor& rhs,
+    const Tensor& lhs_scales, const Tensor& lhs_zero_points,
+    const Tensor& rhs_scales, const Tensor& rhs_zero_points,
+    const Tensor& output_scales, const Tensor& output_zero_points,
+    int output_quantization_min_val, int output_quantization_max_val,
+    int lhs_quantization_axis, int rhs_quantization_axis,
+    int output_quantization_axis, Tensor& output) {
   const DataType dtype = DataTypeToEnum<T>::v();
 
   Tensor zeros_of_output_scales_shape;
@@ -158,7 +156,7 @@ Status EvalQuantizedAdd(OpKernelContext* context, const Tensor& lhs,
                   lhs_quantization_axis, rhs_quantization_axis,
                   output_quantization_axis, output);
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace

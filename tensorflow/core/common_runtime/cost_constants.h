@@ -19,6 +19,7 @@ limitations under the License.
 namespace tensorflow {
 
 // Types of per-request cost.
+inline constexpr char kGpuCostName[] = "gpu";
 inline constexpr char kTpuCostName[] = "tpu";
 inline constexpr char kGcuCostName[] = "gcu";
 inline constexpr char kNoOpCostName[] = "no_op";
@@ -30,12 +31,32 @@ inline constexpr char kNoOpCostName[] = "no_op";
 // '_with_smear" includes this part.
 inline constexpr char kWithSmearSuffix[] = "_with_smear";
 inline constexpr char kNoSmearSuffix[] = "_no_smear";
+inline constexpr char kNonBatchingSuffix[] = "_non_batching";
+inline constexpr char kDecodeWithSmearSuffix[] = "_decode_with_smear";
+inline constexpr char kDecodeNoSmearSuffix[] = "_decode_no_smear";
+inline constexpr char kInsertWithSmearSuffix[] = "_insert_with_smear";
+inline constexpr char kInsertNoSmearSuffix[] = "_insert_no_smear";
+inline constexpr char kGenerateWithSmearSuffix[] = "_generate_with_smear";
+inline constexpr char kGenerateNoSmearSuffix[] = "_generate_no_smear";
 
 // Full names of per-request cost.
 inline constexpr char kTpuWithSmearCostName[] = "tpu_with_smear";
 inline constexpr char kTpuNoSmearCostName[] = "tpu_no_smear";
+inline constexpr char kTpuDecodeWithSmearCostName[] = "tpu_decode_with_smear";
+inline constexpr char kTpuDecodeNoSmearCostName[] = "tpu_decode_no_smear";
+inline constexpr char kTpuPrefillWithSmearCostName[] = "tpu_prefill_with_smear";
+inline constexpr char kTpuPrefillNoSmearCostName[] = "tpu_prefill_no_smear";
+inline constexpr char kTpuNonBatchingCostName[] = "tpu_non_batching";
+inline constexpr char kGpuWithSmearCostName[] = "gpu_with_smear";
+inline constexpr char kGpuNoSmearCostName[] = "gpu_no_smear";
+inline constexpr char kGpuDecodeWithSmearCostName[] = "gpu_decode_with_smear";
+inline constexpr char kGpuDecodeNoSmearCostName[] = "gpu_decode_no_smear";
+inline constexpr char kGpuPrefillWithSmearCostName[] = "gpu_prefill_with_smear";
+inline constexpr char kGpuPrefillNoSmearCostName[] = "gpu_prefill_no_smear";
+inline constexpr char kGpuNonBatchingCostName[] = "gpu_non_batching";
 inline constexpr char kGcuWithSmearCostName[] = "gcu_with_smear";
 inline constexpr char kGcuNoSmearCostName[] = "gcu_no_smear";
+inline constexpr char kGcuNonBatchingCostName[] = "gcu_non_batching";
 
 }  // namespace tensorflow
 

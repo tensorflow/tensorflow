@@ -16,12 +16,11 @@ limitations under the License.
 #include "tensorflow/lite/tools/delegates/compatibility/nnapi/nnapi_compatibility_lib.h"
 
 #include <map>
-#include <memory>
-#include <utility>
 #include <vector>
 
 #include <gtest/gtest.h>
 #include "tensorflow/lite/core/c/c_api_types.h"
+#include "tensorflow/lite/delegates/nnapi/nnapi_delegate_kernel.h"
 #include "tensorflow/lite/kernels/test_util.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 

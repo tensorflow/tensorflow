@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,18 +13,20 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cstdint>
 #include <memory>
+#include <utility>
 #include <vector>
 
 #include "xla/array2d.h"
-#include "xla/client/local_client.h"
-#include "xla/client/xla_builder.h"
+#include "xla/hlo/builder/xla_builder.h"
+#include "xla/literal_util.h"
 #include "xla/reference_util.h"
 #include "xla/tests/client_library_test_base.h"
 #include "xla/tests/hlo_test_base.h"
-#include "xla/tests/literal_test_util.h"
 #include "xla/tests/test_macros.h"
 #include "xla/util.h"
+#include "tsl/platform/statusor.h"
 #include "tsl/platform/test.h"
 
 namespace xla {
@@ -197,6 +199,30 @@ TEST_F(TransposeTest, TransposeConstant021_MultipleTilesPerLayer) {
 
 TEST_F(TransposeTest, TransposeConstant210_DegenerateDim) {
   TestTransposeConstant({20, 30, 1}, {2, 1, 0});
+}
+
+using HloTransposeTest = HloTestBase;
+
+// Disable HLO passes to verify the default behavior
+XLA_TEST_F(HloTransposeTest, DISABLED_ON_INTERPRETER(DISABLED_ON_GPU(
+                                 DISABLED_ON_TPU(HloPassesDisabled)))) {
+  const char* const kModuleStr = R"(
+    HloModule Transpose
+
+    ENTRY Transpose {
+      constant = s32[2,3] constant({ { 1, 2, 3 }, { 4, 5, 6 } })
+      ROOT transpose = s32[3,2] transpose(constant), dimensions={1,0}
+    })";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kModuleStr));
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto result, Execute(std::move(module), {}, /*run_hlo_passes=*/false));
+  Array2D<int32_t> array({{1, 4}, {2, 5}, {3, 6}});
+  auto expected = LiteralUtil::CreateR2FromArray2D(array);
+
+  EXPECT_EQ(result, expected);
 }
 
 }  // namespace

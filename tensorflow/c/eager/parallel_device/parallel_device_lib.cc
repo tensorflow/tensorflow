@@ -15,18 +15,35 @@ limitations under the License.
 
 #include "tensorflow/c/eager/parallel_device/parallel_device_lib.h"
 
+#include <cstdint>
+#include <functional>
+#include <memory>
 #include <string>
 #include <utility>
+#include <vector>
 
+#include "absl/memory/memory.h"
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
+#include "absl/types/optional.h"
+#include "absl/types/span.h"
+#include "tensorflow/c/eager/c_api.h"
 #include "tensorflow/c/eager/c_api_experimental.h"
+#include "tensorflow/c/eager/immediate_execution_tensor_handle.h"
 #include "tensorflow/c/eager/tfe_cancellation_manager_internal.h"
+#include "tensorflow/c/eager/tfe_op_internal.h"
 #include "tensorflow/c/eager/tfe_tensorhandle_internal.h"
+#include "tensorflow/c/tf_datatype.h"
 #include "tensorflow/c/tf_status.h"
 #include "tensorflow/c/tf_status_internal.h"
-#include "tensorflow/core/lib/gtl/cleanup.h"
+#include "xla/tsl/platform/errors.h"
+#include "tensorflow/core/framework/cancellation.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/util/device_name_utils.h"
+#include "tsl/platform/thread_annotations.h"
 
 namespace tensorflow {
 namespace parallel_device {
@@ -568,7 +585,7 @@ std::unique_ptr<ParallelTensor> ParallelTensor::FromTensorHandles(
       new ParallelTensor(parallel_device, std::move(components), dtype));
 }
 
-Status ParallelTensor::Shape(const std::vector<int64_t>** shape) const {
+absl::Status ParallelTensor::Shape(const std::vector<int64_t>** shape) const {
   if (!shape_.has_value()) {
     TF_Status status;
     PartialTensorShape combined_shape;
@@ -604,10 +621,10 @@ Status ParallelTensor::Shape(const std::vector<int64_t>** shape) const {
     shape_ = std::vector<int64_t>(dim_sizes.begin(), dim_sizes.end());
   }
   *shape = &*shape_;
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status ParallelTensor::SummarizeValue(std::string& summary) {
+absl::Status ParallelTensor::SummarizeValue(std::string& summary) {
   summary = "{";
   std::vector<std::string> summarized_devices = device_.SummarizeDeviceNames();
   for (int component_index = 0; component_index < tensors_.size();
@@ -624,7 +641,7 @@ Status ParallelTensor::SummarizeValue(std::string& summary) {
                     "\": ", component_summary);
   }
   summary += "}";
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace parallel_device

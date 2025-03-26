@@ -18,8 +18,11 @@ limitations under the License.
 
 #include <vector>
 
+#include "tensorflow/core/profiler/convert/duty_cycle_tracker.h"
 #include "tensorflow/core/profiler/convert/repository.h"
 #include "tensorflow/core/profiler/protobuf/op_stats.pb.h"
+#include "tensorflow/core/profiler/utils/hlo_proto_map.h"
+#include "tensorflow/core/profiler/utils/xplane_visitor.h"
 #include "tsl/profiler/protobuf/xplane.pb.h"
 
 namespace tensorflow {
@@ -36,6 +39,10 @@ struct OpStatsOptions {
 OpStats ConvertXSpaceToOpStats(const XSpace& space,
                                const OpStatsOptions& options);
 
+// Populates the program_id_to_name map in OpStats.
+void SetProgramIdToNameMap(const HloProtoMap& hlo_proto_map,
+                           tensorflow::profiler::OpStats& op_stats);
+
 // Populates the given RunEnvironment with data from XSpace.
 void SetRunEnvironment(const XSpace& space, RunEnvironment* env);
 
@@ -49,6 +56,9 @@ PerfEnv MakePerfEnv(double peak_tera_flops_per_second,
 
 // Extracts PerfEnv from XPlane stats.
 PerfEnv GetPerfEnvFromXPlane(const XPlane& device_plane);
+
+// Constructs a DutyCycleTracker from the given XPlaneVisitor.
+DutyCycleTracker ConstructDutyCycleTracker(XPlaneVisitor& visitor);
 
 }  // namespace profiler
 }  // namespace tensorflow

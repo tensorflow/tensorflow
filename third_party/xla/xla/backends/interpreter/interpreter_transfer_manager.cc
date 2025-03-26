@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -18,6 +18,7 @@ limitations under the License.
 #include <memory>
 
 #include "xla/backends/interpreter/platform_id.h"
+#include "xla/service/generic_transfer_manager.h"
 #include "xla/service/transfer_manager.h"
 
 namespace xla {

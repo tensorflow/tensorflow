@@ -1,8 +1,8 @@
+load("//tensorflow:tensorflow.default.bzl", "tf_custom_op_py_library")
 load(
     "//tensorflow/core/platform:build_config.bzl",
     "tf_py_clif_cc",
 )
-load("//tensorflow:tensorflow.default.bzl", "tf_custom_op_py_library")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],

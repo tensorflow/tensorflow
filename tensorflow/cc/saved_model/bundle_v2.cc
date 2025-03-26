@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/cc/saved_model/bundle_v2.h"
 
+#include <memory>
 #include <string>
 #include <utility>
 
@@ -63,9 +64,7 @@ absl::Status ReadCheckpointObjectGraph(BundleReader* bundle_reader,
         "SavedModel checkpoint object graph was not the correct type.");
   }
 
-  const tstring* object_graph_string = reinterpret_cast<const tstring*>(
-      object_graph_tensor.tensor_data().data());
-  if (!object_graph->ParseFromString(*object_graph_string)) {
+  if (!object_graph->ParseFromString(object_graph_tensor.scalar<tstring>()())) {
     return absl::Status(
         absl::StatusCode::kFailedPrecondition,
         "SavedModel checkpoint object graph could not be deserialized.");
@@ -113,8 +112,8 @@ absl::Status SavedModelV2Bundle::Load(const std::string& export_dir,
     // Load the variables checkpoint reader.
     const std::string variables_prefix =
         io::JoinPath(variables_dir, kSavedModelVariablesFilename);
-    bundle->variable_reader_.reset(
-        new BundleReader(Env::Default(), variables_prefix));
+    bundle->variable_reader_ =
+        std::make_unique<BundleReader>(Env::Default(), variables_prefix);
     TF_RETURN_WITH_CONTEXT_IF_ERROR(
         bundle->variable_reader_->status(),
         "Unable to load SavedModel variables checkpoint from ",

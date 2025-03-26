@@ -31,9 +31,8 @@ KMP_BLOCKTIME="--test_env=KMP_BLOCKTIME=0"
 
 #install packages needed
 
-pip install tensorflow-estimator tensorboard
-pip install --upgrade  tf-estimator-nightly
-pip install keras-nightly 
+pip install tensorboard
+pip install keras-nightly
 
 pip list
 

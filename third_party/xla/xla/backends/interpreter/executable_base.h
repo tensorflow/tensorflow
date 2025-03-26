@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -18,15 +18,20 @@ limitations under the License.
 
 #include <memory>
 #include <optional>
+#include <vector>
 
+#include "absl/status/statusor.h"
+#include "absl/types/span.h"
+#include "xla/hlo/ir/hlo_computation.h"
+#include "xla/hlo/ir/hlo_input_output_alias_config.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/literal.h"
 #include "xla/service/dynamic_dimension_inference.h"
 #include "xla/service/executable.h"
-#include "xla/service/hlo_execution_profile.h"
 #include "xla/service/service_executable_run_options.h"
 #include "xla/shape.h"
-#include "xla/statusor.h"
+#include "xla/stream_executor/device_memory_allocator.h"
+#include "xla/stream_executor/stream.h"
 #include "xla/xla.pb.h"
 namespace xla {
 namespace interpreter {
@@ -37,19 +42,18 @@ class InterpreterExecutableBase : public Executable {
  public:
   explicit InterpreterExecutableBase(std::unique_ptr<HloModule> hlo_module);
 
-  StatusOr<ExecutionOutput> ExecuteAsyncOnStream(
+  absl::StatusOr<ExecutionOutput> ExecuteAsyncOnStream(
       const ServiceExecutableRunOptions* run_options,
-      std::vector<ExecutionInput> arguments,
-      HloExecutionProfile* hlo_execution_profile) override;
+      std::vector<ExecutionInput> arguments) override;
 
  protected:
-  virtual StatusOr<Literal> Evaluate(
+  virtual absl::StatusOr<Literal> Evaluate(
       const ServiceExecutableRunOptions* run_options,
       const HloComputation& computation,
       absl::Span<const Literal> arg_literals) = 0;
 
  private:
-  StatusOr<ExecutionOutput> AllocateOutputMemoryWithInputReuse(
+  absl::StatusOr<ExecutionOutput> AllocateOutputMemoryWithInputReuse(
       const Shape& shape, const HloInputOutputAliasConfig& alias_config,
       se::DeviceMemoryAllocator* allocator,
       std::vector<ExecutionInput>* arguments, stream_executor::Stream* stream);

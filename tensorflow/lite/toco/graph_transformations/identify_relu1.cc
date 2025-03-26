@@ -12,12 +12,12 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <cstddef>
 #include <memory>
-#include <string>
-#include <unordered_map>
 #include <vector>
 
-#include "tensorflow/core/platform/logging.h"
+#include "absl/status/status.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/lite/toco/graph_transformations/graph_transformations.h"
 #include "tensorflow/lite/toco/graph_transformations/identify_util.h"
 #include "tensorflow/lite/toco/model.h"
@@ -27,15 +27,15 @@ namespace toco {
 
 using util::GetSingleScalarInputIndexOfBinaryOp;
 
-::tensorflow::Status IdentifyRelu1::Run(Model* model, std::size_t op_index,
-                                        bool* modified) {
+absl::Status IdentifyRelu1::Run(Model* model, std::size_t op_index,
+                                bool* modified) {
   *modified = false;
   // Follow sequences of min+max and max+min. First get the leading op.
   const auto op_it = model->operators.begin() + op_index;
   const auto* op_0 = op_it->get();
   if (op_0->type != OperatorType::kMinimum &&
       op_0->type != OperatorType::kMaximum) {
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
 
   // Get the paired op and ensure it's the counter to the first.
@@ -44,17 +44,17 @@ using util::GetSingleScalarInputIndexOfBinaryOp;
       (op_1->type != OperatorType::kMinimum &&
        op_1->type != OperatorType::kMaximum) ||
       op_0->type == op_1->type) {
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
 
   const auto* min_op = op_0->type == OperatorType::kMinimum ? op_0 : op_1;
   const auto* max_op = op_0->type == OperatorType::kMaximum ? op_0 : op_1;
 
   if (min_op->inputs.size() != 2 || max_op->inputs.size() != 2) {
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
   if (min_op->outputs.size() != 1 || max_op->outputs.size() != 1) {
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
 
   // Get the original input to the min+max pair.
@@ -63,7 +63,7 @@ using util::GetSingleScalarInputIndexOfBinaryOp;
   int max_scalar_input_index =
       GetSingleScalarInputIndexOfBinaryOp(model, max_op, -1.0f);
   if (min_scalar_input_index == -1 || max_scalar_input_index == -1) {
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
   int op_0_scalar_input_index =
       op_0 == min_op ? min_scalar_input_index : max_scalar_input_index;
@@ -79,7 +79,7 @@ using util::GetSingleScalarInputIndexOfBinaryOp;
   DeleteOpAndArrays(model, op_1);
 
   *modified = true;
-  return ::tensorflow::OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace toco

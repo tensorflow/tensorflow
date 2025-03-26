@@ -15,12 +15,14 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
-#include "tensorflow/core/framework/function.h"
+#include "xla/tsl/platform/status_matchers.h"
+#include "xla/tsl/protobuf/error_codes.pb.h"
+#include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/function.pb.h"
+#include "tensorflow/core/platform/refcount.h"
 #include "tensorflow/dtensor/cc/dtensor_device_util.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/status_matchers.h"
+#include "tensorflow/dtensor/cc/dtensor_operation.h"
+#include "tensorflow/dtensor/cc/tensor_layout.h"
 
 namespace tensorflow {
 namespace dtensor {

@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,13 +15,20 @@ limitations under the License.
 
 #include "xla/service/llvm_ir/alias_analysis.h"
 
-#include <map>
+#include <set>
+#include <vector>
 
 #include "absl/container/flat_hash_set.h"
 #include "llvm/IR/MDBuilder.h"
+#include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/service/buffer_assignment.h"
+#include "xla/service/hlo_value.h"
+#include "xla/service/llvm_ir/ir_array.h"
 #include "xla/service/llvm_ir/llvm_type_conversion_util.h"
 #include "xla/service/logical_buffer.h"
-#include "xla/types.h"
+#include "xla/shape.h"
+#include "xla/shape_util.h"
 
 namespace xla {
 namespace llvm_ir {

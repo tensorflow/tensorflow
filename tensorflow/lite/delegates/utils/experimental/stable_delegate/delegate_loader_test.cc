@@ -14,10 +14,10 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/delegates/utils/experimental/stable_delegate/delegate_loader.h"
 
-#include <cstddef>
 #include <cstdlib>
 
 #include <gtest/gtest.h>
+#include "tensorflow/lite/acceleration/configuration/c/stable_delegate.h"
 #include "tensorflow/lite/acceleration/configuration/configuration_generated.h"
 #include "tensorflow/lite/delegates/utils/experimental/sample_stable_delegate/sample_stable_delegate.h"
 
@@ -32,9 +32,11 @@ TEST(TfLiteDelegateLoaderUtilsTest, Simple) {
   const TfLiteStableDelegate* stable_delegate_handle =
       LoadDelegateFromSharedLibrary(
           "tensorflow/lite/delegates/utils/experimental/"
-          "sample_stable_delegate/libtensorflowlite_sample_stable_delegate.so");
+          "sample_stable_delegate/"
+          "libtensorflowlite_sample_stable_delegate.so"
+          );
 
-  EXPECT_NE(stable_delegate_handle, nullptr);
+  ASSERT_NE(stable_delegate_handle, nullptr);
   EXPECT_STREQ(stable_delegate_handle->delegate_abi_version,
                TFL_STABLE_DELEGATE_ABI_VERSION);
   EXPECT_STREQ(stable_delegate_handle->delegate_name,
@@ -58,9 +60,10 @@ TEST(TfLiteDelegateLoaderUtilsTest, Simple) {
       flatbuffer_builder.GetBufferPointer());
   auto delegate = stable_delegate_handle->delegate_plugin->create(settings);
 
-  EXPECT_NE(delegate, nullptr);
+  ASSERT_NE(delegate, nullptr);
   EXPECT_EQ(
       stable_delegate_handle->delegate_plugin->get_delegate_errno(delegate), 0);
+
   stable_delegate_handle->delegate_plugin->destroy(delegate);
 }
 

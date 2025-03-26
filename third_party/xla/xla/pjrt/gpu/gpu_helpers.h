@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,55 +16,58 @@ limitations under the License.
 #ifndef XLA_PJRT_GPU_GPU_HELPERS_H_
 #define XLA_PJRT_GPU_GPU_HELPERS_H_
 
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <set>
 #include <string>
 
+#include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/client/local_client.h"
-#include "xla/statusor.h"
+#include "xla/pjrt/plugin/xla_gpu/xla_gpu_allocator_config.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "xla/tsl/framework/bfc_allocator.h"
 #include "xla/types.h"
-#include "tsl/framework/bfc_allocator.h"
 
 namespace xla {
 
 // Builds an xla::LocalClient for the GPU platform.
-StatusOr<LocalClient*> GetGpuXlaClient(
+absl::StatusOr<LocalClient*> GetGpuXlaClient(
     const std::optional<std::string>& platform_name,
     const std::optional<std::set<int>>& allowed_devices);
 
 // Enables peer access between all pairs of GPUs where possible.
 void EnablePeerAccess(absl::Span<se::StreamExecutor* const> executors);
 
-struct GpuAllocatorConfig {
-  enum class Kind {
-    kDefault,   // Client picks the best option for the platform.
-    kPlatform,  // The platform's default.
-    kBFC,  // Allocator using a "Best-Fit with Coalescing" algorithm. Currently
-           // only available for GPU.
-    kCudaAsync,  // Use the CUDA async allocator.
-  };
-  Kind kind = Kind::kDefault;
-
-  // Only used if kind == kBFC. The maximum fraction of available memory to
-  // allocate. This is the default value of XLA_PYTHON_CLIENT_MEM_FRACTION.
-  double memory_fraction = 0.75;
-
-  // Only used if kind == kBFC. If true, the allocator will immediately allocate
-  // the maximum amount allowed by `memory_fraction`. This reduces
-  // fragmentation, allowing more of the total memory to be used. If false, the
-  // allocator will allocate more memory as allocations are requested.
-  bool preallocate = true;
-};
-
-std::unique_ptr<tsl::BFCAllocator> GetGpuHostAllocator(
+absl::StatusOr<std::unique_ptr<tsl::BFCAllocator>> GetGpuHostAllocator(
     se::StreamExecutor* executor);
 
 // Builds a BFCAllocator for all local GPUs.
-StatusOr<std::unique_ptr<tsl::BFCAllocator>> CreateBFCAllocator(
-    se::StreamExecutor* executor, double memory_fraction, bool preallocate);
+absl::StatusOr<std::unique_ptr<tsl::BFCAllocator>> CreateBFCAllocator(
+    se::StreamExecutor* executor, double memory_fraction, bool preallocate,
+    std::optional<int64_t> gpu_system_memory_size);
+
+// Builds a BFCAllocator for all local GPUs that uses collective memory.
+absl::StatusOr<std::unique_ptr<tsl::BFCAllocator>> CreateCollectiveBFCAllocator(
+    se::StreamExecutor* executor, double memory_fraction,
+    size_t collective_memory_size);
+
+// Represents topology of devices.
+struct TopologySizes {
+  int num_slices = 0;
+  int num_hosts_per_slice = 0;
+  int num_devices_per_host = 0;
+
+  // Returns number of devices in the topology.
+  int GetDeviceCount();
+  // Parses the topology description of the form
+  // "<num_slices> x <num_hosts_per_slice> x <num_devices_per_host>"
+  // and returns the parsed components on success.
+  static absl::StatusOr<TopologySizes> FromString(
+      absl::string_view topology_string);
+};
 
 }  // namespace xla
 

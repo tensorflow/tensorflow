@@ -13,14 +13,15 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/compiler/tf2xla/xla_expression.h"
+
 #include <memory>
 
 #include "absl/memory/memory.h"
-#include "tensorflow/compiler/tf2xla/xla_expression.h"
 #include "tensorflow/compiler/tf2xla/xla_resource.h"
 #include "xla/client/client_library.h"
 #include "xla/client/local_client.h"
-#include "xla/client/xla_builder.h"
+#include "xla/hlo/builder/xla_builder.h"
 #include "xla/literal.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
@@ -139,7 +140,7 @@ TEST_F(XlaExpressionTest, ResolveConstantOnResource) {
   EXPECT_TRUE(constant_resource.ResolveConstant(client_).ok());
   EXPECT_TRUE(resource_->SetZeroValue(builder_.get()).ok());
   LOG(ERROR) << "Resource is overwritten: " << resource_->IsOverwritten();
-  StatusOr<std::optional<Tensor>> resolved_constant =
+  absl::StatusOr<std::optional<Tensor>> resolved_constant =
       constant_resource.ResolveConstant(client_);
   EXPECT_TRUE(resolved_constant.ok());
   EXPECT_FALSE(resolved_constant->has_value());

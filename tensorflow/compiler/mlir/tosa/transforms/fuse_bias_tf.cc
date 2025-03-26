@@ -15,18 +15,14 @@ limitations under the License.
 
 // Fuse tf.Op + tf.BiasAdd and legalized to TOSA
 
-#include <climits>
-#include <cstddef>
-#include <cstdint>
-#include <iterator>
 #include <memory>
-#include <numeric>
 #include <optional>
 #include <utility>
 
 #include "mlir/Dialect/Tosa/IR/TosaOps.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/quantization/ir/QuantOps.h"
@@ -80,7 +76,7 @@ LogicalResult ConvertTFBiasAddOp::matchAndRewrite(
 
   auto value = tf_biasadd_op.getValue();
   auto bias = tf_biasadd_op.getBias();
-  auto bias_shape = bias.getType().cast<RankedTensorType>().getShape();
+  auto bias_shape = mlir::cast<RankedTensorType>(bias.getType()).getShape();
   if (bias_shape.size() != 1) {
     return rewriter.notifyMatchFailure(op, "bias tensor must be rank 1");
   }
@@ -89,7 +85,8 @@ LogicalResult ConvertTFBiasAddOp::matchAndRewrite(
           llvm::dyn_cast_if_present<TF::Conv2DOp>(value.getDefiningOp())) {
     // Sanity check to confirm rhs() has the expected shape of bias
     auto filter_shape =
-        tf_conv2d_op.getFilter().getType().cast<RankedTensorType>().getShape();
+        mlir::cast<RankedTensorType>(tf_conv2d_op.getFilter().getType())
+            .getShape();
 
     // Assume the filter shape is [H, W, I, O]
     if (filter_shape.back() != bias_shape.back()) {
@@ -114,7 +111,8 @@ LogicalResult ConvertTFBiasAddOp::matchAndRewrite(
           llvm::dyn_cast_if_present<TF::Conv3DOp>(value.getDefiningOp())) {
     // Sanity check to confirm rhs() has the expected shape of bias
     auto filter_shape =
-        tf_conv3d_op.getFilter().getType().cast<RankedTensorType>().getShape();
+        mlir::cast<RankedTensorType>(tf_conv3d_op.getFilter().getType())
+            .getShape();
 
     // Assume the filter shape is [D, H, W, I, O]
     if (filter_shape.back() != bias_shape.back()) {
@@ -145,7 +143,7 @@ void FuseBiasTF::runOnOperation() {
 
   // Add the generated patterns to the list.
   patterns.add<ConvertTFBiasAddOp>(ctx);
-  (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
+  (void)applyPatternsGreedily(func, std::move(patterns));
 }
 
 }  // anonymous namespace

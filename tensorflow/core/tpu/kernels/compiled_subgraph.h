@@ -111,7 +111,7 @@ struct CompiledSubgraph : public core::RefCounted {
   // The Status returned by the compilation function when the entry is
   // initialized. This status will be returned to any client that requests the
   // entry.
-  Status initialization_status;
+  absl::Status initialization_status;
 
   // Counter to keep track of LRU entries for the eviction policy.
   int64_t last_use = -1;

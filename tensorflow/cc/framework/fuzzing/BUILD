@@ -1,11 +1,11 @@
 # TODO(unda): describe this package.
 
 load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
+load("//tensorflow:tensorflow.bzl", "tf_copts")
 load(
     "//tensorflow/cc/framework/fuzzing:op_fuzzing.bzl",
     "tf_gen_op_wrappers_fuzz",
 )
-load("//tensorflow:tensorflow.bzl", "tf_copts")
 
 # copybara:uncomment package(default_applicable_licenses = ["//tensorflow:license"])
 
@@ -29,9 +29,11 @@ cc_library(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/platform:hash",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
-        "@local_tsl//tsl/platform:status",
+        "@local_xla//xla/tsl/platform:status",
     ],
 )
 

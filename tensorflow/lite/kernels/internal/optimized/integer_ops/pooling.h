@@ -35,8 +35,8 @@ namespace tflite {
 namespace optimized_integer_ops {
 
 inline void MaxPool(const PoolParams& params, const RuntimeShape& input_shape,
-                    const int8* input_data, const RuntimeShape& output_shape,
-                    int8* output_data) {
+                    const int8_t* input_data, const RuntimeShape& output_shape,
+                    int8_t* output_data) {
   ruy::profiler::ScopeLabel label("MaxPool/8bit");
 
   // Here, and in other pooling ops, in order to maintain locality of reference,
@@ -59,7 +59,7 @@ inline void MaxPool(const PoolParams& params, const RuntimeShape& input_shape,
   const int stride_height = params.stride_height;
   const int stride_width = params.stride_width;
 
-  int8 acc[kPoolingAccTrancheSize];
+  int8_t acc[kPoolingAccTrancheSize];
   for (int batch = 0; batch < batches; ++batch) {
     // We proceed through the depth in tranches (see comment above). The
     // depth_base is the depth at the beginning of the tranche. The
@@ -82,15 +82,15 @@ inline void MaxPool(const PoolParams& params, const RuntimeShape& input_shape,
               std::min(params.filter_height, input_height - in_y_origin);
           memset(acc, params.quantized_activation_min,
                  tranche_depth * sizeof(acc[0]));
-          const int8* input_ptr =
+          const int8_t* input_ptr =
               input_data + depth_base +
               depth * (in_x_origin +
                        input_width * (in_y_origin + input_height * batch));
           for (int fy = filter_y_start; fy < filter_y_end; fy++) {
-            const int8* input_row_ptr =
+            const int8_t* input_row_ptr =
                 input_ptr + depth * (fy * input_width + filter_x_start);
             for (int fx = filter_x_start; fx < filter_x_end; fx++) {
-              const int8* input_channel_ptr = input_row_ptr;
+              const int8_t* input_channel_ptr = input_row_ptr;
               int channel = 0;
 #ifdef USE_NEON
               for (; channel <= tranche_depth - 16; channel += 16) {
@@ -115,8 +115,8 @@ inline void MaxPool(const PoolParams& params, const RuntimeShape& input_shape,
               input_row_ptr += depth;
             }
           }
-          int8* output_ptr = output_data + Offset(output_shape, batch, out_y,
-                                                  out_x, depth_base);
+          int8_t* output_ptr = output_data + Offset(output_shape, batch, out_y,
+                                                    out_x, depth_base);
           int channel = 0;
 #ifdef USE_NEON
           for (; channel <= tranche_depth - 16; channel += 16) {
@@ -133,10 +133,10 @@ inline void MaxPool(const PoolParams& params, const RuntimeShape& input_shape,
           }
 #endif
           for (; channel < tranche_depth; ++channel) {
-            int8 a = acc[channel];
-            a = std::max<int8>(a, params.quantized_activation_min);
-            a = std::min<int8>(a, params.quantized_activation_max);
-            output_ptr[channel] = static_cast<int8>(a);
+            int8_t a = acc[channel];
+            a = std::max<int8_t>(a, params.quantized_activation_min);
+            a = std::min<int8_t>(a, params.quantized_activation_max);
+            output_ptr[channel] = static_cast<int8_t>(a);
           }
         }
       }
@@ -145,8 +145,9 @@ inline void MaxPool(const PoolParams& params, const RuntimeShape& input_shape,
 }
 
 inline bool AveragePool(const PoolParams& params,
-                        const RuntimeShape& input_shape, const int8* input_data,
-                        const RuntimeShape& output_shape, int8* output_data) {
+                        const RuntimeShape& input_shape,
+                        const int8_t* input_data,
+                        const RuntimeShape& output_shape, int8_t* output_data) {
   ruy::profiler::ScopeLabel label("AveragePool/8bitWith32bitAccumulator");
 
   // Here, and in other pooling ops, in order to maintain locality of reference,
@@ -169,7 +170,7 @@ inline bool AveragePool(const PoolParams& params,
   const int stride_height = params.stride_height;
   const int stride_width = params.stride_width;
 
-  int32 acc[kPoolingAccTrancheSize];
+  int32_t acc[kPoolingAccTrancheSize];
   for (int batch = 0; batch < batches; ++batch) {
     // We proceed through the depth in tranches (see comment above). The
     // depth_base is the depth at the beginning of the tranche. The
@@ -194,15 +195,15 @@ inline bool AveragePool(const PoolParams& params,
               (filter_x_end - filter_x_start) * (filter_y_end - filter_y_start);
           if (filter_count == 0) return false;
           memset(acc, 0, tranche_depth * sizeof(acc[0]));
-          const int8* input_ptr =
+          const int8_t* input_ptr =
               input_data + depth_base +
               depth * (in_x_origin +
                        input_width * (in_y_origin + input_height * batch));
           for (int fy = filter_y_start; fy < filter_y_end; fy++) {
-            const int8* input_row_ptr =
+            const int8_t* input_row_ptr =
                 input_ptr + depth * (fy * input_width + filter_x_start);
             for (int fx = filter_x_start; fx < filter_x_end; fx++) {
-              const int8* input_channel_ptr = input_row_ptr;
+              const int8_t* input_channel_ptr = input_row_ptr;
               int channel = 0;
 #ifdef USE_NEON
               for (; channel <= tranche_depth - 16; channel += 16) {
@@ -238,12 +239,12 @@ inline bool AveragePool(const PoolParams& params,
               input_row_ptr += depth;
             }
           }
-          int8* output_ptr = output_data + Offset(output_shape, batch, out_y,
-                                                  out_x, depth_base);
+          int8_t* output_ptr = output_data + Offset(output_shape, batch, out_y,
+                                                    out_x, depth_base);
           int channel = 0;
 #ifdef USE_NEON
           for (; channel <= tranche_depth - 8; channel += 8) {
-            int16 buf[8];
+            int16_t buf[8];
             for (int i = 0; i < 8; i++) {
               buf[i] =
                   acc[channel + i] > 0
@@ -257,12 +258,12 @@ inline bool AveragePool(const PoolParams& params,
           }
 #endif
           for (; channel < tranche_depth; ++channel) {
-            int16 a = acc[channel] > 0
-                          ? (acc[channel] + filter_count / 2) / filter_count
-                          : (acc[channel] - filter_count / 2) / filter_count;
-            a = std::max<int16>(a, params.quantized_activation_min);
-            a = std::min<int16>(a, params.quantized_activation_max);
-            output_ptr[channel] = static_cast<int8>(a);
+            int16_t a = acc[channel] > 0
+                            ? (acc[channel] + filter_count / 2) / filter_count
+                            : (acc[channel] - filter_count / 2) / filter_count;
+            a = std::max<int16_t>(a, params.quantized_activation_min);
+            a = std::min<int16_t>(a, params.quantized_activation_max);
+            output_ptr[channel] = static_cast<int8_t>(a);
           }
         }
       }

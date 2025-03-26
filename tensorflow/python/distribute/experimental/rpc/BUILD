@@ -14,7 +14,6 @@ pytype_strict_library(
     srcs = [
         "rpc_ops.py",
     ],
-    srcs_version = "PY3",
     deps = [
         "//tensorflow/distribute/experimental/rpc/kernels:gen_rpc_ops",
         "//tensorflow/distribute/experimental/rpc/proto:tf_rpc_service_proto_py",

@@ -128,7 +128,7 @@ TEST_F(FunctionOptimizerTest, InlineFunction_FixedTypeFunction) {
       });
 
   GraphDef output;
-  Status status = optimizer.Optimize(nullptr, item, &output);
+  absl::Status status = optimizer.Optimize(nullptr, item, &output);
   TF_EXPECT_OK(status);
 
   // Calls to XTimesTwo were removed from the graph.
@@ -478,7 +478,7 @@ TEST_F(FunctionOptimizerTest, InlineSymbolicGradientNoInlineFunc) {
   *item.graph.mutable_library()->add_function() = func;
 
   GraphDef output;
-  Status status = optimizer.Optimize(nullptr, item, &output);
+  absl::Status status = optimizer.Optimize(nullptr, item, &output);
   // The optimizer should succeed but the graphs should be the same.
   TF_EXPECT_OK(status);
   CompareGraphs(item.graph, output);
@@ -2095,7 +2095,7 @@ TEST_F(FunctionOptimizerTest, PruningUselessLibraryFunctions) {
           test::function::XTimes16(),
       });
   GraphDef output;
-  Status status = optimizer.Optimize(nullptr, item, &output);
+  absl::Status status = optimizer.Optimize(nullptr, item, &output);
   TF_EXPECT_OK(status);
 
   ASSERT_EQ(output.library().function().size(), 1);
@@ -2138,7 +2138,7 @@ TEST_F(FunctionOptimizerTest, PreserveSaverDefFunctions) {
   item.restore_op = "Restore";
   item.save_op = "Save";
   GraphDef output;
-  Status status = optimizer.Optimize(nullptr, item, &output);
+  absl::Status status = optimizer.Optimize(nullptr, item, &output);
   TF_EXPECT_OK(status);
 
   ASSERT_EQ(output.library().function().size(), 3);

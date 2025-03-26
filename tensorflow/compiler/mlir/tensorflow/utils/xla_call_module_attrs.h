@@ -30,6 +30,10 @@ constexpr llvm::StringRef kStablehloMainFunctionName = "main";
 // function.
 constexpr llvm::StringRef kStablehloEntryFunctionAttrName = "_entry_function";
 
+// The StableHLO version of the serialized stablehlo module embedded in
+// XlaCallModule's `module` attribute, set on deserialization.
+constexpr llvm::StringRef kStablehloVersionAttrName = "_stablehlo_version";
+
 // Every stablehlo function deserialized from XlaCallModule has this attribute.
 constexpr llvm::StringRef kFromXlaCallModuleAttrName = "_from_xla_call_module";
 

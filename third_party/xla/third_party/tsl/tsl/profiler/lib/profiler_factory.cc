@@ -18,7 +18,8 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "tsl/platform/mutex.h"
+#include "absl/base/const_init.h"
+#include "absl/synchronization/mutex.h"
 #include "tsl/profiler/lib/profiler_controller.h"
 #include "tsl/profiler/lib/profiler_interface.h"
 #include "tsl/profiler/protobuf/profiler_options.pb.h"
@@ -27,7 +28,7 @@ namespace tsl {
 namespace profiler {
 namespace {
 
-mutex mu(LINKER_INITIALIZED);
+absl::Mutex mu(absl::kConstInit);
 
 std::vector<ProfilerFactory>* GetFactories() {
   static auto factories = new std::vector<ProfilerFactory>();
@@ -37,14 +38,14 @@ std::vector<ProfilerFactory>* GetFactories() {
 }  // namespace
 
 void RegisterProfilerFactory(ProfilerFactory factory) {
-  mutex_lock lock(mu);
+  absl::MutexLock lock(&mu);
   GetFactories()->push_back(std::move(factory));
 }
 
 std::vector<std::unique_ptr<profiler::ProfilerInterface>> CreateProfilers(
     const tensorflow::ProfileOptions& options) {
   std::vector<std::unique_ptr<profiler::ProfilerInterface>> result;
-  mutex_lock lock(mu);
+  absl::MutexLock lock(&mu);
   for (const auto& factory : *GetFactories()) {
     auto profiler = factory(options);
     // A factory might return nullptr based on options.
@@ -56,7 +57,7 @@ std::vector<std::unique_ptr<profiler::ProfilerInterface>> CreateProfilers(
 }
 
 void ClearRegisteredProfilersForTest() {
-  mutex_lock lock(mu);
+  absl::MutexLock lock(&mu);
   GetFactories()->clear();
 }
 

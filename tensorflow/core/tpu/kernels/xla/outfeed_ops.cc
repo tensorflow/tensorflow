@@ -18,17 +18,16 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
-#include "xla/client/xla_builder.h"
+#include "xla/hlo/builder/xla_builder.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/tsl/platform/logging.h"  // IWYU pragma: keep
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/op_requires.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/platform/types.h"
-#include "tsl/platform/logging.h"  // IWYU pragma: keep
-#include "tsl/platform/macros.h"
 
 namespace tensorflow {
 
@@ -53,7 +52,8 @@ class OutfeedEnqueueOp : public XlaOpKernel {
  private:
   DataType dtype_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(OutfeedEnqueueOp);
+  OutfeedEnqueueOp(const OutfeedEnqueueOp&) = delete;
+  void operator=(const OutfeedEnqueueOp&) = delete;
 };
 
 REGISTER_XLA_OP(Name("OutfeedEnqueue"), OutfeedEnqueueOp);
@@ -90,7 +90,8 @@ class OutfeedEnqueueTupleOp : public XlaOpKernel {
  private:
   DataTypeVector dtypes_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(OutfeedEnqueueTupleOp);
+  OutfeedEnqueueTupleOp(const OutfeedEnqueueTupleOp&) = delete;
+  void operator=(const OutfeedEnqueueTupleOp&) = delete;
 };
 
 REGISTER_XLA_OP(Name("OutfeedEnqueueTuple"), OutfeedEnqueueTupleOp);

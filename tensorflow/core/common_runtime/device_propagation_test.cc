@@ -39,7 +39,7 @@ const char kTpu1[] = "/job:localhost/replica:0/task:0/device:TPU:1";
 const char kTpu2[] = "/job:localhost/replica:0/task:0/device:TPU:2";
 const char kGpu0[] = "/job:localhost/replica:0/task:0/device:GPU:0";
 
-bool IsTPUDevice(StringPiece device_name) {
+bool IsTPUDevice(absl::string_view device_name) {
   return absl::StrContains(device_name, "device:TPU:");
 }
 

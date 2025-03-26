@@ -13,15 +13,19 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cstdint>
 #include <memory>
+#include <string>
 #include <unordered_map>
 
+#include "absl/status/status.h"
 #include "tensorflow/c/eager/immediate_execution_tensor_handle.h"
 #include "tensorflow/c/experimental/saved_model/core/revived_types/tensorhandle_convertible.h"
 #include "tensorflow/c/experimental/saved_model/core/revived_types/tf_concrete_function.h"
 #include "tensorflow/c/experimental/saved_model/core/saved_model_utils.h"
 #include "tensorflow/c/experimental/saved_model/core/test_utils.h"
 #include "tensorflow/c/experimental/saved_model/core/tf_concrete_function_test_protos.h"
+#include "xla/tsl/protobuf/error_codes.pb.h"
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/framework/types.pb.h"
@@ -79,7 +83,7 @@ TEST_F(SavedConcreteFunctionLoadingTest, TooFewInputsInSavedConcreteFunction) {
   FunctionDef func = FuncDefWithNumInputsOutputs(2, 0);
 
   std::unique_ptr<TFConcreteFunction> result;
-  Status status =
+  absl::Status status =
       internal::LoadTFConcreteFunction(saved, &func, {}, context(), &result);
   EXPECT_EQ(status.code(), error::FAILED_PRECONDITION) << status.message();
 }
@@ -102,8 +106,8 @@ TEST_F(SavedConcreteFunctionLoadingTest,
   captures[5] = std::make_unique<DummyCapture>(context(), 10);
 
   std::unique_ptr<TFConcreteFunction> result;
-  Status status = internal::LoadTFConcreteFunction(saved, &func, captures,
-                                                   context(), &result);
+  absl::Status status = internal::LoadTFConcreteFunction(saved, &func, captures,
+                                                         context(), &result);
   EXPECT_EQ(status.code(), error::FAILED_PRECONDITION) << status.message();
 }
 
@@ -120,7 +124,7 @@ TEST_F(SavedConcreteFunctionLoadingTest, TooManyInputsInSavedConcreteFunction) {
   FunctionDef func = FuncDefWithNumInputsOutputs(2, 0);
 
   std::unique_ptr<TFConcreteFunction> result;
-  Status status =
+  absl::Status status =
       internal::LoadTFConcreteFunction(saved, &func, {}, context(), &result);
   EXPECT_EQ(status.code(), error::FAILED_PRECONDITION) << status.message();
 }
@@ -144,8 +148,8 @@ TEST_F(SavedConcreteFunctionLoadingTest,
   captures[5] = std::make_unique<DummyCapture>(context(), 10);
 
   std::unique_ptr<TFConcreteFunction> result;
-  Status status = internal::LoadTFConcreteFunction(saved, &func, captures,
-                                                   context(), &result);
+  absl::Status status = internal::LoadTFConcreteFunction(saved, &func, captures,
+                                                         context(), &result);
   EXPECT_EQ(status.code(), error::FAILED_PRECONDITION) << status.message();
 }
 
@@ -168,8 +172,8 @@ TEST_F(SavedConcreteFunctionLoadingTest, ImproperCaptureIndex) {
   captures[5] = std::make_unique<DummyCapture>(context(), 10);
 
   std::unique_ptr<TFConcreteFunction> result;
-  Status status = internal::LoadTFConcreteFunction(saved, &func, captures,
-                                                   context(), &result);
+  absl::Status status = internal::LoadTFConcreteFunction(saved, &func, captures,
+                                                         context(), &result);
   EXPECT_EQ(status.code(), error::FAILED_PRECONDITION) << status.message();
 }
 
@@ -186,7 +190,7 @@ TEST_F(SavedConcreteFunctionLoadingTest, TooFewOutputsInSavedConcreteFunction) {
   FunctionDef func = FuncDefWithNumInputsOutputs(0, 2);
 
   std::unique_ptr<TFConcreteFunction> result;
-  Status status =
+  absl::Status status =
       internal::LoadTFConcreteFunction(saved, &func, {}, context(), &result);
   EXPECT_EQ(status.code(), error::FAILED_PRECONDITION) << status.message();
 }
@@ -205,7 +209,7 @@ TEST_F(SavedConcreteFunctionLoadingTest,
   FunctionDef func = FuncDefWithNumInputsOutputs(1, 2);
 
   std::unique_ptr<TFConcreteFunction> result;
-  Status status =
+  absl::Status status =
       internal::LoadTFConcreteFunction(saved, &func, {}, context(), &result);
   EXPECT_EQ(status.code(), error::FAILED_PRECONDITION) << status.message();
 }
@@ -229,8 +233,8 @@ TEST_F(SavedConcreteFunctionLoadingTest, SuccessfulLoad) {
   captures[5] = std::make_unique<DummyCapture>(context(), 10);
 
   std::unique_ptr<TFConcreteFunction> result;
-  Status status = internal::LoadTFConcreteFunction(saved, &func, captures,
-                                                   context(), &result);
+  absl::Status status = internal::LoadTFConcreteFunction(saved, &func, captures,
+                                                         context(), &result);
   TF_EXPECT_OK(status) << status.message();
 }
 
@@ -248,7 +252,7 @@ TEST_F(SavedConcreteFunctionLoadingTest, RegistersAndRemovesFunctionDefs) {
 
   {
     std::unique_ptr<TFConcreteFunction> result;
-    Status status =
+    absl::Status status =
         internal::LoadTFConcreteFunction(saved, &func, {}, context(), &result);
     TF_EXPECT_OK(status) << status.message();
     // The function should be registered with context.

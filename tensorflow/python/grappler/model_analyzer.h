@@ -31,7 +31,8 @@ class GraphProperties;
 class ModelAnalyzer {
  public:
   explicit ModelAnalyzer(const GrapplerItem& item);
-  Status GenerateReport(bool debug, bool assume_valid_feeds, std::ostream& os);
+  absl::Status GenerateReport(bool debug, bool assume_valid_feeds,
+                              std::ostream& os);
 
  private:
   void PrintNodeInfo(const NodeDef* node, const GraphProperties& properties,

@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -14,63 +14,6 @@ limitations under the License.
 ==============================================================================*/
 
 include "mlir/Pass/PassBase.td"
-
-def SplitAllocTensorsPass :
-    Pass<"hlo-split-alloc-tensors", "mlir::func::FuncOp"> {
-  let summary = "Split bufferization.alloc_tensor ops.";
-  let description = [{
-    `bufferization.alloc_tensor` ops that are reused for non-conflicting ops
-    prevent buffer reuse. This pass replaces each use of an alloc tensor with a
-    fresh alloc.
-  }];
-  let constructor = "::mlir::deallocation::createSplitAllocTensorsPass()";
-  let dependentDialects = ["::mlir::bufferization::BufferizationDialect"];
-}
-
-def AnnotateDeallocationPass :
-    Pass<"hlo-deallocation-annotation", "mlir::ModuleOp"> {
-  let summary = "Annotate ops with deallocation debug information.";
-  let description = [{
-    Adds attributes to annotate ops with debug information about the
-    deallocation analysis.
-  }];
-  let constructor = "::mlir::deallocation::createDeallocationAnnotationPass()";
-}
-
-def DeallocatePass : Pass<"hlo-deallocate", "mlir::ModuleOp"> {
-  let summary = "Deallocate buffers by inserting `deallocation.retain` ops.";
-  let description = [{
-    Inserts deallocations (in the form of `deallocation.retain`) ops. Most
-    deallocations are typically converted to `memref.dealloc` by
-    canonicalization.
-  }];
-  let constructor = "::mlir::deallocation::createDeallocatePass()";
-  let dependentDialects = ["::mlir::deallocation::DeallocationDialect"];
-}
-
-def DeallocationSimplificationPass : Pass<"hlo-deallocation-simplification",
-    "mlir::func::FuncOp"> {
-  let summary = "Simplifies deallocation.retain ops.";
-  let constructor = "::mlir::deallocation::createDeallocationSimplificationPass()";
-  let dependentDialects = ["::mlir::deallocation::DeallocationDialect"];
-}
-
-def XlaBufferArgRewritePass :
-    Pass<"hlo-xla-buffer-arg-rewrite", "mlir::func::FuncOp"> {
-  let summary = "Rewrites XLA framework buffer arguments with alias information";
-  let description = [{
-    In the presence of variables, some results of the main function will alias
-    other parameters. This pass rewrites the main function to annotate results
-    for which this isn't the case with the `deallocation.restrict` attribute,
-    indicating that they do not alias with any other buffer and allowing the
-    buffer-reuse pass to optimize them.
-
-    The pass uses attributes present in XLA programs
-    (`xla_framework.input_mapping`, `xla_framework.result_mapping` and
-    `xla_framework.result_inner_mapping`, specifically).
-  }];
-  let constructor = "::mlir::deallocation::createXlaBufferArgRewritePass()";
-}
 
 def BufferReusePass : Pass<"hlo-buffer-reuse", "mlir::func::FuncOp"> {
   let summary = "Reuse buffers.";
@@ -93,23 +36,69 @@ def BufferReusePass : Pass<"hlo-buffer-reuse", "mlir::func::FuncOp"> {
   let dependentDialects = ["::mlir::memref::MemRefDialect"];
 }
 
-def ConvertDeallocationOpsToLLVMPass
-    : Pass<"hlo-convert-deallocation-ops-to-llvm", "mlir::func::FuncOp"> {
-  let summary = "Convert `deallocation` ops to LLVM";
-  let constructor = "::mlir::deallocation::createConvertDeallocationOpsToLLVM()";
-  let dependentDialects = [
-    "::mlir::LLVM::LLVMDialect",
-    "::mlir::memref::MemRefDialect",
-  ];
-}
-
-def DeallocationToScfPass : Pass<"hlo-deallocation-to-scf",
-                                 "mlir::func::FuncOp"> {
-  let summary = "Lowers retain to scf.";
-  let constructor = "::mlir::deallocation::createDeallocationToScfPass()";
-  let dependentDialects = [
-    "::mlir::arith::ArithDialect",
-    "::mlir::scf::SCFDialect",
-    "::mlir::memref::MemRefDialect",
-  ];
+// TODO(b/380236304): Migrate from the pass. The pass was removed from upstream in
+// https://github.com/llvm/llvm-project/commit/213917be82e3cd57c74afc836377a746be45dafd.
+def BufferDeallocation : Pass<"buffer-deallocation", "func::FuncOp"> {
+  let summary = "Adds all required dealloc operations for all allocations in "
+                "the input program";
+  let description = [{
+    This pass implements an algorithm to automatically introduce all required
+    deallocation operations for all buffers in the input program. This ensures
+    that the resulting program does not have any memory leaks.
+    Input
+    ```mlir
+    #map0 = affine_map<(d0) -> (d0)>
+    module {
+      func.func @condBranch(%arg0: i1, %arg1: memref<2xf32>, %arg2: memref<2xf32>) {
+        cf.cond_br %arg0, ^bb1, ^bb2
+      ^bb1:
+        cf.br ^bb3(%arg1 : memref<2xf32>)
+      ^bb2:
+        %0 = memref.alloc() : memref<2xf32>
+        linalg.generic {
+          indexing_maps = [#map0, #map0],
+          iterator_types = ["parallel"]} %arg1, %0 {
+        ^bb0(%gen1_arg0: f32, %gen1_arg1: f32):
+          %tmp1 = exp %gen1_arg0 : f32
+          linalg.yield %tmp1 : f32
+        }: memref<2xf32>, memref<2xf32>
+        cf.br ^bb3(%0 : memref<2xf32>)
+      ^bb3(%1: memref<2xf32>):
+        "memref.copy"(%1, %arg2) : (memref<2xf32>, memref<2xf32>) -> ()
+        return
+      }
+    }
+    ```
+    Output
+    ```mlir
+    #map0 = affine_map<(d0) -> (d0)>
+    module {
+      func.func @condBranch(%arg0: i1, %arg1: memref<2xf32>, %arg2: memref<2xf32>) {
+        cf.cond_br %arg0, ^bb1, ^bb2
+      ^bb1:  // pred: ^bb0
+        %0 = memref.alloc() : memref<2xf32>
+        memref.copy(%arg1, %0) : memref<2xf32>, memref<2xf32>
+        cf.br ^bb3(%0 : memref<2xf32>)
+      ^bb2:  // pred: ^bb0
+        %1 = memref.alloc() : memref<2xf32>
+        linalg.generic {
+          indexing_maps = [#map0, #map0],
+          iterator_types = ["parallel"]} %arg1, %1 {
+        ^bb0(%arg3: f32, %arg4: f32):
+          %4 = exp %arg3 : f32
+          linalg.yield %4 : f32
+        }: memref<2xf32>, memref<2xf32>
+        %2 = memref.alloc() : memref<2xf32>
+        memref.copy(%1, %2) : memref<2xf32>, memref<2xf32>
+        dealloc %1 : memref<2xf32>
+        cf.br ^bb3(%2 : memref<2xf32>)
+      ^bb3(%3: memref<2xf32>):  // 2 preds: ^bb1, ^bb2
+        memref.copy(%3, %arg2) : memref<2xf32>, memref<2xf32>
+        dealloc %3 : memref<2xf32>
+        return
+      }
+    }
+    ```
+  }];
+  let constructor = "::mlir::deallocation::createBufferDeallocationPass()";
 }

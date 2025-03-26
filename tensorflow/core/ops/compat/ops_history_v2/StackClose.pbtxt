@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "StackClose"
   input_arg {
     name: "handle"

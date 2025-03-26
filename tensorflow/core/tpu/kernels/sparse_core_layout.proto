@@ -1,0 +1,107 @@
+/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+==============================================================================*/
+syntax = "proto3";
+
+package tensorflow.tpu;
+
+// Sparse core lays out tables in the following fashion:
+// 1. Tables that can be stacked together are grouped into num_stacks. The
+//    number of stacks is controlled by the table properties (and some other
+//    parameters). All tables that are stacked together must have the same
+//    padded width and the same optimizer.
+// 2. Each table is padded to a certain number of rows and mod sharded into
+//    num_sparse_core shards (so we have num_tables * num_sparse_core shards).
+// 3. The shards of the tables are stacked where possible, so we now have
+//    num_stacks * num_sparse_core_shards.
+// 4. When represented in host memory, the stacks from all sparse core shards
+//    connected to each TPU are stacked again into num_stacks * num_tpu_chips
+//    shards.
+//
+// Terminology note: there are two kinds of shards here.
+//   sparse core shard: Each sparse core has its own memory, and part of each
+//     table resides there.  There are num_sparse_cores of these shards.
+//   partition: When returned to the host to save to a checkpoint, all sparse
+//     cores corresponding to a single partition concatenate their shards into a
+//     single variable. There are num_partitions of these shards. A partition
+//     usually corresponds to a single TPU chip.
+//
+// To find out which row of the saved variable corresponds to a given row of an
+// embedding table, you will need the information contained in this message. If
+// table_row is the row in the original unsharded table, then:
+//    sparse_core_shard = (row + sparse_core_shard_rotation) % num_sparse_cores
+//    sparse_cores_per_partition = num_sparse_cores / num_partitions
+//    partition = sparse_core_shard // sparse_cores_per_partition
+//    sparse_core_shard_within_partition =
+//        sparse_core_shard % sparse_cores_per_partition
+//    row_within_sparse_core_shard = row // num_sparse_cores +
+//        sparse_core_shard_row_offset
+//    row_within_partition =
+//        total_rows_per_sparse_core_shard * sparse_core_shard_within_partition
+//        + row_within_sparse_core_shard
+message SparseCoreTableLayout {
+  // An arbitrary identifier for the table (usually from the TableConfig).
+  string table_name = 1;
+
+  // The name of the stack it wound up in. The sparse core python library uses
+  // this name as a variable name.
+  string stacked_table_name = 2;
+
+  // How many sparse core shards there are.
+  int32 num_sparse_cores = 3;
+
+  // How many memory/disk shards there are.
+  int32 num_partitions = 4;
+
+  // How many rows from all stacked tables are in each sparse core shard.
+  int64 total_rows_per_sparse_core_shard = 5;
+
+  // The unsharded shape of the table, without padding.
+  repeated int64 unsharded_shape = 6 [packed = true];
+
+  // How many rows and columns after padding but before sharding. The number
+  // of padding rows is configurable and not necessarily easily predictable.
+  // Columns are usually padded up to multiples of 8 (the padding columns are
+  // added on the right).
+  repeated int64 unsharded_padded_shape = 7 [packed = true];
+
+  // Within each sparse core shard, this is the offset of the zeroeth row of
+  // this table. The row offset will be the sum of
+  // unsharded_padded_shape[0]/num_sparse_cores for all tables that precede this
+  // table in the stack; if you had all of those conveniently available, you
+  // could compute this offset from those.
+  int64 sparse_core_shard_row_offset = 8;
+
+  // It's common that row 0 of an embedding will be particularly hot. To
+  // prevent this from landing in the same sparse core shard for all tables,
+  // different tables stack rotate which sparse core they go on:
+  //    sparse_core_shard = (row + sparse_core_shard_rotation) %
+  //    num_sparse_cores
+  // Note that this is rotating around the sparse core shards, not rotating
+  // around the whole table.
+  // As of 2023, this is usually set so different tables have row 0 on different
+  // partitions.
+  //    sparse_core_shard_rotation = table_index * sparse_cores_per_partition
+  int64 sparse_core_shard_rotation = 9;
+
+  // The batch size per sparsecore for this table. This combines the batch sizes
+  // of all the features pointing to this table.
+  int64 per_sparse_core_batch_size = 10;
+  // Number of features that refer to this table.
+  int64 num_features = 11;
+}
+
+message SparseCoreTableLayouts {
+  repeated SparseCoreTableLayout tables = 1;
+}

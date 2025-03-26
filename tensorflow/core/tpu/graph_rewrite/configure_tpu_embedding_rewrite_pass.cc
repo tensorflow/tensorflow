@@ -18,14 +18,25 @@ limitations under the License.
 #include "tensorflow/core/tpu/graph_rewrite/configure_tpu_embedding_rewrite_pass.h"
 
 #include <string>
+#include <vector>
 
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "xla/status_macros.h"
-#include "tensorflow/core/common_runtime/device_set.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "tensorflow/core/common_runtime/optimization_registry.h"
+#include "tensorflow/core/framework/device.h"
+#include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/graph_node_util.h"
 #include "tensorflow/core/platform/errors.h"
-#include "tensorflow/core/platform/statusor.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/protobuf/tpu/tpu_embedding_configuration.pb.h"
 #include "tensorflow/core/tpu/graph_rewrite/distributed_tpu_rewrite_helpers.h"
 #include "tensorflow/core/tpu/tpu_embedding_configuration_proto_rewrite.h"
 #include "tensorflow/core/util/device_name_utils.h"
@@ -44,7 +55,7 @@ constexpr char kConnectHostsOp[] = "ConnectTPUEmbeddingHosts";
 constexpr char kFinalizeOp[] = "FinalizeTPUEmbedding";
 constexpr char kEmbeddingConfigurationAttr[] = "config";
 
-Status AddSynchronizationNode(
+absl::Status AddSynchronizationNode(
     const NodeDef& sync_node_def, const string& device_name,
     absl::Span<Node* const> end_nodes,
     absl::Span<const DistributedTPURewriteHelpers::OutputDependency>
@@ -73,14 +84,12 @@ Status AddSynchronizationNode(
       graph->AddEdge(sync_node, dep.src_output, dep.dst, dep.dst_input);
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status AddSetupPropagationEmbeddingNode(const string& device_name,
-                                        const string& node_name,
-                                        const string& op_name,
-                                        absl::Span<Node* const> input_nodes,
-                                        Graph* graph, Node** node) {
+absl::Status AddSetupPropagationEmbeddingNode(
+    const string& device_name, const string& node_name, const string& op_name,
+    absl::Span<Node* const> input_nodes, Graph* graph, Node** node) {
   NodeDef node_def;
   node_def.set_name(node_name);
   node_def.set_op(op_name);
@@ -96,13 +105,13 @@ Status AddSetupPropagationEmbeddingNode(const string& device_name,
   for (int i = 0; i < input_nodes.size(); ++i) {
     graph->AddEdge(input_nodes[i], 0, *node, i);
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status AddExecutePartitionerNode(const string& configuration_device_name,
-                                 const string& config,
-                                 absl::Span<Node* const> input_dependencies,
-                                 Graph* graph, Node** partitioner_node) {
+absl::Status AddExecutePartitionerNode(
+    const string& configuration_device_name, const string& config,
+    absl::Span<Node* const> input_dependencies, Graph* graph,
+    Node** partitioner_node) {
   NodeDef partitioner_def;
   partitioner_def.set_name(graph->NewName("execute_embedding_partitioner"));
   partitioner_def.set_op(kExecutePartitionerOp);
@@ -116,12 +125,12 @@ Status AddExecutePartitionerNode(const string& configuration_device_name,
     graph->AddControlEdge(src_node, *partitioner_node);
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status AddConfigureMemoryNode(const string& host_device_name,
-                              Node* partitioner_node, Graph* graph,
-                              Node** embedding_node) {
+absl::Status AddConfigureMemoryNode(const string& host_device_name,
+                                    Node* partitioner_node, Graph* graph,
+                                    Node** embedding_node) {
   NodeDef embedding_def;
   embedding_def.set_name(graph->NewName("configure_tpu_embedding_memory"));
   embedding_def.set_op(kConfigureMemoryOp);
@@ -130,12 +139,12 @@ Status AddConfigureMemoryNode(const string& host_device_name,
   TF_ASSIGN_OR_RETURN(*embedding_node, graph->AddNode(embedding_def));
   (*embedding_node)->set_assigned_device_name(host_device_name);
   graph->AddEdge(partitioner_node, 0, *embedding_node, 0);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status AddCollateMemoryNode(const string& configuration_device_name,
-                            absl::Span<Node* const> memory_nodes, Graph* graph,
-                            Node** embedding_node) {
+absl::Status AddCollateMemoryNode(const string& configuration_device_name,
+                                  absl::Span<Node* const> memory_nodes,
+                                  Graph* graph, Node** embedding_node) {
   return AddSetupPropagationEmbeddingNode(
       /*device_name=*/configuration_device_name,
       /*node_name=*/graph->NewName("collate_tpu_embedding_memory"),
@@ -144,10 +153,10 @@ Status AddCollateMemoryNode(const string& configuration_device_name,
       /*node=*/embedding_node);
 }
 
-Status AddConfigureHostNode(const string& host_device_name,
-                            const string& config, Node* partitioner_node,
-                            Node* memory_node, Graph* graph,
-                            Node** embedding_node) {
+absl::Status AddConfigureHostNode(const string& host_device_name,
+                                  const string& config, Node* partitioner_node,
+                                  Node* memory_node, Graph* graph,
+                                  Node** embedding_node) {
   NodeDef embedding_def;
   embedding_def.set_name(graph->NewName("configure_tpu_embedding_host"));
   embedding_def.set_op(kConfigureHostOp);
@@ -160,12 +169,12 @@ Status AddConfigureHostNode(const string& host_device_name,
   graph->AddEdge(partitioner_node, 0, *embedding_node, 0);
   graph->AddEdge(memory_node, 0, *embedding_node, 1);
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status AddConnectHostsNode(const string& host_device_name,
-                           absl::Span<Node* const> configure_host_nodes,
-                           Graph* graph, Node** connect_node) {
+absl::Status AddConnectHostsNode(const string& host_device_name,
+                                 absl::Span<Node* const> configure_host_nodes,
+                                 Graph* graph, Node** connect_node) {
   return AddSetupPropagationEmbeddingNode(
       /*device_name=*/host_device_name,
       /*node_name=*/graph->NewName("connect_tpu_embedding_hosts"),
@@ -174,9 +183,9 @@ Status AddConnectHostsNode(const string& host_device_name,
       /*node=*/connect_node);
 }
 
-Status AddFinalizeNode(const string& configuration_device_name,
-                       Node* partitioner_node, Node* memory_node, Graph* graph,
-                       Node** finalize_node) {
+absl::Status AddFinalizeNode(const string& configuration_device_name,
+                             Node* partitioner_node, Node* memory_node,
+                             Graph* graph, Node** finalize_node) {
   NodeDef finalize_def;
   finalize_def.set_name(graph->NewName("finalize_tpu_embedding"));
   finalize_def.set_op(kFinalizeOp);
@@ -188,12 +197,12 @@ Status AddFinalizeNode(const string& configuration_device_name,
   graph->AddEdge(partitioner_node, 0, *finalize_node, 0);
   graph->AddEdge(memory_node, 0, *finalize_node, 1);
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace
 
-Status ConfigureTPUEmbeddingRewritePass::Run(
+absl::Status ConfigureTPUEmbeddingRewritePass::Run(
     const GraphOptimizationPassOptions& options) {
   VLOG(1) << "ConfigureTPUEmbeddingRewritePass::Run";
 
@@ -216,7 +225,7 @@ Status ConfigureTPUEmbeddingRewritePass::Run(
              const std::vector<Node*>& input_dependencies,
              const std::vector<DistributedTPURewriteHelpers::OutputDependency>&
                  output_dependencies,
-             Graph* graph) -> Status {
+             Graph* graph) -> absl::Status {
             if (host_devices.empty()) {
               return errors::InvalidArgument("TPU job contains no CPU devices");
             }
@@ -224,7 +233,7 @@ Status ConfigureTPUEmbeddingRewritePass::Run(
 
             auto get_updated_device_name =
                 [](absl::string_view initial_device_name)
-                -> xla::StatusOr<std::string> {
+                -> absl::StatusOr<std::string> {
               DeviceNameUtils::ParsedName device_spec;
               TF_RET_CHECK(DeviceNameUtils::ParseFullName(initial_device_name,
                                                           &device_spec));
@@ -328,7 +337,7 @@ Status ConfigureTPUEmbeddingRewritePass::Run(
                   end_nodes, output_dependencies, graph));
             }
 
-            return OkStatus();
+            return absl::OkStatus();
           }));
 
   if (VLOG_IS_ON(1)) {
@@ -336,7 +345,7 @@ Status ConfigureTPUEmbeddingRewritePass::Run(
   }
 
   VLOG(1) << "ConfigureTPUEmbeddingRewritePass::Run() finished";
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace tensorflow

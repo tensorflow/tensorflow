@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -20,8 +20,12 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "absl/status/statusor.h"
+#include "llvm/Support/ExtensibleRTTI.h"
 #include "xla/pjrt/host_callback.h"
+#include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/host_callback.h"
+#include "xla/tsl/concurrency/ref_count.h"
 
 namespace xla {
 namespace ifrt {
@@ -51,7 +55,7 @@ class PjRtHostSendAndRecvLoadedHostCallback
 
   Client* client() const override { return client_; }
 
-  StatusOr<std::string> Serialize() const override;
+  absl::StatusOr<std::string> Serialize() const override;
 
   static char ID;  // NOLINT
 
@@ -61,6 +65,29 @@ class PjRtHostSendAndRecvLoadedHostCallback
 
   Client* client_;
   std::unique_ptr<xla::HostCallback> host_callback_;
+};
+
+// Wrapper of an opaque callable that is loaded into FFI's ExecutionContext
+// during execution.
+class PjRtFfiLoadedHostCallback
+    : public llvm::RTTIExtends<PjRtFfiLoadedHostCallback, LoadedHostCallback> {
+ public:
+  explicit PjRtFfiLoadedHostCallback(Client* client, void* callable)
+      : client_(client), callable_(callable) {}
+
+  ~PjRtFfiLoadedHostCallback() override = default;
+
+  Client* client() const override { return client_; }
+
+  void* callable() const { return callable_; };
+
+  absl::StatusOr<std::string> Serialize() const override;
+
+  static char ID;  // NOLINT
+
+ private:
+  Client* client_;
+  void* callable_;
 };
 
 }  // namespace ifrt

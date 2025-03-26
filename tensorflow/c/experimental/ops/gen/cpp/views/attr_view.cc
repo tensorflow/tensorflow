@@ -15,11 +15,16 @@ limitations under the License.
 #include "tensorflow/c/experimental/ops/gen/cpp/views/attr_view.h"
 
 #include <string>
+#include <vector>
 
+#include "absl/log/log.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/substitute.h"
 #include "tensorflow/c/experimental/ops/gen/common/case_format.h"
 #include "tensorflow/c/experimental/ops/gen/common/view_util.h"
-#include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/framework/attr_value.pb.h"
+#include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 namespace generator {

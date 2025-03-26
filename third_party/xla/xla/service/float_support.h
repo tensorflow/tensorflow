@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -22,13 +22,16 @@ limitations under the License.
 
 namespace xla {
 
-// This class has methods to query if a certain low-precision floating-point
-// type, such as bfloat16, is supported in certain instructions on a given
-// backend.
+// This class has methods to query if a certain low-precision types, such as
+// bfloat16, is supported in certain instructions on a given backend.
+// TODO(reedwm): Rename this to NumberSupport, as it supports int4 in additional
+// to float types
 class FloatSupport {
  public:
-  explicit FloatSupport(PrimitiveType low_precision_type)
-      : low_precision_type_(low_precision_type) {}
+  explicit FloatSupport(PrimitiveType low_precision_type,
+                        PrimitiveType high_precision_type = F32)
+      : low_precision_type_(low_precision_type),
+        high_precision_type_(high_precision_type) {}
   virtual ~FloatSupport() = default;
 
   // The low-precision type. Callers can use this class to query whether the
@@ -38,16 +41,7 @@ class FloatSupport {
   // A high-precision type that should be used in place of the low-precision
   // type if the backend does not support the low-precision type for a certain
   // instruction.
-  PrimitiveType HighPrecisionType() const {
-    if (low_precision_type_ == F8E5M2 || low_precision_type_ == F8E4M3FN ||
-        low_precision_type_ == F8E4M3B11FNUZ ||
-        low_precision_type_ == F8E5M2FNUZ ||
-        low_precision_type_ == F8E4M3FNUZ) {
-      return F16;
-    }
-    DCHECK_EQ(low_precision_type_, BF16);
-    return F32;
-  }
+  PrimitiveType HighPrecisionType() const { return high_precision_type_; }
 
   // Returns whether the backend supports a low-precision operand for the HLO
   // instruction at the given index.
@@ -82,6 +76,7 @@ class FloatSupport {
 
  private:
   PrimitiveType low_precision_type_;
+  PrimitiveType high_precision_type_;
 };
 
 }  // namespace xla

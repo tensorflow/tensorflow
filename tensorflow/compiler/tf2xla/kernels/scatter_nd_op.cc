@@ -13,30 +13,32 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cstdint>
 #include <functional>
 
+#include "absl/status/status.h"
 #include "tensorflow/compiler/tf2xla/lib/scatter.h"
-#include "tensorflow/compiler/tf2xla/shape_util.h"
-#include "tensorflow/compiler/tf2xla/type_util.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
-#include "xla/client/xla_builder.h"
-#include "xla/primitive_util.h"
-#include "xla/status_macros.h"
+#include "xla/hlo/builder/xla_builder.h"
 #include "xla/xla_data.pb.h"
-#include "tensorflow/core/framework/kernel_def_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/op_requires.h"
+#include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/status.h"
 
 namespace tensorflow {
 namespace {
 
 // Check whether updates.shape = indices.shape[:batch_dim] +
 // buffer_shape[num_index_dims:]
-Status ValidateUpdateShape(const TensorShape& buffer_shape,
-                           const TensorShape& indices_shape,
-                           const TensorShape& updates_shape,
-                           bool broadcast_scalar_update) {
+absl::Status ValidateUpdateShape(const TensorShape& buffer_shape,
+                                 const TensorShape& indices_shape,
+                                 const TensorShape& updates_shape,
+                                 bool broadcast_scalar_update) {
   if (indices_shape.dims() < 1) {
     return errors::InvalidArgument(
         "indices shape must have >= 1 dimension; got ",
@@ -58,7 +60,7 @@ Status ValidateUpdateShape(const TensorShape& buffer_shape,
   };
 
   if (updates_shape.dims() == 0 && broadcast_scalar_update) {
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   if (updates_shape.dims() < batch_dim) return shape_err();
@@ -81,7 +83,7 @@ Status ValidateUpdateShape(const TensorShape& buffer_shape,
       return shape_err();
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 class ScatterNdOp : public XlaOpKernel {

@@ -1,7 +1,7 @@
 """Given a .so file, lists symbols that should be included in a stub.
 
 Example usage:
-$ bazel run -c opt @local_tsl//third_party/implib_so:get_symbols
+$ bazel run -c opt @local_xla//third_party/implib_so:get_symbols
 /usr/local/cuda/lib64/libcudart.so > third_party/tsl/tsl/cuda/cudart.symbols
 """
 

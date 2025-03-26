@@ -406,7 +406,7 @@ class BatchNormalizationTest(test.TestCase):
     else:
       data_format_list = ['NCDHW', 'NDHWC']
     use_gpu_vals = [False]
-    if test.is_gpu_available(cuda_only=True) and not cpu_only:
+    if test.is_gpu_available() and not cpu_only:
       use_gpu_vals += [True]
     factors = [1.0, 0.6]
     for dtype in [np.float16, np.float32, dtypes.bfloat16.as_numpy_dtype]:
@@ -594,7 +594,7 @@ class BatchNormalizationTest(test.TestCase):
       data_format_nhwc, features_nhwc = 'NDHWC', shape[4]
       data_format_nchw, features_nchw = 'NCDHW', shape[1]
     for is_training in [True, False]:
-      if test.is_gpu_available(cuda_only=True):
+      if test.is_gpu_available():
         self._test_grad_grad(
             shape,
             dtype, [features_nhwc],

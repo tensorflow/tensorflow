@@ -18,6 +18,7 @@ limitations under the License.
 #include <algorithm>
 #include <vector>
 
+#include "xla/tsl/profiler/utils/xplane_utils.h"
 #include "tensorflow/core/framework/typed_allocator.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/mem.h"
@@ -25,9 +26,9 @@ limitations under the License.
 #include "tensorflow/core/platform/test_benchmark.h"
 #include "tensorflow/core/profiler/lib/profiler_session.h"
 #include "tensorflow/core/profiler/protobuf/memory_profile.pb.h"
-#include "tensorflow/core/profiler/protobuf/xplane.pb.h"
 #include "tensorflow/core/profiler/utils/xplane_schema.h"
 #include "tensorflow/core/profiler/utils/xplane_visitor.h"
+#include "tsl/profiler/protobuf/xplane.pb.h"
 
 namespace tensorflow {
 
@@ -225,9 +226,8 @@ TEST(CPUAllocatorTest, ProfilerReporting) {
   void* p1 = a->AllocateRaw(1, 16);
 
   // Start profiling
-  std::unique_ptr<ProfilerSession> profiler =
-      tensorflow::ProfilerSession::Create(
-          tensorflow::ProfilerSession::DefaultOptions());
+  std::unique_ptr<tsl::ProfilerSession> profiler =
+      tsl::ProfilerSession::Create(tsl::ProfilerSession::DefaultOptions());
 
   // Profiled allocations
   void* p2 = a->AllocateRaw(1, 32);
@@ -235,19 +235,19 @@ TEST(CPUAllocatorTest, ProfilerReporting) {
 
   // Get profiling results
   tensorflow::profiler::XSpace xspace;
-  EXPECT_EQ(OkStatus(), profiler->CollectData(&xspace));
+  EXPECT_EQ(absl::OkStatus(), profiler->CollectData(&xspace));
 
   // Validate the output
-  ASSERT_EQ(xspace.planes_size(), 1) << "XSpace: " << xspace.DebugString();
-  const auto& plane = xspace.planes(0);
-  ::tensorflow::profiler::XPlaneVisitor xplane(&plane);
+  const auto plane = ::tsl::profiler::FindPlaneWithName(
+      xspace, ::tensorflow::profiler::kHostThreadsPlaneName);
+  ::tensorflow::profiler::XPlaneVisitor xplane(plane);
 
-  ASSERT_EQ(plane.name(), ::tensorflow::profiler::kHostThreadsPlaneName)
+  ASSERT_EQ(plane->name(), ::tensorflow::profiler::kHostThreadsPlaneName)
       << "XSpace: " << xspace.DebugString();
-  ASSERT_EQ(plane.event_metadata_size(), 2)
+  ASSERT_EQ(plane->event_metadata_size(), 2)
       << "XSpace: " << xspace.DebugString();
 
-  const auto& line = plane.lines(0);
+  const auto& line = plane->lines(0);
   ASSERT_EQ(line.events_size(), 2) << "XSpace: " << xspace.DebugString();
   const auto& events = line.events();
 

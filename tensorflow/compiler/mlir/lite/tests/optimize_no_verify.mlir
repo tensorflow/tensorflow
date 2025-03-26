@@ -26,8 +26,8 @@ func.func @fuseBroadcastMulIntoFullyConnected(%arg0: tensor<1x10368xbf16>) -> te
   %1 = "tfl.mul"(%0, %cst_2) {fused_activation_function = "NONE"} : (tensor<1x256xbf16>, tensor<32x1x256xbf16>) -> tensor<32x1x256xbf16>
   func.return %1 : tensor<32x1x256xbf16>
 
-// CHECK:  %[[V0:.*]] = "tfl.fully_connected"(%arg0, {{.*}}) {{{.*}}} : (tensor<1x10368xbf16>, tensor<256x10368xbf16>, none) -> tensor<1x256xbf16>
-// CHECK:  %[[V1:.*]] = tfl.mul(%[[V0]], {{.*}}) {{{.*}}} : (tensor<1x256xbf16>, tensor<32x1x256xbf16>) -> tensor<32x1x256xbf16>
+// CHECK:  %[[V0:.*]] = "tfl.fully_connected"(%arg0, {{.*}}) <{{{.*}}}> : (tensor<1x10368xbf16>, tensor<256x10368xbf16>, none) -> tensor<1x256xbf16>
+// CHECK:  %[[V1:.*]] = tfl.mul(%[[V0]], {{.*}}) <{{{.*}}}> : (tensor<1x256xbf16>, tensor<32x1x256xbf16>) -> tensor<32x1x256xbf16>
 // CHECK:  return %[[V1]] : tensor<32x1x256xbf16>
 }
 

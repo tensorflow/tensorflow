@@ -19,8 +19,9 @@ limitations under the License.
 #include <utility>
 
 #include "absl/container/flat_hash_map.h"
-#include "absl/memory/memory.h"
+#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/core/c/c_api_types.h"
+#include "tensorflow/lite/schema/schema_generated.h"
 
 namespace tflite {
 namespace optimize {

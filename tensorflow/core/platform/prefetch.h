@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PLATFORM_PREFETCH_H_
 #define TENSORFLOW_CORE_PLATFORM_PREFETCH_H_
 
-#include "tsl/platform/prefetch.h"
+#include "xla/tsl/platform/prefetch.h"
 
 namespace tensorflow {
 namespace port {
@@ -24,8 +24,6 @@ namespace port {
 using ::tsl::port::prefetch;
 using ::tsl::port::PREFETCH_HINT_NTA;
 using ::tsl::port::PREFETCH_HINT_T0;
-using ::tsl::port::PREFETCH_HINT_T1;
-using ::tsl::port::PREFETCH_HINT_T2;
 using ::tsl::port::PrefetchHint;
 // NOLINTEND(misc-unused-using-decls)
 }  // namespace port

@@ -8,8 +8,6 @@ package(
 py_strict_binary(
     name = "debug_fibonacci_v2",
     srcs = ["debug_fibonacci_v2.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
     deps = [
         "//tensorflow:tensorflow_py",
         "//tensorflow/python/debug:debug_py",
@@ -21,8 +19,6 @@ py_strict_binary(
 py_strict_binary(
     name = "debug_mnist_v2",
     srcs = ["debug_mnist_v2.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
     deps = [
         "//tensorflow:tensorflow_py",
         "//tensorflow/python/debug:debug_py",

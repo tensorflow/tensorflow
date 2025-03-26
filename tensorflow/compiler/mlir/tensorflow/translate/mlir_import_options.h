@@ -49,6 +49,10 @@ struct MLIRImportOptions {
   // Load the model without restoring associated variables from disk. Enables
   // loading raw programs without checkpoints.
   bool allow_uninitialized_variables = false;
+
+  // If true, variables are imported as DenseResourceElementsAttr; else,
+  // variables are imported as DenseElementsAttr.
+  bool import_variables_as_dense_resources = false;
 };
 
 }  // namespace tensorflow

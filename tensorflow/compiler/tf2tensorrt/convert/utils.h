@@ -185,7 +185,7 @@ class DimsAdapter {
                  std::back_inserter(storage_));
   }
 
-  // Constructs explicitly specifing num_dims and storage data.
+  // Constructs explicitly specifying num_dims and storage data.
   DimsAdapter(int32_t num_dims, StorageType data)
       : num_dims_(num_dims), storage_(std::forward<StorageType>(data)) {}
 

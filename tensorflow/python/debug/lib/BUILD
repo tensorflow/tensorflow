@@ -10,13 +10,11 @@ package(
 py_strict_library(
     name = "op_callbacks_common",
     srcs = ["op_callbacks_common.py"],
-    srcs_version = "PY3",
 )
 
 py_strict_library(
     name = "check_numerics_callback",
     srcs = ["check_numerics_callback.py"],
-    srcs_version = "PY3",
     deps = [
         ":op_callbacks_common",
         ":source_utils",
@@ -37,7 +35,6 @@ py_strict_library(
 py_strict_library(
     name = "dumping_callback",
     srcs = ["dumping_callback.py"],
-    srcs_version = "PY3",
     deps = [
         ":debug_events_writer",
         ":op_callbacks_common",
@@ -62,7 +59,6 @@ py_strict_library(
 py_strict_library(
     name = "dumping_callback_test_lib",
     srcs = ["dumping_callback_test_lib.py"],
-    srcs_version = "PY3",
     deps = [
         ":check_numerics_callback",
         ":debug_events_reader",
@@ -75,18 +71,17 @@ py_strict_library(
 py_strict_library(
     name = "common",
     srcs = ["common.py"],
-    srcs_version = "PY3",
 )
 
 py_strict_library(
     name = "debug_events_reader",
     srcs = ["debug_events_reader.py"],
-    srcs_version = "PY3",
     deps = [
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python/framework:errors",
         "//tensorflow/python/framework:tensor_util",
-        "//tensorflow/python/lib/io:lib",
+        "//tensorflow/python/lib/io:file_io",
+        "//tensorflow/python/lib/io:tf_record",
         "//tensorflow/python/util:compat",
     ],
 )
@@ -94,7 +89,6 @@ py_strict_library(
 py_strict_library(
     name = "debug_events_monitors",
     srcs = ["debug_events_monitors.py"],
-    srcs_version = "PY3",
     deps = [
         "//tensorflow/core:protos_all_py",
         "//third_party/py/numpy",
@@ -104,7 +98,6 @@ py_strict_library(
 py_strict_library(
     name = "debug_events_writer",
     srcs = ["debug_events_writer.py"],
-    srcs_version = "PY3",
     deps = [
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python/client:_pywrap_debug_events_writer",
@@ -114,7 +107,6 @@ py_strict_library(
 py_strict_library(
     name = "debug_graphs",
     srcs = ["debug_graphs.py"],
-    srcs_version = "PY3",
     deps = [
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python/framework:op_def_registry",
@@ -125,10 +117,10 @@ py_strict_library(
 py_strict_library(
     name = "debug_data",
     srcs = ["debug_data.py"],
-    srcs_version = "PY3",
     visibility = [
         "//tensorflow:internal",
         "//third_party/py/tf_slim:__subpackages__",
+        "//waymo/ml/deploy/numeric_debugging:__subpackages__",
     ],
     deps = [
         ":debug_graphs",
@@ -144,7 +136,6 @@ py_strict_library(
 py_strict_library(
     name = "debug_gradients",
     srcs = ["debug_gradients.py"],
-    srcs_version = "PY3",
     deps = [
         ":debug_data",
         ":debug_graphs",
@@ -158,14 +149,11 @@ py_strict_library(
 py_strict_library(
     name = "debug_utils",
     srcs = ["debug_utils.py"],
-    srcs_version = "PY3",
 )
 
 py_strict_binary(
     name = "grpc_tensorflow_server",
     srcs = ["grpc_tensorflow_server.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
     deps = [
         ":grpc_tensorflow_server_lib",
         "//tensorflow/python/training:server_lib",
@@ -177,7 +165,6 @@ py_strict_library(
     srcs = [
         "grpc_tensorflow_server.py",
     ],
-    srcs_version = "PY3",
     deps = [
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python/platform:tf_logging",
@@ -189,7 +176,6 @@ py_strict_library(
 py_strict_library(
     name = "source_utils",
     srcs = ["source_utils.py"],
-    srcs_version = "PY3",
     deps = [
         ":profiling",
         "//third_party/py/numpy",
@@ -200,7 +186,6 @@ py_strict_library(
 py_strict_library(
     name = "source_remote",
     srcs = ["source_remote.py"],
-    srcs_version = "PY3",
     deps = [
         ":common",
         ":debug_service_pb2_grpc",
@@ -215,15 +200,12 @@ py_strict_library(
 py_strict_library(
     name = "profiling",
     srcs = ["profiling.py"],
-    srcs_version = "PY3",
 )
 
 py_strict_test(
     name = "common_test",
     size = "small",
     srcs = ["common_test.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
     deps = [
         ":common",
         "//tensorflow/python/framework:constant_op",
@@ -236,8 +218,6 @@ py_strict_test(
     name = "debug_events_monitors_test",
     size = "medium",
     srcs = ["debug_events_monitors_test.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
     tags = [
         "no_windows",  # b/142475891
     ],
@@ -265,8 +245,6 @@ py_strict_test(
     name = "debug_events_writer_test",
     size = "medium",
     srcs = ["debug_events_writer_test.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
     tags = [
         "no_windows",  # b/142475891
     ],
@@ -287,8 +265,6 @@ py_strict_test(
     name = "debug_graphs_test",
     size = "small",
     srcs = ["debug_graphs_test.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
     deps = [
         ":debug_graphs",
         "//tensorflow/python/framework:test_lib",
@@ -300,14 +276,12 @@ py_strict_test(
     name = "debug_data_test",
     size = "small",
     srcs = ["debug_data_test.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
     tags = ["no_windows"],  # TODO(b/184424727): Enable this test on Windows.
     deps = [
         ":debug_data",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python/framework:test_lib",
-        "//tensorflow/python/lib/io:lib",
+        "//tensorflow/python/lib/io:file_io",
         "//tensorflow/python/platform:client_testlib",
         "//tensorflow/python/platform:gfile",
         "//tensorflow/python/platform:test",
@@ -319,7 +293,6 @@ cuda_py_strict_test(
     name = "check_numerics_callback_test",
     size = "medium",
     srcs = ["check_numerics_callback_test.py"],
-    python_version = "PY3",
     tags = [
         "no_mac",  # TODO(b/175322370): Detected Infinity or NaN in output 0 of graph op "RealDiv"
         "no_windows",
@@ -352,7 +325,6 @@ cuda_py_strict_test(
     name = "dumping_callback_test",
     size = "medium",
     srcs = ["dumping_callback_test.py"],
-    python_version = "PY3",
     shard_count = 4,
     tags = [
         "no_windows",  # TODO(b/142475891): Enable this test on Windows.
@@ -384,7 +356,6 @@ cuda_py_strict_test(
     name = "debug_v2_ops_test",
     size = "medium",
     srcs = ["debug_v2_ops_test.py"],
-    python_version = "PY3",
     tags = ["no_windows_gpu"],
     deps = [
         ":debug_events_reader",
@@ -410,7 +381,6 @@ cuda_py_strict_test(
     name = "debug_gradients_test",
     size = "small",
     srcs = ["debug_gradients_test.py"],
-    python_version = "PY3",
     xla_enable_strict_auto_jit = False,  # Node names are different with autojit
     deps = [
         ":debug_data",
@@ -421,7 +391,7 @@ cuda_py_strict_test(
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:tensor",
         "//tensorflow/python/framework:test_lib",
-        "//tensorflow/python/lib/io:lib",
+        "//tensorflow/python/lib/io:file_io",
         "//tensorflow/python/ops:gradients_impl",
         "//tensorflow/python/ops:math_ops",
         "//tensorflow/python/ops:variables",
@@ -434,8 +404,6 @@ py_strict_test(
     name = "debug_utils_test",
     size = "small",
     srcs = ["debug_utils_test.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
     deps = [
         ":debug_utils",
         "//tensorflow/core:protos_all_py",
@@ -454,8 +422,6 @@ py_strict_test(
     name = "source_utils_test",
     size = "small",
     srcs = ["source_utils_test.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
     tags = [
         "no_windows",
     ],
@@ -468,13 +434,13 @@ py_strict_test(
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:test_lib",
-        "//tensorflow/python/lib/io:lib",
+        "//tensorflow/python/lib/io:file_io",
         "//tensorflow/python/ops:math_ops",
         "//tensorflow/python/ops:resource_variable_ops",
         "//tensorflow/python/ops:variables",
         "//tensorflow/python/ops:while_loop",
         "//tensorflow/python/platform:test",
-        "//tensorflow/python/util:tf_decorator",
+        "//tensorflow/python/util:tf_inspect",
         "//third_party/py/numpy",
     ],
 )
@@ -483,8 +449,6 @@ py_strict_test(
     name = "source_remote_test",
     size = "small",
     srcs = ["source_remote_test.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
     tags = [
         "no_windows",
         "oss_serial",
@@ -502,7 +466,7 @@ py_strict_test(
         "//tensorflow/python/ops:variables",
         "//tensorflow/python/platform:client_testlib",
         "//tensorflow/python/platform:test",
-        "//tensorflow/python/util:tf_decorator",
+        "//tensorflow/python/util:tf_inspect",
     ],
 )
 
@@ -510,8 +474,6 @@ py_strict_test(
     name = "profiling_test",
     size = "small",
     srcs = ["profiling_test.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
     deps = [
         ":profiling",
         "//tensorflow/core:protos_all_py",
@@ -523,7 +485,6 @@ py_strict_test(
 py_strict_library(
     name = "session_debug_testlib",
     srcs = ["session_debug_testlib.py"],
-    srcs_version = "PY3",
     deps = [
         ":debug_data",
         ":debug_graphs",
@@ -534,7 +495,7 @@ py_strict_library(
         "//tensorflow/python/framework:errors",
         "//tensorflow/python/framework:for_generated_wrappers",
         "//tensorflow/python/framework:test_lib",
-        "//tensorflow/python/lib/io:lib",
+        "//tensorflow/python/lib/io:file_io",
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:cond",
         "//tensorflow/python/ops:control_flow_ops",
@@ -558,7 +519,6 @@ py_strict_library(
 py_strict_library(
     name = "debug_service_pb2_grpc",
     srcs = ["debug_service_pb2_grpc.py"],
-    srcs_version = "PY3",
     deps = [
         "//tensorflow/core:protos_all_py",
         "//tensorflow/core/debug:debug_service_proto_py",
@@ -568,7 +528,6 @@ py_strict_library(
 py_strict_library(
     name = "grpc_debug_server",
     srcs = ["grpc_debug_server.py"],
-    srcs_version = "PY3",
     visibility = ["//visibility:public"],
     deps = [
         ":debug_graphs",
@@ -583,7 +542,6 @@ py_strict_library(
 py_strict_library(
     name = "grpc_debug_test_server",
     srcs = ["grpc_debug_test_server.py"],
-    srcs_version = "PY3",
     deps = [
         ":debug_data",
         ":debug_utils",
@@ -593,7 +551,7 @@ py_strict_library(
         "//tensorflow/python/client:session",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:errors",
-        "//tensorflow/python/lib/io:lib",
+        "//tensorflow/python/lib/io:file_io",
         "//tensorflow/python/ops:variables",
         "//tensorflow/python/util:compat",
         "@pypi_portpicker//:pkg",
@@ -604,7 +562,6 @@ cuda_py_strict_test(
     name = "debug_grappler_test",
     size = "small",
     srcs = ["debug_grappler_test.py"],
-    python_version = "PY3",
     xla_enable_strict_auto_jit = False,  # Tests TF:Classic implementation.
     deps = [
         ":debug_data",
@@ -613,7 +570,7 @@ cuda_py_strict_test(
         "//tensorflow/python/client:session",
         "//tensorflow/python/framework:for_generated_wrappers",
         "//tensorflow/python/framework:test_lib",
-        "//tensorflow/python/lib/io:lib",
+        "//tensorflow/python/lib/io:file_io",
         "//tensorflow/python/ops:math_ops",
         "//tensorflow/python/ops:variable_v1",
         "//tensorflow/python/ops:variables",
@@ -625,7 +582,6 @@ cuda_py_strict_test(
     name = "session_debug_file_test",
     size = "small",
     srcs = ["session_debug_file_test.py"],
-    python_version = "PY3",
     tags = ["notsan"],
     xla_enable_strict_auto_jit = False,  # Node names are different with autojit
     deps = [
@@ -637,7 +593,7 @@ cuda_py_strict_test(
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:for_generated_wrappers",
         "//tensorflow/python/framework:test_lib",
-        "//tensorflow/python/lib/io:lib",
+        "//tensorflow/python/lib/io:file_io",
         "//tensorflow/python/ops:math_ops",
         "//tensorflow/python/ops:variable_v1",
         "//tensorflow/python/platform:test",
@@ -648,7 +604,6 @@ cuda_py_strict_test(
     name = "debug_graph_reconstruction_test",
     size = "small",
     srcs = ["debug_graph_reconstruction_test.py"],
-    python_version = "PY3",
     xla_enable_strict_auto_jit = False,  # Node names are different with autojit
     deps = [
         ":debug_data",
@@ -659,7 +614,7 @@ cuda_py_strict_test(
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:test_lib",
-        "//tensorflow/python/lib/io:lib",
+        "//tensorflow/python/lib/io:file_io",
         "//tensorflow/python/ops:cond",
         "//tensorflow/python/ops:math_ops",
         "//tensorflow/python/ops:variables",
@@ -673,7 +628,6 @@ cuda_py_strict_test(
     name = "session_debug_multi_gpu_test",
     size = "small",
     srcs = ["session_debug_multi_gpu_test.py"],
-    python_version = "PY3",
     tags = [
         "no_windows",  # TODO(b/184424727): Re-enable this.
         "no_windows_gpu",
@@ -683,11 +637,11 @@ cuda_py_strict_test(
         ":debug_data",
         ":debug_utils",
         "//tensorflow/core:protos_all_py",
-        "//tensorflow/python/client",
+        "//tensorflow/python/client:device_lib",
         "//tensorflow/python/client:session",
         "//tensorflow/python/framework:for_generated_wrappers",
         "//tensorflow/python/framework:test_lib",
-        "//tensorflow/python/lib/io:lib",
+        "//tensorflow/python/lib/io:file_io",
         "//tensorflow/python/ops:math_ops",
         "//tensorflow/python/ops:variables",
         "//tensorflow/python/platform:test",

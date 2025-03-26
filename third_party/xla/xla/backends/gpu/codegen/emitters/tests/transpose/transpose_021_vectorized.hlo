@@ -1,0 +1,9 @@
+// RUN: fusion_to_mlir %s | emitters_opt -xla-gpu-test-optimize |\
+// RUN:   FileCheck %s
+// RUN: test_correctness %s
+
+fusion {
+  %input = f16[8192,64,64] parameter(0)
+  ROOT transpose = f16[8192,64,64] transpose(%input), dimensions={0,2,1}
+}
+// CHECK: xla_gpu.allocate_shared : tensor<1x64x65xf16>

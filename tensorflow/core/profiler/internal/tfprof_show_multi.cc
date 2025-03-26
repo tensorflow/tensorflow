@@ -43,9 +43,9 @@ const MultiGraphNodeProto& TFMultiShow::Show(const string& prefix,
       absl::PrintF("%s%s", prefix, ret->formatted_str);
       fflush(stdout);
     } else if (opts.output_type == kOutput[2]) {
-      Status s = WriteStringToFile(Env::Default(),
-                                   opts.output_options.at(kFileOpts[0]),
-                                   prefix + ret->formatted_str);
+      absl::Status s = WriteStringToFile(Env::Default(),
+                                         opts.output_options.at(kFileOpts[0]),
+                                         prefix + ret->formatted_str);
       if (!s.ok()) {
         absl::FPrintF(stderr, "%s\n", s.ToString());
       }
@@ -206,10 +206,10 @@ string TFMultiShow::FormatInputShapes(const MultiGraphNodeProto& proto) const {
       shape_count_vec(input_shapes_attr.begin(), input_shapes_attr.end());
   std::stable_sort(
       shape_count_vec.begin(), shape_count_vec.end(),
-      [](const std::pair<const string, std::tuple<int64, int64, int64>>& a,
-         const std::pair<const string, std::tuple<int64, int64, int64>>& b) {
-        return std::get<1>(a.second) > std::get<1>(b.second);
-      });
+      [](const std::pair<const string, std::tuple<int64_t, int64_t, int64_t>>&
+             a,
+         const std::pair<const string, std::tuple<int64_t, int64_t, int64_t>>&
+             b) { return std::get<1>(a.second) > std::get<1>(b.second); });
 
   std::vector<string> input_types;
   input_types.reserve(shape_count_vec.size());

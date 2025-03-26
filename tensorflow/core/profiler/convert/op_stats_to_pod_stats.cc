@@ -16,17 +16,20 @@ limitations under the License.
 #include "tensorflow/core/profiler/convert/op_stats_to_pod_stats.h"
 
 #include <algorithm>
+#include <initializer_list>
 #include <utility>
 #include <vector>
 
 #include "google/protobuf/any.pb.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/profiler/utils/math_utils.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/profiler/protobuf/steps_db.pb.h"
 #include "tensorflow/core/profiler/utils/diagnostics.h"
 #include "tensorflow/core/profiler/utils/event_span.h"
-#include "tensorflow/core/profiler/utils/math_utils.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -41,7 +44,8 @@ PodStatsRecord CreatePodStatsRecord(absl::string_view host_name,
   DCHECK(success);
   record.set_host_name(string(host_name));
   record.set_step_num(step_info.step_num());
-  record.set_total_duration_us(PicoToMicro(step_info.duration_ps()));
+  record.set_total_duration_us(
+      tsl::profiler::PicoToMicro(step_info.duration_ps()));
   auto& step_breakdown_map = *record.mutable_step_breakdown_us();
   std::vector<std::pair<uint64, absl::string_view>> metrics;
 
@@ -51,7 +55,7 @@ PodStatsRecord CreatePodStatsRecord(absl::string_view host_name,
     for (const auto& event_type : event_list) {
       ps += gtl::FindWithDefault(generic.type_ps(), event_type, /*value=*/0);
     }
-    step_breakdown_map[type] = PicoToMicro(ps);
+    step_breakdown_map[type] = tsl::profiler::PicoToMicro(ps);
     metrics.emplace_back(ps, GetGenericEventTypeStr(type));
   };
 

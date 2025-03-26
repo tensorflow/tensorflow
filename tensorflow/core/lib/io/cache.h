@@ -16,8 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_LIB_IO_CACHE_H_
 #define TENSORFLOW_CORE_LIB_IO_CACHE_H_
 
+#include "xla/tsl/lib/io/cache.h"
 #include "tensorflow/core/platform/stringpiece.h"
-#include "tsl/lib/io/cache.h"
 
 namespace tensorflow {
 using tsl::Slice;  // NOLINT(misc-unused-using-decls)

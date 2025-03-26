@@ -19,6 +19,7 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "absl/strings/match.h"
 #include "flatbuffers/flexbuffers.h"  // from @flatbuffers
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
@@ -71,7 +72,7 @@ class LiftFlexCustomOp : public OpRewritePattern<TFL::CustomOp> {
 
   LogicalResult matchAndRewrite(TFL::CustomOp op,
                                 PatternRewriter& rewriter) const override {
-    if (!op.getCustomCode().startswith(kFlexOpNamePrefix)) {
+    if (!op.getCustomCode().starts_with(kFlexOpNamePrefix)) {
       return failure();
     }
 
@@ -111,26 +112,12 @@ class LiftFlexCustomOp : public OpRewritePattern<TFL::CustomOp> {
     Operation* tf_op = rewriter.create(op_state);
     rewriter.replaceOp(op, tf_op->getResults());
 
-    if (isa<TF::MapDatasetOp, TF::ReduceDatasetOp>(tf_op)) {
-      constexpr StringRef kFuncAttrName = "f";
-      tf_op->setAttr(
-          kFuncAttrName,
-          tf_op->getAttr(kFuncAttrName).cast<TF::FuncAttr>().getName());
-    }
-
-    if (isa<TF::TakeWhileDatasetOp>(tf_op)) {
-      constexpr StringRef kFuncAttrName = "predicate";
-      tf_op->setAttr(
-          kFuncAttrName,
-          tf_op->getAttr(kFuncAttrName).cast<TF::FuncAttr>().getName());
-    }
-
     // Special type fixes for TF Resource Tensors that are casted to
     // Int32 tensor during MLIR->TFLite flatbuffer conversion.
     // TODO(b/146131919): correct handling of resource type
     if (auto tensor_array_v3_op = dyn_cast<TF::TensorArrayV3Op>(tf_op)) {
       Value handle = tensor_array_v3_op.getHandle();
-      auto handle_type = handle.getType().cast<TensorType>();
+      auto handle_type = mlir::cast<TensorType>(handle.getType());
       if (handle_type.getElementType().isInteger(/*width=*/32)) {
         Type resource_tensor_type =
             handle_type.clone(TF::ResourceType::get(rewriter.getContext()));
@@ -232,10 +219,14 @@ class LiftFlexCustomOp : public OpRewritePattern<TFL::CustomOp> {
     for (const auto& name_and_value : node_def.attr()) {
       const std::string& attr_name = name_and_value.first;
       const tensorflow::AttrValue& attr_value = name_and_value.second;
-      StatusOr<Attribute> mlir_attr =
+      absl::StatusOr<Attribute> mlir_attr =
           tensorflow::ConvertAttributeValue(attr_value, &builder);
       if (!mlir_attr.ok()) {
         return emitError(loc, mlir_attr.status().message());
+      }
+      if (absl::StrContains(op_name, "Dataset") &&
+          mlir::isa<TF::FuncAttr>(*mlir_attr)) {
+        mlir_attr = mlir::cast<TF::FuncAttr>(*mlir_attr).getName();
       }
       attributes.push_back(builder.getNamedAttr(attr_name, *mlir_attr));
     }
@@ -258,7 +249,7 @@ class LiftTfliteFlexOpsPass
 
     mlir::RewritePatternSet patterns(context);
     AddLiftTfliteFlexOpsPatterns(context, patterns);
-    if (failed(applyPatternsAndFoldGreedily(func, std::move(patterns)))) {
+    if (failed(applyPatternsGreedily(func, std::move(patterns)))) {
       signalPassFailure();
       return;
     }

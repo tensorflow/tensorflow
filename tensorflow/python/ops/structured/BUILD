@@ -14,7 +14,6 @@ package(
 py_strict_library(
     name = "structured",
     srcs = ["__init__.py"],
-    srcs_version = "PY3",
     tags = ["nofixdeps"],
     deps = [
         ":structured_ops",
@@ -32,13 +31,8 @@ py_strict_library(
 
 py_strict_library(
     name = "structured_tensor",
-    srcs = [
-        "structured_array_ops.py",
-        "structured_tensor.py",
-    ],
-    srcs_version = "PY3",
+    srcs = ["structured_tensor.py"],
     deps = [
-        "//tensorflow/core/config:flags_py",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:extension_type",
@@ -50,14 +44,11 @@ py_strict_library(
         "//tensorflow/python/ops:check_ops",
         "//tensorflow/python/ops:control_flow_ops",
         "//tensorflow/python/ops:math_ops",
-        "//tensorflow/python/ops:random_ops",
         "//tensorflow/python/ops/ragged:dynamic_ragged_shape",
         "//tensorflow/python/ops/ragged:ragged_factory_ops",
         "//tensorflow/python/ops/ragged:ragged_tensor",
         "//tensorflow/python/ops/ragged:row_partition",
         "//tensorflow/python/util:compat",
-        "//tensorflow/python/util:deprecation",
-        "//tensorflow/python/util:dispatch",
         "//tensorflow/python/util:nest",
         "//tensorflow/python/util:tf_export",
         "//third_party/py/numpy",
@@ -69,7 +60,6 @@ py_strict_library(
     srcs = [
         "structured_tensor_dynamic.py",
     ],
-    srcs_version = "PY3",
     deps = [
         ":structured_tensor",
         "//tensorflow/python/framework:tensor",
@@ -84,7 +74,6 @@ py_strict_library(
     srcs = [
         "structured_array_ops.py",
     ],
-    srcs_version = "PY3",
     deps = [
         ":structured_tensor",
         "//tensorflow/core/config:flags_py",
@@ -106,11 +95,13 @@ py_strict_library(
 py_strict_test(
     name = "structured_tensor_test",
     srcs = ["structured_tensor_test.py"],
-    python_version = "PY3",
     deps = [
         ":structured_array_ops",
         ":structured_tensor",
         ":structured_tensor_dynamic",
+        "@absl_py//absl/testing:parameterized",
+        # copybara:uncomment "//third_party/py/google/protobuf:use_fast_cpp_protos",
+        "//third_party/py/numpy",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
@@ -127,17 +118,17 @@ py_strict_test(
         "//tensorflow/python/ops/ragged:row_partition",
         "//tensorflow/python/platform:test",
         "//tensorflow/python/util:dispatch",
-        "//third_party/py/numpy",
-        "@absl_py//absl/testing:parameterized",
     ],
 )
 
 py_strict_test(
     name = "structured_tensor_spec_test",
     srcs = ["structured_tensor_spec_test.py"],
-    python_version = "PY3",
     deps = [
         ":structured_tensor",
+        "@absl_py//absl/testing:parameterized",
+        # copybara:uncomment "//third_party/py/google/protobuf:use_fast_cpp_protos",
+        "//third_party/py/numpy",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/framework:dtypes",
@@ -150,18 +141,17 @@ py_strict_test(
         "//tensorflow/python/ops/ragged:ragged_tensor",
         "//tensorflow/python/ops/ragged:row_partition",
         "//tensorflow/python/platform:test",
-        "//third_party/py/numpy",
-        "@absl_py//absl/testing:parameterized",
     ],
 )
 
 py_strict_test(
     name = "structured_array_ops_test",
     srcs = ["structured_array_ops_test.py"],
-    python_version = "PY3",
     deps = [
         ":structured_array_ops",
         ":structured_tensor",
+        "@absl_py//absl/testing:parameterized",
+        # copybara:uncomment "//third_party/py/google/protobuf:use_fast_cpp_protos",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:random_seed",
@@ -177,16 +167,16 @@ py_strict_test(
         "//tensorflow/python/ops/ragged:row_partition",
         "//tensorflow/python/platform:test",
         "//tensorflow/python/util:nest",
-        "@absl_py//absl/testing:parameterized",
     ],
 )
 
 py_strict_test(
     name = "structured_tensor_slice_test",
     srcs = ["structured_tensor_slice_test.py"],
-    python_version = "PY3",
     deps = [
         ":structured_tensor",
+        "@absl_py//absl/testing:parameterized",
+        # copybara:uncomment "//third_party/py/google/protobuf:use_fast_cpp_protos",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:tensor_shape",
@@ -194,6 +184,5 @@ py_strict_test(
         "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/platform:test",
-        "@absl_py//absl/testing:parameterized",
     ],
 )

@@ -89,7 +89,7 @@ TEST(SlackTest, TestFailWithoutInit) {
   GrapplerItem item;
   Slack optimizer;
   GraphDef output;
-  Status result = optimizer.Optimize(nullptr, item, &output);
+  absl::Status result = optimizer.Optimize(nullptr, item, &output);
 
   EXPECT_FALSE(result.ok());
   EXPECT_TRUE(absl::IsInvalidArgument(result));
@@ -105,7 +105,7 @@ TEST(SlackTest, TestFailWithInvalidSlackEveryParam) {
   TF_ASSERT_OK(optimizer.Init(&config));
 
   GraphDef output;
-  Status result = optimizer.Optimize(nullptr, item, &output);
+  absl::Status result = optimizer.Optimize(nullptr, item, &output);
 
   EXPECT_FALSE(result.ok());
   EXPECT_TRUE(absl::IsInvalidArgument(result));

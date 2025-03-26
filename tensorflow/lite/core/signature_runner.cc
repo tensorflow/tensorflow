@@ -15,9 +15,14 @@ limitations under the License.
 
 #include "tensorflow/lite/core/signature_runner.h"
 
+#include <cstdint>
+#include <map>
 #include <vector>
 
+#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/core/c/c_api_types.h"
+#include "tensorflow/lite/core/subgraph.h"
+#include "tensorflow/lite/internal/signature_def.h"
 
 namespace tflite {
 namespace impl {
@@ -31,6 +36,26 @@ SignatureRunner::SignatureRunner(const internal::SignatureDef* signature_def,
   }
   for (const auto& it : signature_def_->outputs) {
     output_names_.push_back(it.first.c_str());
+  }
+
+  // Create the list of input and output tensor names in the order of subgraph
+  // inputs and outputs.
+  std::map<uint32_t, const char*> inputs_reverse_map;
+  for (const auto& it : signature_def_->inputs) {
+    inputs_reverse_map[it.second] = it.first.c_str();
+  }
+  subgraph_input_names_.reserve(subgraph_->inputs().size());
+  for (int i = 0; i < subgraph_->inputs().size(); ++i) {
+    subgraph_input_names_.push_back(inputs_reverse_map[subgraph_->inputs()[i]]);
+  }
+  std::map<uint32_t, const char*> outputs_reverse_map;
+  for (const auto& it : signature_def_->outputs) {
+    outputs_reverse_map[it.second] = it.first.c_str();
+  }
+  subgraph_output_names_.reserve(subgraph_->outputs().size());
+  for (int i = 0; i < subgraph_->outputs().size(); ++i) {
+    subgraph_output_names_.push_back(
+        outputs_reverse_map[subgraph_->outputs()[i]]);
   }
 }
 
@@ -51,6 +76,30 @@ const TfLiteTensor* SignatureRunner::output_tensor(
     return nullptr;
   }
   return subgraph_->tensor(it->second);
+}
+
+TfLiteStatus SignatureRunner::SetInputBufferHandle(
+    const char* input_name, TfLiteBufferHandle buffer_handle,
+    TfLiteDelegate* delegate, bool release_existing_buffer_handle) {
+  const auto& it = signature_def_->inputs.find(input_name);
+  if (it == signature_def_->inputs.end()) {
+    subgraph_->ReportError("Input name %s was not found", input_name);
+    return kTfLiteError;
+  }
+  return subgraph_->SetBufferHandle(it->second, buffer_handle, delegate,
+                                    release_existing_buffer_handle);
+}
+
+TfLiteStatus SignatureRunner::SetOutputBufferHandle(
+    const char* output_name, TfLiteBufferHandle buffer_handle,
+    TfLiteDelegate* delegate, bool release_existing_buffer_handle) {
+  const auto& it = signature_def_->outputs.find(output_name);
+  if (it == signature_def_->outputs.end()) {
+    subgraph_->ReportError("Output name %s was not found", output_name);
+    return kTfLiteError;
+  }
+  return subgraph_->SetBufferHandle(it->second, buffer_handle, delegate,
+                                    release_existing_buffer_handle);
 }
 
 TfLiteStatus SignatureRunner::ResizeInputTensor(

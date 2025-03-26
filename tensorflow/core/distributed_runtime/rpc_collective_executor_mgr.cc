@@ -80,14 +80,14 @@ void RpcCollectiveExecutorMgr::RefreshStepIdSequenceAsync(
       gks = it->second;
     }
     gks->next_step_id_ = NewRandomStepId();
-    done(OkStatus());
+    done(absl::OkStatus());
   } else {
     WorkerInterface* wi = worker_cache_->GetOrCreateWorker(group_leader_);
     GetStepSequenceRequest* req = new GetStepSequenceRequest;
     GetStepSequenceResponse* resp = new GetStepSequenceResponse;
     req->add_graph_key(graph_key);
     wi->GetStepSequenceAsync(
-        req, resp, [this, req, resp, done](const Status& s) {
+        req, resp, [this, req, resp, done](const absl::Status& s) {
           if (!s.ok()) {
             LOG(ERROR) << "Bad response [" << s
                        << "] from GetStepSequenceAsync call to "
@@ -124,11 +124,11 @@ void RpcCollectiveExecutorMgr::GetStepSequenceAsync(
       ss->set_graph_key(graph_key);
       ss->set_next_step_id(gks->next_step_id_);
     }
-    done(OkStatus());
+    done(absl::OkStatus());
   }
 }
 
-Status RpcCollectiveExecutorMgr::UpdateStepSequences(
+absl::Status RpcCollectiveExecutorMgr::UpdateStepSequences(
     const GetStepSequenceResponse& resp) {
   mutex_lock l(sequence_mu_);
   for (const StepSequence& ss : resp.step_sequence()) {
@@ -142,7 +142,7 @@ Status RpcCollectiveExecutorMgr::UpdateStepSequences(
     }
     gks->next_step_id_ = ss.next_step_id();
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 int64_t RpcCollectiveExecutorMgr::NextStepId(int64_t graph_key) {

@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "Softsign"
   input_arg {
     name: "features"

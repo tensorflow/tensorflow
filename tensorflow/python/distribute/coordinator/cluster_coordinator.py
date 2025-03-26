@@ -955,7 +955,7 @@ class WorkerPreemptionHandler(object):
         self._worker_up_cond.wait(_WORKER_MAXIMUM_RECOVERY_SEC)
         if self._error_from_recovery:
           # TODO(yuefengz): there is only one worker that will get this error.
-          # Ideally we shuold let all workers notified by `_worker_up_cond` get
+          # Ideally we should let all workers notified by `_worker_up_cond` get
           # this error.
           try:
             raise self._error_from_recovery

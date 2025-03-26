@@ -15,11 +15,12 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/gl/gl_program.h"
 
+#include <cstdint>
 #include <string>
 #include <utility>
 #include <variant>
+#include <vector>
 
-#include "absl/types/variant.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 #include "tensorflow/lite/delegates/gpu/common/types.h"
 #include "tensorflow/lite/delegates/gpu/gl/gl_call.h"

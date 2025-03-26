@@ -60,8 +60,8 @@ class MutableHashTableOfScalars final : public LookupInterface {
     return table_.size();
   }
 
-  Status Find(OpKernelContext* ctx, const Tensor& key, Tensor* value,
-              const Tensor& default_value) override {
+  absl::Status Find(OpKernelContext* ctx, const Tensor& key, Tensor* value,
+                    const Tensor& default_value) override {
     const auto key_values = key.flat<K>();
     auto value_values = value->flat<V>();
     const auto default_flat = default_value.flat<V>();
@@ -83,10 +83,10 @@ class MutableHashTableOfScalars final : public LookupInterface {
           is_full_size_default ? default_flat(i) : default_flat(0));
     }
 
-    return OkStatus();
+    return absl::OkStatus();
   }
 
-  Status DoInsert(bool clear, const Tensor& keys, const Tensor& values) {
+  absl::Status DoInsert(bool clear, const Tensor& keys, const Tensor& values) {
     const auto key_values = keys.flat<K>();
     const auto value_values = values.flat<V>();
 
@@ -98,30 +98,30 @@ class MutableHashTableOfScalars final : public LookupInterface {
       gtl::InsertOrUpdate(&table_, SubtleMustCopyIfIntegral(key_values(i)),
                           SubtleMustCopyIfIntegral(value_values(i)));
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
-  Status Insert(OpKernelContext* ctx, const Tensor& keys,
-                const Tensor& values) override {
+  absl::Status Insert(OpKernelContext* ctx, const Tensor& keys,
+                      const Tensor& values) override {
     return DoInsert(false, keys, values);
   }
 
-  Status Remove(OpKernelContext* ctx, const Tensor& keys) override {
+  absl::Status Remove(OpKernelContext* ctx, const Tensor& keys) override {
     const auto key_values = keys.flat<K>();
 
     mutex_lock l(mu_);
     for (int64_t i = 0; i < key_values.size(); ++i) {
       table_.erase(SubtleMustCopyIfIntegral(key_values(i)));
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
-  Status ImportValues(OpKernelContext* ctx, const Tensor& keys,
-                      const Tensor& values) override {
+  absl::Status ImportValues(OpKernelContext* ctx, const Tensor& keys,
+                            const Tensor& values) override {
     return DoInsert(true, keys, values);
   }
 
-  Status ExportValues(OpKernelContext* ctx) override {
+  absl::Status ExportValues(OpKernelContext* ctx) override {
     tf_shared_lock l(mu_);
     int64_t size = table_.size();
 
@@ -132,7 +132,7 @@ class MutableHashTableOfScalars final : public LookupInterface {
     TF_RETURN_IF_ERROR(
         ctx->allocate_output("values", TensorShape({size}), &values));
     ExportKeysAndValues(keys, values);
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   DataType key_dtype() const override { return DataTypeToEnum<K>::v(); }
@@ -157,7 +157,7 @@ class MutableHashTableOfScalars final : public LookupInterface {
     return sizeof(MutableHashTableOfScalars) + ret;
   }
 
-  Status AsGraphDef(GraphDefBuilder* builder, Node** out) const override {
+  absl::Status AsGraphDef(GraphDefBuilder* builder, Node** out) const override {
     tf_shared_lock l(mu_);
     int64_t size = table_.size();
     Tensor keys(key_dtype(), TensorShape({size}));
@@ -191,7 +191,7 @@ class MutableHashTableOfScalars final : public LookupInterface {
                            .WithAttr("Tout", value_dtype()));
     *out = ops::UnaryOp("Identity", table,
                         builder->opts().WithControlInput(import_table));
-    return OkStatus();
+    return absl::OkStatus();
   }
 
  private:
@@ -231,8 +231,8 @@ class MutableHashTableOfTensors final : public LookupInterface {
     return table_.size();
   }
 
-  Status Find(OpKernelContext* ctx, const Tensor& key, Tensor* value,
-              const Tensor& default_value) override {
+  absl::Status Find(OpKernelContext* ctx, const Tensor& key, Tensor* value,
+                    const Tensor& default_value) override {
     const auto default_flat = default_value.flat_inner_dims<V, 2>();
     const auto key_values = key.flat<K>();
     auto value_values = value->flat_inner_dims<V, 2>();
@@ -264,10 +264,10 @@ class MutableHashTableOfTensors final : public LookupInterface {
       }
     }
 
-    return OkStatus();
+    return absl::OkStatus();
   }
 
-  Status DoInsert(bool clear, const Tensor& keys, const Tensor& values) {
+  absl::Status DoInsert(bool clear, const Tensor& keys, const Tensor& values) {
     const auto key_values = keys.flat<K>();
     const auto value_values = values.flat_inner_dims<V, 2>();
     int64_t value_dim = value_shape_.dim_size(0);
@@ -285,30 +285,30 @@ class MutableHashTableOfTensors final : public LookupInterface {
       gtl::InsertOrUpdate(&table_, SubtleMustCopyIfIntegral(key_values(i)),
                           value_vec);
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
-  Status Insert(OpKernelContext* ctx, const Tensor& keys,
-                const Tensor& values) override {
+  absl::Status Insert(OpKernelContext* ctx, const Tensor& keys,
+                      const Tensor& values) override {
     return DoInsert(false, keys, values);
   }
 
-  Status Remove(OpKernelContext* ctx, const Tensor& keys) override {
+  absl::Status Remove(OpKernelContext* ctx, const Tensor& keys) override {
     const auto key_values = keys.flat<K>();
 
     mutex_lock l(mu_);
     for (int64_t i = 0; i < key_values.size(); ++i) {
       table_.erase(SubtleMustCopyIfIntegral(key_values(i)));
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
-  Status ImportValues(OpKernelContext* ctx, const Tensor& keys,
-                      const Tensor& values) override {
+  absl::Status ImportValues(OpKernelContext* ctx, const Tensor& keys,
+                            const Tensor& values) override {
     return DoInsert(true, keys, values);
   }
 
-  Status ExportValues(OpKernelContext* ctx) override {
+  absl::Status ExportValues(OpKernelContext* ctx) override {
     tf_shared_lock l(mu_);
     int64_t size = table_.size();
     int64_t value_dim = value_shape_.dim_size(0);
@@ -320,7 +320,7 @@ class MutableHashTableOfTensors final : public LookupInterface {
     TF_RETURN_IF_ERROR(ctx->allocate_output(
         "values", TensorShape({size, value_dim}), &values));
     ExportKeysAndValues(keys, values);
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   DataType key_dtype() const override { return DataTypeToEnum<K>::v(); }
@@ -345,7 +345,7 @@ class MutableHashTableOfTensors final : public LookupInterface {
     return sizeof(MutableHashTableOfTensors) + ret;
   }
 
-  Status AsGraphDef(GraphDefBuilder* builder, Node** out) const override {
+  absl::Status AsGraphDef(GraphDefBuilder* builder, Node** out) const override {
     tf_shared_lock l(mu_);
     int64_t size = table_.size();
     Tensor keys(key_dtype(), TensorShape({size}));
@@ -380,7 +380,7 @@ class MutableHashTableOfTensors final : public LookupInterface {
                            .WithAttr("Tout", value_dtype()));
     *out = ops::UnaryOp("Identity", table,
                         builder->opts().WithControlInput(import_table));
-    return OkStatus();
+    return absl::OkStatus();
   }
 
  private:
@@ -496,8 +496,9 @@ class MutableDenseHashTable final : public LookupInterface {
     return num_entries_;
   }
 
-  Status Find(OpKernelContext* ctx, const Tensor& key, Tensor* value,
-              const Tensor& default_value) override TF_LOCKS_EXCLUDED(mu_) {
+  absl::Status Find(OpKernelContext* ctx, const Tensor& key, Tensor* value,
+                    const Tensor& default_value) override
+      TF_LOCKS_EXCLUDED(mu_) {
     const int64_t num_elements = (key.dims() == 0) ? 1 : key.dim_size(0);
     const int64_t key_size = key_shape_.num_elements();
     const int64_t value_size = value_shape_.num_elements();
@@ -560,11 +561,11 @@ class MutableDenseHashTable final : public LookupInterface {
         }
       }
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
-  Status Insert(OpKernelContext* ctx, const Tensor& key,
-                const Tensor& value) override TF_LOCKS_EXCLUDED(mu_) {
+  absl::Status Insert(OpKernelContext* ctx, const Tensor& key,
+                      const Tensor& value) override TF_LOCKS_EXCLUDED(mu_) {
     const int64_t batch_size = (key.dims() == 0) ? 1 : key.dim_size(0);
     if (key.NumElements() != batch_size * key_shape_.num_elements()) {
       TensorShape expected_shape({batch_size});
@@ -589,7 +590,7 @@ class MutableDenseHashTable final : public LookupInterface {
     return DoInsert(ctx, key, value, false);
   }
 
-  Status Remove(OpKernelContext* ctx, const Tensor& key) override
+  absl::Status Remove(OpKernelContext* ctx, const Tensor& key) override
       TF_LOCKS_EXCLUDED(mu_) {
     if (key.NumElements() != key.dim_size(0) * key_shape_.num_elements()) {
       TensorShape expected_shape({key.dim_size(0)});
@@ -602,8 +603,9 @@ class MutableDenseHashTable final : public LookupInterface {
     return DoRemove(ctx, key);
   }
 
-  Status ImportValues(OpKernelContext* ctx, const Tensor& keys,
-                      const Tensor& values) override TF_LOCKS_EXCLUDED(mu_) {
+  absl::Status ImportValues(OpKernelContext* ctx, const Tensor& keys,
+                            const Tensor& values) override
+      TF_LOCKS_EXCLUDED(mu_) {
     mutex_lock l(mu_);
     num_buckets_ = keys.dim_size(0);
     key_buckets_ = keys;
@@ -623,18 +625,19 @@ class MutableDenseHashTable final : public LookupInterface {
         ++num_entries_;
       }
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
-  Status ExportValues(OpKernelContext* ctx) override TF_LOCKS_EXCLUDED(mu_) {
+  absl::Status ExportValues(OpKernelContext* ctx) override
+      TF_LOCKS_EXCLUDED(mu_) {
     tf_shared_lock l(mu_);
     TF_RETURN_IF_ERROR(ctx->set_output("keys", key_buckets_));
     TF_RETURN_IF_ERROR(ctx->set_output("values", value_buckets_));
-    return OkStatus();
+    return absl::OkStatus();
   }
 
-  Status CheckKeyAndValueTensorsForImport(const Tensor& keys,
-                                          const Tensor& values) override {
+  absl::Status CheckKeyAndValueTensorsForImport(const Tensor& keys,
+                                                const Tensor& values) override {
     TF_RETURN_IF_ERROR(CheckKeyAndValueTypes(keys, values));
     TF_RETURN_IF_ERROR(CheckKeyShape(keys.shape()));
 
@@ -655,7 +658,7 @@ class MutableDenseHashTable final : public LookupInterface {
           "Expected shape ", expected_value_shape.DebugString(),
           " for value, got ", values.shape().DebugString());
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   DataType key_dtype() const override { return DataTypeToEnum<K>::v(); }
@@ -673,8 +676,8 @@ class MutableDenseHashTable final : public LookupInterface {
   }
 
  private:
-  Status DoInsert(OpKernelContext* ctx, const Tensor& key, const Tensor& value,
-                  bool ignore_empty_and_deleted_key)
+  absl::Status DoInsert(OpKernelContext* ctx, const Tensor& key,
+                        const Tensor& value, bool ignore_empty_and_deleted_key)
       TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
     const int64_t num_elements = (key.dims() == 0) ? 1 : key.dim_size(0);
     const int64_t value_size = value_shape_.num_elements();
@@ -740,10 +743,10 @@ class MutableDenseHashTable final : public LookupInterface {
         }
       }
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
-  Status DoRemove(OpKernelContext* ctx, const Tensor& key)
+  absl::Status DoRemove(OpKernelContext* ctx, const Tensor& key)
       TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
     const int64_t num_elements = key.dim_size(0);
     const int64_t key_size = key_shape_.num_elements();
@@ -791,10 +794,10 @@ class MutableDenseHashTable final : public LookupInterface {
         }
       }
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
-  Status AllocateBuckets(OpKernelContext* ctx, int64_t new_num_buckets)
+  absl::Status AllocateBuckets(OpKernelContext* ctx, int64_t new_num_buckets)
       TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
     if (new_num_buckets < 4 ||
         ((new_num_buckets & (new_num_buckets - 1)) != 0)) {
@@ -829,10 +832,10 @@ class MutableDenseHashTable final : public LookupInterface {
         value_buckets_matrix(i, j) = V();
       }
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
-  Status Rebucket(OpKernelContext* ctx, int64_t num_new_buckets)
+  absl::Status Rebucket(OpKernelContext* ctx, int64_t num_new_buckets)
       TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
     Tensor old_key_buckets = key_buckets_;
     Tensor old_value_buckets = value_buckets_;
@@ -889,7 +892,7 @@ class LookupTableOpKernel : public OpKernel {
                                                             : DT_STRING_REF) {}
 
  protected:
-  Status GetTable(OpKernelContext* ctx, lookup::LookupInterface** table) {
+  absl::Status GetTable(OpKernelContext* ctx, lookup::LookupInterface** table) {
     if (expected_input_0_ == DT_RESOURCE) {
       return GetResourceLookupTable("table_handle", ctx, table);
     } else {

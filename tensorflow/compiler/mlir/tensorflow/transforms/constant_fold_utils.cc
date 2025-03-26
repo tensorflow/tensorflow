@@ -25,11 +25,12 @@ limitations under the License.
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/IR/Operation.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_traits.h"
-#include "tensorflow/compiler/mlir/tensorflow/translate/export_tf_dialect_op.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_tensor.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/translate_utils.h"
 #include "tensorflow/core/tfrt/fallback/fallback_state.h"
 #include "tensorflow/core/tfrt/fallback/op_kernel_runner.h"
 
@@ -39,7 +40,7 @@ namespace TF {
 using tensorflow::tfrt_stub::FallbackState;
 using tensorflow::tfrt_stub::OpKernelRunner;
 
-static bool IsOk(const tensorflow::Status& s) {
+static bool IsOk(const absl::Status& s) {
   if (s.ok()) return true;
   VLOG(2) << s.message();
   return false;
@@ -65,8 +66,8 @@ bool CanBeFolded(Operation* inst) {
   // This creates opaque variant constants which lose information and would
   // require "raising" later.
   for (const Type type : inst->getResultTypes()) {
-    if (const TensorType tensor_type = type.dyn_cast<TensorType>()) {
-      if (tensor_type.getElementType().isa<VariantType>()) {
+    if (const TensorType tensor_type = mlir::dyn_cast<TensorType>(type)) {
+      if (mlir::isa<VariantType>(tensor_type.getElementType())) {
         return false;
       }
     }
@@ -134,7 +135,7 @@ LogicalResult EvaluateOperation(Operation* inst,
       node_def->get()->op(), node_def->get()->name(), host_cpu, operands.size(),
       [&](tensorflow::AttrValueMap* attr_value_map) {
         *attr_value_map = node_def->get()->attr();
-        return tensorflow::OkStatus();
+        return absl::OkStatus();
       },
       fallback_state.device_manager(),
       fallback_state.process_function_library_runtime());

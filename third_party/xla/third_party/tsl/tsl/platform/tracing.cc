@@ -51,7 +51,7 @@ uint64 GetUniqueArg() {
   return unique_arg.fetch_add(1, std::memory_order_relaxed);
 }
 
-uint64 GetArgForName(StringPiece name) {
+uint64 GetArgForName(absl::string_view name) {
   return Hash64(name.data(), name.size());
 }
 

@@ -31,7 +31,8 @@ typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
 
 template <typename Device>
-Status ZerosLikeTensor(OpKernelContext* ctx, const Tensor& x, Tensor* out) {
+absl::Status ZerosLikeTensor(OpKernelContext* ctx, const Tensor& x,
+                             Tensor* out) {
   AllocatorAttributes attr;
   if (x.dtype() == DT_VARIANT) {
     attr.set_on_host(true);
@@ -65,19 +66,19 @@ Status ZerosLikeTensor(OpKernelContext* ctx, const Tensor& x, Tensor* out) {
           "Trying to compute zeros_like for unsupported dtype ",
           DataTypeString(out->dtype()));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 template <typename Device>
-Status BinaryAddTensors(OpKernelContext* ctx, const Tensor& a, const Tensor& b,
-                        Tensor* out) {
+absl::Status BinaryAddTensors(OpKernelContext* ctx, const Tensor& a,
+                              const Tensor& b, Tensor* out) {
   if (a.dtype() == DT_INVALID) {
     *out = b;
-    return OkStatus();
+    return absl::OkStatus();
   }
   if (b.dtype() == DT_INVALID) {
     *out = a;
-    return OkStatus();
+    return absl::OkStatus();
   }
   if (a.dtype() != b.dtype()) {
     return errors::InvalidArgument(
@@ -120,7 +121,7 @@ Status BinaryAddTensors(OpKernelContext* ctx, const Tensor& a, const Tensor& b,
       return errors::InvalidArgument("Trying to add unsupported dtype ",
                                      out->dtype());
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace tensorflow

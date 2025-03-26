@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/arg_ret_placement.h"
 #include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/framework/function.h"
+#include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/graph_partition.h"
@@ -35,7 +36,7 @@ namespace {
 
 // A helper to partiton a `graph` given a `device_set` and a `graph`.
 // `partitions` maps device names to the graphdef assigned to that device.
-Status PartitionFunctionGraph(
+absl::Status PartitionFunctionGraph(
     const DeviceSet& device_set, Graph* graph,
     std::unordered_map<string, GraphDef>* partitions,
     std::function<string(const Node*)> node_to_loc,
@@ -67,6 +68,7 @@ Status PartitionFunctionGraph(
   };
   partition_options.control_flow_added = false;
   partition_options.get_tensor_name_attr = get_tensor_name_attr;
+  partition_options.can_make_destructive_changes = true;
 
   return Partition(partition_options, graph, partitions);
 }
@@ -80,7 +82,7 @@ constexpr char kTensorNameAttr[] = "tensor_name";
 
 // Adds a dependency to each pair of matching Send/Recv ops to make the
 // dependency explicit.
-Status MakeSendRecvDependencyExplicit(Graph* graph) {
+absl::Status MakeSendRecvDependencyExplicit(Graph* graph) {
   // Find all matching Send/Recv pairs.
   absl::flat_hash_map<std::string, SendRecvPair> send_recv_pairs;
   for (Node* node : graph->op_nodes()) {
@@ -108,12 +110,12 @@ Status MakeSendRecvDependencyExplicit(Graph* graph) {
     }
     graph->AddControlEdge(send_recv_pair.send_node, send_recv_pair.recv_node);
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace
 
-Status PartitionFunctionGraph(
+absl::Status PartitionFunctionGraph(
     const DeviceSet& device_set, std::unique_ptr<Graph> graph,
     std::unordered_map<string, std::unique_ptr<Graph>>* subgraphs,
     std::function<string(const Edge*)> get_tensor_name_attr) {
@@ -122,12 +124,14 @@ Status PartitionFunctionGraph(
       PartitionFunctionGraph(device_set, graph.get(), &partitions,
                              /*node_to_loc=*/nullptr, get_tensor_name_attr));
 
+  const OpRegistryInterface* default_registry =
+      graph->flib_def().default_registry();
+  graph.reset();
   for (auto& partition : partitions) {
     const string& device = partition.first;
     GraphDef& graph_def = partition.second;
     // Each partition gets a new graph.
-    std::unique_ptr<Graph> subgraph(
-        new Graph(graph->flib_def().default_registry()));
+    auto subgraph = std::make_unique<Graph>(default_registry);
     GraphConstructorOptions opts;
     opts.allow_internal_ops = true;
     opts.expect_device_spec = true;
@@ -136,10 +140,10 @@ Status PartitionFunctionGraph(
     subgraphs->emplace(device, std::move(subgraph));
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-StatusOr<std::unique_ptr<Graph>> InsertTransferOps(
+absl::StatusOr<std::unique_ptr<Graph>> InsertTransferOps(
     const DeviceSet& device_set, std::unique_ptr<Graph> graph) {
   // Skip transfer op insertion if the graph nodes are not assigned to multiple
   // devices.
@@ -195,7 +199,7 @@ StatusOr<std::unique_ptr<Graph>> InsertTransferOps(
   return std::move(new_graph);
 }
 
-Status UpdateArgAndRetvalMetadata(
+absl::Status UpdateArgAndRetvalMetadata(
     Graph* graph, std::vector<FunctionArgIndex>* arg_indices,
     std::vector<int>* ret_indices,
     std::vector<AllocatorAttributes>* arg_alloc_attrs,
@@ -259,7 +263,7 @@ Status UpdateArgAndRetvalMetadata(
         ret_nodes, ints_on_device, *ret_alloc_attrs));
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 string FunctionNameGenerator::GetName() {

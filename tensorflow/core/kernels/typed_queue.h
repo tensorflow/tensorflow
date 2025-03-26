@@ -36,7 +36,7 @@ class TypedQueue : public QueueBase {
              const std::vector<TensorShape>& component_shapes,
              const string& name);
 
-  virtual Status Initialize();  // Must be called before any other method.
+  virtual absl::Status Initialize();  // Must be called before any other method.
 
   int64_t MemoryUsed() const override;
 
@@ -51,7 +51,7 @@ TypedQueue<SubQueue>::TypedQueue(
     : QueueBase(capacity, component_dtypes, component_shapes, name) {}
 
 template <typename SubQueue>
-Status TypedQueue<SubQueue>::Initialize() {
+absl::Status TypedQueue<SubQueue>::Initialize() {
   if (component_dtypes_.empty()) {
     return errors::InvalidArgument("Empty component types for queue ", name_);
   }
@@ -68,7 +68,7 @@ Status TypedQueue<SubQueue>::Initialize() {
   for (int i = 0; i < num_components(); ++i) {
     queues_.push_back(SubQueue());
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 template <typename SubQueue>

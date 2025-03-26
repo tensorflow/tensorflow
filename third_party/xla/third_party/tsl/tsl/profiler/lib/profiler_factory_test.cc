@@ -17,9 +17,10 @@ limitations under the License.
 #include <functional>
 #include <utility>
 
-#include "tsl/platform/macros.h"
-#include "tsl/platform/status.h"
-#include "tsl/platform/test.h"
+#include "absl/memory/memory.h"
+#include "absl/status/status.h"
+#include "xla/tsl/platform/macros.h"
+#include "xla/tsl/platform/test.h"
 #include "tsl/profiler/lib/profiler_interface.h"
 #include "tsl/profiler/protobuf/profiler_options.pb.h"
 #include "tsl/profiler/protobuf/xplane.pb.h"
@@ -30,10 +31,10 @@ namespace {
 
 class TestProfiler : public ProfilerInterface {
  public:
-  Status Start() override { return OkStatus(); }
-  Status Stop() override { return OkStatus(); }
-  Status CollectData(tensorflow::profiler::XSpace*) override {
-    return OkStatus();
+  absl::Status Start() override { return absl::OkStatus(); }
+  absl::Status Stop() override { return absl::OkStatus(); }
+  absl::Status CollectData(tensorflow::profiler::XSpace*) override {
+    return absl::OkStatus();
   }
 };
 

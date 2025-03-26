@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_LIB_MONITORING_COLLECTION_REGISTRY_H_
 #define TENSORFLOW_CORE_LIB_MONITORING_COLLECTION_REGISTRY_H_
 
-#include "tsl/lib/monitoring/collection_registry.h"
+#include "xla/tsl/lib/monitoring/collection_registry.h"
 // clang-format off
 // Required for IS_MOBILE_PLATFORM
 #include "tensorflow/core/platform/platform.h"

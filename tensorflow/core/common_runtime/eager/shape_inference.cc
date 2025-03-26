@@ -25,16 +25,16 @@ limitations under the License.
 namespace tensorflow {
 namespace eager {
 
-Status RunShapeInference(const NodeDef& ndef,
-                         const FunctionLibraryDefinition& lib_def,
-                         const gtl::InlinedVector<TensorHandle*, 4>& inputs,
-                         const gtl::InlinedVector<TensorHandle*, 2>& retvals) {
+absl::Status RunShapeInference(
+    const NodeDef& ndef, const FunctionLibraryDefinition& lib_def,
+    const absl::InlinedVector<TensorHandle*, 4UL>& inputs,
+    const absl::InlinedVector<TensorHandle*, 2UL>& retvals) {
   const tensorflow::OpRegistrationData* op_reg_data;
   // TODO(b/141209983): Consider adding a shape inference cache.
   // FunctionLibraryDefinition::LookUp delegates to global OpRegistry
   // if op is not a function.
   TF_RETURN_IF_ERROR(lib_def.LookUp(ndef.op(), &op_reg_data));
-  if (op_reg_data->shape_inference_fn == nullptr) return OkStatus();
+  if (op_reg_data->shape_inference_fn == nullptr) return absl::OkStatus();
 
   shape_inference::InferenceContext ic(
       TF_GRAPH_DEF_VERSION, ndef, op_reg_data->op_def,
@@ -52,7 +52,7 @@ Status RunShapeInference(const NodeDef& ndef,
     retvals[i]->SetInferenceShape(&ic, shape_handle);
   }
   // TODO(slebedev): populate TensorHandle::handle_dtypes_and_shapes.
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace eager

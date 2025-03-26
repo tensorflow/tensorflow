@@ -15,6 +15,9 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_EXPERIMENTAL_ACCELERATION_MINI_BENCHMARK_C_C_API_H_
 #define TENSORFLOW_LITE_EXPERIMENTAL_ACCELERATION_MINI_BENCHMARK_C_C_API_H_
 
+/// For documentation, see
+/// third_party/tensorflow/lite/core/experimental/acceleration/mini_benchmark/c/c_api.h
+
 #include "tensorflow/lite/core/experimental/acceleration/mini_benchmark/c/c_api.h"  // IWYU pragma: export
 
 #endif  // TENSORFLOW_LITE_EXPERIMENTAL_ACCELERATION_MINI_BENCHMARK_C_C_API_H_

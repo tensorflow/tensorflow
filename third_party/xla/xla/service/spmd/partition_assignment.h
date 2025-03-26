@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -19,8 +19,11 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 
+#include "absl/container/flat_hash_set.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_module.h"
-#include "xla/service/hlo_pass_interface.h"
+#include "xla/hlo/pass/hlo_pass_interface.h"
 
 namespace xla {
 
@@ -57,7 +60,7 @@ class PartitioningAlgorithm {
   int64_t num_partitions() const;
 
   // Assigns shardings to the given module.
-  virtual StatusOr<bool> Run(HloModule* module) const = 0;
+  virtual absl::StatusOr<bool> Run(HloModule* module) const = 0;
 
  protected:
   // Internal constructor for a given algorithm kind. Other fields must be
@@ -78,7 +81,7 @@ class NoopPartitioning : public PartitioningAlgorithm {
   explicit NoopPartitioning(int64_t num_partitions);
 
   // Assigns shardings to the given module.
-  StatusOr<bool> Run(HloModule* module) const override;
+  absl::StatusOr<bool> Run(HloModule* module) const override;
 };
 
 // PartitionAssignment assigns sharding annotations to some HLOs in the given
@@ -100,7 +103,7 @@ class PartitionAssignment : public HloModulePass {
 
   // Runs the pass.
   using HloPassInterface::Run;
-  StatusOr<bool> Run(
+  absl::StatusOr<bool> Run(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 

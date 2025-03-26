@@ -46,7 +46,8 @@ class MatrixSquareRootOp : public LinearAlgebraOp<Scalar> {
   }
 
  private:
-  TF_DISALLOW_COPY_AND_ASSIGN(MatrixSquareRootOp);
+  MatrixSquareRootOp(const MatrixSquareRootOp&) = delete;
+  void operator=(const MatrixSquareRootOp&) = delete;
 };
 
 REGISTER_LINALG_OP("MatrixSquareRoot", (MatrixSquareRootOp<float>), float);

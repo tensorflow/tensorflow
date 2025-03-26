@@ -112,7 +112,7 @@ void CastOpBase::Compute(OpKernelContext* ctx) {
   }
 }
 
-Status CastOpBase::Unimplemented() {
+absl::Status CastOpBase::Unimplemented() {
   return errors::Unimplemented("Cast ", DataTypeString(external_src_dtype_),
                                " to ", DataTypeString(external_dst_dtype_),
                                " is not supported");
@@ -122,10 +122,10 @@ CpuCastOp::CpuCastOp(OpKernelConstruction* ctx) : CastOpBase(ctx) {
   OP_REQUIRES_OK(ctx, Prepare());
 }
 
-Status CpuCastOp::Prepare() {
+absl::Status CpuCastOp::Prepare() {
   if (external_src_dtype_ == external_dst_dtype_) {
     work_ = nullptr;  // Identity
-    return OkStatus();
+    return absl::OkStatus();
   }
   if (src_dtype_ == DT_BOOL) {
     work_ = GetCpuCastFromBool(dst_dtype_);
@@ -172,7 +172,7 @@ Status CpuCastOp::Prepare() {
   // vectorized versions (not the least based on F16C for Haswell
   // or newer).
 
-  return work_ == nullptr ? Unimplemented() : OkStatus();
+  return work_ == nullptr ? Unimplemented() : absl::OkStatus();
 }
 
 #if (defined(GOOGLE_CUDA) && GOOGLE_CUDA) || \

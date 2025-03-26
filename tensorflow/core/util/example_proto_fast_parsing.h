@@ -42,8 +42,8 @@ namespace example {
 // in Example.
 struct FastParseExampleConfig {
   struct Dense {
-    Dense(StringPiece feature_name, DataType dtype, PartialTensorShape shape,
-          Tensor default_value, bool variable_length,
+    Dense(absl::string_view feature_name, DataType dtype,
+          PartialTensorShape shape, Tensor default_value, bool variable_length,
           std::size_t elements_per_stride)
         : feature_name(feature_name),  // TODO(mrry): Switch to preallocated
                                        // tstring when this is available.
@@ -66,7 +66,7 @@ struct FastParseExampleConfig {
   };
 
   struct Sparse {
-    Sparse(StringPiece feature_name, DataType dtype)
+    Sparse(absl::string_view feature_name, DataType dtype)
         : feature_name(feature_name),  // TODO(mrry): Switch to preallocated
                                        // tstring when this is available.
           dtype(dtype) {}
@@ -77,7 +77,8 @@ struct FastParseExampleConfig {
   };
 
   struct Ragged {
-    Ragged(StringPiece feature_name, DataType dtype, DataType splits_dtype)
+    Ragged(absl::string_view feature_name, DataType dtype,
+           DataType splits_dtype)
         : feature_name(feature_name),  // TODO(mrry): Switch to preallocated
                                        // tstring when this is available.
           dtype(dtype),
@@ -134,28 +135,29 @@ struct Result {
 // according to given config.
 // Given example names have to either be empty or the same size as serialized.
 // example_names are used only for error messages.
-Status FastParseExample(const FastParseExampleConfig& config,
-                        gtl::ArraySlice<tstring> serialized,
-                        gtl::ArraySlice<tstring> example_names,
-                        thread::ThreadPool* thread_pool, Result* result);
+absl::Status FastParseExample(const FastParseExampleConfig& config,
+                              absl::Span<const tstring> serialized,
+                              absl::Span<const tstring> example_names,
+                              thread::ThreadPool* thread_pool, Result* result);
 
 // TODO(mrry): Move the hash table construction into the config object.
 typedef FastParseExampleConfig FastParseSingleExampleConfig;
 
-Status FastParseSingleExample(const FastParseSingleExampleConfig& config,
-                              StringPiece serialized, Result* result);
+absl::Status FastParseSingleExample(const FastParseSingleExampleConfig& config,
+                                    absl::string_view serialized,
+                                    Result* result);
 
 // Parses a batch of serialized SequenceExample protos and converts them into
 // result according to given config.
 // Given example names have to either be empty or the same size as serialized.
 // example_names are used only for error messages.
 // (If batch=true, then this parses a single SequenceExample.)
-Status FastParseSequenceExample(
+absl::Status FastParseSequenceExample(
     const example::FastParseExampleConfig& context_config,
     const example::FastParseExampleConfig& sequence_config,
-    gtl::ArraySlice<tstring> serialized, gtl::ArraySlice<tstring> example_names,
-    thread::ThreadPool* thread_pool, example::Result* context_result,
-    example::Result* sequence_result,
+    absl::Span<const tstring> serialized,
+    absl::Span<const tstring> example_names, thread::ThreadPool* thread_pool,
+    example::Result* context_result, example::Result* sequence_result,
     std::vector<Tensor>* dense_feature_lengths, bool is_batch = true);
 
 // This function parses serialized Example and populates given example.

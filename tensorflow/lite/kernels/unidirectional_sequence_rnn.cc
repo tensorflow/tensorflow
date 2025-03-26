@@ -405,7 +405,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
                         accum_scratch, row_sums, &op_data->compute_row_sums);
     }
     default:
-      TF_LITE_KERNEL_LOG(context, "Type %d not currently supported.",
+      TF_LITE_KERNEL_LOG(context, "Type %s not currently supported.",
                          TfLiteTypeGetName(input_weights->type));
       return kTfLiteError;
   }

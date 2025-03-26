@@ -263,7 +263,7 @@ TEST(ReplicatePerReplicaNodesTest, NestedFunctions) {
   TF_ASSERT_OK(NodeDefBuilder("func", "Func", &flib_def)
                    .Input(arg.name(), 0, DT_RESOURCE)
                    .Finalize(&def));
-  Status status;
+  absl::Status status;
   Node* func = scope.graph()->AddNode(def, &status);
   TF_ASSERT_OK(status);
   scope.graph()->AddEdge(arg.node(), 0, func, 0);

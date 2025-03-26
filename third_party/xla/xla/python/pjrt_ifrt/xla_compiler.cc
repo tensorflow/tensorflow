@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -26,7 +26,7 @@ limitations under the License.
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/python/ifrt/serdes.h"
 #include "xla/python/pjrt_ifrt/xla_compiler.pb.h"
-#include "tsl/platform/statusor.h"
+#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace ifrt {
@@ -40,7 +40,8 @@ class XlaCompileOptionsSerDes
     return "xla::ifrt::XlaCompileOptions";
   }
 
-  absl::StatusOr<std::string> Serialize(Serializable& serializable) override {
+  absl::StatusOr<std::string> Serialize(
+      Serializable& serializable, std::unique_ptr<SerializeOptions>) override {
     const auto& options = llvm::cast<XlaCompileOptions>(serializable);
 
     XlaCompileOptionsProto proto;
@@ -82,11 +83,10 @@ bool register_xla_compile_options_serdes = ([]{
 
 }  // namespace
 
-char XlaProgram::ID = 0;
 char XlaCompileOptions::ID = 0;
 char XlaDeserializeExecutableOptions::ID = 0;
 
-StatusOr<std::unique_ptr<XlaCompileOptions>> GetXlaCompileOptions(
+absl::StatusOr<std::unique_ptr<XlaCompileOptions>> GetXlaCompileOptions(
     std::unique_ptr<CompileOptions> options) {
   if (!llvm::isa<XlaCompileOptions>(options.get())) {
     return xla::InvalidArgument("options must be XlaCompileOptions");
@@ -95,7 +95,7 @@ StatusOr<std::unique_ptr<XlaCompileOptions>> GetXlaCompileOptions(
       static_cast<XlaCompileOptions*>(options.release()));
 }
 
-StatusOr<std::unique_ptr<XlaDeserializeExecutableOptions>>
+absl::StatusOr<std::unique_ptr<XlaDeserializeExecutableOptions>>
 GetXlaDeserializeExecutableOptions(
     std::unique_ptr<DeserializeExecutableOptions> options) {
   if (!llvm::isa<XlaDeserializeExecutableOptions>(options.get())) {

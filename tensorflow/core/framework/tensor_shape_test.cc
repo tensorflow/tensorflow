@@ -18,6 +18,7 @@ limitations under the License.
 #include <cstdint>
 #include <limits>
 
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/random/simple_philox.h"
@@ -28,7 +29,6 @@ limitations under the License.
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
-#include "tsl/lib/core/status_test_util.h"
 
 namespace tensorflow {
 class TensorShapeTestHelper {
@@ -427,7 +427,7 @@ TEST(TensorShapeTest, ostream) {
 
 TEST(TensorShapeTest, AddDimWithStatus) {
   TensorShape s({10, 5, 20});
-  Status status = s.AddDimWithStatus(400);
+  absl::Status status = s.AddDimWithStatus(400);
   EXPECT_TRUE(status.ok());
   EXPECT_EQ(400000, s.num_elements());
   ASSERT_EQ(4, s.dims());
@@ -458,7 +458,7 @@ TEST(TensorShapeTest, AppendShapeWithStatus) {
 
 TEST(TensorShapeTest, Factory) {
   TensorShape s;
-  Status status = TensorShape::BuildTensorShapeBase({10, 5, 20}, &s);
+  absl::Status status = TensorShape::BuildTensorShapeBase({10, 5, 20}, &s);
   EXPECT_TRUE(status.ok());
   EXPECT_EQ(1000, s.num_elements());
   ASSERT_EQ(3, s.dims());
@@ -531,9 +531,9 @@ class TensorShapeOld {
  public:
   /// \brief Construct a `TensorShape` from the provided sizes.
   /// REQUIRES: `dim_sizes[i] >= 0`
-  explicit TensorShapeOld(gtl::ArraySlice<int64_t> dim_sizes);
+  explicit TensorShapeOld(absl::Span<const int64_t> dim_sizes);
   TensorShapeOld(std::initializer_list<int64_t> dim_sizes)
-      : TensorShapeOld(gtl::ArraySlice<int64_t>(dim_sizes)) {}
+      : TensorShapeOld(absl::Span<const int64_t>(dim_sizes)) {}
 
   /// REQUIRES: `IsValid(proto)`
   explicit TensorShapeOld(const TensorShapeProto& proto);
@@ -547,7 +547,7 @@ class TensorShapeOld {
 
   /// Returns `OK` iff `proto` is a valid tensor shape, and a descriptive error
   /// status otherwise.
-  static Status IsValidShape(const TensorShapeProto& proto);
+  static absl::Status IsValidShape(const TensorShapeProto& proto);
 
   /// Clear a tensor shape
   void Clear();
@@ -587,7 +587,7 @@ class TensorShapeOld {
   }
 
   /// Returns sizes of all dimensions.
-  gtl::ArraySlice<int64_t> dim_sizes() const { return dim_sizes_; }
+  absl::Span<const int64_t> dim_sizes() const { return dim_sizes_; }
 
   /// \brief Returns the number of elements in the tensor.
   ///
@@ -629,7 +629,7 @@ class TensorShapeOld {
 
   // TODO(josh11b): Maybe use something from the Eigen Tensor library
   // for the sizes.
-  gtl::InlinedVector<int64_t, 4> dim_sizes_;
+  absl::InlinedVector<int64_t, 4UL> dim_sizes_;
 
   // total number of elements (avoids recomputing it each time).
   int64_t num_elements_;
@@ -675,7 +675,7 @@ bool TensorShapeOld::IsValid(const TensorShapeProto& proto) {
   return true;
 }
 
-Status TensorShapeOld::IsValidShape(const TensorShapeProto& proto) {
+absl::Status TensorShapeOld::IsValidShape(const TensorShapeProto& proto) {
   int64_t num_elements = 1;
   for (const auto& d : proto.dim()) {
     if (d.size() < 0) {
@@ -690,7 +690,7 @@ Status TensorShapeOld::IsValidShape(const TensorShapeProto& proto) {
                                      " entries)");
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 TensorShapeOld::TensorShapeOld(const TensorShapeProto& proto) {
@@ -701,7 +701,7 @@ TensorShapeOld::TensorShapeOld(const TensorShapeProto& proto) {
   }
 }
 
-TensorShapeOld::TensorShapeOld(gtl::ArraySlice<int64_t> dim_sizes) {
+TensorShapeOld::TensorShapeOld(absl::Span<const int64_t> dim_sizes) {
   dim_sizes_.reserve(dim_sizes.size());
   num_elements_ = 1;
   for (auto s : dim_sizes) {
@@ -793,7 +793,7 @@ TensorShapeIterOld TensorShapeOld::end() const {
 
 string TensorShapeOld::DebugString() const {
   return strings::StrCat(
-      "[", absl::StrJoin(gtl::ArraySlice<int64_t>(dim_sizes_), ","), "]");
+      "[", absl::StrJoin(absl::Span<const int64_t>(dim_sizes_), ","), "]");
 }
 
 string TensorShapeOld::DebugString(const TensorShapeProto& proto) {

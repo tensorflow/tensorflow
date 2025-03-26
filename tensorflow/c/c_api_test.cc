@@ -23,8 +23,10 @@ limitations under the License.
 
 #include "tensorflow/c/c_api_internal.h"
 #include "tensorflow/c/c_test_util.h"
+#include "tensorflow/c/tf_buffer.h"
 #include "tensorflow/c/tf_buffer_internal.h"
 #include "tensorflow/c/tf_status.h"
+#include "tensorflow/c/tf_tensor.h"
 #include "tensorflow/cc/saved_model/signature_constants.h"
 #include "tensorflow/cc/saved_model/tag_constants.h"
 #include "tensorflow/core/example/example.pb.h"
@@ -57,12 +59,12 @@ limitations under the License.
 #include "tensorflow/core/util/equal_graph_def.h"
 
 namespace tensorflow {
-TF_Tensor* TF_TensorFromTensor(const Tensor& src, Status* status);
-Status TF_TensorToTensor(const TF_Tensor* src, Tensor* dst);
+TF_Tensor* TF_TensorFromTensor(const Tensor& src, absl::Status* status);
+absl::Status TF_TensorToTensor(const TF_Tensor* src, Tensor* dst);
 
 namespace {
 
-static void ExpectHasSubstr(StringPiece s, StringPiece expected) {
+static void ExpectHasSubstr(absl::string_view s, absl::string_view expected) {
   EXPECT_TRUE(absl::StrContains(s, expected))
       << "'" << s << "' does not contain '" << expected << "'";
 }
@@ -134,7 +136,7 @@ TEST(CAPI, Tensor) {
   const int num_bytes = 6 * sizeof(float);
   float* values =
       reinterpret_cast<float*>(tensorflow::cpu_allocator()->AllocateRaw(
-          EIGEN_MAX_ALIGN_BYTES, num_bytes));
+          TF_TensorDefaultAlignment(), num_bytes));
   int64_t dims[] = {2, 3};
   bool deallocator_called = false;
   TF_Tensor* t = TF_NewTensor(TF_FLOAT, dims, 2, values, num_bytes,
@@ -178,7 +180,7 @@ TEST(CAPI, MaybeMove) {
   const int num_bytes = 6 * sizeof(float);
   float* values =
       reinterpret_cast<float*>(tensorflow::cpu_allocator()->AllocateRaw(
-          EIGEN_MAX_ALIGN_BYTES, num_bytes));
+          TF_TensorDefaultAlignment(), num_bytes));
   int64_t dims[] = {2, 3};
   bool deallocator_called = false;
   TF_Tensor* t = TF_NewTensor(TF_FLOAT, dims, 2, values, num_bytes,
@@ -234,7 +236,7 @@ TEST(CAPI, LibraryLoadFunctions) {
 
 void TestEncodeDecode(int line, const std::vector<string>& data) {
   const int64_t n = data.size();
-  Status status;
+  absl::Status status;
   for (const std::vector<int64_t>& dims :
        std::vector<std::vector<int64_t>>{{n}, {1, n}, {n, 1}, {n / 2, 2}}) {
     // Create C++ Tensor
@@ -247,7 +249,7 @@ void TestEncodeDecode(int line, const std::vector<string>& data) {
 
     // Convert back to a C++ Tensor and ensure we get expected output.
     Tensor output;
-    ASSERT_EQ(OkStatus(), TF_TensorToTensor(dst, &output)) << line;
+    ASSERT_EQ(absl::OkStatus(), TF_TensorToTensor(dst, &output)) << line;
     ASSERT_EQ(src.NumElements(), output.NumElements()) << line;
     for (int64_t i = 0; i < src.NumElements(); ++i) {
       ASSERT_EQ(data[i], output.flat<tstring>()(i)) << line;
@@ -764,8 +766,15 @@ TEST(CAPI, ImportGraphDef) {
   EXPECT_EQ(2, TF_ImportGraphDefOptionsNumReturnOutputs(opts));
   TF_ImportGraphDefOptionsAddReturnOperation(opts, "scalar");
   EXPECT_EQ(1, TF_ImportGraphDefOptionsNumReturnOperations(opts));
+  tensorflow::GraphDef graph_def_proto;
+  ASSERT_TRUE(tensorflow::ParseProtoUnlimited(&graph_def_proto, graph_def->data,
+                                              graph_def->length));
+  TF_Buffer graph_def_buffer;
+  graph_def_buffer.data = reinterpret_cast<const void*>(&graph_def_proto);
+  graph_def_buffer.length = sizeof(tensorflow::GraphDef*);
   TF_ImportGraphDefResults* results =
-      TF_GraphImportGraphDefWithResults(graph, graph_def, opts, s);
+      TF_GraphImportGraphDefWithResultsNoSerialization(graph, &graph_def_buffer,
+                                                       opts, s);
   ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
 
   TF_Operation* scalar2 = TF_GraphOperationByName(graph, "imported2/scalar");
@@ -956,8 +965,16 @@ TEST(CAPI, ImportGraphDef_MissingUnusedInputMappings) {
   TF_ImportGraphDefOptionsSetPrefix(opts, "imported");
   TF_ImportGraphDefOptionsAddInputMapping(opts, "scalar", 0, {scalar, 0});
   TF_ImportGraphDefOptionsAddInputMapping(opts, "fake", 0, {scalar, 0});
+
+  tensorflow::GraphDef graph_def_proto;
+  ASSERT_TRUE(tensorflow::ParseProtoUnlimited(&graph_def_proto, graph_def->data,
+                                              graph_def->length));
+  TF_Buffer graph_def_buffer;
+  graph_def_buffer.data = reinterpret_cast<const void*>(&graph_def_proto);
+  graph_def_buffer.length = sizeof(tensorflow::GraphDef*);
   TF_ImportGraphDefResults* results =
-      TF_GraphImportGraphDefWithResults(graph, graph_def, opts, s);
+      TF_GraphImportGraphDefWithResultsNoSerialization(graph, &graph_def_buffer,
+                                                       opts, s);
   ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
 
   // Check unused input mappings
@@ -1433,7 +1450,7 @@ TEST(CAPI, SavedModel) {
   TF_Operation* input_op =
       TF_GraphOperationByName(graph, input_op_name.c_str());
   ASSERT_TRUE(input_op != nullptr);
-  Status status;
+  absl::Status status;
   csession.SetInputs({{input_op, TF_TensorFromTensor(input, &status)}});
   ASSERT_TRUE(status.ok()) << status.message();
 
@@ -1556,7 +1573,7 @@ TEST(CAPI, TestFromProto) {
   const int num_bytes = 6 * sizeof(float);
   float* values =
       reinterpret_cast<float*>(tensorflow::cpu_allocator()->AllocateRaw(
-          EIGEN_MAX_ALIGN_BYTES, num_bytes));
+          TF_TensorDefaultAlignment(), num_bytes));
   int64_t dims[] = {2, 3};
   bool deallocator_called = false;
   TF_Tensor* t_c = TF_NewTensor(TF_FLOAT, dims, 2, values, num_bytes,
@@ -2604,7 +2621,7 @@ TEST(CAPI, TestTensorAligned) {
   for (int i = 0; i < dim; ++i) {
     data[i] = 0;
   }
-  if (EIGEN_MAX_ALIGN_BYTES > 0) {
+  if (TF_TensorDefaultAlignment() > 0) {
     EXPECT_TRUE(TF_TensorIsAligned(a));
   }
   TF_DeleteTensor(a);
@@ -2617,9 +2634,9 @@ TEST(CAPI, TestTensorIsNotAligned) {
 
   // Take an unaligned slice.
   Tensor y = x.Slice(1, 13);
-  Status status;
+  absl::Status status;
   TF_Tensor* a = TF_TensorFromTensor(y, &status);
-  if (EIGEN_MAX_ALIGN_BYTES > 0) {
+  if (TF_TensorDefaultAlignment() > 0) {
     EXPECT_FALSE(TF_TensorIsAligned(a));
   }
   TF_DeleteTensor(a);

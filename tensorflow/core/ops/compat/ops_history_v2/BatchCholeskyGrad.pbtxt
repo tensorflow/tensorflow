@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "BatchCholeskyGrad"
   input_arg {
     name: "l"

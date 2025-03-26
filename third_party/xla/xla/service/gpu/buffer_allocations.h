@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,18 +16,17 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_BUFFER_ALLOCATIONS_H_
 #define XLA_SERVICE_GPU_BUFFER_ALLOCATIONS_H_
 
-#include <memory>
+#include <cstddef>
 #include <set>
 #include <string>
 #include <vector>
 
-#include "absl/container/flat_hash_map.h"
+#include "absl/status/status.h"
 #include "absl/strings/str_format.h"
 #include "absl/types/span.h"
 #include "xla/service/buffer_assignment.h"
-#include "xla/statusor.h"
+#include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/device_memory_allocator.h"
-#include "xla/stream_executor/stream_executor.h"
 
 namespace xla {
 namespace gpu {
@@ -70,8 +69,8 @@ class BufferAllocations {
 
   // Tears down all buffers allocated by this object that are not in
   // `live_addresses`.
-  Status TearDown(const std::set<se::DeviceMemoryBase>& live_addresses,
-                  absl::Span<const BufferAllocation> allocations);
+  absl::Status TearDown(const std::set<se::DeviceMemoryBase>& live_addresses,
+                        absl::Span<const BufferAllocation> allocations);
 
   std::string ToString() const {
     std::string out;

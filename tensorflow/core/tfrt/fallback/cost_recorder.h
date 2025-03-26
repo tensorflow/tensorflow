@@ -18,9 +18,12 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_TFRT_FALLBACK_COST_RECORDER_H_
 #define TENSORFLOW_CORE_TFRT_FALLBACK_COST_RECORDER_H_
 
+#include <cstddef>
+#include <cstdint>
 #include <utility>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/status/status.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/thread_annotations.h"
@@ -45,7 +48,7 @@ class CostRecorder {
   // Writes the op cost map (in format of `OpCostMapProto`) to a file specified
   // by the env var name `MesuredCostPathEnvVarName()`.
   // TODO(b/263837451): Fix the op_key unstableness during serialization.
-  Status WriteToFile() const;
+  absl::Status WriteToFile() const;
 
   size_t size() const;
 

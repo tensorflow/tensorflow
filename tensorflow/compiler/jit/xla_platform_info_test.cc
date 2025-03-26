@@ -16,12 +16,12 @@ limitations under the License.
 #include "tensorflow/compiler/jit/xla_platform_info.h"
 
 #include <memory>
-#include <vector>
 
 #include <gtest/gtest.h>
 #include "tensorflow/compiler/jit/flags.h"
 #include "tensorflow/compiler/jit/test_util.h"
-#include "xla/pjrt/tfrt_cpu_pjrt_client.h"
+#include "xla/pjrt/plugin/xla_cpu/cpu_client_options.h"
+#include "xla/pjrt/plugin/xla_cpu/xla_cpu_pjrt_client.h"
 #include "tensorflow/core/framework/device_base.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -68,9 +68,14 @@ TEST_F(XlaPlatformInfoTest, BuildXlaDeviceCompilerXlaDeviceMetadata) {
   TF_CHECK_OK(XlaDevice::GetMetadataFromDevice(device, &metadata));
   XlaPlatformInfo platform_info = XlaPlatformInfoFromDevice(device);
 
+  TF_ASSERT_OK_AND_ASSIGN(
+      DeviceType compilation_device_type,
+      GetCompilationDeviceType(platform_info.device_type()));
+
   XlaDeviceCompiler* xla_device_compiler = nullptr;
   TF_EXPECT_OK(BuildXlaDeviceCompiler(device, device_setup_.flr(),
-                                      platform_info, &xla_device_compiler));
+                                      platform_info, compilation_device_type,
+                                      &xla_device_compiler));
   core::ScopedUnref xla_device_compiler_ref(xla_device_compiler);
 
   EXPECT_EQ(xla_device_compiler->device_type(), metadata->jit_device_type());
@@ -89,9 +94,14 @@ TEST_F(XlaPlatformInfoTest, BuildXlaDeviceCompilerXlaDeviceCacheEnabled) {
   TF_CHECK_OK(XlaDevice::GetMetadataFromDevice(device, &metadata));
   XlaPlatformInfo platform_info = XlaPlatformInfoFromDevice(device);
 
+  TF_ASSERT_OK_AND_ASSIGN(
+      DeviceType compilation_device_type,
+      GetCompilationDeviceType(platform_info.device_type()));
+
   XlaDeviceCompiler* xla_device_compiler = nullptr;
   TF_EXPECT_OK(BuildXlaDeviceCompiler(device, device_setup_.flr(),
-                                      platform_info, &xla_device_compiler));
+                                      platform_info, compilation_device_type,
+                                      &xla_device_compiler));
   core::ScopedUnref xla_device_compiler_ref(xla_device_compiler);
 
   EXPECT_EQ(xla_device_compiler->device_type(), metadata->jit_device_type());
@@ -105,9 +115,13 @@ TEST_F(XlaPlatformInfoTest, BuildXlaDeviceCompilerNonXlaDevice) {
   Device* device = device_setup_.GetDevice(DEVICE_GPU);
 
   XlaPlatformInfo platform_info = XlaPlatformInfoFromDevice(device);
+  TF_ASSERT_OK_AND_ASSIGN(
+      DeviceType compilation_device_type,
+      GetCompilationDeviceType(platform_info.device_type()));
   XlaDeviceCompiler* xla_device_compiler = nullptr;
   TF_EXPECT_OK(BuildXlaDeviceCompiler(device, device_setup_.flr(),
-                                      platform_info, &xla_device_compiler));
+                                      platform_info, compilation_device_type,
+                                      &xla_device_compiler));
   core::ScopedUnref xla_device_compiler_ref(xla_device_compiler);
 
   EXPECT_EQ(xla_device_compiler->device_type(), DeviceType(DEVICE_GPU_XLA_JIT));
@@ -185,6 +199,7 @@ TEST_F(XlaPlatformInfoTest, BuildXlaDeviceCompilerTpuDevice) {
 
   XlaDeviceCompiler* xla_device_compiler = nullptr;
   TF_EXPECT_OK(BuildXlaDeviceCompiler(device, nullptr, platform_info,
+                                      compilation_device_type,
                                       &xla_device_compiler));
   core::ScopedUnref xla_device_compiler_ref(xla_device_compiler);
 
@@ -214,6 +229,7 @@ TEST_F(XlaPlatformInfoTest, BuildXlaDeviceCompilerNoCompilationCache) {
 
   XlaDeviceCompiler* xla_device_compiler = nullptr;
   TF_EXPECT_OK(BuildXlaDeviceCompiler(device, nullptr, platform_info,
+                                      compilation_device_type,
                                       &xla_device_compiler));
   core::ScopedUnref xla_device_compiler_ref(xla_device_compiler);
 
@@ -235,10 +251,11 @@ TEST_F(XlaPlatformInfoTest,
   DeviceType compilation_device_type = DeviceType(DEVICE_TPU_XLA_JIT);
   // Use a CPU PjRtClient instead of a TPU one just for testing whether
   // GetOrCreatePjRtClient() is being called with the correct arguments.
+  xla::CpuClientOptions options;
+  options.asynchronous = true;
+  options.cpu_device_count = 1;
   TF_CHECK_OK(SetPjRtClientInTFGlobalResourceManager(
-      device_type,
-      xla::GetTfrtCpuClient(/*asynchronous=*/true, /*cpu_device_count=*/1)
-          .value()));
+      device_type, xla::GetXlaPjrtCpuClient(options).value()));
   TF_ASSERT_OK_AND_ASSIGN(auto pjrt_client, GetOrCreatePjRtClient(device_type));
 
   // Instead of creating/initializing a TPU device, create a dummy platform_info

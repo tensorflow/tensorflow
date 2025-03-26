@@ -162,12 +162,12 @@ class TestWorkerCache : public WorkerCacheInterface {
 
   void ReleaseWorker(const string& target, WorkerInterface* worker) override {}
 
-  Status GetEagerClientCache(
+  absl::Status GetEagerClientCache(
       std::unique_ptr<eager::EagerClientCache>* eager_client_cache) override {
     return errors::Unimplemented("Unimplemented.");
   }
 
-  Status GetCoordinationClientCache(
+  absl::Status GetCoordinationClientCache(
       std::unique_ptr<CoordinationClientCache>* coord_client_cache) override {
     return errors::Unimplemented("Unimplemented.");
   }
@@ -187,7 +187,7 @@ class TestWorkerCache : public WorkerCacheInterface {
     auto it = localities_.find(device);
     if (it != localities_.end()) {
       *locality = it->second;
-      done(OkStatus());
+      done(absl::OkStatus());
       return;
     }
     done(errors::Internal("Device not found: ", device));

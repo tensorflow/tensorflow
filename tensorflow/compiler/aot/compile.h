@@ -33,7 +33,7 @@ namespace tfcompile {
 // data and meta-information is available in aot.
 struct CompileResult {
   // Contains object file and meta-info.
-  std::unique_ptr<xla::cpu::CpuAotCompilationResult> aot;
+  std::unique_ptr<xla::cpu::CpuAotCompilationResultLegacy> aot;
   xla::ProgramShapeProto program_shape;  // Static shape of args and results.
   string entry_point;                    // Name of generated function.
   int pointer_size = 0;                  // Size of a pointer in bytes.
@@ -43,11 +43,12 @@ struct CompileResult {
 // that performs the graph operations.
 //
 // The XLA compilation options are specified in the flags.
-Status CompileGraph(GraphDef graph_def, const tf2xla::Config& config,
-                    const MainFlags& flags, CompileResult* compile_result);
+absl::Status CompileGraph(GraphDef graph_def, const tf2xla::Config& config,
+                          const MainFlags& flags,
+                          CompileResult* compile_result);
 
 // The full compilation method, for reuse in a library setting.
-Status Main(const MainFlags& flags);
+absl::Status Main(const MainFlags& flags);
 
 }  // namespace tfcompile
 }  // namespace tensorflow

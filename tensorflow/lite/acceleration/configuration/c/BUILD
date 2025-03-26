@@ -16,11 +16,11 @@
 # C API for delegate plugins.
 
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
+load("//tensorflow/lite:build_def.bzl", "tflite_copts", "tflite_copts_warnings")
 load(
     "//tensorflow/lite/core/shims:cc_library_with_tflite.bzl",
     "cc_library_with_tflite_with_c_headers_test",
 )
-load("//tensorflow/lite:build_def.bzl", "tflite_copts", "tflite_copts_warnings")
 
 # LINT.IfChange(tflite_acceleration_exported_headers)
 exports_files([
@@ -85,6 +85,7 @@ test_suite(
 cc_library_with_tflite_with_c_headers_test(
     name = "xnnpack_plugin",
     hdrs = ["xnnpack_plugin.h"],
+    compatible_with = get_compatible_with_portable(),
     copts = tflite_copts() + tflite_copts_warnings(),
     visibility = ["//visibility:public"],
     deps = ["//tensorflow/lite/core/acceleration/configuration/c:xnnpack_plugin"],

@@ -20,10 +20,10 @@ limitations under the License.
 
 #include <array>
 
-#include "tsl/platform/macros.h"
+#include "xla/tsl/platform/macros.h"
+#include "xla/tsl/platform/types.h"
 #include "tsl/platform/platform.h"
 #include "tsl/platform/stringpiece.h"
-#include "tsl/platform/types.h"
 
 namespace tsl {
 namespace tracing {
@@ -77,7 +77,7 @@ inline const EventCollector* GetEventCollector(EventCategory category) {
 uint64 GetUniqueArg();
 
 // Returns an id for name to pass to RecordEvent/ScopedRegion.
-uint64 GetArgForName(StringPiece name);
+uint64 GetArgForName(absl::string_view name);
 
 // Records an atomic event through the currently registered EventCollector.
 inline void RecordEvent(EventCategory category, uint64 arg) {
@@ -113,7 +113,7 @@ class ScopedRegion {
 
   // Same as ScopedRegion(category, GetArgForName(name)), but faster if
   // EventCollector::IsEnabled() returns false.
-  ScopedRegion(EventCategory category, StringPiece name)
+  ScopedRegion(EventCategory category, absl::string_view name)
       : collector_(GetEventCollector(category)) {
     if (collector_) {
       collector_->StartRegion(GetArgForName(name));
@@ -121,7 +121,7 @@ class ScopedRegion {
   }
 
   ~ScopedRegion() {
-    if (collector_) {
+    if (collector_ && EventCollector::IsEnabled()) {
       collector_->StopRegion();
     }
   }
@@ -129,7 +129,8 @@ class ScopedRegion {
   bool IsEnabled() const { return collector_ != nullptr; }
 
  private:
-  TF_DISALLOW_COPY_AND_ASSIGN(ScopedRegion);
+  ScopedRegion(const ScopedRegion&) = delete;
+  void operator=(const ScopedRegion&) = delete;
 
   const EventCollector* collector_;
 };
@@ -141,9 +142,9 @@ const char* GetLogDir();
 }  // namespace tsl
 
 #if defined(PLATFORM_GOOGLE)
-#include "tsl/platform/google/tracing_impl.h"
+#include "xla/tsl/platform/google/tracing_impl.h"
 #else
-#include "tsl/platform/default/tracing_impl.h"
+#include "xla/tsl/platform/default/tracing_impl.h"
 #endif
 
 #endif  // TENSORFLOW_TSL_PLATFORM_TRACING_H_

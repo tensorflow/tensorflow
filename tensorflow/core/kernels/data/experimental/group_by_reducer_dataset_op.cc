@@ -113,7 +113,7 @@ class GroupByReducerDatasetOp : public UnaryDatasetOpKernel {
       return "GroupByReducerDatasetOp::Dataset";
     }
 
-    Status CheckExternalState() const override {
+    absl::Status CheckExternalState() const override {
       TF_RETURN_IF_ERROR(captured_key_func_->CheckExternalState());
       TF_RETURN_IF_ERROR(captured_init_func_->CheckExternalState());
       TF_RETURN_IF_ERROR(captured_reduce_func_->CheckExternalState());
@@ -122,9 +122,9 @@ class GroupByReducerDatasetOp : public UnaryDatasetOpKernel {
     }
 
    protected:
-    Status AsGraphDefInternal(SerializationContext* ctx,
-                              DatasetGraphDefBuilder* b,
-                              Node** output) const override {
+    absl::Status AsGraphDefInternal(SerializationContext* ctx,
+                                    DatasetGraphDefBuilder* b,
+                                    Node** output) const override {
       Node* input_graph_node = nullptr;
       TF_RETURN_IF_ERROR(b->AddInputDataset(ctx, input_, &input_graph_node));
 
@@ -191,7 +191,7 @@ class GroupByReducerDatasetOp : public UnaryDatasetOpKernel {
            {"Tfinalize_func_other_arguments",
             finalize_func_other_arguments_types_attr}},
           output));
-      return OkStatus();
+      return absl::OkStatus();
     }
 
    private:
@@ -200,7 +200,7 @@ class GroupByReducerDatasetOp : public UnaryDatasetOpKernel {
       explicit Iterator(const Params& params)
           : DatasetIterator<Dataset>(params) {}
 
-      Status Initialize(IteratorContext* ctx) override {
+      absl::Status Initialize(IteratorContext* ctx) override {
         TF_RETURN_IF_ERROR(
             dataset()->input_->MakeIterator(ctx, this, prefix(), &input_impl_));
         TF_RETURN_IF_ERROR(dataset()->captured_key_func_->Instantiate(
@@ -211,12 +211,12 @@ class GroupByReducerDatasetOp : public UnaryDatasetOpKernel {
             ctx, &instantiated_reduce_func_));
         TF_RETURN_IF_ERROR(dataset()->captured_finalize_func_->Instantiate(
             ctx, &instantiated_finalize_func_));
-        return OkStatus();
+        return absl::OkStatus();
       }
 
-      Status GetNextInternal(IteratorContext* ctx,
-                             std::vector<Tensor>* out_tensors,
-                             bool* end_of_sequence) override {
+      absl::Status GetNextInternal(IteratorContext* ctx,
+                                   std::vector<Tensor>* out_tensors,
+                                   bool* end_of_sequence) override {
         mutex_lock l(mu_);
 
         // Iterate through the input dataset, keying input elements to reducers.
@@ -272,12 +272,12 @@ class GroupByReducerDatasetOp : public UnaryDatasetOpKernel {
 
         if (keys_index_ == keys_.size()) {
           *end_of_sequence = true;
-          return OkStatus();
+          return absl::OkStatus();
         }
         TF_RETURN_IF_ERROR(instantiated_finalize_func_->RunWithBorrowedArgs(
             ctx, states_[keys_[keys_index_++]], out_tensors, model_node()));
         *end_of_sequence = false;
-        return OkStatus();
+        return absl::OkStatus();
       }
 
      protected:
@@ -286,8 +286,8 @@ class GroupByReducerDatasetOp : public UnaryDatasetOpKernel {
         return model::MakeUnknownRatioNode(std::move(args));
       }
 
-      Status SaveInternal(SerializationContext* ctx,
-                          IteratorStateWriter* writer) override {
+      absl::Status SaveInternal(SerializationContext* ctx,
+                                IteratorStateWriter* writer) override {
         TF_RETURN_IF_ERROR(ctx->HandleCheckExternalStateStatus(
             dataset()->captured_key_func_->CheckExternalState()));
         TF_RETURN_IF_ERROR(ctx->HandleCheckExternalStateStatus(
@@ -341,11 +341,11 @@ class GroupByReducerDatasetOp : public UnaryDatasetOpKernel {
           }
         }
 
-        return OkStatus();
+        return absl::OkStatus();
       }
 
-      Status RestoreInternal(IteratorContext* ctx,
-                             IteratorStateReader* reader) override {
+      absl::Status RestoreInternal(IteratorContext* ctx,
+                                   IteratorStateReader* reader) override {
         mutex_lock l(mu_);
         TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, input_impl_));
 
@@ -398,7 +398,7 @@ class GroupByReducerDatasetOp : public UnaryDatasetOpKernel {
           }
         }
 
-        return OkStatus();
+        return absl::OkStatus();
       }
 
      private:

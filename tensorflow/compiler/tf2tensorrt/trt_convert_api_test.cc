@@ -284,7 +284,7 @@ INSTANTIATE_TEST_CASE_P(
     TrtConverterTestInstantiation, TrtConverterTest,
     ::testing::Combine(
         ::testing::Values(
-            // Dynamic shape mode test with conver_to_static_engine=true.
+            // Dynamic shape mode test with convert_to_static_engine=true.
             TestParam{TfTrtConversionParams{
                           1 << 20,  // max workspace size
                           TrtPrecisionMode::FP32,
@@ -297,7 +297,7 @@ INSTANTIATE_TEST_CASE_P(
                           true   // convert_to_static_engine
                       },
                       {{1, 2}, {4, 2}}},
-            // Implicit batch mode test with conver_to_static_engine=true.
+            // Implicit batch mode test with convert_to_static_engine=true.
             TestParam{TfTrtConversionParams{
                           1 << 20,  // max workspace size
                           TrtPrecisionMode::FP16,

@@ -45,7 +45,7 @@ class GuardedPhiloxRandom {
   // Initialize the generator from attributes "seed" and "seed2".
   // If both seeds are unspecified, use random seeds.
   // Must be called exactly once.
-  Status Init(OpKernelConstruction* context);
+  absl::Status Init(OpKernelConstruction* context);
 
   // Initialize with given seeds.
   void Init(int64_t seed, int64_t seed2);
@@ -74,7 +74,8 @@ class GuardedPhiloxRandom {
   random::PhiloxRandom generator_ TF_GUARDED_BY(mu_);
   bool initialized_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(GuardedPhiloxRandom);
+  GuardedPhiloxRandom(const GuardedPhiloxRandom&) = delete;
+  void operator=(const GuardedPhiloxRandom&) = delete;
 };
 
 }  // namespace tensorflow

@@ -30,9 +30,9 @@ namespace {
 
 using test::function::NDef;
 
-Status OptimizeWithDisablePrefetchLegacyAutotune(const GrapplerItem &item,
-                                                 GraphDef *output,
-                                                 bool autotune) {
+absl::Status OptimizeWithDisablePrefetchLegacyAutotune(const GrapplerItem &item,
+                                                       GraphDef *output,
+                                                       bool autotune) {
   DisablePrefetchLegacyAutotune optimizer;
   RewriterConfig_CustomGraphOptimizer config;
   if (autotune) {
@@ -55,8 +55,8 @@ TEST_P(RewriteTest, DisablePrefetchLegacyAutotune) {
       NDef("stop", "Const", {}, {{"value", 10}, {"dtype", DT_INT32}}),
       NDef("step", "Const", {}, {{"value", 1}, {"dtype", DT_INT32}}),
       NDef("range", "RangeDataset", {"start", "stop", "step"},
-           {{"output_shapes", gtl::ArraySlice<TensorShape>{}},
-            {"output_types", gtl::ArraySlice<DataType>{}}}),
+           {{"output_shapes", absl::Span<const TensorShape>{}},
+            {"output_types", absl::Span<const DataType>{}}}),
       NDef("prefetch1", "PrefetchDataset", {"range"},
            {{"legacy_autotune", true}}),
       NDef("prefetch2", "PrefetchDataset", {"prefetch1"},

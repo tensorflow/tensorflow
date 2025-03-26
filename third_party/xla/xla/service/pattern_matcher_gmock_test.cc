@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,7 +15,15 @@ limitations under the License.
 
 #include "xla/service/pattern_matcher_gmock.h"
 
+#include <sstream>
+#include <string>
+#include <type_traits>
+
+#include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/layout.h"
+#include "xla/layout_util.h"
 #include "xla/service/pattern_matcher.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/test.h"
 #include "tsl/platform/test.h"

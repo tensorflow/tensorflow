@@ -15,7 +15,6 @@ limitations under the License.
 #include "tensorflow/lite/core/async/interop/variant.h"
 
 #include <cstddef>
-#include <cstdint>
 #include <string>
 
 #include <gtest/gtest.h>

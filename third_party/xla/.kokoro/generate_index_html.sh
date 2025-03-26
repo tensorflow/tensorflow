@@ -36,9 +36,7 @@ tee "$1" <<EOF
 </ul>
 <h2>Googlers-Only Links</h2>
 <ul>
-<li><a href="http://sponge/$KOKORO_BUILD_ID">Sponge</a></li>
 <li><a href="http://sponge2/$KOKORO_BUILD_ID">Sponge2</a></li>
-<li><a href="http://fusion/$KOKORO_BUILD_ID">Test Fusion</a></li>
 <li><a href="http://sponge/target:$KOKORO_JOB_NAME">Sponge - recent jobs</a></li>
 </ul>
 <h2>Non-Googler Links</h2>

@@ -1,4 +1,4 @@
-/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -17,12 +17,14 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
+#include "absl/log/log.h"
 #include "absl/strings/string_view.h"
-#include "xla/service/gpu/gpu_asm_opts_util.h"
 #include "xla/service/gpu/stream_executor_util.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_memory.h"
-#include "xla/stream_executor/gpu/asm_compiler.h"
+#include "xla/stream_executor/kernel.h"
+#include "xla/stream_executor/platform.h"
+#include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/xla.pb.h"
 #include "tsl/platform/status.h"
@@ -130,15 +132,15 @@ TEST(SharedMemoryUseTest, ArrayReversalWorks) {
   // memory with it, read it back inverting both axes,
   // copy the result back to the host and verify it.
   se::Platform* platform =
-      se::MultiPlatformManager::PlatformWithName("cuda").value();
+      se::PlatformManager::PlatformWithName("cuda").value();
   se::StreamExecutor* executor = platform->ExecutorForDevice(0).value();
-  se::Stream stream(executor);
-  stream.Init();
+  TF_ASSERT_OK_AND_ASSIGN(auto stream, executor->CreateStream());
 
   // Use 90% of the available shared memory to verify that a fractional
   // amount works as well, not only the full size.
-  const int n_cols = executor->GetDeviceDescription().threads_per_block_limit();
-  const int n_rows =
+  const unsigned n_cols =
+      executor->GetDeviceDescription().threads_per_block_limit();
+  const unsigned n_rows =
       0.9 * executor->GetDeviceDescription().shared_memory_per_block_optin() /
       n_cols;
   const int n_elements = n_cols * n_rows;
@@ -147,13 +149,8 @@ TEST(SharedMemoryUseTest, ArrayReversalWorks) {
   const int buffer_size_bytes = n_elements * sizeof(data_type);
   VLOG(1) << "Using " << buffer_size_bytes << " bytes of shared memory";
 
-  std::vector<uint8_t> compiled_ptx =
-      se::CompileGpuAsm(executor->device_ordinal(), kPTX.data(),
-                        PtxOptsFromDebugOptions(DebugOptions{}))
-          .value();
-  std::unique_ptr<stream_executor::KernelBase> kernel =
-      CreateKernel("dyn_shmem_kernel", /*num_args=*/3,
-                   reinterpret_cast<char*>(compiled_ptx.data()),
+  std::unique_ptr<stream_executor::Kernel> kernel =
+      CreateKernel("dyn_shmem_kernel", /*num_args=*/3, kPTX,
                    /*cubin_data=*/{}, executor,
                    /*shared_mem_bytes=*/buffer_size_bytes)
           .value();
@@ -169,18 +166,21 @@ TEST(SharedMemoryUseTest, ArrayReversalWorks) {
     }
   }
 
-  stream.ThenMemcpy(&device_buffer, host_buffer.data(), buffer_size_bytes);
+  TF_CHECK_OK(
+      stream->Memcpy(&device_buffer, host_buffer.data(), buffer_size_bytes));
   se::DeviceMemory<uint32_t> dev_n_cols = executor->AllocateScalar<uint32_t>();
-  stream.ThenMemcpy(&dev_n_cols, &n_cols, sizeof(uint32_t));
+  TF_CHECK_OK(stream->Memcpy(&dev_n_cols, &n_cols, sizeof(uint32_t)));
   se::DeviceMemory<uint32_t> dev_n_rows = executor->AllocateScalar<uint32_t>();
-  stream.ThenMemcpy(&dev_n_rows, &n_rows, sizeof(uint32_t));
-  TF_CHECK_OK(stream.BlockHostUntilDone());
+  TF_CHECK_OK(stream->Memcpy(&dev_n_rows, &n_rows, sizeof(uint32_t)));
+  TF_CHECK_OK(stream->BlockHostUntilDone());
   TF_CHECK_OK(ExecuteKernelOnStream(
       *kernel, {device_buffer, dev_n_cols, dev_n_rows},
-      {/*block_x_count=*/1, /*thread_x_count_per_block=*/n_cols}, &stream));
-  TF_CHECK_OK(stream.BlockHostUntilDone());
-  stream.ThenMemcpy(host_buffer.data(), device_buffer, buffer_size_bytes);
-  TF_CHECK_OK(stream.BlockHostUntilDone());
+      {/*block_x_count=*/1, /*thread_x_count_per_block=*/n_cols},
+      stream.get()));
+  TF_CHECK_OK(stream->BlockHostUntilDone());
+  TF_CHECK_OK(
+      stream->Memcpy(host_buffer.data(), device_buffer, buffer_size_bytes));
+  TF_CHECK_OK(stream->BlockHostUntilDone());
 
   for (int row = 0; row < n_rows; ++row) {
     for (int col = 0; col < n_cols; ++col) {

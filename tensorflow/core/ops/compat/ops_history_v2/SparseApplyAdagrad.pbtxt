@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "SparseApplyAdagrad"
   input_arg {
     name: "var"

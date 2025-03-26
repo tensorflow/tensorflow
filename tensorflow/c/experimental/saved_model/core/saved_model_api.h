@@ -40,20 +40,21 @@ class SavedModelAPI {
   //
   // Note: `function` is a double pointer, so that implementations are
   // able to return a pointer to an internal member.
-  virtual Status GetFunction(const std::string& function_path,
-                             ConcreteFunction** function) = 0;
+  virtual absl::Status GetFunction(const std::string& function_path,
+                                   ConcreteFunction** function) = 0;
 
   // Retrieve a list of child functions from a SavedModel given a starting node.
   // 0 is the root node.
-  virtual Status GetFunctions(
+  virtual absl::Status GetFunctions(
       int node_id,
       absl::flat_hash_map<std::string, ConcreteFunction*>* functions) = 0;
 
   // Retrieve a SignatureDefFunction from a SavedModel, using the key of the
   // SignatureDef map:
   // https://github.com/tensorflow/tensorflow/blob/69b08900b1e991d84bce31f3b404f5ed768f339f/tensorflow/core/protobuf/meta_graph.proto#L89
-  virtual Status GetSignatureDefFunction(const std::string& signature_def_key,
-                                         SignatureDefFunction** function) = 0;
+  virtual absl::Status GetSignatureDefFunction(
+      const std::string& signature_def_key,
+      SignatureDefFunction** function) = 0;
 
   virtual SavedModelV2Bundle* GetBundle() = 0;
 

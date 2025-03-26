@@ -17,31 +17,19 @@ limitations under the License.
 #include <stdlib.h>
 
 #include <cstdint>
-#include <functional>
 #include <memory>
 #include <utility>
-#include <vector>
 
-#include "ruy/denormal.h"  // from @ruy
-#include "tensorflow/lite/allocation.h"
-#include "tensorflow/lite/c/common_internal.h"
-#include "tensorflow/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/core/api/profiler.h"
 #include "tensorflow/lite/core/async/async_signature_runner.h"
 #include "tensorflow/lite/core/c/c_api_types.h"
 #include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/core/interpreter.h"
 #include "tensorflow/lite/core/subgraph.h"
-#include "tensorflow/lite/external_cpu_backend_context.h"
-#include "tensorflow/lite/minimal_logging.h"
-#include "tensorflow/lite/stderr_reporter.h"
-#include "tensorflow/lite/util.h"
+#include "tensorflow/lite/interpreter_options.h"
+#include "tensorflow/lite/profiling/root_profiler.h"
 
 namespace tflite {
-
-namespace {
-static constexpr char kDefaultServingSignatureDefKey[] = "serving_default";
-}  // namespace
 
 TfLiteStatus Interpreter::SetCustomAllocationForTensor(
     int tensor_index, const TfLiteCustomAllocation& allocation, int64_t flags) {
@@ -84,30 +72,27 @@ TfLiteStatus Interpreter::ModifyGraphWithDelegate(TfLiteDelegate* delegate) {
   return ModifyGraphWithDelegateImpl(delegate);
 }
 
+TfLiteStatus Interpreter::ModifyGraphWithDelegate(
+    TfLiteOpaqueDelegateStruct* delegate) {
+  return ModifyGraphWithDelegateImpl(
+      reinterpret_cast<TfLiteDelegate*>(delegate));
+}
+
 bool Interpreter::HasDelegates() { return primary_subgraph().HasDelegates(); }
 
 TfLiteStatus Interpreter::SetBufferHandle(int tensor_index,
                                           TfLiteBufferHandle buffer_handle,
                                           TfLiteDelegate* delegate) {
   TF_LITE_ENSURE(context_, tensor_index < tensors_size());
-  TfLiteTensor* tensor = primary_subgraph().tensor(tensor_index);
-  return SetBufferHandle(tensor, buffer_handle, delegate);
+  return primary_subgraph().SetBufferHandle(tensor_index, buffer_handle,
+                                            delegate);
 }
 
 TfLiteStatus Interpreter::SetBufferHandle(TfLiteTensor* tensor,
                                           TfLiteBufferHandle buffer_handle,
                                           TfLiteDelegate* delegate) {
-  TF_LITE_ENSURE(context_, tensor != nullptr);
-  TF_LITE_ENSURE(context_,
-                 tensor->delegate == nullptr || tensor->delegate == delegate);
-  tensor->delegate = delegate;
-  if (tensor->buffer_handle != kTfLiteNullBufferHandle) {
-    TF_LITE_ENSURE_STATUS(TfLiteDelegateFreeBufferHandleInternal(
-        context_, tensor->delegate, &(tensor->buffer_handle)));
-  }
-  tensor->buffer_handle = buffer_handle;
-
-  return kTfLiteOk;
+  return Subgraph::SetBufferHandleImpl(context_, tensor, buffer_handle,
+                                       delegate);
 }
 
 TfLiteStatus Interpreter::GetBufferHandle(int tensor_index,
@@ -153,27 +138,10 @@ TfLiteStatus Interpreter::ApplyOptions(InterpreterOptions* options) {
 }
 
 async::AsyncSignatureRunner* Interpreter::GetAsyncSignatureRunner(
-    const char* signature_key) {
-  // Handles nullptr signature key.
-  // If the model does not have signature def, use default name as placeholder.
-  // Otherwise use the first signature key that points to primary subgraph.
-  bool empty_signature_fallback = false;
-  if (signature_key == nullptr) {
-    if (signature_defs_.empty()) {
-      signature_key = kDefaultServingSignatureDefKey;
-      empty_signature_fallback = true;
-    } else {
-      for (const auto& signature : signature_defs_) {
-        if (signature.subgraph_index == 0) {
-          signature_key = signature.signature_key.c_str();
-          break;
-        }
-      }
-    }
-  }
-
-  if (signature_key == nullptr) {
-    // The model has signature def but none of those points to primary subgraph.
+    const char* signature_key_) {
+  auto [signature_key, empty_signature_fallback] =
+      ReplaceWithPlaceholderSignatureKeyIfNeeded(signature_key_);
+  if (!signature_key) {
     return nullptr;
   }
 
@@ -183,11 +151,14 @@ async::AsyncSignatureRunner* Interpreter::GetAsyncSignatureRunner(
   }
 
   if (empty_signature_fallback) {
+    placeholder_signature_def_ = CreatePlaceholderSignatureDef();
     auto status = async_signature_runner_map_.insert(
         {signature_key,
-         async::AsyncSignatureRunner(nullptr, &primary_subgraph())});
+         async::AsyncSignatureRunner(placeholder_signature_def_.get(),
+                                     &primary_subgraph())});
     return &(status.first->second);
   }
+
   for (const auto& signature : signature_defs_) {
     if (signature.signature_key == signature_key) {
       auto status = async_signature_runner_map_.insert(

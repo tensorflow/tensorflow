@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "TensorArrayClose"
   input_arg {
     name: "handle"

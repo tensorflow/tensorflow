@@ -24,8 +24,9 @@ limitations under the License.
 #include <iostream>
 #include <string>
 
-#include "tensorflow/core/platform/ctstring_internal.h"
+#include "tensorflow/lite/examples/label_image/label_image.h"
 #include "tensorflow/lite/examples/label_image/log.h"
+#include "tsl/platform/ctstring_internal.h"
 
 namespace tflite {
 namespace label_image {

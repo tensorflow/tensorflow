@@ -25,7 +25,7 @@ namespace tensorflow {
 
 void CustomDeviceOpHandler::Clear() { custom_devices_.clear(); }
 
-Status CustomDeviceOpHandler::RegisterCustomDevice(
+absl::Status CustomDeviceOpHandler::RegisterCustomDevice(
     const string& device_name, std::unique_ptr<CustomDevice> device) {
   DeviceNameUtils::ParsedName parsed;
   if (!DeviceNameUtils::ParseFullName(device_name, &parsed) ||
@@ -42,7 +42,7 @@ Status CustomDeviceOpHandler::RegisterCustomDevice(
     return errors::AlreadyExists(device_name,
                                  " already registered as a custom device.");
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 bool CustomDeviceOpHandler::FindCustomDeviceFromName(
@@ -55,9 +55,9 @@ bool CustomDeviceOpHandler::FindCustomDeviceFromName(
   return true;
 }
 
-Status CustomDeviceOpHandler::Execute(ImmediateExecutionOperation* op,
-                                      ImmediateExecutionTensorHandle** retvals,
-                                      int* num_retvals) {
+absl::Status CustomDeviceOpHandler::Execute(
+    ImmediateExecutionOperation* op, ImmediateExecutionTensorHandle** retvals,
+    int* num_retvals) {
   tensorflow::CustomDevice* custom_device = nullptr;
 
   TF_RETURN_IF_ERROR(MaybePinToCustomDevice(&custom_device, *op));
@@ -67,7 +67,7 @@ Status CustomDeviceOpHandler::Execute(ImmediateExecutionOperation* op,
   }
 
   // The op will be placed on physical device. However, it contains custom
-  // device tensor handles. The tensor handles will be copy to physical device
+  // device tensor handles. The tensor handles will be copied to physical device
   // first.
   if (op->HasCustomDeviceInput()) {
     auto inputs = op->GetInputs();
@@ -85,7 +85,7 @@ Status CustomDeviceOpHandler::Execute(ImmediateExecutionOperation* op,
         tensorflow::ImmediateExecutionTensorHandle* new_tensor;
         TF_RETURN_IF_ERROR(previous->device()->CopyTensorFromDevice(
             previous, target_device, &new_tensor));
-        Status s = op->SetInput(i, new_tensor);
+        absl::Status s = op->SetInput(i, new_tensor);
         new_tensor->Unref();
         TF_RETURN_IF_ERROR(s);
       }
@@ -101,8 +101,8 @@ Status CustomDeviceOpHandler::Execute(ImmediateExecutionOperation* op,
 
 ImmediateExecutionTensorHandle* CustomDeviceOpHandler::CopyTensorHandleToDevice(
     ImmediateExecutionContext* context, ImmediateExecutionTensorHandle* handle,
-    const char* device_name, Status* status) {
-  *status = OkStatus();
+    const char* device_name, absl::Status* status) {
+  *status = absl::OkStatus();
   ImmediateExecutionTensorHandle* result = nullptr;
   tensorflow::CustomDevice* dev;
 
@@ -132,12 +132,12 @@ ImmediateExecutionTensorHandle* CustomDeviceOpHandler::CopyTensorHandleToDevice(
   return context->CopyTensorHandleToDevice(handle, device_name, status);
 }
 
-Status CustomDeviceOpHandler::MaybePinToCustomDevice(
+absl::Status CustomDeviceOpHandler::MaybePinToCustomDevice(
     CustomDevice** device, const ImmediateExecutionOperation& op) const {
   *device = nullptr;
   if (!FindCustomDeviceFromName(op.DeviceName(), device) &&
       !op.HasCustomDeviceInput()) {
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // Ops are placed on a custom device if there's no other explicit requested
@@ -175,13 +175,14 @@ Status CustomDeviceOpHandler::MaybePinToCustomDevice(
     // When there is a single custom device present, let the custom device
     // choose whether to pin on the custom device if it overrides choosing.
     if (first != nullptr) {
-      StatusOr<bool> pin_to_custom_device = first->ShallPinToThisDevice(&op);
+      absl::StatusOr<bool> pin_to_custom_device =
+          first->ShallPinToThisDevice(&op);
       // Custom devices that do not override will throw an unimplemented error.
       if (pin_to_custom_device.ok()) {
         if (pin_to_custom_device.value()) {
           *device = first;
         }
-        return OkStatus();
+        return absl::OkStatus();
       }
     }
 
@@ -194,11 +195,11 @@ Status CustomDeviceOpHandler::MaybePinToCustomDevice(
           // we'll force-place the op on to that custom device. As with physical
           // devices, this overrides any explicit placement for the op.
           *device = input->device();
-          return OkStatus();
+          return absl::OkStatus();
         } else {
           // Don't set a custom device if there's a physical-device resource
           // input.
-          return OkStatus();
+          return absl::OkStatus();
         }
       }
     }
@@ -209,9 +210,9 @@ Status CustomDeviceOpHandler::MaybePinToCustomDevice(
     // If there are non-resource inputs on a custom device we will default the
     // op to that custom device, but not override an explicit op placement.
     *device = first;
-    return OkStatus();
+    return absl::OkStatus();
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace tensorflow

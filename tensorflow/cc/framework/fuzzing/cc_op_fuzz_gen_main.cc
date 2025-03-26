@@ -15,21 +15,25 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include <algorithm>
+#include <cstdio>
+#include <cstdlib>
 #include <memory>
-#include <string>
 #include <vector>
 
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "tensorflow/cc/framework/cc_op_gen_util.h"
 #include "tensorflow/cc/framework/fuzzing/cc_op_fuzz_gen.h"
+#include "xla/tsl/platform/status.h"
+#include "tensorflow/core/framework/api_def.pb.h"
 #include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/framework/op_gen_lib.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
-#include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/file_system.h"
 #include "tensorflow/core/platform/init_main.h"
+#include "tensorflow/core/platform/str_util.h"
 #include "tensorflow/core/platform/types.h"
-#include "tsl/platform/status.h"
 
 namespace tensorflow {
 namespace cc_op {
@@ -38,12 +42,13 @@ namespace {
 void WriteAllFuzzers(string root_location, std::vector<string> api_def_dirs,
                      std::vector<string> op_names) {
   OpList ops;
-  StatusOr<ApiDefMap> api_def_map = LoadOpsAndApiDefs(ops, false, api_def_dirs);
+  absl::StatusOr<ApiDefMap> api_def_map =
+      LoadOpsAndApiDefs(ops, false, api_def_dirs);
 
   TF_CHECK_OK(api_def_map.status());
 
   Env* env = Env::Default();
-  tsl::Status status;
+  absl::Status status;
   std::unique_ptr<WritableFile> fuzz_file = nullptr;
   for (const OpDef& op_def : ops.op()) {
     if (std::find(op_names.begin(), op_names.end(), op_def.name()) ==

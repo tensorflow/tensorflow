@@ -14,25 +14,20 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/core/tools/verifier_internal.h"
 
-#include <memory>
+#include <cstddef>
+#include <cstdint>
 #include <string>
 #include <vector>
 
-#include "flatbuffers/flatbuffers.h"
-#include "flatbuffers/util.h"
-#include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "tensorflow/core/framework/numeric_types.h"
-#include "tensorflow/lite/allocation.h"
-#include "tensorflow/lite/core/api/flatbuffer_conversions.h"
-#include "tensorflow/lite/core/model.h"
-#include "tensorflow/lite/error_reporter.h"
+#include "flatbuffers/buffer.h"  // from @flatbuffers
+#include "flatbuffers/flatbuffer_builder.h"  // from @flatbuffers
+#include "flatbuffers/vector.h"  // from @flatbuffers
+#include "tensorflow/compiler/mlir/lite/schema/schema_conversion_utils.h"
+#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/mutable_op_resolver.h"
 #include "tensorflow/lite/op_resolver.h"
-#include "tensorflow/lite/schema/schema_conversion_utils.h"
 #include "tensorflow/lite/schema/schema_generated.h"
-#include "tensorflow/lite/testing/util.h"
-#include "tensorflow/lite/util.h"
 #include "tensorflow/lite/version.h"
 
 namespace tflite {

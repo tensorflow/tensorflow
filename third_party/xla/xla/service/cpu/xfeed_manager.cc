@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,51 +15,36 @@ limitations under the License.
 
 #include "xla/service/cpu/xfeed_manager.h"
 
+#include <cstdint>
+#include <utility>
+
+#include "absl/base/thread_annotations.h"
+#include "absl/synchronization/mutex.h"
+#include "absl/types/span.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "tsl/platform/logging.h"
+#include "xla/tsl/platform/logging.h"
 
 namespace xla {
 namespace cpu {
 namespace runtime {
 
-void XfeedManager::Reset() {
-  infeed()->Reset();
-  outfeed()->Reset();
-}
-
-void XfeedQueueManager::Reset() {
-  absl::MutexLock l(&mu_);
-  CHECK(current_buffer_ == nullptr);
-  for (auto buffer : enqueued_buffers_) {
-    buffer->Done(ShapeUtil::MakeNil());
-  }
-  enqueued_buffers_.clear();
-}
-
 void XfeedQueueManager::EnqueueBuffersAtomically(
     absl::Span<XfeedBuffer* const> buffers) {
   absl::MutexLock l(&mu_);
-  bool was_empty = enqueued_buffers_.empty();
   for (XfeedBuffer* b : buffers) {
     VLOG(3) << "Enqueueing " << queue_name_ << " buffer (of " << buffers.size()
             << " buffers) with length: " << b->length();
     enqueued_buffers_.push_back(b);
   }
-  if (was_empty && !buffers.empty()) {
-    // This has the potential to suffer from the notified thread
-    // immediately trying and failing to acquire mu_, but seems
-    // preferable to the alternative of notifying outside the lock
-    // on every enqueue.
-    cv_.Signal();
-  }
 }
 
 XfeedBuffer* XfeedQueueManager::BlockingDequeueBuffer() {
-  absl::MutexLock l(&mu_);
   VLOG(3) << "Waiting for an available buffer.";
-  while (enqueued_buffers_.empty()) {
-    cv_.Wait(&mu_);
-  }
+  auto available_buffer = [this]() ABSL_SHARED_LOCKS_REQUIRED(mu_) {
+    return !enqueued_buffers_.empty();
+  };
+  absl::MutexLock l(&mu_, absl::Condition(&available_buffer));
   VLOG(3) << "A buffer is available!";
   CHECK(current_buffer_ == nullptr);
   current_buffer_ = enqueued_buffers_.front();
@@ -68,7 +53,7 @@ XfeedBuffer* XfeedQueueManager::BlockingDequeueBuffer() {
 }
 
 void XfeedQueueManager::ReleaseCurrentBuffer(int32_t length, void* data,
-                                             StatusOr<Shape> shape) {
+                                             absl::StatusOr<Shape> shape) {
   VLOG(3) << "Releasing buffer with shape: "
           << (shape.ok() ? ShapeUtil::HumanString(shape.value())
                          : "<error status>");
@@ -81,7 +66,7 @@ void XfeedQueueManager::ReleaseCurrentBuffer(int32_t length, void* data,
 }
 
 int64_t GetByteSizeRequirement(const Shape& shape, int64_t pointer_size) {
-  if (shape.is_static() || shape.IsTuple()) {
+  if (shape.IsTuple() || shape.is_static()) {
     return ShapeUtil::ByteSizeOf(shape, pointer_size);
   }
   int64_t metadata_size = sizeof(int32_t) * shape.dimensions_size();

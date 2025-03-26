@@ -20,8 +20,11 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "tensorflow/core/framework/dataset.h"
+#include "tensorflow/core/framework/dataset_options.pb.h"
 #include "tensorflow/core/framework/model.pb.h"
+#include "tensorflow/core/platform/mem.h"
 #include "tensorflow/core/platform/refcount.h"
 
 namespace tensorflow {
@@ -35,7 +38,7 @@ class RootDataset : public DatasetBase {
     bool autotune = true;
     model::AutotuneAlgorithm autotune_algorithm;
     std::function<int64_t()> autotune_cpu_budget_func;
-    std::function<int64_t()> autotune_free_memory_func;
+    double ram_budget_share;
     int64_t autotune_ram_budget_from_options;
     int64_t max_intra_op_parallelism = 1;
     int64_t private_threadpool_size = 0;
@@ -44,14 +47,15 @@ class RootDataset : public DatasetBase {
       if (autotune_ram_budget_from_options > 0) {
         return autotune_ram_budget_from_options;
       } else {
-        return autotune_free_memory_func();
+        return ram_budget_share * port::AvailableRam();
       }
     }
   };
 
-  static Status FromOptions(const DatasetBase* input, DatasetBase** output);
-  static Status FromOptions(core::RefCountPtr<DatasetBase> input,
-                            DatasetBase** output);
+  static absl::Status FromOptions(const DatasetBase* input,
+                                  DatasetBase** output);
+  static absl::Status FromOptions(core::RefCountPtr<DatasetBase> input,
+                                  DatasetBase** output);
 
   ~RootDataset() override;
 
@@ -59,18 +63,22 @@ class RootDataset : public DatasetBase {
   const std::vector<PartialTensorShape>& output_shapes() const override;
 
   int64_t CardinalityInternal(CardinalityOptions options) const override;
-  Status Get(OpKernelContext* ctx, int64 index,
-             std::vector<Tensor>* out_tensors) const override;
-  Status CheckExternalState() const override;
+  absl::Status Get(OpKernelContext* ctx, int64 index,
+                   std::vector<Tensor>* out_tensors) const override;
+  absl::Status CheckExternalState() const override;
   string DebugString() const override;
-  Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override;
+  absl::Status InputDatasets(
+      std::vector<const DatasetBase*>* inputs) const override;
   std::unique_ptr<IteratorBase> MakeIteratorInternal(
       const string& prefix) const override;
+  absl::Status RandomIndexingCompatible() const override {
+    return random_indexing_compatible_;
+  }
 
  protected:
-  Status AsGraphDefInternal(SerializationContext* ctx,
-                            DatasetGraphDefBuilder* b,
-                            Node** output) const override;
+  absl::Status AsGraphDefInternal(SerializationContext* ctx,
+                                  DatasetGraphDefBuilder* b,
+                                  Node** output) const override;
 
  private:
   class Iterator;
@@ -83,6 +91,7 @@ class RootDataset : public DatasetBase {
   core::RefCountPtr<DatasetBase> owned_input_;
   const Params params_;
   TraceMeMetadata traceme_metadata_;
+  absl::Status random_indexing_compatible_;
 };
 
 // Finalizes the `input` dataset, which is expected to be called before the
@@ -90,8 +99,8 @@ class RootDataset : public DatasetBase {
 // optimizations or inject internal tf.data transformations responsible for
 // autotuning or threading configuration. The caller must ensure that the
 // input dataset to be finalized outlives the output.
-Status FinalizeDataset(OpKernelContext* ctx, const DatasetBase* input,
-                       DatasetBase** output);
+absl::Status FinalizeDataset(OpKernelContext* ctx, const DatasetBase* input,
+                             DatasetBase** output);
 
 }  // namespace data
 }  // namespace tensorflow

@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -21,33 +21,17 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/status/statusor.h"
 #include "llvm/Support/ExtensibleRTTI.h"
-#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
-#include "mlir/IR/MLIRContext.h"  // from @llvm-project
-#include "mlir/IR/OwningOpRef.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"
+#include "mlir/IR/MLIRContext.h"
+#include "mlir/IR/OwningOpRef.h"
+#include "xla/pjrt/pjrt_executable.h"
 #include "xla/python/ifrt/compiler.h"
 #include "xla/python/ifrt/host_callback.h"
 
 namespace xla {
 namespace ifrt {
-
-struct XlaProgram : llvm::RTTIExtends<XlaProgram, Program> {
-  XlaProgram() = default;
-  explicit XlaProgram(mlir::ModuleOp module) : mlir_module(module) {}
-  XlaProgram(std::unique_ptr<mlir::MLIRContext> context,
-             mlir::OwningOpRef<mlir::ModuleOp> module)
-      : mlir_module(*module),
-        mlir_context(std::move(context)),
-        owning_mlir_module(std::move(module)) {}
-
-  mlir::ModuleOp mlir_module;
-
-  static char ID;  // NOLINT
-
- private:
-  std::unique_ptr<mlir::MLIRContext> mlir_context;
-  mlir::OwningOpRef<mlir::ModuleOp> owning_mlir_module;
-};
 
 // Wraps compilation options for an XLA computation.
 //
@@ -104,12 +88,12 @@ struct XlaDeserializeExecutableOptions
 };
 
 // Gets `xla::ifrt::XlaCompileOptions` from `xla::ifrt::CompileOptions`.
-StatusOr<std::unique_ptr<XlaCompileOptions>> GetXlaCompileOptions(
+absl::StatusOr<std::unique_ptr<XlaCompileOptions>> GetXlaCompileOptions(
     std::unique_ptr<CompileOptions> options);
 
 // Gets `xla::ifrt::XlaDeserializeExecutableOptions` from
 // `xla::ifrt::DeserializeExecutableOptions`.
-StatusOr<std::unique_ptr<XlaDeserializeExecutableOptions>>
+absl::StatusOr<std::unique_ptr<XlaDeserializeExecutableOptions>>
 GetXlaDeserializeExecutableOptions(
     std::unique_ptr<DeserializeExecutableOptions> options);
 

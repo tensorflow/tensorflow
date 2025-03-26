@@ -17,6 +17,9 @@ limitations under the License.
 
 #include <memory>
 
+#include "third_party/grpc/include/grpcpp/security/credentials.h"
+#include "third_party/grpc/include/grpcpp/security/server_credentials.h"
+
 namespace tensorflow {
 namespace profiler {
 
