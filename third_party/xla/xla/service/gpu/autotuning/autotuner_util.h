@@ -106,7 +106,7 @@ class AutotuneCacheKey {
   // Tie a version to the cache key in order to invalidate the cache when
   // necessary. This should be done on triton upgrades or any other changes
   // that may affect the autotuning results.
-  int version_ = 0;
+  int version_ = 1;
 };
 
 using AutotuneCacheKeySet = absl::flat_hash_set<AutotuneCacheKey>;
