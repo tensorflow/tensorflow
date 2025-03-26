@@ -73,6 +73,33 @@ py_strict_test(
 )
 
 cc_library(
+    name = "literal_type_casters",
+    srcs = ["literal_type_casters.cc"],
+    hdrs = ["literal_type_casters.h"],
+    compatible_with = [],
+    copts = [
+        "-fexceptions",
+        "-fno-strict-aliasing",
+    ],
+    features = ["-use_header_modules"],
+    visibility = internal_visibility([":friends"]),
+    deps = [
+        ":nb_numpy",
+        ":types",
+        "//xla:literal",
+        "//xla:shape_util",
+        "//xla:xla_data_proto_cc",
+        "//xla/pjrt:exceptions",
+        "//xla/tsl/python/lib/core:numpy",
+        "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
+        "@local_config_python//:python_headers",  # buildcleaner: keep
+        "@nanobind",
+    ],
+)
+
+cc_library(
     name = "types",
     srcs = ["types.cc"],
     hdrs = ["types.h"],
@@ -278,6 +305,7 @@ cc_library(
     ],
     features = ["-use_header_modules"],
     deps = [
+        ":literal_type_casters",
         ":nb_absl_span",
         ":nb_helpers",
         ":types",
