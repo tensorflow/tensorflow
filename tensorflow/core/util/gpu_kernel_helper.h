@@ -30,8 +30,23 @@ limitations under the License.
 #if GOOGLE_CUDA
 #define TF_RED_WARPSIZE 32
 #elif TENSORFLOW_USE_ROCM
-// We don't define TF_RED_WARPSIZE here, because it can be either 32 or 64
-// and the value is not known at compile time.
+
+inline hipError_t AMD_WarpSize(int* warpSize) {
+  hipDeviceProp_t props;
+  int dev = 0;
+
+  hipError_t result = hipGetDevice(&dev);
+  if (result != hipSuccess) {
+    return result;
+  }
+  result = hipGetDeviceProperties(&props, dev);
+  if (result != hipSuccess) {
+    return result;
+  }
+  *warpSize = props.warpSize;
+  return hipSuccess;
+}
+
 #endif
 
 // Deprecated, use 'for(int i : GpuGridRangeX(n))' instead.
