@@ -11,6 +11,9 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+#
+# Copyright (c) Qualcomm Innovation Center, Inc. All Rights Reserved.
+# SPDX-License-Identifier: Apache-2.0
 
 load("//tensorflow/lite/experimental/litert/build_common:litert_build_defs.bzl", "copy_file", "litert_dynamic_lib")
 
@@ -63,6 +66,7 @@ litert_dynamic_lib(
         "//tensorflow/lite/experimental/litert/core/util:tensor_type_util",
         "//tensorflow/lite/experimental/litert/vendors/c:litert_dispatch_c_api",
         "//tensorflow/lite/experimental/litert/vendors/qualcomm:common",
+        "//tensorflow/lite/experimental/litert/vendors/qualcomm/core:common",
         "//tensorflow/lite/experimental/litert/vendors/qualcomm:context_binary_info",
         "//tensorflow/lite/experimental/litert/vendors/qualcomm:qnn_manager",
     ],
@@ -101,6 +105,7 @@ cc_test(
     ],
     deps = [
         "//tensorflow/lite/experimental/litert/c:litert_common",
+        "//tensorflow/lite/experimental/litert/c:litert_runtime_c_api_shared_lib",
         "//tensorflow/lite/experimental/litert/c:litert_tensor_buffer",
         "//tensorflow/lite/experimental/litert/cc:litert_any",
         "//tensorflow/lite/experimental/litert/core:filesystem",

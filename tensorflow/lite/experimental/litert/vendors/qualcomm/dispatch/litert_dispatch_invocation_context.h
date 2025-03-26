@@ -11,6 +11,9 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
+//
+// Copyright (c) Qualcomm Innovation Center, Inc. All Rights Reserved.
+// SPDX-License-Identifier: Apache-2.0
 
 #ifndef TENSORFLOW_LITE_EXPERIMENTAL_LITERT_VENDORS_QUALCOMM_DISPATCH_LITERT_DISPATCH_INVOCATION_CONTEXT_H_
 #define TENSORFLOW_LITE_EXPERIMENTAL_LITERT_VENDORS_QUALCOMM_DISPATCH_LITERT_DISPATCH_INVOCATION_CONTEXT_H_
@@ -53,6 +56,8 @@ class LiteRtDispatchInvocationContextT {
       int graph_output_index, LiteRtTensorBufferHandle tensor_buffer_handle);
 
   litert::Expected<void> Execute();
+
+  litert::Expected<void> Profile();
 
   Qnn_ContextHandle_t ContextHandle() { return context_handle_.get(); }
 
