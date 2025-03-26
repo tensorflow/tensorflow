@@ -48,6 +48,7 @@ limitations under the License.
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/status_matchers.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
@@ -2105,6 +2106,41 @@ ENTRY entry {
       }
     }
 })";
+  EXPECT_TRUE(RunAndCompareNoHloPasses(
+      kHloText, ErrorSpec{/*aabs=*/1e-4, /*arel=*/1e-6}));
+}
+
+TEST_F(TritonEmitterTest, DotFromBroadcastIsEmittedCorrectly) {
+  // TODO(b/393299275): add a deviceless test to run the whole pipeline as
+  // other passes might change the module but we are starting from a fixed
+  // state.
+  const std::string kHloText = R"(
+HloModule module
+
+flhs (parameter_0: f32[264]) -> f32[264,128] {
+  parameter_0 = f32[264]{0} parameter(0)
+  ROOT flhs.1 = f32[264,128]{1,0} broadcast(parameter_0), dimensions={0}
+}
+
+frhs (parameter_0.1: f32[128,8]) -> f32[128,8] {
+  ROOT parameter_0.1 = f32[128,8]{1,0} parameter(0)
+}
+
+triton_dot (p0: f32[264], p1: f32[128,8]) -> f32[264,8] {
+  p0 = f32[264]{0} parameter(0)
+  lhs = f32[264,128]{1,0} fusion(p0), kind=kCustom, calls=flhs, backend_config={"fusion_backend_config":{"kind":"__triton_nested_gemm_fusion","block_level_fusion_config":{"num_warps":"1","output_tiles":[{"sizes":["32","16"]}]}}}
+  p1 = f32[128,8]{1,0} parameter(1)
+  rhs = f32[128,8]{1,0} fusion(p1), kind=kCustom, calls=frhs, backend_config={"fusion_backend_config":{"kind":"__triton_nested_gemm_fusion","block_level_fusion_config":{"num_warps":"1","output_tiles":[{"sizes":["16","16"]}]}}}
+  ROOT result = f32[264,8]{1,0} dot(lhs, rhs), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+}
+
+ENTRY e (p0.1: f32[11,1,24,1], p1.1: f32[128,8]) -> f32[264,8] {
+  p0.1 = f32[11,1,24,1]{3,2,1,0} parameter(0)
+  bitcast = f32[264]{0} bitcast(p0.1)
+  p1.1 = f32[128,8]{1,0} parameter(1)
+  ROOT result.1 = f32[264,8]{1,0} fusion(bitcast, p1.1), kind=kCustom, calls=triton_dot, backend_config={"fusion_backend_config":{"kind":"__triton_nested_gemm_fusion","block_level_fusion_config":{"num_warps":"1","output_tiles":[{"sizes":["32","16"]}]}}}
+}
+)";
   EXPECT_TRUE(RunAndCompareNoHloPasses(
       kHloText, ErrorSpec{/*aabs=*/1e-4, /*arel=*/1e-6}));
 }

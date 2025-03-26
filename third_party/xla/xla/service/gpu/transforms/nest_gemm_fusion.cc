@@ -28,11 +28,13 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/SmallVector.h"
@@ -45,6 +47,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/transforms/simplifiers/hlo_dce.h"
 #include "xla/hlo/utils/hlo_query.h"
+#include "xla/layout_util.h"
 #include "xla/service/call_graph.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/matmul_indexing_utils.h"
@@ -55,8 +58,10 @@ limitations under the License.
 #include "xla/service/gpu/model/tiled_hlo_computation.h"
 #include "xla/service/instruction_fusion.h"
 #include "xla/shape.h"
+#include "xla/shape_util.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
+#include "xla/util.h"
 
 namespace xla::gpu {
 
@@ -200,6 +205,8 @@ absl::StatusOr<llvm::SmallVector<int64_t>> FindOutputTileSizesForEpilogue(
     HloDotInstruction* dot, const TritonGemmConfig& config,
     mlir::MLIRContext* ctx) {
   HloComputation* computation = dot->parent();
+  VLOG(3) << "FindOutputTileSizesForEpilogue of computation: "
+          << computation->ToString();
   SymbolicTileAnalysisOrError analysis_or =
       SymbolicTileAnalysis::AnalyzeComputation(*computation, ctx);
   if (std::holds_alternative<FusionDecision>(analysis_or)) {
@@ -220,7 +227,8 @@ absl::StatusOr<llvm::SmallVector<int64_t>> FindOutputTileSizesForEpilogue(
   const SymbolicTiledHloInstruction& tiled_dot = **tiled_dot_it;
 
   auto get_tile_sizes = [&](int64_t rank) {
-    CHECK_GE(rank, 2);
+    QCHECK_GE(rank, 2) << "Expected at least rank 2 for the dot, got " << rank
+                       << " in computation " << computation->ToString();
     // We always expect the shape to be [1, ..., block_m, block_n], by
     // construction of GemmFusions.
     llvm::SmallVector<int64_t> tile_sizes(rank - 2, 1);
@@ -228,6 +236,8 @@ absl::StatusOr<llvm::SmallVector<int64_t>> FindOutputTileSizesForEpilogue(
     return tile_sizes;
   };
 
+  VLOG(3) << "FindOutputTileSizesForEpilogue: dot shape: "
+          << dot->shape().ToString();
   auto expected_dot_tile_sizes = get_tile_sizes(dot->shape().dimensions_size());
   if (VLOG_IS_ON(2)) {
     std::ostringstream oss;
@@ -242,6 +252,8 @@ absl::StatusOr<llvm::SmallVector<int64_t>> FindOutputTileSizesForEpilogue(
   // Try all permutations of the dot tile sizes to see if any of them satisfy
   // the constraints of the analysis and map to the given config of the dot.
   int64_t out_rank = computation->root_instruction()->shape().dimensions_size();
+  VLOG(3) << "FindOutputTileSizesForEpilogue: computation root shape: "
+          << computation->root_instruction()->shape().ToString();
   auto output_tile_sizes = get_tile_sizes(out_rank);
   std::sort(output_tile_sizes.begin(), output_tile_sizes.end());
   do {
@@ -339,7 +351,7 @@ size_t GetDotCount(HloComputation* computation) {
 // Returns the set of instructions that are reachable from 'instruction' using
 // the given accessor.
 template <typename T>
-HloInstructionSet GetTransitiveInstructionSet(HloInstruction* instruction,
+HloInstructionSet GetTransitiveInstructionSet(const HloInstruction* instruction,
                                               T (HloInstruction::*get)()
                                                   const) {
   std::deque<HloInstruction*> worklist;
@@ -359,11 +371,11 @@ HloInstructionSet GetTransitiveInstructionSet(HloInstruction* instruction,
 }
 
 // Returns the set of producers reachable from 'instruction'.
-HloInstructionSet GetProducerSet(HloInstruction* instruction) {
+HloInstructionSet GetProducerSet(const HloInstruction* instruction) {
   return GetTransitiveInstructionSet(instruction, &HloInstruction::operands);
 }
 // Returns the set of consumers reachable from 'instruction'.
-HloInstructionSet GetConsumerSet(HloInstruction* instruction) {
+HloInstructionSet GetConsumerSet(const HloInstruction* instruction) {
   return GetTransitiveInstructionSet(instruction, &HloInstruction::users);
 }
 
@@ -372,7 +384,7 @@ HloInstructionSet GetConsumerSet(HloInstruction* instruction) {
 // either in the set itself or the root.
 template <typename T>
 absl::Status VerifyIsClosedInstructionSet(const HloInstructionSet& instructions,
-                                          HloInstruction* root,
+                                          const HloInstruction* root,
                                           T (HloInstruction::*get)() const) {
   for (HloInstruction* instruction : instructions) {
     for (HloInstruction* reachable : (instruction->*get)()) {
@@ -390,59 +402,234 @@ absl::Status VerifyIsClosedInstructionSet(const HloInstructionSet& instructions,
 }
 
 absl::Status VerifyIsClosedProducerSet(const HloInstructionSet& instructions,
-                                       HloInstruction* root) {
+                                       const HloInstruction* root) {
   return VerifyIsClosedInstructionSet(instructions, root,
                                       &HloInstruction::users);
 }
 absl::Status VerifyIsClosedConsumerSet(const HloInstructionSet& instructions,
-                                       HloInstruction* root) {
+                                       const HloInstruction* root) {
   return VerifyIsClosedInstructionSet(instructions, root,
                                       &HloInstruction::operands);
 }
 
-// Returns true if it's safe to hoist a bitcast past the given instruction.
-bool IsSafeToHoistPast(HloInstruction* instruction) {
+bool IsSafeToSinkBitcastBelow(HloInstruction* instruction) {
   switch (instruction->opcode()) {
     case HloOpcode::kParameter:
     case HloOpcode::kConstant:
     case HloOpcode::kBitcast:
+      // TODO(b/393299275): Support sinking through broadcast.
       return true;
     default:
       return instruction->IsElementwise();
   }
 }
 
+// Parameters to rewrite a broadcast + reshape as reshape + broadcast.
+struct ReshapeBroadcastOutputParams {
+  std::vector<int64_t> new_broadcast_dim_map;
+  Shape new_operand_shape;
+};
+
+// Returns parameters to rewrite a broadcast + reshape as reshape + broadcast.
+//
+// Example:
+//
+// b = T[...] broadcast(operand)
+// c = T[target_dims] reshape(b)
+//
+// to
+//
+// d = [new operand shape] reshape(operand)
+// c = T[target_dims] broadcast(d), dimensions={broadcast dims parameter}.
+//
+// Assumes that:
+// - broadcast does not transpose dimensions (checked by hlo_verifier);
+// - reshape does not mix operand and broadcast dimensions (checks);
+absl::StatusOr<ReshapeBroadcastOutputParams> CalculateBroadcastOutputReshape(
+    const HloBroadcastInstruction* broadcast,
+    absl::Span<const int64_t> target_dims) {
+  // The rewrite works by splitting the broadcast output dimensions and the
+  // target dimensions into groups of equal size. Every group is then associated
+  // with either the operand or added broadcast dimensions. A group coming from
+  // the operand is used to construct the new operand shape.
+  auto broadcast_dims = broadcast->shape().dimensions();
+  QCHECK_EQ(broadcast->dimensions().size(),
+            broadcast->operands()[0]->shape().dimensions().size())
+      << absl::StrCat("Broadcast 'dimensions' parameter size ",
+                      broadcast->dimensions().size(),
+                      " does not the match the operand rank ",
+                      broadcast->operands()[0]->shape().dimensions().size());
+  if (Product(broadcast_dims) != Product(target_dims)) {
+    return absl::InvalidArgumentError(absl::StrCat(
+        "Broadcast shape dimensions product ", Product(broadcast_dims), " (",
+        broadcast->shape().ToString(),
+        ") does not match target shape dimensions product ",
+        Product(target_dims), " (", absl::StrJoin(target_dims, ","), ")"));
+  }
+  if (!LayoutUtil::IsMonotonicWithDim0Major(broadcast->shape().layout())) {
+    // TODO(b/393299275): do we need to support non-default layouts?
+    return absl::UnimplementedError(
+        absl::StrCat("Not-default layouts for broadcast is not supported yet: ",
+                     broadcast->shape().layout().ToString()));
+  }
+  std::vector<bool> output_dim_from_operand(broadcast_dims.size(), false);
+  for (const int64_t i : broadcast->dimensions()) {
+    output_dim_from_operand[i] = true;
+  }
+  ReshapeBroadcastOutputParams result;
+  std::vector<int64_t> new_operand_dims;
+  absl::InlinedVector<std::pair<int64_t, int64_t>, 8> factors =
+      CommonFactors(broadcast_dims, target_dims);
+  for (int64_t i = 0; i + 1 < factors.size(); ++i) {
+    bool has_broadcasted_dim = false;
+    bool has_operand_dim = false;
+    auto [broadcast_from, target_from] = factors[i];
+    auto [broadcast_to, target_to] = factors[i + 1];
+    for (int64_t j = broadcast_from; j < broadcast_to; ++j) {
+      has_operand_dim |= output_dim_from_operand[j];
+      has_broadcasted_dim |= !output_dim_from_operand[j];
+    }
+    if (!has_operand_dim) {
+      // Group of dimensions is coming from the broadcast, skip it as it will
+      // be simply introduced by the new broadcast.
+      continue;
+    }
+    if (has_broadcasted_dim) {
+      return absl::InvalidArgumentError(
+          absl::StrCat("Cannot reshape broadcast for ", broadcast->ToString(),
+                       " as it mixes operand and broadcast dimensions."));
+    }
+    // Update the expected operand shape.
+    for (int64_t j = target_from; j < target_to; ++j) {
+      result.new_broadcast_dim_map.push_back(new_operand_dims.size());
+      new_operand_dims.push_back(target_dims[j]);
+    }
+  }
+  result.new_operand_shape = ShapeUtil::MakeShape(
+      broadcast->operand(0)->shape().element_type(), new_operand_dims);
+  return std::move(result);
+}
+
+// Simulates a rewrite of all producers of a given bitcast, moving the bitcast
+// outside of the computation.
+// Returns the new shapes of affected instructions in order of traversal from
+// users to producers.
+absl::StatusOr<std::vector<std::pair<HloInstruction*, Shape>>>
+PlanHoistBitcastToCallers(const HloInstruction* bitcast) {
+  // Check that all producers only affect the bitcast. If there are any
+  // other users: refuse the hoisting.
+  // It is possible to support more cases by sinking the bitcast from such
+  // producers downward.
+  HloInstructionSet producers = GetProducerSet(bitcast);
+  TF_RETURN_IF_ERROR(VerifyIsClosedProducerSet(producers, bitcast));
+  HloInstructionMap<Shape> to_update;
+
+  auto set_shape = [&](const absl::Span<HloInstruction* const> instructions,
+                       const Shape& shape) -> absl::Status {
+    for (HloInstruction* instruction : instructions) {
+      auto it = to_update.find(instruction);
+      if (it == to_update.end()) {
+        to_update.emplace(instruction, shape);
+      } else if (it->second != shape) {
+        return absl::FailedPreconditionError(absl::StrCat(
+            "Conflicting shape assignment for ", instruction->ToString(),
+            " got ", it->second.ToString(), " and ", shape.ToString()));
+      }
+    }
+    return absl::OkStatus();
+  };
+  TF_RETURN_IF_ERROR(set_shape(bitcast->operands(), bitcast->shape()));
+  std::vector<std::pair<HloInstruction*, Shape>> result;
+  // We want to visit instructions in order from users to producers: we
+  // hoist the bitcast upwards and having a valid HLO at every rewrite step
+  // helps a lot.
+  // A simple DFS or BFS over operands will not work in non-tree situations when
+  // there are multiple users of the same producer. Instead of writing a custom
+  // traversal we can simply walk the post-order (producers before users)
+  // list backward and only update the instructions affected.
+  // TODO(b/393299275): use MakeInstructionPostOrderFrom(bitcast) - that should
+  // be slightly more efficient.
+  auto use_before_def = bitcast->parent()->MakeInstructionPostOrder();
+  absl::c_reverse(use_before_def);
+  for (HloInstruction* instruction : use_before_def) {
+    auto it = to_update.find(instruction);
+    if (it == to_update.end()) {
+      // Not affected.
+      continue;
+    }
+    Shape& shape = it->second;
+    // TODO(b/393299275): check that the type of the instruction shape type
+    // matches the target shape.
+    result.emplace_back(instruction, shape);
+    VLOG(2) << absl::StrCat("updating the shape of ", instruction->ToString(),
+                            " from ", instruction->shape().ToString(), " to ",
+                            shape.ToString());
+    switch (instruction->opcode()) {
+      case HloOpcode::kParameter:
+      case HloOpcode::kConstant:
+        // No operands.
+        break;
+      case HloOpcode::kBitcast:
+        // Other bitcast will be hoisted separately so we don't need to update
+        // its operand.
+        break;
+      case HloOpcode::kBroadcast: {
+        TF_ASSIGN_OR_RETURN(ReshapeBroadcastOutputParams params,
+                            CalculateBroadcastOutputReshape(
+                                Cast<HloBroadcastInstruction>(instruction),
+                                shape.dimensions()));
+        TF_RETURN_IF_ERROR(
+            set_shape(instruction->operands(), params.new_operand_shape));
+        break;
+      }
+      default:
+        if (!instruction->IsElementwise()) {
+          return absl::FailedPreconditionError(absl::StrCat(
+              "Cannot hoist bitcast past ", instruction->ToString()));
+        }
+        TF_RETURN_IF_ERROR(set_shape(instruction->operands(), shape));
+        break;
+    }
+  }
+  return result;
+}
+
 // Hoists the given 'bitcast' upwards out of its computation, to the parent of
 // each caller.
 absl::Status HoistBitcastUpwardsToCallers(
     HloInstruction* bitcast, const std::vector<HloInstruction*>& callers) {
-  HloInstructionSet producers = GetProducerSet(bitcast);
-  TF_RETURN_IF_ERROR(VerifyIsClosedProducerSet(producers, bitcast));
-
-  if (auto it = absl::c_find_if_not(producers, IsSafeToHoistPast);
-      it != producers.end()) {
-    return absl::InternalError(
-        absl::StrCat("Cannot hoist bitcast past ", (*it)->ToString()));
-  }
-
-  // Adjust the shape of every producer instruction.
-  Shape shape = bitcast->shape();
-  for (HloInstruction* instruction : producers) {
+  TF_ASSIGN_OR_RETURN(auto rewrite_plan, PlanHoistBitcastToCallers(bitcast));
+  for (auto [instruction, shape] : rewrite_plan) {
+    VLOG(2) << absl::StrCat("rewriting shape of ", instruction->ToString(),
+                            " from ", instruction->shape().ToString(), " to ",
+                            shape.ToString());
+    switch (instruction->opcode()) {
+      case HloOpcode::kParameter: {
+        // Create a new bitcast in callers.
+        int64_t number = instruction->parameter_number();
+        for (HloInstruction* caller : callers) {
+          HloInstruction* new_bitcast =
+              caller->AddInstruction(HloInstruction::CreateBitcast(
+                  shape, caller->mutable_operand(number)));
+          TF_RETURN_IF_ERROR(
+              caller->ReplaceOperandWithDifferentShape(number, new_bitcast));
+        }
+        break;
+      }
+      case HloOpcode::kBroadcast: {
+        auto* broadcast = Cast<HloBroadcastInstruction>(instruction);
+        auto params =
+            CalculateBroadcastOutputReshape(broadcast, shape.dimensions());
+        QCHECK_OK(params);  // This must be OK as we have already ran this in
+                            // AssignShapesToHoistBitcastToCallers.
+        *broadcast->mutable_dimensions() = params.value().new_broadcast_dim_map;
+        break;
+      }
+      default:
+        break;
+    }
     *instruction->mutable_shape() = shape;
-    if (HloPredicateIsNotOp<HloOpcode::kParameter>(instruction)) {
-      continue;
-    }
-    // For parameters, we need to bitcast the caller's operand.
-    int64_t number = instruction->parameter_number();
-    for (HloInstruction* caller : callers) {
-      HloInstruction* new_bitcast =
-          caller->AddInstruction(HloInstruction::CreateBitcast(
-              shape, caller->mutable_operand(number)));
-      TF_RETURN_IF_ERROR(
-          caller->ReplaceOperandWithDifferentShape(number, new_bitcast));
-    }
   }
-
   TF_RETURN_IF_ERROR(bitcast->ReplaceAllUsesWith(bitcast->mutable_operand(0)));
   TF_RETURN_IF_ERROR(bitcast->parent()->RemoveInstruction(bitcast));
   return absl::OkStatus();
@@ -458,8 +645,7 @@ absl::Status HoistBitcastDownwardsToCallers(
   CHECK(is_root(bitcast) || absl::c_any_of(consumers, is_root))
       << "Expected" << bitcast->ToString()
       << " to be a root or have a root consumer.";
-
-  if (auto it = absl::c_find_if_not(consumers, IsSafeToHoistPast);
+  if (auto it = absl::c_find_if_not(consumers, IsSafeToSinkBitcastBelow);
       it != consumers.end()) {
     return absl::InternalError(
         absl::StrCat("Cannot hoist bitcast past ", (*it)->ToString()));
