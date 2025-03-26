@@ -110,6 +110,11 @@ Shape::Shape(const ShapeProto& shape_proto) {
       *mutable_layout() = Layout::CreateFromProto(shape_proto.layout());
     }
   }
+  if (shape_proto.buffer_id() > 0) {
+    buffer_id_ = shape_proto.buffer_id();
+  } else {
+    buffer_id_ = 0;
+  }
 }
 
 void Shape::SetProto(ShapeProto& proto) const {
@@ -129,6 +134,7 @@ void Shape::SetProto(ShapeProto& proto) const {
   if (has_layout()) {
     layout().SetProto(*proto.mutable_layout());
   }
+  proto.set_buffer_id(buffer_id_);
 }
 
 ShapeProto Shape::ToProto() const {
@@ -313,6 +319,15 @@ bool Shape::Equal::operator()(const Shape& lhs, const Shape& rhs) {
       }
     }
   }
+
+  if (!ignore_buffer_id_) {
+    if (lhs.buffer_id() != rhs.buffer_id()) {
+      VLOG(3) << "CompareShapes: lhs and rhs have different buffer ids.";
+      return false;
+    }
+    return true;
+  }
+
   return true;
 }
 

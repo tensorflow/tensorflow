@@ -112,9 +112,16 @@ struct HloVerifierOpts {
     return std::move(*this);
   }
 
+  HloVerifierOpts&& VerifyBuffers() {
+    allow_buffers = true;
+    return std::move(*this);
+  }
+
   bool IsLayoutSensitive() const { return layout_sensitive; }
 
   bool AllowMixedPrecision() const { return allow_mixed_precision; }
+
+  bool AllowBuffers() const { return allow_buffers; }
 
   const HloPredicate& InstructionCanChangeLayout() const {
     return instruction_can_change_layout;
@@ -164,6 +171,19 @@ struct HloVerifierOpts {
 
   // Check if a shape has a host memory space color
   bool verify_no_host_memory_space = false;
+
+  // When false, verify that no shape has a valid buffer id and custom-call
+  // targets pin and unpin are not used.
+  //
+  // When true, verify the followings:
+  // - Custom-call targets pin, unpin and allocateBuffer are used properly.
+  // - Custom-call instructions that use buffers must have the same buffer in
+  //   both operands and results. An SSA value with a valid buffer id can only
+  //   updated at most once.
+  // - Instructions, such as tuple, get-tuple-element, parameter for while-body
+  //   and while-loop can pass through buffers. No other instructions can have
+  //   buffers in their operands or results.
+  bool allow_buffers = false;
 
   HloPredicate instruction_can_change_layout;
 

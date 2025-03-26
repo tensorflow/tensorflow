@@ -2936,6 +2936,442 @@ ENTRY computation {
                    .status());
 }
 
+TEST_F(HloVerifierTest, VerifyBuffersEntryParameterCannotHaveBuffers) {
+  const char* const hlo = R"(
+  HloModule module
+
+  ENTRY computation {
+    p0 = f32[32]{buffer_id=1} parameter(0)
+    p1 = f32[32] parameter(1)
+    ROOT add0 = f32[32] add(p0,p1)
+  })";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
+  auto status =
+      HloVerifier{HloVerifierOpts{}.VerifyBuffers()}.Run(module.get()).status();
+  ASSERT_FALSE(status.ok());
+  EXPECT_THAT(status.message(),
+              HasSubstr("buffers aren't allowed in this context"));
+}
+
+TEST_F(HloVerifierTest, VerifyBuffersAddOpCannotHaveBuffers) {
+  const char* const hlo = R"(
+  HloModule module
+
+  ENTRY computation {
+    p0 = f32[32] parameter(0)
+    a = f32[32]{buffer_id=1} custom-call(p0), custom_call_target="pin"
+    b = f32[32]{buffer_id=1} add(a, a)
+    ROOT c = f32[32] custom-call(b), custom_call_target="unpin"
+  })";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
+  auto status =
+      HloVerifier{HloVerifierOpts{}.VerifyBuffers()}.Run(module.get()).status();
+  ASSERT_FALSE(status.ok());
+  EXPECT_THAT(status.message(),
+              HasSubstr("buffers aren't allowed in this context"));
+}
+
+TEST_F(HloVerifierTest,
+       VerifyBuffersSpecialCustomCallTargetsNotAllowedWhenBuffersAreDisabled) {
+  const char* const hlo = R"(
+  HloModule module
+
+  ENTRY computation {
+    p0 = f32[32] parameter(0)
+    a = f32[32]{buffer_id=1} custom-call(p0), custom_call_target="pin"
+    ROOT c = f32[32] custom-call(a), custom_call_target="unpin"
+  })";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
+  auto status = HloVerifier{HloVerifierOpts{}}.Run(module.get()).status();
+  ASSERT_FALSE(status.ok());
+  EXPECT_THAT(status.message(),
+              HasSubstr("custom-calls for pin or unpin aren't allowed"));
+}
+
+TEST_F(HloVerifierTest, VerifyBuffersResultBufferNotInOperands) {
+  const char* const hlo = R"(
+  HloModule module
+
+  ENTRY computation {
+    p0 = f32[32] parameter(0)
+    b = f32[32]{buffer_id=1} custom-call(p0), custom_call_target="pin"
+    call0 = f32[32]{buffer_id=1} custom-call(b), custom_call_target="start_send"
+    a = f32[32] add(p0, p0)
+    call1 = (f32[32]{buffer_id=2}, f32[16]{buffer_id=1}, token[])
+      custom-call(call0), custom_call_target="end_send",
+      custom_call_has_side_effect=true
+    ROOT c = copy(a)
+  })";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
+  auto status =
+      HloVerifier{HloVerifierOpts{}.VerifyBuffers()}.Run(module.get()).status();
+  ASSERT_FALSE(status.ok());
+  EXPECT_THAT(status.message(),
+              HasSubstr("buffer_id is used in result but not in operands"));
+}
+
+TEST_F(HloVerifierTest, VerifyBuffersBufferInResultMultipleTimes) {
+  const char* const hlo = R"(
+  HloModule module
+
+  ENTRY computation {
+    p0 = f32[32] parameter(0)
+    b = f32[32]{buffer_id=1} custom-call(p0), custom_call_target="pin"
+    call0 = f32[32]{buffer_id=1} custom-call(b), custom_call_target="start_send"
+    a = f32[32] add(p0, p0)
+    call1 = (f32[32]{buffer_id=1}, f32[16]{buffer_id=1}, token[])
+      custom-call(call0), custom_call_target="end_send",
+      custom_call_has_side_effect=true
+    ROOT c = copy(a)
+  })";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
+  auto status =
+      HloVerifier{HloVerifierOpts{}.VerifyBuffers()}.Run(module.get()).status();
+  ASSERT_FALSE(status.ok());
+  EXPECT_THAT(status.message(),
+              HasSubstr("buffer_id is used multiple times in result"));
+}
+
+TEST_F(HloVerifierTest, VerifyBuffersTupleWithBuffersAsEntryComputationRoot) {
+  const char* const hlo = R"(
+  HloModule module
+
+  ENTRY computation {
+    p0 = f32[32] parameter(0)
+    b0 = f32[32]{buffer_id=1} custom-call(p0), custom_call_target="pin"
+    b1 = f32[32]{buffer_id=2} custom-call(), custom_call_target="allocateBuffer"
+    ROOT tuple0 = (f32[32]{buffer_id=1}, f32[32]{buffer_id=2}) tuple(b0, b1)
+  })";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
+  auto status =
+      HloVerifier{HloVerifierOpts{}.VerifyBuffers()}.Run(module.get()).status();
+  ASSERT_FALSE(status.ok());
+  EXPECT_THAT(status.message(), HasSubstr("tuple with buffers can only be used "
+                                          "as while-init or while-body root"));
+}
+
+TEST_F(HloVerifierTest, VerifyBuffersTupleWithBuffersNotRootNotWhileInit) {
+  const char* const hlo = R"(
+  HloModule module
+
+  ENTRY computation {
+    p0 = f32[32] parameter(0)
+    b0 = f32[32]{buffer_id=1} custom-call(p0), custom_call_target="pin"
+    b1 = f32[32]{buffer_id=12} custom-call(p0), custom_call_target="pin"
+    tuple0 = (f32[32]{buffer_id=1}, f32[32]{buffer_id=12}) tuple(b0, b1)
+    call = (f32[32]{buffer_id=1}, f32[32]{buffer_id=12})
+      custom-call(tuple0, p0), custom_call_target="foo"
+    b2 = f32[32]{buffer_id=1} get-tuple-element(call), index=0
+    b3 = f32[32]{buffer_id=12} get-tuple-element(call), index=1
+    v0 = f32[32] custom-call(b2), custom_call_target="unpin"
+    v1 = f32[32] custom-call(b3), custom_call_target="unpin"
+    ROOT c = f32[32] add(v0, v1)
+  })";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
+  auto status =
+      HloVerifier{HloVerifierOpts{}.VerifyBuffers()}.Run(module.get()).status();
+  ASSERT_FALSE(status.ok());
+  EXPECT_THAT(status.message(), HasSubstr("tuple with buffers can only be used "
+                                          "as while-init or while-body root"));
+}
+
+TEST_F(HloVerifierTest, VerifyBuffersBufferWithTwoWritesStraightLine) {
+  const char* const hlo = R"(
+  HloModule module
+
+  ENTRY computation {
+    p0 = f32[32] parameter(0)
+    b0 = f32[32]{buffer_id=1} custom-call(p0), custom_call_target="pin"
+    call0 = (f32[32]{buffer_id=1}, u32[], token[])
+      custom-call(b0), custom_call_target="foo"
+    b1 = f32[32]{buffer_id=1} get-tuple-element(call0), index=0
+    b2 = f32[32]{buffer_id=1} get-tuple-element(call0), index=0
+    // Writer.
+    call1 = (f32[32]{buffer_id=1}, token[])
+      custom-call(b1), custom_call_target="writer",
+      custom_call_has_side_effect=true
+    // Another writer.
+    ROOT v = f32[32] custom-call(b2), custom_call_target="unpin"
+  })";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
+  auto status =
+      HloVerifier{HloVerifierOpts{}.VerifyBuffers()}.Run(module.get()).status();
+  ASSERT_FALSE(status.ok());
+  EXPECT_THAT(
+      status.message(),
+      HasSubstr("an HLO value with buffer_id has more than one writers"));
+}
+
+TEST_F(HloVerifierTest, VerifyBuffersBufferWithTwoWritesWhileRelated1) {
+  const char* const hlo = R"(
+  // Infinite loop to keep IR small.
+  cond {
+    param = (s32[], s32[2]{buffer_id=1}) parameter(0)
+    ROOT infinite_loop = pred[] constant(true)
+  }
+
+  body {
+    param = (s32[], s32[2]{buffer_id=1}) parameter(0)
+    count = get-tuple-element(%param), index=0
+    b1 = get-tuple-element(%param), index=1
+    b2 = s32[2]{buffer_id=1} custom-call(b1), custom_call_target="foo"
+    ROOT result = (s32[], s32[2]{buffer_id=1}) tuple(count, b2)
+  }
+
+  ENTRY test_computation {
+    c0 = s32[] constant(0)
+    c1 = s32[] constant(1)
+    init = s32[2] broadcast(c1), dimensions={}
+    b0 = s32[2]{buffer_id=1} custom-call(init), custom_call_target="pin"
+    while_init = (s32[], s32[2]{buffer_id=1}) tuple(c0, b0)
+    while_result = (s32[], s32[2]{buffer_id=1}) while(while_init), body=body, condition=cond
+    // b0 is written by while-loop and unpin.
+    ROOT v = s32[2] custom-call(b0), custom_call_target="unpin"
+  })";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
+  auto status =
+      HloVerifier{HloVerifierOpts{}.VerifyBuffers()}.Run(module.get()).status();
+  ASSERT_FALSE(status.ok());
+  EXPECT_THAT(
+      status.message(),
+      HasSubstr("an HLO value with buffer_id has more than one writers"));
+}
+
+TEST_F(HloVerifierTest, VerifyBuffersBufferWithTwoWritesWhileRelated2) {
+  const char* const hlo = R"(
+  // Infinite loop to keep IR small.
+  cond {
+    param = (s32[], s32[2]{buffer_id=1}) parameter(0)
+    ROOT infinite_loop = pred[] constant(true)
+  }
+
+  body {
+    param = (s32[], s32[2]{buffer_id=1}) parameter(0)
+    count = get-tuple-element(%param), index=0
+    b1 = get-tuple-element(%param), index=1
+    b2 = s32[2]{buffer_id=1} custom-call(b1), custom_call_target="foo"
+    ROOT result = (s32[], s32[2]{buffer_id=1}) tuple(count, b2)
+  }
+
+  ENTRY test_computation {
+    c0 = s32[] constant(0)
+    c1 = s32[] constant(1)
+    init = s32[2] broadcast(c1), dimensions={}
+    b0 = s32[2]{buffer_id=1} custom-call(init), custom_call_target="pin"
+    while_init = (s32[], s32[2]{buffer_id=1}) tuple(c0, b0)
+    while_result = (s32[], s32[2]{buffer_id=1}) while(while_init), body=body, condition=cond
+    b1 = s32[2]{buffer_id=1} get-tuple-element(while_result), index=1
+    // b1 is written by bar and unpin.
+    b2 = s32[2]{buffer_id=1} custom-call(b1), custom_call_target="bar"
+    ROOT v = s32[2] custom-call(b0), custom_call_target="unpin"
+  })";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
+  auto status =
+      HloVerifier{HloVerifierOpts{}.VerifyBuffers()}.Run(module.get()).status();
+  ASSERT_FALSE(status.ok());
+  EXPECT_THAT(
+      status.message(),
+      HasSubstr("an HLO value with buffer_id has more than one writers"));
+}
+
+TEST_F(HloVerifierTest, VerifyBuffersBufferWithTwoWritesWhileBodyParam) {
+  const char* const hlo = R"(
+  // Infinite loop to keep IR small.
+  cond {
+    param = (s32[], s32[2]{buffer_id=1}) parameter(0)
+    ROOT infinite_loop = pred[] constant(true)
+  }
+
+  body {
+    param = (s32[], s32[2]{buffer_id=1}) parameter(0)
+    count = get-tuple-element(%param), index=0
+    b1 = get-tuple-element(%param), index=1
+    // b1 is written by foo and pass back to the while-loop.
+    b2 = s32[2]{buffer_id=1} custom-call(b1), custom_call_target="foo"
+    ROOT result = (s32[], s32[2]{buffer_id=1}) tuple(count, b1)
+  }
+
+  ENTRY test_computation {
+    c0 = s32[] constant(0)
+    c1 = s32[] constant(1)
+    init = s32[2] broadcast(c1), dimensions={}
+    b0 = s32[2]{buffer_id=1} custom-call(init), custom_call_target="pin"
+    while_init = (s32[], s32[2]{buffer_id=1}) tuple(c0, b0)
+    while_result = (s32[], s32[2]{buffer_id=1}) while(while_init), body=body, condition=cond
+    b1 = s32[2]{buffer_id=1} get-tuple-element(while_result), index=1
+    ROOT v = s32[2] custom-call(b1), custom_call_target="unpin"
+  })";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
+  auto status =
+      HloVerifier{HloVerifierOpts{}.VerifyBuffers()}.Run(module.get()).status();
+  ASSERT_FALSE(status.ok());
+  EXPECT_THAT(
+      status.message(),
+      HasSubstr("an HLO value with buffer_id has more than one writers"));
+}
+
+TEST_F(HloVerifierTest, VerifyBuffersBufferWithTwoWritesWhileBody) {
+  const char* const hlo = R"(
+  // Infinite loop to keep IR small.
+  cond {
+    param = (s32[], s32[2]{buffer_id=1}) parameter(0)
+    ROOT infinite_loop = pred[] constant(true)
+  }
+
+  body {
+    param = (s32[], s32[2]{buffer_id=1}) parameter(0)
+    count = get-tuple-element(%param), index=0
+    b2 = get-tuple-element(%param), index=1
+    b3 = s32[2]{buffer_id=1} custom-call(b2), custom_call_target="foo"
+    // b3 is modified by bar and also fed back to the while-loop.
+    b4 = s32[2]{buffer_id=1} custom-call(b3), custom_call_target="bar"
+    ROOT result = (s32[], s32[2]{buffer_id=1}) tuple(count, b3)
+  }
+
+  ENTRY test_computation {
+    c0 = s32[] constant(0)
+    c1 = s32[] constant(1)
+    init = s32[2] broadcast(c1), dimensions={}
+    b0 = s32[2]{buffer_id=1} custom-call(init), custom_call_target="pin"
+    while_init = (s32[], s32[2]{buffer_id=1}) tuple(c0, b0)
+    while_result = (s32[], s32[2]{buffer_id=1}) while(while_init), body=body, condition=cond
+    b1 = s32[2]{buffer_id=1} get-tuple-element(while_result), index=1
+    ROOT v = s32[2] custom-call(b1), custom_call_target="unpin"
+  })";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
+  auto status =
+      HloVerifier{HloVerifierOpts{}.VerifyBuffers()}.Run(module.get()).status();
+  ASSERT_FALSE(status.ok());
+  EXPECT_THAT(
+      status.message(),
+      HasSubstr("an HLO value with buffer_id has more than one writers"));
+}
+
+TEST_F(HloVerifierTest, VerifyBuffersOperandBufferNotInResult) {
+  const char* const hlo = R"(
+  HloModule module
+
+  ENTRY computation {
+    p0 = f32[32] parameter(0)
+    b = f32[32]{buffer_id=1} custom-call(p0), custom_call_target="pin"
+    call0 = f32[32]{buffer_id=1} custom-call(b), custom_call_target="start_send"
+    a = f32[32] add(p0, p0)
+    call1 = (f32[32], token[]) custom-call(call0), custom_call_target="read_only",
+      custom_call_has_side_effect=true
+    ROOT c = copy(a)
+  })";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
+  auto status =
+      HloVerifier{HloVerifierOpts{}.VerifyBuffers()}.Run(module.get()).status();
+  ASSERT_FALSE(status.ok());
+  EXPECT_THAT(status.message(),
+              HasSubstr("buffer_id is used in operands but not in result"));
+}
+
+TEST_F(HloVerifierTest, VerifyBuffersNestedInResults) {
+  const char* const hlo = R"(
+  HloModule module
+
+  ENTRY computation {
+    p0 = f32[32] parameter(0)
+    b0 = f32[32]{buffer_id=1} custom-call(p0), custom_call_target="pin"
+    call = ((f32[32]{buffer_id=1}), f32[])
+      custom-call(b0), custom_call_target="foo"
+    b1 = (f32[32]{buffer_id=1}) get-tuple-element(call), index=0
+    b2 = f32[32]{buffer_id=1} get-tuple-element(b1), index=1
+    ROOT v0 = f32[32] custom-call(b2), custom_call_target="unpin"
+  })";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
+  auto status =
+      HloVerifier{HloVerifierOpts{}.VerifyBuffers()}.Run(module.get()).status();
+  ASSERT_FALSE(status.ok());
+  EXPECT_THAT(status.message(),
+              HasSubstr("buffers nested in results are not allowed"));
+}
+
+TEST_F(HloVerifierTest, VerifyBuffersStraightLineChain) {
+  const char* const hlo = R"(
+  HloModule module
+
+  ENTRY computation {
+    p0 = f32[32] parameter(0)
+    b0 = f32[32]{buffer_id=1} custom-call(p0), custom_call_target="pin"
+    async-start = (f32[32]{buffer_id=1}, u32[], token[])
+      custom-call(b0), custom_call_target="start_send"
+    a = f32[32] add(p0, p0)
+    b1 = f32[32]{buffer_id=1} get-tuple-element(async-start), index=0
+    v0 = u32[] get-tuple-element(async-start), index=1
+    v1 = token[] get-tuple-element(async-start), index=2
+    async-done = (f32[32]{buffer_id=1}, token[])
+      custom-call(b1, v0, v1), custom_call_target="end_send",
+      custom_call_has_side_effect=true
+    ROOT c = copy(a)
+  })";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
+  auto status =
+      HloVerifier{HloVerifierOpts{}.VerifyBuffers()}.Run(module.get()).status();
+  ASSERT_TRUE(status.ok());
+}
+
+TEST_F(HloVerifierTest, VerifyBuffersRotatedChain) {
+  const char* const hlo = R"(
+  HloModule module
+
+  // Infinite loop to keep IR small.
+  cond {
+    param = (s32[], s32[2]{buffer_id=1}) parameter(0)
+    ROOT infinite_loop = pred[] constant(true)
+  }
+
+  body {
+    param = (s32[], s32[2]{buffer_id=1}) parameter(0)
+    count = get-tuple-element(%param), index=0
+    b3 = get-tuple-element(%param), index=1
+
+    c1 = s32[] constant(1)
+    new_count = s32[] add(count, c1)
+    b4 = s32[2]{buffer_id=1} custom-call(b3), custom_call_target="foo"
+    b5 = s32[2]{buffer_id=1} custom-call(b4), custom_call_target="bar"
+    v0 = s32[2] custom-call(b5), custom_call_target="unpin"
+    c1_broadcast = s32[2] broadcast(c1), dimensions={}
+    v1 = s32[2] add(c1_broadcast, v0)
+
+    b6 = s32[2]{buffer_id=1} custom-call(v1), custom_call_target="pin"
+    ROOT result = (s32[], s32[2]{buffer_id=1}) tuple(new_count, b6)
+  }
+
+  ENTRY test_computation {
+    c0 = s32[] constant(0)
+    c1 = s32[] constant(1)
+    init = s32[2] broadcast(c1), dimensions={}
+    b0 = s32[2]{buffer_id=1} custom-call(init), custom_call_target="pin"
+    while_init = (s32[], s32[2]{buffer_id=1}) tuple(c0, b0)
+    while_result = (s32[], s32[2]{buffer_id=1}) while(while_init), body=body, condition=cond
+    b1 = s32[2]{buffer_id=1} get-tuple-element(while_result), index=1
+    ROOT v = s32[2] custom-call(b1), custom_call_target="unpin"
+  })";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
+  auto status =
+      HloVerifier{HloVerifierOpts{}.VerifyBuffers()}.Run(module.get()).status();
+  ASSERT_TRUE(status.ok());
+}
+
 TEST_F(HloVerifierTest, ReshapeIsNotBitcast) {
   const char* const hlo = R"(
 HloModule Module
