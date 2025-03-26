@@ -228,10 +228,10 @@ def execute(
       The result of repository_ctx.execute(cmdline)
     """
     result = raw_exec(repository_ctx, cmdline, env_vars)
-    if (result.stderr or not result.stdout) and not allow_failure:
+    if (result.return_code != 0 or not result.stdout) and not allow_failure:
         fail(
             "\n".join([
-                error_msg.strip() if error_msg else "Repository command failed",
+                error_msg.strip() if error_msg else "Repository command failed (code {})".format(result.return_code),
                 result.stderr.strip(),
                 error_details if error_details else "",
             ]),
