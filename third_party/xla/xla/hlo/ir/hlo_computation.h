@@ -215,8 +215,6 @@ class HloComputation {
     // unreachable, and its instruction is set to null. We still need to regard
     // such computations as fusion computations for HLO scheduling purposes.
     kFusion,
-    // This computation is a collective computation.
-    kCollective,
     // This computation is a conditional branch computation.
     kConditional,
     // Last Value for range checking.
@@ -803,23 +801,6 @@ class HloComputation {
   }
   void SetFusionInstruction(HloInstruction* fusion_instruction) {
     SetInstruction(fusion_instruction, InstructionType::kFusion);
-  }
-
-  // Returns if this computation is a to_apply region of a collective.
-  bool IsCollectiveCalledComputation() const {
-    return instruction_type() == InstructionType::kCollective;
-  }
-
-  // Returns the owning collective call instruction, or nullptr if this is not a
-  // collective call computation.
-  HloInstruction* CollectiveCallInstruction() const {
-    return instruction_type() == InstructionType::kCollective ? instruction()
-                                                              : nullptr;
-  }
-
-  void SetCollectiveCallInstruction(
-      HloInstruction* collective_call_instruction) {
-    SetInstruction(collective_call_instruction, InstructionType::kCollective);
   }
 
   // Returns if this computation is a branch computation of a conditional.

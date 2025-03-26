@@ -2458,9 +2458,8 @@ TEST_F(HloInstructionTest, PreserveOperandPrecisionOnCloneConv) {
   auto* conv = module->entry_computation()->root_instruction();
 
   auto clone = conv->Clone();
-  EXPECT_THAT(
-      clone->precision_config().operand_precision(),
-      ::testing::ElementsAre(PrecisionConfig::HIGH, PrecisionConfig::DEFAULT));
+  EXPECT_THAT(clone->precision_config().operand_precision(),
+              ElementsAre(PrecisionConfig::HIGH, PrecisionConfig::DEFAULT));
 }
 
 TEST_F(HloInstructionTest, ReuseReshapeOfFusionParameter) {
@@ -2597,9 +2596,8 @@ TEST_F(HloInstructionTest, VerifyToApplyRegionPointsToReduceScatter) {
   // the reduce-scatter instruction.
   for (HloComputation* comp : module->MakeComputationPostOrder()) {
     if (!comp->IsEntryComputation()) {
-      EXPECT_TRUE(comp->IsCollectiveCalledComputation());
-      EXPECT_EQ(comp->CollectiveCallInstruction(),
-                module->entry_computation()->root_instruction());
+      EXPECT_THAT(comp->caller_instructions(),
+                  ElementsAre(module->entry_computation()->root_instruction()));
     }
   }
 }
@@ -2635,9 +2633,8 @@ TEST_F(HloInstructionTest, VerifyToApplyRegionPointsToAllReduce) {
   // the all-reduce instruction.
   for (HloComputation* comp : module->MakeComputationPostOrder()) {
     if (!comp->IsEntryComputation()) {
-      EXPECT_TRUE(comp->IsCollectiveCalledComputation());
-      EXPECT_EQ(comp->CollectiveCallInstruction(),
-                module->entry_computation()->root_instruction());
+      EXPECT_THAT(comp->caller_instructions(),
+                  ElementsAre(module->entry_computation()->root_instruction()));
     }
   }
 }
