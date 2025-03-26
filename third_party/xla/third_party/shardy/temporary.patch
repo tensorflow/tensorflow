@@ -1,895 +1,1057 @@
 diff --git a/third_party/llvm/generated.patch b/third_party/llvm/generated.patch
-index f04a85d..08ffb90 100644
+index 08ffb90..01cf890 100644
 --- a/third_party/llvm/generated.patch
 +++ b/third_party/llvm/generated.patch
-@@ -1,865 +1,12 @@
+@@ -1,12 +1,1026 @@
  Auto generated patch. Do not edit or delete it, even if empty.
--diff -ruN --strip-trailing-cr a/libcxx/docs/ReleaseNotes/20.rst b/libcxx/docs/ReleaseNotes/20.rst
----- a/libcxx/docs/ReleaseNotes/20.rst
--+++ b/libcxx/docs/ReleaseNotes/20.rst
--@@ -120,8 +120,6 @@
-- 
-- - Added :ref:`hardening mode <hardening>` support for ``forward_list`` and ``bitset``.
-- 
---- The ``num_get::do_put`` integral overloads have been optimized, resulting in a performance improvement of up to 2.4x.
---
-- Deprecations and Removals
-- -------------------------
-- 
--diff -ruN --strip-trailing-cr a/libcxx/include/__charconv/tables.h b/libcxx/include/__charconv/tables.h
----- a/libcxx/include/__charconv/tables.h
--+++ b/libcxx/include/__charconv/tables.h
--@@ -19,14 +19,16 @@
-- 
-- _LIBCPP_BEGIN_NAMESPACE_STD
-- 
--+#if _LIBCPP_STD_VER >= 17
--+
-- namespace __itoa {
-- 
---inline _LIBCPP_CONSTEXPR const char __base_2_lut[64] = {
--+inline constexpr char __base_2_lut[64] = {
--     '0', '0', '0', '0', '0', '0', '0', '1', '0', '0', '1', '0', '0', '0', '1', '1', '0', '1', '0', '0', '0', '1',
--     '0', '1', '0', '1', '1', '0', '0', '1', '1', '1', '1', '0', '0', '0', '1', '0', '0', '1', '1', '0', '1', '0',
--     '1', '0', '1', '1', '1', '1', '0', '0', '1', '1', '0', '1', '1', '1', '1', '0', '1', '1', '1', '1'};
-- 
---inline _LIBCPP_CONSTEXPR const char __base_8_lut[128] = {
--+inline constexpr char __base_8_lut[128] = {
--     '0', '0', '0', '1', '0', '2', '0', '3', '0', '4', '0', '5', '0', '6', '0', '7', '1', '0', '1', '1', '1', '2',
--     '1', '3', '1', '4', '1', '5', '1', '6', '1', '7', '2', '0', '2', '1', '2', '2', '2', '3', '2', '4', '2', '5',
--     '2', '6', '2', '7', '3', '0', '3', '1', '3', '2', '3', '3', '3', '4', '3', '5', '3', '6', '3', '7', '4', '0',
--@@ -34,7 +36,7 @@
--     '5', '4', '5', '5', '5', '6', '5', '7', '6', '0', '6', '1', '6', '2', '6', '3', '6', '4', '6', '5', '6', '6',
--     '6', '7', '7', '0', '7', '1', '7', '2', '7', '3', '7', '4', '7', '5', '7', '6', '7', '7'};
-- 
---inline _LIBCPP_CONSTEXPR const char __base_16_lut[512] = {
--+inline constexpr char __base_16_lut[512] = {
--     '0', '0', '0', '1', '0', '2', '0', '3', '0', '4', '0', '5', '0', '6', '0', '7', '0', '8', '0', '9', '0', 'a', '0',
--     'b', '0', 'c', '0', 'd', '0', 'e', '0', 'f', '1', '0', '1', '1', '1', '2', '1', '3', '1', '4', '1', '5', '1', '6',
--     '1', '7', '1', '8', '1', '9', '1', 'a', '1', 'b', '1', 'c', '1', 'd', '1', 'e', '1', 'f', '2', '0', '2', '1', '2',
--@@ -59,7 +61,7 @@
--     '1', 'f', '2', 'f', '3', 'f', '4', 'f', '5', 'f', '6', 'f', '7', 'f', '8', 'f', '9', 'f', 'a', 'f', 'b', 'f', 'c',
--     'f', 'd', 'f', 'e', 'f', 'f'};
-- 
---inline _LIBCPP_CONSTEXPR const uint32_t __pow10_32[10] = {
--+inline constexpr uint32_t __pow10_32[10] = {
--     UINT32_C(0),
--     UINT32_C(10),
--     UINT32_C(100),
--@@ -71,7 +73,7 @@
--     UINT32_C(100000000),
--     UINT32_C(1000000000)};
-- 
---inline _LIBCPP_CONSTEXPR const uint64_t __pow10_64[20] = {
--+inline constexpr uint64_t __pow10_64[20] = {
--     UINT64_C(0),
--     UINT64_C(10),
--     UINT64_C(100),
--@@ -94,8 +96,8 @@
--     UINT64_C(10000000000000000000)};
-- 
-- #  if _LIBCPP_HAS_INT128
---inline _LIBCPP_CONSTEXPR const int __pow10_128_offset      = 0;
---inline _LIBCPP_CONSTEXPR const __uint128_t __pow10_128[40] = {
--+inline constexpr int __pow10_128_offset      = 0;
--+inline constexpr __uint128_t __pow10_128[40] = {
--     UINT64_C(0),
--     UINT64_C(10),
--     UINT64_C(100),
--@@ -138,7 +140,7 @@
--     (__uint128_t(UINT64_C(10000000000000000000)) * UINT64_C(10000000000000000000)) * 10};
-- #  endif
-- 
---inline _LIBCPP_CONSTEXPR const char __digits_base_10[200] = {
--+inline constexpr char __digits_base_10[200] = {
--     // clang-format off
--     '0', '0', '0', '1', '0', '2', '0', '3', '0', '4', '0', '5', '0', '6', '0', '7', '0', '8', '0', '9',
--     '1', '0', '1', '1', '1', '2', '1', '3', '1', '4', '1', '5', '1', '6', '1', '7', '1', '8', '1', '9',
--@@ -154,6 +156,8 @@
-- 
-- } // namespace __itoa
-- 
--+#endif // _LIBCPP_STD_VER >= 17
--+
-- _LIBCPP_END_NAMESPACE_STD
-- 
-- #endif // _LIBCPP___CHARCONV_TABLES
--diff -ruN --strip-trailing-cr a/libcxx/include/__charconv/to_chars_base_10.h b/libcxx/include/__charconv/to_chars_base_10.h
----- a/libcxx/include/__charconv/to_chars_base_10.h
--+++ b/libcxx/include/__charconv/to_chars_base_10.h
--@@ -26,53 +26,55 @@
-- 
-- _LIBCPP_BEGIN_NAMESPACE_STD
-- 
--+#if _LIBCPP_STD_VER >= 17
--+
-- namespace __itoa {
-- 
---_LIBCPP_CONSTEXPR_SINCE_CXX23 _LIBCPP_HIDE_FROM_ABI inline char* __append1(char* __first, uint32_t __value) _NOEXCEPT {
--+_LIBCPP_CONSTEXPR_SINCE_CXX23 _LIBCPP_HIDE_FROM_ABI inline char* __append1(char* __first, uint32_t __value) noexcept {
--   *__first = '0' + static_cast<char>(__value);
--   return __first + 1;
-- }
-- 
---_LIBCPP_CONSTEXPR_SINCE_CXX23 _LIBCPP_HIDE_FROM_ABI inline char* __append2(char* __first, uint32_t __value) _NOEXCEPT {
--+_LIBCPP_CONSTEXPR_SINCE_CXX23 _LIBCPP_HIDE_FROM_ABI inline char* __append2(char* __first, uint32_t __value) noexcept {
--   return std::copy_n(&__digits_base_10[__value * 2], 2, __first);
-- }
-- 
---_LIBCPP_CONSTEXPR_SINCE_CXX23 _LIBCPP_HIDE_FROM_ABI inline char* __append3(char* __first, uint32_t __value) _NOEXCEPT {
--+_LIBCPP_CONSTEXPR_SINCE_CXX23 _LIBCPP_HIDE_FROM_ABI inline char* __append3(char* __first, uint32_t __value) noexcept {
--   return __itoa::__append2(__itoa::__append1(__first, __value / 100), __value % 100);
-- }
-- 
---_LIBCPP_CONSTEXPR_SINCE_CXX23 _LIBCPP_HIDE_FROM_ABI inline char* __append4(char* __first, uint32_t __value) _NOEXCEPT {
--+_LIBCPP_CONSTEXPR_SINCE_CXX23 _LIBCPP_HIDE_FROM_ABI inline char* __append4(char* __first, uint32_t __value) noexcept {
--   return __itoa::__append2(__itoa::__append2(__first, __value / 100), __value % 100);
-- }
-- 
---_LIBCPP_CONSTEXPR_SINCE_CXX23 _LIBCPP_HIDE_FROM_ABI inline char* __append5(char* __first, uint32_t __value) _NOEXCEPT {
--+_LIBCPP_CONSTEXPR_SINCE_CXX23 _LIBCPP_HIDE_FROM_ABI inline char* __append5(char* __first, uint32_t __value) noexcept {
--   return __itoa::__append4(__itoa::__append1(__first, __value / 10000), __value % 10000);
-- }
-- 
---_LIBCPP_CONSTEXPR_SINCE_CXX23 _LIBCPP_HIDE_FROM_ABI inline char* __append6(char* __first, uint32_t __value) _NOEXCEPT {
--+_LIBCPP_CONSTEXPR_SINCE_CXX23 _LIBCPP_HIDE_FROM_ABI inline char* __append6(char* __first, uint32_t __value) noexcept {
--   return __itoa::__append4(__itoa::__append2(__first, __value / 10000), __value % 10000);
-- }
-- 
---_LIBCPP_CONSTEXPR_SINCE_CXX23 _LIBCPP_HIDE_FROM_ABI inline char* __append7(char* __first, uint32_t __value) _NOEXCEPT {
--+_LIBCPP_CONSTEXPR_SINCE_CXX23 _LIBCPP_HIDE_FROM_ABI inline char* __append7(char* __first, uint32_t __value) noexcept {
--   return __itoa::__append6(__itoa::__append1(__first, __value / 1000000), __value % 1000000);
-- }
-- 
---_LIBCPP_CONSTEXPR_SINCE_CXX23 _LIBCPP_HIDE_FROM_ABI inline char* __append8(char* __first, uint32_t __value) _NOEXCEPT {
--+_LIBCPP_CONSTEXPR_SINCE_CXX23 _LIBCPP_HIDE_FROM_ABI inline char* __append8(char* __first, uint32_t __value) noexcept {
--   return __itoa::__append6(__itoa::__append2(__first, __value / 1000000), __value % 1000000);
-- }
-- 
---_LIBCPP_CONSTEXPR_SINCE_CXX23 _LIBCPP_HIDE_FROM_ABI inline char* __append9(char* __first, uint32_t __value) _NOEXCEPT {
--+_LIBCPP_CONSTEXPR_SINCE_CXX23 _LIBCPP_HIDE_FROM_ABI inline char* __append9(char* __first, uint32_t __value) noexcept {
--   return __itoa::__append8(__itoa::__append1(__first, __value / 100000000), __value % 100000000);
-- }
-- 
-- template <class _Tp>
---_LIBCPP_CONSTEXPR_SINCE_CXX23 _LIBCPP_HIDE_FROM_ABI char* __append10(char* __first, _Tp __value) _NOEXCEPT {
--+_LIBCPP_CONSTEXPR_SINCE_CXX23 _LIBCPP_HIDE_FROM_ABI char* __append10(char* __first, _Tp __value) noexcept {
--   return __itoa::__append8(__itoa::__append2(__first, static_cast<uint32_t>(__value / 100000000)),
--                            static_cast<uint32_t>(__value % 100000000));
-- }
-- 
-- _LIBCPP_CONSTEXPR_SINCE_CXX23 _LIBCPP_HIDE_FROM_ABI inline char*
---__base_10_u32(char* __first, uint32_t __value) _NOEXCEPT {
--+__base_10_u32(char* __first, uint32_t __value) noexcept {
--   if (__value < 1000000) {
--     if (__value < 10000) {
--       if (__value < 100) {
--@@ -108,7 +110,7 @@
-- }
-- 
-- _LIBCPP_CONSTEXPR_SINCE_CXX23 _LIBCPP_HIDE_FROM_ABI inline char*
---__base_10_u64(char* __buffer, uint64_t __value) _NOEXCEPT {
--+__base_10_u64(char* __buffer, uint64_t __value) noexcept {
--   if (__value <= UINT32_MAX)
--     return __itoa::__base_10_u32(__buffer, static_cast<uint32_t>(__value));
-- 
--@@ -130,13 +132,13 @@
-- /// \note The lookup table contains a partial set of exponents limiting the
-- /// range that can be used. However the range is sufficient for
-- /// \ref __base_10_u128.
---_LIBCPP_CONSTEXPR_SINCE_CXX23 _LIBCPP_HIDE_FROM_ABI inline __uint128_t __pow_10(int __exp) _NOEXCEPT {
--+_LIBCPP_CONSTEXPR_SINCE_CXX23 _LIBCPP_HIDE_FROM_ABI inline __uint128_t __pow_10(int __exp) noexcept {
--   _LIBCPP_ASSERT_INTERNAL(__exp >= __pow10_128_offset, "Index out of bounds");
--   return __pow10_128[__exp - __pow10_128_offset];
-- }
-- 
-- _LIBCPP_CONSTEXPR_SINCE_CXX23 _LIBCPP_HIDE_FROM_ABI inline char*
---__base_10_u128(char* __buffer, __uint128_t __value) _NOEXCEPT {
--+__base_10_u128(char* __buffer, __uint128_t __value) noexcept {
--   _LIBCPP_ASSERT_INTERNAL(
--       __value > numeric_limits<uint64_t>::max(), "The optimizations for this algorithm fails when this isn't true.");
-- 
--@@ -177,6 +179,8 @@
-- #  endif
-- } // namespace __itoa
-- 
--+#endif // _LIBCPP_STD_VER >= 17
--+
-- _LIBCPP_END_NAMESPACE_STD
-- 
-- _LIBCPP_POP_MACROS
--diff -ruN --strip-trailing-cr a/libcxx/include/__charconv/to_chars_integral.h b/libcxx/include/__charconv/to_chars_integral.h
----- a/libcxx/include/__charconv/to_chars_integral.h
--+++ b/libcxx/include/__charconv/to_chars_integral.h
--@@ -39,12 +39,16 @@
-- 
-- _LIBCPP_BEGIN_NAMESPACE_STD
-- 
--+#if _LIBCPP_STD_VER >= 17
--+
--+to_chars_result to_chars(char*, char*, bool, int = 10) = delete;
--+
-- template <typename _Tp>
---inline _LIBCPP_CONSTEXPR_SINCE_CXX23 _LIBCPP_HIDE_FROM_ABI __to_chars_result
--+inline _LIBCPP_CONSTEXPR_SINCE_CXX23 _LIBCPP_HIDE_FROM_ABI to_chars_result
-- __to_chars_itoa(char* __first, char* __last, _Tp __value, false_type);
-- 
-- template <typename _Tp>
---inline _LIBCPP_CONSTEXPR_SINCE_CXX23 _LIBCPP_HIDE_FROM_ABI __to_chars_result
--+inline _LIBCPP_CONSTEXPR_SINCE_CXX23 _LIBCPP_HIDE_FROM_ABI to_chars_result
-- __to_chars_itoa(char* __first, char* __last, _Tp __value, true_type) {
--   auto __x = std::__to_unsigned_like(__value);
--   if (__value < 0 && __first != __last) {
--@@ -56,7 +60,7 @@
-- }
-- 
-- template <typename _Tp>
---inline _LIBCPP_CONSTEXPR_SINCE_CXX23 _LIBCPP_HIDE_FROM_ABI __to_chars_result
--+inline _LIBCPP_CONSTEXPR_SINCE_CXX23 _LIBCPP_HIDE_FROM_ABI to_chars_result
-- __to_chars_itoa(char* __first, char* __last, _Tp __value, false_type) {
--   using __tx  = __itoa::__traits<_Tp>;
--   auto __diff = __last - __first;
--@@ -69,7 +73,7 @@
-- 
-- #  if _LIBCPP_HAS_INT128
-- template <>
---inline _LIBCPP_CONSTEXPR_SINCE_CXX23 _LIBCPP_HIDE_FROM_ABI __to_chars_result
--+inline _LIBCPP_CONSTEXPR_SINCE_CXX23 _LIBCPP_HIDE_FROM_ABI to_chars_result
-- __to_chars_itoa(char* __first, char* __last, __uint128_t __value, false_type) {
--   // When the value fits in 64-bits use the 64-bit code path. This reduces
--   // the number of expensive calculations on 128-bit values.
--@@ -88,20 +92,20 @@
-- }
-- #  endif
-- 
---template <class _Tp, __enable_if_t<!is_signed<_Tp>::value, int> = 0>
---inline _LIBCPP_CONSTEXPR_SINCE_CXX23 _LIBCPP_HIDE_FROM_ABI __to_chars_result
---__to_chars_integral(char* __first, char* __last, _Tp __value, int __base);
---
---template <class _Tp, __enable_if_t<is_signed<_Tp>::value, int> = 0>
---inline _LIBCPP_CONSTEXPR_SINCE_CXX23 _LIBCPP_HIDE_FROM_ABI __to_chars_result
---__to_chars_integral(char* __first, char* __last, _Tp __value, int __base) {
--+template <class _Tp>
--+inline _LIBCPP_CONSTEXPR_SINCE_CXX23 _LIBCPP_HIDE_FROM_ABI to_chars_result
--+__to_chars_integral(char* __first, char* __last, _Tp __value, int __base, false_type);
--+
--+template <typename _Tp>
--+inline _LIBCPP_CONSTEXPR_SINCE_CXX23 _LIBCPP_HIDE_FROM_ABI to_chars_result
--+__to_chars_integral(char* __first, char* __last, _Tp __value, int __base, true_type) {
--   auto __x = std::__to_unsigned_like(__value);
--   if (__value < 0 && __first != __last) {
--     *__first++ = '-';
--     __x        = std::__complement(__x);
--   }
-- 
---  return std::__to_chars_integral(__first, __last, __x, __base);
--+  return std::__to_chars_integral(__first, __last, __x, __base, false_type());
-- }
-- 
-- namespace __itoa {
--@@ -112,7 +116,7 @@
-- template <>
-- struct _LIBCPP_HIDDEN __integral<2> {
--   template <typename _Tp>
---  _LIBCPP_HIDE_FROM_ABI static _LIBCPP_CONSTEXPR int __width(_Tp __value) _NOEXCEPT {
--+  _LIBCPP_HIDE_FROM_ABI static constexpr int __width(_Tp __value) noexcept {
--     // If value == 0 still need one digit. If the value != this has no
--     // effect since the code scans for the most significant bit set. (Note
--     // that __libcpp_clz doesn't work for 0.)
--@@ -120,7 +124,7 @@
--   }
-- 
--   template <typename _Tp>
---  _LIBCPP_CONSTEXPR_SINCE_CXX23 _LIBCPP_HIDE_FROM_ABI static __to_chars_result
--+  _LIBCPP_CONSTEXPR_SINCE_CXX23 _LIBCPP_HIDE_FROM_ABI static to_chars_result
--   __to_chars(char* __first, char* __last, _Tp __value) {
--     ptrdiff_t __cap = __last - __first;
--     int __n         = __width(__value);
--@@ -148,7 +152,7 @@
-- template <>
-- struct _LIBCPP_HIDDEN __integral<8> {
--   template <typename _Tp>
---  _LIBCPP_HIDE_FROM_ABI static _LIBCPP_CONSTEXPR int __width(_Tp __value) _NOEXCEPT {
--+  _LIBCPP_HIDE_FROM_ABI static constexpr int __width(_Tp __value) noexcept {
--     // If value == 0 still need one digit. If the value != this has no
--     // effect since the code scans for the most significat bit set. (Note
--     // that __libcpp_clz doesn't work for 0.)
--@@ -156,7 +160,7 @@
--   }
-- 
--   template <typename _Tp>
---  _LIBCPP_CONSTEXPR_SINCE_CXX23 _LIBCPP_HIDE_FROM_ABI static __to_chars_result
--+  _LIBCPP_CONSTEXPR_SINCE_CXX23 _LIBCPP_HIDE_FROM_ABI static to_chars_result
--   __to_chars(char* __first, char* __last, _Tp __value) {
--     ptrdiff_t __cap = __last - __first;
--     int __n         = __width(__value);
--@@ -184,7 +188,7 @@
-- template <>
-- struct _LIBCPP_HIDDEN __integral<16> {
--   template <typename _Tp>
---  _LIBCPP_HIDE_FROM_ABI static _LIBCPP_CONSTEXPR int __width(_Tp __value) _NOEXCEPT {
--+  _LIBCPP_HIDE_FROM_ABI static constexpr int __width(_Tp __value) noexcept {
--     // If value == 0 still need one digit. If the value != this has no
--     // effect since the code scans for the most significat bit set. (Note
--     // that __libcpp_clz doesn't work for 0.)
--@@ -192,7 +196,7 @@
--   }
-- 
--   template <typename _Tp>
---  _LIBCPP_CONSTEXPR_SINCE_CXX23 _LIBCPP_HIDE_FROM_ABI static __to_chars_result
--+  _LIBCPP_CONSTEXPR_SINCE_CXX23 _LIBCPP_HIDE_FROM_ABI static to_chars_result
--   __to_chars(char* __first, char* __last, _Tp __value) {
--     ptrdiff_t __cap = __last - __first;
--     int __n         = __width(__value);
--@@ -231,13 +235,13 @@
-- }
-- 
-- template <unsigned _Base, typename _Tp, __enable_if_t<(sizeof(_Tp) >= sizeof(unsigned)), int> = 0>
---_LIBCPP_CONSTEXPR_SINCE_CXX23 _LIBCPP_HIDE_FROM_ABI __to_chars_result
--+_LIBCPP_CONSTEXPR_SINCE_CXX23 _LIBCPP_HIDE_FROM_ABI to_chars_result
-- __to_chars_integral(char* __first, char* __last, _Tp __value) {
--   return __itoa::__integral<_Base>::__to_chars(__first, __last, __value);
-- }
-- 
-- template <unsigned _Base, typename _Tp, __enable_if_t<(sizeof(_Tp) < sizeof(unsigned)), int> = 0>
---_LIBCPP_CONSTEXPR_SINCE_CXX23 _LIBCPP_HIDE_FROM_ABI __to_chars_result
--+_LIBCPP_CONSTEXPR_SINCE_CXX23 _LIBCPP_HIDE_FROM_ABI to_chars_result
-- __to_chars_integral(char* __first, char* __last, _Tp __value) {
--   return std::__to_chars_integral<_Base>(__first, __last, static_cast<unsigned>(__value));
-- }
--@@ -268,9 +272,9 @@
--   __libcpp_unreachable();
-- }
-- 
---template <class _Tp, __enable_if_t<!is_signed<_Tp>::value, int> >
---inline _LIBCPP_CONSTEXPR_SINCE_CXX23 _LIBCPP_HIDE_FROM_ABI __to_chars_result
---__to_chars_integral(char* __first, char* __last, _Tp __value, int __base) {
--+template <typename _Tp>
--+inline _LIBCPP_CONSTEXPR_SINCE_CXX23 _LIBCPP_HIDE_FROM_ABI to_chars_result
--+__to_chars_integral(char* __first, char* __last, _Tp __value, int __base, false_type) {
--   if (__base == 10) [[likely]]
--     return std::__to_chars_itoa(__first, __last, __value, false_type());
-- 
--@@ -298,28 +302,6 @@
--   return {__last, errc(0)};
-- }
-- 
---_LIBCPP_HIDE_FROM_ABI inline _LIBCPP_CONSTEXPR_SINCE_CXX14 char __hex_to_upper(char __c) {
---  switch (__c) {
---  case 'a':
---    return 'A';
---  case 'b':
---    return 'B';
---  case 'c':
---    return 'C';
---  case 'd':
---    return 'D';
---  case 'e':
---    return 'E';
---  case 'f':
---    return 'F';
---  }
---  return __c;
---}
---
---#if _LIBCPP_STD_VER >= 17
---
---to_chars_result to_chars(char*, char*, bool, int = 10) = delete;
---
-- template <typename _Tp, __enable_if_t<is_integral<_Tp>::value, int> = 0>
-- inline _LIBCPP_CONSTEXPR_SINCE_CXX23 _LIBCPP_HIDE_FROM_ABI to_chars_result
-- to_chars(char* __first, char* __last, _Tp __value) {
--@@ -334,7 +316,7 @@
--   _LIBCPP_ASSERT_UNCATEGORIZED(2 <= __base && __base <= 36, "base not in [2, 36]");
-- 
--   using _Type = __make_32_64_or_128_bit_t<_Tp>;
---  return std::__to_chars_integral(__first, __last, static_cast<_Type>(__value), __base);
--+  return std::__to_chars_integral(__first, __last, static_cast<_Type>(__value), __base, is_signed<_Tp>());
-- }
-- 
-- #endif // _LIBCPP_STD_VER >= 17
--diff -ruN --strip-trailing-cr a/libcxx/include/__charconv/to_chars_result.h b/libcxx/include/__charconv/to_chars_result.h
----- a/libcxx/include/__charconv/to_chars_result.h
--+++ b/libcxx/include/__charconv/to_chars_result.h
--@@ -34,15 +34,6 @@
-- 
-- #endif // _LIBCPP_STD_VER >= 17
-- 
---struct __to_chars_result {
---  char* __ptr;
---  errc __ec;
---
---#if _LIBCPP_STD_VER >= 17
---  _LIBCPP_HIDE_FROM_ABI constexpr operator to_chars_result() { return {__ptr, __ec}; }
---#endif
---};
---
-- _LIBCPP_END_NAMESPACE_STD
-- 
-- #endif // _LIBCPP___CHARCONV_TO_CHARS_RESULT_H
--diff -ruN --strip-trailing-cr a/libcxx/include/__charconv/traits.h b/libcxx/include/__charconv/traits.h
----- a/libcxx/include/__charconv/traits.h
--+++ b/libcxx/include/__charconv/traits.h
--@@ -30,13 +30,15 @@
-- 
-- _LIBCPP_BEGIN_NAMESPACE_STD
-- 
--+#if _LIBCPP_STD_VER >= 17
--+
-- namespace __itoa {
-- 
-- template <typename _Tp, typename = void>
-- struct _LIBCPP_HIDDEN __traits_base;
-- 
-- template <typename _Tp>
---struct _LIBCPP_HIDDEN __traits_base<_Tp, __enable_if_t<sizeof(_Tp) <= sizeof(uint32_t)> > {
--+struct _LIBCPP_HIDDEN __traits_base<_Tp, __enable_if_t<sizeof(_Tp) <= sizeof(uint32_t)>> {
--   using type = uint32_t;
-- 
--   /// The width estimation using a log10 algorithm.
--@@ -62,7 +64,7 @@
-- };
-- 
-- template <typename _Tp>
---struct _LIBCPP_HIDDEN __traits_base<_Tp, __enable_if_t<sizeof(_Tp) == sizeof(uint64_t)> > {
--+struct _LIBCPP_HIDDEN __traits_base<_Tp, __enable_if_t<sizeof(_Tp) == sizeof(uint64_t)>> {
--   using type = uint64_t;
-- 
--   /// The width estimation using a log10 algorithm.
--@@ -151,7 +153,7 @@
-- 
-- template <typename _Tp>
-- struct _LIBCPP_HIDDEN __traits : __traits_base<_Tp> {
---  static _LIBCPP_CONSTEXPR const int digits = numeric_limits<_Tp>::digits10 + 1;
--+  static constexpr int digits = numeric_limits<_Tp>::digits10 + 1;
--   using __traits_base<_Tp>::__pow;
--   using typename __traits_base<_Tp>::type;
-- 
--@@ -190,6 +192,8 @@
--   return _Tp(~__x + 1);
-- }
-- 
--+#endif // _LIBCPP_STD_VER >= 17
--+
-- _LIBCPP_END_NAMESPACE_STD
-- 
-- _LIBCPP_POP_MACROS
--diff -ruN --strip-trailing-cr a/libcxx/include/__format/formatter_floating_point.h b/libcxx/include/__format/formatter_floating_point.h
----- a/libcxx/include/__format/formatter_floating_point.h
--+++ b/libcxx/include/__format/formatter_floating_point.h
--@@ -19,7 +19,6 @@
-- #include <__assert>
-- #include <__charconv/chars_format.h>
-- #include <__charconv/to_chars_floating_point.h>
---#include <__charconv/to_chars_integral.h>
-- #include <__charconv/to_chars_result.h>
-- #include <__concepts/arithmetic.h>
-- #include <__concepts/same_as.h>
--diff -ruN --strip-trailing-cr a/libcxx/include/__format/formatter_integral.h b/libcxx/include/__format/formatter_integral.h
----- a/libcxx/include/__format/formatter_integral.h
--+++ b/libcxx/include/__format/formatter_integral.h
--@@ -338,7 +338,7 @@
--   if (__specs.__std_.__type_ != __format_spec::__type::__hexadecimal_upper_case) [[likely]]
--     return __formatter::__write(__first, __last, __ctx.out(), __specs);
-- 
---  return __formatter::__write_transformed(__first, __last, __ctx.out(), __specs, std::__hex_to_upper);
--+  return __formatter::__write_transformed(__first, __last, __ctx.out(), __specs, __formatter::__hex_to_upper);
-- }
-- 
-- template <unsigned_integral _Tp, class _CharT, class _FormatContext>
--diff -ruN --strip-trailing-cr a/libcxx/include/__format/formatter_output.h b/libcxx/include/__format/formatter_output.h
----- a/libcxx/include/__format/formatter_output.h
--+++ b/libcxx/include/__format/formatter_output.h
--@@ -45,6 +45,24 @@
-- 
-- namespace __formatter {
-- 
--+_LIBCPP_HIDE_FROM_ABI constexpr char __hex_to_upper(char __c) {
--+  switch (__c) {
--+  case 'a':
--+    return 'A';
--+  case 'b':
--+    return 'B';
--+  case 'c':
--+    return 'C';
--+  case 'd':
--+    return 'D';
--+  case 'e':
--+    return 'E';
--+  case 'f':
--+    return 'F';
--+  }
--+  return __c;
--+}
--+
-- struct _LIBCPP_EXPORTED_FROM_ABI __padding_size_result {
--   size_t __before_;
--   size_t __after_;
--diff -ruN --strip-trailing-cr a/libcxx/include/locale b/libcxx/include/locale
----- a/libcxx/include/locale
--+++ b/libcxx/include/locale
--@@ -201,8 +201,6 @@
-- #    include <__algorithm/reverse.h>
-- #    include <__algorithm/unwrap_iter.h>
-- #    include <__assert>
---#    include <__charconv/to_chars_integral.h>
---#    include <__charconv/traits.h>
-- #    include <__iterator/access.h>
-- #    include <__iterator/back_insert_iterator.h>
-- #    include <__iterator/istreambuf_iterator.h>
--@@ -212,7 +210,6 @@
-- #    include <__memory/addressof.h>
-- #    include <__memory/unique_ptr.h>
-- #    include <__new/exceptions.h>
---#    include <__system_error/errc.h>
-- #    include <__type_traits/make_unsigned.h>
-- #    include <cerrno>
-- #    include <cstdio>
--@@ -1224,7 +1221,7 @@
-- 
--   template <class _Integral>
--   _LIBCPP_HIDE_FROM_ABI inline _OutputIterator
---  __do_put_integral(iter_type __s, ios_base& __iob, char_type __fl, _Integral __v) const;
--+  __do_put_integral(iter_type __s, ios_base& __iob, char_type __fl, _Integral __v, char const* __len) const;
-- 
--   template <class _Float>
--   _LIBCPP_HIDE_FROM_ABI inline _OutputIterator
--@@ -1250,68 +1247,30 @@
-- template <class _CharT, class _OutputIterator>
-- template <class _Integral>
-- _LIBCPP_HIDE_FROM_ABI inline _OutputIterator num_put<_CharT, _OutputIterator>::__do_put_integral(
---    iter_type __s, ios_base& __iob, char_type __fl, _Integral __v) const {
--+    iter_type __s, ios_base& __iob, char_type __fl, _Integral __v, char const* __len) const {
--   // Stage 1 - Get number in narrow char
---
--+  char __fmt[8] = {'%', 0};
--+  this->__format_int(__fmt + 1, __len, is_signed<_Integral>::value, __iob.flags());
--   // Worst case is octal, with showbase enabled. Note that octal is always
--   // printed as an unsigned value.
--   using _Unsigned = typename make_unsigned<_Integral>::type;
---  _LIBCPP_CONSTEXPR const unsigned __buffer_size =
--+  _LIBCPP_CONSTEXPR const unsigned __nbuf =
--       (numeric_limits<_Unsigned>::digits / 3)          // 1 char per 3 bits
--       + ((numeric_limits<_Unsigned>::digits % 3) != 0) // round up
--       + 2;                                             // base prefix + terminating null character
---
---  char __char_buffer[__buffer_size];
---  char* __buffer_ptr = __char_buffer;
---
---  auto __flags = __iob.flags();
---
---  auto __basefield = (__flags & ios_base::basefield);
---
---  // Extract base
---  int __base = 10;
---  if (__basefield == ios_base::oct)
---    __base = 8;
---  else if (__basefield == ios_base::hex)
---    __base = 16;
---
---  // Print '-' and make the argument unsigned
---  auto __uval = std::__to_unsigned_like(__v);
---  if (__basefield != ios_base::oct && __basefield != ios_base::hex && __v < 0) {
---    *__buffer_ptr++ = '-';
---    __uval          = std::__complement(__uval);
---  }
---
---  // Maybe add '+' prefix
---  if (std::is_signed<_Integral>::value && (__flags & ios_base::showpos) && __basefield != ios_base::oct &&
---      __basefield != ios_base::hex && __v > 0)
---    *__buffer_ptr++ = '+';
---
---  // Add base prefix
---  if (__flags & ios_base::showbase) {
---    if (__basefield == ios_base::oct) {
---      *__buffer_ptr++ = '0';
---    } else if (__basefield == ios_base::hex) {
---      *__buffer_ptr++ = '0';
---      *__buffer_ptr++ = (__flags & ios_base::uppercase ? 'X' : 'x');
---    }
---  }
---
---  auto __res = std::__to_chars_integral(__buffer_ptr, __char_buffer + __buffer_size, __uval, __base);
---  _LIBCPP_ASSERT_INTERNAL(__res.__ec == std::errc(), "to_chars: invalid maximum buffer size computed?");
---
---  // Make letters uppercase
---  if (__flags & ios_base::hex && __flags & ios_base::uppercase) {
---    for (; __buffer_ptr != __res.__ptr; ++__buffer_ptr)
---      *__buffer_ptr = std::__hex_to_upper(*__buffer_ptr);
---  }
---
---  char* __np = this->__identify_padding(__char_buffer, __res.__ptr, __iob);
--+  char __nar[__nbuf];
--+  _LIBCPP_DIAGNOSTIC_PUSH
--+  _LIBCPP_CLANG_DIAGNOSTIC_IGNORED("-Wformat-nonliteral")
--+  _LIBCPP_GCC_DIAGNOSTIC_IGNORED("-Wformat-nonliteral")
--+  int __nc = __locale::__snprintf(__nar, sizeof(__nar), _LIBCPP_GET_C_LOCALE, __fmt, __v);
--+  _LIBCPP_DIAGNOSTIC_POP
--+  char* __ne = __nar + __nc;
--+  char* __np = this->__identify_padding(__nar, __ne, __iob);
--   // Stage 2 - Widen __nar while adding thousands separators
---  char_type __o[2 * (__buffer_size - 1) - 1];
--+  char_type __o[2 * (__nbuf - 1) - 1];
--   char_type* __op; // pad here
--   char_type* __oe; // end of output
---  this->__widen_and_group_int(__char_buffer, __np, __res.__ptr, __o, __op, __oe, __iob.getloc());
--+  this->__widen_and_group_int(__nar, __np, __ne, __o, __op, __oe, __iob.getloc());
--   // [__o, __oe) contains thousands_sep'd wide number
--   // Stage 3 & 4
--   return std::__pad_and_output(__s, __o, __op, __oe, __iob, __fl);
--@@ -1320,25 +1279,25 @@
-- template <class _CharT, class _OutputIterator>
-- _OutputIterator
-- num_put<_CharT, _OutputIterator>::do_put(iter_type __s, ios_base& __iob, char_type __fl, long __v) const {
---  return this->__do_put_integral(__s, __iob, __fl, __v);
--+  return this->__do_put_integral(__s, __iob, __fl, __v, "l");
-- }
-- 
-- template <class _CharT, class _OutputIterator>
-- _OutputIterator
-- num_put<_CharT, _OutputIterator>::do_put(iter_type __s, ios_base& __iob, char_type __fl, long long __v) const {
---  return this->__do_put_integral(__s, __iob, __fl, __v);
--+  return this->__do_put_integral(__s, __iob, __fl, __v, "ll");
-- }
-- 
-- template <class _CharT, class _OutputIterator>
-- _OutputIterator
-- num_put<_CharT, _OutputIterator>::do_put(iter_type __s, ios_base& __iob, char_type __fl, unsigned long __v) const {
---  return this->__do_put_integral(__s, __iob, __fl, __v);
--+  return this->__do_put_integral(__s, __iob, __fl, __v, "l");
-- }
-- 
-- template <class _CharT, class _OutputIterator>
-- _OutputIterator
-- num_put<_CharT, _OutputIterator>::do_put(iter_type __s, ios_base& __iob, char_type __fl, unsigned long long __v) const {
---  return this->__do_put_integral(__s, __iob, __fl, __v);
--+  return this->__do_put_integral(__s, __iob, __fl, __v, "ll");
-- }
-- 
-- template <class _CharT, class _OutputIterator>
--@@ -1406,11 +1365,26 @@
-- template <class _CharT, class _OutputIterator>
-- _OutputIterator
-- num_put<_CharT, _OutputIterator>::do_put(iter_type __s, ios_base& __iob, char_type __fl, const void* __v) const {
---  auto __flags = __iob.flags();
---  __iob.flags((__flags & ~ios_base::basefield & ~ios_base::uppercase) | ios_base::hex | ios_base::showbase);
---  auto __res = __do_put_integral(__s, __iob, __fl, reinterpret_cast<uintptr_t>(__v));
---  __iob.flags(__flags);
---  return __res;
--+  // Stage 1 - Get pointer in narrow char
--+  const unsigned __nbuf = 20;
--+  char __nar[__nbuf];
--+  int __nc   = __locale::__snprintf(__nar, sizeof(__nar), _LIBCPP_GET_C_LOCALE, "%p", __v);
--+  char* __ne = __nar + __nc;
--+  char* __np = this->__identify_padding(__nar, __ne, __iob);
--+  // Stage 2 - Widen __nar
--+  char_type __o[2 * (__nbuf - 1) - 1];
--+  char_type* __op; // pad here
--+  char_type* __oe; // end of output
--+  const ctype<char_type>& __ct = std::use_facet<ctype<char_type> >(__iob.getloc());
--+  __ct.widen(__nar, __ne, __o);
--+  __oe = __o + (__ne - __nar);
--+  if (__np == __ne)
--+    __op = __oe;
--+  else
--+    __op = __o + (__np - __nar);
--+  // [__o, __oe) contains wide number
--+  // Stage 3 & 4
--+  return std::__pad_and_output(__s, __o, __op, __oe, __iob, __fl);
-- }
-- 
-- extern template class _LIBCPP_EXTERN_TEMPLATE_TYPE_VIS num_put<char>;
--diff -ruN --strip-trailing-cr a/libcxx/include/module.modulemap b/libcxx/include/module.modulemap
----- a/libcxx/include/module.modulemap
--+++ b/libcxx/include/module.modulemap
--@@ -925,10 +925,7 @@
--     module to_chars                   { header "__charconv/to_chars.h" }
--     module to_chars_base_10           { header "__charconv/to_chars_base_10.h" }
--     module to_chars_floating_point    { header "__charconv/to_chars_floating_point.h" }
---    module to_chars_integral          {
---      header "__charconv/to_chars_integral.h"
---      export std.charconv.to_chars_result
---    }
--+    module to_chars_integral          { header "__charconv/to_chars_integral.h" }
--     module to_chars_result            { header "__charconv/to_chars_result.h" }
--     module traits                     { header "__charconv/traits.h" }
-- 
--diff -ruN --strip-trailing-cr a/libcxx/test/benchmarks/locale/num_put.bench.cpp b/libcxx/test/benchmarks/locale/num_put.bench.cpp
----- a/libcxx/test/benchmarks/locale/num_put.bench.cpp
--+++ b/libcxx/test/benchmarks/locale/num_put.bench.cpp
--@@ -1,39 +0,0 @@
---//===----------------------------------------------------------------------===//
---//
---// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
---// See https://llvm.org/LICENSE.txt for license information.
---// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
---//
---//===----------------------------------------------------------------------===//
---
---// UNSUPPORTED: c++03
---
---#include <ios>
---#include <locale>
---
---#include <benchmark/benchmark.h>
---
---struct num_put : std::num_put<char, std::string::iterator> {};
---
---template <class T>
---void BM_num_put(benchmark::State& state) {
---  auto val = T(123);
---  std::ios ios(nullptr);
---  num_put np;
---
---  for (auto _ : state) {
---    benchmark::DoNotOptimize(val);
---    std::string str;
---    benchmark::DoNotOptimize(np.put(str.begin(), ios, ' ', val));
---  }
---}
---BENCHMARK(BM_num_put<bool>);
---BENCHMARK(BM_num_put<long>);
---BENCHMARK(BM_num_put<long long>);
---BENCHMARK(BM_num_put<unsigned long>);
---BENCHMARK(BM_num_put<unsigned long long>);
---BENCHMARK(BM_num_put<double>);
---BENCHMARK(BM_num_put<long double>);
---BENCHMARK(BM_num_put<const void*>);
---
---BENCHMARK_MAIN();
--diff -ruN --strip-trailing-cr a/libcxx/test/std/localization/locale.categories/category.numeric/locale.nm.put/facet.num.put.members/put_pointer.pass.cpp b/libcxx/test/std/localization/locale.categories/category.numeric/locale.nm.put/facet.num.put.members/put_pointer.pass.cpp
----- a/libcxx/test/std/localization/locale.categories/category.numeric/locale.nm.put/facet.num.put.members/put_pointer.pass.cpp
--+++ b/libcxx/test/std/localization/locale.categories/category.numeric/locale.nm.put/facet.num.put.members/put_pointer.pass.cpp
--@@ -12,32 +12,40 @@
-- 
-- // iter_type put(iter_type s, ios_base& iob, char_type fill, void* v) const;
-- 
---// XFAIL: FROZEN-CXX03-HEADERS-FIXME
---
---#include <cassert>
---#include <ios>
-- #include <locale>
---
--+#include <ios>
--+#include <cassert>
--+#include <streambuf>
--+#include "test_macros.h"
-- #include "test_iterators.h"
-- 
-- typedef std::num_put<char, cpp17_output_iterator<char*> > F;
-- 
---class my_facet : public F {
--+class my_facet
--+    : public F
--+{
-- public:
---  explicit my_facet(std::size_t refs = 0) : F(refs) {}
--+    explicit my_facet(std::size_t refs = 0)
--+        : F(refs) {}
-- };
-- 
---int main(int, char**) {
---  const my_facet f(1);
---  {
---    std::ios ios(nullptr);
---    void* v = nullptr;
---    char str[50];
---    cpp17_output_iterator<char*> iter = f.put(cpp17_output_iterator<char*>(str), ios, '*', v);
---    std::string ex(str, base(iter));
---    assert(!ex.empty());
---    LIBCPP_ASSERT(ex == "0x0");
---  }
--+int main(int, char**)
--+{
--+    const my_facet f(1);
--+    {
--+        std::ios ios(0);
--+        void* v = 0;
--+        char str[50];
--+        cpp17_output_iterator<char*> iter = f.put(cpp17_output_iterator<char*>(str), ios, '*', v);
--+        std::string ex(str, base(iter));
--+        char expected_str[32] = {};
--+        // num_put::put uses %p for pointer types, but the exact format of %p is
--+        // implementation defined behavior for the C library. Compare output to
--+        // snprintf for portability.
--+        int rc = snprintf(expected_str, sizeof(expected_str), "%p", v);
--+        assert(rc > 0);
--+        assert(ex == expected_str);
--+    }
-- 
--   return 0;
-- }
--diff -ruN --strip-trailing-cr a/llvm/test/CodeGen/AMDGPU/si-fold-operands-requires-ssa.mir b/llvm/test/CodeGen/AMDGPU/si-fold-operands-requires-ssa.mir
----- a/llvm/test/CodeGen/AMDGPU/si-fold-operands-requires-ssa.mir
--+++ b/llvm/test/CodeGen/AMDGPU/si-fold-operands-requires-ssa.mir
--@@ -1,3 +1,4 @@
--+# REQUIRES: asserts
-- # RUN: not --crash llc -mtriple=amdgcn -mcpu=gfx900 -run-pass=si-fold-operands -filetype=null %s 2>&1 | FileCheck -check-prefixes=ERR-LEGACY,ERR %s
-- # RUN: not --crash llc -mtriple=amdgcn -mcpu=gfx900 -passes=si-fold-operands -filetype=null %s 2>&1 | FileCheck -check-prefixes=ERR-NPM,ERR %s
-- 
--diff -ruN --strip-trailing-cr a/mlir/test/Conversion/VectorToLLVM/pass-option-serialization.mlir b/mlir/test/Conversion/VectorToLLVM/pass-option-serialization.mlir
----- a/mlir/test/Conversion/VectorToLLVM/pass-option-serialization.mlir
--+++ b/mlir/test/Conversion/VectorToLLVM/pass-option-serialization.mlir
--@@ -14,7 +14,7 @@
-- // RUN: mlir-opt --convert-vector-to-llvm --dump-pass-pipeline %s 2>&1 | FileCheck %s --check-prefix=DEFAULT
-- 
-- // RUN: mlir-opt --convert-vector-to-llvm='vector-contract-lowering=matmul vector-transpose-lowering=flat' \
---// RUN:          --dump-pass-pipeline 2>&1 | FileCheck %s --check-prefix=NON-DEFAULT
--+// RUN:          --dump-pass-pipeline %s 2>&1 | FileCheck %s --check-prefix=NON-DEFAULT
-- 
-- // CHECK: builtin.module(
-- // CHECK-SAME: convert-vector-to-llvm{
--diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/libc/BUILD.bazel b/utils/bazel/llvm-project-overlay/libc/BUILD.bazel
----- a/utils/bazel/llvm-project-overlay/libc/BUILD.bazel
--+++ b/utils/bazel/llvm-project-overlay/libc/BUILD.bazel
--@@ -1591,7 +1591,10 @@
-- 
-- libc_support_library(
--     name = "libc_external_common",
---    hdrs = glob(["shared/*.h"]),
--+    hdrs = glob(
--+        ["shared/*.h"],
--+        exclude = ["shared/rpc_server.h"],
--+    ),
-+diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/libc/test/UnitTest/BUILD.bazel b/utils/bazel/llvm-project-overlay/libc/test/UnitTest/BUILD.bazel
-+--- a/utils/bazel/llvm-project-overlay/libc/test/UnitTest/BUILD.bazel
-++++ b/utils/bazel/llvm-project-overlay/libc/test/UnitTest/BUILD.bazel
-+@@ -80,6 +80,7 @@
-+     ],
-      deps = [
--         ":__support_common",
--         ":__support_fputil_fp_bits",
--diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/libc/libc_build_rules.bzl b/utils/bazel/llvm-project-overlay/libc/libc_build_rules.bzl
----- a/utils/bazel/llvm-project-overlay/libc/libc_build_rules.bzl
--+++ b/utils/bazel/llvm-project-overlay/libc/libc_build_rules.bzl
--@@ -128,7 +128,6 @@
-- 
--     _libc_library_filegroups(name = name, is_function = True, **kwargs)
-- 
---
--     # TODO(PR #130327): Remove this after downstream uses are migrated to libc_release_library.
--     # This second target is the llvm libc C function with default visibility.
--     func_attrs = [
--@@ -156,6 +155,7 @@
--         weak_symbols: List of function names that should be marked as weak symbols.
--         **kwargs: Other arguments relevant to cc_library.
--     """
--+
--     # Combine all sources into a single filegroup to avoid repeated sources error.
--     native.filegroup(
--         name = name + "_srcs",
--diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/libc/libc_configure_options.bzl b/utils/bazel/llvm-project-overlay/libc/libc_configure_options.bzl
----- a/utils/bazel/llvm-project-overlay/libc/libc_configure_options.bzl
--+++ b/utils/bazel/llvm-project-overlay/libc/libc_configure_options.bzl
--@@ -44,11 +44,6 @@
--     # "LIBC_COPT_STRTOFLOAT_DISABLE_EISEL_LEMIRE",
--     # "LIBC_COPT_STRTOFLOAT_DISABLE_SIMPLE_DECIMAL_CONVERSION",
-- 
---    # Documentation in libc/src/errno/...
---    # Since we're only using Bazel for overlay build for now, explicitly
---    # enforce using the system-provided errno in both tests and release build.
---    "LIBC_ERRNO_MODE=LIBC_ERRNO_MODE_SYSTEM",
---
--     # Documentation in libc/src/__support/libc_assert.h
--     # "LIBC_COPT_USE_C_ASSERT",
-- ]
-+         ":LibcUnitTest",
-++        "//libc:__support_macros_config",
-+         "//libc:errno",
-+     ],
-+ )
+-diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/libc/test/UnitTest/BUILD.bazel b/utils/bazel/llvm-project-overlay/libc/test/UnitTest/BUILD.bazel
+---- a/utils/bazel/llvm-project-overlay/libc/test/UnitTest/BUILD.bazel
+-+++ b/utils/bazel/llvm-project-overlay/libc/test/UnitTest/BUILD.bazel
+-@@ -80,6 +80,7 @@
+-     ],
+-     deps = [
+-         ":LibcUnitTest",
+-+        "//libc:__support_macros_config",
+-         "//libc:errno",
+-     ],
+- )
++diff -ruN --strip-trailing-cr a/clang/docs/ReleaseNotes.rst b/clang/docs/ReleaseNotes.rst
++--- a/clang/docs/ReleaseNotes.rst
+++++ b/clang/docs/ReleaseNotes.rst
++@@ -455,11 +455,6 @@
++ - Ensure ``isDerivedFrom`` matches the correct base in case more than one alias exists.
++ - Extend ``templateArgumentCountIs`` to support function and variable template
++   specialization.
++-- Move ``ast_matchers::MatchFinder::MatchFinderOptions`` to
++-  ``ast_matchers::MatchFinderOptions``.
++-- Add a boolean member ``SkipSystemHeaders`` to ``MatchFinderOptions``, and make
++-  ``MatchASTConsumer`` receive a reference to ``MatchFinderOptions`` in the
++-  constructor. This allows it to skip system headers when traversing the AST.
++ 
++ clang-format
++ ------------
++diff -ruN --strip-trailing-cr a/clang/include/clang/ASTMatchers/ASTMatchFinder.h b/clang/include/clang/ASTMatchers/ASTMatchFinder.h
++--- a/clang/include/clang/ASTMatchers/ASTMatchFinder.h
+++++ b/clang/include/clang/ASTMatchers/ASTMatchFinder.h
++@@ -50,24 +50,6 @@
++ 
++ namespace ast_matchers {
++ 
++-/// A struct defining options for configuring the MatchFinder.
++-struct MatchFinderOptions {
++-  struct Profiling {
++-    Profiling(llvm::StringMap<llvm::TimeRecord> &Records) : Records(Records) {}
++-
++-    /// Per bucket timing information.
++-    llvm::StringMap<llvm::TimeRecord> &Records;
++-  };
++-
++-  /// Enables per-check timers.
++-  ///
++-  /// It prints a report after match.
++-  std::optional<Profiling> CheckProfiling;
++-
++-  /// Avoids matching declarations in system headers.
++-  bool SkipSystemHeaders = false;
++-};
++-
++ /// A class to allow finding matches over the Clang AST.
++ ///
++ /// After creation, you can add multiple matchers to the MatchFinder via
++@@ -144,6 +126,21 @@
++     virtual void run() = 0;
++   };
++ 
+++  struct MatchFinderOptions {
+++    struct Profiling {
+++      Profiling(llvm::StringMap<llvm::TimeRecord> &Records)
+++          : Records(Records) {}
+++
+++      /// Per bucket timing information.
+++      llvm::StringMap<llvm::TimeRecord> &Records;
+++    };
+++
+++    /// Enables per-check timers.
+++    ///
+++    /// It prints a report after match.
+++    std::optional<Profiling> CheckProfiling;
+++  };
+++
++   MatchFinder(MatchFinderOptions Options = MatchFinderOptions());
++   ~MatchFinder();
++ 
++diff -ruN --strip-trailing-cr a/clang/lib/ASTMatchers/ASTMatchFinder.cpp b/clang/lib/ASTMatchers/ASTMatchFinder.cpp
++--- a/clang/lib/ASTMatchers/ASTMatchFinder.cpp
+++++ b/clang/lib/ASTMatchers/ASTMatchFinder.cpp
++@@ -28,7 +28,6 @@
++ #include <deque>
++ #include <memory>
++ #include <set>
++-#include <vector>
++ 
++ namespace clang {
++ namespace ast_matchers {
++@@ -423,7 +422,7 @@
++                         public ASTMatchFinder {
++ public:
++   MatchASTVisitor(const MatchFinder::MatchersByType *Matchers,
++-                  const MatchFinderOptions &Options)
+++                  const MatchFinder::MatchFinderOptions &Options)
++       : Matchers(Matchers), Options(Options), ActiveASTContext(nullptr) {}
++ 
++   ~MatchASTVisitor() override {
++@@ -1351,7 +1350,7 @@
++   /// We precalculate a list of matchers that pass the toplevel restrict check.
++   llvm::DenseMap<ASTNodeKind, std::vector<unsigned short>> MatcherFiltersMap;
++ 
++-  const MatchFinderOptions &Options;
+++  const MatchFinder::MatchFinderOptions &Options;
++   ASTContext *ActiveASTContext;
++ 
++   // Maps a canonical type to its TypedefDecls.
++@@ -1574,41 +1573,19 @@
++ class MatchASTConsumer : public ASTConsumer {
++ public:
++   MatchASTConsumer(MatchFinder *Finder,
++-                   MatchFinder::ParsingDoneTestCallback *ParsingDone,
++-                   const MatchFinderOptions &Options)
++-      : Finder(Finder), ParsingDone(ParsingDone), Options(Options) {}
+++                   MatchFinder::ParsingDoneTestCallback *ParsingDone)
+++      : Finder(Finder), ParsingDone(ParsingDone) {}
++ 
++ private:
++-  bool HandleTopLevelDecl(DeclGroupRef DG) override {
++-    if (Options.SkipSystemHeaders) {
++-      for (Decl *D : DG) {
++-        if (!isInSystemHeader(D))
++-          TraversalScope.push_back(D);
++-      }
++-    }
++-    return true;
++-  }
++-
++   void HandleTranslationUnit(ASTContext &Context) override {
++-    if (!TraversalScope.empty())
++-      Context.setTraversalScope(TraversalScope);
++-
++     if (ParsingDone != nullptr) {
++       ParsingDone->run();
++     }
++     Finder->matchAST(Context);
++   }
++ 
++-  bool isInSystemHeader(Decl *D) {
++-    const SourceManager &SM = D->getASTContext().getSourceManager();
++-    const SourceLocation Loc = SM.getExpansionLoc(D->getBeginLoc());
++-    return SM.isInSystemHeader(Loc);
++-  }
++-
++   MatchFinder *Finder;
++   MatchFinder::ParsingDoneTestCallback *ParsingDone;
++-  const MatchFinderOptions &Options;
++-  std::vector<Decl *> TraversalScope;
++ };
++ 
++ } // end namespace
++@@ -1727,8 +1704,7 @@
++ }
++ 
++ std::unique_ptr<ASTConsumer> MatchFinder::newASTConsumer() {
++-  return std::make_unique<internal::MatchASTConsumer>(this, ParsingDone,
++-                                                      Options);
+++  return std::make_unique<internal::MatchASTConsumer>(this, ParsingDone);
++ }
++ 
++ void MatchFinder::match(const clang::DynTypedNode &Node, ASTContext &Context) {
++diff -ruN --strip-trailing-cr a/clang/unittests/ASTMatchers/ASTMatchersInternalTest.cpp b/clang/unittests/ASTMatchers/ASTMatchersInternalTest.cpp
++--- a/clang/unittests/ASTMatchers/ASTMatchersInternalTest.cpp
+++++ b/clang/unittests/ASTMatchers/ASTMatchersInternalTest.cpp
++@@ -198,7 +198,7 @@
++ }
++ 
++ TEST(MatchFinder, CheckProfiling) {
++-  MatchFinderOptions Options;
+++  MatchFinder::MatchFinderOptions Options;
++   llvm::StringMap<llvm::TimeRecord> Records;
++   Options.CheckProfiling.emplace(Records);
++   MatchFinder Finder(std::move(Options));
++diff -ruN --strip-trailing-cr a/clang-tools-extra/clang-query/Query.cpp b/clang-tools-extra/clang-query/Query.cpp
++--- a/clang-tools-extra/clang-query/Query.cpp
+++++ b/clang-tools-extra/clang-query/Query.cpp
++@@ -114,7 +114,7 @@
++     Profiler.emplace();
++ 
++   for (auto &AST : QS.ASTs) {
++-    ast_matchers::MatchFinderOptions FinderOptions;
+++    ast_matchers::MatchFinder::MatchFinderOptions FinderOptions;
++     std::optional<llvm::StringMap<llvm::TimeRecord>> Records;
++     if (QS.EnableProfile) {
++       Records.emplace();
++diff -ruN --strip-trailing-cr a/clang-tools-extra/clang-tidy/cert/DontModifyStdNamespaceCheck.cpp b/clang-tools-extra/clang-tidy/cert/DontModifyStdNamespaceCheck.cpp
++--- a/clang-tools-extra/clang-tidy/cert/DontModifyStdNamespaceCheck.cpp
+++++ b/clang-tools-extra/clang-tidy/cert/DontModifyStdNamespaceCheck.cpp
++@@ -35,30 +35,6 @@
++                              Builder) != Args.end();
++ }
++ 
++-bool isStdOrPosixImpl(const DeclContext *Ctx) {
++-  if (!Ctx->isNamespace())
++-    return false;
++-
++-  const auto *ND = cast<NamespaceDecl>(Ctx);
++-  if (ND->isInline()) {
++-    return isStdOrPosixImpl(ND->getParent());
++-  }
++-
++-  if (!ND->getParent()->getRedeclContext()->isTranslationUnit())
++-    return false;
++-
++-  const IdentifierInfo *II = ND->getIdentifier();
++-  return II && (II->isStr("std") || II->isStr("posix"));
++-}
++-
++-AST_MATCHER(Decl, isInStdOrPosixNS) {
++-  for (const auto *Ctx = Node.getDeclContext(); Ctx; Ctx = Ctx->getParent()) {
++-    if (isStdOrPosixImpl(Ctx))
++-      return true;
++-  }
++-  return false;
++-}
++-
++ } // namespace
++ 
++ namespace clang::tidy::cert {
++@@ -66,10 +42,12 @@
++ void DontModifyStdNamespaceCheck::registerMatchers(MatchFinder *Finder) {
++   auto HasStdParent =
++       hasDeclContext(namespaceDecl(hasAnyName("std", "posix"),
++-                                   unless(hasDeclContext(namespaceDecl())))
+++                                   unless(hasParent(namespaceDecl())))
++                          .bind("nmspc"));
++-  auto UserDefinedType = qualType(hasUnqualifiedDesugaredType(
++-      tagType(unless(hasDeclaration(tagDecl(isInStdOrPosixNS()))))));
+++  auto UserDefinedType = qualType(
+++      hasUnqualifiedDesugaredType(tagType(unless(hasDeclaration(tagDecl(
+++          hasAncestor(namespaceDecl(hasAnyName("std", "posix"),
+++                                    unless(hasParent(namespaceDecl()))))))))));
++   auto HasNoProgramDefinedTemplateArgument = unless(
++       hasAnyTemplateArgumentIncludingPack(refersToType(UserDefinedType)));
++   auto InsideStdClassOrClassTemplateSpecialization = hasDeclContext(
++diff -ruN --strip-trailing-cr a/clang-tools-extra/clang-tidy/ClangTidy.cpp b/clang-tools-extra/clang-tidy/ClangTidy.cpp
++--- a/clang-tools-extra/clang-tidy/ClangTidy.cpp
+++++ b/clang-tools-extra/clang-tidy/ClangTidy.cpp
++@@ -420,7 +420,7 @@
++   std::vector<std::unique_ptr<ClangTidyCheck>> Checks =
++       CheckFactories->createChecksForLanguage(&Context);
++ 
++-  ast_matchers::MatchFinderOptions FinderOptions;
+++  ast_matchers::MatchFinder::MatchFinderOptions FinderOptions;
++ 
++   std::unique_ptr<ClangTidyProfiling> Profiling;
++   if (Context.getEnableProfiling()) {
++@@ -429,10 +429,6 @@
++     FinderOptions.CheckProfiling.emplace(Profiling->Records);
++   }
++ 
++-  // Avoid processing system headers, unless the user explicitly requests it
++-  if (!Context.getOptions().SystemHeaders.value_or(false))
++-    FinderOptions.SkipSystemHeaders = true;
++-
++   std::unique_ptr<ast_matchers::MatchFinder> Finder(
++       new ast_matchers::MatchFinder(std::move(FinderOptions)));
++ 
++diff -ruN --strip-trailing-cr a/clang-tools-extra/docs/ReleaseNotes.rst b/clang-tools-extra/docs/ReleaseNotes.rst
++--- a/clang-tools-extra/docs/ReleaseNotes.rst
+++++ b/clang-tools-extra/docs/ReleaseNotes.rst
++@@ -91,12 +91,6 @@
++ Improvements to clang-tidy
++ --------------------------
++ 
++-- :program:`clang-tidy` no longer processes declarations from system headers
++-  by default, greatly improving performance. This behavior is disabled if the
++-  `SystemHeaders` option is enabled.
++-  Note: this may lead to false negatives; downstream users may need to adjust
++-  their checks to preserve existing behavior.
++-
++ - Improved :program:`clang-tidy-diff.py` script. Add the `-warnings-as-errors`
++   argument to treat warnings as errors.
++ 
++diff -ruN --strip-trailing-cr a/clang-tools-extra/test/clang-tidy/checkers/readability/identifier-naming-anon-record-fields.cpp b/clang-tools-extra/test/clang-tidy/checkers/readability/identifier-naming-anon-record-fields.cpp
++--- a/clang-tools-extra/test/clang-tidy/checkers/readability/identifier-naming-anon-record-fields.cpp
+++++ b/clang-tools-extra/test/clang-tidy/checkers/readability/identifier-naming-anon-record-fields.cpp
++@@ -33,29 +33,23 @@
++ // RUN:     readability-identifier-naming.LocalConstantPointerPrefix: 'lc_', \
++ // RUN:   }}'
++ 
++-// FIXME: make this test case pass.
++-// Currently not working because the CXXRecordDecl for the global anonymous
++-// union is *not* collected as a top-level declaration.
++-// https://github.com/llvm/llvm-project/issues/130618
++-#if 0
++ static union {
++   int global;
++-// FIXME-CHECK-MESSAGES: :[[@LINE-1]]:7: warning: invalid case style for global variable 'global'
++-// FIXME-CHECK-FIXES: {{^}}  int g_global;{{$}}
+++// CHECK-MESSAGES: :[[@LINE-1]]:7: warning: invalid case style for global variable 'global'
+++// CHECK-FIXES: {{^}}  int g_global;{{$}}
++ 
++   const int global_const;
++-// FIXME-CHECK-MESSAGES: :[[@LINE-1]]:13: warning: invalid case style for global constant 'global_const'
++-// FIXME-CHECK-FIXES: {{^}}  const int GLOBAL_CONST;{{$}}
+++// CHECK-MESSAGES: :[[@LINE-1]]:13: warning: invalid case style for global constant 'global_const'
+++// CHECK-FIXES: {{^}}  const int GLOBAL_CONST;{{$}}
++ 
++   int *global_ptr;
++-// FIXME-CHECK-MESSAGES: :[[@LINE-1]]:8: warning: invalid case style for global pointer 'global_ptr'
++-// FIXME-CHECK-FIXES: {{^}}  int *GlobalPtr_Ptr;{{$}}
+++// CHECK-MESSAGES: :[[@LINE-1]]:8: warning: invalid case style for global pointer 'global_ptr'
+++// CHECK-FIXES: {{^}}  int *GlobalPtr_Ptr;{{$}}
++ 
++   int *const global_const_ptr;
++-// FIXME-CHECK-MESSAGES: :[[@LINE-1]]:14: warning: invalid case style for global constant pointer 'global_const_ptr'
++-// FIXME-CHECK-FIXES: {{^}}  int *const GLOBAL_CONST_PTR_Ptr;{{$}}
+++// CHECK-MESSAGES: :[[@LINE-1]]:14: warning: invalid case style for global constant pointer 'global_const_ptr'
+++// CHECK-FIXES: {{^}}  int *const GLOBAL_CONST_PTR_Ptr;{{$}}
++ };
++-#endif
++ 
++ namespace ns {
++ 
++diff -ruN --strip-trailing-cr a/clang-tools-extra/test/clang-tidy/infrastructure/file-filter.cpp b/clang-tools-extra/test/clang-tidy/infrastructure/file-filter.cpp
++--- a/clang-tools-extra/test/clang-tidy/infrastructure/file-filter.cpp
+++++ b/clang-tools-extra/test/clang-tidy/infrastructure/file-filter.cpp
++@@ -66,12 +66,19 @@
++ // CHECK4-NOT: warning:
++ // CHECK4-QUIET-NOT: warning:
++ 
+++// CHECK: Suppressed 3 warnings (3 in non-user code)
++ // CHECK: Use -header-filter=.* to display errors from all non-system headers.
++ // CHECK-QUIET-NOT: Suppressed
+++// CHECK2: Suppressed 1 warnings (1 in non-user code)
+++// CHECK2: Use -header-filter=.* {{.*}}
++ // CHECK2-QUIET-NOT: Suppressed
+++// CHECK3: Suppressed 2 warnings (2 in non-user code)
+++// CHECK3: Use -header-filter=.* {{.*}}
++ // CHECK3-QUIET-NOT: Suppressed
++ // CHECK4-NOT: Suppressed {{.*}} warnings
+++// CHECK4-NOT: Use -header-filter=.* {{.*}}
++ // CHECK4-QUIET-NOT: Suppressed
+++// CHECK6: Suppressed 2 warnings (2 in non-user code)
++ // CHECK6: Use -header-filter=.* {{.*}}
++ 
++ int x = 123;
++diff -ruN --strip-trailing-cr a/clang-tools-extra/test/clang-tidy/infrastructure/system-headers.cpp b/clang-tools-extra/test/clang-tidy/infrastructure/system-headers.cpp
++--- a/clang-tools-extra/test/clang-tidy/infrastructure/system-headers.cpp
+++++ b/clang-tools-extra/test/clang-tidy/infrastructure/system-headers.cpp
++@@ -11,9 +11,9 @@
++ // RUN: clang-tidy -help | FileCheck -check-prefix=CHECK-OPT-PRESENT %s
++ 
++ // RUN: clang-tidy -checks='-*,google-explicit-constructor' -header-filter='.*' -system-headers=true %s -- -isystem %S/Inputs/system-headers 2>&1 | FileCheck -check-prefix=CHECK-SYSTEM-HEADERS %s
++-// RUN: clang-tidy -checks='-*,google-explicit-constructor' -header-filter='.*' -system-headers=false %s -- -isystem %S/Inputs/system-headers 2>&1 | FileCheck -check-prefix=CHECK-NO-SYSTEM-HEADERS --allow-empty %s
+++// RUN: clang-tidy -checks='-*,google-explicit-constructor' -header-filter='.*' -system-headers=false %s -- -isystem %S/Inputs/system-headers 2>&1 | FileCheck -check-prefix=CHECK-NO-SYSTEM-HEADERS %s
++ // RUN: clang-tidy -checks='-*,google-explicit-constructor' -header-filter='.*' -config='SystemHeaders: true' %s -- -isystem %S/Inputs/system-headers 2>&1 | FileCheck -check-prefix=CHECK-SYSTEM-HEADERS %s
++-// RUN: clang-tidy -checks='-*,google-explicit-constructor' -header-filter='.*' -config='SystemHeaders: false' %s -- -isystem %S/Inputs/system-headers 2>&1 | FileCheck -check-prefix=CHECK-NO-SYSTEM-HEADERS --allow-empty %s
+++// RUN: clang-tidy -checks='-*,google-explicit-constructor' -header-filter='.*' -config='SystemHeaders: false' %s -- -isystem %S/Inputs/system-headers 2>&1 | FileCheck -check-prefix=CHECK-NO-SYSTEM-HEADERS %s
++ 
++ #include <system_header.h>
++ // CHECK-SYSTEM-HEADERS: system_header.h:1:13: warning: single-argument constructors must be marked explicit
++diff -ruN --strip-trailing-cr a/llvm/include/llvm/CodeGen/MachineBasicBlock.h b/llvm/include/llvm/CodeGen/MachineBasicBlock.h
++--- a/llvm/include/llvm/CodeGen/MachineBasicBlock.h
+++++ b/llvm/include/llvm/CodeGen/MachineBasicBlock.h
++@@ -313,6 +313,15 @@
++   const MachineFunction *getParent() const { return xParent; }
++   MachineFunction *getParent() { return xParent; }
++ 
+++  /// Returns true if the original IR terminator is an `indirectbr`. This
+++  /// typically corresponds to a `goto` in C, rather than jump tables.
+++  bool terminatorIsComputedGoto() const {
+++    return back().isIndirectBranch() &&
+++           llvm::all_of(successors(), [](const MachineBasicBlock *Succ) {
+++             return Succ->isIRBlockAddressTaken();
+++           });
+++  }
+++
++   using instr_iterator = Instructions::iterator;
++   using const_instr_iterator = Instructions::const_iterator;
++   using reverse_instr_iterator = Instructions::reverse_iterator;
++diff -ruN --strip-trailing-cr a/llvm/include/llvm/CodeGen/MachineInstr.h b/llvm/include/llvm/CodeGen/MachineInstr.h
++--- a/llvm/include/llvm/CodeGen/MachineInstr.h
+++++ b/llvm/include/llvm/CodeGen/MachineInstr.h
++@@ -994,17 +994,8 @@
++ 
++   /// Return true if this is an indirect branch, such as a
++   /// branch through a register.
++-  bool isIndirectBranch(QueryType Type = AnyInBundle,
++-                        bool IncludeJumpTable = true) const {
++-    return hasProperty(MCID::IndirectBranch, Type) &&
++-           (IncludeJumpTable || !llvm::any_of(operands(), [](const auto &Op) {
++-              return Op.isJTI();
++-            }));
++-  }
++-
++-  bool isComputedGoto(QueryType Type = AnyInBundle) const {
++-    // Jump tables are not considered computed gotos.
++-    return isIndirectBranch(Type, /*IncludeJumpTable=*/false);
+++  bool isIndirectBranch(QueryType Type = AnyInBundle) const {
+++    return hasProperty(MCID::IndirectBranch, Type);
++   }
++ 
++   /// Return true if this is a branch which may fall
++@@ -2088,6 +2079,9 @@
++                     MCSymbol *PreInstrSymbol, MCSymbol *PostInstrSymbol,
++                     MDNode *HeapAllocMarker, MDNode *PCSections,
++                     uint32_t CFIType, MDNode *MMRAs);
+++
+++  /// Returns true if all successors are IRBlockAddressTaken.
+++  bool jumpToIRBlockAddressTaken() const;
++ };
++ 
++ /// Special DenseMapInfo traits to compare MachineInstr* by *value* of the
++diff -ruN --strip-trailing-cr a/llvm/lib/CodeGen/TailDuplicator.cpp b/llvm/lib/CodeGen/TailDuplicator.cpp
++--- a/llvm/lib/CodeGen/TailDuplicator.cpp
+++++ b/llvm/lib/CodeGen/TailDuplicator.cpp
++@@ -604,7 +604,7 @@
++   bool HasComputedGoto = false;
++   if (!TailBB.empty()) {
++     HasIndirectbr = TailBB.back().isIndirectBranch();
++-    HasComputedGoto = TailBB.back().isComputedGoto();
+++    HasComputedGoto = TailBB.terminatorIsComputedGoto();
++   }
++ 
++   if (HasIndirectbr && PreRegAlloc)
++diff -ruN --strip-trailing-cr a/llvm/test/CodeGen/X86/tail-dup-computed-goto.mir b/llvm/test/CodeGen/X86/tail-dup-computed-goto.mir
++--- a/llvm/test/CodeGen/X86/tail-dup-computed-goto.mir
+++++ b/llvm/test/CodeGen/X86/tail-dup-computed-goto.mir
++@@ -2,15 +2,27 @@
++ # RUN: llc -mtriple=x86_64-unknown-linux-gnu -run-pass=early-tailduplication -tail-dup-pred-size=1 -tail-dup-succ-size=1 %s -o - | FileCheck %s
++ # Check that only the computed goto is not be restrict by tail-dup-pred-size and tail-dup-succ-size.
++ --- |
+++  @computed_goto.dispatch = constant [5 x ptr] [ptr null, ptr blockaddress(@computed_goto, %bb1), ptr blockaddress(@computed_goto, %bb2), ptr blockaddress(@computed_goto, %bb3), ptr blockaddress(@computed_goto, %bb4)]
++   declare i64 @f0()
++   declare i64 @f1()
++   declare i64 @f2()
++   declare i64 @f3()
++   declare i64 @f4()
++   declare i64 @f5()
++-  @computed_goto.dispatch = external global [5 x ptr]
++-  define void @computed_goto() { ret void }
+++  define void @computed_goto() {
+++    start:
+++      ret void
+++    bb1:
+++      ret void
+++    bb2:
+++      ret void
+++    bb3:
+++      ret void
+++    bb4:
+++      ret void
+++  }
++   define void @jump_table() { ret void }
+++  define void @jump_table_pic() { ret void }
++ ...
++ ---
++ name:            computed_goto
++@@ -23,98 +35,88 @@
++   ; CHECK-NEXT:   ADJCALLSTACKDOWN64 0, 0, 0, implicit-def dead $rsp, implicit-def dead $eflags, implicit-def dead $ssp, implicit $rsp, implicit $ssp
++   ; CHECK-NEXT:   CALL64pcrel32 target-flags(x86-plt) @f0, csr_64, implicit $rsp, implicit $ssp, implicit-def $rsp, implicit-def $ssp, implicit-def $rax
++   ; CHECK-NEXT:   ADJCALLSTACKUP64 0, 0, implicit-def dead $rsp, implicit-def dead $eflags, implicit-def dead $ssp, implicit $rsp, implicit $ssp
++-  ; CHECK-NEXT:   [[COPY:%[0-9]+]]:gr64 = COPY $rax
+++  ; CHECK-NEXT:   [[COPY:%[0-9]+]]:gr64_nosp = COPY $rax
++   ; CHECK-NEXT:   [[COPY1:%[0-9]+]]:gr64_nosp = COPY [[COPY]]
++-  ; CHECK-NEXT:   [[COPY2:%[0-9]+]]:gr64_nosp = COPY [[COPY1]]
++-  ; CHECK-NEXT:   JMP64m $noreg, 8, [[COPY1]], @computed_goto.dispatch, $noreg
+++  ; CHECK-NEXT:   JMP64m $noreg, 8, [[COPY]], @computed_goto.dispatch, $noreg
++   ; CHECK-NEXT: {{  $}}
++-  ; CHECK-NEXT: bb.1:
+++  ; CHECK-NEXT: bb.1.bb1 (ir-block-address-taken %ir-block.bb1):
++   ; CHECK-NEXT:   successors: %bb.1(0x20000000), %bb.2(0x20000000), %bb.3(0x20000000), %bb.4(0x20000000)
++   ; CHECK-NEXT: {{  $}}
++   ; CHECK-NEXT:   ADJCALLSTACKDOWN64 0, 0, 0, implicit-def dead $rsp, implicit-def dead $eflags, implicit-def dead $ssp, implicit $rsp, implicit $ssp
++   ; CHECK-NEXT:   CALL64pcrel32 target-flags(x86-plt) @f1, csr_64, implicit $rsp, implicit $ssp, implicit-def $rsp, implicit-def $ssp, implicit-def $rax
++   ; CHECK-NEXT:   ADJCALLSTACKUP64 0, 0, implicit-def dead $rsp, implicit-def dead $eflags, implicit-def dead $ssp, implicit $rsp, implicit $ssp
++-  ; CHECK-NEXT:   [[COPY3:%[0-9]+]]:gr64 = COPY $rax
++-  ; CHECK-NEXT:   [[COPY4:%[0-9]+]]:gr64_nosp = COPY [[COPY3]]
++-  ; CHECK-NEXT:   [[COPY5:%[0-9]+]]:gr64_nosp = COPY [[COPY4]]
++-  ; CHECK-NEXT:   JMP64m $noreg, 8, [[COPY4]], @computed_goto.dispatch, $noreg
+++  ; CHECK-NEXT:   [[COPY2:%[0-9]+]]:gr64_nosp = COPY $rax
+++  ; CHECK-NEXT:   [[COPY3:%[0-9]+]]:gr64_nosp = COPY [[COPY2]]
+++  ; CHECK-NEXT:   JMP64m $noreg, 8, [[COPY2]], @computed_goto.dispatch, $noreg
++   ; CHECK-NEXT: {{  $}}
++-  ; CHECK-NEXT: bb.2:
+++  ; CHECK-NEXT: bb.2.bb2 (ir-block-address-taken %ir-block.bb2):
++   ; CHECK-NEXT:   successors: %bb.1(0x20000000), %bb.2(0x20000000), %bb.3(0x20000000), %bb.4(0x20000000)
++   ; CHECK-NEXT: {{  $}}
++   ; CHECK-NEXT:   ADJCALLSTACKDOWN64 0, 0, 0, implicit-def dead $rsp, implicit-def dead $eflags, implicit-def dead $ssp, implicit $rsp, implicit $ssp
++   ; CHECK-NEXT:   CALL64pcrel32 target-flags(x86-plt) @f2, csr_64, implicit $rsp, implicit $ssp, implicit-def $rsp, implicit-def $ssp, implicit-def $rax
++   ; CHECK-NEXT:   ADJCALLSTACKUP64 0, 0, implicit-def dead $rsp, implicit-def dead $eflags, implicit-def dead $ssp, implicit $rsp, implicit $ssp
++-  ; CHECK-NEXT:   [[COPY6:%[0-9]+]]:gr64 = COPY $rax
++-  ; CHECK-NEXT:   [[COPY7:%[0-9]+]]:gr64_nosp = COPY [[COPY6]]
++-  ; CHECK-NEXT:   [[COPY8:%[0-9]+]]:gr64_nosp = COPY [[COPY7]]
++-  ; CHECK-NEXT:   JMP64m $noreg, 8, [[COPY7]], @computed_goto.dispatch, $noreg
+++  ; CHECK-NEXT:   [[COPY4:%[0-9]+]]:gr64_nosp = COPY $rax
+++  ; CHECK-NEXT:   [[COPY5:%[0-9]+]]:gr64_nosp = COPY [[COPY4]]
+++  ; CHECK-NEXT:   JMP64m $noreg, 8, [[COPY4]], @computed_goto.dispatch, $noreg
++   ; CHECK-NEXT: {{  $}}
++-  ; CHECK-NEXT: bb.3:
+++  ; CHECK-NEXT: bb.3.bb3 (ir-block-address-taken %ir-block.bb3):
++   ; CHECK-NEXT:   successors: %bb.1(0x20000000), %bb.2(0x20000000), %bb.3(0x20000000), %bb.4(0x20000000)
++   ; CHECK-NEXT: {{  $}}
++   ; CHECK-NEXT:   ADJCALLSTACKDOWN64 0, 0, 0, implicit-def dead $rsp, implicit-def dead $eflags, implicit-def dead $ssp, implicit $rsp, implicit $ssp
++   ; CHECK-NEXT:   CALL64pcrel32 target-flags(x86-plt) @f3, csr_64, implicit $rsp, implicit $ssp, implicit-def $rsp, implicit-def $ssp, implicit-def $rax
++   ; CHECK-NEXT:   ADJCALLSTACKUP64 0, 0, implicit-def dead $rsp, implicit-def dead $eflags, implicit-def dead $ssp, implicit $rsp, implicit $ssp
++-  ; CHECK-NEXT:   [[COPY9:%[0-9]+]]:gr64 = COPY $rax
++-  ; CHECK-NEXT:   [[COPY10:%[0-9]+]]:gr64_nosp = COPY [[COPY9]]
++-  ; CHECK-NEXT:   [[COPY11:%[0-9]+]]:gr64_nosp = COPY [[COPY10]]
++-  ; CHECK-NEXT:   JMP64m $noreg, 8, [[COPY10]], @computed_goto.dispatch, $noreg
+++  ; CHECK-NEXT:   [[COPY6:%[0-9]+]]:gr64_nosp = COPY $rax
+++  ; CHECK-NEXT:   [[COPY7:%[0-9]+]]:gr64_nosp = COPY [[COPY6]]
+++  ; CHECK-NEXT:   JMP64m $noreg, 8, [[COPY6]], @computed_goto.dispatch, $noreg
++   ; CHECK-NEXT: {{  $}}
++-  ; CHECK-NEXT: bb.4:
+++  ; CHECK-NEXT: bb.4.bb4 (ir-block-address-taken %ir-block.bb4):
++   ; CHECK-NEXT:   successors: %bb.1(0x20000000), %bb.2(0x20000000), %bb.3(0x20000000), %bb.4(0x20000000)
++   ; CHECK-NEXT: {{  $}}
++   ; CHECK-NEXT:   ADJCALLSTACKDOWN64 0, 0, 0, implicit-def dead $rsp, implicit-def dead $eflags, implicit-def dead $ssp, implicit $rsp, implicit $ssp
++   ; CHECK-NEXT:   CALL64pcrel32 target-flags(x86-plt) @f4, csr_64, implicit $rsp, implicit $ssp, implicit-def $rsp, implicit-def $ssp, implicit-def $rax
++   ; CHECK-NEXT:   ADJCALLSTACKUP64 0, 0, implicit-def dead $rsp, implicit-def dead $eflags, implicit-def dead $ssp, implicit $rsp, implicit $ssp
++-  ; CHECK-NEXT:   [[COPY12:%[0-9]+]]:gr64 = COPY $rax
++-  ; CHECK-NEXT:   [[COPY13:%[0-9]+]]:gr64_nosp = COPY [[COPY12]]
++-  ; CHECK-NEXT:   [[COPY14:%[0-9]+]]:gr64_nosp = COPY [[COPY13]]
++-  ; CHECK-NEXT:   JMP64m $noreg, 8, [[COPY13]], @computed_goto.dispatch, $noreg
+++  ; CHECK-NEXT:   [[COPY8:%[0-9]+]]:gr64_nosp = COPY $rax
+++  ; CHECK-NEXT:   [[COPY9:%[0-9]+]]:gr64_nosp = COPY [[COPY8]]
+++  ; CHECK-NEXT:   JMP64m $noreg, 8, [[COPY8]], @computed_goto.dispatch, $noreg
++   bb.0:
++     ADJCALLSTACKDOWN64 0, 0, 0, implicit-def dead $rsp, implicit-def dead $eflags, implicit-def dead $ssp, implicit $rsp, implicit $ssp
++     CALL64pcrel32 target-flags(x86-plt) @f0, csr_64, implicit $rsp, implicit $ssp, implicit-def $rsp, implicit-def $ssp, implicit-def $rax
++     ADJCALLSTACKUP64 0, 0, implicit-def dead $rsp, implicit-def dead $eflags, implicit-def dead $ssp, implicit $rsp, implicit $ssp
++-    %6:gr64 = COPY $rax
++-    %0:gr64 = COPY %6
+++    %1:gr64 = COPY $rax
++     JMP_1 %bb.5
++ 
++-  bb.1:
+++  bb.1.bb1 (ir-block-address-taken %ir-block.bb1):
++     ADJCALLSTACKDOWN64 0, 0, 0, implicit-def dead $rsp, implicit-def dead $eflags, implicit-def dead $ssp, implicit $rsp, implicit $ssp
++     CALL64pcrel32 target-flags(x86-plt) @f1, csr_64, implicit $rsp, implicit $ssp, implicit-def $rsp, implicit-def $ssp, implicit-def $rax
++     ADJCALLSTACKUP64 0, 0, implicit-def dead $rsp, implicit-def dead $eflags, implicit-def dead $ssp, implicit $rsp, implicit $ssp
++-    %10:gr64 = COPY $rax
++-    %1:gr64 = COPY %10
+++    %3:gr64 = COPY $rax
++     JMP_1 %bb.5
++ 
++-  bb.2:
+++  bb.2.bb2 (ir-block-address-taken %ir-block.bb2):
++     ADJCALLSTACKDOWN64 0, 0, 0, implicit-def dead $rsp, implicit-def dead $eflags, implicit-def dead $ssp, implicit $rsp, implicit $ssp
++     CALL64pcrel32 target-flags(x86-plt) @f2, csr_64, implicit $rsp, implicit $ssp, implicit-def $rsp, implicit-def $ssp, implicit-def $rax
++     ADJCALLSTACKUP64 0, 0, implicit-def dead $rsp, implicit-def dead $eflags, implicit-def dead $ssp, implicit $rsp, implicit $ssp
++-    %9:gr64 = COPY $rax
++-    %2:gr64 = COPY %9
+++    %5:gr64 = COPY $rax
++     JMP_1 %bb.5
++ 
++-  bb.3:
+++  bb.3.bb3 (ir-block-address-taken %ir-block.bb3):
++     ADJCALLSTACKDOWN64 0, 0, 0, implicit-def dead $rsp, implicit-def dead $eflags, implicit-def dead $ssp, implicit $rsp, implicit $ssp
++     CALL64pcrel32 target-flags(x86-plt) @f3, csr_64, implicit $rsp, implicit $ssp, implicit-def $rsp, implicit-def $ssp, implicit-def $rax
++     ADJCALLSTACKUP64 0, 0, implicit-def dead $rsp, implicit-def dead $eflags, implicit-def dead $ssp, implicit $rsp, implicit $ssp
++-    %8:gr64 = COPY $rax
++-    %3:gr64 = COPY %8
+++    %7:gr64 = COPY $rax
++     JMP_1 %bb.5
++ 
++-  bb.4:
+++  bb.4.bb4 (ir-block-address-taken %ir-block.bb4):
++     ADJCALLSTACKDOWN64 0, 0, 0, implicit-def dead $rsp, implicit-def dead $eflags, implicit-def dead $ssp, implicit $rsp, implicit $ssp
++     CALL64pcrel32 target-flags(x86-plt) @f4, csr_64, implicit $rsp, implicit $ssp, implicit-def $rsp, implicit-def $ssp, implicit-def $rax
++     ADJCALLSTACKUP64 0, 0, implicit-def dead $rsp, implicit-def dead $eflags, implicit-def dead $ssp, implicit $rsp, implicit $ssp
++-    %7:gr64 = COPY $rax
++-    %4:gr64 = COPY %7
+++    %9:gr64 = COPY $rax
++ 
++   bb.5:
++     successors: %bb.1, %bb.2, %bb.3, %bb.4
++ 
++-    %5:gr64_nosp = PHI %0, %bb.0, %4, %bb.4, %3, %bb.3, %2, %bb.2, %1, %bb.1
++-    JMP64m $noreg, 8, %5, @computed_goto.dispatch, $noreg
+++    %10:gr64_nosp = PHI %1, %bb.0, %9, %bb.4, %7, %bb.3, %5, %bb.2, %3, %bb.1
+++    JMP64m $noreg, 8, %10, @computed_goto.dispatch, $noreg
++ 
++ ...
++ ---
++@@ -124,7 +126,7 @@
++   kind:            block-address
++   entries:
++     - id:              0
++-      blocks:          [ '%bb.2', '%bb.3', '%bb.4', '%bb.5', '%bb.6' ]
+++      blocks:          [ '%bb.3', '%bb.4', '%bb.5', '%bb.6', '%bb.7' ]
++ body:             |
++   ; CHECK-LABEL: name: jump_table
++   ; CHECK: bb.0:
++@@ -134,12 +136,11 @@
++   ; CHECK-NEXT:   CALL64pcrel32 target-flags(x86-plt) @f0, csr_64, implicit $rsp, implicit $ssp, implicit-def $rsp, implicit-def $ssp, implicit-def $rax
++   ; CHECK-NEXT:   ADJCALLSTACKUP64 0, 0, implicit-def dead $rsp, implicit-def dead $eflags, implicit-def dead $ssp, implicit $rsp, implicit $ssp
++   ; CHECK-NEXT:   [[COPY:%[0-9]+]]:gr64 = COPY $rax
++-  ; CHECK-NEXT:   [[COPY1:%[0-9]+]]:gr64 = COPY [[COPY]]
++   ; CHECK-NEXT: {{  $}}
++   ; CHECK-NEXT: bb.1:
++   ; CHECK-NEXT:   successors: %bb.3(0x1999999a), %bb.4(0x1999999a), %bb.5(0x1999999a), %bb.6(0x1999999a), %bb.7(0x1999999a)
++   ; CHECK-NEXT: {{  $}}
++-  ; CHECK-NEXT:   [[PHI:%[0-9]+]]:gr64 = PHI [[COPY1]], %bb.0, %3, %bb.7, %4, %bb.6, %5, %bb.5, %6, %bb.4, %7, %bb.3
+++  ; CHECK-NEXT:   [[PHI:%[0-9]+]]:gr64 = PHI [[COPY]], %bb.0, %2, %bb.7, %3, %bb.6, %4, %bb.5, %5, %bb.4, %6, %bb.3
++   ; CHECK-NEXT:   [[DEC64r:%[0-9]+]]:gr64_nosp = DEC64r [[PHI]], implicit-def dead $eflags
++   ; CHECK-NEXT:   JMP64m $noreg, 8, [[DEC64r]], %jump-table.0, $noreg :: (load (s64) from jump-table)
++   ; CHECK-NEXT: {{  $}}
++@@ -149,8 +150,7 @@
++   ; CHECK-NEXT:   ADJCALLSTACKDOWN64 0, 0, 0, implicit-def dead $rsp, implicit-def dead $eflags, implicit-def dead $ssp, implicit $rsp, implicit $ssp
++   ; CHECK-NEXT:   CALL64pcrel32 target-flags(x86-plt) @f1, csr_64, implicit $rsp, implicit $ssp, implicit-def $rsp, implicit-def $ssp, implicit-def $rax
++   ; CHECK-NEXT:   ADJCALLSTACKUP64 0, 0, implicit-def dead $rsp, implicit-def dead $eflags, implicit-def dead $ssp, implicit $rsp, implicit $ssp
++-  ; CHECK-NEXT:   [[COPY2:%[0-9]+]]:gr64 = COPY $rax
++-  ; CHECK-NEXT:   [[COPY3:%[0-9]+]]:gr64 = COPY [[COPY2]]
+++  ; CHECK-NEXT:   [[COPY1:%[0-9]+]]:gr64 = COPY $rax
++   ; CHECK-NEXT:   JMP_1 %bb.1
++   ; CHECK-NEXT: {{  $}}
++   ; CHECK-NEXT: bb.4:
++@@ -159,8 +159,7 @@
++   ; CHECK-NEXT:   ADJCALLSTACKDOWN64 0, 0, 0, implicit-def dead $rsp, implicit-def dead $eflags, implicit-def dead $ssp, implicit $rsp, implicit $ssp
++   ; CHECK-NEXT:   CALL64pcrel32 target-flags(x86-plt) @f2, csr_64, implicit $rsp, implicit $ssp, implicit-def $rsp, implicit-def $ssp, implicit-def $rax
++   ; CHECK-NEXT:   ADJCALLSTACKUP64 0, 0, implicit-def dead $rsp, implicit-def dead $eflags, implicit-def dead $ssp, implicit $rsp, implicit $ssp
++-  ; CHECK-NEXT:   [[COPY4:%[0-9]+]]:gr64 = COPY $rax
++-  ; CHECK-NEXT:   [[COPY5:%[0-9]+]]:gr64 = COPY [[COPY4]]
+++  ; CHECK-NEXT:   [[COPY2:%[0-9]+]]:gr64 = COPY $rax
++   ; CHECK-NEXT:   JMP_1 %bb.1
++   ; CHECK-NEXT: {{  $}}
++   ; CHECK-NEXT: bb.5:
++@@ -169,8 +168,7 @@
++   ; CHECK-NEXT:   ADJCALLSTACKDOWN64 0, 0, 0, implicit-def dead $rsp, implicit-def dead $eflags, implicit-def dead $ssp, implicit $rsp, implicit $ssp
++   ; CHECK-NEXT:   CALL64pcrel32 target-flags(x86-plt) @f3, csr_64, implicit $rsp, implicit $ssp, implicit-def $rsp, implicit-def $ssp, implicit-def $rax
++   ; CHECK-NEXT:   ADJCALLSTACKUP64 0, 0, implicit-def dead $rsp, implicit-def dead $eflags, implicit-def dead $ssp, implicit $rsp, implicit $ssp
++-  ; CHECK-NEXT:   [[COPY6:%[0-9]+]]:gr64 = COPY $rax
++-  ; CHECK-NEXT:   [[COPY7:%[0-9]+]]:gr64 = COPY [[COPY6]]
+++  ; CHECK-NEXT:   [[COPY3:%[0-9]+]]:gr64 = COPY $rax
++   ; CHECK-NEXT:   JMP_1 %bb.1
++   ; CHECK-NEXT: {{  $}}
++   ; CHECK-NEXT: bb.6:
++@@ -179,8 +177,7 @@
++   ; CHECK-NEXT:   ADJCALLSTACKDOWN64 0, 0, 0, implicit-def dead $rsp, implicit-def dead $eflags, implicit-def dead $ssp, implicit $rsp, implicit $ssp
++   ; CHECK-NEXT:   CALL64pcrel32 target-flags(x86-plt) @f4, csr_64, implicit $rsp, implicit $ssp, implicit-def $rsp, implicit-def $ssp, implicit-def $rax
++   ; CHECK-NEXT:   ADJCALLSTACKUP64 0, 0, implicit-def dead $rsp, implicit-def dead $eflags, implicit-def dead $ssp, implicit $rsp, implicit $ssp
++-  ; CHECK-NEXT:   [[COPY8:%[0-9]+]]:gr64 = COPY $rax
++-  ; CHECK-NEXT:   [[COPY9:%[0-9]+]]:gr64 = COPY [[COPY8]]
+++  ; CHECK-NEXT:   [[COPY4:%[0-9]+]]:gr64 = COPY $rax
++   ; CHECK-NEXT:   JMP_1 %bb.1
++   ; CHECK-NEXT: {{  $}}
++   ; CHECK-NEXT: bb.7:
++@@ -189,67 +186,181 @@
++   ; CHECK-NEXT:   ADJCALLSTACKDOWN64 0, 0, 0, implicit-def dead $rsp, implicit-def dead $eflags, implicit-def dead $ssp, implicit $rsp, implicit $ssp
++   ; CHECK-NEXT:   CALL64pcrel32 target-flags(x86-plt) @f5, csr_64, implicit $rsp, implicit $ssp, implicit-def $rsp, implicit-def $ssp, implicit-def $rax
++   ; CHECK-NEXT:   ADJCALLSTACKUP64 0, 0, implicit-def dead $rsp, implicit-def dead $eflags, implicit-def dead $ssp, implicit $rsp, implicit $ssp
++-  ; CHECK-NEXT:   [[COPY10:%[0-9]+]]:gr64 = COPY $rax
++-  ; CHECK-NEXT:   [[COPY11:%[0-9]+]]:gr64 = COPY [[COPY10]]
+++  ; CHECK-NEXT:   [[COPY5:%[0-9]+]]:gr64 = COPY $rax
++   ; CHECK-NEXT:   JMP_1 %bb.1
++-  ; CHECK-NEXT: {{  $}}
++-  ; CHECK-NEXT: bb.8:
++   bb.0:
++     ADJCALLSTACKDOWN64 0, 0, 0, implicit-def dead $rsp, implicit-def dead $eflags, implicit-def dead $ssp, implicit $rsp, implicit $ssp
++     CALL64pcrel32 target-flags(x86-plt) @f0, csr_64, implicit $rsp, implicit $ssp, implicit-def $rsp, implicit-def $ssp, implicit-def $rax
++     ADJCALLSTACKUP64 0, 0, implicit-def dead $rsp, implicit-def dead $eflags, implicit-def dead $ssp, implicit $rsp, implicit $ssp
++-    %7:gr64 = COPY $rax
++-    %0:gr64 = COPY %7
+++    %1:gr64 = COPY $rax
++ 
++   bb.1:
++-    %1:gr64 = PHI %0, %bb.0, %6, %bb.6, %5, %bb.5, %4, %bb.4, %3, %bb.3, %2, %bb.2
++-    %8:gr64_nosp = DEC64r %1, implicit-def dead $eflags
+++    %2:gr64 = PHI %1, %bb.0, %3, %bb.7, %4, %bb.6, %5, %bb.5, %6, %bb.4, %7, %bb.3
+++    %8:gr64_nosp = DEC64r %2, implicit-def dead $eflags
++ 
++-  bb.8:
++-    successors: %bb.2(0x1999999a), %bb.3(0x1999999a), %bb.4(0x1999999a), %bb.5(0x1999999a), %bb.6(0x1999999a)
+++  bb.2:
+++    successors: %bb.3(0x1999999a), %bb.4(0x1999999a), %bb.5(0x1999999a), %bb.6(0x1999999a), %bb.7(0x1999999a)
++ 
++     JMP64m $noreg, 8, %8, %jump-table.0, $noreg :: (load (s64) from jump-table)
++ 
++-  bb.2:
+++  bb.3:
++     ADJCALLSTACKDOWN64 0, 0, 0, implicit-def dead $rsp, implicit-def dead $eflags, implicit-def dead $ssp, implicit $rsp, implicit $ssp
++     CALL64pcrel32 target-flags(x86-plt) @f1, csr_64, implicit $rsp, implicit $ssp, implicit-def $rsp, implicit-def $ssp, implicit-def $rax
++     ADJCALLSTACKUP64 0, 0, implicit-def dead $rsp, implicit-def dead $eflags, implicit-def dead $ssp, implicit $rsp, implicit $ssp
++-    %13:gr64 = COPY $rax
++-    %2:gr64 = COPY %13
+++    %7:gr64 = COPY $rax
++     JMP_1 %bb.1
++ 
++-  bb.3:
+++  bb.4:
++     ADJCALLSTACKDOWN64 0, 0, 0, implicit-def dead $rsp, implicit-def dead $eflags, implicit-def dead $ssp, implicit $rsp, implicit $ssp
++     CALL64pcrel32 target-flags(x86-plt) @f2, csr_64, implicit $rsp, implicit $ssp, implicit-def $rsp, implicit-def $ssp, implicit-def $rax
++     ADJCALLSTACKUP64 0, 0, implicit-def dead $rsp, implicit-def dead $eflags, implicit-def dead $ssp, implicit $rsp, implicit $ssp
++-    %12:gr64 = COPY $rax
++-    %3:gr64 = COPY %12
+++    %6:gr64 = COPY $rax
++     JMP_1 %bb.1
++ 
++-  bb.4:
+++  bb.5:
++     ADJCALLSTACKDOWN64 0, 0, 0, implicit-def dead $rsp, implicit-def dead $eflags, implicit-def dead $ssp, implicit $rsp, implicit $ssp
++     CALL64pcrel32 target-flags(x86-plt) @f3, csr_64, implicit $rsp, implicit $ssp, implicit-def $rsp, implicit-def $ssp, implicit-def $rax
++     ADJCALLSTACKUP64 0, 0, implicit-def dead $rsp, implicit-def dead $eflags, implicit-def dead $ssp, implicit $rsp, implicit $ssp
++-    %11:gr64 = COPY $rax
++-    %4:gr64 = COPY %11
+++    %5:gr64 = COPY $rax
++     JMP_1 %bb.1
++ 
++-  bb.5:
+++  bb.6:
++     ADJCALLSTACKDOWN64 0, 0, 0, implicit-def dead $rsp, implicit-def dead $eflags, implicit-def dead $ssp, implicit $rsp, implicit $ssp
++     CALL64pcrel32 target-flags(x86-plt) @f4, csr_64, implicit $rsp, implicit $ssp, implicit-def $rsp, implicit-def $ssp, implicit-def $rax
++     ADJCALLSTACKUP64 0, 0, implicit-def dead $rsp, implicit-def dead $eflags, implicit-def dead $ssp, implicit $rsp, implicit $ssp
++-    %10:gr64 = COPY $rax
++-    %5:gr64 = COPY %10
+++    %4:gr64 = COPY $rax
++     JMP_1 %bb.1
++ 
++-  bb.6:
+++  bb.7:
++     ADJCALLSTACKDOWN64 0, 0, 0, implicit-def dead $rsp, implicit-def dead $eflags, implicit-def dead $ssp, implicit $rsp, implicit $ssp
++     CALL64pcrel32 target-flags(x86-plt) @f5, csr_64, implicit $rsp, implicit $ssp, implicit-def $rsp, implicit-def $ssp, implicit-def $rax
++     ADJCALLSTACKUP64 0, 0, implicit-def dead $rsp, implicit-def dead $eflags, implicit-def dead $ssp, implicit $rsp, implicit $ssp
++-    %9:gr64 = COPY $rax
++-    %6:gr64 = COPY %9
+++    %3:gr64 = COPY $rax
+++    JMP_1 %bb.1
+++
+++...
+++---
+++name:            jump_table_pic
+++tracksRegLiveness: true
+++jumpTable:
+++  kind:            block-address
+++  entries:
+++    - id:              0
+++      blocks:          [ '%bb.3', '%bb.4', '%bb.5', '%bb.6', '%bb.7' ]
+++body:             |
+++  ; CHECK-LABEL: name: jump_table_pic
+++  ; CHECK: bb.0:
+++  ; CHECK-NEXT:   successors: %bb.1(0x80000000)
+++  ; CHECK-NEXT: {{  $}}
+++  ; CHECK-NEXT:   ADJCALLSTACKDOWN64 0, 0, 0, implicit-def dead $rsp, implicit-def dead $eflags, implicit-def dead $ssp, implicit $rsp, implicit $ssp
+++  ; CHECK-NEXT:   CALL64pcrel32 target-flags(x86-plt) @f0, csr_64, implicit $rsp, implicit $ssp, implicit-def $rsp, implicit-def $ssp, implicit-def $rax
+++  ; CHECK-NEXT:   ADJCALLSTACKUP64 0, 0, implicit-def dead $rsp, implicit-def dead $eflags, implicit-def dead $ssp, implicit $rsp, implicit $ssp
+++  ; CHECK-NEXT:   [[COPY:%[0-9]+]]:gr64 = COPY $rax
+++  ; CHECK-NEXT: {{  $}}
+++  ; CHECK-NEXT: bb.1:
+++  ; CHECK-NEXT:   successors: %bb.3(0x1999999a), %bb.4(0x1999999a), %bb.5(0x1999999a), %bb.6(0x1999999a), %bb.7(0x1999999a)
+++  ; CHECK-NEXT: {{  $}}
+++  ; CHECK-NEXT:   [[PHI:%[0-9]+]]:gr64 = PHI [[COPY]], %bb.0, %2, %bb.7, %3, %bb.6, %4, %bb.5, %5, %bb.4, %6, %bb.3
+++  ; CHECK-NEXT:   [[DEC64r:%[0-9]+]]:gr64_nosp = DEC64r [[PHI]], implicit-def dead $eflags
+++  ; CHECK-NEXT:   [[LEA64r:%[0-9]+]]:gr64 = LEA64r $rip, 1, $noreg, %jump-table.0, $noreg
+++  ; CHECK-NEXT:   [[MOVSX64rm32_:%[0-9]+]]:gr64 = MOVSX64rm32 [[DEC64r]], 4, [[DEC64r]], 0, $noreg :: (load (s32) from jump-table)
+++  ; CHECK-NEXT:   [[ADD64rr:%[0-9]+]]:gr64 = ADD64rr [[LEA64r]], [[MOVSX64rm32_]], implicit-def dead $eflags
+++  ; CHECK-NEXT:   JMP64r [[ADD64rr]]
+++  ; CHECK-NEXT: {{  $}}
+++  ; CHECK-NEXT: bb.3:
+++  ; CHECK-NEXT:   successors: %bb.1(0x80000000)
+++  ; CHECK-NEXT: {{  $}}
+++  ; CHECK-NEXT:   ADJCALLSTACKDOWN64 0, 0, 0, implicit-def dead $rsp, implicit-def dead $eflags, implicit-def dead $ssp, implicit $rsp, implicit $ssp
+++  ; CHECK-NEXT:   CALL64pcrel32 target-flags(x86-plt) @f1, csr_64, implicit $rsp, implicit $ssp, implicit-def $rsp, implicit-def $ssp, implicit-def $rax
+++  ; CHECK-NEXT:   ADJCALLSTACKUP64 0, 0, implicit-def dead $rsp, implicit-def dead $eflags, implicit-def dead $ssp, implicit $rsp, implicit $ssp
+++  ; CHECK-NEXT:   [[COPY1:%[0-9]+]]:gr64 = COPY $rax
+++  ; CHECK-NEXT:   JMP_1 %bb.1
+++  ; CHECK-NEXT: {{  $}}
+++  ; CHECK-NEXT: bb.4:
+++  ; CHECK-NEXT:   successors: %bb.1(0x80000000)
+++  ; CHECK-NEXT: {{  $}}
+++  ; CHECK-NEXT:   ADJCALLSTACKDOWN64 0, 0, 0, implicit-def dead $rsp, implicit-def dead $eflags, implicit-def dead $ssp, implicit $rsp, implicit $ssp
+++  ; CHECK-NEXT:   CALL64pcrel32 target-flags(x86-plt) @f2, csr_64, implicit $rsp, implicit $ssp, implicit-def $rsp, implicit-def $ssp, implicit-def $rax
+++  ; CHECK-NEXT:   ADJCALLSTACKUP64 0, 0, implicit-def dead $rsp, implicit-def dead $eflags, implicit-def dead $ssp, implicit $rsp, implicit $ssp
+++  ; CHECK-NEXT:   [[COPY2:%[0-9]+]]:gr64 = COPY $rax
+++  ; CHECK-NEXT:   JMP_1 %bb.1
+++  ; CHECK-NEXT: {{  $}}
+++  ; CHECK-NEXT: bb.5:
+++  ; CHECK-NEXT:   successors: %bb.1(0x80000000)
+++  ; CHECK-NEXT: {{  $}}
+++  ; CHECK-NEXT:   ADJCALLSTACKDOWN64 0, 0, 0, implicit-def dead $rsp, implicit-def dead $eflags, implicit-def dead $ssp, implicit $rsp, implicit $ssp
+++  ; CHECK-NEXT:   CALL64pcrel32 target-flags(x86-plt) @f3, csr_64, implicit $rsp, implicit $ssp, implicit-def $rsp, implicit-def $ssp, implicit-def $rax
+++  ; CHECK-NEXT:   ADJCALLSTACKUP64 0, 0, implicit-def dead $rsp, implicit-def dead $eflags, implicit-def dead $ssp, implicit $rsp, implicit $ssp
+++  ; CHECK-NEXT:   [[COPY3:%[0-9]+]]:gr64 = COPY $rax
+++  ; CHECK-NEXT:   JMP_1 %bb.1
+++  ; CHECK-NEXT: {{  $}}
+++  ; CHECK-NEXT: bb.6:
+++  ; CHECK-NEXT:   successors: %bb.1(0x80000000)
+++  ; CHECK-NEXT: {{  $}}
+++  ; CHECK-NEXT:   ADJCALLSTACKDOWN64 0, 0, 0, implicit-def dead $rsp, implicit-def dead $eflags, implicit-def dead $ssp, implicit $rsp, implicit $ssp
+++  ; CHECK-NEXT:   CALL64pcrel32 target-flags(x86-plt) @f4, csr_64, implicit $rsp, implicit $ssp, implicit-def $rsp, implicit-def $ssp, implicit-def $rax
+++  ; CHECK-NEXT:   ADJCALLSTACKUP64 0, 0, implicit-def dead $rsp, implicit-def dead $eflags, implicit-def dead $ssp, implicit $rsp, implicit $ssp
+++  ; CHECK-NEXT:   [[COPY4:%[0-9]+]]:gr64 = COPY $rax
+++  ; CHECK-NEXT:   JMP_1 %bb.1
+++  ; CHECK-NEXT: {{  $}}
+++  ; CHECK-NEXT: bb.7:
+++  ; CHECK-NEXT:   successors: %bb.1(0x80000000)
+++  ; CHECK-NEXT: {{  $}}
+++  ; CHECK-NEXT:   ADJCALLSTACKDOWN64 0, 0, 0, implicit-def dead $rsp, implicit-def dead $eflags, implicit-def dead $ssp, implicit $rsp, implicit $ssp
+++  ; CHECK-NEXT:   CALL64pcrel32 target-flags(x86-plt) @f5, csr_64, implicit $rsp, implicit $ssp, implicit-def $rsp, implicit-def $ssp, implicit-def $rax
+++  ; CHECK-NEXT:   ADJCALLSTACKUP64 0, 0, implicit-def dead $rsp, implicit-def dead $eflags, implicit-def dead $ssp, implicit $rsp, implicit $ssp
+++  ; CHECK-NEXT:   [[COPY5:%[0-9]+]]:gr64 = COPY $rax
+++  ; CHECK-NEXT:   JMP_1 %bb.1
+++  bb.0:
+++    ADJCALLSTACKDOWN64 0, 0, 0, implicit-def dead $rsp, implicit-def dead $eflags, implicit-def dead $ssp, implicit $rsp, implicit $ssp
+++    CALL64pcrel32 target-flags(x86-plt) @f0, csr_64, implicit $rsp, implicit $ssp, implicit-def $rsp, implicit-def $ssp, implicit-def $rax
+++    ADJCALLSTACKUP64 0, 0, implicit-def dead $rsp, implicit-def dead $eflags, implicit-def dead $ssp, implicit $rsp, implicit $ssp
+++    %1:gr64 = COPY $rax
+++
+++  bb.1:
+++    %2:gr64 = PHI %1, %bb.0, %3, %bb.7, %4, %bb.6, %5, %bb.5, %6, %bb.4, %7, %bb.3
+++    %8:gr64_nosp = DEC64r %2, implicit-def dead $eflags
+++
+++  bb.2:
+++    successors: %bb.3(0x1999999a), %bb.4(0x1999999a), %bb.5(0x1999999a), %bb.6(0x1999999a), %bb.7(0x1999999a)
+++    %9:gr64 = LEA64r $rip, 1, $noreg, %jump-table.0, $noreg
+++    %10:gr64 = MOVSX64rm32 %8, 4, %8, 0, $noreg :: (load (s32) from jump-table)
+++    %11:gr64 = ADD64rr %9, %10, implicit-def dead $eflags
+++    JMP64r %11
+++
+++  bb.3:
+++    ADJCALLSTACKDOWN64 0, 0, 0, implicit-def dead $rsp, implicit-def dead $eflags, implicit-def dead $ssp, implicit $rsp, implicit $ssp
+++    CALL64pcrel32 target-flags(x86-plt) @f1, csr_64, implicit $rsp, implicit $ssp, implicit-def $rsp, implicit-def $ssp, implicit-def $rax
+++    ADJCALLSTACKUP64 0, 0, implicit-def dead $rsp, implicit-def dead $eflags, implicit-def dead $ssp, implicit $rsp, implicit $ssp
+++    %7:gr64 = COPY $rax
+++    JMP_1 %bb.1
+++
+++  bb.4:
+++    ADJCALLSTACKDOWN64 0, 0, 0, implicit-def dead $rsp, implicit-def dead $eflags, implicit-def dead $ssp, implicit $rsp, implicit $ssp
+++    CALL64pcrel32 target-flags(x86-plt) @f2, csr_64, implicit $rsp, implicit $ssp, implicit-def $rsp, implicit-def $ssp, implicit-def $rax
+++    ADJCALLSTACKUP64 0, 0, implicit-def dead $rsp, implicit-def dead $eflags, implicit-def dead $ssp, implicit $rsp, implicit $ssp
+++    %6:gr64 = COPY $rax
+++    JMP_1 %bb.1
+++
+++  bb.5:
+++    ADJCALLSTACKDOWN64 0, 0, 0, implicit-def dead $rsp, implicit-def dead $eflags, implicit-def dead $ssp, implicit $rsp, implicit $ssp
+++    CALL64pcrel32 target-flags(x86-plt) @f3, csr_64, implicit $rsp, implicit $ssp, implicit-def $rsp, implicit-def $ssp, implicit-def $rax
+++    ADJCALLSTACKUP64 0, 0, implicit-def dead $rsp, implicit-def dead $eflags, implicit-def dead $ssp, implicit $rsp, implicit $ssp
+++    %5:gr64 = COPY $rax
+++    JMP_1 %bb.1
+++
+++  bb.6:
+++    ADJCALLSTACKDOWN64 0, 0, 0, implicit-def dead $rsp, implicit-def dead $eflags, implicit-def dead $ssp, implicit $rsp, implicit $ssp
+++    CALL64pcrel32 target-flags(x86-plt) @f4, csr_64, implicit $rsp, implicit $ssp, implicit-def $rsp, implicit-def $ssp, implicit-def $rax
+++    ADJCALLSTACKUP64 0, 0, implicit-def dead $rsp, implicit-def dead $eflags, implicit-def dead $ssp, implicit $rsp, implicit $ssp
+++    %4:gr64 = COPY $rax
++     JMP_1 %bb.1
++ 
++   bb.7:
+++    ADJCALLSTACKDOWN64 0, 0, 0, implicit-def dead $rsp, implicit-def dead $eflags, implicit-def dead $ssp, implicit $rsp, implicit $ssp
+++    CALL64pcrel32 target-flags(x86-plt) @f5, csr_64, implicit $rsp, implicit $ssp, implicit-def $rsp, implicit-def $ssp, implicit-def $rax
+++    ADJCALLSTACKUP64 0, 0, implicit-def dead $rsp, implicit-def dead $eflags, implicit-def dead $ssp, implicit $rsp, implicit $ssp
+++    %3:gr64 = COPY $rax
+++    JMP_1 %bb.1
++ 
++ ...
++diff -ruN --strip-trailing-cr a/mlir/include/mlir/IR/MLIRContext.h b/mlir/include/mlir/IR/MLIRContext.h
++--- a/mlir/include/mlir/IR/MLIRContext.h
+++++ b/mlir/include/mlir/IR/MLIRContext.h
++@@ -153,14 +153,6 @@
++     disableMultithreading(!enable);
++   }
++ 
++-  /// Set the flag specifying if thread-local storage should be used by storage
++-  /// allocators in this context. Note that disabling mutlithreading implies
++-  /// thread-local storage is also disabled.
++-  void disableThreadLocalStorage(bool disable = true);
++-  void enableThreadLocalStorage(bool enable = true) {
++-    disableThreadLocalStorage(!enable);
++-  }
++-
++   /// Set a new thread pool to be used in this context. This method requires
++   /// that multithreading is disabled for this context prior to the call. This
++   /// allows to share a thread pool across multiple contexts, as well as
++diff -ruN --strip-trailing-cr a/mlir/lib/IR/AttributeDetail.h b/mlir/lib/IR/AttributeDetail.h
++--- a/mlir/lib/IR/AttributeDetail.h
+++++ b/mlir/lib/IR/AttributeDetail.h
++@@ -24,7 +24,6 @@
++ #include "llvm/ADT/APFloat.h"
++ #include "llvm/ADT/PointerIntPair.h"
++ #include "llvm/Support/TrailingObjects.h"
++-#include <mutex>
++ 
++ namespace mlir {
++ namespace detail {
++@@ -402,8 +401,7 @@
++ /// is freed after the destruction of the distinct attribute allocator.
++ class DistinctAttributeAllocator {
++ public:
++-  DistinctAttributeAllocator(bool threadingIsEnabled)
++-      : threadingIsEnabled(threadingIsEnabled), useThreadLocalAllocator(true) {};
+++  DistinctAttributeAllocator() = default;
++ 
++   DistinctAttributeAllocator(DistinctAttributeAllocator &&) = delete;
++   DistinctAttributeAllocator(const DistinctAttributeAllocator &) = delete;
++@@ -413,49 +411,12 @@
++   /// Allocates a distinct attribute storage using a thread local bump pointer
++   /// allocator to enable synchronization free parallel allocations.
++   DistinctAttrStorage *allocate(Attribute referencedAttr) {
++-    if (!useThreadLocalAllocator && threadingIsEnabled) {
++-      std::scoped_lock<std::mutex> lock(allocatorMutex);
++-      return allocateImpl(referencedAttr);
++-    }
++-    return allocateImpl(referencedAttr);
++-  }
++-
++-  /// Sets a flag that stores if multithreading is enabled. The flag is used to
++-  /// decide if locking is needed when using a non thread-safe allocator.
++-  void disableMultiThreading(bool disable = true) {
++-    threadingIsEnabled = !disable;
++-  }
++-
++-  /// Sets a flag to disable using thread local bump pointer allocators and use
++-  /// a single thread-safe allocator. Use this to persist allocated storage
++-  /// beyond the lifetime of a child thread calling this function while ensuring
++-  /// thread-safe allocation.
++-  void disableThreadLocalStorage(bool disable = true) {
++-    useThreadLocalAllocator = !disable;
++-  }
++-
++-private:
++-  DistinctAttrStorage *allocateImpl(Attribute referencedAttr) {
++-    return new (getAllocatorInUse().Allocate<DistinctAttrStorage>())
+++    return new (allocatorCache.get().Allocate<DistinctAttrStorage>())
++         DistinctAttrStorage(referencedAttr);
++   }
++ 
++-  /// If threading is disabled on the owning MLIR context, a normal non
++-  /// thread-local, non-thread safe bump pointer allocator is used instead to
++-  /// prevent use-after-free errors whenever attribute storage created on a
++-  /// crash recover thread is accessed after the thread joins.
++-  llvm::BumpPtrAllocator &getAllocatorInUse() {
++-    if (useThreadLocalAllocator)
++-      return allocatorCache.get();
++-    return allocator;
++-  }
++-
+++private:
++   ThreadLocalCache<llvm::BumpPtrAllocator> allocatorCache;
++-  llvm::BumpPtrAllocator allocator;
++-  std::mutex allocatorMutex;
++-
++-  bool threadingIsEnabled : 1;
++-  bool useThreadLocalAllocator : 1;
++ };
++ } // namespace detail
++ } // namespace mlir
++diff -ruN --strip-trailing-cr a/mlir/lib/IR/MLIRContext.cpp b/mlir/lib/IR/MLIRContext.cpp
++--- a/mlir/lib/IR/MLIRContext.cpp
+++++ b/mlir/lib/IR/MLIRContext.cpp
++@@ -268,8 +268,7 @@
++ 
++ public:
++   MLIRContextImpl(bool threadingIsEnabled)
++-      : threadingIsEnabled(threadingIsEnabled),
++-        distinctAttributeAllocator(threadingIsEnabled) {
+++      : threadingIsEnabled(threadingIsEnabled) {
++     if (threadingIsEnabled) {
++       ownedThreadPool = std::make_unique<llvm::DefaultThreadPool>();
++       threadPool = ownedThreadPool.get();
++@@ -597,7 +596,6 @@
++   // Update the threading mode for each of the uniquers.
++   impl->affineUniquer.disableMultithreading(disable);
++   impl->attributeUniquer.disableMultithreading(disable);
++-  impl->distinctAttributeAllocator.disableMultiThreading(disable);
++   impl->typeUniquer.disableMultithreading(disable);
++ 
++   // Destroy thread pool (stop all threads) if it is no longer needed, or create
++@@ -719,10 +717,6 @@
++   return RegisteredOperationName::lookup(name, this).has_value();
++ }
++ 
++-void MLIRContext::disableThreadLocalStorage(bool disable) {
++-  getImpl().distinctAttributeAllocator.disableThreadLocalStorage(disable);
++-}
++-
++ void Dialect::addType(TypeID typeID, AbstractType &&typeInfo) {
++   auto &impl = context->getImpl();
++   assert(impl.multiThreadedExecutionContext == 0 &&
++diff -ruN --strip-trailing-cr a/mlir/lib/Pass/PassCrashRecovery.cpp b/mlir/lib/Pass/PassCrashRecovery.cpp
++--- a/mlir/lib/Pass/PassCrashRecovery.cpp
+++++ b/mlir/lib/Pass/PassCrashRecovery.cpp
++@@ -414,15 +414,6 @@
++ 
++ LogicalResult PassManager::runWithCrashRecovery(Operation *op,
++                                                 AnalysisManager am) {
++-  // Notify the context to disable the use of thread-local storage while the
++-  // pass manager is running in a crash recovery context thread. Re-enable the
++-  // thread local storage upon function exit. This is required to persist any
++-  // attribute storage allocated during passes beyond the lifetime of the
++-  // recovery context thread.
++-  MLIRContext *ctx = getContext();
++-  ctx->disableThreadLocalStorage();
++-  auto guard =
++-      llvm::make_scope_exit([ctx]() { ctx->enableThreadLocalStorage(); });
++   crashReproGenerator->initialize(getPasses(), op, verifyPasses);
++ 
++   // Safely invoke the passes within a recovery context.
++diff -ruN --strip-trailing-cr a/mlir/test/Dialect/LLVMIR/add-debuginfo-func-scope-with-crash-reproduction.mlir b/mlir/test/Dialect/LLVMIR/add-debuginfo-func-scope-with-crash-reproduction.mlir
++--- a/mlir/test/Dialect/LLVMIR/add-debuginfo-func-scope-with-crash-reproduction.mlir
+++++ b/mlir/test/Dialect/LLVMIR/add-debuginfo-func-scope-with-crash-reproduction.mlir
++@@ -1,22 +0,0 @@
++-// Test that the enable-debug-info-scope-on-llvm-func pass can create its
++-// distinct attributes when running in the crash reproducer thread.
++-
++-// RUN: mlir-opt --mlir-disable-threading --mlir-pass-pipeline-crash-reproducer=. \
++-// RUN:          --pass-pipeline="builtin.module(ensure-debug-info-scope-on-llvm-func)" \
++-// RUN:          --mlir-print-debuginfo %s | FileCheck %s
++-
++-// RUN: mlir-opt --mlir-pass-pipeline-crash-reproducer=. \
++-// RUN:          --pass-pipeline="builtin.module(ensure-debug-info-scope-on-llvm-func)" \
++-// RUN:          --mlir-print-debuginfo %s | FileCheck %s
++-
++-module {
++-  llvm.func @func_no_debug() {
++-    llvm.return loc(unknown)
++-  } loc(unknown)
++-} loc(unknown)
++-
++-// CHECK-LABEL: llvm.func @func_no_debug()
++-// CHECK: llvm.return loc(#loc
++-// CHECK: loc(#loc[[LOC:[0-9]+]])
++-// CHECK: #di_compile_unit = #llvm.di_compile_unit<id = distinct[{{.*}}]<>,
++-// CHECK: #di_subprogram = #llvm.di_subprogram<id = distinct[{{.*}}]<>
++diff -ruN --strip-trailing-cr a/mlir/test/IR/test-builtin-distinct-attrs-with-crash-reproduction.mlir b/mlir/test/IR/test-builtin-distinct-attrs-with-crash-reproduction.mlir
++--- a/mlir/test/IR/test-builtin-distinct-attrs-with-crash-reproduction.mlir
+++++ b/mlir/test/IR/test-builtin-distinct-attrs-with-crash-reproduction.mlir
++@@ -1,18 +0,0 @@
++-// This test verifies that when running with crash reproduction enabled, distinct
++-// attribute storage is not allocated in thread-local storage. Since crash
++-// reproduction runs the pass manager in a separate thread, using thread-local
++-// storage for distinct attributes causes use-after-free errors once the thread
++-// that runs the pass manager joins.
++-
++-// RUN: mlir-opt --mlir-disable-threading --mlir-pass-pipeline-crash-reproducer=. %s -test-distinct-attrs | FileCheck %s
++-// RUN: mlir-opt --mlir-pass-pipeline-crash-reproducer=. %s -test-distinct-attrs | FileCheck %s
++-
++-// CHECK: #[[DIST0:.*]] = distinct[0]<42 : i32>
++-// CHECK: #[[DIST1:.*]] = distinct[1]<42 : i32>
++-#distinct = distinct[0]<42 : i32>
++-
++-// CHECK: @foo_1
++-func.func @foo_1() {
++-  // CHECK: "test.op"() {distinct.input = #[[DIST0]], distinct.output = #[[DIST1]]}
++-  "test.op"() {distinct.input = #distinct} : () -> ()
++-}
 diff --git a/third_party/llvm/workspace.bzl b/third_party/llvm/workspace.bzl
-index 80a5153..cdc4b1a 100644
+index cdc4b1a..d1372b1 100644
 --- a/third_party/llvm/workspace.bzl
 +++ b/third_party/llvm/workspace.bzl
 @@ -4,8 +4,8 @@ load("//third_party:repo.bzl", "tf_http_archive")
  
  def repo(name):
      """Imports LLVM."""
--    LLVM_COMMIT = "3959bbc1345b9eb99b208e816a86e6a39103c345"
--    LLVM_SHA256 = "e3d71ff1bbc9512816a2db0a8eddd8b49717487eed8318ec67a7ac593e4b652c"
-+    LLVM_COMMIT = "dd3addf954ac7e704fccc7d011217ba10461c883"
-+    LLVM_SHA256 = "f2f7ef9a6eb597b8a53186878122269d673fca742470f3bdb5bac18a47e9b8be"
+-    LLVM_COMMIT = "dd3addf954ac7e704fccc7d011217ba10461c883"
+-    LLVM_SHA256 = "f2f7ef9a6eb597b8a53186878122269d673fca742470f3bdb5bac18a47e9b8be"
++    LLVM_COMMIT = "ac9049df7e62e2ca4dc5d103593b51639b5715e3"
++    LLVM_SHA256 = "ea890ee3c13d9b2d70a359299a0b810c8bae9c729c5a94d81f5b304bf26f34b6"
  
      tf_http_archive(
          name = name,

@@ -1,12 +1,1026 @@
 Auto generated patch. Do not edit or delete it, even if empty.
-diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/libc/test/UnitTest/BUILD.bazel b/utils/bazel/llvm-project-overlay/libc/test/UnitTest/BUILD.bazel
---- a/utils/bazel/llvm-project-overlay/libc/test/UnitTest/BUILD.bazel
-+++ b/utils/bazel/llvm-project-overlay/libc/test/UnitTest/BUILD.bazel
-@@ -80,6 +80,7 @@
-     ],
-     deps = [
-         ":LibcUnitTest",
-+        "//libc:__support_macros_config",
-         "//libc:errno",
-     ],
- )
+diff -ruN --strip-trailing-cr a/clang/docs/ReleaseNotes.rst b/clang/docs/ReleaseNotes.rst
+--- a/clang/docs/ReleaseNotes.rst
++++ b/clang/docs/ReleaseNotes.rst
+@@ -455,11 +455,6 @@
+ - Ensure ``isDerivedFrom`` matches the correct base in case more than one alias exists.
+ - Extend ``templateArgumentCountIs`` to support function and variable template
+   specialization.
+-- Move ``ast_matchers::MatchFinder::MatchFinderOptions`` to
+-  ``ast_matchers::MatchFinderOptions``.
+-- Add a boolean member ``SkipSystemHeaders`` to ``MatchFinderOptions``, and make
+-  ``MatchASTConsumer`` receive a reference to ``MatchFinderOptions`` in the
+-  constructor. This allows it to skip system headers when traversing the AST.
+ 
+ clang-format
+ ------------
+diff -ruN --strip-trailing-cr a/clang/include/clang/ASTMatchers/ASTMatchFinder.h b/clang/include/clang/ASTMatchers/ASTMatchFinder.h
+--- a/clang/include/clang/ASTMatchers/ASTMatchFinder.h
++++ b/clang/include/clang/ASTMatchers/ASTMatchFinder.h
+@@ -50,24 +50,6 @@
+ 
+ namespace ast_matchers {
+ 
+-/// A struct defining options for configuring the MatchFinder.
+-struct MatchFinderOptions {
+-  struct Profiling {
+-    Profiling(llvm::StringMap<llvm::TimeRecord> &Records) : Records(Records) {}
+-
+-    /// Per bucket timing information.
+-    llvm::StringMap<llvm::TimeRecord> &Records;
+-  };
+-
+-  /// Enables per-check timers.
+-  ///
+-  /// It prints a report after match.
+-  std::optional<Profiling> CheckProfiling;
+-
+-  /// Avoids matching declarations in system headers.
+-  bool SkipSystemHeaders = false;
+-};
+-
+ /// A class to allow finding matches over the Clang AST.
+ ///
+ /// After creation, you can add multiple matchers to the MatchFinder via
+@@ -144,6 +126,21 @@
+     virtual void run() = 0;
+   };
+ 
++  struct MatchFinderOptions {
++    struct Profiling {
++      Profiling(llvm::StringMap<llvm::TimeRecord> &Records)
++          : Records(Records) {}
++
++      /// Per bucket timing information.
++      llvm::StringMap<llvm::TimeRecord> &Records;
++    };
++
++    /// Enables per-check timers.
++    ///
++    /// It prints a report after match.
++    std::optional<Profiling> CheckProfiling;
++  };
++
+   MatchFinder(MatchFinderOptions Options = MatchFinderOptions());
+   ~MatchFinder();
+ 
+diff -ruN --strip-trailing-cr a/clang/lib/ASTMatchers/ASTMatchFinder.cpp b/clang/lib/ASTMatchers/ASTMatchFinder.cpp
+--- a/clang/lib/ASTMatchers/ASTMatchFinder.cpp
++++ b/clang/lib/ASTMatchers/ASTMatchFinder.cpp
+@@ -28,7 +28,6 @@
+ #include <deque>
+ #include <memory>
+ #include <set>
+-#include <vector>
+ 
+ namespace clang {
+ namespace ast_matchers {
+@@ -423,7 +422,7 @@
+                         public ASTMatchFinder {
+ public:
+   MatchASTVisitor(const MatchFinder::MatchersByType *Matchers,
+-                  const MatchFinderOptions &Options)
++                  const MatchFinder::MatchFinderOptions &Options)
+       : Matchers(Matchers), Options(Options), ActiveASTContext(nullptr) {}
+ 
+   ~MatchASTVisitor() override {
+@@ -1351,7 +1350,7 @@
+   /// We precalculate a list of matchers that pass the toplevel restrict check.
+   llvm::DenseMap<ASTNodeKind, std::vector<unsigned short>> MatcherFiltersMap;
+ 
+-  const MatchFinderOptions &Options;
++  const MatchFinder::MatchFinderOptions &Options;
+   ASTContext *ActiveASTContext;
+ 
+   // Maps a canonical type to its TypedefDecls.
+@@ -1574,41 +1573,19 @@
+ class MatchASTConsumer : public ASTConsumer {
+ public:
+   MatchASTConsumer(MatchFinder *Finder,
+-                   MatchFinder::ParsingDoneTestCallback *ParsingDone,
+-                   const MatchFinderOptions &Options)
+-      : Finder(Finder), ParsingDone(ParsingDone), Options(Options) {}
++                   MatchFinder::ParsingDoneTestCallback *ParsingDone)
++      : Finder(Finder), ParsingDone(ParsingDone) {}
+ 
+ private:
+-  bool HandleTopLevelDecl(DeclGroupRef DG) override {
+-    if (Options.SkipSystemHeaders) {
+-      for (Decl *D : DG) {
+-        if (!isInSystemHeader(D))
+-          TraversalScope.push_back(D);
+-      }
+-    }
+-    return true;
+-  }
+-
+   void HandleTranslationUnit(ASTContext &Context) override {
+-    if (!TraversalScope.empty())
+-      Context.setTraversalScope(TraversalScope);
+-
+     if (ParsingDone != nullptr) {
+       ParsingDone->run();
+     }
+     Finder->matchAST(Context);
+   }
+ 
+-  bool isInSystemHeader(Decl *D) {
+-    const SourceManager &SM = D->getASTContext().getSourceManager();
+-    const SourceLocation Loc = SM.getExpansionLoc(D->getBeginLoc());
+-    return SM.isInSystemHeader(Loc);
+-  }
+-
+   MatchFinder *Finder;
+   MatchFinder::ParsingDoneTestCallback *ParsingDone;
+-  const MatchFinderOptions &Options;
+-  std::vector<Decl *> TraversalScope;
+ };
+ 
+ } // end namespace
+@@ -1727,8 +1704,7 @@
+ }
+ 
+ std::unique_ptr<ASTConsumer> MatchFinder::newASTConsumer() {
+-  return std::make_unique<internal::MatchASTConsumer>(this, ParsingDone,
+-                                                      Options);
++  return std::make_unique<internal::MatchASTConsumer>(this, ParsingDone);
+ }
+ 
+ void MatchFinder::match(const clang::DynTypedNode &Node, ASTContext &Context) {
+diff -ruN --strip-trailing-cr a/clang/unittests/ASTMatchers/ASTMatchersInternalTest.cpp b/clang/unittests/ASTMatchers/ASTMatchersInternalTest.cpp
+--- a/clang/unittests/ASTMatchers/ASTMatchersInternalTest.cpp
++++ b/clang/unittests/ASTMatchers/ASTMatchersInternalTest.cpp
+@@ -198,7 +198,7 @@
+ }
+ 
+ TEST(MatchFinder, CheckProfiling) {
+-  MatchFinderOptions Options;
++  MatchFinder::MatchFinderOptions Options;
+   llvm::StringMap<llvm::TimeRecord> Records;
+   Options.CheckProfiling.emplace(Records);
+   MatchFinder Finder(std::move(Options));
+diff -ruN --strip-trailing-cr a/clang-tools-extra/clang-query/Query.cpp b/clang-tools-extra/clang-query/Query.cpp
+--- a/clang-tools-extra/clang-query/Query.cpp
++++ b/clang-tools-extra/clang-query/Query.cpp
+@@ -114,7 +114,7 @@
+     Profiler.emplace();
+ 
+   for (auto &AST : QS.ASTs) {
+-    ast_matchers::MatchFinderOptions FinderOptions;
++    ast_matchers::MatchFinder::MatchFinderOptions FinderOptions;
+     std::optional<llvm::StringMap<llvm::TimeRecord>> Records;
+     if (QS.EnableProfile) {
+       Records.emplace();
+diff -ruN --strip-trailing-cr a/clang-tools-extra/clang-tidy/cert/DontModifyStdNamespaceCheck.cpp b/clang-tools-extra/clang-tidy/cert/DontModifyStdNamespaceCheck.cpp
+--- a/clang-tools-extra/clang-tidy/cert/DontModifyStdNamespaceCheck.cpp
++++ b/clang-tools-extra/clang-tidy/cert/DontModifyStdNamespaceCheck.cpp
+@@ -35,30 +35,6 @@
+                              Builder) != Args.end();
+ }
+ 
+-bool isStdOrPosixImpl(const DeclContext *Ctx) {
+-  if (!Ctx->isNamespace())
+-    return false;
+-
+-  const auto *ND = cast<NamespaceDecl>(Ctx);
+-  if (ND->isInline()) {
+-    return isStdOrPosixImpl(ND->getParent());
+-  }
+-
+-  if (!ND->getParent()->getRedeclContext()->isTranslationUnit())
+-    return false;
+-
+-  const IdentifierInfo *II = ND->getIdentifier();
+-  return II && (II->isStr("std") || II->isStr("posix"));
+-}
+-
+-AST_MATCHER(Decl, isInStdOrPosixNS) {
+-  for (const auto *Ctx = Node.getDeclContext(); Ctx; Ctx = Ctx->getParent()) {
+-    if (isStdOrPosixImpl(Ctx))
+-      return true;
+-  }
+-  return false;
+-}
+-
+ } // namespace
+ 
+ namespace clang::tidy::cert {
+@@ -66,10 +42,12 @@
+ void DontModifyStdNamespaceCheck::registerMatchers(MatchFinder *Finder) {
+   auto HasStdParent =
+       hasDeclContext(namespaceDecl(hasAnyName("std", "posix"),
+-                                   unless(hasDeclContext(namespaceDecl())))
++                                   unless(hasParent(namespaceDecl())))
+                          .bind("nmspc"));
+-  auto UserDefinedType = qualType(hasUnqualifiedDesugaredType(
+-      tagType(unless(hasDeclaration(tagDecl(isInStdOrPosixNS()))))));
++  auto UserDefinedType = qualType(
++      hasUnqualifiedDesugaredType(tagType(unless(hasDeclaration(tagDecl(
++          hasAncestor(namespaceDecl(hasAnyName("std", "posix"),
++                                    unless(hasParent(namespaceDecl()))))))))));
+   auto HasNoProgramDefinedTemplateArgument = unless(
+       hasAnyTemplateArgumentIncludingPack(refersToType(UserDefinedType)));
+   auto InsideStdClassOrClassTemplateSpecialization = hasDeclContext(
+diff -ruN --strip-trailing-cr a/clang-tools-extra/clang-tidy/ClangTidy.cpp b/clang-tools-extra/clang-tidy/ClangTidy.cpp
+--- a/clang-tools-extra/clang-tidy/ClangTidy.cpp
++++ b/clang-tools-extra/clang-tidy/ClangTidy.cpp
+@@ -420,7 +420,7 @@
+   std::vector<std::unique_ptr<ClangTidyCheck>> Checks =
+       CheckFactories->createChecksForLanguage(&Context);
+ 
+-  ast_matchers::MatchFinderOptions FinderOptions;
++  ast_matchers::MatchFinder::MatchFinderOptions FinderOptions;
+ 
+   std::unique_ptr<ClangTidyProfiling> Profiling;
+   if (Context.getEnableProfiling()) {
+@@ -429,10 +429,6 @@
+     FinderOptions.CheckProfiling.emplace(Profiling->Records);
+   }
+ 
+-  // Avoid processing system headers, unless the user explicitly requests it
+-  if (!Context.getOptions().SystemHeaders.value_or(false))
+-    FinderOptions.SkipSystemHeaders = true;
+-
+   std::unique_ptr<ast_matchers::MatchFinder> Finder(
+       new ast_matchers::MatchFinder(std::move(FinderOptions)));
+ 
+diff -ruN --strip-trailing-cr a/clang-tools-extra/docs/ReleaseNotes.rst b/clang-tools-extra/docs/ReleaseNotes.rst
+--- a/clang-tools-extra/docs/ReleaseNotes.rst
++++ b/clang-tools-extra/docs/ReleaseNotes.rst
+@@ -91,12 +91,6 @@
+ Improvements to clang-tidy
+ --------------------------
+ 
+-- :program:`clang-tidy` no longer processes declarations from system headers
+-  by default, greatly improving performance. This behavior is disabled if the
+-  `SystemHeaders` option is enabled.
+-  Note: this may lead to false negatives; downstream users may need to adjust
+-  their checks to preserve existing behavior.
+-
+ - Improved :program:`clang-tidy-diff.py` script. Add the `-warnings-as-errors`
+   argument to treat warnings as errors.
+ 
+diff -ruN --strip-trailing-cr a/clang-tools-extra/test/clang-tidy/checkers/readability/identifier-naming-anon-record-fields.cpp b/clang-tools-extra/test/clang-tidy/checkers/readability/identifier-naming-anon-record-fields.cpp
+--- a/clang-tools-extra/test/clang-tidy/checkers/readability/identifier-naming-anon-record-fields.cpp
++++ b/clang-tools-extra/test/clang-tidy/checkers/readability/identifier-naming-anon-record-fields.cpp
+@@ -33,29 +33,23 @@
+ // RUN:     readability-identifier-naming.LocalConstantPointerPrefix: 'lc_', \
+ // RUN:   }}'
+ 
+-// FIXME: make this test case pass.
+-// Currently not working because the CXXRecordDecl for the global anonymous
+-// union is *not* collected as a top-level declaration.
+-// https://github.com/llvm/llvm-project/issues/130618
+-#if 0
+ static union {
+   int global;
+-// FIXME-CHECK-MESSAGES: :[[@LINE-1]]:7: warning: invalid case style for global variable 'global'
+-// FIXME-CHECK-FIXES: {{^}}  int g_global;{{$}}
++// CHECK-MESSAGES: :[[@LINE-1]]:7: warning: invalid case style for global variable 'global'
++// CHECK-FIXES: {{^}}  int g_global;{{$}}
+ 
+   const int global_const;
+-// FIXME-CHECK-MESSAGES: :[[@LINE-1]]:13: warning: invalid case style for global constant 'global_const'
+-// FIXME-CHECK-FIXES: {{^}}  const int GLOBAL_CONST;{{$}}
++// CHECK-MESSAGES: :[[@LINE-1]]:13: warning: invalid case style for global constant 'global_const'
++// CHECK-FIXES: {{^}}  const int GLOBAL_CONST;{{$}}
+ 
+   int *global_ptr;
+-// FIXME-CHECK-MESSAGES: :[[@LINE-1]]:8: warning: invalid case style for global pointer 'global_ptr'
+-// FIXME-CHECK-FIXES: {{^}}  int *GlobalPtr_Ptr;{{$}}
++// CHECK-MESSAGES: :[[@LINE-1]]:8: warning: invalid case style for global pointer 'global_ptr'
++// CHECK-FIXES: {{^}}  int *GlobalPtr_Ptr;{{$}}
+ 
+   int *const global_const_ptr;
+-// FIXME-CHECK-MESSAGES: :[[@LINE-1]]:14: warning: invalid case style for global constant pointer 'global_const_ptr'
+-// FIXME-CHECK-FIXES: {{^}}  int *const GLOBAL_CONST_PTR_Ptr;{{$}}
++// CHECK-MESSAGES: :[[@LINE-1]]:14: warning: invalid case style for global constant pointer 'global_const_ptr'
++// CHECK-FIXES: {{^}}  int *const GLOBAL_CONST_PTR_Ptr;{{$}}
+ };
+-#endif
+ 
+ namespace ns {
+ 
+diff -ruN --strip-trailing-cr a/clang-tools-extra/test/clang-tidy/infrastructure/file-filter.cpp b/clang-tools-extra/test/clang-tidy/infrastructure/file-filter.cpp
+--- a/clang-tools-extra/test/clang-tidy/infrastructure/file-filter.cpp
++++ b/clang-tools-extra/test/clang-tidy/infrastructure/file-filter.cpp
+@@ -66,12 +66,19 @@
+ // CHECK4-NOT: warning:
+ // CHECK4-QUIET-NOT: warning:
+ 
++// CHECK: Suppressed 3 warnings (3 in non-user code)
+ // CHECK: Use -header-filter=.* to display errors from all non-system headers.
+ // CHECK-QUIET-NOT: Suppressed
++// CHECK2: Suppressed 1 warnings (1 in non-user code)
++// CHECK2: Use -header-filter=.* {{.*}}
+ // CHECK2-QUIET-NOT: Suppressed
++// CHECK3: Suppressed 2 warnings (2 in non-user code)
++// CHECK3: Use -header-filter=.* {{.*}}
+ // CHECK3-QUIET-NOT: Suppressed
+ // CHECK4-NOT: Suppressed {{.*}} warnings
++// CHECK4-NOT: Use -header-filter=.* {{.*}}
+ // CHECK4-QUIET-NOT: Suppressed
++// CHECK6: Suppressed 2 warnings (2 in non-user code)
+ // CHECK6: Use -header-filter=.* {{.*}}
+ 
+ int x = 123;
+diff -ruN --strip-trailing-cr a/clang-tools-extra/test/clang-tidy/infrastructure/system-headers.cpp b/clang-tools-extra/test/clang-tidy/infrastructure/system-headers.cpp
+--- a/clang-tools-extra/test/clang-tidy/infrastructure/system-headers.cpp
++++ b/clang-tools-extra/test/clang-tidy/infrastructure/system-headers.cpp
+@@ -11,9 +11,9 @@
+ // RUN: clang-tidy -help | FileCheck -check-prefix=CHECK-OPT-PRESENT %s
+ 
+ // RUN: clang-tidy -checks='-*,google-explicit-constructor' -header-filter='.*' -system-headers=true %s -- -isystem %S/Inputs/system-headers 2>&1 | FileCheck -check-prefix=CHECK-SYSTEM-HEADERS %s
+-// RUN: clang-tidy -checks='-*,google-explicit-constructor' -header-filter='.*' -system-headers=false %s -- -isystem %S/Inputs/system-headers 2>&1 | FileCheck -check-prefix=CHECK-NO-SYSTEM-HEADERS --allow-empty %s
++// RUN: clang-tidy -checks='-*,google-explicit-constructor' -header-filter='.*' -system-headers=false %s -- -isystem %S/Inputs/system-headers 2>&1 | FileCheck -check-prefix=CHECK-NO-SYSTEM-HEADERS %s
+ // RUN: clang-tidy -checks='-*,google-explicit-constructor' -header-filter='.*' -config='SystemHeaders: true' %s -- -isystem %S/Inputs/system-headers 2>&1 | FileCheck -check-prefix=CHECK-SYSTEM-HEADERS %s
+-// RUN: clang-tidy -checks='-*,google-explicit-constructor' -header-filter='.*' -config='SystemHeaders: false' %s -- -isystem %S/Inputs/system-headers 2>&1 | FileCheck -check-prefix=CHECK-NO-SYSTEM-HEADERS --allow-empty %s
++// RUN: clang-tidy -checks='-*,google-explicit-constructor' -header-filter='.*' -config='SystemHeaders: false' %s -- -isystem %S/Inputs/system-headers 2>&1 | FileCheck -check-prefix=CHECK-NO-SYSTEM-HEADERS %s
+ 
+ #include <system_header.h>
+ // CHECK-SYSTEM-HEADERS: system_header.h:1:13: warning: single-argument constructors must be marked explicit
+diff -ruN --strip-trailing-cr a/llvm/include/llvm/CodeGen/MachineBasicBlock.h b/llvm/include/llvm/CodeGen/MachineBasicBlock.h
+--- a/llvm/include/llvm/CodeGen/MachineBasicBlock.h
++++ b/llvm/include/llvm/CodeGen/MachineBasicBlock.h
+@@ -313,6 +313,15 @@
+   const MachineFunction *getParent() const { return xParent; }
+   MachineFunction *getParent() { return xParent; }
+ 
++  /// Returns true if the original IR terminator is an `indirectbr`. This
++  /// typically corresponds to a `goto` in C, rather than jump tables.
++  bool terminatorIsComputedGoto() const {
++    return back().isIndirectBranch() &&
++           llvm::all_of(successors(), [](const MachineBasicBlock *Succ) {
++             return Succ->isIRBlockAddressTaken();
++           });
++  }
++
+   using instr_iterator = Instructions::iterator;
+   using const_instr_iterator = Instructions::const_iterator;
+   using reverse_instr_iterator = Instructions::reverse_iterator;
+diff -ruN --strip-trailing-cr a/llvm/include/llvm/CodeGen/MachineInstr.h b/llvm/include/llvm/CodeGen/MachineInstr.h
+--- a/llvm/include/llvm/CodeGen/MachineInstr.h
++++ b/llvm/include/llvm/CodeGen/MachineInstr.h
+@@ -994,17 +994,8 @@
+ 
+   /// Return true if this is an indirect branch, such as a
+   /// branch through a register.
+-  bool isIndirectBranch(QueryType Type = AnyInBundle,
+-                        bool IncludeJumpTable = true) const {
+-    return hasProperty(MCID::IndirectBranch, Type) &&
+-           (IncludeJumpTable || !llvm::any_of(operands(), [](const auto &Op) {
+-              return Op.isJTI();
+-            }));
+-  }
+-
+-  bool isComputedGoto(QueryType Type = AnyInBundle) const {
+-    // Jump tables are not considered computed gotos.
+-    return isIndirectBranch(Type, /*IncludeJumpTable=*/false);
++  bool isIndirectBranch(QueryType Type = AnyInBundle) const {
++    return hasProperty(MCID::IndirectBranch, Type);
+   }
+ 
+   /// Return true if this is a branch which may fall
+@@ -2088,6 +2079,9 @@
+                     MCSymbol *PreInstrSymbol, MCSymbol *PostInstrSymbol,
+                     MDNode *HeapAllocMarker, MDNode *PCSections,
+                     uint32_t CFIType, MDNode *MMRAs);
++
++  /// Returns true if all successors are IRBlockAddressTaken.
++  bool jumpToIRBlockAddressTaken() const;
+ };
+ 
+ /// Special DenseMapInfo traits to compare MachineInstr* by *value* of the
+diff -ruN --strip-trailing-cr a/llvm/lib/CodeGen/TailDuplicator.cpp b/llvm/lib/CodeGen/TailDuplicator.cpp
+--- a/llvm/lib/CodeGen/TailDuplicator.cpp
++++ b/llvm/lib/CodeGen/TailDuplicator.cpp
+@@ -604,7 +604,7 @@
+   bool HasComputedGoto = false;
+   if (!TailBB.empty()) {
+     HasIndirectbr = TailBB.back().isIndirectBranch();
+-    HasComputedGoto = TailBB.back().isComputedGoto();
++    HasComputedGoto = TailBB.terminatorIsComputedGoto();
+   }
+ 
+   if (HasIndirectbr && PreRegAlloc)
+diff -ruN --strip-trailing-cr a/llvm/test/CodeGen/X86/tail-dup-computed-goto.mir b/llvm/test/CodeGen/X86/tail-dup-computed-goto.mir
+--- a/llvm/test/CodeGen/X86/tail-dup-computed-goto.mir
++++ b/llvm/test/CodeGen/X86/tail-dup-computed-goto.mir
+@@ -2,15 +2,27 @@
+ # RUN: llc -mtriple=x86_64-unknown-linux-gnu -run-pass=early-tailduplication -tail-dup-pred-size=1 -tail-dup-succ-size=1 %s -o - | FileCheck %s
+ # Check that only the computed goto is not be restrict by tail-dup-pred-size and tail-dup-succ-size.
+ --- |
++  @computed_goto.dispatch = constant [5 x ptr] [ptr null, ptr blockaddress(@computed_goto, %bb1), ptr blockaddress(@computed_goto, %bb2), ptr blockaddress(@computed_goto, %bb3), ptr blockaddress(@computed_goto, %bb4)]
+   declare i64 @f0()
+   declare i64 @f1()
+   declare i64 @f2()
+   declare i64 @f3()
+   declare i64 @f4()
+   declare i64 @f5()
+-  @computed_goto.dispatch = external global [5 x ptr]
+-  define void @computed_goto() { ret void }
++  define void @computed_goto() {
++    start:
++      ret void
++    bb1:
++      ret void
++    bb2:
++      ret void
++    bb3:
++      ret void
++    bb4:
++      ret void
++  }
+   define void @jump_table() { ret void }
++  define void @jump_table_pic() { ret void }
+ ...
+ ---
+ name:            computed_goto
+@@ -23,98 +35,88 @@
+   ; CHECK-NEXT:   ADJCALLSTACKDOWN64 0, 0, 0, implicit-def dead $rsp, implicit-def dead $eflags, implicit-def dead $ssp, implicit $rsp, implicit $ssp
+   ; CHECK-NEXT:   CALL64pcrel32 target-flags(x86-plt) @f0, csr_64, implicit $rsp, implicit $ssp, implicit-def $rsp, implicit-def $ssp, implicit-def $rax
+   ; CHECK-NEXT:   ADJCALLSTACKUP64 0, 0, implicit-def dead $rsp, implicit-def dead $eflags, implicit-def dead $ssp, implicit $rsp, implicit $ssp
+-  ; CHECK-NEXT:   [[COPY:%[0-9]+]]:gr64 = COPY $rax
++  ; CHECK-NEXT:   [[COPY:%[0-9]+]]:gr64_nosp = COPY $rax
+   ; CHECK-NEXT:   [[COPY1:%[0-9]+]]:gr64_nosp = COPY [[COPY]]
+-  ; CHECK-NEXT:   [[COPY2:%[0-9]+]]:gr64_nosp = COPY [[COPY1]]
+-  ; CHECK-NEXT:   JMP64m $noreg, 8, [[COPY1]], @computed_goto.dispatch, $noreg
++  ; CHECK-NEXT:   JMP64m $noreg, 8, [[COPY]], @computed_goto.dispatch, $noreg
+   ; CHECK-NEXT: {{  $}}
+-  ; CHECK-NEXT: bb.1:
++  ; CHECK-NEXT: bb.1.bb1 (ir-block-address-taken %ir-block.bb1):
+   ; CHECK-NEXT:   successors: %bb.1(0x20000000), %bb.2(0x20000000), %bb.3(0x20000000), %bb.4(0x20000000)
+   ; CHECK-NEXT: {{  $}}
+   ; CHECK-NEXT:   ADJCALLSTACKDOWN64 0, 0, 0, implicit-def dead $rsp, implicit-def dead $eflags, implicit-def dead $ssp, implicit $rsp, implicit $ssp
+   ; CHECK-NEXT:   CALL64pcrel32 target-flags(x86-plt) @f1, csr_64, implicit $rsp, implicit $ssp, implicit-def $rsp, implicit-def $ssp, implicit-def $rax
+   ; CHECK-NEXT:   ADJCALLSTACKUP64 0, 0, implicit-def dead $rsp, implicit-def dead $eflags, implicit-def dead $ssp, implicit $rsp, implicit $ssp
+-  ; CHECK-NEXT:   [[COPY3:%[0-9]+]]:gr64 = COPY $rax
+-  ; CHECK-NEXT:   [[COPY4:%[0-9]+]]:gr64_nosp = COPY [[COPY3]]
+-  ; CHECK-NEXT:   [[COPY5:%[0-9]+]]:gr64_nosp = COPY [[COPY4]]
+-  ; CHECK-NEXT:   JMP64m $noreg, 8, [[COPY4]], @computed_goto.dispatch, $noreg
++  ; CHECK-NEXT:   [[COPY2:%[0-9]+]]:gr64_nosp = COPY $rax
++  ; CHECK-NEXT:   [[COPY3:%[0-9]+]]:gr64_nosp = COPY [[COPY2]]
++  ; CHECK-NEXT:   JMP64m $noreg, 8, [[COPY2]], @computed_goto.dispatch, $noreg
+   ; CHECK-NEXT: {{  $}}
+-  ; CHECK-NEXT: bb.2:
++  ; CHECK-NEXT: bb.2.bb2 (ir-block-address-taken %ir-block.bb2):
+   ; CHECK-NEXT:   successors: %bb.1(0x20000000), %bb.2(0x20000000), %bb.3(0x20000000), %bb.4(0x20000000)
+   ; CHECK-NEXT: {{  $}}
+   ; CHECK-NEXT:   ADJCALLSTACKDOWN64 0, 0, 0, implicit-def dead $rsp, implicit-def dead $eflags, implicit-def dead $ssp, implicit $rsp, implicit $ssp
+   ; CHECK-NEXT:   CALL64pcrel32 target-flags(x86-plt) @f2, csr_64, implicit $rsp, implicit $ssp, implicit-def $rsp, implicit-def $ssp, implicit-def $rax
+   ; CHECK-NEXT:   ADJCALLSTACKUP64 0, 0, implicit-def dead $rsp, implicit-def dead $eflags, implicit-def dead $ssp, implicit $rsp, implicit $ssp
+-  ; CHECK-NEXT:   [[COPY6:%[0-9]+]]:gr64 = COPY $rax
+-  ; CHECK-NEXT:   [[COPY7:%[0-9]+]]:gr64_nosp = COPY [[COPY6]]
+-  ; CHECK-NEXT:   [[COPY8:%[0-9]+]]:gr64_nosp = COPY [[COPY7]]
+-  ; CHECK-NEXT:   JMP64m $noreg, 8, [[COPY7]], @computed_goto.dispatch, $noreg
++  ; CHECK-NEXT:   [[COPY4:%[0-9]+]]:gr64_nosp = COPY $rax
++  ; CHECK-NEXT:   [[COPY5:%[0-9]+]]:gr64_nosp = COPY [[COPY4]]
++  ; CHECK-NEXT:   JMP64m $noreg, 8, [[COPY4]], @computed_goto.dispatch, $noreg
+   ; CHECK-NEXT: {{  $}}
+-  ; CHECK-NEXT: bb.3:
++  ; CHECK-NEXT: bb.3.bb3 (ir-block-address-taken %ir-block.bb3):
+   ; CHECK-NEXT:   successors: %bb.1(0x20000000), %bb.2(0x20000000), %bb.3(0x20000000), %bb.4(0x20000000)
+   ; CHECK-NEXT: {{  $}}
+   ; CHECK-NEXT:   ADJCALLSTACKDOWN64 0, 0, 0, implicit-def dead $rsp, implicit-def dead $eflags, implicit-def dead $ssp, implicit $rsp, implicit $ssp
+   ; CHECK-NEXT:   CALL64pcrel32 target-flags(x86-plt) @f3, csr_64, implicit $rsp, implicit $ssp, implicit-def $rsp, implicit-def $ssp, implicit-def $rax
+   ; CHECK-NEXT:   ADJCALLSTACKUP64 0, 0, implicit-def dead $rsp, implicit-def dead $eflags, implicit-def dead $ssp, implicit $rsp, implicit $ssp
+-  ; CHECK-NEXT:   [[COPY9:%[0-9]+]]:gr64 = COPY $rax
+-  ; CHECK-NEXT:   [[COPY10:%[0-9]+]]:gr64_nosp = COPY [[COPY9]]
+-  ; CHECK-NEXT:   [[COPY11:%[0-9]+]]:gr64_nosp = COPY [[COPY10]]
+-  ; CHECK-NEXT:   JMP64m $noreg, 8, [[COPY10]], @computed_goto.dispatch, $noreg
++  ; CHECK-NEXT:   [[COPY6:%[0-9]+]]:gr64_nosp = COPY $rax
++  ; CHECK-NEXT:   [[COPY7:%[0-9]+]]:gr64_nosp = COPY [[COPY6]]
++  ; CHECK-NEXT:   JMP64m $noreg, 8, [[COPY6]], @computed_goto.dispatch, $noreg
+   ; CHECK-NEXT: {{  $}}
+-  ; CHECK-NEXT: bb.4:
++  ; CHECK-NEXT: bb.4.bb4 (ir-block-address-taken %ir-block.bb4):
+   ; CHECK-NEXT:   successors: %bb.1(0x20000000), %bb.2(0x20000000), %bb.3(0x20000000), %bb.4(0x20000000)
+   ; CHECK-NEXT: {{  $}}
+   ; CHECK-NEXT:   ADJCALLSTACKDOWN64 0, 0, 0, implicit-def dead $rsp, implicit-def dead $eflags, implicit-def dead $ssp, implicit $rsp, implicit $ssp
+   ; CHECK-NEXT:   CALL64pcrel32 target-flags(x86-plt) @f4, csr_64, implicit $rsp, implicit $ssp, implicit-def $rsp, implicit-def $ssp, implicit-def $rax
+   ; CHECK-NEXT:   ADJCALLSTACKUP64 0, 0, implicit-def dead $rsp, implicit-def dead $eflags, implicit-def dead $ssp, implicit $rsp, implicit $ssp
+-  ; CHECK-NEXT:   [[COPY12:%[0-9]+]]:gr64 = COPY $rax
+-  ; CHECK-NEXT:   [[COPY13:%[0-9]+]]:gr64_nosp = COPY [[COPY12]]
+-  ; CHECK-NEXT:   [[COPY14:%[0-9]+]]:gr64_nosp = COPY [[COPY13]]
+-  ; CHECK-NEXT:   JMP64m $noreg, 8, [[COPY13]], @computed_goto.dispatch, $noreg
++  ; CHECK-NEXT:   [[COPY8:%[0-9]+]]:gr64_nosp = COPY $rax
++  ; CHECK-NEXT:   [[COPY9:%[0-9]+]]:gr64_nosp = COPY [[COPY8]]
++  ; CHECK-NEXT:   JMP64m $noreg, 8, [[COPY8]], @computed_goto.dispatch, $noreg
+   bb.0:
+     ADJCALLSTACKDOWN64 0, 0, 0, implicit-def dead $rsp, implicit-def dead $eflags, implicit-def dead $ssp, implicit $rsp, implicit $ssp
+     CALL64pcrel32 target-flags(x86-plt) @f0, csr_64, implicit $rsp, implicit $ssp, implicit-def $rsp, implicit-def $ssp, implicit-def $rax
+     ADJCALLSTACKUP64 0, 0, implicit-def dead $rsp, implicit-def dead $eflags, implicit-def dead $ssp, implicit $rsp, implicit $ssp
+-    %6:gr64 = COPY $rax
+-    %0:gr64 = COPY %6
++    %1:gr64 = COPY $rax
+     JMP_1 %bb.5
+ 
+-  bb.1:
++  bb.1.bb1 (ir-block-address-taken %ir-block.bb1):
+     ADJCALLSTACKDOWN64 0, 0, 0, implicit-def dead $rsp, implicit-def dead $eflags, implicit-def dead $ssp, implicit $rsp, implicit $ssp
+     CALL64pcrel32 target-flags(x86-plt) @f1, csr_64, implicit $rsp, implicit $ssp, implicit-def $rsp, implicit-def $ssp, implicit-def $rax
+     ADJCALLSTACKUP64 0, 0, implicit-def dead $rsp, implicit-def dead $eflags, implicit-def dead $ssp, implicit $rsp, implicit $ssp
+-    %10:gr64 = COPY $rax
+-    %1:gr64 = COPY %10
++    %3:gr64 = COPY $rax
+     JMP_1 %bb.5
+ 
+-  bb.2:
++  bb.2.bb2 (ir-block-address-taken %ir-block.bb2):
+     ADJCALLSTACKDOWN64 0, 0, 0, implicit-def dead $rsp, implicit-def dead $eflags, implicit-def dead $ssp, implicit $rsp, implicit $ssp
+     CALL64pcrel32 target-flags(x86-plt) @f2, csr_64, implicit $rsp, implicit $ssp, implicit-def $rsp, implicit-def $ssp, implicit-def $rax
+     ADJCALLSTACKUP64 0, 0, implicit-def dead $rsp, implicit-def dead $eflags, implicit-def dead $ssp, implicit $rsp, implicit $ssp
+-    %9:gr64 = COPY $rax
+-    %2:gr64 = COPY %9
++    %5:gr64 = COPY $rax
+     JMP_1 %bb.5
+ 
+-  bb.3:
++  bb.3.bb3 (ir-block-address-taken %ir-block.bb3):
+     ADJCALLSTACKDOWN64 0, 0, 0, implicit-def dead $rsp, implicit-def dead $eflags, implicit-def dead $ssp, implicit $rsp, implicit $ssp
+     CALL64pcrel32 target-flags(x86-plt) @f3, csr_64, implicit $rsp, implicit $ssp, implicit-def $rsp, implicit-def $ssp, implicit-def $rax
+     ADJCALLSTACKUP64 0, 0, implicit-def dead $rsp, implicit-def dead $eflags, implicit-def dead $ssp, implicit $rsp, implicit $ssp
+-    %8:gr64 = COPY $rax
+-    %3:gr64 = COPY %8
++    %7:gr64 = COPY $rax
+     JMP_1 %bb.5
+ 
+-  bb.4:
++  bb.4.bb4 (ir-block-address-taken %ir-block.bb4):
+     ADJCALLSTACKDOWN64 0, 0, 0, implicit-def dead $rsp, implicit-def dead $eflags, implicit-def dead $ssp, implicit $rsp, implicit $ssp
+     CALL64pcrel32 target-flags(x86-plt) @f4, csr_64, implicit $rsp, implicit $ssp, implicit-def $rsp, implicit-def $ssp, implicit-def $rax
+     ADJCALLSTACKUP64 0, 0, implicit-def dead $rsp, implicit-def dead $eflags, implicit-def dead $ssp, implicit $rsp, implicit $ssp
+-    %7:gr64 = COPY $rax
+-    %4:gr64 = COPY %7
++    %9:gr64 = COPY $rax
+ 
+   bb.5:
+     successors: %bb.1, %bb.2, %bb.3, %bb.4
+ 
+-    %5:gr64_nosp = PHI %0, %bb.0, %4, %bb.4, %3, %bb.3, %2, %bb.2, %1, %bb.1
+-    JMP64m $noreg, 8, %5, @computed_goto.dispatch, $noreg
++    %10:gr64_nosp = PHI %1, %bb.0, %9, %bb.4, %7, %bb.3, %5, %bb.2, %3, %bb.1
++    JMP64m $noreg, 8, %10, @computed_goto.dispatch, $noreg
+ 
+ ...
+ ---
+@@ -124,7 +126,7 @@
+   kind:            block-address
+   entries:
+     - id:              0
+-      blocks:          [ '%bb.2', '%bb.3', '%bb.4', '%bb.5', '%bb.6' ]
++      blocks:          [ '%bb.3', '%bb.4', '%bb.5', '%bb.6', '%bb.7' ]
+ body:             |
+   ; CHECK-LABEL: name: jump_table
+   ; CHECK: bb.0:
+@@ -134,12 +136,11 @@
+   ; CHECK-NEXT:   CALL64pcrel32 target-flags(x86-plt) @f0, csr_64, implicit $rsp, implicit $ssp, implicit-def $rsp, implicit-def $ssp, implicit-def $rax
+   ; CHECK-NEXT:   ADJCALLSTACKUP64 0, 0, implicit-def dead $rsp, implicit-def dead $eflags, implicit-def dead $ssp, implicit $rsp, implicit $ssp
+   ; CHECK-NEXT:   [[COPY:%[0-9]+]]:gr64 = COPY $rax
+-  ; CHECK-NEXT:   [[COPY1:%[0-9]+]]:gr64 = COPY [[COPY]]
+   ; CHECK-NEXT: {{  $}}
+   ; CHECK-NEXT: bb.1:
+   ; CHECK-NEXT:   successors: %bb.3(0x1999999a), %bb.4(0x1999999a), %bb.5(0x1999999a), %bb.6(0x1999999a), %bb.7(0x1999999a)
+   ; CHECK-NEXT: {{  $}}
+-  ; CHECK-NEXT:   [[PHI:%[0-9]+]]:gr64 = PHI [[COPY1]], %bb.0, %3, %bb.7, %4, %bb.6, %5, %bb.5, %6, %bb.4, %7, %bb.3
++  ; CHECK-NEXT:   [[PHI:%[0-9]+]]:gr64 = PHI [[COPY]], %bb.0, %2, %bb.7, %3, %bb.6, %4, %bb.5, %5, %bb.4, %6, %bb.3
+   ; CHECK-NEXT:   [[DEC64r:%[0-9]+]]:gr64_nosp = DEC64r [[PHI]], implicit-def dead $eflags
+   ; CHECK-NEXT:   JMP64m $noreg, 8, [[DEC64r]], %jump-table.0, $noreg :: (load (s64) from jump-table)
+   ; CHECK-NEXT: {{  $}}
+@@ -149,8 +150,7 @@
+   ; CHECK-NEXT:   ADJCALLSTACKDOWN64 0, 0, 0, implicit-def dead $rsp, implicit-def dead $eflags, implicit-def dead $ssp, implicit $rsp, implicit $ssp
+   ; CHECK-NEXT:   CALL64pcrel32 target-flags(x86-plt) @f1, csr_64, implicit $rsp, implicit $ssp, implicit-def $rsp, implicit-def $ssp, implicit-def $rax
+   ; CHECK-NEXT:   ADJCALLSTACKUP64 0, 0, implicit-def dead $rsp, implicit-def dead $eflags, implicit-def dead $ssp, implicit $rsp, implicit $ssp
+-  ; CHECK-NEXT:   [[COPY2:%[0-9]+]]:gr64 = COPY $rax
+-  ; CHECK-NEXT:   [[COPY3:%[0-9]+]]:gr64 = COPY [[COPY2]]
++  ; CHECK-NEXT:   [[COPY1:%[0-9]+]]:gr64 = COPY $rax
+   ; CHECK-NEXT:   JMP_1 %bb.1
+   ; CHECK-NEXT: {{  $}}
+   ; CHECK-NEXT: bb.4:
+@@ -159,8 +159,7 @@
+   ; CHECK-NEXT:   ADJCALLSTACKDOWN64 0, 0, 0, implicit-def dead $rsp, implicit-def dead $eflags, implicit-def dead $ssp, implicit $rsp, implicit $ssp
+   ; CHECK-NEXT:   CALL64pcrel32 target-flags(x86-plt) @f2, csr_64, implicit $rsp, implicit $ssp, implicit-def $rsp, implicit-def $ssp, implicit-def $rax
+   ; CHECK-NEXT:   ADJCALLSTACKUP64 0, 0, implicit-def dead $rsp, implicit-def dead $eflags, implicit-def dead $ssp, implicit $rsp, implicit $ssp
+-  ; CHECK-NEXT:   [[COPY4:%[0-9]+]]:gr64 = COPY $rax
+-  ; CHECK-NEXT:   [[COPY5:%[0-9]+]]:gr64 = COPY [[COPY4]]
++  ; CHECK-NEXT:   [[COPY2:%[0-9]+]]:gr64 = COPY $rax
+   ; CHECK-NEXT:   JMP_1 %bb.1
+   ; CHECK-NEXT: {{  $}}
+   ; CHECK-NEXT: bb.5:
+@@ -169,8 +168,7 @@
+   ; CHECK-NEXT:   ADJCALLSTACKDOWN64 0, 0, 0, implicit-def dead $rsp, implicit-def dead $eflags, implicit-def dead $ssp, implicit $rsp, implicit $ssp
+   ; CHECK-NEXT:   CALL64pcrel32 target-flags(x86-plt) @f3, csr_64, implicit $rsp, implicit $ssp, implicit-def $rsp, implicit-def $ssp, implicit-def $rax
+   ; CHECK-NEXT:   ADJCALLSTACKUP64 0, 0, implicit-def dead $rsp, implicit-def dead $eflags, implicit-def dead $ssp, implicit $rsp, implicit $ssp
+-  ; CHECK-NEXT:   [[COPY6:%[0-9]+]]:gr64 = COPY $rax
+-  ; CHECK-NEXT:   [[COPY7:%[0-9]+]]:gr64 = COPY [[COPY6]]
++  ; CHECK-NEXT:   [[COPY3:%[0-9]+]]:gr64 = COPY $rax
+   ; CHECK-NEXT:   JMP_1 %bb.1
+   ; CHECK-NEXT: {{  $}}
+   ; CHECK-NEXT: bb.6:
+@@ -179,8 +177,7 @@
+   ; CHECK-NEXT:   ADJCALLSTACKDOWN64 0, 0, 0, implicit-def dead $rsp, implicit-def dead $eflags, implicit-def dead $ssp, implicit $rsp, implicit $ssp
+   ; CHECK-NEXT:   CALL64pcrel32 target-flags(x86-plt) @f4, csr_64, implicit $rsp, implicit $ssp, implicit-def $rsp, implicit-def $ssp, implicit-def $rax
+   ; CHECK-NEXT:   ADJCALLSTACKUP64 0, 0, implicit-def dead $rsp, implicit-def dead $eflags, implicit-def dead $ssp, implicit $rsp, implicit $ssp
+-  ; CHECK-NEXT:   [[COPY8:%[0-9]+]]:gr64 = COPY $rax
+-  ; CHECK-NEXT:   [[COPY9:%[0-9]+]]:gr64 = COPY [[COPY8]]
++  ; CHECK-NEXT:   [[COPY4:%[0-9]+]]:gr64 = COPY $rax
+   ; CHECK-NEXT:   JMP_1 %bb.1
+   ; CHECK-NEXT: {{  $}}
+   ; CHECK-NEXT: bb.7:
+@@ -189,67 +186,181 @@
+   ; CHECK-NEXT:   ADJCALLSTACKDOWN64 0, 0, 0, implicit-def dead $rsp, implicit-def dead $eflags, implicit-def dead $ssp, implicit $rsp, implicit $ssp
+   ; CHECK-NEXT:   CALL64pcrel32 target-flags(x86-plt) @f5, csr_64, implicit $rsp, implicit $ssp, implicit-def $rsp, implicit-def $ssp, implicit-def $rax
+   ; CHECK-NEXT:   ADJCALLSTACKUP64 0, 0, implicit-def dead $rsp, implicit-def dead $eflags, implicit-def dead $ssp, implicit $rsp, implicit $ssp
+-  ; CHECK-NEXT:   [[COPY10:%[0-9]+]]:gr64 = COPY $rax
+-  ; CHECK-NEXT:   [[COPY11:%[0-9]+]]:gr64 = COPY [[COPY10]]
++  ; CHECK-NEXT:   [[COPY5:%[0-9]+]]:gr64 = COPY $rax
+   ; CHECK-NEXT:   JMP_1 %bb.1
+-  ; CHECK-NEXT: {{  $}}
+-  ; CHECK-NEXT: bb.8:
+   bb.0:
+     ADJCALLSTACKDOWN64 0, 0, 0, implicit-def dead $rsp, implicit-def dead $eflags, implicit-def dead $ssp, implicit $rsp, implicit $ssp
+     CALL64pcrel32 target-flags(x86-plt) @f0, csr_64, implicit $rsp, implicit $ssp, implicit-def $rsp, implicit-def $ssp, implicit-def $rax
+     ADJCALLSTACKUP64 0, 0, implicit-def dead $rsp, implicit-def dead $eflags, implicit-def dead $ssp, implicit $rsp, implicit $ssp
+-    %7:gr64 = COPY $rax
+-    %0:gr64 = COPY %7
++    %1:gr64 = COPY $rax
+ 
+   bb.1:
+-    %1:gr64 = PHI %0, %bb.0, %6, %bb.6, %5, %bb.5, %4, %bb.4, %3, %bb.3, %2, %bb.2
+-    %8:gr64_nosp = DEC64r %1, implicit-def dead $eflags
++    %2:gr64 = PHI %1, %bb.0, %3, %bb.7, %4, %bb.6, %5, %bb.5, %6, %bb.4, %7, %bb.3
++    %8:gr64_nosp = DEC64r %2, implicit-def dead $eflags
+ 
+-  bb.8:
+-    successors: %bb.2(0x1999999a), %bb.3(0x1999999a), %bb.4(0x1999999a), %bb.5(0x1999999a), %bb.6(0x1999999a)
++  bb.2:
++    successors: %bb.3(0x1999999a), %bb.4(0x1999999a), %bb.5(0x1999999a), %bb.6(0x1999999a), %bb.7(0x1999999a)
+ 
+     JMP64m $noreg, 8, %8, %jump-table.0, $noreg :: (load (s64) from jump-table)
+ 
+-  bb.2:
++  bb.3:
+     ADJCALLSTACKDOWN64 0, 0, 0, implicit-def dead $rsp, implicit-def dead $eflags, implicit-def dead $ssp, implicit $rsp, implicit $ssp
+     CALL64pcrel32 target-flags(x86-plt) @f1, csr_64, implicit $rsp, implicit $ssp, implicit-def $rsp, implicit-def $ssp, implicit-def $rax
+     ADJCALLSTACKUP64 0, 0, implicit-def dead $rsp, implicit-def dead $eflags, implicit-def dead $ssp, implicit $rsp, implicit $ssp
+-    %13:gr64 = COPY $rax
+-    %2:gr64 = COPY %13
++    %7:gr64 = COPY $rax
+     JMP_1 %bb.1
+ 
+-  bb.3:
++  bb.4:
+     ADJCALLSTACKDOWN64 0, 0, 0, implicit-def dead $rsp, implicit-def dead $eflags, implicit-def dead $ssp, implicit $rsp, implicit $ssp
+     CALL64pcrel32 target-flags(x86-plt) @f2, csr_64, implicit $rsp, implicit $ssp, implicit-def $rsp, implicit-def $ssp, implicit-def $rax
+     ADJCALLSTACKUP64 0, 0, implicit-def dead $rsp, implicit-def dead $eflags, implicit-def dead $ssp, implicit $rsp, implicit $ssp
+-    %12:gr64 = COPY $rax
+-    %3:gr64 = COPY %12
++    %6:gr64 = COPY $rax
+     JMP_1 %bb.1
+ 
+-  bb.4:
++  bb.5:
+     ADJCALLSTACKDOWN64 0, 0, 0, implicit-def dead $rsp, implicit-def dead $eflags, implicit-def dead $ssp, implicit $rsp, implicit $ssp
+     CALL64pcrel32 target-flags(x86-plt) @f3, csr_64, implicit $rsp, implicit $ssp, implicit-def $rsp, implicit-def $ssp, implicit-def $rax
+     ADJCALLSTACKUP64 0, 0, implicit-def dead $rsp, implicit-def dead $eflags, implicit-def dead $ssp, implicit $rsp, implicit $ssp
+-    %11:gr64 = COPY $rax
+-    %4:gr64 = COPY %11
++    %5:gr64 = COPY $rax
+     JMP_1 %bb.1
+ 
+-  bb.5:
++  bb.6:
+     ADJCALLSTACKDOWN64 0, 0, 0, implicit-def dead $rsp, implicit-def dead $eflags, implicit-def dead $ssp, implicit $rsp, implicit $ssp
+     CALL64pcrel32 target-flags(x86-plt) @f4, csr_64, implicit $rsp, implicit $ssp, implicit-def $rsp, implicit-def $ssp, implicit-def $rax
+     ADJCALLSTACKUP64 0, 0, implicit-def dead $rsp, implicit-def dead $eflags, implicit-def dead $ssp, implicit $rsp, implicit $ssp
+-    %10:gr64 = COPY $rax
+-    %5:gr64 = COPY %10
++    %4:gr64 = COPY $rax
+     JMP_1 %bb.1
+ 
+-  bb.6:
++  bb.7:
+     ADJCALLSTACKDOWN64 0, 0, 0, implicit-def dead $rsp, implicit-def dead $eflags, implicit-def dead $ssp, implicit $rsp, implicit $ssp
+     CALL64pcrel32 target-flags(x86-plt) @f5, csr_64, implicit $rsp, implicit $ssp, implicit-def $rsp, implicit-def $ssp, implicit-def $rax
+     ADJCALLSTACKUP64 0, 0, implicit-def dead $rsp, implicit-def dead $eflags, implicit-def dead $ssp, implicit $rsp, implicit $ssp
+-    %9:gr64 = COPY $rax
+-    %6:gr64 = COPY %9
++    %3:gr64 = COPY $rax
++    JMP_1 %bb.1
++
++...
++---
++name:            jump_table_pic
++tracksRegLiveness: true
++jumpTable:
++  kind:            block-address
++  entries:
++    - id:              0
++      blocks:          [ '%bb.3', '%bb.4', '%bb.5', '%bb.6', '%bb.7' ]
++body:             |
++  ; CHECK-LABEL: name: jump_table_pic
++  ; CHECK: bb.0:
++  ; CHECK-NEXT:   successors: %bb.1(0x80000000)
++  ; CHECK-NEXT: {{  $}}
++  ; CHECK-NEXT:   ADJCALLSTACKDOWN64 0, 0, 0, implicit-def dead $rsp, implicit-def dead $eflags, implicit-def dead $ssp, implicit $rsp, implicit $ssp
++  ; CHECK-NEXT:   CALL64pcrel32 target-flags(x86-plt) @f0, csr_64, implicit $rsp, implicit $ssp, implicit-def $rsp, implicit-def $ssp, implicit-def $rax
++  ; CHECK-NEXT:   ADJCALLSTACKUP64 0, 0, implicit-def dead $rsp, implicit-def dead $eflags, implicit-def dead $ssp, implicit $rsp, implicit $ssp
++  ; CHECK-NEXT:   [[COPY:%[0-9]+]]:gr64 = COPY $rax
++  ; CHECK-NEXT: {{  $}}
++  ; CHECK-NEXT: bb.1:
++  ; CHECK-NEXT:   successors: %bb.3(0x1999999a), %bb.4(0x1999999a), %bb.5(0x1999999a), %bb.6(0x1999999a), %bb.7(0x1999999a)
++  ; CHECK-NEXT: {{  $}}
++  ; CHECK-NEXT:   [[PHI:%[0-9]+]]:gr64 = PHI [[COPY]], %bb.0, %2, %bb.7, %3, %bb.6, %4, %bb.5, %5, %bb.4, %6, %bb.3
++  ; CHECK-NEXT:   [[DEC64r:%[0-9]+]]:gr64_nosp = DEC64r [[PHI]], implicit-def dead $eflags
++  ; CHECK-NEXT:   [[LEA64r:%[0-9]+]]:gr64 = LEA64r $rip, 1, $noreg, %jump-table.0, $noreg
++  ; CHECK-NEXT:   [[MOVSX64rm32_:%[0-9]+]]:gr64 = MOVSX64rm32 [[DEC64r]], 4, [[DEC64r]], 0, $noreg :: (load (s32) from jump-table)
++  ; CHECK-NEXT:   [[ADD64rr:%[0-9]+]]:gr64 = ADD64rr [[LEA64r]], [[MOVSX64rm32_]], implicit-def dead $eflags
++  ; CHECK-NEXT:   JMP64r [[ADD64rr]]
++  ; CHECK-NEXT: {{  $}}
++  ; CHECK-NEXT: bb.3:
++  ; CHECK-NEXT:   successors: %bb.1(0x80000000)
++  ; CHECK-NEXT: {{  $}}
++  ; CHECK-NEXT:   ADJCALLSTACKDOWN64 0, 0, 0, implicit-def dead $rsp, implicit-def dead $eflags, implicit-def dead $ssp, implicit $rsp, implicit $ssp
++  ; CHECK-NEXT:   CALL64pcrel32 target-flags(x86-plt) @f1, csr_64, implicit $rsp, implicit $ssp, implicit-def $rsp, implicit-def $ssp, implicit-def $rax
++  ; CHECK-NEXT:   ADJCALLSTACKUP64 0, 0, implicit-def dead $rsp, implicit-def dead $eflags, implicit-def dead $ssp, implicit $rsp, implicit $ssp
++  ; CHECK-NEXT:   [[COPY1:%[0-9]+]]:gr64 = COPY $rax
++  ; CHECK-NEXT:   JMP_1 %bb.1
++  ; CHECK-NEXT: {{  $}}
++  ; CHECK-NEXT: bb.4:
++  ; CHECK-NEXT:   successors: %bb.1(0x80000000)
++  ; CHECK-NEXT: {{  $}}
++  ; CHECK-NEXT:   ADJCALLSTACKDOWN64 0, 0, 0, implicit-def dead $rsp, implicit-def dead $eflags, implicit-def dead $ssp, implicit $rsp, implicit $ssp
++  ; CHECK-NEXT:   CALL64pcrel32 target-flags(x86-plt) @f2, csr_64, implicit $rsp, implicit $ssp, implicit-def $rsp, implicit-def $ssp, implicit-def $rax
++  ; CHECK-NEXT:   ADJCALLSTACKUP64 0, 0, implicit-def dead $rsp, implicit-def dead $eflags, implicit-def dead $ssp, implicit $rsp, implicit $ssp
++  ; CHECK-NEXT:   [[COPY2:%[0-9]+]]:gr64 = COPY $rax
++  ; CHECK-NEXT:   JMP_1 %bb.1
++  ; CHECK-NEXT: {{  $}}
++  ; CHECK-NEXT: bb.5:
++  ; CHECK-NEXT:   successors: %bb.1(0x80000000)
++  ; CHECK-NEXT: {{  $}}
++  ; CHECK-NEXT:   ADJCALLSTACKDOWN64 0, 0, 0, implicit-def dead $rsp, implicit-def dead $eflags, implicit-def dead $ssp, implicit $rsp, implicit $ssp
++  ; CHECK-NEXT:   CALL64pcrel32 target-flags(x86-plt) @f3, csr_64, implicit $rsp, implicit $ssp, implicit-def $rsp, implicit-def $ssp, implicit-def $rax
++  ; CHECK-NEXT:   ADJCALLSTACKUP64 0, 0, implicit-def dead $rsp, implicit-def dead $eflags, implicit-def dead $ssp, implicit $rsp, implicit $ssp
++  ; CHECK-NEXT:   [[COPY3:%[0-9]+]]:gr64 = COPY $rax
++  ; CHECK-NEXT:   JMP_1 %bb.1
++  ; CHECK-NEXT: {{  $}}
++  ; CHECK-NEXT: bb.6:
++  ; CHECK-NEXT:   successors: %bb.1(0x80000000)
++  ; CHECK-NEXT: {{  $}}
++  ; CHECK-NEXT:   ADJCALLSTACKDOWN64 0, 0, 0, implicit-def dead $rsp, implicit-def dead $eflags, implicit-def dead $ssp, implicit $rsp, implicit $ssp
++  ; CHECK-NEXT:   CALL64pcrel32 target-flags(x86-plt) @f4, csr_64, implicit $rsp, implicit $ssp, implicit-def $rsp, implicit-def $ssp, implicit-def $rax
++  ; CHECK-NEXT:   ADJCALLSTACKUP64 0, 0, implicit-def dead $rsp, implicit-def dead $eflags, implicit-def dead $ssp, implicit $rsp, implicit $ssp
++  ; CHECK-NEXT:   [[COPY4:%[0-9]+]]:gr64 = COPY $rax
++  ; CHECK-NEXT:   JMP_1 %bb.1
++  ; CHECK-NEXT: {{  $}}
++  ; CHECK-NEXT: bb.7:
++  ; CHECK-NEXT:   successors: %bb.1(0x80000000)
++  ; CHECK-NEXT: {{  $}}
++  ; CHECK-NEXT:   ADJCALLSTACKDOWN64 0, 0, 0, implicit-def dead $rsp, implicit-def dead $eflags, implicit-def dead $ssp, implicit $rsp, implicit $ssp
++  ; CHECK-NEXT:   CALL64pcrel32 target-flags(x86-plt) @f5, csr_64, implicit $rsp, implicit $ssp, implicit-def $rsp, implicit-def $ssp, implicit-def $rax
++  ; CHECK-NEXT:   ADJCALLSTACKUP64 0, 0, implicit-def dead $rsp, implicit-def dead $eflags, implicit-def dead $ssp, implicit $rsp, implicit $ssp
++  ; CHECK-NEXT:   [[COPY5:%[0-9]+]]:gr64 = COPY $rax
++  ; CHECK-NEXT:   JMP_1 %bb.1
++  bb.0:
++    ADJCALLSTACKDOWN64 0, 0, 0, implicit-def dead $rsp, implicit-def dead $eflags, implicit-def dead $ssp, implicit $rsp, implicit $ssp
++    CALL64pcrel32 target-flags(x86-plt) @f0, csr_64, implicit $rsp, implicit $ssp, implicit-def $rsp, implicit-def $ssp, implicit-def $rax
++    ADJCALLSTACKUP64 0, 0, implicit-def dead $rsp, implicit-def dead $eflags, implicit-def dead $ssp, implicit $rsp, implicit $ssp
++    %1:gr64 = COPY $rax
++
++  bb.1:
++    %2:gr64 = PHI %1, %bb.0, %3, %bb.7, %4, %bb.6, %5, %bb.5, %6, %bb.4, %7, %bb.3
++    %8:gr64_nosp = DEC64r %2, implicit-def dead $eflags
++
++  bb.2:
++    successors: %bb.3(0x1999999a), %bb.4(0x1999999a), %bb.5(0x1999999a), %bb.6(0x1999999a), %bb.7(0x1999999a)
++    %9:gr64 = LEA64r $rip, 1, $noreg, %jump-table.0, $noreg
++    %10:gr64 = MOVSX64rm32 %8, 4, %8, 0, $noreg :: (load (s32) from jump-table)
++    %11:gr64 = ADD64rr %9, %10, implicit-def dead $eflags
++    JMP64r %11
++
++  bb.3:
++    ADJCALLSTACKDOWN64 0, 0, 0, implicit-def dead $rsp, implicit-def dead $eflags, implicit-def dead $ssp, implicit $rsp, implicit $ssp
++    CALL64pcrel32 target-flags(x86-plt) @f1, csr_64, implicit $rsp, implicit $ssp, implicit-def $rsp, implicit-def $ssp, implicit-def $rax
++    ADJCALLSTACKUP64 0, 0, implicit-def dead $rsp, implicit-def dead $eflags, implicit-def dead $ssp, implicit $rsp, implicit $ssp
++    %7:gr64 = COPY $rax
++    JMP_1 %bb.1
++
++  bb.4:
++    ADJCALLSTACKDOWN64 0, 0, 0, implicit-def dead $rsp, implicit-def dead $eflags, implicit-def dead $ssp, implicit $rsp, implicit $ssp
++    CALL64pcrel32 target-flags(x86-plt) @f2, csr_64, implicit $rsp, implicit $ssp, implicit-def $rsp, implicit-def $ssp, implicit-def $rax
++    ADJCALLSTACKUP64 0, 0, implicit-def dead $rsp, implicit-def dead $eflags, implicit-def dead $ssp, implicit $rsp, implicit $ssp
++    %6:gr64 = COPY $rax
++    JMP_1 %bb.1
++
++  bb.5:
++    ADJCALLSTACKDOWN64 0, 0, 0, implicit-def dead $rsp, implicit-def dead $eflags, implicit-def dead $ssp, implicit $rsp, implicit $ssp
++    CALL64pcrel32 target-flags(x86-plt) @f3, csr_64, implicit $rsp, implicit $ssp, implicit-def $rsp, implicit-def $ssp, implicit-def $rax
++    ADJCALLSTACKUP64 0, 0, implicit-def dead $rsp, implicit-def dead $eflags, implicit-def dead $ssp, implicit $rsp, implicit $ssp
++    %5:gr64 = COPY $rax
++    JMP_1 %bb.1
++
++  bb.6:
++    ADJCALLSTACKDOWN64 0, 0, 0, implicit-def dead $rsp, implicit-def dead $eflags, implicit-def dead $ssp, implicit $rsp, implicit $ssp
++    CALL64pcrel32 target-flags(x86-plt) @f4, csr_64, implicit $rsp, implicit $ssp, implicit-def $rsp, implicit-def $ssp, implicit-def $rax
++    ADJCALLSTACKUP64 0, 0, implicit-def dead $rsp, implicit-def dead $eflags, implicit-def dead $ssp, implicit $rsp, implicit $ssp
++    %4:gr64 = COPY $rax
+     JMP_1 %bb.1
+ 
+   bb.7:
++    ADJCALLSTACKDOWN64 0, 0, 0, implicit-def dead $rsp, implicit-def dead $eflags, implicit-def dead $ssp, implicit $rsp, implicit $ssp
++    CALL64pcrel32 target-flags(x86-plt) @f5, csr_64, implicit $rsp, implicit $ssp, implicit-def $rsp, implicit-def $ssp, implicit-def $rax
++    ADJCALLSTACKUP64 0, 0, implicit-def dead $rsp, implicit-def dead $eflags, implicit-def dead $ssp, implicit $rsp, implicit $ssp
++    %3:gr64 = COPY $rax
++    JMP_1 %bb.1
+ 
+ ...
+diff -ruN --strip-trailing-cr a/mlir/include/mlir/IR/MLIRContext.h b/mlir/include/mlir/IR/MLIRContext.h
+--- a/mlir/include/mlir/IR/MLIRContext.h
++++ b/mlir/include/mlir/IR/MLIRContext.h
+@@ -153,14 +153,6 @@
+     disableMultithreading(!enable);
+   }
+ 
+-  /// Set the flag specifying if thread-local storage should be used by storage
+-  /// allocators in this context. Note that disabling mutlithreading implies
+-  /// thread-local storage is also disabled.
+-  void disableThreadLocalStorage(bool disable = true);
+-  void enableThreadLocalStorage(bool enable = true) {
+-    disableThreadLocalStorage(!enable);
+-  }
+-
+   /// Set a new thread pool to be used in this context. This method requires
+   /// that multithreading is disabled for this context prior to the call. This
+   /// allows to share a thread pool across multiple contexts, as well as
+diff -ruN --strip-trailing-cr a/mlir/lib/IR/AttributeDetail.h b/mlir/lib/IR/AttributeDetail.h
+--- a/mlir/lib/IR/AttributeDetail.h
++++ b/mlir/lib/IR/AttributeDetail.h
+@@ -24,7 +24,6 @@
+ #include "llvm/ADT/APFloat.h"
+ #include "llvm/ADT/PointerIntPair.h"
+ #include "llvm/Support/TrailingObjects.h"
+-#include <mutex>
+ 
+ namespace mlir {
+ namespace detail {
+@@ -402,8 +401,7 @@
+ /// is freed after the destruction of the distinct attribute allocator.
+ class DistinctAttributeAllocator {
+ public:
+-  DistinctAttributeAllocator(bool threadingIsEnabled)
+-      : threadingIsEnabled(threadingIsEnabled), useThreadLocalAllocator(true) {};
++  DistinctAttributeAllocator() = default;
+ 
+   DistinctAttributeAllocator(DistinctAttributeAllocator &&) = delete;
+   DistinctAttributeAllocator(const DistinctAttributeAllocator &) = delete;
+@@ -413,49 +411,12 @@
+   /// Allocates a distinct attribute storage using a thread local bump pointer
+   /// allocator to enable synchronization free parallel allocations.
+   DistinctAttrStorage *allocate(Attribute referencedAttr) {
+-    if (!useThreadLocalAllocator && threadingIsEnabled) {
+-      std::scoped_lock<std::mutex> lock(allocatorMutex);
+-      return allocateImpl(referencedAttr);
+-    }
+-    return allocateImpl(referencedAttr);
+-  }
+-
+-  /// Sets a flag that stores if multithreading is enabled. The flag is used to
+-  /// decide if locking is needed when using a non thread-safe allocator.
+-  void disableMultiThreading(bool disable = true) {
+-    threadingIsEnabled = !disable;
+-  }
+-
+-  /// Sets a flag to disable using thread local bump pointer allocators and use
+-  /// a single thread-safe allocator. Use this to persist allocated storage
+-  /// beyond the lifetime of a child thread calling this function while ensuring
+-  /// thread-safe allocation.
+-  void disableThreadLocalStorage(bool disable = true) {
+-    useThreadLocalAllocator = !disable;
+-  }
+-
+-private:
+-  DistinctAttrStorage *allocateImpl(Attribute referencedAttr) {
+-    return new (getAllocatorInUse().Allocate<DistinctAttrStorage>())
++    return new (allocatorCache.get().Allocate<DistinctAttrStorage>())
+         DistinctAttrStorage(referencedAttr);
+   }
+ 
+-  /// If threading is disabled on the owning MLIR context, a normal non
+-  /// thread-local, non-thread safe bump pointer allocator is used instead to
+-  /// prevent use-after-free errors whenever attribute storage created on a
+-  /// crash recover thread is accessed after the thread joins.
+-  llvm::BumpPtrAllocator &getAllocatorInUse() {
+-    if (useThreadLocalAllocator)
+-      return allocatorCache.get();
+-    return allocator;
+-  }
+-
++private:
+   ThreadLocalCache<llvm::BumpPtrAllocator> allocatorCache;
+-  llvm::BumpPtrAllocator allocator;
+-  std::mutex allocatorMutex;
+-
+-  bool threadingIsEnabled : 1;
+-  bool useThreadLocalAllocator : 1;
+ };
+ } // namespace detail
+ } // namespace mlir
+diff -ruN --strip-trailing-cr a/mlir/lib/IR/MLIRContext.cpp b/mlir/lib/IR/MLIRContext.cpp
+--- a/mlir/lib/IR/MLIRContext.cpp
++++ b/mlir/lib/IR/MLIRContext.cpp
+@@ -268,8 +268,7 @@
+ 
+ public:
+   MLIRContextImpl(bool threadingIsEnabled)
+-      : threadingIsEnabled(threadingIsEnabled),
+-        distinctAttributeAllocator(threadingIsEnabled) {
++      : threadingIsEnabled(threadingIsEnabled) {
+     if (threadingIsEnabled) {
+       ownedThreadPool = std::make_unique<llvm::DefaultThreadPool>();
+       threadPool = ownedThreadPool.get();
+@@ -597,7 +596,6 @@
+   // Update the threading mode for each of the uniquers.
+   impl->affineUniquer.disableMultithreading(disable);
+   impl->attributeUniquer.disableMultithreading(disable);
+-  impl->distinctAttributeAllocator.disableMultiThreading(disable);
+   impl->typeUniquer.disableMultithreading(disable);
+ 
+   // Destroy thread pool (stop all threads) if it is no longer needed, or create
+@@ -719,10 +717,6 @@
+   return RegisteredOperationName::lookup(name, this).has_value();
+ }
+ 
+-void MLIRContext::disableThreadLocalStorage(bool disable) {
+-  getImpl().distinctAttributeAllocator.disableThreadLocalStorage(disable);
+-}
+-
+ void Dialect::addType(TypeID typeID, AbstractType &&typeInfo) {
+   auto &impl = context->getImpl();
+   assert(impl.multiThreadedExecutionContext == 0 &&
+diff -ruN --strip-trailing-cr a/mlir/lib/Pass/PassCrashRecovery.cpp b/mlir/lib/Pass/PassCrashRecovery.cpp
+--- a/mlir/lib/Pass/PassCrashRecovery.cpp
++++ b/mlir/lib/Pass/PassCrashRecovery.cpp
+@@ -414,15 +414,6 @@
+ 
+ LogicalResult PassManager::runWithCrashRecovery(Operation *op,
+                                                 AnalysisManager am) {
+-  // Notify the context to disable the use of thread-local storage while the
+-  // pass manager is running in a crash recovery context thread. Re-enable the
+-  // thread local storage upon function exit. This is required to persist any
+-  // attribute storage allocated during passes beyond the lifetime of the
+-  // recovery context thread.
+-  MLIRContext *ctx = getContext();
+-  ctx->disableThreadLocalStorage();
+-  auto guard =
+-      llvm::make_scope_exit([ctx]() { ctx->enableThreadLocalStorage(); });
+   crashReproGenerator->initialize(getPasses(), op, verifyPasses);
+ 
+   // Safely invoke the passes within a recovery context.
+diff -ruN --strip-trailing-cr a/mlir/test/Dialect/LLVMIR/add-debuginfo-func-scope-with-crash-reproduction.mlir b/mlir/test/Dialect/LLVMIR/add-debuginfo-func-scope-with-crash-reproduction.mlir
+--- a/mlir/test/Dialect/LLVMIR/add-debuginfo-func-scope-with-crash-reproduction.mlir
++++ b/mlir/test/Dialect/LLVMIR/add-debuginfo-func-scope-with-crash-reproduction.mlir
+@@ -1,22 +0,0 @@
+-// Test that the enable-debug-info-scope-on-llvm-func pass can create its
+-// distinct attributes when running in the crash reproducer thread.
+-
+-// RUN: mlir-opt --mlir-disable-threading --mlir-pass-pipeline-crash-reproducer=. \
+-// RUN:          --pass-pipeline="builtin.module(ensure-debug-info-scope-on-llvm-func)" \
+-// RUN:          --mlir-print-debuginfo %s | FileCheck %s
+-
+-// RUN: mlir-opt --mlir-pass-pipeline-crash-reproducer=. \
+-// RUN:          --pass-pipeline="builtin.module(ensure-debug-info-scope-on-llvm-func)" \
+-// RUN:          --mlir-print-debuginfo %s | FileCheck %s
+-
+-module {
+-  llvm.func @func_no_debug() {
+-    llvm.return loc(unknown)
+-  } loc(unknown)
+-} loc(unknown)
+-
+-// CHECK-LABEL: llvm.func @func_no_debug()
+-// CHECK: llvm.return loc(#loc
+-// CHECK: loc(#loc[[LOC:[0-9]+]])
+-// CHECK: #di_compile_unit = #llvm.di_compile_unit<id = distinct[{{.*}}]<>,
+-// CHECK: #di_subprogram = #llvm.di_subprogram<id = distinct[{{.*}}]<>
+diff -ruN --strip-trailing-cr a/mlir/test/IR/test-builtin-distinct-attrs-with-crash-reproduction.mlir b/mlir/test/IR/test-builtin-distinct-attrs-with-crash-reproduction.mlir
+--- a/mlir/test/IR/test-builtin-distinct-attrs-with-crash-reproduction.mlir
++++ b/mlir/test/IR/test-builtin-distinct-attrs-with-crash-reproduction.mlir
+@@ -1,18 +0,0 @@
+-// This test verifies that when running with crash reproduction enabled, distinct
+-// attribute storage is not allocated in thread-local storage. Since crash
+-// reproduction runs the pass manager in a separate thread, using thread-local
+-// storage for distinct attributes causes use-after-free errors once the thread
+-// that runs the pass manager joins.
+-
+-// RUN: mlir-opt --mlir-disable-threading --mlir-pass-pipeline-crash-reproducer=. %s -test-distinct-attrs | FileCheck %s
+-// RUN: mlir-opt --mlir-pass-pipeline-crash-reproducer=. %s -test-distinct-attrs | FileCheck %s
+-
+-// CHECK: #[[DIST0:.*]] = distinct[0]<42 : i32>
+-// CHECK: #[[DIST1:.*]] = distinct[1]<42 : i32>
+-#distinct = distinct[0]<42 : i32>
+-
+-// CHECK: @foo_1
+-func.func @foo_1() {
+-  // CHECK: "test.op"() {distinct.input = #[[DIST0]], distinct.output = #[[DIST1]]}
+-  "test.op"() {distinct.input = #distinct} : () -> ()
+-}
