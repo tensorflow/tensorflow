@@ -279,12 +279,10 @@ absl::StatusOr<CommunicatorHandle> GetComm(
                                       group_mode, stream_kind));
 
   std::optional<RankId> rank = clique_key.rank(params.global_device_id);
-  TF_ASSIGN_OR_RETURN(bool is_local,
-                      collective_cliques.is_local_clique(clique_key));
   TF_ASSIGN_OR_RETURN(Communicator * comm,
-                      collective_cliques.GetComm(std::move(clique_key), *rank));
+                      collective_cliques.GetComm(clique_key, *rank));
 
-  return CommunicatorHandle(comm, is_local);
+  return CommunicatorHandle(comm, std::move(clique_key));
 }
 
 absl::StatusOr<std::vector<DeviceBufferPair>> ConvertToDeviceBuffers(
@@ -464,16 +462,8 @@ absl::Status CollectiveThunk::ExecuteOnStream(const ExecuteParams& params) {
   // required state (internal to NCCL) and ready to continue. Going too far
   // ahead on one rank leads to deadlocks in NCCL.
   if (NeedFirstCallRendzevous() && !first_call_rendezvous_flag_.IsCompleted()) {
-    TF_ASSIGN_OR_RETURN(GpuCollectives * collectives,
-                        GetGpuCollectives(params));
-    TF_ASSIGN_OR_RETURN(GpuCliqueKey clique_key,
-                        GetGpuCliqueKey(collectives, *params.collective_params,
-                                        config().replica_groups,
-                                        config().group_mode, stream_kind));
-
-    TF_ASSIGN_OR_RETURN(
-        size_t num_local_participants,
-        params.collective_cliques->num_communicators(clique_key));
+    GpuCliqueKey clique_key = comm_handle.clique_key;
+    size_t num_local_participants = clique_key.num_local_participants();
 
     auto global_device_id = params.collective_params->global_device_id;
     RankId rank = clique_key.rank(global_device_id).value_or(RankId(-1));

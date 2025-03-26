@@ -541,20 +541,13 @@ absl::Status RaggedAllToAllStartThunk::RunCollective(
     output_offsets_device_buffer = jt->second.memory();
   }
 
-  TF_ASSIGN_OR_RETURN(
-      GpuCliqueKey clique_key,
-      GetGpuCliqueKey(collectives, *params.collective_params,
-                      config().replica_groups, config().group_mode,
-                      GetAsyncStreamKind()));
-
   std::optional<RankId> rank =
-      clique_key.rank(params.collective_params->global_device_id);
-
+      comm_handle.clique_key.rank(params.collective_params->global_device_id);
   TF_ASSIGN_OR_RETURN(int32_t num_ranks, comm_handle.comm->NumRanks());
 
   TF_ASSIGN_OR_RETURN(
       bool peer_access_enabled,
-      params.collective_cliques->peer_access_enabled(clique_key));
+      params.collective_cliques->peer_access_enabled(comm_handle.clique_key));
 
   se::Event* start_event = nullptr;
   se::Event* end_event = nullptr;
@@ -571,14 +564,14 @@ absl::Status RaggedAllToAllStartThunk::RunCollective(
 
   if (should_use_one_shot_kernel) {
     return RunOneShotRaggedAllToAll(
-        collectives, clique_key, config_.num_input_rows,
+        collectives, comm_handle.clique_key, config_.num_input_rows,
         config_.num_row_elements, config_.num_total_updates, device_buffers,
         stream, *rank, comm_handle.comm, start_event, end_event);
   }
 
   if (should_use_memcpy()) {
     return RunMemCpyRaggedAllToAll(
-        collectives, clique_key, *rank, config_.num_row_elements,
+        collectives, comm_handle.clique_key, *rank, config_.num_row_elements,
         config_.num_total_updates, device_buffers, stream, comm_handle.comm,
         ragged_metadata_allocs, start_event, end_event);
   }

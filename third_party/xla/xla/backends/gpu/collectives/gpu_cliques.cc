@@ -441,7 +441,7 @@ InitializeGpuClique(GpuCollectives* collectives, se::StreamExecutor* device,
     int32_t color = GetCommSplitColor(clique_key);
 
     bool peer_access_enabled = false;
-    if ((*parent_clique)->IsLocal()) {
+    if ((*parent_clique)->key().is_local()) {
       // The parent clique is local, we can be sure that peer access was already
       // enabled.
       peer_access_enabled = (*parent_clique)->peer_access_enabled();
