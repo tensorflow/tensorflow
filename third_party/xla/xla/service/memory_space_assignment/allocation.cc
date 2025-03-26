@@ -398,6 +398,10 @@ absl::Status CopyAllocation::Process(const BitcastSplitFn& bitcast_split_fn) {
     if (memory_space() == MemorySpace::kAlternate &&
         mutable_split_shape().has_value()) {
       dest_shape = mutable_split_shape().value();
+    } else if (memory_space() == MemorySpace::kDefault && shape.has_layout() &&
+               shape.layout().split_configs_size() > 0) {
+      dest_shape = shape;
+      dest_shape.mutable_layout()->clear_split_configs();
     } else {
       dest_shape = shape;
     }
