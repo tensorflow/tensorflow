@@ -23,7 +23,9 @@ limitations under the License.
 
 #include "absl/functional/any_invocable.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "xla/stream_executor/bit_pattern.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/kernel.h"
@@ -46,6 +48,23 @@ class Stream;
 // device.
 class CommandBuffer {
  public:
+  // Command represents an operation recorded into a command buffer. It's owned
+  // by the command buffer and returned to the caller to enable efficient
+  // command buffer updates.
+  class Command {
+   public:
+    virtual ~Command() = default;
+
+   protected:
+    Command() = default;
+
+    Command(const Command&) = default;
+    Command& operator=(const Command&) = default;
+
+    Command(Command&&) = default;
+    Command& operator=(Command&&) = default;
+  };
+
   // Builder constructs nested command buffers owned by a parent command buffer.
   using Builder = std::function<absl::Status(CommandBuffer*)>;
 
@@ -115,7 +134,13 @@ class CommandBuffer {
                                             uint64_t size) = 0;
 
   // Adds a memset command.
-  virtual absl::Status Memset(DeviceMemoryBase* dst, BitPattern bit_pattern,
+  virtual absl::StatusOr<const Command*> Memset(
+      DeviceMemoryBase* dst, BitPattern bit_pattern, size_t num_elements,
+      absl::Span<const Command* const> dependencies) = 0;
+
+  // Updates a memset command.
+  virtual absl::Status Memset(const Command* command, DeviceMemoryBase* dst,
+                              const BitPattern& bit_pattern,
                               size_t num_elements) = 0;
 
   //--------------------------------------------------------------------------//
@@ -195,6 +220,7 @@ class CommandBuffer {
   //--------------------------------------------------------------------------//
  private:
   friend class TraceCommandBufferFactory;
+
   // Tracing APIs are private because they do not compose with command buffer
   // updates. Instead of tracing directly into the command buffer users should
   // create traced command buffers using factory methods and add them to primary

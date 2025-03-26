@@ -574,7 +574,7 @@ absl::Status ComputationIdCmd::Record(
     return command_buffer->Launch(se::ThreadDim(1), se::BlockDim(1),
                                   *memset_kernel, *args);
   } else {
-    return command_buffer->Memset(&dst, value, /*num_elements=*/1);
+    return command_buffer->Memset(&dst, value, /*num_elements=*/1, {}).status();
   }
 }
 
@@ -780,8 +780,10 @@ absl::Status MemzeroCmd::Record(const Thunk::ExecuteParams& execute_params,
     return absl::OkStatus();
   }
 
-  return command_buffer->Memset(&dst, uint8_t{0},
-                                /*num_elements=*/dst_.size());
+  return command_buffer
+      ->Memset(&dst, uint8_t{0},
+               /*num_elements=*/dst_.size(), {})
+      .status();
 }
 
 CommandBufferCmd::BufferUseVector MemzeroCmd::buffers() {
@@ -812,9 +814,10 @@ absl::Status Memset32Cmd::Record(const Thunk::ExecuteParams& execute_params,
     return absl::OkStatus();
   }
 
-  return command_buffer->Memset(
-      &dst, bit_pattern_,
-      /*num_elements=*/dst_.size() / sizeof(uint32_t));
+  return command_buffer
+      ->Memset(&dst, bit_pattern_,
+               /*num_elements=*/dst_.size() / sizeof(uint32_t), {})
+      .status();
 }
 
 CommandBufferCmd::BufferUseVector Memset32Cmd::buffers() {

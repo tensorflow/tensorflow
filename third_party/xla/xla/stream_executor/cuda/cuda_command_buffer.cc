@@ -236,9 +236,9 @@ CudaCommandBuffer::GetNoOpKernel() {
 }
 
 absl::StatusOr<GpuCommandBuffer::ConditionalNodeResult>
-CudaCommandBuffer::CreateConditionalNode(const Dependencies& dependencies,
-                                         GraphConditionalHandle conditional,
-                                         ConditionType type) {
+CudaCommandBuffer::CreateConditionalNode(
+    absl::Span<const GraphNodeHandle> dependencies,
+    GraphConditionalHandle conditional, ConditionType type) {
 #if CUDA_VERSION >= 12030
   // Add conditional node to a graph.
   VLOG(2) << "Add conditional node to a graph " << graph_
@@ -284,8 +284,8 @@ CudaCommandBuffer::CreateConditionalNode(const Dependencies& dependencies,
 }
 
 absl::StatusOr<GraphNodeHandle> CudaCommandBuffer::CreateMemsetNode(
-    const Dependencies& dependencies, DeviceMemoryBase destination,
-    BitPattern bit_pattern, size_t num_elements) {
+    absl::Span<const GraphNodeHandle> dependencies,
+    DeviceMemoryBase destination, BitPattern bit_pattern, size_t num_elements) {
   VLOG(2) << "Add memset node to a graph " << graph_
           << "; dst: " << destination.opaque()
           << "; bit_pattern: " << bit_pattern.ToString()
@@ -337,8 +337,8 @@ absl::Status CudaCommandBuffer::UpdateMemsetNode(GraphNodeHandle node_handle,
 }
 
 absl::StatusOr<GraphNodeHandle> CudaCommandBuffer::CreateMemcpyD2DNode(
-    const Dependencies& dependencies, DeviceMemoryBase destination,
-    DeviceMemoryBase source, uint64_t size) {
+    absl::Span<const GraphNodeHandle> dependencies,
+    DeviceMemoryBase destination, DeviceMemoryBase source, uint64_t size) {
   VLOG(2) << "Add memcpy d2d node to a graph " << graph_
           << "; dst: " << destination.opaque() << "; src: " << source.opaque()
           << "; size: " << size << "; context: " << cuda_context_->context()
@@ -387,7 +387,8 @@ absl::Status CudaCommandBuffer::UpdateMemcpyD2DNode(
 }
 
 absl::StatusOr<GraphNodeHandle> CudaCommandBuffer::CreateChildNode(
-    const Dependencies& dependencies, const CommandBuffer& nested) {
+    absl::Span<const GraphNodeHandle> dependencies,
+    const CommandBuffer& nested) {
   CUgraph child_graph =
       tensorflow::down_cast<const CudaCommandBuffer&>(nested).graph_;
   VLOG(2) << "Create a new node by cloning the child graph " << child_graph
@@ -417,7 +418,7 @@ absl::Status CudaCommandBuffer::UpdateChildNode(GraphNodeHandle node_handle,
 }
 
 absl::StatusOr<GraphNodeHandle> CudaCommandBuffer::CreateKernelNode(
-    const Dependencies& dependencies, const ThreadDim& threads,
+    absl::Span<const GraphNodeHandle> dependencies, const ThreadDim& threads,
     const BlockDim& blocks, const Kernel& kernel,
     const KernelArgsPackedArrayBase& args) {
   const uint64_t shared_mem_bytes = args.number_of_shared_bytes();
@@ -506,7 +507,7 @@ absl::Status CudaCommandBuffer::UpdateKernelNode(
 }
 
 absl::StatusOr<GraphNodeHandle> CudaCommandBuffer::CreateBarrierNode(
-    const Dependencies& dependencies) {
+    absl::Span<const GraphNodeHandle> dependencies) {
   if (parent_->GetDeviceDescription().driver_version() <
       SemanticVersion(12, 4, 0)) {
     // Instead of empty nodes we create no-op kernel nodes as barriers because
