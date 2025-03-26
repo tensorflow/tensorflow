@@ -48,11 +48,11 @@ from setuptools.dist import Distribution
 # result for pip.
 # Also update tensorflow/tensorflow.bzl and
 # tensorflow/core/public/version.h
-_VERSION = '2.19.0-rc0'
+_VERSION = '2.19.0'
 
 # Update this version when a new libtpu stable version is released.
-LATEST_RELEASE_LIBTPU_VERSION = '0.0.9'
-NEXT_LIBTPU_VERSION = '0.0.10'
+LATEST_RELEASE_LIBTPU_VERSION = '0.0.10'
+NEXT_LIBTPU_VERSION = '0.0.11'
 
 # We use the same setup.py for all tensorflow_* packages and for the nightly
 # equivalents (tf_nightly_*). The package is controlled from the argument line
