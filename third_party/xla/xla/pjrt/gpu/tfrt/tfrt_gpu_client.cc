@@ -260,7 +260,7 @@ class TfrtGpuAsyncHostToDeviceTransferManager final
 
       buffer_ptrs.push_back(
           tsl::MakeUnconstructedAsyncValueRef<MaybeOwningGpuMemory>());
-      auto buffer_allocated =
+      absl::StatusOr<MaybeOwningGpuMemory> buffer_allocated =
           MaybeOwningGpuMemory::AllocateShared(device->allocator(), byte_size);
       if (!buffer_allocated.ok()) {
         copy_event.SetError(buffer_allocated.status());
@@ -1899,6 +1899,105 @@ void TfrtGpuBuffer::Delete() {
 bool TfrtGpuBuffer::IsDeleted() {
   absl::MutexLock lock(&mu_);
   return tracked_device_buffer_ == nullptr;
+}
+
+absl::StatusOr<std::unique_ptr<PjRtBuffer>> TfrtGpuBuffer::CopyToMemorySpace(
+    PjRtMemorySpace* dst_memory_space) {
+  // TODO: b/382117736 -  Support non-default memory spaces.
+  tsl::profiler::TraceMe traceme("TfrtGpuBuffer::CopyToMemorySpace");
+  PjRtDevice* dst_device = dst_memory_space->devices()[0];
+  if (dst_device == device_) {
+    return InvalidArgument(
+        "CopyToMemorySpace cannot accept the same source and destination "
+        "devices");
+  }
+
+  // Copying across PjRtClients involves a copy through the host.
+  if (dst_device->client() != client_) {
+    TF_ASSIGN_OR_RETURN(std::shared_ptr<Literal> literal, ToLiteralSync());
+    // Avoid use-after-free on `literal` due to unsequenced move and use.
+    Literal* literal_pointer = literal.get();
+    absl::InlinedVector<int64_t, 4> byte_strides(
+        literal->shape().dimensions().size());
+    TF_RETURN_IF_ERROR(
+        ShapeUtil::ByteStrides(literal->shape(), absl::MakeSpan(byte_strides)));
+    return dst_device->client()->BufferFromHostBuffer(
+        literal_pointer->untyped_data(),
+        literal_pointer->shape().element_type(),
+        literal_pointer->shape().dimensions(), byte_strides,
+        TfrtGpuClient::HostBufferSemantics::kImmutableZeroCopy,
+        [literal{std::move(literal)}]() { /* frees literal */ },
+        dst_memory_space,
+        /*device_layout=*/nullptr);
+  }
+
+  // Copy each leaf buffer to a destination buffer.
+  auto usage_event = tsl::MakeConstructedAsyncValueRef<GpuEvent>();
+  TrackedTfrtGpuDeviceBuffer* src_device_buffer = AcquireUsage(usage_event);
+  if (src_device_buffer == nullptr) {
+    return InvalidArgument(
+        "CopyToMemorySpace called on deleted or donated buffer");
+  }
+
+  TfrtGpuDevice* gpu_dst_device = tsl::down_cast<TfrtGpuDevice*>(dst_device);
+  tsl::AsyncValueRef<MaybeOwningGpuMemory> src_buffer =
+      src_device_buffer->buffer();
+  auto dst_buffer = tsl::MakeUnconstructedAsyncValueRef<MaybeOwningGpuMemory>();
+  auto dst_definition_event = tsl::MakeConstructedAsyncValueRef<GpuEvent>();
+
+  absl::AnyInvocable<void()> transfer_d2d =
+      [src_buffer(src_buffer.CopyRef()), dst_buffer(dst_buffer.CopyRef()),
+       dst_definition_event(dst_definition_event.CopyRef()),
+       dst_device(gpu_dst_device), usage_event(usage_event.CopyRef())]() {
+        tsl::profiler::TraceMe traceme("D2D copy");
+        if (const absl::Status* error =
+                dst_definition_event.GetErrorIfPresent()) {
+          dst_buffer.SetError(*error);
+          dst_definition_event.SetError(*error);
+          usage_event.SetStateConcrete();
+          return;
+        }
+
+        MarkGpuEventReadyOnExit ready_on_exit(std::move(usage_event));
+        absl::StatusOr<MaybeOwningGpuMemory> allocated_dst_buffer =
+            MaybeOwningGpuMemory::AllocateShared(dst_device->allocator(),
+                                                 src_buffer->buffer().size());
+        if (!allocated_dst_buffer.ok()) {
+          dst_buffer.SetError(allocated_dst_buffer.status());
+          dst_definition_event.SetError(allocated_dst_buffer.status());
+          return;
+        }
+        dst_buffer.emplace(std::move(allocated_dst_buffer.value()));
+
+        absl::StatusOr<BoundedStreamPool::Handle> stream =
+            dst_device->stream_pool_.Borrow();
+        if (!stream.ok()) {
+          dst_definition_event.SetError(stream.status());
+          return;
+        }
+        se::DeviceMemoryBase dst(dst_buffer->buffer());
+        absl::Status status = stream->get()->Memcpy(
+            &dst, src_buffer->buffer(), src_buffer->buffer().size());
+        if (!status.ok()) {
+          dst_definition_event.SetError(status);
+          return;
+        }
+        status = stream->get()->BlockHostUntilDone();
+        if (status.ok()) {
+          dst_definition_event.SetStateConcrete();
+        } else {
+          dst_definition_event.SetError(status);
+        }
+      };
+
+  EnqueueWorkWhenReady(client_->blocking_thread_pool(),
+                       {src_device_buffer->definition_event().CopyRCRef()},
+                       std::move(transfer_d2d));
+  return std::unique_ptr<PjRtBuffer>(std::make_unique<TfrtGpuBuffer>(
+      on_device_shape_,
+      std::make_unique<TrackedTfrtGpuDeviceBuffer>(
+          std::move(dst_buffer), std::move(dst_definition_event)),
+      client(), tsl::down_cast<TfrtGpuDevice*>(dst_device), dst_memory_space));
 }
 
 void TfrtGpuBuffer::DropExternalReference() {

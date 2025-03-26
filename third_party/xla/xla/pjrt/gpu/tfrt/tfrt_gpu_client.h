@@ -454,10 +454,7 @@ class TfrtGpuBuffer final : public PjRtBuffer {
   bool IsDeleted() override;
 
   absl::StatusOr<std::unique_ptr<PjRtBuffer>> CopyToMemorySpace(
-      PjRtMemorySpace* dst_memory_space) override {
-    // TODO: b/400541410 - Implement CopyToMemorySpace.
-    return Unimplemented("CopyToMemorySpace not implemented.");
-  }
+      PjRtMemorySpace* dst_memory_space) override;
 
   void CopyToRemoteDevice(PjRtFuture<std::string> serialized_descriptor,
                           RemoteSendCallback on_done) override {
