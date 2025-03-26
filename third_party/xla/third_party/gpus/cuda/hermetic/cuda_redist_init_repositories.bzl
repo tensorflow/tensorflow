@@ -133,12 +133,16 @@ def get_lib_name_to_version_dict(repository_ctx):
     return lib_name_to_version_dict
 
 def create_dummy_build_file(repository_ctx, use_comment_symbols = True):
+    multiline_comment_symbol = "'''" if use_comment_symbols else ""
+    comment_symbol = "#" if use_comment_symbols else ""
     repository_ctx.template(
         "BUILD",
         repository_ctx.attr.build_templates[0],
         {
-            "%{multiline_comment}": "'''" if use_comment_symbols else "",
-            "%{comment}": "#" if use_comment_symbols else "",
+            "%{multiline_comment}": multiline_comment_symbol,
+            "%{multiline_comment_nvrtc_builtins}": multiline_comment_symbol,
+            "%{comment}": comment_symbol,
+            "%{comment_nvrtc_builtins}": comment_symbol,
         },
     )
 
@@ -169,7 +173,8 @@ def get_major_library_version(repository_ctx, lib_name_to_version_dict):
 def create_build_file(
         repository_ctx,
         lib_name_to_version_dict,
-        major_lib_version):
+        major_lib_version,
+        is_cuda_local = False):
     # buildifier: disable=function-docstring-args
     """Creates a BUILD file for the repository."""
     if len(major_lib_version) == 0:
@@ -191,6 +196,8 @@ def create_build_file(
         lib_name_to_version_dict | {
             "%{multiline_comment}": "",
             "%{comment}": "",
+            "%{comment_nvrtc_builtins}": "#" if is_cuda_local else "",
+            "%{multiline_comment_nvrtc_builtins}": "'''" if is_cuda_local else "",
         },
     )
 
@@ -249,6 +256,7 @@ def use_local_path(repository_ctx, local_path, dirs):
         repository_ctx,
         lib_name_to_version_dict,
         major_version,
+        is_cuda_local = True,
     )
     _create_libcuda_symlinks(
         repository_ctx,
