@@ -392,11 +392,11 @@ xla_cc_test(
         "//xla/codegen:emitter_loc_op_builder",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/utils:hlo_traversal",
+        "//xla/service:hlo_module_config",
         "//xla/service/gpu/model:tiled_hlo_instruction_or_computation",
         "@com_google_googletest//:gtest_main",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
-        "@local_tsl//tsl/platform:test",
     ],
 )
 

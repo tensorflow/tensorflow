@@ -1656,17 +1656,15 @@ absl::StatusOr<TritonWrapperResult> TritonWrapper(
   const HloModule* hlo_module = fusion->GetModule();
   TF_ASSIGN_OR_RETURN(
       TritonWrapperResult result,
-      CompileTritonToLLVM(hlo_module->config(), hlo_module->name(), device_info,
-                          block_level_parameters, triton_module.module.get(),
-                          llvm_module, mlir_context,
+      CompileTritonToLLVM(*hlo_module, device_info, block_level_parameters,
+                          triton_module.module.get(), llvm_module, mlir_context,
                           /*is_xla_fusion=*/true));
   result.tma_metadata = triton_module.tma_metadata;
   return result;
 }
 
 absl::StatusOr<TritonWrapperResult> CompileTritonToLLVM(
-    const HloModuleConfig& hlo_config, absl::string_view hlo_module_name,
-    const se::DeviceDescription& device_info,
+    const HloModule& hlo_module, const se::DeviceDescription& device_info,
     const BlockLevelParameters& block_level_parameters,
     mlir::ModuleOp triton_module, llvm::Module* llvm_module,
     mlir::MLIRContext& mlir_context, bool is_xla_fusion, bool emit_kernel) {
@@ -1683,47 +1681,21 @@ absl::StatusOr<TritonWrapperResult> CompileTritonToLLVM(
     }
   }
 
+  const HloModuleConfig& hlo_config = hlo_module.config();
+
   bool should_verify =
       (hlo_config.debug_options().xla_gpu_llvm_verification_level() >= 1);
 #ifndef NDEBUG
   should_verify = true;
 #endif
 
+  bool should_dump_mlir_passes =
+      DumpingEnabledForHloModule(hlo_module) &&
+      DumpingEnabledForHloPass("triton-fusion-emitter",
+                               hlo_config.debug_options());
+
   mlir::PassManager pm(&mlir_context);
   pm.enableVerifier(should_verify);
-
-  std::optional<llvm::raw_fd_ostream> log_stream;
-  if (hlo_config.debug_options().xla_gpu_dump_llvmir()) {
-    const std::string basename =
-        absl::StrCat(absl::string_view(tsl::io::Basename(hlo_module_name)),
-                     ".triton-passes.log");
-    std::string outputs_dir;
-    if (!tsl::io::GetTestUndeclaredOutputsDir(&outputs_dir)) {
-      outputs_dir = hlo_config.debug_options().xla_dump_to();
-    }
-    if (!outputs_dir.empty()) {
-      std::string path = tsl::io::JoinPath(outputs_dir, basename);
-      std::error_code err;
-      log_stream.emplace(path, err, llvm::sys::fs::OF_None);
-      if (err) {
-        log_stream.reset();
-        LOG(ERROR) << err.message();
-      } else {
-        pm.getContext()->disableMultithreading();
-        auto print_always = [](mlir::Pass*, mlir::Operation*) { return true; };
-        pm.enableIRPrinting(/*shouldPrintBeforePass=*/print_always,
-                            /*shouldPrintAfterPass=*/print_always,
-                            /*printModuleScope=*/true,
-                            /*printAfterOnlyOnChange=*/false,
-                            /*printAfterOnlyOnFailure=*/true, *log_stream,
-                            /*opPrintingFlags=*/{});
-      }
-    } else {
-      LOG(ERROR) << "--xla_gpu_dump_llvmir is set, but neither the environment "
-                 << "variable TEST_UNDECLARED_OUTPUTS_DIR nor the flag "
-                 << "--xla_dump_to is set, so the llvm dumps are disabled.";
-    }
-  }
 
   // Lower affine expressions into arithmetic ops.
   pm.addPass(mlir::createLowerAffinePass());
@@ -1754,14 +1726,27 @@ absl::StatusOr<TritonWrapperResult> CompileTritonToLLVM(
   // llvm::Linker::linkModules() segfaults if we don't strip locations.
   pm.addPass(mlir::createStripDebugInfoPass());
 
-  if (log_stream.has_value()) {
-    pm.printAsTextualPipeline(log_stream.value());
-    log_stream->write("\n\n", 2);
+  std::string mlir_passes_dump_result;
+  llvm::raw_string_ostream log_stream(mlir_passes_dump_result);
+  if (should_dump_mlir_passes) {
+    pm.getContext()->disableMultithreading();
+    auto print_always = [](mlir::Pass*, mlir::Operation*) { return true; };
+    pm.enableIRPrinting(/*shouldPrintBeforePass=*/print_always,
+                        /*shouldPrintAfterPass=*/print_always,
+                        /*printModuleScope=*/true,
+                        /*printAfterOnlyOnChange=*/false,
+                        /*printAfterOnlyOnFailure=*/true, log_stream,
+                        /*opPrintingFlags=*/{});
+
+    pm.printAsTextualPipeline(log_stream);
+    log_stream.write("\n\n", 2);
   }
+
   bool succeeded = mlir::succeeded(pm.run(triton_module));
 
-  if (log_stream.has_value()) {
-    log_stream->flush();
+  if (should_dump_mlir_passes) {
+    DumpToFileInDirOrStdout(hlo_module, "", "triton-passes.log",
+                            mlir_passes_dump_result);
   }
 
   if (!succeeded) {

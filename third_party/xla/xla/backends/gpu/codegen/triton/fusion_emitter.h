@@ -35,6 +35,7 @@ limitations under the License.
 #include "xla/autotuning.pb.h"
 #include "xla/codegen/emitter_loc_op_builder.h"
 #include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/gpu/model/tiled_hlo_computation.h"
 #include "xla/service/gpu/model/tiled_hlo_instruction.h"
 #include "xla/service/hlo_module_config.h"
@@ -92,8 +93,7 @@ absl::StatusOr<TritonModule> CreateTritonModule(
 // the kernels, but it still returns correctly filled TritonWrapperResult.
 // That is useful when deserializing from the compilation cache.
 absl::StatusOr<TritonWrapperResult> CompileTritonToLLVM(
-    const HloModuleConfig& hlo_config, absl::string_view hlo_module_name,
-    const se::DeviceDescription& device_info,
+    const HloModule& hlo_module, const se::DeviceDescription& device_info,
     const BlockLevelParameters& block_level_parameters,
     mlir::ModuleOp triton_module, llvm::Module* llvm_module,
     mlir::MLIRContext& mlir_context, bool is_xla_fusion,
