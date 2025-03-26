@@ -42,6 +42,7 @@ limitations under the License.
 #include "xla/error_spec.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_print_options.h"
 #include "xla/hlo/testlib/filecheck.h"
 #include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/literal.h"
@@ -65,15 +66,7 @@ class AlgorithmTest : public GpuCodegenTest {
  public:
   DebugOptions GetDebugOptionsForTest() const override {
     DebugOptions debug_options = GpuCodegenTest::GetDebugOptionsForTest();
-    if (debug_options.xla_dump_to().empty()) {
-      debug_options.set_xla_dump_to("sponge");
-    }
-    debug_options.set_xla_dump_hlo_pass_re(".*");
-    debug_options.set_xla_gpu_dump_autotuned_gemm_fusions(true);
-
-    // Enable triton fusion for all supported GEMMs.
-    debug_options.set_xla_gpu_unsupported_force_triton_gemm(true);
-
+    debug_options.set_xla_gpu_autotune_level(0);
     return debug_options;
   }
 
@@ -94,17 +87,6 @@ class AlgorithmTest : public GpuCodegenTest {
   const stream_executor::GpuComputeCapability& GpuComputeComp() {
     return device_desc().gpu_compute_capability();
   }
-  stream_executor::GpuComputeCapability CudaAmpereOrRocm() {
-    if (std::holds_alternative<stream_executor::RocmComputeCapability>(
-            GpuComputeComp())) {
-      return stream_executor::GpuComputeCapability{
-          device_desc().rocm_compute_capability()};
-    } else {
-      return stream_executor::GpuComputeCapability{
-          stream_executor::CudaComputeCapability{
-              stream_executor::CudaComputeCapability::kAmpere, 0}};
-    }
-  }
 
  protected:
   const stream_executor::DeviceDescription& device_desc() {
@@ -115,21 +97,6 @@ class AlgorithmTest : public GpuCodegenTest {
 // In these tests, we depend on "algorithm" annotations for selecting the 6XBF16
 // algorithm.
 class Triton6xBF16GemmTest : public AlgorithmTest {
- public:
-  DebugOptions GetDebugOptionsForTest() const override {
-    DebugOptions debug_options = AlgorithmTest::GetDebugOptionsForTest();
-    // These 2 flags are not strictly necessary now, but we're adding them to be
-    // on the safe side against future flakiness.
-    //
-    // Do not fall back to cuBLAS, we are testing Triton.
-    debug_options.set_xla_gpu_cublas_fallback(false);
-
-    // Do not autotune split-k by default, since this prevents deterministically
-    // matching the optimized HLO.
-    debug_options.set_xla_gpu_enable_split_k_autotuning(false);
-    return debug_options;
-  }
-
  protected:
   void SetUp() override {
     if (!SupportsBF16(GpuComputeComp())) {
@@ -142,28 +109,12 @@ class BlasAlgorithmTest : public AlgorithmTest {
  public:
   DebugOptions GetDebugOptionsForTest() const override {
     DebugOptions debug_options = AlgorithmTest::GetDebugOptionsForTest();
-    // Do not autotune split-k by default, since this prevents deterministically
-    // matching the optimized HLO.
-    debug_options.set_xla_gpu_enable_split_k_autotuning(false);
     debug_options.set_xla_gpu_enable_triton_gemm(false);
     return debug_options;
   }
 };
 
-class TritonAlgorithmTest : public AlgorithmTest {
- public:
-  DebugOptions GetDebugOptionsForTest() const override {
-    DebugOptions debug_options = AlgorithmTest::GetDebugOptionsForTest();
-    // Do not fall back to cuBLAS, we are testing Triton.
-    debug_options.set_xla_gpu_cublas_fallback(false);
-    // Enable gemm for any hlo including pure matmuls.
-    debug_options.set_xla_gpu_unsupported_force_triton_gemm(true);
-    // Do not autotune split-k by default, since this prevents deterministically
-    // matching the optimized HLO.
-    debug_options.set_xla_gpu_enable_split_k_autotuning(false);
-    return debug_options;
-  }
-};
+using TritonAlgorithmTest = AlgorithmTest;
 
 TEST_F(AlgorithmTest, Algorithm3xBF16) {
   constexpr absl::string_view kHloText = R"(
@@ -565,24 +516,7 @@ CHECK-NOT: mma.sync.aligned.{{.*}}.row.col.f32.tf32.tf32.f32
 
 // In these tests, we depend on "algorithm" annotations for selecting the 3XBF16
 // algorithm.
-class Triton3xBF16GemmTest : public AlgorithmTest {
- public:
-  DebugOptions GetDebugOptionsForTest() const override {
-    DebugOptions debug_options = AlgorithmTest::GetDebugOptionsForTest();
-    // These 2 flags are not strictly necessary now, but we're adding them the
-    // to be on the safe side against future flakiness.
-    //
-    // Enable triton fusion for all supported GEMMs.
-    debug_options.set_xla_gpu_unsupported_force_triton_gemm(true);
-    // Do not fall back to cuBLAS, we are testing Triton.
-    debug_options.set_xla_gpu_cublas_fallback(false);
-
-    // Do not autotune split-k by default, since this prevents deterministically
-    // matching the optimized HLO.
-    debug_options.set_xla_gpu_enable_split_k_autotuning(false);
-    return debug_options;
-  }
-};
+using Triton3xBF16GemmTest = AlgorithmTest;
 
 TEST_F(Triton3xBF16GemmTest, Emit3xBF16GemmWhenBothInputsAreF32) {
   constexpr absl::string_view kHloText = R"(
@@ -1279,13 +1213,6 @@ class TritonAndBlasSupportForDifferentTensorSizes
     : public WithParamInterface<PC::Algorithm>,
       public AlgorithmTest {
  public:
-  DebugOptions GetDebugOptionsForTest() const override {
-    DebugOptions debug_options = AlgorithmTest::GetDebugOptionsForTest();
-    debug_options.clear_xla_dump_hlo_pass_re();  // Too many dumps.
-    debug_options.clear_xla_gpu_dump_autotuned_gemm_fusions();
-    return debug_options;
-  }
-
   static auto GetModuleConfig(const DebugOptions& debug_options) {
     HloModuleConfig config;
     config.set_debug_options(debug_options);
@@ -1329,12 +1256,9 @@ class TritonAndBlasSupportForDifferentTensorSizes
     debug_options_ = GetDebugOptionsForTest();
 
     triton_options_ = debug_options_;
-    triton_options_.set_xla_gpu_unsupported_force_triton_gemm(true);
-    triton_options_.set_xla_gpu_cublas_fallback(false);
 
     blas_options_ = debug_options_;
     blas_options_.set_xla_gpu_enable_triton_gemm(false);
-    blas_options_.set_xla_gpu_cublas_fallback(true);
 
     algorithm_ = AlgorithmToString(GetParam());
   }
