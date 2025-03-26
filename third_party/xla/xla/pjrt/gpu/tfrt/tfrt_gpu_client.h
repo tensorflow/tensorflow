@@ -668,6 +668,10 @@ class TfrtGpuExecutable final : public PjRtLoadedExecutable {
 
   bool IsDeleted() override { return executables_.empty(); }
 
+  absl::Span<const std::shared_ptr<LocalExecutable>> executables() const {
+    return executables_;
+  }
+
   absl::StatusOr<std::string> SerializeExecutable() const override;
 
   absl::StatusOr<CompileOptions> GetCompileOptions() const override {
