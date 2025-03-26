@@ -148,6 +148,7 @@ class Allocation {
   virtual bool is_copy_allocation() const = 0;
   virtual bool is_sliced_copy_allocation() const = 0;
   virtual bool is_window_prefetched_allocation() const = 0;
+  virtual bool is_reserved_allocation() const = 0;
   // True if the allocation is for a copy or a sliced-copy.
   bool is_copy_like_allocation() const;
 
@@ -232,6 +233,7 @@ class PinnedAllocation final : public Allocation {
   bool is_copy_allocation() const override { return false; }
   bool is_sliced_copy_allocation() const override { return false; }
   bool is_window_prefetched_allocation() const override { return false; }
+  bool is_reserved_allocation() const override { return false; }
   absl::Status Process(const BitcastSplitFn& bitcast_split_fn) override;
   absl::Status PostProcess() override { return absl::OkStatus(); }
   void MarkIfNeeded(absl::flat_hash_set<const Allocation*>& needed_allocations)
@@ -243,6 +245,43 @@ class PinnedAllocation final : public Allocation {
 
   // New non-virtual methods
   bool operator==(const PinnedAllocation& other) const;
+};
+
+// This class represents an allocation that reserves a chunk of memory.
+class ReservedAllocation final : public Allocation {
+ public:
+  ReservedAllocation(HloPosition defining_position, MemorySpace memory_space,
+                     std::optional<HeapSimulator::Chunk> chunk,
+                     int64_t start_time, int64_t end_time,
+                     bool is_scoped_allocation, bool reserved);
+
+  // Overridden methods
+  //
+  // Returns the original defining position.
+  HloPosition defining_position() const override;
+  int64_t earliest_available_time() const override { return start_time(); }
+  bool is_pinned_allocation() const override { return false; }
+  bool is_copy_allocation() const override { return false; }
+  bool is_sliced_copy_allocation() const override { return false; }
+  bool is_window_prefetched_allocation() const override { return false; }
+  bool is_reserved_allocation() const override { return true; }
+  absl::Status Process(const BitcastSplitFn& bitcast_split_fn) override;
+  absl::Status PostProcess() override { return absl::OkStatus(); }
+  void MarkIfNeeded(absl::flat_hash_set<const Allocation*>& needed_allocations)
+      const override;
+  void MarkNeeded(absl::flat_hash_set<const Allocation*>& needed_allocations)
+      const override;
+  std::string ToString() const override;
+  bool operator==(const Allocation& other) const override;
+
+  // New non-virtual methods
+  bool operator==(const ReservedAllocation& other) const;
+
+  bool reserved() const { return reserved_; }
+  void set_reserved(bool reserved) { reserved_ = reserved; }
+
+ private:
+  bool reserved_;
 };
 
 // This class represents an allocation as a result of an asynchronous copy.
@@ -270,6 +309,7 @@ class CopyAllocation final : public Allocation {
   bool is_copy_allocation() const override { return true; }
   bool is_sliced_copy_allocation() const override { return false; }
   bool is_window_prefetched_allocation() const override { return false; }
+  bool is_reserved_allocation() const override { return false; }
   absl::Status Process(const BitcastSplitFn& bitcast_split_fn) override;
   absl::Status PostProcess() override { return absl::OkStatus(); }
   void MarkIfNeeded(absl::flat_hash_set<const Allocation*>& needed_allocations)
@@ -376,6 +416,7 @@ class SlicedCopyAllocation final : public Allocation {
   bool is_copy_allocation() const override { return false; }
   bool is_sliced_copy_allocation() const override { return true; }
   bool is_window_prefetched_allocation() const override { return false; }
+  bool is_reserved_allocation() const override { return false; }
   // MemorySpaceAssignment::Process() calls Process(const BitcastSplitFn&
   // bitcast_split_fn) to create asynchronous slice copies, and a bitcast-concat
   // call to glue the slices back together.
@@ -452,6 +493,7 @@ class WindowPrefetchedAllocation final : public Allocation {
   bool is_copy_allocation() const override { return false; }
   bool is_sliced_copy_allocation() const override { return false; }
   bool is_window_prefetched_allocation() const override { return true; }
+  bool is_reserved_allocation() const override { return false; }
   // MemorySpaceAssignment::Process() calls Process(const BitcastSplitFn&
   // bitcast_split_fn) to create asynchronous window prefetches.
   absl::Status Process(const BitcastSplitFn& bitcast_split_fn) override;
@@ -507,6 +549,7 @@ class MirroredAllocation final : public Allocation {
   bool is_copy_allocation() const override { return false; }
   bool is_sliced_copy_allocation() const override { return false; }
   bool is_window_prefetched_allocation() const override { return false; }
+  bool is_reserved_allocation() const override { return false; }
   absl::Status Process(const BitcastSplitFn& bitcast_split_fn) override;
   absl::Status PostProcess() override { return absl::OkStatus(); }
   void MarkIfNeeded(absl::flat_hash_set<const Allocation*>& needed_allocations)
@@ -541,6 +584,7 @@ class ParentAllocation final : public Allocation {
   bool is_copy_allocation() const override { return false; }
   bool is_sliced_copy_allocation() const override { return false; }
   bool is_window_prefetched_allocation() const override { return false; }
+  bool is_reserved_allocation() const override { return false; }
   absl::Status Process(const BitcastSplitFn& bitcast_split_fn) override;
   absl::Status PostProcess() override;
   void MarkIfNeeded(absl::flat_hash_set<const Allocation*>& needed_allocations)

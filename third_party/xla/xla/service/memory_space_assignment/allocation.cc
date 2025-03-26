@@ -1181,4 +1181,56 @@ void AllocationSequenceDebugging::LogAltMemAllocationsAt(
   }
 }
 
+ReservedAllocation::ReservedAllocation(
+    HloPosition defining_position, MemorySpace memory_space,
+    std::optional<HeapSimulator::Chunk> chunk, int64_t start_time,
+    int64_t end_time, bool is_scoped_allocation, bool reserved)
+    : Allocation(std::move(defining_position), memory_space, chunk, start_time,
+                 end_time, is_scoped_allocation,
+                 /*cross_program_prefetch_index=*/std::nullopt),
+      reserved_(reserved) {}
+
+HloPosition ReservedAllocation::defining_position() const {
+  return original_defining_position();
+}
+
+absl::Status ReservedAllocation::Process(
+    const BitcastSplitFn& bitcast_split_fn) {
+  return absl::OkStatus();
+}
+
+void ReservedAllocation::MarkIfNeeded(
+    absl::flat_hash_set<const Allocation*>& needed_allocations) const {
+  MarkNeeded(needed_allocations);
+}
+
+void ReservedAllocation::MarkNeeded(
+    absl::flat_hash_set<const Allocation*>& needed_allocations) const {
+  needed_allocations.insert(this);
+}
+
+std::string ReservedAllocation::ToString() const {
+  std::string memory_space_str = MemorySpaceToString(memory_space());
+  std::optional<HeapSimulator::Chunk> chunk = maybe_chunk();
+  if (chunk) {
+    absl::StrAppend(&memory_space_str, " (off: ", chunk->offset,
+                    ", size: ", chunk->size, ")");
+  }
+  return absl::StrCat((is_scoped_allocation() ? "Scoped " : ""),
+                      "ReservedAllocation in ", memory_space_str,
+                      " defined at ", original_defining_position().ToString(),
+                      ", start_time:", start_time(), ", end_time:", end_time(),
+                      ", reserved: ", reserved_);
+}
+
+bool ReservedAllocation::operator==(const Allocation& other) const {
+  const ReservedAllocation* casted_other =
+      dynamic_cast<const ReservedAllocation*>(&other);
+  return casted_other != nullptr && (*this) == (*casted_other);
+}
+
+bool ReservedAllocation::operator==(const ReservedAllocation& other) const {
+  return this->base_is_equal(static_cast<const Allocation&>(other));
+}
+
 }  // namespace xla::memory_space_assignment
