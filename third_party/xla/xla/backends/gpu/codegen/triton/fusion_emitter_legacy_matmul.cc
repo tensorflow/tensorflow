@@ -1789,7 +1789,6 @@ Value EmitBF16x9Matmul(EmitterLocOpBuilder& b, Value lhs, Value rhs,
 // from https://arxiv.org/pdf/1904.06376.pdf.
 Value EmitBF16x6Matmul(EmitterLocOpBuilder& b, Value lhs, Value rhs,
                        Value acc) {
-  LOG(ERROR) << "EmitBF16x6Matmul";
   std::vector<Value> lhs_parts = SplitF32(b, lhs, 3);
   std::vector<Value> rhs_parts = SplitF32(b, rhs, 3);
 
