@@ -563,3 +563,10 @@ py_strict_test(
         "@absl_py//absl/testing:parameterized",
     ] + xla_py_test_deps(),
 )
+
+cc_library(
+    name = "version",
+    hdrs = ["version.h"],
+    compatible_with = [],
+    visibility = internal_visibility([":friends"]),
+)
