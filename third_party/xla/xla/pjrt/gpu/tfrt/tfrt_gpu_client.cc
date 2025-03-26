@@ -208,7 +208,7 @@ absl::Status CheckBufferCompatibilities(
   return absl::OkStatus();
 }
 
-class TfrtGpuAsyncHostToDeviceTransferManager
+class TfrtGpuAsyncHostToDeviceTransferManager final
     : public PjRtClient::AsyncHostToDeviceTransferManager {
  public:
   static absl::StatusOr<
@@ -296,7 +296,6 @@ class TfrtGpuAsyncHostToDeviceTransferManager
         definition_events_(std::move(definition_events)),
         device_shapes_(std::move(device_shapes)),
         remaining_buffer_count_(buffers_.size()),
-        transfers_in_flight_(0),
         device_(device),
         client_(tsl::down_cast<TfrtGpuClient*>(device_->client())) {
     VLOG(2) << "TfrtGpuAsyncHostToDeviceTransferManager::"
@@ -383,11 +382,10 @@ class TfrtGpuAsyncHostToDeviceTransferManager
       ShapedBuffer shaped_buffer =
           buffer->AsShapedBuffer(device_shapes_[buffer_index], device_);
 
-      absl::StatusOr<BoundedStreamPool::Handle> handle_or =
+      absl::StatusOr<BoundedStreamPool::Handle> stream =
           device_->stream_pool().Borrow();
-      CHECK_OK(handle_or.status());
-      BoundedStreamPool::Handle stream = std::move(handle_or.value());
-      CHECK_NE(stream.get(), nullptr);
+      TF_CHECK_OK(stream.status());
+      CHECK_NE(stream->get(), nullptr);
 
       GenericTransferManager::LiteralFromDeviceMetadata transfer_metadata;
       // We never call device functions from the `done` callback.
@@ -398,10 +396,10 @@ class TfrtGpuAsyncHostToDeviceTransferManager
               : nullptr;
 
       TF_CHECK_OK(transfer_manager->TransferLiteralToDeviceAsync(
-          stream.get(), literal, shaped_buffer, transfer_metadata_ptr));
+          stream->get(), literal, shaped_buffer, transfer_metadata_ptr));
 
-      auto status = stream->BlockHostUntilDone();
-      CHECK_OK(status) << "Failed to block host until done";
+      TF_CHECK_OK((*stream)->BlockHostUntilDone())
+          << "Failed to block host until done";
 
       CleanUp(buffer_index, /*is_last_transfer=*/true, std::move(on_done));
     };
@@ -430,7 +428,8 @@ class TfrtGpuAsyncHostToDeviceTransferManager
 
     auto* client = tsl::down_cast<TfrtGpuClient*>(device_->client());
     DCHECK(client);
-    auto* host_memory_allocator = client->host_memory_allocator();
+    HostMemoryAllocator* host_memory_allocator =
+        client->host_memory_allocator();
     if (host_memory_allocator == nullptr) {
       return InvalidArgument(
           "host_memory_allocator should be initialized for staging buffer "
@@ -452,7 +451,8 @@ class TfrtGpuAsyncHostToDeviceTransferManager
       last_transfer_started_[buffer_index] = true;
     }
     DCHECK(buffer_ptrs_[buffer_index]);
-    auto& buffer_memory = buffer_ptrs_[buffer_index];
+    tsl::AsyncValueRef<MaybeOwningGpuMemory>& buffer_memory =
+        buffer_ptrs_[buffer_index];
     se::DeviceMemoryBase sub_buffer;
     CHECK_LE(offset, buffer_memory->size());
     CHECK_LE(transfer_size, buffer_memory->size() - offset);
@@ -467,27 +467,24 @@ class TfrtGpuAsyncHostToDeviceTransferManager
     // called on this thread, to avoid deadlock.
     l.Release();
 
-    auto copy_to_gpu =
+    absl::AnyInvocable<void() &&> copy_to_gpu =
         [transfer_size, staging_buffer = std::move(staging_buffer), data,
          sub_buffer = std::move(sub_buffer), buffer_index, is_last_transfer,
          on_done = std::move(on_done), this]() mutable {
           if (transfer_size != 0) {
             std::memcpy(staging_buffer.get(), data, transfer_size);
 
-            absl::StatusOr<BoundedStreamPool::Handle> handle_or =
+            absl::StatusOr<BoundedStreamPool::Handle> stream =
                 device_->stream_pool().Borrow();
-            CHECK_OK(handle_or.status())
+            TF_CHECK_OK(stream.status())
                 << "Failed to borrow a stream from the pool";
-            BoundedStreamPool::Handle stream = std::move(handle_or.value());
-            CHECK_NE(stream.get(), nullptr);
+            CHECK_NE(stream->get(), nullptr);
 
-            if (auto status = stream->Memcpy(&sub_buffer, staging_buffer.get(),
-                                             transfer_size);
-                !status.ok()) {
-              CHECK_OK(status) << "Failed to copy data to GPU";
-            }
-            auto status = stream->BlockHostUntilDone();
-            CHECK_OK(status) << "Failed to block host until done";
+            TF_CHECK_OK((*stream)->Memcpy(&sub_buffer, staging_buffer.get(),
+                                          transfer_size))
+                << "Failed to copy data to GPU";
+            auto status = (*stream)->BlockHostUntilDone();
+            TF_CHECK_OK(status) << "Failed to block host until done";
           }
           CleanUp(buffer_index, is_last_transfer, std::move(on_done));
         };
@@ -568,10 +565,10 @@ class TfrtGpuAsyncHostToDeviceTransferManager
   // Count of transfers that have been started but have not yet called
   // cleanup. Used to block in the destructor to avoid dangling pointers in
   // cleanup.
-  int transfers_in_flight_ ABSL_GUARDED_BY(mu_);
+  int transfers_in_flight_ ABSL_GUARDED_BY(mu_) = 0;
 
-  TfrtGpuDevice* device_;  // not owned.
-  TfrtGpuClient* client_;  // not owned.
+  TfrtGpuDevice* const device_;  // not owned.
+  TfrtGpuClient* const client_;  // not owned.
 };
 
 }  // namespace
@@ -1332,6 +1329,17 @@ absl::StatusOr<std::unique_ptr<PjRtBuffer>> TfrtGpuClient::BufferFromHostBuffer(
       device_shape, std::move(tracked_device_buffer), this, gpu_device,
       memory_space));
 }
+absl::StatusOr<std::unique_ptr<PjRtClient::AsyncHostToDeviceTransferManager>>
+TfrtGpuClient::CreateBuffersForAsyncHostToDevice(
+    absl::Span<const ShapeSpec> shape_specs,
+    std::optional<absl::Span<const std::optional<Layout>>> device_layouts,
+    PjRtMemorySpace* memory_space) {
+  CHECK_EQ(memory_space->devices().size(), 1);
+  PjRtDevice* device = memory_space->devices()[0];
+  auto* tfrt_gpu_device = tensorflow::down_cast<TfrtGpuDevice*>(device);
+  return TfrtGpuAsyncHostToDeviceTransferManager::Create(
+      shape_specs, device_layouts, tfrt_gpu_device, this, memory_space);
+}
 
 absl::StatusOr<std::unique_ptr<PjRtBuffer>>
 TfrtGpuClient::BufferFromHostLiteral(const LiteralSlice& literal,
@@ -1405,18 +1413,6 @@ TfrtGpuClient::BufferFromHostLiteral(const LiteralSlice& literal,
                 usage_event.SetStateConcrete();
               });
   return std::unique_ptr<PjRtBuffer>(std::move(output_buffer));
-}
-
-absl::StatusOr<std::unique_ptr<PjRtClient::AsyncHostToDeviceTransferManager>>
-TfrtGpuClient::CreateBuffersForAsyncHostToDevice(
-    absl::Span<const ShapeSpec> shape_specs,
-    std::optional<absl::Span<const std::optional<Layout>>> device_layouts,
-    PjRtMemorySpace* memory_space) {
-  CHECK_EQ(memory_space->devices().size(), 1);
-  PjRtDevice* device = memory_space->devices()[0];
-  auto* tfrt_gpu_device = tensorflow::down_cast<TfrtGpuDevice*>(device);
-  return TfrtGpuAsyncHostToDeviceTransferManager::Create(
-      shape_specs, device_layouts, tfrt_gpu_device, this, memory_space);
 }
 
 static absl::StatusOr<std::vector<std::unique_ptr<TfrtGpuDevice>>>
