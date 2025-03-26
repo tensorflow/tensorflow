@@ -82,9 +82,9 @@ TEST(TimespanTests, InstantSpanNonInstantSpanOverlappedDuration) {
 
 TEST(TimespanTests, Operators) {
   EXPECT_LT(Timespan(11, 0), Timespan(12, 0));
-  EXPECT_LT(Timespan(12, 1), Timespan(12, 0));
+  EXPECT_FALSE(Timespan(12, 1) < Timespan(12, 0));
 
-  EXPECT_FALSE(Timespan(12, 0) < Timespan(12, 1));
+  EXPECT_TRUE(Timespan(12, 0) < Timespan(12, 1));
   EXPECT_FALSE(Timespan(12, 0) < Timespan(11, 0));
   EXPECT_FALSE(Timespan(12, 0) < Timespan(12, 0));
 
