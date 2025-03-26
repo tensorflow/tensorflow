@@ -99,7 +99,8 @@ class ReshapeOp : public XlaOpKernel {
 
       int64_t missing = input_num_elements / product;
       if (!input_has_zero_dim) {
-        if (input_xla_shape->is_static() || input_xla_shape->rank() != 1) {
+        if (input_xla_shape->is_static() ||
+            input_xla_shape->dimensions_size() != 1) {
           OP_REQUIRES(
               ctx, product * missing == input_num_elements,
               errors::InvalidArgument(

@@ -173,7 +173,7 @@ absl::StatusOr<XlaOp> CompileWhereWithSort(XlaOpKernelContext* ctx) {
   std::vector<xla::PrimitiveType> types_to_sort = {xla::PRED};
   // Generate iota for each dimension, which after combining becomes
   // indices of each element.
-  for (int64_t axis = 0; axis < iota_shape.rank(); ++axis) {
+  for (int64_t axis = 0; axis < iota_shape.dimensions_size(); ++axis) {
     XlaOp iota = xla::Iota(ctx->builder(), iota_shape, axis);
     XlaOp reshaped = xla::Reshape(iota, {flattened_size});
     to_sort.push_back(reshaped);
@@ -184,7 +184,7 @@ absl::StatusOr<XlaOp> CompileWhereWithSort(XlaOpKernelContext* ctx) {
       to_sort, xla::CreateScalarGtComputation(types_to_sort, ctx->builder()),
       /*dimension=*/0, /*is_stable=*/true);
   std::vector<XlaOp> to_concat;
-  for (int64_t i = 0; i < iota_shape.rank(); ++i) {
+  for (int64_t i = 0; i < iota_shape.dimensions_size(); ++i) {
     XlaOp index_single_dim = xla::GetTupleElement(sorted, i + 1);
     to_concat.push_back(xla::Reshape(index_single_dim, {flattened_size, 1}));
   }
@@ -277,8 +277,8 @@ absl::StatusOr<XlaOp> CompileWhereWithPrefixSum(XlaOpKernelContext* ctx) {
   // and then scatter iotas[out_idxs] into the output.
   std::vector<XlaOp> iotas_to_concat;
   auto iota_shape = xla::ShapeUtil::MakeShape(S32, input_shape.dimensions());
-  iotas_to_concat.reserve(iota_shape.rank());
-  for (int64_t axis = 0; axis < iota_shape.rank(); ++axis) {
+  iotas_to_concat.reserve(iota_shape.dimensions_size());
+  for (int64_t axis = 0; axis < iota_shape.dimensions_size(); ++axis) {
     iotas_to_concat.push_back(
         xla::Reshape(xla::Iota(b, iota_shape, axis), {flattened_size, 1}));
   }
@@ -303,8 +303,9 @@ absl::StatusOr<XlaOp> CompileWhereWithPrefixSum(XlaOpKernelContext* ctx) {
   scatter_dnums.add_scatter_dims_to_operand_dims(0);
   scatter_dnums.add_update_window_dims(1);
   XlaOp scattered = xla::Scatter(
-      /*input=*/xla::Zeros(b, /*shape=*/xla::ShapeUtil::MakeShape(
-                               S32, {flattened_size, iota_shape.rank()})),
+      /*input=*/xla::Zeros(
+          b, /*shape=*/xla::ShapeUtil::MakeShape(
+              S32, {flattened_size, iota_shape.dimensions_size()})),
       /*scatter_indices=*/out_idxs, /*updates=*/iotas,
       /*update_computation=*/assn_computation, scatter_dnums,
       /*indices_are_sorted=*/true, /*unique_indices=*/true);

@@ -470,7 +470,7 @@ class StridedSliceGradOp : public XlaOpKernel {
         need_padding = true;
       }
     }
-    for (int64_t i = 0; i < grad_shape.rank(); ++i) {
+    for (int64_t i = 0; i < grad_shape.dimensions_size(); ++i) {
       // Use grad shape, which is known, to update unknown processing shape.
       // Grad shape is the output of the ValidateStridedSliceOp function in
       // forward pass, thus we use output_to_processing_mapping.
@@ -613,7 +613,7 @@ class StridedSliceGradOp : public XlaOpKernel {
     OP_REQUIRES_OK(ctx,
                    ctx->ResolveInputDynamismIntoPredVector(0, &dynamic_input));
     // Input of strided_slice_op has to have the same shape as output.
-    DCHECK_EQ(grad_shape.rank(), input_shape.dims());
+    DCHECK_EQ(grad_shape.dimensions_size(), input_shape.dims());
     for (int64_t dim = 0; dim < input_shape.dims(); ++dim) {
       DCHECK_EQ(grad_shape.dimensions(dim), input_shape.dim_size(dim));
       if (dynamic_input[dim]) {

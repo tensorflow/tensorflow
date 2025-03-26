@@ -89,7 +89,7 @@ class Shape {
   // without layout. e.g. "F32[42,12] {0, 1}" or "F32[64]".
   std::string ToString(bool print_layout = false) const;
 
-  // Returns the rank (number of dimensions) of the given shape. Returns 0 for
+  // Returns the number of dimensions of the given array shape. Returns 0 for
   // non-array shapes.
   ABSL_DEPRECATE_AND_INLINE()
   inline int64_t rank() const { return dimensions().size(); }

@@ -326,7 +326,7 @@ class SqueezeOp : public XlaOpKernel {
         ctx->builder()->GetShape(ctx->Input(0));
     OP_REQUIRES_OK(ctx, input_shape.status());
     xla::Shape shape = input_shape.value();
-    int64_t rank = shape.rank();
+    int64_t rank = shape.dimensions_size();
 
     absl::flat_hash_set<int32_t> wrapped_squeeze_dims;
     wrapped_squeeze_dims.reserve(squeeze_dims_.size());

@@ -264,7 +264,7 @@ absl::StatusOr<xla::XlaComputation> BuildWrappedBody(
               if (output_subshape.IsArray()) {
                 const xla::Shape& input_subshape =
                     xla::ShapeUtil::GetSubshape(input_shape, index);
-                for (int d = 0; d < output_subshape.rank(); ++d) {
+                for (int d = 0; d < output_subshape.dimensions_size(); ++d) {
                   if (input_subshape.is_dynamic_dimension(d) &&
                       !output_subshape.is_dynamic_dimension(d)) {
                     *element = xla::SetDimensionSize(
