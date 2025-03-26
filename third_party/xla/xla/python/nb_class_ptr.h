@@ -16,44 +16,6 @@ limitations under the License.
 #ifndef XLA_PYTHON_NB_CLASS_PTR_H_
 #define XLA_PYTHON_NB_CLASS_PTR_H_
 
-#include "nanobind/nanobind.h"
-
-namespace xla {
-
-// A reference-counting smart pointer to a nanobind-wrapped class on the Python
-// heap. Type T must be a class known to nanobind via a nanobind::class_
-// declaration. nb_class_ptr is useful for managing C++ classes that may be
-// allocated inline in Python objects on the Python heap.
-template <typename T>
-class nb_class_ptr : public nanobind::object {
- public:
-  inline nb_class_ptr() : nanobind::object() {}
-  inline nb_class_ptr(nanobind::handle h, ::nanobind::detail::borrow_t)
-      : nanobind::object(h, ::nanobind::detail::borrow_t{}) {}
-  inline nb_class_ptr(nanobind::handle h, ::nanobind::detail::steal_t)
-      : nanobind::object(h, ::nanobind::detail::steal_t{}) {}
-  inline static bool check_(nanobind::handle h) {
-    nanobind::handle type = nanobind::type<T>();
-    return h.type().is(type);
-  };
-
-  T* operator->() const { return nanobind::inst_ptr<T>(ptr()); }
-  T& operator*() const { return *nanobind::inst_ptr<T>(ptr()); }
-  T* get() const { return ptr() ? nanobind::inst_ptr<T>(ptr()) : nullptr; }
-};
-
-// This function is analogous to std::make_unique<T>(...), but instead it
-// allocates the object on the Python heap
-template <typename T, class... Args>
-nb_class_ptr<T> make_nb_class(Args&&... args) {
-  nanobind::handle type = nanobind::type<T>();
-  nanobind::object instance = nanobind::inst_alloc(type);
-  T* ptr = nanobind::inst_ptr<T>(instance);
-  new (ptr) T(std::forward<Args>(args)...);
-  nanobind::inst_mark_ready(instance);
-  return nb_class_ptr<T>(instance.release(), ::nanobind::detail::steal_t{});
-}
-
-}  // namespace xla
+#include "third_party/py/jax/jaxlib/xla/nb_class_ptr.h"  // IWYU pragma: export
 
 #endif  //  XLA_PYTHON_NB_CLASS_PTR_H_

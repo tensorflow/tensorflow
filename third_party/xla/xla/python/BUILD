@@ -109,27 +109,21 @@ cc_library(
 
 cc_library(
     name = "python_ref_manager",
-    srcs = ["python_ref_manager.cc"],
     hdrs = ["python_ref_manager.h"],
+    compatible_with = [],
     copts = [
         "-fexceptions",
         "-fno-strict-aliasing",
     ],
     features = ["-use_header_modules"],
     visibility = internal_visibility([":friends"]),
-    deps = [
-        "@com_google_absl//absl/base:core_headers",
-        "@com_google_absl//absl/container:inlined_vector",
-        "@com_google_absl//absl/synchronization",
-        "@com_google_absl//absl/types:span",
-        "@local_config_python//:python_headers",  # buildcleaner: keep
-        "@nanobind",
-    ],
+    deps = if_google([
+        "//third_party/py/jax/jaxlib/xla:python_ref_manager",
+    ]),
 )
 
 cc_library(
     name = "traceback",
-    srcs = ["traceback.cc"],
     hdrs = ["traceback.h"],
     compatible_with = [],
     copts = [
@@ -138,21 +132,9 @@ cc_library(
     ],
     features = ["-use_header_modules"],
     visibility = internal_visibility([":friends"]),
-    deps = [
-        ":nb_class_ptr",
-        # placeholder for index annotation deps
-        "@com_google_absl//absl/base",
-        "@com_google_absl//absl/container:inlined_vector",
-        "@com_google_absl//absl/hash",
-        "@com_google_absl//absl/log:check",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/strings:str_format",
-        "@nanobind",
-        "@local_config_python//:python_headers",  # buildcleaner: keep
-        "//xla/pjrt:exceptions",
-        "//xla/tsl/platform:logging",
-        "@local_tsl//tsl/platform",
-    ],
+    deps = if_google([
+        "//third_party/py/jax/jaxlib/xla:traceback",
+    ]),
 )
 
 cc_library(
@@ -451,10 +433,13 @@ xla_cc_test(
 cc_library(
     name = "nb_class_ptr",
     hdrs = ["nb_class_ptr.h"],
+    compatible_with = [],
     copts = ["-fexceptions"],
     features = ["-use_header_modules"],
     visibility = internal_visibility([":friends"]),
-    deps = ["@nanobind"],
+    deps = if_google([
+        "//third_party/py/jax/jaxlib/xla:nb_class_ptr",
+    ]),
 )
 
 cc_library(
