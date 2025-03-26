@@ -25,6 +25,14 @@ def if_cuda_is_configured(x, no_cuda = []):
 # both the root of the TensorFlow installation directory as well as from
 # various pywrap libs within the 'python' subdir.
 def cuda_rpath_flags(relpath):
+    flags = rpath_flags(relpath)
+    return select({
+        "@local_xla//xla/tsl/platform:rpath_for_cuda_deps": flags + ["-Wl,--disable-new-dtags"],
+        "@local_xla//xla/tsl/platform:runpath_for_cuda_deps": flags,
+        "//conditions:default": [],
+    })
+
+def rpath_flags(relpath):
     return [
         "-Wl,-rpath='$$ORIGIN/../../" + relpath + "'",
         "-Wl,-rpath='$$ORIGIN/../" + relpath + "'",

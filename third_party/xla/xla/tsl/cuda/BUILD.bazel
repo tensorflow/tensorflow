@@ -9,6 +9,7 @@ load(
     "@local_xla//xla/tsl/platform/default:cuda_build_defs.bzl",
     "cuda_rpath_flags",
     "if_cuda_is_configured",
+    "rpath_flags",
 )
 load(
     "//xla/tsl:tsl.bzl",
@@ -115,34 +116,26 @@ cuda_stub(
 
 cc_library(
     name = "cudart_stub",
-    srcs = select({
-        # include dynamic loading implementation only when if_cuda_is_configured and build dynamically
-        "@local_xla//xla/tsl:is_cuda_enabled_and_oss": [
+    srcs = if_cuda_is_configured(
+        [
             "cudart.tramp.S",
             "cudart_stub.cc",
         ],
-        "//conditions:default": [],
-    }),
-    linkopts = select({
-        "@local_xla//xla/tsl:is_cuda_enabled_and_oss": cuda_rpath_flags("nvidia/cuda_runtime/lib"),
-        "//conditions:default": [],
-    }),
+    ),
+    linkopts = if_cuda_is_configured(cuda_rpath_flags("nvidia/cuda_runtime/lib")),
     local_defines = [
         "IMPLIB_EXPORT_SHIMS=1",
     ],
     textual_hdrs = ["cudart.inc"],
     visibility = ["//visibility:public"],
-    deps = select({
-        "@local_xla//xla/tsl:is_cuda_enabled_and_oss": [
-            ":cuda",
-            "@com_google_absl//absl/container:flat_hash_set",
-            "@local_config_cuda//cuda:cuda_headers",
-            "@local_tsl//tsl/platform:dso_loader",
-            "@local_tsl//tsl/platform:load_library",
-            "@local_tsl//tsl/platform:logging",
-        ],
-        "//conditions:default": [],
-    }),
+    deps = if_cuda_is_configured([
+        ":cuda",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@local_config_cuda//cuda:cuda_headers",
+        "@local_tsl//tsl/platform:dso_loader",
+        "@local_tsl//tsl/platform:load_library",
+        "@local_tsl//tsl/platform:logging",
+    ]),
 )
 
 alias(
@@ -197,7 +190,7 @@ alias(
 
 cc_library(
     name = "tensorrt_rpath",
-    linkopts = if_cuda_is_configured(cuda_rpath_flags("tensorrt")),
+    linkopts = if_cuda_is_configured(rpath_flags("tensorrt")),
     visibility = ["//visibility:public"],
 )
 

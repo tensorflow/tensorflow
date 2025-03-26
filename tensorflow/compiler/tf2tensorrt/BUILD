@@ -6,7 +6,7 @@
 load("@local_config_tensorrt//:build_defs.bzl", "if_tensorrt")
 load(
     "@local_xla//xla/tsl/platform/default:cuda_build_defs.bzl",
-    "cuda_rpath_flags",
+    "rpath_flags",
 )
 load("//tensorflow:strict.default.bzl", "py_strict_library")
 
@@ -71,7 +71,7 @@ cc_library(
         "stub/nvinfer_stub.cc",
         "stub/nvinfer_plugin_stub.cc",
     ]),
-    linkopts = if_tensorrt(cuda_rpath_flags("tensorrt")),
+    linkopts = if_tensorrt(rpath_flags("tensorrt")),
     textual_hdrs = glob(["stub/*.inc"]),
     deps = if_tensorrt([
         "@local_config_tensorrt//:tensorrt_headers",
