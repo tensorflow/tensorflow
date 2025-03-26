@@ -531,3 +531,22 @@ func.func @simple_atomic_rmw(%arg0: tensor<2xf32>) -> tensor<2xf32> {
 // CHECK-HOPPER:               xla.atomic_rmw %[[ARG0]]
 // CHECK-HOPPER-NEXT:            ^bb0(%[[CURRENT:.*]]: vector<2xf32>):
 // CHECK-HOPPER-NEXT:              arith.addf %[[CURRENT]], %[[LOOP]]
+
+// -----
+
+func.func @fold_insert_extract(%in: tensor<64xf32>, %out: tensor<64xf32>)
+    -> tensor<64xf32> {
+  %c0 = arith.constant 0 : index
+  %c1 = arith.constant 1 : index
+  %c4 = arith.constant 2 : index
+  %loop = scf.for %j = %c0 to %c4 step %c1 iter_args(%out_ = %out) -> tensor<64xf32> {
+    %extracted = tensor.extract %in[%j] : tensor<64xf32>
+    %inserted = tensor.insert %extracted into %out_[%j] : tensor<64xf32>
+    scf.yield %inserted : tensor<64xf32>
+  }
+  return %loop : tensor<64xf32>
+}
+// CHECK-LABEL: @fold_insert_extract
+// CHECK-NOT:   scf.for
+// CHECK:         vector.transfer_read
+// CHECK-NEXT:    vector.transfer_write
