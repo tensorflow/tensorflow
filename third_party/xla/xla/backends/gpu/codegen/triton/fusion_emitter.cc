@@ -1429,7 +1429,7 @@ absl::Status EmitGeneric(mlir::OpBuilder builder,
       b.create<ttir::StoreOp>(parent_base_ptr, result.UnwrapScalar(),
                               ttir::CacheModifier::NONE,
                               ttir::EvictionPolicy::NORMAL);
-      return absl::OkStatus();
+      continue;
     }
 
     CHECK(root->hlo()->shape().IsArray() &&

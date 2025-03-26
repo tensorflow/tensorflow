@@ -153,6 +153,45 @@ CHECK:  tt.store %{{.*}}, %[[ABS]] : !tt.ptr<tensor<64x512xf32>>
   EXPECT_TRUE(RunAndCompareNoHloPasses(kHloText, kExactMatch));
 }
 
+TEST_F(TritonEmitterTest, ReductionToScalarWithExtraOutputIsEmittedCorrectly) {
+  constexpr absl::string_view kHloText = R"(
+HloModule m
+
+region {
+  param_0.1 = f32[] parameter(0)
+  param_1 = f32[] parameter(1)
+  ROOT maximum = f32[] maximum(param_0.1, param_1)
+}
+
+fused_computation {
+  param_0.2 = f32[512] parameter(0)
+  abs = f32[512] abs(param_0.2)
+  constant = f32[] constant(-inf)
+  reduce = f32[] reduce(abs, constant), dimensions={0}, to_apply=region
+  ROOT tuple = (f32[], f32[512]) tuple(reduce, abs)
+}
+
+ENTRY entry_computation {
+  param_0.3 = f32[512] parameter(0)
+  ROOT fusion = (f32[], f32[512]) fusion(param_0.3), kind=kCustom,
+    calls=fused_computation,
+    backend_config={
+      "fusion_backend_config":{
+        "kind":"__triton",
+        "block_level_fusion_config":{
+          "output_tiles":[{"sizes":[]},{"sizes":["512"]}],"num_warps":"2"}}}
+})";
+  TF_EXPECT_OK(
+      CreateTritonIrAndFileCheck(this, kHloText, "fused_computation", R"(
+CHECK-COUNT-1:  tt.load
+CHECK:  %[[ABS:.*]] = math.absf
+CHECK: %[[REDUCE:.*]] = "tt.reduce"(%[[ABS:.*]]) <{axis = 0 : i32}>
+CHECK:  tt.store %{{.*}}, %[[REDUCE]] : !tt.ptr<f32>
+CHECK:  tt.store %{{.*}}, %[[ABS]] : !tt.ptr<tensor<512xf32>>
+)"));
+  EXPECT_TRUE(RunAndCompareNoHloPasses(kHloText, kExactMatch));
+}
+
 TEST_F(TritonEmitterTest,
        SliceWithTilingThatNeedsPaddingHasBoundaryCheckForBothRoots) {
   constexpr absl::string_view kHloText = R"(
