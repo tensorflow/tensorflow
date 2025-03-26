@@ -399,6 +399,12 @@ class ShapeUtil {
   static Shape MakeShape(PrimitiveType element_type,
                          absl::Span<const int64_t> dimensions);
 
+  // Constructs a new shape with the given element type, sequence of
+  // dimensions, and buffer id.
+  static Shape MakeShapeForBuffer(PrimitiveType element_type,
+                                  absl::Span<const int64_t> dimensions,
+                                  int64_t buffer_id);
+
   // Make a scalar shape with given primitive type.
   static Shape MakeScalarShape(PrimitiveType element_type);
 
