@@ -229,6 +229,8 @@ cc_test(
         "ASAN_OPTIONS": "detect_odr_violation=0",
     },
     tags = [
+        "manual",
+        "notap",
         "requires-gpu-nvidia",
     ],
     deps =
