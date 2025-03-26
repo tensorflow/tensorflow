@@ -24,7 +24,6 @@ limitations under the License.
 #include <string>
 #include <utility>
 #include <vector>
-
 #include "absl/algorithm/container.h"
 #include "absl/base/const_init.h"
 #include "absl/container/flat_hash_set.h"
@@ -126,8 +125,7 @@ struct CanonicalDebugOptions {
         dump_max_hlo_modules(opts.xla_dump_max_hlo_modules()),
         dump_compress_protos(opts.xla_dump_compress_protos()),
         dump_fdo_profiles(opts.xla_gpu_experimental_dump_fdo_profiles()),
-        dump_mlir_pretty_form(opts.xla_dump_enable_mlir_pretty_form()),
-        dump_full_hlo_config(opts.xla_dump_full_hlo_config()) {
+        dump_mlir_pretty_form(opts.xla_dump_enable_mlir_pretty_form()) {
     // This constructor examines the values in `opts` and turns on other flags
     // based on what we think is the user's intent.  To reduce confusion about
     // what was a user-specified value versus an extrapolated value, within this
@@ -252,7 +250,6 @@ struct CanonicalDebugOptions {
   bool dump_compress_protos;
   bool dump_fdo_profiles;
   bool dump_mlir_pretty_form;
-  bool dump_full_hlo_config;
 };
 
 // Helper class to hold a list of functions that produces data to be written to
@@ -536,18 +533,6 @@ static std::vector<std::string> DumpHloModuleImpl(
                             module.config().fdo_profile(), opts));
   }
 
-  if (opts.dump_full_hlo_config) {
-    std::string config_str;
-    if (tsl::protobuf::TextFormat::PrintToString(module.config().ToProto(),
-                                                 &config_str)) {
-      file_paths.push_back(DumpToFileInDirImpl(
-          StrFormat("%s.config.pbtxt", filename), config_str, opts));
-    } else {
-      VLOG(1) << "Failed to convert HloModuleConfig to text. Module: "
-              << module.name();
-    }
-  }
-
   // Special case for rendering graphs as URLs.  We'll dump them to a file
   // because why not, but we always log them to stdout as well.
   if (opts.dump_as_url) {
@@ -792,6 +777,28 @@ std::vector<std::string> DumpHloModuleProtoIfEnabled(
                              TimestampFor(*module), name, opts);
   }
   return {};
+}
+
+void DumpHloConfigIfEnabled(const HloModule& module) {
+  if (!module.config().debug_options().xla_dump_full_hlo_config()) {
+    return;
+  }
+
+  CanonicalDebugOptions opts(module.config().debug_options());
+  if (opts.dumping_to_stdout()) {
+    VLOG(2) << "Refusing to write HLO config proto for " << module.name()
+            << " to stdout. Pass --xla_dump_to=<path> to write to a file.";
+    return;
+  }
+  std::string config_str;
+  if (tsl::protobuf::TextFormat::PrintToString(module.config().ToProto(),
+                                               &config_str)) {
+    std::string filename = FilenameFor(module, "", "config.pbtxt");
+    DumpToFileInDirImpl(filename, config_str, opts);
+  } else {
+    VLOG(1) << "Failed to convert HloModuleConfig to text. Module: "
+            << module.name();
+  }
 }
 
 bool DumpingEnabledForHloModule(string_view hlo_module_name,
