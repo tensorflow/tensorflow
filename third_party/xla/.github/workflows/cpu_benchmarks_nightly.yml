@@ -73,13 +73,6 @@ jobs:
         run:
           mkdir results
 
-      - name: Run E2E benchmarks flax_2b
-        timeout-minutes: 60
-        run: |
-          cd xla/backends/cpu/benchmarks/e2e/gemma2/flax_2b
-          bash setup.sh
-          bash run.sh | tee -a ../../../../../../../results/flax_2b.log
-
       - name: Configure CPU backend
         run: |
           ./configure.py --backend=CPU
@@ -91,6 +84,7 @@ jobs:
         run: ./bazel-bin/xla/tools/run_hlo_module --input_format=hlo --platform=CPU xla/tests/fuzz/rand_000001.hlo
 
       - name: Download and run Gemma HLO files and collect runtime and compile time stats
+        if: ${{ matrix.job_info.os != 'linux-arm64-t2a-48' }}
         run: |
           mkdir -p tmp_hlo
           cd tmp_hlo
@@ -99,5 +93,13 @@ jobs:
           cd ..
           ./bazel-bin/xla/tools/run_hlo_module --input_format=hlo --platform=CPU --reference_platform="" tmp_hlo/gemma2_2b_keras_jax.hlo
           ./bazel-bin/xla/tools/run_hlo_module --input_format=hlo --platform=CPU --reference_platform="" tmp_hlo/gemma3_1b_flax_call.hlo
+
+      - name: Run E2E benchmarks flax_2b
+        timeout-minutes: 60
+        run: |
+          cd xla/backends/cpu/benchmarks/e2e/gemma2/flax_2b
+          bash setup.sh
+          bash run.sh | tee -a ../../../../../../../results/flax_2b.log
+
 
     # TODO(juliagmt): Add CPU XSpace collection support to hlo_runner_main.
