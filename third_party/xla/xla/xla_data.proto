@@ -357,6 +357,10 @@ message ShapeProto {
   // The layout used to back this shape.
   LayoutProto layout = 5;
 
+  // A chain of HLO values with the same valid buffer_id are guaranteed to have
+  // the same underlying buffer.  A valid buffer_id is larger than 0.
+  int64 buffer_id = 7;
+
   // Important: if any field is added, be sure to modify ShapeUtil::Equal(),
   // ShapeUtil::Compatible() and Shape::Hash() appropriately to account for the
   // new field.
