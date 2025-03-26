@@ -1,6 +1,13 @@
 # TensorFlow Lite for Objective-C
 
 load("@build_bazel_rules_apple//apple:ios.bzl", "ios_application", "ios_unit_test")
+load(
+    "//tensorflow:tf_version.bzl",
+    "MAJOR_VERSION",
+    "MINOR_VERSION",
+    "PATCH_VERSION",
+    "TF_SEMANTIC_VERSION_SUFFIX",
+)
 load("//tensorflow/lite:special_rules.bzl", "ios_visibility_allowlist", "tflite_ios_lab_runner")
 load("//tensorflow/lite/ios:ios.bzl", "TFL_DEFAULT_TAGS", "TFL_DISABLED_SANITIZER_TAGS", "TFL_MINIMUM_OS_VERSION")
 
@@ -61,6 +68,12 @@ objc_library(
     srcs = SOURCES,
     hdrs = API_HEADERS,
     copts = RELEASE_COPTS,
+    defines = [
+        "TF_MAJOR_VERSION={}".format(MAJOR_VERSION),
+        "TF_MINOR_VERSION={}".format(MINOR_VERSION),
+        "TF_PATCH_VERSION={}".format(PATCH_VERSION),
+        'TF_VERSION_SUFFIX=\\"{}\\"'.format(TF_SEMANTIC_VERSION_SUFFIX),
+    ],
     tags = TFL_DEFAULT_TAGS,
     visibility = ios_visibility_allowlist(),
     deps = [
