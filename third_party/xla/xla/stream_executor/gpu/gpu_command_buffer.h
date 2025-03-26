@@ -111,7 +111,12 @@ class GpuCommandBuffer : public CommandBuffer {
 
   absl::Status AddNestedCommandBuffer(const CommandBuffer& nested) override;
 
-  absl::Status MemcpyDeviceToDevice(DeviceMemoryBase* dst,
+  absl::StatusOr<const Command*> MemcpyDeviceToDevice(
+      DeviceMemoryBase* dst, const DeviceMemoryBase& src, uint64_t size,
+      absl::Span<const Command* const> dependencies) override;
+
+  absl::Status MemcpyDeviceToDevice(const Command* command,
+                                    DeviceMemoryBase* dst,
                                     const DeviceMemoryBase& src,
                                     uint64_t size) override;
 

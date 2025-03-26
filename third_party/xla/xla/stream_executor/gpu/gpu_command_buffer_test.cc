@@ -287,8 +287,10 @@ TEST(GpuCommandBufferTest, MemcpyDeviceToDevice) {
   TF_ASSERT_OK(stream->Memset32(&a, 42, byte_length));
 
   // Create a command buffer with a single a to b memcpy command.
-  auto cmd_buffer = executor->CreateCommandBuffer(primary).value();
-  TF_ASSERT_OK(cmd_buffer->MemcpyDeviceToDevice(&b, a, byte_length));
+  TF_ASSERT_OK_AND_ASSIGN(auto cmd_buffer,
+                          executor->CreateCommandBuffer(primary));
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto* memcpy, cmd_buffer->MemcpyDeviceToDevice(&b, a, byte_length, {}));
   TF_ASSERT_OK(cmd_buffer->Finalize());
 
   TF_ASSERT_OK(cmd_buffer->Submit(stream.get()));
@@ -302,7 +304,7 @@ TEST(GpuCommandBufferTest, MemcpyDeviceToDevice) {
 
   // Update command buffer to swap the memcpy direction.
   TF_ASSERT_OK(cmd_buffer->Update());
-  TF_ASSERT_OK(cmd_buffer->MemcpyDeviceToDevice(&a, b, byte_length));
+  TF_ASSERT_OK(cmd_buffer->MemcpyDeviceToDevice(memcpy, &a, b, byte_length));
   TF_ASSERT_OK(cmd_buffer->Finalize());
 
   // Clear destination to test that command buffer actually copied memory.

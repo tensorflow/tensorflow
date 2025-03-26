@@ -750,7 +750,8 @@ absl::Status MemcpyDeviceToDeviceCmd::Record(
     return absl::OkStatus();
   }
 
-  return command_buffer->MemcpyDeviceToDevice(&dst, src, num_bytes_);
+  return command_buffer->MemcpyDeviceToDevice(&dst, src, num_bytes_, {})
+      .status();
 }
 
 CommandBufferCmd::BufferUseVector MemcpyDeviceToDeviceCmd::buffers() {

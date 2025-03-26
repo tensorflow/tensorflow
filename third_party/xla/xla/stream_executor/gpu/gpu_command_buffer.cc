@@ -272,25 +272,36 @@ absl::Status GpuCommandBuffer::AddNestedCommandBuffer(
   return UnsupportedStateError(state_);
 }
 
-absl::Status GpuCommandBuffer::MemcpyDeviceToDevice(DeviceMemoryBase* dst,
-                                                    const DeviceMemoryBase& src,
-                                                    uint64_t size) {
+absl::StatusOr<const CommandBuffer::Command*>
+GpuCommandBuffer::MemcpyDeviceToDevice(
+    DeviceMemoryBase* dst, const DeviceMemoryBase& src, uint64_t size,
+    absl::Span<const Command* const> dependencies) {
   TF_RETURN_IF_ERROR(CheckNotFinalized());
 
   if (state_ == State::kCreate) {
-    Dependencies barrier = GetBarrier();
-    TF_ASSIGN_OR_RETURN(
-        commands_.emplace_back(std::make_unique<GpuCommand>(nullptr))->handle,
-        CreateMemcpyD2DNode(barrier, *dst, src, size));
-    return absl::OkStatus();
+    Dependencies barrier = dependencies.empty()
+                               ? GetBarrier()
+                               : ToGraphNodeDependencies(dependencies);
+    TF_ASSIGN_OR_RETURN(GraphNodeHandle handle,
+                        CreateMemcpyD2DNode(barrier, *dst, src, size));
+    return AppendCommand(handle);
   }
 
   if (state_ == State::kUpdate) {
-    GraphNodeHandle node = commands_[update_state_.node_idx++]->handle;
-    return UpdateMemcpyD2DNode(node, *dst, src, size);
+    GpuCommand& command = *commands_[update_state_.node_idx++];
+    TF_RETURN_IF_ERROR(MemcpyDeviceToDevice(&command, dst, src, size));
+    return &command;
   }
 
   return UnsupportedStateError(state_);
+}
+
+absl::Status GpuCommandBuffer::MemcpyDeviceToDevice(const Command* command,
+                                                    DeviceMemoryBase* dst,
+                                                    const DeviceMemoryBase& src,
+                                                    uint64_t size) {
+  auto* gpu_command = tsl::down_cast<const GpuCommand*>(command);
+  return UpdateMemcpyD2DNode(gpu_command->handle, *dst, src, size);
 }
 
 absl::StatusOr<const CommandBuffer::Command*> GpuCommandBuffer::Memset(
@@ -309,9 +320,9 @@ absl::StatusOr<const CommandBuffer::Command*> GpuCommandBuffer::Memset(
   }
 
   if (state_ == State::kUpdate) {
-    auto& command = commands_[update_state_.node_idx++];
-    TF_RETURN_IF_ERROR(Memset(command.get(), dst, bit_pattern, num_elements));
-    return command.get();
+    GpuCommand& command = *commands_[update_state_.node_idx++];
+    TF_RETURN_IF_ERROR(Memset(&command, dst, bit_pattern, num_elements));
+    return &command;
   }
 
   return UnsupportedStateError(state_);
