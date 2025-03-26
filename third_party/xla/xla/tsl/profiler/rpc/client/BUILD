@@ -30,6 +30,7 @@ cc_library(
         "//tensorflow/core/profiler/rpc/client:__pkg__",
         "//tensorflow/python/profiler/internal:__pkg__",
         "//third_party/xprof/pywrap:__pkg__",
+        "//third_party/py/jax:__subpackages__",
     ]),
     deps = [
         ":profiler_client_for_pybind",
@@ -63,6 +64,7 @@ cc_library(
         "//xla/tsl/profiler:internal",
         "//xla/tsl/profiler/rpc:__pkg__",
         "//learning/pathways/data_parallel:__pkg__",
+        "//third_party/py/jax:__subpackages__",
     ]),
     deps = [
         "//xla/tsl/lib/io:zlib_compression_options",
@@ -123,6 +125,7 @@ cc_library(
         "//tensorflow/python:__pkg__",
         "//tensorflow/python/profiler/internal:__pkg__",
         "//third_party/xprof/pywrap:__pkg__",
+        "//third_party/py/jax:__subpackages__",
     ]),
     deps = [
         "//xla/tsl/platform:errors",

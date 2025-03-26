@@ -18,7 +18,10 @@ package_group(
 cc_library(
     name = "profiler_backends",
     # copybara:uncomment compatible_with = ["//buildenv/target:non_prod"],
-    visibility = internal_visibility(["//xla:internal"]),
+    visibility = internal_visibility([
+        "//xla:internal",
+        "//third_party/py/jax:__subpackages__",
+    ]),
     deps = [
         "//xla/backends/profiler/cpu:host_tracer",
         "//xla/backends/profiler/cpu:metadata_collector",

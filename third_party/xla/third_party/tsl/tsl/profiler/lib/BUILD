@@ -78,6 +78,7 @@ cc_library(
         "@local_xla//xla/tsl/profiler:xla_profiler_backends",
         "@local_xla//xla/python:__pkg__",
         "//learning/brain/tfrc/executor/stream_executor:__pkg__",
+        "//third_party/py/jax:__subpackages__",
     ]),
     deps = [
         ":profiler_interface",
@@ -133,6 +134,7 @@ cc_library(
         "@local_xla//xla/tsl:internal",
         "@local_xla//xla/tsl/profiler:internal",
         "@local_xla//xla/tsl/profiler:xla_profiler_backends",
+        "//third_party/py/jax:__subpackages__",
     ]),
     deps = [
         "//tsl/profiler/protobuf:xplane_proto_cc",

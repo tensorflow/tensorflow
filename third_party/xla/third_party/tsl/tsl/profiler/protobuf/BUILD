@@ -91,6 +91,7 @@ tf_proto_library(
     visibility = internal_visibility([
         "@local_xla//xla/python:__pkg__",
         "@local_xla//xla/tsl/profiler:internal",
+        ":friends",
     ]),
 )
 
