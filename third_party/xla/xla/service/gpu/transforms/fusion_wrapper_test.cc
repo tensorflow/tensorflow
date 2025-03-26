@@ -14,10 +14,10 @@ limitations under the License.
 ==============================================================================*/
 #include "xla/service/gpu/transforms/fusion_wrapper.h"
 
-#include <cstdint>
 #include <optional>
 
 #include <gtest/gtest.h>
+#include "xla/stream_executor/device_description.pb.h"
 #include "xla/tests/hlo_test_base.h"
 
 namespace xla {
