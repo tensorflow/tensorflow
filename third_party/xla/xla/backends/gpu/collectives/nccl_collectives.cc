@@ -20,9 +20,12 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/cleanup/cleanup.h"
+#include "absl/debugging/leak_check.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
@@ -59,6 +62,42 @@ limitations under the License.
 
 namespace xla::gpu {
 
+namespace {
+
+// Thread-local information about a NCCL group.
+//
+// https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/usage/groups.html
+struct GroupInfo {
+  // NCCL groups can be nested. For example:
+  //
+  //     ncclGroupStart();
+  //       ncclGroupStart();
+  //         ncclGroupStart();
+  //         ncclGroupEnd();
+  //       ncclGroupEnd();
+  //       ncclGroupStart();
+  //       ncclGroupEnd();
+  //     ncclGroupEnd();
+  //
+  // nesting_level is the current nesting level, or depth, of the group.
+  int nesting_level = 0;
+
+  // comms includes all communicators that have performed an operation in the
+  // group at any nesting level.
+  std::vector<ncclComm_t> comms;
+};
+
+// Returns the thread-local group information. NCCL groups are thread-local, so
+// the group information is forced to be thread-local as well.
+GroupInfo& ThreadLocalGroupInfo() {
+  // As of March 2025, absl::NoDestructor is not available in OSS XLA.
+  static thread_local GroupInfo* g = new GroupInfo();
+  absl::IgnoreLeak(g);
+  return *g;
+}
+
+}  // namespace
+
 static ncclComm_t Cast(const Communicator* comm) {
   auto* nccl_communicator = tsl::down_cast<const NcclCommunicator*>(comm);
   CHECK(nccl_communicator != nullptr) << "Unsupported XLA communicator";
@@ -93,6 +132,12 @@ NcclCollectives::GetCliqueIdCallback(const CliqueIdCallback* clique_id_callback,
 
 static ncclConfig_t AsNcclConfig(const GpuCollectives::Config& config) {
   ncclConfig_t comm_config = NCCL_CONFIG_INITIALIZER;
+  // Use non-blocking communicators. This allows us to ncclCommAbort stuck
+  // collectives. It is unsafe to use ncclCommAbort with blocking communicators.
+  //
+  // TODO(mwhittaker): We still use blocking communicators. Other code changes
+  // are needed to make non-blocking communicators work properly.
+  comm_config.blocking = 1;
 #if !defined(TENSORFLOW_USE_ROCM) || TF_ROCM_VERSION > 50700
   comm_config.splitShare = config.split_share;
 #endif
@@ -132,9 +177,11 @@ NcclCollectives::CreateCommunicators(const CliqueKey& clique_key,
 
   std::vector<ncclComm_t> comm_handles;
   std::vector<std::unique_ptr<Communicator>> comms;
+  std::vector<NcclCommunicator*> nccl_comms;
 
   comm_handles.resize(ranks.size(), nullptr);
   comms.reserve(ranks.size());
+  nccl_comms.reserve(ranks.size());
 
   if (clique_ids->data().size() != 1) {
     return InvalidArgument(
@@ -154,11 +201,17 @@ NcclCollectives::CreateCommunicators(const CliqueKey& clique_key,
     XLA_NCCL_RETURN_IF_ERROR(ncclCommInitRankConfig(
         &comm_handles[i], clique_key.num_devices(), nccl_unique_id,
         ranks[i].rank.value(), &comm_config));
+    auto comm = std::make_unique<NcclCommunicator>(this, comm_handles[i]);
+    JoinGroup(comm.get());
+    nccl_comms.push_back(comm.get());
+    comms.push_back(std::move(comm));
   }
   TF_RETURN_IF_ERROR(GroupEnd());
 
-  for (ncclComm_t comm_handle : comm_handles) {
-    comms.emplace_back(std::make_unique<NcclCommunicator>(comm_handle));
+  for (NcclCommunicator* comm : nccl_comms) {
+    if (!JoinGroup(comm)) {
+      TF_RETURN_IF_ERROR(PollUntilDone(comm->comm()));
+    }
   }
 
   return comms;
@@ -190,7 +243,11 @@ NcclCollectives::SplitCommunicators(absl::Span<const Communicator* const> comms,
   // communicators only after a successful call to `GroupEnd`, so we keep a
   // vector of handles and after successful splitting convert to RAII wrappers.
   std::vector<ncclComm_t> split_comms_handles;
+  std::vector<std::unique_ptr<Communicator>> split_comms;
+  std::vector<NcclCommunicator*> nccl_comms;
   split_comms_handles.resize(comms.size(), nullptr);
+  split_comms.reserve(comms.size());
+  nccl_comms.reserve(comms.size());
 
 #if !defined(TENSORFLOW_USE_ROCM) || TF_ROCM_VERSION >= 60000
   TF_RETURN_IF_ERROR(GroupStart());
@@ -200,14 +257,22 @@ NcclCollectives::SplitCommunicators(absl::Span<const Communicator* const> comms,
     XLA_NCCL_RETURN_IF_ERROR(
         ncclCommSplit(Cast(comms[i]), color, keys[i].value(),
                       &split_comms_handles[i], &comm_config));
+    auto comm =
+        std::make_unique<NcclCommunicator>(this, split_comms_handles[i]);
+    JoinGroup(comms[i]);
+    JoinGroup(comm.get());
+    nccl_comms.push_back(comm.get());
+    split_comms.push_back(std::move(comm));
   }
   TF_RETURN_IF_ERROR(GroupEnd());
 
-  std::vector<std::unique_ptr<Communicator>> split_comms;
-  split_comms.reserve(split_comms_handles.size());
   for (size_t i = 0; i < split_comms_handles.size(); ++i) {
-    split_comms.emplace_back(
-        std::make_unique<NcclCommunicator>(split_comms_handles[i]));
+    if (!JoinGroup(comms[i])) {
+      TF_RETURN_IF_ERROR(PollUntilDone(Cast(comms[i])));
+    }
+    if (!JoinGroup(nccl_comms[i])) {
+      TF_RETURN_IF_ERROR(PollUntilDone(nccl_comms[i]->comm()));
+    }
   }
   return split_comms;
 #else
@@ -219,12 +284,54 @@ NcclCollectives::SplitCommunicators(absl::Span<const Communicator* const> comms,
 
 absl::Status NcclCollectives::GroupStart() {
   VLOG(5) << "Start NCCL group";
-  return XLA_NCCL_STATUS(ncclGroupStart());
+  XLA_NCCL_RETURN_IF_ERROR(ncclGroupStart());
+  GroupInfo& g = ThreadLocalGroupInfo();
+  g.nesting_level++;
+  VLOG(5) << "NCCL group nesting level = " << g.nesting_level;
+  return absl::OkStatus();
 }
 
 absl::Status NcclCollectives::GroupEnd() {
   VLOG(5) << "End NCCL group";
-  return XLA_NCCL_STATUS(ncclGroupEnd());
+  XLA_NCCL_RETURN_IF_ERROR(ncclGroupEnd());
+  GroupInfo& g = ThreadLocalGroupInfo();
+  g.nesting_level--;
+  CHECK_GE(g.nesting_level, 0);
+  VLOG(5) << "NCCL group nesting level = " << g.nesting_level;
+
+  if (g.nesting_level > 0) {
+    // Though NCCL allows groups to be nested, no operations are actually
+    // performed until the outermost group ends. The inner calls to GroupStart()
+    // and GroupEnd() are effectively noops.
+    //
+    // https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/usage/groups.html
+    return absl::OkStatus();
+  }
+
+  // Make sure to clear g.comms, even if we encounter an error.
+  absl::Cleanup clear_comms = [&g]() {
+    // The heap leak checker doesn't like g.comms.clear(), which may not free
+    // the underlying heap-allocated memory, so we assign a new vector.
+    g.comms = std::vector<ncclComm_t>();
+  };
+
+  // Wait for every communicator in the group to finish.
+  for (ncclComm_t comm : g.comms) {
+    TF_RETURN_IF_ERROR(PollUntilDone(comm));
+  }
+
+  return absl::OkStatus();
+}
+
+bool NcclCollectives::JoinGroup(const Communicator* communicator) {
+  ncclComm_t comm = Cast(communicator);
+  GroupInfo& g = ThreadLocalGroupInfo();
+  if (g.nesting_level > 0) {
+    VLOG(5) << "Adding NCCL communicator " << comm << " to group";
+    g.comms.push_back(comm);
+    return true;
+  }
+  return false;
 }
 
 }  // namespace xla::gpu
