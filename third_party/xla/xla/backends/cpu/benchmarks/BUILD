@@ -230,6 +230,18 @@ xla_cc_test(
     ],
 )
 
+cc_library(
+    name = "multi_benchmark_config",
+    testonly = 1,
+    hdrs = ["multi_benchmark_config.h"],
+    deps = [
+        ":aot_benchmark_helper",
+        ":hlo_benchmark_runner",
+        "//xla/tsl/platform:test_benchmark",
+        "@com_google_absl//absl/strings:string_view",
+    ],
+)
+
 xla_cc_test(
     name = "optimizer_benchmark_test",
     srcs = ["optimizer_benchmark_test.cc"],
