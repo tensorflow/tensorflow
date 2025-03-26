@@ -24,11 +24,7 @@ load(
     "if_llvm_system_z_available",
     "if_llvm_x86_available",
 )
-load(
-    "//xla/tsl/platform:rules_cc.bzl",
-    "cc_library",
-    "cc_library_optional_no_mkl",
-)
+load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
 load(":build_defs.bzl", "runtime_copts")
 
 package(
@@ -421,11 +417,10 @@ cc_library(
     ]),
 )
 
-cc_library_optional_no_mkl(
+cc_library(
     name = "cpu_aot_compilation_result",
     srcs = ["cpu_aot_compilation_result.cc"],
     hdrs = ["cpu_aot_compilation_result.h"],
-    mkl_deps = ["//xla/backends/cpu/runtime:thunk_proto_serdes"],
     deps = [
         ":buffer_info_util",
         ":cpu_executable",
@@ -436,6 +431,7 @@ cc_library_optional_no_mkl(
         "//xla/backends/cpu/runtime:function_library",
         "//xla/backends/cpu/runtime:thunk",
         "//xla/backends/cpu/runtime:thunk_proto_cc",
+        "//xla/backends/cpu/runtime:thunk_proto_serdes",
         "//xla/hlo/ir:hlo",
         "//xla/service:buffer_assignment",
         "//xla/service:buffer_value",
