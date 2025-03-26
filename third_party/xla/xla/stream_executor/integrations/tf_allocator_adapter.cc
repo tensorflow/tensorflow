@@ -36,11 +36,15 @@ namespace stream_executor {
 TfAllocatorAdapter::TfAllocatorAdapter(tsl::Allocator *wrapped, Stream *stream)
     : DeviceMemoryAllocator(stream->parent()->GetPlatform()),
       wrapped_(wrapped),
-      stream_(stream) {}
+      stream_(stream),
+      async_use_(false) {}
 
 TfAllocatorAdapter::TfAllocatorAdapter(tsl::Allocator *wrapped,
-                                       Platform *platform)
-    : DeviceMemoryAllocator(platform), wrapped_(wrapped), stream_(nullptr) {}
+                                       Platform *platform, bool async_use)
+    : DeviceMemoryAllocator(platform),
+      wrapped_(wrapped),
+      stream_(nullptr),
+      async_use_(async_use) {}
 
 TfAllocatorAdapter::~TfAllocatorAdapter() {}
 
