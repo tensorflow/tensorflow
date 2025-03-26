@@ -777,11 +777,6 @@ build:tf_public_macos_cache_push --config=tf_public_macos_cache --remote_upload_
 # These are convenience config options that effectively declare TF's CI test suites. Look
 # at the scripts of ci/official/ to see how TF's CI uses them.
 
-# LIBTENSORFLOW TESTS are for building Libtensorflow archives. These are CUDA/CPU-agnostic.
-test:linux_libtensorflow_test --config=cuda_wheel -- //tensorflow/tools/lib_package:libtensorflow_test //tensorflow/tools/lib_package:libtensorflow_java_test
-build:linux_libtensorflow_build --config=cuda_wheel -- //tensorflow/tools/lib_package:libtensorflow.tar.gz //tensorflow/tools/lib_package:libtensorflow_jni.tar.gz //tensorflow/java:libtensorflow.jar //tensorflow/java:libtensorflow-src.jar //tensorflow/tools/lib_package:libtensorflow_proto.zip
-build:windows_libtensorflow_build --config=cuda_wheel --config=windows_x86_cpu_2022 -- //:LICENSE //tensorflow:tensorflow.dll //tensorflow:tensorflow_dll_import_lib //tensorflow/tools/lib_package:clicenses_generate //tensorflow/java:tensorflow_jni.dll //tensorflow/tools/lib_package:jnilicenses_generate
-
 # PYTHON TESTS run a suite of Python tests intended for verifying that the Python wheel
 # will work properly. These are usually run Nightly or upon Release.
 # CPU WHEEL
