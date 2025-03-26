@@ -1782,6 +1782,7 @@ PjRtFuture<> TfrtGpuBuffer::CopyRawToHostFuture(PjRtFuture<void*> dst,
         se::DeviceMemoryBase device_memory = device_buffer->buffer()->buffer();
         if (offset < 0 || offset > device_memory.size() ||
             device_memory.size() - offset < transfer_size) {
+          usage_event.SetStateConcrete();
           LOG(ERROR) << "Copy raw buffer called on buffer size "
                      << device_memory.size() << " with invalid offset "
                      << offset << ", transfer size " << transfer_size;
