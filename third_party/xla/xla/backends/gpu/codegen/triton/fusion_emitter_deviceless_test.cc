@@ -44,6 +44,7 @@ namespace xla::gpu {
 namespace {
 
 using ::tsl::testing::IsOkAndHolds;
+using ::xla::gpu::ir_emitter_triton_internal::DumpTritonIR;
 
 class AnnotationsTest : public GpuCodegenTest {
  public:

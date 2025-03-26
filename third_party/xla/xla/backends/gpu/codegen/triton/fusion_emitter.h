@@ -20,12 +20,12 @@ limitations under the License.
 #include <optional>
 #include <string>
 
-#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/IR/Module.h"
+#include "llvm/Support/raw_ostream.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OwningOpRef.h"
@@ -102,6 +102,8 @@ absl::StatusOr<TritonWrapperResult> CompileTritonToLLVM(
 std::string GetLibdevicePath(const HloModuleConfig& hlo_config,
                              const se::DeviceDescription& device_info);
 
+// TODO(b/406472229): Move the contents of this namespace to a helpers file
+// to avoid polluting `fusion_emitter.h`.
 // Exposed for testing purposes only. Do not use.
 namespace ir_emitter_triton_internal {
 
@@ -121,15 +123,25 @@ struct MakeTensorPtrOpAndBoundaryChecks {
 absl::StatusOr<MakeTensorPtrOpAndBoundaryChecks> CreateMakeTensorPtrOp(
     EmitterLocOpBuilder& b, mlir::ValueRange tile_multi_index,
     const TiledHloInstruction& tiled_hlo, mlir::Value parent_base_ptr);
-}  // namespace ir_emitter_triton_internal
 
 // Dumps the Triton IR to a string.
 //
 // If `dump_annotations` is true, then the function also dumps the loc
 // attributes of the instructions. Otherwise, it dumps the IR without
 // annotations.
-std::string DumpTritonIR(mlir::ModuleOp triton_module, bool dump_annotations);
+inline std::string DumpTritonIR(mlir::ModuleOp triton_module,
+                                bool dump_annotations) {
+  std::string triton_ir;
+  llvm::raw_string_ostream os(triton_ir);
+  triton_module.print(os, mlir::OpPrintingFlags().enableDebugInfo(
+                              dump_annotations, dump_annotations));
+  if (dump_annotations) {
+    return EmitterLocOpBuilder::FormatTritonIrWithAnnotations(triton_ir);
+  }
+  return triton_ir;
+}
 
+}  // namespace ir_emitter_triton_internal
 }  // namespace gpu
 }  // namespace xla
 
