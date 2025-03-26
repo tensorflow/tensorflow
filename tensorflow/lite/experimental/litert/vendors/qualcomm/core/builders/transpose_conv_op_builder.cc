@@ -10,7 +10,6 @@
 #include "third_party/qairt/latest/include/QNN/QnnTypes.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/builders/op_builder.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/tensor_pool.h"
-#include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/utils/log.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/wrappers/op_wrapper.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/wrappers/tensor_wrapper.h"
 

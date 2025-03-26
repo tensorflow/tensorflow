@@ -42,9 +42,10 @@ using ::testing::Values;
 // TODO: Add support and uncomment these models.
 const auto kSupportedOps =
                   Values(
-                    // "simple_cumsum.tflite",
+                    "simple_transpose_conv_op.tflite",
+                    "simple_cumsum.tflite",
                     "simple_floor_div.tflite",
-                    // "simple_gather_nd.tflite",
+                    "simple_gather_nd.tflite",
                     "simple_logistic.tflite",
                     "simple_max_pool_2d.tflite",
                     "simple_not_equal.tflite",

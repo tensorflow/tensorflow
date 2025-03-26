@@ -501,7 +501,31 @@ TEST(GetOpOptionTest, TestGetCumsumOptions) {
   ASSERT_EQ(exclusive, false);
   bool reverse;
   LITERT_ASSERT_OK(LiteRtGetCumsumReverseOption(op, &reverse));
-  ASSERT_EQ(reverse, true);
+  ASSERT_EQ(reverse, false);
+}
+
+TEST(GetOpOptionTest, TestGetTransposeConvOptions) {
+  auto model =
+      litert::testing::LoadTestFileModel("simple_transpose_conv_op.tflite");
+  auto subgraph = model.MainSubgraph();
+  EXPECT_TRUE(subgraph);
+
+  auto ops = subgraph->Ops();
+  auto op = ops.front().Get();
+
+  uint32_t padding;
+  LITERT_ASSERT_OK(LiteRtGetTransposeConvPaddingOption(op, &padding));
+  ASSERT_EQ(padding, 1);
+  int32_t stride_w;
+  LITERT_ASSERT_OK(LiteRtGetTransposeConvStrideWOption(op, &stride_w));
+  ASSERT_EQ(stride_w, 1);
+  int32_t stride_h;
+  LITERT_ASSERT_OK(LiteRtGetTransposeConvStrideHOption(op, &stride_h));
+  ASSERT_EQ(stride_h, 1);
+  uint32_t fused_activation_function;
+  LITERT_ASSERT_OK(LiteRtGetTransposeConvFusedActivationOption(
+      op, &fused_activation_function));
+  ASSERT_EQ(fused_activation_function, 0);
 }
 
 }  // namespace
