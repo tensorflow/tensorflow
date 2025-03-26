@@ -364,7 +364,8 @@ HloRunnerAgnosticTestBase::RunAndCompareTwoModulesReplicated(
     const absl::string_view hlo_string_module_0,
     const absl::string_view hlo_string_module_1,
     const std::optional<ErrorSpec>& error, const bool run_hlo_passes,
-    const std::optional<int64_t> args_max_bits_of_precision) {
+    const std::optional<int64_t> args_max_bits_of_precision,
+    const std::function<void(HloModule*)>& preprocessor) {
   absl::StatusOr<std::unique_ptr<VerifiedHloModule>> module_0 =
       ParseAndReturnVerifiedModule(hlo_string_module_0);
   if (!module_0.ok()) {
@@ -380,6 +381,12 @@ HloRunnerAgnosticTestBase::RunAndCompareTwoModulesReplicated(
            << "Error while parsing HLO text format: "
            << module_1.status().ToString();
   }
+
+  if (preprocessor != nullptr) {
+    preprocessor(module_0->get());
+    preprocessor(module_1->get());
+  }
+
   return RunAndCompareTwoModules(*std::move(module_0), *std::move(module_1),
                                  error, run_hlo_passes,
                                  args_max_bits_of_precision);
@@ -437,7 +444,8 @@ HloRunnerAgnosticTestBase::RunAndCompareTwoModulesReplicated(
 ::testing::AssertionResult HloRunnerAgnosticTestBase::Run(
     const absl::string_view hlo_string, const bool run_hlo_passes,
     ExecutionProfile* const profile,
-    const tsl::protobuf::Message* backend_config, const bool use_random_data) {
+    const tsl::protobuf::Message* backend_config, const bool use_random_data,
+    const std::function<void(HloModule*)>& preprocessor) {
   absl::StatusOr<std::unique_ptr<VerifiedHloModule>> module =
       ParseAndReturnVerifiedModule(hlo_string);
   if (!module.ok()) {
@@ -473,6 +481,9 @@ HloRunnerAgnosticTestBase::RunAndCompareTwoModulesReplicated(
     absl::Status s = instruction->set_backend_config(*backend_config);
     return s.ok() ? ::testing::AssertionSuccess()
                   : ::testing::AssertionFailure() << s.message();
+  }
+  if (preprocessor) {
+    preprocessor(module->get());
   }
 
   auto output = test_runner_->Execute(*std::move(module), fake_argument_ptrs,

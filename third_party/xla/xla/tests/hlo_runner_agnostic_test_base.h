@@ -178,7 +178,8 @@ class HloRunnerAgnosticTestBase : public HloHardwareIndependentTestBase {
       absl::string_view hlo_string, bool run_hlo_passes = true,
       ExecutionProfile* profile = nullptr,
       const tsl::protobuf::Message* backend_config = nullptr,
-      bool use_random_data = true);
+      bool use_random_data = true,
+      const std::function<void(HloModule*)>& preprocessor = nullptr);
 
   // Same as below, except that it requires all the options to be passed.
   ::testing::AssertionResult RunAndCompareTwoModulesReplicated(
@@ -224,7 +225,8 @@ class HloRunnerAgnosticTestBase : public HloHardwareIndependentTestBase {
       absl::string_view hlo_string_module_0,
       absl::string_view hlo_string_module_1,
       const std::optional<ErrorSpec>& error, bool run_hlo_passes = true,
-      std::optional<int64_t> args_max_bits_of_precision = std::nullopt);
+      std::optional<int64_t> args_max_bits_of_precision = std::nullopt,
+      const std::function<void(HloModule*)>& preprocessor = nullptr);
 
   // Same as above but allows running with different configs.
   ::testing::AssertionResult RunAndCompareTwoModules(
