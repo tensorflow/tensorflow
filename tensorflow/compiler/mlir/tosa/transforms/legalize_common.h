@@ -179,14 +179,16 @@ std::optional<Value> convertReduceAllOp(PatternRewriter& rewriter,
                                         Operation* op,
                                         RankedTensorType output_type,
                                         Value input_value,
-                                        ElementsAttr axes_elems);
+                                        ElementsAttr axes_elems,
+                                        bool keep_dims);
 
 // Lowers ReduceAny to a sequence of TOSA ops.
 std::optional<Value> convertReduceAnyOp(PatternRewriter& rewriter,
                                         Operation* op,
                                         RankedTensorType output_type,
                                         Value input_value,
-                                        ElementsAttr axes_elems);
+                                        ElementsAttr axes_elems,
+                                        bool keep_dims);
 
 // Lowers ReduceMin to a sequence of TOSA ops.
 std::optional<Value> convertReduceMinOp(PatternRewriter& rewriter,
@@ -194,6 +196,7 @@ std::optional<Value> convertReduceMinOp(PatternRewriter& rewriter,
                                         RankedTensorType output_type,
                                         Value input_value,
                                         ElementsAttr axes_elems,
+                                        bool keep_dims,
                                         StringRef nan_mode = "PROPAGATE");
 
 // Lowers ReduceMax to a sequence of TOSA ops.
@@ -202,6 +205,7 @@ std::optional<Value> convertReduceMaxOp(PatternRewriter& rewriter,
                                         RankedTensorType output_type,
                                         Value input_value,
                                         ElementsAttr axes_elems,
+                                        bool keep_dims,
                                         StringRef nan_mode = "PROPAGATE");
 
 // Lowers ReduceProd to a sequence of TOSA ops.
@@ -209,21 +213,24 @@ std::optional<Value> convertReduceProdOp(PatternRewriter& rewriter,
                                          Operation* op,
                                          RankedTensorType output_type,
                                          Value input_value,
-                                         ElementsAttr axes_elems);
+                                         ElementsAttr axes_elems,
+                                         bool keep_dims);
 
 // Lowers ReduceSum to a sequence of TOSA ops.
 std::optional<Value> convertReduceSumOp(PatternRewriter& rewriter,
                                         Operation* op,
                                         RankedTensorType output_type,
                                         Value input_value,
-                                        ElementsAttr axes_elems);
+                                        ElementsAttr axes_elems,
+                                        bool keep_dims);
 
 // Lowers ReduceMean to a sequence of TOSA ops.
 std::optional<Value> convertReduceMeanOp(PatternRewriter& rewriter,
                                          Operation* op,
                                          RankedTensorType output_type,
                                          Value input_value,
-                                         ElementsAttr axes_elem);
+                                         ElementsAttr axes_elem,
+                                         bool keep_dims);
 
 // Lowers ResizeBilinear and ResizeNearestNeighbor to TOSA resize.
 std::optional<Value> convertResizeOp(PatternRewriter& rewriter, Operation* op,
