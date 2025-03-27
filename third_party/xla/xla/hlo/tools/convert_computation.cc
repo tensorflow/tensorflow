@@ -16,6 +16,8 @@ limitations under the License.
 // Usage: convert_computation <txt2bin|bin2txt> serialized_computation_proto
 //
 // bin2txt spits out the result to stdout. txt2bin modifies the file in place.
+#include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "tsl/platform/status.h"
 #ifndef _WIN32
 #include <unistd.h>
