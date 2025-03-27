@@ -60,6 +60,9 @@ class HloControlFlowFlattening : public HloModulePass {
     // If flatten_conditional is true, this will behe default predicate value to
     // use for predicated conditional ops.
     bool conditional_value = false;
+    // Remove call-start and call-done associated with sparse core.
+    // Until HybridSim supports sparse core, we need to remove them.
+    bool remove_sparse_core_calls = true;
   };
   explicit HloControlFlowFlattening(const Options& options)
       : while_execution_count_(options.while_execution_count),
@@ -70,6 +73,7 @@ class HloControlFlowFlattening : public HloModulePass {
         remove_host_transfer_(options.remove_host_transfer),
         flatten_conditional_(options.flatten_conditional),
         conditional_value_(options.conditional_value),
+        remove_sparse_core_calls_(options.remove_sparse_core_calls),
         remove_comm_(options.remove_comm),
         remove_id_(options.remove_id) {}
   ~HloControlFlowFlattening() override = default;
@@ -105,6 +109,7 @@ class HloControlFlowFlattening : public HloModulePass {
   bool remove_host_transfer_;
   bool flatten_conditional_;
   bool conditional_value_;
+  bool remove_sparse_core_calls_;
 
  protected:
   // Replaces a collective op with a custom call and returns the custom call.
