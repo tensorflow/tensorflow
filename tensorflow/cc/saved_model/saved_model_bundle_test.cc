@@ -13,6 +13,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <string>
+#include <unordered_set>
+#include <vector>
+
+#include "absl/strings/match.h"
 #include "tensorflow/cc/saved_model/constants.h"
 #include "tensorflow/cc/saved_model/loader.h"
 #include "tensorflow/cc/saved_model/metrics.h"
@@ -27,6 +32,7 @@ limitations under the License.
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/protobuf/meta_graph.pb.h"
 
 namespace tensorflow {
