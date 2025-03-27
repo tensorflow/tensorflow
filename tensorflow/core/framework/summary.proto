@@ -6,7 +6,6 @@ import public "xla/tsl/protobuf/histogram.proto";
 
 import "tensorflow/core/framework/tensor.proto";
 
-option cc_enable_arenas = true;
 option java_outer_classname = "SummaryProtos";
 option java_multiple_files = true;
 option java_package = "org.tensorflow.framework";
@@ -51,14 +50,17 @@ enum DataClass {
   // Unknown data class, used (implicitly) for legacy data. Will not be
   // processed by data ingestion pipelines.
   DATA_CLASS_UNKNOWN = 0;
+
   // Scalar time series. Each `Value` for the corresponding tag must have
   // `tensor` set to a rank-0 tensor of type `DT_FLOAT` (float32).
   DATA_CLASS_SCALAR = 1;
+
   // Tensor time series. Each `Value` for the corresponding tag must have
   // `tensor` set. The tensor value is arbitrary, but should be small to
   // accommodate direct storage in database backends: an upper bound of a few
   // kilobytes is a reasonable rule of thumb.
   DATA_CLASS_TENSOR = 2;
+
   // Blob sequence time series. Each `Value` for the corresponding tag must
   // have `tensor` set to a rank-1 tensor of bytestring dtype.
   DATA_CLASS_BLOB_SEQUENCE = 3;
@@ -75,6 +77,7 @@ message Summary {
     // Dimensions of the image.
     int32 height = 1;
     int32 width = 2;
+
     // Valid colorspace values are
     //   1 - grayscale
     //   2 - grayscale + alpha
@@ -83,6 +86,7 @@ message Summary {
     //   5 - DIGITAL_YUV
     //   6 - BGRA
     int32 colorspace = 3;
+
     // Image data in encoded format.  All image formats supported by
     // image_codec::CoderUtil can be stored here.
     bytes encoded_image_string = 4;
@@ -91,10 +95,13 @@ message Summary {
   message Audio {
     // Sample rate of the audio in Hz.
     float sample_rate = 1;
+
     // Number of channels of audio.
     int64 num_channels = 2;
+
     // Length of the audio in frames (samples per channel).
     int64 length_frames = 3;
+
     // Encoded audio data and its associated RFC 2045 content type (e.g.
     // "audio/wav").
     bytes encoded_audio_string = 4;

@@ -4,7 +4,6 @@ package tensorflow;
 
 import "tensorflow/core/framework/attr_value.proto";
 
-option cc_enable_arenas = true;
 option java_outer_classname = "KernelDefProtos";
 option java_multiple_files = true;
 option java_package = "org.tensorflow.framework";
@@ -25,6 +24,7 @@ message KernelDef {
     // Like OpDef.AttrDef.allowed_values, except for kernels instead of Ops.
     AttrValue allowed_values = 2;
   }
+
   repeated AttrConstraint constraint = 3;
 
   // Names of the Op's input_/output_args that reside in host memory
