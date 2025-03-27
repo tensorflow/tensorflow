@@ -556,22 +556,28 @@ PjRtLoadedExecutable::Execute(absl::Span<tsl::RCReference<Array>> args,
   // Forward callbacks via FFI's ExecutionContext for CPU/GPU platforms only.
   if (platform_id == CpuId() || platform_id == CudaId() ||
       platform_id == RocmId() || platform_id == SyclId()) {
-    auto type_id = xla::ffi::TypeIdRegistry::TypeId(
-        xla::FfiLoadedHostCallbacks::id.type_id);
-    callbacks->reserve(all_loaded_host_callbacks_->size());
     for (const auto& loaded_host_callback : *all_loaded_host_callbacks_) {
       auto* ffi_loaded_host_callback =
           llvm::dyn_cast<PjRtFfiLoadedHostCallback>(loaded_host_callback.get());
-      if (ffi_loaded_host_callback == nullptr) {
-        return InvalidArgument(
-            "Only PjRtFfiLoadedHostCallback is supported for FFI host "
-            "callbacks");
+      if (ffi_loaded_host_callback != nullptr) {
+        void* callback = ffi_loaded_host_callback->callable();
+        callbacks->push_back(callback);
       }
-      void* callback = ffi_loaded_host_callback->callable();
-      callbacks->push_back(callback);
+    }
+    // NOTE(dsuo): For now, check that either all or none of the host callbacks
+    // are FFI callbacks. Otherwise, we have an error.
+    // TODO(b/406585850): Improve how we determine when loaded host callbacks
+    // are forwarded to ffi::ExecutionContext.
+    if (!callbacks->empty() &&
+        callbacks->size() != all_loaded_host_callbacks_->size()) {
+      return InvalidArgument(
+          "ifrt::LoadedHostCallbacks must either be all "
+          "ifrt::PjRtFfiLoadedHostCallback or none.");
     }
     ffi_callbacks->callbacks = callbacks->data();
     ffi_callbacks->num_callbacks = callbacks->size();
+    auto type_id = xla::ffi::TypeIdRegistry::TypeId(
+        xla::FfiLoadedHostCallbacks::id.type_id);
     CHECK_OK(context->ffi_context().Insert(type_id, ffi_callbacks.get()));
     opts.context = context.get();
   }
