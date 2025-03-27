@@ -16,6 +16,12 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_GRAPPLER_UTILS_PATTERN_UTILS_H_
 #define TENSORFLOW_CORE_GRAPPLER_UTILS_PATTERN_UTILS_H_
 
+#include <map>
+#include <memory>
+#include <set>
+#include <unordered_set>
+#include <vector>
+
 #include "tensorflow/core/grappler/utils/graph_view.h"
 
 namespace tensorflow {
