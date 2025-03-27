@@ -33,8 +33,8 @@ limitations under the License.
 #include "mlir/Support/ToolUtilities.h"  // from @llvm-project
 #include "mlir/Tools/mlir-translate/Translation.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/init_mlir.h"
-#include "tensorflow/compiler/mlir/lite/tools/tf_mlir_translate_cl.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/tf_mlir_translate.h"
+#include "tensorflow/compiler/mlir/tools/tf_mlir_translate_cl.h"
 #include "tensorflow/core/platform/init_main.h"
 
 // NOLINTNEXTLINE
@@ -134,7 +134,7 @@ int main(int argc, char** argv) {
   } else if (import_saved_model_signature_defs) {
     mlir::MLIRContext context;
     tensorflow::MLIRImportOptions import_options;
-    import_options.upgrade_legacy = upgrade_legacy;
+    import_options.upgrade_legacy = mlir_tools::upgrade_legacy;
     auto module_or = tensorflow::SavedModelSignatureDefsToMlirImport(
         input_filename, tags, exported_names, &context, import_options);
     if (!module_or.status().ok()) return 1;
@@ -143,7 +143,7 @@ int main(int argc, char** argv) {
   } else if (import_saved_model_signature_defs_lite) {
     mlir::MLIRContext context;
     tensorflow::MLIRImportOptions import_options;
-    import_options.upgrade_legacy = upgrade_legacy;
+    import_options.upgrade_legacy = mlir_tools::upgrade_legacy;
     auto module_or = tensorflow::SavedModelSignatureDefsToMlirImportLite(
         input_filename, tags, exported_names, &context, import_options);
     if (!module_or.status().ok()) return 1;
