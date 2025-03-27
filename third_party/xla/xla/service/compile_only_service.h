@@ -73,14 +73,14 @@ class CompileOnlyService : public Service {
 
  private:
   explicit CompileOnlyService(const ServiceOptions& options,
-                              Compiler* compiler);
+                              std::unique_ptr<Compiler> compiler);
   CompileOnlyService(const CompileOnlyService&) = delete;
   void operator=(const CompileOnlyService&) = delete;
 
   // The compiler for the target platform.  This is included in place of
   // the Service::execute_backend_'s compiler, since execute_backend_ is a
   // nullptr in CompileOnlyService.
-  Compiler* compiler_;
+  std::unique_ptr<Compiler> compiler_;
 };
 
 }  // namespace xla

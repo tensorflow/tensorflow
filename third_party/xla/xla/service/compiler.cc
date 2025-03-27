@@ -108,21 +108,9 @@ Compiler::GetPlatformCompilers() {
   (*factories)[platform_id] = std::move(compiler_factory);
 }
 
-/* static */ absl::StatusOr<Compiler*> Compiler::GetForPlatform(
+/* static */ absl::StatusOr<std::unique_ptr<Compiler>> Compiler::GetForPlatform(
     const se::Platform* platform) {
   absl::MutexLock lock(&platform_compiler_mutex_);
-
-  auto* compilers = GetPlatformCompilers();
-  // See if we already instantiated a compiler for this platform.
-  {
-    auto it = compilers->find(platform->id());
-    if (it != compilers->end()) {
-      return it->second.get();
-    }
-
-    // If not, we just fall through to try to create one with a registered
-    // factory.
-  }
 
   auto* factories = GetPlatformCompilerFactories();
   auto it = factories->find(platform->id());
@@ -132,10 +120,7 @@ Compiler::GetPlatformCompilers() {
         "that platform linked in?",
         platform->Name());
   }
-
-  // And then we invoke the factory, placing the result into the mapping.
-  compilers->insert(std::make_pair(platform->id(), it->second()));
-  return compilers->at(platform->id()).get();
+  return it->second();
 }
 
 // Default implementation
