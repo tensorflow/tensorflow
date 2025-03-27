@@ -16,19 +16,26 @@ limitations under the License.
 #include "tensorflow/core/distributed_runtime/eager/eager_service_impl.h"
 
 #include <cstdint>
+#include <cstring>
 #include <functional>
 #include <memory>
 #include <optional>
+#include <string>
 #include <unordered_map>
 #include <utility>
 #include <variant>
 #include <vector>
 
+#include "absl/container/inlined_vector.h"
+#include "absl/log/check.h"
 #include "absl/status/status.h"
+#include "absl/strings/match.h"
 #include "absl/types/optional.h"
 #include "absl/types/variant.h"
+#include "third_party/protobuf/text_format.h"
 #include "tensorflow/c/tf_tensor.h"
 #include "tensorflow/c/tf_tensor_internal.h"
+#include "xla/tsl/protobuf/error_codes.pb.h"
 #include "tensorflow/core/common_runtime/eager/kernel_and_device.h"
 #include "tensorflow/core/common_runtime/eager/tensor_handle.h"
 #include "tensorflow/core/distributed_runtime/eager/cluster_function_library_runtime.h"
@@ -38,11 +45,13 @@ limitations under the License.
 #include "tensorflow/core/distributed_runtime/test_utils.h"
 #include "tensorflow/core/distributed_runtime/worker_env.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
+#include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/protobuf/eager_service.pb.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
 #include "tensorflow/core/protobuf/remote_tensor_handle.pb.h"
