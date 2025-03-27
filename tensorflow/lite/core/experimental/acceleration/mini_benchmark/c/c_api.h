@@ -20,6 +20,8 @@ limitations under the License.
 #include <stdint.h>
 #include <stdio.h>
 
+#include <cstdarg>
+
 #ifdef __cplusplus
 extern "C" {
 #endif
