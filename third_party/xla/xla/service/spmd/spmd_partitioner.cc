@@ -3860,6 +3860,12 @@ absl::Status SpmdPartitioningVisitor::HandleDynamicUpdateSlice(
       auto per_partition_size_hlo = add_hlo(HloInstruction::CreateConstant(
           LiteralUtil::CreateR0<int>(per_partition_size)));
       const Shape& offset_shape = per_partition_size_hlo->shape();
+      const Shape& index_shape = new_indices[dim]->shape();
+      if (offset_shape.element_type() != index_shape.element_type())
+        new_indices[dim] = add_hlo(HloInstruction::CreateConvert(
+            ShapeUtil::ChangeElementType(index_shape,
+                                         offset_shape.element_type()),
+            new_indices[dim]));
       auto partition_offset = add_hlo(HloInstruction::CreateBinary(
           offset_shape, HloOpcode::kMultiply, partition_ordinals[dim],
           per_partition_size_hlo));
@@ -3897,6 +3903,12 @@ absl::Status SpmdPartitioningVisitor::HandleDynamicUpdateSlice(
               partition_offset)),
           add_hlo(
               HloInstruction::CreateConstant(LiteralUtil::CreateR0<int>(0)))));
+      if (new_indices[dim]->shape().element_type() !=
+          index_shape.element_type())
+        new_indices[dim] = add_hlo(HloInstruction::CreateConvert(
+            ShapeUtil::ChangeElementType(new_indices[dim]->shape(),
+                                         index_shape.element_type()),
+            new_indices[dim]));
     }
 
     // Create dynamic update slice.
