@@ -169,7 +169,6 @@ LiteRtStatus LiteRtGetTensorBufferDmaBufBuffer(LiteRtTensorBuffer tensor_buffer,
 }
 #endif  // LITERT_HAS_DMABUF_SUPPORT
 
-#if LITERT_HAS_OPENCL_SUPPORT
 LiteRtStatus LiteRtCreateTensorBufferFromOpenClBuffer(
     const LiteRtRankedTensorType* tensor_type, cl_mem cl_mem_addr,
     size_t opencl_buffer_size, LiteRtOpenClDeallocator deallocator,
@@ -203,7 +202,6 @@ LiteRtStatus LiteRtGetTensorBufferOpenClBuffer(LiteRtTensorBuffer tensor_buffer,
   *cl_mem_addr = (*opencl_buffer)->GetMemoryPtr();
   return kLiteRtStatusOk;
 }
-#endif  // LITERT_HAS_OPENCL_SUPPORT
 
 #if LITERT_HAS_FASTRPC_SUPPORT
 LiteRtStatus LiteRtCreateTensorBufferFromFastRpcBuffer(
