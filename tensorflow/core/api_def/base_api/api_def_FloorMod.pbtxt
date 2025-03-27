@@ -5,6 +5,13 @@ op {
 This follows Python semantics in that the
 result here is consistent with a flooring divide. E.g.
 `floor(x / y) * y + floormod(x, y) = x`, regardless of the signs of x and y.
+Example:
+
+>>> x = tf.constant([10, -15, 7], dtype=tf.int8)
+>>> y = tf.constant([3, -4, 2], dtype=tf.int8)
+>>> name = "random_floormod_operation"
+>>> print(tf.math.floormod(x,y,name))
+<tf.Tensor([ 1 -3  1], shape=(3,), dtype=int8)>
 
 *NOTE*: `FloorMod` supports broadcasting. More about broadcasting
 [here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
