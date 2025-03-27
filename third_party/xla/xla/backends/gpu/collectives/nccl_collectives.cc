@@ -244,25 +244,31 @@ NcclCollectives::SplitCommunicators(absl::Span<const Communicator* const> comms,
   // vector of handles and after successful splitting convert to RAII wrappers.
   std::vector<ncclComm_t> split_comms_handles;
   std::vector<std::unique_ptr<Communicator>> split_comms;
-  std::vector<NcclCommunicator*> nccl_comms;
+  std::vector<NcclCommunicator*> split_nccl_comms;
   split_comms_handles.resize(comms.size(), nullptr);
   split_comms.reserve(comms.size());
-  nccl_comms.reserve(comms.size());
+  split_nccl_comms.reserve(comms.size());
 
 #if !defined(TENSORFLOW_USE_ROCM) || TF_ROCM_VERSION >= 60000
   TF_RETURN_IF_ERROR(GroupStart());
   for (size_t i = 0; i < comms.size(); ++i) {
     VLOG(1) << "Split NCCL communicator " << comms[i] << " with color " << color
             << " and key " << keys[i];
+    // If color is NCCL_SPLIT_NOCOLOR, then the split communicator will be NULL.
+    // See
+    // https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/api/comms.html#c.ncclCommSplit
+    // for details.
     XLA_NCCL_RETURN_IF_ERROR(
         ncclCommSplit(Cast(comms[i]), color, keys[i].value(),
                       &split_comms_handles[i], &comm_config));
-    auto comm =
+    auto split_comm =
         std::make_unique<NcclCommunicator>(this, split_comms_handles[i]);
     JoinGroup(comms[i]);
-    JoinGroup(comm.get());
-    nccl_comms.push_back(comm.get());
-    split_comms.push_back(std::move(comm));
+    if (split_comms_handles[i] != nullptr) {
+      JoinGroup(split_comm.get());
+    }
+    split_nccl_comms.push_back(split_comm.get());
+    split_comms.push_back(std::move(split_comm));
   }
   TF_RETURN_IF_ERROR(GroupEnd());
 
@@ -270,8 +276,8 @@ NcclCollectives::SplitCommunicators(absl::Span<const Communicator* const> comms,
     if (!JoinGroup(comms[i])) {
       TF_RETURN_IF_ERROR(PollUntilDone(Cast(comms[i])));
     }
-    if (!JoinGroup(nccl_comms[i])) {
-      TF_RETURN_IF_ERROR(PollUntilDone(nccl_comms[i]->comm()));
+    if (split_comms_handles[i] != nullptr && !JoinGroup(split_nccl_comms[i])) {
+      TF_RETURN_IF_ERROR(PollUntilDone(split_nccl_comms[i]->comm()));
     }
   }
   return split_comms;
