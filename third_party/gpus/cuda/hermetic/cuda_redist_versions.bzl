@@ -74,6 +74,10 @@ CUDA_REDIST_JSON_DICT = {
         "https://developer.download.nvidia.com/compute/cuda/redist/redistrib_12.8.0.json",
         "daa0d766b36feaa933592162c27be5fb63b68fc547ca6886c160a35d96ee8891",
     ],
+    "12.8.1": [
+        "https://developer.download.nvidia.com/compute/cuda/redist/redistrib_12.8.1.json",
+        "249e28a83008d711d5f72880541c8be6253f6d61608461de4fcb715554a6cf17",
+    ],
 }
 
 CUDNN_REDIST_JSON_DICT = {
@@ -176,6 +180,7 @@ CUDA_NCCL_WHEELS = {
     "12.6.2": CUDA_12_NCCL_WHEEL_DICT,
     "12.6.3": CUDA_12_NCCL_WHEEL_DICT,
     "12.8.0": CUDA_12_NCCL_WHEEL_DICT,
+    "12.8.1": CUDA_12_NCCL_WHEEL_DICT,
 }
 
 # Ensures PTX version compatibility w/ Clang & ptxas in cuda_configure.bzl
