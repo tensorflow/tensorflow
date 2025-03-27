@@ -519,6 +519,7 @@ cc_library(
         ":pjrt_future",
         ":pjrt_stream_executor_device_description",
         ":semaphore",
+        ":stream_executor_executable",
         ":tracked_device_buffer",
         ":transpose",
         ":utils",
