@@ -15,6 +15,10 @@ limitations under the License.
 
 #include "xla/service/cpu/cpu_executable.h"
 
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/status/statusor.h"
+
 #define EIGEN_USE_THREADS
 
 #include <stdint.h>
