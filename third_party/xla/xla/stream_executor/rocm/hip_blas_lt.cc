@@ -24,6 +24,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/base/casts.h"
 #include "rocm/rocm_config.h"
 #if TF_HIPBLASLT
 
@@ -45,7 +46,6 @@ limitations under the License.
 #include "xla/stream_executor/event_based_timer.h"
 #include "xla/stream_executor/gpu/gpu_blas_lt.h"
 #include "xla/stream_executor/gpu/gpu_helpers.h"
-#include "xla/stream_executor/gpu/gpu_stream.h"
 #include "xla/stream_executor/rocm/hip_blas_utils.h"
 #include "xla/stream_executor/rocm/hipblaslt_wrapper.h"
 #include "xla/stream_executor/rocm/rocm_blas.h"
@@ -446,7 +446,9 @@ absl::Status BlasLt::MatmulPlan::DoMatmul(
           blas_lt->blas_lt_.get(), op_desc_.get(), alpha, a.opaque(),
           a_desc_.get(), b.opaque(), b_desc_.get(), beta, args.c.opaque(),
           c_desc_.get(), args.d.opaque(), d_desc_.get(), palgo, workspace_addr,
-          workspace_size, gpu::AsGpuStreamValue(stream)));
+          workspace_size,
+          absl::bit_cast<hipStream_t>(
+              stream->platform_specific_handle().stream)));
     } else {
       return absl::InternalError("hipblaslt: Invalid algorithm type");
     }
