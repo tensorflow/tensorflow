@@ -28,6 +28,7 @@ limitations under the License.
 #include "llvm/IR/Value.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/service/elemental_ir_emitter.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla::cpu {
 
