@@ -20,6 +20,7 @@ limitations under the License.
 #include <utility>
 
 #include "absl/status/statusor.h"
+#include "absl/strings/numbers.h"
 #include "absl/strings/string_view.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/tsl/platform/statusor.h"
@@ -38,12 +39,11 @@ namespace profiler {
 namespace {
 
 absl::StatusOr<PreprocessResult> GetMemoryViewerPreprocessResult(
-    const xla::HloProto& hlo_proto) {
+    const xla::HloProto& hlo_proto, int memory_space_color) {
   static constexpr int kSmallBufferSize = 16 * 1024;  // 16KB
-  static constexpr int kMemorySpaceColor = 0;         // HBM
 
   auto result_or = ConvertHloProtoToPreprocessResult(
-      hlo_proto, kSmallBufferSize, kMemorySpaceColor);
+      hlo_proto, kSmallBufferSize, memory_space_color);
   if (!result_or.ok()) {
     return errors::Internal(
         "Failed to convert HLO proto to memory viewer result: ",
@@ -53,8 +53,9 @@ absl::StatusOr<PreprocessResult> GetMemoryViewerPreprocessResult(
 }
 
 absl::StatusOr<std::string> ConvertHloProtoToMemoryViewer(
-    const xla::HloProto& hlo_proto) {
-  auto result_or = GetMemoryViewerPreprocessResult(hlo_proto);
+    const xla::HloProto& hlo_proto, int memory_space_color) {
+  auto result_or =
+      GetMemoryViewerPreprocessResult(hlo_proto, memory_space_color);
   if (!result_or.ok()) {
     return result_or.status();
   }
@@ -75,8 +76,9 @@ absl::StatusOr<std::string> ConvertHloProtoToMemoryViewer(
 }
 
 absl::StatusOr<std::string> ConvertHloProtoToAllocationTimeline(
-    const xla::HloProto& hlo_proto) {
-  auto result_or = GetMemoryViewerPreprocessResult(hlo_proto);
+    const xla::HloProto& hlo_proto, int memory_space_color) {
+  auto result_or =
+      GetMemoryViewerPreprocessResult(hlo_proto, memory_space_color);
   if (!result_or.ok()) {
     return result_or.status();
   }
@@ -117,11 +119,18 @@ absl::StatusOr<std::string> ConvertHloProtoToToolData(
       GetHloProtoByModuleName(session_snapshot, *hlo_module_name));
 
   // Convert from HLO proto to tools data.
+  int memory_space_color = 0;
+  if (!absl::SimpleAtoi(
+          GetParamWithDefault(options, "memory_space", std::string("0")),
+          &memory_space_color)) {
+    memory_space_color = 0;
+  }
+
   if (tool_name == "memory_viewer") {
     if (GetParamWithDefault(options, "view_memory_allocation_timeline", 0)) {
-      return ConvertHloProtoToAllocationTimeline(hlo_proto);
+      return ConvertHloProtoToAllocationTimeline(hlo_proto, memory_space_color);
     }
-    return ConvertHloProtoToMemoryViewer(hlo_proto);
+    return ConvertHloProtoToMemoryViewer(hlo_proto, memory_space_color);
   } else if (tool_name == "graph_viewer") {
     return ConvertHloProtoToGraphViewer(hlo_proto, options);
   } else {
