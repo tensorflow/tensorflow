@@ -68,6 +68,7 @@ cc_library(
     deps = [
         ":atomic_rmw_utils",
         ":passes_inc_gen",
+        "//third_party/protobuf",
         "//xla:shape_util",
         "//xla:util",
         "//xla:xla_data_proto_cc",
