@@ -63,6 +63,17 @@ _DELEGATE_NO_GL_DEPS = select({
     "//tensorflow/lite/profiling/telemetry/c:telemetry_setting_internal",
 ]
 
+# TODO(b/322843973): Remove again once //third_party/tensorflow:linux_x86_64 is switched to
+# the same constraint_values.
+# config_setting(
+#     name = "linux_x86_64",
+#     constraint_values =
+#         [
+#             "//third_party/bazel_platforms/cpu:x86_64",
+#             "//third_party/bazel_platforms/os:linux",
+#         ],
+# )
+
 config_setting(
     name = "tflite_gpu_binary_release",
     values = {"copt": "-DTFLITE_GPU_BINARY_RELEASE"},
@@ -70,14 +81,12 @@ config_setting(
 
 config_setting(
     name = "tflite_gpu_extra_gles_deps",
-    # copybara:uncomment_begin(google-only)
-    # constraint_values = [
-    # "//third_party/bazel_platforms/os:linux",
-    # ],
-    # copybara:uncomment_end
+    constraint_values = [
+        "//third_party/bazel_platforms/os:linux",
+        "//third_party/bazel_platforms/cpu:x86_64",
+    ],
     values = {
         "copt": "-DTFLITE_GPU_EXTRA_GLES_DEPS",
-        "cpu": "k8",
     },
 )
 
