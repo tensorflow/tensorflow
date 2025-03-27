@@ -15,8 +15,6 @@ limitations under the License.
 
 // Tests that slice operations can be performed.
 
-#include <memory>
-
 #include "xla/array2d.h"
 #include "xla/array3d.h"
 #include "xla/client/local_client.h"
