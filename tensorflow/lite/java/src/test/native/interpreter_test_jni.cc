@@ -16,6 +16,7 @@ limitations under the License.
 #include <jni.h>
 
 #include <algorithm>
+#include <cstddef>
 
 #include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
