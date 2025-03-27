@@ -241,17 +241,18 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 }  // namespace dynamic_update_slice
 
 TfLiteRegistration* Register_DYNAMIC_UPDATE_SLICE() {
-  static TfLiteRegistration r = {/*init=*/nullptr,
-                                 /*free=*/nullptr,
-                                 dynamic_update_slice::Prepare,
-                                 dynamic_update_slice::Eval,
-                                 /*profiling_string=*/nullptr,
-                                 /*builtin_code=*/0,
-                                 /*custom_name=*/nullptr,
-                                 /*version=*/0,
-                                 /*registration_external=*/nullptr,
-                                 /*async_kernel=*/nullptr,
-                                 kTfLiteInplaceOpInput0Shared};
+  static TfLiteRegistration r = {
+      /*init=*/nullptr,
+      /*free=*/nullptr,
+      dynamic_update_slice::Prepare,
+      dynamic_update_slice::Eval,
+      /*profiling_string=*/nullptr,
+      /*builtin_code=*/0,
+      /*custom_name=*/nullptr,
+      /*version=*/0,
+      /*registration_external=*/nullptr,
+      /*async_kernel=*/nullptr,
+      kTfLiteInplaceOpInput0Shared | kTfLiteInplaceOpOverwriteInput};
   return &r;
 }
 
