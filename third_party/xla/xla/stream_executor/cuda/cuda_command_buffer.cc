@@ -152,9 +152,10 @@ absl::Status CudaCommandBuffer::LaunchSetIfElseConditionKernel(
         set_if_else_condition_kernel_,
         SetIfElseConditionKernel::FactoryType::Create(parent_, spec));
   }
-  return Launch(set_if_else_condition_kernel_, ThreadDim(), BlockDim(),
+  return Launch(set_if_else_condition_kernel_, ThreadDim(), BlockDim(), {},
                 ToCudaGraphHandle(if_conditional),
-                ToCudaGraphHandle(else_conditional), predicate);
+                ToCudaGraphHandle(else_conditional), predicate)
+      .status();
 }
 absl::Status CudaCommandBuffer::LaunchSetIfConditionKernel(
     GraphConditionalHandle if_conditional, DeviceMemory<bool> predicate) {
@@ -164,8 +165,9 @@ absl::Status CudaCommandBuffer::LaunchSetIfConditionKernel(
         set_if_condition_kernel_,
         SetIfConditionKernel::FactoryType::Create(parent_, spec));
   }
-  return Launch(set_if_condition_kernel_, ThreadDim(), BlockDim(),
-                ToCudaGraphHandle(if_conditional), predicate);
+  return Launch(set_if_condition_kernel_, ThreadDim(), BlockDim(), {},
+                ToCudaGraphHandle(if_conditional), predicate)
+      .status();
 }
 absl::Status CudaCommandBuffer::LaunchSetForConditionKernel(
     GraphConditionalHandle conditional, DeviceMemory<int32_t> loop_counter,
@@ -178,8 +180,9 @@ absl::Status CudaCommandBuffer::LaunchSetForConditionKernel(
   }
 
   return CommandBuffer::Launch(set_for_condition_kernel_, ThreadDim(),
-                               BlockDim(), ToCudaGraphHandle(conditional),
-                               loop_counter, iterations);
+                               BlockDim(), {}, ToCudaGraphHandle(conditional),
+                               loop_counter, iterations)
+      .status();
 }
 absl::Status CudaCommandBuffer::LaunchSetWhileConditionKernel(
     GraphConditionalHandle conditional, DeviceMemory<bool> predicate) {
@@ -191,8 +194,9 @@ absl::Status CudaCommandBuffer::LaunchSetWhileConditionKernel(
         SetWhileConditionKernel::FactoryType::Create(parent_, spec));
   }
 
-  return Launch(set_while_condition_kernel_, ThreadDim(), BlockDim(),
-                ToCudaGraphHandle(conditional), predicate);
+  return Launch(set_while_condition_kernel_, ThreadDim(), BlockDim(), {},
+                ToCudaGraphHandle(conditional), predicate)
+      .status();
 }
 
 absl::Status CudaCommandBuffer::LaunchSetCaseConditionKernel(
@@ -217,12 +221,13 @@ absl::Status CudaCommandBuffer::LaunchSetCaseConditionKernel(
                    return ToCudaGraphHandle(conditional);
                  });
 
-  return Launch(set_case_condition_kernel_, ThreadDim(), BlockDim(),
+  return Launch(set_case_condition_kernel_, ThreadDim(), BlockDim(), {},
                 padded_handles[0], padded_handles[1], padded_handles[2],
                 padded_handles[3], padded_handles[4], padded_handles[5],
                 padded_handles[6], padded_handles[7], index, index_is_bool,
                 batch_offset, static_cast<int32_t>(conditionals.size()),
-                enable_conditional_default);
+                enable_conditional_default)
+      .status();
 }
 
 absl::StatusOr<CudaCommandBuffer::NoOpKernel*>
@@ -616,7 +621,8 @@ absl::Status CudaCommandBuffer::PrepareFinalization() {
   }
 
   TF_ASSIGN_OR_RETURN(NoOpKernel * noop, GetNoOpKernel());
-  TF_RETURN_IF_ERROR(CommandBuffer::Launch(*noop, ThreadDim(), BlockDim()));
+  TF_RETURN_IF_ERROR(
+      CommandBuffer::Launch(*noop, ThreadDim(), BlockDim(), {}).status());
 
   return absl::OkStatus();
 }

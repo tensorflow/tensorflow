@@ -199,39 +199,52 @@ absl::Status GpuCommandBuffer::Barrier() {
   return UnsupportedStateError(state_);
 }
 
-absl::Status GpuCommandBuffer::LaunchWithPackedArgs(
+absl::StatusOr<const CommandBuffer::Command*>
+GpuCommandBuffer::LaunchWithPackedArgs(
     const ThreadDim& threads, const BlockDim& blocks, const Kernel& kernel,
-    const KernelArgsPackedArrayBase& packed_args) {
+    const KernelArgsPackedArrayBase& packed_args,
+    absl::Span<const Command* const> dependencies) {
   CHECK_EQ(kernel.Arity() + (packed_args.number_of_shared_bytes() > 0),
            packed_args.number_of_arguments());
 
   // Adds a new kernel node to the graph under construction.
   if (state_ == State::kCreate) {
-    Dependencies barrier = GetBarrier();
+    Dependencies barrier = dependencies.empty()
+                               ? GetBarrier()
+                               : ToGraphNodeDependencies(dependencies);
     TF_ASSIGN_OR_RETURN(
-        commands_.emplace_back(std::make_unique<GpuCommand>(nullptr))->handle,
+        GraphNodeHandle handle,
         CreateKernelNode(barrier, threads, blocks, kernel, packed_args));
-    return absl::OkStatus();
+    return AppendCommand(handle);
   }
 
   // Updates kernel node in the executable graph.
   if (state_ == State::kUpdate) {
-    return UpdateKernelNode(commands_[update_state_.node_idx++]->handle,
-                            threads, blocks, kernel, packed_args);
+    GpuCommand& command = *commands_[update_state_.node_idx++];
+    TF_RETURN_IF_ERROR(
+        LaunchWithPackedArgs(&command, threads, blocks, kernel, packed_args));
+    return &command;
   }
 
   return UnsupportedStateError(state_);
 }
 
-absl::Status GpuCommandBuffer::Launch(const ThreadDim& threads,
-                                      const BlockDim& blocks,
-                                      const Kernel& kernel,
-                                      const KernelArgs& args) {
+absl::Status GpuCommandBuffer::LaunchWithPackedArgs(
+    const Command* command, const ThreadDim& threads, const BlockDim& blocks,
+    const Kernel& kernel, const KernelArgsPackedArrayBase& packed_args) {
+  auto* gpu_command = tsl::down_cast<const GpuCommand*>(command);
+  return UpdateKernelNode(gpu_command->handle, threads, blocks, kernel,
+                          packed_args);
+}
+
+absl::StatusOr<const CommandBuffer::Command*> GpuCommandBuffer::Launch(
+    const ThreadDim& threads, const BlockDim& blocks, const Kernel& kernel,
+    const KernelArgs& args, absl::Span<const Command* const> dependencies) {
   TF_RETURN_IF_ERROR(CheckNotFinalized());
 
   // If arguments are already packed we can just launch the kernel.
   if (auto* packed = DynCast<KernelArgsPackedArrayBase>(&args)) {
-    return LaunchWithPackedArgs(threads, blocks, kernel, *packed);
+    return LaunchWithPackedArgs(threads, blocks, kernel, *packed, dependencies);
   }
 
   // For device memory array we rely on a custom kernel arguments packing.
@@ -244,7 +257,35 @@ absl::Status GpuCommandBuffer::Launch(const ThreadDim& threads,
     }
 
     TF_ASSIGN_OR_RETURN(auto packed, pack(kernel, *device_mem));
-    return LaunchWithPackedArgs(threads, blocks, kernel, *packed);
+    return LaunchWithPackedArgs(threads, blocks, kernel, *packed, dependencies);
+  }
+
+  return absl::InternalError("Unsupported kernel arguments type");
+}
+
+absl::Status GpuCommandBuffer::Launch(const Command* command,
+                                      const ThreadDim& threads,
+                                      const BlockDim& blocks,
+                                      const Kernel& kernel,
+                                      const KernelArgs& args) {
+  TF_RETURN_IF_ERROR(CheckNotFinalized());
+
+  // If arguments are already packed we can just launch the kernel.
+  if (auto* packed = DynCast<KernelArgsPackedArrayBase>(&args)) {
+    return LaunchWithPackedArgs(command, threads, blocks, kernel, *packed);
+  }
+
+  // For device memory array we rely on a custom kernel arguments packing.
+  if (auto* device_mem = DynCast<KernelArgsDeviceMemoryArray>(&args)) {
+    auto& pack = kernel.args_packing();
+    if (!pack) {
+      return absl::InternalError(
+          "Kernel is missing a custom arguments packing function for device "
+          "memory arguments array");
+    }
+
+    TF_ASSIGN_OR_RETURN(auto packed, pack(kernel, *device_mem));
+    return LaunchWithPackedArgs(command, threads, blocks, kernel, *packed);
   }
 
   return absl::InternalError("Unsupported kernel arguments type");

@@ -571,8 +571,9 @@ absl::Status ComputationIdCmd::Record(
     }
 
     auto args = se::PackKernelArgs(/*shmem_bytes=*/0, int64_t{1}, value, dst);
-    return command_buffer->Launch(se::ThreadDim(1), se::BlockDim(1),
-                                  *memset_kernel, *args);
+    return command_buffer
+        ->Launch(se::ThreadDim(1), se::BlockDim(1), *memset_kernel, *args, {})
+        .status();
   } else {
     return command_buffer->Memset(&dst, value, /*num_elements=*/1, {}).status();
   }
@@ -638,8 +639,10 @@ absl::Status LaunchCmd::Record(const Thunk::ExecuteParams& execute_params,
   TF_ASSIGN_OR_RETURN(auto kernel_args,
                       se::PackKernelArgs(buffers, shmem_bytes_));
 
-  return command_buffer->Launch(dims_.thread_counts_per_block(),
-                                dims_.block_counts(), *kernel, *kernel_args);
+  return command_buffer
+      ->Launch(dims_.thread_counts_per_block(), dims_.block_counts(), *kernel,
+               *kernel_args, {})
+      .status();
 }
 
 CommandBufferCmd::BufferUseVector LaunchCmd::buffers() {
@@ -707,9 +710,10 @@ absl::Status CustomKernelLaunchCmd::Record(
   se::KernelArgsDeviceMemoryArray kernel_args(
       buffers, custom_kernel_.shared_memory_bytes());
 
-  return command_buffer->Launch(custom_kernel_.thread_dims(),
-                                custom_kernel_.block_dims(), *kernel,
-                                kernel_args);
+  return command_buffer
+      ->Launch(custom_kernel_.thread_dims(), custom_kernel_.block_dims(),
+               *kernel, kernel_args, {})
+      .status();
 }
 
 CommandBufferCmd::BufferUseVector CustomKernelLaunchCmd::buffers() {

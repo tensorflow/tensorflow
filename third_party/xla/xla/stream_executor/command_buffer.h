@@ -30,7 +30,6 @@ limitations under the License.
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/launch_dim.h"
-#include "xla/tsl/platform/errors.h"
 
 namespace stream_executor {
 
@@ -115,13 +114,29 @@ class CommandBuffer {
   virtual absl::Status Barrier() = 0;
 
   // Adds a kernel launch command.
-  virtual absl::Status Launch(const ThreadDim& threads, const BlockDim& blocks,
-                              const Kernel& kernel, const KernelArgs& args) = 0;
+  virtual absl::StatusOr<const Command*> Launch(
+      const ThreadDim& threads, const BlockDim& blocks, const Kernel& kernel,
+      const KernelArgs& args,
+      absl::Span<const Command* const> dependencies) = 0;
+
+  // Updates a kernel launch command.
+  virtual absl::Status Launch(const Command* command, const ThreadDim& threads,
+                              const BlockDim& blocks, const Kernel& kernel,
+                              const KernelArgs& args) = 0;
 
   // Type-safe wrapper for launching typed kernels. Notice that the order of
   // arguments is different do disambiguate from the regular launch API.
   template <typename... Params, typename... Args>
-  absl::Status Launch(const TypedKernel<Params...>& kernel,
+  absl::StatusOr<const Command*> Launch(
+      const TypedKernel<Params...>& kernel, const ThreadDim& threads,
+      const BlockDim& blocks, absl::Span<const Command* const> dependencies,
+      Args... args);
+
+  // Type-safe wrapper for updating typed kernels. Notice that the order of
+  // arguments is different do disambiguate from the regular launch API.
+  template <typename... Params, typename... Args>
+  absl::Status Launch(const Command* command,
+                      const TypedKernel<Params...>& kernel,
                       const ThreadDim& threads, const BlockDim& blocks,
                       Args... args);
 
@@ -243,13 +258,21 @@ class CommandBuffer {
 //===----------------------------------------------------------------------===//
 
 template <typename... Params, typename... Args>
-inline absl::Status CommandBuffer::Launch(const TypedKernel<Params...>& kernel,
-                                          const ThreadDim& threads,
-                                          const BlockDim& blocks,
-                                          Args... args) {
+absl::StatusOr<const CommandBuffer::Command*> CommandBuffer::Launch(
+    const TypedKernel<Params...>& kernel, const ThreadDim& threads,
+    const BlockDim& blocks, absl::Span<const Command* const> dependencies,
+    Args... args) {
   auto kernel_args = PackKernelArgs(kernel, args...);
-  TF_RETURN_IF_ERROR(Launch(threads, blocks, *kernel, *kernel_args));
-  return absl::OkStatus();
+  return Launch(threads, blocks, *kernel, *kernel_args, dependencies);
+}
+
+template <typename... Params, typename... Args>
+absl::Status CommandBuffer::Launch(const Command* command,
+                                   const TypedKernel<Params...>& kernel,
+                                   const ThreadDim& threads,
+                                   const BlockDim& blocks, Args... args) {
+  auto kernel_args = PackKernelArgs(kernel, args...);
+  return Launch(command, threads, blocks, *kernel, *kernel_args);
 }
 
 }  // namespace stream_executor
