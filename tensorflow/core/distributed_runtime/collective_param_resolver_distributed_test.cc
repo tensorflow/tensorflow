@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/distributed_runtime/collective_param_resolver_distributed.h"
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/status/status.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/test_collective_executor_mgr.h"
 #include "tensorflow/core/distributed_runtime/device_resolver_distributed.h"
@@ -23,6 +24,7 @@ limitations under the License.
 #include "tensorflow/core/distributed_runtime/worker.h"
 #include "tensorflow/core/distributed_runtime/worker_env.h"
 #include "tensorflow/core/framework/cancellation.h"
+#include "tensorflow/core/framework/collective.h"
 #include "tensorflow/core/lib/core/notification.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
@@ -378,6 +380,45 @@ TEST_F(DeviceResDistTest, Workers4Devices3) {
   DefineCollectiveParams(num_workers, num_devices, "CPU");
   IssueRequests(num_workers, num_devices);
   ValidateCollectiveParams(num_workers, num_devices);
+}
+
+TEST_F(DeviceResDistTest, AbortWhileCompleteParamsPending) {
+  const int num_workers = 2;
+  const int num_devices = 2;
+  DefineWorkers(num_workers, num_devices, "CPU", true);
+  DefineCollectiveParams(num_workers, num_devices, "CPU");
+  for (int wi = 0; wi < num_workers; ++wi) {
+    string task_name = strings::StrCat("/job:worker/replica:0/task:", wi);
+    CollectiveParamResolverDistributed* cp_res = cp_resolvers_[task_name].get();
+    CHECK(cp_res);
+    for (int di = 0; di < num_devices; ++di) {
+      Env::Default()->SchedClosure(
+          [this, di, &task_name, cp_res /*, &start, &done*/] {
+            string device_name = strings::StrCat(task_name, "/device:CPU:", di);
+            Device* device = nullptr;
+            TF_CHECK_OK(
+                device_mgrs_[task_name]->LookupDevice(device_name, &device));
+            CollectiveParams* cp = cp_[device_name];
+            cp_res->CompleteParamsAsync(
+                device->attributes(), cp, &cm_,
+                [this, device_name](const absl::Status& s) {
+                  status_[device_name] = s;
+                  {
+                    EXPECT_EQ(s.code(), absl::StatusCode::kAborted);
+                    EXPECT_EQ(s.message(), "__aborted__");
+                  }
+                });
+          });
+    }
+    for (int wi = 0; wi < num_workers; ++wi) {
+      string task_name = strings::StrCat("/job:worker/replica:0/task:", wi);
+      CollectiveParamResolverDistributed* cp_res =
+          cp_resolvers_[task_name].get();
+      CHECK(cp_res);
+      cp_res->StartAbort(
+          absl::Status(absl::StatusCode::kAborted, "__aborted__"));
+    }
+  }
 }
 
 }  // namespace
