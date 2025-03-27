@@ -1330,12 +1330,14 @@ cc_library(
         "transforms/prepare_quantize_helper.cc",
         "transforms/quantize.cc",
         "transforms/quantize_variables.cc",
+        "transforms/tfl_quantization_driver.cc",
         "utils/generated_op_quant_spec_getters.inc",
     ],
     hdrs = [
         "transforms/lower_quant_annotations_helper.h",
         "transforms/passes.h",
         "transforms/prepare_quantize_helper.h",
+        "transforms/tfl_quantization_driver.h",
     ],
     deps = [
         "convert_type",
