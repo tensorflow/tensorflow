@@ -269,7 +269,8 @@ def create_conv_model(fingerprint_input, model_settings, is_training):
   first_conv = tf.nn.conv2d(input=fingerprint_4d,
                             filters=first_weights,
                             strides=[1, 1, 1, 1],
-                            padding='SAME') + first_bias
+                            padding='SAME',
+                            data_format='NHWC') + first_bias
   first_relu = tf.nn.relu(first_conv)
   if is_training:
     first_dropout = tf.nn.dropout(first_relu, rate=dropout_rate)
@@ -278,7 +279,8 @@ def create_conv_model(fingerprint_input, model_settings, is_training):
   max_pool = tf.nn.max_pool2d(input=first_dropout,
                               ksize=[1, 2, 2, 1],
                               strides=[1, 2, 2, 1],
-                              padding='SAME')
+                              padding='SAME',
+                              data_format='NHWC')
   second_filter_width = 4
   second_filter_height = 10
   second_filter_count = 64
@@ -296,7 +298,7 @@ def create_conv_model(fingerprint_input, model_settings, is_training):
   second_conv = tf.nn.conv2d(input=max_pool,
                              filters=second_weights,
                              strides=[1, 1, 1, 1],
-                             padding='SAME') + second_bias
+                             padding='SAME', data_format='NHWC') + second_bias
   second_relu = tf.nn.relu(second_conv)
   if is_training:
     second_dropout = tf.nn.dropout(second_relu, rate=dropout_rate)
