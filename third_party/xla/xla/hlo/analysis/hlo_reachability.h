@@ -60,7 +60,7 @@ class HloReachabilityMap {
   // Similar to the above Build operation except that it tries to identify
   // paths between instructions that do not contain control instructions
   // and multiple operands, i.e., b is_reachable a == true iff
-  // b = f(f(f(f(f(a), constant), constant), constant).
+  // b = f(f(f(f(f(a), constant), constant), constant), constant).
   // Further, the only ops allowed in a path are basic math operations such
   // as add, sub, mul, div.
   static std::unique_ptr<HloReachabilityMap> BuildWithRestrictions(

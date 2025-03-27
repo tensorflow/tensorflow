@@ -40,6 +40,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "xla/comparison_util.h"
 #include "xla/debug_options_flags.h"
+#include "xla/hlo/analysis/hlo_reachability.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/literal.h"
@@ -532,8 +533,8 @@ void CaptureConvGraphRecursive(HloInstruction* instr,
                                std::vector<HloInstruction*>& aux_outputs,
                                GraphString& graph_string,
                                absl::flat_hash_set<int>& visited_instrs,
-                               HloInstruction*& final_instr,
-                               int& num_endpoints) {
+                               HloInstruction*& final_instr, int& num_endpoints,
+                               HloReachabilityMap* reachability) {
   // Avoid visiting the same instruction more than once.
   if (!visited_instrs.emplace(instr->unique_id()).second) {
     return;
@@ -568,18 +569,43 @@ void CaptureConvGraphRecursive(HloInstruction* instr,
   //        E - F
   //
   // Fusion stops at B since the graph would have two endpoints.
+
+  // External operands of ops eligible for fusion into the cuDNN graph must not
+  // be reachable from graph outputs of existing fused ops as this may create a
+  // circular dependency between fused and unfused instructions.
+  auto eligible_operand =
+      [reachability, &aux_outputs](const HloInstruction* operand) -> bool {
+    return std::none_of(aux_outputs.begin(), aux_outputs.end(),
+                        [reachability, operand](HloInstruction* aux_output) {
+                          return reachability->IsReachable(aux_output, operand);
+                        });
+  };
+
+  // External operands of existing fused ops must not be reachable from graph
+  // outputs of ops eligible for fusion into the cuDNN graph as this may create
+  // a circular dependency between fused and unfused instructions.
+  auto eligible_aux_output =
+      [reachability, &operands](const HloInstruction* aux_output) -> bool {
+    return std::none_of(operands.begin(), operands.end(),
+                        [reachability, aux_output](HloInstruction* operand) {
+                          return reachability->IsReachable(aux_output, operand);
+                        });
+  };
+
   int num_new_users = 0;
   int num_existing_users = 0;
   for (HloInstruction* user : instr->users()) {
     HloInstruction *op0, *op1, *op2, *operand0, *operand1;
     // Add
     if (Match(user,
-              m::AddAnyOrder(&op0, m::Op().Is(instr), m::Op(&operand0)))) {
+              m::AddAnyOrder(&op0, m::Op().Is(instr), m::Op(&operand0))) &&
+        eligible_operand(operand0)) {
       if (graph_string.AppendOp("add", op0, {instr, operand0})) {
         operands.push_back(operand0);
         ++num_new_users;
         CaptureConvGraphRecursive(user, operands, aux_outputs, graph_string,
-                                  visited_instrs, final_instr, num_endpoints);
+                                  visited_instrs, final_instr, num_endpoints,
+                                  reachability);
       } else {
         // Since operands only holds ops that are not part of the graph, remove
         // instr.
@@ -592,24 +618,26 @@ void CaptureConvGraphRecursive(HloInstruction* instr,
     // Scale
     if (Match(user, m::MultiplyAnyOrder(&op0, m::Op().Is(instr),
                                         m::Broadcast(m::Op(&operand0)))) &&
-        ShapeUtil::IsScalar(operand0->shape())) {
+        ShapeUtil::IsScalar(operand0->shape()) && eligible_operand(operand0)) {
       if (graph_string.AppendOp("scale", op0, {instr, operand0})) {
         operands.push_back(operand0);
         ++num_new_users;
         CaptureConvGraphRecursive(user, operands, aux_outputs, graph_string,
-                                  visited_instrs, final_instr, num_endpoints);
+                                  visited_instrs, final_instr, num_endpoints,
+                                  reachability);
       }
       continue;
     }
     // Inverse Scale
     if (Match(user, m::Divide(&op0, m::Op().Is(instr),
                               m::Broadcast(m::Op(&operand0)))) &&
-        ShapeUtil::IsScalar(operand0->shape())) {
+        ShapeUtil::IsScalar(operand0->shape()) && eligible_operand(operand0)) {
       if (graph_string.AppendOp("invscale", op0, {instr, operand0})) {
         operands.push_back(operand0);
         ++num_new_users;
         CaptureConvGraphRecursive(user, operands, aux_outputs, graph_string,
-                                  visited_instrs, final_instr, num_endpoints);
+                                  visited_instrs, final_instr, num_endpoints,
+                                  reachability);
       }
       continue;
     }
@@ -619,13 +647,15 @@ void CaptureConvGraphRecursive(HloInstruction* instr,
       if (graph_string.AppendOp("relu", op0, {instr})) {
         ++num_new_users;
         CaptureConvGraphRecursive(user, operands, aux_outputs, graph_string,
-                                  visited_instrs, final_instr, num_endpoints);
+                                  visited_instrs, final_instr, num_endpoints,
+                                  reachability);
       }
       continue;
     }
     //  Maximum of the absolute value (Amax) following ReLU (elided Abs)
     if (Match(user, m::Reduce(&op0, m::Op().Is(instr), m::Op())) &&
-        graph_string.OpInGraph(instr, "relu") && AppliesMaxReduce(op0)) {
+        graph_string.OpInGraph(instr, "relu") && AppliesMaxReduce(op0) &&
+        eligible_aux_output(op0)) {
       if (graph_string.AppendOp("amax", op0, {instr})) {
         aux_outputs.push_back(op0);
         ++num_new_users;
@@ -640,14 +670,16 @@ void CaptureConvGraphRecursive(HloInstruction* instr,
                 m::Broadcast(&op0, m::ConstantEffectiveScalar(0)).WithOneUser(),
                 m::Op().Is(instr),
                 m::Broadcast(&operand0, m::ConstantEffectiveScalar(6))
-                    .WithOneUser()))) {
+                    .WithOneUser())) &&
+        eligible_operand(operand0)) {
       if (!graph_string.OpInGraph(op0) && !graph_string.OpInGraph(op1)) {
         graph_string.AppendOp("relu", op0, {instr});
         graph_string.AppendOp("min", op1, {op0, operand0});
         ++num_new_users;
         operands.push_back(operand0);
         CaptureConvGraphRecursive(user, operands, aux_outputs, graph_string,
-                                  visited_instrs, final_instr, num_endpoints);
+                                  visited_instrs, final_instr, num_endpoints,
+                                  reachability);
       }
       continue;
     }
@@ -661,7 +693,8 @@ void CaptureConvGraphRecursive(HloInstruction* instr,
       if (graph_string.AppendOp("elu", op0, {instr})) {
         num_new_users += 3;
         CaptureConvGraphRecursive(user, operands, aux_outputs, graph_string,
-                                  visited_instrs, final_instr, num_endpoints);
+                                  visited_instrs, final_instr, num_endpoints,
+                                  reachability);
       }
       continue;
     }
@@ -676,13 +709,13 @@ void CaptureConvGraphRecursive(HloInstruction* instr,
         ++num_new_users;
         CaptureConvGraphRecursive(users_user, operands, aux_outputs,
                                   graph_string, visited_instrs, final_instr,
-                                  num_endpoints);
+                                  num_endpoints, reachability);
         continue;
       }
       // Maximum of the absolute value (Amax)
       if (Match(users_user,
                 m::Reduce(&op0, m::Abs(m::Op().Is(instr)), m::Op())) &&
-          AppliesMaxReduce(op0)) {
+          AppliesMaxReduce(op0) && eligible_aux_output(op0)) {
         if (graph_string.AppendOp("amax", op0, {instr})) {
           aux_outputs.push_back(op0);
           ++num_new_users;
@@ -704,7 +737,8 @@ void CaptureConvGraphRecursive(HloInstruction* instr,
                         m::MultiplyAnyOrder(
                             &op1, m::Op().Is(instr),
                             m::Broadcast(m::ConstantEffectiveScalar(&operand1)))
-                            .WithOneUser()))) {
+                            .WithOneUser())) &&
+          eligible_operand(operand0) && eligible_operand(operand1)) {
         if (!graph_string.OpInGraph(op0) && !graph_string.OpInGraph(op1) &&
             !graph_string.OpInGraph(op2)) {
           graph_string.AppendOp("min", op0, op2->shape().element_type(),
@@ -716,7 +750,7 @@ void CaptureConvGraphRecursive(HloInstruction* instr,
           operands.push_back(operand1);
           CaptureConvGraphRecursive(users_user, operands, aux_outputs,
                                     graph_string, visited_instrs, final_instr,
-                                    num_endpoints);
+                                    num_endpoints, reachability);
         }
         continue;
       }
@@ -731,11 +765,14 @@ void CaptureConvGraphRecursive(HloInstruction* instr,
     ++num_endpoints;
   }
 
-  // Since the cuDNN graph cannot have more than one endpoint, do not fuse
-  // into the cuDNN convolution Custom Call and roll back the graph when there
-  // are multiple endpoints. If the resulting graph still has more than one
-  // endpoint, the recursive caller will continue to roll back the graph.
-  if (num_endpoints > 1) {
+  // Do not fuse into the cuDNN convolution Custom Call and roll back the graph
+  // when the number of users eligible for fusion is less than the total number
+  // of users of instr. Since the cuDNN graph cannot have more than one
+  // endpoint, also roll back the graph when there are multiple endpoints. If
+  // the resulting graph still has more than one endpoint, the recursive caller
+  // will continue to roll back the graph.
+  if (num_new_users + num_existing_users < instr->user_count() ||
+      num_endpoints > 1) {
     graph_string = std::move(init_graph_string);
     operands = init_operands;
     aux_outputs = init_aux_outputs;
@@ -786,8 +823,11 @@ CaptureConvGraph(HloInstruction* instr, HloInstruction* convolution,
   absl::flat_hash_set<int> visited_instrs;
   HloInstruction* final_instr;
   int num_endpoints = 0;
+  std::unique_ptr<HloReachabilityMap> reachability =
+      HloReachabilityMap::Build(instr->parent());
   CaptureConvGraphRecursive(instr, operands, aux_outputs, graph_string,
-                            visited_instrs, final_instr, num_endpoints);
+                            visited_instrs, final_instr, num_endpoints,
+                            reachability.get());
   return std::make_tuple(operands, aux_outputs, graph_string, final_instr);
 }
 
