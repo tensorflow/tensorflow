@@ -16,7 +16,11 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_LIB_STRINGS_PROTO_TEXT_UTIL_H_
 #define TENSORFLOW_CORE_LIB_STRINGS_PROTO_TEXT_UTIL_H_
 
+#include <cstddef>
+
+#include "absl/strings/escaping.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/lib/strings/scanner.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/numbers.h"
