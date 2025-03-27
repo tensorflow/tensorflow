@@ -157,11 +157,14 @@ triton_fusion_computation {
 ENTRY main {
   param_0 = f16[65538,32768]{1,0} parameter(0)
   ROOT fusion = f16[65538,32768]{1,0} fusion(param_0), kind=kCustom,
-    calls=triton_fusion_computation,
-     backend_config={"fusion_backend_config":
-      {"kind":"__triton",
-       "block_level_fusion_config":{"output_tiles":[{"sizes":["1","32768"]}],
-                                    "num_warps":"1"}}}
+    calls=triton_fusion_computation, backend_config={
+      "fusion_backend_config":{
+        "kind":"__triton", 
+        "block_level_fusion_config":{
+          "output_tiles":[{"sizes":["1","32768"]}],
+          "num_warps":"1",
+          "num_ctas":"1",
+          "num_stages":"1"}}}
 })";
 
   // Checking that this does not crash should be enough.

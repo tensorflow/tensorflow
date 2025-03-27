@@ -116,13 +116,15 @@ triton_softmax_computation {
 ENTRY main{
   p = $0[127,125] parameter(0)
   ROOT triton_softmax = $0[127,125] fusion(p), kind=kCustom,
-    calls=triton_softmax_computation,
-    backend_config={"operation_queue_id":"0","wait_on_operation_queues":[],
-    "fusion_backend_config":{"kind":"__triton","block_level_fusion_config":
-    {"output_tiles":[{"sizes":["1","125"]}],"num_warps":"1"}},"force_earliest_schedule":false}
-}
-
-)";
+    calls=triton_softmax_computation, backend_config={
+      "fusion_backend_config":{
+      "kind":"__triton",
+      "block_level_fusion_config":{
+        "output_tiles":[{"sizes":["1","125"]}],
+        "num_warps":"1",
+        "num_ctas":"1",
+        "num_stages":"1"}}}
+})";
 
 TEST_P(TritonFusionNumericsVerifierTest, VerifyExactSoftmaxFusionNumerics) {
   auto module = Module(kSoftmaxHlo,
@@ -205,12 +207,15 @@ triton_softmax_computation {
 ENTRY main {
   param_0 = f32[16,256000] parameter(0)
   ROOT triton_softmax = f32[16,256000]{1,0} fusion(param_0), kind=kCustom,
-    calls=triton_softmax_computation,
-    backend_config={"fusion_backend_config":
-      {"kind":"__triton","block_level_fusion_config":
-        {"output_tiles":[{"sizes":["1","256000"]}],"num_warps":"32"}}}
-}
-  )",
+    calls=triton_softmax_computation, backend_config={
+      "fusion_backend_config":{
+        "kind":"__triton",
+        "block_level_fusion_config":{
+          "output_tiles":[{"sizes":["1","256000"]}],
+          "num_warps":"32",
+          "num_ctas":"1",
+          "num_stages":"1"}}}
+})",
                        "");
 
   auto verifier = TritonFusionNumericsVerifier(CreateAutotuneConfig());
@@ -273,9 +278,9 @@ ENTRY main {
   p0 = f32[16,16] parameter(0)
   p1 = f32[16,16] parameter(1)
   p2 = f32[16,16] parameter(2)
-  r0 = f32[16] fusion(p0), kind=kCustom, calls=reduce_0, backend_config={"fusion_backend_config": {"kind":"__triton","block_level_fusion_config":{"output_tiles":[{"sizes":["16"]}],"num_warps":"1"}}}
-  r1 = f32[16] fusion(p1), kind=kCustom, calls=reduce_1, backend_config={"fusion_backend_config": {"kind":"__triton","block_level_fusion_config":{"output_tiles":[{"sizes":["16"]}],"num_warps":"1"}}}
-  r2 = f32[16] fusion(p2), kind=kCustom, calls=reduce_2, backend_config={"fusion_backend_config": {"kind":"__triton","block_level_fusion_config":{"output_tiles":[{"sizes":["16"]}],"num_warps":"1"}}}
+  r0 = f32[16] fusion(p0), kind=kCustom, calls=reduce_0, backend_config={"fusion_backend_config": {"kind":"__triton","block_level_fusion_config":{"output_tiles":[{"sizes":["16"]}],"num_warps":"1","num_ctas":"1","num_stages":"1"}}}
+  r1 = f32[16] fusion(p1), kind=kCustom, calls=reduce_1, backend_config={"fusion_backend_config": {"kind":"__triton","block_level_fusion_config":{"output_tiles":[{"sizes":["16"]}],"num_warps":"1","num_ctas":"1","num_stages":"1"}}}
+  r2 = f32[16] fusion(p2), kind=kCustom, calls=reduce_2, backend_config={"fusion_backend_config": {"kind":"__triton","block_level_fusion_config":{"output_tiles":[{"sizes":["16"]}],"num_warps":"1","num_ctas":"1","num_stages":"1"}}}
   add_0_1 = f32[16] add(r0, r1)
   ROOT add_0_2 = f32[16] add(add_0_1, r2)
 }
@@ -324,11 +329,14 @@ triton_softmax_computation {
 ENTRY main {
   p = f32[16384,16384] parameter(0)
   ROOT triton_softmax = f32[1,1,16384,16384] fusion(p), kind=kCustom,
-    calls=triton_softmax_computation,
-    backend_config={"operation_queue_id":"0","wait_on_operation_queues":[],
-      "fusion_backend_config":{"kind":"__triton","block_level_fusion_config":
-        {"output_tiles":[{"sizes":["1","1","1","16384"]}],"num_warps":"32"}},
-        "force_earliest_schedule":false}
+    calls=triton_softmax_computation, backend_config={
+      "fusion_backend_config":{
+      "kind":"__triton",
+      "block_level_fusion_config":{
+        "output_tiles":[{"sizes":["1","1","1","16384"]}],
+        "num_warps":"32",
+        "num_ctas":"1",
+        "num_stages":"1"}}}
 }
   )";
   auto module = Module(hlo_text, "");

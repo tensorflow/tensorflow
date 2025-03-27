@@ -183,6 +183,12 @@ message BlockLevelFusionConfig {
 
   // The number of warps to use for the kernel.
   int64 num_warps = 2;
+
+  // The number of CTAs to use for the kernel.
+  int32 num_ctas = 4;
+
+  // The number of stages to use for loop pipelining.
+  int32 num_stages = 5;
 }
 
 message FusionBackendConfig {

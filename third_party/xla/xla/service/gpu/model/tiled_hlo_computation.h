@@ -48,6 +48,8 @@ struct BlockLevelParameters {
       const BlockLevelFusionConfig& config) {
     BlockLevelParameters result;
     result.num_warps = config.num_warps();
+    result.num_ctas = config.num_ctas();
+    result.num_stages = config.num_stages();
     result.output_tile_sizes.reserve(config.output_tiles_size());
     for (const auto& tile : config.output_tiles()) {
       result.output_tile_sizes.push_back(
@@ -65,6 +67,8 @@ struct BlockLevelParameters {
       *config.add_output_tiles() = tile;
     }
     config.set_num_warps(num_warps);
+    config.set_num_ctas(num_ctas);
+    config.set_num_stages(num_stages);
     return config;
   }
 };

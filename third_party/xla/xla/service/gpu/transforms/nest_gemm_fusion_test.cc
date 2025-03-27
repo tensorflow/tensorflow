@@ -88,7 +88,7 @@ ENTRY entry {
       "fusion_backend_config": {
         "kind":"__triton_gemm",  "triton_gemm_config": {
           "block_m":"64", "block_n":"256", "block_k":"32",
-          "split_k":"1", "num_stages":"1", "num_warps":"1", "num_ctas":"1"
+          "split_k":"1", "num_stages":"5", "num_warps":"4", "num_ctas":"3"
         }
       }
     }
@@ -102,6 +102,16 @@ ENTRY entry {
   ASSERT_THAT(module->entry_computation()->root_instruction(),
               GmockMatch(match::Fusion(&fusion)));
   EXPECT_THAT(*fusion, OutputTileSizesIs(ElementsAre(64, 256)));
+
+  BlockLevelFusionConfig block_level_fusion_config =
+      fusion->backend_config<GpuBackendConfig>()
+          ->fusion_backend_config()
+          .block_level_fusion_config();
+  EXPECT_THAT(block_level_fusion_config.output_tiles(0).sizes(),
+              ElementsAre(64, 256));
+  EXPECT_THAT(block_level_fusion_config.num_warps(), 4);
+  EXPECT_THAT(block_level_fusion_config.num_ctas(), 3);
+  EXPECT_THAT(block_level_fusion_config.num_stages(), 5);
 
   const HloInstruction* lhs = nullptr;
   const HloInstruction* rhs = nullptr;
