@@ -475,7 +475,10 @@ cc_library(
     name = "se_gpu_topology_description",
     srcs = ["se_gpu_topology_description.cc"],
     hdrs = ["se_gpu_topology_description.h"],
-    visibility = internal_visibility(["//xla/pjrt/gpu:legacy_gpu_topology_users"]),
+    visibility = internal_visibility([
+        "//xla/pjrt/gpu:legacy_gpu_topology_users",
+        ":__subpackages__",
+    ]),
     deps = [
         ":gpu_topology",
         "//xla:shape_util",

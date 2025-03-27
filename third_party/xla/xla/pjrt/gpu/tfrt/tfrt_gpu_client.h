@@ -46,6 +46,7 @@ limitations under the License.
 #include "xla/layout.h"
 #include "xla/literal.h"
 #include "xla/pjrt/gpu/gpu_topology.h"
+#include "xla/pjrt/gpu/se_gpu_topology_description.h"
 #include "xla/pjrt/gpu/tfrt/gpu_event.h"
 #include "xla/pjrt/gpu/tfrt/host_memory_allocator.h"
 #include "xla/pjrt/gpu/tfrt/stream_pool.h"
@@ -284,7 +285,7 @@ class TfrtGpuClient final : public PjRtClient {
     return tsl::Fingerprint64(xla::CudaName());
   }
 
-  absl::string_view platform_name() const override { return xla::CudaName(); }
+  absl::string_view platform_name() const override { return platform_name_; }
 
   absl::string_view platform_version() const override {
     return platform_version_;
@@ -330,6 +331,11 @@ class TfrtGpuClient final : public PjRtClient {
 
   gpu::GpuExecutableRunOptions* gpu_run_options() const {
     return gpu_run_options_.get();
+  }
+
+  absl::StatusOr<const xla::PjRtTopologyDescription*> GetTopologyDescription()
+      const override {
+    return &topology_;
   }
 
   absl::StatusOr<std::unique_ptr<PjRtBuffer>> BufferFromHostBuffer(
@@ -400,6 +406,9 @@ class TfrtGpuClient final : public PjRtClient {
   // major-to-minor layout.
   absl::Mutex transpose_mu_;
   TransposePlanCache transpose_cache_ ABSL_GUARDED_BY(transpose_mu_);
+
+  const std::string platform_name_;
+  StreamExecutorGpuTopologyDescription topology_;
 };
 
 absl::StatusOr<std::unique_ptr<PjRtClient>> GetTfrtGpuClient(
