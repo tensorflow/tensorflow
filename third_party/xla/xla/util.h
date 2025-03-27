@@ -892,6 +892,19 @@ inline void PackIntN(int bits_per_element, absl::Span<const char> input,
   }
 }
 
+// Same as above, but takes the number of bits per element, a pointer to the
+// source data, and the size of the data in bytes. Returns a unique pointer to
+// the packed data.
+inline std::unique_ptr<char[]> PackIntN(int bits_per_element, const char* data,
+                                        size_t size) {
+  size_t packed_size = size * bits_per_element / 8;
+  auto buffer = std::make_unique<char[]>(packed_size);
+  auto src = absl::MakeSpan(data, size);
+  auto dst = absl::MakeSpan(buffer.get(), packed_size);
+  PackIntN(bits_per_element, src, dst);
+  return buffer;
+}
+
 // Takes a sequence of packed values, such that every byte stores multiple
 // values, and unpacks them so every byte stores one value in the low-order
 // bits. `input` should have
@@ -930,6 +943,19 @@ inline void UnpackIntN(int bits_per_element, absl::Span<const char> input,
   } else {
     LOG(FATAL) << "Invalid bits_per_element: " << bits_per_element;
   }
+}
+
+// Same as above, but takes the number of bits per element, a pointer to the
+// source data, and the size of the data in bytes. Returns a unique pointer to
+// the unpacked data.
+inline std::unique_ptr<char[]> UnpackIntN(int bits_per_element,
+                                          const char* data, size_t size) {
+  size_t unpacked_size = size * 8 / bits_per_element;
+  auto buffer = std::make_unique<char[]>(unpacked_size);
+  auto src = absl::MakeSpan(data, size);
+  auto dst = absl::MakeSpan(buffer.get(), unpacked_size);
+  UnpackIntN(bits_per_element, src, dst);
+  return buffer;
 }
 
 // Returns a container with `sorted_ids_to_remove` elements removed.
