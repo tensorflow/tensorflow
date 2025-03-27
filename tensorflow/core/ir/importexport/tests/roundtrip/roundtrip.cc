@@ -44,7 +44,7 @@ static void NormalizeNode(NodeDef* node, bool add_fulltype) {
         case DT_STRING: {
           const TensorShape shape(tensor->tensor_shape());
           if (!tensor->tensor_content().empty()) {
-            tensor->mutable_tensor_content()->clear();
+            tensor->mutable_tensor_content()->Clear();
           } else {
             tensor->mutable_string_val()->Clear();
           }
