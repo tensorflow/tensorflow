@@ -20,6 +20,7 @@ limitations under the License.
 #include <vector>
 
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
@@ -523,8 +524,12 @@ TEST(Scalar, Standalone) {
   for (auto test_case : test_cases) {
     GraphDef graph_def;
     protobuf::TextFormat::ParseFromString(test_case.graph_string, &graph_def);
+    Dataset::Params params;
+    params.metadata_options.data_service_address = "localhost:12345";
     std::unique_ptr<Dataset> dataset;
-    TF_EXPECT_OK(Dataset::FromGraph({}, graph_def, &dataset));
+    TF_EXPECT_OK(Dataset::FromGraph(params, graph_def, &dataset));
+    EXPECT_EQ(dataset->Get()->metadata().data_service_address(),
+              "localhost:12345");
     std::unique_ptr<Iterator> iterator;
     TF_EXPECT_OK(dataset->MakeIterator(&iterator));
     EXPECT_DOUBLE_EQ(iterator->model()->ComputeSnapshotProcessingTimeNsec(), 0);
@@ -551,8 +556,12 @@ TEST(NoAutotune, Standalone) {
   std::vector<int64_t> expected_outputs({0, 1, 4, 9, 16, 25, 36, 49, 64, 81});
   GraphDef graph_def;
   protobuf::TextFormat::ParseFromString(kMapGraphNoAutotuneProto, &graph_def);
+  Dataset::Params params;
+  params.metadata_options.data_service_address = "localhost:12345";
   std::unique_ptr<Dataset> dataset;
-  TF_EXPECT_OK(Dataset::FromGraph({}, graph_def, &dataset));
+  TF_EXPECT_OK(Dataset::FromGraph(params, graph_def, &dataset));
+  EXPECT_EQ(dataset->Get()->metadata().data_service_address(),
+            "localhost:12345");
   std::unique_ptr<Iterator> iterator;
   TF_EXPECT_OK(dataset->MakeIterator(&iterator));
   EXPECT_EQ(iterator->model(), nullptr);
