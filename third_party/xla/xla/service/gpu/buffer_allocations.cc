@@ -22,6 +22,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/stream.h"
 #include "tsl/platform/logging.h"
 
 namespace xla {
@@ -29,7 +30,7 @@ namespace gpu {
 
 absl::Status BufferAllocations::TearDown(
     const std::set<se::DeviceMemoryBase>& live_addresses,
-    absl::Span<const BufferAllocation> allocations) {
+    absl::Span<const BufferAllocation> allocations, se::Stream* stream) {
   // Deallocate temporary buffers, taking care to try to deallocate all of them
   // even if one of the deallocations fails.
   absl::Status status;
@@ -42,8 +43,8 @@ absl::Status BufferAllocations::TearDown(
     if ((allocation.maybe_live_out() &&
          !live_addresses.count(buffer_address)) ||
         allocation.IsPreallocatedTempBuffer()) {
-      auto dealloc_result =
-          memory_allocator_->Deallocate(device_ordinal_, buffer_address);
+      auto dealloc_result = memory_allocator_->Deallocate(
+          device_ordinal_, buffer_address, stream);
       if (!dealloc_result.ok() && status.ok()) {
         status = dealloc_result;
       }
