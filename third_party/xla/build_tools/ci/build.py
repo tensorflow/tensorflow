@@ -53,11 +53,12 @@ _XLA_DEFAULT_TARGET_PATTERNS = (
     "@local_tsl//tsl/...",
 )
 _XLA_CPU_PRESUBMIT_BENCHMARKS_DEFAULT_TARGET_PATTERNS = (
-    "//xla/tools:run_hlo_module",
+    "//xla/tools/multihost_hlo_runner:hlo_runner_main",
+    "//xla/tools:compute_xspace_stats_main",
 )
 _XLA_GPU_PRESUBMIT_BENCHMARKS_DEFAULT_TARGET_PATTERNS = (
     "//xla/tools/multihost_hlo_runner:hlo_runner_main_gpu",
-    "//xla/tools:compute_gpu_device_stats_main_gpu",
+    "//xla/tools:compute_xspace_stats_main_gpu",
 )
 _KOKORO_ARTIFACTS_DIR = os.environ.get(
     "KOKORO_ARTIFACTS_DIR", "$KOKORO_ARTIFACTS_DIR"

@@ -46,21 +46,27 @@ jobs:
             container: "us-central1-docker.pkg.dev/tensorflow-sigs/tensorflow/ml-build-arm64:latest",
             pretty_name: "XLA Linux ARM64 CPU 48 vcpu Presubmit",
             bazel_arch_dir: "aarch64-opt",
-            platform: "CPU"
+            platform: "CPU",
+            runner_binary: "hlo_runner_main",
+            hlo_test_file: "xla/tools/hlo_opt/tests/cpu_hlo.hlo"
           },
           {
             pool: "linux-x86-n2-128",
             container: "us-central1-docker.pkg.dev/tensorflow-sigs/tensorflow/ml-build:latest",
             pretty_name: "XLA Linux x86 CPU 128 vcpu Presubmit",
             bazel_arch_dir: "k8-opt",
-            platform: "CPU"
+            platform: "CPU",
+            runner_binary: "hlo_runner_main",
+            hlo_test_file: "xla/tools/hlo_opt/tests/cpu_hlo.hlo"
           },
           {
             pool: "linux-x86-g2-16-l4-1gpu",
             container: "us-central1-docker.pkg.dev/tensorflow-sigs/tensorflow/ml-build-cuda12.8-cudnn9.8:latest",
             pretty_name: "XLA Linux x86 GPU L4 16 vcpu Presubmit",
             bazel_arch_dir: "k8-opt",
-            platform: "GPU"
+            platform: "GPU",
+            runner_binary: "hlo_runner_main_gpu",
+            hlo_test_file: "xla/tools/hlo_opt/tests/gpu_hlo_backend.hlo"
           },
         ]
     name: ${{ matrix.job_info.pretty_name }}
@@ -123,47 +129,99 @@ jobs:
       - name: Run HLO tests
         run: |
           bazel_arch_dir="${{ matrix.job_info.bazel_arch_dir }}"
-          binary_path=""
-          test_hlo_file=""
+          binary_dir="./bazel-out/${bazel_arch_dir}/bin/xla/tools"
+          runner_binary="${{ matrix.job_info.runner_binary }}"
+          test_hlo_file="${{ matrix.job_info.hlo_test_file }}"
+          platform="${{ matrix.job_info.platform }}"
+          output_file="$GITHUB_WORKSPACE/${test_hlo_file}_output.txt"
+          xspace_file="$GITHUB_WORKSPACE/xspace.pb"
 
-          if [[ ${{ matrix.job_info.platform }} == "CPU" ]]; then
-            binary_path="./bazel-out/${bazel_arch_dir}/bin/xla/tools/run_hlo_module"
-            test_hlo_file="xla/tools/hlo_opt/tests/cpu_hlo.hlo"
-            echo "Running CPU test with binary: $binary_path"
-            pwd #print working directory
-            $binary_path --input_format=hlo --reference_platform="" --platform="${{ matrix.job_info.platform }}" $test_hlo_file > "$OUTPUT_FILE_PATH"
-            cat "$OUTPUT_FILE_PATH"
-          elif [[ ${{ matrix.job_info.platform }} == "GPU" ]]; then
-            binary_dir="./bazel-out/${bazel_arch_dir}/bin/xla/tools"
-            test_hlo_file="xla/tools/hlo_opt/tests/gpu_hlo_backend.hlo"
-            echo "Running GPU test with binary: $binary_dir"
-            pwd #print working directory
-            $binary_dir/multihost_hlo_runner/hlo_runner_main_gpu --device_type=gpu --use_spmd_partitioning --profile_execution=True  --xla_gpu_dump_xspace_to="$GITHUB_WORKSPACE/$test_hlo_file"_xspace.pb "$test_hlo_file" > "$OUTPUT_FILE_PATH"
-            $binary_dir/compute_gpu_device_stats_main_gpu --input="$GITHUB_WORKSPACE/$test_hlo_file"_xspace.pb >> "$OUTPUT_FILE_PATH"
+          echo "Running ${platform} test with binary: $binary_dir/$runner_binary"
+          pwd #print working directory
 
-            cat "$OUTPUT_FILE_PATH"
+          if [[ "$platform" == "CPU" ]]; then
+            $binary_dir/multihost_hlo_runner/$runner_binary --device_type=host --use_spmd_partitioning --profile_execution=True --xla_gpu_dump_xspace_to="$xspace_file" "$test_hlo_file" > "$output_file"
+            $binary_dir/compute_xspace_stats_main --input="$xspace_file" --device_type=CPU >> "$output_file"
+          elif [[ "$platform" == "GPU" ]]; then
+            $binary_dir/multihost_hlo_runner/$runner_binary --device_type=gpu --use_spmd_partitioning --profile_execution=True --xla_gpu_dump_xspace_to="$xspace_file" "$test_hlo_file" > "$output_file"
+            $binary_dir/compute_xspace_stats_main_gpu --input="$xspace_file" --device_type=GPU >> "$output_file"
           else
-            echo "Unsupported platform: ${{ matrix.job_info.platform }}"
+            echo "Unsupported platform: $platform"
             exit 1
           fi
-          echo "Output written to: $OUTPUT_FILE_PATH"
+          cat "$output_file"
+          echo "Output written to: $output_file"
+          echo "XSpace file written to: $xspace_file"
+          echo "OUTPUT_FILE=$output_file" >> "$GITHUB_ENV"
+          echo "XSPACE_FILE=$xspace_file" >> "$GITHUB_ENV"
+
+      - name: Download Gemma Hlo Files
+        run: |
+          mkdir -p tmp_hlo
+          cd tmp_hlo
+          wget https://storage.googleapis.com/xla-benchmarking-temp/gemma3_1b_flax_call.hlo
+          cd ..
+
+      - name: Run Gemma HLO tests
+        if: ${{ matrix.job_info.pool != 'linux-arm64-t2a-48' }}
+        run: |
+          bazel_arch_dir="${{ matrix.job_info.bazel_arch_dir }}"
+          binary_dir="./bazel-out/${bazel_arch_dir}/bin/xla/tools"
+          runner_binary="${{ matrix.job_info.runner_binary }}"
+          test_hlo_file="tmp_hlo/gemma3_1b_flax_call.hlo"
+          platform="${{ matrix.job_info.platform }}"
+          output_file="$GITHUB_WORKSPACE/${test_hlo_file}_output.txt"
+          xspace_file="$GITHUB_WORKSPACE/xspace.pb"
+
+          if [[ "$platform" == "CPU" ]]; then
+            $binary_dir/multihost_hlo_runner/$runner_binary --device_type=host --use_spmd_partitioning --profile_execution=True --xla_gpu_dump_xspace_to="$xspace_file" "$test_hlo_file" > "$output_file"
+            $binary_dir/compute_xspace_stats_main --input="$xspace_file" --device_type=CPU >> "$output_file"
+          elif [[ "$platform" == "GPU" ]]; then
+            $binary_dir/multihost_hlo_runner/$runner_binary --device_type=gpu --use_spmd_partitioning --profile_execution=True --xla_gpu_dump_xspace_to="$xspace_file" "$test_hlo_file" > "$output_file"
+            $binary_dir/compute_xspace_stats_main_gpu --input="$xspace_file" --device_type=GPU >> "$output_file"
+          else
+            echo "Unsupported platform: $platform"
+            exit 1
+          fi
+          cat "$output_file"
+          echo "Output written to: $output_file"
+          echo "XSpace file written to: $xspace_file"
+          echo "OUTPUT_FILE=$output_file" >> "$GITHUB_ENV"
+          echo "XSPACE_FILE=$xspace_file" >> "$GITHUB_ENV"
 
       - name: Upload HLO test output to a GCS bucket
         run: |
           GCS_BUCKET="gs://openxla-postsubmit-transient"
           TIMESTAMP=$(date +%Y%m%d_%H%M%S)
           DATE_FOLDER=$(date +%Y%m%d)
-          FILENAME="hlo_test_output.txt"
+          FILENAME=$(basename "$OUTPUT_FILE")
           COMMIT_SHA="${{ github.sha }}"
           RUN_ID="${{ github.run_id }}"
           PR_NUMBER="${{ steps.find_pr.outputs.pr }}"
+          PLATFORM="${{ matrix.job_info.platform }}"
+          POOL="${{ matrix.job_info.pool }}"
           PR_SUFFIX=""
           if [[ -n "$PR_NUMBER" ]]; then
             PR_SUFFIX="_pr_${PR_NUMBER}"
           fi
 
-          GCS_OBJECT_NAME="${DATE_FOLDER}/${TIMESTAMP}_${{ matrix.job_info.pool }}_run_${RUN_ID}_commit_${COMMIT_SHA}${PR_SUFFIX}_${FILENAME}"
+          GCS_OBJECT_NAME="${DATE_FOLDER}/${TIMESTAMP}_${POOL}_run_${RUN_ID}_commit_${COMMIT_SHA}${PR_SUFFIX}_${PLATFORM}_${FILENAME}"
 
-          echo "Uploading $OUTPUT_FILE_PATH to $GCS_BUCKET/$GCS_OBJECT_NAME"
-          ls -l "$OUTPUT_FILE_PATH" # Verify the file exists
-          gsutil cp "$OUTPUT_FILE_PATH" "$GCS_BUCKET/$GCS_OBJECT_NAME"
+          echo "Uploading $OUTPUT_FILE to $GCS_BUCKET/$GCS_OBJECT_NAME"
+          ls -l "$OUTPUT_FILE" # Verify the file exists
+          gsutil cp "$OUTPUT_FILE" "$GCS_BUCKET/$GCS_OBJECT_NAME"
+
+          # Upload Gemma HLO test output to a GCS bucket  
+          if [[ "${{ matrix.job_info.pool }}" != "linux-arm64-t2a-48" ]]; then
+            GEMMA_OUTPUT_FILE="$GITHUB_WORKSPACE/gemma3_1b_flax_call_output.txt"
+            GEMMA_GCS_OBJECT_NAME="${DATE_FOLDER}/${TIMESTAMP}_${POOL}_run_${RUN_ID}_commit_${COMMIT_SHA}${PR_SUFFIX}_gemma_${PLATFORM}_${GEMMA_OUTPUT_FILE}"
+            echo "Uploading $OUTPUT_FILE to $GCS_BUCKET/$GEMMA_GCS_OBJECT_NAME"
+            ls -l "$OUTPUT_FILE" # Verify the file exists
+            gsutil cp "$OUTPUT_FILE" "$GCS_BUCKET/$GEMMA_GCS_OBJECT_NAME"
+          fi
+
+      - name: Upload XSpace artifacts
+        uses: actions/upload-artifact@4cec3d8aa04e39d1a68397de0c4cd6fb9dce8ec1 # v4.6.1
+        with:
+          name: xspace-artifacts-${{ matrix.job_info.pool }}-${{ matrix.job_info.platform }}
+          path: ${{ env.XSPACE_FILE }}

@@ -58,7 +58,7 @@ jobs:
       - name: Checkout XLA
         uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4.1.1
 
-      - name: Download Gemma2 2B HLO
+      - name: Download Gemma Hlo Files
         run: |
           mkdir -p tmp_hlo
           cd tmp_hlo
@@ -92,8 +92,9 @@ jobs:
             "$HLO_FILE_GB" \
             > "${OUTPUT_PREFIX_GB}.txt"
 
-          $binary_dir/compute_gpu_device_stats_main_gpu \
+          $binary_dir/compute_xspace_stats_main_gpu \
             --input="${OUTPUT_PREFIX_GB}_xspace.pb" \
+            --device_type=GPU \
             >> "${OUTPUT_PREFIX_GB}.txt"
 
           cat "${OUTPUT_PREFIX_GB}.txt"
@@ -110,8 +111,9 @@ jobs:
             "$HLO_FILE_GEMMA" \
             > "${OUTPUT_PREFIX_GEMMA}.txt"
 
-          $binary_dir/compute_gpu_device_stats_main_gpu \
+          $binary_dir/compute_xspace_stats_main_gpu \
             --input="${OUTPUT_PREFIX_GEMMA}_xspace.pb" \
+            --device_type=GPU \
             >> "${OUTPUT_PREFIX_GEMMA}.txt"
 
           cat "${OUTPUT_PREFIX_GEMMA}.txt"
@@ -130,8 +132,9 @@ jobs:
             "$HLO_FILE_GEMMA3_CALL" \
             > "${OUTPUT_PREFIX_GEMMA3_CALL}.txt"
 
-            $binary_dir/compute_gpu_device_stats_main_gpu \
+            $binary_dir/compute_xspace_stats_main_gpu \
             --input="${OUTPUT_PREFIX_GEMMA3_CALL}_xspace.pb" \
+            --device_type=GPU \
             >> "${OUTPUT_PREFIX_GEMMA3_CALL}.txt"
 
             cat "${OUTPUT_PREFIX_GEMMA3_CALL}.txt"
@@ -150,8 +153,9 @@ jobs:
             "$HLO_FILE_GEMMA3_SAMPLE_LOOP" \
             > "${OUTPUT_PREFIX_GEMMA3_SAMPLE_LOOP}.txt"
 
-            $binary_dir/compute_gpu_device_stats_main_gpu \
+            $binary_dir/compute_xspace_stats_main_gpu \
             --input="${OUTPUT_PREFIX_GEMMA3_SAMPLE_LOOP}_xspace.pb" \
+            --device_type=GPU \
             >> "${OUTPUT_PREFIX_GEMMA3_SAMPLE_LOOP}.txt"
 
             cat "${OUTPUT_PREFIX_GEMMA3_SAMPLE_LOOP}.txt"

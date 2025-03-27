@@ -763,9 +763,9 @@ cc_library(
 )
 
 cc_library(
-    name = "compute_gpu_device_stats",
-    srcs = ["compute_gpu_device_stats.cc"],
-    hdrs = ["compute_gpu_device_stats.h"],
+    name = "compute_xspace_stats",
+    srcs = ["compute_xspace_stats.cc"],
+    hdrs = ["compute_xspace_stats.h"],
     deps = [
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:errors",
@@ -781,39 +781,12 @@ cc_library(
 )
 
 xla_cc_test(
-    name = "compute_gpu_device_stats_test",
-    srcs = ["compute_gpu_device_stats_test.cc"],
+    name = "compute_xspace_stats_test",
+    srcs = ["compute_xspace_stats_test.cc"],
     deps = [
-        ":compute_gpu_device_stats",
+        ":compute_xspace_stats",
         "//xla/tsl/platform:statusor",
         "@com_google_googletest//:gtest_main",
-    ],
-)
-
-xla_cc_binary(
-    name = "compute_gpu_device_stats_main",
-    srcs = ["compute_gpu_device_stats_main.cc"],
-    deps = [
-        ":compute_gpu_device_stats",
-        "//xla:debug_options_flags",
-        "//xla/tsl/util:command_line_flags",
-        "@com_google_absl//absl/log",
-        "@com_google_absl//absl/strings",
-        "@local_tsl//tsl/platform:platform_port",
-    ],
-)
-
-xla_cc_binary(
-    name = "compute_gpu_device_stats_main_gpu",
-    srcs = ["compute_gpu_device_stats_main.cc"],
-    tags = ["gpu"],
-    deps = [
-        ":compute_gpu_device_stats",
-        "//xla:debug_options_flags",
-        "//xla/tsl/util:command_line_flags",
-        "@com_google_absl//absl/log",
-        "@com_google_absl//absl/strings",
-        "@local_tsl//tsl/platform:platform_port",
     ],
 )
 
@@ -1091,5 +1064,32 @@ lit_test_suite(
     tools = [
         ":print_indexing",
         "@llvm-project//llvm:FileCheck",
+    ],
+)
+
+xla_cc_binary(
+    name = "compute_xspace_stats_main",
+    srcs = ["compute_xspace_stats_main.cc"],
+    deps = [
+        ":compute_xspace_stats",
+        "//xla:debug_options_flags",
+        "//xla/tsl/util:command_line_flags",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/strings",
+        "@local_tsl//tsl/platform:platform_port",
+    ],
+)
+
+xla_cc_binary(
+    name = "compute_xspace_stats_main_gpu",
+    srcs = ["compute_xspace_stats_main.cc"],
+    tags = ["gpu"],
+    deps = [
+        ":compute_xspace_stats",
+        "//xla:debug_options_flags",
+        "//xla/tsl/util:command_line_flags",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/strings",
+        "@local_tsl//tsl/platform:platform_port",
     ],
 )

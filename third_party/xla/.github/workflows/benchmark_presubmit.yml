@@ -63,6 +63,8 @@ jobs:
       run:
         shell: bash
     timeout-minutes: 15
+    env:
+      OUTPUT_DIR: ${{ github.workspace }}/output
     steps:
       - name: Print GitHub Context
         run: |
@@ -95,24 +97,38 @@ jobs:
         run: |
           ./build_tools/ci/build.py --build="${{ matrix.job_info.pretty_name }}_github_actions"
 
+      - name: Download Gemma Hlo Files
+        run: |
+          mkdir -p "$OUTPUT_DIR/tmp_hlo"
+          cd "$OUTPUT_DIR/tmp_hlo"
+          wget https://storage.googleapis.com/xla-benchmarking-temp/gemma3_1b_flax_call.hlo
+          cd ..
+
       # Run the corresponding HLO tests based on platform
       - name: Run HLO tests
         run: |
-          bazel_arch_dir="${{ matrix.job_info.bazel_arch_dir }}"  # Get directory from matrix
-          binary_path=""
-          test_hlo_file=""
+          BAZEL_ARCH_DIR="${{ matrix.job_info.bazel_arch_dir }}"
+          BINARY_DIR="./bazel-out/${BAZEL_ARCH_DIR}/bin/xla/tools"
+          OUTPUT_FILE_PATH="$OUTPUT_DIR/gemma3_1b_flax_call_output.txt"
+          TEST_HLO_FILE="$OUTPUT_DIR/tmp_hlo/gemma3_1b_flax_call.hlo"
+          XSPACE_FILE_PATH="$OUTPUT_DIR/gemma3_1b_flax_call_xspace.pb"
+          DEVICE_TYPE=""
 
           if [[ ${{ matrix.job_info.platform }} == "CPU" ]]; then
-            binary_path="./bazel-out/${bazel_arch_dir}/bin/xla/tools/run_hlo_module"
-            test_hlo_file="xla/tools/hlo_opt/tests/cpu_hlo.hlo"
-            echo "Running CPU test with binary: $binary_path"
-            $binary_path --input_format=hlo --reference_platform="" --platform="${{ matrix.job_info.platform }}" $test_hlo_file
+            DEVICE_TYPE="host"
+            HLO_RUNNER_BINARY="$BINARY_DIR/multihost_hlo_runner/hlo_runner_main"
+            COMPUTE_XSPACE_STATS_BINARY="$BINARY_DIR/compute_xspace_stats_main"
           elif [[ ${{ matrix.job_info.platform }} == "GPU" ]]; then
-            binary_path="./bazel-out/${bazel_arch_dir}/bin/xla/tools/multihost_hlo_runner/hlo_runner_main_gpu"
-            test_hlo_file="xla/tools/hlo_opt/tests/gpu_hlo_backend.hlo"
-            echo "Running GPU test with binary: $binary_path"
-            $binary_path --device_type=gpu --use_spmd_partitioning --profile_execution=True  $test_hlo_file
+            DEVICE_TYPE="gpu"
+            HLO_RUNNER_BINARY="$BINARY_DIR/multihost_hlo_runner/hlo_runner_main_gpu"
+            COMPUTE_XSPACE_STATS_BINARY="$BINARY_DIR/compute_xspace_stats_main_gpu"
           else
             echo "Unsupported platform: ${{ matrix.job_info.platform }}"
             exit 1
           fi
+
+          echo "Running test with binary: $HLO_RUNNER_BINARY"
+          pwd #print working directory
+          $HLO_RUNNER_BINARY --device_type=$DEVICE_TYPE --use_spmd_partitioning --profile_execution=True --xla_gpu_dump_xspace_to="$XSPACE_FILE_PATH" "$TEST_HLO_FILE" > "$OUTPUT_FILE_PATH"
+          $COMPUTE_XSPACE_STATS_BINARY --input="$XSPACE_FILE_PATH" --device_type="${{ matrix.job_info.platform }}" >> "$OUTPUT_FILE_PATH"
+          cat "$OUTPUT_FILE_PATH"
