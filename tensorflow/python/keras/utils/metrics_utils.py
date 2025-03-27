@@ -359,7 +359,7 @@ def _update_confusion_matrix_variables_optimized(
       the same).
     multi_label: Optional boolean indicating whether multidimensional
       prediction/labels should be treated as multilabel responses, or flattened
-      into a single label. When True, the valus of `variables_to_update` must
+      into a single label. When True, the values of `variables_to_update` must
       have a second dimension equal to the number of labels in y_true and
       y_pred, and those tensors must not be RaggedTensors.
     sample_weights: Optional `Tensor` whose rank is either 0, or the same rank
@@ -485,7 +485,7 @@ def is_evenly_distributed_thresholds(thresholds):
 
   We could leverage evenly distributed thresholds to use less memory when
   calculate metrcis like AUC where each individual threshold need to be
-  evaluted.
+  evaluated.
 
   Args:
     thresholds: A python list or tuple, or 1D numpy array whose value is ranged
@@ -548,7 +548,7 @@ def update_confusion_matrix_variables(variables_to_update,
       be either `1`, or the same as the corresponding `y_true` dimension).
     multi_label: Optional boolean indicating whether multidimensional
       prediction/labels should be treated as multilabel responses, or flattened
-      into a single label. When True, the valus of `variables_to_update` must
+      into a single label. When True, the values of `variables_to_update` must
       have a second dimension equal to the number of labels in y_true and
       y_pred, and those tensors must not be RaggedTensors.
     label_weights: (optional) tensor of non-negative weights for multilabel

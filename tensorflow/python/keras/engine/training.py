@@ -767,7 +767,7 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
 
     This method can be overridden to support custom training logic.
     For concrete examples of how to override this method see
-    [Customizing what happends in fit](https://www.tensorflow.org/guide/keras/customizing_what_happens_in_fit).
+    [Customizing what happens in fit](https://www.tensorflow.org/guide/keras/customizing_what_happens_in_fit).
     This method is called by `Model.make_train_function`.
 
     This method should contain the mathematical logic for one step of training.
@@ -1235,7 +1235,7 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
         if self.stop_training:
           break
 
-      # If eval data_hanlder exists, delete it after all epochs are done.
+      # If eval data_handler exists, delete it after all epochs are done.
       if getattr(self, '_eval_data_handler', None) is not None:
         del self._eval_data_handler
       callbacks.on_train_end(logs=training_logs)
