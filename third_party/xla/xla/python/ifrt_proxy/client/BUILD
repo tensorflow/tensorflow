@@ -317,7 +317,7 @@ cc_library(
         "//xla/python/ifrt_proxy/common:ifrt_service_proto_cc",
         "//xla/python/ifrt_proxy/common:test_utils",
         "@com_google_absl//absl/status",
-        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_for_library",
     ],
 )
 
@@ -441,7 +441,7 @@ cc_library(
         "//xla/python/ifrt",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:cord",
-        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_for_library",
     ],
 )
 

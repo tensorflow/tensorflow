@@ -133,7 +133,7 @@ cc_library(
     visibility = internal_visibility(["//xla/tests:friends"]),
     deps = [
         "//xla/tsl/platform:test",
-        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_for_library",
         "@local_tsl//tsl/platform",
     ],
 )

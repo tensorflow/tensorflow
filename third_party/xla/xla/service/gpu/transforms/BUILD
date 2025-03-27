@@ -1876,7 +1876,7 @@ cc_library(
         "//xla/stream_executor:semantic_version",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
-        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_for_library",
     ],
 )
 
