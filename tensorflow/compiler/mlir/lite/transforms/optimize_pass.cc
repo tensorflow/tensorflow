@@ -992,80 +992,6 @@ struct SqueezeReshapesAroundBroadcastOp
   }
 };
 
-// This pattern matches TFL::BroadcastToOp WITH TENSOR RANK <= 4 and replaces
-// it with a MulOp that multiplies the tensor by a splat constant with 1s.
-struct ConvertTFLBroadcastToMulOp
-    : public OpRewritePattern<TFL::BroadcastToOp> {
-  using OpRewritePattern<TFL::BroadcastToOp>::OpRewritePattern;
-
-  LogicalResult matchAndRewrite(TFL::BroadcastToOp tfl_broadcast_to_op,
-                                PatternRewriter &rewriter) const override {
-    auto input_type =
-        mlir::cast<ShapedType>(tfl_broadcast_to_op.getInput().getType());
-    auto output_type =
-        mlir::cast<ShapedType>(tfl_broadcast_to_op.getOutput().getType());
-    auto shape_type =
-        mlir::cast<ShapedType>(tfl_broadcast_to_op.getShape().getType());
-    Type element_type = input_type.getElementType();
-
-    auto loc = tfl_broadcast_to_op->getLoc();
-
-    // Check that the output type is not dynamic and is less-than-equal to 4D or
-    // the shape type is static, 1D and has less-than-equal to 4 elements.
-    bool is_output_shape_dynamic =
-        (!output_type.hasRank() || (output_type.getRank() > 4) ||
-         (output_type.getNumDynamicDims() > 0));
-    bool is_broadcast_shape_dynamic =
-        (!shape_type.hasStaticShape() || (shape_type.getRank() != 1) ||
-         (shape_type.getDimSize(0) > 4));
-    if (is_output_shape_dynamic && is_broadcast_shape_dynamic)
-      return rewriter.notifyMatchFailure(
-          loc, "output_rank or broadcast_to shape not supported");
-
-    // Allow lowering when the input's elements type is F32, BFloat16, I32 or
-    // I16.
-    if (!(mlir::isa<BFloat16Type, Float32Type>(element_type) ||
-          element_type.isInteger(32) || element_type.isInteger(16)))
-      return rewriter.notifyMatchFailure(loc, "element_type_not_supported");
-
-    // TFL_FillOp is created only if is_output_shape_dynamic is true, otherwise
-    // a Arith.ConstOp is created.
-    if (is_output_shape_dynamic &&
-        output_type.getElementType().isUnsignedInteger()) {
-      return rewriter.notifyMatchFailure(
-          loc,
-          "Unsigned broadcast_to output with dynamic shape is not supported");
-    }
-
-    Value mul_rhs_value;
-    if (!output_type.hasRank() || (output_type.getNumDynamicDims() > 0)) {
-      auto status_or_const_op =
-          CreateConstOpWithSingleValue(&rewriter, loc, input_type, 1);
-      if (!status_or_const_op.ok()) {
-        return failure();
-      }
-
-      mul_rhs_value = rewriter.create<TFL::FillOp>(
-          loc, output_type, tfl_broadcast_to_op.getShape(),
-          status_or_const_op.value());
-    } else {
-      auto status_or_const_op =
-          CreateConstOpWithVectorValue(&rewriter, loc, output_type, 1);
-      if (!status_or_const_op.ok()) {
-        return failure();
-      }
-
-      mul_rhs_value = status_or_const_op.value();
-    }
-
-    auto mul_op = rewriter.create<TFL::MulOp>(
-        loc, output_type, tfl_broadcast_to_op.getInput(), mul_rhs_value,
-        rewriter.getStringAttr("NONE"));
-    rewriter.replaceOp(tfl_broadcast_to_op, mul_op.getResult());
-    return success();
-  }
-};
-
 struct FuseAddAndStridedSlice : public OpRewritePattern<TFL::StridedSliceOp> {
   using OpRewritePattern<TFL::StridedSliceOp>::OpRewritePattern;
 
@@ -2873,8 +2799,7 @@ void OptimizePass::runOnOperation() {
       OptimizeTopK, FuseAddAndStridedSlice,
       FuseReshapeAndTransposeAroundBatchMatmul,
       FuseTransposeReshapeIntoBatchMatmul, MoveReshapeAfterFullyConnected,
-      EnableFullyConnectedKeepNumDimsBeforeReshape, ConvertTFLBroadcastToMulOp>(
-      ctx);
+      EnableFullyConnectedKeepNumDimsBeforeReshape>(ctx);
   if (!GetOptions().disable_fuse_mul_and_fc) {
     phase_2_patterns.add<FuseMulAndFullyConnected>(ctx);
   }

@@ -963,7 +963,7 @@ def OptimizePow1ToIdentity : Pat<
 def OptimizePow2ToSquare : Pat<
   (TFL_PowOp $input,
     (Arith_ConstantOp ConstantAttr<RankedF32ElementsAttr<[]>, "2.0f">)),
-  (TFL_MulOp $input, $input, TFL_AF_None)>;
+  (TFL_SquareOp $input)>;
 
 // Optimize X^(1/2) to √X
 def OptimizePow2ToSqrt : Pat<
@@ -1362,6 +1362,57 @@ def EliminateCumSumInclusive : Pat<
      $reverse),
   (replaceWithValue $input),
   [(AreInputDimensionsOneInAxes $input, $axis)]>;
+
+// Replace mul on the same argument with square(arg).
+def ReplaceMulWithPow : Pat<
+  (TFL_MulOp $arg0, $arg1, TFL_AF_None),
+  (TFL_PowOp $arg0,
+    (Arith_ConstantOp ConstantAttr<RankedF32ElementsAttr<[]>,"2.0f">)),
+  [(IsSame $arg0, $arg1)]>;
+
+// Replace mul and square on the same argument with pow(arg, 3).
+def FuseSquareAndMul_RHS : Pat<
+  (TFL_MulOp $arg0,
+    (TFL_SquareOp $arg1),
+    TFL_AF_None),
+  (TFL_PowOp $arg0,
+    (Arith_ConstantOp ConstantAttr<RankedF32ElementsAttr<[]>,"3.0f">)),
+  [(IsSame $arg0, $arg1)]>;
+
+// Replace mul and square on the same argument with pow(arg, 3).
+def FuseSquareAndMul_LHS : Pat<
+  (TFL_MulOp
+    (TFL_SquareOp $arg1),
+    $arg0,
+    TFL_AF_None),
+  (TFL_PowOp $arg0,
+    (Arith_ConstantOp ConstantAttr<RankedF32ElementsAttr<[]>,"3.0f">)),
+  [(IsSame $arg0, $arg1)]>;
+
+// Replace mul and pow(arg, n) on the same argument with pow(arg, n+1).
+def FuseMulAndPow_LHS : Pat<
+  (TFL_MulOp $arg0,
+    (TFL_PowOp $arg1,
+     (Arith_ConstantOp $cst_2)),
+    TFL_AF_None),
+  (TFL_PowOp $arg0,
+    (TFL_AddOp (Arith_ConstantOp $cst_2),
+      (Arith_ConstantOp ConstantAttr<RankedF32ElementsAttr<[]>,"1.0f">),
+      TFL_AF_None)),
+  [(IsSame $arg0, $arg1)]>;
+
+// Replace mul and pow(arg, n) on the same argument with pow(arg, n+1).
+def FuseMulAndPow_RHS : Pat<
+  (TFL_MulOp
+    (TFL_PowOp $arg1,
+     (Arith_ConstantOp $cst_2)),
+    $arg0,
+    TFL_AF_None),
+  (TFL_PowOp $arg0,
+    (TFL_AddOp (Arith_ConstantOp $cst_2),
+      (Arith_ConstantOp ConstantAttr<RankedF32ElementsAttr<[]>,"1.0f">),
+      TFL_AF_None)),
+  [(IsSame $arg0, $arg1)]>;
 
 // Fusing raw computation of GELU op into one native tfl_gelu op.
 //
@@ -1969,3 +2020,43 @@ def RealDivWithF32ConstDivisor : Pat<
       (GetScalarOfType<1> (Arith_ConstantOp $value))),
       (Arith_ConstantOp $value),  TFL_AF_None),
     $activation)>;
+
+// This pattern optimizes:
+//   (x + cst1) + cst2 -> x + cst
+//   (x - cst1) - cst2 -> x - cst
+// Where: cst = cst1 + cst2
+foreach BinaryOp = [TFL_AddOp, TFL_SubOp] in {
+  def OptimizeConsecutive#BinaryOp : Pat<
+    (BinaryOp
+      (BinaryOp $x, (Arith_ConstantOp:$cst1 $cst1_value), TFL_AF_None),
+      (Arith_ConstantOp:$cst2 $cst2_value), $activation),
+    (BinaryOp
+      $x, (TFL_AddOp $cst1, $cst2, TFL_AF_None), $activation)>;
+}
+
+// This pattern optimizes:
+//   (x + cst1) - cst2 -> x - cst
+//   (x - cst1) + cst2 -> x + cst
+// Where: cst = cst2 - cst1
+foreach BinaryOpPair = [[TFL_AddOp, TFL_SubOp],
+                     [TFL_SubOp, TFL_AddOp]] in {
+  def OptimizeConsecutive#BinaryOpPair[0]#BinaryOpPair[1] : Pat<
+    (BinaryOpPair[0]
+      (BinaryOpPair[1] $x, (Arith_ConstantOp:$cst1 $cst1_value), TFL_AF_None),
+      (Arith_ConstantOp:$cst2 $cst2_value), $activation),
+    (BinaryOpPair[0]
+      $x, (TFL_SubOp  $cst2, $cst1, TFL_AF_None), $activation)>;
+}
+
+// This pattern optimizes:
+//   (x * cst1) * cst2 -> x * cst
+//   (x / cst1) / cst2 -> x / cst
+// Where: cst = cst1 * cst2
+foreach BinaryOp = [TFL_MulOp, TFL_DivOp] in {
+  def OptimizeConsecutive#BinaryOp : Pat<
+    (BinaryOp
+      (BinaryOp $x, (Arith_ConstantOp:$cst1 $cst1_value), TFL_AF_None),
+      (Arith_ConstantOp:$cst2 $cst2_value), $activation),
+    (BinaryOp
+      $x, (TFL_MulOp $cst1, $cst2, TFL_AF_None), $activation)>;
+}
