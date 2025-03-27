@@ -39,6 +39,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/Support/Casting.h"
 #include "llvm/Support/MathExtras.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Math/IR/Math.h"
@@ -51,21 +52,20 @@ limitations under the License.
 #include "mlir/IR/TypeUtilities.h"
 #include "mlir/IR/Value.h"
 #include "mlir/IR/ValueRange.h"
+#include "mlir/Interfaces/FunctionInterfaces.h"
 #include "mlir/Support/LLVM.h"
 #include "xla/backends/gpu/codegen/triton/emitter_helpers.h"
-#include "xla/backends/gpu/codegen/triton/ir/triton_xla_ops.h"
 #include "xla/codegen/emitter_loc_op_builder.h"
 #include "xla/comparison_util.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
-#include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/ir/hlo_print_options.h"
 #include "xla/hlo/utils/hlo_query.h"
 #include "xla/hlo/utils/hlo_traversal.h"
 #include "xla/layout.h"
-#include "xla/layout_util.h"
 #include "xla/literal.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/mlir_hlo/mhlo/transforms/map_mhlo_to_scalar_op.h"
@@ -91,9 +91,6 @@ limitations under the License.
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/status.h"
-#include "tsl/platform/statusor.h"
 #include "tsl/platform/tensor_float_32_utils.h"
 #include "triton/Dialect/Triton/IR/Dialect.h"
 #include "triton/Dialect/Triton/IR/Types.h"
@@ -1649,7 +1646,7 @@ class MatMulEmitterHelper {
   MatMulLaunchConfig launch_config_;
 };
 
-absl::StatusOr<SmallVector<Value>> GetArguments(mlir::triton::FuncOp fn,
+absl::StatusOr<SmallVector<Value>> GetArguments(mlir::FunctionOpInterface fn,
                                                 const HloInstruction& input) {
   if (input.opcode() == HloOpcode::kParameter) {
     return {{fn.getArgument(input.parameter_number())}};
@@ -2282,7 +2279,7 @@ void EmitForLoopBody(EmitterLocOpBuilder& b, MatMulEmitterHelper& emitter,
 absl::StatusOr<std::optional<stream_executor::gpu::TmaMetadata>> EmitMatMul(
     EmitterLocOpBuilder& b, absl::string_view libdevice_path,
     const se::DeviceDescription& device_info,
-    const HloFusionInstruction* fusion, mlir::triton::FuncOp fn,
+    const HloFusionInstruction* fusion, mlir::FunctionOpInterface fn,
     const BlockLevelParameters&) {
   // TODO b/315957220: Populate tma_metadata.
   stream_executor::gpu::TmaMetadata tma_metadata;

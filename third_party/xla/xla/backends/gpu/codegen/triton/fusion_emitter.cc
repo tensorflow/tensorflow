@@ -18,7 +18,6 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <memory>
-#include <numeric>
 #include <optional>
 #include <string>
 #include <system_error>  // NOLINT(build/c++11): required to interface with LLVM
@@ -51,11 +50,13 @@ limitations under the License.
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/Extensions/InlinerExtension.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/Dialect/LLVMIR/LLVMTypes.h"
 #include "mlir/Dialect/LLVMIR/NVVMDialect.h"
 #include "mlir/Dialect/LLVMIR/Transforms/InlinerInterfaceImpl.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
+#include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/ExecutionEngine/OptUtils.h"
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/Builders.h"
@@ -72,6 +73,7 @@ limitations under the License.
 #include "mlir/IR/Value.h"
 #include "mlir/IR/ValueRange.h"
 #include "mlir/IR/Verifier.h"
+#include "mlir/Interfaces/FunctionInterfaces.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Support/LLVM.h"
@@ -103,6 +105,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_print_options.h"
 #include "xla/hlo/translate/hlo_to_mhlo/hlo_function_importer.h"
+#include "xla/layout.h"
 #include "xla/layout_util.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/permutation_util.h"
@@ -143,6 +146,7 @@ namespace gpu {
 
 namespace arith = ::mlir::arith;
 namespace ttir = ::mlir::triton;
+namespace mtx = ::mlir::triton::xla;
 
 using ::llvm::SmallVector;
 using ::mlir::ArrayRef;
@@ -175,30 +179,32 @@ ScalarOrTensor Range(EmitterLocOpBuilder& b, int32_t limit) {
   return ScalarOrTensor(b.create<ttir::MakeRangeOp>(type, 0, limit));
 }
 
-Value AddPtr(EmitterLocOpBuilder& b, Value ptr, Value offset) {
-  return b.create<ttir::AddPtrOp>(ptr.getType(), ptr, offset);
-}
-
-ScalarOrTensor EmitParameterLoad(EmitterLocOpBuilder& b, Value pointer,
-                                 ArrayRef<int32_t> boundary_checks) {
+ScalarOrTensor EmitParameterExtract(
+    EmitterLocOpBuilder& b,
+    ir_emitter_triton_internal::TileOpAndSizes tile_op_and_sizes) {
   // For a pointer to a scalar or a zero-dimensional tensor, load the base
   // pointer directly. This shortcut is necessary because Triton does not
   // support 0-D tensors. Looking for the defining make_tensor_ptr op is
   // sufficient because pointers to 0-D tensors are never modified by e.g.
   // `tt.advance`.
-  if (auto make_tensor_ptr = pointer.getDefiningOp<ttir::MakeTensorPtrOp>();
-      make_tensor_ptr && make_tensor_ptr.getShape().empty()) {
-    pointer = make_tensor_ptr.getBase();
-  }
 
-  std::optional<ttir::PaddingOption> padding;
-  if (!boundary_checks.empty()) {
-    padding = ttir::PaddingOption::PAD_ZERO;
+  auto tile_op = tile_op_and_sizes.tile_op;
+  auto tiled_tensor_type =
+      mlir::dyn_cast<mtx::TiledTensorType>(tile_op.getResult().getType());
+  CHECK(tiled_tensor_type) << "Expected a TiledTensorType\n";
+
+  if (!tiled_tensor_type.getTileShape().empty()) {
+    return ScalarOrTensor(b.create<mtx::ExtractOp>(
+        mlir::RankedTensorType::get(
+            tiled_tensor_type.getTileShape(),
+            StorageType(b, tiled_tensor_type.getElementType())),
+        tile_op.getResult(),
+        CreateConst(b, b.getI32Type(), 0, tile_op_and_sizes.tile_sizes)
+            .UnwrapTensor()));
+  } else {
+    return ScalarOrTensor(
+        b.create<mlir::tensor::ExtractOp>(tile_op.getTensor(), {}));
   }
-  bool is_volatile = false;
-  return ScalarOrTensor(b.create<ttir::LoadOp>(
-      pointer, boundary_checks, padding, ttir::CacheModifier::NONE,
-      ttir::EvictionPolicy::NORMAL, is_volatile));
 }
 
 absl::StatusOr<ScalarOrTensor> EmitScope(
@@ -605,7 +611,7 @@ absl::StatusOr<std::vector<ScalarOrTensor>> EmitTiledComputation(
     EmitterLocOpBuilder& b, absl::string_view libdevice_path,
     const se::DeviceDescription& device_info,
     const HloFusionInstruction* fusion,
-    const TiledHloComputation& tiled_computation, mlir::triton::FuncOp fn,
+    const TiledHloComputation& tiled_computation, mlir::FunctionOpInterface fn,
     ValueRange tile_multi_index);
 
 bool UseGenericTritonEmitterForGemms(const HloInstruction* hlo) {
@@ -663,7 +669,7 @@ absl::StatusOr<Value> MaskDotOperand(EmitterLocOpBuilder& b,
   llvm::ArrayRef<int64_t> tile_shape =
       mlir::cast<ShapedType>(dot_operand_value.getType()).getShape();
 
-  int64_t rank = dot_operand.hlo()->shape().dimensions_size();
+  int64_t rank = dot_operand.hlo()->shape().dimensions().size();
   int64_t contracting_dimension_size =
       dot_operand.hlo()->shape().dimensions(contraction_dimension_index);
   int64_t tile_size = tile_shape[contraction_dimension_index];
@@ -714,12 +720,55 @@ absl::StatusOr<Value> MaskDotOperand(EmitterLocOpBuilder& b,
   return dot_operand_value;
 }
 
+// Computes the base pointer offset for the given tile multi-index and hlo shape
+// taking into account the physical layout of the hlo buffer.
+// absl::StatusOr<SmallVector<Value>> ComputeBasePtrOffset(
+//     EmitterLocOpBuilder& b, ValueRange tile_multi_index,
+//     const TiledHloInstruction& tiled_hlo) {
+//   TF_ASSIGN_OR_RETURN(IndexingMap tile_offsets_indexing,
+//                       tiled_hlo.tile_offsets_indexing());
+
+//   auto tile_offsets = emitters::ApplyIndexing(tile_offsets_indexing,
+//                                               /*dims=*/tile_multi_index,
+//                                               /*symbols=*/{}, b);
+//   SmallVector<Value> tile_offsets_i64;
+//   for (Value offset : tile_offsets) {
+//     tile_offsets_i64.push_back(
+//         b.create<arith::IndexCastOp>(b.getI64Type(), offset));
+//   }
+//   return tile_offsets_i64;
+// }
+
+absl::StatusOr<Value> ComputeBasePtrOffset(
+    EmitterLocOpBuilder& b, ValueRange tile_multi_index,
+    const TiledHloInstruction& tiled_hlo) {
+  const Shape& shape = tiled_hlo.hlo()->shape();
+  Shape linear_shape = ShapeUtil::MakeShape(shape.element_type(),
+                                            {ShapeUtil::ElementsIn(shape)});
+
+  // Bitcast map gives an indexing map from the parameter shape (multi-index) to
+  // a linear index respecting physical layout of the memory.
+  auto bitcast_map = GetBitcastMap(shape, linear_shape, b.getContext());
+
+  TF_ASSIGN_OR_RETURN(IndexingMap tile_offsets_indexing,
+                      tiled_hlo.tile_offsets_indexing());
+
+  auto compose_indexing_maps =
+      ComposeIndexingMaps(tile_offsets_indexing, bitcast_map);
+  compose_indexing_maps.Simplify();
+
+  return b.create<arith::IndexCastUIOp>(
+      b.getI64Type(), emitters::ApplyIndexing(compose_indexing_maps,
+                                              /*dims=*/tile_multi_index,
+                                              /*symbols=*/{}, b)[0]);
+}
+
 absl::StatusOr<ScalarOrTensor> EmitDot(EmitterLocOpBuilder& b,
                                        absl::string_view libdevice_path,
                                        const se::DeviceDescription& device_info,
                                        const HloFusionInstruction* fusion,
                                        const TiledHloInstruction& tiled_hlo_dot,
-                                       mlir::triton::FuncOp fn,
+                                       mlir::FunctionOpInterface fn,
                                        ValueRange tile_multi_index) {
   QCHECK(UseGenericTritonEmitterForGemms(tiled_hlo_dot.hlo()));
   // We expect to get a tiled HLO in form:
@@ -849,7 +898,7 @@ absl::StatusOr<ScalarOrTensor> EmitConcatenate(
     EmitterLocOpBuilder& b, absl::string_view libdevice_path,
     const se::DeviceDescription& device_info,
     const HloFusionInstruction* fusion,
-    const TiledHloInstruction& tiled_concatenate, mlir::triton::FuncOp fn,
+    const TiledHloInstruction& tiled_concatenate, mlir::FunctionOpInterface fn,
     ValueRange tile_multi_index) {
   const int64_t concatenate_dimension =
       tiled_concatenate.hlo()->concatenate_dimension();
@@ -983,7 +1032,7 @@ absl::StatusOr<ScalarOrTensor> EmitTiledHloInstruction(
     EmitterLocOpBuilder& b, absl::string_view libdevice_path,
     const se::DeviceDescription& device_info,
     const HloFusionInstruction* fusion, const TiledHloInstruction& tiled_hlo,
-    mlir::triton::FuncOp fn, ValueRange tile_multi_index,
+    mlir::FunctionOpInterface fn, ValueRange tile_multi_index,
     absl::flat_hash_map<const TiledHloInstruction*, ScalarOrTensor>& values) {
   const HloInstruction* hlo = tiled_hlo.hlo();
   VLOG(4) << "EmitTiledHloInstruction: " << hlo->ToString();
@@ -993,12 +1042,11 @@ absl::StatusOr<ScalarOrTensor> EmitTiledHloInstruction(
     // to the fusion instruction.
     int64_t arg_index = GetOutermostFusionOperandParameterIndex(fusion, hlo);
     TF_ASSIGN_OR_RETURN(
-        auto make_tensor,
-        ir_emitter_triton_internal::CreateMakeTensorPtrOp(
-            b, tile_multi_index, tiled_hlo, fn.getArgument(arg_index)));
+        auto tile_op_and_sizes,
+        ir_emitter_triton_internal::CreateTileOp(b, tile_multi_index, tiled_hlo,
+                                                 fn.getArgument(arg_index)));
 
-    ScalarOrTensor parameter =
-        EmitParameterLoad(b, make_tensor.op, make_tensor.boundary_checks);
+    ScalarOrTensor parameter = EmitParameterExtract(b, tile_op_and_sizes);
 
     // Some types are stored using different types, e.g. i1 is stored in memory
     // as i8. It's important to type checking that we perform a conversion after
@@ -1102,7 +1150,7 @@ absl::StatusOr<std::vector<ScalarOrTensor>> EmitTiledComputation(
     EmitterLocOpBuilder& b, absl::string_view libdevice_path,
     const se::DeviceDescription& device_info,
     const HloFusionInstruction* fusion,
-    const TiledHloComputation& tiled_computation, mlir::triton::FuncOp fn,
+    const TiledHloComputation& tiled_computation, mlir::FunctionOpInterface fn,
     ValueRange tile_multi_index) {
   VLOG(2) << "EmitTiledComputation: " << tiled_computation.ToString();
   absl::flat_hash_map<const TiledHloInstruction*, ScalarOrTensor> values;
@@ -1214,33 +1262,6 @@ absl::StatusOr<ScalarOrTensor> EmitScope(
   }
   return values[instructions.back()];
 }
-
-// Computes the base pointer offset for the given tile multi-index and hlo shape
-// taking into account the physical layout of the hlo buffer.
-absl::StatusOr<Value> ComputeBasePtrOffset(
-    EmitterLocOpBuilder& b, ValueRange tile_multi_index,
-    const TiledHloInstruction& tiled_hlo) {
-  const Shape& shape = tiled_hlo.hlo()->shape();
-  Shape linear_shape = ShapeUtil::MakeShape(shape.element_type(),
-                                            {ShapeUtil::ElementsIn(shape)});
-
-  // Bitcast map gives an indexing map from the parameter shape (multi-index) to
-  // a linear index respecting physical layout of the memory.
-  auto bitcast_map = GetBitcastMap(shape, linear_shape, b.getContext());
-
-  TF_ASSIGN_OR_RETURN(IndexingMap tile_offsets_indexing,
-                      tiled_hlo.tile_offsets_indexing());
-
-  auto compose_indexing_maps =
-      ComposeIndexingMaps(tile_offsets_indexing, bitcast_map);
-  compose_indexing_maps.Simplify();
-
-  return b.create<arith::IndexCastUIOp>(
-      b.getI64Type(), emitters::ApplyIndexing(compose_indexing_maps,
-                                              /*dims=*/tile_multi_index,
-                                              /*symbols=*/{}, b)[0]);
-}
-
 }  // namespace
 
 namespace ir_emitter_triton_internal {
@@ -1272,9 +1293,14 @@ SmallVector<Value, 3> ComputeDelinearizedTileIndex(
                                  /*symbols=*/{}, b);
 }
 
-absl::StatusOr<MakeTensorPtrOpAndBoundaryChecks> CreateMakeTensorPtrOp(
+absl::StatusOr<TileOpAndSizes> CreateTileOp(
     EmitterLocOpBuilder& b, ValueRange tile_multi_index,
     const TiledHloInstruction& tiled_hlo, Value parent_base_ptr) {
+  // TF_ASSIGN_OR_RETURN(SmallVector<Value> ptr_offsets,
+  //                     ComputeBasePtrOffset(b, tile_multi_index, tiled_hlo));
+  TF_ASSIGN_OR_RETURN(Value ptr_offset,
+                      ComputeBasePtrOffset(b, tile_multi_index, tiled_hlo));
+
   const Shape& shape = tiled_hlo.hlo()->shape();
 
   // Compute physical strides of the tile. `tile_strides` contains strides for
@@ -1303,7 +1329,7 @@ absl::StatusOr<MakeTensorPtrOpAndBoundaryChecks> CreateMakeTensorPtrOp(
   SmallVector<int64_t> padded_tile_sizes =
       GetPaddedTileSizes(tiled_hlo.tile_sizes());
 
-  // TensorPtr is intended to be a  base pointer of the TiledHloInstruction and
+  // TensorPtr is intended to be a base pointer of the TiledHloInstruction and
   // plus the necessary offsets so that Triton can compute the pointer to the
   // block specific to the given pid. This option would yield simpler code, but
   // cannot handle all combinations of strides and offsets, because Triton
@@ -1318,7 +1344,6 @@ absl::StatusOr<MakeTensorPtrOpAndBoundaryChecks> CreateMakeTensorPtrOp(
   // "residual shape" which is the original parent shape minus the offsets.
 
   llvm::SmallVector<Value> residual_shape;
-  llvm::SmallVector<int32_t> boundary_checks;
   for (int dim_idx = 0; dim_idx < padded_tile_sizes.size(); ++dim_idx) {
     Value parent_size =
         CreateConst(b, b.getI64Type(), shape.dimensions(dim_idx))
@@ -1329,34 +1354,20 @@ absl::StatusOr<MakeTensorPtrOpAndBoundaryChecks> CreateMakeTensorPtrOp(
     Value offset = b.create<arith::IndexCastUIOp>(
         b.getI64Type(), tile_offsets_as_indices[dim_idx]);
     residual_shape.push_back(b.create<arith::SubIOp>(parent_size, offset));
-
-    if (shape.dimensions(dim_idx) % padded_tile_sizes[dim_idx] != 0) {
-      boundary_checks.push_back(dim_idx);
-    }
   }
 
-  TF_ASSIGN_OR_RETURN(Value ptr_offset,
-                      ComputeBasePtrOffset(b, tile_multi_index, tiled_hlo));
-  auto tile_ptr = AddPtr(b, parent_base_ptr, ptr_offset);
+  // TODO(manany): Probably revisit the original shape passed here.
+  auto result_type = mtx::TiledTensorType::get(
+      b.getContext(), padded_tile_sizes,
+      llvm::ArrayRef<int64_t>(shape.dimensions().data(),
+                              shape.dimensions().size()),
+      TritonType(b, shape.element_type()).value());
 
-  llvm::SmallVector<Value> offsets(
-      padded_tile_sizes.size(),
-      CreateConst(b, b.getI32Type(), 0).UnwrapScalar());
+  llvm::SmallVector<Value> offsets(padded_tile_sizes.size(), ptr_offset);
+  auto tile_op = b.create<mtx::TileOp>(result_type, parent_base_ptr, offsets,
+                                       residual_shape, strides);
 
-  // TODO(b/342989850): Clarify and comment what `order` exactly is. It's not
-  // entirely clear from the Triton docs.
-  llvm::SmallVector<int32_t> order(padded_tile_sizes.size());
-  std::iota(order.rbegin(), order.rend(), 0);
-
-  auto make_tensor_ptr = b.create<ttir::MakeTensorPtrOp>(
-      /*base*/ tile_ptr,
-      /*shape*/ residual_shape,
-      /*strides*/ strides,
-      /*offsets*/ offsets,
-      /*tensorShape*/ llvm::to_vector_of<int32_t>(padded_tile_sizes),
-      /*order*/ order);
-
-  return MakeTensorPtrOpAndBoundaryChecks{make_tensor_ptr, boundary_checks};
+  return TileOpAndSizes{tile_op, padded_tile_sizes};
 }
 
 }  // namespace ir_emitter_triton_internal
@@ -1366,12 +1377,11 @@ namespace {
 using ::xla::gpu::ir_emitter_triton_internal::DumpTritonIR;
 
 // Generate Triton IR inside 'fn', using the given block_level_parameters.
-absl::Status EmitGeneric(mlir::OpBuilder builder,
-                         absl::string_view libdevice_path,
-                         const se::DeviceDescription& device_info,
-                         const HloFusionInstruction* fusion,
-                         mlir::triton::FuncOp fn,
-                         const BlockLevelParameters& block_level_parameters) {
+absl::StatusOr<SmallVector<Value>> EmitGeneric(
+    mlir::OpBuilder builder, absl::string_view libdevice_path,
+    const se::DeviceDescription& device_info,
+    const HloFusionInstruction* fusion, mlir::FunctionOpInterface fn,
+    const BlockLevelParameters& block_level_parameters) {
   const HloComputation* computation = fusion->fused_instructions_computation();
   SymbolicTileAnalysisOrError symbolic_tile_analysis_or =
       SymbolicTileAnalysis::AnalyzeComputation(
@@ -1417,6 +1427,7 @@ absl::Status EmitGeneric(mlir::OpBuilder builder,
       EmitTiledComputation(b, libdevice_path, device_info, fusion,
                            tiled_hlo_computation, fn, tile_multi_index));
 
+  SmallVector<Value> insert_results;
   for (auto [root, result, parent_base_ptr] :
        llvm::zip(tiled_hlo_computation.GetRoots(), results,
                  fn.getArguments().drop_front(computation->num_parameters()))) {
@@ -1432,23 +1443,35 @@ absl::Status EmitGeneric(mlir::OpBuilder builder,
     }
 
     if (result.IsScalar()) {
-      b.create<ttir::StoreOp>(parent_base_ptr, result.UnwrapScalar(),
-                              ttir::CacheModifier::NONE,
-                              ttir::EvictionPolicy::NORMAL);
+      ValueRange indices = {};
+      insert_results.push_back(
+          b.create<mlir::tensor::InsertOp>(result.UnwrapScalar(),
+                                           parent_base_ptr, indices)
+              .getResult());
       continue;
     }
 
     CHECK(root->hlo()->shape().IsArray() &&
-          root->hlo()->shape().dimensions_size() > 0);
-    TF_ASSIGN_OR_RETURN(auto make_tensor,
-                        ir_emitter_triton_internal::CreateMakeTensorPtrOp(
+          root->hlo()->shape().dimensions().size() > 0);
+    TF_ASSIGN_OR_RETURN(auto tile,
+                        ir_emitter_triton_internal::CreateTileOp(
                             b, tile_multi_index, *root, parent_base_ptr));
-    b.create<ttir::StoreOp>(
-        make_tensor.op, result.UnwrapTensor(), make_tensor.boundary_checks,
-        ttir::CacheModifier::NONE, ttir::EvictionPolicy::NORMAL);
+
+    // Should not be scalar at this point.
+    auto tiled_tensor_type = mlir::dyn_cast<mtx::TiledTensorType>(
+        tile.tile_op.getResult().getType());
+    CHECK(tiled_tensor_type);
+
+    insert_results.push_back(
+        b.create<mtx::InsertOp>(
+             mlir::RankedTensorType::get(tiled_tensor_type.getTileShape(),
+                                         result_storage_type),
+             result.UnwrapTensor(), tile.tile_op.getResult(),
+             CreateConst(b, b.getI32Type(), 0, tile.tile_sizes).UnwrapTensor())
+            .getResult());
   }
 
-  return absl::OkStatus();
+  return insert_results;
 }
 
 }  // namespace
@@ -1458,7 +1481,8 @@ void LoadMlirDialectsForTriton(mlir::MLIRContext& mlir_context) {
       .loadDialect<ttir::TritonDialect, ttir::gpu::TritonGPUDialect,
                    mlir::arith::ArithDialect, mlir::affine::AffineDialect,
                    mlir::LLVM::LLVMDialect, xla::XlaDialect,
-                   xla::gpu::XlaGpuDialect, ttir::xla::XlaTritonDialect>();
+                   xla::gpu::XlaGpuDialect, ttir::xla::XlaTritonDialect,
+                   mlir::func::FuncDialect, mlir::tensor::TensorDialect>();
   mlir::DialectRegistry registry;
   mlir::func::registerInlinerExtension(registry);
   mlir::LLVM::registerInlinerInterface(registry);
@@ -1503,6 +1527,49 @@ absl::Status CreateInternalError(absl::string_view message,
   return absl::InternalError(err);
 }
 
+// Legacy emitter works with tt.func. New emitter works with func.func.
+void AppendFuncArgType(EmitterLocOpBuilder& b, absl::Span<const int64_t> dims,
+                       absl::string_view fusion_kind, Type ir_type,
+                       SmallVector<Type>& fn_arg_types) {
+  if (fusion_kind == kTritonGemmFusionKind) {
+    fn_arg_types.push_back(ttir::PointerType::get(
+        StorageType(b, ir_type), mlir::NVVM::kGlobalMemorySpace));
+  } else {
+    fn_arg_types.push_back(mlir::RankedTensorType::get(
+        llvm::ArrayRef<int64_t>(dims.data(), dims.size()),
+        StorageType(b, ir_type)));
+  }
+}
+
+// Legacy emitter works with tt.func. New emitter works with func.func.
+mlir::FunctionOpInterface CreateFuncOp(EmitterLocOpBuilder& b,
+                                       absl::string_view fn_name,
+                                       absl::string_view fusion_kind,
+                                       SmallVector<Type>& fn_arg_types) {
+  mlir::FunctionOpInterface fn;
+  if (fusion_kind == kTritonGemmFusionKind) {
+    fn = b.create<ttir::FuncOp>(fn_name,
+                                b.getFunctionType(fn_arg_types, std::nullopt));
+    for (int i = 0; i < fn.getNumArguments(); ++i) {
+      fn.setArgAttr(i, "tt.divisibility", b.getIntegerAttr(b.getI32Type(), 16));
+    }
+  } else {
+    fn = b.create<mlir::func::FuncOp>(
+        fn_name, b.getFunctionType(fn_arg_types, std::nullopt));
+  }
+  return fn;
+}
+
+// Legacy emitter works with tt.return. New emitter works with func.return.
+void EmitReturnOp(EmitterLocOpBuilder& b, absl::string_view fusion_kind,
+                  SmallVector<Value> insert_results) {
+  if (fusion_kind == kTritonGemmFusionKind) {
+    b.create<ttir::ReturnOp>();
+  } else {
+    b.create<mlir::func::ReturnOp>(insert_results);
+  }
+}
+
 absl::StatusOr<TritonModule> CreateTritonModule(
     absl::string_view fn_name, const HloFusionInstruction* fusion,
     const se::DeviceDescription& device_info,
@@ -1524,6 +1591,10 @@ absl::StatusOr<TritonModule> CreateTritonModule(
       llvm_ir::CreateMlirModuleOp(loc);
   b.setInsertionPointToEnd(triton_module->getBody());
 
+  auto backend_config =
+      fusion->backend_config<GpuBackendConfig>()->fusion_backend_config();
+  absl::string_view fusion_kind = backend_config.kind();
+
   // Build Triton kernel.
   SmallVector<Type> fn_arg_types;
   for (HloInstruction* p : hlo_computation->parameter_instructions()) {
@@ -1536,22 +1607,20 @@ absl::StatusOr<TritonModule> CreateTritonModule(
     } else {
       TF_ASSIGN_OR_RETURN(ir_type, TritonType(b, type));
     }
-    fn_arg_types.push_back(ttir::PointerType::get(
-        StorageType(b, ir_type), mlir::NVVM::kGlobalMemorySpace));
+
+    AppendFuncArgType(b, p->shape().dimensions(), fusion_kind, ir_type,
+                      fn_arg_types);
   }
 
   for (const ShapeUtil::IndexedShape& s :
        ShapeUtil::GetLeafShapes(fusion->shape())) {
     TF_ASSIGN_OR_RETURN(Type triton_ty, TritonType(b, s.shape.element_type()));
-    fn_arg_types.push_back(ttir::PointerType::get(
-        StorageType(b, triton_ty), mlir::NVVM::kGlobalMemorySpace));
+    AppendFuncArgType(b, s.shape.dimensions(), fusion_kind, triton_ty,
+                      fn_arg_types);
   }
 
-  auto fn = b.create<ttir::FuncOp>(
-      fn_name, b.getFunctionType(fn_arg_types, std::nullopt));
-  for (int i = 0; i < fn.getNumArguments(); ++i) {
-    fn.setArgAttr(i, "tt.divisibility", b.getIntegerAttr(b.getI32Type(), 16));
-  }
+  mlir::FunctionOpInterface fn =
+      CreateFuncOp(b, fn_name, fusion_kind, fn_arg_types);
 
   fn.addEntryBlock();
   b.setInsertionPointToStart(&fn.front());
@@ -1559,12 +1628,9 @@ absl::StatusOr<TritonModule> CreateTritonModule(
   std::string libdevice_path =
       GetLibdevicePath(fusion->GetModule()->config(), device_info);
 
-  auto backend_config =
-      fusion->backend_config<GpuBackendConfig>()->fusion_backend_config();
-  absl::string_view fusion_kind = backend_config.kind();
-
   // It's okay for tma_metadata to be empty; it's only populated when used
   // explicitly.
+  SmallVector<Value> insert_results;
   std::optional<stream_executor::gpu::TmaMetadata> tma_metadata = std::nullopt;
   if (fusion_kind == kTritonGemmFusionKind) {
     TF_ASSIGN_OR_RETURN(tma_metadata,
@@ -1572,13 +1638,14 @@ absl::StatusOr<TritonModule> CreateTritonModule(
                                    block_level_parameters));
   } else if (fusion_kind == kTritonFusionKind ||
              fusion_kind == kTritonNestedGemmFusionKind) {
-    TF_RETURN_IF_ERROR(EmitGeneric(b, libdevice_path, device_info, fusion, fn,
-                                   block_level_parameters));
+    TF_ASSIGN_OR_RETURN(insert_results,
+                        EmitGeneric(b, libdevice_path, device_info, fusion, fn,
+                                    block_level_parameters));
   } else {
     return Internal("Unsupported fusion kind: %s", fusion_kind);
   }
 
-  b.create<ttir::ReturnOp>();
+  EmitReturnOp(b, fusion_kind, insert_results);
 
   if (DumpingEnabledForHloModule(*hlo_computation->parent())) {
     auto suffix = absl::StrCat(fusion->name(), ".before_validation.ttir");
@@ -1594,18 +1661,34 @@ absl::StatusOr<TritonModule> CreateTritonModule(
                             hlo_computation->ToString());
   }
 
-  if (mlir::failed(mlir::verify(*triton_module))) {
-    return CreateInternalError(
-        "Failed to verify Triton module for fusion:", fusion, *triton_module);
-  }
-
   mlir::PassManager pm(&mlir_context);
+
+  // // TODO(manany): Remove.
+  llvm::errs() << "Before Triton XLA Rewrite>>>\n";
+  triton_module->print(llvm::errs(),
+                       mlir::OpPrintingFlags().enableDebugInfo(true, true));
+  llvm::errs() << "<<<Before\n";
+
+  // TODO(manany): Pass device and tma_flag to the pass.
+  pm.addPass(mlir::triton::xla::CreateTritonXLAExtractInsertToTritonPass());
+
   pm.addPass(mlir::createCanonicalizerPass());
   pm.addPass(mlir::createCSEPass());
   if (mlir::failed(pm.run(triton_module.get()))) {
     return CreateInternalError(
         "Failed to create Triton module for fusion:", fusion, *triton_module);
   }
+
+  if (mlir::failed(mlir::verify(*triton_module))) {
+    return CreateInternalError(
+        "Failed to verify Triton module for fusion:", fusion, *triton_module);
+  }
+
+  // // TODO(manany): Remove.
+  llvm::errs() << "After Triton XLA Rewrite>>>\n";
+  triton_module->print(llvm::errs(),
+                       mlir::OpPrintingFlags().enableDebugInfo(true, true));
+  llvm::errs() << "<<<After\n";
 
   VLOG(6) << DumpTritonIR(triton_module.get(),
                           fusion->GetModule()

@@ -46,15 +46,6 @@ void TileOp::getAsmResultNames(function_ref<void(Value, StringRef)> setNameFn) {
   setNameFn(getResult(), "tiled_tensor");
 }
 
-template <typename DenseIntArrayAttrType>
-mlir::ParseResult parseDenseIntArrayAttr(mlir::AsmParser& parser,
-                                         DenseIntArrayAttrType& array) {
-  array = mlir::dyn_cast_or_null<DenseIntArrayAttrType>(
-      DenseIntArrayAttrType::parse(parser, mlir::Type{}));
-  if (!array) return mlir::failure();
-  return mlir::success();
-}
-
 ParseResult TileOp::parse(OpAsmParser& parser, OperationState& result) {
   OpAsmParser::UnresolvedOperand src;
   TiledTensorType tiled_tensor_type;
@@ -67,13 +58,12 @@ ParseResult TileOp::parse(OpAsmParser& parser, OperationState& result) {
       parser.parseColonType(tiled_tensor_type)) {
     return failure();
   }
-  auto offset_type = parser.getBuilder().getI32Type();
-  auto size_and_stride_type = parser.getBuilder().getI64Type();
+  auto i64_type = parser.getBuilder().getI64Type();
   if (parser.resolveOperand(src, tiled_tensor_type.getOriginalType(),
                             result.operands) ||
-      parser.resolveOperands(offsets, offset_type, result.operands) ||
-      parser.resolveOperands(sizes, size_and_stride_type, result.operands) ||
-      parser.resolveOperands(strides, size_and_stride_type, result.operands)) {
+      parser.resolveOperands(offsets, i64_type, result.operands) ||
+      parser.resolveOperands(sizes, i64_type, result.operands) ||
+      parser.resolveOperands(strides, i64_type, result.operands)) {
     return failure();
   }
   result.addTypes(tiled_tensor_type);

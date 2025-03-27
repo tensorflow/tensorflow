@@ -31,9 +31,12 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/Analysis/SliceAnalysis.h"
+#include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/LLVMIR/NVVMDialect.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
+#include "mlir/IR/AffineExpr.h"
+#include "mlir/IR/AffineMap.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinOps.h"
@@ -293,6 +296,8 @@ struct RewriteTile : mlir::OpRewritePattern<TileOp> {
       return mlir::success();
     }
 
+    // TODO(b/342989850): Clarify and comment what `order` exactly is. It's not
+    // entirely clear from the Triton docs.
     // Order is rank - 1, ..., 1, 0.
     std::vector<int32_t> dim_order(op.getSizes().size());
     std::iota(dim_order.begin(), dim_order.end(), 0);
@@ -307,23 +312,68 @@ struct RewriteTile : mlir::OpRewritePattern<TileOp> {
                 op.getTensor())
             .getResult(0);
 
-    auto tile_shape = op.getTiledTensor().getType().getTileShape();
-    std::vector<int32_t> tile_shape_i32;
-    std::transform(tile_shape.begin(), tile_shape.end(),
-                   std::back_inserter(tile_shape_i32),
-                   [](int64_t value) { return static_cast<int32_t>(value); });
-    auto tensor_ptr =
+    // auto rank = op.getOffsets().size();
+    // AffineExpr linear_affine_expr =
+    //     getAffineConstantExpr(0, builder.getContext());
+    // for (int i = 0; i <rank; ++i) {
+    //   linear_affine_expr =
+    //       linear_affine_expr +
+    //       getAffineDimExpr(i, builder.getContext()) *
+    //           getAffineSymbolExpr(i, builder.getContext())
+    // }
+    // AffineMap linear_affine_map = AffineMap::get(
+    //     /*dimCount=*/rank, /*symbolCount=*/rank,
+    //     linear_affine_expr, builder.getContext());
+    // xla::IndexingMap linear_indexing_map =
+    //    (linear_affine_map);
+
+    // stride0* offset0 + stride1* offset1 + ... +
+    //     strideN* offsetN
+
+    //         affine_expr = (d0, d1, ..., dN)->stride0 * d0 + stride1 * d1 +
+    //         ... +
+    //                       strideN * dN
+
+    //                                     apply_indexing(affine_expr, offsets);
+
+    // Value linear_offset =
+    //     ::xla::gpu::triton::CreateConst(builder, builder.getI64Type(), 0)
+    //         .UnwrapScalar();
+    // for (auto [offset, stride] : llvm::zip(op.getOffsets(), op.getStrides()))
+    // {
+    //   linear_offset = builder.create<arith::AddIOp>(
+    //       linear_offset, builder.create<arith::MulIOp>(offset, stride));
+    // }
+
+    auto ptr =
         builder
-            .create<MakeTensorPtrOp>(cast_to_tensor_ptr_type, op.getSizes(),
-                                     op.getStrides(), op.getOffsets(),
-                                     tile_shape_i32, dim_order)
+            .create<AddPtrOp>(cast_to_tensor_ptr_type.getType(),
+                              cast_to_tensor_ptr_type, op.getOffsets()[0])
             .getResult();
+
+    auto tile_shape = op.getTiledTensor().getType().getTileShape();
+
+    // Only emit make_tensor_ptr if the input is not a scalar.
+    if (tile_shape.size() > 0) {
+      llvm::SmallVector<Value> offsets(
+          tile_shape.size(),
+          ::xla::gpu::triton::CreateConst(builder, builder.getI32Type(), 0)
+              .UnwrapScalar());
+
+      std::vector<int32_t> tile_shape_i32;
+      std::transform(tile_shape.begin(), tile_shape.end(),
+                     std::back_inserter(tile_shape_i32),
+                     [](int64_t value) { return static_cast<int32_t>(value); });
+      ptr = builder
+                .create<MakeTensorPtrOp>(ptr, op.getSizes(), op.getStrides(),
+                                         offsets, tile_shape_i32, dim_order)
+                .getResult();
+    }
 
     // !tt.ptr<tensor> -> tiled_tensor
     auto cast_to_tiled_tensor_type =
         builder.create<mlir::UnrealizedConversionCastOp>(
-            xgt::StorageType(builder, op.getTiledTensor().getType()),
-            tensor_ptr);
+            xgt::StorageType(builder, op.getTiledTensor().getType()), ptr);
 
     rewriter.replaceOp(op, cast_to_tiled_tensor_type);
     return mlir::success();

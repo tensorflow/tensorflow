@@ -61,7 +61,7 @@ def TTXLA_TileOp : TTXLA_Op<"tile", [Pure, SameVariadicOperandSize,
 
   let arguments = (ins
     AnyRankedTensor:$tensor,
-    Variadic<I32>:$offsets,
+    Variadic<I64>:$offsets,
     Variadic<I64>:$sizes,
     Variadic<I64>:$strides
   );

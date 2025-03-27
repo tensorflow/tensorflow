@@ -90,7 +90,7 @@ llvm::SmallVector<mlir::Value, 3> ComputeDelinearizedTileIndex(
   return {};
 }
 
-absl::StatusOr<MakeTensorPtrOpAndBoundaryChecks> CreateMakeTensorPtrOp(
+absl::StatusOr<TileOpAndSizes> CreateTileOp(
     EmitterLocOpBuilder& b, mlir::ValueRange tile_multi_index,
     const TiledHloInstruction& tiled_hlo, mlir::Value parent_base_ptr) {
   return absl::UnimplementedError("not supported for this build configuration");
