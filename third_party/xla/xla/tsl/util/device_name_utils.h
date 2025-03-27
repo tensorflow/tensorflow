@@ -76,10 +76,6 @@ class DeviceNameUtils {
              (has_id ? (other.has_id && id == other.id) : !other.has_id);
     }
 
-    bool operator!=(const ParsedName& other) const {
-      return !operator==(other);
-    }
-
     bool operator<(const ParsedName& other) const {
       if (has_job != other.has_job) return !has_job;
       if (has_job) {
