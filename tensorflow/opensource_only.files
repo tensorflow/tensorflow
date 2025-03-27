@@ -95,7 +95,7 @@ tf_staging/tensorflow/lite/delegates/coreml/builders/BUILD:
 tf_staging/tensorflow/lite/delegates/gpu/cl/compiled_program_cache_generated.h:
 tf_staging/tensorflow/lite/delegates/gpu/cl/serialization_generated.h:
 tf_staging/tensorflow/lite/delegates/gpu/common/gpu_model_generated.h:
-tf_staging/tensorflow/lite/delegates/gpu/common/task/serialization_base_generated.h:
+tf_staging/tensorflow/lite/delegates/gpu/common/task/tflite_serialization_base_generated.h:
 tf_staging/tensorflow/lite/delegates/hexagon/hexagon_nn/BUILD:
 tf_staging/tensorflow/lite/delegates/utils/experimental/sample_stable_delegate/BUILD:
 tf_staging/tensorflow/lite/delegates/utils/experimental/sample_stable_delegate/sample_app_using_stable_delegate.cc:
