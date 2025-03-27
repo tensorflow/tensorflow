@@ -25,6 +25,7 @@ lit_test_suite(
     srcs = enforce_glob(
         [
             # go/keep-sorted start
+            "hlo_opt_accept_stablehlo_input.mlir",
             "hlo_opt_all_passes_smoke_test.hlo",
             "hlo_opt_emit_proto.hlo",
             "hlo_opt_hlo_protobinary_to_hlotext.hlo",
@@ -35,6 +36,7 @@ lit_test_suite(
         ],
         include = [
             "hlo_opt_*.hlo",
+            "hlo_opt_*.mlir",
         ],
     ),
     cfg = "//xla:lit.cfg.py",
