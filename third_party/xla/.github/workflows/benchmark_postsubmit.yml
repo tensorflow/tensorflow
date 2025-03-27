@@ -155,6 +155,28 @@ jobs:
           echo "OUTPUT_FILE=$output_file" >> "$GITHUB_ENV"
           echo "XSPACE_FILE=$xspace_file" >> "$GITHUB_ENV"
 
+      - name: Upload HLO test output to a GCS bucket
+        run: |
+          GCS_BUCKET="gs://openxla-postsubmit-transient"
+          TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+          DATE_FOLDER=$(date +%Y%m%d)
+          FILENAME=$(basename "$OUTPUT_FILE")
+          COMMIT_SHA="${{ github.sha }}"
+          RUN_ID="${{ github.run_id }}"
+          PR_NUMBER="${{ steps.find_pr.outputs.pr }}"
+          PLATFORM="${{ matrix.job_info.platform }}"
+          POOL="${{ matrix.job_info.pool }}"
+          PR_SUFFIX=""
+          if [[ -n "$PR_NUMBER" ]]; then
+            PR_SUFFIX="_pr_${PR_NUMBER}"
+          fi
+
+          GCS_OBJECT_NAME="${DATE_FOLDER}/${TIMESTAMP}_${POOL}_run_${RUN_ID}_commit_${COMMIT_SHA}${PR_SUFFIX}_${PLATFORM}_${FILENAME}"
+
+          echo "Uploading $OUTPUT_FILE to $GCS_BUCKET/$GCS_OBJECT_NAME"
+          ls -l "$OUTPUT_FILE" # Verify the file exists
+          gsutil cp "$OUTPUT_FILE" "$GCS_BUCKET/$GCS_OBJECT_NAME"
+
       - name: Download Gemma Hlo Files
         run: |
           mkdir -p tmp_hlo
@@ -189,12 +211,13 @@ jobs:
           echo "OUTPUT_FILE=$output_file" >> "$GITHUB_ENV"
           echo "XSPACE_FILE=$xspace_file" >> "$GITHUB_ENV"
 
-      - name: Upload HLO test output to a GCS bucket
+      - name: Upload gemma HLO test output to a GCS bucket
+        if: ${{ matrix.job_info.pool != 'linux-arm64-t2a-48' }}
         run: |
           GCS_BUCKET="gs://openxla-postsubmit-transient"
           TIMESTAMP=$(date +%Y%m%d_%H%M%S)
           DATE_FOLDER=$(date +%Y%m%d)
-          FILENAME=$(basename "$OUTPUT_FILE")
+          FILENAME="gemma3_1b_flax_call.hlo"
           COMMIT_SHA="${{ github.sha }}"
           RUN_ID="${{ github.run_id }}"
           PR_NUMBER="${{ steps.find_pr.outputs.pr }}"
@@ -210,15 +233,6 @@ jobs:
           echo "Uploading $OUTPUT_FILE to $GCS_BUCKET/$GCS_OBJECT_NAME"
           ls -l "$OUTPUT_FILE" # Verify the file exists
           gsutil cp "$OUTPUT_FILE" "$GCS_BUCKET/$GCS_OBJECT_NAME"
-
-          # Upload Gemma HLO test output to a GCS bucket  
-          if [[ "${{ matrix.job_info.pool }}" != "linux-arm64-t2a-48" ]]; then
-            GEMMA_OUTPUT_FILE="$GITHUB_WORKSPACE/gemma3_1b_flax_call_output.txt"
-            GEMMA_GCS_OBJECT_NAME="${DATE_FOLDER}/${TIMESTAMP}_${POOL}_run_${RUN_ID}_commit_${COMMIT_SHA}${PR_SUFFIX}_gemma_${PLATFORM}_${GEMMA_OUTPUT_FILE}"
-            echo "Uploading $OUTPUT_FILE to $GCS_BUCKET/$GEMMA_GCS_OBJECT_NAME"
-            ls -l "$OUTPUT_FILE" # Verify the file exists
-            gsutil cp "$OUTPUT_FILE" "$GCS_BUCKET/$GEMMA_GCS_OBJECT_NAME"
-          fi
 
       - name: Upload XSpace artifacts
         uses: actions/upload-artifact@4cec3d8aa04e39d1a68397de0c4cd6fb9dce8ec1 # v4.6.1
