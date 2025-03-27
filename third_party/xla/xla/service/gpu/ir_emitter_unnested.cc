@@ -1423,7 +1423,8 @@ absl::Status IrEmitterUnnested::EmitTritonCustomCall(
 
     TF_ASSIGN_OR_RETURN(
         auto result,
-        CompileTritonToLLVM(*hlo_module, ir_emitter_context_->gpu_device_info(),
+        CompileTritonToLLVM(kernel_name, *hlo_module,
+                            ir_emitter_context_->gpu_device_info(),
                             block_level_parameters, triton_module.get(),
                             ir_emitter_context_->llvm_module(), mlir_context,
                             /*is_xla_fusion=*/false, emit_kernels));

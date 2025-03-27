@@ -45,8 +45,8 @@ TEST(TritonStub, CallStubApi) {
   LoadMlirDialectsForTriton(context);
   EXPECT_FALSE(TritonWrapper({}, nullptr, {}, {}, {}, nullptr, context).ok());
   EXPECT_FALSE(CreateTritonModule({}, nullptr, {}, {}, context).ok());
-  EXPECT_FALSE(CompileTritonToLLVM(HloModule("test", HloModuleConfig()), {}, {},
-                                   {}, nullptr, context,
+  EXPECT_FALSE(CompileTritonToLLVM("", HloModule("test", HloModuleConfig()), {},
+                                   {}, {}, nullptr, context,
                                    /*is_xla_fusion=*/true, {})
                    .ok());
 

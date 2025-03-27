@@ -70,7 +70,8 @@ absl::StatusOr<TritonModule> CreateTritonModule(
 }
 
 absl::StatusOr<TritonWrapperResult> CompileTritonToLLVM(
-    const HloModule& hlo_module, const se::DeviceDescription& device_info,
+    absl::string_view kernel_name, const HloModule& hlo_module,
+    const se::DeviceDescription& device_info,
     const BlockLevelParameters& block_level_parameters,
     mlir::ModuleOp triton_module, llvm::Module* llvm_module,
     mlir::MLIRContext& mlir_context, bool is_xla_fusion, bool emit_kernel) {
