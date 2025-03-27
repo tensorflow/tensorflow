@@ -287,6 +287,62 @@ func.func @atomic_rmw_f16(%in: tensor<8xf16>, %i: index)
 
 // -----
 
+func.func @atomic_rmw_i4(%in: tensor<8xi4>, %i: index) -> (tensor<8xi4>) {
+  %ret = xla.atomic_rmw %in[%i] : tensor<8xi4> {
+    ^bb0(%current : i4):
+      %c1 = arith.constant 1 : i4
+      %add = arith.addi %current, %c1 : i4
+      xla.yield %add : i4
+  }
+  return %ret : tensor<8xi4>
+}
+// CHECK-LABEL: func.func @atomic_rmw_i4(
+// CHECK-SAME:    %[[VAL_0:.*]]: !llvm.ptr, %[[VAL_1:.*]]: index) {
+
+// CHECK-DAG:  %[[LC1_i4:.*]] = arith.constant 1 : i4
+// CHECK-DAG:  %[[C0:.*]] = arith.constant 0 : i64
+// CHECK-DAG:  %[[C1:.*]] = arith.constant 1 : i64
+// CHECK-DAG:  %[[LC3:.*]] = llvm.mlir.constant(3 : i64) : i64
+// CHECK-DAG:  %[[LCm1:.*]] = llvm.mlir.constant(-1 : i64) : i64
+// CHECK-DAG:  %[[LC8:.*]] = llvm.mlir.constant(8 : i32) : i32
+// CHECK-DAG:  %[[LC0:.*]] = llvm.mlir.constant(0 : i32) : i32
+// CHECK-DAG:  %[[LC4:.*]] = llvm.mlir.constant(4 : i32) : i32
+// CHECK-DAG:  %[[LCm1_i32:.*]] = llvm.mlir.constant(-1 : i32) : i32
+// CHECK-DAG:  %[[LC15:.*]] = llvm.mlir.constant(15 : i32) : i32
+// CHECK-DAG:  %[[LCTRUE:.*]] = llvm.mlir.constant(true) : i1
+
+// CHECK:  %[[VAL_13:.*]] = arith.index_castui %[[VAL_1]] : index to i64
+// CHECK:  %[[VAL_14:.*]] = arith.andi %[[VAL_13]], %[[C1]] : i64
+// CHECK:  %[[VAL_15:.*]] = arith.cmpi eq, %[[VAL_14]], %[[C0]] : i64
+// CHECK:  %[[VAL_16:.*]] = arith.shrui %[[VAL_13]], %[[C1]] : i64
+// CHECK:  %[[VAL_17:.*]] = llvm.getelementptr inbounds %[[VAL_0]][%[[VAL_16]]]
+// CHECK-SAME:   : (!llvm.ptr, i64) -> !llvm.ptr, i8
+
+// CHECK:  %[[VAL_18:.*]] = llvm.ptrtoint %[[VAL_17]] : !llvm.ptr to i64
+// CHECK:  %[[VAL_19:.*]] = llvm.and %[[VAL_18]], %[[LC3]] : i64
+// CHECK:  %[[VAL_20:.*]] = llvm.mul %[[VAL_19]], %[[LCm1]] : i64
+// CHECK:  %[[VAL_21:.*]] = llvm.getelementptr inbounds %[[VAL_17]][%[[VAL_20]]]
+// CHECK-SAME:   : (!llvm.ptr, i64) -> !llvm.ptr, i8
+
+// CHECK:  %[[VAL_22:.*]] = llvm.trunc %[[VAL_19]] : i64 to i32
+// CHECK:  %[[VAL_23:.*]] = llvm.mul %[[VAL_22]], %[[LC8]] : i32
+// CHECK:  %[[VAL_24:.*]] = llvm.select %[[VAL_15]], %[[LC0]], %[[LC4]]
+// CHECK:  %[[VAL_25:.*]] = llvm.add %[[VAL_23]], %[[VAL_24]] : i32
+// CHECK:  %[[VAL_26:.*]] = llvm.shl %[[LC15]], %[[VAL_25]] : i32
+// CHECK:  %[[VAL_27:.*]] = llvm.xor %[[LCm1_i32]], %[[VAL_26]] : i32
+// CHECK:  %[[LOAD_4BYTES:.*]] = llvm.load %[[VAL_21]] : !llvm.ptr -> i32
+// CHECK:  scf.while (%[[VAL_30:.*]] = %[[LOAD_4BYTES]]) : (i32) -> i32 {
+// CHECK:    %[[VAL_31:.*]] = llvm.lshr %[[VAL_30]], %[[VAL_25]] : i32
+// CHECK:    %[[VAL_32:.*]] = llvm.trunc %[[VAL_31]] : i32 to i4
+// CHECK:    %[[VAL_33:.*]] = arith.addi %[[VAL_32]], %[[LC1_i4]] : i4
+// CHECK:    %[[VAL_34:.*]] = llvm.zext %[[VAL_33]] : i4 to i32
+// CHECK:    %[[VAL_35:.*]] = llvm.and %[[VAL_30]], %[[VAL_27]] : i32
+// CHECK:    %[[VAL_36:.*]] = llvm.shl %[[VAL_34]], %[[VAL_25]] : i32
+// CHECK:    %[[VAL_37:.*]] = llvm.or %[[VAL_35]], %[[VAL_36]] : i32
+// CHECK:    llvm.cmpxchg
+
+// -----
+
 func.func @atomic_rmw_overwrite(%in: tensor<8xf16>, %i: index)
     -> (tensor<8xf16>) {
   %c1 = arith.constant 1.0 : f16

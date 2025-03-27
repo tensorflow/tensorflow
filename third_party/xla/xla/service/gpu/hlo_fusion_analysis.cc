@@ -256,6 +256,9 @@ HloFusionAnalysis::EmitterFusionKind HloFusionAnalysis::GetEmitterFusionKind()
         AllSliceInputsAreCompatible(fusion_roots_)) {
       return EmitterFusionKind::kInputSlices;
     }
+    if (fusion_roots_[0].opcode() == HloOpcode::kScatter) {
+      return EmitterFusionKind::kScatter;
+    }
     return EmitterFusionKind::kLoop;
   }
 
