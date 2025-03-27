@@ -20,6 +20,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
@@ -41,11 +42,11 @@ limitations under the License.
 #include "xla/pjrt/distributed/protocol.pb.h"
 #include "xla/pjrt/distributed/service.h"
 #include "xla/pjrt/distributed/topology_util.h"
-#include "xla/protobuf_util.h"
 #include "xla/status_macros.h"
 #include "xla/tsl/distributed_runtime/coordination/coordination_service_agent.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/threadpool.h"
+#include "xla/tsl/util/proto/proto_matchers.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
@@ -54,9 +55,12 @@ limitations under the License.
 
 namespace xla {
 namespace {
+
 using ::testing::IsEmpty;
+using ::testing::Matches;
 using ::testing::Pair;
 using ::testing::UnorderedElementsAre;
+using ::tsl::proto_testing::EqualsProto;
 using tsl::testing::StatusIs;
 
 constexpr absl::Duration kHeartbeatInterval = absl::Milliseconds(500);
@@ -225,8 +229,7 @@ TEST_F(ClientServerTest, ConnectAndEnumerateDevices) {
                            /*get_global_topology_timeout=*/absl::Minutes(1),
                            kv_store.get(), locals[0], &topology,
                            /*assign_global_device_ids=*/true));
-    TF_RET_CHECK(
-        xla::protobuf_util::ProtobufEquals(topology, expected_topology))
+    TF_RET_CHECK(Matches(EqualsProto(expected_topology))(topology))
         << topology.DebugString();
     TF_RETURN_IF_ERROR(client->KeyValueSet("key1", "value1"));
     TF_ASSIGN_OR_RETURN(
@@ -251,8 +254,7 @@ TEST_F(ClientServerTest, ConnectAndEnumerateDevices) {
         /*get_local_topology_timeout=*/absl::Minutes(1),
         /*get_global_topology_timeout=*/absl::Minutes(1), kv_store.get(),
         locals[1], &topology, /*assign_global_device_ids=*/true));
-    TF_RET_CHECK(
-        xla::protobuf_util::ProtobufEquals(topology, expected_topology))
+    TF_RET_CHECK(Matches(EqualsProto(expected_topology))(topology))
         << topology.DebugString();
     TF_ASSIGN_OR_RETURN(
         std::string value,
@@ -310,8 +312,7 @@ TEST_F(ClientServerTest, EnumerateElevenDevices) {
         /*get_local_topology_timeout=*/absl::Minutes(1),
         /*get_global_topology_timeout=*/absl::Minutes(1), kv_store.get(),
         locals[node_id], &topology, /*assign_global_device_ids=*/true));
-    TF_RET_CHECK(
-        xla::protobuf_util::ProtobufEquals(topology, expected_topology))
+    TF_RET_CHECK(Matches(EqualsProto(expected_topology))(topology))
         << topology.DebugString();
     return absl::OkStatus();
   };

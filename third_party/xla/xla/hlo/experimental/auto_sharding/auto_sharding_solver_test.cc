@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "xla/hlo/experimental/auto_sharding/auto_sharding.pb.h"
 #include "xla/hlo/experimental/auto_sharding/auto_sharding_strategy.h"
+#include "xla/tsl/util/proto/proto_matchers.h"
 #include "tsl/platform/platform.h"
 #include "tsl/platform/statusor.h"
 
@@ -870,7 +871,7 @@ TEST(ScaleRequest, ScalesProperly) {
   AddCosts(expected_request.mutable_communication_costs(), expected_d);
   AddCosts(expected_request.mutable_resharding_costs(), expected_r);
   expected_request.mutable_coeff_limit()->set_coeff(1e7);
-  EXPECT_THAT(request, ::testing::EqualsProto(expected_request));
+  EXPECT_THAT(request, ::tsl::proto_testing::EqualsProto(expected_request));
 }
 
 TEST(ScaleRequest, SkipsScaling) {
@@ -921,7 +922,7 @@ TEST(ScaleRequest, SkipsScaling) {
   AddCosts(expected_request.mutable_communication_costs(), expected_d);
   AddCosts(expected_request.mutable_resharding_costs(), expected_r);
   expected_request.mutable_coeff_limit()->set_coeff(1e7);
-  EXPECT_THAT(request, ::testing::EqualsProto(expected_request));
+  EXPECT_THAT(request, ::tsl::proto_testing::EqualsProto(expected_request));
 }
 
 TEST(MinimumMemoryBudgetRequired, HandlesLiveMatrix) {

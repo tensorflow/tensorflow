@@ -126,6 +126,7 @@ tsl_cc_test(
         "//xla/tsl/platform:types",
         "//xla/tsl/protobuf:coordination_config_proto_cc",
         "//xla/tsl/protobuf:coordination_service_proto_cc",
+        "//xla/tsl/util/proto:proto_matchers",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",

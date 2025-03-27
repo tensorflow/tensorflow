@@ -3018,12 +3018,13 @@ bool HloConvolutionInstruction::IdenticalSlowPath(
   if (batch_group_count_ != other.batch_group_count()) {
     return false;
   }
-  return protobuf_util::ProtobufEquals(window(), casted_other.window()) &&
-         protobuf_util::ProtobufEquals(
+  return protobuf_util::HaveSameSerialization(window(),
+                                              casted_other.window()) &&
+         protobuf_util::HaveSameSerialization(
              convolution_dimension_numbers(),
              casted_other.convolution_dimension_numbers()) &&
-         protobuf_util::ProtobufEquals(precision_config(),
-                                       casted_other.precision_config());
+         protobuf_util::HaveSameSerialization(precision_config(),
+                                              casted_other.precision_config());
 }
 
 std::unique_ptr<HloInstruction>
@@ -3080,7 +3081,7 @@ bool HloReduceWindowInstruction::IdenticalSlowPath(
   const auto& casted_other =
       static_cast<const HloReduceWindowInstruction&>(other);
   return eq_computations(to_apply(), casted_other.to_apply()) &&
-         protobuf_util::ProtobufEquals(window(), casted_other.window());
+         protobuf_util::HaveSameSerialization(window(), casted_other.window());
 }
 
 std::unique_ptr<HloInstruction>
@@ -3132,7 +3133,7 @@ bool HloSelectAndScatterInstruction::IdenticalSlowPath(
       static_cast<const HloSelectAndScatterInstruction&>(other);
   return eq_computations(select(), casted_other.select()) &&
          eq_computations(scatter(), casted_other.scatter()) &&
-         protobuf_util::ProtobufEquals(window(), casted_other.window());
+         protobuf_util::HaveSameSerialization(window(), casted_other.window());
 }
 
 std::unique_ptr<HloInstruction>
@@ -3350,14 +3351,14 @@ bool HloCustomCallInstruction::IdenticalSlowPath(
   const auto& casted_other =
       static_cast<const HloCustomCallInstruction&>(other);
   if ((window_ == nullptr) != (casted_other.window_ == nullptr) ||
-      (window_ != nullptr &&
-       !protobuf_util::ProtobufEquals(*window_, *casted_other.window_))) {
+      (window_ != nullptr && !protobuf_util::HaveSameSerialization(
+                                 *window_, *casted_other.window_))) {
     return false;
   }
   if ((convolution_dimension_numbers_ == nullptr) !=
           (casted_other.convolution_dimension_numbers_ == nullptr) ||
       (convolution_dimension_numbers_ != nullptr &&
-       !protobuf_util::ProtobufEquals(
+       !protobuf_util::HaveSameSerialization(
            convolution_dimension_numbers(),
            casted_other.convolution_dimension_numbers()))) {
     return false;
@@ -3392,8 +3393,8 @@ bool HloCustomCallInstruction::IdenticalSlowPath(
       casted_other.output_to_operand_aliasing()) {
     return false;
   }
-  if (!protobuf_util::ProtobufEquals(precision_config(),
-                                     casted_other.precision_config())) {
+  if (!protobuf_util::HaveSameSerialization(precision_config(),
+                                            casted_other.precision_config())) {
     return false;
   }
 
@@ -3483,8 +3484,8 @@ bool HloPadInstruction::IdenticalSlowPath(
     absl::FunctionRef<bool(const HloComputation*, const HloComputation*)>
         eq_computations) const {
   const auto& casted_other = static_cast<const HloPadInstruction&>(other);
-  return protobuf_util::ProtobufEquals(padding_config(),
-                                       casted_other.padding_config());
+  return protobuf_util::HaveSameSerialization(padding_config(),
+                                              casted_other.padding_config());
 }
 
 std::unique_ptr<HloInstruction> HloPadInstruction::CloneWithNewOperandsImpl(
@@ -3674,7 +3675,7 @@ bool HloGatherInstruction::IdenticalSlowPath(
     absl::FunctionRef<bool(const HloComputation*, const HloComputation*)>
         eq_computations) const {
   const auto& casted_other = static_cast<const HloGatherInstruction&>(other);
-  return protobuf_util::ProtobufEquals(
+  return protobuf_util::HaveSameSerialization(
              gather_dimension_numbers(),
              casted_other.gather_dimension_numbers()) &&
          gather_slice_sizes() == casted_other.gather_slice_sizes() &&
@@ -3791,7 +3792,7 @@ bool HloScatterInstruction::IdenticalSlowPath(
     absl::FunctionRef<bool(const HloComputation*, const HloComputation*)>
         eq_computations) const {
   const auto& casted_other = static_cast<const HloScatterInstruction&>(other);
-  return protobuf_util::ProtobufEquals(
+  return protobuf_util::HaveSameSerialization(
              scatter_dimension_numbers(),
              casted_other.scatter_dimension_numbers()) &&
          eq_computations(to_apply(), casted_other.to_apply()) &&
@@ -3889,12 +3890,12 @@ bool HloDotInstruction::IdenticalSlowPath(
     absl::FunctionRef<bool(const HloComputation*, const HloComputation*)>
         eq_computations) const {
   const auto& casted_other = static_cast<const HloDotInstruction&>(other);
-  return protobuf_util::ProtobufEquals(dot_dimension_numbers(),
-                                       casted_other.dot_dimension_numbers()) &&
-         protobuf_util::ProtobufEquals(precision_config(),
-                                       casted_other.precision_config()) &&
+  return protobuf_util::HaveSameSerialization(
+             dot_dimension_numbers(), casted_other.dot_dimension_numbers()) &&
+         protobuf_util::HaveSameSerialization(
+             precision_config(), casted_other.precision_config()) &&
          absl::c_equal(sparsity_, casted_other.sparsity_,
-                       protobuf_util::ProtobufEquals);
+                       protobuf_util::HaveSameSerialization);
 }
 
 std::unique_ptr<HloInstruction> HloDotInstruction::CloneWithNewOperandsImpl(
@@ -3940,11 +3941,11 @@ bool HloRaggedDotInstruction::IdenticalSlowPath(
     absl::FunctionRef<bool(const HloComputation*, const HloComputation*)>
         eq_computations) const {
   const auto& casted_other = static_cast<const HloRaggedDotInstruction&>(other);
-  return protobuf_util::ProtobufEquals(
+  return protobuf_util::HaveSameSerialization(
              ragged_dot_dimension_numbers(),
              casted_other.ragged_dot_dimension_numbers()) &&
-         protobuf_util::ProtobufEquals(precision_config(),
-                                       casted_other.precision_config());
+         protobuf_util::HaveSameSerialization(precision_config(),
+                                              casted_other.precision_config());
 }
 
 std::unique_ptr<HloInstruction>

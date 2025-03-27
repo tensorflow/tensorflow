@@ -20,17 +20,19 @@ limitations under the License.
 #include "xla/hlo/builder/xla_builder.h"
 #include "xla/hlo/builder/xla_computation.h"
 #include "xla/literal.h"
-#include "xla/protobuf_util.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/shape_util.h"
 #include "xla/tests/client_library_test_base.h"
 #include "xla/tests/literal_test_util.h"
 #include "xla/tests/test_macros.h"
+#include "xla/tsl/util/proto/proto_matchers.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/test.h"
 
 namespace xla {
 namespace {
+
+using ::tsl::proto_testing::EqualsProto;
 
 class ReplayTest : public ClientLibraryTestBase {};
 
@@ -52,8 +54,8 @@ TEST_F(ReplayTest, TwoPlusTwoReplay) {
       client_->GetComputationShape(computation).value();
   std::unique_ptr<ProgramShape> replayed_shape =
       client_->GetComputationShape(replayed).value();
-  ASSERT_TRUE(protobuf_util::ProtobufEquals(original_shape->ToProto(),
-                                            replayed_shape->ToProto()));
+  ASSERT_THAT(replayed_shape->ToProto(),
+              EqualsProto(original_shape->ToProto()));
 
   // Run it.
   Literal literal =
@@ -84,8 +86,8 @@ XLA_TEST_F(ReplayTest, XPlusYReplayWithParameters) {
       client_->GetComputationShape(computation).value();
   std::unique_ptr<ProgramShape> replayed_shape =
       client_->GetComputationShape(replayed).value();
-  ASSERT_TRUE(protobuf_util::ProtobufEquals(original_shape->ToProto(),
-                                            replayed_shape->ToProto()));
+  ASSERT_THAT(replayed_shape->ToProto(),
+              EqualsProto(original_shape->ToProto()));
 
   // Run it.
   std::unique_ptr<GlobalData> x_data =
@@ -128,8 +130,8 @@ TEST_F(ReplayTest, MapPlusTwoOverR1) {
       client_->GetComputationShape(computation).value();
   std::unique_ptr<ProgramShape> replayed_shape =
       client_->GetComputationShape(replayed).value();
-  ASSERT_TRUE(protobuf_util::ProtobufEquals(original_shape->ToProto(),
-                                            replayed_shape->ToProto()));
+  ASSERT_THAT(replayed_shape->ToProto(),
+              EqualsProto(original_shape->ToProto()));
 
   // Run it.
   Literal literal =

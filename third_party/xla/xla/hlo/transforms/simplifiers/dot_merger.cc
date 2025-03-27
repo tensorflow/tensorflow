@@ -134,7 +134,7 @@ absl::StatusOr<HloInstruction*> TryMergeSameOperand(HloInstruction* a,
   HloDotInstruction* dot_a = Cast<HloDotInstruction>(a);
   HloDotInstruction* dot_b = Cast<HloDotInstruction>(b);
   if (!absl::c_equal(dot_a->sparsity(), dot_b->sparsity(),
-                     protobuf_util::ProtobufEquals)) {
+                     protobuf_util::HaveSameSerialization)) {
     VLOG(3) << "Can't merge dots because they have mismatching sparsity "
                "descriptors:\n"
             << "\t" << a->ToString() << "\n"

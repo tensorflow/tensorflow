@@ -16,17 +16,19 @@ limitations under the License.
 
 #include <gtest/gtest.h>
 #include "xla/hlo/utils/hlo_traversal.h"
-#include "xla/protobuf_util.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_description.pb.h"
 #include "xla/tests/hlo_test_base.h"
+#include "xla/tsl/util/proto/proto_matchers.h"
 #include "tsl/platform/statusor.h"
 
 namespace xla::gpu {
 namespace {
+
+using ::tsl::proto_testing::EqualsProto;
 
 class HloFusionAnalysisTest : public HloTestBase {};
 
@@ -407,9 +409,8 @@ TEST_F(HloFusionAnalysisTest,
   auto* root = module->entry_computation()->root_instruction();
   auto analysis = HloFusionAnalysis::Create(*root, device_info);
 
-  EXPECT_TRUE(
-      protobuf_util::ProtobufEquals(analysis.fusion_backend_config(),
-                                    FusionBackendConfig::default_instance()));
+  EXPECT_THAT(analysis.fusion_backend_config(),
+              EqualsProto(FusionBackendConfig::default_instance()));
 }
 
 TEST_F(HloFusionAnalysisTest,
@@ -435,9 +436,8 @@ TEST_F(HloFusionAnalysisTest,
   auto* producer = consumer->operand(0);
   auto analysis = HloFusionAnalysis::Create(*producer, *consumer, device_info);
 
-  EXPECT_TRUE(
-      protobuf_util::ProtobufEquals(analysis.fusion_backend_config(),
-                                    FusionBackendConfig::default_instance()));
+  EXPECT_THAT(analysis.fusion_backend_config(),
+              EqualsProto(FusionBackendConfig::default_instance()));
 }
 
 }  // namespace

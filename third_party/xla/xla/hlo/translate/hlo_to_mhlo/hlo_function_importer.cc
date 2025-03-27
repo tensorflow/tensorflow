@@ -131,7 +131,7 @@ bool DotIsDefault(const HloInstruction* instruction) {
   default_dimension_numbers.add_lhs_contracting_dimensions(
       instruction->operand(0)->shape().dimensions_size() == 1 ? 0 : 1);
   default_dimension_numbers.add_rhs_contracting_dimensions(0);
-  return protobuf_util::ProtobufEquals(dnums, default_dimension_numbers);
+  return protobuf_util::HaveSameSerialization(dnums, default_dimension_numbers);
 }
 
 ArrayRef<HloSharding> FlattenTupleSharding(const HloSharding& sharding) {

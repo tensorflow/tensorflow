@@ -1678,7 +1678,8 @@ absl::Status XlaCompiler::SetDeviceToHostMetadata(
     tf2xla::HostTransferMetadata& existing_transfer = host_compute_sends_[key];
     tf2xla::HostTransferMetadata new_transfer;
     SetTransfer(key, types, shapes, &new_transfer);
-    if (xla::protobuf_util::ProtobufEquals(existing_transfer, new_transfer)) {
+    if (xla::protobuf_util::HaveSameSerialization(existing_transfer,
+                                                  new_transfer)) {
       return absl::OkStatus();
     } else {
       return errors::InvalidArgument(
@@ -1712,7 +1713,8 @@ absl::Status XlaCompiler::SetHostToDeviceMetadata(
     tf2xla::HostTransferMetadata& existing_transfer = host_compute_recvs_[key];
     tf2xla::HostTransferMetadata new_transfer;
     SetTransfer(key, types, shapes, &new_transfer);
-    if (xla::protobuf_util::ProtobufEquals(existing_transfer, new_transfer)) {
+    if (xla::protobuf_util::HaveSameSerialization(existing_transfer,
+                                                  new_transfer)) {
       return absl::OkStatus();
     } else {
       return errors::InvalidArgument(

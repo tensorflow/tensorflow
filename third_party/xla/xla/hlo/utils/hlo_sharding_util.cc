@@ -673,8 +673,9 @@ bool MergeShardingIfCompatible(const HloSharding& to_merge,
 
   std::vector<OpMetadata> merged_metadata(std::move(dst->metadata()));
   merged_metadata.reserve(merged_metadata.size() + to_merge.metadata().size());
-  const absl::flat_hash_set<OpMetadata, protobuf_util::ProtobufHashWrapper,
-                            protobuf_util::ProtobufEqualsWrapper>
+  const absl::flat_hash_set<OpMetadata,
+                            protobuf_util::ProtobufHashBySerializationFunctor,
+                            protobuf_util::HaveSameSerializationFunctor>
       metadata_set(merged_metadata.begin(), merged_metadata.end());
   absl::c_copy_if(to_merge.metadata(), std::back_inserter(merged_metadata),
                   [&metadata_set](const OpMetadata& data) {

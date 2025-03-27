@@ -824,7 +824,6 @@ xla_cc_test(
         ":conv_rewriter",
         "//xla:array4d",
         "//xla:literal_util",
-        "//xla:protobuf_util",
         "//xla:shape_util",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:pattern_matcher_gmock",
@@ -836,6 +835,7 @@ xla_cc_test(
         "//xla/stream_executor:device_description",
         "//xla/tests:hlo_test_base",
         "//xla/tests:xla_internal_test_main",  # fixdeps: keep
+        "//xla/tsl/util/proto:proto_matchers",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/strings:str_format",
         "@local_tsl//tsl/platform:status_matchers",

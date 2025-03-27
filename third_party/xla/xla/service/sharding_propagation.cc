@@ -595,7 +595,7 @@ bool SameShardingMetadata(const HloSharding& a, const HloSharding& b) {
                           absl::Span<const OpMetadata> b) {
     if (a.size() != b.size()) return false;
     for (int i = 0, e = a.size(); i < e; ++i) {
-      if (!protobuf_util::ProtobufEquals(a[i], b[i])) {
+      if (!protobuf_util::HaveSameSerialization(a[i], b[i])) {
         return false;
       }
     }
