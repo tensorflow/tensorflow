@@ -17,8 +17,9 @@ limitations under the License.
 
 #include "tensorflow/lite/core/acceleration/configuration/c/xnnpack_plugin.h"
 
+#include <memory>
+
 #include "tensorflow/lite/acceleration/configuration/configuration_generated.h"
-#include "tensorflow/lite/core/acceleration/configuration/c/delegate_plugin.h"
 #include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/delegates/xnnpack/xnnpack_delegate.h"
 
@@ -28,8 +29,6 @@ static TfLiteDelegate* CreateDelegate(const void* settings) {
   const ::tflite::TFLiteSettings* tflite_settings =
       static_cast<const ::tflite::TFLiteSettings*>(settings);
   auto options(TfLiteXNNPackDelegateOptionsDefault());
-  // The following code block is duplicated in the C++ XNNPack delegate plugin.
-  // LINT.IfChange(tflite_settings_to_xnnpack_delegate_options)
   const auto* xnnpack_settings = tflite_settings->xnnpack_settings();
   if (xnnpack_settings) {
     options.num_threads = xnnpack_settings->num_threads();
@@ -45,7 +44,6 @@ static TfLiteDelegate* CreateDelegate(const void* settings) {
           xnnpack_settings->weight_cache_file_path()->c_str();
     }
   }
-  // LINT.ThenChange(../xnnpack_plugin.cc:tflite_settings_to_xnnpack_delegate_options)
   return TfLiteXNNPackDelegateCreate(&options);
 }
 
