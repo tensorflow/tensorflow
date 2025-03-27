@@ -35,28 +35,16 @@ limitations under the License.
 #include "llvm/IR/Instructions.h"
 #include "llvm/Linker/Linker.h"
 #include "mlir/Conversion/AffineToStandard/AffineToStandard.h"
-#include "mlir/Conversion/ComplexToStandard/ComplexToStandard.h"
-#include "mlir/Conversion/ReconcileUnrealizedCasts/ReconcileUnrealizedCasts.h"
-#include "mlir/Conversion/SCFToControlFlow/SCFToControlFlow.h"
-#include "mlir/Dialect/Affine/IR/AffineOps.h"
-#include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Bufferization/IR/BufferizableOpInterface.h"
-#include "mlir/Dialect/ControlFlow/IR/ControlFlow.h"
 #include "mlir/Dialect/DLTI/DLTI.h"
-#include "mlir/Dialect/Func/Extensions/InlinerExtension.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
-#include "mlir/Dialect/LLVMIR/Transforms/InlinerInterfaceImpl.h"
-#include "mlir/Dialect/Math/IR/Math.h"
 #include "mlir/Dialect/MemRef/Transforms/Passes.h"
-#include "mlir/Dialect/SCF/IR/SCF.h"
-#include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/Dialect/Vector/IR/VectorOps.h"
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinAttributes.h"
-#include "mlir/IR/DialectRegistry.h"
 #include "mlir/IR/Location.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OwningOpRef.h"
@@ -69,17 +57,14 @@ limitations under the License.
 #include "mlir/Target/LLVMIR/Dialect/NVVM/NVVMToLLVMIRTranslation.h"
 #include "mlir/Target/LLVMIR/Dialect/ROCDL/ROCDLToLLVMIRTranslation.h"
 #include "mlir/Target/LLVMIR/Export.h"
-#include "mlir/Transforms/Passes.h"
 #include "xla/backends/cpu/alignment.h"
-#include "xla/backends/cpu/codegen/emitters/ir/xla_cpu_dialect.h"
 #include "xla/backends/cpu/codegen/emitters/ir/xla_cpu_ops.h"
 #include "xla/backends/cpu/codegen/emitters/ir/xla_cpu_types.h"
-#include "xla/backends/cpu/codegen/emitters/transforms/passes.h"
+#include "xla/backends/cpu/codegen/fusion_compiler.h"
 #include "xla/backends/cpu/codegen/kernel_api_ir_builder.h"
 #include "xla/codegen/emitters/computation_partitioner.h"
 #include "xla/codegen/emitters/elemental_hlo_to_mlir.h"
 #include "xla/codegen/emitters/ir/xla_ops.h"
-#include "xla/codegen/emitters/transforms/passes.h"
 #include "xla/codegen/emitters/type_util.h"
 #include "xla/hlo/analysis/indexing_analysis.h"
 #include "xla/hlo/analysis/indexing_map.h"
@@ -94,8 +79,6 @@ limitations under the License.
 #include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/status_macros.h"
-#include "xla/tsl/framework/mlir/status_scoped_diagnostic_handler.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
@@ -195,41 +178,8 @@ CpuFusionEmitterBase::CreateLLVMModule(
                                        std::string(fusion.name()) + "_entry",
                                        buffer_assignment));
 
-  mlir::PassManager pm(&mlir_context);
-  if (VLOG_IS_ON(5)) {
-    mlir_context.disableMultithreading();
-    pm.enableIRPrinting();
-  }
-  AddXlaOpsOptimizationPasses(pm);
-  AddLoopTransformationPasses(pm);
-  AddLoweringPasses(pm);
-  auto pipeline_status = RunPassPipeline(module.get(), pm, nullptr);
-  TF_RETURN_IF_ERROR(pipeline_status);
-
-  // At the end of the MLIR pipeline we must have just one function definition.
-  // This helps later compilation stages, where each thunk is assumed to be a
-  // standalone function.
-  auto num_llvm_function_defs = [](mlir::ModuleOp m) {
-    int count = 0;
-    m.walk([&count](mlir::LLVM::LLVMFuncOp func) {
-      if (!func.getBody().empty()) {
-        count++;
-      }
-      return mlir::WalkResult::advance();
-    });
-    return count;
-  };
-  if (int num_funcs = num_llvm_function_defs(module.get()); num_funcs != 1) {
-    return Internal("The module must have just one function definition; has %d",
-                    num_funcs);
-  }
-
-  auto llvm_module = mlir::translateModuleToLLVMIR(module.get(), llvm_context);
-  TF_RET_CHECK(llvm_module != nullptr)
-      << "Failed to translate module to LLVM IR.";
-  llvm_module->setDataLayout(llvm_module->getDataLayout());
-
-  return llvm_module;
+  FusionCompiler compiler(FusionCompiler::Options{});
+  return compiler.Compile(llvm_context, module.get());
 }
 
 absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>>
@@ -238,20 +188,6 @@ CpuFusionEmitterBase::CreateMLIRModule(
     const std::string& entry_function_name,
     const BufferAssignment& buffer_assignment,
     mlir::interpreter::MlirCompilationTrace* trace) const {
-  context.loadDialect<mlir::DLTIDialect, mlir::affine::AffineDialect,
-                      mlir::arith::ArithDialect, mlir::cf::ControlFlowDialect,
-                      mlir::func::FuncDialect, mlir::math::MathDialect,
-                      xla::cpu::XlaCpuDialect, mlir::mhlo::MhloDialect,
-                      mlir::scf::SCFDialect, mlir::LLVM::LLVMDialect,
-                      mlir::tensor::TensorDialect, mlir::vector::VectorDialect,
-                      xla::XlaDialect>();
-  mlir::DialectRegistry registry;
-  mlir::LLVM::registerInlinerInterface(registry);
-  mlir::func::registerInlinerExtension(registry);
-  mlir::registerLLVMDialectTranslation(registry);
-  mlir::registerBuiltinDialectTranslation(registry);
-  context.appendDialectRegistry(registry);
-
   mlir::OpBuilder builder(&context);
   auto loc = mlir::NameLoc::get(builder.getStringAttr(fusion.name()));
   mlir::OwningOpRef<mlir::ModuleOp> module = llvm_ir::CreateMlirModuleOp(loc);
@@ -405,87 +341,6 @@ absl::Status CpuFusionEmitterBase::EmitMlir(
       mlir::DataLayoutSpecAttr::get(module->getContext(), {index_layout}));
 
   return EmitEntryFunction(computations, call_targets, entry_function, fusion);
-}
-
-absl::Status CpuFusionEmitterBase::RunPassPipeline(
-    mlir::ModuleOp module, mlir::PassManager& pm,
-    mlir::interpreter::MlirCompilationTrace* trace) const {
-  if (VLOG_IS_ON(5)) {
-    module.getContext()->disableMultithreading();
-    pm.enableIRPrinting();
-  }
-  tsl::StatusScopedDiagnosticHandler diagnostic_handler(module.getContext());
-  (void)pm.run(module);
-  return diagnostic_handler.consumeStatus();
-}
-
-void AddXlaOpsOptimizationPasses(mlir::OpPassManager& pm) {
-  pm.addNestedPass<FuncOp>(emitters::CreateSimplifyArithPass());
-  pm.addPass(mlir::createCanonicalizerPass());
-  pm.addPass(mlir::createCSEPass());
-  pm.addPass(emitters::CreateEraseDeadFunctionsPass());
-  pm.addPass(mlir::createCSEPass());
-}
-
-void AddLoopTransformationPasses(mlir::OpPassManager& pm) {
-  pm.addNestedPass<FuncOp>(emitters::CreateLowerXlaToScfPass());
-  pm.addPass(mlir::createInlinerPass({}, [&](mlir::OpPassManager& pm) {
-    // CSE after inlining because inlining can introduce duplicates.
-    pm.addPass(mlir::createCSEPass());
-  }));
-  pm.addPass(mlir::createCanonicalizerPass());
-  pm.addPass(mlir::createCSEPass());
-  pm.addNestedPass<FuncOp>(emitters::CreateLowerXlaLoopsToScfPass());
-  pm.addPass(mlir::mhlo::createConvertToSignlessPass());
-  pm.addPass(emitters::CreatePropagateSliceIndicesPass());
-  pm.addPass(emitters::CreateFlattenTensorsPass());
-  // We need LICM before unswitching loops, because our loop unswitcher only
-  // detects for loops with a single if inside them.
-  pm.addPass(mlir::createLoopInvariantCodeMotionPass());
-  pm.addNestedPass<FuncOp>(emitters::CreateUnswitchLoopsPass());
-  // We need LICM again after unswitching, because that can introduce new
-  // opportunities for LICM. This would not be necessary if LICM also moved
-  // instructions over ifs.
-  pm.addPass(mlir::createLoopInvariantCodeMotionPass());
-  pm.addNestedPass<FuncOp>(
-      emitters::CreateVectorizeLoadsAndStoresPass(/*target_type=*/"cpu"));
-  pm.addPass(mlir::createCanonicalizerPass());
-  pm.addPass(mlir::createCSEPass());
-}
-
-void AddLoweringPasses(mlir::OpPassManager& pm) {
-  pm.addNestedPass<FuncOp>(emitters::CreateConvertPureCallOpsPass());
-  pm.addPass(cpu::CreateLowerToLLVMPass());
-  pm.addPass(emitters::CreateLowerTensorsPass(/*target_type=*/"cpu"));
-  pm.addPass(mlir::createConvertComplexToStandardPass());
-  pm.addPass(emitters::CreateMergePointersToSameSlicePass());
-
-  // LowerTensors creates new affine.apply ops. Fold and CSE them so
-  // simplify-affine has maximally folded expressions to work with.
-  pm.addPass(mlir::createCanonicalizerPass());
-  pm.addPass(mlir::createCSEPass());
-  pm.addNestedPass<FuncOp>(emitters::CreateSimplifyArithPass());
-  pm.addPass(emitters::CreateSimplifyAffinePass());
-  pm.addPass(mlir::createCanonicalizerPass());
-
-  // simplify-affine lowers most affine.apply ops, but if it can't prove a
-  // division or modulo is unsigned, affine.apply ops will remain.
-  pm.addPass(mlir::createLowerAffinePass());
-
-  pm.addPass(mlir::createLoopInvariantCodeMotionPass());
-  pm.addPass(mlir::createSymbolDCEPass());
-  pm.addPass(mlir::createCSEPass());
-
-  pm.addPass(emitters::CreateExpandFloatOpsPass());
-  pm.addPass(emitters::CreateEraseDeadFunctionsPass());
-  pm.addPass(mlir::createLowerAffinePass());
-  pm.addPass(mlir::createInlinerPass());
-  pm.addPass(mlir::createSCFToControlFlowPass());
-  pm.addPass(emitters::CreateLowerToLLVMPass(/*target_type=*/"cpu"));
-  pm.addPass(mlir::createReconcileUnrealizedCastsPass());
-  pm.addPass(mlir::createInlinerPass());
-  pm.addPass(mlir::createCanonicalizerPass());
-  pm.addPass(mlir::createCSEPass());
 }
 
 using mlir::AffineExpr;
