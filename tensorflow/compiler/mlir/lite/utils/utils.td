@@ -140,7 +140,7 @@ def CreateNoneValue : NativeCodeCall<
 
 // Returns shape of a ranked tensor.
 // if called without a ranked tensor it will fail.
-def GetShape: NativeCodeCall<"GetShape($0)">;
+def GetShapeAttr: NativeCodeCall<"GetShapeAttr($0)">;
 
 // Return the resultant shape if the shape of the supplied attribute/value is
 // expanded by n leading 1s'.
