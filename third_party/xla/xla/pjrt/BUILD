@@ -967,6 +967,7 @@ cc_library(
         "//xla/ffi:ffi_api",
         "//xla/ffi/api:ffi",
         "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/synchronization",
@@ -981,9 +982,13 @@ xla_cc_test(
     deps = [
         ":host_callback",
         ":pjrt_client",
+        "//xla:xla_data_proto_cc",
         "//xla/tests:literal_test_util",
         "//xla/tsl/lib/core:status_test_util",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/synchronization",
         "@com_google_googletest//:gtest_main",
     ],
 )
