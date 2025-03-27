@@ -5005,7 +5005,6 @@ SPMDCollectiveOpsCreator GetDefaultCollectiveOpsCreator(int64_t num_partitions,
                 CollectiveDeviceList(device_groups),
                 /*constrain_layout=*/false, channel_id,
                 /*use_global_device_ids=*/true));
-        reduction_clone->SetCollectiveCallInstruction(all_reduce);
         return all_reduce;
       },
       [num_replicas, num_partitions](
@@ -5022,7 +5021,6 @@ SPMDCollectiveOpsCreator GetDefaultCollectiveOpsCreator(int64_t num_partitions,
                     partition_group_list, num_replicas, num_partitions),
                 /*constrain_layout=*/false, channel_id,
                 /*use_global_device_ids=*/true));
-        reduction_clone->SetCollectiveCallInstruction(all_reduce);
         return all_reduce;
       },
       [num_partitions](SpmdBuilder* b, HloInstruction* operand,

@@ -1028,7 +1028,6 @@ HloAllReduceInstructionBase::HloAllReduceInstructionBase(
                                constrain_layout, channel_id),
       use_global_device_ids_(use_global_device_ids) {
   AppendComputation(reduce_computation);
-  reduce_computation->SetCollectiveCallInstruction(this);
 }
 
 HloInstructionProto HloAllReduceInstructionBase::ToProto() const {

@@ -62,7 +62,6 @@ std::unique_ptr<HloInstruction> CloneAllReduce(
     return inst->GetModule()->AddEmbeddedComputation(promoted.Build());
   }();
   new_inst->set_to_apply(to_apply_promoted);
-  to_apply_promoted->SetCollectiveCallInstruction(new_inst.get());
   return new_inst;
 }
 
