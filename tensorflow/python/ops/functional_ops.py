@@ -776,14 +776,10 @@ def scan_v2(fn,
   >>> elems = np.array([1, 2, 3, 4, 5, 6])
   >>> tf.scan(lambda a, x: a + x, elems)
   <tf.Tensor: shape=(6,), dtype=int64, numpy=array([ 1,  3,  6, 10, 15, 21])>
-  >>> tf.scan(lambda a, x: a + x, elems, reverse=True)
-  <tf.Tensor: shape=(6,), dtype=int64, numpy=array([21, 20, 18, 15, 11,  6])>
-    
   >>> elems = np.array([1, 2, 3, 4, 5, 6])
   >>> initializer = np.array(0)
   >>> tf.scan(lambda a, x: x[0] - x[1] + a, (elems + 1, elems), initializer)
   < tf.Tensor([1 2 3 4 5 6], shape=(6,), dtype=int64)>
-
   >>> elems = np.array([1, 0, 0, 0, 0, 0])
   >>> initializer = (np.array(0), np.array(1))
   >>> tf.scan(lambda a, _: (a[1], a[0] + a[1]), elems, initializer)
