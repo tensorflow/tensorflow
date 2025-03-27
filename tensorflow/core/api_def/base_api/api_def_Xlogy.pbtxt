@@ -2,3 +2,8 @@ op {
   graph_op_name: "Xlogy"
   summary: "Returns 0 if x == 0, and x * log(y) otherwise, elementwise."
 }
+Example:
+>>> x_float32 = tf.constant([2.0, 3.0, 4.0], dtype=tf.float32)
+>>> y_float32 = tf.constant([3.0, 2.0, 3.0], dtype=tf.float32)
+>>> print(tf.math.xlogy(x_float32, y_float32))
+<tf.Tensor([2.1972246 2.0794415 4.394449 ], shape=(3,), dtype=float32)>
