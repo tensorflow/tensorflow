@@ -28,8 +28,7 @@ namespace xla::gpu {
 // allow commands to run concurrently and insert barriers only when needed for
 // correctness.
 absl::StatusOr<CommandBufferCmdSequence> ConvertToCommands(
-    const ThunkSequence& sequence,
-    CommandBufferCmdSequence::SynchronizationMode synchronization_mode);
+    const ThunkSequence& sequence);
 
 }  // namespace xla::gpu
 

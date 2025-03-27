@@ -164,16 +164,6 @@ void PopulateOpMetricsNode(
     const OpMetrics& op_metrics, double peak_gigaflops_per_second_per_core,
     std::vector<double> peak_mem_gibibytes_per_second_per_core,
     uint64_t total_time_ps, Node* node) {
-  // TODO(dfinchel): remove this temporary change to avoid crash.
-  // This is only needed while we make an update to proto version that is not
-  // backwards compatible.
-  if (peak_mem_gibibytes_per_second_per_core.size() !=
-      (MemBwType_MAX - MemBwType_MIN + 1)) {
-    peak_mem_gibibytes_per_second_per_core.clear();
-    for (int i = MemBwType_MIN; i <= MemBwType_MAX; ++i) {
-      peak_mem_gibibytes_per_second_per_core.push_back(0);
-    }
-  }
 
   Metrics* metrics = node->mutable_metrics();
   // The UI computes flops_rate = raw_flops / raw_time

@@ -267,31 +267,40 @@ class CommandBufferCmd {
 // purpose is to manipulate command buffers at run time.
 class CommandBufferCmdSequence {
  public:
-  // Synchronization mode defines how execution streams gets converted to
-  // command buffer execution scopes and barriers.
-  //
-  // Each individual Thunk assigned an execution stream id, and we have explicit
-  // inter-stream synchronization (`Thunk::Kind::kWaitForStreams`) between
-  // streams. Thunks assigned to the same stream are implicitly synchronized.
-  //
-  // Command buffers on the other hand by default can execute commands
-  // concurrently and require barriers to enforce execution order.
-  //
-  // WARNING: We do not have implicit synchronization between execution scopes
-  // corresponding to different execution streams and rely on explicit barriers
-  // emitted from thunks. Synchronization mode controls only barriers within
-  // a single exection scope (corresponds to execution stream).
+  CommandBufferCmdSequence() = default;
+  CommandBufferCmdSequence(CommandBufferCmdSequence&&) = default;
+  CommandBufferCmdSequence& operator=(CommandBufferCmdSequence&&) = default;
+
+  // Synchronization mode defines how much concurrency is allowed between
+  // commands in the sequence.
   enum class SynchronizationMode {
-    // Adds barriers between all commands recorded into the same execution scope
-    // (thunks sharing execution stream) and enforces completely serialized
-    // execution order that matches what would happen in a ThunkSequence.
+    // Serializes execution of all commands recorded into the command buffer
+    // by adding a dependency between them.
     kSerialize,
 
-    // Relies on buffer use analysis to insert barriers only between commands
-    // that have read-write conflicts into the same buffers. Conflicts are
-    // detected only between commands using the same stream id, and inter-stream
-    // synchronization is a user responsibility.
+    // Relies on execution graph to insert dependencies between commands
+    // that have buffer of resource conflicts, and building a DAG of commands.
     kAutomatic
+  };
+
+  // A command buffer cmd sequence builder for lazy command sequence
+  // construction.
+  class Builder {
+   public:
+    void Append(std::unique_ptr<CommandBufferCmd> cmd);
+
+    template <typename T, typename... Args>
+    void Emplace(Args... args) {
+      Append(std::make_unique<T>(std::forward<Args>(args)...));
+    }
+
+    // TODO(b/406370928): Remove default argument and make sure we correctly
+    // propagate synchronization mode through the codebase.
+    CommandBufferCmdSequence Build(SynchronizationMode synchronization_mode =
+                                       SynchronizationMode::kSerialize) &&;
+
+   private:
+    std::vector<std::unique_ptr<CommandBufferCmd>> commands_;
   };
 
   enum class RecordMode {
@@ -308,16 +317,6 @@ class CommandBufferCmdSequence {
     // owned by the parent command buffer.
     kConditional
   };
-
-  explicit CommandBufferCmdSequence(SynchronizationMode synchronization_mode =
-                                        SynchronizationMode::kAutomatic);
-
-  void Append(std::unique_ptr<CommandBufferCmd> cmd);
-
-  template <typename T, typename... Args>
-  void Emplace(Args... args) {
-    Append(std::make_unique<T>(std::forward<Args>(args)...));
-  }
 
   // Prepares all commands added to a sequence.
   absl::Status Prepare(const Thunk::PrepareParams& params,
@@ -348,6 +347,10 @@ class CommandBufferCmdSequence {
   }
 
  private:
+  CommandBufferCmdSequence(
+      SynchronizationMode synchronization_mode,
+      std::vector<std::unique_ptr<CommandBufferCmd>> commands);
+
   SynchronizationMode synchronization_mode_;
   std::vector<std::unique_ptr<CommandBufferCmd>> commands_;
 
@@ -1017,7 +1020,7 @@ class DynamicSliceFusionCmd : public CommandBufferCmd {
  public:
   DynamicSliceFusionCmd(
       ExecutionStreamId execution_stream_id,
-      std::unique_ptr<CommandBufferCmdSequence> embedded_commands,
+      CommandBufferCmdSequence embedded_commands,
       std::vector<std::optional<BufferAllocation::Slice>> arguments,
       std::vector<std::unique_ptr<BufferAllocation>> fake_allocations_,
       std::vector<std::optional<std::vector<DynamicSliceThunk::Offset>>>
@@ -1045,7 +1048,7 @@ class DynamicSliceFusionCmd : public CommandBufferCmd {
   bool IsNestedCommandBuffer() const final { return true; }
 
  private:
-  std::unique_ptr<CommandBufferCmdSequence> embedded_commands_;
+  CommandBufferCmdSequence embedded_commands_;
   std::vector<DynamicSliceThunk::SliceDef> slices_;
   std::vector<std::unique_ptr<BufferAllocation>> fake_allocations_;
 

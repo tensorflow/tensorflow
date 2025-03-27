@@ -52,15 +52,13 @@ CreateGPURawBuffer(PjRtBuffer* buffer) {
     if (!hold.ok()) {
       return hold.status();
     }
-    const auto& device_buffer = hold.buffer();
-    if (!device_buffer->device_memory()) {
+    if (!hold->device_memory()) {
       return absl::InvalidArgumentError(
           "Create raw buffer called on an invalid buffer");
     }
     return tsl::MakeRef<PjRtStreamExecutorRawBuffer>(
         se_client, se_buffer->memory_space(),
-        se_buffer->device()->local_device_state(),
-        device_buffer->device_memory());
+        se_buffer->device()->local_device_state(), hold->device_memory());
   }
   return std::nullopt;
 }
