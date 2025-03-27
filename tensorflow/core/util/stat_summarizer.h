@@ -19,6 +19,7 @@ limitations under the License.
 #include <stdlib.h>
 
 #include <cmath>
+#include <cstdint>
 #include <limits>
 #include <map>
 #include <memory>
