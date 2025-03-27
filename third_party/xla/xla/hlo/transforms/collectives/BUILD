@@ -329,6 +329,44 @@ xla_cc_test(
 )
 
 cc_library(
+    name = "all_reduce_normalizer",
+    srcs = ["all_reduce_normalizer.cc"],
+    hdrs = ["all_reduce_normalizer.h"],
+    deps = [
+        "//xla:literal",
+        "//xla:shape_util",
+        "//xla:util",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/pass:hlo_pass",
+        "//xla/hlo/utils:hlo_query",
+        "//xla/hlo/utils:hlo_sharding_util",
+        "//xla/service:collective_ops_utils",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@local_tsl//tsl/platform:errors",
+        "@local_tsl//tsl/platform:statusor",
+    ],
+)
+
+xla_cc_test(
+    name = "all_reduce_normalizer_test",
+    srcs = ["all_reduce_normalizer_test.cc"],
+    deps = [
+        ":all_reduce_normalizer",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
+        "//xla/hlo/utils:hlo_matchers",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest_main",
+        "@local_tsl//tsl/platform:statusor",
+        "@local_tsl//tsl/platform:test_main",
+    ],
+)
+
+cc_library(
     name = "all_reduce_contiguous",
     srcs = ["all_reduce_contiguous.cc"],
     hdrs = ["all_reduce_contiguous.h"],
