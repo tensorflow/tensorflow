@@ -20,7 +20,6 @@ limitations under the License.
 #include <cstdint>
 #include <functional>
 #include <memory>
-#include <utility>
 #include <vector>
 
 #include "absl/container/inlined_vector.h"
@@ -106,8 +105,15 @@ class GpuCommandBuffer : public CommandBuffer {
   absl::Status Barrier() override;
 
   using CommandBuffer::Launch;
-  absl::Status Launch(const ThreadDim& threads, const BlockDim& blocks,
-                      const Kernel& kernel, const KernelArgs& args) override;
+
+  absl::StatusOr<const Command*> Launch(
+      const ThreadDim& threads, const BlockDim& blocks, const Kernel& kernel,
+      const KernelArgs& args,
+      absl::Span<const Command* const> dependencies) override;
+
+  absl::Status Launch(const Command* command, const ThreadDim& threads,
+                      const BlockDim& blocks, const Kernel& kernel,
+                      const KernelArgs& args) override;
 
   absl::Status AddNestedCommandBuffer(const CommandBuffer& nested) override;
 
@@ -273,9 +279,15 @@ class GpuCommandBuffer : public CommandBuffer {
   absl::Status DisableBarriersExecution(GpuCommandBuffer& root_command_buffer);
 
   // Launches CUDA kernels with packed arguments.
-  absl::Status LaunchWithPackedArgs(
+  absl::StatusOr<const Command*> LaunchWithPackedArgs(
       const ThreadDim& threads, const BlockDim& blocks, const Kernel& kernel,
-      const KernelArgsPackedArrayBase& packed_args);
+      const KernelArgsPackedArrayBase& packed_args,
+      absl::Span<const Command* const> dependencies);
+
+  // Updates a kernel launch command with packed arguments.
+  absl::Status LaunchWithPackedArgs(
+      const Command* command, const ThreadDim& threads, const BlockDim& blocks,
+      const Kernel& kernel, const KernelArgsPackedArrayBase& packed_args);
 
  protected:
   // Creates a nested command buffer, associated with the same executor.
