@@ -2629,7 +2629,8 @@ absl::Status CheckFusionInstruction(HloInstruction* fusion) {
   for (auto* instruction :
        fusion->fused_instructions_computation()->instructions()) {
     if (instruction != fused_root) {
-      if (instruction->user_count() == 0) {
+      if (instruction->user_count() == 0 &&
+          !instruction->HasSideEffectNoRecurse()) {
         return Internal("Non-root instruction %s in %s must have users.",
                         instruction->ToString(), fusion->ToString());
       }
