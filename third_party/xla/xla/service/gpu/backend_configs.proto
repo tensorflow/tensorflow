@@ -105,6 +105,8 @@ message GemmBackendConfig {
   optional bool grad_x = 16;
   optional bool grad_y = 17;
   bool damax_output = 18;
+
+  repeated ReificationCost reification_cost = 19;
 }
 
 // Backend config for bitcast operation generated from MLIR MHLO dialect.
