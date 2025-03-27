@@ -89,8 +89,8 @@ Status ReadSavedModel(absl::string_view export_dir,
         bool saved_model_pb_exists,
         internal::FileExists(Env::Default(), saved_model_pb_path));
     if (saved_model_pb_exists) {
-      Status result = ReadBinaryProto(Env::Default(), saved_model_pb_path,
-                                      saved_model_proto);
+      absl::Status result = ReadBinaryProto(Env::Default(), saved_model_pb_path,
+                                            saved_model_proto);
       if (result.ok()) {
         metrics::SavedModelReadCount(
             saved_model::GetWriteVersion(*saved_model_proto))
