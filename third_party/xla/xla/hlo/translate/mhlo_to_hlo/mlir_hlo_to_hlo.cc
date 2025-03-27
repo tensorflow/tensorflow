@@ -3195,7 +3195,7 @@ LogicalResult ExportXlaOp(MinimumBroadcastShapesOp op, OpLoweringContext ctx) {
 }  // namespace mhlo
 }  // namespace mlir
 
-#include "xla/hlo/translate/mhlo_to_hlo/operator_writers.inc"
+#include "xla/hlo/translate/mhlo_to_hlo/hlo_op_writer.inc"
 
 namespace mlir {
 namespace {

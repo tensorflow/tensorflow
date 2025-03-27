@@ -119,17 +119,17 @@ cc_library(
 cc_library(
     name = "mlir_hlo_to_hlo",
     srcs = [
+        "hlo_op_writer.inc",
         "mlir_hlo_to_hlo.cc",
-        "operator_writers.inc",
     ],
     hdrs = ["mlir_hlo_to_hlo.h"],
     deps = [
         ":attribute_exporter",
+        ":hlo_op_writer_inc",
         ":layout_util",
         ":literal_exporter",
         ":location_exporter",
         ":module_attributes_exporter",
-        ":operator_writer_inc",
         ":stack_frame_index_builder",
         ":type_to_shape",
         "//xla:array",
@@ -184,15 +184,15 @@ cc_library(
 )
 
 build_test(
-    name = "operator_writer_gen_build_test",
+    name = "gen_hlo_op_writer_build_test",
     targets = [
-        ":operator_writer_gen",
+        ":gen_hlo_op_writer",
     ],
 )
 
 cc_binary(
-    name = "operator_writer_gen",
-    srcs = ["operator_writer_gen.cc"],
+    name = "gen_hlo_op_writer",
+    srcs = ["gen_hlo_op_writer.cc"],
     deps = [
         "@llvm-project//llvm:Support",
         "@llvm-project//llvm:TableGen",
@@ -201,11 +201,11 @@ cc_binary(
 )
 
 gentbl_cc_library(
-    name = "operator_writer_inc",
+    name = "hlo_op_writer_inc",
     compatible_with = get_compatible_with_portable(),
-    tbl_outs = [([], "operator_writers.inc")],
-    tblgen = ":operator_writer_gen",
-    td_file = "//xla/mlir_hlo:mhlo/IR/hlo_ops.td",
+    tbl_outs = [([], "hlo_op_writer.inc")],
+    tblgen = ":gen_hlo_op_writer",
+    td_file = "gen_hlo_op_writer.td",
     deps = [
         "//xla/mlir_hlo:hlo_ops_td_files",
         "@llvm-project//mlir:InferTypeOpInterfaceTdFiles",
