@@ -103,11 +103,38 @@ class Shape {
   std::string ToString(bool print_layout = false) const;
 
   // Returns whether the shape is of the specified category (array, tuple, etc).
-  // TODO(b/404276923): check that element_type() and the state_ are in sync.
-  bool IsArray() const { return primitive_util::IsArrayType(element_type()); }
-  bool IsTuple() const { return element_type() == TUPLE; }
-  bool IsToken() const { return element_type() == TOKEN; }
-  bool IsOpaque() const { return element_type() == OPAQUE_TYPE; }
+  bool IsArray() const {
+    const bool result = primitive_util::IsArrayType(element_type());
+    // We do this check in debug mode only to avoid performance regressions.
+    DCHECK_EQ(result, if_array_state() != nullptr)
+        << "Shape " << ToString()
+        << " has inconsistent element_type and state.";
+    return result;
+  }
+  bool IsTuple() const {
+    const bool result = element_type() == TUPLE;
+    // We do this check in debug mode only to avoid performance regressions.
+    DCHECK_EQ(result, if_tuple_state() != nullptr)
+        << "Shape " << ToString()
+        << " has inconsistent element_type and state.";
+    return result;
+  }
+  bool IsToken() const {
+    const bool result = element_type() == TOKEN;
+    // We do this check in debug mode only to avoid performance regressions.
+    DCHECK_EQ(result, if_token_state() != nullptr)
+        << "Shape " << ToString()
+        << " has inconsistent element_type and state.";
+    return result;
+  }
+  bool IsOpaque() const {
+    const bool result = element_type() == OPAQUE_TYPE;
+    // We do this check in debug mode only to avoid performance regressions.
+    DCHECK_EQ(result, if_opaque_state() != nullptr)
+        << "Shape " << ToString()
+        << " has inconsistent element_type and state.";
+    return result;
+  }
 
   // Returns whether all elements in the shape are integers.
   // Tuple shapes are traversed recursively.

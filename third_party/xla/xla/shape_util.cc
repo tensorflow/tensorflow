@@ -453,13 +453,14 @@ ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
     Shape* shape) {
   shape->Clear();
   shape->set_element_type(element_type);
-  // TODO(b/404276923): ensure that dimensions is empty if this is a non-array
-  // shape.
   if (shape->IsArray()) {
     for (int64_t dimension : dimensions) {
       shape->add_dimensions(dimension);
     }
     LayoutUtil::SetToDefaultLayout(shape);
+  } else {
+    CHECK(dimensions.empty()) << "Non-array shape " << shape->ToString()
+                              << " cannot have dimensions.";
   }
   return ValidateShape(*shape);
 }
