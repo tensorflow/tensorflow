@@ -16,7 +16,11 @@ limitations under the License.
 // This transformation pass convert dense tensor to sparse format.
 #include "tensorflow/compiler/mlir/lite/transforms/dense_to_sparse_pass.h"
 
-#include "absl/memory/memory.h"
+#include <cassert>
+#include <cstdint>
+#include <memory>
+#include <vector>
+
 #include "Eigen/Core"  // from @eigen_archive
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
