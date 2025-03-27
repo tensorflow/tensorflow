@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/core/grappler/utils/canonicalizer.h"
 
+#include "tensorflow/core/framework/graph.pb.h"
+#include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
