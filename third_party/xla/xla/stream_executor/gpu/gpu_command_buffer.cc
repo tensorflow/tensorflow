@@ -291,26 +291,36 @@ absl::Status GpuCommandBuffer::Launch(const Command* command,
   return absl::InternalError("Unsupported kernel arguments type");
 }
 
-absl::Status GpuCommandBuffer::AddNestedCommandBuffer(
-    const CommandBuffer& nested) {
+absl::StatusOr<const CommandBuffer::Command*>
+GpuCommandBuffer::AddNestedCommandBuffer(
+    const CommandBuffer& nested,
+    absl::Span<const Command* const> dependencies) {
   TF_RETURN_IF_ERROR(CheckNotFinalized());
 
   // Adds a child graph node to the graph under construction.
   if (state_ == State::kCreate) {
-    Dependencies barrier = GetBarrier();
-    TF_ASSIGN_OR_RETURN(
-        commands_.emplace_back(std::make_unique<GpuCommand>(nullptr))->handle,
-        CreateChildNode(barrier, nested));
-    return absl::OkStatus();
+    Dependencies barrier = dependencies.empty()
+                               ? GetBarrier()
+                               : ToGraphNodeDependencies(dependencies);
+    TF_ASSIGN_OR_RETURN(GraphNodeHandle handle,
+                        CreateChildNode(barrier, nested));
+    return AppendCommand(handle);
   }
 
   // Updates child graph node in the executable graph.
   if (state_ == State::kUpdate) {
-    GraphNodeHandle node = commands_[update_state_.node_idx++]->handle;
-    return UpdateChildNode(node, nested);
+    GpuCommand& command = *commands_[update_state_.node_idx++];
+    TF_RETURN_IF_ERROR(AddNestedCommandBuffer(&command, nested));
+    return &command;
   }
 
   return UnsupportedStateError(state_);
+}
+
+absl::Status GpuCommandBuffer::AddNestedCommandBuffer(
+    const Command* command, const CommandBuffer& nested) {
+  auto* gpu_command = tsl::down_cast<const GpuCommand*>(command);
+  return UpdateChildNode(gpu_command->handle, nested);
 }
 
 absl::StatusOr<const CommandBuffer::Command*>

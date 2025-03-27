@@ -141,7 +141,13 @@ class CommandBuffer {
                       Args... args);
 
   // Adds a nested command buffer.
-  virtual absl::Status AddNestedCommandBuffer(const CommandBuffer& nested) = 0;
+  virtual absl::StatusOr<const Command*> AddNestedCommandBuffer(
+      const CommandBuffer& nested,
+      absl::Span<const Command* const> dependencies) = 0;
+
+  // Updates a nested command buffer.
+  virtual absl::Status AddNestedCommandBuffer(const Command* command,
+                                              const CommandBuffer& nested) = 0;
 
   // Adds a device-to-device memory copy.
   virtual absl::StatusOr<const Command*> MemcpyDeviceToDevice(

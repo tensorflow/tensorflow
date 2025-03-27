@@ -43,6 +43,7 @@ limitations under the License.
 #include "xla/stream_executor/trace_command_buffer_factory.h"
 #include "xla/stream_executor/typed_kernel_factory.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/status_matchers.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
@@ -243,7 +244,8 @@ TEST(GpuCommandBufferTest, LaunchNestedCommandBuffer) {
   TF_ASSERT_OK_AND_ASSIGN(auto nested_cmd,
                           executor->CreateCommandBuffer(nested));
   TF_ASSERT_OK(nested_cmd->Launch(add, ThreadDim(), BlockDim(4), {}, a, b, c));
-  TF_ASSERT_OK(primary_cmd->AddNestedCommandBuffer(*nested_cmd));
+  TF_ASSERT_OK_AND_ASSIGN(auto* nested_command,
+                          primary_cmd->AddNestedCommandBuffer(*nested_cmd, {}));
   TF_ASSERT_OK(primary_cmd->Finalize());
 
   TF_ASSERT_OK(primary_cmd->Submit(stream.get()));
@@ -264,7 +266,8 @@ TEST(GpuCommandBufferTest, LaunchNestedCommandBuffer) {
   nested_cmd = executor->CreateCommandBuffer(nested).value();
   TF_ASSERT_OK(nested_cmd->Launch(add, ThreadDim(), BlockDim(4), {}, a, b, d));
   TF_ASSERT_OK(primary_cmd->Update());
-  TF_ASSERT_OK(primary_cmd->AddNestedCommandBuffer(*nested_cmd));
+  TF_ASSERT_OK(
+      primary_cmd->AddNestedCommandBuffer(nested_command, *nested_cmd));
   TF_ASSERT_OK(primary_cmd->Finalize());
 
   TF_ASSERT_OK(primary_cmd->Submit(stream.get()));
@@ -1174,7 +1177,7 @@ TEST(GpuCommandBufferTest, DISABLED_WhileNestedConditional) {
 
   CommandBuffer::Builder body_builder =
       [&](CommandBuffer* body_cmd) -> absl::Status {
-    CHECK_OK(body_cmd->AddNestedCommandBuffer(*nested_cmd));
+    CHECK_OK(body_cmd->AddNestedCommandBuffer(*nested_cmd, {}));
     return absl::OkStatus();
   };
 

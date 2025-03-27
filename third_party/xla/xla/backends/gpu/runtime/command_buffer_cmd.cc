@@ -439,7 +439,7 @@ absl::Status TracedCommandBufferCmd::AddTracedCommandBuffer(
           execute_params.command_buffer_trace_stream, trace));
 
   VLOG(5) << "Add nested command buffer";
-  return command_buffer->AddNestedCommandBuffer(*nested_cmd);
+  return command_buffer->AddNestedCommandBuffer(*nested_cmd, {}).status();
 }
 
 //===----------------------------------------------------------------------===//
@@ -1412,7 +1412,7 @@ absl::Status CustomCallCmd::RecordLegacyCustomCall(
             return absl::OkStatus();
           }));
 
-  return command_buffer->AddNestedCommandBuffer(*nested_cmd);
+  return command_buffer->AddNestedCommandBuffer(*nested_cmd, {}).status();
 }
 
 absl::Status CustomCallCmd::RecordXlaFfiCall(
@@ -1484,7 +1484,7 @@ absl::Status CustomCallCmd::RecordXlaFfiCall(
             return ffi::Call(handler_, call_frame, options);
           }));
 
-  return command_buffer->AddNestedCommandBuffer(*nested_cmd);
+  return command_buffer->AddNestedCommandBuffer(*nested_cmd, {}).status();
 }
 
 CommandBufferCmd::BufferUseVector CustomCallCmd::buffers() {
@@ -1532,7 +1532,7 @@ absl::Status CollectiveCmd::AddTracedCommandBuffer(
                           execute_params.stream->parent(),
                           execute_params.command_buffer_trace_stream, trace));
 
-  return command_buffer->AddNestedCommandBuffer(*nested_cmd);
+  return command_buffer->AddNestedCommandBuffer(*nested_cmd, {}).status();
 }
 
 //===----------------------------------------------------------------------===//
@@ -2066,7 +2066,8 @@ absl::Status DynamicSliceFusionCmd::Record(
           .value();
   TF_RETURN_IF_ERROR(embedded_commands_->Record(new_params, record_params,
                                                 nested_command_buffer.get()));
-  return command_buffer->AddNestedCommandBuffer(*nested_command_buffer);
+  return command_buffer->AddNestedCommandBuffer(*nested_command_buffer, {})
+      .status();
 }
 
 CommandBufferCmd::BufferUseVector DynamicSliceFusionCmd::buffers() {
