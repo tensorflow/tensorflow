@@ -18,6 +18,7 @@ limitations under the License.
 #include <algorithm>
 #include <cstdint>
 #include <memory>
+#include <utility>
 #include <vector>
 
 #include "absl/status/status.h"
@@ -28,30 +29,54 @@ limitations under the License.
 #include "xla/service/gpu/model/gpu_hlo_cost_analysis.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/tsl/platform/errors.h"
+#include "xla/tsl/profiler/convert/xla_op_utils.h"
+#include "tensorflow/core/profiler/protobuf/op_metrics.pb.h"
+#include "tensorflow/core/profiler/utils/hlo_cost_analysis_wrapper.h"
 
 namespace tensorflow {
 namespace profiler {
 
 namespace {
 
-std::vector<uint32_t> GetInputBitwidths(const xla::HloInstruction& hlo) {
-  std::vector<uint32_t> input_bitwidths;
-  for (const auto& operand : hlo.operands()) {
-    switch (operand->shape().element_type()) {
-      case xla::PRIMITIVE_TYPE_INVALID:
-      case xla::TUPLE:
-      case xla::OPAQUE_TYPE:
-      case xla::TOKEN:
-        break;
-      default:
-        input_bitwidths.push_back(
-            xla::primitive_util::BitWidth(operand->shape().element_type()));
-    }
+class XprofGpuCostAnalysisWrapper : public HloCostAnalysisWrapper {
+ public:
+  explicit XprofGpuCostAnalysisWrapper(
+      std::unique_ptr<XProfGpuCostAnalysis> cost_analysis)
+      : gpu_cost_analysis_(std::move(cost_analysis)) {}
+
+  xla::HloCostAnalysis* GetXlaCostAnalysis() const override {
+    return gpu_cost_analysis_.get();
   }
-  return input_bitwidths;
-}
+
+  int64_t GetDeviceFlopsAdjustment(
+      const xla::HloInstruction& hlo) const override {
+    return GetCostPerCoreFunction(hlo)(
+        gpu_cost_analysis_->GetDeviceFlopsAdjustment(hlo));
+  }
+
+  HloCostAnalysisWrapper::MemorySpaceMap GetMemorySpaceMapping()
+      const override {
+    return {{PerformanceInfo::MemoryAccessed::HBM, /*memory_space_id=*/0},
+            {PerformanceInfo::MemoryAccessed::VMEM, /*memory_space_id=*/1},
+            {PerformanceInfo::MemoryAccessed::CMEM, /*memory_space_id=*/3}};
+  }
+
+  HloCostAnalysisWrapper::CostPerCoreFn GetCostPerCoreFunction(
+      const xla::HloInstruction& hlo) const override {
+    return tsl::profiler::ValidHloCost;
+  }
+
+ private:
+  std::unique_ptr<XProfGpuCostAnalysis> gpu_cost_analysis_;
+};
 
 }  // namespace
+
+std::unique_ptr<HloCostAnalysisWrapper> CreateXprofGpuCostAnalysis(
+    xla::HloCostAnalysis::Options options) {
+  return std::make_unique<XprofGpuCostAnalysisWrapper>(
+      std::make_unique<XProfGpuCostAnalysis>(options));
+}
 
 absl::Status XProfGpuCostAnalysis::HandleCustomCall(
     const xla::HloInstruction* hlo) {
@@ -139,7 +164,7 @@ XProfGpuCostAnalysis::CreateNestedCostAnalysis() {
 }
 
 int64_t XProfGpuCostAnalysis::GetDeviceFlopsAdjustment(
-    const xla::HloInstruction& hlo) {
+    const xla::HloInstruction& hlo) const {
   return GetPropertyForHlo(hlo, kDeviceFlopsAdjustment, hlo_properties_);
 }
 

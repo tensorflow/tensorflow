@@ -18,7 +18,6 @@ limitations under the License.
 
 #include <cstddef>
 #include <cstdint>
-#include <functional>
 #include <memory>
 #include <optional>
 #include <string>
@@ -26,14 +25,15 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/status/status.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_cost_analysis.h"
-#include "xla/shape.h"
 #include "xla/tsl/profiler/convert/xla_op_utils.h"
+#include "tensorflow/core/profiler/utils/hlo_cost_analysis_wrapper.h"
 #include "tensorflow/core/profiler/utils/hlo_module_utils.h"
 #include "tsl/profiler/protobuf/xplane.pb.h"
 
@@ -156,11 +156,11 @@ class HloModuleWrapper : public HloModuleInterface {
  public:
   explicit HloModuleWrapper(
       const xla::HloProto& hlo_proto,
-      std::function<int64_t(const xla::Shape&)> shape_func = nullptr);
+      std::unique_ptr<HloCostAnalysisWrapper> cost_analysis = nullptr);
 
   explicit HloModuleWrapper(
       std::unique_ptr<xla::HloModule> module,
-      std::function<int64_t(const xla::Shape&)> shape_func);
+      std::unique_ptr<HloCostAnalysisWrapper> cost_analysis = nullptr);
 
   const HloInstructionWrapper* GetHloInstruction(
       absl::string_view hlo_name) const;
@@ -184,8 +184,10 @@ class HloModuleWrapper : public HloModuleInterface {
 using HloModuleMap =
     absl::flat_hash_map<uint64_t /*program_id*/, HloModuleWrapper>;
 
-void AddHloProto(HloModuleMap& hlo_module_map, uint64_t program_id,
-                 const xla::HloProto& hlo_proto);
+void AddHloProto(
+    HloModuleMap& hlo_module_map, uint64_t program_id,
+    const xla::HloProto& hlo_proto,
+    std::unique_ptr<HloCostAnalysisWrapper> cost_analysis = nullptr);
 
 // Process HloModuleMap from single XSpace.
 void ProcessHloModuleMapFromXSpace(HloModuleMap& hlo_module_map,
@@ -208,6 +210,10 @@ inline const HloInstructionWrapper* GetHloInstruction(
   if (hlo_module == nullptr) return nullptr;
   return hlo_module->GetHloInstruction(hlo_name);
 }
+
+// Initialize HloCostAnalysis for the given HloModule.
+absl::Status InitializeHloCostAnalysis(const xla::HloModule& hlo_module,
+                                       xla::HloCostAnalysis& cost_analysis);
 
 }  // namespace profiler
 }  // namespace tensorflow
