@@ -727,7 +727,8 @@ absl::StatusOr<CudnnGraph> GetCudnnFlashAttentionBackwardOperationGraph(
     const dnn::MatmulTensorDescriptor& do_desc,
     const dnn::TensorDescriptor& dq_desc, const dnn::TensorDescriptor& dk_desc,
     const dnn::TensorDescriptor& dv_desc,
-    std::optional<dnn::TensorDescriptor> bias_descriptor,
+    const std::optional<dnn::TensorDescriptor> bias_descriptor,
+    const std::optional<dnn::TensorDescriptor> dbias_descriptor,
     std::optional<double> dropout_rate, std::optional<int64_t> seed,
     double scale, bool use_dropout, bool use_bias, dnn::FMHAMaskKind mask_type,
     bool force_deterministic, int sliding_window_length, int max_seg_per_batch);
