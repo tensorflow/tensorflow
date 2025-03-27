@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/core/ir/utility.h"
 
+#include <cassert>
+#include <iterator>
 #include <optional>
 
 #include "mlir/IR/Block.h"  // from @llvm-project
