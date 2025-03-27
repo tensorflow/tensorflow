@@ -147,7 +147,8 @@ auto AllDevicesToTest() {
   return std::vector<cc>{cc(example_rocm_compute_capability)};
 #else  // GOOGLE_CUDA
   return std::vector<cc>{cc(se::CudaComputeCapability::Ampere()),
-                         cc(se::CudaComputeCapability::Hopper())};
+                         cc(se::CudaComputeCapability::Hopper()),
+                         cc(se::CudaComputeCapability::Blackwell())};
 #endif
 }
 
