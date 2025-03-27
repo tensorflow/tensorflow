@@ -19,11 +19,15 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_UTIL_TENSOR_SLICE_WRITER_H_
 #define TENSORFLOW_CORE_UTIL_TENSOR_SLICE_WRITER_H_
 
+#include <cstddef>
+#include <cstdint>
 #include <functional>
 #include <map>
 #include <unordered_map>
 #include <utility>
 
+#include "absl/log/check.h"
+#include "absl/status/status.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_slice.h"
 #include "tensorflow/core/framework/types.h"
