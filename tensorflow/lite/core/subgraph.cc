@@ -1648,7 +1648,7 @@ TfLiteStatus Subgraph::InvokeImpl() {
   }
   TFLITE_SCOPED_TAGGED_DEFAULT_PROFILE(profiler_.get(), "Invoke");
 #ifdef TF_LITE_TENSORFLOW_PROFILER
-  tensorflow::profiler::TraceMe* trace_subgraph =
+  tsl::profiler::TraceMe* trace_subgraph =
       tflite::OnTfLiteSubgraphInvoke(name_.c_str(), subgraph_index_);
 #endif  // TF_LITE_TENSORFLOW_PROFILER
 
@@ -1674,7 +1674,7 @@ TfLiteStatus Subgraph::InvokeImpl() {
     if (!op_name) {
       op_name = GetTFLiteOpName(registration);
     }
-    tensorflow::profiler::TraceMe* trace_op =
+    tsl::profiler::TraceMe* trace_op =
         tflite::OnTfLiteOpInvoke(op_name, subgraph_index_, node_index);
 #endif  // TF_LITE_TENSORFLOW_PROFILER
 
