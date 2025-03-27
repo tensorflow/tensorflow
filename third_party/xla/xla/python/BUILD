@@ -116,7 +116,6 @@ cc_library(
         "-fno-strict-aliasing",
     ],
     features = ["-use_header_modules"],
-    visibility = internal_visibility([":friends"]),
     deps = if_google([
         "//third_party/py/jax/jaxlib/xla:python_ref_manager",
     ]),
@@ -131,7 +130,6 @@ cc_library(
         "-fno-strict-aliasing",
     ],
     features = ["-use_header_modules"],
-    visibility = internal_visibility([":friends"]),
     deps = if_google([
         "//third_party/py/jax/jaxlib/xla:traceback",
     ]),
@@ -181,7 +179,6 @@ cc_library(
         "-fno-strict-aliasing",
     ],
     features = ["-use_header_modules"],
-    visibility = internal_visibility([":friends"]),
     deps = if_google([
         "//third_party/py/jax/jaxlib/xla:py_client",
     ]),
@@ -436,7 +433,6 @@ cc_library(
     compatible_with = [],
     copts = ["-fexceptions"],
     features = ["-use_header_modules"],
-    visibility = internal_visibility([":friends"]),
     deps = if_google([
         "//third_party/py/jax/jaxlib/xla:nb_class_ptr",
     ]),
