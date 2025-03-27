@@ -199,6 +199,7 @@ xla_cc_test(
         "//xla/hlo/testlib:test_helpers",
         "//xla/service:hlo_proto_cc",
         "//xla/service:pattern_matcher",
+        "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",

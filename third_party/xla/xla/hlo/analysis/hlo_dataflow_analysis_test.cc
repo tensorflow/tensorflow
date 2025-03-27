@@ -22,6 +22,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/log/check.h"
 #include "absl/status/status.h"
@@ -156,6 +157,11 @@ TEST_P(HloDataflowAnalysisTest, BinaryOperation) {
   EXPECT_FALSE(analysis.GetValueDefinedAt(constant1).live_out_of_module());
   EXPECT_FALSE(analysis.GetValueDefinedAt(constant2).live_out_of_module());
   EXPECT_TRUE(analysis.GetValueDefinedAt(add).live_out_of_module());
+
+  // Check analysis ToString
+  EXPECT_THAT(
+      analysis.ToString(),
+      testing::HasSubstr("HloDataflowAnalysis, module BinaryOperation"));
 }
 
 TEST_P(HloDataflowAnalysisTest, TupleAndGtes) {

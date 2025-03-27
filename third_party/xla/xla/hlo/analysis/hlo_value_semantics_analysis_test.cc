@@ -686,6 +686,37 @@ TEST_F(EinsumDepthAnalysisTest, HandleAfterAll) {
             0);
 }
 
+TEST_F(EinsumDepthAnalysisTest, SendWithRecv) {
+  const std::string module_str = R"(
+    HloModule foobar
+
+    ENTRY entry {
+      arg_0 = s32[] parameter(0)
+      arg_1 = token[] parameter(1)
+
+      send.0 = (s32[], u32[], token[]) send(s32[] arg_0, token[] arg_1), channel_id=3, is_host_transfer=true, sharding={{maximal device=0}, {maximal device=0}, {maximal device=0}}, frontend_attributes={_xla_host_transfer_handler_name="tf_rendezvous", _xla_host_transfer_rendezvous="rendezvous1"}
+      send-done.1 = token[] send-done((s32[], u32[], token[]) send.0), channel_id=3, is_host_transfer=true, sharding={maximal device=0}, frontend_attributes={_xla_host_transfer_handler_name="tf_rendezvous", _xla_host_transfer_rendezvous="rendezvous1"}
+
+      recv.2 = (s32[], u32[], token[]) recv(token[] send-done.1), channel_id=3, is_host_transfer=true, sharding={{maximal device=0}, {maximal device=0}, {maximal device=0}}, frontend_attributes={_xla_host_transfer_handler_name="tf_rendezvous", _xla_host_transfer_rendezvous="rendezvous1"}
+      recv-done.3 = (s32[], token[]) recv-done((s32[], u32[], token[]) recv.2), channel_id=3, is_host_transfer=true, sharding={{maximal device=0}, {maximal device=0}}, frontend_attributes={_xla_host_transfer_handler_name="tf_rendezvous", _xla_host_transfer_rendezvous="rendezvous1"}
+
+      get-tuple-element.4 = token[] get-tuple-element((s32[], token[]) recv-done.3), index=1, sharding={maximal device=0}
+      ROOT %after-all.2 = token[] after-all(get-tuple-element.4), frontend_attributes={_xla_host_transfer_handler_name="tf_rendezvous",_xla_host_transfer_rendezvous="rendezvous1"}
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(module_str));
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<EinsumDepthAnalysis> einsum_depth_analysis,
+      EinsumDepthAnalysis::Run(*module->entry_computation(),
+                               SendRecvGroupMap(*module)));
+  const EinsumDepthMap& einsum_depth_map =
+      einsum_depth_analysis->GetEinsumDepthMap();
+  HloComputation* computation = module->GetComputationWithName("entry");
+  EXPECT_EQ(GetInstructionDepth(einsum_depth_map, computation, "after-all.2"),
+            0);
+}
+
 class EinsumHeightAnalysisTest : public HloHardwareIndependentTestBase {
  public:
   int GetInstructionHeight(const EinsumHeightMap& height_map,
