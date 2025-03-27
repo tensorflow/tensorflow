@@ -23,6 +23,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/pass/hlo_pass_interface.h"
+#include "xla/stream_executor/stream_executor.h"
 
 namespace xla {
 namespace gpu {
@@ -33,6 +34,7 @@ namespace gpu {
 
 class SortRewriter : public HloModulePass {
  public:
+  explicit SortRewriter(stream_executor::StreamExecutor* stream_executor);
   absl::string_view name() const override { return "sort-rewriter"; }
 
   // CUB radix sort is slower than XLA sort on small shapes, so do not rewrite
@@ -54,6 +56,7 @@ class SortRewriter : public HloModulePass {
   absl::StatusOr<bool> RunOnInstruction(HloSortInstruction* sort_op);
   absl::StatusOr<bool> RunOnComputation(HloComputation* computation);
 
+  stream_executor::StreamExecutor* stream_executor_;
   static inline int sort_size_threshold_ = 16385;
 };
 

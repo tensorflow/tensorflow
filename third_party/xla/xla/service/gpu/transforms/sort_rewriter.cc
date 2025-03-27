@@ -40,6 +40,7 @@ limitations under the License.
 #include "xla/service/pattern_matcher.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/stream_executor/stream_executor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/errors.h"
@@ -304,9 +305,17 @@ HloInstruction* AddNumpySortKey(HloInstruction* operand, PrimitiveType key_type,
 
 }  // namespace
 
+SortRewriter::SortRewriter(stream_executor::StreamExecutor* stream_executor)
+    : stream_executor_(stream_executor) {}
+
 // Rewrites a single sort instruction with a custom call.
 absl::StatusOr<bool> SortRewriter::RunOnInstruction(
     HloSortInstruction* sort_op) {
+  // We can't leverage CubSort if we don't have a device to query.
+  if (stream_executor_ == nullptr) {
+    return false;
+  }
+
   // Get the sort tensor index and direction.
   SortComputationAnalysis sort_analysis = AnalyzeSortOp(*sort_op).value();
 
