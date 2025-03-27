@@ -69,5 +69,7 @@ py_test(
     srcs = ["py_bindings_test.py"],
     deps = [
         "//tensorflow/compiler/mlir/lite/integrations/python/mlir",
+        "//tensorflow/compiler/mlir/lite/integrations/python/mlir:ir",
+        "//tensorflow/compiler/mlir/lite/integrations/python/mlir:pass_manager",
     ],
 )
