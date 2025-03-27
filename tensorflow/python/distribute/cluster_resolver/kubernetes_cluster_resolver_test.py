@@ -14,11 +14,18 @@
 # ==============================================================================
 """Tests for K8sClusterResolver."""
 
+import sys
+
+from tensorflow.python.distribute.cluster_resolver.kubernetes_cluster_resolver import ExecutableLocation
 from tensorflow.python.distribute.cluster_resolver.kubernetes_cluster_resolver import KubernetesClusterResolver
 from tensorflow.python.platform import test
 from tensorflow.python.training import server_lib
 
 mock = test.mock
+
+
+def _mock_kubernetes_module():
+  sys.modules['kubernetes'] = mock.MagicMock()
 
 
 def _mock_kubernetes_client(ret):
@@ -67,6 +74,32 @@ class KubernetesClusterResolverTest(test.TestCase):
     self.assertProtoEquals(expected_proto,
                            server_lib.ClusterSpec(
                                cluster_spec.as_dict()).as_cluster_def())
+
+  def testSingleItemSuccessfulRetrievalInCluster(self):
+    ret = _create_pod_list(
+        ('tensorflow-abc123', 'Running', '10.1.2.3'),
+    )
+
+    cluster_resolver = KubernetesClusterResolver(
+        override_client=_mock_kubernetes_client({'job-name=tensorflow': ret}),
+        executable_location=ExecutableLocation.WITHIN_CLUSTER,
+    )
+
+    actual_cluster_spec = cluster_resolver.cluster_spec()
+    expected_proto = """
+    job {
+      name: 'worker'
+      tasks { key: 0 value: '10.1.2.3:8470' }
+    }
+    """
+    self._verifyClusterSpecEquality(actual_cluster_spec, str(expected_proto))
+
+  def testValueErrorRaisedOnInvalidExecutableLocation(self):
+
+    _mock_kubernetes_module()
+
+    with self.assertRaisesRegexp(ValueError, '.*'):
+      KubernetesClusterResolver(executable_location=None)
 
   def testSingleItemSuccessfulRetrieval(self):
     ret = _create_pod_list(('tensorflow-abc123', 'Running', '10.1.2.3'),)

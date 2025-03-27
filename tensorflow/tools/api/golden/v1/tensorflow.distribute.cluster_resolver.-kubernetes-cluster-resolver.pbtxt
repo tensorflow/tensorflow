@@ -17,7 +17,7 @@ tf_class {
   }
   member_method {
     name: "__init__"
-    argspec: "args=[\'self\', \'job_to_label_mapping\', \'tf_server_port\', \'rpc_layer\', \'override_client\'], varargs=None, keywords=None, defaults=[\'None\', \'8470\', \'grpc\', \'None\'], "
+    argspec: "args=[\'self\', \'job_to_label_mapping\', \'tf_server_port\', \'rpc_layer\', \'override_client\', \'executable_location\'], varargs=None, keywords=None, defaults=[\'None\', \'8470\', \'grpc\', \'None\', \'ExecutableLocation.WITHIN_CLUSTER\'], "
   }
   member_method {
     name: "cluster_spec"
