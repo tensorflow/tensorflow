@@ -241,11 +241,41 @@ cc_library(
         "//xla:xla_data_proto_cc",
         "//xla/backends/cpu:alignment",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Analysis",
         "@llvm-project//llvm:Support",
         "@llvm-project//llvm:Target",
         "@llvm-project//llvm:ir_headers",
-        "@local_tsl//tsl/platform:logging",
+    ],
+)
+
+cc_library(
+    name = "target_machine_test_base",
+    testonly = True,
+    hdrs = ["target_machine_test_base.h"],
+    deps = [
+        ":target_machine_features",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest",
+        "@llvm-project//llvm:ARMCodeGen",  # fixdeps: keep
+        "@llvm-project//llvm:ExecutionEngine",
+        "@llvm-project//llvm:MC",
+        "@llvm-project//llvm:Target",
+        "@llvm-project//llvm:TargetParser",
+        "@llvm-project//llvm:X86CodeGen",  # fixdeps: keep
+    ],
+)
+
+xla_cc_test(
+    name = "target_machine_features_test",
+    srcs = ["target_machine_features_test.cc"],
+    deps = [
+        ":target_machine_features",
+        ":target_machine_test_base",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
