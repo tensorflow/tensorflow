@@ -75,6 +75,7 @@
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/builders/tanh_op_builder.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/builders/transpose_op_builder.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/common.h"
+#include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/utils/miscs.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/wrappers/op_wrapper.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/wrappers/quantize_params_wrapper.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/wrappers/tensor_wrapper.h"
@@ -194,8 +195,14 @@ LiteRtStatus ConvertTensor(const litert::Tensor& litert_tensor,
   switch (litert_tensor.QTypeId()) {
     case kLiteRtQuantizationPerTensor: {
       const auto per_tensor_quant = litert_tensor.PerTensorQuantization();
-      quantize_params.emplace<::qnn::ScaleOffsetQuantizeParamsWrapper>(
-          per_tensor_quant.scale, per_tensor_quant.zero_point);
+      if (ranked_tensor_type->ElementType() == litert::ElementType::Int4) {
+        quantize_params.emplace<::qnn::BwScaleOffsetQuantizeParamsWrapper>(
+            ::qnn::k4bitQuantBitwidth, per_tensor_quant.scale,
+            per_tensor_quant.zero_point);
+      } else {
+        quantize_params.emplace<::qnn::ScaleOffsetQuantizeParamsWrapper>(
+            per_tensor_quant.scale, per_tensor_quant.zero_point);
+      }
       break;
     }
     case kLiteRtQuantizationPerChannel: {
@@ -205,12 +212,21 @@ LiteRtStatus ConvertTensor(const litert::Tensor& litert_tensor,
       for (size_t i = 0; i < zero_points.size(); ++i) {
         zero_points[i] = per_channel_quant.zero_points[i];
       }
-      quantize_params.emplace<::qnn::AxisScaleOffsetQuantizeParamsWrapper>(
-          per_channel_quant.quantized_dimension,
-          absl::Span<const float>{per_channel_quant.scales,
-                                  per_channel_quant.num_channels},
-          absl::Span<const std::int32_t>{zero_points.data(),
-                                         zero_points.size()});
+      if (ranked_tensor_type->ElementType() == litert::ElementType::Int4) {
+        quantize_params.emplace<::qnn::BwAxisScaleOffsetQuantizeParamsWrapper>(
+            ::qnn::k4bitQuantBitwidth, per_channel_quant.quantized_dimension,
+            absl::Span<const float>{per_channel_quant.scales,
+                                    per_channel_quant.num_channels},
+            absl::Span<const std::int32_t>{zero_points.data(),
+                                           zero_points.size()});
+      } else {
+        quantize_params.emplace<::qnn::AxisScaleOffsetQuantizeParamsWrapper>(
+            per_channel_quant.quantized_dimension,
+            absl::Span<const float>{per_channel_quant.scales,
+                                    per_channel_quant.num_channels},
+            absl::Span<const std::int32_t>{zero_points.data(),
+                                           zero_points.size()});
+      }
       break;
     }
     case kLiteRtQuantizationBlockWise: {
@@ -663,11 +679,11 @@ LiteRtStatus MapGraph(QnnManager& qnn, Qnn_ContextHandle_t context_handle,
   std::vector<::qnn::OpWrapper> graph_op_wrappers;
   std::ostringstream dump;
   for (const auto& op : graph_mapper.Graph().Ops()) {
-    // Dump op info.
-    dump.clear();
-    Dump(*op.Get(), dump);
-    std::string s = dump.str();
-    LITERT_LOG(LITERT_VERBOSE, "%s", s.data());
+    // // Dump op info.
+    // dump.clear();
+    // Dump(*op.Get(), dump);
+    // std::string s = dump.str();
+    // LITERT_LOG(LITERT_VERBOSE, "%s", s.data());
 
     std::vector<::qnn::TensorWrapperRef> input_tensors;
     for (const auto& input : op.Inputs()) {

@@ -92,7 +92,21 @@ TensorWrapper::TensorWrapper(
     const std::vector<std::uint32_t>& dimentions, std::uint32_t bytes,
     const void* data)
     : TensorWrapper(id, tensor_type, data_type, quantize_params, dimentions) {
-  SetDataBy(bytes, data);
+  // Use QNN_DATATYPE_SFIXED_POINT_8 for 4 bit quantization
+  if (data_type == QNN_DATATYPE_SFIXED_POINT_4) {
+    QNN_LOG_DEBUG("4bit Qunat, converting 4bit data to 8bit for QNN.");
+    SetDataType(QNN_DATATYPE_SFIXED_POINT_8);
+    std::vector<std::int8_t> int8_data;
+    ConvertDataFromInt4ToInt8(data, int8_data, bytes);
+    SetDataBy(GetTensorBytes(), int8_data.data());
+  } else if (bytes != GetTensorBytes()) {
+    QNN_LOG_WARNING(
+        "Bytes: %d != GetTensorBytes(): %d, use GetTensorBytes() instead.",
+        bytes, GetTensorBytes());
+    SetDataBy(GetTensorBytes(), data);
+  } else {
+    SetDataBy(bytes, data);
+  }
 }
 
 TensorWrapper::TensorWrapper(const TensorWrapper& other)
@@ -201,12 +215,6 @@ bool TensorWrapper::IsPerTensorQuantWithOffsetDiff(
 }
 
 void TensorWrapper::SetDataBy(std::uint32_t bytes, const void* data) {
-  if (bytes != GetTensorBytes()) {
-    QNN_LOG_WARNING(
-        "Bytes: %d != GetTensorBytes(): %d, use GetTensorBytes() instead.",
-        bytes, GetTensorBytes());
-    bytes = GetTensorBytes();
-  }
   owned_data_.resize(bytes);
   std::memcpy(owned_data_.data(), reinterpret_cast<const char*>(data), bytes);
   qnn_tensor_.v2.clientBuf.dataSize = owned_data_.size();

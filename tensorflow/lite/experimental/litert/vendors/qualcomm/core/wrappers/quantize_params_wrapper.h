@@ -76,10 +76,48 @@ class AxisScaleOffsetQuantizeParamsWrapper final {
   std::vector<Qnn_ScaleOffset_t> scale_offsets_;
 };
 
-using QuantizeParamsWrapperVariant =
-    std::variant<UndefinedQuantizeParamsWrapper,
-                 ScaleOffsetQuantizeParamsWrapper,
-                 AxisScaleOffsetQuantizeParamsWrapper>;
+class BwScaleOffsetQuantizeParamsWrapper final {
+ public:
+  explicit BwScaleOffsetQuantizeParamsWrapper(const std::uint32_t bitwidth,
+                                              const float scale,
+                                              const std::int32_t zero_point);
+
+  BwScaleOffsetQuantizeParamsWrapper(
+      const BwScaleOffsetQuantizeParamsWrapper& rhs);
+
+  BwScaleOffsetQuantizeParamsWrapper(BwScaleOffsetQuantizeParamsWrapper&& rhs);
+
+  void CloneTo(Qnn_QuantizeParams_t& dst);
+
+ private:
+  Qnn_QuantizeParams_t qnn_quantize_param_ = QNN_QUANTIZE_PARAMS_INIT;
+};
+
+class BwAxisScaleOffsetQuantizeParamsWrapper final {
+ public:
+  explicit BwAxisScaleOffsetQuantizeParamsWrapper(
+      const std::uint32_t bitwidth, const std::int32_t axis,
+      const absl::Span<const float> scales,
+      const absl::Span<const std::int32_t> zero_points);
+
+  BwAxisScaleOffsetQuantizeParamsWrapper(
+      const BwAxisScaleOffsetQuantizeParamsWrapper& rhs);
+
+  BwAxisScaleOffsetQuantizeParamsWrapper(
+      BwAxisScaleOffsetQuantizeParamsWrapper&& rhs);
+
+  void CloneTo(Qnn_QuantizeParams_t& dst);
+
+ private:
+  Qnn_QuantizeParams_t qnn_quantize_param_ = QNN_QUANTIZE_PARAMS_INIT;
+  std::vector<float> scales_;
+  std::vector<int32_t> offsets_;
+};
+
+using QuantizeParamsWrapperVariant = std::variant<
+    UndefinedQuantizeParamsWrapper, ScaleOffsetQuantizeParamsWrapper,
+    AxisScaleOffsetQuantizeParamsWrapper,
+    BwAxisScaleOffsetQuantizeParamsWrapper, BwScaleOffsetQuantizeParamsWrapper>;
 
 }  // namespace qnn
 

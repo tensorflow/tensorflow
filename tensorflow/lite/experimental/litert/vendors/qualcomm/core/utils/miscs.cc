@@ -27,4 +27,22 @@ void ConvertDataFromUInt16toInt16(absl::Span<const std::uint16_t> src,
   }
 }
 
+void ConvertDataFromInt4ToInt8(const void* src, std::vector<std::int8_t>& dst,
+                               size_t num_bytes) {
+  dst.clear();
+  const uint8_t* byte_data = reinterpret_cast<const uint8_t*>(src);
+  for (size_t i = 0; i < num_bytes; i++) {
+    uint8_t byte = byte_data[i];
+    // Extract lower and upper 4-bit values
+    int8_t lower = byte & 0x0F;
+    int8_t upper = (byte >> 4) & 0x0F;
+    // Sign extend if needed
+    if (lower > 7) lower -= 16;
+    if (upper > 7) upper -= 16;
+    // Store in output array
+    dst.emplace_back(lower);
+    dst.emplace_back(upper);
+  }
+}
+
 }  // namespace qnn

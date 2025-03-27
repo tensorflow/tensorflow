@@ -294,6 +294,10 @@ class TensorWrapper final {
  private:
   Qnn_TensorType_t GetTensorType() const;
 
+  void SetDataType(Qnn_DataType_t data_type) {
+    qnn_tensor_.v2.dataType = data_type;
+  }
+
   void SetDataBy(std::uint32_t bytes, const void* data);
 
   bool HasStaticData() const {
