@@ -288,6 +288,7 @@ tf_cc_tests(
         "//tensorflow/core/platform:status_matchers",
         "//tensorflow/core/util:protos_test_cc",
         "@com_google_absl//absl/base",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest",
