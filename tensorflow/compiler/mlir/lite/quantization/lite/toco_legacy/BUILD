@@ -17,6 +17,7 @@ cc_library(
     visibility = [
         "//tensorflow/compiler/mlir/lite/quantization/common/quantization_lib:__pkg__",
         "//tensorflow/compiler/mlir/quantization/common/quantization_lib:__pkg__",
+        "//tensorflow/compiler/mlir/quantization/common/tf_quantization_lib:__pkg__",
     ],
 )
 
