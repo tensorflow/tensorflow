@@ -20,8 +20,11 @@ limitations under the License.
 #include <unordered_set>
 #include <utility>
 
-#include "absl/memory/memory.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_join.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/cc/saved_model/constants.h"
 #include "tensorflow/cc/saved_model/metrics.h"
 #include "tensorflow/cc/saved_model/util.h"
