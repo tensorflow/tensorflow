@@ -2,7 +2,6 @@
 #   GPU-specific components in XLA service implementation.
 
 load("@bazel_skylib//rules:common_settings.bzl", "bool_flag")
-load("@local_config_cuda//cuda:build_defs.bzl", "cuda_library")
 load(
     "@local_config_rocm//rocm:build_defs.bzl",
     "if_rocm_is_configured",
@@ -2768,41 +2767,6 @@ xla_cc_test(
         "//xla/tsl/lib/monitoring:collection_registry",
         "@com_google_googletest//:gtest",
         "@local_tsl//tsl/platform:test",
-    ],
-)
-
-cc_library(
-    name = "make_batch_pointers",
-    srcs = if_gpu_is_configured(["make_batch_pointers.cc"]),
-    hdrs = if_gpu_is_configured(["make_batch_pointers.h"]),
-    deps = [
-        "//xla:types",
-        "//xla:util",
-        "//xla/stream_executor:device_memory",
-        "//xla/stream_executor:kernel",
-        "//xla/stream_executor:launch_dim",
-        "//xla/stream_executor:stream",
-        "//xla/stream_executor:stream_executor_h",
-        "//xla/stream_executor:typed_kernel_factory",
-        "//xla/stream_executor/gpu:gpu_stream_header",
-        "//xla/tsl/platform:errors",
-        "//xla/tsl/platform:statusor",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:statusor",
-        "@local_tsl//tsl/platform:errors",
-        "@local_tsl//tsl/platform:statusor",
-    ] + if_cuda_is_configured([
-        ":make_batch_pointers_kernel",
-    ]) + if_rocm_is_configured([
-        "//xla/stream_executor/rocm:rocm_helpers",
-    ]),
-)
-
-cuda_library(
-    name = "make_batch_pointers_kernel",
-    srcs = if_cuda_is_configured(["make_batch_pointers.cu.cc"]),
-    deps = [
-        "@local_config_cuda//cuda:cuda_headers",  # build_cleaner: keep
     ],
 )
 
