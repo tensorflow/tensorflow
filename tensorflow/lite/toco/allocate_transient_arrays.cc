@@ -12,7 +12,11 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include "tensorflow/lite/toco/allocate_transient_arrays.h"
+
 #include <algorithm>
+#include <cstddef>
+#include <map>
 #include <memory>
 #include <set>
 #include <string>
@@ -20,11 +24,10 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "tensorflow/lite/toco/allocate_transient_arrays.h"
+#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/lite/toco/model.h"
 #include "tensorflow/lite/toco/model_flags.pb.h"
 #include "tensorflow/lite/toco/tooling_util.h"
-#include "tensorflow/core/platform/logging.h"
 
 namespace toco {
 namespace {
