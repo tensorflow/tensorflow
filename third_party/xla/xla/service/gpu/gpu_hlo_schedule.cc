@@ -793,7 +793,7 @@ absl::StatusOr<HloSchedule> ScheduleGpuModuleWithMemoryScheduler(
     return ShapeUtil::ByteSizeOf(shape, pointer_size);
   };
   return ScheduleModule(module,
-                        DefaultMemoryScheduler(size_func, PostProcessSchedule),
+                        DefaultModuleScheduler(size_func, PostProcessSchedule),
                         /*execution_threads=*/{}, peak_memory_bytes);
 }
 
