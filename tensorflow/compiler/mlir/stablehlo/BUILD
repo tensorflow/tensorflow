@@ -15,6 +15,8 @@ package(
 package_group(
     name = "friends",
     packages = [
+        "//platforms/darwinn/tools/visualization/graph_conversions/...",
+        "//tensorflow/compiler/mlir/lite/...",
         "//tensorflow/compiler/mlir/lite/stablehlo/...",
         "//tensorflow/compiler/mlir/quantization/tensorflow/...",
         "//tensorflow/compiler/tests/...",
@@ -142,6 +144,29 @@ cc_library(
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TransformUtils",
         "@local_xla//xla/mlir_hlo",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
+    name = "rename_entrypoint_to_main",
+    srcs = [
+        "transforms/rename_entrypoint_to_main.cc",
+    ],
+    hdrs = [
+        "transforms/rename_entrypoint_to_main.h",
+    ],
+    compatible_with = get_compatible_with_portable(),
+    copts = [
+        "-Ithird_party",
+    ],
+    deps = [
+        "//tensorflow/compiler/mlir/tensorflow",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Support",
     ],
     alwayslink = 1,
 )

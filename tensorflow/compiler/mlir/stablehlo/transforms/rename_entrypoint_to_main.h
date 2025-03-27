@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_MLIR_LITE_STABLEHLO_TRANSFORMS_RENAME_ENTRYPOINT_TO_MAIN_H_
-#define TENSORFLOW_COMPILER_MLIR_LITE_STABLEHLO_TRANSFORMS_RENAME_ENTRYPOINT_TO_MAIN_H_
+#ifndef TENSORFLOW_COMPILER_MLIR_STABLEHLO_TRANSFORMS_RENAME_ENTRYPOINT_TO_MAIN_H_
+#define TENSORFLOW_COMPILER_MLIR_STABLEHLO_TRANSFORMS_RENAME_ENTRYPOINT_TO_MAIN_H_
 
 #include <memory>
 
@@ -28,4 +28,4 @@ std::unique_ptr<Pass> CreateRenameEntrypointToMainPass();
 }  // namespace odml
 }  // namespace mlir
 
-#endif  // TENSORFLOW_COMPILER_MLIR_LITE_STABLEHLO_TRANSFORMS_RENAME_ENTRYPOINT_TO_MAIN_H_
+#endif  // TENSORFLOW_COMPILER_MLIR_STABLEHLO_TRANSFORMS_RENAME_ENTRYPOINT_TO_MAIN_H_
