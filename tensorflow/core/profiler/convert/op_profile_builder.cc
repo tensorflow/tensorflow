@@ -181,6 +181,7 @@ void PopulateOpMetricsNode(
   // https://github.com/tensorflow/profiler/blob/master/frontend/app/common/utils/utils.ts
   metrics->set_raw_time(op_metrics.time_ps());
   metrics->set_raw_flops(op_metrics.model_flops());
+  metrics->set_normalized_flops(op_metrics.flops());
   metrics->set_occurrences(op_metrics.occurrences());
   metrics->set_avg_time_ps(tsl::profiler::SafeDivide(op_metrics.time_ps(),
                                                      op_metrics.occurrences()));
@@ -244,7 +245,8 @@ void InsertFusedInstructions(const OpMetrics& op_metrics, Node* node) {
   for (const auto& child : op_metrics.children().metrics_db()) {
     Node* new_node = node->add_children();
     PopulateSymbolNode(child, new_node);
-    new_node->mutable_metrics()->set_raw_flops(child.flops());
+    new_node->mutable_metrics()->set_raw_flops(child.model_flops());
+    new_node->mutable_metrics()->set_normalized_flops(child.flops());
     if (child.has_children()) {
       InsertFusedInstructions(child, new_node);
     }
