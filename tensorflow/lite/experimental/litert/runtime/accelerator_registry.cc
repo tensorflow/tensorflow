@@ -20,6 +20,7 @@
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_shared_library.h"
+#include "tensorflow/lite/experimental/litert/runtime/accelerator.h"
 
 namespace litert::internal {
 
