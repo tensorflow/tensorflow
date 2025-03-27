@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <array>
 #include <cstdint>
 #include <random>
 #include <vector>
@@ -20,6 +21,7 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "xla/backends/cpu/benchmarks/aot_benchmark_helper.h"
 #include "xla/backends/cpu/benchmarks/hlo_benchmark_runner.h"
 #include "xla/literal_util.h"
 #include "xla/shape_util.h"
@@ -32,6 +34,7 @@ static void BM_TopKCustomCall_F32(benchmark::State& state) {
   int64_t k = state.range(0);
   int64_t batch = state.range(1);
   int64_t length = state.range(2);
+  bool is_aot = static_cast<bool>(state.range(3));
   CHECK_LE(k, length);
 
   absl::string_view hlo = R"(
@@ -50,16 +53,21 @@ static void BM_TopKCustomCall_F32(benchmark::State& state) {
                ShapeUtil::MakeShape(F32, {batch, length}), &engine, 1.0f, 0.1f)
                .value();
 
+  HloBenchmarkOptions benchmark_options;
+  benchmark_options.aot_options = is_aot ? GetAotCompilationOptions() : nullptr;
+
   CHECK_OK(RunHloBenchmark(state, hlo, {&x},
                            {{"$batch", absl::StrCat(batch)},
                             {"$length", absl::StrCat(length)},
-                            {"$k", absl::StrCat(k)}}));
+                            {"$k", absl::StrCat(k)}},
+                           benchmark_options));
 }
 
 static void BM_TopK_BF16(benchmark::State& state) {
   int64_t k = state.range(0);
   int64_t batch = state.range(1);
   int64_t length = state.range(2);
+  bool is_aot = static_cast<bool>(state.range(3));
   CHECK_LE(k, length);
 
   absl::string_view hlo = R"(
@@ -77,27 +85,34 @@ static void BM_TopK_BF16(benchmark::State& state) {
                ShapeUtil::MakeShape(BF16, {batch, length}), &engine, 1.0f, 0.1f)
                .value();
 
+  HloBenchmarkOptions benchmark_options;
+  benchmark_options.aot_options = is_aot ? GetAotCompilationOptions() : nullptr;
+
   CHECK_OK(RunHloBenchmark(state, hlo, {&x},
                            {{"$batch", absl::StrCat(batch)},
                             {"$length", absl::StrCat(length)},
-                            {"$k", absl::StrCat(k)}}));
+                            {"$k", absl::StrCat(k)}},
+                           benchmark_options));
 }
 
-#define BENCHMARK_TOPK(name)               \
-  BENCHMARK(name)                          \
-      ->MeasureProcessCPUTime()            \
-      ->ArgNames({"k", "batch", "length"}) \
-      ->Args({4, 4, 64})                   \
-      ->Args({4, 16, 16})                  \
-      ->Args({4, 64, 4})                   \
-      ->Args({16, 4, 64})                  \
-      ->Args({16, 16, 16})                 \
-      ->Args({16, 64, 16})                 \
-      ->Args({64, 4, 64})                  \
-      ->Args({64, 16, 64})                 \
-      ->Args({64, 64, 64})
+void GenerateTopKArgs(benchmark::internal::Benchmark* benchmark) {
+  benchmark->MeasureProcessCPUTime();
+  benchmark->ArgNames({"k", "batch", "length", "is_aot"});
+  const std::vector<std::array<int64_t, 3>> args_values = {
+      {4, 4, 64},   {4, 16, 16}, {4, 64, 4},   {16, 4, 64}, {16, 16, 16},
+      {16, 64, 16}, {64, 4, 64}, {64, 16, 64}, {64, 64, 64}};
+  const std::vector<bool> is_aot_values = {false, true};
 
-BENCHMARK_TOPK(BM_TopKCustomCall_F32);
-BENCHMARK_TOPK(BM_TopK_BF16);
+  for (const auto& arg_value : args_values) {
+    for (const auto& is_aot : is_aot_values) {
+      std::vector<int64_t> all_arg_values(arg_value.begin(), arg_value.end());
+      all_arg_values.push_back(is_aot);
+      benchmark->Args(all_arg_values);
+    }
+  }
+}
+
+BENCHMARK(BM_TopKCustomCall_F32)->Apply(GenerateTopKArgs);
+BENCHMARK(BM_TopK_BF16)->Apply(GenerateTopKArgs);
 
 }  // namespace xla::cpu

@@ -22,6 +22,7 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/backends/cpu/benchmarks/aot_benchmark_helper.h"
 #include "xla/backends/cpu/benchmarks/hlo_benchmark_runner.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
@@ -34,6 +35,7 @@ namespace xla::cpu {
 
 static void BM_FusionF32(benchmark::State& state) {
   int64_t d0 = state.range(0);
+  bool is_aot = static_cast<bool>(state.range(1));
 
   absl::string_view hlo = R"(
     HloModule fusion_f32_$d0
@@ -62,11 +64,17 @@ static void BM_FusionF32(benchmark::State& state) {
   auto p2 = *LiteralUtil::CreateRandomLiteral<F32>(scalar, &engine, 1.0f, 0.1f);
 
   std::vector<const Literal*> args = {&p0, &p1, &p2};
-  CHECK_OK(RunHloBenchmark(state, hlo, args, {{"$d0", absl::StrCat(d0)}}));
+
+  HloBenchmarkOptions benchmark_options;
+  benchmark_options.aot_options = is_aot ? GetAotCompilationOptions() : nullptr;
+
+  CHECK_OK(RunHloBenchmark(state, hlo, args, {{"$d0", absl::StrCat(d0)}},
+                           benchmark_options));
 }
 
 static void BM_FusionF32_2(benchmark::State& state) {
   int64_t d0 = state.range(0);
+  bool is_aot = static_cast<bool>(state.range(1));
 
   absl::string_view hlo = R"(
     HloModule fusion_f32_2_$d0
@@ -138,11 +146,17 @@ static void BM_FusionF32_2(benchmark::State& state) {
   auto p6 = *LiteralUtil::CreateRandomLiteral<F32>(shape3, &engine, 1.0f, 0.1f);
 
   std::vector<const Literal*> args = {&p0, &p1, &p2, &p3, &p4, &p5, &p6};
-  CHECK_OK(RunHloBenchmark(state, hlo, args, {{"$d0", absl::StrCat(d0)}}));
+
+  HloBenchmarkOptions benchmark_options;
+  benchmark_options.aot_options = is_aot ? GetAotCompilationOptions() : nullptr;
+
+  CHECK_OK(RunHloBenchmark(state, hlo, args, {{"$d0", absl::StrCat(d0)}},
+                           benchmark_options));
 }
 
 static void BM_BcastFusionF32(benchmark::State& state) {
   int64_t d0 = state.range(0);
+  bool is_aot = static_cast<bool>(state.range(1));
 
   absl::string_view hlo = R"(
     HloModule fusion_f32_$d0
@@ -163,11 +177,17 @@ static void BM_BcastFusionF32(benchmark::State& state) {
   auto p1 = *LiteralUtil::CreateRandomLiteral<F32>(scalar, &engine, 1.0f, 0.1f);
 
   std::vector<const Literal*> args = {&p0, &p1};
-  CHECK_OK(RunHloBenchmark(state, hlo, args, {{"$d0", absl::StrCat(d0)}}));
+
+  HloBenchmarkOptions benchmark_options;
+  benchmark_options.aot_options = is_aot ? GetAotCompilationOptions() : nullptr;
+
+  CHECK_OK(RunHloBenchmark(state, hlo, args, {{"$d0", absl::StrCat(d0)}},
+                           benchmark_options));
 }
 
 static void BM_DynamicUpdateSliceFusionF32(benchmark::State& state) {
   int64_t d0 = state.range(0);
+  bool is_aot = static_cast<bool>(state.range(1));
 
   absl::string_view hlo = R"(
     HloModule dynamic_update_slice_fusion_f32_$d0
@@ -190,11 +210,17 @@ static void BM_DynamicUpdateSliceFusionF32(benchmark::State& state) {
   auto p2 = LiteralUtil::CreateR0<int32_t>(0);
 
   std::vector<const Literal*> args = {&p0, &p1, &p2};
-  CHECK_OK(RunHloBenchmark(state, hlo, args, {{"$d0", absl::StrCat(d0)}}));
+
+  HloBenchmarkOptions benchmark_options;
+  benchmark_options.aot_options = is_aot ? GetAotCompilationOptions() : nullptr;
+
+  CHECK_OK(RunHloBenchmark(state, hlo, args, {{"$d0", absl::StrCat(d0)}},
+                           benchmark_options));
 }
 
 static void BM_ChainOfAddF32(benchmark::State& state) {
   int64_t size = state.range(0);
+  bool is_aot = static_cast<bool>(state.range(1));
 
   // In this benchmark we create a chain of additions starting from `p2` and
   // ending with `p$size`. The chain is fused into a single fusion node.
@@ -239,52 +265,64 @@ static void BM_ChainOfAddF32(benchmark::State& state) {
   std::vector<const Literal*> args = {&p0, &p1};
   for (int i = 2; i <= size; ++i) args.push_back(&pN);
 
+  HloBenchmarkOptions benchmark_options;
+  benchmark_options.aot_options = is_aot ? GetAotCompilationOptions() : nullptr;
+
   CHECK_OK(RunHloBenchmark(state, hlo, args,
                            {{"$size", absl::StrCat(size)},
                             {"$parameters", parameters},
-                            {"$additions", additions}}));
+                            {"$additions", additions}},
+                           benchmark_options));
 }
 
-BENCHMARK(BM_FusionF32)
-    ->MeasureProcessCPUTime()
-    ->Arg(128)
-    ->Arg(256)
-    ->Arg(512)
-    ->Arg(1024)
-    ->Arg(8192)
-    ->Arg(16384);
+void GenerateFusionArgsPows2High(benchmark::internal::Benchmark* benchmark) {
+  benchmark->MeasureProcessCPUTime();
+  benchmark->ArgNames({"d0", "is_aot"});
+  const std::vector<int64_t> args_values = {128, 256, 512, 1024, 8192, 16384};
+  const std::vector<bool> is_aot_values = {false, true};
 
-BENCHMARK(BM_FusionF32_2)
-    ->MeasureProcessCPUTime()
-    ->Arg(40)
-    ->Arg(80)
-    ->Arg(160)
-    ->Arg(240);
+  for (const auto& arg_value : args_values) {
+    for (const auto& is_aot : is_aot_values) {
+      benchmark->Args({arg_value, is_aot});
+    }
+  }
+}
 
-BENCHMARK(BM_BcastFusionF32)
-    ->MeasureProcessCPUTime()
-    ->Arg(128)
-    ->Arg(256)
-    ->Arg(512)
-    ->Arg(1024)
-    ->Arg(8192)
-    ->Arg(16384);
+BENCHMARK(BM_FusionF32)->Apply(GenerateFusionArgsPows2High);
 
-BENCHMARK(BM_DynamicUpdateSliceFusionF32)
-    ->MeasureProcessCPUTime()
-    ->Arg(128)
-    ->Arg(256)
-    ->Arg(512)
-    ->Arg(1024)
-    ->Arg(8192)
-    ->Arg(16384);
+BENCHMARK(BM_BcastFusionF32)->Apply(GenerateFusionArgsPows2High);
 
-BENCHMARK(BM_ChainOfAddF32)
-    ->MeasureProcessCPUTime()
-    ->Arg(64)
-    ->Arg(128)
-    ->Arg(256)
-    ->Arg(512)
-    ->Arg(1024);
+BENCHMARK(BM_DynamicUpdateSliceFusionF32)->Apply(GenerateFusionArgsPows2High);
+
+void GenerateFusionArgsPowsMultiplesOf40(
+    benchmark::internal::Benchmark* benchmark) {
+  benchmark->MeasureProcessCPUTime();
+  benchmark->ArgNames({"d0", "is_aot"});
+  const std::vector<int64_t> args_values = {40, 80, 160, 240};
+  const std::vector<bool> is_aot_values = {false, true};
+
+  for (const auto& arg_value : args_values) {
+    for (const auto& is_aot : is_aot_values) {
+      benchmark->Args({arg_value, is_aot});
+    }
+  }
+}
+
+BENCHMARK(BM_FusionF32_2)->Apply(GenerateFusionArgsPowsMultiplesOf40);
+
+void GenerateChainOfAddArgs(benchmark::internal::Benchmark* benchmark) {
+  benchmark->MeasureProcessCPUTime();
+  benchmark->ArgNames({"size", "is_aot"});
+  const std::vector<int64_t> args_values = {64, 128, 256, 512, 1024};
+  const std::vector<bool> is_aot_values = {false, true};
+
+  for (const auto& arg_value : args_values) {
+    for (const auto& is_aot : is_aot_values) {
+      benchmark->Args({arg_value, is_aot});
+    }
+  }
+}
+
+BENCHMARK(BM_ChainOfAddF32)->Apply(GenerateChainOfAddArgs);
 
 }  // namespace xla::cpu

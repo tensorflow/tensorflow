@@ -20,6 +20,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/backends/cpu/benchmarks/aot_benchmark_helper.h"
 #include "xla/backends/cpu/benchmarks/hlo_benchmark_runner.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
@@ -32,6 +33,7 @@ namespace xla::cpu {
 
 static void BM_ExpF32(benchmark::State& state) {
   int64_t d0 = state.range(0);
+  bool is_aot = static_cast<bool>(state.range(1));
 
   absl::string_view hlo = R"(
     HloModule exp_f32_$d0
@@ -48,11 +50,16 @@ static void BM_ExpF32(benchmark::State& state) {
   auto p0 =
       *LiteralUtil::CreateRandomLiteral<F32>(input_shape, &engine, 1.0f, 0.1f);
   std::vector<const Literal*> args = {&p0};
-  CHECK_OK(RunHloBenchmark(state, hlo, args, {{"$d0", absl::StrCat(d0)}}));
+
+  HloBenchmarkOptions benchmark_options;
+  benchmark_options.aot_options = is_aot ? GetAotCompilationOptions() : nullptr;
+  CHECK_OK(RunHloBenchmark(state, hlo, args, {{"$d0", absl::StrCat(d0)}},
+                           benchmark_options));
 }
 
 static void BM_ExpF16(benchmark::State& state) {
   int64_t d0 = state.range(0);
+  // bool is_aot = static_cast<bool>(state.range(1));
 
   absl::string_view hlo = R"(
     HloModule exp_f16_$d0
@@ -69,19 +76,36 @@ static void BM_ExpF16(benchmark::State& state) {
   auto p0 =
       *LiteralUtil::CreateRandomLiteral<F16>(input_shape, &engine, 1.0f, 0.1f);
   std::vector<const Literal*> args = {&p0};
-  CHECK_OK(RunHloBenchmark(state, hlo, args, {{"$d0", absl::StrCat(d0)}}));
+
+  HloBenchmarkOptions benchmark_options;
+  // benchmark_options.aot_options = is_aot ? GetAotCompilationOptions() :
+  // nullptr;
+
+  CHECK_OK(RunHloBenchmark(state, hlo, args, {{"$d0", absl::StrCat(d0)}},
+                           benchmark_options));
 }
 
-#define REGISTER_EXP_BENCHMARK(NAME) \
-  BENCHMARK(NAME)                    \
-      ->MeasureProcessCPUTime()      \
-      ->Arg(128)                     \
-      ->Arg(256)                     \
-      ->Arg(512)                     \
-      ->Arg(1024)                    \
-      ->Arg(4096);
+void GenerateExpArgs(benchmark::internal::Benchmark* benchmark) {
+  benchmark->MeasureProcessCPUTime();
+  benchmark->ArgNames({"d0", "is_aot"});
+  const std::vector<int64_t> args_values = {128, 256, 512, 1024, 4096};
+  const std::vector<bool> is_aot_values = {false, true};
 
-REGISTER_EXP_BENCHMARK(BM_ExpF32);
-REGISTER_EXP_BENCHMARK(BM_ExpF16);
+  for (const auto& arg_value : args_values) {
+    for (const auto& is_aot : is_aot_values) {
+      benchmark->Args({arg_value, is_aot});
+    }
+  }
+}
+
+BENCHMARK(BM_ExpF32)->Apply(GenerateExpArgs);
+// TODO(b/406431945): add AOT for f16 exp
+BENCHMARK(BM_ExpF16)
+    ->MeasureProcessCPUTime()
+    ->Arg(128)
+    ->Arg(256)
+    ->Arg(512)
+    ->Arg(1024)
+    ->Arg(4096);
 
 }  // namespace xla::cpu

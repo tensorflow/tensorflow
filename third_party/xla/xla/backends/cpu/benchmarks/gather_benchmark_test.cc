@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <array>
 #include <cstdint>
 #include <random>
 #include <vector>
@@ -21,6 +22,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "xla/array2d.h"
+#include "xla/backends/cpu/benchmarks/aot_benchmark_helper.h"
 #include "xla/backends/cpu/benchmarks/hlo_benchmark_runner.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
@@ -35,6 +37,7 @@ static void BM_GatherS32(benchmark::State& state) {
   int64_t d0 = state.range(0);
   int64_t d1 = state.range(1);
   int64_t slice_size = state.range(2);
+  bool is_aot = static_cast<bool>(state.range(3));
 
   absl::string_view hlo = R"(
     HloModule gather_s32_d$d0_d$d1_s$slice_size
@@ -71,67 +74,47 @@ static void BM_GatherS32(benchmark::State& state) {
   auto indices = LiteralUtil::CreateR2FromArray2D(indices_2d);
 
   std::vector<const Literal*> args = {&operand, &indices};
+
+  HloBenchmarkOptions benchmark_options;
+  benchmark_options.aot_options = is_aot ? GetAotCompilationOptions() : nullptr;
+
   CHECK_OK(RunHloBenchmark(state, hlo, args,
                            {{"$d0", absl::StrCat(d0)},
                             {"$d1", absl::StrCat(d1)},
-                            {"$slice_size", absl::StrCat(slice_size)}}));
+                            {"$slice_size", absl::StrCat(slice_size)}},
+                           benchmark_options));
 }
 
-BENCHMARK(BM_GatherS32)
-    ->MeasureProcessCPUTime()
-    ->Args({3, 3, 1})
-    ->Args({3, 3, 2})
-    ->Args({3, 3, 4})
-    ->Args({3, 32, 1})
-    ->Args({3, 32, 2})
-    ->Args({3, 32, 8})
-    ->Args({3, 64, 1})
-    ->Args({3, 64, 2})
-    ->Args({3, 64, 16})
-    ->Args({3, 128, 1})
-    ->Args({3, 128, 2})
-    ->Args({3, 128, 32})
-    ->Args({3, 256, 1})
-    ->Args({3, 256, 2})
-    ->Args({3, 256, 64})
-    ->Args({3, 512, 1})
-    ->Args({3, 512, 2})
-    ->Args({3, 512, 128})
-    ->Args({10, 3, 1})
-    ->Args({10, 3, 2})
-    ->Args({10, 3, 4})
-    ->Args({10, 32, 1})
-    ->Args({10, 32, 2})
-    ->Args({10, 32, 8})
-    ->Args({10, 64, 1})
-    ->Args({10, 64, 2})
-    ->Args({10, 64, 16})
-    ->Args({10, 128, 1})
-    ->Args({10, 128, 2})
-    ->Args({10, 128, 32})
-    ->Args({10, 256, 1})
-    ->Args({10, 256, 2})
-    ->Args({10, 256, 64})
-    ->Args({10, 512, 1})
-    ->Args({10, 512, 2})
-    ->Args({10, 512, 128})
-    ->Args({100, 3, 1})
-    ->Args({100, 3, 2})
-    ->Args({100, 3, 4})
-    ->Args({100, 32, 1})
-    ->Args({100, 32, 2})
-    ->Args({100, 32, 8})
-    ->Args({100, 64, 1})
-    ->Args({100, 64, 2})
-    ->Args({100, 64, 16})
-    ->Args({100, 128, 1})
-    ->Args({100, 128, 2})
-    ->Args({100, 128, 32})
-    ->Args({100, 256, 1})
-    ->Args({100, 256, 2})
-    ->Args({100, 256, 64})
-    ->Args({100, 512, 1})
-    ->Args({100, 512, 2})
-    ->Args({100, 512, 128});
+void GenerateGatherArgs(benchmark::internal::Benchmark* benchmark) {
+  benchmark->MeasureProcessCPUTime();
+  benchmark->ArgNames({"d0", "d1", "slice_size", "is_aot"});
+  const std::vector<std::array<int64_t, 3>> args_values = {
+      {3, 3, 1},     {3, 3, 2},      {3, 3, 4},      {3, 32, 1},
+      {3, 32, 2},    {3, 32, 8},     {3, 64, 1},     {3, 64, 2},
+      {3, 64, 16},   {3, 128, 1},    {3, 128, 2},    {3, 128, 32},
+      {3, 256, 1},   {3, 256, 2},    {3, 256, 64},   {3, 512, 1},
+      {3, 512, 2},   {3, 512, 128},  {10, 3, 1},     {10, 3, 2},
+      {10, 3, 4},    {10, 32, 1},    {10, 32, 2},    {10, 32, 8},
+      {10, 64, 1},   {10, 64, 2},    {10, 64, 16},   {10, 128, 1},
+      {10, 128, 2},  {10, 128, 32},  {10, 256, 1},   {10, 256, 2},
+      {10, 256, 64}, {10, 512, 1},   {10, 512, 2},   {10, 512, 128},
+      {100, 3, 1},   {100, 3, 2},    {100, 3, 4},    {100, 32, 1},
+      {100, 32, 2},  {100, 32, 8},   {100, 64, 1},   {100, 64, 2},
+      {100, 64, 16}, {100, 128, 1},  {100, 128, 2},  {100, 128, 32},
+      {100, 256, 1}, {100, 256, 2},  {100, 256, 64}, {100, 512, 1},
+      {100, 512, 2}, {100, 512, 128}};
+
+  const std::vector<bool> is_aot_values = {false, true};
+
+  for (const auto& arg_value : args_values) {
+    for (const auto& is_aot : is_aot_values) {
+      std::vector<int64_t> all_arg_values(arg_value.begin(), arg_value.end());
+      all_arg_values.push_back(is_aot);
+      benchmark->Args(all_arg_values);
+    }
+  }
+}
+
+BENCHMARK(BM_GatherS32)->Apply(GenerateGatherArgs);
 
 }  // namespace xla::cpu

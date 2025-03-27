@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include <algorithm>
+#include <array>
 #include <cstdint>
 #include <numeric>
 #include <random>
@@ -24,6 +25,7 @@ limitations under the License.
 #include "absl/strings/str_replace.h"
 #include "absl/strings/string_view.h"
 #include "xla/array2d.h"
+#include "xla/backends/cpu/benchmarks/aot_benchmark_helper.h"
 #include "xla/backends/cpu/benchmarks/hlo_benchmark_runner.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -75,6 +77,7 @@ Literal CreateReduceIndices(int32_t num_elems, int32_t step) {
 void BM_ScatterS32_R1(benchmark::State& state) {
   const int64_t d0 = state.range(0);
   const int64_t slice_size = state.range(1);
+  bool is_aot = static_cast<bool>(state.range(2));
 
   const std::string hlo = R"(
     HloModule BM_ScatterS32_R1
@@ -111,9 +114,14 @@ void BM_ScatterS32_R1(benchmark::State& state) {
       update_shape, &engine, /*mean=*/50, /*stddev=*/10);
 
   std::vector<const Literal*> args = {&operand, &scatter_indices, &update};
+
+  HloBenchmarkOptions benchmark_options;
+  benchmark_options.aot_options = is_aot ? GetAotCompilationOptions() : nullptr;
+
   CHECK_OK(RunHloBenchmark(
       state, hlo, args,
-      {{"$d0", absl::StrCat(d0)}, {"$slice_size", absl::StrCat(slice_size)}}));
+      {{"$d0", absl::StrCat(d0)}, {"$slice_size", absl::StrCat(slice_size)}},
+      benchmark_options));
 
   state.SetComplexityN(state.range(1));
 }
@@ -122,6 +130,7 @@ void BM_ScatterS32_R2(benchmark::State& state) {
   const int64_t d0 = state.range(0);
   const int64_t d1 = d0;
   const int64_t slice_size = state.range(1);
+  bool is_aot = static_cast<bool>(state.range(2));
 
   const std::string hlo = R"(
     HloModule BM_ScatterS32_R2
@@ -157,10 +166,15 @@ void BM_ScatterS32_R2(benchmark::State& state) {
       update_shape, &engine, /*mean=*/50, /*stddev=*/10);
 
   std::vector<const Literal*> args = {&operand, &scatter_indices, &update};
+
+  HloBenchmarkOptions benchmark_options;
+  benchmark_options.aot_options = is_aot ? GetAotCompilationOptions() : nullptr;
+
   CHECK_OK(RunHloBenchmark(state, hlo, args,
                            {{"$d0", absl::StrCat(d0)},
                             {"$d1", absl::StrCat(d1)},
-                            {"$slice_size", absl::StrCat(slice_size)}}));
+                            {"$slice_size", absl::StrCat(slice_size)}},
+                           benchmark_options));
 }
 
 void BM_ScatterS32_R3(benchmark::State& state) {
@@ -168,6 +182,7 @@ void BM_ScatterS32_R3(benchmark::State& state) {
   const int64_t d1 = d0;
   const int64_t d2 = d0;
   const int64_t slice_size = state.range(1);
+  bool is_aot = static_cast<bool>(state.range(2));
 
   const std::string hlo = R"(
     HloModule BM_ScatterS32_R3
@@ -204,11 +219,16 @@ void BM_ScatterS32_R3(benchmark::State& state) {
       update_shape, &engine, /*mean=*/50, /*stddev=*/10);
 
   std::vector<const Literal*> args = {&operand, &scatter_indices, &update};
+
+  HloBenchmarkOptions benchmark_options;
+  benchmark_options.aot_options = is_aot ? GetAotCompilationOptions() : nullptr;
+
   CHECK_OK(RunHloBenchmark(state, hlo, args,
                            {{"$d0", absl::StrCat(d0)},
                             {"$d1", absl::StrCat(d1)},
                             {"$d2", absl::StrCat(d2)},
-                            {"$slice_size", absl::StrCat(slice_size)}}));
+                            {"$slice_size", absl::StrCat(slice_size)}},
+                           benchmark_options));
 }
 
 void BM_SimpleScatterReduceF32_R3(benchmark::State& state) {
@@ -216,6 +236,7 @@ void BM_SimpleScatterReduceF32_R3(benchmark::State& state) {
   const int64_t d1 = state.range(1);
   const int64_t d2 = state.range(2);
   const int64_t num_reduce_elems = state.range(3);
+  bool is_aot = static_cast<bool>(state.range(4));
   const int64_t num_slices = d0 * num_reduce_elems;
 
   constexpr absl::string_view hlo_string = R"(
@@ -263,21 +284,82 @@ void BM_SimpleScatterReduceF32_R3(benchmark::State& state) {
       update_shape, &engine, /*mean=*/50, /*stddev=*/10);
 
   std::vector<const Literal*> args = {&operand, &indices, &update};
-  CHECK_OK(RunHloBenchmark(state, hlo, args));
+  HloBenchmarkOptions benchmark_options;
+  benchmark_options.aot_options = is_aot ? GetAotCompilationOptions() : nullptr;
+
+  CHECK_OK(RunHloBenchmark(state, hlo, args, {}, benchmark_options));
+}
+
+void GenerateScatterS32_R1Args(benchmark::internal::Benchmark* benchmark) {
+  benchmark->MeasureProcessCPUTime();
+  benchmark->ArgNames({"d0", "slice_size", "is_aot"});
+  const std::vector<std::array<int64_t, 2>> args_values = {{1 << 18, 1 << 18}};
+  const std::vector<bool> is_aot_values = {false, true};
+
+  for (const auto& arg_value : args_values) {
+    for (const auto& is_aot : is_aot_values) {
+      std::vector<int64_t> all_arg_values(arg_value.begin(), arg_value.end());
+      all_arg_values.push_back(is_aot);
+      benchmark->Args(all_arg_values);
+    }
+  }
+}
+
+void GenerateScatterS32_R2Args(benchmark::internal::Benchmark* benchmark) {
+  benchmark->MeasureProcessCPUTime();
+  benchmark->ArgNames({"d0", "slice_size", "is_aot"});
+  const std::vector<std::array<int64_t, 2>> args_values = {{1 << 9, 1 << 9}};
+  const std::vector<bool> is_aot_values = {false, true};
+
+  for (const auto& arg_value : args_values) {
+    for (const auto& is_aot : is_aot_values) {
+      std::vector<int64_t> all_arg_values(arg_value.begin(), arg_value.end());
+      all_arg_values.push_back(is_aot);
+      benchmark->Args(all_arg_values);
+    }
+  }
+}
+
+void GenerateScatterS32_R3Args(benchmark::internal::Benchmark* benchmark) {
+  benchmark->MeasureProcessCPUTime();
+  benchmark->ArgNames({"d0", "slice_size", "is_aot"});
+  const std::vector<std::array<int64_t, 2>> args_values = {{1 << 6, 1 << 6}};
+  const std::vector<bool> is_aot_values = {false, true};
+
+  for (const auto& arg_value : args_values) {
+    for (const auto& is_aot : is_aot_values) {
+      std::vector<int64_t> all_arg_values(arg_value.begin(), arg_value.end());
+      all_arg_values.push_back(is_aot);
+      benchmark->Args(all_arg_values);
+    }
+  }
 }
 
 // these all have the same number of elements in the operand
 // (2^18) == (2^9)^2 == (2^6)^3
-BENCHMARK(BM_ScatterS32_R1)->MeasureProcessCPUTime()->Args({1 << 18, 1 << 18});
-BENCHMARK(BM_ScatterS32_R2)->MeasureProcessCPUTime()->Args({1 << 9, 1 << 9});
-BENCHMARK(BM_ScatterS32_R3)->MeasureProcessCPUTime()->Args({1 << 6, 1 << 6});
+BENCHMARK(BM_ScatterS32_R1)->Apply(GenerateScatterS32_R1Args);
+BENCHMARK(BM_ScatterS32_R2)->Apply(GenerateScatterS32_R2Args);
+BENCHMARK(BM_ScatterS32_R3)->Apply(GenerateScatterS32_R3Args);
+
+void GenerateSimpleScatterReduceF32_R3Args(
+    benchmark::internal::Benchmark* benchmark) {
+  benchmark->MeasureProcessCPUTime();
+  benchmark->ArgNames({"d0", "d1", "d2", "num_slices", "is_aot"});
+  const std::vector<std::array<int64_t, 4>> args_values = {
+      {1, 64, 8, 1}, {50, 64, 8, 10}, {500, 64, 8, 100}};
+  const std::vector<bool> is_aot_values = {false, true};
+
+  for (const auto& arg_value : args_values) {
+    for (const auto& is_aot : is_aot_values) {
+      std::vector<int64_t> all_arg_values(arg_value.begin(), arg_value.end());
+      all_arg_values.push_back(is_aot);
+      benchmark->Args(all_arg_values);
+    }
+  }
+}
 
 BENCHMARK(BM_SimpleScatterReduceF32_R3)
-    ->MeasureProcessCPUTime()
-    ->ArgNames({"d0", "d1", "d2", "num_slices"})
-    ->Args({1, 64, 8, 1})
-    ->Args({50, 64, 8, 10})
-    ->Args({500, 64, 8, 100});
+    ->Apply(GenerateSimpleScatterReduceF32_R3Args);
 
 }  // namespace
 }  // namespace xla::cpu
