@@ -25,6 +25,7 @@ cc_library(
         "notap",
     ],
     deps = [
+        "//tensorflow/lite/c:common",
         "//tensorflow/lite/delegates/flex:delegate",
         "//tensorflow/lite/delegates/utils:simple_delegate",
         "//tensorflow/lite/java/jni",
