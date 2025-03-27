@@ -15,9 +15,8 @@ limitations under the License.
 
 #include "xla/service/select_and_scatter_expander.h"
 
-#include <memory>
-#include <utility>
-
+#include <gtest/gtest.h>
+#include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/tests/hlo_test_base.h"
 

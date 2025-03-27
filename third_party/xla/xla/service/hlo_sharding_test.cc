@@ -21,6 +21,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include <gtest/gtest.h>
 #include "absl/hash/hash.h"
 #include "absl/types/span.h"
 #include "xla/hlo/parser/hlo_parser.h"

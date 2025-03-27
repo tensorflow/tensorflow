@@ -15,10 +15,14 @@ limitations under the License.
 
 #include "xla/service/shaped_buffer.h"
 
+#include <cstdint>
+#include <cstdlib>
 #include <memory>
+#include <set>
 #include <utility>
 #include <vector>
 
+#include <gtest/gtest.h>
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
