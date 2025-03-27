@@ -679,6 +679,16 @@ bool AllDimIdsAreUsedOrHaveDomainSize1(const IndexingMap& tile_offsets) {
   return absl::c_all_of(dim_var_used, [](bool value) { return value; });
 }
 
+int64_t GetNumberOfBlocks(TiledHloInstruction* tiled_hlo_instr) {
+  auto dimensions = tiled_hlo_instr->hlo()->shape().dimensions();
+  int64_t num_blocks = 1;
+  for (auto [dim_size, tile_size] :
+       llvm::zip(dimensions, tiled_hlo_instr->tile_sizes())) {
+    num_blocks *= CeilOfRatio(dim_size, tile_size);
+  }
+  return num_blocks;
+}
+
 // Returns true when we can determine that the tiling attached to
 // `tiled_hlo_instr` covers the whole shape of the corresponding hlo instruction
 // uniquely. For a tiling to cover a whole shape uniquely, we need to prove that
@@ -777,11 +787,15 @@ absl::StatusOr<std::vector<const TiledHloInstruction*>> InitializeTiledRoots(
   // multiple times in `instructions_`.
   std::vector<const TiledHloInstruction*> tiled_roots(roots.size(), nullptr);
   // Handle the real root as special case.
-  tiled_roots[roots_to_output_index[tiled_hlo_instructions.back()->hlo()]] =
-      tiled_hlo_instructions.back().get();
+  auto real_root = tiled_hlo_instructions.back().get();
+  tiled_roots[roots_to_output_index[real_root->hlo()]] = real_root;
+  int64_t num_blocks = GetNumberOfBlocks(real_root);
   for (const auto& tiled_hlo_instr : llvm::drop_end(tiled_hlo_instructions)) {
     auto it = roots_to_output_index.find(tiled_hlo_instr->hlo());
     if (it != roots_to_output_index.end() &&
+        // For expanding reshapes, we can have the case that the number of
+        // blocks are different. This is not supported by the triton emitter.
+        num_blocks == GetNumberOfBlocks(tiled_hlo_instr.get()) &&
         TilingCoversWholeShapeUniquely(tiled_hlo_instr.get())) {
       // We may overwrite a previous value, but in case there are multiple
       // tiled hlo instructions for the root, we arbitrarily prefer the last one

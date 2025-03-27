@@ -470,6 +470,40 @@ ENTRY entry_computation {
   )"));
 }
 
+TEST_F(
+    SymbolicTileAnalysisTest,
+    ExtraOutputCannotReuseTileForExpandingReshapeDueToDifferentNumberOfBlocks) {
+  constexpr absl::string_view kHloText = R"(
+HloModule m
+
+fused_computation {
+  param_0.1 = f32[6400] parameter(0)
+  abs = f32[6400] abs(param_0.1)
+  reshape = f32[64,100] reshape(abs)
+  ROOT tuple = (f32[64,100], f32[6400]) tuple(reshape, abs)
+}
+
+ENTRY entry_computation {
+  param_0.2 = f32[6400] parameter(0)
+  ROOT fusion = (f32[64,100], f32[6400]) fusion(param_0.2), kind=kCustom,
+    calls=fused_computation
+})";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(kHloText));
+  std::optional<SymbolicTileAnalysis> analysis = TryAnalyzeModule(module.get());
+  ASSERT_TRUE(analysis.has_value());
+
+  auto maybe_tiled_hlo_computation = analysis->ComputeTiledHloInstructions(
+      /*tile_parameters=*/{1, 16},
+      /*constraints_are_known_satisfied=*/false,
+      /*compute_all_tile_offset_indexing_maps=*/false);
+  EXPECT_THAT(
+      maybe_tiled_hlo_computation.status(),
+      tsl::testing::StatusIs(
+          tsl::error::UNIMPLEMENTED,
+          ::testing::HasSubstr("Unsupported case of multi-output fusion")));
+}
+
 TEST_F(SymbolicTileAnalysisTest, ExtraOutputCanReuseTileForCollapsingReshape) {
   constexpr absl::string_view kHloText = R"(
 HloModule m
