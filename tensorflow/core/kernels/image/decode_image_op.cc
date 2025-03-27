@@ -23,6 +23,9 @@ limitations under the License.
 #include <memory>
 #include <string>
 
+#include "jpeglib.h"  // from @libjpeg_turbo
+#include "pngconf.h"  // from @png
+
 #define EIGEN_USE_THREADS
 
 #include "absl/strings/match.h"
