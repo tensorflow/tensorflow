@@ -17,6 +17,10 @@ limitations under the License.
 // TensorFlow dialect to their region based counterparts, i.e.,
 // tf.If -> tf.IfRegion and tf.While -> tf.WhileRegion
 
+#include <cassert>
+#include <memory>
+#include <vector>
+
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
