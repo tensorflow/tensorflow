@@ -15,6 +15,11 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/lower_while_op.h"
 
+#include <cstddef>
+#include <vector>
+
+#include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "xla/tsl/platform/errors.h"
 #include "tensorflow/core/common_runtime/inline_function_utils.h"
 #include "tensorflow/core/config/flag_defs.h"
