@@ -249,11 +249,20 @@ config_setting(
     visibility = ["//visibility:public"],
 )
 
+selects.config_setting_group(
+    name = "x86_any",
+    match_any = [
+        "@platforms//cpu:x86_32",
+        "@platforms//cpu:x86_64",
+    ],
+    visibility = ["//visibility:public"],
+)
+
 # Config setting for determining if we are building for Android.
 config_setting(
     name = "android",
     constraint_values = if_google(
-        ["//third_party/bazel_platforms/os:android"],
+        ["@platforms//os:android"],
         [],
     ),
     values = if_oss(
@@ -266,7 +275,7 @@ config_setting(
 config_setting(
     name = "android_x86",
     constraint_values = if_google(
-        ["//third_party/bazel_platforms/os:android"],
+        ["@platforms//os:android"],
         [],
     ),
     values = dict(
@@ -281,7 +290,7 @@ config_setting(
 config_setting(
     name = "android_x86_64",
     constraint_values = if_google(
-        ["//third_party/bazel_platforms/os:android"],
+        ["@platforms//os:android"],
         [],
     ),
     values = dict(
@@ -296,7 +305,7 @@ config_setting(
 config_setting(
     name = "android_armeabi",
     constraint_values = if_google(
-        ["//third_party/bazel_platforms/os:android"],
+        ["@platforms//os:android"],
         [],
     ),
     values = dict(
@@ -311,21 +320,21 @@ config_setting(
 # copybara:uncomment_begin(google-only)
 # config_setting(
 #     name = "chromiumos_x86_64",
-#     constraint_values = ["//third_party/bazel_platforms/os:chromiumos"],
+#     constraint_values = ["@platforms//os:chromiumos"],
 #     values = {"cpu": "k8"},
 #     visibility = ["//visibility:public"],
 # )
 #
 # config_setting(
 #     name = "chromiumos_arm64",
-#     constraint_values = ["//third_party/bazel_platforms/os:chromiumos"],
+#     constraint_values = ["@platforms//os:chromiumos"],
 #     values = {"cpu": "arm"},
 #     visibility = ["//visibility:public"],
 # )
 #
 # config_setting(
 #     name = "chromiumos_armv7",
-#     constraint_values = ["//third_party/bazel_platforms/os:chromiumos"],
+#     constraint_values = ["@platforms//os:chromiumos"],
 #     values = {"cpu": "armeabi-v7a"},
 #     visibility = ["//visibility:public"],
 # )
@@ -334,7 +343,7 @@ config_setting(
 config_setting(
     name = "emscripten",
     constraint_values = if_google(
-        ["//third_party/bazel_platforms/os:emscripten"],
+        ["@platforms//os:emscripten"],
         [],
     ),
     values = if_oss(
@@ -346,57 +355,74 @@ config_setting(
 
 config_setting(
     name = "raspberry_pi_armeabi",
+    constraint_values =
+        [
+            "@platforms//cpu:armv6-m",
+            "@platforms//os:linux",
+        ],
     values = {
         "crosstool_top": "@local_config_arm_compiler//:toolchain",
-        "cpu": "armeabi",
+        # "cpu": "armeabi",
     },
     visibility = ["//visibility:public"],
 )
 
 config_setting(
     name = "android_arm",
-    constraint_values = if_google(
-        ["//third_party/bazel_platforms/os:android"],
-        [],
-    ),
+    constraint_values =
+        [
+            "@platforms//cpu:armv7",
+            "@platforms//os:android",
+        ],
     values = dict(
         if_oss(
             {"crosstool_top": "//external:android/crosstool"},
         ),
-        cpu = "armeabi-v7a",
+        # cpu = "armeabi-v7a",
     ),
     visibility = ["//visibility:public"],
 )
 
 config_setting(
     name = "android_arm64",
-    constraint_values = if_google(
-        ["//third_party/bazel_platforms/os:android"],
-        [],
-    ),
+    constraint_values =
+        [
+            "@platforms//cpu:aarch64",
+            "@platforms//os:android",
+        ],
     values = dict(
         if_oss(
             {"crosstool_top": "//external:android/crosstool"},
         ),
-        cpu = "arm64-v8a",
+        # cpu = "arm64-v8a",
     ),
     visibility = ["//visibility:public"],
 )
 
-config_setting(
-    name = "android_mips",
-    values = {
-        "crosstool_top": "//external:android/crosstool",
-        "cpu": "mips",
-    },
-    visibility = ["//visibility:public"],
-)
+# config_setting(
+#     name = "android_mips",
+#     constraint_values =
+#         [
+#             "@platforms//cpu:-alas-there's-no-mips32",
+#             "@platforms//os:android",
+#         ],
+#     values = {
+#         "crosstool_top": "//external:android/crosstool",
+#         # "cpu": "mips",
+#     },
+#     visibility = ["//visibility:public"],
+# )
 
 config_setting(
     name = "android_mips64",
+    constraint_values =
+        [
+            "@platforms//cpu:mips64",
+            "@platforms//os:android",
+        ],
     values = {
         "crosstool_top": "//external:android/crosstool",
-        "cpu": "mips64",
+        # "cpu": "mips64",
     },
     visibility = ["//visibility:public"],
 )
@@ -406,7 +432,7 @@ config_setting(
     name = "windows",
     # Internal builds query the target OS.
     constraint_values = if_google(
-        ["//third_party/bazel_platforms/os:windows"],
+        ["@platforms//os:windows"],
         [],
     ),
     # OSS builds query the CPU type.
@@ -430,7 +456,7 @@ config_setting(
 config_setting(
     name = "macos_x86_64_default",
     constraint_values = if_google(
-        ["//third_party/bazel_platforms/os:macos"],
+        ["@platforms//os:macos"],
         [],
     ),
     values = {
@@ -442,7 +468,7 @@ config_setting(
 config_setting(
     name = "macos_x86_64_crosscompile",
     constraint_values = if_google(
-        ["//third_party/bazel_platforms/os:macos"],
+        ["@platforms//os:macos"],
         [],
     ),
     values = {
@@ -463,7 +489,7 @@ selects.config_setting_group(
 config_setting(
     name = "macos_arm64",
     constraint_values = if_google(
-        ["//third_party/bazel_platforms/os:macos"],
+        ["@platforms//os:macos"],
         [],
     ),
     values = {
@@ -486,7 +512,7 @@ selects.config_setting_group(
 config_setting(
     name = "ios",
     constraint_values = if_google(
-        ["//third_party/bazel_platforms/os:ios"],
+        ["@platforms//os:ios"],
         [],
     ),
     values = if_oss(
@@ -500,7 +526,7 @@ config_setting(
 config_setting(
     name = "fuchsia",
     constraint_values = if_google(
-        ["//third_party/bazel_platforms/os:fuchsia"],
+        ["@platforms//os:fuchsia"],
         [],
     ),
     values = if_oss(
@@ -514,7 +540,7 @@ config_setting(
 config_setting(
     name = "fuchsia_x86_64",
     constraint_values = if_google(
-        ["//third_party/bazel_platforms/os:fuchsia"],
+        ["@platforms//os:fuchsia"],
         [],
     ),
     values = {
@@ -526,7 +552,7 @@ config_setting(
 config_setting(
     name = "ios_x86_64",
     constraint_values = if_google(
-        ["//third_party/bazel_platforms/os:ios"],
+        ["@platforms//os:ios"],
         [],
     ),
     values = dict(
@@ -541,7 +567,7 @@ config_setting(
 config_setting(
     name = "chromiumos",
     constraint_values = if_google(
-        ["//third_party/bazel_platforms/os:chromiumos"],
+        ["@platforms//os:chromiumos"],
         [],
     ),
     values = if_oss(
@@ -553,31 +579,34 @@ config_setting(
 
 config_setting(
     name = "linux_aarch64",
-    constraint_values = if_google(
-        ["//third_party/bazel_platforms/os:linux"],
-        [],
-    ),
-    values = {"cpu": "aarch64"},
+    constraint_values =
+        [
+            "@platforms//cpu:aarch64",
+            "@platforms//os:linux",
+        ],
+    # values = {"cpu": "aarch64"},
     visibility = ["//visibility:public"],
 )
 
 config_setting(
     name = "linux_armhf",
-    constraint_values = if_google(
-        ["//third_party/bazel_platforms/os:linux"],
-        [],
-    ),
-    values = {"cpu": "armhf"},
+    constraint_values =
+        [
+            "@platforms//cpu:armv7e-mf",
+            "@platforms//os:linux",
+        ],
+    # values = {"cpu": "armhf"},
     visibility = ["//visibility:public"],
 )
 
 config_setting(
     name = "linux_x86_64",
-    constraint_values = if_google(
-        ["//third_party/bazel_platforms/os:linux"],
-        [],
-    ),
-    values = {"cpu": "k8"},
+    constraint_values =
+        [
+            "@platforms//cpu:x86_64",
+            "@platforms//os:linux",
+        ],
+    # values = {"cpu": "k8"},
     visibility = ["//visibility:public"],
 )
 
@@ -590,12 +619,13 @@ config_setting(
 # This condition takes precedence over :linux_x86_64
 config_setting(
     name = "linux_x86_64_no_sse",
-    constraint_values = if_google(
-        ["//third_party/bazel_platforms/os:linux"],
-        [],
-    ),
+    constraint_values =
+        [
+            "@platforms//cpu:x86_64",
+            "@platforms//os:linux",
+        ],
     values = {
-        "cpu": "k8",
+        # "cpu": "k8",
         "copt": "-mno-sse4.2",
     },
     visibility = ["//visibility:public"],
@@ -605,52 +635,57 @@ config_setting(
 # TODO(b/290533709): Remove this with PJRT build rule cleanup.
 config_setting(
     name = "linux_x86_64_with_weightwatcher",
-    constraint_values = if_google(
-        ["//third_party/bazel_platforms/os:linux"],
-        [],
-    ),
+    constraint_values =
+        [
+            "@platforms//cpu:x86_64",
+            "@platforms//os:linux",
+        ],
     define_values = {"tensorflow_weightwatcher": "true"},
-    values = {"cpu": "k8"},
+    # values = {"cpu": "k8"},
     visibility = ["//visibility:public"],
 )
 
 config_setting(
     name = "linux_ppc64le",
-    constraint_values = if_google(
-        ["//third_party/bazel_platforms/os:linux"],
-        [],
-    ),
-    values = {"cpu": "ppc"},
+    constraint_values =
+        [
+            "@platforms//cpu:ppc64le",
+            "@platforms//os:linux",
+        ],
+    # values = {"cpu": "ppc"},
     visibility = ["//visibility:public"],
 )
 
 config_setting(
     name = "linux_s390x",
-    constraint_values = if_google(
-        ["//third_party/bazel_platforms/os:linux"],
-        [],
-    ),
-    values = {"cpu": "s390x"},
+    constraint_values =
+        [
+            "@platforms//cpu:s390x",
+            "@platforms//os:linux",
+        ],
+    # values = {"cpu": "s390x"},
     visibility = ["//visibility:public"],
 )
 
 config_setting(
     name = "linux_mips64",
-    constraint_values = if_google(
-        ["//third_party/bazel_platforms/os:linux"],
-        [],
-    ),
-    values = {"cpu": "mips64"},
+    constraint_values =
+        [
+            "@platforms//cpu:mips64",
+            "@platforms//os:linux",
+        ],
+    # values = {"cpu": "mips64"},
     visibility = ["//visibility:public"],
 )
 
 config_setting(
     name = "linux_riscv64",
-    constraint_values = if_google(
-        ["//third_party/bazel_platforms/os:linux"],
-        [],
-    ),
-    values = {"cpu": "riscv64"},
+    constraint_values =
+        [
+            "@platforms//cpu:riscv64",
+            "@platforms//os:linux",
+        ],
+    # values = {"cpu": "riscv64"},
     visibility = ["//visibility:public"],
 )
 
