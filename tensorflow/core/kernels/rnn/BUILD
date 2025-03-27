@@ -49,6 +49,8 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core/kernels:eigen_helpers",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
         "@eigen_archive//:eigen3",
     ],
 )
