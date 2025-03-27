@@ -3199,6 +3199,7 @@ cuda_py_strict_test(
         ":variable_scope",
         ":variables",
         ":while_loop",
+        ":while_v2",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:tf2",
         "//tensorflow/python/autograph/lang:directives",
