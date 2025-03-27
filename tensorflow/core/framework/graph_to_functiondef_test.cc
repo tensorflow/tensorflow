@@ -15,18 +15,27 @@ limitations under the License.
 
 #include "tensorflow/core/framework/graph_to_functiondef.h"
 
+#include <initializer_list>
+#include <memory>
 #include <utility>
 #include <vector>
 
+#include <gmock/gmock.h>
+#include "absl/status/status.h"
+#include "absl/strings/match.h"
+#include "absl/types/optional.h"
 #include "tensorflow/cc/framework/ops.h"
 #include "tensorflow/cc/ops/function_ops.h"
 #include "tensorflow/cc/ops/resource_variable_ops.h"
 #include "tensorflow/cc/ops/standard_ops.h"
+#include "xla/tsl/protobuf/error_codes.pb.h"
 #include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/function_testlib.h"
+#include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/graph/graph_def_builder.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/base64.h"
