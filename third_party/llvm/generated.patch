@@ -2,343 +2,365 @@ Auto generated patch. Do not edit or delete it, even if empty.
 diff -ruN --strip-trailing-cr a/clang/docs/ReleaseNotes.rst b/clang/docs/ReleaseNotes.rst
 --- a/clang/docs/ReleaseNotes.rst
 +++ b/clang/docs/ReleaseNotes.rst
-@@ -455,11 +455,6 @@
- - Ensure ``isDerivedFrom`` matches the correct base in case more than one alias exists.
- - Extend ``templateArgumentCountIs`` to support function and variable template
-   specialization.
--- Move ``ast_matchers::MatchFinder::MatchFinderOptions`` to
--  ``ast_matchers::MatchFinderOptions``.
--- Add a boolean member ``SkipSystemHeaders`` to ``MatchFinderOptions``, and make
--  ``MatchASTConsumer`` receive a reference to ``MatchFinderOptions`` in the
--  constructor. This allows it to skip system headers when traversing the AST.
+@@ -340,6 +340,9 @@
+   by template argument deduction.
+ - Clang is now better at instantiating the function definition after its use inside
+   of a constexpr lambda. (#GH125747)
++- Clang no longer crashes when trying to unify the types of arrays with
++  certain differences in qualifiers (this could happen during template argument
++  deduction or when building a ternary operator). (#GH97005)
+ - The initialization kind of elements of structured bindings
+   direct-list-initialized from an array is corrected to direct-initialization.
+ - Clang no longer crashes when a coroutine is declared ``[[noreturn]]``. (#GH127327)
+diff -ruN --strip-trailing-cr a/clang/include/clang/AST/NestedNameSpecifier.h b/clang/include/clang/AST/NestedNameSpecifier.h
+--- a/clang/include/clang/AST/NestedNameSpecifier.h
++++ b/clang/include/clang/AST/NestedNameSpecifier.h
+@@ -201,6 +201,11 @@
+     return nullptr;
+   }
  
- clang-format
- ------------
-diff -ruN --strip-trailing-cr a/clang/include/clang/ASTMatchers/ASTMatchFinder.h b/clang/include/clang/ASTMatchers/ASTMatchFinder.h
---- a/clang/include/clang/ASTMatchers/ASTMatchFinder.h
-+++ b/clang/include/clang/ASTMatchers/ASTMatchFinder.h
-@@ -50,24 +50,6 @@
++  /// Fully translate this nested name specifier to a type.
++  /// Unlike getAsType, this will convert this entire nested
++  /// name specifier chain into its equivalent type.
++  const Type *translateToType(const ASTContext &Context) const;
++
+   NestedNameSpecifierDependence getDependence() const;
  
- namespace ast_matchers {
+   /// Whether this nested name specifier refers to a dependent
+diff -ruN --strip-trailing-cr a/clang/lib/AST/ASTContext.cpp b/clang/lib/AST/ASTContext.cpp
+--- a/clang/lib/AST/ASTContext.cpp
++++ b/clang/lib/AST/ASTContext.cpp
+@@ -13650,7 +13650,11 @@
+   QualType EX = X->getElementType(), EY = Y->getElementType();
+   QualType R = Ctx.getCommonSugaredType(EX, EY,
+                                         /*Unqualified=*/true);
++  // Qualifiers common to both element types.
+   Qualifiers RQ = R.getQualifiers();
++  // For each side, move to the top level any qualifiers which are not common to
++  // both element types. The caller must assume top level qualifiers might
++  // be different, even if they are the same type, and can be treated as sugar.
+   QX += EX.getQualifiers() - RQ;
+   QY += EY.getQualifiers() - RQ;
+   return R;
+@@ -14371,6 +14375,22 @@
+   // necessarily canonical types, as they may still have sugared properties.
+   // QX and QY will store the sum of all qualifiers in Xs and Ys respectively.
+   auto Xs = ::unwrapSugar(SX, QX), Ys = ::unwrapSugar(SY, QY);
++
++  // If this is an ArrayType, the element qualifiers are interchangeable with
++  // the top level qualifiers.
++  // * In case the canonical nodes are the same, the elements types are already
++  // the same.
++  // * Otherwise, the element types will be made the same, and any different
++  // element qualifiers will be moved up to the top level qualifiers, per
++  // 'getCommonArrayElementType'.
++  // In both cases, this means there may be top level qualifiers which differ
++  // between X and Y. If so, these differing qualifiers are redundant with the
++  // element qualifiers, and can be removed without changing the canonical type.
++  // The desired behaviour is the same as for the 'Unqualified' case here:
++  // treat the redundant qualifiers as sugar, remove the ones which are not
++  // common to both sides.
++  bool KeepCommonQualifiers = Unqualified || isa<ArrayType>(SX.Ty);
++
+   if (SX.Ty != SY.Ty) {
+     // The canonical nodes differ. Build a common canonical node out of the two,
+     // unifying their sugar. This may recurse back here.
+@@ -14386,7 +14406,7 @@
+       SY = Ys.pop_back_val();
+     }
+   }
+-  if (Unqualified)
++  if (KeepCommonQualifiers)
+     QX = Qualifiers::removeCommonQualifiers(QX, QY);
+   else
+     assert(QX == QY);
+diff -ruN --strip-trailing-cr a/clang/lib/AST/NestedNameSpecifier.cpp b/clang/lib/AST/NestedNameSpecifier.cpp
+--- a/clang/lib/AST/NestedNameSpecifier.cpp
++++ b/clang/lib/AST/NestedNameSpecifier.cpp
+@@ -245,6 +245,52 @@
+   return getDependence() & NestedNameSpecifierDependence::Error;
+ }
  
--/// A struct defining options for configuring the MatchFinder.
--struct MatchFinderOptions {
--  struct Profiling {
--    Profiling(llvm::StringMap<llvm::TimeRecord> &Records) : Records(Records) {}
++const Type *
++NestedNameSpecifier::translateToType(const ASTContext &Context) const {
++  NestedNameSpecifier *Prefix = getPrefix();
++  switch (getKind()) {
++  case SpecifierKind::Identifier:
++    return Context
++        .getDependentNameType(ElaboratedTypeKeyword::None, Prefix,
++                              getAsIdentifier())
++        .getTypePtr();
++  case SpecifierKind::TypeSpec:
++  case SpecifierKind::TypeSpecWithTemplate: {
++    const Type *T = getAsType();
++    switch (T->getTypeClass()) {
++    case Type::DependentTemplateSpecialization: {
++      const auto *DT = cast<DependentTemplateSpecializationType>(T);
++      // FIXME: The type node can't represent the template keyword.
++      return Context
++          .getDependentTemplateSpecializationType(ElaboratedTypeKeyword::None,
++                                                  Prefix, DT->getIdentifier(),
++                                                  DT->template_arguments())
++          .getTypePtr();
++    }
++    case Type::Record:
++    case Type::TemplateSpecialization:
++    case Type::Using:
++    case Type::Enum:
++    case Type::Typedef:
++    case Type::UnresolvedUsing:
++      return Context
++          .getElaboratedType(ElaboratedTypeKeyword::None, Prefix,
++                             QualType(T, 0))
++          .getTypePtr();
++    default:
++      assert(Prefix == nullptr && "unexpected type with elaboration");
++      return T;
++    }
++  }
++  case SpecifierKind::Global:
++  case SpecifierKind::Namespace:
++  case SpecifierKind::NamespaceAlias:
++  case SpecifierKind::Super:
++    // These are not representable as types.
++    return nullptr;
++  }
++}
++
+ /// Print this nested name specifier to the given output
+ /// stream.
+ void NestedNameSpecifier::print(raw_ostream &OS, const PrintingPolicy &Policy,
+diff -ruN --strip-trailing-cr a/clang/lib/Sema/SemaExprCXX.cpp b/clang/lib/Sema/SemaExprCXX.cpp
+--- a/clang/lib/Sema/SemaExprCXX.cpp
++++ b/clang/lib/Sema/SemaExprCXX.cpp
+@@ -60,30 +60,10 @@
+                                               SourceLocation NameLoc,
+                                               const IdentifierInfo &Name) {
+   NestedNameSpecifier *NNS = SS.getScopeRep();
++  if (const IdentifierInfo *II = NNS->getAsIdentifier())
++    assert(II == &Name && "not a constructor name");
+ 
+-  // Convert the nested-name-specifier into a type.
+-  QualType Type;
+-  switch (NNS->getKind()) {
+-  case NestedNameSpecifier::TypeSpec:
+-  case NestedNameSpecifier::TypeSpecWithTemplate:
+-    Type = QualType(NNS->getAsType(), 0);
+-    break;
 -
--    /// Per bucket timing information.
--    llvm::StringMap<llvm::TimeRecord> &Records;
--  };
+-  case NestedNameSpecifier::Identifier:
+-    // Strip off the last layer of the nested-name-specifier and build a
+-    // typename type for it.
+-    assert(NNS->getAsIdentifier() == &Name && "not a constructor name");
+-    Type = Context.getDependentNameType(
+-        ElaboratedTypeKeyword::None, NNS->getPrefix(), NNS->getAsIdentifier());
+-    break;
 -
--  /// Enables per-check timers.
--  ///
--  /// It prints a report after match.
--  std::optional<Profiling> CheckProfiling;
+-  case NestedNameSpecifier::Global:
+-  case NestedNameSpecifier::Super:
+-  case NestedNameSpecifier::Namespace:
+-  case NestedNameSpecifier::NamespaceAlias:
+-    llvm_unreachable("Nested name specifier is not a type for inheriting ctor");
+-  }
 -
--  /// Avoids matching declarations in system headers.
--  bool SkipSystemHeaders = false;
--};
--
- /// A class to allow finding matches over the Clang AST.
- ///
- /// After creation, you can add multiple matchers to the MatchFinder via
-@@ -144,6 +126,21 @@
-     virtual void run() = 0;
++  QualType Type(NNS->translateToType(Context), 0);
+   // This reference to the type is located entirely at the location of the
+   // final identifier in the qualified-id.
+   return CreateParsedType(Type,
+diff -ruN --strip-trailing-cr a/clang/lib/Sema/SemaLookup.cpp b/clang/lib/Sema/SemaLookup.cpp
+--- a/clang/lib/Sema/SemaLookup.cpp
++++ b/clang/lib/Sema/SemaLookup.cpp
+@@ -3210,8 +3210,8 @@
+     //        X.
+     case Type::MemberPointer: {
+       const MemberPointerType *MemberPtr = cast<MemberPointerType>(T);
+-      addAssociatedClassesAndNamespaces(
+-          Result, MemberPtr->getMostRecentCXXRecordDecl());
++      if (CXXRecordDecl *Class = MemberPtr->getMostRecentCXXRecordDecl())
++        addAssociatedClassesAndNamespaces(Result, Class);
+       T = MemberPtr->getPointeeType().getTypePtr();
+       continue;
+     }
+diff -ruN --strip-trailing-cr a/clang/lib/Sema/SemaTemplateDeduction.cpp b/clang/lib/Sema/SemaTemplateDeduction.cpp
+--- a/clang/lib/Sema/SemaTemplateDeduction.cpp
++++ b/clang/lib/Sema/SemaTemplateDeduction.cpp
+@@ -2127,19 +2127,29 @@
+               /*DeducedFromArrayBound=*/false, HasDeducedAnyParam);
+           Result != TemplateDeductionResult::Success)
+         return Result;
+-      const Type *QP = MPP->getQualifier()->getAsType(),
+-                 *QA = MPA->getQualifier()->getAsType();
+-      CXXRecordDecl *ClsP = MPP->getMostRecentCXXRecordDecl(),
+-                    *ClsA = MPA->getMostRecentCXXRecordDecl();
+-      // FIXME: Don't drop the rest of the prefixes here.
+-      QualType P = !ClsP || declaresSameEntity(QP->getAsCXXRecordDecl(), ClsP)
+-                       ? QualType(QP, 0)
+-                       : S.Context.getTypeDeclType(ClsP);
+-      QualType A = !ClsA || declaresSameEntity(QA->getAsCXXRecordDecl(), ClsA)
+-                       ? QualType(QA, 0)
+-                       : S.Context.getTypeDeclType(ClsA);
++
++      QualType TP;
++      if (MPP->isSugared()) {
++        TP = S.Context.getTypeDeclType(MPP->getMostRecentCXXRecordDecl());
++      } else {
++        NestedNameSpecifier *QP = MPP->getQualifier();
++        if (QP->getKind() == NestedNameSpecifier::Identifier)
++          // Skip translation if it's a non-deduced context anyway.
++          return TemplateDeductionResult::Success;
++        TP = QualType(QP->translateToType(S.Context), 0);
++      }
++      assert(!TP.isNull() && "member pointer with non-type class");
++
++      QualType TA;
++      if (MPA->isSugared()) {
++        TA = S.Context.getTypeDeclType(MPA->getMostRecentCXXRecordDecl());
++      } else {
++        NestedNameSpecifier *QA = MPA->getQualifier();
++        TA = QualType(QA->translateToType(S.Context), 0);
++      }
++      assert(!TA.isNull() && "member pointer with non-type class");
+       return DeduceTemplateArgumentsByTypeMatch(
+-          S, TemplateParams, P, A, Info, Deduced, SubTDF,
++          S, TemplateParams, TP, TA, Info, Deduced, SubTDF,
+           degradeCallPartialOrderingKind(POK),
+           /*DeducedFromArrayBound=*/false, HasDeducedAnyParam);
+     }
+diff -ruN --strip-trailing-cr a/clang/test/SemaCXX/member-pointer.cpp b/clang/test/SemaCXX/member-pointer.cpp
+--- a/clang/test/SemaCXX/member-pointer.cpp
++++ b/clang/test/SemaCXX/member-pointer.cpp
+@@ -355,3 +355,56 @@
    };
- 
-+  struct MatchFinderOptions {
-+    struct Profiling {
-+      Profiling(llvm::StringMap<llvm::TimeRecord> &Records)
-+          : Records(Records) {}
+   template struct CallableHelper<void (QIODevice::*)()>;
+ } // namespace GH132401
 +
-+      /// Per bucket timing information.
-+      llvm::StringMap<llvm::TimeRecord> &Records;
-+    };
++namespace adl_dependent_class {
++  struct A {
++    template <class T> A(T);
++  };
++  struct C;
++  template <class T> void d(void (T::*)());
++  void f(A);
++  void g() { f(d<C>); }
++} // namespace adl_dependent_class
 +
-+    /// Enables per-check timers.
-+    ///
-+    /// It prints a report after match.
-+    std::optional<Profiling> CheckProfiling;
++namespace deduction1 {
++  template <typename> struct RunCallImpl;
++
++  template <typename Derived>
++  struct RunCallImpl<int (Derived::Info::*)(Derived *)> {};
++
++  template <typename d>
++  void RunCall(d) {
++    RunCallImpl<d>();
++  }
++
++  struct Filter {
++    virtual void MakeCall();
++    virtual ~Filter() = default;
 +  };
 +
-   MatchFinder(MatchFinderOptions Options = MatchFinderOptions());
-   ~MatchFinder();
- 
-diff -ruN --strip-trailing-cr a/clang/lib/ASTMatchers/ASTMatchFinder.cpp b/clang/lib/ASTMatchers/ASTMatchFinder.cpp
---- a/clang/lib/ASTMatchers/ASTMatchFinder.cpp
-+++ b/clang/lib/ASTMatchers/ASTMatchFinder.cpp
-@@ -28,7 +28,6 @@
- #include <deque>
- #include <memory>
- #include <set>
--#include <vector>
- 
- namespace clang {
- namespace ast_matchers {
-@@ -423,7 +422,7 @@
-                         public ASTMatchFinder {
- public:
-   MatchASTVisitor(const MatchFinder::MatchersByType *Matchers,
--                  const MatchFinderOptions &Options)
-+                  const MatchFinder::MatchFinderOptions &Options)
-       : Matchers(Matchers), Options(Options), ActiveASTContext(nullptr) {}
- 
-   ~MatchASTVisitor() override {
-@@ -1351,7 +1350,7 @@
-   /// We precalculate a list of matchers that pass the toplevel restrict check.
-   llvm::DenseMap<ASTNodeKind, std::vector<unsigned short>> MatcherFiltersMap;
- 
--  const MatchFinderOptions &Options;
-+  const MatchFinder::MatchFinderOptions &Options;
-   ASTContext *ActiveASTContext;
- 
-   // Maps a canonical type to its TypedefDecls.
-@@ -1574,41 +1573,19 @@
- class MatchASTConsumer : public ASTConsumer {
- public:
-   MatchASTConsumer(MatchFinder *Finder,
--                   MatchFinder::ParsingDoneTestCallback *ParsingDone,
--                   const MatchFinderOptions &Options)
--      : Finder(Finder), ParsingDone(ParsingDone), Options(Options) {}
-+                   MatchFinder::ParsingDoneTestCallback *ParsingDone)
-+      : Finder(Finder), ParsingDone(ParsingDone) {}
- 
- private:
--  bool HandleTopLevelDecl(DeclGroupRef DG) override {
--    if (Options.SkipSystemHeaders) {
--      for (Decl *D : DG) {
--        if (!isInSystemHeader(D))
--          TraversalScope.push_back(D);
--      }
--    }
--    return true;
--  }
--
-   void HandleTranslationUnit(ASTContext &Context) override {
--    if (!TraversalScope.empty())
--      Context.setTraversalScope(TraversalScope);
--
-     if (ParsingDone != nullptr) {
-       ParsingDone->run();
-     }
-     Finder->matchAST(Context);
++  template <typename Derived>
++  struct ImplementFilter : Filter {
++    void MakeCall() { RunCall(&Derived::Info::OnStuffHandler); }
++  };
++
++  struct FoobarFilter : ImplementFilter<FoobarFilter> {
++    struct Info {
++      int OnStuffHandler(FoobarFilter *);
++    };
++  };
++} // namespace deduction1
++
++namespace deduction2 {
++  template <typename> struct A;
++  template <typename T>
++  struct A<void (T::C::*)(int &, T *)> {};
++  template <typename T> void e(T) {
++    A<T> f;
++  }
++  struct S {
++    struct C {
++      void h(int &, S *);
++    };
++    void i() { e(&C::h); }
++  };
++} // namespace deduction2
+diff -ruN --strip-trailing-cr a/clang/test/SemaCXX/sugar-common-types.cpp b/clang/test/SemaCXX/sugar-common-types.cpp
+--- a/clang/test/SemaCXX/sugar-common-types.cpp
++++ b/clang/test/SemaCXX/sugar-common-types.cpp
+@@ -146,3 +146,43 @@
    }
- 
--  bool isInSystemHeader(Decl *D) {
--    const SourceManager &SM = D->getASTContext().getSourceManager();
--    const SourceLocation Loc = SM.getExpansionLoc(D->getBeginLoc());
--    return SM.isInSystemHeader(Loc);
--  }
--
-   MatchFinder *Finder;
-   MatchFinder::ParsingDoneTestCallback *ParsingDone;
--  const MatchFinderOptions &Options;
--  std::vector<Decl *> TraversalScope;
- };
- 
- } // end namespace
-@@ -1727,8 +1704,7 @@
+   template void h<int>();
+ } // namespace GH67603
++
++namespace arrays {
++  namespace same_canonical {
++    using ConstB1I = const B1[];
++    using ConstB1C = const B1[1];
++    const ConstB1I a = {0};
++    const ConstB1C b = {0};
++    N ta = a;
++    // expected-error@-1 {{lvalue of type 'const B1[1]' (aka 'const int[1]')}}
++    N tb = b;
++    // expected-error@-1 {{lvalue of type 'const ConstB1C' (aka 'const const int[1]')}}
++    N tc = 0 ? a : b;
++    // expected-error@-1 {{lvalue of type 'const B1[1]' (aka 'const int[1]')}}
++  } // namespace same_canonical
++  namespace same_element {
++    using ConstB1 = const B1;
++    using ConstB1I = ConstB1[];
++    using ConstB1C = ConstB1[1];
++    const ConstB1I a = {0};
++    const ConstB1C b = {0};
++    N ta = a;
++    // expected-error@-1 {{lvalue of type 'const ConstB1[1]' (aka 'const int[1]')}}
++    N tb = b;
++    // expected-error@-1 {{lvalue of type 'const ConstB1C' (aka 'const const int[1]')}}
++    N tc = 0 ? a : b;
++    // expected-error@-1 {{lvalue of type 'ConstB1[1]' (aka 'const int[1]')}}
++  } // namespace same_element
++  namespace balanced_qualifiers {
++    using ConstX1C = const volatile X1[1];
++    using Y1C = volatile Y1[1];
++    extern volatile ConstX1C a;
++    extern const volatile Y1C b;
++    N ta = a;
++    // expected-error@-1 {{lvalue of type 'volatile ConstX1C' (aka 'volatile const volatile int[1]')}}
++    N tb = b;
++    // expected-error@-1 {{lvalue of type 'const volatile Y1C' (aka 'const volatile volatile int[1]')}}
++    N tc = 0 ? a : b;
++    // expected-error@-1 {{lvalue of type 'const volatile volatile B1[1]' (aka 'const volatile volatile int[1]')}}
++  } // namespace balanced_qualifiers
++} // namespace arrays
+diff -ruN --strip-trailing-cr a/clang/test/SemaTemplate/instantiation-backtrace.cpp b/clang/test/SemaTemplate/instantiation-backtrace.cpp
+--- a/clang/test/SemaTemplate/instantiation-backtrace.cpp
++++ b/clang/test/SemaTemplate/instantiation-backtrace.cpp
+@@ -22,7 +22,7 @@
+   (void)sizeof(B<X>); // expected-note{{in instantiation of template class 'B<X>' requested here}}
  }
  
- std::unique_ptr<ASTConsumer> MatchFinder::newASTConsumer() {
--  return std::make_unique<internal::MatchASTConsumer>(this, ParsingDone,
--                                                      Options);
-+  return std::make_unique<internal::MatchASTConsumer>(this, ParsingDone);
- }
+-template<typename T> 
++template<typename T>
+ struct G : A<T>, // expected-error{{implicit instantiation of undefined template 'A<int>'}}
+   A<T*> // expected-error{{implicit instantiation of undefined template 'A<int *>'}}
+   { };
+@@ -39,13 +39,13 @@
+   template <class T1, class T2>
+     typename ResultTy<T2>::error Deduce( void (T1::*member)(T2) ) {} // \
+     // expected-note {{instantiation of template class 'PR13365::ResultTy<int &>'}} \
+-    // expected-note {{substitution failure [with T1 = PR13365::Cls, T2 = int &]}}
++    // expected-note {{substitution failure [with T1 = Cls, T2 = int &]}}
  
- void MatchFinder::match(const clang::DynTypedNode &Node, ASTContext &Context) {
-diff -ruN --strip-trailing-cr a/clang/unittests/ASTMatchers/ASTMatchersInternalTest.cpp b/clang/unittests/ASTMatchers/ASTMatchersInternalTest.cpp
---- a/clang/unittests/ASTMatchers/ASTMatchersInternalTest.cpp
-+++ b/clang/unittests/ASTMatchers/ASTMatchersInternalTest.cpp
-@@ -198,7 +198,7 @@
- }
- 
- TEST(MatchFinder, CheckProfiling) {
--  MatchFinderOptions Options;
-+  MatchFinder::MatchFinderOptions Options;
-   llvm::StringMap<llvm::TimeRecord> Records;
-   Options.CheckProfiling.emplace(Records);
-   MatchFinder Finder(std::move(Options));
-diff -ruN --strip-trailing-cr a/clang-tools-extra/clang-query/Query.cpp b/clang-tools-extra/clang-query/Query.cpp
---- a/clang-tools-extra/clang-query/Query.cpp
-+++ b/clang-tools-extra/clang-query/Query.cpp
-@@ -114,7 +114,7 @@
-     Profiler.emplace();
- 
-   for (auto &AST : QS.ASTs) {
--    ast_matchers::MatchFinderOptions FinderOptions;
-+    ast_matchers::MatchFinder::MatchFinderOptions FinderOptions;
-     std::optional<llvm::StringMap<llvm::TimeRecord>> Records;
-     if (QS.EnableProfile) {
-       Records.emplace();
-diff -ruN --strip-trailing-cr a/clang-tools-extra/clang-tidy/cert/DontModifyStdNamespaceCheck.cpp b/clang-tools-extra/clang-tidy/cert/DontModifyStdNamespaceCheck.cpp
---- a/clang-tools-extra/clang-tidy/cert/DontModifyStdNamespaceCheck.cpp
-+++ b/clang-tools-extra/clang-tidy/cert/DontModifyStdNamespaceCheck.cpp
-@@ -35,30 +35,6 @@
-                              Builder) != Args.end();
- }
- 
--bool isStdOrPosixImpl(const DeclContext *Ctx) {
--  if (!Ctx->isNamespace())
--    return false;
--
--  const auto *ND = cast<NamespaceDecl>(Ctx);
--  if (ND->isInline()) {
--    return isStdOrPosixImpl(ND->getParent());
--  }
--
--  if (!ND->getParent()->getRedeclContext()->isTranslationUnit())
--    return false;
--
--  const IdentifierInfo *II = ND->getIdentifier();
--  return II && (II->isStr("std") || II->isStr("posix"));
--}
--
--AST_MATCHER(Decl, isInStdOrPosixNS) {
--  for (const auto *Ctx = Node.getDeclContext(); Ctx; Ctx = Ctx->getParent()) {
--    if (isStdOrPosixImpl(Ctx))
--      return true;
--  }
--  return false;
--}
--
- } // namespace
- 
- namespace clang::tidy::cert {
-@@ -66,10 +42,12 @@
- void DontModifyStdNamespaceCheck::registerMatchers(MatchFinder *Finder) {
-   auto HasStdParent =
-       hasDeclContext(namespaceDecl(hasAnyName("std", "posix"),
--                                   unless(hasDeclContext(namespaceDecl())))
-+                                   unless(hasParent(namespaceDecl())))
-                          .bind("nmspc"));
--  auto UserDefinedType = qualType(hasUnqualifiedDesugaredType(
--      tagType(unless(hasDeclaration(tagDecl(isInStdOrPosixNS()))))));
-+  auto UserDefinedType = qualType(
-+      hasUnqualifiedDesugaredType(tagType(unless(hasDeclaration(tagDecl(
-+          hasAncestor(namespaceDecl(hasAnyName("std", "posix"),
-+                                    unless(hasParent(namespaceDecl()))))))))));
-   auto HasNoProgramDefinedTemplateArgument = unless(
-       hasAnyTemplateArgumentIncludingPack(refersToType(UserDefinedType)));
-   auto InsideStdClassOrClassTemplateSpecialization = hasDeclContext(
-diff -ruN --strip-trailing-cr a/clang-tools-extra/clang-tidy/ClangTidy.cpp b/clang-tools-extra/clang-tidy/ClangTidy.cpp
---- a/clang-tools-extra/clang-tidy/ClangTidy.cpp
-+++ b/clang-tools-extra/clang-tidy/ClangTidy.cpp
-@@ -420,7 +420,7 @@
-   std::vector<std::unique_ptr<ClangTidyCheck>> Checks =
-       CheckFactories->createChecksForLanguage(&Context);
- 
--  ast_matchers::MatchFinderOptions FinderOptions;
-+  ast_matchers::MatchFinder::MatchFinderOptions FinderOptions;
- 
-   std::unique_ptr<ClangTidyProfiling> Profiling;
-   if (Context.getEnableProfiling()) {
-@@ -429,10 +429,6 @@
-     FinderOptions.CheckProfiling.emplace(Profiling->Records);
+   struct Cls {
+     void method(int&);
+   };
+   void test() {
+     Deduce(&Cls::method); // expected-error {{no matching function}} \
+-                          // expected-note {{substituting deduced template arguments into function template 'Deduce' [with T1 = PR13365::Cls, T2 = int &]}}
++                          // expected-note {{substituting deduced template arguments into function template 'Deduce' [with T1 = Cls, T2 = int &]}}
    }
- 
--  // Avoid processing system headers, unless the user explicitly requests it
--  if (!Context.getOptions().SystemHeaders.value_or(false))
--    FinderOptions.SkipSystemHeaders = true;
--
-   std::unique_ptr<ast_matchers::MatchFinder> Finder(
-       new ast_matchers::MatchFinder(std::move(FinderOptions)));
- 
-diff -ruN --strip-trailing-cr a/clang-tools-extra/docs/ReleaseNotes.rst b/clang-tools-extra/docs/ReleaseNotes.rst
---- a/clang-tools-extra/docs/ReleaseNotes.rst
-+++ b/clang-tools-extra/docs/ReleaseNotes.rst
-@@ -91,12 +91,6 @@
- Improvements to clang-tidy
- --------------------------
- 
--- :program:`clang-tidy` no longer processes declarations from system headers
--  by default, greatly improving performance. This behavior is disabled if the
--  `SystemHeaders` option is enabled.
--  Note: this may lead to false negatives; downstream users may need to adjust
--  their checks to preserve existing behavior.
--
- - Improved :program:`clang-tidy-diff.py` script. Add the `-warnings-as-errors`
-   argument to treat warnings as errors.
- 
-diff -ruN --strip-trailing-cr a/clang-tools-extra/test/clang-tidy/checkers/readability/identifier-naming-anon-record-fields.cpp b/clang-tools-extra/test/clang-tidy/checkers/readability/identifier-naming-anon-record-fields.cpp
---- a/clang-tools-extra/test/clang-tidy/checkers/readability/identifier-naming-anon-record-fields.cpp
-+++ b/clang-tools-extra/test/clang-tidy/checkers/readability/identifier-naming-anon-record-fields.cpp
-@@ -33,29 +33,23 @@
- // RUN:     readability-identifier-naming.LocalConstantPointerPrefix: 'lc_', \
- // RUN:   }}'
- 
--// FIXME: make this test case pass.
--// Currently not working because the CXXRecordDecl for the global anonymous
--// union is *not* collected as a top-level declaration.
--// https://github.com/llvm/llvm-project/issues/130618
--#if 0
- static union {
-   int global;
--// FIXME-CHECK-MESSAGES: :[[@LINE-1]]:7: warning: invalid case style for global variable 'global'
--// FIXME-CHECK-FIXES: {{^}}  int g_global;{{$}}
-+// CHECK-MESSAGES: :[[@LINE-1]]:7: warning: invalid case style for global variable 'global'
-+// CHECK-FIXES: {{^}}  int g_global;{{$}}
- 
-   const int global_const;
--// FIXME-CHECK-MESSAGES: :[[@LINE-1]]:13: warning: invalid case style for global constant 'global_const'
--// FIXME-CHECK-FIXES: {{^}}  const int GLOBAL_CONST;{{$}}
-+// CHECK-MESSAGES: :[[@LINE-1]]:13: warning: invalid case style for global constant 'global_const'
-+// CHECK-FIXES: {{^}}  const int GLOBAL_CONST;{{$}}
- 
-   int *global_ptr;
--// FIXME-CHECK-MESSAGES: :[[@LINE-1]]:8: warning: invalid case style for global pointer 'global_ptr'
--// FIXME-CHECK-FIXES: {{^}}  int *GlobalPtr_Ptr;{{$}}
-+// CHECK-MESSAGES: :[[@LINE-1]]:8: warning: invalid case style for global pointer 'global_ptr'
-+// CHECK-FIXES: {{^}}  int *GlobalPtr_Ptr;{{$}}
- 
-   int *const global_const_ptr;
--// FIXME-CHECK-MESSAGES: :[[@LINE-1]]:14: warning: invalid case style for global constant pointer 'global_const_ptr'
--// FIXME-CHECK-FIXES: {{^}}  int *const GLOBAL_CONST_PTR_Ptr;{{$}}
-+// CHECK-MESSAGES: :[[@LINE-1]]:14: warning: invalid case style for global constant pointer 'global_const_ptr'
-+// CHECK-FIXES: {{^}}  int *const GLOBAL_CONST_PTR_Ptr;{{$}}
- };
--#endif
- 
- namespace ns {
- 
-diff -ruN --strip-trailing-cr a/clang-tools-extra/test/clang-tidy/infrastructure/file-filter.cpp b/clang-tools-extra/test/clang-tidy/infrastructure/file-filter.cpp
---- a/clang-tools-extra/test/clang-tidy/infrastructure/file-filter.cpp
-+++ b/clang-tools-extra/test/clang-tidy/infrastructure/file-filter.cpp
-@@ -66,12 +66,19 @@
- // CHECK4-NOT: warning:
- // CHECK4-QUIET-NOT: warning:
- 
-+// CHECK: Suppressed 3 warnings (3 in non-user code)
- // CHECK: Use -header-filter=.* to display errors from all non-system headers.
- // CHECK-QUIET-NOT: Suppressed
-+// CHECK2: Suppressed 1 warnings (1 in non-user code)
-+// CHECK2: Use -header-filter=.* {{.*}}
- // CHECK2-QUIET-NOT: Suppressed
-+// CHECK3: Suppressed 2 warnings (2 in non-user code)
-+// CHECK3: Use -header-filter=.* {{.*}}
- // CHECK3-QUIET-NOT: Suppressed
- // CHECK4-NOT: Suppressed {{.*}} warnings
-+// CHECK4-NOT: Use -header-filter=.* {{.*}}
- // CHECK4-QUIET-NOT: Suppressed
-+// CHECK6: Suppressed 2 warnings (2 in non-user code)
- // CHECK6: Use -header-filter=.* {{.*}}
- 
- int x = 123;
-diff -ruN --strip-trailing-cr a/clang-tools-extra/test/clang-tidy/infrastructure/system-headers.cpp b/clang-tools-extra/test/clang-tidy/infrastructure/system-headers.cpp
---- a/clang-tools-extra/test/clang-tidy/infrastructure/system-headers.cpp
-+++ b/clang-tools-extra/test/clang-tidy/infrastructure/system-headers.cpp
-@@ -11,9 +11,9 @@
- // RUN: clang-tidy -help | FileCheck -check-prefix=CHECK-OPT-PRESENT %s
- 
- // RUN: clang-tidy -checks='-*,google-explicit-constructor' -header-filter='.*' -system-headers=true %s -- -isystem %S/Inputs/system-headers 2>&1 | FileCheck -check-prefix=CHECK-SYSTEM-HEADERS %s
--// RUN: clang-tidy -checks='-*,google-explicit-constructor' -header-filter='.*' -system-headers=false %s -- -isystem %S/Inputs/system-headers 2>&1 | FileCheck -check-prefix=CHECK-NO-SYSTEM-HEADERS --allow-empty %s
-+// RUN: clang-tidy -checks='-*,google-explicit-constructor' -header-filter='.*' -system-headers=false %s -- -isystem %S/Inputs/system-headers 2>&1 | FileCheck -check-prefix=CHECK-NO-SYSTEM-HEADERS %s
- // RUN: clang-tidy -checks='-*,google-explicit-constructor' -header-filter='.*' -config='SystemHeaders: true' %s -- -isystem %S/Inputs/system-headers 2>&1 | FileCheck -check-prefix=CHECK-SYSTEM-HEADERS %s
--// RUN: clang-tidy -checks='-*,google-explicit-constructor' -header-filter='.*' -config='SystemHeaders: false' %s -- -isystem %S/Inputs/system-headers 2>&1 | FileCheck -check-prefix=CHECK-NO-SYSTEM-HEADERS --allow-empty %s
-+// RUN: clang-tidy -checks='-*,google-explicit-constructor' -header-filter='.*' -config='SystemHeaders: false' %s -- -isystem %S/Inputs/system-headers 2>&1 | FileCheck -check-prefix=CHECK-NO-SYSTEM-HEADERS %s
- 
- #include <system_header.h>
- // CHECK-SYSTEM-HEADERS: system_header.h:1:13: warning: single-argument constructors must be marked explicit
+ }
 diff -ruN --strip-trailing-cr a/llvm/include/llvm/CodeGen/MachineBasicBlock.h b/llvm/include/llvm/CodeGen/MachineBasicBlock.h
 --- a/llvm/include/llvm/CodeGen/MachineBasicBlock.h
 +++ b/llvm/include/llvm/CodeGen/MachineBasicBlock.h
@@ -403,6 +425,114 @@ diff -ruN --strip-trailing-cr a/llvm/lib/CodeGen/TailDuplicator.cpp b/llvm/lib/C
    }
  
    if (HasIndirectbr && PreRegAlloc)
+diff -ruN --strip-trailing-cr a/llvm/lib/ExecutionEngine/RuntimeDyld/RuntimeDyldELF.cpp b/llvm/lib/ExecutionEngine/RuntimeDyld/RuntimeDyldELF.cpp
+--- a/llvm/lib/ExecutionEngine/RuntimeDyld/RuntimeDyldELF.cpp
++++ b/llvm/lib/ExecutionEngine/RuntimeDyld/RuntimeDyldELF.cpp
+@@ -1515,15 +1515,15 @@
+   uint64_t Offset = RelI->getOffset();
+   unsigned RelType = RelI->getType();
+   // Look for an existing stub.
+-  auto [It, Inserted] = Stubs.try_emplace(Value);
+-  if (!Inserted) {
++  StubMap::const_iterator i = Stubs.find(Value);
++  if (i != Stubs.end()) {
+     resolveRelocation(Section, Offset,
+-                      Section.getLoadAddressWithOffset(It->second), RelType, 0);
++                      Section.getLoadAddressWithOffset(i->second), RelType, 0);
+     LLVM_DEBUG(dbgs() << " Stub function found\n");
+   } else if (!resolveAArch64ShortBranch(SectionID, RelI, Value)) {
+     // Create a new stub function.
+     LLVM_DEBUG(dbgs() << " Create a new stub function\n");
+-    It->second = Section.getStubOffset();
++    Stubs[Value] = Section.getStubOffset();
+     uint8_t *StubTargetAddr = createStubFunction(
+         Section.getAddressWithOffset(Section.getStubOffset()));
+ 
+@@ -1837,15 +1837,15 @@
+       SectionEntry &Section = Sections[SectionID];
+ 
+       //  Look up for existing stub.
+-      auto [It, Inserted] = Stubs.try_emplace(Value);
+-      if (!Inserted) {
+-        RelocationEntry RE(SectionID, Offset, RelType, It->second);
++      StubMap::const_iterator i = Stubs.find(Value);
++      if (i != Stubs.end()) {
++        RelocationEntry RE(SectionID, Offset, RelType, i->second);
+         addRelocationForSection(RE, SectionID);
+         LLVM_DEBUG(dbgs() << " Stub function found\n");
+       } else {
+         // Create a new stub function.
+         LLVM_DEBUG(dbgs() << " Create a new stub function\n");
+-        It->second = Section.getStubOffset();
++        Stubs[Value] = Section.getStubOffset();
+ 
+         unsigned AbiVariant = Obj.getPlatformFlags();
+ 
+@@ -2075,10 +2075,10 @@
+     SectionEntry &Section = Sections[SectionID];
+ 
+     // Look for an existing stub.
+-    auto [It, Inserted] = Stubs.try_emplace(Value);
++    StubMap::const_iterator i = Stubs.find(Value);
+     uintptr_t StubAddress;
+-    if (!Inserted) {
+-      StubAddress = uintptr_t(Section.getAddressWithOffset(It->second));
++    if (i != Stubs.end()) {
++      StubAddress = uintptr_t(Section.getAddressWithOffset(i->second));
+       LLVM_DEBUG(dbgs() << " Stub function found\n");
+     } else {
+       // Create a new stub function.
+@@ -2089,7 +2089,7 @@
+           alignTo(BaseAddress + Section.getStubOffset(), getStubAlignment());
+       unsigned StubOffset = StubAddress - BaseAddress;
+ 
+-      It->second = StubOffset;
++      Stubs[Value] = StubOffset;
+       createStubFunction((uint8_t *)StubAddress);
+       RelocationEntry RE(SectionID, StubOffset + 8, ELF::R_390_64,
+                          Value.Offset);
+diff -ruN --strip-trailing-cr a/llvm/lib/ExecutionEngine/RuntimeDyld/Targets/RuntimeDyldMachOARM.h b/llvm/lib/ExecutionEngine/RuntimeDyld/Targets/RuntimeDyldMachOARM.h
+--- a/llvm/lib/ExecutionEngine/RuntimeDyld/Targets/RuntimeDyldMachOARM.h
++++ b/llvm/lib/ExecutionEngine/RuntimeDyld/Targets/RuntimeDyldMachOARM.h
+@@ -307,14 +307,14 @@
+     // This is an ARM branch relocation, need to use a stub function.
+     // Look up for existing stub.
+     SectionEntry &Section = Sections[RE.SectionID];
+-    auto [It, Inserted] = Stubs.try_emplace(Value);
++    RuntimeDyldMachO::StubMap::const_iterator i = Stubs.find(Value);
+     uint8_t *Addr;
+-    if (!Inserted) {
+-      Addr = Section.getAddressWithOffset(It->second);
++    if (i != Stubs.end()) {
++      Addr = Section.getAddressWithOffset(i->second);
+     } else {
+       // Create a new stub function.
+       assert(Section.getStubOffset() % 4 == 0 && "Misaligned stub");
+-      It->second = Section.getStubOffset();
++      Stubs[Value] = Section.getStubOffset();
+       uint32_t StubOpcode = 0;
+       if (RE.RelType == MachO::ARM_RELOC_BR24)
+         StubOpcode = 0xe51ff004; // ldr pc, [pc, #-4]
+diff -ruN --strip-trailing-cr a/llvm/lib/ExecutionEngine/RuntimeDyld/Targets/RuntimeDyldMachOX86_64.h b/llvm/lib/ExecutionEngine/RuntimeDyld/Targets/RuntimeDyldMachOX86_64.h
+--- a/llvm/lib/ExecutionEngine/RuntimeDyld/Targets/RuntimeDyldMachOX86_64.h
++++ b/llvm/lib/ExecutionEngine/RuntimeDyld/Targets/RuntimeDyldMachOX86_64.h
+@@ -131,12 +131,12 @@
+     assert(RE.IsPCRel);
+     assert(RE.Size == 2);
+     Value.Offset -= RE.Addend;
+-    auto [It, Inserted] = Stubs.try_emplace(Value);
++    RuntimeDyldMachO::StubMap::const_iterator i = Stubs.find(Value);
+     uint8_t *Addr;
+-    if (!Inserted) {
+-      Addr = Section.getAddressWithOffset(It->second);
++    if (i != Stubs.end()) {
++      Addr = Section.getAddressWithOffset(i->second);
+     } else {
+-      It->second = Section.getStubOffset();
++      Stubs[Value] = Section.getStubOffset();
+       uint8_t *GOTEntry = Section.getAddressWithOffset(Section.getStubOffset());
+       RelocationEntry GOTRE(RE.SectionID, Section.getStubOffset(),
+                             MachO::X86_64_RELOC_UNSIGNED, Value.Offset, false,
 diff -ruN --strip-trailing-cr a/llvm/test/CodeGen/X86/tail-dup-computed-goto.mir b/llvm/test/CodeGen/X86/tail-dup-computed-goto.mir
 --- a/llvm/test/CodeGen/X86/tail-dup-computed-goto.mir
 +++ b/llvm/test/CodeGen/X86/tail-dup-computed-goto.mir
@@ -1024,3 +1154,58 @@ diff -ruN --strip-trailing-cr a/mlir/test/IR/test-builtin-distinct-attrs-with-cr
 -  // CHECK: "test.op"() {distinct.input = #[[DIST0]], distinct.output = #[[DIST1]]}
 -  "test.op"() {distinct.input = #distinct} : () -> ()
 -}
+diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/libc/test/src/math/smoke/BUILD.bazel b/utils/bazel/llvm-project-overlay/libc/test/src/math/smoke/BUILD.bazel
+--- a/utils/bazel/llvm-project-overlay/libc/test/src/math/smoke/BUILD.bazel
++++ b/utils/bazel/llvm-project-overlay/libc/test/src/math/smoke/BUILD.bazel
+@@ -204,20 +204,21 @@
+     hdrs = ["FmaTest.h"],
+ )
+ 
+-math_test(
+-    name = "f16fma",
+-    hdrs = ["FmaTest.h"],
+-)
+-
+-math_test(
+-    name = "f16fmaf",
+-    hdrs = ["FmaTest.h"],
+-)
+-
+-math_test(
+-    name = "f16fmal",
+-    hdrs = ["FmaTest.h"],
+-)
++# TODO: Reenable these tests once they pass at Google.
++# math_test(
++#     name = "f16fma",
++#     hdrs = ["FmaTest.h"],
++# )
++# 
++# math_test(
++#     name = "f16fmaf",
++#     hdrs = ["FmaTest.h"],
++# )
++# 
++# math_test(
++#     name = "f16fmal",
++#     hdrs = ["FmaTest.h"],
++# )
+ 
+ math_test(
+     name = "dmull",
+@@ -476,10 +477,11 @@
+ 
+ # TODO: Add fma, fmaf, fmal, fmaf128 tests.
+ 
+-math_test(
+-    name = "fmaf16",
+-    hdrs = ["FmaTest.h"],
+-)
++# TODO: Reenable this test once it passes at Google.
++# math_test(
++#     name = "fmaf16",
++#     hdrs = ["FmaTest.h"],
++# )
+ 
+ math_test(
+     name = "fmax",
