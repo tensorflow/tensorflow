@@ -146,6 +146,8 @@ std::string PrimitiveTypeAndHloOpcodeToString(PrimitiveType data_type,
       absl::StrReplaceAll(HloOpcodeString(opcode), {{"-", "_"}}));
 }
 
+}  // namespace
+
 std::string ComputeCapabilityToString(
     const stream_executor::GpuComputeCapability& cc) {
   if (auto cuda_cc = std::get_if<se::CudaComputeCapability>(&cc)) {
@@ -155,8 +157,6 @@ std::string ComputeCapabilityToString(
     return "rocm";
   }
 }
-
-}  // namespace
 
 std::string TritonSupportTestTypeAndDeviceToString(
     const ::testing::TestParamInfo<
