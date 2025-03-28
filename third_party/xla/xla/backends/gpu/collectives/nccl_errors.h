@@ -19,6 +19,17 @@ limitations under the License.
 #include "absl/strings/str_format.h"  // IWYU pragma: keep
 #include "xla/tsl/platform/logging.h"  // IWYU pragma: keep
 #include "xla/util.h"  // IWYU pragma: keep
+                                                       //
+#if TENSORFLOW_USE_ROCM
+#include "rocm/rocm_config.h"
+#if (TF_ROCM_VERSION >= 50200)
+#include "rocm/include/rccl/rccl.h"
+#else
+#include "rocm/include/rccl.h"
+#endif  // TF_ROCM_VERSION >= 50200
+#else
+#include "third_party/nccl/nccl.h"
+#endif  // TENSORFLOW_USE_ROCM
 
 //===----------------------------------------------------------------------===//
 // Collection of helper macros for handling NCCL errors.
@@ -26,7 +37,9 @@ limitations under the License.
 
 #define XLA_NCCL_STATUS(expr)                                         \
   [](ncclResult_t s, absl::string_view str) -> absl::Status {         \
-    if (s == ncclSuccess) return absl::OkStatus();                    \
+    if (s == ncclSuccess || s == ncclInProgress) {                    \
+      return absl::OkStatus();                                        \
+    }                                                                 \
     return xla::Internal(                                             \
         "NCCL operation %s failed: %s. Last NCCL warning(error) log " \
         "entry (may be unrelated) '%s'.",                             \
@@ -50,5 +63,24 @@ limitations under the License.
   } while (0)
 
 #define XLA_NCCL_CHECK(expr) CHECK(XLA_NCCL_STATUS(expr).ok())
+
+namespace xla::gpu {
+
+// Polls the provided communicator until it is "done".
+//
+// NCCL communicators can be blocking or non-blocking. Operations performed on
+// non-blocking communicators return immediately, and it is the responsibility
+// of the programmer to repeatedly call ncclCommGetAsyncError on the
+// communicator until ncclCommGetAsyncError no long returns inProgress. That is
+// what PollUntilDone does.
+//
+// Note, however, that the semantics of NCCL collectives are a bit subtle. For
+// example, a collective operation may report itself as done when it is
+// scheduled on the GPU but has not yet executed. Refer to the NCCL
+// documentation and exercise caution when reasoning about whether an operation
+// is really "done".
+absl::Status PollUntilDone(ncclComm_t comm);
+
+}  // namespace xla::gpu
 
 #endif  // XLA_BACKENDS_GPU_COLLECTIVES_NCCL_ERRORS_H_
