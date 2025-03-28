@@ -71,6 +71,7 @@ tf_cc_test(
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "//tensorflow/core/profiler/protobuf:hardware_types_proto_cc",
         "@local_xla//xla/tsl/profiler/utils:math_utils",
     ],
 )
@@ -381,6 +382,7 @@ tf_cc_test(
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "//tensorflow/core/profiler/protobuf:steps_db_proto_cc",
         "@com_google_absl//absl/container:flat_hash_map",
     ],
 )
@@ -445,6 +447,7 @@ cc_library(
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status:statusor",
         "@local_xla//xla:util",
+        "@local_xla//xla:xla_proto_cc",
         "@local_xla//xla/hlo/ir:hlo",
         "@local_xla//xla/service:hlo_proto_cc",
         "@local_xla//xla/tsl/platform:statusor",
@@ -517,6 +520,7 @@ cc_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings:string_view",
         "@local_xla//xla:shape_util",
+        "@local_xla//xla:xla_data_proto_cc",
         "@local_xla//xla/hlo/ir:hlo",
         "@local_xla//xla/service:hlo_cost_analysis",
         "@local_xla//xla/service/gpu:cublas_cudnn",

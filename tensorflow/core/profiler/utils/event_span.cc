@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/protobuf/op_metrics.pb.h"
+#include "tensorflow/core/profiler/protobuf/steps_db.pb.h"
 
 namespace tensorflow {
 namespace profiler {

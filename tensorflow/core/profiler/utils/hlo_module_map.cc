@@ -25,10 +25,12 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/log/log.h"
 #include "absl/strings/str_cat.h"
+#include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/shape.h"
 #include "xla/tsl/profiler/convert/xla_op_utils.h"
 #include "tsl/profiler/lib/traceme_encode.h"
+#include "tsl/profiler/protobuf/xplane.pb.h"
 
 #if GOOGLE_CUDA
 #include "xla/service/gpu/model/gpu_hlo_cost_analysis.h"

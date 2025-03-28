@@ -25,6 +25,7 @@ limitations under the License.
 #include "xla/tsl/profiler/utils/timespan.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/profiler/protobuf/steps_db.pb.h"
 
 namespace tensorflow {
 namespace profiler {

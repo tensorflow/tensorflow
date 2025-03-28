@@ -24,6 +24,7 @@ limitations under the License.
 #include "xla/service/hlo.pb.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
+#include "xla/xla.pb.h"
 
 namespace tensorflow {
 namespace profiler {
