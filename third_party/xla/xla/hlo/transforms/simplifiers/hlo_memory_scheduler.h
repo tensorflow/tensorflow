@@ -152,31 +152,9 @@ class PostOrderScheduler : public ComputationSchedulerAlgorithm {
 // and the post-order scheduler and chooses whichever returns a lower min-
 // memory, not accounting for fragmentation. peak_memory (may be nullptr) is set
 // to the peak memory of the resulting schedule according to the HeapSimulator.
-class DefaultMemoryScheduler : public ComputationSchedulerAlgorithm {
+class DefaultMemoryScheduler : public ModuleSchedulerAlgorithm {
  public:
   explicit DefaultMemoryScheduler(
-      const BufferValue::SizeFunction& size_function,
-      const SchedulerPostprocessor& postprocessor = {})
-      : ComputationSchedulerAlgorithm(size_function, postprocessor),
-        list_scheduler_(size_function, postprocessor),
-        dfs_scheduler_(size_function, postprocessor),
-        post_order_scheduler_(size_function, postprocessor) {}
-  absl::StatusOr<HloInstructionSequence> Run(
-      HloComputation* computation,
-      const TuplePointsToAnalysis& points_to_analysis,
-      const HloAliasAnalysis& alias_analysis) const override;
-
- private:
-  ListMemoryScheduler list_scheduler_;
-  DFSMemoryScheduler dfs_scheduler_;
-  PostOrderScheduler post_order_scheduler_;
-};
-
-// Similar to DefaultMemoryScheduler, but runs the heap simulator once per
-// module instead of once per computation.
-class DefaultModuleScheduler : public ModuleSchedulerAlgorithm {
- public:
-  explicit DefaultModuleScheduler(
       const BufferValue::SizeFunction& size_function,
       const SchedulerPostprocessor& postprocessor = {})
       : list_scheduler_(size_function, postprocessor),
@@ -202,7 +180,7 @@ absl::StatusOr<HloSchedule> ScheduleModule(
     const HloModule* module, const ModuleSchedulerAlgorithm& algorithm,
     const absl::flat_hash_set<absl::string_view>& execution_threads = {},
     int64_t* peak_memory = nullptr);
-// Schedule the module using the DefaultModuleScheduler algorithm.
+// Schedule the module using the DefaultMemoryScheduler algorithm.
 absl::StatusOr<HloSchedule> ScheduleModule(
     const HloModule* module, const BufferValue::SizeFunction& size_function,
     const absl::flat_hash_set<absl::string_view>& execution_threads = {},
@@ -214,12 +192,12 @@ absl::StatusOr<HloSchedule> ScheduleModule(
 class HloMemoryScheduler : public HloModulePass {
  public:
   // algorithm is the memory scheduling algorithm to use. If not specified, then
-  // DefaultModuleScheduler is used.
+  // DefaultMemoryScheduler is used.
   explicit HloMemoryScheduler(
       std::unique_ptr<ModuleSchedulerAlgorithm> algorithm)
       : algorithm_(std::move(algorithm)) {}
   explicit HloMemoryScheduler(const BufferValue::SizeFunction& size_function)
-      : algorithm_(std::make_unique<DefaultModuleScheduler>(size_function)) {}
+      : algorithm_(std::make_unique<DefaultMemoryScheduler>(size_function)) {}
 
   absl::string_view name() const override { return "hlo-memory-scheduler"; }
 

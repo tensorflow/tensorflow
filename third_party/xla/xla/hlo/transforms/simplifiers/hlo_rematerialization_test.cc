@@ -60,10 +60,8 @@ class AsyncRematerializationTest : public RematerializationTestBase {
       int64_t min_remat_size = 0) {
     TF_EXPECT_OK(verifier().Run(module).status());
     if (!module->has_schedule()) {
-      HloMemoryScheduler scheduler(std::make_unique<DefaultMemoryScheduler>(
-          [](const BufferValue& buffer) {
-            return ByteSizeOf(buffer.shape());
-          }));
+      HloMemoryScheduler scheduler(
+          [](const BufferValue& buffer) { return ByteSizeOf(buffer.shape()); });
       TF_EXPECT_OK(scheduler.Run(module).status());
     }
     HloRematerialization::RematerializationModeConfig config(
@@ -144,10 +142,8 @@ class RecomputeAndCompressHloRematerializationTest
                                                int64_t min_remat_size = 0) {
     TF_EXPECT_OK(verifier().Run(module).status());
     if (!module->has_schedule()) {
-      HloMemoryScheduler scheduler(std::make_unique<DefaultMemoryScheduler>(
-          [](const BufferValue& buffer) {
-            return ByteSizeOf(buffer.shape());
-          }));
+      HloMemoryScheduler scheduler(
+          [](const BufferValue& buffer) { return ByteSizeOf(buffer.shape()); });
       TF_EXPECT_OK(scheduler.Run(module).status());
     }
 
@@ -1381,10 +1377,8 @@ class OffloadingRematerializationTest : public RematerializationTestBase {
                                                int64_t min_remat_size = 0) {
     TF_EXPECT_OK(verifier().Run(module).status());
     if (!module->has_schedule()) {
-      HloMemoryScheduler scheduler(std::make_unique<DefaultMemoryScheduler>(
-          [](const BufferValue& buffer) {
-            return ByteSizeOf(buffer.shape());
-          }));
+      HloMemoryScheduler scheduler(
+          [](const BufferValue& buffer) { return ByteSizeOf(buffer.shape()); });
       TF_EXPECT_OK(scheduler.Run(module).status());
     }
     // Create a configuration where any compute is much much slower than any

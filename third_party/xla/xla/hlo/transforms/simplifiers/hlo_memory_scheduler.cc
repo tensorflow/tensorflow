@@ -557,63 +557,7 @@ absl::StatusOr<HloInstructionSequence> PostOrderScheduler::Run(
   return HloInstructionSequence(computation->MakeInstructionPostOrder());
 }
 
-absl::StatusOr<HloInstructionSequence> DefaultMemoryScheduler::Run(
-    HloComputation* computation,
-    const TuplePointsToAnalysis& points_to_analysis,
-    const HloAliasAnalysis& alias_analysis) const {
-  // We try a few schedulers and choose whichever returns a lower min-memory,
-  // not accounting for fragmentation.
-  // - List is a scheduler that uses greedy heuristics.
-  // - DFS visits HLOs in postorder, with a heuristic to decide the order of
-  //   children.
-  // - Postorder does not use any heuristics.
-  // List wins for most of our benchmarks; postorder-based schedulers win for
-  // some RNNs.
-  TF_ASSIGN_OR_RETURN(
-      HloInstructionSequence list_sequence,
-      list_scheduler_.Run(computation, points_to_analysis, alias_analysis));
-  TF_ASSIGN_OR_RETURN(
-      int64_t list_memory,
-      HeapSimulator::MinimumMemoryForComputation(
-          *computation, list_sequence, alias_analysis, size_function_));
-  VLOG(2) << "Min-memory list sequence: " << HumanReadableNumBytes(list_memory);
-
-  TF_ASSIGN_OR_RETURN(
-      HloInstructionSequence dfs_sequence,
-      dfs_scheduler_.Run(computation, points_to_analysis, alias_analysis));
-  TF_ASSIGN_OR_RETURN(
-      int64_t dfs_memory,
-      HeapSimulator::MinimumMemoryForComputation(
-          *computation, dfs_sequence, alias_analysis, size_function_));
-  VLOG(2) << "Min-memory dfs sequence: " << HumanReadableNumBytes(dfs_memory);
-
-  TF_ASSIGN_OR_RETURN(HloInstructionSequence post_order_sequence,
-                      post_order_scheduler_.Run(computation, points_to_analysis,
-                                                alias_analysis));
-  TF_ASSIGN_OR_RETURN(
-      int64_t post_order_memory,
-      HeapSimulator::MinimumMemoryForComputation(
-          *computation, post_order_sequence, alias_analysis, size_function_));
-  VLOG(2) << "Min-memory post order sequence: "
-          << HumanReadableNumBytes(post_order_memory);
-
-  auto min_memory = std::min({dfs_memory, post_order_memory, list_memory});
-  if (min_memory == list_memory) {
-    VLOG(2) << "Chose min-memory list sequence: "
-            << HumanReadableNumBytes(list_memory);
-    return list_sequence;
-  } else if (min_memory == dfs_memory) {
-    VLOG(2) << "Chose min-memory dfs sequence: "
-            << HumanReadableNumBytes(dfs_memory);
-    return dfs_sequence;
-  } else {
-    VLOG(2) << "Chose min-memory post_order sequence: "
-            << HumanReadableNumBytes(post_order_memory);
-    return post_order_sequence;
-  }
-}
-
-absl::StatusOr<HloSchedule> DefaultModuleScheduler::Run(
+absl::StatusOr<HloSchedule> DefaultMemoryScheduler::Run(
     const HloModule* module, const TuplePointsToAnalysis& points_to_analysis,
     const HloAliasAnalysis& alias_analysis,
     const absl::flat_hash_set<absl::string_view>& execution_threads,
@@ -695,7 +639,7 @@ absl::StatusOr<HloSchedule> ScheduleModule(
     const HloModule* module, const BufferValue::SizeFunction& size_function,
     const absl::flat_hash_set<absl::string_view>& execution_threads,
     int64_t* peak_memory) {
-  return ScheduleModule(module, DefaultModuleScheduler(size_function),
+  return ScheduleModule(module, DefaultMemoryScheduler(size_function),
                         execution_threads, peak_memory);
 }
 
