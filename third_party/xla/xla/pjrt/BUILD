@@ -295,7 +295,6 @@ cc_library(
         ":execute_options_proto_cc",
         ":pjrt_common",
         ":pjrt_layout",
-        "//xla:shape_layout",
         "//xla:shape_util",
         "//xla:util",
         "//xla:xla_data_proto_cc",
@@ -316,8 +315,6 @@ cc_library(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
-        "@local_tsl//tsl/platform:errors",
-        "@local_tsl//tsl/platform:statusor",
     ],
 )
 
@@ -330,6 +327,7 @@ xla_cc_test(
         "//xla:shape_util",
         "//xla:xla_data_proto_cc",
         "//xla/client:executable_build_options",
+        "//xla/tsl/lib/core:status_test_util",
         "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:status_matchers",
     ],

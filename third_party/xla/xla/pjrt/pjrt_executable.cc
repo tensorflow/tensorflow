@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/pjrt/pjrt_executable.h"
 
 #include <cstdint>
+#include <limits>
 #include <memory>
 #include <optional>
 #include <string>
@@ -29,6 +30,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/client/executable_build_options.h"
@@ -42,13 +44,10 @@ limitations under the License.
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/service/hlo_value.h"
 #include "xla/shape.h"
-#include "xla/shape_layout.h"
 #include "xla/shape_util.h"
 #include "xla/util.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
@@ -519,8 +518,7 @@ PjRtExecutableUtil::RunHloCostAnalysis(
   return ret;
 }
 
-absl::StatusOr<
-    std::vector<std::pair<std::string, CompileOptions::OptionOverride>>>
+absl::StatusOr<CompileOptions::EnvironmentOptionOverrides>
 CompileOptions::LoadEnvOptionOverrides(
     const google::protobuf::Map<std::string, xla::OptionOverrideProto>&
         env_option_overrides) {
@@ -554,74 +552,161 @@ CompileOptions::LoadEnvOptionOverrides(
   return result;
 }
 
+absl::Status ApplyStringOption(const tsl::protobuf::FieldDescriptor* field,
+                               const std::string& value,
+                               xla::DebugOptions& debug_options) {
+  if (field->is_repeated()) {
+    debug_options.GetReflection()->AddString(&debug_options, field, value);
+  } else {
+    debug_options.GetReflection()->SetString(&debug_options, field, value);
+  }
+  return absl::OkStatus();
+}
+
+absl::Status ApplyInt32Option(const tsl::protobuf::FieldDescriptor* field,
+                              int32_t value, xla::DebugOptions& debug_options) {
+  if (field->is_repeated()) {
+    debug_options.GetReflection()->AddInt32(&debug_options, field, value);
+  } else {
+    debug_options.GetReflection()->SetInt32(&debug_options, field, value);
+  }
+  return absl::OkStatus();
+}
+absl::Status ApplyInt64Option(const tsl::protobuf::FieldDescriptor* field,
+                              int64_t value, xla::DebugOptions& debug_options) {
+  if (field->is_repeated()) {
+    debug_options.GetReflection()->AddInt64(&debug_options, field, value);
+  } else {
+    debug_options.GetReflection()->SetInt64(&debug_options, field, value);
+  }
+  return absl::OkStatus();
+}
+
+absl::Status ApplyFloatOption(const tsl::protobuf::FieldDescriptor* field,
+                              float value, xla::DebugOptions& debug_options) {
+  if (field->is_repeated()) {
+    debug_options.GetReflection()->AddFloat(&debug_options, field, value);
+  } else {
+    debug_options.GetReflection()->SetFloat(&debug_options, field, value);
+  }
+  return absl::OkStatus();
+}
+
+absl::Status ApplyDoubleOption(const tsl::protobuf::FieldDescriptor* field,
+                               double value, xla::DebugOptions& debug_options) {
+  if (field->is_repeated()) {
+    debug_options.GetReflection()->AddDouble(&debug_options, field, value);
+  } else {
+    debug_options.GetReflection()->SetDouble(&debug_options, field, value);
+  }
+  return absl::OkStatus();
+}
+
+absl::Status ApplyBoolOption(const tsl::protobuf::FieldDescriptor* field,
+                             bool value, xla::DebugOptions& debug_options) {
+  if (field->is_repeated()) {
+    debug_options.GetReflection()->AddBool(&debug_options, field, value);
+  } else {
+    debug_options.GetReflection()->SetBool(&debug_options, field, value);
+  }
+  return absl::OkStatus();
+}
+absl::Status ApplyEnumOption(const tsl::protobuf::FieldDescriptor* field,
+                             int value, xla::DebugOptions& debug_options) {
+  if (field->is_repeated()) {
+    debug_options.GetReflection()->AddEnumValue(&debug_options, field, value);
+  } else {
+    debug_options.GetReflection()->SetEnumValue(&debug_options, field, value);
+  }
+  return absl::OkStatus();
+}
+absl::Status ApplyEnumOption(const tsl::protobuf::FieldDescriptor* field,
+                             const tsl::protobuf::EnumValueDescriptor* value,
+                             xla::DebugOptions& debug_options) {
+  if (field->is_repeated()) {
+    debug_options.GetReflection()->AddEnum(&debug_options, field, value);
+  } else {
+    debug_options.GetReflection()->SetEnum(&debug_options, field, value);
+  }
+  return absl::OkStatus();
+}
+
 absl::Status CompileOptions::ApplyOption(const std::string& key,
                                          const OptionOverride& value) {
-  if (auto* xla_field = xla::DebugOptions::descriptor()->FindFieldByName(key)) {
-    xla::DebugOptions& debug_options =
-        *executable_build_options.mutable_debug_options();
-    const tsl::protobuf::Reflection* reflection = debug_options.GetReflection();
-    if (!reflection) {
-      return InvalidArgument(
-          "No reflection object associated with xla::DebugOptions.");
-    }
-    if (xla_field->type() == tsl::protobuf::FieldDescriptor::TYPE_BOOL &&
-        std::holds_alternative<bool>(value)) {
-      reflection->SetBool(&debug_options, xla_field, std::get<bool>(value));
-      return absl::OkStatus();
-    } else if (std::holds_alternative<std::string>(value)) {
-      TF_RETURN_IF_ERROR(
-          ApplyOptionFromString(xla_field, std::get<std::string>(value)));
-      return absl::OkStatus();
-    } else if (xla_field->type() ==
-                   tsl::protobuf::FieldDescriptor::TYPE_INT32 &&
-               std::holds_alternative<int64_t>(value)) {
-      reflection->SetInt32(&debug_options, xla_field, std::get<int64_t>(value));
-      return absl::OkStatus();
-    } else if (xla_field->type() ==
-                   tsl::protobuf::FieldDescriptor::TYPE_INT64 &&
-               std::holds_alternative<int64_t>(value)) {
-      reflection->SetInt64(&debug_options, xla_field, std::get<int64_t>(value));
-      return absl::OkStatus();
-    } else if (xla_field->type() ==
-                   tsl::protobuf::FieldDescriptor::TYPE_FLOAT &&
-               std::holds_alternative<double>(value)) {
-      reflection->SetFloat(&debug_options, xla_field, std::get<double>(value));
-      return absl::OkStatus();
-    } else if (xla_field->type() ==
-                   tsl::protobuf::FieldDescriptor::TYPE_DOUBLE &&
-               std::holds_alternative<double>(value)) {
-      reflection->SetDouble(&debug_options, xla_field, std::get<double>(value));
-      return absl::OkStatus();
-    } else if (xla_field->type() == tsl::protobuf::FieldDescriptor::TYPE_ENUM) {
-      if (std::holds_alternative<int64_t>(value)) {
-        if (xla_field->is_repeated()) {
-          reflection->AddEnumValue(&debug_options, xla_field,
-                                   std::get<int64_t>(value));
-        } else {
-          reflection->SetEnumValue(&debug_options, xla_field,
-                                   std::get<int64_t>(value));
-        }
-      } else {
-        auto enum_desc = xla_field->enum_type()->FindValueByName(
-            std::get<std::string>(value));
-        if (enum_desc != nullptr) {
-          if (xla_field->is_repeated()) {
-            reflection->AddEnum(&debug_options, xla_field, enum_desc);
-          } else {
-            reflection->SetEnum(&debug_options, xla_field, enum_desc);
-          }
-        }
-      }
-      return absl::OkStatus();
-    } else {
-      return InvalidArgument(
-          "While setting option %s, '%s' is not a valid %s value.", key,
-          std::visit([](auto&& arg) { return absl::StrCat(arg); }, value),
-          xla_field->type_name());
-    }
-  } else {
+  auto* xla_field = xla::DebugOptions::descriptor()->FindFieldByName(key);
+  if (xla_field == nullptr) {
     return InvalidArgument("No such compile option: '%s'", key);
   }
+  xla::DebugOptions& debug_options =
+      *executable_build_options.mutable_debug_options();
+  const tsl::protobuf::Reflection* reflection = debug_options.GetReflection();
+  if (reflection == nullptr) {
+    return InvalidArgument(
+        "No reflection object associated with xla::DebugOptions.");
+  }
+  if (xla_field->is_repeated()) {
+    debug_options.GetReflection()->ClearField(&debug_options, xla_field);
+  }
+  if (std::holds_alternative<std::string>(value)) {
+    return ApplyOptionFromString(xla_field, std::get<std::string>(value));
+  }
+  switch (xla_field->type()) {
+    case tsl::protobuf::FieldDescriptor::TYPE_BOOL: {
+      if (std::holds_alternative<bool>(value)) {
+        return ApplyBoolOption(xla_field, std::get<bool>(value), debug_options);
+      }
+      break;
+    }
+    case tsl::protobuf::FieldDescriptor::TYPE_INT32: {
+      if (std::holds_alternative<int64_t>(value)) {
+        int64_t int64_value = std::get<int64_t>(value);
+        if (int64_value >= std::numeric_limits<int32_t>::min() &&
+            int64_value <= std::numeric_limits<int32_t>::max()) {
+          return ApplyInt32Option(xla_field, static_cast<int32_t>(int64_value),
+                                  debug_options);
+        }
+      }
+      break;
+    }
+    case tsl::protobuf::FieldDescriptor::TYPE_INT64: {
+      if (std::holds_alternative<int64_t>(value)) {
+        return ApplyInt64Option(xla_field, std::get<int64_t>(value),
+                                debug_options);
+      }
+      break;
+    }
+    case tsl::protobuf::FieldDescriptor::TYPE_FLOAT: {
+      if (std::holds_alternative<double>(value)) {
+        double double_value = std::get<double>(value);
+        if (double_value >= std::numeric_limits<float>::min() &&
+            double_value <= std::numeric_limits<float>::max()) {
+          return ApplyFloatOption(xla_field, static_cast<float>(double_value),
+                                  debug_options);
+        }
+      }
+      break;
+    }
+    case tsl::protobuf::FieldDescriptor::TYPE_DOUBLE: {
+      if (std::holds_alternative<double>(value)) {
+        return ApplyFloatOption(xla_field, std::get<double>(value),
+                                debug_options);
+      }
+      break;
+    }
+    case tsl::protobuf::FieldDescriptor::TYPE_ENUM: {
+      if (std::holds_alternative<int64_t>(value)) {
+        return ApplyEnumOption(xla_field, std::get<int64_t>(value),
+                               debug_options);
+      }
+      break;
+    }
+    default:
+      break;
+  }
+  return InvalidArgument(
+      "While setting option %s, '%s' is not a valid %s value.", key,
+      std::visit([](auto&& arg) { return absl::StrCat(arg); }, value),
+      xla_field->type_name());
 }
 
 absl::Status CompileOptions::ApplyAllOptionOverrides() {
@@ -631,65 +716,80 @@ absl::Status CompileOptions::ApplyAllOptionOverrides() {
   return absl::OkStatus();
 }
 
-absl::Status CompileOptions::ApplyOptionFromString(
-    const tsl::protobuf::FieldDescriptor* field, const std::string& value) {
-  xla::DebugOptions& debug_options =
-      *executable_build_options.mutable_debug_options();
-  const tsl::protobuf::Reflection* reflection = debug_options.GetReflection();
-  if (field->type() == tsl::protobuf::FieldDescriptor::TYPE_STRING) {
-    reflection->SetString(&debug_options, field, value);
-    return absl::OkStatus();
-  } else if (field->type() == tsl::protobuf::FieldDescriptor::TYPE_INT32) {
-    int int_value;
-    if (absl::SimpleAtoi(value, &int_value)) {
-      reflection->SetInt32(&debug_options, field, int_value);
-      return absl::OkStatus();
-    }
-  } else if (field->type() == tsl::protobuf::FieldDescriptor::TYPE_INT64) {
-    int int_value;
-    if (absl::SimpleAtoi(value, &int_value)) {
-      reflection->SetInt64(&debug_options, field, int_value);
-      return absl::OkStatus();
-    }
-  } else if (field->type() == tsl::protobuf::FieldDescriptor::TYPE_FLOAT) {
-    float float_value;
-    if (absl::SimpleAtof(value, &float_value)) {
-      reflection->SetFloat(&debug_options, field, float_value);
-      return absl::OkStatus();
-    }
-  } else if (field->type() == tsl::protobuf::FieldDescriptor::TYPE_BOOL) {
-    bool bvalue = value == "True";
-    if (value == "True" || value == "False") {
-      reflection->SetBool(&debug_options, field, bvalue);
-      return absl::OkStatus();
-    }
-  } else if (field->type() == tsl::protobuf::FieldDescriptor::TYPE_ENUM) {
-    int int_value;
-    if (absl::SimpleAtoi(value, &int_value)) {
-      if (field->is_repeated()) {
-        reflection->AddEnumValue(&debug_options, field, int_value);
-      } else {
-        reflection->SetEnumValue(&debug_options, field, int_value);
+absl::Status ApplyOptionFromSingleString(
+    const tsl::protobuf::FieldDescriptor* field, const std::string& value,
+    xla::DebugOptions& debug_options) {
+  switch (field->type()) {
+    case tsl::protobuf::FieldDescriptor::TYPE_STRING:
+      return ApplyStringOption(field, value, debug_options);
+    case tsl::protobuf::FieldDescriptor::TYPE_INT32: {
+      int32_t int_value;
+      if (absl::SimpleAtoi(value, &int_value)) {
+        return ApplyInt32Option(field, int_value, debug_options);
       }
-      return absl::OkStatus();
-    } else {
-      if (value.empty() && field->is_repeated()) {
-        reflection->ClearField(&debug_options, field);
-        return absl::OkStatus();
+      break;
+    }
+    case tsl::protobuf::FieldDescriptor::TYPE_INT64: {
+      int64_t int_value;
+      if (absl::SimpleAtoi(value, &int_value)) {
+        return ApplyInt64Option(field, int_value, debug_options);
+      }
+      break;
+    }
+    case tsl::protobuf::FieldDescriptor::TYPE_FLOAT: {
+      float float_value;
+      if (absl::SimpleAtof(value, &float_value)) {
+        return ApplyFloatOption(field, float_value, debug_options);
+      }
+      break;
+    }
+    case tsl::protobuf::FieldDescriptor::TYPE_DOUBLE: {
+      double double_value;
+      if (absl::SimpleAtod(value, &double_value)) {
+        return ApplyDoubleOption(field, double_value, debug_options);
+      }
+      break;
+    }
+    case tsl::protobuf::FieldDescriptor::TYPE_BOOL: {
+      if (value == "True" || value == "False") {
+        return ApplyBoolOption(field, value == "True", debug_options);
+      }
+      break;
+    }
+    case tsl::protobuf::FieldDescriptor::TYPE_ENUM: {
+      int int_value;
+      if (absl::SimpleAtoi(value, &int_value)) {
+        return ApplyEnumOption(field, int_value, debug_options);
       }
       auto enum_desc = field->enum_type()->FindValueByName(value);
       if (enum_desc != nullptr) {
-        if (field->is_repeated()) {
-          reflection->AddEnum(&debug_options, field, enum_desc);
-        } else {
-          reflection->SetEnum(&debug_options, field, enum_desc);
-        }
+        return ApplyEnumOption(field, enum_desc, debug_options);
       }
+      break;
     }
+    default:
+      break;
   }
   return InvalidArgument(
       "While setting option %s, '%s' is not a valid %s value.", field->name(),
       value, field->type_name());
+}
+
+absl::Status CompileOptions::ApplyOptionFromString(
+    const tsl::protobuf::FieldDescriptor* field, const std::string& value) {
+  if (!field->is_repeated()) {
+    return ApplyOptionFromSingleString(
+        field, value, *executable_build_options.mutable_debug_options());
+  }
+  if (value.empty()) {
+    return absl::OkStatus();
+  }
+  for (const auto& v : absl::StrSplit(value, ',')) {
+    TF_RETURN_IF_ERROR(ApplyOptionFromSingleString(
+        field, std::string(v),
+        *executable_build_options.mutable_debug_options()));
+  }
+  return absl::OkStatus();
 }
 
 }  // namespace xla
