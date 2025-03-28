@@ -203,7 +203,7 @@ absl::Status XlaOpKernelContext::ConstantInputReshaped(
 // Converts an int16, int32 or int64 scalar literal to an int64.
 static absl::Status LiteralToInt64Scalar(const xla::LiteralSlice& literal,
                                          int64_t* out) {
-  if (literal.shape().rank() != 0) {
+  if (!literal.shape().dimensions().empty()) {
     return errors::InvalidArgument("value is not a scalar");
   }
   if (literal.shape().element_type() == xla::S16) {
@@ -221,7 +221,7 @@ static absl::Status LiteralToInt64Scalar(const xla::LiteralSlice& literal,
 // Converts an float32 or float64 scalar literal to a float64.
 static absl::Status LiteralToFloat64Scalar(const xla::LiteralSlice& literal,
                                            double* out) {
-  if (literal.shape().rank() != 0) {
+  if (!literal.shape().dimensions().empty()) {
     return errors::InvalidArgument("value is not a scalar");
   }
   if (literal.shape().element_type() == xla::F32) {
@@ -263,7 +263,7 @@ absl::Status XlaOpKernelContext::ConstantInputAsFloatScalar(
 
 static absl::Status LiteralToPredVector(const xla::LiteralSlice& literal,
                                         std::vector<bool>* out) {
-  if (literal.shape().rank() != 1) {
+  if (literal.shape().dimensions().size() != 1) {
     return errors::InvalidArgument("output_shape must be rank 1, got shape ",
                                    literal.shape().DebugString());
   }
@@ -363,7 +363,7 @@ absl::Status XlaOpKernelContext::ResolveInputDynamismIntoPredVector(
 // Converts an int32 or int64 1D literal to an int64 vector.
 static absl::Status LiteralToInt64Vector(const xla::LiteralSlice& literal,
                                          std::vector<int64_t>* out) {
-  if (literal.shape().rank() != 1) {
+  if (literal.shape().dimensions().size() != 1) {
     return errors::InvalidArgument("output_shape must be rank 1, got shape ",
                                    literal.shape().DebugString());
   }
@@ -472,7 +472,7 @@ absl::Status XlaOpKernelContext::ConstantInputAsPartialShape(
   xla::Literal literal;
   TF_RETURN_IF_ERROR(ConstantInput(index, &literal));
   // If `literal` is a scalar it's value must be -1.
-  if (literal.shape().rank() == 0) {
+  if (literal.shape().dimensions().empty()) {
     int64_t shape_val;
     TF_RETURN_IF_ERROR(LiteralToInt64Scalar(literal, &shape_val));
     if (shape_val != -1) {

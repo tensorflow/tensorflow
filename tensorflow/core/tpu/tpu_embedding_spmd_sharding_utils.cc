@@ -41,7 +41,7 @@ absl::StatusOr<xla::OpSharding> SpmdShardingAnnotationOnFirstDim(
   }
 
   xla::OpSharding op_sharding;
-  if (shape.rank() == 0) {
+  if (shape.dimensions().empty()) {
     // Replicate scalar tensor (used for handling dynamic learning rates).
     op_sharding.set_type(xla::OpSharding::REPLICATED);
   } else {
