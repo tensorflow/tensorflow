@@ -13,20 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <cstdint>
-
 #include "llvm/ADT/STLExtras.h"
-#include "llvm/Support/ErrorHandling.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/OpDefinition.h"  // IWYU pragma: keep
+#include "mlir/IR/Types.h"
 #include "mlir/Support/LLVM.h"
 #include "xla/backends/gpu/codegen/triton/ir/triton_xla_ops.h"
-#include "triton/Dialect/Triton/IR/Utility.h"
-#include "triton/Dialect/TritonGPU/IR/Dialect.h"
-#include "triton/Dialect/TritonGPU/IR/LinearLayoutConversions.h"
-#include "triton/Dialect/TritonGPU/IR/TritonGPUInterfaces.h"
-#include "triton/Tools/LinearLayout.h"
 
 namespace mlir::triton::xla {
 

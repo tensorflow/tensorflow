@@ -89,6 +89,9 @@ llvm::SmallVector<int64_t> GetPaddedTileSizes(
 // XLA -> Triton type conversions.
 absl::StatusOr<mlir::Type> TritonType(EmitterLocOpBuilder& b, PrimitiveType t);
 
+// Triton type -> XLA type conversions.
+absl::StatusOr<PrimitiveType> GetPrimitiveType(mlir::Type t);
+
 mlir::Type StorageType(EmitterLocOpBuilder& b, mlir::Type t);
 
 // Get the value of the scalar constant's literal in a C++ type.
