@@ -14,20 +14,26 @@ limitations under the License.
 
 #include "tsl/platform/numbers.h"
 
-#include <ctype.h>
 #include <float.h>
 #include <stdio.h>
 #include <stdlib.h>
 
 #include <algorithm>
+#include <cctype>
 #include <charconv>
 #include <cmath>
 #include <cstdint>
+#include <cstring>
+#include <ios>
+#include <istream>
+#include <limits>
 #include <locale>
+#include <sstream>
 #include <string>
 #include <system_error>  // NOLINT
 #include <unordered_map>
 
+#include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "xla/tsl/platform/logging.h"
