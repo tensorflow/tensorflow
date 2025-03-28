@@ -41,9 +41,10 @@ limitations under the License.
 #include "xla/mlir/utils/error_util.h"
 #include "xla/mlir_hlo/mhlo/IR/register.h"
 #include "xla/mlir_hlo/mhlo/transforms/passes.h"
+#include "xla/mlir_hlo/stablehlo_ext/transforms/passes.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/llvm_ir/llvm_util.h"
-#include "tsl/platform/errors.h"
+#include "xla/tsl/platform/errors.h"
 
 namespace xla {
 
@@ -75,7 +76,8 @@ absl::Status StablehloToMhlo(mlir::ModuleOp module, bool run_canonicalizer) {
   // In order to export to XLA, we must sink constants to control flow
   // regions, since XLA uses functional control flow.
   pm.addNestedPass<mlir::func::FuncOp>(
-      mlir::mhlo::createSinkConstantsToControlFlowPass());
+      mlir::stablehlo_ext::createSinkConstantsToControlFlowPass());
+
   mlir::BaseScopedDiagnosticHandler diagnostic_handler(context);
   if (failed(pm.run(module))) {
     VLOG(1) << "MHLO->HLO lowering passes failed. Module:\n" << module;
@@ -122,10 +124,29 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ConvertHloToStablehlo(
   return std::move(mlir_module);
 }
 
-absl::StatusOr<std::unique_ptr<xla::HloModule>> ConvertStablehloToHlo(
-    mlir::ModuleOp module) {
+namespace {
+absl::Status ConvertStablehloToHloProtoInternal(mlir::ModuleOp module,
+                                                xla::HloProto* hlo_proto,
+                                                bool use_tuple_args,
+                                                bool return_tuple,
+                                                bool run_canonicalizer) {
+  if (!module) return absl::InvalidArgumentError("Module is null");
+
+  TF_RETURN_IF_ERROR(StablehloToMhlo(module, run_canonicalizer));
+
+  mlir::MlirToHloConversionOptions options;
+  options.return_tuple = return_tuple;
+  options.use_tuple_args = use_tuple_args;
+  TF_RETURN_IF_ERROR(mlir::ConvertMlirHloToHlo(module, hlo_proto, options));
+  return absl::OkStatus();
+}
+
+absl::StatusOr<std::unique_ptr<xla::HloModule>> ConvertStablehloToHloInternal(
+    mlir::ModuleOp module, bool use_tuple_args, bool return_tuple) {
   xla::HloProto hlo_proto;
-  TF_RETURN_IF_ERROR(ConvertStablehloToHloProto(module, &hlo_proto));
+  TF_RETURN_IF_ERROR(ConvertStablehloToHloProtoInternal(
+      module, &hlo_proto, use_tuple_args, return_tuple,
+      /*run_canonicalizer=*/true));
 
   // Create default config and modify config with values stored
   // in MLIR module attributes
@@ -140,17 +161,30 @@ absl::StatusOr<std::unique_ptr<xla::HloModule>> ConvertStablehloToHlo(
   return xla::HloModule::CreateFromProto(module_proto, config.value());
 }
 
+}  // namespace
+
+absl::StatusOr<std::unique_ptr<xla::HloModule>> ConvertStablehloToHlo(
+    mlir::ModuleOp module) {
+  return ConvertStablehloToHloInternal(module,
+                                       /*use_tuple_args=*/false,
+                                       /*return_tuple=*/false);
+}
+
+absl::StatusOr<std::unique_ptr<xla::HloModule>>
+ConvertStablehloToHloWithOptions(mlir::ModuleOp module, bool use_tuple_args,
+                                 bool return_tuple) {
+  return ConvertStablehloToHloInternal(module, use_tuple_args, return_tuple);
+}
+
 absl::Status ConvertStablehloToHloProto(mlir::ModuleOp module,
                                         xla::HloProto* hlo_proto) {
   if (!module) return absl::InvalidArgumentError("Module is null");
 
   TF_RETURN_IF_ERROR(StablehloToMhlo(module, /*run_canonicalizer=*/true));
-
-  mlir::MlirToHloConversionOptions options;
-  options.return_tuple = false;
-  options.use_tuple_args = false;
-  TF_RETURN_IF_ERROR(mlir::ConvertMlirHloToHlo(module, hlo_proto, options));
-  return absl::OkStatus();
+  return ConvertStablehloToHloProtoInternal(module, hlo_proto,
+                                            /*use_tuple_args=*/false,
+                                            /*return_tuple=*/false,
+                                            /*run_canonicalizer=*/true);
 }
 
 absl::Status ConvertStablehloWithManyArgsToHloProto(mlir::ModuleOp module,
@@ -158,17 +192,12 @@ absl::Status ConvertStablehloWithManyArgsToHloProto(mlir::ModuleOp module,
                                                     bool use_tuple_args) {
   if (!module) return absl::InvalidArgumentError("Module is null");
 
-  TF_RETURN_IF_ERROR(StablehloToMhlo(module, /*run_canonicalizer=*/false));
-
-  mlir::MlirToHloConversionOptions options;
-  options.return_tuple = false;
-  options.use_tuple_args = use_tuple_args;
-  // Remove attributes introduced by `import_all_computation=true` at
-  // ConvertHloToStablehlo.
+  // TODO: Why are we removing attributes.
   module->removeAttr("mhlo.xla_entry_computation_parameter_layouts");
   module->removeAttr("mhlo.xla_entry_computation_parameter_tiles");
-  TF_RETURN_IF_ERROR(mlir::ConvertMlirHloToHlo(module, hlo_proto, options));
-  return absl::OkStatus();
+  return ConvertStablehloToHloProtoInternal(module, hlo_proto, use_tuple_args,
+                                            /*return_tuple=*/false,
+                                            /*run_canonicalizer=*/false);
 }
 
 }  // namespace xla

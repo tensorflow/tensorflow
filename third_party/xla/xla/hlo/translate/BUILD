@@ -97,8 +97,10 @@ cc_library(
         "//xla/mlir/utils:error_util",
         "//xla/mlir_hlo:hlo_dialect_registration",
         "//xla/mlir_hlo:mhlo_passes",
+        "//xla/mlir_hlo:stablehlo_extension_passes",
         "//xla/service:hlo_proto_cc",
         "//xla/service/llvm_ir:llvm_util",
+        "//xla/tsl/platform:errors",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
@@ -111,7 +113,6 @@ cc_library(
         "@llvm-project//mlir:TensorDialect",
         "@llvm-project//mlir:Transforms",
         "@llvm-project//mlir:UBDialect",
-        "@local_tsl//tsl/platform:errors",
         "@stablehlo//:register",
     ],
 )

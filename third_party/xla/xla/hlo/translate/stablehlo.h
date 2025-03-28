@@ -48,6 +48,15 @@ absl::StatusOr<std::unique_ptr<xla::HloModule>> ConvertStablehloToHlo(
 absl::Status ConvertStablehloToHloProto(mlir::ModuleOp module,
                                         xla::HloProto* hlo_proto);
 
+// Convert StableHLO module to HloModule.
+// DO NOT USE THIS METHOD WITHOUT A GOOD REASON. Prefer ConvertStablehloToHlo.
+// Currently it exists to satisfy the PJRT compilation APIs where a framework
+// may specify that a computation should use tuples. This is seldom used, the
+// main exception being computations with 2k+ parameters targeting TPU.
+absl::StatusOr<std::unique_ptr<xla::HloModule>>
+ConvertStablehloToHloWithOptions(mlir::ModuleOp module, bool use_tuple_args,
+                                 bool return_tuple);
+
 // Convert StableHLO module to HloModuleProto.
 // Some platforms run out of memory when the argument list is too long.
 // This API wraps the arguments in a tuple (if use_tuple_args = true)
