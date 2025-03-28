@@ -390,6 +390,35 @@ int64_t AsyncTracker::GetNumResourcesPerInstruction(
                                        instr);
 }
 
+absl::flat_hash_map<int64_t, int64_t>
+AsyncTracker::GetNumResourcesPerInstruction(const HloInstruction& instr) const {
+  absl::flat_hash_map<int64_t, int64_t> num_resources_per_type;
+  if (instr.called_computations().empty() ||
+      instr.opcode() == HloOpcode::kAsyncStart ||
+      instr.opcode() == HloOpcode::kAsyncDone) {
+    for (const auto& [resource_type, usage] :
+         GetResourcesFromInstruction(instr)) {
+      if (usage == ResourceUsageType::kResourceOccupy) {
+        ++num_resources_per_type[resource_type];
+      }
+    }
+  }
+
+  // For instructions calling multiple computations, we assume that the called
+  // computations do not execute in parallel (i.e., they are either mutually
+  // exclusive, as in conditionals, or executed in sequence). Then for each
+  // resource type, the usage across all called computations is the maximum
+  // usage in any of the called computations.
+  for (const HloComputation* computation : instr.called_computations()) {
+    const auto& map = RecursivelyComputeResourceMap(computation);
+    for (const auto& [resource_type, num_resources] : map) {
+      num_resources_per_type[resource_type] =
+          std::max(num_resources_per_type[resource_type], num_resources);
+    }
+  }
+  return num_resources_per_type;
+}
+
 // Returns the number of "occupy" type of resources used by the instructions in
 // the given computation. If there are multiple instructions in the computation
 // that have the exact same resource usages, it only counts one of them. For
@@ -2385,20 +2414,15 @@ absl::Status DefaultSchedulerCore::InitializeScheduler(
   if (!scheduling_instruction_crosses_overlap_limit_) {
     scheduling_instruction_crosses_overlap_limit_ =
         [](const SchedulingState& sched_state, const HloGraphNode* node) {
-          for (const auto& [resource, limit] :
-               sched_state.max_concurrent_resource) {
-            // No resources in flight of this kind. Continue.
-            auto it = sched_state.resource_occupiers_in_flight.find(resource);
-            if (it == sched_state.resource_occupiers_in_flight.end() ||
-                it->second.empty()) {
+          auto num_resources_needed =
+              sched_state.async_tracker->GetNumResourcesPerInstruction(
+                  node->GetInstr());
+          for (const auto& [resource, count] : num_resources_needed) {
+            auto it = sched_state.max_concurrent_resource.find(resource);
+            if (it == sched_state.max_concurrent_resource.end()) {
               continue;
             }
-            // Number of instances of 'resource' needed if this instruction was
-            // to be scheduled.
-            const int64_t num_resources_needed =
-                sched_state.async_tracker->GetNumResourcesPerInstruction(
-                    resource, node->GetInstr());
-            if (limit < num_resources_needed) {
+            if (count > it->second) {
               return true;
             }
           }

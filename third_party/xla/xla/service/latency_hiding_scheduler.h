@@ -242,6 +242,11 @@ class AsyncTracker {
   virtual int64_t GetNumResourcesPerInstruction(
       int64_t resource_type, const HloInstruction& instr) const;
 
+  // Returns a map of number of resources used per resource type by this
+  // instruction.
+  virtual absl::flat_hash_map<int64_t, int64_t> GetNumResourcesPerInstruction(
+      const HloInstruction& instr) const;
+
   // Sets the maximum allowed number of instances for each resource
   virtual void SetConcurrentResourceLimits(
       absl::flat_hash_map<int64_t, int64_t>& max_concurrent_resource) const;
