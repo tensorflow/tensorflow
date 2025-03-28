@@ -16,6 +16,7 @@
 
 #include <cstdint>
 #include <memory>
+#include <utility>
 #include <vector>
 
 #include <gmock/gmock.h>
@@ -25,7 +26,6 @@
 #include "absl/types/span.h"
 #include "llvm/Support/Casting.h"
 #include "xla/layout_util.h"
-#include "xla/pjrt/pjrt_layout.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/basic_device_list.h"
 #include "xla/python/ifrt/device.h"
@@ -48,7 +48,7 @@
 #include "xla/python/ifrt_proxy/common/test_utils.h"
 #include "xla/python/ifrt_proxy/common/types.h"
 #include "xla/tsl/concurrency/ref_count.h"
-#include "tsl/platform/casts.h"
+#include "xla/tsl/platform/statusor.h"
 #include "tsl/platform/protobuf.h"  // IWYU pragma: keep
 #include "tsl/platform/status_matchers.h"
 #include "tsl/platform/statusor.h"
@@ -56,7 +56,6 @@
 
 using ::testing::_;
 using ::testing::ElementsAre;
-using ::testing::Optional;
 using ::testing::Pointee;
 using ::testing::Return;
 using ::testing::SizeIs;
@@ -102,9 +101,8 @@ class LoadedExecutableTest : public ::testing::Test {
   std::shared_ptr<ClientHostBufferStore> host_buffer_store_;
 };
 
-// TODO(b/315809436): Test needs rewrite because protobuf matchers are not OSS
-#if defined(PLATFORM_GOOGLE)
 TEST_F(LoadedExecutableTest, Metadata) {
+  TestQueue<IfrtRequest> requests_queue(/*pop_timeout=*/absl::Minutes(1));
   IfrtResponse response;
   ASSERT_TRUE(TextFormat::ParseFromString(
       R"pb(
@@ -130,11 +128,11 @@ TEST_F(LoadedExecutableTest, Metadata) {
         }
       )pb",
       &response));
-  EXPECT_CALL(*session_, Enqueue(Pointee(Partially(EquivToProto(
-                             R"pb(loaded_executable_metadata_request {
-                                    loaded_executable_handle: 1234
-                                  })pb")))))
-      .WillOnce(MockClientSessionReturnResponse(response));
+
+  EXPECT_CALL(
+      *session_,
+      Enqueue(IfrtRequestOfType(IfrtRequest::kLoadedExecutableMetadataRequest)))
+      .WillOnce(MockClientCaptureAndReturn(&requests_queue, response));
 
   MockClient client;
   LoadedExecutable executable(
@@ -144,33 +142,42 @@ TEST_F(LoadedExecutableTest, Metadata) {
       /*ready_future=*/Future<>(absl::OkStatus()),
       /*loaded_host_callbacks=*/{}, /*loaded_host_callback_handles=*/{});
 
-  EXPECT_THAT(
-      executable.GetParameterShardings(),
-      Optional(ElementsAre(
-          EquivToProto(R"pb(type: REPLICATED)pb"),
-          EquivToProto(R"pb(type: OTHER
-                            tile_shape {
-                              element_type: BF16
-                              dimensions: [ 2, 2 ]
-                            }
-                            tile_assignment_dimensions: [ 0, 1 ])pb"))));
-  EXPECT_THAT(executable.GetOutputShardings(),
-              Optional(ElementsAre(EquivToProto(R"pb(type: REPLICATED)pb"))));
-  ASSERT_OK_AND_ASSIGN(auto parameter_layouts,
-                       executable.GetParameterLayouts());
+  EXPECT_EQ(requests_queue.Pop()
+                .loaded_executable_metadata_request()
+                .loaded_executable_handle(),
+            1234);
+  if (executable.GetParameterShardings().has_value()) {
+    std::vector<OpSharding> param_shardings =
+        *std::move(executable.GetParameterShardings());
+    ASSERT_EQ(param_shardings.size(), 2);
+    EXPECT_EQ(param_shardings[0].type(), OpSharding::REPLICATED);
+    ASSERT_EQ(param_shardings[1].type(), OpSharding::OTHER);
+    EXPECT_EQ(param_shardings[1].tile_shape().element_type(), xla::BF16);
+    EXPECT_THAT(param_shardings[1].tile_shape().dimensions(),
+                ElementsAre(2, 2));
+    EXPECT_THAT(param_shardings[1].tile_assignment_dimensions(),
+                ElementsAre(0, 1));
+  }
+  if (executable.GetOutputShardings().has_value()) {
+    std::vector<OpSharding> output_shardings =
+        *std::move(executable.GetOutputShardings());
+    ASSERT_EQ(output_shardings.size(), 1);
+    EXPECT_EQ(output_shardings[0].type(), OpSharding::REPLICATED);
+  }
+  TF_ASSERT_OK_AND_ASSIGN(auto parameter_layouts,
+                          executable.GetParameterLayouts());
   ASSERT_EQ(parameter_layouts.size(), 2);
   EXPECT_EQ(parameter_layouts[0]->xla_layout(),
             xla::LayoutUtil::MakeDescendingLayout(/*rank=*/1));
   EXPECT_EQ(parameter_layouts[1]->xla_layout(),
             xla::LayoutUtil::MakeDescendingLayout(/*rank=*/2));
-  ASSERT_OK_AND_ASSIGN(auto output_layouts, executable.GetOutputLayouts());
+  TF_ASSERT_OK_AND_ASSIGN(auto output_layouts, executable.GetOutputLayouts());
   ASSERT_EQ(output_layouts.size(), 1);
   EXPECT_EQ(output_layouts[0]->xla_layout(),
             xla::LayoutUtil::MakeDescendingLayout(/*rank=*/2));
   EXPECT_THAT(executable.GetOutputMemoryKinds(),
               IsOkAndHolds(ElementsAre(ElementsAre("foo"))));
 }
-#endif
 
 // TODO(b/315809436): Test needs rewrite because protobuf matchers are not OSS
 #if defined(PLATFORM_GOOGLE)
