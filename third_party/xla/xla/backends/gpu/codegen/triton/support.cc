@@ -511,7 +511,6 @@ bool IsTritonUnsupportedOpcode(HloOpcode opcode) {
     case HloOpcode::kRecvDone:
     case HloOpcode::kReduceWindow:
     case HloOpcode::kReverse:
-    case HloOpcode::kRngGetAndUpdateState:
     case HloOpcode::kScatter:
     case HloOpcode::kSelectAndScatter:
     case HloOpcode::kSend:
