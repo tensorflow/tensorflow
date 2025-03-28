@@ -25,7 +25,6 @@ limitations under the License.
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/log.h"
-#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
@@ -46,7 +45,6 @@ limitations under the License.
 #include "xla/stream_executor/platform.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/protobuf.h"
 
 namespace xla {
 
@@ -155,7 +153,7 @@ class HloRunner : public HloRunnerInterface {
   // representation must have been produced by a compiler of the same platform
   // and version as this one.
   absl::StatusOr<std::unique_ptr<OpaqueExecutable>> DeserializeExecutable(
-      absl::Nonnull<const tsl::protobuf::Message*> serialized) const override;
+      absl::string_view serialized) const override;
 
   // Executes a given HLO module into a set of replicas, and returns a map
   // with the replica number as key, and the corresponding returned literal as
