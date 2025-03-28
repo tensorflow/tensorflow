@@ -101,38 +101,75 @@ absl::StatusOr<std::unique_ptr<RocmCommandBuffer>> RocmCommandBuffer::Create(
                             /*is_owned_graph=*/true));
 }
 
-absl::StatusOr<GpuCommandBuffer::ConditionalNodeResult>
+absl::StatusOr<GpuCommandBuffer::GraphConditionalNodeHandle>
 RocmCommandBuffer::CreateConditionalNode(
     absl::Span<const GraphNodeHandle> dependencies,
     GraphConditionalHandle conditional, ConditionType type) {
   return absl::UnimplementedError("Conditionals are not supported on ROCM.");
 }
 
-absl::Status RocmCommandBuffer::LaunchSetIfConditionKernel(
-    GraphConditionalHandle if_conditional, DeviceMemory<bool> predicate) {
+absl::StatusOr<GraphNodeHandle> RocmCommandBuffer::CreateSetIfConditionNode(
+    GraphConditionalHandle if_conditional, DeviceMemory<bool> predicate,
+    absl::Span<const GraphNodeHandle> dependencies) {
   return absl::UnimplementedError("Conditionals are not supported on ROCM.");
 }
 
-absl::Status RocmCommandBuffer::LaunchSetIfElseConditionKernel(
+absl::Status RocmCommandBuffer::UpdateSetIfConditionNode(
+    GraphNodeHandle handle, GraphConditionalHandle if_conditional,
+    DeviceMemory<bool> predicate) {
+  return absl::UnimplementedError("Conditionals are not supported on ROCM.");
+}
+
+absl::StatusOr<GraphNodeHandle> RocmCommandBuffer::CreateSetIfElseConditionNode(
     GraphConditionalHandle if_conditional,
+    GraphConditionalHandle else_conditional, DeviceMemory<bool> predicate,
+    absl::Span<const GraphNodeHandle> dependencies) {
+  return absl::UnimplementedError("Conditionals are not supported on ROCM.");
+}
+
+absl::Status RocmCommandBuffer::UpdateSetIfElseConditionNode(
+    GraphNodeHandle handle, GraphConditionalHandle if_conditional,
     GraphConditionalHandle else_conditional, DeviceMemory<bool> predicate) {
   return absl::UnimplementedError("Conditionals are not supported on ROCM.");
 }
 
-absl::Status RocmCommandBuffer::LaunchSetCaseConditionKernel(
-    GraphConditionalHandles conditionals, DeviceMemory<uint8_t> index,
-    bool index_is_bool, int32_t batch_offset, bool enable_conditional_default) {
+absl::StatusOr<GraphNodeHandle> RocmCommandBuffer::CreateSetCaseConditionNode(
+    absl::Span<const GraphConditionalHandle> conditionals,
+    DeviceMemory<uint8_t> index, bool index_is_bool, int32_t batch_offset,
+    bool enable_conditional_default,
+    absl::Span<const GraphNodeHandle> dependencies) {
   return absl::UnimplementedError("Conditionals are not supported on ROCM.");
 }
 
-absl::Status RocmCommandBuffer::LaunchSetForConditionKernel(
+absl::Status RocmCommandBuffer::UpdateSetCaseConditionNode(
+    GraphNodeHandle handle,
+    absl::Span<const GraphConditionalHandle> conditionals,
+    DeviceMemory<uint8_t> index, bool index_is_bool, int32_t batch_offset,
+    bool enable_conditional_default) {
+  return absl::UnimplementedError("Conditionals are not supported on ROCM.");
+}
+
+absl::StatusOr<GraphNodeHandle> RocmCommandBuffer::CreateSetForConditionNode(
     GraphConditionalHandle conditional, DeviceMemory<int32_t> loop_counter,
-    int32_t iterations) {
+    int32_t iterations, absl::Span<const GraphNodeHandle> dependencies) {
   return absl::UnimplementedError("Conditionals are not supported on ROCM.");
 }
 
-absl::Status RocmCommandBuffer::LaunchSetWhileConditionKernel(
-    GraphConditionalHandle conditional, DeviceMemory<bool> predicate) {
+absl::Status RocmCommandBuffer::UpdateSetForConditionNode(
+    GraphNodeHandle handle, GraphConditionalHandle conditional,
+    DeviceMemory<int32_t> loop_counter, int32_t iterations) {
+  return absl::UnimplementedError("Conditionals are not supported on ROCM.");
+}
+
+absl::StatusOr<GraphNodeHandle> RocmCommandBuffer::CreateSetWhileConditionNode(
+    GraphConditionalHandle conditional, DeviceMemory<bool> predicate,
+    absl::Span<const GraphNodeHandle> dependencies) {
+  return absl::UnimplementedError("Conditionals are not supported on ROCM.");
+}
+
+absl::Status RocmCommandBuffer::UpdateSetWhileConditionNode(
+    GraphNodeHandle handle, GraphConditionalHandle conditional,
+    DeviceMemory<bool> predicate) {
   return absl::UnimplementedError("Conditionals are not supported on ROCM.");
 }
 

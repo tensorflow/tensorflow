@@ -69,30 +69,65 @@ class CudaCommandBuffer final : public GpuCommandBuffer {
             << "; is_owned_graph=" << is_owned_graph_;
   }
 
-  absl::Status LaunchSetIfConditionKernel(
-      GraphConditionalHandle if_conditional,
-      DeviceMemory<bool> predicate) override;
+  //===--------------------------------------------------------------------===//
+  // APIs for launching kernels to update conditional handles.
+  //===--------------------------------------------------------------------===//
 
-  absl::Status LaunchSetIfElseConditionKernel(
+  absl::StatusOr<GraphNodeHandle> CreateSetIfConditionNode(
+      GraphConditionalHandle if_conditional, DeviceMemory<bool> predicate,
+      absl::Span<const GraphNodeHandle> dependencies) override;
+
+  absl::Status UpdateSetIfConditionNode(GraphNodeHandle handle,
+                                        GraphConditionalHandle if_conditional,
+                                        DeviceMemory<bool> predicate) override;
+
+  absl::StatusOr<GraphNodeHandle> CreateSetIfElseConditionNode(
       GraphConditionalHandle if_conditional,
+      GraphConditionalHandle else_conditional, DeviceMemory<bool> predicate,
+      absl::Span<const GraphNodeHandle> dependencies) override;
+
+  absl::Status UpdateSetIfElseConditionNode(
+      GraphNodeHandle handle, GraphConditionalHandle if_conditional,
       GraphConditionalHandle else_conditional,
       DeviceMemory<bool> predicate) override;
 
-  absl::Status LaunchSetCaseConditionKernel(
-      GraphConditionalHandles conditionals, DeviceMemory<uint8_t> index,
-      bool index_is_bool, int32_t batch_offset,
+  absl::StatusOr<GraphNodeHandle> CreateSetCaseConditionNode(
+      absl::Span<const GraphConditionalHandle> conditionals,
+      DeviceMemory<uint8_t> index, bool index_is_bool, int32_t batch_offset,
+      bool enable_conditional_default,
+      absl::Span<const GraphNodeHandle> dependencies) override;
+
+  absl::Status UpdateSetCaseConditionNode(
+      GraphNodeHandle handle,
+      absl::Span<const GraphConditionalHandle> conditionals,
+      DeviceMemory<uint8_t> index, bool index_is_bool, int32_t batch_offset,
       bool enable_conditional_default) override;
 
-  absl::Status LaunchSetForConditionKernel(GraphConditionalHandle conditional,
-                                           DeviceMemory<int32_t> loop_counter,
-                                           int32_t iterations) override;
+  absl::StatusOr<GraphNodeHandle> CreateSetForConditionNode(
+      GraphConditionalHandle conditional, DeviceMemory<int32_t> loop_counter,
+      int32_t iterations,
+      absl::Span<const GraphNodeHandle> dependencies) override;
 
-  absl::Status LaunchSetWhileConditionKernel(
-      GraphConditionalHandle conditional,
+  absl::Status UpdateSetForConditionNode(GraphNodeHandle handle,
+                                         GraphConditionalHandle conditional,
+                                         DeviceMemory<int32_t> loop_counter,
+                                         int32_t iterations) override;
+
+  absl::StatusOr<GraphNodeHandle> CreateSetWhileConditionNode(
+      GraphConditionalHandle conditional, DeviceMemory<bool> predicate,
+      absl::Span<const GraphNodeHandle> dependencies) override;
+
+  absl::Status UpdateSetWhileConditionNode(
+      GraphNodeHandle handle, GraphConditionalHandle conditional,
       DeviceMemory<bool> predicate) override;
+
+  //===--------------------------------------------------------------------===//
+
+  using NoOpKernel = TypedKernel<>;
+
   absl::StatusOr<NoOpKernel*> GetNoOpKernel();
 
-  absl::StatusOr<ConditionalNodeResult> CreateConditionalNode(
+  absl::StatusOr<GraphConditionalNodeHandle> CreateConditionalNode(
       absl::Span<const GraphNodeHandle> dependencies,
       GraphConditionalHandle conditional, ConditionType type) override;
 

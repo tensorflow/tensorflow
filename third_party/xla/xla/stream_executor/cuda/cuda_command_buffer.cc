@@ -142,9 +142,14 @@ absl::StatusOr<std::unique_ptr<CudaCommandBuffer>> CudaCommandBuffer::Create(
                             /*is_owned_graph=*/true));
 }
 
-absl::Status CudaCommandBuffer::LaunchSetIfElseConditionKernel(
+//===----------------------------------------------------------------------===//
+// APIs for launching kernels to update conditional handles.
+//===----------------------------------------------------------------------===//
+
+absl::StatusOr<GraphNodeHandle> CudaCommandBuffer::CreateSetIfElseConditionNode(
     GraphConditionalHandle if_conditional,
-    GraphConditionalHandle else_conditional, DeviceMemory<bool> predicate) {
+    GraphConditionalHandle else_conditional, DeviceMemory<bool> predicate,
+    absl::Span<const GraphNodeHandle> dependencies) {
   if (!set_if_else_condition_kernel_) {
     TF_ASSIGN_OR_RETURN(auto spec,
                         cuda::GetSetIfElseConditionKernelLoaderSpec());
@@ -152,40 +157,76 @@ absl::Status CudaCommandBuffer::LaunchSetIfElseConditionKernel(
         set_if_else_condition_kernel_,
         SetIfElseConditionKernel::FactoryType::Create(parent_, spec));
   }
-  return Launch(set_if_else_condition_kernel_, ThreadDim(), BlockDim(), {},
-                ToCudaGraphHandle(if_conditional),
-                ToCudaGraphHandle(else_conditional), predicate)
-      .status();
+  auto kernel_args = PackKernelArgs(
+      set_if_else_condition_kernel_, ToCudaGraphHandle(if_conditional),
+      ToCudaGraphHandle(else_conditional), predicate);
+  return CreateKernelNode(dependencies, ThreadDim(), BlockDim(),
+                          *set_if_else_condition_kernel_, *kernel_args);
 }
-absl::Status CudaCommandBuffer::LaunchSetIfConditionKernel(
-    GraphConditionalHandle if_conditional, DeviceMemory<bool> predicate) {
+
+absl::Status CudaCommandBuffer::UpdateSetIfElseConditionNode(
+    GraphNodeHandle handle, GraphConditionalHandle if_conditional,
+    GraphConditionalHandle else_conditional, DeviceMemory<bool> predicate) {
+  auto kernel_args = PackKernelArgs(
+      set_if_else_condition_kernel_, ToCudaGraphHandle(if_conditional),
+      ToCudaGraphHandle(else_conditional), predicate);
+  return UpdateKernelNode(handle, ThreadDim(), BlockDim(),
+                          *set_if_else_condition_kernel_, *kernel_args);
+}
+
+absl::StatusOr<GraphNodeHandle> CudaCommandBuffer::CreateSetIfConditionNode(
+    GraphConditionalHandle if_conditional, DeviceMemory<bool> predicate,
+    absl::Span<const GraphNodeHandle> dependencies) {
   if (!set_if_condition_kernel_) {
     TF_ASSIGN_OR_RETURN(auto spec, cuda::GetSetIfConditionKernelLoaderSpec());
     TF_ASSIGN_OR_RETURN(
         set_if_condition_kernel_,
         SetIfConditionKernel::FactoryType::Create(parent_, spec));
   }
-  return Launch(set_if_condition_kernel_, ThreadDim(), BlockDim(), {},
-                ToCudaGraphHandle(if_conditional), predicate)
-      .status();
+  auto kernel_args = PackKernelArgs(
+      set_if_condition_kernel_, ToCudaGraphHandle(if_conditional), predicate);
+  return CreateKernelNode(dependencies, ThreadDim(), BlockDim(),
+                          *set_if_condition_kernel_, *kernel_args);
 }
-absl::Status CudaCommandBuffer::LaunchSetForConditionKernel(
+
+absl::Status CudaCommandBuffer::UpdateSetIfConditionNode(
+    GraphNodeHandle handle, GraphConditionalHandle if_conditional,
+    DeviceMemory<bool> predicate) {
+  auto kernel_args = PackKernelArgs(
+      set_if_condition_kernel_, ToCudaGraphHandle(if_conditional), predicate);
+  return UpdateKernelNode(handle, ThreadDim(), BlockDim(),
+                          *set_if_condition_kernel_, *kernel_args);
+}
+
+absl::StatusOr<GraphNodeHandle> CudaCommandBuffer::CreateSetForConditionNode(
     GraphConditionalHandle conditional, DeviceMemory<int32_t> loop_counter,
-    int32_t iterations) {
+    int32_t iterations, absl::Span<const GraphNodeHandle> dependencies) {
   if (!set_for_condition_kernel_) {
     TF_ASSIGN_OR_RETURN(auto spec, cuda::GetSetForConditionKernelLoaderSpec());
     TF_ASSIGN_OR_RETURN(
         set_for_condition_kernel_,
         SetForConditionKernel::FactoryType::Create(parent_, spec));
   }
-
-  return CommandBuffer::Launch(set_for_condition_kernel_, ThreadDim(),
-                               BlockDim(), {}, ToCudaGraphHandle(conditional),
-                               loop_counter, iterations)
-      .status();
+  auto kernel_args =
+      PackKernelArgs(set_for_condition_kernel_, ToCudaGraphHandle(conditional),
+                     loop_counter, iterations);
+  return CreateKernelNode(dependencies, ThreadDim(), BlockDim(),
+                          *set_for_condition_kernel_, *kernel_args);
 }
-absl::Status CudaCommandBuffer::LaunchSetWhileConditionKernel(
-    GraphConditionalHandle conditional, DeviceMemory<bool> predicate) {
+
+absl::Status CudaCommandBuffer::UpdateSetForConditionNode(
+    GraphNodeHandle handle, GraphConditionalHandle conditional,
+    DeviceMemory<int32_t> loop_counter, int32_t iterations) {
+  auto kernel_args =
+      PackKernelArgs(set_for_condition_kernel_, ToCudaGraphHandle(conditional),
+                     loop_counter, iterations);
+  return UpdateKernelNode(handle, ThreadDim(), BlockDim(),
+                          *set_for_condition_kernel_, *kernel_args);
+}
+
+absl::StatusOr<GraphNodeHandle> CudaCommandBuffer::CreateSetWhileConditionNode(
+    GraphConditionalHandle conditional, DeviceMemory<bool> predicate,
+    absl::Span<const GraphNodeHandle> dependencies) {
   if (!set_while_condition_kernel_) {
     TF_ASSIGN_OR_RETURN(auto spec,
                         cuda::GetSetWhileConditionKernelLoaderSpec());
@@ -194,23 +235,29 @@ absl::Status CudaCommandBuffer::LaunchSetWhileConditionKernel(
         SetWhileConditionKernel::FactoryType::Create(parent_, spec));
   }
 
-  return Launch(set_while_condition_kernel_, ThreadDim(), BlockDim(), {},
-                ToCudaGraphHandle(conditional), predicate)
-      .status();
+  auto kernel_args = PackKernelArgs(set_while_condition_kernel_,
+                                    ToCudaGraphHandle(conditional), predicate);
+  return CreateKernelNode(dependencies, ThreadDim(), BlockDim(),
+                          *set_while_condition_kernel_, *kernel_args);
 }
 
-absl::Status CudaCommandBuffer::LaunchSetCaseConditionKernel(
-    GraphConditionalHandles conditionals, DeviceMemory<uint8_t> index,
-    bool index_is_bool, int32_t batch_offset, bool enable_conditional_default) {
+absl::Status CudaCommandBuffer::UpdateSetWhileConditionNode(
+    GraphNodeHandle handle, GraphConditionalHandle conditional,
+    DeviceMemory<bool> predicate) {
+  auto kernel_args = PackKernelArgs(set_while_condition_kernel_,
+                                    ToCudaGraphHandle(conditional), predicate);
+  return UpdateKernelNode(handle, ThreadDim(), BlockDim(),
+                          *set_while_condition_kernel_, *kernel_args);
+}
+
+template <typename... Params>
+static std::unique_ptr<KernelArgsPackedArrayBase> PackCaseConditionKernelArgs(
+    const TypedKernel<Params...>& kernel,
+    absl::Span<const GraphConditionalHandle> conditionals,
+    DeviceMemory<uint8_t> index, bool index_is_bool, int32_t batch_offset,
+    bool enable_conditional_default) {
   constexpr int kCaseBranchBatchSize = 8;
   CHECK(conditionals.size() <= kCaseBranchBatchSize);
-
-  if (!set_case_condition_kernel_) {
-    TF_ASSIGN_OR_RETURN(auto spec, cuda::GetSetCaseConditionKernelLoaderSpec());
-    TF_ASSIGN_OR_RETURN(
-        set_case_condition_kernel_,
-        SetCaseConditionKernel::FactoryType::Create(parent_, spec));
-  }
 
   // Pad handles up to size 8 with a default initialized handle.
   std::vector<CUgraphConditionalHandle> padded_handles{};
@@ -221,14 +268,45 @@ absl::Status CudaCommandBuffer::LaunchSetCaseConditionKernel(
                    return ToCudaGraphHandle(conditional);
                  });
 
-  return Launch(set_case_condition_kernel_, ThreadDim(), BlockDim(), {},
-                padded_handles[0], padded_handles[1], padded_handles[2],
-                padded_handles[3], padded_handles[4], padded_handles[5],
-                padded_handles[6], padded_handles[7], index, index_is_bool,
-                batch_offset, static_cast<int32_t>(conditionals.size()),
-                enable_conditional_default)
-      .status();
+  return PackKernelArgs(
+      kernel, padded_handles[0], padded_handles[1], padded_handles[2],
+      padded_handles[3], padded_handles[4], padded_handles[5],
+      padded_handles[6], padded_handles[7], index, index_is_bool, batch_offset,
+      static_cast<int32_t>(conditionals.size()), enable_conditional_default);
 }
+
+absl::StatusOr<GraphNodeHandle> CudaCommandBuffer::CreateSetCaseConditionNode(
+    absl::Span<const GraphConditionalHandle> conditionals,
+    DeviceMemory<uint8_t> index, bool index_is_bool, int32_t batch_offset,
+    bool enable_conditional_default,
+    absl::Span<const GraphNodeHandle> dependencies) {
+  if (!set_case_condition_kernel_) {
+    TF_ASSIGN_OR_RETURN(auto spec, cuda::GetSetCaseConditionKernelLoaderSpec());
+    TF_ASSIGN_OR_RETURN(
+        set_case_condition_kernel_,
+        SetCaseConditionKernel::FactoryType::Create(parent_, spec));
+  }
+
+  auto kernel_args = PackCaseConditionKernelArgs(
+      set_case_condition_kernel_, conditionals, index, index_is_bool,
+      batch_offset, enable_conditional_default);
+  return CreateKernelNode(dependencies, ThreadDim(), BlockDim(),
+                          *set_case_condition_kernel_, *kernel_args);
+}
+
+absl::Status CudaCommandBuffer::UpdateSetCaseConditionNode(
+    GraphNodeHandle handle,
+    absl::Span<const GraphConditionalHandle> conditionals,
+    DeviceMemory<uint8_t> index, bool index_is_bool, int32_t batch_offset,
+    bool enable_conditional_default) {
+  auto kernel_args = PackCaseConditionKernelArgs(
+      set_case_condition_kernel_, conditionals, index, index_is_bool,
+      batch_offset, enable_conditional_default);
+  return UpdateKernelNode(handle, ThreadDim(), BlockDim(),
+                          *set_case_condition_kernel_, *kernel_args);
+}
+
+//===----------------------------------------------------------------------===//
 
 absl::StatusOr<CudaCommandBuffer::NoOpKernel*>
 CudaCommandBuffer::GetNoOpKernel() {
@@ -240,7 +318,7 @@ CudaCommandBuffer::GetNoOpKernel() {
   return &noop_kernel_;
 }
 
-absl::StatusOr<GpuCommandBuffer::ConditionalNodeResult>
+absl::StatusOr<GpuCommandBuffer::GraphConditionalNodeHandle>
 CudaCommandBuffer::CreateConditionalNode(
     absl::Span<const GraphNodeHandle> dependencies,
     GraphConditionalHandle conditional, ConditionType type) {
@@ -277,7 +355,7 @@ CudaCommandBuffer::CreateConditionalNode(
   VLOG(2) << "Created conditional CUDA graph "
           << cu_params.conditional.phGraph_out[0];
 
-  return ConditionalNodeResult{
+  return GraphConditionalNodeHandle{
       FromCudaGraphHandle(node_handle),
       std::unique_ptr<CudaCommandBuffer>(
           new CudaCommandBuffer(Mode::kNested, parent_, cuda_context_,
