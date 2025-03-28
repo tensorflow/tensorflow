@@ -166,16 +166,6 @@ class GpuCommandBuffer : public CommandBuffer {
                       const BitPattern& bit_pattern,
                       size_t num_elements) override;
 
-  absl::StatusOr<const Command*> If(
-      DeviceMemory<bool> predicate, Builder then_builder,
-      absl::Span<const Command* const> dependencies) override;
-
-  absl::Status If(const Command* command, DeviceMemory<bool> predicate,
-                  Builder then_builder) override;
-
-  absl::Status IfElse(DeviceMemory<bool> predicate, Builder then_builder,
-                      Builder else_builder) override;
-
   absl::Status Case(DeviceMemory<bool> index,
                     std::vector<Builder> branches) override;
 
@@ -216,23 +206,6 @@ class GpuCommandBuffer : public CommandBuffer {
   using Dependencies = absl::InlinedVector<GraphNodeHandle, 1>;
 
  private:
-  // A callback to create node that set the state of conditional handles.
-  using CreateSetConditionFn = std::function<absl::StatusOr<GraphNodeHandle>(
-      absl::Span<const GraphNodeHandle> dependencies,
-      absl::Span<const GraphConditionalHandle>)>;
-
-  // A callback to update node that set the state of conditional handles.
-  using UpdateSetConditionFn = std::function<absl::Status(
-      GraphNodeHandle handle, absl::Span<const GraphConditionalHandle>)>;
-
-  // An extension of `Builder` for building conditional command buffers tied to
-  // conditional handles.
-  using ConditionBuilder =
-      std::function<absl::Status(GpuCommandBuffer*, GraphConditionalHandle)>;
-
-  // Wraps a regular command buffer builder into condition builder.
-  static ConditionBuilder ToConditionBuilder(Builder builder);
-
   // Prepares a nested command buffer for an update of the graph.
   // It's a prerequisite to a call to `Update` on a nested command buffer.
   // The return value needs to be kept alive until the update is finished. An
@@ -243,48 +216,11 @@ class GpuCommandBuffer : public CommandBuffer {
   absl::StatusOr<std::vector<GraphConditionalHandle>> CreateConditionalHandles(
       size_t num_handles);
 
-  // Creates a new conditional command (If, IfElse, Case, While, For) and
-  // appends it to the command buffer.
-  absl::StatusOr<const Command*> AddConditionalCommand(
-      ConditionType type, CreateSetConditionFn set_condition,
-      absl::Span<const ConditionBuilder> builders,
-      absl::Span<const GraphNodeHandle> dependencies);
-
-  // Updates a conditional command (If, IfElse, Case, While, For).
-  absl::Status AddConditionalCommand(
-      const Command* command, UpdateSetConditionFn set_condition,
-      absl::Span<const ConditionBuilder> builders);
-
   Dependencies GetAutoDependencies() const;
 
   //===--------------------------------------------------------------------===//
   // APIs for launching kernels to update conditional handles.
   //===--------------------------------------------------------------------===//
-
-  // Launches a kernels that updates the state of the given graph conditional
-  // based on the predicate. If the predicate is true, `if_conditional` is set
-  // to 1, otherwise to 0.
-  virtual absl::StatusOr<GraphNodeHandle> CreateSetIfConditionNode(
-      GraphConditionalHandle if_conditional, DeviceMemory<bool> predicate,
-      absl::Span<const GraphNodeHandle> dependencies) = 0;
-
-  virtual absl::Status UpdateSetIfConditionNode(
-      GraphNodeHandle handle, GraphConditionalHandle if_conditional,
-      DeviceMemory<bool> predicate) = 0;
-
-  // Launches a kernels that updates the state of the given graph conditionals
-  // based on the predicate. If the predicate is true, `if_conditional` is set
-  // to 1 and `else_conditional` to 0. If the predicate is false,
-  // `if_conditional` is set to 0 and `else_conditional` to 1.
-  virtual absl::StatusOr<GraphNodeHandle> CreateSetIfElseConditionNode(
-      GraphConditionalHandle if_conditional,
-      GraphConditionalHandle else_conditional, DeviceMemory<bool> predicate,
-      absl::Span<const GraphNodeHandle> dependencies) = 0;
-
-  virtual absl::Status UpdateSetIfElseConditionNode(
-      GraphNodeHandle handle, GraphConditionalHandle if_conditional,
-      GraphConditionalHandle else_conditional,
-      DeviceMemory<bool> predicate) = 0;
 
   // Launches a kernel that updates the state of the given graph conditionals
   // based on the index and batch_offset. conditional[x] is set to 1 if index

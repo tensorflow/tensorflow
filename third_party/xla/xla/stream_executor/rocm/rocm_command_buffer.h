@@ -60,24 +60,6 @@ class RocmCommandBuffer : public GpuCommandBuffer {
   // APIs for launching kernels to update conditional handles.
   //===--------------------------------------------------------------------===//
 
-  absl::StatusOr<GraphNodeHandle> CreateSetIfConditionNode(
-      GraphConditionalHandle if_conditional, DeviceMemory<bool> predicate,
-      absl::Span<const GraphNodeHandle> dependencies) override;
-
-  absl::Status UpdateSetIfConditionNode(GraphNodeHandle handle,
-                                        GraphConditionalHandle if_conditional,
-                                        DeviceMemory<bool> predicate) override;
-
-  absl::StatusOr<GraphNodeHandle> CreateSetIfElseConditionNode(
-      GraphConditionalHandle if_conditional,
-      GraphConditionalHandle else_conditional, DeviceMemory<bool> predicate,
-      absl::Span<const GraphNodeHandle> dependencies) override;
-
-  absl::Status UpdateSetIfElseConditionNode(
-      GraphNodeHandle handle, GraphConditionalHandle if_conditional,
-      GraphConditionalHandle else_conditional,
-      DeviceMemory<bool> predicate) override;
-
   absl::StatusOr<GraphNodeHandle> CreateSetCaseConditionNode(
       absl::Span<const GraphConditionalHandle> conditionals,
       DeviceMemory<uint8_t> index, bool index_is_bool, int32_t batch_offset,

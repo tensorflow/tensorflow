@@ -108,31 +108,6 @@ RocmCommandBuffer::CreateConditionalNode(
   return absl::UnimplementedError("Conditionals are not supported on ROCM.");
 }
 
-absl::StatusOr<GraphNodeHandle> RocmCommandBuffer::CreateSetIfConditionNode(
-    GraphConditionalHandle if_conditional, DeviceMemory<bool> predicate,
-    absl::Span<const GraphNodeHandle> dependencies) {
-  return absl::UnimplementedError("Conditionals are not supported on ROCM.");
-}
-
-absl::Status RocmCommandBuffer::UpdateSetIfConditionNode(
-    GraphNodeHandle handle, GraphConditionalHandle if_conditional,
-    DeviceMemory<bool> predicate) {
-  return absl::UnimplementedError("Conditionals are not supported on ROCM.");
-}
-
-absl::StatusOr<GraphNodeHandle> RocmCommandBuffer::CreateSetIfElseConditionNode(
-    GraphConditionalHandle if_conditional,
-    GraphConditionalHandle else_conditional, DeviceMemory<bool> predicate,
-    absl::Span<const GraphNodeHandle> dependencies) {
-  return absl::UnimplementedError("Conditionals are not supported on ROCM.");
-}
-
-absl::Status RocmCommandBuffer::UpdateSetIfElseConditionNode(
-    GraphNodeHandle handle, GraphConditionalHandle if_conditional,
-    GraphConditionalHandle else_conditional, DeviceMemory<bool> predicate) {
-  return absl::UnimplementedError("Conditionals are not supported on ROCM.");
-}
-
 absl::StatusOr<GraphNodeHandle> RocmCommandBuffer::CreateSetCaseConditionNode(
     absl::Span<const GraphConditionalHandle> conditionals,
     DeviceMemory<uint8_t> index, bool index_is_bool, int32_t batch_offset,

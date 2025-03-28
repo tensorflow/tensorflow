@@ -73,8 +73,6 @@ namespace xla::gpu {
   V(kMemcpyDeviceToDeviceCmd, "MemcpyDeviceToDeviceCmd") \
   V(kMemzeroCmd, "MemzeroCmd")                           \
   V(kMemset32Cmd, "Memset32Cmd")                         \
-  V(kIfCmd, "IfCmd")                                     \
-  V(kIfElseCmd, "IfElseCmd")                             \
   V(kCaseCmd, "CaseCmd")                                 \
   V(kForCmd, "ForCmd")                                   \
   V(kWhileCmd, "WhileCmd")                               \
@@ -549,58 +547,6 @@ class Memset32Cmd : public CommandBufferCmd {
  private:
   BufferAllocation::Slice dst_;
   uint32_t bit_pattern_;
-};
-
-//===----------------------------------------------------------------------===//
-// IfCmd
-//===----------------------------------------------------------------------===//
-
-class IfCmd : public CommandBufferCmd {
- public:
-  IfCmd(ExecutionStreamId execution_stream_id, BufferAllocation::Slice pred,
-        CommandBufferCmdSequence then_commands);
-
-  absl::Status Initialize(const Thunk::InitializeParams& params,
-                          StateManager& state) override;
-
-  absl::Status Record(const Thunk::ExecuteParams& execute_params,
-                      const RecordParams& record_params,
-                      se::CommandBuffer* command_buffer) override;
-
-  bool force_update() override;
-
-  BufferUseVector buffers() override;
-
- private:
-  BufferAllocation::Slice pred_;
-  CommandBufferCmdSequence then_commands_;
-};
-
-//===----------------------------------------------------------------------===//
-// IfElseCmd
-//===----------------------------------------------------------------------===//
-
-class IfElseCmd : public CommandBufferCmd {
- public:
-  IfElseCmd(ExecutionStreamId execution_stream_id, BufferAllocation::Slice pred,
-            CommandBufferCmdSequence then_commands,
-            CommandBufferCmdSequence else_commands);
-
-  absl::Status Initialize(const Thunk::InitializeParams& params,
-                          StateManager& state) override;
-
-  absl::Status Record(const Thunk::ExecuteParams& execute_params,
-                      const RecordParams& record_params,
-                      se::CommandBuffer* command_buffer) override;
-
-  bool force_update() override;
-
-  BufferUseVector buffers() override;
-
- private:
-  BufferAllocation::Slice pred_;
-  CommandBufferCmdSequence then_commands_;
-  CommandBufferCmdSequence else_commands_;
 };
 
 //===----------------------------------------------------------------------===//

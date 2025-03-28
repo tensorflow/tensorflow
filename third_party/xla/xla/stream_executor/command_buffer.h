@@ -170,23 +170,6 @@ class CommandBuffer {
   //--------------------------------------------------------------------------//
 
   // Adds a conditional operation that will execute a command buffer constructed
-  // by `then_builder` if `pred` value is `true`.
-  virtual absl::StatusOr<const Command*> If(
-      DeviceMemory<bool> pred, Builder then_builder,
-      absl::Span<const Command* const> dependencies) = 0;
-
-  // Updates a conditional operation with new predicate buffer and updates
-  // `then` command buffer using provided builder.
-  virtual absl::Status If(const Command* command, DeviceMemory<bool> pred,
-                          Builder then_builder) = 0;
-
-  // Adds a conditional operation that will execute a command buffer constructed
-  // by `then_builder` if `pred` value is `true`, or a command buffer
-  // constructed by `else_builder` if `pred` is `false`.
-  virtual absl::Status IfElse(DeviceMemory<bool> pred, Builder then_builder,
-                              Builder else_builder) = 0;
-
-  // Adds a conditional operation that will execute a command buffer constructed
   // by the `branches` builder at `index`. If `index` is out of range, then it
   // will run a conditional command buffer constructed by the last builder.
   //
