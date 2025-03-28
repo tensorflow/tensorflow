@@ -228,7 +228,7 @@ Client::MakeArrayFromHostBuffer(
     xla::ifrt::Client::HostBufferSemantics semantics,
     std::function<void()> on_done_with_host_buffer,
     tsl::RCReference<xla::ifrt::UserContext> user_context) {
-  // Currently the `user_context` parameter is ignored.
+  // TODO(b/407104769): Handle `user_context`.
   return Array::MakeArrayFromHostBuffer(
       this, rpc_helper_, data, dtype, std::move(shape), std::move(byte_strides),
       std::move(sharding), semantics, std::move(on_done_with_host_buffer));

@@ -260,8 +260,7 @@ Array::MakeArraysFromHostBufferShards(
     return xla::ifrt::ClientMakeArraysFromHostBufferShards(
         client, specs, semantics, std::move(user_context));
   }
-  // Currently the `user_context` parameter is ignored, similarly to
-  // `Client::MakeArrayFromHostBuffer`.
+  // TODO(b/407104769): Handle `user_context`.
 
   absl::InlinedVector<absl::InlinedVector<uint64_t, 1>, 1>
       host_buffer_handles_for_specs;
