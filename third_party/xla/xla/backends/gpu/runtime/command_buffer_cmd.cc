@@ -19,7 +19,6 @@ limitations under the License.
 #include <cassert>
 #include <cstddef>
 #include <cstdint>
-#include <iterator>
 #include <memory>
 #include <optional>
 #include <string>
@@ -187,33 +186,14 @@ void CommandBufferCmdSequence::Append(std::unique_ptr<CommandBufferCmd> cmd) {
     allocs_indices_.insert(buffer.slice().index());
   }
 
-  CommandBufferCmd::BufferUseVector buffers = cmd->buffers();
-  bool requires_barrier = HasConflicts(buffers);
-
-  // Always add barriers between commands if we want to serialize execution.
-  if (synchronization_mode_ == SynchronizationMode::kSerialize &&
-      !commands_.empty()) {
-    requires_barrier = true;
-  }
-
-  // If the first recorded command is implemented as a nested command buffer we
-  // force a barrier before recording the next command as a workaround for CUDA
-  // graph bug, where child CUDA graph must be a single CUDA graph root node.
-  if (commands_.size() == 1 && commands_.front().cmd->IsNestedCommandBuffer()) {
-    requires_barrier = true;
-  }
-
-  if (requires_barrier) ClearTrackedBuffers();
-
-  commands_.push_back({std::move(cmd), requires_barrier});
-  TrackBuffers(buffers);
+  commands_.push_back({std::move(cmd)});
 }
 
 absl::Status CommandBufferCmdSequence::Prepare(
     const Thunk::PrepareParams& params,
     Thunk::ResourceRequestsInterface& resource_requests) {
   for (auto& command : commands_) {
-    TF_RETURN_IF_ERROR(command.cmd->Prepare(params, resource_requests));
+    TF_RETURN_IF_ERROR(command->Prepare(params, resource_requests));
   }
   return absl::OkStatus();
 }
@@ -222,44 +202,9 @@ absl::Status CommandBufferCmdSequence::Initialize(
     const Thunk::InitializeParams& params,
     CommandBufferCmd::StateManager& state) {
   for (auto& command : commands_) {
-    TF_RETURN_IF_ERROR(command.cmd->Initialize(params, state));
+    TF_RETURN_IF_ERROR(command->Initialize(params, state));
   }
   return absl::OkStatus();
-}
-
-namespace {
-// Returns true if slice overlaps with any of the slices in read set.
-bool Overlaps(const BufferAllocation::Slice& slice,
-              const absl::flat_hash_set<BufferAllocation::Slice>& slices) {
-  if (slices.contains(slice)) return true;
-  for (auto& read : slices)
-    if (read.OverlapsWith(slice)) return true;
-  return false;
-}
-}  // namespace
-
-bool CommandBufferCmdSequence::HasConflicts(
-    const CommandBufferCmd::BufferUseVector& buffers) {
-  return absl::c_any_of(buffers, [&](const auto& buffer) {
-    return buffer.access() == MemoryAccess::kWrite
-               ? Overlaps(buffer.slice(), read_write_set_.write) ||
-                     Overlaps(buffer.slice(), read_write_set_.read)
-               : Overlaps(buffer.slice(), read_write_set_.write);
-  });
-}
-
-void CommandBufferCmdSequence::TrackBuffers(
-    const CommandBufferCmd::BufferUseVector& buffers) {
-  for (const BufferUse& buffer : buffers) {
-    if (buffer.access() == MemoryAccess::kWrite)
-      read_write_set_.write.insert(buffer.slice());
-    if (buffer.access() == MemoryAccess::kRead)
-      read_write_set_.read.insert(buffer.slice());
-  }
-}
-
-void CommandBufferCmdSequence::ClearTrackedBuffers() {
-  read_write_set_ = ReadWriteSet();
 }
 
 static absl::string_view RecordModeString(
@@ -289,24 +234,17 @@ absl::Status CommandBufferCmdSequence::Record(
   // Track the number of commands recorded between barriers.
   int64_t num_recorded_commands = 0;
 
-  for (CommandInfo& command : commands_) {
+  for (std::unique_ptr<CommandBufferCmd>& command : commands_) {
     if (execute_params.mock_collectives &&
-        dynamic_cast<CollectiveCmd*>(command.cmd.get())) {
+        dynamic_cast<CollectiveCmd*>(command.get())) {
       continue;
     }
 
     std::optional<tsl::profiler::ScopedAnnotation> annotation =
-        GetKernelAnnotation(command.cmd->profile_annotation());
-
-    if (command.requires_barrier) {
-      VLOG(3) << "Add command buffer barrier after " << num_recorded_commands
-              << " recorded commands";
-      TF_RETURN_IF_ERROR(command_buffer->Barrier());
-      num_recorded_commands = 0;
-    }
+        GetKernelAnnotation(command->profile_annotation());
 
     TF_RETURN_IF_ERROR(
-        command.cmd->Record(execute_params, record_params, command_buffer));
+        command->Record(execute_params, record_params, command_buffer));
     ++num_recorded_commands;
   }
 
@@ -330,13 +268,6 @@ const absl::flat_hash_set<BufferUse>& CommandBufferCmdSequence::buffers()
 const absl::flat_hash_set<BufferAllocation::Index>&
 CommandBufferCmdSequence::allocs_indices() const {
   return allocs_indices_;
-}
-
-std::vector<bool> CommandBufferCmdSequence::barriers() const {
-  std::vector<bool> barriers;
-  absl::c_transform(commands_, std::back_inserter(barriers),
-                    [](auto& command) { return command.requires_barrier; });
-  return barriers;
 }
 
 //===----------------------------------------------------------------------===//

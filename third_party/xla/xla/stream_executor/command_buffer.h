@@ -108,11 +108,6 @@ class CommandBuffer {
   // Command buffer API
   //===--------------------------------------------------------------------===//
 
-  // Adds an execution barrier to the command buffer: all commands added
-  // before a barrier will complete before any of the commands added after a
-  // barrier.
-  virtual absl::Status Barrier() = 0;
-
   // Adds a kernel launch command.
   virtual absl::StatusOr<const Command*> Launch(
       const ThreadDim& threads, const BlockDim& blocks, const Kernel& kernel,

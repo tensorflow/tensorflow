@@ -317,49 +317,23 @@ class CommandBufferCmdSequence {
   // Returns buffer allocations indices referenced by commands in this sequence.
   const absl::flat_hash_set<BufferAllocation::Index>& allocs_indices() const;
 
-  // Returns a vector that tells if command at the given index requires a
-  // barrier.
-  std::vector<bool> barriers() const;
-
   bool empty() const { return commands_.empty(); }
   size_t size() const { return commands_.size(); }
 
   bool force_update() const {
-    return absl::c_any_of(commands_, [](const CommandInfo& cmd_info) {
-      return cmd_info.cmd->force_update();
-    });
+    return absl::c_any_of(commands_,
+                          [](const auto& cmd) { return cmd->force_update(); });
   }
 
  private:
-  struct CommandInfo {
-    std::unique_ptr<CommandBufferCmd> cmd;
-    bool requires_barrier;
-  };
-
-  // Functions for tracking buffer usage of recorded commands and figuring out
-  // when the next command requires a barrier for correctness.
-  bool HasConflicts(const CommandBufferCmd::BufferUseVector& buffers);
-  void TrackBuffers(const CommandBufferCmd::BufferUseVector& buffers);
-  void ClearTrackedBuffers();
-
   SynchronizationMode synchronization_mode_;
-  std::vector<CommandInfo> commands_;
+  std::vector<std::unique_ptr<CommandBufferCmd>> commands_;
 
   // Buffers referenced by commands in this sequence.
   absl::flat_hash_set<BufferUse> buffers_;
 
   // Buffer allocations indices referenced by commands in this sequence.
   absl::flat_hash_set<BufferAllocation::Index> allocs_indices_;
-
-  // We track read and write sets of commands recorded into the command
-  // sequence to detect conflicts and insert explicit barriers. These are the
-  // buffer allocation slices used by commands appended since the last barrier.
-  struct ReadWriteSet {
-    absl::flat_hash_set<BufferAllocation::Slice> read;
-    absl::flat_hash_set<BufferAllocation::Slice> write;
-  };
-
-  ReadWriteSet read_write_set_;
 };
 
 //===----------------------------------------------------------------------===//

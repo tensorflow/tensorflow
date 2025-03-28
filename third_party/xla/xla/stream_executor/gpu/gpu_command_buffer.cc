@@ -148,8 +148,6 @@ absl::Status GpuCommandBuffer::CheckNotFinalized() {
   return absl::OkStatus();
 }
 
-absl::Status GpuCommandBuffer::Barrier() { return absl::OkStatus(); }
-
 absl::StatusOr<const CommandBuffer::Command*>
 GpuCommandBuffer::LaunchWithPackedArgs(
     const ThreadDim& threads, const BlockDim& blocks, const Kernel& kernel,

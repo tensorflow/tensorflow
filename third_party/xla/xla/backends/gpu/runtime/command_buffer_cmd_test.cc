@@ -58,7 +58,6 @@ static se::StreamExecutor* GpuExecutor() {
 
 // Give a short aliases to execution threads.
 static constexpr auto s0 = ExecutionStreamId(0);
-static constexpr auto s1 = ExecutionStreamId(1);
 
 // A command buffer cmd for testing automatic barriers insertion by the command
 // buffer cmd sequence. We never execute this command, we need it only to pass
@@ -109,9 +108,7 @@ TEST(CommandBufferCmdTest, SerializeExecution) {
   commands.Emplace<TestOnlyCommandBufferCmd>(s0, BufferUseVector{use0});
   commands.Emplace<TestOnlyCommandBufferCmd>(s0, BufferUseVector{use1});
 
-  ASSERT_EQ(commands.barriers().size(), 2);
-  EXPECT_EQ(commands.barriers().at(0), false);
-  EXPECT_EQ(commands.barriers().at(1), true);
+  // TODO(ezhulenev): Check that commands correctly infer dependencies.
 }
 
 TEST(CommandBufferCmdTest, NoReadBarrier) {
@@ -128,9 +125,7 @@ TEST(CommandBufferCmdTest, NoReadBarrier) {
   commands.Emplace<TestOnlyCommandBufferCmd>(s0, BufferUseVector{use0});
   commands.Emplace<TestOnlyCommandBufferCmd>(s0, BufferUseVector{use1});
 
-  ASSERT_EQ(commands.barriers().size(), 2);
-  EXPECT_EQ(commands.barriers().at(0), false);
-  EXPECT_EQ(commands.barriers().at(1), false);
+  // TODO(ezhulenev): Check that commands correctly infer dependencies.
 }
 
 TEST(CommandBufferCmdTest, NoWriteBarrier) {
@@ -147,9 +142,7 @@ TEST(CommandBufferCmdTest, NoWriteBarrier) {
   commands.Emplace<TestOnlyCommandBufferCmd>(s0, BufferUseVector{use0});
   commands.Emplace<TestOnlyCommandBufferCmd>(s0, BufferUseVector{use1});
 
-  ASSERT_EQ(commands.barriers().size(), 2);
-  EXPECT_EQ(commands.barriers().at(0), false);
-  EXPECT_EQ(commands.barriers().at(1), false);
+  // TODO(ezhulenev): Check that commands correctly infer dependencies.
 }
 
 TEST(CommandBufferCmdTest, WriteConflictBarrier) {
@@ -169,10 +162,7 @@ TEST(CommandBufferCmdTest, WriteConflictBarrier) {
   commands.Emplace<TestOnlyCommandBufferCmd>(s0, BufferUseVector{use1});
   commands.Emplace<TestOnlyCommandBufferCmd>(s0, BufferUseVector{use2});
 
-  ASSERT_EQ(commands.barriers().size(), 3);
-  EXPECT_EQ(commands.barriers().at(0), false);
-  EXPECT_EQ(commands.barriers().at(1), false);
-  EXPECT_EQ(commands.barriers().at(2), true);
+  // TODO(ezhulenev): Check that commands correctly infer dependencies.
 }
 
 TEST(CommandBufferCmdTest, MemcpyCmd) {

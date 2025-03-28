@@ -131,8 +131,6 @@ class GpuCommandBuffer : public CommandBuffer {
 
   GpuCommandBuffer(Mode mode, StreamExecutor* parent);
 
-  absl::Status Barrier() override;
-
   using CommandBuffer::Launch;
 
   absl::StatusOr<const Command*> Launch(
