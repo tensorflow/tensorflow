@@ -28,6 +28,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "base/examine_stack.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/status.h"
@@ -303,6 +304,12 @@ class BufferAllocation {
                                        ShapeIndex param_shape_index,
                                        bool parameter_aliased_with_output) {
     is_entry_computation_parameter_ = true;
+    LOG(INFO) << "[clin-buf] set parameter_aliased_with_output = "
+              << parameter_aliased_with_output;
+    // std::string trace;
+    // DumpStackTrace(1, DebugWriteToString, &trace);
+    // LOG(INFO) << "TRACE:\n" << trace;
+
     is_parameter_aliased_with_output_ = parameter_aliased_with_output;
     parameter_number_ = parameter_number;
     param_shape_index_ = std::move(param_shape_index);
