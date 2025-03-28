@@ -2065,6 +2065,35 @@ cc_library(
 )
 
 cc_library(
+    name = "cpu_float_support",
+    hdrs = ["cpu_float_support.h"],
+    copts = tsl_copts(),
+    deps = [
+        "//xla/hlo/ir:hlo",
+        "//xla/service:float_support",
+    ],
+)
+
+xla_cc_test(
+    name = "cpu_float_support_test",
+    srcs = ["cpu_float_support_test.cc"],
+    tags = ["test_migrated_to_hlo_runner_pjrt"],
+    deps = [
+        ":cpu_float_support",
+        "//xla:xla_data_proto_cc",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/transforms/simplifiers:float_normalization",
+        "//xla/service:hlo_runner",
+        "//xla/service:platform_util",
+        "//xla/tests:hlo_runner_agnostic_test_base",
+        "//xla/tsl/platform:statusor",
+        "//xla/tsl/platform:test",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
     name = "cpu_symbol_repository",
     hdrs = ["cpu_symbol_repository.h"],
     deps = [
