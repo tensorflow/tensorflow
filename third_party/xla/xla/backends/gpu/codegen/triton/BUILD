@@ -697,6 +697,7 @@ cc_library(
 xla_cc_test(
     name = "fusion_emitter_mem_utils_test",
     srcs = if_cuda_is_configured(["fusion_emitter_mem_utils_test.cc"]),
+    fail_if_no_test_linked = False,  # NOLINT=The test is empty on non-CUDA platforms.
     deps = [
         ":fusion_emitter",
         "//xla/codegen:emitter_loc_op_builder",

@@ -835,12 +835,9 @@ def strict_cc_test(
       linkstatic: Whether to link statically.
       shuffle_tests: Whether to shuffle the test cases.
       args: The arguments to pass to the test.
-      fail_if_no_test_linked: Whether to fail if no tests are linked. Unimplemented in OSS as
-          --gtest_fail_if_no_test_linked is not available in the OSS build as of 2025-02-27.
+      fail_if_no_test_linked: Whether to fail if no tests are linked.
       **kwargs: Other arguments to pass to the test.
     """
-
-    _ = fail_if_no_test_linked  # buildifier: disable=unused-variable
 
     if args == None:
         args = []
@@ -848,6 +845,12 @@ def strict_cc_test(
     if shuffle_tests:
         # Shuffle tests to avoid test ordering dependencies.
         args = args + ["--gtest_shuffle"]
+
+    if fail_if_no_test_linked:
+        # Fail if no tests are linked.
+        # This is to avoid having a test target that does not run any tests.
+        # This can happen if the test's link options are not set correctly.
+        args = args + ["--gtest_fail_if_no_test_linked"]
 
     native.cc_test(
         name = name,

@@ -199,6 +199,7 @@ def xla_test(
         # However, this increases the size of the test binary, which breaks Nvidia's build.
         # Therefore we use dynamic linking outside Google.
         linkstatic = False,
+        fail_if_no_test_linked = True,
         **kwargs):
     """Generates strict_cc_test targets for the given XLA backends.
 
@@ -269,6 +270,7 @@ def xla_test(
         arguments to pass to strict_cc_test. Only use for kwargs that don't have a
         dedicated argument, like setting per-backend flaky or timeout attributes.
       linkstatic: Whether to link the test statically.
+      fail_if_no_test_linked: Whether to fail if no test case is linked into the test.
       **kwargs: Additional keyword arguments to pass to strict_cc_test.
     """
 
@@ -357,6 +359,7 @@ def xla_test(
             deps = deps + backend_deps,
             data = data + this_backend_data,
             linkstatic = linkstatic,
+            fail_if_no_test_linked = fail_if_no_test_linked,
             **this_backend_kwargs
         )
 
@@ -390,6 +393,11 @@ def xla_test(
             name = name,
             deps = ["@com_google_googletest//:gtest_main"],
             linkstatic = linkstatic,
+            # This test is deliberately empty. Its only purpose is to avoid
+            # creating an empty test suite, which would be a problem for
+            # --build_tag_filters (see above). Therefore we don't want to fail
+            # if no test case is linked in.
+            fail_if_no_test_linked = False,
             **kwargs
         )
 
