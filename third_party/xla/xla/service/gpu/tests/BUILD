@@ -117,9 +117,10 @@ xla_test(
     ],
 )
 
-xla_cc_test(
+xla_test(
     name = "async_kernel_launch_test",
     srcs = ["async_kernel_launch_test.cc"],
+    backends = ["gpu"],
     # "requires-net:external" tag allows uploading `xprof` results.
     tags = if_google(["requires-net:external"]) + tf_cuda_tests_tags(),
     deps = [
@@ -127,7 +128,6 @@ xla_cc_test(
         "//xla:literal",
         "//xla:literal_util",
         "//xla:xla_proto_cc",
-        "//xla/service:gpu_plugin",
         "//xla/service:hlo_module_config",
         "//xla/tests:hlo_test_base",
         "//xla/tests:literal_test_util",

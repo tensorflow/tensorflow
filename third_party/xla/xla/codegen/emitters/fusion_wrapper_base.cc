@@ -37,7 +37,8 @@ absl::StatusOr<bool> FusionWrapperBase::Run(
   std::function<absl::Status(HloInstruction*)> handle_instruction;
   handle_instruction = [&](HloInstruction* instruction) -> absl::Status {
     const HloOpcode opcode = instruction->opcode();
-    if (opcode == HloOpcode::kConditional || opcode == HloOpcode::kWhile) {
+    if (opcode == HloOpcode::kConditional || opcode == HloOpcode::kWhile ||
+        opcode == HloOpcode::kCall || opcode == HloOpcode::kAsyncStart) {
       for (auto* computation : instruction->called_computations()) {
         for (auto* inner_instruction :
              computation->MakeInstructionPostOrder()) {
