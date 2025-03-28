@@ -108,34 +108,6 @@ cc_library(
 )
 
 cc_library(
-    name = "python_ref_manager",
-    hdrs = ["python_ref_manager.h"],
-    compatible_with = [],
-    copts = [
-        "-fexceptions",
-        "-fno-strict-aliasing",
-    ],
-    features = ["-use_header_modules"],
-    deps = if_google([
-        "//third_party/py/jax/jaxlib/xla:python_ref_manager",
-    ]),
-)
-
-cc_library(
-    name = "traceback",
-    hdrs = ["traceback.h"],
-    compatible_with = [],
-    copts = [
-        "-fexceptions",
-        "-fno-strict-aliasing",
-    ],
-    features = ["-use_header_modules"],
-    deps = if_google([
-        "//third_party/py/jax/jaxlib/xla:traceback",
-    ]),
-)
-
-cc_library(
     name = "pprof_profile_builder",
     srcs = ["pprof_profile_builder.cc"],
     hdrs = ["pprof_profile_builder.h"],
@@ -155,33 +127,6 @@ cc_library(
         "@local_tsl//tsl/profiler/protobuf:profile_proto_cc",
         "@nanobind",
     ],
-)
-
-cc_library(
-    name = "py_client",
-    hdrs = [
-        "py_array.h",
-        "py_client.h",
-        "py_compile_only_client.h",
-        "py_device.h",
-        "py_device_list.h",
-        "py_executable.h",
-        "py_memory_space.h",
-        "py_program.h",
-        "py_values.h",
-        "sharded_device_array.h",
-        "sharding.h",
-        "to_ifrt_sharding.h",
-    ],
-    compatible_with = [],
-    copts = [
-        "-fexceptions",
-        "-fno-strict-aliasing",
-    ],
-    features = ["-use_header_modules"],
-    deps = if_google([
-        "//third_party/py/jax/jaxlib/xla:py_client",
-    ]),
 )
 
 cc_library(
@@ -425,17 +370,6 @@ xla_cc_test(
         "@local_tsl//tsl/profiler/protobuf:profiled_instructions_proto_cc_impl",
         "@local_tsl//tsl/profiler/protobuf:xplane_proto_cc",
     ],
-)
-
-cc_library(
-    name = "nb_class_ptr",
-    hdrs = ["nb_class_ptr.h"],
-    compatible_with = [],
-    copts = ["-fexceptions"],
-    features = ["-use_header_modules"],
-    deps = if_google([
-        "//third_party/py/jax/jaxlib/xla:nb_class_ptr",
-    ]),
 )
 
 cc_library(
