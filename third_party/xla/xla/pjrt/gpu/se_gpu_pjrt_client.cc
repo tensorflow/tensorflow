@@ -119,6 +119,7 @@ limitations under the License.
 #if GOOGLE_CUDA
 #include "third_party/gpus/cuda/include/cuda.h"
 #include "third_party/gpus/cuda/include/cuda_runtime_api.h"
+#include "xla/backends/gpu/collectives/nvshmem_collectives.h"
 #include "xla/service/gpu/model/gpu_collective_performance_model.h"
 #include "xla/stream_executor/gpu/gpu_cudamallocasync_allocator.h"
 #elif TENSORFLOW_USE_ROCM
@@ -1248,6 +1249,15 @@ absl::StatusOr<DeviceTopologyPair> BuildDistributedDevices(
   }
   gpu_executable_run_options->set_gpu_global_device_ids(
       std::move(gpu_device_ids));
+#if GOOGLE_CUDA
+  static const bool xla_gpu_experimental_enable_nvshmem =
+      xla::GetDebugOptionsFromFlags().xla_gpu_experimental_enable_nvshmem();
+  if (xla_gpu_experimental_enable_nvshmem) {
+    xla::gpu::NvshmemCollectives::Default()->SetEnvInfo(
+        node_id, global_topology.nodes().size(), local_device_states.size(),
+        kv_store);
+  }
+#endif  // GOOGLE_CUDA
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
   if (num_nodes > 1) {
     auto nccl_id_store = std::make_shared<NcclIdStore>(node_id, device_to_node,
@@ -1257,7 +1267,7 @@ absl::StatusOr<DeviceTopologyPair> BuildDistributedDevices(
           return nccl_id_store->GetNcclUniqueId(key);
         });
   }
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
   TF_ASSIGN_OR_RETURN(GpuTopologyProto gpu_topology,
                       BuildGpuTopology(global_topology));
   return std::make_pair(std::move(devices), gpu_topology);

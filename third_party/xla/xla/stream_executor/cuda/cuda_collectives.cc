@@ -22,6 +22,8 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "third_party/nccl/nccl.h"
+#include "xla/backends/gpu/collectives/nvshmem_collectives.h"
+#include "xla/debug_options_flags.h"
 #include "xla/stream_executor/activate_context.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "tsl/platform/logging.h"
@@ -32,8 +34,11 @@ namespace stream_executor::gpu {
 /* static */ absl::StatusOr<void*> CudaCollectives::CollectiveMemoryAllocate(
     StreamExecutor* executor, uint64_t bytes) {
   if (bytes == 0) return nullptr;
-
   std::unique_ptr<ActivateContext> activation = executor->Activate();
+
+  if (xla::GetDebugOptionsFromFlags().xla_gpu_experimental_enable_nvshmem()) {
+    return xla::gpu::NvshmemCollectives::Default()->Allocate(bytes);
+  }
 
   void* ptr = nullptr;
   ncclResult_t res = ncclMemAlloc(&ptr, bytes);
@@ -52,6 +57,10 @@ namespace stream_executor::gpu {
 /* static */ absl::Status CudaCollectives::CollectiveMemoryDeallocate(
     StreamExecutor* executor, void* location) {
   std::unique_ptr<ActivateContext> activation = executor->Activate();
+
+  if (xla::GetDebugOptionsFromFlags().xla_gpu_experimental_enable_nvshmem()) {
+    return xla::gpu::NvshmemCollectives::Default()->Deallocate(location);
+  }
 
   ncclResult_t res = ncclMemFree(location);
   if (res != ncclSuccess) {

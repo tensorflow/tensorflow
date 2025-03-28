@@ -259,7 +259,6 @@ cc_library(
         "cuda-only",
         "gpu",
     ],
-    visibility = ["//visibility:private"],
     deps = [
         "//xla/core/collectives",
         "//xla/core/collectives:clique_id",

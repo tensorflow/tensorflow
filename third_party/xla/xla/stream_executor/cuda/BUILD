@@ -236,6 +236,8 @@ cc_library(
         "manual",
     ],
     deps = [
+        "//xla:debug_options_flags",
+        "//xla/backends/gpu/collectives:nvshmem_collectives",
         "//xla/stream_executor:activate_context",
         "//xla/stream_executor:stream_executor_h",
         "@com_google_absl//absl/status",

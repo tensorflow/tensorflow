@@ -146,6 +146,7 @@ cc_library(
         # keep sorted
         ":nccl_id_store",
         "//xla:debug_options_flags",
+        "//xla/backends/gpu/collectives:nvshmem_collectives",
         "//xla/service/gpu:gpu_compiler",
         "//xla/service/gpu:gpu_constants",
         "//xla/service/gpu:gpu_executable",
@@ -160,6 +161,50 @@ cc_library(
         # keep sorted
         "@local_config_rocm//rocm:rocm_headers",
     ]),
+)
+
+xla_test(
+    name = "se_gpu_pjrt_client_nvshmem_test",
+    srcs = ["se_gpu_pjrt_client_nvshmem_test.cc"],
+    backends = ["gpu"],
+    env = {
+        "XLA_FLAGS": "--xla_gpu_experimental_enable_nvshmem=true",
+    },
+    tags = [
+        "gpu",
+        "no_oss",
+        "noasan",
+        "nomsan",
+        "requires-gpu-sm90-only",
+    ],
+    deps = [
+        ":gpu_topology_proto_cc",
+        ":se_gpu_pjrt_client",
+        "//xla:shape_util",
+        "//xla:util",
+        "//xla:xla_data_proto_cc",
+        "//xla:xla_proto_cc",
+        "//xla/backends/gpu/collectives:nvshmem_collectives",
+        "//xla/ffi",
+        "//xla/ffi:ffi_api",
+        "//xla/hlo/builder:xla_computation",
+        "//xla/hlo/parser:hlo_parser",
+        "//xla/hlo/testlib:test",
+        "//xla/pjrt:pjrt_client",
+        "//xla/pjrt:pjrt_compiler",
+        "//xla/pjrt:pjrt_executable",
+        "//xla/pjrt:raw_buffer",
+        "//xla/pjrt/distributed:in_memory_key_value_store",
+        "//xla/pjrt/plugin/xla_gpu:xla_gpu_client_options",
+        "//xla/service:platform_util",
+        "//xla/tsl/lib/core:status_test_util",
+        "//xla/tsl/platform:env",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
+    ],
 )
 
 xla_cc_test(
