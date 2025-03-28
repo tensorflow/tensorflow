@@ -311,5 +311,10 @@ message ThunkProto {
 }
 
 message ThunkSequenceProto {
+  message ResourceUsersProto {
+    repeated int64 thunk_indices = 1;
+    ResourceProto resource = 2;
+  }
   repeated ThunkProto thunks = 1;
+  repeated ResourceUsersProto thunk_resources = 2;
 }
