@@ -38,6 +38,7 @@ std::unique_ptr<mlir::Pass> CreateTritonXLAExtractInsertToTritonPass(
 std::unique_ptr<mlir::Pass> CreateGeneralizeKernelSignaturePass();
 std::unique_ptr<mlir::Pass> CreatePreventMmaV3LoopUnrollingPass();
 std::unique_ptr<mlir::Pass> CreateInt4ToPackedInt4RewritePass();
+std::unique_ptr<mlir::Pass> CreateRoundF32ToTF32ForTf32DotRewritePass();
 
 // Returns true if the `op` contains an operation in it's regions that satisfies
 // the `fn`.

@@ -70,4 +70,16 @@ def LoadInt4RewritePass
   let constructor = "CreateInt4ToPackedInt4RewritePass()";
 }
 
+def RoundF32ToTF32ForTf32DotRewritePass
+    : Pass<"round-f32-to-tf32-for-tf32-dot-rewrite", "mlir::ModuleOp"> {
+  let summary = "dot with tf32 algorithm requires explicit rounding.";
+  let description = [{
+    This pass adds explicit rounding from f32 to tf32 for the dot with tf32 algorithm.
+    This is required because mma instruction does not have explicit rounding and
+    by default does truncation. As a result, the dot with tf32 algorithm has too
+    small precision. It is even less than for the dot with BF16 arguments.
+  }];
+  let constructor = "CreateRoundF32ToTF32ForTf32DotRewritePass()";
+}
+
 #endif  // XLA_BACKENDS_GPU_CODEGEN_TRITON_PASSES_TD_

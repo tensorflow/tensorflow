@@ -53,6 +53,7 @@ absl::Status CreateTritonPipeline(mlir::OpPassManager* pm,
   const int ccAsInt = cc.major * 10 + cc.minor;
   const int threadsPerWarp = 32;
 
+  pm->addPass(mt_xla::CreateRoundF32ToTF32ForTf32DotRewritePass());
   if (is_xla_fusion) {
     pm->addPass(mt_xla::CreateInt4ToPackedInt4RewritePass());
   }
