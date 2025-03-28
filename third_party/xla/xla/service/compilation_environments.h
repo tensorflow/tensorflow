@@ -80,7 +80,7 @@ class CompilationEnvironments {
       ProcessNewEnvFn process_new_env);
 
   // Adds env to the list of CompilationEnvironments. If an environment with
-  // the same proto descriptor has already been added, env will replace it.
+  // the same proto descriptor has already been added, returns an error.
   //
   // All added environments are processed via registered ProcessNewEnvFns. If
   // such a function was not regitered for env's proto descriptor or env's
@@ -100,6 +100,11 @@ class CompilationEnvironments {
   const T& GetEnv();
   template <typename T>
   bool HasEnv();
+
+  // Deletes the environment corresponding to T. Does nothing if no such
+  // environment has been added.
+  template <typename T>
+  void DeleteEnv();
 
   // Removes all added environments.
   void Clear() { environments_.clear(); }
@@ -160,6 +165,12 @@ template <typename T>
 bool CompilationEnvironments::HasEnv() {
   auto descriptor = T::descriptor();
   return environments_.find(descriptor) != environments_.end();
+}
+
+template <typename T>
+void CompilationEnvironments::DeleteEnv() {
+  auto descriptor = T::descriptor();
+  environments_.erase(descriptor);
 }
 
 }  // namespace xla
