@@ -59,6 +59,7 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_layout.h"
 #include "xla/shape_util.h"
+#include "xla/side_effect_util.h"
 #include "xla/status_macros.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
@@ -3084,6 +3085,16 @@ class InstructionVerifier : public DfsHloVisitorWithDefault {
   std::optional<int64_t> num_devices_;
 };
 
+bool IsCollectivesGroupComputation(HloComputation* computation) {
+  auto maybe_caller = computation->GetUniqueCaller(HloOpcode::kAsyncStart);
+  if (!maybe_caller.has_value()) {
+    return false;
+  }
+  return (*maybe_caller)
+      ->get_frontend_attribute(kCollectivesGroupAttr)
+      .has_value();
+}
+
 }  // namespace
 
 absl::StatusOr<bool> HloVerifier::Run(
@@ -3119,7 +3130,8 @@ absl::StatusOr<bool> HloVerifier::Run(
       // collection of send/recv instructions. This is needed to represent NCCL
       // groups on GPU.
       if (computation->IsAsyncComputation() &&
-          !computation->OnlyContainsSendRecv()) {
+          !computation->OnlyContainsSendRecv() &&
+          !IsCollectivesGroupComputation(computation)) {
         TF_RETURN_IF_ERROR(VerifyAsyncComputation(computation));
       }
     }
