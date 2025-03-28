@@ -193,6 +193,20 @@ std::vector<int64_t> GatherOutputDimsByPriority(
   return priority_dims_for_output;
 }
 
+template <typename T>
+HloInstruction* CreateMaxIndicesConstant(
+    const Shape& operand_base_shape, absl::Span<const int64_t> start_index_map,
+    SpmdBuilder* b) {
+  std::vector<T> max_indices_values;
+  max_indices_values.reserve(start_index_map.size());
+  for (int64_t operand_dim : start_index_map) {
+    max_indices_values.push_back(
+        static_cast<T>(operand_base_shape.dimensions(operand_dim) - 1));
+  }
+  return b->AddInstruction(HloInstruction::CreateConstant(
+      LiteralUtil::CreateR1<T>(max_indices_values)));
+}
+
 PartitionedHlo ClampGatherIndices(const PartitionedHlo& indices,
                                   const Shape& operand_base_shape,
                                   absl::Span<const int64_t> start_index_map,
@@ -201,14 +215,19 @@ PartitionedHlo ClampGatherIndices(const PartitionedHlo& indices,
 
   HloInstruction* max_indices;
   if (index_vector_dim < indices.num_dimensions()) {
-    std::vector<int32_t> max_indices_values;
-    max_indices_values.reserve(start_index_map.size());
-    for (int64_t operand_dim : start_index_map) {
-      max_indices_values.push_back(operand_base_shape.dimensions(operand_dim) -
-                                   1);
+    switch (indices_type) {
+      case S32:
+        max_indices = CreateMaxIndicesConstant<int32_t>(operand_base_shape,
+                                                        start_index_map, b);
+        break;
+      case S64:
+        max_indices = CreateMaxIndicesConstant<int64_t>(operand_base_shape,
+                                                        start_index_map, b);
+        break;
+      default:
+        LOG(FATAL) << "Unsupported indices type: "
+                   << PrimitiveType_Name(indices_type);
     }
-    max_indices = b->AddInstruction(HloInstruction::CreateConstant(
-        LiteralUtil::CreateR1<int32_t>(max_indices_values)));
     max_indices = b->AddInstruction(HloInstruction::CreateBroadcast(
         indices.hlo()->shape(), max_indices, {index_vector_dim}));
   } else {
