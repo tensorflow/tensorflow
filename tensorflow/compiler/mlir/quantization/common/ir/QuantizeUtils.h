@@ -22,9 +22,9 @@ class Type;
 
 namespace quant {
 class QuantizedType;
+
+namespace ir {
 class UniformQuantizedType;
-}  // namespace quant
-namespace quant::ir {
 class UniformQuantizedValueConverter;
 
 /// Converts an attribute from a type based on
@@ -42,8 +42,7 @@ class UniformQuantizedValueConverter;
 /// (realValue: DenseElementsAttr[tensor<2x2xf32>],
 ///  quantizedElementType: UniformQuantizedType[i8:f32])
 ///   -> (DenseElementsAttr[tensor<2x2xi8>], outConvertedType: tensor<2x2xi8>)
-Attribute quantizeAttr(Attribute realValue,
-                       quant::QuantizedType quantizedElementType,
+Attribute quantizeAttr(Attribute realValue, QuantizedType quantizedElementType,
                        Type &outConvertedType);
 
 /// Converts an attribute from a type based on
@@ -62,10 +61,11 @@ Attribute quantizeAttr(Attribute realValue,
 ///  quantizedElementType: UniformQuantizedType[i8:f32])
 ///   -> (DenseElementsAttr[tensor<2x2xi8>], outConvertedType: tensor<2x2xi8>)
 Attribute quantizeAttrUniform(Attribute realValue,
-                              quant::UniformQuantizedType quantizedElementType,
+                              UniformQuantizedType quantizedElementType,
                               const UniformQuantizedValueConverter &converter,
                               Type &outConvertedType);
-}  // namespace quant::ir
+}  // namespace ir
+}  // namespace quant
 }  // namespace mlir
 
 #endif  // TENSORFLOW_COMPILER_MLIR_QUANTIZATION_COMMON_IR_QUANTIZEUTILS_H_
