@@ -22,6 +22,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/BuiltinOps.h"
+#include "mlir/IR/Location.h"
 #include "mlir/IR/OpDefinition.h"
 #include "mlir/IR/OperationSupport.h"
 #include "mlir/IR/Types.h"
@@ -67,6 +68,9 @@ mlir::ModuleOp CloneModuleUsingBuilder(mlir::ModuleOp module,
 // long format with an entry for each platform instance.
 absl::StatusOr<std::vector<std::string>> ExpandPlatformNames(
     const mlir::Pass::ListOption<std::string>& platform_names);
+
+// Returns a pretty string representation of the location.
+std::string GetPrettyLocation(mlir::Location loc);
 
 }  // namespace ifrt
 }  // namespace xla
