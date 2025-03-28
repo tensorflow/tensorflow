@@ -355,9 +355,9 @@ struct RewriteExtract : mlir::OpRewritePattern<ExtractOp> {
 
       auto descriptor_load =
           builder
-              .create<ExperimentalDescriptorLoadOp>(
-                  op.getResult().getType(), cast_to_tensor_desc_ptr_type,
-                  op.getOffsets())
+              .create<DescriptorLoadOp>(op.getResult().getType(),
+                                        cast_to_tensor_desc_ptr_type,
+                                        op.getOffsets())
               .getResult();
 
       rewriter.replaceOp(op, descriptor_load);
@@ -412,8 +412,8 @@ struct RewriteInsert : mlir::OpRewritePattern<InsertOp> {
                   op.getDst())
               .getResult(0);
 
-      builder.create<ExperimentalDescriptorStoreOp>(
-          cast_to_tensor_desc_ptr_type, op.getSrc(), op.getOffsets());
+      builder.create<DescriptorStoreOp>(cast_to_tensor_desc_ptr_type,
+                                        op.getSrc(), op.getOffsets());
     } else {
       // tiled_tensor -> !tt.ptr<tensor>
       auto cast_dst_to_tensor_ptr_type =

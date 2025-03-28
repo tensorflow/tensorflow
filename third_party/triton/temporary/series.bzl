@@ -14,6 +14,5 @@ those to this list.
 """
 
 temporary_patch_list = [
-    "//third_party/triton:temporary/no_accelerate_through_broadcast.patch",
     # Add new patches just above this line
 ]

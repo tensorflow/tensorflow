@@ -96,17 +96,31 @@ absl::Status CreateTritonPipeline(mlir::OpPassManager* pm,
   pm->addPass(mlir::createTritonAMDGPUOptimizeEpiloguePass());
   pm->addPass(mt::gpu::createTritonGPUOptimizeDotOperands({true}));
   pm->addPass(mlir::createTritonAMDGPUHoistLayoutConversionsPass());
+
+  pm->addPass(mt::gpu::createTritonGPUFuseNestedLoops());
+  pm->addPass(mlir::createCSEPass());
+  pm->addPass(mlir::createLoopInvariantCodeMotionPass());
+  pm->addPass(mlir::createCanonicalizerPass());
+
   if (num_stages == kAmdDoubleBuffering && cc.has_amd_matrix_core()) {
     pm->addPass(mlir::createTritonAMDGPUStreamPipelinePass(
-        num_stages, /*stream_prefetch=*/true));
+        num_stages, /*stream_prefetch=*/true, /*use_async_copy=*/true));
+    pm->addPass(mlir::createTritonAMDGPUCoalesceAsyncCopyPass());
     pm->addPass(mlir::createCanonicalizerPass());
   }
   pm->addPass(mt::createTritonAMDGPUInsertInstructionSchedHintsPass("default"));
   pm->addPass(mt::gpu::createTritonGPUOptimizeDotOperands({true}));
   pm->addPass(mt::gpu::createTritonGPURemoveLayoutConversions());
   pm->addPass(mt::gpu::createTritonGPUReduceDataDuplication());
+  if (false) {  // Not enabled by default.
+    pm->addPass(mlir::createTritonAMDGPUInThreadTransposePass());
+    pm->addPass(mt::gpu::createTritonGPURemoveLayoutConversions());
+  }
   if (num_stages != kAmdDoubleBuffering) {
     pm->addPass(mt::gpu::createTritonGPUReorderInstructions());
+  }
+  if (false) {  // For upstream, this is enabled iff arch == gfx942.
+    pm->addPass(mlir::createTritonAMDGPUBlockPingpongPass(num_stages));
   }
   pm->addPass(mlir::createTritonAMDGPUCanonicalizePointersPass());
   pm->addPass(mlir::createCanonicalizerPass());
@@ -117,8 +131,6 @@ absl::Status CreateTritonPipeline(mlir::OpPassManager* pm,
 
   // Based on make_llir() in
   // @triton//:third_party/amd/backend/compiler.py
-  pm->addPass(mlir::triton::AMD::createDecomposeUnsupportedConversionsPass(
-      cc.gfx_version()));
   const int custom_lds_size = 0;
   pm->addPass(mlir::triton::AMD::createOptimizeLDSUsagePass(cc.gfx_version(),
                                                             custom_lds_size));
