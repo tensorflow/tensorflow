@@ -2981,7 +2981,8 @@ class InstructionVerifier : public DfsHloVisitorWithDefault {
               instruction->opcode() == HloOpcode::kCompare ||
               instruction->opcode() == HloOpcode::kIsFinite ||
               (instruction->opcode() == HloOpcode::kSelect &&
-               operand_shape.element_type() == PRED)) {
+               operand_shape.element_type() == PRED) ||
+              instruction->opcode() == HloOpcode::kScatter) {
             // Some instructions can change element_size_in_bits
             // Select instructions ignore element_size_in_bits for predicate
             equal_predicate.IgnoreElementSize();
