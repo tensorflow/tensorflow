@@ -130,10 +130,13 @@ CodegenDecision IsTritonSupportedConversion(
     return error_message();
   }
 
-  if (input != output &&
-      (any_is(PrimitiveType::F8E4M3FN) || any_is(PrimitiveType::F8E5M2)) &&
-      !(any_is(PrimitiveType::F16) || any_is(PrimitiveType::BF16) ||
-        any_is(PrimitiveType::F32))) {
+  bool is_f8_conversion =
+      any_is(PrimitiveType::F8E4M3FN) && any_is(PrimitiveType::F8E5M2);
+  bool is_f8 = any_is(PrimitiveType::F8E4M3FN) || any_is(PrimitiveType::F8E5M2);
+  bool is_f16_or_f32 = any_is(PrimitiveType::F16) ||
+                       any_is(PrimitiveType::BF16) ||
+                       any_is(PrimitiveType::F32);
+  if (input != output && is_f8 && !is_f8_conversion && !is_f16_or_f32) {
     return error_message();
   }
 

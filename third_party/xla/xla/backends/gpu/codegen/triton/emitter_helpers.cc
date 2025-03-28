@@ -126,11 +126,13 @@ bool IsFp8Type(Type t) {
 Value Cast(EmitterLocOpBuilder& b, Value value, Type dst_element_ty) {
   Type src_ty = value.getType();
   Type src_element_ty = src_ty;
+  Type fp16_ty = b.getF16Type();
   Type fp32_ty = b.getF32Type();
   Type dst_ty = dst_element_ty;
   if (auto src_shaped_ty = mlir::dyn_cast<ShapedType>(src_ty)) {
     src_element_ty = src_shaped_ty.getElementType();
     dst_ty = src_shaped_ty.clone(src_shaped_ty.getShape(), dst_element_ty);
+    fp16_ty = src_shaped_ty.clone(src_shaped_ty.getShape(), b.getF16Type());
     fp32_ty = src_shaped_ty.clone(src_shaped_ty.getShape(), b.getF32Type());
   }
   if (src_ty == dst_ty) {
@@ -156,12 +158,19 @@ Value Cast(EmitterLocOpBuilder& b, Value value, Type dst_element_ty) {
     // because LLVM doesn't support casts from/to FP8.
     // TODO(b/266862493): Add end-to-end test once FP8 support lands in XLA as
     // we can't test the code below without patching the feature.
-    if (IsFp8Type(src_element_ty)) {
+    if (IsFp8Type(src_element_ty) && !IsFp8Type(dst_element_ty)) {
       return b.create<mt::FpToFpOp>(dst_ty, value);
     }
-    if (IsFp8Type(dst_element_ty)) {
+    if (IsFp8Type(dst_element_ty) && !IsFp8Type(src_element_ty)) {
       return b.create<mt::FpToFpOp>(
           dst_ty, value,
+          mt::RoundingModeAttr::get(b.getContext(), mt::RoundingMode::RTNE));
+    }
+    if (IsFp8Type(src_element_ty) && IsFp8Type(dst_element_ty)) {
+      // FP8 <-> FP8 conversion needs to go through FP16
+      auto fp16_value = b.create<mt::FpToFpOp>(fp16_ty, value);
+      return b.create<mt::FpToFpOp>(
+          dst_ty, fp16_value,
           mt::RoundingModeAttr::get(b.getContext(), mt::RoundingMode::RTNE));
     }
 

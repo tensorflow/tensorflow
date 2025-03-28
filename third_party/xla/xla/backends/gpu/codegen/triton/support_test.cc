@@ -410,11 +410,13 @@ ENTRY triton_computation {
     skip_failure_branch_to_avoid_crash |=
         (data_type_in == PrimitiveType::F8E4M3FN &&
          data_type_out == PrimitiveType::F64);
+
+    skip_failure_branch_to_avoid_crash |=
+        any_is(PrimitiveType::F8E4M3FN) && any_is(PrimitiveType::F8E5M2);
   }
 
   // Crashes due to unsupported/unspecified rounding mode.
   skip_failure_branch_to_avoid_crash |=
-      (any_is(PrimitiveType::F8E4M3FN) && any_is(PrimitiveType::F8E5M2)) ||
       (data_type_in == PrimitiveType::F64 &&
        (data_type_out == PrimitiveType::F8E4M3FN ||
         data_type_out == PrimitiveType::F8E5M2));

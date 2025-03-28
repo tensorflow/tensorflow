@@ -227,121 +227,6 @@ bool IsFp8Type(Type t) {
                    mlir::Float8E4M3B11FNUZType>(t);
 }
 
-Value Cast(EmitterLocOpBuilder b, Value value, Type dst_element_ty) {
-  Type src_ty = value.getType();
-  Type src_element_ty = src_ty;
-  Type fp32_ty = b.getF32Type();
-  Type dst_ty = dst_element_ty;
-  if (auto src_shaped_ty = mlir::dyn_cast<ShapedType>(src_ty)) {
-    src_element_ty = src_shaped_ty.getElementType();
-    dst_ty = src_shaped_ty.clone(src_shaped_ty.getShape(), dst_element_ty);
-    fp32_ty = src_shaped_ty.clone(src_shaped_ty.getShape(), b.getF32Type());
-  }
-  if (src_ty == dst_ty) {
-    return value;
-  }
-
-  // All operations on bf16 are done through f32.
-  if (src_element_ty.isBF16()) {
-    return Cast(b, b.create<ma::ExtFOp>(fp32_ty, value), dst_element_ty);
-  }
-  if (dst_element_ty.isBF16()) {
-    // S8 -> BF16 is directly supported and doesn't need to go through f32.
-    if (!src_element_ty.isInteger(8)) {
-      return b.create<ma::TruncFOp>(dst_ty, Cast(b, value, b.getF32Type()));
-    }
-  }
-
-  // float => float
-  auto src_fp_element_ty = mlir::dyn_cast<mlir::FloatType>(src_element_ty);
-  auto dst_fp_element_ty = mlir::dyn_cast<mlir::FloatType>(dst_element_ty);
-  if (src_fp_element_ty && dst_fp_element_ty) {
-    // F8 <-> FP16, BF16, FP32, FP64 need to be handled via Triton's tt.fp_to_fp
-    // because LLVM doesn't support casts from/to FP8.
-    // TODO(b/266862493): Add end-to-end test once FP8 support lands in XLA as
-    // we can't test the code below without patching the feature.
-    if (IsFp8Type(src_element_ty)) {
-      return b.create<mt::FpToFpOp>(dst_ty, value);
-    }
-    if (IsFp8Type(dst_element_ty)) {
-      return b.create<mt::FpToFpOp>(
-          dst_ty, value,
-          mt::RoundingModeAttr::get(b.getContext(), mt::RoundingMode::RTNE));
-    }
-
-    if (src_fp_element_ty.getFPMantissaWidth() >
-        dst_fp_element_ty.getFPMantissaWidth()) {
-      return b.create<ma::TruncFOp>(dst_ty, value);
-    } else {
-      return b.create<ma::ExtFOp>(dst_ty, value);
-    }
-  }
-  // int => int
-  if (mlir::isa<mlir::IntegerType>(src_element_ty) &&
-      mlir::isa<mlir::IntegerType>(dst_element_ty)) {
-    if (src_element_ty.getIntOrFloatBitWidth() <
-        dst_element_ty.getIntOrFloatBitWidth()) {
-      if (src_element_ty.isInteger(1)) {
-        return b.create<ma::ExtUIOp>(dst_ty, value);
-      }
-      return b.create<ma::ExtSIOp>(dst_ty, value);
-    }
-    return b.create<ma::TruncIOp>(dst_ty, value);
-  }
-  // int => float
-  if (mlir::isa<mlir::IntegerType>(src_element_ty) && dst_fp_element_ty) {
-    // TODO(b/266862493): Support unsigned integer types.
-    if (src_element_ty.isInteger(1)) {
-      return b.create<ma::UIToFPOp>(dst_ty, value);
-    }
-    return b.create<ma::SIToFPOp>(dst_ty, value);
-  }
-  // float => int
-  if (src_fp_element_ty && mlir::isa<mlir::IntegerType>(dst_element_ty)) {
-    if (dst_element_ty.isInteger(1)) {
-      return b.create<ma::CmpFOp>(ma::CmpFPredicate::UNE, value,
-                                  ZerosLike(b, value));
-    }
-    // TODO(b/266862493): Support unsigned integer types.
-    // The current logic handles signed integer types only. Additional handling
-    // is needed for unsigned integer types.
-    auto cst_int = [&](EmitterLocOpBuilder b, int64_t x) {
-      if (auto src_shaped_ty = mlir::dyn_cast<ShapedType>(src_ty)) {
-        return CreateConst(b, dst_element_ty, x, src_shaped_ty.getShape());
-      } else {
-        return CreateConst(b, dst_element_ty, x);
-      }
-    };
-    auto cst_float = [&](EmitterLocOpBuilder b, int64_t x) {
-      if (auto src_shaped_ty = mlir::dyn_cast<ShapedType>(src_ty)) {
-        return CreateConst(b, src_fp_element_ty, x, src_shaped_ty.getShape());
-      } else {
-        return CreateConst(b, src_fp_element_ty, x);
-      }
-    };
-    auto fptosi = b.create<ma::FPToSIOp>(dst_ty, value);
-    int64_t min = llvm::minIntN(dst_element_ty.getIntOrFloatBitWidth());
-    int64_t max = llvm::maxIntN(dst_element_ty.getIntOrFloatBitWidth());
-
-    // value <= static_cast<float>(INT_MIN) ? INT_MIN : ...
-    auto clamped = b.create<ma::SelectOp>(
-        b.create<ma::CmpFOp>(ma::CmpFPredicate::OLE, value, cst_float(b, min)),
-        cst_int(b, min), fptosi);
-    // value >= static_cast<float>(INT_MAX) ? INT_MAX : ...
-    clamped = b.create<ma::SelectOp>(
-        b.create<ma::CmpFOp>(ma::CmpFPredicate::OGE, value, cst_float(b, max)),
-        cst_int(b, max), clamped);
-    // isnan(value) ? 0 : ...
-    return b.create<ma::SelectOp>(
-        b.create<ma::CmpFOp>(ma::CmpFPredicate::UNO, value, value),
-        cst_int(b, 0), clamped);
-  }
-
-  LOG(FATAL) << "Type conversion not supported: "
-             << llvm_ir::DumpToString(src_element_ty) << " -> "
-             << llvm_ir::DumpToString(dst_element_ty);
-}
-
 Value Subtract(EmitterLocOpBuilder b, ValueRange values) {
   if (mlir::isa<mlir::IntegerType>(mlir::getElementTypeOrSelf(values[0]))) {
     return b.create<ma::SubIOp>(values[0], values[1]);
@@ -448,7 +333,7 @@ absl::StatusOr<Value> EmitElementwise(EmitterLocOpBuilder b,
     case HloOpcode::kConvert: {
       TF_ASSIGN_OR_RETURN(Type dst_ty,
                           TritonType(b, hlo.shape().element_type()));
-      return Cast(b, inputs[0], dst_ty);
+      return triton::Cast(b, inputs[0], dst_ty);
     }
     case HloOpcode::kAdd:
       if (is_integer) {
@@ -661,7 +546,7 @@ absl::StatusOr<Value> EmitScope(
     if (hlo->opcode() == HloOpcode::kConvert &&
         hlo->operand(0)->shape().element_type() == S4) {
       Value unpacked;
-      unpacked = Cast(b, values[hlo->operand(0)], b.getI8Type());
+      unpacked = triton::Cast(b, values[hlo->operand(0)], b.getI8Type());
       std::vector<Value> operands({unpacked});
       TF_ASSIGN_OR_RETURN(result, EmitElementwise(b, libdevice_path,
                                                   device_info, *hlo, operands));
@@ -817,7 +702,7 @@ ma::ConstantOp Cst64(EmitterLocOpBuilder b, int64_t v) {
 }
 
 Value RoundToBF16(EmitterLocOpBuilder b, Value input) {
-  return Cast(b, input, b.getBF16Type());
+  return triton::Cast(b, input, b.getBF16Type());
 };
 
 /*static*/ absl::StatusOr<MatMulDims> MatMulDims::Create(
@@ -1480,7 +1365,7 @@ class MatMulEmitterHelper {
           "64 bit dynamic-slice indices are not supported yet.");
     }
     majormost_dim_start_index_val =
-        Cast(b, majormost_dim_start_index_val, b.getI32Type());
+        triton::Cast(b, majormost_dim_start_index_val, b.getI32Type());
     majormost_dim_start_index_val =
         b.create<ma::MaxSIOp>(majormost_dim_start_index_val, Cst32(b, 0));
     majormost_dim_start_index_val =
@@ -2041,7 +1926,7 @@ class IterableInput {
     Value param_value = EmitParameterLoad(b, args.front(), boundary_checks_);
     if (type_ != storage_type_) {
       // For example cast i8 to i1.
-      param_value = Cast(b, param_value, type_);
+      param_value = triton::Cast(b, param_value, type_);
     }
     return param_value;
   }
@@ -2167,10 +2052,10 @@ Value EmitRegularMatmul(EmitterLocOpBuilder& b, Value lhs, Value rhs, Value acc,
   if (dot_instr->precision_config().algorithm() ==
       PrecisionConfig::ALG_DOT_BF16_BF16_F32) {
     if (dot_instr->operand(0)->shape().element_type() == F32) {
-      lhs = Cast(b, lhs, b.getBF16Type());
+      lhs = triton::Cast(b, lhs, b.getBF16Type());
     }
     if (dot_instr->operand(1)->shape().element_type() == F32) {
-      rhs = Cast(b, rhs, b.getBF16Type());
+      rhs = triton::Cast(b, rhs, b.getBF16Type());
     }
   }
 
@@ -2364,7 +2249,7 @@ absl::StatusOr<std::optional<stream_executor::gpu::TmaMetadata>> EmitMatMul(
   absl::flat_hash_map<const HloInstruction*, Value> values_out;
   TF_ASSIGN_OR_RETURN(Type acc_final_ty,
                       TritonType(b, dot_instr->shape().element_type()));
-  values_out[dot_instr] = Cast(b, acc_final, acc_final_ty);
+  values_out[dot_instr] = triton::Cast(b, acc_final, acc_final_ty);
 
   // Emit the output scope.
   if (std::vector<const HloInstruction*> to_emit =
