@@ -613,6 +613,30 @@ ENTRY main {
   EXPECT_EQ(param->opcode(), HloOpcode::kParameter);
 }
 
+// Check that HostOffloadLegalize doesn't crash when the base operand of the
+// dynamic-update-slice is a parameter.
+TEST_F(HostOffloadLegalizeTest, NoCrashBaseIsStreamed) {
+  const std::string& hlo_string = R"(
+HloModule jit_f, entry_computation_layout={(f32[8,512,64]{1,2,0:T(8,128)S(5)}, f32[1,512,64]{1,2,0:T(8,128)}, s32[]{:T(128)})->f32[8,512,64]{1,2,0:T(8,128)S(5)}}
+
+ENTRY main {
+  param1 = f32[8,512,64]{1,2,0:T(8,128)S(5)} parameter(0)
+  param2 = f32[1,512,64]{1,2,0:T(8,128)} parameter(1)
+  custom_call = f32[1,512,64]{1,2,0:T(8,128)S(5)} custom-call(param2), custom_call_target="MoveToHost"
+  param3 = s32[]{:T(128)} parameter(2)
+  constant = s32[]{:T(128)} constant(0)
+  ROOT dynamic-update-slice = f32[8,512,64]{1,2,0:T(8,128)} dynamic-update-slice(param1, param2, param3, constant, constant)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloadLegalize(module.get()));
+
+  ASSERT_FALSE(changed);
+}
+
 }  // namespace
 
 }  // namespace xla

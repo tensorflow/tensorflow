@@ -167,6 +167,7 @@ struct InstructionAndIndex {
 // Walk up in the chain of memory offloaded instructions. absl::Status not-ok
 // when an instructions not supported or end of chain reached. Walks one
 // instruction at a time.
+// Returns current_value if there is nowhere else to go.
 absl::StatusOr<InstructionAndIndex> WalkUpMemoryOffload(
     InstructionAndIndex current_value, const CallGraph& call_graph) {
   // TODO(maggioni): Verify that set of instructions supported in chain by
@@ -197,8 +198,11 @@ absl::StatusOr<InstructionAndIndex> WalkUpMemoryOffload(
       return InstructionAndIndex(root, index);
     }
     case HloOpcode::kParameter: {
-      CHECK_NE(instruction->parent(),
-               instruction->GetModule()->entry_computation());
+      if (instruction->parent() ==
+          instruction->GetModule()->entry_computation()) {
+        // We reached the top. No further to go.
+        return current_value;
+      }
       std::vector<HloInstruction*> callers =
           call_graph.GetComputationCallers(instruction->parent());
       if (callers.size() != 1) {
