@@ -1623,11 +1623,13 @@ std::vector<Value> SplitF32(EmitterLocOpBuilder b, Value input,
   std::vector<Value> split_inputs;
   split_inputs.reserve(split_count);
   for (int i = 0; i < split_count; ++i) {
-    Value masked = MaskToBF16(b, input);
     if (i != split_count - 1) {
+      Value masked = MaskToBF16(b, input);
       input = b.create<ma::SubFOp>(input, masked);
+      split_inputs.push_back(RoundToBF16(b, masked));
+    } else {
+      split_inputs.push_back(RoundToBF16(b, input));
     }
-    split_inputs.push_back(RoundToBF16(b, masked));
   }
   return split_inputs;
 }

@@ -1578,7 +1578,7 @@ TEST_P(PrecisionTestsForTriton, PrecisionCheck) {
   std::unordered_map<PC::Algorithm, float> max_mean_rel_error = {
       {PC::ALG_DOT_BF16_BF16_F32, 6e-5},
       {PC::ALG_DOT_TF32_TF32_F32, 2e-5},
-      {PC::ALG_DOT_BF16_BF16_F32_X3, 2e-5},
+      {PC::ALG_DOT_BF16_BF16_F32_X3, 7e-6},
       {PC::ALG_DOT_BF16_BF16_F32_X6, 4e-7},
       {PC::ALG_DOT_BF16_BF16_F32_X9, 4e-7},
       {PC::ALG_DOT_TF32_TF32_F32_X3, 5e-7}};
