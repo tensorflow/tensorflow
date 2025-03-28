@@ -176,6 +176,7 @@ cc_library(
     ]),
     deps = [
         ":ifrt",
+        ":user_context",
         "//xla/tsl/concurrency:ref_count",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:statusor",

@@ -1266,8 +1266,10 @@ NanoIfrtClient::MakeArrayFromHostBuffer(
 absl::StatusOr<std::vector<tsl::RCReference<ifrt::Array>>>
 NanoIfrtClient::MakeArraysFromHostBufferShards(
     absl::Span<MakeArraysFromHostBufferShardsSpec> specs,
-    HostBufferSemantics semantics) {
-  return ifrt::ClientMakeArraysFromHostBufferShards(this, specs, semantics);
+    HostBufferSemantics semantics,
+    tsl::RCReference<ifrt::UserContext> user_context) {
+  return ifrt::ClientMakeArraysFromHostBufferShards(this, specs, semantics,
+                                                    std::move(user_context));
 }
 
 absl::StatusOr<tsl::RCReference<ifrt::Array>>

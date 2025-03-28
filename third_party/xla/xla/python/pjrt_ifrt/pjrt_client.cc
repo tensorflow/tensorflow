@@ -978,8 +978,9 @@ absl::StatusOr<tsl::RCReference<Array>> PjRtClient::MakeArrayFromHostBuffer(
 absl::StatusOr<std::vector<tsl::RCReference<Array>>>
 PjRtClient::MakeArraysFromHostBufferShards(
     absl::Span<MakeArraysFromHostBufferShardsSpec> specs,
-    HostBufferSemantics semantics) {
-  return ClientMakeArraysFromHostBufferShards(this, specs, semantics);
+    HostBufferSemantics semantics, tsl::RCReference<UserContext> user_context) {
+  return ClientMakeArraysFromHostBufferShards(this, specs, semantics,
+                                              std::move(user_context));
 }
 
 absl::StatusOr<tsl::RCReference<Array>>

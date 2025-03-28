@@ -47,6 +47,7 @@
 #include "xla/python/ifrt/remap_plan.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
+#include "xla/python/ifrt/user_context.h"
 #include "xla/python/ifrt_proxy/client/global_flags.h"
 #include "xla/python/ifrt_proxy/client/rpc_helper.h"
 #include "xla/python/ifrt_proxy/common/array_util.h"
@@ -252,12 +253,15 @@ absl::StatusOr<std::vector<tsl::RCReference<xla::ifrt::Array>>>
 Array::MakeArraysFromHostBufferShards(
     xla::ifrt::Client* client, std::shared_ptr<RpcHelper> rpc_helper,
     absl::Span<xla::ifrt::Client::MakeArraysFromHostBufferShardsSpec> specs,
-    xla::ifrt::Client::HostBufferSemantics semantics) {
+    xla::ifrt::Client::HostBufferSemantics semantics,
+    tsl::RCReference<xla::ifrt::UserContext> user_context) {
   if (rpc_helper->version().protocol_version() <
       protocol_version::kMakeArraysFromHostBufferShards) {
-    return xla::ifrt::ClientMakeArraysFromHostBufferShards(client, specs,
-                                                           semantics);
+    return xla::ifrt::ClientMakeArraysFromHostBufferShards(
+        client, specs, semantics, std::move(user_context));
   }
+  // Currently the `user_context` parameter is ignored, similarly to
+  // `Client::MakeArrayFromHostBuffer`.
 
   absl::InlinedVector<absl::InlinedVector<uint64_t, 1>, 1>
       host_buffer_handles_for_specs;

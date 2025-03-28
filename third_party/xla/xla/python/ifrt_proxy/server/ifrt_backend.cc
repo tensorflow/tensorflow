@@ -911,11 +911,12 @@ IfrtBackend::HandleMakeArraysFromHostBufferShardsRequest(
 
   std::move(cleanup).Invoke();
 
-  TF_ASSIGN_OR_RETURN(
-      std::vector<tsl::RCReference<xla::ifrt::Array>> arrays,
-      client_->MakeArraysFromHostBufferShards(
-          absl::MakeSpan(specs), xla::ifrt::Client::HostBufferSemantics::
-                                     kImmutableUntilTransferCompletes));
+  TF_ASSIGN_OR_RETURN(std::vector<tsl::RCReference<xla::ifrt::Array>> arrays,
+                      client_->MakeArraysFromHostBufferShards(
+                          absl::MakeSpan(specs),
+                          xla::ifrt::Client::HostBufferSemantics::
+                              kImmutableUntilTransferCompletes,
+                          client_->CreateUserContext()));
 
   std::vector<uint64_t> handles;
   handles.reserve(make_arrays_request->specs_size());

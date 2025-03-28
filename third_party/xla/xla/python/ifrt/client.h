@@ -110,8 +110,8 @@ class Client : public llvm::RTTIExtends<Client, llvm::RTTIRoot> {
   // `on_done_with_host_buffer` is optional and may be null.
   // `on_done_with_host_buffer` will be called iff OK is returned.
   //
-  //  `user_context` is attached to all the runtime actions triggered by this
-  //  call and thus simpifies performance analysis and debugging.
+  // `user_context` is attached to all the runtime actions triggered by this
+  // call and thus simplifies performance analysis and debugging.
   //
   // TODO(hyeontaek): Consider changing `on_done_with_host_buffer` into a
   // returned `Future<absl::Status>` for consistency with other IFRT APIs.
@@ -196,13 +196,17 @@ class Client : public llvm::RTTIExtends<Client, llvm::RTTIRoot> {
   //
   // `specs` may be consumed by the implementation.
   //
+  // `user_context` is attached to all the runtime actions triggered by this
+  // call and thus simplifies performance analysis and debugging.
+  //
   // All resulting arrays should use the same device list and memory kind. i.e.,
   // `specs[i].sharding->devices()` and `specs[i].sharding->memory_kind()` must
   // be equal across all `i`.
   virtual absl::StatusOr<std::vector<tsl::RCReference<Array>>>
   MakeArraysFromHostBufferShards(
       absl::Span<MakeArraysFromHostBufferShardsSpec> specs,
-      HostBufferSemantics semantics) = 0;
+      HostBufferSemantics semantics,
+      tsl::RCReference<UserContext> user_context) = 0;
 
   // Builds a larger array out of individual per-device shards.
   // TODO(hyeontaek): Replace this API with the version that takes

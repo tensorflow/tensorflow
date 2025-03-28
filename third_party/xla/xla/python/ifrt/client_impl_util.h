@@ -22,6 +22,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/client.h"
+#include "xla/python/ifrt/user_context.h"
 #include "xla/tsl/concurrency/ref_count.h"
 
 namespace xla {
@@ -37,7 +38,8 @@ absl::StatusOr<std::vector<tsl::RCReference<Array>>>
 ClientMakeArraysFromHostBufferShards(
     Client* client,
     absl::Span<Client::MakeArraysFromHostBufferShardsSpec> specs,
-    Client::HostBufferSemantics semantics);
+    Client::HostBufferSemantics semantics,
+    tsl::RCReference<UserContext> user_context);
 
 }  // namespace ifrt
 }  // namespace xla

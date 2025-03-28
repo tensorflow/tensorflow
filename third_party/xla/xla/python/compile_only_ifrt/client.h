@@ -218,7 +218,8 @@ class CompileOnlyIfRtClient final
   absl::StatusOr<std::vector<tsl::RCReference<ifrt::Array>>>
   MakeArraysFromHostBufferShards(
       absl::Span<MakeArraysFromHostBufferShardsSpec> specs,
-      HostBufferSemantics semantics) override {
+      HostBufferSemantics semantics,
+      tsl::RCReference<xla::ifrt::UserContext> user_context) override {
     return Unimplemented(
         "MakeArraysFromHostBufferShards not available with compile-only "
         "client.");

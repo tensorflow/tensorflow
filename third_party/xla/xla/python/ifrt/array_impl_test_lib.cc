@@ -398,7 +398,8 @@ TEST(ArrayImplTest, MakeArraysFromHostBufferShardsAndCopyToHostBuffer) {
   TF_ASSERT_OK_AND_ASSIGN(
       auto arrays, client->MakeArraysFromHostBufferShards(
                        absl::MakeSpan(specs),
-                       Client::HostBufferSemantics::kImmutableOnlyDuringCall));
+                       Client::HostBufferSemantics::kImmutableOnlyDuringCall,
+                       client->CreateUserContext()));
   ASSERT_THAT(arrays, SizeIs(2));
 
   // Once the `Array` has become ready, the host buffer is not accessed.

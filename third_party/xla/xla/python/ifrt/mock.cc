@@ -124,8 +124,10 @@ MockClient::MockClient(std::unique_ptr<xla::ifrt::Client> delegated)
   ON_CALL(*this, MakeArraysFromHostBufferShards)
       .WillByDefault(
           [this](absl::Span<MakeArraysFromHostBufferShardsSpec> specs,
-                 HostBufferSemantics semantics) {
-            return delegated_->MakeArraysFromHostBufferShards(specs, semantics);
+                 HostBufferSemantics semantics,
+                 tsl::RCReference<UserContext> user_context) {
+            return delegated_->MakeArraysFromHostBufferShards(
+                specs, semantics, std::move(user_context));
           });
   ON_CALL(*this, AssembleArrayFromSingleDeviceArrays(_, _, _, _, _, _))
       .WillByDefault(

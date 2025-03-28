@@ -237,9 +237,10 @@ Client::MakeArrayFromHostBuffer(
 absl::StatusOr<std::vector<tsl::RCReference<xla::ifrt::Array>>>
 Client::MakeArraysFromHostBufferShards(
     absl::Span<MakeArraysFromHostBufferShardsSpec> specs,
-    xla::ifrt::Client::HostBufferSemantics semantics) {
-  return Array::MakeArraysFromHostBufferShards(this, rpc_helper_, specs,
-                                               semantics);
+    xla::ifrt::Client::HostBufferSemantics semantics,
+    tsl::RCReference<UserContext> user_context) {
+  return Array::MakeArraysFromHostBufferShards(
+      this, rpc_helper_, specs, semantics, std::move(user_context));
 }
 
 absl::StatusOr<tsl::RCReference<xla::ifrt::Array>>

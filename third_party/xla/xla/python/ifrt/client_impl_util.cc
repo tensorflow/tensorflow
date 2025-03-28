@@ -33,6 +33,7 @@ limitations under the License.
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
+#include "xla/python/ifrt/user_context.h"
 #include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
@@ -95,7 +96,8 @@ absl::StatusOr<std::vector<tsl::RCReference<Array>>>
 ClientMakeArraysFromHostBufferShards(
     Client* client,
     absl::Span<Client::MakeArraysFromHostBufferShardsSpec> specs,
-    Client::HostBufferSemantics semantics) {
+    Client::HostBufferSemantics semantics,
+    tsl::RCReference<UserContext> user_context) {
   std::vector<tsl::RCReference<Array>> arrays;
   arrays.reserve(specs.size());
   for (Client::MakeArraysFromHostBufferShardsSpec& spec : specs) {
@@ -114,7 +116,7 @@ ClientMakeArraysFromHostBufferShards(
               host_buffer.data, host_buffer.dtype, std::move(host_buffer.shape),
               std::move(host_buffer.byte_strides),
               std::move(spec.array_spec.sharding), semantics,
-              std::move(host_buffer.on_done)));
+              std::move(host_buffer.on_done), user_context));
       arrays.push_back(std::move(array));
       continue;
     }
@@ -165,7 +167,7 @@ ClientMakeArraysFromHostBufferShards(
             shard, client->MakeArrayFromHostBuffer(
                        host_buffer.data, host_buffer.dtype, host_buffer.shape,
                        host_buffer.byte_strides, std::move(sharding), semantics,
-                       on_done_with_host_buffer_per_device));
+                       on_done_with_host_buffer_per_device, user_context));
       }
       num_processed_shards += addressable_shard_indices.size();
     }

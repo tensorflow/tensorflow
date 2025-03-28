@@ -180,7 +180,8 @@ class PjRtClient final
   absl::StatusOr<std::vector<tsl::RCReference<Array>>>
   MakeArraysFromHostBufferShards(
       absl::Span<MakeArraysFromHostBufferShardsSpec> specs,
-      HostBufferSemantics semantics) override;
+      HostBufferSemantics semantics,
+      tsl::RCReference<UserContext> user_context) override;
 
   absl::StatusOr<tsl::RCReference<Array>> AssembleArrayFromSingleDeviceArrays(
       DType dtype, Shape shape, std::shared_ptr<const Sharding> sharding,
