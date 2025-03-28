@@ -491,7 +491,7 @@ std::unique_ptr<HloPassFix<HloPassPipeline>> CreateSimplificationPipeline(
   pipeline->AddPass<ReshapeMover>();
   pipeline->AddPass<HloConstantFolding>(
       options::FoldAllConstants(module->config())
-          ? HloConstantFolding::Level::kAgressive
+          ? HloConstantFolding::Level::kAggressive
           : HloConstantFolding::Level::kDefault);
   pipeline->AddPass<ConditionalSimplifier>();
 
