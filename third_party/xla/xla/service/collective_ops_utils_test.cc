@@ -290,6 +290,168 @@ TEST(IsExclusivelyCrossModuleTest, CrossModuleWithGlobalIds) {
   EXPECT_TRUE(is_exclusively_cross_module);
 }
 
+TEST(CollectiveOpsUtilsTest, GetReplicaGroups) {
+  // Create a module for the test
+  HloModule module("GetReplicaGroupsTest", HloModuleConfig());
+
+  // Set up a collective permute start instruction
+  auto builder = HloComputation::Builder("GetReplicaGroupsTest");
+  auto param_shape = ShapeUtil::MakeShape(F32, {4, 4});
+  HloInstruction *param_0 = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, param_shape, "p0"));
+
+  // Test for CollectivePermuteStart
+  std::vector<std::pair<int64_t, int64_t>> source_target_pairs = {
+      {0, 1}, {1, 2}, {2, 3}, {3, 0}};
+
+  HloInstruction *permute_start =
+      builder.AddInstruction(HloInstruction::CreateCollectivePermuteStart(
+          param_shape, param_0, source_target_pairs, /*channel_id=*/1));
+
+  TF_ASSERT_OK_AND_ASSIGN(std::vector<std::vector<int64_t>> permute_groups,
+                          GetAsyncReplicaGroups(permute_start));
+  EXPECT_EQ(permute_groups.size(), 4);
+  for (int i = 0; i < 4; ++i) {
+    EXPECT_EQ(permute_groups[i].size(), 2);
+    EXPECT_EQ(permute_groups[i][0], source_target_pairs[i].first);
+    EXPECT_EQ(permute_groups[i][1], source_target_pairs[i].second);
+  }
+
+  // Test for AllGatherStart
+  std::vector<ReplicaGroup> replica_groups =
+      CreateReplicaGroups({{0, 1}, {2, 3}});
+  HloInstruction *all_gather_start =
+      builder.AddInstruction(HloInstruction::CreateAllGatherStart(
+          ShapeUtil::MakeTupleShape({param_shape, param_shape}), {param_0},
+          /*all_gather_dimension=*/0, replica_groups,
+          /*constrain_layout=*/false,
+          /*channel_id=*/1, /*use_global_device_ids=*/false));
+
+  TF_ASSERT_OK_AND_ASSIGN(std::vector<std::vector<int64_t>> all_gather_groups,
+                          GetAsyncReplicaGroups(all_gather_start));
+  EXPECT_EQ(all_gather_groups.size(), 2);
+  EXPECT_THAT(all_gather_groups[0], testing::ElementsAre(0, 1));
+  EXPECT_THAT(all_gather_groups[1], testing::ElementsAre(2, 3));
+
+  // Test for AllReduceStart
+  // Create a reduction computation
+  HloComputation::Builder reducer_builder("add");
+  auto reducer_x = reducer_builder.AddInstruction(
+      HloInstruction::CreateParameter(0, ShapeUtil::MakeScalarShape(F32), "x"));
+  auto reducer_y = reducer_builder.AddInstruction(
+      HloInstruction::CreateParameter(1, ShapeUtil::MakeScalarShape(F32), "y"));
+  reducer_builder.AddInstruction(HloInstruction::CreateBinary(
+      ShapeUtil::MakeScalarShape(F32), HloOpcode::kAdd, reducer_x, reducer_y));
+
+  HloComputation *add_computation =
+      module.AddEmbeddedComputation(reducer_builder.Build());
+
+  HloInstruction *all_reduce_start =
+      builder.AddInstruction(HloInstruction::CreateAllReduceStart(
+          ShapeUtil::MakeTupleShape({param_shape, param_shape}), {param_0},
+          add_computation, replica_groups, /*constrain_layout=*/false,
+          /*channel_id=*/2, /*use_global_device_ids=*/false));
+
+  TF_ASSERT_OK_AND_ASSIGN(std::vector<std::vector<int64_t>> all_reduce_groups,
+                          GetAsyncReplicaGroups(all_reduce_start));
+  EXPECT_EQ(all_reduce_groups.size(), 2);
+  EXPECT_THAT(all_reduce_groups[0], testing::ElementsAre(0, 1));
+  EXPECT_THAT(all_reduce_groups[1], testing::ElementsAre(2, 3));
+}
+
+TEST(CollectiveOpsUtilsTest, IsAsyncCollective) {
+  // Create module and computation
+  HloModule module("test_module", HloModuleConfig());
+  auto builder = HloComputation::Builder("IsAsyncCollectiveTest");
+  auto param_shape = ShapeUtil::MakeShape(F32, {4, 4});
+  HloInstruction *param_0 = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, param_shape, "p0"));
+
+  // Test for CollectivePermuteStart and CollectivePermuteDone
+  std::vector<std::pair<int64_t, int64_t>> source_target_pairs = {
+      {0, 1}, {1, 2}, {2, 3}, {3, 0}};
+
+  HloInstruction *permute_start =
+      builder.AddInstruction(HloInstruction::CreateCollectivePermuteStart(
+          param_shape, param_0, source_target_pairs, /*channel_id=*/1));
+
+  auto is_async_status = IsAsyncCollective(permute_start);
+  EXPECT_TRUE(is_async_status.ok());
+  EXPECT_TRUE(is_async_status.value());
+
+  HloInstruction *permute_done =
+      builder.AddInstruction(HloInstruction::CreateUnary(
+          param_shape, HloOpcode::kCollectivePermuteDone, permute_start));
+
+  is_async_status = IsAsyncCollective(permute_done);
+  EXPECT_TRUE(is_async_status.ok());
+  EXPECT_TRUE(is_async_status.value());
+
+  // Test for AllGatherStart and AllGatherDone
+  std::vector<ReplicaGroup> replica_groups =
+      CreateReplicaGroups({{0, 1}, {2, 3}});
+
+  HloInstruction *all_gather_start =
+      builder.AddInstruction(HloInstruction::CreateAllGatherStart(
+          ShapeUtil::MakeTupleShape(
+              {ShapeUtil::MakeShape(F32, {8, 4}), param_shape}),
+          {param_0}, /*all_gather_dimension=*/0, replica_groups,
+          /*constrain_layout=*/false,
+          /*channel_id=*/2, /*use_global_device_ids=*/false));
+
+  is_async_status = IsAsyncCollective(all_gather_start);
+  EXPECT_TRUE(is_async_status.ok());
+  EXPECT_TRUE(is_async_status.value());
+
+  HloInstruction *all_gather_done = builder.AddInstruction(
+      HloInstruction::CreateUnary(ShapeUtil::MakeShape(F32, {8, 4}),
+                                  HloOpcode::kAllGatherDone, all_gather_start));
+
+  is_async_status = IsAsyncCollective(all_gather_done);
+  EXPECT_TRUE(is_async_status.ok());
+  EXPECT_TRUE(is_async_status.value());
+
+  // Test for AllReduceStart and AllReduceDone
+  // First create a reduction computation
+  HloComputation::Builder reducer_builder("add");
+  HloInstruction *reducer_x = reducer_builder.AddInstruction(
+      HloInstruction::CreateParameter(0, ShapeUtil::MakeScalarShape(F32), "x"));
+  HloInstruction *reducer_y = reducer_builder.AddInstruction(
+      HloInstruction::CreateParameter(1, ShapeUtil::MakeScalarShape(F32), "y"));
+  reducer_builder.AddInstruction(HloInstruction::CreateBinary(
+      ShapeUtil::MakeScalarShape(F32), HloOpcode::kAdd, reducer_x, reducer_y));
+
+  HloComputation *add_computation =
+      module.AddEmbeddedComputation(reducer_builder.Build());
+
+  HloInstruction *all_reduce_start =
+      builder.AddInstruction(HloInstruction::CreateAllReduceStart(
+          ShapeUtil::MakeTupleShape({param_shape, param_shape}), {param_0},
+          add_computation, replica_groups, /*constrain_layout=*/false,
+          /*channel_id=*/3, /*use_global_device_ids=*/false));
+
+  is_async_status = IsAsyncCollective(all_reduce_start);
+  EXPECT_TRUE(is_async_status.ok());
+  EXPECT_TRUE(is_async_status.value());
+
+  HloInstruction *all_reduce_done =
+      builder.AddInstruction(HloInstruction::CreateUnary(
+          param_shape, HloOpcode::kAllReduceDone, all_reduce_start));
+
+  is_async_status = IsAsyncCollective(all_reduce_done);
+  EXPECT_TRUE(is_async_status.ok());
+  EXPECT_TRUE(is_async_status.value());
+
+  // Test for regular CollectivePermute (non-async)
+  HloInstruction *permute =
+      builder.AddInstruction(HloInstruction::CreateCollectivePermute(
+          param_shape, param_0, source_target_pairs, /*channel_id=*/1));
+
+  is_async_status = IsAsyncCollective(permute);
+  EXPECT_TRUE(is_async_status.ok());
+  EXPECT_FALSE(is_async_status.value());
+}
+
 TEST(IsExclusivelyCrossReplicaTest, CrossReplicaNoChannelSet) {
   int64_t num_replicas = 4;
   int64_t num_partitions = 2;
