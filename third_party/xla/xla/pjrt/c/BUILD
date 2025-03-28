@@ -450,6 +450,7 @@ cc_library(
         ":pjrt_c_api_helpers",
         ":pjrt_c_api_wrapper_impl",
         "//xla:shape_util",
+        "//xla:xla_data_proto_cc",
         "//xla/client:executable_build_options",
         "//xla/hlo/builder:xla_builder",
         "//xla/hlo/builder:xla_computation",
