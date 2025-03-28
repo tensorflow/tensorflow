@@ -22,6 +22,7 @@ limitations under the License.
 #include <ostream>
 #include <string>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include "absl/base/attributes.h"
@@ -41,6 +42,18 @@ namespace xla {
 // A shape describes the number of dimensions in a array, the bounds of each
 // dimension, and the primitive component type. For tuples, shape describes the
 // structure (number of elements and nesting).
+//
+// Depending on the element type, the shape falls into one of the following
+// categories:
+//
+// - Invalid: element_type == PRIMITIVE_TYPE_INVALID
+// - Token: element_type == TOKEN
+// - Opaque: element_type == OPAQUE_TYPE
+// - Array: element_type is an array type
+// - Tuple: element_type == TUPLE
+//
+// These categories are mutually exclusive, i.e. a shape can only be one of
+// them.
 class Shape {
  public:
   // Creates an invalid shape, with element type PRIMITIVE_TYPE_INVALID and the
@@ -94,7 +107,8 @@ class Shape {
   ABSL_DEPRECATE_AND_INLINE()
   inline int64_t rank() const { return dimensions().size(); }
 
-  // Returns whether the shape is of the specified type (array, tuple, etc).
+  // Returns whether the shape is of the specified category (array, tuple, etc).
+  // TODO(b/404276923): check that element_type() and the state_ are in sync.
   bool IsArray() const { return primitive_util::IsArrayType(element_type()); }
   bool IsTuple() const { return element_type() == TUPLE; }
   bool IsToken() const { return element_type() == TOKEN; }
@@ -108,6 +122,8 @@ class Shape {
   // shapes are traversed recursively.
   bool is_static() const;
 
+  // Returns true if the shape contains at least one dynamic dimension. Tuple
+  // shapes are traversed recursively.
   bool is_dynamic() const { return !is_static(); }
 
   // Unbounded dynamism.
@@ -123,14 +139,19 @@ class Shape {
   bool is_unbounded_dynamic() const;
 
   // Returns true if the given dimension is unbounded dynamic.
+  // Precondition: this is an array shape and `dimension` is a valid dimension
+  // index.
   bool is_unbounded_dynamic_dimension(int dimension) const {
-    return dimensions_[dimension] == kUnboundedSize;
+    return array_state().dimensions[dimension] == kUnboundedSize;
   }
 
   // Sets a given dimension as unbounded dynamic.
+  // Precondition: this is an array shape and `dimension` is a valid dimension
+  // index.
   void set_unbounded_dynamic_dimension(int dimension) {
-    dynamic_dimensions_[dimension] = true;
-    dimensions_[dimension] = kUnboundedSize;
+    auto& state = array_state();
+    state.dynamic_dimensions[dimension] = true;
+    state.dimensions[dimension] = kUnboundedSize;
   }
 
   // Returns true if the shape has one or more dimensions with bounded sizes.
@@ -139,118 +160,225 @@ class Shape {
   bool is_bounded_dynamic() const;
 
   // Returns true if the given dimension is bounded dynamic.
+  // Precondition: this is an array shape and `dimension` is a valid dimension
+  // index.
   bool is_bounded_dynamic_dimension(int dimension) const {
     return is_dynamic_dimension(dimension) &&
            !is_unbounded_dynamic_dimension(dimension);
   }
 
   // Returns true if the given dimension is dynamically-sized.
+  // Precondition: this is an array shape and `dimension` is a valid dimension
+  // index.
   bool is_dynamic_dimension(int dimension) const {
-    return dynamic_dimensions_[dimension];
+    return array_state().dynamic_dimensions[dimension];
   }
 
   // Returns true if the given dimension is statically-sized.
+  // Precondition: this is an array shape and `dimension` is a valid dimension
+  // index.
   bool is_static_dimension(int dimension) const {
-    return !dynamic_dimensions_[dimension];
+    return !array_state().dynamic_dimensions[dimension];
   }
 
   // Sets whether or not the given dimension is dynamically-sized.
+  // Precondition: this is an array shape and `dimension` is a valid dimension
+  // index.
   void set_dynamic_dimension(int dimension, bool is_dynamic) {
-    dynamic_dimensions_[dimension] = is_dynamic;
+    array_state().dynamic_dimensions[dimension] = is_dynamic;
   }
 
+  // Returns a span to indicate whether each dimension is dynamic.
+  // Precondition: this is an array shape.
   absl::Span<const bool> dynamic_dimensions() const {
-    return dynamic_dimensions_;
+    if (auto* const state = if_array_state()) {
+      return state->dynamic_dimensions;
+    }
+    // TODO(b/404276923): ensure that this is never called on non-array shapes.
+    return {};
   }
-
   absl::Span<bool> mutable_dynamic_dimensions() {
-    return absl::MakeSpan(dynamic_dimensions_);
+    return absl::MakeSpan(array_state().dynamic_dimensions);
   }
 
   // Removes the given dimension from the shape. Layout, if it exists, is
   // adjusted to match the modified shape.
+  // Precondition: this is an array shape, and the input dimension indices are
+  // valid.
   void DeleteDimension(int64_t dim_to_delete);
   void DeleteDimensions(absl::Span<const int64_t> sorted_dims_to_delete);
 
-  // Methods for accessing the primitive type.
+  // Returns the primitive type of the shape.
   PrimitiveType element_type() const { return element_type_; }
-  void set_element_type(PrimitiveType value) { element_type_ = value; }
 
-  // Methods for accessing the dimensions array.
+  // Sets the primitive type of the shape. If the new type and the old type
+  // are in different categories (e.g. array vs. tuple), the state is reset
+  // to the default (empty) state for the new type; otherwise, the state is
+  // preserved. This behavior ensures that the state is always consistent with
+  // the element type.
+  void set_element_type(PrimitiveType value);
+
+  // Returns the number of dimensions in the shape.
+  // Precondition: this is an array shape.
   ABSL_DEPRECATE_AND_INLINE()
   inline int dimensions_size() const { return dimensions().size(); }
-  int64_t dimensions(int index) const { return dimensions_[index]; }
 
+  // Returns the size of the given dimension if it's static, or the upper bound
+  // of the dimension size if it's dynamic.
+  // Precondition: this is an array shape and `index` is a valid dimension
+  // index.
+  int64_t dimensions(int index) const {
+    return array_state().dimensions[index];
+  }
+
+  // Returns the physical dimension index of the index-th minor dimension.
+  // Precondition: this is an array shape, `index` is a valid dimension
+  // index, and the shape has a layout.
   int64_t dimensions_minor(int index) const {
     CHECK(has_layout());
-    return dimensions_[layout_->minor_to_major(index)];
+    const auto& state = array_state();
+    return state.dimensions[state.layout->minor_to_major(index)];
   }
-  void set_dimensions(int index, int64_t value) { dimensions_[index] = value; }
+
+  // Sets the size of the given dimension if it's static, or sets the upper
+  // bound of the dimension size if it's dynamic.
+  // Precondition: this is an array shape, `index` is a valid dimension
+  // index, and value is either >= 0 or kUnboundedSize.
+  void set_dimensions(int index, int64_t value) {
+    array_state().dimensions[index] = value;
+  }
+
+  // Sets the physical dimension index of the index-th minor dimension.
+  // Precondition: this is an array shape, `index` and `value` are valid
+  // dimension indices, and the shape has a layout.
   void set_dimensions_minor(int index, int64_t value) {
     CHECK(has_layout());
-    dimensions_[layout_->minor_to_major(index)] = value;
+    auto& state = array_state();
+    state.dimensions[state.layout->minor_to_major(index)] = value;
   }
+
+  // Appends a new dimension with the given fixed size.
+  // Precondition: this is an array shape, and `value` is >= 0.
   void add_dimensions(int64_t value) {
-    dimensions_.push_back(value);
-    dynamic_dimensions_.push_back(false);
+    auto& state = array_state();
+    state.dimensions.push_back(value);
+    state.dynamic_dimensions.push_back(false);
   }
+
+  // Clears all dimensions (i.e. makes this shape a scalar).
+  // Precondition: this is an array shape.
   void clear_dimensions() {
-    dimensions_.clear();
-    dynamic_dimensions_.clear();
-  }
-  absl::Span<const int64_t> dimensions() const { return dimensions_; }
-  absl::Span<int64_t> mutable_dimensions() {
-    return absl::MakeSpan(dimensions_);
+    auto& state = array_state();
+    state.dimensions.clear();
+    state.dynamic_dimensions.clear();
   }
 
-  // Methods for accessing the tuple subshapes. This field only non-empty for
-  // tuple shapes.
-  int tuple_shapes_size() const { return tuple_shapes_.size(); }
-  const Shape& tuple_shapes(int index) const;
-  Shape* mutable_tuple_shapes(int index) { return &tuple_shapes_[index]; }
-  Shape* add_tuple_shapes();
-  void clear_tuple_shapes() { tuple_shapes_.clear(); }
-  const std::vector<Shape>& tuple_shapes() const { return tuple_shapes_; }
-  std::vector<Shape>* mutable_tuple_shapes() { return &tuple_shapes_; }
-
-  // Methods for accessing the layout field.
-  bool has_layout() const { return layout_ != std::nullopt; }
-  const Layout& layout() const {
-    CHECK(has_layout()) << ShortDebugString();
-    return *layout_;
-  }
-  Layout* mutable_layout() {
-    CHECK(IsArray()) << ShortDebugString();
-    if (layout_ == std::nullopt) {
-      layout_.emplace();
+  // Returns a span to indicate the size of each dimension.
+  // Precondition: this is an array shape.
+  absl::Span<const int64_t> dimensions() const {
+    if (const auto* const state = if_array_state()) {
+      return state->dimensions;
     }
-    return &(*layout_);
+    // TODO(b/404276923): ensure that this is never called on non-array shapes.
+    return {};
   }
-  void clear_layout() { layout_ = std::nullopt; }
+  absl::Span<int64_t> mutable_dimensions() {
+    return absl::MakeSpan(array_state().dimensions);
+  }
+
+  // Returns the number of top-level tuple components in this shape.
+  // Precondition: this is a tuple shape.
+  int tuple_shapes_size() const {
+    if (const auto* const state = if_tuple_state()) {
+      return state->tuple_shapes.size();
+    }
+    // TODO(b/404276923): ensure that this is never called on non-tuple shapes.
+    return 0;
+  }
+
+  // Returns the shape of the i-th tuple component.
+  // Precondition: this is a tuple shape and `index` is a valid tuple component
+  // index.
+  const Shape& tuple_shapes(int index) const;
+  Shape* mutable_tuple_shapes(int index) {
+    return &tuple_state().tuple_shapes[index];
+  }
+
+  // Appends a new invalid shape to the tuple and returns a pointer to it.
+  // Precondition: this is a tuple shape.
+  // Postcondition: the returned pointer is not null, and the pointee is owned
+  // by this shape.
+  Shape* add_tuple_shapes();
+
+  // Clears all tuple components (i.e. makes this shape a 0-tuple).
+  // Precondition: this is a tuple shape.
+  void clear_tuple_shapes() { tuple_state().tuple_shapes.clear(); }
+
+  // Returns a vector of all tuple component shapes.
+  // Precondition: this is a tuple shape.
+  const std::vector<Shape>& tuple_shapes() const;
+  std::vector<Shape>* mutable_tuple_shapes() {
+    return &tuple_state().tuple_shapes;
+  }
+
+  // Returns true if the shape is an array and has a layout.
+  bool has_layout() const {
+    const auto* const state = if_array_state();
+    return state != nullptr && state->layout != std::nullopt;
+  }
+
+  // Returns the layout of the shape.
+  // Precondition: this is an array shape and has a layout.
+  const Layout& layout() const {
+    CHECK(has_layout()) << ToString();
+    return *array_state().layout;
+  }
+
+  // Returns a pointer to the layout of the shape. If the shape does not have a
+  // layout, an empty layout is created.
+  // Precondition: this is an array shape.
+  // Postcondition: the returned pointer is not null, and the pointee is owned
+  // by this shape.
+  Layout* mutable_layout() {
+    auto& state = array_state();
+    if (state.layout == std::nullopt) {
+      state.layout.emplace();
+    }
+    return &(*state.layout);
+  }
+
+  // Removes the layout of the shape, if any.
+  // Precondition: this is an array shape.
+  void clear_layout() {
+    // TODO(b/404276923): ensure that this is never called on non-array shapes.
+    if (auto* const state = if_array_state()) {
+      state->layout = std::nullopt;
+    }
+  }
 
   // Recursively clear all dynamic dimension of a shape, including bounded and
-  // unbounded dynamic dimensions.
+  // unbounded dynamic dimensions. Clearing a dynamic dimension means
+  // changing the dimension to static and setting its size as the dynamic
+  // dimension's size upper bound.
   void clear_dynamic_dimensions() {
-    if (!IsTuple()) {
+    if (auto* const state = if_array_state()) {
       if (is_dynamic()) {
         mutable_layout()->set_dynamic_shape_metadata_prefix_bytes(0);
       }
-      for (int64_t i = 0; i < dynamic_dimensions_.size(); ++i) {
-        dynamic_dimensions_[i] = false;
+      for (int64_t i = 0; i < state->dynamic_dimensions.size(); ++i) {
+        state->dynamic_dimensions[i] = false;
       }
       return;
     }
-    for (auto& subshape : tuple_shapes_) {
-      subshape.clear_dynamic_dimensions();
+    if (auto* const state = if_tuple_state()) {
+      for (auto& subshape : state->tuple_shapes) {
+        subshape.clear_dynamic_dimensions();
+      }
     }
   }
 
-  void Clear() {
-    element_type_ = PRIMITIVE_TYPE_INVALID;
-    clear_dimensions();
-    tuple_shapes_.clear();
-    clear_layout();
-  }
+  // Resets this to the default state (an invalid shape).
+  void Clear();
 
   std::string SerializeAsString() const {
     return ToProto().SerializeAsString();
@@ -341,18 +469,21 @@ class Shape {
 
   template <typename H, bool kIsLayoutSensitive = true>
   static H Hash(H h, const Shape& s) {
-    if (s.IsTuple()) {
-      for (const Shape& subshape : s.tuple_shapes_) {
+    if (const auto* const state = s.if_tuple_state()) {
+      for (const Shape& subshape : state->tuple_shapes) {
         h = Shape::Hash<H, kIsLayoutSensitive>(std::move(h), subshape);
       }
-      return H::combine(std::move(h), s.tuple_shapes_size());
+      return H::combine(std::move(h), state->tuple_shapes.size());
     }
-    h = H::combine(std::move(h), s.element_type_, s.dimensions_,
-                   s.dynamic_dimensions_);
-    if (kIsLayoutSensitive) {
-      h = H::combine(std::move(h), s.layout_);
+    if (const auto* const state = s.if_array_state()) {
+      h = H::combine(std::move(h), s.element_type_, state->dimensions,
+                     state->dynamic_dimensions);
+      if (kIsLayoutSensitive) {
+        h = H::combine(std::move(h), state->layout);
+      }
+      return std::move(h);
     }
-    return std::move(h);
+    return H::combine(std::move(h), s.element_type_);
   }
 
   template <typename H>
@@ -361,23 +492,119 @@ class Shape {
   }
 
  private:
+  friend absl::Status ValidateNonLayoutProperties(const Shape& shape);
+
+  // Define one state struct for each shape category. Depending on the element
+  // type, the state_ variant will be set to exactly one of these structs.
+  // This design has several benefits:
+  //   - It prevents (by construction) bugs where the shape's state has
+  //     non-empty fields that don't match the shape's element type.
+  //   - It prevents (by construction) bugs where the code accesses a field
+  //     of a shape's state that doesn't match the shape's element type (e.g.
+  //     accessing the tuple_shapes field of an array shape).
+  //   - It simplifies the code by eliminating the need for runtime handling of
+  //     fields that are irrelevant to the shape's category.
+  //   - It reduces the size of the Shape class as the variant doesn't need to
+  //     store the fields for all shape categories at once.
+  struct InvalidState {};
+  struct TokenState {};
+  struct OpaqueState {};
+  struct ArrayState {
+    // The array bounds of the dimensions. For a dynamically-sized dimension,
+    // the respective value in this vector is an inclusive upper limit of the
+    // array bound.
+    DimensionVector dimensions;
+
+    // This vector has the same size as 'dimensions' and indicates whether the
+    // respective dimension is dynamically sized.
+    absl::InlinedVector<bool, InlineRank()> dynamic_dimensions;
+
+    // The layout of the shape.
+    std::optional<Layout> layout;
+  };
+  struct TupleState {
+    // The tuple element subshapes.
+    std::vector<Shape> tuple_shapes;
+  };
+
+  using State = std::variant<InvalidState, TokenState, OpaqueState, ArrayState,
+                             TupleState>;
+
+  // Convenience accessors for the state_ variant. Each if_*_state() accessor
+  // returns a pointer to the corresponding state struct, or nullptr if the
+  // shape is not of the corresponding category. The version without the `if_`
+  // prefix is similar, but will CHECK-fail if the shape is not of the
+  // corresponding category. I.e. if_foo_state() vs foo_state() is analogous to
+  // std::get_if() vs std::get().
+  //
+  // In general, prefer foo_state() over if_foo_state() as the former catches
+  // programmer errors earlier and generates a more informative error message.
+  // However, if_foo_state() is useful in cases where it's not a programmer
+  // error if the shape is not of the corresponding category.
+
+  const InvalidState* if_invalid_state() const {
+    return std::get_if<InvalidState>(&state_);
+  }
+  const TokenState* if_token_state() const {
+    return std::get_if<TokenState>(&state_);
+  }
+  const OpaqueState* if_opaque_state() const {
+    return std::get_if<OpaqueState>(&state_);
+  }
+  const ArrayState* if_array_state() const {
+    return std::get_if<ArrayState>(&state_);
+  }
+  ArrayState* if_array_state() { return std::get_if<ArrayState>(&state_); }
+  const TupleState* if_tuple_state() const {
+    return std::get_if<TupleState>(&state_);
+  }
+  TupleState* if_tuple_state() { return std::get_if<TupleState>(&state_); }
+
+  const InvalidState& invalid_state() const {
+    const auto* const state = if_invalid_state();
+    CHECK(state) << "Expected an invalid shape. Got " << ToString();
+    return *state;
+  }
+  const TokenState& token_state() const {
+    const auto* const state = if_token_state();
+    CHECK(state) << "Expected a token shape. Got " << ToString();
+    return *state;
+  }
+  const OpaqueState& opaque_state() const {
+    const auto* const state = if_opaque_state();
+    CHECK(state) << "Expected an opaque shape. Got " << ToString();
+    return *state;
+  }
+  const ArrayState& array_state() const {
+    const auto* const state = if_array_state();
+    CHECK(state) << "Expected an array shape. Got " << ToString();
+    return *state;
+  }
+  ArrayState& array_state() {
+    auto* const state = if_array_state();
+    CHECK(state) << "Expected an array shape. Got " << ToString();
+    return *state;
+  }
+  const TupleState& tuple_state() const {
+    const auto* const state = if_tuple_state();
+    CHECK(state) << "Expected a tuple shape. Got " << ToString();
+    return *state;
+  }
+  TupleState& tuple_state() {
+    auto* const state = if_tuple_state();
+    CHECK(state) << "Expected a tuple shape. Got " << ToString();
+    return *state;
+  }
+
+  // CHECK-fails if this shape's state is not empty.
+  void CheckStateIsEmpty() const;
+
   // The element type of this shape (tuple, array, etc).
   PrimitiveType element_type_ = PRIMITIVE_TYPE_INVALID;
 
-  // The array bounds of the dimensions. This is nonempty only for array
-  // shapes. For a dynamically-sized dimension, the respective value in this
-  // vector is an inclusive upper limit of the array bound.
-  DimensionVector dimensions_;
-
-  // This vector is the same size as 'dimensions_' and indicates whether the
-  // respective dimension is dynamically sized.
-  absl::InlinedVector<bool, InlineRank()> dynamic_dimensions_;
-
-  // The tuple element subshapes. This is nonempty only for tuple shapes.
-  std::vector<Shape> tuple_shapes_;
-
-  // The layout of the shape. Only relevant for arrays.
-  std::optional<Layout> layout_;
+  // The state of this shape.
+  // Invariant: element_type_ always matches the type held in this variant.
+  State state_;
 };
 
 // Shape of the parameters and output of an XLA computation. This is analogous

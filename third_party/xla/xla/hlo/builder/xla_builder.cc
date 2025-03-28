@@ -3079,9 +3079,11 @@ XlaOp XlaBuilder::RngBitGenerator(RandomAlgorithm algorithm,
   return ReportErrorOrReturn([&]() -> absl::StatusOr<XlaOp> {
     TF_RETURN_IF_ERROR(ShapeUtil::ValidateShapeWithOptionalLayout(shape));
     TF_ASSIGN_OR_RETURN(Shape state_shape, GetShape(initial_state));
-    Shape output_shape = shape;
-    output_shape.set_element_type(PRIMITIVE_TYPE_INVALID);
-    if (primitive_util::IsArrayType(shape.element_type())) {
+    Shape output_shape;  // An invalid shape by default.
+    if (shape.IsArray()) {
+      // Make output_shape the same as the input shape, but with an unsigned
+      // integral type.
+      output_shape = shape;
       output_shape.set_element_type(
           primitive_util::UnsignedIntegralTypeForBitWidth(
               primitive_util::BitWidth(shape.element_type())));
