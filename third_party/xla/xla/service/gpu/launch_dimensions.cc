@@ -17,7 +17,9 @@ limitations under the License.
 
 #include <algorithm>
 #include <cstdint>
+#include <limits>
 
+#include "absl/log/check.h"
 #include "xla/service/platform_util.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
