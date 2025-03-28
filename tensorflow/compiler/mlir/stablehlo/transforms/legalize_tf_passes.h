@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_MLIR_LITE_STABLEHLO_TRANSFORMS_LEGALIZE_TF_PASSES_H_
-#define TENSORFLOW_COMPILER_MLIR_LITE_STABLEHLO_TRANSFORMS_LEGALIZE_TF_PASSES_H_
+#ifndef TENSORFLOW_COMPILER_MLIR_STABLEHLO_TRANSFORMS_LEGALIZE_TF_PASSES_H_
+#define TENSORFLOW_COMPILER_MLIR_STABLEHLO_TRANSFORMS_LEGALIZE_TF_PASSES_H_
 
 #include <memory>
 #include <optional>
@@ -48,4 +48,4 @@ void PopulateLegalizeTfPatterns(MLIRContext* context,
 }  // namespace odml
 }  // namespace mlir
 
-#endif  // TENSORFLOW_COMPILER_MLIR_LITE_STABLEHLO_TRANSFORMS_LEGALIZE_TF_PASSES_H_
+#endif  // TENSORFLOW_COMPILER_MLIR_STABLEHLO_TRANSFORMS_LEGALIZE_TF_PASSES_H_
