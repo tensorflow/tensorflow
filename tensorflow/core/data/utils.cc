@@ -14,12 +14,10 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/data/utils.h"
 
-#include <memory>
-#include <optional>
+#include <cstdint>
 #include <string>
 #include <vector>
 
-#include "absl/container/flat_hash_map.h"
 #include "absl/status/statusor.h"
 #include "tensorflow/core/framework/metrics.h"
 #include "tensorflow/core/protobuf/data_service.pb.h"
