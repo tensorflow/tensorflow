@@ -2566,8 +2566,7 @@ DefaultSchedulerCore::ScheduleComputation(const HloComputation* computation) {
                  .GetReadyTime();
 
   const auto& debug_options = xla::GetDebugOptionsFromFlags();
-  if (debug_options.xla_dump_latency_hiding_schedule() &&
-      computation->IsEntryComputation()) {
+  if (debug_options.xla_dump_latency_hiding_schedule()) {
     int core_freq = latency_estimator_->CyclesPerMicrosecond();
     DumpLatencyHidingSchedule(computation, sched_state.sched_graph,
                               sched_state.new_sequence_reversed, core_freq,
@@ -2584,6 +2583,11 @@ void DefaultSchedulerCore::DumpLatencyHidingSchedule(
   ScheduleProto proto;
   proto.set_computation_id(computation->unique_id());
   proto.set_cycles_per_microsecond(cycles_per_microsecond);
+
+  *proto.mutable_scheduler_statistics() =
+      LatencyHidingScheduler::LatencyHidingStatistics(
+          computation, latency_estimator_, async_tracker_, shape_size_bytes_)
+          .ToProto();
 
   const HloGraphNode& first_node = schedule_graph.GetNode(instructions.front());
   const double total_time = first_node.GetReadyTime() + first_node.GetCost();
@@ -2756,56 +2760,64 @@ LatencyHidingScheduler::LatencyHidingStatistics(
 }
 
 // Prints a SchedulerStatistics object.
-std::string LatencyHidingScheduler::SchedulerStatisticsString(
-    const SchedulerStatistics& sched_stats) {
+std::string LatencyHidingScheduler::SchedulerStatistics::ToString() const {
   std::string result;
-  if (const HloComputation* comp = sched_stats.computation) {
+  if (const HloComputation* comp = this->computation) {
     absl::StrAppend(&result, "For computation: ", comp->name(), ", module ",
                     comp->parent()->name(), "(", comp->parent()->unique_id(),
                     ")\n");
   }
-  absl::StrAppend(&result, "Total wasted cycles: ",
-                  sched_stats.all_gather_wasted_cycles +
-                      sched_stats.all_reduce_wasted_cycles +
-                      sched_stats.collective_broadcast_wasted_cycles +
-                      sched_stats.collective_permute_wasted_cycles +
-                      sched_stats.all_to_all_wasted_cycles +
-                      sched_stats.ragged_all_to_all_wasted_cycles +
-                      sched_stats.reduce_scatter_wasted_cycles +
-                      sched_stats.send_wasted_cycles +
-                      sched_stats.recv_wasted_cycles,
-                  "\n");
+  absl::StrAppend(&result,
+                  "Total wasted cycles: ", this->GetTotalWastedCycles(), "\n");
   absl::StrAppend(&result, "Wasted cycles for all-reduce: ",
-                  sched_stats.all_reduce_wasted_cycles, "\n");
+                  this->all_reduce_wasted_cycles, "\n");
   absl::StrAppend(&result, "Wasted cycles for all-gather: ",
-                  sched_stats.all_gather_wasted_cycles, "\n");
+                  this->all_gather_wasted_cycles, "\n");
   absl::StrAppend(&result, "Wasted cycles for collective-broadcast: ",
-                  sched_stats.collective_broadcast_wasted_cycles, "\n");
+                  this->collective_broadcast_wasted_cycles, "\n");
   absl::StrAppend(&result, "Wasted cycles for collective-permute: ",
-                  sched_stats.collective_permute_wasted_cycles, "\n");
+                  this->collective_permute_wasted_cycles, "\n");
   absl::StrAppend(&result, "Wasted cycles for all-to-all: ",
-                  sched_stats.all_to_all_wasted_cycles, "\n");
+                  this->all_to_all_wasted_cycles, "\n");
   absl::StrAppend(&result, "Wasted cycles for ragged-all-to-all: ",
-                  sched_stats.ragged_all_to_all_wasted_cycles, "\n");
+                  this->ragged_all_to_all_wasted_cycles, "\n");
   absl::StrAppend(&result, "Wasted cycles for reduce-scatter: ",
-                  sched_stats.reduce_scatter_wasted_cycles, "\n");
-  absl::StrAppend(&result,
-                  "Wasted cycles for send: ", sched_stats.send_wasted_cycles,
+                  this->reduce_scatter_wasted_cycles, "\n");
+  absl::StrAppend(&result, "Wasted cycles for send: ", this->send_wasted_cycles,
                   "\n");
-  absl::StrAppend(&result,
-                  "Wasted cycles for recv: ", sched_stats.recv_wasted_cycles,
+  absl::StrAppend(&result, "Wasted cycles for recv: ", this->recv_wasted_cycles,
                   "\n");
-  absl::StrAppend(&result, "Total cycles: ", sched_stats.total_cycles, "\n");
-  absl::StrAppend(&result, "Memory pressure peak (bytes): ",
-                  sched_stats.memory_pressure_peak, "\n");
+  absl::StrAppend(&result, "Total cycles: ", this->total_cycles, "\n");
+  absl::StrAppend(&result,
+                  "Memory pressure peak (bytes): ", this->memory_pressure_peak,
+                  "\n");
   return result;
+}
+ScheduleProto::SchedulerStatisticsProto
+LatencyHidingScheduler::SchedulerStatistics::ToProto() const {
+  ScheduleProto::SchedulerStatisticsProto proto;
+  proto.set_all_gather_wasted_cycles(all_gather_wasted_cycles);
+  proto.set_all_reduce_wasted_cycles(all_reduce_wasted_cycles);
+  proto.set_collective_broadcast_wasted_cycles(
+      collective_broadcast_wasted_cycles);
+  proto.set_collective_permute_wasted_cycles(collective_permute_wasted_cycles);
+  proto.set_all_to_all_wasted_cycles(all_to_all_wasted_cycles);
+  proto.set_ragged_all_to_all_wasted_cycles(ragged_all_to_all_wasted_cycles);
+  proto.set_reduce_scatter_wasted_cycles(reduce_scatter_wasted_cycles);
+  proto.set_send_wasted_cycles(send_wasted_cycles);
+  proto.set_recv_wasted_cycles(recv_wasted_cycles);
+  proto.set_total_wasted_cycles(this->GetTotalWastedCycles());
+  proto.set_total_cycles(total_cycles);
+  proto.set_memory_pressure_peak(memory_pressure_peak);
+  return proto;
 }
 
 void LatencyHidingScheduler::LogScheduleStatistics(
     const HloComputation* computation) {
-  XLA_VLOG_LINES(1, SchedulerStatisticsString(LatencyHidingStatistics(
-                        computation, latency_estimator_.get(),
-                        async_tracker_.get(), shape_size_bytes_)));
+  XLA_VLOG_LINES(
+      1, LatencyHidingStatistics(computation, latency_estimator_.get(),
+                                 async_tracker_.get(), shape_size_bytes_)
+             .ToString());
 }
 
 absl::StatusOr<bool> LatencyHidingScheduler::Run(

@@ -1492,10 +1492,27 @@ message ScheduleProto {
     double end_timestamp_cycles = 3;
   }
   repeated Instruction instructions = 1;
+
+  message SchedulerStatisticsProto {
+    double all_gather_wasted_cycles = 1;
+    double all_reduce_wasted_cycles = 2;
+    double collective_broadcast_wasted_cycles = 3;
+    double collective_permute_wasted_cycles = 4;
+    double all_to_all_wasted_cycles = 5;
+    double ragged_all_to_all_wasted_cycles = 6;
+    double reduce_scatter_wasted_cycles = 7;
+    double send_wasted_cycles = 8;
+    double recv_wasted_cycles = 9;
+    double total_wasted_cycles = 10;
+    double total_cycles = 11;
+    int64 memory_pressure_peak = 12;
+  }
+
   // Computation id (matches the id in HloComputationProto).
   int64 computation_id = 2;
   HloModuleProto hlo_module = 3;
   int64 cycles_per_microsecond = 4;
+  SchedulerStatisticsProto scheduler_statistics = 5;
 }
 
 // Message that captures sharding configuration of an HLO op.
