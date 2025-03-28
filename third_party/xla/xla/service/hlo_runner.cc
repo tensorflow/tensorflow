@@ -62,7 +62,6 @@ limitations under the License.
 #include "xla/tsl/platform/status.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/threadpool.h"
-#include "tsl/platform/protobuf.h"
 
 namespace xla {
 
@@ -760,8 +759,7 @@ HloRunner::CreateExecutableWithBufferAssignment(
 }
 
 absl::StatusOr<std::unique_ptr<OpaqueExecutable>>
-HloRunner::DeserializeExecutable(
-    absl::Nonnull<const tsl::protobuf::Message*> serialized) const {
+HloRunner::DeserializeExecutable(const absl::string_view serialized) const {
   TF_ASSIGN_OR_RETURN(std::unique_ptr<Executable> executable,
                       backend().compiler()->DeserializeExecutable(serialized));
   return std::make_unique<HloRunnerExecutable>(this, std::move(executable));

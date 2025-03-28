@@ -35,7 +35,6 @@ limitations under the License.
 #include "xla/service/hlo_runner_interface.h"
 #include "xla/shape_layout.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/protobuf.h"
 
 namespace xla {
 
@@ -102,7 +101,7 @@ class HloRunnerPjRt : public HloRunnerInterface {
   // representation must have been produced by a compiler of the same platform
   // and version as this one.
   absl::StatusOr<std::unique_ptr<OpaqueExecutable>> DeserializeExecutable(
-      absl::Nonnull<const tsl::protobuf::Message*> serialized) const override;
+      absl::string_view serialized) const override;
 
   absl::StatusOr<Literal> ExecuteWithExecutable(
       OpaqueExecutable* executable, absl::Span<const Literal* const> arguments,
