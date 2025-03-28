@@ -785,9 +785,10 @@ absl::Status IfCmd::Record(const Thunk::ExecuteParams& execute_params,
   VLOG(5) << "IfCmd:";
   VLOG(5) << "  pred: " << pred_ << " (" << pred.opaque() << ")";
 
-  return command_buffer->If(
-      se::DeviceMemory<bool>(pred),
-      CreateBuilder(&then_commands_, &execute_params, &record_params));
+  return command_buffer
+      ->If(se::DeviceMemory<bool>(pred),
+           CreateBuilder(&then_commands_, &execute_params, &record_params), {})
+      .status();
 }
 
 bool IfCmd::force_update() { return then_commands_.force_update(); }

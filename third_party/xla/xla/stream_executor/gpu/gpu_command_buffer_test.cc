@@ -395,8 +395,9 @@ TEST(GpuCommandBufferTest, ConditionalIf) {
   };
 
   // Create a command buffer with a single conditional operation.
-  auto cmd_buffer = executor->CreateCommandBuffer(primary).value();
-  TF_ASSERT_OK(cmd_buffer->If(pred, then_builder));
+  TF_ASSERT_OK_AND_ASSIGN(auto cmd_buffer,
+                          executor->CreateCommandBuffer(primary));
+  TF_ASSERT_OK_AND_ASSIGN(auto* if_cmd, cmd_buffer->If(pred, then_builder, {}));
   TF_ASSERT_OK(cmd_buffer->Finalize());
 
   TF_ASSERT_OK(cmd_buffer->Submit(stream.get()));
@@ -436,7 +437,7 @@ TEST(GpuCommandBufferTest, ConditionalIf) {
 
   // Update command buffer with a conditional to use new builder.
   TF_ASSERT_OK(cmd_buffer->Update());
-  TF_ASSERT_OK(cmd_buffer->If(pred, then_builder));
+  TF_ASSERT_OK(cmd_buffer->If(if_cmd, pred, then_builder));
   TF_ASSERT_OK(cmd_buffer->Finalize());
 
   TF_ASSERT_OK(cmd_buffer->Submit(stream.get()));
@@ -482,7 +483,7 @@ TEST(GpuCommandBufferTest, ConditionalIfWithMemset) {
   // Create a command buffer with a single conditional operation.
   TF_ASSERT_OK_AND_ASSIGN(auto cmd_buffer,
                           executor->CreateCommandBuffer(primary));
-  TF_ASSERT_OK(cmd_buffer->If(pred, then_builder));
+  TF_ASSERT_OK_AND_ASSIGN(auto* if_cmd, cmd_buffer->If(pred, then_builder, {}));
   TF_ASSERT_OK(cmd_buffer->Finalize());
 
   TF_ASSERT_OK(cmd_buffer->Submit(stream.get()));
@@ -505,7 +506,7 @@ TEST(GpuCommandBufferTest, ConditionalIfWithMemset) {
 
   // Update command buffer with a conditional to use new builder.
   TF_ASSERT_OK(cmd_buffer->Update());
-  TF_ASSERT_OK(cmd_buffer->If(pred, then_builder));
+  TF_ASSERT_OK(cmd_buffer->If(if_cmd, pred, then_builder));
   TF_ASSERT_OK(cmd_buffer->Finalize());
 
   TF_ASSERT_OK(cmd_buffer->Submit(stream.get()));
@@ -1060,7 +1061,7 @@ TEST(GpuCommandBufferTest, DISABLED_WhileNestedConditional) {
   auto nested_cmd = executor->CreateCommandBuffer(nested).value();
   // TODO(b/339653343): Adding this If condition causes AddNestedCommandBuffer
   // to fail.
-  TF_ASSERT_OK(nested_cmd->If(pred_then, then_builder));
+  TF_ASSERT_OK(nested_cmd->If(pred_then, then_builder, {}));
 
   // Loop cond: loop_counter++ < num_iters;
   CommandBuffer::Builder cond_builder = [&](CommandBuffer* cond_cmd) {

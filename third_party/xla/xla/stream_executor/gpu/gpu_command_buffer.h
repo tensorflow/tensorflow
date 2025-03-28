@@ -166,16 +166,19 @@ class GpuCommandBuffer : public CommandBuffer {
                       const BitPattern& bit_pattern,
                       size_t num_elements) override;
 
-  absl::Status If(DeviceMemory<bool> predicate, Builder then_builder) override;
+  absl::StatusOr<const Command*> If(
+      DeviceMemory<bool> predicate, Builder then_builder,
+      absl::Span<const Command* const> dependencies) override;
+
+  absl::Status If(const Command* command, DeviceMemory<bool> predicate,
+                  Builder then_builder) override;
 
   absl::Status IfElse(DeviceMemory<bool> predicate, Builder then_builder,
                       Builder else_builder) override;
 
-  // Case operation that uses bool value as branch index
   absl::Status Case(DeviceMemory<bool> index,
                     std::vector<Builder> branches) override;
 
-  // Case operation that uses int32 value as branch index
   absl::Status Case(DeviceMemory<int32_t> index,
                     std::vector<Builder> branches) override;
 
