@@ -63,6 +63,7 @@ limitations under the License.
 #include "xla/service/gpu/autotuning/autotuner_compile_util.h"
 #include "xla/service/gpu/autotuning/autotuner_status_key.h"
 #include "xla/service/gpu/autotuning/autotuner_util.h"
+#include "xla/service/gpu/autotuning/dot_search_space.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/buffer_comparator.h"
 #include "xla/service/gpu/gpu_float_support.h"
@@ -128,9 +129,6 @@ namespace {
 
 // Minimum tile size.
 constexpr int kMinTileSize = 16;
-
-// Default tiling when autotuning is disabled.
-constexpr TritonGemmConfig kDefaultGemmTiling = {32, 32, 32, 1, 1, 4};
 
 // Split-K is enabled when the estimate number of waves is lower than the limit.
 constexpr int kMaxWavesForSplitK = 5;
@@ -872,6 +870,27 @@ void ModifyPotentiallyFailingConfig(TritonGemmConfig& config, int minBitWidth,
 
 absl::StatusOr<std::vector<TritonGemmConfig>>
 GemmFusionAutotunerImpl::GenerateTritonConfigs(const HloDotInstruction& dot) {
+  // Default tiling when autotuning is disabled.
+  constexpr TritonGemmConfig kDefaultConfig = {
+      /*block_m=*/32, /*block_n=*/32,   /*block_k=*/32,
+      /*split_k=*/1,  /*num_stages=*/1, /*num_warps=*/4,
+      /*num_ctas=*/1};
+  constexpr int kMinGemmElements = 2 * 32 * 32;
+  bool small_dot = ShapeUtil::ElementsIn(dot.operand(0)->shape()) +
+                       ShapeUtil::ElementsIn(dot.operand(1)->shape()) <=
+                   kMinGemmElements;
+
+  if (debug_options_.xla_gpu_experimental_enable_dynamic_dot_search_space()) {
+    if (small_dot || !IsAutotuningEnabled()) {
+      return {{kDefaultConfig}};
+    }
+    TritonDotFusionSearchSpace search_space(config_.GetDeviceDescription(),
+                                            &dot);
+    VLOG(1) << "Generating configs from search space: "
+            << search_space.Serialize();
+    return search_space.GenerateConfigs();
+  }
+
   // Retrieve the minimum bit-width participating in the dot. This is needed
   // to avoid autotuning configurations that are not supported by Triton. This
   // is used to restrict the values for tile_k.
@@ -897,20 +916,14 @@ GemmFusionAutotunerImpl::GenerateTritonConfigs(const HloDotInstruction& dot) {
 
   // Generate the list of configurations (once).
   if (triton_configs_.empty()) {
-    triton_configs_ = !IsAutotuningEnabled()
-                          ? std::vector(1, kDefaultGemmTiling)
+    triton_configs_ = !IsAutotuningEnabled() ? std::vector(1, kDefaultConfig)
                       : debug_options_.xla_gpu_exhaustive_tiling_search()
                           ? GetExhaustiveTritonConfigs()
                           : GetDefaultTritonConfigs();
   }
 
-  // Avoid autotuning tiny fusions.
-  constexpr int kMinGemmElements = 32 * 32;
-  bool small_dot =
-      ShapeUtil::ElementsIn(dot.operand(0)->shape()) <= kMinGemmElements &&
-      ShapeUtil::ElementsIn(dot.operand(1)->shape()) <= kMinGemmElements;
   std::vector<TritonGemmConfig> triton_configs =
-      small_dot ? std::vector(1, kDefaultGemmTiling) : triton_configs_;
+      small_dot ? std::vector(1, kDefaultConfig) : triton_configs_;
 
   // Split-K optimization enables more even utilization of a GPU in cases
   // where tiling just the non-contracting dimensions of a GEMM does not create

@@ -118,6 +118,7 @@ cc_library(
         ":autotuner_compile_util",
         ":autotuner_status_key",
         ":autotuner_util",
+        ":dot_search_space",
         "//xla:autotune_results_proto_cc",
         "//xla:autotuning_proto_cc",
         "//xla:shape_util",
@@ -253,6 +254,35 @@ xla_test(
         "@com_google_googletest//:gtest",
         "@local_tsl//tsl/platform:path",
         "@local_tsl//tsl/platform:platform_port",
+    ],
+)
+
+cc_library(
+    name = "dot_search_space",
+    srcs = ["dot_search_space.cc"],
+    hdrs = ["dot_search_space.h"],
+    tags = ["gpu"],
+    deps = [
+        "//xla/hlo/ir:hlo",
+        "//xla/service/gpu:matmul_utils",
+        "//xla/stream_executor:device_description",
+        "@com_google_absl//absl/strings:str_format",
+    ],
+)
+
+xla_test(
+    name = "dot_search_space_test",
+    srcs = ["dot_search_space_test.cc"],
+    backends = ["gpu"],
+    deps = [
+        ":dot_search_space",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
+        "//xla/hlo/testlib:verified_hlo_module",
+        "//xla/service/gpu:matmul_utils",
+        "//xla/stream_executor:device_description",
+        "//xla/stream_executor:device_description_proto_cc",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
