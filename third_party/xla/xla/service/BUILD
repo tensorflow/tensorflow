@@ -4734,7 +4734,6 @@ cc_library(
     hdrs = ["hlo_runner_interface.h"],
     deps = [
         ":computation_placer",
-        ":hlo_module_util",
         "//xla:literal",
         "//xla:shape_util",
         "//xla:util",
