@@ -59,9 +59,8 @@ py_strict_test(
         "generate_hlo_test_checks_test_output.hlo",
         "//xla/hlo/tools:hlo-opt",
     ],
-    python_version = "PY3",
     deps = [
-        "//xla/hlo/tools:generate_hlo_test_checks",
+        "//xla/hlo/tools:generate_hlo_test_checks_lib",
         "@absl_py//absl/testing:absltest",
     ],
 )
