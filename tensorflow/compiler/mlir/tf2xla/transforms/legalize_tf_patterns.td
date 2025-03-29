@@ -238,8 +238,6 @@ class DirectLogicalBinaryPat<Op FromOp, Op ToOp>
 
 foreach fromToBinPair = [[TF_LogicalAndOp, CHLO_BroadcastAndOp],
                          [TF_LogicalOrOp, CHLO_BroadcastOrOp],
-                         [TF_BitwiseAndOp, CHLO_BroadcastAndOp],
-                         [TF_BitwiseOrOp, CHLO_BroadcastOrOp],
                          [TF_BitwiseXorOp, CHLO_BroadcastXorOp]] in
   def : DirectLogicalBinaryPat<fromToBinPair[0], fromToBinPair[1]>;
 
@@ -359,25 +357,6 @@ def LegalizeGatherV2 :
         (GetHLOAxisFromTFAxis $axis, $params),
         (GetHLOAxisFromTFAxis $batch_dims, $indices))>;
 
-//===----------------------------------------------------------------------===//
-// Pad op patterns.
-//===----------------------------------------------------------------------===//
-
-class SliceDenseIntElementsAttrColumn2D<string column> : NativeCodeCall<
-  "SliceDenseIntElementsAttrColumn2D($0.cast<ElementsAttr>(), " # column # " )">;
-
-class SliceDenseIntElementsAttr<string index, string axis> : NativeCodeCall<
-  "SliceDenseIntElementsAttr($0.cast<ElementsAttr>(), " # index # ", " # axis # ")">;
-
-// Interior padding attribute based on the TF padding.
-def GetInteriorPadding : NativeCodeCall <
-  "GetInteriorPadding($0.cast<ElementsAttr>())">;
-
-def : Pat<(TF_PadV2Op $input, (ConstantLikeMatcher ElementsAttr:$padding), $c),
-          (MHLO_PadOp $input, $c,
-           (SliceDenseIntElementsAttrColumn2D<"0"> $padding),
-           (SliceDenseIntElementsAttrColumn2D<"1"> $padding),
-           (GetInteriorPadding $padding))>;
 
 //===----------------------------------------------------------------------===//
 // Identity op patterns.
@@ -743,22 +722,6 @@ def : Pattern<(TF_SoftplusOp AnyTensor:$features),
 
 def : Pat<(TF_XlaReplicaIdOp),
           (TF_CastOp (MHLO_ReplicaIdOp), /*truncate=*/ConstBoolAttrFalse)>;
-
-//===----------------------------------------------------------------------===//
-// XlaGather op.
-//===----------------------------------------------------------------------===//
-
-def ToGatherDimNumsAttr : NativeCodeCall<"GetGatherDimNumsAttr($0, &$_builder)">;
-
-def HasValidGatherDims : Constraint<CPred<"HasValidGatherDims($0)">>;
-
-def : Pat<(TF_XlaGatherOp $operand, $start_indices, (ConstantLikeMatcher ElementsAttr:$slice_sizes),
-                          $dimension_numbers, $indices_are_sorted),
-          (MHLO_GatherOp $operand, $start_indices,
-                        (ToGatherDimNumsAttr $dimension_numbers),
-                        (CastElementsToI64Elements $slice_sizes),
-                        $indices_are_sorted),
-          [(HasValidGatherDims $dimension_numbers)]>;
 
 //===----------------------------------------------------------------------===//
 // XlaDotOp op.

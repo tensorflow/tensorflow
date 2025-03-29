@@ -1541,119 +1541,6 @@ class ConvertBroadcastToOp : public OpRewritePattern<TF::BroadcastToOp> {
   }
 };
 
-/// Converts a TF::RollOp to HLO. Only support 0D axis and shift case, and axis
-/// have to be a constant.
-class ConvertRollOp : public OpRewritePattern<TF::RollOp> {
- public:
-  using OpRewritePattern::OpRewritePattern;
-  LogicalResult matchAndRewrite(TF::RollOp op,
-                                PatternRewriter &rewriter) const override {
-    auto shift_ty = mlir::dyn_cast<RankedTensorType>(op.getShift().getType());
-    if (!shift_ty || shift_ty.getRank() != 0) {
-      return rewriter.notifyMatchFailure(
-          op, "require the type of shift to be 0D tensor");
-    }
-
-    APInt val;
-    if (!matchPattern(op.getAxis(), m_ConstantInt(&val))) {
-      return rewriter.notifyMatchFailure(op, "require axis to be constant");
-    }
-    int axis = val.getSExtValue();
-
-    auto input_ty = mlir::dyn_cast<RankedTensorType>(op.getInput().getType());
-    if (!input_ty || !input_ty.hasStaticShape()) {
-      return rewriter.notifyMatchFailure(
-          op, "require the type of input to have static shapes");
-    }
-    ArrayRef<int64_t> input_shape = input_ty.getShape();
-    int input_rank = input_ty.getRank();
-    if (axis < 0) axis += input_rank;
-
-    // Adjust large offsets into [0, axis_size). This also makes negative
-    // offsets positive.
-    // offset = ((offset % axis_size) + axis_size) % axis_size
-    ImplicitLocOpBuilder b(op.getLoc(), rewriter);
-    Value offset = op.getShift();
-    auto axis_size = b.create<mhlo::ConstantOp>(b.getIntegerAttr(
-        getElementTypeOrSelf(offset.getType()), input_shape[axis]));
-    offset = b.create<RemOp>(
-        b.create<AddOp>(b.create<RemOp>(offset, axis_size), axis_size),
-        axis_size);
-
-    // Stack two copies of the dimension, then slice from the calculated
-    // offset. This also works if shift is not constant.
-    // DynamicSliceOp requires the sizes being integer, and we can get the
-    // information from input shape.
-    auto concat = b.create<ConcatenateOp>(
-        ValueRange{op.getInput(), op.getInput()}, b.getI64IntegerAttr(axis));
-    Value zero = b.create<mhlo::ConstantOp>(
-        b.getIntegerAttr(getElementTypeOrSelf(offset.getType()), 0));
-    SmallVector<Value> slice_begin_indices(input_rank, zero);
-    slice_begin_indices[axis] = b.create<SubtractOp>(axis_size, offset);
-    rewriter.replaceOpWithNewOp<DynamicSliceOp>(
-        op, input_ty, concat, slice_begin_indices,
-        rewriter.getI64TensorAttr(input_shape));
-    return success();
-  }
-};
-
-/// Converts a TF::LeakyReluOp to HLO.
-/// LeakyRelu(x) = alpha * x if x < 0 else x.
-class ConvertLeakyReluOp : public OpRewritePattern<TF::LeakyReluOp> {
- public:
-  using OpRewritePattern::OpRewritePattern;
-  LogicalResult matchAndRewrite(TF::LeakyReluOp op,
-                                PatternRewriter &rewriter) const override {
-    Location loc = op.getLoc();
-    Value features = op.getFeatures();
-
-    // Use ConstantLike for `alpha` to match the shape of feature.
-    auto alphaVal = chlo::getConstantLike(
-        rewriter, loc, op.getAlpha().convertToFloat(), features);
-    Value zeroVal = chlo::getConstantLike(rewriter, loc, 0.0, features);
-
-    Value leakyActivationVal =
-        rewriter.create<mhlo::MulOp>(loc, features, alphaVal);
-
-    Value compareGtZero = rewriter.create<mhlo::CompareOp>(
-        loc, features, zeroVal, ComparisonDirection::GT);
-
-    rewriter.replaceOpWithNewOp<SelectOp>(op, compareGtZero, features,
-                                          leakyActivationVal);
-    return success();
-  }
-};
-
-/// Converts a TF::LeakyReluGradOp to HLO.
-/// LeakyReluGrad(gradient, inputs) = gradient if input > 0
-/// else alpha * gradient.
-class ConvertLeakyReluGradOp : public OpRewritePattern<TF::LeakyReluGradOp> {
- public:
-  using OpRewritePattern::OpRewritePattern;
-  LogicalResult matchAndRewrite(TF::LeakyReluGradOp op,
-                                PatternRewriter &rewriter) const override {
-    Location loc = op.getLoc();
-    Value gradients = op.getGradients();
-    Value features = op.getFeatures();
-    auto featureType = features.getType();
-
-    // Use ConstantLike for `alpha` to match the shape of feature.
-    auto alphaVal = chlo::getConstantLike(
-        rewriter, loc, op.getAlpha().convertToFloat(), features);
-    Value zeroVal = chlo::getConstantLike(rewriter, loc, 0.0, features);
-
-    Value leakyGradientVal =
-        rewriter.create<mhlo::MulOp>(loc, gradients, alphaVal);
-
-    Value compareGtZero = rewriter.create<mhlo::CompareOp>(
-        loc, features, zeroVal, ComparisonDirection::GT);
-
-    rewriter.replaceOpWithNewOp<SelectOp>(op, featureType, compareGtZero,
-                                          gradients, leakyGradientVal);
-    return success();
-  }
-};
-
 // Converts TensorFlow DiagPartOp to HLO ops using reduction on masked matrix.
 // For a Rank-2 input, it creates the following ops:
 //   %1 = "mhlo.iota"() {iota_dimension = 0 : i64}
@@ -2028,17 +1915,6 @@ class ConvertEinsumOp : public OpRewritePattern<TF::EinsumOp> {
   }
 };
 
-// Bypasses IdentityN op.
-class ConvertIdentityNOp : public OpRewritePattern<TF::IdentityNOp> {
- public:
-  using OpRewritePattern<TF::IdentityNOp>::OpRewritePattern;
-  LogicalResult matchAndRewrite(TF::IdentityNOp op,
-                                PatternRewriter &rewriter) const override {
-    rewriter.replaceOp(op, op.getOperands());
-    return success();
-  }
-};
-
 template <typename OpTy>
 class ConvertFFTOp : public OpRewritePattern<OpTy> {
  public:
@@ -2117,7 +1993,6 @@ class ConvertFFTOp : public OpRewritePattern<OpTy> {
   }
 };
 
-using ConvertRFFTOp = ConvertFFTOp<TF::RFFTOp>;
 using ConvertIRFFTOp = ConvertFFTOp<TF::IRFFTOp>;
 
 // The base class to convert TensorFlow FusedBatchNormGrad*Op to HLO
@@ -2244,10 +2119,6 @@ class ConvertFusedBatchNormGradBase
   }
 };
 
-using ConvertFusedBatchNormGradOp =
-    ConvertFusedBatchNormGradBase<TF::FusedBatchNormGradOp>;
-using ConvertFusedBatchNormGradV2Op =
-    ConvertFusedBatchNormGradBase<TF::FusedBatchNormGradV2Op>;
 using ConvertFusedBatchNormGradV3Op =
     ConvertFusedBatchNormGradBase<TF::FusedBatchNormGradV3Op>;
 
@@ -2446,8 +2317,6 @@ class ConvertFusedBatchNormBase : public OpRewritePattern<FusedBatchNormOpT> {
   }
 };
 
-using ConvertFusedBatchNormV2Op =
-    ConvertFusedBatchNormBase<TF::FusedBatchNormV2Op>;
 using ConvertFusedBatchNormV3Op =
     ConvertFusedBatchNormBase<TF::FusedBatchNormV3Op>;
 
@@ -2820,54 +2689,6 @@ using ConvertAvgPool2DGradOp =
 using ConvertAvgPool3DGradOp =
     ConvertAvgPoolGradOp<TF::AvgPool3DGradOp, /*num_dims=*/5>;
 
-// Converts MaxPool op to HLO ReduceWindow op by setting appropriate window
-// dimensions with max as the reduction function.
-//
-// Sample result for VALID padding mode:
-//
-//   %init = arith.constant dense<...> : tensor<i32>
-//   %max_pool = "mhlo.reduce"(%inp, %init) ["mhlo.maximum"]
-//               {window_dimensions = ..., window_strides = ... }
-//
-template <typename OpTy, int num_dims>
-class ConvertMaxPoolOp : public OpRewritePattern<OpTy> {
- public:
-  using OpRewritePattern<OpTy>::OpRewritePattern;
-
-  LogicalResult matchAndRewrite(OpTy op,
-                                PatternRewriter &rewriter) const override {
-    Type element_type =
-        mlir::cast<TensorType>(op.getInput().getType()).getElementType();
-    if (!element_type.isSignlessIntOrFloat()) return failure();
-    tensorflow::Padding padding;
-    if (!GetPaddingFromString(op.getPadding().str(), &padding).ok())
-      return failure();
-    if (padding == tensorflow::Padding::EXPLICIT) {
-      return failure();
-    }
-    Location loc = op.getLoc();
-    ConstantOp init = GetScalarLimitConstOfType(
-        element_type, loc, hlo::kInfinityLowest, &rewriter);
-
-    auto input_ty = mlir::dyn_cast<RankedTensorType>(op.getInput().getType());
-    if (!input_ty) return failure();
-    DenseIntElementsAttr paddings_attr = GetReduceWindowPaddingAsAttr<num_dims>(
-        input_ty.getShape(), op.getKsize(), op.getStrides(), op.getPadding(),
-        &rewriter);
-    auto reduce = rewriter.create<ReduceWindowOp>(
-        loc, op.getType(), op.getInput(), init,
-        GetI64ElementsAttr(op.getKsize()), GetI64ElementsAttr(op.getStrides()),
-        /*base_dilations=*/DenseIntElementsAttr(),
-        /*window_dilations=*/DenseIntElementsAttr(), paddings_attr);
-    BuildReduceBody<MaxOp>(element_type, &reduce.getBody(), &rewriter);
-
-    rewriter.replaceOp(op, reduce.getResult(0));
-    return success();
-  }
-};
-
-using ConvertMaxPool2DOp = ConvertMaxPoolOp<TF::MaxPoolOp, /*num_dims=*/4>;
-using ConvertMaxPool3DOp = ConvertMaxPoolOp<TF::MaxPool3DOp, /*num_dims=*/5>;
 
 // Converts tf.Select (SelectV1) to mhlo.select. It has optional broadcasting on
 // the condition only.
@@ -3029,127 +2850,6 @@ class ConvertSliceOpDynamic : public OpRewritePattern<TF::SliceOp> {
         loc, op.getOperation()->getResult(0).getType(), input, start_indices,
         end_indices, stride_indices);
     rewriter.replaceOp(op, d_slice.getOperation()->getResults());
-    return success();
-  }
-};
-
-static void BroadcastBatchMatMulV2Operands(Value lhs, Value rhs, Location loc,
-                                           Value *out_lhs, Value *out_rhs,
-                                           PatternRewriter *rewriter) {
-  // The dimension structure of the relevant operands to a tf.BatchMatMulV2 is:
-  // - lhs: [LHSBATCHDIMS..., LHSROWS, LHSCOLS]
-  // - rhs: [RHSBATCHDIMS..., RHSROWS, RHSCOLS]
-  // - result: [broadcast(LHSBATCHDIMS, RHSBATCHDIMS)..., LHSROWS, RHSCOLS]
-  // To perform the matmul, we need to first broadcast lhs and rhs to a common
-  // set of leading dimensions before doing the actual matmul.
-  // That's what the code below does.
-  // In particular, we populate out_lhs and out_rhs to have dimension structure:
-  // - out_lhs: [broadcast(LHSBATCHDIMS, RHSBATCHDIMS)..., LHSROWS, LHSCOLS]
-  // - out_rhs: [broadcast(LHSBATCHDIMS, RHSBATCHDIMS)..., RHSROWS, RHSCOLS]
-  // To do this, we need to calculate those output shapes, which involves
-  // slicing off the leading batch dims of each operand, broadcasting them,
-  // then concatenating the broadcasted leading dims back to the row/col dims.
-  // Finally, we create a TF::BroadcastTo op that does the actual broadcast.
-
-  // TODO(silvasean): Reduce duplication across reified shape calculations and
-  // the static computation of output types needed to create ops.
-  Value lhs_shape = rewriter->create<shape::ShapeOfOp>(loc, lhs);
-  Value rhs_shape = rewriter->create<shape::ShapeOfOp>(loc, rhs);
-  Value const_neg2 =
-      rewriter->create<arith::ConstantOp>(loc, rewriter->getIndexAttr(-2));
-  auto shape_type = shape::ShapeType::get(rewriter->getContext());
-  auto lhs_splitted = rewriter->create<shape::SplitAtOp>(
-      loc, TypeRange{shape_type, shape_type}, lhs_shape, const_neg2);
-  auto rhs_splitted = rewriter->create<shape::SplitAtOp>(
-      loc, TypeRange{shape_type, shape_type}, rhs_shape, const_neg2);
-  auto lhs_type = mlir::cast<RankedTensorType>(lhs.getType());
-  auto rhs_type = mlir::cast<RankedTensorType>(rhs.getType());
-  // The last two dimensions are the matrix row/col dimensions. Don't broadcast
-  // them.
-  SmallVector<int64_t, 6> result_batch_shape_compile_time_extents;
-  mlir::OpTrait::util::getBroadcastedShape(
-      lhs_type.getShape().drop_back(2), rhs_type.getShape().drop_back(2),
-      result_batch_shape_compile_time_extents);
-  auto result_batch_shape = rewriter->create<shape::BroadcastOp>(
-      loc, shape_type, lhs_splitted.getHead(), rhs_splitted.getHead(),
-      /*error=*/nullptr);
-  // Lambda which handles the broadcasting of one side to the common
-  // leading-batch dimensions.
-  auto broadcast_one_side = [&](Value side, RankedTensorType type,
-                                Value tail_shape, Value *out_side) {
-    ArrayRef<int64_t> matrix_dims = type.getShape().take_back(2);
-    auto result_shape = result_batch_shape_compile_time_extents;
-    result_shape.append(matrix_dims.begin(), matrix_dims.end());
-    auto result_type = tensorflow::GetTypeFromTFTensorShape(
-        result_shape, type.getElementType());
-    auto shape = rewriter->create<shape::ConcatOp>(
-        loc, shape_type, result_batch_shape, tail_shape);
-    auto shape_tensor = rewriter->create<shape::ToExtentTensorOp>(
-        loc,
-        tensorflow::GetTypeFromTFTensorShape(
-            {static_cast<int64_t>(result_shape.size())},
-            rewriter->getIndexType()),
-        shape);
-    *out_side = rewriter->create<TF::BroadcastToOp>(loc, result_type, side,
-                                                    shape_tensor);
-  };
-  broadcast_one_side(lhs, lhs_type, lhs_splitted.getTail(), out_lhs);
-  broadcast_one_side(rhs, rhs_type, rhs_splitted.getTail(), out_rhs);
-}
-
-class ConvertBatchMatMulV2Op : public OpRewritePattern<TF::BatchMatMulV2Op> {
- public:
-  // TODO(hinsu): Legalize this op to Einsum op. HLO Einsum op needs to be moved
-  // to CHLO and it is missing legalization to MHLO. Once that is done, this
-  // pattern's benefit can be changed back to one as well as the fallback
-  // lowering pattern for the op can be removed.
-  //
-  // Set benefit of this pattern to zero to prefer the fallback pattern when
-  // available and applicable. That pattern avoids broadcast on operands and is
-  // therefore faster.
-  //
-  // Native legalization for BatchMatMulV3 needs to be added as well.
-  explicit ConvertBatchMatMulV2Op(MLIRContext *context)
-      : OpRewritePattern<TF::BatchMatMulV2Op>(context, /*benefit=*/0) {}
-
-  LogicalResult matchAndRewrite(TF::BatchMatMulV2Op op,
-                                PatternRewriter &rewriter) const override {
-    Value lhs = op.getX();
-    Value rhs = op.getY();
-    auto lhs_type = mlir::dyn_cast<RankedTensorType>(lhs.getType());
-    auto rhs_type = mlir::dyn_cast<RankedTensorType>(rhs.getType());
-    if (!lhs_type || !rhs_type) return failure();
-    if (mlir::isa<ComplexType>(lhs_type.getElementType()) && op.getAdjX()) {
-      lhs = rewriter.create<TF::ConjOp>(op.getLoc(), lhs_type, lhs);
-    }
-    if (mlir::isa<ComplexType>(rhs_type.getElementType()) && op.getAdjY()) {
-      rhs = rewriter.create<TF::ConjOp>(op.getLoc(), rhs_type, rhs);
-    }
-
-    // Broadcast both operands.
-    BroadcastBatchMatMulV2Operands(lhs, rhs, op.getLoc(), &lhs, &rhs,
-                                   &rewriter);
-    lhs_type = mlir::cast<RankedTensorType>(lhs.getType());
-    rhs_type = mlir::cast<RankedTensorType>(rhs.getType());
-    assert(lhs_type.getRank() == rhs_type.getRank());
-    int64_t rank = lhs_type.getRank();
-    auto batch_dimensions = llvm::to_vector<4>(llvm::seq<int64_t>(0, rank - 2));
-    auto lhs_contracting_dimensions = llvm::to_vector<4>(
-        llvm::ArrayRef({op.getAdjX() ? rank - 2 : rank - 1}));
-    auto rhs_contracting_dimensions = llvm::to_vector<4>(
-        llvm::ArrayRef({op.getAdjY() ? rank - 1 : rank - 2}));
-    auto dimension_numbers = DotDimensionNumbersAttr::get(
-        rewriter.getContext(),
-        /*lhs_batching_dimensions=*/batch_dimensions,
-        /*rhs_batching_dimensions=*/batch_dimensions,
-        /*lhs_contracting_dimensions=*/lhs_contracting_dimensions,
-        /*rhs_contracting_dimensions=*/rhs_contracting_dimensions);
-    // TODO(silvasean): Emit shape checks for contracting dimensions.
-    // (The batch dimensions are checked by the broadcasting logic)
-    rewriter.replaceOpWithNewOp<DotGeneralOp>(
-        op, op.getType(), lhs, rhs, dimension_numbers,
-        /*precision_config=*/GetPrecisionConfig(&rewriter),
-        /*algorithm=*/DotAlgorithmAttr{});
     return success();
   }
 };
@@ -4722,8 +4422,6 @@ class ConvertMaxPoolGradOp : public OpRewritePattern<OpTy> {
   }
 };
 
-using ConvertMaxPool2DGradOp =
-    ConvertMaxPoolGradOp<TF::MaxPoolGradOp, /*num_dims=*/4>;
 using ConvertMaxPool3DGradOp =
     ConvertMaxPoolGradOp<TF::MaxPool3DGradOp, /*num_dims=*/5>;
 
@@ -5519,50 +5217,6 @@ class ConvertUnpackOpDynamic : public OpRewritePattern<TF::UnpackOp> {
     }
 
     rewriter.replaceOp(op, results);
-    return success();
-  }
-};
-
-// Converts the tf.SigmoidGradOp
-// TODO(disc): To recover static special case's performance with folding and
-// canonicalization.
-class ConvertSigmoidGradOpDynamic : public OpRewritePattern<TF::SigmoidGradOp> {
- public:
-  using OpRewritePattern::OpRewritePattern;
-
-  LogicalResult matchAndRewrite(TF::SigmoidGradOp op,
-                                PatternRewriter &rewriter) const override {
-    Location loc = op.getLoc();
-    Value y = op.getY();
-    Value dy = op.getDy();
-    auto tp_y = mlir::dyn_cast<RankedTensorType>(y.getType());
-    auto tp_dy = mlir::dyn_cast<RankedTensorType>(dy.getType());
-    if (!tp_y || !tp_dy) return failure();
-
-    // TODO(disc): Remove this constraint once fold and canonicalization
-    // implemented.
-    if (tp_y.hasStaticShape() || tp_dy.hasStaticShape()) return failure();
-
-    Attribute attr;
-    Type elem_tp = tp_y.getElementType();
-    if (elem_tp.isSignlessInteger()) {
-      attr = rewriter.getIntegerAttr(elem_tp, 1);
-    } else {
-      assert(mlir::isa<FloatType>(elem_tp));
-      attr = rewriter.getFloatAttr(elem_tp, 1);
-    }
-    Value one = rewriter.create<mhlo::ConstantOp>(
-        loc, DenseElementsAttr::get(
-                 tensorflow::GetTypeFromTFTensorShape({}, elem_tp), attr));
-
-    auto v0 = rewriter.create<chlo::BroadcastMulOp>(
-        loc, dy, y, hlo::getBroadcastDimensionsAttr(&rewriter, dy, y));
-    auto v1 = rewriter.create<chlo::BroadcastSubOp>(
-        loc, one, y, hlo::getBroadcastDimensionsAttr(&rewriter, one, y));
-    auto result = rewriter.create<chlo::BroadcastMulOp>(
-        loc, v0, v1, hlo::getBroadcastDimensionsAttr(&rewriter, v0, v1));
-
-    rewriter.replaceOp(op, result.getOperation()->getResults());
     return success();
   }
 };
@@ -6787,7 +6441,6 @@ class LowerControlFlowOp : public OpConversionPattern<SrcOpT> {
 }  // end namespace
 
 #include "tensorflow/compiler/mlir/tf2xla/transforms/generated_legalize_tf.inc"
-// LINT.IfChange
 void PopulateLegalizeTfPatterns(MLIRContext *context,
                                 RewritePatternSet *patterns) {
   populateWithGenerated(*patterns);
@@ -6797,7 +6450,6 @@ void PopulateLegalizeTfPatterns(MLIRContext *context,
     ConvertAnyOp,
     ConvertArgMaxOp,
     ConvertArgMinOp,
-    ConvertBatchMatMulV2Op,
     ConvertBiasAddOp,
     ConvertBroadcastToOp,
     ConvertBF16FloorDivOp,
@@ -6816,15 +6468,10 @@ void PopulateLegalizeTfPatterns(MLIRContext *context,
     ConvertDynamicExpandDimsOp,
     ConvertDynamicSqueezeOp,
     ConvertEinsumOp,
-    ConvertRFFTOp,
     ConvertIRFFTOp,
-    ConvertFusedBatchNormGradOp,
-    ConvertFusedBatchNormGradV2Op,
     ConvertFusedBatchNormGradV3Op,
-    ConvertFusedBatchNormV2Op,
     ConvertFusedBatchNormV3Op,
     ConvertInfeedDequeueTupleOp,
-    ConvertIdentityNOp,
     ConvertInplaceUpdateOp,
     ConvertLinSpaceOp,
     ConvertMaxOp,
@@ -6833,9 +6480,6 @@ void PopulateLegalizeTfPatterns(MLIRContext *context,
     ConvertAvgPool3DOp,
     ConvertAvgPool2DGradOp,
     ConvertAvgPool3DGradOp,
-    ConvertMaxPool2DOp,
-    ConvertMaxPool3DOp,
-    ConvertMaxPool2DGradOp,
     ConvertMaxPool3DGradOp,
     ConvertMeanOp,
     ConvertOneHotOp,
@@ -6875,14 +6519,10 @@ void PopulateLegalizeTfPatterns(MLIRContext *context,
     ConvertXlaSortOp,
     ConvertXlaVariadicReduceV2Op,
     ConvertXlaVariadicSortOp,
-    ConvertRollOp,
-    ConvertLeakyReluOp,
-    ConvertLeakyReluGradOp,
     ConvertSplitOpDynamic,
     ConvertSliceOpDynamic,
     ConvertTileOpDynamic,
     ConvertUnpackOpDynamic,
-    ConvertSigmoidGradOpDynamic,
     ConvertConv2DDynamic,
     ConvertPadOpDynamic,
     ConvertGatherNdOpDynamic,
@@ -6892,6 +6532,5 @@ void PopulateLegalizeTfPatterns(MLIRContext *context,
     LowerYieldOp>(context);
   // clang-format on
 }
-// LINT.ThenChange(:MlirAlwaysOps)
 }  // end namespace mhlo
 }  // end namespace mlir
