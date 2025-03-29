@@ -1,17 +1,3 @@
-diff --ruN a/stablehlo/stablehlo/conversions/tosa/tests/unary.mlir b/stablehlo/stablehlo/conversions/tosa/tests/unary.mlir
---- stablehlo/stablehlo/conversions/tosa/tests/unary.mlir
-+++ stablehlo/stablehlo/conversions/tosa/tests/unary.mlir
-@@ -79,8 +79,8 @@
- 
- // CHECK-LABEL: @slice
- func.func @slice(%arg : tensor<4x3xf32>) -> tensor<2x2xf32> {
--  // CHECK: %[[SIZE:.*]] = tosa.const_shape {values = dense<[2, 1]> : tensor<2xindex>} : () -> !tosa.shape<2>
--  // CHECK: %[[START:.*]] = tosa.const_shape {values = dense<2> : tensor<2xindex>} : () -> !tosa.shape<2>
-+  // CHECK-DAG: %[[SIZE:.*]] = tosa.const_shape {values = dense<[2, 1]> : tensor<2xindex>} : () -> !tosa.shape<2>
-+  // CHECK-DAG: %[[START:.*]] = tosa.const_shape {values = dense<2> : tensor<2xindex>} : () -> !tosa.shape<2>
-   // CHECK: tosa.slice %arg0, %[[SIZE]], %[[START]]
-   %0 = "stablehlo.slice"(%arg) {
-     start_indices = array<i64: 2, 1>,
 diff --ruN a/stablehlo/stablehlo/dialect/Serialization.cpp b/stablehlo/stablehlo/dialect/Serialization.cpp
 --- stablehlo/stablehlo/dialect/Serialization.cpp
 +++ stablehlo/stablehlo/dialect/Serialization.cpp
@@ -413,14 +399,15 @@ diff --ruN a/stablehlo/stablehlo/transforms/StablehloLegalizeToVhlo.cpp b/stable
  
  namespace mlir {
  namespace stablehlo {
-@@ -53,19 +56,33 @@
+@@ -53,17 +56,33 @@
  
  class StablehloToVhloTypeConverter : public vhlo::VhloTypeConverter {
   public:
 -  StablehloToVhloTypeConverter() : vhlo::VhloTypeConverter() {
 -    addConversion([](Type type) -> Type {
--      if (type.getDialect().getNamespace() ==
--          vhlo::VhloDialect::getDialectNamespace()) {
+-      if (llvm::isa<vhlo::VhloDialect>(type.getDialect())) return type;
+-
+-      LLVM_DEBUG(llvm::dbgs() << "Invalid type: " << type << '\n');
 +  StablehloToVhloTypeConverter(bool allowOtherDialects)
 +      : vhlo::VhloTypeConverter() {
 +    LLVM_DEBUG(
@@ -436,9 +423,8 @@ diff --ruN a/stablehlo/stablehlo/transforms/StablehloLegalizeToVhlo.cpp b/stable
 +        LLVM_DEBUG(llvm::dbgs()
 +                   << "[StablehloToVhloTypeConverter] Valid non-VHLO type: "
 +                   << type << '\n');
-         return type;
-       }
--      LLVM_DEBUG(llvm::dbgs() << "Invalid type: " << type << '\n');
++        return type;
++      }
 +
 +      LLVM_DEBUG(llvm::dbgs() << "[StablehloToVhloTypeConverter] Invalid type: "
 +                              << type << '\n');
@@ -452,7 +438,7 @@ diff --ruN a/stablehlo/stablehlo/transforms/StablehloLegalizeToVhlo.cpp b/stable
    }
  
    Attribute convertEncoding(Attribute attr) const final {
-@@ -1026,14 +1043,27 @@
+@@ -1021,14 +1040,27 @@
  struct StablehloLegalizeToVhloPass
      : public impl::StablehloLegalizeToVhloPassBase<
            StablehloLegalizeToVhloPass> {
@@ -481,7 +467,7 @@ diff --ruN a/stablehlo/stablehlo/transforms/StablehloLegalizeToVhlo.cpp b/stable
      patterns = std::move(patterns_);
  
      return success();
-@@ -1048,7 +1078,7 @@
+@@ -1043,7 +1075,7 @@
    }
  
   private:
@@ -518,7 +504,7 @@ diff --ruN a/stablehlo/stablehlo/transforms/VhloLegalizeToStablehlo.cpp b/stable
    }
  
    Attribute convertEncoding(Attribute attr) const final {
-@@ -1022,6 +1024,36 @@
+@@ -1021,6 +1023,36 @@
    }
  };
  
@@ -555,7 +541,7 @@ diff --ruN a/stablehlo/stablehlo/transforms/VhloLegalizeToStablehlo.cpp b/stable
  template <typename... StablehloOpTypes>
  void populateVhloToStablehloPatterns(RewritePatternSet* patterns,
                                       TypeConverter* converter,
-@@ -1044,6 +1076,7 @@
+@@ -1043,6 +1075,7 @@
  
      RewritePatternSet patterns_(context);
      stablehlo::populateVhloToStablehloPatterns(&patterns_, &converter, context);
@@ -563,7 +549,7 @@ diff --ruN a/stablehlo/stablehlo/transforms/VhloLegalizeToStablehlo.cpp b/stable
      patterns = std::move(patterns_);
  
      return success();
-@@ -1056,6 +1089,12 @@
+@@ -1055,6 +1088,12 @@
      if (failed(applyPartialConversion(getOperation(), *target, patterns))) {
        return signalPassFailure();
      }
