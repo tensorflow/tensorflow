@@ -13,18 +13,18 @@ namespace qnn {
 class QNNLogger {
  public:
   // Logging hook that takes variadic args.
-  static void Log(LiteRtQnnLogLevel severity, const char* format, ...);
+  static void Log(QnnLogLevel severity, const char* format, ...);
 
   // Set file descriptor
   static void SetLogFilePointer(FILE* fp);
 
   // Set log level
-  static void SetLogLevel(LiteRtQnnLogLevel log_level);
+  static void SetLogLevel(QnnLogLevel log_level);
 
  private:
   // NOLINTBEGIN(cppcoreguidelines-avoid-non-const-global-variables)
   static FILE* log_file_pointer_;
-  static LiteRtQnnLogLevel log_level_;
+  static QnnLogLevel log_level_;
   // NOLINTEND(cppcoreguidelines-avoid-non-const-global-variables)
 };
 }  // namespace qnn
