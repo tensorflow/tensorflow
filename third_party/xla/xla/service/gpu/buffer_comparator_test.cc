@@ -21,6 +21,7 @@ limitations under the License.
 #include <limits>
 #include <vector>
 
+#include <gtest/gtest.h>
 #include "absl/strings/ascii.h"
 #include "xla/primitive_util.h"
 #include "xla/service/gpu/stream_executor_util.h"
@@ -32,6 +33,7 @@ limitations under the License.
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/types.h"
+#include "xla/xla_data.pb.h"
 #include "tsl/platform/ml_dtypes.h"
 #include "tsl/platform/status.h"
 #include "tsl/platform/test.h"
