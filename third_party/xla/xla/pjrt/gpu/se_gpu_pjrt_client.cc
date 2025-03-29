@@ -906,40 +906,6 @@ StreamExecutorGpuClient::LoadSerialized(absl::string_view serialized,
                                                             load_options);
 }
 
-absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
-StreamExecutorGpuClient::Load(std::unique_ptr<PjRtExecutable> executable) {
-  auto se_executable = absl::WrapUnique(
-      tensorflow::down_cast<StreamExecutorExecutable*>(executable.release()));
-
-  CompileOptions compile_options = se_executable->compile_options();
-  CompileOptions input_options = compile_options;
-  TF_RETURN_IF_ERROR(compile_options.ApplyAllOptionOverrides());
-  TF_ASSIGN_OR_RETURN(ExecutableExtras extras,
-                      GetExecutableExtras(&compile_options));
-
-  // Load Executable from AOT compilation result.
-  std::vector<std::unique_ptr<LocalExecutable>> local_executables;
-  local_executables.reserve(se_executable->aot_executables().size());
-  for (std::unique_ptr<xla::AotCompilationResult>& aot_executable :
-       se_executable->aot_executables()) {
-    TF_ASSIGN_OR_RETURN(std::string serialized,
-                        aot_executable->SerializeAsString());
-    TF_ASSIGN_OR_RETURN(
-        std::unique_ptr<LocalExecutable> local_executable,
-        client()->Load(serialized, compile_options.executable_build_options));
-    local_executables.push_back(std::move(local_executable));
-  }
-  bool parameter_is_tupled_arguments =
-      compile_options.parameter_is_tupled_arguments;
-  auto ret = std::make_unique<PjRtStreamExecutorLoadedExecutable>(
-      std::move(local_executables), parameter_is_tupled_arguments,
-      std::move(extras.device_assignment), std::move(input_options),
-      std::move(extras.addressable_device_logical_ids),
-      std::move(extras.addressable_devices), this);
-  TF_RETURN_IF_ERROR(ret->SetUpDonation(parameter_is_tupled_arguments));
-  return std::unique_ptr<PjRtLoadedExecutable>(std::move(ret));
-}
-
 namespace {
 
 #if defined(GOOGLE_CUDA) && CUDA_VERSION >= 11020
