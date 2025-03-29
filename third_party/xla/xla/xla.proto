@@ -775,12 +775,6 @@ message DebugOptions {
   // Internal debug/testing flag to switch Triton GEMM fusions on or off.
   bool xla_gpu_unsupported_enable_triton_gemm = 322;
 
-  // Internal debug/testing flag to force all GEMMs to use Triton, independently
-  // of known issues.
-  // TODO(b/395903738): use to make specific tests pass on A100 while working
-  // around this bug. The can be removed once the bug is fixed.
-  bool xla_gpu_unsupported_force_triton_gemm = 369;
-
   // Internal testing flag to enable one-shot kernel for single-host
   // ragged-all-to-all operations.
   bool xla_gpu_unsupported_use_ragged_all_to_all_one_shot_kernel = 375;
@@ -1223,8 +1217,9 @@ message DebugOptions {
   // xla_gpu_enable_bf16_3way_gemm
   // xla_gpu_enable_bf16_6way_gemm
   // xla_gpu_enable_cudnn_fmha
+  // xla_gpu_unsupported_force_triton_gemm
   reserved 5, 117, 133, 139, 176, 178, 180, 193, 214, 194, 221, 242, 206, 320,
-      325, 326, 332, 361, 270, 229, 271, 279, 218;
+      325, 326, 332, 361, 270, 229, 271, 279, 218, 369;
 }
 
 // Contains flags which affects the GPU compilation result.

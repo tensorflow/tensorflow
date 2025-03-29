@@ -50,7 +50,6 @@ class TensorFloat32GlobalVarTest : public ::testing::WithParamInterface<bool>,
     const bool enable_triton_gemm = GetParam();
     if (enable_triton_gemm) {
       debug_options.set_xla_gpu_enable_triton_gemm(true);
-      debug_options.set_xla_gpu_unsupported_force_triton_gemm(true);
       debug_options.set_xla_gpu_cublas_fallback(false);
     } else {
       debug_options.set_xla_gpu_enable_triton_gemm(false);

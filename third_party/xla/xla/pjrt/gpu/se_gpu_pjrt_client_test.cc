@@ -2335,7 +2335,6 @@ absl::Status ShardedAutotuningWorksTestBody(const int node_id,
   DebugOptions& debug_options =
       *compile_options.executable_build_options.mutable_debug_options();
   debug_options.set_xla_gpu_shard_autotuning(true);
-  debug_options.set_xla_gpu_unsupported_force_triton_gemm(true);
   debug_options.set_xla_gpu_cublas_fallback(false);
 
   if (node_id < num_nodes_using_cache) {

@@ -1398,16 +1398,7 @@ e {
                             ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
 }
 
-class TritonGemmTestAny : public TritonGemmTest {
- public:
-  DebugOptions GetDebugOptionsForTest() const override {
-    DebugOptions debug_options = TritonGemmTest::GetDebugOptionsForTest();
-    debug_options.set_xla_gpu_unsupported_force_triton_gemm(true);
-    return debug_options;
-  }
-};
-
-TEST_F(TritonGemmTestAny, DoF32F32) {
+TEST_F(TritonGemmTest, DoF32F32) {
   const std::string hlo_text = R"(
 HloModule t
 
@@ -1427,7 +1418,7 @@ ENTRY e {
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
 }
 
-TEST_F(TritonGemmTestAny, DoAddConstantToScalarAndBroadcastThat) {
+TEST_F(TritonGemmTest, DoAddConstantToScalarAndBroadcastThat) {
   if (std::holds_alternative<se::RocmComputeCapability>(GpuComputeComp())) {
     GTEST_SKIP() << "Not using autotuner on ROCM yet.";
   }
@@ -1737,8 +1728,7 @@ ENTRY e {
       kHloText, ErrorSpec{/*aabs=*/1e-4, /*arel=*/1e-6}));
 }
 
-TEST_F(TritonGemmTestAny,
-       DoNotFuseConcatenationOfSplitNonContractingDimension) {
+TEST_F(TritonGemmTest, DoNotFuseConcatenationOfSplitNonContractingDimension) {
   if (std::holds_alternative<se::RocmComputeCapability>(GpuComputeComp())) {
     GTEST_SKIP() << "Not using autotuner on ROCM yet.";
   }
@@ -2132,7 +2122,7 @@ e {
                                                 /*arel=*/1e-2}));
 }
 
-TEST_F(TritonGemmTestAny, MinimumHandlesNaNsOnTheLeft) {
+TEST_F(TritonGemmTest, MinimumHandlesNaNsOnTheLeft) {
   constexpr absl::string_view kHloText = R"(
 HloModule t
 
@@ -2155,7 +2145,7 @@ ENTRY e {
   EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
 }
 
-TEST_F(TritonGemmTestAny, MinimumHandlesNaNsOnTheRight) {
+TEST_F(TritonGemmTest, MinimumHandlesNaNsOnTheRight) {
   constexpr absl::string_view kHloText = R"(
 HloModule t
 
@@ -2178,7 +2168,7 @@ ENTRY e {
   EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
 }
 
-TEST_F(TritonGemmTestAny, MaximumHandlesNaNsOnTheLeft) {
+TEST_F(TritonGemmTest, MaximumHandlesNaNsOnTheLeft) {
   constexpr absl::string_view kHloText = R"(
 HloModule t
 
@@ -2201,7 +2191,7 @@ ENTRY e {
   EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
 }
 
-TEST_F(TritonGemmTestAny, MaximumHandlesNaNsOnTheRight) {
+TEST_F(TritonGemmTest, MaximumHandlesNaNsOnTheRight) {
   constexpr absl::string_view kHloText = R"(
 HloModule t
 
@@ -2224,7 +2214,7 @@ ENTRY e {
   EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
 }
 
-TEST_F(TritonGemmTestAny, MinimumReturnsLHS) {
+TEST_F(TritonGemmTest, MinimumReturnsLHS) {
   constexpr absl::string_view kHloText = R"(
 HloModule t
 
@@ -2249,7 +2239,7 @@ ENTRY e {
                                                 /*arel=*/1e-3}));
 }
 
-TEST_F(TritonGemmTestAny, MinimumReturnsRHS) {
+TEST_F(TritonGemmTest, MinimumReturnsRHS) {
   constexpr absl::string_view kHloText = R"(
 HloModule t
 
@@ -2274,7 +2264,7 @@ ENTRY e {
                                                 /*arel=*/1e-3}));
 }
 
-TEST_F(TritonGemmTestAny, MaximumReturnsLHS) {
+TEST_F(TritonGemmTest, MaximumReturnsLHS) {
   constexpr absl::string_view kHloText = R"(
 HloModule t
 
@@ -2299,7 +2289,7 @@ ENTRY e {
                                                 /*arel=*/1e-3}));
 }
 
-TEST_F(TritonGemmTestAny, MaximumReturnsRHS) {
+TEST_F(TritonGemmTest, MaximumReturnsRHS) {
   constexpr absl::string_view kHloText = R"(
 HloModule t
 
@@ -2671,8 +2661,7 @@ ENTRY e {
 )");
 }
 
-TEST_F(TritonGemmTestAny,
-       LowerDotWithLhsWithoutNonContractingDimThroughTriton) {
+TEST_F(TritonGemmTest, LowerDotWithLhsWithoutNonContractingDimThroughTriton) {
   const std::string hlo_text = R"(
 HloModule t
 
@@ -2693,8 +2682,7 @@ ENTRY e {
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
 }
 
-TEST_F(TritonGemmTestAny,
-       LowerDotWithRhsWithoutNonContractingDimThroughTriton) {
+TEST_F(TritonGemmTest, LowerDotWithRhsWithoutNonContractingDimThroughTriton) {
   const std::string hlo_text = R"(
 HloModule t
 
@@ -3984,8 +3972,6 @@ class TritonGemmContractionDims : public TritonGemmTest {
   DebugOptions GetDebugOptionsForTest() const override {
     DebugOptions debug_options = TritonGemmTest::GetDebugOptionsForTest();
     debug_options.set_xla_gpu_ensure_minor_dot_contraction_dims(true);
-    debug_options.set_xla_gpu_unsupported_force_triton_gemm(true);
-
     return debug_options;
   }
 };
