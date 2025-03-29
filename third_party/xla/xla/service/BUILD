@@ -1774,6 +1774,7 @@ cc_library(
         ":hlo_proto_cc",
         ":hlo_value",
         ":logical_buffer",
+        "//base:examine_stack",
         "//xla:shape_util",
         "//xla:status_macros",
         "//xla:util",

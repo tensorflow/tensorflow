@@ -30,6 +30,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "base/examine_stack.h"
 #include "absl/algorithm/container.h"
 #include "absl/container/btree_map.h"
 #include "absl/container/flat_hash_map.h"
@@ -289,6 +290,7 @@ BufferAllocationProto BufferAllocation::ToProto() const {
       proto.add_parameter_shape_index(idx);
     }
     proto.set_parameter_number(parameter_number_);
+    proto.set_parameter_aliased_with_output(is_parameter_aliased_with_output_);
   }
   proto.set_is_constant(is_constant_);
   proto.set_maybe_live_out(maybe_live_out_);
@@ -376,6 +378,11 @@ std::string BufferAllocation::ToShortString(bool human_readable_size) const {
   }
   if (IsPreallocatedTempBuffer()) {
     StrAppend(&output, ", preallocated-temp");
+  }
+  if (is_parameter_aliased_with_output()) {
+    StrAppend(&output, ", is_parameter_aliased_with_output = true");
+  } else {
+    StrAppend(&output, ", is_parameter_aliased_with_output = false");
   }
   StrAppend(&output, ":\n");
   return output;
@@ -1225,8 +1232,16 @@ absl::StatusOr<std::unique_ptr<BufferAssignment>> BufferAssignment::FromProto(
       absl::c_copy(alloc_proto.parameter_shape_index(),
                    std::back_inserter(shape_idx_vals));
       ShapeIndex shape_index(shape_idx_vals);
+      const bool parameter_has_alias =
+          module->input_output_alias_config().ParameterHasAlias(
+              alloc_proto.parameter_number(), shape_index);
+      LOG(INFO) << "[clin-buf] set parameter_has_alias = "
+                << parameter_has_alias;
+      CHECK_EQ(alloc_proto.parameter_aliased_with_output(),
+               parameter_has_alias);
       allocation->set_entry_computation_parameter(
-          alloc_proto.parameter_number(), shape_index, false);
+          alloc_proto.parameter_number(), shape_index,
+          alloc_proto.parameter_aliased_with_output());
     }
 
     // Process each logical buffer assigned to the current allocation and create
