@@ -4297,6 +4297,7 @@ GetGenericCudnnOperationGraph(
   for (int op_index = 1; op_index < op_graph.Size(); ++op_index) {
     TF_ASSIGN_OR_RETURN(op_descriptor, op_graph.OpDescriptorAt(op_index));
     std::vector<OpDescriptor> preceding_ops;
+    preceding_ops.reserve(op_descriptor.operand_uids.size());
     for (int operand_uid : op_descriptor.operand_uids) {
       preceding_ops.emplace_back(
           op_graph.FindOpDescriptor(operand_uid).value());
