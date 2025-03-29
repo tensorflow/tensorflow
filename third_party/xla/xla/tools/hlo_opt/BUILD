@@ -61,7 +61,6 @@ cc_library(
         "//xla/service:while_loop_simplifier",
         "//xla/service/gpu/transforms:all_gather_dynamic_slice_simplifier",
         "//xla/service/gpu/transforms:all_reduce_splitter",
-        "//xla/service/gpu/transforms:collective_permute_valid_iteration_annotator",
         "//xla/service/gpu/transforms:scatter_expander",
         "//xla/service/gpu/transforms:scatter_slice_simplifier",
         "//xla/service/spmd/shardy:shardy_xla_pass",
