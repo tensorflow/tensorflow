@@ -121,19 +121,30 @@ class TfPjRtBuffer : public PjRtBuffer {
 
 // Wrapper for PjRtLoadedExecutable that wraps and unwraps argument and result
 // buffers.
-class TfPjRtExecutable : public PjRtLoadedExecutable {
+class TfPjRtExecutable : public PjRtLoadedExecutable, public PjRtExecutable {
  public:
   TfPjRtExecutable(TfPjRtClient* client,
                    std::unique_ptr<PjRtLoadedExecutable> wrapped);
 
   PjRtLoadedExecutable* wrapped() const { return wrapped_.get(); }
 
+  // Returns the PjRtExecutable that this PjRtLoadedExecutable wraps.
+  std::unique_ptr<PjRtExecutable> GetExecutable() const override {
+    return std::make_unique<PjRtExecutableForwarder>(this);
+  }
+
   PjRtClient* client() const override;
-  absl::string_view name() const override { return wrapped_->name(); }
-  int num_replicas() const override { return wrapped_->num_replicas(); }
-  int num_partitions() const override { return wrapped_->num_partitions(); }
+  absl::string_view name() const override {
+    return wrapped_->GetExecutable()->name();
+  }
+  int num_replicas() const override {
+    return wrapped_->GetExecutable()->num_replicas();
+  }
+  int num_partitions() const override {
+    return wrapped_->GetExecutable()->num_partitions();
+  }
   int64_t SizeOfGeneratedCodeInBytes() const override {
-    return wrapped_->SizeOfGeneratedCodeInBytes();
+    return wrapped_->GetExecutable()->SizeOfGeneratedCodeInBytes();
   }
   const DeviceAssignment& device_assignment() const override {
     return wrapped_->device_assignment();
@@ -147,11 +158,11 @@ class TfPjRtExecutable : public PjRtLoadedExecutable {
   }
   absl::StatusOr<std::vector<std::shared_ptr<HloModule>>> GetHloModules()
       const override {
-    return wrapped_->GetHloModules();
+    return wrapped_->GetExecutable()->GetHloModules();
   }
   absl::StatusOr<std::vector<std::vector<absl::string_view>>>
   GetOutputMemoryKinds() const override {
-    return wrapped_->GetOutputMemoryKinds();
+    return wrapped_->GetExecutable()->GetOutputMemoryKinds();
   }
   using PjRtLoadedExecutable::Execute;
   absl::StatusOr<std::vector<std::vector<std::unique_ptr<PjRtBuffer>>>> Execute(
@@ -173,15 +184,15 @@ class TfPjRtExecutable : public PjRtLoadedExecutable {
   bool IsDeleted() override { return wrapped_->IsDeleted(); }
 
   absl::StatusOr<std::string> SerializeExecutable() const override {
-    return wrapped_->SerializeExecutable();
+    return wrapped_->GetExecutable()->SerializeExecutable();
   }
 
   absl::StatusOr<struct CompileOptions> GetCompileOptions() const override {
-    return wrapped_->GetCompileOptions();
+    return wrapped_->GetExecutable()->GetCompileOptions();
   }
 
   absl::StatusOr<std::string> FingerprintExecutable() const override {
-    return wrapped_->FingerprintExecutable();
+    return wrapped_->GetExecutable()->FingerprintExecutable();
   }
 
  private:

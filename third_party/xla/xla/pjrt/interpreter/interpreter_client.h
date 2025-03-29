@@ -288,7 +288,8 @@ class InterpreterLiteralWrapperBuffer final : public PjRtBuffer {
   bool is_deleted_ = false;
 };
 
-class InterpreterLoadedExecutable final : public PjRtLoadedExecutable {
+class InterpreterLoadedExecutable final : public PjRtLoadedExecutable,
+                                          public PjRtExecutable {
  public:
   explicit InterpreterLoadedExecutable(
       absl::Nonnull<PjRtClient*> client, std::unique_ptr<HloModule> hlo_module,
@@ -311,6 +312,10 @@ class InterpreterLoadedExecutable final : public PjRtLoadedExecutable {
       hlo_evaluator_->set_dynamic_dimension_inference(
           &dynamic_dimension_inference_.value());
     }
+  }
+
+  std::unique_ptr<PjRtExecutable> GetExecutable() const override {
+    return std::make_unique<PjRtExecutableForwarder>(this);
   }
 
   int num_replicas() const override {

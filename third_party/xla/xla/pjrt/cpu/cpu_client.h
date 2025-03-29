@@ -330,7 +330,8 @@ class TfrtCpuBuffer final : public AbstractTfrtCpuBuffer {
   PjRtMemorySpace* const memory_space_;
 };
 
-class TfrtCpuExecutable final : public PjRtLoadedExecutable {
+class TfrtCpuExecutable final : public PjRtLoadedExecutable,
+                                public PjRtExecutable {
  public:
   TfrtCpuExecutable(
       int num_replicas, int num_partitions,
@@ -345,6 +346,10 @@ class TfrtCpuExecutable final : public PjRtLoadedExecutable {
   ~TfrtCpuExecutable() override = default;
 
   TfrtCpuClient* client() const override { return client_; }
+
+  std::unique_ptr<PjRtExecutable> GetExecutable() const override {
+    return std::make_unique<PjRtExecutableForwarder>(this);
+  }
 
   absl::string_view name() const override {
     return cpu_executable_->shared_module()->name();

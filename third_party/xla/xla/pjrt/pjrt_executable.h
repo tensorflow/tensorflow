@@ -26,12 +26,11 @@ limitations under the License.
 #include <variant>
 #include <vector>
 
-#include "absl/container/flat_hash_map.h"
-#include "absl/container/flat_hash_set.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "third_party/protobuf/descriptor.h"
 #include "xla/client/executable_build_options.h"
 #include "xla/ffi/execution_context.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -41,6 +40,7 @@ limitations under the License.
 #include "xla/pjrt/execute_options.pb.h"
 #include "xla/pjrt/pjrt_common.h"
 #include "xla/pjrt/pjrt_layout.h"
+#include "xla/service/buffer_assignment.h"
 #include "xla/service/compiler.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_cost_analysis.h"
@@ -49,6 +49,8 @@ limitations under the License.
 #include "xla/xla_data.pb.h"
 
 namespace xla {
+
+class PjRtClient;
 
 // Provides configuration for implementations that support compile and execute
 // spanning multiple slices. A slice is a set of devices connected by dedicated
@@ -321,7 +323,7 @@ class PjRtExecutable {
   // Unique name for this executable, e.g., HloModule name.
   virtual absl::string_view name() const = 0;
 
-  // Return an HloModule (optimized) per partition.
+  // Return an array of HloModule (optimized) per partition.
   virtual absl::StatusOr<std::vector<std::shared_ptr<HloModule>>>
   GetHloModules() const = 0;
 
@@ -347,13 +349,6 @@ class PjRtExecutable {
   virtual absl::StatusOr<std::vector<std::shared_ptr<const PjRtLayout>>>
   GetOutputLayouts() const;
 
-  // Returns a list of lists of memory kind strings for output. The returned
-  // value is `[num_programs, num_output]`. The size of the outer list should be
-  // equal to `GetHloModules()`. Under SPMD, one can use
-  // `GetOutputMemoryKinds().front()`.
-  virtual absl::StatusOr<std::vector<std::vector<absl::string_view>>>
-  GetOutputMemoryKinds() const = 0;
-
   // Returns a list of parameter OpSharding protos.
   virtual std::optional<std::vector<OpSharding>> GetParameterShardings() const;
 
@@ -363,27 +358,39 @@ class PjRtExecutable {
   // Return memory stats that allow callers to estimate device memory usage
   // when running this executable.
   virtual absl::StatusOr<CompiledMemoryStats> GetCompiledMemoryStats() const {
-    return Unimplemented("Retrieving CompiledMemoryStats is not supported.");
+    return absl::UnimplementedError(
+        "GetCompiledMemoryStats is not implemented.");
   }
 
   // Returns named values for cost properties of this executable (such as
   // operations, size of input/outputs, and run time estimate). Properties may
   // differ for different platforms.
   virtual absl::StatusOr<absl::flat_hash_map<std::string, PjRtValueType>>
-  GetCostAnalysis() const = 0;
+  GetCostAnalysis() const {
+    return absl::UnimplementedError("GetCostAnalysis is not implemented.");
+  }
+
+  // Returns a list of lists of memory kind strings for output. The returned
+  // value is `[num_programs, num_output]`. The size of the outer list should be
+  // equal to `GetHloModules()`. Under SPMD, one can use
+  // `GetOutputMemoryKinds().front()`.
+  virtual absl::StatusOr<std::vector<std::vector<absl::string_view>>>
+  GetOutputMemoryKinds() const {
+    return absl::UnimplementedError("GetOutputMemoryKinds is not implemented.");
+  }
 
   // Serialize this executable into a string and return the value.
   virtual absl::StatusOr<std::string> SerializeExecutable() const {
-    return Unimplemented("Serializing executable is not supported.");
-  }
-
-  // Return a fingerprint of this executable.
-  virtual absl::StatusOr<std::string> FingerprintExecutable() const {
-    return Unimplemented("Fingerprinting executable is not supported.");
+    return absl::UnimplementedError("SerializeExecutable is not implemented.");
   }
 
   virtual absl::StatusOr<struct CompileOptions> GetCompileOptions() const {
-    return Unimplemented("CompileOptions not available.");
+    return absl::UnimplementedError("GetCompileOptions is not implemented.");
+  }
+
+  virtual absl::StatusOr<std::string> FingerprintExecutable() const {
+    return absl::UnimplementedError(
+        "FingerprintExecutable is not implemented.");
   }
 };
 

@@ -603,7 +603,8 @@ class TfrtGpuBuffer final : public PjRtBuffer {
   friend class DonationTransactionPeer;
 };
 
-class TfrtGpuExecutable final : public PjRtLoadedExecutable {
+class TfrtGpuExecutable final : public PjRtLoadedExecutable,
+                                public PjRtExecutable {
  public:
   TfrtGpuExecutable(
       std::vector<std::unique_ptr<LocalExecutable>> executables,
@@ -612,6 +613,11 @@ class TfrtGpuExecutable final : public PjRtLoadedExecutable {
       CompileOptions compile_options,
       std::vector<LogicalDeviceIds> addressable_device_logical_ids,
       std::vector<PjRtDevice*> addressable_devices, TfrtGpuClient* client);
+
+  // Returns the PjRtExecutable that this PjRtLoadedExecutable wraps.
+  std::unique_ptr<PjRtExecutable> GetExecutable() const override {
+    return std::make_unique<PjRtExecutableForwarder>(this);
+  }
 
   TfrtGpuClient* client() const override { return client_; }
 
@@ -693,6 +699,10 @@ class TfrtGpuExecutable final : public PjRtLoadedExecutable {
     input_hlo_snapshot_bits_ =
         std::make_optional<InputHloSnapshotBits>(InputHloSnapshotBits{
             HloModuleProto(std::move(hlo_module)), std::move(debug_options)});
+  }
+
+  absl::StatusOr<std::vector<Shape>> GetOutputShapes() const override {
+    return PjRtExecutable::GetOutputShapes();
   }
 
  private:

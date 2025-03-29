@@ -28,12 +28,14 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "base/casts.h"
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/functional/any_invocable.h"
 #include "absl/log/check.h"
+#include "absl/memory/memory.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
@@ -845,7 +847,8 @@ AllocateDestinationBuffer(
 
 // Wraps one or more XLA LocalExecutables (one per partition, as specified by
 // the build options).
-class PjRtStreamExecutorLoadedExecutable : public PjRtLoadedExecutable {
+class PjRtStreamExecutorLoadedExecutable : public PjRtLoadedExecutable,
+                                           public PjRtExecutable {
  public:
   PjRtStreamExecutorLoadedExecutable(
       std::vector<std::unique_ptr<LocalExecutable>> executables,
@@ -857,6 +860,11 @@ class PjRtStreamExecutorLoadedExecutable : public PjRtLoadedExecutable {
       PjRtStreamExecutorClient* client);
 
   ~PjRtStreamExecutorLoadedExecutable() override = default;
+
+  // Returns the PjRtExecutable that this PjRtLoadedExecutable wraps.
+  std::unique_ptr<PjRtExecutable> GetExecutable() const override {
+    return std::make_unique<PjRtExecutableForwarder>(this);
+  }
 
   PjRtStreamExecutorClient* client() const override { return client_; }
 
@@ -914,6 +922,10 @@ class PjRtStreamExecutorLoadedExecutable : public PjRtLoadedExecutable {
 
   absl::StatusOr<std::vector<std::vector<absl::string_view>>>
   GetOutputMemoryKinds() const override;
+
+  absl::StatusOr<std::vector<Shape>> GetOutputShapes() const override {
+    return PjRtExecutable::GetOutputShapes();
+  }
 
   using PjRtLoadedExecutable::Execute;
   absl::StatusOr<std::vector<std::vector<std::unique_ptr<PjRtBuffer>>>> Execute(
