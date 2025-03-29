@@ -149,6 +149,17 @@ void EnqueueWork(tsl::thread::ThreadPool* pool,
   });
 }
 
+void EnqueueOnDone(tsl::thread::ThreadPool* pool,
+                   absl::AnyInvocable<void() &&> callee) {
+  // TSL TheadPool expects std::function to be non-rvalue, so we are
+  // forced to do a little bit of manual memory management here.
+  pool->Schedule(
+      [ptr = new absl::AnyInvocable<void() &&>(std::move(callee))]() {
+        std::move (*ptr)();
+        delete ptr;
+      });
+}
+
 // Enqueue to a thread pool when all `values` are ready.
 void EnqueueWorkWhenReady(
     tsl::thread::ThreadPool* pool,
@@ -294,15 +305,15 @@ class TfrtGpuAsyncHostToDeviceTransferManager final
           definition_events,
       absl::InlinedVector<Shape, 4> device_shapes, TfrtGpuDevice* device)
       : buffers_(std::move(buffers)),
-        h2d_thread_(std::make_unique<WorkerThread>(
-            tsl::Env::Default(),
-            "TfrtGpuAsyncHostToDeviceTransferManager_h2d_thread")),
         buffer_ptrs_(std::move(buffer_ptrs)),
         definition_events_(std::move(definition_events)),
         device_shapes_(std::move(device_shapes)),
         remaining_buffer_count_(buffers_.size()),
         device_(device),
-        client_(tsl::down_cast<TfrtGpuClient*>(device_->client())) {
+        client_(tsl::down_cast<TfrtGpuClient*>(device_->client())),
+        h2d_thread_(std::make_unique<WorkerThread>(
+            tsl::Env::Default(),
+            absl::StrCat("TfrtGpuClient_h2d_worker_thread"))) {
     VLOG(2) << "TfrtGpuAsyncHostToDeviceTransferManager::"
                "TfrtGpuAsyncHostToDeviceTransferManager: this="
             << this << " buffers_.size()=" << buffers_.size();
@@ -378,6 +389,8 @@ class TfrtGpuAsyncHostToDeviceTransferManager final
     // TODO(misard) assess if it would be preferable to introduce a heuristic
     // to put the transfer into the calling thread for small literals.
     auto transfer_h2d = [this, buffer_index, transfer_manager, literal, buffer,
+                         on_done_thread_pool =
+                             client_->non_blocking_thread_pool(),
                          on_done = std::move(on_done)]() mutable {
       tsl::profiler::TraceMe traceme(
           "TfrtGpuAsyncHostToDeviceTransferManager::TransferLiteralToBuffer::"
@@ -406,7 +419,8 @@ class TfrtGpuAsyncHostToDeviceTransferManager final
       TF_CHECK_OK((*stream)->BlockHostUntilDone())
           << "Failed to block host until done";
 
-      CleanUp(buffer_index, /*is_last_transfer=*/true, std::move(on_done));
+      CleanUp(buffer_index, /*is_last_transfer=*/true, on_done_thread_pool,
+              std::move(on_done));
     };
     // Enqueue the transfer to the h2d thread.
     h2d_thread_->Schedule(std::move(transfer_h2d));
@@ -472,9 +486,10 @@ class TfrtGpuAsyncHostToDeviceTransferManager final
     // called on this thread, to avoid deadlock.
     l.Release();
 
-    absl::AnyInvocable<void() &&> copy_to_gpu =
+    auto copy_to_gpu =
         [transfer_size, staging_buffer = std::move(staging_buffer), data,
          sub_buffer = std::move(sub_buffer), buffer_index, is_last_transfer,
+         on_done_thread_pool = client_->non_blocking_thread_pool(),
          on_done = std::move(on_done), this]() mutable {
           if (transfer_size != 0) {
             std::memcpy(staging_buffer.get(), data, transfer_size);
@@ -491,7 +506,8 @@ class TfrtGpuAsyncHostToDeviceTransferManager final
             auto status = (*stream)->BlockHostUntilDone();
             TF_CHECK_OK(status) << "Failed to block host until done";
           }
-          CleanUp(buffer_index, is_last_transfer, std::move(on_done));
+          CleanUp(buffer_index, is_last_transfer, on_done_thread_pool,
+                  std::move(on_done));
         };
     // Enqueue the transfer to the h2d thread.
     h2d_thread_->Schedule(std::move(copy_to_gpu));
@@ -514,6 +530,7 @@ class TfrtGpuAsyncHostToDeviceTransferManager final
 
  private:
   void CleanUp(int buffer_index, bool is_last_transfer,
+               tsl::thread::ThreadPool* on_done_thread_pool,
                absl::AnyInvocable<void() &&> on_done) {
     {
       absl::MutexLock l(&mu_);
@@ -540,16 +557,13 @@ class TfrtGpuAsyncHostToDeviceTransferManager final
     }
 
     // Call on_done after finishing all housekeeping and releasing the lock.
-    std::move(on_done)();
+    EnqueueOnDone(on_done_thread_pool, std::move(on_done));
   }
 
   absl::Mutex mu_;
   // The newly created buffers, which will be returned to the caller via
   // Retrieve.
   absl::InlinedVector<std::unique_ptr<PjRtBuffer>, 4> buffers_;
-
-  // Just a single thread, to ensure transfers are ordered.
-  std::unique_ptr<WorkerThread> h2d_thread_;
 
   absl::InlinedVector<tsl::AsyncValueRef<MaybeOwningGpuMemory>, 4> buffer_ptrs_;
   // Cached versions of the sizes of all the buffers, so we can return them
@@ -574,6 +588,9 @@ class TfrtGpuAsyncHostToDeviceTransferManager final
 
   TfrtGpuDevice* const device_;  // not owned.
   TfrtGpuClient* const client_;  // not owned.
+
+  // Just a single thread, to ensure transfers are ordered.
+  std::unique_ptr<WorkerThread> h2d_thread_;
 };
 
 std::optional<stream_executor::GpuTargetConfigProto> GetTargetConfigForDevices(

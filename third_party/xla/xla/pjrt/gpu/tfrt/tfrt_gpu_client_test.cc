@@ -731,5 +731,25 @@ TEST(TfrtGpuClientTest, AsyncCopyToDevice) {
             literal->Relayout(src_literal.shape().layout()).data<float>());
 }
 
+TEST(TfrtGpuClientTest, OnDoneSafelyDestructTransferManagerAsync) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
+                          GetTfrtGpuClient(GpuClientOptions()));
+  PjRtDevice* const device = client->addressable_devices()[0];
+  auto src_literal = LiteralUtil::CreateR1<float>({41.0f, 42.0f, 43.0f, 44.0f});
+
+  // Repeat 10 times to ensure we capture transfer happen asynchronously.
+  for (int i = 0; i < 10; ++i) {
+    TF_ASSERT_OK_AND_ASSIGN(
+        std::unique_ptr<PjRtClient::AsyncHostToDeviceTransferManager>
+            transfer_manager,
+        client->CreateBuffersForAsyncHostToDevice(
+            {src_literal.shape()}, *device->default_memory_space()));
+    EXPECT_OK(transfer_manager->TransferLiteralToBuffer(
+        0, src_literal,
+        /*on_done=*/
+        [transfer_manager = std::move(transfer_manager)]() {}));
+  }
+}
+
 }  // namespace
 }  // namespace xla
