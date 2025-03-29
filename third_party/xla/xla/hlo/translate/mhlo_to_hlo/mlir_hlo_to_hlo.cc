@@ -92,6 +92,7 @@ limitations under the License.
 #include "xla/mlir/utils/type_util.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/mlir_hlo/mhlo/transforms/passes.h"
+#include "xla/mlir_hlo/stablehlo_ext/transforms/passes.h"
 #include "xla/primitive_util.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/hlo.pb.h"
@@ -4100,8 +4101,13 @@ absl::Status PrepareForExport(mlir::ModuleOp module) {
     // Experimental support for exporting dynamic MHLO programs to HLO.
     // Only bounded dynamism is planned to be supported; unbounded dynamism
     // is out of scope for now.
+    //
+    // Duplicating passes to StableHLO and MHLO for now.
+    // Once lowering is StableHLO based we can delete the MHLO passes.
     pm.addNestedPass<mlir::func::FuncOp>(
         mhlo::createSymbolicShapeOptimizationPass());
+    pm.addNestedPass<mlir::func::FuncOp>(
+        stablehlo_ext::createSymbolicShapeOptimizationPass());
     pm.addNestedPass<mlir::func::FuncOp>(mhlo::createShapeLegalizeToHloPass());
   }
 

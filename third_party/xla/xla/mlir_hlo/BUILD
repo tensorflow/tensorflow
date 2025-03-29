@@ -408,6 +408,7 @@ cc_library(
         ":mhlo_pass_inc_gen",
         ":mhlo_rng_utils",
         ":mhlo_scatter_gather_utils",
+        ":mhlo_shape_component_analysis",
         ":mlir_hlo",
         ":shape_component_analysis",
         ":stablehlo_legalize_to_hlo",
@@ -894,7 +895,7 @@ gentbl_cc_library(
 )
 
 cc_library(
-    name = "shape_component_analysis",
+    name = "mhlo_shape_component_analysis",
     srcs = ["mhlo/analysis/shape_component_analysis.cc"],
     hdrs = ["mhlo/analysis/shape_component_analysis.h"],
     strip_include_prefix = ".",
@@ -907,6 +908,23 @@ cc_library(
         "@llvm-project//mlir:ShapeDialect",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TensorDialect",
+    ],
+)
+
+cc_library(
+    name = "shape_component_analysis",
+    srcs = ["stablehlo_ext/analysis/shape_component_analysis.cpp"],
+    hdrs = ["stablehlo_ext/analysis/shape_component_analysis.h"],
+    strip_include_prefix = ".",
+    deps = [
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:ArithDialect",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:ShapeDialect",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:TensorDialect",
+        "@stablehlo//:stablehlo_ops",
     ],
 )
 
@@ -1093,6 +1111,7 @@ cc_library(
         "stablehlo_ext/transforms/stablehlo_legalize_quant_composite.cpp",
         "stablehlo_ext/transforms/stablehlo_prepare_for_hlo_export.cpp",
         "stablehlo_ext/transforms/stablehlo_refine_shapes.cpp",
+        "stablehlo_ext/transforms/symbolic_shape_optimization.cpp",
     ],
     hdrs = [
         "stablehlo_ext/transforms/passes.h",
@@ -1102,17 +1121,22 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     strip_include_prefix = ".",
     deps = [
+        ":shape_component_analysis",
         ":stablehlo_extension_base",
         ":stablehlo_extension_ops",
         ":stablehlo_extension_pass_inc_gen",
         "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:ArithDialect",
         "@llvm-project//mlir:AsmParser",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:InferTypeOpInterface",
+        "@llvm-project//mlir:LinalgDialect",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:QuantOps",
+        "@llvm-project//mlir:ShapeDialect",
         "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:TensorDialect",
         "@llvm-project//mlir:TransformUtils",
         "@llvm-project//mlir:Transforms",
         "@shardy//shardy/dialect/sdy/ir:dialect",
