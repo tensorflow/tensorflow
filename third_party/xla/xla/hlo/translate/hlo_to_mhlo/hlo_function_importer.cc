@@ -2047,20 +2047,14 @@ absl::StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
       NO_ATTRIBUTE_CASE(kAnd, AndOp);
       NO_ATTRIBUTE_CASE(kAtan2, Atan2Op);
       NO_ATTRIBUTE_CASE(kBitcastConvert, BitcastConvertOp);
-      NO_ATTRIBUTE_CASE(kCbrt, CbrtOp);
       NO_ATTRIBUTE_CASE(kClz, ClzOp);
       NO_ATTRIBUTE_CASE(kCeil, CeilOp);
       NO_ATTRIBUTE_CASE(kClamp, ClampOp);
       NO_ATTRIBUTE_CASE(kComplex, ComplexOp);
-      NO_ATTRIBUTE_CASE(kCos, CosineOp);
       NO_ATTRIBUTE_CASE(kDivide, DivOp);
-      NO_ATTRIBUTE_CASE(kExp, ExpOp);
-      NO_ATTRIBUTE_CASE(kExpm1, Expm1Op);
       NO_ATTRIBUTE_CASE(kFloor, FloorOp);
       NO_ATTRIBUTE_CASE(kIsFinite, IsFiniteOp);
       NO_ATTRIBUTE_CASE(kImag, ImagOp);
-      NO_ATTRIBUTE_CASE(kLog, LogOp);
-      NO_ATTRIBUTE_CASE(kLog1p, Log1pOp);
       NO_ATTRIBUTE_CASE(kMaximum, MaxOp);
       NO_ATTRIBUTE_CASE(kMinimum, MinOp);
       NO_ATTRIBUTE_CASE(kMultiply, MulOp);
@@ -2074,7 +2068,6 @@ absl::StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
       NO_ATTRIBUTE_CASE(kRemainder, RemOp);
       NO_ATTRIBUTE_CASE(kReplicaId, ReplicaIdOp);
       NO_ATTRIBUTE_CASE(kStochasticConvert, StochasticConvertOp);
-      NO_ATTRIBUTE_CASE(kLogistic, LogisticOp);
       NO_ATTRIBUTE_CASE(kErf, ErfOp);
       // The dimensions attribute is not present on the HLO Reshape
       // instruction. If dimensions are non-default, the XLA builder
@@ -2082,22 +2075,44 @@ absl::StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
       NO_ATTRIBUTE_CASE(kReshape, ReshapeOp);
       NO_ATTRIBUTE_CASE(kRoundNearestAfz, RoundOp);
       NO_ATTRIBUTE_CASE(kRoundNearestEven, RoundNearestEvenOp);
-      NO_ATTRIBUTE_CASE(kRsqrt, RsqrtOp);
       NO_ATTRIBUTE_CASE(kSelect, SelectOp);
       NO_ATTRIBUTE_CASE(kShiftLeft, ShiftLeftOp);
       NO_ATTRIBUTE_CASE(kShiftRightArithmetic, ShiftRightArithmeticOp);
       NO_ATTRIBUTE_CASE(kShiftRightLogical, ShiftRightLogicalOp);
       NO_ATTRIBUTE_CASE(kSign, SignOp);
-      NO_ATTRIBUTE_CASE(kSin, SineOp);
-      NO_ATTRIBUTE_CASE(kSqrt, SqrtOp);
       NO_ATTRIBUTE_CASE(kSubtract, SubtractOp);
-      NO_ATTRIBUTE_CASE(kTan, TanOp);
-      NO_ATTRIBUTE_CASE(kTanh, TanhOp);
       NO_ATTRIBUTE_CASE(kTuple, TupleOp);
       NO_ATTRIBUTE_CASE(kXor, XorOp);
       NO_ATTRIBUTE_CASE(kCopy, CopyOp);
 
 #undef NO_ATTRIBUTE_CASE
+
+#define RESULT_ACCURACY_CASE(hlo_op_code, mlir_op)                            \
+  case HloOpcode::hlo_op_code: {                                              \
+    if (instruction->has_result_accuracy()) {                                 \
+      attributes.push_back(builder_->getNamedAttr(                            \
+          "result_accuracy",                                                  \
+          ConvertResultAccuracy(instruction->result_accuracy(), builder_)));  \
+    }                                                                         \
+    return func_builder                                                       \
+        ->create<mlir::mhlo::mlir_op>(loc, result_type, operands, attributes) \
+        .getOperation();                                                      \
+  }
+
+      RESULT_ACCURACY_CASE(kCbrt, CbrtOp);
+      RESULT_ACCURACY_CASE(kCos, CosineOp);
+      RESULT_ACCURACY_CASE(kExp, ExpOp);
+      RESULT_ACCURACY_CASE(kExpm1, Expm1Op);
+      RESULT_ACCURACY_CASE(kLog, LogOp);
+      RESULT_ACCURACY_CASE(kLog1p, Log1pOp);
+      RESULT_ACCURACY_CASE(kLogistic, LogisticOp);
+      RESULT_ACCURACY_CASE(kRsqrt, RsqrtOp);
+      RESULT_ACCURACY_CASE(kSin, SineOp);
+      RESULT_ACCURACY_CASE(kSqrt, SqrtOp);
+      RESULT_ACCURACY_CASE(kTan, TanOp);
+      RESULT_ACCURACY_CASE(kTanh, TanhOp);
+
+#undef RESULT_ACCURACY_CASE
 
     case HloOpcode::kFusion: {
       // Flatten the tuple-typed operands.

@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
+#include "llvm/ADT/APFloat.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
@@ -404,6 +405,27 @@ absl::StatusOr<mlir::ArrayAttr> ExtractLayoutsFromTuple(
     const Shape shape, mlir::Builder* builder) {
   if (!shape.IsTuple()) return InvalidArgument("Expected shape to be Tuple");
   return ExtractLayoutsFromShapes(shape.tuple_shapes(), builder);
+}
+
+mlir::mhlo::ResultAccuracyAttr ConvertResultAccuracy(
+    const ResultAccuracy& result_accuracy, mlir::Builder* builder) {
+  if (result_accuracy.has_tolerance()) {
+    return mlir::mhlo::ResultAccuracyAttr::get(
+        builder->getContext(),
+        llvm::APFloat(result_accuracy.tolerance().atol()),
+        llvm::APFloat(result_accuracy.tolerance().rtol()),
+        result_accuracy.tolerance().ulps(),
+        // Explicitly set the mode to TOLERANCE since ResultAccuracy has no
+        // TOLERANCE enum.
+        mlir::mhlo::ResultAccuracyModeAttr::get(
+            builder->getContext(), mlir::mhlo::ResultAccuracyMode::TOLERANCE));
+  }
+  return mlir::mhlo::ResultAccuracyAttr::get(
+      builder->getContext(), llvm::APFloat(0.0), llvm::APFloat(0.0), 0,
+      mlir::mhlo::ResultAccuracyModeAttr::get(
+          builder->getContext(),
+          mlir::mhlo::symbolizeResultAccuracyMode(result_accuracy.mode())
+              .value()));
 }
 
 }  // namespace xla
