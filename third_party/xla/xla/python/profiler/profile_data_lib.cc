@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/python/profiler/profile_data.h"
+#include "xla/python/profiler/profile_data_lib.h"
 
 #include <nanobind/nanobind.h>
 #include <nanobind/stl/string.h>  // IWYU pragma: keep. For automatic conversion of std::string to Python string.
