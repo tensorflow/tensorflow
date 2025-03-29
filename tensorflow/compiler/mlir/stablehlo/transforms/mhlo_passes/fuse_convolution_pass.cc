@@ -36,8 +36,8 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/lite/utils/validators.h"
 #include "tensorflow/compiler/mlir/quantization/common/attrs_and_constraints.h"
+#include "tensorflow/compiler/mlir/utils/validators.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 
 namespace mlir {
@@ -95,7 +95,7 @@ class FuseMhloMulAndConvolutionPattern : public OpRewritePattern<mhlo::MulOp> {
     // format and backprop input conv filter is in HWOI format.
     // Only fuses multiplier if all dimensions other than the out channel
     // dimension are equal to 1.
-    if (!TFL::IsDimensionsDegenerateExceptLastOne(
+    if (!TF::IsDimensionsDegenerateExceptLastOne(
             mul_value.getShapedType().getShape())) {
       return rewriter.notifyMatchFailure(mul_op, [&](::mlir::Diagnostic &diag) {
         diag << "entities 'mul_value' failed to satisfy constraint: "
