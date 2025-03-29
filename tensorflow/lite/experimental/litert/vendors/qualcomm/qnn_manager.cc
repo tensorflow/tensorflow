@@ -11,6 +11,9 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
+//
+// Copyright (c) Qualcomm Innovation Center, Inc. All Rights Reserved.
+// SPDX-License-Identifier: Apache-2.0
 
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/qnn_manager.h"
 
@@ -45,6 +48,7 @@
 #include "tensorflow/lite/experimental/litert/cc/litert_shared_library.h"
 #include "tensorflow/lite/experimental/litert/core/dynamic_loading.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/common.h"
+#include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/schema/soc_table.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/qnn_log.h"
 
 namespace litert::qnn {
@@ -263,7 +267,7 @@ LiteRtStatus QnnManager::ValidateOp(const Qnn_OpConfig_t& op_config) {
 
 LiteRtStatus QnnManager::Init(absl::Span<const QnnBackend_Config_t*> configs,
                               std::optional<std::string> shared_library_dir,
-                              std::optional<QnnHtpDevice_Arch_t> soc_model) {
+                              std::optional<::qnn::SocInfo> soc_info) {
   // If shared_library_dir is provided, add it to the path as it may contain
   // libs to be loaded.
   // TOOD: This should probably be done upstream in litert_dispatch.
@@ -300,27 +304,41 @@ LiteRtStatus QnnManager::Init(absl::Span<const QnnBackend_Config_t*> configs,
     return kLiteRtStatusErrorRuntimeFailure;
   }
 
-  if (soc_model.has_value()) {
-    soc_model_ = *soc_model;
+  if (soc_info.has_value()) {
+    soc_info_ = *soc_info;
     LITERT_LOG(LITERT_INFO,
-               "Initializing QNN backend for device architecture %d",
-               *soc_model);
-    QnnHtpDevice_CustomConfig_t arch_custom_config = {};
-    arch_custom_config.option = QNN_HTP_DEVICE_CONFIG_OPTION_ARCH;
-    arch_custom_config.arch.arch = *soc_model;
-    arch_custom_config.arch.deviceId = 0;
-
-    QnnDevice_Config_t arch_device_config = {};
-    arch_device_config.option = QNN_DEVICE_CONFIG_OPTION_CUSTOM;
-    arch_device_config.customConfig = &arch_custom_config;
-
-    const QnnDevice_Config_t* device_configs[2] = {
-        &arch_device_config,
-        nullptr,
-    };
-
+               "Initializing QNN backend for device architecture V%d",
+               soc_info_.dsp_arch);
+    htp_device_platform_info_config_ =
+        std::make_unique<::qnn::HtpDevicePlatformInfoConfig>();
+    htp_device_custom_config_ =
+        std::make_unique<::qnn::HtpDeviceCustomConfig>();
+    const std::vector<QnnDevice_CustomConfig_t> device_custom_config =
+        htp_device_custom_config_->CreateDeviceCustomConfig(&soc_info_);
+    const std::vector<QnnDevice_PlatformInfo_t*>& device_platform_info =
+        htp_device_platform_info_config_->CreateDevicePlatformInfo(&soc_info_);
+    uint32_t num_custom_configs =
+        device_platform_info.size() + device_custom_config.size();
+    device_configs_.resize(num_custom_configs);
+    // +1 for null terminated
+    std::vector<const QnnDevice_Config_t*> configs;
+    configs.reserve(num_custom_configs + 1);
+    for (std::size_t i = 0; i < device_custom_config.size(); ++i) {
+      device_configs_[i].option = QNN_DEVICE_CONFIG_OPTION_CUSTOM;
+      device_configs_[i].customConfig = device_custom_config[i];
+      configs.emplace_back(&device_configs_[i]);
+    }
+    if (!device_platform_info.empty()) {
+      device_configs_[device_custom_config.size()].option =
+          QNN_DEVICE_CONFIG_OPTION_PLATFORM_INFO;
+      device_configs_[device_custom_config.size()].hardwareInfo =
+          device_platform_info.back();
+      configs.emplace_back(&device_configs_[device_custom_config.size()]);
+    }
+    // null terminated
+    configs.emplace_back(nullptr);
     if (auto status =
-            Api()->deviceCreate(nullptr, device_configs, &DeviceHandle());
+            Api()->deviceCreate(nullptr, configs.data(), &DeviceHandle());
         status != QNN_SUCCESS) {
       LITERT_LOG(LITERT_ERROR, "Failed to create QNN device: %d", status);
       return kLiteRtStatusErrorRuntimeFailure;
@@ -376,9 +394,9 @@ Expected<QnnManager::ContextHandle> QnnManager::CreateContextHandle(
 Expected<QnnManager::Ptr> QnnManager::Create(
     absl::Span<const QnnBackend_Config_t*> configs,
     std::optional<std::string> shared_library_dir,
-    std::optional<QnnHtpDevice_Arch_t> soc_model) {
+    std::optional<::qnn::SocInfo> soc_info) {
   Ptr qnn_manager(new QnnManager);
-  if (auto status = qnn_manager->Init(configs, shared_library_dir, soc_model);
+  if (auto status = qnn_manager->Init(configs, shared_library_dir, soc_info);
       status != kLiteRtStatusOk) {
     return Unexpected(status, "Failed to set up QNN manager");
   }

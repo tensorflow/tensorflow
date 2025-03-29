@@ -11,6 +11,9 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
+//
+// Copyright (c) Qualcomm Innovation Center, Inc. All Rights Reserved.
+// SPDX-License-Identifier: Apache-2.0
 
 #include <stdio.h>
 
@@ -55,44 +58,23 @@ namespace {
 
 constexpr char kPluginManufacturer[] = "Qualcomm";
 constexpr LiteRtParamIndex kDefaultPartitionIndex = 0;
-
-// clang-format off
-constexpr std::pair<const char*, QnnHtpDevice_Arch_t> kPluginSocModels[] = {
-    {"V68", QNN_HTP_DEVICE_ARCH_V68},
-    {"V69", QNN_HTP_DEVICE_ARCH_V69},
-    {"V73", QNN_HTP_DEVICE_ARCH_V73},
-    {"V75", QNN_HTP_DEVICE_ARCH_V75},
-    {"V79", QNN_HTP_DEVICE_ARCH_V79},
-};
-
-constexpr const char* kSocModelsSupportsWeightSharing[] = {
-  "V73",
-  "V75",
-  "V79",
-};
-// clang-format on
+constexpr LiteRtParamIndex kDefaultPartitionNum = 1;
 
 static constexpr absl::string_view kEntryPointNameFmt = "qnn_partition_%d";
 
-constexpr auto kNumPluginSocModels =
-    sizeof(kPluginSocModels) / sizeof(kPluginSocModels[0]);
-
-std::optional<QnnHtpDevice_Arch_t> FindSocModel(
-    absl::string_view soc_model_name) {
-  std::optional<QnnHtpDevice_Arch_t> soc_model;
-  for (auto i = 0; i < kNumPluginSocModels; ++i) {
-    if (soc_model_name == kPluginSocModels[i].first) {
-      soc_model = kPluginSocModels[i].second;
+std::optional<::qnn::SocInfo> FindSocModel(absl::string_view soc_model_name) {
+  std::optional<::qnn::SocInfo> soc_model;
+  for (auto i = 0; i < ::qnn::kNumSocInfos; ++i) {
+    if (soc_model_name == ::qnn::kSocInfos[i].soc_name) {
+      soc_model = ::qnn::kSocInfos[i];
       break;
     }
   }
   return soc_model;
 }
 
-bool IsWeightSharingSupported(absl::string_view soc_model_name) {
-  return std::find(std::begin(kSocModelsSupportsWeightSharing),
-                   std::end(kSocModelsSupportsWeightSharing),
-                   soc_model_name) != std::end(kSocModelsSupportsWeightSharing);
+bool IsWeightSharingSupported(::qnn::DspArch dsp_arch) {
+  return dsp_arch >= ::qnn::DspArch::V73;
 }
 
 }  // namespace
@@ -127,7 +109,7 @@ LiteRtStatus LiteRtGetNumCompilerPluginSupportedSocModels(
   if (!compiler_plugin || !num_supported_soc_models) {
     return kLiteRtStatusErrorInvalidArgument;
   }
-  *num_supported_soc_models = kNumPluginSocModels;
+  *num_supported_soc_models = ::qnn::kNumSocInfos;
   return kLiteRtStatusOk;
 }
 
@@ -136,10 +118,10 @@ LiteRtStatus LiteRtGetCompilerPluginSupportedSocModel(
     const char** soc_model_name) {
   if (!compiler_plugin || !soc_model_name) {
     return kLiteRtStatusErrorInvalidArgument;
-  } else if (soc_model_idx < 0 || soc_model_idx >= kNumPluginSocModels) {
+  } else if (soc_model_idx < 0 || soc_model_idx >= ::qnn::kNumSocInfos) {
     return kLiteRtStatusErrorInvalidArgument;
   }
-  *soc_model_name = kPluginSocModels[soc_model_idx].first;
+  *soc_model_name = ::qnn::kSocInfos[soc_model_idx].soc_name;
   return kLiteRtStatusOk;
 }
 
@@ -242,9 +224,9 @@ LiteRtStatus LiteRtCompilerPluginPartition(LiteRtCompilerPlugin compiler_plugin,
   ::litert::Subgraph graph(subgraph);
 
   auto backend_configs = QnnManager::DefaultBackendConfigs();
-  // TODO: pass soc_model as parameter
-  auto qnn_manager = QnnManager::Create(backend_configs, std::nullopt,
-                                        {QNN_HTP_DEVICE_ARCH_V75});
+  auto qnn_manager =
+      QnnManager::Create(backend_configs, std::nullopt,
+                         soc_model ? FindSocModel(soc_model) : std::nullopt);
   if (!qnn_manager) {
     LITERT_LOG(LITERT_ERROR, "%s", qnn_manager.Error().Message().data());
     return qnn_manager.Error().Status();
@@ -312,7 +294,7 @@ LiteRtStatus LiteRtCompilerPluginCompile(
 
   auto opt_soc_model = soc_model ? FindSocModel(soc_model) : std::nullopt;
   if (opt_soc_model) {
-    LITERT_LOG(LITERT_ERROR, "Compiling QNN architecture: %d", *opt_soc_model);
+    LITERT_LOG(LITERT_ERROR, "Compiling QNN architecture: %s", soc_model);
   } else if (soc_model) {
     LITERT_LOG(LITERT_ERROR, "Unexpected SoC model: %s", soc_model);
     return kLiteRtStatusErrorInvalidArgument;
@@ -371,9 +353,12 @@ LiteRtStatus LiteRtCompilerPluginCompile(
       LITERT_LOG(LITERT_INFO, "%s", "Creating context handle");
       // We enable weight sharing by default, this could lead to issue when
       // support legacy SoC.
-      // TODO: use option to control weight sharing.
+      // TODO(jiunkaiy): use option to control weight sharing.
       auto context_configs = QnnManager::WeightSharingContextConfigs();
-      if (!IsWeightSharingSupported(soc_model)) {
+      // Disable weight sharing if we have only one partition or SoC doesn't
+      // support weight sharing.
+      if (num_partitions == kDefaultPartitionNum ||
+          !IsWeightSharingSupported(opt_soc_model.value().dsp_arch)) {
         context_configs = QnnManager::DefaultContextConfigs();
       }
       auto context_handle =
