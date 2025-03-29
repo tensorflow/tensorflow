@@ -721,7 +721,6 @@ absl::StatusOr<ScalarOrTensor> EmitDot(EmitterLocOpBuilder& b,
                                        const TiledHloInstruction& tiled_hlo_dot,
                                        mlir::triton::FuncOp fn,
                                        ValueRange tile_multi_index) {
-  QCHECK(UseGenericTritonEmitterForGemms(tiled_hlo_dot.hlo()));
   // We expect to get a tiled HLO in form:
   //
   // left { ... }
@@ -1569,6 +1568,9 @@ absl::StatusOr<TritonModule> CreateTritonModule(
   // explicitly.
   std::optional<stream_executor::gpu::TmaMetadata> tma_metadata = std::nullopt;
   if (fusion_kind == kTritonGemmFusionKind) {
+    // If the generic Triton emitter is enabled, we should never go through the
+    // legacy MatMul emitter.
+    QCHECK(!UseGenericTritonEmitterForGemms(fusion));
     TF_ASSIGN_OR_RETURN(tma_metadata,
                         EmitMatMul(b, libdevice_path, device_info, fusion, fn,
                                    block_level_parameters));
