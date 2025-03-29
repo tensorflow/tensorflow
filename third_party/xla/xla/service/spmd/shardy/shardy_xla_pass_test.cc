@@ -84,8 +84,10 @@ TEST_F(ShardyXLATest, AllowSpmdShardingPropagationParametersOutputRespected) {
       op::Sharding(
           "{devices=[2,2,1,2]<=[2,2,2]T(0,2,1) last_tile_dim_replicate}"));
 
-  EXPECT_THAT(module->entry_computation()->root_instruction(),
+  EXPECT_THAT(module->entry_computation()->root_instruction()->operand(0),
               op::Sharding("{devices=[2,2,2]<=[8]}"));
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              op::Sharding("{replicated}"));
 }
 
 TEST_F(ShardyXLATest, ElementWise) {
@@ -111,17 +113,9 @@ TEST_F(ShardyXLATest, ElementWise) {
   EXPECT_EQ(add->metadata().source_file(), "source.txt");
   EXPECT_EQ(add->metadata().source_line(), 42);
 
-  for (HloInstruction* param :
-       module->entry_computation()->parameter_instructions()) {
-    EXPECT_THAT(param, op::Sharding("{devices=[2,1]<=[2]}"));
+  for (HloInstruction* operand : add->operands()) {
+    EXPECT_THAT(operand, op::Sharding("{devices=[2,1]<=[2]}"));
   }
-
-  EXPECT_THAT(module->entry_computation()->root_instruction(),
-              op::Sharding("{devices=[2,1]<=[2]}"));
-
-  // Conversions HLO -> StableHLO -> HLO removes the copy instructions.
-  auto* copy = FindInstruction(module.get(), xla::HloOpcode::kCopy);
-  EXPECT_EQ(copy, nullptr);
 }
 
 TEST_F(ShardyXLATest, CostantSplitter) {
@@ -255,7 +249,7 @@ TEST_F(ShardyXLATest, DotMergeOperands1) {
       op::Sharding(
           "{devices=[2,2,1,2]<=[2,2,2]T(0,2,1) last_tile_dim_replicate}"));
 
-  EXPECT_THAT(module->entry_computation()->root_instruction(),
+  EXPECT_THAT(module->entry_computation()->root_instruction()->operand(0),
               op::Sharding("{devices=[2,2,2]<=[8]}"));
 }
 
@@ -279,7 +273,7 @@ TEST_F(ShardyXLATest, DotMergeOperands2) {
   EXPECT_THAT(module->entry_computation()->parameter_instruction(1),
               op::Sharding("{devices=[2,2,2]<=[8]}"));
 
-  EXPECT_THAT(module->entry_computation()->root_instruction(),
+  EXPECT_THAT(module->entry_computation()->root_instruction()->operand(0),
               op::Sharding("{devices=[2,2,1,2]<=[8] last_tile_dim_replicate}"));
 }
 
@@ -302,7 +296,7 @@ TEST_F(ShardyXLATest, DotMergeOperands3) {
   EXPECT_THAT(module->entry_computation()->parameter_instruction(1),
               op::Sharding("{devices=[4,2]<=[2,2,2]T(2,1,0)}"));
 
-  EXPECT_THAT(module->entry_computation()->root_instruction(),
+  EXPECT_THAT(module->entry_computation()->root_instruction()->operand(0),
               op::Sharding("{devices=[2,4]<=[2,2,2]T(0,2,1)}"));
 }
 
@@ -325,10 +319,11 @@ TEST_F(ShardyXLATest, BackwardDotFromContracting) {
 
   EXPECT_THAT(module->entry_computation()->parameter_instruction(0),
               op::Sharding("{devices=[2,2,2]<=[8]}"));
-  EXPECT_THAT(module->entry_computation()->parameter_instruction(1),
-              op::Sharding("{devices=[2,2,2]<=[8]}"));
+  EXPECT_THAT(
+      module->entry_computation()->root_instruction()->operand(0)->operand(0),
+      op::Sharding("{devices=[2,2,2]<=[8]}"));
 
-  EXPECT_THAT(module->entry_computation()->root_instruction(),
+  EXPECT_THAT(module->entry_computation()->root_instruction()->operand(0),
               op::Sharding("{devices=[2,1,2,2]<=[8] last_tile_dim_replicate}"));
 }
 

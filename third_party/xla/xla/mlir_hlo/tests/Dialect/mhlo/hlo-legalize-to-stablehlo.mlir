@@ -2146,8 +2146,7 @@ func.func @op_bitcast(%arg0: tensor<i32>) -> tensor<f32> {
 // -----
 
 func.func @op_copy(%arg0: tensor<f32>) -> tensor<f32> {
-  // mhlo.copy is immediately folded away at the first opportunity,
-  // so it doesn't seem to be possible to capture it in FileCheck tests.
+  // expected-error@+1 {{failed to legalize operation 'mhlo.copy' that was explicitly marked illegal}}
   %0 = "mhlo.copy"(%arg0) : (tensor<f32>) -> tensor<f32>
   func.return %0 : tensor<f32>
 }
