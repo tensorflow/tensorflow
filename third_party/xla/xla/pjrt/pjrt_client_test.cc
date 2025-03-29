@@ -569,37 +569,40 @@ ENTRY DuplicateDonationError() -> (f32[2, 2], f32[2, 2]) {
                           MakeFloatBuffer(client.get(), data, {2, 2}));
 
   {
-    auto result = pjrt_executable->Execute(/*argument_handles=*/{{
-                                               buffer0.get(),
-                                               buffer1.get(),
-                                               buffer1.get(),
-                                               buffer0.get(),
-                                           }},
-                                           /*options=*/{});
+    auto result =
+        pjrt_executable->Execute(/*argument_handles=*/{{
+                                     buffer0.get(),
+                                     buffer1.get(),
+                                     buffer1.get(),
+                                     buffer0.get(),
+                                 }},
+                                 /*options=*/{.untuple_result = true});
     ASSERT_FALSE(result.ok());
     EXPECT_THAT(result.status().message(),
                 ::testing::HasSubstr("f(donate(a), donate(a))"));
   }
   {
-    auto result = pjrt_executable->Execute(/*argument_handles=*/{{
-                                               buffer1.get(),
-                                               buffer1.get(),
-                                               buffer2.get(),
-                                               buffer0.get(),
-                                           }},
-                                           /*options=*/{});
+    auto result =
+        pjrt_executable->Execute(/*argument_handles=*/{{
+                                     buffer1.get(),
+                                     buffer1.get(),
+                                     buffer2.get(),
+                                     buffer0.get(),
+                                 }},
+                                 /*options=*/{.untuple_result = true});
     ASSERT_FALSE(result.ok());
     EXPECT_THAT(result.status().message(),
                 ::testing::HasSubstr("f(a, donate(a))"));
   }
   {
-    auto result = pjrt_executable->Execute(/*argument_handles=*/{{
-                                               buffer0.get(),
-                                               buffer1.get(),
-                                               buffer2.get(),
-                                               buffer2.get(),
-                                           }},
-                                           /*options=*/{});
+    auto result =
+        pjrt_executable->Execute(/*argument_handles=*/{{
+                                     buffer0.get(),
+                                     buffer1.get(),
+                                     buffer2.get(),
+                                     buffer2.get(),
+                                 }},
+                                 /*options=*/{.untuple_result = true});
     ASSERT_FALSE(result.ok());
     EXPECT_THAT(result.status().message(),
                 ::testing::HasSubstr("f(donate(a), a)"));

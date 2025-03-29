@@ -163,8 +163,9 @@ class HloRunnerPjRt : public HloRunnerInterface {
       HloModule* module, bool run_hlo_passes);
 
   absl::StatusOr<std::vector<Literal>> ExecuteReplicatedImpl(
-      std::function<absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>(
-          absl::Span<const std::vector<PjRtBuffer*>>)>
+      std::function<
+          absl::StatusOr<std::vector<std::vector<std::unique_ptr<PjRtBuffer>>>>(
+              absl::Span<const std::vector<PjRtBuffer*>>)>
           execution_helper,
       std::function<int64_t(int64_t)> argument_count_provider,
       std::function<const Literal*(int64_t, int64_t)> argument_provider,
