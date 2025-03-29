@@ -33,10 +33,11 @@ limitations under the License.
 #include "tensorflow/core/profiler/convert/repository.h"
 #include "tensorflow/core/profiler/convert/xplane_to_step_events.h"
 #include "tensorflow/core/profiler/protobuf/inference_stats.pb.h"
-#include "tensorflow/core/profiler/utils/event_span.h"
 #include "tensorflow/core/profiler/utils/xplane_schema.h"
 #include "tensorflow/core/profiler/utils/xplane_visitor.h"
 #include "tsl/profiler/protobuf/xplane.pb.h"
+#include "plugin/tensorboard_plugin_profile/protobuf/inference_stats.pb.h"  // from @org_xprof
+#include "xprof/utils/event_span.h"  // from @org_xprof
 
 namespace tensorflow::profiler {
 

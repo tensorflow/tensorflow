@@ -26,9 +26,10 @@ limitations under the License.
 #include "tensorflow/core/profiler/convert/repository.h"
 #include "tensorflow/core/profiler/convert/xplane_to_op_stats.h"
 #include "tensorflow/core/profiler/protobuf/op_stats.pb.h"
-#include "tensorflow/core/profiler/utils/hardware_type_utils.h"
-#include "tensorflow/core/profiler/utils/step_intersection.h"
 #include "tsl/profiler/protobuf/xplane.pb.h"
+#include "plugin/tensorboard_plugin_profile/protobuf/op_stats.pb.h"  // from @org_xprof
+#include "xprof/utils/hardware_type_utils.h"  // from @org_xprof
+#include "xprof/utils/step_intersection.h"  // from @org_xprof
 
 namespace tensorflow {
 namespace profiler {

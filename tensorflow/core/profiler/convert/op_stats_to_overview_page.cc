@@ -39,11 +39,14 @@ limitations under the License.
 #include "tensorflow/core/profiler/protobuf/power_metrics.pb.h"
 #include "tensorflow/core/profiler/protobuf/steps_db.pb.h"
 #include "tensorflow/core/profiler/protobuf/tf_function.pb.h"
-#include "tensorflow/core/profiler/utils/diagnostics.h"
-#include "tensorflow/core/profiler/utils/hardware_type_utils.h"
-#include "tensorflow/core/profiler/utils/html_utils.h"
-#include "tensorflow/core/profiler/utils/kernel_stats_utils.h"
-#include "tensorflow/core/profiler/utils/op_metrics_db_utils.h"
+#include "plugin/tensorboard_plugin_profile/protobuf/overview_page.pb.h"  // from @org_xprof
+#include "plugin/tensorboard_plugin_profile/protobuf/power_metrics.pb.h"  // from @org_xprof
+#include "plugin/tensorboard_plugin_profile/protobuf/tf_function.pb.h"  // from @org_xprof
+#include "xprof/utils/diagnostics.h"  // from @org_xprof
+#include "xprof/utils/hardware_type_utils.h"  // from @org_xprof
+#include "xprof/utils/html_utils.h"  // from @org_xprof
+#include "xprof/utils/kernel_stats_utils.h"  // from @org_xprof
+#include "xprof/utils/op_metrics_db_utils.h"  // from @org_xprof
 
 namespace tensorflow {
 namespace profiler {

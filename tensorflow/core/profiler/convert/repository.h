@@ -31,9 +31,9 @@ limitations under the License.
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/profiler/utils/file_system_utils.h"
-#include "tensorflow/core/profiler/utils/hlo_module_map.h"
 #include "tsl/platform/path.h"
 #include "tsl/profiler/protobuf/xplane.pb.h"
+#include "xprof/utils/hlo_module_map.h"  // from @org_xprof
 
 namespace tensorflow {
 namespace profiler {

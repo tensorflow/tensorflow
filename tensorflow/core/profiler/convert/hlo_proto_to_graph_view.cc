@@ -44,7 +44,7 @@ limitations under the License.
 #include "xla/tsl/platform/errors.h"
 #include "tensorflow/core/profiler/convert/tool_options.h"
 #include "tensorflow/core/profiler/utils/hlo_module_utils.h"
-#include "tensorflow/core/profiler/utils/hlo_proto_to_module.h"
+#include "xprof/utils/hlo_proto_to_module.h"  // from @org_xprof
 
 namespace tensorflow {
 namespace profiler {

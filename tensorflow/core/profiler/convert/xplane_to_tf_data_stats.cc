@@ -34,9 +34,9 @@ limitations under the License.
 #include "xla/tsl/profiler/utils/timespan.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/profiler/protobuf/tf_data_stats.pb.h"
-#include "tensorflow/core/profiler/utils/html_utils.h"
 #include "tensorflow/core/profiler/utils/xplane_schema.h"
 #include "tensorflow/core/profiler/utils/xplane_visitor.h"
+#include "xprof/utils/html_utils.h"  // from @org_xprof
 
 namespace tensorflow {
 namespace profiler {

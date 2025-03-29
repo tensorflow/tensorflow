@@ -19,9 +19,6 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core/profiler/protobuf:op_metrics_proto_cc",
-        "//tensorflow/core/profiler/utils:cost_utils",
-        "//tensorflow/core/profiler/utils:op_metrics_db_utils",
-        "//tensorflow/core/profiler/utils:op_utils",
         "//tensorflow/core/profiler/utils:trace_utils",
         "//tensorflow/core/profiler/utils:xplane_schema",
         "//tensorflow/core/profiler/utils:xplane_visitor",
@@ -36,6 +33,9 @@ cc_library(
         "@local_xla//xla/tsl/profiler/utils:timespan",
         "@local_xla//xla/tsl/profiler/utils:xplane_schema",
         "@local_xla//xla/tsl/profiler/utils:xplane_utils",
+        "@org_xprof//xprof/utils:cost_utils",
+        "@org_xprof//xprof/utils:op_metrics_db_utils",
+        "@org_xprof//xprof/utils:op_utils",
     ],
 )
 
@@ -49,6 +49,7 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core/profiler/protobuf:op_metrics_proto_cc",
+        "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
         "//tensorflow/core/profiler/utils:op_metrics_db_utils",
         "//tensorflow/core/profiler/utils:xplane_builder",
         "//tensorflow/core/profiler/utils:xplane_schema",
@@ -57,6 +58,7 @@ tf_cc_test(
         "@local_tsl//tsl/profiler/protobuf:xplane_proto_cc",
         "@local_xla//xla/tsl/profiler/utils:math_utils",
         "@local_xla//xla/tsl/profiler/utils:xplane_schema",
+        "@org_xprof//xprof/utils:op_metrics_db_utils",
     ],
 )
 
@@ -67,11 +69,10 @@ cc_library(
     copts = tf_profiler_copts(),
     deps = [
         "//tensorflow/core:lib",
-        "//tensorflow/core/platform:protobuf",
         "//tensorflow/core/profiler/protobuf:op_metrics_proto_cc",
-        "//tensorflow/core/profiler/utils:op_metrics_db_utils",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/log:check",
+        "@org_xprof//xprof/utils:op_metrics_db_utils",
     ],
 )
 
@@ -128,11 +129,11 @@ cc_library(
         "//tensorflow/core/profiler/protobuf:op_stats_proto_cc",
         "//tensorflow/core/profiler/protobuf:roofline_model_proto_cc",
         "//tensorflow/core/profiler/protobuf:steps_db_proto_cc",
-        "//tensorflow/core/profiler/utils:diagnostics",
         "@com_google_absl//absl/log:check",
         "@local_tsl//tsl/platform:protobuf",
         "@local_xla//xla/tsl/profiler/convert:xla_op_utils",
         "@local_xla//xla/tsl/profiler/utils:math_utils",
+        "@org_xprof//xprof/utils:diagnostics",
     ],
 )
 
@@ -146,10 +147,12 @@ cc_library(
         "//tensorflow/core/profiler/protobuf:op_metrics_proto_cc",
         "//tensorflow/core/profiler/protobuf:op_profile_proto_cc",
         "//tensorflow/core/profiler/protobuf:op_stats_proto_cc",
-        "//tensorflow/core/profiler/utils:op_metrics_db_utils",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/strings",
         "@local_xla//xla/tsl/profiler/utils:math_utils",
+        "@org_xprof//plugin/tensorboard_plugin_profile/protobuf:hardware_types_proto_cc",
+        "@org_xprof//plugin/tensorboard_plugin_profile/protobuf:op_stats_proto_cc",
+        "@org_xprof//xprof/utils:op_metrics_db_utils",
     ],
 )
 
@@ -172,17 +175,21 @@ cc_library(
         "//tensorflow/core/profiler/protobuf:power_metrics_proto_cc",
         "//tensorflow/core/profiler/protobuf:steps_db_proto_cc",
         "//tensorflow/core/profiler/protobuf:tf_function_proto_cc",
-        "//tensorflow/core/profiler/utils:diagnostics",
-        "//tensorflow/core/profiler/utils:hardware_type_utils",
-        "//tensorflow/core/profiler/utils:html_utils",
-        "//tensorflow/core/profiler/utils:kernel_stats_utils",
-        "//tensorflow/core/profiler/utils:op_metrics_db_utils",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/strings",
         "@local_tsl//tsl/profiler/protobuf:xplane_proto_cc",
         "@local_xla//xla/tsl/profiler/utils:format_utils",
         "@local_xla//xla/tsl/profiler/utils:math_utils",
         "@local_xla//xla/tsl/profiler/utils:tf_op_utils",
+        "@org_xprof//plugin/tensorboard_plugin_profile/protobuf:input_pipeline_proto_cc",
+        "@org_xprof//plugin/tensorboard_plugin_profile/protobuf:overview_page_proto_cc",
+        "@org_xprof//plugin/tensorboard_plugin_profile/protobuf:power_metrics_proto_cc",
+        "@org_xprof//plugin/tensorboard_plugin_profile/protobuf:tf_function_proto_cc",
+        "@org_xprof//xprof/utils:diagnostics",
+        "@org_xprof//xprof/utils:hardware_type_utils",
+        "@org_xprof//xprof/utils:html_utils",
+        "@org_xprof//xprof/utils:kernel_stats_utils",
+        "@org_xprof//xprof/utils:op_metrics_db_utils",
     ],
 )
 
@@ -197,12 +204,12 @@ cc_library(
         "//tensorflow/core/profiler/protobuf:op_stats_proto_cc",
         "//tensorflow/core/profiler/protobuf:pod_stats_proto_cc",
         "//tensorflow/core/profiler/protobuf:steps_db_proto_cc",
-        "//tensorflow/core/profiler/utils:diagnostics",
-        "//tensorflow/core/profiler/utils:event_span",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/strings",
         "@local_xla//xla/tsl/profiler/utils:math_utils",
+        "@org_xprof//xprof/utils:diagnostics",
+        "@org_xprof//xprof/utils:event_span",
     ],
 )
 
@@ -216,9 +223,9 @@ tf_cc_test(
         "//tensorflow/core/profiler/protobuf:diagnostics_proto_cc",
         "//tensorflow/core/profiler/protobuf:op_stats_proto_cc",
         "//tensorflow/core/profiler/protobuf:steps_db_proto_cc",
-        "//tensorflow/core/profiler/utils:diagnostics",
-        "//tensorflow/core/profiler/utils:event_span",
         "@local_xla//xla/tsl/profiler/utils:math_utils",
+        "@org_xprof//xprof/utils:diagnostics",
+        "@org_xprof//xprof/utils:event_span",
     ],
 )
 
@@ -233,8 +240,8 @@ cc_library(
         "//tensorflow/core/profiler/protobuf:pod_stats_proto_cc",
         "//tensorflow/core/profiler/protobuf:pod_viewer_proto_cc",
         "//tensorflow/core/profiler/protobuf:steps_db_proto_cc",
-        "//tensorflow/core/profiler/utils:diagnostics",
         "@com_google_absl//absl/log:check",
+        "@org_xprof//xprof/utils:diagnostics",
     ],
 )
 
@@ -249,9 +256,9 @@ tf_cc_test(
         "//tensorflow/core/profiler/protobuf:op_stats_proto_cc",
         "//tensorflow/core/profiler/protobuf:pod_stats_proto_cc",
         "//tensorflow/core/profiler/protobuf:steps_db_proto_cc",
-        "//tensorflow/core/profiler/utils:diagnostics",
-        "//tensorflow/core/profiler/utils:event_span",
         "@local_xla//xla/tsl/profiler/utils:math_utils",
+        "@org_xprof//xprof/utils:diagnostics",
+        "@org_xprof//xprof/utils:event_span",
     ],
 )
 
@@ -288,12 +295,6 @@ cc_library(
         "//tensorflow/core/profiler/protobuf:op_stats_proto_cc",
         "//tensorflow/core/profiler/protobuf:steps_db_proto_cc",
         "//tensorflow/core/profiler/protobuf:tpu_input_pipeline_proto_cc",
-        "//tensorflow/core/profiler/utils:diagnostics",
-        "//tensorflow/core/profiler/utils:event_span",
-        "//tensorflow/core/profiler/utils:html_utils",
-        "//tensorflow/core/profiler/utils:op_metrics_db_utils",
-        "//tensorflow/core/profiler/utils:tpu_step_breakdown_utils",
-        "//tensorflow/core/profiler/utils:tpu_step_details_utils",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
@@ -305,6 +306,16 @@ cc_library(
         "@local_xla//xla/tsl/profiler/utils:math_utils",
         "@local_xla//xla/tsl/profiler/utils:tf_op_utils",
         "@local_xla//xla/tsl/util:stats_calculator_portable",
+        "@org_xprof//plugin/tensorboard_plugin_profile/protobuf:hardware_types_proto_cc",
+        "@org_xprof//plugin/tensorboard_plugin_profile/protobuf:input_pipeline_proto_cc",
+        "@org_xprof//plugin/tensorboard_plugin_profile/protobuf:op_stats_proto_cc",
+        "@org_xprof//plugin/tensorboard_plugin_profile/protobuf:tpu_input_pipeline_proto_cc",
+        "@org_xprof//xprof/utils:diagnostics",
+        "@org_xprof//xprof/utils:event_span",
+        "@org_xprof//xprof/utils:html_utils",
+        "@org_xprof//xprof/utils:op_metrics_db_utils",
+        "@org_xprof//xprof/utils:tpu_step_breakdown_utils",
+        "@org_xprof//xprof/utils:tpu_step_details_utils",
     ],
 )
 
@@ -316,10 +327,11 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core/profiler/protobuf:steps_db_proto_cc",
-        "//tensorflow/core/profiler/utils:event_span",
-        "//tensorflow/core/profiler/utils:op_metrics_db_utils",
+        "@local_tsl//tsl/platform:protobuf",
         "@local_xla//xla/hlo/ir:hlo",
         "@local_xla//xla/tsl/profiler/utils:timespan",
+        "@org_xprof//xprof/utils:event_span",
+        "@org_xprof//xprof/utils:op_metrics_db_utils",
     ],
 )
 
@@ -334,9 +346,9 @@ cc_library(
         "//tensorflow/core/profiler/protobuf:op_metrics_proto_cc",
         "//tensorflow/core/profiler/protobuf:op_stats_proto_cc",
         "//tensorflow/core/profiler/protobuf:tf_stats_proto_cc",
-        "//tensorflow/core/profiler/utils:kernel_stats_utils",
-        "//tensorflow/core/profiler/utils:op_metrics_db_utils",
         "@local_xla//xla/tsl/profiler/utils:math_utils",
+        "@org_xprof//xprof/utils:kernel_stats_utils",
+        "@org_xprof//xprof/utils:op_metrics_db_utils",
     ],
 )
 
@@ -370,12 +382,12 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core/profiler/protobuf:steps_db_proto_cc",
-        "//tensorflow/core/profiler/utils:event_span",
-        "//tensorflow/core/profiler/utils:op_metrics_db_utils",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/log",
         "@local_xla//xla/tsl/profiler/utils:timespan",
+        "@org_xprof//xprof/utils:event_span",
+        "@org_xprof//xprof/utils:op_metrics_db_utils",
     ],
 )
 
@@ -401,14 +413,7 @@ cc_library(
         "//tensorflow/core/profiler/protobuf:op_stats_proto_cc",
         "//tensorflow/core/profiler/protobuf:steps_db_proto_cc",
         "//tensorflow/core/profiler/protobuf:tf_function_proto_cc",
-        "//tensorflow/core/profiler/utils:device_caps_utils",
-        "//tensorflow/core/profiler/utils:event_span",
-        "//tensorflow/core/profiler/utils:gpu_event_stats",
-        "//tensorflow/core/profiler/utils:hardware_type_utils",
-        "//tensorflow/core/profiler/utils:hlo_module_map",
         "//tensorflow/core/profiler/utils:hlo_proto_map",
-        "//tensorflow/core/profiler/utils:kernel_stats_utils",
-        "//tensorflow/core/profiler/utils:op_utils",
         "//tensorflow/core/profiler/utils:xplane_schema",
         "//tensorflow/core/profiler/utils:xplane_utils",
         "//tensorflow/core/profiler/utils:xplane_visitor",
@@ -423,6 +428,13 @@ cc_library(
         "@local_xla//xla/tsl/profiler/utils:timespan",
         "@local_xla//xla/tsl/profiler/utils:tpu_xplane_utils",
         "@local_xla//xla/tsl/profiler/utils:xplane_utils",
+        "@org_xprof//xprof/utils:device_caps_utils",
+        "@org_xprof//xprof/utils:event_span",
+        "@org_xprof//xprof/utils:gpu_event_stats",
+        "@org_xprof//xprof/utils:hardware_type_utils",
+        "@org_xprof//xprof/utils:hlo_module_map",
+        "@org_xprof//xprof/utils:kernel_stats_utils",
+        "@org_xprof//xprof/utils:op_utils",
     ],
 )
 
@@ -439,11 +451,12 @@ cc_library(
         "//tensorflow/core:portable_gif_internal",
         "//tensorflow/core/platform:status",
         "//tensorflow/core/profiler/protobuf:op_stats_proto_cc",
-        "//tensorflow/core/profiler/utils:hardware_type_utils",
-        "//tensorflow/core/profiler/utils:step_intersection",
         "@com_google_absl//absl/status",
         "@local_tsl//tsl/profiler/protobuf:xplane_proto_cc",
         "@local_xla//xla/tsl/platform:statusor",
+        "@org_xprof//plugin/tensorboard_plugin_profile/protobuf:op_stats_proto_cc",
+        "@org_xprof//xprof/utils:hardware_type_utils",
+        "@org_xprof//xprof/utils:step_intersection",
     ],
 )
 
@@ -488,8 +501,6 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core/profiler/protobuf:op_metrics_proto_cc",
         "//tensorflow/core/profiler/protobuf:steps_db_proto_cc",
-        "//tensorflow/core/profiler/utils:event_span",
-        "//tensorflow/core/profiler/utils:op_metrics_db_utils",
         "//tensorflow/core/profiler/utils:trace_utils",
         "//tensorflow/core/profiler/utils:xplane_schema",
         "//tensorflow/core/profiler/utils:xplane_visitor",
@@ -502,6 +513,8 @@ cc_library(
         "@local_xla//xla/tsl/profiler/utils:tpu_xplane_utils",
         "@local_xla//xla/tsl/profiler/utils:xplane_schema",
         "@local_xla//xla/tsl/profiler/utils:xplane_utils",
+        "@org_xprof//xprof/utils:event_span",
+        "@org_xprof//xprof/utils:op_metrics_db_utils",
     ],
 )
 
@@ -513,6 +526,7 @@ tf_cc_test(
         ":xplane_to_step_events",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
         "//tensorflow/core/profiler/utils:event_span",
         "//tensorflow/core/profiler/utils:xplane_builder",
         "//tensorflow/core/profiler/utils:xplane_schema",
@@ -521,6 +535,7 @@ tf_cc_test(
         "@local_tsl//tsl/profiler/protobuf:xplane_proto_cc",
         "@local_xla//xla/tsl/profiler/utils:group_events",
         "@local_xla//xla/tsl/profiler/utils:xplane_schema",
+        "@org_xprof//xprof/utils:event_span",
     ],
 )
 
@@ -531,9 +546,6 @@ cc_library(
     copts = tf_profiler_copts(),
     deps = [
         "//tensorflow/core/profiler/protobuf:kernel_stats_proto_cc",
-        "//tensorflow/core/profiler/utils:gpu_event_stats",
-        "//tensorflow/core/profiler/utils:hlo_module_map",
-        "//tensorflow/core/profiler/utils:kernel_stats_utils",
         "//tensorflow/core/profiler/utils:trace_utils",
         "//tensorflow/core/profiler/utils:xplane_visitor",
         "@com_google_absl//absl/log",
@@ -541,6 +553,9 @@ cc_library(
         "@local_tsl//tsl/profiler/protobuf:xplane_proto_cc",
         "@local_xla//xla/tsl/profiler/utils:tf_op_utils",
         "@local_xla//xla/tsl/profiler/utils:tf_xplane_visitor",
+        "@org_xprof//xprof/utils:gpu_event_stats",
+        "@org_xprof//xprof/utils:hlo_module_map",
+        "@org_xprof//xprof/utils:kernel_stats_utils",
     ],
 )
 
@@ -554,12 +569,12 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core/profiler/protobuf:kernel_stats_proto_cc",
-        "//tensorflow/core/profiler/utils:kernel_stats_utils",
         "//tensorflow/core/profiler/utils:xplane_builder",
         "//tensorflow/core/profiler/utils:xplane_schema",
         "//tensorflow/core/profiler/utils:xplane_test_utils",
         "@com_google_absl//absl/strings",
         "@local_tsl//tsl/profiler/protobuf:xplane_proto_cc",
+        "@org_xprof//xprof/utils:kernel_stats_utils",
     ],
 )
 
@@ -665,10 +680,10 @@ cc_library(
         "//tensorflow/core/profiler/protobuf:power_metrics_proto_cc",
         "//tensorflow/core/profiler/protobuf:steps_db_proto_cc",
         "//tensorflow/core/profiler/protobuf:topology_proto_cc",
-        "//tensorflow/core/profiler/utils:hardware_type_utils",
-        "//tensorflow/core/profiler/utils:kernel_stats_utils",
-        "//tensorflow/core/profiler/utils:step_intersection",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@org_xprof//xprof/utils:hardware_type_utils",
+        "@org_xprof//xprof/utils:kernel_stats_utils",
+        "@org_xprof//xprof/utils:step_intersection",
     ],
 )
 
@@ -683,8 +698,8 @@ tf_cc_test(
         "//tensorflow/core/profiler/protobuf:hardware_types_proto_cc",
         "//tensorflow/core/profiler/protobuf:op_stats_proto_cc",
         "//tensorflow/core/profiler/protobuf:steps_db_proto_cc",
-        "//tensorflow/core/profiler/utils:step_intersection",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@org_xprof//xprof/utils:step_intersection",
     ],
 )
 
@@ -695,13 +710,13 @@ cc_library(
     copts = tf_profiler_copts(),
     visibility = ["//tensorflow/core/profiler:internal"],
     deps = [
-        "//tensorflow/core/profiler/utils:derived_timeline",
         "//tensorflow/core/profiler/utils:xplane_schema",
         "@com_google_absl//absl/strings",
         "@local_tsl//tsl/profiler/protobuf:xplane_proto_cc",
         "@local_xla//xla/tsl/profiler/utils:group_events",
         "@local_xla//xla/tsl/profiler/utils:preprocess_xplane",
         "@local_xla//xla/tsl/profiler/utils:xplane_utils",
+        "@org_xprof//xprof/utils:derived_timeline",
     ],
 )
 
@@ -744,7 +759,6 @@ cc_library(
         "//tensorflow/core/profiler/protobuf:roofline_model_proto_cc",
         "//tensorflow/core/profiler/protobuf:tf_data_stats_proto_cc",
         "//tensorflow/core/profiler/protobuf:tf_stats_proto_cc",
-        "//tensorflow/core/profiler/utils:hardware_type_utils",
         "//tensorflow/core/profiler/utils:xplane_schema",
         "//tensorflow/core/profiler/utils:xplane_utils",
         "@com_google_absl//absl/log",
@@ -756,6 +770,7 @@ cc_library(
         "@local_xla//xla/tsl/profiler/utils:timespan",
         "@org_xprof//xprof/convert/trace_viewer:trace_events_to_json",
         "@org_xprof//xprof/convert/trace_viewer:trace_viewer_visibility",
+        "@org_xprof//xprof/utils:hardware_type_utils",
     ],
 )
 
@@ -768,7 +783,6 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core/profiler/protobuf:tf_data_stats_proto_cc",
-        "//tensorflow/core/profiler/utils:html_utils",
         "//tensorflow/core/profiler/utils:xplane_schema",
         "//tensorflow/core/profiler/utils:xplane_visitor",
         "@com_google_absl//absl/algorithm:container",
@@ -781,6 +795,7 @@ cc_library(
         "@local_xla//xla/tsl/profiler/utils:tf_op_utils",
         "@local_xla//xla/tsl/profiler/utils:tf_xplane_visitor",
         "@local_xla//xla/tsl/profiler/utils:timespan",
+        "@org_xprof//xprof/utils:html_utils",
     ],
 )
 
@@ -823,6 +838,7 @@ cc_library(
         "@local_tsl//tsl/profiler/protobuf:xplane_proto_cc",
         "@local_xla//xla/tsl/profiler/utils:math_utils",
         "@local_xla//xla/tsl/profiler/utils:tf_xplane_visitor",
+        "@org_xprof//xprof/utils:gpu_event_stats",
     ],
 )
 
@@ -916,7 +932,6 @@ cc_library(
         "//tensorflow/core:lib_headers_for_pybind",
         "//tensorflow/core/profiler/protobuf:op_metrics_proto_cc",
         "//tensorflow/core/profiler/protobuf:op_profile_proto_cc",
-        "//tensorflow/core/profiler/utils:op_metrics_db_utils",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:node_hash_map",
         "@com_google_absl//absl/log",
@@ -924,6 +939,7 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@local_xla//xla/tsl/profiler/convert:xla_op_utils",
         "@local_xla//xla/tsl/profiler/utils:math_utils",
+        "@org_xprof//xprof/utils:op_metrics_db_utils",
     ],
 )
 
@@ -946,8 +962,8 @@ cc_library(
         "@local_xla//xla/tsl/platform:statusor",
         "//tensorflow/core/platform:statusor",
         "//tensorflow/core/profiler/utils:hlo_module_utils",
-        "//tensorflow/core/profiler/utils:hlo_proto_to_module",
         # copybara:uncomment "@com_github_nlohmann_json//:json",
+        "@org_xprof//xprof/utils:hlo_proto_to_module",
     ],
 )
 
@@ -984,7 +1000,6 @@ cc_library(
     deps = [
         "//tensorflow/core:lib",
         "//tensorflow/core/platform:errors",
-        "//tensorflow/core/profiler/utils:hlo_module_map",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
@@ -992,6 +1007,7 @@ cc_library(
         "@local_tsl//tsl/profiler/protobuf:xplane_proto_cc",
         "@local_xla//xla/tsl/platform:statusor",
         "@local_xla//xla/tsl/profiler/utils:file_system_utils",
+        "@org_xprof//xprof/utils:hlo_module_map",
     ],
 )
 
@@ -1153,7 +1169,6 @@ cc_library(
         "//tensorflow/core/profiler/protobuf:topology_proto_cc",
         "//tensorflow/core/profiler/utils:hlo_module_utils",
         "//tensorflow/core/profiler/utils:hlo_proto_map",
-        "//tensorflow/core/profiler/utils:hlo_proto_to_module",
         "//tensorflow/core/profiler/utils:xplane_utils",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/log",
@@ -1173,6 +1188,7 @@ cc_library(
         "@local_xla//xla/tsl/profiler/utils:xplane_schema",
         "@local_xla//xla/tsl/profiler/utils:xplane_utils",
         "@local_xla//xla/tsl/profiler/utils:xplane_visitor",
+        "@org_xprof//xprof/utils:hlo_proto_to_module",
     ],
 )
 
@@ -1237,7 +1253,6 @@ cc_library(
     deps = [
         "//tensorflow/core/lib/gtl:map_util",
         "//tensorflow/core/profiler/protobuf:inference_stats_proto_cc",
-        "//tensorflow/core/profiler/utils:event_span",
         "//tensorflow/core/profiler/utils:xplane_schema",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base:core_headers",
@@ -1256,6 +1271,7 @@ cc_library(
         "@local_xla//xla/tsl/profiler/utils:xplane_schema",
         "@local_xla//xla/tsl/profiler/utils:xplane_utils",
         "@local_xla//xla/tsl/profiler/utils:xplane_visitor",
+        "@org_xprof//xprof/utils:event_span",
     ],
 )
 
@@ -1312,7 +1328,6 @@ cc_library(
         ":repository",
         ":xplane_to_step_events",
         "//tensorflow/core/profiler/protobuf:inference_stats_proto_cc",
-        "//tensorflow/core/profiler/utils:event_span",
         "//tensorflow/core/profiler/utils:xplane_schema",
         "//tensorflow/core/profiler/utils:xplane_visitor",
         "@com_google_absl//absl/status",
@@ -1324,6 +1339,8 @@ cc_library(
         "@local_xla//xla/tsl/profiler/utils:tf_xplane_visitor",
         "@local_xla//xla/tsl/profiler/utils:tpu_xplane_utils",
         "@local_xla//xla/tsl/profiler/utils:xplane_utils",
+        "@org_xprof//plugin/tensorboard_plugin_profile/protobuf:inference_stats_proto_cc",
+        "@org_xprof//xprof/utils:event_span",
     ],
 )
 
