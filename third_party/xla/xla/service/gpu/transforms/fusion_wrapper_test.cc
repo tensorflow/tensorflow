@@ -236,6 +236,35 @@ TEST_F(FusionWrapperTest, WhileInFusion) {
                             std::nullopt);
 }
 
+TEST_F(FusionWrapperTest, AsyncComputationFusion) {
+  RunAndFilecheckHloRewrite(R"(
+      HloModule AsyncComputation
+
+      mul {
+        a = f32[5] parameter(0)
+        ROOT b = f32[5] multiply(a, a)
+      }
+
+      ENTRY %main {
+        parameter = f32[5] parameter(0)
+        start = ((f32[5]), f32[5]) call-start(parameter), to_apply=mul
+        ROOT done = f32[5] call-done(start)
+      })",
+                            FusionWrapper(device_description()), R"(
+//CHECK:      %wrapped_multiply_computation {{.*}} {
+//CHECK-NEXT:   %[[P0:.*]] = {{.*}} parameter(0)
+//CHECK-NEXT:   ROOT {{.*}} multiply(%[[P0]], %[[P0]])
+//CHECK-NEXT: }
+//CHECK:      %mul {{.*}} {
+//CHECK-NEXT:   %[[P0:.*]] = {{.*}} parameter(0)
+//CHECK-NEXT:   ROOT {{.*}} fusion(%[[P0]]), kind=kLoop, calls=%wrapped_multiply_computation
+//CHECK-NEXT: }
+//CHECK:     ENTRY %main {{.*}} {
+//CHECK-NEXT:        %[[P0:.*]] = {{.*}} parameter(0)
+//CHECK-NEXT:        {{.*}} call-start(%[[P0]]), to_apply=%mul
+)");
+}
+
 }  // namespace
 }  // namespace gpu
 }  // namespace xla
