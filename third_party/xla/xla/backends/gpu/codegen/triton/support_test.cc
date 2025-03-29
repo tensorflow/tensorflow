@@ -30,6 +30,7 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_replace.h"
 #include "absl/strings/string_view.h"
 #include "absl/strings/substitute.h"
 #include "absl/types/span.h"
@@ -39,6 +40,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/primitive_util.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
+#include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/model/tiled_hlo_computation.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
@@ -195,6 +197,11 @@ auto AllTestCombinationsForOpcodes(absl::Span<const HloOpcode> opcodes) {
   }
   return ::testing::ValuesIn(test_combinations);
 };
+
+std::vector<absl::string_view> AllFusionKinds() {
+  return {kCustomFusionKind, kTritonFusionKind, kTritonGemmFusionKind,
+          kTritonNestedGemmFusionKind, kCuDnnFusionKind};
+}
 
 // Expected failure mode of the Triton lowering.
 enum class ExpectedFailMode {
@@ -1497,14 +1504,7 @@ INSTANTIATE_TEST_SUITE_P(ComplexTestSuite, ComplexTest,
                          AllTestCombinationsForOpcodes(kTestedOpsComplex),
                          TritonSupportTestTypeAndOpcodeAndDeviceToString);
 
-class DotTest : public TritonSupportTest {
- public:
-  DebugOptions GetDebugOptionsForTest() const override {
-    DebugOptions opts = TritonSupportTest::GetDebugOptionsForTest();
-    opts.set_xla_gpu_unsupported_enable_generic_triton_emitter_for_gemms(true);
-    return opts;
-  }
-};
+using DotTest = TritonSupportTest;
 
 class DotTypesTest : public DotTest,
                      public ::testing::WithParamInterface<
@@ -2117,6 +2117,67 @@ INSTANTIATE_TEST_SUITE_P(
         ::testing::ValuesIn(AllDevicesToTest())),
     DotPrecisionAlgorithmTestName);
 
+class FusionKindsTest
+    : public TritonSupportTest,
+      public ::testing::WithParamInterface<
+          std::tuple<absl::string_view, se::GpuComputeCapability>> {};
+
+TEST_P(FusionKindsTest, NestedDot) {
+  auto [kind, cc] = GetParam();
+  const std::string hlo_text = absl::Substitute(
+      R"(
+flhs {
+  ROOT result = f32[128,256] parameter(0)
+}
+
+frhs {
+  ROOT result = f32[256,512] parameter(0)
+}
+
+triton_computation {
+  p0 = f32[128,256] parameter(0)
+  p1 = f32[256,512] parameter(1)
+  lhs = f32[128,256] fusion(p0), kind=kCustom, calls=flhs, backend_config={
+    "fusion_backend_config":{"kind":"$0", "block_level_fusion_config":{
+    "output_tiles":[{"sizes":["16", "64"]}]}}}
+  rhs = f32[256,512]{1,0} fusion(p1), kind=kCustom, calls=frhs,
+    backend_config={ "fusion_backend_config":{ "kind":"$0",
+    "block_level_fusion_config": {"output_tiles":[{"sizes":["64", "32"]}]}}}
+  ROOT result = f32[128,512]{1,0} dot(lhs, rhs),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+}
+
+ENTRY e {
+  p0 = f32[128,256] parameter(0)
+  p1 = f32[256,512] parameter(1)
+  ROOT result = f32[128,512]{1,0} fusion(p0, p1), kind=kCustom,
+    calls=triton_computation, backend_config={"fusion_backend_config":{
+    "kind":"$0", "block_level_fusion_config":
+    {"output_tiles":[{"sizes":["16", "32"]}]}}}
+}
+)",
+      absl::StrReplaceAll(kind, {{"$", "$$"}}));
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      TestedInstruction ti,
+      ParseTemplateAndGetInstruction(hlo_text, F32, HloOpcode::kFusion));
+  RunSupportTest(std::move(ti), /*output_tile_sizes=*/{16, 32}, cc);
+}
+
+std::string FusionKindsTestName(
+    const ::testing::TestParamInfo<
+        std::tuple<absl::string_view, se::GpuComputeCapability>>& data) {
+  auto [kind, cc] = data.param;
+  return absl::StrCat(absl::StrReplaceAll(kind, {{"$", ""}}), "_",
+                      ComputeCapabilityToString(cc));
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    FusionTestSuite, FusionKindsTest,
+    ::testing::Combine(::testing::ValuesIn(AllFusionKinds()),
+                       ::testing::ValuesIn(AllDevicesToTest())),
+    FusionKindsTestName);
+
 constexpr std::array kUnsupportedOps = {
     // clang-format off
     // go/keep-sorted start
@@ -2138,7 +2199,6 @@ constexpr std::array kUnsupportedOps = {
     HloOpcode::kDynamicSlice,
     HloOpcode::kDynamicUpdateSlice,
     HloOpcode::kFft,
-    HloOpcode::kFusion,
     HloOpcode::kGather,
     HloOpcode::kGetDimensionSize,
     HloOpcode::kGetTupleElement,
@@ -2193,6 +2253,7 @@ absl::flat_hash_set<HloOpcode> AllTestedOpcodes() {
              kTestedOpsRngGetAndUpdateState.end());
   ret.insert(kTestedOpsComplex.begin(), kTestedOpsComplex.end());
   ret.emplace(HloOpcode::kDot);
+  ret.emplace(HloOpcode::kFusion);
   ret.insert(kUnsupportedOps.begin(), kUnsupportedOps.end());
   return ret;
 }
