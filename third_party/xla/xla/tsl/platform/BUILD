@@ -2,6 +2,7 @@ load(
     "@bazel_skylib//:bzl_library.bzl",
     "bzl_library",
 )
+load("@bazel_skylib//rules:common_settings.bzl", "bool_flag")
 load(
     "//xla/tsl:tsl.bzl",
     "if_not_fuchsia",
@@ -836,4 +837,19 @@ tsl_cc_test(
         "//xla/tsl/platform:test",
         "@com_google_googletest//:gtest_main",
     ],
+)
+
+bool_flag(
+    name = "use_rpath_for_cuda_deps",
+    build_setting_default = False,
+)
+
+config_setting(
+    name = "rpath_for_cuda_deps",
+    flag_values = {":use_rpath_for_cuda_deps": "True"},
+)
+
+config_setting(
+    name = "runpath_for_cuda_deps",
+    flag_values = {":use_rpath_for_cuda_deps": "False"},
 )
