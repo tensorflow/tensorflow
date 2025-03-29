@@ -428,7 +428,7 @@ class GraphString {
 
   std::string Graph() const {
     std::string graph;
-    for (OpDescriptor op : graph_) {
+    for (const OpDescriptor& op : graph_) {
       std::vector<int64_t> operand_uids_in_graph;
       for (HloInstruction* operand : op.operands) {
         if (OpInGraph(operand)) {
