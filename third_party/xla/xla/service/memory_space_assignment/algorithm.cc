@@ -3218,6 +3218,9 @@ bool AsynchronousCopyResource::ConsumeResource(
     int64_t exclusive_start_time, int64_t end_time, float resource,
     std::vector<std::pair<int64_t, float>>* delay_changes,
     float resource_to_free) {
+  // We only support either consuming or freeing resource, not both.
+  CHECK(resource_to_free == 0.0 || resource == 0.0);
+
   // Cache the pointers to the arrays to avoid the overhead of `operator[]`
   // size checks in hardened libc++.
   //
@@ -3247,7 +3250,8 @@ bool AsynchronousCopyResource::ConsumeResource(
                    end_time);
 
     // Nothing to do if we're not adding or removing any resources.
-    if (resource == 0.0 && resource_to_free == 0.0) {
+    if (resource < AsynchronousCopyResource::kAbsoluteEpsilon &&
+        resource_to_free < AsynchronousCopyResource::kAbsoluteEpsilon) {
       return true;
     }
 
@@ -3311,8 +3315,11 @@ bool AsynchronousCopyResource::ConsumeResource(
       resource -= used_resource;
     }
 
-    // If resource isn't satisfied by the end, we didn't have enough resources.
-    if (resource > 0) {
+    // If resource isn't satisfied by the end, we didn't have enough
+    // resources. We allow a small epsilon to account for floating point
+    // errors.
+
+    if (resource > AsynchronousCopyResource::kAbsoluteEpsilon) {
       VLOG(3) << "Doesn't have enough resource; requested resource = "
               << amount_requested << "; leftover resources = " << resource;
       return false;
@@ -3332,6 +3339,8 @@ bool AsynchronousCopyResource::ConsumeResource(
 }
 
 void AsynchronousCopyResource::AddCopy(const AsynchronousCopy& copy) {
+  std::cout << "Farzin_AddCopy: " << copy.exclusive_start_time << " "
+            << copy.end_time << " " << copy.resource << std::endl;
   CHECK(
       ConsumeResource(copy.exclusive_start_time, copy.end_time, copy.resource));
 

@@ -219,6 +219,10 @@ class AsynchronousCopyResource {
   std::string Dump(int64_t start_time, int64_t end_time,
                    MemorySpace memory_space_filter) const;
 
+  // A small epsilon to compare floating point numbers and to account for
+  // floating point errors when comparing to zero.
+  static constexpr double kAbsoluteEpsilon = 1e-15;
+
  private:
   // Internal helper method to implement adding/removing/checking resources.
   // ConsumeResource() may modify delay_. If delay_changes is not null,
