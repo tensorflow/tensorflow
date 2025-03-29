@@ -45,6 +45,10 @@ extern const char kXlaMaxIdsPerPartitionAttr[];
 // partition *after* an input batch is partitioned.
 extern const char kXlaMaxUniqueIdsPerPartitionAttr[];
 
+// XLA frontend attribute name for the maximum valency of a sample. Currently
+// only used for the custom combiner coarse-grain op.
+extern const char kXlaMaxValencyAttr[];
+
 // XLA frontend attribute for how to assign ids to partitions.
 extern const char kXlaShardingStrategyAttr[];
 

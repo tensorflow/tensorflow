@@ -65,6 +65,7 @@ tf_gen_op_wrapper_py(
         "TPUAnnotateTensorsWithDynamicShape",
         "XlaSparseDenseMatmul",
         "XlaSparseDenseMatmulWithCsrInput",
+        "XlaSparseDenseMatmulCustomCombinerOnTcWithCsrInput",
         "XlaSparseDenseMatmulGrad",
         "XlaSparseDenseMatmulGradWithCsrInput",
         "XlaSparseDenseMatmulGradWithSgdAndCsrInput",
