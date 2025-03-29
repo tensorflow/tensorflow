@@ -21,6 +21,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/backends/cpu/benchmarks/hlo_benchmark_runner.h"
+#include "xla/backends/cpu/benchmarks/multi_benchmark_config.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/shape_util.h"
@@ -30,7 +31,8 @@ limitations under the License.
 
 namespace xla::cpu {
 
-static void BM_TransposeAndDot(benchmark::State& state) {
+static void BM_TransposeAndDot(benchmark::State& state,
+                               HloBenchmarkOptions options) {
   int64_t d0 = state.range(0);
 
   absl::string_view hlo = R"(
@@ -56,10 +58,12 @@ static void BM_TransposeAndDot(benchmark::State& state) {
       *LiteralUtil::CreateRandomLiteral<F32>(p1_shape, &engine, 1.0f, 0.1f);
 
   std::vector<const Literal*> args = {&p0, &p1};
-  CHECK_OK(RunHloBenchmark(state, hlo, args, {{"$d0", absl::StrCat(d0)}}));
+  CHECK_OK(
+      RunHloBenchmark(state, hlo, args, {{"$d0", absl::StrCat(d0)}}, options));
 }
 
-static void BM_TransposedDot(benchmark::State& state) {
+static void BM_TransposedDot(benchmark::State& state,
+                             HloBenchmarkOptions options) {
   int64_t d0 = state.range(0);
 
   absl::string_view hlo = R"(
@@ -84,11 +88,12 @@ static void BM_TransposedDot(benchmark::State& state) {
       *LiteralUtil::CreateRandomLiteral<F32>(p1_shape, &engine, 1.0f, 0.1f);
 
   std::vector<const Literal*> args = {&p0, &p1};
-  CHECK_OK(RunHloBenchmark(state, hlo, args, {{"$d0", absl::StrCat(d0)}}));
+  CHECK_OK(
+      RunHloBenchmark(state, hlo, args, {{"$d0", absl::StrCat(d0)}}, options));
 }
 
 #define REGISTER_BENCHMARK(NAME) \
-  BENCHMARK(NAME)                \
+  XLA_CPU_BENCHMARK(NAME)        \
       ->MeasureProcessCPUTime()  \
       ->Arg(128)                 \
       ->Arg(256)                 \

@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "xla/array2d.h"
 #include "xla/backends/cpu/benchmarks/hlo_benchmark_runner.h"
+#include "xla/backends/cpu/benchmarks/multi_benchmark_config.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/parser/hlo_parser.h"
@@ -72,7 +73,7 @@ Literal CreateReduceIndices(int32_t num_elems, int32_t step) {
   return LiteralUtil::CreateR2FromArray2D(array);
 }
 
-void BM_ScatterS32_R1(benchmark::State& state) {
+void BM_ScatterS32_R1(benchmark::State& state, HloBenchmarkOptions options) {
   const int64_t d0 = state.range(0);
   const int64_t slice_size = state.range(1);
 
@@ -113,12 +114,13 @@ void BM_ScatterS32_R1(benchmark::State& state) {
   std::vector<const Literal*> args = {&operand, &scatter_indices, &update};
   CHECK_OK(RunHloBenchmark(
       state, hlo, args,
-      {{"$d0", absl::StrCat(d0)}, {"$slice_size", absl::StrCat(slice_size)}}));
+      {{"$d0", absl::StrCat(d0)}, {"$slice_size", absl::StrCat(slice_size)}},
+      options));
 
   state.SetComplexityN(state.range(1));
 }
 
-void BM_ScatterS32_R2(benchmark::State& state) {
+void BM_ScatterS32_R2(benchmark::State& state, HloBenchmarkOptions options) {
   const int64_t d0 = state.range(0);
   const int64_t d1 = d0;
   const int64_t slice_size = state.range(1);
@@ -160,10 +162,11 @@ void BM_ScatterS32_R2(benchmark::State& state) {
   CHECK_OK(RunHloBenchmark(state, hlo, args,
                            {{"$d0", absl::StrCat(d0)},
                             {"$d1", absl::StrCat(d1)},
-                            {"$slice_size", absl::StrCat(slice_size)}}));
+                            {"$slice_size", absl::StrCat(slice_size)}},
+                           options));
 }
 
-void BM_ScatterS32_R3(benchmark::State& state) {
+void BM_ScatterS32_R3(benchmark::State& state, HloBenchmarkOptions options) {
   const int64_t d0 = state.range(0);
   const int64_t d1 = d0;
   const int64_t d2 = d0;
@@ -208,10 +211,12 @@ void BM_ScatterS32_R3(benchmark::State& state) {
                            {{"$d0", absl::StrCat(d0)},
                             {"$d1", absl::StrCat(d1)},
                             {"$d2", absl::StrCat(d2)},
-                            {"$slice_size", absl::StrCat(slice_size)}}));
+                            {"$slice_size", absl::StrCat(slice_size)}},
+                           options));
 }
 
-void BM_SimpleScatterReduceF32_R3(benchmark::State& state) {
+void BM_SimpleScatterReduceF32_R3(benchmark::State& state,
+                                  HloBenchmarkOptions options) {
   const int64_t d0 = state.range(0);
   const int64_t d1 = state.range(1);
   const int64_t d2 = state.range(2);
@@ -263,16 +268,22 @@ void BM_SimpleScatterReduceF32_R3(benchmark::State& state) {
       update_shape, &engine, /*mean=*/50, /*stddev=*/10);
 
   std::vector<const Literal*> args = {&operand, &indices, &update};
-  CHECK_OK(RunHloBenchmark(state, hlo, args));
+  CHECK_OK(RunHloBenchmark(state, hlo, args, {}, options));
 }
 
 // these all have the same number of elements in the operand
 // (2^18) == (2^9)^2 == (2^6)^3
-BENCHMARK(BM_ScatterS32_R1)->MeasureProcessCPUTime()->Args({1 << 18, 1 << 18});
-BENCHMARK(BM_ScatterS32_R2)->MeasureProcessCPUTime()->Args({1 << 9, 1 << 9});
-BENCHMARK(BM_ScatterS32_R3)->MeasureProcessCPUTime()->Args({1 << 6, 1 << 6});
+XLA_CPU_BENCHMARK(BM_ScatterS32_R1)
+    ->MeasureProcessCPUTime()
+    ->Args({1 << 18, 1 << 18});
+XLA_CPU_BENCHMARK(BM_ScatterS32_R2)
+    ->MeasureProcessCPUTime()
+    ->Args({1 << 9, 1 << 9});
+XLA_CPU_BENCHMARK(BM_ScatterS32_R3)
+    ->MeasureProcessCPUTime()
+    ->Args({1 << 6, 1 << 6});
 
-BENCHMARK(BM_SimpleScatterReduceF32_R3)
+XLA_CPU_BENCHMARK(BM_SimpleScatterReduceF32_R3)
     ->MeasureProcessCPUTime()
     ->ArgNames({"d0", "d1", "d2", "num_slices"})
     ->Args({1, 64, 8, 1})

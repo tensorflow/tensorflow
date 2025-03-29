@@ -21,6 +21,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/backends/cpu/benchmarks/hlo_benchmark_runner.h"
+#include "xla/backends/cpu/benchmarks/multi_benchmark_config.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/primitive_util.h"
@@ -31,7 +32,8 @@ limitations under the License.
 
 namespace xla::cpu {
 
-static void BM_BatchedDot(benchmark::State& state) {
+static void BM_BatchedDot(benchmark::State& state,
+                          HloBenchmarkOptions options) {
   PrimitiveType dtype = static_cast<PrimitiveType>(state.range(0));
   int64_t d0 = state.range(1);
   int64_t d1 = state.range(2);
@@ -68,35 +70,36 @@ static void BM_BatchedDot(benchmark::State& state) {
       state, hlo, args,
       {{"$dtype", primitive_util::LowercasePrimitiveTypeName(dtype)},
        {"$d0", absl::StrCat(d0)},
-       {"$d1", absl::StrCat(d1)}}));
+       {"$d1", absl::StrCat(d1)}},
+      options));
 }
 
-#define BENCHMARK_BATCHED_DOT(dtype) \
-  BENCHMARK(BM_BatchedDot)           \
-      ->MeasureProcessCPUTime()      \
-      ->Args({dtype, 1, 2})          \
-      ->Args({dtype, 1, 32})         \
-      ->Args({dtype, 1, 64})         \
-      ->Args({dtype, 1, 128})        \
-      ->Args({dtype, 1, 256})        \
-      ->Args({dtype, 1, 512})        \
-      ->Args({dtype, 2, 2})          \
-      ->Args({dtype, 2, 32})         \
-      ->Args({dtype, 2, 64})         \
-      ->Args({dtype, 2, 128})        \
-      ->Args({dtype, 2, 256})        \
-      ->Args({dtype, 2, 512})        \
-      ->Args({dtype, 4, 2})          \
-      ->Args({dtype, 4, 32})         \
-      ->Args({dtype, 4, 64})         \
-      ->Args({dtype, 4, 128})        \
-      ->Args({dtype, 4, 256})        \
-      ->Args({dtype, 4, 512})        \
-      ->Args({dtype, 8, 2})          \
-      ->Args({dtype, 8, 32})         \
-      ->Args({dtype, 8, 64})         \
-      ->Args({dtype, 8, 128})        \
-      ->Args({dtype, 8, 256})        \
+#define BENCHMARK_BATCHED_DOT(dtype)                            \
+  XLA_CPU_NAMED_BENCHMARK(BM_BatchedDot_##dtype, BM_BatchedDot) \
+      ->MeasureProcessCPUTime()                                 \
+      ->Args({dtype, 1, 2})                                     \
+      ->Args({dtype, 1, 32})                                    \
+      ->Args({dtype, 1, 64})                                    \
+      ->Args({dtype, 1, 128})                                   \
+      ->Args({dtype, 1, 256})                                   \
+      ->Args({dtype, 1, 512})                                   \
+      ->Args({dtype, 2, 2})                                     \
+      ->Args({dtype, 2, 32})                                    \
+      ->Args({dtype, 2, 64})                                    \
+      ->Args({dtype, 2, 128})                                   \
+      ->Args({dtype, 2, 256})                                   \
+      ->Args({dtype, 2, 512})                                   \
+      ->Args({dtype, 4, 2})                                     \
+      ->Args({dtype, 4, 32})                                    \
+      ->Args({dtype, 4, 64})                                    \
+      ->Args({dtype, 4, 128})                                   \
+      ->Args({dtype, 4, 256})                                   \
+      ->Args({dtype, 4, 512})                                   \
+      ->Args({dtype, 8, 2})                                     \
+      ->Args({dtype, 8, 32})                                    \
+      ->Args({dtype, 8, 64})                                    \
+      ->Args({dtype, 8, 128})                                   \
+      ->Args({dtype, 8, 256})                                   \
       ->Args({dtype, 8, 512})
 
 BENCHMARK_BATCHED_DOT(F32);   // Shown as "11" in the benchmark name.
