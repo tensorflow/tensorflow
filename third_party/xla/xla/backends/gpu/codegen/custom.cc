@@ -264,8 +264,9 @@ std::unique_ptr<HloModule> ExtractOffsetModule(
 std::unique_ptr<HloModule> ExtractWhileUpdateModule(
     const HloInstruction* while_op) {
   std::optional<int64_t> tuple_idx = GetLoopInductionVarTupleIdx(while_op);
-  CHECK(tuple_idx != std::nullopt)
-      << "Unable to get tuple idx for whileop " << while_op->ToString();
+  if (tuple_idx == std::nullopt) {
+    return nullptr;
+  }
   const HloInstruction* update =
       while_op->while_body()->root_instruction()->operand(*tuple_idx);
   return ExtractOffsetModule(update, while_op);
@@ -277,8 +278,9 @@ std::unique_ptr<HloModule> ExtractWhileUpdateModule(
 std::unique_ptr<HloModule> ExtractWhileInitModule(
     const HloInstruction* while_op) {
   std::optional<int64_t> tuple_idx = GetLoopInductionVarTupleIdx(while_op);
-  CHECK(tuple_idx != std::nullopt)
-      << "Unable to get tuple idx for while op: " << while_op->ToString();
+  if (tuple_idx == std::nullopt) {
+    return nullptr;
+  }
   const HloInstruction* init = while_op->operand(0)->operand(*tuple_idx);
   std::unique_ptr<HloModule> init_module = ExtractModule(
       /*instruction=*/init, /*height=*/-1, /*extract_selector=*/nullptr,
@@ -1051,11 +1053,14 @@ CollectSliceArgumentMetadataForCollectives(
   SliceDataForCollectives slice_data(num_args);
   std::optional<HloInstruction*> while_op =
       GetParentWhileOp(fusion_instr, call_graph);
+  VLOG(0) << "Collecting while op data";
   if (while_op != std::nullopt) {
     CHECK(while_op.value() != nullptr)
         << "GetParentWhileOp is not expected to return nullptr.";
     slice_data.init_module = ExtractWhileInitModule(*while_op);
+    VLOG(0) << "Extracted init module";
     slice_data.update_module = ExtractWhileUpdateModule(*while_op);
+    VLOG(0) << "Extracted update module";
   }
   slice_data.can_compute_indvar_on_host = (slice_data.init_module != nullptr &&
                                            slice_data.update_module != nullptr);
