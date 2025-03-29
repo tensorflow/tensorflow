@@ -34,6 +34,7 @@ limitations under the License.
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Transforms/Passes.h"
 #include "stablehlo/dialect/Register.h"
+#include "stablehlo/transforms/Passes.h"
 #include "xla/debug_options_flags.h"
 #include "xla/hlo/translate/hlo_to_mhlo/hlo_module_importer.h"
 #include "xla/hlo/translate/mhlo_to_hlo/mlir_hlo_to_hlo.h"
@@ -67,9 +68,16 @@ absl::Status MhloToStablehlo(mlir::ModuleOp module) {
 absl::Status StablehloToMhlo(mlir::ModuleOp module, bool run_canonicalizer) {
   mlir::MLIRContext* context = module->getContext();
   mlir::PassManager pm(context);
-  pm.addPass(mlir::mhlo::createStablehloLegalizeToHloPass());
+  // CHLO -> MHLO for high level ops (TopK, Erf, RaggedDot, etc.)
+  // CHLO -> StableHLO otherwise
   pm.addNestedPass<mlir::func::FuncOp>(
-      mlir::mhlo::createChloLegalizeToHloPass());
+      mlir::stablehlo_ext::createChloRecomposeOpsPass());
+  pm.addPass(mlir::createSymbolDCEPass());
+  pm.addNestedPass<mlir::func::FuncOp>(
+      mlir::mhlo::createChloLegalizeToHighLevelMhloPass());
+  pm.addNestedPass<mlir::func::FuncOp>(
+      mlir::stablehlo::createChloLegalizeToStablehloPass());
+  pm.addPass(mlir::mhlo::createStablehloLegalizeToHloPass());
   if (run_canonicalizer) {
     pm.addNestedPass<mlir::func::FuncOp>(mlir::createCanonicalizerPass());
   }

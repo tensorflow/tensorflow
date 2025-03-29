@@ -10,6 +10,8 @@ lit_test_suite(
     name = "all_tests",
     srcs = enforce_glob(
         [
+            # go/keep-sorted start
+            "chlo.mlir",
             "emit_mhlo.hlo",
             "emit_proto.mlir",
             "print_large_constants.mlir",
@@ -17,6 +19,7 @@ lit_test_suite(
             "simple.hlo",
             "simple.mlir",
             "vhlo_input.mlir",
+            # go/keep-sorted end
         ],
         include = [
             "*.mlir",
