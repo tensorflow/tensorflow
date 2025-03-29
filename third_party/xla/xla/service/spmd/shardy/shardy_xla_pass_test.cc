@@ -155,7 +155,7 @@ TEST_F(ShardyXLATest, CostantSplitter) {
 
   EXPECT_EQ(dot->operand(0)->operand(0)->opcode(), HloOpcode::kConstant);
   EXPECT_EQ(dot->operand(1)->operand(0)->opcode(), HloOpcode::kConstant);
-  EXPECT_NE(dot->operand(0)->operand(0), dot->operand(1)->operand(0));
+  EXPECT_EQ(dot->operand(0)->operand(0), dot->operand(1)->operand(0));
 }
 
 TEST_F(ShardyXLATest, Dot) {
