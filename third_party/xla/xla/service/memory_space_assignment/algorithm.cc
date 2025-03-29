@@ -2037,6 +2037,7 @@ absl::StatusOr<HeapSimulator::Result<HloValue>> MsaAlgorithm::Finish() {
     }
   }
 
+  int64_t post_allocation_transformations = 0;
   // Run post allocation transformation and fix the allocation sequence if
   // needed.
   if (options_.post_allocation_transformation_fn) {
@@ -2074,13 +2075,19 @@ absl::StatusOr<HeapSimulator::Result<HloValue>> MsaAlgorithm::Finish() {
 
         TF_ASSIGN_OR_RETURN(PostAllocationTransformationUpdate changes,
                             options_.post_allocation_transformation_fn(instr));
-        VLOG(3) << "Post allocation transformation info: \n"
-                << changes.ToString();
-        FixAllocationSequenceAfterPostAllocationTransformation(allocations_,
-                                                               changes);
+        if (!changes.to_be_removed.empty()) {
+          VLOG(3) << "Post allocation transformation info: \n"
+                  << changes.ToString();
+          FixAllocationSequenceAfterPostAllocationTransformation(allocations_,
+                                                                 changes);
+          post_allocation_transformations++;
+        }
       }
     }
   }
+
+  std::cout << "Post allocation transformations: "
+            << post_allocation_transformations << std::endl;
 
   HeapSimulator::Result<HloValue> result;
   result.heap_size = result_.heap_size;
@@ -3218,6 +3225,9 @@ bool AsynchronousCopyResource::ConsumeResource(
     int64_t exclusive_start_time, int64_t end_time, float resource,
     std::vector<std::pair<int64_t, float>>* delay_changes,
     float resource_to_free) {
+  // We only support either consuming or freeing resource, not both.
+  CHECK(resource_to_free == 0.0 || resource == 0.0);
+
   // Cache the pointers to the arrays to avoid the overhead of `operator[]`
   // size checks in hardened libc++.
   //
@@ -3247,7 +3257,8 @@ bool AsynchronousCopyResource::ConsumeResource(
                    end_time);
 
     // Nothing to do if we're not adding or removing any resources.
-    if (resource == 0.0 && resource_to_free == 0.0) {
+    if (resource < AsynchronousCopyResource::kAbsoluteEpsilon &&
+        resource_to_free < AsynchronousCopyResource::kAbsoluteEpsilon) {
       return true;
     }
 
@@ -3311,8 +3322,11 @@ bool AsynchronousCopyResource::ConsumeResource(
       resource -= used_resource;
     }
 
-    // If resource isn't satisfied by the end, we didn't have enough resources.
-    if (resource > 0) {
+    // If resource isn't satisfied by the end, we didn't have enough
+    // resources. We allow a small epsilon to account for floating point
+    // errors.
+
+    if (resource > AsynchronousCopyResource::kAbsoluteEpsilon) {
       VLOG(3) << "Doesn't have enough resource; requested resource = "
               << amount_requested << "; leftover resources = " << resource;
       return false;
@@ -3332,6 +3346,8 @@ bool AsynchronousCopyResource::ConsumeResource(
 }
 
 void AsynchronousCopyResource::AddCopy(const AsynchronousCopy& copy) {
+  std::cout << "Farzin_AddCopy: " << copy.exclusive_start_time << " "
+            << copy.end_time << " " << copy.resource << std::endl;
   CHECK(
       ConsumeResource(copy.exclusive_start_time, copy.end_time, copy.resource));
 
