@@ -1,611 +1,566 @@
 diff --git a/third_party/llvm/generated.patch b/third_party/llvm/generated.patch
-index 2cd88ea..509398d 100644
+index 509398d..99ef3cb 100644
 --- a/third_party/llvm/generated.patch
 +++ b/third_party/llvm/generated.patch
-@@ -1,591 +1 @@
+@@ -1 +1,546 @@
  Auto generated patch. Do not edit or delete it, even if empty.
--diff -ruN --strip-trailing-cr a/llvm/lib/CodeGen/SelectionDAG/DAGCombiner.cpp b/llvm/lib/CodeGen/SelectionDAG/DAGCombiner.cpp
----- a/llvm/lib/CodeGen/SelectionDAG/DAGCombiner.cpp
--+++ b/llvm/lib/CodeGen/SelectionDAG/DAGCombiner.cpp
--@@ -25557,31 +25557,8 @@
--   if (SDValue NarrowBOp = narrowExtractedVectorBinOp(N, DAG, LegalOperations))
--     return NarrowBOp;
-- 
---  // If only EXTRACT_SUBVECTOR nodes use the source vector we can
---  // simplify it based on the (valid) extractions.
---  if (!V.getValueType().isScalableVector() &&
---      llvm::all_of(V->users(), [&](SDNode *Use) {
---        return Use->getOpcode() == ISD::EXTRACT_SUBVECTOR &&
---               Use->getOperand(0) == V;
---      })) {
---    unsigned NumElts = V.getValueType().getVectorNumElements();
---    APInt DemandedElts = APInt::getZero(NumElts);
---    for (SDNode *User : V->users()) {
---      unsigned ExtIdx = User->getConstantOperandVal(1);
---      unsigned NumSubElts = User->getValueType(0).getVectorNumElements();
---      DemandedElts.setBits(ExtIdx, ExtIdx + NumSubElts);
---    }
---    if (SimplifyDemandedVectorElts(V, DemandedElts, /*AssumeSingleUse=*/true)) {
---      // We simplified the vector operand of this extract subvector. If this
---      // extract is not dead, visit it again so it is folded properly.
---      if (N->getOpcode() != ISD::DELETED_NODE)
---        AddToWorklist(N);
---      return SDValue(N, 0);
---    }
---  } else {
---    if (SimplifyDemandedVectorElts(SDValue(N, 0)))
---      return SDValue(N, 0);
---  }
--+  if (SimplifyDemandedVectorElts(SDValue(N, 0)))
--+    return SDValue(N, 0);
-- 
--   return SDValue();
-- }
--diff -ruN --strip-trailing-cr a/llvm/lib/Target/X86/X86ISelLowering.cpp b/llvm/lib/Target/X86/X86ISelLowering.cpp
----- a/llvm/lib/Target/X86/X86ISelLowering.cpp
--+++ b/llvm/lib/Target/X86/X86ISelLowering.cpp
--@@ -58823,8 +58823,6 @@
-- 
--   uint64_t IdxVal = N->getConstantOperandVal(2);
--   MVT SubVecVT = SubVec.getSimpleValueType();
---  int VecNumElts = OpVT.getVectorNumElements();
---  int SubVecNumElts = SubVecVT.getVectorNumElements();
-- 
--   if (Vec.isUndef() && SubVec.isUndef())
--     return DAG.getUNDEF(OpVT);
--@@ -58884,9 +58882,10 @@
--       SubVec.getOperand(0).getSimpleValueType() == OpVT &&
--       (IdxVal != 0 ||
--        !(Vec.isUndef() || ISD::isBuildVectorAllZeros(Vec.getNode())))) {
---    SDValue ExtSrc = SubVec.getOperand(0);
--     int ExtIdxVal = SubVec.getConstantOperandVal(1);
--     if (ExtIdxVal != 0) {
--+      int VecNumElts = OpVT.getVectorNumElements();
--+      int SubVecNumElts = SubVecVT.getVectorNumElements();
--       SmallVector<int, 64> Mask(VecNumElts);
--       // First create an identity shuffle mask.
--       for (int i = 0; i != VecNumElts; ++i)
--@@ -58894,24 +58893,8 @@
--       // Now insert the extracted portion.
--       for (int i = 0; i != SubVecNumElts; ++i)
--         Mask[i + IdxVal] = i + ExtIdxVal + VecNumElts;
---      return DAG.getVectorShuffle(OpVT, dl, Vec, ExtSrc, Mask);
---    }
---    // If we're broadcasting, see if we can use a blend instead of
---    // extract/insert pair. For subvector broadcasts, we must ensure that the
---    // subvector is aligned with the insertion/extractions.
---    if (ExtSrc.getOpcode() == X86ISD::VBROADCAST ||
---        ExtSrc.getOpcode() == X86ISD::VBROADCAST_LOAD ||
---        (ExtSrc.getOpcode() == X86ISD::SUBV_BROADCAST_LOAD &&
---         (ExtIdxVal % SubVecNumElts) == 0 && (IdxVal % SubVecNumElts) == 0 &&
---         cast<MemIntrinsicSDNode>(ExtSrc)->getMemoryVT() == SubVecVT)) {
---      SmallVector<int, 64> Mask(VecNumElts);
---      // First create an identity shuffle mask.
---      for (int i = 0; i != VecNumElts; ++i)
---        Mask[i] = i;
---      // Now blend the broadcast.
---      for (int i = 0; i != SubVecNumElts; ++i)
---        Mask[i + IdxVal] = i + IdxVal + VecNumElts;
---      return DAG.getVectorShuffle(OpVT, dl, Vec, ExtSrc, Mask);
--+
--+      return DAG.getVectorShuffle(OpVT, dl, Vec, SubVec.getOperand(0), Mask);
--     }
--   }
-- 
--@@ -58959,7 +58942,7 @@
--   // If we're splatting the lower half subvector of a full vector load into the
--   // upper half, attempt to create a subvector broadcast.
--   // TODO: Drop hasOneUse checks.
---  if ((int)IdxVal == (VecNumElts / 2) &&
--+  if (IdxVal == (OpVT.getVectorNumElements() / 2) &&
--       Vec.getValueSizeInBits() == (2 * SubVec.getValueSizeInBits()) &&
--       (Vec.hasOneUse() || SubVec.hasOneUse())) {
--     auto *VecLd = dyn_cast<LoadSDNode>(Vec);
--diff -ruN --strip-trailing-cr a/llvm/test/CodeGen/X86/any_extend_vector_inreg_of_broadcast_from_memory.ll b/llvm/test/CodeGen/X86/any_extend_vector_inreg_of_broadcast_from_memory.ll
----- a/llvm/test/CodeGen/X86/any_extend_vector_inreg_of_broadcast_from_memory.ll
--+++ b/llvm/test/CodeGen/X86/any_extend_vector_inreg_of_broadcast_from_memory.ll
--@@ -2239,7 +2239,7 @@
-- ; AVX512F-NEXT:    vpalignr {{.*#+}} xmm0 = mem[1,2,3,4,5,6,7,8,9,10,11,12,13,14,15],xmm0[0]
-- ; AVX512F-NEXT:    vpshufb {{.*#+}} xmm0 = xmm0[15,0,1,2,3,4,15,6,7,8,9,10,15,12,13,14]
-- ; AVX512F-NEXT:    vpbroadcastb (%rdi), %ymm1
---; AVX512F-NEXT:    vpblendd {{.*#+}} ymm0 = ymm0[0,1,2,3],ymm1[4,5,6,7]
--+; AVX512F-NEXT:    vinserti128 $1, %xmm1, %ymm0, %ymm0
-- ; AVX512F-NEXT:    vpaddb (%rsi), %ymm0, %ymm0
-- ; AVX512F-NEXT:    vpaddb 32(%rsi), %ymm1, %ymm1
-- ; AVX512F-NEXT:    vmovdqa %ymm1, 32(%rdx)
--@@ -2253,7 +2253,7 @@
-- ; AVX512DQ-NEXT:    vpalignr {{.*#+}} xmm0 = mem[1,2,3,4,5,6,7,8,9,10,11,12,13,14,15],xmm0[0]
-- ; AVX512DQ-NEXT:    vpshufb {{.*#+}} xmm0 = xmm0[15,0,1,2,3,4,15,6,7,8,9,10,15,12,13,14]
-- ; AVX512DQ-NEXT:    vpbroadcastb (%rdi), %ymm1
---; AVX512DQ-NEXT:    vpblendd {{.*#+}} ymm0 = ymm0[0,1,2,3],ymm1[4,5,6,7]
--+; AVX512DQ-NEXT:    vinserti128 $1, %xmm1, %ymm0, %ymm0
-- ; AVX512DQ-NEXT:    vpaddb (%rsi), %ymm0, %ymm0
-- ; AVX512DQ-NEXT:    vpaddb 32(%rsi), %ymm1, %ymm1
-- ; AVX512DQ-NEXT:    vmovdqa %ymm1, 32(%rdx)
--@@ -2267,7 +2267,7 @@
-- ; AVX512BW-NEXT:    vpalignr {{.*#+}} xmm0 = mem[1,2,3,4,5,6,7,8,9,10,11,12,13,14,15],xmm0[0]
-- ; AVX512BW-NEXT:    vpshufb {{.*#+}} xmm0 = xmm0[15,0,1,2,3,4,15,6,7,8,9,10,15,12,13,14]
-- ; AVX512BW-NEXT:    vpbroadcastb (%rdi), %ymm1
---; AVX512BW-NEXT:    vpblendd {{.*#+}} ymm0 = ymm0[0,1,2,3],ymm1[4,5,6,7]
--+; AVX512BW-NEXT:    vinserti128 $1, %xmm1, %ymm0, %ymm0
-- ; AVX512BW-NEXT:    vinserti64x4 $1, %ymm1, %zmm0, %zmm0
-- ; AVX512BW-NEXT:    vpaddb (%rsi), %zmm0, %zmm0
-- ; AVX512BW-NEXT:    vmovdqa64 %zmm0, (%rdx)
--@@ -2458,7 +2458,7 @@
-- ; AVX512F-NEXT:    vpalignr {{.*#+}} xmm0 = mem[1,2,3,4,5,6,7,8,9,10,11,12,13,14,15],xmm0[0]
-- ; AVX512F-NEXT:    vpshufb {{.*#+}} xmm0 = xmm0[15,0,1,2,3,4,5,6,7,8,9,10,15,12,13,14]
-- ; AVX512F-NEXT:    vpbroadcastb (%rdi), %ymm1
---; AVX512F-NEXT:    vpblendd {{.*#+}} ymm0 = ymm0[0,1,2,3],ymm1[4,5,6,7]
--+; AVX512F-NEXT:    vinserti128 $1, %xmm1, %ymm0, %ymm0
-- ; AVX512F-NEXT:    vpaddb (%rsi), %ymm0, %ymm0
-- ; AVX512F-NEXT:    vpaddb 32(%rsi), %ymm1, %ymm1
-- ; AVX512F-NEXT:    vmovdqa %ymm1, 32(%rdx)
--@@ -2472,7 +2472,7 @@
-- ; AVX512DQ-NEXT:    vpalignr {{.*#+}} xmm0 = mem[1,2,3,4,5,6,7,8,9,10,11,12,13,14,15],xmm0[0]
-- ; AVX512DQ-NEXT:    vpshufb {{.*#+}} xmm0 = xmm0[15,0,1,2,3,4,5,6,7,8,9,10,15,12,13,14]
-- ; AVX512DQ-NEXT:    vpbroadcastb (%rdi), %ymm1
---; AVX512DQ-NEXT:    vpblendd {{.*#+}} ymm0 = ymm0[0,1,2,3],ymm1[4,5,6,7]
--+; AVX512DQ-NEXT:    vinserti128 $1, %xmm1, %ymm0, %ymm0
-- ; AVX512DQ-NEXT:    vpaddb (%rsi), %ymm0, %ymm0
-- ; AVX512DQ-NEXT:    vpaddb 32(%rsi), %ymm1, %ymm1
-- ; AVX512DQ-NEXT:    vmovdqa %ymm1, 32(%rdx)
--@@ -2486,7 +2486,7 @@
-- ; AVX512BW-NEXT:    vpalignr {{.*#+}} xmm0 = mem[1,2,3,4,5,6,7,8,9,10,11,12,13,14,15],xmm0[0]
-- ; AVX512BW-NEXT:    vpshufb {{.*#+}} xmm0 = xmm0[15,0,1,2,3,4,5,6,7,8,9,10,15,12,13,14]
-- ; AVX512BW-NEXT:    vpbroadcastb (%rdi), %ymm1
---; AVX512BW-NEXT:    vpblendd {{.*#+}} ymm0 = ymm0[0,1,2,3],ymm1[4,5,6,7]
--+; AVX512BW-NEXT:    vinserti128 $1, %xmm1, %ymm0, %ymm0
-- ; AVX512BW-NEXT:    vinserti64x4 $1, %ymm1, %zmm0, %zmm0
-- ; AVX512BW-NEXT:    vpaddb (%rsi), %zmm0, %zmm0
-- ; AVX512BW-NEXT:    vmovdqa64 %zmm0, (%rdx)
--@@ -3095,7 +3095,7 @@
-- ; AVX512F:       # %bb.0:
-- ; AVX512F-NEXT:    vpbroadcastw (%rdi), %ymm0
-- ; AVX512F-NEXT:    vpblendw {{.*#+}} xmm1 = xmm0[0],mem[1,2,3,4,5],xmm0[6],mem[7]
---; AVX512F-NEXT:    vpblendd {{.*#+}} ymm1 = ymm1[0,1,2,3],ymm0[4,5,6,7]
--+; AVX512F-NEXT:    vinserti128 $1, %xmm0, %ymm1, %ymm1
-- ; AVX512F-NEXT:    vpaddb (%rsi), %ymm1, %ymm1
-- ; AVX512F-NEXT:    vpaddb 32(%rsi), %ymm0, %ymm0
-- ; AVX512F-NEXT:    vmovdqa %ymm0, 32(%rdx)
--@@ -3107,7 +3107,7 @@
-- ; AVX512DQ:       # %bb.0:
-- ; AVX512DQ-NEXT:    vpbroadcastw (%rdi), %ymm0
-- ; AVX512DQ-NEXT:    vpblendw {{.*#+}} xmm1 = xmm0[0],mem[1,2,3,4,5],xmm0[6],mem[7]
---; AVX512DQ-NEXT:    vpblendd {{.*#+}} ymm1 = ymm1[0,1,2,3],ymm0[4,5,6,7]
--+; AVX512DQ-NEXT:    vinserti128 $1, %xmm0, %ymm1, %ymm1
-- ; AVX512DQ-NEXT:    vpaddb (%rsi), %ymm1, %ymm1
-- ; AVX512DQ-NEXT:    vpaddb 32(%rsi), %ymm0, %ymm0
-- ; AVX512DQ-NEXT:    vmovdqa %ymm0, 32(%rdx)
--diff -ruN --strip-trailing-cr a/llvm/test/CodeGen/X86/any_extend_vector_inreg_of_broadcast.ll b/llvm/test/CodeGen/X86/any_extend_vector_inreg_of_broadcast.ll
----- a/llvm/test/CodeGen/X86/any_extend_vector_inreg_of_broadcast.ll
--+++ b/llvm/test/CodeGen/X86/any_extend_vector_inreg_of_broadcast.ll
--@@ -2573,7 +2573,8 @@
-- ; AVX512F-NEXT:    vpalignr {{.*#+}} xmm1 = xmm1[1,2,3,4,5,6,7,8,9,10,11,12,13,14,15],xmm0[0]
-- ; AVX512F-NEXT:    vpshufb {{.*#+}} xmm1 = xmm1[15,0,1,15,3,4,15,6,7,15,9,10,15,12,13,15]
-- ; AVX512F-NEXT:    vpbroadcastb %xmm0, %ymm0
---; AVX512F-NEXT:    vpblendd {{.*#+}} ymm1 = ymm1[0,1,2,3],ymm0[4,5,6,7]
--+; AVX512F-NEXT:    vinserti64x4 $1, %ymm0, %zmm0, %zmm0
--+; AVX512F-NEXT:    vinserti128 $1, %xmm0, %ymm1, %ymm1
-- ; AVX512F-NEXT:    vpaddb (%rdx), %ymm1, %ymm1
-- ; AVX512F-NEXT:    vpaddb 32(%rdx), %ymm0, %ymm0
-- ; AVX512F-NEXT:    vmovdqa %ymm0, 32(%rcx)
--@@ -2590,7 +2591,8 @@
-- ; AVX512DQ-NEXT:    vpalignr {{.*#+}} xmm1 = xmm1[1,2,3,4,5,6,7,8,9,10,11,12,13,14,15],xmm0[0]
-- ; AVX512DQ-NEXT:    vpshufb {{.*#+}} xmm1 = xmm1[15,0,1,15,3,4,15,6,7,15,9,10,15,12,13,15]
-- ; AVX512DQ-NEXT:    vpbroadcastb %xmm0, %ymm0
---; AVX512DQ-NEXT:    vpblendd {{.*#+}} ymm1 = ymm1[0,1,2,3],ymm0[4,5,6,7]
--+; AVX512DQ-NEXT:    vinserti64x4 $1, %ymm0, %zmm0, %zmm0
--+; AVX512DQ-NEXT:    vinserti128 $1, %xmm0, %ymm1, %ymm1
-- ; AVX512DQ-NEXT:    vpaddb (%rdx), %ymm1, %ymm1
-- ; AVX512DQ-NEXT:    vpaddb 32(%rdx), %ymm0, %ymm0
-- ; AVX512DQ-NEXT:    vmovdqa %ymm0, 32(%rcx)
--@@ -2835,7 +2837,8 @@
-- ; AVX512F-NEXT:    vpalignr {{.*#+}} xmm1 = xmm1[1,2,3,4,5,6,7,8,9,10,11,12,13,14,15],xmm0[0]
-- ; AVX512F-NEXT:    vpshufb {{.*#+}} xmm1 = xmm1[15,0,1,2,3,4,15,6,7,8,9,10,15,12,13,14]
-- ; AVX512F-NEXT:    vpbroadcastb %xmm0, %ymm0
---; AVX512F-NEXT:    vpblendd {{.*#+}} ymm1 = ymm1[0,1,2,3],ymm0[4,5,6,7]
--+; AVX512F-NEXT:    vinserti64x4 $1, %ymm0, %zmm0, %zmm0
--+; AVX512F-NEXT:    vinserti128 $1, %xmm0, %ymm1, %ymm1
-- ; AVX512F-NEXT:    vpaddb (%rdx), %ymm1, %ymm1
-- ; AVX512F-NEXT:    vpaddb 32(%rdx), %ymm0, %ymm0
-- ; AVX512F-NEXT:    vmovdqa %ymm0, 32(%rcx)
--@@ -2852,7 +2855,8 @@
-- ; AVX512DQ-NEXT:    vpalignr {{.*#+}} xmm1 = xmm1[1,2,3,4,5,6,7,8,9,10,11,12,13,14,15],xmm0[0]
-- ; AVX512DQ-NEXT:    vpshufb {{.*#+}} xmm1 = xmm1[15,0,1,2,3,4,15,6,7,8,9,10,15,12,13,14]
-- ; AVX512DQ-NEXT:    vpbroadcastb %xmm0, %ymm0
---; AVX512DQ-NEXT:    vpblendd {{.*#+}} ymm1 = ymm1[0,1,2,3],ymm0[4,5,6,7]
--+; AVX512DQ-NEXT:    vinserti64x4 $1, %ymm0, %zmm0, %zmm0
--+; AVX512DQ-NEXT:    vinserti128 $1, %xmm0, %ymm1, %ymm1
-- ; AVX512DQ-NEXT:    vpaddb (%rdx), %ymm1, %ymm1
-- ; AVX512DQ-NEXT:    vpaddb 32(%rdx), %ymm0, %ymm0
-- ; AVX512DQ-NEXT:    vmovdqa %ymm0, 32(%rcx)
--@@ -2868,7 +2872,7 @@
-- ; AVX512BW-NEXT:    vpalignr {{.*#+}} xmm1 = xmm1[1,2,3,4,5,6,7,8,9,10,11,12,13,14,15],xmm0[0]
-- ; AVX512BW-NEXT:    vpshufb {{.*#+}} xmm1 = xmm1[15,0,1,2,3,4,15,6,7,8,9,10,15,12,13,14]
-- ; AVX512BW-NEXT:    vpbroadcastb %xmm0, %ymm0
---; AVX512BW-NEXT:    vpblendd {{.*#+}} ymm1 = ymm1[0,1,2,3],ymm0[4,5,6,7]
--+; AVX512BW-NEXT:    vinserti128 $1, %xmm0, %ymm1, %ymm1
-- ; AVX512BW-NEXT:    vinserti64x4 $1, %ymm0, %zmm1, %zmm0
-- ; AVX512BW-NEXT:    vpaddb (%rdx), %zmm0, %zmm0
-- ; AVX512BW-NEXT:    vmovdqa64 %zmm0, (%rcx)
--@@ -3096,7 +3100,8 @@
-- ; AVX512F-NEXT:    vpalignr {{.*#+}} xmm1 = xmm1[1,2,3,4,5,6,7,8,9,10,11,12,13,14,15],xmm0[0]
-- ; AVX512F-NEXT:    vpshufb {{.*#+}} xmm1 = xmm1[15,0,1,2,3,4,5,6,7,8,9,10,15,12,13,14]
-- ; AVX512F-NEXT:    vpbroadcastb %xmm0, %ymm0
---; AVX512F-NEXT:    vpblendd {{.*#+}} ymm1 = ymm1[0,1,2,3],ymm0[4,5,6,7]
--+; AVX512F-NEXT:    vinserti64x4 $1, %ymm0, %zmm0, %zmm0
--+; AVX512F-NEXT:    vinserti128 $1, %xmm0, %ymm1, %ymm1
-- ; AVX512F-NEXT:    vpaddb (%rdx), %ymm1, %ymm1
-- ; AVX512F-NEXT:    vpaddb 32(%rdx), %ymm0, %ymm0
-- ; AVX512F-NEXT:    vmovdqa %ymm0, 32(%rcx)
--@@ -3113,7 +3118,8 @@
-- ; AVX512DQ-NEXT:    vpalignr {{.*#+}} xmm1 = xmm1[1,2,3,4,5,6,7,8,9,10,11,12,13,14,15],xmm0[0]
-- ; AVX512DQ-NEXT:    vpshufb {{.*#+}} xmm1 = xmm1[15,0,1,2,3,4,5,6,7,8,9,10,15,12,13,14]
-- ; AVX512DQ-NEXT:    vpbroadcastb %xmm0, %ymm0
---; AVX512DQ-NEXT:    vpblendd {{.*#+}} ymm1 = ymm1[0,1,2,3],ymm0[4,5,6,7]
--+; AVX512DQ-NEXT:    vinserti64x4 $1, %ymm0, %zmm0, %zmm0
--+; AVX512DQ-NEXT:    vinserti128 $1, %xmm0, %ymm1, %ymm1
-- ; AVX512DQ-NEXT:    vpaddb (%rdx), %ymm1, %ymm1
-- ; AVX512DQ-NEXT:    vpaddb 32(%rdx), %ymm0, %ymm0
-- ; AVX512DQ-NEXT:    vmovdqa %ymm0, 32(%rcx)
--@@ -3129,7 +3135,7 @@
-- ; AVX512BW-NEXT:    vpalignr {{.*#+}} xmm1 = xmm1[1,2,3,4,5,6,7,8,9,10,11,12,13,14,15],xmm0[0]
-- ; AVX512BW-NEXT:    vpshufb {{.*#+}} xmm1 = xmm1[15,0,1,2,3,4,5,6,7,8,9,10,15,12,13,14]
-- ; AVX512BW-NEXT:    vpbroadcastb %xmm0, %ymm0
---; AVX512BW-NEXT:    vpblendd {{.*#+}} ymm1 = ymm1[0,1,2,3],ymm0[4,5,6,7]
--+; AVX512BW-NEXT:    vinserti128 $1, %xmm0, %ymm1, %ymm1
-- ; AVX512BW-NEXT:    vinserti64x4 $1, %ymm0, %zmm1, %zmm0
-- ; AVX512BW-NEXT:    vpaddb (%rdx), %zmm0, %zmm0
-- ; AVX512BW-NEXT:    vmovdqa64 %zmm0, (%rcx)
--@@ -3608,11 +3614,12 @@
-- ; AVX512F:       # %bb.0:
-- ; AVX512F-NEXT:    vmovdqa (%rdi), %xmm0
-- ; AVX512F-NEXT:    vmovdqa 48(%rdi), %xmm1
---; AVX512F-NEXT:    vpaddb 48(%rsi), %xmm1, %xmm1
-- ; AVX512F-NEXT:    vpaddb (%rsi), %xmm0, %xmm0
-- ; AVX512F-NEXT:    vpbroadcastw %xmm0, %ymm0
--+; AVX512F-NEXT:    vinserti64x4 $1, %ymm0, %zmm0, %zmm0
--+; AVX512F-NEXT:    vpaddb 48(%rsi), %xmm1, %xmm1
-- ; AVX512F-NEXT:    vpblendw {{.*#+}} xmm1 = xmm0[0],xmm1[1,2],xmm0[3],xmm1[4,5],xmm0[6],xmm1[7]
---; AVX512F-NEXT:    vpblendd {{.*#+}} ymm1 = ymm1[0,1,2,3],ymm0[4,5,6,7]
--+; AVX512F-NEXT:    vinserti128 $1, %xmm0, %ymm1, %ymm1
-- ; AVX512F-NEXT:    vpaddb (%rdx), %ymm1, %ymm1
-- ; AVX512F-NEXT:    vpaddb 32(%rdx), %ymm0, %ymm0
-- ; AVX512F-NEXT:    vmovdqa %ymm0, 32(%rcx)
--@@ -3624,11 +3631,12 @@
-- ; AVX512DQ:       # %bb.0:
-- ; AVX512DQ-NEXT:    vmovdqa (%rdi), %xmm0
-- ; AVX512DQ-NEXT:    vmovdqa 48(%rdi), %xmm1
---; AVX512DQ-NEXT:    vpaddb 48(%rsi), %xmm1, %xmm1
-- ; AVX512DQ-NEXT:    vpaddb (%rsi), %xmm0, %xmm0
-- ; AVX512DQ-NEXT:    vpbroadcastw %xmm0, %ymm0
--+; AVX512DQ-NEXT:    vinserti64x4 $1, %ymm0, %zmm0, %zmm0
--+; AVX512DQ-NEXT:    vpaddb 48(%rsi), %xmm1, %xmm1
-- ; AVX512DQ-NEXT:    vpblendw {{.*#+}} xmm1 = xmm0[0],xmm1[1,2],xmm0[3],xmm1[4,5],xmm0[6],xmm1[7]
---; AVX512DQ-NEXT:    vpblendd {{.*#+}} ymm1 = ymm1[0,1,2,3],ymm0[4,5,6,7]
--+; AVX512DQ-NEXT:    vinserti128 $1, %xmm0, %ymm1, %ymm1
-- ; AVX512DQ-NEXT:    vpaddb (%rdx), %ymm1, %ymm1
-- ; AVX512DQ-NEXT:    vpaddb 32(%rdx), %ymm0, %ymm0
-- ; AVX512DQ-NEXT:    vmovdqa %ymm0, 32(%rcx)
--@@ -3860,11 +3868,12 @@
-- ; AVX512F:       # %bb.0:
-- ; AVX512F-NEXT:    vmovdqa (%rdi), %xmm0
-- ; AVX512F-NEXT:    vmovdqa 48(%rdi), %xmm1
---; AVX512F-NEXT:    vpaddb 48(%rsi), %xmm1, %xmm1
-- ; AVX512F-NEXT:    vpaddb (%rsi), %xmm0, %xmm0
-- ; AVX512F-NEXT:    vpbroadcastw %xmm0, %ymm0
--+; AVX512F-NEXT:    vinserti64x4 $1, %ymm0, %zmm0, %zmm0
--+; AVX512F-NEXT:    vpaddb 48(%rsi), %xmm1, %xmm1
-- ; AVX512F-NEXT:    vpblendw {{.*#+}} xmm1 = xmm0[0],xmm1[1,2,3,4,5],xmm0[6],xmm1[7]
---; AVX512F-NEXT:    vpblendd {{.*#+}} ymm1 = ymm1[0,1,2,3],ymm0[4,5,6,7]
--+; AVX512F-NEXT:    vinserti128 $1, %xmm0, %ymm1, %ymm1
-- ; AVX512F-NEXT:    vpaddb (%rdx), %ymm1, %ymm1
-- ; AVX512F-NEXT:    vpaddb 32(%rdx), %ymm0, %ymm0
-- ; AVX512F-NEXT:    vmovdqa %ymm0, 32(%rcx)
--@@ -3876,11 +3885,12 @@
-- ; AVX512DQ:       # %bb.0:
-- ; AVX512DQ-NEXT:    vmovdqa (%rdi), %xmm0
-- ; AVX512DQ-NEXT:    vmovdqa 48(%rdi), %xmm1
---; AVX512DQ-NEXT:    vpaddb 48(%rsi), %xmm1, %xmm1
-- ; AVX512DQ-NEXT:    vpaddb (%rsi), %xmm0, %xmm0
-- ; AVX512DQ-NEXT:    vpbroadcastw %xmm0, %ymm0
--+; AVX512DQ-NEXT:    vinserti64x4 $1, %ymm0, %zmm0, %zmm0
--+; AVX512DQ-NEXT:    vpaddb 48(%rsi), %xmm1, %xmm1
-- ; AVX512DQ-NEXT:    vpblendw {{.*#+}} xmm1 = xmm0[0],xmm1[1,2,3,4,5],xmm0[6],xmm1[7]
---; AVX512DQ-NEXT:    vpblendd {{.*#+}} ymm1 = ymm1[0,1,2,3],ymm0[4,5,6,7]
--+; AVX512DQ-NEXT:    vinserti128 $1, %xmm0, %ymm1, %ymm1
-- ; AVX512DQ-NEXT:    vpaddb (%rdx), %ymm1, %ymm1
-- ; AVX512DQ-NEXT:    vpaddb 32(%rdx), %ymm0, %ymm0
-- ; AVX512DQ-NEXT:    vmovdqa %ymm0, 32(%rcx)
--diff -ruN --strip-trailing-cr a/llvm/test/CodeGen/X86/pr42905.ll b/llvm/test/CodeGen/X86/pr42905.ll
----- a/llvm/test/CodeGen/X86/pr42905.ll
--+++ b/llvm/test/CodeGen/X86/pr42905.ll
--@@ -4,10 +4,16 @@
-- define <4 x double> @autogen_SD30452(i1 %L230) {
-- ; CHECK-LABEL: autogen_SD30452:
-- ; CHECK:       # %bb.0: # %BB
---; CHECK-NEXT:    movdqa {{.*#+}} xmm0 = [151829,151829]
---; CHECK-NEXT:    pshufd {{.*#+}} xmm0 = xmm0[0,2,2,3]
---; CHECK-NEXT:    cvtdq2pd %xmm0, %xmm0
---; CHECK-NEXT:    movaps %xmm0, %xmm1
--+; CHECK-NEXT:    movdqa {{.*#+}} xmm1 = [151829,151829]
--+; CHECK-NEXT:    movq %xmm0, %rax
--+; CHECK-NEXT:    cvtsi2sd %rax, %xmm0
--+; CHECK-NEXT:    pshufd {{.*#+}} xmm2 = xmm0[2,3,2,3]
--+; CHECK-NEXT:    movq %xmm2, %rax
--+; CHECK-NEXT:    xorps %xmm2, %xmm2
--+; CHECK-NEXT:    cvtsi2sd %rax, %xmm2
--+; CHECK-NEXT:    unpcklpd {{.*#+}} xmm0 = xmm0[0],xmm2[0]
--+; CHECK-NEXT:    pshufd {{.*#+}} xmm1 = xmm1[0,2,2,3]
--+; CHECK-NEXT:    cvtdq2pd %xmm1, %xmm1
-- ; CHECK-NEXT:    retq
-- BB:
--   %I = insertelement <4 x i64> zeroinitializer, i64 151829, i32 3
--diff -ruN --strip-trailing-cr a/llvm/test/CodeGen/X86/sad.ll b/llvm/test/CodeGen/X86/sad.ll
----- a/llvm/test/CodeGen/X86/sad.ll
--+++ b/llvm/test/CodeGen/X86/sad.ll
--@@ -927,7 +927,8 @@
-- ; AVX512F-NEXT:    vmovdqu 32(%rdi), %ymm1
-- ; AVX512F-NEXT:    vpsadbw 32(%rdx), %ymm1, %ymm1
-- ; AVX512F-NEXT:    vpsadbw (%rdx), %ymm0, %ymm0
---; AVX512F-NEXT:    vpaddq %ymm1, %ymm0, %ymm0
--+; AVX512F-NEXT:    vinserti64x4 $1, %ymm1, %zmm0, %zmm0
--+; AVX512F-NEXT:    vpaddq %zmm1, %zmm0, %zmm0
-- ; AVX512F-NEXT:    vextracti128 $1, %ymm0, %xmm1
-- ; AVX512F-NEXT:    vpaddq %xmm1, %xmm0, %xmm0
-- ; AVX512F-NEXT:    vpshufd {{.*#+}} xmm1 = xmm0[2,3,2,3]
--diff -ruN --strip-trailing-cr a/llvm/test/CodeGen/X86/vector-interleaved-store-i16-stride-7.ll b/llvm/test/CodeGen/X86/vector-interleaved-store-i16-stride-7.ll
----- a/llvm/test/CodeGen/X86/vector-interleaved-store-i16-stride-7.ll
--+++ b/llvm/test/CodeGen/X86/vector-interleaved-store-i16-stride-7.ll
--@@ -2079,7 +2079,7 @@
-- ; AVX-NEXT:    vpsrld $16, %xmm8, %xmm10
-- ; AVX-NEXT:    vpunpckhdq {{.*#+}} xmm10 = xmm3[2],xmm10[2],xmm3[3],xmm10[3]
-- ; AVX-NEXT:    vpunpckhwd {{.*#+}} xmm12 = xmm8[4],xmm3[4],xmm8[5],xmm3[5],xmm8[6],xmm3[6],xmm8[7],xmm3[7]
---; AVX-NEXT:    vpshufd {{.*#+}} xmm12 = xmm12[1,1,2,3]
--+; AVX-NEXT:    vpshuflw {{.*#+}} xmm12 = xmm12[2,2,2,2,4,5,6,7]
-- ; AVX-NEXT:    vpshufhw {{.*#+}} xmm12 = xmm12[0,1,2,3,4,5,5,4]
-- ; AVX-NEXT:    vinsertf128 $1, %xmm10, %ymm12, %ymm10
-- ; AVX-NEXT:    vandnps %ymm10, %ymm6, %ymm6
--diff -ruN --strip-trailing-cr a/llvm/test/CodeGen/X86/vector-interleaved-store-i32-stride-5.ll b/llvm/test/CodeGen/X86/vector-interleaved-store-i32-stride-5.ll
----- a/llvm/test/CodeGen/X86/vector-interleaved-store-i32-stride-5.ll
--+++ b/llvm/test/CodeGen/X86/vector-interleaved-store-i32-stride-5.ll
--@@ -350,7 +350,7 @@
-- ; AVX-NEXT:    vshufpd {{.*#+}} ymm4 = ymm4[0,0,3,3]
-- ; AVX-NEXT:    vblendps {{.*#+}} ymm4 = ymm4[0,1],ymm5[2,3],ymm4[4,5,6],ymm5[7]
-- ; AVX-NEXT:    vbroadcastf128 {{.*#+}} ymm5 = mem[0,1,0,1]
---; AVX-NEXT:    vblendps {{.*#+}} ymm7 = ymm0[0,1,2,3],ymm5[4,5,6,7]
--+; AVX-NEXT:    vinsertf128 $1, %xmm5, %ymm0, %ymm7
-- ; AVX-NEXT:    vblendps {{.*#+}} ymm4 = ymm7[0],ymm4[1,2,3],ymm7[4],ymm4[5,6,7]
-- ; AVX-NEXT:    vpermilps {{.*#+}} ymm1 = ymm1[u,u,u,2,u,u,u,7]
-- ; AVX-NEXT:    vblendps {{.*#+}} ymm0 = ymm1[0,1],ymm0[2],ymm1[3,4,5,6,7]
--diff -ruN --strip-trailing-cr a/llvm/test/CodeGen/X86/vector-reduce-fmax-fmin-fast.ll b/llvm/test/CodeGen/X86/vector-reduce-fmax-fmin-fast.ll
----- a/llvm/test/CodeGen/X86/vector-reduce-fmax-fmin-fast.ll
--+++ b/llvm/test/CodeGen/X86/vector-reduce-fmax-fmin-fast.ll
--@@ -170,7 +170,7 @@
-- ; AVX512-LABEL: test_v16f32:
-- ; AVX512:       # %bb.0:
-- ; AVX512-NEXT:    vextractf64x4 $1, %zmm0, %ymm1
---; AVX512-NEXT:    vmaxps %ymm1, %ymm0, %ymm0
--+; AVX512-NEXT:    vmaxps %zmm1, %zmm0, %zmm0
-- ; AVX512-NEXT:    vextractf128 $1, %ymm0, %xmm1
-- ; AVX512-NEXT:    vmaxps %xmm1, %xmm0, %xmm0
-- ; AVX512-NEXT:    vshufpd {{.*#+}} xmm1 = xmm0[1,0]
--@@ -264,7 +264,7 @@
-- ; AVX512-LABEL: test_v8f64:
-- ; AVX512:       # %bb.0:
-- ; AVX512-NEXT:    vextractf64x4 $1, %zmm0, %ymm1
---; AVX512-NEXT:    vminpd %ymm1, %ymm0, %ymm0
--+; AVX512-NEXT:    vminpd %zmm1, %zmm0, %zmm0
-- ; AVX512-NEXT:    vextractf128 $1, %ymm0, %xmm1
-- ; AVX512-NEXT:    vminpd %xmm1, %xmm0, %xmm0
-- ; AVX512-NEXT:    vshufpd {{.*#+}} xmm1 = xmm0[1,0]
--@@ -306,7 +306,7 @@
-- ; AVX512:       # %bb.0:
-- ; AVX512-NEXT:    vmaxpd %zmm1, %zmm0, %zmm0
-- ; AVX512-NEXT:    vextractf64x4 $1, %zmm0, %ymm1
---; AVX512-NEXT:    vmaxpd %ymm1, %ymm0, %ymm0
--+; AVX512-NEXT:    vmaxpd %zmm1, %zmm0, %zmm0
-- ; AVX512-NEXT:    vextractf128 $1, %ymm0, %xmm1
-- ; AVX512-NEXT:    vmaxpd %xmm1, %xmm0, %xmm0
-- ; AVX512-NEXT:    vshufpd {{.*#+}} xmm1 = xmm0[1,0]
--diff -ruN --strip-trailing-cr a/llvm/test/CodeGen/X86/vector-reduce-fmax-nnan.ll b/llvm/test/CodeGen/X86/vector-reduce-fmax-nnan.ll
----- a/llvm/test/CodeGen/X86/vector-reduce-fmax-nnan.ll
--+++ b/llvm/test/CodeGen/X86/vector-reduce-fmax-nnan.ll
--@@ -175,7 +175,7 @@
-- ; AVX512-LABEL: test_v16f32:
-- ; AVX512:       # %bb.0:
-- ; AVX512-NEXT:    vextractf64x4 $1, %zmm0, %ymm1
---; AVX512-NEXT:    vmaxps %ymm1, %ymm0, %ymm0
--+; AVX512-NEXT:    vmaxps %zmm1, %zmm0, %zmm0
-- ; AVX512-NEXT:    vextractf128 $1, %ymm0, %xmm1
-- ; AVX512-NEXT:    vmaxps %xmm1, %xmm0, %xmm0
-- ; AVX512-NEXT:    vshufpd {{.*#+}} xmm1 = xmm0[1,0]
--@@ -311,7 +311,7 @@
-- ; AVX512-LABEL: test_v8f64:
-- ; AVX512:       # %bb.0:
-- ; AVX512-NEXT:    vextractf64x4 $1, %zmm0, %ymm1
---; AVX512-NEXT:    vmaxpd %ymm1, %ymm0, %ymm0
--+; AVX512-NEXT:    vmaxpd %zmm1, %zmm0, %zmm0
-- ; AVX512-NEXT:    vextractf128 $1, %ymm0, %xmm1
-- ; AVX512-NEXT:    vmaxpd %xmm1, %xmm0, %xmm0
-- ; AVX512-NEXT:    vshufpd {{.*#+}} xmm1 = xmm0[1,0]
--@@ -353,7 +353,7 @@
-- ; AVX512:       # %bb.0:
-- ; AVX512-NEXT:    vmaxpd %zmm1, %zmm0, %zmm0
-- ; AVX512-NEXT:    vextractf64x4 $1, %zmm0, %ymm1
---; AVX512-NEXT:    vmaxpd %ymm1, %ymm0, %ymm0
--+; AVX512-NEXT:    vmaxpd %zmm1, %zmm0, %zmm0
-- ; AVX512-NEXT:    vextractf128 $1, %ymm0, %xmm1
-- ; AVX512-NEXT:    vmaxpd %xmm1, %xmm0, %xmm0
-- ; AVX512-NEXT:    vshufpd {{.*#+}} xmm1 = xmm0[1,0]
--diff -ruN --strip-trailing-cr a/llvm/test/CodeGen/X86/vector-reduce-fmin-nnan.ll b/llvm/test/CodeGen/X86/vector-reduce-fmin-nnan.ll
----- a/llvm/test/CodeGen/X86/vector-reduce-fmin-nnan.ll
--+++ b/llvm/test/CodeGen/X86/vector-reduce-fmin-nnan.ll
--@@ -216,7 +216,7 @@
-- ; AVX512-LABEL: test_v16f32:
-- ; AVX512:       # %bb.0:
-- ; AVX512-NEXT:    vextractf64x4 $1, %zmm0, %ymm1
---; AVX512-NEXT:    vminps %ymm1, %ymm0, %ymm0
--+; AVX512-NEXT:    vminps %zmm1, %zmm0, %zmm0
-- ; AVX512-NEXT:    vextractf128 $1, %ymm0, %xmm1
-- ; AVX512-NEXT:    vminps %xmm1, %xmm0, %xmm0
-- ; AVX512-NEXT:    vshufpd {{.*#+}} xmm1 = xmm0[1,0]
--@@ -310,7 +310,7 @@
-- ; AVX512-LABEL: test_v8f64:
-- ; AVX512:       # %bb.0:
-- ; AVX512-NEXT:    vextractf64x4 $1, %zmm0, %ymm1
---; AVX512-NEXT:    vminpd %ymm1, %ymm0, %ymm0
--+; AVX512-NEXT:    vminpd %zmm1, %zmm0, %zmm0
-- ; AVX512-NEXT:    vextractf128 $1, %ymm0, %xmm1
-- ; AVX512-NEXT:    vminpd %xmm1, %xmm0, %xmm0
-- ; AVX512-NEXT:    vshufpd {{.*#+}} xmm1 = xmm0[1,0]
--@@ -352,7 +352,7 @@
-- ; AVX512:       # %bb.0:
-- ; AVX512-NEXT:    vminpd %zmm1, %zmm0, %zmm0
-- ; AVX512-NEXT:    vextractf64x4 $1, %zmm0, %ymm1
---; AVX512-NEXT:    vminpd %ymm1, %ymm0, %ymm0
--+; AVX512-NEXT:    vminpd %zmm1, %zmm0, %zmm0
-- ; AVX512-NEXT:    vextractf128 $1, %ymm0, %xmm1
-- ; AVX512-NEXT:    vminpd %xmm1, %xmm0, %xmm0
-- ; AVX512-NEXT:    vshufpd {{.*#+}} xmm1 = xmm0[1,0]
--diff -ruN --strip-trailing-cr a/llvm/test/CodeGen/X86/vector-reduce-mul.ll b/llvm/test/CodeGen/X86/vector-reduce-mul.ll
----- a/llvm/test/CodeGen/X86/vector-reduce-mul.ll
--+++ b/llvm/test/CodeGen/X86/vector-reduce-mul.ll
--@@ -357,14 +357,14 @@
-- ; AVX512BW-LABEL: test_v8i64:
-- ; AVX512BW:       # %bb.0:
-- ; AVX512BW-NEXT:    vextracti64x4 $1, %zmm0, %ymm1
---; AVX512BW-NEXT:    vpsrlq $32, %ymm0, %ymm2
---; AVX512BW-NEXT:    vpmuludq %ymm1, %ymm2, %ymm2
---; AVX512BW-NEXT:    vpsrlq $32, %ymm1, %ymm3
---; AVX512BW-NEXT:    vpmuludq %ymm3, %ymm0, %ymm3
---; AVX512BW-NEXT:    vpaddq %ymm2, %ymm3, %ymm2
---; AVX512BW-NEXT:    vpsllq $32, %ymm2, %ymm2
---; AVX512BW-NEXT:    vpmuludq %ymm1, %ymm0, %ymm0
---; AVX512BW-NEXT:    vpaddq %ymm2, %ymm0, %ymm0
--+; AVX512BW-NEXT:    vpsrlq $32, %zmm0, %zmm2
--+; AVX512BW-NEXT:    vpmuludq %zmm1, %zmm2, %zmm2
--+; AVX512BW-NEXT:    vpsrlq $32, %zmm1, %zmm3
--+; AVX512BW-NEXT:    vpmuludq %zmm3, %zmm0, %zmm3
--+; AVX512BW-NEXT:    vpaddq %zmm2, %zmm3, %zmm2
--+; AVX512BW-NEXT:    vpsllq $32, %zmm2, %zmm2
--+; AVX512BW-NEXT:    vpmuludq %zmm1, %zmm0, %zmm0
--+; AVX512BW-NEXT:    vpaddq %zmm2, %zmm0, %zmm0
-- ; AVX512BW-NEXT:    vextracti128 $1, %ymm0, %xmm1
-- ; AVX512BW-NEXT:    vpsrlq $32, %xmm0, %xmm2
-- ; AVX512BW-NEXT:    vpmuludq %xmm1, %xmm2, %xmm2
--@@ -390,14 +390,14 @@
-- ; AVX512BWVL-LABEL: test_v8i64:
-- ; AVX512BWVL:       # %bb.0:
-- ; AVX512BWVL-NEXT:    vextracti64x4 $1, %zmm0, %ymm1
---; AVX512BWVL-NEXT:    vpsrlq $32, %ymm0, %ymm2
---; AVX512BWVL-NEXT:    vpmuludq %ymm1, %ymm2, %ymm2
---; AVX512BWVL-NEXT:    vpsrlq $32, %ymm1, %ymm3
---; AVX512BWVL-NEXT:    vpmuludq %ymm3, %ymm0, %ymm3
---; AVX512BWVL-NEXT:    vpaddq %ymm2, %ymm3, %ymm2
---; AVX512BWVL-NEXT:    vpsllq $32, %ymm2, %ymm2
---; AVX512BWVL-NEXT:    vpmuludq %ymm1, %ymm0, %ymm0
---; AVX512BWVL-NEXT:    vpaddq %ymm2, %ymm0, %ymm0
--+; AVX512BWVL-NEXT:    vpsrlq $32, %zmm0, %zmm2
--+; AVX512BWVL-NEXT:    vpmuludq %zmm1, %zmm2, %zmm2
--+; AVX512BWVL-NEXT:    vpsrlq $32, %zmm1, %zmm3
--+; AVX512BWVL-NEXT:    vpmuludq %zmm3, %zmm0, %zmm3
--+; AVX512BWVL-NEXT:    vpaddq %zmm2, %zmm3, %zmm2
--+; AVX512BWVL-NEXT:    vpsllq $32, %zmm2, %zmm2
--+; AVX512BWVL-NEXT:    vpmuludq %zmm1, %zmm0, %zmm0
--+; AVX512BWVL-NEXT:    vpaddq %zmm2, %zmm0, %zmm0
-- ; AVX512BWVL-NEXT:    vextracti128 $1, %ymm0, %xmm1
-- ; AVX512BWVL-NEXT:    vpsrlq $32, %xmm0, %xmm2
-- ; AVX512BWVL-NEXT:    vpmuludq %xmm1, %xmm2, %xmm2
--@@ -667,14 +667,14 @@
-- ; AVX512BW-NEXT:    vpmuludq %zmm1, %zmm0, %zmm0
-- ; AVX512BW-NEXT:    vpaddq %zmm2, %zmm0, %zmm0
-- ; AVX512BW-NEXT:    vextracti64x4 $1, %zmm0, %ymm1
---; AVX512BW-NEXT:    vpsrlq $32, %ymm0, %ymm2
---; AVX512BW-NEXT:    vpmuludq %ymm1, %ymm2, %ymm2
---; AVX512BW-NEXT:    vpsrlq $32, %ymm1, %ymm3
---; AVX512BW-NEXT:    vpmuludq %ymm3, %ymm0, %ymm3
---; AVX512BW-NEXT:    vpaddq %ymm2, %ymm3, %ymm2
---; AVX512BW-NEXT:    vpsllq $32, %ymm2, %ymm2
---; AVX512BW-NEXT:    vpmuludq %ymm1, %ymm0, %ymm0
---; AVX512BW-NEXT:    vpaddq %ymm2, %ymm0, %ymm0
--+; AVX512BW-NEXT:    vpsrlq $32, %zmm0, %zmm2
--+; AVX512BW-NEXT:    vpmuludq %zmm1, %zmm2, %zmm2
--+; AVX512BW-NEXT:    vpsrlq $32, %zmm1, %zmm3
--+; AVX512BW-NEXT:    vpmuludq %zmm3, %zmm0, %zmm3
--+; AVX512BW-NEXT:    vpaddq %zmm2, %zmm3, %zmm2
--+; AVX512BW-NEXT:    vpsllq $32, %zmm2, %zmm2
--+; AVX512BW-NEXT:    vpmuludq %zmm1, %zmm0, %zmm0
--+; AVX512BW-NEXT:    vpaddq %zmm2, %zmm0, %zmm0
-- ; AVX512BW-NEXT:    vextracti128 $1, %ymm0, %xmm1
-- ; AVX512BW-NEXT:    vpsrlq $32, %xmm0, %xmm2
-- ; AVX512BW-NEXT:    vpmuludq %xmm1, %xmm2, %xmm2
--@@ -708,14 +708,14 @@
-- ; AVX512BWVL-NEXT:    vpmuludq %zmm1, %zmm0, %zmm0
-- ; AVX512BWVL-NEXT:    vpaddq %zmm2, %zmm0, %zmm0
-- ; AVX512BWVL-NEXT:    vextracti64x4 $1, %zmm0, %ymm1
---; AVX512BWVL-NEXT:    vpsrlq $32, %ymm0, %ymm2
---; AVX512BWVL-NEXT:    vpmuludq %ymm1, %ymm2, %ymm2
---; AVX512BWVL-NEXT:    vpsrlq $32, %ymm1, %ymm3
---; AVX512BWVL-NEXT:    vpmuludq %ymm3, %ymm0, %ymm3
---; AVX512BWVL-NEXT:    vpaddq %ymm2, %ymm3, %ymm2
---; AVX512BWVL-NEXT:    vpsllq $32, %ymm2, %ymm2
---; AVX512BWVL-NEXT:    vpmuludq %ymm1, %ymm0, %ymm0
---; AVX512BWVL-NEXT:    vpaddq %ymm2, %ymm0, %ymm0
--+; AVX512BWVL-NEXT:    vpsrlq $32, %zmm0, %zmm2
--+; AVX512BWVL-NEXT:    vpmuludq %zmm1, %zmm2, %zmm2
--+; AVX512BWVL-NEXT:    vpsrlq $32, %zmm1, %zmm3
--+; AVX512BWVL-NEXT:    vpmuludq %zmm3, %zmm0, %zmm3
--+; AVX512BWVL-NEXT:    vpaddq %zmm2, %zmm3, %zmm2
--+; AVX512BWVL-NEXT:    vpsllq $32, %zmm2, %zmm2
--+; AVX512BWVL-NEXT:    vpmuludq %zmm1, %zmm0, %zmm0
--+; AVX512BWVL-NEXT:    vpaddq %zmm2, %zmm0, %zmm0
-- ; AVX512BWVL-NEXT:    vextracti128 $1, %ymm0, %xmm1
-- ; AVX512BWVL-NEXT:    vpsrlq $32, %xmm0, %xmm2
-- ; AVX512BWVL-NEXT:    vpmuludq %xmm1, %xmm2, %xmm2
--diff -ruN --strip-trailing-cr a/llvm/test/CodeGen/X86/zero_extend_vector_inreg_of_broadcast_from_memory.ll b/llvm/test/CodeGen/X86/zero_extend_vector_inreg_of_broadcast_from_memory.ll
----- a/llvm/test/CodeGen/X86/zero_extend_vector_inreg_of_broadcast_from_memory.ll
--+++ b/llvm/test/CodeGen/X86/zero_extend_vector_inreg_of_broadcast_from_memory.ll
--@@ -3862,14 +3862,15 @@
-- ; AVX-NEXT:    vpxor %xmm2, %xmm2, %xmm2
-- ; AVX-NEXT:    vpblendw {{.*#+}} xmm0 = xmm0[0,1],xmm2[2,3,4,5,6,7]
-- ; AVX-NEXT:    vpshufd {{.*#+}} xmm0 = xmm0[1,0,1,1]
---; AVX-NEXT:    vbroadcastss (%rdi), %xmm3
--+; AVX-NEXT:    vbroadcastss (%rdi), %ymm3
-- ; AVX-NEXT:    vpaddb 32(%rsi), %xmm0, %xmm0
---; AVX-NEXT:    vpaddb (%rsi), %xmm1, %xmm1
-- ; AVX-NEXT:    vpblendw {{.*#+}} xmm2 = xmm2[0,1,2,3],xmm3[4,5],xmm2[6,7]
-- ; AVX-NEXT:    vpaddb 16(%rsi), %xmm2, %xmm2
---; AVX-NEXT:    vmovdqa %xmm2, 16(%rdx)
--+; AVX-NEXT:    vpaddb (%rsi), %xmm1, %xmm1
-- ; AVX-NEXT:    vmovdqa %xmm1, (%rdx)
--+; AVX-NEXT:    vmovdqa %xmm2, 16(%rdx)
-- ; AVX-NEXT:    vmovdqa %xmm0, 32(%rdx)
--+; AVX-NEXT:    vzeroupper
-- ; AVX-NEXT:    retq
-- ;
-- ; AVX2-SLOW-LABEL: vec384_i32_widen_to_i96_factor3_broadcast_to_v4i96_factor4:
--@@ -4115,7 +4116,7 @@
-- ; AVX:       # %bb.0:
-- ; AVX-NEXT:    vmovdqa 48(%rdi), %xmm0
-- ; AVX-NEXT:    vpblendw {{.*#+}} xmm0 = mem[0,1],xmm0[2,3,4,5,6,7]
---; AVX-NEXT:    vbroadcastss (%rdi), %xmm1
--+; AVX-NEXT:    vbroadcastss (%rdi), %ymm1
-- ; AVX-NEXT:    vmovaps 32(%rsi), %ymm2
-- ; AVX-NEXT:    vxorps %xmm3, %xmm3, %xmm3
-- ; AVX-NEXT:    vblendps {{.*#+}} xmm1 = xmm3[0,1],xmm1[2],xmm3[3]
++diff -ruN --strip-trailing-cr a/clang/lib/Driver/ToolChains/Clang.cpp b/clang/lib/Driver/ToolChains/Clang.cpp
++--- a/clang/lib/Driver/ToolChains/Clang.cpp
+++++ b/clang/lib/Driver/ToolChains/Clang.cpp
++@@ -6397,7 +6397,9 @@
++   Args.AddLastArg(CmdArgs, options::OPT_fconvergent_functions,
++                   options::OPT_fno_convergent_functions);
++ 
++-  addPGOAndCoverageFlags(TC, C, JA, Output, Args, SanitizeArgs, CmdArgs);
+++  // NVPTX doesn't support PGO or coverage
+++  if (!Triple.isNVPTX())
+++    addPGOAndCoverageFlags(TC, C, JA, Output, Args, SanitizeArgs, CmdArgs);
++ 
++   Args.AddLastArg(CmdArgs, options::OPT_fclang_abi_compat_EQ);
++ 
++diff -ruN --strip-trailing-cr a/clang/test/Driver/cuda-no-pgo-or-coverage.cu b/clang/test/Driver/cuda-no-pgo-or-coverage.cu
++--- a/clang/test/Driver/cuda-no-pgo-or-coverage.cu
+++++ b/clang/test/Driver/cuda-no-pgo-or-coverage.cu
++@@ -0,0 +1,33 @@
+++// Check that profiling/coverage arguments doen't get passed down to device-side
+++// compilation.
+++//
+++//
+++// XRUN: not %clang -### --target=x86_64-linux-gnu -c --cuda-gpu-arch=sm_20 \
+++// XRUN:   -fprofile-generate %s 2>&1 | \
+++// XRUN:   FileCheck --check-prefixes=CHECK,PROF %s
+++//
+++// RUN: not %clang -### --target=x86_64-linux-gnu -c --cuda-gpu-arch=sm_20 \
+++// RUN:   -fprofile-instr-generate %s 2>&1 | \
+++// RUN:   FileCheck --check-prefixes=CHECK,PROF %s
+++//
+++// RUN: not %clang -### --target=x86_64-linux-gnu -c --cuda-gpu-arch=sm_20 \
+++// RUN:   -coverage %s 2>&1 | \
+++// RUN:   FileCheck --check-prefixes=CHECK,GCOV %s
+++//
+++// RUN: not %clang -### --target=x86_64-linux-gnu -c --cuda-gpu-arch=sm_20 \
+++// RUN:   -ftest-coverage %s 2>&1 | \
+++// RUN:   FileCheck --check-prefixes=CHECK,GCOV %s
+++//
+++// RUN: not %clang -### --target=x86_64-linux-gnu -c --cuda-gpu-arch=sm_20   \
+++// RUN:   -fprofile-instr-generate -fcoverage-mapping %s 2>&1 | \
+++// RUN:   FileCheck --check-prefixes=CHECK,PROF %s
+++//
+++//
+++// CHECK-NOT: error: unsupported option '-fprofile
+++// CHECK-NOT: error: invalid argument
+++// CHECK-DAG: "-fcuda-is-device"
+++// CHECK-NOT: "-f{{[^"/]*coverage.*}}"
+++// CHECK-NOT: "-fprofile{{[^"]*}}"
+++// CHECK: "-triple" "x86_64-unknown-linux-gnu"
+++// PROF:      "-fprofile{{.*}}"
+++// GCOV:      "-coverage-notes-file=
++diff -ruN --strip-trailing-cr a/lldb/tools/lldb-dap/DAP.cpp b/lldb/tools/lldb-dap/DAP.cpp
++--- a/lldb/tools/lldb-dap/DAP.cpp
+++++ b/lldb/tools/lldb-dap/DAP.cpp
++@@ -711,12 +711,12 @@
++                            [](const std::string &message) -> llvm::StringRef {
++                              return message;
++                            },
++-                           [](const protocol::Response::Message &message)
+++                           [](const protocol::ResponseMessage &message)
++                                -> llvm::StringRef {
++                              switch (message) {
++-                             case protocol::Response::Message::cancelled:
+++                             case protocol::eResponseMessageCancelled:
++                                return "cancelled";
++-                             case protocol::Response::Message::notStopped:
+++                             case protocol::eResponseMessageNotStopped:
++                                return "notStopped";
++                              }
++                            }),
++diff -ruN --strip-trailing-cr a/lldb/tools/lldb-dap/Protocol/ProtocolBase.cpp b/lldb/tools/lldb-dap/Protocol/ProtocolBase.cpp
++--- a/lldb/tools/lldb-dap/Protocol/ProtocolBase.cpp
+++++ b/lldb/tools/lldb-dap/Protocol/ProtocolBase.cpp
++@@ -7,6 +7,7 @@
++ //===----------------------------------------------------------------------===//
++ 
++ #include "Protocol/ProtocolBase.h"
+++#include "lldb/lldb-enumerations.h"
++ #include "llvm/ADT/StringRef.h"
++ #include "llvm/ADT/StringSwitch.h"
++ #include "llvm/Support/ErrorHandling.h"
++@@ -31,11 +32,8 @@
++ 
++ namespace lldb_dap::protocol {
++ 
++-enum MessageType {
++-  eMessageTypeRequest,
++-  eMessageTypeResponse,
++-  eMessageTypeEvent
++-};
+++FLAGS_ENUM(MessageType){eMessageTypeRequest, eMessageTypeResponse,
+++                        eMessageTypeEvent};
++ 
++ bool fromJSON(const json::Value &Params, MessageType &M, json::Path P) {
++   auto rawType = Params.getAsString();
++@@ -107,12 +105,12 @@
++ 
++   if (R.message) {
++     assert(!R.success && "message can only be used if success is false");
++-    if (const auto *messageEnum = std::get_if<Response::Message>(&*R.message)) {
+++    if (const auto *messageEnum = std::get_if<ResponseMessage>(&*R.message)) {
++       switch (*messageEnum) {
++-      case Response::Message::cancelled:
+++      case eResponseMessageCancelled:
++         Result.insert({"message", "cancelled"});
++         break;
++-      case Response::Message::notStopped:
+++      case eResponseMessageNotStopped:
++         Result.insert({"message", "notStopped"});
++         break;
++       }
++@@ -129,16 +127,16 @@
++ }
++ 
++ bool fromJSON(json::Value const &Params,
++-              std::variant<Response::Message, std::string> &M, json::Path P) {
+++              std::variant<ResponseMessage, std::string> &M, json::Path P) {
++   auto rawMessage = Params.getAsString();
++   if (!rawMessage) {
++     P.report("expected a string");
++     return false;
++   }
++-  std::optional<Response::Message> message =
++-      StringSwitch<std::optional<Response::Message>>(*rawMessage)
++-          .Case("cancelled", Response::Message::cancelled)
++-          .Case("notStopped", Response::Message::notStopped)
+++  std::optional<ResponseMessage> message =
+++      StringSwitch<std::optional<ResponseMessage>>(*rawMessage)
+++          .Case("cancelled", eResponseMessageCancelled)
+++          .Case("notStopped", eResponseMessageNotStopped)
++           .Default(std::nullopt);
++   if (message)
++     M = *message;
++diff -ruN --strip-trailing-cr a/lldb/tools/lldb-dap/Protocol/ProtocolBase.h b/lldb/tools/lldb-dap/Protocol/ProtocolBase.h
++--- a/lldb/tools/lldb-dap/Protocol/ProtocolBase.h
+++++ b/lldb/tools/lldb-dap/Protocol/ProtocolBase.h
++@@ -20,6 +20,7 @@
++ #ifndef LLDB_TOOLS_LLDB_DAP_PROTOCOL_H
++ #define LLDB_TOOLS_LLDB_DAP_PROTOCOL_H
++ 
+++#include "lldb/lldb-enumerations.h"
++ #include "llvm/Support/JSON.h"
++ #include <cstdint>
++ #include <optional>
++@@ -64,15 +65,15 @@
++ llvm::json::Value toJSON(const Event &);
++ bool fromJSON(const llvm::json::Value &, Event &, llvm::json::Path);
++ 
++-/// Response for a request.
++-struct Response {
++-  enum class Message {
+++FLAGS_ENUM(ResponseMessage){
++     /// The request was cancelled
++-    cancelled,
+++    eResponseMessageCancelled,
++     /// The request may be retried once the adapter is in a 'stopped' state
++-    notStopped,
++-  };
+++    eResponseMessageNotStopped,
+++};
++ 
+++/// Response for a request.
+++struct Response {
++   /// Sequence number of the corresponding request.
++   int64_t request_seq;
++ 
++@@ -90,7 +91,7 @@
++   /// Contains the raw error in short form if `success` is false. This raw error
++   /// might be interpreted by the client and is not shown in the UI. Some
++   /// predefined values exist.
++-  std::optional<std::variant<Message, std::string>> message;
+++  std::optional<std::variant<ResponseMessage, std::string>> message;
++ 
++   /// Contains request result if success is true and error details if success is
++   /// false.
++diff -ruN --strip-trailing-cr a/lldb/tools/lldb-dap/Protocol/ProtocolRequests.h b/lldb/tools/lldb-dap/Protocol/ProtocolRequests.h
++--- a/lldb/tools/lldb-dap/Protocol/ProtocolRequests.h
+++++ b/lldb/tools/lldb-dap/Protocol/ProtocolRequests.h
++@@ -22,6 +22,8 @@
++ 
++ #include "Protocol/ProtocolBase.h"
++ #include "Protocol/ProtocolTypes.h"
+++#include "lldb/lldb-enumerations.h"
+++#include "llvm/ADT/DenseSet.h"
++ #include "llvm/Support/JSON.h"
++ #include <cstdint>
++ #include <optional>
++@@ -55,26 +57,26 @@
++ using DisconnectResponse = VoidResponse;
++ 
++ /// Features supported by DAP clients.
++-enum ClientFeature {
++-  eClientFeatureVariableType,
++-  eClientFeatureVariablePaging,
++-  eClientFeatureRunInTerminalRequest,
++-  eClientFeatureMemoryReferences,
++-  eClientFeatureProgressReporting,
++-  eClientFeatureInvalidatedEvent,
++-  eClientFeatureMemoryEvent,
++-  /// Client supports the `argsCanBeInterpretedByShell` attribute on the
++-  /// `runInTerminal` request.
++-  eClientFeatureArgsCanBeInterpretedByShell,
++-  eClientFeatureStartDebuggingRequest,
++-  /// The client will interpret ANSI escape sequences in the display of
++-  /// `OutputEvent.output` and `Variable.value` fields when
++-  /// `Capabilities.supportsANSIStyling` is also enabled.
++-  eClientFeatureANSIStyling,
+++FLAGS_ENUM(ClientFeature){
+++    eClientFeatureVariableType,
+++    eClientFeatureVariablePaging,
+++    eClientFeatureRunInTerminalRequest,
+++    eClientFeatureMemoryReferences,
+++    eClientFeatureProgressReporting,
+++    eClientFeatureInvalidatedEvent,
+++    eClientFeatureMemoryEvent,
+++    /// Client supports the `argsCanBeInterpretedByShell` attribute on the
+++    /// `runInTerminal` request.
+++    eClientFeatureArgsCanBeInterpretedByShell,
+++    eClientFeatureStartDebuggingRequest,
+++    /// The client will interpret ANSI escape sequences in the display of
+++    /// `OutputEvent.output` and `Variable.value` fields when
+++    /// `Capabilities.supportsANSIStyling` is also enabled.
+++    eClientFeatureANSIStyling,
++ };
++ 
++ /// Format of paths reported by the debug adapter.
++-enum PathFormat { ePatFormatPath, ePathFormatURI };
+++FLAGS_ENUM(PathFormat){ePatFormatPath, ePathFormatURI};
++ 
++ /// Arguments for `initialize` request.
++ struct InitializeRequestArguments {
++diff -ruN --strip-trailing-cr a/lldb/tools/lldb-dap/Protocol/ProtocolTypes.h b/lldb/tools/lldb-dap/Protocol/ProtocolTypes.h
++--- a/lldb/tools/lldb-dap/Protocol/ProtocolTypes.h
+++++ b/lldb/tools/lldb-dap/Protocol/ProtocolTypes.h
++@@ -20,6 +20,7 @@
++ #ifndef LLDB_TOOLS_LLDB_DAP_PROTOCOL_PROTOCOL_TYPES_H
++ #define LLDB_TOOLS_LLDB_DAP_PROTOCOL_PROTOCOL_TYPES_H
++ 
+++#include "lldb/lldb-enumerations.h"
++ #include "llvm/ADT/DenseSet.h"
++ #include "llvm/Support/JSON.h"
++ #include <cstdint>
++@@ -56,12 +57,8 @@
++ };
++ llvm::json::Value toJSON(const ExceptionBreakpointsFilter &);
++ 
++-enum ColumnType {
++-  eColumnTypeString,
++-  eColumnTypeNumber,
++-  eColumnTypeBoolean,
++-  eColumnTypeTimestamp
++-};
+++FLAGS_ENUM(ColumnType){eColumnTypeString, eColumnTypeNumber, eColumnTypeBoolean,
+++                       eColumnTypeTimestamp};
++ 
++ /// A ColumnDescriptor specifies what module attribute to show in a column of
++ /// the modules view, how to format it, and what the column’s label should be.
++@@ -90,27 +87,23 @@
++ 
++ /// Names of checksum algorithms that may be supported by a debug adapter.
++ /// Values: ‘MD5’, ‘SHA1’, ‘SHA256’, ‘timestamp’.
++-enum ChecksumAlgorithm {
++-  eChecksumAlgorithmMD5,
++-  eChecksumAlgorithmSHA1,
++-  eChecksumAlgorithmSHA256,
++-  eChecksumAlgorithmTimestamp
++-};
+++FLAGS_ENUM(ChecksumAlgorithm){eChecksumAlgorithmMD5, eChecksumAlgorithmSHA1,
+++                              eChecksumAlgorithmSHA256,
+++                              eChecksumAlgorithmTimestamp};
++ llvm::json::Value toJSON(const ChecksumAlgorithm &);
++ 
++ /// Describes one or more type of breakpoint a BreakpointMode applies to. This
++ /// is a non-exhaustive enumeration and may expand as future breakpoint types
++ /// are added.
++-enum BreakpointModeApplicability {
++-  /// In `SourceBreakpoint`'s.
++-  eBreakpointModeApplicabilitySource,
++-  /// In exception breakpoints applied in the `ExceptionFilterOptions`.
++-  eBreakpointModeApplicabilityException,
++-  /// In data breakpoints requested in the `DataBreakpointInfo` request.
++-  eBreakpointModeApplicabilityData,
++-  /// In `InstructionBreakpoint`'s.
++-  eBreakpointModeApplicabilityInstruction
++-};
+++FLAGS_ENUM(BreakpointModeApplicability){
+++    /// In `SourceBreakpoint`'s.
+++    eBreakpointModeApplicabilitySource,
+++    /// In exception breakpoints applied in the `ExceptionFilterOptions`.
+++    eBreakpointModeApplicabilityException,
+++    /// In data breakpoints requested in the `DataBreakpointInfo` request.
+++    eBreakpointModeApplicabilityData,
+++    /// In `InstructionBreakpoint`'s.
+++    eBreakpointModeApplicabilityInstruction};
++ llvm::json::Value toJSON(const BreakpointModeApplicability &);
++ 
++ /// A `BreakpointMode` is provided as a option when setting breakpoints on
++@@ -133,101 +126,101 @@
++ llvm::json::Value toJSON(const BreakpointMode &);
++ 
++ /// Debug Adapter Features flags supported by lldb-dap.
++-enum AdapterFeature {
++-  /// The debug adapter supports ANSI escape sequences in styling of
++-  /// `OutputEvent.output` and `Variable.value` fields.
++-  eAdapterFeatureANSIStyling,
++-  /// The debug adapter supports the `breakpointLocations` request.
++-  eAdapterFeatureBreakpointLocationsRequest,
++-  /// The debug adapter supports the `cancel` request.
++-  eAdapterFeatureCancelRequest,
++-  /// The debug adapter supports the `clipboard` context value in the
++-  /// `evaluate` request.
++-  eAdapterFeatureClipboardContext,
++-  /// The debug adapter supports the `completions` request.
++-  eAdapterFeatureCompletionsRequest,
++-  /// The debug adapter supports conditional breakpoints.
++-  eAdapterFeatureConditionalBreakpoints,
++-  /// The debug adapter supports the `configurationDone` request.
++-  eAdapterFeatureConfigurationDoneRequest,
++-  /// The debug adapter supports the `asAddress` and `bytes` fields in the
++-  /// `dataBreakpointInfo` request.
++-  eAdapterFeatureDataBreakpointBytes,
++-  /// The debug adapter supports data breakpoints.
++-  eAdapterFeatureDataBreakpoints,
++-  /// The debug adapter supports the delayed loading of parts of the stack,
++-  /// which requires that both the `startFrame` and `levels` arguments and the
++-  /// `totalFrames` result of the `stackTrace` request are supported.
++-  eAdapterFeatureDelayedStackTraceLoading,
++-  /// The debug adapter supports the `disassemble` request.
++-  eAdapterFeatureDisassembleRequest,
++-  /// The debug adapter supports a (side effect free) `evaluate` request for
++-  /// data hovers.
++-  eAdapterFeatureEvaluateForHovers,
++-  /// The debug adapter supports `filterOptions` as an argument on the
++-  /// `setExceptionBreakpoints` request.
++-  eAdapterFeatureExceptionFilterOptions,
++-  /// The debug adapter supports the `exceptionInfo` request.
++-  eAdapterFeatureExceptionInfoRequest,
++-  /// The debug adapter supports `exceptionOptions` on the
++-  /// `setExceptionBreakpoints` request.
++-  eAdapterFeatureExceptionOptions,
++-  /// The debug adapter supports function breakpoints.
++-  eAdapterFeatureFunctionBreakpoints,
++-  /// The debug adapter supports the `gotoTargets` request.
++-  eAdapterFeatureGotoTargetsRequest,
++-  /// The debug adapter supports breakpoints that break execution after a
++-  /// specified number of hits.
++-  eAdapterFeatureHitConditionalBreakpoints,
++-  /// The debug adapter supports adding breakpoints based on instruction
++-  /// references.
++-  eAdapterFeatureInstructionBreakpoints,
++-  /// The debug adapter supports the `loadedSources` request.
++-  eAdapterFeatureLoadedSourcesRequest,
++-  /// The debug adapter supports log points by interpreting the `logMessage`
++-  /// attribute of the `SourceBreakpoint`.
++-  eAdapterFeatureLogPoints,
++-  /// The debug adapter supports the `modules` request.
++-  eAdapterFeatureModulesRequest,
++-  /// The debug adapter supports the `readMemory` request.
++-  eAdapterFeatureReadMemoryRequest,
++-  /// The debug adapter supports restarting a frame.
++-  eAdapterFeatureRestartFrame,
++-  /// The debug adapter supports the `restart` request. In this case a client
++-  /// should not implement `restart` by terminating and relaunching the
++-  /// adapter but by calling the `restart` request.
++-  eAdapterFeatureRestartRequest,
++-  /// The debug adapter supports the `setExpression` request.
++-  eAdapterFeatureSetExpression,
++-  /// The debug adapter supports setting a variable to a value.
++-  eAdapterFeatureSetVariable,
++-  /// The debug adapter supports the `singleThread` property on the execution
++-  /// requests (`continue`, `next`, `stepIn`, `stepOut`, `reverseContinue`,
++-  /// `stepBack`).
++-  eAdapterFeatureSingleThreadExecutionRequests,
++-  /// The debug adapter supports stepping back via the `stepBack` and
++-  /// `reverseContinue` requests.
++-  eAdapterFeatureStepBack,
++-  /// The debug adapter supports the `stepInTargets` request.
++-  eAdapterFeatureStepInTargetsRequest,
++-  /// The debug adapter supports stepping granularities (argument
++-  /// `granularity`) for the stepping requests.
++-  eAdapterFeatureSteppingGranularity,
++-  /// The debug adapter supports the `terminate` request.
++-  eAdapterFeatureTerminateRequest,
++-  /// The debug adapter supports the `terminateThreads` request.
++-  eAdapterFeatureTerminateThreadsRequest,
++-  /// The debug adapter supports the `suspendDebuggee` attribute on the
++-  /// `disconnect` request.
++-  eAdapterFeatureSuspendDebuggee,
++-  /// The debug adapter supports a `format` attribute on the `stackTrace`,
++-  /// `variables`, and `evaluate` requests.
++-  eAdapterFeatureValueFormattingOptions,
++-  /// The debug adapter supports the `writeMemory` request.
++-  eAdapterFeatureWriteMemoryRequest,
++-  /// The debug adapter supports the `terminateDebuggee` attribute on the
++-  /// `disconnect` request.
++-  eAdapterFeatureTerminateDebuggee,
+++FLAGS_ENUM(AdapterFeature){
+++    /// The debug adapter supports ANSI escape sequences in styling of
+++    /// `OutputEvent.output` and `Variable.value` fields.
+++    eAdapterFeatureANSIStyling,
+++    /// The debug adapter supports the `breakpointLocations` request.
+++    eAdapterFeatureBreakpointLocationsRequest,
+++    /// The debug adapter supports the `cancel` request.
+++    eAdapterFeatureCancelRequest,
+++    /// The debug adapter supports the `clipboard` context value in the
+++    /// `evaluate` request.
+++    eAdapterFeatureClipboardContext,
+++    /// The debug adapter supports the `completions` request.
+++    eAdapterFeatureCompletionsRequest,
+++    /// The debug adapter supports conditional breakpoints.
+++    eAdapterFeatureConditionalBreakpoints,
+++    /// The debug adapter supports the `configurationDone` request.
+++    eAdapterFeatureConfigurationDoneRequest,
+++    /// The debug adapter supports the `asAddress` and `bytes` fields in the
+++    /// `dataBreakpointInfo` request.
+++    eAdapterFeatureDataBreakpointBytes,
+++    /// The debug adapter supports data breakpoints.
+++    eAdapterFeatureDataBreakpoints,
+++    /// The debug adapter supports the delayed loading of parts of the stack,
+++    /// which requires that both the `startFrame` and `levels` arguments and the
+++    /// `totalFrames` result of the `stackTrace` request are supported.
+++    eAdapterFeatureDelayedStackTraceLoading,
+++    /// The debug adapter supports the `disassemble` request.
+++    eAdapterFeatureDisassembleRequest,
+++    /// The debug adapter supports a (side effect free) `evaluate` request for
+++    /// data hovers.
+++    eAdapterFeatureEvaluateForHovers,
+++    /// The debug adapter supports `filterOptions` as an argument on the
+++    /// `setExceptionBreakpoints` request.
+++    eAdapterFeatureExceptionFilterOptions,
+++    /// The debug adapter supports the `exceptionInfo` request.
+++    eAdapterFeatureExceptionInfoRequest,
+++    /// The debug adapter supports `exceptionOptions` on the
+++    /// `setExceptionBreakpoints` request.
+++    eAdapterFeatureExceptionOptions,
+++    /// The debug adapter supports function breakpoints.
+++    eAdapterFeatureFunctionBreakpoints,
+++    /// The debug adapter supports the `gotoTargets` request.
+++    eAdapterFeatureGotoTargetsRequest,
+++    /// The debug adapter supports breakpoints that break execution after a
+++    /// specified number of hits.
+++    eAdapterFeatureHitConditionalBreakpoints,
+++    /// The debug adapter supports adding breakpoints based on instruction
+++    /// references.
+++    eAdapterFeatureInstructionBreakpoints,
+++    /// The debug adapter supports the `loadedSources` request.
+++    eAdapterFeatureLoadedSourcesRequest,
+++    /// The debug adapter supports log points by interpreting the `logMessage`
+++    /// attribute of the `SourceBreakpoint`.
+++    eAdapterFeatureLogPoints,
+++    /// The debug adapter supports the `modules` request.
+++    eAdapterFeatureModulesRequest,
+++    /// The debug adapter supports the `readMemory` request.
+++    eAdapterFeatureReadMemoryRequest,
+++    /// The debug adapter supports restarting a frame.
+++    eAdapterFeatureRestartFrame,
+++    /// The debug adapter supports the `restart` request. In this case a client
+++    /// should not implement `restart` by terminating and relaunching the
+++    /// adapter but by calling the `restart` request.
+++    eAdapterFeatureRestartRequest,
+++    /// The debug adapter supports the `setExpression` request.
+++    eAdapterFeatureSetExpression,
+++    /// The debug adapter supports setting a variable to a value.
+++    eAdapterFeatureSetVariable,
+++    /// The debug adapter supports the `singleThread` property on the execution
+++    /// requests (`continue`, `next`, `stepIn`, `stepOut`, `reverseContinue`,
+++    /// `stepBack`).
+++    eAdapterFeatureSingleThreadExecutionRequests,
+++    /// The debug adapter supports stepping back via the `stepBack` and
+++    /// `reverseContinue` requests.
+++    eAdapterFeatureStepBack,
+++    /// The debug adapter supports the `stepInTargets` request.
+++    eAdapterFeatureStepInTargetsRequest,
+++    /// The debug adapter supports stepping granularities (argument
+++    /// `granularity`) for the stepping requests.
+++    eAdapterFeatureSteppingGranularity,
+++    /// The debug adapter supports the `terminate` request.
+++    eAdapterFeatureTerminateRequest,
+++    /// The debug adapter supports the `terminateThreads` request.
+++    eAdapterFeatureTerminateThreadsRequest,
+++    /// The debug adapter supports the `suspendDebuggee` attribute on the
+++    /// `disconnect` request.
+++    eAdapterFeatureSuspendDebuggee,
+++    /// The debug adapter supports a `format` attribute on the `stackTrace`,
+++    /// `variables`, and `evaluate` requests.
+++    eAdapterFeatureValueFormattingOptions,
+++    /// The debug adapter supports the `writeMemory` request.
+++    eAdapterFeatureWriteMemoryRequest,
+++    /// The debug adapter supports the `terminateDebuggee` attribute on the
+++    /// `disconnect` request.
+++    eAdapterFeatureTerminateDebuggee,
++ };
++ 
++ /// Information about the capabilities of a debug adapter.
++@@ -268,10 +261,10 @@
++ };
++ llvm::json::Value toJSON(const Capabilities &);
++ 
++-enum PresentationHint {
++-  ePresentationHintNormal,
++-  ePresentationHintEmphasize,
++-  ePresentationHintDeemphasize,
+++FLAGS_ENUM(PresentationHint){
+++    ePresentationHintNormal,
+++    ePresentationHintEmphasize,
+++    ePresentationHintDeemphasize,
++ };
++ 
++ /// A `Source` is a descriptor for source code. It is returned from the debug
++diff -ruN --strip-trailing-cr a/llvm/test/tools/llvm-profdata/malformed-ptr-to-counter-array.test b/llvm/test/tools/llvm-profdata/malformed-ptr-to-counter-array.test
++--- a/llvm/test/tools/llvm-profdata/malformed-ptr-to-counter-array.test
+++++ b/llvm/test/tools/llvm-profdata/malformed-ptr-to-counter-array.test
++@@ -1,7 +1,7 @@
++ // Header
++ //
++ // INSTR_PROF_RAW_HEADER(uint64_t, Magic, __llvm_profile_get_magic())
++-// INSTR_PROF_RAW_HEADER(uint64_t, Version, Version)
+++// INSTR_PROF_RAW_HEADER(uint64_t, Version, __llvm_profile_get_version())
++ // INSTR_PROF_RAW_HEADER(uint64_t, BinaryIdsSize, __llvm_write_binary_ids(NULL))
++ // INSTR_PROF_RAW_HEADER(uint64_t, DataSize, DataSize)
++ // INSTR_PROF_RAW_HEADER(uint64_t, CountersSize, CountersSize)
++diff -ruN --strip-trailing-cr a/offload/test/offloading/gpupgo/pgo1.c b/offload/test/offloading/gpupgo/pgo1.c
++--- a/offload/test/offloading/gpupgo/pgo1.c
+++++ b/offload/test/offloading/gpupgo/pgo1.c
++@@ -14,7 +14,7 @@
++ // RUN:     %target_triple.%basename_t.clang.profraw | \
++ // RUN:     %fcheck-generic --check-prefix="CLANG-PGO"
++ 
++-// REQUIRES: gpu
+++// REQUIRES: amdgpu
++ // REQUIRES: pgo
++ 
++ int test1(int a) { return a / 2; }
++diff -ruN --strip-trailing-cr a/offload/test/offloading/gpupgo/pgo2.c b/offload/test/offloading/gpupgo/pgo2.c
++--- a/offload/test/offloading/gpupgo/pgo2.c
+++++ b/offload/test/offloading/gpupgo/pgo2.c
++@@ -48,7 +48,7 @@
++ // RUN:     %target_triple.%basename_t.hfdi.profraw \
++ // RUN:     | %fcheck-generic --check-prefix="LLVM-DEVICE"
++ 
++-// REQUIRES: gpu
+++// REQUIRES: amdgpu
++ // REQUIRES: pgo
++ 
++ int main() {
 diff --git a/third_party/llvm/workspace.bzl b/third_party/llvm/workspace.bzl
-index 5ceac99..725480b 100644
+index 725480b..005737a 100644
 --- a/third_party/llvm/workspace.bzl
 +++ b/third_party/llvm/workspace.bzl
 @@ -4,8 +4,8 @@ load("//third_party:repo.bzl", "tf_http_archive")
  
  def repo(name):
      """Imports LLVM."""
--    LLVM_COMMIT = "5eccd71ce4f852c7b2f06ecd1976d9e34040fcaa"
--    LLVM_SHA256 = "fd100fd69425ebac40ed58ff0558e0064b74bd97b6023d5e65e4c706c726a483"
-+    LLVM_COMMIT = "71a977d0d611f3e9f6137a6b8a26b730b2886ce9"
-+    LLVM_SHA256 = "9bdf3ddf45c069248af36080a78b56d839d3aad6f9b727ec1ee1be72682888cc"
+-    LLVM_COMMIT = "71a977d0d611f3e9f6137a6b8a26b730b2886ce9"
+-    LLVM_SHA256 = "9bdf3ddf45c069248af36080a78b56d839d3aad6f9b727ec1ee1be72682888cc"
++    LLVM_COMMIT = "c0952a931c7d556ca9f0073d86d591a37eb60477"
++    LLVM_SHA256 = "0a24477c0e3d6f3418dad1fe6375a74381b7b174c32c750f97ea05d540dddb84"
  
      tf_http_archive(
          name = name,
