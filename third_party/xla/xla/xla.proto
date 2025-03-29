@@ -249,9 +249,7 @@ message DebugOptions {
     // Additionally, enable collective-permute cycle decomposer. This set of
     // optimizations will lead to best overlap for trivial pipeline parallelism
     // implementation.
-    // TODO(b/393127848): Remove these optimizations when all users implement
-    // cycle decomposition at the JAX level.
-    PIPELINE_PARALLELISM_OPT_LEVEL_ENABLE_CYCLE_DECOMPOSER = 2;
+    reserved 2;  // Was PIPELINE_PARALLELISM_OPT_LEVEL_ENABLE_CYCLE_DECOMPOSER
   }
 
   // Denylist for cuDNN convolutions.
@@ -755,11 +753,6 @@ message DebugOptions {
   // memory, or have bugs.
   bool xla_gpu_unsafe_fallback_to_driver_on_ptxas_not_found = 138;
 
-  // Recognises rotate-right patterns (slice, slice, concat) within a while
-  // loop and labels the while loop as a pipelined while loop. This is an
-  // unsafe flag.
-  bool xla_gpu_unsafe_pipelined_loop_annotator = 309;
-
   // If true, XLA will annotate instructions in the dumps with emitter code
   // location (source:line) annotations. This helps to identify the source of
   // the code that emits a particular instruction.
@@ -1223,8 +1216,9 @@ message DebugOptions {
   // xla_gpu_enable_bf16_3way_gemm
   // xla_gpu_enable_bf16_6way_gemm
   // xla_gpu_enable_cudnn_fmha
+  // xla_gpu_unsafe_pipelined_loop_annotator
   reserved 5, 117, 133, 139, 176, 178, 180, 193, 214, 194, 221, 242, 206, 320,
-      325, 326, 332, 361, 270, 229, 271, 279, 218;
+      325, 326, 332, 361, 270, 229, 271, 279, 218, 309;
 }
 
 // Contains flags which affects the GPU compilation result.
