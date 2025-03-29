@@ -370,11 +370,16 @@ bool RecursiveCompilabilityChecker::OpIsSlow(const Node& node) const {
   // https://github.com/tensorflow/tensorflow/pull/31012:
   //    ResizeNearestNeighbor, ResizeBilinear, and ResizeBilinearGrad sometimes
   //    create convolutions too large for CuDNN to handle.
+  // NonMaxSuppressionV3/V4 in XLA runs significantly slower than TF kernel in
+  // object detection models, specially when there are a lot of proposed
+  // bounding boxes.
   return node.type_string() == "SelfAdjointEigV2" ||
          node.type_string() == "Svd" || node.type_string() == "Qr" ||
          node.type_string() == "MatrixInverse" ||
          node.type_string() == "MatrixSolve" ||
-         node.type_string() == "ResizeBilinearGrad";
+         node.type_string() == "ResizeBilinearGrad" ||
+         node.type_string() == "NonMaxSuppressionV3" ||
+         node.type_string() == "NonMaxSuppressionV4";
 }
 
 bool RecursiveCompilabilityChecker::IsCompilableNode(
