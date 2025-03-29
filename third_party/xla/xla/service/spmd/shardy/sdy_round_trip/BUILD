@@ -15,6 +15,8 @@ package_group(
         "//third_party/openxla/shardy/tools/...",
         "//third_party/py/jax/...",
         "//xla/...",
+        # TODO(b/406478471): remove once StableHLO serialization supports different dialects
+        "//third_party/australis/google/ifrt/...",
     ],
 )
 
