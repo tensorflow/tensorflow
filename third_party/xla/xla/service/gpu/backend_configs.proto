@@ -127,6 +127,9 @@ message CollectiveBackendConfig {
   // Determines whether the collective op of interested has been pipelined
   // within a loop.
   bool is_pipelined = 3;
+  // Determines whether the collective op of interested is a candidate for
+  // sync collective combiner.
+  bool is_sync_combiner_candidate = 5;
   // Cost model prediction.
   repeated ReificationCost reification_cost = 4;
 }

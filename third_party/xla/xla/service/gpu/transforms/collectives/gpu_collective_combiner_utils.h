@@ -57,6 +57,10 @@ absl::Status AppendPipelinedInstruction(HloInstruction* instr,
 // Returns true if module contains any pipelined instruction. False otherwise.
 bool ContainsPipelinedInstruction(const HloModule& module);
 
+// Returns true if module contains any combinable sync collective. False
+// otherwise.
+bool ContainsCombinableSyncCollective(const HloModule& module);
+
 }  // namespace xla::gpu
 
 #endif  // XLA_SERVICE_GPU_TRANSFORMS_COLLECTIVES_GPU_COLLECTIVE_COMBINER_UTILS_H_

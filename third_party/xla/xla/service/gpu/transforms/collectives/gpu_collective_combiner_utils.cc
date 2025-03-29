@@ -172,4 +172,21 @@ bool ContainsPipelinedInstruction(const HloModule& module) {
   return false;
 }
 
+bool ContainsCombinableSyncCollective(const HloModule& module) {
+  for (const HloComputation* computation : module.computations()) {
+    for (const HloInstruction* instr : computation->instructions()) {
+      auto backend_config = instr->backend_config<GpuBackendConfig>();
+      if (!backend_config.ok()) {
+        VLOG(2) << "Cannot read backend config for: " << instr->ToString();
+        continue;
+      }
+      if (backend_config->collective_backend_config()
+              .is_sync_combiner_candidate()) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
 }  // namespace xla::gpu

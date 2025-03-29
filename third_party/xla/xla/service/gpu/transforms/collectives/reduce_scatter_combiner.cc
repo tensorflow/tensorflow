@@ -47,10 +47,14 @@ std::optional<ReduceScatterCombiner::GroupKey> PipelinedCombinerKey(
 }
 
 std::optional<ReduceScatterCombiner::GroupKey> SynchronousCombinerKey(
-    const absl::flat_hash_set<HloInstruction*>& sync_collectives,
     const HloInstruction* instruction, const HloDomainMap& domain_map,
     bool combine_by_dim) {
-  if (!sync_collectives.contains(instruction)) {
+  auto backend_config = instruction->backend_config<GpuBackendConfig>();
+  if (!backend_config.ok()) {
+    return std::nullopt;
+  }
+  if (!backend_config->collective_backend_config()
+           .is_sync_combiner_candidate()) {
     return std::nullopt;
   }
   return ReduceScatterCombiner::CombineKey(instruction, domain_map,
@@ -75,21 +79,11 @@ absl::StatusOr<bool> GpuReduceScatterCombiner::Run(
   bool changed = false;
 
   // Combine as much as possible for synchronous collectives.
-  absl::flat_hash_set<HloInstruction*> sync_collectives;
-  if (module->config()
-          .debug_options()
-          .xla_gpu_experimental_enable_sync_collective_combining()) {
-    TF_ASSIGN_OR_RETURN(
-        sync_collectives,
-        SynchronousCollectives(*module, pointer_size_, device_info_));
-  }
-  if (!sync_collectives.empty()) {
+  if (ContainsCombinableSyncCollective(*module)) {
     combine_threshold_in_bytes_ = MaxAvailableMemory(*module, device_info_);
     TF_ASSIGN_OR_RETURN(
         bool combined,
-        RunWithKeyCombiner(
-            module, execution_threads,
-            absl::bind_front(SynchronousCombinerKey, sync_collectives)));
+        RunWithKeyCombiner(module, execution_threads, SynchronousCombinerKey));
     changed |= combined;
   }
 

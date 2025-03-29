@@ -591,5 +591,48 @@ TEST_F(CollectiveCombinerUtilsTest, SynchronousCollectivesWithOverlap) {
               IsOkAndHolds(UnorderedElementsAre(ar1)));
 }
 
+TEST_F(CollectiveCombinerUtilsTest,
+       ContainsCombinableSyncCollectiveReturnFalseForNonAnnotatedCollectives) {
+  absl::string_view kHloText = R"(
+    HloModule m
+
+    add {
+        p0 = f16[] parameter(0)
+        p1 = f16[] parameter(1)
+        ROOT add = f16[] add(p0, p1)
+    }
+
+    ENTRY main {
+        p0 = f16[10000000]{0} parameter(0)
+        ROOT result = f16[10000000]{0} all-reduce(p0), replica_groups={}, to_apply=add
+    }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloText));
+  EXPECT_FALSE(ContainsCombinableSyncCollective(*module));
+}
+
+TEST_F(CollectiveCombinerUtilsTest,
+       ContainsCombinableSyncCollectiveReturnTRUEForAnnotatedCollectives) {
+  absl::string_view kHloText = R"(
+    HloModule m
+
+    add {
+      p0 = f16[] parameter(0)
+      p1 = f16[] parameter(1)
+      ROOT add = f16[] add(p0, p1)
+    }
+
+    ENTRY main {
+      p0 = f16[10000000]{0} parameter(0)
+      ROOT result = f16[10000000]{0} all-reduce(p0), replica_groups={}, to_apply=add,
+        backend_config={"collective_backend_config": {"is_sync_combiner_candidate": true}}
+    }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloText));
+  EXPECT_TRUE(ContainsCombinableSyncCollective(*module));
+}
+
 }  // namespace
 }  // namespace xla::gpu
