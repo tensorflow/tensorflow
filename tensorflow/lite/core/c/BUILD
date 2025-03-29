@@ -277,7 +277,7 @@ cc_test(
 )
 
 # This is a private target, its visibility is set to public only to be
-# used by "tflite_custom_c_library".
+# used by "tflite_custom_c_library" and LiteRT dependencies.
 # Do not use this target directly and don't consider it as a part of the public API.
 alias(
     name = "private_c_api_types",
