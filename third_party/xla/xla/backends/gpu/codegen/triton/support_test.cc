@@ -105,6 +105,7 @@ bool DoesOpSupportType(HloOpcode opcode, PrimitiveType type) {
     case HloOpcode::kReal:
     case HloOpcode::kImag:
     case HloOpcode::kLogistic:
+    case HloOpcode::kCholesky:
       return pu::IsFloatingPointType(type) || pu::IsComplexType(type);
     case HloOpcode::kCbrt:
     case HloOpcode::kErf:
@@ -2324,17 +2325,215 @@ INSTANTIATE_TEST_SUITE_P(
         ::testing::ValuesIn(AllDevicesToTest())),
     DotPrecisionAlgorithmTestName);
 
+using AddDependencyTest = TritonSupportTestWithTypeAndOpcodeAndDeviceParam;
+
+TEST_P(AddDependencyTest, AddDependency) {
+  auto [data_type, opcode, cc] = GetParam();
+  const std::string kHloTestTemplate = R"(
+ENTRY triton_computation {
+  param = $0[10] parameter(0)
+  token0 = token[] after-all()
+  ROOT add_dep = $0[10] add-dependency(param, token0)
+})";
+  TF_ASSERT_OK_AND_ASSIGN(
+      TestedInstruction ti,
+      ParseTemplateAndGetInstruction(kHloTestTemplate, data_type, opcode));
+  RunSupportTest(std::move(ti), /*output_tile_sizes=*/{1}, cc);
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    AddDependencySuite, AddDependencyTest,
+    AllTestCombinationsForOpcodes({HloOpcode::kAddDependency}),
+    TritonSupportTestTypeAndOpcodeAndDeviceToString);
+
+using AfterAllTest = TritonSupportTestWithDeviceParam;
+
+TEST_P(AfterAllTest, AfterAll) {
+  auto cc = GetParam();
+  const std::string kHloTestTemplate = R"(
+ENTRY triton_computation {
+  token0 = token[] after-all()
+  token1 = token[] after-all()
+  ROOT token2 = token[] after-all(token0, token1)
+})";
+  TF_ASSERT_OK_AND_ASSIGN(TestedInstruction ti, ParseTemplateAndGetInstruction(
+                                                    kHloTestTemplate,
+                                                    F32,  // Type is irrelevant.
+                                                    HloOpcode::kAfterAll));
+  RunSupportTest(std::move(ti), /*output_tile_sizes=*/{}, cc);
+}
+
+INSTANTIATE_TEST_SUITE_P(AfterAllSuite, AfterAllTest,
+                         ::testing::ValuesIn(AllDevicesToTest()),
+                         TritonSupportTestDeviceToString);
+
+class BitcastConvertTest
+    : public TritonSupportTest,
+      public ::testing::WithParamInterface<
+          std::tuple<PrimitiveType, PrimitiveType, se::GpuComputeCapability>> {
+};
+
+TEST_P(BitcastConvertTest, BitcastConvert) {
+  auto [data_type_in, data_type_out, cc] = GetParam();
+
+  if (primitive_util::IsComplexType(data_type_in) !=
+      primitive_util::IsComplexType(data_type_out)) {
+    GTEST_SKIP() << "Skipping BitcastConvert between real and complex types.";
+  }
+
+  std::string hlo_text;
+  std::vector<int64_t> output_tile_sizes = {1, 32};
+
+  const int bit_width_in = primitive_util::BitWidth(data_type_in);
+  const int bit_width_out = primitive_util::BitWidth(data_type_out);
+  const std::string data_type_in_str =
+      primitive_util::LowercasePrimitiveTypeName(data_type_in);
+  const std::string data_type_out_str =
+      primitive_util::LowercasePrimitiveTypeName(data_type_out);
+
+  if (bit_width_in == bit_width_out) {
+    hlo_text = absl::Substitute(
+        R"(
+ENTRY triton_computation {
+  parameter = $0[33,68] parameter(0)
+  ROOT bc_convert = $1[33,68] bitcast-convert(parameter)
+})",
+        data_type_in_str, data_type_out_str);
+  } else if (bit_width_in > bit_width_out) {
+    hlo_text = absl::Substitute(
+        R"(
+ENTRY triton_computation {
+  parameter = $0[33] parameter(0)
+  ROOT bc_convert = $1[33, $2] bitcast-convert(parameter)
+})",
+        data_type_in_str, data_type_out_str, bit_width_in / bit_width_out);
+  } else {  // bit_width_in < bit_width_out
+    hlo_text = absl::Substitute(
+        R"(
+ENTRY triton_computation {
+parameter = $0[33, $1] parameter(0)
+ROOT bc_convert = $2[33] bitcast-convert(parameter)
+})",
+        data_type_in_str, bit_width_out / bit_width_in, data_type_out_str);
+    output_tile_sizes = {1};
+  }
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      TestedInstruction ti,
+      ParseTemplateAndGetInstruction(hlo_text, data_type_in,
+                                     HloOpcode::kBitcastConvert));
+
+  RunSupportTest(std::move(ti), output_tile_sizes, cc);
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    BitcastConvertSuite, BitcastConvertTest,
+    ::testing::Combine(::testing::ValuesIn(AllXlaDataTypes()),
+                       ::testing::ValuesIn(AllXlaDataTypes()),
+                       ::testing::ValuesIn(AllDevicesToTest())),
+    TritonSupportTestTwoTypesAndDeviceToString);
+
+using CholeskyTest = TritonSupportTestWithTypeAndOpcodeAndDeviceParam;
+
+TEST_P(CholeskyTest, Cholesky) {
+  auto [data_type, opcode, cc] = GetParam();
+
+  const std::string kHloTestTemplate = R"(
+ENTRY triton_computation {
+  parameter = $0[4,4] parameter(0)
+  ROOT cholesky_op = $0[4,4] cholesky(parameter), lower=true
+})";
+  TF_ASSERT_OK_AND_ASSIGN(
+      TestedInstruction ti,
+      ParseTemplateAndGetInstruction(kHloTestTemplate, data_type, opcode));
+  RunSupportTest(std::move(ti), /*output_tile_sizes=*/{2, 2}, cc);
+}
+
+INSTANTIATE_TEST_SUITE_P(CholeskySuite, CholeskyTest,
+                         AllTestCombinationsForOpcodes({HloOpcode::kCholesky}),
+                         TritonSupportTestTypeAndOpcodeAndDeviceToString);
+
+using ConvolutionTest = TritonSupportTestWithTypeAndOpcodeAndDeviceParam;
+
+TEST_P(ConvolutionTest, Convolution) {
+  auto [data_type, opcode, cc] = GetParam();
+
+  const std::string kHloTestTemplate = R"(
+ENTRY triton_computation {
+  input = $0[1,4,4,1] parameter(0)
+  kernel = $0[1,1,1,1] parameter(1)
+  ROOT conv = $0[1,4,4,1] convolution(input, kernel), window={size=1x1},
+       dim_labels=b01f_01io->b01f
+})";
+  TF_ASSERT_OK_AND_ASSIGN(
+      TestedInstruction ti,
+      ParseTemplateAndGetInstruction(kHloTestTemplate, data_type, opcode));
+  RunSupportTest(std::move(ti), /*output_tile_sizes=*/{1, 2, 2, 1}, cc);
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    ConvolutionSuite, ConvolutionTest,
+    AllTestCombinationsForOpcodes({HloOpcode::kConvolution}),
+    TritonSupportTestTypeAndOpcodeAndDeviceToString);
+
+using CopyStartDoneTest = TritonSupportTestWithTypeAndDeviceParam;
+
+TEST_P(CopyStartDoneTest, CopyStartDone) {
+  auto [data_type, cc] = GetParam();
+  const std::string kHloTestTemplate = R"(
+ENTRY triton_computation {
+  parameter = $0[10] parameter(0)
+  cp_start = ($0[10], $0[10], u32[]) copy-start(parameter)
+  ROOT cp_done = $0[10] copy-done(cp_start)
+})";
+
+  // Test CopyStart
+  TF_ASSERT_OK_AND_ASSIGN(
+      TestedInstruction ti_start,
+      ParseTemplateAndGetInstruction(kHloTestTemplate, data_type,
+                                     HloOpcode::kCopyStart));
+  // TODO: b/363981282 - Add multiple output tile sizes once supported.
+  RunSupportTest(std::move(ti_start), /*output_tile_sizes=*/{}, cc);
+
+  // Test CopyDone
+  TF_ASSERT_OK_AND_ASSIGN(
+      TestedInstruction ti_done,
+      ParseTemplateAndGetInstruction(kHloTestTemplate, data_type,
+                                     HloOpcode::kCopyDone));
+  RunSupportTest(std::move(ti_done), /*output_tile_sizes=*/{1}, cc);
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    CopyStartDoneSuite, CopyStartDoneTest,
+    ::testing::Combine(::testing::ValuesIn(AllXlaDataTypes()),
+                       ::testing::ValuesIn(AllDevicesToTest())),
+    TritonSupportTestTypeAndDeviceToString);
+
+using CustomCallTest = TritonSupportTestWithTypeAndOpcodeAndDeviceParam;
+
+TEST_P(CustomCallTest, CustomCall) {
+  auto [data_type, opcode, cc] = GetParam();
+  const std::string kHloTestTemplate = R"(
+ENTRY triton_computation {
+  parameter = $0[10] parameter(0)
+  ROOT custom_call_op = $0[10] custom-call(parameter), custom_call_target="SomeTarget"
+})";
+  TF_ASSERT_OK_AND_ASSIGN(
+      TestedInstruction ti,
+      ParseTemplateAndGetInstruction(kHloTestTemplate, data_type, opcode));
+  RunSupportTest(std::move(ti), /*output_tile_sizes=*/{1}, cc);
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    CustomCallSuite, CustomCallTest,
+    AllTestCombinationsForOpcodes({HloOpcode::kCustomCall}),
+    TritonSupportTestTypeAndOpcodeAndDeviceToString);
+
+using DynamicReshapeTest = TritonSupportTestWithTypeAndOpcodeAndDeviceParam;
+
 constexpr std::array kUnsupportedOps = {
     // clang-format off
     // go/keep-sorted start
-    HloOpcode::kAddDependency,
-    HloOpcode::kAfterAll,
-    HloOpcode::kBitcastConvert,
-    HloOpcode::kCholesky,
-    HloOpcode::kConvolution,
-    HloOpcode::kCopyDone,
-    HloOpcode::kCopyStart,
-    HloOpcode::kCustomCall,
     HloOpcode::kDynamicReshape,
     HloOpcode::kDynamicSlice,
     HloOpcode::kDynamicUpdateSlice,
@@ -2386,12 +2585,20 @@ absl::flat_hash_set<HloOpcode> AllTestedOpcodes() {
   ret.insert(kTestedOpsIota.begin(), kTestedOpsIota.end());
   ret.insert(kTestedOpsRng.begin(), kTestedOpsRng.end());
 
+  ret.emplace(HloOpcode::kAddDependency);
+  ret.emplace(HloOpcode::kAfterAll);
   ret.emplace(HloOpcode::kBatchNormGrad);
   ret.emplace(HloOpcode::kBatchNormInference);
   ret.emplace(HloOpcode::kBatchNormTraining);
+  ret.emplace(HloOpcode::kBitcastConvert);
   ret.emplace(HloOpcode::kCall);
+  ret.emplace(HloOpcode::kCholesky);
   ret.emplace(HloOpcode::kComplex);
   ret.emplace(HloOpcode::kConditional);
+  ret.emplace(HloOpcode::kConvolution);
+  ret.emplace(HloOpcode::kCopyDone);
+  ret.emplace(HloOpcode::kCopyStart);
+  ret.emplace(HloOpcode::kCustomCall);
   ret.emplace(HloOpcode::kDomain);
   ret.emplace(HloOpcode::kDot);
   ret.emplace(HloOpcode::kGetDimensionSize);
