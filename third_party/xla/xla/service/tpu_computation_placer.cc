@@ -15,6 +15,10 @@ limitations under the License.
 
 #include "xla/service/tpu_computation_placer.h"
 
+#include <memory>
+
+#include "absl/log/log.h"
+#include "absl/status/statusor.h"
 #include "xla/stream_executor/tpu/status_helper.h"
 #include "xla/stream_executor/tpu/tpu_api.h"
 #include "xla/stream_executor/tpu/tpu_platform.h"
