@@ -61,6 +61,7 @@ limitations under the License.
 #include "xla/pjrt/gpu/tfrt/host_memory_allocator.h"
 #include "xla/pjrt/gpu/tfrt/stream_pool.h"
 #include "xla/pjrt/gpu/tfrt/tracked_tfrt_gpu_device_buffer.h"
+#include "xla/pjrt/host_callback.h"
 #include "xla/pjrt/host_memory_spaces.h"
 #include "xla/pjrt/mlir_to_hlo.h"
 #include "xla/pjrt/pjrt_client.h"
@@ -606,6 +607,239 @@ absl::flat_hash_map<std::string, PjRtDeviceAttribute> GetAttrsForDevices(
     }
   }
   return attrs;
+}
+
+class TfrtGpuCopyToDeviceStream : public CopyToDeviceStream {
+ public:
+  TfrtGpuCopyToDeviceStream(int64_t channel_id, se::Stream* stream,
+                            se::DeviceMemoryBase dst,
+                            tsl::AsyncValueRef<std::unique_ptr<se::Event>> done)
+      : CopyToDeviceStream(dst.size(), /*granule_bytes=*/1),
+        channel_id_(channel_id),
+        stream_(stream),
+        dst_(dst),
+        done_(std::move(done)) {}
+
+  PjRtFuture<> AddChunk(PjRtChunk chunk) final {
+    tsl::profiler::TraceMe trace([&] {
+      return tsl::profiler::TraceMeEncode("TfrtGpuCopyToDeviceStream::AddChunk",
+                                          {{"channel_id", channel_id_}});
+    });
+
+    absl::ReleasableMutexLock lock(&mu_);
+
+    VLOG(3) << "Add chunk to a H2D channel #" << channel_id_ << ": "
+            << "size=" << chunk.size() << ", "
+            << "current_bytes=" << current_bytes_ << ", "
+            << "total_bytes=" << total_bytes_;
+
+    if (chunk.size() % granule_size_in_bytes() != 0) {
+      done_.SetError(absl::InvalidArgumentError(absl::StrFormat(
+          "Chunk size (%d) was not a multiple of the granule size (%d)",
+          chunk.size(), granule_size_in_bytes())));
+      return PjRtFuture<>(done_.GetError());
+    }
+
+    if (current_bytes_ + chunk.size() > total_bytes_) {
+      done_.SetError(absl::InvalidArgumentError(
+          absl::StrFormat("Adding chunk of size %d would overflow buffer of "
+                          "size %d (%d already transferred)",
+                          chunk.size(), total_bytes_, current_bytes_)));
+      return PjRtFuture<>(done_.GetError());
+    }
+
+    se::DeviceMemoryBase dst(
+        reinterpret_cast<std::byte*>(dst_.opaque()) + current_bytes_,
+        dst_.size() - current_bytes_);
+
+    current_bytes_ += chunk.size();
+    bool complete = IsCompleteLocked();
+    lock.Release();
+
+    auto copied = stream_->Memcpy(&dst, chunk.data(), chunk.size());
+    if (!copied.ok()) {
+      done_.SetError(copied);
+      return PjRtFuture<>(done_.GetError());
+    }
+
+    // Delete chunk once the memcpy operation completes.
+    auto* chunk_ptr = std::make_unique<PjRtChunk>(std::move(chunk)).release();
+    auto deleted = stream_->DoHostCallback([chunk_ptr]() { delete chunk_ptr; });
+    if (!deleted.ok()) {
+      done_.SetError(deleted);
+      return PjRtFuture<>(done_.GetError());
+    }
+
+    // Record done event once processed the last chunk. It is the caller
+    // responsibility to synchronize with this event before submitting any new
+    // computations to the stream.
+    if (complete) {
+      auto recorded = stream_->RecordEvent(done_.get().get());
+      if (!recorded.ok()) {
+        done_.SetError(recorded);
+        return PjRtFuture<>(done_.GetError());
+      }
+      done_.SetStateConcrete();
+    }
+
+    return PjRtFuture<>(absl::OkStatus());
+  }
+
+ private:
+  int64_t channel_id_;
+  se::Stream* stream_;
+  se::DeviceMemoryBase dst_;
+
+  // Async value will become available after we'll submit the last memcpy
+  // operation, and the event will be recorded on the stream.
+  tsl::AsyncValueRef<std::unique_ptr<se::Event>> done_;
+};
+
+template <typename T>
+const T* FindCallback(int channel_id, absl::Span<const T> callbacks) {
+  // TODO(ezhulenev): Can we use binary search here assuming that callbacks
+  // are sorted by channel id? Are they always sorted?
+  auto it = absl::c_find_if(callbacks, [&](const T& callback) {
+    return callback.channel_id == channel_id;
+  });
+  return it == callbacks.end() ? nullptr : &*it;
+}
+
+// Converts PjRt SendCallbacks to an XLA StreamExecutor send function.
+SendDeviceMemoryFunction ConvertSendCallbacksToSendFunction(
+    int replica, const ExecuteOptions& options,
+    tsl::thread::ThreadPool* thread_pool) {
+  // Check if we have callbacks registered for the given replica.
+  if (replica >= options.send_callbacks.size()) {
+    return [replica](int64_t channel_id, se::Stream*, const Shape&,
+                     const se::DeviceMemoryBase&,
+                     const absl::flat_hash_map<std::string, std::string>&) {
+      return Internal(
+          "Don't send a buffer to the channel_id=%d, there was no send "
+          "callbacks registered for the replica=%d",
+          channel_id, replica);
+    };
+  }
+
+  // SendCallbacks registered for a device ordinal. Can be empty.
+  absl::Span<const SendCallback> callbacks = options.send_callbacks[replica];
+
+  return [callbacks, thread_pool](
+             int64_t channel_id, se::Stream* stream, const Shape& shape,
+             const se::DeviceMemoryBase& src,
+             const absl::flat_hash_map<std::string, std::string>&)
+             -> absl::StatusOr<tsl::AsyncValueRef<std::unique_ptr<se::Event>>> {
+    VLOG(3) << "Send " << src.size() << " bytes to channel #" << channel_id
+            << " (shape=" << shape.ToString() << ")";
+
+    const SendCallback* send = FindCallback(channel_id, callbacks);
+    if (!send) {
+      return InvalidArgument(
+          "Failed to send a buffer to the channel_id=%d, callback not found",
+          channel_id);
+    }
+
+    // Allocate event that will signal completion of send operation. We do not
+    // actually track the completion of the send callback, we only have to keep
+    // the device memory long enough to complete the memcpy command.
+    TF_ASSIGN_OR_RETURN(auto se_event, stream->parent()->CreateEvent());
+    auto done_event =
+        tsl::MakeConstructedAsyncValueRef<std::unique_ptr<se::Event>>(
+            std::move(se_event));
+
+    thread_pool->Schedule([done_event, stream, src, channel_id, shape, send] {
+      tsl::profiler::TraceMe trace([&] {
+        return tsl::profiler::TraceMeEncode("TfrtGpuExecutable::Send",
+                                            {{"channel_id", channel_id}});
+      });
+
+      // Allocate chunk on the host for copying data from device.
+      PjRtChunk chunk = PjRtChunk::AllocateDefault(src.size());
+
+      auto status = stream->Memcpy(chunk.data(), src, src.size());
+      if (!status.ok()) {
+        done_event.SetError(status);
+        return;
+      }
+      status = stream->RecordEvent(done_event.get().get());
+      if (!status.ok()) {
+        done_event.SetError(status);
+        return;
+      }
+
+      // Wait for the data to be available on the host.
+      if (auto st = stream->BlockHostUntilDone(); !st.ok()) {
+        done_event.SetError(absl::InternalError(absl::StrFormat(
+            "failed to synchronize send operation with a stream: %s",
+            st.message())));
+        return;
+      }
+
+      // Pass chunk to the registered callback.
+      auto sent = send->callback({shape}, std::move(chunk),
+                                 /*total_size_in_bytes=*/src.size(),
+                                 /*done=*/true);
+
+      if (!sent.ok()) {
+        done_event.SetError(sent);
+      } else {
+        done_event.SetStateConcrete();
+      }
+    });
+
+    return std::move(done_event);
+  };
+}
+
+RecvDeviceMemoryFunction ConvertRecvCallbacksToRecvFunction(
+    int replica, const ExecuteOptions& options) {
+  // Check if we have callbacks registered for the given replica.
+  if (replica >= options.send_callbacks.size()) {
+    return [replica](int64_t channel_id, se::Stream*, const Shape&,
+                     se::DeviceMemoryBase*,
+                     const absl::flat_hash_map<std::string, std::string>&) {
+      return InvalidArgument(
+          "Failed to receive a buffer from the channel_id=%d, there was no "
+          "recv callbacks registered for the replica=%d",
+          channel_id, replica);
+    };
+  }
+
+  // RecvCallbacks registered for a device ordinal. Can be empty.
+  absl::Span<const RecvCallback> callbacks = options.recv_callbacks[replica];
+
+  return [callbacks](int64_t channel_id, se::Stream* stream, const Shape& shape,
+                     se::DeviceMemoryBase* dst,
+                     const absl::flat_hash_map<std::string, std::string>&)
+             -> absl::StatusOr<tsl::AsyncValueRef<std::unique_ptr<se::Event>>> {
+    VLOG(3) << "Recv from channel #" << channel_id
+            << " (shape=" << shape.ToString() << ")";
+
+    tsl::profiler::TraceMe trace([&] {
+      return tsl::profiler::TraceMeEncode("TfrtGpuExecutable::Recv",
+                                          {{"channel_id", channel_id}});
+    });
+
+    const RecvCallback* recv = FindCallback(channel_id, callbacks);
+    if (!recv) {
+      return InvalidArgument(
+          "Failed to recv a buffer from the channel_id=%d, callback not found",
+          channel_id);
+    }
+
+    // Allocate event that will signal completion of recv operation. We record
+    // it on a stream after submitting the memcpy for the last chunk (see
+    // `TfrtGpuCopyToDeviceStream` implementation above).
+    TF_ASSIGN_OR_RETURN(auto event, stream->parent()->CreateEvent());
+    auto done_event =
+        tsl::MakeConstructedAsyncValueRef<std::unique_ptr<se::Event>>(
+            std::move(event));
+
+    recv->callback({shape}, std::make_unique<TfrtGpuCopyToDeviceStream>(
+                                channel_id, stream, *dst, done_event));
+
+    return std::move(done_event);
+  };
 }
 
 }  // namespace
@@ -2198,8 +2432,11 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtGpuExecutable::ExecuteHelper(
     tsl::AsyncValueRef<GpuEvent> last_collective_launch_event, bool fill_future,
     TfrtGpuDevice* device) {
   tsl::profiler::TraceMe traceme("TfrtGpuExecutable::ExecuteHelper");
-  VLOG(2) << "ExecuteHelper " << name() << ": " << options.launch_id
-          << "; replica: " << replica;
+  if (VLOG_IS_ON(2)) {
+    LOG(INFO) << "ExecuteHelper " << name() << ": " << options.launch_id
+              << "; replica: " << replica << "; partition: " << partition
+              << "; mapped to device ordinal for execution: " << device->id();
+  }
 
   std::shared_ptr<DeviceAssignment> device_assignment;
   if (device == nullptr) {
@@ -2235,6 +2472,9 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtGpuExecutable::ExecuteHelper(
     }
   }
 
+  // SPMD sharding produces a single executable for multiple partitions.
+  int executable_idx = executables_.size() > 1 ? partition : 0;
+
   // `execute_event` indicates whether gpu computation is complete and whether
   // there was an error.
   auto execute_event = tsl::MakeConstructedAsyncValueRef<GpuEvent>();
@@ -2255,9 +2495,9 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtGpuExecutable::ExecuteHelper(
   std::vector<tsl::RCReference<tsl::AsyncValue>> input_deps;
   input_deps.reserve(argument_handles.size() + 1);
 
-  // TODO(b/382117736): Support multiple devices.
-  CHECK_EQ(parameters_that_must_be_donated_.size(), 1);
-  auto donate_it = parameters_that_must_be_donated_[0].begin();
+  absl::Span<int const> donated_params =
+      parameters_that_must_be_donated_[executable_idx];
+  auto donate_it = donated_params.begin();
 
   for (int i = 0; i < argument_handles.size(); ++i) {
     PjRtBuffer* handle = argument_handles[i];
@@ -2269,9 +2509,10 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtGpuExecutable::ExecuteHelper(
           i, replica, tfrt_buffer->device()->DebugString(),
           device->DebugString());
     }
-
-    bool must_donate = donate_it != parameters_that_must_be_donated_[0].end() &&
-                       *donate_it == i;
+    bool donation_denied_at_runtime =
+        options.non_donatable_input_indices.contains(i);
+    bool must_donate = donate_it != donated_params.end() && *donate_it == i &&
+                       !donation_denied_at_runtime;
     TrackedTfrtGpuDeviceBuffer* tracked_buffer = nullptr;
     if (must_donate) {
       ++donate_it;
@@ -2322,7 +2563,8 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtGpuExecutable::ExecuteHelper(
 
   std::vector<tsl::AsyncValueRef<MaybeOwningGpuMemory>> output_buffers;
   std::vector<std::unique_ptr<PjRtBuffer>> outputs;
-  Executable* executable = executables_[0]->executable();
+  auto gpu_executable = executables_[executable_idx];
+  Executable* executable = gpu_executable->executable();
   const Shape& result_shape = executable->result_shape();
   bool untuple_result = options.untuple_result;
   bool result_is_tuple = result_shape.IsTuple();
@@ -2391,16 +2633,28 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtGpuExecutable::ExecuteHelper(
           << options.launch_id << "; replica: " << replica;
   auto ffi_context =
       options.context != nullptr ? &options.context->ffi_context() : nullptr;
+
+  // Create a PjRt<->StreamExecutor adaptors to send/recv device memory as
+  // PjRt chunks via the user-provided callbacks.
+  SendDeviceMemoryFunction send_device_memory =
+      ConvertSendCallbacksToSendFunction(replica, options,
+                                         client_->non_blocking_thread_pool());
+  RecvDeviceMemoryFunction recv_device_memory =
+      ConvertRecvCallbacksToRecvFunction(replica, options);
+
   auto execute_fn =
       [replica, partition, device, launch_id(options.launch_id), run_id(run_id),
        output_buffers(output_buffers), execute_event(execute_event.CopyRef()),
        untuple_result(untuple_result), result_is_tuple(result_is_tuple),
        compute_reservation(std::move(compute_reservation)),
        donation_transactions(std::move(donation_transactions)),
-       parameter_shapes(on_device_executable_parameter_shapes_[0]),
-       gpu_executable(executables_[0]), device_assignment(device_assignment),
-       executable_name(name()), ffi_context(ffi_context),
-       inputs_avs(CopyAsyncValues(input_deps)),
+       parameter_shapes(on_device_executable_parameter_shapes_[executable_idx]),
+       gpu_executable(std::move(gpu_executable)),
+       device_assignment(device_assignment), executable_name(name()),
+       ffi_context(ffi_context), inputs_avs(CopyAsyncValues(input_deps)),
+       execution_profile(options.execution_profile),
+       send_device_memory(std::move(send_device_memory)),
+       recv_device_memory(std::move(recv_device_memory)),
        client = client_](std::vector<ExecutionInput> execution_inputs) mutable {
         VLOG(0) << "execute_fn for " << executable_name << ": " << launch_id
                 << "; replica: " << replica;
@@ -2447,6 +2701,13 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtGpuExecutable::ExecuteHelper(
         run_options.set_physical_device_ordinal(
             device->local_hardware_id().value());
         run_options.set_ffi_execution_context(ffi_context);
+        run_options.set_intra_op_thread_pool(
+            client->xla_client()
+                ->backend()
+                .eigen_intra_op_thread_pool_device());
+        run_options.set_send_device_memory_function(&send_device_memory);
+        run_options.set_recv_device_memory_function(&recv_device_memory);
+        run_options.set_execution_profile(execution_profile);
         VLOG(2) << "launch id for " << executable_name << ": "
                 << run_options.launch_id();
 
@@ -2504,10 +2765,11 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtGpuExecutable::ExecuteHelper(
        execute_event(execute_event.CopyRef()),
        output_buffers(std::move(output_buffers)),
        execute_fn(std::move(execute_fn)), input_deps(std::move(input_deps)),
-       parameter_shapes(on_device_executable_parameter_shapes_[0]),
+       parameter_shapes(on_device_executable_parameter_shapes_[executable_idx]),
        parameter_is_tupled_arguments(parameter_is_tupled_arguments_),
        arguments_are_tupled(options.arguments_are_tupled),
-       input_buffer_sizes_in_bytes(input_buffer_sizes_in_bytes_[0])]() mutable {
+       input_buffer_sizes_in_bytes(
+           input_buffer_sizes_in_bytes_[executable_idx])]() mutable {
         tsl::profiler::TraceMe traceme("prepare_inputs");
 
         VLOG(2) << "prepare_inputs";
@@ -2635,7 +2897,7 @@ TfrtGpuExecutable::Execute(
   if (returned_futures.has_value()) {
     returned_futures->resize(num_addressable_devices);
   }
-  if (num_addressable_devices == 1) {
+  if (num_addressable_devices == 1 && !ThisThreadIsInsideHostCallback()) {
     // Fast-path if there is only one device — run the computation on the
     // current thread.
     const int replica = addressable_device_logical_ids_[0].replica;

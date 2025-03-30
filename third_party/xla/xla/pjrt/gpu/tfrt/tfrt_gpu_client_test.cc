@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <stdint.h>
 
+#include <array>
 #include <memory>
 #include <numeric>
 #include <optional>
@@ -51,10 +52,13 @@ limitations under the License.
 #include "xla/pjrt/plugin/xla_gpu/xla_gpu_client_options.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/status_macros.h"
 #include "xla/tests/literal_test_util.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/framework/allocator.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/status.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "tsl/platform/casts.h"
@@ -89,6 +93,48 @@ absl::StatusOr<std::unique_ptr<xla::PjRtLoadedExecutable>> CompileExecutable(
   xla::XlaComputation xla_computation(hlo_module->ToProto());
   return client.CompileAndLoad(xla_computation, compile_options);
 }
+
+// Given the result of a PjrtExecutable::Execute call (TF-status of vectors of
+// vectors), extract the zeroth result from the zeroth device.
+absl::StatusOr<std::shared_ptr<xla::Literal>> ExtractSingleResult(
+    absl::StatusOr<std::vector<std::vector<std::unique_ptr<xla::PjRtBuffer>>>>&
+        result) {
+  TF_RETURN_IF_ERROR(result.status());
+  TF_RET_CHECK(result->size() == 1);
+  std::vector<std::unique_ptr<xla::PjRtBuffer>>& result_buffers = (*result)[0];
+  TF_RET_CHECK(result_buffers.size() == 1);
+  auto literal_or = result_buffers[0]->ToLiteralSync();
+  if (!literal_or.status().ok()) return literal_or.status();
+  return *literal_or;
+}
+
+static constexpr char const* kProgram = R"(HloModule HostTransfer
+ENTRY SendRecvSynchronous() -> f32[2] {
+  in_chain = token[] after-all()
+
+  data = f32[2] constant({2, 3})
+  send = (f32[2], u32[], token[]) send(data, in_chain),
+    channel_id=1,
+    is_host_transfer=true,
+    frontend_attributes={
+      _xla_host_transfer_handler_name="undef",
+      _xla_host_transfer_rendezvous="undef"
+    }
+  send-done = token[] send-done(send),
+    channel_id=1, is_host_transfer=true
+
+  recv = (f32[2], u32[], token[]) recv(send-done),
+    channel_id=2,
+    is_host_transfer=true,
+    frontend_attributes={
+      _xla_host_transfer_handler_name="undef",
+      _xla_host_transfer_rendezvous="undef"
+    }
+  recv-done = (f32[2], token[]) recv-done(recv),
+    channel_id=2, is_host_transfer=true
+
+  ROOT result = f32[2] get-tuple-element(recv-done), index=0
+})";
 
 TEST(TfrtGpuClientTest, GpuClientOptions) {
   GpuClientOptions options;
@@ -165,6 +211,57 @@ ENTRY %Add.6 (a.1: f32[], b.2: f32[]) -> (f32[], f32[]) {
   ASSERT_EQ(result.size(), 1);
   ASSERT_EQ(result[0].size(), 1);
   EXPECT_EQ(result[0][0]->GetReadyFuture().Await(), input_error);
+}
+
+TEST(TfrtGpuClientTest, SendRecvChunked) {
+  TF_ASSERT_OK_AND_ASSIGN(auto client, GetTfrtGpuClient(GpuClientOptions()));
+
+  TF_ASSERT_OK_AND_ASSIGN(auto executable,
+                          CompileExecutable(kProgram, *client));
+
+  std::array<float, 2> sent_value = {0.0f, 0.0f};
+
+  // Send buffer to host.
+  SendCallback send_callback = {
+      /*channel_id=*/1, [&](const PjRtTransferMetadata& m, PjRtChunk chunk,
+                            int64_t total_size_in_bytes, bool done) {
+        float* data = reinterpret_cast<float*>(chunk.data());
+        sent_value[0] = data[0];
+        sent_value[1] = data[1];
+        return absl::OkStatus();
+      }};
+
+  // Recv buffer from host.
+  RecvCallback recv_callback = {
+      /*channel_id=*/2, [&](const PjRtTransferMetadata& m,
+                            std::unique_ptr<CopyToDeviceStream> stream) {
+        auto chunk0 = PjRtChunk::AllocateDefault(sizeof(float));
+        *reinterpret_cast<float*>(chunk0.data()) = 5.0f;
+        TF_CHECK_OK(stream->AddChunk(std::move(chunk0)).Await());
+
+        auto chunk1 = PjRtChunk::AllocateDefault(sizeof(float));
+        *reinterpret_cast<float*>(chunk1.data()) = 6.0f;
+        TF_CHECK_OK(stream->AddChunk(std::move(chunk1)).Await());
+
+        return absl::OkStatus();
+      }};
+
+  // Callbacks for point-to-point communication ops.
+  std::vector<std::vector<SendCallback>> send_callbacks = {{send_callback}};
+  std::vector<std::vector<RecvCallback>> recv_callbacks = {{recv_callback}};
+
+  ExecuteOptions opts;
+  opts.send_callbacks = send_callbacks;
+  opts.recv_callbacks = recv_callbacks;
+
+  auto result = executable->Execute(/*argument_handles=*/{{}}, opts);
+
+  TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<xla::Literal> result_literal,
+                          ExtractSingleResult(result));
+  EXPECT_EQ(sent_value[0], 2.0f);
+  EXPECT_EQ(sent_value[1], 3.0f);
+  EXPECT_TRUE(LiteralTestUtil::Equal(LiteralUtil::CreateR1<float>({5.0f, 6.0f}),
+                                     *result_literal));
 }
 
 TEST(TfrtGpuClientTest, AcquireDonation) {
