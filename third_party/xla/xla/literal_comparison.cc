@@ -706,14 +706,18 @@ absl::Status EqualHelper(const LiteralSlice& expected,
       next_index.pop_back();
     }
   } else {
-    std::vector<int64_t> multi_index(expected.shape().dimensions_size(), 0);
+    std::vector<int64_t> multi_index(
+        expected.shape().IsArray() ? expected.shape().dimensions().size() : 0,
+        0);
     auto index = absl::MakeSpan(multi_index);
 
-    Shape unequal_shape = ShapeUtil::MakeShape(PrimitiveType::PRED,
-                                               expected.shape().dimensions());
+    const Shape unequal_shape = ShapeUtil::MakeShape(
+        PrimitiveType::PRED, expected.shape().IsArray()
+                                 ? expected.shape().dimensions()
+                                 : absl::Span<const int64_t>());
     Literal miscompared(unequal_shape);
-    Literal* miscompared_ptr =
-        (miscompare_callback == nullptr ? nullptr : &miscompared);
+    Literal* const miscompared_ptr =
+        (miscompare_callback == nullptr) ? nullptr : &miscompared;
 
     primitive_util::PrimitiveTypeSwitch<void>(
         [&](auto primitive_type_constant) -> void {
@@ -873,6 +877,10 @@ absl::Status EqualDynamicShapesAndDimensions(const LiteralSlice& expected,
       [&expected, &actual](const Shape& expected_shape,
                            const ShapeIndex& index) -> absl::Status {
         auto actual_shape = ShapeUtil::GetSubshape(actual.shape(), index);
+        if (!expected_shape.IsArray()) {
+          return absl::OkStatus();
+        }
+
         for (int i = 0; i < expected_shape.dimensions().size(); ++i) {
           if (!expected_shape.is_dynamic_dimension(i) &&
               !actual_shape.is_dynamic_dimension(i)) {

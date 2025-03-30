@@ -764,8 +764,10 @@ absl::StatusOr<XlaComputation> XlaBuilder::Build(
           remove_dynamic_dimension(shape->mutable_tuple_shapes(i));
         }
       }
-      for (int64_t i = 0; i < shape->dimensions_size(); ++i) {
-        shape->set_dynamic_dimension(i, false);
+      if (shape->IsArray()) {
+        for (int64_t i = 0; i < shape->dimensions_size(); ++i) {
+          shape->set_dynamic_dimension(i, false);
+        }
       }
     };
     for (size_t index = 0; index < instructions_.size(); ++index) {
