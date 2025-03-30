@@ -180,14 +180,12 @@ Layout CreateDefaultLayoutForRank(int64_t rank) {
     for (auto& element_shape : *shape->mutable_tuple_shapes()) {
       SetToDefaultLayout(&element_shape);
     }
-    shape->clear_layout();
   } else if (shape->IsArray()) {
     auto* minor_to_major = shape->mutable_layout()->mutable_minor_to_major();
     minor_to_major->resize(shape->dimensions_size(), 0);
     SetDefaultLayoutToContainer(minor_to_major);
   } else {
     // Opaque, token types etc. have no layout.
-    shape->clear_layout();
   }
 }
 
@@ -207,10 +205,6 @@ Layout CreateDefaultLayoutForRank(int64_t rank) {
 /* static */ absl::Status LayoutUtil::ValidateLayoutInShape(
     const Shape& shape, bool allow_missing_layouts) {
   if (shape.IsTuple()) {
-    // Tuple shape.
-    if (shape.has_layout()) {
-      return InvalidArgument("tuple should not have a layout field");
-    }
     for (auto& element_shape : shape.tuple_shapes()) {
       TF_RETURN_IF_ERROR(
           ValidateLayoutInShape(element_shape, allow_missing_layouts));
@@ -227,11 +221,6 @@ Layout CreateDefaultLayoutForRank(int64_t rank) {
     return ValidateLayoutForShape(shape.layout(), shape);
   } else {
     // Token, opaque, etc. shape.
-    if (shape.has_layout()) {
-      return InvalidArgument(
-          "shape of primitive type %s should not have a layout",
-          PrimitiveType_Name(shape.element_type()));
-    }
     return absl::OkStatus();
   }
 }
@@ -242,14 +231,7 @@ Layout CreateDefaultLayoutForRank(int64_t rank) {
     return InvalidArgument("a single Layout is not valid for tuple shapes");
   }
 
-  if (!shape.IsArray()) {
-    if (layout.minor_to_major_size() != 0) {
-      return InvalidArgument(
-          "shape of primitive type %s should not have a non-trivial layout",
-          PrimitiveType_Name(shape.element_type()));
-    }
-    return absl::OkStatus();
-  }
+  if (!shape.IsArray()) return absl::OkStatus();
 
   if (layout.minor_to_major_size() != shape.dimensions_size()) {
     return InvalidArgument(
@@ -423,9 +405,12 @@ Layout CreateDefaultLayoutForRank(int64_t rank) {
 }
 
 /* static */ void LayoutUtil::ClearLayout(Shape* shape) {
-  shape->clear_layout();
-  for (auto& element_shape : *shape->mutable_tuple_shapes()) {
-    ClearLayout(&element_shape);
+  if (shape->IsArray()) {
+    shape->clear_layout();
+  } else if (shape->IsTuple()) {
+    for (auto& element_shape : *shape->mutable_tuple_shapes()) {
+      ClearLayout(&element_shape);
+    }
   }
 }
 
@@ -601,7 +586,7 @@ absl::Status CopyLayoutInternal(const Shape& src, Shape* dst) {
       TF_RETURN_IF_ERROR(CopyLayoutInternal(src.tuple_shapes(i),
                                             dst->mutable_tuple_shapes(i)));
     }
-  } else {
+  } else if (src.IsArray()) {
     if (src.has_layout()) {
       if (src.dimensions_size() != dst->dimensions_size()) {
         return InvalidArgument("cannot copy layout from shape: ranks differs");
