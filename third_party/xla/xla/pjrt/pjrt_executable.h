@@ -120,9 +120,7 @@ struct CompileOptions {
   absl::Status ApplyOptionFromString(
       const tsl::protobuf::FieldDescriptor* field, const std::string& value);
 
-  static absl::StatusOr<
-      std::vector<std::pair<std::string, CompileOptions::OptionOverride>>>
-  LoadEnvOptionOverrides(
+  static absl::StatusOr<EnvironmentOptionOverrides> LoadEnvOptionOverrides(
       const google::protobuf::Map<std::string, xla::OptionOverrideProto>&
           env_option_overrides);
 
