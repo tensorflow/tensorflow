@@ -846,7 +846,7 @@ class RewriteAtomicRMW : public OpRewritePattern<AtomicRMWOp> {
       case ml::AtomicBinOp::umax:
       case ml::AtomicBinOp::umin: {
         rewriter.create<ml::AtomicRMWOp>(loc, atomic_bin_op, addr, modifier_arg,
-                                         ml::AtomicOrdering::seq_cst,
+                                         ml::AtomicOrdering::monotonic,
                                          sync_scope);
         return success();
       }
@@ -897,7 +897,7 @@ class RewriteAtomicRMW : public OpRewritePattern<AtomicRMWOp> {
     }
 
     b.create<ml::AtomicRMWOp>(loc, ml::AtomicBinOp::fadd, addr, modifier_arg,
-                              ml::AtomicOrdering::seq_cst, sync_scope);
+                              ml::AtomicOrdering::monotonic, sync_scope);
     return success();
   }
 
@@ -971,7 +971,7 @@ class RewriteAtomicRMW : public OpRewritePattern<AtomicRMWOp> {
           loc, ml::LLVMPointerType::get(b.getContext(), kGlobalMemory), addr);
     }
     b.create<ml::AtomicRMWOp>(loc, ml::AtomicBinOp::fadd, addr, modifier_arg,
-                              ml::AtomicOrdering::seq_cst, sync_scope);
+                              ml::AtomicOrdering::monotonic, sync_scope);
     return success();
   }
 
@@ -1034,14 +1034,14 @@ class RewriteAtomicRMW : public OpRewritePattern<AtomicRMWOp> {
           // atomicMax((int *)address, __float_as_int(val))
           nested_b.create<ml::AtomicRMWOp>(
               loc, ml::AtomicBinOp::max, addr, source_float_as_int,
-              ml::AtomicOrdering::seq_cst, sync_scope);
+              ml::AtomicOrdering::monotonic, sync_scope);
           nested_b.create<scf::YieldOp>(nested_loc);
         },
         [&](OpBuilder& nested_b, Location nested_loc) {
           // atomicMax((int *)address, __float_as_int(val))
           nested_b.create<ml::AtomicRMWOp>(
               loc, ml::AtomicBinOp::umin, addr, source_float_as_int,
-              ml::AtomicOrdering::seq_cst, sync_scope);
+              ml::AtomicOrdering::monotonic, sync_scope);
           nested_b.create<scf::YieldOp>(nested_loc);
         });
     then_builder.create<scf::YieldOp>(loc);
@@ -1185,8 +1185,8 @@ class RewriteAtomicRMW : public OpRewritePattern<AtomicRMWOp> {
           // Try saving the result atomically, retry if failed.
           Value cmpxchg = b.create<ml::AtomicCmpXchgOp>(
               loc, addr, old_value, new_value,
-              /*success_ordering=*/ml::AtomicOrdering::seq_cst,
-              /*failure_ordering=*/ml::AtomicOrdering::seq_cst);
+              /*success_ordering=*/ml::AtomicOrdering::monotonic,
+              /*failure_ordering=*/ml::AtomicOrdering::monotonic);
           Value next = b.create<ml::ExtractValueOp>(cmpxchg, 0);
           Value ok = b.create<ml::ExtractValueOp>(cmpxchg, 1);
           Value low_bit = b.create<ml::ConstantOp>(b.getOneAttr(b.getI1Type()));
