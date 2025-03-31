@@ -216,11 +216,8 @@ cc_library(
         "//xla/service/llvm_ir:llvm_util",
         "//xla/stream_executor:device_description",
         "//xla/stream_executor:launch_dim",
-<<<<<<< HEAD
-=======
         "//xla/stream_executor/cuda:cuda_compute_capability",
         "//xla/stream_executor/gpu:tma_metadata",
->>>>>>> master
         "//xla/tools:hlo_decomposer_lib",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:statusor",

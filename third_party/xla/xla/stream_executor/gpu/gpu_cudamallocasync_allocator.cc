@@ -26,16 +26,13 @@ limitations under the License.
 #include <string>
 #include <vector>
 
-<<<<<<< HEAD
 #ifdef GOOGLE_CUDA
 #include "third_party/gpus/cuda/include/cuda.h"
 #include "xla/stream_executor/cuda/cuda_status.h"
 #endif  // GOOGLE_CUDA
 
-=======
 #include "absl/log/check.h"
 #include "absl/log/log.h"
->>>>>>> master
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/synchronization/mutex.h"

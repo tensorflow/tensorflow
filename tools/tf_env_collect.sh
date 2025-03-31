@@ -130,12 +130,6 @@ EOF
 
   print_header 'tensorflow import'
 
-<<<<<<< HEAD
-{
-  grep libMIOpen.so /tmp/loadedlibs
-  echo
-  echo '== env =========================================================='
-=======
   "${PYTHON_BIN_PATH}" <<EOF 2>&1
 import tensorflow as tf;
 print(f"""
@@ -158,7 +152,6 @@ EOF
 
   # Note: the usage of "set -u" above would cause these to error if the
   #   basic form [[ -z $LD_LIBRARY_PATH ]] was used.
->>>>>>> master
   if [ -z ${LD_LIBRARY_PATH+x} ]; then
     echo "LD_LIBRARY_PATH is unset";
   else
@@ -171,17 +164,6 @@ EOF
   fi
   
   
-<<<<<<< HEAD
-  echo
-  echo '== rocm-smi ==================================================='
-  "/opt/rocm/bin/rocm-smi" 2>&1
-  
-  echo
-  echo '== rocm info ==================================================='
-} >> ${OUTPUT_FILE}
-
-"/opt/rocm/bin/rocminfo" >> ${OUTPUT_FILE}
-=======
   print_header nvidia-smi
   nvidia-smi 2>&1
   
@@ -189,7 +171,6 @@ EOF
 
   # Find cudart/cudnn files
   find /usr -type f -name 'libcud*'  2>/dev/null | grep -E 'cuda.*(cudart|cudnn)' | grep -v -F '.cache'
->>>>>>> master
 
   print_header 'tensorflow installation'
   if ! pip show tensorflow; then
