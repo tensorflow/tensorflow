@@ -85,16 +85,6 @@ class CudaCommandBuffer final : public GpuCommandBuffer {
       DeviceMemory<uint8_t> index, bool index_is_bool, int32_t batch_offset,
       bool enable_conditional_default) override;
 
-  absl::StatusOr<GraphNodeHandle> CreateSetForConditionNode(
-      GraphConditionalHandle conditional, DeviceMemory<int32_t> loop_counter,
-      int32_t iterations,
-      absl::Span<const GraphNodeHandle> dependencies) override;
-
-  absl::Status UpdateSetForConditionNode(GraphNodeHandle handle,
-                                         GraphConditionalHandle conditional,
-                                         DeviceMemory<int32_t> loop_counter,
-                                         int32_t iterations) override;
-
   absl::StatusOr<GraphNodeHandle> CreateSetWhileConditionNode(
       GraphConditionalHandle conditional, DeviceMemory<bool> predicate,
       absl::Span<const GraphNodeHandle> dependencies) override;
@@ -188,9 +178,6 @@ class CudaCommandBuffer final : public GpuCommandBuffer {
                   CUgraphConditionalHandle, CUgraphConditionalHandle,
                   DeviceMemory<uint8_t>, bool, int32_t, int32_t, bool>;
 
-  using SetForConditionKernel =
-      TypedKernel<CUgraphConditionalHandle, DeviceMemory<int32_t>, int32_t>;
-
   using SetWhileConditionKernel =
       TypedKernel<CUgraphConditionalHandle, DeviceMemory<bool>>;
 
@@ -198,7 +185,6 @@ class CudaCommandBuffer final : public GpuCommandBuffer {
   // barriers, updating conditional handles, etc.).
   NoOpKernel noop_kernel_;
   SetCaseConditionKernel set_case_condition_kernel_;
-  SetForConditionKernel set_for_condition_kernel_;
   SetWhileConditionKernel set_while_condition_kernel_;
 
   StreamExecutor* parent_;

@@ -821,49 +821,6 @@ CommandBufferCmd::BufferUseVector CaseCmd::buffers() {
 }
 
 //===----------------------------------------------------------------------===//
-// ForCmd
-//===----------------------------------------------------------------------===//
-
-ForCmd::ForCmd(ExecutionStreamId execution_stream_id, int32_t num_iterations,
-               BufferAllocation::Slice loop_counter,
-               CommandBufferCmdSequence body_commands)
-    : CommandBufferCmd(CommandBufferCmdType::kForCmd, execution_stream_id),
-      num_iterations_(num_iterations),
-      loop_counter_(loop_counter),
-      body_commands_(std::move(body_commands)) {}
-
-absl::Status ForCmd::Initialize(const Thunk::InitializeParams& params,
-                                StateManager& state) {
-  return body_commands_.Initialize(params, state);
-}
-
-absl::Status ForCmd::Record(const Thunk::ExecuteParams& execute_params,
-                            const RecordParams& record_params,
-                            se::CommandBuffer* command_buffer) {
-  se::DeviceMemoryBase loop_counter =
-      execute_params.buffer_allocations->GetDeviceAddress(loop_counter_);
-
-  VLOG(5) << "ForCmd: num_iterations=" << num_iterations_
-          << "; body_commands=" << body_commands_.size();
-  VLOG(5) << "  loop_counter: " << loop_counter_ << " ("
-          << loop_counter.opaque() << ")";
-
-  return command_buffer->For(
-      num_iterations_, se::DeviceMemory<int32_t>(loop_counter),
-      CreateBuilder(&body_commands_, &execute_params, &record_params));
-}
-
-bool ForCmd::force_update() { return body_commands_.force_update(); }
-
-CommandBufferCmd::BufferUseVector ForCmd::buffers() {
-  absl::flat_hash_set<BufferUse> buffers;
-  buffers.emplace(loop_counter_, MemoryAccess::kWrite);
-  buffers.insert(body_commands_.buffers().begin(),
-                 body_commands_.buffers().end());
-  return {buffers.begin(), buffers.end()};
-}
-
-//===----------------------------------------------------------------------===//
 // WhileCmd
 //===----------------------------------------------------------------------===//
 

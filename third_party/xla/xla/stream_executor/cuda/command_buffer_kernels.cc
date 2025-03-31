@@ -19,8 +19,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "xla/stream_executor/kernel_spec.h"
 
-namespace stream_executor {
-namespace cuda {
+namespace stream_executor::cuda {
 namespace {
 
 // Collection of helper kernels required by command buffers on CUDA backends. We
@@ -34,197 +33,6 @@ namespace {
 // In all kernels defined below we set conditional handle value to `1` when we
 // want to execute a CUDA graph tied to it, and to `0` otherwise. For loops, the
 // graph will keep being executed until the conditional handle becomes `0`.
-
-// PTX kernel compiled from:
-//
-// __global__ void SetIfCondition(cudaGraphConditionalHandle then_handle,
-//                                bool* predicate) {
-//   if (*predicate) {
-//     cudaGraphSetConditional(then_handle, 1);
-//   } else {
-//     cudaGraphSetConditional(then_handle, 0);
-//   }
-// }
-//
-// Easiest way to get PTX from C++ is to use https://godbolt.org.
-inline constexpr absl::string_view kSetIfConditionKernel = R"(
-.version 4.0
-.target sm_50
-.address_size 64
-
-.extern .func cudaGraphSetConditional
-(
-        .param .b64 cudaGraphSetConditional_param_0,
-        .param .b32 cudaGraphSetConditional_param_1
-)
-
-.visible .entry set_if_condition(
-        .param .u64 set_if_condition_param_0,
-        .param .u64 set_if_condition_param_1
-)
-{
-        .reg .pred      %p<2>;
-        .reg .b16       %rs<2>;
-        .reg .b64       %rd<4>;
-        .loc    1 1 0
-
-        ld.param.u64    %rd1, [set_if_condition_param_0];
-        ld.param.u64    %rd2, [set_if_condition_param_1];
-        .loc    1 3 3
-        cvta.to.global.u64      %rd3, %rd2;
-        ld.global.u8    %rs1, [%rd3];
-        setp.eq.s16     %p1, %rs1, 0;
-        @%p1 bra        $L__BB0_2;
-
-        .loc    1 4 5
-        { // callseq 0, 0
-        .reg .b32 temp_param_reg;
-        .param .b64 param0;
-        st.param.b64    [param0+0], %rd1;
-        .param .b32 param1;
-        st.param.b32    [param1+0], 1;
-        call.uni
-        cudaGraphSetConditional,
-        (
-        param0,
-        param1
-        );
-        } // callseq 0
-        bra.uni         $L__BB0_3;
-
-$L__BB0_2:
-        .loc    1 6 5
-        { // callseq 1, 0
-        .reg .b32 temp_param_reg;
-        .param .b64 param0;
-        st.param.b64    [param0+0], %rd1;
-        .param .b32 param1;
-        st.param.b32    [param1+0], 0;
-        call.uni
-        cudaGraphSetConditional,
-        (
-        param0,
-        param1
-        );
-        } // callseq 1
-
-$L__BB0_3:
-        .loc    1 8 1
-        ret;
-
-})";
-
-// PTX kernel compiled from:
-//
-// __global__ void SetIfElseCondition(cudaGraphConditionalHandle then_handle,
-//                                    cudaGraphConditionalHandle else_handle,
-//                                    bool* predicate) {
-//   if (*predicate) {
-//     cudaGraphSetConditional(then_handle, 1);
-//     cudaGraphSetConditional(else_handle, 0);
-//   } else {
-//     cudaGraphSetConditional(then_handle, 0);
-//     cudaGraphSetConditional(else_handle, 1);
-//   }
-// }
-//
-// Easiest way to get PTX from C++ is to use https://godbolt.org.
-inline constexpr absl::string_view kSetIfElseConditionKernel = R"(
-.version 4.0
-.target sm_50
-.address_size 64
-
-.extern .func cudaGraphSetConditional
-(
-        .param .b64 cudaGraphSetConditional_param_0,
-        .param .b32 cudaGraphSetConditional_param_1
-)
-
-.visible .entry set_if_else_condition(
-        .param .u64 set_if_else_condition_param_0,
-        .param .u64 set_if_else_condition_param_1,
-        .param .u64 set_if_else_condition_param_2
-)
-{
-        .reg .pred      %p<2>;
-        .reg .b16       %rs<2>;
-        .reg .b64       %rd<5>;
-        .loc    1 1 0
-
-        ld.param.u64    %rd1, [set_if_else_condition_param_0];
-        ld.param.u64    %rd2, [set_if_else_condition_param_1];
-        ld.param.u64    %rd3, [set_if_else_condition_param_2];
-        .loc    1 4 3
-        cvta.to.global.u64      %rd4, %rd3;
-        ld.global.u8    %rs1, [%rd4];
-        setp.eq.s16     %p1, %rs1, 0;
-        @%p1 bra        $L__BB0_2;
-
-        .loc    1 5 5
-        { // callseq 0, 0
-        .reg .b32 temp_param_reg;
-        .param .b64 param0;
-        st.param.b64    [param0+0], %rd1;
-        .param .b32 param1;
-        st.param.b32    [param1+0], 1;
-        call.uni
-        cudaGraphSetConditional,
-        (
-        param0,
-        param1
-        );
-        } // callseq 0
-        .loc    1 6 5
-        { // callseq 1, 0
-        .reg .b32 temp_param_reg;
-        .param .b64 param0;
-        st.param.b64    [param0+0], %rd2;
-        .param .b32 param1;
-        st.param.b32    [param1+0], 0;
-        call.uni
-        cudaGraphSetConditional,
-        (
-        param0,
-        param1
-        );
-        } // callseq 1
-        bra.uni         $L__BB0_3;
-
-$L__BB0_2:
-        .loc    1 8 5
-        { // callseq 2, 0
-        .reg .b32 temp_param_reg;
-        .param .b64 param0;
-        st.param.b64    [param0+0], %rd1;
-        .param .b32 param1;
-        st.param.b32    [param1+0], 0;
-        call.uni
-        cudaGraphSetConditional,
-        (
-        param0,
-        param1
-        );
-        } // callseq 2
-        .loc    1 9 5
-        { // callseq 3, 0
-        .reg .b32 temp_param_reg;
-        .param .b64 param0;
-        st.param.b64    [param0+0], %rd2;
-        .param .b32 param1;
-        st.param.b32    [param1+0], 1;
-        call.uni
-        cudaGraphSetConditional,
-        (
-        param0,
-        param1
-        );
-        } // callseq 3
-
-$L__BB0_3:
-        .loc    1 11 1
-        ret;
-
-})";
 
 // clang-format off
 // PTX kernel compiled from:
@@ -390,10 +198,10 @@ $L__BB0_6:
 	st.param.b64 	[param0+0], %rd5;
 	.param .b32 param1;
 	st.param.b32 	[param1+0], 0;
-	call.uni 
-	cudaGraphSetConditional, 
+	call.uni
+	cudaGraphSetConditional,
 	(
-	param0, 
+	param0,
 	param1
 	);
 	} // callseq 0
@@ -406,10 +214,10 @@ $L__BB0_8:
 	st.param.b64 	[param0+0], %rd5;
 	.param .b32 param1;
 	st.param.b32 	[param1+0], 1;
-	call.uni 
-	cudaGraphSetConditional, 
+	call.uni
+	cudaGraphSetConditional,
 	(
-	param0, 
+	param0,
 	param1
 	);
 	} // callseq 1
@@ -428,10 +236,10 @@ $L__BB0_11:
 	st.param.b64 	[param0+0], %rd6;
 	.param .b32 param1;
 	st.param.b32 	[param1+0], 1;
-	call.uni 
-	cudaGraphSetConditional, 
+	call.uni
+	cudaGraphSetConditional,
 	(
-	param0, 
+	param0,
 	param1
 	);
 	} // callseq 3
@@ -444,10 +252,10 @@ $L__BB0_10:
 	st.param.b64 	[param0+0], %rd6;
 	.param .b32 param1;
 	st.param.b32 	[param1+0], 0;
-	call.uni 
-	cudaGraphSetConditional, 
+	call.uni
+	cudaGraphSetConditional,
 	(
-	param0, 
+	param0,
 	param1
 	);
 	} // callseq 2
@@ -466,10 +274,10 @@ $L__BB0_14:
 	st.param.b64 	[param0+0], %rd7;
 	.param .b32 param1;
 	st.param.b32 	[param1+0], 1;
-	call.uni 
-	cudaGraphSetConditional, 
+	call.uni
+	cudaGraphSetConditional,
 	(
-	param0, 
+	param0,
 	param1
 	);
 	} // callseq 5
@@ -482,10 +290,10 @@ $L__BB0_13:
 	st.param.b64 	[param0+0], %rd7;
 	.param .b32 param1;
 	st.param.b32 	[param1+0], 0;
-	call.uni 
-	cudaGraphSetConditional, 
+	call.uni
+	cudaGraphSetConditional,
 	(
-	param0, 
+	param0,
 	param1
 	);
 	} // callseq 4
@@ -504,10 +312,10 @@ $L__BB0_17:
 	st.param.b64 	[param0+0], %rd8;
 	.param .b32 param1;
 	st.param.b32 	[param1+0], 1;
-	call.uni 
-	cudaGraphSetConditional, 
+	call.uni
+	cudaGraphSetConditional,
 	(
-	param0, 
+	param0,
 	param1
 	);
 	} // callseq 7
@@ -520,10 +328,10 @@ $L__BB0_16:
 	st.param.b64 	[param0+0], %rd8;
 	.param .b32 param1;
 	st.param.b32 	[param1+0], 0;
-	call.uni 
-	cudaGraphSetConditional, 
+	call.uni
+	cudaGraphSetConditional,
 	(
-	param0, 
+	param0,
 	param1
 	);
 	} // callseq 6
@@ -556,10 +364,10 @@ $L__BB0_21:
 	st.param.b64 	[param0+0], %rd12;
 	.param .b32 param1;
 	st.param.b32 	[param1+0], 0;
-	call.uni 
-	cudaGraphSetConditional, 
+	call.uni
+	cudaGraphSetConditional,
 	(
-	param0, 
+	param0,
 	param1
 	);
 	} // callseq 8
@@ -572,10 +380,10 @@ $L__BB0_23:
 	st.param.b64 	[param0+0], %rd12;
 	.param .b32 param1;
 	st.param.b32 	[param1+0], 1;
-	call.uni 
-	cudaGraphSetConditional, 
+	call.uni
+	cudaGraphSetConditional,
 	(
-	param0, 
+	param0,
 	param1
 	);
 	} // callseq 9
@@ -589,95 +397,6 @@ $L__BB0_24:
 
 $L__BB0_25:
 	ret;
-
-})";
-
-// PTX kernel compiled from:
-//
-// __global__ void SetForCondition(cudaGraphConditionalHandle handle,
-//                                 int32_t* loop_index,
-//                                 int32_t num_iterations) {
-//   if (*loop_index < num_iterations) {
-//     cudaGraphSetConditional(handle, 1);
-//   } else {
-//     cudaGraphSetConditional(handle, 0);
-//   }
-//   *loop_index += 1;
-// }
-//
-// Easiest way to get PTX from C++ is to use https://godbolt.org.
-inline constexpr absl::string_view kSetForConditionKernel = R"(
-.version 4.0
-.target sm_50
-.address_size 64
-
-.extern .func cudaGraphSetConditional
-(
-        .param .b64 cudaGraphSetConditional_param_0,
-        .param .b32 cudaGraphSetConditional_param_1
-)
-
-.visible .entry set_for_condition(
-        .param .u64 set_for_condition_param_0,
-        .param .u64 set_for_condition_param_1,
-        .param .u32 set_for_condition_param_2
-)
-{
-        .reg .pred      %p<2>;
-        .reg .b32       %r<5>;
-        .reg .b64       %rd<4>;
-        .loc    1 1 0
-
-        ld.param.u64    %rd2, [set_for_condition_param_0];
-        ld.param.u64    %rd3, [set_for_condition_param_1];
-        ld.param.u32    %r1, [set_for_condition_param_2];
-        .loc    1 3 3
-        cvta.to.global.u64      %rd1, %rd3;
-        ld.global.u32   %r2, [%rd1];
-        setp.lt.s32     %p1, %r2, %r1;
-        @%p1 bra        $L__BB0_2;
-        bra.uni         $L__BB0_1;
-
-$L__BB0_2:
-        .loc    1 4 5
-        { // callseq 1, 0
-        .reg .b32 temp_param_reg;
-        .param .b64 param0;
-        st.param.b64    [param0+0], %rd2;
-        .param .b32 param1;
-        st.param.b32    [param1+0], 1;
-        call.uni
-        cudaGraphSetConditional,
-        (
-        param0,
-        param1
-        );
-        } // callseq 1
-        bra.uni         $L__BB0_3;
-
-$L__BB0_1:
-        .loc    1 6 5
-        { // callseq 0, 0
-        .reg .b32 temp_param_reg;
-        .param .b64 param0;
-        st.param.b64    [param0+0], %rd2;
-        .param .b32 param1;
-        st.param.b32    [param1+0], 0;
-        call.uni
-        cudaGraphSetConditional,
-        (
-        param0,
-        param1
-        );
-        } // callseq 0
-
-$L__BB0_3:
-        .loc    1 8 3
-        ld.global.u32   %r3, [%rd1];
-        add.s32         %r4, %r3, 1;
-        st.global.u32   [%rd1], %r4;
-        .loc    1 9 1
-        ret;
 
 })";
 
@@ -771,28 +490,9 @@ inline constexpr absl::string_view kNoOpKernel = R"(
 
 }  // namespace
 
-absl::StatusOr<MultiKernelLoaderSpec> GetSetIfConditionKernelLoaderSpec() {
-  MultiKernelLoaderSpec spec(/*arity=*/2);
-  spec.AddCudaPtxInMemory(cuda::kSetIfConditionKernel, "set_if_condition");
-  return spec;
-}
-
-absl::StatusOr<MultiKernelLoaderSpec> GetSetIfElseConditionKernelLoaderSpec() {
-  MultiKernelLoaderSpec spec(/*arity=*/3);
-  spec.AddCudaPtxInMemory(cuda::kSetIfElseConditionKernel,
-                          "set_if_else_condition");
-  return spec;
-}
-
 absl::StatusOr<MultiKernelLoaderSpec> GetSetCaseConditionKernelLoaderSpec() {
   MultiKernelLoaderSpec spec(/*arity=*/13);
   spec.AddCudaPtxInMemory(cuda::kSetCaseConditionKernel, "set_case_condition");
-  return spec;
-}
-
-absl::StatusOr<MultiKernelLoaderSpec> GetSetForConditionKernelLoaderSpec() {
-  MultiKernelLoaderSpec spec(/*arity=*/3);
-  spec.AddCudaPtxInMemory(cuda::kSetForConditionKernel, "set_for_condition");
   return spec;
 }
 
@@ -809,5 +509,4 @@ absl::StatusOr<MultiKernelLoaderSpec> GetNoOpKernelLoaderSpec() {
   return spec;
 }
 
-}  // namespace cuda
-}  // namespace stream_executor
+}  // namespace stream_executor::cuda

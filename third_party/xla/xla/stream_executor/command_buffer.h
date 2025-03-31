@@ -190,14 +190,6 @@ class CommandBuffer {
                             std::vector<Builder> branches) = 0;
 
   // Adds a conditional operation that will execute a command buffer constructed
-  // by the `body_builder` exactly `num_iteration` times. This means the
-  // condition is known at compile time (`num_iteration` < `loop_counter`), and
-  // does not require a `cond_builder`.
-  virtual absl::Status For(int32_t num_iteration,
-                           DeviceMemory<int32_t> loop_counter,
-                           Builder body_builder) = 0;
-
-  // Adds a conditional operation that will execute a command buffer constructed
   // by the `cond_builder` that must update `pred` value, and then depending on
   // the value might execute command buffer constructed by `body_builder` and
   // `cond_builder`. Will continue while `pred` value (which is continuously

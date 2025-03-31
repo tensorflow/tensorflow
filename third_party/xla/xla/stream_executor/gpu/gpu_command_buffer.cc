@@ -129,10 +129,6 @@ GpuCommandBuffer::Dependencies GpuCommandBuffer::GetAutoDependencies() const {
     return dependencies;
   }
 
-  if (auto* gpu_command = dynamic_cast<const GpuForCommand*>(command)) {
-    return Dependencies{gpu_command->conditional_node.handle};
-  }
-
   if (auto* gpu_command = dynamic_cast<const GpuWhileCommand*>(command)) {
     return Dependencies{gpu_command->conditional_node.handle};
   }
@@ -505,65 +501,6 @@ absl::Status GpuCommandBuffer::Case(const Command* command,
       command,
       DeviceMemory<uint8_t>::MakeFromByteSize(index.opaque(), index.size()),
       /*index_is_bool=*/true, branches);
-}
-
-absl::Status GpuCommandBuffer::For(int32_t num_iteration,
-                                   DeviceMemory<int32_t> loop_counter,
-                                   Builder body_builder) {
-  if (state_ == State::kCreate) {
-    GpuForCommand command = {};
-
-    // Reset loop counter to zero.
-    TF_ASSIGN_OR_RETURN(
-        command.memset_node,
-        CreateMemsetNode(GetAutoDependencies(), loop_counter, uint32_t{0}, 1));
-
-    TF_ASSIGN_OR_RETURN(command.conditional, CreateConditionalHandle());
-    TF_ASSIGN_OR_RETURN(
-        command.set_init_condition_node,
-        CreateSetForConditionNode(command.conditional, loop_counter,
-                                  num_iteration, {command.memset_node}));
-    TF_ASSIGN_OR_RETURN(
-        command.conditional_node,
-        CreateConditionalNode({command.set_init_condition_node},
-                              command.conditional, ConditionType::kWhile));
-
-    GpuCommandBuffer* body = command.conditional_node.command_buffer.get();
-    TF_RETURN_IF_ERROR(body_builder(body));
-    TF_ASSIGN_OR_RETURN(command.set_body_condition_node,
-                        body->CreateSetForConditionNode(
-                            command.conditional, loop_counter, num_iteration,
-                            body->GetAutoDependencies()));
-    TF_RETURN_IF_ERROR(command.conditional_node.command_buffer->Finalize());
-
-    AppendCommand(std::move(command));
-    return absl::OkStatus();
-  }
-
-  if (state_ == State::kUpdate) {
-    Command& command = *commands_[update_state_.command_idx++];
-    auto* gpu_command = tsl::down_cast<GpuForCommand*>(&command);
-
-    // Reset loop counter to zero.
-    TF_RETURN_IF_ERROR(UpdateMemsetNode(gpu_command->memset_node, loop_counter,
-                                        uint32_t{0}, 1));
-    TF_RETURN_IF_ERROR(UpdateSetForConditionNode(
-        gpu_command->set_init_condition_node, gpu_command->conditional,
-        loop_counter, num_iteration));
-
-    GpuCommandBuffer* body = gpu_command->conditional_node.command_buffer.get();
-    auto body_update_mode = ActivateUpdateMode(body);
-
-    // Update command buffer using user-provided builder callback.
-    TF_RETURN_IF_ERROR(body->Update());
-    TF_RETURN_IF_ERROR(body_builder(body));
-    TF_RETURN_IF_ERROR(body->UpdateSetForConditionNode(
-        gpu_command->set_body_condition_node, gpu_command->conditional,
-        loop_counter, num_iteration));
-    TF_RETURN_IF_ERROR(body->Finalize());
-  }
-
-  return UnsupportedStateError(state_);
 }
 
 absl::Status GpuCommandBuffer::While(DeviceMemory<bool> pred,

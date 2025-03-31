@@ -117,15 +117,9 @@ static absl::StatusOr<Command> Convert(
                       ConvertToCommands(thunk.body_thunk_sequence()->thunks(),
                                         synchronization_mode));
 
-  if (std::optional<int64_t> trip_count = thunk.trip_count()) {
-    return std::make_unique<ForCmd>(thunk.execution_stream_id(), *trip_count,
+  return std::make_unique<WhileCmd>(thunk.execution_stream_id(),
                                     thunk.condition_result_buffer(),
-                                    std::move(body_cmds));
-  } else {
-    return std::make_unique<WhileCmd>(
-        thunk.execution_stream_id(), thunk.condition_result_buffer(),
-        std::move(cond_cmds), std::move(body_cmds));
-  }
+                                    std::move(cond_cmds), std::move(body_cmds));
 }
 
 static absl::StatusOr<Command> Convert(const GemmThunk& thunk) {

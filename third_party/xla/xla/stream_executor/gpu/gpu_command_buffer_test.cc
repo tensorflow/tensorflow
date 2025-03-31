@@ -629,56 +629,6 @@ TEST(GpuCommandBufferTest, ConditionalCase) {
   ASSERT_EQ(dst, expected_mul);
 }
 
-TEST(GpuCommandBufferTest, ConditionalFor) {
-  Platform* platform = GpuPlatform();
-  StreamExecutor* executor = platform->ExecutorForDevice(0).value();
-
-  if (!IsAtLeastCuda12300(executor)) {
-    GTEST_SKIP() << "CUDA graph conditionals are not supported";
-  }
-
-  TF_ASSERT_OK_AND_ASSIGN(auto stream, executor->CreateStream());
-
-  MultiKernelLoaderSpec spec(/*arity=*/3);
-  spec.AddInProcessSymbol(internal::GetAddI32Kernel(), "AddI32");
-  TF_ASSERT_OK_AND_ASSIGN(auto add, AddI32Kernel::Create(executor, spec));
-
-  int64_t length = 4;
-  int64_t byte_length = sizeof(int32_t) * length;
-
-  // Prepare arguments: a=1, b=0, loop_counter=100
-  DeviceMemory<int32_t> loop_counter = executor->AllocateArray<int32_t>(1, 0);
-  DeviceMemory<int32_t> a = executor->AllocateArray<int32_t>(length, 0);
-  DeviceMemory<int32_t> b = executor->AllocateArray<int32_t>(length, 0);
-
-  // Set loop counter to 100 to check that command buffer resets it.
-  TF_ASSERT_OK(stream->Memset32(&loop_counter, 100, sizeof(int32_t)));
-  TF_ASSERT_OK(stream->Memset32(&a, 1, byte_length));
-  TF_ASSERT_OK(stream->MemZero(&b, byte_length));
-
-  // Loop body: b = a + b
-  CommandBuffer::Builder body_builder = [&](CommandBuffer* body_cmd) {
-    return body_cmd->Launch(add, ThreadDim(), BlockDim(4), {}, a, b, b)
-        .status();
-  };
-
-  int32_t num_iters = 10;
-
-  // Create a command buffer with a single conditional operation.
-  auto cmd_buffer = executor->CreateCommandBuffer(primary).value();
-  TF_ASSERT_OK(cmd_buffer->For(num_iters, loop_counter, body_builder));
-  TF_ASSERT_OK(cmd_buffer->Finalize());
-
-  TF_ASSERT_OK(cmd_buffer->Submit(stream.get()));
-
-  // Copy `b` data back to host.
-  std::vector<int32_t> dst(4, 42);
-  TF_ASSERT_OK(stream->Memcpy(dst.data(), b, byte_length));
-
-  std::vector<int32_t> expected = {10, 10, 10, 10};
-  ASSERT_EQ(dst, expected);
-}
-
 TEST(GpuCommandBufferTest, ConditionalWhile) {
   Platform* platform = GpuPlatform();
   StreamExecutor* executor = platform->ExecutorForDevice(0).value();

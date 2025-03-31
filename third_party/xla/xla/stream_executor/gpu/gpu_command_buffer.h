@@ -112,15 +112,6 @@ class GpuCommandBuffer : public CommandBuffer {
     GraphNodeHandle barrier_node;
   };
 
-  // A GPU command recorded for the For operation.
-  struct GpuForCommand : public CommandBuffer::Command {
-    GraphConditionalHandle conditional;
-    GraphNodeHandle memset_node;
-    GraphNodeHandle set_init_condition_node;
-    GraphNodeHandle set_body_condition_node;
-    GraphConditionalNodeHandle conditional_node;
-  };
-
   // A GPU command recorded for the While operation.
   struct GpuWhileCommand : public CommandBuffer::Command {
     GraphConditionalHandle conditional;
@@ -179,9 +170,6 @@ class GpuCommandBuffer : public CommandBuffer {
 
   absl::Status Case(const Command* command, DeviceMemory<bool> index,
                     std::vector<Builder> branches) override;
-
-  absl::Status For(int32_t num_iteration, DeviceMemory<int32_t> loop_counter,
-                   Builder body_builder) override;
 
   absl::Status While(DeviceMemory<bool> pred, Builder cond_builder,
                      Builder body_builder) override;
@@ -245,18 +233,6 @@ class GpuCommandBuffer : public CommandBuffer {
       absl::Span<const GraphConditionalHandle> conditionals,
       DeviceMemory<uint8_t> index, bool index_is_bool, int32_t batch_offset,
       bool enable_conditional_default) = 0;
-
-  // Launches a kernel that updates the state of the given graph conditional
-  // based on the loop counter and the total number of iterations. If the loop
-  // counter is less than the number of iterations, `conditional` is set to 1,
-  // otherwise to 0. The loop counter is also incremented by 1.
-  virtual absl::StatusOr<GraphNodeHandle> CreateSetForConditionNode(
-      GraphConditionalHandle conditional, DeviceMemory<int32_t> loop_counter,
-      int32_t iterations, absl::Span<const GraphNodeHandle> dependencies) = 0;
-
-  virtual absl::Status UpdateSetForConditionNode(
-      GraphNodeHandle handle, GraphConditionalHandle conditional,
-      DeviceMemory<int32_t> loop_counter, int32_t iterations) = 0;
 
   // Launches a kernel that updates the state of the given graph conditional
   // based on the predicate. If the predicate is true, `conditional` is set to

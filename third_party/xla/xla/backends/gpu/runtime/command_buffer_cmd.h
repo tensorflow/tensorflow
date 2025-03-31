@@ -74,7 +74,6 @@ namespace xla::gpu {
   V(kMemzeroCmd, "MemzeroCmd")                           \
   V(kMemset32Cmd, "Memset32Cmd")                         \
   V(kCaseCmd, "CaseCmd")                                 \
-  V(kForCmd, "ForCmd")                                   \
   V(kWhileCmd, "WhileCmd")                               \
   V(kCustomCallCmd, "CustomCallCmd")                     \
   V(kBarrierCmd, "BarrierCmd")                           \
@@ -574,33 +573,6 @@ class CaseCmd : public CommandBufferCmd {
   BufferAllocation::Slice index_;
   bool index_is_bool_;
   std::vector<CommandBufferCmdSequence> branches_commands_;
-};
-
-//===----------------------------------------------------------------------===//
-// ForCmd
-//===----------------------------------------------------------------------===//
-
-class ForCmd : public CommandBufferCmd {
- public:
-  ForCmd(ExecutionStreamId execution_stream_id, int32_t num_iterations,
-         BufferAllocation::Slice loop_counter,
-         CommandBufferCmdSequence body_commands);
-
-  absl::Status Initialize(const Thunk::InitializeParams& params,
-                          StateManager& state) override;
-
-  absl::Status Record(const Thunk::ExecuteParams& execute_params,
-                      const RecordParams& record_params,
-                      se::CommandBuffer* command_buffer) override;
-
-  bool force_update() override;
-
-  BufferUseVector buffers() override;
-
- private:
-  int32_t num_iterations_;
-  BufferAllocation::Slice loop_counter_;
-  CommandBufferCmdSequence body_commands_;
 };
 
 //===----------------------------------------------------------------------===//

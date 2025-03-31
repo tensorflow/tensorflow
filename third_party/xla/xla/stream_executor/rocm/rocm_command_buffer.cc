@@ -124,18 +124,6 @@ absl::Status RocmCommandBuffer::UpdateSetCaseConditionNode(
   return absl::UnimplementedError("Conditionals are not supported on ROCM.");
 }
 
-absl::StatusOr<GraphNodeHandle> RocmCommandBuffer::CreateSetForConditionNode(
-    GraphConditionalHandle conditional, DeviceMemory<int32_t> loop_counter,
-    int32_t iterations, absl::Span<const GraphNodeHandle> dependencies) {
-  return absl::UnimplementedError("Conditionals are not supported on ROCM.");
-}
-
-absl::Status RocmCommandBuffer::UpdateSetForConditionNode(
-    GraphNodeHandle handle, GraphConditionalHandle conditional,
-    DeviceMemory<int32_t> loop_counter, int32_t iterations) {
-  return absl::UnimplementedError("Conditionals are not supported on ROCM.");
-}
-
 absl::StatusOr<GraphNodeHandle> RocmCommandBuffer::CreateSetWhileConditionNode(
     GraphConditionalHandle conditional, DeviceMemory<bool> predicate,
     absl::Span<const GraphNodeHandle> dependencies) {
