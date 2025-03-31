@@ -488,7 +488,7 @@ class Interpreter:
           x for x in self._custom_op_registerers if not isinstance(x, str)
       ]
       self._interpreter = _interpreter_wrapper.CreateWrapperFromFile(
-          model_path,
+          os.fspath(model_path),
           op_resolver_id,
           custom_op_registerers_by_name,
           custom_op_registerers_by_func,
