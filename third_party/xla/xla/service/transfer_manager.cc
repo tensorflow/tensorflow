@@ -176,7 +176,8 @@ absl::Status TransferManager::ReadDynamicShapes(
         TF_ASSIGN_OR_RETURN(
             auto metadata,
             TransferArrayFromDevice(
-                stream, ShapeUtil::MakeShape(S32, {buffer_shape.rank()}),
+                stream,
+                ShapeUtil::MakeShape(S32, {buffer_shape.dimensions_size()}),
                 metadata_buffer));
 
         // Update shape size from metadata.

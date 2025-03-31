@@ -733,8 +733,6 @@ cc_library(
         ":xplane_to_tool_names",
         ":xplane_to_trace_container",
         "//tensorflow/core:lib",
-        "//tensorflow/core/profiler/convert/trace_viewer:trace_events_to_json",
-        "//tensorflow/core/profiler/convert/trace_viewer:trace_viewer_visibility",
         "//tensorflow/core/profiler/protobuf:dcn_slack_analysis_proto_cc",
         "//tensorflow/core/profiler/protobuf:hardware_types_proto_cc",
         "//tensorflow/core/profiler/protobuf:inference_stats_proto_cc",
@@ -756,6 +754,8 @@ cc_library(
         "@local_tsl//tsl/profiler/protobuf:xplane_proto_cc",
         "@local_xla//xla/tsl/profiler/convert:xplane_to_trace_events",
         "@local_xla//xla/tsl/profiler/utils:timespan",
+        "@org_xprof//xprof/convert/trace_viewer:trace_events_to_json",
+        "@org_xprof//xprof/convert/trace_viewer:trace_viewer_visibility",
     ],
 )
 
@@ -1051,9 +1051,6 @@ cc_library(
     hdrs = ["xplane_to_trace_container.h"],
     copts = tf_profiler_copts(),
     deps = [
-        "//tensorflow/core/profiler/convert/trace_viewer:trace_event_arguments_builder",
-        "//tensorflow/core/profiler/convert/trace_viewer:trace_events",
-        "//tensorflow/core/profiler/convert/trace_viewer:trace_events_util",
         "//tensorflow/core/profiler/protobuf:trace_events_proto_cc",
         "//tensorflow/core/profiler/protobuf:trace_events_raw_proto_cc",
         "@com_google_absl//absl/strings",
@@ -1064,6 +1061,9 @@ cc_library(
         "@local_xla//xla/tsl/profiler/utils:xplane_schema",
         "@local_xla//xla/tsl/profiler/utils:xplane_utils",
         "@local_xla//xla/tsl/profiler/utils:xplane_visitor",
+        "@org_xprof//xprof/convert/trace_viewer:trace_event_arguments_builder",
+        "@org_xprof//xprof/convert/trace_viewer:trace_events",
+        "@org_xprof//xprof/convert/trace_viewer:trace_events_util",
     ],
 )
 

@@ -32,6 +32,12 @@ inline constexpr char kNoOpCostName[] = "no_op";
 inline constexpr char kWithSmearSuffix[] = "_with_smear";
 inline constexpr char kNoSmearSuffix[] = "_no_smear";
 inline constexpr char kNonBatchingSuffix[] = "_non_batching";
+inline constexpr char kDecodeWithSmearSuffix[] = "_decode_with_smear";
+inline constexpr char kDecodeNoSmearSuffix[] = "_decode_no_smear";
+inline constexpr char kInsertWithSmearSuffix[] = "_insert_with_smear";
+inline constexpr char kInsertNoSmearSuffix[] = "_insert_no_smear";
+inline constexpr char kGenerateWithSmearSuffix[] = "_generate_with_smear";
+inline constexpr char kGenerateNoSmearSuffix[] = "_generate_no_smear";
 
 // Full names of per-request cost.
 inline constexpr char kTpuWithSmearCostName[] = "tpu_with_smear";

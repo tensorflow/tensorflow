@@ -19,7 +19,7 @@ limitations under the License.
 #include <utility>
 
 #include "absl/algorithm/container.h"
-#include "absl/strings/match.h"
+#include "absl/strings/string_view.h"
 #include "xla/backends/gpu/codegen/copy.h"
 #include "xla/backends/gpu/codegen/cudnn.h"
 #include "xla/backends/gpu/codegen/custom.h"
@@ -61,8 +61,14 @@ std::optional<std::unique_ptr<FusionInterface>> HloFusionInfo::GetCopyFusion()
     const {
   if (analysis().GetEmitterFusionKind() ==
       HloFusionAnalysis::EmitterFusionKind::kDynamicMemcpy) {
+    if (IsDynamicUpdateSliceFusion(analysis()) &&
+        !CanEmitDynamicUpdateSliceInPlace()) {
+      // We currently only implement in-place DUSes as memcpys.
+      return std::nullopt;
+    }
+
     auto dynamic_memcpy =
-        DynamicMemcpyFusion::GetMemcpyDescriptorForFusion(*instr_, call_graph_);
+        DynamicMemcpyFusion::GetMemcpyDescriptorForFusion(*instr_);
     if (dynamic_memcpy) {
       return std::make_unique<DynamicMemcpyFusion>(
           analysis(), buffer_assignment_, std::move(*dynamic_memcpy));
@@ -116,12 +122,15 @@ std::unique_ptr<FusionInterface> GetFusionEmitter(
       return std::make_unique<InputSlicesFusion>(analysis);
     case HloFusionAnalysis::EmitterFusionKind::kDynamicMemcpy:
     case HloFusionAnalysis::EmitterFusionKind::kLoop: {
+      // Check for a memcpy fusion before checking if a DUS can be emitted in
+      // place. DUS cmemcpy fusions can be emitted in place, but lowering them
+      // to a memcpy is still better.
+      if (auto copy_fusion = fusion_info.GetCopyFusion()) {
+        return *std::move(copy_fusion);
+      }
       if (IsDynamicUpdateSliceFusion(analysis) &&
           fusion_info.CanEmitDynamicUpdateSliceInPlace()) {
         return std::make_unique<InPlaceDynamicUpdateSliceFusion>(analysis);
-      }
-      if (auto copy_fusion = fusion_info.GetCopyFusion()) {
-        return *std::move(copy_fusion);
       }
       return std::make_unique<LoopFusion>(analysis);
     }

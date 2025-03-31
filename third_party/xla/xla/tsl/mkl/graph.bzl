@@ -5,7 +5,7 @@ These rules have to be outside of mkl/build_defs.bzl, otherwise we would have cy
 (xla.bzl depends on tsl which depends on mkl/build_defs.bzl).
 """
 
-load("//xla:xla.bzl", "xla_cc_test")
+load("//xla:xla.default.bzl", "xla_cc_test")
 load("//xla/tsl:package_groups.bzl", "DEFAULT_LOAD_VISIBILITY")
 load("//xla/tsl/mkl:build_defs.bzl", "if_graph_api")
 

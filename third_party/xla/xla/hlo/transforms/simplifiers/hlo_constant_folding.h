@@ -42,7 +42,7 @@ class HloConstantFolding : public HloModulePass {
     // some workloads, but it can have deteremental effects on others as well as
     // having a large increase in compile time.
     // Use with caution.
-    kAgressive,
+    kAggressive,
   };
 
   explicit HloConstantFolding(Level level = Level::kDefault) : level_(level) {}

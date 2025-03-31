@@ -44,18 +44,20 @@ limitations under the License.
 #include "xla/tsl/platform/types.h"
 #include "xla/tsl/protobuf/coordination_config.pb.h"
 #include "xla/tsl/protobuf/coordination_service.pb.h"
+#include "xla/tsl/util/proto/proto_matchers.h"
 #include "tsl/platform/random.h"
 
 namespace tsl {
 namespace {
+
 using ::testing::Each;
-using ::testing::Eq;
-using ::testing::EqualsProto;
 using ::testing::HasSubstr;
 using ::testing::IsEmpty;
+using ::testing::Matcher;
 using ::testing::UnorderedElementsAre;
-using ::testing::UnorderedPointwise;
+using ::testing::UnorderedElementsAreArray;
 using ::testing::status::StatusIs;
+using ::tsl::proto_testing::EqualsProto;
 
 using tensorflow::CoordinatedJob;
 using tensorflow::CoordinatedTask;
@@ -207,8 +209,17 @@ class CoordinationBarrierTest : public ::testing::Test {
   CoordinationServiceInterface* GetCoordinationService() {
     return coord_service_.get();
   }
-  CoordinatedTask GetTask(int i) { return tasks_[i]; }
-  const std::vector<CoordinatedTask>& GetTasks() { return tasks_; }
+  CoordinatedTask GetTask(int i) const { return tasks_[i]; }
+  const std::vector<CoordinatedTask>& GetTasks() const { return tasks_; }
+
+  // Returns a vector of matchers to match the tasks.
+  std::vector<Matcher<CoordinatedTask>> GetTaskMatchers() const {
+    std::vector<Matcher<CoordinatedTask>> matchers;
+    for (const auto& task : tasks_) {
+      matchers.push_back(EqualsProto(task));
+    }
+    return matchers;
+  }
 
   // TODO(b/286141652) Refactor this method into a util file.
   std::string GetTaskName(const CoordinatedTask& task) {
@@ -637,7 +648,7 @@ TEST_F(CoordinateTwoTasksTest, GetJobStateSucceeds) {
   want[1].set_incarnation(incarnation_1_);
   want[1].set_state(tensorflow::CoordinatedTaskState::TASKSTATE_CONNECTED);
   EXPECT_THAT(coord_service_->GetJobState("worker"),
-              UnorderedPointwise(EqualsProto(), want));
+              UnorderedElementsAre(EqualsProto(want[0]), EqualsProto(want[1])));
 }
 
 TEST_F(CoordinateTwoTasksTest, GetJobStateReturnsDisconnected) {
@@ -656,7 +667,7 @@ TEST_F(CoordinateTwoTasksTest, GetJobStateReturnsDisconnected) {
   want[1].set_incarnation(incarnation_1_);
   want[1].set_state(tensorflow::CoordinatedTaskState::TASKSTATE_DISCONNECTED);
   EXPECT_THAT(coord_service_->GetJobState("worker"),
-              UnorderedPointwise(EqualsProto(), want));
+              UnorderedElementsAre(EqualsProto(want[0]), EqualsProto(want[1])));
 }
 
 TEST_F(CoordinateTwoTasksTest, GetJobStateReturnsNewIncarnation) {
@@ -676,7 +687,7 @@ TEST_F(CoordinateTwoTasksTest, GetJobStateReturnsNewIncarnation) {
   want[1].set_incarnation(incarnation_1_ + 1);
   want[1].set_state(tensorflow::CoordinatedTaskState::TASKSTATE_CONNECTED);
   EXPECT_THAT(coord_service_->GetJobState("worker"),
-              UnorderedPointwise(EqualsProto(), want));
+              UnorderedElementsAre(EqualsProto(want[0]), EqualsProto(want[1])));
 }
 
 TEST_F(CoordinateTwoTasksTest, InsertKeyValue_Duplicate_Fail) {
@@ -2478,7 +2489,7 @@ TEST_F(GetAliveTasksTest, SuccessfulGetAliveTasks) {
   auto done = [&](const absl::Status& status,
                   const std::vector<CoordinatedTask>& alive_tasks) {
     EXPECT_OK(status);
-    EXPECT_THAT(alive_tasks, UnorderedPointwise(EqualsProto(), GetTasks()));
+    EXPECT_THAT(alive_tasks, UnorderedElementsAreArray(GetTaskMatchers()));
     finished.DecrementCount();
   };
   GetCoordinationService()->GetAliveTasksAsync(GetTask(0), GetTasks(), done);
@@ -2494,8 +2505,8 @@ TEST_F(GetAliveTasksTest, FailedTaskBeforeCallingGetAliveTasks) {
   auto done = [&](const absl::Status& status,
                   const std::vector<CoordinatedTask>& alive_tasks) {
     EXPECT_OK(status);
-    EXPECT_THAT(alive_tasks,
-                UnorderedPointwise(EqualsProto(), {GetTask(0), GetTask(1)}));
+    EXPECT_THAT(alive_tasks, UnorderedElementsAre(EqualsProto(GetTask(0)),
+                                                  EqualsProto(GetTask(1))));
     finished.DecrementCount();
   };
   ASSERT_OK(GetCoordinationService()->ReportTaskError(
@@ -2513,8 +2524,8 @@ TEST_F(GetAliveTasksTest, FailedTaskAfterCallingGetAliveTasks) {
   auto done = [&](const absl::Status& status,
                   const std::vector<CoordinatedTask>& alive_tasks) {
     EXPECT_OK(status);
-    EXPECT_THAT(alive_tasks,
-                UnorderedPointwise(EqualsProto(), {GetTask(0), GetTask(1)}));
+    EXPECT_THAT(alive_tasks, UnorderedElementsAre(EqualsProto(GetTask(0)),
+                                                  EqualsProto(GetTask(1))));
     finished.DecrementCount();
   };
   GetCoordinationService()->GetAliveTasksAsync(GetTask(0), GetTasks(), done);
@@ -2535,7 +2546,8 @@ TEST_F(GetAliveTasksTest, ConcurrentGetAliveTasks) {
   auto done_01 = [&](const absl::Status& status,
                      const std::vector<CoordinatedTask>& alive_tasks) {
     EXPECT_OK(status);
-    EXPECT_THAT(alive_tasks, UnorderedPointwise(EqualsProto(), tasks_01));
+    EXPECT_THAT(alive_tasks, UnorderedElementsAre(EqualsProto(tasks_01[0]),
+                                                  EqualsProto(tasks_01[1])));
     finished_01.DecrementCount();
   };
 
@@ -2545,7 +2557,8 @@ TEST_F(GetAliveTasksTest, ConcurrentGetAliveTasks) {
   auto done_12 = [&](const absl::Status& status,
                      const std::vector<CoordinatedTask>& alive_tasks) {
     EXPECT_OK(status);
-    EXPECT_THAT(alive_tasks, UnorderedPointwise(EqualsProto(), tasks_12));
+    EXPECT_THAT(alive_tasks, UnorderedElementsAre(EqualsProto(tasks_12[0]),
+                                                  EqualsProto(tasks_12[1])));
     finished_12.DecrementCount();
   };
 
@@ -2582,7 +2595,7 @@ TEST_F(GetAliveTasksTest, RedundantGetAliveTasks) {
   auto done = [&](const absl::Status& status,
                   const std::vector<CoordinatedTask>& alive_tasks) {
     EXPECT_OK(status);
-    EXPECT_THAT(alive_tasks, UnorderedPointwise(EqualsProto(), GetTasks()));
+    EXPECT_THAT(alive_tasks, UnorderedElementsAreArray(GetTaskMatchers()));
     finished.DecrementCount();
   };
   GetCoordinationService()->GetAliveTasksAsync(GetTask(0), GetTasks(), done);

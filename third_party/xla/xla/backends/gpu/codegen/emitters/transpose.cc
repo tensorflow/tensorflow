@@ -91,7 +91,7 @@ TransposeSpec GetTransposeSpec(const HloTransposeInstruction* transpose) {
 
   // If the last dimension is transposed, add a size-1 B dimension.
   if (canonical_permutation.back() != canonical_output_shape.size() - 1) {
-    canonical_permutation.push_back(output_shape.rank());
+    canonical_permutation.push_back(output_shape.dimensions_size());
     canonical_output_shape.push_back(1);
   }
   int64_t dim_t1 = -1;

@@ -101,6 +101,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/ir/hlo_print_options.h"
 #include "xla/hlo/translate/hlo_to_mhlo/hlo_function_importer.h"
 #include "xla/layout_util.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
@@ -119,10 +120,12 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
+#include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/gpu/tma_metadata.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/tools/hlo_decomposer.h"
+#include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla.pb.h"
@@ -660,7 +663,7 @@ absl::StatusOr<Value> MaskDotOperand(EmitterLocOpBuilder& b,
   llvm::ArrayRef<int64_t> tile_shape =
       mlir::cast<ShapedType>(dot_operand_value.getType()).getShape();
 
-  int64_t rank = dot_operand.hlo()->shape().rank();
+  int64_t rank = dot_operand.hlo()->shape().dimensions_size();
   int64_t contracting_dimension_size =
       dot_operand.hlo()->shape().dimensions(contraction_dimension_index);
   int64_t tile_size = tile_shape[contraction_dimension_index];
@@ -748,6 +751,11 @@ absl::StatusOr<ScalarOrTensor> EmitDot(EmitterLocOpBuilder& b,
   // }
   // c = acc
   VLOG(2) << "EmitDot: " << tiled_hlo_dot.ToString();
+  const HloDotInstruction& dot =
+      *::xla::Cast<HloDotInstruction>(tiled_hlo_dot.hlo());
+  if (dot.sparse_operands() > 0) {
+    return absl::UnimplementedError("Sparse configuration is not supported");
+  }
   if (!absl::c_all_of(tiled_hlo_dot.operands(),
                       [](const TiledHloInstruction* operand) {
                         return operand->hlo()->opcode() == HloOpcode::kFusion;
@@ -756,8 +764,7 @@ absl::StatusOr<ScalarOrTensor> EmitDot(EmitterLocOpBuilder& b,
   }
 
   // Iteration arguments only contain the accumulator.
-  TF_ASSIGN_OR_RETURN(
-      Type ty, TritonType(b, tiled_hlo_dot.hlo()->shape().element_type()));
+  TF_ASSIGN_OR_RETURN(Type ty, TritonType(b, dot.shape().element_type()));
   SmallVector<Value> iter_args = {
       CreateConst(b, ty, 0.0f, tiled_hlo_dot.tile_sizes()).UnwrapUnsafe()};
 
@@ -800,7 +807,7 @@ absl::StatusOr<ScalarOrTensor> EmitDot(EmitterLocOpBuilder& b,
     QCHECK_EQ(dot_args.size(), 2);
     QCHECK_EQ(iter_args.size(), 1);
     Value acc = for_op.getRegionIterArgs().front();
-    auto precision_config = tiled_hlo_dot.hlo()->precision_config();
+    const PrecisionConfig& precision_config = dot.precision_config();
     // TODO(b/393299275): Support precision config. Right now we bail out if
     // user wants anything but the default.
     if (precision_config.algorithm() != PrecisionConfig::ALG_UNSET ||
@@ -813,13 +820,11 @@ absl::StatusOr<ScalarOrTensor> EmitDot(EmitterLocOpBuilder& b,
                        precision_config.ShortDebugString()));
     }
 
-    auto lhs_contracting_dim_idx =
-        tiled_hlo_dot.hlo()->dot_dimension_numbers().lhs_contracting_dimensions(
-            0);
+    int64_t lhs_contracting_dim_idx =
+        dot.dot_dimension_numbers().lhs_contracting_dimensions(0);
 
-    auto rhs_contracting_dim_idx =
-        tiled_hlo_dot.hlo()->dot_dimension_numbers().rhs_contracting_dimensions(
-            0);
+    int64_t rhs_contracting_dim_idx =
+        dot.dot_dimension_numbers().rhs_contracting_dimensions(0);
 
     // TODO(b/393299275): masking is only necessary during the last iteration of
     // the loop. We should evaluate whether adding a conditional mask helps or
@@ -842,6 +847,140 @@ absl::StatusOr<ScalarOrTensor> EmitDot(EmitterLocOpBuilder& b,
   return ScalarOrTensor(for_op.getResult(0));
 }
 
+absl::StatusOr<ScalarOrTensor> EmitConcatenate(
+    EmitterLocOpBuilder& b, absl::string_view libdevice_path,
+    const se::DeviceDescription& device_info,
+    const HloFusionInstruction* fusion,
+    const TiledHloInstruction& tiled_concatenate, mlir::triton::FuncOp fn,
+    ValueRange tile_multi_index) {
+  const int64_t concatenate_dimension =
+      tiled_concatenate.hlo()->concatenate_dimension();
+
+  // TODO(b/393299275): get rid of calls to `GetPaddedTileSizes` once tiling
+  // is using power of twos everywhere, including when propagating into the
+  // prologue of reductions.
+  SmallVector<int64_t> padded_tile_sizes =
+      GetPaddedTileSizes(tiled_concatenate.tile_sizes());
+  int64_t concatenate_dimension_tile_size =
+      padded_tile_sizes[concatenate_dimension];
+
+  for (const TiledHloInstruction* operand : tiled_concatenate.operands()) {
+    if (operand->hlo()->opcode() != HloOpcode::kFusion) {
+      // Sanity check: all operands should be nested fusions.
+      return absl::FailedPreconditionError(
+          "Expected concatenate operands to be nested fusions.");
+    }
+
+    int64_t operand_concatenate_dimension_size =
+        tiled_concatenate.hlo()->shape().dimensions(concatenate_dimension);
+
+    if (operand_concatenate_dimension_size % concatenate_dimension_tile_size !=
+        0) {
+      // Sanity check: concatenation dimension should be divisible by the tile
+      // size for each operand. This is not a fundamental limitation, but this
+      // lowering will emit incorrect code if this does not hold---so we gate
+      // against it explicitly.
+      return absl::FailedPreconditionError(absl::StrCat(
+          "Expected the tile size of the concatenation dimension of operand ",
+          operand->ToString(), "to divide the dimension size exactly, but got",
+          operand_concatenate_dimension_size, " % ",
+          concatenate_dimension_tile_size, " != 0"));
+    }
+  }
+  TF_ASSIGN_OR_RETURN(
+      Type element_type,
+      TritonType(b, tiled_concatenate.hlo()->shape().element_type()));
+  Type result_type =
+      mlir::RankedTensorType::get(padded_tile_sizes, element_type);
+
+  // We will load and compute from a single operand, so we need to figure out
+  // which one by looking at the offset within the concatenation dimension.
+  TF_ASSIGN_OR_RETURN(IndexingMap tile_offsets_indexing,
+                      tiled_concatenate.tile_offsets_indexing());
+
+  Value concatenate_dimension_offset =
+      emitters::ApplyIndexing(tile_offsets_indexing, /*dims=*/tile_multi_index,
+                              /*symbols=*/{}, b)[concatenate_dimension];
+
+  // It would have been nice to be able to use `scf::IndexSwitchOp`, but Triton
+  // does not want to deal with the `Index` type, and does not support the op.
+  // Instead, we generate a sequence of nested `scf::IfOp`s.
+  SmallVector<mlir::scf::IfOp, 4> if_ops;
+  int64_t limit = 0;
+  for (auto [i, operand] : llvm::enumerate(tiled_concatenate.operands())) {
+    // Write in the else branch of the previous if op if one exists.
+    if (!if_ops.empty()) {
+      b.setInsertionPointToStart(if_ops.back().elseBlock());
+    }
+
+    // Add an `if_op` if we have not reached the last operand. The last operand
+    // directly populates the `else` block of the previous `if_op`.
+    if (if_ops.size() < tiled_concatenate.operands().size() - 1) {
+      limit += operand->hlo()->shape().dimensions()[concatenate_dimension];
+      Value offset_limit =
+          CreateConst(b, b.getIndexType(), limit, {}).UnwrapScalar();
+
+      auto cond =
+          b.create<arith::CmpIOp>(arith::CmpIPredicate::slt,
+                                  concatenate_dimension_offset, offset_limit);
+      auto if_op = b.create<mlir::scf::IfOp>(mlir::TypeRange(result_type), cond,
+                                             /*withElseRegion=*/true);
+
+      // Propagate the result from the nested `if_op` if we were already within
+      // an `if_op`.
+      if (!if_ops.empty()) {
+        b.create<mlir::scf::YieldOp>(if_op.getResult(0));
+      }
+
+      b.setInsertionPointToStart(if_op.thenBlock());
+      if_ops.push_back(if_op);
+    }
+
+    const TiledHloFusionInstruction* tiled_fusion_operand =
+        static_cast<const TiledHloFusionInstruction*>(
+            tiled_concatenate.operand(i));
+    TF_ASSIGN_OR_RETURN(
+        std::vector<ScalarOrTensor> result,
+        EmitTiledComputation(
+            b, libdevice_path, device_info,
+            ::xla::Cast<HloFusionInstruction>(tiled_fusion_operand->hlo()),
+            *tiled_fusion_operand->called_computation(), fn, tile_multi_index));
+    CHECK_EQ(result.size(), 1);
+    b.create<mlir::scf::YieldOp>(result.front().UnwrapTensor());
+  }
+
+  b.setInsertionPointAfter(if_ops.front());
+
+  return ScalarOrTensor(if_ops.front().getResult(0));
+}
+
+// Given an operand to a (potentially nested) fusion instruction, finds the
+// index of the operand to the outermost fusion it corresponds to.
+//
+// Nested fusion parameter chains should always only traverse parameter nodes.
+int64_t GetOutermostFusionOperandParameterIndex(
+    const HloFusionInstruction* fusion, const HloInstruction* operand) {
+  CHECK(fusion->IsUserOf(operand));
+
+  // Simple case: `fusion` is the outermost fusion.
+  if (!operand->parent()->IsFusionComputation()) {
+    return fusion->operand_index(operand);
+  }
+
+  // While operand is in a nested fusion, walk up to the outermost fusion.
+  while (
+      operand->parent()->FusionInstruction()->parent()->IsFusionComputation()) {
+    // Nests operands should always point to parameters.
+    CHECK(operand->opcode() == HloOpcode::kParameter);
+    int64_t param_number = operand->parameter_number();
+    operand = operand->parent()->FusionInstruction()->operand(param_number);
+  }
+
+  CHECK(operand->parent()->IsFusionComputation());
+  CHECK(operand->opcode() == HloOpcode::kParameter);
+  return operand->parameter_number();
+}
+
 absl::StatusOr<ScalarOrTensor> EmitTiledHloInstruction(
     EmitterLocOpBuilder& b, absl::string_view libdevice_path,
     const se::DeviceDescription& device_info,
@@ -852,23 +991,9 @@ absl::StatusOr<ScalarOrTensor> EmitTiledHloInstruction(
   VLOG(4) << "EmitTiledHloInstruction: " << hlo->ToString();
 
   if (fusion->IsUserOf(hlo)) {
-    // If the fusion instruction is a user of hlo, then hlo is defined outside
-    // of the fusion, and it is passed as a parameter. hlo itself might not
-    // necessarily be a kParameter but the instruction that produced the
-    // argument of the fusion. In the emitted code, its value will be passed as
-    // a parameter, load it.
-    int64_t arg_index = [&]() {
-      bool is_nested_fusion = fusion->parent()->IsFusionComputation();
-      if (is_nested_fusion) {
-        // Nested fusion is a special case: the parameter it receives MUST be
-        // a kParameter of the real fusion. We load it in the context of the
-        // real fusion.
-        QCHECK(hlo->opcode() == HloOpcode::kParameter);
-        return hlo->parameter_number();
-      }
-      return fusion->operand_index(hlo);
-    }();
-
+    // If the fusion instruction is a user of `hlo`, then `hlo` is an operand
+    // to the fusion instruction.
+    int64_t arg_index = GetOutermostFusionOperandParameterIndex(fusion, hlo);
     TF_ASSIGN_OR_RETURN(
         auto make_tensor,
         ir_emitter_triton_internal::CreateMakeTensorPtrOp(
@@ -899,6 +1024,11 @@ absl::StatusOr<ScalarOrTensor> EmitTiledHloInstruction(
     }
 
     return parameter;
+  }
+
+  if (hlo->opcode() == HloOpcode::kConcatenate) {
+    return EmitConcatenate(b, libdevice_path, device_info, fusion, tiled_hlo,
+                           fn, tile_multi_index);
   }
 
   if (hlo->opcode() == HloOpcode::kDot) {
@@ -981,25 +1111,30 @@ absl::StatusOr<std::vector<ScalarOrTensor>> EmitTiledComputation(
   for (const TiledHloInstruction* tiled_hlo :
        tiled_computation.instructions()) {
     const HloInstruction* hlo = tiled_hlo->hlo();
-    bool is_nested_fusion = hlo->opcode() == HloOpcode::kFusion &&
-                            hlo->parent()->IsFusionComputation();
-    if (is_nested_fusion) {
-      // We should only see nested fusions with with a dot user.
-      // TODO(b/393299275): remove check once flag is default.
-      QCHECK(UseGenericTritonEmitterForGemms(hlo));
+    // We skip generating code for nested fusions, since they are always
+    // generated by their consumer.
+    if (hlo->parent()->IsFusionComputation() &&
+        hlo->opcode() == HloOpcode::kFusion) {
+      // Currently, we expect nested fusions to have a single user that is
+      // either a `dot`, or a `concatenate`. Later, we will also support
+      // reductions here.
+      //
       // TODO(b/393299275): test cases when there are multiple dot users of the
       // same fusion.
-      if (hlo->users().size() != 1) {
+      if (hlo->user_count() != 1) {
         return absl::FailedPreconditionError(
-            absl::StrCat("Expected only one dot user for fusion ",
-                         hlo->ToString(), " but got ", hlo->users().size()));
+            absl::StrCat("Expected only one user for fusion ", hlo->ToString(),
+                         " but got ", hlo->user_count()));
       }
-      for (const HloInstruction* user : tiled_hlo->hlo()->users()) {
-        if (user->opcode() != HloOpcode::kDot) {
+      const HloInstruction* user = hlo->users().front();
+      switch (user->opcode()) {
+        case HloOpcode::kDot:
+        case HloOpcode::kConcatenate:
+          break;
+        default:
           return absl::FailedPreconditionError(absl::StrCat(
-              "Expected only dot users for fusion ",
-              tiled_hlo->hlo()->ToString(), " but got ", user->ToString()));
-        }
+              "Expected only a single dot or concatenate user for fusion ",
+              hlo->ToString(), " but got ", user->ToString()));
       }
       VLOG(1) << "Skipping nested fusion: " << hlo->ToString();
       continue;
@@ -1229,6 +1364,9 @@ absl::StatusOr<MakeTensorPtrOpAndBoundaryChecks> CreateMakeTensorPtrOp(
 }  // namespace ir_emitter_triton_internal
 
 namespace {
+
+using ::xla::gpu::ir_emitter_triton_internal::DumpTritonIR;
+
 // Generate Triton IR inside 'fn', using the given block_level_parameters.
 absl::Status EmitGeneric(mlir::OpBuilder builder,
                          absl::string_view libdevice_path,
@@ -1299,10 +1437,11 @@ absl::Status EmitGeneric(mlir::OpBuilder builder,
       b.create<ttir::StoreOp>(parent_base_ptr, result.UnwrapScalar(),
                               ttir::CacheModifier::NONE,
                               ttir::EvictionPolicy::NORMAL);
-      return absl::OkStatus();
+      continue;
     }
 
-    CHECK(root->hlo()->shape().IsArray() && root->hlo()->shape().rank() > 0);
+    CHECK(root->hlo()->shape().IsArray() &&
+          root->hlo()->shape().dimensions_size() > 0);
     TF_ASSIGN_OR_RETURN(auto make_tensor,
                         ir_emitter_triton_internal::CreateMakeTensorPtrOp(
                             b, tile_multi_index, *root, parent_base_ptr));
@@ -1349,17 +1488,6 @@ absl::StatusOr<std::unique_ptr<llvm::Module>> TranslateLLVMToLLVMIR(
   // propagating these flags to
   // xla/service/gpu/llvm_gpu_backend/gpu_backend_lib.cc.
   return llvmModule;
-}
-
-std::string DumpTritonIR(mlir::ModuleOp triton_module, bool dump_annotations) {
-  std::string triton_ir;
-  llvm::raw_string_ostream os(triton_ir);
-  triton_module.print(os, mlir::OpPrintingFlags().enableDebugInfo(
-                              dump_annotations, dump_annotations));
-  if (dump_annotations) {
-    return EmitterLocOpBuilder::FormatTritonIrWithAnnotations(triton_ir);
-  }
-  return triton_ir;
 }
 
 absl::Status CreateInternalError(absl::string_view message,
@@ -1444,7 +1572,8 @@ absl::StatusOr<TritonModule> CreateTritonModule(
     TF_ASSIGN_OR_RETURN(tma_metadata,
                         EmitMatMul(b, libdevice_path, device_info, fusion, fn,
                                    block_level_parameters));
-  } else if (fusion_kind == kTritonFusionKind) {
+  } else if (fusion_kind == kTritonFusionKind ||
+             fusion_kind == kTritonNestedGemmFusionKind) {
     TF_RETURN_IF_ERROR(EmitGeneric(b, libdevice_path, device_info, fusion, fn,
                                    block_level_parameters));
   } else {
@@ -1529,7 +1658,7 @@ absl::StatusOr<TritonWrapperResult> TritonWrapper(
   const HloModule* hlo_module = fusion->GetModule();
   TF_ASSIGN_OR_RETURN(
       TritonWrapperResult result,
-      CompileTritonToLLVM(hlo_module->config(), hlo_module->name(), device_info,
+      CompileTritonToLLVM(fn_name, *hlo_module, device_info,
                           block_level_parameters, triton_module.module.get(),
                           llvm_module, mlir_context,
                           /*is_xla_fusion=*/true));
@@ -1538,7 +1667,7 @@ absl::StatusOr<TritonWrapperResult> TritonWrapper(
 }
 
 absl::StatusOr<TritonWrapperResult> CompileTritonToLLVM(
-    const HloModuleConfig& hlo_config, absl::string_view hlo_module_name,
+    absl::string_view kernel_name, const HloModule& hlo_module,
     const se::DeviceDescription& device_info,
     const BlockLevelParameters& block_level_parameters,
     mlir::ModuleOp triton_module, llvm::Module* llvm_module,
@@ -1556,47 +1685,21 @@ absl::StatusOr<TritonWrapperResult> CompileTritonToLLVM(
     }
   }
 
+  const HloModuleConfig& hlo_config = hlo_module.config();
+
   bool should_verify =
       (hlo_config.debug_options().xla_gpu_llvm_verification_level() >= 1);
 #ifndef NDEBUG
   should_verify = true;
 #endif
 
+  bool should_dump_mlir_passes =
+      DumpingEnabledForHloModule(hlo_module) &&
+      DumpingEnabledForHloPass("triton-fusion-emitter",
+                               hlo_config.debug_options());
+
   mlir::PassManager pm(&mlir_context);
   pm.enableVerifier(should_verify);
-
-  std::optional<llvm::raw_fd_ostream> log_stream;
-  if (hlo_config.debug_options().xla_gpu_dump_llvmir()) {
-    const std::string basename =
-        absl::StrCat(absl::string_view(tsl::io::Basename(hlo_module_name)),
-                     ".triton-passes.log");
-    std::string outputs_dir;
-    if (!tsl::io::GetTestUndeclaredOutputsDir(&outputs_dir)) {
-      outputs_dir = hlo_config.debug_options().xla_dump_to();
-    }
-    if (!outputs_dir.empty()) {
-      std::string path = tsl::io::JoinPath(outputs_dir, basename);
-      std::error_code err;
-      log_stream.emplace(path, err, llvm::sys::fs::OF_None);
-      if (err) {
-        log_stream.reset();
-        LOG(ERROR) << err.message();
-      } else {
-        pm.getContext()->disableMultithreading();
-        auto print_always = [](mlir::Pass*, mlir::Operation*) { return true; };
-        pm.enableIRPrinting(/*shouldPrintBeforePass=*/print_always,
-                            /*shouldPrintAfterPass=*/print_always,
-                            /*printModuleScope=*/true,
-                            /*printAfterOnlyOnChange=*/false,
-                            /*printAfterOnlyOnFailure=*/true, *log_stream,
-                            /*opPrintingFlags=*/{});
-      }
-    } else {
-      LOG(ERROR) << "--xla_gpu_dump_llvmir is set, but neither the environment "
-                 << "variable TEST_UNDECLARED_OUTPUTS_DIR nor the flag "
-                 << "--xla_dump_to is set, so the llvm dumps are disabled.";
-    }
-  }
 
   // Lower affine expressions into arithmetic ops.
   pm.addPass(mlir::createLowerAffinePass());
@@ -1605,11 +1708,19 @@ absl::StatusOr<TritonWrapperResult> CompileTritonToLLVM(
   pm.addPass(emitters::CreateSimplifyAffinePass());
   pm.addPass(CreateConvertIndexTypePass());
 
+  int64_t num_warps = block_level_parameters.num_warps;
+  int num_ctas = block_level_parameters.num_ctas;
+  int num_stages = block_level_parameters.num_stages;
+
+  if (num_warps <= 0 || num_ctas <= 0 || num_stages <= 0) {
+    return absl::FailedPreconditionError(absl::StrCat(
+        "(num_warps, num_ctas, num_stages) must be positive, but got: (",
+        num_warps, ", ", num_ctas, ", ", num_stages, ")"));
+  }
+
   mlir::triton::nvidia_gpu::ClusterInfo cluster_info;
-  if (!CreateTritonPipeline(&pm, arch_name, block_level_parameters.num_warps,
-                            block_level_parameters.num_ctas,
-                            block_level_parameters.num_stages, cluster_info,
-                            is_xla_fusion)
+  if (!CreateTritonPipeline(&pm, arch_name, num_warps, num_ctas, num_stages,
+                            cluster_info, is_xla_fusion)
            .ok()) {
     return Internal("Failed to create Triton pipeline.");
   }
@@ -1619,14 +1730,28 @@ absl::StatusOr<TritonWrapperResult> CompileTritonToLLVM(
   // llvm::Linker::linkModules() segfaults if we don't strip locations.
   pm.addPass(mlir::createStripDebugInfoPass());
 
-  if (log_stream.has_value()) {
-    pm.printAsTextualPipeline(log_stream.value());
-    log_stream->write("\n\n", 2);
+  std::string mlir_passes_dump_result;
+  llvm::raw_string_ostream log_stream(mlir_passes_dump_result);
+  if (should_dump_mlir_passes) {
+    pm.getContext()->disableMultithreading();
+    auto print_always = [](mlir::Pass*, mlir::Operation*) { return true; };
+    pm.enableIRPrinting(/*shouldPrintBeforePass=*/print_always,
+                        /*shouldPrintAfterPass=*/print_always,
+                        /*printModuleScope=*/true,
+                        /*printAfterOnlyOnChange=*/false,
+                        /*printAfterOnlyOnFailure=*/true, log_stream,
+                        /*opPrintingFlags=*/{});
+
+    pm.printAsTextualPipeline(log_stream);
+    log_stream.write("\n\n", 2);
   }
+
   bool succeeded = mlir::succeeded(pm.run(triton_module));
 
-  if (log_stream.has_value()) {
-    log_stream->flush();
+  if (should_dump_mlir_passes) {
+    DumpToFileInDirOrStdout(hlo_module, "",
+                            absl::StrCat(kernel_name, ".triton-passes.log"),
+                            mlir_passes_dump_result);
   }
 
   if (!succeeded) {

@@ -155,7 +155,8 @@ bool IsEvaluatedMoreThanOnce(const HloInstruction* instr) {
   return absl::c_any_of(instr->users(), [&](const HloInstruction* user) {
     if (user->opcode() == HloOpcode::kGather &&
         absl::c_linear_search(user->OperandIndices(instr), 1) &&
-        instr->shape().rank() >= 2 && instr->shape().dimensions(1) > 1) {
+        instr->shape().dimensions_size() >= 2 &&
+        instr->shape().dimensions(1) > 1) {
       return true;
     }
     if (user->opcode() == HloOpcode::kConcatenate &&
@@ -251,7 +252,11 @@ PartitionedComputation::PartitionedComputation(
     std::vector<const HloInstruction*> roots;
     std::vector<IndexingMap> root_indexing;
     const xla::Shape* first_root_shape = nullptr;
+    bool has_no_compute = true;
     for (auto* instruction : instructions) {
+      has_no_compute &=
+          HloPredicateIsOp<HloOpcode::kParameter, HloOpcode::kIota,
+                           HloOpcode::kConstant>(instruction);
       if (id_to_subgraph_data[instr_to_id[instruction]].is_root) {
         roots.push_back(instruction);
         if (first_root_shape) {
@@ -291,7 +296,8 @@ PartitionedComputation::PartitionedComputation(
         /* .instructions = */ {instructions.begin(), instructions.end()},
         /* .roots = */ std::move(roots),
         /* .index_ranges = */ std::move(ranges),
-        /* .root_indexing = */ std::move(root_indexing)});
+        /* .root_indexing = */ std::move(root_indexing),
+        /* .has_no_compute = */ has_no_compute});
   }
 
   for (const auto& subgraph : subgraphs_) {
@@ -475,6 +481,9 @@ mlir::func::FuncOp CreateSubgraphMlirFunction(
   auto func_op = b.create<mlir::func::FuncOp>(
       subgraph.name, ty,
       /*attrs=*/llvm::ArrayRef<mlir::NamedAttribute>{}, arg_attrs);
+  if (subgraph.has_no_compute) {
+    func_op->setAttr(kHasNoCompute, b.getBoolAttr(true));
+  }
   // Needed so that the function can potentially be inlined in-place.
   func_op.setPrivate();
   return func_op;

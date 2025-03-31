@@ -1,0 +1,18 @@
+load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
+
+exports_files(["pybind_extension.py.tpl"])
+
+bzl_library(
+    name = "pywrap_bzl",
+    srcs = [
+        "pywrap.default.bzl",
+        "pywrap.impl.bzl",
+    ],
+    visibility = ["//visibility:public"],
+)
+
+py_binary(
+    name = "def_file_filter_tool",
+    srcs = [":def_file_filter_tool.py"],
+    visibility = ["//visibility:public"],
+)

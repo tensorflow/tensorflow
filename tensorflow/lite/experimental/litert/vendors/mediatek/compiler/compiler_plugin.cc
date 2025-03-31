@@ -34,7 +34,10 @@
 #include "tensorflow/lite/experimental/litert/vendors/c/litert_compiler_plugin.h"
 #include "tensorflow/lite/experimental/litert/vendors/mediatek/compiler/compile_model.h"
 #include "tensorflow/lite/experimental/litert/vendors/mediatek/compiler/create_model.h"
+#include "tensorflow/lite/experimental/litert/vendors/mediatek/compiler/legalizations/common_op_legalization.h"
 #include "tensorflow/lite/experimental/litert/vendors/mediatek/neuron_adapter_api.h"
+#include "tensorflow/lite/experimental/litert/vendors/mediatek/schema/neuron_schema_generated.h"
+#include "tensorflow/lite/experimental/litert/vendors/mediatek/schema/schema_resolver.h"
 
 //
 // Configurations
@@ -68,6 +71,20 @@ constexpr std::pair<const char*, const char*> kPluginSocModels[] = {
 
 constexpr LiteRtOpCode kSupportedOps[] = {
     kLiteRtOpCodeTflAdd,
+    kLiteRtOpCodeTflMul,
+    kLiteRtOpCodeTflBatchMatmul,
+    kLiteRtOpCodeTflFullyConnected,
+    kLiteRtOpCodeTflReshape,
+    kLiteRtOpCodeTflTranspose,
+    kLiteRtOpCodeTflRsqrt,
+    kLiteRtOpCodeTflConcatenation,
+    kLiteRtOpCodeTflQuantize,
+    kLiteRtOpCodeTflSlice,
+    kLiteRtOpCodeTflSub,
+    kLiteRtOpCodeTflTanh,
+    kLiteRtOpCodeTflSoftmax,
+    kLiteRtOpCodeTflMean,
+    kLiteRtOpCodeTflGelu,
 };
 // clang-format on
 
@@ -140,9 +157,8 @@ LiteRtStatus LiteRtGetCompilerPluginSupportedSocModel(
 // TODO: Revisit this struct after we extend the compiler plugin API to return
 // results with more than one single bytecode.
 struct LiteRtCompiledResultT {
-  using Bytecode = std::vector<uint8_t>;
-  std::vector<Bytecode> bytecodes;
   std::vector<std::string> graph_names;
+  neuron::BytecodeBuilder bytebuilder;
 };
 
 LiteRtStatus LiteRtCompiledResultNumByteCodeModules(
@@ -150,7 +166,7 @@ LiteRtStatus LiteRtCompiledResultNumByteCodeModules(
   if (!compiled_result || !num_byte_code) {
     return kLiteRtStatusErrorInvalidArgument;
   }
-  *num_byte_code = compiled_result->bytecodes.size();
+  *num_byte_code = compiled_result->graph_names.size();
   return kLiteRtStatusOk;
 }
 
@@ -158,11 +174,11 @@ LiteRtStatus LiteRtGetCompiledResultByteCode(
     LiteRtCompiledResult compiled_result, LiteRtParamIndex byte_code_idx,
     const void** byte_code, size_t* byte_code_size) {
   if (!compiled_result || !byte_code || !byte_code_size ||
-      (byte_code_idx >= compiled_result->bytecodes.size())) {
+      (byte_code_idx >= compiled_result->graph_names.size())) {
     return kLiteRtStatusErrorInvalidArgument;
   }
-  *byte_code = compiled_result->bytecodes[byte_code_idx].data();
-  *byte_code_size = compiled_result->bytecodes[byte_code_idx].size();
+  *byte_code = compiled_result->bytebuilder.GetBytecode().first;
+  *byte_code_size = compiled_result->bytebuilder.GetBytecode().second;
   return kLiteRtStatusOk;
 }
 
@@ -190,7 +206,7 @@ LiteRtStatus LiteRtGetNumCompiledResultCalls(
   if (!compiled_result || !num_calls) {
     return kLiteRtStatusErrorInvalidArgument;
   }
-  *num_calls = compiled_result->bytecodes.size();
+  *num_calls = compiled_result->graph_names.size();
   return kLiteRtStatusOk;
 }
 
@@ -230,7 +246,8 @@ bool IsOpSupported(const litert::Op& op) {
   // NOTE: Currently we are demoing by just mapping simple f32 mul ops.  Use a
   // very loose guard for now -- only checking if op code is supported.
   for (auto supported_op : kSupportedOps) {
-    if (op.Code() == supported_op) {
+    if (op.Code() == supported_op &&
+        litert::mediatek::VerifyCommonOp(op, op.Code())) {
       return true;
     }
   }
@@ -293,6 +310,15 @@ Expected<std::vector<uint8_t>> CompilePartition(
 LiteRtStatus LiteRtCompilerPluginCompile(
     LiteRtCompilerPlugin compiler_plugin, const char* soc_model,
     LiteRtModel partitions, LiteRtCompiledResult* compiled_result) {
+  static constexpr char dla_directory_template[] = "/tmp/tempdir_dla.XXXXXX";
+  char* dla_directory_name = mkdtemp(const_cast<char*>(dla_directory_template));
+  if (dla_directory_name == nullptr) {
+    LITERT_LOG(LITERT_ERROR, "Failed to make DLA temporary directory")
+    return kLiteRtStatusErrorFileIO;
+  }
+  setenv("MTKNN_ADAPTER_DLA_PLATFORM", soc_model, 1);
+  setenv("MTKNN_ADAPTER_DLA_DIR", dla_directory_name, 1);
+
   auto model = litert::Model::CreateFromNonOwnedHandle(partitions);
   const auto num_partitions = model.NumSubgraphs();
 
@@ -306,13 +332,15 @@ LiteRtStatus LiteRtCompilerPluginCompile(
                *opt_soc_model);
   } else if (soc_model) {
     LITERT_LOG(LITERT_ERROR, "Unexpected SoC model: %s", soc_model);
+    rmdir(dla_directory_name);
     return kLiteRtStatusErrorInvalidArgument;
   }
 
-  // Initialize SDK and load qnn shared libraries.
+  // Initialize SDK and load mediatek shared libraries.
 
   auto api = NeuronAdapterApi::Create(/*shared_library_dir=*/std::nullopt);
   if (!api) {
+    rmdir(dla_directory_name);
     return api.Error().Status();
   }
 
@@ -322,15 +350,21 @@ LiteRtStatus LiteRtCompilerPluginCompile(
     auto graph_name = absl::StrFormat("Partition_%d", i);
     auto bytecode =
         CompilePartition(**api, *model.Subgraph(i), graph_name, opt_soc_model);
+    rmdir(dla_directory_name);
     if (!bytecode) {
       LITERT_LOG(LITERT_INFO, "%s", bytecode.Error().Message().c_str());
       return bytecode.Error().Status();
     }
-
-    result->bytecodes.emplace_back(*bytecode);
+    auto bufferIdx = result->bytebuilder.AddBuffer(
+        graph_name, (int8_t*)bytecode->data(), bytecode->size());
+    result->bytebuilder.AddCompiledNetwork(
+        graph_name, NeuronSchema::CompiledType_AdapterCache, bufferIdx);
     result->graph_names.emplace_back(graph_name);
   }
 
+  if (!result->bytebuilder.Finish()) {
+    return kLiteRtStatusErrorCompilation;
+  }
   *compiled_result = result.release();
   return kLiteRtStatusOk;
 }

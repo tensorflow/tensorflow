@@ -46,9 +46,9 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/quantization/ir/QuantOps.h"
-#include "tensorflow/compiler/mlir/lite/quantization/ir/QuantizeUtils.h"
 #include "tensorflow/compiler/mlir/lite/quantization/lite/toco_legacy/portable_tensor_utils.h"
 #include "tensorflow/compiler/mlir/quantization/common/ir/FakeQuantSupport.h"
+#include "tensorflow/compiler/mlir/quantization/common/ir/QuantizeUtils.h"
 #include "tensorflow/compiler/mlir/quantization/common/ir/UniformSupport.h"
 #include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_traits.h"
 #include "tensorflow/compiler/mlir/tools/optimize/quantization_utils.h"
@@ -279,7 +279,7 @@ Type GetQuantizedType(Builder builder, const Type input_type,
                       const bool legacy_float_scale,
                       const bool use_fake_quant_num_bits) {
   auto converter =
-      quantfork::ExpressedToQuantizedConverter::forInputType(input_type);
+      mlir::quant::ir::ExpressedToQuantizedConverter::forInputType(input_type);
 
   // Expand the range to prevent extremely small scales and large quantized
   // integers which can cause overflow. This leads to scale
@@ -710,7 +710,7 @@ ElementsAttr Quantize(const Attribute real_value, const Type tensor_type) {
           quant::QuantizedType::getQuantizedElementType(tensor_type)) {
     Type converted_type;
     return dyn_cast_or_null<ElementsAttr>(
-        quantfork::quantizeAttr(real_value, q_type, converted_type));
+        mlir::quant::ir::quantizeAttr(real_value, q_type, converted_type));
   }
   return {};
 }

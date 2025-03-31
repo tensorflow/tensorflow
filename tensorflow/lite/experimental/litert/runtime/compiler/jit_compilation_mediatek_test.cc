@@ -29,7 +29,8 @@
 #include "tensorflow/lite/experimental/litert/test/matchers.h"
 #include "tensorflow/lite/experimental/litert/test/testdata/simple_model_test_vectors.h"
 
-constexpr const char* kCompilerPluginLibSearchPath = "/data/local/tmp";
+constexpr absl::string_view kCompilerPluginLibSearchPath = "/data/local/tmp";
+constexpr absl::string_view kDispatchLibraryDir = "/data/local/tmp";
 
 using testing::FloatNear;
 using testing::Pointwise;
@@ -39,6 +40,10 @@ TEST(JitCompilation, MediaTek) {
       litert::Environment::Option{
           /*.tag=*/litert::Environment::OptionTag::CompilerPluginLibraryDir,
           /*.value=*/kCompilerPluginLibSearchPath,
+      },
+      litert::Environment::Option{
+          litert::Environment::OptionTag::DispatchLibraryDir,
+          kDispatchLibraryDir,
       },
   };
   LITERT_ASSERT_OK_AND_ASSIGN(auto environment,

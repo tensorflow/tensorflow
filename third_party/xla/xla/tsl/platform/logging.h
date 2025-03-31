@@ -20,7 +20,7 @@ limitations under the License.
 
 #if defined(PLATFORM_GOOGLE) || defined(PLATFORM_GOOGLE_ANDROID) || \
     defined(PLATFORM_GOOGLE_IOS) || defined(GOOGLE_LOGGING) ||      \
-    defined(__EMSCRIPTEN__) || defined(PLATFORM_CHROMIUMOS)
+    defined(PLATFORM_PORTABLE_GOOGLE)
 #include "xla/tsl/platform/google/logging.h"  // IWYU pragma: export
 #else
 #include "xla/tsl/platform/default/logging.h"  // IWYU pragma: export

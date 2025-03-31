@@ -197,6 +197,8 @@ absl::Status DumpProtoToDirectory(const tsl::protobuf::Message& message,
                                   const std::string& file_name,
                                   std::string* full_path = nullptr);
 
+void DumpHloConfigIfEnabled(const HloModule& module);
+
 }  // namespace xla
 
 #endif  // XLA_SERVICE_DUMP_H_

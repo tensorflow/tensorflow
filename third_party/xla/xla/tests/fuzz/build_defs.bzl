@@ -37,9 +37,11 @@ def hlo_test(name, hlo, **kwargs):
       **kwargs:
         Additional arguments passed to `xla_test`.
     """
+    backend_kwargs = {}
     xla_test(
         name = name,
         srcs = [],
+        backend_kwargs = backend_kwargs,
         env = {"HLO_PATH": "$(location {})".format(hlo)},
         data = [hlo],
         real_hardware_only = True,

@@ -25,8 +25,9 @@ include "mlir/Interfaces/ViewLikeInterface.td" // OffsetSizeAndStrideOpInterface
 include "xla/backends/gpu/codegen/triton/ir/triton_xla_dialect.td"
 include "xla/backends/gpu/codegen/triton/ir/triton_xla_types.td"
 include "triton/Dialect/Triton/IR/TritonInterfaces.td"
-include "triton/Dialect/TritonGPU/IR/TritonGPUTypeInterfaces.td"
+include "triton/Dialect/Triton/IR/TritonOpInterfaces.td"
 include "triton/Dialect/Triton/IR/TritonTypes.td"
+include "triton/Dialect/TritonGPU/IR/TritonGPUTypeInterfaces.td"
 
 // -----------------------------------------------------------------------------
 // Triton XLA Ops
@@ -36,25 +37,7 @@ class TTXLA_Op<string mnemonic, list<Trait> traits = []> :
       Op<XlaTritonDialect, mnemonic, traits> {
 }
 
-def TTXLA_SparseDotOp : TTXLA_Op<"sparse_dot", [
-        Pure, DotLike, DeclareOpInterfaceMethods<InferTypeOpInterface>,
-        TypesMatchWith<"result's type matches accumulator's type", "d", "c", "$_self">]> {
-    let summary = "sparse dot";
-
-    let arguments = (ins
-      TTG_TensorOrMemDesc:$a,
-      TTG_TensorOrMemDesc:$b,
-      TT_FpIntTensor:$c,
-      TT_IntTensor: $aMeta);
-    let results = (outs TT_FpIntTensor:$d);
-    let assemblyFormat = [{
-      $a`,` $b`,` $c`,` $aMeta attr-dict
-        `:` type($a) `meta` type($aMeta) `*` type($b) `->` type($d)
-    }];
-    let hasVerifier = 1;
-}
-
-def TTXLA_TileOp : TTXLA_Op<"tile", [Pure,
+def TTXLA_TileOp : TTXLA_Op<"tile", [Pure, SameVariadicOperandSize,
     DeclareOpInterfaceMethods<OpAsmOpInterface, ["getAsmResultNames"]>]> {
   let summary = "Capture the tiling information of a tensor.";
   let description = [{
@@ -65,21 +48,36 @@ def TTXLA_TileOp : TTXLA_Op<"tile", [Pure,
     Example:
       ```
       %tensor: tensor<120x320xbf16>
+      %of = arith.constant 0 : i32
+      %sz1 = arith.constant 16 : i64
+      %sz2 = arith.constant 64 : i64
+      %st1 = arith.constant 120 : i64
+      %st2 = arith.constant 1 : i64
       ...
-      %tiled_tensor = triton_xla.tile %tensor [0, 0][16, 64][120, 1]
+      %tiled_tensor = triton_xla.tile %tensor [%of, %of][%sz1, %sz2][%st1, %st2]
       : !triton_xla.tiled_tensor<16x64|120x320xbf16>
       ```
   }];
 
   let arguments = (ins
     AnyRankedTensor:$tensor,
-    DenseI32ArrayAttr:$offsets,
-    DenseI32ArrayAttr:$sizes,
-    DenseI64ArrayAttr:$strides
+    Variadic<I32>:$offsets,
+    Variadic<I64>:$sizes,
+    Variadic<I64>:$strides
   );
   let results = (outs TTXLA_TiledTensorType:$tiled_tensor);
   let hasCustomAssemblyFormat = 1;
   let hasVerifier = 1;
+
+  let builders = [
+    OpBuilder<(ins
+      "Value":$tensor,
+      "ValueRange":$offsets,
+      "ValueRange":$sizes,
+      "ValueRange":$strides,
+      "ArrayRef<int32_t>":$tensor_shape
+    )>
+  ];
 }
 
 def TTXLA_ExtractOp : TTXLA_Op<"extract", [Pure,
@@ -90,7 +88,7 @@ def TTXLA_ExtractOp : TTXLA_Op<"extract", [Pure,
 
     Example:
       ```
-      %tiled_tensor = triton_xla.tile %tensor [0, 0][16, 64][120, 1]
+      %tiled_tensor = triton_xla.tile ...
       : !triton_xla.tiled_tensor<16x64|120x320xbf16>
       ...
       %extracted_tensor = triton_xla.extract %tiled_tensor [%cst, %cst]
@@ -116,7 +114,7 @@ def TTXLA_InsertOp : TTXLA_Op<"insert", [Pure,
 
     Example:
       ```
-      %tiled_tensor = triton_xla.tile %tensor [0, 0][16, 64][120, 1]
+      %tiled_tensor = triton_xla.tile ...
       : !triton_xla.tiled_tensor<16x64|120x320xbf16>
       ...
       %updated_tensor = triton_xla.insert %arg0 into %tiled_tensor[%cst, %cst]

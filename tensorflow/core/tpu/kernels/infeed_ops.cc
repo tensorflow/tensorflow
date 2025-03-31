@@ -89,7 +89,7 @@ absl::StatusOr<Tensor> TransposeTensor(OpKernelContext* ctx,
                                        const Tensor& input_tensor,
                                        const xla::Shape& xla_shape) {
   tsl::profiler::TraceMe trace_me("TransposeTensor", /*level=*/2);
-  const int64_t rank = xla_shape.rank();
+  const int64_t rank = xla_shape.dimensions_size();
   std::vector<int32_t> permutation(rank);
   std::vector<int64_t> transposed_shapes(rank);
   for (int64_t i = 0; i < rank; ++i) {

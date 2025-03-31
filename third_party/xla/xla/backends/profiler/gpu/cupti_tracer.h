@@ -81,7 +81,8 @@ class CuptiTracer {
   bool IsAvailable() const;
   bool NeedRootAccess() const { return need_root_access_; }
 
-  void Enable(const CuptiTracerOptions& option, CuptiTraceCollector* collector);
+  absl::Status Enable(const CuptiTracerOptions& option,
+                      CuptiTraceCollector* collector);
   void Disable();
 
   // Control threads could periodically call this function to flush the

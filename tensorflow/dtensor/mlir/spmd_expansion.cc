@@ -18,7 +18,6 @@ limitations under the License.
 #include <optional>
 #include <vector>
 
-#include "absl/types/optional.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"

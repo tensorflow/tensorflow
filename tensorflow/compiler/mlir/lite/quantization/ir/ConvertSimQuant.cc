@@ -66,7 +66,9 @@ class FakeQuantRewrite : public OpRewritePattern<FakeQuantOp> {
   bool *hadFailure;
 
   bool failableRewrite(FakeQuantOp op, PatternRewriter &rewriter) const {
-    auto converter = ExpressedToQuantizedConverter::forInputType(op.getType());
+    auto converter =
+        mlir::quant::ir::ExpressedToQuantizedConverter::forInputType(
+            op.getType());
     if (!converter) {
       return (op.emitError("unsupported quantized type conversion"), true);
     }

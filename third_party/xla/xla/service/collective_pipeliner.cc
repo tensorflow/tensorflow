@@ -211,7 +211,7 @@ CollectDynamicSliceIndicesIfConstant(HloInstruction* instr) {
   for (int64_t i = dyn_slice->first_index_operand_number();
        i < instr->operand_count(); ++i) {
     HloInstruction* operand = dyn_slice->mutable_operand(i);
-    CHECK_EQ(operand->shape().rank(), 0);
+    CHECK_EQ(operand->shape().dimensions_size(), 0);
     std::vector<std::pair<HloInstruction*, int>> stack(
         1, std::make_pair(operand, 0));
     absl::flat_hash_set<HloInstruction*> visited;
@@ -1304,7 +1304,8 @@ void WhileLoopAnalysis::CollectCollectivesToMove(
   for (auto* instr : instructions_post_order) {
     if (direction == CollectivePipeliner::PipeliningDirection::kForward &&
         (instr->operand_count() != 1 ||
-         instr->shape().rank() != instr->operand(0)->shape().rank())) {
+         instr->shape().dimensions_size() !=
+             instr->operand(0)->shape().dimensions_size())) {
       continue;
     }
     if (!should_process(instr)) {
@@ -1519,7 +1520,7 @@ Shape ComputeFullOutputShape(const WhileMoveInfo& move_info,
 // Create zero of base type ptype and broadcast it to shape.
 HloInstruction* CreateZero(HloComputation* comp, const Shape& shape,
                            PrimitiveType ptype) {
-  if (shape.rank() == 0) {
+  if (shape.dimensions_size() == 0) {
     return comp->AddInstruction(
         HloInstruction::CreateConstant(LiteralUtil::Zero(ptype)));
   }
@@ -1999,8 +2000,8 @@ absl::Status TransformLoopForward(
     if (slice_target_shape != data_to_slice->shape()) {
       // Slice matrix.
       absl::InlinedVector<int64_t, 4> dynamic_slice_sizes;
-      dynamic_slice_sizes.reserve(slice_target_shape.rank());
-      for (int i = 0; i < slice_target_shape.rank(); ++i) {
+      dynamic_slice_sizes.reserve(slice_target_shape.dimensions_size());
+      for (int i = 0; i < slice_target_shape.dimensions_size(); ++i) {
         dynamic_slice_sizes.push_back(slice_target_shape.dimensions(i));
       }
       sliced_data =
@@ -2258,8 +2259,9 @@ absl::Status TransformLoopForwardSink(const WhileLoopAnalysis& loop_analysis,
       Shape index_shape =
           move_info.dynamic_update_slices.front()->index_shapes()[0];
       std::vector<HloInstruction*> indices(
-          expanded_shape.rank(), CreateZero(body_computation, index_shape,
-                                            index_shape.element_type()));
+          expanded_shape.dimensions_size(),
+          CreateZero(body_computation, index_shape,
+                     index_shape.element_type()));
       indices[0] = move_info.dynamic_update_slices.front()->index_operands()[0];
       HloInstruction* input =
           body_computation->AddInstruction(HloInstruction::CreateCustomCall(
@@ -2302,7 +2304,7 @@ absl::Status TransformLoopForwardSink(const WhileLoopAnalysis& loop_analysis,
       HloDynamicUpdateSliceInstruction* dyn_update =
           to_move.dynamic_update_slices[0];
       std::vector<HloInstruction*> indices(
-          expanded_shape.rank(),
+          expanded_shape.dimensions_size(),
           CreateZero(body_computation, dyn_update->index_shapes()[0],
                      dyn_update->index_shapes()[0].element_type()));
       indices[0] = dyn_update->index_operands()[0];
@@ -2423,7 +2425,7 @@ absl::Status TransformLoopForwardSink(const WhileLoopAnalysis& loop_analysis,
       if (is_loop_invariant) {
         Shape full_shape = ComputeFullOutputShape(to_move, pipelined->shape());
         absl::InlinedVector<int64_t, 4> operand_dims;
-        operand_dims.resize(pipelined->shape().rank());
+        operand_dims.resize(pipelined->shape().dimensions_size());
         absl::c_iota(operand_dims, 1);
         HloInstruction* broadcasted =
             loop_computation->AddInstruction(HloInstruction::CreateBroadcast(
@@ -2458,7 +2460,7 @@ absl::Status TransformLoopForwardSink(const WhileLoopAnalysis& loop_analysis,
           Shape full_shape =
               ComputeFullOutputShape(to_move, cloned_constant->shape());
           absl::InlinedVector<int64_t, 4> operand_dims;
-          operand_dims.resize(cloned_constant->shape().rank());
+          operand_dims.resize(cloned_constant->shape().dimensions_size());
           absl::c_iota(operand_dims, 1);
           HloInstruction* broadcasted =
               loop_computation->AddInstruction(HloInstruction::CreateBroadcast(
@@ -2535,7 +2537,7 @@ absl::Status TransformLoopForwardSink(const WhileLoopAnalysis& loop_analysis,
         }
         // Constant scalars don't get expanded ahead of time and are kept
         // scalar.
-        if (operands[0]->shape().rank() == 0) {
+        if (operands[0]->shape().dimensions_size() == 0) {
           dimensions.clear();
         }
         HloInstruction* expanded_broadcast =

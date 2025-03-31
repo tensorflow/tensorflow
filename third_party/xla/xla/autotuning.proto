@@ -100,8 +100,6 @@ message AutotuneResult {
     CustomKernelFusionKey custom_kernel_fusion = 18;
     stream_executor.dnn.AlgorithmProto algorithm = 16;
   }
-
-  // Next ID: 19
 }
 
 message AutotuningLog {

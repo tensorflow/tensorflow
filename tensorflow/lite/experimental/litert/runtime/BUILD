@@ -200,6 +200,8 @@ cc_library(
     srcs = ["compiled_model.cc"],
     hdrs = ["compiled_model.h"],
     deps = [
+        ":accelerator",
+        ":accelerator_model_compilation_data",
         ":compilation_options",
         ":external_litert_buffer_context",
         ":tensor_buffer",
@@ -211,11 +213,10 @@ cc_library(
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/core:cc_api_stable",
         "//tensorflow/lite/delegates/utils:simple_opaque_delegate",
-        "//tensorflow/lite/experimental/litert/c:litert_accelerator_options",
+        "//tensorflow/lite/experimental/litert/c:litert_accelerator",
+        "//tensorflow/lite/experimental/litert/c:litert_accelerator_compilation_options",
         "//tensorflow/lite/experimental/litert/c:litert_common",
         "//tensorflow/lite/experimental/litert/c:litert_compilation_options",
-        "//tensorflow/lite/experimental/litert/c:litert_dispatch_delegate",
-        "//tensorflow/lite/experimental/litert/c:litert_environment_options",
         "//tensorflow/lite/experimental/litert/c:litert_logging",
         "//tensorflow/lite/experimental/litert/c:litert_model",
         "//tensorflow/lite/experimental/litert/c:litert_tensor_buffer",
@@ -227,14 +228,11 @@ cc_library(
         "//tensorflow/lite/experimental/litert/cc:litert_tensor_buffer",
         "//tensorflow/lite/experimental/litert/cc:litert_tensor_buffer_requirements",
         "//tensorflow/lite/experimental/litert/compiler/plugin:compiler_plugin",
-        "//tensorflow/lite/experimental/litert/core:accelerator",
-        "//tensorflow/lite/experimental/litert/core:accelerator_model_compilation_data",
         "//tensorflow/lite/experimental/litert/core:build_stamp",
         "//tensorflow/lite/experimental/litert/core:environment",
         "//tensorflow/lite/experimental/litert/core/model",
         "//tensorflow/lite/experimental/litert/core/model:model_serialize",
         "//tensorflow/lite/experimental/litert/core/util:flatbuffer_tools",
-        "//tensorflow/lite/experimental/litert/runtime/dispatch:dispatch_delegate",
         "//tensorflow/lite/kernels:builtin_ops",
         "@com_google_absl//absl/cleanup",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -291,10 +289,11 @@ cc_library(
         "//tensorflow/lite/experimental/litert/c:litert_compilation_options.h",
     ],
     deps = [
-        "//tensorflow/lite/experimental/litert/c:litert_accelerator_options",
+        "//tensorflow/lite/experimental/litert/c:litert_accelerator_compilation_options",
         "//tensorflow/lite/experimental/litert/c:litert_common",
         "//tensorflow/lite/experimental/litert/c:litert_layout",
         "//tensorflow/lite/experimental/litert/c:litert_tensor_buffer",
+        "//tensorflow/lite/experimental/litert/cc:litert_accelerator_compilation_options",
     ],
 )
 
@@ -367,4 +366,49 @@ cc_test(
         ],
         "//conditions:default": [],
     }),
+)
+
+cc_library(
+    name = "accelerator",
+    hdrs = ["accelerator.h"],
+    deps = [
+        "//tensorflow/lite/experimental/litert/c:litert_accelerator_compilation_options",
+        "//tensorflow/lite/experimental/litert/c:litert_common",
+    ],
+)
+
+cc_library(
+    name = "accelerator_registry",
+    srcs = ["accelerator_registry.cc"],
+    hdrs = ["accelerator_registry.h"],
+    deps = [
+        ":accelerator",
+        "//tensorflow/lite/experimental/litert/c:litert_accelerator_compilation_options",
+        "//tensorflow/lite/experimental/litert/c:litert_common",
+        "//tensorflow/lite/experimental/litert/cc:litert_expected",
+        "//tensorflow/lite/experimental/litert/cc:litert_shared_library",
+    ],
+)
+
+cc_library(
+    name = "accelerator_model_compilation_data",
+    hdrs = ["accelerator_model_compilation_data.h"],
+    deps = [
+        "//tensorflow/lite/experimental/litert/c:litert_common",
+        "//tensorflow/lite/experimental/litert/cc:litert_accelerator_compilation_options",
+        "//tensorflow/lite/experimental/litert/cc:litert_expected",
+    ],
+)
+
+cc_test(
+    name = "accelerator_model_compilation_data_test",
+    srcs = ["accelerator_model_compilation_data_test.cc"],
+    deps = [
+        ":accelerator_model_compilation_data",
+        "//tensorflow/lite/experimental/litert/c:litert_accelerator_compilation_options",
+        "//tensorflow/lite/experimental/litert/c:litert_common",
+        "//tensorflow/lite/experimental/litert/core:version",
+        "//tensorflow/lite/experimental/litert/test:matchers",
+        "@com_google_googletest//:gtest_main",
+    ],
 )

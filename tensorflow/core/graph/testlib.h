@@ -50,8 +50,8 @@ Node* HostConstant(Graph* g, const Tensor& tensor);
 Node* HostConstant(Graph* g, const Tensor& tensor, const string& name);
 
 // Adds a variable in "g" of the given "shape" and "dtype".
-Node* Var(Graph* g, const DataType dtype, const TensorShape& shape);
-Node* Var(Graph* g, const DataType dtype, const TensorShape& shape,
+Node* Var(Graph* g, DataType dtype, const TensorShape& shape);
+Node* Var(Graph* g, DataType dtype, const TensorShape& shape,
           const string& name);
 
 // Adds an assign node in "g" which assigns "val" into "var".
@@ -60,12 +60,12 @@ Node* Assign(Graph* g, Node* var, Node* val);
 // Adds a send node "g" sending "input" as a named "tensor" from
 // "sender" to "receiver".
 Node* Send(Graph* g, Node* input, const string& tensor, const string& sender,
-           const uint64 sender_incarnation, const string& receiver);
+           uint64 sender_incarnation, const string& receiver);
 
 // Adds a recv node in "g" receiving a named "tensor" from "sender"
 // to "receiver".
 Node* Recv(Graph* g, const string& tensor, const string& type,
-           const string& sender, const uint64 sender_incarnation,
+           const string& sender, uint64 sender_incarnation,
            const string& receiver);
 
 // Adds a cumsum "node" in "g" doing cumsum(data, axes).

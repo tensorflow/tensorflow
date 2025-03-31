@@ -20,6 +20,7 @@ limitations under the License.
 #include <algorithm>
 
 #include "absl/strings/str_cat.h"
+#include "gif_lib.h"  // from @gif
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/platform/gif.h"
 #include "tensorflow/core/platform/logging.h"
@@ -81,10 +82,10 @@ uint8* Decode(const void* srcdata, int datasize,
     // Stop load if no images are detected or the allocation of the last image
     // buffer was failed.
     if (gif_file->ImageCount <= 0 ||
-        gif_file->SavedImages[gif_file->ImageCount - 1].RasterBits == NULL) {
+        gif_file->SavedImages[gif_file->ImageCount - 1].RasterBits == nullptr ||
+        gif_file->Error == D_GIF_ERR_EOF_TOO_SOON) {
       return nullptr;
     }
-
     LOG(ERROR) << *error_string;
   }
 

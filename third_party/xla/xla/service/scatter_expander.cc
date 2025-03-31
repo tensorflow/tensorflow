@@ -111,7 +111,7 @@ static absl::StatusOr<std::vector<HloInstruction*>> ScatterLoopBody(
   HloInstruction* scatter_indices = loop_state[operands.size()];
   auto updates = loop_state.last(operands.size());
 
-  bool has_scalar_indices = scatter_indices->shape().rank() == 1;
+  bool has_scalar_indices = scatter_indices->shape().dimensions_size() == 1;
 
   // Build a vector form of the induction variable of the while loop.
   HloInstruction* induction_var_as_vector =
@@ -141,7 +141,8 @@ static absl::StatusOr<std::vector<HloInstruction*>> ScatterLoopBody(
   TF_ASSIGN_OR_RETURN(
       HloInstruction * scatter_slice_start,
       ExpandIndexVectorIntoOperandSpace(
-          scatter->scatter_indices()->shape(), operands[0]->shape().rank(),
+          scatter->scatter_indices()->shape(),
+          operands[0]->shape().dimensions_size(),
           dim_numbers.index_vector_dim(),
           dim_numbers.scatter_dims_to_operand_dims(),
           dim_numbers.scatter_indices_batching_dims(),
@@ -151,8 +152,9 @@ static absl::StatusOr<std::vector<HloInstruction*>> ScatterLoopBody(
   // induction_var corresponding to this iteration of the while loop.
   TF_ASSIGN_OR_RETURN(
       HloInstruction * index_into_updates,
-      PadVectorWithZeros(induction_var_as_vector, /*zeros_to_prepend=*/0,
-                         /*zeros_to_append=*/updates[0]->shape().rank() - 1));
+      PadVectorWithZeros(
+          induction_var_as_vector, /*zeros_to_prepend=*/0,
+          /*zeros_to_append=*/updates[0]->shape().dimensions_size() - 1));
   std::vector<int64_t> update_slice_bounds(
       updates[0]->shape().dimensions().begin(),
       updates[0]->shape().dimensions().end());

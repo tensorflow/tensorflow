@@ -1,5 +1,5 @@
-load("//xla:strict.default.bzl", "py_strict_binary", "py_strict_library", "py_strict_test")
-load("//xla:xla.bzl", "xla_cc_binary")
+load("//xla:py_strict.bzl", "py_strict_binary", "py_strict_library", "py_strict_test")
+load("//xla:xla.default.bzl", "xla_cc_binary")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],

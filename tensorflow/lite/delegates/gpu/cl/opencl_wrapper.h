@@ -574,6 +574,12 @@ typedef cl_int(CL_API_CALL *PFN_clGetCommandBufferInfoKHR)(
     cl_command_buffer_info_khr /*param_name*/, size_t /*param_value_size*/,
     void * /*param_value*/, size_t * /*param_value_size_ret*/);
 
+// cl_arm_import_memory extension
+typedef cl_mem(CL_API_CALL *PFN_clImportMemoryARM)(
+    cl_context /*context*/, cl_mem_flags /*flags*/,
+    const cl_import_properties_arm * /*properties*/, void * /*memory*/,
+    size_t /*size*/, cl_int * /*errcode_ret*/);
+
 extern PFN_clGetPlatformIDs clGetPlatformIDs;
 extern PFN_clGetPlatformInfo clGetPlatformInfo;
 extern PFN_clGetDeviceIDs clGetDeviceIDs;
@@ -700,6 +706,9 @@ extern PFN_clFinalizeCommandBufferKHR clFinalizeCommandBufferKHR;
 extern PFN_clEnqueueCommandBufferKHR clEnqueueCommandBufferKHR;
 extern PFN_clCommandNDRangeKernelKHR clCommandNDRangeKernelKHR;
 extern PFN_clGetCommandBufferInfoKHR clGetCommandBufferInfoKHR;
+
+// cl_arm_import_memory extension
+extern PFN_clImportMemoryARM clImportMemoryARM;
 
 // For convenient image creation
 // It uses clCreateImage if it available (clCreateImage available since cl 1.2)

@@ -99,8 +99,8 @@ TEST_F(ConcatenateTest, ThreeR2Axis1) {
 }
 
 static auto MakeIotaForShape(const Shape& shape) {
-  std::vector<int64_t> strides(shape.rank(), 1);
-  for (int i = shape.rank() - 1; i > 0; --i) {
+  std::vector<int64_t> strides(shape.dimensions_size(), 1);
+  for (int i = shape.dimensions_size() - 1; i > 0; --i) {
     strides[i - 1] = strides[i] * shape.dimensions(i);
   }
   return [strides = std::move(strides)](absl::Span<const int64_t> indices) {

@@ -41,6 +41,7 @@ limitations under the License.
 #include "tensorflow/core/data/tf_data_memory_logger.h"
 #include "tensorflow/core/data/tfdataz_metrics.h"
 #include "tensorflow/core/framework/dataset.h"
+#include "tensorflow/core/framework/dataset_metadata.pb.h"
 #include "tensorflow/core/framework/device.h"
 #include "tensorflow/core/framework/device_factory.h"
 #include "tensorflow/core/framework/function.h"
@@ -179,6 +180,10 @@ absl::Status Dataset::FromGraph(Params params, const GraphDef& graph_def,
                                       {fetch_node}, &outputs));
   data::DatasetBase* dataset;
   TF_RETURN_IF_ERROR(GetDatasetFromVariantTensor(outputs[0], &dataset));
+  Metadata metadata;
+  metadata.set_data_service_address(
+      params.metadata_options.data_service_address);
+  dataset->Initialize(metadata);
 
   data::DatasetBase* finalized_dataset;
   std::unique_ptr<thread::ThreadPool> pool(

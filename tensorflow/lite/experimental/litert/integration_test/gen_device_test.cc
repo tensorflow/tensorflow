@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include <algorithm>
 #include <filesystem>  // NOLINT
 #include <string>
 #include <utility>
@@ -21,6 +22,7 @@
 #include "absl/flags/flag.h"
 #include "absl/flags/parse.h"
 #include "absl/strings/str_format.h"
+#include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "tensorflow/lite/experimental/litert/c/litert_logging.h"
@@ -29,13 +31,18 @@
 #include "tensorflow/lite/experimental/litert/integration_test/gen_device_test_lib.h"
 #include "tensorflow/lite/experimental/litert/test/common.h"
 #include "tensorflow/lite/experimental/litert/test/matchers.h"
+#include "tensorflow/lite/experimental/litert/tools/dump.h"
 
 ABSL_FLAG(std::string, model_path, "",
           "Tflite models to test. This can be a single tflite model or a "
           "directory containing multiple tflite models.");
 ABSL_FLAG(std::string, dispatch_library_dir, "/data/local/tmp/",
           "Path to the dispatch library.");
+ABSL_FLAG(std::string, compiler_library_dir, "/data/local/tmp/",
+          "Path to the compiler plugin library.");
 ABSL_FLAG(std::string, hw, "cpu", "Which accelerator to use.");
+ABSL_FLAG(std::vector<std::string>, skips, std::vector<std::string>{},
+          "Substrings of models to skip.");
 
 namespace litert::test {
 namespace {
@@ -52,9 +59,10 @@ std::vector<std::string> GetModelPaths(const std::string& model_path_str) {
   std::vector<std::string> models;
   if (std::filesystem::is_directory(model_path)) {
     for (const auto& entry : std::filesystem::directory_iterator(model_path)) {
-      if (IsTfliteModel(entry.path())) {
-        models.push_back(entry.path().generic_string());
+      if (!IsTfliteModel(entry.path())) {
+        continue;
       }
+      models.push_back(entry.path().generic_string());
     }
     return models;
   }
@@ -81,9 +89,11 @@ class GenDeviceTestFixt : public ::testing::Test {};
 template <class InvokerT>
 class InvokeOnceTest : public GenDeviceTestFixt {
  public:
-  InvokeOnceTest(std::string model_path, std::string dispatch_library_dir)
+  InvokeOnceTest(std::string model_path, std::string dispatch_library_dir,
+                 std::string compiler_library_dir)
       : model_path_(std::move(model_path)),
-        dispatch_library_dir_(std::move(dispatch_library_dir)) {}
+        dispatch_library_dir_(std::move(dispatch_library_dir)),
+        compiler_library_dir_(std::move(compiler_library_dir)) {}
 
   // Opens model and initializes the underlying invoker.
   void SetUp() override {
@@ -92,12 +102,17 @@ class InvokeOnceTest : public GenDeviceTestFixt {
             litert::Environment::OptionTag::DispatchLibraryDir,
             absl::string_view(dispatch_library_dir_),
         },
+        litert::Environment::Option{
+            litert::Environment::OptionTag::CompilerPluginLibraryDir,
+            absl::string_view(compiler_library_dir_),
+        },
     };
     LITERT_ASSERT_OK_AND_ASSIGN(
         auto env, litert::Environment::Create(environment_options));
 
     LITERT_ASSERT_OK_AND_ASSIGN(auto model,
                                 litert::Model::CreateFromFile(model_path_));
+    litert::internal::Dump(*model.Get());
 
     invoker_ = std::make_unique<InvokerT>(std::move(env), std::move(model));
     invoker_->MaybeSkip();
@@ -109,6 +124,7 @@ class InvokeOnceTest : public GenDeviceTestFixt {
  private:
   std::string model_path_;
   std::string dispatch_library_dir_;
+  std::string compiler_library_dir_;
 
   CmInvoker::Ptr invoker_;
 };
@@ -131,11 +147,16 @@ void ParseTests() {
   const auto model_paths = GetModelPaths(model_path_flag);
   const auto hw = absl::GetFlag(FLAGS_hw);
   const auto dispatch_library_dir = absl::GetFlag(FLAGS_dispatch_library_dir);
+  const auto compiler_library_dir = absl::GetFlag(FLAGS_compiler_library_dir);
+  const auto skips = absl::GetFlag(FLAGS_skips);
 
   LITERT_LOG(LITERT_INFO, "hw: %s", hw.c_str());
   LITERT_LOG(LITERT_INFO, "model_path: %s", model_path_flag.c_str());
   LITERT_LOG(LITERT_INFO, "dispatch_library_dir: %s",
              dispatch_library_dir.c_str());
+  LITERT_LOG(LITERT_INFO, "compiler_library_dir: %s",
+             compiler_library_dir.c_str());
+  LITERT_LOG(LITERT_INFO, "skips: %s", absl::StrJoin(skips, ",").c_str());
 
   if (model_paths.empty()) {
     LITERT_LOG(LITERT_WARNING, "No models found to test.");
@@ -143,18 +164,28 @@ void ParseTests() {
   }
 
   for (const auto& model_path : model_paths) {
+    LITERT_LOG(LITERT_INFO, "model_path: %s", model_path.c_str());
+
     const auto test_name = absl::StrFormat("%s_%s", ModelName(model_path), hw);
-    ::testing::RegisterTest("GenDeviceTest", test_name.c_str(), nullptr,
-                            nullptr, __FILE__, __LINE__,
-                            [=]() -> GenDeviceTestFixt* {
-                              if (hw == "npu") {
-                                return new InvokeOnceTest<CmNpuInvoker>(
-                                    model_path, dispatch_library_dir);
-                              } else {
-                                return new InvokeOnceTest<CmCpuInvoker>(
-                                    model_path, dispatch_library_dir);
-                              }
-                            });
+    const auto should_skip =
+        std::any_of(skips.cbegin(), skips.cend(), [&](const auto& skip) {
+          return (model_path.find(skip) != std::string::npos);
+        });
+
+    ::testing::RegisterTest(
+        "GenDeviceTest", test_name.c_str(), nullptr, nullptr, __FILE__,
+        __LINE__, [=]() -> GenDeviceTestFixt* {
+          if (should_skip) {
+            return new InvokeOnceTest<SkippedCmInvoker>(
+                model_path, dispatch_library_dir, compiler_library_dir);
+          } else if (hw == "npu") {
+            return new InvokeOnceTest<CmNpuInvoker>(
+                model_path, dispatch_library_dir, compiler_library_dir);
+          } else {
+            return new InvokeOnceTest<CmCpuInvoker>(
+                model_path, dispatch_library_dir, compiler_library_dir);
+          }
+        });
   }
 }
 

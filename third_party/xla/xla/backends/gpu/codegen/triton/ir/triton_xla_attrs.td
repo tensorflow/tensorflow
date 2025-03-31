@@ -19,19 +19,6 @@ limitations under the License.
 include "triton/Dialect/TritonGPU/IR/TritonGPUAttrDefs.td"
 include "xla/backends/gpu/codegen/triton/ir/triton_xla_dialect.td"
 
-def TTXLA_SparseDotMetaEncodingAttr : DistributedEncoding<"SparseDotMetaEncoding",
-"sparse_dot_meta_encoding", [], XlaTritonDialect> {
-  let mnemonic = "sparse_dot_meta";
-
-  let parameters = (ins "Attribute":$parent);
-  let assemblyFormat = "`<``{` struct(params) `}``>`";
-  let extraClassDeclaration = extraDistributedDeclaration # [{
-    SmallVector<unsigned> getContigPerThread() {
-      return getSizePerThread();
-    };
-  }];
-}
-
 class TTXLA_Attr<string name, list<Trait> traits = []> :
       AttrDef<XlaTritonDialect, name, traits> {
 }

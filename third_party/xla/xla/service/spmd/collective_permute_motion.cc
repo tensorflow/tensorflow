@@ -202,7 +202,7 @@ absl::StatusOr<bool> MoveCollectivePermutes(HloComputation* computation,
     }
   }
   HloInstruction* ind_var = input_gtes[induction_var_idx];
-  if (ind_var == nullptr || ind_var->shape().rank() > 0) {
+  if (ind_var == nullptr || ind_var->shape().dimensions_size() > 0) {
     VLOG(2) << "Skip " << loop->name() << ", non-scalar induction var";
     return false;
   }

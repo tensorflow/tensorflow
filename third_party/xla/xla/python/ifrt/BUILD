@@ -1,10 +1,10 @@
-# copybara:uncomment load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
-load("//xla:xla.bzl", "xla_cc_test")
+load("//xla:xla.default.bzl", "xla_cc_test")
 load("//xla/python/ifrt:ifrt.bzl", "ifrt_package_groups")
 load("//xla/tsl:tsl.bzl", "internal_visibility")
 load("//xla/tsl:tsl.default.bzl", "get_compatible_with_portable")
 load("//xla/tsl/platform:build_config.bzl", "tf_proto_library")
 load("//xla/tsl/platform/default:rules_cc.bzl", "cc_library")
+# copybara:uncomment load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -83,6 +83,7 @@ cc_library(
         ":serdes",
         ":shape_proto_cc",
         ":sharding_proto_cc",
+        ":user_context",
         "//xla:shape_util",
         "//xla:status_macros",
         "//xla:util",
@@ -161,6 +162,28 @@ xla_cc_test(
         ":attribute_map",
         "//xla/tsl/platform:statusor",
         "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
+    name = "client_impl_util",
+    srcs = ["client_impl_util.cc"],
+    hdrs = ["client_impl_util.h"],
+    compatible_with = get_compatible_with_portable(),
+    visibility = internal_visibility([
+        ":friends",
+        ":internal",
+    ]),
+    deps = [
+        ":ifrt",
+        ":user_context",
+        "//xla/tsl/concurrency:ref_count",
+        "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
     ],
 )
 
@@ -357,7 +380,7 @@ cc_library(
         ":internal",
     ]),
     deps = [
-        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_for_library",
     ],
 )
 
@@ -479,6 +502,7 @@ cc_library(
         ":attribute_map",
         ":basic_device_list",
         ":ifrt",
+        ":user_context",
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:test",
@@ -491,7 +515,7 @@ cc_library(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
-        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_for_library",
         "@llvm-project//llvm:Support",
     ],
 )
@@ -923,13 +947,12 @@ cc_library(
     name = "user_context",
     srcs = ["user_context.cc"],
     hdrs = ["user_context.h"],
-    visibility = [
+    visibility = internal_visibility([
         ":friends",
         ":internal",
         ":users",
-    ],
+    ]),
     deps = [
-        ":ifrt",
         "//xla/tsl/concurrency:ref_count",
         "@llvm-project//llvm:Support",
     ],

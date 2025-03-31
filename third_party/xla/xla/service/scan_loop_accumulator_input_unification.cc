@@ -210,7 +210,7 @@ absl::StatusOr<bool> UnifyAccumulatorWithInput(
     const HloAliasAnalysis& alias_analysis,
     std::vector<std::pair<HloInstruction*, WhileLoopConfig>> unrollable_loops) {
   auto is_while_body = [&](HloComputation* comp) {
-    return comp->GetUniqueCaller(HloOpcode::kWhile).has_value();
+    return !comp->caller_instructions(HloOpcode::kWhile).empty();
   };
 
   std::vector<HloInstruction*> changed_loops;

@@ -19,10 +19,13 @@ limitations under the License.
 #include <memory>
 
 #include "absl/status/statusor.h"
-#include "xla/pjrt/gpu/se_gpu_pjrt_client.h"
 #include "xla/pjrt/pjrt_client.h"
+#include "xla/pjrt/plugin/xla_gpu/xla_gpu_client_options.h"
 
 namespace xla {
+
+// Whether to use the TFRT GPU Client.
+bool UseTfrtGpuClient();
 
 // Public entry point to get an XLA:GPU PjRtClient
 absl::StatusOr<std::unique_ptr<PjRtClient>> GetXlaPjrtGpuClient(

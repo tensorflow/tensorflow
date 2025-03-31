@@ -1,13 +1,16 @@
 // Copyright (c) Qualcomm Innovation Center, Inc. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+#include <cstdint>
 #include <cstdio>
 #include <filesystem>
 #include <fstream>
 #include <string>
 #include <string_view>
+#include <vector>
 
 #include <gtest/gtest.h>
+#include "absl/types/span.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/common.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/utils/log.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/utils/miscs.h"
@@ -100,6 +103,48 @@ TEST(MiscTest, TestAlwaysFalse) {
   ASSERT_FALSE(::qnn::always_false<float>);
   ASSERT_FALSE(::qnn::always_false<double>);
   ASSERT_FALSE(::qnn::always_false<long double>);
+}
+
+TEST(MiscTests, Quantize) {
+  float val = 1;
+  float scale = 0.1;
+  int32_t zero_point = 1;
+  auto q_val = Quantize<std::int8_t>(val, scale, zero_point);
+  EXPECT_EQ(q_val, 11);
+}
+
+TEST(MiscTests, Dequantize) {
+  std::int8_t q_val = 11;
+  float scale = 0.1;
+  int32_t zero_point = 1;
+  auto val = Dequantize(q_val, scale, zero_point);
+  EXPECT_FLOAT_EQ(val, 1);
+}
+
+TEST(MiscTests, ConvertDataFromInt16toUInt16) {
+  constexpr int16_t int16_data[4] = {0, 1, 2, 3};
+  size_t data_len = sizeof(int16_data) / sizeof(int16_data[0]);
+  absl::Span int16_span(int16_data, data_len);
+  std::vector<std::uint16_t> uint16_data;
+
+  ConvertDataFromInt16toUInt16(int16_span, uint16_data);
+  EXPECT_EQ(uint16_data[0], 32768);
+  EXPECT_EQ(uint16_data[1], 32769);
+  EXPECT_EQ(uint16_data[2], 32770);
+  EXPECT_EQ(uint16_data[3], 32771);
+}
+
+TEST(MiscTests, ConvertDataFromUInt16toInt16) {
+  constexpr uint16_t uint16_data[4] = {32768, 32769, 32770, 32771};
+  size_t data_len = sizeof(uint16_data) / sizeof(uint16_data[0]);
+  absl::Span uint16_span(uint16_data, data_len);
+  std::vector<std::int16_t> int16_data;
+
+  ConvertDataFromUInt16toInt16(uint16_span, int16_data);
+  EXPECT_EQ(int16_data[0], 0);
+  EXPECT_EQ(int16_data[1], 1);
+  EXPECT_EQ(int16_data[2], 2);
+  EXPECT_EQ(int16_data[3], 3);
 }
 
 }  // namespace qnn

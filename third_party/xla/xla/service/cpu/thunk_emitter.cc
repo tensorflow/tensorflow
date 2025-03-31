@@ -53,7 +53,6 @@ limitations under the License.
 #include "xla/backends/cpu/runtime/logical_id_thunk.h"
 #include "xla/backends/cpu/runtime/outfeed_thunk.h"
 #include "xla/backends/cpu/runtime/reduce_scatter_thunk.h"
-#include "xla/backends/cpu/runtime/resource_use.h"
 #include "xla/backends/cpu/runtime/rng_state_thunk.h"
 #include "xla/backends/cpu/runtime/sort_thunk.h"
 #include "xla/backends/cpu/runtime/thunk.h"
@@ -76,6 +75,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/layout_util.h"
+#include "xla/runtime/resource_use.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/cpu/backend_config.pb.h"
@@ -864,7 +864,8 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitDotThunk(
   }
 
   DotImplementationStrategy strategy = GetDotImplementationStrategy(
-      hlo_module_config_, *instruction, target_machine_features_);
+      hlo_module_config_, *instruction, target_machine_features_,
+      /*allow_runtime_calls=*/true);
 
   switch (strategy) {
     // Emit host kernel implementing dot instruction.
@@ -939,7 +940,7 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitTopKThunk(
 
   // Deduce parameters from the result shape and operand shape
   const int64_t input_size = input->shape().dimensions().back();
-  const bool has_batch = result_shape.tuple_shapes(0).rank() == 2;
+  const bool has_batch = result_shape.tuple_shapes(0).dimensions_size() == 2;
   const int64_t batch_size =
       has_batch ? result_shape.tuple_shapes(0).dimensions(0) : 1;
   const int64_t k = result_shape.tuple_shapes(0).dimensions().back();

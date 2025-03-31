@@ -132,10 +132,10 @@ class DynamicPartitionOp : public XlaOpKernel {
     //
     // 3. We reshape the result of DynamicPartition1D back from 1D to output
     // shape.
-    if (data_shape.rank() > partition_shape.rank()) {
+    if (data_shape.dimensions_size() > partition_shape.dimensions_size()) {
       // Broadcast parititon_shape so that it can be the same as data_shape.
       std::vector<int64_t> broadcasted_dims;
-      auto rank = partition_shape.rank();
+      auto rank = partition_shape.dimensions_size();
       broadcasted_dims.reserve(rank);
       for (int64_t i = 0; i < rank; ++i) {
         broadcasted_dims.push_back(i);
@@ -152,7 +152,8 @@ class DynamicPartitionOp : public XlaOpKernel {
     output_shape_bound_dims.push_back(
         xla::ShapeUtil::ElementsIn(partition_shape));
     int64_t count_diff = 1;
-    for (int64_t i = partition_shape.rank(); i < data_shape.rank(); ++i) {
+    for (int64_t i = partition_shape.dimensions_size();
+         i < data_shape.dimensions_size(); ++i) {
       output_shape_bound_dims.push_back(data_shape.dimensions(i));
       count_diff *= data_shape.dimensions(i);
     }

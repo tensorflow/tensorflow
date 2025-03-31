@@ -60,6 +60,7 @@ limitations under the License.
 #include "xla/python/ifrt/attribute_map.h"
 #include "xla/python/ifrt/basic_device_list.h"
 #include "xla/python/ifrt/client.h"
+#include "xla/python/ifrt/client_impl_util.h"
 #include "xla/python/ifrt/compiler.h"
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/device_list.h"
@@ -76,6 +77,7 @@ limitations under the License.
 #include "xla/python/ifrt/sharding.h"
 #include "xla/python/ifrt/topology.h"
 #include "xla/python/ifrt/tuple.h"
+#include "xla/python/ifrt/user_context.h"
 #include "xla/python/ifrt/value.h"
 #include "xla/python/pjrt_ifrt/pjrt_dtype.h"
 #include "xla/python/pjrt_ifrt/xla_sharding.h"
@@ -392,18 +394,11 @@ class NanoArray final : public NanoValue<NanoArray, ifrt::Array> {
 
   absl::StatusOr<std::vector<tsl::RCReference<Array>>>
   DisassembleIntoSingleDeviceArrays(
-      ifrt::ArrayCopySemantics semantics) override {
-    TF_RETURN_IF_ERROR(ValidateNotDeleted());
-    TF_ASSIGN_OR_RETURN(auto shards, Disassemble());
-    return std::vector<tsl::RCReference<Array>>(shards.begin(), shards.end());
-  }
-
-  absl::StatusOr<std::vector<tsl::RCReference<Array>>>
-  DisassembleIntoSingleDeviceArrays(
       ifrt::ArrayCopySemantics array_copy_semantics,
       ifrt::SingleDeviceShardSemantics single_device_shard_semantics) override {
     TF_RETURN_IF_ERROR(ValidateNotDeleted());
-    return DisassembleIntoSingleDeviceArrays(array_copy_semantics);
+    TF_ASSIGN_OR_RETURN(auto shards, Disassemble());
+    return std::vector<tsl::RCReference<Array>>(shards.begin(), shards.end());
   }
 
   absl::StatusOr<tsl::RCReference<Array>> FullyReplicatedShard(
@@ -614,16 +609,10 @@ class ShardedNanoArray final : public NanoValue<ShardedNanoArray, ifrt::Array> {
 
   absl::StatusOr<std::vector<tsl::RCReference<Array>>>
   DisassembleIntoSingleDeviceArrays(
-      ifrt::ArrayCopySemantics semantics) override {
-    TF_RETURN_IF_ERROR(ValidateNotDeleted());
-    return std::vector<tsl::RCReference<Array>>(shards_.begin(), shards_.end());
-  }
-
-  absl::StatusOr<std::vector<tsl::RCReference<Array>>>
-  DisassembleIntoSingleDeviceArrays(
       ifrt::ArrayCopySemantics array_copy_semantics,
       ifrt::SingleDeviceShardSemantics single_device_shard_semantics) override {
-    return DisassembleIntoSingleDeviceArrays(array_copy_semantics);
+    TF_RETURN_IF_ERROR(ValidateNotDeleted());
+    return std::vector<tsl::RCReference<Array>>(shards_.begin(), shards_.end());
   }
 
   absl::StatusOr<tsl::RCReference<Array>> FullyReplicatedShard(
@@ -815,6 +804,12 @@ class NanoExecutable final
   ifrt::Client* client() const override { return client_; }
 
   absl::string_view name() const override { return program_.name(); }
+
+  absl::StatusOr<absl::Span<const int>> GetDonatableInputIndices()
+      const override {
+    return absl::UnimplementedError(
+        "NanoExecutable::GetDonatableInputIndices is not implemented.");
+  }
 
   absl::StatusOr<ExecuteResult> Execute(
       absl::Span<tsl::RCReference<ifrt::Array>> args,
@@ -1248,7 +1243,9 @@ NanoIfrtClient::MakeArrayFromHostBuffer(
     std::optional<absl::Span<const int64_t>> byte_strides,
     absl::Nonnull<std::shared_ptr<const ifrt::Sharding>> sharding,
     HostBufferSemantics semantics,
-    std::function<void()> on_done_with_host_buffer) {
+    std::function<void()> on_done_with_host_buffer,
+    tsl::RCReference<xla::ifrt::UserContext> user_context) {
+  // Currently the `user_context` parameter is ignored.
   bool make_copy = false;
   switch (semantics) {
     case HostBufferSemantics::kImmutableUntilTransferCompletes:
@@ -1266,12 +1263,22 @@ NanoIfrtClient::MakeArrayFromHostBuffer(
                                std::move(on_done_with_host_buffer));
 }
 
+absl::StatusOr<std::vector<tsl::RCReference<ifrt::Array>>>
+NanoIfrtClient::MakeArraysFromHostBufferShards(
+    absl::Span<MakeArraysFromHostBufferShardsSpec> specs,
+    HostBufferSemantics semantics,
+    tsl::RCReference<ifrt::UserContext> user_context) {
+  return ifrt::ClientMakeArraysFromHostBufferShards(this, specs, semantics,
+                                                    std::move(user_context));
+}
+
 absl::StatusOr<tsl::RCReference<ifrt::Array>>
 NanoIfrtClient::AssembleArrayFromSingleDeviceArrays(
-    ifrt::Shape shape,
+    ifrt::DType dtype, ifrt::Shape shape,
     absl::Nonnull<std::shared_ptr<const ifrt::Sharding>> sharding,
     absl::Span<tsl::RCReference<ifrt::Array>> arrays,
-    ifrt::ArrayCopySemantics semantics) {
+    ifrt::ArrayCopySemantics array_copy_semantics,
+    ifrt::SingleDeviceShardSemantics single_device_shard_semantics) {
   std::vector<tsl::RCReference<NanoArray>> nano_arrays;
   nano_arrays.reserve(arrays.size());
   for (const auto& array : arrays) {
@@ -1284,32 +1291,6 @@ NanoIfrtClient::AssembleArrayFromSingleDeviceArrays(
   }
   return ShardedNanoArray::FromShards(this, shape, sharding,
                                       std::move(nano_arrays));
-}
-
-absl::StatusOr<tsl::RCReference<ifrt::Array>>
-NanoIfrtClient::AssembleArrayFromSingleDeviceArrays(
-    ifrt::Shape shape,
-    absl::Nonnull<std::shared_ptr<const ifrt::Sharding>> sharding,
-    absl::Span<tsl::RCReference<ifrt::Array>> arrays,
-    ifrt::ArrayCopySemantics array_copy_semantics,
-    ifrt::SingleDeviceShardSemantics single_device_shard_semantics) {
-  return AssembleArrayFromSingleDeviceArrays(shape, sharding, arrays,
-                                             array_copy_semantics);
-}
-
-absl::StatusOr<tsl::RCReference<ifrt::Array>>
-NanoIfrtClient::AssembleArrayFromSingleDeviceArrays(
-    ifrt::DType dtype, ifrt::Shape shape,
-    absl::Nonnull<std::shared_ptr<const ifrt::Sharding>> sharding,
-    absl::Span<tsl::RCReference<ifrt::Array>> arrays,
-    ifrt::ArrayCopySemantics array_copy_semantics,
-    ifrt::SingleDeviceShardSemantics single_device_shard_semantics) {
-  // NanoRT devices always have at least one buffer, so we can use the buffer
-  // dtype.
-  TF_RET_CHECK(!arrays.empty());
-  TF_RET_CHECK(dtype == arrays.front()->dtype());
-  return AssembleArrayFromSingleDeviceArrays(shape, sharding, arrays,
-                                             array_copy_semantics);
 }
 
 absl::StatusOr<std::vector<tsl::RCReference<ifrt::Array>>>

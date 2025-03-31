@@ -204,7 +204,7 @@ void PermuteRowsInColumn(XlaOp& top, XlaOp& bottom) {
   if (k <= 1) {
     return;
   }
-  int ndim = shape.rank();
+  int ndim = shape.dimensions_size();
   std::tie(top, bottom) =
       std::make_tuple(ConcatInDim(builder,
                                   {SliceInMinorDims(top, {0, 0}, {1, k}),
@@ -224,7 +224,7 @@ void PermuteColumnsInRow(XlaOp& left, XlaOp& right) {
   if (k <= 1) {
     return;
   }
-  int ndim = shape.rank();
+  int ndim = shape.dimensions_size();
   std::tie(left, right) =
       std::make_tuple(ConcatInDim(builder,
                                   {SliceInMinorDims(left, {0}, {1}),
@@ -280,7 +280,7 @@ absl::StatusOr<FrobeniusNorms> ComputeFrobeniusNorms(XlaOp w_tl, XlaOp w_tr,
                                                      XlaOp w_bl, XlaOp w_br) {
   XlaBuilder* builder = w_tl.builder();
   TF_ASSIGN_OR_RETURN(Shape shape, builder->GetShape(w_tl));
-  const int64_t num_dims = shape.rank();
+  const int64_t num_dims = shape.dimensions_size();
   auto square_norm = [](XlaOp x) -> XlaOp {
     return Real(x * MaybeConjugate(x, true));
   };
@@ -363,7 +363,7 @@ absl::Status EighExpander::SortByEigenvalues(XlaOp& v, XlaOp& w) {
   XlaBuilder* builder = v.builder();
   TF_ASSIGN_OR_RETURN(Shape v_shape, builder->GetShape(v));
   TF_ASSIGN_OR_RETURN(Shape w_shape, builder->GetShape(w));
-  const int64_t num_dims = v_shape.rank();
+  const int64_t num_dims = v_shape.dimensions_size();
   auto dimensions = v_shape.dimensions();
 
   std::vector<int64_t> broadcast_dims(num_dims - 1);
@@ -439,7 +439,7 @@ XlaOp EighExpander::BuildEigh(XlaOp a, bool lower, int64_t max_iter, float tol,
   XlaBuilder* builder = a.builder();
   return builder->ReportErrorOrReturn([&]() -> absl::StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(Shape a_shape, builder->GetShape(a));
-    const int64_t num_dims = a_shape.rank();
+    const int64_t num_dims = a_shape.dimensions_size();
     if (num_dims < 2) {
       return InvalidArgument(
           "Arguments to Eigen decomposition must have rank >= 2: got shape %s.",

@@ -158,10 +158,36 @@ absl::StatusOr<std::vector<int>> GetParticipatingIDs(
                           group->replica_ids().end());
 }
 
-// Returns the group formation mode of instr, assuming that instr is, or is
-// derived from, an HloAllGatherInstruction, HloAllReduceInstructionBase,
-// HloAllToAllInstruction, HloCollectiveBroadcastInstruction or
-// HloCollectivePermuteInstruction.
+absl::StatusOr<std::vector<std::vector<int64_t>>> GetAsyncReplicaGroups(
+    const HloInstruction* instruction) {
+  std::vector<std::vector<int64_t>> replica_groups;
+  if (instruction->opcode() == HloOpcode::kCollectivePermuteStart) {
+    absl::c_transform(instruction->source_target_pairs(),
+                      std::back_inserter(replica_groups),
+                      [](const std::pair<int64_t, int64_t>& pair) {
+                        std::vector<int64_t> ids({pair.first, pair.second});
+                        return ids;
+                      });
+  } else if (instruction->IsAsynchronous() ||
+             instruction->opcode() == HloOpcode::kAllGatherStart ||
+             instruction->opcode() == HloOpcode::kAllReduceStart) {
+    absl::c_transform(
+        instruction->replica_groups(), std::back_inserter(replica_groups),
+        [](const ReplicaGroup& group) {
+          std::vector<int64_t> ids;
+          absl::c_transform(group.replica_ids(), std::back_inserter(ids),
+                            [](auto id) { return id; });
+          return ids;
+        });
+  } else {
+    return InvalidArgument(
+        "Unexpected instruction type: %s is not an async collective "
+        "instruction",
+        instruction->ToString());
+  }
+  return replica_groups;
+}
+
 absl::StatusOr<CollectiveOpGroupMode> GetCollectiveOpGroupMode(
     const HloInstruction* instr) {
   if (auto collective = DynCast<HloAllGatherInstruction>(instr)) {
@@ -181,28 +207,11 @@ absl::StatusOr<CollectiveOpGroupMode> GetCollectiveOpGroupMode(
                  DynCast<HloCollectivePermuteInstruction>(instr)) {
     return GetCollectiveOpGroupMode(collective->channel_id().has_value(),
                                     std::nullopt);
+  } else if (auto collective = DynCast<HloRaggedAllToAllInstruction>(instr)) {
+    return GetCollectiveOpGroupMode(collective->channel_id().has_value(),
+                                    std::nullopt);
   }
   return Internal("Unexpected instruction type.");
-}
-
-absl::StatusOr<bool> GetCollectiveUseGlobalDeviceIds(
-    const HloInstruction* hlo) {
-  const bool is_all_reduce = (hlo->opcode() == HloOpcode::kAllReduce ||
-                              hlo->opcode() == HloOpcode::kAllReduceStart ||
-                              hlo->opcode() == HloOpcode::kReduceScatter);
-  const bool is_all_gather = (hlo->opcode() == HloOpcode::kAllGather ||
-                              hlo->opcode() == HloOpcode::kAllGatherStart);
-  if (!is_all_reduce && !is_all_gather) {
-    return absl::InvalidArgumentError(
-        "GetReplicaGroupCountAndSize only supports AllReduce and AllGather.");
-  }
-  return is_all_reduce
-             ? Cast<HloAllReduceInstructionBase>(hlo)->use_global_device_ids()
-             : Cast<HloAllGatherInstruction>(hlo)->use_global_device_ids();
-}
-
-std::optional<int64_t> GetCollectiveChannelId(const HloInstruction* hlo) {
-  return Cast<HloCollectiveInstruction>(hlo)->channel_id();
 }
 
 const CollectiveDeviceList& GetCollectiveDeviceList(const HloInstruction* hlo) {
@@ -364,12 +373,8 @@ GetParticipatingDevicesGroups(const HloInstruction* collective) {
   CHECK(collective->GetModule()->config().has_static_device_assignment());
   const DeviceAssignment& device_assignment =
       collective->GetModule()->config().static_device_assignment();
-  TF_ASSIGN_OR_RETURN(bool use_global_device_ids,
-                      GetCollectiveUseGlobalDeviceIds(collective));
-  TF_ASSIGN_OR_RETURN(
-      CollectiveOpGroupMode mode,
-      GetCollectiveOpGroupMode(GetCollectiveChannelId(collective).has_value(),
-                               use_global_device_ids));
+  TF_ASSIGN_OR_RETURN(CollectiveOpGroupMode mode,
+                      GetCollectiveOpGroupMode(collective));
   return GetParticipatingDevicesGroups(
       device_assignment, GetCollectiveReplicaGroups(collective), mode);
 }
@@ -474,12 +479,8 @@ absl::StatusOr<std::vector<ReplicaGroup>> GetParticipatingFlattenedIdGroups(
 
 absl::StatusOr<std::vector<ReplicaGroup>> GetParticipatingFlattenedIdGroups(
     const HloInstruction* hlo, const DeviceAssignment& device_assignment) {
-  TF_ASSIGN_OR_RETURN(bool use_global_device_ids,
-                      GetCollectiveUseGlobalDeviceIds(hlo));
-  TF_ASSIGN_OR_RETURN(
-      CollectiveOpGroupMode mode,
-      GetCollectiveOpGroupMode(GetCollectiveChannelId(hlo).has_value(),
-                               use_global_device_ids));
+  TF_ASSIGN_OR_RETURN(CollectiveOpGroupMode mode,
+                      GetCollectiveOpGroupMode(hlo));
   TF_ASSIGN_OR_RETURN(
       std::vector<ReplicaGroup> replica_groups,
       GetParticipatingFlattenedIdGroups(device_assignment,
@@ -490,12 +491,8 @@ absl::StatusOr<std::vector<ReplicaGroup>> GetParticipatingFlattenedIdGroups(
 // Same as above, used for cases where static_device_assignment is not present.
 absl::StatusOr<std::vector<ReplicaGroup>> GetParticipatingFlattenedIdGroups(
     const HloInstruction* hlo, int replica_count, int partition_count) {
-  TF_ASSIGN_OR_RETURN(bool use_global_device_ids,
-                      GetCollectiveUseGlobalDeviceIds(hlo));
-  TF_ASSIGN_OR_RETURN(
-      CollectiveOpGroupMode mode,
-      GetCollectiveOpGroupMode(GetCollectiveChannelId(hlo).has_value(),
-                               use_global_device_ids));
+  TF_ASSIGN_OR_RETURN(CollectiveOpGroupMode mode,
+                      GetCollectiveOpGroupMode(hlo));
   TF_ASSIGN_OR_RETURN(
       std::vector<ReplicaGroup> replica_groups,
       GetParticipatingFlattenedIdGroups(GetCollectiveReplicaGroups(hlo), mode,
@@ -681,12 +678,8 @@ GetReplicaGroupCountAndSize(const HloInstruction* hlo) {
         device_list.iota_replica_group_list()->num_replica_groups(),
         device_list.iota_replica_group_list()->num_devices_per_group());
   }
-  TF_ASSIGN_OR_RETURN(bool use_global_device_ids,
-                      GetCollectiveUseGlobalDeviceIds(hlo));
-  TF_ASSIGN_OR_RETURN(
-      CollectiveOpGroupMode group_mode,
-      GetCollectiveOpGroupMode(GetCollectiveChannelId(hlo).has_value(),
-                               use_global_device_ids));
+  TF_ASSIGN_OR_RETURN(CollectiveOpGroupMode group_mode,
+                      GetCollectiveOpGroupMode(hlo));
   TF_ASSIGN_OR_RETURN(std::vector<int64_t> participant_counts,
                       GetPariticipantCountsForReplicaGroups(
                           config.replica_count(), config.num_partitions(),
@@ -777,6 +770,52 @@ bool IsCollective(const HloInstruction* instruction) {
     }
   }
   return false;
+}
+
+absl::StatusOr<bool> IsAsyncCollective(const HloInstruction* instruction) {
+  if (!IsNonFusionCollective(instruction)) {
+    return false;
+  }
+  if (instruction->IsAsynchronous()) {
+    switch (instruction->async_wrapped_opcode()) {
+      case HloOpcode::kAllGather:
+      case HloOpcode::kAllReduce:
+      case HloOpcode::kAllToAll:
+      case HloOpcode::kCollectiveBroadcast:
+      case HloOpcode::kCollectivePermute:
+      case HloOpcode::kRaggedAllToAll:
+      case HloOpcode::kReduceScatter:
+        return true;
+      default:
+        return absl::InvalidArgumentError("Async instruction " +
+                                          instruction->ToString() +
+                                          " is not a collective.");
+    }
+  }
+  switch (instruction->opcode()) {
+    case HloOpcode::kAllGatherStart:
+    case HloOpcode::kAllGatherDone:
+    case HloOpcode::kAllReduceStart:
+    case HloOpcode::kAllReduceDone:
+    case HloOpcode::kCollectivePermuteStart:
+    case HloOpcode::kCollectivePermuteDone:
+      return true;
+    case HloOpcode::kSend:
+    case HloOpcode::kRecv:
+      return !Cast<HloSendRecvInstruction>(instruction)->is_host_transfer();
+    case HloOpcode::kAllGather:
+    case HloOpcode::kAllReduce:
+    case HloOpcode::kAllToAll:
+    case HloOpcode::kCollectiveBroadcast:
+    case HloOpcode::kCollectivePermute:
+    case HloOpcode::kRaggedAllToAll:
+    case HloOpcode::kReduceScatter:
+      return false;
+    default:
+      return absl::InvalidArgumentError("Instruction " +
+                                        instruction->ToString() +
+                                        " is not an async collective.");
+  }
 }
 
 HloInstruction* IsOrHasCollectiveWithChannelId(HloInstruction* instruction) {

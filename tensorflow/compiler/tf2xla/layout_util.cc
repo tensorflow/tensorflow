@@ -72,8 +72,8 @@ absl::Status RewriteLayoutWithShardedShape(
         sharding->TileOffsetForDevice(*xla_shape, device);
     std::vector<int64_t> limit =
         sharding->TileLimitForDevice(*xla_shape, device);
-    std::vector<int64_t> dimensions(xla_shape->rank());
-    for (int64_t i = 0; i < xla_shape->rank(); ++i) {
+    std::vector<int64_t> dimensions(xla_shape->dimensions_size());
+    for (int64_t i = 0; i < xla_shape->dimensions_size(); ++i) {
       dimensions[i] = limit[i] - offset[i];
     }
     xla::Shape per_device_xla_shape =
@@ -131,7 +131,7 @@ absl::StatusOr<xla::XlaOp> ReshapeWithCorrectRepresentationAndSharding(
         hlo_sharding, fast_mem, shape_determination_fns, &to_shape));
   }
   if (xla::ShapeUtil::Compatible(original_shape, to_shape)) {
-    for (int64_t i = 0; i < original_shape.rank(); ++i) {
+    for (int64_t i = 0; i < original_shape.dimensions_size(); ++i) {
       to_shape.set_dynamic_dimension(i, original_shape.is_dynamic_dimension(i));
     }
   }

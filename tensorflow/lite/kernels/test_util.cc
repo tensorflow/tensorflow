@@ -101,7 +101,7 @@ uint32_t DistanceBetweenSignAndMagnitudeNumbers(uint32_t sam1, uint32_t sam2) {
 //   - returns true if both numbers are NAN.
 //   - returns false if exact one of numbers is NAN.
 //   - treats really large numbers as almost equal to infinity.
-//   - thinks +0.0 and -0.0 are 0 DLP's apart.
+//   - thinks +0.0 and -0.0 are 0 ULP's apart.
 bool AlmostEquals(float lhs, float rhs, uint32_t max_ulps) {
   if (std::isnan(lhs) || std::isnan(rhs)) {
     return std::isnan(lhs) && std::isnan(rhs);

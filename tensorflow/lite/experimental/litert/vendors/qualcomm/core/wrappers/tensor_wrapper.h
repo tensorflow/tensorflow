@@ -48,6 +48,37 @@ inline constexpr Qnn_DataType_t GetQnnDataType(const bool is_quant) {
 
 std::size_t GetDataTypeSize(const Qnn_DataType_t data_type);
 
+template <typename T>
+void TransposeFromOHWIToHWIO(absl::Span<const T> weight_data,
+                             const std::vector<uint32_t>& weight_dims,
+                             std::vector<T>& weight_data_transpose) {
+  weight_data_transpose.resize(weight_data.size());
+  uint32_t output = weight_dims[0];
+  uint32_t height = weight_dims[1];
+  uint32_t width = weight_dims[2];
+  uint32_t input = weight_dims[3];
+  // OHWI->HWIO
+  uint32_t map_o = 0;
+  uint32_t map_w = 0;
+  uint32_t map_h = 0;
+  for (uint32_t index_o = 0; index_o < output; index_o++) {
+    map_o = index_o * height * width * input;
+    for (uint32_t index_h = 0; index_h < height; index_h++) {
+      map_h = index_h * width * input;
+      for (uint32_t index_w = 0; index_w < width; index_w++) {
+        map_w = index_w * input;
+        for (uint32_t index_i = 0; index_i < input; index_i++) {
+          T inval = weight_data[map_o + map_h + map_w + index_i];
+          uint32_t index_transpose = index_h * width * input * output +
+                                     index_w * input * output +
+                                     index_i * output + index_o;
+          weight_data_transpose[index_transpose] = inval;
+        }
+      }
+    }
+  }
+}
+
 class TensorWrapper final {
   friend class TensorPool;
 
@@ -89,10 +120,20 @@ class TensorWrapper final {
 
   QuantizeParamsWrapperVariant& GetQuantParams() { return quantize_params_; };
 
-  const bool IsQuant() const {
+  bool IsQuant() const {
     return !std::holds_alternative<UndefinedQuantizeParamsWrapper>(
         quantize_params_);
   };
+
+  bool IsPerTensorQuant() const {
+    return std::holds_alternative<ScaleOffsetQuantizeParamsWrapper>(
+        quantize_params_);
+  }
+
+  bool IsPerChannelQuant() const {
+    return std::holds_alternative<AxisScaleOffsetQuantizeParamsWrapper>(
+        quantize_params_);
+  }
 
   bool IsPerTensorQuantWithOffsetDiff(const TensorWrapper& rhs) const;
 
@@ -106,9 +147,10 @@ class TensorWrapper final {
            GetDataType() == QNN_DATATYPE_UFIXED_POINT_16;
   }
 
-  Qnn_DataType_t GetDataType() const;
+  bool IsF32() const { return GetDataType() == QNN_DATATYPE_FLOAT_32; }
+  bool IsF16() const { return GetDataType() == QNN_DATATYPE_FLOAT_16; }
 
-  void SetDataType(Qnn_DataType_t data_type);
+  Qnn_DataType_t GetDataType() const;
 
   bool IsSubgraphInput() const {
     return GetTensorType() == QNN_TENSOR_TYPE_APP_WRITE;
@@ -247,10 +289,17 @@ class TensorWrapper final {
 
   size_t GetTensorBytes() const;
 
+  void ConvertQint16ToQuint16();
+
  private:
   Qnn_TensorType_t GetTensorType() const;
 
   void SetDataBy(std::uint32_t bytes, const void* data);
+
+  bool HasStaticData() const {
+    return qnn_tensor_.v2.clientBuf.dataSize != 0 &&
+           qnn_tensor_.v2.clientBuf.data != nullptr;
+  }
 
   Qnn_Tensor_t qnn_tensor_{.version = QNN_TENSOR_VERSION_2,
                            .v2 = QNN_TENSOR_V2_INIT};
@@ -276,9 +325,8 @@ std::optional<absl::Span<const T>> TensorWrapper::GetStaticTensorData() const {
     return std::nullopt;
   }
 
-  if (qnn_tensor_.v2.clientBuf.dataSize == 0 ||
-      qnn_tensor_.v2.clientBuf.data == nullptr) {
-    QNN_LOG_ERROR("Empty StaticTensorData.");
+  if (!HasStaticData()) {
+    QNN_LOG_ERROR("Empty static tensor data.");
     return std::nullopt;
   }
 

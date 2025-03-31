@@ -31,12 +31,12 @@ include "mlir/Dialect/Quant/IR/QuantBase.td"
 // explicit signedness check to differentiate the signed/unsigned constraints
 // predicates from one another at the TD level.
 class QuantizedType<string n, list<int> params, bit signed>
-  : Type<And<[CPred<"$_self.isa<mlir::quant::QuantizedType>()">,
-              CPred<"$_self.cast<mlir::quant::QuantizedType>()" #
+  : Type<And<[CPred<"$_self.isa<mlir::TFL::QuantizedType>()">,
+              CPred<"$_self.cast<mlir::TFL::QuantizedType>()" #
                     ".getStorageTypeIntegralWidth() == " # !head(params)>,
-              Or<[CPred<"$_self.cast<mlir::quant::QuantizedType>()" #
+              Or<[CPred<"$_self.cast<mlir::TFL::QuantizedType>()" #
                     ".getStorageType().isSignlessInteger()">,
-                  CPred<"$_self.cast<mlir::quant::QuantizedType>()" #
+                  CPred<"$_self.cast<mlir::TFL::QuantizedType>()" #
                     ".getStorageType().isSignedInteger() == " # signed>]>]>,
     "Q" # !if (signed, "I", "UI") # !head(params) # " type"> {
   string name = n;
@@ -73,6 +73,8 @@ def QI32 : QuantizedType<"Uniform", [32], 1>;
 
 def FixedOutputRangeInterface : OpInterface<
   "FixedOutputRangeInterface"> {
+  let cppNamespace = "TFL";
+
   let description = [{
     Interface for defining the fixed output range.
   }];
@@ -88,6 +90,8 @@ def FixedOutputRangeInterface : OpInterface<
 
 def AffineQuantizedOpInterface : OpInterface<
   "AffineQuantizedOpInterface"> {
+  let cppNamespace = "TFL";
+
   let description = [{
     Interface for affine quantized ops (conv2d, fully_connected, etc.)
   }];
@@ -113,6 +117,8 @@ def AffineQuantizedOpInterface : OpInterface<
 }
 
 def SameOperandsAndResultsScale : OpInterface<"SameScalesOpInterface"> {
+  let cppNamespace = "TFL";
+
   let description = [{
     Interface for ops potentially have same operands and results scales.
   }];
@@ -131,12 +137,14 @@ def SameOperandsAndResultsScale : OpInterface<"SameScalesOpInterface"> {
   ];
 
   let verify = [{
-    return quant::VerifySameScales($_op);
+    return TFL::VerifySameScales($_op);
   }];
 }
 
 def DynamicRangeQuantizedOpInterface : OpInterface<
   "DynamicRangeQuantizedOpInterface"> {
+  let cppNamespace = "TFL";
+
   let description = [{
     Interface for ops dynamic range quantization is supported.
 
@@ -196,12 +204,12 @@ def DynamicRangeQuantizedOpInterface : OpInterface<
 
 // Specify this trait if the op has a fixed output value range.
 class FixedResultScale<QuantizedType qt> : NativeOpTrait<!strconcat(
-  "quant::FixedResult", qt.name, "Scale<", qt.asTraitArgsStr, ">::Impl")>;
+  "TFL::FixedResult", qt.name, "Scale<", qt.asTraitArgsStr, ">::Impl")>;
 
 // Specify this trait if the bias-th input of the op is a bias input, which
 // needs a scale based on the scales of op1 and op2.
 class AccumulatorUniformScale<int bias, int op1, int op2> : NativeOpTrait<
-  !strconcat("quant::AccumulatorUniformScale<",
+  !strconcat("TFL::AccumulatorUniformScale<",
              !interleave([bias, op1, op2], ", "),
              ">::Impl")>;
 
@@ -209,11 +217,11 @@ class AccumulatorUniformScale<int bias, int op1, int op2> : NativeOpTrait<
 // and also the quantization dimension if per-axis quantization is support.
 // If the quantization dimension is -1, per-axis quantization isn't supported.
 class AffineOpCoefficient<int dim, int index> : NativeOpTrait<
-  !strconcat("quant::AffineOpCoefficient<",
+  !strconcat("TFL::AffineOpCoefficient<",
              !interleave([dim, index], ", "),
              ">::Impl")>;
 
 // Specify this trait if the op does have quantizable output. Quantizers will
 // apply quantization on this op.
-def QuantizableResult : NativeOpTrait<"quant::QuantizableResult">;
+def QuantizableResult : NativeOpTrait<"TFL::QuantizableResult">;
 #endif // TF_Quantization

@@ -39,7 +39,7 @@ bool IsTableLookup(const HloInstruction* hlo) {
   return hlo->opcode() == HloOpcode::kDynamicSlice &&
          (hlo->operand(0)->IsConstant() ||
           hlo->operand(0)->opcode() == HloOpcode::kIota) &&
-         hlo->operand(0)->shape().rank() == 1 &&
+         hlo->operand(0)->shape().dimensions_size() == 1 &&
          (hlo->operand(0)->shape().element_type() == S32 ||
           hlo->operand(0)->shape().element_type() == U32);
 }
@@ -47,7 +47,8 @@ bool IsTableLookup(const HloInstruction* hlo) {
 std::optional<int64_t> GetScalarInt64Value(const HloInstruction* constant) {
   CHECK_EQ(constant->opcode(), HloOpcode::kConstant);
   CHECK(ShapeUtil::IsEffectiveScalar(constant->shape()));
-  absl::InlinedVector<int64_t, 8> multi_index(constant->shape().rank());
+  absl::InlinedVector<int64_t, 8> multi_index(
+      constant->shape().dimensions_size());
   return constant->literal().GetIntegralAsS64(multi_index);
 }
 
@@ -272,7 +273,7 @@ std::optional<ReduceScatterSpec> SpecFromReduceScatterInstr(
     const HloInstruction* rs_instr, int64_t num_partitions,
     int64_t num_replicas, int64_t min_rank, bool is_constrain_layout,
     bool use_global_device_ids, bool is_cross_module) {
-  if (rs_instr->shape().rank() < min_rank) {
+  if (rs_instr->shape().dimensions_size() < min_rank) {
     return std::nullopt;
   }
   CHECK(rs_instr->opcode() == HloOpcode::kReduceScatter);
@@ -357,7 +358,7 @@ std::optional<ReduceScatterSpec> MatchWithDynamicSlice(
     VLOG(2) << "Unsupported collective: " << instruction->ToString();
     return std::nullopt;
   }
-  if (instruction->shape().rank() -
+  if (instruction->shape().dimensions_size() -
           absl::c_count(instruction->shape().dimensions(), 1) <
       min_rank) {
     VLOG(2) << " Should be at least rank-" << min_rank
@@ -512,7 +513,8 @@ std::optional<ReduceScatterSpec> MatchWithDynamicSlice(
   // First find a single dimension where the input and output of dynamic slice
   // differ.
   int num_dims = 0;
-  for (int64_t dim = 0; dim < user->operand(0)->shape().rank(); ++dim) {
+  for (int64_t dim = 0; dim < user->operand(0)->shape().dimensions_size();
+       ++dim) {
     if (user->operand(0)->shape().dimensions(dim) ==
         user->shape().dimensions(dim)) {
       continue;
@@ -531,7 +533,7 @@ std::optional<ReduceScatterSpec> MatchWithDynamicSlice(
   }
   const Shape& shape = user->operand(0)->shape();
   if (spec.split_dim == -1) {
-    for (int64_t dim = 0; dim < shape.rank(); ++dim) {
+    for (int64_t dim = 0; dim < shape.dimensions_size(); ++dim) {
       auto offset = user->operand(dim + 1);
       // Skip trivial (1) dimensions or if the index is a constant 0.
       if (shape.dimensions(dim) == 1 ||

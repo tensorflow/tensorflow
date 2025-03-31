@@ -149,7 +149,7 @@ llvm::SmallVector<InterpreterValue> Map(InterpreterState& state,
       isa<TensorType>(op.getInit().getType()) ? init.Clone() : init;
 
   InterpreterScope scope(state);
-  SmallVector<int64_t> ivs(output.View().Rank());
+  SmallVector<int64_t> ivs(output.View().num_dimensions());
   scope.SetSideChannel(std::make_shared<IterationIndexSideChannel>(ivs));
   for (const auto& indices : output.View().Indices()) {
     std::copy(indices.begin(), indices.end(), ivs.begin());

@@ -347,8 +347,9 @@ bool MatchFlaxLayerNorm(HloInstruction* instr, HloInstruction** src,
 
   // Currently patterns without scale and shift are not supported.
   // OneDNN only supports 2 <= rank <= 5
-  if (!(prod_shape.rank() >= 2 && prod_shape.rank() <= 5) || !shiftFound ||
-      !scaleFound) {
+  if (!(prod_shape.dimensions_size() >= 2 &&
+        prod_shape.dimensions_size() <= 5) ||
+      !shiftFound || !scaleFound) {
     return false;
   }
 
@@ -401,7 +402,7 @@ bool MatchFlaxLayerNorm(HloInstruction* instr, HloInstruction** src,
                                             HloOpcode::kAdd &&
                                         reduce->dimensions().size() == 1 &&
                                         reduce->dimensions()[0] ==
-                                            reduce->shape().rank());
+                                            reduce->shape().dimensions_size());
                               }))
           .WithOperand(1, m::Op(&broadcast0).WithOpcode(HloOpcode::kBroadcast))
           .WithOneUser();
@@ -420,7 +421,8 @@ bool MatchFlaxLayerNorm(HloInstruction* instr, HloInstruction** src,
                     return (reducer->root_instruction()->opcode() ==
                                 HloOpcode::kAdd &&
                             reduce->dimensions().size() == 1 &&
-                            reduce->dimensions()[0] == reduce->shape().rank());
+                            reduce->dimensions()[0] ==
+                                reduce->shape().dimensions_size());
                   }))
           .WithOperand(1, m::Op(&broadcast1).WithOpcode(HloOpcode::kBroadcast));
 

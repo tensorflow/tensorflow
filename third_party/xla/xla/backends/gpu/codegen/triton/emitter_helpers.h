@@ -17,7 +17,6 @@ limitations under the License.
 #define XLA_BACKENDS_GPU_CODEGEN_TRITON_EMITTER_HELPERS_H_
 
 #include <cstdint>
-#include <variant>
 
 #include "absl/log/check.h"
 #include "absl/log/log.h"
@@ -34,13 +33,11 @@ limitations under the License.
 #include "xla/codegen/emitter_loc_op_builder.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
-#include "xla/hlo/utils/hlo_query.h"
 #include "xla/literal.h"
 #include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/xla.pb.h"
-#include "tsl/platform/status.h"
 
 namespace xla::gpu::triton {
 
@@ -112,6 +109,12 @@ ScalarOrTensor CreateConst(EmitterLocOpBuilder& b, mlir::Type type, T value) {
         b.create<mlir::arith::ConstantOp>(b.getIntegerAttr(type, value));
     return ScalarOrTensor(result);
   }
+
+  if (mlir::isa<mlir::IndexType>(type)) {
+    auto result = b.create<mlir::arith::ConstantOp>(b.getIndexAttr(value));
+    return ScalarOrTensor(result);
+  }
+
   if (mlir::isa<mlir::FloatType>(type)) {
     auto result = b.create<mlir::arith::ConstantOp>(
         b.getFloatAttr(type, static_cast<double>(value)));

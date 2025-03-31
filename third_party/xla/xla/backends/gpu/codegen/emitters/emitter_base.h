@@ -117,9 +117,6 @@ class EmitterBase : public KernelFusionInterface {
   absl::Status EmitMlir(mlir::ModuleOp module,
                         mlir::func::FuncOp entry_function,
                         const HloFusionInstruction& fusion) const;
-  absl::Status RunPassPipeline(
-      mlir::ModuleOp module, mlir::PassManager& pm,
-      mlir::interpreter::MlirCompilationTrace* trace) const;
 };
 
 // Adds passes that simplify arithmetic operations and remove dead code.

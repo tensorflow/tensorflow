@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_DELEGATES_NNAPI_NNAPI_DELEGATE_KERNEL_H_
 #define TENSORFLOW_LITE_DELEGATES_NNAPI_NNAPI_DELEGATE_KERNEL_H_
 
+#include <cstddef>
 #include <list>
 #include <map>
 #include <memory>
@@ -116,8 +117,8 @@ class NNFreeMappingUtil {
 // Manage NNAPI shared memory handle
 class NNMemory {
  public:
-  NNMemory(const NnApi* nnapi, const char* name, size_t size);
-
+  static std::unique_ptr<NNMemory> Create(const NnApi* nnapi, const char* name,
+                                          size_t size);
   ~NNMemory();
 
   ANeuralNetworksMemory* get_handle() { return nn_memory_handle_; }
@@ -125,6 +126,15 @@ class NNMemory {
   size_t get_byte_size() { return byte_size_; }
 
  private:
+  // Private constructor. Use Create() to create an instance.
+  NNMemory(const NnApi* nnapi, int fd, size_t byte_size, uint8_t* data_ptr,
+           ANeuralNetworksMemory* nn_memory_handle)
+      : nnapi_(nnapi),
+        fd_(fd),
+        byte_size_(byte_size),
+        data_ptr_(data_ptr),
+        nn_memory_handle_(nn_memory_handle) {};
+
   // NnApi instance to use. Not owned by this object.
   const NnApi* nnapi_;
   int fd_ = 0;

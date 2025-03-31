@@ -188,7 +188,8 @@ absl::StatusOr<HloInstruction*> MakeSplitKOperand(
         dot.parent()->AddInstruction(HloInstruction::CreateConstant(
             LiteralUtil::Zero(operand->shape().element_type())));
 
-    PaddingConfig padding_config = MakeNoPaddingConfig(operand->shape().rank());
+    PaddingConfig padding_config =
+        MakeNoPaddingConfig(operand->shape().dimensions_size());
     padding_config.mutable_dimensions(contracting_dim_idx)
         ->set_edge_padding_high(config.split_k - k % config.split_k);
 
@@ -203,7 +204,7 @@ absl::StatusOr<HloInstruction*> MakeSplitKOperand(
   const Shape& shape = operand->shape();
   Shape new_shape(shape.element_type(), {}, {});
 
-  for (int i = 0; i < shape.rank(); ++i) {
+  for (int i = 0; i < shape.dimensions_size(); ++i) {
     const int64_t dimension_size = shape.dimensions(i);
     if (i == contracting_dim_idx) {
       new_shape.add_dimensions(config.split_k);
@@ -340,7 +341,7 @@ absl::Status MakeDotComputationSplitKBatch(
         auto* new_transpose = Cast<HloTransposeInstruction>(expanded);
         new_transpose->mutable_dimensions()->clear();
         new_transpose->mutable_dimensions()->reserve(
-            new_transpose->shape().rank());
+            new_transpose->shape().dimensions_size());
         // The split-K batch dimension is always major.
         new_transpose->mutable_dimensions()->push_back(0);
         for (const int64_t dim : old_transpose->dimensions()) {
@@ -357,7 +358,8 @@ absl::Status MakeDotComputationSplitKBatch(
     for (int i = 0; i < expanded->operands().size(); ++i) {
       HloInstruction* operand = expanded->mutable_operand(i);
       if (!to_process_set.contains(operand)) {
-        std::vector<int64_t> broadcast_dimensions(operand->shape().rank());
+        std::vector<int64_t> broadcast_dimensions(
+            operand->shape().dimensions_size());
         absl::c_iota(broadcast_dimensions, 1);
         TF_RETURN_IF_ERROR(expanded->ReplaceOperandWithDifferentShape(
             i, MakeBroadcastHlo(operand, broadcast_dimensions,

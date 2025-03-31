@@ -55,6 +55,7 @@
 #include "tensorflow/lite/experimental/litert/core/model/ir_allocator.h"
 #include "tensorflow/lite/experimental/litert/core/model/model.h"
 #include "tensorflow/lite/experimental/litert/core/util/flatbuffer_tools.h"
+#include "tensorflow/lite/experimental/litert/core/version.h"
 #include "tensorflow/lite/experimental/litert/vendors/c/litert_compiler_plugin.h"
 #include "tensorflow/lite/experimental/litert/vendors/c/litert_compiler_plugin_api.h"
 
@@ -235,16 +236,9 @@ Expected<CompilerPlugin> CompilerPlugin::LoadPlugin(
     return api_version.Error();
   }
 
-  if (api_version->major != LITERT_API_VERSION_MAJOR) {
-    LITERT_LOG(
-        LITERT_ERROR,
-        "Unsupported Compiler Plugin version, found version %d.%d.%d and "
-        "expected version %d.%d.%d",
-        api_version.Value().major, api_version.Value().minor,
-        api_version.Value().patch, LITERT_API_VERSION_MAJOR,
-        LITERT_API_VERSION_MINOR, LITERT_API_VERSION_PATCH);
-    return Unexpected(kLiteRtStatusErrorRuntimeFailure);
-  }
+  LITERT_RETURN_IF_ERROR(litert::internal::IsSameVersionAsRuntime(*api_version),
+                         Unexpected(kLiteRtStatusErrorWrongVersion,
+                                    "Unsupported compiler plugin version"));
 
   // This should never change throughout the lifetime of the compiler
   // plugin so save to avoid recalling.
@@ -384,8 +378,9 @@ LiteRtStatus PartitionSubgraph(
 
 }  // namespace
 
-Expected<PartitionResult> PartitionModel(CompilerPlugin& compiler_plugin,
-                                         LiteRtModelT& model) {
+Expected<PartitionResult> PartitionModel(
+    CompilerPlugin& compiler_plugin, LiteRtModelT& model,
+    const absl::flat_hash_set<uint32_t>& subgraphs_to_partition) {
   // This algorithm decides the subgraphs to be partitioned by the plugin. This
   // is a trivial process with the exception of composite ops and their
   // decomposition subgraphs. Currently, we deploy the most naive approach to
@@ -442,17 +437,27 @@ Expected<PartitionResult> PartitionModel(CompilerPlugin& compiler_plugin,
     if (decomp_subgraphs.contains(i)) {
       continue;
     }
+    if (!subgraphs_to_partition.empty() &&
+        !subgraphs_to_partition.contains(i)) {
+      continue;
+    }
     auto* subgraph = model.Subgraphs()[i];
     auto selected_ops = compiler_plugin.Partition(Subgraph(subgraph));
     // TODO ensure selected ops don't contain npu_calls.
     if (!selected_ops) {
       return selected_ops.Error();
     }
+    auto num_selected_ops = selected_ops->size();
+    auto num_ops = subgraph->Ops().size();
 
-    LITERT_LOG(LITERT_INFO, "PartitionSubgraph: %d, selected num ops: %lu", i,
-               selected_ops->size());
+    auto num_partitions = result.first.size();
     LITERT_RETURN_IF_ERROR(PartitionSubgraph(
         std::move(*selected_ops), *subgraph, result, model.Buffers()));
+    num_partitions = result.first.size() - num_partitions;
+    LITERT_LOG(LITERT_INFO,
+               "PartitionSubgraph: %d, selected num ops: %lu, from totoal ops: "
+               "%lu, num partitions: %lu",
+               i, num_selected_ops, num_ops, num_partitions);
   }
 
   // Add npu_call partitions to result. Update the npu_call ops to be dispatch
@@ -566,10 +571,13 @@ Expected<void> ApplyPluginWithPartition(CompilerPlugin& compiler_plugin,
   return {};
 }
 
-Expected<void> ApplyPlugin(CompilerPlugin& compiler_plugin, LiteRtModelT& model,
-                           absl::string_view soc_model) {
+Expected<void> ApplyPlugin(
+    CompilerPlugin& compiler_plugin, LiteRtModelT& model,
+    absl::string_view soc_model,
+    const absl::flat_hash_set<uint32_t>& subgraphs_to_partition) {
   // Collect partitions to pass to compilation.
-  auto partitions = PartitionModel(compiler_plugin, model);
+  auto partitions =
+      PartitionModel(compiler_plugin, model, subgraphs_to_partition);
   if (!partitions) {
     return partitions.Error();
   }

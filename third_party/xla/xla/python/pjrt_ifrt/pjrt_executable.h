@@ -217,6 +217,12 @@ class PjRtLoadedExecutable final
     return pjrt_loaded_executable_->name();
   }
 
+  absl::StatusOr<absl::Span<const int>> GetDonatableInputIndices()
+      const override {
+    return absl::UnimplementedError(
+        "PjRtLoadedExecutable::GetDonatableInputIndices is not implemented.");
+  }
+
   Future<> GetReadyFuture() const override {
     // PjRtCompiler blocks until compilation finishes and returns only the
     // executables that are ready.

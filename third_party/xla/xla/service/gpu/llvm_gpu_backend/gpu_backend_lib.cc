@@ -24,6 +24,7 @@ limitations under the License.
 #include <variant>
 #include <vector>
 
+#include "absl/log/log.h"
 #include "absl/memory/memory.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_format.h"
@@ -51,7 +52,6 @@ limitations under the License.
 #include "llvm/Passes/PassBuilder.h"
 #include "llvm/Passes/StandardInstrumentations.h"
 #include "llvm/Support/CodeGen.h"
-#include "llvm/Support/FileSystem.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Target/TargetMachine.h"
 #include "llvm/Transforms/IPO/AlwaysInliner.h"
@@ -61,11 +61,10 @@ limitations under the License.
 #include "xla/service/gpu/llvm_gpu_backend/utils.h"
 #include "xla/service/llvm_ir/llvm_type_conversion_util.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/errors.h"
 #include "xla/util.h"
 #include "xla/xla.pb.h"
-#include "tsl/platform/env.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/logging.h"
 #include "tsl/platform/path.h"
 #include "tsl/profiler/lib/scoped_annotation.h"
 
@@ -192,16 +191,16 @@ std::string MakeNameForTempProduct(absl::string_view input_filename,
 // NOLINTEND: clang-diagnostic-unused-function
 
 void DumpModule(const std::string output_filename, const llvm::Module* module) {
-  std::error_code ec;
-  auto out = std::make_unique<llvm::raw_fd_ostream>(
-      llvm::StringRef(output_filename), ec, llvm::sys::fs::OF_None);
-  if (ec) {
-    LOG(FATAL) << "Unable to open " << output_filename
-               << " to dump LLVM IR: " << ec.message();
-    return;
+  std::string content;
+  llvm::raw_string_ostream string_stream(content);
+  module->print(string_stream, /*AAW=*/nullptr);
+
+  auto status =
+      WriteStringToFile(tsl::Env::Default(), output_filename, content);
+  if (!status.ok()) {
+    LOG(FATAL) << "Unable to write " << output_filename
+               << " to dump LLVM IR: " << status.message();
   }
-  module->print(*out, /*AAW=*/nullptr);
-  out->close();
 }
 
 const llvm::Module* GetModule(llvm::Any IR) {

@@ -242,6 +242,11 @@ class AsyncTracker {
   virtual int64_t GetNumResourcesPerInstruction(
       int64_t resource_type, const HloInstruction& instr) const;
 
+  // Returns a map of number of resources used per resource type by this
+  // instruction.
+  virtual absl::flat_hash_map<int64_t, int64_t> GetNumResourcesPerInstruction(
+      const HloInstruction& instr) const;
+
   // Sets the maximum allowed number of instances for each resource
   virtual void SetConcurrentResourceLimits(
       absl::flat_hash_map<int64_t, int64_t>& max_concurrent_resource) const;
@@ -473,6 +478,49 @@ class HloGraphNode {
   // Nullptr is not a valid value for 'i'.
   explicit HloGraphNode(const HloInstruction* i, int64_t original_position)
       : instr_(i), original_position_(original_position) {}
+
+  static void UpdateOrAddDependency(HloGraphNode* from, HloGraphNode* to,
+                                    LatencyEstimator::TimeCost latency) {
+    auto update_latency_if_edge_exists =
+        [&](absl::Span<HloEdge> edges, HloGraphNode* to,
+            LatencyEstimator::TimeCost latency) {
+          auto it = absl::c_find_if(
+              edges, [&](HloEdge edge) { return &edge.Target() == to; });
+          if (it != edges.end()) {
+            it->SetLatency(latency);
+            return true;
+          }
+          return false;
+        };
+    if (!update_latency_if_edge_exists(from->GetSuccessors(), to, latency)) {
+      from->successors_.push_back(HloEdge(latency, to));
+      from->outdegree_++;
+    }
+    if (!update_latency_if_edge_exists(to->GetPredecessors(), from, latency)) {
+      to->predecessors_.push_back(HloEdge(latency, from));
+      to->indegree_++;
+    }
+  }
+
+  static void UpdateOrAddDependency(HloGraphNode* from, HloGraphNode* to,
+                                    const LatencyEstimator* latency_estimator) {
+    UpdateOrAddDependency(from, to,
+                          latency_estimator->GetLatencyBetween(*from, *to));
+  }
+
+  static void AddDependency(HloGraphNode* from, HloGraphNode* to,
+                            LatencyEstimator::TimeCost latency) {
+    to->predecessors_.push_back(HloEdge(latency, from));
+    to->indegree_++;
+    from->successors_.push_back(HloEdge(latency, to));
+    from->outdegree_++;
+  }
+
+  static void AddDependency(HloGraphNode* from, HloGraphNode* to,
+                            const LatencyEstimator* latency_estimator) {
+    AddDependency(from, to, latency_estimator->GetLatencyBetween(*from, *to));
+  }
+
   const HloInstruction& GetInstr() const { return *instr_; }
   bool IsScheduled() const { return scheduled_; }
   int32_t GetIndegree() const { return indegree_; }
@@ -536,6 +584,35 @@ class HloGraphNode {
   }
   bool DoesReleaseResource(ResourceType res) const {
     return DoesReleaseResource(ResourceTypeToIndex(res));
+  }
+  bool DoesOccupyResource(int64_t res) const {
+    return absl::c_any_of(resources_, [res](const ResourcePair& resource) {
+      return resource.second == ResourceUsageType::kResourceOccupy &&
+             resource.first == res;
+    });
+  }
+  bool DoesOccupyResource(ResourceType res) const {
+    return DoesOccupyResource(ResourceTypeToIndex(res));
+  }
+  // Returns the net resources used by the node. For a while loop, it computes
+  // the net resources used by the instructions in the while body. Otherwise, it
+  // returns the readily-available resources vector.
+  ResourcesVector GetNetResources() const {
+    if (GetInstr().opcode() != HloOpcode::kWhile) {
+      return resources_;
+    }
+    ResourcesVector result;
+    for (const auto& [resource, usage] : resources_) {
+      if (usage == ResourceUsageType::kResourceOccupy &&
+          !DoesReleaseResource(resource)) {
+        result.push_back(std::make_pair(resource, usage));
+      }
+      if (usage == ResourceUsageType::kResourceRelease &&
+          !DoesOccupyResource(resource)) {
+        result.push_back(std::make_pair(resource, usage));
+      }
+    }
+    return result;
   }
   std::optional<ResourceUsageType> UsesResourceType(ResourceType res) const {
     int64_t res_type = ResourceTypeToIndex(res);
@@ -1130,6 +1207,17 @@ class LatencyHidingScheduler : public HloModulePass {
     double recv_wasted_cycles = 0;
     double total_cycles = 0;
     int64_t memory_pressure_peak = 0;
+
+    double GetTotalWastedCycles() const {
+      return all_gather_wasted_cycles + all_reduce_wasted_cycles +
+             collective_broadcast_wasted_cycles +
+             collective_permute_wasted_cycles + all_to_all_wasted_cycles +
+             ragged_all_to_all_wasted_cycles + reduce_scatter_wasted_cycles +
+             send_wasted_cycles + recv_wasted_cycles;
+    }
+
+    ScheduleProto::SchedulerStatisticsProto ToProto() const;
+    std::string ToString() const;
   };
 
   LatencyHidingScheduler(
@@ -1152,9 +1240,7 @@ class LatencyHidingScheduler : public HloModulePass {
       const LatencyEstimator* latency_estimator,
       const AsyncTracker* async_tracker,
       const HloCostAnalysis::ShapeSizeFunction& shape_size_bytes);
-  // Returns a string representation of the scheduler statistics object.
-  static std::string SchedulerStatisticsString(
-      const SchedulerStatistics& sched_stats);
+
   using HloPassInterface::Run;
   absl::StatusOr<bool> Run(
       HloModule* module,

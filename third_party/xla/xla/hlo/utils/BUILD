@@ -2,9 +2,10 @@
 #   Implementation of XLA’s HLO utilities used for higher-level transformations.
 
 load(
-    "//xla:xla.bzl",
+    "//xla:xla.default.bzl",
     "xla_cc_test",
 )
+load("//xla/tsl:tsl.bzl", "internal_visibility")
 load("//xla/tsl:tsl.default.bzl", "get_compatible_with_portable")
 load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
 
@@ -106,6 +107,7 @@ cc_library(
     hdrs = [
         "hlo_sharding_util.h",
     ],
+    visibility = internal_visibility([":friends"]),
     deps = [
         ":hlo_container_util",
         "//xla:array",

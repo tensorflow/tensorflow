@@ -146,7 +146,7 @@ absl::StatusOr<bool> HloConstantFolding::Run(
   // default case. This retains the behavior from before while loop support in
   // HloEvaluator and may be revised.
   auto evaluator = std::make_unique<HloEvaluator>(
-      /*max_loop_iterations=*/level_ == Level::kAgressive ? -1 : 0);
+      /*max_loop_iterations=*/level_ == Level::kAggressive ? -1 : 0);
   // fast-path lets us e.g. use Eigen for matmuls.
   evaluator->set_use_fast_path(true);
 

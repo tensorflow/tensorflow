@@ -1,0 +1,17 @@
+
+--- a/lib/Dialect/TritonGPU/Transforms/AccelerateMatmul.cpp	2025-03-20 06:02:06.000000000 -0700
++++ b/lib/Dialect/TritonGPU/Transforms/AccelerateMatmul.cpp	2025-03-24 11:10:52.000000000 -0700
+@@ -246,9 +246,12 @@
+       return false;
+   }
+
++  // b/405045790: We don't want to propagate through the BroadcastOp because we
++  // probably don't care about the load before a broadcast as it would likely be
++  // small. This is just a heuristic to avoid a regression.
+   return (op->hasTrait<OpTrait::Elementwise>() && isMemoryEffectFree(op)) ||
+          isView(op) ||
+-         isa<Fp4ToFpOp, LoadOp, ExperimentalDescriptorLoadOp, BroadcastOp,
++         isa<Fp4ToFpOp, LoadOp, ExperimentalDescriptorLoadOp, // BroadcastOp,
+              ConvertLayoutOp>(op);
+ }
+

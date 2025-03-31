@@ -647,9 +647,9 @@ static xla::ResultAccuracy Convert_result_accuracy(
   if (optional_result_accuracy_attr.value().getMode().getValue() ==
       mlir::mhlo::ResultAccuracyMode::TOLERANCE) {
     result_accuracy.mutable_tolerance()->set_atol(
-        optional_result_accuracy_attr.value().getAtol().convertToFloat());
+        optional_result_accuracy_attr.value().getAtol().convertToDouble());
     result_accuracy.mutable_tolerance()->set_rtol(
-        optional_result_accuracy_attr.value().getRtol().convertToFloat());
+        optional_result_accuracy_attr.value().getRtol().convertToDouble());
     result_accuracy.mutable_tolerance()->set_ulps(
         optional_result_accuracy_attr.value().getUlps());
   } else {
@@ -1656,7 +1656,9 @@ LogicalResult ExportXlaOp(CosineOp op, OpLoweringContext ctx) {
   xla::XlaOp arg;
   if (failed(GetXlaOp(*op.getODSOperands(0).begin(), value_map, &arg, op)))
     return mlir::failure();
-  auto xla_result = xla::Cos(Unwrap(arg));
+  xla::ResultAccuracy result_accuracy =
+      Convert_result_accuracy(op.getResultAccuracy());
+  auto xla_result = xla::Cos(Unwrap(arg), result_accuracy);
   value_map[result] = xla_result;
   return mlir::success();
 }
@@ -1665,9 +1667,11 @@ LogicalResult ExportXlaOp(TanOp op, OpLoweringContext ctx) {
   auto& value_map = *ctx.values;
   auto result = op.getResult();
   xla::XlaOp arg;
+  xla::ResultAccuracy result_accuracy =
+      Convert_result_accuracy(op.getResultAccuracy());
   if (failed(GetXlaOp(*op.getODSOperands(0).begin(), value_map, &arg, op)))
     return mlir::failure();
-  auto xla_result = xla::Tan(Unwrap(arg));
+  auto xla_result = xla::Tan(Unwrap(arg), result_accuracy);
   value_map[result] = xla_result;
   return mlir::success();
 }
@@ -2928,9 +2932,11 @@ mlir::LogicalResult ExportXlaOp(mlir::mhlo::SineOp op, OpLoweringContext ctx) {
   auto& value_map = *ctx.values;
   auto result = op.getResult();
   xla::XlaOp arg;
+  xla::ResultAccuracy result_accuracy =
+      Convert_result_accuracy(op.getResultAccuracy());
   if (failed(GetXlaOp(*op.getODSOperands(0).begin(), value_map, &arg, op)))
     return mlir::failure();
-  auto xla_result = xla::Sin(Unwrap(arg));
+  auto xla_result = xla::Sin(Unwrap(arg), result_accuracy);
   value_map[result] = xla_result;
   return mlir::success();
 }
@@ -3189,7 +3195,7 @@ LogicalResult ExportXlaOp(MinimumBroadcastShapesOp op, OpLoweringContext ctx) {
 }  // namespace mhlo
 }  // namespace mlir
 
-#include "xla/hlo/translate/mhlo_to_hlo/operator_writers.inc"
+#include "xla/hlo/translate/mhlo_to_hlo/hlo_op_writer.inc"
 
 namespace mlir {
 namespace {

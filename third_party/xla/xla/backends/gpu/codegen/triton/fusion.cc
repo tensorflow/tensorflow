@@ -75,7 +75,8 @@ TritonFusion::GenerateTritonKernelAndWrapper(
   absl::string_view fusion_kind = backend_config.kind();
   TritonWrapperResult triton_wrapper_result;
 
-  if (fusion_kind == kTritonFusionKind) {
+  if (fusion_kind == kTritonFusionKind ||
+      fusion_kind == kTritonNestedGemmFusionKind) {
     std::optional<LaunchConfig> launch_config = this->launch_config();
     if (!launch_config.has_value()) {
       return absl::InvalidArgumentError(absl::StrCat(
@@ -145,7 +146,8 @@ absl::StatusOr<FusionEmissionResult> TritonFusion::Emit(
     absl::string_view fusion_kind = backend_config.kind();
 
     LaunchDimensions launch_dimensions;
-    if (fusion_kind == kTritonFusionKind) {
+    if (fusion_kind == kTritonFusionKind ||
+        fusion_kind == kTritonNestedGemmFusionKind) {
       std::optional<LaunchConfig> launch_config = this->launch_config();
       // This check should be enforced by `GenerateTritonKernelWrapper`.
       CHECK(launch_config.has_value());

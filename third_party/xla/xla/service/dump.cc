@@ -24,7 +24,6 @@ limitations under the License.
 #include <string>
 #include <utility>
 #include <vector>
-
 #include "absl/algorithm/container.h"
 #include "absl/base/const_init.h"
 #include "absl/container/flat_hash_set.h"
@@ -778,6 +777,28 @@ std::vector<std::string> DumpHloModuleProtoIfEnabled(
                              TimestampFor(*module), name, opts);
   }
   return {};
+}
+
+void DumpHloConfigIfEnabled(const HloModule& module) {
+  if (!module.config().debug_options().xla_dump_full_hlo_config()) {
+    return;
+  }
+
+  CanonicalDebugOptions opts(module.config().debug_options());
+  if (opts.dumping_to_stdout()) {
+    VLOG(2) << "Refusing to write HLO config proto for " << module.name()
+            << " to stdout. Pass --xla_dump_to=<path> to write to a file.";
+    return;
+  }
+  std::string config_str;
+  if (tsl::protobuf::TextFormat::PrintToString(module.config().ToProto(),
+                                               &config_str)) {
+    std::string filename = FilenameFor(module, "", "config.pbtxt");
+    DumpToFileInDirImpl(filename, config_str, opts);
+  } else {
+    VLOG(1) << "Failed to convert HloModuleConfig to text. Module: "
+            << module.name();
+  }
 }
 
 bool DumpingEnabledForHloModule(string_view hlo_module_name,

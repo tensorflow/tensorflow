@@ -43,7 +43,7 @@ class ToBoolOp : public XlaOpKernel {
 
     // If the input is a scalar, then non-zero value returns True.
     TF_ASSIGN_OR_RETURN(auto shape, ctx->InputXlaShape(0));
-    if (shape.rank() == 0) {
+    if (shape.dimensions().empty()) {
       auto result = xla::Ne(ctx->Input(0), xla::ZerosLike(input));
       ctx->SetOutput(0, result);
       return absl::OkStatus();
@@ -52,7 +52,7 @@ class ToBoolOp : public XlaOpKernel {
     // Otherwise, any input tensor with elements returns True. Input tensor
     // dimensions might be dynamic with bounds so multiply all the dimensions.
     xla::XlaOp num_elements = xla::One(ctx->builder(), xla::S32);
-    for (int64_t dim = 0; dim < shape.rank(); dim++) {
+    for (int64_t dim = 0; dim < shape.dimensions().size(); dim++) {
       num_elements = xla::Mul(num_elements, xla::GetDimensionSize(input, dim));
     }
     auto result = xla::Ne(num_elements, xla::ZerosLike(num_elements));

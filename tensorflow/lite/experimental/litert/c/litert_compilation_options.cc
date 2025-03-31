@@ -14,26 +14,16 @@
 
 #include "tensorflow/lite/experimental/litert/c/litert_compilation_options.h"
 
-#include "tensorflow/lite/experimental/litert/c/litert_accelerator_options.h"
+#include "tensorflow/lite/experimental/litert/c/litert_accelerator_compilation_options.h"
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
 #include "tensorflow/lite/experimental/litert/c/litert_logging.h"
+#include "tensorflow/lite/experimental/litert/cc/litert_macros.h"
 #include "tensorflow/lite/experimental/litert/runtime/compilation_options.h"
 
 #define LRT_CHECK_NON_NULL(handle)                          \
   if (!(handle)) {                                          \
     LITERT_LOG(LITERT_ERROR, #handle " must not be null."); \
     return kLiteRtStatusErrorInvalidArgument;               \
-  }
-
-#define LRT_REQUIRE_VERSION(MAJOR, MINOR, PATCH)                               \
-  if (LiteRtCompareApiVersion(options->version, {(MAJOR), (MINOR), (PATCH)}) < \
-      0) {                                                                     \
-    LITERT_LOG(LITERT_ERROR,                                                   \
-               "The version of this option object is too old. Expected at "    \
-               "least %d.%d.%d, got %d.%d.%d",                                 \
-               (MAJOR), (MINOR), (PATCH), options->version.major,              \
-               options->version.minor, options->version.patch);                \
-    return kLiteRtStatusErrorWrongVersion;                                     \
   }
 
 extern "C" {
@@ -45,8 +35,6 @@ LiteRtStatus LiteRtCreateCompilationOptions(LiteRtCompilationOptions* options) {
 }
 
 void LiteRtDestroyCompilationOptions(LiteRtCompilationOptions options) {
-  LiteRtDestroyAcceleratorCompilationOptions(
-      options->accelerator_compilation_options);
   delete options;
 }
 
@@ -71,7 +59,6 @@ LiteRtStatus LiteRtGetCompilationOptionsHardwareAccelerators(
     LiteRtHwAcceleratorSet* hardware_accelerators) {
   LRT_CHECK_NON_NULL(options);
   LRT_CHECK_NON_NULL(hardware_accelerators);
-  LRT_REQUIRE_VERSION(0, 0, 0);
   *hardware_accelerators = options->hardware_accelerators;
   return kLiteRtStatusOk;
 }
@@ -81,11 +68,9 @@ LiteRtStatus LiteRtAddAcceleratorCompilationOptions(
     LiteRtAcceleratorCompilationOptions accelerator_compilation_options) {
   LRT_CHECK_NON_NULL(options);
   LRT_CHECK_NON_NULL(accelerator_compilation_options);
-
-  LiteRtAppendAcceleratorCompilationOptions(
-      &options->accelerator_compilation_options,
-      accelerator_compilation_options);
-
+  LITERT_RETURN_IF_ERROR(options->accelerator_compilation_options.Append(
+      litert::AcceleratorCompilationOptions(accelerator_compilation_options,
+                                            /*owned=*/false)));
   return kLiteRtStatusOk;
 }
 
@@ -98,7 +83,8 @@ LiteRtStatus LiteRtGetAcceleratorCompilationOptions(
     LiteRtAcceleratorCompilationOptions* accelerator_compilation_options) {
   LRT_CHECK_NON_NULL(options);
   LRT_CHECK_NON_NULL(accelerator_compilation_options);
-  *accelerator_compilation_options = options->accelerator_compilation_options;
+  *accelerator_compilation_options =
+      options->accelerator_compilation_options.Get();
   return kLiteRtStatusOk;
 }
 

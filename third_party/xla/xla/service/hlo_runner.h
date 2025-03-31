@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/base/nullability.h"
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/log/log.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
@@ -44,7 +45,6 @@ limitations under the License.
 #include "xla/stream_executor/platform.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/protobuf.h"
 
 namespace xla {
 
@@ -153,7 +153,7 @@ class HloRunner : public HloRunnerInterface {
   // representation must have been produced by a compiler of the same platform
   // and version as this one.
   absl::StatusOr<std::unique_ptr<OpaqueExecutable>> DeserializeExecutable(
-      absl::Nonnull<const tsl::protobuf::Message*> serialized) const override;
+      absl::string_view serialized) const override;
 
   // Executes a given HLO module into a set of replicas, and returns a map
   // with the replica number as key, and the corresponding returned literal as
@@ -230,6 +230,16 @@ class HloRunner : public HloRunnerInterface {
   // TODO: b/393183864 - Remove this API.
   absl::StatusOr<absl::Nonnull<const HloProto*>> HloProtoFromWrapped(
       const OpaqueExecutable* wrapped) const;
+
+  // Returns true if the two given OpaqueExecutables originate from the same
+  // runner and are equivalent according to some notion specific to that runner.
+  // Executables that were created by different runners can never be equivalent.
+  bool ExecutablesAreEquivalent(
+      absl::Nonnull<const OpaqueExecutable*> lhs,
+      absl::Nonnull<const OpaqueExecutable*> rhs) const override {
+    LOG(FATAL) << "ExecutablesAreEquivalent is not implemented for HloRunner.";
+    return false;
+  }
 
  private:
   absl::StatusOr<ScopedShapedBuffer> TransferLiteralToDevice(

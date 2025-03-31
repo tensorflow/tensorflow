@@ -440,4 +440,23 @@ TEST(GetOpOptionTest, TestGetSpaceToDepthOptions) {
   ASSERT_EQ(block_size, 2);
 }
 
+TEST(GetOpOptionTest, TestGetResizeNearestNeighborOptions) {
+  auto model = litert::testing::LoadTestFileModel(
+      "simple_resize_nearest_neighbor_op.tflite");
+  auto subgraph = model.MainSubgraph();
+  EXPECT_TRUE(subgraph);
+
+  auto ops = subgraph->Ops();
+  auto op = ops.front().Get();
+
+  bool align_corners;
+  LITERT_ASSERT_OK(
+      LiteRtGetResizeNearestNeighborAlignCornersOption(op, &align_corners));
+  ASSERT_EQ(align_corners, false);
+  bool half_pixel_centers;
+  LITERT_ASSERT_OK(LiteRtGetResizeNearestNeighborHalfPixelCenterOption(
+      op, &half_pixel_centers));
+  ASSERT_EQ(half_pixel_centers, true);
+}
+
 }  // namespace

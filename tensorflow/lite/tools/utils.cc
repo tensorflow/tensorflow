@@ -19,6 +19,7 @@ limitations under the License.
 #include <complex>
 #include <cstdint>
 #include <random>
+#include <string>
 
 #include "absl/types/span.h"
 #include "tensorflow/lite/c/c_api_types.h"
@@ -86,7 +87,14 @@ TfLiteStatus ConvertToArray(const TfLiteTensor& tflite_tensor,
 InputTensorData CreateRandomTensorData(const TfLiteTensor& tensor,
                                        float low_range, float high_range) {
   int num_elements = NumElements(tensor.dims);
-  switch (tensor.type) {
+  return CreateRandomTensorData(tensor.name, tensor.type, num_elements,
+                                low_range, high_range);
+}
+
+InputTensorData CreateRandomTensorData(std::string name, TfLiteType type,
+                                       int num_elements, float low_range,
+                                       float high_range) {
+  switch (type) {
     case kTfLiteComplex64: {
       return CreateInputTensorData<std::complex<float>>(
           num_elements,
@@ -114,7 +122,7 @@ InputTensorData CreateRandomTensorData(const TfLiteTensor& tensor,
       // compiler that supports __fp16 type. Note: when using Clang and *not*
       // linking with compiler-rt, a definition of __gnu_h2f_ieee and
       // __gnu_f2h_ieee must be supplied.
-      TFLITE_LOG(FATAL) << "Populating the tensor " << tensor.name
+      TFLITE_LOG(FATAL) << "Populating the tensor " << name
                         << " of type FLOAT16 is disabled.";
 #endif  // TFLITE_ENABLE_FP16_CPU_BENCHMARKS
       break;
@@ -168,8 +176,8 @@ InputTensorData CreateRandomTensorData(const TfLiteTensor& tensor,
           num_elements, std::uniform_int_distribution<uint32_t>(0, 1));
     }
     default: {
-      TFLITE_LOG(FATAL) << "Don't know how to populate tensor " << tensor.name
-                        << " of type " << tensor.type;
+      TFLITE_LOG(FATAL) << "Don't know how to populate tensor " << name
+                        << " of type " << type;
     }
   }
   return InputTensorData();

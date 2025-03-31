@@ -49,8 +49,6 @@ limitations under the License.
 #include "tensorflow/core/profiler/convert/process_megascale_dcn.h"
 #include "tensorflow/core/profiler/convert/repository.h"
 #include "tensorflow/core/profiler/convert/tool_options.h"
-#include "tensorflow/core/profiler/convert/trace_viewer/trace_events_to_json.h"
-#include "tensorflow/core/profiler/convert/trace_viewer/trace_viewer_visibility.h"
 #include "tensorflow/core/profiler/convert/xplane_to_dcn_collective_stats.h"
 #include "tensorflow/core/profiler/convert/xplane_to_memory_profile.h"
 #include "tensorflow/core/profiler/convert/xplane_to_op_stats.h"
@@ -73,6 +71,8 @@ limitations under the License.
 #include "tensorflow/core/profiler/utils/xplane_utils.h"
 #include "tsl/platform/protobuf.h"
 #include "tsl/profiler/protobuf/xplane.pb.h"
+#include "xprof/convert/trace_viewer/trace_events_to_json.h"  // from @org_xprof
+#include "xprof/convert/trace_viewer/trace_viewer_visibility.h"  // from @org_xprof
 
 namespace tensorflow {
 namespace profiler {

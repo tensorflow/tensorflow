@@ -7,6 +7,8 @@
 #include <cstddef>
 #include <cstdint>
 #include <utility>
+#include <vector>
+
 #include "absl/types/span.h"
 #include "third_party/qairt/latest/include/QNN/QnnTypes.h"
 
@@ -89,6 +91,24 @@ std::int32_t AxisScaleOffsetQuantizeParamsWrapper::GetAxis() const {
 
 void AxisScaleOffsetQuantizeParamsWrapper::SetAxis(const std::int32_t axis) {
   qnn_quantize_param_.axisScaleOffsetEncoding.axis = axis;
+}
+
+void AxisScaleOffsetQuantizeParamsWrapper::GetScales(
+    std::vector<float>& scales) const {
+  scales.clear();
+  scales.reserve(scale_offsets_.size());
+  for (size_t i = 0; i < scale_offsets_.size(); ++i) {
+    scales.emplace_back(scale_offsets_[i].scale);
+  }
+}
+
+void AxisScaleOffsetQuantizeParamsWrapper::GetZeroPoints(
+    std::vector<std::int32_t>& zero_points) const {
+  zero_points.clear();
+  zero_points.reserve(scale_offsets_.size());
+  for (size_t i = 0; i < scale_offsets_.size(); ++i) {
+    zero_points.emplace_back(-1 * scale_offsets_[i].offset);
+  }
 }
 
 }  // namespace qnn

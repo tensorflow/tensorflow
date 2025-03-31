@@ -94,10 +94,10 @@ TEST_F(MemorySpacePropagationTest, NonTupleOutput) {
     %param0 = s32[6]{0:T(128)} parameter(0)
     %param1 = s32[1]{0:T(128)} parameter(1)
     %param2 = s32[5]{0:T(128)} parameter(2)
-    %arg0 = s32[6]{0:T(128)S(1)} copy(%param0)
+    %arg0 = s32[6]{0:T(128)S(1)SC(0:3)} copy(%param0)
     %arg1 = s32[1]{0:T(128)} copy(%param1)
     %arg2 = s32[5]{0:T(128)S(1)} copy(%param2)
-    %fusion = s32[6]{0:T(128)S(1)} fusion(s32[6]{0:T(128)S(1)} %arg0, s32[1]{0:T(128)} %arg1, s32[5]{0:T(128)S(1)} %arg2), kind=kLoop, calls=%fused_computation
+    %fusion = s32[6]{0:T(128)S(1)} fusion(s32[6]{0:T(128)S(1)SC(0:3)} %arg0, s32[1]{0:T(128)} %arg1, s32[5]{0:T(128)S(1)} %arg2), kind=kLoop, calls=%fused_computation
     ROOT %root = s32[6]{0:T(128)} copy(%fusion)
   }
   )";
@@ -111,7 +111,7 @@ TEST_F(MemorySpacePropagationTest, NonTupleOutput) {
     %param_2.3 = s32[5]{0:T(128)S(1)} parameter(2)
     %pad.3 = s32[6]{0:T(128)} pad(s32[5]{0:T(128)} %param_2.3, s32[]{:T(128)} %constant.2), padding=1_0
     %maximum.1 = s32[6]{0:T(128)} maximum(s32[6]{0:T(128)} %pad.2, s32[6]{0:T(128)} %pad.3)
-    %param_0.1 = s32[6]{0:T(128)S(1)} parameter(0)
+    %param_0.1 = s32[6]{0:T(128)S(1)SC(0:3)} parameter(0)
     ROOT %add.0 = s32[6]{0:T(128)S(1)} add(s32[6]{0:T(128)} %maximum.1, s32[6]{0:T(128)} %param_0.1)
   }
 
@@ -119,10 +119,10 @@ TEST_F(MemorySpacePropagationTest, NonTupleOutput) {
     %param0 = s32[6]{0:T(128)} parameter(0)
     %param1 = s32[1]{0:T(128)} parameter(1)
     %param2 = s32[5]{0:T(128)} parameter(2)
-    %arg0 = s32[6]{0:T(128)S(1)} copy(%param0)
+    %arg0 = s32[6]{0:T(128)S(1)SC(0:3)} copy(%param0)
     %arg1 = s32[1]{0:T(128)} copy(%param1)
     %arg2 = s32[5]{0:T(128)S(1)} copy(%param2)
-    %fusion = s32[6]{0:T(128)S(1)} fusion(s32[6]{0:T(128)S(1)} %arg0, s32[1]{0:T(128)} %arg1, s32[5]{0:T(128)S(1)} %arg2), kind=kLoop, calls=%fused_computation
+    %fusion = s32[6]{0:T(128)S(1)} fusion(s32[6]{0:T(128)S(1)SC(0:3)} %arg0, s32[1]{0:T(128)} %arg1, s32[5]{0:T(128)S(1)} %arg2), kind=kLoop, calls=%fused_computation
     ROOT %root = s32[6]{0:T(128)} copy(%fusion)
   }
   )";
@@ -160,8 +160,8 @@ TEST_F(MemorySpacePropagationTest, TupleOutput) {
     %arg0 = s32[6]{0:T(128)S(1)} copy(%param0)
     %arg1 = s32[1]{0:T(128)} copy(%param1)
     %arg2 = s32[5]{0:T(128)S(1)} copy(%param2)
-    %fusion = (s32[6]{0:T(128)S(1)}, s32[6]{0:T(128)}) fusion(s32[6]{0:T(128)S(1)} %arg0, s32[1]{0:T(128)} %arg1, s32[5]{0:T(128)S(1)} %arg2), kind=kLoop, calls=%fused_computation
-    %gte0 = s32[6]{0:T(128)S(1)} get-tuple-element(%fusion), index=0
+    %fusion = (s32[6]{0:T(128)S(1)SC(0:3)}, s32[6]{0:T(128)}) fusion(s32[6]{0:T(128)S(1)} %arg0, s32[1]{0:T(128)} %arg1, s32[5]{0:T(128)S(1)} %arg2), kind=kLoop, calls=%fused_computation
+    %gte0 = s32[6]{0:T(128)S(1)SC(0:3)} get-tuple-element(%fusion), index=0
     %gte1 = s32[6]{0:T(128)} get-tuple-element(%fusion), index=1
     ROOT %root = s32[6]{0:T(128)} add(%gte0, %gte1)
   }
@@ -177,9 +177,9 @@ TEST_F(MemorySpacePropagationTest, TupleOutput) {
     %pad.3 = s32[6]{0:T(128)} pad(s32[5]{0:T(128)} %param_2.3, s32[]{:T(128)} %constant.2), padding=1_0
     %maximum.1 = s32[6]{0:T(128)} maximum(s32[6]{0:T(128)} %pad.2, s32[6]{0:T(128)} %pad.3)
     %param_0.1 = s32[6]{0:T(128)S(1)} parameter(0)
-    %add.0 = s32[6]{0:T(128)S(1)} add(s32[6]{0:T(128)} %maximum.1, s32[6]{0:T(128)} %param_0.1)
+    %add.0 = s32[6]{0:T(128)S(1)SC(0:3)} add(s32[6]{0:T(128)} %maximum.1, s32[6]{0:T(128)} %param_0.1)
     %multiply.0 = s32[6]{0:T(128)} multiply(s32[6]{0:T(128)} %maximum.1, s32[6]{0:T(128)} %param_0.1)
-    ROOT %tuple = (s32[6]{0:T(128)S(1)}, s32[6]{0:T(128)}) tuple(%add.0, %multiply.0)
+    ROOT %tuple = (s32[6]{0:T(128)S(1)SC(0:3)}, s32[6]{0:T(128)}) tuple(%add.0, %multiply.0)
   }
 
   ENTRY %entry {
@@ -189,8 +189,8 @@ TEST_F(MemorySpacePropagationTest, TupleOutput) {
     %arg0 = s32[6]{0:T(128)S(1)} copy(%param0)
     %arg1 = s32[1]{0:T(128)} copy(%param1)
     %arg2 = s32[5]{0:T(128)S(1)} copy(%param2)
-    %fusion = (s32[6]{0:T(128)S(1)}, s32[6]{0:T(128)}) fusion(s32[6]{0:T(128)S(1)} %arg0, s32[1]{0:T(128)} %arg1, s32[5]{0:T(128)S(1)} %arg2), kind=kLoop, calls=%fused_computation
-    %gte0 = s32[6]{0:T(128)S(1)} get-tuple-element(%fusion), index=0
+    %fusion = (s32[6]{0:T(128)S(1)SC(0:3)}, s32[6]{0:T(128)}) fusion(s32[6]{0:T(128)S(1)} %arg0, s32[1]{0:T(128)} %arg1, s32[5]{0:T(128)S(1)} %arg2), kind=kLoop, calls=%fused_computation
+    %gte0 = s32[6]{0:T(128)S(1)SC(0:3)} get-tuple-element(%fusion), index=0
     %gte1 = s32[6]{0:T(128)} get-tuple-element(%fusion), index=1
     ROOT %root = s32[6]{0:T(128)} add(%gte0, %gte1)
   }
@@ -231,10 +231,10 @@ TEST_F(MemorySpacePropagationTest, NestedInputFusion) {
     %param0 = s32[3,2]{0,1:T(128)} parameter(0)
     %param1 = s32[1]{0:T(128)} parameter(1)
     %param2 = s32[5]{0:T(128)} parameter(2)
-    %arg0 = s32[3,2]{0,1:T(128)S(1)} copy(%param0)
+    %arg0 = s32[3,2]{0,1:T(128)S(1)SC(1:1)} copy(%param0)
     %arg1 = s32[1]{0:T(128)} copy(%param1)
     %arg2 = s32[5]{0:T(128)S(1)} copy(%param2)
-    %fusion = s32[6]{0:T(128)S(1)} fusion(s32[3,2]{0,1:T(128)S(1)} %arg0, s32[1]{0:T(128)} %arg1, s32[5]{0:T(128)S(1)} %arg2), kind=kLoop, calls=%fused_computation
+    %fusion = s32[6]{0:T(128)S(1)} fusion(s32[3,2]{0,1:T(128)S(1)SC(1:1)} %arg0, s32[1]{0:T(128)} %arg1, s32[5]{0:T(128)S(1)} %arg2), kind=kLoop, calls=%fused_computation
     ROOT %root = s32[6]{0:T(128)} copy(%fusion)
   }
   )";
@@ -242,7 +242,7 @@ TEST_F(MemorySpacePropagationTest, NestedInputFusion) {
   HloModule NestedFusion
 
   %bitcast_fusion {
-    %bf_param = s32[3,2]{0,1:T(128)S(1)} parameter(0)
+    %bf_param = s32[3,2]{0,1:T(128)S(1)SC(1:1)} parameter(0)
     ROOT %bitcast = s32[6]{0:T(128)} bitcast(%bf_param)
   }
 
@@ -253,7 +253,7 @@ TEST_F(MemorySpacePropagationTest, NestedInputFusion) {
     %param_2.3 = s32[5]{0:T(128)S(1)} parameter(2)
     %pad.3 = s32[6]{0:T(128)} pad(s32[5]{0:T(128)} %param_2.3, s32[]{:T(128)} %constant.2), padding=1_0
     %maximum.1 = s32[6]{0:T(128)} maximum(s32[6]{0:T(128)} %pad.2, s32[6]{0:T(128)} %pad.3)
-    %param_0.1 = s32[3,2]{0,1:T(128)S(1)} parameter(0)
+    %param_0.1 = s32[3,2]{0,1:T(128)S(1)SC(1:1)} parameter(0)
     %fusion.1 = s32[6]{0:T(128)} fusion(%param_0.1), kind=kLoop, calls=bitcast_fusion
     ROOT %add.0 = s32[6]{0:T(128)S(1)} add(s32[6]{0:T(128)} %maximum.1, s32[6]{0:T(128)} %fusion.1)
   }
@@ -262,10 +262,10 @@ TEST_F(MemorySpacePropagationTest, NestedInputFusion) {
     %param0 = s32[3,2]{0,1:T(128)} parameter(0)
     %param1 = s32[1]{0:T(128)} parameter(1)
     %param2 = s32[5]{0:T(128)} parameter(2)
-    %arg0 = s32[3,2]{0,1:T(128)S(1)} copy(%param0)
+    %arg0 = s32[3,2]{0,1:T(128)S(1)SC(1:1)} copy(%param0)
     %arg1 = s32[1]{0:T(128)} copy(%param1)
     %arg2 = s32[5]{0:T(128)S(1)} copy(%param2)
-    %fusion = s32[6]{0:T(128)S(1)} fusion(s32[3,2]{0,1:T(128)S(1)} %arg0, s32[1]{0:T(128)} %arg1, s32[5]{0:T(128)S(1)} %arg2), kind=kLoop, calls=%fused_computation
+    %fusion = s32[6]{0:T(128)S(1)} fusion(s32[3,2]{0,1:T(128)S(1)SC(1:1)} %arg0, s32[1]{0:T(128)} %arg1, s32[5]{0:T(128)S(1)} %arg2), kind=kLoop, calls=%fused_computation
     ROOT %root = s32[6]{0:T(128)} copy(%fusion)
   }
   )";
@@ -308,7 +308,7 @@ TEST_F(MemorySpacePropagationTest, NestedOutputFusion) {
     %arg0 = s32[6]{0:T(128)S(1)} copy(%param0)
     %arg1 = s32[1]{0:T(128)} copy(%param1)
     %arg2 = s32[5]{0:T(128)S(1)} copy(%param2)
-    %fusion = s32[3,2]{0,1:T(128)S(1)} fusion(s32[6]{0:T(128)S(1)} %arg0, s32[1]{0:T(128)} %arg1, s32[5]{0:T(128)S(1)} %arg2), kind=kLoop, calls=%fused_computation
+    %fusion = s32[3,2]{0,1:T(128)S(1)SC(1:1)} fusion(s32[6]{0:T(128)S(1)} %arg0, s32[1]{0:T(128)} %arg1, s32[5]{0:T(128)S(1)} %arg2), kind=kLoop, calls=%fused_computation
     ROOT %root = s32[3,2]{0,1:T(128)} copy(%fusion)
   }
   )";
@@ -317,7 +317,7 @@ TEST_F(MemorySpacePropagationTest, NestedOutputFusion) {
 
   %bitcast_fusion {
     %bf_param = s32[6]{0:T(128)} parameter(0)
-    ROOT %bitcast = s32[3,2]{0,1:T(128)S(1)} bitcast(%bf_param)
+    ROOT %bitcast = s32[3,2]{0,1:T(128)S(1)SC(1:1)} bitcast(%bf_param)
   }
 
   %fused_computation {
@@ -329,7 +329,7 @@ TEST_F(MemorySpacePropagationTest, NestedOutputFusion) {
     %maximum.1 = s32[6]{0:T(128)} maximum(s32[6]{0:T(128)} %pad.2, s32[6]{0:T(128)} %pad.3)
     %param_0.1 = s32[6]{0:T(128)S(1)} parameter(0)
     %add.0 = s32[6]{0:T(128)} add(s32[6]{0:T(128)} %maximum.1, s32[6]{0:T(128)S(1)} %param_0.1)
-    ROOT %fusion.1 = s32[3,2]{0,1:T(128)S(1)} fusion(%add.0), kind=kLoop, calls=bitcast_fusion
+    ROOT %fusion.1 = s32[3,2]{0,1:T(128)S(1)SC(1:1)} fusion(%add.0), kind=kLoop, calls=bitcast_fusion
   }
 
   ENTRY %entry {
@@ -339,7 +339,7 @@ TEST_F(MemorySpacePropagationTest, NestedOutputFusion) {
     %arg0 = s32[6]{0:T(128)S(1)} copy(%param0)
     %arg1 = s32[1]{0:T(128)} copy(%param1)
     %arg2 = s32[5]{0:T(128)S(1)} copy(%param2)
-    %fusion = s32[3,2]{0,1:T(128)S(1)} fusion(s32[6]{0:T(128)S(1)} %arg0, s32[1]{0:T(128)} %arg1, s32[5]{0:T(128)S(1)} %arg2), kind=kLoop, calls=%fused_computation
+    %fusion = s32[3,2]{0,1:T(128)S(1)SC(1:1)} fusion(s32[6]{0:T(128)S(1)} %arg0, s32[1]{0:T(128)} %arg1, s32[5]{0:T(128)S(1)} %arg2), kind=kLoop, calls=%fused_computation
     ROOT %root = s32[3,2]{0,1:T(128)} copy(%fusion)
   }
   )";
@@ -374,10 +374,10 @@ TEST_F(MemorySpacePropagationTest, BitcastInFusion) {
     %param0 = s32[6]{0:T(128)} parameter(0)
     %param1 = s32[1]{0:T(128)} parameter(1)
     %param2 = s32[5]{0:T(128)} parameter(2)
-    %arg0 = s32[6]{0:T(128)S(1)} copy(%param0)
+    %arg0 = s32[6]{0:T(128)S(1)SC(0:3)} copy(%param0)
     %arg1 = s32[1]{0:T(128)} copy(%param1)
     %arg2 = s32[5]{0:T(128)S(1)} copy(%param2)
-    ROOT %fusion = (s32[6]{0:T(128)}, s32[6]{0:T(128)}) fusion(s32[6]{0:T(128)S(1)} %arg0, s32[1]{0:T(128)} %arg1, s32[5]{0:T(128)S(1)} %arg2), kind=kLoop, calls=%fused_computation
+    ROOT %fusion = (s32[6]{0:T(128)}, s32[6]{0:T(128)}) fusion(s32[6]{0:T(128)S(1)SC(0:3)} %arg0, s32[1]{0:T(128)} %arg1, s32[5]{0:T(128)S(1)} %arg2), kind=kLoop, calls=%fused_computation
   }
   )";
   absl::string_view expected_hlo_string = R"(
@@ -390,9 +390,9 @@ TEST_F(MemorySpacePropagationTest, BitcastInFusion) {
     %param_2.3 = s32[5]{0:T(128)S(1)} parameter(2)
     %pad.3 = s32[6]{0:T(128)} pad(s32[5]{0:T(128)S(1)} %param_2.3, s32[]{:T(128)} %constant.2), padding=1_0
     %maximum.1 = s32[6]{0:T(128)} maximum(s32[6]{0:T(128)} %pad.2, s32[6]{0:T(128)} %pad.3)
-    %param_0.1 = s32[6]{0:T(128)S(1)} parameter(0)
-    %bitcast.0 = s32[6]{0:T(128)} bitcast(s32[6]{0:T(128)S(1)} %param_0.1)
-    %multiply.0 = s32[6]{0:T(128)} multiply(s32[6]{0:T(128)} %maximum.1, s32[6]{0:T(128)S(1)} %param_0.1)
+    %param_0.1 = s32[6]{0:T(128)S(1)SC(0:3)} parameter(0)
+    %bitcast.0 = s32[6]{0:T(128)} bitcast(s32[6]{0:T(128)S(1)SC(0:3)} %param_0.1)
+    %multiply.0 = s32[6]{0:T(128)} multiply(s32[6]{0:T(128)} %maximum.1, s32[6]{0:T(128)S(1)SC(0:3)} %param_0.1)
     ROOT %tuple = (s32[6]{0:T(128)}, s32[6]{0:T(128)}) tuple(%bitcast.0, %multiply.0)
   }
 
@@ -400,10 +400,10 @@ TEST_F(MemorySpacePropagationTest, BitcastInFusion) {
     %param0 = s32[6]{0:T(128)} parameter(0)
     %param1 = s32[1]{0:T(128)} parameter(1)
     %param2 = s32[5]{0:T(128)} parameter(2)
-    %arg0 = s32[6]{0:T(128)S(1)} copy(%param0)
+    %arg0 = s32[6]{0:T(128)S(1)SC(0:3)} copy(%param0)
     %arg1 = s32[1]{0:T(128)} copy(%param1)
     %arg2 = s32[5]{0:T(128)S(1)} copy(%param2)
-    ROOT %fusion = (s32[6]{0:T(128)}, s32[6]{0:T(128)}) fusion(s32[6]{0:T(128)S(1)} %arg0, s32[1]{0:T(128)} %arg1, s32[5]{0:T(128)S(1)} %arg2), kind=kLoop, calls=%fused_computation
+    ROOT %fusion = (s32[6]{0:T(128)}, s32[6]{0:T(128)}) fusion(s32[6]{0:T(128)S(1)SC(0:3)} %arg0, s32[1]{0:T(128)} %arg1, s32[5]{0:T(128)S(1)} %arg2), kind=kLoop, calls=%fused_computation
   }
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto module,

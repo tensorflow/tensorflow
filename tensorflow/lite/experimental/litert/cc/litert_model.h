@@ -357,7 +357,7 @@ class Model : public internal::Handle<LiteRtModel, LiteRtDestroyModel> {
     return absl::MakeSpan(static_cast<const uint8_t*>(buffer), buffer_size);
   }
 
-  Expected<class Subgraph> MainSubgraph() {
+  Expected<class Subgraph> MainSubgraph() const {
     LiteRtParamIndex main_subgraph_index;
     internal::AssertOk(LiteRtGetMainModelSubgraphIndex, Get(),
                        &main_subgraph_index);
@@ -370,7 +370,7 @@ class Model : public internal::Handle<LiteRtModel, LiteRtDestroyModel> {
     return num_subgraphs;
   }
 
-  Expected<class Subgraph> Subgraph(size_t subgraph_index) {
+  Expected<class Subgraph> Subgraph(size_t subgraph_index) const {
     LiteRtSubgraph subgraph;
     if (LiteRtGetModelSubgraph(Get(), subgraph_index, &subgraph) !=
         kLiteRtStatusOk) {

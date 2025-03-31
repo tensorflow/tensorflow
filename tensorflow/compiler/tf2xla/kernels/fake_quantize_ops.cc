@@ -270,7 +270,7 @@ class FakeQuantWithMinMaxVarsPerChannelOp : public XlaOpKernel {
     absl::Span<const int64_t> input_dimensions = input_shape.dimensions();
     auto convert_to_input_shape = [&](const xla::XlaOp op) {
       return xla::BroadcastInDim(op, input_dimensions,
-                                 {input_shape.rank() - 1});
+                                 {input_shape.dimensions_size() - 1});
     };
     input_min = convert_to_input_shape(input_min);
     input_max = convert_to_input_shape(input_max);
@@ -325,13 +325,13 @@ class FakeQuantWithMinMaxVarsPerChannelGradOp : public XlaOpKernel {
     absl::Span<const int64_t> input_dimensions = input_shape.dimensions();
 
     std::vector<int64_t> reduce_axes;
-    for (int64_t i = 0; i + 1 < input_shape.rank(); ++i) {
+    for (int64_t i = 0; i + 1 < input_shape.dimensions_size(); ++i) {
       reduce_axes.push_back(i);
     }
 
     auto convert_to_input_shape = [&](const xla::XlaOp op) {
       return xla::BroadcastInDim(op, input_dimensions,
-                                 {input_shape.rank() - 1});
+                                 {input_shape.dimensions_size() - 1});
     };
     input_min = convert_to_input_shape(input_min);
     input_max = convert_to_input_shape(input_max);

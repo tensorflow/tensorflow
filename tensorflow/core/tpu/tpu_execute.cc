@@ -134,10 +134,10 @@ absl::Status FixTupleTableAsync(se::Stream* stream,
 // "bounded_shape".
 bool DynamicShapeIsCompatible(const xla::Shape& dynamic_shape,
                               const xla::Shape& bounded_shape) {
-  if (dynamic_shape.rank() != bounded_shape.rank()) {
+  if (dynamic_shape.dimensions_size() != bounded_shape.dimensions_size()) {
     return false;
   }
-  for (int64_t i = 0; i < dynamic_shape.rank(); ++i) {
+  for (int64_t i = 0; i < dynamic_shape.dimensions_size(); ++i) {
     if (dynamic_shape.dimensions(i) > bounded_shape.dimensions(i)) {
       return false;
     }

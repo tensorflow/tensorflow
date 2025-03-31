@@ -65,6 +65,10 @@ LiteRtStatus LiteRtGetAcceleratorVersion(LiteRtAccelerator accelerator,
 LiteRtStatus LiteRtGetAcceleratorHardwareSupport(
     LiteRtAccelerator accelerator, LiteRtHwAcceleratorSet* supported_hardware);
 
+// Returns whether the accelerator TFLite delegate does some JIT compilation.
+LiteRtStatus LiteRtIsAcceleratorDelegateResponsibleForJitCompilation(
+    LiteRtAccelerator accelerator, bool* does_jit_compilation);
+
 #ifdef __cplusplus
 }  // extern "C"
 #endif

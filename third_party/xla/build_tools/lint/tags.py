@@ -41,9 +41,7 @@ _TAGS_TO_DOCUMENTATION_MAP = {
         " doesn't build things tagged with this either."
     ),
     # Various disable tags (currently *unrecognized* by OpenXLA CI)
-    "notap": (
-        "Internal tag which disables the test. Will be extended to OpenXLA CI."
-    ),
+    "notap": "Internal tag which disables the test. Not used on OpenXLA CI.",
     "nosan": "Disabled under all sanitizers. Not used on OpenXLA CI.",
     "noasan": "Disabled under asan. Not used on OpenXLA CI.",
     "nomsan": "Disabled under msan. Not used on OpenXLA CI.",

@@ -133,9 +133,9 @@ Expected<GlBuffer> GlBuffer::AllocFromAhwbBuffer(AhwbBuffer& ahwb_buffer) {
 #endif  // LITERT_HAS_AHWB_SUPPORT
 
 GlBuffer::GlBuffer(LiteRtGLenum target, LiteRtGLuint id, size_t size_bytes,
-                   size_t offset, LiteRtGlBufferDeallocator deallocator)
-    : size_bytes_(size_bytes) {
+                   size_t offset, LiteRtGlBufferDeallocator deallocator) {
 #if LITERT_HAS_OPENGL_SUPPORT
+  size_bytes_ = size_bytes;
 
   if (deallocator != nullptr) {
     tflite_gl_buffer_ = tflite::gpu::gl::GlBuffer(

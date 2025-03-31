@@ -16,15 +16,12 @@ limitations under the License.
 #ifndef XLA_BACKENDS_GPU_COLLECTIVES_GPU_CLIQUE_H_
 #define XLA_BACKENDS_GPU_COLLECTIVES_GPU_CLIQUE_H_
 
-#include <functional>
 #include <memory>
 #include <optional>
 #include <string>
-#include <utility>
 
 #include "absl/container/btree_map.h"
 #include "absl/status/status.h"
-#include "absl/strings/str_format.h"
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
 #include "xla/core/collectives/clique.h"
 #include "xla/core/collectives/clique_id.h"
@@ -43,10 +40,6 @@ class GpuClique : public Clique {
       GpuCliqueKey key, std::optional<CliqueIds> ids,
       absl::btree_map<RankId, std::unique_ptr<Communicator>> communicators,
       bool peer_access_enabled);
-
-  // Returns true if clique is local: all communicators belong to current
-  // process. Non-local cliques spans multiple processes (typically hosts).
-  bool IsLocal() const { return num_communicators() == key_.devices().size(); }
 
   const GpuCliqueKey& key() const { return key_; }
   const std::optional<CliqueIds>& ids() const { return ids_; }

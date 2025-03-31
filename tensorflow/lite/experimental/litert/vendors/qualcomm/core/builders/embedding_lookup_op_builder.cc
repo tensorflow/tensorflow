@@ -43,6 +43,7 @@ std::vector<OpWrapper> BuildEmbeddingLookupOp(
       QNN_LOG_ERROR("Embedding lookup get int8 table failed.");
       return res;
     }
+    int16_data.reserve(data_len);
     for (int i = 0; i < data_len; ++i) {
       int16_data.emplace_back(static_cast<std::int16_t>((*int8_data)[i]));
     }

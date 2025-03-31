@@ -70,7 +70,15 @@ message DeviceProto {
   string device_kind = 8;
   string to_string = 9;
   string debug_string = 10;
+
   map<string, DeviceAttributeProto> attributes = 11;
+
+  // Multiple hosts may be connected by NVLink, fabric_uuid uniquely identifies
+  // a fast-interconnect domain, thus can be used to identify the actual number
+  // of ranks connected in a single fast-interconnect domain. Only meaningful
+  // for SM100 (Blackwell) and onwards.
+  // fabric_uuid is constructed in the format of "clusterUuid/cliqueId".
+  string fabric_uuid = 12;
 }
 
 message LocalTopologyProto {

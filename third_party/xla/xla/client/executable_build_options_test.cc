@@ -24,7 +24,6 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "xla/pjrt/compile_options.pb.h"
-#include "xla/protobuf_util.h"
 #include "xla/service/computation_placer.h"
 #include "xla/service/test_compilation_environment.pb.h"
 #include "xla/shape.h"
@@ -33,10 +32,13 @@ limitations under the License.
 #include "xla/tsl/platform/status_matchers.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/threadpool.h"
+#include "xla/tsl/util/proto/proto_matchers.h"
 #include "tsl/platform/protobuf.h"
 
 namespace xla {
 namespace {
+
+using ::tsl::proto_testing::EqualsProto;
 
 // In order to use TestCompilationEnvironment* with CompilationEnvironments, we
 // must define ProcessNewEnv for them.
@@ -87,7 +89,7 @@ TEST(ExecutableBuildOptionsTest, ProtoRoundTripWorks) {
                           ExecutableBuildOptionsFromProto(p));
   TF_ASSERT_OK_AND_ASSIGN(const ExecutableBuildOptionsProto p2,
                           options.ToProto());
-  EXPECT_TRUE(protobuf_util::ProtobufEquals(p, p2));
+  EXPECT_THAT(p2, EqualsProto(p));
 }
 
 TEST(ExecutableBuildOptionsTest, SerializationFailsOnNonSerializableFields) {

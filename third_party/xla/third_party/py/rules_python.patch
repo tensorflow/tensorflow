@@ -72,15 +72,14 @@ index 774c24d1..91e59f9b 100644
  }
 
 diff --git a/python/private/python_bootstrap_template.txt b/python/private/python_bootstrap_template.txt
-index 0f9c90b3..6d1e2f61 100644
+index 0f9c90b3..567bdc88 100644
 --- a/python/private/python_bootstrap_template.txt
 +++ b/python/private/python_bootstrap_template.txt
-@@ -52,8 +52,16 @@ def GetWindowsPathWithUNCPrefix(path):
+@@ -52,7 +52,14 @@ def GetWindowsPathWithUNCPrefix(path):
    # removed from common Win32 file and directory functions.
    # Related doc: https://docs.microsoft.com/en-us/windows/win32/fileio/maximum-file-path-limitation?tabs=cmd#enable-long-paths-in-windows-10-version-1607-and-later
    import platform
 -  if platform.win32_ver()[1] >= '10.0.14393':
--    return path
 +  version = None
 +  # The try-except block is needed to fix the flakiness of RBE tests
 +  # on Windows 2022 using hermetic python 3.12.8.
@@ -88,9 +87,7 @@ index 0f9c90b3..6d1e2f61 100644
 +    version = platform.win32_ver()[1]
 +  except (ValueError, KeyError):
 +    version = platform.win32_ver()[1]
-+  finally:
-+    if version and version >= '10.0.14393':
-+      return path
- 
++  if version and version >= '10.0.14393':
+     return path
+
    # import sysconfig only now to maintain python 2.6 compatibility
-   import sysconfig

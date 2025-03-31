@@ -21,6 +21,7 @@ results {
       algorithm: 13
     }
   }
+  version: 1
 }
 results {
   device: "CUDA: 6.0, Cores: 56, GPU clock: 1.4805 GHz, Memory bandwidth: 732 GB/s, L2 cache: 4 MB"
@@ -44,4 +45,5 @@ results {
       }
     }
   }
+  version: 1
 }

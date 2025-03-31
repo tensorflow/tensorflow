@@ -17,13 +17,11 @@ limitations under the License.
 
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Pass/PassManager.h"
-#include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "mlir/Transforms/Passes.h"
-#include "stablehlo/transforms/Passes.h"
 #include "xla/mlir_hlo/stablehlo_ext/transforms/passes.h"
-#include "xla/service/spmd/shardy/round_trip_common/import_backend_func_calls.h"
 #include "xla/service/spmd/shardy/round_trip_common/import_constants.h"
 #include "xla/service/spmd/shardy/round_trip_common/import_sdy_custom_calls.h"
+#include "xla/service/spmd/shardy/round_trip_common/import_uninlineable_func_calls.h"
 #include "xla/service/spmd/shardy/round_trip_common/open_while_free_vars_sharding.h"
 
 namespace xla {
@@ -56,7 +54,7 @@ void addCommonPreImportPasses(mlir::OpPassManager& pm,
 void addCommonPostImportPasses(mlir::OpPassManager& pm) {
   pm.addPass(createImportSdyCustomCallsPass());
   pm.addNestedPass<FuncOp>(createOpenWhileFreeVarsShardingPass());
-  pm.addPass(createImportBackendFuncCallsPass());
+  pm.addPass(createImportUninlineableFuncCallsPass());
 }
 
 }  // namespace sdy

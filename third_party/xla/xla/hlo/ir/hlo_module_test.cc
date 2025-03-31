@@ -31,11 +31,13 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/testlib/filecheck.h"
+#include "xla/hlo/utils/hlo_query.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
+#include "xla/util.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 
@@ -209,6 +211,51 @@ TEST(HloModuleTest, CloneWithNewConfig) {
   EXPECT_EQ(pm2->config().device_type(), m1.config().device_type());
   EXPECT_NE(pm2->config().device_memory_size(),
             m1.config().device_memory_size());
+}
+
+TEST(HloModuleTest, ClonePreservesUniqueId) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnUnverifiedModule(R"(
+    HloModule m
+
+    add {
+      p0 = f16[] parameter(0)
+      p1 = f16[] parameter(1)
+      ROOT add = f16[] add(p0, p1)
+    }
+
+    // HloModule::Clone() deletes dead code.
+    dead_code {
+      p0 = f16[] parameter(0)
+      p1 = f16[] parameter(1)
+      ROOT add = f16[] add(p0, p1)
+    }
+
+    ENTRY main {
+      p0 = f16[10000000]{0} parameter(0)
+      p1 = f16[10000000]{0} parameter(1)
+      ar0 = f16[10000000]{0} all-reduce(p0), replica_groups={}, to_apply=add
+      ar1 = f16[10000000]{0} all-reduce(p1), replica_groups={}, to_apply=add
+      ROOT result = tuple(ar0, ar1)
+    }
+  )"));
+
+  // Annotate all instructions with a unique id. Frontend attributes are
+  // preserved when cloning.
+  static constexpr char kUniqueIdAttr[] = "collective_id";
+  hlo_query::ForEachInstructionWithPred(
+      *module, HloPredicateTrue, [](HloInstruction* instr) {
+        instr->set_frontend_attribute(kUniqueIdAttr,
+                                      absl::StrCat(instr->unique_id()));
+      });
+
+  std::unique_ptr<HloModule> clone = module->Clone(kCloneSuffix);
+  hlo_query::ForEachInstructionWithPred(
+      *clone, HloPredicateTrue, [](HloInstruction* instr) {
+        EXPECT_EQ(instr->get_frontend_attribute(kUniqueIdAttr),
+                  absl::StrCat(instr->unique_id()))
+            << "unique_id differs for " << instr->ToString();
+      });
 }
 
 TEST(HloModuleTest, AbslHashInstructionOrdering) {

@@ -7,7 +7,7 @@ load(
 )
 load("//xla:lit.bzl", "enforce_glob", "lit_test_suite")
 load(
-    "//xla:xla.bzl",
+    "//xla:xla.default.bzl",
     "xla_cc_test",
 )
 load("//xla/stream_executor:build_defs.bzl", "if_gpu_is_configured")
@@ -131,6 +131,23 @@ xla_cc_test(
         "//xla/service:hlo_module_config",
         "//xla/tests:hlo_test_base",
         "//xla/tests:literal_test_util",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+xla_test(
+    name = "command_buffer_test",
+    srcs = ["command_buffer_test.cc"],
+    backends = ["gpu"],
+    deps = [
+        "//xla:debug_options_flags",
+        "//xla:literal",
+        "//xla:literal_util",
+        "//xla/service:hlo_module_config",
+        "//xla/tests:hlo_test_base",
+        "//xla/tests:literal_test_util",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -408,6 +425,7 @@ xla_test(
         ":gpu_codegen_test",
         "//xla:error_spec",
         "//xla/service:hlo_module_config",
+        "//xla/service:platform_util",
         "//xla/tests:hlo_test_base",
         "@com_google_absl//absl/status",
         "@com_google_googletest//:gtest_main",
@@ -544,11 +562,12 @@ xla_test(
         "//xla:shape_util",
         "//xla:types",
         "//xla:xla_data_proto_cc",
+        "//xla/hlo/ir:hlo",
+        "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest_main",
         "@eigen_archive//:eigen3",
-        "@local_tsl//tsl/platform:statusor",
     ],
 )
 
@@ -613,15 +632,16 @@ lit_test_suite(
 #     name = "xla-opt",
 #     srcs = ["xla-opt.cc"],
 #     deps = [
-#         "//xla/backends/gpu/codegen/emitters/transforms:passes",
-#         "//xla/backends/gpu/codegen/triton/ir:triton_xla",
-#         "//xla/backends/gpu/codegen/triton/transforms:passes",
-#         "//xla/codegen/emitters/transforms:passes",
 #         "@llvm-project//mlir:AllExtensions",
 #         "@llvm-project//mlir:FuncDialect",
 #         "@llvm-project//mlir:MlirOptLib",
 #         "@llvm-project//mlir:TensorDialect",
+#         "//xla/backends/gpu/codegen/emitters/transforms:passes",
+#         "//xla/backends/gpu/codegen/triton/ir:triton_xla",
+#         "//xla/backends/gpu/codegen/triton/transforms:passes",
+#         "//xla/codegen/emitters/transforms:passes",
 #         "@triton//:AllPassesAndDialects",
+#         "@triton//third_party/amd:TestAMDRangeAnalysis",
 #     ],
 # )
 # copybara:uncomment_end
@@ -699,30 +719,6 @@ xla_test(
         "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:tensor_float_32_utils",
     ],
-)
-
-xla_test(
-    name = "gpu_sparse_dot_test",
-    srcs = if_cuda_is_configured(["gpu_sparse_dot_test.cc"]),
-    backends = [
-        "gpu_a100",
-        "gpu_h100",
-        "gpu_b200",
-    ],
-    tags = ["cuda-only"],
-    deps = if_cuda_is_configured(
-        [
-            ":gpu_codegen_test",
-            "@com_google_googletest//:gtest",
-            "@com_google_absl//absl/strings",
-            "@com_google_absl//absl/types:span",
-            "//xla:literal",
-            "//xla:literal_util",
-            "//xla/tests:xla_internal_test_main",
-            "//xla/tsl/lib/core:status_test_util",
-        ],
-        ["@com_google_googletest//:gtest_main"],  # b/317293391
-    ),
 )
 
 xla_test(

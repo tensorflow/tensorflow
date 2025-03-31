@@ -416,8 +416,9 @@ PjRtCApiClient::CompileAndLoad(mlir::ModuleOp module, CompileOptions options) {
 }
 
 absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
-PjRtCApiClient::DeserializeExecutable(absl::string_view serialized,
-                                      std::optional<CompileOptions> options) {
+PjRtCApiClient::LoadSerializedExecutable(absl::string_view serialized,
+                                         std::optional<CompileOptions> options,
+                                         const LoadOptions& load_options) {
   PJRT_Executable_DeserializeAndLoad_Args des_args;
 
   des_args.struct_size = PJRT_Executable_DeserializeAndLoad_Args_STRUCT_SIZE;
@@ -2320,7 +2321,8 @@ absl::StatusOr<std::unique_ptr<PjRtBuffer>> PjRtCApiBuffer::CopyToMemorySpace(
   } else {
     // Copy across PjRtClients by copying through host
     TF_ASSIGN_OR_RETURN(std::shared_ptr<Literal> literal, ToLiteralSync());
-    absl::InlinedVector<int64_t, 4> byte_strides(literal->shape().rank());
+    absl::InlinedVector<int64_t, 4> byte_strides(
+        literal->shape().dimensions_size());
     TF_RETURN_IF_ERROR(
         ShapeUtil::ByteStrides(literal->shape(), absl::MakeSpan(byte_strides)));
     // Avoid use-after-free on `literal` due to unsequenced move and use.

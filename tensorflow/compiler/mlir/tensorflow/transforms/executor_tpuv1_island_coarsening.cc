@@ -16,11 +16,12 @@ limitations under the License.
 // This transformation pass takes TensorFlow executor dialect IslandOps and
 // merges the one that contains operation marked to run on TPU.
 
-#include <algorithm>
-#include <iterator>
+#include <cassert>
+#include <memory>
 #include <optional>
 #include <queue>
 #include <tuple>
+#include <vector>
 
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/STLExtras.h"

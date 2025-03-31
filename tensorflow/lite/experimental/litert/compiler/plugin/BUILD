@@ -38,6 +38,7 @@ cc_library(
         "//tensorflow/lite/experimental/litert/core:dynamic_loading",
         "//tensorflow/lite/experimental/litert/core:environment",
         "//tensorflow/lite/experimental/litert/core:filesystem",
+        "//tensorflow/lite/experimental/litert/core:version",
         "//tensorflow/lite/experimental/litert/core/model",
         "//tensorflow/lite/experimental/litert/core/model:buffer_manager",
         "//tensorflow/lite/experimental/litert/core/model:ir_allocator",

@@ -1166,6 +1166,26 @@ std::unique_ptr<HloModule> CreateModule(
       new_name, new_config,
       std::make_unique<CompilationEnvironments>(source.comp_envs()));
 }
+
+void CopyUniqueIds(const HloModule& source, HloModule* clone,
+                   const HloCloneContext& context) {
+  for (HloComputation* computation : source.computations()) {
+    HloComputation* new_computation = context.FindComputation(computation);
+    if (new_computation == nullptr) {
+      continue;
+    }
+    new_computation->ClearUniqueIdInternal();
+    new_computation->SetUniqueId(computation->unique_id());
+    for (HloInstruction* instruction : computation->instructions()) {
+      HloInstruction* new_instruction = context.FindInstruction(instruction);
+      if (new_instruction != nullptr) {
+        new_instruction->ClearUniqueIdInternal();
+        new_instruction->SetUniqueId(instruction->unique_id());
+      }
+    }
+  }
+}
+
 }  // namespace
 
 std::unique_ptr<HloModule> HloModule::Clone(
@@ -1178,6 +1198,11 @@ std::unique_ptr<HloModule> HloModule::Clone(
     auto cloned_computation = entry_computation_->Clone(suffix, &context);
     module->AddEntryComputation(std::move(cloned_computation));
   }
+
+  // Preserve original instruction and computation ids.
+  CopyUniqueIds(*this, module.get(), context);
+  module->next_unique_id_ = next_unique_id_;
+
   module->input_output_alias_config() = input_output_alias_config();
   module->buffer_donor_config() = buffer_donor_config();
   module->set_is_dynamic(is_dynamic());

@@ -18,12 +18,14 @@ limitations under the License.
 
 #include <cstdint>
 #include <initializer_list>
+#include <memory>
 #include <utility>
 
 #include "absl/status/status.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/literal.h"
+#include "xla/service/compiler.h"
 #include "xla/tsl/platform/test_benchmark.h"
 
 namespace xla::cpu {
@@ -35,6 +37,8 @@ using StrToStrMapping =
 struct HloBenchmarkOptions {
   int32_t num_executions = 1;
   bool disable_parallel_task_assigner = false;
+  // If not null, AOT compilation will be used.
+  std::unique_ptr<AotCompilationOptions> aot_options;
 };
 
 // Runs the given HLO module as a benchmark.

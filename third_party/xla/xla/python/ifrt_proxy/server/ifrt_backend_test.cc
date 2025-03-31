@@ -310,7 +310,7 @@ class IfrtBackendHandlerTest : public IfrtBackendTest {
   // be the target of the other Array-specific methods. Returns the array
   // handle.
   absl::StatusOr<uint64_t> MakeTestArray(tsl::RCReference<Array> mock_array) {
-    EXPECT_CALL(*mock_client_, MakeArrayFromHostBuffer(_, _, _, _, _, _, _))
+    EXPECT_CALL(*mock_client_, MakeArrayFromHostBuffer(_, _, _, _, _, _, _, _))
         .WillOnce(Return(std::move(mock_array)));
 
     auto ifrt_request = NewIfrtRequest(NewOpId());
@@ -677,7 +677,7 @@ TEST_P(IfrtBackendHandlerTest, MakeArrayFromHostBufferSuccess) {
 
   EXPECT_CALL(*mock_client_,
               MakeArrayFromHostBuffer(_, DType(DType::kF64), expected_shape,
-                                      expected_byte_strides, _, _, _))
+                                      expected_byte_strides, _, _, _, _))
       .WillOnce(Return(std::move(mock_array)));
 
   TF_ASSERT_OK_AND_ASSIGN(auto response, CallBackend(std::move(ifrt_request)));
@@ -721,7 +721,7 @@ TEST_P(IfrtBackendHandlerTest, MakeStringArrayFromHostBufferSuccess) {
 
   EXPECT_CALL(*mock_client_,
               MakeArrayFromHostBuffer(_, expected_dtype, expected_shape,
-                                      expected_byte_strides, _, _, _))
+                                      expected_byte_strides, _, _, _, _))
       .WillOnce(Return(std::move(mock_array)));
 
   TF_ASSERT_OK_AND_ASSIGN(auto response, CallBackend(std::move(ifrt_request)));
@@ -761,6 +761,7 @@ TEST_P(IfrtBackendHandlerTest, AssembleArrayFromSingleDeviceArrays) {
   std::vector<tsl::RCReference<xla::ifrt::MockArray>> single_device_arrays;
   for (int i = 0; i < 2; ++i) {
     auto array = tsl::MakeRef<xla::ifrt::MockArray>();
+    ON_CALL(*array, dtype()).WillByDefault(Return(dtype));
     single_device_arrays.push_back(array);
 
     TF_ASSERT_OK_AND_ASSIGN(uint64_t array_handle, MakeTestArray(array));
@@ -786,20 +787,10 @@ TEST_P(IfrtBackendHandlerTest, AssembleArrayFromSingleDeviceArrays) {
       tsl::MakeRef<xla::ifrt::MockArray>();
   const Shape expected_shape({2, 2});
 
-  if (Version().protocol_version() >=
-      protocol_version::kAssembleArrayFromSingleDeviceArraysWithDType) {
-    EXPECT_CALL(*mock_client_,
-                AssembleArrayFromSingleDeviceArrays(
-                    dtype, expected_shape, _,
-                    ElementsAreArray(single_device_arrays), _, _))
-        .WillOnce(Return(std::move(result)));
-  } else {
-    EXPECT_CALL(
-        *mock_client_,
-        AssembleArrayFromSingleDeviceArrays(
-            expected_shape, _, ElementsAreArray(single_device_arrays), _, _))
-        .WillOnce(Return(std::move(result)));
-  }
+  EXPECT_CALL(*mock_client_, AssembleArrayFromSingleDeviceArrays(
+                                 dtype, expected_shape, _,
+                                 ElementsAreArray(single_device_arrays), _, _))
+      .WillOnce(Return(std::move(result)));
 
   TF_ASSERT_OK_AND_ASSIGN(auto response, CallBackend(std::move(ifrt_request)));
   EXPECT_NE(response->assemble_array_from_single_device_arrays_response()
@@ -891,7 +882,7 @@ TEST_P(IfrtBackendHandlerTest, CopyToHostSuccessWithStringArray) {
 
   EXPECT_CALL(*mock_client_,
               MakeArrayFromHostBuffer(_, expected_dtype, expected_shape,
-                                      expected_byte_strides, _, _, _))
+                                      expected_byte_strides, _, _, _, _))
       .WillOnce(Return(std::move(mock_array)));
 
   TF_ASSERT_OK_AND_ASSIGN(auto response, CallBackend(std::move(ifrt_request)));

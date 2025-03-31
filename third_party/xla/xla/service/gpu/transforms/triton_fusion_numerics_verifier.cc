@@ -72,7 +72,8 @@ absl::StatusOr<const HloFusionInstruction*> AsTritonFusion(
                       fusion->backend_config<GpuBackendConfig>());
   const FusionBackendConfig& backend_config =
       gpu_config.fusion_backend_config();
-  if (backend_config.kind() == kTritonFusionKind) {
+  if (backend_config.kind() == kTritonFusionKind ||
+      backend_config.kind() == kTritonNestedGemmFusionKind) {
     return fusion;
   }
   return nullptr;

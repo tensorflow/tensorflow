@@ -158,8 +158,9 @@ using PartitionResult =
 // Applies just the partition phase of the plugin on the model. Returns
 // references newly allocated subgraphs removed from input and their
 // corresponding dispatch ops in the input.
-Expected<PartitionResult> PartitionModel(CompilerPlugin& compiler_plugin,
-                                         LiteRtModelT& model);
+Expected<PartitionResult> PartitionModel(
+    CompilerPlugin& compiler_plugin, LiteRtModelT& model,
+    const absl::flat_hash_set<uint32_t>& subgraphs_to_partition = {});
 
 // Same as "PartitionModel" choose partitions directly based on the selected
 // ops. Selected ops may contain any ops in the the main subgraph of the model.
@@ -169,8 +170,10 @@ Expected<PartitionResult> PartitionModelDirect(
 
 // Applies both the partition and compile steps to the model. Generated
 // byte_code will be internalized within the model for later serialization.
-Expected<void> ApplyPlugin(CompilerPlugin& compiler_plugin, LiteRtModelT& model,
-                           absl::string_view soc_model = "");
+Expected<void> ApplyPlugin(
+    CompilerPlugin& compiler_plugin, LiteRtModelT& model,
+    absl::string_view soc_model = "",
+    const absl::flat_hash_set<uint32_t>& subgraphs_to_partition = {});
 
 // Applies the compilation step to the model given a predetermined partition.
 Expected<void> ApplyPluginWithPartition(CompilerPlugin& compiler_plugin,

@@ -79,4 +79,5 @@ const char kMustFuseAttr[] = "MUST_FUSE";
 
 const char kMaximalFuseAttr[] = "MAXIMAL_FUSE";
 
+const char kCollectivesGroupAttr[] = "_collectives_group";
 }  // namespace xla

@@ -26,6 +26,8 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include <gmock/gmock.h>
+#include <gtest/gtest.h>
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
 #include "absl/strings/string_view.h"
@@ -39,7 +41,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/layout_util.h"
 #include "xla/literal_util.h"
-#include "xla/protobuf_util.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/pattern_matcher.h"
@@ -50,6 +51,7 @@ limitations under the License.
 #include "xla/test_helpers.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/util/proto/proto_matchers.h"
 #include "xla/util.h"
 #include "xla/window_util.h"
 #include "xla/xla_data.pb.h"
@@ -57,13 +59,13 @@ limitations under the License.
 #include "tsl/platform/statusor.h"
 
 namespace xla {
-
 namespace {
 
 namespace m = ::xla::match;
 
 using ::testing::ElementsAre;
 using ::testing::UnorderedElementsAre;
+using ::tsl::proto_testing::EqualsProto;
 
 class HloInstructionTest : public HloTestBase {
  protected:
@@ -765,15 +767,15 @@ TEST_F(HloInstructionTest, PreserveMetadataInFusionAndClone) {
   auto* fusion = computation->CreateFusionInstruction(
       {exp2, exp1}, HloInstruction::FusionKind::kLoop);
 
-  EXPECT_TRUE(protobuf_util::ProtobufEquals(metadata, fusion->metadata()));
-  EXPECT_TRUE(protobuf_util::ProtobufEquals(
-      metadata, fusion->fused_expression_root()->metadata()));
-  EXPECT_TRUE(protobuf_util::ProtobufEquals(
-      metadata, fusion->fused_expression_root()->operand(0)->metadata()));
+  EXPECT_THAT(fusion->metadata(), EqualsProto(metadata));
+  EXPECT_THAT(fusion->fused_expression_root()->metadata(),
+              EqualsProto(metadata));
+  EXPECT_THAT(fusion->fused_expression_root()->operand(0)->metadata(),
+              EqualsProto(metadata));
 
   std::string new_name = "foobarfoo";
   auto cloned = fusion->CloneWithNewOperands(fusion->shape(), {}, new_name);
-  EXPECT_TRUE(protobuf_util::ProtobufEquals(metadata, fusion->metadata()));
+  EXPECT_THAT(fusion->metadata(), EqualsProto(metadata));
 
   size_t index = cloned->name().rfind(new_name);
   EXPECT_TRUE(index != std::string::npos);
@@ -1799,16 +1801,14 @@ TEST_F(HloInstructionTest, GetSetStatisticsViz) {
   x->set_stat_index_to_visualize(0);
 
   EXPECT_TRUE(x->has_statistics());
-  EXPECT_TRUE(
-      protobuf_util::ProtobufEquals(x->statistic_to_visualize(), statistic));
+  EXPECT_THAT(x->statistic_to_visualize(), EqualsProto(statistic));
 
   statistic.set_stat_val(40.0);
   *statistics_viz.add_statistics() = statistic;
 
   x->set_statistics_viz(statistics_viz);
 
-  EXPECT_TRUE(
-      protobuf_util::ProtobufEquals(x->statistics_viz(), statistics_viz));
+  EXPECT_THAT(x->statistics_viz(), EqualsProto(statistics_viz));
 }
 
 TEST_F(HloInstructionTest, StringifyStatisticsViz) {
@@ -2404,8 +2404,7 @@ TEST_F(HloInstructionTest, CloneWindowOnCustomCall) {
   Window w = window_util::MakeWindow({1, 2, 3});
   instr->set_window(w);
   auto clone = instr->Clone();
-  EXPECT_TRUE(protobuf_util::ProtobufEquals(clone->window(), w))
-      << clone->window().DebugString();
+  EXPECT_THAT(clone->window(), EqualsProto(w)) << clone->window().DebugString();
 }
 
 TEST_F(HloInstructionTest, CloneDnumsOnCustomCall) {
@@ -2416,8 +2415,7 @@ TEST_F(HloInstructionTest, CloneDnumsOnCustomCall) {
   dnums.set_output_batch_dimension(42);
   instr->set_convolution_dimension_numbers(dnums);
   auto clone = instr->Clone();
-  EXPECT_TRUE(protobuf_util::ProtobufEquals(
-      clone->convolution_dimension_numbers(), dnums))
+  EXPECT_THAT(clone->convolution_dimension_numbers(), EqualsProto(dnums))
       << clone->convolution_dimension_numbers().DebugString();
 }
 
@@ -2458,9 +2456,8 @@ TEST_F(HloInstructionTest, PreserveOperandPrecisionOnCloneConv) {
   auto* conv = module->entry_computation()->root_instruction();
 
   auto clone = conv->Clone();
-  EXPECT_THAT(
-      clone->precision_config().operand_precision(),
-      ::testing::ElementsAre(PrecisionConfig::HIGH, PrecisionConfig::DEFAULT));
+  EXPECT_THAT(clone->precision_config().operand_precision(),
+              ElementsAre(PrecisionConfig::HIGH, PrecisionConfig::DEFAULT));
 }
 
 TEST_F(HloInstructionTest, ReuseReshapeOfFusionParameter) {
@@ -2597,9 +2594,8 @@ TEST_F(HloInstructionTest, VerifyToApplyRegionPointsToReduceScatter) {
   // the reduce-scatter instruction.
   for (HloComputation* comp : module->MakeComputationPostOrder()) {
     if (!comp->IsEntryComputation()) {
-      EXPECT_TRUE(comp->IsCollectiveCalledComputation());
-      EXPECT_EQ(comp->CollectiveCallInstruction(),
-                module->entry_computation()->root_instruction());
+      EXPECT_THAT(comp->caller_instructions(),
+                  ElementsAre(module->entry_computation()->root_instruction()));
     }
   }
 }
@@ -2635,9 +2631,8 @@ TEST_F(HloInstructionTest, VerifyToApplyRegionPointsToAllReduce) {
   // the all-reduce instruction.
   for (HloComputation* comp : module->MakeComputationPostOrder()) {
     if (!comp->IsEntryComputation()) {
-      EXPECT_TRUE(comp->IsCollectiveCalledComputation());
-      EXPECT_EQ(comp->CollectiveCallInstruction(),
-                module->entry_computation()->root_instruction());
+      EXPECT_THAT(comp->caller_instructions(),
+                  ElementsAre(module->entry_computation()->root_instruction()));
     }
   }
 }
@@ -3208,8 +3203,7 @@ TEST_F(HloInstructionTest, ValidResultAccuracy) {
   // exp->set_result_accuracy(result_accuracy_proto);
   auto module = CreateNewVerifiedModule();
   module->AddEntryComputation(builder.Build());
-  EXPECT_TRUE(protobuf_util::ProtobufEquals(result_accuracy_proto,
-                                            exp->result_accuracy()));
+  EXPECT_THAT(exp->result_accuracy(), EqualsProto(result_accuracy_proto));
 
   // mode: HIGHEST
   EXPECT_TRUE(tsl::protobuf::TextFormat::ParseFromString(
@@ -3219,8 +3213,7 @@ TEST_F(HloInstructionTest, ValidResultAccuracy) {
       &result_accuracy_proto));
   exp = builder.AddInstruction(HloInstruction::CreateUnary(
       r0f32_, HloOpcode::kExp, foo, result_accuracy_proto));
-  EXPECT_TRUE(protobuf_util::ProtobufEquals(result_accuracy_proto,
-                                            exp->result_accuracy()));
+  EXPECT_THAT(exp->result_accuracy(), EqualsProto(result_accuracy_proto));
 }
 
 TEST_F(HloInstructionTest, InvalidResultAccuracy) {
@@ -3257,7 +3250,7 @@ TEST_F(HloInstructionTest, CreateFromProtoExp) {
       HloInstruction::CreateFromProto(
           proto_valid,
           {{0, HloInstruction::CreateParameter(0, r0f32_, "foo").get()}}));
-  EXPECT_TRUE(protobuf_util::ProtobufEquals(hlo->result_accuracy(), r));
+  EXPECT_THAT(hlo->result_accuracy(), EqualsProto(r));
   HloInstructionProto proto_invalid;
   proto_invalid.set_opcode("exponential");
   proto_invalid.set_name("exp");
@@ -3317,8 +3310,7 @@ TEST_F(HloInstructionTest, CreateUnaryWithResultAccuracy) {
   std::unique_ptr<HloInstruction> unary_inst = HloInstruction::CreateUnary(
       r0f32_, HloOpcode::kExp,
       HloInstruction::CreateParameter(0, r0f32_, "foo").get(), result_accuracy);
-  EXPECT_TRUE(protobuf_util::ProtobufEquals(result_accuracy,
-                                            unary_inst->result_accuracy()));
+  EXPECT_THAT(unary_inst->result_accuracy(), EqualsProto(result_accuracy));
 }
 
 TEST_F(HloInstructionTest, PrintUnaryWithResultAccuracy) {

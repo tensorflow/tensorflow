@@ -770,6 +770,7 @@ ENTRY main {
                                 gemm { algorithm: -1 }
                                 run_time { nanos: 14 }
                               }
+                              version: 1
                             })pb"));
   autotune_results_override.mutable_results(0)->set_device(
       std::string(cache_key.GetModelStr()));
@@ -1495,6 +1496,7 @@ absl::StatusOr<AutotuneResults> GetDummyAutotuneResultsForCacheKey(
                             custom_kernel_fusion { kernel_index: 1 }
                             run_time { nanos: 14 }
                           }
+                          version: 1
                         })pb"));
   autotune_results.mutable_results(0)->set_device(
       std::string(cache_key.GetModelStr()));

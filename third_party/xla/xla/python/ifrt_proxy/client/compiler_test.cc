@@ -24,11 +24,14 @@
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "absl/time/time.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/ExtensibleRTTI.h"
 #include "xla/python/ifrt/compiler.h"
+#include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/future.h"
 #include "xla/python/ifrt/mock.h"
+#include "xla/python/ifrt/program.h"
 #include "xla/python/ifrt/serdes.h"
 #include "xla/python/ifrt_proxy/client/client_session.h"
 #include "xla/python/ifrt_proxy/client/host_buffer.h"
@@ -37,6 +40,8 @@
 #include "xla/python/ifrt_proxy/client/rpc_helper.h"
 #include "xla/python/ifrt_proxy/client/version.h"
 #include "xla/python/ifrt_proxy/common/ifrt_service.pb.h"
+#include "xla/python/ifrt_proxy/common/test_utils.h"
+#include "xla/tsl/platform/statusor.h"
 #include "tsl/platform/protobuf.h"  // IWYU pragma: keep
 #include "tsl/platform/status_matchers.h"
 #include "tsl/platform/statusor.h"
@@ -49,19 +54,12 @@ namespace {
 
 using ::testing::_;
 using ::testing::ElementsAre;
-using ::testing::FieldsAre;
 using ::testing::Invoke;
 using ::testing::Optional;
-using ::testing::Pointee;
 using ::testing::Return;
 using ::tsl::protobuf::TextFormat;
 using ::tsl::testing::IsOkAndHolds;
 using ::tsl::testing::StatusIs;
-
-#if defined(PLATFORM_GOOGLE)
-using ::testing::EquivToProto;
-using ::testing::proto::Partially;
-#endif
 
 struct TestProgram : llvm::RTTIExtends<TestProgram, Program> {
   static char ID;  // NOLINT
@@ -156,10 +154,9 @@ class CompilerTest : public testing::Test {
   std::shared_ptr<ClientHostBufferStore> host_buffer_store_;
 };
 
-// TODO(b/315809436): Test needs rewrite because protobuf matchers are not OSS
-#if defined(PLATFORM_GOOGLE)
 TEST_F(CompilerTest, Compile) {
   std::vector<MockDevice> devices(2);
+  TestQueue<IfrtRequest> requests_queue(/*pop_timeout=*/absl::Minutes(1));
 
   MockClient client;
   ON_CALL(client, LookupDevice(_)).WillByDefault(Invoke([&](DeviceId id) {
@@ -180,11 +177,8 @@ TEST_F(CompilerTest, Compile) {
            })pb",
       &response));
   EXPECT_CALL(*session_,
-              Enqueue(Pointee(Partially(EquivToProto(
-                  R"pb(compile_request {
-                         program { type_name: "xla::ifrt::proxy::TestProgram" }
-                       })pb")))))
-      .WillOnce(MockClientSessionReturnResponse(response));
+              Enqueue(IfrtRequestOfType(IfrtRequest::kCompileRequest)))
+      .WillOnce(MockClientCaptureAndReturn(&requests_queue, response));
 
   ASSERT_TRUE(TextFormat::ParseFromString(R"pb(
                                             response_metadata {
@@ -196,15 +190,16 @@ TEST_F(CompilerTest, Compile) {
                                           )pb",
                                           &response));
   EXPECT_CALL(*session_,
-              Enqueue(Pointee(Partially(EquivToProto(R"pb(check_future_request {
-                                                            future_handle: 5678
-                                                          })pb")))))
-      .WillOnce(MockClientSessionReturnResponse(response));
+              Enqueue(IfrtRequestOfType(IfrtRequest::kCheckFutureRequest)))
+      .WillOnce(MockClientCaptureAndReturn(&requests_queue, response));
 
   TF_ASSERT_OK_AND_ASSIGN(
       auto executable,
       compiler.Compile(std::make_unique<TestProgram>(),
                        std::make_unique<TestCompileOptions>()));
+
+  EXPECT_EQ(requests_queue.Pop().compile_request().program().type_name(),
+            "xla::ifrt::proxy::TestProgram");
 
   EXPECT_EQ(executable->name(), "foo-executable");
   EXPECT_EQ(executable->num_devices(), 2);
@@ -214,8 +209,9 @@ TEST_F(CompilerTest, Compile) {
               IsOkAndHolds(Optional(std::string("fingerprint"))));
   EXPECT_THAT(executable->GetReadyFuture().Await(),
               StatusIs(absl::StatusCode::kUnknown, "injected error"));
+
+  EXPECT_EQ(requests_queue.Pop().check_future_request().future_handle(), 5678);
 }
-#endif
 
 }  // namespace
 }  // namespace proxy

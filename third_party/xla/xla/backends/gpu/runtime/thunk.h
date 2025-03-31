@@ -207,8 +207,7 @@ class Thunk {
   class ResourceRequestsInterface {
    public:
     virtual ~ResourceRequestsInterface() = default;
-    virtual absl::Status AddClique(const GpuCliqueKey& clique_key,
-                                   int32_t num_local_participants) = 0;
+    virtual absl::Status AddClique(const GpuCliqueKey& clique_key) = 0;
   };
 
   //===--------------------------------------------------------------------===//
@@ -225,14 +224,6 @@ class Thunk {
 
     absl::StatusOr<Communicator*> GetComm(const GpuCliqueKey& clique_key,
                                           RankId rank) const;
-
-    // Returns the number of communicators in a collective clique. Returns error
-    // if we do not have an acquired clique for a given key.
-    absl::StatusOr<size_t> num_communicators(
-        const GpuCliqueKey& clique_key) const;
-
-    // Returns whether the clique is a local clique.
-    absl::StatusOr<bool> is_local_clique(const GpuCliqueKey& clique_key) const;
 
     // Returns whether peer device memory access is possible between all devices
     // in the clique.

@@ -33,13 +33,13 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
 #include "xla/backends/cpu/runtime/buffer_allocations.h"
-#include "xla/backends/cpu/runtime/resource_use.h"
 #include "xla/backends/cpu/runtime/thread_pool_task_runner.h"
 #include "xla/backends/cpu/runtime/thunk.h"
 #include "xla/backends/cpu/runtime/thunk_testlib.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/runtime/buffer_use.h"
+#include "xla/runtime/resource_use.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
@@ -413,105 +413,6 @@ TEST(ThunkExecutorTest, PriorityReadyQueueTest) {
   ASSERT_EQ(half2.Size(), 2);
   EXPECT_EQ(half2.Pop(), 2);
   EXPECT_EQ(half2.Pop(), 1);
-}
-
-TEST(ThunkExecutorTest, DependencyOrdering) {
-  BufferAllocation alloc(/*index=*/0, /*size=*/80, /*color=*/0);
-
-  BufferAllocation::Slice slice0(&alloc, /*offset=*/0, /*size=*/40);
-  BufferAllocation::Slice slice1(&alloc, /*offset=*/40, /*size=*/40);
-  BufferAllocation::Slice slice2(&alloc, /*offset=*/20, /*size=*/40);
-
-  ThunkSequence sequence;
-  sequence.push_back(AddI32Thunk::Create("a", {slice0}, {slice0}));
-  sequence.push_back(AddI32Thunk::Create("b", {slice1}, {slice1}));
-  sequence.push_back(AddI32Thunk::Create("c", {slice2}, {slice2}));
-
-  TF_ASSERT_OK_AND_ASSIGN(
-      ThunkExecutor executor,
-      ThunkExecutor::Create(std::move(sequence), OptionsForTest()));
-
-  EXPECT_FALSE(executor.is_sequential());
-  EXPECT_THAT(executor.source(), ElementsAre(0, 1));
-  EXPECT_THAT(executor.sink(), ElementsAre(2));
-
-  EXPECT_EQ(executor.node_def(0).priority, 1);
-  EXPECT_EQ(executor.node_def(1).priority, 1);
-  EXPECT_EQ(executor.node_def(2).priority, 0);
-}
-
-TEST(ThunkExecutorTest, SequentialOrdering) {
-  BufferAllocation alloc(/*index=*/0, /*size=*/80, /*color=*/0);
-  BufferAllocation::Slice slice(&alloc, /*offset=*/0, /*size=*/40);
-
-  ThunkSequence sequence;
-  sequence.push_back(AddI32Thunk::Create("a", {slice}, {slice}));
-  sequence.push_back(AddI32Thunk::Create("b", {slice}, {slice}));
-  sequence.push_back(AddI32Thunk::Create("c", {slice}, {slice}));
-
-  TF_ASSERT_OK_AND_ASSIGN(
-      ThunkExecutor executor,
-      ThunkExecutor::Create(std::move(sequence), OptionsForTest()));
-
-  EXPECT_TRUE(executor.is_sequential());
-  EXPECT_THAT(executor.source(), ElementsAre(0));
-  EXPECT_THAT(executor.sink(), ElementsAre(2));
-
-  EXPECT_EQ(executor.node_def(0).priority, 2);
-  EXPECT_EQ(executor.node_def(1).priority, 1);
-  EXPECT_EQ(executor.node_def(2).priority, 0);
-}
-
-TEST(ThunkExecutorTest, ResourceOrdering) {
-  BufferAllocation alloc(/*index=*/0, /*size=*/80, /*color=*/0);
-
-  BufferAllocation::Slice slice0(&alloc, /*offset=*/0, /*size=*/40);
-  BufferAllocation::Slice slice1(&alloc, /*offset=*/40, /*size=*/40);
-
-  ThunkSequence sequence;
-  sequence.push_back(AddI32Thunk::Create("a", {slice0}, {slice0},
-                                         /*trace=*/nullptr,
-                                         /*use_shared_resource=*/true));
-  sequence.push_back(AddI32Thunk::Create("b", {slice1}, {slice1},
-                                         /*trace=*/nullptr,
-                                         /*use_shared_resource=*/true));
-
-  TF_ASSERT_OK_AND_ASSIGN(
-      ThunkExecutor executor,
-      ThunkExecutor::Create(std::move(sequence), OptionsForTest()));
-
-  EXPECT_TRUE(executor.is_sequential());
-  EXPECT_THAT(executor.source(), ElementsAre(0));
-  EXPECT_THAT(executor.sink(), ElementsAre(1));
-
-  EXPECT_EQ(executor.node_def(0).priority, 1);
-  EXPECT_EQ(executor.node_def(1).priority, 0);
-}
-
-TEST(ThunkExecutorTest, TransitiveReduction) {
-  BufferAllocation alloc(/*index=*/0, /*size=*/80, /*color=*/0);
-  BufferAllocation::Slice slice(&alloc, /*offset=*/0, /*size=*/40);
-
-  ThunkSequence sequence;
-  sequence.push_back(AddI32Thunk::Create("a", {slice}, {slice}));
-  sequence.push_back(AddI32Thunk::Create("b", {slice}, {slice}));
-  sequence.push_back(AddI32Thunk::Create("c", {slice}, {slice}));
-
-  TF_ASSERT_OK_AND_ASSIGN(
-      ThunkExecutor executor,
-      ThunkExecutor::Create(std::move(sequence), OptionsForTest()));
-
-  EXPECT_THAT(executor.source(), ElementsAre(0));
-  EXPECT_THAT(executor.sink(), ElementsAre(2));
-
-  EXPECT_THAT(executor.node_def(0).out_edges, ElementsAre(1));
-  EXPECT_THAT(executor.node_def(1).in_edges, ElementsAre(0));
-  EXPECT_THAT(executor.node_def(1).out_edges, ElementsAre(2));
-  EXPECT_THAT(executor.node_def(2).in_edges, ElementsAre(1));
-
-  EXPECT_EQ(executor.node_def(0).priority, 2);
-  EXPECT_EQ(executor.node_def(1).priority, 1);
-  EXPECT_EQ(executor.node_def(2).priority, 0);
 }
 
 TEST(ThunkExecutorTest, Execute) {

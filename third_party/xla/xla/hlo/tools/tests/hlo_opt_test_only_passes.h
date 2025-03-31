@@ -92,6 +92,27 @@ class AlgebraicSimplifierWithOnednnEnabled : public AlgebraicSimplifier {
   }
 };
 
+// Test XLA Builder methods using lit tests.
+// Transforms custom calls that start with `xla_builder.some_method` into
+// expanded HLO by calling the client methods:
+// Example:
+//  custom-call @xla_builder.add(operand1, operand2)
+//  ==>
+//  add(operand1, operand2)
+class XlaBuilderTestPass : public HloModulePass {
+ public:
+  absl::string_view name() const override { return "test-only-xla-builder"; }
+
+  using HloPassInterface::Run;
+  absl::StatusOr<bool> Run(
+      HloModule* module,
+      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
+
+ private:
+  absl::StatusOr<bool> ReplaceWithExpandedClientHlo(
+      HloInstruction* instruction, absl::string_view custom_call_target);
+};
+
 }  // namespace xla::test_only
 
 #endif  // XLA_HLO_TOOLS_TESTS_HLO_OPT_TEST_ONLY_PASSES_H_

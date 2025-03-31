@@ -1,4 +1,4 @@
-/* Copyright 2023 The OpenXLA Authors.
+/* Copyright 2025 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,8 +16,10 @@ limitations under the License.
 #ifndef XLA_SERVICE_CPU_CPU_FLOAT_SUPPORT_H_
 #define XLA_SERVICE_CPU_CPU_FLOAT_SUPPORT_H_
 
-#if defined(INTEL_MKL)
+#include <functional>
 
+#include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/float_support.h"
 
 namespace xla {
@@ -25,28 +27,23 @@ namespace cpu {
 
 class CpuFloatSupport : public FloatSupport {
  public:
-  explicit CpuFloatSupport(PrimitiveType low_precision_type)
-      : FloatSupport(low_precision_type) {}
+  using DotStrategyChecker = std::function<bool(const HloInstruction& hlo)>;
 
-  bool SupportsLowPrecisionOperand(const HloInstruction& hlo,
-                                   int64_t operand_index) const override {
-    return FloatSupport::SupportsLowPrecisionOperand(hlo, operand_index) ||
-           IsSupported(hlo);
-  }
+  explicit CpuFloatSupport(PrimitiveType low_precision_type,
+                           DotStrategyChecker call_library_for_dot)
+      : FloatSupport(low_precision_type),
+        call_library_for_dot_(call_library_for_dot) {}
 
-  bool SupportsLowPrecisionOutput(const HloInstruction& hlo) const override {
-    return FloatSupport::SupportsLowPrecisionOutput(hlo) || IsSupported(hlo);
+  // A hatch to skip FloatNormalization for certain instructions.
+  bool ShouldSkipInstruction(const HloInstruction& hlo) const override {
+    return hlo.opcode() == HloOpcode::kDot && call_library_for_dot_(hlo);
   }
 
  private:
-  bool IsSupported(const HloInstruction& hlo) const;
-  // Performs early check for things that cannot be delayed becuase some later
-  // passes may change the shape of dot inputs.
-  bool DotSupported(const HloInstruction& hlo) const;
+  DotStrategyChecker call_library_for_dot_;
 };
 
 }  // namespace cpu
 }  // namespace xla
 
-#endif  // INTEL_MKL
 #endif  // XLA_SERVICE_CPU_CPU_FLOAT_SUPPORT_H_

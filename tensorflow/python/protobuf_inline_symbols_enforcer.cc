@@ -18,6 +18,7 @@ limitations under the License.
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/graph.pb.h"
+#include "tensorflow/core/grappler/costs/op_performance_data.pb.h"
 #include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/protobuf/data_service.pb.h"
 #include "tensorflow/core/protobuf/device_properties.pb.h"
@@ -75,6 +76,10 @@ void protobuf_inline_symbols_enforcer() {
 
   tensorflow::AttrValue attr_value;
   attr_value.default_instance();
+  tensorflow::AttrValue_ListValue list_value;
+  list_value.add_b(false);
+
+  OpPerformanceList performance_list;
 
   tensorflow::ConfigProto config_proto;
   config_proto.default_instance();

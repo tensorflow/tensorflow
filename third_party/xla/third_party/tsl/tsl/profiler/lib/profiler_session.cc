@@ -121,7 +121,13 @@ ProfilerSession::ProfilerSession(const ProfileOptions& options)
   DCHECK(profiler_lock_.Active());
   profilers_ = std::make_unique<tsl::profiler::ProfilerCollection>(
       profiler::CreateProfilers(options_));
-  profilers_->Start().IgnoreError();
+
+  absl::Status status = profilers_->Start();
+  if (options_.raise_error_on_start_failure()) {
+    status_ = status;
+  } else {
+    status.IgnoreError();
+  }
 #endif
 }
 

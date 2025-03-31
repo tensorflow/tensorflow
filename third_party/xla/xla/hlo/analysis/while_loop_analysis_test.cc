@@ -35,6 +35,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/test.h"
+#include "xla/literal_util.h"
 #include "xla/service/constant_value.h"
 #include "xla/service/value_range.h"
 #include "xla/tsl/platform/statusor.h"
@@ -1060,5 +1061,66 @@ TEST_F(WhileLoopAnalysisTest, GetIndvarIndexShouldWorkWhenParamIsCopied) {
   EXPECT_EQ(GetLoopInductionVarTupleIdx(while_op), 0);
 }
 
+TEST_F(WhileLoopAnalysisTest,
+       MatchTrivialLoopCountFailsWhenIndvarIsNotIncrementedByConstant) {
+  const char* hlo_with_constant = R"(
+  HloModule test
+  body {
+    param.1 = (s32[], s32[]) parameter(0)
+    iter.1 = s32[] get-tuple-element(param.1), index=0
+    data.1 = s32[] get-tuple-element(param.1), index=1
+    c.1 = s32[] constant(1)
+    add.1 = s32[] add(iter.1, c.1)
+    ROOT tuple = (s32[], s32[]) tuple(add.1, data.1)
+  }
+  condition {
+    param = (s32[], s32[]) parameter(0)
+    iter = s32[] get-tuple-element(param), index=0
+    c.10 = s32[] constant(10)
+    ROOT compare = pred[] compare(iter, c.10), direction=LT
+  }
+  ENTRY main {
+    c0 = s32[] constant(0)
+    data = s32[] parameter(0)
+    tuple = (s32[], s32[]) tuple(c0, data)
+    ROOT while = (s32[], s32[]) while(tuple), body=body, condition=condition
+  })";
+  const char* hlo_without_constant = R"(
+  HloModule test
+  body {
+    param.1 = (s32[], s32[]) parameter(0)
+    iter.1 = s32[] get-tuple-element(param.1), index=0
+    data.1 = s32[] get-tuple-element(param.1), index=1
+    add.1 = s32[] add(iter.1, iter.1)
+    ROOT tuple = (s32[], s32[]) tuple(add.1, data.1)
+  }
+  condition {
+    param = (s32[], s32[]) parameter(0)
+    iter = s32[] get-tuple-element(param), index=0
+    c.10 = s32[] constant(10)
+    ROOT compare = pred[] compare(iter, c.10), direction=LT
+  }
+  ENTRY main {
+    c1 = s32[] constant(1)
+    data = s32[] parameter(0)
+    tuple = (s32[], s32[]) tuple(c1, data)
+    ROOT while = (s32[], s32[]) while(tuple), body=body, condition=condition
+  })";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m_with_constant,
+                          ParseAndReturnVerifiedModule(hlo_with_constant));
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m_without_constant,
+                          ParseAndReturnVerifiedModule(hlo_without_constant));
+  HloInstruction* while_op_with_constant =
+      m_with_constant->entry_computation()->root_instruction();
+  HloInstruction* while_op_without_constant =
+      m_without_constant->entry_computation()->root_instruction();
+  std::optional<int64_t> trip_count_with_constant = MatchTrivialLoopTripCount(
+      while_op_with_constant, 0, LiteralUtil::CreateR0<int32_t>(0));
+  EXPECT_EQ(trip_count_with_constant, 10);
+  std::optional<int64_t> trip_count_without_constant =
+      MatchTrivialLoopTripCount(while_op_without_constant, 0,
+                                LiteralUtil::CreateR0<int32_t>(0));
+  EXPECT_EQ(trip_count_without_constant, std::nullopt);
+}
 }  // namespace
 }  // namespace xla

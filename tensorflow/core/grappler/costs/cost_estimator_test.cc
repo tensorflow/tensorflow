@@ -32,6 +32,8 @@ TEST(CostEstimatorTest, CombineCosts) {
   c.intermediate_memory_write_time = Costs::NanoSeconds(6);
   c.hbm_read_time = Costs::NanoSeconds(7);
   c.hbm_write_time = Costs::NanoSeconds(8);
+  c.hbm_read_time_noderate = Costs::NanoSeconds(9);
+  c.hbm_write_time_noderate = Costs::NanoSeconds(10);
   c.max_memory = 1;
   c.max_per_op_buffers = 2;
   c.max_per_op_streaming = 3;
@@ -49,6 +51,8 @@ TEST(CostEstimatorTest, CombineCosts) {
   EXPECT_EQ(sum.intermediate_memory_write_time, Costs::NanoSeconds(12));
   EXPECT_EQ(sum.hbm_read_time, Costs::NanoSeconds(14));
   EXPECT_EQ(sum.hbm_write_time, Costs::NanoSeconds(16));
+  EXPECT_EQ(sum.hbm_read_time_noderate, Costs::NanoSeconds(18));
+  EXPECT_EQ(sum.hbm_write_time_noderate, Costs::NanoSeconds(20));
   EXPECT_EQ(sum.max_memory, 2);
   EXPECT_EQ(sum.max_per_op_buffers, 2);
   EXPECT_EQ(sum.max_per_op_streaming, 3);
@@ -65,6 +69,8 @@ TEST(CostEstimatorTest, MultiplyCosts) {
   c.intermediate_memory_time = Costs::NanoSeconds(4);
   c.intermediate_memory_read_time = Costs::NanoSeconds(5);
   c.intermediate_memory_write_time = Costs::NanoSeconds(6);
+  c.hbm_read_time_noderate = Costs::NanoSeconds(7);
+  c.hbm_write_time_noderate = Costs::NanoSeconds(8);
   c.max_memory = 1;
   c.max_per_op_buffers = 2;
   c.max_per_op_streaming = 3;
@@ -80,6 +86,8 @@ TEST(CostEstimatorTest, MultiplyCosts) {
   EXPECT_EQ(product.intermediate_memory_time, Costs::NanoSeconds(40));
   EXPECT_EQ(product.intermediate_memory_read_time, Costs::NanoSeconds(50));
   EXPECT_EQ(product.intermediate_memory_write_time, Costs::NanoSeconds(60));
+  EXPECT_EQ(product.hbm_read_time_noderate, Costs::NanoSeconds(70));
+  EXPECT_EQ(product.hbm_write_time_noderate, Costs::NanoSeconds(80));
   EXPECT_EQ(product.max_memory, 1);
   EXPECT_EQ(product.max_per_op_buffers, 2);
   EXPECT_EQ(product.max_per_op_streaming, 3);

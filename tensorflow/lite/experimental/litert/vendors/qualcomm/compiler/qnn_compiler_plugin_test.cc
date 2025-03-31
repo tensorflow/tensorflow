@@ -82,6 +82,8 @@ const auto kSupportedOps =
                     "simple_leaky_relu_op.tflite",
                     "simple_resize_bilinear_op.tflite",
                     "simple_space_to_depth_op.tflite",
+                    "simple_resize_nearest_neighbor_op.tflite",
+                    "simple_relu_op.tflite",
                     kFeedForwardModel,
                     kKeyEinsumModel,
                     kQueryEinsumModel,
@@ -92,13 +94,13 @@ const auto kSupportedOps =
                     kRMSNormModel,
                     kSDPAModel,
                     kAttentionModel,
-                    kTransformerBlockModel
-                    // kQSimpleMul16x16Model,
-                    // kQMulAdd16x16Model,
-                    // kQQueryEinsum16x8Model,
-                    // kQKeyEinsum16x8Model,
-                    // kQVauleEinsum16x8Model,
-                    // kQAttnVecEinsum16x8Model
+                    kTransformerBlockModel,
+                    kQSimpleMul16x16Model,
+                    kQMulAdd16x16Model,
+                    kQQueryEinsum16x8Model,
+                    kQKeyEinsum16x8Model,
+                    kQVauleEinsum16x8Model,
+                    kQAttnVecEinsum16x8Model
                     );
 
 const auto kSupportedSocModels = Values(

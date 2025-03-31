@@ -26,34 +26,45 @@ limitations under the License.
 namespace xla {
 namespace protobuf_util {
 
-// Returns true if m1 is equal to m2.
+// Returns true if m1 and m2 have the same serialization.
 //
-// WARNING: We use protocol buffer serialization and then check for
-// equality of the serialized representation, which may miss some
-// cases of equality.  However, for the purposes of the XLA code
-// base, this form of equality checking is sufficient.
-extern bool ProtobufEquals(const tsl::protobuf::Message& m1,
-                           const tsl::protobuf::Message& m2);
-
-// Return the hash of the message "m".
+// WARNING: Protobuf serialization is not guaranteed to be stable. Use this ONLY
+// IF you are SURE that you want this form of equality.
 //
-// WARNING: This uses the same serialization approach used by ProtobufEquals,
-// so the WARNING for that function applies here.
-size_t ProtobufHash(const tsl::protobuf::Message& m);
+// In g3 tests, prefer matchers like ::testing::EqualsProto. In OSS tests,
+// prefer ::tsl::proto_testing::EqualsProto. These have more precise semantics
+// and will give far better error messages.
+[[nodiscard]] bool HaveSameSerialization(const tsl::protobuf::Message& m1,
+                                         const tsl::protobuf::Message& m2);
 
-// Wrappers for above methods so that they can be used in containers.
-class ProtobufEqualsWrapper {
+// Return the hash of the message "m", based on its serialization.
+//
+// WARNING: This uses the same serialization approach used by
+// HaveSameSerialization, so the WARNING for that function applies here.
+[[nodiscard]] size_t ProtobufHashBySerialization(
+    const tsl::protobuf::Message& m);
+
+// Wrappers for HaveSameSerialization() so that we can use protos in containers
+// that require equality.
+//
+// WARNING: This uses the same serialization approach used by
+// HaveSameSerialization, so the WARNING for that function applies here.
+class HaveSameSerializationFunctor {
  public:
-  bool operator()(const tsl::protobuf::Message& m1,
-                  const tsl::protobuf::Message& m2) const {
-    return ProtobufEquals(m1, m2);
+  [[nodiscard]] bool operator()(const tsl::protobuf::Message& m1,
+                                const tsl::protobuf::Message& m2) const {
+    return HaveSameSerialization(m1, m2);
   }
 };
 
-class ProtobufHashWrapper {
+// Functor for hashing a protobuf message by its serialization.
+//
+// WARNING: This uses the same serialization approach used by
+// HaveSameSerialization, so the WARNING for that function applies here.
+class ProtobufHashBySerializationFunctor {
  public:
-  size_t operator()(const tsl::protobuf::Message& m) const {
-    return ProtobufHash(m);
+  [[nodiscard]] size_t operator()(const tsl::protobuf::Message& m) const {
+    return ProtobufHashBySerialization(m);
   }
 };
 

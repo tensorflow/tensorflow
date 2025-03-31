@@ -349,6 +349,7 @@ void OptProvider::RegisterAllHardwareIndependentPasses() {
   // Test-only passes exposing behavior that isn't easily testable through
   // standard passes, e.g. internal or config-dependent behavior.
   RegisterPass<test_only::AlgebraicSimplifierWithOnednnEnabled>();
+  RegisterPass<test_only::XlaBuilderTestPass>();
 }
 
 }  // namespace xla

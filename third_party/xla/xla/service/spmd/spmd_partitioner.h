@@ -348,6 +348,10 @@ class SpmdPartitioner : public HloModulePass {
     return execution_threads_;
   }
 
+  // Update module's parameter and output sharding information, based on the
+  // sharding information of the module's parameters and outptuts.
+  static void RecordInputsOutputsSharding(HloModule* module);
+
  protected:
   // This is the internal implementation for AllGatherShards(), returns a pair
   // of hlo instructions whose first element is the result of the all-gather
@@ -498,8 +502,8 @@ class PartitionedHlo {
   // Returns the sharding of the SPMD instruction.
   const HloSharding& sharding() const { return hlo_->sharding(); }
 
-  // Returns the rank of the SPMD instruction.
-  const int64_t rank() const { return base_shape_.rank(); }
+  // Returns the SPMD instruction's number of dimensions.
+  int64_t num_dimensions() const { return base_shape_.dimensions().size(); }
 
   // Original full shape of the data.
   const Shape& base_shape() const { return base_shape_; }

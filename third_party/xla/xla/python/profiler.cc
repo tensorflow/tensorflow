@@ -243,6 +243,10 @@ void BuildProfilerSubmodule(nb::module_& m) {
       .def_prop_rw("duration_ms", &tensorflow::ProfileOptions::duration_ms,
                    &tensorflow::ProfileOptions::set_duration_ms)
       .def_prop_rw(
+          "raise_error_on_start_failure",
+          &tensorflow::ProfileOptions::raise_error_on_start_failure,
+          &tensorflow::ProfileOptions::set_raise_error_on_start_failure)
+      .def_prop_rw(
           "repository_path", &tensorflow::ProfileOptions::repository_path,
           [](tensorflow::ProfileOptions* options, const std::string& path) {
             options->set_repository_path(path);

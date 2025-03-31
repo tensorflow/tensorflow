@@ -69,17 +69,17 @@ class TfrtEventSet {
 // multiple return statements in the function, all of which require setting
 // some AsyncValueRef<GpuEvent> to be ready. This class could make such code
 // more robust by using setting the AsyncValue in the destructor.
-class MarkEventReadyOnExit {
+class MarkGpuEventReadyOnExit {
  public:
-  explicit MarkEventReadyOnExit(tsl::AsyncValueRef<GpuEvent> event)
+  explicit MarkGpuEventReadyOnExit(tsl::AsyncValueRef<GpuEvent> event)
       : event_(std::move(event)) {}
 
-  MarkEventReadyOnExit(const MarkEventReadyOnExit&) = delete;
-  MarkEventReadyOnExit& operator=(const MarkEventReadyOnExit&) = delete;
-  MarkEventReadyOnExit(MarkEventReadyOnExit&&) = default;
-  MarkEventReadyOnExit& operator=(MarkEventReadyOnExit&&) = default;
+  MarkGpuEventReadyOnExit(const MarkGpuEventReadyOnExit&) = delete;
+  MarkGpuEventReadyOnExit& operator=(const MarkGpuEventReadyOnExit&) = delete;
+  MarkGpuEventReadyOnExit(MarkGpuEventReadyOnExit&&) = default;
+  MarkGpuEventReadyOnExit& operator=(MarkGpuEventReadyOnExit&&) = default;
 
-  ~MarkEventReadyOnExit() {
+  ~MarkGpuEventReadyOnExit() {
     if (event_) event_.SetStateConcrete();
   }
 

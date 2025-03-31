@@ -13,7 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cassert>
+#include <memory>
 #include <queue>
+#include <utility>
 
 #include "llvm/ADT/STLExtras.h"
 #include "mlir/IR/SymbolTable.h"  // from @llvm-project

@@ -1,5 +1,5 @@
 load("//xla:lit.bzl", "lit_test_suite")
-load("//xla:xla.bzl", "xla_cc_binary", "xla_cc_test")
+load("//xla:xla.default.bzl", "xla_cc_binary", "xla_cc_test")
 load("//xla/tsl:tsl.bzl", "internal_visibility")
 
 package_group(

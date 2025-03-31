@@ -15,6 +15,7 @@ limitations under the License.
 #ifndef XLA_CODEGEN_EMITTERS_TYPE_UTIL_H_
 #define XLA_CODEGEN_EMITTERS_TYPE_UTIL_H_
 
+#include "absl/strings/string_view.h"
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/Types.h"
@@ -23,6 +24,8 @@ limitations under the License.
 
 namespace xla {
 namespace emitters {
+
+inline constexpr absl::string_view kHasNoCompute = "no_compute";
 
 // Converts an XLA tensor to an MLIR ranked tensor. The layout is stored in the
 // encoding attribute, if it is not the default layout. `shape` must be an

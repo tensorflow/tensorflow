@@ -52,29 +52,6 @@ cc_library(
 )
 
 cc_library(
-    name = "rename_entrypoint_to_main",
-    srcs = [
-        "transforms/rename_entrypoint_to_main.cc",
-    ],
-    hdrs = [
-        "transforms/rename_entrypoint_to_main.h",
-    ],
-    copts = [
-        "-Ithird_party",
-    ],
-    deps = [
-        ":stablehlo_util",
-        "//tensorflow/compiler/mlir/tensorflow",
-        "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:FuncDialect",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:Pass",
-        "@llvm-project//mlir:Support",
-    ],
-    alwayslink = 1,
-)
-
-cc_library(
     name = "hlo_matchers",
     srcs = [
         "transforms/hlo_matchers.cc",
@@ -284,7 +261,6 @@ cc_library(
         ":legalize_stablehlo_custom_call_to_composite",
         ":legalize_tf_xla_call_module_to_stablehlo_pass",
         ":optimize",
-        ":rename_entrypoint_to_main",
         ":smuggle_disallowed_ops",
         ":stablehlo_fuse_convolution_pass",
         ":stablehlo_unfuse_batch_norm_pass",
@@ -293,6 +269,7 @@ cc_library(
         "//tensorflow/compiler/mlir/quantization/stablehlo:bridge_passes",
         "//tensorflow/compiler/mlir/stablehlo:fold_broadcast_pass",
         "//tensorflow/compiler/mlir/stablehlo:fuse_convolution_pass",
+        "//tensorflow/compiler/mlir/stablehlo:rename_entrypoint_to_main",
         "//tensorflow/compiler/mlir/stablehlo:unfuse_batch_norm_pass",
         "//tensorflow/compiler/mlir/tensorflow/transforms:tensorflow_passes",
         "//tensorflow/compiler/mlir/tensorflow/transforms:tf_saved_model_passes",

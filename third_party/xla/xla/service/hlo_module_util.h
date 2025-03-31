@@ -19,7 +19,6 @@ limitations under the License.
 #include <functional>
 #include <memory>
 #include <optional>
-#include <string>
 
 #include "absl/log/check.h"
 #include "absl/log/log.h"
@@ -39,7 +38,8 @@ namespace xla {
 // HloModule::ToString format).
 absl::StatusOr<std::unique_ptr<HloModule>> CreateModuleFromString(
     absl::string_view hlo_string,
-    const DebugOptions& debug_options = DebugOptions::default_instance());
+    const DebugOptions& debug_options = DebugOptions::default_instance(),
+    const HloParserOptions& parser_options = HloParserOptions());
 
 // Creates an HloModule from the given proto.
 absl::StatusOr<std::unique_ptr<HloModule>> CreateModuleFromProto(

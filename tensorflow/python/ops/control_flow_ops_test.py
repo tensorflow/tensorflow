@@ -63,6 +63,7 @@ from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.ops import while_loop
+from tensorflow.python.ops import while_v2
 import tensorflow.python.ops.tensor_array_grad  # pylint: disable=unused-import
 from tensorflow.python.platform import googletest
 from tensorflow.python.training import momentum
@@ -1774,6 +1775,20 @@ class AssertTest(test_util.TensorFlowTestCase):
       self.evaluate(whiny(False))
 
     self.assertAllEqual(whiny(True), 5)
+
+
+class AsyncNoopTest(test_util.TensorFlowTestCase):
+
+  def testAsyncNoop(self):
+
+    @def_function.function
+    def f():
+      x = constant_op.constant(2)
+      with ops.control_dependencies([while_v2.async_noop()]):
+        y = x + 2
+      return y
+
+    self.assertEqual(self.evaluate(f()), 4)
 
 
 if __name__ == "__main__":

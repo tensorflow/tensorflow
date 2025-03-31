@@ -624,7 +624,7 @@ TEST_F(CudnnSimplifyPaddingTest, SliceMoreElementsThanPad) {
   // into a slice.
   ASSERT_THAT(root, GmockMatch(m::Slice(
                         &slice, m::GetTupleElement(m::CustomCall(), 0))));
-  for (int64_t i = 0; i < slice->shape().rank(); ++i) {
+  for (int64_t i = 0; i < slice->shape().dimensions_size(); ++i) {
     SCOPED_TRACE(i);
     EXPECT_EQ(slice->slice_starts(i), 0);
     EXPECT_EQ(slice->slice_strides(i), 1);
