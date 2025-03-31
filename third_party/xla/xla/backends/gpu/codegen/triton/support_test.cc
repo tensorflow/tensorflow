@@ -1497,14 +1497,7 @@ INSTANTIATE_TEST_SUITE_P(ComplexTestSuite, ComplexTest,
                          AllTestCombinationsForOpcodes(kTestedOpsComplex),
                          TritonSupportTestTypeAndOpcodeAndDeviceToString);
 
-class DotTest : public TritonSupportTest {
- public:
-  DebugOptions GetDebugOptionsForTest() const override {
-    DebugOptions opts = TritonSupportTest::GetDebugOptionsForTest();
-    opts.set_xla_gpu_unsupported_enable_generic_triton_emitter_for_gemms(true);
-    return opts;
-  }
-};
+using DotTest = TritonSupportTest;
 
 class DotTypesTest : public DotTest,
                      public ::testing::WithParamInterface<
