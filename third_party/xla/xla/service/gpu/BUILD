@@ -1500,6 +1500,7 @@ cc_library(
         "//xla/service/gpu/model:collective_ptable_stats_collection",
         "//xla/service/gpu/model:gpu_cost_model_stats_collection",
         "//xla/service/gpu/model:gpu_hlo_cost_analysis",
+        "//xla/service/gpu/model:matmul_ptable_stats_collection",
         "//xla/service/gpu/model:sol_gpu_cost_model_stats_collection",
         "//xla/service/gpu/transforms/collectives:convert_async_collectives_to_sync",
         "//xla/service/gpu/transforms/collectives:gpu_all_gather_combiner",

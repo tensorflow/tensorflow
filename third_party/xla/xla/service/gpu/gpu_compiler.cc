@@ -174,6 +174,7 @@ limitations under the License.
 #include "xla/service/gpu/model/collective_ptable_stats_collection.h"
 #include "xla/service/gpu/model/gpu_cost_model_stats_collection.h"
 #include "xla/service/gpu/model/gpu_hlo_cost_analysis.h"
+#include "xla/service/gpu/model/matmul_ptable_stats_collection.h"
 #include "xla/service/gpu/model/sol_gpu_cost_model_stats_collection.h"
 #include "xla/service/gpu/pre_scheduling_copy_insertion_pipeline.h"
 #include "xla/service/gpu/reduction_utils.h"
@@ -2610,6 +2611,16 @@ absl::Status GpuCompiler::RunPreSchedulingPasses(
         !collective_perf_table_path.empty()) {
       pipeline.AddPass<CollectivePerfTableStatsCollection>(
           collective_perf_table_path, gpu_device_info);
+    }
+
+    // Perf tables model analysis for matmuls.
+    if (std::string matmul_perf_table_path =
+            module->config()
+                .debug_options()
+                .xla_gpu_experimental_matmul_perf_table_path();
+        !matmul_perf_table_path.empty()) {
+      pipeline.AddPass<MatmulPerfTableStatsCollection>(matmul_perf_table_path,
+                                                       gpu_device_info);
     }
   }
   return pipeline.Run(module).status();
