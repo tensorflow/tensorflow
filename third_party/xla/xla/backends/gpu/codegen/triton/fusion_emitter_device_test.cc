@@ -69,14 +69,6 @@ class TritonEmitterTest : public GpuCodegenTest {
         ->GetDeviceDescription()
         .gpu_compute_capability();
   }
-
-  DebugOptions GetDebugOptionsForTest() const override {
-    DebugOptions debug_options = GpuCodegenTest::GetDebugOptionsForTest();
-    // TODO(b/393299275): Remove when flag is enabled by default.
-    debug_options
-        .set_xla_gpu_unsupported_enable_generic_triton_emitter_for_gemms(true);
-    return debug_options;
-  }
 };
 
 TEST_F(TritonEmitterTest, ReductionOnMinormostAxisIsEmittedCorrectly) {
@@ -683,7 +675,7 @@ triton_softmax_computation {
 ENTRY main {
   parameter_1 = f32[32]{0} parameter(1)
   parameter_0 = f32[32,16]{1,0} parameter(0)
-  ROOT _ = f32[32,16]{1,0} fusion(parameter_0, parameter_1), kind=kCustom, 
+  ROOT _ = f32[32,16]{1,0} fusion(parameter_0, parameter_1), kind=kCustom,
     calls=triton_softmax_computation,
     backend_config={
       "fusion_backend_config":{
@@ -777,8 +769,8 @@ triton_softmax_computation {
 ENTRY main {
   parameter_0 = f32[16,32]{1,0} parameter(0)
   parameter_1 = f32[32]{0} parameter(1)
-  ROOT _ = f32[16,32]{1,0} fusion(parameter_0,parameter_1), kind=kCustom, 
-    calls=triton_softmax_computation, 
+  ROOT _ = f32[16,32]{1,0} fusion(parameter_0,parameter_1), kind=kCustom,
+    calls=triton_softmax_computation,
     backend_config={
       "fusion_backend_config":{
       "kind":"__triton",
@@ -876,7 +868,7 @@ triton_softmax_computation {
 ENTRY main {
   parameter_1 = f32[64,32,16]{2,1,0} parameter(1)
   parameter_0 = f32[16]{0} parameter(0)
-  ROOT _ = f32[64,32,16]{2,1,0} fusion(f32[64,32,16]{2,1,0} parameter_1, f32[16]{0} parameter_0), kind=kCustom, 
+  ROOT _ = f32[64,32,16]{2,1,0} fusion(f32[64,32,16]{2,1,0} parameter_1, f32[16]{0} parameter_0), kind=kCustom,
     calls=triton_softmax_computation,
     backend_config={
       "fusion_backend_config":{
@@ -1158,8 +1150,8 @@ fused_computation {
 
 ENTRY entry_computation {
   param_0.2 = f32[16,16,32] parameter(0)
-  ROOT fusion = f32[4,4,8] fusion(param_0.2), kind=kCustom, 
-    calls=fused_computation, 
+  ROOT fusion = f32[4,4,8] fusion(param_0.2), kind=kCustom,
+    calls=fused_computation,
     backend_config={
       "fusion_backend_config":{
       "kind":"__triton",
@@ -2264,7 +2256,7 @@ ENTRY main {
       "kind":"__triton_nested_gemm_fusion",
       "block_level_fusion_config":{
         "output_tiles":[{"sizes":["32"]}],
-        "num_warps":"1", 
+        "num_warps":"1",
         "num_ctas":"1",
         "num_stages":"1"}}}
 })";
@@ -2354,7 +2346,7 @@ ENTRY entry {
     kind=kCustom, calls=dot, backend_config={
       "fusion_backend_config":{
         "kind":"__triton_nested_gemm_fusion", "block_level_fusion_config":{
-          "output_tiles":[{"sizes":["16", "64"]}], "num_warps":"1", 
+          "output_tiles":[{"sizes":["16", "64"]}], "num_warps":"1",
           "num_ctas":"1", "num_stages":"1"
         }
       }
@@ -2392,7 +2384,7 @@ ENTRY e (p0.1: f32[11,1,24,1], p1.1: f32[128,8]) -> f32[264,8] {
   p0.1 = f32[11,1,24,1]{3,2,1,0} parameter(0)
   bitcast = f32[264]{0} bitcast(p0.1)
   p1.1 = f32[128,8]{1,0} parameter(1)
-  ROOT result.1 = f32[264,8]{1,0} fusion(bitcast, p1.1), kind=kCustom, 
+  ROOT result.1 = f32[264,8]{1,0} fusion(bitcast, p1.1), kind=kCustom,
     calls=triton_dot, backend_config={
       "fusion_backend_config":{
         "kind":"__triton_nested_gemm_fusion",
