@@ -675,6 +675,7 @@ message BufferAllocationProto {
   bool maybe_live_out = 7;
   int64 color = 8;
   repeated Assigned assigned = 9;
+  bool parameter_aliased_with_output = 13;
 }
 
 // A trace of a HeapSimulator run.
