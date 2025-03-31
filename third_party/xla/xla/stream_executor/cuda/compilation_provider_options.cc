@@ -18,6 +18,7 @@ limitations under the License.
 #include <string>
 
 #include "absl/strings/str_format.h"
+#include "xla/xla.pb.h"
 
 namespace stream_executor::cuda {
 
