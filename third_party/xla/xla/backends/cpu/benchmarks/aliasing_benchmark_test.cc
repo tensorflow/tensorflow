@@ -20,6 +20,7 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/strings/string_view.h"
 #include "xla/backends/cpu/benchmarks/hlo_benchmark_runner.h"
+#include "xla/backends/cpu/benchmarks/multi_benchmark_config.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/tsl/platform/test_benchmark.h"
 #include "xla/xla_data.pb.h"
@@ -28,7 +29,8 @@ limitations under the License.
 namespace xla::cpu {
 namespace {
 
-static void BM_ModelWithAliasing(benchmark::State& state) {
+static void BM_ModelWithAliasing(benchmark::State& state,
+                                 HloBenchmarkOptions options) {
   int64_t num_executions = state.range(0);
 
   absl::string_view hlo = R"(
@@ -42,22 +44,15 @@ ENTRY main.5 {
 }
 )";
 
-  HloBenchmarkOptions benchmark_options;
-  benchmark_options.num_executions = num_executions;
+  options.num_executions = num_executions;
 
-  CHECK_OK(RunHloBenchmark(state, hlo, {}, {}, benchmark_options));
+  CHECK_OK(RunHloBenchmark(state, hlo, {}, {}, options));
 }
 
-void GenerateModelWithAliasingArgs(benchmark::internal::Benchmark* benchmark) {
-  benchmark->MeasureProcessCPUTime();
-  const std::vector<int64_t> num_executions = {1, 8};
-  benchmark->ArgNames({"num_executions"});
-  for (int64_t num_execution : num_executions) {
-    benchmark->Args({num_execution});
-  }
-}
-
-BENCHMARK(BM_ModelWithAliasing)->Apply(GenerateModelWithAliasingArgs);
+XLA_CPU_BENCHMARK(BM_ModelWithAliasing)
+    ->ArgName("num_executions")
+    ->Arg(1)
+    ->Arg(8);
 
 }  // namespace
 }  // namespace xla::cpu
