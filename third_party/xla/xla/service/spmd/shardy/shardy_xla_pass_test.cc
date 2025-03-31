@@ -155,7 +155,10 @@ TEST_F(ShardyXLATest, CostantSplitter) {
 
   EXPECT_EQ(dot->operand(0)->operand(0)->opcode(), HloOpcode::kConstant);
   EXPECT_EQ(dot->operand(1)->operand(0)->opcode(), HloOpcode::kConstant);
-  EXPECT_NE(dot->operand(0)->operand(0), dot->operand(1)->operand(0));
+
+  // Constants with identical shardings are expected to be merged.
+  // TODO(tomnatan): Uncomment this test once sdy pun bumped (3/31/25).
+  // EXPECT_EQ(dot->operand(0)->operand(0), dot->operand(1)->operand(0));
 }
 
 TEST_F(ShardyXLATest, Dot) {
