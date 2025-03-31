@@ -131,7 +131,7 @@ StreamExecutorGpuCompiler::Compile(CompileOptions options,
   if (!options.target_config) {
     if (client != nullptr) {
       TF_RETURN_IF_ERROR(IsValidTopologyAndClientForCompile(topology, client));
-      return client->CompileAndLoad(computation, options);
+      return client->Compile(computation, options);
     }
     const auto& gpu_topology =
         tensorflow::down_cast<const xla::StreamExecutorGpuTopologyDescription&>(
@@ -191,7 +191,8 @@ StreamExecutorGpuCompiler::Compile(CompileOptions options,
                                 StreamExecutorGpuHbmMemorySpace::kKind);
   return std::make_unique<StreamExecutorExecutable>(
       std::move(input_options), std::move(aot_results), num_replicas,
-      num_partitions, name, fingerprint, std::move(output_memory_kinds));
+      num_partitions, name, fingerprint, std::move(output_memory_kinds),
+      std::nullopt);
 }
 
 absl::StatusOr<std::unique_ptr<PjRtExecutable>>

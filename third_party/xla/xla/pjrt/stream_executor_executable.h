@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "xla/client/local_client.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/pjrt/pjrt_common.h"
 #include "xla/pjrt/pjrt_executable.h"
@@ -37,17 +38,27 @@ class StreamExecutorExecutable : public PjRtExecutable {
  public:
   StreamExecutorExecutable(
       const CompileOptions& compile_options,
-      std::vector<std::unique_ptr<xla::AotCompilationResult>> executables,
+      std::vector<std::unique_ptr<xla::AotCompilationResult>> aot_executables,
       int num_replicas, int num_partitions, absl::string_view name,
       absl::string_view fingerprint,
       std::optional<std::vector<std::vector<absl::string_view>>>
-          output_memory_kinds)
+          output_memory_kinds,
+      std::optional<std::vector<std::unique_ptr<LocalExecutable>>>
+          local_executables)
       : compile_options_(compile_options),
-        aot_executables_(std::move(executables)),
+        aot_executables_(std::move(aot_executables)),
         num_replicas_(num_replicas),
         num_partitions_(num_partitions),
         name_(name),
-        fingerprint_(fingerprint) {}
+        fingerprint_(fingerprint),
+        output_memory_kinds_(std::move(output_memory_kinds)),
+        local_executables_(std::move(local_executables)) {
+    if (local_executables_.has_value()) {
+      for (const auto& local_executable : *local_executables_) {
+        hlo_modules_.push_back(local_executable->executable()->shared_module());
+      }
+    }
+  }
 
   absl::StatusOr<std::string> SerializeExecutable() const override;
 
@@ -59,7 +70,28 @@ class StreamExecutorExecutable : public PjRtExecutable {
   }
   absl::StatusOr<std::vector<std::shared_ptr<HloModule>>> GetHloModules()
       const override {
-    return absl::UnimplementedError("GetHloModules is not supported.");
+    return hlo_modules_;
+  }
+
+  absl::StatusOr<CompiledMemoryStats> GetCompiledMemoryStats() const override {
+    if (!local_executables_.has_value()) {
+      return absl::UnimplementedError(
+          "Retrieving CompiledMemoryStats is not supported.");
+    }
+    if (local_executables_->size() != 1) {
+      return absl::UnimplementedError(
+          "Retrieving CompiledMemoryStats is not supported for multiple "
+          "executables.");
+    }
+    CompiledMemoryStats memory_stats = CompiledMemoryStats();
+    memory_stats.generated_code_size_in_bytes = SizeOfGeneratedCodeInBytes();
+    const HloProto* proto = (*local_executables_)[0]->executable()->hlo_proto();
+    if (proto != nullptr) {
+      memory_stats.serialized_hlo_proto = proto->SerializeAsString();
+    }
+    memory_stats.PopulateBufferStatsFromAllocations(
+        (*local_executables_)[0]->executable()->GetAllocations());
+    return memory_stats;
   }
 
   absl::StatusOr<std::vector<std::vector<absl::string_view>>>
@@ -74,7 +106,16 @@ class StreamExecutorExecutable : public PjRtExecutable {
     return absl::UnimplementedError("GetCostAnalysis is not supported.");
   }
 
-  int64_t SizeOfGeneratedCodeInBytes() const override { return 0; }
+  int64_t SizeOfGeneratedCodeInBytes() const override {
+    if (!local_executables_.has_value()) {
+      return 0;
+    }
+    int64_t size = 0;
+    for (auto& executable : *local_executables_) {
+      size += executable->executable()->SizeOfGeneratedCodeInBytes();
+    }
+    return size;
+  }
 
   const CompileOptions& compile_options() const { return compile_options_; }
   std::vector<std::unique_ptr<xla::AotCompilationResult>>& aot_executables() {
@@ -88,12 +129,15 @@ class StreamExecutorExecutable : public PjRtExecutable {
  private:
   CompileOptions compile_options_;
   std::vector<std::unique_ptr<xla::AotCompilationResult>> aot_executables_;
+  std::vector<std::shared_ptr<HloModule>> hlo_modules_;
   int num_replicas_;
   int num_partitions_;
   std::string name_;
   std::string fingerprint_;
   std::optional<std::vector<std::vector<absl::string_view>>>
       output_memory_kinds_;
+  std::optional<std::vector<std::unique_ptr<LocalExecutable>>>
+      local_executables_;
 };
 }  // namespace xla
 
