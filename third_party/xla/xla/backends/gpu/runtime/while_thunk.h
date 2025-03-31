@@ -78,6 +78,8 @@ class WhileThunk : public Thunk {
     return condition_result_buffer_index_;
   }
 
+  std::optional<int64_t> trip_count() const { return trip_count_; }
+
   // Returns the current loop iteration if the caller is inside a while loop(s).
   //
   // Implementation relies on thread local storage, be careful when call it from
