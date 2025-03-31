@@ -6269,6 +6269,215 @@ TEST_F(MemorySpaceAssignmentTest, DisallowedUseBugInWhile) {
   AssignMemorySpace(module.get(), options);
 }
 
+TEST_F(MemorySpaceAssignmentTest, TwoLiveAllocationValuesBase) {
+  // In this example, we have enough space to give negate.0 alternate memory,
+  // and we put put negate.0 at the top of MSA's sort order. So, we expect that
+  // it will get alternate memory.
+  //
+  // We are testing a fix for dual live AllocationsValues, with the following
+  // setup:
+  // - HloValue H containing the following positions: negate.0, cp-start.0{0}
+  //   - AllocationValue A0 defined at negate.0
+  //     - Segment A0.S0 define during [negate.0, cp-start.0]
+  //.    - Segment A0.S1 defined during [cp-start.0, add.0]
+  //   - AllocationValue A1 defined at cp-start.0{0}
+  //     - Segment A1.S0 defined during [cp-start.0, cp-done.0]
+  //
+  // A0 and A1 are both live for more than 1 instruction.
+  absl::string_view hlo_string = R"(
+  HloModule module, is_scheduled=true
+
+  ENTRY entry {
+    /*00:*/ p.0 = f32[10,10,10,10] parameter(0)
+    /*01:*/ p.1 = f32[10,10,10,10] parameter(1)
+    /*02:*/ v.0 = f32[10,10,10,10] add(p.1, p.1)
+    /*03:*/ negate.0 = f32[10,10,10,10] negate(p.0)
+    /*04:*/ cp-start.0 = (f32[10,10,10,10], f32[10,10,10,10], u32[], u32[]) collective-permute-start(negate.0), source_target_pairs={{0,1},{2,3}}
+    /*05:*/ v.1 = f32[10,10,10,10] add(v.0, v.0)
+    /*06:*/ add.0 = f32[10,10,10,10] add(negate.0, negate.0)
+    /*07:*/ v.2 = f32[10,10,10,10] add(v.1, v.1)
+    /*08:*/ cp-done.0 = f32[10,10,10,10] collective-permute-done(cp-start.0)
+    /*09:*/ v.3 = f32[10,10,10,10] add(v.2, v.2)
+    /*10:*/ ROOT tuple.0 = (f32[10,10,10,10], f32[10,10,10,10], f32[10,10,10,10]) tuple(add.0, cp-done.0, v.3)
+  })";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  Options options = DefaultMemorySpaceOptions();
+  options.max_size_in_bytes = 4 * 10 * 10 * 10 * 10;
+  MsaBufferIntervalCompare buffer_interval_compare =
+      CreateBufferIntervalCompareFnFromInstructionNames({"negate.0"});
+  InstructionCountPrefetchIntervalPicker prefetch_interval_picker(1, 10);
+  std::unique_ptr<PresetAssignments> preset_assignments =
+      AssignMemorySpace(module.get(), options, buffer_interval_compare,
+                        &prefetch_interval_picker);
+  VLOG(1) << "Module after MSA:\n" << module->ToString();
+
+  HloInstruction* copy0 = FindInstruction(module.get(), "negate.0");
+  ASSERT_NE(copy0, nullptr);
+  EXPECT_EQ(copy0->shape().layout().memory_space(), kAlternateMemorySpace);
+}
+
+TEST_F(MemorySpaceAssignmentTest,
+       TwoLiveAllocationValuesTwoInstructionOverlap) {
+  // In this example, we have enough space to give negate.0 alternate memory,
+  // and we put put negate.0 at the top of MSA's sort order. So, we expect that
+  // it will get alternate memory.
+  //
+  // We are testing a fix for dual live AllocationValues, with the following
+  // setup:
+  // - HloValue H containing the following positions: negate.0, cp-start.0{0}
+  //   - AllocationValue A0 defined at negate.0
+  //     - Segment A0.S0 define during [negate.0, cp-start.0]
+  //.    - Segment A0.S1 defined during [cp-start.0, add.0]
+  //   - AllocationValue A1 defined at cp-start.0{0}
+  //     - Segment A1.S0 defined during [cp-start.0, cp-done.0]
+  //
+  // A0 and A1 are both live for 2 instructions
+  absl::string_view hlo_string = R"(
+  HloModule module, is_scheduled=true
+
+  ENTRY entry {
+    /*00:*/ p.0 = f32[10,10,10,10] parameter(0)
+    /*01:*/ p.1 = f32[10,10,10,10] parameter(1)
+    /*02:*/ v.0 = f32[10,10,10,10] add(p.1, p.1)
+    /*03:*/ negate.0 = f32[10,10,10,10] negate(p.0)
+    /*04:*/ cp-start.0 = (f32[10,10,10,10], f32[10,10,10,10], u32[], u32[]) collective-permute-start(negate.0), source_target_pairs={{0,1},{2,3}}
+    /*05:*/ add.0 = f32[10,10,10,10] add(negate.0, negate.0)
+    /*06:*/ v.1 = f32[10,10,10,10] add(v.0, v.0)
+    /*07:*/ v.2 = f32[10,10,10,10] add(v.1, v.1)
+    /*08:*/ cp-done.0 = f32[10,10,10,10] collective-permute-done(cp-start.0)
+    /*09:*/ v.3 = f32[10,10,10,10] add(v.2, v.2)
+    /*10:*/ ROOT tuple.0 = (f32[10,10,10,10], f32[10,10,10,10], f32[10,10,10,10]) tuple(add.0, cp-done.0, v.3)
+  })";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  Options options = DefaultMemorySpaceOptions();
+  options.max_size_in_bytes = 4 * 10 * 10 * 10 * 10;
+  MsaBufferIntervalCompare buffer_interval_compare =
+      CreateBufferIntervalCompareFnFromInstructionNames({"negate.0"});
+  InstructionCountPrefetchIntervalPicker prefetch_interval_picker(1, 10);
+  std::unique_ptr<PresetAssignments> preset_assignments =
+      AssignMemorySpace(module.get(), options, buffer_interval_compare,
+                        &prefetch_interval_picker);
+  VLOG(1) << "Module after MSA:\n" << module->ToString();
+
+  HloInstruction* copy0 = FindInstruction(module.get(), "negate.0");
+  ASSERT_NE(copy0, nullptr);
+  EXPECT_EQ(copy0->shape().layout().memory_space(), kAlternateMemorySpace);
+}
+
+TEST_F(MemorySpaceAssignmentTest,
+       TwoLiveAllocationValuesFirstLiveAllocationValueOutlastsSecond) {
+  // In this example, we have enough space to give negate.0 alternate memory,
+  // and we put put negate.0 at the top of MSA's sort order. So, we expect that
+  // it will get alternate memory.
+  //
+  // We are testing a fix for dual live AllocationValues, with the following
+  // setup:
+  // - HloValue H containing the following positions: negate.0, cp-start.0{0}
+  //   - AllocationValue A0 defined at negate.0
+  //     - Segment A0.S0 define during [negate.0, cp-start.0]
+  //.    - Segment A0.S1 defined during [cp-start.0, add.0]
+  //     - Segment A0.S2 defined during [add.0, add.1]
+  //   - AllocationValue A1 defined at cp-start.0{0}
+  //     - Segment A1.S0 defined during [cp-start.0, cp-done.0]
+  //
+  // A0 and A1 are both live for more than 1 instruction. A0 is live beyond the
+  // end of A1.
+  absl::string_view hlo_string = R"(
+  HloModule module, is_scheduled=true
+
+  ENTRY entry {
+    /*00:*/ p.0 = f32[10,10,10,10] parameter(0)
+    /*01:*/ p.1 = f32[10,10,10,10] parameter(1)
+    /*02:*/ v.0 = f32[10,10,10,10] add(p.1, p.1)
+    /*03:*/ negate.0 = f32[10,10,10,10] negate(p.0)
+    /*04:*/ cp-start.0 = (f32[10,10,10,10], f32[10,10,10,10], u32[], u32[]) collective-permute-start(negate.0), source_target_pairs={{0,1},{2,3}}
+    /*05:*/ v.1 = f32[10,10,10,10] add(v.0, v.0)
+    /*06:*/ add.0 = f32[10,10,10,10] add(negate.0, negate.0)
+    /*07:*/ v.2 = f32[10,10,10,10] add(v.1, v.1)
+    /*08:*/ cp-done.0 = f32[10,10,10,10] collective-permute-done(cp-start.0)
+    /*09:*/ v.3 = f32[10,10,10,10] add(v.2, v.2)
+    /*10:*/ add.1 = f32[10,10,10,10] add(add.0, negate.0)
+    /*11:*/ ROOT tuple.0 = (f32[10,10,10,10], f32[10,10,10,10], f32[10,10,10,10]) tuple(add.1, cp-done.0, v.3)
+  })";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  Options options = DefaultMemorySpaceOptions();
+  options.max_size_in_bytes = 4 * 10 * 10 * 10 * 10;
+  MsaBufferIntervalCompare buffer_interval_compare =
+      CreateBufferIntervalCompareFnFromInstructionNames({"negate.0"});
+  InstructionCountPrefetchIntervalPicker prefetch_interval_picker(1, 10);
+  std::unique_ptr<PresetAssignments> preset_assignments =
+      AssignMemorySpace(module.get(), options, buffer_interval_compare,
+                        &prefetch_interval_picker);
+  VLOG(1) << "Module after MSA:\n" << module->ToString();
+
+  HloInstruction* copy0 = FindInstruction(module.get(), "negate.0");
+  ASSERT_NE(copy0, nullptr);
+  EXPECT_EQ(copy0->shape().layout().memory_space(), kAlternateMemorySpace);
+}
+
+TEST_F(MemorySpaceAssignmentTest,
+       TwoLiveAllocationValuesUnableToAllocateContiguousAltMem) {
+  // In this example, we have enough space to give v.2 alternate memory,
+  // and we put v.2 at the top of MSA's sort order. So, we expect that
+  // it will get alternate memory. Second, we try to give negate.0 alternate
+  // memory, but we can't. In order to give negate.0 alternate memory, we need
+  // to give it contiguous alternate memory during cp-start.0 to cp-done.0.
+  // (negate.0 and cp-start.0 {0} alias.) However, v.2 is taking too much
+  // alternate memory to accommodate that request.
+  //
+  // We are testing a fix for dual live AllocationValues, with the following
+  // setup:
+  // - HloValue H containing the following positions: negate.0, cp-start.0{0}
+  //   - AllocationValue A0 defined at negate.0
+  //     - Segment A0.S0 define during [negate.0, cp-start.0]
+  //.    - Segment A0.S1 defined during [cp-start.0, add.0]
+  //   - AllocationValue A1 defined at cp-start.0{0}
+  //     - Segment A1.S0 defined during [cp-start.0, cp-done.0]
+  //
+  // A0 and A1 are both live for more than 1 instruction.
+  absl::string_view hlo_string = R"(
+  HloModule module, is_scheduled=true
+
+  ENTRY entry {
+    /*00:*/ p.0 = f32[10,10,10,10] parameter(0)
+    /*01:*/ p.1 = f32[10,10,10,10] parameter(1)
+    /*02:*/ v.0 = f32[10,10,10,10] add(p.1, p.1)
+    /*03:*/ negate.0 = f32[10,10,10,10] negate(p.0)
+    /*04:*/ cp-start.0 = (f32[10,10,10,10], f32[10,10,10,10], u32[], u32[]) collective-permute-start(negate.0), source_target_pairs={{0,1},{2,3}}
+    /*05:*/ v.1 = f32[10,10,10,10] add(v.0, v.0)
+    /*06:*/ add.0 = f32[10,10,10,10] add(negate.0, negate.0)
+    /*07:*/ v.2 = f32[10,10,10,10] add(v.1, v.1)
+    /*08:*/ cp-done.0 = f32[10,10,10,10] collective-permute-done(cp-start.0)
+    /*09:*/ v.3 = f32[10,10,10,10] add(v.2, v.2)
+    /*10:*/ ROOT tuple.0 = (f32[10,10,10,10], f32[10,10,10,10], f32[10,10,10,10]) tuple(add.0, cp-done.0, v.3)
+  })";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  Options options = DefaultMemorySpaceOptions();
+  options.max_size_in_bytes = 4 * 10 * 10 * 10 * 10;
+  MsaBufferIntervalCompare buffer_interval_compare =
+      CreateBufferIntervalCompareFnFromInstructionNames({"v.2", "negate.0"});
+  InstructionCountPrefetchIntervalPicker prefetch_interval_picker(1, 10);
+  std::unique_ptr<PresetAssignments> preset_assignments =
+      AssignMemorySpace(module.get(), options, buffer_interval_compare,
+                        &prefetch_interval_picker);
+  VLOG(1) << "Module after MSA:\n" << module->ToString();
+
+  HloInstruction* v2 = FindInstruction(module.get(), "v.2");
+  ASSERT_NE(v2, nullptr);
+  EXPECT_EQ(v2->shape().layout().memory_space(), kAlternateMemorySpace);
+  HloInstruction* copy0 = FindInstruction(module.get(), "negate.0");
+  ASSERT_NE(copy0, nullptr);
+  EXPECT_NE(copy0->shape().layout().memory_space(), kAlternateMemorySpace);
+}
+
 TEST_F(MemorySpaceAssignmentTest, AvoidRedundantEvictionInWhile) {
   absl::string_view hlo_string = R"(
   HloModule module, is_scheduled=true
@@ -7179,41 +7388,6 @@ ENTRY entry {
                   .tuple_shapes(0)
                   .layout()
                   .memory_space() == kAlternateMemorySpace);
-  EXPECT_TRUE(collective_permute_start->shape()
-                  .tuple_shapes(1)
-                  .layout()
-                  .memory_space() == kAlternateMemorySpace);
-}
-
-TEST_F(MemorySpaceAssignmentTest, AsyncOpShortLiveRangeInputBufferConsumer) {
-  absl::string_view hlo_string = R"(
-HloModule module, is_scheduled=true
-
-ENTRY entry {
-  param = bf16[4]{0} parameter(0)
-  negate0 = bf16[4]{0} negate(param)
-  collective-permute-start = (bf16[4]{0}, bf16[4]{0}, u32[], u32[]) collective-permute-start(negate0), source_target_pairs={{0,1},{1,2},{2,3}}
-  negate1 = bf16[4]{0} negate(negate0)
-  negate2 = bf16[4]{0} negate(negate1)
-  negate3 = bf16[4]{0} negate(negate2)
-  collective-permute-done = bf16[4]{0} collective-permute-done(collective-permute-start)
-  ROOT add = add(collective-permute-done, negate3)
-}
-  )";
-
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
-  AssignMemorySpace(module.get());
-
-  // Expect only the destination buffer to get alternate memory allocation
-  // because negate0 is also used by negate1.
-  HloInstruction* collective_permute_start =
-      module->entry_computation()->GetInstructionWithName(
-          "collective-permute-start");
-  EXPECT_TRUE(collective_permute_start->shape()
-                  .tuple_shapes(0)
-                  .layout()
-                  .memory_space() == kDefaultMemorySpace);
   EXPECT_TRUE(collective_permute_start->shape()
                   .tuple_shapes(1)
                   .layout()
