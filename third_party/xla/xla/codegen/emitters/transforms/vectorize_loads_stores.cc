@@ -297,26 +297,14 @@ struct VectorizeLoad : mlir::OpRewritePattern<mlir::tensor::ExtractOp> {
 
 // Verifies that the insertions happening in the loop can all safely be batched
 // in the end.
-bool IsConflictFree(mlir::tensor::InsertOp op) {
+bool IsConflictFree(mlir::Operation* op, Value destination) {
   // The insertion's only use must be the yield.
   if (!op->hasOneUse() || !mlir::isa<scf::YieldOp>(*op->user_begin())) {
     return false;
   }
   // The destination must be one of the loop's block arguments, and the
   // destination must be the argument's only use.
-  auto bbarg = mlir::dyn_cast<mlir::BlockArgument>(op.getDest());
-  return bbarg && bbarg.hasOneUse() &&
-         bbarg.getOwner()->getParentOp() == op->getParentOp();
-}
-
-bool IsConflictFree(AtomicRMWOp op) {
-  // The insertion's only use must be the yield.
-  if (!op->hasOneUse() || !mlir::isa<scf::YieldOp>(*op->user_begin())) {
-    return false;
-  }
-  // The destination must be one of the loop's block arguments, and the
-  // destination must be the argument's only use.
-  auto bbarg = mlir::dyn_cast<mlir::BlockArgument>(op->getOpOperand(0).get());
+  auto bbarg = mlir::dyn_cast<mlir::BlockArgument>(destination);
   return bbarg && bbarg.hasOneUse() &&
          bbarg.getOwner()->getParentOp() == op->getParentOp();
 }
@@ -340,7 +328,7 @@ class VectorizeAtomicRMW : public mlir::OpRewritePattern<AtomicRMWOp> {
       return rewriter.notifyMatchFailure(op, "no loop found");
     }
 
-    if (!IsConflictFree(op)) {
+    if (!IsConflictFree(op, op.getOperand(0))) {
       return rewriter.notifyMatchFailure(op, "write may be read back by loop");
     }
 
@@ -415,7 +403,7 @@ struct VectorizeStore : mlir::OpRewritePattern<mlir::tensor::InsertOp> {
     if (!loop) {
       return rewriter.notifyMatchFailure(op, "no loop found");
     }
-    if (!IsConflictFree(op)) {
+    if (!IsConflictFree(op, op.getDest())) {
       return rewriter.notifyMatchFailure(op, "write may be read back by loop");
     }
     auto vector_type = GetVectorType(op.getDest().getType(), loop);
@@ -462,6 +450,99 @@ struct VectorizeStore : mlir::OpRewritePattern<mlir::tensor::InsertOp> {
   }
 };
 
+struct FoldVectorInsertExtractPairs
+    : mlir::OpRewritePattern<mlir::vector::InsertOp> {
+  using OpRewritePattern::OpRewritePattern;
+
+  mlir::LogicalResult matchAndRewrite(
+      mlir::vector::InsertOp insert,
+      mlir::PatternRewriter& rewriter) const override {
+    // Check that the vector is 1D and the index is dynamic.
+    auto vector_type = insert.getDest().getType();
+    if (vector_type.getRank() != 1 || !insert.hasDynamicPosition()) {
+      return rewriter.notifyMatchFailure(insert, "the vector should be 1D");
+    }
+    Value index = insert.getDynamicPosition().front();
+
+    // Check that the value that we insert is produced by a vector.extract.
+    auto extract = mlir::dyn_cast_or_null<mlir::vector::ExtractOp>(
+        insert.getSource().getDefiningOp());
+    if (!extract || !extract.hasDynamicPosition() || !extract->hasOneUse()) {
+      return rewriter.notifyMatchFailure(insert,
+                                         "no single-use vector.extract found");
+    }
+
+    // Check that the insert is in the loop and is used only by the yield.
+    auto loop = mlir::dyn_cast_or_null<scf::ForOp>(insert->getParentOp());
+    if (!loop) {
+      return rewriter.notifyMatchFailure(insert, "no scf.for loop found");
+    }
+    if (!IsConflictFree(insert, insert.getDest())) {
+      return rewriter.notifyMatchFailure(insert,
+                                         "write may be read back by loop");
+    }
+
+    // Avoid folding the vector.transfer_read from the vector-sized tensors.
+    // Otherwise, the following function:
+    //
+    // func.func @example(%arg0: tensor<2xi4>, %arg1: tensor<2xi4>)
+    //     -> tensor<2xi4> {
+    //   %0 = scf.for %arg2 = %c0 to %c2 step %c1
+    //       iter_args(%arg3 = %arg1) -> (tensor<2xi4>) {
+    //     %extracted = tensor.extract %arg0[%arg2] : tensor<2xi4>
+    //     %inserted = tensor.insert %extracted into %arg3[%arg2] : tensor<2xi4>
+    //     scf.yield %inserted : tensor<2xi4>
+    //   }
+    //   return %0 : tensor<2xi4>
+    // }
+    //
+    // will be folded into:
+    //
+    // func.func @example(%arg0: tensor<2xi4>,
+    //     %arg1: tensor<2xi4>) -> tensor<2xi4> {
+    //   return %arg0 : tensor<2xi4>
+    // }
+    // and the data won't be copied.
+    auto bbarg = mlir::cast<mlir::BlockArgument>(insert.getDest());
+    int64_t result_index = bbarg.getArgNumber() - 1;
+    if (auto transfer_read =
+            extract.getVector().getDefiningOp<mlir::vector::TransferReadOp>()) {
+      if (transfer_read.getSource().getType().getNumElements() ==
+          vector_type.getNumElements()) {
+        return rewriter.notifyMatchFailure(
+            insert,
+            "do not fold the vector.transfer_read from the vector-sized "
+            "tensors.");
+      }
+    }
+
+    // Check that the extract and insert use the same IV.
+    if (extract.getDynamicPosition().front() != index ||
+        index != loop.getInductionVar()) {
+      return rewriter.notifyMatchFailure(
+          insert,
+          "both insert and extract should use the IV of the parent loop");
+    }
+    // Check the loop spans the whole vector.
+    if (mlir::getConstantIntValue(loop.getUpperBound()) !=
+            vector_type.getDimSize(0) ||
+        mlir::getConstantIntValue(loop.getStep()) != 1 ||
+        mlir::getConstantIntValue(loop.getLowerBound()) != 0) {
+      return rewriter.notifyMatchFailure(
+          insert, "loop bounds don't match the vector type");
+    }
+
+    // Replace the loop result with the corresponding init.
+    auto yield_op = loop.getBody()->getTerminator();
+    rewriter.modifyOpInPlace(yield_op, [&]() {
+      yield_op->setOperand(result_index, insert.getDest());
+    });
+    rewriter.replaceAllUsesWith(loop->getResult(result_index),
+                                extract.getVector());
+    return mlir::success();
+  }
+};
+
 class VectorizeLoadsAndStoresPass
     : public impl::VectorizeLoadsAndStoresPassBase<
           VectorizeLoadsAndStoresPass> {
@@ -486,7 +567,8 @@ class VectorizeLoadsAndStoresPass
     }
     mlir::MLIRContext* mlir_context = &getContext();
     mlir::RewritePatternSet patterns(mlir_context);
-    patterns.add<VectorizeLoad, VectorizeStore>(mlir_context);
+    patterns.add<VectorizeLoad, VectorizeStore, FoldVectorInsertExtractPairs>(
+        mlir_context);
     patterns.add<VectorizeAtomicRMW>(mlir_context, device_spec_);
     if (mlir::failed(
             mlir::applyPatternsGreedily(getOperation(), std::move(patterns)))) {
