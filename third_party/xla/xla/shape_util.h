@@ -477,6 +477,9 @@ class ShapeUtil {
       const Shape& shape);
 
   // As MakeShape, but the object to write to is passed in.
+  // Precondition:
+  //   - if element_type is a non-array type, dimensions must be empty.
+  //   - shape must not be null.
   static absl::Status PopulateShape(PrimitiveType element_type,
                                     absl::Span<const int64_t> dimensions,
                                     Shape* shape);
