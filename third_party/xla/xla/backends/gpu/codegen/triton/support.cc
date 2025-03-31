@@ -481,25 +481,18 @@ bool IsTritonUnsupportedOpcode(HloOpcode opcode) {
   switch (opcode) {
     case HloOpcode::kAddDependency:
     case HloOpcode::kAfterAll:
-    case HloOpcode::kBatchNormGrad:
-    case HloOpcode::kBatchNormInference:
-    case HloOpcode::kBatchNormTraining:
     case HloOpcode::kBitcastConvert:
-    case HloOpcode::kCall:
     case HloOpcode::kCholesky:
-    case HloOpcode::kConditional:
     case HloOpcode::kConvolution:
     case HloOpcode::kCopyDone:
     case HloOpcode::kCopyStart:
     case HloOpcode::kCustomCall:
-    case HloOpcode::kDomain:
     case HloOpcode::kDynamicReshape:
     case HloOpcode::kDynamicSlice:
     case HloOpcode::kDynamicUpdateSlice:
     case HloOpcode::kFft:
     case HloOpcode::kFusion:
     case HloOpcode::kGather:
-    case HloOpcode::kGetDimensionSize:
     case HloOpcode::kGetTupleElement:
     case HloOpcode::kInfeed:
     case HloOpcode::kMap:
@@ -510,7 +503,6 @@ bool IsTritonUnsupportedOpcode(HloOpcode opcode) {
     case HloOpcode::kRecv:
     case HloOpcode::kRecvDone:
     case HloOpcode::kReduceWindow:
-    case HloOpcode::kReverse:
     case HloOpcode::kScatter:
     case HloOpcode::kSelectAndScatter:
     case HloOpcode::kSend:
@@ -521,7 +513,6 @@ bool IsTritonUnsupportedOpcode(HloOpcode opcode) {
     case HloOpcode::kTopK:
     case HloOpcode::kTriangularSolve:
     case HloOpcode::kTuple:
-    case HloOpcode::kWhile:
       return true;
     default:
       return false;
