@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "mhlo/analysis/shape_component_analysis.h"
+#include "stablehlo_ext/analysis/shape_component_analysis.h"
 
 #include <algorithm>
 #include <cstdint>
@@ -22,17 +22,20 @@ limitations under the License.
 
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/Support/ErrorHandling.h"
-#include "mhlo/IR/hlo_ops.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Shape/IR/Shape.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/IR/AffineExpr.h"
+#include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/Matchers.h"
+#include "mlir/IR/Value.h"
 #include "mlir/Support/LLVM.h"
+#include "stablehlo/dialect/StablehloOps.h"
 
-using namespace mlir;
+namespace mlir {
+namespace stablehlo_ext {
 
 using SymbolicShapeConstraintsMap =
     ShapeComponentAnalysis::SymbolicShapeConstraintsMap;
@@ -90,17 +93,18 @@ struct ShapeVisitor {
       if (transitivelyRequestedInfo.isShapeInfo()) {
         if (value.getDefiningOp<shape::AssumingOp>()) {
           backwardAssumingShape(value);
-        } else if (auto bcast =
-                       value.getDefiningOp<mhlo::DynamicBroadcastInDimOp>()) {
+        } else if (auto bcast = value.getDefiningOp<
+                                stablehlo::DynamicBroadcastInDimOp>()) {
           backwardDynamicBroadcastInDimShape(bcast);
         } else if (auto reshape =
-                       value.getDefiningOp<mhlo::DynamicReshapeOp>()) {
+                       value.getDefiningOp<stablehlo::DynamicReshapeOp>()) {
           backwardDynamicReshapeShape(reshape);
-        } else if (value.getDefiningOp<mhlo::ReduceOp>()) {
+        } else if (value.getDefiningOp<stablehlo::ReduceOp>()) {
           backwardReduceShape(value);
-        } else if (auto transpose = value.getDefiningOp<mhlo::TransposeOp>()) {
+        } else if (auto transpose =
+                       value.getDefiningOp<stablehlo::TransposeOp>()) {
           backwardTransposeShape(transpose);
-        } else if (auto select = value.getDefiningOp<mhlo::SelectOp>()) {
+        } else if (auto select = value.getDefiningOp<stablehlo::SelectOp>()) {
           backwardSelectShape(select);
         } else if (auto arg = mlir::dyn_cast<BlockArgument>(value)) {
           backwardBlockArgumentShape(arg);
@@ -142,19 +146,20 @@ struct ShapeVisitor {
         backwardTensorFromElements(fromElements);
       } else if (auto extract = value.getDefiningOp<tensor::ExtractOp>()) {
         backwardTensorExtract(extract);
-      } else if (auto add = value.getDefiningOp<mhlo::AddOp>()) {
+      } else if (auto add = value.getDefiningOp<stablehlo::AddOp>()) {
         backwardBinOp(add);
-      } else if (auto mul = value.getDefiningOp<mhlo::MulOp>()) {
+      } else if (auto mul = value.getDefiningOp<stablehlo::MulOp>()) {
         backwardBinOp(mul);
       } else if (auto add = value.getDefiningOp<arith::AddIOp>()) {
         backwardBinOp(add);
       } else if (auto mul = value.getDefiningOp<arith::MulIOp>()) {
         backwardBinOp(mul);
-      } else if (auto concat = value.getDefiningOp<mhlo::ConcatenateOp>()) {
+      } else if (auto concat =
+                     value.getDefiningOp<stablehlo::ConcatenateOp>()) {
         backwardConcatenate(concat);
-      } else if (auto reshape = value.getDefiningOp<mhlo::ReshapeOp>()) {
+      } else if (auto reshape = value.getDefiningOp<stablehlo::ReshapeOp>()) {
         backwardReshape(reshape);
-      } else if (auto slice = value.getDefiningOp<mhlo::SliceOp>()) {
+      } else if (auto slice = value.getDefiningOp<stablehlo::SliceOp>()) {
         backwardSlice(slice);
       } else if (matchPattern(value, m_Constant())) {
         backwardConstant(value);
@@ -176,17 +181,18 @@ struct ShapeVisitor {
       if (!transitivelyRequestedInfo.isValueInfo()) {
         if (value.getDefiningOp<shape::AssumingOp>()) {
           forwardAssumingShape(value);
-        } else if (auto broadcast =
-                       value.getDefiningOp<mhlo::DynamicBroadcastInDimOp>()) {
+        } else if (auto broadcast = value.getDefiningOp<
+                                    stablehlo::DynamicBroadcastInDimOp>()) {
           forwardDynamicBroadcastInDimShape(broadcast);
         } else if (auto reshape =
-                       value.getDefiningOp<mhlo::DynamicReshapeOp>()) {
+                       value.getDefiningOp<stablehlo::DynamicReshapeOp>()) {
           forwardDynamicReshapeShape(reshape);
-        } else if (value.getDefiningOp<mhlo::ReduceOp>()) {
+        } else if (value.getDefiningOp<stablehlo::ReduceOp>()) {
           forwardReduceShape(value);
-        } else if (auto transpose = value.getDefiningOp<mhlo::TransposeOp>()) {
+        } else if (auto transpose =
+                       value.getDefiningOp<stablehlo::TransposeOp>()) {
           forwardTransposeShape(transpose);
-        } else if (auto select = value.getDefiningOp<mhlo::SelectOp>()) {
+        } else if (auto select = value.getDefiningOp<stablehlo::SelectOp>()) {
           forwardSelectShape(select);
         } else if (value.getDefiningOp() &&
                    value.getDefiningOp()
@@ -217,19 +223,20 @@ struct ShapeVisitor {
         forwardTensorFromElements(fromElements);
       } else if (auto extract = value.getDefiningOp<tensor::ExtractOp>()) {
         forwardTensorExtract(extract);
-      } else if (auto add = value.getDefiningOp<mhlo::AddOp>()) {
+      } else if (auto add = value.getDefiningOp<stablehlo::AddOp>()) {
         forwardBinOp(add, [](AffineExpr a, AffineExpr b) { return a + b; });
-      } else if (auto mul = value.getDefiningOp<mhlo::MulOp>()) {
+      } else if (auto mul = value.getDefiningOp<stablehlo::MulOp>()) {
         forwardBinOp(mul, [](AffineExpr a, AffineExpr b) { return a * b; });
       } else if (auto add = value.getDefiningOp<arith::AddIOp>()) {
         forwardBinOp(add, [](AffineExpr a, AffineExpr b) { return a + b; });
       } else if (auto mul = value.getDefiningOp<arith::MulIOp>()) {
         forwardBinOp(mul, [](AffineExpr a, AffineExpr b) { return a * b; });
-      } else if (auto concat = value.getDefiningOp<mhlo::ConcatenateOp>()) {
+      } else if (auto concat =
+                     value.getDefiningOp<stablehlo::ConcatenateOp>()) {
         forwardConcatenate(concat);
-      } else if (auto reshape = value.getDefiningOp<mhlo::ReshapeOp>()) {
+      } else if (auto reshape = value.getDefiningOp<stablehlo::ReshapeOp>()) {
         forwardReshape(reshape);
-      } else if (auto slice = value.getDefiningOp<mhlo::SliceOp>()) {
+      } else if (auto slice = value.getDefiningOp<stablehlo::SliceOp>()) {
         forwardSlice(slice);
       } else if (matchPattern(value, m_Constant())) {
         forwardConstant(value);
@@ -324,21 +331,23 @@ struct ShapeVisitor {
     }
     assert(dims.size() == rank && "expect one expression per dimension");
   }
-  void backwardDynamicBroadcastInDimShape(mhlo::DynamicBroadcastInDimOp op) {
+  void backwardDynamicBroadcastInDimShape(
+      stablehlo::DynamicBroadcastInDimOp op) {
     forwardsWorklist.push_back(ShapeOrValueInfo::getShapeInfoOf(op));
     backwardsWorklist.push_back(
         ShapeOrValueInfo::getValueInfoOf(op.getOutputDimensions()));
   }
-  void forwardDynamicBroadcastInDimShape(mhlo::DynamicBroadcastInDimOp op) {
+  void forwardDynamicBroadcastInDimShape(
+      stablehlo::DynamicBroadcastInDimOp op) {
     auto &dims = insert(ShapeOrValueInfo::getShapeInfoOf(op));
     dims = lookup(ShapeOrValueInfo::getValueInfoOf(op.getOutputDimensions()));
   }
-  void backwardDynamicReshapeShape(mhlo::DynamicReshapeOp op) {
+  void backwardDynamicReshapeShape(stablehlo::DynamicReshapeOp op) {
     forwardsWorklist.push_back(ShapeOrValueInfo::getShapeInfoOf(op));
     backwardsWorklist.push_back(
         ShapeOrValueInfo::getValueInfoOf(op.getOutputShape()));
   }
-  void forwardDynamicReshapeShape(mhlo::DynamicReshapeOp op) {
+  void forwardDynamicReshapeShape(stablehlo::DynamicReshapeOp op) {
     auto rankedTy = mlir::cast<RankedTensorType>(op.getResult().getType());
     auto shapeDims =
         lookup(ShapeOrValueInfo::getValueInfoOf(op.getOutputShape()));
@@ -347,14 +356,14 @@ struct ShapeVisitor {
   }
   void backwardReduceShape(Value op) {
     forwardsWorklist.push_back(ShapeOrValueInfo::getShapeInfoOf(op));
-    auto reduceOp = op.getDefiningOp<mhlo::ReduceOp>();
+    auto reduceOp = op.getDefiningOp<stablehlo::ReduceOp>();
     if (reduceOp.getInputs().size() == 1) {
       backwardsWorklist.push_back(
           ShapeOrValueInfo::getShapeInfoOf(reduceOp.getInputs().back()));
     }
   }
   void forwardReduceShape(Value op) {
-    auto reduceOp = op.getDefiningOp<mhlo::ReduceOp>();
+    auto reduceOp = op.getDefiningOp<stablehlo::ReduceOp>();
     if (reduceOp.getInputs().size() != 1) return forwardUnknownShape(op);
     auto &dims = insert(ShapeOrValueInfo::getShapeInfoOf(op));
     for (const auto &dim : llvm::enumerate(lookup(
@@ -363,23 +372,22 @@ struct ShapeVisitor {
         dims.push_back(dim.value());
     }
   }
-  void backwardTransposeShape(mhlo::TransposeOp op) {
+  void backwardTransposeShape(stablehlo::TransposeOp op) {
     forwardsWorklist.push_back(ShapeOrValueInfo::getShapeInfoOf(op));
     backwardsWorklist.push_back(
         ShapeOrValueInfo::getShapeInfoOf(op.getOperand()));
   }
-  void forwardTransposeShape(mhlo::TransposeOp op) {
+  void forwardTransposeShape(stablehlo::TransposeOp op) {
     auto &dims = insert(ShapeOrValueInfo::getShapeInfoOf(op));
     auto in = lookup(ShapeOrValueInfo::getShapeInfoOf(op.getOperand()));
-    auto elem = mlir::cast<DenseIntElementsAttr>(op.getPermutation());
-    for (const auto &val : elem) dims.push_back(in[val.getZExtValue()]);
+    for (const auto &val : op.getPermutation()) dims.push_back(in[val]);
   }
-  void backwardSelectShape(mhlo::SelectOp op) {
+  void backwardSelectShape(stablehlo::SelectOp op) {
     forwardsWorklist.push_back(ShapeOrValueInfo::getShapeInfoOf(op));
     backwardsWorklist.push_back(
         ShapeOrValueInfo::getShapeInfoOf(op.getOnTrue()));
   }
-  void forwardSelectShape(mhlo::SelectOp op) {
+  void forwardSelectShape(stablehlo::SelectOp op) {
     auto &dims = insert(ShapeOrValueInfo::getShapeInfoOf(op));
     // Forward the `on_true` operand, it has the same shape as the output.
     dims = lookup(ShapeOrValueInfo::getShapeInfoOf(op.getOnTrue()));
@@ -623,12 +631,12 @@ struct ShapeVisitor {
       forwardUnknown(v);
     }
   }
-  void backwardConcatenate(mhlo::ConcatenateOp op) {
+  void backwardConcatenate(stablehlo::ConcatenateOp op) {
     forwardsWorklist.push_back(ShapeOrValueInfo::getValueInfoOf(op));
     for (auto operand : op.getOperands())
       backwardsWorklist.push_back(ShapeOrValueInfo::getValueInfoOf(operand));
   }
-  void forwardConcatenate(mhlo::ConcatenateOp op) {
+  void forwardConcatenate(stablehlo::ConcatenateOp op) {
     for (auto operand : op.getOperands()) {
       auto in = lookup(ShapeOrValueInfo::getValueInfoOf(operand));
       if (in.size() != 1) return forwardUnknown(op);
@@ -639,35 +647,34 @@ struct ShapeVisitor {
       dims.push_back({in[0].symbols, in[0].expr});
     }
   }
-  void backwardReshape(mhlo::ReshapeOp op) {
+  void backwardReshape(stablehlo::ReshapeOp op) {
     forwardsWorklist.push_back(ShapeOrValueInfo::getValueInfoOf(op));
     backwardsWorklist.push_back(
         ShapeOrValueInfo::getValueInfoOf(op.getOperand()));
   }
-  void forwardReshape(mhlo::ReshapeOp op) {
+  void forwardReshape(stablehlo::ReshapeOp op) {
     auto in = lookup(ShapeOrValueInfo::getValueInfoOf(op.getOperand()));
     if (in.size() != 1) return forwardUnknown(op);
     auto &dims = insert(ShapeOrValueInfo::getValueInfoOf(op));
     dims.push_back({in[0].symbols, in[0].expr});
   }
-  void backwardSlice(mhlo::SliceOp op) {
+  void backwardSlice(stablehlo::SliceOp op) {
     forwardsWorklist.push_back(ShapeOrValueInfo::getValueInfoOf(op));
     backwardsWorklist.push_back(
         ShapeOrValueInfo::getValueInfoOf(op.getOperand()));
   }
-  void forwardSlice(mhlo::SliceOp op) {
+  void forwardSlice(stablehlo::SliceOp op) {
     // Only handle slices equivalent to an extract.
     if (!op.getType().hasStaticShape({1})) {
       return forwardUnknown(op);
     }
     auto &dims = insert(ShapeOrValueInfo::getValueInfoOf(op));
     auto in = lookup(ShapeOrValueInfo::getValueInfoOf(op.getOperand()));
-    auto elem = mlir::cast<DenseIntElementsAttr>(op.getStartIndices());
-    auto i = (*elem.begin()).getZExtValue();
-    if (i >= in.size()) {  // Bounds check.
+    auto first = op.getStartIndices().front();
+    if (first >= in.size()) {  // Bounds check.
       return forwardUnknown(op);
     }
-    dims.push_back({in[i].symbols, in[i].expr});
+    dims.push_back({in[first].symbols, in[first].expr});
   }
   void backwardUnknown(Value v) {
     forwardsWorklist.push_back(ShapeOrValueInfo::getValueInfoOf(v));
@@ -839,3 +846,6 @@ void SymbolicExpr::dump(llvm::raw_ostream &os) const {
     os << '[' << sym.value().index << "]\n";
   }
 }
+
+}  // namespace stablehlo_ext
+}  // namespace mlir

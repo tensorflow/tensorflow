@@ -13,17 +13,18 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef MLIR_HLO_MHLO_ANALYSIS_SHAPE_COMPONENT_ANALYSIS_H
-#define MLIR_HLO_MHLO_ANALYSIS_SHAPE_COMPONENT_ANALYSIS_H
+#ifndef STABLEHLO_EXT_ANALYSIS_SHAPE_COMPONENT_ANALYSIS_H_
+#define STABLEHLO_EXT_ANALYSIS_SHAPE_COMPONENT_ANALYSIS_H_
 
 #include <optional>
 
 #include "llvm/Support/raw_ostream.h"
-#include "mhlo/IR/hlo_ops.h"
 #include "mlir/IR/AffineMap.h"
 #include "mlir/IR/Value.h"
+#include "stablehlo/dialect/StablehloOps.h"
 
 namespace mlir {
+namespace stablehlo_ext {
 
 // Analysis to infer shape information.
 //
@@ -137,34 +138,38 @@ class ShapeComponentAnalysis {
   // Clear analysis data structures.
   void reset();
 };
+}  // namespace stablehlo_ext
 }  // namespace mlir
 
 namespace llvm {
 
 template <>
-struct DenseMapInfo<mlir::ShapeComponentAnalysis::Symbol> {
-  static inline mlir::ShapeComponentAnalysis::Symbol getEmptyKey() {
-    return {mlir::ShapeComponentAnalysis::ShapeOrValueInfo::DenseMapInfo::
-                getEmptyKey(),
+struct DenseMapInfo<mlir::stablehlo_ext::ShapeComponentAnalysis::Symbol> {
+  static inline mlir::stablehlo_ext::ShapeComponentAnalysis::Symbol
+  getEmptyKey() {
+    return {mlir::stablehlo_ext::ShapeComponentAnalysis::ShapeOrValueInfo::
+                DenseMapInfo::getEmptyKey(),
             llvm::DenseMapInfo<size_t>::getEmptyKey()};
   }
-  static inline mlir::ShapeComponentAnalysis::Symbol getTombstoneKey() {
-    return {mlir::ShapeComponentAnalysis::ShapeOrValueInfo::DenseMapInfo::
-                getTombstoneKey(),
+  static inline mlir::stablehlo_ext::ShapeComponentAnalysis::Symbol
+  getTombstoneKey() {
+    return {mlir::stablehlo_ext::ShapeComponentAnalysis::ShapeOrValueInfo::
+                DenseMapInfo::getTombstoneKey(),
             llvm::DenseMapInfo<size_t>::getTombstoneKey()};
   }
-  static unsigned getHashValue(mlir::ShapeComponentAnalysis::Symbol symbol) {
+  static unsigned getHashValue(
+      mlir::stablehlo_ext::ShapeComponentAnalysis::Symbol symbol) {
     return llvm::hash_combine(
-        mlir::ShapeComponentAnalysis::ShapeOrValueInfo::DenseMapInfo::
-            getHashValue(symbol.source),
+        mlir::stablehlo_ext::ShapeComponentAnalysis::ShapeOrValueInfo::
+            DenseMapInfo::getHashValue(symbol.source),
         llvm::DenseMapInfo<size_t>::getHashValue(symbol.index));
   }
-  static bool isEqual(mlir::ShapeComponentAnalysis::Symbol lhs,
-                      mlir::ShapeComponentAnalysis::Symbol rhs) {
+  static bool isEqual(mlir::stablehlo_ext::ShapeComponentAnalysis::Symbol lhs,
+                      mlir::stablehlo_ext::ShapeComponentAnalysis::Symbol rhs) {
     return lhs == rhs;
   }
 };
 
 }  // namespace llvm
 
-#endif  // MLIR_HLO_MHLO_ANALYSIS_SHAPE_COMPONENT_ANALYSIS_H
+#endif  // STABLEHLO_EXT_ANALYSIS_SHAPE_COMPONENT_ANALYSIS_H_

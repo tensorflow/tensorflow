@@ -154,6 +154,7 @@ cc_library(
         "//xla/mlir/utils:type_util",
         "//xla/mlir_hlo",
         "//xla/mlir_hlo:mhlo_passes",
+        "//xla/mlir_hlo:stablehlo_extension_passes",
         "//xla/service:computation_layout",
         "//xla/service:hlo_module_config",
         "//xla/service:hlo_proto_cc",

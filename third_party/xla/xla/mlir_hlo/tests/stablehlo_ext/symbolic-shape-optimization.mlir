@@ -1,4 +1,4 @@
-// RUN: mlir-hlo-opt %s --split-input-file --symbolic-shape-optimization | \
+// RUN: mlir-hlo-opt %s --split-input-file --stablehlo-ext-symbolic-shape-optimization | \
 // RUN: FileCheck %s
 
 // CHECK-LABEL: func @reshape_expand_front
@@ -8,7 +8,7 @@ func.func @reshape_expand_front(%arg0: tensor<?x?xf32>) -> tensor<1x?x?xf32> {
   %d0 = tensor.dim %arg0, %c0 : tensor<?x?xf32>
   %d1 = tensor.dim %arg0, %c1 : tensor<?x?xf32>
   %shape = tensor.from_elements %c1, %d0, %d1 : tensor<3xindex>
-  %reshape = "mhlo.dynamic_reshape"(%arg0, %shape)
+  %reshape = "stablehlo.dynamic_reshape"(%arg0, %shape)
       : (tensor<?x?xf32>, tensor<3xindex>) -> tensor<1x?x?xf32>
 // CHECK: tensor.expand_shape %arg0 [
 // CHECK-SAME: [0, 1], [2]] {{.*}} : tensor<?x?xf32> into tensor<1x?x?xf32>
@@ -22,7 +22,7 @@ func.func @reshape_expand_front_static(%arg0: tensor<2x?xf32>) -> tensor<1x2x?xf
   %d0 = tensor.dim %arg0, %c0 : tensor<2x?xf32>
   %d1 = tensor.dim %arg0, %c1 : tensor<2x?xf32>
   %shape = tensor.from_elements %c1, %d0, %d1 : tensor<3xindex>
-  %reshape = "mhlo.dynamic_reshape"(%arg0, %shape)
+  %reshape = "stablehlo.dynamic_reshape"(%arg0, %shape)
       : (tensor<2x?xf32>, tensor<3xindex>) -> tensor<1x2x?xf32>
 // CHECK: tensor.expand_shape %arg0 [
 // CHECK-SAME: [0, 1], [2]] {{.*}} : tensor<2x?xf32> into tensor<1x2x?xf32>
@@ -38,7 +38,7 @@ func.func @reshape_expand_back(%arg0: tensor<?x?xf32>) -> tensor<?x?x1x1xf32> {
   %d0 = tensor.dim %arg0, %c0 : tensor<?x?xf32>
   %d1 = tensor.dim %arg0, %c1 : tensor<?x?xf32>
   %shape = tensor.from_elements %d0, %d1, %c1, %c1 : tensor<4xindex>
-  %reshape = "mhlo.dynamic_reshape"(%arg0, %shape)
+  %reshape = "stablehlo.dynamic_reshape"(%arg0, %shape)
       : (tensor<?x?xf32>, tensor<4xindex>) -> tensor<?x?x1x1xf32>
 // CHECK: tensor.expand_shape %arg0 [
 // CHECK-SAME: [0], [1, 2, 3]] {{.*}} : tensor<?x?xf32> into tensor<?x?x1x1xf32>
@@ -53,8 +53,8 @@ func.func @reshape_expand_scalar(%arg0: tensor<f32>) -> tensor<?x?xf32> {
   // CHECK-DAG: %[[EXPAND:.*]] = tensor.expand_shape %[[ARG]] [] {{.*}} : tensor<f32> into tensor<1x1xf32>
   // CHECK-DAG: %[[RES:.*]] = tensor.cast %[[EXPAND]] : tensor<1x1xf32> to tensor<?x?xf32>
   // CHECK:     return %[[RES]]
-  %shape = mhlo.constant dense<1> : tensor<2xi32>
-  %reshape = "mhlo.dynamic_reshape"(%arg0, %shape)
+  %shape = stablehlo.constant dense<1> : tensor<2xi32>
+  %reshape = "stablehlo.dynamic_reshape"(%arg0, %shape)
       : (tensor<f32>, tensor<2xi32>) -> tensor<?x?xf32>
   func.return %reshape : tensor<?x?xf32>
 }
@@ -64,11 +64,11 @@ func.func @reshape_expand_scalar(%arg0: tensor<f32>) -> tensor<?x?xf32> {
 // CHECK-LABEL: @reshape_collapse_scalar
 // CHECK-SAME:  %[[ARG:.*]]: tensor<?x?xf32>
 func.func @reshape_collapse_scalar(%arg0 : tensor<?x?xf32>) -> tensor<f32> {
-  %shape = mhlo.constant dense<1> : tensor<0xi32>
+  %shape = stablehlo.constant dense<1> : tensor<0xi32>
   // CHECK-DAG: %[[CASTED_ARG:.*]] = tensor.cast %[[ARG]] : tensor<?x?xf32> to tensor<1x1xf32>
   // CHECK-DAG: %[[COLLAPSED:.*]] = tensor.collapse_shape %[[CASTED_ARG]] [] : tensor<1x1xf32> into tensor<f32>
   // CHECK:     return %[[COLLAPSED]]
-  %reshape = "mhlo.dynamic_reshape"(%arg0, %shape) : (tensor<?x?xf32>, tensor<0xi32>) -> tensor<f32>
+  %reshape = "stablehlo.dynamic_reshape"(%arg0, %shape) : (tensor<?x?xf32>, tensor<0xi32>) -> tensor<f32>
   func.return %reshape : tensor<f32>
 }
 
@@ -76,10 +76,10 @@ func.func @reshape_collapse_scalar(%arg0 : tensor<?x?xf32>) -> tensor<f32> {
 
 // CHECK-LABEL: func @reshape_undefined
 func.func @reshape_undefined(%arg0: tensor<?xf32>) -> tensor<1x1x1xf32> {
-  // CHECK: mhlo.dynamic_reshape
+  // CHECK: stablehlo.dynamic_reshape
   %c1 = arith.constant 1 : index
   %shape = tensor.from_elements %c1, %c1, %c1 : tensor<3xindex>
-  %reshape = "mhlo.dynamic_reshape"(%arg0, %shape)
+  %reshape = "stablehlo.dynamic_reshape"(%arg0, %shape)
       : (tensor<?xf32>, tensor<3xindex>) -> tensor<1x1x1xf32>
   func.return %reshape : tensor<1x1x1xf32>
 }
@@ -95,7 +95,7 @@ func.func @shape_expansion(%arg : tensor<?x1xi64>) -> tensor<?x1x1xi64> {
   %c1 = arith.constant 1 : index
   %d0 = tensor.dim %arg, %c0 : tensor<?x1xi64>
   %shape = tensor.from_elements %d0, %c1, %c1 : tensor<3xindex>
-  %result = "mhlo.dynamic_reshape"(%arg, %shape)
+  %result = "stablehlo.dynamic_reshape"(%arg, %shape)
       : (tensor<?x1xi64>, tensor<3xindex>) -> tensor<?x1x1xi64>
   func.return %result : tensor<?x1x1xi64>
 }
@@ -114,7 +114,7 @@ func.func @shape_collapse_and_expansion(%arg : tensor<3x?x1xi64>)
   %d1 = tensor.dim %arg, %c1 : tensor<3x?x1xi64>
   %three_d1 = arith.muli %c3, %d1 : index
   %15 = tensor.from_elements %three_d1, %c1, %c1 : tensor<3xindex>
-  %16 = "mhlo.dynamic_reshape"(%arg, %15)
+  %16 = "stablehlo.dynamic_reshape"(%arg, %15)
       : (tensor<3x?x1xi64>, tensor<3xindex>) -> tensor<?x1x1xi64>
   func.return %16 : tensor<?x1x1xi64>
 }
@@ -137,7 +137,7 @@ func.func @shape_collapse_and_expansion_w_cast(%arg0: tensor<16x8x?x?xf32>) -> t
   %2 = tensor.dim %arg0, %c3 : tensor<16x8x?x?xf32>
   %4 = arith.muli %1, %2 : index
   %5 = tensor.from_elements %c16, %c4, %c2, %4 : tensor<4xindex>
-  %6 = "mhlo.dynamic_reshape"(%arg0, %5)  : (tensor<16x8x?x?xf32>, tensor<4xindex>) -> tensor<16x4x?x?xf32>
+  %6 = "stablehlo.dynamic_reshape"(%arg0, %5)  : (tensor<16x8x?x?xf32>, tensor<4xindex>) -> tensor<16x4x?x?xf32>
   func.return %6 : tensor<16x4x?x?xf32>
 }
 
@@ -161,7 +161,7 @@ func.func @dynamic_reshape_to_collapse_shape(%arg0 : tensor<1x4x?x64x?x8x1x1xf32
   %s0 = arith.muli %c4_i32, %d2_i32 : i32
   %s1 = arith.muli %c64_i32, %d4_i32 : i32
   %shape = tensor.from_elements %s0, %s1, %c8_i32 : tensor<3xi32>
-  %result = "mhlo.dynamic_reshape"(%arg0, %shape)
+  %result = "stablehlo.dynamic_reshape"(%arg0, %shape)
       : (tensor<1x4x?x64x?x8x1x1xf32>, tensor<3xi32>) -> tensor<?x?x8xf32>
   func.return %result : tensor<?x?x8xf32>
 }
@@ -177,7 +177,7 @@ func.func @expansion_unit_dims(%arg0: tensor<1x?x1xi64>) -> tensor<1x1x?x1xi64> 
   %c1 = arith.constant 1 : index
   %0 = tensor.dim %arg0, %c1 : tensor<1x?x1xi64>
   %1 = tensor.from_elements %c1, %c1, %0, %c1 : tensor<4xindex>
-  %2 = "mhlo.dynamic_reshape"(%arg0, %1)
+  %2 = "stablehlo.dynamic_reshape"(%arg0, %1)
       : (tensor<1x?x1xi64>, tensor<4xindex>) -> tensor<1x1x?x1xi64>
   func.return %2 : tensor<1x1x?x1xi64>
 }
@@ -187,43 +187,43 @@ func.func @expansion_unit_dims(%arg0: tensor<1x?x1xi64>) -> tensor<1x1x?x1xi64> 
 // CHECK-LABEL: @multiple_reductions_and_reshape
 // CHECK-SAME:  %[[ARG:.*]]: tensor<?x?x?x?xi64>
 func.func @multiple_reductions_and_reshape(%arg0: tensor<?x?x?x?xi64>) -> tensor<1x1x1x1xi64> {
-  // CHECK: %[[RED0:.*]] = mhlo.reduce(%[[ARG]]
+  // CHECK: %[[RED0:.*]] = stablehlo.reduce(%[[ARG]]
   // CHECK: %[[RED0_:.*]] = tensor.expand_shape %[[RED0]] {{\[}}[0], [1], [2, 3]{{\]}} {{.*}} : tensor<?x?x?xi64> into tensor<?x?x?x1xi64>
-  // CHECK: %[[RED1:.*]] = mhlo.reduce(%[[RED0_]]
+  // CHECK: %[[RED1:.*]] = stablehlo.reduce(%[[RED0_]]
   // CHECK: %[[RED1_:.*]] = tensor.expand_shape %[[RED1]] {{\[}}[0, 1, 2], [3]{{\]}} {{.*}} : tensor<?x1xi64> into tensor<1x1x?x1xi64>
-  // CHECK: %[[RED2:.*]] = mhlo.reduce(%[[RED1_]]
+  // CHECK: %[[RED2:.*]] = stablehlo.reduce(%[[RED1_]]
   // TODO(b/225204462): This should also become a shape expansion.
-  // CHECK: %[[RED2_:.*]] = mhlo.reshape %[[RED2]] : (tensor<1xi64>) -> tensor<1x1x1x1xi64>
+  // CHECK: %[[RED2_:.*]] = stablehlo.reshape %[[RED2]] : (tensor<1xi64>) -> tensor<1x1x1x1xi64>
   // CHECK: return %[[RED2_]]
-  %0 = mhlo.constant dense<9223372036854775807> : tensor<i64>
+  %0 = stablehlo.constant dense<9223372036854775807> : tensor<i64>
   %c1 = arith.constant 1 : index
   %c0 = arith.constant 0 : index
   %c2 = arith.constant 2 : index
-  %1 = mhlo.constant dense<1> : tensor<i64>
-  %2 = mhlo.reduce(%arg0 init: %0)
-      applies mhlo.minimum across dimensions = [3]
+  %1 = stablehlo.constant dense<1> : tensor<i64>
+  %2 = stablehlo.reduce(%arg0 init: %0)
+      applies stablehlo.minimum across dimensions = [3]
       : (tensor<?x?x?x?xi64>, tensor<i64>) -> tensor<?x?x?xi64>
   %3 = tensor.dim %2, %c0 : tensor<?x?x?xi64>
   %4 = tensor.dim %2, %c1 : tensor<?x?x?xi64>
   %5 = tensor.dim %2, %c2 : tensor<?x?x?xi64>
   %6 = tensor.from_elements %3, %4, %5, %c1 : tensor<4xindex>
-  %7 = "mhlo.dynamic_reshape"(%2, %6)
+  %7 = "stablehlo.dynamic_reshape"(%2, %6)
       : (tensor<?x?x?xi64>, tensor<4xindex>) -> tensor<?x?x?x1xi64>
-  %8 = mhlo.reduce(%7 init: %0)
-      applies mhlo.minimum across dimensions = [0, 1]
+  %8 = stablehlo.reduce(%7 init: %0)
+      applies stablehlo.minimum across dimensions = [0, 1]
       : (tensor<?x?x?x1xi64>, tensor<i64>) -> tensor<?x1xi64>
   %9 = tensor.dim %8, %c0 : tensor<?x1xi64>
   %10 = tensor.from_elements %c1, %9, %c1 : tensor<3xindex>
-  %11 = "mhlo.dynamic_reshape"(%8, %10)
+  %11 = "stablehlo.dynamic_reshape"(%8, %10)
       : (tensor<?x1xi64>, tensor<3xindex>) -> tensor<1x?x1xi64>
   %12 = tensor.dim %11, %c1 : tensor<1x?x1xi64>
   %13 = tensor.from_elements %c1, %c1, %12, %c1 : tensor<4xindex>
-  %14 = "mhlo.dynamic_reshape"(%8, %13)
+  %14 = "stablehlo.dynamic_reshape"(%8, %13)
       : (tensor<?x1xi64>, tensor<4xindex>) -> tensor<1x1x?x1xi64>
-  %15 = mhlo.reduce(%14 init: %1)
-      applies mhlo.multiply across dimensions = [0, 1, 2]
+  %15 = stablehlo.reduce(%14 init: %1)
+      applies stablehlo.multiply across dimensions = [0, 1, 2]
       : (tensor<1x1x?x1xi64>, tensor<i64>) -> tensor<1xi64>
-  %16 = "mhlo.reshape"(%15) : (tensor<1xi64>) -> tensor<1x1x1x1xi64>
+  %16 = "stablehlo.reshape"(%15) : (tensor<1xi64>) -> tensor<1x1x1x1xi64>
   func.return %16 : tensor<1x1x1x1xi64>
 }
 
@@ -284,11 +284,11 @@ func.func @optimize_1dx1d_bcast(
   %1 = shape.shape_of %arg1 : tensor<?xf32> -> tensor<1xindex>
   %2 = shape.broadcast %0, %1 : tensor<1xindex>, tensor<1xindex>
       -> tensor<1xindex>
-  // CHECK:      mhlo.dynamic_broadcast_in_dim
-  // CHECK-SAME: known_expanding_dimensions = dense<>
-  // CHECK-SAME: known_nonexpanding_dimensions = dense<0>
-  %3 = "mhlo.dynamic_broadcast_in_dim"(%arg0, %2)
-      {broadcast_dimensions = dense<[0]> : tensor<1xi64>}
+  // CHECK:      stablehlo.dynamic_broadcast_in_dim
+  // CHECK-SAME: known_expanding_dimensions = array<i64>
+  // CHECK-SAME: known_nonexpanding_dimensions = array<i64: 0>
+  %3 = "stablehlo.dynamic_broadcast_in_dim"(%arg0, %2)
+      {broadcast_dimensions = array<i64: 0>}
       : (tensor<?xf32>, tensor<1xindex>) -> tensor<?xf32>
   func.return %3: tensor<?xf32>
 }
@@ -305,11 +305,11 @@ func.func @optimize_1dx2d_bcast_const_shape(
   %1 = shape.shape_of %arg1 : tensor<?x512xf32> -> tensor<2xindex>
   %2 = shape.broadcast %0, %1 : tensor<1xindex>, tensor<2xindex>
       -> tensor<2xindex>
-  // CHECK:      mhlo.dynamic_broadcast_in_dim
-  // CHECK-SAME: known_expanding_dimensions = dense<>
-  // CHECK-SAME: known_nonexpanding_dimensions = dense<0>
-  %3 = "mhlo.dynamic_broadcast_in_dim"(%arg0, %2)
-      {broadcast_dimensions = dense<[1]> : tensor<1xi64>}
+  // CHECK:      stablehlo.dynamic_broadcast_in_dim
+  // CHECK-SAME: known_expanding_dimensions = array<i64>
+  // CHECK-SAME: known_nonexpanding_dimensions = array<i64: 0>
+  %3 = "stablehlo.dynamic_broadcast_in_dim"(%arg0, %2)
+      {broadcast_dimensions = array<i64: 1>}
       : (tensor<512xf32>, tensor<2xindex>) -> tensor<?x512xf32>
   func.return %3: tensor<?x512xf32>
 }
@@ -331,11 +331,11 @@ func.func @optimize_1dx1dx1d_bcast(
       -> tensor<1xindex>
   %4 = shape.broadcast %3, %2 : tensor<1xindex>, tensor<1xindex>
       -> tensor<1xindex>
-  // CHECK:      mhlo.dynamic_broadcast_in_dim
-  // CHECK-SAME: known_expanding_dimensions = dense<>
-  // CHECK-SAME: known_nonexpanding_dimensions = dense<0>
-  %5 = "mhlo.dynamic_broadcast_in_dim"(%arg0, %4)
-      {broadcast_dimensions = dense<[0]> : tensor<1xi64>}
+  // CHECK:      stablehlo.dynamic_broadcast_in_dim
+  // CHECK-SAME: known_expanding_dimensions = array<i64>
+  // CHECK-SAME: known_nonexpanding_dimensions = array<i64: 0>
+  %5 = "stablehlo.dynamic_broadcast_in_dim"(%arg0, %4)
+      {broadcast_dimensions = array<i64: 0>}
       : (tensor<?xf32>, tensor<1xindex>) -> tensor<?xf32>
   func.return %5: tensor<?xf32>
 }
@@ -353,17 +353,17 @@ func.func @optimize_2dx1d_bcast(
   %1 = shape.shape_of %arg1 : tensor<?xf32> -> tensor<1xindex>
   %2 = shape.broadcast %0, %1 : tensor<2xindex>, tensor<1xindex>
       -> tensor<2xindex>
-  // CHECK:      mhlo.dynamic_broadcast_in_dim
-  // CHECK-SAME: known_expanding_dimensions = dense<>
-  // CHECK-SAME: known_nonexpanding_dimensions = dense<[0, 1]>
-  %3 = "mhlo.dynamic_broadcast_in_dim"(%arg0, %2)
-      {broadcast_dimensions = dense<[0, 1]> : tensor<2xi64>}
+  // CHECK:      stablehlo.dynamic_broadcast_in_dim
+  // CHECK-SAME: known_expanding_dimensions = array<i64>
+  // CHECK-SAME: known_nonexpanding_dimensions = array<i64: 0, 1>
+  %3 = "stablehlo.dynamic_broadcast_in_dim"(%arg0, %2)
+      {broadcast_dimensions = array<i64: 0, 1>}
       : (tensor<10x?xf32>, tensor<2xindex>) -> tensor<10x?xf32>
-  // CHECK:      mhlo.dynamic_broadcast_in_dim
-  // CHECK-SAME: known_expanding_dimensions = dense<>
-  // CHECK-SAME: known_nonexpanding_dimensions = dense<0>
-  %4 = "mhlo.dynamic_broadcast_in_dim"(%arg1, %2)
-      {broadcast_dimensions = dense<[1]> : tensor<1xi64>}
+  // CHECK:      stablehlo.dynamic_broadcast_in_dim
+  // CHECK-SAME: known_expanding_dimensions = array<i64>
+  // CHECK-SAME: known_nonexpanding_dimensions = array<i64: 0>
+  %4 = "stablehlo.dynamic_broadcast_in_dim"(%arg1, %2)
+      {broadcast_dimensions = array<i64: 1>}
       : (tensor<?xf32>, tensor<2xindex>) -> tensor<10x?xf32>
   func.return %3, %4: tensor<10x?xf32>, tensor<10x?xf32>
 }
@@ -381,17 +381,17 @@ func.func @optimize_3dx3d_bcast(
   %1 = shape.shape_of %arg1 : tensor<1x?x1xf32> -> tensor<3xindex>
   %2 = shape.broadcast %0, %1 : tensor<3xindex>, tensor<3xindex>
       -> tensor<3xindex>
-  // CHECK:      mhlo.dynamic_broadcast_in_dim
-  // CHECK-SAME: known_expanding_dimensions = dense<>
-  // CHECK-SAME: known_nonexpanding_dimensions = dense<[0, 2]>
-  %3 = "mhlo.dynamic_broadcast_in_dim"(%arg0, %2)
-      {broadcast_dimensions = dense<[0, 1, 2]> : tensor<3xi64>}
+  // CHECK:      stablehlo.dynamic_broadcast_in_dim
+  // CHECK-SAME: known_expanding_dimensions = array<i64>
+  // CHECK-SAME: known_nonexpanding_dimensions = array<i64: 0, 2>
+  %3 = "stablehlo.dynamic_broadcast_in_dim"(%arg0, %2)
+      {broadcast_dimensions = array<i64: 0, 1, 2>}
       : (tensor<?x1x?xf32>, tensor<3xindex>) -> tensor<?x?x?xf32>
-  // CHECK:      mhlo.dynamic_broadcast_in_dim
-  // CHECK-SAME: known_expanding_dimensions = dense<>
-  // CHECK-SAME: known_nonexpanding_dimensions = dense<1>
-  %4 = "mhlo.dynamic_broadcast_in_dim"(%arg1, %2)
-      {broadcast_dimensions = dense<[0, 1, 2]> : tensor<3xi64>}
+  // CHECK:      stablehlo.dynamic_broadcast_in_dim
+  // CHECK-SAME: known_expanding_dimensions = array<i64>
+  // CHECK-SAME: known_nonexpanding_dimensions = array<i64: 1>
+  %4 = "stablehlo.dynamic_broadcast_in_dim"(%arg1, %2)
+      {broadcast_dimensions = array<i64: 0, 1, 2>}
       : (tensor<1x?x1xf32>, tensor<3xindex>) -> tensor<?x?x?xf32>
   func.return %3, %4: tensor<?x?x?xf32>, tensor<?x?x?xf32>
 }
@@ -412,12 +412,11 @@ func.func @optimize_10d_all_cases(
       -> tensor<10xindex>
   %2 = shape.broadcast %0, %1 : tensor<10xindex>, tensor<10xindex>
       -> tensor<10xindex>
-  // CHECK:      mhlo.dynamic_broadcast_in_dim
-  // CHECK-SAME: known_expanding_dimensions = dense<1>
-  // CHECK-SAME: known_nonexpanding_dimensions = dense<[0, 3, 4, 5, 6, 9]>
-  %3 = "mhlo.dynamic_broadcast_in_dim"(%arg0, %2)
-      {broadcast_dimensions = dense<[0, 1, 2, 3, 4, 5, 6, 7, 8, 9]>
-      : tensor<10xi64>}
+  // CHECK:      stablehlo.dynamic_broadcast_in_dim
+  // CHECK-SAME: known_expanding_dimensions = array<i64: 1>
+  // CHECK-SAME: known_nonexpanding_dimensions = array<i64: 0, 3, 4, 5, 6, 9>
+  %3 = "stablehlo.dynamic_broadcast_in_dim"(%arg0, %2)
+      {broadcast_dimensions = array<i64: 0, 1, 2, 3, 4, 5, 6, 7, 8, 9>}
       : (tensor<1x1x1x8x8x8x?x?x?x?xf32>, tensor<10xindex>)
       -> tensor<?x?x?x?x?x?x?x?x?x?xf32>
   func.return %3: tensor<?x?x?x?x?x?x?x?x?x?xf32>
@@ -519,17 +518,16 @@ func.func @optimize_1dx1d_bcast(
     {rt.symbolic_shape = dense<[-2]> : tensor<1xi64>}
 ) -> tensor<?xf32> {
   // CHECK:      %[[SHAPE:.*]] = shape.shape_of %[[ARG0]]
-  // CHECK:      %[[DYNAMIC:.*]] = "mhlo.dynamic_broadcast_in_dim"(%[[ARG0]], %[[SHAPE]])
-  // CHECK-SAME:     broadcast_dimensions = dense<0>
-  // CHECK-SAME:     known_expanding_dimensions = dense<>
-  // CHECK-SAME:     known_nonexpanding_dimensions = dense<0>
+  // CHECK:      %[[DYNAMIC:.*]] = stablehlo.dynamic_broadcast_in_dim %[[ARG0]], %[[SHAPE]], dims = [0]
+  // CHECK-SAME:     known_expanding_dimensions = array<i64>
+  // CHECK-SAME:     known_nonexpanding_dimensions = array<i64: 0>
   // CHECK:      return %[[DYNAMIC]]
   %0 = shape.shape_of %arg0 : tensor<?xf32> -> tensor<1xindex>
   %1 = shape.shape_of %arg1 : tensor<?xf32> -> tensor<1xindex>
   %2 = shape.broadcast %0, %1 : tensor<1xindex>, tensor<1xindex>
       -> tensor<1xindex>
-  %3 = "mhlo.dynamic_broadcast_in_dim"(%arg0, %2)
-         {broadcast_dimensions = dense<[0]> : tensor<1xi64>}
+  %3 = "stablehlo.dynamic_broadcast_in_dim"(%arg0, %2)
+         {broadcast_dimensions = array<i64: 0>}
        : (tensor<?xf32>, tensor<1xindex>) -> tensor<?xf32>
   func.return %3: tensor<?xf32>
 }
@@ -544,17 +542,16 @@ func.func @optimize_1dx2d_bcast_const_shape(
     {rt.symbolic_shape = dense<[-2, 512]> : tensor<2xi64>}
 ) -> tensor<?x512xf32> {
   // CHECK:      %[[SHAPE_0:.*]] = shape.shape_of %[[ARG1_0]]
-  // CHECK:      %[[DYNAMIC_0:.*]] = "mhlo.dynamic_broadcast_in_dim"(%[[ARG0_0]], %[[SHAPE_0]])
-  // CHECK-SAME:     broadcast_dimensions = dense<1>
-  // CHECK-SAME:     known_expanding_dimensions = dense<>
-  // CHECK-SAME:     known_nonexpanding_dimensions = dense<0>
+  // CHECK:      %[[DYNAMIC_0:.*]] = stablehlo.dynamic_broadcast_in_dim %[[ARG0_0]], %[[SHAPE_0]], dims = [1]
+  // CHECK-SAME:     known_expanding_dimensions = array<i64>
+  // CHECK-SAME:     known_nonexpanding_dimensions = array<i64: 0>
   // CHECK:      return %[[DYNAMIC_0]]
   %0 = shape.const_shape [512] : tensor<1xindex>
   %1 = shape.shape_of %arg1 : tensor<?x512xf32> -> tensor<2xindex>
   %2 = shape.broadcast %0, %1 : tensor<1xindex>, tensor<2xindex>
                              -> tensor<2xindex>
-  %3 = "mhlo.dynamic_broadcast_in_dim"(%arg0, %2)
-         {broadcast_dimensions = dense<[1]> : tensor<1xi64>}
+  %3 = "stablehlo.dynamic_broadcast_in_dim"(%arg0, %2)
+         {broadcast_dimensions = array<i64: 1>}
        : (tensor<512xf32>, tensor<2xindex>) -> tensor<?x512xf32>
   func.return %3: tensor<?x512xf32>
 }
@@ -572,10 +569,9 @@ func.func @optimize_1dx1dx1d_bcast(
     {rt.symbolic_shape = dense<[-2]> : tensor<1xi64>}
 ) -> tensor<?xf32> {
   // CHECK:      %[[SHAPE_1:.*]] = shape.shape_of %[[ARG0_1]]
-  // CHECK:      %[[DYNAMIC_1:.*]] = "mhlo.dynamic_broadcast_in_dim"(%[[ARG0_1]], %[[SHAPE_1]])
-  // CHECK-SAME:     broadcast_dimensions = dense<0>
-  // CHECK-SAME:     known_expanding_dimensions = dense<>
-  // CHECK-SAME:     known_nonexpanding_dimensions = dense<0>
+  // CHECK:      %[[DYNAMIC_1:.*]] = stablehlo.dynamic_broadcast_in_dim %[[ARG0_1]], %[[SHAPE_1]], dims = [0]
+  // CHECK-SAME:     known_expanding_dimensions = array<i64>
+  // CHECK-SAME:     known_nonexpanding_dimensions = array<i64: 0>
   // CHECK:      return %[[DYNAMIC_1]]
   %0 = shape.shape_of %arg0 : tensor<?xf32> -> tensor<1xindex>
   %1 = shape.shape_of %arg1 : tensor<?xf32> -> tensor<1xindex>
@@ -584,8 +580,8 @@ func.func @optimize_1dx1dx1d_bcast(
                              -> tensor<1xindex>
   %4 = shape.broadcast %3, %2 : tensor<1xindex>, tensor<1xindex>
                              -> tensor<1xindex>
-  %5 = "mhlo.dynamic_broadcast_in_dim"(%arg0, %4)
-         {broadcast_dimensions = dense<[0]> : tensor<1xi64>}
+  %5 = "stablehlo.dynamic_broadcast_in_dim"(%arg0, %4)
+         {broadcast_dimensions = array<i64: 0>}
        : (tensor<?xf32>, tensor<1xindex>) -> tensor<?xf32>
   func.return %5: tensor<?xf32>
 }
@@ -601,24 +597,22 @@ func.func @optimize_2dx1d_bcast(
     {rt.symbolic_shape = dense<[-2]> : tensor<1xi64>}
 ) -> (tensor<10x?xf32>, tensor<10x?xf32>) {
   // CHECK:      %[[SHAPE_2:.*]] = shape.shape_of %[[ARG0_2]]
-  // CHECK:      %[[DYNAMIC_2:.*]] = "mhlo.dynamic_broadcast_in_dim"(%[[ARG0_2]], %[[SHAPE_2]])
-  // CHECK-SAME:     broadcast_dimensions = dense<[0, 1]>
-  // CHECK-SAME:     known_expanding_dimensions = dense<>
-  // CHECK-SAME:     known_nonexpanding_dimensions = dense<[0, 1]>
-  // CHECK:      %[[DYNAMIC_3:.*]] = "mhlo.dynamic_broadcast_in_dim"(%[[ARG1_2]], %[[SHAPE_2]])
-  // CHECK-SAME:     broadcast_dimensions = dense<1>
-  // CHECK-SAME:     known_expanding_dimensions = dense<>
-  // CHECK-SAME:     known_nonexpanding_dimensions = dense<0>
+  // CHECK:      %[[DYNAMIC_2:.*]] = stablehlo.dynamic_broadcast_in_dim %[[ARG0_2]], %[[SHAPE_2]], dims = [0, 1]
+  // CHECK-SAME:     known_expanding_dimensions = array<i64>
+  // CHECK-SAME:     known_nonexpanding_dimensions = array<i64: 0, 1>
+  // CHECK:      %[[DYNAMIC_3:.*]] = stablehlo.dynamic_broadcast_in_dim %[[ARG1_2]], %[[SHAPE_2]], dims = [1]
+  // CHECK-SAME:     known_expanding_dimensions = array<i64>
+  // CHECK-SAME:     known_nonexpanding_dimensions = array<i64: 0>
   // CHECK:      return %[[DYNAMIC_2]], %[[DYNAMIC_3]]
   %0 = shape.shape_of %arg0 : tensor<10x?xf32> -> tensor<2xindex>
   %1 = shape.shape_of %arg1 : tensor<?xf32> -> tensor<1xindex>
   %2 = shape.broadcast %0, %1 : tensor<2xindex>, tensor<1xindex>
                              -> tensor<2xindex>
-  %3 = "mhlo.dynamic_broadcast_in_dim"(%arg0, %2)
-         {broadcast_dimensions = dense<[0, 1]> : tensor<2xi64>}
+  %3 = "stablehlo.dynamic_broadcast_in_dim"(%arg0, %2)
+         {broadcast_dimensions = array<i64: 0, 1>}
        : (tensor<10x?xf32>, tensor<2xindex>) -> tensor<10x?xf32>
-  %4 = "mhlo.dynamic_broadcast_in_dim"(%arg1, %2)
-         {broadcast_dimensions = dense<[1]> : tensor<1xi64>}
+  %4 = "stablehlo.dynamic_broadcast_in_dim"(%arg1, %2)
+         {broadcast_dimensions = array<i64: 1>}
        : (tensor<?xf32>, tensor<2xindex>) -> tensor<10x?xf32>
   func.return %3, %4: tensor<10x?xf32>, tensor<10x?xf32>
 }

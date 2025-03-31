@@ -46,7 +46,6 @@ add_mlir_library(MhloPasses
   shape_legalize_to_hlo/shape_legalize_to_hlo.cc
   shape_simplification/shape_simplification.cc
   sink_constants_to_control_flow/sink_constants_to_control_flow.cc
-  symbolic_shape_optimization/symbolic_shape_optimization.cc
   test_infer_shaped_type/test_infer_shaped_type_pass.cc
   unfuse_batch_norm/unfuse_batch_norm.cc
   unfuse_batch_norm/unfuse_batch_norm_pass.cc

@@ -143,11 +143,6 @@ def MergeAssumingOpsPass : Pass<"mhlo-merge-assuming-ops", "func::FuncOp"> {
   let constructor = "createMergeAssumingOpsPass()";
 }
 
-def SymbolicShapeOptimization : Pass<"symbolic-shape-optimization", "func::FuncOp"> {
-  let summary = "Analyzes shapes and performs shape-related optimizations";
-  let constructor = "createSymbolicShapeOptimizationPass()";
-}
-
 def ShapeSimplification
     : Pass<"shape-simplification", "mlir::func::FuncOp"> {
   let summary = "Simplify shape ops";
