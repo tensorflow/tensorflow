@@ -1044,13 +1044,9 @@ FunctionalHloRunner::RunInternal(
     if (!module.result_shape().IsTuple()) {
       return false;
     }
-    return absl::c_any_of(
-        module.result_shape().tuple_shapes(), [](const Shape& shape) {
-          return shape.has_layout() &&
-                 shape.layout().memory_space() == Layout::kHostMemorySpace;
-        });
+    return true;
   };
-  // If any output leaf buffer is in host memory, PJRT requires untuple_result.
+  // If any output leaf buffer is a tuple, PJRT requires untuple_result.
   bool must_untuple_result = output_has_tuple_leaf_on_host_memory_space();
   bool default_untuple_result =
       must_untuple_result || execute_options.untuple_result;
