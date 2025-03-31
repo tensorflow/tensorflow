@@ -759,7 +759,7 @@ absl::StatusOr<XlaComputation> XlaBuilder::Build(
   // the backend.
   if (remove_dynamic_dimensions) {
     std::function<void(Shape*)> remove_dynamic_dimension = [&](Shape* shape) {
-      if (shape->tuple_shapes_size() != 0) {
+      if (shape->IsTuple()) {
         for (int i = 0; i < shape->tuple_shapes_size(); ++i) {
           remove_dynamic_dimension(shape->mutable_tuple_shapes(i));
         }

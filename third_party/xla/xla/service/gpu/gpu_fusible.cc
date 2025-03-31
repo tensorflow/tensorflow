@@ -842,8 +842,10 @@ bool MayPreventVectorization(const HloFusionAdaptor& fusion) {
       case HloOpcode::kConcatenate:
         return node.instruction().operand_count() >
                kMaxConcatArgumentsForUnrolling;
-      case HloOpcode::kReduce:
-        return node.instruction().shape().tuple_shapes_size() > 1;
+      case HloOpcode::kReduce: {
+        const Shape& shape = node.instruction().shape();
+        return shape.IsTuple() && shape.tuple_shapes_size() > 1;
+      }
       default:
         return false;
     }

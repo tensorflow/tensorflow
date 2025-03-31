@@ -310,13 +310,7 @@ class Shape {
 
   // Returns the number of top-level tuple components in this shape.
   // Precondition: this is a tuple shape.
-  int tuple_shapes_size() const {
-    if (const auto* const state = if_tuple_state()) {
-      return state->tuple_shapes.size();
-    }
-    // TODO(b/404276923): ensure that this is never called on non-tuple shapes.
-    return 0;
-  }
+  int tuple_shapes_size() const { return tuple_state().tuple_shapes.size(); }
 
   // Returns the shape of the i-th tuple component.
   // Precondition: this is a tuple shape and `index` is a valid tuple component
@@ -371,12 +365,7 @@ class Shape {
 
   // Removes the layout of the shape, if any.
   // Precondition: this is an array shape.
-  void clear_layout() {
-    // TODO(b/404276923): ensure that this is never called on non-array shapes.
-    if (auto* const state = if_array_state()) {
-      state->layout = std::nullopt;
-    }
-  }
+  void clear_layout() { array_state().layout = std::nullopt; }
 
   // Recursively clear all dynamic dimension of a shape, including bounded and
   // unbounded dynamic dimensions. Clearing a dynamic dimension means
