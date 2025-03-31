@@ -550,6 +550,10 @@ message DebugOptions {
   // Pre-existing block-level fusions are left unmodified.
   bool xla_gpu_experimental_enable_fusion_block_level_rewriter = 334;
 
+  // Enable NVSHMEM. Must be set via XLA_FLAGS variable before XLA client is
+  // initialized and can't be set just through HLO Config->ExecutionOptions.
+  bool xla_gpu_experimental_enable_nvshmem = 382;
+
   // Enable fusion for the subchannel dequantisation sequences like
   // [x,z]param -> [x,y,z]broadcast -> [x*y,z]bitcast -> multiply -> dot.
   // Performance can be worse, because some block sizes / split-k > 1 is
