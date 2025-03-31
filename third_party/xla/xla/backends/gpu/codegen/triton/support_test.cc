@@ -2228,7 +2228,6 @@ ENTRY e {
 }
 
 constexpr std::array kOperandPrecisions = {
-    // All precisions except PACKED_NIBBLE.
     PrecisionConfig::DEFAULT,
     PrecisionConfig::HIGH,
     PrecisionConfig::HIGHEST,
@@ -2241,15 +2240,6 @@ INSTANTIATE_TEST_SUITE_P(
         ::testing::ValuesIn(kOperandPrecisions),
         ::testing::ValuesIn(kOperandPrecisions),
         ::testing::ValuesIn(AllDevicesToTest())),
-    DotPrecisionTestName);
-
-INSTANTIATE_TEST_SUITE_P(
-    DotPackedNibblePrecisionTestSuite, DotPrecisionTest,
-    ::testing::Combine(::testing::ValuesIn({PrimitiveType::S8,
-                                            PrimitiveType::U8}),
-                       ::testing::ValuesIn({PrecisionConfig::PACKED_NIBBLE}),
-                       ::testing::ValuesIn({PrecisionConfig::PACKED_NIBBLE}),
-                       ::testing::ValuesIn(AllDevicesToTest())),
     DotPrecisionTestName);
 
 class DotPrecisionAlgorithmTest
