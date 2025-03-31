@@ -15,9 +15,13 @@ limitations under the License.
 
 #include "tensorflow/core/framework/resource_op_kernel.h"
 
+#include <atomic>
+#include <cstdint>
 #include <memory>
 
+#include "absl/status/status.h"
 #include "tensorflow/core/framework/allocator.h"
+#include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op_kernel.h"
