@@ -80,14 +80,6 @@ bool hasPrivateFeaturesNotInStablehlo(HloOpTy hloOp) {
   return false;
 }
 
-bool hasPackedNibble(std::optional<ArrayAttr> precisionConfigAttr) {
-  if (!precisionConfigAttr) return false;
-  return llvm::any_of(*precisionConfigAttr, [&](Attribute attr) {
-    auto precisionAttr = mlir::cast<mhlo::PrecisionAttr>(attr);
-    return precisionAttr.getValue() == mhlo::Precision::PACKED_NIBBLE;
-  });
-}
-
 // EXPERIMENTAL MHLO features are being explored by ML frontends but do not have
 // any agreed upon compatibility guarantees. By default, these features cannot
 // be converted to StableHLO, although the allow-experimental-features flag can
@@ -104,21 +96,6 @@ bool hasExperimentalFeaturesNotInStablehlo(HloOpTy hloOp) {
     // StableHLO AllToAll doesn't support the tuple form yet.
     // Proposal: https://github.com/openxla/stablehlo/issues/574.
     if (hloOp.getNumOperands() != 1) return true;
-  }
-  if constexpr (std::is_same<HloOpTy, mhlo::ConvolutionOp>::value) {
-    // StableHLO ConvolutionOp doesn't support PACKED_NIBBLE yet.
-    // Proposal: https://github.com/openxla/stablehlo/issues/742.
-    if (hasPackedNibble(hloOp.getPrecisionConfig())) return true;
-  }
-  if constexpr (std::is_same<HloOpTy, mhlo::DotGeneralOp>::value) {
-    // StableHLO DotGeneral doesn't support PACKED_NIBBLE yet.
-    // Proposal: https://github.com/openxla/stablehlo/issues/742.
-    if (hasPackedNibble(hloOp.getPrecisionConfig())) return true;
-  }
-  if constexpr (std::is_same<HloOpTy, mhlo::DotOp>::value) {
-    // StableHLO Dot doesn't support PACKED_NIBBLE yet.
-    // Proposal: https://github.com/openxla/stablehlo/issues/742.
-    if (hasPackedNibble(hloOp.getPrecisionConfig())) return true;
   }
   return false;
 }
@@ -294,9 +271,6 @@ Attribute convertAttr(Attribute hloAttr) {
         attr.getOperandTupleIndices());
   }
   if (auto attr = mlir::dyn_cast<mhlo::PrecisionAttr>(hloAttr)) {
-    // StableHLO Precision doesn't support PACKED_NIBBLE yet.
-    // Proposal: https://github.com/openxla/stablehlo/issues/742.
-    if (attr.getValue() == mhlo::Precision::PACKED_NIBBLE) return {};
     RETURN_CONVERTED_ENUM_ATTR(Precision);
   }
   if (auto attr = mlir::dyn_cast<mhlo::RngAlgorithmAttr>(hloAttr)) {
@@ -364,7 +338,7 @@ Attribute convertAttr(Attribute hloAttr) {
 #undef RETURN_CONVERTED_ENUM_ATTR
 
 // Convert array of enum attrs to an array of enum strings
-//   [#mhlo<precision PACKED_NIBBLE>] -> ["PACKED_NIBBLE"]
+//   [#mhlo<precision HiGHEST>] -> ["HIGHEST"]
 //
 // This is stable as long as enum names are not changed. This is needed to avoid
 // a dependency on upstream printing / parsing. If an attribute name is changed,
@@ -469,17 +443,6 @@ LogicalResult convertAttributes(ConversionPatternRewriter& rewriter,
         continue;
     }
 
-    // If PACKED_NIBBLE enum support enabled, convert to string "PACKED_NIBBLE"
-    if constexpr (std::is_same<HloOpTy, mhlo::ConvolutionOp>::value ||
-                  std::is_same<HloOpTy, mhlo::DotGeneralOp>::value ||
-                  std::is_same<HloOpTy, mhlo::DotOp>::value) {
-      if (hloAttr.getName() == "precision_config" &&
-          hasPackedNibble(hloOp.getPrecisionConfig())) {
-        stablehloAttr =
-            encodePrecisionConfig(hloOp.getPrecisionConfig().value());
-      }
-    }
-
     // Handle DenseElements --> DenseArray for certain StableHLO ops
     if constexpr (!std::is_same<HloOpTy, mhlo::ErfOp>::value &&
                   !std::is_same<HloOpTy, mhlo::TopKOp>::value) {
@@ -504,10 +467,10 @@ LogicalResult convertAttributes(ConversionPatternRewriter& rewriter,
 //
 // Example:
 //   %0 = "mhlo.dot"(%arg0, %arg1) {
-//     precision_config = [#mhlo<precision PACKED_NIBBLE>] } ...
+//     precision_config = [#mhlo<precision HIGHEST>] } ...
 //  ==>
 //  %0 = stablehlo.custom_call @mhlo.dot {
-//    mhlo.attributes = {precision_config = ["PACKED_NIBBLE"]}}
+//    mhlo.attributes = {precision_config = ["HIGHEST"]}}
 template <typename HloOpTy>
 LogicalResult rewriteMhloOpAsCustomCall(HloOpTy hloOp,
                                         ConversionPatternRewriter& rewriter,

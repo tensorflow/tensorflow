@@ -2053,36 +2053,6 @@ ENTRY SmallIntegerDot {
   EXPECT_TRUE(RunAndCompare(hlo_string, ErrorSpec{0, 0}));
 }
 
-XLA_TEST_F(DotOperationTextTest, DISABLED_ON_GPU(PackedNibbleDot)) {
-  absl::string_view hlo_string =
-      R"(
-HloModule SmallIntegerDot
-
-ENTRY SmallIntegerDot {
-  arg0 = s8[20,55] parameter(0)
-  arg1 = s8[55,20] parameter(1)
-  ROOT dot = s32[20,20] dot(arg0, arg1), lhs_contracting_dims={1}, rhs_contracting_dims={0}, operand_precision={PACKED_NIBBLE, PACKED_NIBBLE}
-}
-)";
-
-  EXPECT_TRUE(RunAndCompare(hlo_string, ErrorSpec{0, 0}));
-}
-
-XLA_TEST_F(DotOperationTextTest, UnsignedPackedNibbleDot) {
-  absl::string_view hlo_string =
-      R"(
-HloModule SmallIntegerDot
-
-ENTRY SmallIntegerDot {
-  arg0 = u8[3,11,21] parameter(0)
-  arg1 = u8[55,21,3] parameter(1)
-  ROOT dot = u32[3,11,55] dot(arg0, arg1), lhs_batch_dims={0}, lhs_contracting_dims={2}, rhs_batch_dims={2}, rhs_contracting_dims={1}, operand_precision={PACKED_NIBBLE, PACKED_NIBBLE}
-}
-)";
-
-  EXPECT_TRUE(RunAndCompare(hlo_string, ErrorSpec{0, 0}));
-}
-
 XLA_TEST_F(DotOperationTextTest, S32Dot) {
   absl::string_view hlo_string =
       R"(

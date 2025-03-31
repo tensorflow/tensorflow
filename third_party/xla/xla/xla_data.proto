@@ -1071,10 +1071,8 @@ message PrecisionConfig {
     DEFAULT = 0;
     HIGH = 1;
     HIGHEST = 2;
-    // Each U8/S8 value in a tensor actually represents 2 nibble values.
-    PACKED_NIBBLE = 3;
 
-    // Next: 4
+    // Next: 3
   }
 
   // The algorithm used to evaluate the instruction.

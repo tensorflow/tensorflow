@@ -39,16 +39,3 @@ func.func @op_all_to_all_tuple(%arg0: tensor<128x4xf32>, %arg1: tensor<128x4xf32
   return %0#0, %0#1 : tensor<128x4xf32>, tensor<128x4xf32>
 }
 
-// -----
-
-// CHECK-LABEL: "attr_precision_packed_nibble"
-func.func @attr_precision_packed_nibble(%arg0: tensor<8x16xf32>, %arg1: tensor<16x8xf32>) -> tensor<8x8xf32> {
-  //      CHECK: "stablehlo.custom_call"(%arg0, %arg1) <{call_target_name = "mhlo.dot"}> {
-  // CHECK-SAME:    mhlo.attributes = {precision_config = ["PACKED_NIBBLE"]}
-  // CHECK-SAME: } : (tensor<8x16xf32>, tensor<16x8xf32>) -> tensor<8x8xf32>
-  // expected-error@+1 {{failed to legalize operation 'mhlo.dot' that was explicitly marked illegal}}
-  %0 = "mhlo.dot"(%arg0, %arg1) {
-    precision_config = [#mhlo<precision PACKED_NIBBLE>]
-  } : (tensor<8x16xf32>, tensor<16x8xf32>) -> tensor<8x8xf32>
-  func.return %0 : tensor<8x8xf32>
-}

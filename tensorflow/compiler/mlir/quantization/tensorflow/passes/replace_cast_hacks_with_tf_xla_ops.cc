@@ -628,8 +628,7 @@ Value CreateXlaConvOp(OpBuilder &builder, Location loc, Value input,
                       Value filter, Value input_zp, Value conv_output,
                       ArrayAttr strides, ArrayAttr dilations,
                       StringAttr conv_padding, ArrayAttr explicit_paddings,
-                      int feature_group_cnt, bool four_bit = false,
-                      int num_dims = 4) {
+                      int feature_group_cnt, int num_dims = 4) {
   int32_t input_zp_value;
   if (!GetSplatValue(input_zp, input_zp_value)) {
     emitError(loc,
@@ -675,14 +674,6 @@ Value CreateXlaConvOp(OpBuilder &builder, Location loc, Value input,
       conv_padding, explicit_paddings, padding, num_dims);
 
   std::string precision_config_str;
-  if (four_bit) {
-    input = PackOperand(builder, loc, input, /*pack_dim=*/num_dims - 1);
-    filter = PackOperand(builder, loc, filter, /*pack_dim=*/num_dims - 2);
-    xla::PrecisionConfig precision_config;
-    precision_config.add_operand_precision(xla::PrecisionConfig::PACKED_NIBBLE);
-    precision_config.add_operand_precision(xla::PrecisionConfig::PACKED_NIBBLE);
-    precision_config_str = precision_config.SerializeAsString();
-  }
   Value xla_conv_output =
       builder
           .create<TF::XlaConvV2Op>(
@@ -774,14 +765,13 @@ Value CreateXlaConvOpFromTfConv3dOp(OpBuilder &builder, Location loc,
   return CreateXlaConvOp(builder, loc, input, filter, input_zp, conv_output,
                          strides, dilations, conv_padding,
                          /*explicit_paddings=*/nullptr, feature_group_cnt,
-                         /*four_bit=*/false, /*num_dims=*/5);
+                         /*num_dims=*/5);
 }
 
 // Helper function to create an XlaDotV2Op.
 Value CreateXlaDotV2Op(OpBuilder &builder, Location loc, Value input,
                        Value weight, Value input_zp, Value weight_zp,
-                       Value output, const xla::DotDimensionNumbers &dnums,
-                       bool four_bit = false) {
+                       Value output, const xla::DotDimensionNumbers &dnums) {
   int32_t input_zp_value = 0;
   int32_t weight_zp_value = 0;
   if (input_zp != nullptr && !GetSplatValue(input_zp, input_zp_value)) {
@@ -797,14 +787,6 @@ Value CreateXlaDotV2Op(OpBuilder &builder, Location loc, Value input,
   }
 
   std::string precision_config_str;
-  if (four_bit) {
-    input = PackOperand(builder, loc, input, /*pack_dim=*/1);
-    weight = PackOperand(builder, loc, weight, /*pack_dim=*/0);
-    xla::PrecisionConfig precision_config;
-    precision_config.add_operand_precision(xla::PrecisionConfig::PACKED_NIBBLE);
-    precision_config.add_operand_precision(xla::PrecisionConfig::PACKED_NIBBLE);
-    precision_config_str = precision_config.SerializeAsString();
-  }
 
   Value dot_result =
       builder

@@ -193,7 +193,7 @@ Attribute convertAttr(Attribute stablehloAttr) {
 #undef RETURN_CONVERTED_ENUM_ATTR
 
 // Convert array of enum strings to array of enum attrs
-//   ["PACKED_NIBBLE"] --> [#mhlo<precision PACKED_NIBBLE>]
+//   ["HIGHEST"] --> [#mhlo<precision HIGHEST>]
 Attribute decodePrecisionConfig(Attribute stablehloAttr) {
   auto arrayAttr = mlir::dyn_cast<ArrayAttr>(stablehloAttr);
   if (!arrayAttr) return {};
@@ -248,10 +248,10 @@ LogicalResult convertFuncToStablehloRegion(Operation* op, func::FuncOp funcOp,
 //
 // Example:
 //  %0 = stablehlo.custom_call @mhlo.dot {
-//    mhlo.attributes = {precision_config = ["PACKED_NIBBLE"]}}
+//    mhlo.attributes = {precision_config = ["HIGHEST"]}}
 //  ==>
 //   %0 = "mhlo.dot"(%arg0, %arg1) {
-//     precision_config = [#mhlo<precision PACKED_NIBBLE>] } ...
+//     precision_config = [#mhlo<precision HIGHEST>] } ...
 LogicalResult rewriteCustomCallAsMhloOp(stablehlo::CustomCallOp stablehloOp,
                                         ConversionPatternRewriter& rewriter,
                                         const TypeConverter* typeConverter,
