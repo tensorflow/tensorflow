@@ -174,10 +174,19 @@ class CommandBuffer {
   // will run a conditional command buffer constructed by the last builder.
   //
   // See: https://github.com/openxla/stablehlo/blob/main/docs/spec.md#case
-  virtual absl::Status Case(DeviceMemory<int32_t> index,
+  virtual absl::StatusOr<const Command*> Case(
+      DeviceMemory<int32_t> index, std::vector<Builder> branches,
+      absl::Span<const Command* const> dependencies) = 0;
+
+  virtual absl::StatusOr<const Command*> Case(
+      DeviceMemory<bool> index, std::vector<Builder> branches,
+      absl::Span<const Command* const> dependencies) = 0;
+
+  // Updates a Case operation.
+  virtual absl::Status Case(const Command* command, DeviceMemory<int32_t> index,
                             std::vector<Builder> branches) = 0;
 
-  virtual absl::Status Case(DeviceMemory<bool> index,
+  virtual absl::Status Case(const Command* command, DeviceMemory<bool> index,
                             std::vector<Builder> branches) = 0;
 
   // Adds a conditional operation that will execute a command buffer constructed

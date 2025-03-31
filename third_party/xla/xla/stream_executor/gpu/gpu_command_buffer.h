@@ -166,10 +166,18 @@ class GpuCommandBuffer : public CommandBuffer {
                       const BitPattern& bit_pattern,
                       size_t num_elements) override;
 
-  absl::Status Case(DeviceMemory<bool> index,
+  absl::StatusOr<const Command*> Case(
+      DeviceMemory<int32_t> index, std::vector<Builder> branches,
+      absl::Span<const Command* const> dependencies) override;
+
+  absl::StatusOr<const Command*> Case(
+      DeviceMemory<bool> index, std::vector<Builder> branches,
+      absl::Span<const Command* const> dependencies) override;
+
+  absl::Status Case(const Command* command, DeviceMemory<int32_t> index,
                     std::vector<Builder> branches) override;
 
-  absl::Status Case(DeviceMemory<int32_t> index,
+  absl::Status Case(const Command* command, DeviceMemory<bool> index,
                     std::vector<Builder> branches) override;
 
   absl::Status For(int32_t num_iteration, DeviceMemory<int32_t> loop_counter,
@@ -283,8 +291,13 @@ class GpuCommandBuffer : public CommandBuffer {
   virtual absl::Status CheckCanBeUpdated() = 0;
 
  private:
-  absl::Status Case(DeviceMemory<uint8_t> index, bool index_is_bool,
-                    std::vector<Builder> branches);
+  absl::StatusOr<const Command*> Case(
+      DeviceMemory<uint8_t> index, bool index_is_bool,
+      std::vector<Builder> branches,
+      absl::Span<const Command* const> dependencies);
+
+  absl::Status Case(const Command* command, DeviceMemory<uint8_t> index,
+                    bool index_is_bool, std::vector<Builder> branches);
 
   // Constructs a new command for the given graph node handle and appends it to
   // the command buffer.

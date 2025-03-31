@@ -350,15 +350,18 @@ GpuCommandBuffer::CreateConditionalHandles(size_t num_handles) {
   return handles;
 }
 
-absl::Status GpuCommandBuffer::Case(DeviceMemory<uint8_t> index,
-                                    bool index_is_bool,
-                                    std::vector<Builder> branches) {
+absl::StatusOr<const CommandBuffer::Command*> GpuCommandBuffer::Case(
+    DeviceMemory<uint8_t> index, bool index_is_bool,
+    std::vector<Builder> branches,
+    absl::Span<const Command* const> dependencies) {
   constexpr size_t kBranchBatchSize = 8;
 
   if (state_ == State::kCreate) {
     GpuCaseCommand command = {};
 
-    auto dependencies = GetAutoDependencies();
+    Dependencies barrier = dependencies.empty()
+                               ? GetAutoDependencies()
+                               : ToGraphNodeDependencies(dependencies);
 
     int32_t batch_offset = 0;
     while (batch_offset < branches.size()) {
@@ -384,7 +387,7 @@ absl::Status GpuCommandBuffer::Case(DeviceMemory<uint8_t> index,
       TF_ASSIGN_OR_RETURN(auto set_condition_node,
                           CreateSetCaseConditionNode(
                               conditionals, index, index_is_bool, batch_offset,
-                              enable_conditional_default, dependencies));
+                              enable_conditional_default, barrier));
 
       std::vector<GraphConditionalNodeHandle> conditional_nodes;
       for (int z = 0; z < batch_size; ++z) {
@@ -412,67 +415,96 @@ absl::Status GpuCommandBuffer::Case(DeviceMemory<uint8_t> index,
       batch_offset += batch_size;
     }
 
-    AppendCommand(std::move(command));
-    return absl::OkStatus();
+    return AppendCommand(std::move(command));
   }
 
   if (state_ == State::kUpdate) {
     Command& command = *commands_[update_state_.command_idx++];
-    auto* gpu_command = tsl::down_cast<GpuCaseCommand*>(&command);
-
-    // Update branch conditionals.
-    size_t batch_index = 0;
-    int32_t batch_offset = 0;
-    while (batch_offset < branches.size()) {
-      int32_t remaining_branches = branches.size() - batch_offset;
-      int32_t batch_size;
-      bool enable_conditional_default;
-      if (remaining_branches <= kBranchBatchSize) {
-        batch_size = remaining_branches;
-        enable_conditional_default = true;
-      } else {
-        batch_size = kBranchBatchSize;
-        enable_conditional_default = false;
-      }
-
-      TF_RETURN_IF_ERROR(UpdateSetCaseConditionNode(
-          gpu_command->set_condition_nodes[batch_index],
-          absl::MakeSpan(gpu_command->conditionals)
-              .subspan(batch_offset, batch_size),
-          index, index_is_bool, batch_offset, enable_conditional_default));
-
-      batch_offset += batch_size;
-      batch_index += 1;
-    }
-
-    // Update branch command buffers.
-    for (size_t i = 0; i < gpu_command->conditional_nodes.size(); ++i) {
-      GpuCommandBuffer* case_command_buffer =
-          gpu_command->conditional_nodes[i].command_buffer.get();
-      auto scoped_update_mode = ActivateUpdateMode(case_command_buffer);
-      TF_RETURN_IF_ERROR(case_command_buffer->Update());
-      TF_RETURN_IF_ERROR(branches[i](case_command_buffer));
-      TF_RETURN_IF_ERROR(case_command_buffer->Finalize());
-    }
-
-    return absl::OkStatus();
+    TF_RETURN_IF_ERROR(Case(&command, index, index_is_bool, branches));
+    return &command;
   }
 
   return UnsupportedStateError(state_);
 }
 
-absl::Status GpuCommandBuffer::Case(DeviceMemory<bool> index,
+absl::Status GpuCommandBuffer::Case(const Command* command,
+                                    DeviceMemory<uint8_t> index,
+                                    bool index_is_bool,
                                     std::vector<Builder> branches) {
-  return Case(
-      DeviceMemory<uint8_t>::MakeFromByteSize(index.opaque(), index.size()),
-      /*index_is_bool=*/true, branches);
+  constexpr size_t kBranchBatchSize = 8;
+
+  auto* gpu_command = tsl::down_cast<const GpuCaseCommand*>(command);
+
+  // Update branch conditionals.
+  size_t batch_index = 0;
+  int32_t batch_offset = 0;
+  while (batch_offset < branches.size()) {
+    int32_t remaining_branches = branches.size() - batch_offset;
+    int32_t batch_size;
+    bool enable_conditional_default;
+    if (remaining_branches <= kBranchBatchSize) {
+      batch_size = remaining_branches;
+      enable_conditional_default = true;
+    } else {
+      batch_size = kBranchBatchSize;
+      enable_conditional_default = false;
+    }
+
+    TF_RETURN_IF_ERROR(UpdateSetCaseConditionNode(
+        gpu_command->set_condition_nodes[batch_index],
+        absl::MakeSpan(gpu_command->conditionals)
+            .subspan(batch_offset, batch_size),
+        index, index_is_bool, batch_offset, enable_conditional_default));
+
+    batch_offset += batch_size;
+    batch_index += 1;
+  }
+
+  // Update branch command buffers.
+  for (size_t i = 0; i < gpu_command->conditional_nodes.size(); ++i) {
+    GpuCommandBuffer* case_command_buffer =
+        gpu_command->conditional_nodes[i].command_buffer.get();
+    auto scoped_update_mode = ActivateUpdateMode(case_command_buffer);
+    TF_RETURN_IF_ERROR(case_command_buffer->Update());
+    TF_RETURN_IF_ERROR(branches[i](case_command_buffer));
+    TF_RETURN_IF_ERROR(case_command_buffer->Finalize());
+  }
+
+  return absl::OkStatus();
 }
 
-absl::Status GpuCommandBuffer::Case(DeviceMemory<int32_t> index,
-                                    std::vector<Builder> branches) {
+absl::StatusOr<const CommandBuffer::Command*> GpuCommandBuffer::Case(
+    DeviceMemory<int32_t> index, std::vector<Builder> branches,
+    absl::Span<const Command* const> dependencies) {
   return Case(
       DeviceMemory<uint8_t>::MakeFromByteSize(index.opaque(), index.size()),
+      /*index_is_bool=*/false, branches, dependencies);
+}
+
+absl::StatusOr<const CommandBuffer::Command*> GpuCommandBuffer::Case(
+    DeviceMemory<bool> index, std::vector<Builder> branches,
+    absl::Span<const Command* const> dependencies) {
+  return Case(
+      DeviceMemory<uint8_t>::MakeFromByteSize(index.opaque(), index.size()),
+      /*index_is_bool=*/true, branches, dependencies);
+}
+
+absl::Status GpuCommandBuffer::Case(const Command* command,
+                                    DeviceMemory<int32_t> index,
+                                    std::vector<Builder> branches) {
+  return Case(
+      command,
+      DeviceMemory<uint8_t>::MakeFromByteSize(index.opaque(), index.size()),
       /*index_is_bool=*/false, branches);
+}
+
+absl::Status GpuCommandBuffer::Case(const Command* command,
+                                    DeviceMemory<bool> index,
+                                    std::vector<Builder> branches) {
+  return Case(
+      command,
+      DeviceMemory<uint8_t>::MakeFromByteSize(index.opaque(), index.size()),
+      /*index_is_bool=*/true, branches);
 }
 
 absl::Status GpuCommandBuffer::For(int32_t num_iteration,

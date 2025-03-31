@@ -397,8 +397,9 @@ TEST(GpuCommandBufferTest, ConditionalCaseEmptyGraph) {
   };
 
   // Create a command buffer with a single conditional operation.
-  auto cmd_buffer = executor->CreateCommandBuffer(primary).value();
-  TF_ASSERT_OK(cmd_buffer->Case(index, {branch0, branch1}));
+  TF_ASSERT_OK_AND_ASSIGN(auto cmd_buffer,
+                          executor->CreateCommandBuffer(primary));
+  TF_ASSERT_OK(cmd_buffer->Case(index, {branch0, branch1}, {}));
   TF_ASSERT_OK(cmd_buffer->Finalize());
 
   TF_ASSERT_OK(cmd_buffer->Submit(stream.get()));
@@ -494,8 +495,9 @@ TEST_P(GpuCommandBufferCaseTest, ConditionalMultiCase) {
   }
 
   // Create a command buffer with a single conditional operation.
-  auto cmd_buffer = executor->CreateCommandBuffer(primary).value();
-  TF_ASSERT_OK(cmd_buffer->Case(index, branches));
+  TF_ASSERT_OK_AND_ASSIGN(auto cmd_buffer,
+                          executor->CreateCommandBuffer(primary));
+  TF_ASSERT_OK(cmd_buffer->Case(index, branches, {}));
   TF_ASSERT_OK(cmd_buffer->Finalize());
 
   // We test the out of bounds cases as well ( i < 0, i >= kNumCases).
@@ -584,7 +586,7 @@ TEST(GpuCommandBufferTest, ConditionalCase) {
 
   // Create a command buffer with a single conditional operation.
   auto cmd_buffer = executor->CreateCommandBuffer(primary).value();
-  TF_ASSERT_OK(cmd_buffer->Case(index, {branch0, branch1}));
+  TF_ASSERT_OK(cmd_buffer->Case(index, {branch0, branch1}, {}));
   TF_ASSERT_OK(cmd_buffer->Finalize());
 
   TF_ASSERT_OK(cmd_buffer->Submit(stream.get()));
@@ -800,7 +802,7 @@ TEST(GpuCommandBufferTest, DISABLED_WhileNestedConditional) {
   auto nested_cmd = executor->CreateCommandBuffer(nested).value();
   // TODO(b/339653343): Adding this Case condition causes AddNestedCommandBuffer
   // to fail.
-  TF_ASSERT_OK(nested_cmd->Case(pred_then, {then_builder, then_builder}));
+  TF_ASSERT_OK(nested_cmd->Case(pred_then, {then_builder, then_builder}, {}));
 
   // Loop cond: loop_counter++ < num_iters;
   CommandBuffer::Builder cond_builder = [&](CommandBuffer* cond_cmd) {

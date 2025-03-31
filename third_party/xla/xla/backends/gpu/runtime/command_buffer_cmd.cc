@@ -790,15 +790,19 @@ absl::Status CaseCmd::Record(const Thunk::ExecuteParams& execute_params,
   VLOG(5) << "  index: " << index_ << " (" << index.opaque() << ")";
 
   if (index_is_bool_) {
-    return command_buffer->Case(
-        se::DeviceMemory<bool>(index),
-        CreateBuilders(absl::MakeSpan(branches_commands_), &execute_params,
-                       &record_params));
+    return command_buffer
+        ->Case(se::DeviceMemory<bool>(index),
+               CreateBuilders(absl::MakeSpan(branches_commands_),
+                              &execute_params, &record_params),
+               {})
+        .status();
   } else {
-    return command_buffer->Case(
-        se::DeviceMemory<int32_t>(index),
-        CreateBuilders(absl::MakeSpan(branches_commands_), &execute_params,
-                       &record_params));
+    return command_buffer
+        ->Case(se::DeviceMemory<int32_t>(index),
+               CreateBuilders(absl::MakeSpan(branches_commands_),
+                              &execute_params, &record_params),
+               {})
+        .status();
   }
 }
 
