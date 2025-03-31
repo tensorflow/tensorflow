@@ -1,0 +1,64 @@
+[
+  {
+    "children": [
+      {
+        "children": [],
+        "frame": {
+          "name": "foo0",
+          "type": "function"
+        },
+        "metrics": {
+          "count": 1,
+          "device_id": "1",
+          "device_type": "HIP",
+          "time (ns)": 204800,
+          "flops8": 1e11,
+          "bytes": 1e8
+        }
+      },
+      {
+        "children": [],
+        "frame": {
+          "name": "foo1",
+          "type": "function"
+        },
+        "metrics": {
+          "count": 1,
+          "device_id": "0",
+          "device_type": "HIP",
+          "time (ns)": 204800,
+          "flops8": 1e10,
+          "bytes": 1e7
+        }
+      }
+    ],
+    "frame": {
+      "name": "ROOT",
+      "type": "function"
+    },
+    "metrics": {
+      "count": 0,
+      "time (ns)": 0,
+      "flops8": 0,
+      "bytes": 0
+    }
+  },
+  {
+    "HIP": {
+      "0": {
+        "arch": "gfx90a",
+        "bus_width": 4096,
+        "clock_rate": 1700000,
+        "memory_clock_rate": 1600000,
+        "num_sms": 104
+      },
+      "1": {
+        "arch": "gfx941",
+        "bus_width": 8192,
+        "clock_rate": 5200000,
+        "memory_clock_rate": 2525000,
+        "num_sms": 304
+      }
+    }
+  }
+]

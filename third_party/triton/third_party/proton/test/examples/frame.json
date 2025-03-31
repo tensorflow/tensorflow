@@ -1,0 +1,58 @@
+[
+  {
+    "children": [
+      {
+        "children": [
+          {
+            "children": [],
+            "frame": {
+              "name": "/home/user/projects/example.py/test.py:1@foo",
+              "type": "function"
+            },
+            "metrics": {
+              "count": 1,
+              "device_id": "0",
+              "device_type": "HIP",
+              "time (ns)": 204800
+            }
+          }
+        ],
+        "frame": {
+          "name": "test0"
+        },
+        "metrics": {}
+      },
+      {
+        "children": [],
+        "frame": {
+          "name": "test1"
+        },
+        "metrics": {
+          "count": 1,
+          "device_id": "0",
+          "device_type": "HIP",
+          "time (ns)": 204800
+        }
+      }
+    ],
+    "frame": {
+      "name": "ROOT",
+      "type": "function"
+    },
+    "metrics": {
+      "count": 0,
+      "time (ns)": 0
+    }
+  },
+  {
+    "HIP": {
+      "0": {
+        "arch": "gfx90a",
+        "bus_width": 4096,
+        "clock_rate": 1700000,
+        "memory_clock_rate": 1600000,
+        "num_sms": 104
+      }
+    }
+  }
+]
