@@ -61,23 +61,14 @@ def TTXLA_TileOp : TTXLA_Op<"tile", [Pure, SameVariadicOperandSize,
 
   let arguments = (ins
     AnyRankedTensor:$tensor,
-    Variadic<I32>:$offsets,
+    Variadic<I64>:$offsets,
     Variadic<I64>:$sizes,
-    Variadic<I64>:$strides
+    Variadic<I64>:$strides,
+    DenseI64ArrayAttr:$layout
   );
   let results = (outs TTXLA_TiledTensorType:$tiled_tensor);
   let hasCustomAssemblyFormat = 1;
   let hasVerifier = 1;
-
-  let builders = [
-    OpBuilder<(ins
-      "Value":$tensor,
-      "ValueRange":$offsets,
-      "ValueRange":$sizes,
-      "ValueRange":$strides,
-      "ArrayRef<int32_t>":$tensor_shape
-    )>
-  ];
 }
 
 def TTXLA_ExtractOp : TTXLA_Op<"extract", [Pure,

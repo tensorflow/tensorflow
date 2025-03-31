@@ -110,6 +110,21 @@ absl::StatusOr<Type> TritonType(EmitterLocOpBuilder& b, PrimitiveType t) {
   }
 }
 
+absl::StatusOr<PrimitiveType> GetPrimitiveType(Type t) {
+  if (t.isF64()) return F64;
+  if (t.isF32()) return F32;
+  if (t.isF16()) return F16;
+  if (t.isBF16()) return BF16;
+  if (t.isInteger(64)) return S64;
+  if (t.isInteger(32)) return S32;
+  if (t.isInteger(16)) return S16;
+  if (t.isInteger(8)) return S8;
+  if (t.isInteger(1)) return PRED;
+  if (mlir::isa<mlir::Float8E5M2Type>(t)) return F8E5M2;
+  if (mlir::isa<mlir::Float8E4M3FNType>(t)) return F8E4M3FN;
+  return absl::UnimplementedError("Unsupported type in getPrimitiveType.\n");
+}
+
 Type StorageType(EmitterLocOpBuilder& b, Type t) {
   if (t.isInteger(1)) {
     return b.getI8Type();

@@ -7,13 +7,13 @@
 
 tt.func @xla_triton_tile(%arg0: tensor<512x128xbf16>)
     -> !triton_xla.tiled_tensor<16x64|512x128xbf16> {
-  %cst_0 = arith.constant 0 : i32
+  %cst_0 = arith.constant 0 : i64
   %cst_1 = arith.constant 1 : i64
   %cst_16 = arith.constant 16 : i64
   %cst_64 = arith.constant 64 : i64
   %cst_128 = arith.constant 128 : i64
   %tiled_tensor = triton_xla.tile %arg0 [%cst_0, %cst_0] [%cst_16, %cst_64] [%cst_128, %cst_1]
-    : !triton_xla.tiled_tensor<16x64|512x128xbf16>
+    {layout = array<i64:1, 0>} : !triton_xla.tiled_tensor<16x64|512x128xbf16>
   tt.return %tiled_tensor : !triton_xla.tiled_tensor<16x64|512x128xbf16>
 }
 // CHECK-LABEL: xla_triton_tile

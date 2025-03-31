@@ -27,6 +27,7 @@ def TritonXLAExtractInsertToTritonPass : Pass<"triton-xla-extract-insert-to-trit
   }];
   let dependentDialects = [
     "triton::TritonDialect",
+    "::xla::XlaDialect"
   ];
   let options = [
     Option<"gpu_device_info_", "gpu_device_info", "std::string", /*default=*/"",

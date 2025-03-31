@@ -26,14 +26,6 @@ def XlaTritonDialect : Dialect {
     This dialect contains ops included in the xla extension point for Triton.
   }];
 
-  // We need this to register interfaces for tensor and !ttg.memdesc types.
-  // TODO: b/382459490 - This is wrong layering, triton_xla should not depend on
-  // triton_gpu, remove this once we refactor the extension and catch up to
-  // upstream.
-  let dependentDialects = [
-    "::mlir::triton::gpu::TritonGPUDialect",
-  ];
-
   let cppNamespace = "::mlir::triton::xla";
   let useDefaultAttributePrinterParser = 1;
   let useDefaultTypePrinterParser = 1;
