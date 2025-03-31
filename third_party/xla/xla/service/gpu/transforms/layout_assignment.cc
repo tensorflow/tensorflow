@@ -340,6 +340,15 @@ bool IsPackedInstruction(const HloInstruction* instruction) {
               instruction->operand(0)->shape().element_type()));
 }
 
+bool IsCustomCallToMemoryPlacement(const HloInstruction* hlo) {
+  if (hlo->opcode() != HloOpcode::kCustomCall) {
+    return false;
+  }
+  const std::string& target = hlo->custom_call_target();
+  return target == memory_annotations::kMoveToDeviceCustomCallTarget ||
+         target == memory_annotations::kMoveToHostCustomCallTarget;
+}
+
 }  // namespace
 
 absl::Status GpuLayoutAssignment::AddDotBackendConstraints(
@@ -571,6 +580,13 @@ absl::Status GpuLayoutAssignment::AddBackendConstraints(
             LayoutUtil::SetToDefaultLayout(subshape);
           });
       TF_RETURN_IF_ERROR(SetInstructionLayout(s, instruction));
+    } else if (IsCustomCallToMemoryPlacement(instruction)) {
+      // Make sure that host memory buffers use the default layout so that
+      // the compiler does not insert transposes on host memory buffers.
+      Shape operand_shape = instruction->operand(0)->shape();
+      LayoutUtil::SetToDefaultLayout(&operand_shape);
+      TF_RETURN_IF_ERROR(SetOperandLayout(operand_shape, instruction, 0));
+      TF_RETURN_IF_ERROR(SetInstructionLayout(operand_shape, instruction));
     }
   }
   return absl::OkStatus();
@@ -691,19 +707,12 @@ bool GpuLayoutAssignment::PropagateReductionLayoutToOperand(
 
 bool GpuLayoutAssignment::InstructionCanChangeLayoutInstance(
     const HloInstruction* instruction) {
-  // The host offloading custom calls will be eventually removed
-  // by the offloader, so we need to make sure that the calls do not change
-  // the layout and thus cause layout mismatches after the removal.
   // The TopK custom call cannot handle the case if the operand has a different
   // layout.
   const HloCustomCallInstruction* custom_call =
       DynCast<HloCustomCallInstruction>(instruction);
   if (custom_call != nullptr &&
-      (custom_call->custom_call_target() ==
-           memory_annotations::kMoveToHostCustomCallTarget ||
-       custom_call->custom_call_target() ==
-           memory_annotations::kMoveToDeviceCustomCallTarget ||
-       custom_call->custom_call_target() == kTopKCustomCallTarget)) {
+      custom_call->custom_call_target() == kTopKCustomCallTarget) {
     return false;
   }
 

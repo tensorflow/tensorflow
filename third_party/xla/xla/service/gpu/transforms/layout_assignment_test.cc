@@ -517,9 +517,10 @@ TEST_F(LayoutAssignmentTest, MoveToHostCustomCallConstrained) {
 HloModule TestModule
 
 ENTRY entry {
-  Arg_0 = f32[2,5,5]{2,1,0} parameter(0)
+  Arg_0 = f32[2,5,5]{0,1,2} parameter(0)
   custom-call.0 = f32[2,5,5] custom-call(Arg_0), custom_call_target="MoveToHost"
-  ROOT custom-call.1 = f32[2,5,5]{2, 1, 0} custom-call(custom-call.0), custom_call_target="fixed_call", operand_layout_constraints={f32[2,5,5]{1,2,0}}
+  ROOT custom-call.1 = f32[2,5,5]{2, 1, 0} custom-call(custom-call.0),
+      custom_call_target="fixed_call", operand_layout_constraints={f32[2,5,5]{1,2,0}}
 }
 )";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
@@ -536,9 +537,8 @@ ENTRY entry {
   const HloInstruction* call_0 = FindInstruction(m.get(), "custom-call.0");
   const Layout input_layout = call_0->operand(0)->shape().layout();
   const Layout output_layout = call_0->shape().layout();
-  EXPECT_TRUE(LayoutUtil::Equal(input_layout, output_layout))
-      << "Expected the same input/output layouts.  Input: " << input_layout
-      << ". Output: " << output_layout;
+  EXPECT_EQ(input_layout, LayoutUtil::GetDefaultLayoutForR3());
+  EXPECT_EQ(output_layout, LayoutUtil::GetDefaultLayoutForR3());
 }
 
 TEST_F(LayoutAssignmentTest, MoveToDeviceCustomCallConstrained) {
@@ -546,9 +546,10 @@ TEST_F(LayoutAssignmentTest, MoveToDeviceCustomCallConstrained) {
 HloModule TestModule
 
 ENTRY entry {
-  Arg_0 = f32[2,5,5]{2,1,0} parameter(0)
+  Arg_0 = f32[2,5,5]{1,2,0} parameter(0)
   custom-call.0 = f32[2,5,5] custom-call(Arg_0), custom_call_target="MoveToDevice"
-  ROOT custom-call.1 = f32[2,5,5]{2, 1, 0} custom-call(custom-call.0), custom_call_target="fixed_call", operand_layout_constraints={f32[2,5,5]{1,2,0}}
+  ROOT custom-call.1 = f32[2,5,5]{2, 1, 0} custom-call(custom-call.0),
+      custom_call_target="fixed_call", operand_layout_constraints={f32[2,5,5]{0,1,2}}
 }
 )";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
@@ -565,9 +566,8 @@ ENTRY entry {
   const HloInstruction* call_0 = FindInstruction(m.get(), "custom-call.0");
   const Layout input_layout = call_0->operand(0)->shape().layout();
   const Layout output_layout = call_0->shape().layout();
-  EXPECT_TRUE(LayoutUtil::Equal(input_layout, output_layout))
-      << "Expected the same input/output layouts.  Input: " << input_layout
-      << ". Output: " << output_layout;
+  EXPECT_EQ(input_layout, LayoutUtil::GetDefaultLayoutForR3());
+  EXPECT_EQ(output_layout, LayoutUtil::GetDefaultLayoutForR3());
 }
 
 TEST_F(LayoutAssignmentTest, CuDNNConvolutionHasNHWCLayoutPostHopper) {
