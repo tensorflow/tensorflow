@@ -111,6 +111,8 @@ jobs:
 
       - name: Checkout OpenXLA
         uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4.1.1
+        with:
+          ref: 93360b5329638cda0e913635536b7dab72d9e0cd # https://github.com/openxla/xla/commit/93360b5329638cda0e913635536b7dab72d9e0cd
       - name: Wait For Connection
         uses: google-ml-infra/actions/ci_connection@main
         with:

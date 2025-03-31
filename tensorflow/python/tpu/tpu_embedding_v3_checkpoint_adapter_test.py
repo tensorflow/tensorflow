@@ -14,15 +14,16 @@
 # ==============================================================================
 """Tests for tpu_embedding_v3_checkpoint_adapter."""
 
-
 from tensorflow.core.tpu.kernels import sparse_core_layout_pb2
 from tensorflow.python.compat import v2_compat
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework.constant_op import constant as tf_constant
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
 from tensorflow.python.tpu import tpu_embedding_v3_checkpoint_adapter
+
+tf_constant = constant_op.constant
 
 
 def create_layout(
@@ -287,6 +288,171 @@ class TpuEmbeddingV3CheckpointAdapterTest(test.TestCase):
     self.assertTrue(adapter.is_layouts_same({layout.table_name: layout}))
     layout.num_sparse_cores = 3
     self.assertFalse(adapter.is_layouts_same({layout.table_name: layout}))
+
+  def test_adapt_to_different_sharded_stacked(self):
+
+    source_layouts = {
+        "one": create_layout(
+            tables_name="one",
+            stacked_table_name="one_two_three",
+            num_sparse_cores=4,
+            num_partitions=2,
+            unsharded_shape=(6, 5),
+            unsharded_padded_shape=(8, 8),
+            row_offset=0,
+            shard_rotation=0,
+            total_rows_per_sparse_core_shard=6,
+        ),
+        "two": create_layout(
+            tables_name="two",
+            stacked_table_name="one_two_three",
+            num_sparse_cores=4,
+            num_partitions=2,
+            unsharded_shape=(7, 4),
+            unsharded_padded_shape=(8, 8),
+            row_offset=2,
+            shard_rotation=1,
+            total_rows_per_sparse_core_shard=6,
+        ),
+        "three": create_layout(
+            tables_name="three",
+            stacked_table_name="one_two_three",
+            num_sparse_cores=4,
+            num_partitions=2,
+            unsharded_shape=(15, 3),
+            unsharded_padded_shape=(16, 8),
+            row_offset=4,
+            shard_rotation=2,
+            total_rows_per_sparse_core_shard=6,
+        ),
+    }
+    src_layouts_pb = sparse_core_layout_pb2.SparseCoreTableLayouts()
+    src_layouts_pb.tables.extend(source_layouts.values())
+
+    sc_to_sc_adapter = (
+        tpu_embedding_v3_checkpoint_adapter.TpuEmbeddingV3CheckpointAdapter(
+            layouts=src_layouts_pb
+        )
+    )
+
+    target_layouts = {
+        "one": create_layout(
+            tables_name="one",
+            stacked_table_name="one_two_three",
+            num_sparse_cores=8,
+            num_partitions=4,
+            unsharded_shape=(6, 5),
+            unsharded_padded_shape=(8, 8),
+            row_offset=0,
+            shard_rotation=0,
+            total_rows_per_sparse_core_shard=4,
+        ),
+        "two": create_layout(
+            tables_name="two",
+            stacked_table_name="one_two_three",
+            num_sparse_cores=8,
+            num_partitions=4,
+            unsharded_shape=(7, 4),
+            unsharded_padded_shape=(8, 8),
+            row_offset=1,
+            shard_rotation=1,
+            total_rows_per_sparse_core_shard=4,
+        ),
+        "three": create_layout(
+            tables_name="three",
+            stacked_table_name="one_two_three",
+            num_sparse_cores=8,
+            num_partitions=4,
+            unsharded_shape=(15, 3),
+            unsharded_padded_shape=(16, 8),
+            row_offset=2,
+            shard_rotation=2,
+            total_rows_per_sparse_core_shard=4,
+        ),
+    }
+
+    # this take a mapping[str, sparse_core_layout_pb2.SparseCoreTableLayout]
+    sc_to_sc_adapter.initialize_reshard_callbacks(target_layouts)
+    callback = sc_to_sc_adapter.get_reshard_callback("one_two_three")
+    self.assertEqual(callback.object_name(), "one_two_three")
+    updated_keys, updated_slices = callback.update_restore_inputs(
+        "path/to/embedding/one_two/in/checkpoint", "24 8 6,12:0,8"
+    )
+    self.assertAllEqual(
+        updated_keys,
+        [
+            "path/to/embedding/one_two/in/checkpoint",
+        ],
+    )
+    self.assertAllEqual(
+        updated_slices,
+        ["24 8 0,24:0,8"],
+    )
+
+    one_two_three = tf_constant([
+        # table one shard 0
+        [0, 0, 0, 0, 0, 0, 0, 0],
+        [4, 4, 4, 4, 4, 0, 0, 0],
+        [13, 13, 13, 13, 0, 0, 0, 0],
+        [0, 0, 0, 0, 0, 0, 0, 0],
+        [102, 102, 102, 0, 0, 0, 0, 0],
+        [106, 106, 106, 0, 0, 0, 0, 0],
+        [110, 110, 110, 0, 0, 0, 0, 0],
+        [114, 114, 114, 0, 0, 0, 0, 0],
+        # table one shard 1
+        [1, 1, 1, 1, 1, 0, 0, 0],
+        [5, 5, 5, 5, 5, 0, 0, 0],
+        [10, 10, 10, 10, 0, 0, 0, 0],
+        [14, 14, 14, 14, 0, 0, 0, 0],
+        [103, 103, 103, 0, 0, 0, 0, 0],
+        [107, 107, 107, 0, 0, 0, 0, 0],
+        [111, 111, 111, 0, 0, 0, 0, 0],
+        [0, 0, 0, 0, 0, 0, 0, 0],
+        # table one shard 2
+        [2, 2, 2, 2, 2, 0, 0, 0],
+        [6, 6, 6, 6, 6, 0, 0, 0],
+        [11, 11, 11, 11, 0, 0, 0, 0],
+        [15, 15, 15, 15, 0, 0, 0, 0],
+        [100, 100, 100, 0, 0, 0, 0, 0],
+        [104, 104, 104, 0, 0, 0, 0, 0],
+        [108, 108, 108, 0, 0, 0, 0, 0],
+        [112, 112, 112, 0, 0, 0, 0, 0],
+        # table one shard 3
+        [3, 3, 3, 3, 3, 0, 0, 0],
+        [7, 7, 7, 7, 7, 0, 0, 0],
+        [12, 12, 12, 12, 0, 0, 0, 0],
+        [16, 16, 16, 16, 0, 0, 0, 0],
+        [101, 101, 101, 0, 0, 0, 0, 0],
+        [105, 105, 105, 0, 0, 0, 0, 0],
+        [109, 109, 109, 0, 0, 0, 0, 0],
+        [113, 113, 113, 0, 0, 0, 0, 0],
+    ])
+
+    self.assertAllEqual(
+        tf_constant([
+            #  shard 2
+            [2, 2, 2, 2, 2, 0, 0, 0],
+            [11, 11, 11, 11, 0, 0, 0, 0],
+            [100, 100, 100, 0, 0, 0, 0, 0],
+            [108, 108, 108, 0, 0, 0, 0, 0],
+            # shard 3
+            [3, 3, 3, 3, 3, 0, 0, 0],
+            [12, 12, 12, 12, 0, 0, 0, 0],
+            [101, 101, 101, 0, 0, 0, 0, 0],
+            [109, 109, 109, 0, 0, 0, 0, 0],
+            # shard 4
+            [4, 4, 4, 4, 4, 0, 0, 0],
+            [13, 13, 13, 13, 0, 0, 0, 0],
+            [102, 102, 102, 0, 0, 0, 0, 0],
+            [110, 110, 110, 0, 0, 0, 0, 0],
+            # shard 5
+            [5, 5, 5, 5, 5, 0, 0, 0],
+            [14, 14, 14, 14, 0, 0, 0, 0],
+            [103, 103, 103, 0, 0, 0, 0, 0],
+            [111, 111, 111, 0, 0, 0, 0, 0],
+        ]),
+        callback.reshard([one_two_three], "32 8 8,16:0,8"),
+    )
 
 
 if __name__ == "__main__":
