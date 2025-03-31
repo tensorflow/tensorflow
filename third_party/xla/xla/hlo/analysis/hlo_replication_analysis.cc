@@ -41,7 +41,9 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/map_util.h"
+#include "xla/shape_tree.h"
 #include "xla/shape_util.h"
 #include "xla/xla_data.pb.h"
 
@@ -468,6 +470,15 @@ absl::Status HloReplicationAnalysis::ComputeHloReplication() {
     auto param = entry->parameter_instruction(i);
     ShapeTree<HloReplication> shape_tree(param->shape(),
                                          HloReplication::UniqueOnAllDevices());
+
+    std::unique_ptr<ShapeTree<HloSharding>> sharding_tree = nullptr;
+    if (cross_partition_spmd_ && param->has_sharding()) {
+      TF_ASSIGN_OR_RETURN(auto result,
+                          param->sharding().AsShapeTree(param->shape()));
+      sharding_tree =
+          std::make_unique<ShapeTree<HloSharding>>(std::move(result));
+    }
+
     const auto& replication = param->parameter_replicated_at_leaf_buffers();
     int leaf_index = 0;
     absl::Status status = ShapeUtil::ForEachSubshapeWithStatus(
@@ -478,10 +489,8 @@ absl::Status HloReplicationAnalysis::ComputeHloReplication() {
           if (cross_partition_spmd_ && param->has_sharding()) {
             // In cross-partition spmd mode, set parameter replication status
             // based on the parameter's sharding.
-            TF_ASSIGN_OR_RETURN(auto sharding_tree,
-                                param->sharding().AsShapeTree(param->shape()));
             *shape_tree.mutable_element(index) =
-                sharding_tree.element(index).IsReplicated()
+                sharding_tree->element(index).IsReplicated()
                     ? HloReplication::ReplicatedOnAllDevices()
                     : HloReplication::UniqueOnAllDevices();
           }

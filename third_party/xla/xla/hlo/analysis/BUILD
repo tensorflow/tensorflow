@@ -300,6 +300,7 @@ cc_library(
     srcs = ["hlo_replication_analysis.cc"],
     hdrs = ["hlo_replication_analysis.h"],
     deps = [
+        "//xla:shape_tree",
         "//xla:shape_util",
         "//xla:util",
         "//xla:xla_data_proto_cc",
