@@ -174,11 +174,6 @@ class LocalClient : public Client {
       const std::string& serialized_aot_result,
       const ExecutableBuildOptions& options);
 
-  // Variant of `Load()` that accepts an AotCompilationResult.
-  absl::StatusOr<std::unique_ptr<LocalExecutable>> Load(
-      std::unique_ptr<xla::AotCompilationResult> aot_result,
-      const ExecutableBuildOptions& options);
-
   // Copy the literal data to the device with the given ordinal and return as a
   // ScopedShapedBuffer. If non-null the given memory allocator is used for
   // device memory allocation. If null, the default memory allocator for the
@@ -249,10 +244,6 @@ class LocalClient : public Client {
 
  private:
   LocalService* local_service_;
-
-  absl::StatusOr<std::unique_ptr<LocalExecutable>> LoadInternal(
-      std::unique_ptr<xla::AotCompilationResult> aot_result, Compiler* compiler,
-      const ExecutableBuildOptions& options);
 };
 
 }  // namespace xla

@@ -19,22 +19,22 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
-#include "mhlo/IR/hlo_ops.h"
-#include "mhlo/transforms/passes.h"
-#include "mlir/Dialect/Arith/IR/Arith.h"
-#include "mlir/Dialect/Func/IR/FuncOps.h"
-#include "mlir/Dialect/Shape/IR/Shape.h"
-#include "mlir/Dialect/Tensor/IR/Tensor.h"
-#include "mlir/IR/BuiltinTypes.h"
-#include "mlir/IR/PatternMatch.h"
-#include "mlir/Support/LLVM.h"
-#include "mlir/Transforms/GreedyPatternRewriteDriver.h"
+#include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "mlir/Dialect/Shape/IR/Shape.h"  // from @llvm-project
+#include "mlir/Dialect/Tensor/IR/Tensor.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
+#include "mlir/IR/PatternMatch.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
+#include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
+#include "xla/mlir_hlo/mhlo/transforms/passes.h"
 
 namespace mlir {
-namespace mhlo {
+namespace kernel_gen {
 
-#define GEN_PASS_DEF_SHAPESIMPLIFICATION
-#include "mhlo/transforms/mhlo_passes.h.inc"
+#define GEN_PASS_DEF_SHAPESIMPLIFICATIONPASS
+#include "tensorflow/compiler/mlir/tools/kernel_gen/transforms/kernel_gen_passes.h.inc"
 
 namespace {
 
@@ -219,8 +219,8 @@ struct ExtractFromBroadcastedTensorCanonicalizationPattern
   }
 };
 
-struct ShapeSimplification
-    : public impl::ShapeSimplificationBase<ShapeSimplification> {
+struct ShapeSimplificationPass
+    : public impl::ShapeSimplificationPassBase<ShapeSimplificationPass> {
   void getDependentDialects(DialectRegistry &registry) const override {
     registry.insert<mlir::arith::ArithDialect>();
     registry.insert<mhlo::MhloDialect>();
@@ -249,9 +249,5 @@ struct ShapeSimplification
 
 }  // namespace
 
-std::unique_ptr<OperationPass<func::FuncOp>> createShapeSimplification() {
-  return std::make_unique<ShapeSimplification>();
-}
-
-}  // namespace mhlo
+}  // namespace kernel_gen
 }  // namespace mlir

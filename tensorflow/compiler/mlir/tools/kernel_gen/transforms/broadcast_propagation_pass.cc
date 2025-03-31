@@ -15,32 +15,41 @@ limitations under the License.
 ==============================================================================*/
 
 #include <algorithm>
+#include <cassert>
+#include <cstdint>
 #include <memory>
 #include <utility>
 
 #include "llvm/ADT/DenseMapInfo.h"
 #include "llvm/ADT/Hashing.h"
 #include "llvm/ADT/STLExtras.h"
-#include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Casting.h"
-#include "mhlo/IR/hlo_ops.h"
-#include "mhlo/transforms/passes.h"
-#include "mlir/Dialect/Func/IR/FuncOps.h"
-#include "mlir/IR/Attributes.h"
-#include "mlir/IR/Location.h"
-#include "mlir/IR/MLIRContext.h"
-#include "mlir/IR/Operation.h"
-#include "mlir/IR/Value.h"
-#include "mlir/Pass/Pass.h"
-#include "mlir/Support/LLVM.h"
-#include "mlir/Transforms/GreedyPatternRewriteDriver.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
+#include "mlir/IR/Location.h"  // from @llvm-project
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/OpDefinition.h"  // from @llvm-project
+#include "mlir/IR/Operation.h"  // from @llvm-project
+#include "mlir/IR/OperationSupport.h"  // from @llvm-project
+#include "mlir/IR/PatternMatch.h"  // from @llvm-project
+#include "mlir/IR/Types.h"  // from @llvm-project
+#include "mlir/IR/Value.h"  // from @llvm-project
+#include "mlir/Interfaces/SideEffectInterfaces.h"  // from @llvm-project
+#include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
+#include "stablehlo/dialect/Base.h"  // from @stablehlo
+#include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 
 namespace mlir {
-namespace mhlo {
+namespace kernel_gen {
+
+using mhlo::DynamicBroadcastInDimOp;
 
 #define GEN_PASS_DEF_BROADCASTPROPAGATIONPASS
-#include "mhlo/transforms/mhlo_passes.h.inc"
+#include "tensorflow/compiler/mlir/tools/kernel_gen/transforms/kernel_gen_passes.h.inc"
 
 namespace {
 
@@ -62,26 +71,28 @@ struct BroadcastIntent {
 };
 
 }  // namespace
-}  // namespace mhlo
+}  // namespace kernel_gen
 }  // namespace mlir
 
 namespace llvm {
 
+using mlir::kernel_gen::BroadcastIntent;
+
 template <>
-struct DenseMapInfo<mlir::mhlo::BroadcastIntent> {
-  static mlir::mhlo::BroadcastIntent getEmptyKey() {
+struct DenseMapInfo<BroadcastIntent> {
+  static BroadcastIntent getEmptyKey() {
     return {DenseMapInfo<mlir::RankedTensorType>::getEmptyKey(),
             DenseMapInfo<mlir::Value>::getEmptyKey(),
             DenseMapInfo<mlir::Value>::getEmptyKey(),
             DenseMapInfo<mlir::Attribute>::getEmptyKey()};
   }
-  static mlir::mhlo::BroadcastIntent getTombstoneKey() {
+  static BroadcastIntent getTombstoneKey() {
     return {DenseMapInfo<mlir::RankedTensorType>::getTombstoneKey(),
             DenseMapInfo<mlir::Value>::getTombstoneKey(),
             DenseMapInfo<mlir::Value>::getTombstoneKey(),
             DenseMapInfo<mlir::Attribute>::getTombstoneKey()};
   }
-  static unsigned getHashValue(const mlir::mhlo::BroadcastIntent &intent) {
+  static unsigned getHashValue(const BroadcastIntent &intent) {
     return hash_combine(
         DenseMapInfo<mlir::RankedTensorType>::getHashValue(intent.resultType),
         DenseMapInfo<mlir::Value>::getHashValue(intent.targetValue),
@@ -89,8 +100,7 @@ struct DenseMapInfo<mlir::mhlo::BroadcastIntent> {
         DenseMapInfo<mlir::Attribute>::getHashValue(
             intent.broadcastDimensions));
   }
-  static bool isEqual(const mlir::mhlo::BroadcastIntent &lhs,
-                      const mlir::mhlo::BroadcastIntent &rhs) {
+  static bool isEqual(const BroadcastIntent &lhs, const BroadcastIntent &rhs) {
     return lhs == rhs;
   }
 };
@@ -98,7 +108,7 @@ struct DenseMapInfo<mlir::mhlo::BroadcastIntent> {
 }  // namespace llvm
 
 namespace mlir {
-namespace mhlo {
+namespace kernel_gen {
 namespace {
 
 bool allowsForElementwiseBroadcastPropagation(Operation *op) {
@@ -448,9 +458,5 @@ struct BroadcastPropagationPass
 
 }  // namespace
 
-std::unique_ptr<OperationPass<func::FuncOp>> createBroadcastPropagationPass() {
-  return std::make_unique<BroadcastPropagationPass>();
-}
-
-}  // namespace mhlo
+}  // namespace kernel_gen
 }  // namespace mlir
