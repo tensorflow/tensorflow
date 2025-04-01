@@ -1590,6 +1590,40 @@ struct CtxDecoding<RunId> {
   }
 };
 
+//===----------------------------------------------------------------------===//
+// DeviceOrdinal
+//===----------------------------------------------------------------------===//
+
+struct DeviceOrdinal {};
+
+// Context decoding for DeviceOrdinal.
+//
+// Example: Ffi::Bind().Ctx<DeviceOrdinal>()
+//                     .To([](int32_t device_ordinal) { ... });
+template <>
+struct CtxDecoding<DeviceOrdinal> {
+  using Type = int32_t;
+
+  static std::optional<Type> Decode(const XLA_FFI_Api* api,
+                                    XLA_FFI_ExecutionContext* ctx,
+                                    DiagnosticEngine& diagnostic) {
+    XLA_FFI_DeviceOrdinal_Get_Args args;
+    args.struct_size = XLA_FFI_ExecutionContext_Get_Args_STRUCT_SIZE;
+    args.extension_start = nullptr;
+    args.ctx = ctx;
+    args.device_ordinal = 0;
+
+    if (XLA_FFI_Error* err = api->XLA_FFI_DeviceOrdinal_Get(&args); err) {
+      diagnostic.Emit("Failed to get device ordinal from execution context: ")
+          << internal::GetErrorMessage(api, err);
+      internal::DestroyError(api, err);
+      return std::nullopt;
+    }
+
+    return args.device_ordinal;
+  }
+};
+
 }  // namespace xla::ffi
 
 #endif  // XLA_FFI_API_FFI_H_
