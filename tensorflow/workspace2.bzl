@@ -160,9 +160,9 @@ def _tf_repositories():
     # LINT.IfChange(xnnpack)
     tf_http_archive(
         name = "XNNPACK",
-        sha256 = "04291b4c49693988f8c95d07968f6f3da3fd89d85bd9e4e26f73abbdfd7a8a45",
-        strip_prefix = "XNNPACK-24794834234a7926d2f553d34e84204c8ac99dfd",
-        urls = tf_mirror_urls("https://github.com/google/XNNPACK/archive/24794834234a7926d2f553d34e84204c8ac99dfd.zip"),
+        sha256 = "72e4368ff3e7bdefd8b43fc6e5708b8e9fada7a8302ba2362028832df6262c13",
+        strip_prefix = "XNNPACK-e67c0fbc360903f921ff286a235c18d9e12c6df6",
+        urls = tf_mirror_urls("https://github.com/google/XNNPACK/archive/e67c0fbc360903f921ff286a235c18d9e12c6df6.zip"),
     )
     # LINT.ThenChange(//tensorflow/lite/tools/cmake/modules/xnnpack.cmake)
 
@@ -184,18 +184,18 @@ def _tf_repositories():
     # LINT.IfChange(pthreadpool)
     tf_http_archive(
         name = "pthreadpool",
-        sha256 = "215724985c4845cdcadcb5f26a2a8777943927bb5a172a00e7716fe16a6f3c1b",
-        strip_prefix = "pthreadpool-b1aee199d54003fb557076a201bcac3398af580b",
-        urls = tf_mirror_urls("https://github.com/google/pthreadpool/archive/b1aee199d54003fb557076a201bcac3398af580b.zip"),
+        sha256 = "745e56516d6a58d183eb33d9017732d87cff43ce9f78908906f9faa52633e421",
+        strip_prefix = "pthreadpool-b92447772365661680f486e39a91dfe6675adafc",
+        urls = tf_mirror_urls("https://github.com/google/pthreadpool/archive/b92447772365661680f486e39a91dfe6675adafc.zip"),
     )
     # LINT.ThenChange(//tensorflow/lite/cmake/DownloadPThreadPool.cmake)
 
     tf_http_archive(
         name = "cpuinfo",
-        sha256 = "4bf314b3f04db2fd984fef38a7e278e702b74297ef0af592b73296edba02b9d4",
-        strip_prefix = "cpuinfo-8a1772a0c5c447df2d18edf33ec4603a8c9c04a6",
+        sha256 = "593ac799e8c9382362e7b29a58917053299fa906e271185204bb571465bb2f79",
+        strip_prefix = "cpuinfo-b73ae6ce38d5dd0b7fe46dbe0a4b5f4bab91c7ea",
         patch_file = ["//third_party/cpuinfo:cpuinfo_ppc64le_support.patch"],
-        urls = tf_mirror_urls("https://github.com/pytorch/cpuinfo/archive/8a1772a0c5c447df2d18edf33ec4603a8c9c04a6.zip"),
+        urls = tf_mirror_urls("https://github.com/pytorch/cpuinfo/archive/b73ae6ce38d5dd0b7fe46dbe0a4b5f4bab91c7ea.zip"),
     )
 
     tf_http_archive(
