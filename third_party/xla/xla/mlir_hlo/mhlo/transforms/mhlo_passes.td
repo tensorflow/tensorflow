@@ -218,20 +218,3 @@ def PrepareForExportPass : Pass<"xla-prepare-for-export", "mlir::func::FuncOp"> 
     canonicalization may undo transformations.
   }];
 }
-
-def ShapeLegalizeToHloPass : Pass<"shape-legalize-to-hlo", "func::FuncOp"> {
-  let summary = "Legalize shape-related ops to HLO.";
-  let constructor = "createShapeLegalizeToHloPass()";
-  let description = [{
-    An experimental pass that legalizes shape-related ops to MHLO ops.
-
-    Bringing shape and data computations together via an optional pass will
-    make it possible for the MHLO ecosystem to potentially leverage the
-    compilation pipelines that use HLO operations to model dynamism.
-  }];
-  let dependentDialects = ["mhlo::MhloDialect"];
-  let options = [
-    Option<"legalize_constraints_", "legalize-constraints", "bool",
-           /*default=*/"false", "Whether to legalize Cstr Ops to shape_assertion custom_call">
-  ];
-}

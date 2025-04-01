@@ -43,7 +43,6 @@ add_mlir_library(MhloPasses
   mhlo_flatten_tuple/mhlo_flatten_tuple.cc
   prepare_for_export/prepare_for_export.cc
   optimize_mhlo/optimize_mhlo.cc
-  shape_legalize_to_hlo/shape_legalize_to_hlo.cc
   shape_simplification/shape_simplification.cc
   sink_constants_to_control_flow/sink_constants_to_control_flow.cc
   test_infer_shaped_type/test_infer_shaped_type_pass.cc

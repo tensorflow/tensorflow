@@ -89,10 +89,6 @@ std::unique_ptr<OperationPass<ModuleOp>> createConvertToSignlessPass();
 // Legalizes from the StableHLO dialect to the MHLO dialect.
 std::unique_ptr<OperationPass<ModuleOp>> createStablehloLegalizeToHloPass();
 
-// Legalizes from the Shape dialect to the MHLO dialect.
-std::unique_ptr<OperationPass<func::FuncOp>> createShapeLegalizeToHloPass(
-    bool legalizeConstraints = false);
-
 // Test passes.
 std::unique_ptr<Pass> createTestInferShapedTypeMethodsPass();
 std::unique_ptr<Pass> createTestMaterializeBroadcastsPass();

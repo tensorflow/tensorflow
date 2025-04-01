@@ -181,6 +181,7 @@ cc_library(
         "@local_tsl//tsl/platform:ml_dtypes",
         "@stablehlo//:base",
         "@stablehlo//:stablehlo_ops",
+        "@stablehlo//:stablehlo_passes",
     ],
 )
 

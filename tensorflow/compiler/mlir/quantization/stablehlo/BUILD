@@ -48,6 +48,7 @@ cc_library(
     name = "passes",
     srcs = [
         "passes/convert_func_to_bfloat16.cc",
+        "passes/convert_shape_constraint_to_assert.cc",
         "passes/convert_xla_call_module_op_to_bfloat16.cc",
         "passes/defer_activation_transpose.cc",
         "passes/fold_constant_transpose.cc",
@@ -138,6 +139,7 @@ cc_library(
         "@llvm-project//mlir:Rewrite",
         "@llvm-project//mlir:ShapeDialect",
         "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:TensorDialect",
         "@llvm-project//mlir:TransformUtils",
         "@llvm-project//mlir:Transforms",
         "@local_tsl//tsl/platform:path",
@@ -150,6 +152,7 @@ cc_library(
         "@local_xla//xla/tsl/protobuf:protos_all_cc",
         "@stablehlo//:chlo_ops",
         "@stablehlo//:stablehlo_ops",
+        "@stablehlo//:stablehlo_passes",
         "@stablehlo//:stablehlo_portable_api",
         "@stablehlo//:stablehlo_serialization",
     ],
