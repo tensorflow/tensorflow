@@ -367,6 +367,22 @@ CodegenDecision IsTritonSupportedDot(
   return CodegenDecision::Allow();
 }
 
+CodegenDecision IsSupportedFusion(const HloFusionInstruction& fusion) {
+  absl::StatusOr<GpuBackendConfig> backend_config =
+      fusion.backend_config<GpuBackendConfig>();
+  if (!backend_config.ok()) {
+    return CodegenDecision(backend_config.status());
+  }
+  absl::string_view fusion_kind =
+      backend_config.value().fusion_backend_config().kind();
+  // Note: kTritonFusionKind is NOT expected to be set for nested fusions.
+  if (fusion_kind != kTritonNestedGemmFusionKind) {
+    return CodegenDecision::Forbid(
+        absl::StrCat("Unsupported fusion kind: ", fusion_kind));
+  }
+  return CodegenDecision::Allow();
+}
+
 CodegenDecision IsTritonSupportedConcatenate(const HloInstruction& hlo) {
   CHECK(hlo.opcode() == HloOpcode::kConcatenate);
   if (!IsInTritonNestedGemmFusion(hlo)) {
@@ -439,19 +455,6 @@ CodegenDecision IsTritonSupportedInstructionImpl(
                      "F8E4M3FN and F8E5M2 are not supported for iota.");
   }
 
-  if (instr.IsElementwise()) {
-    if (!IsTritonSupportedElementwise(
-            instr.opcode(),
-            // Use the last operand below in order to support both `compare`
-            // and `select` which have a fixed PRED type in the output and first
-            // operand.
-            instr.operand(instr.operand_count() - 1)->shape().element_type(),
-            gpu_version)) {
-      return CodegenDecision::Forbid("Unsupported elementwise operation.");
-    }
-    return CodegenDecision::Allow();
-  }
-
   switch (instr.opcode()) {
     case HloOpcode::kReduce: {
       return CanTritonHandleReduce(*Cast<HloReduceInstruction>(&instr),
@@ -467,11 +470,27 @@ CodegenDecision IsTritonSupportedInstructionImpl(
     case HloOpcode::kDot:
       return IsTritonSupportedDot(*Cast<HloDotInstruction>(&instr),
                                   gpu_version);
+    case HloOpcode::kFusion:
+      return IsSupportedFusion(*Cast<HloFusionInstruction>(&instr));
     default:
-      VLOG(2) << "Unsupported instruction: " << instr.ToString();
+      // Not all instructions have a special handling.
       break;
   }
-  return CodegenDecision::Forbid("Unsupported instruction.");
+
+  if (instr.IsElementwise()) {
+    if (!IsTritonSupportedElementwise(
+            instr.opcode(),
+            // Use the last operand below in order to support both `compare`
+            // and `select` which have a fixed PRED type in the output and first
+            // operand.
+            instr.operand(instr.operand_count() - 1)->shape().element_type(),
+            gpu_version)) {
+      return CodegenDecision::Forbid("Unsupported elementwise operation.");
+    }
+    return CodegenDecision::Allow();
+  }
+  return CodegenDecision::Forbid(absl::StrCat("Unsupported instruction opcode ",
+                                              HloOpcodeString(instr.opcode())));
 }
 
 }  // namespace
@@ -491,7 +510,6 @@ bool IsTritonUnsupportedOpcode(HloOpcode opcode) {
     case HloOpcode::kDynamicSlice:
     case HloOpcode::kDynamicUpdateSlice:
     case HloOpcode::kFft:
-    case HloOpcode::kFusion:
     case HloOpcode::kGather:
     case HloOpcode::kGetTupleElement:
     case HloOpcode::kInfeed:
@@ -555,6 +573,7 @@ CodegenDecision IsTritonSupportedInstruction(
 CodegenDecision IsTritonSupportedComputation(
     const HloComputation& computation,
     const se::GpuComputeCapability& gpu_compute_capability) {
+  VLOG(3) << "IsTritonSupportedComputation: " << computation.ToString();
   for (const auto* instruction : computation.instructions()) {
     if (CodegenDecision can_codegen =
             IsTritonSupportedInstruction(*instruction, gpu_compute_capability);

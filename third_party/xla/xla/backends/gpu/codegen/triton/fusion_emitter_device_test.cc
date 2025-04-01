@@ -2240,9 +2240,30 @@ concatenate_fusion {
   p1 = s32[128] parameter(1)
   p2 = s32[128] parameter(2)
 
-  fusion0 = s32[128] fusion(p0), kind=kCustom, calls=nest0
-  fusion1 = s32[128] fusion(p1), kind=kCustom, calls=nest1
-  fusion2 = s32[128] fusion(p2), kind=kCustom, calls=nest2
+  fusion0 = s32[128] fusion(p0), kind=kCustom, calls=nest0, backend_config={
+    "fusion_backend_config":{
+      "kind":"__triton_nested_gemm_fusion",
+      "block_level_fusion_config":{
+        "output_tiles":[{"sizes":["32"]}],
+        "num_warps":"1",
+        "num_ctas":"1",
+        "num_stages":"1"}}}
+  fusion1 = s32[128] fusion(p1), kind=kCustom, calls=nest1, backend_config={
+    "fusion_backend_config":{
+      "kind":"__triton_nested_gemm_fusion",
+      "block_level_fusion_config":{
+        "output_tiles":[{"sizes":["32"]}],
+        "num_warps":"1",
+        "num_ctas":"1",
+        "num_stages":"1"}}}
+  fusion2 = s32[128] fusion(p2), kind=kCustom, calls=nest2, backend_config={
+    "fusion_backend_config":{
+      "kind":"__triton_nested_gemm_fusion",
+      "block_level_fusion_config":{
+        "output_tiles":[{"sizes":["32"]}],
+        "num_warps":"1",
+        "num_ctas":"1",
+        "num_stages":"1"}}}
 
   ROOT concatenate = s32[384] concatenate(fusion0, fusion1, fusion2), dimensions={0}
 }
@@ -2251,7 +2272,8 @@ ENTRY main {
   p0 = s32[128] parameter(0)
   p1 = s32[128] parameter(1)
   p2 = s32[128] parameter(2)
-  ROOT fusion = s32[384] fusion(p0, p1, p2), kind=kCustom, calls=concatenate_fusion, backend_config={
+  ROOT fusion = s32[384] fusion(p0, p1, p2), kind=kCustom,
+    calls=concatenate_fusion, backend_config={
     "fusion_backend_config":{
       "kind":"__triton_nested_gemm_fusion",
       "block_level_fusion_config":{
@@ -2303,10 +2325,34 @@ rhs {
   p2 = f32[299,128] parameter(2)
   p3 = f32[299,128] parameter(3)
 
-  fusion0 = f32[299,128] fusion(p0), kind=kCustom, calls=nest0
-  fusion1 = f32[299,128] fusion(p1), kind=kCustom, calls=nest1
-  fusion2 = f32[299,128] fusion(p2), kind=kCustom, calls=nest2
-  fusion3 = f32[299,128] fusion(p3), kind=kCustom, calls=nest3
+  fusion0 = f32[299,128] fusion(p0), kind=kCustom, calls=nest0, backend_config={
+    "fusion_backend_config":{
+      "kind":"__triton_nested_gemm_fusion", "block_level_fusion_config":{
+        "output_tiles":[{"sizes":["32", "64"]}]
+      }
+    }
+  }
+  fusion1 = f32[299,128] fusion(p1), kind=kCustom, calls=nest1, backend_config={
+    "fusion_backend_config":{
+      "kind":"__triton_nested_gemm_fusion", "block_level_fusion_config":{
+        "output_tiles":[{"sizes":["32", "64"]}]
+      }
+    }
+  }
+  fusion2 = f32[299,128] fusion(p2), kind=kCustom, calls=nest2, backend_config={
+    "fusion_backend_config":{
+      "kind":"__triton_nested_gemm_fusion", "block_level_fusion_config":{
+        "output_tiles":[{"sizes":["32", "64"]}]
+      }
+    }
+  }
+  fusion3 = f32[299,128] fusion(p3), kind=kCustom, calls=nest3, backend_config={
+    "fusion_backend_config":{
+      "kind":"__triton_nested_gemm_fusion", "block_level_fusion_config":{
+        "output_tiles":[{"sizes":["32", "64"]}]
+      }
+    }
+  }
 
   concatenate = f32[299,512] concatenate(fusion0, fusion1, fusion2, fusion3), dimensions={1}
   ROOT cos = f32[299,512] cosine(concatenate)
