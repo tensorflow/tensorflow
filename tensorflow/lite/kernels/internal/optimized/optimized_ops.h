@@ -1947,6 +1947,36 @@ inline void MulElementwise(int size, const ArithmeticParams& params,
   }
 }
 
+#ifndef EIGEN_TFLITE
+inline void MulElementwise(int size, const ArithmeticParams& params,
+                           const Eigen::half* input1_data,
+                           const Eigen::half* input2_data,
+                           Eigen::half* output_data) {
+  const Eigen::half output_activation_min = params.Eigen_half_activation_min;
+  const Eigen::half output_activation_max = params.Eigen_half_activation_max;
+
+  for (int i=0; i < size; ++i) {
+    auto x = input1_data[i] * input2_data[i];
+    output_data[i] = ActivationFunctionWithMinMax(x, output_activation_min,
+                                                  output_activation_max);
+  }
+}
+
+inline void MulElementwise(int size, const ArithmeticParams& params,
+                           const Eigen::bfloat16* input1_data,
+                           const Eigen::bfloat16* input2_data,
+                           Eigen::bfloat16* output_data) {
+  const Eigen::bfloat16 output_activation_min = params.bf16_activation_min;
+  const Eigen::bfloat16 output_activation_max = params.bf16_activation_max;
+
+  for (int i=0; i < size; ++i) {
+    auto x = input1_data[i] * input2_data[i];
+    output_data[i] = ActivationFunctionWithMinMax<Eigen::bfloat16>(
+        x, output_activation_min, output_activation_max);
+  }
+}
+#endif
+
 inline void MulElementwise(int32_t n, const ArithmeticParams& params,
                            const int32_t* __restrict lhs,
                            const int32_t* __restrict rhs,
@@ -2003,11 +2033,11 @@ inline void MulElementwise(int32_t n, const ArithmeticParams& params,
                                           activation_max_val);
   }
 }
-
+template <typename T>
 inline void Mul(const ArithmeticParams& params,
-                const RuntimeShape& input1_shape, const float* input1_data,
-                const RuntimeShape& input2_shape, const float* input2_data,
-                const RuntimeShape& output_shape, float* output_data) {
+                const RuntimeShape& input1_shape, const T* input1_data,
+                const RuntimeShape& input2_shape, const T* input2_data,
+                const RuntimeShape& output_shape, T* output_data) {
   ruy::profiler::ScopeLabel label("Mul");
 
   const int flat_size =
@@ -2284,6 +2314,30 @@ inline void MulSimpleBroadcast(int size, const ArithmeticParams& params,
         x, params.float_activation_min, params.float_activation_max);
   }
 }
+
+#ifndef EIGEN_TFLITE
+inline void MulSimpleBroadcast(int size, const ArithmeticParams& params,
+                               const Eigen::half broadcast_value,
+                               const Eigen::half* input2_data,
+                               Eigen::half* output_data) {
+  for (int i=0 ; i < size; ++i) {
+    Eigen::half x = broadcast_value * input2_data[i];
+    output_data[i] = ActivationFunctionWithMinMax(
+        x, params.Eigen_half_activation_min, params.Eigen_half_activation_max);
+  }
+}
+
+inline void MulSimpleBroadcast(int size, const ArithmeticParams& params,
+                               const Eigen::bfloat16 broadcast_value,
+                               const Eigen::bfloat16* input2_data,
+                               Eigen::bfloat16* output_data) {
+  for (int i = 0 ; i < size; ++i) {
+    Eigen::bfloat16 x = broadcast_value * input2_data[i];
+    output_data[i] = ActivationFunctionWithMinMax(x, params.bf16_activation_min,
+                                                  params.bf16_activation_max);
+  }
+}
+#endif
 
 inline void Mul(const ArithmeticParams& params,
                 const RuntimeShape& input1_shape, const uint8_t* input1_data,

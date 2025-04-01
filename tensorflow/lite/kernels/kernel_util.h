@@ -285,14 +285,14 @@ template <typename T>
 void CalculateActivationRange(TfLiteFusedActivation activation,
                               T* activation_min, T* activation_max) {
   if (activation == kTfLiteActRelu) {
-    *activation_min = 0;
+    *activation_min = static_cast<T>(0);
     *activation_max = std::numeric_limits<T>::max();
   } else if (activation == kTfLiteActRelu6) {
-    *activation_min = 0;
-    *activation_max = 6;
+    *activation_min = static_cast<T>(0);
+    *activation_max = static_cast<T>(6);
   } else if (activation == kTfLiteActReluN1To1) {
-    *activation_min = -1;
-    *activation_max = 1;
+    *activation_min = static_cast<T>(-1);
+    *activation_max = static_cast<T>(1);
   } else {
     *activation_min = std::numeric_limits<T>::lowest();
     *activation_max = std::numeric_limits<T>::max();
