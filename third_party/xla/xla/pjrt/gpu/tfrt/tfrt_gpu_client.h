@@ -473,7 +473,9 @@ class TfrtGpuBuffer final : public PjRtBuffer {
 
   PjRtFuture<> GetReadyFuture() override;
 
-  bool IsOnCpu() const override { return false; }
+  bool IsOnCpu() const override;
+
+  const tsl::AsyncValueRef<MaybeOwningGpuMemory>& GetBufferPtr() const;
 
  private:
   // Acquires the device buffer for shared read-only usages, and it also adds

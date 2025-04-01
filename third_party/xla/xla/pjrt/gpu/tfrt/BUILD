@@ -30,6 +30,7 @@ cc_library(
         "//xla:shape_layout",
         "//xla:shape_tree",
         "//xla:shape_util",
+        "//xla:status_macros",
         "//xla:util",
         "//xla:xla_data_proto_cc",
         "//xla/client:executable_build_options",

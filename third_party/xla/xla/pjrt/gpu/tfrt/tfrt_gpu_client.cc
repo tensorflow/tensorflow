@@ -53,6 +53,7 @@ limitations under the License.
 #include "xla/hlo/builder/xla_computation.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/layout.h"
+#include "xla/layout_util.h"
 #include "xla/literal.h"
 #include "xla/pjrt/gpu/gpu_helpers.h"
 #include "xla/pjrt/gpu/gpu_topology.h"
@@ -88,6 +89,7 @@ limitations under the License.
 #include "xla/shape_layout.h"
 #include "xla/shape_tree.h"
 #include "xla/shape_util.h"
+#include "xla/status_macros.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_memory.h"
@@ -117,27 +119,61 @@ limitations under the License.
 namespace xla {
 namespace {
 
+absl::StatusOr<Shape> GetDestinationDeviceShape(const Shape& on_host_shape,
+                                                TfrtGpuDevice* device,
+                                                TfrtGpuClient* client,
+                                                PjRtMemorySpace* memory_space) {
+  PjRtMemorySpace* default_memory_space =
+      device->default_memory_space().value_or(nullptr);
+  if (!memory_space) {
+    memory_space = default_memory_space;
+  }
+  bool is_pinned_host_memory =
+      memory_space && (memory_space->kind() == PinnedHostMemorySpace::kKind);
+  // Only allow pinned host memory or device memory.
+  if (memory_space != default_memory_space && !is_pinned_host_memory) {
+    return InvalidArgument("Buffer allocation: invalid memory space");
+  }
+
+  TF_RETURN_IF_ERROR(ShapeUtil::ValidateShape(on_host_shape));
+  TransferManager* transfer_manager =
+      client->xla_client()->backend().transfer_manager();
+  auto memory_space_shape_fn = [is_pinned_host_memory,
+                                transfer_manager](const Shape& on_host_shape) {
+    Shape result = transfer_manager->HostShapeToDeviceShape(on_host_shape);
+    if (is_pinned_host_memory) {
+      result.mutable_layout()->set_memory_space(Layout::kHostMemorySpace);
+    }
+    return result;
+  };
+  Shape on_device_shape = memory_space_shape_fn(on_host_shape);
+  TF_RET_CHECK(LayoutUtil::HasLayout(on_device_shape));
+  return on_device_shape;
+}
+
 absl::StatusOr<std::unique_ptr<TfrtGpuBuffer>> AllocateTfrtGpuDestinationBuffer(
-    const Shape& on_device_shape,
+    const Shape& on_host_shape,
     absl::InlinedVector<tsl::AsyncValueRef<GpuEvent>, 4> definition_events,
     TfrtGpuDevice* device, TfrtGpuClient* client,
     PjRtMemorySpace* memory_space) {
-  if (on_device_shape.IsTuple()) {
+  if (on_host_shape.IsTuple()) {
     return Unimplemented(
         "tuple case not implemented for AllocateTfrtGpuDestinationBuffer");
   }
-    size_t byte_size = ShapeUtil::ByteSizeOf(on_device_shape);
-    TF_ASSIGN_OR_RETURN(
-        auto device_buffer,
-        MaybeOwningGpuMemory::AllocateShared(device->allocator(), byte_size));
-    auto buffer_async_value_ref =
-        tsl::MakeAvailableAsyncValueRef<MaybeOwningGpuMemory>(
-            std::move(device_buffer));
-    return std::make_unique<TfrtGpuBuffer>(
-        on_device_shape,
-        std::make_unique<TrackedTfrtGpuDeviceBuffer>(
-            buffer_async_value_ref, std::move(definition_events)),
-        client, device, memory_space);
+  TF_ASSIGN_OR_RETURN(
+      Shape on_device_shape,
+      GetDestinationDeviceShape(on_host_shape, device, client, memory_space));
+  size_t byte_size = ShapeUtil::ByteSizeOf(on_device_shape);
+  TF_ASSIGN_OR_RETURN(auto device_buffer, MaybeOwningGpuMemory::AllocateShared(
+                                              device->allocator(), byte_size));
+  auto buffer_async_value_ref =
+      tsl::MakeAvailableAsyncValueRef<MaybeOwningGpuMemory>(
+          std::move(device_buffer));
+  return std::make_unique<TfrtGpuBuffer>(
+      on_device_shape,
+      std::make_unique<TrackedTfrtGpuDeviceBuffer>(
+          buffer_async_value_ref, std::move(definition_events)),
+      client, device, memory_space);
 }
 
 void EnqueueWork(tsl::thread::ThreadPool* pool,
@@ -262,23 +298,18 @@ class TfrtGpuAsyncHostToDeviceTransferManager final
                                 .transfer_manager()
                                 ->ChooseCompactLayoutForShape(device_shape));
       }
-      int64_t byte_size = ShapeUtil::ByteSizeOf(device_shape);
-
-      buffer_ptrs.push_back(
-          tsl::MakeUnconstructedAsyncValueRef<MaybeOwningGpuMemory>());
-      absl::StatusOr<MaybeOwningGpuMemory> buffer_allocated =
-          MaybeOwningGpuMemory::AllocateShared(device->allocator(), byte_size);
-      if (!buffer_allocated.ok()) {
-        copy_event.SetError(buffer_allocated.status());
+      absl::StatusOr<std::unique_ptr<TfrtGpuBuffer>> buffer =
+          AllocateTfrtGpuDestinationBuffer(device_shape,
+                                           definition_events.back(), device,
+                                           client, memory_space);
+      if (!buffer.ok()) {
+        copy_event.SetError(buffer.status());
         return absl::InternalError("Failed to allocate buffer.");
       } else {
-        buffer_ptrs.back().emplace(std::move(buffer_allocated.value()));
+        buffer_ptrs.push_back(buffer->get()->GetBufferPtr());
       }
-      auto tracked_device_buffer = std::make_unique<TrackedTfrtGpuDeviceBuffer>(
-          buffer_ptrs.back(), definition_events.back());
-      buffers.push_back(std::make_unique<TfrtGpuBuffer>(
-          device_shape, std::move(tracked_device_buffer), client, device,
-          memory_space));
+
+      buffers.push_back(std::move(*buffer));
     }
 
     return std::make_unique<TfrtGpuAsyncHostToDeviceTransferManager>(
@@ -1057,6 +1088,12 @@ TfrtGpuClient::TfrtGpuClient(
     memory_spaces_.push_back(pinned.get());
     owned_memory_spaces_.push_back(std::move(pinned));
   }
+  // We don't promise anything about the order of memory spaces, but this
+  // sorting is done for consistency with the device list that's sorted above.
+  absl::c_sort(memory_spaces_,
+               [](const PjRtMemorySpace* a, const PjRtMemorySpace* b) {
+                 return a->id() < b->id();
+               });
 
   LOG(INFO) << "TfrtGpuClient created.";
 }
@@ -1240,8 +1277,12 @@ TfrtGpuClient::CreateUninitializedBuffer(const Shape& shape,
               << shape.DebugString()
               << " memory_space: " << memory_space->DebugString();
   }
+  TransferManager* transfer_manager =
+      xla_client()->backend().transfer_manager();
+  TF_ASSIGN_OR_RETURN(Shape compact_shape,
+                      transfer_manager->ChooseCompactLayoutForShape(shape));
   return AllocateTfrtGpuDestinationBuffer(
-      shape, /*definition_events=*/{},
+      compact_shape, /*definition_events=*/{},
       tsl::down_cast<TfrtGpuDevice*>(memory_space->devices()[0]), this,
       memory_space);
 }
@@ -1482,6 +1523,7 @@ absl::StatusOr<std::unique_ptr<PjRtBuffer>> TfrtGpuClient::BufferFromHostBuffer(
         ShapeUtil::ByteStrides(device_shape, absl::MakeSpan(tmp_strides)));
     byte_strides = tmp_strides;
   }
+
   int64_t byte_size = ShapeUtil::ByteSizeOf(device_shape);
 
   TransferManager* transfer_manager = xla_client_->backend().transfer_manager();
@@ -1516,6 +1558,11 @@ absl::StatusOr<std::unique_ptr<PjRtBuffer>> TfrtGpuClient::BufferFromHostBuffer(
   }
 
   auto* gpu_device = tsl::down_cast<TfrtGpuDevice*>(device);
+
+  TF_ASSIGN_OR_RETURN(
+      Shape destination_device_shape,
+      GetDestinationDeviceShape(device_shape, gpu_device, this, memory_space));
+  byte_size = ShapeUtil::ByteSizeOf(destination_device_shape);
 
   auto gpu_buffer = tsl::MakeUnconstructedAsyncValueRef<MaybeOwningGpuMemory>();
   absl::InlinedVector<tsl::AsyncValueRef<GpuEvent>, 4> definition_events;
@@ -1874,6 +1921,17 @@ PjRtFuture<> TfrtGpuBuffer::GetReadyFuture() {
         tsl::profiler::TraceMeConsumer traceme("TfrtGpuBuffer::Await",
                                                keys.traceme_context_id);
       });
+}
+
+bool TfrtGpuBuffer::IsOnCpu() const {
+  return memory_space() != nullptr &&
+         memory_space()->kind() == PinnedHostMemorySpace::kKind;
+}
+
+const tsl::AsyncValueRef<MaybeOwningGpuMemory>& TfrtGpuBuffer::GetBufferPtr()
+    const {
+  absl::MutexLock lock(&mu_);
+  return tracked_device_buffer_->buffer();
 }
 
 absl::StatusOr<std::unique_ptr<PjRtBuffer::ExternalReference>>
@@ -2334,19 +2392,18 @@ TfrtGpuExecutable::TfrtGpuExecutable(
       addressable_device_logical_ids_(
           std::move(addressable_device_logical_ids)),
       addressable_devices_(std::move(addressable_devices)) {
-  executables_.reserve(executables.size());
+  TransferManager* transfer_manager =
+      client_->xla_client()->backend().transfer_manager();
   tsl::Fprint128 fingerprint = tsl::Fingerprint128(fingerprint_);
+  executables_.reserve(executables.size());
   for (auto& executable : executables) {
     const auto& computation_layout =
         executable->executable()->module().entry_computation_layout();
     std::vector<Shape> parameter_shapes;
     parameter_shapes.reserve(computation_layout.parameter_count());
     for (int i = 0; i < computation_layout.parameter_count(); ++i) {
-      // TODO: b/400541410 - Convert to device shape when we have transfer
-      // manager.
-      // parameter_shapes.push_back(transfer_manager->HostShapeToDeviceShape(
-      // computation_layout.parameter_shape(i)));
-      parameter_shapes.push_back(computation_layout.parameter_shape(i));
+      parameter_shapes.push_back(transfer_manager->HostShapeToDeviceShape(
+          computation_layout.parameter_shape(i)));
     }
     on_device_executable_parameter_shapes_.push_back(
         std::make_shared<std::vector<Shape>>(std::move(parameter_shapes)));
