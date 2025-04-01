@@ -449,25 +449,28 @@ std::optional<TransposeDescription> GetDescriptionForTiledTransposeEmitter(
                                 shmem_usage_bytes};
   }
   if (permutation.back() == dimensions.size() - 1) {
-    operand_most_minor_dim =
         hero.operand(0)->shape().dimensions(dimensions.size() - 2);
-    if (byte_width * dimensions.back() <= kMaxBytesInMostMinorDimension &&
-        byte_width * dimensions.back() *
-                std::min(operand_most_minor_dim,
-                         dimensions[dimensions.size() - 2]) >=
-            kMinDimensionToTransposeTiled) {
       // Tile size for transposition.
-      int64_t shmem_usage_bytes = kNumShmemBanks * (kNumShmemBanks + 1) *
-                                  byte_width * dimensions.back();
-      return TransposeDescription{&hero, dimensions, permutation,
-                                  shmem_usage_bytes};
-    }
+        int64_t total_transposed_elements = 1;
+        for (int i = 0; i < permutation.size() - 1; ++i) {
+          if (permutation[i] != i) total_transposed_elements *= dimensions[i];
+        }
+        if (total_transposed_elements >= 1024 * 4) {
+          int64_t shmem_usage_bytes = kNumShmemBanks * (kNumShmemBanks + 1) *
+                                      byte_width * dimensions.back();
+          return TransposeDescription{&hero, dimensions, permutation,
+                                      shmem_usage_bytes};
+        }
   } else if ((operand_most_minor_dim >= kMinDimensionToTransposeTiled &&
               dimensions.back() >= kMinDimensionToTransposeTiled) ||
              (operand_most_minor_dim >= kMinDimensionToTransposeTiled2 &&
               dimensions.back() >= kMinDimensionToTransposeTiled2 &&
               operand_most_minor_dim * dimensions.back() >=
                   kMinTotalDimensionsToTransposeTiled)) {
+    // TODO(karupayun): Add support for S4 when dimensions.back is 1
+    if (primitive_util::BitWidth(hero.shape().element_type()) == 4) {
+      return std::nullopt;
+    }
     int64_t shmem_usage_bytes =
         kNumShmemBanks * (kNumShmemBanks + 1) * byte_width;
     return TransposeDescription{&hero, dimensions, permutation,
