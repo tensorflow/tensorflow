@@ -1513,6 +1513,7 @@ cc_library(
         "//xla/service/gpu/transforms:all_gather_dynamic_slice_simplifier",
         "//xla/service/gpu/transforms:all_gather_optimizer",
         "//xla/service/gpu/transforms:all_reduce_blueconnect",
+        "//xla/service/gpu/transforms:all_reduce_decomposer",
         "//xla/service/gpu/transforms:all_reduce_splitter",
         "//xla/service/gpu/transforms:async_collective_annotator",
         "//xla/service/gpu/transforms:async_wrapper",
