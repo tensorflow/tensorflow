@@ -2210,6 +2210,36 @@ def TF_XlaSparseDenseMatmulWithCsrInputOp : TF_Op<"XlaSparseDenseMatmulWithCsrIn
   );
 }
 
+def TF_XlaSparseDenseMatmulCustomCombinerOnTcWithCsrInputOp : TF_Op<"XlaSparseDenseMatmulCustomCombinerOnTcWithCsrInput", [Pure]> {
+  let summary = "This op looks up the embedding vectors on SparseCores and performs the given combiner computation on TensorCores.";
+
+  let arguments = (ins
+    TF_Int32Tensor:$row_pointers,
+    TF_Int32Tensor:$sorted_sample_ids,
+    TF_Int32Tensor:$sorted_token_ids,
+    TF_Int32Tensor:$sorted_pos_ids,
+    TF_Float32Tensor:$sorted_gains,
+    TF_Float32Tensor:$embedding_table,
+    TF_Float32Tensor:$weights,
+
+    ConfinedAttr<I64Attr, [IntMinValue<0>]>:$input_size,
+    ConfinedAttr<I64Attr, [IntMinValue<0>]>:$max_valency,
+    ConfinedAttr<I64Attr, [IntMinValue<0>]>:$num_weights,
+    OptionalAttr<F32Attr>:$quantization_config_low,
+    OptionalAttr<F32Attr>:$quantization_config_high,
+    OptionalAttr<I64Attr>:$quantization_config_num_buckets,
+
+    SymbolRefAttr:$combiner_computation,
+    StrAttr:$table_name
+  );
+
+  let results = (outs
+    TF_Float32Tensor:$activations,
+    TF_Int32Tensor:$preserved_valencies,
+    TF_Float32Tensor:$preserved_vectors
+  );
+}
+
 def TF_XlaSparseDenseMatmulGradWithSgdAndCsrInputOp : TF_Op<"XlaSparseDenseMatmulGradWithSgdAndCsrInput", [Pure]> {
   let summary = "";
 

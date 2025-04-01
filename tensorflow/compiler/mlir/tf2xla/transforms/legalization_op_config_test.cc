@@ -83,7 +83,7 @@ TEST(LegalizationOpConfigTest, CountLoweringsSet) {
   // from MLIR to TF2XLA), these numbers should change. Or if TF Dialect adds
   // a new op, we should expect these to change too.
   EXPECT_EQ(mlir_lowering_count, 67);
-  EXPECT_EQ(tf2xla_fallback_count, 323);
+  EXPECT_EQ(tf2xla_fallback_count, 324);
   EXPECT_EQ(non_categorized_count, 431);
 }
 

@@ -21,6 +21,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
@@ -37,6 +38,7 @@ limitations under the License.
 #include "xla/stream_executor/tpu/c_api_decl.h"
 #include "xla/stream_executor/tpu/tpu_api.h"
 #include "xla/stream_executor/tpu/tpu_ops_c_api.h"
+#include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/macros.h"
 #include "xla/xla_data.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -340,7 +342,7 @@ class XlaSparseDenseMatmulWithCsrInputOp : public XlaOpKernel {
     ctx->SetOutput(0, result);
   }
 
- private:
+ protected:
   int input_size_;
   int64_t num_sparsecores_per_chip_;
   std::optional<float> quantization_config_low_;
@@ -356,6 +358,191 @@ class XlaSparseDenseMatmulWithCsrInputOp : public XlaOpKernel {
 
 REGISTER_XLA_OP(Name("XlaSparseDenseMatmulWithCsrInput"),
                 XlaSparseDenseMatmulWithCsrInputOp);
+
+// Similar to XlaSparseDenseMatmulWithCsrInputOp, but with an additional field
+// `sorted_pos_ids` in the input Csr, `weights` which is a tensor of shape
+// [num_weights] to be used by the `combiner_computation`. It produces the same
+// embedding look up result as `XlaSparseDenseMatmulWithCsrInputOp`.
+class XlaSparseDenseMatmulCustomCombinerOnTcWithCsrInputOp
+    : public XlaSparseDenseMatmulWithCsrInputOp {
+ public:
+  explicit XlaSparseDenseMatmulCustomCombinerOnTcWithCsrInputOp(
+      OpKernelConstruction* ctx)
+      : XlaSparseDenseMatmulWithCsrInputOp(ctx) {
+    const NameAttrList* name_attr;
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("max_valency", &max_valency_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("num_weights", &num_weights_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("combiner_computation", &name_attr));
+    combiner_computation_ = *name_attr;
+  }
+
+  ~XlaSparseDenseMatmulCustomCombinerOnTcWithCsrInputOp() override = default;
+
+  absl::StatusOr<xla::XlaComputation> BuildTcCustomCombinerComputation(
+      XlaOpKernelContext* ctx, const int32_t feature_width) {
+    XlaCompiler::CompileOptions options;
+    options.use_tuple_arg = false;
+    options.always_return_tuple = false;
+    options.is_entry_computation = false;
+
+    XlaCompiler* compiler = ctx->compiler();
+    XlaCompiler::CompilationResult custom_combiner_computation_result;
+
+    XlaCompiler::Argument valencies_arg;
+    XlaCompiler::Argument vectors_arg;
+
+    valencies_arg.kind = XlaCompiler::Argument::kParameter;
+    valencies_arg.type = DT_INT32;
+    valencies_arg.shape = xla::ShapeUtil::MakeShape(xla::S32, {input_size_});
+    valencies_arg.name = "valencies";
+    vectors_arg.kind = XlaCompiler::Argument::kParameter;
+    vectors_arg.type = DT_FLOAT;
+    vectors_arg.shape = xla::ShapeUtil::MakeShape(
+        xla::F32, {input_size_, max_valency_, feature_width});
+    vectors_arg.name = "vectors";
+
+    std::vector<XlaCompiler::Argument> arguments = {valencies_arg, vectors_arg};
+
+    // Don't add the weights argument if it's not needed. This helps avoid
+    // issues of passing around zero-sized tensors and Xla values.
+    if (num_weights_ > 0) {
+      XlaCompiler::Argument weights_arg;
+      weights_arg.kind = XlaCompiler::Argument::kParameter;
+      weights_arg.type = DT_FLOAT;
+      weights_arg.shape =
+          xla::ShapeUtil::MakeShape(xla::F32, {input_size_, num_weights_});
+      weights_arg.name = "weights";
+      arguments.push_back(weights_arg);
+    }
+
+    TF_RETURN_IF_ERROR(
+        compiler->CompileFunction(options, combiner_computation_, arguments,
+                                  &custom_combiner_computation_result));
+    return std::move(*custom_combiner_computation_result.computation);
+  }
+
+  void Compile(XlaOpKernelContext* ctx) override {
+    int64_t per_sparse_core_batch_size =
+        input_size_ / num_sparsecores_per_chip_;
+    int64_t max_ids_per_partition = 0;
+    int64_t max_unique_ids_per_partition = 0;
+
+    xla::XlaBuilder* builder = ctx->builder();
+    xla::XlaOp row_pointers = ctx->Input("row_pointers");
+    xla::XlaOp sorted_sample_ids = ctx->Input("sorted_sample_ids");
+    xla::XlaOp sorted_token_ids = ctx->Input("sorted_token_ids");
+    xla::XlaOp sorted_pos_ids = ctx->Input("sorted_pos_ids");
+    xla::XlaOp sorted_gains = ctx->Input("sorted_gains");
+    xla::XlaOp embedding_table = ctx->Input("embedding_table");
+
+    OP_REQUIRES_VALUE(xla::Shape embedding_table_shape, ctx,
+                      ctx->InputXlaShape("embedding_table"));
+    const int32_t feature_width = embedding_table_shape.dimensions(1);
+
+    OP_REQUIRES_OK(
+        ctx, GetMaxIdsAndUniques(per_sparse_core_batch_size, feature_width,
+                                 &max_ids_per_partition,
+                                 &max_unique_ids_per_partition));
+    // Log max_ids and max_uniques for offline analysis. We do this here since
+    // these values are fixed at TPU compile time and remain fixed during
+    // training.
+    max_ids_per_partition_gauge_->GetCell(device_name_, table_name_)
+        ->Set(max_ids_per_partition);
+    max_unique_ids_per_partition_gauge_->GetCell(device_name_, table_name_)
+        ->Set(max_unique_ids_per_partition);
+    LOG(INFO) << "Lowering "
+                 "XlaSparseDenseMatmulCustomCombinerOnTcWithCsrInputOp to HLO: "
+              << "table_name = '" << table_name_
+              << "', max_ids = " << max_ids_per_partition
+              << ", max_uniques = " << max_unique_ids_per_partition;
+
+    xla::FrontendAttributes tc_frontend_attributes;
+    xla::FrontendAttributes sc_frontend_attributes;
+
+    sc_frontend_attributes.mutable_map()->insert(
+        {"_xla_compute_type", "sparse"});
+
+    sc_frontend_attributes.mutable_map()->insert(
+        {"_xla_sharding_strategy", "mod"});
+
+    sc_frontend_attributes.mutable_map()->insert(
+        {"_xla_pad_value", absl::StrCat(kXlaPadValue)});
+
+    sc_frontend_attributes.mutable_map()->insert(
+        {"_xla_max_ids_per_partition", absl::StrCat(max_ids_per_partition)});
+
+    sc_frontend_attributes.mutable_map()->insert(
+        {"_xla_max_unique_ids_per_partition",
+         absl::StrCat(max_unique_ids_per_partition)});
+
+    sc_frontend_attributes.mutable_map()->insert(
+        {"_xla_max_valency", absl::StrCat(max_valency_)});
+
+    if (quantization_config_low_.has_value()) {
+      sc_frontend_attributes.mutable_map()->insert(
+          {"_xla_quantization_high_value",
+           absl::StrCat(quantization_config_high_.value())});
+      sc_frontend_attributes.mutable_map()->insert(
+          {"_xla_quantization_low_value",
+           absl::StrCat(quantization_config_low_.value())});
+      sc_frontend_attributes.mutable_map()->insert(
+          {"_xla_quantization_num_buckets_value",
+           absl::StrCat(quantization_config_num_buckets_.value())});
+    }
+
+    tc_frontend_attributes =
+        builder->SwapFrontendAttributes(sc_frontend_attributes);
+
+    // Emit the custom call that performs the SC embedding lookup.
+    xla::Shape valencies_shape =
+        xla::ShapeUtil::MakeShape(xla::S32, {input_size_});
+    xla::Shape vectors_shape = xla::ShapeUtil::MakeShape(
+        xla::F32, {input_size_, max_valency_, feature_width});
+    xla::Shape gains_shape =
+        xla::ShapeUtil::MakeShape(xla::F32, {input_size_, max_valency_});
+    xla::XlaOp sc_lookup_result_tuple = xla::CustomCall(
+        builder, "SparseDenseMatmulCustomCombinerTcCombinerMegachipOp",
+        {row_pointers, sorted_token_ids, sorted_sample_ids, sorted_pos_ids,
+         sorted_gains, embedding_table},
+        xla::ShapeUtil::MakeTupleShape(
+            {valencies_shape, vectors_shape, gains_shape}));
+
+    // Emit the custom combiner computation into an HLO computation.
+    OP_REQUIRES_VALUE(xla::XlaComputation custom_combiner_tc_computation, ctx,
+                      BuildTcCustomCombinerComputation(ctx, feature_width));
+
+    builder->SetFrontendAttributes(tc_frontend_attributes);
+
+    xla::XlaOp valencies = xla::GetTupleElement(sc_lookup_result_tuple, 0);
+    xla::XlaOp vectors = xla::GetTupleElement(sc_lookup_result_tuple, 1);
+
+    std::vector<xla::XlaOp> tc_combiner_args = {valencies, vectors};
+    if (num_weights_ > 0) {
+      xla::XlaOp weights = ctx->Input("weights");
+      tc_combiner_args.push_back(xla::Broadcast(weights, {input_size_}));
+    }
+
+    xla::XlaOp tc_activations =
+        xla::Call(builder, custom_combiner_tc_computation, tc_combiner_args);
+
+    ctx->SetOutput(0, tc_activations);
+    ctx->SetOutput(1, valencies);
+    ctx->SetOutput(2, vectors);
+  }
+
+ private:
+  int max_valency_;
+  int num_weights_;
+  NameAttrList combiner_computation_;
+
+  XlaSparseDenseMatmulCustomCombinerOnTcWithCsrInputOp(
+      const XlaSparseDenseMatmulCustomCombinerOnTcWithCsrInputOp&) = delete;
+  void operator=(const XlaSparseDenseMatmulCustomCombinerOnTcWithCsrInputOp&) =
+      delete;
+};
+
+REGISTER_XLA_OP(Name("XlaSparseDenseMatmulCustomCombinerOnTcWithCsrInput"),
+                XlaSparseDenseMatmulCustomCombinerOnTcWithCsrInputOp);
 
 // Base class for all the minibatch with CSR input optimizer kernel.
 class XlaSparseDenseMatmulGradWithCsrInputBase : public XlaOpKernel {

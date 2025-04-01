@@ -95,6 +95,81 @@ REGISTER_OP("XlaSparseDenseMatmulWithCsrInput")
       return absl::OkStatus();
     });
 
+REGISTER_OP("XlaSparseDenseMatmulCustomCombinerOnTcWithCsrInput")
+    .Input("row_pointers: int32")
+    .Input("sorted_sample_ids: int32")
+    .Input("sorted_token_ids: int32")
+    .Input("sorted_pos_ids: int32")
+    .Input("sorted_gains: float32")
+    .Input("embedding_table: float32")
+    .Input("weights: float32")
+    .Output("activations: float32")
+    .Output("preserved_valencies: int32")
+    .Output("preserved_vectors: float32")
+    .Attr("input_size: int >= 0")
+    .Attr("max_valency: int >= 0")
+    .Attr("num_weights: int >= 0")
+    .Attr("combiner_computation: func")
+    .Attr("quantization_config_low: float")
+    .Attr("quantization_config_high: float")
+    .Attr("quantization_config_num_buckets: int >= 0")
+    .Attr("table_name: string")
+    .SetShapeFn([](shape_inference::InferenceContext* c) -> absl::Status {
+      constexpr int kRowPointersIndex = 0;
+      constexpr int kSortedSampleIdsIndex = 1;
+      constexpr int kEmbeddingTableIndex = 5;
+      constexpr int kEmbeddingTableRank = 2;
+      constexpr int kWeightsIndex = 6;
+      constexpr int kWeightsRank = 1;
+      constexpr int kOutputActivationsIndex = 0;
+      constexpr int kPreservedValenciesIndex = 1;
+      constexpr int kPreservedVectorsIndex = 2;
+      // This input_size is per-chip batch size.
+      int input_size;
+      TF_RETURN_IF_ERROR(c->GetAttr("input_size", &input_size));
+      int max_valency;
+      TF_RETURN_IF_ERROR(c->GetAttr("max_valency", &max_valency));
+      int num_weights;
+      TF_RETURN_IF_ERROR(c->GetAttr("num_weights", &num_weights));
+
+      shape_inference::ShapeHandle rank;
+      for (int i = kRowPointersIndex; i < kEmbeddingTableIndex; ++i) {
+        TF_RETURN_IF_ERROR(
+            c->WithRank(c->input(i), kSortedSampleIdsIndex, &rank));
+      }
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(kEmbeddingTableIndex),
+                                     kEmbeddingTableRank, &rank));
+      for (int i = kSortedSampleIdsIndex + 1; i < kEmbeddingTableIndex; ++i) {
+        shape_inference::ShapeHandle merged;
+        TF_RETURN_IF_ERROR(
+            c->Merge(c->input(i), c->input(kSortedSampleIdsIndex), &merged));
+      }
+      if (num_weights > 0) {
+        TF_RETURN_IF_ERROR(
+            c->WithRank(c->input(kWeightsIndex), kWeightsRank, &rank));
+        shape_inference::DimensionHandle weights_dim;
+        TF_RETURN_IF_ERROR(c->WithValue(c->Dim(c->input(kWeightsIndex), 0),
+                                        num_weights, &weights_dim));
+      }
+
+      shape_inference::DimensionHandle input_size_dim = c->MakeDim(input_size);
+      shape_inference::DimensionHandle max_valency_dim =
+          c->MakeDim(max_valency);
+      shape_inference::DimensionHandle feature_width_dim =
+          c->Dim(c->input(kEmbeddingTableIndex), 1);
+      shape_inference::ShapeHandle output_activations_shape;
+      TF_RETURN_IF_ERROR(c->ReplaceDim(c->input(kEmbeddingTableIndex), 0,
+                                       c->MakeDim(input_size),
+                                       &output_activations_shape));
+      c->set_output(kOutputActivationsIndex, output_activations_shape);
+      c->set_output(kPreservedValenciesIndex, c->MakeShape({input_size_dim}));
+      c->set_output(
+          kPreservedVectorsIndex,
+          c->MakeShape({input_size_dim, max_valency_dim, feature_width_dim}));
+
+      return absl::OkStatus();
+    });
+
 REGISTER_OP("XlaSparseDenseMatmulGradWithSgdAndCsrInput")
     .Input("row_pointers: int32")
     .Input("sorted_sample_ids: int32")

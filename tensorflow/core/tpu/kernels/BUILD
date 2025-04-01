@@ -192,6 +192,7 @@ cc_library(
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:statusor",
         "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
@@ -204,6 +205,7 @@ cc_library(
         "@local_xla//xla/stream_executor/tpu:c_api_decl",
         "@local_xla//xla/stream_executor/tpu:tpu_api",
         "@local_xla//xla/stream_executor/tpu:tpu_ops_c_api_hdrs",
+        "@local_xla//xla/tsl/platform:errors",
     ],
     alwayslink = 1,
 )

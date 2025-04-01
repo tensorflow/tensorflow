@@ -38,6 +38,8 @@ const char kXlaMaxIdsPerPartitionAttr[] = "_xla_max_ids_per_partition";
 const char kXlaMaxUniqueIdsPerPartitionAttr[] =
     "_xla_max_unique_ids_per_partition";
 
+const char kXlaMaxValencyAttr[] = "_xla_max_valency";
+
 const char kXlaShardingStrategyAttr[] = "_xla_sharding_strategy";
 
 const char kXlaShardingStrategyMod[] = "mod";
