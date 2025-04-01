@@ -184,3 +184,11 @@ def LegalizeCompositeOdmlRandomStandardNormal : Pat<
         (TFL_RandomStandardNormalOp $shape,
           (GetCompositeAttributeAs<"seed", "IntegerAttr"> $attrs),
           (GetCompositeAttributeAs<"seed2", "IntegerAttr"> $attrs))>;
+
+def LegalizeCompositeUnpack : Pat<
+        (MHLO_CompositeOp:$composite
+          (variadic $inputs),
+          ConstantStrAttr<StrAttr, "tfl.unpack">, $attrs, $_, $_),
+        (TFL_UnpackOp $inputs,
+          (GetCompositeAttributeAs<"num", "IntegerAttr"> $attrs),
+          (GetCompositeAttributeAs<"axis", "IntegerAttr"> $attrs))>;
