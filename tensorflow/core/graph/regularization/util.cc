@@ -20,6 +20,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/status/statusor.h"
+#include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
@@ -42,7 +43,7 @@ absl::StatusOr<int64_t> GetSuffixUID(absl::string_view function_name) {
   std::vector<absl::string_view> v = absl::StrSplit(function_name, '_');
 
   int64_t uid;
-  if (!strings::safe_strto64(v.back(), &uid)) {
+  if (!absl::SimpleAtoi(v.back(), &uid)) {
     return errors::InvalidArgument(absl::StrCat(
         "Function name: `", function_name, "` does not end in an integer."));
   }

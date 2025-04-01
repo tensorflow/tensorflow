@@ -24,19 +24,19 @@
 #include <string>
 #include <vector>
 
+#include "absl/base/nullability.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
-#include "absl/types/optional.h"
 #include "absl/types/span.h"
 #include "llvm/Support/ExtensibleRTTI.h"
-#include "xla/pjrt/pjrt_compiler.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/attribute_map.h"
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/compiler.h"
 #include "xla/python/ifrt/device.h"
+#include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/dtype.h"
 #include "xla/python/ifrt/future.h"
 #include "xla/python/ifrt/memory.h"
@@ -45,6 +45,7 @@
 #include "xla/python/ifrt/sharding.h"
 #include "xla/python/ifrt/topology.h"
 #include "xla/python/ifrt/tuple.h"
+#include "xla/python/ifrt/user_context.h"
 #include "xla/python/ifrt/value.h"
 #include "xla/python/ifrt_proxy/client/compiler.h"
 #include "xla/python/ifrt_proxy/client/device.h"
@@ -66,20 +67,28 @@ class Client final : public llvm::RTTIExtends<Client, xla::ifrt::Client> {
   ~Client() override;
 
   absl::StatusOr<tsl::RCReference<xla::ifrt::Array>> MakeArrayFromHostBuffer(
-      const void* data, DType dtype, Shape shape,
+      const void* data, xla::ifrt::DType dtype, xla::ifrt::Shape shape,
       std::optional<absl::Span<const int64_t>> byte_strides,
-      std::shared_ptr<const Sharding> sharding, HostBufferSemantics semantics,
-      std::function<void()> on_done_with_host_buffer) override;
-
+      absl::Nonnull<std::shared_ptr<const xla::ifrt::Sharding>> sharding,
+      HostBufferSemantics semantics,
+      std::function<void()> on_done_with_host_buffer,
+      tsl::RCReference<xla::ifrt::UserContext> user_context) override;
+  absl::StatusOr<std::vector<tsl::RCReference<xla::ifrt::Array>>>
+  MakeArraysFromHostBufferShards(
+      absl::Span<MakeArraysFromHostBufferShardsSpec> specs,
+      HostBufferSemantics semantics,
+      tsl::RCReference<xla::ifrt::UserContext> user_context) override;
   absl::StatusOr<tsl::RCReference<xla::ifrt::Array>>
   AssembleArrayFromSingleDeviceArrays(
-      Shape shape, std::shared_ptr<const Sharding> sharding,
+      DType dtype, Shape shape, std::shared_ptr<const Sharding> sharding,
       absl::Span<tsl::RCReference<xla::ifrt::Array>> arrays,
-      ArrayCopySemantics semantics) override;
+      ArrayCopySemantics array_copy_semantics,
+      SingleDeviceShardSemantics single_device_shard_semantics) override;
 
   absl::StatusOr<std::vector<tsl::RCReference<Array>>> CopyArrays(
       absl::Span<tsl::RCReference<Array>> arrays,
-      std::optional<DeviceList> devices, std::optional<MemoryKind> memory_kind,
+      std::optional<DeviceListRef> devices,
+      std::optional<MemoryKind> memory_kind,
       ArrayCopySemantics semantics) override;
 
   absl::StatusOr<std::vector<tsl::RCReference<xla::ifrt::Array>>> RemapArrays(
@@ -108,12 +117,13 @@ class Client final : public llvm::RTTIExtends<Client, xla::ifrt::Client> {
     return addressable_devices().size();
   }
   absl::Span<xla::ifrt::Device* const> devices() const override {
-    return device_ptrs_;
+    return primary_device_ptrs_;
   }
   absl::Span<xla::ifrt::Device* const> addressable_devices() const override {
     return addressable_device_ptrs_;
   }
   int process_index() const override { return process_index_; }
+  absl::Span<xla::ifrt::Device* const> GetAllDevices() const override;
   absl::StatusOr<DeviceAssignment> GetDefaultDeviceAssignment(
       int num_replicas, int num_partitions) const override;
   absl::StatusOr<xla::ifrt::Device*> LookupDevice(
@@ -123,19 +133,26 @@ class Client final : public llvm::RTTIExtends<Client, xla::ifrt::Client> {
     return absl::UnimplementedError(
         "LookupAddressableDevice is not supported for the IFRT proxy client.");
   }
+  xla::ifrt::DeviceListRef MakeDeviceList(
+      absl::Span<xla::ifrt::Device* const> devices) const override;
   xla::ifrt::Compiler* GetDefaultCompiler() override {
     return &default_compiler_;
   }
   absl::StatusOr<std::shared_ptr<xla::ifrt::Topology>> GetTopologyForDevices(
-      const xla::ifrt::DeviceList& devices) const override {
+      const xla::ifrt::DeviceListRef& devices) const override {
     return absl::UnimplementedError(
         "GetTopologyForDevices is not supported for the IFRT proxy client.");
   }
-  absl::StatusOr<std::unique_ptr<xla::PjRtLayout>> GetDefaultLayoutForDevice(
+  absl::StatusOr<std::shared_ptr<const xla::PjRtLayout>> GetDefaultLayout(
       xla::ifrt::DType dtype, absl::Span<const int64_t> dims,
-      xla::ifrt::Device* device) const override {
+      xla::ifrt::Device* device,
+      xla::ifrt::MemoryKind memory_kind) const override {
     return absl::UnimplementedError(
         "GetDefaultLayout is not supported for the IFRT proxy client.");
+  }
+
+  tsl::RCReference<xla::ifrt::UserContext> CreateUserContext() override {
+    return tsl::RCReference<xla::ifrt::UserContext>();
   }
 
   // For llvm::RTTIExtends.
@@ -146,8 +163,9 @@ class Client final : public llvm::RTTIExtends<Client, xla::ifrt::Client> {
          std::string platform_name, std::string platform_version,
          uint64_t platform_id, uint64_t process_index, std::string runtime_type,
          absl::flat_hash_map<int, std::unique_ptr<Device>> devices,
-         std::vector<xla::ifrt::Device*> device_ptrs,
+         std::vector<xla::ifrt::Device*> primary_device_ptrs,
          std::vector<xla::ifrt::Device*> addressable_device_ptrs,
+         std::vector<xla::ifrt::Device*> all_device_ptrs,
          absl::flat_hash_map<int, std::unique_ptr<Memory>> memories);
 
   // rpc_helper_ will be referenced by various IFRT objects whose lifetime is
@@ -164,8 +182,9 @@ class Client final : public llvm::RTTIExtends<Client, xla::ifrt::Client> {
   const AttributeMap attributes_;
 
   const absl::flat_hash_map<int, std::unique_ptr<Device>> devices_;
-  const std::vector<xla::ifrt::Device*> device_ptrs_;
+  const std::vector<xla::ifrt::Device*> primary_device_ptrs_;
   const std::vector<xla::ifrt::Device*> addressable_device_ptrs_;
+  const std::vector<xla::ifrt::Device*> all_device_ptrs_;
 
   const absl::flat_hash_map<int, std::unique_ptr<Memory>> memories_;
 

@@ -87,23 +87,23 @@ class GrpcServer : public ServerInterface {
                                   int requested_port) {}
 
  public:
-  static Status Create(const ServerDef& server_def, Env* env,
-                       std::unique_ptr<ServerInterface>* out_server);
-  static Status Create(const ServerDef& server_def, Env* env,
-                       std::unique_ptr<GrpcServer>* out_server);
+  static absl::Status Create(const ServerDef& server_def, Env* env,
+                             std::unique_ptr<ServerInterface>* out_server);
+  static absl::Status Create(const ServerDef& server_def, Env* env,
+                             std::unique_ptr<GrpcServer>* out_server);
   // Reuse the local_device_mgr.
-  static Status Create(const ServerDef& server_def, Env* env,
-                       DeviceMgr* local_device_mgr,
-                       std::unique_ptr<ServerInterface>* out_server);
+  static absl::Status Create(const ServerDef& server_def, Env* env,
+                             DeviceMgr* local_device_mgr,
+                             std::unique_ptr<ServerInterface>* out_server);
 
   // Destruction is only supported in the factory method. Clean
   // shutdown is not currently implemented for this server type.
   virtual ~GrpcServer();
 
   // Implementations of ServerInterface methods.
-  Status Start() override;
-  Status Stop() override;
-  Status Join() override;
+  absl::Status Start() override;
+  absl::Status Stop() override;
+  absl::Status Join() override;
   const string target() const override;
 
   WorkerEnv* worker_env() override { return &worker_env_; }
@@ -111,22 +111,22 @@ class GrpcServer : public ServerInterface {
 
   // Add master eager context to local eager service in order to handle enqueue
   // requests from remote workers.
-  Status AddMasterEagerContextToEagerService(
+  absl::Status AddMasterEagerContextToEagerService(
       const tensorflow::uint64 context_id,
       tensorflow::EagerContext* context) override;
   // Update the set of workers that can be reached by the GRPC server
-  Status UpdateServerDef(const ServerDef& server_def) override;
+  absl::Status UpdateServerDef(const ServerDef& server_def) override;
   // Pass coordination service agent instance to server's RPC handler
-  Status SetCoordinationServiceAgentInstance(
+  absl::Status SetCoordinationServiceAgentInstance(
       tsl::CoordinationServiceAgent* agent) override;
   // TODO(hanyangtay): Remove this method once gRPC server clean shutdown is
   // supported.
-  Status StopCoordinationService() override;
+  absl::Status StopCoordinationService() override;
 
  protected:
-  virtual Status GetHostAndPort(const ServerDef& server_def, string* host_name,
-                                int* port) const;
-  Status Init(const GrpcServerOptions& opts = GrpcServerOptions());
+  virtual absl::Status GetHostAndPort(const ServerDef& server_def,
+                                      string* host_name, int* port) const;
+  absl::Status Init(const GrpcServerOptions& opts = GrpcServerOptions());
 
   // A subclass can override this method to support secure credentials.
   virtual std::shared_ptr<::grpc::ServerCredentials> GetServerCredentials(
@@ -137,8 +137,9 @@ class GrpcServer : public ServerInterface {
   virtual std::unique_ptr<Master> CreateMaster(MasterEnv* master_env);
 
   // Creates a WorkerCacheInterface for a session.
-  virtual Status WorkerCacheFactory(const WorkerCacheFactoryOptions& options,
-                                    WorkerCacheInterface** worker_cache);
+  virtual absl::Status WorkerCacheFactory(
+      const WorkerCacheFactoryOptions& options,
+      WorkerCacheInterface** worker_cache);
 
   // Override to return extra services to be brought up and managed along with
   // the standard {master, worker, eager} services. The map key is an aribtrary
@@ -159,8 +160,8 @@ class GrpcServer : public ServerInterface {
   }
 
   // Parses a WorkerCacheFactoryOptions into a GrpcChannelSpec.
-  Status ParseChannelSpec(const WorkerCacheFactoryOptions& options,
-                          GrpcChannelSpec* channel_spec);
+  absl::Status ParseChannelSpec(const WorkerCacheFactoryOptions& options,
+                                GrpcChannelSpec* channel_spec);
 
   // Returns the port to which this server is bound.
   // This method may only be called after `this->Init()` returns successfully.
@@ -173,7 +174,7 @@ class GrpcServer : public ServerInterface {
   GrpcWorker* worker_impl() const { return worker_impl_.get(); }
   GrpcWorkerEnv* grpc_worker_env() const { return grpc_worker_env_.get(); }
 
-  Status SetCoordinationServiceInstance(
+  absl::Status SetCoordinationServiceInstance(
       tsl::CoordinationServiceInterface* service);
 
  private:

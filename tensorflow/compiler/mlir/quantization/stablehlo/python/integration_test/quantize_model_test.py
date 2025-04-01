@@ -1080,7 +1080,7 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
           method { static_range_ptq {} }
         }
         """,
-        message=results,
+        validate_message=results,
     )
 
 
@@ -1581,7 +1581,7 @@ class WeightOnlyQuantizationTest(quantize_model_test_base.QuantizedModelTest):
           }
         }
         """,
-        message=results,
+        validate_message=results,
     )
 
 

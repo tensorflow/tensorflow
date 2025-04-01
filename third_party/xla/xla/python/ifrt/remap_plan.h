@@ -23,12 +23,14 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/array_spec.h"
-#include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/remap_plan.pb.h"
 
 namespace xla {
 namespace ifrt {
+
+class Client;
 
 // Remap plan that describes how the shards from input `Array`s are mapped to
 // the shards of output `Array`s.
@@ -94,13 +96,17 @@ struct RemapPlan {
   // Constructs `RemapPlan` from `RemapPlanProto`. Devices are looked up
   // using `lookup_device`. Device ids in the proto must be consistent with
   // the devices returned by `lookup_device`.
-  static absl::StatusOr<RemapPlan> FromProto(
-      DeviceList::LookupDeviceFunc lookup_device, const RemapPlanProto& proto);
+  static absl::StatusOr<RemapPlan> FromProto(Client* client,
+                                             const RemapPlanProto& proto);
 
   // Returns a `RemapPlanProto` representation.
   absl::StatusOr<RemapPlanProto> ToProto() const;
 
   std::string DebugString() const;
+
+  // Checks whether the RemapPlan is valid with `semantics`.
+  absl::Status CheckArrayCopySemantics(
+      xla::ifrt::ArrayCopySemantics semantics) const;
 };
 
 }  // namespace ifrt

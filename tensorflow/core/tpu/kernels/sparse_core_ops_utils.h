@@ -37,7 +37,7 @@ std::vector<int> ConvertBinarySplitsToBucketSplits(int64 split,
 int64 ConvertBucketSplitsToBinarySplits(std::vector<int> bucket_splits,
                                         int max_division_level);
 
-Status ValidateInputCombiner(const std::string& combiner);
+absl::Status ValidateInputCombiner(const std::string& combiner);
 
 std::function<float(float)> GetCombinerScaleContributionFunction(
     absl::string_view combiner);
@@ -63,12 +63,12 @@ int64_t GetXlaSparseCoreStackingMemLimit();
 
 int64_t GetXlaSparseCoreStackingTableShardLimit();
 
-Status GetMaxIdsAndUniquesExternal(const std::string& program_key,
-                                   const std::string& table_name,
-                                   int64_t num_samples_per_sparse_core,
-                                   int64_t feature_width,
-                                   int64_t* max_ids_per_partition,
-                                   int64_t* max_unique_ids_per_partition);
+absl::Status GetMaxIdsAndUniquesExternal(const std::string& program_key,
+                                         const std::string& table_name,
+                                         int64_t num_samples_per_sparse_core,
+                                         int64_t feature_width,
+                                         int64_t* max_ids_per_partition,
+                                         int64_t* max_unique_ids_per_partition);
 
 }  // namespace tensorflow
 

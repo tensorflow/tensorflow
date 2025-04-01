@@ -38,10 +38,10 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/window_util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace spmd {
@@ -76,7 +76,7 @@ absl::StatusOr<HloInstruction*> PartitionConvolutionWithBatchGroupCount(
   }
 
   // Map RHS indices to LHS indices.
-  std::vector<int64_t> rhs_to_lhs_indices(output_base_shape.rank());
+  std::vector<int64_t> rhs_to_lhs_indices(output_base_shape.dimensions_size());
   rhs_to_lhs_indices[dnums.kernel_output_feature_dimension()] =
       dnums.input_batch_dimension();
   rhs_to_lhs_indices[dnums.kernel_input_feature_dimension()] =
@@ -87,13 +87,14 @@ absl::StatusOr<HloInstruction*> PartitionConvolutionWithBatchGroupCount(
   }
 
   // Map LHS indices to RHS indices.
-  std::vector<int64_t> lhs_to_rhs_indices(output_base_shape.rank());
+  std::vector<int64_t> lhs_to_rhs_indices(output_base_shape.dimensions_size());
   for (int64_t i = 0; i < rhs_to_lhs_indices.size(); ++i) {
     lhs_to_rhs_indices[rhs_to_lhs_indices[i]] = i;
   }
 
   // Map LHS indices to output indices.
-  std::vector<int64_t> lhs_to_output_indices(lhs.base_shape().rank(), -1);
+  std::vector<int64_t> lhs_to_output_indices(lhs.base_shape().dimensions_size(),
+                                             -1);
   lhs_to_output_indices[dnums.input_batch_dimension()] =
       dnums.output_feature_dimension();
   lhs_to_output_indices[dnums.input_feature_dimension()] =
@@ -168,7 +169,7 @@ absl::StatusOr<HloInstruction*> PartitionConvolutionWithFeatureGroupCount(
   }
 
   // Align RHS indices to LHS.
-  std::vector<int64_t> rhs_to_lhs_indices(output_base_shape.rank());
+  std::vector<int64_t> rhs_to_lhs_indices(output_base_shape.dimensions_size());
   rhs_to_lhs_indices[dnums.kernel_output_feature_dimension()] =
       dnums.input_feature_dimension();
   rhs_to_lhs_indices[dnums.kernel_input_feature_dimension()] =
@@ -179,13 +180,14 @@ absl::StatusOr<HloInstruction*> PartitionConvolutionWithFeatureGroupCount(
   }
 
   // Align LHS indices to RHS.
-  std::vector<int64_t> lhs_to_rhs_indices(output_base_shape.rank());
+  std::vector<int64_t> lhs_to_rhs_indices(output_base_shape.dimensions_size());
   for (int64_t i = 0; i < rhs_to_lhs_indices.size(); ++i) {
     lhs_to_rhs_indices[rhs_to_lhs_indices[i]] = i;
   }
 
   // Align LHS indices to output.
-  std::vector<int64_t> lhs_to_output_indices(output_base_shape.rank());
+  std::vector<int64_t> lhs_to_output_indices(
+      output_base_shape.dimensions_size());
   lhs_to_output_indices[dnums.input_feature_dimension()] =
       dnums.output_feature_dimension();
   lhs_to_output_indices[dnums.input_batch_dimension()] =
@@ -251,7 +253,7 @@ PartitionConvolutionWithSpatialDimensionHaloExchangeOnRHS(
                !rhs.sharding().IsTileMaximal());
 
   const auto& dnums = original_hlo->convolution_dimension_numbers();
-  std::vector<int64_t> rhs_to_lhs_indices(output_base_shape.rank());
+  std::vector<int64_t> rhs_to_lhs_indices(output_base_shape.dimensions_size());
   rhs_to_lhs_indices[dnums.kernel_output_feature_dimension()] =
       dnums.input_batch_dimension();
   rhs_to_lhs_indices[dnums.kernel_input_feature_dimension()] =
@@ -260,7 +262,7 @@ PartitionConvolutionWithSpatialDimensionHaloExchangeOnRHS(
     rhs_to_lhs_indices[dnums.kernel_spatial_dimensions(i)] =
         dnums.input_spatial_dimensions(i);
   }
-  std::vector<int64_t> lhs_to_rhs_indices(output_base_shape.rank());
+  std::vector<int64_t> lhs_to_rhs_indices(output_base_shape.dimensions_size());
   for (int64_t i = 0; i < rhs_to_lhs_indices.size(); ++i) {
     lhs_to_rhs_indices[rhs_to_lhs_indices[i]] = i;
   }
@@ -347,21 +349,21 @@ PartitionConvolutionWithSpatialDimensionHaloExchangeOnRHS(
   }
 
   std::vector<OffsetCalculation> left_halo_size_functions(
-      output_base_shape.rank());
+      output_base_shape.dimensions_size());
   std::vector<OffsetCalculation> right_halo_size_functions(
-      output_base_shape.rank());
+      output_base_shape.dimensions_size());
   Window new_window = conv_window;
 
   // Data structures needed for Pad and DynamicSlice on LHS if needed.
   bool need_dynamic_slice_lhs = false;
   auto partition_ordinals =
       MakeTiledPartitionOrdinals(lhs.sharding(), partition_id, b);
-  std::vector<int64_t> zero_padding(output_base_shape.rank());
+  std::vector<int64_t> zero_padding(output_base_shape.dimensions_size());
   PaddingConfig pad_config = window_util::MakeSymmetricPadding(zero_padding);
   auto zero_s32 =
       b->AddInstruction(HloInstruction::CreateConstant(LiteralUtil::Zero(S32)));
   std::vector<HloInstruction*> dynamic_slice_start_indices(
-      output_base_shape.rank(), zero_s32);
+      output_base_shape.dimensions_size(), zero_s32);
   Shape dynamic_slice_shape = lhs.hlo()->shape();
   Shape pad_shape = lhs.hlo()->shape();
 
@@ -541,7 +543,7 @@ PartitionConvolutionWithSpatialDimensionHaloExchangeOnLHS(
 
   // Check if the operand shardings are aligned. Also we currently don't
   // support partitioning non-spatial dimensions.
-  std::vector<int64_t> rhs_to_lhs_indices(output_base_shape.rank());
+  std::vector<int64_t> rhs_to_lhs_indices(output_base_shape.dimensions_size());
   rhs_to_lhs_indices[dnums.kernel_output_feature_dimension()] =
       dnums.input_batch_dimension();
   rhs_to_lhs_indices[dnums.kernel_input_feature_dimension()] =
@@ -550,7 +552,7 @@ PartitionConvolutionWithSpatialDimensionHaloExchangeOnLHS(
     rhs_to_lhs_indices[dnums.kernel_spatial_dimensions(i)] =
         dnums.input_spatial_dimensions(i);
   }
-  std::vector<int64_t> lhs_to_rhs_indices(output_base_shape.rank());
+  std::vector<int64_t> lhs_to_rhs_indices(output_base_shape.dimensions_size());
   for (int64_t i = 0; i < rhs_to_lhs_indices.size(); ++i) {
     lhs_to_rhs_indices[rhs_to_lhs_indices[i]] = i;
   }
@@ -655,9 +657,9 @@ PartitionConvolutionWithSpatialDimensionHaloExchangeOnLHS(
   }
 
   std::vector<OffsetCalculation> left_halo_size_functions(
-      output_base_shape.rank());
+      output_base_shape.dimensions_size());
   std::vector<OffsetCalculation> right_halo_size_functions(
-      output_base_shape.rank());
+      output_base_shape.dimensions_size());
   Window new_window = window;
 
   auto partition_ordinals =
@@ -779,7 +781,8 @@ absl::StatusOr<HloInstruction*> PartitionConvolutionTiledOutput(
   }
 
   // Check if the operand and the output sharding are aligned.
-  std::vector<int64_t> input_to_output_indices(output_base_shape.rank());
+  std::vector<int64_t> input_to_output_indices(
+      output_base_shape.dimensions_size());
   input_to_output_indices[dnums.input_batch_dimension()] =
       dnums.output_batch_dimension();
   input_to_output_indices[dnums.input_feature_dimension()] =
@@ -793,13 +796,13 @@ absl::StatusOr<HloInstruction*> PartitionConvolutionTiledOutput(
   lhs = lhs.Reshard(target_operand_sharding);
 
   // Replicate the RHS.
-  rhs = rhs.Reshard(HloSharding::Replicate());
+  rhs = rhs.Replicate();
 
   // Convolution window config does not include batch and feature dimensions,
   // whereas ReshardAsWindowedInput() expects the same number of window
   // dimensions as the rank of the operand. So add two more trivial
   // dimensions.
-  std::vector<int64_t> ones(output_base_shape.rank(), 1);
+  std::vector<int64_t> ones(output_base_shape.dimensions_size(), 1);
   auto operand_window = window_util::MakeWindow(ones);
   for (int64_t i = 0; i < dnums.input_spatial_dimensions_size(); ++i) {
     *operand_window.mutable_dimensions(dnums.input_spatial_dimensions(i)) =
@@ -1028,43 +1031,8 @@ absl::Status SpmdPartitioningVisitor::HandleConvolution(HloInstruction* hlo) {
   if (hlo->sharding().HasUniqueDevice()) {
     return DefaultAction(hlo);
   }
-  auto dims_info = dot_as_convolution_util::ParseConvolutionDimsInfo(hlo);
-  dot_as_convolution_util::DotConvolutionDimsInfo mapping;
-  for (const auto& dims : dims_info.batch_dims) {
-    mapping.batch_dims.emplace_back();
-    mapping.batch_dims.back().lhs = dims.lhs;
-    mapping.batch_dims.back().rhs = dims.rhs;
-    mapping.batch_dims.back().output = dims.output;
-    mapping.batch_dims.back().spatial_dim = dims.spatial_dim;
-  }
-  for (const auto& dims : dims_info.contracting_dims) {
-    mapping.contracting_dims.emplace_back();
-    mapping.contracting_dims.back().lhs = dims.lhs;
-    mapping.contracting_dims.back().rhs = dims.rhs;
-    mapping.contracting_dims.back().output = dims.output;
-    mapping.contracting_dims.back().spatial_dim = dims.spatial_dim;
-  }
-  for (const auto& dims : dims_info.lhs_non_contracting_dims) {
-    mapping.lhs_non_contracting_dims.emplace_back();
-    mapping.lhs_non_contracting_dims.back().lhs = dims.lhs;
-    mapping.lhs_non_contracting_dims.back().rhs = dims.rhs;
-    mapping.lhs_non_contracting_dims.back().output = dims.output;
-    mapping.lhs_non_contracting_dims.back().spatial_dim = dims.spatial_dim;
-  }
-  for (const auto& dims : dims_info.rhs_non_contracting_dims) {
-    mapping.rhs_non_contracting_dims.emplace_back();
-    mapping.rhs_non_contracting_dims.back().lhs = dims.lhs;
-    mapping.rhs_non_contracting_dims.back().rhs = dims.rhs;
-    mapping.rhs_non_contracting_dims.back().output = dims.output;
-    mapping.rhs_non_contracting_dims.back().spatial_dim = dims.spatial_dim;
-  }
-  for (const auto& dims : dims_info.conv_spatial_dims) {
-    mapping.conv_spatial_dims.emplace_back();
-    mapping.conv_spatial_dims.back().lhs = dims.lhs;
-    mapping.conv_spatial_dims.back().rhs = dims.rhs;
-    mapping.conv_spatial_dims.back().output = dims.output;
-    mapping.conv_spatial_dims.back().spatial_dim = dims.spatial_dim;
-  }
+  const auto dims_info = dot_as_convolution_util::ParseConvolutionDimsInfo(hlo);
+
   auto create_sharded_conv =
       [&](HloInstruction* lhs_hlo, HloInstruction* rhs_hlo,
           spmd::SpmdBuilder* b,
@@ -1084,7 +1052,7 @@ absl::Status SpmdPartitioningVisitor::HandleConvolution(HloInstruction* hlo) {
     }
   };
 
-  return HandleDotHelper(hlo, mapping, create_sharded_conv);
+  return HandleDotHelper(hlo, dims_info, create_sharded_conv);
 }
 
 }  // namespace spmd

@@ -18,6 +18,8 @@ limitations under the License.
 #include <string>
 #include <string_view>
 
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/time/time.h"
 #include "tensorflow/c/experimental/next_pluggable_device/c_api.h"
 #include "tensorflow/c/tf_buffer.h"
@@ -42,8 +44,8 @@ absl::StatusOr<std::string> ProcessGetKeyValueResult(TF_Buffer* result_buf,
 }
 }  // namespace
 
-Status CPluginCoordinationServiceAgent::InsertKeyValue(std::string_view key,
-                                                       std::string_view value) {
+absl::Status CPluginCoordinationServiceAgent::InsertKeyValue(
+    std::string_view key, std::string_view value) {
   TF_StatusPtr c_status_ptr(TF_NewStatus());
   TF_Status* status = c_status_ptr.get();
   TF_CoordinationServiceInsertKeyValue(key.data(), key.size(), value.data(),
@@ -78,7 +80,8 @@ absl::StatusOr<std::string> CPluginCoordinationServiceAgent::TryGetKeyValue(
   return ProcessGetKeyValueResult(result_buf, status);
 }
 
-Status CPluginCoordinationServiceAgent::DeleteKeyValue(std::string_view key) {
+absl::Status CPluginCoordinationServiceAgent::DeleteKeyValue(
+    std::string_view key) {
   TF_StatusPtr c_status_ptr(TF_NewStatus());
   TF_Status* status = c_status_ptr.get();
   TF_CoordinationServiceDeleteKeyValue(key.data(), key.size(), agent_, status);

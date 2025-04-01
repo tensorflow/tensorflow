@@ -318,12 +318,7 @@ absl::Status InferenceContext::InitFromGpuModel(
                                  &create_info, &env->context()));
 
   gpu_info_ = env->device().GetInfo();
-  if (gpu_info_.opencl_info.IsCLVK() &&
-      gpu_info_.SupportsExtension("cl_khr_command_buffer")) {
-    use_command_buffer_ = true;
-  }
-
-  InitFromGpuModel(gpu_model);
+  InitFromGpuModel(gpu_info_, gpu_model);
 
   CreationContext creation_context;
   creation_context.device = env->GetDevicePtr();
@@ -413,7 +408,7 @@ absl::Status InferenceContext::RestoreDeserialized(
   RETURN_IF_ERROR(tflite::gpu::Decode(decoded_fb->gpu_model(), &gpu_model));
   RETURN_IF_ERROR(AllocateMemory(gpu_model, env->GetDevicePtr()->GetInfo(),
                                  create_info, &env->context()));
-  InitFromGpuModel(&gpu_model);
+  InitFromGpuModel(env->GetDevicePtr()->GetInfo(), &gpu_model);
 
   // deserializing kernels into program_cache
   for (auto binary_program_fb : *decoded_fb->binary_programs()) {
@@ -468,14 +463,17 @@ absl::Status InferenceContext::RestoreDeserialized(
   return absl::OkStatus();
 }
 
-void InferenceContext::InitFromGpuModel(GpuModel* gpu_model) {
+void InferenceContext::InitFromGpuModel(const GpuInfo& gpu_info,
+                                        GpuModel* gpu_model) {
   for (const auto& input : gpu_model->input_ids_and_refs) {
     input_ids_.push_back(input.first);
   }
   for (const auto& output : gpu_model->output_ids_and_refs) {
     output_ids_.push_back(output.first);
   }
-  if (use_command_buffer_) {
+  if (gpu_info.opencl_info.IsCLVK() &&
+      gpu_info.SupportsExtension("cl_khr_command_buffer")) {
+    use_command_buffer_ = true;
     command_buffer_ = nullptr;
   }
   nodes_.resize(gpu_model->nodes.size());

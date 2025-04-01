@@ -35,18 +35,18 @@ class TfGraphToHloCompiler : public TfToHloCompiler {
   // Compiles a Tensorflow `function` into an HloModuleProto stored in the
   // XlaCompilationResult pointed to by `result` by calling
   // XlaCompiler::CompileFunction.
-  Status Compile(const XlaCompiler::CompileOptions& options,
-                 const NameAttrList& function,
-                 absl::Span<const XlaArgument> args,
-                 XlaCompilationResult* result) override;
+  absl::Status Compile(const XlaCompiler::CompileOptions& options,
+                       const NameAttrList& function,
+                       absl::Span<const XlaArgument> args,
+                       XlaCompilationResult* result) override;
 
   // Compiles a Tensorflow single op into an HloModuleProto stored in the
   // XlaCompilationResult pointed to by `result` by calling
   // XlaCompiler::CompileSingleOp.
-  Status CompileSingleOp(const XlaCompiler::CompileOptions& options,
-                         const OpKernelContext* ctx,
-                         absl::Span<const XlaArgument> args,
-                         XlaCompilationResult* result) override;
+  absl::Status CompileSingleOp(const XlaCompiler::CompileOptions& options,
+                               const OpKernelContext* ctx,
+                               absl::Span<const XlaArgument> args,
+                               XlaCompilationResult* result) override;
 
  private:
   XlaCompiler xla_compiler_;

@@ -18,6 +18,7 @@ limitations under the License.
 #include <string>
 
 #include <gtest/gtest.h>
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/function_testlib.h"
@@ -27,7 +28,6 @@ limitations under the License.
 #include "tensorflow/core/grappler/grappler_item.h"
 #include "tensorflow/core/grappler/optimizers/data/graph_test_utils.h"
 #include "tensorflow/core/grappler/optimizers/data/graph_utils.h"
-#include "tsl/lib/core/status_test_util.h"
 
 namespace tensorflow {
 namespace grappler {
@@ -101,7 +101,7 @@ GraphDef EligibleMapCase() {
             {{"value", 1}, {"dtype", DT_INT32}}),
        graph_tests_utils::MakeParallelMapV2Node(
            "map_1", "io_1", "num_parallel_calls_1", "noop_1",
-           /*deterministic=*/"default"),
+           /*deterministic=*/"default", /*use_unbounded_threadpool=*/false),
 
        NDef("files_2", "Const", {},
             {{"value", "file1file2"}, {"dtype", DT_STRING}}),
@@ -114,7 +114,7 @@ GraphDef EligibleMapCase() {
             {{"value", 1}, {"dtype", DT_INT32}}),
        graph_tests_utils::MakeParallelMapV2Node(
            "map_2", "io_2", "num_parallel_calls_2", "noop_2",
-           /*deterministic=*/"default"),
+           /*deterministic=*/"default", /*use_unbounded_threadpool=*/false),
 
        NDef("zip", "ZipDataset", {"map_1", "map_2"}, {}),
        NDef("Sink", "Identity", {"zip"}, {})},

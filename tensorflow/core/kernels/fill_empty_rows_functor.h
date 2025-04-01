@@ -30,19 +30,21 @@ namespace functor {
 template <typename Device, typename T, typename Tindex, bool RaggedOperands>
 struct FillEmptyRows {
   // Note that the done callback is only used by the GPU implementation.
-  Status operator()(OpKernelContext* context, const Tensor& default_value_t,
-                    const Tensor& indices_t, const Tensor& values_t,
-                    const Tensor& dense_shape_t,
-                    typename AsyncOpKernel::DoneCallback done = nullptr);
+  absl::Status operator()(OpKernelContext* context,
+                          const Tensor& default_value_t,
+                          const Tensor& indices_t, const Tensor& values_t,
+                          const Tensor& dense_shape_t,
+                          typename AsyncOpKernel::DoneCallback done = nullptr);
 };
 
 template <typename T, typename Tindex, bool RaggedOperands>
 struct FillEmptyRows<CPUDevice, T, Tindex, RaggedOperands> {
   static constexpr int IndicesRank = RaggedOperands ? 1 : 2;
-  Status operator()(OpKernelContext* context, const Tensor& default_value_t,
-                    const Tensor& indices_t, const Tensor& values_t,
-                    const Tensor& dense_shape_t,
-                    typename AsyncOpKernel::DoneCallback done) {
+  absl::Status operator()(OpKernelContext* context,
+                          const Tensor& default_value_t,
+                          const Tensor& indices_t, const Tensor& values_t,
+                          const Tensor& dense_shape_t,
+                          typename AsyncOpKernel::DoneCallback done) {
     (void)done;  // Unused (only used in GPU implementation)
     const int kOutputIndicesOutput = 0;
     const int kOutputValuesOutput = 1;
@@ -97,7 +99,7 @@ struct FillEmptyRows<CPUDevice, T, Tindex, RaggedOperands> {
           kOutputValuesOutput, TensorShape({0}), &output_values_t));
 
       // Exit early, nothing more to do.
-      return OkStatus();
+      return absl::OkStatus();
     }
 
     auto vec_or_matrix = [](auto tensor, int index1, int index2) -> auto& {
@@ -204,26 +206,26 @@ struct FillEmptyRows<CPUDevice, T, Tindex, RaggedOperands> {
       }
     }
 
-    return OkStatus();
+    return absl::OkStatus();
   }
 };
 
 template <typename Device, typename T, typename Tindex>
 struct FillEmptyRowsGrad {
-  Status operator()(OpKernelContext* context,
-                    typename TTypes<Tindex>::ConstVec reverse_index_map,
-                    typename TTypes<T>::ConstVec grad_values,
-                    typename TTypes<T>::Vec d_values,
-                    typename TTypes<T>::Scalar d_default_value);
+  absl::Status operator()(OpKernelContext* context,
+                          typename TTypes<Tindex>::ConstVec reverse_index_map,
+                          typename TTypes<T>::ConstVec grad_values,
+                          typename TTypes<T>::Vec d_values,
+                          typename TTypes<T>::Scalar d_default_value);
 };
 
 template <typename T, typename Tindex>
 struct FillEmptyRowsGrad<CPUDevice, T, Tindex> {
-  Status operator()(OpKernelContext* context,
-                    typename TTypes<Tindex>::ConstVec reverse_index_map,
-                    typename TTypes<T>::ConstVec grad_values,
-                    typename TTypes<T>::Vec d_values,
-                    typename TTypes<T>::Scalar d_default_value) {
+  absl::Status operator()(OpKernelContext* context,
+                          typename TTypes<Tindex>::ConstVec reverse_index_map,
+                          typename TTypes<T>::ConstVec grad_values,
+                          typename TTypes<T>::Vec d_values,
+                          typename TTypes<T>::Scalar d_default_value) {
     const CPUDevice& device = context->eigen_device<CPUDevice>();
     const Tindex N = reverse_index_map.dimension(0);
     const Tindex N_full = grad_values.dimension(0);
@@ -258,7 +260,7 @@ struct FillEmptyRowsGrad<CPUDevice, T, Tindex> {
         d_default_value_scalar += grad_values(j);
       }
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 };
 

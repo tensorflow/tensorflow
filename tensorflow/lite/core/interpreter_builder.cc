@@ -28,7 +28,8 @@ limitations under the License.
 
 #include "flatbuffers/buffer.h"  // from @flatbuffers
 #include "flatbuffers/vector.h"  // from @flatbuffers
-#include "tensorflow/lite/allocation.h"
+#include "tensorflow/compiler/mlir/lite/allocation.h"
+#include "tensorflow/compiler/mlir/lite/schema/schema_utils.h"
 #include "tensorflow/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/core/api/flatbuffer_conversions.h"
 #include "tensorflow/lite/core/api/op_resolver.h"
@@ -44,7 +45,6 @@ limitations under the License.
 #include "tensorflow/lite/profiling/telemetry/c/telemetry_setting_internal.h"
 #include "tensorflow/lite/schema/conversion_metadata_generated.h"
 #include "tensorflow/lite/schema/schema_generated.h"
-#include "tensorflow/lite/schema/schema_utils.h"
 #include "tensorflow/lite/shared_library.h"
 #include "tensorflow/lite/stderr_reporter.h"
 #include "tensorflow/lite/util.h"
@@ -408,6 +408,7 @@ TfLiteStatus InterpreterBuilder::ParseQuantization(
     const QuantizationParameters* src_quantization,
     TfLiteQuantization* quantization, const std::vector<int>& dims) {
   quantization->type = kTfLiteNoQuantization;
+  quantization->params = nullptr;
   if (!src_quantization || !src_quantization->scale() ||
       src_quantization->scale()->size() == 0) {
     return kTfLiteOk;
@@ -657,7 +658,7 @@ TfLiteStatus InterpreterBuilder::ParseTensors(
     TF_LITE_ENSURE_STATUS(get_readonly_data(&buffer_ptr, &buffer_size));
 
     const auto* src_quantization = tensor->quantization();
-    TfLiteQuantization quantization;
+    TfLiteQuantization quantization{};
     if (ParseQuantization(src_quantization, &quantization, dims) != kTfLiteOk) {
       TF_LITE_REPORT_ERROR(error_reporter_,
                            "Tensor %d has invalid quantization parameters.", i);

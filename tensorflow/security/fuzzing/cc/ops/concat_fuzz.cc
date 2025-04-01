@@ -15,8 +15,9 @@
 #include <cstdint>
 #include <vector>
 
-#include <gtest/gtest.h>
 #include "fuzztest/fuzztest.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "tensorflow/cc/ops/standard_ops.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/security/fuzzing/cc/core/framework/tensor_domains.h"
@@ -45,7 +46,7 @@ class FuzzConcat : public FuzzSession<Tensor, Tensor, int32> {
                 const int32& axis) final {
     Tensor axis_tensor(DT_INT32, {});
     axis_tensor.scalar<int32_t>()() = axis;
-    Status s = RunInputsWithStatus(
+    absl::Status s = RunInputsWithStatus(
         {{"value1", value1}, {"value2", value2}, {"axis", axis_tensor}});
     if (!s.ok()) {
       LOG(ERROR) << "Execution failed: " << s.message();

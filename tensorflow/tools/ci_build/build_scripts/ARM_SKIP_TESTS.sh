@@ -16,5 +16,4 @@
 set -x
 
 ARM_SKIP_TESTS="-//tensorflow/lite/... \
--//tensorflow/core/kernels/image:resize_bicubic_op_test \
 "

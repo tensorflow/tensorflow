@@ -371,6 +371,12 @@ This op is used for outlining a cluster.
       return getFuncAttr();
     }
     void setCalleeFromCallable(::mlir::CallInterfaceCallable callee);
+    Attribute removeArgAttrsAttr() { return nullptr; }
+    Attribute removeResAttrsAttr() { return nullptr; }
+    ArrayAttr getArgAttrsAttr() { return nullptr; }
+    ArrayAttr getResAttrsAttr() { return nullptr; }
+    void setArgAttrsAttr(ArrayAttr) { return; }
+    void setResAttrsAttr(ArrayAttr) { return; }
   }];
 }
 

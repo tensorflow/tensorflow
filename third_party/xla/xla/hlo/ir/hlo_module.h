@@ -17,19 +17,22 @@ limitations under the License.
 #define XLA_HLO_IR_HLO_MODULE_H_
 
 #include <atomic>
+#include <cstdint>
 #include <functional>
 #include <memory>
 #include <optional>
 #include <random>
 #include <string>
-#include <string_view>
 #include <utility>
 #include <variant>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
+#include "absl/status/status.h"
 #include "absl/strings/cord.h"
 #include "absl/strings/string_view.h"
+#include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/dynamic_parameter_binding.h"
 #include "xla/hlo/ir/hlo_clone_context.h"
@@ -38,80 +41,27 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module_metadata.h"
 #include "xla/hlo/ir/hlo_schedule.h"
+#include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/iterator_util.h"
+#include "xla/online_topsort.h"
 #include "xla/printer.h"
 #include "xla/service/compilation_environments.h"
+#include "xla/service/computation_layout.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/name_uniquer.h"
+#include "xla/shape.h"
+#include "xla/shape_util.h"
+#include "xla/status_macros.h"
+#include "xla/tsl/lib/gtl/iterator_range.h"
+#include "xla/tsl/platform/logging.h"
 #include "xla/xla.pb.h"
-#include "tsl/lib/gtl/iterator_range.h"
-#include "tsl/platform/logging.h"
 
 namespace xla {
 
 using LayoutCanonicalizationCallback =
     std::function<absl::StatusOr<std::pair<std::vector<Shape>, Shape>>(
         const HloModule& module)>;
-
-// Helper class to maintain a copy-on-write storage of an object of the
-// specified type. Logically Variant<MutableOwned, ImmutableShared>.
-template <typename T>
-class CopyOnWrite {
- public:
-  static_assert(!std::is_const_v<T>);
-  explicit CopyOnWrite(
-      std::variant<std::unique_ptr<T>, std::shared_ptr<const T>> ptr)
-      : ownership_(std::move(ptr)), ptr_([&]() -> decltype(ptr_) {
-          if (auto* owned = std::get_if<std::unique_ptr<T>>(&ownership_)) {
-            return owned->get();
-          }
-          return std::get<std::shared_ptr<const T>>(ownership_).get();
-        }()) {}
-
-  // Obtains a const reference to the read-only copy of the object, could be
-  // sharing the storage with other CopyOnWrite<T> instances.
-  const T& get() const { return *ptr_; }
-
-  // Obtains a mutable reference to an exclusively owned copy of the object. If
-  // the object was sharing storage with other CopyOnWrite<T> instances, make a
-  // deep copy inline and transform into exclusively owned copy.
-  T& get_mutable() {
-    if (auto* owned = std::get_if<std::unique_ptr<T>>(&ownership_)) {
-      return **owned;
-    }
-    auto& shared = std::get<std::shared_ptr<const T>>(ownership_);
-    DeepCopyToNewUnique(T(*shared));
-    return const_cast<T&>(*ptr_);
-  }
-  // Deep copies the provided value into an exclusively owned copy of the
-  // object.
-  void set(T&& value) {
-    if (auto* owned = std::get_if<std::unique_ptr<T>>(&ownership_)) {
-      **owned = std::forward<T>(value);
-    } else {
-      DeepCopyToNewUnique(std::forward<T>(value));
-    }
-  }
-  // If the instance is in MutableOwned state, move the storage into
-  // ImmutableShared state.
-  // If the instance is in ImmutableShared state, returns the shared storage.
-  const std::shared_ptr<const T>& FreezeAndShare() const {
-    if (auto* owned = std::get_if<std::unique_ptr<T>>(&ownership_)) {
-      ownership_ = std::shared_ptr<const T>(std::move(*owned));
-    }
-    return std::get<std::shared_ptr<const T>>(ownership_);
-  }
-
- private:
-  void DeepCopyToNewUnique(T&& value) {
-    auto owned = std::make_unique<T>(std::forward<T>(value));
-    ptr_ = owned.get();
-    ownership_ = std::move(owned);
-  }
-  mutable std::variant<std::unique_ptr<T>, std::shared_ptr<const T>> ownership_;
-  const T* ptr_;
-};
 
 // Describes a compilation unit at the HLO level.
 //
@@ -129,18 +79,17 @@ class CopyOnWrite {
 // attached to.
 class HloModule {
  public:
-  // Constructor.
   HloModule(const std::string& name, HloModuleConfig config);
-  // REQUIRED:
-  // - comp_envs must not be null.
+  // REQUIRED: comp_envs must not be null.
   HloModule(const std::string& name, HloModuleConfig config,
             std::unique_ptr<CompilationEnvironments> comp_envs);
+
+  // You can share a config from other modules by passing
+  // HloModule::shared_config()
   HloModule(const std::string& name,
-            std::variant<std::unique_ptr<HloModuleConfig>,
-                         std::shared_ptr<const HloModuleConfig>>
-                config,
+            std::shared_ptr<const HloModuleConfig> config,
             std::unique_ptr<CompilationEnvironments> comp_envs);
-  virtual ~HloModule() = default;
+  virtual ~HloModule();
 
   // Adds an entry computation to the module. A module can only have one entry
   // computation. Returns a pointer to the newly added computation.
@@ -183,7 +132,7 @@ class HloModule {
   // computations.
   //
   // N.B.: This function does not update the computations_ field of the
-  // HloModule with the newly added compututations. Therefore, along with
+  // HloModule with the newly added computations. Therefore, along with
   // invoking this function, if a replacement computation is not already present
   // in module, it should be separately added into the module using
   // `AddEmbeddedComputation`.
@@ -198,13 +147,11 @@ class HloModule {
   // the names of instructions within the computations are unchanged.
   void MoveComputationsFrom(HloModule* module, bool make_names_unique = false);
 
-  // Returns a deep copy of this module including all computations.
-  std::unique_ptr<HloModule> Clone(const std::string& suffix = "clone") const;
-  std::unique_ptr<HloModule> Clone(const HloModuleConfig& config,
-                                   const std::string& suffix = "clone") const;
+  // Returns a deep copy of this module including all reachable computations.
+  // Optionally, a custom config can be provided.
   std::unique_ptr<HloModule> Clone(
-      std::shared_ptr<const HloModuleConfig> config,
-      const std::string& suffix = "clone") const;
+      const std::string& suffix = "clone",
+      std::optional<const HloModuleConfig> config = std::nullopt) const;
 
   // Performs a deep clone of the computation, by recursively cloning all
   // the called computations as well. If the clone context is specified, it
@@ -236,11 +183,11 @@ class HloModule {
   }
 
   ComputationLayout* mutable_entry_computation_layout() {
-    return config_.get_mutable().mutable_entry_computation_layout();
+    return mutable_config().mutable_entry_computation_layout();
   }
 
   const ComputationLayout& entry_computation_layout() const {
-    return config_.get().entry_computation_layout();
+    return config().entry_computation_layout();
   }
 
   void set_frontend_attributes(FrontendAttributes frontend_attributes) {
@@ -285,7 +232,8 @@ class HloModule {
   // with respect to HloInstruction::Identical() method.
   template <typename H>
   friend H AbslHashValue(H h, const HloModule& module) {
-    h = H::combine(std::move(h), module.entry_computation_layout());
+    if (module.config().has_entry_computation_layout())
+      h = H::combine(std::move(h), module.entry_computation_layout());
     // Use MakeComputationSorted() instead of MakeComputationPostOrder()
     // because naming may affect the order of MakeComputationPostOrder() but not
     // MakeComputationSorted().
@@ -360,27 +308,36 @@ class HloModule {
     }
   }
 
-  // Compute and return a post order of all computations in the module. The sort
-  // is defined like so: if computation A has an instruction which calls
-  // computation B, then A will appear after B in the sort.
-  std::vector<HloComputation*> MakeComputationPostOrder() const {
-    return MakeComputationPostOrder({});
+  // Compute and return a topological sort of all computations in the module.
+  // The sort is defined like so: if computation A has an instruction which
+  // calls computation B, then A will appear after B in the sort.
+  // If `dfs_postorder` is true, the order is a DFS postorder, otherwise it is
+  // any reverse topological sort of the computations. The dfs_postorder is
+  // primarily used for printing an HLO module; it is more expensive to
+  // compute.
+  std::vector<HloComputation*> MakeComputationPostOrder(
+      bool dfs_postorder = false) const {
+    return MakeComputationPostOrder({}, dfs_postorder);
   }
   // Similar as above but only returns computations with specified
   // `execution_threads`. Empty `execution_threads` list means all execution
   // threads are included.
   std::vector<HloComputation*> MakeComputationPostOrder(
-      const absl::flat_hash_set<absl::string_view>& execution_threads) const;
+      const absl::flat_hash_set<absl::string_view>& execution_threads,
+      bool dfs_postorder = false) const;
   // Same as MakeComputationPostOrder() but only returns the computations that
   // are on specified `execution_threads` and are also found in the passed in
   // allowList. Empty `execution_threads` list means all execution threads are
   // included.
   std::vector<HloComputation*> MakeComputationPostOrder(
       const absl::flat_hash_set<absl::string_view>& execution_threads,
-      const absl::flat_hash_set<HloComputation*>& allow_list) const;
+      const absl::flat_hash_set<HloComputation*>& allow_list,
+      bool dfs_postorder = false) const;
 
   // If config().content_aware_computation_sorting() is true, sorts computations
-  // by their contents, otherwise returns MakeComputationPostOrder().
+  // by their contents, otherwise returns MakeComputationPostOrder(). Note that
+  // the sort is potentially expensive, so this should be used only if a
+  // consistent order is required.
   std::vector<HloComputation*> MakeComputationSorted() const {
     return MakeComputationSorted({});
   }
@@ -407,6 +364,8 @@ class HloModule {
       const absl::flat_hash_set<absl::string_view>& execution_threads) const;
 
   // Same as MakeNonfusionComputations() but sorting computations by content.
+  // Note that the sort is potentially expensive, so this should be used only if
+  // a consistent order is required.
   std::vector<HloComputation*> MakeNonfusionComputationsSorted() const {
     return MakeNonfusionComputationsSorted({});
   }
@@ -415,12 +374,29 @@ class HloModule {
   std::vector<HloComputation*> MakeNonfusionComputationsSorted(
       const absl::flat_hash_set<absl::string_view>& execution_threads) const;
 
-  HloModuleConfig& mutable_config() { return config_.get_mutable(); }
-  const HloModuleConfig& config() const { return config_.get(); }
-  void set_config(HloModuleConfig config) { config_.set(std::move(config)); }
+  // Returns a config for modifications in current module. If the config is
+  // shared with other modules, it creates a copy.
+  HloModuleConfig& mutable_config() {
+    if (config_.use_count() > 1) {
+      config_ = std::make_shared<const HloModuleConfig>(*config_);
+    }
+    return const_cast<HloModuleConfig&>(*config_);
+  }
 
-  const std::shared_ptr<const HloModuleConfig>& shared_config() const {
-    return config_.FreezeAndShare();
+  // Returns a config for read-only purposes assuming the config won't be
+  // changed during the life time of the returned object.
+  const HloModuleConfig& config() const { return *config_; }
+
+  void set_config(HloModuleConfig config) {
+    config_ = std::make_shared<const HloModuleConfig>(std::move(config));
+  }
+
+  // Shares the config which can be used in other HloModules,
+  // thus reducing the memory footprint. It can also be used to access the
+  // config for read-only purposes. Modules can modify their own config
+  // afterwards through mutable_config().
+  std::shared_ptr<const HloModuleConfig> shared_config() const {
+    return config_;
   }
 
   bool is_dynamic() const { return is_dynamic_; }
@@ -437,9 +413,9 @@ class HloModule {
 
   // Return a string representation of the module.
   //
-  // (We express the default options using an overload rather than a default
-  // param because gdb ignores default params, but does resolve overloads.)
-  std::string ToString() const { return ToString(HloPrintOptions::Default()); }
+  // By default, we take the default print options but adjust them based on
+  // debug options flags.
+  std::string ToString() const;
   std::string ToString(const HloPrintOptions& options) const;
 
   // Returns a Cord representation of the module.
@@ -453,13 +429,14 @@ class HloModule {
   HloModuleProto ToProto() const;
   static absl::StatusOr<std::unique_ptr<HloModule>> CreateFromProto(
       const HloModuleProto& proto, const HloModuleConfig& module_config,
-      bool prohibit_empty_literal = true);
+      bool prohibit_empty_literal = true,
+      std::unique_ptr<CompilationEnvironments> comp_envs = nullptr);
 
   // Convert an HloModule to or from a proto that includes module configuration
   HloModuleProtoWithConfig ToProtoWithConfig() const;
   static absl::StatusOr<std::unique_ptr<HloModule>> CreateFromProtoWithConfig(
-      const HloModuleProtoWithConfig& proto,
-      bool prohibit_empty_literal = true);
+      const HloModuleProtoWithConfig& proto, bool prohibit_empty_literal = true,
+      std::unique_ptr<CompilationEnvironments> comp_envs = nullptr);
 
   // Creates and returns an HloModuleConfig with an appropriate program shape
   // for the HLO module in the given proto.
@@ -489,6 +466,9 @@ class HloModule {
 
   // Returns the NameUniquer for uniquing instruction names in this module.
   NameUniquer& instruction_name_uniquer() { return instruction_name_uniquer_; }
+
+  // Returns the NameUniquer for uniquing computation names in this module.
+  NameUniquer& computation_name_uniquer() { return computation_name_uniquer_; }
 
   // Assign a new unique dense id for an instruction
   int NewUniqueInstructionId() {
@@ -533,8 +513,15 @@ class HloModule {
   bool has_schedule() const { return schedule_.has_value(); }
 
   // Returns the schedule of the module. CHECK fails if no schedule is set.
-  const HloSchedule& schedule() const { return *schedule_; }
-  HloSchedule& schedule() { return *schedule_; }
+  const HloSchedule& schedule() const { return schedule_.value(); }
+  HloSchedule& schedule() { return schedule_.value(); }
+
+  HloComputation* AddComputation(std::unique_ptr<HloComputation> computation,
+                                 bool is_entry) {
+    return AddComputationInternal(std::move(computation), is_entry,
+                                  /*uniquify_identifiers=*/false,
+                                  /*preserve_entry_layouts=*/true);
+  }
 
   HloComputation* AddComputationAndUnifyNamesAndIds(
       std::unique_ptr<HloComputation> computation, bool is_entry) {
@@ -674,7 +661,7 @@ class HloModule {
   }
 
   bool has_module_autofdo_profiles() const {
-    return !autofdo_profile_keys_.empty();
+    return !profile_info_list_.empty();
   }
 
   void set_relative_speedup(double relative_speedup) {
@@ -698,8 +685,8 @@ class HloModule {
 
   // Describes a stack frame.
   struct StackFrame {
-    std::string_view file_name;
-    std::string_view function_name;
+    absl::string_view file_name;
+    absl::string_view function_name;
     int line = 0;
     int column = 0;
 
@@ -717,12 +704,18 @@ class HloModule {
   StackFrame get_stack_frame(int id) const;
 
  private:
+  friend class HloComputation;
+
   HloComputation* AddComputationInternal(
       std::unique_ptr<HloComputation> computation, bool is_entry,
       bool uniquify_identifiers, bool preserve_entry_layouts);
 
   std::string name_;
-  CopyOnWrite<HloModuleConfig> config_;
+
+  // Sharabled copy-on-write instance.
+  // If you want to modify it, use mutable_config().
+  std::shared_ptr<const HloModuleConfig> config_;
+
   HloComputation* entry_computation_ = nullptr;
   std::vector<std::unique_ptr<HloComputation>> computations_;
 
@@ -804,11 +797,23 @@ class HloModule {
 
   // Compilation environments (protos that carry command line flags and
   // environment variables).
-  std::unique_ptr<CompilationEnvironments> comp_envs_ =
-      std::make_unique<CompilationEnvironments>();
+  std::unique_ptr<CompilationEnvironments> comp_envs_;
 
   // Stack frame indexes flat representation.
   std::optional<StackFrameIndexProto> stack_frame_index_;
+
+  // Topological ordering of the computations in this module.
+  // The topological order only contains computations whose parent() is this
+  // module.
+  // TODO(phawkins): unique_id_ may not be as dense as we might like for this
+  // data structure.
+  TopologicalSort<HloComputation, int64_t,
+                  &HloComputation::topological_sort_node_,
+                  &HloComputation::unique_id_, HloComputation::NeighborIterator,
+                  &HloComputation::callers_begin, &HloComputation::callers_end,
+                  HloComputation::NeighborIterator,
+                  &HloComputation::callees_begin, &HloComputation::callees_end>
+      topological_sort_;
 };
 
 }  // namespace xla

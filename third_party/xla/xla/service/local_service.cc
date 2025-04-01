@@ -23,7 +23,7 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/types/span.h"
 #include "xla/client/executable_build_options.h"
-#include "xla/client/xla_computation.h"
+#include "xla/hlo/builder/xla_computation.h"
 #include "xla/service/backend.h"
 #include "xla/service/compiler.h"
 #include "xla/service/computation_layout.h"
@@ -93,7 +93,6 @@ LocalService::CompileExecutables(
       build_options.layout_canonicalization_callback(),
       false,
       {},
-      nullptr,
       {build_options.key_value_store(), build_options.process_index(),
        build_options.process_count()}};
   if (build_options.num_partitions() == 1) {

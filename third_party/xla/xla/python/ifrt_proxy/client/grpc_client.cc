@@ -20,7 +20,6 @@
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/log/log_entry.h"
-#include "absl/log/log_sink.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
@@ -28,8 +27,10 @@
 #include "absl/time/time.h"
 #include "grpcpp/client_context.h"
 #include "xla/pjrt/distributed/util.h"
+#include "xla/python/ifrt/attribute_map.h"
 #include "xla/python/ifrt/future.h"
 #include "xla/python/ifrt_proxy/client/client.h"
+#include "xla/python/ifrt_proxy/client/global_flags.h"
 #include "xla/python/ifrt_proxy/client/grpc_client_session.h"
 #include "xla/python/ifrt_proxy/client/grpc_host_buffer.h"
 #include "xla/python/ifrt_proxy/client/registry.h"
@@ -53,7 +54,8 @@ namespace {
 absl::StatusOr<std::unique_ptr<Client>> AttemptConnection(
     absl::string_view server_address,
     std::function<void(absl::Status)> on_disconnect, int attempt_no,
-    absl::AnyInvocable<void(absl::string_view)> log_initial_connection) {
+    absl::AnyInvocable<void(absl::string_view)> log_initial_connection,
+    AttributeMap initialization_data) {
   std::unique_ptr<RpcHelper> rpc_helper;
   auto init_response_promise =
       Future<std::shared_ptr<InitResponse>>::CreatePromise();
@@ -66,7 +68,7 @@ absl::StatusOr<std::unique_ptr<Client>> AttemptConnection(
 
   // TODO(b/266635130): Move gRPC stub creation to be outside of `Client` so
   // that we can pass mock `ClientSession` to the client.
-  auto stub = CreateGrpcStub(server_address);
+  auto control_path_stub = CreateGrpcStub(server_address);
 
   auto session_disconnect_cb = [init_response =
                                     Future<std::shared_ptr<InitResponse>>(
@@ -102,16 +104,17 @@ absl::StatusOr<std::unique_ptr<Client>> AttemptConnection(
 
     ::grpc::ClientContext context;
     GrpcGetVersionResponse response;
-    TF_RETURN_IF_ERROR(
-        xla::FromGrpcStatus(stub->GetVersion(&context, request, &response)));
+    TF_RETURN_IF_ERROR(xla::FromGrpcStatus(
+        control_path_stub->GetVersion(&context, request, &response)));
 
     CHECK_GE(response.version().protocol_version(), kClientMinVersion);
     CHECK_LE(response.version().protocol_version(), kClientMaxVersion);
     *metadata.mutable_version() = response.version();
   }
+  *metadata.mutable_initialization_data() = initialization_data.ToProto();
 
-  auto session =
-      GrpcClientSession::Create(stub, metadata, session_disconnect_cb);
+  auto session = GrpcClientSession::Create(control_path_stub, metadata,
+                                           session_disconnect_cb);
   rpc_helper =
       std::make_unique<RpcHelper>(metadata.version(), std::move(session));
 
@@ -129,8 +132,15 @@ absl::StatusOr<std::unique_ptr<Client>> AttemptConnection(
       auto init_response,
       Future<std::shared_ptr<InitResponse>>(init_response_promise).Await());
 
+  bool reuse_control_path_stub_for_data_path =
+      GetGlobalClientFlags()->synchronous_host_buffer_store ||
+      (metadata.version().protocol_version() < 10);
+  auto data_path_stub = reuse_control_path_stub_for_data_path
+                            ? control_path_stub
+                            : CreateGrpcStub(server_address);
+
   auto host_buffer_store = std::make_unique<GrpcClientHostBufferStore>(
-      stub, metadata.version(), init_response->session_id());
+      data_path_stub, metadata.version(), init_response->session_id());
   rpc_helper->set_host_buffer_store(std::move(host_buffer_store));
 
   return Client::Create(std::move(rpc_helper), std::move(*init_response));
@@ -152,8 +162,9 @@ absl::StatusOr<std::unique_ptr<Client>> CreateGrpcClient(
     log_initial_connection(absl::StrCat("Connecting to IFRT proxy server at ",
                                         server_address, ", attempt #", i,
                                         "..."));
-    absl::StatusOr<std::unique_ptr<Client>> result = AttemptConnection(
-        server_address, options.on_disconnect, i, log_initial_connection);
+    absl::StatusOr<std::unique_ptr<Client>> result =
+        AttemptConnection(server_address, options.on_disconnect, i,
+                          log_initial_connection, options.initialization_data);
     if (result.ok()) {
       log_initial_connection(absl::StrCat("Connected to IFRT proxy server on ",
                                           "attempt #", i, "."));

@@ -37,7 +37,7 @@ constexpr int64_t GRADIENT_DESCENT = 1;
 
 }  // namespace
 
-Status EnableGradientDescent::OptimizeAndCollectStats(
+absl::Status EnableGradientDescent::OptimizeAndCollectStats(
     Cluster* cluster, const GrapplerItem& item, GraphDef* output,
     OptimizationStats* stats) {
   *output = item.graph;

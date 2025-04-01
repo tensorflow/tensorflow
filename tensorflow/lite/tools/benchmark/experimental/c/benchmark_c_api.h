@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_TOOLS_BENCHMARK_EXPERIMENTAL_C_BENCHMARK_C_API_H_
 #define TENSORFLOW_LITE_TOOLS_BENCHMARK_EXPERIMENTAL_C_BENCHMARK_C_API_H_
 
+#include <cstdint>
+
 #include "tensorflow/lite/core/c/c_api_types.h"
 
 // -----------------------------------------------------------------------------

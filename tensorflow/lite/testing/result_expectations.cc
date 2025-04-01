@@ -112,6 +112,8 @@ bool DataExpectation::Check(bool verbose, const TfLiteTensor& tensor) {
       return TypedCheck<double, double>(verbose, tensor);
     case kTfLiteFloat16:
       return TypedCheck<Eigen::half, float>(verbose, tensor);
+    case kTfLiteBFloat16:
+      return TypedCheck<Eigen::bfloat16, float>(verbose, tensor);
     default:
       fprintf(stderr, "Unsupported type %d in Check\n", tensor.type);
       return false;

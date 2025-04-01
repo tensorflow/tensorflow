@@ -1588,6 +1588,11 @@ def sign(x, out=None, where=None, **kwargs):  # pylint: disable=missing-docstrin
     raise ValueError('tf.numpy doesnt support setting {}'.format(kwargs.keys()))
 
   x = asarray(x)
+
+  # Numpy 2.x and later uses the same definition of sign.
+  if np.lib.NumpyVersion(np.__version__) >= '2.0.0.dev0':
+    return math_ops.sign(x)
+
   dtype = x.dtype.as_numpy_dtype
   if np.issubdtype(dtype, np.complexfloating):
     result = math_ops.cast(math_ops.sign(math_ops.real(x)), dtype)

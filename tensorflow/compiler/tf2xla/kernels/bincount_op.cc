@@ -13,18 +13,21 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cstdint>
 #include <memory>
 #include <vector>
 
+#include "absl/status/statusor.h"
 #include "tensorflow/compiler/tf2xla/type_util.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
-#include "xla/client/lib/arithmetic.h"
-#include "xla/client/lib/comparators.h"
-#include "xla/client/lib/constants.h"
-#include "xla/client/xla_computation.h"
+#include "xla/hlo/builder/lib/arithmetic.h"
+#include "xla/hlo/builder/lib/comparators.h"
+#include "xla/hlo/builder/lib/constants.h"
+#include "xla/hlo/builder/xla_computation.h"
 #include "xla/shape_util.h"
+#include "xla/xla_data.pb.h"
 
 namespace tensorflow {
 namespace {
@@ -45,7 +48,7 @@ class DenseBincountOp : public XlaOpKernel {
         ctx->builder()->GetShape(output_size_param);
     OP_REQUIRES_OK(ctx, output_shape_or.status());
     auto output_shape_param = output_shape_or.value();
-    auto output_rank = output_shape_param.rank();
+    auto output_rank = output_shape_param.dimensions_size();
     OP_REQUIRES(ctx, output_rank == 0,
                 errors::InvalidArgument("Shape must be rank 0 but is rank ",
                                         output_rank));
@@ -63,7 +66,7 @@ class DenseBincountOp : public XlaOpKernel {
     OP_REQUIRES_OK(ctx, input_shape_or.status());
     auto input_shape = input_shape_or.value();
 
-    auto rank = input_shape.rank();
+    auto rank = input_shape.dimensions_size();
 
     OP_REQUIRES(ctx, rank <= 2,
                 errors::InvalidArgument(

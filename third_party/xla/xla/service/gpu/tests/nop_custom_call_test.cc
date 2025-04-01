@@ -13,9 +13,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cstdint>
 #include <utility>
 
+#include "xla/literal.h"
+#include "xla/literal_util.h"
 #include "xla/tests/hlo_test_base.h"
+#include "xla/tests/literal_test_util.h"
+#include "xla/tsl/platform/test.h"
 
 namespace xla {
 namespace gpu {

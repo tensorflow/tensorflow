@@ -18,6 +18,8 @@ limitations under the License.
 #include <stddef.h>
 #include <stdint.h>
 
+#include <vector>
+
 #include <gtest/gtest.h>
 #include "absl/types/span.h"
 #include "tensorflow/c/tf_datatype.h"

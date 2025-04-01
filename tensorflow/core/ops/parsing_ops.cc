@@ -29,9 +29,9 @@ namespace {
 
 // Adds output shapes for dense tensors in Parse*Example ops.
 template <typename TensorShapeType>  // TensorShape or PartialTensorShape
-Status AddDenseOutputShapes(const std::vector<TensorShapeType>& dense_shapes,
-                            const ShapeHandle& prefix, InferenceContext* c,
-                            int* output_idx) {
+absl::Status AddDenseOutputShapes(
+    const std::vector<TensorShapeType>& dense_shapes, const ShapeHandle& prefix,
+    InferenceContext* c, int* output_idx) {
   for (const auto& dense_shape : dense_shapes) {
     ShapeHandle s;
     TF_RETURN_IF_ERROR(c->MakeShapeFromPartialTensorShape(dense_shape, &s));
@@ -62,9 +62,9 @@ void AddSparseOutputShapes(int num_sparse, const ShapeHandle input_shape,
 }
 
 // Adds output shapes for ragged tensors in Parse*Example ops.
-Status AddRaggedOutputShapes(int num_ragged, bool ragged_rank_2,
-                             const DimensionHandle& num_examples,
-                             InferenceContext* c, int* output_idx) {
+absl::Status AddRaggedOutputShapes(int num_ragged, bool ragged_rank_2,
+                                   const DimensionHandle& num_examples,
+                                   InferenceContext* c, int* output_idx) {
   DimensionHandle num_splits;
   TF_RETURN_IF_ERROR(c->Add(num_examples, 1, &num_splits));
   // Values

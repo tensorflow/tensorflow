@@ -19,6 +19,7 @@ limitations under the License.
 #include <string>
 
 #include "absl/base/attributes.h"
+#include "absl/status/status.h"
 #include "llvm/ADT/StringRef.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
@@ -37,9 +38,8 @@ inline constexpr char kStandardPipelineAfter[] = "standard_pipeline_after";
 ABSL_DEPRECATED(
     "This is legacy code and is unsupported. Use at your own risk. Use "
     "tf2xla/api/v2/* for specific functionality")
-tensorflow::Status RunBridgeWithStandardPipeline(ModuleOp module,
-                                                 bool enable_logging,
-                                                 bool enable_inliner);
+absl::Status RunBridgeWithStandardPipeline(ModuleOp module, bool enable_logging,
+                                           bool enable_inliner);
 }  // namespace TF
 
 }  // namespace mlir

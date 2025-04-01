@@ -127,6 +127,8 @@ namespace xla {
   V(kPartitionId, "partition-id", 0)                                           \
   V(kPopulationCount, "popcnt", 1)                                             \
   V(kPower, "power", 2)                                                        \
+  V(kRaggedAllToAll, "ragged-all-to-all", 6)                                   \
+  V(kRaggedDot, "ragged-dot", 3)                                               \
   V(kReal, "real", 1)                                                          \
   V(kRecv, "recv", 1)                                                          \
   V(kRecvDone, "recv-done", 1)                                                 \
@@ -193,19 +195,20 @@ inline std::ostream& operator<<(std::ostream& os, HloOpcode opcode) {
   return os << HloOpcodeString(opcode);
 }
 
-// Returns true iff the given opcode is a comparison operation.
-bool HloOpcodeIsComparison(HloOpcode opcode);
+// Returns the arity of opcode or nullopt for variadic opcodes.
+std::optional<int8_t> HloOpcodeArity(HloOpcode opcode);
 
-// Returns true iff the given opcode has variadic operands.
-bool HloOpcodeIsVariadic(HloOpcode opcode);
-
-// Returns the arity of opcode. If the opcode is variadic,
-// returns nullopt.
-std::optional<int> HloOpcodeArity(HloOpcode opcode);
-
-// Returns true if the given opcode is one of kAsyncStart, kAsyncUpdate, or
-// kAsyncDone.
-bool HloOpcodeIsAsync(HloOpcode opcode);
+// Returns true for kAsyncStart, kAsyncUpdate, kAsyncDone.
+inline bool HloOpcodeIsAsync(HloOpcode opcode) {
+  switch (opcode) {
+    case HloOpcode::kAsyncStart:
+    case HloOpcode::kAsyncUpdate:
+    case HloOpcode::kAsyncDone:
+      return true;
+    default:
+      return false;
+  }
+}
 
 // True if the op takes two arguments and order doesn't matter.
 inline bool HloOpcodeIsBinaryCommutative(HloOpcode opcode) {

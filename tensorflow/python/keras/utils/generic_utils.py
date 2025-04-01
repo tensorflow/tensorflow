@@ -1001,7 +1001,7 @@ class Progbar(object):
     if current:
       # there are a few special scenarios here:
       # 1) somebody is calling the progress bar without ever supplying step 1
-      # 2) somebody is calling the progress bar and supplies step one mulitple
+      # 2) somebody is calling the progress bar and supplies step one multiple
       #    times, e.g. as part of a finalizing call
       # in these cases, we just fall back to the simple calculation
       if self._time_after_first_step is not None and current > 1:

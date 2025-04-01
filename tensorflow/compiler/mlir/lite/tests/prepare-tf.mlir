@@ -626,7 +626,7 @@ func.func @scatter_nd_add(%arg0: tensor<7xi64>, %arg1: tensor<1x1xi32>, %arg2: t
   // CHECK-LABEL: scatter_nd_add
   // CHECK:  %[[GATHER:.*]] = "tf.GatherNd"(%arg0, %arg1) <{bad_indices_policy = ""}> : (tensor<7xi64>, tensor<1x1xi32>) -> tensor<1xi64>
   // CHECK:  %[[ADD:.*]] = "tf.Add"(%arg2, %[[GATHER]]) : (tensor<1xi64>, tensor<1xi64>) -> tensor<1xi64>
-  // CHECK:  %[[SCATTER:.*]] = "tf.TensorScatterUpdate"(%arg0, %arg1, %[[ADD]]) : (tensor<7xi64>, tensor<1x1xi32>, tensor<1xi64>) -> tensor<7xi64>
+  // CHECK:  %[[SCATTER:.*]] = "tf.TensorScatterUpdate"(%arg0, %arg1, %[[ADD]]) <{bad_indices_policy = ""}> : (tensor<7xi64>, tensor<1x1xi32>, tensor<1xi64>) -> tensor<7xi64>
   // CHECK:  return %[[SCATTER]] : tensor<7xi64>
 }
 

@@ -146,27 +146,28 @@ void AddTraceMetadata(const RootDataset::Params& params, const Options& options,
 }  // namespace
 
 // static
-Status RootDataset::FromOptions(const DatasetBase* input,
-                                DatasetBase** output) {
+absl::Status RootDataset::FromOptions(const DatasetBase* input,
+                                      DatasetBase** output) {
   Params params;
   SetRootDatasetParams(input->options(), &params);
   *output = new RootDataset(input, params);
-  (*output)->Initialize(/*metadata=*/{});
+  (*output)->Initialize(input->metadata());
   for (const auto& framework : input->options().framework_type()) {
     metrics::RecordTFDataFrameworkType(framework);
   }
   return absl::OkStatus();
 }
 
-Status RootDataset::FromOptions(core::RefCountPtr<DatasetBase> input,
-                                DatasetBase** output) {
+absl::Status RootDataset::FromOptions(core::RefCountPtr<DatasetBase> input,
+                                      DatasetBase** output) {
   Params params;
   for (const auto& framework : input->options().framework_type()) {
     metrics::RecordTFDataFrameworkType(framework);
   }
   SetRootDatasetParams(input->options(), &params);
+  Metadata metadata = input->metadata();
   *output = new RootDataset(std::move(input), params);
-  (*output)->Initialize(/*metadata=*/{});
+  (*output)->Initialize(metadata);
   return absl::OkStatus();
 }
 
@@ -194,7 +195,7 @@ class RootDataset::Iterator : public DatasetIterator<RootDataset> {
 
   bool SymbolicCheckpointCompatible() const override { return true; }
 
-  Status Initialize(IteratorContext* ctx) override {
+  absl::Status Initialize(IteratorContext* ctx) override {
     // prefetch_autotuner.h currently disregards `autotune` parameter
     // so no matter whether dataset()->params_.autotune is on or not
     // we need to pass ram_budget_manager_ to the downstream dataset operations
@@ -230,8 +231,9 @@ class RootDataset::Iterator : public DatasetIterator<RootDataset> {
     return absl::OkStatus();
   }
 
-  Status GetNextInternal(IteratorContext* ctx, std::vector<Tensor>* out_tensors,
-                         bool* end_of_sequence) override {
+  absl::Status GetNextInternal(IteratorContext* ctx,
+                               std::vector<Tensor>* out_tensors,
+                               bool* end_of_sequence) override {
     {
       tf_shared_lock l(mu_);
       if (model_ != nullptr && end_time_usec_ > 0) {
@@ -258,14 +260,14 @@ class RootDataset::Iterator : public DatasetIterator<RootDataset> {
     return model::MakeKnownRatioNode(std::move(args), /*ratio=*/1);
   }
 
-  Status SaveInternal(SerializationContext* ctx,
-                      IteratorStateWriter* writer) override {
+  absl::Status SaveInternal(SerializationContext* ctx,
+                            IteratorStateWriter* writer) override {
     TF_RETURN_IF_ERROR(SaveInput(ctx, writer, input_impl_));
     return absl::OkStatus();
   }
 
-  Status RestoreInternal(IteratorContext* ctx,
-                         IteratorStateReader* reader) override {
+  absl::Status RestoreInternal(IteratorContext* ctx,
+                               IteratorStateReader* reader) override {
     IteratorContext iter_ctx(CreateParams(ctx));
     TF_RETURN_IF_ERROR(RestoreInput(&iter_ctx, reader, input_impl_));
     ctx->MergeCheckpoint(iter_ctx.checkpoint());
@@ -340,7 +342,7 @@ class RootDataset::Iterator : public DatasetIterator<RootDataset> {
     return params;
   }
 
-  Status EnsureModelThreadStarted(IteratorContext* ctx) {
+  absl::Status EnsureModelThreadStarted(IteratorContext* ctx) {
     mutex_lock l(mu_);
     if (!model_thread_) {
       RunMode run_mode = ctx->run_mode();
@@ -354,7 +356,7 @@ class RootDataset::Iterator : public DatasetIterator<RootDataset> {
           // Dynamic RAM budget should only apply to tf.data service.
           raw_ram_budget = params.ComputeInitialAutotuneRamBudget();
         }
-        Status status = model_->OptimizeLoop(
+        absl::Status status = model_->OptimizeLoop(
             params.autotune_algorithm, params.autotune_cpu_budget_func,
             params.ram_budget_share, raw_ram_budget, *ram_budget_manager_,
             cancellation_manager_.get());
@@ -432,32 +434,45 @@ int64_t RootDataset::CardinalityInternal(CardinalityOptions options) const {
   return input_->Cardinality(options);
 }
 
-Status RootDataset::Get(OpKernelContext* ctx, int64 index,
-                        std::vector<Tensor>* out_tensors) const {
+absl::Status RootDataset::Get(OpKernelContext* ctx, int64 index,
+                              std::vector<Tensor>* out_tensors) const {
   std::vector<const DatasetBase*> inputs;
   TF_RETURN_IF_ERROR(this->InputDatasets(&inputs));
   return inputs[0]->Get(ctx, index, out_tensors);
 }
 
-Status RootDataset::InputDatasets(
+absl::Status RootDataset::InputDatasets(
     std::vector<const DatasetBase*>* inputs) const {
   inputs->push_back(input_);
   return absl::OkStatus();
 }
 
-Status RootDataset::CheckExternalState() const {
+absl::Status RootDataset::CheckExternalState() const {
   return input_->CheckExternalState();
 }
 
-Status RootDataset::AsGraphDefInternal(SerializationContext* ctx,
-                                       DatasetGraphDefBuilder* b,
-                                       Node** output) const {
+absl::Status RootDataset::AsGraphDefInternal(SerializationContext* ctx,
+                                             DatasetGraphDefBuilder* b,
+                                             Node** output) const {
   return errors::Unimplemented("RootDataset does not support serialization.");
 }
 
 #if !defined(IS_MOBILE_PLATFORM)
-Status FinalizeDataset(OpKernelContext* ctx, const DatasetBase* input,
-                       DatasetBase** output) {
+
+namespace {
+// Initialize the rewritten output dataset with the metadata from the input
+// dataset. Note: Do not override the `name` field in the metadata.
+void InitializeRewrittenDatasetMetadata(const DatasetBase* input,
+                                        DatasetBase* rewritten_output) {
+  Metadata rewritten_output_metadata = rewritten_output->metadata();
+  rewritten_output_metadata.set_data_service_address(
+      input->metadata().data_service_address());
+  rewritten_output->Initialize(rewritten_output_metadata);
+}
+}  // namespace
+
+absl::Status FinalizeDataset(OpKernelContext* ctx, const DatasetBase* input,
+                             DatasetBase** output) {
   const Options& options = input->options();
   absl::flat_hash_set<tstring> optimizations_enabled;
   absl::flat_hash_set<tstring> optimizations_disabled;
@@ -481,8 +496,9 @@ Status FinalizeDataset(OpKernelContext* ctx, const DatasetBase* input,
     return CreateRewriterConfig(optimizations, optimization_configs);
   };
   core::RefCountPtr<DatasetBase> rewritten_output;
-  Status s = RewriteDataset(ctx, input, std::move(config_factory),
-                            /*record_fingerprint=*/false, &rewritten_output);
+  absl::Status s =
+      RewriteDataset(ctx, input, std::move(config_factory),
+                     /*record_fingerprint=*/false, &rewritten_output);
 
   *output = rewritten_output.get();
   bool rewritten = (*output != input);
@@ -496,6 +512,7 @@ Status FinalizeDataset(OpKernelContext* ctx, const DatasetBase* input,
   if (!rewritten) {
     return RootDataset::FromOptions(input, output);
   } else {
+    InitializeRewrittenDatasetMetadata(input, rewritten_output.get());
     return RootDataset::FromOptions(std::move(rewritten_output), output);
   }
   return absl::OkStatus();

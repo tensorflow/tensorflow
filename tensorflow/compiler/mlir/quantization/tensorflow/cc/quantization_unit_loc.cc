@@ -17,9 +17,10 @@ limitations under the License.
 #include <cstddef>
 #include <optional>
 #include <string>
-#include <string_view>
 
 #include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
+#include "llvm/ADT/StringRef.h"
 #include "llvm/Support/Casting.h"
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
@@ -32,12 +33,12 @@ namespace quant {
 namespace {
 
 // Prefix and suffix to the QuantizationUnit string representation.
-constexpr std::string_view kQuantizationUnitPrefix = "QuantizationUnit(";
-constexpr std::string_view kQuantizationUnitSuffix = ")";
+constexpr absl::string_view kQuantizationUnitPrefix = "QuantizationUnit(";
+constexpr absl::string_view kQuantizationUnitSuffix = ")";
 
 // Concatenates node name and func name with a "@" separator.
-std::string ConcatNodeAndFuncName(std::string_view node_name,
-                                  std::string_view func_name) {
+std::string ConcatNodeAndFuncName(absl::string_view node_name,
+                                  absl::string_view func_name) {
   return absl::StrCat(node_name, "@", func_name);
 }
 
@@ -46,6 +47,27 @@ std::string GenerateQuantizationUnitString(
     const QuantizationUnitLoc::QuantizationUnit& unit) {
   return absl::StrCat(kQuantizationUnitPrefix, unit.SerializeAsString(),
                       kQuantizationUnitSuffix);
+}
+
+std::optional<StringRef> CallerNameFromCallSiteLoc(CallSiteLoc callsite_loc) {
+  // loc(callsite("func" at "QuantizationUnit(...)"))
+  if (mlir::isa<NameLoc>(callsite_loc.getCaller())) {
+    return mlir::cast<NameLoc>(callsite_loc.getCaller()).getName().strref();
+  }
+
+  // loc(callsite("func" at callsite("QuantizationUnit(...)" at ...)))
+  if (mlir::isa<CallSiteLoc>(callsite_loc.getCaller())) {
+    CallSiteLoc caller_callsite_loc =
+        mlir::cast<CallSiteLoc>(callsite_loc.getCaller());
+
+    if (mlir::isa<NameLoc>(caller_callsite_loc.getCallee())) {
+      return mlir::cast<NameLoc>(caller_callsite_loc.getCallee())
+          .getName()
+          .strref();
+    }
+  }
+
+  return std::nullopt;
 }
 
 }  // namespace
@@ -65,22 +87,25 @@ bool QuantizationUnitLoc::classof(Attribute attr) {
   if (!llvm::isa<CallSiteLoc>(attr)) return false;
   auto callsite_loc = llvm::dyn_cast<CallSiteLoc>(attr);
 
-  if (!mlir::isa<NameLoc>(callsite_loc.getCaller())) return false;
-  StringRef caller_name =
-      mlir::cast<NameLoc>(callsite_loc.getCaller()).getName().strref();
-  return caller_name.starts_with(kQuantizationUnitPrefix) &&
-         caller_name.ends_with(kQuantizationUnitSuffix);
+  std::optional<StringRef> caller_name =
+      CallerNameFromCallSiteLoc(callsite_loc);
+
+  return caller_name && caller_name->starts_with(kQuantizationUnitPrefix) &&
+         caller_name->ends_with(kQuantizationUnitSuffix);
 }
 
 std::optional<QuantizationUnitLoc::QuantizationUnit>
 FindQuantizationUnitFromLoc(Location loc) {
   if (isa<QuantizationUnitLoc>(loc)) {
-    Location caller = mlir::cast<CallSiteLoc>(loc).getCaller();
-    StringRef caller_name = mlir::cast<NameLoc>(caller).getName().strref();
+    std::optional<StringRef> caller_name =
+        CallerNameFromCallSiteLoc(mlir::cast<CallSiteLoc>(loc));
+    if (!caller_name) {
+      return std::nullopt;
+    }
     const size_t start_index = kQuantizationUnitPrefix.size();
-    const size_t end_index = caller_name.rfind(kQuantizationUnitSuffix);
+    const size_t end_index = caller_name->rfind(kQuantizationUnitSuffix);
     std::string serialized_proto =
-        caller_name.substr(start_index, end_index - start_index).str();
+        caller_name->substr(start_index, end_index - start_index).str();
     QuantizationUnitLoc::QuantizationUnit quant_unit;
     if (quant_unit.ParseFromString(serialized_proto)) {
       return quant_unit;

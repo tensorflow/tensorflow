@@ -23,7 +23,6 @@ package(
 tf_proto_library(
     name = "types_proto",
     srcs = ["types.proto"],
-    cc_api_version = 2,
     make_default_target_header_only = True,
     visibility = ["//visibility:public"],
 )
@@ -34,7 +33,6 @@ tf_proto_library(
 tf_proto_library(
     name = "toco_flags_proto",
     srcs = ["toco_flags.proto"],
-    cc_api_version = 2,
     make_default_target_header_only = True,
     protodeps = [
         "//tensorflow/compiler/mlir/quantization/stablehlo:quantization_options_proto",
@@ -51,7 +49,6 @@ tf_proto_library(
 tf_proto_library(
     name = "model_flags_proto",
     srcs = ["model_flags.proto"],
-    cc_api_version = 2,
     make_default_target_header_only = True,
     protodeps = [":types_proto"],
     visibility = ["//visibility:public"],
@@ -128,6 +125,8 @@ cc_library(
         ":types_proto_cc",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:optional",
     ],
@@ -301,8 +300,8 @@ cc_library(
         "//tensorflow/lite/kernels/internal:quantization_util",
         "//tensorflow/lite/kernels/internal:strided_slice_logic",
         "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
-        "@com_google_absl//absl/memory",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
     ],
@@ -346,7 +345,10 @@ cc_library(
         "//tensorflow/lite/toco/tensorflow_graph_matching:resolve_cluster",
         "//tensorflow/lite/toco/tflite:export",
         "//tensorflow/lite/toco/tflite:import",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_protobuf//:protobuf_headers",
     ],
@@ -391,7 +393,10 @@ cc_library(
         ":types_proto_cc",
         "//tensorflow/core:lib",
         "//tensorflow/lite/kernels/internal:types",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_googlesource_code_re2//:re2",
     ],
@@ -406,6 +411,7 @@ tf_cc_test(
         ":tooling_util",
         "//tensorflow/core:lib",
         "//tensorflow/lite/testing:util",
+        "@com_google_absl//absl/status",
         "@com_google_googletest//:gtest",
     ],
 )
@@ -427,6 +433,8 @@ cc_library(
         ":toco_port",
         ":toco_tooling",
         ":types_proto_cc",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "//tensorflow/core:lib",
         # We cannot embed the core:ops dependency directly into :toco_tooling as
@@ -449,6 +457,7 @@ tf_cc_binary(
         ":toco_port",
         ":toco_tooling",
         ":types_proto_cc",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "//tensorflow/core:lib",
         # We cannot embed the core:ops dependency directly into :toco_tooling as
@@ -523,21 +532,18 @@ tf_cc_test(
 # copybara:uncomment_begin(google-only)
 # py_proto_library(
 #     name = "model_flags_proto_py",
-#     api_version = 2,
 #     visibility = ["//visibility:public"],
 #     deps = [":model_flags_proto"],
 # )
 #
 # py_proto_library(
 #     name = "toco_flags_proto_py",
-#     api_version = 2,
 #     visibility = ["//visibility:public"],
 #     deps = [":toco_flags_proto"],
 # )
 #
 # py_proto_library(
 #     name = "types_proto_py",
-#     api_version = 2,
 #     visibility = ["//visibility:public"],
 #     deps = [":toco_flags_proto"],
 # )

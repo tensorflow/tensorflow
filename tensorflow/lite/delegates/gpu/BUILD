@@ -5,6 +5,7 @@ load(
     "//tensorflow/core/platform:build_config_root.bzl",
     "tf_gpu_tests_tags",
 )
+load("//tensorflow/lite:build_def.bzl", "CXX17_BAZEL_ONLY_COPTS")
 load("//tensorflow/lite:special_rules.bzl", "tflite_extra_gles_deps", "tflite_portable_test_suite")
 load("//tensorflow/lite/delegates/gpu:build_defs.bzl", "gpu_delegate_linkopts")
 
@@ -69,6 +70,11 @@ config_setting(
 
 config_setting(
     name = "tflite_gpu_extra_gles_deps",
+    # copybara:uncomment_begin(google-only)
+    # constraint_values = [
+    # "//third_party/bazel_platforms/os:linux",
+    # ],
+    # copybara:uncomment_end
     values = {
         "copt": "-DTFLITE_GPU_EXTRA_GLES_DEPS",
         "cpu": "k8",
@@ -85,6 +91,7 @@ cc_library(
         "//tensorflow/lite:minimal_logging",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/delegates/gpu/common:convert",
+        "//tensorflow/lite/delegates/gpu/common:gpu_info",
         "//tensorflow/lite/delegates/gpu/common:model",
         "//tensorflow/lite/delegates/gpu/common:model_builder",
         "//tensorflow/lite/delegates/gpu/common:model_transformer",
@@ -95,9 +102,14 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/gl:api",
         "//tensorflow/lite/delegates/gpu/gl:command_queue",
         "//tensorflow/lite/delegates/gpu/gl:compiler",
+        "//tensorflow/lite/delegates/gpu/gl:compiler_options",
         "//tensorflow/lite/delegates/gpu/gl:egl_environment",
+        "//tensorflow/lite/delegates/gpu/gl:gl_buffer",
         "//tensorflow/lite/delegates/gpu/gl:gl_call",
+        "//tensorflow/lite/delegates/gpu/gl:object",
+        "//tensorflow/lite/delegates/gpu/gl:object_manager",
         "//tensorflow/lite/delegates/gpu/gl:request_gpu_info",
+        "//tensorflow/lite/delegates/gpu/gl:runtime_options",
         "//tensorflow/lite/delegates/gpu/gl/converters:bhwc_to_phwc4",
         "//tensorflow/lite/delegates/gpu/gl/converters:phwc4_to_bhwc",
         "//tensorflow/lite/delegates/gpu/gl/kernels:registry",
@@ -120,7 +132,7 @@ objc_library(
     name = "metal_delegate",
     srcs = ["metal_delegate.mm"],
     hdrs = ["metal_delegate.h"],
-    copts = ["-std=c++17"],
+    copts = CXX17_BAZEL_ONLY_COPTS,
     module_name = "TensorFlowLiteCMetal",
     sdk_frameworks = ["Metal"],
     deps = [
@@ -150,7 +162,7 @@ objc_library(
 objc_library(
     name = "metal_delegate_internal",
     hdrs = ["metal_delegate_internal.h"],
-    copts = ["-std=c++17"],
+    copts = CXX17_BAZEL_ONLY_COPTS,
     sdk_frameworks = ["Metal"],
     deps = ["//tensorflow/lite/delegates/gpu:metal_delegate"],
 )

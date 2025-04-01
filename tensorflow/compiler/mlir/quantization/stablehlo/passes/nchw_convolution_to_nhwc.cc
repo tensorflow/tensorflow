@@ -12,7 +12,6 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include <array>
 #include <cstdint>
 #include <utility>
 
@@ -49,9 +48,10 @@ class NchwConvolutionToNhwcPass
 // * Src dimension numbers: [b, f, 0, 1]x[o, i, 0, 1]->[b, f, 0, 1]
 // * Dst dimension numbers: [b, 0, 1, f]x[0, 1, i, o]->[b, 0, 1, f]
 class RewriteNchwConvolutionToNhwc
-    : public OpRewritePattern<mlir::stablehlo::ConvolutionOp> {
+    : public OpRewritePattern<
+          mlir::stablehlo::ConvolutionOp>::SplitMatchAndRewrite {
  public:
-  using OpRewritePattern<mlir::stablehlo::ConvolutionOp>::OpRewritePattern;
+  using SplitMatchAndRewrite::SplitMatchAndRewrite;
 
   LogicalResult match(mlir::stablehlo::ConvolutionOp op) const override {
     // Handles 2D convolutions only.
@@ -180,7 +180,7 @@ void NchwConvolutionToNhwcPass::runOnOperation() {
   RewritePatternSet patterns(&ctx);
   patterns.add<RewriteNchwConvolutionToNhwc>(&ctx);
 
-  if (failed(applyPatternsAndFoldGreedily(func_op, std::move(patterns)))) {
+  if (failed(applyPatternsGreedily(func_op, std::move(patterns)))) {
     func_op.emitError() << "Failed to run NchwConvolutionToNhwcPass.";
     signalPassFailure();
   }

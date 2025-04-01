@@ -63,7 +63,7 @@ UnaryVariantOpRegistry* UnaryVariantOpRegistryGlobal() {
 }
 
 UnaryVariantOpRegistry::VariantDecodeFn* UnaryVariantOpRegistry::GetDecodeFn(
-    StringPiece type_name) {
+    absl::string_view type_name) {
   auto found = decode_fns.find(type_name);
   if (found == decode_fns.end()) return nullptr;
   return &found->second;
@@ -76,7 +76,7 @@ void UnaryVariantOpRegistry::RegisterDecodeFn(
   CHECK_EQ(existing, nullptr)
       << "Unary VariantDecodeFn for type_name: " << type_name
       << " already registered";
-  decode_fns.insert(std::pair<StringPiece, VariantDecodeFn>(
+  decode_fns.insert(std::pair<absl::string_view, VariantDecodeFn>(
       GetPersistentStringPiece(type_name), decode_fn));
 }
 
@@ -125,7 +125,7 @@ REGISTER_VARIANT_DECODE_TYPE(double);
 
 #undef REGISTER_VARIANT_DECODE_TYPE
 
-Status VariantDeviceCopy(
+absl::Status VariantDeviceCopy(
     const VariantDeviceCopyDirection direction, const Variant& from,
     Variant* to,
     const UnaryVariantOpRegistry::AsyncTensorDeviceCopyFn& copy_fn) {
@@ -143,7 +143,7 @@ Status VariantDeviceCopy(
 
 namespace {
 template <typename T>
-Status DeviceCopyPrimitiveType(
+absl::Status DeviceCopyPrimitiveType(
     const T& in, T* out,
     const UnaryVariantOpRegistry::AsyncTensorDeviceCopyFn& copier) {
   // Dummy copy, we don't actually bother copying to the device and back for
@@ -174,8 +174,8 @@ REGISTER_VARIANT_DEVICE_COPY_TYPE(bool);
 
 namespace {
 template <typename T>
-Status ZerosLikeVariantPrimitiveType(OpKernelContext* ctx, const T& t,
-                                     T* t_out) {
+absl::Status ZerosLikeVariantPrimitiveType(OpKernelContext* ctx, const T& t,
+                                           T* t_out) {
   *t_out = T(0);
   return absl::OkStatus();
 }
@@ -196,8 +196,8 @@ REGISTER_VARIANT_ZEROS_LIKE_TYPE(bool);
 
 namespace {
 template <typename T>
-Status AddVariantPrimitiveType(OpKernelContext* ctx, const T& a, const T& b,
-                               T* out) {
+absl::Status AddVariantPrimitiveType(OpKernelContext* ctx, const T& a,
+                                     const T& b, T* out) {
   *out = a + b;
   return absl::OkStatus();
 }

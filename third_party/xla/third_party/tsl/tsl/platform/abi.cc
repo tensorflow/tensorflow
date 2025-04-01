@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "tsl/platform/abi.h"
 
-#include "tsl/platform/types.h"
+#include "xla/tsl/platform/types.h"
 
 #if defined(_MSC_VER)
 #include <windows.h>

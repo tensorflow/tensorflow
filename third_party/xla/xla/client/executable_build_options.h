@@ -16,7 +16,9 @@ limitations under the License.
 #ifndef XLA_CLIENT_EXECUTABLE_BUILD_OPTIONS_H_
 #define XLA_CLIENT_EXECUTABLE_BUILD_OPTIONS_H_
 
+#include <cstdint>
 #include <functional>
+#include <memory>
 #include <optional>
 #include <string>
 #include <utility>
@@ -24,13 +26,17 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/container/inlined_vector.h"
+#include "absl/log/check.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "xla/pjrt/compile_options.pb.h"
 #include "xla/pjrt/distributed/key_value_store_interface.h"
 #include "xla/service/compilation_environments.h"
 #include "xla/service/computation_placer.h"
 #include "xla/shape.h"
+#include "xla/tsl/platform/threadpool.h"
 #include "xla/xla.pb.h"
-#include "tsl/platform/threadpool.h"
 
 namespace stream_executor {
 
@@ -119,6 +125,40 @@ class ExecutableBuildOptions {
   }
   ExecutableBuildOptions& set_auto_spmd_partitioning_mesh_ids(
       std::vector<int64_t> mesh_ids);
+
+  float exec_time_optimization_effort() const {
+    return exec_time_optimization_effort_;
+  }
+  ExecutableBuildOptions& set_exec_time_optimization_effort(
+      float exec_time_optimization_effort) {
+    exec_time_optimization_effort_ = exec_time_optimization_effort;
+    return *this;
+  }
+
+  float memory_fitting_effort() const { return memory_fitting_effort_; }
+  ExecutableBuildOptions& set_memory_fitting_effort(
+      float memory_fitting_effort) {
+    memory_fitting_effort_ = memory_fitting_effort;
+    return *this;
+  }
+
+  ExecutionOptions::EffortLevel optimization_level() const {
+    return optimization_level_;
+  }
+  ExecutableBuildOptions& set_optimization_level(
+      ExecutionOptions::EffortLevel optimization_level) {
+    optimization_level_ = optimization_level;
+    return *this;
+  }
+
+  ExecutionOptions::EffortLevel memory_fitting_level() const {
+    return memory_fitting_level_;
+  }
+  ExecutableBuildOptions& set_memory_fitting_level(
+      ExecutionOptions::EffortLevel memory_fitting_level) {
+    memory_fitting_level_ = memory_fitting_level;
+    return *this;
+  }
 
   bool deduplicate_hlo() const { return deduplicate_hlo_; }
   ExecutableBuildOptions& set_deduplicate_hlo(bool deduplicate_hlo);
@@ -231,6 +271,13 @@ class ExecutableBuildOptions {
     return *this;
   }
 
+  bool use_shardy_partitioner() const { return use_shardy_partitioner_; }
+  ExecutableBuildOptions& set_use_shardy_partitioner(
+      bool use_shardy_partitioner) {
+    use_shardy_partitioner_ = use_shardy_partitioner;
+    return *this;
+  }
+
   // Returns a string representation of the build options, suitable for
   // debugging.
   std::string ToString() const;
@@ -266,6 +313,12 @@ class ExecutableBuildOptions {
   bool use_auto_spmd_partitioning_ = false;
   std::vector<int64_t> auto_spmd_partitioning_mesh_shape_;
   std::vector<int64_t> auto_spmd_partitioning_mesh_ids_;
+  float exec_time_optimization_effort_ = 0.0f;
+  float memory_fitting_effort_ = 0.0f;
+  ExecutionOptions::EffortLevel optimization_level_ =
+      ExecutionOptions::EFFORT_UNKNOWN;
+  ExecutionOptions::EffortLevel memory_fitting_level_ =
+      ExecutionOptions::EFFORT_UNKNOWN;
   bool deduplicate_hlo_ = false;
   bool broadcast_replicated_params_ = false;
   std::optional<DeviceAssignment> device_assignment_;
@@ -279,6 +332,7 @@ class ExecutableBuildOptions {
   LayoutCanonicalizationCallback layout_canonicalization_callback_;
   std::string fdo_profile_;
   int64_t device_memory_size_ = 0;
+  bool use_shardy_partitioner_ = false;
   int process_index_ = 0;
   int process_count_ = 1;
   std::shared_ptr<KeyValueStoreInterface> key_value_store_;

@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_LIB_IO_ZLIB_OUTPUTBUFFER_H_
 #define TENSORFLOW_CORE_LIB_IO_ZLIB_OUTPUTBUFFER_H_
 
+#include "xla/tsl/lib/io/zlib_outputbuffer.h"
 #include "tensorflow/core/lib/io/zlib_compression_options.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/file_system.h"
@@ -23,7 +24,6 @@ limitations under the License.
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/stringpiece.h"
 #include "tensorflow/core/platform/types.h"
-#include "tsl/lib/io/zlib_outputbuffer.h"
 
 namespace tensorflow {
 namespace io {

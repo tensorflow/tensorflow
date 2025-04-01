@@ -28,13 +28,15 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "third_party/gpus/cudnn/cudnn_version.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/numeric_options.h"
-#include "tsl/protobuf/dnn.pb.h"
+#include "xla/stream_executor/stream_executor.h"
+#include "xla/tsl/protobuf/dnn.pb.h"
 
 #if CUDNN_VERSION >= 8100
 #include "third_party/cudnn_frontend/include/cudnn_frontend.h"
@@ -43,7 +45,6 @@ limitations under the License.
 namespace stream_executor {
 namespace gpu {
 
-class GpuExecutor;
 class CudnnRnnDescriptor;
 class CudnnRnnSequenceTensorDescriptor;
 class CudnnRnnStateTensorDescriptor;
@@ -60,16 +61,29 @@ class CudnnGraph : public dnn::DnnGraph {
   explicit CudnnGraph(cudnn_frontend::graph::Graph&& graph)
       : graph_(std::move(graph)) {}
   // Prepares a graph and checks whether it is generally supported.
-  absl::StatusOr<bool> Prepare(dnn::DnnSupport&) override;
+  absl::Status Prepare(dnn::DnnSupport&, const NumericOptions&) override;
   // Builds single plan of the graph with given ID.
   absl::Status Build(dnn::DnnSupport&, std::optional<int64_t> plan_id) override;
   // Builds all the plans
-  absl::Status Execute(Stream& stream,
-                       absl::Span<DeviceMemoryBase> operands) const override;
+  absl::Status Execute(Stream& stream, absl::Span<DeviceMemoryBase> operands,
+                       int64_t local_device_ordinal) const override;
   const cudnn_frontend::graph::Graph& Graph() const { return graph_; }
+  void InitDropoutState(int64_t local_device_count, int64_t seed,
+                        int64_t increment) override {
+    dropout_rng_seed_ = seed;
+    current_dropout_rng_offset_ = std::vector<int64_t>(local_device_count, 0);
+    dropout_rng_offset_increment_ = increment;
+  }
+  void UpdateDropoutState(int64_t local_device_ordinal) const {
+    current_dropout_rng_offset_[local_device_ordinal] +=
+        dropout_rng_offset_increment_;
+  }
 
  private:
   cudnn_frontend::graph::Graph graph_;
+  int64_t dropout_rng_seed_;
+  mutable std::vector<int64_t> current_dropout_rng_offset_;
+  int64_t dropout_rng_offset_increment_ = 0;
 };
 #endif  // CUDNN_VERSION >= 8100
 
@@ -77,7 +91,7 @@ class CudnnGraph : public dnn::DnnGraph {
 // functions, see dnn.h.
 class CudnnSupport : public dnn::DnnSupport {
  public:
-  explicit CudnnSupport(GpuExecutor* parent);
+  explicit CudnnSupport(StreamExecutor* parent);
 
   absl::Status Init() override;
   absl::StatusOr<stream_executor::dnn::VersionInfo> GetVersion() override;
@@ -335,37 +349,6 @@ class CudnnSupport : public dnn::DnnSupport {
       std::optional<dnn::TensorDescriptor> dscale_descriptor,
       std::optional<dnn::TensorDescriptor> dbias_descriptor) override;
 
-  absl::StatusOr<std::unique_ptr<const dnn::FusedMHARunner>>
-  FusedMHARunnerFromDesc(
-      Stream* stream, const dnn::AlgorithmDesc& algorithm_desc,
-      const dnn::MatmulTensorDescriptor& bmm1_lhs_descriptor,
-      const dnn::MatmulTensorDescriptor& bmm1_rhs_descriptor,
-      const dnn::MatmulTensorDescriptor& bmm2_rhs_descriptor,
-      const dnn::MatmulTensorDescriptor& intermediate_bmm2_lhs_descriptor,
-      const dnn::TensorDescriptor& output_descriptor,
-      std::optional<dnn::TensorDescriptor> activation_descriptor,
-      std::optional<dnn::TensorDescriptor> bias_descriptor, double scale,
-      std::optional<double> dropout_rate, std::optional<int64_t> seed,
-      dnn::FMHAMaskKind mask_type) override;
-
-  absl::StatusOr<std::unique_ptr<const dnn::FusedMHABackwardRunner>>
-  FusedMHABackwardRunnerFromDesc(
-      Stream* stream, const dnn::AlgorithmDesc& algorithm_desc,
-      const dnn::MatmulTensorDescriptor& bmm1_grad_gemm1_rhs_descriptor,
-      const dnn::MatmulTensorDescriptor& bmm1_grad_gemm2_rhs_descriptor,
-      const dnn::MatmulTensorDescriptor& bmm2_grad_gemm1_lhs_descriptor,
-      const dnn::MatmulTensorDescriptor& bmm2_grad_gemm2_rhs_descriptor,
-      const dnn::MatmulTensorDescriptor& d_output_descriptor,
-      const dnn::TensorDescriptor& d_bmm1_lhs_descriptor,
-      const dnn::TensorDescriptor& d_bmm1_rhs_descriptor,
-      const dnn::TensorDescriptor& d_bmm2_rhs_descriptor,
-      std::optional<dnn::TensorDescriptor> d_s_descriptor,
-      std::optional<dnn::TensorDescriptor> d_bias_descriptor,
-      std::optional<dnn::TensorDescriptor> fwd_output_descriptor,
-      std::optional<dnn::TensorDescriptor> bias_descriptor, double scale,
-      std::optional<double> dropout_rate, std::optional<int64_t> seed,
-      dnn::FMHAMaskKind mask_type, bool force_deterministic);
-
   bool GetRnnAlgorithms(
       std::vector<dnn::AlgorithmDesc>* out_algorithms) override;
 
@@ -375,12 +358,12 @@ class CudnnSupport : public dnn::DnnSupport {
       const DeviceMemory<float>& estimated_mean,
       const DeviceMemory<float>& estimated_var_iance,
       const DeviceMemory<float>& side_input, const dnn::BatchDescriptor& x_desc,
-      const dnn::BatchDescriptor& scale_offset_desc, const double epsilon,
-      const double exponential_average_factor,
-      dnn::ActivationMode activation_mode, DeviceMemory<float>* y,
-      DeviceMemory<float>* batch_mean, DeviceMemory<float>* batch_var,
-      DeviceMemory<float>* saved_mean, DeviceMemory<float>* saved_inv_var,
-      bool is_training, ScratchAllocator* reserve_space_allocator,
+      const dnn::BatchDescriptor& scale_offset_desc, double epsilon,
+      double exponential_average_factor, dnn::ActivationMode activation_mode,
+      DeviceMemory<float>* y, DeviceMemory<float>* batch_mean,
+      DeviceMemory<float>* batch_var, DeviceMemory<float>* saved_mean,
+      DeviceMemory<float>* saved_inv_var, bool is_training,
+      ScratchAllocator* reserve_space_allocator,
       ScratchAllocator* workspace_allocator) override;
 
   bool DoBatchNormalizationForward(
@@ -390,12 +373,12 @@ class CudnnSupport : public dnn::DnnSupport {
       const DeviceMemory<float>& estimated_variance,
       const DeviceMemory<Eigen::half>& side_input,
       const dnn::BatchDescriptor& x_desc,
-      const dnn::BatchDescriptor& scale_offset_desc, const double epsilon,
-      const double exponential_average_factor,
-      dnn::ActivationMode activation_mode, DeviceMemory<Eigen::half>* y,
-      DeviceMemory<float>* batch_mean, DeviceMemory<float>* batch_var,
-      DeviceMemory<float>* saved_mean, DeviceMemory<float>* saved_inv_var,
-      bool is_training, ScratchAllocator* reserve_space_allocator,
+      const dnn::BatchDescriptor& scale_offset_desc, double epsilon,
+      double exponential_average_factor, dnn::ActivationMode activation_mode,
+      DeviceMemory<Eigen::half>* y, DeviceMemory<float>* batch_mean,
+      DeviceMemory<float>* batch_var, DeviceMemory<float>* saved_mean,
+      DeviceMemory<float>* saved_inv_var, bool is_training,
+      ScratchAllocator* reserve_space_allocator,
       ScratchAllocator* workspace_allocator) override;
 
   bool DoBatchNormalizationForward(
@@ -405,12 +388,12 @@ class CudnnSupport : public dnn::DnnSupport {
       const DeviceMemory<float>& estimated_variance,
       const DeviceMemory<Eigen::bfloat16>& side_input,
       const dnn::BatchDescriptor& x_desc,
-      const dnn::BatchDescriptor& scale_offset_desc, const double epsilon,
-      const double exponential_average_factor,
-      dnn::ActivationMode activation_mode, DeviceMemory<Eigen::bfloat16>* y,
-      DeviceMemory<float>* batch_mean, DeviceMemory<float>* batch_var,
-      DeviceMemory<float>* saved_mean, DeviceMemory<float>* saved_inv_var,
-      bool is_training, ScratchAllocator* reserve_space_allocator,
+      const dnn::BatchDescriptor& scale_offset_desc, double epsilon,
+      double exponential_average_factor, dnn::ActivationMode activation_mode,
+      DeviceMemory<Eigen::bfloat16>* y, DeviceMemory<float>* batch_mean,
+      DeviceMemory<float>* batch_var, DeviceMemory<float>* saved_mean,
+      DeviceMemory<float>* saved_inv_var, bool is_training,
+      ScratchAllocator* reserve_space_allocator,
       ScratchAllocator* workspace_allocator) override;
 
   bool DoBatchNormalizationBackward(
@@ -419,7 +402,7 @@ class CudnnSupport : public dnn::DnnSupport {
       const DeviceMemory<float>& offset, const DeviceMemory<float>& mean,
       const DeviceMemory<float>& inv_var, const DeviceMemory<float>& y,
       const dnn::BatchDescriptor& x_desc,
-      const dnn::BatchDescriptor& scale_offset_desc, const double epsilon,
+      const dnn::BatchDescriptor& scale_offset_desc, double epsilon,
       dnn::ActivationMode activation_mode, DeviceMemory<float>* x_backprop,
       DeviceMemory<float>* scale_backprop, DeviceMemory<float>* offset_backprop,
       DeviceMemory<float>* side_input_backprop,
@@ -432,7 +415,7 @@ class CudnnSupport : public dnn::DnnSupport {
       const DeviceMemory<float>& offset, const DeviceMemory<float>& mean,
       const DeviceMemory<float>& inv_var, const DeviceMemory<Eigen::half>& y,
       const dnn::BatchDescriptor& x_desc,
-      const dnn::BatchDescriptor& scale_offset_desc, const double epsilon,
+      const dnn::BatchDescriptor& scale_offset_desc, double epsilon,
       dnn::ActivationMode activation_mode,
       DeviceMemory<Eigen::half>* x_backprop,
       DeviceMemory<float>* scale_backprop, DeviceMemory<float>* offset_backprop,
@@ -447,7 +430,7 @@ class CudnnSupport : public dnn::DnnSupport {
       const DeviceMemory<float>& inv_var,
       const DeviceMemory<Eigen::bfloat16>& y,
       const dnn::BatchDescriptor& x_desc,
-      const dnn::BatchDescriptor& scale_offset_desc, const double epsilon,
+      const dnn::BatchDescriptor& scale_offset_desc, double epsilon,
       dnn::ActivationMode activation_mode,
       DeviceMemory<Eigen::bfloat16>* x_backprop,
       DeviceMemory<float>* scale_backprop, DeviceMemory<float>* offset_backprop,
@@ -553,7 +536,7 @@ class CudnnSupport : public dnn::DnnSupport {
 
   absl::Status DoCtcLoss(Stream* stream, dnn::DataType element_type,
                          const dnn::RnnStateTensorDescriptor& probs_desc,
-                         const DeviceMemoryBase probs_data,
+                         DeviceMemoryBase probs_data,
                          absl::Span<const int> labels_data,
                          absl::Span<const int> labels_lengths_data,
                          absl::Span<const int> input_lengths_data,
@@ -575,14 +558,14 @@ class CudnnSupport : public dnn::DnnSupport {
 #if CUDNN_VERSION >= 8100
   // Loads complete graph from its serialized representation.
   absl::StatusOr<std::unique_ptr<dnn::DnnGraph>> DeserializeGraph(
-      absl::string_view serialized_data) const override;
+      Stream& stream, absl::string_view serialized_data) const override;
 #endif  // CUDNN_VERSION >= 8100
 
  private:
   // Uses cuDNN handle for execution.
   friend class CudnnGraph;
 
-  GpuExecutor* parent_;  // Parent executor object. Not owned.
+  StreamExecutor* parent_;  // Parent executor object. Not owned.
 
   // Provides access to the cuDNN handle.
   std::unique_ptr<class CudnnAccess> cudnn_;
@@ -610,12 +593,12 @@ class CudnnSupport : public dnn::DnnSupport {
       const DeviceMemory<U>& estimated_mean,
       const DeviceMemory<U>& estimated_variance,
       const DeviceMemory<T>& side_input, const dnn::BatchDescriptor& x_desc,
-      const dnn::BatchDescriptor& scale_offset_desc, const double epsilon,
-      const double exponential_average_factor,
-      dnn::ActivationMode activation_mode, DeviceMemory<T>* y,
-      DeviceMemory<U>* batch_mean, DeviceMemory<U>* batch_var,
-      DeviceMemory<U>* saved_mean, DeviceMemory<U>* saved_inv_var,
-      bool is_training, ScratchAllocator* reserve_space_allocator,
+      const dnn::BatchDescriptor& scale_offset_desc, double epsilon,
+      double exponential_average_factor, dnn::ActivationMode activation_mode,
+      DeviceMemory<T>* y, DeviceMemory<U>* batch_mean,
+      DeviceMemory<U>* batch_var, DeviceMemory<U>* saved_mean,
+      DeviceMemory<U>* saved_inv_var, bool is_training,
+      ScratchAllocator* reserve_space_allocator,
       ScratchAllocator* workspace_allocator);
 
   template <class T, class U>
@@ -625,7 +608,7 @@ class CudnnSupport : public dnn::DnnSupport {
       const DeviceMemory<U>& scale, const DeviceMemory<U>& offset,
       const DeviceMemory<U>& mean, const DeviceMemory<U>& inv_var,
       const DeviceMemory<T>& y, const dnn::BatchDescriptor& x_desc,
-      const dnn::BatchDescriptor& scale_offset_desc, const double epsilon,
+      const dnn::BatchDescriptor& scale_offset_desc, double epsilon,
       dnn::ActivationMode activation_mode, DeviceMemory<T>* x_backprop,
       DeviceMemory<U>* scale_backprop, DeviceMemory<U>* offset_backprop,
       DeviceMemory<T>* side_input_backprop,
@@ -681,7 +664,7 @@ class CudnnSupport : public dnn::DnnSupport {
 
   absl::Status DoCtcLossImpl(
       Stream* stream, const CudnnRnnStateTensorDescriptor& probs_desc,
-      const DeviceMemoryBase probs_data, absl::Span<const int> labels_data,
+      DeviceMemoryBase probs_data, absl::Span<const int> labels_data,
       absl::Span<const int> labels_lengths_data,
       absl::Span<const int> input_lengths_data, DeviceMemoryBase costs_data,
       const CudnnRnnStateTensorDescriptor& grads_desc,
@@ -722,11 +705,20 @@ absl::StatusOr<CudnnGraph> GetCudnnFlashAttentionOperationGraph(
     const dnn::MatmulTensorDescriptor& k_descriptor,
     const dnn::MatmulTensorDescriptor& v_descriptor,
     const dnn::TensorDescriptor& o_descriptor,
-    const std::optional<dnn::TensorDescriptor> bias_descriptor,
-    const std::optional<dnn::TensorDescriptor> stats_descriptor,
-    const float scale, const bool use_dropout,
-    const std::optional<double> dropout_rate,
-    const dnn::FMHAMaskKind mask_type);
+    std::optional<dnn::TensorDescriptor> bias_descriptor,
+    std::optional<dnn::TensorDescriptor> stats_descriptor, double scale,
+    bool use_dropout, std::optional<double> dropout_rate,
+    dnn::FMHAMaskKind mask_type, int sliding_window_length,
+    int max_seg_per_batch);
+
+absl::StatusOr<CudnnGraph> GetCudnnFlashAttentionF8OperationGraph(
+    dnn::DnnSupport& dnn_support,
+    const dnn::MatmulTensorDescriptor& q_descriptor,
+    const dnn::MatmulTensorDescriptor& k_descriptor,
+    const dnn::MatmulTensorDescriptor& v_descriptor,
+    const dnn::TensorDescriptor& o_descriptor,
+    const std::optional<dnn::TensorDescriptor>& stats_descriptor, double scale,
+    dnn::FMHAMaskKind mask_type);
 
 absl::StatusOr<CudnnGraph> GetCudnnFlashAttentionBackwardOperationGraph(
     dnn::DnnSupport& dnn_support, const dnn::MatmulTensorDescriptor& q_desc,
@@ -737,9 +729,27 @@ absl::StatusOr<CudnnGraph> GetCudnnFlashAttentionBackwardOperationGraph(
     const dnn::TensorDescriptor& dq_desc, const dnn::TensorDescriptor& dk_desc,
     const dnn::TensorDescriptor& dv_desc,
     const std::optional<dnn::TensorDescriptor> bias_descriptor,
+    const std::optional<dnn::TensorDescriptor> dbias_descriptor,
     std::optional<double> dropout_rate, std::optional<int64_t> seed,
-    double scale, bool use_dropout, bool use_bias,
-    const dnn::FMHAMaskKind mask_type, bool force_deterministic);
+    double scale, bool use_dropout, bool use_bias, dnn::FMHAMaskKind mask_type,
+    bool force_deterministic, int sliding_window_length, int max_seg_per_batch);
+
+absl::StatusOr<CudnnGraph> GetCudnnFlashAttentionBackwardF8OperationGraph(
+    dnn::DnnSupport& dnn_support, const dnn::MatmulTensorDescriptor& q_desc,
+    const dnn::MatmulTensorDescriptor& k_desc,
+    const dnn::MatmulTensorDescriptor& p_desc,
+    const dnn::MatmulTensorDescriptor& v_desc,
+    const dnn::MatmulTensorDescriptor& do_desc,
+    const dnn::TensorDescriptor& dq_desc, const dnn::TensorDescriptor& dk_desc,
+    const dnn::TensorDescriptor& dv_desc, double scale,
+    dnn::FMHAMaskKind mask_type);
+
+absl::StatusOr<CudnnGraph> GetCudnnBlockScaledDotOperationGraph(
+    dnn::DnnSupport& dnn_support, const dnn::TensorDescriptor& lhs_data,
+    const dnn::TensorDescriptor& lhs_scale,
+    const dnn::TensorDescriptor& rhs_data,
+    const dnn::TensorDescriptor& rhs_scale, dnn::DataType result_type,
+    int block_size);
 
 }  // namespace gpu
 }  // namespace stream_executor

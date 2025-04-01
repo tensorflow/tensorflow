@@ -204,7 +204,7 @@ struct ErrorOptions {
   bool error_on_malformatting = false;
 };
 
-Status GetErrorOptions(OpKernelConstruction* ctx, ErrorOptions* out) {
+absl::Status GetErrorOptions(OpKernelConstruction* ctx, ErrorOptions* out) {
   *out = ErrorOptions();
 
   string error_policy;

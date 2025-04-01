@@ -16,9 +16,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/transformations/remove_noop.h"
 
 #include <algorithm>
-#include <any>
 #include <functional>
-#include <iterator>
 #include <memory>
 #include <string>
 #include <utility>
@@ -27,7 +25,6 @@ limitations under the License.
 
 #include "absl/memory/memory.h"
 #include "absl/types/any.h"
-#include "absl/types/variant.h"
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"
 #include "tensorflow/lite/delegates/gpu/common/model.h"
 #include "tensorflow/lite/delegates/gpu/common/model_transformer.h"
@@ -89,11 +86,11 @@ std::unique_ptr<SequenceTransformation> NewRemoveSingleInputAdd() {
         }
         auto& attr = absl::any_cast<const ElementwiseAttributes&>(
             node->operation.attributes);
-        return !absl::holds_alternative<Tensor<HWC, DataType::FLOAT32>>(
+        return !std::holds_alternative<Tensor<HWC, DataType::FLOAT32>>(
                    attr.param) &&
-               !absl::holds_alternative<Tensor<Linear, DataType::FLOAT32>>(
+               !std::holds_alternative<Tensor<Linear, DataType::FLOAT32>>(
                    attr.param) &&
-               !absl::holds_alternative<float>(attr.param);
+               !std::holds_alternative<float>(attr.param);
       });
 }
 

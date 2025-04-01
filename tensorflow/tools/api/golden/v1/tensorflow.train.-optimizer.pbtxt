@@ -17,7 +17,7 @@ tf_class {
   }
   member_method {
     name: "__init__"
-    argspec: "args=[\'self\', \'use_locking\', \'name\'], varargs=None, keywords=None, defaults=None"
+    argspec: "args=[\'self\', \'use_locking\', \'name\', \'use_own_namescope_for_non_slot_vars\'], varargs=None, keywords=None, defaults=[\'False\'], "
   }
   member_method {
     name: "apply_gradients"

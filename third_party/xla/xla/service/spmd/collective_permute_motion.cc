@@ -29,14 +29,14 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/comparison_util.h"
+#include "xla/hlo/analysis/while_loop_analysis.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
-#include "xla/service/while_loop_analysis.h"
 #include "xla/shape_util.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 
@@ -202,7 +202,7 @@ absl::StatusOr<bool> MoveCollectivePermutes(HloComputation* computation,
     }
   }
   HloInstruction* ind_var = input_gtes[induction_var_idx];
-  if (ind_var == nullptr || ind_var->shape().rank() > 0) {
+  if (ind_var == nullptr || ind_var->shape().dimensions_size() > 0) {
     VLOG(2) << "Skip " << loop->name() << ", non-scalar induction var";
     return false;
   }

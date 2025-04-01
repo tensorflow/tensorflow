@@ -18,19 +18,21 @@ limitations under the License.
 #include <memory>
 
 #include <gtest/gtest.h>
+#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
-#include "xla/service/hlo_parser.h"
-#include "xla/tests/hlo_test_base.h"
+#include "xla/hlo/parser/hlo_parser.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
+#include "xla/util.h"
 #include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
 
-using HloQueryTest = HloTestBase;
+using HloQueryTest = HloHardwareIndependentTestBase;
 
 template <typename Hlo>
 int CountInstructions(Hlo& module, HloOpcode opcode) {
@@ -39,6 +41,22 @@ int CountInstructions(Hlo& module, HloOpcode opcode) {
       module, opcode, [&counter](auto& instr) { counter++; });
   return counter;
 }
+
+template <typename Hlo>
+int CountInstructions(Hlo& module, HloPredicate pred) {
+  int counter = 0;
+  hlo_query::ForEachInstructionWithPred(module, pred,
+                                        [&counter](auto& instr) { counter++; });
+  return counter;
+}
+
+constexpr absl::string_view kConstantAdditionHloString = R"(
+HloModule test
+ENTRY main {
+  zero = f32[] constant(0)
+  five = f32[] constant(5)
+  ROOT out = f32[] add(zero, five)
+})";
 
 TEST_F(HloQueryTest,
        GetInstructionWithOpCodeReturnsMatchingInstructionForModule) {
@@ -70,6 +88,11 @@ ENTRY main {
   EXPECT_EQ(CountInstructions(*module, HloOpcode::kAdd), 2);
   EXPECT_EQ(CountInstructions(*module, HloOpcode::kSubtract), 1);
   EXPECT_EQ(CountInstructions(*module, HloOpcode::kMultiply), 3);
+  EXPECT_EQ(CountInstructions(*module, HloPredicateIsOp<HloOpcode::kAdd>), 2);
+  EXPECT_EQ(CountInstructions(*module, HloPredicateIsOp<HloOpcode::kSubtract>),
+            1);
+  EXPECT_EQ(CountInstructions(*module, HloPredicateIsOp<HloOpcode::kMultiply>),
+            3);
 }
 
 TEST_F(HloQueryTest,
@@ -108,6 +131,14 @@ ENTRY main {
   EXPECT_EQ(CountInstructions(*computation, HloOpcode::kAdd), 2);
   EXPECT_EQ(CountInstructions(*computation, HloOpcode::kSubtract), 1);
   EXPECT_EQ(CountInstructions(*computation, HloOpcode::kMultiply), 3);
+  EXPECT_EQ(CountInstructions(*computation, HloPredicateIsOp<HloOpcode::kAdd>),
+            2);
+  EXPECT_EQ(
+      CountInstructions(*computation, HloPredicateIsOp<HloOpcode::kSubtract>),
+      1);
+  EXPECT_EQ(
+      CountInstructions(*computation, HloPredicateIsOp<HloOpcode::kMultiply>),
+      3);
 }
 
 TEST_F(HloQueryTest, GetUniqueGteTest) {
@@ -130,6 +161,105 @@ TEST_F(HloQueryTest, GetUniqueGteTest) {
   EXPECT_NE(gte1, nullptr);
   HloInstruction* gte2 = hlo_query::GetUniqueGteInstruction(param, /*index=*/1);
   EXPECT_EQ(gte2, nullptr);
+}
+
+TEST_F(HloQueryTest, FindComputationTest) {
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<HloModule> module,
+      ParseAndReturnUnverifiedModule(kConstantAdditionHloString));
+  EXPECT_NE(hlo_query::FindComputation(module.get(), "main"), nullptr);
+  EXPECT_EQ(hlo_query::FindComputation(module.get(), "foo"), nullptr);
+}
+
+TEST_F(HloQueryTest, FindInstructionUsingNameTest) {
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<HloModule> module,
+      ParseAndReturnUnverifiedModule(kConstantAdditionHloString));
+  const HloComputation* main = hlo_query::FindComputation(module.get(), "main");
+  EXPECT_NE(hlo_query::FindInstruction(main, "zero"), nullptr);
+  EXPECT_NE(hlo_query::FindInstruction(main, "five"), nullptr);
+  EXPECT_NE(hlo_query::FindInstruction(main, "out"), nullptr);
+  EXPECT_EQ(hlo_query::FindInstruction(main, "foo"), nullptr);
+}
+
+// Assures that the string and opcode versions of FindInstruction return
+// the same result
+void FindInstructionsAndExpectEqual(const HloComputation* main,
+                                    absl::string_view name, HloOpcode opcode) {
+  SCOPED_TRACE(absl::StrCat("Comparing finding by name: ", name,
+                            " and opcode: ", opcode));
+  HloInstruction* by_name = hlo_query::FindInstruction(main, name);
+  HloInstruction* by_opcode = hlo_query::FindInstruction(main, opcode);
+  EXPECT_EQ(by_name, by_opcode);
+}
+
+TEST_F(HloQueryTest, FindInstructionUsingOpcodeTest) {
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<HloModule> module,
+      ParseAndReturnUnverifiedModule(kConstantAdditionHloString));
+  const HloComputation* main = hlo_query::FindComputation(module.get(), "main");
+  EXPECT_NE(hlo_query::FindInstruction(main, HloOpcode::kConstant), nullptr);
+  EXPECT_NE(hlo_query::FindInstruction(main, HloOpcode::kAdd), nullptr);
+  EXPECT_EQ(hlo_query::FindInstruction(main, HloOpcode::kSelect), nullptr);
+}
+
+TEST_F(HloQueryTest, FindInstructionUsingOpcodeAndNameEqualTest) {
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<HloModule> module,
+      ParseAndReturnUnverifiedModule(kConstantAdditionHloString));
+  const HloComputation* main = hlo_query::FindComputation(module.get(), "main");
+  FindInstructionsAndExpectEqual(main, "zero", HloOpcode::kConstant);
+  FindInstructionsAndExpectEqual(main, "out", HloOpcode::kAdd);
+  // both are not found
+  FindInstructionsAndExpectEqual(main, "dummy", HloOpcode::kSelect);
+}
+
+TEST_F(HloQueryTest, FindInstructionDoesNotExistTest) {
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<HloModule> module,
+      ParseAndReturnUnverifiedModule(kConstantAdditionHloString));
+  const HloComputation* main = hlo_query::FindComputation(module.get(), "main");
+  EXPECT_NE(main, nullptr);
+  auto find_beef = hlo_query::FindInstruction(main, "deadbeef");
+  auto find_nothing = hlo_query::FindInstruction(main, "");
+  EXPECT_EQ(find_beef, nullptr);
+  EXPECT_EQ(find_nothing, nullptr);
+}
+
+TEST_F(HloQueryTest, NextChannelIdForModuleWithoutChannelIdTest) {
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto module, ParseAndReturnUnverifiedModule(kConstantAdditionHloString));
+  EXPECT_EQ(hlo_query::NextChannelId(*module), 1)
+      << "module with no channel id";
+}
+
+TEST_F(HloQueryTest, NextChannelIdBasicTest) {
+  absl::string_view hlo = R"(
+    HloModule test
+    ENTRY test_computation {
+      p = u32[] partition-id()
+      ROOT start = u32[] collective-permute(p), channel_id=8,
+        source_target_pairs={{0,1},{1,2},{2,3},{3,0}}
+    }
+    )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
+  EXPECT_EQ(hlo_query::NextChannelId(*module), 9);
+}
+
+TEST_F(HloQueryTest, NextChannelIdTwoIdsTest) {
+  absl::string_view hlo = R"(
+    HloModule test
+    ENTRY test_computation {
+      p = u32[] partition-id()
+      l = u32[] collective-permute(p), channel_id=8,
+          source_target_pairs={{0,1},{1,2}}
+      r = u32[] collective-permute(p), channel_id=9,
+          source_target_pairs={{2,3},{3,0}}
+      ROOT res = u32[] add(l,r)
+    }
+    )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
+  EXPECT_EQ(hlo_query::NextChannelId(*module), 10);
 }
 
 }  // namespace

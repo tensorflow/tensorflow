@@ -1,5 +1,13 @@
 """Defines the cc_binary_disable_onednn build rule to disable oneDNN."""
 
+load(
+    "//xla/tsl:package_groups.bzl",
+    "DEFAULT_LOAD_VISIBILITY",
+    "LEGACY_TSL_FRAMEWORK_CONTRACTION_BUILD_DEFS_USERS",
+)
+
+visibility(DEFAULT_LOAD_VISIBILITY + LEGACY_TSL_FRAMEWORK_CONTRACTION_BUILD_DEFS_USERS)
+
 def _disable_onednn_transition_impl(settings, attr):
     _ignore = (settings, attr)  # @unused
     return {"//xla/tsl/framework/contraction:disable_onednn_contraction_kernel": True}

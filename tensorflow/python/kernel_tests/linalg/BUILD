@@ -213,7 +213,10 @@ cuda_py_strict_test(
     size = "medium",
     srcs = ["linear_operator_block_lower_triangular_test.py"],
     shard_count = 8,
-    tags = ["optonly"],
+    tags = [
+        "no_gpu",  # Seg fault. http://b/365525243
+        "optonly",
+    ],
     deps = [
         "//tensorflow/python/eager:backprop",
         "//tensorflow/python/eager:context",
@@ -747,7 +750,6 @@ cuda_py_strict_test(
     size = "medium",
     srcs = ["normalize_op_test.py"],
     shard_count = 20,
-    # TODO(b/117236102): Re-enable in msan build.
     tags = ["no_windows_gpu"],
     # TODO(b/208263392): Re-enable. tf.Squeeze op after tf.Where op doesn't reshape.
     xla_enable_strict_auto_jit = False,
@@ -764,7 +766,6 @@ cuda_py_strict_test(
     size = "medium",
     srcs = ["norm_op_test.py"],
     shard_count = 20,
-    # TODO(b/117236102): Re-enable in msan build.
     tags = ["no_windows_gpu"],
     # TODO(b/208263392): Re-enable. tf.Squeeze op after tf.Where op doesn't reshape.
     xla_enable_strict_auto_jit = False,

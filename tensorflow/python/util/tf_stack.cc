@@ -34,7 +34,10 @@ limitations under the License.
 // clang-format on
 #include <frameobject.h>
 
-#include <algorithm>
+#include <cstddef>
+#include <memory>
+#include <string>
+#include <tuple>
 #include <vector>
 
 #include "absl/algorithm/container.h"
@@ -117,6 +120,21 @@ class StackTraceWrapper : public AbstractStackTrace {
     return cache_->ToFrames();
   }
 
+  std::vector<StackFrame> ToUncachedFrames() const override {
+    std::vector<StackFrame> frames = captured_->ToStackFrames(
+        *source_map_, [&](const char* f) { return StackTraceFiltering(f); },
+        /*reverse_traversal=*/false, /*limit=*/-1);
+
+    // Drop last stack frames.
+    int newsize = frames.size() - stacklevel_;
+    if (newsize < 0) {
+      newsize = 0;
+    }
+    frames.resize(newsize);
+
+    return frames;
+  }
+
   std::vector<StackFrame> GetUserFrames(int limit) const override {
     ComputeFrozen();
     return cache_->GetUserFrames(limit);
@@ -139,16 +157,7 @@ class StackTraceWrapper : public AbstractStackTrace {
       return;
     }
 
-    std::vector<StackFrame> frames = captured_->ToStackFrames(
-        *source_map_, [&](const char* f) { return StackTraceFiltering(f); },
-        /*reverse_traversal=*/false, /*limit=*/-1);
-
-    // Drop last stack frames.
-    int newsize = frames.size() - stacklevel_;
-    if (newsize < 0) {
-      newsize = 0;
-    }
-    frames.resize(newsize);
+    std::vector<StackFrame> frames = ToUncachedFrames();
 
     std::vector<StackFrame> user_frames = captured_->ToStackFrames(
         *source_map_,

@@ -1,0 +1,112 @@
+# Copyright 2025 The OpenXLA Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ============================================================================
+name: CI
+permissions:
+  contents: read
+on:
+  workflow_dispatch:
+    inputs:
+      halt-for-connection:
+        description: 'Should this workflow run wait for a remote connection?'
+        type: choice
+        required: true
+        default: 'no'
+        options:
+        - 'yes'
+        - 'no'
+  pull_request:
+  push:
+    branches:
+      - main
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
+  cancel-in-progress: ${{ github.ref != 'main' }}
+
+jobs:
+  Tests:
+    strategy:
+      # Don't fail fast - want to see results for all builds even if one fails.
+      fail-fast: false
+      matrix:
+        job_info: [
+          {
+            pool: "linux-x86-n2-16",
+            container: "us-central1-docker.pkg.dev/tensorflow-sigs/tensorflow/ml-build:latest",
+            name: "XLA Linux x86 CPU",
+            repo: "openxla/xla",
+          },
+          {
+            pool: "linux-x86-g2-16-l4-1gpu",
+            container: "us-central1-docker.pkg.dev/tensorflow-sigs/tensorflow/ml-build:latest",
+            name: "XLA Linux x86 GPU T4",
+            repo: "openxla/xla",
+          },
+          {
+            pool: "linux-arm64-c4a-16",
+            container: "us-central1-docker.pkg.dev/tensorflow-sigs/tensorflow/ml-build-arm64:latest",
+            name: "XLA Linux ARM64 CPU",
+            repo: "openxla/xla",
+          },
+          {
+            pool: "linux-x86-n2-16",
+            container: "gcr.io/tensorflow-sigs/build:latest-python3.11",
+            name: "JAX Linux x86 CPU",
+            repo: "jax-ml/jax",
+          },
+          {
+            pool: "linux-x86-g2-16-l4-1gpu",
+            container: "gcr.io/tensorflow-sigs/build:latest-python3.11",
+            name: "JAX Linux x86 GPU T4",
+            repo: "jax-ml/jax",
+          },
+          {
+            pool: "linux-x86-n2-16",
+            container: "us-central1-docker.pkg.dev/tensorflow-sigs/tensorflow/ml-build:latest",
+            name: "TensorFlow Linux x86 CPU",
+            repo: "tensorflow/tensorflow",
+          },
+          {
+            pool: "linux-x86-g2-16-l4-1gpu",
+            container: "us-central1-docker.pkg.dev/tensorflow-sigs/tensorflow/ml-build:latest",
+            name: "TensorFlow Linux x86 GPU T4",
+            repo: "tensorflow/tensorflow",
+          },
+        ]
+    name: ${{ matrix.job_info.name }}
+    runs-on: ${{ matrix.job_info.pool }}
+    container: ${{ matrix.job_info.container }}
+    defaults:
+      run:
+        shell: bash
+    timeout-minutes: 60
+    steps:
+      - name: "Checking out openxla/xla"
+        uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4.1.1
+        with:
+          path: "openxla/xla"
+      - name: Checking out ${{ matrix.job_info.repo }}
+        if: ${{ matrix.job_info.repo != 'openxla/xla' }}
+        uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4.1.1
+        with:
+          repository: ${{ matrix.job_info.repo }}
+          path: ${{ matrix.job_info.repo }}
+      - name: "Wait For Connection"
+        uses: google-ml-infra/actions/ci_connection@main
+        with:
+          halt-dispatch-input: ${{ inputs.halt-for-connection }}
+      - name: "Run build.py"
+        working-directory: ${{ matrix.job_info.repo }}
+        run: $GITHUB_WORKSPACE/openxla/xla/build_tools/ci/build.py --build="${{ matrix.job_info.name }}_github_actions"

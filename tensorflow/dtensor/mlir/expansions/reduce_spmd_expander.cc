@@ -15,41 +15,27 @@ limitations under the License.
 
 #include "tensorflow/dtensor/mlir/expansions/reduce_spmd_expander.h"
 
+#include <cstdint>
 #include <string>
-#include <utility>
+#include <vector>
 
-#include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
-#include "absl/container/inlined_vector.h"
-#include "absl/strings/str_cat.h"
-#include "absl/strings/str_join.h"
+#include "absl/status/status.h"
 #include "absl/strings/string_view.h"
-#include "absl/types/optional.h"
 #include "llvm/ADT/ArrayRef.h"
-#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Casting.h"
-#include "llvm/Support/FormatVariadic.h"
-#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
-#include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
-#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
-#include "mlir/IR/Location.h"  // from @llvm-project
-#include "mlir/IR/Matchers.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
-#include "mlir/Interfaces/InferTypeOpInterface.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/collection_ops_util.h"
-#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/platform/errors.h"
-#include "tensorflow/dtensor/cc/constants.h"
+#include "tensorflow/dtensor/cc/dstatus.h"
 #include "tensorflow/dtensor/cc/tensor_layout.h"
 #include "tensorflow/dtensor/mlir/collectives.h"
-#include "tensorflow/dtensor/mlir/ir/tf_dtensor.h"
 #include "tensorflow/dtensor/mlir/layout_parsing.h"
 #include "tensorflow/dtensor/mlir/op_utils.h"
 #include "tensorflow/dtensor/mlir/shape_utils.h"
@@ -68,7 +54,7 @@ absl::string_view DefiningOpName(mlir::Value operand) {
   return StringRefToView(operand.getDefiningOp()->getName().getStringRef());
 }
 
-Status AssertReplicated(mlir::Value operand) {
+absl::Status AssertReplicated(mlir::Value operand) {
   TF_ASSIGN_OR_RETURN(auto layout, ExtractLayoutFromOperand(operand));
   if (!layout) return absl::OkStatus();
 
@@ -93,9 +79,9 @@ absl::flat_hash_set<std::string> ReducedMeshDimensions(
 }
 
 template <typename OpType>
-Status ExtractDims(mlir::Operation* op,
-                   llvm::SmallVector<int64_t, 4>* reduced_dims, bool* keep_dims,
-                   bool* matched) {
+absl::Status ExtractDims(mlir::Operation* op,
+                         llvm::SmallVector<int64_t, 4>* reduced_dims,
+                         bool* keep_dims, bool* matched) {
   if (!llvm::isa<OpType>(op)) return absl::OkStatus();
   auto reduce_op = llvm::cast<OpType>(op);
   *keep_dims = reduce_op.getKeepDims();
@@ -108,7 +94,7 @@ Status ExtractDims(mlir::Operation* op,
 }
 
 template <>
-Status ExtractDims<mlir::TF::L2LossOp>(
+absl::Status ExtractDims<mlir::TF::L2LossOp>(
     mlir::Operation* op, llvm::SmallVector<int64_t, 4>* reduced_dims,
     bool* keep_dims, bool* matched) {
   if (!llvm::isa<mlir::TF::L2LossOp>(op)) return absl::OkStatus();
@@ -124,7 +110,7 @@ Status ExtractDims<mlir::TF::L2LossOp>(
 }
 
 template <>
-Status ExtractDims<mlir::TF::BiasAddGradOp>(
+absl::Status ExtractDims<mlir::TF::BiasAddGradOp>(
     mlir::Operation* op, llvm::SmallVector<int64_t, 4>* reduced_dims,
     bool* keep_dims, bool* matched) {
   if (!llvm::isa<mlir::TF::BiasAddGradOp>(op)) return absl::OkStatus();
@@ -151,7 +137,7 @@ Status ExtractDims<mlir::TF::BiasAddGradOp>(
 }
 
 template <>
-Status ExtractDims<mlir::TF::EncodePngOp>(
+absl::Status ExtractDims<mlir::TF::EncodePngOp>(
     mlir::Operation* op, llvm::SmallVector<int64_t, 4>* reduced_dims,
     bool* keep_dims, bool* matched) {
   if (!llvm::isa<mlir::TF::EncodePngOp>(op)) return absl::OkStatus();
@@ -161,9 +147,9 @@ Status ExtractDims<mlir::TF::EncodePngOp>(
   return absl::OkStatus();
 }
 
-Status ExtractReductionParameters(mlir::Operation* op,
-                                  absl::flat_hash_set<int>& reduced_dims_set,
-                                  bool& keep_dims) {
+absl::Status ExtractReductionParameters(
+    mlir::Operation* op, absl::flat_hash_set<int>& reduced_dims_set,
+    bool& keep_dims) {
   llvm::SmallVector<int64_t, 4> reduced_dims;
   bool matched = false;
   TF_RETURN_IF_ERROR(ExtractDims<mlir::TF::EncodePngOp>(op, &reduced_dims,

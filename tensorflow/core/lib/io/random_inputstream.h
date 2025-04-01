@@ -16,10 +16,10 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_LIB_IO_RANDOM_INPUTSTREAM_H_
 #define TENSORFLOW_CORE_LIB_IO_RANDOM_INPUTSTREAM_H_
 
+#include "xla/tsl/lib/io/random_inputstream.h"
 #include "tensorflow/core/lib/io/inputstream_interface.h"
 #include "tensorflow/core/platform/cord.h"
 #include "tensorflow/core/platform/file_system.h"
-#include "tsl/lib/io/random_inputstream.h"
 
 namespace tensorflow {
 namespace io {

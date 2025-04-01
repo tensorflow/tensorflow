@@ -15,10 +15,15 @@ limitations under the License.
 
 #include "tensorflow/c/experimental/saved_model/core/ops/restore_ops.h"
 
+#include <memory>
+#include <string>
+
+#include "absl/status/status.h"
 #include "tensorflow/c/eager/immediate_execution_tensor_handle.h"
 #include "tensorflow/c/experimental/saved_model/core/test_utils.h"
 #include "tensorflow/c/tensor_interface.h"
 #include "tensorflow/cc/saved_model/constants.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/eager/context.h"
 #include "tensorflow/core/framework/types.pb.h"
@@ -26,12 +31,11 @@ limitations under the License.
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/stringpiece.h"
 #include "tensorflow/core/platform/test.h"
-#include "tsl/lib/core/status_test_util.h"
 
 namespace tensorflow {
 namespace {
 
-std::string CheckpointPrefix(StringPiece saved_model_dir) {
+std::string CheckpointPrefix(absl::string_view saved_model_dir) {
   return io::JoinPath(testing::TensorFlowSrcRoot(), "cc/saved_model/testdata",
                       saved_model_dir, kSavedModelVariablesDirectory,
                       kSavedModelVariablesFilename);
@@ -95,7 +99,7 @@ TEST_F(RestoreOpsTest, RestoreSuccessful) {
 
 TEST_F(RestoreOpsTest, BadCheckpointPrefixShouldFail) {
   ImmediateTensorHandlePtr x_handle;
-  Status status = internal::SingleRestore(
+  absl::Status status = internal::SingleRestore(
       context(), CheckpointPrefix("unknown_bad_checkpoint_prefix"),
       "x/.ATTRIBUTES/VARIABLE_VALUE", DT_FLOAT, &x_handle);
   EXPECT_FALSE(status.ok()) << status.message();
@@ -103,7 +107,7 @@ TEST_F(RestoreOpsTest, BadCheckpointPrefixShouldFail) {
 
 TEST_F(RestoreOpsTest, BadCheckpointKeyShouldFail) {
   ImmediateTensorHandlePtr x_handle;
-  Status status = internal::SingleRestore(
+  absl::Status status = internal::SingleRestore(
       context(), CheckpointPrefix("VarsAndArithmeticObjectGraph"),
       "bad_checkpoint_key", DT_FLOAT, &x_handle);
   EXPECT_FALSE(status.ok()) << status.message();

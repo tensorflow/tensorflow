@@ -1,8 +1,8 @@
 load("@bazel_skylib//rules:build_test.bzl", "build_test")
 load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library", "gentbl_filegroup", "td_library")
-load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
 load("//xla/tsl:tsl.bzl", "internal_visibility")
 load("//xla/tsl:tsl.default.bzl", "get_compatible_with_portable")
+load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -211,6 +211,7 @@ gentbl_cc_library(
 cc_library(
     name = "deallocation_passes",
     srcs = [
+        "deallocation/transforms/buffer_deallocation.cc",
         "deallocation/transforms/buffer_reuse.cc",
     ],
     hdrs = [
@@ -221,9 +222,11 @@ cc_library(
         ":deallocation_passes_inc_gen",
         ":deallocation_utils",
         "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:AllocationOpInterface",
         "@llvm-project//mlir:Analysis",
         "@llvm-project//mlir:ArithDialect",
         "@llvm-project//mlir:BufferizationDialect",
+        "@llvm-project//mlir:BufferizationTransforms",
         "@llvm-project//mlir:ControlFlowInterfaces",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
@@ -363,51 +366,27 @@ cc_library(
         "mhlo/transforms/broadcast_propagation/broadcast_propagation.cc",
         "mhlo/transforms/chlo_legalize_to_hlo/chlo_legalize_to_hlo_pass.cc",
         "mhlo/transforms/collapse_elementwise_map/collapse_elementwise_map.cc",
-        "mhlo/transforms/constraint_fusion/constraint_fusion_pass.cc",
         "mhlo/transforms/convert_to_signless/convert_to_signless_pass.cc",
         "mhlo/transforms/expand_hlo_tuples/expand_hlo_tuples.cc",
-        "mhlo/transforms/expand_ops_simplifier/expand_ops_simplifier.cc",
-        "mhlo/transforms/group_reduction_dimensions/group_reduction_dimensions.cc",
         "mhlo/transforms/hlo_legalize_to_arithmetic/hlo_legalize_to_arithmetic.cc",
         "mhlo/transforms/hlo_legalize_to_memref/hlo_legalize_to_memref.cc",
         "mhlo/transforms/hlo_legalize_to_stablehlo/hlo_legalize_to_stablehlo_pass.cc",
-        "mhlo/transforms/legalize_broadcast_to_broadcast_in_dim/legalize_broadcast_to_broadcast_in_dim.cc",
-        "mhlo/transforms/legalize_control_flow/legalize_control_flow.cc",
-        "mhlo/transforms/legalize_create_token_to_after_all/legalize_create_token_to_after_all.cc",
-        "mhlo/transforms/legalize_cross_replica_sum_to_all_reduce/legalize_cross_replica_sum_to_all_reduce.cc",
-        "mhlo/transforms/legalize_dot_general_to_dot/legalize_dot_general_to_dot.cc",
         "mhlo/transforms/legalize_dot_to_dot_general/legalize_dot_to_dot_general.cc",
         "mhlo/transforms/legalize_einsum_to_dot_general/legalize_einsum_to_dot_general.cc",
-        "mhlo/transforms/legalize_gather_to_torch_index_select/legalize_gather_to_torch_index_select.cc",
-        "mhlo/transforms/legalize_shape_computations/legalize_shape_computations.cc",
-        "mhlo/transforms/legalize_sort/legalize_sort.cc",
         "mhlo/transforms/legalize_to_linalg/legalize_to_linalg.cc",
-        "mhlo/transforms/legalize_to_standard/generated_legalize_to_standard.inc",
-        "mhlo/transforms/legalize_to_standard/legalize_to_standard.cc",
         "mhlo/transforms/legalize_torch_index_select_to_gather/legalize_torch_index_select_to_gather.cc",
         "mhlo/transforms/legalize_trigonometric_to_approximation/legalize_trigonometric_to_approximation.cc",
-        "mhlo/transforms/lower_complex/generated_lower_complex.inc",
-        "mhlo/transforms/lower_complex/lower_complex.cc",
-        "mhlo/transforms/lower_general_dot/lower_general_dot.cc",
         "mhlo/transforms/materialize_broadcasts/materialize_broadcasts.cc",
         "mhlo/transforms/materialize_broadcasts/materialize_broadcasts_pass.cc",
         "mhlo/transforms/merge_assuming_ops/merge_assuming_ops.cc",
-        "mhlo/transforms/mhlo_canonicalize_dot/mhlo_canonicalize_dot.cc",
-        "mhlo/transforms/mhlo_canonicalize_gather/mhlo_canonicalize_gather.cc",
-        "mhlo/transforms/mhlo_canonicalize_reduction/mhlo_canonicalize_reduction.cc",
-        "mhlo/transforms/mhlo_canonicalize_scatter/mhlo_canonicalize_scatter.cc",
         "mhlo/transforms/mhlo_flatten_tuple/mhlo_flatten_tuple.cc",
         "mhlo/transforms/mhlo_passes.h.inc",
         "mhlo/transforms/optimize_mhlo/optimize_mhlo.cc",
-        "mhlo/transforms/optimize_mhlo/optimize_mhlo_pass.cc",
         "mhlo/transforms/prepare_for_export/prepare_for_export.cc",
-        "mhlo/transforms/restrict_max_rank/restrict_max_rank.cc",
         "mhlo/transforms/shape_legalize_to_hlo/shape_legalize_to_hlo.cc",
-        "mhlo/transforms/shape_reification/shape_reification_pass.cc",
         "mhlo/transforms/shape_simplification/shape_simplification.cc",
         "mhlo/transforms/sink_constants_to_control_flow/sink_constants_to_control_flow.cc",
         "mhlo/transforms/stablehlo_legalize_to_hlo/stablehlo_legalize_to_hlo_pass.cc",
-        "mhlo/transforms/symbolic_shape_optimization/symbolic_shape_optimization.cc",
         "mhlo/transforms/test_infer_shaped_type/test_infer_shaped_type_pass.cc",
         "mhlo/transforms/unfuse_batch_norm/unfuse_batch_norm_pass.cc",
     ],
@@ -423,8 +402,6 @@ cc_library(
         ":chlo_legalize_to_hlo_inc_gen",
         ":hlo_legalize_to_stablehlo",
         ":legalize_to_linalg_utils",
-        ":legalize_to_standard_inc_gen",
-        ":lower_complex_inc_gen",
         ":map_chlo_to_hlo_op",
         ":map_mhlo_to_scalar_op",
         ":mhlo_pass_inc_gen",
@@ -497,12 +474,25 @@ cc_library(
     strip_include_prefix = ".",
     deps = [
         ":mlir_hlo",
+        ":transformation_helpers",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:ArithDialect",
         "@llvm-project//mlir:ComplexDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:MathDialect",
         "@llvm-project//mlir:SCFDialect",
+        "@llvm-project//mlir:Support",
+    ],
+)
+
+cc_library(
+    name = "transformation_helpers",
+    hdrs = ["mhlo/transforms/transformation_helpers.h"],
+    strip_include_prefix = ".",
+    deps = [
+        "@llvm-project//mlir:ArithDialect",
+        "@llvm-project//mlir:ArithUtils",
+        "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
     ],
 )
@@ -609,44 +599,6 @@ cc_library(
         "@llvm-project//mlir:DialectUtils",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TensorDialect",
-    ],
-)
-
-gentbl_cc_library(
-    name = "legalize_to_standard_inc_gen",
-    compatible_with = get_compatible_with_portable(),
-    strip_include_prefix = "mhlo/transforms/",
-    tbl_outs = [
-        (
-            ["-gen-rewriters"],
-            "mhlo/transforms/legalize_to_standard/generated_legalize_to_standard.inc",
-        ),
-    ],
-    tblgen = "@llvm-project//mlir:mlir-tblgen",
-    td_file = "mhlo/transforms/legalize_to_standard/legalize_to_standard_patterns.td",
-    deps = [
-        ":hlo_ops_td_files",
-        "@llvm-project//mlir:ArithOpsTdFiles",
-        "@llvm-project//mlir:FuncTdFiles",
-        "@llvm-project//mlir:MathOpsTdFiles",
-    ],
-)
-
-gentbl_cc_library(
-    name = "lower_complex_inc_gen",
-    compatible_with = get_compatible_with_portable(),
-    strip_include_prefix = "mhlo/transforms/",
-    tbl_outs = [
-        (
-            ["-gen-rewriters"],
-            "mhlo/transforms/lower_complex/generated_lower_complex.inc",
-        ),
-    ],
-    tblgen = "@llvm-project//mlir:mlir-tblgen",
-    td_file = "mhlo/transforms/lower_complex/lower_complex_patterns.td",
-    deps = [
-        ":hlo_ops_td_files",
-        "@llvm-project//mlir:FuncTdFiles",
     ],
 )
 
@@ -803,6 +755,7 @@ cc_library(
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:FuncToLLVM",
         "@llvm-project//mlir:FuncTransforms",
+        "@llvm-project//mlir:FunctionInterfaces",
         "@llvm-project//mlir:GPUDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:LLVMCommonConversion",
@@ -941,11 +894,10 @@ gentbl_cc_library(
 
 cc_library(
     name = "shape_component_analysis",
-    srcs = ["mhlo/analysis/shape_component_analysis.cc"],
-    hdrs = ["mhlo/analysis/shape_component_analysis.h"],
+    srcs = ["stablehlo_ext/analysis/shape_component_analysis.cpp"],
+    hdrs = ["stablehlo_ext/analysis/shape_component_analysis.h"],
     strip_include_prefix = ".",
     deps = [
-        ":mlir_hlo",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:ArithDialect",
         "@llvm-project//mlir:FuncDialect",
@@ -953,6 +905,7 @@ cc_library(
         "@llvm-project//mlir:ShapeDialect",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TensorDialect",
+        "@stablehlo//:stablehlo_ops",
     ],
 )
 
@@ -1028,6 +981,7 @@ cc_binary(
         "@llvm-project//mlir:MlirOptLib",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Support",
+        "@shardy//shardy/dialect/sdy/ir:dialect",
         "@stablehlo//:register",
     ],
 )
@@ -1128,32 +1082,52 @@ gentbl_cc_library(
 cc_library(
     name = "stablehlo_extension_passes",
     srcs = [
+        "stablehlo_ext/transforms/chlo_preserve_high_level_ops.cpp",
         "stablehlo_ext/transforms/chlo_recompose_ops.cpp",
+        "stablehlo_ext/transforms/sdy_refine_shapes.cpp",
+        "stablehlo_ext/transforms/sink_constants_to_control_flow.cpp",
+        "stablehlo_ext/transforms/stablehlo_add_quant_dequant_conv.cpp",
         "stablehlo_ext/transforms/stablehlo_canonicalize_dynamism.cpp",
+        "stablehlo_ext/transforms/stablehlo_canonicalize_from_hlo_import.cpp",
+        "stablehlo_ext/transforms/stablehlo_legalize_quant_composite.cpp",
+        "stablehlo_ext/transforms/stablehlo_prepare_for_hlo_export.cpp",
         "stablehlo_ext/transforms/stablehlo_refine_shapes.cpp",
+        "stablehlo_ext/transforms/symbolic_shape_optimization.cpp",
     ],
     hdrs = [
         "stablehlo_ext/transforms/passes.h",
+        "stablehlo_ext/transforms/sdy_refine_shapes.h",
+        "stablehlo_ext/transforms/stablehlo_refine_shapes.h",
     ],
     compatible_with = get_compatible_with_portable(),
     strip_include_prefix = ".",
     deps = [
+        ":shape_component_analysis",
         ":stablehlo_extension_base",
         ":stablehlo_extension_ops",
         ":stablehlo_extension_pass_inc_gen",
         "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:ArithDialect",
+        "@llvm-project//mlir:AsmParser",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:InferTypeOpInterface",
+        "@llvm-project//mlir:LinalgDialect",
         "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:QuantOps",
+        "@llvm-project//mlir:ShapeDialect",
         "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:TensorDialect",
         "@llvm-project//mlir:TransformUtils",
         "@llvm-project//mlir:Transforms",
+        "@shardy//shardy/dialect/sdy/ir:dialect",
         "@stablehlo//:base",
         "@stablehlo//:chlo_ops",
         "@stablehlo//:stablehlo_ops",
         "@stablehlo//:stablehlo_ops_inc_gen",
+        "@stablehlo//:stablehlo_pass_utils",
         "@stablehlo//:stablehlo_passes",
+        "@stablehlo//:stablehlo_passes_optimization",
         "@stablehlo//:stablehlo_type_inference",
     ],
 )

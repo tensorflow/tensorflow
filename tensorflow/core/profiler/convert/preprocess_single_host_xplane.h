@@ -15,6 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PROFILER_CONVERT_PREPROCESS_SINGLE_HOST_XPLANE_H_
 #define TENSORFLOW_CORE_PROFILER_CONVERT_PREPROCESS_SINGLE_HOST_XPLANE_H_
 
+#include "xla/tsl/profiler/utils/group_events.h"
 #include "tsl/profiler/protobuf/xplane.pb.h"
 
 namespace tensorflow {
@@ -23,8 +24,10 @@ namespace profiler {
 // Preprocess XSpaces before tools conversion.
 // If step_grouping = true, perform events grouping for step tracking.
 // If derived_timeline, generate derived timeline (XLines).
-void PreprocessSingleHostXSpace(XSpace* space, bool step_grouping,
-                                bool derived_timeline);
+// If group_metadata_map is not nullptr, populate the group metadata map.
+void PreprocessSingleHostXSpace(
+    XSpace* space, bool step_grouping, bool derived_timeline,
+    tsl::profiler::GroupMetadataMap* group_metadata_map = nullptr);
 
 }  // namespace profiler
 }  // namespace tensorflow

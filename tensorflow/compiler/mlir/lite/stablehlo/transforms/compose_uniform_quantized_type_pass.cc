@@ -20,8 +20,8 @@ limitations under the License.
 #include "llvm/ADT/Sequence.h"
 #include "llvm/Support/Debug.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
-#include "mlir/Dialect/Quant/QuantOps.h"  // from @llvm-project  // NOLINT: Required to register quantization dialect.
-#include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
+#include "mlir/Dialect/Quant/IR/Quant.h"  // from @llvm-project  // NOLINT: Required to register quantization dialect.
+#include "mlir/Dialect/Quant/IR/QuantTypes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
@@ -36,7 +36,7 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo
-#include "tensorflow/compiler/mlir/lite/stablehlo/transforms/passes.h"
+#include "tensorflow/compiler/mlir/lite/stablehlo/transforms/stablehlo_passes.h"
 #include "tensorflow/compiler/mlir/quantization/common/attrs_and_constraints.h"
 #include "tensorflow/compiler/mlir/quantization/common/uniform_quantized_types.h"
 
@@ -53,7 +53,7 @@ using ::mlir::quant::UniformQuantizedPerAxisType;
 using ::mlir::quant::UniformQuantizedType;
 
 #define GEN_PASS_DEF_COMPOSEUNIFORMQUANTIZEDTYPEPASS
-#include "tensorflow/compiler/mlir/lite/stablehlo/transforms/passes.h.inc"
+#include "tensorflow/compiler/mlir/lite/stablehlo/transforms/stablehlo_passes.h.inc"
 
 // These strings are used to identify the uniform_quantize / uniform_dequantize
 // functions.
@@ -427,9 +427,9 @@ class UniformDequantizeFunctionCallPattern {
 // %4 = stablehlo.uniform_dequantize %3  // Dequantize the output.
 // ```
 class ComposeUniformQuantizedConvolutionOp
-    : public OpRewritePattern<stablehlo::ConvolutionOp> {
+    : public OpRewritePattern<stablehlo::ConvolutionOp>::SplitMatchAndRewrite {
  public:
-  using OpRewritePattern<stablehlo::ConvolutionOp>::OpRewritePattern;
+  using SplitMatchAndRewrite::SplitMatchAndRewrite;
 
   LogicalResult match(stablehlo::ConvolutionOp op) const final {
     // Verify operands' types.
@@ -881,9 +881,9 @@ class ComposeUniformQuantizedConvolutionOp
 // cast isn't present, the filter constant (%3) should be i8 quantized values
 // disguised in f32.
 class ComposeUniformQuantizedDotGeneralOp
-    : public OpRewritePattern<stablehlo::DotGeneralOp> {
+    : public OpRewritePattern<stablehlo::DotGeneralOp>::SplitMatchAndRewrite {
  public:
-  using OpRewritePattern<stablehlo::DotGeneralOp>::OpRewritePattern;
+  using SplitMatchAndRewrite::SplitMatchAndRewrite;
   LogicalResult match(stablehlo::DotGeneralOp op) const final {
     auto input_i8_to_f32_convert_op =
         TryCast<stablehlo::ConvertOp>(op.getOperand(0).getDefiningOp(),
@@ -1144,7 +1144,8 @@ class ComposeUniformQuantizedDotGeneralOp
             .clone(output_uniform_quantized_type),
         /*lhs=*/op.getLhs(), /*rhs=*/op.getRhs(),
         /*dot_dimension_numbers=*/op.getDotDimensionNumbers(),
-        /*precision_config=*/op.getPrecisionConfigAttr());
+        /*precision_config=*/op.getPrecisionConfigAttr(),
+        /*algorithm=*/op.getAlgorithmAttr());
 
     rewriter.replaceAllUsesWith(op.getResult(), new_dot_general_op.getResult());
 
@@ -1303,9 +1304,9 @@ class ComposeUniformQuantizedDotGeneralOp
 // %5 = stablehlo.uniform_dequantize %4  // Dequantize the output.
 // ```
 class ComposeUniformQuantizedDotGeneralOpWithTwoQuantizedActivations
-    : public OpRewritePattern<stablehlo::DotGeneralOp> {
+    : public OpRewritePattern<stablehlo::DotGeneralOp>::SplitMatchAndRewrite {
  public:
-  using OpRewritePattern<stablehlo::DotGeneralOp>::OpRewritePattern;
+  using SplitMatchAndRewrite::SplitMatchAndRewrite;
 
   LogicalResult match(stablehlo::DotGeneralOp op) const final {
     // q1 - z1
@@ -1489,7 +1490,8 @@ class ComposeUniformQuantizedDotGeneralOpWithTwoQuantizedActivations
             .clone(output_uniform_quantized_type),
         /*lhs=*/op.getLhs(), /*rhs=*/op.getRhs(),
         /*dot_dimension_numbers=*/op.getDotDimensionNumbers(),
-        /*precision_config=*/op.getPrecisionConfigAttr());
+        /*precision_config=*/op.getPrecisionConfigAttr(),
+        /*algorithm=*/op.getAlgorithmAttr());
 
     rewriter.replaceAllUsesWith(op.getResult(), new_dot_general_op.getResult());
 
@@ -1596,7 +1598,7 @@ void ComposeUniformQuantizedTypePass::runOnOperation() {
                ComposeUniformQuantizedDotGeneralOpWithTwoQuantizedActivations>(
       &ctx);
 
-  if (failed(applyPatternsAndFoldGreedily(module_op, std::move(patterns)))) {
+  if (failed(applyPatternsGreedily(module_op, std::move(patterns)))) {
     module_op.emitError()
         << "Failed to compose stablehlo uniform quantized types.";
     signalPassFailure();

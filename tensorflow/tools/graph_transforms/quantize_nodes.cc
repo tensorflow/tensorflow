@@ -162,16 +162,16 @@ string UniqueNodeNameFromInput(const string& input_name) {
 }
 
 // Pulls two float values from the named parameters, with a lot of checking.
-Status ExtractRangeFromParams(const TransformFuncContext& context,
-                              const string& min_name, const string& max_name,
-                              float* min_value, float* max_value,
-                              bool* has_range) {
+absl::Status ExtractRangeFromParams(const TransformFuncContext& context,
+                                    const string& min_name,
+                                    const string& max_name, float* min_value,
+                                    float* max_value, bool* has_range) {
   // See if we've been given quantized inputs with a known range.
   const bool has_min = (context.params.count(min_name) != 0);
   const bool has_max = (context.params.count(max_name) != 0);
   *has_range = (has_min || has_max);
   if (!*has_range) {
-    return OkStatus();
+    return absl::OkStatus();
   }
   if (!has_min || !has_max) {
     return errors::InvalidArgument("You must pass both ", min_name, " and ",
@@ -179,7 +179,7 @@ Status ExtractRangeFromParams(const TransformFuncContext& context,
   }
   TF_RETURN_IF_ERROR(context.GetOneFloatParameter(min_name, 0.0f, min_value));
   TF_RETURN_IF_ERROR(context.GetOneFloatParameter(max_name, 0.0f, max_value));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace
@@ -189,9 +189,9 @@ Status ExtractRangeFromParams(const TransformFuncContext& context,
 // also be simple operations that are repeated on multiple outputs of a
 // particular node. The complexity is managed using a hash function that avoids
 // the need for any O(n^2) algorithms when identifying duplicates.
-Status MergeDuplicateNodes(const GraphDef& input_graph_def,
-                           const TransformFuncContext& context,
-                           GraphDef* output_graph_def) {
+absl::Status MergeDuplicateNodes(const GraphDef& input_graph_def,
+                                 const TransformFuncContext& context,
+                                 GraphDef* output_graph_def) {
   // Make sure we can look up inputs and outputs quickly.
   std::set<string> input_names(context.input_names.begin(),
                                context.input_names.end());
@@ -247,7 +247,7 @@ Status MergeDuplicateNodes(const GraphDef& input_graph_def,
 
   *output_graph_def = current_graph_def;
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Looks for the patterns that indicate there are two eight-bit ops feeding into
@@ -258,9 +258,9 @@ Status MergeDuplicateNodes(const GraphDef& input_graph_def,
 // quantized form, but add float conversions before and after. This pass gets
 // rid of those conversions if it turns out we do have adjacent ops capable of
 // eight-bit processing.
-Status RemoveRedundantQuantizations(const GraphDef& input_graph_def,
-                                    const TransformFuncContext& context,
-                                    GraphDef* output_graph_def) {
+absl::Status RemoveRedundantQuantizations(const GraphDef& input_graph_def,
+                                          const TransformFuncContext& context,
+                                          GraphDef* output_graph_def) {
   std::set<string> graph_outputs;
   for (const string& output_name : context.output_names) {
     graph_outputs.insert(NodeNameFromInput(output_name));
@@ -297,7 +297,7 @@ Status RemoveRedundantQuantizations(const GraphDef& input_graph_def,
           CopyOriginalMatch(match, new_nodes);
         }
 
-        return OkStatus();
+        return absl::OkStatus();
       },
       {true}, &replaced_graph_def));
 
@@ -308,9 +308,9 @@ Status RemoveRedundantQuantizations(const GraphDef& input_graph_def,
 // If the user has passed in the input_min and input_max args, then we need to
 // convert any input placeholders from float to eight bit, so quantized inputs
 // can be fed directly into the graph.
-Status QuantizePlaceholders(const GraphDef& input_graph_def,
-                            const TransformFuncContext& context,
-                            GraphDef* output_graph_def) {
+absl::Status QuantizePlaceholders(const GraphDef& input_graph_def,
+                                  const TransformFuncContext& context,
+                                  GraphDef* output_graph_def) {
   float input_min;
   float input_max;
   bool has_input_range;
@@ -319,7 +319,7 @@ Status QuantizePlaceholders(const GraphDef& input_graph_def,
                                             &has_input_range));
   if (!has_input_range) {
     *output_graph_def = input_graph_def;
-    return OkStatus();
+    return absl::OkStatus();
   }
   std::map<string, string> inputs_to_rename_first_pass;
   std::map<string, string> inputs_to_rename_second_pass;
@@ -382,15 +382,15 @@ Status QuantizePlaceholders(const GraphDef& input_graph_def,
       RenameNodeInputs(first_pass_graph_def, inputs_to_rename_second_pass,
                        std::unordered_set<string>(), output_graph_def));
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // During training, FakeQuantWithMinMaxVars ops capture a good min/max range for
 // an activation layer. To use these during inference, this pass converts those
 // ops into Requantizes with the trained min/maxes as constant inputs.
-Status ConvertFakeQuantsToRequantize(const GraphDef& input_graph_def,
-                                     const TransformFuncContext& context,
-                                     GraphDef* output_graph_def) {
+absl::Status ConvertFakeQuantsToRequantize(const GraphDef& input_graph_def,
+                                           const TransformFuncContext& context,
+                                           GraphDef* output_graph_def) {
   TF_RETURN_IF_ERROR(ReplaceMatchingOpTypes(
       input_graph_def,  // clang-format off
       {"FakeQuantWithMinMaxVars",
@@ -447,11 +447,11 @@ Status ConvertFakeQuantsToRequantize(const GraphDef& input_graph_def,
         AddNodeInput(requantize_node.name() + ":2", &dequantize_node);
         new_nodes->push_back(dequantize_node);
 
-        return OkStatus();
+        return absl::OkStatus();
       },
       {}, output_graph_def));
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // We always generate Requantize ops driven by dynamic RequantizationRange
@@ -460,9 +460,9 @@ Status ConvertFakeQuantsToRequantize(const GraphDef& input_graph_def,
 // layers, then there will be a later Requantize op with constant min/max
 // inputs, which is preferable for fast inference. This pass looks for those
 // later Requantize ops, and replaces the dynamic version with them.
-Status MergeAdjacentRequantizes(const GraphDef& input_graph_def,
-                                const TransformFuncContext& context,
-                                GraphDef* output_graph_def) {
+absl::Status MergeAdjacentRequantizes(const GraphDef& input_graph_def,
+                                      const TransformFuncContext& context,
+                                      GraphDef* output_graph_def) {
   TF_RETURN_IF_ERROR(ReplaceMatchingOpTypes(
       input_graph_def,  // clang-format off
       {"Requantize",
@@ -517,11 +517,11 @@ Status MergeAdjacentRequantizes(const GraphDef& input_graph_def,
         AddNodeInput(fake_requantize_max_node.name(), &requantize_node);
         new_nodes->push_back(requantize_node);
 
-        return OkStatus();
+        return absl::OkStatus();
       },
       {}, output_graph_def));
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Sometimes FakeQuantWithMinMaxVars ops are added at the end of a chain of
@@ -530,9 +530,9 @@ Status MergeAdjacentRequantizes(const GraphDef& input_graph_def,
 // to move FakeQuant ops up the input chain, so they're as close as possible to
 // the 32-bit conversion, and so can be easily merged into the automatic dynamic
 // Requantizes.
-Status HoistFakeQuants(const GraphDef& input_graph_def,
-                       const TransformFuncContext& context,
-                       GraphDef* output_graph_def) {
+absl::Status HoistFakeQuants(const GraphDef& input_graph_def,
+                             const TransformFuncContext& context,
+                             GraphDef* output_graph_def) {
   GraphDef current_graph_def = input_graph_def;
   const int max_depth = 3;
   for (int depth = max_depth; depth > 0; --depth) {
@@ -573,22 +573,22 @@ Status HoistFakeQuants(const GraphDef& input_graph_def,
             new_nodes->push_back(linear_node);
           }
 
-          return OkStatus();
+          return absl::OkStatus();
         },
         {}, &hoisted_graph_def));
     current_graph_def = hoisted_graph_def;
   }
   *output_graph_def = current_graph_def;
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Converts any float ops that have eight-bit equivalents into their quantized
 // forms, so that as much calculation as possible is done in the lower-precision
 // format.
-Status QuantizeNodes(const GraphDef& input_graph_def,
-                     const TransformFuncContext& context,
-                     GraphDef* output_graph_def) {
+absl::Status QuantizeNodes(const GraphDef& input_graph_def,
+                           const TransformFuncContext& context,
+                           GraphDef* output_graph_def) {
   // Loop through all of the quantizable op types, and replace any occurrences
   // with equivalent sub-graphs with quantized ops at their core. For example
   // this one-input operation:
@@ -726,7 +726,7 @@ Status QuantizeNodes(const GraphDef& input_graph_def,
         // This isn't a float op, so don't quantize it.
         if (!are_all_float) {
           CopyOriginalMatch(match, new_nodes);
-          return OkStatus();
+          return absl::OkStatus();
         }
 
         string namespace_prefix = float_node.name() + "_eightbit";
@@ -918,7 +918,7 @@ Status QuantizeNodes(const GraphDef& input_graph_def,
         AddNodeInput(eight_bit_node_name + ":2", &dequantize_node);
         new_nodes->push_back(dequantize_node);
 
-        return OkStatus();
+        return absl::OkStatus();
       },
       {}, &quantized_graph_def));
   TF_RETURN_IF_ERROR(IsGraphValid(quantized_graph_def));
@@ -946,7 +946,7 @@ Status QuantizeNodes(const GraphDef& input_graph_def,
                                                   output_graph_def));
   TF_RETURN_IF_ERROR(IsGraphValid(*output_graph_def));
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 REGISTER_GRAPH_TRANSFORM("quantize_nodes", QuantizeNodes);

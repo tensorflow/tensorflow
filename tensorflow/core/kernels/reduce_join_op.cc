@@ -161,7 +161,7 @@ class ReduceJoinOp : public OpKernel {
 
     const int64_t reduction_iter_size =
         GetReductionIterSize(reduced_indices, input_shape);
-    absl::InlinedVector<StringPiece, 8> curr_strings(reduction_iter_size);
+    absl::InlinedVector<absl::string_view, 8> curr_strings(reduction_iter_size);
     for (int64_t output_index = 0; output_index < output_shape.num_elements();
          ++output_index) {
       int64_t output_full_index = LinearSubIndexToFullIndex(

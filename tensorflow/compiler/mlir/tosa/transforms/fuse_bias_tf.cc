@@ -15,12 +15,7 @@ limitations under the License.
 
 // Fuse tf.Op + tf.BiasAdd and legalized to TOSA
 
-#include <climits>
-#include <cstddef>
-#include <cstdint>
-#include <iterator>
 #include <memory>
-#include <numeric>
 #include <optional>
 #include <utility>
 
@@ -148,7 +143,7 @@ void FuseBiasTF::runOnOperation() {
 
   // Add the generated patterns to the list.
   patterns.add<ConvertTFBiasAddOp>(ctx);
-  (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
+  (void)applyPatternsGreedily(func, std::move(patterns));
 }
 
 }  // anonymous namespace

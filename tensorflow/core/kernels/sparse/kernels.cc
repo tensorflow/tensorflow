@@ -15,8 +15,10 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/sparse/kernels.h"
 
+#include <cstdint>
 #include <numeric>
 
+#include "absl/status/status.h"
 #include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor_types.h"
@@ -27,7 +29,7 @@ limitations under the License.
 namespace tensorflow {
 namespace functor {
 
-Status SparseTensorToCSRSparseMatrixCPUFunctor::operator()(
+absl::Status SparseTensorToCSRSparseMatrixCPUFunctor::operator()(
     int64_t batch_size, int num_rows, int num_cols,
     TTypes<int64_t>::ConstMatrix indices, TTypes<int32>::Vec batch_ptr,
     TTypes<int32>::Vec csr_row_ptr, TTypes<int32>::Vec csr_col_ind) {

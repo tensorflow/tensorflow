@@ -41,19 +41,20 @@ limitations under the License.
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Support/FileUtilities.h"  // from @llvm-project
 #include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo
-#include "tensorflow/cc/saved_model/loader.h"
 #include "tensorflow/compiler/mlir/init_mlir.h"
 #include "tensorflow/compiler/mlir/lite/common/tfl_pass_config.h"
+#include "tensorflow/compiler/mlir/lite/converter_flags.pb.h"
 #include "tensorflow/compiler/mlir/lite/flatbuffer_export_flags.h"
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/lite/tf_tfl_translate_cl.h"
 #include "tensorflow/compiler/mlir/lite/tf_to_tfl_flatbuffer.h"
+#include "tensorflow/compiler/mlir/lite/tools/tf_mlir_translate_cl.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
 #include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_config.h"
 #include "tensorflow/compiler/mlir/tensorflow/dialect_registration.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
-#include "tensorflow/compiler/mlir/tensorflow/translate/tf_mlir_translate_cl.h"
-#include "xla/translate/hlo_to_mhlo/translate.h"
+#include "xla/hlo/translate/hlo_to_mhlo/translate.h"
+#include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/platform/errors.h"
 
@@ -97,8 +98,9 @@ int main(int argc, char **argv) {
     // back to do it properly in the future
     mlir::DialectRegistry registry;
     RegisterAllTensorFlowDialects(registry);
-    registry.insert<mlir::func::FuncDialect, mlir::stablehlo::StablehloDialect,
-                    mlir::TFL::TensorFlowLiteDialect>();
+    registry
+        .insert<mlir::func::FuncDialect, mlir::stablehlo::StablehloDialect,
+                mlir::TFL::TensorFlowLiteDialect, mlir::mhlo::MhloDialect>();
     context->appendDialectRegistry(registry);
   }
 
@@ -114,8 +116,6 @@ int main(int argc, char **argv) {
                     "`select-user-tf-ops` flag.";
     return kTrFailure;
   }
-
-  std::unique_ptr<tensorflow::SavedModelBundle> bundle;
 
   // TODO(b/147435528): We need to test the e2e behavior once the graph freezing
   // inside mlir is done.
@@ -147,7 +147,7 @@ int main(int argc, char **argv) {
     module = tensorflow::ImportSavedModel(
         input_file_name, saved_model_version, tags, extra_opdefs,
         exported_names, specs, /*enable_variable_lifting=*/true, context.get(),
-        &bundle);
+        /*saved_model_bundle=*/nullptr);
   } else if (import_hlo) {
     // HLO import path.
     std::string error;
@@ -216,6 +216,10 @@ int main(int argc, char **argv) {
     quant_specs.serialized_quant_stats = file->getBuffer().str();
   }
 
+  tflite::ConverterFlags::ModelOriginFramework model_origin_framework_enum;
+  tflite::ConverterFlags::ModelOriginFramework_Parse(
+      model_origin_framework, &model_origin_framework_enum);
+
   mlir::TFL::PassConfig pass_config(quant_specs);
   pass_config.emit_builtin_tflite_ops = emit_builtin_tflite_ops;
   pass_config.lower_tensor_list_ops = lower_tensor_list_ops;
@@ -231,33 +235,39 @@ int main(int argc, char **argv) {
   pass_config.enable_hlo_to_tf_conversion = enable_hlo_to_tf_conversion;
   pass_config.disable_hlo_to_tfl_conversion = disable_hlo_to_tfl_conversion;
   pass_config.reduce_type_precision = reduce_type_precision;
+  pass_config.model_origin_framework = model_origin_framework_enum;
+  pass_config.enable_composite_direct_lowering =
+      enable_composite_direct_lowering;
 
-  toco::TocoFlags toco_flags;
-  toco_flags.set_force_select_tf_ops(!emit_builtin_tflite_ops);
-  toco_flags.set_enable_select_tf_ops(emit_select_tf_ops);
-  toco_flags.set_allow_custom_ops(emit_custom_ops);
-  toco_flags.set_allow_all_select_tf_ops(allow_all_select_tf_ops);
-  toco_flags.set_enable_dynamic_update_slice(enable_dynamic_update_slice);
-  toco_flags.set_post_training_quantize(post_training_quantization);
-  toco_flags.set_use_buffer_offset(use_buffer_offset);
-  toco_flags.set_legalize_custom_tensor_list_ops(
+  tflite::ConverterFlags converter_flags;
+  converter_flags.set_force_select_tf_ops(!emit_builtin_tflite_ops);
+  converter_flags.set_enable_select_tf_ops(emit_select_tf_ops);
+  converter_flags.set_allow_custom_ops(emit_custom_ops);
+  converter_flags.set_allow_all_select_tf_ops(allow_all_select_tf_ops);
+  converter_flags.set_enable_dynamic_update_slice(enable_dynamic_update_slice);
+  converter_flags.set_post_training_quantize(post_training_quantization);
+  converter_flags.set_use_buffer_offset(use_buffer_offset);
+  converter_flags.set_legalize_custom_tensor_list_ops(
       legalize_custom_tensor_list_ops);
-  toco_flags.set_reduce_type_precision(reduce_type_precision);
+  converter_flags.set_reduce_type_precision(reduce_type_precision);
+  converter_flags.set_enable_composite_direct_lowering(
+      enable_composite_direct_lowering);
+  converter_flags.set_model_origin_framework(model_origin_framework_enum);
+
   // Read list of user select ops.
   llvm::SmallVector<llvm::StringRef, 2> user_ops;
   (llvm::StringRef(select_user_tf_ops))
       .split(user_ops, ',', /*MaxSplit=*/-1,
              /*KeepEmpty=*/false);
-  llvm::for_each(user_ops, [&toco_flags](llvm::StringRef op_name) {
-    *(toco_flags.add_select_user_tf_ops()) = op_name.str();
+  llvm::for_each(user_ops, [&converter_flags](llvm::StringRef op_name) {
+    *(converter_flags.add_select_user_tf_ops()) = op_name.str();
   });
 
   std::string result;
   auto status = tensorflow::ConvertTFExecutorToTFLOrFlatbuffer(
-      std::move(context), std::move(module.value()), toco_flags, pass_config,
-      tags,
-      /*saved_model_dir=*/"", std::move(bundle), &result,
-      serialize_stablehlo_ops, /*output_mlir*/ output_mlir);
+      std::move(context), std::move(module.value()), converter_flags,
+      pass_config, tags, /*saved_model_dir=*/"", &result,
+      /*export_to_mlir=*/output_mlir);
   if (!status.ok()) {
     llvm::errs() << status.message() << '\n';
     return kTrFailure;

@@ -55,6 +55,10 @@ struct EdgeReshardingCost {
 
 using EdgeReshardingCostMatrix = Matrix<EdgeReshardingCost>;
 
+// Normalizes the edge cost matrix by a fixed constant to ensure there are no
+// negative communication costs.
+EdgeReshardingCostMatrix Normalize(const EdgeReshardingCostMatrix& edge_cost);
+
 // A graph data structure to simplify the edge cost graph. It merges nodes and
 // performs path compression.
 class CostGraph {
@@ -104,23 +108,22 @@ class CostGraph {
   // The number of strategies of each node.
   std::vector<int> node_lens_;
   // The adjacency list of each node.
-  std::vector<StableHashSet<int>> adjacency_;
+  std::vector<StableSet<int>> adjacency_;
   // The cost matrix between two nodes.
 
-  StableHashMap<std::pair<NodeIdx, NodeIdx>, EdgeReshardingCostMatrix>
-      edge_costs_;
+  StableMap<std::pair<NodeIdx, NodeIdx>, EdgeReshardingCostMatrix> edge_costs_;
   // The extra node costs introduced by merging nodes.
   std::vector<std::vector<double>> extra_node_costs_;
   // The reindexing vector of the node.
   // A reindexing vector maps a strategy index from the node being followed
   // to a strategy index of the current node.
-  StableHashMap<int, std::vector<NodeStrategyIdx>> reindexing_vector_;
+  StableMap<int, std::vector<NodeStrategyIdx>> reindexing_vector_;
   // Maps a node id to the node id that is being followed by this node.
   // The value is -1 if the current node does not follow any node.
   std::vector<NodeIdx> follow_idx_;
 
   // Save the destination of merged nodes.
-  StableHashMap<NodeIdx, NodeIdx> merged_to_;
+  StableMap<NodeIdx, NodeIdx> merged_to_;
   // Save pairs that need to be merged.
   std::vector<std::pair<NodeIdx, NodeIdx>> to_merge_pairs_;
 };
@@ -133,24 +136,52 @@ inline const ShardingStrategy& GetShardingStrategy(
   CHECK(!strategy_group->is_tuple);
   NodeIdx node_idx = strategy_group->node_idx;
   NodeStrategyIdx stra_idx = cost_graph.RemapIndex(node_idx, s_val[node_idx]);
-  return strategy_group->strategies[stra_idx];
+  return strategy_group->GetStrategies()[stra_idx];
+}
+
+// Get the input shardings according to the ILP solution.
+inline const InputShardings& GetInputShardings(
+    const HloInstruction* inst, const StrategyMap& strategy_map,
+    const CostGraph& cost_graph, absl::Span<const NodeStrategyIdx> s_val) {
+  const StrategyGroup* strategy_group = strategy_map.at(inst).get();
+  CHECK(!strategy_group->is_tuple);
+  NodeIdx node_idx = strategy_group->node_idx;
+  NodeStrategyIdx stra_idx = cost_graph.RemapIndex(node_idx, s_val[node_idx]);
+  return strategy_group->GetInputShardingsForStrategy(stra_idx);
 }
 
 // Get the final sharding strategy according to the ILP solution.
 inline const ShardingStrategy& GetShardingStrategyForTuple(
-    const HloInstruction* inst, ShapeIndex index,
+    const HloInstruction* inst, const ShapeIndex& index,
     const StrategyMap& strategy_map, const CostGraph& cost_graph,
     absl::Span<const NodeStrategyIdx> s_val) {
   const StrategyGroup* strategy_group = strategy_map.at(inst).get();
   CHECK(strategy_group->is_tuple);
   for (auto index_element : index) {
-    CHECK_LT(index_element, strategy_group->childs.size());
-    const auto& strategies = strategy_group->childs[index_element];
+    CHECK_LT(index_element, strategy_group->GetChildren().size());
+    const auto& strategies = strategy_group->GetChildren()[index_element];
     strategy_group = strategies.get();
   }
   NodeIdx node_idx = strategy_group->node_idx;
   NodeStrategyIdx stra_idx = cost_graph.RemapIndex(node_idx, s_val[node_idx]);
-  return strategy_group->strategies[stra_idx];
+  return strategy_group->GetStrategies()[stra_idx];
+}
+
+// Get the input shardings according to the ILP solution.
+inline const InputShardings& GetInputShardingsForTuple(
+    const HloInstruction* inst, const ShapeIndex& index,
+    const StrategyMap& strategy_map, const CostGraph& cost_graph,
+    absl::Span<const NodeStrategyIdx> s_val) {
+  const StrategyGroup* strategy_group = strategy_map.at(inst).get();
+  CHECK(strategy_group->is_tuple);
+  for (auto index_element : index) {
+    CHECK_LT(index_element, strategy_group->GetChildren().size());
+    const auto& strategies = strategy_group->GetChildren()[index_element];
+    strategy_group = strategies.get();
+  }
+  NodeIdx node_idx = strategy_group->node_idx;
+  NodeStrategyIdx stra_idx = cost_graph.RemapIndex(node_idx, s_val[node_idx]);
+  return strategy_group->GetInputShardingsForStrategy(stra_idx);
 }
 
 }  // namespace spmd

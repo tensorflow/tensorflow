@@ -19,6 +19,7 @@ limitations under the License.
 #include <cstdint>
 #include <cstring>
 #include <initializer_list>
+#include <type_traits>
 
 #ifndef EIGEN_TFLITE
 #include "Eigen/Core"

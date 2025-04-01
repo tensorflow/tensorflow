@@ -24,11 +24,16 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/escaping.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "xla/service/computation_layout.h"
+#include "xla/service/computation_placer.h"
 #include "xla/service/hlo.pb.h"
+#include "xla/service/sharding_config.h"
+#include "xla/shape.h"
 #include "xla/shape_layout.h"
 #include "xla/xla.pb.h"
 #include "tsl/platform/statusor.h"
@@ -69,10 +74,14 @@ std::string HloModuleConfig::compilation_cache_key() const {
               entry_computation_layout_->result_shape().SerializeAsString());
   }
   if (seed() != 0) {
-    // TODO(b/32083678): force recompilation to reset global state.
     static std::atomic<int> counter{0};
     StrAppend(&key, "forcing recompile ", counter++);
   }
+  StrAppend(&key, "::exec_time_optimization_effort=",
+            exec_time_optimization_effort());
+  StrAppend(&key, "::memory_fitting_effort=", memory_fitting_effort());
+  StrAppend(&key, "::optimization_level=", optimization_level());
+  StrAppend(&key, "::memory_fitting_level=", memory_fitting_level());
   if (replica_count() != 1) {
     StrAppend(&key, "::replica_count=", replica_count());
   }
@@ -97,6 +106,7 @@ std::string HloModuleConfig::compilation_cache_key() const {
   if (device_memory_size() != 0) {
     StrAppend(&key, "::device_memory_size=", device_memory_size());
   }
+  StrAppend(&key, "::use_shardy_partitioner=", use_shardy_partitioner());
   return key;
 }
 
@@ -213,7 +223,7 @@ static void AssignStructFusionConfig(HloModuleConfig& config,
     }
     module_config.push_back(std::move(temp));
   }
-  *config.mutable_fusion_config() = std::move(module_config);
+  config.set_fusion_config(std::move(module_config));
 }
 
 static void AssignStructDotConfig(HloModuleConfig& config,
@@ -255,7 +265,7 @@ static void AssignStructPhaseOrderingConfig(HloModuleConfig& config,
     }
     module_config.push_back(std::move(temp));
   }
-  *config.mutable_phase_ordering_config() = std::move(module_config);
+  config.set_phase_ordering_config(std::move(module_config));
 }
 
 HloModuleConfigProto HloModuleConfig::ToProto() const {
@@ -279,6 +289,10 @@ HloModuleConfigProto HloModuleConfig::ToProto() const {
   for (int64_t partitioning_id : auto_spmd_partitioning_mesh_ids_) {
     proto.add_auto_spmd_partitioning_mesh_ids(partitioning_id);
   }
+  proto.set_exec_time_optimization_effort(exec_time_optimization_effort_);
+  proto.set_memory_fitting_effort(memory_fitting_effort_);
+  proto.set_optimization_level(optimization_level_);
+  proto.set_memory_fitting_level(memory_fitting_level_);
   proto.set_deduplicate_hlo(deduplicate_hlo_);
   proto.set_intra_op_parallelism_threads(intra_op_parallelism_threads_);
   proto.set_device_type(device_type_);
@@ -321,6 +335,8 @@ HloModuleConfigProto HloModuleConfig::ToProto() const {
   proto.set_allow_separate_sharding_programs(allow_separate_sharding_programs_);
   proto.set_fdo_profile(fdo_profile_);
   proto.set_device_memory_size(device_memory_size_);
+  proto.set_use_shardy_partitioner(use_shardy_partitioner_);
+  *proto.mutable_sharding_config() = ShardingConfig::ToProto(sharding_config_);
   return proto;
 }
 
@@ -349,6 +365,11 @@ HloModuleConfig::CreateFromProto(const HloModuleConfigProto& proto) {
   config->auto_spmd_partitioning_mesh_ids_.assign(
       proto.auto_spmd_partitioning_mesh_ids().begin(),
       proto.auto_spmd_partitioning_mesh_ids().end());
+  config->exec_time_optimization_effort_ =
+      proto.exec_time_optimization_effort();
+  config->memory_fitting_effort_ = proto.memory_fitting_effort();
+  config->optimization_level_ = proto.optimization_level();
+  config->memory_fitting_level_ = proto.memory_fitting_level();
   config->deduplicate_hlo_ = proto.deduplicate_hlo();
   config->intra_op_parallelism_threads_ = proto.intra_op_parallelism_threads();
   config->device_type_ = proto.device_type();
@@ -390,6 +411,8 @@ HloModuleConfig::CreateFromProto(const HloModuleConfigProto& proto) {
       proto.allow_separate_sharding_programs();
   config->fdo_profile_ = proto.fdo_profile();
   config->device_memory_size_ = proto.device_memory_size();
+  config->use_shardy_partitioner_ = proto.use_shardy_partitioner();
+  config->sharding_config_ = ShardingConfig::FromProto(proto.sharding_config());
   return std::move(config);
 }
 

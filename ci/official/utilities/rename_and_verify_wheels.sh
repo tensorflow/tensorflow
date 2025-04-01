@@ -19,7 +19,7 @@
 # This script is aware of TFCI_ variables, so it doesn't need any arguments.
 # Puts new wheel through auditwheel to rename and verify it, deletes the old
 # one, checks the filesize, and then ensures the new wheel is installable.
-set -euxo pipefail
+set -exo pipefail
 
 cd "$TFCI_OUTPUT_DIR"
 
@@ -46,7 +46,7 @@ fi
 # Check if size is too big. TFCI_WHL_SIZE_LIMIT is in find's format, which can be
 # 'k' for kilobytes, 'M' for megabytes, or 'G' for gigabytes, and the + to indicate
 # "anything greater than" is added by the script.
-if [[ "$TFCI_WHL_SIZE_LIMIT_ENABLE" == "1" ]] && [[ -n "$(find . -iname "*.whl" -size "+$TFCI_WHL_SIZE_LIMIT")" ]]; then
+if [[ "$TFCI_WHL_SIZE_LIMIT_ENABLE" == "1" ]] && [[ -n "$("$TFCI_FIND_BIN" . -iname "*.whl" -size "+$TFCI_WHL_SIZE_LIMIT")" ]]; then
   echo "Error: Generated wheel is too big! Limit is $TFCI_WHL_SIZE_LIMIT"
   echo '(search for TFCI_WHL_SIZE_LIMIT to change it)'
   ls -sh *.whl
@@ -54,13 +54,39 @@ if [[ "$TFCI_WHL_SIZE_LIMIT_ENABLE" == "1" ]] && [[ -n "$(find . -iname "*.whl" 
 fi
 
 # Quick install checks
-venv=$(mktemp -d)
-"python${TFCI_PYTHON_VERSION}" -m venv "$venv"
-python="$venv/bin/python3"
+venv_dir=$(mktemp -d)
+if [[ $(uname -s) != MSYS_NT* ]]; then
+  "python${TFCI_PYTHON_VERSION}" -m venv "$venv_dir"
+  python="$venv_dir/bin/python3"
+else
+  # When using the Linux-like path, venv creation quietly fails, which is
+  # why it's converted here.
+  venv_dir=$(cygpath -m $venv_dir)
+  "/c/python${TFCI_PYTHON_VERSION}/python.exe" -m venv "$venv_dir"
+  python="$venv_dir/Scripts/python.exe"
+fi
+
+# TODO(b/366266944) Remove the check after tf docker image upgrade for NumPy 2
+# and numpy 1 support is dropped b/361369076.
+if [[ "$TFCI_WHL_NUMPY_VERSION" == 1 ]]; then
+  "$python" -m pip install numpy==1.26.0
+fi
 "$python" -m pip install *.whl $TFCI_PYTHON_VERIFY_PIP_INSTALL_ARGS
 if [[ "$TFCI_WHL_IMPORT_TEST_ENABLE" == "1" ]]; then
   "$python" -c 'import tensorflow as tf; t1=tf.constant([1,2,3,4]); t2=tf.constant([5,6,7,8]); print(tf.add(t1,t2).shape)'
   "$python" -c 'import sys; import tensorflow as tf; sys.exit(0 if "keras" in tf.keras.__name__ else 1)'
+fi
+# Import tf nightly wheel built with numpy2 from PyPI in numpy1 env for testing.
+# This aims to maintain TF compatibility with NumPy 1.x until 2025 b/361369076.
+if [[ "$TFCI_WHL_NUMPY_VERSION" == 1 ]]; then
+  # Uninstall tf nightly wheel built with numpy1.
+  "$python" -m pip uninstall -y tf_nightly_numpy1
+  # Install tf nightly cpu wheel built with numpy2.x from PyPI in numpy1.x env.
+  "$python" -m pip install tf-nightly-cpu
+  if [[ "$TFCI_WHL_IMPORT_TEST_ENABLE" == "1" ]]; then
+    "$python" -c 'import tensorflow as tf; t1=tf.constant([1,2,3,4]); t2=tf.constant([5,6,7,8]); print(tf.add(t1,t2).shape)'
+    "$python" -c 'import sys; import tensorflow as tf; sys.exit(0 if "keras" in tf.keras.__name__ else 1)'
+  fi
 fi
 # VERY basic check to ensure the [and-cuda] package variant is installable.
 # Checks TFCI_BAZEL_COMMON_ARGS for "gpu" or "cuda", implying that the test is

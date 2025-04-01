@@ -50,8 +50,8 @@ struct FunctionalToRegionPass
     // cause the verifiers, which are implemented recursively, to stack
     // overflow. Set a relatively low iteration limit.
     config.maxIterations = 16;
-    if (failed(applyPatternsAndFoldGreedily(getOperation(), std::move(patterns),
-                                            config)))
+    if (failed(
+            applyPatternsGreedily(getOperation(), std::move(patterns), config)))
       signalPassFailure();
   }
 };

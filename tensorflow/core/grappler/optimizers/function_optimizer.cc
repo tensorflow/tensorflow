@@ -116,7 +116,7 @@ class FakeDevice : public Device {
  public:
   FakeDevice(Env* env, const string& device) : Device(env, attr(device)) {}
   explicit FakeDevice(const string& device) : FakeDevice(nullptr, device) {}
-  Status Sync() override { return absl::OkStatus(); }
+  absl::Status Sync() override { return absl::OkStatus(); }
 
  private:
   static DeviceAttributes attr(const string& device) {
@@ -465,11 +465,11 @@ FunctionDefLibrary PruneFunctionLibrary(const FunctionLibraryDefinition& flib,
 }
 
 // Push all constant inputs of an instantiating node into the function body.
-Status PushDownConstInputs(const NodeDef& func_node,
-                           const FunctionOptimizerContext& ctx,
-                           GrapplerFunctionItem* item,
-                           absl::flat_hash_set<string>* const_inputs,
-                           absl::flat_hash_set<string>* control_deps) {
+absl::Status PushDownConstInputs(const NodeDef& func_node,
+                                 const FunctionOptimizerContext& ctx,
+                                 GrapplerFunctionItem* item,
+                                 absl::flat_hash_set<string>* const_inputs,
+                                 absl::flat_hash_set<string>* control_deps) {
   // Record node control dependencies in the control_deps set.
   const auto record_control_deps = [&](const NodeDef* const_input) {
     for (int i = const_input->input_size() - 1; i >= 0; --i) {
@@ -585,10 +585,9 @@ void RemoveUnusedOutputsTypes(const FunctionSpecialization& specialization,
   }
 }
 
-Status UpdateSpecializedFunctionCallSite(const FunctionDef& func,
-                                         const NodeDef& func_node,
-                                         const string& specialized_func_name,
-                                         NodeDef* specialized_func_node) {
+absl::Status UpdateSpecializedFunctionCallSite(
+    const FunctionDef& func, const NodeDef& func_node,
+    const string& specialized_func_name, NodeDef* specialized_func_node) {
   if (IsDirectFunctionCall(func, func_node)) {
     specialized_func_node->set_op(specialized_func_name);
 
@@ -607,7 +606,7 @@ Status UpdateSpecializedFunctionCallSite(const FunctionDef& func,
 // function specialization. Function specialization might change the number of
 // inputs and outputs, so we have to make sure that graph node is updated
 // accordingly.
-Status UpdateSpecializedFunctionNode(
+absl::Status UpdateSpecializedFunctionNode(
     const FunctionDef& func, const NodeDef& func_node,
     const FunctionSpecialization& specialization,
     NodeDef* specialized_func_node) {
@@ -643,7 +642,7 @@ Status UpdateSpecializedFunctionNode(
   return absl::OkStatus();
 }
 
-Status InitializeFunctionSpecializationSignature(
+absl::Status InitializeFunctionSpecializationSignature(
     const NodeDef& func_node, const FunctionDef& func,
     const AttrSlice& func_instantiation_attr,
     const FunctionOptimizerContext& ctx, FunctionSpecializationSignature* sig) {
@@ -683,9 +682,10 @@ string SpecializedFunctionName(const FunctionOptimizerContext& ctx,
       absl::StrReplaceAll(func_node.name(), {{"/", "_"}}), ctx.item().id);
 }
 
-Status SpecializeFunction(const NodeDef& func_node, const FunctionDef& func,
-                          FunctionOptimizerContext* ctx,
-                          GraphDef* optimized_graph) {
+absl::Status SpecializeFunction(const NodeDef& func_node,
+                                const FunctionDef& func,
+                                FunctionOptimizerContext* ctx,
+                                GraphDef* optimized_graph) {
   VLOG(2) << "Specialize function call: " << SummarizeNodeDef(func_node);
 
   const AttrSlice func_instantiation_attr =
@@ -880,7 +880,7 @@ const bool IsExemptFromSideEffectsExecutionValidation(const string& op) {
 //
 // When function executed via FunctionLibraryRuntime we do not have to check
 // this, because `PruneFunctionBody` has special pruning rules for stateful ops.
-Status ValidateSideEffectsExecution(
+absl::Status ValidateSideEffectsExecution(
     const FunctionBody& fbody, OutputControlSource output_control_source,
     bool has_outgoing_control_edges,
     bool validate_outgoing_control_edge = true) {
@@ -947,8 +947,8 @@ Status ValidateSideEffectsExecution(
 }
 
 // Validates that no dead tensor can reach function output.
-Status ValidateNoDeadOutputs(const FunctionLibraryDefinition& flib_def,
-                             const FunctionBody& fbody) {
+absl::Status ValidateNoDeadOutputs(const FunctionLibraryDefinition& flib_def,
+                                   const FunctionBody& fbody) {
   absl::flat_hash_set<const Node*> output_nodes = {fbody.ret_nodes.begin(),
                                                    fbody.ret_nodes.end()};
 
@@ -1012,15 +1012,15 @@ Status ValidateNoDeadOutputs(const FunctionLibraryDefinition& flib_def,
 }
 
 // Makes an instance of FunctionBody for inlining from a Node.
-Status MakeFunctionBodyForInlining(const Node& node,
-                                   const FunctionLibraryDefinition& flib_def,
-                                   std::unique_ptr<FunctionBody>* fbody) {
+absl::Status MakeFunctionBodyForInlining(
+    const Node& node, const FunctionLibraryDefinition& flib_def,
+    std::unique_ptr<FunctionBody>* fbody) {
   VLOG(3) << "Make function body for inlining: " << SummarizeNode(node);
 
   // Finds a FunctionDef in a library and verifies that it exists.
   const auto find_fdef = [&flib_def, &node](
                              const string& name,
-                             const FunctionDef** fdef) -> Status {
+                             const FunctionDef** fdef) -> absl::Status {
     if ((*fdef = flib_def.Find(name)) == nullptr) {
       return absl::InternalError(absl::StrCat(
           "Was not able to find a function definition (name=", name,
@@ -1208,10 +1208,10 @@ void AddFrameForwardingControlEdge(const std::vector<ControlFlowInfo>& info,
 // ops (Switch/Merge/...).
 //
 // Runs a placer after inlining, to keep all nodes in a graph placed.
-Status InlineFunctionCalls(const GrapplerItem& item,
-                           const RewriterConfig::Toggle opt_level,
-                           const bool lower_control_flow,
-                           GraphDef* output_graph) {
+absl::Status InlineFunctionCalls(const GrapplerItem& item,
+                                 const RewriterConfig::Toggle opt_level,
+                                 const bool lower_control_flow,
+                                 GraphDef* output_graph) {
   bool is_aggressive = opt_level == RewriterConfig::AGGRESSIVE;
   VLOG(2) << "Inline function calls: grappler_item_id=" << item.id
           << " (aggressive_mode=" << is_aggressive << ")";
@@ -1330,7 +1330,7 @@ Status InlineFunctionCalls(const GrapplerItem& item,
     }
 
     // Basic validation rules defined in common_runtime shared by all functions.
-    Status can_inline_function_call =
+    absl::Status can_inline_function_call =
         ValidateInlining(n, fbody.get(), inline_options);
 
     // Additional validation rules defined only in Grappler.
@@ -1448,7 +1448,7 @@ void RestoreTensorMapping(const FunctionOptimizerContext& ctx,
 
 }  // namespace
 
-Status FunctionOptimizer::RunFunctionOptimizerPass(
+absl::Status FunctionOptimizer::RunFunctionOptimizerPass(
     const GrapplerItem& item, GraphDef* optimized_graph) const {
   VLOG(3) << "Run function optimizer pass: grappler_item_id=" << item.id;
 
@@ -1498,7 +1498,8 @@ Status FunctionOptimizer::RunFunctionOptimizerPass(
     if (specialization_worthy && !no_specialize) {
       // TODO(ezhulenev): Specialize function call if input has a known shape.
       // Specialize function body for its instantiation attributes and inputs.
-      Status status = SpecializeFunction(node, *func, &ctx, optimized_graph);
+      absl::Status status =
+          SpecializeFunction(node, *func, &ctx, optimized_graph);
       if (!status.ok() && is_graph_modified()) {
         return status;
       } else if (!status.ok() && !is_graph_modified()) {
@@ -1523,8 +1524,8 @@ Status FunctionOptimizer::RunFunctionOptimizerPass(
   return absl::OkStatus();
 }
 
-Status FunctionOptimizer::Optimize(Cluster*, const GrapplerItem& item,
-                                   GraphDef* optimized_graph) {
+absl::Status FunctionOptimizer::Optimize(Cluster*, const GrapplerItem& item,
+                                         GraphDef* optimized_graph) {
   // Nothing to do here.
   if (item.graph.library().function_size() == 0) {
     return absl::AbortedError("Nothing to do.");

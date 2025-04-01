@@ -60,7 +60,6 @@ tf_cuda_library(
         "device_id.h",
     ],
     hdrs = [
-        "device_host_allocator.h",
         "device_mem_allocator.h",
     ],
     visibility = ["//visibility:public"],
@@ -79,7 +78,6 @@ filegroup(
     name = "device_runtime_headers",
     srcs = [
         "device_event_mgr.h",
-        "device_host_allocator.h",
         "device_id.h",
         "device_id_manager.h",
         "device_mem_allocator.h",

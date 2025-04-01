@@ -82,8 +82,8 @@ class DirectedInterleaveDatasetOp::Dataset : public DatasetBase {
         this, name_utils::IteratorPrefix(kDatasetType, prefix)});
   }
 
-  Status MakeSplitProviders(std::vector<std::unique_ptr<SplitProvider>>*
-                                split_providers) const override {
+  absl::Status MakeSplitProviders(std::vector<std::unique_ptr<SplitProvider>>*
+                                      split_providers) const override {
     TF_ASSIGN_OR_RETURN(*split_providers, GetSplitProviders(this));
     return absl::OkStatus();
   }
@@ -112,7 +112,8 @@ class DirectedInterleaveDatasetOp::Dataset : public DatasetBase {
     return kUnknownCardinality;
   }
 
-  Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override {
+  absl::Status InputDatasets(
+      std::vector<const DatasetBase*>* inputs) const override {
     inputs->push_back(selector_input_);
     for (const auto& data_input : data_inputs_) {
       inputs->push_back(data_input);
@@ -120,7 +121,7 @@ class DirectedInterleaveDatasetOp::Dataset : public DatasetBase {
     return absl::OkStatus();
   }
 
-  Status CheckExternalState() const override {
+  absl::Status CheckExternalState() const override {
     for (const auto& input : data_inputs_) {
       TF_RETURN_IF_ERROR(input->CheckExternalState());
     }
@@ -128,9 +129,9 @@ class DirectedInterleaveDatasetOp::Dataset : public DatasetBase {
   }
 
  protected:
-  Status AsGraphDefInternal(SerializationContext* ctx,
-                            DatasetGraphDefBuilder* b,
-                            Node** output) const override {
+  absl::Status AsGraphDefInternal(SerializationContext* ctx,
+                                  DatasetGraphDefBuilder* b,
+                                  Node** output) const override {
     Node* selector_input_node;
     TF_RETURN_IF_ERROR(
         b->AddInputDataset(ctx, selector_input_, &selector_input_node));
@@ -163,7 +164,7 @@ class DirectedInterleaveDatasetOp::Dataset : public DatasetBase {
 
     bool SymbolicCheckpointCompatible() const override { return true; }
 
-    Status Initialize(IteratorContext* ctx) override {
+    absl::Status Initialize(IteratorContext* ctx) override {
       mutex_lock l(mu_);
       TF_ASSIGN_OR_RETURN(input_contexts_,
                           CreateInputIteratorContexts(ctx, dataset()));
@@ -181,9 +182,9 @@ class DirectedInterleaveDatasetOp::Dataset : public DatasetBase {
       return absl::OkStatus();
     }
 
-    Status GetNextInternal(IteratorContext* ctx,
-                           std::vector<Tensor>* out_tensors,
-                           bool* end_of_sequence) override {
+    absl::Status GetNextInternal(IteratorContext* ctx,
+                                 std::vector<Tensor>* out_tensors,
+                                 bool* end_of_sequence) override {
       mutex_lock l(mu_);
       if (!selector_input_impl_) {
         *end_of_sequence = true;
@@ -251,8 +252,8 @@ class DirectedInterleaveDatasetOp::Dataset : public DatasetBase {
           {model::MakeNonTunableParameter(kCycleLength, /*value=*/1)});
     }
 
-    Status SaveInternal(SerializationContext* ctx,
-                        IteratorStateWriter* writer) override {
+    absl::Status SaveInternal(SerializationContext* ctx,
+                              IteratorStateWriter* writer) override {
       mutex_lock l(mu_);
       TF_RETURN_IF_ERROR(
           writer->WriteScalar(full_name(kSelectorInputImplEmpty),
@@ -272,8 +273,8 @@ class DirectedInterleaveDatasetOp::Dataset : public DatasetBase {
       return absl::OkStatus();
     }
 
-    Status RestoreInternal(IteratorContext* ctx,
-                           IteratorStateReader* reader) override {
+    absl::Status RestoreInternal(IteratorContext* ctx,
+                                 IteratorStateReader* reader) override {
       mutex_lock l(mu_);
       int64_t input_empty;
       TF_RETURN_IF_ERROR(

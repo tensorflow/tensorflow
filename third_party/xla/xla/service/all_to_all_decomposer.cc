@@ -18,11 +18,13 @@ limitations under the License.
 #include <optional>
 #include <vector>
 
+#include "absl/status/statusor.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/layout_util.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/util.h"
 
@@ -43,8 +45,9 @@ bool AllToAllDecomposer::InstructionMatchesPattern(
   if (decompose_to_tuple_) {
     return true;
   }
-  return all_to_all->shape().rank() < min_array_rank_;
+  return all_to_all->shape().dimensions_size() < min_array_rank_;
 }
+
 absl::StatusOr<HloInstruction*> AllToAllDecomposer::ExpandInstruction(
     HloInstruction* instruction) {
   auto* all_to_all = Cast<HloAllToAllInstruction>(instruction);
@@ -59,15 +62,15 @@ absl::StatusOr<HloInstruction*> AllToAllDecomposer::ExpandInstruction(
     Shape new_all_to_all_shape;
     new_all_to_all_shape.set_element_type(
         instruction->operand(0)->shape().element_type());
-    for (int64_t i = 0; i < instruction->shape().rank(); ++i) {
+    for (int64_t i = 0; i < instruction->shape().dimensions_size(); ++i) {
       if (i != split_dim) {
         new_all_to_all_shape.add_dimensions(all_to_all->shape().dimensions(i));
         continue;
       }
       new_all_to_all_shape.add_dimensions(all_to_all_group_size);
       new_all_to_all_shape.add_dimensions(split_size);
-      for (int64_t j = all_to_all->shape().rank() + 1; j < min_array_rank_;
-           ++j) {
+      for (int64_t j = all_to_all->shape().dimensions_size() + 1;
+           j < min_array_rank_; ++j) {
         new_all_to_all_shape.add_dimensions(1);
       }
     }
@@ -85,8 +88,8 @@ absl::StatusOr<HloInstruction*> AllToAllDecomposer::ExpandInstruction(
     instruction->SetupDerivedInstruction(output_reshape);
     return output_reshape;
   }
-  DimensionVector slice_starts(all_to_all->shape().rank(), 0);
-  DimensionVector slice_strides(all_to_all->shape().rank(), 1);
+  DimensionVector slice_starts(all_to_all->shape().dimensions_size(), 0);
+  DimensionVector slice_strides(all_to_all->shape().dimensions_size(), 1);
   DimensionVector slice_limits(all_to_all->shape().dimensions().begin(),
                                all_to_all->shape().dimensions().end());
   slice_limits[split_dim] = split_size;

@@ -15,23 +15,24 @@ limitations under the License.
 #ifndef XLA_STREAM_EXECUTOR_CUDA_PTX_COMPILER_H_
 #define XLA_STREAM_EXECUTOR_CUDA_PTX_COMPILER_H_
 
-#include <array>
 #include <cstdint>
+#include <string>
 #include <vector>
 
 #include "absl/status/statusor.h"
+#include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/gpu/gpu_asm_opts.h"
+#include "xla/stream_executor/semantic_version.h"
 
 namespace stream_executor {
 
 // Takes PTX as a null-terminated string and compiles it to SASS (CUBIN)
 // targeting the sm_<cc_major>.<cc_minor> NVIDIA GPU architecture.
 absl::StatusOr<std::vector<uint8_t>> CompileGpuAsmUsingLibNvPtxCompiler(
-    int cc_major, int cc_minor, const char* ptx_contents, GpuAsmOpts options,
+    const CudaComputeCapability& cc, const std::string& ptx, GpuAsmOpts options,
     bool cancel_if_reg_spill);
 
-using LibNvPtxCompilerVersion = std::array<int64_t, 3>;
-absl::StatusOr<LibNvPtxCompilerVersion> GetLibNvPtxCompilerVersion();
+absl::StatusOr<SemanticVersion> GetLibNvPtxCompilerVersion();
 
 }  // namespace stream_executor
 

@@ -22,9 +22,10 @@ limitations under the License.
 #include <string>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/status/status.h"
 #include "absl/time/time.h"
+#include "xla/tsl/platform/status.h"
 #include "tsl/platform/mutex.h"
-#include "tsl/platform/status.h"
 #include "tsl/platform/thread_annotations.h"
 
 namespace tensorflow {

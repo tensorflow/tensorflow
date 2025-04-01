@@ -507,8 +507,10 @@ class MklPoolingOpBase : public OpKernel {
                                            "specify 4 or 5 dimensions"));
     for (int i = 0; i < this->ksize_.size(); ++i) {
       OP_REQUIRES(context, this->ksize_[i] > 0,
-                  absl::InvalidArgumentError(absl::StrCat(
-                      "Sliding window ksize for dimension ", i, " was zero.")));
+                  errors::InvalidArgument(
+                      absl::StrCat("Sliding window ksize must be positive. The "
+                                   "specified or inferred ksize is: ",
+                                   absl::StrJoin(ksize_, ","))));
     }
 
     OP_REQUIRES_OK(context, context->GetAttr("strides", &this->stride_));

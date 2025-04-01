@@ -322,7 +322,7 @@ void ConvertTfXlaOpToTfOpPass::runOnOperation() {
   RewritePatternSet patterns(ctx);
   populateWithGenerated(patterns);
 
-  if (failed(applyPatternsAndFoldGreedily(func, std::move(patterns)))) {
+  if (failed(applyPatternsGreedily(func, std::move(patterns)))) {
     func.emitError() << "quant-converting-tf-xla-op-to-tf-op failed.";
     signalPassFailure();
   }

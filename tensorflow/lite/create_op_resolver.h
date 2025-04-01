@@ -17,8 +17,6 @@ limitations under the License.
 
 /// For documentation, see third_party/tensorflow/lite/core/create_op_resolver.h
 
-#include <memory>
-
 #include "tensorflow/lite/core/create_op_resolver.h"  // IWYU pragma: export
 
 namespace tflite {

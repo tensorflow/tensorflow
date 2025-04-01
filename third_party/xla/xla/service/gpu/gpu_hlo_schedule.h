@@ -23,28 +23,31 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_schedule.h"
-#include "xla/shape.h"
 #include "xla/stream_executor/device_description.h"
 #include "tsl/profiler/protobuf/profiled_instructions.pb.h"
 
 namespace xla {
 namespace gpu {
 
-// Returns `absl::OkStatus` if every instruction in the profile is present in
-// the module. `absl::InvalidArgumentError` with missing culprit costs/latencies
-// otherwise.
-absl::Status IsProfileApplicable(
-    const HloModule* module,
-    const tensorflow::profiler::ProfiledInstructionsProto& profile);
+// Converts sync collective instructions to a pair of async start and done
+// instructions.
+absl::Status RunAsyncCollectivesConversionPasses(HloModule* module);
 
 struct ScheduleMetadata {
-  int64_t scheduler_mem_limit;
+  uint64_t scheduler_mem_limit;
 };
 
 // Determines the schedule of HLO instructions for a module run on the GPU.
 absl::StatusOr<ScheduleMetadata> ScheduleGpuModule(
     HloModule* module, int64_t pointer_size,
     const se::DeviceDescription& gpu_device_info);
+
+// Schedules a GPU module with `DefaultMemoryScheduler` and
+// `PostProcessSchedule` postprocessing. If `peak_memory_bytes` is not nullptr,
+// then the it will be set to peak memory usage in bytes.
+absl::StatusOr<HloSchedule> ScheduleGpuModuleWithMemoryScheduler(
+    const HloModule* module, int64_t pointer_size,
+    int64_t* peak_memory_bytes = nullptr);
 
 HloInstructionSequence PostProcessSchedule(const HloInstructionSequence& input);
 

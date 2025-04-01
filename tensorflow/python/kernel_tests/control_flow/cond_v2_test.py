@@ -290,7 +290,7 @@ class CondV2Test(test.TestCase):
       self.assertEqual(sess.run(out, {pred: True}), (1.0,))
       self.assertEqual(sess.run(out, {pred: False}), (2.0,))
 
-  def _createCond(self, name):
+  def _createCond(self, name, use_fast_cond=False):
     """Creates a cond_v2 call and returns the output tensor and the cond op."""
     pred = constant_op.constant(True, name="pred")
     x = constant_op.constant(1.0, name="x")
@@ -301,8 +301,12 @@ class CondV2Test(test.TestCase):
     def false_fn():
       return x + 1
 
-    output = cond_v2.cond_v2(pred, true_fn, false_fn, name=name)
-    cond_op = output.op.inputs[0].op
+    if use_fast_cond:
+      output = cond_v2.fast_cond_v2(pred, true_fn, false_fn, name=name)
+      cond_op = output.op
+    else:
+      output = cond_v2.cond_v2(pred, true_fn, false_fn, name=name)
+      cond_op = output.op.inputs[0].op
     self.assertEqual(cond_op.type, "StatelessIf")
     return output, cond_op
 
@@ -1173,6 +1177,65 @@ class CondV2Test(test.TestCase):
 
     # TODO(skyewm): check the actual graphs that are run once we have a way to
     # programmatically access those graphs.
+
+  @test_util.run_deprecated_v1
+  def testLoweringDisabledWithFastCond(self):
+    with self.session(graph=ops.Graph()) as sess:
+      # Build the cond_v2 in an XLA context
+      cond_output, cond_op = self._createCond("cond", use_fast_cond=True)
+
+      # Check lowering attr is not set.
+      lowering_attr = cond_op.get_attr("_lower_using_switch_merge")
+      self.assertFalse(
+          lowering_attr, f"Lowering attr is not set as expected. {cond_op}"
+      )
+
+      # Check the actual graph that is run.
+      run_options = config_pb2.RunOptions(output_partition_graphs=True)
+      run_metadata = config_pb2.RunMetadata()
+      sess.run(cond_output, options=run_options, run_metadata=run_metadata)
+
+      # Lowering disabled for `fast_cond_v2`, there should be no `Switch` node
+      self.assertFalse(
+          _has_node_with_op(run_metadata, "Switch"),
+          "A `Switch` op exists, but the graph should not be lowered.",
+      )
+
+      if test_util.is_xla_enabled():
+        # If XLA is actually enabled then we expect the StatelessIf to have been
+        # put inside an XLA cluster.
+        self.assertFalse(
+            _has_node_with_op(run_metadata, "StatelessIf"),
+            (
+                "A `StatelessIf` op was found, but the node should have been "
+                + "clustered."
+            ),
+        )
+        self.assertTrue(
+            _has_node_with_op(run_metadata, "_XlaCompile"),
+            (
+                "An `_XlaCompile` op was not found, but the `StatelessIf` (at "
+                + "least) op should have been clustered."
+            ),
+        )
+        self.assertTrue(
+            _has_node_with_op(run_metadata, "_XlaRun"),
+            (
+                "An `_XlaRun` op was not found, but the `StatelessIf` (at "
+                + "least) op should have been clustered."
+            ),
+        )
+      else:
+        # Lowering disabled for `fast_cond_v2`, there should still be a
+        # `StatelessIf` node.
+        self.assertTrue(
+            _has_node_with_op(run_metadata, "StatelessIf"),
+            (
+                "A `StatelessIf` op was not found, but the graph should not be "
+                + "lowered."
+                + str(run_metadata)
+            ),
+        )
 
   # b/131355614
   @test_util.run_deprecated_v1

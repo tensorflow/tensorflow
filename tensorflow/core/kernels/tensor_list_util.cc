@@ -25,11 +25,11 @@ limitations under the License.
 
 namespace tensorflow {
 
-Status TensorListBinaryAdd(
+absl::Status TensorListBinaryAdd(
     OpKernelContext* c, const TensorList& a, const TensorList& b,
     TensorList* out,
-    std::function<Status(OpKernelContext* ctx, const Tensor& a, const Tensor& b,
-                         Tensor* out)>
+    std::function<absl::Status(OpKernelContext* ctx, const Tensor& a,
+                               const Tensor& b, Tensor* out)>
         binary_add_func) {
   if (a.element_dtype != b.element_dtype) {
     return errors::InvalidArgument(
@@ -64,10 +64,10 @@ Status TensorListBinaryAdd(
   return absl::OkStatus();
 }
 
-Status TensorListZerosLike(
+absl::Status TensorListZerosLike(
     OpKernelContext* c, const TensorList& x, TensorList* y,
-    std::function<Status(OpKernelContext* ctx, const Tensor& input,
-                         Tensor* out)>
+    std::function<absl::Status(OpKernelContext* ctx, const Tensor& input,
+                               Tensor* out)>
         zeros_like_func) {
   y->element_dtype = x.element_dtype;
   y->element_shape = x.element_shape;

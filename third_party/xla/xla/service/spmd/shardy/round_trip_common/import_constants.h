@@ -23,8 +23,8 @@ limitations under the License.
 namespace xla {
 namespace sdy {
 
-// Creates a pass that converts an `mhlo.constant` (which is foldable) into an
-// `sdy.constant` (which isn't foldable).
+// Creates a pass that converts a `stablehlo.constant` (which is foldable) into
+// an `sdy.constant` (which isn't foldable).
 std::unique_ptr<mlir::Pass> createImportConstantsPass();
 
 // Register the xla-sdy-import-constants pass.

@@ -44,7 +44,8 @@ class NodeFileWriter {
   // file. Only writes the node if the exact node with the given input
   // shapes/dtypes hasn't already been written. Should be called once every time
   // a node is run.
-  Status RecordNodeExecution(OpKernel* op_kernel, OpKernelContext* context);
+  absl::Status RecordNodeExecution(OpKernel* op_kernel,
+                                   OpKernelContext* context);
 
   const std::string& filename() { return filename_; }
 
@@ -52,12 +53,12 @@ class NodeFileWriter {
   explicit NodeFileWriter(std::string filename)
       : filename_{std::move(filename)} {}
 
-  Status Init(Env* env) {
+  absl::Status Init(Env* env) {
     return env->NewWritableFile(filename_, &node_def_file_);
   }
 
   // Writes the NodeDef to a file, if it hasn't already been written yet.
-  Status MaybeWriteNodeDefToFile(const NodeDef& def);
+  absl::Status MaybeWriteNodeDefToFile(const NodeDef& def);
 
   const std::string filename_;
   mutex mu_;

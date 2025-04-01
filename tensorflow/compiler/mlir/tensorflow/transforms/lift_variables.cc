@@ -14,14 +14,11 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/compiler/mlir/tensorflow/transforms/lift_variables.h"
 
-#include <algorithm>
-#include <iterator>
+#include <cassert>
 #include <string>
-#include <tuple>
-#include <type_traits>
-#include <utility>
 #include <vector>
 
+#include "absl/status/statusor.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallSet.h"
@@ -40,6 +37,7 @@ limitations under the License.
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/framework/resource_var.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/threadpool_options.h"
@@ -66,7 +64,8 @@ constexpr char kSavedModelArgAttr[] = "tf_saved_model.bound_input";
 
 LogicalResult LiftVariablesFromSession(
     ModuleOp module, Session* session,
-    const SmallSet<StringRef, 4>& resource_names) {
+    const SmallSet<StringRef, 4>& resource_names,
+    bool import_variables_as_dense_resources) {
   OpBuilder builder(module.getBodyRegion());
 
   if (!session) return module.emitOpError() << "no session provided";
@@ -129,11 +128,13 @@ LogicalResult LiftVariablesFromSession(
     const Tensor& tensor = std::get<1>(iter);
 
     // Create tensor attribute for this variable.
-    absl::StatusOr<ElementsAttr> tensor_attr_or =
-        ConvertTensor(tensor, &builder);
+    absl::StatusOr<ElementsAttr> tensor_attr_or = ConvertTensor(
+        tensor, &builder,
+        /*convert_to_dense_resource=*/import_variables_as_dense_resources);
     if (!tensor_attr_or.ok()) {
       return module.emitOpError()
-             << "failed to convert tensor (name: " << name.str() << ")";
+             << "failed to convert tensor (name: " << name.str() << ")- "
+             << tensor_attr_or.status().ToString();
     }
     ElementsAttr tensor_attr = tensor_attr_or.value();
 
@@ -148,7 +149,8 @@ LogicalResult LiftVariablesFromSession(
 
 }  // namespace
 
-LogicalResult LiftVariables(ModuleOp module, Session* session) {
+LogicalResult LiftVariables(ModuleOp module, Session* session,
+                            bool import_variables_as_dense_resources) {
   MLIRContext* context = module.getContext();
   mlir::Builder builder(context);
   StringAttr resource_name_id = builder.getStringAttr(kResourceNameArgAttr);
@@ -177,7 +179,9 @@ LogicalResult LiftVariables(ModuleOp module, Session* session) {
 
   if (resource_names.empty()) return success();
 
-  if (failed(LiftVariablesFromSession(module, session, resource_names)))
+  if (failed(LiftVariablesFromSession(module, session, resource_names,
+                                      /*import_variables_as_dense_resources=*/
+                                      import_variables_as_dense_resources)))
     return failure();
 
   // Now that we have all global tensors created, we set the corresponding

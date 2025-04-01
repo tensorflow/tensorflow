@@ -19,7 +19,7 @@ limitations under the License.
 #include <string>
 
 #include "absl/strings/str_cat.h"
-#include "tsl/lib/monitoring/sampler.h"
+#include "xla/tsl/lib/monitoring/sampler.h"
 
 namespace tensorflow {
 namespace tfrt_metrics {

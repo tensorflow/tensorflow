@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef XLA_SERVICE_GRAPHCYCLES_GRAPHCYCLES_H_
 #define XLA_SERVICE_GRAPHCYCLES_GRAPHCYCLES_H_
 
+#include <cstdint>
+#include <string>
 #include <vector>
 
 // GraphCycles detects the introduction of a cycle into a directed
@@ -44,7 +46,7 @@ limitations under the License.
 
 #include "absl/types/span.h"
 
-namespace tensorflow {
+namespace xla {
 
 // NOTE!!!
 // For now a copy of this is forked to net/plaque. If you
@@ -149,5 +151,6 @@ class GraphCycles {
   GraphCycles &operator=(const GraphCycles &) = delete;
 };
 
-}  // namespace tensorflow
+}  // namespace xla
+
 #endif  // XLA_SERVICE_GRAPHCYCLES_GRAPHCYCLES_H_

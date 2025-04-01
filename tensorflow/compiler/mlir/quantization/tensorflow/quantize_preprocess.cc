@@ -18,6 +18,7 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
+#include <vector>
 
 #include "mhlo/transforms/passes.h"
 #include "absl/container/flat_hash_set.h"
@@ -31,14 +32,15 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/lite/stablehlo/transforms/legalize_tf_xla_call_module_to_stablehlo_pass.h"
-#include "tensorflow/compiler/mlir/lite/stablehlo/transforms/passes.h"
-#include "tensorflow/compiler/mlir/lite/stablehlo/transforms/rename_entrypoint_to_main.h"
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/tf_stablehlo_pass.h"
+#include "tensorflow/compiler/mlir/lite/transforms/passes.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/cc/pass_pipeline.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/passes/bridge/passes.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/cc/run_passes.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/passes/passes.h"
+#include "tensorflow/compiler/mlir/stablehlo/transforms/legalize_tf_xla_call_module_to_stablehlo_pass.h"
+#include "tensorflow/compiler/mlir/stablehlo/transforms/rename_entrypoint_to_main.h"
+#include "tensorflow/compiler/mlir/stablehlo/transforms/stablehlo_passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/tf_saved_model_freeze_variables.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/tf_saved_model_passes.h"
@@ -79,7 +81,7 @@ void AddTFToStablehloPasses(
   // on TPU.
   // Extracts the StableHLO module from tf.XlaCallModuleOp if the StableHLO
   // module is serialized in it.
-  pm.addPass(mlir::odml::CreateLegalizeTFXlaCallModuleToStablehloPass());
+  pm.addPass(mlir::stablehlo::CreateLegalizeTFXlaCallModuleToStablehloPass());
 
   // Preprocesses TPU-targeting StableHLO module for support in TF Quantizer.
   pm.addPass(mlir::quant::CreateConvertTpuModelToCpuPass());
@@ -192,8 +194,29 @@ absl::Status PreprocessAndFreezeGraph(
     return pre_variable_freezing_status;
   }
 
-  if (session.has_value() && failed(mlir::tf_saved_model::FreezeVariables(
-                                 module_op, session.value()))) {
+  if (!session.has_value() || !*session) {
+    mlir::PassManager pm_freezing_variables(context);
+    // This pass does resource analysis of saved model global tensors and marks
+    // those deemed read-only as immutable.
+    pm_freezing_variables.addPass(
+        mlir::tf_saved_model::CreateOptimizeGlobalTensorsPass());
+
+    pm_freezing_variables.addPass(
+        mlir::tf_saved_model::CreateFreezeGlobalTensorsPass(
+            /*allow_mutable_tensors=*/true));
+
+    pm_freezing_variables.addPass(
+        mlir::TFL::CreateUnfreezeMutableGlobalTensorsPass());
+
+    if (const auto variable_freezing_status = RunPassesOnModuleOp(
+            /*mlir_dump_file_name=*/absl::StrCat(
+                mlir_dump_file_prefix, "_preprocess_variable_freezing"),
+            pm_freezing_variables, module_op);
+        !variable_freezing_status.ok()) {
+      return variable_freezing_status;
+    }
+  } else if (failed(
+                 mlir::tf_saved_model::FreezeVariables(module_op, *session))) {
     return statusHandler.ConsumeStatus();
   }
 

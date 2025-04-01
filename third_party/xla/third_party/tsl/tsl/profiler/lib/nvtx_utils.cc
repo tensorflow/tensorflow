@@ -36,7 +36,7 @@ namespace {
 // nvtxNameOsThreadA:
 // https://nvidia.github.io/NVTX/doxygen/group___r_e_s_o_u_r_c_e___n_a_m_i_n_g.html
 // This convention may not match the one in tsl::Env::GetCurrentThreadId().
-std::optional<uint32_t> GetCurrentThreadId() {
+std::optional<uint32_t> MaybeGetCurrentThreadId() {
 #ifdef __linux__
   return syscall(SYS_gettid);
 #else
@@ -57,7 +57,8 @@ ProfilerDomainHandle DefaultProfilerDomain() {
 }
 
 void NameCurrentThread(const std::string& thread_name) {
-  if (std::optional<uint32_t> tid = GetCurrentThreadId(); tid.has_value()) {
+  if (std::optional<uint32_t> tid = MaybeGetCurrentThreadId();
+      tid.has_value()) {
     nvtxNameOsThreadA(*tid, thread_name.c_str());
   }
 }
@@ -91,7 +92,11 @@ void RangePush(ProfilerDomainHandle domain, StringHandle title,
   attrs.size = NVTX_EVENT_ATTRIB_STRUCT_SIZE;
   attrs.messageType = NVTX_MESSAGE_TYPE_REGISTERED;
   attrs.message.registered = reinterpret_cast<nvtxStringHandle_t>(title);
+#ifdef NVTX_VERSION_3_1
+  NVTX_PAYLOAD_EVTATTR_SET(&attrs, schema_id, payload, payload_size);
+#else
   NVTX_PAYLOAD_EVTATTR_SET(attrs, schema_id, payload, payload_size);
+#endif
   nvtxDomainRangePushEx(reinterpret_cast<nvtxDomainHandle_t>(domain), &attrs);
 }
 }  // namespace detail

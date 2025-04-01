@@ -29,4 +29,22 @@ inline constexpr char tflite_metadata_min_runtime_version[] =
 inline constexpr char tflite_supported_stablehlo_version[] = "1.0.0";
 #endif
 
+// LINT.IfChange(TFLITE_NOINLINE)
+
+#ifdef _WIN32
+#define TFLITE_NOINLINE __declspec(noinline)
+#else
+#ifdef __has_attribute
+#if __has_attribute(noinline)
+#define TFLITE_NOINLINE __attribute__((noinline))
+#else
+#define TFLITE_NOINLINE
+#endif  // __has_attribute(noinline)
+#else
+#define TFLITE_NOINLINE
+#endif  // __has_attribute
+#endif  // _WIN32
+
+// LINT.ThenChange(//tensorflow/lite/core/macros.h)
+
 #endif  // TENSORFLOW_COMPILER_MLIR_LITE_CORE_MACROS_H_

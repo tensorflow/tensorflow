@@ -47,14 +47,15 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "Eigen/Core"
 #include "xla/status_macros.h"
+#include "xla/tsl/lib/math/math_util.h"
+#include "xla/tsl/platform/errors.h"  // IWYU pragma: keep
+#include "xla/tsl/platform/logging.h"
 #include "xla/types.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/lib/math/math_util.h"
 #include "tsl/platform/bfloat16.h"
 #include "tsl/platform/casts.h"
-#include "tsl/platform/errors.h"  // IWYU pragma: keep
-#include "tsl/platform/logging.h"
 #include "tsl/platform/ml_dtypes.h"
+#include "tsl/platform/protobuf.h"
 
 namespace xla {
 
@@ -252,8 +253,8 @@ absl::Status AppendStatus(absl::Status prior, absl::string_view context);
   /*Deduction guide to make variadic arguments play nice with default */ \
   /* absl::SourceLocation argument. */                                   \
   template <typename... Args>                                            \
-  error_type(const absl::FormatSpec<Args...>& format,                    \
-             Args&&...) -> error_type<Args...>;
+  error_type(const absl::FormatSpec<Args...>& format, Args&&...)         \
+      -> error_type<Args...>;
 
 #if defined(PLATFORM_GOOGLE)
 #define XLA_ERROR_WITH_STRFORMAT_AND_BACKTRACE(error_type)               \
@@ -416,10 +417,16 @@ std::string VectorString(const std::initializer_list<T>& c) {
   return VectorString<std::initializer_list<T>>(c);
 }
 
+// Returns a string which can losslessly round trip to a float4 E2M1FN.
+std::string RoundTripFpToString(tsl::float4_e2m1fn value);
+
 // Returns a string which can losslessly round trip to a float8 E5M2.
 std::string RoundTripFpToString(tsl::float8_e5m2 value);
 
 // Returns a string which can losslessly round trip to a float8 E4M3.
+std::string RoundTripFpToString(tsl::float8_e4m3 value);
+
+// Returns a string which can losslessly round trip to a float8 E4M3FN.
 std::string RoundTripFpToString(tsl::float8_e4m3fn value);
 
 // Returns a string which can losslessly round trip to a float8 E4M3B11.
@@ -430,6 +437,12 @@ std::string RoundTripFpToString(tsl::float8_e5m2fnuz value);
 
 // Returns a string which can losslessly round trip to a float8 E4M3FNUZ.
 std::string RoundTripFpToString(tsl::float8_e4m3fnuz value);
+
+// Returns a string which can losslessly round trip to a float8 E3M4.
+std::string RoundTripFpToString(tsl::float8_e3m4 value);
+
+// Returns a string which can losslessly round trip to a float8 E8M0FNU.
+std::string RoundTripFpToString(tsl::float8_e8m0fnu value);
 
 // Returns a string which can losslessly round trip to a bfloat.
 std::string RoundTripFpToString(tsl::bfloat16 value);
@@ -646,8 +659,9 @@ template <typename T>
 auto SignAndMagnitude(T x) {
   using BitType = UnsignedIntegerTypeForSizeType<sizeof(T)>;
   BitType x_abs_bits = Eigen::numext::bit_cast<BitType>(Eigen::numext::abs(x));
-  const BitType x_bits = Eigen::numext::bit_cast<BitType>(x);
-  const BitType x_sign = x_bits ^ x_abs_bits;
+  // Eigen implements the sign value to be either all-zeros (for positive input)
+  // or all-ones (for negative input).
+  BitType x_sign = Eigen::numext::bit_cast<BitType>(Eigen::numext::signbit(x));
   if constexpr (!has_negative_zero_v<T>) {
     //  f8e4m3b11, f8e4m3fnuz, and f8e5m2fnuz don't support -0, adjust negative
     //  numbers to fill in the gap.
@@ -658,12 +672,17 @@ auto SignAndMagnitude(T x) {
   return std::make_pair(x_sign, x_abs_bits);
 }
 
+template <>
+inline auto SignAndMagnitude(tsl::float8_e8m0fnu x) {
+  uint8_t x_bits = Eigen::numext::bit_cast<uint8_t>(x);
+  return std::make_pair(static_cast<uint8_t>(0), x_bits);
+}
+
 template <typename T>
 auto SignAndMagnitudeToTwosComplement(T sign, T magnitude) {
   static_assert(!std::numeric_limits<T>::is_signed);
   using SignedType = std::make_signed_t<T>;
-  return static_cast<SignedType>(magnitude) ^
-         (static_cast<SignedType>(sign) < 0 ? SignedType{-1} : SignedType{0});
+  return static_cast<SignedType>(magnitude) ^ static_cast<SignedType>(sign);
 }
 
 // Returns the signed magnitude of T.
@@ -671,6 +690,11 @@ template <typename T>
 auto ToSignMagnitude(T input) {
   auto [sign, magnitude] = SignAndMagnitude(input);
   return SignAndMagnitudeToTwosComplement(sign, magnitude);
+}
+
+template <>
+inline auto ToSignMagnitude(tsl::float8_e8m0fnu input) {
+  return Eigen::numext::bit_cast<uint8_t>(input);
 }
 
 template <typename T>
@@ -765,6 +789,12 @@ ConvertedDimensionNumbers ConvertDimensionNumbers(
     absl::Span<const int64_t> from_dimensions,
     absl::Span<const int64_t> from_sizes, absl::Span<const int64_t> to_sizes);
 
+// Returns non contracting dimensions for a dot operand based on rank, batch and
+// contracting dimension numbers.
+DimensionVector GetNonContractingDims(
+    int64_t rank, absl::Span<const int64_t> contracting_dim_numbers,
+    absl::Span<const int64_t> batch_dim_numbers);
+
 // Removes illegal characters from filenames.
 std::string SanitizeFileName(std::string file_name);
 
@@ -817,12 +847,15 @@ absl::Status EraseElementFromVector(std::vector<T>* container, const T& value) {
   return absl::OkStatus();
 }
 
-// Takes a sequence of unpacked n-bit values, such that every byte stores one
-// value in the low-order bits, and packs them so every byte stores as many
-// which will fit. `output` should have ceil((input.size()*kBitsPerElement)/8)
-// bytes. The high-order bits of each byte in `input` are ignored.
+// Takes a sequence of unpacked kBitsPerElement-bit values (kBitsPerElement must
+// be between 1 and 7), such that every byte stores one value in the low-order
+// bits, and packs them so every byte stores as many which will fit. `output`
+// should have at least ceil((input.size()*kBitsPerElement)/8.0) bytes. The
+// high-order bits of each byte in `input` are ignored.
 template <size_t kBitsPerElement>
 void PackIntN(absl::Span<const char> input, absl::Span<char> output) {
+  static_assert(1 <= kBitsPerElement);
+  static_assert(kBitsPerElement <= 7);
   constexpr auto kElementsPerByte = 8 / kBitsPerElement;
   const size_t aligned_inputs = input.size() / kElementsPerByte;
   for (size_t i = 0; i < aligned_inputs; ++i) {
@@ -830,21 +863,24 @@ void PackIntN(absl::Span<const char> input, absl::Span<char> output) {
     for (size_t j = 0; j < kElementsPerByte; ++j) {
       byte |=
           (input[i * kElementsPerByte + j] & LsbMask<uint8_t>(kBitsPerElement))
-          << (kBitsPerElement * (kElementsPerByte - j - 1));
+          << (kBitsPerElement * j);
     }
     output[i] = byte;
   }
-  if (size_t remainder = input.size() % kElementsPerByte; remainder != 0) {
+  if (const size_t remainder = input.size() % kElementsPerByte;
+      remainder != 0) {
     char byte = 0;
     for (size_t j = 0; j < remainder; ++j) {
       byte |= (input[aligned_inputs * kElementsPerByte + j] &
                LsbMask<uint8_t>(kBitsPerElement))
-              << (kBitsPerElement * (kElementsPerByte - j - 1));
+              << (kBitsPerElement * j);
     }
     output[aligned_inputs] = byte;
   }
 }
 
+// Same as above, but takes the number of bits per element as an argument.
+// `bits_per_element` must be 2 or 4, or this function will crash.
 inline void PackIntN(int bits_per_element, absl::Span<const char> input,
                      absl::Span<char> output) {
   if (bits_per_element == 2) {
@@ -856,33 +892,48 @@ inline void PackIntN(int bits_per_element, absl::Span<const char> input,
   }
 }
 
+// Same as above, but takes the number of bits per element, a pointer to the
+// source data, and the size of the data in bytes. Returns a unique pointer to
+// the packed data.
+inline std::unique_ptr<char[]> PackIntN(int bits_per_element, const char* data,
+                                        size_t size) {
+  size_t packed_size = size * bits_per_element / 8;
+  auto buffer = std::make_unique<char[]>(packed_size);
+  auto src = absl::MakeSpan(data, size);
+  auto dst = absl::MakeSpan(buffer.get(), packed_size);
+  PackIntN(bits_per_element, src, dst);
+  return buffer;
+}
+
 // Takes a sequence of packed values, such that every byte stores multiple
 // values, and unpacks them so every byte stores one value in the low-order
 // bits. `input` should have
-// ceil(output.size()*8/kBitsPerElement) bytes. The high-order bits in each
-// output are zero.
+// ceil(output.size()*8.0/kBitsPerElement) bytes. kBitsPerElement must be
+// between 1 and 7. ßThe high-order bits in each output are zero.
 template <size_t kBitsPerElement>
 void UnpackIntN(absl::Span<const char> input, absl::Span<char> output) {
+  static_assert(1 <= kBitsPerElement);
+  static_assert(kBitsPerElement <= 7);
   constexpr auto kElementsPerByte = 8 / kBitsPerElement;
   const size_t aligned_outputs = output.size() / kElementsPerByte;
   for (size_t i = 0; i < aligned_outputs; ++i) {
     const char byte = input[i];
     for (int j = 0; j < kElementsPerByte; ++j) {
       output[i * kElementsPerByte + j] =
-          (byte >> (kBitsPerElement * (kElementsPerByte - j - 1))) &
-          LsbMask<uint8_t>(kBitsPerElement);
+          (byte >> (kBitsPerElement * j)) & LsbMask<uint8_t>(kBitsPerElement);
     }
   }
   if (size_t remainder = output.size() % kElementsPerByte; remainder != 0) {
     const char byte = input[aligned_outputs];
     for (size_t j = 0; j < remainder; ++j) {
       output[aligned_outputs * kElementsPerByte + j] =
-          (byte >> (kBitsPerElement * (kElementsPerByte - j - 1))) &
-          LsbMask<uint8_t>(kBitsPerElement);
+          (byte >> (kBitsPerElement * j)) & LsbMask<uint8_t>(kBitsPerElement);
     }
   }
 }
 
+// Same as above, but takes the number of bits per element as an argument.
+// `bits_per_element` must be 2 or 4, or this function will crash.
 inline void UnpackIntN(int bits_per_element, absl::Span<const char> input,
                        absl::Span<char> output) {
   if (bits_per_element == 2) {
@@ -892,6 +943,19 @@ inline void UnpackIntN(int bits_per_element, absl::Span<const char> input,
   } else {
     LOG(FATAL) << "Invalid bits_per_element: " << bits_per_element;
   }
+}
+
+// Same as above, but takes the number of bits per element, a pointer to the
+// source data, and the size of the data in bytes. Returns a unique pointer to
+// the unpacked data.
+inline std::unique_ptr<char[]> UnpackIntN(int bits_per_element,
+                                          const char* data, size_t size) {
+  size_t unpacked_size = size * 8 / bits_per_element;
+  auto buffer = std::make_unique<char[]>(unpacked_size);
+  auto src = absl::MakeSpan(data, size);
+  auto dst = absl::MakeSpan(buffer.get(), unpacked_size);
+  UnpackIntN(bits_per_element, src, dst);
+  return buffer;
 }
 
 // Returns a container with `sorted_ids_to_remove` elements removed.
@@ -922,6 +986,8 @@ inline bool HloPredicateFalse(const HloInstruction*) { return false; }
 
 using Vector2 = std::array<int64_t, 2>;
 using Vector3 = std::array<int64_t, 3>;
+
+std::string PrintAllFields(const tsl::protobuf::Message& message);
 
 }  // namespace xla
 

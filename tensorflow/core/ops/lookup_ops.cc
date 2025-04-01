@@ -29,7 +29,7 @@ using shape_inference::ShapeHandle;
 // --------------------------------------------------------------------------
 
 namespace {
-Status TwoElementVectorInputsAndScalarOutputs(InferenceContext* c) {
+absl::Status TwoElementVectorInputsAndScalarOutputs(InferenceContext* c) {
   ShapeHandle handle;
   DimensionHandle unused_handle;
   for (int i = 0; i < c->num_inputs(); ++i) {
@@ -42,7 +42,8 @@ Status TwoElementVectorInputsAndScalarOutputs(InferenceContext* c) {
   return absl::OkStatus();
 }
 
-Status ScalarAndTwoElementVectorInputsAndScalarOutputs(InferenceContext* c) {
+absl::Status ScalarAndTwoElementVectorInputsAndScalarOutputs(
+    InferenceContext* c) {
   ShapeHandle handle;
   DimensionHandle unused_handle;
   TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 0, &handle));
@@ -56,12 +57,12 @@ Status ScalarAndTwoElementVectorInputsAndScalarOutputs(InferenceContext* c) {
   return absl::OkStatus();
 }
 
-Status TwoElementOutput(InferenceContext* c) {
+absl::Status TwoElementOutput(InferenceContext* c) {
   c->set_output(0, c->Vector(2));
   return absl::OkStatus();
 }
 
-Status ScalarOutput(InferenceContext* c) {
+absl::Status ScalarOutput(InferenceContext* c) {
   c->set_output(0, c->Scalar());
   return absl::OkStatus();
 }
@@ -87,11 +88,11 @@ REGISTER_OP("LookupTableFind")
       return absl::OkStatus();
     });
 
-Status ValidateTableType(InferenceContext* c,
-                         const ShapeAndType& key_shape_and_type,
-                         const string& key_dtype_attr,
-                         const ShapeAndType& value_shape_and_type,
-                         const string& value_dtype_attr) {
+absl::Status ValidateTableType(InferenceContext* c,
+                               const ShapeAndType& key_shape_and_type,
+                               const string& key_dtype_attr,
+                               const ShapeAndType& value_shape_and_type,
+                               const string& value_dtype_attr) {
   DataType key_dtype;
   TF_RETURN_IF_ERROR(c->GetAttr(key_dtype_attr, &key_dtype));
   if (key_shape_and_type.dtype != key_dtype) {
@@ -113,10 +114,10 @@ Status ValidateTableType(InferenceContext* c,
   return absl::OkStatus();
 }
 
-Status ValidateTableResourceHandle(InferenceContext* c, ShapeHandle keys,
-                                   const string& key_dtype_attr,
-                                   const string& value_dtype_attr,
-                                   ShapeAndType* output_shape_and_type) {
+absl::Status ValidateTableResourceHandle(InferenceContext* c, ShapeHandle keys,
+                                         const string& key_dtype_attr,
+                                         const string& value_dtype_attr,
+                                         ShapeAndType* output_shape_and_type) {
   auto* handle_data = c->input_handle_shapes_and_types(0);
   if (handle_data == nullptr || handle_data->size() != 2) {
     output_shape_and_type->shape = c->UnknownShape();
@@ -316,8 +317,8 @@ REGISTER_OP("LookupTableImportV2")
       return absl::OkStatus();
     });
 
-Status MutableHashTableShape(InferenceContext* c, const ShapeHandle& key,
-                             const ShapeHandle& value) {
+absl::Status MutableHashTableShape(InferenceContext* c, const ShapeHandle& key,
+                                   const ShapeHandle& value) {
   c->set_output(0, c->Scalar());
 
   ShapeHandle key_s;
@@ -336,12 +337,12 @@ Status MutableHashTableShape(InferenceContext* c, const ShapeHandle& key,
   return absl::OkStatus();
 }
 
-Status MutableHashTableShapeFn(InferenceContext* c) {
+absl::Status MutableHashTableShapeFn(InferenceContext* c) {
   return MutableHashTableShape(c, /*key=*/c->Scalar(),
                                /*value=*/c->Scalar());
 }
 
-Status MutableHashTableOfTensorsShapeFn(InferenceContext* c) {
+absl::Status MutableHashTableOfTensorsShapeFn(InferenceContext* c) {
   PartialTensorShape value_p;
   TF_RETURN_IF_ERROR(c->GetAttr("value_shape", &value_p));
   ShapeHandle value_s;
@@ -349,7 +350,7 @@ Status MutableHashTableOfTensorsShapeFn(InferenceContext* c) {
   return MutableHashTableShape(c, /*key=*/c->Scalar(), /*value=*/value_s);
 }
 
-Status MutableDenseHashTableShapeFn(InferenceContext* c) {
+absl::Status MutableDenseHashTableShapeFn(InferenceContext* c) {
   PartialTensorShape value_p;
   TF_RETURN_IF_ERROR(c->GetAttr("value_shape", &value_p));
   ShapeHandle value_s;

@@ -3,14 +3,12 @@ load("//tensorflow:tensorflow.default.bzl", "cuda_py_strict_test")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
-    default_visibility = ["//tensorflow:internal"],
     licenses = ["notice"],
 )
 
 py_strict_library(
     name = "test_util",
     srcs = ["test_util.py"],
-    srcs_version = "PY3",
     deps = [
         "//tensorflow/lite/python:interpreter",
         "//tensorflow/lite/python:lite",
@@ -21,7 +19,6 @@ py_strict_library(
 cuda_py_strict_test(
     name = "window_ops_test",
     srcs = ["window_ops_test.py"],
-    python_version = "PY3",
     shard_count = 4,
     tags = [
         "no_rocm",

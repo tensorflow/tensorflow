@@ -16,19 +16,23 @@ limitations under the License.
 #ifndef XLA_STREAM_EXECUTOR_INTEGRATIONS_TF_ALLOCATOR_ADAPTER_H_
 #define XLA_STREAM_EXECUTOR_INTEGRATIONS_TF_ALLOCATOR_ADAPTER_H_
 
+#include <cstdint>
 #include <memory>
+#include <optional>
 #include <tuple>
 #include <utility>
 #include <vector>
 
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/device_memory_allocator.h"
+#include "xla/stream_executor/memory_allocation.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
@@ -195,6 +199,13 @@ class MultiDeviceAdapter : public DeviceMemoryAllocator {
   // (TfAllocatorAdapter does not take ownership of its underlying Allocator).
   std::vector<std::unique_ptr<tsl::Allocator>> tf_allocators_;
 };
+
+// Creates a status with a payload indicating an error while allocating `size`
+// bytes of memory.
+absl::Status MemoryAllocationError(uint64_t size, bool is_host_mem);
+
+// Checks whether the status is a memory allocation error.
+bool IsMemoryAllocationError(absl::Status status);
 
 }  // namespace stream_executor
 

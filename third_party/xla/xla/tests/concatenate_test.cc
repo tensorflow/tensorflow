@@ -23,10 +23,10 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/types/span.h"
+#include "xla/hlo/testlib/test.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/shape.h"
-#include "xla/test.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tests/literal_test_util.h"
 #include "tsl/platform/status.h"
@@ -99,8 +99,8 @@ TEST_F(ConcatenateTest, ThreeR2Axis1) {
 }
 
 static auto MakeIotaForShape(const Shape& shape) {
-  std::vector<int64_t> strides(shape.rank(), 1);
-  for (int i = shape.rank() - 1; i > 0; --i) {
+  std::vector<int64_t> strides(shape.dimensions_size(), 1);
+  for (int i = shape.dimensions_size() - 1; i > 0; --i) {
     strides[i - 1] = strides[i] * shape.dimensions(i);
   }
   return [strides = std::move(strides)](absl::Span<const int64_t> indices) {

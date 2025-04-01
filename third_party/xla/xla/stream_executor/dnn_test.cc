@@ -18,6 +18,7 @@ limitations under the License.
 #include <tuple>
 #include <vector>
 
+#include <gtest/gtest.h>
 #include "tsl/platform/test.h"
 
 namespace stream_executor {

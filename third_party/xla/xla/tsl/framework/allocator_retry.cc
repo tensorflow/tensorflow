@@ -15,12 +15,15 @@ limitations under the License.
 
 #include "xla/tsl/framework/allocator_retry.h"
 
-#include "absl/types/optional.h"
+#include <cstddef>
+#include <functional>
+#include <optional>
+
+#include "absl/synchronization/mutex.h"
+#include "absl/time/time.h"
 #include "xla/tsl/framework/metrics.h"
-#include "tsl/platform/env.h"
-#include "tsl/platform/logging.h"
-#include "tsl/platform/mutex.h"
-#include "tsl/platform/types.h"
+#include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/types.h"
 
 namespace tsl {
 
@@ -42,11 +45,17 @@ class ScopedTimeTracker {
 
  private:
   Env* env_;
-  absl::optional<uint64> start_us_;
+  std::optional<uint64> start_us_;
 };
 }  // namespace
 
 AllocatorRetry::AllocatorRetry() : env_(Env::Default()) {}
+
+AllocatorRetry::~AllocatorRetry() {
+  // Lock the mutex to make sure that all memory effects are safely published
+  // and available to a thread running the destructor.
+  absl::MutexLock l(&mu_);
+}
 
 void* AllocatorRetry::AllocateRaw(
     std::function<void*(size_t alignment, size_t num_bytes,
@@ -57,28 +66,26 @@ void* AllocatorRetry::AllocateRaw(
     return nullptr;
   }
   ScopedTimeTracker tracker(env_);
-  uint64 deadline_micros = 0;
+  absl::Time deadline;
   bool first = true;
-  void* ptr = nullptr;
-  while (ptr == nullptr) {
-    ptr = alloc_func(alignment, num_bytes, false);
-    if (ptr == nullptr) {
-      uint64 now = env_->NowMicros();
-      if (first) {
-        deadline_micros = now + max_millis_to_wait * 1000;
-        first = false;
-      }
-      if (now < deadline_micros) {
-        tracker.Enable();
-        mutex_lock l(mu_);
-        WaitForMilliseconds(&l, &memory_returned_,
-                            (deadline_micros - now) / 1000);
-      } else {
-        return alloc_func(alignment, num_bytes, true);
-      }
+  while (true) {
+    if (void* ptr = alloc_func(alignment, num_bytes, false); ptr != nullptr) {
+      return ptr;
+    }
+
+    absl::Time now = absl::FromUnixMicros(env_->NowMicros());
+    if (first) {
+      deadline = now + absl::Milliseconds(max_millis_to_wait);
+      first = false;
+    }
+    if (now < deadline) {
+      tracker.Enable();
+      absl::MutexLock l(&mu_);
+      memory_returned_.WaitWithDeadline(&mu_, deadline);
+    } else {
+      return alloc_func(alignment, num_bytes, true);
     }
   }
-  return ptr;
 }
 
 }  // namespace tsl

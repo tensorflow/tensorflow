@@ -28,8 +28,8 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
+#include "xla/hlo/analysis/hlo_reachability.h"
 #include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/hlo/ir/hlo_reachability.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
 #include "xla/xla_data.pb.h"
@@ -125,6 +125,9 @@ absl::StatusOr<bool> CombineInstructionsByKey(
       // We can't combine dependent instructions.
       bool is_reachable =
           absl::c_any_of(to_combine, [&](HloInstruction* to_combine_inst) {
+            // We don't need a call to IsConnected() here because we iterate
+            // through instructions in topological order, which implies that
+            // IsReachable(instruction, to_combine_inst) would return false.
             bool reachable =
                 reachability->IsReachable(to_combine_inst, instruction);
             if (reachable) {

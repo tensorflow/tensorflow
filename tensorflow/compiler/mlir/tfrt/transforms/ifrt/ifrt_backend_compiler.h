@@ -28,8 +28,21 @@ namespace ifrt_serving {
 // Implements the custom backend compiler for IFRT based serving in TFRT.
 class IfrtBackendCompiler : public tensorflow::BackendCompiler {
  public:
+  struct Options {
+    // If true, disable running TFRTSetTPUDeviceAttrPass which set the default
+    // `tf.device` and `device_assignment` attributes.
+    // This is a server-level option for now. We can consider to make it a
+    // per-model option in the future.
+    bool disable_set_default_tpu_device_and_device_assignment_attributes = true;
+  };
+
   explicit IfrtBackendCompiler(TpuCompiler* tpu_compiler = nullptr)
       : tpu_compiler_(tpu_compiler) {}
+
+  explicit IfrtBackendCompiler(const Options& ifrt_backend_compile_options,
+                               TpuCompiler* tpu_compiler = nullptr)
+      : tpu_compiler_(tpu_compiler),
+        compile_options_(ifrt_backend_compile_options) {}
 
   void GetDependentDialects(mlir::DialectRegistry& registry) const override {
     if (tpu_compiler_) {
@@ -45,6 +58,7 @@ class IfrtBackendCompiler : public tensorflow::BackendCompiler {
 
  private:
   TpuCompiler* tpu_compiler_;  // Not owned.
+  Options compile_options_;
 };
 
 }  // namespace ifrt_serving

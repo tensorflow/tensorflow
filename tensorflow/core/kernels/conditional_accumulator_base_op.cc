@@ -49,7 +49,7 @@ class AccumulatorSetGlobalStepOp
           new_global_step_tensor->shape().DebugString()));
     }
 
-    Status status =
+    absl::Status status =
         accumulator->SetGlobalStep(new_global_step_tensor->scalar<int64_t>()());
     if (!status.ok()) ctx->CtxFailureWithWarning(status);
   }

@@ -199,7 +199,7 @@ class RebatchTest(test_base.DatasetTestBase, parameterized.TestCase):
 
     # We have an extra element at the end because if the desired batch size is
     # zero, then we never read any inputs from the input_dataset at all, so we
-    # will keep producting empty outputs until we reach a non zero desired batch
+    # will keep producing empty outputs until we reach a non zero desired batch
     # size split.
     expected_output = [[], [0], [], [1], [], [2], [], [3], [], [4], [], [5], [],
                        [6], [], [7], []]

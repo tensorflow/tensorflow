@@ -16,21 +16,22 @@ limitations under the License.
 #ifndef XLA_TOOLS_HLO_MODULE_LOADER_H_
 #define XLA_TOOLS_HLO_MODULE_LOADER_H_
 
+#include <cstdint>
 #include <functional>
 #include <memory>
 #include <string>
-#include <string_view>
 
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/service/hlo.pb.h"
 #include "xla/tools/run_hlo_module.pb.h"
 
 namespace xla {
 namespace hlo_module_loader_details {
 
 struct Config {
-  Config() {}
+  Config() = default;
   int64_t num_replicas = 1;
   int64_t num_partitions = 1;
 };
@@ -39,7 +40,7 @@ struct Config {
 
 // Given a string composed by multiple lines, strip the log headers, if present
 // at the beginning of each line.
-std::string StripLogHeaders(std::string_view hlo_string);
+std::string StripLogHeaders(absl::string_view hlo_string);
 
 // Loads an HLO module from a string.
 // The data can have the followings formats:
@@ -56,11 +57,12 @@ std::string StripLogHeaders(std::string_view hlo_string);
 // and the hlo module format is proto, it loads buffer assignment from the
 // proto.
 absl::StatusOr<std::unique_ptr<HloModule>> LoadModuleFromData(
-    const std::string& data, std::string_view format,
+    const std::string& data, absl::string_view format,
     const hlo_module_loader_details::Config& ovr_config =
         hlo_module_loader_details::Config(),
     const std::function<void(HloModuleConfig*)>& config_modifier_hook = {},
-    BufferAssignmentProto* buffer_assignment_proto = nullptr);
+    BufferAssignmentProto* buffer_assignment_proto = nullptr,
+    bool fill_missing_layouts = true);
 
 // Loads an HLO module from file.
 // The file can be one of the followings:
@@ -82,14 +84,15 @@ absl::StatusOr<std::unique_ptr<HloModule>> LoadModuleFromFile(
     const hlo_module_loader_details::Config& ovr_config =
         hlo_module_loader_details::Config(),
     const std::function<void(HloModuleConfig*)>& config_modifier_hook = {},
-    BufferAssignmentProto* buffer_assignment_proto = nullptr);
+    BufferAssignmentProto* buffer_assignment_proto = nullptr,
+    bool fill_missing_layouts = true);
 
 // Loads an HLO snapshot from a string, only for its inputs
 // The data format must be one of the following:
 // 1) A binary proto (format "pb")
 // 2) A text proto (format "pbtxt")
 absl::StatusOr<std::unique_ptr<RunHloModuleIterationLiterals>>
-LoadInputFromData(const std::string& data, std::string_view format);
+LoadInputFromData(const std::string& data, absl::string_view format);
 
 // Loads an HLO snapshot from file, only for its inputs
 // The file must be one of the following:

@@ -153,7 +153,7 @@ class CTCLossOp : public OpKernel {
         ctx, sparse::SparseTensor::Create(*labels_indices, *labels_values,
                                           labels_shape, order, &labels_sp));
 
-    Status labels_sp_valid = labels_sp.IndicesValid();
+    absl::Status labels_sp_valid = labels_sp.IndicesValid();
     OP_REQUIRES(ctx, labels_sp_valid.ok(),
                 errors::InvalidArgument("label SparseTensor is not valid: ",
                                         labels_sp_valid.message()));
@@ -364,10 +364,11 @@ class CTCLossOpGPU : public OpKernel {
     stream_executor::DeviceMemory<uint8_t> scratch_memory;
     int ctc_loss_algo_id;
     bool cudnn_launch_status =
-        dnn->PrepareForCtcLoss(
-               stream, *probs_desc, probs_data, *grads_desc, labels_data,
-               labels_lengths_data, input_lengths_data, GetNumericOptions(),
-               &workspace_allocator, &scratch_memory, &ctc_loss_algo_id)
+        dnn->PrepareForCtcLoss(stream, *probs_desc, probs_data, *grads_desc,
+                               labels_data, labels_lengths_data,
+                               input_lengths_data, GetNumericOptionsForCuDnn(),
+                               &workspace_allocator, &scratch_memory,
+                               &ctc_loss_algo_id)
             .ok();
     if (cudnn_launch_status) {
       cudnn_launch_status = dnn->DoCtcLoss<float>(

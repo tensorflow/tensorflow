@@ -17,9 +17,7 @@ limitations under the License.
 #define XLA_PYTHON_IFRT_HLO_HLO_PROGRAM_H_
 
 #include <memory>
-#include <optional>
 #include <utility>
-#include <vector>
 
 #include "llvm/Support/ExtensibleRTTI.h"
 #include "mlir/IR/BuiltinOps.h"

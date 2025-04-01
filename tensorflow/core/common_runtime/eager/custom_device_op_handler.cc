@@ -25,7 +25,7 @@ namespace tensorflow {
 
 void CustomDeviceOpHandler::Clear() { custom_devices_.clear(); }
 
-Status CustomDeviceOpHandler::RegisterCustomDevice(
+absl::Status CustomDeviceOpHandler::RegisterCustomDevice(
     const string& device_name, std::unique_ptr<CustomDevice> device) {
   DeviceNameUtils::ParsedName parsed;
   if (!DeviceNameUtils::ParseFullName(device_name, &parsed) ||
@@ -55,9 +55,9 @@ bool CustomDeviceOpHandler::FindCustomDeviceFromName(
   return true;
 }
 
-Status CustomDeviceOpHandler::Execute(ImmediateExecutionOperation* op,
-                                      ImmediateExecutionTensorHandle** retvals,
-                                      int* num_retvals) {
+absl::Status CustomDeviceOpHandler::Execute(
+    ImmediateExecutionOperation* op, ImmediateExecutionTensorHandle** retvals,
+    int* num_retvals) {
   tensorflow::CustomDevice* custom_device = nullptr;
 
   TF_RETURN_IF_ERROR(MaybePinToCustomDevice(&custom_device, *op));
@@ -85,7 +85,7 @@ Status CustomDeviceOpHandler::Execute(ImmediateExecutionOperation* op,
         tensorflow::ImmediateExecutionTensorHandle* new_tensor;
         TF_RETURN_IF_ERROR(previous->device()->CopyTensorFromDevice(
             previous, target_device, &new_tensor));
-        Status s = op->SetInput(i, new_tensor);
+        absl::Status s = op->SetInput(i, new_tensor);
         new_tensor->Unref();
         TF_RETURN_IF_ERROR(s);
       }
@@ -101,7 +101,7 @@ Status CustomDeviceOpHandler::Execute(ImmediateExecutionOperation* op,
 
 ImmediateExecutionTensorHandle* CustomDeviceOpHandler::CopyTensorHandleToDevice(
     ImmediateExecutionContext* context, ImmediateExecutionTensorHandle* handle,
-    const char* device_name, Status* status) {
+    const char* device_name, absl::Status* status) {
   *status = absl::OkStatus();
   ImmediateExecutionTensorHandle* result = nullptr;
   tensorflow::CustomDevice* dev;
@@ -132,7 +132,7 @@ ImmediateExecutionTensorHandle* CustomDeviceOpHandler::CopyTensorHandleToDevice(
   return context->CopyTensorHandleToDevice(handle, device_name, status);
 }
 
-Status CustomDeviceOpHandler::MaybePinToCustomDevice(
+absl::Status CustomDeviceOpHandler::MaybePinToCustomDevice(
     CustomDevice** device, const ImmediateExecutionOperation& op) const {
   *device = nullptr;
   if (!FindCustomDeviceFromName(op.DeviceName(), device) &&

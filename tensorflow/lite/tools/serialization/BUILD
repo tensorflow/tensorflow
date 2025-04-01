@@ -40,6 +40,7 @@ cc_library(
     deps = [
         "//tensorflow/compiler/mlir/lite/schema:schema_conversion_utils",
         "//tensorflow/compiler/mlir/lite/schema:schema_fbs_with_mutable",
+        "//tensorflow/compiler/mlir/lite/tools/versioning",
         "//tensorflow/lite:builtin_op_data",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:schema_fbs_version",
@@ -48,7 +49,6 @@ cc_library(
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/schema:schema_conversion_utils",
         "//tensorflow/lite/tools/serialization:writer_lib_enum",
-        "//tensorflow/lite/tools/versioning",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@flatbuffers//:runtime_cc",

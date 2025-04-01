@@ -19,9 +19,9 @@ limitations under the License.
 #include <cstdint>
 #include <functional>
 #include <memory>
+#include <optional>
 
 #include "absl/status/status.h"
-#include "absl/types/optional.h"
 #include "third_party/gpus/cuda/extras/CUPTI/include/cupti.h"
 #include "third_party/gpus/cuda/include/nvtx3/nvToolsExt.h"
 #include "xla/backends/profiler/gpu/cupti_collector.h"
@@ -81,7 +81,8 @@ class CuptiTracer {
   bool IsAvailable() const;
   bool NeedRootAccess() const { return need_root_access_; }
 
-  void Enable(const CuptiTracerOptions& option, CuptiTraceCollector* collector);
+  absl::Status Enable(const CuptiTracerOptions& option,
+                      CuptiTraceCollector* collector);
   void Disable();
 
   // Control threads could periodically call this function to flush the

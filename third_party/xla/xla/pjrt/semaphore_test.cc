@@ -17,7 +17,7 @@ limitations under the License.
 
 #include <gtest/gtest.h>
 #include "absl/synchronization/notification.h"
-#include "xla/test.h"
+#include "xla/hlo/testlib/test.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/threadpool.h"
 

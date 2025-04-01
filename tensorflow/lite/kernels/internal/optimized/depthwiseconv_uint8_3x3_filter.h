@@ -31,16 +31,16 @@ namespace optimized_ops {
 namespace depthwise_conv {
 
 #ifdef USE_NEON
-inline int8x16_t util_vld1q_x8(const uint8* data_addr) {
+inline int8x16_t util_vld1q_x8(const uint8_t* data_addr) {
   return vreinterpretq_s8_u8(vld1q_u8(data_addr));
 }
-inline int8x16_t util_vld1q_x8(const int8* data_addr) {
+inline int8x16_t util_vld1q_x8(const int8_t* data_addr) {
   return vld1q_s8(data_addr);
 }
-inline int8x8_t util_vld1_x8(const uint8* data_addr) {
+inline int8x8_t util_vld1_x8(const uint8_t* data_addr) {
   return vreinterpret_s8_u8(vld1_u8(data_addr));
 }
-inline int8x8_t util_vld1_x8(const int8* data_addr) {
+inline int8x8_t util_vld1_x8(const int8_t* data_addr) {
   return vld1_s8(data_addr);
 }
 #endif
@@ -5785,7 +5785,7 @@ inline void DepthwiseConv3x3Filter(
 // Perform any necessary cache hinting and pre-writing.
 template <DepthwiseConvImplementation implementation>
 struct WorkspacePrefetchWrite {
-  static inline void Run(int8 fill_data, int size, int8* workspace) {}
+  static inline void Run(int8_t fill_data, int size, int8_t* workspace) {}
 };
 
 #if defined(__aarch64__)
@@ -12867,7 +12867,7 @@ inline void DepthwiseConvDotProduct3x3Impl(
     const RuntimeShape& filter_shape,
     const typename QuantizationTypeImpl<quantization_type>::ExternalType*
         filter_data,
-    const RuntimeShape& bias_shape, const int32* bias_data,
+    const RuntimeShape& bias_shape, const int32_t* bias_data,
     const RuntimeShape& output_shape,
     typename QuantizationTypeImpl<quantization_type>::ExternalType* output_data,
     int thread_start, int thread_end, int thread_dim) {
@@ -12937,8 +12937,8 @@ inline void DepthwiseConvDotProduct3x3Impl(
   // Kernel subroutines need to be able to operate consistently on an bias
   // array. Where there is no bias, we provide one filled with zeros.
   constexpr int kMinBiasLoad = 8;
-  int32 zero_bias_data[kMinBiasLoad];
-  int32 bias_increment;
+  int32_t zero_bias_data[kMinBiasLoad];
+  int32_t bias_increment;
   if (bias_data) {
     bias_increment = 4;
   } else {
@@ -13103,9 +13103,9 @@ inline void DepthwiseConvDotProduct3x3Impl(
   // Filter workspace is for shuffle: only first depth/8 is used.
   // indexed as [depth/8][sub-block][height][depth][width].
   TFLITE_DCHECK_EQ(kDepthwiseConvAdjustedBiasLimit % 8, 0);
-  int8 macroblock_workspace[kDepthwiseConvScratchWorkspaceSize];
-  int32 adjusted_bias_data[kDepthwiseConvAdjustedBiasLimit];
-  int8 filter_workspace[kDepthwiseConvAdjustedBiasLimit >> 3][3][2][4][4];
+  int8_t macroblock_workspace[kDepthwiseConvScratchWorkspaceSize];
+  int32_t adjusted_bias_data[kDepthwiseConvAdjustedBiasLimit];
+  int8_t filter_workspace[kDepthwiseConvAdjustedBiasLimit >> 3][3][2][4][4];
 
   // Output depth characterization.
   //
@@ -13400,10 +13400,10 @@ inline void DepthwiseConvDotProduct3x3Impl(
 template <DepthwiseConvImplementation implementation>
 inline void DepthwiseConvDotProduct3x3(
     const DepthwiseParams& params, const RuntimeShape& input_shape,
-    const uint8* input_data, const RuntimeShape& filter_shape,
-    const uint8* filter_data, const RuntimeShape& bias_shape,
-    const int32* bias_data, const RuntimeShape& output_shape,
-    uint8* output_data, int thread_start, int thread_end, int thread_dim) {
+    const uint8_t* input_data, const RuntimeShape& filter_shape,
+    const uint8_t* filter_data, const RuntimeShape& bias_shape,
+    const int32_t* bias_data, const RuntimeShape& output_shape,
+    uint8_t* output_data, int thread_start, int thread_end, int thread_dim) {
   DepthwiseConvDotProduct3x3Impl<
       implementation, depthwise_conv::QuantizationType::kNonPerChannelUint8>(
       params, input_shape, input_data, filter_shape, filter_data, bias_shape,
@@ -13414,10 +13414,10 @@ inline void DepthwiseConvDotProduct3x3(
 template <DepthwiseConvImplementation implementation>
 inline void DepthwiseConvDotProduct3x3PerChannel(
     const DepthwiseParams& params, const RuntimeShape& input_shape,
-    const int8* input_data, const RuntimeShape& filter_shape,
-    const int8* filter_data, const RuntimeShape& bias_shape,
-    const int32* bias_data, const RuntimeShape& output_shape, int8* output_data,
-    int thread_start, int thread_end, int thread_dim) {
+    const int8_t* input_data, const RuntimeShape& filter_shape,
+    const int8_t* filter_data, const RuntimeShape& bias_shape,
+    const int32_t* bias_data, const RuntimeShape& output_shape,
+    int8_t* output_data, int thread_start, int thread_end, int thread_dim) {
   DepthwiseConvDotProduct3x3Impl<
       implementation, depthwise_conv::QuantizationType::kPerChannelInt8>(
       params, input_shape, input_data, filter_shape, filter_data, bias_shape,

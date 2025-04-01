@@ -33,8 +33,8 @@ namespace {
 
 TEST(TestReffedStatusCallback, CallsBackOK) {
   bool called = false;
-  Status status = absl::InvalidArgumentError("");
-  auto done = [&called, &status](const Status& s) {
+  absl::Status status = absl::InvalidArgumentError("");
+  auto done = [&called, &status](const absl::Status& s) {
     called = true;
     status = s;
   };
@@ -47,8 +47,8 @@ TEST(TestReffedStatusCallback, CallsBackOK) {
 
 TEST(TestReffedStatusCallback, CallsBackFail) {
   bool called = false;
-  Status status = absl::OkStatus();
-  auto done = [&called, &status](const Status& s) {
+  absl::Status status = absl::OkStatus();
+  auto done = [&called, &status](const absl::Status& s) {
     called = true;
     status = s;
   };
@@ -68,8 +68,8 @@ TEST(TestReffedStatusCallback, CallsBackFail) {
 
 TEST(TestReffedStatusCallback, RefMulti) {
   int called = false;
-  Status status = absl::OkStatus();
-  auto done = [&called, &status](const Status& s) {
+  absl::Status status = absl::OkStatus();
+  auto done = [&called, &status](const absl::Status& s) {
     called = true;
     status = s;
   };
@@ -90,10 +90,10 @@ TEST(TestReffedStatusCallback, RefMulti) {
 
 TEST(TestReffedStatusCallback, MultiThreaded) {
   std::atomic<int> num_called(0);
-  Status status;
+  absl::Status status;
   Notification n;
 
-  auto done = [&num_called, &status, &n](const Status& s) {
+  auto done = [&num_called, &status, &n](const absl::Status& s) {
     ++num_called;
     status = s;
     n.Notify();

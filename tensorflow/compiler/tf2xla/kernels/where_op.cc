@@ -18,25 +18,27 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
-#include "xla/client/lib/arithmetic.h"
-#include "xla/client/lib/comparators.h"
-#include "xla/client/lib/constants.h"
-#include "xla/client/lib/dynamic_shaped_ops.h"
-#include "xla/client/xla_builder.h"
-#include "xla/client/xla_computation.h"
+#include "xla/hlo/builder/lib/arithmetic.h"
+#include "xla/hlo/builder/lib/comparators.h"
+#include "xla/hlo/builder/lib/constants.h"
+#include "xla/hlo/builder/lib/dynamic_shaped_ops.h"
+#include "xla/hlo/builder/xla_builder.h"
+#include "xla/hlo/builder/xla_computation.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
+#include "xla/xla_data.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/op_requires.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/core/bits.h"
-#include "tensorflow/core/platform/statusor.h"
-#include "tsl/platform/errors.h"
 
 namespace tensorflow {
 namespace {
@@ -52,7 +54,7 @@ absl::StatusOr<XlaOp> ShiftElemsRight(XlaOp x) {
   xla::XlaBuilder* b = x.builder();
   absl::StatusOr<xla::Shape> shape = b->GetShape(x);
   TF_RETURN_IF_ERROR(shape.status());
-  TF_RET_CHECK(shape->dimensions_size() == 1);
+  TF_RET_CHECK(shape->dimensions().size() == 1);
   int64_t n = shape->dimensions(0);
 
   XlaOp padded = xla::PadInDim(x, xla::Zero(b, shape->element_type()),
@@ -92,7 +94,7 @@ absl::StatusOr<XlaOp> PrefixSum(XlaOp arr) {
   absl::StatusOr<xla::Shape> input_shape = b->GetShape(arr);
   TF_RETURN_IF_ERROR(input_shape.status());
 
-  TF_RET_CHECK(input_shape->dimensions_size() == 1);
+  TF_RET_CHECK(input_shape->dimensions().size() == 1);
   int64_t n = input_shape->dimensions(0);
 
   // The original input length must be a power of 2, but we recursively divide
@@ -171,7 +173,7 @@ absl::StatusOr<XlaOp> CompileWhereWithSort(XlaOpKernelContext* ctx) {
   std::vector<xla::PrimitiveType> types_to_sort = {xla::PRED};
   // Generate iota for each dimension, which after combining becomes
   // indices of each element.
-  for (int64_t axis = 0; axis < iota_shape.rank(); ++axis) {
+  for (int64_t axis = 0; axis < iota_shape.dimensions_size(); ++axis) {
     XlaOp iota = xla::Iota(ctx->builder(), iota_shape, axis);
     XlaOp reshaped = xla::Reshape(iota, {flattened_size});
     to_sort.push_back(reshaped);
@@ -182,7 +184,7 @@ absl::StatusOr<XlaOp> CompileWhereWithSort(XlaOpKernelContext* ctx) {
       to_sort, xla::CreateScalarGtComputation(types_to_sort, ctx->builder()),
       /*dimension=*/0, /*is_stable=*/true);
   std::vector<XlaOp> to_concat;
-  for (int64_t i = 0; i < iota_shape.rank(); ++i) {
+  for (int64_t i = 0; i < iota_shape.dimensions_size(); ++i) {
     XlaOp index_single_dim = xla::GetTupleElement(sorted, i + 1);
     to_concat.push_back(xla::Reshape(index_single_dim, {flattened_size, 1}));
   }
@@ -275,7 +277,8 @@ absl::StatusOr<XlaOp> CompileWhereWithPrefixSum(XlaOpKernelContext* ctx) {
   // and then scatter iotas[out_idxs] into the output.
   std::vector<XlaOp> iotas_to_concat;
   auto iota_shape = xla::ShapeUtil::MakeShape(S32, input_shape.dimensions());
-  for (int64_t axis = 0; axis < iota_shape.rank(); ++axis) {
+  iotas_to_concat.reserve(iota_shape.dimensions_size());
+  for (int64_t axis = 0; axis < iota_shape.dimensions_size(); ++axis) {
     iotas_to_concat.push_back(
         xla::Reshape(xla::Iota(b, iota_shape, axis), {flattened_size, 1}));
   }
@@ -300,8 +303,9 @@ absl::StatusOr<XlaOp> CompileWhereWithPrefixSum(XlaOpKernelContext* ctx) {
   scatter_dnums.add_scatter_dims_to_operand_dims(0);
   scatter_dnums.add_update_window_dims(1);
   XlaOp scattered = xla::Scatter(
-      /*input=*/xla::Zeros(b, /*shape=*/xla::ShapeUtil::MakeShape(
-                               S32, {flattened_size, iota_shape.rank()})),
+      /*input=*/xla::Zeros(
+          b, /*shape=*/xla::ShapeUtil::MakeShape(
+              S32, {flattened_size, iota_shape.dimensions_size()})),
       /*scatter_indices=*/out_idxs, /*updates=*/iotas,
       /*update_computation=*/assn_computation, scatter_dnums,
       /*indices_are_sorted=*/true, /*unique_indices=*/true);

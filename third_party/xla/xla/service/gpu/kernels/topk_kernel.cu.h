@@ -25,8 +25,7 @@ limitations under the License.
 #include <limits>
 
 #include "xla/service/gpu/kernels/topk_kernel_common.h"
-#include "xla/stream_executor/gpu/gpu_types.h"
-#include "tsl/lib/math/math_util.h"
+#include "xla/tsl/lib/math/math_util.h"
 
 #if GOOGLE_CUDA
 
@@ -137,7 +136,7 @@ struct Descending {
 //
 // When performing a push/pop, in the worst case scenario we need to compare it
 // with the root, both of its children, and one of the two subtrees. This means
-// that using a heap for K=7 only save us 2/7 comparions. Additionally, if the
+// that using a heap for K=7 only save us 2/7 comparison. Additionally, if the
 // tree were unbalanced(e.g. K=8), we would not be able to unroll this
 // computation.
 //

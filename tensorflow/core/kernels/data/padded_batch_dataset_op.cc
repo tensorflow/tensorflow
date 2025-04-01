@@ -121,19 +121,20 @@ class PaddedBatchDatasetOp::Dataset : public DatasetBase {
     return n / batch_size_ + (n % batch_size_ == 0 || drop_remainder_ ? 0 : 1);
   }
 
-  Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override {
+  absl::Status InputDatasets(
+      std::vector<const DatasetBase*>* inputs) const override {
     inputs->push_back(input_);
     return absl::OkStatus();
   }
 
-  Status CheckExternalState() const override {
+  absl::Status CheckExternalState() const override {
     return input_->CheckExternalState();
   }
 
  protected:
-  Status AsGraphDefInternal(SerializationContext* ctx,
-                            DatasetGraphDefBuilder* b,
-                            Node** output) const override {
+  absl::Status AsGraphDefInternal(SerializationContext* ctx,
+                                  DatasetGraphDefBuilder* b,
+                                  Node** output) const override {
     Node* input_graph_node = nullptr;
     TF_RETURN_IF_ERROR(b->AddInputDataset(ctx, input_, &input_graph_node));
     Node* batch_size = nullptr;
@@ -189,13 +190,13 @@ class PaddedBatchDatasetOp::Dataset : public DatasetBase {
 
     bool SymbolicCheckpointCompatible() const override { return true; }
 
-    Status Initialize(IteratorContext* ctx) override {
+    absl::Status Initialize(IteratorContext* ctx) override {
       return dataset()->input_->MakeIterator(ctx, this, prefix(), &input_impl_);
     }
 
-    Status GetNextInternal(IteratorContext* ctx,
-                           std::vector<Tensor>* out_tensors,
-                           bool* end_of_sequence) override {
+    absl::Status GetNextInternal(IteratorContext* ctx,
+                                 std::vector<Tensor>* out_tensors,
+                                 bool* end_of_sequence) override {
       // Each row of `batch_elements` is a tuple of tensors from the
       // input iterator.
       std::vector<std::vector<Tensor>> batch_elements;
@@ -244,8 +245,8 @@ class PaddedBatchDatasetOp::Dataset : public DatasetBase {
       return model::MakeKnownRatioNode(std::move(args), dataset()->batch_size_);
     }
 
-    Status SaveInternal(SerializationContext* ctx,
-                        IteratorStateWriter* writer) override {
+    absl::Status SaveInternal(SerializationContext* ctx,
+                              IteratorStateWriter* writer) override {
       mutex_lock l(mu_);
       TF_RETURN_IF_ERROR(writer->WriteScalar(
           prefix(), kExhausted, static_cast<int64_t>(!input_impl_)));
@@ -255,8 +256,8 @@ class PaddedBatchDatasetOp::Dataset : public DatasetBase {
       return absl::OkStatus();
     }
 
-    Status RestoreInternal(IteratorContext* ctx,
-                           IteratorStateReader* reader) override {
+    absl::Status RestoreInternal(IteratorContext* ctx,
+                                 IteratorStateReader* reader) override {
       mutex_lock l(mu_);
       int64_t input_exhausted;
       TF_RETURN_IF_ERROR(
@@ -283,9 +284,10 @@ class PaddedBatchDatasetOp::Dataset : public DatasetBase {
     // potentially read the input values in-place into their respective slice
     // locations. This would require a different GetNext() overload that
     // supports zero-copy, and might make sense in an optimization pass.
-    Status CopyBatch(IteratorContext* ctx,
-                     const std::vector<std::vector<Tensor>>& batch_elements,
-                     std::vector<Tensor>* out_tensors) {
+    absl::Status CopyBatch(
+        IteratorContext* ctx,
+        const std::vector<std::vector<Tensor>>& batch_elements,
+        std::vector<Tensor>* out_tensors) {
       const size_t num_tuple_components = batch_elements[0].size();
       const int64_t num_batch_elements = batch_elements.size();
       for (size_t component_index = 0; component_index < num_tuple_components;
@@ -371,7 +373,7 @@ class PaddedBatchDatasetOp::Dataset : public DatasetBase {
         if (dataset()->parallel_copy_ && (batch_component.AllocatedBytes() /
                                           num_batch_elements) >= (1 << 15)) {
           BlockingCounter counter(num_batch_elements);
-          Status status;
+          absl::Status status;
           mutex status_mu;
           const auto num_threads = ctx->runner_threadpool_size();
           const auto slice_size = num_batch_elements / num_threads;
@@ -386,7 +388,7 @@ class PaddedBatchDatasetOp::Dataset : public DatasetBase {
                               &copy_element_fn]() {
               for (size_t j = offset; j < offset + length; ++j) {
                 {
-                  Status s = copy_element_fn(j);
+                  absl::Status s = copy_element_fn(j);
                   mutex_lock l(status_mu);
                   status.Update(s);
                 }

@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/stream_executor/tpu/proto_helper.h"
 
+#include "absl/log/check.h"
 #include "xla/stream_executor/tpu/c_api_decl.h"
 #include "tsl/platform/logging.h"  // IWYU pragma: keep
 

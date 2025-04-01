@@ -29,12 +29,13 @@ limitations under the License.
 #include "absl/time/time.h"
 #include "xla/tsl/distributed_runtime/call_options.h"
 #include "xla/tsl/distributed_runtime/coordination/coordination_client.h"
-#include "tsl/lib/core/status_test_util.h"
-#include "tsl/platform/env.h"
-#include "tsl/platform/status.h"
-#include "tsl/platform/test.h"
-#include "tsl/protobuf/coordination_config.pb.h"
-#include "tsl/protobuf/coordination_service.pb.h"
+#include "xla/tsl/distributed_runtime/coordination/coordination_service_error_util.h"
+#include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/status.h"
+#include "xla/tsl/platform/test.h"
+#include "xla/tsl/protobuf/coordination_config.pb.h"
+#include "xla/tsl/protobuf/coordination_service.pb.h"
 
 namespace tsl {
 namespace {
@@ -45,9 +46,11 @@ using tensorflow::KeyValueEntry;
 using ::testing::_;
 using ::testing::DoAll;
 using ::testing::InvokeArgument;
+using ::testing::Return;
 using ::testing::SetArgPointee;
 using ::testing::UnorderedPointwise;
 using ::testing::WithArgs;
+using ::tsl::testing::StatusIs;
 
 // TODO(b/229726259) Switch to OSS version after it's available.
 // Simple implementation of a proto matcher comparing string representations.
@@ -75,6 +78,11 @@ MATCHER(KvEq, "simple KeyValueEntry matcher") {
   const KeyValueEntry& kv0 = std::get<0>(arg);
   const KeyValueEntry& kv1 = std::get<1>(arg);
   return kv0.key() == kv1.key() && kv0.value() == kv1.value();
+}
+
+// Note: b/169705709: no protobuf matchers in OSS.
+MATCHER_P2(IsBarrierRequest, id, counter, "") {
+  return id == arg->barrier_id() && counter == arg->counter();
 }
 
 KeyValueEntry CreateKv(const std::string& key, const std::string& value) {
@@ -123,15 +131,31 @@ class TestCoordinationClient : public CoordinationClient {
                ReportErrorToServiceResponse*, StatusCallback),
               (override));
   MOCK_METHOD(void, BarrierAsync,
-              (const BarrierRequest*, BarrierResponse*, StatusCallback),
+              (CallOptions * call_opts, const BarrierRequest*, BarrierResponse*,
+               StatusCallback),
+              (override));
+  MOCK_METHOD(void, CancelBarrierAsync,
+              (const CancelBarrierRequest*, CancelBarrierResponse*,
+               StatusCallback),
+              (override));
+  MOCK_METHOD(void, GetAliveTasksAsync,
+              (const GetAliveTasksRequest*, GetAliveTasksResponse*,
+               StatusCallback),
               (override));
   MOCK_METHOD(void, GetTaskStateAsync,
               (const GetTaskStateRequest*, GetTaskStateResponse*,
                StatusCallback),
               (override));
+  MOCK_METHOD(void, GetJobStateAsync,
+              (const GetJobStateRequest*, GetJobStateResponse*, StatusCallback),
+              (override));
   MOCK_METHOD(void, HeartbeatAsync,
               (CallOptions*, const HeartbeatRequest*, HeartbeatResponse*,
                StatusCallback),
+              (override));
+  MOCK_METHOD(void, PollForErrorAsync,
+              (CallOptions * call_opts, const PollForErrorRequest*,
+               PollForErrorResponse*, StatusCallback),
               (override));
 
 #define UNIMPLEMENTED(method)                                         \
@@ -142,7 +166,6 @@ class TestCoordinationClient : public CoordinationClient {
   }
 
   UNIMPLEMENTED(WaitForAllTasks);
-  UNIMPLEMENTED(CancelBarrier);
 #undef UNIMPLEMENTED
   void ReportErrorToTaskAsync(CallOptions* call_opts,
                               const ReportErrorToTaskRequest* request,
@@ -165,7 +188,9 @@ class CoordinationServiceAgentTest : public ::testing::Test {
         .WillByDefault(InvokeArgument<2>(absl::OkStatus()));
     ON_CALL(*client_, ResetTaskAsync(_, _, _))
         .WillByDefault(InvokeArgument<2>(absl::OkStatus()));
-    ON_CALL(*client_, BarrierAsync(_, _, _))
+    ON_CALL(*client_, BarrierAsync(_, _, _, _))
+        .WillByDefault(InvokeArgument<3>(absl::OkStatus()));
+    ON_CALL(*client_, CancelBarrierAsync(_, _, _))
         .WillByDefault(InvokeArgument<2>(absl::OkStatus()));
     ON_CALL(*client_, GetTaskStateAsync(_, _, _))
         .WillByDefault(InvokeArgument<2>(absl::OkStatus()));
@@ -241,7 +266,7 @@ TEST_F(CoordinationServiceAgentTest, GetKeyValue_Timeout_ReturnError) {
   StatusCallback owned_done;
   ON_CALL(*GetClient(), GetKeyValueAsync(_, _, _, _))
       .WillByDefault(WithArgs<3>([&](StatusCallback done) {
-        // Copy method argument to prevent de-allocation.
+        // Copy method argument to prevent deallocation.
         owned_done = done;
       }));
   InitializeAgent();
@@ -264,7 +289,7 @@ TEST_F(CoordinationServiceAgentTest,
   ON_CALL(*GetClient(), GetKeyValueAsync(_, _, _, _))
       .WillByDefault(WithArgs<2, 3>(
           [&](GetKeyValueResponse* response, StatusCallback done) {
-            // Copy method arguments to prevent de-allocation before mocking the
+            // Copy method arguments to prevent deallocation before mocking the
             // server callback beyond timeout.
             owned_response = response;
             owned_done = done;
@@ -298,7 +323,7 @@ TEST_F(CoordinationServiceAgentTest,
       // before timeout (10s).
       .WillByDefault(WithArgs<2, 3>(
           [&](GetKeyValueResponse* response, StatusCallback done) {
-            // Copy method arguments to prevent de-allocation before
+            // Copy method arguments to prevent deallocation before
             //  triggering this async callback.
             owned_response = response;
             owned_done = done;
@@ -421,6 +446,87 @@ TEST_F(CoordinationServiceAgentTest, ConnectAfterResetError) {
   TF_EXPECT_OK(agent_->Connect());
 }
 
+TEST_F(CoordinationServiceAgentTest, ConnectAfterReset_WithErrorPolling) {
+  // Connect coordination agent and set it to error.
+  PollForErrorResponse mocked_response;
+  EXPECT_CALL(*GetClient(), PollForErrorAsync(_, _, _, _))
+      .WillOnce(DoAll(SetArgPointee<2>(mocked_response),
+                      InvokeArgument<3>(absl::UnavailableError("Test Error."))))
+      .WillOnce(DoAll(SetArgPointee<2>(mocked_response),
+                      InvokeArgument<3>(absl::InternalError("Test Error."))));
+
+  CoordinationServiceConfig config;
+  config.set_poll_for_error_from_service_at_startup(true);
+  InitializeAgent(config);
+  // The agent will be in ERROR state after the first call to Connect() because
+  // the error polling thread will be created and will immediately return an
+  // error.
+  TF_ASSERT_OK(agent_->Connect());
+  // Wait a bit for the error polling thread to start.
+  absl::SleepFor(absl::Seconds(2));
+  ASSERT_TRUE(agent_->IsError());
+
+  TF_ASSERT_OK(agent_->Reset());
+  // Agent should be able to reconnect to the service after resetting. The error
+  // polling thread will be recreated when the agent is connected again.
+  TF_EXPECT_OK(agent_->Connect());
+  absl::SleepFor(absl::Seconds(2));
+  // The agent should again be in ERROR state after Connect().
+  EXPECT_TRUE(agent_->IsError());
+}
+
+TEST_F(CoordinationServiceAgentTest, CancelledPollForErrorRequest) {
+  // Connect coordination agent.
+  PollForErrorResponse mocked_response;
+  EXPECT_CALL(*GetClient(), PollForErrorAsync(_, _, _, _))
+      .WillOnce(DoAll(SetArgPointee<2>(mocked_response),
+                      InvokeArgument<3>(absl::CancelledError("Test Error."))));
+
+  CoordinationServiceConfig config;
+  config.set_poll_for_error_from_service_at_startup(true);
+  InitializeAgent(config);
+  TF_ASSERT_OK(agent_->Connect());
+  // Wait a bit for the error polling thread to start.
+  absl::SleepFor(absl::Seconds(2));
+  // Cancelled error polling request will not set agent to error.
+  ASSERT_FALSE(agent_->IsError());
+}
+
+TEST_F(CoordinationServiceAgentTest, InvalidPollForErrorRequest) {
+  // Connect coordination agent.
+  PollForErrorResponse mocked_response;
+  EXPECT_CALL(*GetClient(), PollForErrorAsync(_, _, _, _))
+      .WillOnce(
+          DoAll(SetArgPointee<2>(mocked_response),
+                InvokeArgument<3>(absl::InvalidArgumentError("Test Error."))));
+
+  CoordinationServiceConfig config;
+  config.set_poll_for_error_from_service_at_startup(true);
+  InitializeAgent(config);
+  TF_ASSERT_OK(agent_->Connect());
+  // Wait a bit for the error polling thread to start.
+  absl::SleepFor(absl::Seconds(2));
+  ASSERT_TRUE(agent_->IsError());
+}
+
+TEST_F(CoordinationServiceAgentTest,
+       PollForErrorRequestWithFailedPrecondition) {
+  // Connect coordination agent.
+  PollForErrorResponse mocked_response;
+  EXPECT_CALL(*GetClient(), PollForErrorAsync(_, _, _, _))
+      .WillOnce(DoAll(
+          SetArgPointee<2>(mocked_response),
+          InvokeArgument<3>(absl::FailedPreconditionError("Test Error."))));
+
+  CoordinationServiceConfig config;
+  config.set_poll_for_error_from_service_at_startup(true);
+  InitializeAgent(config);
+  TF_ASSERT_OK(agent_->Connect());
+  // Wait a bit for the error polling thread to start.
+  absl::SleepFor(absl::Seconds(2));
+  ASSERT_TRUE(agent_->IsError());
+}
+
 TEST_F(CoordinationServiceAgentTest, ResetCanBeRetried) {
   // Mock reset error failing for the first time.
   EXPECT_CALL(*GetClient(), ResetTaskAsync(_, _, _))
@@ -460,21 +566,6 @@ TEST_F(CoordinationServiceAgentTest, GetOwnTask_Uninitialized) {
   auto result = agent_->GetOwnTask();
 
   EXPECT_TRUE(absl::IsFailedPrecondition(result.status()));
-}
-
-TEST_F(CoordinationServiceAgentTest, WaitAtBarrier_SameIdUsedTwice_Fails) {
-  InitializeAgent();
-  const std::string barrier_id = "only_use_once";
-  TF_ASSERT_OK(agent_->Connect());
-  // Wait at barrier for the first time should succeed.
-  TF_ASSERT_OK(
-      agent_->WaitAtBarrier(barrier_id, absl::Seconds(1), /*tasks=*/{}));
-
-  // Subsequent calls should fail.
-  auto result =
-      agent_->WaitAtBarrier(barrier_id, absl::Seconds(1), /*tasks=*/{});
-
-  EXPECT_TRUE(absl::IsFailedPrecondition(result));
 }
 
 TEST_F(CoordinationServiceAgentTest, GetEnv_SucceedsAfterInit) {
@@ -527,6 +618,133 @@ TEST_F(CoordinationServiceAgentTest, Connect_InternalErrorShouldBeRetried) {
   InitializeAgent();
 
   TF_EXPECT_OK(agent_->Connect());
+}
+
+TEST_F(CoordinationServiceAgentTest, WaitAtBarrier_Twice_Success) {
+  const std::string barrier_id = "barrier_id";
+  // Call expectations need to be set before the agent is initialized.
+  EXPECT_CALL(*GetClient(),
+              BarrierAsync(_, IsBarrierRequest(barrier_id, 0), _, _))
+      .WillOnce(InvokeArgument<3>(absl::OkStatus()));
+  EXPECT_CALL(*GetClient(),
+              // Check that the counter is incremented.
+              BarrierAsync(_, IsBarrierRequest(barrier_id, 1), _, _))
+      .WillOnce(InvokeArgument<3>(absl::OkStatus()));
+
+  InitializeAgent();
+  TF_EXPECT_OK(agent_->Connect());
+
+  TF_EXPECT_OK(
+      agent_->WaitAtBarrier(barrier_id, absl::Seconds(1), /*tasks=*/{}));
+  TF_EXPECT_OK(
+      agent_->WaitAtBarrier(barrier_id, absl::Seconds(1), /*tasks=*/{}));
+}
+
+TEST_F(CoordinationServiceAgentTest, WaitAtBarrier_Ongoing_Fails) {
+  const std::string barrier_id = "barrier_id";
+  // Call expectations need to be set before the agent is initialized.
+  EXPECT_CALL(*GetClient(),
+              BarrierAsync(_, IsBarrierRequest(barrier_id, 0), _, _))
+      // Let the first call hang by not invoking the done callback.
+      .WillOnce(Return());
+
+  InitializeAgent();
+  TF_EXPECT_OK(agent_->Connect());
+
+  agent_->WaitAtBarrierAsync(barrier_id, absl::Seconds(1), /*tasks=*/{},
+                             [](const absl::Status& s) {});
+
+  EXPECT_THAT(agent_->WaitAtBarrier(barrier_id, absl::Seconds(1), /*tasks=*/{}),
+              StatusIs(absl::StatusCode::kFailedPrecondition));
+}
+
+TEST_F(CoordinationServiceAgentTest,
+       WaitAtBarrier_FailedWithBarrierError_IncrementCounter) {
+  const std::string barrier_id = "barrier_id";
+  // Call expectations need to be set before the agent is initialized.
+  // First barrier fails with service error (has coordination payload).
+  EXPECT_CALL(*GetClient(),
+              BarrierAsync(_, IsBarrierRequest(barrier_id, 0), _, _))
+      .WillOnce(InvokeArgument<3>(MakeCoordinationError(MakeBarrierError(
+          absl::InternalError("Barrier failed."), barrier_id, 0))));
+  EXPECT_CALL(*GetClient(),
+              // Second barrier should have incremented counter.
+              BarrierAsync(_, IsBarrierRequest(barrier_id, 1), _, _))
+      .WillOnce(InvokeArgument<3>(absl::OkStatus()));
+
+  InitializeAgent();
+  TF_EXPECT_OK(agent_->Connect());
+  EXPECT_THAT(agent_->WaitAtBarrier(barrier_id, absl::Seconds(1), /*tasks=*/{}),
+              StatusIs(absl::StatusCode::kInternal));
+
+  TF_EXPECT_OK(agent_->WaitAtBarrier(barrier_id, absl::Seconds(1), {}));
+}
+
+TEST_F(CoordinationServiceAgentTest,
+       WaitAtBarrier_FailedWithRpcError_DoesNotIncrementCounter) {
+  const std::string barrier_id = "barrier_id";
+  // Call expectations need to be set before the agent is initialized.
+  // First barrier fails with RPC error (no coordination payload).
+  EXPECT_CALL(*GetClient(),
+              BarrierAsync(_, IsBarrierRequest(barrier_id, 0), _, _))
+      .WillOnce(InvokeArgument<3>(absl::UnavailableError("Connection lost.")))
+      // Second call will use the same un-incremented counter.
+      .WillOnce(InvokeArgument<3>(absl::OkStatus()));
+
+  InitializeAgent();
+  TF_EXPECT_OK(agent_->Connect());
+  EXPECT_THAT(agent_->WaitAtBarrier(barrier_id, absl::Seconds(1), /*tasks=*/{}),
+              StatusIs(absl::StatusCode::kUnavailable));
+
+  TF_EXPECT_OK(agent_->WaitAtBarrier(barrier_id, absl::Seconds(1), {}));
+}
+
+TEST_F(CoordinationServiceAgentTest, CancelBarrier_OngoingBarrier_Cancelled) {
+  const std::string barrier_id = "barrier_id";
+  EXPECT_CALL(*GetClient(),
+              BarrierAsync(_, IsBarrierRequest(barrier_id, 0), _, _))
+      // Let the first call hang by not invoking the done callback.
+      .WillOnce(Return());
+  InitializeAgent();
+  TF_EXPECT_OK(agent_->Connect());
+  agent_->WaitAtBarrierAsync(barrier_id, absl::Seconds(1), /*tasks=*/{},
+                             // Can't test this since this would be invoked on
+                             // service after cancel invocation.
+                             [](const absl::Status& s) {});
+
+  EXPECT_THAT(agent_->CancelBarrier(barrier_id),
+              StatusIs(absl::StatusCode::kOk));
+}
+
+TEST_F(CoordinationServiceAgentTest, CancelBarrier_NonExistent_Fails) {
+  InitializeAgent();
+  TF_EXPECT_OK(agent_->Connect());
+
+  EXPECT_THAT(agent_->CancelBarrier("nonexistent_barrier"),
+              StatusIs(absl::StatusCode::kFailedPrecondition));
+}
+
+TEST_F(CoordinationServiceAgentTest, CancelBarrier_CompletedBarrier_Fails) {
+  InitializeAgent();
+  TF_EXPECT_OK(agent_->Connect());
+  TF_EXPECT_OK(
+      agent_->WaitAtBarrier("barrier_id", absl::Seconds(1), /*tasks=*/{}));
+
+  EXPECT_THAT(agent_->CancelBarrier("barrier_id"),
+              StatusIs(absl::StatusCode::kFailedPrecondition));
+}
+
+TEST_F(CoordinationServiceAgentTest, CancelBarrier_ErroredBarrier_Fails) {
+  EXPECT_CALL(*GetClient(), BarrierAsync(_, _, _, _))
+      .WillOnce(InvokeArgument<3>(absl::InternalError("Test Error.")));
+  InitializeAgent();
+  TF_EXPECT_OK(agent_->Connect());
+  ASSERT_THAT(
+      agent_->WaitAtBarrier("barrier_id", absl::Seconds(1), /*tasks=*/{}),
+      StatusIs(absl::StatusCode::kInternal));
+
+  EXPECT_THAT(agent_->CancelBarrier("barrier_id"),
+              StatusIs(absl::StatusCode::kFailedPrecondition));
 }
 
 }  // namespace

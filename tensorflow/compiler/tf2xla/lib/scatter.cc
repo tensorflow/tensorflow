@@ -15,22 +15,22 @@ limitations under the License.
 
 #include "tensorflow/compiler/tf2xla/lib/scatter.h"
 
+#include <cstdint>
 #include <functional>
-#include <memory>
 #include <vector>
 
 #include "absl/log/log.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_join.h"
 #include "absl/types/span.h"
-#include "xla/client/xla_builder.h"
-#include "xla/client/xla_computation.h"
+#include "xla/hlo/builder/xla_builder.h"
+#include "xla/hlo/builder/xla_computation.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tsl/platform/statusor.h"
 
 namespace tensorflow {
 
@@ -52,7 +52,7 @@ absl::StatusOr<xla::XlaOp> XlaScatter(
   if (indices_are_vectors) {
     TF_RET_CHECK(!indices_dims.empty());
     num_index_dims = indices_dims.back();
-    if (num_index_dims > buffer_shape.rank()) {
+    if (num_index_dims > buffer_shape.dimensions_size()) {
       return errors::InvalidArgument(
           "The size of the minor dimension of the indices (shape: ",
           xla::ShapeUtil::HumanString(indices_shape),
@@ -144,8 +144,8 @@ absl::StatusOr<xla::XlaOp> XlaScatter(
                                        ? indices_shape.dimensions_size() - 1
                                        : indices_shape.dimensions_size());
 
-  int64_t updates_rank = updates_shape.rank();
-  int64_t buffer_rank = buffer_shape.rank();
+  int64_t updates_rank = updates_shape.dimensions_size();
+  int64_t buffer_rank = buffer_shape.dimensions_size();
   int64_t num_window_dims_in_updates = buffer_rank - num_index_dims;
 
   // If the rank of `updates` is 0 and does not match the expected rank of
@@ -160,7 +160,7 @@ absl::StatusOr<xla::XlaOp> XlaScatter(
   if (updates_rank == 0 && expected_updates_rank != 0) {
     new_updates = xla::Broadcast(updates, expected_updates_dims);
     TF_ASSIGN_OR_RETURN(updates_shape, builder->GetShape(new_updates));
-    updates_rank = updates_shape.rank();
+    updates_rank = updates_shape.dimensions_size();
   }
 
   if (updates_rank > 0) {

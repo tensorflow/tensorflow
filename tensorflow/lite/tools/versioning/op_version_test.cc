@@ -16,9 +16,7 @@ limitations under the License.
 
 #include <vector>
 
-#include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "tensorflow/lite/builtin_op_data.h"
 #include "tensorflow/lite/core/c/builtin_op_data.h"
 #include "tensorflow/lite/core/c/c_api_types.h"
 #include "tensorflow/lite/schema/schema_generated.h"
@@ -1431,5 +1429,9 @@ TEST(OpVersionTest, VersioningDynamicUpdateSliceTest) {
   fake_op_sig.inputs = CreateOpSignatureTensorSpecs(
       std::vector<TfLiteType>{kTfLiteFloat32, kTfLiteFloat32, kTfLiteInt64});
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 2);
+
+  fake_op_sig.inputs = CreateOpSignatureTensorSpecs(
+      std::vector<TfLiteType>{kTfLiteFloat16, kTfLiteFloat16, kTfLiteInt32});
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 3);
 }
 }  // namespace tflite

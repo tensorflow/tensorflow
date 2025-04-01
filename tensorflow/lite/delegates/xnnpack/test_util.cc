@@ -16,6 +16,9 @@ limitations under the License.
 #include "tensorflow/lite/delegates/xnnpack/test_util.h"
 
 #include <algorithm>
+#include <cstddef>
+#include <cstdint>
+#include <cstdlib>
 #include <limits>
 #include <vector>
 

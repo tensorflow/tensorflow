@@ -15,9 +15,13 @@ limitations under the License.
 
 #include "xla/service/while_loop_constant_sinking.h"
 
+#include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/utils/hlo_matchers.h"
+#include "xla/literal_util.h"
 #include "xla/test.h"
 #include "xla/tests/hlo_test_base.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
@@ -68,7 +72,7 @@ ENTRY entry {
                    .Run(module.get()));
   ASSERT_TRUE(changed);
 
-  auto* while_body = module->GetComputationWithName("body");
+  auto* while_body = module->GetComputationWithName("body.sunk");
   EXPECT_THAT(while_body->root_instruction(),
               op::Tuple(op::Add(_, op::Constant()), _));
 }
@@ -115,7 +119,7 @@ ENTRY entry {
                    .Run(module.get()));
   ASSERT_TRUE(changed);
 
-  auto* while_body = module->GetComputationWithName("body");
+  auto* while_body = module->GetComputationWithName("body.sunk");
   EXPECT_THAT(while_body->root_instruction(),
               op::Tuple(op::Add(_, op::Broadcast(op::Constant())), _));
 }
@@ -155,7 +159,7 @@ ENTRY entry {
                           WhileLoopConstantSinking{}.Run(module.get()));
   ASSERT_TRUE(changed);
 
-  auto* while_body = module->GetComputationWithName("body");
+  auto* while_body = module->GetComputationWithName("body.sunk");
   EXPECT_THAT(while_body->root_instruction(),
               op::Tuple(op::Add(op::Constant(), op::Constant()),
                         op::GetTupleElement(op::Parameter(0)),
@@ -196,7 +200,7 @@ ENTRY entry {
                           WhileLoopConstantSinking{}.Run(module.get()));
   ASSERT_TRUE(changed);
 
-  auto* while_body = module->GetComputationWithName("body");
+  auto* while_body = module->GetComputationWithName("body.sunk");
   EXPECT_THAT(while_body->root_instruction(),
               op::Tuple(op::GetTupleElement(op::Constant(), 0),
                         op::GetTupleElement(op::Parameter(0))));
@@ -244,7 +248,7 @@ ENTRY entry {
                           WhileLoopConstantSinking{}.Run(module.get()));
   ASSERT_TRUE(changed);
 
-  auto* while_body = module->GetComputationWithName("body");
+  auto* while_body = module->GetComputationWithName("body.sunk");
   EXPECT_THAT(while_body->root_instruction(),
               op::Tuple(op::Add(op::Constant(), ::testing::Not(op::Constant())),
                         op::GetTupleElement(op::Parameter(0)),
@@ -286,7 +290,7 @@ ENTRY entry {
                           WhileLoopConstantSinking{}.Run(module.get()));
   ASSERT_TRUE(changed);
 
-  auto* while_body = module->GetComputationWithName("body");
+  auto* while_body = module->GetComputationWithName("body.sunk");
   EXPECT_THAT(while_body->root_instruction(),
               op::Tuple(op::GetTupleElement(), op::GetTupleElement(),
                         op::GetTupleElement()));
@@ -332,7 +336,7 @@ ENTRY entry {
                           WhileLoopConstantSinking{}.Run(module.get()));
   ASSERT_TRUE(changed);
 
-  auto* while_condition = module->GetComputationWithName("condition");
+  auto* while_condition = module->GetComputationWithName("condition.sunk");
   EXPECT_THAT(while_condition->root_instruction(), op::Lt(_, op::Constant()));
 }
 
@@ -372,7 +376,7 @@ ENTRY entry {
                           WhileLoopConstantSinking{}.Run(module.get()));
   ASSERT_TRUE(changed);
 
-  auto* while_condition = module->GetComputationWithName("condition");
+  auto* while_condition = module->GetComputationWithName("condition.sunk");
   EXPECT_THAT(while_condition->root_instruction(),
               op::Lt(_, op::GetTupleElement(op::Constant())));
 }
@@ -415,7 +419,7 @@ ENTRY entry {
                           WhileLoopConstantSinking{}.Run(module.get()));
   ASSERT_TRUE(changed);
 
-  auto* while_condition = module->GetComputationWithName("condition");
+  auto* while_condition = module->GetComputationWithName("condition.sunk");
   EXPECT_THAT(while_condition->root_instruction(), op::Lt(_, op::Constant()));
   for (const HloInstruction* inst : while_condition->instructions()) {
     if (inst->opcode() == HloOpcode::kConstant) {
@@ -465,9 +469,61 @@ ENTRY entry {
                           WhileLoopConstantSinking{}.Run(module.get()));
   ASSERT_TRUE(changed);
 
-  auto* while_condition = module->GetComputationWithName("condition");
+  auto* while_condition = module->GetComputationWithName("condition.sunk");
   EXPECT_THAT(while_condition->root_instruction(),
               op::And(op::Lt(_, op::Constant()), op::Lt(_, op::Constant())));
 }
+
+TEST_F(WhileLoopConstantSinkingTest, SinkWithSharedBody) {
+  const char* const hlo_string = R"(
+HloModule ModuleWithWhile
+
+body {
+  p_body = (f32[2],f32[2]) parameter(0)
+  p_body.0 = f32[2] get-tuple-element((f32[2],f32[2]) p_body), index=0
+  p_body.1 = f32[2] get-tuple-element((f32[2],f32[2]) p_body), index=1
+
+  add.0 = f32[2] add(p_body.0, p_body.1)
+  ROOT root = (f32[2],f32[2]) tuple(add.0, p_body.1)
+}
+
+condition {
+  p_cond = (f32[2],f32[2]) parameter(0)
+  ROOT result = pred[] constant(true)
+}
+
+ENTRY entry {
+  const_0 = f32[2] constant({1, 2})
+  const_1 = f32[2] constant({2, 1})
+  while_init = (f32[2],f32[2]) tuple(const_0, const_1)
+  while = (f32[2],f32[2]) while(while_init), condition=condition, body=body
+  while_init2 = (f32[2],f32[2]) tuple(const_1, const_0)
+  while2 = (f32[2],f32[2]) while(while_init2), condition=condition, body=body
+  ROOT tuple = ((f32[2],f32[2]),(f32[2],f32[2])) tuple(while, while2)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool changed,
+      WhileLoopConstantSinking(/*sink_broadcast_of_constants=*/false,
+                               /*sink_only_scalar_constants=*/false)
+          .Run(module.get()));
+  ASSERT_TRUE(changed);
+
+  auto* while_body = module->GetComputationWithName("body.sunk");
+  EXPECT_THAT(
+      while_body->root_instruction(),
+      op::Tuple(op::Add(_, op::Constant(LiteralUtil::CreateR1<float>({2, 1}))),
+                _));
+  while_body = module->GetComputationWithName("body.sunk.1");
+  EXPECT_THAT(
+      while_body->root_instruction(),
+      op::Tuple(op::Add(_, op::Constant(LiteralUtil::CreateR1<float>({1, 2}))),
+                _));
+}
+
 }  // namespace
 }  // namespace xla

@@ -172,7 +172,7 @@ class ReadyNodeManager {
  public:
   ReadyNodeManager() {}
   virtual ~ReadyNodeManager() {}
-  virtual Status Init(
+  virtual absl::Status Init(
       const std::unordered_map<const NodeDef*, NodeState>* node_map) {
     return absl::OkStatus();
   }
@@ -226,7 +226,7 @@ class LIFOManager : public ReadyNodeManager {
 class HeapReadyManager : public ReadyNodeManager {
  public:
   HeapReadyManager();
-  Status Init(
+  absl::Status Init(
       const std::unordered_map<const NodeDef*, NodeState>* node_map) override;
   ~HeapReadyManager() override {}
   void AddNode(const NodeDef* node) override;
@@ -274,7 +274,8 @@ class PriorityReadyManager : public HeapReadyManager {
   void AddNode(const NodeDef* node) override;
 
   // Note this should be called after Init().
-  Status SetPriority(const std::unordered_map<string, int>& node_priority);
+  absl::Status SetPriority(
+      const std::unordered_map<string, int>& node_priority);
 
  protected:
   std::function<bool(const NodeDef*, const NodeDef*)> Greater() override;
@@ -296,7 +297,7 @@ class CompositeNodeManager : public ReadyNodeManager {
   CompositeNodeManager();
   ~CompositeNodeManager() override {}
 
-  Status Init(
+  absl::Status Init(
       const std::unordered_map<const NodeDef*, NodeState>* node_map) override;
   void AddNode(const NodeDef* node) override;
   const NodeDef* GetCurrNode() override;
@@ -352,9 +353,9 @@ class SchedulerState {
   // initial_nodes is the set of nodes (primary inputs) discovered by Init()
   // which may be added by a ReadyNodeManager (or related/derivative scheduler)
   // to begin node schedule and graph simulation.
-  Status Init(const GrapplerItem* item,
-              std::vector<const NodeDef*>* initial_nodes,
-              bool create_explicit_channel_device = true);
+  absl::Status Init(const GrapplerItem* item,
+                    std::vector<const NodeDef*>* initial_nodes,
+                    bool create_explicit_channel_device = true);
 
   virtual Costs Summary() const;
   // Like the above, but writes detailed stats to RunMetadata.
@@ -487,7 +488,7 @@ class VirtualScheduler {
   // This function should be called at least once after the scheduler is
   // constructed. An uninitialized or failed-to-initialize scheduler will cause
   // undefined behavior.
-  virtual Status Init(const GrapplerItem* item);
+  virtual absl::Status Init(const GrapplerItem* item);
 
   // Gets the current scheduled node for execution; the caller of this function
   // can accordingly simulate the execution of the current scheduled node.

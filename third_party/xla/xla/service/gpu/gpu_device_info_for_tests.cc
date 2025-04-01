@@ -16,13 +16,14 @@ limitations under the License.
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 
 #include "xla/stream_executor/device_description.h"
+#include "xla/stream_executor/semantic_version.h"
 
 namespace xla {
 namespace gpu {
 
 stream_executor::DeviceDescription TestGpuDeviceInfo::RTXA6000DeviceInfo(
     stream_executor::GpuComputeCapability cc) {
-  stream_executor::internal::DeviceDescriptionBuilder b;
+  stream_executor::DeviceDescription b;
   b.set_gpu_compute_capability(cc);
   b.set_threads_per_block_limit(1024);
   b.set_threads_per_warp(32);
@@ -39,11 +40,15 @@ stream_executor::DeviceDescription TestGpuDeviceInfo::RTXA6000DeviceInfo(
   b.set_l2_cache_size(6 * 1024 * 1024);
   b.set_clock_rate_ghz(1.410);
   b.set_device_memory_size(51'050'250'240);
-  return b.BuildObject();
+  b.set_registers_per_core_limit(65536);
+  b.set_registers_per_block_limit(65536);
+  b.set_runtime_version(stream_executor::SemanticVersion{12, 4, 0});
+  b.set_driver_version(stream_executor::SemanticVersion{12, 4, 0});
+  return b;
 }
 
 stream_executor::DeviceDescription TestGpuDeviceInfo::AMDMI210DeviceInfo() {
-  stream_executor::internal::DeviceDescriptionBuilder b;
+  stream_executor::DeviceDescription b;
   b.set_gpu_compute_capability(
       stream_executor::RocmComputeCapability("gfx90a"));
   b.set_threads_per_block_limit(1024);
@@ -61,7 +66,17 @@ stream_executor::DeviceDescription TestGpuDeviceInfo::AMDMI210DeviceInfo() {
   b.set_l2_cache_size(8 * 1024 * 1024);
   b.set_clock_rate_ghz(1.7);
   b.set_device_memory_size(67'628'957'696);
-  return b.BuildObject();
+  b.set_runtime_version(stream_executor::SemanticVersion{6, 0, 0});
+  b.set_driver_version(stream_executor::SemanticVersion{6, 0, 0});
+  return b;
+}
+
+stream_executor::DeviceDescription TestGpuDeviceInfo::CudaOrRocmDeviceInfo() {
+#if defined(TENSORFLOW_USE_ROCM)
+  return AMDMI210DeviceInfo();
+#else
+  return RTXA6000DeviceInfo();
+#endif  // GOOGLE_CUDA
 }
 
 }  // namespace gpu

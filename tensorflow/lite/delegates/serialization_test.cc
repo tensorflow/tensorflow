@@ -14,7 +14,6 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/delegates/serialization.h"
 
-#include <cstdint>
 #include <string>
 #include <vector>
 

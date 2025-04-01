@@ -96,17 +96,11 @@ class AnalyticalLatencyHidingSchedulerTest : public GpuCodegenTest {
         ->GetDeviceDescription()
         .cuda_compute_capability();
   }
-  HloCostAnalysis::ShapeSizeFunction ShapeSizeBytesFunction() const {
-    return [&](const Shape& shape) {
-      constexpr int64_t kPointerSize = 8;
-      return ShapeUtil::ByteSizeOf(shape, kPointerSize);
-    };
-  }
 };
 
 TEST_F(AnalyticalLatencyHidingSchedulerTest, TestAnalyticalLatencyEstimator) {
   if (!GetCudaComputeCapability().IsAtLeast(
-          se::CudaComputeCapability::PASCAL_)) {
+          se::CudaComputeCapability::kPascal)) {
     GTEST_SKIP() << "This test is for Pascal+ GPUs.";
   }
   const se::DeviceDescription dev_info =
@@ -128,8 +122,8 @@ ENTRY entry {
   p1 = f32[16,64,256]{2,1,0} parameter(1)
   p2 = f32[1024,2048,2048]{2,1,0} parameter(2)
   p3 = f32[2048,2048,2048]{2,1,0} parameter(3)
-  all-reduce-start.1 = f32[1024,2048,2048]{2,1,0} all-reduce-start(p2), channel_id=8, replica_groups={{0}}, to_apply=region_20.995, backend_config="{\"is_sync\":false}"
-  all-reduce-start.2 = f32[2048,2048,2048]{2,1,0} all-reduce-start(p3), channel_id=10, replica_groups={{0}}, to_apply=region_20.995, backend_config="{\"is_sync\":false}"
+  all-reduce-start.1 = f32[1024,2048,2048]{2,1,0} all-reduce-start(p2), channel_id=8, replica_groups={{0}}, to_apply=region_20.995, backend_config={"collective_backend_config": {"is_sync": false}}
+  all-reduce-start.2 = f32[2048,2048,2048]{2,1,0} all-reduce-start(p3), channel_id=10, replica_groups={{0}}, to_apply=region_20.995, backend_config={"collective_backend_config": {"is_sync": false}}
 
   all-reduce-done.1 = f32[1024,2048,2048]{2,1,0} all-reduce-done(all-reduce-start.1)
   all-reduce-done.2 = f32[2048,2048,2048]{2,1,0} all-reduce-done(all-reduce-start.2)
@@ -149,7 +143,8 @@ ENTRY entry {
   auto scheduler_config = GetDefaultSchedulerConfig();
   auto latency_estimator = std::make_unique<AnalyticalLatencyEstimator>(
       scheduler_config, std::make_unique<ApproximateLatencyEstimator>(),
-      dev_info, ShapeSizeBytesFunction(), hlo_module->entry_computation());
+      dev_info, HloCostAnalysis::DefaultShapeSize,
+      hlo_module->entry_computation());
   EXPECT_TRUE(RunScheduler(hlo_module.get(), scheduler_config,
                            std::move(latency_estimator))
                   .ok());

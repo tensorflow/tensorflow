@@ -21,6 +21,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -38,7 +39,7 @@ bool IsTableLookup(const HloInstruction* hlo) {
   return hlo->opcode() == HloOpcode::kDynamicSlice &&
          (hlo->operand(0)->IsConstant() ||
           hlo->operand(0)->opcode() == HloOpcode::kIota) &&
-         hlo->operand(0)->shape().rank() == 1 &&
+         hlo->operand(0)->shape().dimensions_size() == 1 &&
          (hlo->operand(0)->shape().element_type() == S32 ||
           hlo->operand(0)->shape().element_type() == U32);
 }
@@ -196,7 +197,7 @@ bool IsPerIdOffset(const HloInstruction* offset, int64_t shard_size,
   }
 
   if (offset->opcode() == HloOpcode::kConvert &&
-      offset->operand(0)->shape().IsInteger() &&
+      offset->operand(0)->shape().AreAllLeavesIntegers() &&
       primitive_util::BitWidth(offset->operand(0)->shape().element_type()) <=
           primitive_util::BitWidth(offset->shape().element_type())) {
     return IsPerIdOffset(offset->operand(0), shard_size, map_id, group_size,
@@ -272,7 +273,7 @@ std::optional<ReduceScatterSpec> SpecFromReduceScatterInstr(
     const HloInstruction* rs_instr, int64_t num_partitions,
     int64_t num_replicas, int64_t min_rank, bool is_constrain_layout,
     bool use_global_device_ids, bool is_cross_module) {
-  if (rs_instr->shape().rank() < min_rank) {
+  if (rs_instr->shape().dimensions_size() < min_rank) {
     return std::nullopt;
   }
   CHECK(rs_instr->opcode() == HloOpcode::kReduceScatter);
@@ -318,20 +319,30 @@ std::optional<ReduceScatterSpec> MatchReduceScatter(
   return spec;
 }
 
-bool AllGatherDynamicSliceCancellation(
+std::optional<ReduceScatterSpec> AllGatherDynamicSliceCancellation(
     const HloAllGatherInstruction* ag, int64_t num_partitions,
     int64_t num_replicas, bool allow_multiple_split_dims,
     bool allow_intervening_reshape, int64_t min_rank,
-    HloPredicate match_partition_id, HloPredicate match_replica_id) {
+    HloPredicate match_partition_id, HloPredicate match_replica_id,
+    bool allow_intervening_bitcast, bool allow_multiple_users) {
   auto spec = MatchWithDynamicSlice(
       ag, num_partitions, num_replicas, allow_multiple_split_dims,
       allow_intervening_reshape, min_rank, match_partition_id, match_replica_id,
       ag->constrain_layout(), ag->use_global_device_ids(),
-      ag->channel_id() && ag->opcode() == HloOpcode::kAllGather);
-  if (spec.has_value()) {
-    return true;
+      ag->channel_id() && ag->opcode() == HloOpcode::kAllGather,
+      allow_intervening_bitcast, allow_multiple_users);
+
+  if (!spec.has_value()) {
+    return std::nullopt;
   }
-  return false;
+  if (spec->dynamic_slice && spec->split_dim != ag->all_gather_dimension()) {
+    VLOG(2) << "Mismatch AG and DS: AG: " << ag->ToString()
+            << ", DS: " << spec->dynamic_slice->ToString()
+            << ", ag_dim: " << ag->all_gather_dimension()
+            << ", ds_dim: " << spec->split_dim;
+    return std::nullopt;
+  }
+  return spec;
 }
 
 std::optional<ReduceScatterSpec> MatchWithDynamicSlice(
@@ -340,22 +351,22 @@ std::optional<ReduceScatterSpec> MatchWithDynamicSlice(
     bool allow_intervening_reshape, int64_t min_rank,
     HloPredicate match_partition_id, HloPredicate match_replica_id,
     bool is_constrain_layout, bool use_global_device_ids, bool is_cross_module,
-    bool allow_intervening_bitcast) {
+    bool allow_intervening_bitcast, bool allow_multiple_users) {
   if (!instruction->shape().IsArray() || is_constrain_layout ||
       (is_cross_module &&
        !instruction->GetModule()->config().use_spmd_partitioning())) {
     VLOG(2) << "Unsupported collective: " << instruction->ToString();
     return std::nullopt;
   }
-  if (instruction->shape().rank() -
+  if (instruction->shape().dimensions_size() -
           absl::c_count(instruction->shape().dimensions(), 1) <
       min_rank) {
     VLOG(2) << " Should be at least rank-" << min_rank
             << " excluding trivial dimensions " << instruction->ToString();
     return std::nullopt;
   }
-  if (instruction->user_count() != 1) {
-    VLOG(2) << "All-gather user_count > 1 " << instruction->ToString();
+  if (!allow_multiple_users && instruction->user_count() != 1) {
+    VLOG(2) << "All-gather user_count != 1 " << instruction->ToString();
     return std::nullopt;
   }
   if (instruction->replica_groups().size() > 1) {
@@ -371,8 +382,19 @@ std::optional<ReduceScatterSpec> MatchWithDynamicSlice(
       return std::nullopt;
     }
   }
-
+  // Always assume first user to start.
   HloInstruction* user = instruction->users()[0];
+  if (allow_multiple_users) {
+    // If we find a reshape or dynamic-slice use that.
+    for (auto* some_user : instruction->users()) {
+      if ((allow_intervening_reshape &&
+           some_user->opcode() == HloOpcode::kReshape) ||
+          some_user->opcode() == HloOpcode::kDynamicSlice) {
+        user = some_user;
+        break;
+      }
+    }
+  }
   HloInstruction* reshape = nullptr;
   if (allow_intervening_reshape && user->opcode() == HloOpcode::kReshape) {
     // Allow the intervening reshape if it reshapes just the non scattered
@@ -398,9 +420,10 @@ std::optional<ReduceScatterSpec> MatchWithDynamicSlice(
   }
 
   if (user->opcode() != HloOpcode::kDynamicSlice) {
-    VLOG(2) << "All-reduce user is not dynamic slice " << user->ToString();
+    VLOG(2) << "AG or AR user is not dynamic slice " << user->ToString();
     return std::nullopt;
   }
+
   ReduceScatterSpec spec;
   int64_t group_size;
   MapIdToTableOffset map_id;
@@ -490,7 +513,8 @@ std::optional<ReduceScatterSpec> MatchWithDynamicSlice(
   // First find a single dimension where the input and output of dynamic slice
   // differ.
   int num_dims = 0;
-  for (int64_t dim = 0; dim < user->operand(0)->shape().rank(); ++dim) {
+  for (int64_t dim = 0; dim < user->operand(0)->shape().dimensions_size();
+       ++dim) {
     if (user->operand(0)->shape().dimensions(dim) ==
         user->shape().dimensions(dim)) {
       continue;
@@ -509,7 +533,7 @@ std::optional<ReduceScatterSpec> MatchWithDynamicSlice(
   }
   const Shape& shape = user->operand(0)->shape();
   if (spec.split_dim == -1) {
-    for (int64_t dim = 0; dim < shape.rank(); ++dim) {
+    for (int64_t dim = 0; dim < shape.dimensions_size(); ++dim) {
       auto offset = user->operand(dim + 1);
       // Skip trivial (1) dimensions or if the index is a constant 0.
       if (shape.dimensions(dim) == 1 ||

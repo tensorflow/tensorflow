@@ -6,6 +6,6 @@ syntax = "proto3";
 // code for some users that use JS through J2CL.
 package tensorflow.error.dummy;
 
-import public "tsl/protobuf/error_codes.proto";
+import public "xla/tsl/protobuf/error_codes.proto";
 
 option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/protobuf/for_core_protos_go_proto";

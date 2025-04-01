@@ -20,12 +20,12 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/status.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/tpu/graph_rewrite/incomplete_nodedef_builder.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/status.h"
 
 namespace tensorflow {
 
@@ -77,9 +77,10 @@ Node* CondBuilder::switch_t() { return switch_t_; }
 
 Node* CondBuilder::control_successor() { return control_successor_; }
 
-Status CondBuilder::AddInput(const std::string& input_name,
-                             const DataType& type, const std::string& device,
-                             const NodeDebugInfo& debug, Node** input) {
+absl::Status CondBuilder::AddInput(const std::string& input_name,
+                                   const DataType& type,
+                                   const std::string& device,
+                                   const NodeDebugInfo& debug, Node** input) {
   auto b = IncompleteNodeDefBuilder::Switch(
       graph_->NewName(absl::StrCat(name_, "/", input_name)), type, debug);
   TF_RETURN_IF_ERROR(b.Device(device).Build(graph_, input));

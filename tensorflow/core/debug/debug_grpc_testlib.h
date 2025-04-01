@@ -39,7 +39,7 @@ class TestEventListenerImpl final : public grpc::EventListener::Service {
   ::grpc::Status SendEvents(
       ::grpc::ServerContext* context,
       ::grpc::ServerReaderWriter< ::tensorflow::EventReply,
-                                  ::tensorflow::Event>* stream);
+                                  ::tensorflow::Event>* stream) override;
 
   // Clear debug data (e.g., Tensors) received so far.
   void ClearReceivedDebugData();

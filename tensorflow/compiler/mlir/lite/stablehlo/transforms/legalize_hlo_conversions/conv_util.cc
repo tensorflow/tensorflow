@@ -14,92 +14,24 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/legalize_hlo_conversions/conv_util.h"
 
+#include <cstddef>
 #include <cstdint>
+#include <cstdlib>
+#include <numeric>
 #include <optional>
 
+#include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
+#include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypeInterfaces.h"  // from @llvm-project
+#include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/lite/stablehlo/transforms/legalize_hlo_conversions/op_util_common.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 
 namespace mlir::odml {
-
-llvm::SmallVector<int64_t, 4> Layout::GetPermForReLayout(
-    const Layout& to_layout) const {
-  llvm::SmallVector<int64_t, 4> perm(to_layout.Rank());
-  perm[to_layout.SpecialDim1()] = SpecialDim1();
-  perm[to_layout.SpecialDim2()] = SpecialDim2();
-  for (const auto [to_spatial, from_spatial] :
-       llvm::zip(to_layout.Spatials(), Spatials())) {
-    perm[to_spatial] = from_spatial;
-  }
-  return perm;
-}
-
-llvm::SmallVector<int64_t, 4> Layout::PermuteShape(
-    const Layout& to_layout, llvm::ArrayRef<int64_t> shape) const {
-  llvm::SmallVector<int64_t, 4> new_shape(to_layout.Rank());
-  const auto perm = GetPermForReLayout(to_layout);
-  for (const auto [ind, val] : llvm::enumerate(perm)) {
-    new_shape[ind] = shape[val];
-  }
-  return new_shape;
-}
-
-bool Layout::HasSpecialDims(int64_t special_dim1, int64_t special_dim2) const {
-  return SpecialDim1() == special_dim1 && SpecialDim2() == special_dim2;
-}
-
-bool Layout::AreSpatialsIota() const {
-  llvm::ArrayRef<int64_t> spatials = Spatials();
-  return llvm::all_of(llvm::enumerate(spatials), [&](const auto& it) {
-    return it.index() == 0 || (it.value() == spatials[it.index() - 1] + 1);
-  });
-}
-
-llvm::SmallVector<int64_t, 2> ResolveStridesOrDilations(
-    const int64_t num_spatials,
-    std::optional<mlir::DenseIntElementsAttr> opt_attr) {
-  if (!opt_attr.has_value()) {
-    return llvm::SmallVector<int64_t, 2>(num_spatials, 1);
-  }
-  auto attr = opt_attr.value();
-  if (attr.isSplat()) {
-    return llvm::SmallVector<int64_t, 2>(num_spatials,
-                                         attr.getSplatValue<int64_t>());
-  }
-  return llvm::SmallVector<int64_t, 2>(attr.getValues<int64_t>());
-}
-
-llvm::SmallVector<DimPadding, 2> ResolvePadding(
-    const int64_t num_spatials,
-    std::optional<mlir::DenseIntElementsAttr> opt_padding) {
-  llvm::SmallVector<DimPadding, 2> res;
-  if (!opt_padding.has_value()) {
-    for (int i = 0; i < num_spatials; ++i) {
-      res.push_back(DimPadding(0, 0));
-    }
-    return res;
-  }
-  auto padding = opt_padding.value();
-  if (padding.isSplat()) {
-    const int64_t val = padding.getSplatValue<int64_t>();
-    for (int i = 0; i < num_spatials; ++i) {
-      res.push_back(DimPadding(val, val));
-    }
-    return res;
-  }
-  int64_t prev;
-  for (const auto [ind, val] : llvm::enumerate(padding.getValues<int64_t>())) {
-    const int64_t side = ind % 2;
-    if (side == 1) {
-      res.push_back(DimPadding(prev, val));
-    }
-    prev = val;
-  }
-  return res;
-}
 
 llvm::SmallVector<bool, 2> ResolveWindowReversal(
     const int64_t num_spatials,
@@ -115,7 +47,7 @@ llvm::SmallVector<bool, 2> ResolveWindowReversal(
   return llvm::SmallVector<bool, 2>(reversals.getValues<bool>());
 }
 
-ConvData::ConvData(mhlo::ConvolutionOp op)
+ConvView::ConvView(mhlo::ConvolutionOp op)
     : input_layout_(
           Layout{op.getDimensionNumbers().getInputBatchDimension(),
                  op.getDimensionNumbers().getInputFeatureDimension(),
@@ -150,6 +82,193 @@ ConvData::ConvData(mhlo::ConvolutionOp op)
 
   window_reversal_ =
       ResolveWindowReversal(num_spatials, op.getWindowReversal());
+}
+
+Value CreatePadOpFromConvPadding(OpBuilder& b, mhlo::ConvolutionOp op) {
+  const ConvView data(op);
+  const auto rank = data.InputLayout().Rank();
+  auto input_spatials = data.InputLayout().Spatials();
+
+  llvm::SmallVector<int64_t, 4> hi_padding(rank, 0);
+  llvm::SmallVector<int64_t, 4> lo_padding(rank, 0);
+
+  for (const auto& [ind, dim_padding] : llvm::enumerate(data.Padding())) {
+    const size_t cur_input_spatial = input_spatials[ind];
+    hi_padding[cur_input_spatial] = dim_padding.Hi();
+    lo_padding[cur_input_spatial] = dim_padding.Lo();
+  }
+
+  const llvm::SmallVector<int64_t, 4> interior_padding(rank, 0);
+
+  auto padding_attr_type = RankedTensorType::get({rank}, b.getI64Type());
+  auto hi_padding_attr =
+      DenseIntElementsAttr::get(padding_attr_type, hi_padding);
+  auto lo_padding_attr =
+      DenseIntElementsAttr::get(padding_attr_type, lo_padding);
+  auto interior_padding_attr =
+      DenseIntElementsAttr::get(padding_attr_type, interior_padding);
+
+  auto padding_value_type = RankedTensorType::get({}, data.ElementType());
+  auto padding_value_attr = b.getZeroAttr(padding_value_type);
+  auto padding_value_op =
+      b.create<arith::ConstantOp>(op->getLoc(), padding_value_attr);
+
+  auto pad_op = b.create<mhlo::PadOp>(padding_value_op->getLoc(), op.getLhs(),
+                                      padding_value_op, lo_padding_attr,
+                                      hi_padding_attr, interior_padding_attr);
+
+  return pad_op;
+}
+
+bool MatchWithResizeBilinearOp(const ConvView& data, bool& align_corners) {
+  if (data.InputLayout().Rank() != 4 || data.KernelLayout().Rank() != 4 ||
+      data.OutputLayout().Rank() != 4 ||
+      data.InputLayout().Spatials() != data.OutputLayout().Spatials()) {
+    return false;
+  }
+
+  if (data.InputDilations().size() != 2 ||
+      !(llvm::all_of(data.KernelDilations(), [](auto d) { return d == 1; })) ||
+      data.Strides().size() != 2 || data.Padding().size() != 2) {
+    return false;
+  }
+
+  // This is based on method in compiler/tf2xla/kernels/image_resize_ops.cc
+  auto can_convert_to_bilinear =
+      [](bool align_corners, int64_t dilation, int64_t padding, int64_t stride,
+         int64_t input_spatial, int64_t output_spatial) {
+        int64_t input_spatial_size =
+            align_corners ? input_spatial - 1 : input_spatial;
+        int64_t output_spatial_size =
+            align_corners ? output_spatial - 1 : output_spatial;
+
+        int64_t gcd = std::gcd(static_cast<uint64_t>(input_spatial_size),
+                               static_cast<uint64_t>(output_spatial_size));
+
+        if ((gcd == 0) || (input_spatial_size % gcd != 0) ||
+            (input_spatial_size / gcd != stride) || (dilation - 1 != padding)) {
+          return false;
+        }
+        return true;
+      };
+
+  if (data.InputDilations()[0] != 1 && data.InputDilations()[1] == 1) {
+    if (can_convert_to_bilinear(
+            /*align_corners=*/true, data.InputDilations()[0],
+            data.Padding()[0].Lo(), data.Strides()[0],
+            data.InputShape()[data.InputLayout().Spatials()[0]],
+            data.OutputShape()[data.OutputLayout().Spatials()[0]])) {
+      align_corners = true;
+      return true;
+    } else if (can_convert_to_bilinear(
+                   /*align_corners=*/false, data.InputDilations()[0],
+                   data.Padding()[0].Lo(), data.Strides()[0],
+                   data.InputShape()[data.InputLayout().Spatials()[0]],
+                   data.OutputShape()[data.OutputLayout().Spatials()[0]])) {
+      align_corners = false;
+      return true;
+    };
+  } else if (data.InputDilations()[0] == 1 && data.InputDilations()[1] != 1) {
+    if (can_convert_to_bilinear(
+            /*align_corners=*/true, data.InputDilations()[1],
+            data.Padding()[1].Lo(), data.Strides()[1],
+            data.InputShape()[data.InputLayout().Spatials()[1]],
+            data.OutputShape()[data.OutputLayout().Spatials()[1]])) {
+      align_corners = true;
+      return true;
+    } else if (can_convert_to_bilinear(
+                   /*align_corners=*/false, data.InputDilations()[1],
+                   data.Padding()[1].Lo(), data.Strides()[1],
+                   data.InputShape()[data.InputLayout().Spatials()[1]],
+                   data.OutputShape()[data.OutputLayout().Spatials()[1]])) {
+      align_corners = false;
+      return true;
+    };
+  }
+
+  return false;
+}
+
+bool IsTransposeConvPaddingValid(mhlo::ConvolutionOp conv_op,
+                                 size_t num_spatial_dims,
+                                 const ArrayRef<int64_t>& strides,
+                                 const ArrayRef<int64_t>& padding) {
+  auto dnums = conv_op.getDimensionNumbers();
+  // The newly added spatial dimension requires zero left and right padding.
+  ArrayRef<int64_t> input_spatial_dims = dnums.getInputSpatialDimensions();
+  ArrayRef<int64_t> kernel_spatial_dims = dnums.getKernelSpatialDimensions();
+  ArrayRef<int64_t> output_spatial_dims = dnums.getOutputSpatialDimensions();
+
+  for (size_t i = 0; i < num_spatial_dims; ++i) {
+    int64_t stride = strides[i];
+    int64_t input_size = mlir::cast<ShapedType>(conv_op.getLhs().getType())
+                             .getDimSize(input_spatial_dims[i]);
+    int64_t kernel_size = mlir::cast<ShapedType>(conv_op.getRhs().getType())
+                              .getDimSize(kernel_spatial_dims[i]);
+    int64_t output_size = mlir::cast<ShapedType>(conv_op.getType())
+                              .getDimSize(output_spatial_dims[i]);
+
+    // stablehlo.convolution op needs explicit padding to be set to model any
+    // Transposed-Convolution in JAX/PT. Checking to see if-
+    // 1. Pre set padding matches to the desired padding
+    // 2. Output size respects the `VALID` padding scenario
+    if ((padding[2 * i] == padding[2 * i + 1]) &&
+        (((kernel_size - 1) != padding[2 * i]) ||
+         (output_size != (stride * (input_size - 1)) + kernel_size))) {
+      // padding[2 * i] == padding[2 * i + 1] means equal padding is applied
+      // on both sides of a spatial dimension.
+      // This happens when kernel_dim >= stride
+      return false;
+    } else if ((padding[2 * i] != padding[2 * i + 1]) &&
+               (((kernel_size - 1) != padding[2 * i]) ||
+                ((stride - 1) != padding[2 * i + 1]) ||
+                (output_size != (stride * input_size)))) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+bool IsTransposeConvPaddingSame(mhlo::ConvolutionOp conv_op,
+                                size_t num_spatial_dims,
+                                const ArrayRef<int64_t>& strides,
+                                const ArrayRef<int64_t>& padding) {
+  auto dnums = conv_op.getDimensionNumbers();
+
+  // The newly added spatial dimension requires zero left and right padding.
+  ArrayRef<int64_t> input_spatial_dims = dnums.getInputSpatialDimensions();
+  ArrayRef<int64_t> output_spatial_dims = dnums.getOutputSpatialDimensions();
+  for (size_t i = 0; i < num_spatial_dims; ++i) {
+    // In some cases the total padding is odd, so we have 1 leftover, which is
+    // why below we check pad_delta > 1.
+    int64_t pad_delta = std::abs(padding[2 * i] - padding[2 * i + 1]);
+    if (pad_delta > 1) {
+      return false;
+    }
+    int64_t stride = strides[i];
+
+    auto input_shape = mlir::cast<ShapedType>(conv_op.getLhs().getType());
+    int64_t input_dim_size = input_shape.getDimSize(input_spatial_dims[i]);
+    int64_t output_dim_size = mlir::cast<ShapedType>(conv_op.getType())
+                                  .getDimSize(output_spatial_dims[i]);
+    // The reason for the below check is as follows:
+    // When computing the output, we have the following relation between
+    // o - output dim size, i - input dim size, s - stride, P - total pads
+    // o = (i-k+1) + (s-1)(i-1) + P
+    // Where the first term is the kernel applications on the input,
+    // the second term is the additional applications from the stride
+    // and P is a term that captures the total padding. After expanding we get
+    // o = si + k - s + 2 + P
+    // Here JAX sets P to cancel k-s+2, leading to the expression below
+
+    // Check only if the dimension is not dynamic.
+    if (!input_shape.isDynamicDim(i) &&
+        (output_dim_size != input_dim_size * stride)) {
+      return false;
+    }
+  }
+  return true;
 }
 
 }  // namespace mlir::odml

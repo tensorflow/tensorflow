@@ -541,7 +541,7 @@ class DistributedVariableTest(test.TestCase, parameterized.TestCase):
   def testUnsaveable(self, distribution, synchronization, aggregation, mode):
     if isinstance(distribution.extended,
                   parameter_server_strategy.ParameterServerStrategyExtended):
-      self.skipTest("n/a: not appliable to AggregatingVariable")
+      self.skipTest("n/a: not applicable to AggregatingVariable")
     if (isinstance(distribution,
                    collective_all_reduce_strategy.CollectiveAllReduceStrategy)
         and mode == "graph"):

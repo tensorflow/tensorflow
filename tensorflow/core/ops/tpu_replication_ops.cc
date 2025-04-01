@@ -13,9 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "absl/status/status.h"
+#include "xla/tsl/platform/errors.h"
 #include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/shape_inference.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 
 namespace tensorflow {
 
@@ -121,5 +124,19 @@ REGISTER_OP("_TPUReplicate")
     .Input("guaranteed_constants: Tguaranteed_constants")
     .Output("outputs: output_types")
     .SetShapeFn(shape_inference::UnknownShape);
+
+REGISTER_OP("TPUDummyInput")
+    .Output("output: dtype")
+    .Attr("dtype: {float, bfloat16}")
+    .Attr("shape: shape")
+    .SetDoNotOptimize()
+    .SetShapeFn([](InferenceContext* c) {
+      TensorShape shape;
+      ShapeHandle shape_handle;
+      TF_RETURN_IF_ERROR(c->GetAttr("shape", &shape));
+      TF_RETURN_IF_ERROR(c->MakeShapeFromTensorShape(shape, &shape_handle));
+      c->set_output(0, shape_handle);
+      return absl::OkStatus();
+    });
 
 }  // namespace tensorflow

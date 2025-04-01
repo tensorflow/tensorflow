@@ -163,7 +163,7 @@ void RegisterTypedInterpreterOpImpl(Ret (*fn)(InterpreterState&, Op, T... args),
           return {};
         }
         int64_t used_args = 0;
-        for (auto i : llvm::seq(0ul, sizeof...(T))) {
+        for (auto i : llvm::seq<uint64_t>(0, sizeof...(T))) {
           used_args += cast.getODSOperandIndexAndLength(i).second;
         }
         if (args.size() != used_args) {

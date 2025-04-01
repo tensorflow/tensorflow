@@ -1,0 +1,16 @@
+// RUN: hlo-opt %s --platform=cpu --passes=gather_expander | FileCheck %s
+
+HloModule test
+
+ENTRY main {
+  operand = s32[1,3] parameter(0)
+  indices = s32[7,5] parameter(1)
+  // CHECK: reshape
+  // CHECK: broadcast
+  ROOT gather = s32[7,3,5] gather(operand, indices),
+      offset_dims={1},
+      collapsed_slice_dims={0},
+      start_index_map={0},
+      index_vector_dim=2,
+      slice_sizes={1,3}
+}

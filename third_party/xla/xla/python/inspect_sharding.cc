@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/python/inspect_sharding.h"
 
+#include <cstring>
 #include <limits>
 #include <memory>
 #include <optional>
@@ -24,6 +25,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "xla/service/custom_call_sharding_helper.h"
 #include "xla/service/spmd/spmd_partitioner_util.h"
+#include "xla/xla_data.pb.h"
 
 namespace jax {
 

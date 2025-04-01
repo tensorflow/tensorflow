@@ -73,7 +73,9 @@ struct BufferView {
   std::optional<int64_t> num_vector_dims = std::nullopt;
   bool is_vector = false;
 
-  int64_t Rank() const { return sizes.size() - num_vector_dims.value_or(0); }
+  int64_t num_dimensions() const {
+    return sizes.size() - num_vector_dims.value_or(0);
+  }
 
   // Removes the dimension from the view. If you need to keep it, use the
   // overload below with dim_size = 1.
@@ -154,7 +156,7 @@ struct BufferView {
       return {
           view_,
           llvm::SmallVector<int64_t>(
-              view_->Rank() +
+              view_->num_dimensions() +
               (include_vector_dims_ ? view_->num_vector_dims.value_or(0) : 0)),
           include_vector_dims_};
     }
@@ -314,8 +316,10 @@ struct TensorOrMemref {
   TensorOrMemref VectorAt(ArrayRef<int64_t> indices) const {
     auto offset = view.GetPhysicalIndex(indices);
     BufferView subview;
-    subview.strides = {view.strides.begin() + view.Rank(), view.strides.end()};
-    subview.sizes = {view.sizes.begin() + view.Rank(), view.sizes.end()};
+    subview.strides = {view.strides.begin() + view.num_dimensions(),
+                       view.strides.end()};
+    subview.sizes = {view.sizes.begin() + view.num_dimensions(),
+                     view.sizes.end()};
     if (offset) {
       subview.offset = *offset;
     } else {

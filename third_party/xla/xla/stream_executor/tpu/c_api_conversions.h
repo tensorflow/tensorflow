@@ -17,6 +17,7 @@ limitations under the License.
 #define XLA_STREAM_EXECUTOR_TPU_C_API_CONVERSIONS_H_
 
 #include <array>
+#include <cstdint>
 #include <memory>
 #include <vector>
 

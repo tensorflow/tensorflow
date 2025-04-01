@@ -20,7 +20,7 @@ limitations under the License.
 #include <string>
 
 #include "absl/strings/string_view.h"
-#include "tsl/platform/errors.h"
+#include "xla/tsl/platform/errors.h"
 #include "tsl/platform/regexp.h"
 #include "tsl/platform/strcat.h"
 

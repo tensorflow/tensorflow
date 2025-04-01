@@ -38,7 +38,7 @@ namespace tfrt_compiler {
 //     Tensorflow Dialect MLIR with Runtime specific ops. All tf_device.cluster
 //     ops are removed. Physical devices are assigned to ops instead of virtual
 //     devices.
-tensorflow::Status RunLowerClusterToRuntimeOpsPassPipeline(
+absl::Status RunLowerClusterToRuntimeOpsPassPipeline(
     mlir::ModuleOp module, tsl::DeviceType xla_device_type,
     llvm::StringRef module_name = llvm::StringRef());
 

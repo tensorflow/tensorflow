@@ -18,7 +18,8 @@ limitations under the License.
 #include <cstdint>
 #include <limits>
 
-#include "xla/test.h"
+#include <gtest/gtest.h>
+#include "xla/hlo/testlib/test.h"
 #include "xla/types.h"
 #include "xla/xla_data.pb.h"
 

@@ -35,7 +35,6 @@ pytype_strict_library(
     visibility = [
         "//tensorflow/dtensor:dtensor-internal",
         "//tensorflow/dtensor:dtensor-users",
-        "//tensorflow/tools/pip_package:__pkg__",
         "//tensorflow/tools/pip_package:__subpackages__",
     ],
     deps = [
@@ -65,6 +64,7 @@ pytype_strict_library(
         "//tensorflow/python/ops:stateless_random_ops_gen",
         "//tensorflow/python/ops:stateless_random_ops_v2_gen",
         "//tensorflow/python/platform:client_testlib",
+        "//tensorflow/python/util:numpy_compat",
         "//third_party/py/numpy",
         "@absl_py//absl/flags",
         "@absl_py//absl/testing:parameterized",
@@ -76,7 +76,6 @@ py_strict_test(
     srcs = [
         "api_test.py",
     ],
-    python_version = "PY3",
     deps = [
         ":test_util",
         "//tensorflow/dtensor/python:api",
@@ -393,6 +392,9 @@ dtensor_test(
         "tpu",
     ],
     main = "layout_test.py",
+    tags = [
+        "no_windows",
+    ],
     deps = [
         ":test_util",
         "//tensorflow/dtensor/python:api",
@@ -459,6 +461,9 @@ dtensor_test(
         TPU_V3_DONUT_BACKEND,
         GPU_2DEVS_BACKEND,
     ],
+    env = {
+        "TF_FORCE_GPU_ALLOW_GROWTH": "true",
+    },
     deps = [
         ":test_util",
         "//tensorflow/dtensor/python:config",
@@ -481,8 +486,6 @@ pytype_strict_library(
     srcs = ["multi_client_test_util.py"],
     visibility = [
         "//tensorflow/dtensor:dtensor-internal",
-        "//tensorflow/dtensor:dtensor-users",
-        "//tensorflow/tools/pip_package:__pkg__",
         "//tensorflow/tools/pip_package:__subpackages__",
     ],
     deps = [

@@ -52,10 +52,10 @@ namespace dtensor {
 // Returns OK if the deletion succeeded, or if the resource was not found. Else
 // return the deletion error.
 template <class ResourceT>
-Status DeleteIfExists(ResourceMgr* resource_manager,
-                      const char* resource_name) {
+absl::Status DeleteIfExists(ResourceMgr* resource_manager,
+                            const char* resource_name) {
   VLOG(1) << "Removing resource " << resource_name << " if it exists";
-  Status status = resource_manager->Delete<ResourceT>(
+  absl::Status status = resource_manager->Delete<ResourceT>(
       resource_manager->default_container(), resource_name);
   if (status.ok()) {
     VLOG(1) << "Removed existing resource " << resource_name;
@@ -129,9 +129,9 @@ class ConfigureAndInitializeGlobalTPUOpKernel : public OpKernel {
 
   bool use_tfrt_host_runtime_;
 
-  static Status InitializeInternal(OpKernelContext* ctx, ResourceMgr* rmgr,
-                                   absl::Duration retry_timeout,
-                                   std::vector<int32>* core_id_output_vec) {
+  static absl::Status InitializeInternal(
+      OpKernelContext* ctx, ResourceMgr* rmgr, absl::Duration retry_timeout,
+      std::vector<int32>* core_id_output_vec) {
     // Reset the TPU embedding engine interface if we are not the master.
     // We need to reset the interface before initializing the host because the
     // resetting process reset the TPU platform.
@@ -220,7 +220,7 @@ class ConfigureAndInitializeGlobalTPUOpKernel : public OpKernel {
                                     tpu_mesh));
 
     VLOG(1) << "Removing existing proto compilation cache lookup if it exists";
-    Status resource_delete_status =
+    absl::Status resource_delete_status =
         rmgr->Delete<tpu::TpuCompilationCacheLookup>(
             rmgr->default_container(), tpu::kCompiledProtoCacheResourceName);
 
@@ -253,7 +253,7 @@ class ShutdownTPUSystemOpKernel : public OpKernel {
   void Compute(OpKernelContext* ctx) override {
     LOG(INFO) << "ShutdownTPUSystemOpKernel op";
 
-    Status status;
+    absl::Status status;
     TpuSystemInterface* tpu_system = GetPreferredTpuSystem();
     if (tpu_system == nullptr) {
       VLOG(1) << "Shutting down the default TPU system.";

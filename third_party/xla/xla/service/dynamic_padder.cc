@@ -32,8 +32,8 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "xla/client/xla_builder.h"
 #include "xla/comparison_util.h"
+#include "xla/hlo/builder/xla_builder.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "xla/hlo/ir/dynamic_parameter_binding.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
@@ -42,22 +42,22 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/transforms/simplifiers/hlo_dce.h"
 #include "xla/literal_util.h"
 #include "xla/service/call_graph.h"
 #include "xla/service/dynamic_dimension_inference.h"
 #include "xla/service/dynamic_window_utils.h"
 #include "xla/service/hlo_creation_utils.h"
-#include "xla/service/hlo_dce.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/service/shape_inference.h"
 #include "xla/service/tuple_util.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
+#include "xla/tsl/lib/monitoring/gauge.h"
 #include "xla/util.h"
 #include "xla/window_util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/lib/monitoring/gauge.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
 
@@ -874,7 +874,7 @@ absl::StatusOr<bool> RewriteReverse(
   PaddingConfig padding;
   // Doubles dynamic dimension size using a pad.
   Shape pad_shape = reverse_shape;
-  for (int i = 0; i < reverse_shape.rank(); ++i) {
+  for (int i = 0; i < reverse_shape.dimensions_size(); ++i) {
     auto dimension = padding.add_dimensions();
     if (dynamic_reverse_dims.count(i) > 0) {
       dimension->set_edge_padding_low(0);
@@ -889,8 +889,8 @@ absl::StatusOr<bool> RewriteReverse(
   HloInstruction* pad = reverse->AddInstruction(
       HloInstruction::CreatePad(pad_shape, cloned_reverse, zero, padding));
   std::vector<HloInstruction*> start_indices;
-  start_indices.reserve(reverse_shape.rank());
-  for (int i = 0; i < reverse_shape.rank(); ++i) {
+  start_indices.reserve(reverse_shape.dimensions_size());
+  for (int i = 0; i < reverse_shape.dimensions_size(); ++i) {
     if (dynamic_reverse_dims.count(i) > 0) {
       // Start at bound_size - dynamic_size.
       HloInstruction* bound_size =
@@ -927,11 +927,12 @@ HloInstruction* RewriteInputWithDynamicPadding(
   // Padded shape represents the bounded shape after dynamic padding.
   Shape padded_shape = input->shape();
   PaddingConfig padding_configs;
-  for (int64_t i = 0; i < input->shape().rank(); ++i) {
+  for (int64_t i = 0; i < input->shape().dimensions_size(); ++i) {
     PaddingConfig::PaddingConfigDimension padding_dim;
     *padding_configs.add_dimensions() = padding_dim;
   }
-  std::vector<HloInstruction*> start_indices(input->shape().rank(), zero_s32);
+  std::vector<HloInstruction*> start_indices(input->shape().dimensions_size(),
+                                             zero_s32);
   for (int64_t dim_index = 0; dim_index < input_window->dimensions_size();
        ++dim_index) {
     if (padding_before[dim_index] == nullptr) {
@@ -1201,9 +1202,10 @@ absl::StatusOr<bool> RewriteDynamicReduceWindowSamePadding(
   }
   HloInstruction* input = hlo->mutable_operand(0);
   HloInstruction* init = hlo->mutable_operand(1);
-  int64_t rank = hlo->shape().rank();
+  int64_t rank = hlo->shape().dimensions_size();
   Window window = hlo->window();
-  std::vector<HloInstruction*> padding_before(hlo->shape().rank(), nullptr);
+  std::vector<HloInstruction*> padding_before(hlo->shape().dimensions_size(),
+                                              nullptr);
   for (int64_t dim_index = 0; dim_index < rank; ++dim_index) {
     HloInstruction* operand_dynamic_size =
         dynamic_dimension_inference->GetDynamicSize(hlo->mutable_operand(0), {},
@@ -1244,9 +1246,10 @@ absl::StatusOr<bool> RewriteDynamicSelectAndScatterSamePadding(
   HloInstruction* init = hlo->mutable_operand(2);
   TF_ASSIGN_OR_RETURN(HloInstruction * input_padding_value,
                       ChooseIdentityValue(hlo, /*operand_number=*/0));
-  int64_t rank = hlo->shape().rank();
+  int64_t rank = hlo->shape().dimensions_size();
   Window window = hlo->window();
-  std::vector<HloInstruction*> padding_before(hlo->shape().rank(), nullptr);
+  std::vector<HloInstruction*> padding_before(hlo->shape().dimensions_size(),
+                                              nullptr);
   for (int64_t dim_index = 0; dim_index < rank; ++dim_index) {
     const WindowDimension& window_dim = window.dimensions(dim_index);
     if (window_util::IsTrivialWindowDimension(window_dim)) {
@@ -1289,8 +1292,9 @@ absl::StatusOr<bool> RewriteDynamicSelectAndScatterSamePadding(
           input->shape(), input, hlo->called_computations()[0], window, source,
           init, hlo->called_computations()[1]));
   std::vector<HloInstruction*> start_indices(
-      input->shape().rank(), hlo->AddInstruction(HloInstruction::CreateConstant(
-                                 LiteralUtil::Zero(S32))));
+      input->shape().dimensions_size(),
+      hlo->AddInstruction(
+          HloInstruction::CreateConstant(LiteralUtil::Zero(S32))));
   PaddingConfig padding_configs;
   for (int64_t dim_index = 0; dim_index < rank; ++dim_index) {
     PaddingConfig::PaddingConfigDimension padding_dim;
@@ -1322,6 +1326,7 @@ absl::StatusOr<bool> RewriteDynamicConcat(
     return false;
   }
   std::vector<HloInstruction*> offsets;
+  offsets.reserve(concat->shape().dimensions_size());
   for (int64_t i = 0; i < concat->shape().dimensions_size(); ++i) {
     offsets.push_back(concat->AddInstruction(
         HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32_t>(0))));
@@ -1454,7 +1459,8 @@ absl::StatusOr<bool> RewriteDynamicBinaryOp(
   HloInstruction* operand_0 = binary->mutable_operand(0);
   HloInstruction* operand_1 = binary->mutable_operand(1);
 
-  TF_RET_CHECK(operand_0->shape().rank() == operand_1->shape().rank());
+  TF_RET_CHECK(operand_0->shape().dimensions_size() ==
+               operand_1->shape().dimensions_size());
   auto dims_0 = dynamic_dimension_inference->GetDynamicSizes(operand_0, {});
   auto dims_1 = dynamic_dimension_inference->GetDynamicSizes(operand_1, {});
   bool changed = false;
@@ -1488,8 +1494,8 @@ absl::StatusOr<bool> RewriteDynamicBinaryOp(
             ShapeUtil::ChangeElementType(static_shape, PRED), pred, {}));
         Shape slice_shape = static_shape;
         slice_shape.set_dimensions(i, 1);
-        std::vector<int64_t> start_indices(slice_shape.rank(), 0);
-        std::vector<int64_t> strides(slice_shape.rank(), 1);
+        std::vector<int64_t> start_indices(slice_shape.dimensions_size(), 0);
+        std::vector<int64_t> strides(slice_shape.dimensions_size(), 1);
         HloInstruction* slice = binary->AddInstruction(
             HloInstruction::CreateSlice(slice_shape, operand, start_indices,
                                         slice_shape.dimensions(), strides));
@@ -1497,9 +1503,9 @@ absl::StatusOr<bool> RewriteDynamicBinaryOp(
         HloInstruction* reshape = binary->AddInstruction(
             HloInstruction::CreateReshape(reshape_shape, slice));
         std::vector<int64_t> broadcast_dims;
-        broadcast_dims.reserve(static_shape.rank() - 1);
+        broadcast_dims.reserve(static_shape.dimensions_size() - 1);
         // Broadcast to all dims execpt for i.
-        for (int64_t j = 0; j < static_shape.rank(); ++j) {
+        for (int64_t j = 0; j < static_shape.dimensions_size(); ++j) {
           if (j != i) {
             broadcast_dims.push_back(j);
           }
@@ -1612,9 +1618,9 @@ absl::StatusOr<bool> RewriteDynamicUpdateSlice(
   HloInstruction* update = dus->mutable_operand(1);
   HloInstruction* base = dus->mutable_operand(0);
   std::vector<HloInstruction*> dynamic_dims_in_partial_update(
-      update->shape().rank(), nullptr);
+      update->shape().dimensions_size(), nullptr);
   bool needs_rewrite = false;
-  for (int64_t i = 0; i < update->shape().rank(); ++i) {
+  for (int64_t i = 0; i < update->shape().dimensions_size(); ++i) {
     if (update->shape().dimensions(i) < base->shape().dimensions(i)) {
       HloInstruction* dynamic_dim =
           dynamic_dimension_inference->GetDynamicSize(update, {}, i);
@@ -1667,12 +1673,14 @@ absl::StatusOr<bool> RewriteDynamicReshape(
   bool changed = false;
   HloInstruction* operand = reshape->mutable_operand(0);
   std::vector<HloInstruction*> input_dynamic_dims;
+  input_dynamic_dims.reserve(operand->shape().dimensions_size());
   for (int64_t dim = 0; dim < operand->shape().dimensions_size(); ++dim) {
     input_dynamic_dims.push_back(
         dynamic_dimension_inference->GetDynamicSize(operand, {}, dim));
   }
 
   std::vector<HloInstruction*> output_dynamic_dims;
+  output_dynamic_dims.reserve(reshape->shape().dimensions_size());
   for (int64_t dim = 0; dim < reshape->shape().dimensions_size(); ++dim) {
     output_dynamic_dims.push_back(
         dynamic_dimension_inference->GetDynamicSize(reshape, {}, dim));
@@ -1741,7 +1749,7 @@ absl::StatusOr<bool> RewriteDynamicReshape(
     HloInstruction* dynamic_size =
         operand->AddInstruction(HloInstruction::CreateConstant(
             LiteralUtil::CreateR0<int32_t>(num_elements)));
-    for (int64_t i = 0; i < operand->shape().rank(); i++) {
+    for (int64_t i = 0; i < operand->shape().dimensions_size(); i++) {
       HloInstruction* dynamic_dim_size =
           dynamic_dimension_inference->GetDynamicSize(operand, {}, i);
       if (dynamic_dim_size != nullptr) {
@@ -2018,6 +2026,11 @@ absl::Status DynamicShapeRemovingVisitor::HandleCustomCall(
     // nature they support dynamic lowering.
     return absl::OkStatus();
   }
+  if (hlo->IsCustomCall(
+          {"Sharding", "SPMDShardToFullShape", "SPMDFullToShardShape"})) {
+    // Sharding ops are purely symbolic.
+    return absl::OkStatus();
+  }
 
   return DefaultAction(hlo);
 }
@@ -2180,8 +2193,8 @@ absl::StatusOr<bool> DynamicPadder::Run(
           continue;
         }
 
-        for (int64_t input_dim = 0; input_dim < operand->shape().rank();
-             ++input_dim) {
+        for (int64_t input_dim = 0;
+             input_dim < operand->shape().dimensions_size(); ++input_dim) {
           HloInstruction* operand_dynamic_size =
               dynamic_dimension_inference.GetDynamicSize(original_operand, {},
                                                          input_dim);
@@ -2232,7 +2245,6 @@ absl::StatusOr<bool> DynamicPadder::Run(
     // the output tensor to be in dynamic form.
     bool require_dynamic_output = options_.slice_dynamic_output &&
                                   computation == module->entry_computation();
-    changed |= require_dynamic_output;
     TF_ASSIGN_OR_RETURN(bool c,
                         DynamicShapeRemovingVisitor::Run(
                             computation, options_.op_supports_dynamism_handler,

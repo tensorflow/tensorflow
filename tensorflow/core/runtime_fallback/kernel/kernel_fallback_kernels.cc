@@ -55,7 +55,7 @@ static void TFDForwardKernel(tfrt::RemainingArguments arguments,
   }
   std::string op_name_str = op_name.str();
   tfrt::OpAttrs opattrs;
-  Status s = FillOpAttrs(attributes, &opattrs);
+  absl::Status s = FillOpAttrs(attributes, &opattrs);
   if (!s.ok()) {
     frame->ReportError("TFDForwardKernel: Error while parsing attributes: ",
                        s.message());

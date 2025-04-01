@@ -27,11 +27,14 @@ this file with a file generated from [`api_template.__init__.py`](https://www.gi
 """
 # pylint: disable=g-bad-import-order,protected-access,g-import-not-at-top
 
+import sysconfig as _sysconfig
 import importlib
 import inspect as _inspect
 import os as _os
 import site as _site
 import sys as _sys
+
+_os.environ.setdefault("ENABLE_RUNTIME_UPTIME_TELEMETRY", "1")
 
 # Do not remove this line; See https://github.com/tensorflow/tensorflow/issues/42596
 from tensorflow.python import pywrap_tensorflow as _pywrap_tensorflow  # pylint: disable=unused-import
@@ -98,6 +101,10 @@ if _site.ENABLE_USER_SITE and _site.USER_SITE is not None:
 _site_packages_dirs += [p for p in _sys.path if "site-packages" in p]
 if "getsitepackages" in dir(_site):
   _site_packages_dirs += _site.getsitepackages()
+
+for _scheme in _sysconfig.get_scheme_names():
+  for _name in ["purelib", "platlib"]:
+    _site_packages_dirs += [_sysconfig.get_path(_name, _scheme)]
 
 _site_packages_dirs = list(set(_site_packages_dirs))
 

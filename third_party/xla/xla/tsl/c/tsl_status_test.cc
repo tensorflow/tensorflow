@@ -20,8 +20,8 @@ limitations under the License.
 #include <utility>
 
 #include "xla/tsl/c/tsl_status_internal.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/test.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/test.h"
 
 namespace tsl {
 namespace {

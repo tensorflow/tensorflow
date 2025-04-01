@@ -20,8 +20,13 @@ limitations under the License.
 
 extern "C" {
 
-extern void __xla_cpu_runtime_DuccFft(
+extern void __xla_cpu_runtime_LegacyDuccFft(
     const void* /* xla::ExecutableRunOptions* */ run_options_ptr, void* out,
+    void* operand, int32_t fft_type, int32_t double_precision, int32_t fft_rank,
+    const int64_t* input_shape, const int64_t* fft_length);
+
+extern void __xla_cpu_runtime_DuccFft(
+    const void* /* Eigen::ThreadPoolDevice* */ thread_pool_ptr, void* out,
     void* operand, int32_t fft_type, int32_t double_precision, int32_t fft_rank,
     const int64_t* input_shape, const int64_t* fft_length);
 

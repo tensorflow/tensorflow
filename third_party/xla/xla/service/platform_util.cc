@@ -18,7 +18,6 @@ limitations under the License.
 #include <optional>
 #include <set>
 #include <string>
-#include <string_view>
 #include <vector>
 
 #include "absl/status/statusor.h"
@@ -26,6 +25,7 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "xla/debug_options_flags.h"
 #include "xla/service/compiler.h"
+#include "xla/status_macros.h"
 #include "xla/stream_executor/cuda/cuda_platform_id.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/host/host_platform_id.h"
@@ -51,7 +51,7 @@ constexpr char kInterpreter[] = "interpreter";
 
 namespace {
 
-std::string CanonicalPlatformName(std::string_view platform_name) {
+std::string CanonicalPlatformName(absl::string_view platform_name) {
   std::string lowercase_platform_name = absl::AsciiStrToLower(platform_name);
   // "cpu" and "host" mean the same thing.
   if (lowercase_platform_name == "cpu") {
@@ -89,7 +89,7 @@ absl::StatusOr<std::vector<se::Platform*>> GetSupportedPlatforms() {
 }  // namespace
 
 absl::StatusOr<std::string> PlatformUtil::CanonicalPlatformName(
-    std::string_view platform_name) {
+    absl::string_view platform_name) {
   return xla::CanonicalPlatformName(platform_name);
 }
 
@@ -100,6 +100,11 @@ PlatformUtil::GetSupportedPlatforms() {
 }
 
 absl::StatusOr<se::Platform*> PlatformUtil::GetDefaultPlatform() {
+  TF_RET_CHECK(GetDebugOptionsFromFlags().xla_allow_get_default_platform())
+      << "--xla_allow_get_default_platform=false means GetDefaultPlatform is "
+         "not allowed and the platform must be specified. If this is a test "
+         "that has been migrated to PJRT, double-check that you are using a "
+         "PJRT-compatible test class.";
   TF_ASSIGN_OR_RETURN(auto platforms, GetSupportedPlatforms());
 
   se::Platform* platform = nullptr;
@@ -131,7 +136,7 @@ absl::StatusOr<se::Platform*> PlatformUtil::GetDefaultPlatform() {
 }
 
 /*static*/ absl::StatusOr<se::Platform*> PlatformUtil::GetPlatform(
-    std::string_view platform_name) {
+    absl::string_view platform_name) {
   TF_ASSIGN_OR_RETURN(se::Platform * platform,
                       se::PlatformManager::PlatformWithName(
                           xla::CanonicalPlatformName(platform_name)));

@@ -122,5 +122,9 @@ CUptiResult CuptiWrapperStub::GetGraphExecId(CUgraphExec graph_exec,
   return CUPTI_SUCCESS;
 }
 
+CUptiResult CuptiWrapperStub::SetThreadIdType(CUpti_ActivityThreadIdType type) {
+  return CUPTI_SUCCESS;
+}
+
 }  // namespace profiler
 }  // namespace xla

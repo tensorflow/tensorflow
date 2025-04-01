@@ -15,7 +15,8 @@ limitations under the License.
 
 #include "tensorflow/lite/tools/benchmark/profiling_listener.h"
 
-#include <fstream>
+#include <cstdint>
+#include <memory>
 #include <string>
 
 #include "tensorflow/lite/interpreter.h"

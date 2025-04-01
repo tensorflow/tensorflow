@@ -116,7 +116,6 @@ void UnaryElementwiseTester::Test(tflite::BuiltinOperator unary_op,
     case BuiltinOperator_RELU6:
     case BuiltinOperator_ROUND:
     case BuiltinOperator_SQUARE:
-    case BuiltinOperator_SQRT:
       for (size_t i = 0; i < Size(); i++) {
         ASSERT_EQ(default_output_data[i], delegate_output_data[i]);
       }

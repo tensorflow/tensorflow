@@ -277,6 +277,10 @@ struct BuildXlaOpsPassFlags {
   // TensorCore sequencing will be used.
   bool tf_xla_disable_full_embedding_pipelining;
 
+  // Whether to enable automatical embedding pipelining when summary ops are
+  // detected in the graph.
+  bool tf_xla_disable_full_embedding_pipelining_with_summaries;
+
   // Force the WhileOps in embedding_pipelining and embedding_sequencing to use
   // this many parallel_iterations
   int tf_xla_embedding_parallel_iterations;

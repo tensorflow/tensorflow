@@ -11,7 +11,6 @@ package(
 py_strict_library(
     name = "attributes",
     srcs = ["attributes.py"],
-    srcs_version = "PY3",
     visibility = ["//tensorflow/python:__subpackages__"],
     deps = [
         "//tensorflow/core:protos_all_py",
@@ -22,7 +21,6 @@ py_strict_library(
 py_strict_library(
     name = "autograph_util",
     srcs = ["autograph_util.py"],
-    srcs_version = "PY3",
     deps = [
         "//tensorflow/python/autograph/core:converter",
         "//tensorflow/python/autograph/impl:api",
@@ -33,7 +31,6 @@ py_strict_library(
 py_strict_library(
     name = "transform",
     srcs = ["transform.py"],
-    srcs_version = "PY3",
     visibility = ["//tensorflow/python:__subpackages__"],
     deps = [],
 )
@@ -41,7 +38,6 @@ py_strict_library(
 pytype_strict_library(
     name = "atomic_function",
     srcs = ["atomic_function.py"],
-    srcs_version = "PY3",
     visibility = ["//tensorflow/python:__subpackages__"],
     deps = [
         ":attributes",
@@ -70,7 +66,6 @@ cuda_py_strict_test(
     name = "atomic_function_test",
     size = "medium",
     srcs = ["atomic_function_test.py"],
-    python_version = "PY3",
     deps = [
         ":atomic_function",
         ":polymorphic_function",
@@ -85,7 +80,6 @@ cuda_py_strict_test(
 py_strict_library(
     name = "concrete_function",
     srcs = ["concrete_function.py"],
-    srcs_version = "PY3",
     visibility = ["//tensorflow/python:__subpackages__"],
     deps = [
         ":atomic_function",
@@ -128,7 +122,6 @@ cuda_py_strict_test(
     name = "concrete_function_test",
     size = "small",
     srcs = ["concrete_function_test.py"],
-    python_version = "PY3",
     deps = [
         ":atomic_function",
         ":concrete_function",
@@ -148,7 +141,6 @@ cuda_py_strict_test(
 py_strict_library(
     name = "tracing_compilation",
     srcs = ["tracing_compilation.py"],
-    srcs_version = "PY3",
     visibility = ["//tensorflow/python:__subpackages__"],
     deps = [
         ":attributes",
@@ -174,7 +166,6 @@ py_strict_library(
 py_strict_library(
     name = "tf_method_target",
     srcs = ["tf_method_target.py"],
-    srcs_version = "PY3",
     visibility = [
         "//tensorflow/python/autograph/impl:__pkg__",
         "//tensorflow/python/eager:__pkg__",
@@ -187,7 +178,6 @@ py_strict_library(
 py_strict_library(
     name = "polymorphic_function",
     srcs = ["polymorphic_function.py"],
-    srcs_version = "PY3",
     visibility = ["//tensorflow:internal"],
     deps = [
         ":attributes",
@@ -233,7 +223,6 @@ cuda_py_strict_test(
     name = "polymorphic_function_test",
     size = "medium",
     srcs = ["polymorphic_function_test.py"],
-    python_version = "PY3",
     shard_count = 15,
     tags = [
         "nomac",  # b/157056289
@@ -309,7 +298,6 @@ cuda_py_strict_test(
 tf_py_strict_test(
     name = "polymorphic_function_test_cpu_only",
     srcs = ["polymorphic_function_test_cpu_only.py"],
-    python_version = "PY3",
     # --config=cuda implicitly links in XLA.
     tags = [
         "no_cuda_on_cpu_tap",
@@ -338,7 +326,6 @@ tf_xla_py_strict_test(
         "cpu_ondemand",
     ],
     enable_mlir_bridge = True,
-    python_version = "PY3",
     tags = [
         "no_mac",
         "no_oss",  # TODO(b/295654746)
@@ -384,7 +371,6 @@ tf_xla_py_strict_test(
     # disable_tpu_tfrt = True,
     # copybara:uncomment_end
     enable_mlir_bridge = False,
-    python_version = "PY3",
     tags = [
         "no_pip",
         "no_windows",
@@ -404,7 +390,6 @@ cuda_py_strict_test(
     name = "gradients_test",
     size = "medium",
     srcs = ["gradients_test.py"],
-    python_version = "PY3",
     shard_count = 5,
     deps = [
         ":polymorphic_function",
@@ -435,7 +420,6 @@ cuda_py_strict_test(
 py_strict_library(
     name = "composite_tensor_utils",
     srcs = ["composite_tensor_utils.py"],
-    srcs_version = "PY3",
     visibility = ["//tensorflow:internal"],
     deps = [
         "//tensorflow/python/framework:composite_tensor",
@@ -448,7 +432,6 @@ tf_py_strict_test(
     name = "tracing_compilation_test",
     size = "medium",
     srcs = ["tracing_compilation_test.py"],
-    python_version = "PY3",
     deps = [
         ":function_type_utils",
         ":tracing_compilation",
@@ -492,7 +475,6 @@ cuda_py_strict_test(
     name = "argument_naming_test",
     size = "medium",
     srcs = ["argument_naming_test.py"],
-    python_version = "PY3",
     # TODO(b/169371527): insert transfer op in eager lowering for TFRT.
     deps = [
         ":polymorphic_function",
@@ -513,7 +495,6 @@ cuda_py_strict_test(
     name = "collection_test",
     size = "medium",
     srcs = ["collection_test.py"],
-    python_version = "PY3",
     deps = [
         ":polymorphic_function",
         "//tensorflow/core:protos_all_py",
@@ -539,7 +520,6 @@ py_strict_library(
 py_strict_library(
     name = "function_context",
     srcs = ["function_context.py"],
-    srcs_version = "PY3",
     visibility = ["//visibility:private"],
     deps = [
         "//tensorflow/core/function/polymorphism:function_cache",
@@ -555,7 +535,6 @@ py_strict_library(
 py_strict_library(
     name = "saved_model_utils",
     srcs = ["saved_model_utils.py"],
-    srcs_version = "PY3",
     visibility = ["//tensorflow:internal"],
     deps = [
         "//tensorflow/python/framework:constant_op",
@@ -571,7 +550,6 @@ py_strict_library(
 py_strict_library(
     name = "saved_model_exported_concrete",
     srcs = ["saved_model_exported_concrete.py"],
-    srcs_version = "PY3",
     visibility = ["//tensorflow:internal"],
     deps = [
         ":function_type_utils",
@@ -582,7 +560,6 @@ py_strict_library(
 py_strict_library(
     name = "function_type_utils",
     srcs = ["function_type_utils.py"],
-    srcs_version = "PY3",
     visibility = ["//tensorflow:internal"],
     deps = [
         ":composite_tensor_utils",
@@ -602,7 +579,6 @@ tf_py_strict_test(
     name = "function_spec_test",
     size = "medium",
     srcs = ["function_spec_test.py"],
-    python_version = "PY3",
     deps = [
         ":function_type_utils",
         "//tensorflow/core/function/polymorphism:function_type",
@@ -617,7 +593,6 @@ tf_py_strict_test(
 py_strict_library(
     name = "compiler_ir",
     srcs = ["compiler_ir.py"],
-    srcs_version = "PY3",
     visibility = ["//visibility:private"],
     deps = [
         "//tensorflow/core/function/trace_type",
@@ -638,7 +613,6 @@ tf_xla_py_strict_test(
         "gpu_h100",
     ],
     enable_mlir_bridge = True,
-    python_version = "PY3",
     tags = [
         "no_mac",
         "no_pip",

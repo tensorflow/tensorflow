@@ -15,6 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_EXPERIMENTAL_RESOURCE_CACHE_BUFFER_H_
 #define TENSORFLOW_LITE_EXPERIMENTAL_RESOURCE_CACHE_BUFFER_H_
 
+#include <cstddef>
 #include <memory>
 #include <unordered_map>
 

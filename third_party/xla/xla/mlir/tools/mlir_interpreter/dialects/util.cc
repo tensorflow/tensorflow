@@ -121,7 +121,7 @@ InterpreterValue TransposeImpl(const InterpreterValue& in,
 
 int64_t DimImpl(const InterpreterValue& in, int64_t index,
                 InterpreterState& state) {
-  if (index < 0 || index >= in.View().Rank()) {
+  if (index < 0 || index >= in.View().num_dimensions()) {
     state.AddFailure("dimension index out of bounds");
     return 0;
   }

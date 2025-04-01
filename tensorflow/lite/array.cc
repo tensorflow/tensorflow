@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/lite/array.h"
 
+#include "tensorflow/lite/c/common.h"
+
 namespace tflite {
 namespace array_internal {
 

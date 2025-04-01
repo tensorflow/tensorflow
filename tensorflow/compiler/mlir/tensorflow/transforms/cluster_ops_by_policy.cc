@@ -15,7 +15,12 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tensorflow/transforms/cluster_ops_by_policy.h"
 
+#include <cassert>
+#include <cstddef>
+#include <functional>
 #include <optional>
+#include <string>
+#include <utility>
 
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/SetVector.h"
@@ -511,8 +516,7 @@ llvm::SmallVector<Cluster> FindClustersInTheBlock(
   llvm::DenseMap<unsigned, Cluster> root_clusters;
 
   for (Member &member : state.members) {
-    unsigned root = state.FindRoot(member.root);
-    Cluster &cluster = root_clusters.FindAndConstruct(root).getSecond();
+    Cluster &cluster = root_clusters[state.FindRoot(member.root)];
 
     // If member is a root of the cluster, copy inferred constraints.
     if (state.FindRoot(member.root) == member.root)

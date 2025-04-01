@@ -60,10 +60,10 @@ limitations under the License.
 #include "tensorflow/c/experimental/stream_executor/stream_executor_internal.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/tsl/framework/device_id_utils.h"
+#include "xla/tsl/platform/statusor.h"
 #include "tensorflow/core/common_runtime/next_pluggable_device/c/tf_rendezvous_c_api.h"
 #include "tensorflow/core/common_runtime/next_pluggable_device/c/tf_rendezvous_c_api_internal.h"
 #include "tensorflow/core/framework/device.h"
-#include "tsl/platform/statusor.h"
 #endif  // !defined(IS_MOBILE_PLATFORM) && !defined(IS_SLIM_BUILD)
 
 // This file forms the basis of a stable ABI for third-party kernel
@@ -794,10 +794,7 @@ int TF_GetDeviceId(TF_OpKernelContext* ctx) {
 #else
   const auto* device = reinterpret_cast<const tensorflow::Device*>(
       device_base->UnderlyingDevice());
-  const absl::StatusOr<int> id = tsl::GetDeviceIdFromDeviceParsedName(
-      device->parsed_name(), tensorflow::DeviceType(device->device_type()));
-  if (!id.ok()) return -1;
-  return *id;
+  return tsl::GetDeviceIdFromDeviceParsedName(device->parsed_name());
 #endif  // defined(IS_MOBILE_PLATFORM) || defined(IS_SLIM_BUILD)
 }
 

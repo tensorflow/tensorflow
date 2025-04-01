@@ -88,7 +88,7 @@ Pool3dParameters::Pool3dParameters(OpKernelContext* context,
                               col_stride, padding, &out_width, &pad_cols));
 }
 
-Status Pool3dParameters::forward_output_shape(TensorShape* shape) {
+absl::Status Pool3dParameters::forward_output_shape(TensorShape* shape) {
   return ShapeFromFormatWithStatus(data_format, tensor_in_batch,
                                    {{out_plane, out_height, out_width}}, depth,
                                    shape);

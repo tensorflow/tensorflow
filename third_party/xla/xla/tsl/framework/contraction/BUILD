@@ -1,7 +1,7 @@
 load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
 load("@bazel_skylib//rules:common_settings.bzl", "bool_flag")
-load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
 load("//xla/tsl:tsl.default.bzl", "get_compatible_with_portable")
+load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -30,6 +30,7 @@ config_setting(
 bzl_library(
     name = "build_defs",
     srcs = ["build_defs.bzl"],
+    deps = ["//xla/tsl:package_groups_bzl"],
 )
 
 # Add
@@ -61,7 +62,7 @@ config_setting(
 # to get the benefit of custom contraction kernel:
 #
 #   #if defined(TENSORFLOW_USE_CUSTOM_CONTRACTION_KERNEL)
-#   #include "third_party/tensorflow/compiler/xla/tsl/framework/contraction/eigen_contraction_kernel.h"
+#   #include "xla/tsl/framework/contraction/eigen_contraction_kernel.h"
 #   #endif
 #
 # We define a two-level target because if we just add
@@ -104,9 +105,9 @@ cc_library(
     }),
     deps = [
         "//xla/tsl/framework/fixedpoint",
+        "//xla/tsl/platform:dynamic_annotations",
         "@com_google_absl//absl/base",
         "@eigen_archive//:eigen3",
-        "@local_tsl//tsl/platform:dynamic_annotations",
     ] + select({
         ":disable_onednn_contraction_kernel_config": [],
         "//xla/tsl:android_x86": [],
@@ -141,9 +142,9 @@ cc_library(
     # ],
     deps = [
         "//xla/tsl/framework/fixedpoint",
+        "//xla/tsl/platform:dynamic_annotations",
         "@com_google_absl//absl/base",
         "@eigen_archive//:eigen3",
-        "@local_tsl//tsl/platform:dynamic_annotations",
     ],
 )
 

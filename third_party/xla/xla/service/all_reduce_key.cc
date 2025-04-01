@@ -25,6 +25,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/hlo_domain_map.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 
@@ -33,6 +34,14 @@ namespace xla {
 std::optional<AllReduceKey> GetAllReduceKey(const HloInstruction* instruction,
                                             const HloDomainMap* domain_map,
                                             bool ignore_replica_groups) {
+  // TODO(b/396147741): Support all-reduce combining with control dependencies.
+  // Currently, this would crash when replacing the original all-reduces. Such
+  // control dependencies would need to be transferred to the new combined
+  // all-reduce.
+  if (instruction->HasControlDependencies()) {
+    return std::nullopt;
+  }
+
   if (instruction->opcode() != HloOpcode::kAllReduce &&
       instruction->opcode() != HloOpcode::kReduceScatter) {
     return std::nullopt;

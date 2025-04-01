@@ -15,10 +15,13 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/quantization/common/ir/QuantOps.h"
 
+#include <cstdint>
+#include <functional>
+#include <iterator>
 #include <numeric>
 
 #include "llvm/ADT/STLExtras.h"
-#include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
+#include "mlir/Dialect/Quant/IR/QuantTypes.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
@@ -32,7 +35,7 @@ namespace mlir::quant::ir {
 
 using mlir::quant::QuantizedType;
 
-void QuantDialect::initialize() {
+void TFQuantDialect::initialize() {
   addOperations<
 #define GET_OP_LIST
 #include "tensorflow/compiler/mlir/quantization/common/ir/QuantOps.cc.inc"

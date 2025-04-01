@@ -18,8 +18,8 @@ limitations under the License.
 
 #include <functional>
 
+#include "xla/hlo/pass/hlo_pass_interface.h"
 #include "xla/service/dynamic_dimension_inference.h"
-#include "xla/service/hlo_pass_interface.h"
 
 namespace xla {
 

@@ -149,9 +149,14 @@ class _Optimizer(metaclass=abc.ABCMeta):
     raise NotImplementedError
 
   def _create_slots(
-      self, table: "TableConfig",
-      variable_creator: Callable[[Text, init_ops_v2.Initializer],
-                                 tf_variables.Variable]
+      self,
+      table: "TableConfig",
+      variable_creator: Callable[
+          [Text, init_ops_v2.Initializer], tf_variables.Variable
+      ],
+      initializer_wrapper: Optional[
+          Callable[[str, init_ops_v2.Initializer], init_ops_v2.Initializer]
+      ] = None,
   ) -> Dict[Text, tf_variables.Variable]:
     """Creates slot variables for table.
 
@@ -159,17 +164,25 @@ class _Optimizer(metaclass=abc.ABCMeta):
       table: The table variable to create slots for.
       variable_creator: A function which creates variables. Takes parameters
         'name', 'initializer'.
+      initializer_wrapper: A function that wraps the initializer.
 
     Returns:
       A dict of variables, keyed by self._slot_names().
     """
+    names = self._slot_names()
+    initializers = self._slot_initializers()
+
+    if initializer_wrapper is not None:
+      initializers = [
+          initializer_wrapper(name, initializer)
+          for name, initializer in zip(names, initializers)
+      ]
+
     if self.slot_variable_creation_fn is not None:
-      return self.slot_variable_creation_fn(table, self._slot_names(),
-                                            self._slot_initializers())
+      return self.slot_variable_creation_fn(table, names, initializers)
     else:
       slots = {}
-      for slot, initializer in zip(self._slot_names(),
-                                   self._slot_initializers()):
+      for slot, initializer in zip(names, initializers):
         slots[slot] = variable_creator(slot, initializer)
       return slots
 
@@ -186,6 +199,7 @@ class _Optimizer(metaclass=abc.ABCMeta):
     return hash(tuple(self.__dict__.items()))
 
 
+@tf_export("tpu.experimental.embedding.CustomOptimizer")
 class CustomOptimizer(_Optimizer):
   """Optimization parameters for custom optimizer for TPU embeddings.
 
@@ -291,7 +305,7 @@ class CustomOptimizer(_Optimizer):
       slot_initializers: Optional[List[init_ops_v2.Initializer]] = None,
       hyperparameters: Optional[List[Union[float, Callable[[], float]]]] = None,
   ) -> Any:
-    super().__init__(
+    super().__init__(  # pytype: disable=wrong-arg-types
         learning_rate,
         use_gradient_accumulation=False,
         clip_weight_min=None,
@@ -304,9 +318,9 @@ class CustomOptimizer(_Optimizer):
     )
     # We need to convert the slot names and initializers to tuples to make
     # them hashable.
-    self._slot_names_attr = tuple(slot_names if slot_names else [])
+    self._slot_names_attr = tuple(slot_names if slot_names else ())
     self._slot_initializers_attr = tuple(
-        slot_initializers if slot_initializers else []
+        slot_initializers if slot_initializers else ()
     )
     num_slot_names = len(self._slot_names_attr)
     num_slot_initializers = len(self._slot_initializers_attr)
@@ -316,7 +330,7 @@ class CustomOptimizer(_Optimizer):
           " the number of slot_initializers"
           f" ({num_slot_initializers})."
       )
-    self._hyperparameters = hyperparameters
+    self._hyperparameters = tuple(hyperparameters if hyperparameters else ())
     self._custom_computation = custom_computation
 
   def _slot_names(self) -> List[Text]:
@@ -338,8 +352,8 @@ class CustomOptimizer(_Optimizer):
     )
 
   @property
-  def hyperparameters(self) -> List[Union[float, Callable[[], float]]]:
-    return self._hyperparameters or []
+  def hyperparameters(self) -> Tuple[Union[float, Callable[[], float]], ...]:
+    return self._hyperparameters
 
   @property
   def custom_computation(self) -> core.ConcreteFunction:

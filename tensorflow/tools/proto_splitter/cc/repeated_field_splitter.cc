@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/tools/proto_splitter/cc/repeated_field_splitter.h"
 
+#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <utility>
@@ -24,67 +25,63 @@ limitations under the License.
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
+#include "tensorflow/tools/proto_splitter/cc/composable_splitter.h"
 #include "tensorflow/tools/proto_splitter/cc/max_size.h"
-#include "tensorflow/tools/proto_splitter/cc/split.h"
+#include "tensorflow/tools/proto_splitter/cc/size_splitter.h"
 #include "tensorflow/tools/proto_splitter/cc/util.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/protobuf.h"
 #include "tsl/platform/statusor.h"
 
-namespace tensorflow {
-namespace tools::proto_splitter {
+namespace tensorflow::tools::proto_splitter {
 
 // Additional bytes added to each node to account for the extra info needed to
 // encode the field key (realistically 3 but making it 5 for some wiggle room).
 constexpr int kExtraBytes = 5;
 
 template <typename ParentMessage, typename RepeatedMessage>
-absl::StatusOr<RepeatedFieldSplitters<ParentMessage, RepeatedMessage>>
-RepeatedFieldSplitters<ParentMessage, RepeatedMessage>::Create(
+absl::StatusOr<RepeatedFieldSplitter<ParentMessage, RepeatedMessage>>
+RepeatedFieldSplitter<ParentMessage, RepeatedMessage>::Create(
     tsl::protobuf::Message* message, ComposableSplitter* parent_splitter,
     std::vector<FieldType>* fields_in_parent, const FieldType& repeated_field,
     std::vector<SizeSplitterFactory*>* splitter_factories) {
-  // std::vector<FieldType> all_fields = *fields_in_parent;
-  // all_fields.push_back(repeated_field);
-  // std::vector<FieldType>
-
   TF_ASSIGN_OR_RETURN(auto field_ret, GetField(*message, {repeated_field}));
   if (!field_ret.field->is_repeated()) {
     return absl::FailedPreconditionError("Unable to split non-repeated field.");
   }
 
-  auto ret = RepeatedFieldSplitters<ParentMessage, RepeatedMessage>(
+  auto ret = RepeatedFieldSplitter<ParentMessage, RepeatedMessage>(
       message, parent_splitter, fields_in_parent, repeated_field,
       splitter_factories);
   return ret;
 }
 
 template <typename ParentMessage, typename RepeatedMessage>
-absl::StatusOr<int> RepeatedFieldSplitters<
-    ParentMessage, RepeatedMessage>::BuildChunksReturnSize() {
-  // std::vector<FieldType> all_fields = *fields_in_parent();
-  // all_fields.push_back(repeated_field_);
-
-  TF_ASSIGN_OR_RETURN(auto ret, GetMutableField(message(), {repeated_field_}));
+absl::StatusOr<int>
+RepeatedFieldSplitter<ParentMessage, RepeatedMessage>::BuildChunksReturnSize() {
+  TF_ASSIGN_OR_RETURN(MutableFieldResult mfr,
+                      GetMutableField(message(), {repeated_field_}));
+  tsl::protobuf::Message* parent = mfr.parent;
+  const tsl::protobuf::FieldDescriptor* repeated_field = mfr.field;
 
   uint64_t max_size = GetMaxSize();
   size_t initial_size = GetInitialSize();
 
   // List of indices at which to split the repeated field. For example, [3, 5]
   // means that the field list is split into: [:3], [3:5], [5:]
-  std::vector<int> repeated_msg_split = {0};
+  std::vector<int> repeated_msg_split;
   // Track the total byte size of the current node split.
   uint64_t total_size = 0;
 
   // Linearly iterate through all nodes. It may be possible to optimize this
   // further by making best guesses as to where to split the nodes, since
   // most nodes (aside from constants) are relatively small.
-  int repeated_field_size =
-      ret.parent->GetReflection()->FieldSize(*ret.parent, ret.field);
-  for (int i = 0; i < repeated_field_size; ++i) {
+  int repeated_field_length =
+      parent->GetReflection()->FieldSize(*parent, repeated_field);
+  for (int i = 0; i < repeated_field_length; ++i) {
     tsl::protobuf::Message* node =
-        ret.parent->GetReflection()->MutableRepeatedMessage(ret.parent,
-                                                            ret.field, i);
+        parent->GetReflection()->MutableRepeatedMessage(parent, repeated_field,
+                                                        i);
     auto node_size = node->ByteSizeLong();
 
     std::vector<FieldType> new_fields = {repeated_field_, i};
@@ -106,25 +103,20 @@ absl::StatusOr<int> RepeatedFieldSplitters<
     total_size += node_size + kExtraBytes;
   }
 
-  if (repeated_msg_split.size() > 1) {
+  if (!repeated_msg_split.empty()) {
     auto repeated_nodes_ptrs =
-        ret.parent->GetReflection()
-            ->template MutableRepeatedPtrField<RepeatedMessage>(ret.parent,
-                                                                ret.field);
+        parent->GetReflection()
+            ->template MutableRepeatedPtrField<RepeatedMessage>(parent,
+                                                                repeated_field);
 
-    int start = repeated_msg_split[0];
-
-    std::vector<RepeatedMessage*> extracted_nodes;
-    extracted_nodes.resize(repeated_field_size - start);
-    repeated_nodes_ptrs->ExtractSubrange(start, repeated_field_size - start,
+    std::vector<RepeatedMessage*> extracted_nodes(repeated_field_length);
+    repeated_nodes_ptrs->ExtractSubrange(0, repeated_field_length,
                                          &extracted_nodes.at(0));
-    repeated_msg_split.push_back(repeated_field_size);
-    auto extracted_node = extracted_nodes.begin();
+    // Last range end is the size of the repeated field.
+    repeated_msg_split.push_back(repeated_field_length);
 
-    for (int i = 1; i < repeated_msg_split.size(); ++i) {
-      start = repeated_msg_split[i - 1];
-      int end = repeated_msg_split[i];
-
+    int range_start = 0;
+    for (int range_end : repeated_msg_split) {
       auto new_msg = std::make_shared<ParentMessage>();
       std::vector<FieldType> empty_fields;
       auto x = std::make_unique<MessageBytes>(new_msg);
@@ -134,10 +126,12 @@ absl::StatusOr<int> RepeatedFieldSplitters<
       TF_ASSIGN_OR_RETURN(auto new_ret,
                           GetMutableField(new_msg.get(), repeated_field_));
 
-      for (int j = 0; j < end - start; ++j) {
+      for (int j = range_start; j < range_end; ++j) {
         new_msg->GetReflection()->AddAllocatedMessage(
-            new_msg.get(), new_ret.field, *extracted_node++);
+            new_msg.get(), new_ret.field, extracted_nodes[j]);
       }
+
+      range_start = range_end;
     }
   }
 
@@ -147,9 +141,8 @@ absl::StatusOr<int> RepeatedFieldSplitters<
 }
 
 // Declare template classes to fix linking error.
-template class RepeatedFieldSplitters<GraphDef, NodeDef>;
-template class RepeatedFieldSplitters<FunctionDefLibrary, FunctionDef>;
-template class RepeatedFieldSplitters<FunctionDef, NodeDef>;
+template class RepeatedFieldSplitter<GraphDef, NodeDef>;
+template class RepeatedFieldSplitter<FunctionDefLibrary, FunctionDef>;
+template class RepeatedFieldSplitter<FunctionDef, NodeDef>;
 
-}  // namespace tools::proto_splitter
-}  // namespace tensorflow
+}  // namespace tensorflow::tools::proto_splitter

@@ -22,8 +22,8 @@ syntax = "proto3";
 
 package tensorflow;
 
+import "xla/tsl/protobuf/dnn.proto";
 import "tensorflow/core/framework/types.proto";
-import "tsl/protobuf/dnn.proto";
 
 // LINT.IfChange
 

@@ -12,6 +12,12 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <algorithm>
+#include <cstddef>
+#include <cstdint>
+#include <cstdlib>
+
+#include "absl/log/log.h"
 #ifndef _WIN32
 #include <fcntl.h>
 #endif  // !defined(_WIN32)
@@ -26,7 +32,6 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/algorithm/algorithm.h"
-#include "absl/memory/memory.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/lite/core/c/c_api_types.h"

@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PLATFORM_DYNAMIC_ANNOTATIONS_H_
 #define TENSORFLOW_CORE_PLATFORM_DYNAMIC_ANNOTATIONS_H_
 
+#include "xla/tsl/platform/dynamic_annotations.h"  // IWYU pragma: export
 #include "tensorflow/core/platform/platform.h"
-#include "tsl/platform/dynamic_annotations.h"  // IWYU pragma: export
 
 #endif  // TENSORFLOW_CORE_PLATFORM_DYNAMIC_ANNOTATIONS_H_

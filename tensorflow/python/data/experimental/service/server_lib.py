@@ -143,7 +143,7 @@ class DispatchServer:
   >>> dataset = tf.data.Dataset.range(10)
   >>> dataset = dataset.apply(tf.data.experimental.service.distribute(
   ...     processing_mode="parallel_epochs", service=dispatcher.target))
-  >>> print(list(dataset.as_numpy_iterator()))
+  >>> [a.item() for a in dataset.as_numpy_iterator()]
   [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
 
   When starting a dedicated tf.data dispatch process, use join() to block
@@ -175,8 +175,8 @@ class DispatchServer:
 
     Args:
       config: (Optional.) A `tf.data.experimental.service.DispatcherConfig`
-        configration. If `None`, the dispatcher will use default
-        configuration values.
+        configuration. If `None`, the dispatcher will use default configuration
+        values.
       start: (Optional.) Boolean, indicating whether to start the server after
         creating it. Defaults to True.
     """
@@ -362,7 +362,7 @@ class WorkerServer:
   >>> dataset = tf.data.Dataset.range(10)
   >>> dataset = dataset.apply(tf.data.experimental.service.distribute(
   ...     processing_mode="parallel_epochs", service=dispatcher.target))
-  >>> print(list(dataset.as_numpy_iterator()))
+  >>> [a.item() for a in dataset.as_numpy_iterator()]
   [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
 
   When starting a dedicated tf.data worker process, use join() to block
@@ -382,7 +382,7 @@ class WorkerServer:
     """Creates a new worker server.
 
     Args:
-      config: A `tf.data.experimental.service.WorkerConfig` configration.
+      config: A `tf.data.experimental.service.WorkerConfig` configuration.
       start: (Optional.) Boolean, indicating whether to start the server after
         creating it. Defaults to True.
     """

@@ -55,8 +55,8 @@ absl::StatusOr<bool> HasInputsWithMismatchingDeadness(
 using deadness_analysis_internal::ComputePredicates;
 using deadness_analysis_internal::PredicateMapTy;
 
-Status AnalyzeDeadness(Graph* graph,
-                       std::unique_ptr<DeadnessAnalysis>* result) {
+absl::Status AnalyzeDeadness(Graph* graph,
+                             std::unique_ptr<DeadnessAnalysis>* result) {
   FixupSourceAndSinkEdges(graph);
   return DeadnessAnalysis::Run(*graph, result);
 }

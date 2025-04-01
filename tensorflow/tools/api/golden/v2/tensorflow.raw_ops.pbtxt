@@ -765,6 +765,10 @@ tf_module {
     argspec: "args=[\'tensor\', \'message\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
+    name: "CheckPinned"
+    argspec: "args=[\'tensor\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
     name: "Cholesky"
     argspec: "args=[\'input\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
@@ -1231,6 +1235,10 @@ tf_module {
   member_method {
     name: "DecodeWav"
     argspec: "args=[\'contents\', \'desired_channels\', \'desired_samples\', \'name\'], varargs=None, keywords=None, defaults=[\'-1\', \'-1\', \'None\'], "
+  }
+  member_method {
+    name: "DecodeWebP"
+    argspec: "args=[\'contents\', \'channels\', \'dtype\', \'name\'], varargs=None, keywords=None, defaults=[\'0\', \"<dtype: \'uint8\'>\", \'None\'], "
   }
   member_method {
     name: "DeepCopy"
@@ -3014,7 +3022,7 @@ tf_module {
   }
   member_method {
     name: "ParallelMapDatasetV2"
-    argspec: "args=[\'input_dataset\', \'other_arguments\', \'num_parallel_calls\', \'f\', \'output_types\', \'output_shapes\', \'use_inter_op_parallelism\', \'deterministic\', \'preserve_cardinality\', \'metadata\', \'name\'], varargs=None, keywords=None, defaults=[\'True\', \'default\', \'False\', \'\', \'None\'], "
+    argspec: "args=[\'input_dataset\', \'other_arguments\', \'num_parallel_calls\', \'f\', \'output_types\', \'output_shapes\', \'use_inter_op_parallelism\', \'deterministic\', \'preserve_cardinality\', \'use_unbounded_threadpool\', \'metadata\', \'name\'], varargs=None, keywords=None, defaults=[\'True\', \'default\', \'False\', \'False\', \'\', \'None\'], "
   }
   member_method {
     name: "ParameterizedTruncatedNormal"
@@ -3858,23 +3866,23 @@ tf_module {
   }
   member_method {
     name: "ResourceScatterNdAdd"
-    argspec: "args=[\'ref\', \'indices\', \'updates\', \'use_locking\', \'name\'], varargs=None, keywords=None, defaults=[\'True\', \'None\'], "
+    argspec: "args=[\'ref\', \'indices\', \'updates\', \'use_locking\', \'bad_indices_policy\', \'name\'], varargs=None, keywords=None, defaults=[\'True\', \'\', \'None\'], "
   }
   member_method {
     name: "ResourceScatterNdMax"
-    argspec: "args=[\'ref\', \'indices\', \'updates\', \'use_locking\', \'name\'], varargs=None, keywords=None, defaults=[\'True\', \'None\'], "
+    argspec: "args=[\'ref\', \'indices\', \'updates\', \'use_locking\', \'bad_indices_policy\', \'name\'], varargs=None, keywords=None, defaults=[\'True\', \'\', \'None\'], "
   }
   member_method {
     name: "ResourceScatterNdMin"
-    argspec: "args=[\'ref\', \'indices\', \'updates\', \'use_locking\', \'name\'], varargs=None, keywords=None, defaults=[\'True\', \'None\'], "
+    argspec: "args=[\'ref\', \'indices\', \'updates\', \'use_locking\', \'bad_indices_policy\', \'name\'], varargs=None, keywords=None, defaults=[\'True\', \'\', \'None\'], "
   }
   member_method {
     name: "ResourceScatterNdSub"
-    argspec: "args=[\'ref\', \'indices\', \'updates\', \'use_locking\', \'name\'], varargs=None, keywords=None, defaults=[\'True\', \'None\'], "
+    argspec: "args=[\'ref\', \'indices\', \'updates\', \'use_locking\', \'bad_indices_policy\', \'name\'], varargs=None, keywords=None, defaults=[\'True\', \'\', \'None\'], "
   }
   member_method {
     name: "ResourceScatterNdUpdate"
-    argspec: "args=[\'ref\', \'indices\', \'updates\', \'use_locking\', \'name\'], varargs=None, keywords=None, defaults=[\'True\', \'None\'], "
+    argspec: "args=[\'ref\', \'indices\', \'updates\', \'use_locking\', \'bad_indices_policy\', \'name\'], varargs=None, keywords=None, defaults=[\'True\', \'\', \'None\'], "
   }
   member_method {
     name: "ResourceScatterSub"
@@ -4122,27 +4130,27 @@ tf_module {
   }
   member_method {
     name: "ScatterNdAdd"
-    argspec: "args=[\'ref\', \'indices\', \'updates\', \'use_locking\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'None\'], "
+    argspec: "args=[\'ref\', \'indices\', \'updates\', \'use_locking\', \'bad_indices_policy\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'\', \'None\'], "
   }
   member_method {
     name: "ScatterNdMax"
-    argspec: "args=[\'ref\', \'indices\', \'updates\', \'use_locking\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'None\'], "
+    argspec: "args=[\'ref\', \'indices\', \'updates\', \'use_locking\', \'bad_indices_policy\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'\', \'None\'], "
   }
   member_method {
     name: "ScatterNdMin"
-    argspec: "args=[\'ref\', \'indices\', \'updates\', \'use_locking\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'None\'], "
+    argspec: "args=[\'ref\', \'indices\', \'updates\', \'use_locking\', \'bad_indices_policy\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'\', \'None\'], "
   }
   member_method {
     name: "ScatterNdNonAliasingAdd"
-    argspec: "args=[\'input\', \'indices\', \'updates\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'input\', \'indices\', \'updates\', \'bad_indices_policy\', \'name\'], varargs=None, keywords=None, defaults=[\'\', \'None\'], "
   }
   member_method {
     name: "ScatterNdSub"
-    argspec: "args=[\'ref\', \'indices\', \'updates\', \'use_locking\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'None\'], "
+    argspec: "args=[\'ref\', \'indices\', \'updates\', \'use_locking\', \'bad_indices_policy\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'\', \'None\'], "
   }
   member_method {
     name: "ScatterNdUpdate"
-    argspec: "args=[\'ref\', \'indices\', \'updates\', \'use_locking\', \'name\'], varargs=None, keywords=None, defaults=[\'True\', \'None\'], "
+    argspec: "args=[\'ref\', \'indices\', \'updates\', \'use_locking\', \'bad_indices_policy\', \'name\'], varargs=None, keywords=None, defaults=[\'True\', \'\', \'None\'], "
   }
   member_method {
     name: "ScatterSub"
@@ -5061,6 +5069,10 @@ tf_module {
     argspec: "args=[\'tensors\', \'unpadded_sizes\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
+    name: "TPUDummyInput"
+    argspec: "args=[\'dtype\', \'shape\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
     name: "TPUEmbeddingActivations"
     argspec: "args=[\'embedding_variable\', \'sliced_activations\', \'table_id\', \'lookup_id\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
@@ -5366,23 +5378,23 @@ tf_module {
   }
   member_method {
     name: "TensorScatterAdd"
-    argspec: "args=[\'tensor\', \'indices\', \'updates\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'tensor\', \'indices\', \'updates\', \'bad_indices_policy\', \'name\'], varargs=None, keywords=None, defaults=[\'\', \'None\'], "
   }
   member_method {
     name: "TensorScatterMax"
-    argspec: "args=[\'tensor\', \'indices\', \'updates\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'tensor\', \'indices\', \'updates\', \'bad_indices_policy\', \'name\'], varargs=None, keywords=None, defaults=[\'\', \'None\'], "
   }
   member_method {
     name: "TensorScatterMin"
-    argspec: "args=[\'tensor\', \'indices\', \'updates\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'tensor\', \'indices\', \'updates\', \'bad_indices_policy\', \'name\'], varargs=None, keywords=None, defaults=[\'\', \'None\'], "
   }
   member_method {
     name: "TensorScatterSub"
-    argspec: "args=[\'tensor\', \'indices\', \'updates\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'tensor\', \'indices\', \'updates\', \'bad_indices_policy\', \'name\'], varargs=None, keywords=None, defaults=[\'\', \'None\'], "
   }
   member_method {
     name: "TensorScatterUpdate"
-    argspec: "args=[\'tensor\', \'indices\', \'updates\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'tensor\', \'indices\', \'updates\', \'bad_indices_policy\', \'name\'], varargs=None, keywords=None, defaults=[\'\', \'None\'], "
   }
   member_method {
     name: "TensorSliceDataset"

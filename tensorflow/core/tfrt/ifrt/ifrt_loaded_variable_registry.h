@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_TFRT_IFRT_IFRT_LOADED_VARIABLE_REGISTRY_H_
 
 #include <string>
+#include <vector>
 
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
@@ -24,7 +25,10 @@ limitations under the License.
 #include "absl/functional/any_invocable.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
 #include "absl/synchronization/mutex.h"
+#include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/future.h"
 #include "xla/tsl/concurrency/ref_count.h"
@@ -38,19 +42,29 @@ class IfrtLoadedVariableRegistry {
   // The key is per variable tensor per device assignment. For single -device
   // program, variables can be loaded on multiple devices with core selection.
   // For SPMD program, we currently assume all devices will be used, so we use
-  // set to make it compatible with SPMD.
+  // vector to make it compatible with SPMD.
   struct Key {
-    // We use a set to make it compatible with SPMD.
-    absl::flat_hash_set<int> device_ids;
+    // We use a vector to make it compatible with SPMD because the order of the
+    // devices used for sharding must match the order of the devices used for
+    // xla compilation.
+    std::vector<int> device_ids;
     std::string input_name;
+    xla::HloSharding hlo_sharding;
     template <typename H>
     friend H AbslHashValue(H h, const Key& key) {
-      h = H::combine(std::move(h), key.input_name, key.device_ids);
+      h = H::combine(std::move(h), key.input_name, key.device_ids,
+                     key.hlo_sharding);
       return h;
     }
 
     friend bool operator==(const Key& x, const Key& y) {
-      return x.input_name == y.input_name && x.device_ids == y.device_ids;
+      return x.input_name == y.input_name && x.device_ids == y.device_ids &&
+             x.hlo_sharding == y.hlo_sharding;
+    }
+
+    std::string ToString() const {
+      return absl::StrCat(input_name, ":", absl::StrJoin(device_ids, ","), ":",
+                          hlo_sharding.ToString());
     }
   };
 

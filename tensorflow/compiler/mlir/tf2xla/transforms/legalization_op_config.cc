@@ -528,12 +528,6 @@ bool HasTf2XlaFallback(const TypeID& type_id) {
          IsOpTypeAllowedTf2XlaPreferred(type_id);
 }
 
-bool IsOpLegalizedWithMlir(Operation& op) {
-  auto abstractOp = op.getRegisteredInfo();
-  if (!abstractOp) return false;
-  return IsTypeLegalizedWithMlir(abstractOp->getTypeID());
-}
-
 bool IsTypeLegalizedWithMlir(const TypeID& type_id) {
   return MlirAlwaysOps().contains(type_id);
 }

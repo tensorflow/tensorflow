@@ -13,11 +13,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include <algorithm>
+#include <cstddef>
+#include <limits>
 #include <memory>
 #include <string>
-#include <unordered_map>
 #include <vector>
 
+#include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_join.h"
 #include "tensorflow/core/platform/logging.h"
@@ -137,9 +140,9 @@ void SetMinMaxForConcatenedArray(GraphTransformation* transformation,
 }  // namespace
 
 // Resolves the concatenation operator if all its inputs are constant arrays.
-::tensorflow::Status ResolveConstantConcatenation::Run(Model* model,
-                                                       std::size_t op_index,
-                                                       bool* modified) {
+absl::Status ResolveConstantConcatenation::Run(Model* model,
+                                               std::size_t op_index,
+                                               bool* modified) {
   *modified = false;
   const auto concat_it = model->operators.begin() + op_index;
   const auto* concat_base_op = concat_it->get();

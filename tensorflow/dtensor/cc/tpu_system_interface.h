@@ -37,12 +37,12 @@ class TpuSystemInterface {
  public:
   virtual ~TpuSystemInterface() = default;
 
-  virtual Status Initialize(OpKernelContext* ctx, ResourceMgr* rmgr,
-                            absl::Duration retry_timeout,
-                            std::vector<int32>* core_id_output_vec,
-                            bool use_tfrt_host_runtime) = 0;
+  virtual absl::Status Initialize(OpKernelContext* ctx, ResourceMgr* rmgr,
+                                  absl::Duration retry_timeout,
+                                  std::vector<int32>* core_id_output_vec,
+                                  bool use_tfrt_host_runtime) = 0;
 
-  virtual Status Shutdown() = 0;
+  virtual absl::Status Shutdown() = 0;
 
   virtual std::vector<std::vector<int>> TPUCoreIDsToLocations(
       TFE_Context* context, const std::vector<int>& tpu_core_ids) = 0;

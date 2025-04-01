@@ -30,12 +30,13 @@ class PassingFunctionPass : public FunctionOptimizationPass {
  public:
   static bool ran_;
 
-  Status Run(const std::string& function_name, const DeviceSet& device_set,
-             const ConfigProto& config_proto,
-             const FunctionOptions& function_options,
-             std::unique_ptr<Graph>* graph, FunctionLibraryDefinition* flib_def,
-             std::vector<std::string>* control_ret_node_names,
-             bool* control_rets_updated) override {
+  absl::Status Run(const std::string& function_name,
+                   const DeviceSet& device_set, const ConfigProto& config_proto,
+                   const FunctionOptions& function_options,
+                   std::unique_ptr<Graph>* graph,
+                   FunctionLibraryDefinition* flib_def,
+                   std::vector<std::string>* control_ret_node_names,
+                   bool* control_rets_updated) override {
     ran_ = true;
     return absl::OkStatus();
   }
@@ -51,7 +52,7 @@ TEST(FunctionOptimizationPassRegistry, PassNoError) {
   DeviceSet device_set;
   ConfigProto config_proto;
   FunctionOptimizationPass::FunctionOptions function_options;
-  Status status = FunctionOptimizationPassRegistry::Global().Run(
+  absl::Status status = FunctionOptimizationPassRegistry::Global().Run(
       "test_func", device_set, config_proto, function_options,
       /*graph=*/nullptr,
       /*flib_def=*/nullptr,

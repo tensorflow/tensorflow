@@ -21,8 +21,9 @@ limitations under the License.
 #include <optional>
 #include <string>
 #include <utility>
-#include <variant>
 
+#include "absl/base/nullability.h"
+#include "absl/container/flat_hash_map.h"
 #include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/jit/device_compilation_cluster_signature.h"
 #include "tensorflow/compiler/jit/xla_compile_util.h"
@@ -73,7 +74,7 @@ class DeviceCompilationCache {
   using Key = DeviceCompilationClusterSignature;
   struct Value {
     DeviceCompileState compile_state = DeviceCompileState::kUncompiled;
-    Status compilation_status;
+    absl::Status compilation_status;
     int64_t request_count = 0;
     const XlaCompiler::CompilationResult* compilation_result = nullptr;
     ExecutableType* executable = nullptr;
@@ -93,12 +94,31 @@ class DeviceCompilationCache {
   // corresponding `request_count`. Only arguments that are not std::nullopt are
   // updated in the cache.
   void Store(const Key& key, std::optional<DeviceCompileState> compile_state,
-             std::optional<Status> compilation_status,
+             std::optional<absl::Status> compilation_status,
              std::optional<std::unique_ptr<XlaCompiler::CompilationResult>>
                  compilation_result,
              std::optional<std::unique_ptr<ExecutableType>> executable);
 
   std::string DebugString() const;
+
+  // Erase any cache entries that have a null entry and releases all references
+  // to `xla::XlaComputation` in the non-null cache entries.
+  void Finalize() {
+    const mutex_lock lock(compile_cache_mu_);
+    absl::erase_if(
+        cache_,
+        [&](std::pair<const Key, absl::Nullable<std::unique_ptr<Entry>>>& kv) {
+          const absl::Nullable<Entry*> entry = kv.second.get();
+          if (entry == nullptr) {
+            return true;
+          }
+
+          const mutex_lock entry_lock(entry->mu);
+          entry->compilation_result->computation.reset();
+
+          return false;
+        });
+  };
 
  private:
   // The value associated with a cache entry.
@@ -113,7 +133,7 @@ class DeviceCompilationCache {
     int64_t request_count TF_GUARDED_BY(mu) = 0;
 
     // Did compilation succeed?
-    Status compilation_status TF_GUARDED_BY(mu);
+    absl::Status compilation_status TF_GUARDED_BY(mu);
 
     // Output of the XlaCompiler.
     std::unique_ptr<XlaCompiler::CompilationResult> compilation_result
@@ -206,7 +226,7 @@ DeviceCompilationCache<ExecutableType>::LookupOrCreate(const Key& key) {
 template <typename ExecutableType>
 void DeviceCompilationCache<ExecutableType>::Store(
     const Key& key, std::optional<DeviceCompileState> compile_state,
-    std::optional<Status> compilation_status,
+    std::optional<absl::Status> compilation_status,
     std::optional<std::unique_ptr<XlaCompiler::CompilationResult>>
         compilation_result,
     std::optional<std::unique_ptr<ExecutableType>> executable) {

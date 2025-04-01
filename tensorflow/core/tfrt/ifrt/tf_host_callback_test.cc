@@ -33,6 +33,8 @@ limitations under the License.
 #include "tensorflow/cc/ops/math_ops.h"
 #include "tensorflow/cc/ops/resource_variable_ops.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/ifrt/ifrt_types.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/function.pb.h"
@@ -44,8 +46,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/graph/graph.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/statusor.h"
+#include "tensorflow/core/protobuf/config.pb.h"
 
 namespace tensorflow {
 namespace ifrt_serving {
@@ -157,7 +158,7 @@ TEST(TfHostCallbackTest, Simple) {
   std::vector<DtypeAndShape> out_dtype_shapes;
   out_dtype_shapes.push_back({.dtype = out.dtype(), .shape = out.shape()});
 
-  ASSERT_OK_AND_ASSIGN(auto device_mgr, CreateTfStaticDeviceMgr());
+  ASSERT_OK_AND_ASSIGN(auto device_mgr, CreateTfDynamicDeviceMgr());
   ASSERT_OK_AND_ASSIGN(auto tf_host_callback,
                        tensorflow::ifrt_serving::TfHostCallback::Create(
                            function_defs, "main", in_dtype_shapes,
@@ -174,7 +175,7 @@ TEST(TfHostCallbackTest, SharedState) {
   // Verify that two host callbacks can share the same TF resource (a variable
   // with the same shared name in this case).
 
-  ASSERT_OK_AND_ASSIGN(auto state, CreateTfStaticDeviceMgr());
+  ASSERT_OK_AND_ASSIGN(auto state, CreateTfDynamicDeviceMgr());
 
   // Build the first host callback that assigns the argument to a variable.
   std::unique_ptr<TfHostCallback> assign_callback;

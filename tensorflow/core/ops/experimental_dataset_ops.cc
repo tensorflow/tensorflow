@@ -184,6 +184,12 @@ REGISTER_OP("UncompressElement")
     .Attr("output_shapes: list(shape) >= 1")
     .SetShapeFn(shape_inference::DatasetIteratorShape);
 
+REGISTER_OP("CheckPinned")
+    .Input("tensor: T")
+    .Output("output: T")
+    .Attr("T: type")
+    .SetShapeFn(shape_inference::UnchangedShape);
+
 REGISTER_OP("ComputeBatchSize")
     .Input("input_dataset : variant")
     .Output("batch_size : int64")

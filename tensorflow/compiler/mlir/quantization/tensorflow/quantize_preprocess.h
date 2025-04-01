@@ -62,6 +62,17 @@ inline absl::Status PreprocessAndFreezeGraph(mlir::ModuleOp module_op,
       /*deserialize_xla_call_module=*/false, /*input_arg_shapes=*/{});
 }
 
+// Overload of `PreprocessAndFreezeGraph` that uses the default MLIR dump file
+// prefix.
+inline absl::Status PreprocessAndFreezeGraph(mlir::ModuleOp module_op,
+                                             mlir::MLIRContext* context) {
+  return PreprocessAndFreezeGraph(
+      /*mlir_dump_file_prefix=*/kDefaultTfQuantMlirDumpFilePrefix,
+      /*is_inliner_run=*/true, /*noinline_functions=*/{}, module_op, context,
+      nullptr, /*run_tf_to_stablehlo=*/false,
+      /*deserialize_xla_call_module=*/false, /*input_arg_shapes=*/{});
+}
+
 // TF->StableHLO has limited support for dynamic shapes.
 // Some models can only be converted with explicitly provided input argument
 // shapes.

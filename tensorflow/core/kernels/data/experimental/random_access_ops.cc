@@ -27,7 +27,7 @@ namespace tensorflow {
 namespace data {
 namespace experimental {
 
-Status GetElementAtIndexOp::DoCompute(OpKernelContext* ctx) {
+absl::Status GetElementAtIndexOp::DoCompute(OpKernelContext* ctx) {
   DatasetBase* dataset;
   TF_RETURN_IF_ERROR(GetDatasetFromVariantTensor(ctx->input(0), &dataset));
 

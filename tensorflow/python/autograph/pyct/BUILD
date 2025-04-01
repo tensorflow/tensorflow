@@ -189,8 +189,6 @@ py_strict_library(
 py_strict_test(
     name = "anno_test",
     srcs = ["anno_test.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
     deps = [
         ":anno",
         #internal proto upb dep
@@ -201,8 +199,6 @@ py_strict_test(
 py_strict_test(
     name = "ast_util_test",
     srcs = ["ast_util_test.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
     deps = [
         ":anno",
         ":ast_util",
@@ -219,8 +215,6 @@ py_strict_test(
 py_strict_test(
     name = "cache_test",
     srcs = ["cache_test.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
     deps = [
         ":cache",
         #internal proto upb dep
@@ -231,8 +225,6 @@ py_strict_test(
 py_strict_test(
     name = "cfg_test",
     srcs = ["cfg_test.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
     deps = [
         ":cfg",
         ":parser",
@@ -245,8 +237,6 @@ py_strict_test(
 py_strict_test(
     name = "loader_test",
     srcs = ["loader_test.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
     deps = [
         ":ast_util",
         ":loader",
@@ -262,8 +252,6 @@ py_strict_test(
 py_strict_test(
     name = "error_utils_test",
     srcs = ["error_utils_test.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
     deps = [
         ":error_utils",
         ":origin_info",
@@ -275,8 +263,6 @@ py_strict_test(
 py_strict_test(
     name = "inspect_utils_test",
     srcs = ["inspect_utils_test.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
     deps = [
         ":inspect_utils",
         #internal proto upb dep
@@ -297,8 +283,6 @@ sh_test(
 py_strict_test(
     name = "naming_test",
     srcs = ["naming_test.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
     deps = [
         ":naming",
         #internal proto upb dep
@@ -309,8 +293,6 @@ py_strict_test(
 py_strict_test(
     name = "origin_info_test",
     srcs = ["origin_info_test.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
     deps = [
         ":anno",
         ":inspect_utils",
@@ -326,8 +308,6 @@ py_strict_test(
 py_strict_test(
     name = "parser_test",
     srcs = ["parser_test.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
     deps = [
         ":ast_util",
         ":errors",
@@ -342,8 +322,6 @@ py_strict_test(
 py_strict_test(
     name = "pretty_printer_test",
     srcs = ["pretty_printer_test.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
     deps = [
         ":pretty_printer",
         #internal proto upb dep
@@ -354,8 +332,6 @@ py_strict_test(
 py_strict_test(
     name = "qual_names_test",
     srcs = ["qual_names_test.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
     deps = [
         ":anno",
         ":parser",
@@ -368,8 +344,6 @@ py_strict_test(
 py_strict_test(
     name = "templates_test",
     srcs = ["templates_test.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
     deps = [
         ":loader",
         ":parser",
@@ -385,8 +359,6 @@ py_strict_test(
 py_strict_test(
     name = "transformer_test",
     srcs = ["transformer_test.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
     deps = [
         ":anno",
         ":origin_info",
@@ -401,8 +373,6 @@ py_strict_test(
 py_strict_test(
     name = "transpiler_test",
     srcs = ["transpiler_test.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
     deps = [
         ":transformer",
         ":transpiler",

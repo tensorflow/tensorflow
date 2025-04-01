@@ -15,6 +15,9 @@ limitations under the License.
 
 #include <stdio.h>
 
+#include <vector>
+
+#include "absl/status/status.h"
 #include "tensorflow/core/framework/op_gen_lib.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/env.h"
@@ -57,7 +60,7 @@ int Run(int argc, char** argv) {
 
   // Read the input file --in.
   string in_contents;
-  Status s = ReadFileToString(Env::Default(), FLAGS_in, &in_contents);
+  absl::Status s = ReadFileToString(Env::Default(), FLAGS_in, &in_contents);
   if (!s.ok()) {
     printf("Error reading file %s: %s\n", FLAGS_in.c_str(),
            s.ToString().c_str());

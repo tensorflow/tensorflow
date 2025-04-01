@@ -16,13 +16,20 @@ limitations under the License.
 #ifndef XLA_HLO_IR_TILE_ASSIGNMENT_H_
 #define XLA_HLO_IR_TILE_ASSIGNMENT_H_
 
+#include <array>
+#include <cstdint>
 #include <functional>
+#include <initializer_list>
 #include <memory>
 #include <optional>
 #include <string>
+#include <type_traits>
 #include <utility>
 
 #include "absl/algorithm/container.h"
+#include "absl/functional/function_ref.h"
+#include "absl/log/check.h"
+#include "absl/status/status.h"
 #include "absl/types/span.h"
 #include "xla/array.h"
 #include "xla/printer.h"

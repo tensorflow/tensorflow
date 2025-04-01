@@ -49,42 +49,50 @@ Type convertShapedType(ShapedType shapedType) {
   return shapedType;
 }
 
-std::optional<Value> materializeCastFromIllegal(OpBuilder& builder, Type type,
+Value materializeCastFromIllegal(OpBuilder& builder, Type type,
                                                 ValueRange inputs,
                                                 Location loc) {
   Type fromType = getElementTypeOrSelf(inputs[0].getType());
   Type toType = getElementTypeOrSelf(type);
   if ((!fromType.isSignedInteger() && !fromType.isUnsignedInteger()) ||
       !toType.isSignlessInteger())
-    return std::nullopt;
+    return Value();
   // Use unrealized conversion casts to do signful->signless conversions.
   return builder.create<UnrealizedConversionCastOp>(loc, type, inputs[0])
       ->getResult(0);
 }
 
-std::optional<Value> materializeCastToIllegal(OpBuilder& builder, Type type,
+Value materializeCastToIllegal(OpBuilder& builder, Type type,
                                               ValueRange inputs, Location loc) {
   Type fromType = getElementTypeOrSelf(inputs[0].getType());
   Type toType = getElementTypeOrSelf(type);
   if (!fromType.isSignlessInteger() ||
       (!toType.isSignedInteger() && !toType.isUnsignedInteger()))
-    return std::nullopt;
+    return Value();
   // Use unrealized conversion casts to do signless->signful conversions.
   return builder.create<UnrealizedConversionCastOp>(loc, type, inputs[0])
       ->getResult(0);
 }
 
-std::optional<Value> scalarToTensor(OpBuilder& builder, Type /*type*/,
+Value scalarToTensor(OpBuilder& builder, Type type,
                                     ValueRange inputs, Location loc) {
   assert(inputs.size() == 1);
   if (mlir::isa<ShapedType>(inputs.front().getType())) {
-    return std::nullopt;
+    return Value();
   }
-  return builder
-      .create<tensor::FromElementsOp>(
-          loc, RankedTensorType::get({}, inputs.front().getType()),
-          inputs.front())
-      .getResult();
+  Value result =
+      builder
+          .create<tensor::FromElementsOp>(
+              loc, RankedTensorType::get({}, inputs.front().getType()),
+              inputs.front())
+          .getResult();
+  // Convert to a signed integer if necessary.
+  Type elementType = mlir::getElementTypeOrSelf(type);
+  if (elementType.isInteger() && !elementType.isSignlessInteger()) {
+    result = builder.create<UnrealizedConversionCastOp>(loc, type, result)
+                 ->getResult(0);
+  }
+  return result;
 }
 
 }  // namespace
@@ -102,6 +110,8 @@ RemoveSignTypeConverter::RemoveSignTypeConverter() {
 
 LinalgTypeConverter::LinalgTypeConverter() : RemoveSignTypeConverter() {
   addArgumentMaterialization(scalarToTensor);
+  addSourceMaterialization(scalarToTensor);
+  addTargetMaterialization(scalarToTensor);
 }
 
 }  // namespace mhlo

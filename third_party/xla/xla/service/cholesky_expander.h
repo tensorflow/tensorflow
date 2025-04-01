@@ -16,33 +16,7 @@ limitations under the License.
 #ifndef XLA_SERVICE_CHOLESKY_EXPANDER_H_
 #define XLA_SERVICE_CHOLESKY_EXPANDER_H_
 
-#include "absl/container/flat_hash_map.h"
-#include "xla/client/xla_builder.h"
-#include "xla/service/op_expander_pass.h"
-
-namespace xla {
-
-class CholeskyExpander : public OpExpanderPass {
- public:
-  absl::string_view name() const override { return "cholesky_expander"; }
-
- protected:
-  bool InstructionMatchesPattern(HloInstruction* instruction) override;
-
-  absl::StatusOr<HloInstruction*> ExpandInstruction(
-      HloInstruction* instruction) override;
-
-  virtual absl::StatusOr<std::pair<XlaOp, XlaOp>> CholeskyUnblocked(
-      XlaOp a, PrecisionConfig::Precision precision);
-
- private:
-  XlaOp BuildCholesky(XlaOp a, int64_t block_size,
-                      PrecisionConfig::Precision precision);
-
-  // Mapping from op signatures to existing computations.
-  absl::flat_hash_map<std::string, HloComputation*> computation_cache_;
-};
-
-}  // namespace xla
+// The current header will be deprecated in favour of the following.
+#include "xla/hlo/transforms/expanders/cholesky_expander.h"
 
 #endif  // XLA_SERVICE_CHOLESKY_EXPANDER_H_

@@ -26,7 +26,7 @@ namespace grappler {
 FunctionApiInfo::FunctionApiInfo() {}
 FunctionApiInfo::~FunctionApiInfo() {}
 
-Status FunctionApiInfo::Init(const FunctionDef& function_def) {
+absl::Status FunctionApiInfo::Init(const FunctionDef& function_def) {
   function_type_ = FunctionApiInfo::FunctionType::INFERENCE;
   for (const auto& attr : function_def.attr()) {
     if (attr.first == "api_preferred_device") {
@@ -120,9 +120,10 @@ bool IsSameSignature(const FunctionDef& f1, const FunctionDef& f2,
   return true;
 }
 
-Status ValidateSignature(const string& interface_name,
-                         const std::vector<const FunctionDef*>& equiv_funcs,
-                         const FunctionApiInfo::FunctionType function_type) {
+absl::Status ValidateSignature(
+    const string& interface_name,
+    const std::vector<const FunctionDef*>& equiv_funcs,
+    const FunctionApiInfo::FunctionType function_type) {
   if (equiv_funcs.size() < 2) return absl::OkStatus();
   for (size_t k = 1; k < equiv_funcs.size(); ++k) {
     const bool check_input =
@@ -142,7 +143,7 @@ Status ValidateSignature(const string& interface_name,
   return absl::OkStatus();
 }
 
-Status ValidateSignatures(
+absl::Status ValidateSignatures(
     const std::unordered_map<string, std::vector<const FunctionDef*>>&
         intf_to_func,
     const FunctionApiInfo::FunctionType function_type) {
@@ -153,7 +154,7 @@ Status ValidateSignatures(
 }
 }  // namespace
 
-Status FunctionLibraryApiInfo::Init(
+absl::Status FunctionLibraryApiInfo::Init(
     const FunctionDefLibrary& function_library) {
   std::unordered_map<string, std::vector<const FunctionDef*>> infer_funcs;
   std::unordered_map<string, std::vector<const FunctionDef*>> fwd_funcs;
@@ -197,7 +198,7 @@ Status FunctionLibraryApiInfo::Init(
   return absl::OkStatus();
 }
 
-Status FunctionLibraryApiInfo::GetEquivalentImplementations(
+absl::Status FunctionLibraryApiInfo::GetEquivalentImplementations(
     const string& function_name, std::vector<string>* other_functions) const {
   const auto func_it = func_info_.find(function_name);
   if (func_it == func_info_.end()) return absl::OkStatus();

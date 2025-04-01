@@ -12,16 +12,18 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <cstddef>
 #include <memory>
-#include <string>
-#include <unordered_map>
 #include <vector>
 
+#include "absl/log/check.h"
+#include "absl/status/status.h"
+#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/lite/toco/graph_transformations/graph_transformations.h"
 #include "tensorflow/lite/toco/graph_transformations/quantization_util.h"
 #include "tensorflow/lite/toco/model.h"
 #include "tensorflow/lite/toco/tooling_util.h"
-#include "tensorflow/core/platform/logging.h"
 
 namespace toco {
 
@@ -277,9 +279,8 @@ bool RecursivelyForwardPropagateDataType(GraphTransformation* transformation,
 // nice logging and integration with the graphviz video dumping mode.
 // In general you should not copy this style of transformation and stick to
 // local-only changes as seen in the other transformations.
-::tensorflow::Status PropagateFakeQuantNumBits::Run(Model* model,
-                                                    std::size_t op_index,
-                                                    bool* modified) {
+absl::Status PropagateFakeQuantNumBits::Run(Model* model, std::size_t op_index,
+                                            bool* modified) {
   *modified = false;
   auto it = model->operators.begin() + op_index;
   auto* op = it->get();

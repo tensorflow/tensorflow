@@ -25,15 +25,16 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "absl/types/span.h"
-#include "xla/client/lib/constants.h"
-#include "xla/client/lib/math.h"
-#include "xla/client/lib/matrix.h"
-#include "xla/client/lib/slicing.h"
-#include "xla/client/xla_builder.h"
-#include "xla/client/xla_computation.h"
+#include "xla/hlo/builder/lib/constants.h"
+#include "xla/hlo/builder/lib/math.h"
+#include "xla/hlo/builder/lib/matrix.h"
+#include "xla/hlo/builder/lib/slicing.h"
+#include "xla/hlo/builder/xla_builder.h"
+#include "xla/hlo/builder/xla_computation.h"
 #include "xla/hlo/ir/hlo_clone_context.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/service/hlo_creation_utils.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
@@ -50,7 +51,7 @@ XlaOp DiagonalBlocks(XlaOp a, int64_t block_size) {
   XlaBuilder* builder = a.builder();
   return builder->ReportErrorOrReturn([&]() -> absl::StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(Shape shape, builder->GetShape(a));
-    int ndims = shape.rank();
+    int ndims = shape.dimensions_size();
     int64_t n = ShapeUtil::GetDimension(shape, -1);
     int64_t num_blocks = n / block_size;
     absl::Span<int64_t const> batch_dims = absl::MakeConstSpan(
@@ -145,14 +146,14 @@ XlaOp SolveWithInvertedDiagonalBlocks(XlaOp a, XlaOp b, XlaOp inv_diag_blocks,
     int64_t block_size = ShapeUtil::GetDimension(blocks_shape, -1);
 
     TF_ASSIGN_OR_RETURN(Shape a_shape, builder->GetShape(a));
-    int64_t ndims = a_shape.rank();
+    int64_t ndims = a_shape.dimensions_size();
     int64_t n = ShapeUtil::GetDimension(a_shape, -1);
     int64_t num_blocks = n / block_size + (n % block_size != 0);
     int64_t m_dim = (left_side) ? -1 : -2;
     int64_t m = ShapeUtil::GetDimension(b_shape, m_dim);
 
     std::vector<XlaOp> update_ops;
-    int bdims = b_shape.rank();
+    int bdims = b_shape.dimensions_size();
     int64_t block_dim = (left_side) ? bdims - 2 : bdims - 1;
 
     // Initialize the solution
@@ -376,7 +377,7 @@ XlaOp TriangularSolveExpander::SolveByInvertingDiagonalBlocks(
   XlaBuilder* builder = a.builder();
   return builder->ReportErrorOrReturn([&]() -> absl::StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(Shape a_shape, builder->GetShape(a));
-    const int64_t ndims = a_shape.rank();
+    const int64_t ndims = a_shape.dimensions_size();
     int64_t k = ShapeUtil::GetDimension(a_shape, -1);
 
     // TODO(phawkins): consider pushing triangle masking into
@@ -478,13 +479,13 @@ XlaOp TriangularSolveExpander::BuildTriangularSolve(
   return builder->ReportErrorOrReturn([&]() -> absl::StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(Shape a_shape, builder->GetShape(a));
     TF_ASSIGN_OR_RETURN(Shape b_shape, builder->GetShape(b));
-    if (a_shape.rank() != b_shape.rank()) {
+    if (a_shape.dimensions_size() != b_shape.dimensions_size()) {
       return InvalidArgument(
           "Arguments to TriangularSolve have shapes with different ranks: "
           "%s vs. %s",
           ShapeUtil::HumanString(a_shape), ShapeUtil::HumanString(b_shape));
     }
-    const int64_t ndims = a_shape.rank();
+    const int64_t ndims = a_shape.dimensions_size();
     if (ndims < 2) {
       return InvalidArgument(
           "Arguments to TriangularSolve was rank %d but must have rank >= 2.",
@@ -599,15 +600,8 @@ absl::StatusOr<HloInstruction*> TriangularSolveExpander::ExpandInstruction(
                          /*block_size=*/block_size_,
                          /*precision=*/PrecisionConfig::HIGHEST);
     TF_ASSIGN_OR_RETURN(XlaComputation xla_computation, builder.Build());
-
-    TF_ASSIGN_OR_RETURN(ProgramShape program_shape,
-                        xla_computation.GetProgramShape());
-    HloModuleConfig config(program_shape);
-    TF_ASSIGN_OR_RETURN(auto new_module, HloModule::CreateFromProto(
-                                             xla_computation.proto(), config));
-    HloCloneContext context(module);
-    computation =
-        module->DeepCloneComputation(new_module->entry_computation(), &context);
+    TF_ASSIGN_OR_RETURN(
+        computation, XlaComputationToHloComputation(xla_computation, module));
   }
 
   return instruction->parent()->AddInstruction(HloInstruction::CreateCall(

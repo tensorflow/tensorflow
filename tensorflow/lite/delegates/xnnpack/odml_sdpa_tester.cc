@@ -119,8 +119,9 @@ void ODMLSDPATester::Test(TfLiteDelegate* delegate) const {
 std::vector<char> ODMLSDPATester::CreateTfLiteModel() const {
   if (!model_name_.empty() && model_name_ != kOdmlSdpaCustom) {
     const char kTestModelFolder[] =
-        "third_party/tensorflow/lite/delegates/xnnpack/";
-    const std::string test_model = kTestModelFolder + model_name_ + ".tflite";
+        "tensorflow/lite/delegates/xnnpack/";
+    const std::string test_model =
+        kTestModelFolder + model_name_ + ".tflite.bin";
     std::string model_data;
     if (!flatbuffers::LoadFile(test_model.c_str(), /*binary=*/true,
                                &model_data)) {

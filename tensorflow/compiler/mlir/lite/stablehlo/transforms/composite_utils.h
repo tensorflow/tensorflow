@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_MLIR_LITE_STABLEHLO_TRANSFORMS_COMPOSITE_UTILS_H_
 
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <vector>
 

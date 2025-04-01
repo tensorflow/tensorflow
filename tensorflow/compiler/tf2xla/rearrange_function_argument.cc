@@ -52,9 +52,10 @@ std::vector<DataType> ShuffleInputDataTypeAttribute(
 // be rewritten, `resource_input_count` will be set to number of DT_RESOURCE
 // inputs, and `index_mapping` will hold a mapping for original input index to
 // rearranged input index.
-Status InputTypesNeedsRearrange(const std::vector<DataType>& in_types,
-                                bool* need_rewrite, int* resource_input_count,
-                                std::vector<int>* index_mapping) {
+absl::Status InputTypesNeedsRearrange(const std::vector<DataType>& in_types,
+                                      bool* need_rewrite,
+                                      int* resource_input_count,
+                                      std::vector<int>* index_mapping) {
   int first_resource_index = -1;
   for (int i = 0, end = in_types.size(); i < end; i++) {
     DataType type = in_types[i];
@@ -105,8 +106,8 @@ Status InputTypesNeedsRearrange(const std::vector<DataType>& in_types,
 
 // Given mapping between original input index and rearranged input index,
 // reorder input edges for the node.
-Status ReorderInputEdges(Graph* g, Node* n,
-                         const std::vector<int>& index_mapping) {
+absl::Status ReorderInputEdges(Graph* g, Node* n,
+                               const std::vector<int>& index_mapping) {
   std::vector<const Edge*> input_edges;
   for (const Edge* e : n->in_edges()) {
     if (e->IsControlEdge()) {
@@ -129,9 +130,9 @@ Status ReorderInputEdges(Graph* g, Node* n,
 // input index, reorder output edges for the node. DT_RESOURCE outputs are
 // removed from the node and we will use the node's corresponding input for the
 // edge.
-Status ReorderOutputEdges(Graph* g, Node* n, int input_count,
-                          int resource_input_count,
-                          const std::vector<int>& index_mapping) {
+absl::Status ReorderOutputEdges(Graph* g, Node* n, int input_count,
+                                int resource_input_count,
+                                const std::vector<int>& index_mapping) {
   std::vector<const Edge*> output_edges;
   for (const Edge* e : n->out_edges()) {
     if (e->IsControlEdge()) {
@@ -159,9 +160,8 @@ Status ReorderOutputEdges(Graph* g, Node* n, int input_count,
 
 // Given mapping between original input index and rearranged input index, change
 // "index" attribute for _Arg nodes.
-void RearrangeArgNodes(
-    const gtl::InlinedVector<Node*, 4>* arg_nodes,  // non-absl ok
-    const std::vector<int>& index_mapping) {
+void RearrangeArgNodes(const absl::InlinedVector<Node*, 4UL>* arg_nodes,
+                       const std::vector<int>& index_mapping) {
   for (int i = 0; i < arg_nodes->size(); i++) {
     Node* n = (*arg_nodes)[i];
     int new_index = index_mapping.at(i);
@@ -176,8 +176,8 @@ void RearrangeArgNodes(
 // original _Retval to rearranged _Retval, and `resource_retval_to_arg` will
 // hold mapping from DT_RESOURCE _Retval index to its input _Arg index. Here we
 // assume that all DT_RESOURCE _Retval nodes come from _Arg nodes directly.
-Status CalculateRetvalRearrange(
-    const gtl::InlinedVector<Node*, 4>& ret_nodes,  // non-absl ok
+absl::Status CalculateRetvalRearrange(
+    const absl::InlinedVector<Node*, 4UL>& ret_nodes,
     std::map<int, int>* retval_index_mapping,
     std::map<int, int>* resource_retval_to_arg) {
   for (int i = 0, end = ret_nodes.size(); i < end; i++) {
@@ -225,9 +225,9 @@ std::vector<DataType> ShuffleOutputDataTypeAttribute(
 // and rearranged input index, reorder output edges for the node. DT_RESOURCE
 // outputs are removed from the node and we will use the node's corresponding
 // input for the edge.
-Status RearrangeOutputEdges(Node* n, Graph* g,
-                            const std::map<int, int>& retval_index_mapping,
-                            const std::map<int, int>& resource_retval_to_arg) {
+absl::Status RearrangeOutputEdges(
+    Node* n, Graph* g, const std::map<int, int>& retval_index_mapping,
+    const std::map<int, int>& resource_retval_to_arg) {
   std::vector<const Edge*> out_edges;
   for (const Edge* e : n->out_edges()) {
     if (!e->IsControlEdge()) {
@@ -258,9 +258,9 @@ Status RearrangeOutputEdges(Node* n, Graph* g,
 // Given mapping between original output index and rearranged output index,
 // change "index" attribute for _Retval nodes. Notice that DT_RESOURCE _Retval
 // nodes will be removed.
-void RearrangeRetvalNodes(
-    const gtl::InlinedVector<Node*, 4>& ret_nodes,  // non-absl ok
-    Graph* g, const std::map<int, int>& retval_index_mapping) {
+void RearrangeRetvalNodes(const absl::InlinedVector<Node*, 4UL>& ret_nodes,
+                          Graph* g,
+                          const std::map<int, int>& retval_index_mapping) {
   for (int i = 0, end = ret_nodes.size(); i < end; i++) {
     Node* n = ret_nodes[i];
     auto iter = retval_index_mapping.find(i);
@@ -273,8 +273,8 @@ void RearrangeRetvalNodes(
   }
 }
 
-Status MaybeRewriteWhileNode(
-    std::function<Status(const NameAttrList&, const FunctionBody**)>
+absl::Status MaybeRewriteWhileNode(
+    std::function<absl::Status(const NameAttrList&, const FunctionBody**)>
         get_function_body_fn,
     Graph* g, Node* n, FunctionLibraryDefinition* fld, bool* node_rewritten) {
   // Check if this While node needs rewrite.
@@ -382,8 +382,8 @@ Status MaybeRewriteWhileNode(
   return absl::OkStatus();
 }
 
-Status MaybeRewriteIfNode(
-    std::function<Status(const NameAttrList&, const FunctionBody**)>
+absl::Status MaybeRewriteIfNode(
+    std::function<absl::Status(const NameAttrList&, const FunctionBody**)>
         get_function_body_fn,
     Graph* g, Node* n, FunctionLibraryDefinition* fld, bool* node_rewritten,
     const FunctionLibraryDefinition* global_fld) {
@@ -519,8 +519,8 @@ Status MaybeRewriteIfNode(
 
 }  // namespace
 
-Status RearrangeFunctionArguments(
-    std::function<Status(const NameAttrList&, const FunctionBody**)>
+absl::Status RearrangeFunctionArguments(
+    std::function<absl::Status(const NameAttrList&, const FunctionBody**)>
         get_function_body_fn,
     Graph* g, FunctionLibraryDefinition* fld,
     const FunctionLibraryDefinition* global_fld) {
@@ -537,7 +537,7 @@ Status RearrangeFunctionArguments(
     const FunctionBody* fbody;
     TF_RETURN_IF_ERROR(get_function_body_fn(func_name_attrs, &fbody));
     InlineFunctionBodyOptions opts;
-    Status s = InlineFunctionBody(*fld, g, n, fbody, opts);
+    absl::Status s = InlineFunctionBody(*fld, g, n, fbody, opts);
     // Inlining might fail because the function is marked with attribute
     // _noinline.
     s.IgnoreError();

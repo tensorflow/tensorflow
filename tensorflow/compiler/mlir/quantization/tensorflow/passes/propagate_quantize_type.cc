@@ -151,7 +151,7 @@ void PropagateQuantizeType::runOnOperation() {
   // Propagation can happen recursively with multiple functions so keep this
   // module level.
   for (auto func : module_op.getOps<func::FuncOp>()) {
-    if (failed(applyPatternsAndFoldGreedily(func, frozen_patterns))) {
+    if (failed(applyPatternsGreedily(func, frozen_patterns))) {
       func.emitError() << "quant-propagate-quantize-type failed.";
       signalPassFailure();
     }

@@ -18,7 +18,7 @@ limitations under the License.
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Pass/PassRegistry.h"
 #include "xla/service/spmd/shardy/sdy_round_trip/pipelines.h"
-#include "xla/service/spmd/shardy/sdy_round_trip/test_utils/mhlo_to_hlo_to_mhlo.h"
+#include "xla/service/spmd/shardy/sdy_round_trip/test_utils/stablehlo_to_hlo_to_stablehlo.h"
 
 namespace xla {
 namespace sdy {
@@ -27,10 +27,10 @@ void registerSdyRoundTripTestingPipeline() {
   mlir::PassPipelineRegistration<>(
       "xla-sdy-round-trip-testing-pipeline",
       "Run Shardy export pipeline, then convert to HLO, then convert to "
-      "MHLO, then import back to Shardy",
+      "StableHLO, then import back to Shardy",
       [](mlir::OpPassManager& pm) {
         addSdyRoundTripExportPipeline(pm);
-        pm.addPass(createSdyRoundTripMhloToHloToMhloPass());
+        pm.addPass(createSdyRoundTripStablehloToHloToStablehloPass());
         addSdyRoundTripImportPipeline(pm);
       });
 }

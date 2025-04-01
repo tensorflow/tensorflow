@@ -97,8 +97,6 @@ py_strict_library(
 py_strict_test(
     name = "activity_test",
     srcs = ["activity_test.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
     deps = [
         ":activity",
         ":annos",
@@ -117,8 +115,6 @@ py_strict_test(
     name = "liveness_test",
     testonly = True,
     srcs = ["liveness_test.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
     deps = [
         ":activity",
         ":liveness",
@@ -137,8 +133,6 @@ py_strict_test(
 py_strict_test(
     name = "reaching_definitions_test",
     srcs = ["reaching_definitions_test.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
     deps = [
         ":activity",
         ":reaching_definitions",
@@ -156,8 +150,6 @@ py_strict_test(
 py_strict_test(
     name = "type_inference_test",
     srcs = ["type_inference_test.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
     deps = [
         ":activity",
         ":reaching_definitions",

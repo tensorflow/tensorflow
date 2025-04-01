@@ -16,6 +16,9 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_TOOLS_KERNEL_GEN_TF_FRAMEWORK_C_INTERFACE_H_
 #define TENSORFLOW_COMPILER_MLIR_TOOLS_KERNEL_GEN_TF_FRAMEWORK_C_INTERFACE_H_
 
+#include <cstddef>
+#include <cstdint>
+
 #include "mlir/ExecutionEngine/RunnerUtils.h"  // from @llvm-project
 
 namespace mlir {

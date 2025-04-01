@@ -26,11 +26,11 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
-#include "xla/client/xla_computation.h"
+#include "xla/hlo/builder/xla_computation.h"
 #include "xla/pjrt/metrics.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_device_description.h"
-#include "tsl/lib/monitoring/cell_reader.h"
+#include "xla/tsl/lib/monitoring/cell_reader.h"
 #include "tsl/platform/status_matchers.h"
 
 namespace xla {

@@ -56,7 +56,7 @@ class TensorSliceReaderTable : public TensorSliceReader::Table {
     std::unique_ptr<table::Iterator> iter(table_->NewIterator());
     iter->Seek(key);
     if (iter->Valid() && iter->key() == key) {
-      StringPiece v = iter->value();
+      absl::string_view v = iter->value();
       value->assign(v.data(), v.size());
       return true;
     } else {
@@ -70,12 +70,12 @@ class TensorSliceReaderTable : public TensorSliceReader::Table {
 };
 }  // namespace
 
-Status OpenTableTensorSliceReader(const string& fname,
-                                  TensorSliceReader::Table** result) {
+absl::Status OpenTableTensorSliceReader(const string& fname,
+                                        TensorSliceReader::Table** result) {
   *result = nullptr;
   Env* env = Env::Default();
   std::unique_ptr<RandomAccessFile> f;
-  Status s = env->NewRandomAccessFile(fname, &f);
+  absl::Status s = env->NewRandomAccessFile(fname, &f);
   if (s.ok()) {
     uint64 file_size;
     s = env->GetFileSize(fname, &file_size);
@@ -113,7 +113,7 @@ TensorSliceReader::TensorSliceReader(const string& filepattern,
                                      int preferred_shard)
     : filepattern_(filepattern), open_function_(std::move(open_function)) {
   VLOG(1) << "TensorSliceReader for " << filepattern;
-  Status s = Env::Default()->GetMatchingPaths(filepattern, &fnames_);
+  absl::Status s = Env::Default()->GetMatchingPaths(filepattern, &fnames_);
   if (!s.ok()) {
     status_ = errors::InvalidArgument(
         "Unsuccessful TensorSliceReader constructor: "
@@ -151,7 +151,7 @@ void TensorSliceReader::LoadShard(int shard) const {
   const string fname = fnames_[shard];
   VLOG(1) << "Reading meta data from file " << fname << "...";
   Table* table;
-  Status s = open_function_(fname, &table);
+  absl::Status s = open_function_(fname, &table);
   if (!s.ok()) {
     status_ = errors::DataLoss("Unable to open table file ", fname, ": ",
                                s.ToString());
@@ -233,7 +233,7 @@ bool TensorSliceReader::HasTensor(const string& name, TensorShape* shape,
   }
 }
 
-Status TensorSliceReader::GetTensor(
+absl::Status TensorSliceReader::GetTensor(
     const string& name, std::unique_ptr<tensorflow::Tensor>* out_tensor) const {
   DataType type;
   TensorShape shape;
@@ -256,7 +256,7 @@ Status TensorSliceReader::GetTensor(
   }
 
   std::unique_ptr<tensorflow::Tensor> t(new tensorflow::Tensor);
-  Status s = tensorflow::Tensor::BuildTensor(type, shape, t.get());
+  absl::Status s = tensorflow::Tensor::BuildTensor(type, shape, t.get());
   if (!s.ok()) return s;
 
   for (const auto d : shape.dim_sizes()) {

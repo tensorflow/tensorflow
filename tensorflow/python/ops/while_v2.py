@@ -1405,4 +1405,60 @@ def _set_read_only_resource_inputs_attr(op: ops.Operation, branch_graphs):
   ops.set_int_list_attr(op, acd.READ_ONLY_RESOURCE_INPUTS_ATTR,
                         sorted(read_only_indices))
 
+
+def async_noop(name=None):
+  """Returns a no-op that is implemented as an async kernel.
+
+  This operation may be useful to implement "aggressive inter-op parallelism"
+  because it will cause any immediate downstream operations to be scheduled
+  on different threads.
+
+  Args:
+    name: The name of the operation.
+  """
+
+  with ops.name_scope(name, "async_noop") as name:
+    cond_init_value = constant_op.constant(False, name="cond_init_value")
+
+    func_graph_signature = [tensor_spec.TensorSpec(shape=(), dtype=dtypes.bool)]
+
+    cond_graph = func_graph_module.func_graph_from_py_func(
+        "cond_graph",
+        lambda x: x,
+        [cond_init_value],
+        {},
+        signature=func_graph_signature,
+        func_graph=util.WhileCondFuncGraph(
+            "cond_graph", collections=ops.get_default_graph()._collections
+        ),  # pylint: disable=protected-access
+        add_control_dependencies=False,
+    )
+
+    body_graph = func_graph_module.func_graph_from_py_func(
+        "body_graph",
+        lambda x: x,
+        [cond_init_value],
+        {},
+        signature=func_graph_signature,
+        func_graph=util.WhileBodyFuncGraph(
+            "body_graph", collections=ops.get_default_graph()._collections
+        ),  # pylint: disable=protected-access
+        add_control_dependencies=False,
+    )
+
+    while_op, _ = util.get_op_and_outputs(
+        gen_functional_ops._while(
+            [cond_init_value],
+            util.create_new_tf_function(cond_graph),
+            util.create_new_tf_function(body_graph),
+            output_shapes=[[]],
+            name=name,
+        )
+    )
+
+    # Disable lowering using switch merge.
+    util.maybe_set_lowering_attr(while_op, lower_using_switch_merge=False)
+
+  return while_op
+
 # pylint: enable=protected-access

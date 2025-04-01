@@ -15,10 +15,15 @@ limitations under the License.
 #ifndef XLA_TSL_DISTRIBUTED_RUNTIME_COORDINATION_COORDINATION_SERVICE_ERROR_UTIL_H_
 #define XLA_TSL_DISTRIBUTED_RUNTIME_COORDINATION_COORDINATION_SERVICE_ERROR_UTIL_H_
 
+#include <cstdint>
+#include <optional>
+#include <string>
+#include <string_view>
+
 #include "absl/status/status.h"
 #include "absl/strings/cord.h"
 #include "absl/strings/string_view.h"
-#include "tsl/protobuf/coordination_service.pb.h"
+#include "xla/tsl/protobuf/coordination_service.pb.h"
 
 namespace tsl {
 
@@ -26,11 +31,35 @@ constexpr absl::string_view CoordinationErrorPayloadKey() {
   return "type.googleapis.com/tensorflow.CoordinationServiceError";
 }
 
+constexpr absl::string_view BarrierErrorPayloadKey() {
+  return "type.googleapis.com/tensorflow.BarrierError";
+}
+
 // Mark error as a coordination service error (as opposed to RPC
 // errors).
 inline absl::Status MakeCoordinationError(absl::Status s) {
   s.SetPayload(CoordinationErrorPayloadKey(), absl::Cord(""));
   return s;
+}
+
+inline absl::Status MakeBarrierError(absl::Status s,
+                                     std::string_view barrier_id,
+                                     int64_t counter) {
+  tensorflow::BarrierError error;
+  error.set_barrier_id(std::string(barrier_id));
+  error.set_counter(counter);
+  s.SetPayload(BarrierErrorPayloadKey(), absl::Cord(error.SerializeAsString()));
+  return MakeCoordinationError(s);
+}
+
+inline int64_t GetBarrierCounterFromError(const absl::Status& s) {
+  if (s.GetPayload(BarrierErrorPayloadKey()) == std::nullopt) {
+    return -1;
+  }
+  tensorflow::BarrierError error;
+  error.ParseFromString(
+      std::string(s.GetPayload(BarrierErrorPayloadKey()).value()));
+  return error.counter();
 }
 
 // Mark error as a coordination service error (as opposed to RPC
@@ -55,6 +84,14 @@ inline absl::Status MakeCoordinationError(
                absl::Cord(payload.SerializeAsString()));
   return s;
 }
+
+// Trims the error message by replacing the `Additional GRPC error` part.
+// Note: The duplicated error message is a quirk of the underlying gRPC code
+// that we are using. Changing the shared code may hide important messages for
+// other libraries, so we trim the error message for coordination service
+// instead. See tsl/distributed_runtime/rpc/grpc_state.h for more details.
+absl::Status TrimCoordinationErrorMessage(const absl::Status& s);
+
 }  // namespace tsl
 
 #endif  // XLA_TSL_DISTRIBUTED_RUNTIME_COORDINATION_COORDINATION_SERVICE_ERROR_UTIL_H_

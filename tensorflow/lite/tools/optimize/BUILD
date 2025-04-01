@@ -175,6 +175,7 @@ cc_library(
         ":model_utils",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:minimal_logging",
+        "//tensorflow/lite/c:c_api_types",
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/kernels/internal:cppmath",
@@ -182,7 +183,6 @@ cc_library(
         "//tensorflow/lite/kernels/internal:tensor_utils",
         "//tensorflow/lite/kernels/internal:types",
         "//tensorflow/lite/schema:schema_fbs",
-        "@com_google_absl//absl/memory",
         "@eigen_archive//:eigen3",
     ],
 )
@@ -254,71 +254,6 @@ tf_cc_test(
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest",
         "@eigen_archive//:eigen3",
-        "@flatbuffers",
-    ],
-)
-
-cc_library(
-    name = "quantize_weights",
-    srcs = select({
-        "//tensorflow:ios": ["quantize_weights_portable.cc"],
-        "//tensorflow:android": ["quantize_weights_portable.cc"],
-        "//conditions:default": ["quantize_weights.cc"],
-    }),
-    hdrs = ["quantize_weights.h"],
-    compatible_with = get_compatible_with_portable(),
-    deps = [
-        ":quantization_utils",
-        ":model_utils",
-        "@com_google_absl//absl/memory",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/container:flat_hash_set",
-        "@flatbuffers",
-        "//tensorflow/lite:framework",
-        "//tensorflow/lite/c:c_api_types",
-        "//tensorflow/lite/core:framework",
-        # TODO(suharshs): Move the relevant quantization utils to a non-internal location.
-        "//tensorflow/lite/kernels/internal:tensor_utils",
-        "//tensorflow/lite/schema:schema_fbs",
-        "//tensorflow/lite/schema:schema_utils",
-        "//tensorflow/core:tflite_portable_logging",
-    ] + select({
-        "//tensorflow:android": [],
-        "//tensorflow:ios": [],
-        "//conditions:default": [
-            "//tensorflow/compiler/mlir/lite/quantization/lite:quantize_weights",
-        ],
-    }),
-)
-
-tf_cc_test(
-    name = "quantize_weights_test",
-    srcs = ["quantize_weights_test.cc"],
-    args = [
-        "--test_model_file=$(location //tensorflow/compiler/mlir/lite/quantization/lite:testdata/single_conv_weights_min_0_max_plus_10.bin)",
-    ],
-    data = [
-        "//tensorflow/compiler/mlir/lite/quantization/lite:testdata/custom_op.bin",
-        "//tensorflow/compiler/mlir/lite/quantization/lite:testdata/quantized_with_gather.bin",
-        "//tensorflow/compiler/mlir/lite/quantization/lite:testdata/single_conv_weights_min_0_max_plus_10.bin",
-        "//tensorflow/compiler/mlir/lite/quantization/lite:testdata/weight_shared_between_convs.bin",
-    ],
-    tags = [
-        "tflite_not_portable_android",
-        "tflite_not_portable_ios",
-    ],
-    deps = [
-        ":quantize_weights",
-        "//tensorflow/compiler/mlir/lite/quantization/lite:test_util",
-        "//tensorflow/core:framework_internal",
-        "//tensorflow/core:lib",
-        "//tensorflow/lite:framework",
-        "//tensorflow/lite/core:framework",
-        "//tensorflow/lite/schema:schema_fbs",
-        "//tensorflow/lite/schema:schema_utils",
-        "@com_google_googletest//:gtest",
         "@flatbuffers",
     ],
 )

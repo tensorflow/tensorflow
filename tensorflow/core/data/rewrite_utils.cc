@@ -14,6 +14,10 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/data/rewrite_utils.h"
 
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/platform/refcount.h"
 
 // On mobile we do not provide this functionality because not all of its
@@ -30,7 +34,6 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"
-#include "absl/strings/str_cat.h"
 #include "absl/strings/substitute.h"
 #include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/common_runtime/graph_runner.h"
@@ -109,9 +112,10 @@ void RemoveFakeSinks(FunctionDef* function_def) {
   }
 }
 
-Status ApplyRewrites(OpKernelContext* ctx,
-                     const std::function<RewriterConfig(void)> config_factory,
-                     GraphDef* graph_def, string* dataset_node) {
+absl::Status ApplyRewrites(
+    OpKernelContext* ctx,
+    const std::function<RewriterConfig(void)> config_factory,
+    GraphDef* graph_def, string* dataset_node) {
   std::unique_ptr<tensorflow::grappler::GrapplerItem> grappler_item =
       GetGrapplerItem(graph_def, dataset_node, /*add_fake_sinks=*/true);
   std::unordered_map<std::string, tensorflow::DeviceProperties> device_map;
@@ -166,10 +170,10 @@ RewriterConfig CreateRewriterConfig(
   return rewriter_config;
 }
 
-Status RewriteDataset(OpKernelContext* ctx, const DatasetBase* input,
-                      std::function<RewriterConfig(void)> config_factory,
-                      bool record_fingerprint,
-                      core::RefCountPtr<DatasetBase>* rewritten_input) {
+absl::Status RewriteDataset(OpKernelContext* ctx, const DatasetBase* input,
+                            std::function<RewriterConfig(void)> config_factory,
+                            bool record_fingerprint,
+                            core::RefCountPtr<DatasetBase>* rewritten_input) {
   std::vector<std::pair<string, Tensor>> input_list;
   GraphDef graph_def;
   string output_node;
@@ -224,7 +228,7 @@ Status RewriteDataset(OpKernelContext* ctx, const DatasetBase* input,
         return;
       }
       uint64 hash = 0;
-      Status s = HashNode(graph_def, *node_def, *lib_def, &hash);
+      absl::Status s = HashNode(graph_def, *node_def, *lib_def, &hash);
       if (!s.ok()) {
         VLOG(3) << "Failed to hash graph: " << s;
         return;
@@ -232,7 +236,7 @@ Status RewriteDataset(OpKernelContext* ctx, const DatasetBase* input,
       for (const auto& pair : input_list) {
         hash = Hash64CombineUnordered(hash, Hash64(pair.first));
         uint64 tensor_hash = 0;
-        Status s = HashTensor(pair.second, &tensor_hash);
+        absl::Status s = HashTensor(pair.second, &tensor_hash);
         if (s.ok()) {
           hash = Hash64CombineUnordered(hash, tensor_hash);
         } else {

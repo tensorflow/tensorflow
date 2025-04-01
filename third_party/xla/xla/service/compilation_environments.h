@@ -20,7 +20,6 @@ limitations under the License.
 #include <cstdint>
 #include <functional>
 #include <memory>
-#include <string_view>
 #include <typeindex>
 #include <utility>
 
@@ -28,6 +27,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "xla/xla.pb.h"
 #include "tsl/platform/casts.h"
+#include "tsl/platform/platform.h"
 #include "tsl/platform/protobuf.h"
 
 namespace xla {
@@ -80,7 +80,7 @@ class CompilationEnvironments {
       ProcessNewEnvFn process_new_env);
 
   // Adds env to the list of CompilationEnvironments. If an environment with
-  // the same proto descriptor has already been added, env will replace it.
+  // the same proto descriptor has already been added, returns an error.
   //
   // All added environments are processed via registered ProcessNewEnvFns. If
   // such a function was not regitered for env's proto descriptor or env's
@@ -101,6 +101,11 @@ class CompilationEnvironments {
   template <typename T>
   bool HasEnv();
 
+  // Deletes the environment corresponding to T. Does nothing if no such
+  // environment has been added.
+  template <typename T>
+  void DeleteEnv();
+
   // Removes all added environments.
   void Clear() { environments_.clear(); }
 
@@ -117,11 +122,11 @@ class CompilationEnvironments {
   // track stats about how many such environments are created by
   // CompilationEnvironments.
   static void DefaultEnvCreatedByCompilationEnvironments(
-      std::string_view env_type);
+      absl::string_view env_type);
 
   // Called by AddEnv(), to globally track stats about how many environments
   // are added to CompilationEnvironments.
-  static void EnvAdded(std::string_view env_type);
+  static void EnvAdded(absl::string_view env_type);
 
   absl::Status AddEnvImpl(const tsl::protobuf::Descriptor& descriptor,
                           std::unique_ptr<tsl::protobuf::Message> env);
@@ -143,7 +148,12 @@ T& CompilationEnvironments::GetMutableEnv() {
     it = environments_.find(descriptor);
   }
 
+  // TODO(b/302086111): Remove after XLA has an updated protobuf version.
+#if TSL_IS_IN_OSS
   return tensorflow::down_cast<T&>(*it->second);
+#else
+  return tsl::protobuf::DownCastToGenerated<T>(*it->second);
+#endif
 }
 
 template <typename T>
@@ -155,6 +165,12 @@ template <typename T>
 bool CompilationEnvironments::HasEnv() {
   auto descriptor = T::descriptor();
   return environments_.find(descriptor) != environments_.end();
+}
+
+template <typename T>
+void CompilationEnvironments::DeleteEnv() {
+  auto descriptor = T::descriptor();
+  environments_.erase(descriptor);
 }
 
 }  // namespace xla

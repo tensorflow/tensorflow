@@ -97,9 +97,9 @@ tf_cc_test(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:cord",
         "@com_google_googletest//:gtest_main",
-        "@local_tsl//tsl/lib/core:status_test_util",
         "@local_tsl//tsl/platform:protobuf",
         "@local_tsl//tsl/platform:status_matchers",
+        "@local_xla//xla/tsl/lib/core:status_test_util",
         "@riegeli//riegeli/base:initializer",
         "@riegeli//riegeli/bytes:cord_reader",
         "@riegeli//riegeli/bytes:fd_reader",
@@ -163,11 +163,11 @@ tf_cc_test(
         "//tensorflow/tools/proto_splitter/testdata:test_message_proto_cc",
         "@com_google_absl//absl/status",
         "@com_google_googletest//:gtest_main",
-        "@local_tsl//tsl/lib/core:status_test_util",
         "@local_tsl//tsl/platform:protobuf",
         "@local_tsl//tsl/platform:status",
         "@local_tsl//tsl/platform:status_matchers",
         "@local_tsl//tsl/platform:statusor",
+        "@local_xla//xla/tsl/lib/core:status_test_util",
     ] + if_oss([
         "//tensorflow/tools/proto_splitter:protos_impl",
     ]),
@@ -179,11 +179,11 @@ cc_library(
     hdrs = ["graph_def_splitter.h"],
     deps = [
         ":composable_splitter",
+        ":composable_splitter_base",
         ":large_node_splitter",
         ":max_size",
         ":repeated_field_splitter",
         ":size_splitter",
-        ":split",
         ":util",
         "//tensorflow/core:framework",
         "//tensorflow/core:protos_all_cc",
@@ -309,18 +309,15 @@ tf_cc_test(
 
 cc_library(
     name = "large_node_splitter",
-    srcs = ["large_node_splitter.cc"],
     hdrs = ["large_node_splitter.h"],
     deps = [
         ":composable_splitter",
+        ":composable_splitter_base",
         ":max_size",
         ":size_splitter",
         ":util",
-        "//tensorflow/core:protos_all_cc",
-        "@com_google_absl//absl/memory",
         "@com_google_absl//absl/status:statusor",
         "@local_tsl//tsl/platform:errors",
-        "@local_tsl//tsl/platform:protobuf",
     ],
 )
 

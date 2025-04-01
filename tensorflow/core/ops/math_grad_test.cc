@@ -40,8 +40,8 @@ class MathGradTest : public ::testing::Test {
  protected:
   // Unary
   // dst is the output dtype of op_node.
-  Status Unary(const FDH::Node& op_node, const Tensor& x, const DataType dst,
-               Tensor* y) {
+  absl::Status Unary(const FDH::Node& op_node, const Tensor& x,
+                     const DataType dst, Tensor* y) {
     const DataType src = x.dtype();
     auto adef = [](const string& name,
                    const DataType type) {  // E.g., x:float, dy:double
@@ -94,7 +94,7 @@ class MathGradTest : public ::testing::Test {
     return s;
   }
 
-  Status Unary(const string& op, const Tensor& x, Tensor* y) {
+  absl::Status Unary(const string& op, const Tensor& x, Tensor* y) {
     const FDH::Node op_node = {{"y"}, op, {"x"}, {{"T", x.dtype()}}};
     return Unary(op_node, x, x.dtype(), y);
   }
@@ -412,7 +412,7 @@ class MathGradTest : public ::testing::Test {
   }
 };
 
-void HasError(const Status& s, const string& substr) {
+void HasError(const absl::Status& s, const string& substr) {
   EXPECT_TRUE(absl::StrContains(s.ToString(), substr))
       << s << ", expected substring " << substr;
 }

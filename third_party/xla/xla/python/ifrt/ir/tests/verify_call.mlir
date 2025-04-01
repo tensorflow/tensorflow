@@ -293,7 +293,7 @@ func.func @io_aliases_should_only_alias_input_once(
     %arg0: !ifrt.array<tensor<2x2xi32>, #ifrt.sharding_param<1x1 to [0] on 2>,
                        [0,1]>)
     attributes {ifrt.function} {
-  // expected-error@+1 {{'ifrt.Call' op can't alias input #0 more than once}}
+  // expected-error@+1 {{'ifrt.Call' op can't alias or donate input #0 more than once}}
   %0, %1, %ctrl_0 = ifrt.Call @callee(%arg0) on devices [0,1]
     {io_aliases=[array<i32: 0, 0>, array<i32: 0, 1>]}
     : (!ifrt.array<tensor<2x2xi32>, #ifrt.sharding_param<1x1 to [0] on 2>,
@@ -355,11 +355,32 @@ func.func @callee(%arg0: tensor<2x2xi32>, %arg1: tensor<2x2xi32>)
 
 // -----
 
-func.func @io_aliases_should_have_same_type(
+!array0 = !ifrt.array<tensor<2x1xi32>,
+                      #ifrt.sharding_param<2x1 to [0] on 2>, [0,1]>
+!array1 = !ifrt.array<tensor<1x1xi32>,
+                      #ifrt.sharding_param<1x1 to [0] on 2>, [0,1]>
+func.func @io_aliases_of_different_type_but_same_per_shard_shape(%arg0: !array0)
+    attributes {ifrt.function} {
+  %0, %ctrl_0 = ifrt.Call @callee(%arg0) on devices [0,1]
+    {io_aliases=[array<i32: 0, 0>]} : (!array0) -> !array1
+  return
+}
+
+func.func @callee(%arg0: tensor<2x1xi32>) -> tensor<1x1xi32> {
+  %0 = mhlo.constant dense<-2147483648> : tensor<i32>
+  %1 = mhlo.reduce(%arg0 init: %0) applies mhlo.maximum across dimensions = [0, 1]
+    : (tensor<2x1xi32>, tensor<i32>) -> tensor<i32>
+  %2 = mhlo.reshape %1 : (tensor<i32>) -> tensor<1x1xi32>
+  return %2 : tensor<1x1xi32>
+}
+
+// -----
+
+func.func @io_aliases_should_alias_arrays_with_same_per_shard_shape(
     %arg0: !ifrt.array<tensor<2x2xi32>, #ifrt.sharding_param<1x1 to [0] on 2>,
                        [0,1]>)
     attributes {ifrt.function} {
-  // expected-error@+1 {{'ifrt.Call' op can't alias input #0 to output #0 with different types: '!ifrt.array<tensor<2x2xi32>, #ifrt.sharding_param<1x1 to [0] on 2>, [0, 1]>' vs '!ifrt.array<tensor<2x2xi32>, #ifrt.sharding_param<2x1 to [0] on 2>, [0, 1]>'}}
+  // expected-error@+1 {{'ifrt.Call' op can't alias input #0 to output #0 with different per-shard shapes: '!ifrt.array<tensor<2x2xi32>, #ifrt.sharding_param<1x1 to [0] on 2>, [0, 1]>' vs '!ifrt.array<tensor<2x2xi32>, #ifrt.sharding_param<2x1 to [0] on 2>, [0, 1]>'}}
   %0, %ctrl_0 = ifrt.Call @callee(%arg0) on devices [0,1]
     {io_aliases=[array<i32: 0, 0>]}
     : (!ifrt.array<tensor<2x2xi32>, #ifrt.sharding_param<1x1 to [0] on 2>,
@@ -408,4 +429,57 @@ func.func @call_local_view_should_have_valid_shape(
 
 func.func @callee(%arg0: tensor<4x4xi32>) -> tensor<4x4xi32> {
   return %arg0 : tensor<4x4xi32>
+}
+
+// -----
+
+!array = !ifrt.array<tensor<2x2xi32>,
+                     #ifrt.sharding_param<1x1 to [0] on 2>, [0,1]>
+func.func @donate_an_arg_and_alias_another(%arg0: !array, %arg1: !array)
+    attributes {ifrt.function} {
+  %0, %ctrl_0 = ifrt.Call @callee(%arg0, %arg1) on devices [0,1]
+    {donated_input_indices=array<i32: 0>, io_aliases=[array<i32: 1, 0>]}
+    : (!array, !array) -> !array
+  return
+}
+
+func.func @callee(%arg0: tensor<2x2xi32>, %arg1: tensor<2x2xi32>)
+    -> tensor<2x2xi32> {
+  return %arg0 : tensor<2x2xi32>
+}
+
+// -----
+
+!array = !ifrt.array<tensor<2x2xi32>,
+                     #ifrt.sharding_param<1x1 to [0] on 2>, [0,1]>
+func.func @should_only_donate_once(%arg0: !array, %arg1: !array)
+    attributes {ifrt.function} {
+  // expected-error@+1 {{'ifrt.Call' op can't donate input #0 more than once}}
+  %0, %ctrl_0 = ifrt.Call @callee(%arg0, %arg1) on devices [0,1]
+    {donated_input_indices=array<i32: 0, 0>}
+    : (!array, !array) -> !array
+  return
+}
+
+func.func @callee(%arg0: tensor<2x2xi32>, %arg1: tensor<2x2xi32>)
+    -> tensor<2x2xi32> {
+  return %arg0 : tensor<2x2xi32>
+}
+
+// -----
+
+!array = !ifrt.array<tensor<2x2xi32>,
+                     #ifrt.sharding_param<1x1 to [0] on 2>, [0,1]>
+func.func @should_not_both_donate_and_alias_the_same_arg(
+    %arg0: !array, %arg1: !array) attributes {ifrt.function} {
+  // expected-error@+1 {{'ifrt.Call' op can't alias or donate input #0 more than once}}
+  %0, %ctrl_0 = ifrt.Call @callee(%arg0, %arg1) on devices [0,1]
+    {donated_input_indices=array<i32: 0>, io_aliases=[array<i32: 0, 0>]}
+    : (!array, !array) -> !array
+  return
+}
+
+func.func @callee(%arg0: tensor<2x2xi32>, %arg1: tensor<2x2xi32>)
+    -> tensor<2x2xi32> {
+  return %arg0 : tensor<2x2xi32>
 }

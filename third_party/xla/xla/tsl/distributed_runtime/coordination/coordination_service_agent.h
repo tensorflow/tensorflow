@@ -23,13 +23,15 @@ limitations under the License.
 #include <string_view>
 #include <vector>
 
+#include "absl/functional/any_invocable.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/time/time.h"
+#include "absl/types/span.h"
 #include "xla/tsl/distributed_runtime/call_options.h"
 #include "xla/tsl/distributed_runtime/coordination/coordination_client.h"
-#include "tsl/platform/status.h"
-#include "tsl/protobuf/coordination_service.pb.h"
+#include "xla/tsl/platform/status.h"
+#include "xla/tsl/protobuf/coordination_service.pb.h"
 
 namespace tensorflow {
 class CoordinationServiceConfig;
@@ -69,9 +71,23 @@ class CoordinationServiceAgent {
   using ChangedKeyValuesCallback =
       std::function<void(const std::map<std::string, std::string>&)>;
 
+  // A JobStateCallback is a callback that receives the current and previous job
+  // state. If there is no previous job state, previous_state is empty. The
+  // provided states are only valid for the duration of the callback.
+  struct JobStateUpdate {
+    absl::Span<const tensorflow::CoordinatedTaskStateInfo> previous_state;
+    absl::Span<const tensorflow::CoordinatedTaskStateInfo> current_state;
+  };
+  using JobStateCallback = absl::AnyInvocable<void(const JobStateUpdate&)>;
+
   virtual ~CoordinationServiceAgent() = default;
 
   // Initialize coordination service agent.
+  virtual absl::Status Initialize(
+      tsl::Env* env, std::string_view job_name, int task_id,
+      const tensorflow::CoordinationServiceConfig& configs,
+      std::unique_ptr<CoordinationClient> leader_client,
+      StatusCallback error_fn, bool recoverable) = 0;
   virtual absl::Status Initialize(
       tsl::Env* env, std::string_view job_name, int task_id,
       const tensorflow::CoordinationServiceConfig& configs,
@@ -131,6 +147,10 @@ class CoordinationServiceAgent {
   // Get status of a remote task.
   virtual absl::StatusOr<std::vector<tensorflow::CoordinatedTaskStateInfo>>
   GetTaskState(const std::vector<tensorflow::CoordinatedTask>& task) = 0;
+
+  // Gets status of a remote job.
+  virtual absl::StatusOr<std::vector<tensorflow::CoordinatedTaskStateInfo>>
+  GetJobState(absl::string_view job_name) = 0;
 
   // Report error to coordination service. This will invoke the error callback.
   // Note that the error payload will set `is_reported_error` to true, to
@@ -246,8 +266,8 @@ class CoordinationServiceAgent {
   //       for the same barrier, (2) one of the participating tasks is not in
   //       the cluster, or (3) task making the request is not included in the
   //       list of participating tasks.
-  //   - FailedPrecondition: Agent is in UNINITIALIZED or ERROR state. Or the
-  //       same barrier_id was already used previously.
+  //   - FailedPrecondition: Agent is in UNINITIALIZED or ERROR state, or the
+  //       same barrier id is still being invoked.
   virtual absl::Status WaitAtBarrier(
       std::string_view barrier_id, absl::Duration timeout,
       const std::vector<tensorflow::CoordinatedTask>& tasks) = 0;
@@ -262,10 +282,46 @@ class CoordinationServiceAgent {
   // CANCELLED error status.
   // Possible service errors:
   //   - Internal: Coordination service has shut down.
-  //   - FailedPrecondition: Barrier has already been passed.
+  //   - FailedPrecondition: Barrier is non-existent or not ongoing.
   virtual absl::Status CancelBarrier(std::string_view barrier_id) = 0;
   virtual void CancelBarrierAsync(std::string_view barrier_id,
                                   StatusCallback done) = 0;
+
+  // Returns the set of currently alive tasks. More specifically, given a set of
+  // tasks T, GetAliveTasks(T) returns the subset T of alive tasks.
+  //
+  // # Barrier Semantics
+  //
+  // If multiple tasks call GetAliveTasks concurrently, it's important that they
+  // all agree on which tasks are alive. Otherwise, the tasks' behavior might
+  // diverge. For example, imagine a set of tasks trying to run an AllGather,
+  // but they all disagree on which tasks should be participating in the
+  // AllGather. This is buggy.
+  //
+  // To ensure that every task agrees on which tasks are alive, the
+  // GetAliveTasks RPC has barrier-like semantics. Consider an invocation
+  // GetAliveTasks(T) for a set of tasks T. The invocation acts as a barrier,
+  // waiting for every task in T to call GetAliveTasks(T). Afterwards,
+  // GetAliveTasks returns the same set of alive tasks A to all the tasks in T.
+  // This ensures that every task agrees which tasks are alive.
+  //
+  // One small correction. GetAliveTasks doesn't act as a barrier for *every*
+  // task in T. Some tasks in T might have failed, so we should not wait for
+  // them. Instead, the GetAliveTasks RPC waits only for the returned tasks A.
+  //
+  // # An Example
+  //
+  // Imagine we have four tasks: A, B, C, and D. Further imagine that task D
+  // has failed and that every task calls GetAliveTasks([A, B, C, D]). The
+  // invocation will return tasks [A, B, C]. The GetAliveTasks call acts as a
+  // barrier across tasks A, B, and C. Task D, which failed, is ignored.
+  virtual absl::StatusOr<std::vector<tensorflow::CoordinatedTask>>
+  GetAliveTasks(const std::vector<tensorflow::CoordinatedTask>& tasks) = 0;
+
+  // Registers a JobStateCallback that will be invoked when the state of the job
+  // changes. Multiple changes to the job state may be coalesced into a single
+  // call to the provided callback. Callback invocations may also be delayed.
+  virtual void AddJobStateCallback(JobStateCallback callback) = 0;
 
   // Get unowned Env* that the agent was initialized with.
   virtual absl::StatusOr<tsl::Env*> GetEnv() = 0;

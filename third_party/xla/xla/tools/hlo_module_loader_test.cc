@@ -15,10 +15,12 @@ limitations under the License.
 
 #include "xla/tools/hlo_module_loader.h"
 
+#include <memory>
 #include <string>
 
+#include <gtest/gtest.h>
 #include "xla/tests/hlo_test_base.h"
-#include "tsl/lib/core/status_test_util.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "tsl/platform/test.h"
 
 namespace xla {

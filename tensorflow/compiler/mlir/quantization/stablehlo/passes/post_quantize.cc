@@ -16,7 +16,7 @@ limitations under the License.
 #include <utility>
 
 #include "llvm/Support/Casting.h"
-#include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
+#include "mlir/Dialect/Quant/IR/QuantTypes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributeInterfaces.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
@@ -140,7 +140,7 @@ void PostQuantizePass::runOnOperation() {
   // TODO: b/307463853 - Consider splitting passes for each pattern set.
   patterns.add<FoldTrivalRequantizeOp<quantfork::QuantizeCastOp>,
                RemoveVolatileQdqPattern>(ctx);
-  if (failed(applyPatternsAndFoldGreedily(func, std::move(patterns)))) {
+  if (failed(applyPatternsGreedily(func, std::move(patterns)))) {
     signalPassFailure();
   }
 
@@ -148,7 +148,7 @@ void PostQuantizePass::runOnOperation() {
   patterns_2
       .add<QuantizeConstPattern, ConvertQuantizeCastToUniformQuantizePattern,
            ConvertDequantizeCastToUniformDequantizePattern>(ctx);
-  if (failed(applyPatternsAndFoldGreedily(func, std::move(patterns_2)))) {
+  if (failed(applyPatternsGreedily(func, std::move(patterns_2)))) {
     signalPassFailure();
   }
 }

@@ -17,16 +17,25 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_MLIR_LITE_UTILS_UTILS_H_
 
 #include <algorithm>
+#include <complex>
 #include <cstddef>
 #include <cstdint>
 #include <utility>
 #include <vector>
 
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/SmallVector.h"
+#include "llvm/Support/ErrorHandling.h"
+#include "mlir/Dialect/Traits.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributeInterfaces.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypeInterfaces.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Matchers.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
@@ -40,6 +49,33 @@ using llvm::ArrayRef;
 using mlir::Operation;
 using mlir::ShapedType;
 using mlir::Value;
+
+// Returns true if the value is the min float value.
+inline bool IsNegInfiniteValue(APFloat value) {
+  if (!value.isNegative()) return false;
+  return value.isInfinity();
+}
+
+// Returns true if the value is the max float value.
+inline bool IsPosInfiniteValue(APFloat value) {
+  if (value.isNegative()) return false;
+  return value.isInfinity();
+}
+
+// Returns 1D 32-bit dense elements attribute with the given values.
+inline DenseIntElementsAttr GetI32ElementsAttr(ArrayRef<int32_t> values,
+                                               Builder* builder) {
+  RankedTensorType ty = mlir::RankedTensorType::get(
+      {static_cast<int32_t>(values.size())}, builder->getIntegerType(32));
+  return DenseIntElementsAttr::get(ty, values);
+}
+
+inline DenseIntElementsAttr GetI64ElementsAttr(ArrayRef<int64_t> values,
+                                               Builder* builder) {
+  RankedTensorType ty = RankedTensorType::get(
+      {static_cast<int64_t>(values.size())}, builder->getIntegerType(64));
+  return DenseIntElementsAttr::get(ty, values);
+}
 
 // Returns true if all tensor value in `values` has static shape and same shape.
 inline bool OpHasSameStaticShapes(Operation* op) {
@@ -100,6 +136,19 @@ inline DenseElementsAttr RemapPermutation(Value permutation1,
   return RemapPermutation(permutation1, perm2_const);
 }
 
+inline bool IsTransposeNoop(Value permutation) {
+  DenseElementsAttr perm_values_attr;
+  if (!matchPattern(permutation, m_Constant(&perm_values_attr))) return false;
+
+  for (const auto& [idx, perm_value] :
+       llvm::enumerate(perm_values_attr.getValues<APInt>())) {
+    if (perm_value.getSExtValue() != idx) {
+      return false;
+    }
+  }
+  return true;
+}
+
 // Returns true if the transpose op is trivial. Trivial means that
 // the permutation is a cyclic permutation of the original shape with only the
 // identity dimensions permuted.
@@ -134,7 +183,7 @@ inline bool IsTransposeTrivial(llvm::ArrayRef<int64_t> input_shape,
 // Returns the permutation that maps the input shape to the output shape.
 // This is only valid for trivial reshape ops.
 inline DenseElementsAttr GetPermutationFromTrivialReshape(
-    ShapedType input_type, ShapedType output_type) {
+    mlir::ShapedType input_type, mlir::ShapedType output_type) {
   ArrayRef<int64_t> in_shape = input_type.getShape();
   ArrayRef<int64_t> out_shape = output_type.getShape();
 
@@ -178,8 +227,8 @@ inline DenseElementsAttr GetPermutationFromTrivialReshape(
 // Returns true if the reshape op is equivalent to a transpose op.
 // This is true if the reshape op is a trivial reshape op, meaning no change in
 // the order of non-identity dimensions.
-inline bool IsReshapeEquivalentToTranspose(ShapedType input_type,
-                                           ShapedType output_type) {
+inline bool IsReshapeEquivalentToTranspose(mlir::ShapedType input_type,
+                                           mlir::ShapedType output_type) {
   std::vector<int64_t> in_shape{input_type.getShape().vec()};
   std::vector<int64_t> out_shape{output_type.getShape().vec()};
 
@@ -268,8 +317,8 @@ inline Type TransposeLastTwoDims(Type type) {
 
 // Returns a ShapedType for a permutation and the shape of input after
 // applying the permutation to the given shape through a transpose.
-inline ShapedType GetTransposedType(Value input,
-                                    llvm::ArrayRef<int64_t> permutation_array) {
+inline mlir::ShapedType GetTransposedType(
+    Value input, llvm::ArrayRef<int64_t> permutation_array) {
   auto input_type = input.getType().cast<ShapedType>();
   if (permutation_array.size() != input_type.getRank()) {
     return nullptr;
@@ -283,32 +332,131 @@ inline ShapedType GetTransposedType(Value input,
   return transposed_type;
 }
 
-// Returns shape of a ranked tensor.
-// Precondition: output_val's is ranked tensor.
-// Returns a truncated shape when `truncate` is set to true.
-inline DenseElementsAttr GetShape(Value output_val, bool truncate = false) {
-  auto output_shape = output_val.getType().dyn_cast<ShapedType>().getShape();
+// Return the resultant shape if the shape of the supplied attribute/value is
+// expanded by n leading 1s'.
+inline SmallVector<int32_t> GetExpandedShape(Value input_val, int n) {
+  auto input_shape = mlir::cast<ShapedType>(input_val.getType()).getShape();
+  SmallVector<int32_t> expanded_shape;
+  expanded_shape.reserve(input_shape.size() + n);
+  for (int i = 0; i < n; ++i) {
+    expanded_shape.push_back(1);
+  }
+  expanded_shape.insert(expanded_shape.end(), input_shape.begin(),
+                        input_shape.end());
+  return expanded_shape;
+}
+
+// Return the resultant shape as a DenseElementsAttr if the shape of the
+// supplied attribute/value is expanded by n leading 1s'.
+inline DenseElementsAttr GetExpandedShapeAttr(Value input_val, int n) {
+  auto expanded_shape = GetExpandedShape(input_val, n);
+
+  return mlir::DenseElementsAttr::get(
+      RankedTensorType::get({static_cast<int>(expanded_shape.size())},
+                            mlir::IntegerType::get(input_val.getContext(), 32)),
+      llvm::ArrayRef(expanded_shape));
+}
+
+// Return the resultant shape type if the shape of the supplied attribute/value
+// is expanded by n leading 1s'.
+inline mlir::ShapedType GetExpandedShapeType(Value input_val, int n) {
+  auto expanded_shape = GetExpandedShape(input_val, n);
+  return RankedTensorType::get(
+      SmallVector<int64_t>{expanded_shape.begin(), expanded_shape.end()},
+      mlir::cast<ShapedType>(input_val.getType()).getElementType());
+}
+
+// Returns shape of a ranked tensor as a SmallVector.
+// Precondition: input_value's is ranked tensor.
+// Returns a squeezed shape when `squeeze_leading_ones` is set to true.
+inline SmallVector<int32_t> GetShape(Value input_value,
+                                     bool squeeze_leading_ones = false) {
+  auto output_shape = input_value.getType().dyn_cast<ShapedType>().getShape();
 
   SmallVector<int32_t> shape;
   shape.reserve(output_shape.size());
 
-  bool needs_truncation = true;
+  bool can_squeeze = true;
   for (size_t dim_idx = 0; dim_idx < output_shape.size(); ++dim_idx) {
     int64_t dim = output_shape[dim_idx];
-    if (truncate && needs_truncation && dim == 1) {
+    if (squeeze_leading_ones && can_squeeze && dim == 1) {
       continue;
-    } else if (needs_truncation && dim != 1) {
-      needs_truncation = false;
+    } else if (can_squeeze && dim != 1) {
+      can_squeeze = false;
     }
     shape.push_back(ShapedType::isDynamic(dim) ? -1
                                                : static_cast<int32_t>(dim));
   }
+  return shape;
+}
+
+// Returns shape of a ranked tensor as a DenseElementsAttr.
+// Precondition: input_value's is ranked tensor.
+// Returns a squeezed shape when `squeeze_leading_ones` is set to true.
+inline DenseElementsAttr GetShapeAttr(Value input_value,
+                                      bool squeeze_leading_ones = false) {
+  SmallVector<int32_t> shape = GetShape(input_value, squeeze_leading_ones);
 
   return mlir::DenseElementsAttr::get(
       RankedTensorType::get(
           {static_cast<int>(shape.size())},
-          mlir::IntegerType::get(output_val.getContext(), 32)),
+          mlir::IntegerType::get(input_value.getContext(), 32)),
       llvm::ArrayRef(shape));
+}
+
+// Returns the value of a constant attribute as an int array, if the value is
+// not a constant, returns an error status.
+inline absl::StatusOr<SmallVector<int32_t>> GetValueAsIntArray(Value value) {
+  DenseElementsAttr values_const_attr;
+  if (!matchPattern(value, m_Constant(&values_const_attr))) {
+    return absl::InvalidArgumentError("Value is not a constant.");
+  }
+
+  SmallVector<int32_t> values;
+  for (const auto& value : values_const_attr.getValues<APInt>()) {
+    values.push_back(value.getSExtValue());
+  }
+  return values;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+///////////////// OP BROADCASTING UTILITIES ////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////
+
+// Returns whether the resultant type of any broadcastable operation with
+// operands `a` and `b` matches `expected_output`. Returns false if `a` is not
+// broadcast-compatible with `b`.
+inline bool OperandsBroadcastToOutputType(Type a, Type b,
+                                          Type expected_output) {
+  Type output_element_type =
+      mlir::cast<ShapedType>(expected_output).getElementType();
+  Type broadcasted_type =
+      OpTrait::util::getBroadcastedType(a, b, output_element_type);
+  return broadcasted_type != Type() && broadcasted_type == expected_output;
+}
+
+// Returns int, float or complex DenseElementsAttr with scalar shape with the
+// given element type and the integer value.
+template <typename T>
+DenseElementsAttr GetScalarOfType(Type ty, T raw_value) {
+  RankedTensorType scalar_ty = RankedTensorType::get({}, ty);
+  if (auto float_ty = mlir::dyn_cast<FloatType>(ty)) {
+    FloatAttr attr = FloatAttr::get(float_ty, raw_value);
+    return DenseElementsAttr::get(scalar_ty, attr);
+  } else if (auto int_ty = mlir::dyn_cast<IntegerType>(ty)) {
+    IntegerAttr attr = IntegerAttr::get(int_ty, raw_value);
+    return DenseElementsAttr::get(scalar_ty, attr);
+  } else if (auto complex_ty = mlir::dyn_cast<ComplexType>(ty)) {
+    Type complex_element_ty = complex_ty.getElementType();
+    if (complex_element_ty.isF32()) {
+      return DenseElementsAttr::get(
+          scalar_ty, static_cast<std::complex<float>>(raw_value));
+    } else if (complex_element_ty.isF64()) {
+      return DenseElementsAttr::get(
+          scalar_ty, static_cast<std::complex<double>>(raw_value));
+    }
+  }
+  llvm_unreachable("unsupported type");
 }
 
 }  // namespace TFL

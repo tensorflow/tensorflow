@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Autograph specifc overrides for tf.data.ops."""
+"""Autograph specific overrides for tf.data.ops."""
 import functools
 
 import numpy as np

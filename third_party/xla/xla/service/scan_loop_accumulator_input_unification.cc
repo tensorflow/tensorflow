@@ -25,16 +25,15 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "xla/hlo/analysis/hlo_alias_analysis.h"
+#include "xla/hlo/analysis/hlo_dataflow_analysis.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/transforms/simplifiers/tuple_simplifier.h"
 #include "xla/literal_util.h"
-#include "xla/service/call_graph.h"
-#include "xla/service/hlo_alias_analysis.h"
-#include "xla/service/hlo_dataflow_analysis.h"
 #include "xla/service/pattern_matcher.h"
-#include "xla/service/tuple_simplifier.h"
 #include "xla/service/while_loop_simplifier.h"
 #include "xla/service/while_loop_unroller.h"
 #include "xla/shape_util.h"
@@ -210,16 +209,8 @@ FindAccumulatorInputPairs(const HloAliasAnalysis& alias_analysis,
 absl::StatusOr<bool> UnifyAccumulatorWithInput(
     const HloAliasAnalysis& alias_analysis,
     std::vector<std::pair<HloInstruction*, WhileLoopConfig>> unrollable_loops) {
-  // TODO(b/333521102): Helper function to check if a computation is a body of a
-  // while call. Currently, IsWhileBodyComputation api call does not work
-  // properly so we check it ourself. We should switch to IsWhileBodyComputation
-  // when it's fixed.
-  std::unique_ptr<CallGraph> call_graph =
-      CallGraph::Build(&alias_analysis.dataflow_analysis().module());
   auto is_while_body = [&](HloComputation* comp) {
-    std::vector<HloInstruction*> callers =
-        call_graph->GetComputationCallers(comp);
-    return !callers.empty() && callers.at(0)->opcode() == HloOpcode::kWhile;
+    return !comp->caller_instructions(HloOpcode::kWhile).empty();
   };
 
   std::vector<HloInstruction*> changed_loops;
@@ -270,7 +261,8 @@ absl::StatusOr<bool> ScanLoopAccumulatorInputUnification::Run(
   // accumulators and inputs that are by definition updated and read fully via
   // dynamic-update-slice and dynamic-sliced within a loop.
   std::vector<std::pair<HloInstruction*, WhileLoopConfig>> unrollable_loops =
-      WhileLoopUnroller::GetUnrollableLoops(module, execution_threads);
+      WhileLoopUnroller::GetUnrollableLoops(module, execution_threads,
+                                            /*unroll_config=*/std::nullopt);
 
   // TODO(b/337883537): We might want to simplify compare instructions before
   // this. It helps us identify more inputs and accumulators.

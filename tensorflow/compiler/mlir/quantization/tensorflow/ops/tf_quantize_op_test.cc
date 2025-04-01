@@ -19,7 +19,7 @@ limitations under the License.
 
 #include <gtest/gtest.h>
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
-#include "mlir/Dialect/Quant/QuantOps.h"  // from @llvm-project
+#include "mlir/Dialect/Quant/IR/Quant.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
@@ -49,7 +49,7 @@ TEST(TfQuantOpTest, applyUniformQuantization) {
   MLIRContext context;
   OwningOpRef<ModuleOp> module(ModuleOp::create(UnknownLoc::get(&context)));
   OpBuilder builder(&module->getBodyRegion());
-  context.loadDialect<TF::TensorFlowDialect, quant::QuantizationDialect,
+  context.loadDialect<TF::TensorFlowDialect, quant::QuantDialect,
                       func::FuncDialect>();
   EmptyPatternRewriter pattern_rewriter(builder);
   Value value = CreateConstValue<float>(builder, module->getLoc(), {1024, 2},

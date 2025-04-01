@@ -15,6 +15,7 @@ limitations under the License.
 #include "tensorflow/lite/acceleration/configuration/proto_to_flatbuffer.h"
 
 #include <cstdint>
+#include <vector>
 
 #include "flatbuffers/buffer.h"  // from @flatbuffers
 #include "flatbuffers/flatbuffers.h"  // from @flatbuffers
@@ -428,7 +429,8 @@ Offset<MtkNeuronSettings> ConvertMtkNeuronSettings(
                                     settings.compile_options().end()),
       builder.CreateVectorOfStrings(settings.accelerator_names().begin(),
                                     settings.accelerator_names().end()),
-      builder.CreateString(settings.neuron_config_path()));
+      builder.CreateString(settings.neuron_config_path()),
+      settings.inference_deadline_ms(), settings.inference_abort_time_ms());
 }
 
 Offset<CoralSettings> ConvertCoralSettings(const proto::CoralSettings& settings,

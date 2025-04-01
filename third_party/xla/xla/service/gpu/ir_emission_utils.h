@@ -23,6 +23,7 @@ limitations under the License.
 #include <variant>
 #include <vector>
 
+#include "absl/container/inlined_vector.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
@@ -32,9 +33,9 @@ limitations under the License.
 #include "xla/hlo/ir/backend_config.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/hlo/utils/hlo_traversal.h"
 #include "xla/literal.h"
 #include "xla/service/buffer_assignment.h"
-#include "xla/service/gpu/hlo_traversal.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/util.h"
@@ -54,12 +55,19 @@ inline constexpr int64_t kMinDimensionToTransposeTiled = 16;
 // efficient.
 inline constexpr int64_t kMinDimensionToTransposeTiled2 = 8;
 inline constexpr int64_t kMinTotalDimensionsToTransposeTiled = 64 * 128;
+// As the amount of shared memory is limited, we need to make sure that we don't
+// detect 102 transposes that would require too much bytes for the most minor
+// dimension.
+inline constexpr int64_t kMaxBytesInMostMinorDimension = 8;
 
 // Matrix multiplication before the rewrite.
 bool IsMatrixMultiplication(const HloInstruction& dot);
 bool IsMatrixVectorMultiplication(const HloInstruction& dot);
 
-inline constexpr int64_t WarpSize() { return 32; }
+inline constexpr int64_t WarpSize(
+    const se::DeviceDescription& gpu_device_info) {
+  return gpu_device_info.threads_per_warp();
+}
 
 // Fusions that implemented with pre-compiled device kernels have
 // FusionBackendConfig.kind requel to this string.
@@ -67,18 +75,56 @@ inline constexpr absl::string_view kCustomFusionKind = "__custom_fusion";
 
 // Generic fusions that use Triton have FusionBackendConfig.kind equal to this
 // string. This fusion kind will eventually subsume all usages of
-// kTritonGemmFusionKind and kTritonSoftmaxFusionKind.
+// kTritonGemmFusionKind.
 inline constexpr absl::string_view kTritonFusionKind = "__triton";
 
 // Fusions that use Triton have FusionBackendConfig.kind equal to this string.
 inline constexpr absl::string_view kTritonGemmFusionKind = "__triton_gemm";
 
+// Generic fusions that use Triton have FusionBackendConfig.kind equal to this
+// string. Used for fusions that implement a dot expressed as nested fusions.
+inline constexpr absl::string_view kTritonNestedGemmFusionKind =
+    "__triton_nested_gemm_fusion";
+
 inline constexpr absl::string_view kCuDnnFusionKind = "__cudnn$fusion";
+
+// Fusions that can be emitted using a dynamic memcpy. A dynamic memcpy depends
+// on some loop induction variable.
+inline constexpr absl::string_view kDynamicMemcpyFusionKind =
+    "__dynamic_memcpy";
 
 inline constexpr absl::string_view kUncompilableFusion =
     "__uncompilable_fusion";
 
 inline constexpr absl::string_view kTopKCustomCallTarget = "__gpu$TopK";
+
+// The name of the custom fusion config for dynamic slice fusion with static
+// slices, such that the offset can be computed at compile time.
+inline constexpr absl::string_view
+    kDynamicSliceFusionWithStaticAddressComputationConfigName =
+        "address_computation";
+// The name of the custom fusion config for dynamic slice fusion with dynamic
+// slices, such that the offset is computed at runtime.
+inline constexpr absl::string_view
+    kDynamicSliceFusionWithDynamicAddressComputationConfigName =
+        "dynamic_address_computation";
+
+// Returns the name of the custom fusion config if the given instruction is a
+// custom fusion and has a custom fusion name, otherwise returns std::nullopt.
+// The custom fusion name is basically the value of
+// instr.backend_config().fusion_backend_config().custom_fusion_config().name().
+// If any of this does not exist in the chain, then we return std::nullopt.
+std::optional<std::string> GetCustomFusionConfigName(
+    const HloInstruction* instr);
+
+// Returns true if the given instruction is a custom fusion for dynamic slice
+// fusion. This is determined by checking the name of custom fusion config.
+bool IsDynamicSliceFusion(const HloInstruction* instr);
+
+// Returns true if the given instruction is a dynamic memcpy fusion. This
+// function only checks the fusion kind, which is populated by the
+// FusionDispatch pipeline.
+bool IsDynamicMemcpyFusion(const HloInstruction* instr);
 
 // Returns true if `hlo` will be implemented as a call to a cuSolver routine.
 //
@@ -103,43 +149,33 @@ bool IsSliceWithUnitStrides(const HloInstruction* instr);
 // operates on a contiguous slice of the input buffer.
 bool IsContiguousSlice(const HloInstruction& instr);
 
-// Emits code to shuffle data between threads of a warp. This has the same
-// semantics as the PTX "shfl.sync.down" instruction but works for values that
-// aren't 32 bits in size. The last operand of the emitted "shfl" is
-// `WarpSize() - 1`.
-//
-// This function emits a "full-warp" shuffle, which all threads of a warp
-// participate in.  *Do not use this function from a divergent context:* You
-// can't correctly do so on both Volta and earlier GPUs.
-//
-// https://docs.nvidia.com/cuda/parallel-thread-execution/#data-movement-and-conversion-instructions-shfl-sync
-llvm::Value* EmitFullWarpShuffleDown(
-    llvm::Value* value, llvm::Value* offset, llvm::IRBuilder<>* builder,
-    const se::DeviceDescription& gpu_device_info);
-
 // Emits code that determines whether the current thread is thread 0 within
 // block 0 of the kernel.
-llvm::Value* IsBlock0Thread0(llvm::IRBuilder<>* b);
+llvm::Value* IsBlock0Thread0(llvm::IRBuilderBase* b);
 
 absl::StatusOr<BufferAllocation::Slice> GetAllocationSlice(
     const BufferAssignment& buffer_assignment, const HloInstruction* instr,
     const ShapeIndex& index);
 
-// Returns whether 'fusion' can be emitted with the dynamic update slice
-// in-place emitter.
+// Returns whether the fusion represented by 'fusion_adaptor' can be emitted
+// with the dynamic update slice in-place emitter. If 'fusion_adaptor'
+// represents a single fusion computation, 'fusion' should provide the fusion
+// instruction corresponding to that fusion computation. 'get_allocation_slice'
+// is a callback for getting the allocated buffer slice, given an instruction
+// and a shape index. This is ignored in case 'fusion' is a nullptr.
 absl::StatusOr<bool> CanEmitFusedDynamicUpdateSliceInPlaceForGpu(
-    const HloFusionInstruction* fusion,
+    const HloFusionAdaptor& fusion_adaptor,
     std::function<absl::StatusOr<BufferAllocation::Slice>(
         const HloInstruction* instr, const ShapeIndex& index)>
         get_allocation_slice,
-    absl::Span<HloInstructionAdaptor const> roots);
+    const HloInstruction* fusion = nullptr);
 
 // Returns the dynamic-update-slice instructions defining the results of a
 // fusion node. A dynamic slice update is said to be "defining" of a result if
 // that result is the output of a dynamic slice update, or if that result is the
 // output of a bitcast of a dynamic slice update---since such bitcast may be
 // handled as a no-op.
-std::vector<const HloInstruction*> GetOutputDefiningDynamicUpdateSlices(
+std::vector<HloInstructionAdaptor> GetOutputDefiningDynamicUpdateSlices(
     absl::Span<HloInstructionAdaptor const> roots);
 
 // Returns the first hero instruction reachable from `instr` as root. Hero
@@ -156,16 +192,18 @@ struct TransposeDescription {
   const HloInstruction* instr;
 
   // Normalized transpose dimensions.
-  Vector3 dimensions;
+  absl::InlinedVector<int64_t, 3> dimensions;
 
   // Permutations of normalized transpose dimensions.
-  Vector3 permutation;
+  absl::InlinedVector<int64_t, 3> permutation;
 
-  TransposeDescription(Vector3 dimensions, Vector3 permutation)
+  TransposeDescription(absl::InlinedVector<int64_t, 3> dimensions,
+                       absl::InlinedVector<int64_t, 3> permutation)
       : TransposeDescription(/*instr=*/nullptr, dimensions, permutation) {}
 
-  TransposeDescription(const HloInstruction* instr, Vector3 dimensions,
-                       Vector3 permutation)
+  TransposeDescription(const HloInstruction* instr,
+                       absl::InlinedVector<int64_t, 3> dimensions,
+                       absl::InlinedVector<int64_t, 3> permutation)
       : instr(instr), dimensions(dimensions), permutation(permutation) {}
 
   // Transpose instruction input shape.
@@ -179,7 +217,7 @@ struct TransposeDescription {
 };
 
 std::optional<TransposeDescription> GetDescriptionForTiledTransposeEmitter(
-    const HloInstruction& root, const HloInstruction& hero);
+    const HloInstruction& hero);
 
 // Checks if the instruction is elementwise.
 bool IsIntermediate(const HloInstruction* instr, int allowed_operand_count = 1);
@@ -199,13 +237,7 @@ void VerifyModule(const llvm::Module& module);
 //    range of i32.
 // Otherwise, the return type is i64.
 llvm::Type* GetIndexTypeForKernel(const HloInstruction* hlo,
-                                  int64_t launch_size, llvm::IRBuilder<>* b);
-
-// Whether the module's target is an AMD GPU.
-bool IsAMDGPU(const llvm::Module* module);
-
-// Whether the module's target is a SPIR.
-bool IsSPIR(const llvm::Module* module);
+                                  int64_t launch_size, llvm::IRBuilderBase* b);
 
 // This class stores either a non-owning reference or owns data that represents
 // a dense array in XLA format. It is used for intermediate storage during IR
@@ -243,15 +275,6 @@ absl::StatusOr<DenseDataIntermediate> LiteralToXlaFormat(
 absl::StatusOr<std::string> GetProtoFingerprint(
     const tsl::protobuf::MessageLite&);
 
-// Returns a deterministic encoded string representation of the backend config.
-template <typename ConfigType>
-absl::StatusOr<std::string> GetBackendConfigFingerprint(
-    const BackendConfigWrapper& wrapper) {
-  ConfigType proto;
-  TF_RETURN_IF_ERROR(wrapper.GetProto(&proto));
-  return GetProtoFingerprint(proto);
-}
-
 // Returns concatenated fingerprint of an HLO instruction without its backend
 // config and its backend config's deterministic fingerprint.
 template <typename ConfigType>
@@ -263,6 +286,30 @@ absl::StatusOr<std::string> FingerprintWithBackendConfig(
   return absl::StrCat(hlo.ToString(HloPrintOptions::Fingerprint()),
                       ", backend_config_fingerprint=", fingerprint);
 }
+
+struct InductionVariableFunctionalDependency {
+  // The value that is derived from the induction variable. This is guaranteed
+  // to have no other transitive dependencies (except constants).
+  const HloInstruction* derived_value;
+
+  // The loop and its induction variable that the value depends on.
+  const HloInstruction* loop;
+  const HloInstruction* induction_var;
+};
+
+// Checks if `parameter`'s value is a pure function of a while loop's induction
+// variable. This supports parameters that are inside call, async or fusion
+// instructions. The dependency can be through arbitrary non-side-effecting
+// instructions.
+// `call_stack` should contain the nested instructions that are ancestor of
+// `parameter`. For example, if it is a parameter of a fusion in a while loop,
+// it should contain the while loop as the first element and the fusion as the
+// second element.
+// Requires `while_loop_trip_count_annotator` to have been run on the loop.
+std::optional<InductionVariableFunctionalDependency>
+ResolveFunctionalDependencyOnInductionVariable(
+    absl::Span<const HloInstruction* const> call_stack,
+    const HloInstruction* parameter);
 
 }  // namespace gpu
 }  // namespace xla

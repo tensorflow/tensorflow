@@ -13,87 +13,60 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// Declares the HostExecutor class, which is a CPU-only implementation of
-// the StreamExecutor interface. For now, this is used for testing and to
-// examine the performance of host-based StreamExecutor code.
 #ifndef XLA_STREAM_EXECUTOR_HOST_HOST_EXECUTOR_H_
 #define XLA_STREAM_EXECUTOR_HOST_HOST_EXECUTOR_H_
 
-#include <cstddef>
 #include <cstdint>
-#include <functional>
 #include <memory>
 #include <optional>
 #include <variant>
 
-#include "absl/functional/any_invocable.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/event.h"
-#include "xla/stream_executor/host/host_kernel.h"
-#include "xla/stream_executor/host_memory_allocation.h"
+#include "xla/stream_executor/generic_memory_allocation.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/kernel_spec.h"
-#include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/memory_allocation.h"
+#include "xla/stream_executor/memory_allocator.h"
 #include "xla/stream_executor/platform.h"
+#include "xla/stream_executor/stream.h"
+#include "xla/stream_executor/stream_executor.h"
 #include "xla/stream_executor/stream_executor_common.h"
-#include "tsl/platform/threadpool.h"
+#include "xla/tsl/platform/threadpool.h"
 
 namespace stream_executor {
 namespace host {
 
-// An implementation of StreamExecutor that does no communication or interaction
-// with a device, but DOES perform memory operations backed by the host.
-// Kernel invocations will fail, but host callbacks may be enqueued on this
-// executor and its associated stream, and should follow standard ordering
-// semantics.
+// Declares the HostExecutor class, which is a CPU-only implementation of
+// the StreamExecutor interface. For now, this is used for testing and to
+// examine the performance of host-based StreamExecutor code.
 //
 // This is useful for evaluating the performance of host-based or fallback
 // routines executed under the context of a GPU executor.
-// See stream_executor.h for description of the below operations.
 class HostExecutor : public StreamExecutorCommon {
  public:
-  // A function that loads a kernel function from a given spec. If spec is not
-  // supported it returns an empty optional.
-  using KernelFunctionLoader = std::function<std::optional<
-      absl::StatusOr<std::unique_ptr<HostKernel::KernelFunction>>>(
-      const MultiKernelLoaderSpec& spec)>;
-
-  // Registers a kernel function loader in a static registry.
-  static void RegisterKernelFunctionLoader(KernelFunctionLoader loader);
-
   HostExecutor(Platform* platform, int device_ordinal)
       : StreamExecutorCommon(platform), device_ordinal_(device_ordinal) {}
 
   absl::Status Init() override;
 
-  absl::Status GetKernel(const MultiKernelLoaderSpec& spec,
-                         Kernel* kernel) override;
-
-  absl::StatusOr<std::unique_ptr<Kernel>> CreateKernel() override;
-
-  absl::Status Launch(Stream* stream, const ThreadDim& thread_dims,
-                      const BlockDim& block_dims, const Kernel& kernel,
-                      const KernelArgs& args) override;
+  absl::StatusOr<std::unique_ptr<Kernel>> LoadKernel(
+      const MultiKernelLoaderSpec& spec) override;
 
   DeviceMemoryBase Allocate(uint64_t size, int64_t memory_space) override;
   void Deallocate(DeviceMemoryBase* mem) override;
 
   absl::StatusOr<std::unique_ptr<MemoryAllocation>> HostMemoryAllocate(
       uint64_t size) override {
-    return std::make_unique<HostMemoryAllocation>(new char[size], size, this);
-  }
-  void HostMemoryDeallocate(void* mem) override {
-    delete[] static_cast<char*>(mem);
+    void* ptr = new char[size];
+    return std::make_unique<GenericMemoryAllocation>(
+        ptr, size,
+        [](void* ptr, uint64_t size) { delete[] static_cast<char*>(ptr); });
   }
 
-  absl::Status Memset(Stream* stream, DeviceMemoryBase* location,
-                      uint8_t pattern, uint64_t size) override;
-
-  // No "synchronize all activity" implemented for this platform at the moment.
   bool SynchronizeAllActivity() override { return true; }
   absl::Status SynchronousMemZero(DeviceMemoryBase* location,
                                   uint64_t size) override;
@@ -104,12 +77,7 @@ class HostExecutor : public StreamExecutorCommon {
                                  const DeviceMemoryBase& gpu_src,
                                  uint64_t size) override;
 
-  bool HostCallback(Stream* stream,
-                    absl::AnyInvocable<absl::Status() &&> callback) override;
-
   void DeallocateStream(Stream* stream) override;
-
-  absl::Status BlockHostUntilDone(Stream* stream) override;
 
   bool DeviceMemoryUsage(int64_t* free, int64_t* total) const override;
 
@@ -132,6 +100,8 @@ class HostExecutor : public StreamExecutorCommon {
 
   absl::StatusOr<std::unique_ptr<Stream>> CreateStream(
       std::optional<std::variant<StreamPriority, int>> priority) override;
+  absl::StatusOr<std::unique_ptr<MemoryAllocator>> CreateMemoryAllocator(
+      MemoryType type) override;
 
  private:
   int device_ordinal_;

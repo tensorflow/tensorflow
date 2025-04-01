@@ -67,9 +67,9 @@ class TestCluster {
 
   // Initializes the test cluster. This must be called before interacting with
   // the cluster. Initialize should be called only once.
-  Status Initialize();
+  absl::Status Initialize();
   // Adds a new worker to the cluster.
-  Status AddWorker(
+  absl::Status AddWorker(
       std::optional<int> port = std::nullopt,
       std::optional<std::string> data_transfer_protocol = std::nullopt);
   // Returns the number of workers in this cluster.
@@ -173,7 +173,9 @@ DatasetClient<T>::DatasetClient(const TestCluster& cluster)
   for (size_t i = 0; i < cluster.NumWorkers(); ++i) {
     worker_clients_[cluster_.WorkerAddress(i)] =
         std::make_unique<DataServiceWorkerClient>(
-            cluster_.WorkerAddress(i), "grpc", "grpc",
+            cluster_.WorkerAddress(i), /*protocol=*/"grpc",
+            /*transfer_protocol=*/"grpc",
+            /*fall_back_to_grpc_at_get_element_time=*/true,
             /*accelerator_device_info=*/nullptr, /*allocator=*/nullptr);
   }
 }

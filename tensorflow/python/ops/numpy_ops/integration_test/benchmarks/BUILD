@@ -8,7 +8,6 @@ package(
 py_strict_binary(
     name = "micro_benchmarks",
     srcs = ["micro_benchmarks.py"],
-    python_version = "PY3",
     deps = [
         ":numpy_mlp",
         ":tf_numpy_mlp",
@@ -23,7 +22,6 @@ py_strict_binary(
 py_strict_library(
     name = "numpy_mlp",
     srcs = ["numpy_mlp.py"],
-    srcs_version = "PY3",
     deps = [
         "//third_party/py/numpy",
     ],
@@ -32,6 +30,5 @@ py_strict_library(
 py_strict_library(
     name = "tf_numpy_mlp",
     srcs = ["tf_numpy_mlp.py"],
-    srcs_version = "PY3",
     deps = ["//tensorflow:tensorflow_py_no_contrib"],
 )

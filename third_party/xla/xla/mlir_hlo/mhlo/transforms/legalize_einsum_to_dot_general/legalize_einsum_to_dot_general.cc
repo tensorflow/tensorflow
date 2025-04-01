@@ -159,7 +159,7 @@ struct EinsumToDotGeneralPattern : public OpRewritePattern<EinsumOp> {
     auto dotGeneralOp = rewriter.create<DotGeneralOp>(
         einsum.getLoc(), dotGeneralResultType, einsum.getLhs(), einsum.getRhs(),
         dimNumbers,
-        /*precision_config=*/ArrayAttr{});
+        /*precision_config=*/ArrayAttr{}, /*dot_algorithm=*/DotAlgorithmAttr{});
 
     if (isNaturalOrder) {
       // The dot_general is already in an appropriate result order.
@@ -179,8 +179,7 @@ struct LegalizeEinsumToDotGeneralPass
   void runOnOperation() override {
     RewritePatternSet patterns(&getContext());
     populateEinsumToDotGeneralPatterns(&getContext(), &patterns);
-    if (failed(applyPatternsAndFoldGreedily(getOperation(),
-                                            std::move(patterns)))) {
+    if (failed(applyPatternsGreedily(getOperation(), std::move(patterns)))) {
       return signalPassFailure();
     }
   }

@@ -16,11 +16,22 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_GRAPPLER_CLUSTERS_SINGLE_MACHINE_H_
 #define TENSORFLOW_CORE_GRAPPLER_CLUSTERS_SINGLE_MACHINE_H_
 
+#include <cstdint>
+#include <memory>
+#include <unordered_map>
+#include <utility>
+#include <vector>
+
+#include "absl/status/status.h"
 #include "tensorflow/cc/training/coordinator.h"
 #include "tensorflow/core/framework/allocator.h"
+#include "tensorflow/core/framework/cost_graph.pb.h"
+#include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/grappler/clusters/cluster.h"
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/protobuf/config.pb.h"
+#include "tensorflow/core/protobuf/queue_runner.pb.h"
 #include "tensorflow/core/public/session.h"
 
 namespace tensorflow {
@@ -35,36 +46,38 @@ class SingleMachine : public Cluster {
 
   string type() const override { return "single_machine"; }
 
-  Status Provision() override;
-  Status Shutdown() override;
+  absl::Status Provision() override;
+  absl::Status Shutdown() override;
 
-  Status Initialize(const GrapplerItem& item) override;
-  Status Run(const GraphDef& item,
-             const std::vector<std::pair<string, Tensor>>& feed,
-             const std::vector<string>& fetch, RunMetadata* metadata) override;
+  absl::Status Initialize(const GrapplerItem& item) override;
+  absl::Status Run(const GraphDef& item,
+                   const std::vector<std::pair<string, Tensor>>& feed,
+                   const std::vector<string>& fetch,
+                   RunMetadata* metadata) override;
 
   const DeviceSet* GetDeviceSet() const override { return device_set_.get(); }
 
-  Status EnablePeakMemoryStats() override;
+  absl::Status EnablePeakMemoryStats() override;
 
   // It requires EnableAllocatorStats(true) be called before Provision().
-  Status GetPeakMemoryUsage(
+  absl::Status GetPeakMemoryUsage(
       std::unordered_map<string, uint64>* device_peak_memory) const override;
 
  private:
-  Status RunWithTimeout(const std::vector<std::pair<string, Tensor>>& feed,
-                        const std::vector<string>& fetch,
-                        RunMetadata* run_metadata);
-  Status RunWithTimeout(const std::vector<std::pair<string, Tensor>>& feed,
-                        const std::vector<string>& fetch,
-                        RunMetadata* run_metadata, int64_t timeout_s);
-  Status ResetSession();
-  Status CloseSession(bool use_timeout);
-  Status ShutdownSession();
+  absl::Status RunWithTimeout(
+      const std::vector<std::pair<string, Tensor>>& feed,
+      const std::vector<string>& fetch, RunMetadata* run_metadata);
+  absl::Status RunWithTimeout(
+      const std::vector<std::pair<string, Tensor>>& feed,
+      const std::vector<string>& fetch, RunMetadata* run_metadata,
+      int64_t timeout_s);
+  absl::Status ResetSession();
+  absl::Status CloseSession(bool use_timeout);
+  absl::Status ShutdownSession();
   void MergeCosts(CostGraphDef* graph_costs, const CostGraphDef& init_costs,
                   const CostGraphDef& queue_costs);
 
-  Status ClearAllocatorStats() const;
+  absl::Status ClearAllocatorStats() const;
 
   std::unique_ptr<Session> session_;
   std::vector<QueueRunnerDef> queue_runner_defs_;

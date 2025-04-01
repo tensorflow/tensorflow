@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_TSL_PLATFORM_DENORMAL_H_
 #define TENSORFLOW_TSL_PLATFORM_DENORMAL_H_
 
-#include "tsl/platform/macros.h"
+#include "xla/tsl/platform/macros.h"
 
 namespace tsl {
 namespace port {

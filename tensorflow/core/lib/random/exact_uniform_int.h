@@ -18,7 +18,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_LIB_RANDOM_EXACT_UNIFORM_INT_H_
 #define TENSORFLOW_CORE_LIB_RANDOM_EXACT_UNIFORM_INT_H_
 
-#include "tsl/lib/random/exact_uniform_int.h"
+#include "xla/tsl/lib/random/exact_uniform_int.h"
 
 namespace tensorflow {
 namespace random {

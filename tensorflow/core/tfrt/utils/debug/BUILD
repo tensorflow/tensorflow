@@ -19,8 +19,8 @@ cc_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
-        "@local_tsl//tsl/platform:errors",
-        "@local_tsl//tsl/platform:statusor",
+        "@local_xla//xla/tsl/platform:errors",
+        "@local_xla//xla/tsl/platform:statusor",
     ],
 )
 
@@ -47,6 +47,8 @@ cc_library(
 #         "//tensorflow/cc:scope",
 #         "//tensorflow/cc:sendrecv_ops",
 #         "//tensorflow/cc/saved_model:reader",
+#         "@local_xla//xla/tsl/platform:statusor",
+#         "@local_xla//xla/tsl/platform:test",
 #         "//tensorflow/core:core_cpu_base",
 #         "//tensorflow/core:portable_gif_internal",
 #         "//tensorflow/core:test",
@@ -60,8 +62,6 @@ cc_library(
 #         "//tensorflow/core/tfrt/saved_model:saved_model_testutil",
 #         "//tensorflow/python/framework:test_ops_kernels",
 #         "@local_tsl//tsl/platform:path",
-#         "@local_tsl//tsl/platform:statusor",
-#         "@local_tsl//tsl/platform:test",
 #     ],
 # )
 # copybara:uncomment_end

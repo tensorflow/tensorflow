@@ -65,7 +65,7 @@ class ShapeRefinerTest : public ::testing::Test {
                         int end, int stride, const char* expected,
                         int begin_mask = 0, int end_mask = 0,
                         int ellipsis_mask = 0, int shrink_axis_mask = 0,
-                        StringPiece test_op = "TensorAsShapeInt32") {
+                        absl::string_view test_op = "TensorAsShapeInt32") {
     Scope root = Scope::DisabledShapeInferenceScope();
     auto placeholder =
         ops::Placeholder(root, DT_INT32, ops::Placeholder::Shape(input_shape));
@@ -162,7 +162,7 @@ TEST_F(ShapeRefinerTest, BadShapes) {
   TF_ASSERT_OK(m.AddNode(b.node()));
   // The shape of the inputs are not compatible, so we should expect
   // an error.
-  Status s = m.AddNode(mm.node());
+  absl::Status s = m.AddNode(mm.node());
   ASSERT_FALSE(s.ok());
   ASSERT_TRUE(absl::StrContains(s.message(),
                                 "Dimensions must be equal, but are 1 and 2"));
@@ -830,14 +830,14 @@ TEST_F(ShapeRefinerTest, ConstantValueVisitNodeTwice) {
 
 namespace {
 
-Status TensorAsShapeShapeFn(shape_inference::InferenceContext* c) {
+absl::Status TensorAsShapeShapeFn(shape_inference::InferenceContext* c) {
   shape_inference::ShapeHandle out;
   TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensor(0 /* input_idx */, &out));
   c->set_output(0, out);
   return absl::OkStatus();
 }
 
-Status PartialTensorAsShapeShapeFn(shape_inference::InferenceContext* c) {
+absl::Status PartialTensorAsShapeShapeFn(shape_inference::InferenceContext* c) {
   shape_inference::ShapeHandle out;
   const Tensor* t = c->input_tensor(0);
   if (t == nullptr || t->NumElements() != 1) {

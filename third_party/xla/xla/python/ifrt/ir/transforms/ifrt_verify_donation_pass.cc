@@ -16,10 +16,11 @@ limitations under the License.
 #include <memory>
 
 #include "llvm/ADT/DenseSet.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/TypeSwitch.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/BuiltinAttributes.h"
-#include "mlir/IR/BuiltinOps.h"
+#include "mlir/IR/Operation.h"
 #include "mlir/IR/Value.h"
 #include "mlir/IR/Visitors.h"
 #include "mlir/Pass/Pass.h"
@@ -27,6 +28,7 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"
 #include "xla/python/ifrt/ir/constants.h"
 #include "xla/python/ifrt/ir/ifrt_ops.h"
+#include "xla/python/ifrt/ir/transforms/passes.h"
 
 namespace xla {
 namespace ifrt {
@@ -37,17 +39,100 @@ namespace {
 #include "xla/python/ifrt/ir/transforms/passes.h.inc"
 
 // Verifies that if the value is an input to the IR, then it has been donated.
-mlir::LogicalResult VerifyIfInputAndDonated(mlir::Operation* op,
+mlir::LogicalResult VerifyIfInputAndDonated(mlir::Operation* op, int idx,
                                             mlir::Value arg) {
   auto block_arg = mlir::dyn_cast<mlir::BlockArgument>(arg);
   mlir::func::FuncOp func_op = block_arg
                                    ? mlir::dyn_cast<mlir::func::FuncOp>(
                                          block_arg.getOwner()->getParentOp())
                                    : nullptr;
-  if (func_op &&
-      func_op.getArgAttr(block_arg.getArgNumber(),
-                         xla::ifrt::kIfrtDonatedArgAttrName) == nullptr) {
-    return op->emitOpError() << "input has not been donated to the program.";
+  if (func_op && func_op.getArgAttr(block_arg.getArgNumber(),
+                                    kIfrtDonatedArgAttrName) == nullptr) {
+    return op->emitOpError()
+           << "input #" << idx << " has not been donated to the program.";
+  }
+  return mlir::success();
+}
+
+template <typename T>
+mlir::LogicalResult verifyCallOpAliasesAndDonations(
+    T op, llvm::DenseMap<mlir::Value, mlir::Operation*>& donated_value_to_op) {
+  llvm::DenseSet<int> donated_input_idxs;
+  // Verify if a donated input is an argument of the main func, then it has
+  // also been donated by the user.
+  for (const auto idx : op.getDonatedInputIndices()) {
+    donated_input_idxs.insert(idx);
+    auto donated_value = op.getInputs()[idx];
+    auto donated_it = donated_value_to_op.try_emplace(donated_value, op);
+    if (!donated_it.second) {
+      op.emitOpError() << "input #" << idx << " of " << op.getCalleeAttr()
+                       << " was already donated or aliased to the op at "
+                       << donated_it.first->second->getLoc();
+      return mlir::failure();
+    }
+    if (mlir::failed(VerifyIfInputAndDonated(op, idx, donated_value))) {
+      return mlir::failure();
+    }
+  }
+
+  for (const auto& io_alias :
+       op.getIoAliases().template getAsRange<mlir::DenseI32ArrayAttr>()) {
+    mlir::ArrayRef<int> io_alias_as_array = io_alias.asArrayRef();
+    donated_input_idxs.insert(io_alias_as_array[0]);
+    auto aliased_value = op.getInputs()[io_alias_as_array[0]];
+    auto donated_it = donated_value_to_op.try_emplace(aliased_value, op);
+    if (!donated_it.second) {
+      op.emitOpError() << "input #" << io_alias_as_array[0] << " of "
+                       << op.getCalleeAttr()
+                       << " was already donated or aliased to the op at "
+                       << donated_it.first->second->getLoc();
+      return mlir::failure();
+    }
+    if (mlir::failed(
+            VerifyIfInputAndDonated(op, io_alias_as_array[0], aliased_value))) {
+      return mlir::failure();
+    }
+  }
+
+  // Verify non-donated inputs after donated inputs have been
+  // added to also catch instances such as
+  // `ifrt.Call(%arg0 {ifrt.donated}, %arg0})`.
+  for (const auto [idx, input] : llvm::enumerate(op.getInputs())) {
+    if (!donated_input_idxs.contains(idx)) {
+      auto donated_it = donated_value_to_op.find(input);
+      if (donated_it != donated_value_to_op.end()) {
+        op.emitOpError() << "input #" << idx << " of " << op.getCalleeAttr()
+                         << " was already donated to the op at "
+                         << donated_it->second->getLoc();
+        return mlir::failure();
+      }
+    }
+  }
+  return mlir::success();
+}
+
+template <typename T>
+mlir::LogicalResult verifyCopyRemapAndReshardOpsDonation(
+    T op, llvm::DenseMap<mlir::Value, mlir::Operation*>& donated_value_to_op) {
+  // Verify that no inputs have already been donated.
+  for (const auto [idx, input] : llvm::enumerate(op.getInputs())) {
+    auto donated_it = donated_value_to_op.find(input);
+    if (donated_it != donated_value_to_op.end()) {
+      op.emitOpError() << "input #" << idx << " of op at " << op.getLoc()
+                       << " was already donated to the op at "
+                       << donated_it->second->getLoc();
+      return mlir::failure();
+    }
+  }
+  if (op.getDonated()) {
+    // Add the donated inputs to the map and verify that all the
+    // donated inputs are also donated to the main func.
+    for (const auto [idx, input] : llvm::enumerate(op.getInputs())) {
+      donated_value_to_op.try_emplace(input, op);
+      if (mlir::failed(VerifyIfInputAndDonated(op, idx, input))) {
+        return mlir::failure();
+      }
+    }
   }
   return mlir::success();
 }
@@ -62,60 +147,35 @@ class IfrtVerifyDonationPass
 };
 
 void IfrtVerifyDonationPass::runOnOperation() {
-  mlir::ModuleOp module_op = getOperation();
-  llvm::DenseSet<mlir::Value> donated_values;
-  mlir::WalkResult result = module_op.walk([&](mlir::Operation* op)
-                                               -> mlir::WalkResult {
+  mlir::func::FuncOp func_op = getOperation();
+  // We only need to run this pass on IFRT functions.
+  if (!func_op->hasAttr(kIfrtFunctionAttrName) &&
+      !func_op->hasAttr(kIfrtReshardFunctionAttrName)) {
+    return;
+  }
+  llvm::DenseMap<mlir::Value, mlir::Operation*> donated_value_to_op;
+  mlir::WalkResult result = func_op.walk([&](mlir::Operation* op)
+                                             -> mlir::WalkResult {
     auto result =
         llvm::TypeSwitch<mlir::Operation*, mlir::LogicalResult>(op)
-            .Case<xla::ifrt::CallOp, xla::ifrt::CallLoadedExecutableOp>(
-                [&](auto& op) {
-                  llvm::DenseSet<int> donated_input_idxs;
-                  for (const auto& io_alias :
-                       op.getIoAliases()
-                           .template getAsRange<mlir::DenseI32ArrayAttr>()) {
-                    mlir::ArrayRef<int> io_alias_as_array =
-                        io_alias.asArrayRef();
-                    donated_input_idxs.insert(io_alias_as_array[0]);
-                    auto donated_value = op.getInputs()[io_alias_as_array[0]];
-                    if (!donated_values.insert(donated_value).second) {
-                      op.emitOpError() << "input #" << io_alias_as_array[0]
-                                       << " already donated.";
-                      return mlir::failure();
-                    }
-
-                    if (mlir::failed(
-                            VerifyIfInputAndDonated(op, donated_value))) {
-                      return mlir::failure();
-                    }
-                  }
-                  // Verify that an input is not both donated and not donated.
-                  for (const auto [idx, input] :
-                       llvm::enumerate(op.getInputs())) {
-                    if (donated_values.contains(input) &&
-                        !donated_input_idxs.contains(idx)) {
-                      op.emitOpError() << "input #" << idx
-                                       << " is both donated and not donated.";
-                      return mlir::failure();
-                    }
-                  }
-                  return mlir::success();
-                })
-            .Case<xla::ifrt::CopyArraysOp, xla::ifrt::RemapArraysOp,
-                  xla::ifrt::ReshardOp>([&](auto& op) {
-              if (op.getDonated()) {
-                for (const auto [idx, input] :
-                     llvm::enumerate(op.getInputs())) {
-                  if (donated_values.contains(input)) {
-                    op.emitOpError() << "input #" << idx << " already donated.";
-                    return mlir::failure();
-                  }
-                  if (mlir::failed(VerifyIfInputAndDonated(op, input))) {
-                    return mlir::failure();
-                  }
+            .Case<CallOp, CallLoadedExecutableOp>([&](auto& op) {
+              return verifyCallOpAliasesAndDonations(op, donated_value_to_op);
+            })
+            .Case<CopyArraysOp, RemapArraysOp, ReshardOp>([&](auto& op) {
+              return verifyCopyRemapAndReshardOpsDonation(op,
+                                                          donated_value_to_op);
+            })
+            .Case<mlir::func::ReturnOp>([&](mlir::func::ReturnOp return_op) {
+              for (const auto& [idx, result] :
+                   llvm::enumerate(return_op.getOperands())) {
+                auto donated_it = donated_value_to_op.find(result);
+                if (donated_it != donated_value_to_op.end()) {
+                  return_op.emitOpError()
+                      << "result #" << idx << " of op at " << return_op.getLoc()
+                      << " was already donated to the op at "
+                      << donated_it->second->getLoc();
+                  return mlir::failure();
                 }
-                donated_values.insert(op.getInputs().begin(),
-                                      op.getInputs().end());
               }
               return mlir::success();
             })
@@ -134,7 +194,7 @@ void IfrtVerifyDonationPass::runOnOperation() {
 
 }  // namespace
 
-std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
+std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
 CreateIfrtVerifyDonationPass() {
   return std::make_unique<IfrtVerifyDonationPass>();
 }

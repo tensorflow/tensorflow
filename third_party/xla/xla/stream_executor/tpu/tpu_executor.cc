@@ -19,10 +19,12 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <utility>
+#include <variant>
 
 #include "absl/cleanup/cleanup.h"
-#include "absl/functional/any_invocable.h"
+#include "absl/log/check.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "xla/stream_executor/allocator_stats.h"
 #include "xla/stream_executor/device_description.h"
@@ -54,13 +56,6 @@ absl::Status TpuExecutor::Init() {
 
 bool TpuExecutor::SynchronizeAllActivity() {
   return ExecutorApiFn()->TpuExecutor_SynchronizeAllActivityFn(executor_);
-}
-
-absl::Status TpuExecutor::BlockHostUntilDone(Stream* stream) {
-  StatusHelper status;
-  ExecutorApiFn()->TpuExecutor_BlockHostUntilDoneFn(
-      executor_, get_stream(stream), status.c_status);
-  return status.status();
 }
 
 tensorflow::tpu::TpuCoreLocationExternal TpuExecutor::GetCoreLocationExternal()
@@ -205,26 +200,6 @@ absl::Status TpuExecutor::EnqueueCompactionOnStreamForHbm(
   return status.status();
 }
 
-struct HostCallbackContext {
-  absl::AnyInvocable<absl::Status() &&> callback;
-};
-
-TSL_Status* HostCallbackTrampoline(void* ctx) {
-  HostCallbackContext* host_ctx = reinterpret_cast<HostCallbackContext*>(ctx);
-  absl::Status status = std::move(host_ctx->callback)();
-  TSL_Status* c_status = ExecutorApiFn()->TpuStatus_CreateFn(
-      status.raw_code(), absl::StatusMessageAsCStr(status));
-  delete host_ctx;
-  return c_status;
-}
-
-bool TpuExecutor::HostCallback(Stream* stream,
-                               absl::AnyInvocable<absl::Status() &&> callback) {
-  HostCallbackContext* ctx = new HostCallbackContext{std::move(callback)};
-  return ExecutorApiFn()->TpuExecutor_HostCallbackFn(
-      executor_, get_stream(stream), &HostCallbackTrampoline, ctx);
-}
-
 absl::StatusOr<std::unique_ptr<::stream_executor::DeviceDescription>>
 TpuExecutor::CreateDeviceDescription() const {
   StatusHelper status;
@@ -236,16 +211,16 @@ TpuExecutor::CreateDeviceDescription() const {
   ExecutorApiFn()->TpuExecutor_CreateDeviceDescriptionFn(executor_, description,
                                                          status.c_status);
   if (status.status().ok()) {
-    stream_executor::internal::DeviceDescriptionBuilder builder;
+    stream_executor::DeviceDescription desc;
     CHECK_NE(description->device_vendor, nullptr);
-    builder.set_device_vendor(description->device_vendor);
-    builder.set_name(description->name);
-    builder.set_clock_rate_ghz(description->clock_rate_ghz);
-    builder.set_core_count(description->core_count);
-    builder.set_ecc_enabled(description->ecc_enabled);
-    builder.set_device_memory_size(description->device_memory_size);
-    builder.set_platform_version(description->platform_version);
-    return builder.Build();
+    desc.set_device_vendor(description->device_vendor);
+    desc.set_name(description->name);
+    desc.set_clock_rate_ghz(description->clock_rate_ghz);
+    desc.set_core_count(description->core_count);
+    desc.set_ecc_enabled(description->ecc_enabled);
+    desc.set_device_memory_size(description->device_memory_size);
+    desc.set_platform_version(description->platform_version);
+    return std::make_unique<DeviceDescription>(std::move(desc));
   }
   return status.status();
 }

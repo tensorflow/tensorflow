@@ -15,6 +15,10 @@ limitations under the License.
 
 #include "xla/service/spmd/canonicalize_all_gather_for_cse.h"
 
+#include <cstdint>
+#include <optional>
+#include <vector>
+
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
@@ -26,9 +30,9 @@ limitations under the License.
 #include "xla/hlo/utils/hlo_query.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 
@@ -72,7 +76,7 @@ absl::StatusOr<bool> CanonicalizeAllGatherForCSE::RunOnComputation(
         major_elements /= real_data->shape().dimensions(new_ag_dim++);
       }
     }
-    if (new_ag_dim == real_data->shape().rank()) {
+    if (new_ag_dim == real_data->shape().dimensions_size()) {
       continue;
     }
 

@@ -15,10 +15,13 @@ limitations under the License.
 #include "tensorflow/lite/tools/evaluation/stages/object_detection_stage.h"
 
 #include <fstream>
+#include <iterator>
 #include <memory>
 #include <string>
+#include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/log/log.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/tools/evaluation/evaluation_delegate_provider.h"

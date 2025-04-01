@@ -24,15 +24,17 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "xla/hlo/analysis/hlo_replication_analysis.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/literal_util.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/hlo_module_config.h"
-#include "xla/service/hlo_replication_analysis.h"
 #include "xla/shape_util.h"
+#include "xla/xla_data.pb.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
 
@@ -153,7 +155,7 @@ absl::StatusOr<bool> AllReduceSimplifier::Run(
                       multiplier->shape(), all_reduce->shape().element_type()),
                   multiplier));
         }
-        if (all_reduce->shape().rank() > 0) {
+        if (all_reduce->shape().dimensions_size() > 0) {
           multiplier = all_reduce->parent()->AddInstruction(
               HloInstruction::CreateBroadcast(all_reduce->shape(), multiplier,
                                               {}));

@@ -68,7 +68,7 @@ string MakeUniqueFilename(string name) {
   return filename;
 }
 
-Status GetFileName(string base_name, string* fname) {
+absl::Status GetFileName(string base_name, string* fname) {
   const char* dir = nullptr;
   dir = getenv("TF_DUMP_GRAPH_PREFIX");
   if (!dir) {
@@ -93,7 +93,7 @@ Status GetFileName(string base_name, string* fname) {
 void DumpColocationGraph(const string& base_name,
                          const ColocationGraph& colocation_graph) {
   string fname;
-  Status status = GetFileName(base_name, &fname);
+  absl::Status status = GetFileName(base_name, &fname);
   if (status.ok()) {
     status = WriteStringToFile(Env::Default(), fname,
                                colocation_graph.DebugString());
@@ -175,9 +175,9 @@ void LogDeviceAssignment(const Node* node, bool log_device_placement) {
   }
 }
 
-Status AssignAndLog(int assigned_device, Node* node,
-                    ColocationGraph* colocation_graph,
-                    bool log_device_placement) {
+absl::Status AssignAndLog(int assigned_device, Node* node,
+                          ColocationGraph* colocation_graph,
+                          bool log_device_placement) {
   node->set_assigned_device_name_index(assigned_device);
 
   // Constraint the group of node to the assigned device.
@@ -213,14 +213,14 @@ Placer::Placer(Graph* graph, const string& function_name,
 
 Placer::~Placer() {}
 
-Status Placer::Run() {
+absl::Status Placer::Run() {
   GraphOptimizationPassOptions options;
   // options.debug_filename_prefix, which is used to create graph dump files,
   // will be an empty string.
   return Run(options);
 }
 
-Status Placer::Run(const GraphOptimizationPassOptions& options) {
+absl::Status Placer::Run(const GraphOptimizationPassOptions& options) {
   if (devices_->devices().empty()) {
     return errors::FailedPrecondition("No devices are registered");
   }
@@ -270,7 +270,7 @@ Status Placer::Run(const GraphOptimizationPassOptions& options) {
     }
 
     const std::vector<Device*>* devices;
-    Status status = colocation_graph.GetDevicesForNode(node, &devices);
+    absl::Status status = colocation_graph.GetDevicesForNode(node, &devices);
     if (!status.ok()) {
       return AttachDef(
           errors::InvalidArgument("Cannot assign a device for operation ",
@@ -320,7 +320,7 @@ Status Placer::Run(const GraphOptimizationPassOptions& options) {
   // skipped during the first pass.
   for (Node* node : second_pass) {
     const std::vector<Device*>* devices;
-    Status status = colocation_graph.GetDevicesForNode(node, &devices);
+    absl::Status status = colocation_graph.GetDevicesForNode(node, &devices);
     if (!status.ok()) {
       return AttachDef(
           errors::InvalidArgument("Cannot assign a device for operation ",

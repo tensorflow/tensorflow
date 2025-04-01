@@ -18,7 +18,7 @@ tf_class {
   }
   member_method {
     name: "__init__"
-    argspec: "args=[\'self\', \'learning_rate\', \'beta1\', \'beta2\', \'epsilon\', \'use_locking\', \'name\'], varargs=None, keywords=None, defaults=[\'0.001\', \'0.9\', \'0.999\', \'1e-08\', \'False\', \'Adam\'], "
+    argspec: "args=[\'self\', \'learning_rate\', \'beta1\', \'beta2\', \'epsilon\', \'use_locking\', \'name\', \'use_own_namescope_for_non_slot_vars\'], varargs=None, keywords=None, defaults=[\'0.001\', \'0.9\', \'0.999\', \'1e-08\', \'False\', \'Adam\', \'False\'], "
   }
   member_method {
     name: "apply_gradients"

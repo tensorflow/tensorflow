@@ -24,8 +24,8 @@ limitations under the License.
 #define EIGEN_USE_GPU
 #endif
 
+#include "xla/tsl/platform/logging.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_managed_allocator.h"
-#include "tsl/platform/logging.h"
 
 namespace tensorflow {
 

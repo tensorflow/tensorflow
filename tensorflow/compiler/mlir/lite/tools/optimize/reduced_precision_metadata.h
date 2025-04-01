@@ -16,6 +16,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_MLIR_LITE_TOOLS_OPTIMIZE_REDUCED_PRECISION_METADATA_H_
 
 #include <cstdint>
+#include <cstdlib>
 #include <string>
 #include <utility>
 

@@ -19,7 +19,6 @@ limitations under the License.
 
 #include "absl/status/statusor.h"
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
-#include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "tensorflow/core/tfrt/graph_executor/executable_context.h"
 #include "tensorflow/core/tfrt/graph_executor/sync_resource_state.h"
 #include "tensorflow/core/tfrt/mlrt/interpreter/context.h"
@@ -63,11 +62,6 @@ void AddSyncContext(mlrt::ExecutionContext& execution_context,
                     tensorflow::tfrt_stub::SyncResourceState* sync_state) {
   GetTfrtNativeLoweringStubRegistry().Get().AddSyncContext(
       execution_context, host_context, sync_state);
-}
-
-void AddNativeLoweringPasses(mlir::OpPassManager* pass_manager) {
-  GetTfrtNativeLoweringStubRegistry().Get().AddNativeLoweringPasses(
-      pass_manager);
 }
 
 absl::StatusOr<std::shared_ptr<ExecutableContext>> BuildExecutableContext(

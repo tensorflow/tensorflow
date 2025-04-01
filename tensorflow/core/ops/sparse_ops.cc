@@ -27,7 +27,7 @@ using shape_inference::ShapeHandle;
 
 namespace {
 
-Status SparseSparseMinOrMaxShapeFn(InferenceContext* c) {
+absl::Status SparseSparseMinOrMaxShapeFn(InferenceContext* c) {
   ShapeHandle unused;
   TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 2, &unused));  // a_indices
   TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 1, &unused));  // a_values

@@ -1,0 +1,14 @@
+// RUN: fusion_to_mlir %s | emitters_opt -xla-gpu-test-optimize \
+// RUN:   -xla-gpu-test-transform-loops | FileCheck %s
+// RUN: test_correctness %s --bijection_inputs=neg:0 --bijection_outputs=neg
+
+neg {
+  %input = f32[20,40,300] parameter(0)
+  ROOT neg = f32[20,40,300] negate(%input)
+}
+
+// CHECK-NOT: tensor.
+// CHECK: vector.transfer_read {{.*}} vector<4xf32>
+// CHECK-NOT: tensor.
+// CHECK: vector.transfer_write {{.*}} vector<4xf32>
+// CHECK-NOT: tensor.

@@ -22,12 +22,13 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Value.h"
+#include "xla/backends/cpu/codegen/target_machine_features.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
-#include "xla/service/cpu/target_machine_features.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/llvm_ir/ir_array.h"
 #include "xla/shape.h"
+#include "xla/xla_data.pb.h"
 #include "tsl/platform/logging.h"
 
 namespace xla::cpu {
@@ -92,19 +93,22 @@ DotInfo InnerDotInfo(const DotInfo& batch_dot);
 // `dot_info`.
 DotImplementationStrategy GetDotImplementationStrategy(
     const HloModuleConfig& config, const HloInstruction& instr,
-    const TargetMachineFeatures& target_machine_features);
+    const TargetMachineFeatures& target_machine_features,
+    bool allow_runtime_calls);
 
 // Returns true if the two operands and the output of `dot_instr` must have row
 // major layout.
 bool DotOperandsAndResultMustHaveRowMajorLayout(
     const HloInstruction& dot_instr,
-    const TargetMachineFeatures& target_machine_features);
+    const TargetMachineFeatures& target_machine_features,
+    bool allow_runtime_calls);
 
 // Returns true our lowering strategy for `dot_instr` can fold in transposes to
 // the either of the inputs.
 bool DotImplementationCanHandleTranspose(
     const HloInstruction& dot_instr,
-    const TargetMachineFeatures& target_machine_features);
+    const TargetMachineFeatures& target_machine_features,
+    bool allow_runtime_calls);
 
 // Returns the index for an operand to `hlo` that should ideally be column
 // major.  Returns nullopt if there is no such operand or if `hlo` is not a dot
@@ -128,7 +132,7 @@ absl::Status EmitDotOperation(
     const HloInstruction& dot, const llvm_ir::IrArray& target_array,
     const llvm_ir::IrArray& lhs_array, const llvm_ir::IrArray& rhs_array,
     const llvm_ir::IrArray* addend_array,
-    llvm::Value* executable_run_options_value, llvm::IRBuilder<>* b,
+    llvm::Value* executable_run_options_value, llvm::IRBuilderBase* b,
     const HloModuleConfig& hlo_module_config,
     const TargetMachineFeatures& target_machine_features,
     bool allow_runtime_calls = true);

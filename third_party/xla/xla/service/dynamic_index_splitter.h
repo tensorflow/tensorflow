@@ -16,25 +16,7 @@ limitations under the License.
 #ifndef XLA_SERVICE_DYNAMIC_INDEX_SPLITTER_H_
 #define XLA_SERVICE_DYNAMIC_INDEX_SPLITTER_H_
 
-#include "absl/status/statusor.h"
-#include "absl/strings/string_view.h"
-#include "xla/hlo/ir/hlo_module.h"
-#include "xla/service/hlo_pass_interface.h"
-
-namespace xla {
-
-// Convert R1 index operands to DynamicSlice and DynamicUpdateSlice ops into
-// separate scalars.
-class DynamicIndexSplitter : public HloModulePass {
- public:
-  DynamicIndexSplitter() = default;
-  absl::string_view name() const override { return "dynamic-index-splitter"; }
-  using HloPassInterface::Run;
-  absl::StatusOr<bool> Run(
-      HloModule* module,
-      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
-};
-
-}  // namespace xla
+// The current header will be deprecated in favour of the following.
+#include "xla/hlo/transforms/expanders/dynamic_index_splitter.h"
 
 #endif  // XLA_SERVICE_DYNAMIC_INDEX_SPLITTER_H_

@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PLATFORM_STACK_FRAME_H_
 #define TENSORFLOW_CORE_PLATFORM_STACK_FRAME_H_
 
-#include "tsl/platform/stack_frame.h"
+#include "xla/tsl/platform/stack_frame.h"
 
 namespace tensorflow {
 typedef tsl::StackFrame StackFrame;

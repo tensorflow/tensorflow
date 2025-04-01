@@ -17,15 +17,16 @@ limitations under the License.
 #define TENSORFLOW_TSL_PLATFORM_RETRYING_FILE_SYSTEM_H_
 
 #include <functional>
+#include <memory>
 #include <string>
 #include <vector>
 
-#include "tsl/platform/env.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/file_system.h"
+#include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/file_system.h"
+#include "xla/tsl/platform/status.h"
 #include "tsl/platform/random.h"
 #include "tsl/platform/retrying_utils.h"
-#include "tsl/platform/status.h"
 
 namespace tsl {
 
@@ -190,11 +191,11 @@ class RetryingRandomAccessFile : public RandomAccessFile {
                            const RetryConfig& retry_config)
       : base_file_(std::move(base_file)), retry_config_(retry_config) {}
 
-  absl::Status Name(StringPiece* result) const override {
+  absl::Status Name(absl::string_view* result) const override {
     return base_file_->Name(result);
   }
 
-  absl::Status Read(uint64 offset, size_t n, StringPiece* result,
+  absl::Status Read(uint64 offset, size_t n, absl::string_view* result,
                     char* scratch) const override {
     return RetryingUtils::CallWithRetries(
         [this, offset, n, result, scratch]() {
@@ -219,7 +220,7 @@ class RetryingWritableFile : public WritableFile {
     Close().IgnoreError();
   }
 
-  absl::Status Append(StringPiece data) override {
+  absl::Status Append(absl::string_view data) override {
     return RetryingUtils::CallWithRetries(
         [this, &data]() { return base_file_->Append(data); }, retry_config_);
   }
@@ -231,7 +232,7 @@ class RetryingWritableFile : public WritableFile {
     return RetryingUtils::CallWithRetries(
         [this]() { return base_file_->Flush(); }, retry_config_);
   }
-  absl::Status Name(StringPiece* result) const override {
+  absl::Status Name(absl::string_view* result) const override {
     return base_file_->Name(result);
   }
   absl::Status Sync() override {
@@ -262,8 +263,8 @@ absl::Status RetryingFileSystem<Underlying>::NewRandomAccessFile(
                                                       &base_file);
       },
       retry_config_));
-  result->reset(new retrying_internals::RetryingRandomAccessFile(
-      std::move(base_file), retry_config_));
+  *result = std::make_unique<retrying_internals::RetryingRandomAccessFile>(
+      std::move(base_file), retry_config_);
   return absl::OkStatus();
 }
 
@@ -277,8 +278,8 @@ absl::Status RetryingFileSystem<Underlying>::NewWritableFile(
         return base_file_system_->NewWritableFile(filename, token, &base_file);
       },
       retry_config_));
-  result->reset(new retrying_internals::RetryingWritableFile(
-      std::move(base_file), retry_config_));
+  *result = std::make_unique<retrying_internals::RetryingWritableFile>(
+      std::move(base_file), retry_config_);
   return absl::OkStatus();
 }
 
@@ -293,8 +294,8 @@ absl::Status RetryingFileSystem<Underlying>::NewAppendableFile(
                                                     &base_file);
       },
       retry_config_));
-  result->reset(new retrying_internals::RetryingWritableFile(
-      std::move(base_file), retry_config_));
+  *result = std::make_unique<retrying_internals::RetryingWritableFile>(
+      std::move(base_file), retry_config_);
   return absl::OkStatus();
 }
 

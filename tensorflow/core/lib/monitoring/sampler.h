@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_LIB_MONITORING_SAMPLER_H_
 #define TENSORFLOW_CORE_LIB_MONITORING_SAMPLER_H_
 
-#include "tsl/lib/monitoring/sampler.h"
+#include "xla/tsl/lib/monitoring/sampler.h"
 #ifdef IS_MOBILE_PLATFORM
 
 #include <memory>

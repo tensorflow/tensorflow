@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_TRANSFORMS_FUNC_TO_GRAPH_FUNC_TO_GRAPH_H_
 #define TENSORFLOW_CORE_TRANSFORMS_FUNC_TO_GRAPH_FUNC_TO_GRAPH_H_
 
+#include "absl/status/status.h"
 #include "tensorflow/core/ir/ops.h"
 #include "tensorflow/core/platform/status.h"
 
@@ -25,7 +26,7 @@ namespace tfg {
 // Lowers a lifted graph func back to the graph. The uses of function arguments
 // will be replaced with the associated value according to
 // `tfg.lifted_value_attr` attribute.
-tensorflow::Status FuncToGraph(GraphFuncOp func);
+absl::Status FuncToGraph(GraphFuncOp func);
 
 }  // namespace tfg
 }  // namespace mlir

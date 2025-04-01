@@ -27,9 +27,9 @@ namespace tensorflow {
 namespace graph_transforms {
 
 // Clears the device field of all ops in the graph.
-Status InsertLogging(const GraphDef& input_graph_def,
-                     const TransformFuncContext& context,
-                     GraphDef* output_graph_def) {
+absl::Status InsertLogging(const GraphDef& input_graph_def,
+                           const TransformFuncContext& context,
+                           GraphDef* output_graph_def) {
   std::unordered_set<string> ops;
   bool has_ops;
   if (context.params.count("op")) {
@@ -79,7 +79,7 @@ Status InsertLogging(const GraphDef& input_graph_def,
       NodeNamePartsFromInput(canonical_input, &prefix, &name, &suffix);
       const string output_index_string = suffix.substr(1, suffix.size() - 1);
       int32_t output_index;
-      if (!strings::safe_strto32(output_index_string, &output_index)) {
+      if (!absl::SimpleAtoi(output_index_string, &output_index)) {
         return errors::InvalidArgument("Couldn't understand output number in ",
                                        input);
       }

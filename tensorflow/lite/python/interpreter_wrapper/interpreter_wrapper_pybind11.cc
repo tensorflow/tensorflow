@@ -13,8 +13,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cstdint>
 #include <functional>
+#include <stdexcept>
 #include <string>
+#include <vector>
 
 #include "pybind11/functional.h"  // from @pybind11
 #include "pybind11/pybind11.h"  // from @pybind11
@@ -130,6 +133,7 @@ PYBIND11_MODULE(_pywrap_tensorflow_interpreter_wrapper, m) {
           py::arg("i"), py::arg("value"), py::arg("strict"),
           py::arg("subgraph_index") = 0)
       .def("NumTensors", &InterpreterWrapper::NumTensors)
+      .def("NumSubgraphs", &InterpreterWrapper::NumSubgraphs)
       .def("TensorName", &InterpreterWrapper::TensorName)
       .def("TensorType",
            [](const InterpreterWrapper& self, int tensor_index,

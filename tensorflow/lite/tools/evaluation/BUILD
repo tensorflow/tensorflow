@@ -76,6 +76,7 @@ cc_library_with_stable_tflite_abi(
         ],
     }],
     deps = [
+        "//tensorflow/lite/tools:logging",
         "@flatbuffers",
     ] + select({
         "//tensorflow/lite:tflite_with_xnnpack_explicit_false": [],

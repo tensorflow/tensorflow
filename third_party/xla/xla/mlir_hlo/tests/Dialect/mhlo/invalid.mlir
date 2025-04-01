@@ -56,7 +56,7 @@ func.func @tuple_type_mismatch(%arg0: tensor<1xf64>) -> tensor<1xf64> {
 // -----
 
 func.func @tuple_count_mismatch(%arg0: tensor<1xf64>) -> tensor<1xf64> {
-  // expected-error @+1 {{custom op 'mhlo.tuple' 2 operands present, but expected 1}}
+  // expected-error @+1 {{custom op 'mhlo.tuple' number of operands and types do not match: got 2 operands and 1 types}}
   %0 = mhlo.tuple %arg0, %arg0 : tuple<tensor<1xf64>>
   func.return %0 : tensor<1xf64>
 }
@@ -64,7 +64,7 @@ func.func @tuple_count_mismatch(%arg0: tensor<1xf64>) -> tensor<1xf64> {
 // -----
 
 func.func @pairwise_count_mismatch(%arg0: tensor<1xf64>) -> tensor<1xf64> {
-  // expected-error @+1 {{custom op 'mhlo.optimization_barrier' 2 operands present, but expected 1}}
+  // expected-error @+1 {{custom op 'mhlo.optimization_barrier' number of operands and types do not match: got 2 operands and 1 types}}
   %0 = mhlo.optimization_barrier %arg0, %arg0 : tensor<1xf64>
   func.return %0 : tensor<1xf64>
 }

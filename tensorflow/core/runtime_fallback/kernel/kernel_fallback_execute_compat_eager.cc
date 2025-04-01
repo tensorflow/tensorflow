@@ -37,7 +37,7 @@ constexpr char kFallbackResourceArray[] = "FallbackResourceArray";
 
 }  // namespace
 
-Status SetUpKernelFallbackCompatRequestContext(
+absl::Status SetUpKernelFallbackCompatRequestContext(
     tfrt::RequestContextBuilder* builder,
     tfrt_stub::OpKernelRunnerTable* runner_table,
     tensorflow::EagerContext* eager_context,

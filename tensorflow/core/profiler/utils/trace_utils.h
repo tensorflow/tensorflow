@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PROFILER_UTILS_TRACE_UTILS_H_
 #define TENSORFLOW_CORE_PROFILER_UTILS_TRACE_UTILS_H_
 
-#include "tsl/profiler/utils/trace_utils.h"
+#include "xla/tsl/profiler/utils/trace_utils.h"
 
 namespace tensorflow {
 namespace profiler {

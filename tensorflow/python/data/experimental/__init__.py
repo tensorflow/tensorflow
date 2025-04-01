@@ -59,6 +59,7 @@ See [Importing Data](https://tensorflow.org/guide/datasets) for an overview.
 @@enumerate_dataset
 @@from_list
 @@from_variant
+@@get_model_proto
 @@get_next_as_optional
 @@get_single_element
 @@get_structure
@@ -121,6 +122,7 @@ from tensorflow.python.data.experimental.ops.interleave_ops import parallel_inte
 from tensorflow.python.data.experimental.ops.interleave_ops import sample_from_datasets
 from tensorflow.python.data.experimental.ops.io import load
 from tensorflow.python.data.experimental.ops.io import save
+from tensorflow.python.data.experimental.ops.iterator_model_ops import get_model_proto
 from tensorflow.python.data.experimental.ops.iterator_ops import make_saveable_from_iterator
 from tensorflow.python.data.experimental.ops.lookup_ops import DatasetInitializer
 from tensorflow.python.data.experimental.ops.lookup_ops import index_table_from_dataset

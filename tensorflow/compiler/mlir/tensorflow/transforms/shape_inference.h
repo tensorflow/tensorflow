@@ -16,7 +16,10 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_TENSORFLOW_TRANSFORMS_SHAPE_INFERENCE_H_
 #define TENSORFLOW_COMPILER_MLIR_TENSORFLOW_TRANSFORMS_SHAPE_INFERENCE_H_
 
+#include <stdbool.h>
+
 #include <cstdint>
+#include <memory>
 
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
@@ -30,6 +33,9 @@ limitations under the License.
 
 namespace mlir {
 namespace TF {
+
+inline constexpr char kMLIRContextSingleThreadVar[] =
+    "TF_USE_SINGLE_THREAD_MLIR_CONTEXT";
 
 // Returns whether type can be further refined.
 bool CanBeRefined(Type type);
@@ -46,9 +52,13 @@ Type GetNewArgType(Type old_arg_type, ArrayRef<int64_t> shape,
 // reached convergence, false otherwise.
 // If input shapes are provided, first refines the `main` function using
 // InferShapeForFunction.
+// If enable_stablehlo_propagation is true, then the refined StableHLO ops
+// shapes will be propagated by re-serializing StableHLO modules in the
+// XlaCallModule ops. propagated.
 FailureOr<bool> InferModuleShape(ModuleOp module, int64_t max_iterations = 10,
                                  ArrayRef<TypeID> ops_to_skip = {},
-                                 ArrayRef<ArrayRef<int64_t>> input_shapes = {});
+                                 ArrayRef<ArrayRef<int64_t>> input_shapes = {},
+                                 bool enable_stablehlo_propagation = false);
 
 // Given a tensorflow NodeShape string, returns a vector of argument shapes
 // that can be used with InferShapeForFunction.
@@ -70,6 +80,9 @@ FailureOr<bool> InferShapeForFunction(func::FuncOp func,
                                       int64_t graph_version,
                                       int64_t max_iterations = 10,
                                       ArrayRef<TypeID> ops_to_skip = {});
+
+// Create a MLIRContext based on the threading setup in the env var.
+std::unique_ptr<MLIRContext> MakeMLIRContextWithThreading();
 
 }  // namespace TF
 

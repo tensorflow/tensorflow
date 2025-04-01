@@ -19,10 +19,12 @@ limitations under the License.
 #include <cstdint>
 #include <string>
 #include <string_view>
+#include <variant>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "xla/executable_run_options.h"
 #include "xla/ffi/api/api.h"
 #include "xla/ffi/api/c_api.h"
 #include "xla/ffi/api/c_api_internal.h"  // IWYU pragma: keep
@@ -32,6 +34,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/stream.h"
+#include "xla/tsl/concurrency/chain.h"
 
 namespace xla::ffi {
 
@@ -47,11 +50,24 @@ namespace xla::ffi {
 // Calling XLA FFI handlers
 //===----------------------------------------------------------------------===//
 
+// Options for calling XLA FFI handlers. Backend specific options must be
+// constructed from `xla::ExecuteRunOptions`, to give FFI handlers access to
+// XLA runtime internals.
 struct CallOptions {
-  int32_t device_ordinal = -1;
+  struct CpuOptions {
+    const Eigen::ThreadPoolDevice* intra_op_thread_pool = nullptr;
+  };
 
-  se::Stream* stream = nullptr;
-  se::DeviceMemoryAllocator* allocator = nullptr;
+  struct GpuOptions {
+    se::Stream* stream = nullptr;
+    se::DeviceMemoryAllocator* allocator = nullptr;
+  };
+
+  using BackendOptions = std::variant<std::monostate, CpuOptions, GpuOptions>;
+
+  xla::RunId run_id = xla::RunId{-1};
+  int32_t device_ordinal = -1;
+  BackendOptions backend_options;
 
   const HloComputation* called_computation = nullptr;
   const ExecutionContext* execution_context = nullptr;
@@ -59,9 +75,18 @@ struct CallOptions {
 };
 
 // Takes ownership of the XLA FFI error and returns underlying status. Frees
-// `error` if it's not nullptr; returns OK status otherwise.
+// `error` if it's not nullptr. If `error` is nullptr, returns OkStatus.
 absl::Status TakeStatus(XLA_FFI_Error* error);
 
+// Takes ownership of the XLA FFI future and returns underlying AsyncValue.
+// Frees `future` if it's not nullptr. If `future` is nullptr, returns available
+// async value.
+tsl::AsyncValueRef<tsl::Chain> TakeFuture(XLA_FFI_Future* future);
+
+// Calls an XLA FFI handler with the given call frame and options. This is a
+// synchronous call and it might block the caller thread if the handler is
+// asynchronous. It is unsafe to call if from a thread pool that runs tasks
+// scheduled by the handler itself.
 absl::Status Call(Ffi& handler, CallFrame& call_frame,
                   const CallOptions& options = {},
                   ExecutionStage stage = ExecutionStage::kExecute);
@@ -70,6 +95,22 @@ absl::Status Call(
     XLA_FFI_Handler* handler, CallFrame& call_frame,
     const CallOptions& options = {},
     XLA_FFI_ExecutionStage stage = XLA_FFI_ExecutionStage_EXECUTE);
+
+// Calls an XLA FFI handler with the given call frame and options. This is an
+// asynchronous call and it will not block the caller thread. Returned async
+// value will become available when the handler completes execution.
+tsl::AsyncValueRef<tsl::Chain> CallAsync(
+    Ffi& handler, CallFrame& call_frame, const CallOptions& options = {},
+    ExecutionStage stage = ExecutionStage::kExecute);
+
+tsl::AsyncValueRef<tsl::Chain> CallAsync(
+    XLA_FFI_Handler* handler, CallFrame& call_frame,
+    const CallOptions& options = {},
+    XLA_FFI_ExecutionStage stage = XLA_FFI_ExecutionStage_EXECUTE);
+
+// Gets metadata from the handler by calling it with a special call frame.
+absl::StatusOr<XLA_FFI_Metadata> GetMetadata(Ffi& handler);
+absl::StatusOr<XLA_FFI_Metadata> GetMetadata(XLA_FFI_Handler* handler);
 
 namespace internal {
 // This is an internal workaround to override FFI execution context for FFI

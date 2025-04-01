@@ -15,11 +15,12 @@ limitations under the License.
 
 #include "tensorflow/core/profiler/convert/hlo_proto_to_graph_view.h"
 
-#include <string>
 #include <variant>
 
+#include <gmock/gmock.h>
 #include "xla/service/hlo_graph_dumper.h"
-#include "tensorflow/core/platform/status_matchers.h"
+#include "xla/tsl/platform/status_matchers.h"
+#include "xla/tsl/platform/statusor.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/profiler/convert/tool_options.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
@@ -28,8 +29,8 @@ namespace tensorflow {
 namespace profiler {
 namespace {
 
-using ::tensorflow::testing::StatusIs;
 using ::testing::HasSubstr;
+using ::tsl::testing::StatusIs;
 
 TEST(GraphViewerParamsTest, GraphType) {
   // Default for graph type.

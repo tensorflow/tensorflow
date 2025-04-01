@@ -15,10 +15,12 @@ limitations under the License.
 
 #include <cstdint>
 #include <functional>
+#include <limits>
 #include <memory>
 #include <random>
 
 #include <gtest/gtest.h>
+#include "tensorflow/lite/c/c_api_types.h"
 #include "tensorflow/lite/delegates/xnnpack/quantized_fully_connected_tester.h"
 #include "tensorflow/lite/delegates/xnnpack/xnnpack_delegate.h"
 

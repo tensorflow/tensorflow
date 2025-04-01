@@ -14,7 +14,6 @@ limitations under the License.
 ==============================================================================*/
 
 #include <memory>
-#include <tuple>
 
 #include "llvm/ADT/MapVector.h"
 #include "llvm/ADT/STLExtras.h"

@@ -21,7 +21,14 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 namespace stream_executor {
 
+// Ptxas is a standalone binary that compiles PTX to GPU assembly. NvJitLink
+// and NvPtxCompiler are libraries that can be linked to from other C++
+// programs. NvJitLink and NvPtxCompiler should always produce the same
+// result. Ptxas should also produce the same result, unless it is on a
+// different version than the rest of the CUDA tools.
+// We select a compilation method in AssembleOptionsAndCompile.
 enum class PtxCompilationMethod {
+  kNvJitLink,
   kNvPtxCompiler,
   kPtxas,
 };
@@ -30,6 +37,9 @@ template <typename Sink>
 static void AbslStringify(Sink& sink,
                           const PtxCompilationMethod& compilation_method) {
   switch (compilation_method) {
+    case PtxCompilationMethod::kNvJitLink:
+      sink.Append("NvJitLink");
+      break;
     case PtxCompilationMethod::kNvPtxCompiler:
       sink.Append("NvPtxCompiler");
       break;

@@ -26,7 +26,7 @@ using shape_inference::ShapeHandle;
 
 namespace {
 
-Status DequeueManyV2Shape(InferenceContext* c, ShapeHandle n_shape) {
+absl::Status DequeueManyV2Shape(InferenceContext* c, ShapeHandle n_shape) {
   auto* t = c->input_handle_shapes_and_types(0);
   if (t != nullptr && t->size() == c->num_outputs()) {
     for (int i = 0; i < c->num_outputs(); ++i) {
@@ -88,7 +88,7 @@ REGISTER_OP("DynamicPartition")
 
 namespace {
 
-Status DynamicStitchShapeFunction(InferenceContext* c) {
+absl::Status DynamicStitchShapeFunction(InferenceContext* c) {
   int32_t num_partitions;
   TF_RETURN_IF_ERROR(c->GetAttr("N", &num_partitions));
 
@@ -158,7 +158,7 @@ REGISTER_OP("ParallelDynamicStitch")
 // --------------------------------------------------------------------------
 
 namespace {
-Status TwoElementVectorInputsAndScalarOutputs(InferenceContext* c) {
+absl::Status TwoElementVectorInputsAndScalarOutputs(InferenceContext* c) {
   ShapeHandle handle;
   DimensionHandle unused_handle;
   for (int i = 0; i < c->num_inputs(); ++i) {
@@ -171,7 +171,7 @@ Status TwoElementVectorInputsAndScalarOutputs(InferenceContext* c) {
   return absl::OkStatus();
 }
 
-Status TwoElementOutput(InferenceContext* c) {
+absl::Status TwoElementOutput(InferenceContext* c) {
   c->set_output(0, c->Vector(2));
   return absl::OkStatus();
 }

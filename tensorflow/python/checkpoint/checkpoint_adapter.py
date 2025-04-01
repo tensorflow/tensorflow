@@ -44,7 +44,7 @@ class ReshardCallback:
 
     Override this to reshard/modify the restored values
     Args:
-      checkpoint_values: The values retured by the restore op, as read from
+      checkpoint_values: The values returned by the restore op, as read from
         file.
       shape_and_slice_spec: The shape and slice spec required by the caller.
 
@@ -65,7 +65,7 @@ class ReshardCallback:
     Override this method if the arguments to restore op need to be updated as
     per the resharding required.
     Args:
-      checkpoint_key: The cehckpopoint key as requested by the caller
+      checkpoint_key: The checkpoint key as requested by the caller
       shape_and_slice_spec: The shape and slice spec as requested by caller
 
     Returns:

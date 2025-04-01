@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/dtensor/cc/xla_spmd/layout_to_xla_sharding.h"
 
+#include <cstdint>
 #include <string>
 #include <vector>
 
@@ -22,12 +23,12 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "benchmark/benchmark.h"  // from @com_google_benchmark
 #include "xla/hlo/ir/hlo_sharding.h"
+#include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/dtensor/cc/dstatus.h"
 #include "tensorflow/dtensor/cc/tensor_layout.h"
-#include "tsl/lib/core/status_test_util.h"
-#include "tsl/platform/statusor.h"
 
 namespace tensorflow {
 namespace dtensor {

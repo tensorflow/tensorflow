@@ -51,7 +51,7 @@ absl::StatusOr<std::unique_ptr<Graph>> CreateSingleOpGraph(
   for (int64_t i = 0, end = args.size(); i < end; ++i) {
     Node* node;
     string arg_name = absl::StrCat("_arg", i);
-    Status status =
+    absl::Status status =
         NodeBuilder(arg_name, FunctionLibraryDefinition::kArgOp)
             .ControlInput(graph->source_node())
             .Attr("T", args[i].kind == XlaArgument::kResource ? DT_RESOURCE
@@ -66,11 +66,12 @@ absl::StatusOr<std::unique_ptr<Graph>> CreateSingleOpGraph(
   for (int64_t i = 0, end = result_types.size(); i < end; ++i) {
     Node* node;
     string retval_name = absl::StrCat("_retval", i);
-    Status status = NodeBuilder(retval_name, FunctionLibraryDefinition::kRetOp)
-                        .Input(main_node, i)
-                        .Attr("T", result_types[i])
-                        .Attr("index", i)
-                        .Finalize(graph.get(), &node);
+    absl::Status status =
+        NodeBuilder(retval_name, FunctionLibraryDefinition::kRetOp)
+            .Input(main_node, i)
+            .Attr("T", result_types[i])
+            .Attr("index", i)
+            .Finalize(graph.get(), &node);
     TF_RETURN_IF_ERROR(status);
   }
   FixupSourceAndSinkEdges(graph.get());

@@ -15,34 +15,31 @@ limitations under the License.
 
 #include <sys/types.h>
 
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <utility>
 #include <vector>
 
-#include "absl/types/optional.h"
-#include "tensorflow/compiler/tf2xla/literal_util.h"
+#include "absl/status/statusor.h"
+#include "absl/types/span.h"
 #include "tensorflow/compiler/tf2xla/type_util.h"
-#include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
-#include "xla/client/lib/arithmetic.h"
-#include "xla/client/lib/comparators.h"
-#include "xla/client/lib/constants.h"
-#include "xla/client/xla_builder.h"
-#include "xla/client/xla_computation.h"
 #include "xla/comparison_util.h"
-#include "xla/literal.h"
+#include "xla/hlo/builder/lib/arithmetic.h"
+#include "xla/hlo/builder/lib/comparators.h"
+#include "xla/hlo/builder/lib/constants.h"
+#include "xla/hlo/builder/xla_builder.h"
+#include "xla/hlo/builder/xla_computation.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
-#include "tensorflow/core/framework/ops_util.h"
-#include "tensorflow/core/framework/register_types.h"
-#include "tensorflow/core/framework/tensor.h"
-#include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/tpu/tpu_defs.h"
+#include "tensorflow/core/framework/op_requires.h"
+#include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/platform/errors.h"
 
 namespace tensorflow {
 namespace {
@@ -59,8 +56,8 @@ class UniqueOpBase : public XlaOpKernel {
   xla::XlaOp MoveAxis(xla::XlaOp a, int64_t from, int64_t to,
                       const xla::Shape& input_shape) {
     std::vector<int64_t> permutation;
-    permutation.reserve(input_shape.rank());
-    for (int64_t i = 0; i < input_shape.rank(); ++i) {
+    permutation.reserve(input_shape.dimensions_size());
+    for (int64_t i = 0; i < input_shape.dimensions_size(); ++i) {
       permutation.push_back(i);
     }
     std::swap(permutation[from], permutation[to]);
@@ -149,15 +146,15 @@ class UniqueOpBase : public XlaOpKernel {
     absl::StatusOr<xla::Shape> input_shape_or = ctx->builder()->GetShape(input);
     OP_REQUIRES_OK(ctx, input_shape_or.status());
     auto input_shape = input_shape_or.value();
-    axis = axis < 0 ? axis + input_shape.rank() : axis;
-    OP_REQUIRES(ctx, 0 <= axis && axis < input_shape.rank(),
+    axis = axis < 0 ? axis + input_shape.dimensions_size() : axis;
+    OP_REQUIRES(ctx, 0 <= axis && axis < input_shape.dimensions_size(),
                 errors::InvalidArgument("axis has to be between [0, ",
-                                        input_shape.rank(), ")"));
+                                        input_shape.dimensions_size(), ")"));
     auto aux = MoveAxis(input, axis, 0, input_shape);
     auto aux_shape = ctx->builder()->GetShape(aux).value();
     int64_t leading_size = aux_shape.dimensions(0);
     int64_t product = 1;
-    for (int64_t i = 1; i < aux_shape.rank(); ++i) {
+    for (int64_t i = 1; i < aux_shape.dimensions_size(); ++i) {
       product *= aux_shape.dimensions(i);
     }
     aux = xla::Reshape(aux, {leading_size, product});

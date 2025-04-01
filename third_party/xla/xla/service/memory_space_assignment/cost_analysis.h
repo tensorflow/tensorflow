@@ -17,6 +17,7 @@ limitations under the License.
 #define XLA_SERVICE_MEMORY_SPACE_ASSIGNMENT_COST_ANALYSIS_H_
 
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <optional>
 #include <string>
@@ -26,12 +27,12 @@ limitations under the License.
 #include "absl/functional/function_ref.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
+#include "xla/hlo/analysis/hlo_alias_analysis.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/utils/hlo_live_range.h"
 #include "xla/service/call_graph.h"
+#include "xla/service/cost_modelling/op_cost.h"
 #include "xla/service/heap_simulator/heap_simulator.h"
-#include "xla/service/hlo_alias_analysis.h"
-#include "xla/service/hlo_cost_analysis.h"
 #include "xla/service/hlo_value.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
@@ -57,65 +58,17 @@ struct CostAnalysisOptions {
   // the default memory, in MiB.
   float pipeline_overhead_window_size_mib = 0;
 
-  float alternate_mem_bandwidth_bytes_per_second = 0.0f;
+  double alternate_mem_read_bandwidth_bytes_per_second = 0.0f;
+  double alternate_mem_write_bandwidth_bytes_per_second = 0.0f;
 
-  float async_copy_bandwidth_bytes_per_second = 0.0f;
+  double default_mem_bandwidth_bytes_per_second = 0.0f;
 
   // Scales effective bandwidth for async copies. Valid range is (0, 1].
   float async_copy_bandwidth_scaling_factor = 1.0;
-};
 
-// An interface for getting basic HLO costs.
-class BaseCosts {
- public:
-  virtual ~BaseCosts() = default;
-
-  // The size of shape in bytes
-  virtual int64_t GetShapeSize(const Shape& shape) = 0;
-
-  // The number of operand and output bytes accessed by instruction.
-  virtual float BytesAccessed(const HloInstruction& instruction) = 0;
-
-  // The number of bytes accessed by instruction, for operand operand_num, at
-  // shape_index.
-  virtual float OperandBytesAccessed(const HloInstruction& instruction,
-                                     int64_t operand_num,
-                                     const ShapeIndex& shape_index) = 0;
-
-  // The number of bytes accessed by instruction, in its output, at shape_index.
-  virtual float OutputBytesAccessed(const HloInstruction& instruction,
-                                    const ShapeIndex& shape_index) = 0;
-
-  // The bandwidth of copies to/from alternate memory.
-  virtual float BytesPerSecond() = 0;
-
-  // The compute cost of instruction. The compute cost assumes 0 memory transer
-  // is required.
-  virtual float ComputeSeconds(const HloInstruction& instruction) = 0;
-
- protected:
-  BaseCosts() = default;
-};
-
-// An implementation of BaseCosts based on HloCostAnalysis.
-class HloCostAnalysisCosts : public BaseCosts {
- public:
-  explicit HloCostAnalysisCosts(const HloCostAnalysis& hlo_cost_analysis);
-
-  ~HloCostAnalysisCosts() override = default;
-
-  int64_t GetShapeSize(const Shape& shape) override;
-  float BytesAccessed(const HloInstruction& instruction) override;
-  float OperandBytesAccessed(const HloInstruction& instruction,
-                             int64_t operand_num,
-                             const ShapeIndex& shape_index) override;
-  float OutputBytesAccessed(const HloInstruction& instruction,
-                            const ShapeIndex& shape_index) override;
-  float BytesPerSecond() override;
-  float ComputeSeconds(const HloInstruction& instruction) override;
-
- private:
-  const HloCostAnalysis& hlo_cost_analysis_;
+  // Used to get the layout size of a shape in bytes.
+  std::function<int64_t(const Shape&)> shape_size_bytes_fn =
+      [](const Shape& shape) { return ShapeUtil::ByteSizeOf(shape); };
 };
 
 // A wrapper class around BaseCosts with additional knowledge about the
@@ -142,10 +95,20 @@ class CostAnalysis {
   virtual ~CostAnalysis() = default;
 
   static absl::StatusOr<std::unique_ptr<CostAnalysis>> Create(
-      BaseCosts& base_costs, const CostAnalysisOptions& options,
+      OpCostManager& op_cost_manager, const CostAnalysisOptions& options,
       const HloModule& module);
 
-  BaseCosts& base_costs() const { return base_costs_; }
+  int64_t GetShapeSizeBytes(const Shape& shape) const;
+
+  float OperandBytesAccessed(const HloInstruction& instruction,
+                             int64_t operand_num,
+                             const ShapeIndex& shape_index) const;
+
+  float OutputBytesAccessed(const HloInstruction& instruction,
+                            const ShapeIndex& shape_index) const;
+
+  double DefaultMemBandwidthBytesPerSecond(
+      bool use_scaling_factor = false) const;
 
   // Returns a heuristic value that captures how much putting this tensor to the
   // alternate memory would help if the op is memory bound, or otherwise how far
@@ -275,18 +238,20 @@ class CostAnalysis {
   const HloLiveRange& hlo_live_range() const { return *hlo_live_range_; }
 
  protected:
-  CostAnalysis(BaseCosts& base_costs, const CostAnalysisOptions& options,
+  CostAnalysis(OpCostManager& op_cost_manager,
+               const CostAnalysisOptions& options,
                std::unique_ptr<HloAliasAnalysis> alias_analysis,
                std::unique_ptr<HloLiveRange> hlo_live_range,
                std::unique_ptr<CallGraph> call_graph)
-      : base_costs_(base_costs),
+      : op_cost_manager_(op_cost_manager),
         options_(options),
         alias_analysis_(std::move(alias_analysis)),
         hlo_live_range_(std::move(hlo_live_range)),
         call_graph_(std::move(call_graph)) {}
 
  private:
-  BaseCosts& base_costs_;
+  // A manager responsible for return basic cost metrics.
+  OpCostManager& op_cost_manager_;
   const CostAnalysisOptions options_;
   std::unique_ptr<HloAliasAnalysis> alias_analysis_;
   std::unique_ptr<HloLiveRange> hlo_live_range_;

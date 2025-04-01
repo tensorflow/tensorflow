@@ -14,12 +14,19 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/tfrt/fallback/op_kernel_runner_cache.h"
 
+#include <cstdint>
 #include <functional>
 #include <memory>
 #include <string>
 #include <utility>
 
 #include "absl/base/casts.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 
 namespace tensorflow {
 namespace tfrt_stub {
@@ -27,7 +34,7 @@ namespace tfrt_stub {
 absl::StatusOr<OpKernelRunner*> OpKernelRunnerCache::GetOrCreate(
     tfrt::Location loc, absl::string_view op_name,
     absl::string_view device_name, int num_args,
-    const std::function<Status(tensorflow::AttrValueMap*)>& attr_builder,
+    const std::function<absl::Status(tensorflow::AttrValueMap*)>& attr_builder,
     const tensorflow::DeviceMgr& device_manager,
     const tensorflow::ProcessFunctionLibraryRuntime&
         process_function_library_runtime) {

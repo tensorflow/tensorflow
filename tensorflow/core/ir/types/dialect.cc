@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/ir/types/dialect.h"
 
+#include <cassert>
 #include <cstdint>
 #include <optional>
 #include <string>
@@ -32,6 +33,7 @@ limitations under the License.
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypeInterfaces.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Dialect.h"  // from @llvm-project
 #include "mlir/IR/DialectImplementation.h"  // from @llvm-project
@@ -259,8 +261,11 @@ FailureOr<FullTypeAttr> RawFullTypeAttrParser(AsmParser& parser) {
   // Parse variable 'attr'
   Attribute attr;
   parser.parseOptionalAttribute(attr);
-  return FullTypeAttr::get(parser.getContext(), static_cast<int32_t>(*type_id),
-                           args, attr);
+  return FullTypeAttr::get(
+      parser.getContext(),
+      mlir::IntegerAttr::get(mlir::IntegerType::get(parser.getContext(), 32),
+                             static_cast<int32_t>(*type_id)),
+      args, attr);
 }
 
 Attribute FullTypeAttr::parse(AsmParser& parser, Type odsType) {
@@ -271,7 +276,8 @@ Attribute FullTypeAttr::parse(AsmParser& parser, Type odsType) {
 }
 
 static void RawFullTypeAttrPrint(FullTypeAttr tfattr, AsmPrinter& printer) {
-  printer << stringifyFullTypeId(tf_type::FullTypeId(tfattr.getTypeId()));
+  printer << stringifyFullTypeId(
+      tf_type::FullTypeId(tfattr.getTypeId().getInt()));
   if (!tfattr.getArgs().empty()) {
     printer << "<";
     llvm::interleaveComma(tfattr.getArgs(), printer, [&](Attribute arg) {
@@ -366,17 +372,10 @@ void ShapeAttr::print(AsmPrinter& os) const {
   os << "<";
   if (hasRank()) {
     auto print_dim = [&](int64_t dim) {
-      if (dim != ShapedType::kDynamic) {
-        if (dim == 0) {
-          // In order to avoid the parseInteger below from confusing a dimension
-          // list with '0x' as hex integer, we use 00 for a 0 sized dimension.
-          os << "00";
-        } else {
-          os << dim;
-        }
-      } else {
+      if (dim != ShapedType::kDynamic)
+        os << dim;
+      else
         os << "?";
-      }
     };
     llvm::interleave(getShape(), os, print_dim, "x");
   } else {
@@ -405,7 +404,7 @@ Attribute ShapeAttr::parse(AsmParser& parser, Type type) {
       llvm::SMLoc loc = parser.getCurrentLocation();
       if (succeeded(parser.parseOptionalQuestion())) {
         shape.back() = ShapedType::kDynamic;
-      } else if (failed(parser.parseInteger(shape.back()))) {
+      } else if (failed(parser.parseDecimalInteger(shape.back()))) {
         parser.emitError(loc)
             << "expected an integer or `?` when parsing a tf.shape attribute";
         return failure();
@@ -544,10 +543,16 @@ TensorFlowType TensorFlowRefType::get(Type type) {
     return DoubleRefType::get(ctx);
   } else if (type.isBF16()) {
     return Bfloat16RefType::get(ctx);
-  } else if (type.isFloat8E4M3FN()) {
+  } else if (llvm::isa<mlir::Float8E4M3FNType>(type)) {
     return Float8E4M3FNRefType::get(ctx);
-  } else if (type.isFloat8E5M2()) {
+  } else if (llvm::isa<mlir::Float8E5M2Type>(type)) {
     return Float8E5M2RefType::get(ctx);
+  } else if (llvm::isa<mlir::Float8E4M3FNUZType>(type)) {
+    return Float8E4M3FNUZRefType::get(ctx);
+  } else if (llvm::isa<mlir::Float8E4M3B11FNUZType>(type)) {
+    return Float8E4M3B11FNUZRefType::get(ctx);
+  } else if (llvm::isa<mlir::Float8E5M2FNUZType>(type)) {
+    return Float8E5M2FNUZRefType::get(ctx);
   } else if (auto complex_type = mlir::dyn_cast<ComplexType>(type)) {
     Type etype = complex_type.getElementType();
     if (etype.isF32()) {
@@ -591,13 +596,19 @@ TensorFlowType TensorFlowRefType::get(Type type) {
 
 Type TensorFlowRefType::RemoveRef() {
   MLIRContext* ctx = getContext();
-  if (mlir::isa<HalfRefType>(*this)) return FloatType::getF16(ctx);
-  if (mlir::isa<FloatRefType>(*this)) return FloatType::getF32(ctx);
-  if (mlir::isa<DoubleRefType>(*this)) return FloatType::getF64(ctx);
-  if (mlir::isa<Bfloat16RefType>(*this)) return FloatType::getBF16(ctx);
+  if (mlir::isa<HalfRefType>(*this)) return Float16Type::get(ctx);
+  if (mlir::isa<FloatRefType>(*this)) return Float32Type::get(ctx);
+  if (mlir::isa<DoubleRefType>(*this)) return Float64Type::get(ctx);
+  if (mlir::isa<Bfloat16RefType>(*this)) return BFloat16Type::get(ctx);
   if (mlir::isa<Float8E4M3FNType>(*this))
-    return FloatType::getFloat8E4M3FN(ctx);
-  if (mlir::isa<Float8E5M2Type>(*this)) return FloatType::getFloat8E5M2(ctx);
+    return Float8E4M3FNType::get(ctx);
+  if (mlir::isa<Float8E5M2Type>(*this)) return Float8E5M2Type::get(ctx);
+  if (mlir::isa<Float8E4M3FNUZType>(*this))
+    return Float8E4M3FNUZType::get(ctx);
+  if (mlir::isa<Float8E4M3B11FNUZType>(*this))
+    return Float8E4M3B11FNUZType::get(ctx);
+  if (mlir::isa<Float8E5M2FNUZType>(*this))
+    return Float8E5M2FNUZType::get(ctx);
   if (mlir::isa<BoolRefType>(*this)) return IntegerType::get(ctx, 1);
   if (mlir::isa<Int4RefType>(*this))
     return IntegerType::get(ctx, 4, IntegerType::Signed);
@@ -616,9 +627,9 @@ Type TensorFlowRefType::RemoveRef() {
   if (mlir::isa<Uint64RefType>(*this))
     return IntegerType::get(ctx, 64, IntegerType::Unsigned);
   if (mlir::isa<Complex64RefType>(*this))
-    return ComplexType::get(FloatType::getF32(ctx));
+    return ComplexType::get(Float32Type::get(ctx));
   if (mlir::isa<Complex128RefType>(*this))
-    return ComplexType::get(FloatType::getF64(ctx));
+    return ComplexType::get(Float64Type::get(ctx));
 #define HANDLE_TF_TYPE(tftype, enumerant, name) \
   if (isa<tftype##RefType>()) return tftype##Type::get(ctx);
 

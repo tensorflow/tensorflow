@@ -15,9 +15,12 @@ limitations under the License.
 
 #include "tensorflow/dtensor/mlir/dtensor_mlir_passes.h"
 
+#include <functional>
 #include <memory>
+#include <string>
 
 #include "absl/log/log.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_replace.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project

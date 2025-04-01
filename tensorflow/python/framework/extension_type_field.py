@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Meatadata about fields for user-defined ExtensionType classes."""
+"""Metadata about fields for user-defined ExtensionType classes."""
 
 import collections
 import collections.abc

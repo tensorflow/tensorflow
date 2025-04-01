@@ -4,7 +4,7 @@ load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 # Description:
 #   A tool for reducing a HLO module that produces incorrect results.
 load(
-    "//xla:xla.bzl",
+    "//xla:xla.default.bzl",
     "xla_cc_binary",
     "xla_cc_test",
 )
@@ -43,10 +43,10 @@ cc_library(
     hdrs = ["hlo_bisect_state.h"],
     deps = [
         "//xla:literal",
+        "//xla:literal_util",
         "//xla:util",
         "//xla/hlo/ir:hlo",
-        "//xla/service:hlo_dce",
-        "//xla/tests:test_utils",
+        "//xla/hlo/transforms/simplifiers:hlo_dce",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
@@ -63,8 +63,8 @@ xla_cc_test(
         ":hlo_bisect_state",
         "//xla:literal",
         "//xla/hlo/ir:hlo",
+        "//xla/hlo/testlib:pattern_matcher_gmock",
         "//xla/service:pattern_matcher",
-        "//xla/service:pattern_matcher_gmock",
         "//xla/tests:hlo_test_base",
         "//xla/tests:xla_internal_test_main",
         "@com_google_absl//absl/algorithm:container",
@@ -81,10 +81,11 @@ cc_library(
         ":hlo_bisect_state",
         "//xla:error_spec",
         "//xla:literal",
-        "//xla:protobuf_util",
         "//xla:util",
         "//xla/hlo/ir:hlo",
-        "//xla/service:hlo_parser",
+        "//xla/hlo/parser:hlo_parser",
+        "//xla/service:dump",
+        "//xla/service:hlo_module_util",
         "//xla/service:hlo_proto_cc",
         "//xla/service:hlo_proto_util",
         "//xla/service:hlo_runner",
@@ -94,9 +95,9 @@ cc_library(
         "//xla/tests:literal_test_util",
         "//xla/tests:test_utils",
         "//xla/tools:prepare_reference_module",
+        "//xla/tsl/platform:subprocess",
         "@com_google_absl//absl/cleanup",
         "@com_google_absl//absl/container:flat_hash_map",
         "@local_tsl//tsl/platform:path",
-        "@local_tsl//tsl/platform:subprocess",
     ],
 )

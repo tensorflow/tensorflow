@@ -22,6 +22,7 @@ import numpy as np
 
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.tpu.topology import Topology
+from tensorflow.python.util import numpy_compat
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -90,7 +91,7 @@ class DeviceAssignment(object):
     if not isinstance(topology, Topology):
       raise ValueError("topology must be a Topology object, got {}".format(
           type(topology)))
-    core_assignment = np.asarray(core_assignment, dtype=np.int32)
+    core_assignment = numpy_compat.np_asarray(core_assignment, dtype=np.int32)
 
     self._topology = topology
 
@@ -392,19 +393,24 @@ def device_assignment(
 
   if not isinstance(topology, Topology):
     raise ValueError(
-        f"`topology` is not a Topology object; got {type(topology)}")
+        f"`topology` is not a Topology object; got {type(topology)}"
+    )
 
   topology_rank = len(topology.mesh_shape)
   mesh_shape = topology.mesh_shape
   if computation_shape is None:
     computation_shape = np.array([1] * topology_rank, dtype=np.int32)
   else:
-    computation_shape = np.asarray(computation_shape, dtype=np.int32)
+    computation_shape = numpy_compat.np_asarray(
+        computation_shape, dtype=np.int32
+    )
 
   if computation_stride is None:
     computation_stride = np.array([1] * topology_rank, dtype=np.int32)
   else:
-    computation_stride = np.asarray(computation_stride, dtype=np.int32)
+    computation_stride = numpy_compat.np_asarray(
+        computation_stride, dtype=np.int32
+    )
 
   if computation_shape.shape != (topology_rank,):
     raise ValueError(

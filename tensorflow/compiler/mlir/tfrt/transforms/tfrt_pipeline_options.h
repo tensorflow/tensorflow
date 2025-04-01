@@ -153,6 +153,32 @@ struct TfrtPipelineOptions
       llvm::cl::desc("The policy used when padding (or splitting) batches."),
       llvm::cl::init("")};
 
+  Option<int64_t> num_batch_threads{
+      *this, "tfrt-num-batch-threads",
+      llvm::cl::desc(
+          "The number of threads for processing batches in parallel"),
+      llvm::cl::init(0)};
+
+  Option<int64_t> max_batch_size{
+      *this, "tfrt-max-batch-size",
+      llvm::cl::desc("The maximum allowed batch size"), llvm::cl::init(0)};
+
+  Option<int64_t> batch_timeout_micros{
+      *this, "tfrt-batch-timeout-micros",
+      llvm::cl::desc("The maximum number of microseconds before outputting an "
+                     "incomplete batch"),
+      llvm::cl::init(0)};
+
+  ListOption<int64_t> allowed_batch_sizes{
+      *this, "tfrt-allowed-batch-sizes",
+      llvm::cl::desc("Allowed sizes for padding (or splitting) batches")};
+
+  Option<int64_t> max_enqueued_batches{
+      *this, "tfrt-max-enqueued-batches",
+      llvm::cl::desc("The maximum number of batches enqueued for processing "
+                     "before requests are failed fast"),
+      llvm::cl::init(0)};
+
   Option<bool> merge_inter_dependent_streams{
       *this, "tfrt-merge-inter-dependent-streams",
       llvm::cl::desc("If true, streams with inter data depenedencies will be "

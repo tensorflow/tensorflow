@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <string>
 
+#include <gtest/gtest.h>
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/IR/Argument.h"
 #include "llvm/IR/BasicBlock.h"
@@ -25,10 +26,12 @@ limitations under the License.
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Type.h"
 #include "llvm/IR/Value.h"
+#include "xla/hlo/testlib/filecheck.h"
 #include "xla/service/llvm_ir/llvm_util.h"
-#include "xla/test.h"
-#include "xla/tests/filecheck.h"
-#include "tsl/platform/statusor.h"
+#include "xla/shape.h"
+#include "xla/shape_util.h"
+#include "xla/tsl/platform/statusor.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace llvm_ir {
@@ -89,7 +92,7 @@ TEST_F(IrArrayTest, EmitArrayElementAddress) {
   llvm::Argument* array_index = function->getArg(1);
 
   Shape shape = ShapeUtil::MakeShape(F32, {3, 5});
-  llvm::Type* type = llvm_ir::ShapeToIrType(shape, &module_);
+  llvm::Type* type = llvm_ir::ShapeToIrType(shape, module_.getContext());
   IrArray ir_array(array_ptr, type, shape);
 
   IrArray::Index index(array_index, shape, &builder_);
@@ -113,7 +116,7 @@ TEST_F(IrArrayTest, EmitArrayElementAddressNonLinear) {
   llvm::Argument* array_index = function->getArg(1);
 
   Shape shape = ShapeUtil::MakeShape(F32, {3, 5});
-  llvm::Type* type = llvm_ir::ShapeToIrType(shape, &module_);
+  llvm::Type* type = llvm_ir::ShapeToIrType(shape, module_.getContext());
   IrArray ir_array(array_ptr, type, shape);
 
   IrArray::Index index(array_index, shape, &builder_);
@@ -141,7 +144,7 @@ TEST_F(IrArrayTest, EmitArrayElementAddressInt4) {
   llvm::Argument* array_index = function->getArg(1);
 
   Shape shape = ShapeUtil::MakeShape(S4, {3, 5});
-  llvm::Type* type = llvm_ir::ShapeToIrType(shape, &module_);
+  llvm::Type* type = llvm_ir::ShapeToIrType(shape, module_.getContext());
   IrArray ir_array(array_ptr, type, shape);
 
   IrArray::Index index(array_index, shape, &builder_);
@@ -174,7 +177,7 @@ TEST_F(IrArrayTest, EmitArrayElementAddressInt4NonLinear) {
   llvm::Argument* array_index1 = function->getArg(2);
 
   Shape shape = ShapeUtil::MakeShape(S4, {3, 5});
-  llvm::Type* type = llvm_ir::ShapeToIrType(shape, &module_);
+  llvm::Type* type = llvm_ir::ShapeToIrType(shape, module_.getContext());
   IrArray ir_array(array_ptr, type, shape);
 
   IrArray::Index index({array_index0, array_index1}, shape,
@@ -209,7 +212,7 @@ TEST_F(IrArrayTest, EmitReadArrayElementInt4) {
   llvm::Argument* array_index = function->getArg(1);
 
   Shape shape = ShapeUtil::MakeShape(S4, {3, 5});
-  llvm::Type* type = llvm_ir::ShapeToIrType(shape, &module_);
+  llvm::Type* type = llvm_ir::ShapeToIrType(shape, module_.getContext());
   IrArray ir_array(array_ptr, type, shape);
 
   IrArray::Index index(array_index, shape, &builder_);
@@ -223,8 +226,7 @@ TEST_F(IrArrayTest, EmitReadArrayElementInt4) {
     CHECK: %[[urem:[0-9]+]] = urem i32 %[[idx0]], 2
     CHECK: %[[addr:[0-9]+]] = udiv i32 %[[idx0]], 2
     CHECK: %[[mul:[0-9]+]] = mul i32 %[[urem]], 4
-    CHECK: %[[sub:[0-9]+]] = sub i32 4, %[[mul]]
-    CHECK: %[[trunc:[0-9]+]] = trunc i32 %[[sub]] to i8
+    CHECK: %[[trunc:[0-9]+]] = trunc i32 %[[mul]] to i8
     CHECK: %[[gep:[0-9]+]] = getelementptr inbounds i8, ptr %[[ptr]], i32 %[[addr]]
 
     COM: Load the element, optionally shift, and truncate.
@@ -246,7 +248,7 @@ TEST_F(IrArrayTest, EmitWriteArrayElementInt4) {
   llvm::Argument* val_to_write = function->getArg(2);
 
   Shape shape = ShapeUtil::MakeShape(S4, {3, 5});
-  llvm::Type* type = llvm_ir::ShapeToIrType(shape, &module_);
+  llvm::Type* type = llvm_ir::ShapeToIrType(shape, module_.getContext());
   IrArray ir_array(array_ptr, type, shape);
 
   IrArray::Index index(array_index, shape, &builder_);
@@ -260,8 +262,7 @@ TEST_F(IrArrayTest, EmitWriteArrayElementInt4) {
     CHECK: %[[urem:[0-9]+]] = urem i32 %[[idx0]], 2
     CHECK: %[[addr:[0-9]+]] = udiv i32 %[[idx0]], 2
     CHECK: %[[mul:[0-9]+]] = mul i32 %[[urem]], 4
-    CHECK: %[[sub:[0-9]+]] = sub i32 4, %[[mul]]
-    CHECK: %[[trunc:[0-9]+]] = trunc i32 %[[sub]] to i8
+    CHECK: %[[trunc:[0-9]+]] = trunc i32 %[[mul]] to i8
     CHECK: %[[gep:[0-9]+]] = getelementptr inbounds i8, ptr %[[ptr]], i32 %[[addr]]
 
     COM: Load address, replace 4 bits with the value, and write to address.

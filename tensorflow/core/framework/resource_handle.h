@@ -49,8 +49,8 @@ class ResourceHandle {
 
   // Use this factory method if the `proto` comes from user controlled input, to
   // prevent a denial of service.
-  static Status BuildResourceHandle(const ResourceHandleProto& proto,
-                                    ResourceHandle* out);
+  static absl::Status BuildResourceHandle(const ResourceHandleProto& proto,
+                                          ResourceHandle* out);
 
   // Unique name for the device containing the resource.
   const std::string& device() const { return device_; }
@@ -97,7 +97,7 @@ class ResourceHandle {
 
   // Conversion to and from ResourceHandleProto
   void AsProto(ResourceHandleProto* proto) const;
-  Status FromProto(const ResourceHandleProto& proto);
+  absl::Status FromProto(const ResourceHandleProto& proto);
 
   // Serialization via ResourceHandleProto
   std::string SerializeAsString() const;
@@ -165,11 +165,11 @@ class ResourceHandle {
 
   // Validates that the resource type in `handle` is `T`.
   template <typename T>
-  Status ValidateType() const {
+  absl::Status ValidateType() const {
     return ValidateType(TypeIndex::Make<T>());
   }
 
-  Status ValidateType(const TypeIndex& type_index) const;
+  absl::Status ValidateType(const TypeIndex& type_index) const;
 
   // Generates unique IDs (e.g. for names of anonymous variables)
   static int64_t GenerateUniqueId();

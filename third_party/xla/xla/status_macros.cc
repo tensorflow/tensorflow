@@ -15,17 +15,18 @@ limitations under the License.
 
 #include "xla/status_macros.h"
 
-#include <algorithm>
 #include <string>
 
 #include "absl/base/attributes.h"
 #include "absl/base/log_severity.h"
 #include "absl/base/optimization.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
-#include "tsl/platform/logging.h"
+#include "xla/tsl/platform/logging.h"
+#include "xla/tsl/platform/status.h"
 #include "tsl/platform/stacktrace.h"
-#include "tsl/platform/status.h"
 
 namespace xla {
 namespace status_macros {
@@ -76,7 +77,7 @@ static absl::Status MakeError(const char* filename, int line,
     LOG(ERROR) << "Cannot create error with status OK";
     code = absl::StatusCode::kUnknown;
   }
-  const absl::Status status = absl::Status(code, message);
+  absl::Status status = absl::Status(code, message);
   if (ABSL_PREDICT_TRUE(should_log)) {
     LogError(status, filename, line, log_severity, should_log_stack_trace);
   }

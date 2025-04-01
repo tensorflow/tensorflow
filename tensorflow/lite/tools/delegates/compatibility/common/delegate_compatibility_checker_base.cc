@@ -15,11 +15,7 @@ limitations under the License.
 
 #include "tensorflow/lite/tools/delegates/compatibility/common/delegate_compatibility_checker_base.h"
 
-#include <memory>
-#include <string>
-#include <unordered_map>
-#include <utility>
-#include <vector>
+#include <cstdlib>
 
 #include "absl/status/status.h"
 #include "tensorflow/lite/model_builder.h"

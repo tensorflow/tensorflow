@@ -25,8 +25,8 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/hlo/utils/hlo_traversal.h"
 #include "xla/service/gpu/backend_configs.pb.h"
-#include "xla/service/gpu/hlo_traversal.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/stream_executor/device_description.h"
 
@@ -46,6 +46,7 @@ class HloFusionAnalysis {
     kInputSlices,
     kScatter,
     kCuDnn,
+    kDynamicMemcpy,
   };
 
   // Precomputed information about inputs (arguments) and outputs (roots) of the
@@ -58,8 +59,17 @@ class HloFusionAnalysis {
   static HloFusionAnalysis Create(FusionBackendConfig backend_config,
                                   std::unique_ptr<HloFusionAdaptor> fusion,
                                   const se::DeviceDescription* device_info);
-  static HloFusionAnalysis Create(const HloFusionInstruction* fusion,
-                                  const se::DeviceDescription* device_info);
+
+  // Creates a HloFusionAnalysis that analyzes just instruction as a standalone
+  // fusion.
+  static HloFusionAnalysis Create(const HloInstruction& instruction,
+                                  const se::DeviceDescription& device_info);
+
+  // Creates a HloFusionAnalysis that analyzes a hypothetical fusion of producer
+  // into consumer.
+  static HloFusionAnalysis Create(const HloInstruction& producer,
+                                  const HloInstruction& consumer,
+                                  const se::DeviceDescription& device_info);
 
   const HloFusionAdaptor& fusion() const { return *fusion_; }
 
@@ -77,7 +87,6 @@ class HloFusionAnalysis {
   HloInstructionAdaptor fusion_hero(int64_t i) const {
     return fusion_heroes_[i];
   }
-  int64_t fusion_hero_count() const { return fusion_heroes_.size(); }
 
   // Determines the fusion type for the emitter.
   EmitterFusionKind GetEmitterFusionKind() const;
@@ -130,17 +139,6 @@ class HloFusionAnalysis {
   std::optional<TransposeDescription> tiled_transpose_;
   InputOutputInfo input_output_info_;
 };
-
-// Creates a HloFusionAnalysis that analyzes a hypothetical fusion of producer
-// into consumer.
-HloFusionAnalysis AnalyzeProducerConsumerFusion(
-    const HloInstruction& producer, const HloInstruction& consumer,
-    const se::DeviceDescription& device_info);
-
-// Creates a HloFusionAnalysis that analyzes just consumer as a standalone
-// fusion.
-HloFusionAnalysis AnalyzeFusion(const HloInstruction& consumer,
-                                const se::DeviceDescription& device_info);
 
 }  // namespace gpu
 }  // namespace xla

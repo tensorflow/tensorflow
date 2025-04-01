@@ -15,6 +15,9 @@ limitations under the License.
 
 #include "xla/service/loop_schedule_linearizer.h"
 
+#include <cstdint>
+#include <memory>
+
 #include <gtest/gtest.h>
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_computation.h"

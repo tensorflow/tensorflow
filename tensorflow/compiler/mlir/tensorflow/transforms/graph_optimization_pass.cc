@@ -17,6 +17,8 @@ limitations under the License.
 
 #include <string>
 
+#include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
@@ -25,11 +27,12 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/dump_mlir_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
+#include "tensorflow/core/protobuf/config.pb.h"
 
 namespace mlir {
 namespace TF {
 namespace {
-using Status = ::tensorflow::Status;
+using Status = absl::Status;
 using ConfigProto = ::tensorflow::ConfigProto;
 using Graph = ::tensorflow::Graph;
 }  // namespace

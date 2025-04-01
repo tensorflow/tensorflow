@@ -13,16 +13,16 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <dlfcn.h>
-
 #include <tuple>
 #include <type_traits>
 
+#include "absl/status/statusor.h"
 #include "llvm/Support/Casting.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/Operation.h"
 #include "mlir/IR/Types.h"
 #include "mlir/Support/LLVM.h"
+#include "xla/mlir/tools/mlir_interpreter/dialects/symbol_finder.h"
 #include "xla/mlir/tools/mlir_interpreter/dialects/util.h"
 #include "xla/mlir/tools/mlir_interpreter/framework/interpreter.h"
 #include "xla/mlir/tools/mlir_interpreter/framework/interpreter_value.h"
@@ -96,11 +96,14 @@ llvm::SmallVector<InterpreterValue> Call(MutableArrayRef<InterpreterValue> args,
     return Interpret(state, callee.getRegion(), args);
   }
 
-  void* sym = dlsym(RTLD_DEFAULT, callee.getSymName().str().c_str());
-  if (sym == nullptr) {
-    state.AddFailure("callee not found");
+  // Use the new FindSymbolInProcess function
+  absl::StatusOr<void*> symbol_status =
+      FindSymbolInProcess(callee.getSymName().str());
+  if (!symbol_status.ok()) {
+    state.AddFailure(symbol_status.status().message());
     return {};
   }
+  void* sym = *symbol_status;  // Retrieve the symbol pointer
 
   InterpreterValue result;
   if (TryCall<float, float>(sym, callee, args, result) ||
@@ -109,7 +112,6 @@ llvm::SmallVector<InterpreterValue> Call(MutableArrayRef<InterpreterValue> args,
       TryCall<double, double, double>(sym, callee, args, result)) {
     return {result};
   }
-
   state.AddFailure("unsupported call target");
   return {};
 }

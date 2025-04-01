@@ -199,7 +199,6 @@ BCastList<N>::BCastList(const BCastList::Vec (&x)[N],
     prev_is_one[i] = false;
     current_is_one[i] = false;
   }
-  Vec output;
   bool output_dim_set = false;
   int64_t output_dim = -1;
   bool none_is_one = true;

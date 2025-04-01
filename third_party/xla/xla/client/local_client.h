@@ -16,25 +16,33 @@ limitations under the License.
 #ifndef XLA_CLIENT_LOCAL_CLIENT_H_
 #define XLA_CLIENT_LOCAL_CLIENT_H_
 
+#include <functional>
 #include <memory>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "xla/client/client.h"
 #include "xla/client/executable_build_options.h"
-#include "xla/client/xla_computation.h"
 #include "xla/executable_run_options.h"
+#include "xla/hlo/builder/xla_computation.h"
+#include "xla/literal.h"
+#include "xla/service/backend.h"
 #include "xla/service/compiler.h"
 #include "xla/service/executable.h"
 #include "xla/service/local_service.h"
 #include "xla/service/maybe_owning_device_memory.h"
+#include "xla/service/service_executable_run_options.h"
 #include "xla/service/shaped_buffer.h"
+#include "xla/service/stream_pool.h"
 #include "xla/shape_tree.h"
 #include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -74,6 +82,14 @@ class LocalExecutable {
   // Return the built executable.
   Executable* executable() const { return executable_.get(); }
 
+  // Verifies that the a device is compatible with the executable's
+  // build device.
+  absl::Status VerifyRunDeviceCompatible(int run_device_ordinal) const;
+
+  absl::StatusOr<std::pair<ServiceExecutableRunOptions, StreamPool::Ptr>>
+  RunHelper(absl::Span<const Shape* const> argument_shapes,
+            ExecutableRunOptions run_options);
+
  private:
   absl::StatusOr<ExecutionOutput> RunAsync(
       absl::Span<Shape const* const> argument_host_shapes,
@@ -90,10 +106,6 @@ class LocalExecutable {
   // Returns a literal containing the contents of the given ShapedBuffer.
   absl::StatusOr<Literal> LiteralFromShapedBuffer(
       const ShapedBuffer& shaped_buffer);
-
-  absl::StatusOr<std::pair<ServiceExecutableRunOptions, StreamPool::Ptr>>
-  RunHelper(absl::Span<const Shape* const> argument_shapes,
-            ExecutableRunOptions run_options);
 
   // The ordinal of the device which this executable was compiled for. The
   // executable can run on all equivalent devices (as determined by
@@ -160,6 +172,11 @@ class LocalClient : public Client {
   // AotCompilationResult.
   absl::StatusOr<std::unique_ptr<LocalExecutable>> Load(
       const std::string& serialized_aot_result,
+      const ExecutableBuildOptions& options);
+
+  // Variant of `Load()` that accepts an AotCompilationResult.
+  absl::StatusOr<std::unique_ptr<LocalExecutable>> Load(
+      std::unique_ptr<xla::AotCompilationResult> aot_result,
       const ExecutableBuildOptions& options);
 
   // Copy the literal data to the device with the given ordinal and return as a
@@ -232,6 +249,10 @@ class LocalClient : public Client {
 
  private:
   LocalService* local_service_;
+
+  absl::StatusOr<std::unique_ptr<LocalExecutable>> LoadInternal(
+      std::unique_ptr<xla::AotCompilationResult> aot_result, Compiler* compiler,
+      const ExecutableBuildOptions& options);
 };
 
 }  // namespace xla

@@ -42,7 +42,7 @@ class DTensorMlirPassRunner {
       Fprint128 cache_key);
 
   // Transforms input MLIR module with DTensor Pass pipeline.
-  Status Run(mlir::ModuleOp module);
+  absl::Status Run(mlir::ModuleOp module);
 
  private:
   // N.B. op_registration_ must be initialized before context/pass-manager to

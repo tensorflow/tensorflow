@@ -83,7 +83,7 @@ XlaCompiler::CompileOptions GetCompileOptions(bool for_pjrt = false) {
 // Gets `variables` from `ctx`, locks them and builds XlaCompiler::Arguments
 // using them. Stores the arguments in `args`. `variables` and `args` passed in
 // will be cleared before populating them.
-Status GetAndLockVariablesAndBuildXlaCompilerArguments(
+absl::Status GetAndLockVariablesAndBuildXlaCompilerArguments(
     const OpKernelContext& ctx, const std::vector<const Tensor*>& inputs,
     const std::vector<int>& constant_indices,
     const std::vector<int>& variable_indices,
@@ -103,11 +103,11 @@ Status GetAndLockVariablesAndBuildXlaCompilerArguments(
 }
 }  // namespace
 
-Status XlaCompileOnDemandOp::Run(const ResourceVarsSnapshot& variable_args,
-                                 const XlaCompiler::CompilationResult* result,
-                                 const XlaDeviceCompiler* xla_device_compiler,
-                                 xla::LocalExecutable* executable,
-                                 OpKernelContext* ctx) {
+absl::Status XlaCompileOnDemandOp::Run(
+    const ResourceVarsSnapshot& variable_args,
+    const XlaCompiler::CompilationResult* result,
+    const XlaDeviceCompiler* xla_device_compiler,
+    xla::LocalExecutable* executable, OpKernelContext* ctx) {
   xla::LocalClient* client =
       static_cast<xla::LocalClient*>(xla_device_compiler->client());
 
@@ -167,7 +167,7 @@ Status XlaCompileOnDemandOp::Run(const ResourceVarsSnapshot& variable_args,
   return absl::OkStatus();
 }
 
-Status XlaCompileOnDemandOp::Compile(
+absl::Status XlaCompileOnDemandOp::Compile(
     const std::vector<XlaCompiler::Argument>& args, OpKernelContext* ctx,
     PjRtDeviceCompiler** pjrt_device_compiler,
     DeviceCompilationProfiler** profiler,
@@ -189,7 +189,7 @@ Status XlaCompileOnDemandOp::Compile(
                                 result, executable);
 }
 
-Status XlaCompileOnDemandOp::Compile(
+absl::Status XlaCompileOnDemandOp::Compile(
     const std::vector<XlaCompiler::Argument>& args, OpKernelContext* ctx,
     XlaDeviceCompiler** xla_device_compiler,
     DeviceCompilationProfiler** profiler,

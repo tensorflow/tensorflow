@@ -52,21 +52,21 @@ absl::StatusOr<std::unique_ptr<xla::PjRtBuffer>> HostTensorToPjRtBuffer(
                           cpu_tensor->shape(), cpu_tensor->dtype(),
                           /*fast_mem=*/false, layout_preference));
   const xla::Layout* device_layout = &(shape.layout());
-  // The device id should match the local_hardware_id in
+  // The device id should match the local_device_id in
   // tensorflow/compiler/xla/pjrt/pjrt_client.h.
-  TF_ASSIGN_OR_RETURN(
-      const int pjrt_device_id,
-      tsl::GetDeviceIdFromDeviceParsedName(device->parsed_name(),
-                                           DeviceType(device->device_type())));
+  const int pjrt_device_id =
+      tsl::GetDeviceIdFromDeviceParsedName(device->parsed_name());
   TF_ASSIGN_OR_RETURN(xla::PjRtDevice * pjrt_device,
                       pjrt_client->LookupAddressableDevice(
                           xla::PjRtLocalDeviceId(pjrt_device_id)));
+  TF_ASSIGN_OR_RETURN(xla::PjRtMemorySpace * pjrt_memory,
+                      pjrt_device->default_memory_space());
   auto first_try_buffer = pjrt_client->BufferFromHostBuffer(
       cpu_tensor->data(), shape.element_type(), shape.dimensions(),
       /*byte_strides=*/std::nullopt,
       xla::PjRtClient::HostBufferSemantics::kImmutableZeroCopy,
       /*on_done_with_host_buffer=*/
-      [cpu_tensor = *cpu_tensor]() { /* frees tensor */ }, pjrt_device,
+      [cpu_tensor = *cpu_tensor]() { /* frees tensor */ }, pjrt_memory,
       device_layout);
   if (first_try_buffer.ok()) {
     return std::move(*first_try_buffer);
@@ -82,7 +82,8 @@ absl::StatusOr<std::unique_ptr<xla::PjRtBuffer>> HostTensorToPjRtBuffer(
             /*byte_strides=*/std::nullopt,
             xla::PjRtClient::HostBufferSemantics::kImmutableZeroCopy,
             /*on_done_with_host_buffer=*/
-            [cpu_tensor = *cpu_tensor]() { /* frees tensor */ }, pjrt_device));
+            [cpu_tensor = *cpu_tensor]() { /* frees tensor */ }, pjrt_memory,
+            /*device_layout=*/nullptr));
     return second_try_buffer;
   } else {
     return first_try_buffer.status();
@@ -140,7 +141,7 @@ void PjRtDeviceContext::CopyDeviceTensorToCPU(const Tensor* device_tensor,
 
   xla::PjRtFuture<> future = device_buffer->ToLiteral(literal.get());
   future.OnReady([literal = std::move(literal), done = std::move(done)](
-                     const tensorflow::Status& status) { done(status); });
+                     const absl::Status& status) { done(status); });
 }
 
 void PjRtDeviceContext::CopyCPUTensorToDevice(const Tensor* cpu_tensor,
@@ -260,19 +261,18 @@ void PjRtDeviceToDeviceCopy(DeviceContext* send_dev_context,
   xla::PjRtBuffer* src_device_buffer =
       tensorflow::AsyncValueTensor::FromTensor(input)->GetBuffer().get();
 
-  // The device id should match the local_hardware_id in
+  // The device id should match the local_device_id in
   // tensorflow/compiler/xla/pjrt/pjrt_client.h.
   const int pjrt_dst_device_id =
-      tsl::GetDeviceIdFromDeviceParsedName(dst->parsed_name(),
-                                           DeviceType(dst->device_type()))
-          .value();
+      tsl::GetDeviceIdFromDeviceParsedName(dst->parsed_name());
   xla::PjRtDevice* pjrt_dst_device =
       (*pjrt_dst_client)
           ->LookupAddressableDevice(xla::PjRtLocalDeviceId(pjrt_dst_device_id))
           .value();
 
   absl::StatusOr<std::unique_ptr<xla::PjRtBuffer>> buffer_or =
-      src_device_buffer->CopyToDevice(pjrt_dst_device);
+      src_device_buffer->CopyToMemorySpace(
+          *pjrt_dst_device->default_memory_space());
   if (!buffer_or.ok()) {
     done(buffer_or.status());
     return;

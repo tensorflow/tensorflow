@@ -80,8 +80,8 @@ GraphDef DeviceCompilerSerializeTest::GetTestGraph(
   return graph;
 }
 
-Status DeviceCompilerSerializeTest::ExecuteWithBatch(const GraphDef& graph,
-                                                     int batch) {
+absl::Status DeviceCompilerSerializeTest::ExecuteWithBatch(
+    const GraphDef& graph, int batch) {
   const TensorShape shape({batch, 4});
 
   // Compute the golden output tensor
@@ -134,7 +134,8 @@ Status DeviceCompilerSerializeTest::ExecuteWithBatch(const GraphDef& graph,
   return absl::OkStatus();
 }
 
-Status DeviceCompilerSerializeTest::AlterPersistentCacheEntryHloModuleNames(
+absl::Status
+DeviceCompilerSerializeTest::AlterPersistentCacheEntryHloModuleNames(
     absl::string_view persistent_cache_dir_path,
     absl::string_view file_prefix) {
   Env* env = Env::Default();

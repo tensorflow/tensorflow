@@ -15,9 +15,12 @@ limitations under the License.
 
 #include "tensorflow/core/transforms/utils/op_cat_helper.h"
 
+#include "absl/status/status.h"
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/core/framework/op.h"
+#include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/ir/dialect.h"
 
 namespace mlir {
@@ -86,7 +89,7 @@ bool OpCatHelper::IsAggregate(TFOp op) {
     return !attr || !mlir::isa<StringType>(attr.getValue());
   }
   const tensorflow::OpDef *op_def = nullptr;
-  tensorflow::Status status = tensorflow::OpRegistry::Global()->LookUpOpDef(
+  absl::Status status = tensorflow::OpRegistry::Global()->LookUpOpDef(
       op->getName().stripDialect().data(), &op_def);
   return status.ok() && op_def->is_aggregate();
 }
@@ -97,7 +100,7 @@ bool OpCatHelper::IsCommutative(TFOp op) {
     return !attr || !mlir::isa<StringType>(attr.getValue());
   }
   const tensorflow::OpDef *op_def = nullptr;
-  tensorflow::Status status = tensorflow::OpRegistry::Global()->LookUpOpDef(
+  absl::Status status = tensorflow::OpRegistry::Global()->LookUpOpDef(
       op->getName().stripDialect().data(), &op_def);
   return status.ok() && op_def->is_commutative();
 }

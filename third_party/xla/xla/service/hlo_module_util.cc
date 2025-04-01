@@ -15,23 +15,37 @@ limitations under the License.
 
 #include "xla/service/hlo_module_util.h"
 
+#include <cstdint>
 #include <memory>
 #include <optional>
+#include <string>
 #include <utility>
 #include <vector>
 
+#include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/debug_options_flags.h"
+#include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/parser/hlo_parser.h"
 #include "xla/service/compiler.h"
+#include "xla/service/computation_layout.h"
 #include "xla/service/hlo_module_config.h"
+#include "xla/service/hlo_verifier.h"
 #include "xla/shape.h"
+#include "xla/shape_layout.h"
 #include "xla/shape_util.h"
+#include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
+#include "xla/util.h"
 
 namespace xla {
 
 namespace {
-
 absl::Status ValidateResultShape(const Shape& client_shape,
                                  const Shape& result_shape) {
   TF_RETURN_IF_ERROR(ShapeUtil::ValidateShapeWithOptionalLayout(client_shape));
@@ -45,6 +59,76 @@ absl::Status ValidateResultShape(const Shape& client_shape,
   return absl::OkStatus();
 }
 }  // namespace
+
+absl::StatusOr<std::unique_ptr<HloModule>> CreateModuleFromString(
+    const absl::string_view hlo_string, const DebugOptions& debug_options,
+    const HloParserOptions& parser_options) {
+  HloModuleConfig config;
+  config.set_debug_options(debug_options);
+  return ParseAndReturnUnverifiedModule(hlo_string, config, parser_options);
+}
+
+absl::StatusOr<std::unique_ptr<HloModule>> CreateModuleFromProto(
+    const HloModuleProto& proto, const DebugOptions& debug_options) {
+  TF_ASSIGN_OR_RETURN(
+      HloModuleConfig config,
+      HloModule::CreateModuleConfigFromProto(proto, debug_options));
+  return HloModule::CreateFromProto(proto, config);
+}
+
+absl::StatusOr<std::unique_ptr<HloModule>> CreateModuleFromProto(
+    const HloModuleProto& proto, const HloModuleConfig& module_config,
+    bool is_module_post_optimizations) {
+  VLOG(4) << proto.ShortDebugString();
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
+                      HloModule::CreateFromProto(proto, module_config));
+  TF_RETURN_IF_ERROR(
+      HloVerifier(/*layout_sensitive=*/false,
+                  /*allow_mixed_precision=*/is_module_post_optimizations)
+          .Run(module.get())
+          .status());
+  return module;
+}
+
+absl::StatusOr<std::unique_ptr<HloModule>> ReadModuleFromBinaryProtoFile(
+    absl::string_view filename, const DebugOptions& debug_options) {
+  HloProto proto;
+  TF_RETURN_IF_ERROR(
+      tsl::ReadBinaryProto(tsl::Env::Default(), std::string(filename), &proto));
+  return CreateModuleFromProto(proto.hlo_module(), debug_options);
+}
+
+absl::StatusOr<std::unique_ptr<HloModule>> ReadModuleFromHloTextFile(
+    absl::string_view filename, const DebugOptions& debug_options,
+    const HloParserOptions& options) {
+  std::string hlo_string;
+  TF_RETURN_IF_ERROR(tsl::ReadFileToString(tsl::Env::Default(),
+                                           std::string(filename), &hlo_string));
+  HloModuleConfig config;
+  config.set_debug_options(debug_options);
+  return ParseAndReturnUnverifiedModule(hlo_string, config, options);
+}
+
+absl::StatusOr<std::unique_ptr<HloModule>> ReadModuleFromTextProtoFile(
+    absl::string_view hlo_file, const DebugOptions& debug_options) {
+  HloProto proto;
+  TF_RETURN_IF_ERROR(
+      tsl::ReadTextProto(tsl::Env::Default(), std::string(hlo_file), &proto));
+  return CreateModuleFromProto(proto.hlo_module(), debug_options);
+}
+
+absl::StatusOr<std::unique_ptr<HloModule>> ReadModuleFromModuleBinaryProtofile(
+    absl::string_view filename, const DebugOptions& debug_options) {
+  HloModuleProto module_proto;
+  TF_RETURN_IF_ERROR(tsl::ReadBinaryProto(
+      tsl::Env::Default(), std::string(filename), &module_proto));
+
+  TF_ASSIGN_OR_RETURN(
+      HloModuleConfig module_config,
+      HloModule::CreateModuleConfigFromProto(module_proto, debug_options));
+
+  return HloModule::CreateFromProto(module_proto, module_config);
+}
 
 absl::StatusOr<std::unique_ptr<HloModuleConfig>> CreateModuleConfig(
     const ProgramShape& program_shape,
@@ -118,6 +202,12 @@ absl::StatusOr<std::unique_ptr<HloModuleConfig>> CreateModuleConfig(
     config->set_auto_spmd_partitioning_mesh_ids(std::vector<int64_t>(
         execution_options->auto_spmd_partitioning_mesh_ids().begin(),
         execution_options->auto_spmd_partitioning_mesh_ids().end()));
+    config->set_exec_time_optimization_effort(
+        execution_options->exec_time_optimization_effort());
+    config->set_memory_fitting_effort(
+        execution_options->memory_fitting_effort());
+    config->set_optimization_level(execution_options->optimization_level());
+    config->set_memory_fitting_level(execution_options->memory_fitting_level());
     config->set_deduplicate_hlo(execution_options->deduplicate_hlo());
     config->set_seed(execution_options->seed());
     config->set_launch_id(execution_options->launch_id());
@@ -130,8 +220,10 @@ absl::StatusOr<std::unique_ptr<HloModuleConfig>> CreateModuleConfig(
     }
     config->set_alias_passthrough_params(
         execution_options->alias_passthrough_params());
-    *config->mutable_fdo_profile() = execution_options->fdo_profile();
+    config->set_fdo_profile(execution_options->fdo_profile());
     config->set_device_memory_size(execution_options->device_memory_size());
+    config->set_use_shardy_partitioner(
+        execution_options->use_shardy_partitioner());
   } else {
     config->set_replica_count(default_num_replicas);
     config->set_debug_options(GetDebugOptionsFromFlags());
@@ -148,7 +240,7 @@ absl::StatusOr<std::unique_ptr<HloModuleConfig>> CreateModuleConfig(
         FusionConfigCollection::kOff) {
       config->set_fusion_config_collection(
           aot_options->fusion_config_collection());
-      *config->mutable_fusion_config() = aot_options->fusion_config();
+      config->set_fusion_config(aot_options->fusion_config());
     }
   }
 

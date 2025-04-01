@@ -18,6 +18,7 @@ syntax = "proto3";
 package xla.ifrt;
 
 import "xla/python/ifrt/device.proto";
+import "xla/python/ifrt/ir/sharding_param.proto";
 import "xla/python/ifrt/shape.proto";
 
 // Proto equivalent of C++ `SingleDeviceSharding`.
@@ -53,4 +54,11 @@ message ConcreteEvenShardingProto {
   ShapeProto shape = 2;
   ShapeProto shard_shape = 3;
   bool is_fully_replicated = 5;
+}
+
+// Proto equivalent of C++ `ShardingParamSharding`.
+message ShardingParamShardingProto {
+  ShardingParamProto sharding_param = 1;
+  DeviceListProto devices = 2;
+  optional string memory_kind = 3;
 }

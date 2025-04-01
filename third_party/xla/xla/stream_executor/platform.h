@@ -29,7 +29,6 @@ limitations under the License.
 namespace stream_executor {
 
 class StreamExecutor;
-class DeviceDescription;
 
 // An enum to represent different levels of stream priorities.
 // This is to avoid platform-specific representations in abstractions.
@@ -37,23 +36,6 @@ enum class StreamPriority { Default = 0, Lowest, Highest };
 
 // Returns a printable description of StreamPriority.
 std::string StreamPriorityToString(StreamPriority priority);
-
-// StreamExecutorConfig encapsulates the set of options for constructing a
-// StreamExecutor for a given platform.
-struct StreamExecutorConfig {
-  // Sets members to defaults: -1 for ordinal (must be changed).
-  StreamExecutorConfig();
-
-  // Simple ordinal-setting constructor.
-  explicit StreamExecutorConfig(int ordinal);
-
-  // The GPU stream for which we are searching the executor.
-  // If this field is specified for the search, others will be ignored.
-  void* gpu_stream = nullptr;
-
-  // The ordinal of the device to be managed by the returned StreamExecutor.
-  int ordinal;
-};
 
 // Abstract base class for a platform registered with the PlatformManager.
 class Platform {
@@ -105,25 +87,20 @@ class Platform {
   virtual absl::StatusOr<std::unique_ptr<DeviceDescription>>
   DescriptionForDevice(int ordinal) const = 0;
 
-  // Returns a device with the given ordinal on this platform with a default
-  // plugin configuration or, if none can be found with the given ordinal or
-  // there is an error in opening a context to communicate with the device, an
-  // error status is returned.
+  // Returns a StreamExecutor for the given ordinal if one has already been
+  // created, or an error is returned if none exists.  Does not create a new
+  // context with the device.
+  virtual absl::StatusOr<StreamExecutor*> FindExisting(int ordinal) {
+    return absl::NotFoundError("Not implemented for this platform.");
+  }
+
+  // Returns a device with the given ordinal on this platform or, if none can
+  // be found with the given ordinal or there is an error in opening a context
+  // to communicate with the device, an error status is returned.
   //
   // Ownership of the executor is NOT transferred to the caller --
   // the Platform owns the executors in a singleton-like fashion.
   virtual absl::StatusOr<StreamExecutor*> ExecutorForDevice(int ordinal) = 0;
-
-  // Returns a device constructed with the options specified in "config".
-  // Ownership of the executor is NOT transferred to the caller.
-  virtual absl::StatusOr<StreamExecutor*> GetExecutor(
-      const StreamExecutorConfig& config) = 0;
-
-  // Returns a device constructed with the options specified in "config" without
-  // looking in or storing to the Platform's executor cache.
-  // Ownership IS transferred to the caller.
-  virtual absl::StatusOr<std::unique_ptr<StreamExecutor>> GetUncachedExecutor(
-      const StreamExecutorConfig& config) = 0;
 };
 
 }  // namespace stream_executor

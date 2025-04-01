@@ -1,0 +1,14 @@
+// RUN: fusion_to_mlir %s | emitters_opt -xla-gpu-test-optimize \
+// RUN:   -xla-gpu-test-transform-loops | FileCheck %s
+// RUN: test_correctness %s --bijection_inputs=dus:1
+
+dus {
+  %input = f32[40,40,300] parameter(0)
+  %update = f32[20,40,300] parameter(1)
+  %idx = s32[] parameter(2)
+  %zero = s32[] constant(0)
+  ROOT dus = f32[40,40,300] dynamic-update-slice(%input, %update, %idx, %zero, %zero)
+}
+
+// CHECK: vector.transfer_read {{.*}} vector<4xf32>
+// CHECK: vector.transfer_write {{.*}} vector<4xf32>

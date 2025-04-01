@@ -16,9 +16,10 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/transforms/shape_inference.h"
 
 #include <algorithm>
+#include <cassert>
+#include <cstddef>
 #include <cstdint>
 #include <initializer_list>
-#include <iterator>
 #include <memory>
 #include <optional>
 #include <queue>
@@ -27,6 +28,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
@@ -41,6 +43,7 @@ limitations under the License.
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/FormatVariadic.h"
+#include "llvm/Support/LogicalResult.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/Func/Extensions/AllExtensions.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
@@ -58,6 +61,7 @@ limitations under the License.
 #include "mlir/IR/Matchers.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
+#include "mlir/IR/OwningOpRef.h"  // from @llvm-project
 #include "mlir/IR/SymbolTable.h"  // from @llvm-project
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
@@ -73,26 +77,30 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Support/TypeID.h"  // from @llvm-project
 #include "mlir/Transforms/FoldUtils.h"  // from @llvm-project
+#include "stablehlo/dialect/Serialization.h"  // from @stablehlo
+#include "stablehlo/dialect/Version.h"  // from @stablehlo
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
+#include "tensorflow/compiler/mlir/tensorflow/translate/tools/parsers.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/dynamic_shape_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/serialize_mlir_module_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/shape_inference_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/translate_utils.h"
 #include "tensorflow/compiler/tf2xla/kernels/xla_call_module_loader.h"
+#include "xla/hlo/translate/hlo_to_mhlo/hlo_utils.h"
+#include "xla/hlo/translate/mhlo_to_hlo/type_to_shape.h"
 #include "xla/service/shape_inference.h"
 #include "xla/shape.h"
-#include "xla/translate/hlo_to_mhlo/hlo_utils.h"
-#include "xla/translate/mhlo_to_hlo/type_to_shape.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/util/env_var.h"
 #include "xla/window_util.h"
 #include "xla/xla_data.pb.h"
 #include "tensorflow/core/framework/shape_inference.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/ir/types/dialect.h"
-#include "tsl/platform/errors.h"
 
 #define DEBUG_TYPE "tf-shape-inference"
 
@@ -110,10 +118,24 @@ namespace mlir {
 namespace TF {
 namespace {
 
+MLIRContext::Threading GetMlirContextThreading() {
+  bool enable_single_thread_mlir_context = []() {
+    bool result = false;
+    if (auto status = tsl::ReadBoolFromEnvVar(kMLIRContextSingleThreadVar,
+                                              /*default_val=*/false, &result);
+        status.ok()) {
+      return result;
+    }
+    return false;
+  }();
+  return enable_single_thread_mlir_context ? MLIRContext::Threading::DISABLED
+                                           : MLIRContext::Threading::ENABLED;
+}
+
 // Compute a refined type between two types `lhs` and `rhs`, the result type
-// is always more refined (i.e. has more static information) than `lhs`
-// This method will actually merge the information contained in the
-// types, it is capable of refining:
+// is always at least as refined as (i.e. has more static information) than
+// `lhs` This method will actually merge the information contained in the types,
+// it is capable of refining:
 //   tensor<!tf_type.variant<tensor<?x8xf32>>>
 // and:
 //   tensor<!tf_type.variant<tensor<10x?xf32>>>
@@ -442,6 +464,11 @@ Type GetType(Attribute shape_attr, Attribute type_attr) {
     return UnrankedTensorType::get(type.getValue());
 }
 }  // namespace
+
+// Create a MLIRContext based on the threading setup in the env var.
+std::unique_ptr<MLIRContext> MakeMLIRContextWithThreading() {
+  return std::make_unique<MLIRContext>(GetMlirContextThreading());
+}
 
 // Returns whether type can be further refined.
 bool CanBeRefined(Type type) {
@@ -788,6 +815,14 @@ class ShapeInference {
   FailureOr<bool> InferShapeUntilFixPoint(Region* region,
                                           int64_t max_iterations);
 
+  // Updates the serialized StableHLO modules of XlaCallModule ops whose shapes
+  // are refined. This function should be called after the shape refinement has
+  // finished, i.e. when InferShapeUntilFixPoint will no longer be called, to
+  // avoid re-serializing the modules multiple times.
+  // Returns whether it was able to propagate the shape to the StableHLO modules
+  // successfully.
+  LogicalResult PropagateShapeToStableHloModules();
+
   // Updates input types and refine shapes inside body of functions that are
   // attached to ControlFlow ops (If/While) or Calls. These functions include
   // Then/Else branches of IfOp and Cond/Body functions of WhileOp. Functions
@@ -1024,7 +1059,7 @@ class ShapeInference {
   // each `XlaCallModule` op. Uses its own MLIRContext since the loader needs to
   // load additional dialects, which is not allowed for the main context since
   // shape inference may be called from a pass.
-  MLIRContext xla_call_module_context_;
+  std::unique_ptr<MLIRContext> xla_call_module_context_;
   DenseMap<XlaCallModuleOp, std::unique_ptr<tensorflow::XlaCallModuleLoader>>
       xla_call_module_loaders_;
 };
@@ -1036,6 +1071,7 @@ ShapeInference::ShapeInference(int64_t graph_version, ModuleOp module,
       symbol_users_(symbol_table_, module),
       graph_version_(graph_version),
       propagate_caller_callee_constants_(propagate_caller_callee_constants) {
+  xla_call_module_context_ = MakeMLIRContextWithThreading();
   for (const auto& op_type : ops_to_skip) {
     ops_to_skip_.insert(op_type);
   }
@@ -1096,8 +1132,8 @@ bool ShapeInference::RefineResultType(Operation* op, Value result,
 // Infers the shape from a (Stateful)PartitionedCall operation by looking up
 // the called function and propagating the return type.
 bool ShapeInference::InferShapeForCall(CallOpInterface call_op) {
-  func::FuncOp func =
-      dyn_cast_or_null<func::FuncOp>(call_op.resolveCallable(&symbol_table_));
+  func::FuncOp func = dyn_cast_or_null<func::FuncOp>(
+      call_op.resolveCallableInTable(&symbol_table_));
   if (!func) return false;
 
   DCOMMENT("Infer shape for call " << func.getName());
@@ -1242,10 +1278,10 @@ bool ShapeInference::InferShapeForXlaCallModule(XlaCallModuleOp op) {
     mlir::DialectRegistry registry;
     registry.insert<mlir::func::FuncDialect>();
     mlir::func::registerAllExtensions(registry);
-    xla_call_module_context_.appendDialectRegistry(registry);
+    xla_call_module_context_->appendDialectRegistry(registry);
 
     auto l = tensorflow::XlaCallModuleLoader::Create(
-        &xla_call_module_context_, op.getVersion(), op.getModule().str(),
+        xla_call_module_context_.get(), op.getVersion(), op.getModule(),
         std::move(disabled_checks), std::move(platforms),
         /*num_invocation_args=*/op.getArgs().size(),
         op.getHasTokenInputOutput());
@@ -1313,6 +1349,32 @@ bool ShapeInference::InferShapeForXlaCallModule(XlaCallModuleOp op) {
   }
 
   return changed;
+}
+
+LogicalResult ShapeInference::PropagateShapeToStableHloModules() {
+  for (auto& [op, loader] : xla_call_module_loaders_) {
+    if (!loader->IsOutputTypeRefined()) continue;
+
+    FailureOr<vhlo::Version> version =
+        stablehlo::getPortableArtifactVersion(op.getModule());
+    if (failed(version)) {
+      return op.emitOpError() << "Failed to extract the VHLO version from the "
+                                 "serialized StableHLO module while attempting "
+                                 "to propagate shapes to the StableHLO module.";
+    }
+
+    std::string bytecode;
+    llvm::raw_string_ostream os(bytecode);
+    if (failed(stablehlo::serializePortableArtifact(loader->module(),
+                                                    version->toString(), os))) {
+      return op.emitOpError()
+             << "Failed to serialize StableHLO module while attempting to "
+                "propagate shapes to the StableHLO module.";
+    }
+
+    op.setModule(bytecode);
+  }
+  return success();
 }
 
 bool ShapeInference::InferShapeForFunctionAttachedToXlaHostCompute(
@@ -2308,12 +2370,20 @@ bool ShapeInference::RefineWithInferTypeOpInterface(
   // Map each of the results of the call to the returned type of the
   // function.
   bool changed = false;
-  for (auto result : zip(op->getResults(), inferred)) {
-    if (std::get<0>(result).getType() == std::get<1>(result)) continue;
-
-    if (!UpdateTypeAndInsertIncompatibleUseCasts(std::get<1>(result),
-                                                 std::get<0>(result)))
+  for (auto [result, inferred_type] : zip(op->getResults(), inferred)) {
+    auto result_type = result.getType();
+    auto new_type = inferred_type;
+    if (!llvm::isa<TF::ZerosLikeOp>(op)) {
+      // TODO: b/361179755 - Remove when folding issue is resolved or proper
+      // shape inference is confirmed for zeros like.
+      new_type = TypeMeet(inferred_type, result_type);
+    }
+    if (new_type == result_type) {
       continue;
+    }
+    if (!UpdateTypeAndInsertIncompatibleUseCasts(new_type, result)) {
+      continue;
+    }
     changed = true;
   }
   return changed;
@@ -2947,8 +3017,8 @@ FailureOr<bool> ShapeInference::PropagateShapeIntoAttachedFunctions(
          while_op.ResolveBodyFunction(&symbol_table_)},
         max_iterations);
   } else if (auto call_op = dyn_cast<CallOpInterface>(op)) {
-    if (auto func =
-            dyn_cast<func::FuncOp>(call_op.resolveCallable(&symbol_table_))) {
+    if (auto func = dyn_cast<func::FuncOp>(
+            call_op.resolveCallableInTable(&symbol_table_))) {
       PropagateConstantToCallee(call_op, func, module);
       FailureOr<bool> failure_or_converged = PropagateShapeToFunctions(
           module, call_op.getArgOperands().getTypes(), {func}, max_iterations);
@@ -3313,7 +3383,8 @@ FailureOr<bool> InferShapeForFunction(func::FuncOp func,
 
 FailureOr<bool> InferModuleShape(ModuleOp module, int64_t max_iterations,
                                  ArrayRef<TypeID> ops_to_skip,
-                                 ArrayRef<ArrayRef<int64_t>> input_shapes) {
+                                 ArrayRef<ArrayRef<int64_t>> input_shapes,
+                                 bool enable_stablehlo_propagation) {
   auto producer_or = tensorflow::GetTfGraphProducerVersion(module);
   if (!producer_or.ok()) {
     // TODO(jpienaar): Keeping the existing behavior for now but this could
@@ -3366,6 +3437,13 @@ FailureOr<bool> InferModuleShape(ModuleOp module, int64_t max_iterations,
       return false;
     }
   }
+
+  // Propagate shapes to StableHLO modules, if enabled and there are any
+  // XlaCallModule ops whose StableHLO modules were refined.
+  if (enable_stablehlo_propagation) {
+    if (failed(context.PropagateShapeToStableHloModules())) return failure();
+  }
+
   return true;
 }
 

@@ -44,6 +44,10 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 #include "tensorflow/lite/delegates/gpu/common/util.h"
+
+// The `absl::Status` conflicts with the macro definition in the X11/Xlib.h,
+// undefine the VK_USE_PLATFORM_XLIB_KHR to exclude the header file.
+#undef VK_USE_PLATFORM_XLIB_KHR
 #include "vulkan/vulkan.h"  // from @vulkan_headers
 
 #define GL_NO_PROTOTYPES
@@ -230,8 +234,8 @@ bool IsValid(const TensorObjectDef& def);
 uint32_t NumElements(const TensorObjectDef& def);
 
 using TensorObject =
-    absl::variant<std::monostate, OpenGlBuffer, OpenGlTexture, CpuMemory,
-                  OpenClBuffer, OpenClTexture, VulkanBuffer, VulkanTexture>;
+    std::variant<std::monostate, OpenGlBuffer, OpenGlTexture, CpuMemory,
+                 OpenClBuffer, OpenClTexture, VulkanBuffer, VulkanTexture>;
 
 // @return true if object is set and corresponding values are defined.
 bool IsValid(const TensorObjectDef& def, const TensorObject& object);

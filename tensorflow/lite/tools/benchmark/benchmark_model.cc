@@ -33,7 +33,7 @@ limitations under the License.
 
 namespace tflite {
 namespace benchmark {
-using tensorflow::Stat;
+using tensorflow::StatWithPercentiles;
 
 constexpr int kMemoryCheckIntervalMs = 50;
 
@@ -218,10 +218,11 @@ TfLiteStatus BenchmarkModel::PrepareInputData() { return kTfLiteOk; }
 
 TfLiteStatus BenchmarkModel::ResetInputsAndOutputs() { return kTfLiteOk; }
 
-Stat<int64_t> BenchmarkModel::Run(int min_num_times, float min_secs,
-                                  float max_secs, RunType run_type,
-                                  TfLiteStatus* invoke_status) {
-  Stat<int64_t> run_stats;
+StatWithPercentiles<int64_t> BenchmarkModel::Run(int min_num_times,
+                                                 float min_secs, float max_secs,
+                                                 RunType run_type,
+                                                 TfLiteStatus* invoke_status) {
+  StatWithPercentiles<int64_t> run_stats;
   TFLITE_LOG(INFO) << "Running benchmark for at least " << min_num_times
                    << " iterations and at least " << min_secs << " seconds but"
                    << " terminate if exceeding " << max_secs << " seconds.";
@@ -335,7 +336,7 @@ TfLiteStatus BenchmarkModel::Run() {
   }
 
   listeners_.OnBenchmarkStart(params_);
-  Stat<int64_t> warmup_time_us =
+  StatWithPercentiles<int64_t> warmup_time_us =
       Run(params_.Get<int32_t>("warmup_runs"),
           params_.Get<float>("warmup_min_secs"), params_.Get<float>("max_secs"),
           WARMUP, &status);
@@ -343,7 +344,7 @@ TfLiteStatus BenchmarkModel::Run() {
     return status;
   }
 
-  Stat<int64_t> inference_time_us =
+  StatWithPercentiles<int64_t> inference_time_us =
       Run(params_.Get<int32_t>("num_runs"), params_.Get<float>("min_secs"),
           params_.Get<float>("max_secs"), REGULAR, &status);
   const auto overall_mem_usage =

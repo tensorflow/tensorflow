@@ -48,12 +48,13 @@ class TpuCompilationCacheLookup : public ResourceBase {
   // If the compilation does not create sharding/unsharding programs, but the
   // fetch_target requests one of them, then after this call
   //   (*entry)->get().get_executable() will return nullptr.
-  virtual Status Lookup(const std::string& proto_key,
-                        std::unique_ptr<CompilationCacheEntryRef>* entry,
-                        CompilationCacheFetchTarget fetch_target) = 0;
+  virtual absl::Status Lookup(const std::string& proto_key,
+                              std::unique_ptr<CompilationCacheEntryRef>* entry,
+                              CompilationCacheFetchTarget fetch_target) = 0;
 
-  virtual Status Lookup(const std::string& proto_key,
-                        std::unique_ptr<CompilationCacheEntryRef>* entry) {
+  virtual absl::Status Lookup(
+      const std::string& proto_key,
+      std::unique_ptr<CompilationCacheEntryRef>* entry) {
     return Lookup(proto_key, std::move(entry),
                   CompilationCacheFetchTarget::MAIN);
   }
@@ -62,12 +63,13 @@ class TpuCompilationCacheLookup : public ResourceBase {
   // the subgraph represented by uid. On success a wrapper for the proto is
   // returned in program. The wrapper is guaranteed to be valid only during the
   // execution of the Op requesting the proto.
-  virtual Status Lookup(int64_t uid, int proto_index,
-                        std::unique_ptr<CompilationCacheEntryRef>* entry,
-                        CompilationCacheFetchTarget fetch_target) = 0;
+  virtual absl::Status Lookup(int64_t uid, int proto_index,
+                              std::unique_ptr<CompilationCacheEntryRef>* entry,
+                              CompilationCacheFetchTarget fetch_target) = 0;
 
-  virtual Status Lookup(int64_t uid, int proto_index,
-                        std::unique_ptr<CompilationCacheEntryRef>* entry) {
+  virtual absl::Status Lookup(
+      int64_t uid, int proto_index,
+      std::unique_ptr<CompilationCacheEntryRef>* entry) {
     return Lookup(uid, proto_index, std::move(entry),
                   CompilationCacheFetchTarget::MAIN);
   }

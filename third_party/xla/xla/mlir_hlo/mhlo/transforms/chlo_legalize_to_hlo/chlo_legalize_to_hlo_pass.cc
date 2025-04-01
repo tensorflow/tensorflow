@@ -13,8 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <memory>
+#include <optional>
 #include <utility>
+#include <vector>
 
 #include "mhlo/IR/hlo_ops.h"
 #include "mhlo/transforms/rewriters.h"
@@ -23,9 +24,13 @@ limitations under the License.
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Shape/IR/Shape.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
+#include "mlir/IR/Attributes.h"
+#include "mlir/IR/BuiltinAttributes.h"
+#include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/Pass/PassManager.h"
+#include "mlir/Support/LLVM.h"
 #include "mlir/Support/LogicalResult.h"
 #include "mlir/Transforms/DialectConversion.h"
 #include "stablehlo/dialect/ChloOps.h"
@@ -57,7 +62,8 @@ struct ChloLegalizeToHighLevelMhloPass
     // Consider the mhlo dialect legal for tests. Also add helper dialects
     // that are needed by the patterns.
     conversionTarget.addLegalDialect<chlo::ChloDialect, mhlo::MhloDialect>();
-    conversionTarget.addIllegalOp<chlo::TopKOp, chlo::ErfOp, chlo::TanOp>();
+    conversionTarget
+        .addIllegalOp<chlo::TopKOp, chlo::ErfOp, chlo::RaggedDotOp>();
 
     if (failed(applyPartialConversion(getOperation(), conversionTarget,
                                       std::move(conversionPatterns)))) {
@@ -94,6 +100,69 @@ struct ChloLegalizeToHloPass
   }
 };
 
+struct RaggedDotChloToMhlo : public OpRewritePattern<chlo::RaggedDotOp> {
+  using OpRewritePattern<chlo::RaggedDotOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(chlo::RaggedDotOp raggedDotOp,
+                                PatternRewriter &rewriter) const override {
+    auto moduleOp = raggedDotOp->getParentOfType<ModuleOp>();
+
+    OpBuilder builder(moduleOp.getBodyRegion());
+    builder.setInsertionPointToStart(&moduleOp.getBodyRegion().front());
+
+    auto chloRaggedDotDimNums = raggedDotOp.getRaggedDotDimensionNumbers();
+    auto dotDimNums = mhlo::DotDimensionNumbersAttr::get(
+        builder.getContext(), chloRaggedDotDimNums.getLhsBatchingDimensions(),
+        chloRaggedDotDimNums.getRhsBatchingDimensions(),
+        chloRaggedDotDimNums.getLhsContractingDimensions(),
+        chloRaggedDotDimNums.getRhsContractingDimensions());
+    auto raggedDotDimNums = mhlo::RaggedDotDimensionNumbersAttr::get(
+        builder.getContext(), dotDimNums,
+        chloRaggedDotDimNums.getLhsRaggedDimensions(),
+        chloRaggedDotDimNums.getRhsGroupDimensions());
+
+    auto mhloPrecision =
+        [](chlo::Precision precision) -> std::optional<mhlo::Precision> {
+      switch (precision) {
+        case chlo::Precision::DEFAULT:
+          return mhlo::Precision::DEFAULT;
+        case chlo::Precision::HIGH:
+          return mhlo::Precision::HIGH;
+        case chlo::Precision::HIGHEST:
+          return mhlo::Precision::HIGHEST;
+      }
+    };
+    ArrayAttr precisionConfig = rewriter.getArrayAttr({});
+    if (raggedDotOp.getPrecisionConfig().has_value()) {
+      SmallVector<Attribute> vector;
+      for (auto configValue : raggedDotOp.getPrecisionConfig()
+                                  .value()
+                                  .getAsRange<chlo::PrecisionAttr>()) {
+        vector.push_back(
+            PrecisionAttr::get(raggedDotOp.getContext(),
+                               mhloPrecision(configValue.getValue()).value()));
+      }
+      precisionConfig = rewriter.getArrayAttr(vector);
+    }
+
+    mhlo::RaggedDotOp mhloOp = rewriter.create<mhlo::RaggedDotOp>(
+        raggedDotOp.getLoc(), raggedDotOp.getResult().getType(),
+        raggedDotOp.getLhs(), raggedDotOp.getRhs(), raggedDotOp.getGroupSizes(),
+        raggedDotDimNums, precisionConfig);
+    std::optional<NamedAttribute> frontendAttributes =
+        raggedDotOp->getAttrDictionary().getNamed("mhlo.frontend_attributes");
+    if (frontendAttributes.has_value()) {
+      std::vector<NamedAttribute> attributes =
+          mhloOp->getDiscardableAttrDictionary().getValue().vec();
+      attributes.push_back(frontendAttributes.value());
+      mhloOp->setDiscardableAttrs(rewriter.getDictionaryAttr(attributes));
+    }
+
+    rewriter.replaceOp(raggedDotOp, mhloOp.getOperation());
+    return success();
+  }
+};
+
 }  // namespace
 
 }  // namespace mhlo
@@ -106,6 +175,8 @@ namespace {
 
 void populateChloToHighLevelMhloOpPatterns(MLIRContext *,
                                            RewritePatternSet *patterns) {
+  patterns->add<mhlo::RaggedDotChloToMhlo>(patterns->getContext(),
+                                           /*benefit=*/10);
   populateWithGenerated(*patterns);
 }
 

@@ -15,8 +15,6 @@ limitations under the License.
 
 #include "tensorflow/dtensor/cc/dtensor_operation.h"
 
-#include <memory>
-
 #include <gtest/gtest.h>
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/op.h"

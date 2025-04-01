@@ -17,10 +17,11 @@ limitations under the License.
 #define XLA_FFI_TYPE_ID_REGISTRY_H_
 
 #include <cstdint>
-#include <string_view>
 
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "tsl/lib/gtl/int_type.h"
+#include "absl/strings/string_view.h"
+#include "xla/tsl/lib/gtl/int_type.h"
 
 namespace xla::ffi {
 
@@ -41,27 +42,37 @@ namespace xla::ffi {
 //    of time and explicitly get a unique type id for them.
 //
 // 2. Internal type id. When FFI handler defined in the same binary we rely
-//    on a global static registry to automatically assing type ids.
+//    on a global static registry to automatically assign type ids.
 class TypeIdRegistry {
  public:
   TSL_LIB_GTL_DEFINE_INT_TYPE(TypeId, int64_t);
 
   static constexpr TypeId kUnknownTypeId = TypeId(0);
 
-  // Registers external type with a given name in a static type registry.
-  static absl::StatusOr<TypeId> RegisterExternalTypeId(std::string_view name);
+  // Assigns a unique type id to an external type with a given name. Returns an
+  // error if a type with a given name is already registered in the process.
+  static absl::StatusOr<TypeId> AssignExternalTypeId(absl::string_view name);
+
+  // Registers external type with a given name and type id. Type id is provided
+  // by the caller, and must be unique. Returns an error if a type with a given
+  // name is already registered with a different type id.
+  static absl::Status RegisterExternalTypeId(absl::string_view name,
+                                             TypeId type_id);
 
   // Returns a type id for a given type. For internal type ids only.
   template <typename T>
   static TypeId GetTypeId();
 
  private:
-  static TypeId GetNextTypeId();
+  // We never mix external and internal type ids, so we can use different type
+  // id spaces to assign unique ids to each type.
+  static TypeId GetNextInternalTypeId();
+  static TypeId GetNextExternalTypeId();
 };
 
 template <typename T>
 TypeIdRegistry::TypeId TypeIdRegistry::GetTypeId() {
-  static const TypeId id = GetNextTypeId();
+  static const TypeId id = GetNextInternalTypeId();
   return id;
 }
 

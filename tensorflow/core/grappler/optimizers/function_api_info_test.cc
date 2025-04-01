@@ -107,7 +107,7 @@ bool CheckEquivImpl(const FunctionLibraryApiInfo& lib_api_info,
                     const string& func_name,
                     const std::vector<string>& expected_other) {
   std::vector<string> other_impl;
-  Status status =
+  absl::Status status =
       lib_api_info.GetEquivalentImplementations(func_name, &other_impl);
   EXPECT_EQ(status, absl::OkStatus());
   const std::unordered_set<string> actual(other_impl.begin(), other_impl.end());
@@ -181,7 +181,7 @@ TEST(FunctionApiInfoTest, MismatchedArguments) {
   FunctionDefLibrary func_lib;
   PopulateSampleLibrary(/* mismatch_args */ true, &func_lib);
   FunctionLibraryApiInfo lib_api_info;
-  const Status ret = lib_api_info.Init(func_lib);
+  const absl::Status ret = lib_api_info.Init(func_lib);
   EXPECT_FALSE(ret.ok());
 }
 

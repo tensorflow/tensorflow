@@ -20,9 +20,9 @@ namespace tensorflow {
 
 class TestRandomAccessFile : public RandomAccessFile {
   // The file contents is 10 bytes of all A's
-  Status Read(uint64 offset, size_t n, StringPiece* result,
-              char* scratch) const override {
-    Status s;
+  absl::Status Read(uint64 offset, size_t n, absl::string_view* result,
+                    char* scratch) const override {
+    absl::Status s;
     for (int i = 0; i < n; ++i) {
       if (offset + i >= 10) {
         n = i;
@@ -31,22 +31,22 @@ class TestRandomAccessFile : public RandomAccessFile {
       }
       scratch[i] = 'A';
     }
-    *result = StringPiece(scratch, n);
+    *result = absl::string_view(scratch, n);
     return s;
   }
 };
 
 class TestFileSystem : public NullFileSystem {
  public:
-  Status NewRandomAccessFile(
+  absl::Status NewRandomAccessFile(
       const string& fname, TransactionToken* token,
       std::unique_ptr<RandomAccessFile>* result) override {
     result->reset(new TestRandomAccessFile);
     return absl::OkStatus();
   }
   // Always return size of 10
-  Status GetFileSize(const string& fname, TransactionToken* token,
-                     uint64* file_size) override {
+  absl::Status GetFileSize(const string& fname, TransactionToken* token,
+                           uint64* file_size) override {
     *file_size = 10;
     return absl::OkStatus();
   }

@@ -142,7 +142,7 @@ class CastOpBase : public OpKernel {
   DataType external_dst_dtype_;
   bool use_truncation_;
   CastFunctorType work_ = nullptr;
-  Status Unimplemented();
+  absl::Status Unimplemented();
 
   CastOpBase(const CastOpBase&) = delete;
   void operator=(const CastOpBase&) = delete;
@@ -154,7 +154,7 @@ class CpuCastOp : public CastOpBase {
   explicit CpuCastOp(OpKernelConstruction* ctx);
 
  private:
-  Status Prepare();
+  absl::Status Prepare();
 };
 
 namespace functor {

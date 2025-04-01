@@ -17,9 +17,9 @@ limitations under the License.
 
 #include "absl/status/statusor.h"
 #include "xla/client/local_client.h"
-#include "xla/client/xla_builder.h"
+#include "xla/hlo/builder/xla_builder.h"
+#include "xla/hlo/testlib/test_helpers.h"
 #include "xla/shape_util.h"
-#include "xla/test_helpers.h"
 #include "xla/tests/client_library_test_base.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/test.h"

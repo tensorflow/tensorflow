@@ -36,9 +36,9 @@ module {
     // CHECK-NOT:    _entry_function
     // CHECK-NOT:    _stablehlo_module_attrs
     // CHECK-SAME:   function_list = [@_tf_func]
-    // CHECK-SAME:   module = "ML\EFR{{.*}}"
+    // CHECK-SAME:   module = "ML\EFR{{.*}}StableHLO_v0.12.0{{.*}}"
 
-    %0 = "tf.XlaCallModule"(%arg0, %arg1) {Sout = [#tf_type.shape<?>], dim_args_spec = [], _entry_function = @_stablehlo_main_0, _stablehlo_module_attrs = { mhlo.num_partitions = 1 }, module = "", platforms = [], version = 5 : i64} : (tensor<10xi32>, tensor<10xi32>) -> tensor<10xi32>
+    %0 = "tf.XlaCallModule"(%arg0, %arg1) {Sout = [#tf_type.shape<?>], dim_args_spec = [], _entry_function = @_stablehlo_main_0, _stablehlo_module_attrs = { mhlo.num_partitions = 1 }, _stablehlo_version = "0.12.0", module = "", platforms = [], version = 5 : i64} : (tensor<10xi32>, tensor<10xi32>) -> tensor<10xi32>
     // CHECK: return %[[RESULT]]
     func.return %0 : tensor<10xi32>
   }

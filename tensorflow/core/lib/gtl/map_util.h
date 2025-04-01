@@ -20,7 +20,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_LIB_GTL_MAP_UTIL_H_
 #define TENSORFLOW_CORE_LIB_GTL_MAP_UTIL_H_
 
-#include "tsl/lib/gtl/map_util.h"
+#include "xla/tsl/lib/gtl/map_util.h"
 
 namespace tensorflow {
 namespace gtl {

@@ -61,8 +61,9 @@ int main(int argc, char* argv[]) {
   std::vector<tsl::Flag> flag_list = {
       tsl::Flag("module_file", &options.module_path,
                 "The path to the HLO, MHLO or StableHLO file"),
-      tsl::Flag("output_file", &options.output_path,
-                "The path to the output file"),
+      tsl::Flag("output_file", &options.output_file,
+                "The path to the output file. Required if --result_output_file "
+                "is not set."),
       tsl::Flag("platform", &options.platform,
                 "The platform on which the built executable runs"),
       tsl::Flag("gpu_target_config",
@@ -71,7 +72,7 @@ int main(int argc, char* argv[]) {
                 "an attached GPU will be used."),
       tsl::Flag("autotune_results", &options.gpu_options.autotune_results_path,
                 "The path to AutotuneResults, optional when compiling for"
-                " GPU"),
+                " GPU. Only used if autotuning is enabled in XLA_FLAGS."),
       tsl::Flag("symbol_repo", &options.repo_options.symbol_repo,
                 "Which SymbolRepository to look up --symbol_reference in. If "
                 "the repository contains a GpuTargetConfig, "
@@ -83,7 +84,8 @@ int main(int argc, char* argv[]) {
           "optimized_symbol_reference",
           &options.repo_options.optimized_symbol_id,
           "Optimized symbol ID to look up in a SymbolRepository. Overrides "
-          "--autotune_results_path."),
+          "--autotune_results_path. Any autotuning results that are present "
+          "will be used as long as autotuning is enabled in XLA_FLAGS."),
 
       tsl::Flag("use_attached_device", &options.gpu_options.use_attached_device,
                 "Whether to use the attached GPU or not. Overrides the "
@@ -94,7 +96,8 @@ int main(int argc, char* argv[]) {
                 "Whether to wait for uploads to a symbol repository to "
                 "complete. See export_hlo.h for more on uploads."),
       tsl::Flag("result_output_file", &options.result_output_file,
-                "File to write a serialized xla.CompilationResult proto to."),
+                "File to write a serialized xla.CompilationResult proto to. "
+                "Required if --output_file is not set."),
   };
 
   tsl::string usage = xla::xla_compile::kUsageHeader;

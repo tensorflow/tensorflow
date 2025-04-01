@@ -17,14 +17,14 @@ limitations under the License.
 #define XLA_SERVICE_FLOAT_SUPPORT_H_
 
 #include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
 
-// This class has methods to query if a certain low-precision floating-point
-// type, such as bfloat16, is supported in certain instructions on a given
-// backend.
+// This class has methods to query if a certain low-precision types, such as
+// bfloat16, is supported in certain instructions on a given backend.
+// TODO(reedwm): Rename this to NumberSupport, as it supports int4 in additional
+// to float types
 class FloatSupport {
  public:
   explicit FloatSupport(PrimitiveType low_precision_type,
@@ -72,6 +72,11 @@ class FloatSupport {
   // specified index, even if the operand is in the high-precision type.
   virtual bool EffectiveOperandPrecisionIsLowPrecision(
       const HloInstruction& hlo, int64_t operand_index) const;
+
+  // Returns whether FloatNormalization should skip analyzing the instruction.
+  virtual bool ShouldSkipInstruction(const HloInstruction& hlo) const {
+    return false;
+  }
 
  private:
   PrimitiveType low_precision_type_;

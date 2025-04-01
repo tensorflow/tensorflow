@@ -90,7 +90,7 @@ LogicalResult _XlaHostComputeMlirOp::verify() {
   if (host_module.empty()) return success();
 
   mlir::OwningOpRef<mlir::ModuleOp> module_for_func;
-  tensorflow::Status status = tensorflow::DeserializeMlirModule(
+  absl::Status status = tensorflow::DeserializeMlirModule(
       host_module.str(), op->getContext(), &module_for_func);
   if (!status.ok()) {
     return op.emitError()

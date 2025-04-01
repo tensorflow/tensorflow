@@ -26,6 +26,7 @@
 #include "absl/types/span.h"
 #include "xla/pjrt/pjrt_common.h"
 #include "xla/python/ifrt/array.h"
+#include "xla/python/ifrt/sharding.h"
 #include "xla/python/ifrt_proxy/common/ifrt_service.pb.h"
 #include "xla/python/ifrt_proxy/common/types.pb.h"
 
@@ -83,7 +84,6 @@ proto::ArrayCopySemantics ToArrayCopySemanticsProto(ArrayCopySemantics s) {
 
 absl::StatusOr<ArrayCopySemantics> FromArrayCopySemanticsProto(
     proto::ArrayCopySemantics s) {
-  MakeArrayFromHostBufferRequest req;
   switch (s) {
     case proto::ARRAY_COPY_SEMANTICS_ALWAYS_COPY:
       return ArrayCopySemantics::kAlwaysCopy;
@@ -95,6 +95,30 @@ absl::StatusOr<ArrayCopySemantics> FromArrayCopySemanticsProto(
       return absl::InvalidArgumentError(
           absl::StrCat("Unhandled proto-enum value ", s, ":",
                        proto::ArrayCopySemantics_Name(s)));
+  }
+}
+
+proto::SingleDeviceShardSemantics ToSingleDeviceShardSemanticsProto(
+    SingleDeviceShardSemantics s) {
+  switch (s) {
+    case SingleDeviceShardSemantics::kAddressableShards:
+      return proto::SINGLE_DEVICE_SHARD_SEMANTICS_ADDRESSABLE_SHARDS;
+    case SingleDeviceShardSemantics::kAllShards:
+      return proto::SINGLE_DEVICE_SHARD_SEMANTICS_ALL_SHARDS;
+  }
+}
+
+absl::StatusOr<SingleDeviceShardSemantics> FromSingleDeviceShardSemanticsProto(
+    proto::SingleDeviceShardSemantics s) {
+  switch (s) {
+    case proto::SINGLE_DEVICE_SHARD_SEMANTICS_ADDRESSABLE_SHARDS:
+      return SingleDeviceShardSemantics::kAddressableShards;
+    case proto::SINGLE_DEVICE_SHARD_SEMANTICS_ALL_SHARDS:
+      return SingleDeviceShardSemantics::kAllShards;
+    default:
+      return absl::InvalidArgumentError(
+          absl::StrCat("Unhandled proto-enum value ", s, ":",
+                       proto::SingleDeviceShardSemantics_Name(s)));
   }
 }
 

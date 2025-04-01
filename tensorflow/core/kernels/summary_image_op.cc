@@ -142,9 +142,10 @@ class SummaryImageOp : public OpKernel {
   // differently in the float and uint8 cases: the float case needs a temporary
   // buffer which can be shared across calls to ith_image, but the uint8 case
   // does not.
-  Status AddImages(const string& tag, int batch_size, int w, int h, int depth,
-                   const std::function<Uint8Image(int)>& ith_image,
-                   Summary* s) {
+  absl::Status AddImages(const string& tag, int batch_size, int w, int h,
+                         int depth,
+                         const std::function<Uint8Image(int)>& ith_image,
+                         Summary* s) {
     const int N = std::min<int>(max_images_, batch_size);
     for (int i = 0; i < N; ++i) {
       Summary::Value* v = s->add_value();

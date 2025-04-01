@@ -122,21 +122,21 @@ class UniqueTest(test.TestCase):
     _, idx = gen_array_ops.unique_v2([0, 1, 2], axis=[])
     self.assertEqual(idx.shape.as_list(), [3])
 
-    with self.assertRaisesRegexp(ValueError, "axis expects a 1D vector"):
+    with self.assertRaisesRegex(ValueError, "axis expects a 1D vector"):
       gen_array_ops.unique_v2(x, axis=[[0]])
 
-    with self.assertRaisesRegexp(ValueError, "x expects a 1D vector"):
+    with self.assertRaisesRegex(ValueError, "x expects a 1D vector"):
       gen_array_ops.unique_v2(x, axis=[])
 
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         ValueError, "axis does not support input tensors larger than"):
       gen_array_ops.unique_v2(x, axis=[1, 2])
 
-    with self.assertRaisesRegexp(ValueError,
+    with self.assertRaisesRegex(ValueError,
                                  r"axis expects to be in the range \[-3, 3\)"):
       gen_array_ops.unique_v2(x, axis=[3])
 
-    with self.assertRaisesRegexp(ValueError,
+    with self.assertRaisesRegex(ValueError,
                                  r"axis expects to be in the range \[-3, 3\)"):
       gen_array_ops.unique_v2(x, axis=[-4])
 

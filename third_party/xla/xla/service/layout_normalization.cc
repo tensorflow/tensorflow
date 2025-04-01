@@ -15,10 +15,8 @@ limitations under the License.
 
 #include "xla/service/layout_normalization.h"
 
-#include <algorithm>
-#include <cstring>
-#include <memory>
-#include <utility>
+#include <cstdint>
+#include <optional>
 #include <vector>
 
 #include "absl/algorithm/container.h"
@@ -66,8 +64,10 @@ namespace {
 class LayoutNormalizationVisitor : public DfsHloRewriteVisitor {
  public:
   explicit LayoutNormalizationVisitor(
+      LayoutNormalization* normalization,
       const CustomCallTransformer& custom_call_transformer = nullptr)
-      : custom_call_transformer_(custom_call_transformer) {}
+      : normalization_(normalization),
+        custom_call_transformer_(custom_call_transformer) {}
 
   // To handle a constant, just give the literal data a new layout.
   absl::Status HandleConstant(HloInstruction* hlo) override {
@@ -208,6 +208,7 @@ class LayoutNormalizationVisitor : public DfsHloRewriteVisitor {
         MakeReduceWindowHlo(normalized_input, hlo->mutable_operand(1),
                             new_window, hlo->called_computations()[0],
                             &hlo->metadata()));
+    normalization_->UpdateLayout(rw->mutable_shape());
     SetVisited(*rw);
 
     HloInstruction* bc_to_orig = MakeBitcastHlo(rw, hlo->shape());
@@ -272,7 +273,8 @@ class LayoutNormalizationVisitor : public DfsHloRewriteVisitor {
   // BitcastConvert is only layout-preserving if it doesn't change the rank.
   absl::Status HandleBitcastConvert(HloInstruction* hlo) override {
     // If the rank isn't changing this is just an unary op.
-    if (hlo->shape().rank() == hlo->operand(0)->shape().rank()) {
+    if (hlo->shape().dimensions_size() ==
+        hlo->operand(0)->shape().dimensions_size()) {
       return HandleElementwiseUnary(hlo);
     }
 
@@ -347,7 +349,11 @@ class LayoutNormalizationVisitor : public DfsHloRewriteVisitor {
     auto s = hlo->shape();
     auto a = hlo->mutable_operand(0);
     auto b = hlo->mutable_operand(1);
-    TF_RET_CHECK(a->shape().layout() == s.layout());
+    auto layout_equal = Layout::Equal();
+    if (hlo->opcode() == HloOpcode::kCompare) {
+      layout_equal.IgnoreElementSize();
+    }
+    TF_RET_CHECK(layout_equal(a->shape().layout(), s.layout()));
     TF_ASSIGN_OR_RETURN(auto a0, GetNormalizedInput(a));
     TF_ASSIGN_OR_RETURN(auto b0, GetNormalizedInput(b));
 
@@ -424,7 +430,7 @@ class LayoutNormalizationVisitor : public DfsHloRewriteVisitor {
     // 'scatter_indices'. So we require that there is just a single
     // 'scatter' dimension. This is ensured by the ScatterSimplifier pass.
     const auto& dims = scatter->scatter_dimension_numbers();
-    if (scatter->scatter_updates().front()->shape().rank() -
+    if (scatter->scatter_updates().front()->shape().dimensions_size() -
             dims.update_window_dims_size() >
         1) {
       return FailedPrecondition(
@@ -510,15 +516,7 @@ class LayoutNormalizationVisitor : public DfsHloRewriteVisitor {
     return absl::OkStatus();
   }
 
-  // For bitcasting transposes, converts:
-  //
-  // A{I} -> bitcast[S]{L} -> transpose{L2}
-  //
-  // Into:
-  //
-  // A{I} -> bitcast{L2}
-  //
-  // For non-bitcasting ones, converts:
+  // Converts:
   //
   // A{I} -> bitcast[S0]{L} -> transpose[S]{L2}
   //
@@ -542,25 +540,28 @@ class LayoutNormalizationVisitor : public DfsHloRewriteVisitor {
     auto normalized_shape = Normalize(s);
     VLOG(3) << "Input transpose: " << hlo->ToString();
 
-    if (!ShapeUtil::TransposeIsBitcast(s, operand_s, hlo->dimensions())) {
-      auto l0_perm =
-          InversePermutation(ToTransposeDimensions(operand_s.layout()));
-      auto l_perm = ToTransposeDimensions(s.layout());
+    auto l0_perm =
+        InversePermutation(ToTransposeDimensions(operand_s.layout()));
+    auto l_perm = ToTransposeDimensions(s.layout());
 
-      auto t = ComposePermutations(l0_perm, hlo->dimensions());
-      auto dimensions = ComposePermutations(t, l_perm);
-      auto normalized_transpose = hlo->AddInstruction(
+    auto t = ComposePermutations(l0_perm, hlo->dimensions());
+    auto dimensions = ComposePermutations(t, l_perm);
+    HloInstruction* normalized_transpose;
+
+    if (IsIdentityPermutation(dimensions)) {
+      // If we're dealing with an identity transposition, there's no need to
+      // actually create the transpose.
+      normalized_transpose = a0;
+    } else {
+      normalized_transpose = hlo->AddInstruction(
           HloInstruction::CreateTranspose(normalized_shape, a0, dimensions));
       SetVisited(*normalized_transpose);
       VLOG(3) << "Generated normalized physical transpose: "
               << normalized_transpose->ToString();
-      auto bc_to_orig = MakeBitcastHlo(normalized_transpose, s);
-      TF_RETURN_IF_ERROR(ReplaceInstruction(hlo, bc_to_orig));
-    } else {
-      auto bc_to_orig = MakeBitcastHlo(a0, s, &hlo->metadata());
-      TF_RETURN_IF_ERROR(ReplaceInstruction(hlo, bc_to_orig));
     }
-    return absl::OkStatus();
+
+    auto bc_to_orig = MakeBitcastHlo(normalized_transpose, s);
+    return ReplaceInstruction(hlo, bc_to_orig);
   }
 
   // Converts a purely physical copy into a physical+logical transposition.
@@ -742,21 +743,31 @@ class LayoutNormalizationVisitor : public DfsHloRewriteVisitor {
     Shape s = hlo->shape();
     HloOpcode opcode = hlo->opcode();
     TF_RET_CHECK(opcode == HloOpcode::kClamp || opcode == HloOpcode::kSelect);
-    HloInstruction* p = hlo->mutable_operand(0);
-    HloInstruction* i1 = hlo->mutable_operand(1);
-    HloInstruction* i2 = hlo->mutable_operand(2);
-    TF_RET_CHECK(p->shape().layout() == s.layout());
-    TF_RET_CHECK(i1->shape().layout() == s.layout());
-    TF_RET_CHECK(i2->shape().layout() == s.layout());
+    HloInstruction* arg0 = hlo->mutable_operand(0);
+    HloInstruction* arg1 = hlo->mutable_operand(1);
+    HloInstruction* arg2 = hlo->mutable_operand(2);
+    if (opcode == HloOpcode::kClamp) {
+      TF_RET_CHECK(arg1->shape().layout() == s.layout());
+    } else if (opcode == HloOpcode::kSelect) {
+      TF_RET_CHECK(arg1->shape().layout() == s.layout());
+      TF_RET_CHECK(arg2->shape().layout() == s.layout());
+    } else {
+      TF_RET_CHECK(false);
+    }
 
-    TF_ASSIGN_OR_RETURN(HloInstruction * p_0, GetNormalizedInput(p));
-    TF_ASSIGN_OR_RETURN(HloInstruction * i1_0, GetNormalizedInput(i1));
-    TF_ASSIGN_OR_RETURN(HloInstruction * i2_0, GetNormalizedInput(i2));
+    TF_ASSIGN_OR_RETURN(HloInstruction * normalized_arg0,
+                        GetNormalizedInput(arg0));
+    TF_ASSIGN_OR_RETURN(HloInstruction * normalized_arg1,
+                        GetNormalizedInput(arg1));
+    TF_ASSIGN_OR_RETURN(HloInstruction * normalized_arg2,
+                        GetNormalizedInput(arg2));
 
     TF_ASSIGN_OR_RETURN(Shape new_shape, ShapeInference::InferTernaryOpShape(
-                                             opcode, p_0, i1_0, i2_0));
+                                             opcode, normalized_arg0,
+                                             normalized_arg1, normalized_arg2));
     HloInstruction* normalized = hlo->parent()->AddInstruction(
-        HloInstruction::CreateTernary(new_shape, opcode, p_0, i1_0, i2_0));
+        HloInstruction::CreateTernary(new_shape, opcode, normalized_arg0,
+                                      normalized_arg1, normalized_arg2));
     hlo->SetupDerivedInstruction(normalized);
     SetVisited(*normalized);
 
@@ -804,6 +815,7 @@ class LayoutNormalizationVisitor : public DfsHloRewriteVisitor {
     return ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(s);
   }
 
+  LayoutNormalization* normalization_;
   CustomCallTransformer custom_call_transformer_;
 };
 
@@ -812,7 +824,7 @@ class LayoutNormalizationVisitor : public DfsHloRewriteVisitor {
 absl::StatusOr<bool> LayoutNormalization::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
-  return LayoutNormalizationVisitor{custom_call_transformer_}.RunOnModule(
+  return LayoutNormalizationVisitor{this, custom_call_transformer_}.RunOnModule(
       module, execution_threads);
 }
 

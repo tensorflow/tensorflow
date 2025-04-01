@@ -32,8 +32,6 @@ class ClientHostBufferStore {
  public:
   virtual ~ClientHostBufferStore() = default;
 
-  virtual uint64_t NextHandle() = 0;
-
   // Stores the data associated with the given handle. Returns an error if the
   // handle already exists.
   virtual Future<> Store(uint64_t handle, absl::string_view data) = 0;

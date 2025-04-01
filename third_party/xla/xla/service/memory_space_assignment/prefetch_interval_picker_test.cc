@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "xla/service/memory_space_assignment/prefetch_interval_picker.h"
 
-#include <cstdint>
+#include <memory>
 #include <optional>
 
 #include <gtest/gtest.h>
@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/service/cost_modelling/op_cost.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/service/hlo_value.h"
 #include "xla/service/memory_space_assignment/cost_analysis.h"
@@ -35,12 +36,6 @@ limitations under the License.
 namespace xla {
 namespace memory_space_assignment {
 namespace {
-
-constexpr int64_t kPointerSize = 8;
-
-int64_t ShapeSize(const Shape& shape) {
-  return ShapeUtil::ByteSizeOf(shape, kPointerSize);
-}
 
 using CostAnalysisPrefetchIntervalPickerTest = HloTestBase;
 
@@ -77,12 +72,22 @@ TEST_F(CostAnalysisPrefetchIntervalPickerTest, PrefetchIntervalOrder) {
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
 
-  HloCostAnalysis hlo_cost_analysis(ShapeSize);
+  HloCostAnalysis hlo_cost_analysis;
+  auto hlo_cost_analysis_wrapper =
+      std::make_unique<HloCostAnalysisWithAcceptState>(hlo_cost_analysis);
+  auto op_cost_manager = std::make_unique<OpCostManager>(
+      OpCostManager::Options{
+          /*enable_cache=*/false,
+          /*enable_analysis_logging=*/false,
+      },
+      OpCostManager::CalculationNode::CreateLeaf(
+          "HloCostAnalysis",
+          CreateHloCostAnalysisCalculator(*hlo_cost_analysis_wrapper),
+          /*enable_cache=*/false));
   CostAnalysisOptions options;
-  HloCostAnalysisCosts hlo_cost_analysis_costs(hlo_cost_analysis);
   TF_ASSERT_OK_AND_ASSIGN(
       auto cost_analysis,
-      FakeCostAnalysis::Create(hlo_cost_analysis_costs, *module, options));
+      FakeCostAnalysis::Create(*op_cost_manager, *module, options));
   CostAnalysisPrefetchIntervalPicker interval_picker(
       *cost_analysis,
       /*min_overlap_to_async_copy_ratio=*/1.0,
@@ -177,12 +182,22 @@ TEST_F(CostAnalysisPrefetchIntervalPickerTest, PrefetchIntervalOrderWhile) {
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
 
-  HloCostAnalysis hlo_cost_analysis(ShapeSize);
+  HloCostAnalysis hlo_cost_analysis;
+  auto hlo_cost_analysis_wrapper =
+      std::make_unique<HloCostAnalysisWithAcceptState>(hlo_cost_analysis);
+  auto op_cost_manager = std::make_unique<OpCostManager>(
+      OpCostManager::Options{
+          /*enable_cache=*/false,
+          /*enable_analysis_logging=*/false,
+      },
+      OpCostManager::CalculationNode::CreateLeaf(
+          "HloCostAnalysis",
+          CreateHloCostAnalysisCalculator(*hlo_cost_analysis_wrapper),
+          /*enable_cache=*/false));
   CostAnalysisOptions options;
-  HloCostAnalysisCosts hlo_cost_analysis_costs(hlo_cost_analysis);
   TF_ASSERT_OK_AND_ASSIGN(
       auto cost_analysis,
-      FakeCostAnalysis::Create(hlo_cost_analysis_costs, *module, options));
+      FakeCostAnalysis::Create(*op_cost_manager, *module, options));
   CostAnalysisPrefetchIntervalPicker interval_picker(
       *cost_analysis,
       /*min_overlap_to_async_copy_ratio=*/1.0,
@@ -261,12 +276,22 @@ TEST_F(CostAnalysisPrefetchIntervalPickerTest, NestedWhile) {
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
 
-  HloCostAnalysis hlo_cost_analysis(ShapeSize);
   CostAnalysisOptions options;
-  HloCostAnalysisCosts hlo_cost_analysis_costs(hlo_cost_analysis);
+  HloCostAnalysis hlo_cost_analysis;
+  auto hlo_cost_analysis_wrapper =
+      std::make_unique<HloCostAnalysisWithAcceptState>(hlo_cost_analysis);
+  auto op_cost_manager = std::make_unique<OpCostManager>(
+      OpCostManager::Options{
+          /*enable_cache=*/false,
+          /*enable_analysis_logging=*/false,
+      },
+      OpCostManager::CalculationNode::CreateLeaf(
+          "HloCostAnalysis",
+          CreateHloCostAnalysisCalculator(*hlo_cost_analysis_wrapper),
+          /*enable_cache=*/false));
   TF_ASSERT_OK_AND_ASSIGN(
       auto cost_analysis,
-      FakeCostAnalysis::Create(hlo_cost_analysis_costs, *module, options));
+      FakeCostAnalysis::Create(*op_cost_manager, *module, options));
   CostAnalysisPrefetchIntervalPicker interval_picker(
       *cost_analysis,
       /*min_overlap_to_async_copy_ratio=*/1.0,
@@ -330,12 +355,22 @@ TEST_F(CostAnalysisPrefetchIntervalPickerTest, ConsecutiveConditionals) {
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
 
-  HloCostAnalysis hlo_cost_analysis(ShapeSize);
   CostAnalysisOptions options;
-  HloCostAnalysisCosts hlo_cost_analysis_costs(hlo_cost_analysis);
+  HloCostAnalysis hlo_cost_analysis;
+  auto hlo_cost_analysis_wrapper =
+      std::make_unique<HloCostAnalysisWithAcceptState>(hlo_cost_analysis);
+  auto op_cost_manager = std::make_unique<OpCostManager>(
+      OpCostManager::Options{
+          /*enable_cache=*/false,
+          /*enable_analysis_logging=*/false,
+      },
+      OpCostManager::CalculationNode::CreateLeaf(
+          "HloCostAnalysis",
+          CreateHloCostAnalysisCalculator(*hlo_cost_analysis_wrapper),
+          /*enable_cache=*/false));
   TF_ASSERT_OK_AND_ASSIGN(
       auto cost_analysis,
-      FakeCostAnalysis::Create(hlo_cost_analysis_costs, *module, options));
+      FakeCostAnalysis::Create(*op_cost_manager, *module, options));
   CostAnalysisPrefetchIntervalPicker interval_picker(
       *cost_analysis,
       /*min_overlap_to_async_copy_ratio=*/1.0,
@@ -376,12 +411,22 @@ TEST_F(CostAnalysisPrefetchIntervalPickerTest, EarliestLatestWindowTooSmall) {
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
 
-  HloCostAnalysis hlo_cost_analysis(ShapeSize);
   CostAnalysisOptions options;
-  HloCostAnalysisCosts hlo_cost_analysis_costs(hlo_cost_analysis);
+  HloCostAnalysis hlo_cost_analysis;
+  auto hlo_cost_analysis_wrapper =
+      std::make_unique<HloCostAnalysisWithAcceptState>(hlo_cost_analysis);
+  auto op_cost_manager = std::make_unique<OpCostManager>(
+      OpCostManager::Options{
+          /*enable_cache=*/false,
+          /*enable_analysis_logging=*/false,
+      },
+      OpCostManager::CalculationNode::CreateLeaf(
+          "HloCostAnalysis",
+          CreateHloCostAnalysisCalculator(*hlo_cost_analysis_wrapper),
+          /*enable_cache=*/false));
   TF_ASSERT_OK_AND_ASSIGN(
       auto cost_analysis,
-      FakeCostAnalysis::Create(hlo_cost_analysis_costs, *module, options));
+      FakeCostAnalysis::Create(*op_cost_manager, *module, options));
   cost_analysis->SetOverrideForGetInstructionElapsed(
       [](const HloInstruction& hlo) {
         if (hlo.opcode() == HloOpcode::kTanh) {

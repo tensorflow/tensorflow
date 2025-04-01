@@ -30,7 +30,7 @@ limitations under the License.
 // any remaining "unrealized_conversion_cast" operations and ensures the
 // resulting graph is free of illegal complex tensors.
 
-#include <iterator>
+#include <cstdint>
 #include <memory>
 #include <utility>
 
@@ -157,7 +157,7 @@ void LowerComplexTypes::runOnOperation() {
 
   // We need to run folders post rewrite to cleanup conversion casts.
   RewritePatternSet emptyRewriters(ctx);
-  if (failed(applyPatternsAndFoldGreedily(func, std::move(emptyRewriters)))) {
+  if (failed(applyPatternsGreedily(func, std::move(emptyRewriters)))) {
     signalPassFailure();
   }
 }

@@ -48,6 +48,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/experimental/tac/common/utils.h"
 #include "tensorflow/compiler/mlir/lite/experimental/tac/transforms/passes.h"
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
+#include "tensorflow/compiler/mlir/lite/utils/utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/analysis/side_effect_analysis.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/cluster_util.h"
 
@@ -97,14 +98,40 @@ class RaiseTargetSubgraphsPass
   }
   void runOnOperation() override;
 
-  void RaiseTargetSubgraphsForBlock(
+  bool RaiseTargetSubgraphsForBlock(
       Block& block, OpBuilder& builder, ModuleOp module, bool skip_cpu,
       int& func_count, const TF::SideEffectAnalysis::Info& side_effect_info);
 };
 
+// Returns the custom options fingerprint for an added function op, by walking
+// through the ops in the function and collating all the custom options
+// fingerprints.
+std::optional<StringAttr> GetCustomOptionsFingerprint(func::FuncOp func) {
+  StringAttr custom_options_fingerprint;
+  WalkResult result = func.walk([&](Operation* op) {
+    if (op->hasAttr(kCustomOptionsFingerprint)) {
+      if (custom_options_fingerprint &&
+          custom_options_fingerprint !=
+              op->getAttr(kCustomOptionsFingerprint)) {
+        // If the custom options fingerprint is not null, and it is different
+        // from the current op's custom options fingerprint, then it is an
+        // error.
+        return WalkResult::interrupt();
+      }
+      custom_options_fingerprint =
+          mlir::cast<StringAttr>(op->getAttr(kCustomOptionsFingerprint));
+    }
+    return WalkResult::advance();
+  });
+  if (result.wasInterrupted()) {
+    return std::nullopt;
+  }
+  return custom_options_fingerprint;
+}
+
 // After raising ops and adding the Func & Call op, call this function
 // to set attributes specific to this pass.
-void AddAttrs(OpsAdded& ops_added, OpBuilder& builder, int func_count) {
+bool AddAttrs(OpsAdded& ops_added, OpBuilder& builder, int func_count) {
   func::FuncOp& added_func_op = ops_added.func_op;
   func::CallOp& added_call_op = ops_added.call_op;
   StringAttr interface_name =
@@ -112,6 +139,14 @@ void AddAttrs(OpsAdded& ops_added, OpBuilder& builder, int func_count) {
 
   added_func_op->setAttr(kInterfaceNameAttr, interface_name);
   added_call_op->setAttr(kInterfaceNameAttr, interface_name);
+  auto custom_options_fingerprint = GetCustomOptionsFingerprint(added_func_op);
+  if (!custom_options_fingerprint.has_value()) {
+    return false;
+  }
+  if (custom_options_fingerprint.value() != nullptr) {
+    added_func_op->setAttr(kCustomOptionsFingerprint,
+                           custom_options_fingerprint.value());
+  }
 
   StringAttr device = mlir::cast<StringAttr>(
       added_func_op->getRegion(0).getBlocks().front().front().getAttr(kDevice));
@@ -128,6 +163,7 @@ void AddAttrs(OpsAdded& ops_added, OpBuilder& builder, int func_count) {
                                            inference_type.getValue().str());
   added_func_op.setName(builder.getStringAttr(function_name));
   added_call_op.setCallee(builder.getStringAttr(function_name));
+  return true;
 }
 
 // Raises partitioned sequential `Operations` from a block to a new function
@@ -141,7 +177,7 @@ void AddAttrs(OpsAdded& ops_added, OpBuilder& builder, int func_count) {
 // `Operations`. Implied is that "CPU" ops may contain subgraphs of different
 // device types which also need to be raised. The `side_effect_info` is used in
 // the cluster algorithm for ops with side effect.
-void RaiseTargetSubgraphsPass::RaiseTargetSubgraphsForBlock(
+bool RaiseTargetSubgraphsPass::RaiseTargetSubgraphsForBlock(
     Block& block, OpBuilder& builder, ModuleOp module, bool skip_cpu,
     int& func_count, const TF::SideEffectAnalysis::Info& side_effect_info) {
   llvm::SetVector<Operation*> partition_ops;
@@ -164,19 +200,21 @@ void RaiseTargetSubgraphsPass::RaiseTargetSubgraphsForBlock(
     return device_is(device_type, device);
   };
 
-  // Given a list of `Operation`s to partitition, raise them to a new
+  // Given a list of `Operation`s to partition, raise them to a new
   // function. If the partitons is of type "CPU" then it may contain
-  // other deivice subgraphs that need to be raised. We recur on
+  // other device subgraphs that need to be raised. We recur on
   // any nested blocks of "CPU" ops and skip raising "CPU" ops for the
   // remainder of that recursive call.
-  auto extract = [&](const llvm::SetVector<Operation*>& partition_ops) -> void {
-    if (partition_ops.empty()) return;
+  auto extract = [&](const llvm::SetVector<Operation*>& partition_ops) -> bool {
+    if (partition_ops.empty()) return true;
     InferenceDeviceType device =
         GetInferenceDeviceTypeForOp(partition_ops.front()).value();
     Subgraph old_subgraph(partition_ops, ++func_count);
     OpsAdded ops_added;
     ExtractSubgraphToFunc(old_subgraph, builder, module, ops_added);
-    AddAttrs(ops_added, builder, func_count);
+    if (!AddAttrs(ops_added, builder, func_count)) {
+      return false;
+    }
     // Ops in "CPU" subgraphs may nested regions with other device subgraphs.
     // We recur into these nested blocks to raise those as well. We don't raise
     // "CPU" ops who are themselves nested within a "CPU" op, so set
@@ -185,17 +223,21 @@ void RaiseTargetSubgraphsPass::RaiseTargetSubgraphsForBlock(
       for (auto& block : ops_added.func_op->getRegion(0).getBlocks())
         for (auto& op : block) {
           auto op_device = GetInferenceDeviceTypeForOp(&op);
-          if (op_device_is(op, kCpuDeviceName))
+          if (op_device_is(op, kCpuDeviceName)) {
             // The recently raised func is device type cpu & `op` is a "CPU".
             // Recursivley call again to raise any non-"CPU" subgraphs contained
             // within nested region of `op`.
             for (auto& region : op.getRegions())
               for (auto& block : region.getBlocks())
-                RaiseTargetSubgraphsForBlock(block, builder, module,
-                                             /*skip_cpu=*/true, func_count,
-                                             side_effect_info);
+                if (!RaiseTargetSubgraphsForBlock(block, builder, module,
+                                                  /*skip_cpu=*/true, func_count,
+                                                  side_effect_info)) {
+                  return false;
+                }
+          }
         }
     }
+    return true;
   };
 
   auto get_inference_device_type_string = [&](Operation* op) {
@@ -209,6 +251,14 @@ void RaiseTargetSubgraphsPass::RaiseTargetSubgraphsForBlock(
             : absl::StrCat(
                   device_type.value().hardware, "_",
                   GetInferenceString(device_type.value().inference_type));
+    // Append the custom options fingerprint to the inference device type
+    // string, to compile functions with different fingerprints separately.
+    auto custom_options_fingerprint = op->getAttr(kCustomOptionsFingerprint);
+    if (custom_options_fingerprint != nullptr) {
+      StringAttr stack_str = mlir::cast<StringAttr>(custom_options_fingerprint);
+      absl::StrAppend(&concat_inference_device_type_string, "_",
+                      stack_str.getValue().str());
+    }
     return concat_inference_device_type_string;
   };
 
@@ -229,17 +279,21 @@ void RaiseTargetSubgraphsPass::RaiseTargetSubgraphsForBlock(
   if (skip_cpu) {
     for (auto& op : block) {
       auto op_device = GetInferenceDeviceTypeForOp(&op);
-      if (op_device_is(op, kCpuDeviceName))
+      if (op_device_is(op, kCpuDeviceName)) {
         // The recently raised func is device type cpu & `op` is a "CPU".
         // Recursivley call again to raise any non-"CPU" subgraphs contained
         // within nested region of `op`.
         for (auto& region : op.getRegions())
           for (auto& block : region.getBlocks())
-            RaiseTargetSubgraphsForBlock(block, builder, module,
-                                         /*skip_cpu=*/true, func_count,
-                                         side_effect_info);
+            if (!RaiseTargetSubgraphsForBlock(block, builder, module,
+                                              /*skip_cpu=*/true, func_count,
+                                              side_effect_info)) {
+              return false;
+            }
+      }
     }
   }
+  return true;
 }
 
 void RaiseTargetSubgraphsPass::runOnOperation() {
@@ -251,9 +305,12 @@ void RaiseTargetSubgraphsPass::runOnOperation() {
     const auto& info = side_effect_analysis.GetAnalysisForFunc(func);
     for (auto& block : func) {
       OpBuilder builder = OpBuilder::atBlockBegin(&block);
-      RaiseTargetSubgraphsForBlock(block, builder, module,
-                                   /*skip_cpu=*/skip_raise_cpu_ops_, func_count,
-                                   info);
+      if (!RaiseTargetSubgraphsForBlock(block, builder, module,
+                                        /*skip_cpu=*/skip_raise_cpu_ops_,
+                                        func_count, info)) {
+        module.emitError("Raising target subgraph for block failed.");
+        signalPassFailure();
+      }
     }
   }
 }

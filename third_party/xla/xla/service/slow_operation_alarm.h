@@ -17,12 +17,11 @@ limitations under the License.
 #define XLA_SERVICE_SLOW_OPERATION_ALARM_H_
 
 #include <atomic>
+#include <cstdint>
 #include <functional>
 #include <memory>
 #include <string>
-#include <tuple>
 
-#include "absl/base/attributes.h"
 #include "absl/strings/string_view.h"
 #include "absl/time/time.h"
 
@@ -51,7 +50,6 @@ class SlowOperationAlarm {
   SlowOperationAlarm& operator=(const SlowOperationAlarm&&) = delete;
 
   absl::Time deadline() const { return deadline_; }
-  std::string msg() const { return msg_fn_(); }
   std::atomic<int64_t>* counter() { return counter_; }
   void cancel() { UnscheduleAlarm(this); }
   // Has the alarm fired?  If appropriate, consider cancel()'ing first, to avoid
@@ -71,6 +69,9 @@ class SlowOperationAlarm {
   // counter_ may be null.  If it's not, this alarm prints something only once
   // every power of two occurrences.
   std::atomic<int64_t>* counter_;
+  // If the alarm has fired the result of calling msg_fn_ is cached into msg_
+  // so that it can be reused in the destructor.
+  std::string msg_;
 };
 
 // Returns an object which prints a warning about slow compilation after a

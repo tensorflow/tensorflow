@@ -42,7 +42,7 @@ TranslateToMLIRRegistration graphdef_to_mlir(
     [](StringRef proto_txt, MLIRContext *context) {
       tensorflow::GraphDebugInfo debug_info;
       tensorflow::GraphDef graphdef;
-      tensorflow::Status status = tensorflow::LoadProtoFromBuffer(
+      absl::Status status = tensorflow::LoadProtoFromBuffer(
           {proto_txt.data(), proto_txt.size()}, &graphdef);
       if (!status.ok()) {
         LOG(ERROR) << status.message();
@@ -60,8 +60,7 @@ TranslateFromMLIRRegistration mlir_to_graphdef(
     "mlir-to-graphdef", "mlir-to-graphdef",
     [](ModuleOp module, raw_ostream &output) {
       tensorflow::GraphDef graphdef;
-      tensorflow::Status status =
-          mlir::tfg::ConvertToGraphDef(module, &graphdef);
+      absl::Status status = mlir::tfg::ConvertToGraphDef(module, &graphdef);
       if (!status.ok()) {
         LOG(ERROR) << "Error exporting MLIR module to GraphDef: " << status;
         return failure();

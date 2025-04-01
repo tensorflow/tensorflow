@@ -125,7 +125,7 @@ class CurrentModuleFilter(StackTraceFilter):
         # caller.
         outer_f = f.f_back
         if outer_f is not None:
-          filter_filename = inspect.getsourcefile(outer_f)
+          filter_filename = inspect.getfile(outer_f)
       self._filename = filter_filename
       # This may be called repeatedly: once on entry by the superclass, then by
       # each child context manager.

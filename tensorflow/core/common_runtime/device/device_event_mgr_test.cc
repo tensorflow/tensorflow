@@ -70,8 +70,12 @@ class TEST_EventMgrHelper {
 
   void PollEvents() {
     while (queue_size() > 0) {
-      mutex_lock l(em_->mu_);
-      em_->PollEvents();
+      EventMgr::ToFreeVector to_free;
+      {
+        mutex_lock l(em_->mu_);
+        em_->PollEvents(nullptr, &to_free);
+      }
+      em_->FreeMemory(to_free);
     }
   }
 

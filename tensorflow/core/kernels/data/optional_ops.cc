@@ -26,7 +26,7 @@ namespace tensorflow {
 namespace data {
 namespace {
 
-static Status OptionalDeviceCopy(
+static absl::Status OptionalDeviceCopy(
     const OptionalVariant& from, OptionalVariant* to,
     const UnaryVariantOpRegistry::AsyncTensorDeviceCopyFn& copy) {
   if (from.has_value()) {
@@ -135,8 +135,9 @@ void OptionalGetValueOp::Compute(OpKernelContext* ctx) {
   }
 }
 
-Status WriteOptionalWithValueToOutput(OpKernelContext* ctx, int output_index,
-                                      std::vector<Tensor> value) {
+absl::Status WriteOptionalWithValueToOutput(OpKernelContext* ctx,
+                                            int output_index,
+                                            std::vector<Tensor> value) {
   OptionalVariant v(std::move(value));
   Tensor* variant_t;
   AllocatorAttributes cpu_alloc;
@@ -147,7 +148,7 @@ Status WriteOptionalWithValueToOutput(OpKernelContext* ctx, int output_index,
   return absl::OkStatus();
 }
 
-Status WriteOptionalNoneToOutput(OpKernelContext* ctx, int output_index) {
+absl::Status WriteOptionalNoneToOutput(OpKernelContext* ctx, int output_index) {
   OptionalVariant v;
   Tensor* variant_t;
   AllocatorAttributes cpu_alloc;

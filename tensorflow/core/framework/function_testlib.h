@@ -56,7 +56,8 @@ class Attrs {
 
 // Helper to construct a NodeDef.
 NodeDef NDef(
-    StringPiece name, StringPiece op, absl::Span<const string> inputs,
+    absl::string_view name, absl::string_view op,
+    absl::Span<const string> inputs,
     absl::Span<const std::pair<string, FunctionDefHelper::AttrValueWrapper>>
         attrs = {},
     const string& device = "");

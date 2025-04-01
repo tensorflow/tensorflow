@@ -1,0 +1,24 @@
+// RUN: fusion_to_mlir %s | emitters_opt -xla-gpu-test-optimize |\
+// RUN:   FileCheck %s
+// RUN: test_correctness %s --bijection_inputs=reduce:0 \
+// RUN:   --bijection_outputs=reduce
+
+add {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  ROOT add = f32[] add(lhs, rhs)
+}
+
+fusion {
+  param_0 = f32[13,1051,321] parameter(0)
+  param_1 = f32[] parameter(1)
+  ROOT reduce = f32[13,321] reduce(param_0, param_1), dimensions={1}, to_apply=add
+}
+
+// CHECK: xla.pure_call @add_add
+// CHECK: allocate_shared
+// CHECK: tensor.insert
+// CHECK: sync_threads
+// CHECK: predicated_extract
+// CHECK: shuffle_reduce
+// CHECK: predicated_insert

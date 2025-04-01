@@ -18,7 +18,7 @@ limitations under the License.
 #include <utility>
 
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
-#include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
+#include "mlir/Dialect/Quant/IR/QuantTypes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
@@ -66,7 +66,9 @@ class FakeQuantRewrite : public OpRewritePattern<FakeQuantOp> {
   bool *hadFailure;
 
   bool failableRewrite(FakeQuantOp op, PatternRewriter &rewriter) const {
-    auto converter = ExpressedToQuantizedConverter::forInputType(op.getType());
+    auto converter =
+        mlir::quant::ir::ExpressedToQuantizedConverter::forInputType(
+            op.getType());
     if (!converter) {
       return (op.emitError("unsupported quantized type conversion"), true);
     }
@@ -145,7 +147,7 @@ void ConvertSimulatedQuantPass::runOnOperation() {
   auto *ctx = func.getContext();
   patterns.add<ConstFakeQuantRewrite, ConstFakeQuantPerAxisRewrite>(
       ctx, &hadFailure);
-  (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
+  (void)applyPatternsGreedily(func, std::move(patterns));
   if (hadFailure) signalPassFailure();
 }
 

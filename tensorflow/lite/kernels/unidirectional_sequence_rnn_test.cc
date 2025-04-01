@@ -327,7 +327,7 @@ TEST_P(HybridUnidirectionalRNNOpModelOpTest, BlackBoxTestUint8) {
   expected.insert(expected.end(), golden_start, golden_end);
 
   EXPECT_THAT(rnn.GetOutput(), ElementsAreArray(ArrayFloatNear(
-                                   expected, /*max_abs_error=*/0.013)));
+                                   expected, /*max_abs_err=*/0.013)));
 }
 
 TEST_P(HybridUnidirectionalRNNOpModelOpTest, BlackBoxTestInt8) {
@@ -354,7 +354,7 @@ TEST_P(HybridUnidirectionalRNNOpModelOpTest, BlackBoxTestInt8) {
   expected.insert(expected.end(), golden_start, golden_end);
 
   EXPECT_THAT(rnn.GetOutput(), ElementsAreArray(ArrayFloatNear(
-                                   expected, /*max_abs_error=*/0.013)));
+                                   expected, /*max_abs_err=*/0.013)));
 }
 
 TEST(UnidirectionalRNNOpTest, TimeMajorBlackBoxTest) {
@@ -414,7 +414,7 @@ TEST_P(HybridUnidirectionalRNNOpModelOpTest, TimeMajorBlackBoxTestUint8) {
   }
 
   EXPECT_THAT(rnn.GetOutput(), ElementsAreArray(ArrayFloatNear(
-                                   expected, /*max_abs_error=*/0.013)));
+                                   expected, /*max_abs_err=*/0.013)));
 }
 
 TEST_P(HybridUnidirectionalRNNOpModelOpTest, TimeMajorBlackBoxTestInt8) {
@@ -445,7 +445,7 @@ TEST_P(HybridUnidirectionalRNNOpModelOpTest, TimeMajorBlackBoxTestInt8) {
   }
 
   EXPECT_THAT(rnn.GetOutput(), ElementsAreArray(ArrayFloatNear(
-                                   expected, /*max_abs_error=*/0.013)));
+                                   expected, /*max_abs_err=*/0.013)));
 }
 
 INSTANTIATE_TEST_SUITE_P(HybridUnidirectionalRNNOpModelOpTest,

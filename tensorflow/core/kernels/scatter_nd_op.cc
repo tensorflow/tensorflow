@@ -61,9 +61,10 @@ namespace functor {
 
 template <typename Device, typename T, typename Index,
           scatter_nd_op::UpdateOp Op>
-Status DoScatterNd(OpKernelContext* c, const Tensor& indices,
-                   const Tensor& updates, const TensorShape& shape, Tensor* out,
-                   bool allocate, BadIndicesPolicy bad_indices_policy);
+absl::Status DoScatterNd(OpKernelContext* c, const Tensor& indices,
+                         const Tensor& updates, const TensorShape& shape,
+                         Tensor* out, bool allocate,
+                         BadIndicesPolicy bad_indices_policy);
 }  // namespace functor
 
 // Returns true if the three tensors have valid number of elements
@@ -79,13 +80,10 @@ bool ValidEmptyOutputShape(int64_t num_inputs, int64_t num_indices,
   return (num_inputs != 0 && num_indices != 0 && num_updates != 0);
 }
 
-template <typename Device, typename T, typename Index>
-class ScatterNdOp : public OpKernel {
+template <typename Device>
+class ScatterOpBase : public OpKernel {
  public:
-  explicit ScatterNdOp(OpKernelConstruction* c) : OpKernel(c) {
-    const DataType dt = DataTypeToEnum<T>::v();
-    const DataType index_t = DataTypeToEnum<Index>::v();
-    OP_REQUIRES_OK(c, c->MatchSignature({index_t, dt, index_t}, {dt}));
+  explicit ScatterOpBase(OpKernelConstruction* c) : OpKernel(c) {
     std::string bad_indices_policy_str;
     OP_REQUIRES_OK(c,
                    c->GetAttr(kBadIndicesPolicyAtrr, &bad_indices_policy_str));
@@ -99,6 +97,19 @@ class ScatterNdOp : public OpKernel {
           errors::InvalidArgument(
               "ERROR bad_indices_policy is not supported on GPU devices."));
     }
+  }
+
+ protected:
+  BadIndicesPolicy bad_indices_policy_ = BadIndicesPolicy::kDefault;
+};
+
+template <typename Device, typename T, typename Index>
+class ScatterNdOp : public ScatterOpBase<Device> {
+ public:
+  explicit ScatterNdOp(OpKernelConstruction* c) : ScatterOpBase<Device>(c) {
+    const DataType dt = DataTypeToEnum<T>::v();
+    const DataType index_t = DataTypeToEnum<Index>::v();
+    OP_REQUIRES_OK(c, c->MatchSignature({index_t, dt, index_t}, {dt}));
   }
 
   void Compute(OpKernelContext* c) override {
@@ -163,19 +174,16 @@ class ScatterNdOp : public OpKernel {
     OP_REQUIRES_OK(
         c, functor::DoScatterNd<Device, T, Index, scatter_nd_op::UpdateOp::ADD>(
                c, indices, updates, shape, &out, true /*allocate*/,
-               bad_indices_policy_));
+               this->bad_indices_policy_));
     c->set_output(0, out);
   }
-
- private:
-  BadIndicesPolicy bad_indices_policy_ = BadIndicesPolicy::kDefault;
 };
 
 template <typename Device, typename T, typename Index,
           scatter_nd_op::UpdateOp op>
-class TensorScatterOp : public OpKernel {
+class TensorScatterOp : public ScatterOpBase<Device> {
  public:
-  explicit TensorScatterOp(OpKernelConstruction* c) : OpKernel(c) {
+  explicit TensorScatterOp(OpKernelConstruction* c) : ScatterOpBase<Device>(c) {
     const DataType dt = DataTypeToEnum<T>::v();
     const DataType index_t = DataTypeToEnum<Index>::v();
     OP_REQUIRES_OK(c, c->MatchSignature({dt, index_t, dt}, {dt}));
@@ -251,14 +259,14 @@ class TensorScatterOp : public OpKernel {
 
       OP_REQUIRES_OK(c, tensorflow::functor::DoCopy(c->eigen_device<Device>(),
                                                     input, out));
-      OP_REQUIRES_OK(c,
-                     functor::DoScatterNd<Device, T, Index, op>(
-                         c, indices, updates, shape, out, false /*allocate*/));
+      OP_REQUIRES_OK(c, functor::DoScatterNd<Device, T, Index, op>(
+                            c, indices, updates, shape, out, false /*allocate*/,
+                            this->bad_indices_policy_));
     } else {
       // Output forwarded, so simply perform the scatter.
       OP_REQUIRES_OK(c, functor::DoScatterNd<Device, T, Index, op>(
                             c, indices, updates, shape, forwarded_input.get(),
-                            false /*allocate*/));
+                            false /*allocate*/, this->bad_indices_policy_));
 
       c->set_output(0, *forwarded_input);
     }
@@ -267,9 +275,10 @@ class TensorScatterOp : public OpKernel {
 
 template <typename Device, typename T, typename Index,
           scatter_nd_op::UpdateOp op>
-class ScatterNdUpdateOp : public OpKernel {
+class ScatterNdUpdateOp : public ScatterOpBase<Device> {
  public:
-  explicit ScatterNdUpdateOp(OpKernelConstruction* c) : OpKernel(c) {
+  explicit ScatterNdUpdateOp(OpKernelConstruction* c)
+      : ScatterOpBase<Device>(c) {
     const DataType dt = DataTypeToEnum<T>::v();
     const DataType dt_ref = DataTypeToEnum<T>::ref();
     const DataType index_t = DataTypeToEnum<Index>::v();
@@ -344,10 +353,9 @@ class ScatterNdUpdateOp : public OpKernel {
         params = *params_ptr;
       }
     }
-
-    OP_REQUIRES_OK(
-        c, functor::DoScatterNd<Device, T, Index, op>(
-               c, indices, updates, params_shape, &params, false /*allocate*/));
+    OP_REQUIRES_OK(c, functor::DoScatterNd<Device, T, Index, op>(
+                          c, indices, updates, params_shape, &params,
+                          false /*allocate*/, this->bad_indices_policy_));
   }
 };
 
@@ -831,10 +839,10 @@ TF_CALL_COMPLEX_TYPES(REGISTER_SCATTER_ND_TENSOR_GPU);
 namespace functor {
 
 template <typename Index>
-Status PrepareAndValidateInputs(const TensorShape& params_shape,
-                                const Tensor& indices, const Tensor& updates,
-                                int64_t* slice_dim, Index* num_updates,
-                                Index* slice_size) {
+absl::Status PrepareAndValidateInputs(const TensorShape& params_shape,
+                                      const Tensor& indices,
+                                      const Tensor& updates, int64_t* slice_dim,
+                                      Index* num_updates, Index* slice_size) {
   const TensorShape& indices_shape(indices.shape());
   const TensorShape& updates_shape(updates.shape());
 
@@ -917,10 +925,10 @@ namespace {
 
 template <typename Device, typename T, typename Index,
           scatter_nd_op::UpdateOp Op>
-Status DoScatterNdImpl(OpKernelContext* c, const Tensor& indices,
-                       const Tensor& updates, const TensorShape& shape,
-                       Tensor* out, bool allocate,
-                       BadIndicesPolicy bad_indices_policy) {
+absl::Status DoScatterNdImpl(OpKernelContext* c, const Tensor& indices,
+                             const Tensor& updates, const TensorShape& shape,
+                             Tensor* out, bool allocate,
+                             BadIndicesPolicy bad_indices_policy) {
   int64_t slice_dim;
   Index num_updates;
   Index slice_size;
@@ -1004,23 +1012,23 @@ Status DoScatterNdImpl(OpKernelContext* c, const Tensor& indices,
 
 template <typename Device, typename T, typename Index,
           scatter_nd_op::UpdateOp Op>
-Status DoScatterNdImpl(OpKernelContext* c, const Tensor& indices,
-                       const Tensor& updates, const TensorShape& shape,
-                       Tensor* out, bool allocate) {
+absl::Status DoScatterNdImpl(OpKernelContext* c, const Tensor& indices,
+                             const Tensor& updates, const TensorShape& shape,
+                             Tensor* out, bool allocate) {
   return DoScatterNdImpl<Device, T, Index, Op>(
       c, indices, updates, shape, out, allocate, BadIndicesPolicy::kDefault);
 }
 
 template <typename T, typename Index, scatter_nd_op::UpdateOp Op>
-Status DoScatterNdOnCpu(OpKernelContext* c, const Tensor& indices,
-                        const Tensor& updates, const TensorShape& shape,
-                        Tensor* out, bool allocate,
-                        BadIndicesPolicy bad_indices_policy);
+absl::Status DoScatterNdOnCpu(OpKernelContext* c, const Tensor& indices,
+                              const Tensor& updates, const TensorShape& shape,
+                              Tensor* out, bool allocate,
+                              BadIndicesPolicy bad_indices_policy);
 
 template <typename T, typename Index, scatter_nd_op::UpdateOp Op>
-Status DoScatterNdOnCpu(OpKernelContext* c, const Tensor& indices,
-                        const Tensor& updates, const TensorShape& shape,
-                        Tensor* out, bool allocate) {
+absl::Status DoScatterNdOnCpu(OpKernelContext* c, const Tensor& indices,
+                              const Tensor& updates, const TensorShape& shape,
+                              Tensor* out, bool allocate) {
   return DoScatterNdOnCpu<T, Index, Op>(c, indices, updates, shape, out,
                                         allocate, BadIndicesPolicy::kDefault);
 }
@@ -1097,9 +1105,10 @@ Status DoScatterNdOnCpu(OpKernelContext* c, const Tensor& indices,
 
 template <typename Device, typename T, typename Index,
           scatter_nd_op::UpdateOp Op>
-Status DoScatterNd(OpKernelContext* c, const Tensor& indices,
-                   const Tensor& updates, const TensorShape& shape, Tensor* out,
-                   bool allocate, BadIndicesPolicy bad_indices_policy) {
+absl::Status DoScatterNd(OpKernelContext* c, const Tensor& indices,
+                         const Tensor& updates, const TensorShape& shape,
+                         Tensor* out, bool allocate,
+                         BadIndicesPolicy bad_indices_policy) {
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
   if (std::is_same<Device, GPUDevice>::value &&
       tensorflow::OpDeterminismRequired() && !DisableScatterOpDeterminism()) {
@@ -1122,9 +1131,9 @@ Status DoScatterNd(OpKernelContext* c, const Tensor& indices,
 
 template <typename Device, typename T, typename Index,
           scatter_nd_op::UpdateOp Op>
-Status DoScatterNd(OpKernelContext* c, const Tensor& indices,
-                   const Tensor& updates, const TensorShape& shape, Tensor* out,
-                   bool allocate) {
+absl::Status DoScatterNd(OpKernelContext* c, const Tensor& indices,
+                         const Tensor& updates, const TensorShape& shape,
+                         Tensor* out, bool allocate) {
   return DoScatterNd<Device, T, Index, Op>(
       c, indices, updates, shape, out, allocate, BadIndicesPolicy::kDefault);
 }

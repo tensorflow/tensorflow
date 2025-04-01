@@ -16,35 +16,7 @@ limitations under the License.
 #ifndef XLA_TRANSLATE_STABLEHLO_TO_HLO_TRANSLATE_H_
 #define XLA_TRANSLATE_STABLEHLO_TO_HLO_TRANSLATE_H_
 
-#include <memory>
-#include <utility>
-
-#include "llvm/Support/MemoryBuffer.h"
-#include "llvm/Support/raw_os_ostream.h"
-#include "llvm/Support/raw_ostream.h"
-#include "mlir/IR/BuiltinOps.h"
-#include "mlir/Support/LogicalResult.h"
-
-namespace xla {
-
-mlir::LogicalResult StablehloToHloTranslateFunction(mlir::ModuleOp module,
-                                                    llvm::raw_ostream& output,
-                                                    bool emit_return_tuple,
-                                                    bool emit_use_tuple_arg);
-
-mlir::LogicalResult StablehloToHloTextTranslateFunction(
-    mlir::ModuleOp module, llvm::raw_ostream& output, bool emit_return_tuple,
-    bool emit_use_tuple_arg, bool print_layouts, bool print_large_constants,
-    bool print_sugar, bool via_builder, bool with_layouts);
-
-// Translate the StableHLO program in in-memory file 'buffer' to a HLO program
-// written in a file represented with handle 'output_stream';
-mlir::LogicalResult StablehloToHloTextMain(
-    std::unique_ptr<llvm::MemoryBuffer> buffer,
-    llvm::raw_ostream& output_stream, bool emit_return_tuple,
-    bool emit_use_tuple_arg, bool print_layouts, bool print_large_constants,
-    bool print_sugar, bool via_builder, bool with_layouts);
-
-}  // namespace xla
+// The current header will be deprecated in favour of the following.
+#include "xla/hlo/translate/stablehlo_to_hlo/translate.h"
 
 #endif  // XLA_TRANSLATE_STABLEHLO_TO_HLO_TRANSLATE_H_

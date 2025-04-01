@@ -34,7 +34,7 @@ constexpr char kPrefetchDataset[] = "PrefetchDataset";
 
 }  // namespace
 
-Status DisablePrefetchLegacyAutotune::OptimizeAndCollectStats(
+absl::Status DisablePrefetchLegacyAutotune::OptimizeAndCollectStats(
     Cluster* cluster, const GrapplerItem& item, GraphDef* output,
     OptimizationStats* stats) {
   *output = item.graph;

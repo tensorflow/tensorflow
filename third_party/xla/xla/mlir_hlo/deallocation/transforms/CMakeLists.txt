@@ -22,6 +22,7 @@ include_directories(BEFORE
 
 add_mlir_library(DeallocationPasses
   buffer_reuse.cc
+  buffer_deallocation.cc
 
   DEPENDS
   MLIRDeallocationPassesIncGen

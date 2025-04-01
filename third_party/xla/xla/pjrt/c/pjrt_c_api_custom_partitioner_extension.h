@@ -16,8 +16,8 @@ limitations under the License.
 #ifndef XLA_PJRT_C_PJRT_C_API_CUSTOM_PARTITIONER_EXTENSION_H_
 #define XLA_PJRT_C_PJRT_C_API_CUSTOM_PARTITIONER_EXTENSION_H_
 
-#include <cstddef>
-#include <cstdint>
+#include <stddef.h>
+#include <stdint.h>
 
 #include "xla/pjrt/c/pjrt_c_api.h"
 
@@ -25,18 +25,18 @@ limitations under the License.
 extern "C" {
 #endif
 
-#define PJRT_API_CUSTOM_PARTITIONER_EXTENSION_VERSION 0
+#define PJRT_API_CUSTOM_PARTITIONER_EXTENSION_VERSION 1
 
-struct JAX_CustomCallPartitioner_string {
+typedef struct JAX_CustomCallPartitioner_string {
   const char* data;
   size_t size;
-};
+} JAX_CustomCallPartitioner_string;
 
-struct JAX_CustomCallPartitioner_aval {
+typedef struct JAX_CustomCallPartitioner_aval {
   JAX_CustomCallPartitioner_string shape;
   bool has_sharding;
   JAX_CustomCallPartitioner_string sharding;
-};
+} JAX_CustomCallPartitioner_aval;
 
 // General callback information containing api versions, the result error
 // message and the cleanup function to free any temporary memory that is backing
@@ -44,7 +44,7 @@ struct JAX_CustomCallPartitioner_aval {
 // by the cleanup_fn. These should never be used directly. Args and results
 // should be serialized via the PopulateArgs, ReadArgs, PopulateResults,
 // ConsumeResults functions defined below.
-struct JAX_CustomCallPartitioner_version_and_error {
+typedef struct JAX_CustomCallPartitioner_version_and_error {
   int64_t api_version;
   void* data;  // out
   // cleanup_fn cleans up any returned results. The caller must finish with all
@@ -53,9 +53,9 @@ struct JAX_CustomCallPartitioner_version_and_error {
   bool has_error;
   PJRT_Error_Code code;                        // out
   JAX_CustomCallPartitioner_string error_msg;  // out
-};
+} JAX_CustomCallPartitioner_version_and_error;
 
-struct JAX_CustomCallPartitioner_Partition_Args {
+typedef struct JAX_CustomCallPartitioner_Partition_Args {
   JAX_CustomCallPartitioner_version_and_error header;
 
   size_t num_args;
@@ -67,9 +67,9 @@ struct JAX_CustomCallPartitioner_Partition_Args {
   JAX_CustomCallPartitioner_string mlir_module;
   JAX_CustomCallPartitioner_string* args_sharding;
   JAX_CustomCallPartitioner_string result_sharding;
-};
+} JAX_CustomCallPartitioner_Partition_Args;
 
-struct JAX_CustomCallPartitioner_InferShardingFromOperands_Args {
+typedef struct JAX_CustomCallPartitioner_InferShardingFromOperands_Args {
   JAX_CustomCallPartitioner_version_and_error header;
 
   size_t num_args;
@@ -79,9 +79,9 @@ struct JAX_CustomCallPartitioner_InferShardingFromOperands_Args {
 
   bool has_result_sharding;
   JAX_CustomCallPartitioner_string result_sharding;
-};
+} JAX_CustomCallPartitioner_InferShardingFromOperands_Args;
 
-struct JAX_CustomCallPartitioner_PropagateUserSharding_Args {
+typedef struct JAX_CustomCallPartitioner_PropagateUserSharding_Args {
   JAX_CustomCallPartitioner_version_and_error header;
 
   JAX_CustomCallPartitioner_string backend_config;
@@ -89,22 +89,22 @@ struct JAX_CustomCallPartitioner_PropagateUserSharding_Args {
   JAX_CustomCallPartitioner_string result_shape;
 
   JAX_CustomCallPartitioner_string result_sharding;  // inout
-};
+} JAX_CustomCallPartitioner_PropagateUserSharding_Args;
 
-struct JAX_CustomCallPartitioner_Callbacks {
+typedef struct JAX_CustomCallPartitioner_Callbacks {
   int64_t version;
   void* private_data;
-  void (*dtor)(JAX_CustomCallPartitioner_Callbacks* data);
-  void (*partition)(JAX_CustomCallPartitioner_Callbacks* data,
+  void (*dtor)(struct JAX_CustomCallPartitioner_Callbacks* data);
+  void (*partition)(struct JAX_CustomCallPartitioner_Callbacks* data,
                     JAX_CustomCallPartitioner_Partition_Args* args);
   void (*infer_sharding)(
-      JAX_CustomCallPartitioner_Callbacks* data,
+      struct JAX_CustomCallPartitioner_Callbacks* data,
       JAX_CustomCallPartitioner_InferShardingFromOperands_Args* args);
   void (*propagate_user_sharding)(
-      JAX_CustomCallPartitioner_Callbacks* data,
+      struct JAX_CustomCallPartitioner_Callbacks* data,
       JAX_CustomCallPartitioner_PropagateUserSharding_Args* args);
   bool can_side_effecting_have_replicated_sharding;
-};
+} JAX_CustomCallPartitioner_Callbacks;
 
 struct PJRT_Register_Custom_Partitioner_Args {
   size_t struct_size;
@@ -118,14 +118,26 @@ PJRT_DEFINE_STRUCT_TRAITS(PJRT_Register_Custom_Partitioner_Args, callbacks);
 typedef PJRT_Error* PJRT_Register_Custom_Partitioner(
     PJRT_Register_Custom_Partitioner_Args* args);
 
+// Registers a custom call as batch partitionable.
+struct PJRT_Register_Batch_Partitionable_Args {
+  size_t struct_size;
+  const char* name;
+  size_t name_size;
+};
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_Register_Batch_Partitionable_Args, name_size);
+
+typedef PJRT_Error* PJRT_Register_Batch_Partitionable(
+    PJRT_Register_Batch_Partitionable_Args* args);
+
 typedef struct PJRT_Custom_Partitioner_Extension {
   size_t struct_size;
   PJRT_Extension_Type type;
   PJRT_Extension_Base* next;
   PJRT_Register_Custom_Partitioner* register_custom_partitioner;
+  PJRT_Register_Batch_Partitionable* register_batch_partitionable;
 } PJRT_Custom_Partitioner_Extension;
 PJRT_DEFINE_STRUCT_TRAITS(PJRT_Custom_Partitioner_Extension,
-                          register_custom_partitioner);
+                          register_batch_partitionable);
 
 #ifdef __cplusplus
 }

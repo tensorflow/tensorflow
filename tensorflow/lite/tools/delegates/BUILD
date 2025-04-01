@@ -1,3 +1,4 @@
+load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
 load("//tensorflow/lite:build_def.bzl", "tflite_copts", "tflite_copts_warnings")
 load("//tensorflow/lite/core/shims:cc_library_with_tflite.bzl", "cc_library_with_tflite", "cc_test_with_tflite")
 
@@ -16,6 +17,7 @@ cc_library_with_tflite(
     hdrs = [
         "delegate_provider.h",
     ],
+    compatible_with = get_compatible_with_portable(),
     copts = common_copts,
     tflite_deps = [
         "//tensorflow/lite/c:common",
@@ -170,6 +172,10 @@ cc_library_with_tflite(
         "//tensorflow/lite/tools/evaluation:utils",
     ],
     visibility = ["//visibility:public"],
+    deps = [
+        "//tensorflow/lite/delegates/xnnpack:xnnpack_delegate",
+        "//tensorflow/lite/tools:tool_params",
+    ],
     alwayslink = 1,
 )
 

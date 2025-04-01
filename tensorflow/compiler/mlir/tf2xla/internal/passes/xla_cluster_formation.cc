@@ -15,8 +15,6 @@ limitations under the License.
 
 #include <functional>
 #include <memory>
-#include <string>
-#include <vector>
 
 #include "absl/strings/str_cat.h"
 #include "llvm/ADT/SmallVector.h"
@@ -117,8 +115,8 @@ mlir::LogicalResult EncapsulateFirstXlaCompilablePartitionedCalls(
   // performance.
   for (auto &pcall_op : noinline_pcall_ops) {
     auto call = llvm::cast<CallOpInterface>(pcall_op.getOperation());
-    auto callee =
-        llvm::cast<FuncOp>(call.resolveCallable(&symbol_table_collection));
+    auto callee = llvm::cast<FuncOp>(
+        call.resolveCallableInTable(&symbol_table_collection));
     callee->setAttr(noinline_attr_name, builder.getBoolAttr(true));
   }
   return mlir::success();

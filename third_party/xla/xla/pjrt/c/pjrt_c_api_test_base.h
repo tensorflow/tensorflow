@@ -20,7 +20,9 @@ limitations under the License.
 
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/hlo/builder/xla_computation.h"
 #include "xla/pjrt/c/pjrt_c_api.h"
 #include "xla/pjrt/c/pjrt_c_api_helpers.h"
 #include "xla/pjrt/pjrt_client.h"
@@ -31,6 +33,12 @@ limitations under the License.
 #define XLA_PJRT_C_PJRT_C_API_TEST_BASE_H_
 
 namespace pjrt {
+
+template <typename T>
+absl::Span<const char> GetRawView(const std::vector<T>& v) {
+  return absl::Span<const char>(reinterpret_cast<const char*>(v.data()),
+                                v.size() * sizeof(T));
+}
 
 class PjrtCApiTestBase : public ::testing::Test {
  public:
@@ -56,6 +64,20 @@ class PjrtCApiTestBase : public ::testing::Test {
 
   std::string BuildSingleDeviceCompileOptionStr();
 
+  static constexpr absl::string_view kExecutableName = "operation";
+
+  xla::XlaComputation CreateAddOneComputation();
+
+  std::unique_ptr<PJRT_LoadedExecutable, PJRT_LoadedExecutableDeleter>
+  create_executable(const PJRT_Api* c_api, PJRT_Client* client);
+
+  std::unique_ptr<PJRT_LoadedExecutable, PJRT_LoadedExecutableDeleter>
+  create_executable(const PJRT_Api* c_api, PJRT_Client* client,
+                    const xla::XlaComputation& computation);
+
+  std::unique_ptr<PJRT_Executable, PJRT_ExecutableDeleter> GetExecutable(
+      PJRT_LoadedExecutable* loaded_executable, const PJRT_Api* api);
+
   absl::Span<PJRT_Device* const> GetClientAddressableDevices() const;
 
   PJRT_Client_BufferFromHostBuffer_Args CreateBufferFromHostBufferArgs(
@@ -65,10 +87,20 @@ class PjrtCApiTestBase : public ::testing::Test {
 
   std::pair<std::unique_ptr<PJRT_Buffer, ::pjrt::PJRT_BufferDeleter>,
             xla::PjRtFuture<>>
+  create_buffer_from_data(const std::vector<float>& float_data,
+                          const xla::Shape& shape,
+                          PJRT_Device* device = nullptr);
+
+  std::pair<std::unique_ptr<PJRT_Buffer, ::pjrt::PJRT_BufferDeleter>,
+            xla::PjRtFuture<>>
   create_buffer(PJRT_Device* device = nullptr);
 
   std::unique_ptr<PJRT_Error, ::pjrt::PJRT_ErrorDeleter> ToUniquePtr(
       PJRT_Error* error);
+
+  std::unique_ptr<PJRT_AsyncHostToDeviceTransferManager,
+                  ::pjrt::PJRT_AsyncHostToDeviceTransferManagerDeleter>
+  create_transfer_manager(const xla::Shape& host_shape);
 
  private:
   PjrtCApiTestBase(const PjrtCApiTestBase&) = delete;

@@ -16,15 +16,14 @@ limitations under the License.
 
 #include "tensorflow/core/tfrt/ifrt/ifrt_model_context.h"
 
-
 #include "absl/status/status.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/threadpool.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/threadpool.h"
 
 namespace tensorflow {
 namespace ifrt_serving {
 
-const tsl::thread::ThreadPool& IfrtModelContext::GetThreadPool() const {
+tsl::thread::ThreadPool& IfrtModelContext::GetThreadPool() const {
   return thread_pool_;
 }
 

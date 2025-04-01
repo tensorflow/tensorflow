@@ -20,17 +20,24 @@ limitations under the License.
 #define TF_Quantization
 
 include "mlir/IR/OpBase.td"
-include "mlir/Dialect/Quant/QuantOpsBase.td"
+include "mlir/Dialect/Quant/IR/QuantBase.td"
 
 //===----------------------------------------------------------------------===//
 // QuantizedType definitions.
 //===----------------------------------------------------------------------===//
 
-// The base class of a quantized type.
+// The base class of a quantized type. Signed quantized types may be expressed
+// as signless integers (i.e. up to op interpretation), but we include an
+// explicit signedness check to differentiate the signed/unsigned constraints
+// predicates from one another at the TD level.
 class QuantizedType<string n, list<int> params, bit signed>
   : Type<And<[CPred<"$_self.isa<mlir::quant::QuantizedType>()">,
               CPred<"$_self.cast<mlir::quant::QuantizedType>()" #
-                    ".getStorageTypeIntegralWidth() == " # !head(params)>]>,
+                    ".getStorageTypeIntegralWidth() == " # !head(params)>,
+              Or<[CPred<"$_self.cast<mlir::quant::QuantizedType>()" #
+                    ".getStorageType().isSignlessInteger()">,
+                  CPred<"$_self.cast<mlir::quant::QuantizedType>()" #
+                    ".getStorageType().isSignedInteger() == " # signed>]>]>,
     "Q" # !if (signed, "I", "UI") # !head(params) # " type"> {
   string name = n;
   string asTraitArgsStr =

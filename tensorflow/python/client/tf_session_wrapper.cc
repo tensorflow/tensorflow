@@ -44,6 +44,7 @@ limitations under the License.
 #include "tensorflow/core/distributed_runtime/server_lib.h"
 #include "tensorflow/core/framework/full_type.pb.h"
 #include "tensorflow/core/framework/versions.pb.h"
+#include "tensorflow/core/public/release_version.h"
 #include "tensorflow/core/public/version.h"
 #include "tensorflow/core/util/version_info.h"
 #include "tensorflow/python/client/tf_session_helper.h"
@@ -334,7 +335,7 @@ class tf_handle {
 
   tf_handle(const tf_handle<T>& other) { Reset(other.obj_); }
 
-  tf_handle<T>& operator=(tf_handle<T>&& other) {
+  tf_handle<T>& operator=(tf_handle<T>&& other) noexcept {
     if (this == &other) {
       return *this;
     }

@@ -101,10 +101,10 @@ TEST_F(GpuAtomicTest, TestAddAtomicF32) {
 )";
 
   CompileAndVerifyIr(hlo_string, is_built_with_rocm_ ? R"(
-CHECK: atomicrmw fadd ptr addrspace(1) %[[ADDR:.*]], float %[[VALUE:.*]] syncscope("agent") seq_cst
+CHECK: atomicrmw fadd ptr addrspace(1) %[[ADDR:.*]], float %[[VALUE:.*]] syncscope("agent") monotonic
 )"
                                                      : R"(
-CHECK: atomicrmw fadd ptr %[[ADDR:.*]], float %[[VALUE:.*]] seq_cst
+CHECK: atomicrmw fadd ptr %[[ADDR:.*]], float %[[VALUE:.*]] monotonic
 )");
 }
 
@@ -141,7 +141,7 @@ TEST_F(GpuAtomicTest, TestAddAtomicF64) {
 )";
 
   CompileAndVerifyIr(hlo_string, R"(
-CHECK: atomicrmw fadd ptr %[[ADDR:.*]], double %[[VALUE:.*]] seq_cst
+CHECK: atomicrmw fadd ptr %[[ADDR:.*]], double %[[VALUE:.*]] monotonic
 )");
 }
 

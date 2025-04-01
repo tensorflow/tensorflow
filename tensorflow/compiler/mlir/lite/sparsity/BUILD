@@ -28,8 +28,8 @@ cc_library(
         "sparsify_model.h",
     ],
     deps = [
-        "//tensorflow/compiler/mlir/lite:common",
         "//tensorflow/compiler/mlir/lite:flatbuffer_translate_lib",
+        "//tensorflow/compiler/mlir/lite:pass_registry_utils",
         "//tensorflow/compiler/mlir/lite:tensorflow_lite_d2s",
         "//tensorflow/compiler/mlir/lite/schema:schema_fbs",
         "//tensorflow/compiler/mlir/lite/tools/optimize:reduced_precision_metadata",
@@ -43,6 +43,7 @@ cc_library(
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Support",
     ],
 )
 
@@ -54,9 +55,9 @@ tf_cc_test(
     ],
     deps = [
         ":sparsify_model",
+        "//tensorflow/compiler/mlir/lite/core:absl_error_model_builder",
         "//tensorflow/compiler/mlir/lite/schema:schema_fbs",
         "//tensorflow/compiler/mlir/lite/tools/optimize:reduced_precision_metadata",
-        "//tensorflow/lite/core:model_builder",
         "@com_google_absl//absl/status",
         "@com_google_googletest//:gtest_main",
         "@flatbuffers",

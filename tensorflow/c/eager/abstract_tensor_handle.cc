@@ -19,7 +19,7 @@ namespace tensorflow {
 
 std::string AbstractTensorHandle::DebugString() const {
   PartialTensorShape shape;
-  Status s = Shape(&shape);
+  absl::Status s = Shape(&shape);
   std::string shape_string;
   if (!s.ok()) {
     shape_string = "<error computing shape>";
@@ -31,7 +31,7 @@ std::string AbstractTensorHandle::DebugString() const {
                       ", type=", FullType().DebugString(), ")");
 }
 
-Status AbstractTensorHandle::TensorHandleStatus() const {
+absl::Status AbstractTensorHandle::TensorHandleStatus() const {
   // Tensor handles in current runtime don't carry error info and this method
   // should always return OK status.
   return absl::OkStatus();

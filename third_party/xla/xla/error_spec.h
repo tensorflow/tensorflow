@@ -22,7 +22,8 @@ namespace xla {
 
 // Structure describing permissible absolute and relative error bounds.
 struct ErrorSpec {
-  explicit ErrorSpec(double aabs, double arel = 0, bool relaxed_nans = false)
+  explicit constexpr ErrorSpec(double aabs, double arel = 0,
+                               bool relaxed_nans = false)
       : abs(aabs), rel(arel), relaxed_nans(relaxed_nans) {}
 
   double abs;  // Absolute error bound.

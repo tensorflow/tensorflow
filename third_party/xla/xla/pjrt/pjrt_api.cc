@@ -118,7 +118,7 @@ absl::StatusOr<bool> IsPjrtPluginInitialized(absl::string_view device_type) {
 static bool IsPjRtCompatibilityEnabled() {
   const char* val = getenv("ENABLE_PJRT_COMPATIBILITY");
   if (val == nullptr) {
-    return false;
+    return true;
   }
   bool enabled = false;
   if (!absl::SimpleAtob(val, &enabled)) {

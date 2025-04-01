@@ -55,8 +55,7 @@ MlirBridgeRolloutPolicy GetMlirBridgeRolloutPolicy(
     const tensorflow::Graph& graph,
     const FunctionLibraryDefinition* function_library,
     std::optional<tensorflow::ConfigProto> config_proto,
-    bool is_supported_by_replicated_brige,
-    bool uses_uninitialized_resource_args, bool is_v1_compat,
+    bool is_supported_by_replicated_brige, bool is_v1_compat,
     bool record_stats);
 
 static inline MlirBridgeRolloutPolicy GetMlirBridge2ndPhaseRolloutPolicy(
@@ -73,7 +72,7 @@ static inline MlirBridgeRolloutPolicy GetMlirBridge2ndPhaseRolloutPolicy(
 void LogGraphFeatures(const Graph& graph,
                       const FunctionLibraryDefinition* function_library,
                       std::optional<ConfigProto> config_proto,
-                      bool uses_uninitialized_resource_args, bool is_v1_compat);
+                      bool is_v1_compat);
 
 }  // namespace tensorflow
 

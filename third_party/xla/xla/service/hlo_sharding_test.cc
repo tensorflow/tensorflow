@@ -14,24 +14,25 @@ limitations under the License.
 ==============================================================================*/
 
 #include <algorithm>
-#include <set>
+#include <cstdint>
 #include <sstream>
 #include <string>
-#include <tuple>
-#include <utility>
 #include <vector>
 
 #include "absl/hash/hash.h"
-#include "xla/protobuf_util.h"
-#include "xla/service/hlo_parser.h"
+#include "absl/types/span.h"
+#include "xla/hlo/parser/hlo_parser.h"
 #include "xla/shape_util.h"
 #include "xla/test.h"
 #include "xla/test_helpers.h"
 #include "xla/tests/hlo_test_base.h"
+#include "xla/tsl/util/proto/proto_matchers.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace {
+
+using ::tsl::proto_testing::EqualsProto;
 
 Array<int64_t> MakeArray(absl::Span<const int64_t> dimensions,
                          absl::Span<const int64_t> contents) {
@@ -108,7 +109,7 @@ TEST_F(HloShardingTest, ProtoRoundTrip) {
   auto* manual = proto.add_tuple_shardings();
   manual->set_type(OpSharding::MANUAL);
   HloSharding sharding = HloSharding::FromProto(proto).value();
-  EXPECT_TRUE(protobuf_util::ProtobufEquals(proto, sharding.ToProto()));
+  EXPECT_THAT(sharding.ToProto(), EqualsProto(proto));
 }
 
 TEST_F(HloShardingTest, IotaProtoRoundTrip) {
@@ -130,7 +131,7 @@ TEST_F(HloShardingTest, IotaProtoRoundTrip) {
   auto* manual = proto.add_tuple_shardings();
   manual->set_type(OpSharding::MANUAL);
   HloSharding sharding = HloSharding::FromProto(proto).value();
-  EXPECT_TRUE(protobuf_util::ProtobufEquals(proto, sharding.ToProto()));
+  EXPECT_THAT(sharding.ToProto(), EqualsProto(proto));
 }
 
 TEST_F(HloShardingTest, Tile) {
@@ -576,8 +577,8 @@ TEST_F(HloShardingTest, WithMetadataNoOverwrite) {
     auto sharding_new_metadata =
         sharding.WithMetadata(SingleMetadata(), /*overwrite=*/false);
     ASSERT_EQ(sharding_new_metadata.metadata().size(), 1);
-    EXPECT_TRUE(protobuf_util::ProtobufEquals(
-        sharding_new_metadata.metadata().front(), SingleMetadata().front()));
+    EXPECT_THAT(sharding_new_metadata.metadata().front(),
+                EqualsProto(SingleMetadata().front()));
   }
 
   {
@@ -585,8 +586,8 @@ TEST_F(HloShardingTest, WithMetadataNoOverwrite) {
     auto sharding_new_metadata =
         sharding.WithMetadata(ListMetadata(), /*overwrite=*/false);
     ASSERT_EQ(sharding_new_metadata.metadata().size(), 1);
-    EXPECT_TRUE(protobuf_util::ProtobufEquals(
-        sharding.metadata().front(), sharding_new_metadata.metadata().front()));
+    EXPECT_THAT(sharding_new_metadata.metadata().front(),
+                EqualsProto(sharding.metadata().front()));
   }
 
   {
@@ -604,21 +605,18 @@ TEST_F(HloShardingTest, WithMetadataNoOverwrite) {
     ASSERT_EQ(sharding_new_metadata.tuple_elements().size(), 3);
 
     ASSERT_EQ(sharding_new_metadata.tuple_elements()[0].metadata().size(), 1);
-    EXPECT_TRUE(protobuf_util::ProtobufEquals(
-        sharding_new_metadata.tuple_elements()[0].metadata().front(),
-        SingleMetadata().front()));
+    EXPECT_THAT(sharding_new_metadata.tuple_elements()[0].metadata().front(),
+                EqualsProto(SingleMetadata().front()));
 
     ASSERT_EQ(sharding_new_metadata.tuple_elements()[1].metadata().size(), 2);
     for (int i = 0; i < 2; ++i) {
-      EXPECT_TRUE(protobuf_util::ProtobufEquals(
-          sharding_new_metadata.tuple_elements()[1].metadata()[i],
-          ListMetadata()[i]));
+      EXPECT_THAT(sharding_new_metadata.tuple_elements()[1].metadata()[i],
+                  EqualsProto(ListMetadata()[i]));
     }
 
     ASSERT_EQ(sharding_new_metadata.tuple_elements()[2].metadata().size(), 1);
-    EXPECT_TRUE(protobuf_util::ProtobufEquals(
-        sharding_new_metadata.tuple_elements()[2].metadata().front(),
-        SingleMetadata().front()));
+    EXPECT_THAT(sharding_new_metadata.tuple_elements()[2].metadata().front(),
+                EqualsProto(SingleMetadata().front()));
   }
 }
 
@@ -628,8 +626,8 @@ TEST_F(HloShardingTest, WithMetadataOverwrite) {
     auto sharding_new_metadata =
         sharding.WithMetadata(SingleMetadata(), /*overwrite=*/true);
     ASSERT_EQ(sharding_new_metadata.metadata().size(), 1);
-    EXPECT_TRUE(protobuf_util::ProtobufEquals(
-        sharding_new_metadata.metadata().front(), SingleMetadata().front()));
+    EXPECT_THAT(sharding_new_metadata.metadata().front(),
+                EqualsProto(SingleMetadata().front()));
   }
 
   {
@@ -638,8 +636,8 @@ TEST_F(HloShardingTest, WithMetadataOverwrite) {
         sharding.WithMetadata(ListMetadata(), /*overwrite=*/true);
     ASSERT_EQ(sharding_new_metadata.metadata().size(), 2);
     for (int i = 0; i < 2; ++i) {
-      EXPECT_TRUE(protobuf_util::ProtobufEquals(
-          sharding_new_metadata.metadata()[i], ListMetadata()[i]));
+      EXPECT_THAT(sharding_new_metadata.metadata()[i],
+                  EqualsProto(ListMetadata()[i]));
     }
   }
 
@@ -660,8 +658,7 @@ TEST_F(HloShardingTest, WithMetadataOverwrite) {
     for (const auto& sub_sharding : sharding_new_metadata.tuple_elements()) {
       ASSERT_EQ(sub_sharding.metadata().size(), 2);
       for (int i = 0; i < 2; ++i) {
-        EXPECT_TRUE(protobuf_util::ProtobufEquals(sub_sharding.metadata()[i],
-                                                  ListMetadata()[i]));
+        EXPECT_THAT(sub_sharding.metadata()[i], EqualsProto(ListMetadata()[i]));
       }
     }
   }

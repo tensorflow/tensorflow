@@ -15,9 +15,13 @@ limitations under the License.
 
 #include "xla/permutation_util.h"
 
+#include <cstddef>
+#include <cstdint>
 #include <vector>
 
 #include "absl/container/inlined_vector.h"
+#include "absl/log/check.h"
+#include "absl/types/span.h"
 
 namespace xla {
 

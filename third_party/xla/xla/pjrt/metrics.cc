@@ -17,8 +17,8 @@ limitations under the License.
 
 #include <cstdint>
 
-#include "tsl/lib/monitoring/counter.h"
-#include "tsl/lib/monitoring/gauge.h"
+#include "xla/tsl/lib/monitoring/counter.h"
+#include "xla/tsl/lib/monitoring/gauge.h"
 
 namespace xla {
 namespace {

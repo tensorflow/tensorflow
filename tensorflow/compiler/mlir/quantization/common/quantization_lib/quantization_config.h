@@ -43,7 +43,7 @@ struct CustomOpInfo {
 
 using CustomOpMap = std::unordered_map<std::string, CustomOpInfo>;
 enum CustomOpUpdateOptions { kInputIndices, kWeightOnly, kNoSideEffect };
-enum class QDQConversionMode { kQDQNone, kQDQStatic, kQDQDynamic };
+enum class QDQConversionMode { kQDQNone, kQDQStatic, kQDQDynamic, kQDQStrict };
 
 struct QuantizationSpecs {
   // Which function this node quant specifications belong to.
@@ -215,6 +215,10 @@ struct QuantizationSpecs {
   // If other than kQDQNone, the model is a floating point graph with QDQ ops
   // to be eliminated and fused into quantized kernels.
   QDQConversionMode qdq_conversion_mode = QDQConversionMode::kQDQNone;
+
+  // When set, adheres to the QDQ annotations added by the framework when
+  // possible rather than quantizing any op that is possible to quantize.
+  bool strict_qdq_mode = false;
 };
 
 // Parses the command line flag strings to the CustomOpMap specification.
@@ -242,6 +246,9 @@ bool GetInputNodeQuantSpecs(const std::vector<std::string>& node_names,
 
 // Returns a human-readable string of the QDQQuantMode enum class
 std::string GetQDQQuantModeString(QDQConversionMode mode);
+
+// Returns the QDQQuantMode enum class from a human-readable string
+QDQConversionMode GetQDQQuantModeFromString(const std::string& mode_str);
 }  // namespace quant
 }  // namespace mlir
 

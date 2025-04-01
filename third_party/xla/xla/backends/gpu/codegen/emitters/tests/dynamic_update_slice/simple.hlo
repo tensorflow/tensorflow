@@ -1,0 +1,37 @@
+// RUN: fusion_to_mlir %s | emitters_opt -xla-gpu-test-optimize |\
+// RUN:   FileCheck %s
+// RUN: test_correctness %s --bijection_inputs=updated:1
+
+fusion {
+  in = f32[20,30] parameter(0)
+  updates = f32[5,6] parameter(1)
+  i0 = s32[] parameter(2)
+  i1 = s32[] parameter(3)
+  ROOT updated = f32[20,30] dynamic-update-slice(in, updates, i0, i1)
+}
+// CHECK:     func.func @main
+// CHECK-SAME:  %arg0: tensor<20x30xf32>
+// CHECK-SAME:  %arg1: tensor<5x6xf32>
+// CHECK-SAME:  %arg2: tensor<i32>
+// CHECK-SAME:  %arg3: tensor<i32>
+// CHECK-SAME:  %arg4: tensor<20x30xf32>
+// CHECK-DAG:   %[[C_24:.*]] = arith.constant 24
+// CHECK-DAG:   %[[C_15:.*]] = arith.constant 15
+// CHECK-DAG:   %[[C_0:.*]] = arith.constant 0
+// CHECK:       %[[THREAD_ID:.*]] = gpu.thread_id  x
+
+// CHECK:     xla.loop
+// CHECK-SAME:  -> (%[[RA:.*]], %[[RB:.*]]) in
+// CHECK:       %[[I0:.*]] = xla.pure_call @fusion_i0
+// CHECK:       %[[I1:.*]] = xla.pure_call @fusion_i1
+// CHECK:       %[[IDX0:.*]] = arith.index_cast %[[I0]]
+// CHECK:       %[[MIN0:.*]] = arith.minsi %[[IDX0]], %[[C_15]]
+// CHECK:       %[[MAX0:.*]] = arith.maxsi %[[MIN0]], %[[C_0]]
+// CHECK:       %[[ADD0:.*]] = arith.addi %[[RA]], %[[MAX0]]
+// CHECK:       %[[IDX1:.*]] = arith.index_cast %[[I1]]
+// CHECK:       %[[MIN1:.*]] = arith.minsi %[[IDX1]], %[[C_24]]
+// CHECK:       %[[MAX1:.*]] = arith.maxsi %[[MIN1]], %[[C_0]]
+// CHECK:       %[[ADD1:.*]] = arith.addi %[[RB]], %[[MAX1]]
+// CHECK:       %[[UPDATE:.*]] = xla.pure_call @fusion_updates
+// CHECK:       %[[INSERT:.*]] = tensor.insert %[[UPDATE:.*]] into %{{[a-z0-9]+}}[%[[ADD0]], %[[ADD1]]]
+// CHECK:       xla.yield %[[INSERT]]

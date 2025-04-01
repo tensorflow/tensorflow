@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_STREAM_EXECUTOR_TPU_NONCOPYABLE_BUFFER_H_
 #define XLA_STREAM_EXECUTOR_TPU_NONCOPYABLE_BUFFER_H_
 
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <cstdlib>
@@ -67,10 +68,8 @@ class NoncopyableBuffer {
     }
 #endif
     uint32_t* data_u32 = reinterpret_cast<uint32_t*>(data_.get());
-    uint32_t v = value.value_or(0);
-    for (uint32_t *p = data_u32, *e = data_u32 + size_in_u32s; p < e; ++p) {
-      *p = v;
-    }
+    uint32_t v = value.value_or(uint32_t{0});
+    std::fill_n(data_u32, size_in_u32s, v);
   }
 
   // Directly use buf pointer without copying it to owning data_. This delays

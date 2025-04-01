@@ -15,27 +15,25 @@ limitations under the License.
 
 #include "xla/service/dynamic_dimension_inference.h"
 
-#include "xla/client/xla_builder.h"
+#include "xla/hlo/builder/xla_builder.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/testlib/filecheck.h"
 #include "xla/hlo/utils/hlo_matchers.h"
 #include "xla/literal.h"
 #include "xla/service/hlo_runner.h"
 #include "xla/shape_util.h"
 #include "xla/test.h"
 #include "xla/test_helpers.h"
-#include "xla/tests/filecheck.h"
 #include "xla/tests/hlo_test_base.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/lib/core/status_test_util.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/platform/test_benchmark.h"
-
-namespace op = xla::testing::opcode_matchers;
 
 namespace xla {
 namespace {
@@ -1229,7 +1227,7 @@ TEST_F(DynamicDimensionInferenceTest, InfersCustomOp) {
     CHECK(inference != nullptr);
     CHECK(Cast<HloCustomCallInstruction>(hlo) != nullptr);
     handler_called = true;
-    return absl::OkStatus();
+    return hlo->IsCustomCall("MyCustomOp");
   };
   TF_ASSERT_OK(RunInference(/*op_supports_dynamism_handler=*/nullptr, handler));
 
@@ -1351,8 +1349,9 @@ ENTRY computation {
             /*opaque=*/std::string{}, API_VERSION_STATUS_RETURNING));
       }));
 
-  absl::StatusOr<bool> filecheck_result = RunFileCheck(module_->ToString({}),
-                                                       R"(
+  absl::StatusOr<bool> filecheck_result = RunFileCheck(
+      module_->ToString(HloPrintOptions().set_print_operand_shape(true)),
+      R"(
 // CHECK: compare = pred[] compare(s32[] %a_size_1, s32[] %b_size_1), direction=EQ
 // CHECK: compare.5 = pred[] compare(s32[] %a_size_2, s32[] %b_size_2), direction=EQ
 // CHECK: and.2 = pred[] and(pred[] %compare, pred[] %compare.5)

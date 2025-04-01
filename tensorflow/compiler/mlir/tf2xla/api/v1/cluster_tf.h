@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_TF2XLA_API_V1_CLUSTER_TF_H_
 #define TENSORFLOW_COMPILER_MLIR_TF2XLA_API_V1_CLUSTER_TF_H_
 
+#include "absl/status/status.h"
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "tensorflow/core/lib/core/status.h"
 
@@ -34,8 +35,8 @@ namespace v1 {
 // Tensorflow Dialect. The output MLIR is in the TF Functional Dialect.  The
 // input MLIR should not have infeed and outfeed ops, which are unsupported via
 // this API. Returns OkStatus if passed, otherwise an error.
-tensorflow::Status RunSessionTf2xlaClusteringBridge(
-    mlir::ModuleOp module, bool is_in_fallback_enabled_mode);
+absl::Status RunSessionTf2xlaClusteringBridge(mlir::ModuleOp module,
+                                              bool is_in_fallback_enabled_mode);
 
 }  // namespace v1
 }  // namespace tf2xla

@@ -15,7 +15,6 @@ limitations under the License.
 
 #include <pybind11/stl.h>
 
-#include <algorithm>
 #include <string>
 #include <vector>
 

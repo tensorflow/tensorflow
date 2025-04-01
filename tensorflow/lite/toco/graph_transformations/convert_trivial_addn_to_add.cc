@@ -12,7 +12,12 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <cstddef>
+
+#include "absl/log/check.h"
+#include "absl/status/status.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/lite/toco/graph_transformations/graph_transformations.h"
 #include "tensorflow/lite/toco/model.h"
 #include "tensorflow/lite/toco/tooling_util.h"
@@ -21,9 +26,8 @@ namespace toco {
 
 // This pass will convert an AddN operator with only 2 inputs into a regular Add
 // operator, to which more optimizations may apply.
-::tensorflow::Status ConvertTrivialAddNToAdd::Run(Model* model,
-                                                  std::size_t op_index,
-                                                  bool* modified) {
+absl::Status ConvertTrivialAddNToAdd::Run(Model* model, std::size_t op_index,
+                                          bool* modified) {
   *modified = false;
   auto addn_it = model->operators.begin() + op_index;
   if (addn_it->get()->type != OperatorType::kAddN) {

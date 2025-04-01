@@ -14,9 +14,8 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/compiler/mlir/lite/experimental/common/outline_operations.h"
 
-#include <memory>
+#include <cassert>
 #include <string>
-#include <utility>
 
 #include "absl/strings/str_cat.h"
 #include "llvm/ADT/STLExtras.h"
@@ -145,7 +144,7 @@ func::FuncOp BuildFuncOp(const Subgraph& subgraph, OpBuilder& builder,
   // order, accumulating clones of defined Values into a `IRMapping`
   // and pass that map to calls to clone ops.
   OpBuilder function_builder(new_func.getBody());
-  // Prefered data structure for mapping MLIR values.
+  // Preferred data structure for mapping MLIR values.
   IRMapping values_in_scope;
   // Function arguments can appear as operands, so they clone should
   // be aware of them.

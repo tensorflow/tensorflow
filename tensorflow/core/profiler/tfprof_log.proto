@@ -11,17 +11,12 @@ option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/profile
 message CodeDef {
   repeated Trace traces = 1;
   message Trace {
-    string file = 1 [deprecated = true];  // deprecated by file_id.
+    reserved 1, 3, 4;
+    reserved "file", "function", "line";
     int64 file_id = 6;
-
     int32 lineno = 2;
-
-    string function = 3 [deprecated = true];  // deprecated by function_id.
     int64 function_id = 7;
-
-    string line = 4 [deprecated = true];  // deprecated line_id.
     int64 line_id = 8;
-
     int32 func_start_line = 5;
   }
 }

@@ -44,6 +44,7 @@ cc_library(
         "//tensorflow/lite/kernels/internal:compatibility",
         "//third_party/python_runtime:headers",  # buildcleaner: keep
         "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
     ],
 )
@@ -65,8 +66,6 @@ cc_library(
     hdrs = ["python_utils.h"],
     compatible_with = get_compatible_with_portable(),
     deps = [
-        "//tensorflow/lite:framework",
-        "//tensorflow/lite:string_util",
         "//third_party/python_runtime:headers",  # buildcleaner: keep
     ],
 )

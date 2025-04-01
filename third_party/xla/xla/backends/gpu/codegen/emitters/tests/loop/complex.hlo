@@ -1,0 +1,30 @@
+// RUN: fusion_to_mlir %s |\
+// RUN:   emitters_opt --xla-gpu-test-optimize | FileCheck %s
+// RUN: test_correctness %s
+
+fusion {
+  %p0 = f32[2]{0} parameter(0)
+  %p1 = f32[2]{0} parameter(1)
+  %p2 = c64[2]{0} parameter(2)
+  %complex = c64[2] complex(%p0, %p1)
+  %add = c64[2] add(%complex, %p2)
+  %cst = c64[2]{0} constant({(2.0, 0.0), (0.0, 2.0)})
+  ROOT %mul = c64[2] multiply(%add, %cst)
+}
+
+// CHECK: func.func @main
+// CHECK-NEXT: gpu.thread_id
+// CHECK:      xla.loop
+// CHECK-NEXT: pure_call @fusion_mul
+// CHECK-NEXT: tensor.insert
+// CHECK:      return
+
+// CHECK: func.func private @fusion_mul
+// CHECK-NEXT: arith.constant
+// CHECK-NEXT: tensor.extract
+// CHECK-NEXT: tensor.extract
+// CHECK-NEXT: complex.create
+// CHECK-NEXT: tensor.extract
+// CHECK-NEXT: complex.add
+// CHECK-NEXT: tensor.extract
+// CHECK-NEXT: complex.mul

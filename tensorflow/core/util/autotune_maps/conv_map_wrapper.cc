@@ -19,10 +19,10 @@ limitations under the License.
 
 #include "absl/log/check.h"
 #include "absl/status/status.h"
+#include "xla/tsl/lib/strings/proto_serialization.h"
+#include "xla/tsl/protobuf/dnn.pb.h"
 #include "tensorflow/core/util/autotune_maps/autotune_map.pb.h"
 #include "tensorflow/core/util/autotune_maps/conv_parameters.pb.h"
-#include "tsl/lib/strings/proto_serialization.h"
-#include "tsl/protobuf/dnn.pb.h"
 
 namespace tensorflow {
 

@@ -34,27 +34,29 @@ class OpDef;
 
 // Instantiates FunctionDef into a graph. Set *fbody to point to the
 // FunctionBody that holds the instantiated FunctionDef.
-Status FunctionDefToBodyHelper(core::RefCountPtr<FunctionRecord>&& record,
-                               const AttrSlice& attrs,
-                               const FunctionLibraryDefinition* lib_def,
-                               std::unique_ptr<FunctionBody>* fbody);
+absl::Status FunctionDefToBodyHelper(core::RefCountPtr<FunctionRecord>&& record,
+                                     const AttrSlice& attrs,
+                                     const FunctionLibraryDefinition* lib_def,
+                                     std::unique_ptr<FunctionBody>* fbody);
 
 // Instantiates FunctionDef into a graph. Set *fbody to point to the
 // FunctionBody that holds the instantiated FunctionDef.
 //
 // NOTE(mrry): This implementation incurs a copy of `fdef`. If possible, use
 //   the overload that takes a `core::RefCountPtr<FunctionRecord>`.
-Status FunctionDefToBodyHelper(const FunctionDef& fdef, const AttrSlice& attrs,
-                               const FunctionLibraryDefinition* lib_def,
-                               std::unique_ptr<FunctionBody>* fbody);
+absl::Status FunctionDefToBodyHelper(const FunctionDef& fdef,
+                                     const AttrSlice& attrs,
+                                     const FunctionLibraryDefinition* lib_def,
+                                     std::unique_ptr<FunctionBody>* fbody);
 
 // Instantiates FunctionDef into a graph. Set *fbody to point to the
 // FunctionBody that holds the instantiated FunctionDef. Use custom function
 // signature lookup, in case instantiated function is not in the 'lib_def'.
-Status FunctionDefToBodyHelper(
+absl::Status FunctionDefToBodyHelper(
     core::RefCountPtr<FunctionRecord>&& record, const AttrSlice& attrs,
     const FunctionLibraryDefinition* lib_def,
-    const std::function<Status(const string&, const OpDef**)>& get_func_sig,
+    const std::function<absl::Status(const string&, const OpDef**)>&
+        get_func_sig,
     std::unique_ptr<FunctionBody>* fbody);
 
 // Removes all stateless nodes that do not contribute to a return

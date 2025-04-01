@@ -20,16 +20,19 @@ limitations under the License.
 
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/shape_util.h"
+#include "xla/stream_executor/device_description.h"
 
 namespace xla {
 namespace gpu {
-std::optional<bool> FusionCanShareBufferHint(const HloInstruction* user,
-                                             const HloInstruction* operand,
-                                             const ShapeIndex& user_index);
+std::optional<bool> FusionCanShareBufferHint(
+    const HloInstruction* user, const HloInstruction* operand,
+    const ShapeIndex& user_index,
+    const se::DeviceDescription& device_description);
 
-std::optional<bool> CanShareBufferHint(const HloInstruction* user,
-                                       const HloInstruction* operand,
-                                       const ShapeIndex& user_index);
+std::optional<bool> CanShareBufferHint(
+    const HloInstruction* user, const HloInstruction* operand,
+    const ShapeIndex& user_index,
+    const se::DeviceDescription& device_description);
 }  // namespace gpu
 }  // namespace xla
 

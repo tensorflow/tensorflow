@@ -85,11 +85,20 @@ using ReplaceTypeSelector = std::function<ReplaceType(const HloInstruction*)>;
 //   parameter.
 // Please check test cases `HloExtractorTest.ExtractFromMultipleComputation` for
 // more details.
+//
+// If the `inline_calls_and_fusions` flag is on, then the kCall and kFusion
+// instructions are inlined. This allows for better extraction as some
+// parameters can be eliminated because they are not used anymore. For an
+// example of this, see `HloExtractorTest.TestWithCalledComputationsAndFusion`.
+//
+// If the `run_verifier` flag is on, then the extracted module will be verified
+// for correctness.
 std::unique_ptr<HloModule> ExtractModule(
     const HloInstruction* instruction, int64_t height = -1,
     ExtractSelector extract_selector = nullptr,
     ReplaceTypeSelector replace_type_selector = nullptr,
-    bool cross_computation = false);
+    bool cross_computation = false, bool inline_calls_and_fusions = false,
+    bool run_verifier = true);
 
 }  // namespace xla
 

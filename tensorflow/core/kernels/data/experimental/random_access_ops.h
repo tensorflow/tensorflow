@@ -35,8 +35,6 @@ class GetElementAtIndexOp : public AsyncOpKernel {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("output_shapes", &output_shapes_));
   }
 
-  ~GetElementAtIndexOp() override {}
-
   void ComputeAsync(OpKernelContext* ctx, DoneCallback done) override {
     unbounded_threadpool_.Schedule([this, ctx, done = std::move(done)]() {
       ctx->SetStatus(DoCompute(ctx));
@@ -49,7 +47,7 @@ class GetElementAtIndexOp : public AsyncOpKernel {
   }
 
  protected:
-  Status DoCompute(OpKernelContext* ctx);
+  absl::Status DoCompute(OpKernelContext* ctx);
 
  private:
   UnboundedThreadPool unbounded_threadpool_;

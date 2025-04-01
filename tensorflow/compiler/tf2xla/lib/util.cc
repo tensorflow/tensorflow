@@ -15,8 +15,10 @@ limitations under the License.
 
 #include "tensorflow/compiler/tf2xla/lib/util.h"
 
+#include <cstdint>
+
 #include "absl/log/log.h"
-#include "xla/client/xla_builder.h"
+#include "xla/hlo/builder/xla_builder.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/primitive_util.h"

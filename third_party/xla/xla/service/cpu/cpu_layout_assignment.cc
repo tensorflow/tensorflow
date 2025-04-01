@@ -20,7 +20,10 @@ limitations under the License.
 #include <optional>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/log/check.h"
+#include "absl/status/status.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/map_util.h"
@@ -112,8 +115,8 @@ static bool OperandsAndResultMustHaveRowMajorLayout(
     return PotentiallyImplementedAsEigenConvolution(instr,
                                                     target_machine_features);
   } else if (instr.opcode() == HloOpcode::kDot) {
-    return DotOperandsAndResultMustHaveRowMajorLayout(instr,
-                                                      target_machine_features);
+    return DotOperandsAndResultMustHaveRowMajorLayout(
+        instr, target_machine_features, /*allow_runtime_calls=*/true);
   } else if (instr.opcode() == HloOpcode::kCustomCall) {
     return instr.custom_call_target() == "TopK";
   }

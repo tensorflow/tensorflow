@@ -14,9 +14,9 @@ limitations under the License.
 ==============================================================================*/
 #include "third_party/gpus/cuda/include/cufft.h"
 #include "third_party/gpus/cuda/include/cufftXt.h"
+#include "xla/tsl/platform/logging.h"
 #include "tsl/platform/dso_loader.h"
 #include "tsl/platform/load_library.h"
-#include "tsl/platform/logging.h"
 
 // Implements the cuFFT API by forwarding to cuFFT loaded from the DSO.
 

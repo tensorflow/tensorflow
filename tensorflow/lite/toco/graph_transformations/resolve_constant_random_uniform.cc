@@ -13,8 +13,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include <algorithm>
+#include <cstddef>
 #include <vector>
 
+#include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "tensorflow/core/lib/random/philox_random.h"
 #include "tensorflow/core/lib/random/random_distributions.h"
@@ -60,9 +63,9 @@ bool ComputeRandomUniformArray(Model* model, RandomUniformOperator* op) {
   return true;
 }
 
-::tensorflow::Status ResolveConstantRandomUniform::Run(Model* model,
-                                                       std::size_t op_index,
-                                                       bool* modified) {
+absl::Status ResolveConstantRandomUniform::Run(Model* model,
+                                               std::size_t op_index,
+                                               bool* modified) {
   *modified = false;
   const auto it = model->operators.begin() + op_index;
   auto* base_op = it->get();

@@ -14,18 +14,23 @@
 
 #include "xla/python/ifrt_proxy/common/array_util.h"
 
+#include <cstddef>
+#include <memory>
 #include <string>
 #include <vector>
 
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/cord.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "xla/python/ifrt/dtype.h"
 #include "xla/python/ifrt/shape.h"
-#include "tsl/platform/statusor.h"
+#include "xla/python/ifrt_proxy/common/array_util.pb.h"
+#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace ifrt {
@@ -59,7 +64,13 @@ absl::StatusOr<std::vector<int64_t>> DefaultByteStrides(const DType dtype,
 absl::StatusOr<ArrayMemRegion> ArrayMemRegion::FromZerothElementPointer(
     const void* zeroth_element, const DType dtype, const Shape& shape,
     ByteStrides byte_strides) {
-  if (!dtype.byte_size().has_value()) {
+  int byte_size;
+  if (dtype.byte_size().has_value()) {
+    byte_size = *dtype.byte_size();
+  } else if (dtype.bit_size().has_value() && *dtype.bit_size() < 8) {
+    // IFRT uses 1 byte per element for S4 and S2.
+    byte_size = 1;
+  } else {
     return absl::InvalidArgumentError(
         absl::StrCat("Unsupported data type to construct ArrayMemRegion: ",
                      dtype.DebugString()));
@@ -70,8 +81,7 @@ absl::StatusOr<ArrayMemRegion> ArrayMemRegion::FromZerothElementPointer(
 
   if (!byte_strides.has_value() ||
       (byte_strides->empty() && shape.dims().empty())) {
-    return ArrayMemRegion(mem_region_start,
-                          dtype.byte_size().value() * shape.num_elements());
+    return ArrayMemRegion(mem_region_start, byte_size * shape.num_elements());
   }
   if (shape.num_elements() == 0) {
     return ArrayMemRegion(mem_region_start, 0);
@@ -105,7 +115,7 @@ absl::StatusOr<ArrayMemRegion> ArrayMemRegion::FromZerothElementPointer(
       return absl::UnimplementedError(
           absl::StrCat("Negative or zero strides are not fully supported: ",
                        StridesAsStr(byte_strides)));
-    } else if (stride % dtype.byte_size().value() != 0) {
+    } else if (stride % byte_size != 0) {
       return absl::UnimplementedError(absl::StrCat(
           "byte_stride[", i, "] is not a multiple of the data-type's size: ",
           StridesAsStr(byte_strides), ", dtype=", dtype.DebugString()));
@@ -116,8 +126,7 @@ absl::StatusOr<ArrayMemRegion> ArrayMemRegion::FromZerothElementPointer(
       last_element_byte_offset += (stride * (shape.dims()[i] - 1));
     }
   }
-  return ArrayMemRegion(mem_region_start,
-                        last_element_byte_offset + dtype.byte_size().value());
+  return ArrayMemRegion(mem_region_start, last_element_byte_offset + byte_size);
 }
 
 absl::StatusOr<ArrayMemRegion> ArrayMemRegion::FromMinimalMemRegion(
@@ -149,6 +158,56 @@ void* ArrayMemRegion::zeroth_element() const {
   // ArrayMemRegion cannot yet be constructed for situations where the
   // zeroth element pointer is different from mem_region_start_.
   return mem_region_start_;
+}
+
+size_t ArrayMemRegion::nbytes() const { return nbytes_; }
+
+absl::StatusOr<std::unique_ptr<std::string>> SerializeStringHostBuffer(
+    absl::Span<const absl::Cord> cords) {
+  proto::StringArrayContents string_array_proto;
+  for (const auto& c : cords) {
+    string_array_proto.add_strings(std::string(c));
+  }
+  return std::make_unique<std::string>(string_array_proto.SerializeAsString());
+}
+
+absl::StatusOr<std::vector<absl::Cord>> DeserializeStringHostBufferFromString(
+    const std::string& serialized_string_buffer) {
+  proto::StringArrayContents string_array_proto;
+  if (!string_array_proto.ParseFromString(serialized_string_buffer)) {
+    return absl::InvalidArgumentError(
+        "Failed to parse serialized string buffer");
+  }
+
+  std::vector<absl::Cord> result;
+  result.reserve(string_array_proto.strings_size());
+  for (const auto& s : string_array_proto.strings()) {
+    result.push_back(absl::Cord(s));
+  }
+  return result;
+}
+
+absl::Status DeserializeFromCordIntoPreallocatedStringHostBuffer(
+    const absl::Cord& serialized_string_buffer,
+    absl::Cord* preallocated_buffer) {
+  proto::StringArrayContents string_array_proto;
+
+#if defined(PLATFORM_GOOGLE)
+  if (!string_array_proto.ParseFromString(serialized_string_buffer)) {
+#else
+  if (!string_array_proto.ParseFromString(  // No absl::Cord support in OSS.
+          std::string(serialized_string_buffer))) {
+#endif
+    return absl::InvalidArgumentError(
+        "Failed to parse serialized string buffer");
+  }
+
+  auto* current_cord = preallocated_buffer;
+  for (const auto& s : string_array_proto.strings()) {
+    *current_cord = s;
+    ++current_cord;
+  }
+  return absl::OkStatus();
 }
 
 }  // namespace proxy

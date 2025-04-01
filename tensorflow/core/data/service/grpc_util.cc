@@ -35,7 +35,8 @@ namespace grpc_util {
 
 constexpr char kStreamRemovedMessage[] = "Stream removed";
 
-Status WrapError(const std::string& message, const ::grpc::Status& status) {
+absl::Status WrapError(const std::string& message,
+                       const ::grpc::Status& status) {
   if (status.ok()) {
     return errors::Internal("Expected a non-ok grpc status. Wrapping message: ",
                             message);
@@ -45,24 +46,25 @@ Status WrapError(const std::string& message, const ::grpc::Status& status) {
     // errors use other status codes (b/258285154).
     // TODO(aaudibert): Upstream this to FromGrpcStatus.
     if (status.error_message() == kStreamRemovedMessage) {
-      return Status(absl::StatusCode::kUnavailable, kStreamRemovedMessage);
+      return absl::Status(absl::StatusCode::kUnavailable,
+                          kStreamRemovedMessage);
     }
-    Status s = FromGrpcStatus(status);
-    return Status(s.code(),
-                  absl::StrCat(message, ": ", status.error_message()));
+    absl::Status s = FromGrpcStatus(status);
+    return absl::Status(s.code(),
+                        absl::StrCat(message, ": ", status.error_message()));
   }
 }
 
-Status Retry(const std::function<Status()>& f, const std::string& description,
-             int64_t deadline_micros) {
+absl::Status Retry(const std::function<absl::Status()>& f,
+                   const std::string& description, int64_t deadline_micros) {
   return Retry(
       f, [] { return true; }, description, deadline_micros);
 }
 
-Status Retry(const std::function<Status()>& f,
-             const std::function<bool()>& should_retry,
-             const std::string& description, int64_t deadline_micros) {
-  Status s = f();
+absl::Status Retry(const std::function<absl::Status()>& f,
+                   const std::function<bool()>& should_retry,
+                   const std::string& description, int64_t deadline_micros) {
+  absl::Status s = f();
   for (int num_retries = 0;; ++num_retries) {
     if (!IsPreemptedError(s)) {
       return s;

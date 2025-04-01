@@ -29,16 +29,16 @@ namespace tensorflow {
 namespace graph_transforms {
 
 // Declarations so we don't need a public header.
-Status SparsifyGather(const GraphDef& input_graph_def,
-                      const TransformFuncContext& context,
-                      GraphDef* output_graph_def);
-Status ReadTensorFromCheckpoint(
+absl::Status SparsifyGather(const GraphDef& input_graph_def,
+                            const TransformFuncContext& context,
+                            GraphDef* output_graph_def);
+absl::Status ReadTensorFromCheckpoint(
     const string& tensor_name, const std::unique_ptr<BundleReader>& ckpt_reader,
     const string& shape_and_slice, Tensor* tensor);
 
 class SparsifyGatherTest : public ::testing::Test {
  protected:
-  NodeDef* CreateNode(const StringPiece name, const StringPiece op,
+  NodeDef* CreateNode(const absl::string_view name, const absl::string_view op,
                       const std::vector<NodeDef*>& inputs, GraphDef* graph_def,
                       bool control_dep = false) {
     NodeDef* node_def = graph_def->add_node();
@@ -56,7 +56,7 @@ class SparsifyGatherTest : public ::testing::Test {
     return node_def;
   }
 
-  void MakeGather(StringPiece name, bool gather_v2, NodeDef* params,
+  void MakeGather(absl::string_view name, bool gather_v2, NodeDef* params,
                   NodeDef* indices, GraphDef* graph_def) {
     if (gather_v2) {
       NodeDef* axis_node =

@@ -69,6 +69,7 @@ filegroup(
     name = "interpreter_test_data",
     srcs = [
         "pc_conv.bin",
+        "two_signatures.tflite",
         ":gather_string",
         ":gather_string_0d",
         ":permute_float",
@@ -145,7 +146,6 @@ tf_custom_op_py_strict_library(
     srcs = ["double_op.py"],
     dso = [":_double_op.so"],
     kernels = [":double_op_and_kernels"],
-    srcs_version = "PY3",
     deps = [
         ":gen_double_op_wrapper",
         "//tensorflow/python/framework:dtypes",

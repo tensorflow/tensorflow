@@ -16,6 +16,7 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
+#include <gtest/gtest.h>
 #include "tensorflow/core/kernels/mlir_generated/base_binary_ops_test.h"
 #include "tensorflow/core/kernels/mlir_generated/base_ops_test.h"
 

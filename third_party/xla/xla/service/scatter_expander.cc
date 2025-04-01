@@ -15,8 +15,13 @@ limitations under the License.
 
 #include "xla/service/scatter_expander.h"
 
+#include <cstdint>
+#include <iterator>
+#include <vector>
+
 #include "absl/algorithm/container.h"
 #include "absl/status/statusor.h"
+#include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -24,153 +29,13 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/literal_util.h"
-#include "xla/service/call_inliner.h"
+#include "xla/service/gather_scatter_utils.h"
 #include "xla/service/hlo_creation_utils.h"
+#include "xla/service/scatter_utils.h"
 #include "xla/service/while_util.h"
+#include "xla/shape.h"
 
 namespace xla {
-
-// Transposes the given scatter_indices such that the index_vector_dim becomes
-// the most-minor dimension.
-static absl::StatusOr<HloInstruction*> TransposeIndexVectorDimToLast(
-    HloInstruction* scatter_indices, int64_t index_vector_dim) {
-  const Shape& scatter_indices_shape = scatter_indices->shape();
-
-  if (scatter_indices_shape.dimensions_size() == index_vector_dim) {
-    return scatter_indices;
-  }
-
-  if (index_vector_dim == (scatter_indices_shape.dimensions_size() - 1)) {
-    return scatter_indices;
-  }
-
-  std::vector<int64_t> permutation;
-  permutation.reserve(scatter_indices_shape.dimensions_size());
-  for (int64_t i = 0, e = scatter_indices_shape.dimensions_size(); i < e; i++) {
-    if (i != index_vector_dim) {
-      permutation.push_back(i);
-    }
-  }
-  permutation.push_back(index_vector_dim);
-  return MakeTransposeHlo(scatter_indices, permutation);
-}
-
-// Canonicalizes the scatter_indices tensor in order to keep them uniform while
-// performing the scatter operation.
-static absl::StatusOr<HloInstruction*> CanonicalizeScatterIndices(
-    HloInstruction* scatter_indices, int64_t index_vector_dim) {
-  // Transpose the non-index-vector dimensions to the front.
-  TF_ASSIGN_OR_RETURN(
-      HloInstruction * transposed_scatter_indices,
-      TransposeIndexVectorDimToLast(scatter_indices, index_vector_dim));
-  if (scatter_indices->shape().rank() == index_vector_dim + 1 &&
-      scatter_indices->shape().dimensions(index_vector_dim) == 1) {
-    auto new_shape =
-        ShapeUtil::DeleteDimension(index_vector_dim, scatter_indices->shape());
-    TF_ASSIGN_OR_RETURN(scatter_indices,
-                        MakeReshapeHlo(new_shape, scatter_indices));
-  }
-  bool indices_are_scalar =
-      index_vector_dim == scatter_indices->shape().dimensions_size();
-
-  // The number of dimensions in scatter_indices that are index dimensions.
-  const int64_t index_dims_in_scatter_indices = indices_are_scalar ? 0 : 1;
-
-  // If there is only one index (i.e. scatter_indices has rank 1 and this
-  // scatter is really just a dynamic update slice) add a leading degenerate
-  // dimension for uniformity.  Otherwise create a "collapsed" leading dimension
-  // that subsumes all of the non-index-vector dimensions.
-  const Shape& shape = transposed_scatter_indices->shape();
-  if (shape.dimensions_size() == index_dims_in_scatter_indices) {
-    return PrependDegenerateDims(transposed_scatter_indices, 1);
-  } else {
-    // Collapse all but the dimensions (0 or 1) in scatter_indices containing
-    // the index vectors.
-    return CollapseFirstNDims(
-        transposed_scatter_indices,
-        shape.dimensions_size() - index_dims_in_scatter_indices);
-  }
-}
-
-// Permutes the `updates` tensor such that all the scatter dims appear in the
-// major dimensions and all the window dimensions appear in the minor
-// dimensions.
-static absl::StatusOr<HloInstruction*> PermuteScatterAndWindowDims(
-    HloInstruction* updates, absl::Span<const int64_t> update_window_dims) {
-  std::vector<int64_t> permutation;
-  const int64_t updates_rank = updates->shape().rank();
-  permutation.reserve(updates_rank);
-
-  for (int64_t i = 0; i < updates_rank; ++i) {
-    bool is_scatter_dim = !absl::c_binary_search(update_window_dims, i);
-    if (is_scatter_dim) {
-      permutation.push_back(i);
-    }
-  }
-  for (auto window_dim : update_window_dims) {
-    permutation.push_back(window_dim);
-  }
-
-  return MakeTransposeHlo(updates, permutation);
-}
-
-// Expands or contracts the scatter indices in the updates tensor.
-static absl::StatusOr<HloInstruction*> AdjustScatterDims(
-    const Shape& scatter_indices_shape, HloInstruction* updates,
-    int64_t index_vector_dim) {
-  int64_t num_scatter_dims = scatter_indices_shape.dimensions_size();
-  if (index_vector_dim < scatter_indices_shape.dimensions_size()) {
-    --num_scatter_dims;
-  }
-  if (num_scatter_dims == 0) {
-    // If there are no scatter dims, this must be a dynamic-update-slice kind of
-    // scatter. In this case, we prepend a degenerate dimension to work
-    // uniformly in the while loop.
-    return PrependDegenerateDims(updates, 1);
-  }
-  return CollapseFirstNDims(updates, num_scatter_dims);
-}
-
-// Expands an index vector from the scatter_indices tensor into a vector that
-// can be used to dynamic-update-slice to perform the scatter update.
-static absl::StatusOr<HloInstruction*> ExpandIndexVectorIntoOperandSpace(
-    HloInstruction* index_vector, const ScatterDimensionNumbers& dim_numbers,
-    int64_t operand_rank) {
-  HloComputation* computation = index_vector->parent();
-  const Shape& index_shape = index_vector->shape();
-
-  // Scatter of a scalar. Return a zero-sized vector of indices.
-  if (operand_rank == 0) {
-    return computation->AddInstruction(HloInstruction::CreateConstant(
-        LiteralUtil::CreateFromDimensions(index_shape.element_type(), {0})));
-  }
-
-  HloInstruction* zero =
-      computation->AddInstruction(HloInstruction::CreateConstant(
-          LiteralUtil::CreateFromDimensions(index_shape.element_type(), {1})));
-
-  // We extract out individual components from the smaller index and concatenate
-  // them (interspersing zeros as needed) into the larger index.
-  std::vector<HloInstruction*> expanded_index_components;
-
-  for (int i = 0; i < operand_rank; i++) {
-    int64_t index_vector_dim_index =
-        FindIndex(dim_numbers.scatter_dims_to_operand_dims(), i);
-    if (index_vector_dim_index !=
-        dim_numbers.scatter_dims_to_operand_dims_size()) {
-      TF_ASSIGN_OR_RETURN(
-          HloInstruction * component_to_concat,
-          MakeSliceHlo(index_vector, /*start_indices=*/{index_vector_dim_index},
-                       /*limit_indices=*/{index_vector_dim_index + 1},
-                       /*strides=*/{1}));
-      expanded_index_components.push_back(component_to_concat);
-    } else {
-      expanded_index_components.push_back(zero);
-    }
-  }
-
-  return MakeConcatHlo(expanded_index_components, /*dimension=*/0);
-}
 
 static absl::StatusOr<HloInstruction*> CheckIndexValidity(
     HloComputation* computation, HloInstruction* index,
@@ -218,31 +83,21 @@ static absl::StatusOr<HloInstruction*> CheckIndexValidity(
   return MakeBroadcastHlo(valid_index_reduced, {}, window_sizes);
 }
 
-static absl::StatusOr<HloComputation*> CallAndGetOutput(
-    HloComputation* original, int output_index) {
-  HloInstruction* original_root = original->root_instruction();
-  if (!original_root->shape().IsTuple()) {
-    return original;
-  }
-  HloComputation* new_comp = [&] {
-    HloComputation::Builder builder(
-        absl::StrCat(original->name(), ".dup.", output_index));
-    for (int i = 0, n = original->num_parameters(); i < n; ++i) {
-      HloInstruction* original_param = original->parameter_instruction(i);
-      builder.AddInstruction(HloInstruction::CreateParameter(
-          i, original_param->shape(), original_param->name()));
-    }
-    return original->parent()->AddEmbeddedComputation(builder.Build());
-  }();
-  HloInstruction* call_original = new_comp->AddInstruction(
-      HloInstruction::CreateCall(original_root->shape(),
-                                 new_comp->parameter_instructions(), original));
-  new_comp->set_root_instruction(
-      new_comp->AddInstruction(
-          HloInstruction::CreateGetTupleElement(call_original, output_index)),
-      /*accept_different_shape=*/true);
-  TF_RETURN_IF_ERROR(CallInliner::Inline(call_original).status());
-  return new_comp;
+// Returns the sorted dimensions in a slice that are either collapsed or
+// corresponding to an explicit batching dimension.
+std::vector<int64_t> GetDegeneratedSliceDims(
+    const ScatterDimensionNumbers& dim_numbers) {
+  absl::Span<const int64_t> input_batching_dims =
+      dim_numbers.input_batching_dims();
+  absl::Span<const int64_t> inserted_window_dims =
+      dim_numbers.inserted_window_dims();
+  std::vector<int64_t> degenerated_dims;
+  degenerated_dims.reserve(inserted_window_dims.size() +
+                           input_batching_dims.size());
+  absl::c_copy(inserted_window_dims, std::back_inserter(degenerated_dims));
+  absl::c_copy(input_batching_dims, std::back_inserter(degenerated_dims));
+  absl::c_sort(degenerated_dims);
+  return degenerated_dims;
 }
 
 // Body of the while loop that performs the scatter operation using other HLOs.
@@ -286,7 +141,12 @@ static absl::StatusOr<std::vector<HloInstruction*>> ScatterLoopBody(
   TF_ASSIGN_OR_RETURN(
       HloInstruction * scatter_slice_start,
       ExpandIndexVectorIntoOperandSpace(
-          index_vector, dim_numbers, operands[0]->shape().dimensions_size()));
+          scatter->scatter_indices()->shape(),
+          operands[0]->shape().dimensions_size(),
+          dim_numbers.index_vector_dim(),
+          dim_numbers.scatter_dims_to_operand_dims(),
+          dim_numbers.scatter_indices_batching_dims(),
+          dim_numbers.input_batching_dims(), index_vector, induction_var));
 
   // Extract the slice to be used to update from `updates` tensor for the
   // induction_var corresponding to this iteration of the while loop.
@@ -307,6 +167,9 @@ static absl::StatusOr<std::vector<HloInstruction*>> ScatterLoopBody(
   auto update_slices_with_dims_inserted =
       absl::MakeSpan(map_operands).last(updates.size());
   absl::Span<const int64_t> actual_update_slice_dims;
+
+  std::vector<int64_t> degenerated_dims = GetDegeneratedSliceDims(dim_numbers);
+
   for (int i = 0, n = operands.size(); i < n; ++i) {
     HloInstruction* update = updates[i];
     TF_ASSIGN_OR_RETURN(
@@ -316,8 +179,7 @@ static absl::StatusOr<std::vector<HloInstruction*>> ScatterLoopBody(
                         ElideDegenerateDims(update_slice, {0}));
     TF_ASSIGN_OR_RETURN(
         HloInstruction * update_slice_with_dims_inserted,
-        InsertDegenerateDims(update_slice_for_scatter,
-                             dim_numbers.inserted_window_dims()));
+        InsertDegenerateDims(update_slice_for_scatter, degenerated_dims));
     update_slices_with_dims_inserted[i] = update_slice_with_dims_inserted;
     // Note that the following transformation assumes that both DynamicSlice and
     // DynamicUpdateSlice follow the same semantics for OOB indices. For
@@ -377,22 +239,6 @@ static absl::StatusOr<std::vector<HloInstruction*>> ScatterLoopBody(
   return updated_loop_state;
 }
 
-static int64_t ScatterTripCount(const HloScatterInstruction* scatter) {
-  // Compute the trip count for the while loop to be used for scatter. This
-  // should be the number of indices we should scatter into the operand.
-  const HloInstruction* scatter_indices = scatter->scatter_indices();
-  const Shape& scatter_indices_shape = scatter_indices->shape();
-  const ScatterDimensionNumbers& dim_numbers =
-      scatter->scatter_dimension_numbers();
-  int64_t scatter_loop_trip_count = 1;
-  for (int64_t i = 0, e = scatter_indices_shape.dimensions_size(); i < e; i++) {
-    if (i != dim_numbers.index_vector_dim()) {
-      scatter_loop_trip_count *= scatter_indices_shape.dimensions(i);
-    }
-  }
-  return scatter_loop_trip_count;
-}
-
 // High Level Algorithm.
 //
 // 1. Canonicalize the scatter_indices tensor such that it has rank 2, where
@@ -431,7 +277,7 @@ absl::StatusOr<HloInstruction*> ScatterExpander::ExpandInstruction(
 
   // Compute the trip count for the while loop to be used for scatter. This
   // should be the number of indices we should scatter into the operand.
-  int64_t scatter_loop_trip_count = ScatterTripCount(scatter);
+  int64_t scatter_loop_trip_count = ScatterIndicesCount(scatter);
   if (!IsInt32(scatter_loop_trip_count)) {
     return Unimplemented(
         "Scatter operations with more than 2147483647 scatter indices are not "
@@ -485,48 +331,13 @@ absl::StatusOr<HloInstruction*> ScatterExpander::ExpandInstruction(
   return MaybeMakeTuple(results);
 }
 
-namespace {
-
-bool IsCombinerAssociative(const HloComputation* combiner) {
-  // Consider simple binary combiner functions only.
-  if (combiner->instruction_count() != 3) {
-    return false;
-  }
-  switch (combiner->root_instruction()->opcode()) {
-    // Minimum and Maximum are common associative combiners.
-    case HloOpcode::kMinimum:
-    case HloOpcode::kMaximum:
-      return true;
-    // Other common combiners are associative at least for integer arithmetic.
-    case HloOpcode::kAdd:
-    case HloOpcode::kMultiply:
-    case HloOpcode::kOr:
-    case HloOpcode::kXor:
-      return combiner->root_instruction()->shape().IsInteger();
-    default:
-      return false;
-  }
-}
-
-bool IsDeterministic(const HloScatterInstruction* scatter) {
-  if (scatter->unique_indices()) {
-    return true;
-  }
-  if (IsCombinerAssociative(scatter->to_apply())) {
-    return true;
-  }
-  return false;
-}
-
-}  // namespace
-
 bool ScatterExpander::InstructionMatchesPattern(HloInstruction* inst) {
   auto* scatter = DynCast<HloScatterInstruction>(inst);
   return (scatter != nullptr) && (mode_ == kEliminateAllScatters ||
                                   (mode_ == kEliminateSimpleScatters &&
-                                   ScatterTripCount(scatter) == 1) ||
+                                   ScatterIndicesCount(scatter) == 1) ||
                                   (mode_ == kEliminateIndeterministicScatters &&
-                                   !IsDeterministic(scatter)));
+                                   !IsScatterDeterministic(scatter)));
 }
 
 }  // namespace xla

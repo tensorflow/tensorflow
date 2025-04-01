@@ -43,7 +43,7 @@ void IrEmitterContext::emit_constant(int64_t num_elements,
                                      absl::string_view symbol_name,
                                      int allocation_idx,
                                      DenseDataIntermediate content,
-                                     llvm::IRBuilder<>* b) {
+                                     llvm::IRBuilderBase* b) {
   // LLVM and PTXAS don't deal well with large constants, so we only emit very
   // small constants directly in LLVM IR.  Larger constants are emitted with
   // zero initializers in LLVM IR and are later overwritten when the PTX/CUBIN

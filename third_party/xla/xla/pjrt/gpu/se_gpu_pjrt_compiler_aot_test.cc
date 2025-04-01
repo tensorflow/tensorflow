@@ -19,17 +19,16 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/memory/memory.h"
-#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/Parser/Parser.h"
-#include "xla/client/xla_computation.h"
+#include "xla/hlo/builder/xla_computation.h"
+#include "xla/hlo/parser/hlo_parser.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
@@ -38,16 +37,10 @@ limitations under the License.
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_executable.h"
+#include "xla/pjrt/plugin/xla_gpu/xla_gpu_client_options.h"
 #include "xla/service/compiler.h"
-#if GOOGLE_CUDA
-#include "xla/service/gpu/nvptx_compiler.h"
-#elif TENSORFLOW_USE_ROCM
-#include "xla/service/gpu/amdgpu_compiler.h"
-#endif
-#include "xla/service/hlo_parser.h"
 #include "xla/tests/literal_test_util.h"
 #include "tsl/platform/casts.h"
-#include "tsl/platform/protobuf.h"
 #include "tsl/platform/statusor.h"
 
 namespace xla {
@@ -93,7 +86,7 @@ TEST(StreamExecutorGpuCompilerTest, SuccessAotCompileMlirAndLoad) {
       tensorflow::down_cast<StreamExecutorGpuClient*>(client.release()));
   Compiler::TargetConfig gpu_target_config = xla::Compiler::TargetConfig(
       se_client->client()->backend().default_stream_executor());
-  StreamExecutorGpuCompiler compiler;
+  StreamExecutorGpuCompiler compiler(se_client->client()->platform()->id());
 
   mlir::MLIRContext context;
   context.loadDialect<mlir::mhlo::MhloDialect, mlir::func::FuncDialect>();
@@ -106,8 +99,9 @@ TEST(StreamExecutorGpuCompilerTest, SuccessAotCompileMlirAndLoad) {
   TF_ASSERT_OK_AND_ASSIGN(auto executable,
                           compiler.Compile(opts, mlir_module.get(), *topology,
                                            /*client=*/nullptr));
-  TF_ASSERT_OK_AND_ASSIGN(auto loaded_executable,
-                          se_client->Load(std::move(executable)));
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto loaded_executable,
+      se_client->Load(std::move(executable), LoadOptions()));
 
   TF_ASSERT_OK_AND_ASSIGN(
       std::vector<std::vector<std::unique_ptr<PjRtBuffer>>> result,
@@ -120,14 +114,9 @@ TEST(StreamExecutorGpuCompilerTest, SuccessAotCompileXlaAndLoad) {
                           GetStreamExecutorGpuClient(GpuClientOptions()));
   auto se_client = absl::WrapUnique(
       tensorflow::down_cast<StreamExecutorGpuClient*>(client.release()));
-#if GOOGLE_CUDA
-  auto gpu_compiler = gpu::NVPTXCompiler();
-#elif TENSORFLOW_USE_ROCM
-  auto gpu_compiler = gpu::AMDGPUCompiler();
-#endif
   Compiler::TargetConfig gpu_target_config{
       se_client->client()->backend().default_stream_executor()};
-  StreamExecutorGpuCompiler compiler;
+  StreamExecutorGpuCompiler compiler(se_client->client()->platform()->id());
 
   TF_ASSERT_OK_AND_ASSIGN(XlaComputation computation,
                           GetXlaComputation(kProgram));
@@ -141,7 +130,7 @@ TEST(StreamExecutorGpuCompilerTest, SuccessAotCompileXlaAndLoad) {
       compiler.Compile(opts, computation, *topology, /*client=*/nullptr));
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<PjRtLoadedExecutable> loaded_executable,
-      se_client->Load(std::move(executable)));
+      se_client->Load(std::move(executable), LoadOptions()));
   TF_ASSERT_OK_AND_ASSIGN(
       std::vector<std::vector<std::unique_ptr<PjRtBuffer>>> result,
       loaded_executable->Execute(/*argument_handles=*/{{}}, {}));
@@ -153,7 +142,7 @@ TEST(StreamExecutorGpuCompilerTest, SuccessLoadFromSerializedExecutable) {
                           GetStreamExecutorGpuClient(GpuClientOptions()));
   auto se_client = absl::WrapUnique(
       tensorflow::down_cast<StreamExecutorGpuClient*>(client.release()));
-  StreamExecutorGpuCompiler compiler;
+  StreamExecutorGpuCompiler compiler(se_client->client()->platform()->id());
   xla::CompileOptions opts;
   opts.target_config = Compiler::TargetConfig(
       se_client->client()->backend().default_stream_executor());
@@ -190,7 +179,7 @@ TEST(StreamExecutorGpuCompilerTest, SuccessSerializeDeserialize) {
                           GetStreamExecutorGpuClient(GpuClientOptions()));
   auto se_client = absl::WrapUnique(
       tensorflow::down_cast<StreamExecutorGpuClient*>(client.release()));
-  StreamExecutorGpuCompiler compiler;
+  StreamExecutorGpuCompiler compiler(se_client->client()->platform()->id());
   xla::CompileOptions opts;
   opts.target_config = Compiler::TargetConfig(
       se_client->client()->backend().default_stream_executor());
@@ -204,14 +193,15 @@ TEST(StreamExecutorGpuCompilerTest, SuccessSerializeDeserialize) {
       compiler.Compile(opts, computation, *topology, /*client=*/nullptr));
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<PjRtLoadedExecutable> loaded_executable,
-      se_client->Load(std::move(executable)));
+      se_client->Load(std::move(executable), LoadOptions()));
 
   // Serialize the executable and deserialize it without failure.
   TF_ASSERT_OK_AND_ASSIGN(std::string serialized_executable,
                           se_client->SerializeExecutable(*loaded_executable));
   TF_ASSERT_OK_AND_ASSIGN(
       auto deserialized_executable,
-      se_client->DeserializeExecutable(serialized_executable, std::nullopt));
+      se_client->LoadSerializedExecutable(serialized_executable, std::nullopt,
+                                          LoadOptions()));
 
   EXPECT_EQ(deserialized_executable->name(), "Identity");
 }

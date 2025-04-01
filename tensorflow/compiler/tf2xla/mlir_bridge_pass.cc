@@ -141,13 +141,10 @@ MlirOptimizationPassState GetPassStateImpl(
     return MlirOptimizationPassState::Disabled;
   }
 
-  // We set `uses_uninitialized_resource_args` to false here because the first
-  // phase of the bridge is not affected by uninitialized resource args.
   // GetMlirBridgeRolloutPolicy will analyze a TPU graph if users have not
   // explicltly requested a policy.
   MlirBridgeRolloutPolicy policy = GetMlirBridgeRolloutPolicy(
       graph, &function_library, config_proto, is_supported_by_replicated_brige,
-      /*uses_uninitialized_resource_args=*/false,
       /*is_v1_compat=*/false, /*record_stats=*/false);
   // GetPassState is called once before MlirBridgePass starts, and the pass
   // gets skipped if it is disabled. Log such cases in this function. The cases
@@ -187,13 +184,9 @@ MlirOptimizationPassState GetPassStateImpl(
           /*device_type*/ mlir::TF::kMlirPh1BridgeCounterTpu,
           /*fallback_enabled*/ true,
           /*result*/ "invalid_graph");
-      // We set `uses_uninitialized_resource_args` to false here because the
-      // first phase of the bridge is not affected by uninitialized resource
-      // args.
       // For Invalid Graph Analysis we need to log here because Run will not
       // be called.
       LogGraphFeatures(graph, &function_library, config_proto,
-                       /*uses_uninitialized_resource_args=*/false,
                        /*is_v1_compat=*/false);
       return MlirOptimizationPassState::Disabled;
   }
@@ -235,10 +228,10 @@ MlirOptimizationPassState MlirBridgePass::GetPassState(
 // and attached to a "compile" operation, whose result is fed to an "execute"
 // operation. The kernel for these operations is responsible to lower the
 // encapsulated graph to a particular device.
-Status MlirBridgePass::Run(const std::string& function_name,
-                           const ConfigProto& config_proto,
-                           mlir::ModuleOp module, const Graph& graph,
-                           const FunctionLibraryDefinition& function_library) {
+absl::Status MlirBridgePass::Run(
+    const std::string& function_name, const ConfigProto& config_proto,
+    mlir::ModuleOp module, const Graph& graph,
+    const FunctionLibraryDefinition& function_library) {
   static absl::once_flag flag;
   absl::call_once(flag, UpdateLogVerbosityIfDefined, "TF_DEBUG_LOG_VERBOSITY");
 
@@ -272,13 +265,9 @@ Status MlirBridgePass::Run(const std::string& function_name,
   bool fallback_enabled = false;
   if (is_supported_by_replicated_brige) {
     if (pass_state == MlirOptimizationPassState::FallbackEnabled) {
-      // We set `uses_uninitialized_resource_args` to false here because the
-      // first phase of the bridge is not affected by uninitialized resource
-      // args.
       // TODO (b/241853328) Consider moving logging if caching for graph
       // analysis or GetPassState is added
       LogGraphFeatures(graph, &function_library, config_proto,
-                       /*uses_uninitialized_resource_args=*/false,
                        /*is_v1_compat=*/false);
       fallback_enabled = true;
     }
@@ -316,12 +305,10 @@ MlirOptimizationPassState MlirBridgeV1CompatPass::GetPassState(
   // Skip MLIR Bridge if no potential XLA clusters are found.
   if (!IsSupportedByReplicatedBridge(graph, &function_library))
     return MlirOptimizationPassState::Disabled;
-  // We set `uses_uninitialized_resource_args` to false here because the first
-  // phase of the bridge is not affected by uninitialized resource args.
   MlirBridgeRolloutPolicy policy = GetMlirBridgeRolloutPolicy(
       graph, /*function_library=*/&function_library, config_proto,
       /*is_supported_by_replicated_brige*/ true,
-      /*uses_uninitialized_resource_args=*/false, /*is_v1_compat=*/true,
+      /*is_v1_compat=*/true,
       /*record_stats=*/false);
   switch (policy) {
     case MlirBridgeRolloutPolicy::kEnabledByUser:
@@ -350,20 +337,16 @@ MlirOptimizationPassState MlirBridgeV1CompatPass::GetPassState(
           /*device_type*/ mlir::TF::kMlirPh1BridgeCounterTpu,
           /*fallback_enabled*/ true,
           /*result*/ "invalid_graph");
-      // We set `uses_uninitialized_resource_args` to false here because the
-      // first phase of the bridge is not affected by uninitialized resource
-      // args.
       // For Invalid Graph Analysis we need to log here because Run will not be
       // called.
       LogGraphFeatures(graph, &function_library, config_proto,
-                       /*uses_uninitialized_resource_args=*/false,
                        /*is_v1_compat=*/true);
       return MlirOptimizationPassState::Disabled;
   }
 }
 
-Status MlirBridgeV1CompatPass::Run(const GraphOptimizationPassOptions& options,
-                                   mlir::ModuleOp module) {
+absl::Status MlirBridgeV1CompatPass::Run(
+    const GraphOptimizationPassOptions& options, mlir::ModuleOp module) {
   static absl::once_flag flag;
   absl::call_once(flag, UpdateLogVerbosityIfDefined, "TF_DEBUG_LOG_VERBOSITY");
 
@@ -407,13 +390,10 @@ Status MlirBridgeV1CompatPass::Run(const GraphOptimizationPassOptions& options,
 
   bool fallback_enabled = false;
   if (pass_state == MlirOptimizationPassState::FallbackEnabled) {
-    // We set `uses_uninitialized_resource_args` to false here because the first
-    // phase of the bridge is not affected by uninitialized resource args.
     // TODO (b/241853328) Consider moving logging if caching for graph analysis
     // or GetPassState is added
     LogGraphFeatures(**options.graph, options.flib_def,
                      options.session_options->config,
-                     /*uses_uninitialized_resource_args=*/false,
                      /*is_v1_compat=*/true);
     fallback_enabled = true;
   }

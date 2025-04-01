@@ -129,7 +129,7 @@ void AddShapeLegalizationPasses(OpPassManager& pm) {
 
 void AddStablehloQuantToIntPasses(OpPassManager& pm) {
   pm.addNestedPass<func::FuncOp>(
-      mlir::stablehlo::createStablehloLegalizeQuantToIntPass());
+      mlir::stablehlo::createStablehloLegalizeQuantToMathPass());
   // StableHLO -> MHLO legalization.
   pm.addPass(mhlo::createStablehloLegalizeToHloPass());
   pm.addNestedPass<func::FuncOp>(createCanonicalizerPass());

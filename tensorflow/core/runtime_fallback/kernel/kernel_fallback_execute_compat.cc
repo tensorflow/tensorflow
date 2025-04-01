@@ -80,7 +80,7 @@ void KernelFallbackEmitError(
     const KernelFallbackCompatRequestState* fallback_request_state,
     tfrt::string_view op_name, tfrt::AsyncValueRef<tfrt::Chain>* op_chain,
     llvm::MutableArrayRef<tfrt::RCReference<tfrt::AsyncValue>> results,
-    const tensorflow::Status& status) {
+    const absl::Status& status) {
   // Set all results to error, with the correct TFRT error code according to the
   // error propagated from runtime fallback execution.
   auto model_info =
@@ -117,7 +117,7 @@ ConvertInputTensors(llvm::ArrayRef<tfrt::Tensor*> arguments) {
   return input_tf_tensors;
 }
 
-static Status ValidateInputTypes(
+static absl::Status ValidateInputTypes(
     tfrt::string_view op_name,
     const absl::InlinedVector<tensorflow::Tensor, 4UL>& input_tf_tensors,
     const DataTypeVector& input_types) {
@@ -261,7 +261,7 @@ tfrt::AsyncValueRef<tfrt::Chain> KernelFallbackExecuteCompatCoreRuntimeDispatch(
     const KernelFallbackCompatRequestState& fallback_request_state,
     const OpKernelRunner& op_kernel_runner) {
   auto op_chain = tfrt::GetReadyChain();
-  tensorflow::Status status;
+  absl::Status status;
 
   auto expected_input_tf_tensors = ConvertInputTensors(arguments);
   if (!expected_input_tf_tensors) {

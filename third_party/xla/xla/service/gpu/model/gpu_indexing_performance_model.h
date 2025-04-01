@@ -25,10 +25,11 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "mlir/IR/MLIRContext.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/utils/hlo_traversal.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
-#include "xla/service/gpu/hlo_traversal.h"
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/gpu/model/fusion_analysis_cache.h"
+#include "xla/service/gpu/model/gpu_hlo_cost_analysis.h"
 #include "xla/service/gpu/model/gpu_performance_model_base.h"
 #include "xla/service/gpu/model/hlo_op_profiles.h"
 #include "xla/service/gpu/model/symbolic_tile_analysis.h"
@@ -62,7 +63,18 @@ class GpuPerformanceModelWithIndexingAnalysis : public GpuPerformanceModelBase {
         device_info_(device_info),
         fusion_analysis_cache_(fusion_analysis_cache),
         shape_size_(shape_size),
+        cost_analysis_(
+            GpuHloCostAnalysis::Options{shape_size_,
+                                        /*per_second_rates=*/{},
+                                        /*min_latencies_seconds=*/{},
+                                        /*count_multiple_input_accesses=*/true},
+            *device_info_),
         mlir_context_(mlir_context) {}
+
+  // Returns the launch dimensions for the given tiled HLO computation.
+  static LaunchDimensions GetLaunchDimensionsForTiledFusion(
+      const TiledHloComputation& tiled_hlo_computation,
+      const se::DeviceDescription& device_info);
 
   EstimateRunTimeData EstimateRunTimeForFusion(
       const HloFusionAnalysis& fusion_analysis, bool is_coalesced = true);
@@ -91,7 +103,7 @@ class GpuPerformanceModelWithIndexingAnalysis : public GpuPerformanceModelBase {
   absl::StatusOr<EstimateRunTimeData> EstimateRunTimeForTiledFusion(
       const HloFusionAdaptor& fusion_adaptor,
       const LaunchDimensions& launch_dimensions,
-      absl::Span<const int64_t> output_tile_sizes);
+      const std::vector<std::vector<int64_t>>& output_tile_sizes);
 
   // Estimate the run time of producer and consumer fused together, assuming
   // that they will be emitted with Triton.
@@ -110,17 +122,18 @@ class GpuPerformanceModelWithIndexingAnalysis : public GpuPerformanceModelBase {
   absl::StatusOr<TiledRunTimeDataOrError> TryFindBestTilingForFusion(
       const HloFusionAdaptor& fusion_adaptor);
 
- private:
   // Returns an estimate how many FLOPs will be used to produce one element of
   // the output.
-  int64_t FlopsPerElement(const HloInstruction* instr) const;
+  int64_t FlopsPerElement(const HloInstruction* instr);
 
+ private:
   int64_t GetShapeSizeRecursive(const Shape& shape) const;
 
   const HloOpProfiles::HloOpProfile* hlo_op_profile_;
   const se::DeviceDescription* device_info_;
   HloFusionAnalysisCache* fusion_analysis_cache_;
   HloCostAnalysis::ShapeSizeFunction shape_size_;
+  GpuHloCostAnalysis cost_analysis_;
   mlir::MLIRContext* mlir_context_;
 };
 

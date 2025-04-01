@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/service/gpu/ir_emission_utils.h"
 
+#include <algorithm>
 #include <cstdint>
 #include <functional>
 #include <optional>
@@ -28,7 +29,6 @@ limitations under the License.
 #include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
-#include "absl/status/status.h"
 #include "absl/strings/escaping.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
@@ -42,6 +42,7 @@ limitations under the License.
 #include "llvm/IR/Type.h"
 #include "llvm/IR/Value.h"
 #include "llvm/IR/Verifier.h"
+#include "llvm/Support/Casting.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/TargetParser/Triple.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
@@ -49,23 +50,22 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/utils/hlo_traversal.h"
 #include "xla/literal.h"
 #include "xla/primitive_util.h"
 #include "xla/service/buffer_assignment.h"
-#include "xla/service/gpu/hlo_traversal.h"
+#include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/target_util.h"
-#include "xla/service/llvm_ir/buffer_assignment_util.h"
 #include "xla/service/llvm_ir/llvm_type_conversion_util.h"
 #include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
-#include "xla/translate/mhlo_to_hlo/location_exporter.h"
-#include "xla/translate/mhlo_to_hlo/type_to_shape.h"
+#include "xla/stream_executor/device_description.h"
+#include "xla/tsl/lib/strings/proto_serialization.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/lib/strings/proto_serialization.h"
-#include "tsl/platform/errors.h"
+#include "tsl/platform/protobuf.h"
 #include "tsl/platform/statusor.h"
 
 namespace xla {
@@ -75,12 +75,12 @@ namespace {
 
 // Return whether the given shape is rank 2 excluding the batch dimensions.
 bool IsRank2(const Shape& shape, int64_t batch_dimensions_size) {
-  return shape.rank() == batch_dimensions_size + 2;
+  return shape.dimensions_size() == batch_dimensions_size + 2;
 }
 
 // Return whether the given shape is rank 1 excluding the batch dimensions.
 bool IsRank1(const Shape& shape, int64_t batch_dimensions_size) {
-  return shape.rank() == batch_dimensions_size + 1;
+  return shape.dimensions_size() == batch_dimensions_size + 1;
 }
 
 }  // namespace
@@ -95,7 +95,8 @@ bool IsMatrixMultiplication(const HloInstruction& dot) {
 
   PrimitiveType output_primitive_type = dot.shape().element_type();
   bool type_is_allowed =
-      (output_primitive_type == F8E4M3FN || output_primitive_type == F8E5M2 ||
+      (output_primitive_type == F8E3M4 || output_primitive_type == F8E4M3 ||
+       output_primitive_type == F8E4M3FN || output_primitive_type == F8E5M2 ||
        output_primitive_type == F8E4M3FNUZ ||
        output_primitive_type == F8E5M2FNUZ || output_primitive_type == F16 ||
        output_primitive_type == BF16 || output_primitive_type == F32 ||
@@ -207,152 +208,7 @@ bool IsContiguousSlice(const HloInstruction& instr) {
   return false;
 }
 
-// Helper function to emit call to AMDGPU shfl_down function.
-llvm::Value* EmitAMDGPUShflDown(llvm::Value* value, llvm::Value* offset,
-                                llvm::IRBuilder<>* b) {
-  llvm::Module* module = b->GetInsertBlock()->getModule();
-  CHECK_EQ(value->getType()->getPrimitiveSizeInBits(), 32);
-  auto* i32_ty = b->getInt32Ty();
-  llvm::FunctionCallee shfl_fn = module->getOrInsertFunction(
-      llvm_ir::AsStringRef("__ockl_readuplane_i32"),
-      llvm::FunctionType::get(/*Result=*/i32_ty, {i32_ty, i32_ty},
-                              /*isVarArg=*/false));
-  // AMDGPU device function requires first argument as i32.
-  llvm::Value* result =
-      b->CreateCall(shfl_fn, {b->CreateBitCast(value, i32_ty), offset});
-  // AMDGPU device function always returns an i32 type.
-  return b->CreateBitCast(result, value->getType());
-}
-
-llvm::Value* EmitAMDGPUShflDownSwizzle(llvm::Value* value, llvm::Value* offset,
-                                       llvm::IRBuilder<>* b) {
-  llvm::Module* module = b->GetInsertBlock()->getModule();
-  CHECK_EQ(value->getType()->getPrimitiveSizeInBits(), 32);
-  auto* i32_ty = b->getInt32Ty();
-
-  llvm::Function* intrinsic = llvm::cast<llvm::Function>(
-      module
-          ->getOrInsertFunction(
-              "llvm.amdgcn.ds.swizzle",
-              llvm::FunctionType::get(/*Result=*/i32_ty, {i32_ty, i32_ty},
-                                      /*isVarArg=*/false))
-          .getCallee());
-
-  // Ensure that the first argument to the AMDGPU intrinsic is i32.
-  llvm::Value* bitcast_value = b->CreateBitCast(value, i32_ty);
-
-  // Calculate the control value for the swizzle operation.
-  llvm::Value* control_value =
-      b->CreateAdd(b->CreateMul(offset, b->getInt32(0x20)), b->getInt32(0x1f));
-
-  // Create the call to the intrinsic function.
-  llvm::Value* result =
-      b->CreateCall(intrinsic, {bitcast_value, control_value});
-
-  // Bitcast the result back to the original type of the input value.
-  return b->CreateBitCast(result, value->getType());
-}
-
-// Helper function to emit call to NVPTX shfl_down intrinsic.
-llvm::Value* EmitNVPTXShflDown(llvm::Value* value, llvm::Value* offset,
-                               llvm::IRBuilder<>* b) {
-  llvm::Module* module = b->GetInsertBlock()->getModule();
-  llvm::Intrinsic::ID llvm_intrinsic_id;
-  CHECK_EQ(value->getType()->getPrimitiveSizeInBits(), 32);
-  if (value->getType()->isFloatTy()) {
-    llvm_intrinsic_id = llvm::Intrinsic::nvvm_shfl_sync_down_f32;
-  } else {
-    llvm_intrinsic_id = llvm::Intrinsic::nvvm_shfl_sync_down_i32;
-  }
-  llvm::Function* intrinsic =
-      llvm::Intrinsic::getDeclaration(module, llvm_intrinsic_id, {});
-  return b->CreateCall(
-      intrinsic, {b->getInt32(-1), value, offset, b->getInt32(WarpSize() - 1)});
-}
-
-// Helper function to emit call to SPIR shfl_down intrinsic.
-llvm::Value* EmitSPIRShflDown(llvm::Value* value, llvm::Value* offset,
-                              llvm::IRBuilder<>* b) {
-  CHECK_EQ(value->getType()->getPrimitiveSizeInBits(), 32);
-  if (value->getType()->isFloatTy()) {
-    return EmitDeviceFunctionCall(
-        "_Z34__spirv_GroupNonUniformShuffleDownffj",
-        {b->getInt32(3), value, offset}, {U32, F32, U32}, F32,
-        llvm::AttrBuilder(b->getContext())
-            .addAttribute(llvm::Attribute::NoUnwind)
-            .addAttribute(llvm::Attribute::Convergent),
-        b);
-  } else {
-    return EmitDeviceFunctionCall(
-        "_Z34__spirv_GroupNonUniformShuffleDownjjj",
-        {b->getInt32(3), value, offset}, {U32, U32, U32}, U32,
-        llvm::AttrBuilder(b->getContext())
-            .addAttribute(llvm::Attribute::NoUnwind)
-            .addAttribute(llvm::Attribute::Convergent),
-        b);
-  }
-}
-
-llvm::Value* EmitFullWarpShuffleDown(
-    llvm::Value* value, llvm::Value* offset, llvm::IRBuilder<>* builder,
-    const se::DeviceDescription& gpu_device_info) {
-  int bit_width = value->getType()->getPrimitiveSizeInBits();
-  llvm::Module* module = builder->GetInsertBlock()->getModule();
-  llvm::Triple target_triple = llvm::Triple(module->getTargetTriple());
-
-  // Special case for efficiency
-  if (value->getType()->isFloatTy() && bit_width == 32) {
-    if (target_triple.isNVPTX()) {
-      return EmitNVPTXShflDown(value, offset, builder);
-    } else if (target_triple.getArch() == llvm::Triple::amdgcn) {
-      if (gpu_device_info.rocm_compute_capability().gfx9_mi100_or_later()) {
-        return EmitAMDGPUShflDownSwizzle(value, offset, builder);
-      }
-      return EmitAMDGPUShflDown(value, offset, builder);
-    } else if (target_triple.isSPIR()) {
-      return EmitSPIRShflDown(value, offset, builder);
-    } else {
-      LOG(FATAL) << "Invalid triple " << target_triple.str();
-    }
-  }
-
-  // We must split values wider than 32 bits as the "shfl" instruction operates
-  // on 32-bit values.
-  int num_segments = CeilOfRatio(bit_width, 32);
-  llvm::Value* x = builder->CreateBitCast(
-      builder->CreateZExt(
-          builder->CreateBitCast(value, builder->getIntNTy(bit_width)),
-          builder->getIntNTy(32 * num_segments)),
-      llvm::VectorType::get(builder->getInt32Ty(), num_segments, false));
-  for (int i = 0; i < num_segments; ++i) {
-    llvm::Value* insert_val;
-    if (target_triple.isNVPTX()) {
-      insert_val = EmitNVPTXShflDown(builder->CreateExtractElement(x, i),
-                                     offset, builder);
-    } else if (target_triple.getArch() == llvm::Triple::amdgcn) {
-      if (gpu_device_info.rocm_compute_capability().gfx9_mi100_or_later()) {
-        insert_val = EmitAMDGPUShflDownSwizzle(
-            builder->CreateExtractElement(x, i), offset, builder);
-      } else {
-        insert_val = EmitAMDGPUShflDown(builder->CreateExtractElement(x, i),
-                                        offset, builder);
-      }
-    } else if (target_triple.isSPIR()) {
-      insert_val = EmitSPIRShflDown(builder->CreateExtractElement(x, i), offset,
-                                    builder);
-    } else {
-      LOG(FATAL) << "Invalid triple " << target_triple.str();
-    }
-    x = builder->CreateInsertElement(x, insert_val, i);
-  }
-  return builder->CreateBitCast(
-      builder->CreateTrunc(
-          builder->CreateBitCast(x, builder->getIntNTy(32 * num_segments)),
-          builder->getIntNTy(bit_width)),
-      value->getType());
-}
-
-llvm::Value* IsBlock0Thread0(llvm::IRBuilder<>* b) {
+llvm::Value* IsBlock0Thread0(llvm::IRBuilderBase* b) {
   llvm::Value* is_thread0 = b->CreateICmpEQ(
       b->getInt32(0),
       EmitCallToTargetIntrinsic(TargetIntrinsicID::kThreadIdx, {}, {}, b));
@@ -369,16 +225,16 @@ absl::StatusOr<BufferAllocation::Slice> GetAllocationSlice(
   return buffer_assignment.GetUniqueSlice(instr, index);
 }
 
-std::vector<const HloInstruction*> GetOutputDefiningDynamicUpdateSlices(
+std::vector<HloInstructionAdaptor> GetOutputDefiningDynamicUpdateSlices(
     absl::Span<HloInstructionAdaptor const> roots) {
-  std::vector<const HloInstruction*> dus_ops;
+  std::vector<HloInstructionAdaptor> dus_ops;
   for (HloInstructionAdaptor root : roots) {
     while (root.opcode() == HloOpcode::kBitcast) {
       root = root.GetOperand(0);
     }
 
     if (root.opcode() == HloOpcode::kDynamicUpdateSlice) {
-      dus_ops.push_back(&root.instruction());
+      dus_ops.push_back(root);
     }
   }
   return dus_ops;
@@ -396,109 +252,86 @@ absl::InlinedVector<const HloInstruction*, 4> GetStartIndices(T instr) {
 }
 
 absl::StatusOr<bool> CanEmitFusedDynamicUpdateSliceInPlaceForGpu(
-    const HloFusionInstruction* fusion,
+    const HloFusionAdaptor& fusion_adaptor,
     std::function<absl::StatusOr<BufferAllocation::Slice>(
         const HloInstruction* instr, const ShapeIndex& index)>
         get_allocation_slice,
-    absl::Span<HloInstructionAdaptor const> roots) {
-  std::vector<const HloInstruction*> dus_instrs =
-      GetOutputDefiningDynamicUpdateSlices(roots);
-
-  // Get output buffers for fusion.
-  std::vector<BufferAllocation::Slice> output_buffers;
-  TF_RETURN_IF_ERROR(ShapeUtil::ForEachSubshapeWithStatus(
-      fusion->shape(), [&](const Shape& shape, const ShapeIndex index) {
-        if (shape.IsArray()) {
-          TF_ASSIGN_OR_RETURN(BufferAllocation::Slice buffer,
-                              get_allocation_slice(fusion, index));
-          output_buffers.push_back(buffer);
-        }
-        return absl::OkStatus();
-      }));
+    const HloInstruction* fusion) {
+  std::vector<HloInstructionAdaptor> dus_instrs =
+      GetOutputDefiningDynamicUpdateSlices(fusion_adaptor.GetRoots());
 
   // This check could probably be relaxed: if code generation is made to use a
   // separate parallel loop for each dynamic slice update, then it shouldn't be
   // necessary for every output to be a dynamic slice update, nor to have the
   // same shape.
-  if (dus_instrs.size() != output_buffers.size()) {
+  if (dus_instrs.size() != fusion_adaptor.GetRoots().size()) {
     return false;
   }
 
-  if (output_buffers.empty()) {
-    return Internal("Output buffers should not be empty");
-  }
-
-  Shape update_shape = dus_instrs[0]->operand(1)->shape();
+  Shape update_shape = dus_instrs[0].GetOperand(1).shape();
 
   for (int i = 0; i < dus_instrs.size(); ++i) {
-    auto* dus = Cast<HloDynamicUpdateSliceInstruction>(dus_instrs[i]);
+    const auto& dus = dus_instrs[i];
 
-    // Dynamic slice updates should have a single path to the root to avoid
+    // DynamicUpdateSlice ops should have a single path to the root to avoid
     // allowing a dynamic slice update to depend on another, as this would not
     // be guaranteed to work with the current codegen.
-    if (!dus->IsRoot() && dus->user_count() != 1) return false;
-
-    // We follow DUS users until we find a root instruction. We support only
-    // few patterns:
+    // We follow DUS users until we find an instruction without users. We
+    // support only few patterns:
     //
     //   (1) ROOT dynamic-update-slice
     //   (2) ROOT tuple(dynamic-update-slice)
     //   (3) ROOT bitcast(dynamic-update-slice)
     //   (4) ROOT tuple(bitcast(dynamic-update-slice))
-    HloInstruction* dus_user = dus->IsRoot() ? nullptr : dus->users().front();
-
-    // Since the direct consumer of an output dynamic slice update may be a
-    // bitcast, we also check that this bitcast is used a single time.
-    // This property is also important because reads and writes on the parameter
-    // to be updated are done using the shape and layout of the dynamic slice
-    // update. This is a valid approach only if a subsequent bitcast is not read
-    // by any other op within the fusion as this may result in codegen
-    // accessing elements using the wrong physical layout.
-    if (dus_user && dus_user->opcode() == HloOpcode::kBitcast) {
-      if (!dus_user->IsRoot() && dus_user->user_count() != 1) return false;
-
-      // Stop following DUS users if we found a root.
-      dus_user = dus_user->IsRoot() ? nullptr : dus_user->users().front();
+    //
+    // In case there is a root tuple, the search will stop at the tuple operand,
+    // as the root tuple is not considered a real user by HloInstructionAdaptor.
+    // Note that due to AlgebraicSimplifier we will never have a chain of
+    // bitcasts.
+    HloInstructionAdaptor real_root = dus;
+    auto users = real_root.GetUsers();
+    while (!users.empty()) {
+      if (users.size() > 1) {
+        return false;
+      }
+      real_root = users.front();
+      if (real_root.opcode() != HloOpcode::kBitcast) {
+        return false;
+      }
+      users = real_root.GetUsers();
     }
-
-    // Check that last DUS user is a tuple operation at ROOT position.
-    if (dus_user && dus_user->opcode() == HloOpcode::kTuple) {
-      if (!dus_user->IsRoot()) return false;
-
-      // Stop following DUS users if we found a root.
-      dus_user = nullptr;
-    }
-
-    // We can't emit DUS fusion if we have unsupported DUS users.
-    if (dus_user != nullptr) return false;
 
     // Find "real" DUS operand by skipping bitcasted operands.
-    const HloInstruction* operand = dus->operand(0);
-    if (operand->opcode() == HloOpcode::kBitcast) {
-      operand = operand->operand(0);
+    HloInstructionAdaptor operand = dus.GetOperand(0);
+    if (fusion_adaptor.ContainsInstruction(operand) &&
+        operand.opcode() == HloOpcode::kBitcast) {
+      operand = operand.GetOperand(0);
     }
 
     // Operand to a DUS (or Bitcast) must be a fusion parameter.
-    auto* parameter = DynCast<HloParameterInstruction>(operand);
-    if (!parameter) return false;
+    // HloInstructionAdaptor skips parameters, so we need to check whether
+    // 'operand' is outside of the fusion.
+    if (fusion_adaptor.ContainsInstruction(operand)) {
+      return false;
+    }
 
     // We require that the parameter being updated is only read at the same
     // index positions by all users, since we otherwise risk a race condition
     // when updating the parameter inplace.
-    std::queue<const HloInstruction*> q;
+    std::queue<HloInstructionAdaptor> q;
     absl::flat_hash_set<const HloInstruction*> visited;
-    q.push(parameter);
-    visited.insert(parameter);
+    q.push(operand);
+    visited.insert(&operand.instruction());
     // We have already checked above that the DUS only has one user. So we don't
     // need to visit it during the breadth-first search.
-    visited.insert(dus);
+    visited.insert(&dus.instruction());
     while (!q.empty()) {
-      const HloInstruction* instr = q.front();
+      HloInstructionAdaptor instr = q.front();
       q.pop();
-      for (const HloInstruction* user : instr->users()) {
-        if (user->opcode() == HloOpcode::kDynamicSlice &&
-            dus->operand(0) == user->operand(0) &&
-            update_shape == user->shape()) {
+      for (const HloInstructionAdaptor& user : instr.GetUsers()) {
+        if (user.opcode() == HloOpcode::kDynamicSlice &&
+            dus.GetOperand(0) == user.GetOperand(0) &&
+            update_shape == user.shape()) {
           // We can still emit in-place in this case if the same slice is
           // accessed by the DUS and the DS. If they don't access the same
           // slice, the two slices might partially overlap and read/write the
@@ -506,19 +339,24 @@ absl::StatusOr<bool> CanEmitFusedDynamicUpdateSliceInPlaceForGpu(
           // read before it is overwritten. However if both access only a single
           // element, there also can be no race condition.
           absl::InlinedVector<const HloInstruction*, 4> user_start_indices =
-              GetStartIndices(Cast<HloDynamicSliceInstruction>(user));
+              GetStartIndices(
+                  Cast<HloDynamicSliceInstruction>(&user.instruction()));
           absl::InlinedVector<const HloInstruction*, 4> dus_start_indices =
-              GetStartIndices(dus);
+              GetStartIndices(
+                  Cast<HloDynamicUpdateSliceInstruction>(&dus.instruction()));
           if (ShapeUtil::ElementsIn(update_shape) != 1 &&
               user_start_indices != dus_start_indices) {
             return false;
           }
-        } else if (user != dus && !user->IsElementwise() &&
-                   user->opcode() != HloOpcode::kBitcast &&
-                   user->opcode() != HloOpcode::kTuple) {
+        } else if (user != dus &&
+                   user.opcode() == HloOpcode::kDynamicUpdateSlice) {
+          return false;
+        } else if (user != dus && !user.instruction().IsElementwise() &&
+                   user.opcode() != HloOpcode::kBitcast &&
+                   user.opcode() != HloOpcode::kTuple) {
           return false;
         }
-        if (visited.insert(user).second) {
+        if (visited.insert(&user.instruction()).second) {
           q.push(user);
         }
       }
@@ -529,101 +367,67 @@ absl::StatusOr<bool> CanEmitFusedDynamicUpdateSliceInPlaceForGpu(
     // be necessary for the shape to be the same for all the dynamic slice
     // updates. Note that this equality check purposefully ignores the element
     // type.
-    if (dus->update()->shape() != update_shape) {
+    if (Cast<HloDynamicUpdateSliceInstruction>(&dus.instruction())
+            ->update()
+            ->shape() != update_shape) {
       return false;
     }
 
-    const HloInstruction* lhs = fusion->operand(parameter->parameter_number());
-    TF_ASSIGN_OR_RETURN(BufferAllocation::Slice lhs_buffer,
-                        get_allocation_slice(lhs, {}));
-    BufferAllocation::Slice rhs_buffer = output_buffers[i];
-    if (lhs_buffer != rhs_buffer) {
-      return false;
+    if (fusion != nullptr) {
+      ShapeIndex root_index = {};
+      if (fusion->IsMultiOutputFusion()) {
+        root_index = {i};
+      }
+      // Get output buffer for the fusion root.
+      TF_ASSIGN_OR_RETURN(BufferAllocation::Slice output_buffer,
+                          get_allocation_slice(fusion, root_index));
+
+      TF_ASSIGN_OR_RETURN(BufferAllocation::Slice lhs_buffer,
+                          get_allocation_slice(&operand.instruction(), {}));
+      if (lhs_buffer != output_buffer) {
+        return false;
+      }
     }
   }
 
   return true;
 }
 
-static std::optional<TransposeDescription> FindTiledTranspose(
-    const HloInstruction& instr) {
-  if (instr.opcode() != HloOpcode::kCopy) {
-    return std::nullopt;
-  }
-
-  if (std::optional<Vector3> tr = ShapeUtil::GetNormalizedTransposeShape(
-          instr.operand(0)->shape(), instr.shape(), Vector3{0, 2, 1})) {
-    if ((tr->at(1) >= kMinDimensionToTransposeTiled &&
-         tr->at(2) >= kMinDimensionToTransposeTiled) ||
-        (tr->at(1) >= kMinDimensionToTransposeTiled2 &&
-         tr->at(2) >= kMinDimensionToTransposeTiled2 &&
-         tr->at(1) * tr->at(2) >= kMinTotalDimensionsToTransposeTiled)) {
-      return TransposeDescription{&instr, *tr,
-                                  /*permutation=*/Vector3{0, 2, 1}};
-    }
-  }
-  if (std::optional<Vector3> tr = ShapeUtil::GetNormalizedTransposeShape(
-          instr.operand(0)->shape(), instr.shape(), Vector3{2, 1, 0})) {
-    if ((tr->at(0) >= kMinDimensionToTransposeTiled &&
-         tr->at(2) >= kMinDimensionToTransposeTiled) ||
-        (tr->at(0) >= kMinDimensionToTransposeTiled2 &&
-         tr->at(2) >= kMinDimensionToTransposeTiled2 &&
-         tr->at(0) * tr->at(2) >= kMinTotalDimensionsToTransposeTiled)) {
-      return TransposeDescription{&instr, *tr,
-                                  /*permutation=*/Vector3{2, 1, 0}};
-    }
-  }
-  return std::nullopt;
-}
-
-// Find 021 or 210 transpose in logical + physical transposition.
-static std::optional<TransposeDescription> FindTiledLogicalTranspose(
-    const HloInstruction& instr) {
-  if (instr.opcode() != HloOpcode::kTranspose) {
-    return std::nullopt;
-  }
-
-  // TODO(cheshire): avoid code duplication.
-  if (std::optional<Vector3> tr = ShapeUtil::GetNormalizedLogicalTransposeShape(
-          instr.operand(0)->shape(), instr.shape(), instr.dimensions(),
-          Vector3{0, 2, 1})) {
-    if ((tr->at(1) >= kMinDimensionToTransposeTiled &&
-         tr->at(2) >= kMinDimensionToTransposeTiled) ||
-        (tr->at(1) >= kMinDimensionToTransposeTiled2 &&
-         tr->at(2) >= kMinDimensionToTransposeTiled2 &&
-         tr->at(1) * tr->at(2) >= kMinTotalDimensionsToTransposeTiled)) {
-      return TransposeDescription{&instr, *tr,
-                                  /*permutation=*/Vector3{0, 2, 1}};
-    }
-  }
-  if (std::optional<Vector3> tr = ShapeUtil::GetNormalizedLogicalTransposeShape(
-          instr.operand(0)->shape(), instr.shape(), instr.dimensions(),
-          Vector3{2, 1, 0})) {
-    if ((tr->at(0) >= kMinDimensionToTransposeTiled &&
-         tr->at(2) >= kMinDimensionToTransposeTiled) ||
-        (tr->at(0) >= kMinDimensionToTransposeTiled2 &&
-         tr->at(2) >= kMinDimensionToTransposeTiled2 &&
-         tr->at(0) * tr->at(2) >= kMinTotalDimensionsToTransposeTiled)) {
-      return TransposeDescription{&instr, *tr,
-                                  /*permutation=*/Vector3{2, 1, 0}};
-    }
-  }
-  return std::nullopt;
-}
-
 std::optional<TransposeDescription> GetDescriptionForTiledTransposeEmitter(
-    const HloInstruction& root, const HloInstruction& hero) {
-  // TODO(b/284431534): Figure out how to make the shared memory transpose
-  // emitter faster for this case.
-  if (hero.shape().element_type() == F32 && root.shape().element_type() == S8) {
+    const HloInstruction& hero) {
+  if (hero.opcode() != HloOpcode::kTranspose) {
     return std::nullopt;
   }
 
-  if (auto d1 = FindTiledTranspose(hero)) {
-    return d1;
+  // We can assume that TransposeDimensionGrouper pass has run, so no need to
+  // call GetNormalizedLogicalTransposeShape here.
+  absl::InlinedVector<int64_t, 3> permutation(hero.dimensions().begin(),
+                                              hero.dimensions().end());
+  // A real transpose needs at least 2 transpose dimensions.
+  if (permutation.size() < 2) {
+    return std::nullopt;
   }
-  if (auto d2 = FindTiledLogicalTranspose(hero)) {
-    return d2;
+  absl::InlinedVector<int64_t, 3> dimensions(hero.shape().dimensions().begin(),
+                                             hero.shape().dimensions().end());
+  int64_t operand_most_minor_dim = hero.operand(0)->shape().dimensions().back();
+  if (permutation.back() == dimensions.size() - 1) {
+    operand_most_minor_dim =
+        hero.operand(0)->shape().dimensions(dimensions.size() - 2);
+    auto byte_width = primitive_util::ByteWidth(hero.shape().element_type());
+    if (byte_width * dimensions.back() <= kMaxBytesInMostMinorDimension &&
+        byte_width * dimensions.back() *
+                std::min(operand_most_minor_dim,
+                         dimensions[dimensions.size() - 2]) >=
+            kMinDimensionToTransposeTiled) {
+      return TransposeDescription{&hero, dimensions, permutation};
+    }
+  } else if ((operand_most_minor_dim >= kMinDimensionToTransposeTiled &&
+              dimensions.back() >= kMinDimensionToTransposeTiled) ||
+             (operand_most_minor_dim >= kMinDimensionToTransposeTiled2 &&
+              dimensions.back() >= kMinDimensionToTransposeTiled2 &&
+              operand_most_minor_dim * dimensions.back() >=
+                  kMinTotalDimensionsToTransposeTiled)) {
+    return TransposeDescription{&hero, dimensions, permutation};
   }
   return std::nullopt;
 }
@@ -692,8 +496,8 @@ static std::optional<HloInstructionAdaptor> FindNonTrivialHero(
                            /*allowed_operand_count=*/3);
   };
   bool visit_operands = false;
-  if (HloAnyOf(hero->GetUsers(), hero->parent(), is_nontrivial,
-               visit_operands)) {
+  if (HloBfsAnyOf(hero->GetUsers(), hero->parent(), is_nontrivial,
+                  visit_operands)) {
     return std::nullopt;
   }
 
@@ -715,8 +519,7 @@ HloInstructionAdaptor FindNonTrivialHero(const HloInstructionAdaptor& instr) {
   // transpose and concat emitters also work if there are elementwise ops with
   // more than 1 operand on the path between root and the root op.
   auto is_transpose = [](const HloInstruction& node) {
-    return FindTiledLogicalTranspose(node).has_value() ||
-           FindTiledTranspose(node).has_value();
+    return GetDescriptionForTiledTransposeEmitter(node).has_value();
   };
   if (auto transpose = FindNonTrivialHero(hero, is_transpose)) {
     return *transpose;
@@ -752,7 +555,7 @@ void VerifyModule(const llvm::Module& module) {
 }
 
 llvm::Type* GetIndexTypeForKernel(const HloInstruction* hlo,
-                                  int64_t launch_size, llvm::IRBuilder<>* b) {
+                                  int64_t launch_size, llvm::IRBuilderBase* b) {
   // Find the unnested hlo instruction for which the kernel is generated for.
   const HloInstruction* unnested_hlo = hlo;
   const HloComputation* computation = hlo->parent();
@@ -804,14 +607,6 @@ llvm::Type* GetIndexTypeForKernel(const HloInstruction* hlo,
   return b->getInt32Ty();
 }
 
-bool IsAMDGPU(const llvm::Module* module) {
-  return llvm::Triple(module->getTargetTriple()).isAMDGPU();
-}
-
-bool IsSPIR(const llvm::Module* module) {
-  return llvm::Triple(module->getTargetTriple()).isSPIR();
-}
-
 absl::StatusOr<DenseDataIntermediate> LiteralToXlaFormat(
     const Literal& literal) {
   PrimitiveType element_type = literal.shape().element_type();
@@ -842,6 +637,153 @@ absl::StatusOr<std::string> GetProtoFingerprint(
   std::string result;
   TF_RET_CHECK(tsl::SerializeToStringDeterministic(proto, &result));
   return absl::WebSafeBase64Escape(result);
+}
+
+std::optional<std::string> GetCustomFusionConfigName(
+    const HloInstruction* instr) {
+  if (instr->opcode() != HloOpcode::kFusion ||
+      instr->fusion_kind() != HloInstruction::FusionKind::kCustom) {
+    return std::nullopt;
+  }
+  absl::StatusOr<GpuBackendConfig> backend_config =
+      instr->backend_config<GpuBackendConfig>();
+  if (!backend_config.ok() || !backend_config->has_fusion_backend_config()) {
+    return std::nullopt;
+  }
+  const FusionBackendConfig& fusion_backend_config =
+      backend_config->fusion_backend_config();
+  if (!fusion_backend_config.has_custom_fusion_config()) {
+    return std::nullopt;
+  }
+  return fusion_backend_config.custom_fusion_config().name();
+}
+
+bool IsDynamicSliceFusion(const HloInstruction* instr) {
+  std::optional<std::string> name = GetCustomFusionConfigName(instr);
+  return name == kDynamicSliceFusionWithStaticAddressComputationConfigName ||
+         name == kDynamicSliceFusionWithDynamicAddressComputationConfigName;
+}
+
+bool IsDynamicMemcpyFusion(const HloInstruction* instr) {
+  absl::StatusOr<GpuBackendConfig> backend_config =
+      instr->backend_config<GpuBackendConfig>();
+  return backend_config.ok() &&
+         backend_config->fusion_backend_config().kind() ==
+             kDynamicMemcpyFusionKind;
+}
+
+std::optional<InductionVariableFunctionalDependency>
+ResolveFunctionalDependencyOnInductionVariable(
+    absl::Span<const HloInstruction* const> call_stack,
+    const HloInstruction* parameter) {
+  if (call_stack.empty()) {
+    return std::nullopt;
+  }
+
+  VLOG(5) << "Looking for defining while loop of " << parameter->name();
+
+  // Walk up the call stack, tracking the origin of `parameter`.
+  const HloInstruction* argument = parameter;
+  auto call_stack_it = call_stack.rbegin();
+  auto call_stack_end = call_stack.rend();
+  for (; call_stack_it != call_stack_end &&
+         argument->opcode() == HloOpcode::kParameter &&
+         ((*call_stack_it)->opcode() == HloOpcode::kFusion ||
+          (*call_stack_it)->opcode() == HloOpcode::kAsyncStart ||
+          (*call_stack_it)->opcode() == HloOpcode::kCall);
+       ++call_stack_it) {
+    argument = (*call_stack_it)->operand(argument->parameter_number());
+  }
+
+  if (call_stack_it == call_stack_end) {
+    return std::nullopt;
+  }
+
+  VLOG(5) << "Arrived at " << argument->name() << " in "
+          << (*call_stack_it)->name();
+
+  // Find a unique parameter and a gte in the transitive dependencies of
+  // `argument`.
+  const HloInstruction* unique_param = nullptr;
+  const HloInstruction* unique_gte = nullptr;
+  absl::flat_hash_set<const HloInstruction*> seen{argument};
+  std::queue<const HloInstruction*> queue;
+  queue.push(argument);
+  while (!queue.empty()) {
+    const auto* instruction = queue.front();
+    queue.pop();
+
+    if (instruction->opcode() == HloOpcode::kCustomCall ||
+        instruction->HasSideEffect()) {
+      VLOG(5) << "Found an unsafe operation.";
+      return std::nullopt;
+    }
+
+    if (instruction->opcode() == HloOpcode::kParameter) {
+      if (unique_param || !instruction->shape().IsTuple()) {
+        VLOG(5) << "Failed to match parameters.";
+        return std::nullopt;
+      }
+      unique_param = instruction;
+    }
+
+    if (instruction->opcode() == HloOpcode::kGetTupleElement) {
+      if (unique_gte) {
+        VLOG(5) << "Found non-unique GTEs.";
+        return std::nullopt;
+      }
+      unique_gte = instruction;
+    }
+
+    for (auto* operand : instruction->operands()) {
+      if (seen.insert(operand).second) {
+        queue.push(operand);
+      }
+    }
+  }
+
+  if (!unique_param || !unique_gte || unique_gte->operand(0) != unique_param) {
+    VLOG(5) << "Did not find a parameter or GTE or they don't match.";
+    return std::nullopt;
+  }
+
+  VLOG(5) << "Parameter and GTE: " << unique_param->name() << ", "
+          << unique_gte->name();
+
+  // Continue walking up through call instructions.
+  while (call_stack_it != call_stack_end &&
+         (*call_stack_it)->opcode() == HloOpcode::kCall &&
+         unique_param->opcode() == HloOpcode::kParameter) {
+    unique_param = (*call_stack_it)->operand(unique_param->parameter_number());
+    ++call_stack_it;
+  }
+
+  // Find the while loop for 'unique_param'.
+  auto while_instr_it = std::find_if(
+      call_stack_it, call_stack_end, [&](const HloInstruction* instr) {
+        return instr->opcode() == HloOpcode::kWhile &&
+               unique_param == instr->while_body()->parameter_instruction(0);
+      });
+
+  if (while_instr_it == call_stack_end) {
+    VLOG(5) << "Did not find a while loop.";
+    return std::nullopt;
+  }
+
+  auto config =
+      (*while_instr_it)->backend_config<xla::WhileLoopBackendConfig>();
+  if (!config.ok() || !config->has_known_induction_variable() ||
+      unique_gte->tuple_index() !=
+          config->known_induction_variable().tuple_index()) {
+    VLOG(5) << "Failed to verify that the offset depends on the induction "
+               "variable.";
+    return std::nullopt;
+  }
+
+  VLOG(5) << "While loop for " << parameter->name() << ": "
+          << (*while_instr_it)->name();
+  return InductionVariableFunctionalDependency{argument, *while_instr_it,
+                                               unique_gte};
 }
 
 }  // namespace gpu

@@ -66,7 +66,7 @@ SaveDatasetOp::SaveDatasetOp(OpKernelConstruction* ctx)
   OP_REQUIRES_OK(ctx, ctx->GetAttr(kUseShardFunc, &use_shard_func_));
 }
 
-Status SaveDatasetOp::DoCompute(OpKernelContext* ctx) {
+absl::Status SaveDatasetOp::DoCompute(OpKernelContext* ctx) {
   metrics::RecordTFDataFetchOp("SaveDatasetOp");
   DatasetBase* dataset;
   TF_RETURN_IF_ERROR(GetDatasetFromVariantTensor(ctx->input(0), &dataset));
@@ -95,10 +95,10 @@ Status SaveDatasetOp::DoCompute(OpKernelContext* ctx) {
   return absl::OkStatus();
 }
 
-Status SaveDatasetOp::WriteData(OpKernelContext* ctx, DatasetBase* dataset,
-                                std::unique_ptr<CapturedFunction> captured_func,
-                                const std::string& run_dir,
-                                uint64* num_elements) {
+absl::Status SaveDatasetOp::WriteData(
+    OpKernelContext* ctx, DatasetBase* dataset,
+    std::unique_ptr<CapturedFunction> captured_func, const std::string& run_dir,
+    uint64* num_elements) {
   IteratorContext::Params params(ctx);
   auto function_handle_cache =
       std::make_unique<FunctionHandleCache>(params.flr);
@@ -121,7 +121,7 @@ Status SaveDatasetOp::WriteData(OpKernelContext* ctx, DatasetBase* dataset,
       &iter_ctx, /*parent=*/nullptr, "Save", &iterator));
 
   mutex mu;
-  Status status;
+  absl::Status status;
   absl::flat_hash_map<int64_t, std::unique_ptr<snapshot_util::AsyncWriter>>
       writers;
   while (true) {
@@ -148,7 +148,7 @@ Status SaveDatasetOp::WriteData(OpKernelContext* ctx, DatasetBase* dataset,
       auto writer_thread = std::make_unique<snapshot_util::AsyncWriter>(
           ctx->env(), shard_index, snapshot_shard_directory,
           /*checkpoint_id=*/0, compression_, kFileFormatVersion,
-          finalized_dataset->output_dtypes(), [&mu, &status](Status s) {
+          finalized_dataset->output_dtypes(), [&mu, &status](absl::Status s) {
             mutex_lock l(mu);
             status.Update(s);
           });
@@ -167,10 +167,9 @@ Status SaveDatasetOp::WriteData(OpKernelContext* ctx, DatasetBase* dataset,
   return status;
 }
 
-Status SaveDatasetOp::GetShardIndex(IteratorContext* ctx,
-                                    InstantiatedCapturedFunction* function,
-                                    const std::vector<Tensor>& element,
-                                    int64_t* shard_index) {
+absl::Status SaveDatasetOp::GetShardIndex(
+    IteratorContext* ctx, InstantiatedCapturedFunction* function,
+    const std::vector<Tensor>& element, int64_t* shard_index) {
   if (!use_shard_func_) {
     *shard_index = (*shard_index + 1) % GetCpuBudget();
     return absl::OkStatus();
@@ -187,10 +186,9 @@ Status SaveDatasetOp::GetShardIndex(IteratorContext* ctx,
   return absl::OkStatus();
 }
 
-Status SaveDatasetOp::WriteMetadataFile(Env* env, const std::string& path,
-                                        uint64 run_id,
-                                        const DataTypeVector& output_dtypes,
-                                        uint64 num_elements, bool finalized) {
+absl::Status SaveDatasetOp::WriteMetadataFile(
+    Env* env, const std::string& path, uint64 run_id,
+    const DataTypeVector& output_dtypes, uint64 num_elements, bool finalized) {
   SnapshotMetadataRecord metadata;
   metadata.set_creation_timestamp(EnvTime::NowMicros());
   metadata.set_run_id(
@@ -242,19 +240,20 @@ class SaveDatasetV2Op::Dataset : public DatasetBase {
     return input_->Cardinality(options);
   }
 
-  Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override {
+  absl::Status InputDatasets(
+      std::vector<const DatasetBase*>* inputs) const override {
     inputs->push_back(input_);
     return absl::OkStatus();
   }
 
-  Status CheckExternalState() const override {
+  absl::Status CheckExternalState() const override {
     return input_->CheckExternalState();
   }
 
  protected:
-  Status AsGraphDefInternal(SerializationContext* ctx,
-                            DatasetGraphDefBuilder* b,
-                            Node** output) const override {
+  absl::Status AsGraphDefInternal(SerializationContext* ctx,
+                                  DatasetGraphDefBuilder* b,
+                                  Node** output) const override {
     Node* input_graph_node = nullptr;
     TF_RETURN_IF_ERROR(b->AddInputDataset(ctx, input_, &input_graph_node));
 
@@ -318,7 +317,7 @@ class SaveDatasetV2Op::Dataset : public DatasetBase {
       SignalEOF(true);
     }
 
-    Status Initialize(IteratorContext* ctx) override {
+    absl::Status Initialize(IteratorContext* ctx) override {
       mutex_lock l(mu_);
       TF_RETURN_IF_ERROR(
           dataset()->shard_func_->Instantiate(ctx, &instantiated_shard_func_));
@@ -337,9 +336,9 @@ class SaveDatasetV2Op::Dataset : public DatasetBase {
       return dataset()->input_->MakeIterator(ctx, this, prefix(), &input_impl_);
     }
 
-    Status GetNextInternal(IteratorContext* ctx,
-                           std::vector<Tensor>* out_tensors,
-                           bool* end_of_sequence) override {
+    absl::Status GetNextInternal(IteratorContext* ctx,
+                                 std::vector<Tensor>* out_tensors,
+                                 bool* end_of_sequence) override {
       *end_of_sequence = false;
       snapshot_util::AsyncWriter* current_writer;
 
@@ -384,7 +383,8 @@ class SaveDatasetV2Op::Dataset : public DatasetBase {
           auto writer = std::make_unique<snapshot_util::AsyncWriter>(
               ctx->env(), shard_index, snapshot_shard_directory,
               current_checkpoint_id_, dataset()->compression_,
-              kFileFormatVersion, dataset()->output_dtypes(), [this](Status s) {
+              kFileFormatVersion, dataset()->output_dtypes(),
+              [this](absl::Status s) {
                 if (!s.ok()) {
                   mutex_lock l(writer_status_mu_);
                   writer_status_ = s;
@@ -400,8 +400,8 @@ class SaveDatasetV2Op::Dataset : public DatasetBase {
     }
 
    protected:
-    Status SaveInternal(SerializationContext* ctx,
-                        IteratorStateWriter* writer) override {
+    absl::Status SaveInternal(SerializationContext* ctx,
+                              IteratorStateWriter* writer) override {
       mutex_lock l(mu_);
       TF_RETURN_IF_ERROR(writer->WriteScalar(full_name(kRunId),
                                              static_cast<int64_t>(run_id_)));
@@ -414,8 +414,8 @@ class SaveDatasetV2Op::Dataset : public DatasetBase {
       return SaveInput(ctx, writer, input_impl_);
     }
 
-    Status RestoreInternal(IteratorContext* ctx,
-                           IteratorStateReader* reader) override {
+    absl::Status RestoreInternal(IteratorContext* ctx,
+                                 IteratorStateReader* reader) override {
       mutex_lock l(mu_);
       int64_t run_id_signed;
       int64_t current_checkpoint_id;
@@ -440,10 +440,10 @@ class SaveDatasetV2Op::Dataset : public DatasetBase {
     }
 
    private:
-    Status GetShardIndex(IteratorContext* ctx,
-                         InstantiatedCapturedFunction* function,
-                         const std::vector<Tensor>& element,
-                         bool use_shard_func, int64_t* shard_index)
+    absl::Status GetShardIndex(IteratorContext* ctx,
+                               InstantiatedCapturedFunction* function,
+                               const std::vector<Tensor>& element,
+                               bool use_shard_func, int64_t* shard_index)
         TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
       if (!use_shard_func) {
         *shard_index = (*shard_index + 1) % GetCpuBudget();
@@ -462,9 +462,10 @@ class SaveDatasetV2Op::Dataset : public DatasetBase {
       return absl::OkStatus();
     }
 
-    Status WriteMetadataFile(Env* env, const std::string& path, uint64 run_id,
-                             const DataTypeVector& output_dtypes,
-                             uint64 num_elements, bool finalized)
+    absl::Status WriteMetadataFile(Env* env, const std::string& path,
+                                   uint64 run_id,
+                                   const DataTypeVector& output_dtypes,
+                                   uint64 num_elements, bool finalized)
         TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
       SnapshotMetadataRecord metadata;
       metadata.set_creation_timestamp(EnvTime::NowMicros());
@@ -497,7 +498,7 @@ class SaveDatasetV2Op::Dataset : public DatasetBase {
 
     absl::flat_hash_map<int64_t, std::unique_ptr<snapshot_util::AsyncWriter>>
         writers_ TF_GUARDED_BY(mu_);
-    Status writer_status_ TF_GUARDED_BY(writer_status_mu_);
+    absl::Status writer_status_ TF_GUARDED_BY(writer_status_mu_);
     bool writers_closed_ TF_GUARDED_BY(mu_);
 
     uint64 run_id_ TF_GUARDED_BY(mu_);

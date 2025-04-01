@@ -29,18 +29,25 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/base/optimization.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
+#include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
+#include "xla/array.h"
 #include "xla/hlo/ir/hlo_op_metadata.h"
 #include "xla/overflow_util.h"
 #include "xla/printer.h"
+#include "xla/shape.h"
+#include "xla/shape_tree.h"
+#include "xla/shape_util.h"
 #include "xla/status_macros.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/errors.h"
 #include "tsl/platform/protobuf.h"
 
 namespace xla {
@@ -121,7 +128,7 @@ HloSharding HloSharding::AssignDevice(int64_t device_id,
 
 HloSharding HloSharding::Tile1D(const Shape& input_shape, int64_t num_tiles,
                                 absl::Span<const OpMetadata> metadata) {
-  CHECK_EQ(1, input_shape.rank());
+  CHECK_EQ(1, input_shape.dimensions_size());
   CHECK_GT(num_tiles, 1);
   absl::Span<const int64_t> dimensions(&num_tiles, 1);
   return HloSharding(TileAssignment(dimensions, dimensions, {0}),
@@ -769,7 +776,7 @@ absl::Status HloSharding::ValidateNonTuple(
   }
 
   // The tile assignment tensor must have the same rank as the tiled data rank.
-  if (shape.rank() != TiledDataRank()) {
+  if (shape.dimensions_size() != TiledDataRank()) {
     return tsl::errors::InvalidArgument(
         "Number of tile assignment dimensions (excluding subgroups) is "
         "different than the input rank. "

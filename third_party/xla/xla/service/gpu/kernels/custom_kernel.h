@@ -19,8 +19,8 @@ limitations under the License.
 #include <cstddef>
 #include <optional>
 #include <string>
-#include <string_view>
 
+#include "absl/strings/string_view.h"
 #include "xla/stream_executor/kernel_spec.h"
 #include "xla/stream_executor/launch_dim.h"
 
@@ -53,7 +53,7 @@ class CustomKernel {
                se::BlockDim block_dims, se::ThreadDim thread_dims,
                se::ClusterDim cluster_dims, size_t shared_memory_bytes);
 
-  std::string_view name() const;
+  absl::string_view name() const;
 
   const se::MultiKernelLoaderSpec& kernel_spec() const;
 

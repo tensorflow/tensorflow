@@ -58,6 +58,8 @@ struct RangeFunctor<GPUDevice, T> {
 }  // namespace functor
 
 #define DEFINE_FUNCTOR(T) template struct functor::RangeFunctor<GPUDevice, T>;
+TF_CALL_half(DEFINE_FUNCTOR);
+TF_CALL_bfloat16(DEFINE_FUNCTOR);
 TF_CALL_float(DEFINE_FUNCTOR);
 TF_CALL_double(DEFINE_FUNCTOR);
 TF_CALL_int32(DEFINE_FUNCTOR);

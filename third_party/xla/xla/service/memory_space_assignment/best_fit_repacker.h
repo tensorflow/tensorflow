@@ -17,6 +17,7 @@ limitations under the License.
 #define XLA_SERVICE_MEMORY_SPACE_ASSIGNMENT_BEST_FIT_REPACKER_H_
 
 #include <cstdint>
+#include <utility>
 
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"

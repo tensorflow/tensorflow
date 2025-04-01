@@ -14,6 +14,8 @@
 # ==============================================================================
 
 # Placeholder: load py_proto_library
+# Placeholder: load java_proto_library
+# Placeholder: load proto_library
 load(
     "//tensorflow/core/platform:build_config.bzl",
     "tf_proto_library",
@@ -92,7 +94,6 @@ cc_proto_library(
 # copybara:uncomment_begin(google-only)
 # py_proto_library(
 #     name = "evaluation_stages_py_pb2",
-#     api_version = 2,
 #     visibility = ["//visibility:public"],
 #     deps = [":evaluation_stages_proto"],
 # )

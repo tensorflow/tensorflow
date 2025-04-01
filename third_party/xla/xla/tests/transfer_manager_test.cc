@@ -18,10 +18,10 @@ limitations under the License.
 #include <vector>
 
 #include "absl/status/statusor.h"
+#include "xla/hlo/parser/hlo_parser.h"
 #include "xla/layout_util.h"
 #include "xla/literal.h"
 #include "xla/service/generic_transfer_manager.h"
-#include "xla/service/hlo_parser.h"
 #include "xla/service/shaped_buffer.h"
 #include "xla/service/stream_pool.h"
 #include "xla/shape_util.h"

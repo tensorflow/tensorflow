@@ -20,17 +20,24 @@ limitations under the License.
 #include <exception>
 #include <string>
 #include <string_view>
+#include <type_traits>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include "absl/base/optimization.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/numeric/bits.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/ascii.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
+#include "absl/strings/string_view.h"
+#include "xla/executable_run_options.h"
 #include "xla/ffi/api/api.h"
 #include "xla/ffi/api/c_api.h"
 #include "xla/ffi/api/c_api_internal.h"  // IWYU pragma: keep
@@ -43,9 +50,16 @@ limitations under the License.
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/stream.h"
+#include "xla/tsl/concurrency/async_value.h"
+#include "xla/tsl/concurrency/async_value_ref.h"
+#include "xla/tsl/concurrency/chain.h"
+#include "xla/tsl/concurrency/ref_count.h"
+#include "xla/tsl/platform/logging.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
-#include "tsl/platform/logging.h"
-#include "tsl/platform/statusor.h"
+
+#define EIGEN_USE_THREADS
+#include "unsupported/Eigen/CXX11/Tensor"
 
 //===----------------------------------------------------------------------===//
 // XLA FFI C structs definition
@@ -55,11 +69,25 @@ struct XLA_FFI_Error {
   absl::Status status;
 };
 
-struct XLA_FFI_ExecutionContext {
-  int32_t device_ordinal = -1;
+struct XLA_FFI_Future {
+  tsl::AsyncValueRef<tsl::Chain> async_value;
+};
 
-  stream_executor::Stream* stream = nullptr;
-  stream_executor::DeviceMemoryAllocator* allocator = nullptr;
+struct XLA_FFI_ExecutionContext {
+  struct CpuContext {
+    const Eigen::ThreadPoolDevice* intra_op_thread_pool = nullptr;
+  };
+
+  struct GpuContext {
+    stream_executor::Stream* stream = nullptr;
+    stream_executor::DeviceMemoryAllocator* allocator = nullptr;
+  };
+
+  using BackendContext = std::variant<std::monostate, CpuContext, GpuContext>;
+
+  xla::RunId run_id = {};
+  int32_t device_ordinal = -1;
+  BackendContext backend_context = {};
 
   const xla::HloComputation* called_computation = nullptr;
   const xla::ffi::ExecutionContext* execution_context = nullptr;
@@ -76,10 +104,28 @@ bool IsCommandBufferCompatible(XLA_FFI_Handler_Traits traits) {
 
 static XLA_FFI_ExecutionContext CreateExecutionContext(
     const CallOptions& options) {
+  using BackendContext = XLA_FFI_ExecutionContext::BackendContext;
+
+  // Converts CallOptions to corresponding backend context.
+  struct BackendVisitor {
+    BackendContext operator()(const std::monostate&) const {
+      return std::monostate{};
+    }
+
+    BackendContext operator()(const CallOptions::CpuOptions& options) const {
+      return XLA_FFI_ExecutionContext::CpuContext{options.intra_op_thread_pool};
+    }
+
+    BackendContext operator()(const CallOptions::GpuOptions& options) const {
+      return XLA_FFI_ExecutionContext::GpuContext{options.stream,
+                                                  options.allocator};
+    }
+  };
+
   return XLA_FFI_ExecutionContext{
+      options.run_id,
       options.device_ordinal,
-      options.stream,
-      options.allocator,
+      std::visit(BackendVisitor{}, options.backend_options),
       options.called_computation,
       internal::ScopedExecutionContext::GetCallExecutionContext(options),
       options.execution_state,
@@ -91,38 +137,173 @@ static XLA_FFI_ExecutionContext CreateExecutionContext(
 //===----------------------------------------------------------------------===//
 
 absl::Status TakeStatus(XLA_FFI_Error* error) {
-  if (error == nullptr) return absl::OkStatus();
+  if (ABSL_PREDICT_TRUE(error == nullptr)) return absl::OkStatus();
   absl::Status status = std::move(error->status);
   delete error;
   return status;
 }
 
-absl::Status Call(Ffi& handler, CallFrame& call_frame,
-                  const CallOptions& options, ExecutionStage stage) {
+tsl::AsyncValueRef<tsl::Chain> TakeFuture(XLA_FFI_Future* future) {
+  // Non-reference-counted async value ref for synchronous FFI handlers.
+  static tsl::AsyncValueOwningRef<tsl::Chain>* chain = [] {
+    auto* storage = new tsl::internal::AsyncValueStorage<tsl::Chain>();
+    return new tsl::AsyncValueOwningRef<tsl::Chain>(
+        tsl::MakeAvailableAsyncValueRef<tsl::Chain>(*storage));
+  }();
+
+  if (ABSL_PREDICT_TRUE(future == nullptr)) return chain->AsRef();
+
+  // If the future is already completed, immediately return the underlying async
+  // value and delete the XLA_FFI_Future.
+  if (ABSL_PREDICT_TRUE(future->async_value.IsAvailable())) {
+    tsl::AsyncValueRef<tsl::Chain> async_value = std::move(future->async_value);
+    delete future;
+    return async_value;
+  }
+
+  // If the future is not completed, return a copy of the underlying async value
+  // and keep XLA_FFI_Future alive until it is completed.
+  tsl::AsyncValueRef<tsl::Chain> async_value = future->async_value;
+  async_value.AndThen([future] { delete future; });
+  return async_value;
+}
+
+template <typename Handler>
+static absl::StatusOr<XLA_FFI_Future*> Call(Handler& handler,
+                                            CallFrame& call_frame,
+                                            const CallOptions& options,
+                                            ExecutionStage stage) {
   XLA_FFI_ExecutionContext ctx = CreateExecutionContext(options);
   XLA_FFI_CallFrame ffi_call_frame = call_frame.Build(
       GetXlaFfiApi(), &ctx, static_cast<XLA_FFI_ExecutionStage>(stage));
-  XLA_FFI_Error* status = nullptr;
+
+  XLA_FFI_Error* error = nullptr;
+
+  // FFI handlers might be defined in external libraries and use exceptions, so
+  // take extra care to catch them and convert to a status.
   try {
-    status = handler.Call(&ffi_call_frame);
+    if constexpr (std::is_same_v<Handler, Ffi>) {
+      error = handler.Call(&ffi_call_frame);
+    } else if constexpr (std::is_same_v<Handler, XLA_FFI_Handler*>) {
+      error = (*handler)(&ffi_call_frame);
+    } else {
+      static_assert(sizeof(Handler) == 0, "Unsupported handler type");
+    }
   } catch (std::exception& e) {
     return Unknown("XLA FFI call failed: %s", e.what());
   }
-  return TakeStatus(status);
+
+  // If FFI handler returned synchronous error, it must not launch any
+  // asynchronous work that can also return an error.
+  if (error != nullptr) {
+    DCHECK_EQ(ffi_call_frame.future, nullptr)
+        << "Error must not be used together with a future";
+    return TakeStatus(error);
+  }
+
+  return ffi_call_frame.future;
+}
+
+static absl::Status BlockUntilReady(XLA_FFI_Future* future) {
+  if (ABSL_PREDICT_TRUE(future == nullptr)) return absl::OkStatus();
+
+  tsl::AsyncValueRef<tsl::Chain> av = TakeFuture(future);
+  tsl::BlockUntilReady(av);
+  return ABSL_PREDICT_FALSE(av.IsError()) ? av.GetError() : absl::OkStatus();
+}
+
+absl::Status Call(Ffi& handler, CallFrame& call_frame,
+                  const CallOptions& options, ExecutionStage stage) {
+  TF_ASSIGN_OR_RETURN(XLA_FFI_Future * future,
+                      Call<Ffi>(handler, call_frame, options, stage));
+  return BlockUntilReady(future);
 }
 
 absl::Status Call(XLA_FFI_Handler* handler, CallFrame& call_frame,
                   const CallOptions& options, XLA_FFI_ExecutionStage stage) {
-  XLA_FFI_ExecutionContext ctx = CreateExecutionContext(options);
-  XLA_FFI_CallFrame ffi_call_frame =
-      call_frame.Build(GetXlaFfiApi(), &ctx, stage);
-  XLA_FFI_Error* status = nullptr;
+  TF_ASSIGN_OR_RETURN(
+      XLA_FFI_Future * future,
+      Call<XLA_FFI_Handler*>(handler, call_frame, options,
+                             static_cast<ExecutionStage>(stage)));
+  return BlockUntilReady(future);
+}
+
+tsl::AsyncValueRef<tsl::Chain> CallAsync(Ffi& handler, CallFrame& call_frame,
+                                         const CallOptions& options,
+                                         ExecutionStage stage) {
+  TF_ASSIGN_OR_RETURN(XLA_FFI_Future * future,
+                      Call<Ffi>(handler, call_frame, options, stage));
+  return TakeFuture(future);
+}
+
+tsl::AsyncValueRef<tsl::Chain> CallAsync(XLA_FFI_Handler* handler,
+                                         CallFrame& call_frame,
+                                         const CallOptions& options,
+                                         XLA_FFI_ExecutionStage stage) {
+  TF_ASSIGN_OR_RETURN(
+      XLA_FFI_Future * future,
+      Call<XLA_FFI_Handler*>(handler, call_frame, options,
+                             static_cast<ExecutionStage>(stage)));
+  return TakeFuture(future);
+}
+
+static XLA_FFI_Metadata BuildMetadata() {
+  return XLA_FFI_Metadata{XLA_FFI_Metadata_STRUCT_SIZE,
+                          XLA_FFI_Api_Version{XLA_FFI_Api_Version_STRUCT_SIZE}};
+}
+
+static XLA_FFI_Metadata_Extension BuildMetadataExtension(
+    XLA_FFI_Metadata* metadata) {
+  return XLA_FFI_Metadata_Extension{
+      XLA_FFI_Extension_Base{XLA_FFI_Metadata_Extension_STRUCT_SIZE,
+                             XLA_FFI_Extension_Metadata},
+      metadata};
+}
+
+static XLA_FFI_CallFrame BuildMetadataCallFrame(
+    XLA_FFI_Metadata_Extension* extension) {
+  return XLA_FFI_CallFrame{
+      XLA_FFI_CallFrame_STRUCT_SIZE,
+      &extension->extension_base,
+      /*api=*/nullptr,
+      /*context=*/nullptr,
+      /*stage=*/XLA_FFI_ExecutionStage_EXECUTE,
+      /*args=*/XLA_FFI_Args{XLA_FFI_Args_STRUCT_SIZE},
+      /*rets=*/XLA_FFI_Rets{XLA_FFI_Rets_STRUCT_SIZE},
+      /*attrs=*/XLA_FFI_Attrs{XLA_FFI_Attrs_STRUCT_SIZE},
+  };
+}
+
+absl::StatusOr<XLA_FFI_Metadata> GetMetadata(Ffi& handler) {
+  XLA_FFI_Metadata metadata = BuildMetadata();
+  XLA_FFI_Metadata_Extension extension = BuildMetadataExtension(&metadata);
+  XLA_FFI_CallFrame call_frame = BuildMetadataCallFrame(&extension);
+  XLA_FFI_Error* error = nullptr;
   try {
-    status = (*handler)(&ffi_call_frame);
+    error = handler.Call(&call_frame);
   } catch (std::exception& e) {
-    return Unknown("XLA FFI call failed: %s", e.what());
+    return Unknown("Fetching XLA FFI metadata failed: %s", e.what());
   }
-  return TakeStatus(status);
+  if (error != nullptr) {
+    return TakeStatus(error);
+  }
+  return metadata;
+}
+
+absl::StatusOr<XLA_FFI_Metadata> GetMetadata(XLA_FFI_Handler* handler) {
+  XLA_FFI_Metadata metadata = BuildMetadata();
+  XLA_FFI_Metadata_Extension extension = BuildMetadataExtension(&metadata);
+  XLA_FFI_CallFrame call_frame = BuildMetadataCallFrame(&extension);
+  XLA_FFI_Error* error = nullptr;
+  try {
+    error = (*handler)(&call_frame);
+  } catch (std::exception& e) {
+    return Unknown("Fetching XLA FFI metadata failed: %s", e.what());
+  }
+  if (error != nullptr) {
+    return TakeStatus(error);
+  }
+  return metadata;
 }
 
 namespace internal {
@@ -180,19 +361,35 @@ static absl::Status RegisterHandler(std::string_view name,
   TF_ASSIGN_OR_RETURN(std::string canonical_platform,
                       PlatformUtil::CanonicalPlatformName(platform));
 
-  VLOG(2) << absl::StreamFormat(
-      "Register XLA FFI handler for '%s'; platform=%s (canonical=%s), "
-      "stages=[%s], command_buffer_compatible=%v",
-      name, platform, canonical_platform,
-      absl::StrJoin(GetHandlerStages(bundle), ", "),
-      IsCommandBufferCompatible(traits));
-
   if (bundle.execute == nullptr) {
     return InvalidArgument(
         "FFI handler for %s on a platform %s must provide an execute "
         "implementation",
         name, platform);
   }
+
+  // Check the API versions.
+  TF_ASSIGN_OR_RETURN(auto metadata, GetMetadata(bundle.execute));
+  const XLA_FFI_Api_Version& api_version = metadata.api_version;
+  if (api_version.major_version != XLA_FFI_API_MAJOR ||
+      api_version.minor_version != XLA_FFI_API_MINOR) {
+    return InvalidArgument(
+        "FFI handler registration for %s on platform %s (canonical %s) failed "
+        "because the handler's API version (%d.%d) is incompatible with the "
+        "framework's API version (%d.%d)",
+        name, platform, canonical_platform, api_version.major_version,
+        api_version.minor_version, XLA_FFI_API_MAJOR, XLA_FFI_API_MINOR);
+  }
+
+  // Incorporate handler traits.
+  traits |= metadata.traits;
+
+  VLOG(2) << absl::StreamFormat(
+      "Register XLA FFI handler for '%s'; platform=%s (canonical=%s), "
+      "stages=[%s], command_buffer_compatible=%v",
+      name, platform, canonical_platform,
+      absl::StrJoin(GetHandlerStages(bundle), ", "),
+      IsCommandBufferCompatible(traits));
 
   auto emplaced =
       GetHandlerRegistry().try_emplace(MakeHandlerKey(name, canonical_platform),
@@ -201,7 +398,7 @@ static absl::Status RegisterHandler(std::string_view name,
     auto existing = emplaced.first->second;
     if (existing.traits != traits) {
       return InvalidArgument(
-          "Duplicate FFI handler registration for %s on a platform %s "
+          "Duplicate FFI handler registration for %s on platform %s "
           "(canonical %s) with different traits",
           name, platform, canonical_platform);
     }
@@ -209,7 +406,7 @@ static absl::Status RegisterHandler(std::string_view name,
         existing.bundle.initialize != bundle.initialize ||
         existing.bundle.execute != bundle.execute) {
       return InvalidArgument(
-          "Duplicate FFI handler registration for %s on a platform %s "
+          "Duplicate FFI handler registration for %s on platform %s "
           "(canonical %s) with different bundle addresses",
           name, platform, canonical_platform);
     }
@@ -349,6 +546,40 @@ static void XLA_FFI_Error_Destroy(XLA_FFI_Error_Destroy_Args* args) {
   delete args->error;
 }
 
+static XLA_FFI_Error* XLA_FFI_Future_Create(XLA_FFI_Future_Create_Args* args) {
+  XLA_FFI_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
+      "XLA_FFI_Future_Create", XLA_FFI_Future_Create_Args_STRUCT_SIZE,
+      args->struct_size));
+  args->future =
+      new XLA_FFI_Future{tsl::MakeConstructedAsyncValueRef<tsl::Chain>()};
+  return nullptr;
+}
+
+static XLA_FFI_Error* XLA_FFI_Future_SetAvailable(
+    XLA_FFI_Future_SetAvailable_Args* args) {
+  XLA_FFI_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
+      "XLA_FFI_Future_SetAvailable",
+      XLA_FFI_Future_SetAvailable_Args_STRUCT_SIZE, args->struct_size));
+  args->future->async_value.SetStateConcrete();
+  return nullptr;
+}
+
+static XLA_FFI_Error* XLA_FFI_Future_SetError(
+    XLA_FFI_Future_SetError_Args* args) {
+  XLA_FFI_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
+      "XLA_FFI_Future_SetError", XLA_FFI_Future_SetError_Args_STRUCT_SIZE,
+      args->struct_size));
+
+  if (args->error == nullptr || args->error->status.ok()) {
+    return new XLA_FFI_Error{InvalidArgument("Error must not be null or OK")};
+  }
+
+  absl::Status error = TakeStatus(args->error);
+  args->future->async_value.SetError(std::move(error));
+
+  return nullptr;
+}
+
 static XLA_FFI_Error* XLA_FFI_Handler_Register(
     XLA_FFI_Handler_Register_Args* args) {
   XLA_FFI_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
@@ -370,13 +601,31 @@ static XLA_FFI_Error* XLA_FFI_Stream_Get(XLA_FFI_Stream_Get_Args* args) {
       "XLA_FFI_Stream_Get", XLA_FFI_Stream_Get_Args_STRUCT_SIZE,
       args->struct_size));
 
-  if (args->ctx->stream == nullptr) {
+  auto* gpu = std::get_if<XLA_FFI_ExecutionContext::GpuContext>(
+      &args->ctx->backend_context);
+
+  if (ABSL_PREDICT_FALSE(gpu == nullptr)) {
     return new XLA_FFI_Error{
-        InvalidArgument("XLA FFI stream is not available")};
+        Unimplemented("XLA FFI GPU context is not available")};
   }
 
-  auto handle = args->ctx->stream->platform_specific_handle();
+  if (ABSL_PREDICT_FALSE(gpu->stream == nullptr)) {
+    return new XLA_FFI_Error{
+        Unimplemented("XLA FFI GPU stream is not available")};
+  }
+
+  auto handle = gpu->stream->platform_specific_handle();
   args->stream = handle.stream;
+
+  return nullptr;
+}
+
+static XLA_FFI_Error* XLA_FFI_RunId_Get(XLA_FFI_RunId_Get_Args* args) {
+  XLA_FFI_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
+      "XLA_FFI_RunId_Get", XLA_FFI_RunId_Get_Args_STRUCT_SIZE,
+      args->struct_size));
+
+  args->run_id = args->ctx->run_id.ToInt();
 
   return nullptr;
 }
@@ -387,13 +636,27 @@ static XLA_FFI_Error* XLA_FFI_TypeId_Register(
       "XLA_FFI_ExecutionContext_Get_Args",
       XLA_FFI_ExecutionContext_Get_Args_STRUCT_SIZE, args->struct_size));
 
-  auto type_id = TypeIdRegistry::RegisterExternalTypeId(
-      std::string_view(args->name.ptr, args->name.len));
-  if (!type_id.ok()) {
-    return new XLA_FFI_Error{std::move(type_id).status()};
+  absl::string_view type_name(args->name.ptr, args->name.len);
+  TypeIdRegistry::TypeId type_id(args->type_id->type_id);
+
+  // If type_id is unknown, we are registering a new type and XLA will assign a
+  // unique type id to it.
+  if (type_id == TypeIdRegistry::kUnknownTypeId) {
+    auto assigned_type_id = TypeIdRegistry::AssignExternalTypeId(type_name);
+    if (!assigned_type_id.ok()) {
+      return new XLA_FFI_Error{std::move(assigned_type_id).status()};
+    }
+
+    args->type_id->type_id = assigned_type_id->value();
+    return nullptr;
   }
 
-  args->type_id->type_id = type_id->value();
+  // If type_id is set, we are relying on the caller-provided unique type id.
+  if (auto status = TypeIdRegistry::RegisterExternalTypeId(type_name, type_id);
+      !status.ok()) {
+    return new XLA_FFI_Error{std::move(status)};
+  }
+
   return nullptr;
 }
 
@@ -453,6 +716,22 @@ static XLA_FFI_Error* XLA_FFI_DeviceMemory_Allocate(
       "XLA_FFI_DeviceMemory_Allocate_Args",
       XLA_FFI_DeviceMemory_Allocate_Args_STRUCT_SIZE, args->struct_size));
 
+  auto* gpu = std::get_if<XLA_FFI_ExecutionContext::GpuContext>(
+      &args->ctx->backend_context);
+
+  // TODO(ezhulenev): Device memory allocation should be supported for all
+  // backends, not just GPU, although for CPU it doesn't make much sense, as
+  // plain `new` is sufficient.
+  if (ABSL_PREDICT_FALSE(gpu == nullptr)) {
+    return new XLA_FFI_Error{
+        InvalidArgument("XLA FFI GPU context is not available")};
+  }
+
+  if (ABSL_PREDICT_FALSE(gpu->allocator == nullptr)) {
+    return new XLA_FFI_Error{
+        Unimplemented("No device memory allocator available on this platform")};
+  }
+
   // TODO(ezhulenev): We happen to have the same alignment requirement for
   // device memory on CPU and GPU backends, but instead of hardcoding it here
   // we should query it for the platform XLA FFI handler is registered with.
@@ -465,7 +744,7 @@ static XLA_FFI_Error* XLA_FFI_DeviceMemory_Allocate(
   }
 
   absl::StatusOr<stream_executor::OwningDeviceMemory> memory =
-      args->ctx->allocator->Allocate(args->ctx->device_ordinal, args->size);
+      gpu->allocator->Allocate(args->ctx->device_ordinal, args->size);
   if (!memory.ok()) {
     return new XLA_FFI_Error{std::move(memory).status()};
   }
@@ -480,13 +759,78 @@ static XLA_FFI_Error* XLA_FFI_DeviceMemory_Free(
       "XLA_FFI_DeviceMemory_Free_Args",
       XLA_FFI_DeviceMemory_Free_Args_STRUCT_SIZE, args->struct_size));
 
-  absl::Status status = args->ctx->allocator->Deallocate(
+  auto* gpu = std::get_if<XLA_FFI_ExecutionContext::GpuContext>(
+      &args->ctx->backend_context);
+
+  // TODO(ezhulenev): Device memory allocation should be supported for all
+  // backends, not just GPU, although for CPU it doesn't make much sense, as
+  // plain `new` is sufficient.
+  if (ABSL_PREDICT_FALSE(gpu == nullptr)) {
+    return new XLA_FFI_Error{
+        Unimplemented("XLA FFI GPU context is not available")};
+  }
+
+  if (ABSL_PREDICT_FALSE(gpu->allocator == nullptr)) {
+    return new XLA_FFI_Error{
+        Unimplemented("No device memory allocator available on this platform")};
+  }
+
+  absl::Status status = gpu->allocator->Deallocate(
       args->ctx->device_ordinal,
       stream_executor::DeviceMemoryBase(args->data, args->size));
   if (!status.ok()) {
     return new XLA_FFI_Error{std::move(status)};
   }
 
+  return nullptr;
+}
+
+static absl::StatusOr<const Eigen::ThreadPoolDevice*> GetIntraOpThreadPool(
+    const XLA_FFI_ExecutionContext* ctx) {
+  auto* cpu =
+      std::get_if<XLA_FFI_ExecutionContext::CpuContext>(&ctx->backend_context);
+
+  if (ABSL_PREDICT_FALSE(cpu == nullptr)) {
+    return Unimplemented("XLA FFI CPU context is not available");
+  }
+
+  if (ABSL_PREDICT_FALSE(cpu->intra_op_thread_pool == nullptr)) {
+    return Unimplemented("No intra-op thread pool available on this platform");
+  }
+
+  return cpu->intra_op_thread_pool;
+}
+
+static XLA_FFI_Error* XLA_FFI_ThreadPool_Schedule(
+    XLA_FFI_ThreadPool_Schedule_Args* args) {
+  XLA_FFI_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
+      "XLA_FFI_ThreadPool_Schedule_Args",
+      XLA_FFI_ThreadPool_Schedule_Args_STRUCT_SIZE, args->struct_size));
+
+  auto intra_op_thread_pool = GetIntraOpThreadPool(args->ctx);
+  if (!intra_op_thread_pool.ok()) {
+    return new XLA_FFI_Error{std::move(intra_op_thread_pool).status()};
+  }
+
+  (*intra_op_thread_pool)
+      ->enqueueNoNotification(
+          [task = args->task, data = args->data] { (*task)(data); });
+
+  return nullptr;
+}
+
+static XLA_FFI_Error* XLA_FFI_ThreadPool_NumThreads(
+    XLA_FFI_ThreadPool_NumThreads_Args* args) {
+  XLA_FFI_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
+      "XLA_FFI_ThreadPool_NumThreads_Args",
+      XLA_FFI_ThreadPool_NumThreads_Args_STRUCT_SIZE, args->struct_size));
+
+  auto intra_op_thread_pool = GetIntraOpThreadPool(args->ctx);
+  if (!intra_op_thread_pool.ok()) {
+    return new XLA_FFI_Error{std::move(intra_op_thread_pool).status()};
+  }
+
+  *args->num_threads = (*intra_op_thread_pool)->numThreadsInPool();
   return nullptr;
 }
 
@@ -502,8 +846,22 @@ static XLA_FFI_Error* XLA_FFI_INTERNAL_Error_Forward(void* status) {
   return new XLA_FFI_Error{std::move(*absl_status)};
 }
 
+static XLA_FFI_Future* XLA_FFI_INTERNAL_Future_Forward(void* async_value) {
+  auto* tsl_async_value = reinterpret_cast<tsl::AsyncValue*>(async_value);
+  DCHECK(tsl_async_value) << "Async value must not be null";
+
+  return new XLA_FFI_Future{
+      tsl::AsyncValueRef<tsl::Chain>(tsl::TakeRef(tsl_async_value))};
+}
+
 static void* XLA_FFI_INTERNAL_Stream_Get(XLA_FFI_ExecutionContext* ctx) {
-  return ctx->stream;
+  if (auto* gpu = std::get_if<XLA_FFI_ExecutionContext::GpuContext>(
+          &ctx->backend_context)) {
+    return gpu->stream;
+  }
+
+  return new XLA_FFI_Error{
+      InvalidArgument("XLA FFI GPU context is not available")};
 }
 
 static int32_t XLA_FFI_INTERNAL_DeviceOrdinal_Get(
@@ -511,9 +869,19 @@ static int32_t XLA_FFI_INTERNAL_DeviceOrdinal_Get(
   return ctx->device_ordinal;
 }
 
+static int64_t XLA_FFI_INTERNAL_RunId_Get(XLA_FFI_ExecutionContext* ctx) {
+  return ctx->run_id.ToInt();
+}
+
 static void* XLA_FFI_INTERNAL_DeviceMemoryAllocator_Get(
     XLA_FFI_ExecutionContext* ctx) {
-  return ctx->allocator;
+  if (auto* gpu = std::get_if<XLA_FFI_ExecutionContext::GpuContext>(
+          &ctx->backend_context)) {
+    return gpu->allocator;
+  }
+
+  return new XLA_FFI_Error{
+      InvalidArgument("XLA FFI GPU context is not available")};
 }
 
 static void* XLA_FFI_INTERNAL_CalledComputation_Get(
@@ -531,6 +899,16 @@ static void* XLA_FFI_INTERNAL_ExecutionState_Get(
   return const_cast<ffi::ExecutionState*>(ctx->execution_state);
 }
 
+void* XLA_FFI_INTERNAL_IntraOpThreadPool_Get(XLA_FFI_ExecutionContext* ctx) {
+  if (auto* cpu = std::get_if<XLA_FFI_ExecutionContext::CpuContext>(
+          &ctx->backend_context)) {
+    return const_cast<Eigen::ThreadPoolDevice*>(cpu->intra_op_thread_pool);
+  }
+
+  return new XLA_FFI_Error{
+      InvalidArgument("XLA FFI CPU context is not available")};
+}
+
 //===----------------------------------------------------------------------===//
 // XLA FFI Api access
 //===----------------------------------------------------------------------===//
@@ -539,17 +917,27 @@ extern "C" const XLA_FFI_Api* XLA_FFI_GetApi() { return GetXlaFfiApi(); }
 
 static XLA_FFI_InternalApi internal_api = {
     XLA_FFI_INTERNAL_Error_Forward,
+    XLA_FFI_INTERNAL_Future_Forward,
     XLA_FFI_INTERNAL_Stream_Get,
     XLA_FFI_INTERNAL_DeviceOrdinal_Get,
+    XLA_FFI_INTERNAL_RunId_Get,
     XLA_FFI_INTERNAL_DeviceMemoryAllocator_Get,
     XLA_FFI_INTERNAL_CalledComputation_Get,
     XLA_FFI_INTERNAL_ExecutionContext_Get,
     XLA_FFI_INTERNAL_ExecutionState_Get,
+    XLA_FFI_INTERNAL_IntraOpThreadPool_Get,
 };
 
 static XLA_FFI_Api api = {
     XLA_FFI_Api_STRUCT_SIZE,
-    /*priv=*/nullptr,
+    /*extension_start=*/nullptr,
+
+    XLA_FFI_Api_Version{
+        XLA_FFI_Api_Version_STRUCT_SIZE,
+        /*extension_start=*/nullptr,
+        XLA_FFI_API_MAJOR,
+        XLA_FFI_API_MINOR,
+    },
 
     &internal_api,
 
@@ -564,6 +952,12 @@ static XLA_FFI_Api api = {
     XLA_FFI_State_Get,
     XLA_FFI_DeviceMemory_Allocate,
     XLA_FFI_DeviceMemory_Free,
+    XLA_FFI_ThreadPool_Schedule,
+    XLA_FFI_ThreadPool_NumThreads,
+    XLA_FFI_Future_Create,
+    XLA_FFI_Future_SetAvailable,
+    XLA_FFI_Future_SetError,
+    XLA_FFI_RunId_Get,
 };
 
 const XLA_FFI_Api* GetXlaFfiApi() { return &api; }

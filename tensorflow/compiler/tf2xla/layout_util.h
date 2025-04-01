@@ -18,12 +18,15 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_TF2XLA_LAYOUT_UTIL_H_
 #define TENSORFLOW_COMPILER_TF2XLA_LAYOUT_UTIL_H_
 
+#include <functional>
+#include <optional>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "tensorflow/compiler/tf2xla/xla_argument.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
-#include "xla/client/xla_builder.h"
+#include "xla/hlo/builder/xla_builder.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/shape.h"
 #include "xla/xla_data.pb.h"
@@ -64,7 +67,7 @@ class XlaShapeLayoutHelpers {
 XlaShapeLayoutHelpers::LayoutPreferenceFn UseNoPreferenceLayoutFn();
 
 // Rewrites the layout of xla_shape if there is tiled sharding.
-Status RewriteLayoutWithShardedShape(
+absl::Status RewriteLayoutWithShardedShape(
     const std::optional<xla::HloSharding>& sharding, bool use_fast_memory,
     XlaShapeLayoutHelpers::ShapeDeterminationFns shape_determination_fns,
     xla::Shape* xla_shape);

@@ -78,15 +78,15 @@ class GenericHostToLLVMPass
       vector::populateVectorToVectorCanonicalizationPatterns(patterns);
       vector::populateVectorBroadcastLoweringPatterns(patterns);
       vector::populateVectorContractLoweringPatterns(
-          patterns, vector::VectorTransformsOptions());
+          patterns, vector::VectorContractLowering());
       vector::populateVectorMaskOpLoweringPatterns(patterns);
       vector::populateVectorShapeCastLoweringPatterns(patterns);
       vector::populateVectorTransposeLoweringPatterns(
-          patterns, vector::VectorTransformsOptions());
+          patterns, vector::VectorTransposeLowering());
       // Vector transfer ops with rank > 1 should be lowered with VectorToSCF.
       vector::populateVectorTransferLoweringPatterns(patterns,
                                                      /*maxTransferRank=*/1);
-      (void)applyPatternsAndFoldGreedily(getOperation(), std::move(patterns));
+      (void)applyPatternsGreedily(getOperation(), std::move(patterns));
     }
 
     LLVMConversionTarget target(*ctx);

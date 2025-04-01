@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#if defined(INTEL_MKL) && defined(ENABLE_ONEDNN_V3)
+#if defined(INTEL_MKL)
 
 #include "xla/service/cpu/onednn_memory_util.h"
 
@@ -50,12 +50,10 @@ struct MemrefInfoPOD {
   void* data;
 };
 
-MemrefInfoHandler CreateMemrefInfoFromLiteral(const Literal* literal) {
+MemrefInfoHandler CreateMemrefFromShape(const Shape& shape, void* const buf) {
   MemrefInfoHandler result(new MemrefInfoPOD);
-
-  const auto& shape = literal->shape();
   result->dtype = shape.element_type();
-  result->rank = shape.rank();
+  result->rank = shape.dimensions_size();
   auto dimensions = shape.dimensions();
   std::copy(dimensions.begin(), dimensions.end(),
             absl::MakeSpan(result->dims).begin());
@@ -65,24 +63,44 @@ MemrefInfoHandler CreateMemrefInfoFromLiteral(const Literal* literal) {
     result->strides[i] = stride;
     stride *= dimensions.at(i);
   }
-
-  result->data = const_cast<void*>(literal->untyped_data());
-
+  result->data = buf;
   return result;
 }
 
-StackAlloca GetAllocaAndEmitMemrefInfo(llvm::IRBuilder<>& builder,
+MemrefInfoHandler CreateMemrefInfoFromLiteral(const Literal* literal) {
+  const auto& shape = literal->shape();
+  void* const buf = const_cast<void*>(literal->untyped_data());
+  return CreateMemrefFromShape(shape, buf);
+}
+
+std::pair<std::vector<int64_t>, std::vector<int64_t>> GetDimsStrides(
+    const Shape& shape) {
+  // oneDNN handles scalar as a vector of size 1.
+  const bool is_scalar = shape.dimensions_size() == 0;
+  int64_t rank = is_scalar ? 1 : shape.dimensions_size();
+  std::vector<int64_t> strides(rank);
+  std::vector<int64_t> scalar_shape(1, 1);
+  absl::Span<const int64_t> dimensions =
+      is_scalar ? scalar_shape : shape.dimensions();
+  std::vector<int64_t> dims(dimensions.begin(), dimensions.end());
+  if (is_scalar) {
+    strides[0] = 1;
+  } else {
+    int64_t stride = 1;
+    for (int i : shape.layout().minor_to_major()) {
+      strides.at(i) = stride;
+      stride *= dims.at(i);
+    }
+  }
+  return std::make_pair(dims, strides);
+}
+
+StackAlloca GetAllocaAndEmitMemrefInfo(llvm::IRBuilderBase& builder,
                                        const llvm_ir::IrArray& ir_array) {
   const Shape& shape = ir_array.GetShape();
-  int64_t rank = shape.rank();
-  absl::Span<const int64_t> dims = shape.dimensions();
-
-  std::vector<int64_t> strides(rank);
-  int64_t stride = 1;
-  for (int i : shape.layout().minor_to_major()) {
-    strides.at(i) = stride;
-    stride *= dims.at(i);
-  }
+  // oneDNN handles scalar as a vector of size 1.
+  int64_t rank = shape.dimensions_size() == 0 ? 1 : shape.dimensions_size();
+  auto [dims, strides] = GetDimsStrides(shape);
 
   // Type of struct
   llvm::Type* i64_type = builder.getInt64Ty();
@@ -182,16 +200,9 @@ absl::StatusOr<dnnl::memory::desc> TransposeLastTwoDims(
 }
 
 dnnl::memory::desc ShapeToMemDesc(const Shape& shape) {
-  auto dimensions = shape.dimensions();
-  if (dimensions.empty()) {
+  auto [dims, strides] = GetDimsStrides(shape);
+  if (dims.empty()) {
     return dnnl::memory::desc{};
-  }
-  auto dims = dnnl::memory::dims(dimensions.begin(), dimensions.end());
-  dnnl::memory::dims strides(dims.size());
-  dnnl::memory::dim stride = 1;
-  for (auto i : shape.layout().minor_to_major()) {
-    strides.at(i) = stride;
-    stride *= dims.at(i);
   }
   auto dt = ToOneDnnDataType(static_cast<PrimitiveType>(shape.element_type()));
   return dnnl::memory::desc(dims, dt, strides);
@@ -211,4 +222,4 @@ Shape MemDescToXlaShapeFlattened(const dnnl::memory::desc& md) {
 }  // namespace cpu
 }  // namespace xla
 
-#endif  // INTEL_MKL && ENABLE_ONEDNN_V3
+#endif  // INTEL_MKL

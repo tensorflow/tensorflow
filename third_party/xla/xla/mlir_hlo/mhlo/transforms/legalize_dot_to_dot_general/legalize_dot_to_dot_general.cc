@@ -55,9 +55,9 @@ struct DotToDotGeneralPattern : public OpRewritePattern<DotOp> {
         /*lhsContractingDimensions=*/{lhs.getType().getRank() - 1},
         /*rhsContractingDimensions=*/{0});
 
-    rewriter.replaceOpWithNewOp<DotGeneralOp>(dotOp, dotOp.getType(), lhs, rhs,
-                                              dotDimensionNumbers,
-                                              dotOp.getPrecisionConfigAttr());
+    rewriter.replaceOpWithNewOp<DotGeneralOp>(
+        dotOp, dotOp.getType(), lhs, rhs, dotDimensionNumbers,
+        dotOp.getPrecisionConfigAttr(), DotAlgorithmAttr{});
     return success();
   }
 };
@@ -68,8 +68,7 @@ struct LegalizeDotToDotGeneralPass
   void runOnOperation() override {
     RewritePatternSet patterns(&getContext());
     populateDotToDotGeneralPatterns(&getContext(), &patterns);
-    if (failed(applyPatternsAndFoldGreedily(getOperation(),
-                                            std::move(patterns)))) {
+    if (failed(applyPatternsGreedily(getOperation(), std::move(patterns)))) {
       return signalPassFailure();
     }
   }

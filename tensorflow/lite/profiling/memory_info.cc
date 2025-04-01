@@ -14,6 +14,10 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/profiling/memory_info.h"
 
+#include <stddef.h>
+
+#include <ostream>
+
 #ifdef __linux__
 #include <malloc.h>
 #include <sys/resource.h>
@@ -73,10 +77,10 @@ MemoryUsage GetMemoryUsage() {
 
 void MemoryUsage::AllStatsToStream(std::ostream* stream) const {
   *stream << "max resident set size/physical footprint = "
-          << mem_footprint_kb / 1024.0 << " MB, total malloc-ed size = "
-          << total_allocated_bytes / 1024.0 / 1024.0
-          << " MB, in-use allocated/mmapped size = "
-          << in_use_allocated_bytes / 1024.0 / 1024.0 << " MB";
+          << mem_footprint_kb / 1000.0 << " MB, total non-mmapped heap size = "
+          << total_allocated_bytes / 1000.0 / 1000.0
+          << " MB, in-use heap size = "
+          << in_use_allocated_bytes / 1000.0 / 1000.0 << " MB";
 }
 
 }  // namespace memory

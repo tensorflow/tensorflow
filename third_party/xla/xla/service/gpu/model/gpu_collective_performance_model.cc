@@ -24,15 +24,16 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/strings/numbers.h"
 #include "absl/time/time.h"
+#include "xla/hlo/analysis/hlo_dataflow_analysis.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/model/gpu_hlo_cost_analysis.h"
-#include "xla/service/hlo_dataflow_analysis.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/util.h"
 
 #if GOOGLE_CUDA
+#include "third_party/gpus/cuda/include/cuda.h"
 #include "third_party/gpus/cuda/nvml/include/nvml.h"
 #endif  // GOOGLE_CUDA
 namespace xla {
@@ -105,14 +106,17 @@ int GetNumThreads(int warp_size, int min_num_threads, int max_num_threads,
 float GetMaxSysBwFromGpu(const se::CudaComputeCapability cc,
                          const double* bandwidths_table) {
   switch (cc.major) {
-    case se::CudaComputeCapability::VOLTA:
+    case se::CudaComputeCapability::kVolta:
       return bandwidths_table[0];
-    case se::CudaComputeCapability::AMPERE:
+    case se::CudaComputeCapability::kAmpere:
       return bandwidths_table[1];
-    case se::CudaComputeCapability::HOPPER:
+    case se::CudaComputeCapability::kHopper:
       return bandwidths_table[2];
+    case se::CudaComputeCapability::kBlackwell:
+      return bandwidths_table[3];
+    default:
+      return bandwidths_table[4];
   }
-  return -1;
 }
 
 }  // namespace
@@ -121,19 +125,19 @@ float GetMaxSysBwFromGpu(const se::CudaComputeCapability cc,
 /*static*/
 float GpuPerformanceWithCollectiveModel::GetNvlinkBw(
     se::CudaComputeCapability compute_capability) {
-  return compute_capability.IsAtLeast(se::CudaComputeCapability::HOPPER)
+  return compute_capability.IsAtLeast(se::CudaComputeCapability::kHopper)
              ? kSm90NvlinkBandwidth
-         : compute_capability.IsAtLeast(se::CudaComputeCapability::AMPERE)
+         : compute_capability.IsAtLeast(se::CudaComputeCapability::kAmpere)
              ? kSm80NvlinkBandwidth
-         : compute_capability.IsAtLeast(se::CudaComputeCapability::VOLTA)
+         : compute_capability.IsAtLeast(se::CudaComputeCapability::kVolta)
              ? kSm70NvlinkBandwidth
-         : compute_capability.IsAtLeast(se::CudaComputeCapability::PASCAL_)
+         : compute_capability.IsAtLeast(se::CudaComputeCapability::kPascal)
              ? kSm60NvlinkBandwidth
              : kSm80NvlinkBandwidth;
 }
 
 /*static*/ bool GpuPerformanceWithCollectiveModel::InitNvml() {
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA && defined(PLATFORM_POSIX) && !defined(PLATFORM_GOOGLE)
   void* libhandle = dlopen("libnvidia-ml.so.1", RTLD_NOW);
   CHECK(libhandle != nullptr) << "Failed to open libnvidia-ml.so.1";
 
@@ -148,9 +152,22 @@ float GpuPerformanceWithCollectiveModel::GetNvlinkBw(
       {(void**)&xla_nvmlDeviceGetHandleByIndex, "nvmlDeviceGetHandleByIndex"},
       {(void**)&xla_nvmlDeviceGetNvLinkCapability,
        "nvmlDeviceGetNvLinkCapability"},
+      {(void**)&xla_nvmlSystemGetNVMLVersion, "nvmlSystemGetNVMLVersion"},
   };
+#if GOOGLE_CUDA && CUDA_VERSION >= 12040
+  symbols.push_back({(void**)&xla_nvmlDeviceGetHandleByPciBusId_v2,
+                     "nvmlDeviceGetHandleByPciBusId_v2"});
+  symbols.push_back({(void**)&xla_nvmlDeviceGetGpuFabricInfoV,
+                     "nvmlDeviceGetGpuFabricInfoV"});
+#endif  // CUDA_VERSION >= 12040
   for (SymbolEntry se : symbols) {
     *se.functor = dlsym(libhandle, se.name);
+    if (*se.functor == nullptr) {
+      const char* dlsym_error = dlerror();
+      if (dlsym_error) {
+        VLOG(0) << "Error: " << dlsym_error;
+      }
+    }
   }
   nvmlReturn_t init_result = xla_nvmlInit();
   return init_result == NVML_SUCCESS;
@@ -189,7 +206,8 @@ GpuPerformanceWithCollectiveModel::CheckIfNvlinkSupportsP2P() {
   nvmlReturn_t nvlink_cap_result = xla_nvmlDeviceGetNvLinkCapability(
       nvml_device, /*nvlink link number*/ 0, NVML_NVLINK_CAP_P2P_SUPPORTED,
       &supported_p2p);
-  CHECK(nvlink_cap_result == NVML_SUCCESS);
+  CHECK(nvlink_cap_result == NVML_SUCCESS ||
+        nvlink_cap_result == NVML_ERROR_NOT_SUPPORTED);
   CHECK(ShutdownNvml()) << "NVML shutdown failed.";
   return supported_p2p;
 #else
@@ -210,10 +228,10 @@ GpuPerformanceWithCollectiveModel::ComputeAllreduceTime(
   int64_t size_of_speed_array = kIntraNodeSpeeds.size();
   int64_t size_of_sm90_speed_array = kIntraNodeSpeedsSm90.size();
 
-  int num_speeds = compute_cap.major >= se::CudaComputeCapability::HOPPER
+  int num_speeds = compute_cap.major >= se::CudaComputeCapability::kHopper
                        ? size_of_sm90_speed_array
                        : size_of_speed_array;
-  const double* speeds = compute_cap.major >= se::CudaComputeCapability::HOPPER
+  const double* speeds = compute_cap.major >= se::CudaComputeCapability::kHopper
                              ? kIntraNodeSpeedsSm90.data()
                              : kIntraNodeSpeeds.data();
 

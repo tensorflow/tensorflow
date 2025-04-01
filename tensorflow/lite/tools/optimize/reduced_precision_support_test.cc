@@ -14,12 +14,11 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/tools/optimize/reduced_precision_support.h"
 
+#include <cstddef>
 #include <string>
-#include <vector>
+#include <utility>
 
-#include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "absl/memory/memory.h"
 #include "tensorflow/core/platform/init_main.h"
 #include "tensorflow/lite/core/model.h"
 #include "tensorflow/lite/schema/schema_generated.h"

@@ -42,11 +42,11 @@ namespace functor {
 
 template <typename Tidx, typename T>
 struct BincountFunctor<CPUDevice, Tidx, T, true> {
-  static Status Compute(OpKernelContext* context,
-                        const typename TTypes<Tidx, 1>::ConstTensor& arr,
-                        const typename TTypes<T, 1>::ConstTensor& weights,
-                        typename TTypes<T, 1>::Tensor& output,
-                        const Tidx num_bins) {
+  static absl::Status Compute(OpKernelContext* context,
+                              const typename TTypes<Tidx, 1>::ConstTensor& arr,
+                              const typename TTypes<T, 1>::ConstTensor& weights,
+                              typename TTypes<T, 1>::Tensor& output,
+                              const Tidx num_bins) {
     Tensor all_nonneg_t;
     TF_RETURN_IF_ERROR(context->allocate_temp(
         DT_BOOL, TensorShape({}), &all_nonneg_t, AllocatorAttributes()));
@@ -67,7 +67,7 @@ struct BincountFunctor<CPUDevice, Tidx, T, true> {
     auto partial_bins = partial_bins_t.matrix<bool>();
     partial_bins.setZero();
     thread_pool->ParallelForWithWorkerId(
-        arr.size(), 8 /* cost */,
+        arr.size(), thread::ThreadPool::SchedulingParams::Adaptive(8),
         [&](int64_t start_ind, int64_t limit_ind, int64_t worker_id) {
           for (int64_t i = start_ind; i < limit_ind; i++) {
             Tidx value = arr(i);
@@ -81,17 +81,17 @@ struct BincountFunctor<CPUDevice, Tidx, T, true> {
     Eigen::array<int, 1> reduce_dim({0});
     output.device(context->eigen_cpu_device()) =
         partial_bins.any(reduce_dim).cast<T>();
-    return OkStatus();
+    return absl::OkStatus();
   }
 };
 
 template <typename Tidx, typename T>
 struct BincountFunctor<CPUDevice, Tidx, T, false> {
-  static Status Compute(OpKernelContext* context,
-                        const typename TTypes<Tidx, 1>::ConstTensor& arr,
-                        const typename TTypes<T, 1>::ConstTensor& weights,
-                        typename TTypes<T, 1>::Tensor& output,
-                        const Tidx num_bins) {
+  static absl::Status Compute(OpKernelContext* context,
+                              const typename TTypes<Tidx, 1>::ConstTensor& arr,
+                              const typename TTypes<T, 1>::ConstTensor& weights,
+                              typename TTypes<T, 1>::Tensor& output,
+                              const Tidx num_bins) {
     Tensor all_nonneg_t;
     TF_RETURN_IF_ERROR(context->allocate_temp(
         DT_BOOL, TensorShape({}), &all_nonneg_t, AllocatorAttributes()));
@@ -140,7 +140,7 @@ struct BincountFunctor<CPUDevice, Tidx, T, false> {
       auto partial_bins = partial_bins_t.matrix<T>();
       partial_bins.setZero();
       thread_pool->ParallelForWithWorkerId(
-          arr_size, 8 /* cost */,
+          arr_size, thread::ThreadPool::SchedulingParams::Adaptive(8),
           [&](int64_t start_ind, int64_t limit_ind, int64_t worker_id) {
             if (weights.size()) {
               for (int64_t i = start_ind; i < limit_ind; i++) {
@@ -164,24 +164,24 @@ struct BincountFunctor<CPUDevice, Tidx, T, false> {
       Eigen::array<int, 1> reduce_dim({0});
       output.device(context->eigen_cpu_device()) = partial_bins.sum(reduce_dim);
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 };
 
 template <typename Tidx, typename T, bool binary_output>
 struct BincountReduceFunctor<CPUDevice, Tidx, T, binary_output> {
-  static Status Compute(OpKernelContext* context,
-                        const typename TTypes<Tidx, 2>::ConstTensor& in,
-                        const typename TTypes<T, 2>::ConstTensor& weights,
-                        typename TTypes<T, 2>::Tensor& out,
-                        const Tidx num_bins) {
+  static absl::Status Compute(OpKernelContext* context,
+                              const typename TTypes<Tidx, 2>::ConstTensor& in,
+                              const typename TTypes<T, 2>::ConstTensor& weights,
+                              typename TTypes<T, 2>::Tensor& out,
+                              const Tidx num_bins) {
     std::atomic<int> err_neg_val = 0;
     const int num_rows = out.dimension(0);
     const int num_cols = in.dimension(1);
     ThreadPool* thread_pool =
         context->device()->tensorflow_cpu_worker_threads()->workers;
     thread_pool->ParallelForWithWorkerId(
-        num_rows, 8 /* cost */,
+        num_rows, thread::ThreadPool::SchedulingParams::Adaptive(8),
         [&](int64_t start_row, int64_t end_row, int64_t worker_id) {
           for (int64_t i = start_row; i < end_row; ++i) {
             for (int64_t j = 0; j < num_cols; ++j) {
@@ -209,7 +209,7 @@ struct BincountReduceFunctor<CPUDevice, Tidx, T, binary_output> {
           static_cast<int>(err_neg_val)));
     }
 
-    return OkStatus();
+    return absl::OkStatus();
   }
 };
 
@@ -325,7 +325,7 @@ class DenseBincountOp : public OpKernel {
       const int64_t num_rows = data.dim_size(0);
       auto weight_matrix =
           (weights.NumElements() == 0)
-              ? weights.shaped<T, 2>(gtl::InlinedVector<int64_t, 2>(2, 0))
+              ? weights.shaped<T, 2>(absl::InlinedVector<int64_t, 2UL>(2, 0))
               : weights.matrix<T>();
       OP_REQUIRES_OK(
           ctx, ctx->allocate_output(0, TensorShape({num_rows, size}), &out_t));

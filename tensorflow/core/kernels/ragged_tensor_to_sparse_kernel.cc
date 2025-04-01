@@ -154,7 +154,7 @@ class RaggedTensorToSparseOp : public OpKernel {
 
  private:
   // Validate `rt_nested_splits` to ensure we don't get any segfaults.
-  static ::tensorflow::Status ValidateInputs(
+  static absl::Status ValidateInputs(
       std::vector<ConstFlatSplits> rt_nested_splits,
       const Tensor& rt_dense_values_in) {
     for (int i = 0; i < rt_nested_splits.size(); ++i) {

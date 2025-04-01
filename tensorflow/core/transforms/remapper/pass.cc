@@ -776,7 +776,7 @@ class Remapper : public impl::RemapperBase<Remapper> {
 };
 
 void Remapper::runOnOperation() {
-  if (failed(applyPatternsAndFoldGreedily(getOperation(), final_patterns_))) {
+  if (failed(applyPatternsGreedily(getOperation(), final_patterns_))) {
     signalPassFailure();
   }
 }

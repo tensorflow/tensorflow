@@ -101,7 +101,7 @@ void LoadOpenCLFunctions(HMODULE libopencl);
 void LoadOpenCLFunctions(void* libopencl, bool use_wrapper);
 #endif
 
-absl::Status LoadOpenCL() {
+absl::Status LoadOpenCLOnce() {
 #ifdef __WINDOWS__
   HMODULE libopencl = LoadLibraryA("OpenCL.dll");
   if (libopencl) {
@@ -168,6 +168,11 @@ absl::Status LoadOpenCL() {
 #endif
 }
 
+absl::Status LoadOpenCL() {
+  static auto* status = new absl::Status(LoadOpenCLOnce());
+  return *status;
+}
+
 void LoadOpenCLFunctionExtensions(cl_platform_id platform_id) {
   // cl_khr_command_buffer extension
   LoadFunctionExtension(platform_id, clCreateCommandBufferKHR);
@@ -177,6 +182,9 @@ void LoadOpenCLFunctionExtensions(cl_platform_id platform_id) {
   LoadFunctionExtension(platform_id, clEnqueueCommandBufferKHR);
   LoadFunctionExtension(platform_id, clCommandNDRangeKernelKHR);
   LoadFunctionExtension(platform_id, clGetCommandBufferInfoKHR);
+
+  // cl_arm_import_memory extension
+  LoadFunctionExtension(platform_id, clImportMemoryARM);
 }
 
 #ifdef __WINDOWS__
@@ -438,6 +446,9 @@ PFN_clFinalizeCommandBufferKHR clFinalizeCommandBufferKHR;
 PFN_clEnqueueCommandBufferKHR clEnqueueCommandBufferKHR;
 PFN_clCommandNDRangeKernelKHR clCommandNDRangeKernelKHR;
 PFN_clGetCommandBufferInfoKHR clGetCommandBufferInfoKHR;
+
+// cl_arm_import_memory extension
+PFN_clImportMemoryARM clImportMemoryARM;
 
 DEFINE_QCOM_FUNCTION_PTRS
 

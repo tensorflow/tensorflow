@@ -17,7 +17,6 @@ limitations under the License.
 #include <thread>
 #include <utility>
 
-#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/tfrt/utils/thread_pool.h"

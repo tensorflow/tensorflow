@@ -19,14 +19,14 @@ limitations under the License.
 #include <string>
 
 #include "fuzztest/fuzztest.h"
+#include "absl/log/log.h"
+#include "xla/tsl/platform/errors.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb.h"
-#include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/platform/tstring.h"
 #include "tensorflow/security/fuzzing/cc/core/framework/tensor_shape_domains.h"
-#include "tsl/platform/errors.h"
 
 namespace tensorflow::fuzzing {
 namespace {

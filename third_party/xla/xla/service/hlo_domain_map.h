@@ -16,24 +16,27 @@ limitations under the License.
 #ifndef XLA_SERVICE_HLO_DOMAIN_MAP_H_
 #define XLA_SERVICE_HLO_DOMAIN_MAP_H_
 
+#include <cstdint>
 #include <memory>
+#include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_domain_metadata.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
-#include "tsl/platform/status.h"
 
 namespace xla {
 
 // The HloDomainMap splits a set of instructions within a module or computation,
 // into different domains, separated by kDomain instructions.
 // A domain is composed by a set of instructions which can reach each other via
-// operand/user edges, without crossing a kDomain insutrction of a given kind.
+// operand/user edges, without crossing a kDomain instruction of a given kind.
 // A domain never crosses computation boundaries.
 class HloDomainMap {
  public:

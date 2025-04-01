@@ -21,6 +21,7 @@ limitations under the License.
 #include <vector>
 
 #include <curl/curl.h>
+#include "xla/tsl/platform/cloud/curl_http_request.h"
 #include "tensorflow/core/platform/cloud/http_request.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/errors.h"
@@ -29,7 +30,6 @@ limitations under the License.
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/stringpiece.h"
 #include "tensorflow/core/platform/types.h"
-#include "tsl/platform/cloud/curl_http_request.h"
 
 namespace tensorflow {
 // NOLINTBEGIN(misc-unused-using-decls)

@@ -15,27 +15,29 @@ limitations under the License.
 
 #include "xla/backends/profiler/gpu/cupti_tracer.h"
 
+#include <algorithm>
 #include <list>
-#include <string_view>
 #include <tuple>
 #include <utility>
 #include <vector>
 
 #include "absl/cleanup/cleanup.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/log/log.h"
 #include "absl/types/span.h"
-#include "third_party/gpus/cuda/extras/CUPTI/include/generated_nvtx_meta.h"
+#include "third_party/gpus/cuda/extras/CUPTI/include/cupti_activity.h"
+#include "third_party/gpus/cuda/extras/CUPTI/include/cupti_result.h"
 #include "third_party/gpus/cuda/include/cuda.h"
 #include "xla/backends/profiler/gpu/cupti_buffer_events.h"
 #include "xla/backends/profiler/gpu/cupti_collector.h"
 #include "xla/backends/profiler/gpu/cupti_interface.h"
 #include "xla/backends/profiler/gpu/nvtx_utils.h"
+#include "xla/tsl/profiler/backends/cpu/annotation_stack.h"
+#include "xla/tsl/profiler/utils/per_thread.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/host_info.h"
 #include "tsl/platform/logging.h"
-#include "tsl/profiler/backends/cpu/annotation_stack.h"
-#include "tsl/profiler/utils/per_thread.h"
 
 namespace xla {
 namespace profiler {
@@ -440,8 +442,8 @@ void SetCuMemAllocEventUponApiExit(CuptiTracerEvent &event, uint32_t device_id,
   event.correlation_id = cbdata->correlationId;
   event.memalloc_info.address = reinterpret_cast<uintptr_t>(dptr);
   event.memalloc_info.num_bytes = params->bytesize;
-  VLOG(3) << "Cuda MemAlloc API exit." << " dptr=" << dptr
-          << " sz=" << params->bytesize;
+  VLOG(3) << "Cuda MemAlloc API exit."
+          << " dptr=" << dptr << " sz=" << params->bytesize;
 }
 
 void SetCuMemAllocPitchEventUponApiExit(
@@ -462,8 +464,8 @@ void SetCuMemAllocPitchEventUponApiExit(
   const size_t size_in_bytes = *params->pPitch * params->Height;
   event.memalloc_info.address = reinterpret_cast<uintptr_t>(dptr);
   event.memalloc_info.num_bytes = size_in_bytes;
-  VLOG(3) << "Cuda MemAllocPitch API exit." << " dptr=" << dptr
-          << " sz=" << size_in_bytes;
+  VLOG(3) << "Cuda MemAllocPitch API exit."
+          << " dptr=" << dptr << " sz=" << size_in_bytes;
 }
 
 void SetCuMemAllocManagedEventUponApiExit(
@@ -483,8 +485,8 @@ void SetCuMemAllocManagedEventUponApiExit(
   event.correlation_id = cbdata->correlationId;
   event.memalloc_info.address = reinterpret_cast<uintptr_t>(dptr);
   event.memalloc_info.num_bytes = params->bytesize;
-  VLOG(3) << "Cuda MemAllocManaged API exit." << " dptr=" << dptr
-          << " sz=" << params->bytesize;
+  VLOG(3) << "Cuda MemAllocManaged API exit."
+          << " dptr=" << dptr << " sz=" << params->bytesize;
 }
 
 void SetCuMemAllocHostEventUponApiExit(CuptiTracerEvent &event,
@@ -505,8 +507,8 @@ void SetCuMemAllocHostEventUponApiExit(CuptiTracerEvent &event,
   event.correlation_id = cbdata->correlationId;
   event.memalloc_info.address = reinterpret_cast<uintptr_t>(*params->pp);
   event.memalloc_info.num_bytes = params->bytesize;
-  VLOG(3) << "Cuda MemAllocHost API exit." << " pp=" << *params->pp
-          << " sz=" << params->bytesize;
+  VLOG(3) << "Cuda MemAllocHost API exit."
+          << " pp=" << *params->pp << " sz=" << params->bytesize;
 }
 
 void SetCuMemHostAllocEventUponApiExit(CuptiTracerEvent &event,
@@ -527,8 +529,9 @@ void SetCuMemHostAllocEventUponApiExit(CuptiTracerEvent &event,
   event.correlation_id = cbdata->correlationId;
   event.memalloc_info.address = reinterpret_cast<uintptr_t>(*params->pp);
   event.memalloc_info.num_bytes = params->bytesize;
-  VLOG(3) << "Cuda MemHostAlloc API exit." << " pp=" << *params->pp
-          << " sz=" << params->bytesize << " Flags=" << params->Flags;
+  VLOG(3) << "Cuda MemHostAlloc API exit."
+          << " pp=" << *params->pp << " sz=" << params->bytesize
+          << " Flags=" << params->Flags;
 }
 
 void SetCuMemFreeEventUponApiExit(CuptiTracerEvent &event, uint32_t device_id,
@@ -548,7 +551,8 @@ void SetCuMemFreeEventUponApiExit(CuptiTracerEvent &event, uint32_t device_id,
   event.context_id = cbdata->contextUid;
   event.correlation_id = cbdata->correlationId;
   event.memfree_info.address = reinterpret_cast<uintptr_t>(dptr);
-  VLOG(3) << "Cuda MemFree API exit." << " dptr=" << dptr;
+  VLOG(3) << "Cuda MemFree API exit."
+          << " dptr=" << dptr;
 }
 
 void SetCuMemFreeHostEventUponApiExit(CuptiTracerEvent &event,
@@ -567,7 +571,8 @@ void SetCuMemFreeHostEventUponApiExit(CuptiTracerEvent &event,
   event.context_id = cbdata->contextUid;
   event.correlation_id = cbdata->correlationId;
   event.memfree_info.address = reinterpret_cast<uintptr_t>(params->p);
-  VLOG(3) << "Cuda MemFreeHost API exit." << " p=" << params->p;
+  VLOG(3) << "Cuda MemFreeHost API exit."
+          << " p=" << params->p;
 }
 
 void SetCuMemHostRegisterEventUponApiExit(
@@ -587,8 +592,9 @@ void SetCuMemHostRegisterEventUponApiExit(
   event.host_register_info.address = reinterpret_cast<uintptr_t>(params->p);
   event.host_register_info.num_bytes = params->bytesize;
   event.host_register_info.flags = params->Flags;
-  VLOG(3) << "Cuda HostRegister API exit." << " p=" << params->p
-          << " bytesize=" << params->bytesize << " flags=" << params->Flags;
+  VLOG(3) << "Cuda HostRegister API exit."
+          << " p=" << params->p << " bytesize=" << params->bytesize
+          << " flags=" << params->Flags;
 }
 
 void SetCuMemHostUnregisterEventUponApiExit(
@@ -606,7 +612,8 @@ void SetCuMemHostUnregisterEventUponApiExit(
   event.context_id = cbdata->contextUid;
   event.correlation_id = cbdata->correlationId;
   event.host_unregister_info.address = reinterpret_cast<uintptr_t>(params->p);
-  VLOG(3) << "Cuda HostUnregister API exit." << " p=" << params->p;
+  VLOG(3) << "Cuda HostUnregister API exit."
+          << " p=" << params->p;
 }
 
 struct GraphResourceCreationInfo {
@@ -647,7 +654,8 @@ void SetCudaGraphEventUponApiExit(CuptiTracerEvent &event,
   event.cuda_graph_info.cbid = cbid;
   event.graph_id = graph_id_info.graph_id;
   event.cuda_graph_info.orig_graph_id = graph_id_info.orig_graph_id;
-  VLOG(3) << "Observed CudaGraph API exit." << " name=" << cbdata->functionName;
+  VLOG(3) << "Observed CudaGraph API exit."
+          << " name=" << cbdata->functionName;
 }
 
 void SetGenericEventUponApiExit(CuptiTracerEvent &event, uint32_t device_id,
@@ -664,7 +672,8 @@ void SetGenericEventUponApiExit(CuptiTracerEvent &event, uint32_t device_id,
   event.context_id = cbdata->contextUid;
   event.correlation_id = cbdata->correlationId;
   event.generic_info.cbid = cbid;
-  VLOG(3) << "Observed generic API exit." << " name=" << cbdata->functionName;
+  VLOG(3) << "Observed generic API exit."
+          << " name=" << cbdata->functionName;
 }
 
 static void SetCallbackEventUponApiExit(CuptiTracerEvent &event,
@@ -824,6 +833,19 @@ class GuardedCallbackAnnotationsAndEvents {
     annotations_and_events_.event_queue().Push(std::move(event));
   }
 
+  void AddScopeRangeIdSequence(absl::Span<const int64_t> sequence) {
+    if (sequence.size() > 1) {
+      const int64_t *head = sequence.data();
+      const int64_t *curr = &sequence.back();
+
+      tsl::mutex_lock lock(mu_);
+      ScopeRangeIdTree &tree = annotations_and_events_.scope_range_id_tree();
+      for (; curr > head && !tree.contains(*curr); --curr) {
+        tree.emplace(*curr, *(curr - 1));
+      }
+    }
+  }
+
  private:
   tsl::mutex mu_;
   CallbackAnnotationsAndEvents annotations_and_events_ TF_GUARDED_BY(mu_);
@@ -838,11 +860,6 @@ absl::Status AddDriverApiCallbackEvent(
     CUpti_CallbackId cbid, const CUpti_CallbackData *cbdata) {
   absl::string_view annotation = AnnotationStack::Get();
   absl::string_view nvtx_range = "";
-  if (!annotation.empty() &&
-      cbid != CUPTI_DRIVER_TRACE_CBID_cuLaunchCooperativeKernelMultiDevice) {
-    nvtx_range = NVTXRangeTracker::CurrentRange();
-  }
-
   auto &guarded_annotations_and_events =
       PerThreadCallbackAnnotationsAndEvents::Get();
   if (tracer->TooManyCallbackEvents()) {
@@ -850,10 +867,13 @@ absl::Status AddDriverApiCallbackEvent(
     return absl::OkStatus();
   }
   tracer->IncCallbackEventCount();
+  absl::Span<const int64_t> range_ids = AnnotationStack::GetScopeRangeIds();
+  guarded_annotations_and_events.AddScopeRangeIdSequence(range_ids);
   CuptiTracerEvent event{};
   event.correlation_id = cbdata->correlationId;
   event.annotation = annotation;
   event.nvtx_range = nvtx_range;
+  event.scope_range_id = range_ids.empty() ? 0 : range_ids.back();
   SetCallbackEventUponApiExit(event, cupti_interface, device_id, cbid, cbdata,
                               start_tsc, end_tsc);
   guarded_annotations_and_events.Push(*tracer, std::move(event));
@@ -977,6 +997,12 @@ const char *GetTraceEventTypeName(const CuptiTracerEventType &type) {
       return "HostUnregister";
     case CuptiTracerEventType::CudaGraph:
       return "CudaGraph";
+    case CuptiTracerEventType::ThreadMarkerRange:
+      return "ThreadMarkerRange";
+    case CuptiTracerEventType::ThreadMarkerStart:
+      return "ThreadMarkerStart";
+    case CuptiTracerEventType::ThreadMarkerEnd:
+      return "ThreadMarkerEnd";
     case CuptiTracerEventType::Unsupported:
       return "";
   }
@@ -1009,20 +1035,36 @@ int CuptiTracer::NumGpus() {
   return num_gpus;
 }
 
-void CuptiTracer::Enable(const CuptiTracerOptions &option,
-                         CuptiTraceCollector *collector) {
+absl::Status CuptiTracer::Enable(const CuptiTracerOptions &option,
+                                 CuptiTraceCollector *collector) {
   option_ = option;
   collector_ = collector;
 
+  // For nvtx tracking, utilize CUPTI activity marker and marker_data.
+  if (option_->enable_nvtx_tracking) {
+    std::vector<CUpti_ActivityKind> &activities = option_->activities_selected;
+    if (std::find(activities.begin(), activities.end(),
+                  CUPTI_ACTIVITY_KIND_MARKER) == activities.end()) {
+      VLOG(1) << "Adding CUPTI_ACTIVITY_KIND_MARKER to activities:"
+              << (int)CUPTI_ACTIVITY_KIND_MARKER;
+      activities.push_back(CUPTI_ACTIVITY_KIND_MARKER);
+    }
+    // TODO: Add CUPTI_ACTIVITY_KIND_MARKER_DATA to activities after cupti
+    // more detailed data could be provided by cupti.
+  }
+
   cupti_driver_api_hook_ = std::make_unique<CuptiDriverApiHookWithActivityApi>(
-      option, cupti_interface_, this);
+      *option_, cupti_interface_, this);
 
   absl::Status status = EnableApiTracing();
   need_root_access_ |= status.code() == tsl::error::PERMISSION_DENIED;
-  if (!status.ok()) return;
+  if (!status.ok()) {
+    return status;
+  }
 
   EnableActivityTracing().IgnoreError();
   tsl::profiler::AnnotationStack::Enable(true);
+  return status;
 }
 
 void CuptiTracer::Disable() {
@@ -1128,10 +1170,10 @@ absl::Status CuptiTracer::EnableApiTracing() {
         1 /* ENABLE */, subscriber_, CUPTI_CB_DOMAIN_DRIVER_API));
   }
 
-  if (option_->enable_nvtx_tracking) {
-    RETURN_IF_CUPTI_ERROR(cupti_interface_->EnableDomain(
-        1 /* ENABLE */, subscriber_, CUPTI_CB_DOMAIN_NVTX));
-  }
+  // There is no easy api to get the domain string from CUPTI_CB_DOMAIN_NVTX
+  // callback. So we use ACTIVIY_MARKERS to get the domain/range_name strings,
+  // and generate the related nvtx range event. So we do not need to use the
+  // CUPTI_CB_DOMAIN_NVTX callback here.
   return absl::OkStatus();
 }
 
@@ -1156,11 +1198,6 @@ absl::Status CuptiTracer::DisableApiTracing() {
         0 /* DISABLE */, subscriber_, CUPTI_CB_DOMAIN_DRIVER_API));
   }
 
-  if (option_->enable_nvtx_tracking) {
-    RETURN_IF_CUPTI_ERROR(cupti_interface_->EnableDomain(
-        0 /* DISABLE */, subscriber_, CUPTI_CB_DOMAIN_NVTX));
-  }
-
   VLOG(1) << "Disable subscriber";
   RETURN_IF_CUPTI_ERROR(cupti_interface_->Unsubscribe(subscriber_));
   return absl::OkStatus();
@@ -1170,6 +1207,14 @@ absl::Status CuptiTracer::EnableActivityTracing() {
   if (activity_tracing_enabled_) return absl::OkStatus();
   PrepareActivityStart();
   if (!option_->activities_selected.empty()) {
+    if (cupti_interface_->SetThreadIdType(
+            CUPTI_ACTIVITY_THREAD_ID_TYPE_SYSTEM) != CUPTI_SUCCESS) {
+      LOG(WARNING)
+          << "Failed to set CUPTI activity thread id type to "
+             "CUPTI_ACTIVITY_THREAD_ID_TYPE_SYSTEM, CUPTI reported thread id "
+             "may be different from system thread id get with gettid()";
+    };
+
     // Initialize callback functions for Cupti Activity API.
     VLOG(1) << "Registering CUPTI activity callbacks";
     if (auto err = cupti_interface_->ActivityUsePerThreadBuffer();
@@ -1233,25 +1278,6 @@ absl::Status CuptiTracer::Finalize() {
   // Return 0 on error. If an activity timestamp is 0, the activity will be
   // dropped during time normalization.
   return 0;
-}
-
-absl::Status CuptiTracer::HandleNVTXCallback(CUpti_CallbackId cbid,
-                                             const CUpti_CallbackData *cbdata) {
-  const CUpti_NvtxData *pdata =
-      reinterpret_cast<const CUpti_NvtxData *>(cbdata);
-  if (cbid == CUPTI_CBID_NVTX_nvtxDomainRangePushEx) {
-    const nvtxDomainRangePushEx_params *params =
-        reinterpret_cast<const nvtxDomainRangePushEx_params *>(
-            pdata->functionParams);
-    // TODO(profiler): The messageType is actually NVTX_MESSAGE_TYPE_REGISTERED
-    // (which is 3), However it seems to me that we can not get the registered
-    // string from nvtxDomainRegisterStringA_params. If we reinterpret the
-    // payload as ascii, it happen to work.
-    NVTXRangeTracker::EnterRange(params->core.eventAttrib->message.ascii);
-  } else if (cbid == CUPTI_CBID_NVTX_nvtxDomainRangePop) {
-    NVTXRangeTracker::ExitRange();
-  }
-  return absl::OkStatus();
 }
 
 // Resource callback happens logically inside a driver API call's enter/exit.
@@ -1318,7 +1344,6 @@ absl::Status CuptiTracer::HandleCallback(CUpti_CallbackDomain domain,
   if (!api_tracing_enabled_) return absl::OkStatus();  // already unsubscribed.
   if (!cupti_driver_api_hook_)
     return absl::OkStatus();  // already unsubscribed.
-  if (domain == CUPTI_CB_DOMAIN_NVTX) return HandleNVTXCallback(cbid, cbdata);
   if (domain == CUPTI_CB_DOMAIN_DRIVER_API)
     return HandleDriverApiCallback(cbid, cbdata);
   if (domain == CUPTI_CB_DOMAIN_RESOURCE)
@@ -1413,8 +1438,11 @@ absl::Status CuptiTracer::ProcessActivityBuffer(CUcontext context,
       collector_->GetOptions().max_activity_api_events;
   if (max_activity_event_count > 0 &&
       num_activity_events_in_cached_buffer_ >= max_activity_event_count) {
-    LOG(WARNING) << "Already too many activity events, drop the buffer of "
-                 << size << "bytes of event to reuse.";
+    LOG_EVERY_N(WARNING, 10000)
+        << "Already too many activity events, drop the buffer of " << size
+        << "bytes of event to reuse. This warning is logged once per 10000 "
+           "occurrences, the current count is "
+        << COUNTER << ".";
     num_activity_events_in_dropped_buffer_ += event_count_in_buffer;
     // buffer will be return to the pool
     return absl::OkStatus();

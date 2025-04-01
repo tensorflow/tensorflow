@@ -16,8 +16,13 @@ limitations under the License.
 #include "tensorflow/core/framework/resource_mgr.h"
 
 #include <memory>
+#include <string>
 #include <vector>
 
+#include <gmock/gmock.h>
+#include "absl/base/nullability.h"
+#include "absl/status/status.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "tensorflow/core/framework/device_attributes.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"
@@ -34,6 +39,9 @@ limitations under the License.
 #include "tensorflow/core/protobuf/error_codes.pb.h"
 
 namespace tensorflow {
+
+using ::testing::HasSubstr;
+using ::tsl::testing::StatusIs;
 
 class Resource : public ResourceBase {
  public:
@@ -57,6 +65,19 @@ class Other : public ResourceBase {
   string label_;
 };
 
+class Finalizable : public ResourceBase {
+ public:
+  explicit Finalizable(absl::Nonnull<int*> finalize_count)
+      : finalize_count_(*finalize_count) {}
+  ~Finalizable() override = default;
+
+  std::string DebugString() const override { return "Finalizable"; }
+  void Finalize() override { ++finalize_count_; }
+
+ private:
+  int& finalize_count_;
+};
+
 template <typename T>
 string Find(const ResourceMgr& rm, const string& container,
             const string& name) {
@@ -73,14 +94,14 @@ string LookupOrCreate(ResourceMgr* rm, const string& container,
   T* r;
   TF_CHECK_OK(rm->LookupOrCreate<T>(container, name, &r, [&label](T** ret) {
     *ret = new T(label);
-    return OkStatus();
+    return absl::OkStatus();
   }));
   const string ret = r->DebugString();
   r->Unref();
   return ret;
 }
 
-static void HasError(const Status& s, const error::Code code,
+static void HasError(const absl::Status& s, const error::Code code,
                      const string& substr) {
   EXPECT_EQ(s.code(), code);
   EXPECT_TRUE(absl::StrContains(s.message(), substr))
@@ -88,10 +109,10 @@ static void HasError(const Status& s, const error::Code code,
 }
 
 template <typename T>
-Status FindErr(const ResourceMgr& rm, const string& container,
-               const string& name) {
+absl::Status FindErr(const ResourceMgr& rm, const string& container,
+                     const string& name) {
   T* r;
-  Status s = rm.Lookup(container, name, &r);
+  absl::Status s = rm.Lookup(container, name, &r);
   CHECK(!s.ok());
   return s;
 }
@@ -240,7 +261,7 @@ TEST(ResourceMgrTest, CreateOrLookupRaceCondition) {
               Env::Default()->SleepForMicroseconds(1 * 1000 * 1000);
               atomic_int += 1;
               *ret = new Resource("label");
-              return OkStatus();
+              return absl::OkStatus();
             }));
         r->Unref();
       });
@@ -250,9 +271,61 @@ TEST(ResourceMgrTest, CreateOrLookupRaceCondition) {
   EXPECT_EQ(1, atomic_int);
 }
 
-Status ComputePolicy(const string& attr_container,
-                     const string& attr_shared_name,
-                     bool use_node_name_as_default, string* result) {
+TEST(ResourceMgrTest, Finalize) {
+  ResourceMgr rm;
+  int finalize_count_ = 0;
+  TF_ASSERT_OK(rm.Create("container", "resource-name",
+                         new Finalizable(&finalize_count_)));
+  EXPECT_EQ(finalize_count_, 0);
+
+  // Finalizable::Finalize called.
+  rm.Finalize();
+  EXPECT_EQ(finalize_count_, 1);
+}
+
+TEST(ResourceMgrTest, MultipleFinalize) {
+  ResourceMgr rm;
+  int finalize_count_ = 0;
+  TF_ASSERT_OK(rm.Create("container", "resource-name",
+                         new Finalizable(&finalize_count_)));
+  EXPECT_EQ(finalize_count_, 0);
+
+  // Finalizable::Finalize should be called only once.
+  rm.Finalize();
+  EXPECT_EQ(finalize_count_, 1);
+  rm.Finalize();
+  EXPECT_EQ(finalize_count_, 1);
+}
+
+TEST(ResourceMgrTest, CreateFailAfterFinalize) {
+  ResourceMgr rm;
+  rm.Finalize();
+
+  // Create should fail after finalization.
+  int finalize_count_ = 0;
+  Finalizable* finalizable = new Finalizable(&finalize_count_);
+  EXPECT_THAT(rm.Create("container", "resource-name", finalizable),
+              StatusIs(absl::StatusCode::kFailedPrecondition,
+                       HasSubstr("ResourceMgr is finalized")));
+  finalizable->Unref();
+}
+
+TEST(ResourceMgrTest, CreateUnownedFailAfterFinalize) {
+  ResourceMgr rm;
+  rm.Finalize();
+
+  // Create should fail after finalization.
+  int finalize_count_ = 0;
+  Finalizable* finalizable = new Finalizable(&finalize_count_);
+  EXPECT_THAT(rm.CreateUnowned("container", "resource-name", finalizable),
+              StatusIs(absl::StatusCode::kFailedPrecondition,
+                       HasSubstr("ResourceMgr is finalized")));
+  finalizable->Unref();
+}
+
+absl::Status ComputePolicy(const string& attr_container,
+                           const string& attr_shared_name,
+                           bool use_node_name_as_default, string* result) {
   ContainerInfo cinfo;
   ResourceMgr rmgr;
   NodeDef ndef;
@@ -265,7 +338,7 @@ Status ComputePolicy(const string& attr_container,
   }
   TF_RETURN_IF_ERROR(cinfo.Init(&rmgr, ndef, use_node_name_as_default));
   *result = cinfo.DebugString();
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 string Policy(const string& attr_container, const string& attr_shared_name,
@@ -292,8 +365,9 @@ TEST(ContainerInfo, Basic) {
   EXPECT_EQ(Policy(".cat", "bar", true), "[.cat,bar,public]");
 }
 
-Status WrongPolicy(const string& attr_container, const string& attr_shared_name,
-                   bool use_node_name_as_default) {
+absl::Status WrongPolicy(const string& attr_container,
+                         const string& attr_shared_name,
+                         bool use_node_name_as_default) {
   string dbg;
   auto s = ComputePolicy(attr_container, attr_shared_name,
                          use_node_name_as_default, &dbg);

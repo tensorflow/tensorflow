@@ -19,7 +19,7 @@ limitations under the License.
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/protobuf/steps_db.pb.h"
-#include "tensorflow/core/profiler/utils/event_span.h"
+#include "xprof/utils/event_span.h"  // from @org_xprof
 
 namespace tensorflow {
 namespace profiler {

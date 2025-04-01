@@ -112,7 +112,7 @@ int MaybeRaiseExceptionFromTFStatus(TF_Status* status, PyObject* exception);
 // Returns 0 if 'status' is ok. Otherwise, raises an exception (using
 // `exception` if not nullptr, else using the class registered via
 // TFE_Py_RegisterExceptionClass), and returns -1.
-int MaybeRaiseExceptionFromStatus(const tensorflow::Status& status,
+int MaybeRaiseExceptionFromStatus(const absl::Status& status,
                                   PyObject* exception);
 
 // Returns the string associated with the passed-in python object.
@@ -443,7 +443,7 @@ EagerContextThreadLocalData* GetEagerContextThreadLocalData(
 // wish to destroy thread-local state associated with a single py_eager_context
 // for multiple threads, then you must call this method from each thread.
 //
-// Thread-local state assocaited with eager contexts is also automatically
+// Thread-local state associated with eager contexts is also automatically
 // cleaned up when the thread is destroyed.
 //
 // This function assumes that the Python GIL is held (and does not perform its

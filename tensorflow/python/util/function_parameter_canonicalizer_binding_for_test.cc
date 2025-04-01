@@ -15,8 +15,10 @@ limitations under the License.
 
 #include <Python.h>
 
+#include <string>
 #include <vector>
 
+#include "absl/log/check.h"
 #include "absl/types/span.h"
 #include "pybind11/pybind11.h"  // from @pybind11
 #include "pybind11/pytypes.h"  // from @pybind11

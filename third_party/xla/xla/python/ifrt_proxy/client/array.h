@@ -26,11 +26,13 @@
 #include <vector>
 
 #include "absl/base/attributes.h"
+#include "absl/base/thread_annotations.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "absl/types/optional.h"
+#include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "llvm/Support/ExtensibleRTTI.h"
+#include "xla/pjrt/pjrt_layout.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/dtype.h"
@@ -63,15 +65,26 @@ class Array final : public llvm::RTTIExtends<Array, xla::ifrt::Array> {
                           xla::ifrt::Client::HostBufferSemantics semantics,
                           std::function<void()> on_done_with_host_buffer);
 
+  // `Array::MakeArraysFromHostBufferShards()` implements
+  // `Client::MakeArraysFromHostBufferShards()`.
+  // TODO(b/261226026): Implement logic directly in client.cc.
+  static absl::StatusOr<std::vector<tsl::RCReference<xla::ifrt::Array>>>
+  MakeArraysFromHostBufferShards(
+      xla::ifrt::Client* client, std::shared_ptr<RpcHelper> rpc_helper,
+      absl::Span<xla::ifrt::Client::MakeArraysFromHostBufferShardsSpec> specs,
+      xla::ifrt::Client::HostBufferSemantics semantics,
+      tsl::RCReference<xla::ifrt::UserContext> user_context);
+
   // `Array::AssembleArrayFromSingleDeviceArrays()` implements
   // `Client::AssembleArrayFromSingleDeviceArrays()`.
   // TODO(b/261226026): Implement logic directly in client.cc.
   static absl::StatusOr<tsl::RCReference<xla::ifrt::Array>>
   AssembleArrayFromSingleDeviceArrays(
       xla::ifrt::Client* client, std::shared_ptr<RpcHelper> rpc_helper,
-      Shape shape, std::shared_ptr<const Sharding> sharding,
+      DType dtype, Shape shape, std::shared_ptr<const Sharding> sharding,
       absl::Span<tsl::RCReference<xla::ifrt::Array>> arrays,
-      ArrayCopySemantics semantics);
+      ArrayCopySemantics array_copy_semantics,
+      SingleDeviceShardSemantics single_device_shard_semantics);
 
   // `Array::RemapArrays()` implements `Client::RemapArrays()`.
   // TODO(b/261226026): Implement logic directly in client.cc.
@@ -97,7 +110,31 @@ class Array final : public llvm::RTTIExtends<Array, xla::ifrt::Array> {
 
   ~Array() override { Destruct(rpc_helper_.get(), handle_); }
 
-  ArrayHandle handle() const { return handle_; }
+  absl::StatusOr<ArrayHandle> GetHandle(ArrayCopySemantics semantics) {
+    absl::MutexLock l(&mu_);
+    if (deleted_ == DeletionState::kDeleted) {
+      return absl::InvalidArgumentError("Array already deleted.");
+    }
+    if (semantics == ArrayCopySemantics::kDonateInput) {
+      deleted_ = DeletionState::kDeleted;
+    }
+    return handle_;
+  }
+
+  // Fetches the ArrayHandle when the ArrayCopySemantics (i.e., whether the
+  // array is meant to be donated or copied) is not known.
+  //
+  // Calling this function may cause `IsDelete()` calls to result in a
+  // synchronous RPC to the proxy-server. To avoid such performance overhead,
+  // prefer using `GetHandle(semantics)` whenever the semantics are known.
+  absl::StatusOr<ArrayHandle> GetHandleUnknownIfBeingDonated() {
+    absl::MutexLock l(&mu_);
+    if (deleted_ == DeletionState::kDeleted) {
+      return absl::InvalidArgumentError("Array already deleted.");
+    }
+    deleted_ = DeletionState::kUnknown;
+    return handle_;
+  }
 
   xla::ifrt::Client* client() const override;
   Future<> GetReadyFuture() const override;
@@ -111,13 +148,15 @@ class Array final : public llvm::RTTIExtends<Array, xla::ifrt::Array> {
   std::shared_ptr<const Sharding> shared_ptr_sharding() const override {
     return sharding_;
   }
-  absl::StatusOr<std::unique_ptr<PjRtLayout>> layout() const override {
+  absl::StatusOr<std::shared_ptr<const PjRtLayout>> layout() const override {
     return absl::UnimplementedError(
         "Array::layout() not implemented for IFRT proxy");
   };
 
   absl::StatusOr<std::vector<tsl::RCReference<xla::ifrt::Array>>>
-  DisassembleIntoSingleDeviceArrays(ArrayCopySemantics semantics) override;
+  DisassembleIntoSingleDeviceArrays(
+      ArrayCopySemantics array_copy_semantics,
+      SingleDeviceShardSemantics single_device_shard_semantics) override;
 
   absl::StatusOr<tsl::RCReference<xla::ifrt::Array>> FullyReplicatedShard(
       xla::ifrt::ArrayCopySemantics semantics) override;
@@ -133,6 +172,10 @@ class Array final : public llvm::RTTIExtends<Array, xla::ifrt::Array> {
   template <typename T, typename... Args>
   friend tsl::RCReference<T> tsl::MakeRef(Args&&... args);
 
+  Future<> CopyToStringHostBuffer(
+      void* data, std::optional<absl::Span<const int64_t>> byte_strides,
+      ArrayCopySemantics semantics);
+
   // Not owned. Used only for implementing `client()` interface method. Note
   // that `client()` will still return the pointer even if the pointed-to memory
   // is freed; this unfortunate behavior currently exists in all IFRT
@@ -143,7 +186,17 @@ class Array final : public llvm::RTTIExtends<Array, xla::ifrt::Array> {
   const DType dtype_;
   const Shape shape_;
   const std::shared_ptr<const Sharding> sharding_;
-  const ArrayHandle handle_;
+
+  const ArrayHandle handle_
+      ABSL_DEPRECATED("Use GetHandle() function instead.");
+
+  mutable absl::Mutex mu_;
+  enum class DeletionState {
+    kUnknown,  // Need to ask the proxy-server whether the array is deleted.
+    kDeleted,  // IsDeleted() will return true.
+    kAlive     // IsDeleted() will return false.
+  };
+  mutable DeletionState deleted_ ABSL_GUARDED_BY(mu_) = DeletionState::kAlive;
 };
 
 }  // namespace proxy

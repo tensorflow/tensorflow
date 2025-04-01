@@ -24,11 +24,10 @@ limitations under the License.
 #include <vector>
 
 #include "llvm/ADT/DenseMap.h"
-#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
-#include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
+#include "mlir/Dialect/Quant/IR/QuantTypes.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
@@ -814,8 +813,9 @@ bool QuantizationDriver::PropagateParamsAndReturnIfChanged() {
       // propagation if any of the operands has a per-axis quantized type param
       // and `RequiredSameQuantizedAxes` set to false.
       // Currently, these lines of code are only applicable to TFL_TransposeOp
-      // and the output q-dq propagation for this Op is performed in
-      // `PropagateTransposedPerAxisQuantDim`.
+      // and TFL_ReshapeOp. And the output q-dq propagation for this Op is
+      // performed in `PropagateTransposedPerAxisQuantDim` and
+      // `PropagateReshapedPerAxisQuantDim` respectively.
       if (is_qdq_conversion_ &&
           !scale_spec->required_same_quantized_axes_func()) {
         if (HasPerAxisQuantizedOperand(op)) continue;

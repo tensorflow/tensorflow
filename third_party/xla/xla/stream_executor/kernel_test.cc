@@ -66,15 +66,12 @@ static_assert(
     std::is_same_v<ArgsStorage<DeviceMemoryBase*, const DeviceMemoryBase*>,
                    std::tuple<const void*, const void*>>);
 
-static std::unique_ptr<StreamExecutor> NewStreamExecutor() {
+static StreamExecutor* NewStreamExecutor() {
   Platform* platform = PlatformManager::PlatformWithName("Host").value();
-  StreamExecutorConfig config(/*ordinal=*/0);
-  return platform->GetUncachedExecutor(config).value();
+  return platform->ExecutorForDevice(/*ordinal=*/0).value();
 }
 
 TEST(KernelTest, PackDeviceMemoryArguments) {
-  auto executor = NewStreamExecutor();
-
   DeviceMemoryBase a(reinterpret_cast<void*>(0x12345678));
   DeviceMemoryBase b(reinterpret_cast<void*>(0x87654321));
 
@@ -125,7 +122,7 @@ TEST(KernelTest, FailToCreateTypedKernelFromEmptySpec) {
   MultiKernelLoaderSpec empty_spec(/*arity=*/0);
 
   auto executor = NewStreamExecutor();
-  auto kernel = TypedKernelFactory<>::Create(executor.get(), empty_spec);
+  auto kernel = TypedKernelFactory<>::Create(executor, empty_spec);
   EXPECT_FALSE(kernel.ok());
 }
 

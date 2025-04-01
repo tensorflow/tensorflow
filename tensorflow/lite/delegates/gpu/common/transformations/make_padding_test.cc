@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/common/transformations/make_padding.h"
 
+#include <any>
 #include <memory>
 #include <string>
 #include <vector>
@@ -71,7 +72,7 @@ TEST(MakePadding, Smoke) {
   ASSERT_EQ(2, graph.values().size());
   auto pad_node = graph.nodes()[0];
   ASSERT_EQ(ToString(OperationType::PAD), pad_node->operation.type);
-  auto pad_attr = absl::any_cast<PadAttributes>(pad_node->operation.attributes);
+  auto pad_attr = std::any_cast<PadAttributes>(pad_node->operation.attributes);
   EXPECT_EQ(BHWC(0, 0, 0, 0), pad_attr.prepended);
   EXPECT_EQ(BHWC(0, 5, 0, 0), pad_attr.appended);
 }

@@ -15,6 +15,7 @@ limitations under the License.
 #include "tensorflow/core/tfrt/utils/tensor_util.h"
 
 #include <complex>
+#include <cstdint>
 #include <memory>
 #include <numeric>
 
@@ -43,7 +44,10 @@ TEST(TensorUtilTest, DHTToTFTensor) {
   std::iota(view.begin(), view.end(), 1);
   auto tf_tensor = *TFRTTensorToTFTensor(dht);
   EXPECT_THAT(tf_tensor.shape().dim_sizes(), testing::ElementsAre(2, 2));
-  EXPECT_EQ(tf_tensor.data(), dht.data());
+
+  const int32_t* data = tf_tensor.flat<int32_t>().data();
+  EXPECT_THAT(std::vector<int32_t>(data, data + 4),
+              testing::ElementsAre(1, 2, 3, 4));
 }
 
 TEST(TensorUtilTest, SHTToTFTensor) {

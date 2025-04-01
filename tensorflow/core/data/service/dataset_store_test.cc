@@ -18,6 +18,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/log/check.h"
 #include "absl/memory/memory.h"
 #include "tensorflow/core/data/service/common.pb.h"
 #include "tensorflow/core/framework/graph.pb.h"
@@ -40,11 +41,10 @@ std::string NewDatasetsDir() {
   if (Env::Default()->FileExists(dir).ok()) {
     int64_t undeleted_files;
     int64_t undeleted_dirs;
-    CHECK(Env::Default()
-              ->DeleteRecursively(dir, &undeleted_files, &undeleted_dirs)
-              .ok());
+    CHECK_OK(Env::Default()->DeleteRecursively(dir, &undeleted_files,
+                                               &undeleted_dirs));
   }
-  CHECK(Env::Default()->RecursivelyCreateDir(dir).ok());
+  CHECK_OK(Env::Default()->RecursivelyCreateDir(dir));
   return dir;
 }
 
@@ -111,7 +111,7 @@ TEST_P(DatasetStoreTest, StoreAlreadyExists) {
 TEST_P(DatasetStoreTest, GetMissing) {
   std::unique_ptr<DatasetStore> store = MakeStore(GetParam());
   std::shared_ptr<const DatasetDef> result;
-  Status s = store->Get("missing", result);
+  absl::Status s = store->Get("missing", result);
   EXPECT_EQ(s.code(), error::NOT_FOUND);
 }
 

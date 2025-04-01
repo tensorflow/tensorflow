@@ -12,8 +12,11 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <cstddef>
+
+#include "absl/status/status.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/lite/toco/graph_transformations/graph_transformations.h"
 #include "tensorflow/lite/toco/model.h"
 #include "tensorflow/lite/toco/tooling_util.h"
@@ -22,9 +25,9 @@ namespace toco {
 
 // V3 is only different from V2 because it has an extra attribute (align).
 // This attribute doesn't affect V1 so we don't have to keep track of it here.
-::tensorflow::Status ConvertMatrixDiagV2OrV3ToV1::Run(Model* model,
-                                                      std::size_t op_index,
-                                                      bool* modified) {
+absl::Status ConvertMatrixDiagV2OrV3ToV1::Run(Model* model,
+                                              std::size_t op_index,
+                                              bool* modified) {
   *modified = false;
   auto it = model->operators.begin() + op_index;
   const auto* op = it->get();

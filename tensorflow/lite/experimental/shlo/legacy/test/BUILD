@@ -88,6 +88,7 @@ cc_test(
         ":util",
         "//tensorflow/lite/experimental/shlo/legacy:debug",
         "//tensorflow/lite/experimental/shlo/legacy:shlo",
+        "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_main",
     ],

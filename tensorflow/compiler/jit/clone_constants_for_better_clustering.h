@@ -55,7 +55,7 @@ class CloneConstantsForBetterClusteringPass : public GraphOptimizationPass {
  public:
   CloneConstantsForBetterClusteringPass() = default;
 
-  Status Run(const GraphOptimizationPassOptions& options) override;
+  absl::Status Run(const GraphOptimizationPassOptions& options) override;
 };
 }  // namespace tensorflow
 

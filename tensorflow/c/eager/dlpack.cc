@@ -160,8 +160,8 @@ absl::optional<std::string> DeviceNameFromDlContext(const DLDevice& ctx,
 }
 
 // Converts DLPack data type to TF_DATATYPE.
-Status TfDataTypeFormDlDataType(const DLDataType& dtype,
-                                TF_DataType* tf_dtype) {
+absl::Status TfDataTypeFormDlDataType(const DLDataType& dtype,
+                                      TF_DataType* tf_dtype) {
   switch (dtype.code) {
     case DLDataTypeCode::kDLBool:
       if (dtype.bits != 8) {
@@ -279,6 +279,11 @@ bool IsValidStrideCompactRowMajorData(int64_t* shape_arr, int64_t* stride_arr,
 }
 }  // namespace
 
+void* TFE_GetDLDevice(TFE_TensorHandle* h, TF_Status* status) {
+  auto dl_device = GetDlContext(h, status);
+  return new DLDevice{dl_device.device_type, dl_device.device_id};
+}
+
 void TFE_CallDLManagedTensorDeleter(void* dlm_ptr) {
   DLManagedTensor* dlMTensor = static_cast<DLManagedTensor*>(dlm_ptr);
   if (dlMTensor->deleter != nullptr) {
@@ -354,7 +359,7 @@ TFE_TensorHandle* TFE_HandleFromDLPack(void* dlm, TF_Status* status,
     return nullptr;
   }
   TF_DataType dtype;
-  Status s = TfDataTypeFormDlDataType(dl_tensor->dtype, &dtype);
+  absl::Status s = TfDataTypeFormDlDataType(dl_tensor->dtype, &dtype);
   if (!s.ok()) {
     status->status = std::move(s);
     return nullptr;

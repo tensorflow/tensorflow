@@ -26,7 +26,7 @@ limitations under the License.
 
 namespace tensorflow {
 namespace grappler {
-using TensorVector = gtl::InlinedVector<TensorValue, 4>;
+using TensorVector = absl::InlinedVector<TensorValue, 4UL>;
 
 // In order to avoid the overhead of creating a large thread pool, we set a
 // small default thread count. This value should be revised should DeviceSimple
@@ -49,9 +49,9 @@ DeviceSimple::~DeviceSimple() {
   delete eigen_worker_threads_.workers;
 }
 
-Status DeviceSimple::MakeTensorFromProto(const TensorProto& tensor_proto,
-                                         const AllocatorAttributes alloc_attrs,
-                                         Tensor* tensor) {
+absl::Status DeviceSimple::MakeTensorFromProto(
+    const TensorProto& tensor_proto, const AllocatorAttributes alloc_attrs,
+    Tensor* tensor) {
   Tensor parsed(tensor_proto.dtype());
   if (!parsed.FromProto(cpu_allocator(), tensor_proto)) {
     return errors::InvalidArgument("Cannot parse tensor from tensor_proto.");
@@ -60,10 +60,10 @@ Status DeviceSimple::MakeTensorFromProto(const TensorProto& tensor_proto,
   return absl::OkStatus();
 }
 
-Status EvaluateNode(const NodeDef& node, const TensorVector& inputs,
-                    DeviceBase* cpu_device, ResourceMgr* resource_mgr,
-                    TensorVector* output) {
-  Status status;
+absl::Status EvaluateNode(const NodeDef& node, const TensorVector& inputs,
+                          DeviceBase* cpu_device, ResourceMgr* resource_mgr,
+                          TensorVector* output) {
+  absl::Status status;
   std::unique_ptr<DeviceBase> device;
   if (cpu_device == nullptr) {
     device.reset(new DeviceSimple());
@@ -81,7 +81,7 @@ Status EvaluateNode(const NodeDef& node, const TensorVector& inputs,
   params.op_kernel = op_kernel.get();
   params.resource_manager = resource_mgr;
 
-  gtl::InlinedVector<AllocatorAttributes, 4> output_attrs;
+  absl::InlinedVector<AllocatorAttributes, 4UL> output_attrs;
   const int num_outputs = op_kernel->num_outputs();
   for (int i = 0; i < num_outputs; i++) {
     AllocatorAttributes attr;

@@ -14,13 +14,17 @@ limitations under the License.
 ==============================================================================*/
 
 #include <algorithm>
+#include <cstdint>
 #include <numeric>
 #include <vector>
 
+#include "absl/container/inlined_vector.h"
+#include "absl/types/span.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
-#include "xla/client/xla_builder.h"
+#include "xla/hlo/builder/xla_builder.h"
+#include "tensorflow/core/framework/types.pb.h"
 
 namespace tensorflow {
 namespace {
@@ -43,7 +47,7 @@ void BatchToSpace(XlaOpKernelContext* ctx, const xla::XlaOp input,
 
   OP_REQUIRES(
       ctx,
-      crops.shape().rank() == 2 &&
+      crops.shape().dimensions_size() == 2 &&
           block_rank == xla::ShapeUtil::GetDimension(crops.shape(), 0) &&
           2 == xla::ShapeUtil::GetDimension(crops.shape(), 1),
       errors::InvalidArgument("crops should have shape [", block_rank,

@@ -166,7 +166,7 @@ vulnerabilities.
 We recognize issues as vulnerabilities only when they occur in scenarios that we
 outline as safe; issues that have a security impact only when TensorFlow is used
 in a discouraged way (e.g. running untrusted models or checkpoints, data parsing
-outside of the safe formats, etc.) are not treated as vulnerabilities..
+outside of the safe formats, etc.) are not treated as vulnerabilities.
 
 ### Reporting process
 

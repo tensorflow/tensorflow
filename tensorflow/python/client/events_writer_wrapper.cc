@@ -13,7 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "absl/strings/string_view.h"
+#include <string>
+
+#include "absl/status/status.h"
 #include "pybind11/attr.h"  // from @pybind11
 #include "pybind11/pybind11.h"  // from @pybind11
 #include "pybind11/pytypes.h"  // from @pybind11
@@ -26,7 +28,7 @@ limitations under the License.
 namespace py = pybind11;
 
 PYBIND11_MODULE(_pywrap_events_writer, m) {
-  py::class_<tensorflow::Status> Status(m, "Status", py::module_local());
+  py::class_<absl::Status> Status(m, "Status", py::module_local());
   py::class_<tensorflow::EventsWriter> events_writer_class(m, "EventsWriter");
   events_writer_class.def(py::init<const std::string&>())
       .def("InitWithSuffix",

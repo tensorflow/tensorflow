@@ -30,26 +30,31 @@ class SoftsignTest(test.TestCase):
   def _npSoftsign(self, np_features):
     return np_features / (1 + np.abs(np_features))
 
-  def _testSoftsign(self, np_features, use_gpu=False):
+  def _testSoftsign(self, np_features, atol, rtol, use_gpu=False):
     np_softsign = self._npSoftsign(np_features)
     with self.cached_session(use_gpu=use_gpu):
       softsign = nn_ops.softsign(np_features)
       tf_softsign = self.evaluate(softsign)
-    self.assertAllClose(np_softsign, tf_softsign)
+
+    self.assertAllClose(np_softsign, tf_softsign, rtol=rtol, atol=atol)
     self.assertShapeEqual(np_softsign, softsign)
 
   def testNumbers(self):
-    for t in [
-        np.float16,
-        np.float32,
-        np.float64,
-        dtypes.bfloat16.as_numpy_dtype,
+    for t, atol, rtol in [
+        (np.float16, 1e-6, 1e-6),
+        (np.float32, 1e-6, 1e-6),
+        (np.float64, 1e-6, 1e-6),
+        (dtypes.bfloat16.as_numpy_dtype, 1e-2, 1e-2),
     ]:
       self._testSoftsign(
           np.array([[-9, 7, -5, 3, -1], [1, -3, 5, -7, 9]]).astype(t),
+          atol,
+          rtol,
           use_gpu=False)
       self._testSoftsign(
           np.array([[-9, 7, -5, 3, -1], [1, -3, 5, -7, 9]]).astype(t),
+          atol,
+          rtol,
           use_gpu=True)
 
   @test_util.run_deprecated_v1

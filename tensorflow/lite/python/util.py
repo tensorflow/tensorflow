@@ -1000,7 +1000,7 @@ def get_sparsity_modes(model_object):
 
       # Block map is the list if indexes where the block size is larger than 1.
       # So empty block map means it is random sparsity.
-      if not tensor.sparsity.blockMap:
+      if tensor.sparsity.blockMap.size == 0 or not tensor.sparsity.blockMap:
         result.add(
             conversion_metadata_fb.ModelOptimizationMode.RANDOM_SPARSITY)
       else:

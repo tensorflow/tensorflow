@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef XLA_SERVICE_SCATTER_EXPANDER_H_
 #define XLA_SERVICE_SCATTER_EXPANDER_H_
 
-#include "xla/service/op_expander_pass.h"
+#include "xla/hlo/transforms/expanders/op_expander_pass.h"
 
 namespace xla {
 

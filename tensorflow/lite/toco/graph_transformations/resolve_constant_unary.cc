@@ -16,12 +16,13 @@ limitations under the License.
 
 #include <algorithm>
 #include <cmath>
+#include <cstddef>
 #include <functional>
 #include <memory>
-#include <string>
-#include <unordered_map>
 #include <vector>
 
+#include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/status.h"
@@ -116,9 +117,9 @@ bool CopyMinMaxFromFirstInput(const Operator& op, Model* model) {
   return true;
 }
 
-::tensorflow::Status ResolveConstantUnaryOperator::Run(Model* model,
-                                                       std::size_t op_index,
-                                                       bool* modified) {
+absl::Status ResolveConstantUnaryOperator::Run(Model* model,
+                                               std::size_t op_index,
+                                               bool* modified) {
   *modified = false;
   const auto unary_it = model->operators.begin() + op_index;
   const auto* unary_op = unary_it->get();

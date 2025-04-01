@@ -252,12 +252,13 @@ TEST(BufferMapTest, TensorFlowOverwritesTfLite) {
 }
 
 TEST(BufferMapTest, TensorflowBufferReuse) {
+  const int kAllocationSize = 1000;
   TfLiteTensor tensor;
   tensor.allocation_type = kTfLiteDynamic;
   tensor.data.raw = nullptr;
-  TfLiteTensorRealloc(10, &tensor);
+  TfLiteTensorRealloc(kAllocationSize, &tensor);
   CHECK(tensor.data.raw);
-  EXPECT_EQ(tensor.bytes, 10);
+  EXPECT_EQ(tensor.bytes, kAllocationSize);
 
   TfLiteTensorBuffer* tensor_buffer_reused = new TfLiteTensorBuffer(&tensor);
   // Checks that the underlying buffer is reused.

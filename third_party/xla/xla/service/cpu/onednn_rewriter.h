@@ -15,14 +15,14 @@ limitations under the License.
 
 #ifndef XLA_SERVICE_CPU_ONEDNN_REWRITER_H_
 #define XLA_SERVICE_CPU_ONEDNN_REWRITER_H_
-#if defined(INTEL_MKL) && defined(ENABLE_ONEDNN_V3)
+#if defined(INTEL_MKL)
 
 #include <optional>
 
 #include "absl/algorithm/container.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
-#include "xla/service/hlo_pass_interface.h"
+#include "xla/hlo/pass/hlo_pass_interface.h"
 
 namespace xla {
 namespace cpu {
@@ -41,5 +41,5 @@ class OneDnnRewriter : public HloModulePass {
 }  // namespace cpu
 }  // namespace xla
 
-#endif  // INTEL_MKL && ENABLE_ONEDNN_V3
+#endif  // INTEL_MKL
 #endif  // XLA_SERVICE_CPU_ONEDNN_REWRITER_H_

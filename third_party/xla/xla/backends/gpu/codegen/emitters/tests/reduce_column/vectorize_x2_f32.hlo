@@ -1,0 +1,19 @@
+// RUN: fusion_to_mlir %s | emitters_opt -xla-gpu-test-optimize |\
+// RUN:   FileCheck %s
+// RUN: test_correctness %s --bijection_inputs=reduce:0 \
+// RUN:   --bijection_outputs=reduce
+
+add {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  ROOT add = f32[] add(lhs, rhs)
+}
+
+fusion {
+  param_0 = f32[2048,64] parameter(0)
+  c0 = f32[] constant(0)
+  ROOT reduce = f32[64] reduce(param_0, c0), dimensions={0},
+    to_apply=add
+}
+
+// CHECK: vector<2xf32>

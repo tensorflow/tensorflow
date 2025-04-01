@@ -15,16 +15,18 @@ limitations under the License.
 
 #include "xla/service/cpu/cpu_xfeed.h"
 
+#include <cstdint>
 #include <cstring>
 #include <limits>
 #include <memory>
-#include <string>
 #include <utility>
 #include <vector>
 
 #include "absl/base/casts.h"
 #include "absl/cleanup/cleanup.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/types/span.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/service/cpu/cpu_runtime.h"
@@ -307,7 +309,7 @@ absl::Status ReadDynamicShapesOnCpu(
             reinterpret_cast<const int32_t*>(buffer_8 + offset);
 
         // Update shape size from metadata.
-        for (int64_t i = 0; i < device_sub_shape.rank(); ++i) {
+        for (int64_t i = 0; i < device_sub_shape.dimensions_size(); ++i) {
           device_sub_shape.mutable_dimensions()[i] = metadata_buffer[i];
         }
         return absl::OkStatus();

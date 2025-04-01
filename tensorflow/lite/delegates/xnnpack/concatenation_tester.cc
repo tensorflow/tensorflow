@@ -17,8 +17,10 @@ limitations under the License.
 
 #include <algorithm>
 #include <array>
+#include <cstddef>
 #include <cstdint>
 #include <functional>
+#include <limits>
 #include <memory>
 #include <numeric>
 #include <random>
@@ -166,6 +168,7 @@ std::vector<char> ConcatenationTester::CreateTfLiteModel(
   }};
 
   std::vector<flatbuffers::Offset<Tensor>> tensors;
+  tensors.reserve(NumInputs());
   for (size_t i = 0; i < NumInputs(); i++) {
     tensors.push_back(CreateTensor(
         builder,
@@ -190,6 +193,7 @@ std::vector<char> ConcatenationTester::CreateTfLiteModel(
           builder.CreateVector<int64_t>({output_zero_point_}))));
 
   std::vector<int32_t> op_inputs;
+  op_inputs.reserve(NumInputs());
   for (size_t i = 0; i < NumInputs(); i++) {
     op_inputs.push_back(static_cast<int32_t>(i));
   }

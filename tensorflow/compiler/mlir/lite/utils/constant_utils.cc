@@ -21,6 +21,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributeInterfaces.h"  // from @llvm-project
@@ -35,8 +36,8 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/mangling_util.h"
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/platform/status.h"
-#include "tsl/platform/statusor.h"
 
 namespace mlir {
 namespace TFL {
@@ -44,12 +45,12 @@ namespace TFL {
 absl::StatusOr<TypedAttr> CreateTypedAttr(ShapedType shaped_type, int value) {
   Type element_type = shaped_type.getElementType();
   if (element_type.isF16()) {
-    auto floatType = mlir::FloatType::getF16(element_type.getContext());
+    auto floatType = mlir::Float16Type::get(element_type.getContext());
     auto floatAttr = mlir::FloatAttr::get(floatType, static_cast<float>(value));
     std::vector<Attribute> floatValues({floatAttr});
     return DenseElementsAttr::get(shaped_type, floatValues);
   } else if (element_type.isBF16()) {
-    auto floatType = mlir::FloatType::getBF16(element_type.getContext());
+    auto floatType = mlir::BFloat16Type::get(element_type.getContext());
     auto floatAttr = mlir::FloatAttr::get(floatType, static_cast<float>(value));
     std::vector<Attribute> floatValues({floatAttr});
     return DenseElementsAttr::get(shaped_type, floatValues);
@@ -75,8 +76,8 @@ absl::StatusOr<TypedAttr> CreateTypedAttr(ShapedType shaped_type, int value) {
 
       return mlir::TF::TensorProtoAttr::get(shaped_type, mangled);
     } else {
-      return tensorflow::Status(absl::StatusCode::kInvalidArgument,
-                                "Unsupported type");
+      return absl::Status(absl::StatusCode::kInvalidArgument,
+                          "Unsupported type");
     }
   } else if (auto itype = mlir::dyn_cast<mlir::IntegerType>(element_type)) {
     if (element_type.isSignedInteger()) {
@@ -98,8 +99,8 @@ absl::StatusOr<TypedAttr> CreateTypedAttr(ShapedType shaped_type, int value) {
                                                  static_cast<int64_t>(value));
           break;
         default:
-          return tensorflow::Status(absl::StatusCode::kInvalidArgument,
-                                    "Unsupported type");
+          return absl::Status(absl::StatusCode::kInvalidArgument,
+                              "Unsupported type");
       }
     } else {
       switch (itype.getWidth()) {
@@ -120,13 +121,12 @@ absl::StatusOr<TypedAttr> CreateTypedAttr(ShapedType shaped_type, int value) {
                                                   static_cast<uint64_t>(value));
           break;
         default:
-          return tensorflow::Status(absl::StatusCode::kInvalidArgument,
-                                    "Unsupported type");
+          return absl::Status(absl::StatusCode::kInvalidArgument,
+                              "Unsupported type");
       }
     }
   } else {
-    return tensorflow::Status(absl::StatusCode::kInvalidArgument,
-                              "Unsupported type");
+    return absl::Status(absl::StatusCode::kInvalidArgument, "Unsupported type");
   }
 }
 

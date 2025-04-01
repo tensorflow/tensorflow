@@ -18,8 +18,6 @@ tf_proto_library(
     name = "tf_rpc_service_proto",
     srcs = ["tf_rpc_service.proto"],
     has_services = 1,
-    cc_api_version = 2,
-    cc_stubby_versions = ["2"],
     create_go_proto = False,
     create_grpc_library = True,
     create_java_proto = False,
@@ -30,7 +28,6 @@ tf_proto_library(
 # copybara:uncomment_begin(google-only)
 # py_proto_library(
 #     name = "tf_rpc_service_py_pb2",
-#     api_version = 2,
 #     deps = [":tf_rpc_service_proto"],
 # )
 # copybara:uncomment_end

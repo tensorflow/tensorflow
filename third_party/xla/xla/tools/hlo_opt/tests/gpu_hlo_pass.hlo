@@ -1,0 +1,43 @@
+// RUN: hlo-opt %s --platform=gpu --passes=dot-algorithm-rewriter --xla_gpu_target_config_filename=%S/../gpu_specs/%{GPU}.txtpb | FileCheck %s
+
+HloModule Algorithm3xBF16
+// CHECK-LABEL: HloModule Algorithm3xBF16, entry_computation_layout={(f32[128,128]{1,0}, f32[128,128]{1,0})->f32[128,128]{1,0}}
+// CHECK: ENTRY %e (p0: f32[128,128], p1: f32[128,128]) -> f32[128,128] {
+// CHECK-NEXT:    %[[constant2:.*]] = f32[] constant(inf)
+// CHECK-NEXT:    %[[broadcast2:.*]] = f32[128,128]{1,0} broadcast(%[[constant2]]), dimensions={}
+// CHECK-NEXT:    %[[p0:.*]] = f32[128,128]{1,0} parameter(0)
+// CHECK-NEXT:    %[[bitcastconvert:.*]] = u32[128,128]{1,0} bitcast-convert(%[[p0]])
+// CHECK-NEXT:    %[[constant:.*]] = u32[] constant(4294901760)
+// CHECK-NEXT:    %[[broadcast:.*]] = u32[128,128]{1,0} broadcast(%[[constant]]), dimensions={}
+// CHECK-NEXT:    %[[and:.*]] = u32[128,128]{1,0} and(%[[bitcastconvert]], %[[broadcast]])
+// CHECK-NEXT:    %[[bitcastconvert1:.*]] = f32[128,128]{1,0} bitcast-convert(%[[and]])
+// CHECK-NEXT:    %[[subtract:.*]] = f32[128,128]{1,0} subtract(%[[p0]], %[[bitcastconvert1]])
+// CHECK-NEXT:    %[[convert1:.*]] = bf16[128,128]{1,0} convert(%[[subtract]])
+// CHECK-NEXT:    %[[p1:.*]] = f32[128,128]{1,0} parameter(1)
+// CHECK-NEXT:    %[[bitcastconvert2:.*]] = u32[128,128]{1,0} bitcast-convert(%[[p1]])
+// CHECK-NEXT:    %[[constant1:.*]] = u32[] constant(4294901760)
+// CHECK-NEXT:    %[[broadcast1:.*]] = u32[128,128]{1,0} broadcast(%[[constant1]]), dimensions={}
+// CHECK-NEXT:    %[[and1:.*]] = u32[128,128]{1,0} and(%[[bitcastconvert2]], %[[broadcast1]])
+// CHECK-NEXT:    %[[bitcastconvert3:.*]] = f32[128,128]{1,0} bitcast-convert(%[[and1]])
+// CHECK-NEXT:    %[[convert2:.*]] = bf16[128,128]{1,0} convert(%[[bitcastconvert3]])
+// CHECK-NEXT:    %[[dot1:.*]] = f32[128,128]{1,0} dot(%[[convert1]], %[[convert2]]), lhs_contracting_dims={1}, rhs_contracting_dims={0}, algorithm=dot_bf16_bf16_f32
+// CHECK-NEXT:    %[[convert:.*]] = bf16[128,128]{1,0} convert(%[[bitcastconvert1]])
+// CHECK-NEXT:    %[[subtract1:.*]] = f32[128,128]{1,0} subtract(%[[p1]], %[[bitcastconvert3]])
+// CHECK-NEXT:    %[[convert3:.*]] = bf16[128,128]{1,0} convert(%[[subtract1]])
+// CHECK-NEXT:    %[[dot2:.*]] = f32[128,128]{1,0} dot(%[[convert]], %[[convert3]]), lhs_contracting_dims={1}, rhs_contracting_dims={0}, algorithm=dot_bf16_bf16_f32
+// CHECK-NEXT:    %[[add:.*]] = f32[128,128]{1,0} add(%[[dot1]], %[[dot2]])
+// CHECK-NEXT:    %[[abs:.*]] = f32[128,128]{1,0} abs(%[[add]])
+// CHECK-NEXT:    %[[compare:.*]] = pred[128,128]{1,0} compare(%[[broadcast2]], %[[abs]]), direction=GE
+// CHECK-NEXT:    %[[constant3:.*]] = f32[] constant(0)
+// CHECK-NEXT:    %[[broadcast3:.*]] = f32[128,128]{1,0} broadcast(%[[constant3]]), dimensions={}
+// CHECK-NEXT:    %[[select:.*]] = f32[128,128]{1,0} select(%[[compare]], %[[add]], %[[broadcast3]])
+// CHECK-NEXT:    %[[dot3:.*]] = f32[128,128]{1,0} dot(%[[convert]], %[[convert2]]), lhs_contracting_dims={1}, rhs_contracting_dims={0}, algorithm=dot_bf16_bf16_f32
+// CHECK-NEXT:    ROOT %[[add1:.*]] = f32[128,128]{1,0} add(%[[select]], %[[dot3]])
+// CHECK-NEXT:  }
+ENTRY e {
+  p0 = f32[128,128] parameter(0)
+  p1 = f32[128,128] parameter(1)
+  ROOT dot = f32[128,128] dot(p0, p1),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0},
+    algorithm=dot_bf16_bf16_f32_x3
+}

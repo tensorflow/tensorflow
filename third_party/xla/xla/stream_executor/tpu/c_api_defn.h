@@ -49,10 +49,6 @@ struct SE_Event {
   std::unique_ptr<stream_executor::Event> event;
 };
 
-struct SE_StreamExecutorConfig {
-  stream_executor::StreamExecutorConfig config;
-};
-
 // Ignored -- these are just used to enforce the interface types
 struct XLA_TransferManager {};
 struct XLA_ComputationPlacer {};

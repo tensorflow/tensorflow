@@ -16,29 +16,33 @@ limitations under the License.
 #ifndef XLA_PYTHON_PJRT_IFRT_PJRT_ARRAY_H_
 #define XLA_PYTHON_PJRT_IFRT_PJRT_ARRAY_H_
 
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <string>
 #include <variant>
 #include <vector>
 
+#include "absl/base/attributes.h"
 #include "absl/container/inlined_vector.h"
+#include "absl/log/check.h"
+#include "absl/status/statusor.h"
+#include "absl/types/span.h"
 #include "llvm/Support/ExtensibleRTTI.h"
+#include "xla/pjrt/pjrt_client.h"
+#include "xla/pjrt/pjrt_layout.h"
 #include "xla/python/ifrt/array.h"
-#include "xla/python/ifrt/client.h"
-#include "xla/python/ifrt/device.h"
+#include "xla/python/ifrt/device_list.h"
+#include "xla/python/ifrt/dtype.h"
+#include "xla/python/ifrt/future.h"
+#include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/shape.h"
+#include "xla/python/ifrt/sharding.h"
 #include "xla/python/pjrt_ifrt/pjrt_client.h"
 #include "xla/tsl/concurrency/ref_count.h"
 
 namespace xla {
 namespace ifrt {
-
-// Converts IFRT `DType` into `xla::PrimitiveType`.
-absl::StatusOr<xla::PrimitiveType> ToPrimitiveType(DType dtype);
-
-// Converts `xla::PrimitiveType` into IFRT `DType`.
-absl::StatusOr<DType> ToDType(xla::PrimitiveType primitive_type);
 
 // Creates IFRT `MemoryKind` from an XLA `PjRtBuffer`.
 MemoryKind MakeMemoryKindFromPjRtBuffer(PjRtBuffer* pjrt_buffer);
@@ -63,28 +67,31 @@ class PjRtArray final
   using PjRtBuffers =
       absl::InlinedVector<std::shared_ptr<PjRtBuffer>, kPjRtBufferInlineSize>;
 
-  // General array construction (with static shape).
+  // General array construction (with static shape). pjrt_buffers may be empty.
   static absl::StatusOr<tsl::RCReference<PjRtArray>> Create(
       PjRtCompatibleClient* client, DType dtype, Shape shape,
-      std::shared_ptr<const Sharding> sharding, PjRtBuffers pjrt_buffers);
+      std::shared_ptr<const Sharding> sharding, PjRtBuffers pjrt_buffers,
+      std::shared_ptr<const PjRtLayout> layout);
 
-  // General array construction (with dynamic shape).
+  // General array construction (with dynamic shape). pjrt_buffers may be empty.
   static absl::StatusOr<tsl::RCReference<PjRtArray>> Create(
       PjRtCompatibleClient* client, DType dtype, DynamicShape dynamic_shape,
-      std::shared_ptr<const Sharding> sharding, PjRtBuffers pjrt_buffers);
+      std::shared_ptr<const Sharding> sharding, PjRtBuffers pjrt_buffers,
+      std::shared_ptr<const PjRtLayout> layout);
 
   // Shorthand for a single-shard array construction.
   static absl::StatusOr<tsl::RCReference<PjRtArray>> Create(
       PjRtCompatibleClient* client, std::shared_ptr<PjRtBuffer> pjrt_buffer);
 
   // Shorthand for a multi-shard array construction using ConcreteSharding.
+  // pjrt_buffers must be non-empty.
   // TODO(hyeontaek): Remove this once IFRT Sharding and JAX Sharding is unified
   // so that ConcreteSharding can be replaced with a real Sharding.
   static absl::StatusOr<tsl::RCReference<PjRtArray>> Create(
       PjRtCompatibleClient* client, Shape shape, PjRtBuffers pjrt_buffers);
 
   // Shorthand for a multi-shard array construction using ConcreteSharding with
-  // DynamicShape.
+  // DynamicShape. pjrt_buffers must be non-empty.
   static absl::StatusOr<tsl::RCReference<PjRtArray>> Create(
       PjRtCompatibleClient* client, DynamicShape dynamic_shape,
       PjRtBuffers pjrt_buffers);
@@ -147,10 +154,12 @@ class PjRtArray final
     return sharding_;
   }
 
-  absl::StatusOr<std::unique_ptr<PjRtLayout>> layout() const override;
+  absl::StatusOr<std::shared_ptr<const PjRtLayout>> layout() const override;
 
   absl::StatusOr<std::vector<tsl::RCReference<Array>>>
-  DisassembleIntoSingleDeviceArrays(ArrayCopySemantics semantics) override;
+  DisassembleIntoSingleDeviceArrays(
+      ArrayCopySemantics array_copy_semantics,
+      SingleDeviceShardSemantics single_device_shard_semantics) override;
 
   ABSL_MUST_USE_RESULT
   Future<> CopyToHostBuffer(
@@ -158,7 +167,7 @@ class PjRtArray final
       ArrayCopySemantics semantics) override;
 
   absl::StatusOr<tsl::RCReference<Array>> Copy(
-      std::optional<xla::ifrt::DeviceList> devices,
+      std::optional<xla::ifrt::DeviceListRef> devices,
       std::optional<xla::ifrt::MemoryKind> memory_kind,
       ArrayCopySemantics semantics);
 
@@ -176,11 +185,13 @@ class PjRtArray final
 
  private:
   PjRtArray(PjRtCompatibleClient* client, DType dtype, Shape shape,
-            std::shared_ptr<const Sharding> sharding, PjRtBuffers pjrt_buffers);
+            std::shared_ptr<const Sharding> sharding, PjRtBuffers pjrt_buffers,
+            std::shared_ptr<const PjRtLayout> layout);
 
   PjRtArray(PjRtCompatibleClient* client, DType dtype,
             DynamicShape dynamic_shape,
-            std::shared_ptr<const Sharding> sharding, PjRtBuffers pjrt_buffers);
+            std::shared_ptr<const Sharding> sharding, PjRtBuffers pjrt_buffers,
+            std::shared_ptr<const PjRtLayout> layout);
 
   template <typename T, typename... Args>
   friend tsl::RCReference<T> tsl::MakeRef(Args&&... args);
@@ -190,6 +201,8 @@ class PjRtArray final
   std::variant<Shape, DynamicShape> shape_;
   std::shared_ptr<const Sharding> sharding_;
   PjRtBuffers pjrt_buffers_;
+  std::shared_ptr<const PjRtLayout> layout_;
+  bool is_deleted_ = false;
 };
 
 }  // namespace ifrt

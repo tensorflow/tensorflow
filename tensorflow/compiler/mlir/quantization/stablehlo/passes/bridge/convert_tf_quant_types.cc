@@ -60,7 +60,7 @@ auto *mlir_tf_quant_op_count = ::tensorflow::monitoring::Counter<1>::New(
     "Counts the number of ops that has qint types" /*metric description*/,
     "op_name" /*metric label*/);
 
-// Returns wether a type is illegal. Here we consider TF qint types illegal.
+// Returns whether a type is illegal. Here we consider TF qint types illegal.
 // See pass description in passes.td for more info about how illegal types are
 // treated in this pass.
 bool IsIllegalType(Type type) {
@@ -202,10 +202,13 @@ class TFQuantTypePattern : public ConversionPattern {
     OperationState state(op->getLoc(), op->getName().getStringRef(), operands,
                          new_results, op->getAttrs(), op->getSuccessors());
     for (Region &region : op->getRegions()) {
-      Region &new_region = *state.addRegion();
-      rewriter.inlineRegionBefore(region, new_region, new_region.begin());
-      if (failed(rewriter.convertRegionTypes(&new_region, *getTypeConverter())))
+      auto new_region = std::make_unique<Region>(op);
+      rewriter.inlineRegionBefore(region, *new_region, new_region->begin());
+      if (failed(rewriter.convertRegionTypes(new_region.get(),
+                                             *getTypeConverter()))) {
         return failure();
+      }
+      state.addRegion(std::move(new_region));
     }
     rewriter.replaceOp(op, rewriter.create(state)->getResults());
 

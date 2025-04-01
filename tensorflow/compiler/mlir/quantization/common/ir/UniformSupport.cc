@@ -22,7 +22,7 @@ limitations under the License.
 #include <iterator>
 #include <numeric>
 
-#include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
+#include "mlir/Dialect/Quant/IR/QuantTypes.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributeInterfaces.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
@@ -31,7 +31,7 @@ limitations under the License.
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 
-namespace mlir::quantfork {
+namespace mlir::quant::ir {
 
 static bool isQuantizablePrimitiveType(Type input_type) {
   return isa<FloatType>(input_type);
@@ -109,4 +109,4 @@ DenseElementsAttr UniformQuantizedPerAxisValueConverter::convert(
   });
 }
 
-}  // namespace mlir::quantfork
+}  // namespace mlir::quant::ir

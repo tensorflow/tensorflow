@@ -96,9 +96,10 @@ namespace {
 // Maps `n` to the XlaResourceOpKind corresponding to its operation.  If `n` is
 // not a resource operation recognized by XLA then sets `out_resource_op_kind`
 // to nullopt.
-Status XlaResourceOpKindForNode(
+absl::Status XlaResourceOpKindForNode(
     const Node& n, const FunctionLibraryDefinition* flib_def,
-    const std::function<Status(const Node&, bool*)>& resource_ops_to_ignore,
+    const std::function<absl::Status(const Node&, bool*)>&
+        resource_ops_to_ignore,
     std::optional<XlaResourceOpKind>* out_resource_op_kind) {
   bool should_ignore = false;
   if (resource_ops_to_ignore) {
@@ -246,9 +247,10 @@ string NodeToString(const Node& n, XlaResourceOpKind resource_op_kind) {
 }
 }  // namespace
 
-Status ComputeIncompatibleResourceOperationPairs(
+absl::Status ComputeIncompatibleResourceOperationPairs(
     const Graph& g, const FunctionLibraryDefinition* flib_def,
-    const std::function<Status(const Node&, bool*)>& resource_ops_to_ignore,
+    const std::function<absl::Status(const Node&, bool*)>&
+        resource_ops_to_ignore,
     std::vector<std::pair<int, int>>* result) {
   CHECK(result->empty());
 

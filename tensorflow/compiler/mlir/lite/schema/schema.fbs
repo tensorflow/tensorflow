@@ -70,6 +70,19 @@ table CustomQuantization {
 // Represents a specific quantization technique's parameters.
 union QuantizationDetails {
   CustomQuantization,
+  BlockwiseQuantization,
+}
+
+// Parameters for blockwise quantization.
+table BlockwiseQuantization {
+  // index to the scale tensor, the tensor can be found in tensors array in
+  // subgraph.
+  scales: int;
+  // index to the zero point tensor. If zero_points is -1, the zero point is
+  // assumed to be 0, following the convention of optional tensors in tflite.
+  zero_points: int;
+  // The block size of the tensor.
+  block_size: int;
 }
 
 // Parameters for converting a quantized tensor back to float.
@@ -472,6 +485,9 @@ enum BuiltinOperator : int32 {
   STABLEHLO_RNG_BIT_GENERATOR = 204,
   REDUCE_WINDOW = 205 (deprecated),
   STABLEHLO_COMPOSITE = 206, // WARNING: No runtime support
+  STABLEHLO_SHIFT_LEFT = 207,
+  STABLEHLO_CBRT = 208, // WARNING: No runtime support
+  STABLEHLO_CASE = 209,
 }
 // LINT.ThenChange(nnapi_linter/linter.proto)
 
@@ -630,6 +646,8 @@ union BuiltinOptions2{
   StablehloRngBitGeneratorOptions,
   ReduceWindowOptions (deprecated),
   StableHLOCompositeOptions,
+  StablehloShiftLeftOptions,
+  StablehloCaseOptions,
 }
 
 table StablehloGatherOptions{
@@ -772,6 +790,10 @@ table StablehloScatterOptions {
   index_vector_dim: long;
   unique_indices: bool;
   update_computation_subgraph_index: int;
+}
+
+table StablehloCaseOptions{
+  branch_subgraph_indices : [int];
 }
 
 enum RngAlgorithm : byte {
@@ -1497,6 +1519,9 @@ table StableHLOCompositeOptions {
   version:int32;
 }
 
+table StablehloShiftLeftOptions {
+}
+
 // An operator takes tensors as inputs and outputs. The type of operation being
 // performed is determined by an index into the list of valid OperatorCodes,
 // while the specifics of each operations is configured using builtin_options
@@ -1544,6 +1569,9 @@ table Operator {
   // union is added, in the case of where BuitlinOptions2 runs out, a third
   // one can be added
   builtin_options_2 : BuiltinOptions2;
+
+  // Index into operators_debug_metadata list.
+  debug_metadata_index: int = -1;
 }
 
 // The root type, defining a subgraph, which typically represents an entire
@@ -1566,6 +1594,9 @@ table SubGraph {
 
   // Name of this subgraph (used for debugging).
   name:string;
+
+  // Index into subgraphs_debug_metadata list.
+  debug_metadata_index: int = -1;
 }
 
 // Table of raw data buffers (used for constant tensors). Referenced by tensors

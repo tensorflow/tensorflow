@@ -15,6 +15,8 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_EXPERIMENTAL_ML_ADJACENT_TFLITE_EXTERN_CALL_H_
 #define TENSORFLOW_LITE_EXPERIMENTAL_ML_ADJACENT_TFLITE_EXTERN_CALL_H_
 
+#include <cstdint>
+
 #include "tensorflow/lite/core/c/common.h"
 
 namespace tflite::extern_call {

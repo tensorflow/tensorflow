@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/c/experimental/ops/gen/cpp/renderers/cpp_file_renderer.h"
 
+#include <vector>
+
 #include "tensorflow/c/experimental/ops/gen/cpp/renderers/op_renderer.h"
 #include "tensorflow/c/experimental/ops/gen/cpp/renderers/renderer.h"
 #include "tensorflow/c/experimental/ops/gen/cpp/renderers/renderer_context.h"

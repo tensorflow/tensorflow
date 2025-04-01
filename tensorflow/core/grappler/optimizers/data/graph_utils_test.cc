@@ -87,7 +87,7 @@ TEST(GraphUtilsTest, AddScalarConstNodeInt64) {
 TEST(GraphUtilsTest, AddScalarConstNodeString) {
   GraphDef graph_def;
   MutableGraphView graph(&graph_def);
-  NodeDef* string_node = AddScalarConstNode<StringPiece>("hello", &graph);
+  NodeDef* string_node = AddScalarConstNode<absl::string_view>("hello", &graph);
   EXPECT_TRUE(ContainsGraphNodeWithName(string_node->name(), *graph.graph()));
   EXPECT_EQ(string_node->attr().at("value").tensor().string_val(0), "hello");
 }
@@ -115,7 +115,7 @@ TEST(GraphUtilsTest, GetScalarConstNodeErrorWithNonConst) {
   MutableGraphView graph(&graph_def);
   NodeDef* non_const = AddScalarPlaceholder(DT_INT64, &graph);
   int64_t result;
-  Status s = GetScalarConstNodeValue<int64_t>(*non_const, &result);
+  absl::Status s = GetScalarConstNodeValue<int64_t>(*non_const, &result);
   EXPECT_FALSE(s.ok());
   EXPECT_EQ(s.message(),
             "Node Placeholder is not a Const node. Op: Placeholder");
@@ -126,7 +126,7 @@ TEST(GraphUtilsTest, GetScalarConstNodeErrorWithType) {
   MutableGraphView graph(&graph_def);
   NodeDef* int64_node = AddScalarConstNode<int64_t>(128, &graph);
   bool result;
-  Status s = GetScalarConstNodeValue<bool>(*int64_node, &result);
+  absl::Status s = GetScalarConstNodeValue<bool>(*int64_node, &result);
   EXPECT_FALSE(s.ok());
   EXPECT_EQ(s.message(),
             "Node Const should have type bool but has type: int64");
@@ -144,7 +144,7 @@ TEST(GraphUtilsTest, GetScalarConstNodeErrorWithVector) {
   tensor->add_int64_val(128);
 
   int64_t result;
-  Status s = GetScalarConstNodeValue<int64_t>(node, &result);
+  absl::Status s = GetScalarConstNodeValue<int64_t>(node, &result);
   EXPECT_FALSE(s.ok());
   EXPECT_EQ(s.message(), "Node Const should be a scalar but has shape: [1]");
 }
@@ -359,7 +359,7 @@ TEST(GraphUtilsTest, TestFindSinkNodeMultipleFetches) {
   item.fetch.push_back(node3->name());
 
   NodeDef* sink_node;
-  Status s = GetFetchNode(graph, item, &sink_node);
+  absl::Status s = GetFetchNode(graph, item, &sink_node);
   EXPECT_FALSE(s.ok());
 }
 
@@ -372,7 +372,7 @@ TEST(GraphUtilsTest, TestFindSinkNodeNoFetches) {
   AddNode("node3", "Identity", {node2->name()}, {}, &graph);
 
   NodeDef* sink_node;
-  Status s = GetFetchNode(graph, item, &sink_node);
+  absl::Status s = GetFetchNode(graph, item, &sink_node);
   EXPECT_FALSE(s.ok());
 }
 

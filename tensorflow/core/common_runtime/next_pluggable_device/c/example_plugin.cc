@@ -17,6 +17,8 @@ limitations under the License.
 
 #include <string>
 
+#include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tsl/platform/env.h"
 #include "tfrt/host_context/async_dispatch.h"  // from @tf_runtime

@@ -120,7 +120,7 @@ struct DetensorizeScfOpsPass
     patterns.add<RegionOpPattern<scf::WhileOp>, RegionOpPattern<scf::ForOp>,
                  RegionOpPattern<scf::IfOp>>(&getContext());
 
-    if (failed(applyPatternsAndFoldGreedily(f, std::move(patterns)))) {
+    if (failed(applyPatternsGreedily(f, std::move(patterns)))) {
       signalPassFailure();
     }
   }

@@ -36,10 +36,12 @@ limitations under the License.
 #include "llvm/IR/DerivedTypes.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Instructions.h"
+#include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Value.h"
 #include "llvm/Support/Alignment.h"
 #include "llvm/Support/Casting.h"
+#include "xla/backends/cpu/codegen/target_machine_features.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -50,7 +52,6 @@ limitations under the License.
 #include "xla/service/cpu/backend_config.pb.h"
 #include "xla/service/cpu/cpu_options.h"
 #include "xla/service/cpu/cpu_runtime.h"
-#include "xla/service/cpu/target_machine_features.h"
 #include "xla/service/cpu/tiled_dot_emitter.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/llvm_ir/ir_array.h"
@@ -78,7 +79,7 @@ bool ShouldUseMultiThreadedEigen(const HloModuleConfig& config) {
 }
 
 // Return whether the given shape is rank 2.
-bool IsRank2(const Shape& shape) { return shape.rank() == 2; }
+bool IsRank2(const Shape& shape) { return shape.dimensions_size() == 2; }
 
 bool IsSimpleLayout(const Layout& layout) {
   return layout.tiles().empty() && LayoutUtil::IsDense(layout);
@@ -164,7 +165,8 @@ bool CanEmitTiledLlvmIrGemm(
 // Returns dot implementation strategy for non-batch dot operations.
 DotImplementationStrategy GetNonBatchDotImplementationStrategy(
     const HloModuleConfig& config, const DotInfo& dot_info,
-    const TargetMachineFeatures& target_machine_features) {
+    const TargetMachineFeatures& target_machine_features,
+    bool allow_runtime_calls) {
   PrimitiveType element_type = dot_info.result_shape.element_type();
 
   // Batched dot either handled by a runtime call or expanded into a sequence
@@ -202,8 +204,9 @@ DotImplementationStrategy GetNonBatchDotImplementationStrategy(
   if (IsAlignedGemm(dot_info, target_machine_features)) {
     if (CanEmitTiledLlvmIrGemm(config, dot_info, target_machine_features)) {
       return DotImplementationStrategy::kTiledLlvmIrGemm;
+    } else if (allow_runtime_calls) {
+      return DotImplementationStrategy::kEigen;
     }
-    return DotImplementationStrategy::kEigen;
   }
 
   return DotImplementationStrategy::kNaiveLlvmIr;
@@ -218,7 +221,7 @@ class DotOpEmitter {
                         const llvm_ir::IrArray& rhs_array,
                         const llvm_ir::IrArray* addend_array,
                         llvm::Value* executable_run_options_value,
-                        llvm::IRBuilder<>* b,
+                        llvm::IRBuilderBase* b,
                         const HloModuleConfig& hlo_module_config,
                         const TargetMachineFeatures& target_machine_features,
                         bool allow_runtime_calls);
@@ -311,7 +314,7 @@ class DotOpEmitter {
   const llvm_ir::IrArray& rhs_array_;
   const llvm_ir::IrArray* addend_array_;
   llvm::Value* executable_run_options_value_;
-  llvm::IRBuilder<>* b_;
+  llvm::IRBuilderBase* b_;
   const HloModuleConfig& hlo_module_config_;
   const TargetMachineFeatures& target_machine_features_;
   bool allow_runtime_calls_;
@@ -324,7 +327,7 @@ DotOpEmitter::DotOpEmitter(DotInfo dot_info, std::string dot_hlo_name,
                            const llvm_ir::IrArray& rhs_array,
                            const llvm_ir::IrArray* addend_array,
                            llvm::Value* executable_run_options_value,
-                           llvm::IRBuilder<>* b,
+                           llvm::IRBuilderBase* b,
                            const HloModuleConfig& hlo_module_config,
                            const TargetMachineFeatures& target_machine_features,
                            bool allow_runtime_calls)
@@ -527,7 +530,8 @@ absl::Status DotOpEmitter::Emit() {
   }
 
   switch (GetNonBatchDotImplementationStrategy(hlo_module_config_, dot_info_,
-                                               target_machine_features_)) {
+                                               target_machine_features_,
+                                               allow_runtime_calls_)) {
     case DotImplementationStrategy::kNaiveLlvmIr:
       EmitNaiveLlvmIrGemm();
       return absl::OkStatus();
@@ -770,6 +774,7 @@ absl::Status DotOpEmitter::EmitCallToRuntime() {
   bool use_acl = hlo_module_config_.debug_options().xla_cpu_use_acl();
   PrimitiveType type = target_array_.GetShape().element_type();
   llvm::Function* function = b_->GetInsertBlock()->getParent();
+  llvm::LLVMContext& context = b_->getContext();
   llvm::Module* module = function->getParent();
   llvm::Type* float_type;
   const char* fn_name;
@@ -797,13 +802,13 @@ absl::Status DotOpEmitter::EmitCallToRuntime() {
       fn_name = multi_threaded
                     ? runtime::kEigenMatMulC64SymbolName
                     : runtime::kEigenSingleThreadedMatMulC64SymbolName;
-      float_type = llvm_ir::PrimitiveTypeToIrType(C64, module);
+      float_type = llvm_ir::PrimitiveTypeToIrType(C64, context);
       break;
     case C128:
       fn_name = multi_threaded
                     ? runtime::kEigenMatMulC128SymbolName
                     : runtime::kEigenSingleThreadedMatMulC128SymbolName;
-      float_type = llvm_ir::PrimitiveTypeToIrType(C128, module);
+      float_type = llvm_ir::PrimitiveTypeToIrType(C128, context);
       break;
     case S32:
       fn_name = multi_threaded
@@ -964,7 +969,8 @@ DotOpEmitter::MatMultDims DotOpEmitter::GetMatMultDims() const {
   const DotDimensionNumbers& dim_nums = dot_info_.dim_nums;
 
   auto is_column_major = [](const Shape& shape) {
-    return shape.rank() > 1 && LayoutUtil::Minor(shape.layout(), 0) == 0;
+    return shape.dimensions_size() > 1 &&
+           LayoutUtil::Minor(shape.layout(), 0) == 0;
   };
 
   // Non-contracting dots should never make it here.
@@ -972,15 +978,15 @@ DotOpEmitter::MatMultDims DotOpEmitter::GetMatMultDims() const {
   CHECK_GE(dim_nums.rhs_contracting_dimensions_size(), 0);
 
   return {
-      /*m=*/lhs_shape.rank() <= 1
+      /*m=*/lhs_shape.dimensions_size() <= 1
           ? 1LL
           : lhs_shape.dimensions(1LL - dim_nums.lhs_contracting_dimensions(0)),
       /*k=*/lhs_shape.dimensions(dim_nums.lhs_contracting_dimensions(0)),
-      /*n=*/rhs_shape.rank() <= 1
+      /*n=*/rhs_shape.dimensions_size() <= 1
           ? 1LL
           : rhs_shape.dimensions(1LL - dim_nums.rhs_contracting_dimensions(0)),
       /*lhs_column_major=*/is_column_major(lhs_shape),
-      /*lhs_canonical=*/lhs_shape.rank() <= 1 ||
+      /*lhs_canonical=*/lhs_shape.dimensions_size() <= 1 ||
           dim_nums.lhs_contracting_dimensions(0) == 1,
       /*rhs_column_major=*/is_column_major(rhs_shape),
       /*rhs_canonical=*/dim_nums.rhs_contracting_dimensions(0) == 0};
@@ -994,7 +1000,8 @@ DotOpEmitter::MatMultDims DotOpEmitter::GetBatchMatMultDims() const {
   const DotDimensionNumbers& dim_nums = dot_info_.dim_nums;
 
   auto is_column_major = [](const Shape& shape) {
-    return shape.rank() > 1 && LayoutUtil::Minor(shape.layout(), 0) == 0;
+    return shape.dimensions_size() > 1 &&
+           LayoutUtil::Minor(shape.layout(), 0) == 0;
   };
 
   // Non-contracting dots should never make it here.
@@ -1002,15 +1009,15 @@ DotOpEmitter::MatMultDims DotOpEmitter::GetBatchMatMultDims() const {
   CHECK_GE(dim_nums.rhs_contracting_dimensions_size(), 0);
 
   return {
-      /*m=*/lhs_shape.rank() <= 1
+      /*m=*/lhs_shape.dimensions_size() <= 1
           ? 1LL
           : lhs_shape.dimensions(2LL - dim_nums.lhs_contracting_dimensions(0)),
       /*k=*/lhs_shape.dimensions(1LL + dim_nums.lhs_contracting_dimensions(0)),
-      /*n=*/rhs_shape.rank() <= 1
+      /*n=*/rhs_shape.dimensions_size() <= 1
           ? 1LL
           : rhs_shape.dimensions(2LL - dim_nums.rhs_contracting_dimensions(0)),
       /*lhs_column_major=*/is_column_major(lhs_shape),
-      /*lhs_canonical=*/lhs_shape.rank() <= 1 ||
+      /*lhs_canonical=*/lhs_shape.dimensions_size() <= 1 ||
           dim_nums.lhs_contracting_dimensions(0) == 1,
       /*rhs_column_major=*/is_column_major(rhs_shape),
       /*rhs_canonical=*/dim_nums.rhs_contracting_dimensions(0) == 0};
@@ -1021,7 +1028,7 @@ DotOpEmitter::MatMultDims DotOpEmitter::GetBatchMatMultDims() const {
 std::optional<int64_t> ProfitableToMakeDotOperandColumnMajor(
     const HloInstruction& hlo) {
   if (hlo.opcode() == HloOpcode::kDot && hlo.shape().dimensions_size() <= 1) {
-    if (hlo.operand(0)->shape().rank() != 1 ||
+    if (hlo.operand(0)->shape().dimensions_size() != 1 ||
         hlo.dot_dimension_numbers().rhs_contracting_dimensions(0) != 0) {
       return {};
     }
@@ -1070,7 +1077,7 @@ absl::Status EmitNonBatchDotOperation(
     DotInfo dot_info, std::string hlo_name,
     const llvm_ir::IrArray& target_array, const llvm_ir::IrArray& lhs_array,
     const llvm_ir::IrArray& rhs_array, const llvm_ir::IrArray* addend_array,
-    llvm::Value* executable_run_options_value, llvm::IRBuilder<>* b,
+    llvm::Value* executable_run_options_value, llvm::IRBuilderBase* b,
     const HloModuleConfig& hlo_module_config,
     const TargetMachineFeatures& target_machine_features,
     bool allow_runtime_calls) {
@@ -1106,15 +1113,14 @@ Shape CollapseFirstNDims(const Shape& shape, int64_t n) {
                                                   result_dims);
 }
 
-llvm_ir::IrArray CollapseFirstNDims(llvm::IRBuilder<>* b,
+llvm_ir::IrArray CollapseFirstNDims(llvm::IRBuilderBase* b,
                                     const llvm_ir::IrArray& array, int64_t n) {
-  llvm::Module* module = b->GetInsertBlock()->getParent()->getParent();
   const Shape& shape = array.GetShape();
   CHECK(shape.has_layout() &&
         LayoutUtil::IsMonotonicWithDim0Major(shape.layout()));
   CHECK_GE(shape.dimensions_size(), n);
   Shape new_shape = CollapseFirstNDims(shape, n);
-  llvm::Type* new_ir_type = llvm_ir::ShapeToIrType(new_shape, module);
+  llvm::Type* new_ir_type = llvm_ir::ShapeToIrType(new_shape, b->getContext());
   return llvm_ir::IrArray(array.GetBasePointer(), new_ir_type,
                           std::move(new_shape));
 }
@@ -1137,26 +1143,26 @@ absl::Status ValidateDotDimensionNumbers(
 // Slice out the inner array at batch index `batch_index` from `outer_array`.
 llvm_ir::IrArray SliceOutInnerArray(llvm_ir::IrArray outer_array,
                                     llvm::Value* batch_index,
-                                    llvm::IRBuilder<>* b) {
-  llvm::Module* module = b->GetInsertBlock()->getParent()->getParent();
-
+                                    llvm::IRBuilderBase* b) {
   Shape inner_shape = DropFirstDim(outer_array.GetShape());
-  std::vector<llvm::Value*> multidim_index(inner_shape.rank() + 1,
+  std::vector<llvm::Value*> multidim_index(inner_shape.dimensions_size() + 1,
                                            b->getInt64(0));
   multidim_index[0] = batch_index;
   llvm_ir::IrArray::Index slice_index(multidim_index, outer_array.GetShape(),
                                       batch_index->getType());
   llvm::Value* slice_ptr = outer_array.EmitArrayElementAddress(slice_index, b);
-  llvm::Type* new_ir_type = llvm_ir::ShapeToIrType(inner_shape, module);
+  llvm::Type* new_ir_type =
+      llvm_ir::ShapeToIrType(inner_shape, b->getContext());
   return llvm_ir::IrArray(slice_ptr, new_ir_type, std::move(inner_shape));
 }
 
 bool PotentiallyImplementedAsEigenMatmul(
     const HloInstruction& dot, const llvm_ir::IrArray& target_array,
     const llvm_ir::IrArray& lhs_array, const llvm_ir::IrArray& rhs_array,
-    llvm::Value* executable_run_options_value, llvm::IRBuilder<>* b,
+    llvm::Value* executable_run_options_value, llvm::IRBuilderBase* b,
     const HloModuleConfig& hlo_module_config,
-    const TargetMachineFeatures& target_machine_features, DotInfo& dot_info) {
+    const TargetMachineFeatures& target_machine_features, DotInfo& dot_info,
+    bool allow_runtime_calls) {
   int64_t num_batch_dims =
       dot.dot_dimension_numbers().lhs_batch_dimensions_size();
 
@@ -1203,7 +1209,8 @@ bool PotentiallyImplementedAsEigenMatmul(
 
   DotImplementationStrategy impl_strategy =
       GetNonBatchDotImplementationStrategy(dot.GetModule()->config(), dot_info,
-                                           target_machine_features);
+                                           target_machine_features,
+                                           allow_runtime_calls);
 
   return impl_strategy == DotImplementationStrategy::kEigen;
 }
@@ -1211,7 +1218,7 @@ bool PotentiallyImplementedAsEigenMatmul(
 absl::Status EmitBatchDotOperation(
     const HloInstruction& dot, const llvm_ir::IrArray& target_array,
     const llvm_ir::IrArray& lhs_array, const llvm_ir::IrArray& rhs_array,
-    llvm::Value* executable_run_options_value, llvm::IRBuilder<>* b,
+    llvm::Value* executable_run_options_value, llvm::IRBuilderBase* b,
     const HloModuleConfig& hlo_module_config,
     const TargetMachineFeatures& target_machine_features,
     bool allow_runtime_calls) {
@@ -1223,7 +1230,8 @@ absl::Status EmitBatchDotOperation(
   if (ShouldUseMultiThreadedEigen(hlo_module_config) &&
       PotentiallyImplementedAsEigenMatmul(
           dot, target_array, lhs_array, rhs_array, executable_run_options_value,
-          b, hlo_module_config, target_machine_features, dot_info)) {
+          b, hlo_module_config, target_machine_features, dot_info,
+          allow_runtime_calls)) {
     DotOpEmitter dot_emitter(dot_info, std::string(dot.name()), target_array,
                              lhs_array, rhs_array, nullptr /*addend_array*/,
                              executable_run_options_value, b, hlo_module_config,
@@ -1336,23 +1344,25 @@ DotInfo InnerDotInfo(const DotInfo& batch_dot) {
 
 DotImplementationStrategy GetDotImplementationStrategy(
     const HloModuleConfig& config, const HloInstruction& instr,
-    const TargetMachineFeatures& target_machine_features) {
+    const TargetMachineFeatures& target_machine_features,
+    bool allow_runtime_calls) {
   DotInfo dot_info(instr);
   return GetNonBatchDotImplementationStrategy(
       config, IsBatchDot(dot_info) ? InnerDotInfo(dot_info) : dot_info,
-      target_machine_features);
+      target_machine_features, allow_runtime_calls);
 }
 
 bool DotImplementationCanHandleTranspose(
     const HloInstruction& dot_instr,
-    const TargetMachineFeatures& target_machine_features) {
+    const TargetMachineFeatures& target_machine_features,
+    bool allow_runtime_calls) {
   DotInfo dot_info(dot_instr);
 
   DotImplementationStrategy impl_strategy =
       GetNonBatchDotImplementationStrategy(
           dot_instr.GetModule()->config(),
           IsBatchDot(dot_info) ? InnerDotInfo(dot_info) : dot_info,
-          target_machine_features);
+          target_machine_features, allow_runtime_calls);
 
   return impl_strategy == DotImplementationStrategy::kNaiveLlvmIr ||
          impl_strategy == DotImplementationStrategy::kTiledLlvmIrGemv ||
@@ -1361,7 +1371,8 @@ bool DotImplementationCanHandleTranspose(
 
 bool DotOperandsAndResultMustHaveRowMajorLayout(
     const HloInstruction& dot_instr,
-    const TargetMachineFeatures& target_machine_features) {
+    const TargetMachineFeatures& target_machine_features,
+    bool allow_runtime_calls) {
   // Batched dots require the batch dimensions to be major. DotDecomposer always
   // moves batch dimensions to the front of the shape, so force a row-major
   // layout.
@@ -1370,9 +1381,9 @@ bool DotOperandsAndResultMustHaveRowMajorLayout(
   }
 
   DotImplementationStrategy impl_strategy =
-      GetNonBatchDotImplementationStrategy(dot_instr.GetModule()->config(),
-                                           DotInfo(dot_instr),
-                                           target_machine_features);
+      GetNonBatchDotImplementationStrategy(
+          dot_instr.GetModule()->config(), DotInfo(dot_instr),
+          target_machine_features, allow_runtime_calls);
 
   return impl_strategy == DotImplementationStrategy::kTiledLlvmIrGemm ||
          impl_strategy == DotImplementationStrategy::kEigen;
@@ -1382,7 +1393,7 @@ absl::Status EmitDotOperation(
     const HloInstruction& dot, const llvm_ir::IrArray& target_array,
     const llvm_ir::IrArray& lhs_array, const llvm_ir::IrArray& rhs_array,
     const llvm_ir::IrArray* addend_array,
-    llvm::Value* executable_run_options_value, llvm::IRBuilder<>* b,
+    llvm::Value* executable_run_options_value, llvm::IRBuilderBase* b,
     const HloModuleConfig& hlo_module_config,
     const TargetMachineFeatures& target_machine_features,
     bool allow_runtime_calls) {

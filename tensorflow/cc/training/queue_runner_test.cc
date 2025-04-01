@@ -15,9 +15,13 @@ limitations under the License.
 
 #include "tensorflow/cc/training/queue_runner.h"
 
+#include <functional>
+#include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "tensorflow/cc/framework/ops.h"
 #include "tensorflow/cc/framework/scope.h"
 #include "tensorflow/cc/ops/const_op.h"
@@ -26,6 +30,9 @@ limitations under the License.
 #include "tensorflow/cc/ops/random_ops.h"
 #include "tensorflow/cc/ops/state_ops.h"
 #include "tensorflow/cc/training/coordinator.h"
+#include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/status.h"
+#include "xla/tsl/protobuf/error_codes.pb.h"
 #include "tensorflow/core/framework/cost_graph.pb.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -40,9 +47,6 @@ limitations under the License.
 #include "tensorflow/core/protobuf/queue_runner.pb.h"
 #include "tensorflow/core/public/session.h"
 #include "tensorflow/core/public/session_options.h"
-#include "tsl/lib/core/status_test_util.h"
-#include "tsl/platform/status.h"
-#include "tsl/protobuf/error_codes.pb.h"
 
 namespace tensorflow {
 namespace {
@@ -350,7 +354,8 @@ TEST(QueueRunnerTest, CallbackCalledOnError) {
   std::unique_ptr<QueueRunner> qr;
   TF_EXPECT_OK(QueueRunner::New(queue_runner_def, &qr));
   bool error_caught = false;
-  qr->AddErrorCallback([&error_caught](const Status&) { error_caught = true; });
+  qr->AddErrorCallback(
+      [&error_caught](const absl::Status&) { error_caught = true; });
   TF_EXPECT_OK(qr->Start(session.get()));
   EXPECT_FALSE(qr->Join().ok());
   EXPECT_TRUE(error_caught);

@@ -15,6 +15,8 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_EXPERIMENTAL_RESOURCE_RESOURCE_VARIABLE_H_
 #define TENSORFLOW_LITE_EXPERIMENTAL_RESOURCE_RESOURCE_VARIABLE_H_
 
+#include <cstddef>
+
 #include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/experimental/resource/resource_base.h"
 

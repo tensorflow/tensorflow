@@ -31,6 +31,11 @@ namespace deallocation {
 std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
 createBufferReusePass();
 
+// Creates an instance of the BufferDeallocation pass to free all allocated
+// buffers.
+// TODO(b/380236304): Remove once migrated to one-shot bufferization.
+std::unique_ptr<mlir::Pass> createBufferDeallocationPass();
+
 #define GEN_PASS_REGISTRATION
 #include "deallocation/transforms/passes.h.inc"
 

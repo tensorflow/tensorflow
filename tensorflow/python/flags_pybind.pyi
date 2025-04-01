@@ -22,8 +22,10 @@ class Flags:
     enable_aggressive_constant_replication: Flag
     enable_colocation_key_propagation_in_while_op_lowering: Flag
     enable_function_pruning_before_inlining: Flag
+    enable_graph_debug_info_caching_for_stack_frames: Flag
     enable_nested_function_shape_inference: Flag
     enable_quantized_dtypes_training: Flag
+    enable_skip_encapsulation_for_non_tpu_graphs: Flag
     enable_tf2min_ici_weight: Flag
     graph_building_optimization: Flag
     more_stack_traces: Flag

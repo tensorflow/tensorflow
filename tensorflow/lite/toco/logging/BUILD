@@ -20,7 +20,6 @@ package(
 tf_proto_library(
     name = "toco_conversion_log_proto",
     srcs = ["toco_conversion_log.proto"],
-    cc_api_version = 2,
     visibility = ["//visibility:public"],
 )
 
@@ -72,7 +71,6 @@ py_strict_library(
     data = [
         "html_template",
     ],
-    srcs_version = "PY3",
     visibility = ["//visibility:public"],
     deps = [
         ":toco_conversion_log_proto_py",
@@ -92,8 +90,6 @@ py_strict_test(
         "//tensorflow/lite/toco/logging/testdata:toco_tf_graph.dot",
         "//tensorflow/lite/toco/logging/testdata:toco_tflite_graph.dot",
     ],
-    python_version = "PY3",
-    srcs_version = "PY3",
     deps = [
         ":gen_html",
         ":toco_conversion_log_proto_py",
@@ -108,7 +104,6 @@ py_strict_test(
 # copybara:uncomment_begin(google-only)
 # py_proto_library(
 #     name = "toco_conversion_log_proto_py",
-#     api_version = 2,
 #     visibility = ["//visibility:public"],
 #     deps = [":toco_conversion_log_proto"],
 # )

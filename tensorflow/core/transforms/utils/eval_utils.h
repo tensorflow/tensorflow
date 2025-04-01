@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <memory>
 
+#include "absl/status/status.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/Support/LLVM.h"  // from @llvm-project
@@ -42,7 +43,7 @@ class SimpleDevice : public tensorflow::DeviceBase {
   SimpleDevice();
   ~SimpleDevice() override;
 
-  tensorflow::Status MakeTensorFromProto(
+  absl::Status MakeTensorFromProto(
       const tensorflow::TensorProto& tensor_proto,
       const tensorflow::AllocatorAttributes alloc_attrs,
       tensorflow::Tensor* tensor) override;

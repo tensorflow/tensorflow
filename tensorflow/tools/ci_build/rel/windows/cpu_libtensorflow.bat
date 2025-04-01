@@ -16,7 +16,7 @@
 SET TF_DIR=%cd%
 SET TF_DOCKER_DIR=C:\src\tensorflow
 REM TODO(belitskiy): Switch to Artifact Registry
-set TF_DOCKER_IMAGE="gcr.io/tensorflow-testing/tf-win2019-rbe@sha256:1082ef4299a72e44a84388f192ecefc81ec9091c146f507bc36070c089c0edcc"
+set TF_DOCKER_IMAGE="gcr.io/tensorflow-testing/tf-win2019-rbe@sha256:d3577d20dea75966faf7fd03479c71462441937df5694259109c2ee1d002a3dd"
 
 docker pull %TF_DOCKER_IMAGE% || exit /b 1
 @echo *****Finished docker image pull: %date% %time%

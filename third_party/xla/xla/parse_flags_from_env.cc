@@ -27,13 +27,17 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/base/const_init.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/strings/ascii.h"
-#include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
+#include "absl/strings/string_view.h"
+#include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/logging.h"
 #include "xla/tsl/util/command_line_flags.h"
-#include "tsl/platform/logging.h"
 
 namespace xla {
 
@@ -189,14 +193,19 @@ static absl::Mutex env_argv_mu(absl::kConstInit);
 static void DieIfEnvHasUnknownFlagsLeft(absl::string_view envvar);
 
 void ParseFlagsFromEnvAndDieIfUnknown(absl::string_view envvar,
-                                      const std::vector<tsl::Flag>& flag_list) {
-  ParseFlagsFromEnvAndIgnoreUnknown(envvar, flag_list);
+                                      const std::vector<tsl::Flag>& flag_list,
+                                      const bool reset_envvar) {
+  ParseFlagsFromEnvAndIgnoreUnknown(envvar, flag_list, reset_envvar);
   DieIfEnvHasUnknownFlagsLeft(envvar);
 }
 
-void ParseFlagsFromEnvAndIgnoreUnknown(
-    absl::string_view envvar, const std::vector<tsl::Flag>& flag_list) {
+void ParseFlagsFromEnvAndIgnoreUnknown(absl::string_view envvar,
+                                       const std::vector<tsl::Flag>& flag_list,
+                                       const bool reset_envvar) {
   absl::MutexLock lock(&env_argv_mu);
+  if (reset_envvar) {
+    EnvArgvs().erase(envvar);
+  }
   auto* env_argv = &EnvArgvs()[envvar];
   SetArgvFromEnv(envvar, env_argv);  // a no-op if already initialized
 
@@ -218,8 +227,8 @@ static void DieIfEnvHasUnknownFlagsLeft(absl::string_view envvar) {
   SetArgvFromEnv(envvar, env_argv);
 
   if (env_argv->argc != 1) {
+    auto unknown_flags = absl::MakeSpan(env_argv->argv).first(env_argv->argc);
     // Skip the first argv, which is the fake argv[0].
-    auto unknown_flags = absl::MakeSpan(env_argv->argv);
     unknown_flags.remove_prefix(1);
     LOG(QFATAL) << "Unknown flag" << (unknown_flags.size() > 1 ? "s" : "")
                 << " in " << envvar << ": "

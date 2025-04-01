@@ -13,7 +13,6 @@ pytype_strict_library(
         "__init__.py",
         "core.py",
     ],
-    srcs_version = "PY3",
     visibility = [
         "//tensorflow:__subpackages__",
         "//tensorflow:types_allowlist",
@@ -30,7 +29,6 @@ pytype_strict_library(
 pytype_strict_library(
     name = "data",
     srcs = ["data.py"],
-    srcs_version = "PY3",
     visibility = [
         "//tensorflow:__subpackages__",
     ],
@@ -40,7 +38,6 @@ pytype_strict_library(
 pytype_strict_library(
     name = "distribute",
     srcs = ["distribute.py"],
-    srcs_version = "PY3",
     visibility = [
         "//tensorflow:__subpackages__",
     ],
@@ -53,7 +50,6 @@ pytype_strict_library(
 pytype_strict_library(
     name = "internal",
     srcs = ["internal.py"],
-    srcs_version = "PY3",
     visibility = [
         "//tensorflow:__subpackages__",
     ],
@@ -62,7 +58,6 @@ pytype_strict_library(
 pytype_strict_library(
     name = "trace",
     srcs = ["trace.py"],
-    srcs_version = "PY3",
     visibility = [
         "//tensorflow:__subpackages__",
     ],
@@ -79,7 +74,6 @@ pytype_strict_library(
     srcs = [
         "doc_typealias.py",
     ],
-    srcs_version = "PY3",
     visibility = [
         "//tensorflow:__subpackages__",
     ],

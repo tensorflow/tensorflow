@@ -22,7 +22,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "tsl/platform/logging.h"
 
-namespace tensorflow {
+namespace xla {
 // This is a set data structure that provides a deterministic iteration order.
 // The iteration order of elements only depends on the sequence of
 // inserts/deletes, so as long as the inserts/deletes happen in the same
@@ -80,6 +80,6 @@ class OrderedSet {
   // Maps values to their indices in `value_sequence_`.
   absl::flat_hash_map<T, int> value_to_index_;
 };
-}  // namespace tensorflow
+}  // namespace xla
 
 #endif  // XLA_SERVICE_GRAPHCYCLES_ORDERED_SET_H_

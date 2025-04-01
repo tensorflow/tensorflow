@@ -146,23 +146,30 @@ def : Pat<(MHLO_ConvertOp MHLO_Tensor:$operand),
 foreach Mapping = [[MHLO_AbsOp, TF_AbsOp],
                    [MHLO_BitcastConvertOp, TF_BitcastOp],
                    [MHLO_CeilOp, TF_CeilOp],
-                   [MHLO_CosineOp, TF_CosOp],
-                   [MHLO_ExpOp, TF_ExpOp],
-                   [MHLO_Expm1Op, TF_Expm1Op],
                    [MHLO_FloorOp, TF_FloorOp],
                    [MHLO_ImagOp, TF_ImagOp],
                    [MHLO_IsFiniteOp, TF_IsFiniteOp],
+                   [MHLO_NegOp, TF_NegOp],
+                   [MHLO_RealOp, TF_RealOp],
+                   [MHLO_SignOp, TF_SignOp]] in
+  def : Pat<(Mapping[0] TF_IntOrFpTensor:$input), (Mapping[1] $input)>;
+
+def ConstDefaultResultAccuracyAttr :
+  ConstantAttr<MHLO_ResultAccuracyAttr, "::mlir::mhlo::ResultAccuracyMode::DEFAULT">;
+
+foreach Mapping = [[MHLO_CosineOp, TF_CosOp],
+                   [MHLO_Expm1Op, TF_Expm1Op],
+                   [MHLO_ExpOp, TF_ExpOp],
                    [MHLO_LogOp, TF_LogOp],
                    [MHLO_Log1pOp, TF_Log1pOp],
                    [MHLO_LogisticOp, TF_SigmoidOp],
-                   [MHLO_NegOp, TF_NegOp],
-                   [MHLO_RealOp, TF_RealOp],
                    [MHLO_RsqrtOp, TF_RsqrtOp],
                    [MHLO_SineOp, TF_SinOp],
-                   [MHLO_SignOp, TF_SignOp],
                    [MHLO_SqrtOp, TF_SqrtOp],
-                   [MHLO_TanhOp, TF_TanhOp]] in
-  def : Pat<(Mapping[0] TF_IntOrFpTensor:$input), (Mapping[1] $input)>;
+                   [MHLO_TanhOp, TF_TanhOp]] in {
+  def : Pat<(Mapping[0] $input, ConstDefaultResultAccuracyAttr),
+           (Mapping[1] MHLO_Tensor:$input)>;
+}
 
 class GetRankedScalarAttr<string prefix, int width, string signed, string value> :
   NativeCodeCall<"DenseElementsAttr::get<" # prefix # "int" # width # "_t>("
@@ -380,7 +387,7 @@ def ConvertDotGeneralOp : NativeCodeCall<"ConvertDotGeneralOp($_builder, "
 def : Pat<(MHLO_DotGeneralOp:$old_value
                RankedTensorOf<[TF_ElementType]>:$lhs,
                RankedTensorOf<[TF_ElementType]>:$rhs,
-               $dot_dimension_numbers, $precision_config),
+               $dot_dimension_numbers, $precision_config, $algorithm),
           (ConvertDotGeneralOp $old_value)>;
 
 

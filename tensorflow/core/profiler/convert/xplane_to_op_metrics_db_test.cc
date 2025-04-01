@@ -15,27 +15,32 @@ limitations under the License.
 
 #include "tensorflow/core/profiler/convert/xplane_to_op_metrics_db.h"
 
+#include <algorithm>
 #include <cstdint>
 #include <string>
 #include <utility>
 
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/profiler/utils/math_utils.h"
+#include "xla/tsl/profiler/utils/xplane_schema.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/protobuf/op_metrics.pb.h"
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
-#include "tensorflow/core/profiler/utils/math_utils.h"
 #include "tensorflow/core/profiler/utils/op_metrics_db_utils.h"
 #include "tensorflow/core/profiler/utils/xplane_builder.h"
 #include "tensorflow/core/profiler/utils/xplane_schema.h"
 #include "tensorflow/core/profiler/utils/xplane_test_utils.h"
+#include "tsl/profiler/protobuf/xplane.pb.h"
+#include "xprof/utils/op_metrics_db_utils.h"  // from @org_xprof
 
 namespace tensorflow {
 namespace profiler {
 namespace {
 
 #if defined(PLATFORM_GOOGLE)
+// NOLINTNEXTLINE: clang-tidy missing-includes
 using ::testing::EqualsProto;
 #endif
 
@@ -227,11 +232,8 @@ TEST(ConvertXPlaneToOpMetricsDb, TpuDeviceOpMetricsDb) {
                                         /*peak_tera_flops_per_second=*/0,
                                         /*peak_hbm_bw_gigabytes_per_second=*/0);
   XPlaneBuilder device_plane(xplane);
-  device_plane.AddStatValue(
-      *device_plane.GetOrCreateStatMetadata(
-          GetStatTypeStr(StatType::kTotalProfileDurationPs)),
-      1000);
   XLineBuilder stream1 = device_plane.GetOrCreateLine(/*line_id=*/10);
+  stream1.SetName(tsl::profiler::kTensorFlowOpLineName);
   AddTensorFlowTpuOpEvent("MatMul", "while:MatMul", 0, 10, "MatMul", 34, 45, 2,
                           5, 1, 1, &device_plane, &stream1);
   OpMetricsDb op_metrics = ConvertTpuDeviceTraceXPlaneToOpMetricsDb(*xplane);
@@ -241,6 +243,8 @@ TEST(ConvertXPlaneToOpMetricsDb, TpuDeviceOpMetricsDb) {
                                  hlo_module_id: 1
                                  self_time_ps: 10000
                                  flops: 68
+                                 model_flops: 68
+                                 num_cores: 1
                                  occurrences: 2
                                  name: "MatMul"
                                  time_ps: 10000

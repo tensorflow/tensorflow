@@ -20,14 +20,65 @@ limitations under the License.
 #include <memory>
 #include <optional>
 
-#include "absl/status/status.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/parser/hlo_parser.h"
 #include "xla/service/compiler.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/shape.h"
+#include "xla/util.h"
 
 namespace xla {
+
+// Converts an HloModule from the given hlo textual IR string (in
+// HloModule::ToString format).
+absl::StatusOr<std::unique_ptr<HloModule>> CreateModuleFromString(
+    absl::string_view hlo_string,
+    const DebugOptions& debug_options = DebugOptions::default_instance(),
+    const HloParserOptions& parser_options = HloParserOptions());
+
+// Creates an HloModule from the given proto.
+absl::StatusOr<std::unique_ptr<HloModule>> CreateModuleFromProto(
+    const HloModuleProto& proto,
+    const DebugOptions& debug_options = DebugOptions::default_instance());
+
+// Create an HLO state from serialized representation. In addition to
+// creating the proto with HloModule::CreateFromProto(...) it also
+// uses HloVerifier to ensure basic invariants are held.
+// The HLO module could be a pre-optimizations (default) or post-optimizations
+// module, which affects how the HLO module is verified, e.g., mixed-precision
+// is allowed in post-optimizations HLOs.
+absl::StatusOr<std::unique_ptr<HloModule>> CreateModuleFromProto(
+    const HloModuleProto& proto, const HloModuleConfig& module_config,
+    bool is_module_post_optimizations = false);
+
+// Reads the proto file in xla.HloProto format, creates and returns the
+// HloModule.
+absl::StatusOr<std::unique_ptr<HloModule>> ReadModuleFromBinaryProtoFile(
+    absl::string_view filename,
+    const DebugOptions& debug_options = DebugOptions::default_instance());
+
+// Reads the proto file in xla.HloModule format, creates and returns the
+// HloModule.
+absl::StatusOr<std::unique_ptr<HloModule>> ReadModuleFromModuleBinaryProtofile(
+    absl::string_view filename, const DebugOptions& debug_options);
+
+// Reads the HLO text dump file in HloModule::ToString format, creates and
+// returns the HloModule.
+absl::StatusOr<std::unique_ptr<HloModule>> ReadModuleFromHloTextFile(
+    absl::string_view filename,
+    const DebugOptions& debug_options = DebugOptions::default_instance(),
+    const HloParserOptions& options = HloParserOptions());
+
+// Reads the proto file in xla.HloProto format, creates and returns the
+// HloModule.
+absl::StatusOr<std::unique_ptr<HloModule>> ReadModuleFromTextProtoFile(
+    absl::string_view hlo_file,
+    const DebugOptions& debug_options = DebugOptions::default_instance());
 
 // Creates an HloModuleConfig for a given program shape and arguments.
 // If execution_options does not set num_replicas, default_num_replicas is used.

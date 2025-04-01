@@ -158,9 +158,10 @@ class NAryOpsTest(xla_test.XLATestCase):
   def testSplitVNegativeSizes(self):
     with self.session() as session:
       with self.test_scope():
-        with self.assertRaisesRegexp(
+        with self.assertRaisesRegex(
             (ValueError, errors.InvalidArgumentError),
-            "Split size at index 1 must be >= .*. Got: -2"):
+            "Split size at index 1 must be >= .*. Got: -2",
+        ):
           _ = session.run(
               array_ops.split(np.array([1, 2, 3], dtype=np.float32), [-1, -2],
                               axis=0))

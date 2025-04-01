@@ -21,7 +21,7 @@ limitations under the License.
 
 namespace tensorflow {
 
-Status InitializeFusedComputation(
+absl::Status InitializeFusedComputation(
     OpKernelConstruction* context, const std::string& kernel_name,
     const std::vector<FusedComputationPattern>& patterns,
     FusedComputationType* fused_computation,

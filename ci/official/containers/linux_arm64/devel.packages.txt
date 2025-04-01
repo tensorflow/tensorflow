@@ -29,6 +29,7 @@ moreutils
 openjdk-21-jdk
 openjdk-21-jre-headless
 openssl
+parallel
 patchelf
 pkg-config
 python3-dev

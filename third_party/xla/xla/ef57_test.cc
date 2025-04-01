@@ -19,11 +19,10 @@ limitations under the License.
 #include <limits>
 #include <vector>
 
-#include "absl/algorithm/container.h"
-#include "absl/log/log_streamer.h"
+#include <gtest/gtest.h>
 #include "absl/random/random.h"
 #include "absl/types/span.h"
-#include "xla/test.h"
+#include "xla/hlo/testlib/test.h"
 
 namespace xla {
 namespace {

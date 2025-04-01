@@ -71,7 +71,8 @@ TEST(DepthToSpaceOpModel, Float32) {
   DepthToSpaceOpModel m({TensorType_FLOAT32, {1, 1, 1, 4}}, 2);
   m.SetInput<float>({1.4, 2.3, 3.2, 4.1});
   ASSERT_EQ(m.Invoke(), kTfLiteOk);
-  EXPECT_THAT(m.GetOutput<float>(), ElementsAreArray({1.4, 2.3, 3.2, 4.1}));
+  EXPECT_THAT(m.GetOutput<float>(),
+              Pointwise(FloatingPointEq(), {1.4, 2.3, 3.2, 4.1}));
   EXPECT_THAT(m.GetOutputShape(), ElementsAre(1, 2, 2, 1));
 }
 

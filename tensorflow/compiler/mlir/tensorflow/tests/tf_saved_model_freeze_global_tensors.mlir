@@ -289,7 +289,7 @@ module attributes {tf_saved_model.semantics} {
     %1 = "tf.AddV2"(%arg0, %0) : (tensor<f32>, tensor<f32>) -> tensor<f32>
     func.return %1 : tensor<f32>
   }
-  // CHECK: func.func private @f_callee(%arg0: tensor<f32>) -> tensor<f32> attributes {tf._input_shapes = [#tf_type.shape<00>]} {
+  // CHECK: func.func private @f_callee(%arg0: tensor<f32>) -> tensor<f32> attributes {tf._input_shapes = [#tf_type.shape<0>]} {
   // CHECK:   %cst = "tf.Const"() <{value = dense<1.000000e+00> : tensor<f32>}> : () -> tensor<f32>
   // CHECK:   %0 = "tf.AddV2"(%arg0, %cst) : (tensor<f32>, tensor<f32>) -> tensor<f32>
   // CHECK:   return %0 : tensor<f32>

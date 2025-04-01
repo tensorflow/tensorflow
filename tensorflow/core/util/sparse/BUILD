@@ -90,7 +90,7 @@ tf_cc_test(
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core/platform:statusor",
-        "@com_google_googletest//:gtest_main",
         "@eigen_archive//:eigen3",
+        "@local_xla//xla/tsl/platform:test_main",
     ],
 )
