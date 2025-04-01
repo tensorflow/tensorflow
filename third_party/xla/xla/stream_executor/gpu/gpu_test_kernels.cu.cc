@@ -36,9 +36,9 @@ __global__ void MulI32(int32_t* a, int32_t* b, int32_t* c) {
   c[index] = a[index] * b[index];
 }
 
-__global__ void IncAndCmp(int32_t* counter, bool* pred, int32_t value) {
+__global__ void IncAndCmp(int32_t* counter, bool* pred, int32_t* value) {
   int index = threadIdx.x + blockIdx.x * blockDim.x;
-  pred[index] = counter[index] < value;
+  pred[index] = counter[index] < *value;
   counter[index] += 1;
 }
 

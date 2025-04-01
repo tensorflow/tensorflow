@@ -849,11 +849,13 @@ absl::Status WhileCmd::Record(const Thunk::ExecuteParams& execute_params,
           << " body_commands=" << body_commands_.size();
   VLOG(5) << "  pred: " << pred_ << " (" << pred.opaque() << ")";
 
-  return command_buffer->While(
-      se::DeviceMemory<bool>(pred),
-      CreateExecutionScopeBuilder(&cond_commands_, &execute_params,
-                                  &record_params),
-      CreateBuilder(&body_commands_, &execute_params, &record_params));
+  return command_buffer
+      ->While(se::DeviceMemory<bool>(pred),
+              CreateExecutionScopeBuilder(&cond_commands_, &execute_params,
+                                          &record_params),
+              CreateBuilder(&body_commands_, &execute_params, &record_params),
+              {})
+      .status();
 }
 
 bool WhileCmd::force_update() {

@@ -202,8 +202,13 @@ class CommandBuffer {
   //     body_builder()
   //     cond_builder()
   //
-  virtual absl::Status While(DeviceMemory<bool> pred, Builder cond_builder,
-                             Builder body_builder) = 0;
+  virtual absl::StatusOr<const Command*> While(
+      DeviceMemory<bool> pred, Builder cond_builder, Builder body_builder,
+      absl::Span<const Command* const> dependencies) = 0;
+
+  // Updates a While operation.
+  virtual absl::Status While(const Command* command, DeviceMemory<bool> pred,
+                             Builder cond_builder, Builder body_builder) = 0;
 
   // Submits the command buffer for execution.
   virtual absl::Status Submit(Stream* stream) {

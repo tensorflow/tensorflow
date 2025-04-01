@@ -503,11 +503,18 @@ absl::Status GpuCommandBuffer::Case(const Command* command,
       /*index_is_bool=*/true, branches);
 }
 
-absl::Status GpuCommandBuffer::While(DeviceMemory<bool> pred,
-                                     Builder cond_builder,
-                                     Builder body_builder) {
+absl::StatusOr<const CommandBuffer::Command*> GpuCommandBuffer::While(
+    DeviceMemory<bool> pred, Builder cond_builder, Builder body_builder,
+    absl::Span<const Command* const> dependencies) {
   if (state_ == State::kCreate) {
     GpuWhileCommand command = {};
+
+    Dependencies barrier = dependencies.empty()
+                               ? GetAutoDependencies()
+                               : ToGraphNodeDependencies(dependencies);
+
+    // TODO(ezhulenev): cond_builder should be able to take dependencies.
+    (void)barrier;
 
     TF_RETURN_IF_ERROR(cond_builder(this));
 
@@ -529,32 +536,41 @@ absl::Status GpuCommandBuffer::While(DeviceMemory<bool> pred,
                                           body->GetAutoDependencies()));
     TF_RETURN_IF_ERROR(command.conditional_node.command_buffer->Finalize());
 
-    AppendCommand(std::move(command));
-    return absl::OkStatus();
+    return AppendCommand(std::move(command));
   }
 
   if (state_ == State::kUpdate) {
     Command& command = *commands_[update_state_.command_idx++];
-    auto* gpu_command = tsl::down_cast<GpuWhileCommand*>(&command);
-
-    TF_RETURN_IF_ERROR(cond_builder(this));
-
-    TF_RETURN_IF_ERROR(UpdateSetWhileConditionNode(
-        gpu_command->set_init_condition_node, gpu_command->conditional, pred));
-
-    GpuCommandBuffer* body = gpu_command->conditional_node.command_buffer.get();
-    auto body_update_mode = ActivateUpdateMode(body);
-
-    // Update command buffer using user-provided builder callback.
-    TF_RETURN_IF_ERROR(body->Update());
-    TF_RETURN_IF_ERROR(body_builder(body));
-    TF_RETURN_IF_ERROR(cond_builder(body));
-    TF_RETURN_IF_ERROR(body->UpdateSetWhileConditionNode(
-        gpu_command->set_body_condition_node, gpu_command->conditional, pred));
-    TF_RETURN_IF_ERROR(body->Finalize());
+    TF_RETURN_IF_ERROR(While(&command, pred, cond_builder, body_builder));
+    return &command;
   }
 
   return UnsupportedStateError(state_);
+}
+
+absl::Status GpuCommandBuffer::While(const Command* command,
+                                     DeviceMemory<bool> pred,
+                                     Builder cond_builder,
+                                     Builder body_builder) {
+  auto* gpu_command = tsl::down_cast<const GpuWhileCommand*>(command);
+
+  TF_RETURN_IF_ERROR(cond_builder(this));
+
+  TF_RETURN_IF_ERROR(UpdateSetWhileConditionNode(
+      gpu_command->set_init_condition_node, gpu_command->conditional, pred));
+
+  GpuCommandBuffer* body = gpu_command->conditional_node.command_buffer.get();
+  auto body_update_mode = ActivateUpdateMode(body);
+
+  // Update command buffer using user-provided builder callback.
+  TF_RETURN_IF_ERROR(body->Update());
+  TF_RETURN_IF_ERROR(body_builder(body));
+  TF_RETURN_IF_ERROR(cond_builder(body));
+  TF_RETURN_IF_ERROR(body->UpdateSetWhileConditionNode(
+      gpu_command->set_body_condition_node, gpu_command->conditional, pred));
+  TF_RETURN_IF_ERROR(body->Finalize());
+
+  return absl::OkStatus();
 }
 
 absl::Status GpuCommandBuffer::Finalize() {

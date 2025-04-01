@@ -171,8 +171,12 @@ class GpuCommandBuffer : public CommandBuffer {
   absl::Status Case(const Command* command, DeviceMemory<bool> index,
                     std::vector<Builder> branches) override;
 
-  absl::Status While(DeviceMemory<bool> pred, Builder cond_builder,
-                     Builder body_builder) override;
+  absl::StatusOr<const Command*> While(
+      DeviceMemory<bool> pred, Builder cond_builder, Builder body_builder,
+      absl::Span<const Command* const> dependencies) override;
+
+  absl::Status While(const Command* command, DeviceMemory<bool> pred,
+                     Builder cond_builder, Builder body_builder) override;
 
   absl::Status Finalize() override;
   absl::Status Update() override;

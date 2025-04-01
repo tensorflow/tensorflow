@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <optional>
 #include <string>
@@ -30,19 +31,23 @@ limitations under the License.
 #include "absl/strings/ascii.h"
 #include "absl/types/span.h"
 #include "xla/backends/gpu/runtime/command_buffer_cmd.h"
+#include "xla/backends/gpu/runtime/dynamic_slice_thunk.h"
 #include "xla/backends/gpu/runtime/memset_thunk.h"
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/runtime/buffer_use.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/buffer_allocations.h"
+#include "xla/service/gpu/kernels/custom_kernel.h"
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/gpu/matmul_utils.h"
 #include "xla/service/platform_util.h"
 #include "xla/service/service_executable_run_options.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/blas.h"
 #include "xla/stream_executor/command_buffer.h"
+#include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/device_memory_allocator.h"
@@ -51,6 +56,7 @@ limitations under the License.
 #include "xla/stream_executor/gpu/gpu_types.h"  // IWYU pragma: keep
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/kernel_spec.h"
+#include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/semantic_version.h"
@@ -58,10 +64,9 @@ limitations under the License.
 #include "xla/stream_executor/stream_executor_memory_allocator.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/types.h"  // IWYU pragma: keep
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/statusor.h"
-#include "tsl/platform/test.h"
 #include "tsl/profiler/lib/profiler_lock.h"
 
 #ifdef GOOGLE_CUDA
@@ -1224,9 +1229,101 @@ TEST(CommandBufferThunkTest, CaseCmd) {
 }
 
 TEST(CommandBufferThunkTest, WhileCmd) {
-  // TODO(ezhulenev): Find a way to test WhileCmd: add a test only TraceCmd that
-  // could allow us trace custom kernels to update while loop iterations. Or
-  // maybe add a CustomLaunchCmd and wrap loop update into custom kernel.
+  se::StreamExecutor* executor = GpuExecutor();
+
+  if (!IsAtLeastCuda12300(executor)) {
+    GTEST_SKIP() << "CUDA graph conditionals are not supported";
+  }
+
+  TF_ASSERT_OK_AND_ASSIGN(auto stream, executor->CreateStream());
+
+  int64_t length = 4;
+  int64_t byte_length = sizeof(int32_t) * length;
+
+  // Prepare arguments: loop_cnt=0, num_iters=10, a=1, b=0
+  se::DeviceMemory<bool> pred = executor->AllocateArray<bool>(1, 0);
+  se::DeviceMemory<int32_t> loop_cnt = executor->AllocateArray<int32_t>(1, 0);
+  se::DeviceMemory<int32_t> num_iters = executor->AllocateArray<int32_t>(1, 0);
+  se::DeviceMemory<int32_t> a = executor->AllocateArray<int32_t>(length, 0);
+  se::DeviceMemory<int32_t> b = executor->AllocateArray<int32_t>(length, 0);
+
+  TF_ASSERT_OK(stream->Memset32(&loop_cnt, 0, sizeof(int32_t)));
+  TF_ASSERT_OK(stream->Memset32(&num_iters, 10, sizeof(int32_t)));
+  TF_ASSERT_OK(stream->Memset32(&a, 1, byte_length));
+  TF_ASSERT_OK(stream->MemZero(&b, byte_length));
+
+  // Prepare buffer allocations for recording command buffer.
+  BufferAllocation alloc_pred(/*index=*/0, sizeof(bool), /*color=*/0);
+  BufferAllocation alloc_loop_cnt(/*index=*/1, sizeof(int32_t), /*color=*/0);
+  BufferAllocation alloc_num_iters(/*index=*/2, sizeof(int32_t), /*color=*/0);
+  BufferAllocation alloc_a(/*index=*/3, byte_length, /*color=*/0);
+  BufferAllocation alloc_b(/*index=*/4, byte_length, /*color=*/0);
+
+  BufferAllocation::Slice slice_pred(&alloc_pred, 0, sizeof(bool));
+  BufferAllocation::Slice slice_loop_cnt(&alloc_loop_cnt, 0, sizeof(int32_t));
+  BufferAllocation::Slice slice_num_iters(&alloc_num_iters, 0, sizeof(int32_t));
+  BufferAllocation::Slice slice_a(&alloc_a, 0, byte_length);
+  BufferAllocation::Slice slice_b(&alloc_b, 0, byte_length);
+
+  auto cond_args = {slice_loop_cnt, slice_pred, slice_num_iters};
+  auto cond_args_access = {MemoryAccess::kWrite, MemoryAccess::kWrite,
+                           MemoryAccess::kRead};
+
+  auto body_args = {slice_a, slice_b, slice_b};  // b = a + b
+  auto body_args_access = {MemoryAccess::kRead, MemoryAccess::kRead,
+                           MemoryAccess::kWrite};
+
+  // Prepare commands sequence for loop `cond`.
+  CommandBufferCmdSequence cond_commands;
+  cond_commands.Emplace<LaunchCmd>(s0, "IncAndCmp", cond_args, cond_args_access,
+                                   LaunchDimensions(1, 1),
+                                   /*shmem_bytes=*/0);
+
+  // Prepare commands sequence for loop `body`.
+  CommandBufferCmdSequence body_commands;
+  body_commands.Emplace<LaunchCmd>(s0, "AddI32", body_args, body_args_access,
+                                   LaunchDimensions(1, 4),
+                                   /*shmem_bytes=*/0);
+
+  // Prepare commands sequence for thunk.
+  CommandBufferCmdSequence commands;
+  commands.Emplace<WhileCmd>(s0, slice_pred, std::move(cond_commands),
+                             std::move(body_commands));
+
+  // Construct a thunk with command sequence.
+  CommandBufferThunk thunk(std::move(commands), Thunk::ThunkInfo());
+
+  ServiceExecutableRunOptions run_options;
+  se::StreamExecutorMemoryAllocator allocator(executor);
+  BufferAllocations allocations({pred, loop_cnt, num_iters, a, b}, 0,
+                                &allocator);
+
+  Thunk::ExecuteParams params = Thunk::ExecuteParams::Create(
+      run_options, allocations, stream.get(), stream.get(), nullptr, nullptr);
+
+  TF_ASSERT_OK_AND_ASSIGN(OwningExecutableSource source, ExecutableSource());
+  TF_ASSERT_OK(
+      thunk.Initialize({executor, static_cast<Thunk::ExecutableSource>(source),
+                        &allocations, stream.get()}));
+
+  // Execute command buffer thunk and verify that it added the value 10 times.
+  TF_ASSERT_OK(thunk.ExecuteOnStream(params));
+  TF_ASSERT_OK(stream->BlockHostUntilDone());
+
+  // Copy `b` data back to host.
+  std::vector<int32_t> dst(4, 0);
+  TF_ASSERT_OK(stream->Memcpy(dst.data(), b, byte_length));
+
+  ASSERT_EQ(dst, std::vector<int32_t>(4, 10));
+
+  // Initialize `loop_cnt` to `5` and check that we run only 5 iterations.
+  TF_ASSERT_OK(stream->Memset32(&loop_cnt, 5, sizeof(int32_t)));
+
+  TF_ASSERT_OK(thunk.ExecuteOnStream(params));
+  TF_ASSERT_OK(stream->BlockHostUntilDone());
+
+  TF_ASSERT_OK(stream->Memcpy(dst.data(), b, byte_length));
+  ASSERT_EQ(dst, std::vector<int32_t>(4, 15));
 }
 
 class CmdBufferTest : public HloTestBase {
