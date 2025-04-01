@@ -131,7 +131,7 @@ StreamExecutorGpuCompiler::Compile(CompileOptions options,
   if (!options.target_config) {
     if (client != nullptr) {
       TF_RETURN_IF_ERROR(IsValidTopologyAndClientForCompile(topology, client));
-      return client->Compile(computation, options);
+      return client->CompileAndLoad(computation, options);
     }
     const auto& gpu_topology =
         tensorflow::down_cast<const xla::StreamExecutorGpuTopologyDescription&>(
@@ -177,17 +177,21 @@ StreamExecutorGpuCompiler::Compile(CompileOptions options,
   const int num_partitions = hlo_module->config().num_partitions();
   const std::string name = hlo_module->name();
   const std::string fingerprint = hlo_module->GetFingerprint128();
+  const int num_outputs = hlo_module->result_shape().IsTuple()
+                              ? hlo_module->result_shape().tuple_shapes_size()
+                              : 1;
   auto unique_module_group =
       std::make_unique<HloModuleGroup>(std::move(hlo_module));
   TF_ASSIGN_OR_RETURN(
       std::vector<std::unique_ptr<AotCompilationResult>> aot_results,
       gpu_compiler->CompileAheadOfTime(std::move(unique_module_group),
                                        aot_options));
+  std::vector<std::vector<absl::string_view>> output_memory_kinds(1);
+  output_memory_kinds[0].resize(num_outputs,
+                                StreamExecutorGpuHbmMemorySpace::kKind);
   return std::make_unique<StreamExecutorExecutable>(
       std::move(input_options), std::move(aot_results), num_replicas,
-      num_partitions, name, fingerprint,
-      /*default_memory_kind=*/StreamExecutorGpuHbmMemorySpace::kKind,
-      /*local_executables=*/std::nullopt);
+      num_partitions, name, fingerprint, std::move(output_memory_kinds));
 }
 
 absl::StatusOr<std::unique_ptr<PjRtExecutable>>
