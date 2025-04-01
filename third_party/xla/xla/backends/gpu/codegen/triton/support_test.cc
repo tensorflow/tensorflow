@@ -230,14 +230,36 @@ class TritonSupportTest : public TritonSupportTestBase {
                       std::vector<int64_t> output_tile_sizes,
                       se::GpuComputeCapability cc,
                       ExpectedFailMode failure_mode = ExpectedFailMode::kFail) {
+    // output_tile_sizes is embedded in a vector of 1 element to share the logic
+    // with the multiple output tiles case.
+    RunSupportTestMultipleOutputTiles(
+        std::move(ti), {std::move(output_tile_sizes)}, cc, failure_mode);
+  }
+
+  void RunSupportTestMultipleOutputTiles(
+      TestedInstruction ti, std::vector<std::vector<int64_t>> output_tile_sizes,
+      se::GpuComputeCapability cc,
+      ExpectedFailMode failure_mode = ExpectedFailMode::kFail) {
     // Ensure that the caller provided the right number of output tile sizes.
     // If that is not the case, codegen could fail for that reason---which
-    // wouldn't give any valuable signal here.  We skip the check for non-array
-    // output shapes, since we have no meaningful way of providing tile sizes
-    // for them at the moment.
+    // wouldn't give any valuable signal here. The check is only done for array
+    // and tuple shapes (only one layer of nesting is supported for tuples).
     if (ti.Instruction().shape().IsArray()) {
+      ASSERT_EQ(output_tile_sizes.size(), 1);
+      ASSERT_EQ(output_tile_sizes[0].size(),
+                ti.Instruction().shape().dimensions().size());
+    } else if (ti.Instruction().shape().IsTuple()) {
       ASSERT_EQ(output_tile_sizes.size(),
-                ti.Instruction().shape().dimensions_size());
+                ti.Instruction().shape().tuple_shapes_size());
+      for (int64_t i = 0; i < output_tile_sizes.size(); ++i) {
+        const auto& shape = ti.Instruction().shape().tuple_shapes(i);
+        if (shape.IsTuple()) {
+          continue;  // No validation for nested tuples, as there is no way to
+                     // specify output tile sizes for them.
+        }
+        ASSERT_TRUE(shape.IsArray());
+        ASSERT_EQ(shape.dimensions().size(), output_tile_sizes[i].size());
+      }
     }
     BlockLevelParameters block_level_parameters =
         FromOutputTileSizes(std::move(output_tile_sizes));
@@ -726,16 +748,16 @@ add {
 ENTRY triton_computation {
   parameter_0 = $$0[125,127] parameter(0)
   constant_0 = $$0[] constant($0)
-  tuple = ($$0[125], $$0[125]) reduce(
+  ROOT reduce = ($$0[125], $$0[125]) reduce(
     parameter_0, parameter_0, constant_0, constant_0),
       dimensions={1}, to_apply=add
-  ROOT reduce = $$0[125] get-tuple-element(tuple), index=0
 })",
                                                         init_value(data_type));
   TF_ASSERT_OK_AND_ASSIGN(
       TestedInstruction ti,
       ParseTemplateAndGetInstruction(kHloTestTemplate, data_type, opcode));
-  RunSupportTest(std::move(ti), /*output_tile_sizes=*/{1}, cc);
+  RunSupportTestMultipleOutputTiles(std::move(ti),
+                                    /*output_tile_sizes=*/{{1}, {1}}, cc);
 }
 
 TEST_F(ReduceTest, ReduceWithNonConstReduceValueIsSupportedWithTriton) {
@@ -1025,7 +1047,8 @@ ENTRY triton_computation {
       TestedInstruction ti,
       ParseTemplateAndGetInstruction(kHloTestTemplate, data_type,
                                      HloOpcode::kAllGatherStart));
-  RunSupportTest(std::move(ti), /*output_tile_sizes=*/{2, 2}, cc);
+  RunSupportTestMultipleOutputTiles(std::move(ti),
+                                    /*output_tile_sizes=*/{{2, 2}, {2, 2}}, cc);
 }
 
 TEST_P(CollectiveTest, UnsupportedAllGatherDoneFailsGracefullyWithTriton) {
@@ -1142,7 +1165,8 @@ ENTRY triton_computation {
       ParseTemplateAndGetInstruction(kHloTestTemplate, data_type,
                                      HloOpcode::kCollectivePermuteDone));
 
-  RunSupportTest(std::move(ti_start), /*output_tile_sizes=*/{2, 2}, cc);
+  RunSupportTestMultipleOutputTiles(std::move(ti_start),
+                                    /*output_tile_sizes=*/{{2, 2}, {2, 2}}, cc);
   RunSupportTest(std::move(ti_done), /*output_tile_sizes=*/{2, 2}, cc);
 }
 
@@ -1197,8 +1221,10 @@ ENTRY triton_computation {
       TestedInstruction ti_done,
       ParseTemplateAndGetInstruction(kHloTestTemplate, data_type,
                                      HloOpcode::kAsyncDone));
-  RunSupportTest(std::move(ti_start), /*output_tile_sizes=*/{1}, cc);
-  RunSupportTest(std::move(ti_update), /*output_tile_sizes=*/{1}, cc);
+  RunSupportTestMultipleOutputTiles(std::move(ti_start),
+                                    /*output_tile_sizes=*/{{1}, {1}}, cc);
+  RunSupportTestMultipleOutputTiles(std::move(ti_update),
+                                    /*output_tile_sizes=*/{{1}, {1}}, cc);
   RunSupportTest(std::move(ti_done), /*output_tile_sizes=*/{1}, cc);
 }
 
@@ -1436,7 +1462,8 @@ ENTRY triton_computation {
   TF_ASSERT_OK_AND_ASSIGN(
       TestedInstruction ti,
       ParseTemplateAndGetInstruction(kHloTestTemplate, data_type, opcode));
-  RunSupportTest(std::move(ti), /*output_tile_sizes=*/{16, 32}, cc);
+  RunSupportTestMultipleOutputTiles(std::move(ti),
+                                    /*output_tile_sizes=*/{{1}, {16, 32}}, cc);
 }
 
 INSTANTIATE_TEST_SUITE_P(
@@ -1608,8 +1635,6 @@ INSTANTIATE_TEST_SUITE_P(
 
 using BatchNormTrainingTest = TritonSupportTestWithTypeAndOpcodeAndDeviceParam;
 
-// TODO: b/363981282 - Get rid of get-tuple-element by adding multiple output
-// tikes support to RunSupportTest.
 TEST_P(BatchNormTrainingTest, BatchNormTraining) {
   auto [data_type, opcode, cc] = GetParam();
   const std::string kHloTestTemplate = R"(
@@ -1617,14 +1642,14 @@ ENTRY triton_computation {
   operand = $0[4,8,16,32] parameter(0)
   scale = $0[32] parameter(1)
   offset = $0[32] parameter(2)
-  bn_train = ($0[4,8,16,32], $0[32], $0[32]) batch-norm-training(operand, scale, offset),
+  ROOT bn_train = ($0[4,8,16,32], $0[32], $0[32]) batch-norm-training(operand, scale, offset),
     epsilon=0.001, feature_index=3
-  ROOT gte = $0[4,8,16,32] get-tuple-element(bn_train), index=0
 })";
   TF_ASSERT_OK_AND_ASSIGN(
       TestedInstruction ti,
       ParseTemplateAndGetInstruction(kHloTestTemplate, data_type, opcode));
-  RunSupportTest(std::move(ti), /*output_tile_sizes=*/{1, 1, 4, 8}, cc);
+  RunSupportTestMultipleOutputTiles(
+      std::move(ti), /*output_tile_sizes=*/{{1, 1, 4, 8}, {1}, {1}}, cc);
 }
 
 INSTANTIATE_TEST_SUITE_P(
@@ -1634,8 +1659,6 @@ INSTANTIATE_TEST_SUITE_P(
 
 using BatchNormGradTest = TritonSupportTestWithTypeAndOpcodeAndDeviceParam;
 
-// TODO: b/363981282 - Get rid of get-tuple-element by adding multiple output
-// tikes support to RunSupportTest.
 TEST_P(BatchNormGradTest, BatchNormGrad) {
   auto [data_type, opcode, cc] = GetParam();
   const std::string kHloTestTemplate = R"(
@@ -1645,14 +1668,14 @@ ENTRY triton_computation {
   mean = $0[32] parameter(2)
   variance = $0[32] parameter(3)
   grad_output = $0[4,8,16,32] parameter(4)
-  bn_grad = ($0[4,8,16,32], $0[32], $0[32]) batch-norm-grad(operand, scale, mean, variance, grad_output),
+  ROOT bn_grad = ($0[4,8,16,32], $0[32], $0[32]) batch-norm-grad(operand, scale, mean, variance, grad_output),
     epsilon=0.001, feature_index=3
-  ROOT gte = $0[4,8,16,32] get-tuple-element(bn_grad), index=0
 })";
   TF_ASSERT_OK_AND_ASSIGN(
       TestedInstruction ti,
       ParseTemplateAndGetInstruction(kHloTestTemplate, data_type, opcode));
-  RunSupportTest(std::move(ti), /*output_tile_sizes=*/{1, 1, 4, 8}, cc);
+  RunSupportTestMultipleOutputTiles(
+      std::move(ti), /*output_tile_sizes=*/{{1, 1, 4, 8}, {1}, {1}}, cc);
 }
 
 INSTANTIATE_TEST_SUITE_P(
