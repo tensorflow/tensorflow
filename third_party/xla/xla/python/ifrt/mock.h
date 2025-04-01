@@ -26,6 +26,7 @@ limitations under the License.
 
 #include "absl/base/nullability.h"
 #include "absl/hash/hash.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
@@ -35,6 +36,7 @@ limitations under the License.
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/pjrt_layout.h"
 #include "xla/python/ifrt/array.h"
+#include "xla/python/ifrt/array_spec.h"
 #include "xla/python/ifrt/attribute_map.h"
 #include "xla/python/ifrt/basic_device_list.h"
 #include "xla/python/ifrt/client.h"
@@ -126,6 +128,12 @@ class MockClient : public llvm::RTTIExtends<MockClient, Client> {
               MakeArraysFromHostBufferShards,
               (absl::Span<MakeArraysFromHostBufferShardsSpec> specs,
                HostBufferSemantics semantics,
+               tsl::RCReference<UserContext> user_context),
+              (final));
+  MOCK_METHOD(absl::StatusOr<std::vector<tsl::RCReference<Array>>>,
+              MakeErrorArrays,
+              (const absl::Status& error,
+               absl::Span<const ArraySpec> array_specs,
                tsl::RCReference<UserContext> user_context),
               (final));
   MOCK_METHOD(absl::StatusOr<tsl::RCReference<Array>>,

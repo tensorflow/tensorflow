@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/time/time.h"
 #include "absl/types/span.h"
 #include "xla/python/ifrt/array.h"
+#include "xla/python/ifrt/array_spec.h"
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/device_list.h"
@@ -49,8 +50,10 @@ namespace xla {
 namespace ifrt {
 namespace {
 
+using ::testing::_;
 using ::testing::ElementsAre;
 using ::testing::ElementsAreArray;
+using ::testing::HasSubstr;
 using ::testing::SizeIs;
 using ::tsl::testing::StatusIs;
 
@@ -432,6 +435,34 @@ TEST(ArrayImplTest, MakeArraysFromHostBufferShardsAndCopyToHostBuffer) {
       }
     }
   }
+}
+
+TEST(ArrayImplTest, MakeErrorArrays) {
+  TF_ASSERT_OK_AND_ASSIGN(auto client, test_util::GetClient());
+  xla::ifrt::DeviceListRef device_list =
+      client->MakeDeviceList(client->addressable_devices());
+
+  Shape shape({2, 2});
+  ArraySpec array_spec = {
+      /*dtype=*/xla::ifrt::DType(xla::ifrt::DType::kS8),
+      /*shape=*/shape,
+      /*sharding=*/
+      xla::ifrt::ConcreteEvenSharding::Create(
+          device_list, xla::ifrt::MemoryKind(), shape, /*shard_shape=*/shape,
+          /*is_fully_replicated=*/true),
+  };
+
+  const absl::Status error = absl::InternalError("injected error");
+  TF_ASSERT_OK_AND_ASSIGN(
+      const std::vector<tsl::RCReference<xla::ifrt::Array>> arrays,
+      client->MakeErrorArrays(error, {array_spec, array_spec},
+                              client->CreateUserContext()));
+  ASSERT_EQ(arrays.size(), 2);
+
+  EXPECT_THAT(arrays[0]->GetReadyFuture().Await(),
+              StatusIs(_, HasSubstr("injected error")));
+  EXPECT_THAT(arrays[1]->GetReadyFuture().Await(),
+              StatusIs(_, HasSubstr("injected error")));
 }
 
 TEST(ArrayImplTest, AssembleArray) {

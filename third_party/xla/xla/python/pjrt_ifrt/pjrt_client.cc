@@ -56,6 +56,7 @@ limitations under the License.
 #include "xla/pjrt/pjrt_future.h"
 #include "xla/pjrt/pjrt_layout.h"
 #include "xla/python/ifrt/array.h"
+#include "xla/python/ifrt/array_spec.h"
 #include "xla/python/ifrt/attribute_map.h"
 #include "xla/python/ifrt/basic_device_list.h"
 #include "xla/python/ifrt/client.h"
@@ -82,6 +83,8 @@ limitations under the License.
 #include "xla/python/pjrt_ifrt/pjrt_topology.h"
 #include "xla/python/pjrt_ifrt/pjrt_tuple.h"
 #include "xla/python/pjrt_ifrt/xla_sharding.h"
+#include "xla/shape.h"
+#include "xla/shape_util.h"
 #include "xla/status_macros.h"
 #include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/platform/errors.h"
@@ -981,6 +984,69 @@ PjRtClient::MakeArraysFromHostBufferShards(
     HostBufferSemantics semantics, tsl::RCReference<UserContext> user_context) {
   return ClientMakeArraysFromHostBufferShards(this, specs, semantics,
                                               std::move(user_context));
+}
+
+absl::StatusOr<std::vector<tsl::RCReference<Array>>>
+PjRtClient::MakeErrorArrays(const absl::Status& error,
+                            absl::Span<const ArraySpec> array_specs,
+                            tsl::RCReference<UserContext> user_context) {
+  DCHECK(this);
+  std::vector<tsl::RCReference<Array>> arrays;
+  arrays.reserve(array_specs.size());
+  for (const auto& array_spec : array_specs) {
+    if (array_spec.dtype.kind() == DType::kString) {
+      TF_ASSIGN_OR_RETURN(
+          arrays.emplace_back(),
+          BasicStringArray::Create(this, array_spec.shape, array_spec.sharding,
+                                   Future<BasicStringArray::Buffers>(error),
+                                   /*on_done_with_buffer=*/[]() {}));
+      continue;
+    }
+
+    TF_ASSIGN_OR_RETURN(auto primitive_type, ToPrimitiveType(array_spec.dtype));
+    TF_ASSIGN_OR_RETURN(Shape shard_shape,
+                        array_spec.sharding->GetShardShape(array_spec.shape));
+    xla::Shape xla_shape =
+        xla::ShapeUtil::MakeShape(primitive_type, shard_shape.dims());
+
+    PjRtArray::PjRtBuffers buffers;
+    buffers.reserve(array_spec.sharding->devices()->size());
+    for (xla::ifrt::Device* const device :
+         array_spec.sharding->devices()->devices()) {
+      std::unique_ptr<PjRtBuffer> buffer;
+      // Find `PjRtMemorySpace` that is associated with the sharding's device
+      // and matches the sharding's memory_kind.
+      Memory* memory = nullptr;
+      for (Memory* ms : device->Memories()) {
+        if (ms->Kind() == array_spec.sharding->memory_kind()) {
+          memory = ms;
+          break;
+        }
+      }
+      if (memory == nullptr) {
+        return absl::InvalidArgumentError(absl::StrFormat(
+            "Invalid memory kind: %s; available memory kinds: %s",
+            *array_spec.sharding->memory_kind().memory_kind(),
+            absl::StrJoin(
+                array_spec.sharding->devices()->devices().front()->Memories(),
+                ", ", [](std::string* out, Memory* ms) {
+                  absl::StrAppend(out, *ms->Kind().memory_kind());
+                })));
+      }
+      TF_ASSIGN_OR_RETURN(
+          buffers.emplace_back(),
+          pjrt_client_->CreateErrorBuffer(
+              error, xla_shape,
+              tensorflow::down_cast<PjRtMemory*>(memory)->pjrt_memory()));
+    }
+    auto layout = buffers.front()->layout();
+    TF_ASSIGN_OR_RETURN(
+        arrays.emplace_back(),
+        PjRtArray::Create(this, array_spec.dtype, std::move(shard_shape),
+                          array_spec.sharding, std::move(buffers),
+                          std::move(layout)));
+  }
+  return arrays;
 }
 
 absl::StatusOr<tsl::RCReference<Array>>

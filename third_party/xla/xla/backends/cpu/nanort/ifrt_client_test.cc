@@ -239,10 +239,12 @@ BENCHMARK(BM_IfRtAddManyScalars);
 }  // namespace xla::cpu
 
 int main(int argc, char** argv) {
-  // This test expects copies to multiple devices to fail, but we only have one
-  // device and it doesn't seem worth pretending that we have more.
   static constexpr absl::string_view kFilter =
-      "-ArrayImplTest.CopyMixedSourceDevices";
+      // This test expects copies to multiple devices to fail, but we only have
+      // one device and it doesn't seem worth pretending that we have more.
+      "-ArrayImplTest.CopyMixedSourceDevices:"
+      // `MakeErrorArrays` is not supported in NanoIfrtClient.
+      "ArrayImplTest.MakeErrorArrays";
   xla::ifrt::test_util::SetTestFilterIfNotUserSpecified(kFilter);
 
   for (int i = 1; i < argc; i++) {

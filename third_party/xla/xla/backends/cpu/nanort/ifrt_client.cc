@@ -57,6 +57,7 @@ limitations under the License.
 #include "xla/pjrt/pjrt_layout.h"
 #include "xla/pjrt/utils.h"
 #include "xla/python/ifrt/array.h"
+#include "xla/python/ifrt/array_spec.h"
 #include "xla/python/ifrt/attribute_map.h"
 #include "xla/python/ifrt/basic_device_list.h"
 #include "xla/python/ifrt/client.h"
@@ -1270,6 +1271,15 @@ NanoIfrtClient::MakeArraysFromHostBufferShards(
     tsl::RCReference<ifrt::UserContext> user_context) {
   return ifrt::ClientMakeArraysFromHostBufferShards(this, specs, semantics,
                                                     std::move(user_context));
+}
+
+absl::StatusOr<std::vector<tsl::RCReference<xla::ifrt::Array>>>
+NanoIfrtClient::MakeErrorArrays(
+    const absl::Status& error,
+    absl::Span<const xla::ifrt::ArraySpec> array_specs,
+    tsl::RCReference<xla::ifrt::UserContext> user_context) {
+  return absl::UnimplementedError(
+      "NanoIfrtClient does not support MakeErrorArrays.");
 }
 
 absl::StatusOr<tsl::RCReference<ifrt::Array>>

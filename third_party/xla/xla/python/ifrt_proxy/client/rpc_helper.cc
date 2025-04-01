@@ -323,6 +323,7 @@ RPC(CheckFuture, check_future);
 RPC(CheckValueReady, check_value_ready);
 RPC(MakeArrayFromHostBuffer, make_array_from_host_buffer);
 RPC(MakeArraysFromHostBufferShards, make_arrays_from_host_buffer_shards);
+RPC(MakeErrorArrays, make_error_arrays);
 RPC(AssembleArrayFromSingleDeviceArrays,
     assemble_array_from_single_device_arrays);
 RPC(RemapArrays, remap_arrays);

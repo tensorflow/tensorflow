@@ -23,10 +23,12 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include "absl/base/nullability.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "xla/pjrt/pjrt_layout.h"
 #include "xla/python/ifrt/array.h"
+#include "xla/python/ifrt/array_spec.h"
 #include "xla/python/ifrt/attribute_map.h"
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/device.h"
@@ -129,6 +131,13 @@ MockClient::MockClient(std::unique_ptr<xla::ifrt::Client> delegated)
             return delegated_->MakeArraysFromHostBufferShards(
                 specs, semantics, std::move(user_context));
           });
+  ON_CALL(*this, MakeErrorArrays)
+      .WillByDefault([this](const absl::Status& error,
+                            absl::Span<const ArraySpec> array_specs,
+                            tsl::RCReference<UserContext> user_context) {
+        return delegated_->MakeErrorArrays(error, array_specs,
+                                           std::move(user_context));
+      });
   ON_CALL(*this, AssembleArrayFromSingleDeviceArrays(_, _, _, _, _, _))
       .WillByDefault(
           [this](DType dtype, Shape shape,

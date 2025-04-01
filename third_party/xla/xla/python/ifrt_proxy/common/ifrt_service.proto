@@ -51,6 +51,7 @@ message IfrtRequest {
     MakeArrayFromHostBufferRequest make_array_from_host_buffer_request = 4;
     MakeArraysFromHostBufferShardsRequest
         make_arrays_from_host_buffer_shards_request = 25;
+    MakeErrorArraysRequest make_error_arrays_request = 26;
     AssembleArrayFromSingleDeviceArraysRequest
         assemble_array_from_single_device_arrays_request = 5;
     RemapArraysRequest remap_arrays_request = 23;
@@ -101,6 +102,7 @@ message IfrtResponse {
     MakeArrayFromHostBufferResponse make_array_from_host_buffer_response = 4;
     MakeArraysFromHostBufferShardsResponse
         make_arrays_from_host_buffer_shards_response = 25;
+    MakeErrorArraysResponse make_error_arrays_response = 26;
     AssembleArrayFromSingleDeviceArraysResponse
         assemble_array_from_single_device_arrays_response = 5;
     RemapArraysResponse remap_arrays_response = 23;
@@ -301,6 +303,17 @@ message MakeArraysFromHostBufferShardsRequest {
   repeated fixed64 array_handles = 2;
 }
 message MakeArraysFromHostBufferShardsResponse {
+  repeated fixed64 array_handles = 1;
+}
+
+message MakeErrorArraysRequest {
+  tensorflow.StatusProto error = 1;
+  repeated xla.ifrt.ArraySpecProto array_specs = 2;
+  // If array_handles is provided, the server will either respond with the same
+  // handles in `MakeErrorArraysResponse` or return an error.
+  repeated fixed64 array_handles = 3;
+}
+message MakeErrorArraysResponse {
   repeated fixed64 array_handles = 1;
 }
 

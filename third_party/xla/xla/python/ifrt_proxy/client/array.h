@@ -34,6 +34,7 @@
 #include "llvm/Support/ExtensibleRTTI.h"
 #include "xla/pjrt/pjrt_layout.h"
 #include "xla/python/ifrt/array.h"
+#include "xla/python/ifrt/array_spec.h"
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/dtype.h"
 #include "xla/python/ifrt/future.h"
@@ -41,6 +42,7 @@
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
 #include "xla/python/ifrt/tuple.h"
+#include "xla/python/ifrt/user_context.h"
 #include "xla/python/ifrt/value.h"
 #include "xla/python/ifrt_proxy/client/rpc_helper.h"
 #include "xla/python/ifrt_proxy/common/types.h"
@@ -74,6 +76,13 @@ class Array final : public llvm::RTTIExtends<Array, xla::ifrt::Array> {
       absl::Span<xla::ifrt::Client::MakeArraysFromHostBufferShardsSpec> specs,
       xla::ifrt::Client::HostBufferSemantics semantics,
       tsl::RCReference<xla::ifrt::UserContext> user_context);
+
+  static absl::StatusOr<std::vector<tsl::RCReference<xla::ifrt::Array>>>
+  MakeErrorArrays(xla::ifrt::Client* client,
+                  std::shared_ptr<RpcHelper> rpc_helper,
+                  const absl::Status& error,
+                  absl::Span<const ArraySpec> array_specs,
+                  tsl::RCReference<UserContext> user_context);
 
   // `Array::AssembleArrayFromSingleDeviceArrays()` implements
   // `Client::AssembleArrayFromSingleDeviceArrays()`.

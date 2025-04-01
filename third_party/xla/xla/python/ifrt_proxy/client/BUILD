@@ -250,6 +250,7 @@ cc_library(
         "//xla/python/ifrt_proxy/common:versions",
         "//xla/tsl/concurrency:ref_count",
         "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:status_to_from_proto",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/cleanup",

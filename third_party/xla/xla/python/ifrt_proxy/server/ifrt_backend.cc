@@ -528,6 +528,11 @@ Future<BackendInterface::Response> IfrtBackend::ProcessInternal(
                   &array_store_);
       return Future<Response>(HandleMakeArraysFromHostBufferShardsRequest(
           *asr, std::move(request)));
+    case IfrtRequest::RequestCase::kMakeErrorArraysRequest:
+      asr.emplace(request->make_error_arrays_request().array_handles(),
+                  &array_store_);
+      return Future<Response>(
+          HandleMakeErrorArraysRequest(*asr, std::move(request)));
     case IfrtRequest::RequestCase::kAssembleArrayFromSingleDeviceArraysRequest:
       asr.emplace(request->assemble_array_from_single_device_arrays_request()
                       .result_handle(),
@@ -941,6 +946,36 @@ IfrtBackend::HandleMakeArraysFromHostBufferShardsRequest(
   make_arrays_resp->mutable_array_handles()->Reserve(arrays.size());
   for (uint64_t handle : asr.Fill(arrays)) {
     make_arrays_resp->add_array_handles(handle);
+  }
+
+  return response;
+}
+
+absl::StatusOr<BackendInterface::Response>
+IfrtBackend::HandleMakeErrorArraysRequest(
+    ArrayStore::Reservation& asr, std::unique_ptr<IfrtRequest> request) {
+  CHECK(request->has_make_error_arrays_request());
+  auto* make_array_request = request->mutable_make_error_arrays_request();
+
+  const absl::Status error = tsl::StatusFromProto(make_array_request->error());
+
+  std::vector<xla::ifrt::ArraySpec> array_specs;
+  array_specs.reserve(make_array_request->array_specs_size());
+  for (const auto& array_spec_proto : make_array_request->array_specs()) {
+    TF_ASSIGN_OR_RETURN(auto array_spec,
+                        ArraySpec::FromProto(client_.get(), array_spec_proto));
+    array_specs.push_back(std::move(array_spec));
+  }
+
+  TF_ASSIGN_OR_RETURN(std::vector<IfrtArrayRef> arrays,
+                      client_->MakeErrorArrays(error, array_specs,
+                                               client_->CreateUserContext()));
+
+  std::unique_ptr<IfrtResponse> response =
+      NewIfrtResponse(request->request_metadata().op_id());
+  auto* make_array_resp = response->mutable_make_error_arrays_response();
+  for (uint64_t handle : asr.Fill(arrays)) {
+    make_array_resp->add_array_handles(handle);
   }
 
   return response;
