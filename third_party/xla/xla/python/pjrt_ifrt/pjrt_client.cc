@@ -990,6 +990,9 @@ absl::StatusOr<std::vector<tsl::RCReference<Array>>>
 PjRtClient::MakeErrorArrays(const absl::Status& error,
                             absl::Span<const ArraySpec> array_specs,
                             tsl::RCReference<UserContext> user_context) {
+  if (error.ok()) {
+    return absl::InvalidArgumentError("Error status must not be OK");
+  }
   DCHECK(this);
   std::vector<tsl::RCReference<Array>> arrays;
   arrays.reserve(array_specs.size());
