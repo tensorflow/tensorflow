@@ -27,6 +27,7 @@ limitations under the License.
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/IR/Builders.h"
+#include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinTypeInterfaces.h"
 #include "mlir/IR/Types.h"
 #include "mlir/IR/Value.h"
@@ -100,6 +101,9 @@ llvm::SmallVector<int64_t> GetPaddedTileSizes(
 
 // XLA -> Triton type conversions.
 absl::StatusOr<mlir::Type> TritonType(EmitterLocOpBuilder& b, PrimitiveType t);
+
+// Triton type -> XLA type conversions.
+absl::StatusOr<PrimitiveType> GetPrimitiveType(mlir::Type t);
 
 mlir::Type StorageType(EmitterLocOpBuilder& b, mlir::Type t);
 

@@ -30,7 +30,6 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"
 #include "mlir/Support/LogicalResult.h"
 #include "xla/backends/gpu/codegen/triton/ir/triton_xla_dialect.cc.inc"
-#include "triton/Dialect/TritonGPU/IR/Types.h"
 
 using mlir::LogicalResult;
 using mlir::RankedTensorType;
@@ -46,34 +45,23 @@ void TileOp::getAsmResultNames(function_ref<void(Value, StringRef)> setNameFn) {
   setNameFn(getResult(), "tiled_tensor");
 }
 
-template <typename DenseIntArrayAttrType>
-mlir::ParseResult parseDenseIntArrayAttr(mlir::AsmParser& parser,
-                                         DenseIntArrayAttrType& array) {
-  array = mlir::dyn_cast_or_null<DenseIntArrayAttrType>(
-      DenseIntArrayAttrType::parse(parser, mlir::Type{}));
-  if (!array) return mlir::failure();
-  return mlir::success();
-}
-
 ParseResult TileOp::parse(OpAsmParser& parser, OperationState& result) {
   OpAsmParser::UnresolvedOperand src;
   TiledTensorType tiled_tensor_type;
   SmallVector<OpAsmParser::UnresolvedOperand, 4> offsets, sizes, strides;
   if (parser.parseOperand(src) ||
       parser.parseOperandList(offsets, OpAsmParser::Delimiter::Square) ||
-      parser.parseOperandList(sizes, OpAsmParser::Delimiter::Square) ||
       parser.parseOperandList(strides, OpAsmParser::Delimiter::Square) ||
       parser.parseOptionalAttrDict(result.attributes) ||
       parser.parseColonType(tiled_tensor_type)) {
     return failure();
   }
-  auto offset_type = parser.getBuilder().getI32Type();
-  auto size_and_stride_type = parser.getBuilder().getI64Type();
+
+  auto index_type = parser.getBuilder().getIndexType();
   if (parser.resolveOperand(src, tiled_tensor_type.getOriginalType(),
                             result.operands) ||
-      parser.resolveOperands(offsets, offset_type, result.operands) ||
-      parser.resolveOperands(sizes, size_and_stride_type, result.operands) ||
-      parser.resolveOperands(strides, size_and_stride_type, result.operands)) {
+      parser.resolveOperands(offsets, index_type, result.operands) ||
+      parser.resolveOperands(strides, index_type, result.operands)) {
     return failure();
   }
   result.addTypes(tiled_tensor_type);
@@ -85,10 +73,10 @@ void TileOp::print(OpAsmPrinter& p) {
   p << '[';
   llvm::interleaveComma(getOffsets(), p);
   p << "][";
-  llvm::interleaveComma(getSizes(), p);
-  p << "][";
   llvm::interleaveComma(getStrides(), p);
-  p << "] : " << getType();
+  p << "] {layout = array<i64:";
+  llvm::interleaveComma(getLayout(), p);
+  p << ">} : " << getType();
 }
 
 LogicalResult TileOp::verify() {
@@ -96,11 +84,9 @@ LogicalResult TileOp::verify() {
     return emitError("cannot tile a 0-d tensor");
   }
   auto tensor_rank = getTensor().getType().getRank();
-  if (tensor_rank != getOffsets().size() || tensor_rank != getSizes().size() ||
-      tensor_rank != getStrides().size())
+  if (tensor_rank != getOffsets().size() || tensor_rank != getStrides().size())
     return emitError(
-        "mismatch between tensor rank and one or more of "
-        "offsets/sizes/strides");
+        "mismatch between tensor rank and one or more of offsets and strides");
   return success();
 }
 
@@ -129,7 +115,7 @@ ParseResult ExtractOp::parse(OpAsmParser& parser, OperationState& result) {
   auto tiled_tensor_type = TiledTensorType::get(
       parser.getContext(), mlir::cast<RankedTensorType>(tile_type),
       mlir::cast<RankedTensorType>(original_type));
-  auto offset_type = builder.getI32Type();
+  auto offset_type = builder.getIndexType();
   if (parser.resolveOperand(tiled_tensor, tiled_tensor_type, result.operands) ||
       parser.resolveOperands(offsets, offset_type, result.operands)) {
     return failure();
@@ -185,7 +171,7 @@ ParseResult InsertOp::parse(OpAsmParser& parser, OperationState& result) {
       parser.getContext(), mlir::cast<RankedTensorType>(tile_type),
       mlir::cast<RankedTensorType>(original_type));
 
-  auto offset_type = builder.getI32Type();
+  auto offset_type = builder.getIndexType();
   if (parser.resolveOperand(tiled_tensor, tiled_tensor_type, result.operands) ||
       parser.resolveOperands(offsets, offset_type, result.operands)) {
     return failure();
