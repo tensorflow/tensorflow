@@ -75,6 +75,20 @@ struct IsSafeCast<From*, To*>
                                        IsCvByteLike<To>::value ||
                                        std::is_same_v<From, To>> {};
 
+// If __restrict is a macro, we assume that the compiler doesn't support
+// the __restrict keyword (e.g. when the code is compiled for iOS). Otherwsie,
+// we make safe_reinterpret_cast ignore the __restrict qualifier.
+#ifndef __restrict  // If __restrict is not a macro.
+
+template <typename From, typename To>
+struct IsSafeCast<From*, To* __restrict> : IsSafeCast<From*, To*> {};
+template <typename From, typename To>
+struct IsSafeCast<From* __restrict, To*> : IsSafeCast<From*, To*> {};
+template <typename From, typename To>
+struct IsSafeCast<From* __restrict, To* __restrict> : IsSafeCast<From*, To*> {};
+
+#endif  // __restrict
+
 // It's safe to cast a pointer to/from std::uintptr_t.
 template <typename From>
 struct IsSafeCast<From*, std::uintptr_t> : std::true_type {};

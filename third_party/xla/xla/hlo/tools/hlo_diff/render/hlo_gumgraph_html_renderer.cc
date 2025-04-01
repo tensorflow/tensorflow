@@ -45,7 +45,7 @@ namespace {
 
 // Prints the CSS styles for the HTML output.
 std::string PrintCss() {
-  return R"(
+  return R"html(
     <style>
     .section {
       margin: 10px;
@@ -106,7 +106,7 @@ std::string PrintCss() {
       z-index: 1;
       top: 50%;
       transform: translateY(-50%);
-      left: 110%;
+      left: calc(100% + 10px);
       opacity: 0;
       transition: opacity 0.3s;
       white-space: pre;
@@ -127,19 +127,76 @@ std::string PrintCss() {
       visibility: visible;
       opacity: 1;
     }
+
+  .click-to-copy {
+    position: relative;
+    display: inline-block;
+    cursor: pointer;
+  }
     </style>
-  )";
+  )html";
+}
+
+// Prints javascript for the HTML output.
+std::string PrintJavascript() {
+  return R"html(
+  <script>
+  function CopyToClipboard(text) {
+    navigator.clipboard.writeText(text);
+    const tooltip = event.srcElement.querySelector('.tooltiptext');
+    tooltip.textContent = 'Copied to clipboard';
+    setTimeout(() => {
+      tooltip.textContent = 'Click to copy';
+    }, 2000);
+  }
+  </script>
+  )html";
+}
+
+// Escapes the string for html attribute.
+std::string EscapeStringForHtmlAttribute(absl::string_view str) {
+  std::string escaped_str;
+  for (char c : str) {
+    switch (c) {
+      case '&':
+        absl::StrAppend(&escaped_str, "&amp;");
+        break;
+      case '<':
+        absl::StrAppend(&escaped_str, "&lt;");
+        break;
+      case '>':
+        absl::StrAppend(&escaped_str, "&gt;");
+        break;
+      case '"':
+        absl::StrAppend(&escaped_str, "&quot;");
+        break;
+      case '\'':
+        absl::StrAppend(&escaped_str, "&#39;");
+        break;
+      default:
+        absl::StrAppend(&escaped_str, absl::string_view(&c, 1));
+        break;
+    }
+  }
+  return escaped_str;
 }
 
 // Prints the div html block.
 std::string PrintDiv(absl::string_view content, absl::string_view class_name) {
-  return absl::StrFormat("<div class=\"%s\">%s</div>", class_name, content);
+  return absl::StrFormat(R"html(<div class="%s">%s</div>)html", class_name,
+                         content);
 }
 
 // Prints the detail html block.
 std::string PrintDetails(absl::string_view summary, absl::string_view content) {
-  return absl::StrFormat(R"(<details><summary>%s</summary>%s</details>)",
-                         summary, PrintDiv(content, "content"));
+  return absl::StrFormat(
+      R"html(<details><summary>%s</summary>%s</details>)html", summary,
+      PrintDiv(content, "content"));
+}
+
+// Prints a link to the given url.
+std::string PrintLink(absl::string_view text, absl::string_view url) {
+  return absl::StrFormat("<a href=\"%s\" target=\"_blank\">%s</a>", url, text);
 }
 
 // Prints a html block with a header.
@@ -168,51 +225,82 @@ std::string PrintAttributesList(absl::Span<const std::string> items) {
                   "attributes-list");
 }
 
-// Prints a link to the given url.
-std::string PrintLink(absl::string_view text, absl::string_view url) {
-  return absl::StrFormat("<a href=\"%s\" target=\"_blank\">%s</a>", url, text);
-}
-
 // Prints a span with a tooltip.
 std::string PrintTooltip(absl::string_view text,
                          absl::string_view tooltip_text) {
   return absl::StrFormat(
-      R"(<span class="tooltip">%s<span class="tooltiptext">%s</span></span>)",
+      R"html(<span class="tooltip">%s<span class="tooltiptext">%s</span></span>)html",
       text, tooltip_text);
+}
+
+// Print click to copy button.
+std::string PrintClickToCopyButton(absl::string_view text,
+                                   absl::string_view content) {
+  return absl::StrFormat(
+      R"html(<span class="click-to-copy" onclick="CopyToClipboard(`%s`)">%s</span>)html",
+      EscapeStringForHtmlAttribute(content),
+      PrintTooltip(text, "Click to copy"));
 }
 
 /*** Summary logic ***/
 
-// Prints a link to the instruction in model explorer if url_generator is not
-// null, otherwise returns the text directly.
-std::string PrintInstructionLink(const HloInstruction* left_inst,
+// Prints the instruction name and click to copy button that copy the text
+// format.
+std::string PrintInstruction(const HloInstruction& inst) {
+  return absl::StrFormat("%s (%s)", inst.name(),
+                         PrintClickToCopyButton("text", inst.ToString()));
+}
+
+// Prints a pair of instructions. If url_generator is not null, a link to the
+// pair of instructions in model explorer will be printed.
+std::string PrintInstructionPair(const HloInstruction* left_inst,
                                  const HloInstruction* right_inst,
-                                 absl::string_view text,
                                  GraphUrlGenerator* url_generator) {
+  std::vector<std::string> instructions;
+  if (left_inst != nullptr) {
+    instructions.push_back(PrintInstruction(*left_inst));
+  }
+  if (right_inst != nullptr) {
+    instructions.push_back(PrintInstruction(*right_inst));
+  }
+  std::string text = absl::StrJoin(instructions, " ↔ ");
   if (url_generator == nullptr) {
-    return std::string(text);
+    return text;
   }
   std::string url = url_generator->Generate(left_inst, right_inst);
   if (url.empty()) {
-    return std::string(text);
+    return text;
   }
-  return PrintLink(text, url);
+  return absl::StrCat(text, " (", PrintLink("Model Explorer", url), ")");
 }
 
-// Prints a link to the computation in model explorer if url_generator is not
-// null, otherwise returns the text directly.
-std::string PrintComputationLink(const HloComputation* left_comp,
+// Prints computation name and click to copy button that copy the text format.
+std::string PrintComputation(const HloComputation& comp) {
+  return absl::StrFormat("%s (%s)", comp.name(),
+                         PrintClickToCopyButton("text", comp.ToString()));
+}
+
+// Prints a pair of computations. If url_generator is not null, a link to the
+// pair of computations in model explorer will be printed.
+std::string PrintComputationPair(const HloComputation* left_comp,
                                  const HloComputation* right_comp,
-                                 absl::string_view text,
                                  GraphUrlGenerator* url_generator) {
+  std::vector<std::string> computations;
+  if (left_comp != nullptr) {
+    computations.push_back(PrintComputation(*left_comp));
+  }
+  if (right_comp != nullptr) {
+    computations.push_back(PrintComputation(*right_comp));
+  }
+  std::string text = absl::StrJoin(computations, " ↔ ");
   if (url_generator == nullptr) {
-    return std::string(text);
+    return text;
   }
-  std::string maybe_url = url_generator->Generate(left_comp, right_comp);
-  if (maybe_url.empty()) {
-    return std::string(text);
+  std::string url = url_generator->Generate(left_comp, right_comp);
+  if (url.empty()) {
+    return text;
   }
-  return PrintLink(text, maybe_url);
+  return absl::StrCat(text, " (", PrintLink("Model Explorer", url), ")");
 }
 
 // The location of the instruction in the diff result.
@@ -227,13 +315,9 @@ std::string PrintInstructionsAsList(
   for (const HloInstruction* inst : instructions) {
     std::string link;
     if (location == InstructionLocation::kLeft) {
-      link = PrintInstructionLink(inst, /*right_inst=*/nullptr,
-                                  InstructionToString(inst, name_only),
-                                  url_generator);
+      link = PrintInstructionPair(inst, /*right_inst=*/nullptr, url_generator);
     } else {
-      link = PrintInstructionLink(/*left_inst=*/nullptr, inst,
-                                  InstructionToString(inst, name_only),
-                                  url_generator);
+      link = PrintInstructionPair(/*left_inst=*/nullptr, inst, url_generator);
     }
     instructions_list.push_back(link);
   }
@@ -375,12 +459,7 @@ std::string PrintChangedInstructions(
         GetChangedInstructionDiffTypes(*left_inst, *right_inst);
     return absl::StrFormat(
         "%s have changed: %s",
-        PrintInstructionLink(
-            left_inst, right_inst,
-            absl::StrFormat(
-                "%s and %s", InstructionToString(left_inst, /*name_only=*/true),
-                InstructionToString(right_inst, /*name_only=*/true)),
-            url_generator),
+        PrintInstructionPair(left_inst, right_inst, url_generator),
         absl::StrJoin(
             diff_types, ", ",
             [&left_inst, &right_inst](std::string* out, const auto& diff_type) {
@@ -408,12 +487,7 @@ std::string PrintUnchangedInstructions(
     GraphUrlGenerator* url_generator) {
   auto simple_printer = [&url_generator](const HloInstruction* left_inst,
                                          const HloInstruction* right_inst) {
-    return PrintInstructionLink(
-        left_inst, right_inst,
-        absl::StrFormat("%s and %s",
-                        InstructionToString(left_inst, /*name_only=*/true),
-                        InstructionToString(right_inst, /*name_only=*/true)),
-        url_generator);
+    return PrintInstructionPair(left_inst, right_inst, url_generator);
   };
   return PrintInstructionPairsByOpcode(instructions, opcodes_to_ignore,
                                        simple_printer);
@@ -432,11 +506,10 @@ std::string PrintUnmatchedMetricsDiff(
   std::sort(sorted_metrics_diff.begin(), sorted_metrics_diff.end());
   std::vector<std::string> metrics_diff_list(sorted_metrics_diff.size());
   for (const auto& [inst, metrics_diff] : sorted_metrics_diff) {
-    metrics_diff_list.push_back(
-        absl::StrFormat("%s: %.2f (us)",
-                        PrintInstructionLink(inst, /*right_inst=*/nullptr,
-                                             inst->name(), url_generator),
-                        metrics_diff / 1e6));
+    metrics_diff_list.push_back(absl::StrFormat(
+        "%s: %.2f (us)",
+        PrintInstructionPair(inst, /*right_inst=*/nullptr, url_generator),
+        metrics_diff / 1e6));
   }
   return PrintList(metrics_diff_list);
 }
@@ -464,10 +537,7 @@ std::string PrintMatchedMetricsDiff(
     const auto& [left_inst, right_inst] = inst_pair;
     metrics_diff_list.push_back(absl::StrFormat(
         "%s: %.2f (us)",
-        PrintInstructionLink(
-            left_inst, right_inst,
-            absl::StrFormat("%s and %s", left_inst->name(), right_inst->name()),
-            url_generator),
+        PrintInstructionPair(left_inst, right_inst, url_generator),
         metrics_diff / 1e6));
   }
   return PrintList(metrics_diff_list);
@@ -519,11 +589,8 @@ std::string PrintRepetitiveComputationGroups(const DiffSummary& diff_summary,
           computation_group.left_computations[0];
       const HloComputation* right_computation =
           computation_group.right_computations[0];
-      computation_pair_list.push_back(PrintComputationLink(
-          left_computation, right_computation,
-          absl::StrFormat("%s and %s", left_computation->name(),
-                          right_computation->name()),
-          url_generator));
+      computation_pair_list.push_back(PrintComputationPair(
+          left_computation, right_computation, url_generator));
     }
     absl::StrAppend(
         &computation_group_list,
@@ -550,7 +617,7 @@ void RenderHtml(const DiffResult& diff_result, const DiffSummary& diff_summary,
                 GetOpMetricFn right_op_metrics, std::ostringstream& out) {
   const absl::flat_hash_set<HloOpcode> ignored_opcodes(kIgnoredOpcodes.begin(),
                                                        kIgnoredOpcodes.end());
-  out << PrintCss();
+  out << PrintCss() << PrintJavascript();
 
   // Print full diff results
   out << PrintSectionWithHeader(
