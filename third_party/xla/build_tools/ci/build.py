@@ -137,6 +137,7 @@ class Build:
   _builds: ClassVar[Dict[BuildType, "Build"]] = {}
 
   type_: BuildType
+  subcommand: str = "test"
   repo: str
   target_patterns: Tuple[str, ...]
   configs: Tuple[str, ...] = ()
@@ -145,9 +146,9 @@ class Build:
   action_env: Dict[str, Any] = dataclasses.field(default_factory=dict)
   test_env: Dict[str, Any] = dataclasses.field(default_factory=dict)
   repo_env: Dict[str, Any] = dataclasses.field(default_factory=dict)
+  override_repository: Dict[str, str] = dataclasses.field(default_factory=dict)
   options: Dict[str, Any] = dataclasses.field(default_factory=dict)
   extra_setup_commands: Tuple[List[str], ...] = ()
-  subcommand: str = "test"
 
   def __post_init__(self):
     # pylint: disable=protected-access
@@ -178,6 +179,10 @@ class Build:
     action_env = [f"--action_env={k}={v}" for k, v in self.action_env.items()]
     test_env = [f"--test_env={k}={v}" for k, v in self.test_env.items()]
     repo_env = [f"--repo_env={k}={v}" for k, v in self.repo_env.items()]
+    override_repository = [
+        f"--override_repository={k}={v}"
+        for k, v in self.override_repository.items()
+    ]
 
     tag_filters = [build_tag_filters, test_tag_filters]
     all_options = (
@@ -186,6 +191,7 @@ class Build:
         + action_env
         + test_env
         + repo_env
+        + override_repository
         + options
         + list(extra_options)
     )
@@ -463,10 +469,10 @@ Build(
         JAX_NUM_GENERATED_CASES=25,
         JAX_SKIP_SLOW_TESTS=1,
     ),
-    options=dict(
-        **_DEFAULT_BAZEL_OPTIONS,
-        override_repository=f"xla={_GITHUB_WORKSPACE}/openxla/xla",
+    override_repository=dict(
+        xla=f"{_GITHUB_WORKSPACE}/openxla/xla",
     ),
+    options=_DEFAULT_BAZEL_OPTIONS,
     repo_env={"HERMETIC_PYTHON_VERSION": "3.12"},
 )
 
@@ -482,10 +488,10 @@ Build(
         TF_CPP_MIN_LOG_LEVEL=0,
         JAX_EXCLUDE_TEST_TARGETS="PmapTest.testSizeOverflow",
     ),
-    options=dict(
-        **_DEFAULT_BAZEL_OPTIONS,
-        override_repository=f"xla={_GITHUB_WORKSPACE}/openxla/xla",
+    override_repository=dict(
+        xla=f"{_GITHUB_WORKSPACE}/openxla/xla",
     ),
+    options=_DEFAULT_BAZEL_OPTIONS,
     repo_env={"HERMETIC_PYTHON_VERSION": "3.10"},
 )
 
@@ -528,12 +534,33 @@ Build(
     options=dict(
         verbose_failures=True,
         test_output="errors",
-        override_repository=f"xla={_GITHUB_WORKSPACE}/openxla/xla",
         profile="profile.json.gz",
         test_lang_filters="cc,py",
         color="yes",
     ),
     repo_env={"USE_PYWRAP_RULES": "True"},
+    extra_setup_commands=(
+        # This is pretty devious - but we have to do some adhoc extra Copybara
+        # work here to get XLA into the shape TF expects. b/407638223
+        # pyformat:disable
+        [
+            "cp", "-r",
+            f"{_GITHUB_WORKSPACE}/openxla/xla",
+            f"{_GITHUB_WORKSPACE}/tensorflow/tensorflow/third_party",
+        ],
+        [
+            "find",
+            f"{_GITHUB_WORKSPACE}/tensorflow/tensorflow/third_party/xla",
+            "-type", "f",
+            "-exec", "sed", "-i", "s/@local_xla/@local_xla/g", "{}", "+",
+        ],
+        [
+            "find",
+            f"{_GITHUB_WORKSPACE}/tensorflow/tensorflow/third_party/xla",
+            "-type", "f",
+            "-exec", "sed", "-i", "s/@local_tsl/@local_tsl/g", "{}", "+",
+        ],
+    ),
 )
 
 Build(
@@ -557,12 +584,33 @@ Build(
     options=dict(
         verbose_failures=True,
         test_output="errors",
-        override_repository=f"xla={_GITHUB_WORKSPACE}/openxla/xla",
         profile="profile.json.gz",
         test_lang_filters="cc,py",
         color="yes",
     ),
     repo_env={"USE_PYWRAP_RULES": "True"},
+    extra_setup_commands=(
+        # This is pretty devious - but we have to do some adhoc extra Copybara
+        # work here to get XLA into the shape TF expects. b/407638223
+        # pyformat:disable
+        [
+            "cp", "-r",
+            f"{_GITHUB_WORKSPACE}/openxla/xla",
+            f"{_GITHUB_WORKSPACE}/tensorflow/tensorflow/third_party",
+        ],
+        [
+            "find",
+            f"{_GITHUB_WORKSPACE}/tensorflow/tensorflow/third_party/xla",
+            "-type", "f",
+            "-exec", "sed", "-i", "s/@local_xla/@local_xla/g", "{}", "+",
+        ],
+        [
+            "find",
+            f"{_GITHUB_WORKSPACE}/tensorflow/tensorflow/third_party/xla",
+            "-type", "f",
+            "-exec", "sed", "-i", "s/@local_tsl/@local_tsl/g", "{}", "+",
+        ],
+    ),
 )
 
 
