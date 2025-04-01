@@ -53,13 +53,13 @@ limitations under the License.
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
+#include "tensorflow/compiler/mlir/lite/quantization/common/quantization_lib/quantization_config.h"
+#include "tensorflow/compiler/mlir/lite/quantization/common/quantization_lib/quantization_traits.h"
+#include "tensorflow/compiler/mlir/lite/quantization/common/quantization_lib/quantization_utils.h"
 #include "tensorflow/compiler/mlir/lite/transforms/lower_quant_annotations_helper.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
 #include "tensorflow/compiler/mlir/lite/utils/utils.h"
 #include "tensorflow/compiler/mlir/lite/utils/validators.h"
-#include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_config.h"
-#include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_traits.h"
-#include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_utils.h"
 
 namespace mlir {
 namespace TFL {
@@ -158,7 +158,7 @@ class StrictQuantizationPattern : public RewritePattern {
   using BaseType = StrictQuantizationPattern;
 
   explicit StrictQuantizationPattern(MLIRContext* context,
-                                     const quant::QuantPassSpec& quant_params)
+                                     const QuantPassSpec& quant_params)
       // Set the score to a large number so it is always preferred.
       : RewritePattern(DequantizeOp::getOperationName(), 300, context),
         quant_params_(quant_params) {}
@@ -177,7 +177,7 @@ class StrictQuantizationPattern : public RewritePattern {
     bool enable_verify = quant_params_.numeric_verify_spec.verify_numeric;
     bool enable_whole_model_verify =
         quant_params_.numeric_verify_spec.whole_model_verify;
-    quant::CustomOpMap custom_map = quant_params_.quant_spec.custom_map;
+    CustomOpMap custom_map = quant_params_.quant_spec.custom_map;
 
     // Rewrite the floating-point ops to the quantized version, by fusing
     // preceding dequantize ops and succeding quantize ops.
@@ -195,29 +195,28 @@ class StrictQuantizationPattern : public RewritePattern {
         return failure();
       }
 
-      if (!quant::IsOpQuantizable(quantizing_op) &&
+      if (!IsOpQuantizable(quantizing_op) &&
           !IsQuantizableCustomOp(quantizing_op, custom_map)) {
         if (!(enable_verify && enable_whole_model_verify)) {
           return failure();
         }
-        if (quantizing_op->hasAttr(quant::kDebugModeOpQuantAttrName) ||
-            quantizing_op->hasAttr(quant::kDebugModeOpFloatAttrName)) {
+        if (quantizing_op->hasAttr(kDebugModeOpQuantAttrName) ||
+            quantizing_op->hasAttr(kDebugModeOpFloatAttrName)) {
           return failure();
         }
 
         rewriter.setInsertionPoint(quantizing_op);
         Operation* float_op = rewriter.clone(*quantizing_op);
-        quantizing_op->setAttr(quant::kDebugModeOpQuantAttrName,
+        quantizing_op->setAttr(kDebugModeOpQuantAttrName,
                                rewriter.getUnitAttr());
-        float_op->setAttr(quant::kDebugModeOpFloatAttrName,
-                          rewriter.getUnitAttr());
+        float_op->setAttr(kDebugModeOpFloatAttrName, rewriter.getUnitAttr());
         RewireFloatModelBackbone(quantizing_op, float_op);
         return success();
       }
 
       // An op with float inputs and outputs are expected when it's used by a
       // NumericVerify op. Skip this op.
-      if (enable_verify && quant::UsedBy<NumericVerifyOp>(quantizing_op)) {
+      if (enable_verify && UsedBy<NumericVerifyOp>(quantizing_op)) {
         continue;
       }
 
@@ -267,7 +266,7 @@ class StrictQuantizationPattern : public RewritePattern {
       }
 
       Operation* quantized_op;
-      if (quant::QuantizableOpSupportsFloatOutputType(quantizing_op)) {
+      if (QuantizableOpSupportsFloatOutputType(quantizing_op)) {
         rewriter.setInsertionPointAfter(quantizing_op);
         OperationState new_state(
             quantizing_op->getLoc(), quantizing_op->getName().getStringRef(),
@@ -384,7 +383,7 @@ class StrictQuantizationPattern : public RewritePattern {
 
  private:
   bool IsQuantizableCustomOp(Operation* op,
-                             const quant::CustomOpMap& custom_op_map) const {
+                             const CustomOpMap& custom_op_map) const {
     // In some cases, ops may need to be quantized even though their op trait is
     // not quantizable. For example, for the case of custom op various ops can
     // be categorized as cusom ops despite each of them may require different
@@ -413,7 +412,7 @@ class StrictQuantizationPattern : public RewritePattern {
       // compared against in parallel.
       // N.B. the return op will use this floating-point result.
       Value result;
-      if (!quant::IsOpQuantizable(float_op)) {
+      if (!IsOpQuantizable(float_op)) {
         // For not quantizable ops, search for dequantize attached to the
         // quantized op of the output.
         if (Operation* quantize_op = dyn_cast_or_null<QuantizeOp>(
@@ -441,31 +440,29 @@ class StrictQuantizationPattern : public RewritePattern {
           // the float backbone.
           dequantize.getResult().replaceUsesWithIf(
               float_op->getResult(i), [&](OpOperand& use) {
-                return !use.getOwner()->hasAttr(
-                    quant::kDebugModeOpQuantAttrName);
+                return !use.getOwner()->hasAttr(kDebugModeOpQuantAttrName);
               });
         }
       }
     }
   }
 
-  quant::QuantPassSpec quant_params_;
+  QuantPassSpec quant_params_;
 };
 
 // Base struct for quantization.
 template <QuantizationTrait quantization_trait, typename ConcreteT,
           typename RootOpT = DequantizeOp>
 struct TFLQuantizationBase
-    : public quant::QuantizationPattern<ConcreteT, QuantizeOp, DequantizeOp,
-                                        NumericVerifyOp, RootOpT> {
+    : public QuantizationPattern<ConcreteT, QuantizeOp, DequantizeOp,
+                                 NumericVerifyOp, RootOpT> {
   explicit TFLQuantizationBase(MLIRContext* ctx,
-                               const quant::QuantPassSpec& quant_params)
-      : quant::QuantizationPattern<ConcreteT, QuantizeOp, DequantizeOp,
-                                   NumericVerifyOp, RootOpT>(ctx,
-                                                             quant_params) {}
+                               const QuantPassSpec& quant_params)
+      : QuantizationPattern<ConcreteT, QuantizeOp, DequantizeOp,
+                            NumericVerifyOp, RootOpT>(ctx, quant_params) {}
 
   static bool IsQuantizableCustomOp(Operation* op,
-                                    const quant::CustomOpMap& custom_op_map) {
+                                    const CustomOpMap& custom_op_map) {
     // In some cases, ops may need to be quantized even though their op trait is
     // not quantizable. For example, for the case of custom op various ops can
     // be categorized as cusom ops despite each of them may require different
@@ -481,7 +478,7 @@ struct TFLQuantizationBase
   }
 
   static bool AllowDynamicRangeQuantizedOperand(
-      Operation* quantized_op, const quant::CustomOpMap& custom_op_map) {
+      Operation* quantized_op, const CustomOpMap& custom_op_map) {
     // Collect the input if dynamic range quantization is on and the op supports
     // it.
     return quantization_trait == kDynamicRangeQuantization &&
@@ -490,7 +487,7 @@ struct TFLQuantizationBase
   }
 
   static bool AllowDynamicRangeQuantizedResult(
-      Operation* quantized_op, const quant::CustomOpMap& custom_op_map) {
+      Operation* quantized_op, const CustomOpMap& custom_op_map) {
     // Collect the output if dynamic range quantization is on and the op
     // supports it.
     return quantization_trait == kDynamicRangeQuantization &&
@@ -501,8 +498,7 @@ struct TFLQuantizationBase
   static bool IsWeightOnlyOp(
       Operation* quantized_op,
       const absl::flat_hash_set<std::string>& ops_blocklist,
-      const bool weight_only_quantization,
-      const quant::CustomOpMap& custom_op_map) {
+      const bool weight_only_quantization, const CustomOpMap& custom_op_map) {
     // Check whether the quantized_op needs to be quantized in weight-only
     // manner.
     bool is_blocklisted = false;
@@ -539,7 +535,7 @@ struct TFLQuantizationBase
 struct TFLFullQuantization
     : public TFLQuantizationBase<kFullQuantization, TFLFullQuantization> {
   explicit TFLFullQuantization(MLIRContext* ctx,
-                               const quant::QuantPassSpec& quant_params)
+                               const QuantPassSpec& quant_params)
       : TFLQuantizationBase<kFullQuantization, TFLFullQuantization>(
             ctx, quant_params) {}
 };
@@ -550,7 +546,7 @@ struct TFLFullQuantizationReverse
     : public TFLQuantizationBase<kFullQuantization, TFLFullQuantizationReverse,
                                  QuantizeOp> {
   explicit TFLFullQuantizationReverse(MLIRContext* ctx,
-                                      const quant::QuantPassSpec& quant_params)
+                                      const QuantPassSpec& quant_params)
       : TFLQuantizationBase<kFullQuantization, TFLFullQuantizationReverse,
                             QuantizeOp>(ctx, quant_params) {}
 };
@@ -560,7 +556,7 @@ struct TFLDynamicRangeQuantization
     : public TFLQuantizationBase<kDynamicRangeQuantization,
                                  TFLDynamicRangeQuantization> {
   explicit TFLDynamicRangeQuantization(MLIRContext* ctx,
-                                       const quant::QuantPassSpec& quant_params)
+                                       const QuantPassSpec& quant_params)
       : TFLQuantizationBase<kDynamicRangeQuantization,
                             TFLDynamicRangeQuantization>(ctx, quant_params) {}
 };
@@ -577,15 +573,15 @@ class QuantizeConstPattern : public OpRewritePattern<QuantizeOp> {
       auto qtype = op.getQtypeAttr();
       Attribute quantized_attr;
       if (legacy_float_scale_) {
-        quantized_attr = quant::QuantizeLegacy(attr, qtype.getValue());
+        quantized_attr = QuantizeLegacy(attr, qtype.getValue());
       } else {
-        quantized_attr = quant::Quantize(attr, qtype.getValue());
+        quantized_attr = Quantize(attr, qtype.getValue());
       }
       if (quantized_attr) {
         auto qconst_op =
             rewriter.create<QConstOp>(op.getLoc(), qtype, quantized_attr);
-        if (auto volatile_attr = op->getAttr(quant::kVolatileOpAttrName)) {
-          qconst_op->setAttr(quant::kVolatileOpAttrName, volatile_attr);
+        if (auto volatile_attr = op->getAttr(kVolatileOpAttrName)) {
+          qconst_op->setAttr(kVolatileOpAttrName, volatile_attr);
         }
         op.replaceAllUsesWith(qconst_op.getOutput());
         rewriter.eraseOp(op);
@@ -608,7 +604,7 @@ struct QuantizePass : public impl::QuantizePassBase<QuantizePass> {
   explicit QuantizePass() { quant_specs.inference_type = tensorflow::DT_QINT8; }
 
   // Constructor used by manually creating the pass.
-  explicit QuantizePass(const quant::QuantizationSpecs& quant_specs)
+  explicit QuantizePass(const QuantizationSpecs& quant_specs)
       : quant_specs(quant_specs) {
     enable_numeric_verify_ = quant_specs.verify_numeric;
     enable_whole_model_verify_ = quant_specs.whole_model_verify;
@@ -616,13 +612,13 @@ struct QuantizePass : public impl::QuantizePassBase<QuantizePass> {
     enable_dynamic_range_quantization_ = quant_specs.weight_quantization;
     enable_weight_only_quantization_ = quant_specs.weight_only_quantization;
     qdq_conversion_mode_ =
-        quant::GetQDQQuantModeString(quant_specs.qdq_conversion_mode);
+        GetQDQQuantModeString(quant_specs.qdq_conversion_mode);
   }
 
   void runOnOperation() override;
 
  private:
-  quant::QuantizationSpecs quant_specs;
+  QuantizationSpecs quant_specs;
 };
 
 #include "tensorflow/compiler/mlir/lite/transforms/generated_quantize.inc"
@@ -643,7 +639,7 @@ void QuantizePass::runOnOperation() {
   quant_specs.weight_quantization = enable_dynamic_range_quantization_;
   quant_specs.weight_only_quantization = enable_weight_only_quantization_;
   quant_specs.qdq_conversion_mode =
-      quant::GetQDQQuantModeFromString(qdq_conversion_mode_);
+      GetQDQQuantModeFromString(qdq_conversion_mode_);
 
   if (!ops_blocklist_flag_.empty()) {
     quant_specs.ops_blocklist = absl::flat_hash_set<std::string>(
@@ -657,30 +653,29 @@ void QuantizePass::runOnOperation() {
 
   if (!enable_custom_op_weight_only_.empty()) {
     ParseCustomOpSpecs(enable_custom_op_weight_only_,
-                       quant::CustomOpUpdateOptions::kWeightOnly,
+                       CustomOpUpdateOptions::kWeightOnly,
                        quant_specs.custom_map);
   }
   if (enable_float16_quantization_) {
     quant_specs.inference_type = tensorflow::DT_HALF;
   }
 
-  const quant::QuantPassSpec quant_params = {
+  const QuantPassSpec quant_params = {
       {quant_specs.verify_numeric, error_tolerance_,
        quant_specs.whole_model_verify, enable_log_if_failed_},
       quant_specs};
 
-  if (quant_specs.qdq_conversion_mode == quant::QDQConversionMode::kQDQStrict) {
+  if (quant_specs.qdq_conversion_mode == QDQConversionMode::kQDQStrict) {
     patterns.add<StrictQuantizationPattern>(ctx, quant_params);
     patterns.add<RemoveUnusedFQ, SquashDqQ, FuseDqQToRequant>(ctx);
   } else if (quant_specs.weight_quantization ||
              quant_specs.use_fake_quant_num_bits ||
              quant_specs.qdq_conversion_mode ==
-                 quant::QDQConversionMode::kQDQDynamic) {
+                 QDQConversionMode::kQDQDynamic) {
     patterns.add<SquashDqQ, EliminateRemnantConstQDQ>(ctx);
     quantize_by_converter_patterns::populateWithGenerated(patterns);
     patterns.add<TFLDynamicRangeQuantization>(ctx, quant_params);
-  } else if (quant_specs.qdq_conversion_mode ==
-             quant::QDQConversionMode::kQDQNone) {
+  } else if (quant_specs.qdq_conversion_mode == QDQConversionMode::kQDQNone) {
     patterns.add<SquashDqQ, EliminateRemnantConstQDQ>(ctx);
     quantize_by_converter_patterns::populateWithGenerated(patterns);
     patterns.add<TFLFullQuantization, TFLFullQuantizationReverse>(ctx,
@@ -698,7 +693,7 @@ void QuantizePass::runOnOperation() {
   RewritePatternSet patterns_2(&getContext());
   patterns_2.add<QuantizeConstPattern>(ctx, quant_specs.legacy_float_scale);
   if (quant_params.numeric_verify_spec.whole_model_verify) {
-    patterns_2.add<quant::RemoveDebugAttrPattern>(ctx);
+    patterns_2.add<RemoveDebugAttrPattern>(ctx);
   }
   (void)applyPatternsGreedily(func, std::move(patterns_2));
 }
@@ -706,10 +701,10 @@ void QuantizePass::runOnOperation() {
 
 // Creates an instance of the TensorFlow Lite dialect QuantizeTFL pass.
 std::unique_ptr<OperationPass<func::FuncOp>> CreateQuantizePass(
-    const quant::QuantizationSpecs& quant_specs,
+    const QuantizationSpecs& quant_specs,
     const absl::flat_hash_set<std::string>& ops_blocklist,
     const absl::flat_hash_set<std::string>& nodes_blocklist) {
-  quant::QuantizationSpecs updated_quant_specs;
+  QuantizationSpecs updated_quant_specs;
   updated_quant_specs = quant_specs;
   // If there's new blocklists given, update quant_specs to use the new one.
   if (!ops_blocklist.empty()) {
@@ -730,7 +725,7 @@ std::unique_ptr<OperationPass<func::FuncOp>> CreateQuantizePass(
     const bool legacy_float_scale,
     const absl::flat_hash_set<std::string>& ops_blocklist,
     const absl::flat_hash_set<std::string>& nodes_blocklist) {
-  quant::QuantizationSpecs quant_specs;
+  QuantizationSpecs quant_specs;
   quant_specs.verify_numeric = verify_numeric;
   quant_specs.whole_model_verify = whole_model_verify;
   quant_specs.legacy_float_scale = legacy_float_scale;
