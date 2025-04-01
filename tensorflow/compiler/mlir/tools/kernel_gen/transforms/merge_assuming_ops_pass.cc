@@ -14,6 +14,8 @@ limitations under the License.
 
 ==============================================================================*/
 
+#include <cassert>
+#include <cstddef>
 #include <memory>
 #include <tuple>
 #include <utility>
@@ -21,28 +23,31 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Casting.h"
-#include "mhlo/IR/hlo_ops.h"
-#include "mhlo/transforms/passes.h"
-#include "mhlo/transforms/rewriters.h"
-#include "mlir/Dialect/Func/IR/FuncOps.h"
-#include "mlir/Dialect/Shape/IR/Shape.h"
-#include "mlir/Dialect/Tensor/IR/Tensor.h"
-#include "mlir/IR/BuiltinOps.h"
-#include "mlir/IR/BuiltinTypes.h"
-#include "mlir/IR/IRMapping.h"
-#include "mlir/IR/MLIRContext.h"
-#include "mlir/IR/Operation.h"
-#include "mlir/IR/OperationSupport.h"
-#include "mlir/IR/PatternMatch.h"
-#include "mlir/Interfaces/InferTypeOpInterface.h"
-#include "mlir/Pass/Pass.h"
-#include "mlir/Transforms/GreedyPatternRewriteDriver.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "mlir/Dialect/Shape/IR/Shape.h"  // from @llvm-project
+#include "mlir/Dialect/Tensor/IR/Tensor.h"  // from @llvm-project
+#include "mlir/IR/Block.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
+#include "mlir/IR/IRMapping.h"  // from @llvm-project
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/OpDefinition.h"  // from @llvm-project
+#include "mlir/IR/Operation.h"  // from @llvm-project
+#include "mlir/IR/OperationSupport.h"  // from @llvm-project
+#include "mlir/IR/PatternMatch.h"  // from @llvm-project
+#include "mlir/Interfaces/InferTypeOpInterface.h"  // from @llvm-project
+#include "mlir/Interfaces/SideEffectInterfaces.h"  // from @llvm-project
+#include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
+#include "stablehlo/dialect/Base.h"  // from @stablehlo
+#include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 
 namespace mlir {
-namespace mhlo {
+namespace kernel_gen {
 
 #define GEN_PASS_DEF_MERGEASSUMINGOPSPASS
-#include "mhlo/transforms/mhlo_passes.h.inc"
+#include "tensorflow/compiler/mlir/tools/kernel_gen/transforms/kernel_gen_passes.h.inc"
 
 namespace {
 
@@ -340,7 +345,7 @@ struct MergeAssumingOpsPattern : public OpRewritePattern<shape::AssumingOp> {
   LogicalResult matchAndRewrite(shape::AssumingOp op,
                                 PatternRewriter &rewriter) const override {
     // Merge assuming op with directly preceding one if both witnesses are
-    // availiable.
+    // available.
     auto precedingOp =
         llvm::dyn_cast_or_null<shape::AssumingOp>(op->getPrevNode());
     if (!precedingOp) return failure();
@@ -422,6 +427,30 @@ struct EliminateDuplicateCstrBroadcastableOps
   }
 };
 
+void populateMergeAssumingOpsPatterns(MLIRContext *context,
+                                      RewritePatternSet *patterns) {
+  patterns->add<
+      EliminateDuplicateCstrBroadcastableOps,
+      InlineBroadcastedShapeOperandsPattern<shape::CstrBroadcastableOp>,
+      MergeAssumingOpsPattern, MoveElementwiseOpsDownIntoAssumingOpPattern,
+      MoveElementwiseOpsUpIntoAssumingOpPattern,
+      MoveUpIntoAssumingOpPattern<shape::AssumingAllOp>,
+      MoveUpIntoAssumingOpPattern<shape::CstrBroadcastableOp>,
+      MoveUpIntoAssumingOpPattern<shape::ShapeOfOp>,
+      MoveUpOutOfAssumingOpPattern<shape::AssumingAllOp>,
+      MoveUpOutOfAssumingOpPattern<shape::CstrBroadcastableOp>,
+      MoveUpOutOfAssumingOpPattern<shape::ShapeOfOp>, ShapeReificationPattern>(
+      context);
+  mhlo::DynamicBroadcastInDimOp::getCanonicalizationPatterns(*patterns,
+                                                             context);
+  mhlo::DynamicReshapeOp::getCanonicalizationPatterns(*patterns, context);
+  shape::AssumingAllOp::getCanonicalizationPatterns(*patterns, context);
+  shape::AssumingOp::getCanonicalizationPatterns(*patterns, context);
+  shape::BroadcastOp::getCanonicalizationPatterns(*patterns, context);
+  shape::CstrBroadcastableOp::getCanonicalizationPatterns(*patterns, context);
+  tensor::CastOp::getCanonicalizationPatterns(*patterns, context);
+}
+
 struct MergeAssumingOpsPass
     : public impl::MergeAssumingOpsPassBase<MergeAssumingOpsPass> {
   void getDependentDialects(DialectRegistry &registry) const override {
@@ -431,7 +460,7 @@ struct MergeAssumingOpsPass
   void runOnOperation() override {
     MLIRContext *ctx = &getContext();
     RewritePatternSet patterns(ctx);
-    mhlo::populateMergeAssumingOpsPatterns(ctx, &patterns);
+    populateMergeAssumingOpsPatterns(ctx, &patterns);
     GreedyRewriteConfig config;
     config.maxIterations = GreedyRewriteConfig::kNoLimit;
     if (failed(applyPatternsGreedily(getOperation(), std::move(patterns),
@@ -443,36 +472,5 @@ struct MergeAssumingOpsPass
 
 }  // namespace
 
-void populateMergeAssumingOpsPatterns(MLIRContext *context,
-                                      RewritePatternSet *patterns) {
-  // clang-format off
-  patterns->add<
-      EliminateDuplicateCstrBroadcastableOps,
-      InlineBroadcastedShapeOperandsPattern<shape::CstrBroadcastableOp>,
-      MergeAssumingOpsPattern,
-      MoveElementwiseOpsDownIntoAssumingOpPattern,
-      MoveElementwiseOpsUpIntoAssumingOpPattern,
-      MoveUpIntoAssumingOpPattern<shape::AssumingAllOp>,
-      MoveUpIntoAssumingOpPattern<shape::CstrBroadcastableOp>,
-      MoveUpIntoAssumingOpPattern<shape::ShapeOfOp>,
-      MoveUpOutOfAssumingOpPattern<shape::AssumingAllOp>,
-      MoveUpOutOfAssumingOpPattern<shape::CstrBroadcastableOp>,
-      MoveUpOutOfAssumingOpPattern<shape::ShapeOfOp>,
-      ShapeReificationPattern>(context);
-  // clang-format on
-  mhlo::DynamicBroadcastInDimOp::getCanonicalizationPatterns(*patterns,
-                                                             context);
-  mhlo::DynamicReshapeOp::getCanonicalizationPatterns(*patterns, context);
-  shape::AssumingAllOp::getCanonicalizationPatterns(*patterns, context);
-  shape::AssumingOp::getCanonicalizationPatterns(*patterns, context);
-  shape::BroadcastOp::getCanonicalizationPatterns(*patterns, context);
-  shape::CstrBroadcastableOp::getCanonicalizationPatterns(*patterns, context);
-  tensor::CastOp::getCanonicalizationPatterns(*patterns, context);
-}
-
-std::unique_ptr<OperationPass<func::FuncOp>> createMergeAssumingOpsPass() {
-  return std::make_unique<MergeAssumingOpsPass>();
-}
-
-}  // namespace mhlo
+}  // namespace kernel_gen
 }  // namespace mlir

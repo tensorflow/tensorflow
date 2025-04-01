@@ -53,20 +53,6 @@ createSinkConstantsToControlFlowPass();
 /// that do not use intrinsics.
 std::unique_ptr<OperationPass<func::FuncOp>>
 createLegalizeTrigonometricToApproximationPass();
-
-// Move dynamic broadcasts up over element-wise operations and broadcast the
-// operands rather than the result. This will eventually allow for larger
-// fusions.
-std::unique_ptr<OperationPass<func::FuncOp>> createBroadcastPropagationPass();
-
-// Prepare moving dynamic broadcasts up over element-wise operations and
-// broadcast the operands rather than the result. This will eventually allow for
-// larger fusions.
-std::unique_ptr<OperationPass<func::FuncOp>> createMergeAssumingOpsPass();
-
-// Pass to simplify shape ops.
-std::unique_ptr<OperationPass<func::FuncOp>> createShapeSimplification();
-
 std::unique_ptr<OperationPass<func::FuncOp>>
 createLegalizeDotToDotGeneralPass();
 std::unique_ptr<OperationPass<func::FuncOp>>

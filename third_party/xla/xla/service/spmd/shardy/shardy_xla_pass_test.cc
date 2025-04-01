@@ -71,7 +71,7 @@ TEST_F(ShardyXLATest, AllowSpmdShardingPropagationParametersOutputRespected) {
       %dot = f32[8,256,128] dot(%p0, %p1),
         lhs_batch_dims={0}, rhs_batch_dims={0},
         lhs_contracting_dims={2}, rhs_contracting_dims={2}, sharding={devices=[2,2,2]<=[8]}
-      ROOT %copy = f32[8,256,128] copy(%dot), sharding={replicated}
+      ROOT %tuple = (f32[8,256,128]) tuple(%dot)
     })";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(hloString));
@@ -118,10 +118,6 @@ TEST_F(ShardyXLATest, ElementWise) {
 
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               op::Sharding("{devices=[2,1]<=[2]}"));
-
-  // Conversions HLO -> StableHLO -> HLO removes the copy instructions.
-  auto* copy = FindInstruction(module.get(), xla::HloOpcode::kCopy);
-  EXPECT_EQ(copy, nullptr);
 }
 
 TEST_F(ShardyXLATest, CostantSplitter) {

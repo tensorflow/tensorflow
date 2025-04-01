@@ -1,4 +1,4 @@
-// RUN: mlir-hlo-opt %s --split-input-file --mhlo-broadcast-propagation | \
+// RUN: kernel-gen-opt %s --split-input-file --mhlo-broadcast-propagation | \
 // RUN: FileCheck %s
 
 // CHECK-LABEL: @single_bcast

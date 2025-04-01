@@ -118,13 +118,9 @@ TEST(LoadedExecutableImplTest, GetDonatableInputIndices) {
         %arg2: tensor<2x3xf32> {jax.buffer_donor = true},
         %arg3: tensor<2x3xf32>
       ) -> tensor<2x3xf32> {
-      %0 = "mhlo.copy"(%arg0) : (tensor<2x3xf32>) -> tensor<2x3xf32>
-      %1 = "mhlo.copy"(%arg1) : (tensor<2x3xf32>) -> tensor<2x3xf32>
-      %2 = "mhlo.copy"(%arg2) : (tensor<2x3xf32>) -> tensor<2x3xf32>
-      %3 = "mhlo.copy"(%arg3) : (tensor<2x3xf32>) -> tensor<2x3xf32>
-      %4 = mhlo.add %0, %1 : tensor<2x3xf32>
-      %5 = mhlo.add %2, %3 : tensor<2x3xf32>
-      %6 = mhlo.add %4, %5 : tensor<2x3xf32>
+      %4 = stablehlo.add %arg0, %arg1 : tensor<2x3xf32>
+      %5 = stablehlo.add %arg2, %arg3 : tensor<2x3xf32>
+      %6 = stablehlo.add %4, %5 : tensor<2x3xf32>
       return %6 : tensor<2x3xf32>
     }})";
 

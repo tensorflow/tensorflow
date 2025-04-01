@@ -2525,7 +2525,6 @@ def MHLO_CopyOp: MHLO_Op<"copy",
   );
   let results = (outs MHLO_TensorOrTokenOrTuple:$result);
   let hasCustomHLOConverter = 1;
-  let hasFolder = 1;
 
   let assemblyFormat = [{
     operands attr-dict

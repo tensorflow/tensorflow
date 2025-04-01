@@ -129,26 +129,6 @@ def TestInferShapedTypeMethodsPass : Pass<"mhlo-test-infer-shaped-type-methods",
   let constructor = "createTestInferShapedTypeMethodsPass()";
 }
 
-def BroadcastPropagationPass : Pass<"mhlo-broadcast-propagation", "func::FuncOp"> {
-  let summary = "Move dynamic broadcasts up over element-wise operations and "
-    "broadcast the operands rather than the result. This will eventually allow "
-    "for larger fusions.";
-  let constructor = "createBroadcastPropagationPass()";
-}
-
-def MergeAssumingOpsPass : Pass<"mhlo-merge-assuming-ops", "func::FuncOp"> {
-  let summary = "Prepare moving dynamic broadcasts up over element-wise "
-    "operations and broadcast the operands rather than the result. This will "
-    "eventually allow for larger fusions.";
-  let constructor = "createMergeAssumingOpsPass()";
-}
-
-def ShapeSimplification
-    : Pass<"shape-simplification", "mlir::func::FuncOp"> {
-  let summary = "Simplify shape ops";
-  let constructor = "createShapeSimplification()";
-}
-
 def TestUnfuseBatchNormPass : Pass<"mhlo-test-unfuse-batch-norm", "func::FuncOp"> {
   let summary = "Test pass for materializing 'broadcast_dimensions' attributes.";
   let constructor = "createTestUnfuseBatchNormPass()";

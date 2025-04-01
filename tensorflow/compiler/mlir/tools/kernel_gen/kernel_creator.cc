@@ -170,9 +170,9 @@ absl::Status LowerHlotoLoops(mlir::ModuleOp module,
   pm.addNestedPass<FuncOp>(mlir::createCanonicalizerPass());
   pm.addNestedPass<FuncOp>(mlir::createCSEPass());
   pm.addNestedPass<FuncOp>(mlir::createCanonicalizerPass());
-  pm.addNestedPass<FuncOp>(mlir::mhlo::createShapeSimplification());
-  pm.addNestedPass<FuncOp>(mlir::mhlo::createMergeAssumingOpsPass());
-  pm.addNestedPass<FuncOp>(mlir::mhlo::createBroadcastPropagationPass());
+  pm.addNestedPass<FuncOp>(mlir::kernel_gen::createShapeSimplificationPass());
+  pm.addNestedPass<FuncOp>(mlir::kernel_gen::createMergeAssumingOpsPass());
+  pm.addNestedPass<FuncOp>(mlir::kernel_gen::createBroadcastPropagationPass());
   pm.addNestedPass<FuncOp>(mlir::createCanonicalizerPass());
   pm.addNestedPass<FuncOp>(mlir::createCSEPass());
 
