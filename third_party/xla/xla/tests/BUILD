@@ -2547,24 +2547,25 @@ xla_test(
 xla_test(
     name = "concat_test",
     srcs = ["concat_test.cc"],
-    tags = ["test_xla_cpu_no_thunks"],
+    tags = [
+        "test_xla_cpu_no_thunks",
+    ],
     deps = [
-        ":client_library_test_base",
+        ":client_library_test_runner_mixin",
         ":hlo_test_base",
-        ":literal_test_util",
         ":test_macros_header",
         ":xla_internal_test_main",
         "//xla:array2d",
         "//xla:array3d",
+        "//xla:error_spec",
         "//xla:literal_util",
         "//xla:reference_util",
-        "//xla/client:local_client",
+        "//xla:shape_util",
         "//xla/hlo/builder:xla_builder",
         "//xla/hlo/builder:xla_computation",
         "//xla/hlo/testlib:test",
         "//xla/hlo/testlib:test_helpers",
         "@com_google_absl//absl/status:statusor",
-        "@local_tsl//tsl/platform:test",
     ],
 )
 
