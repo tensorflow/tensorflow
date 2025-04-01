@@ -3173,6 +3173,7 @@ xla_cc_test(
     srcs = ["flag_utils_test.cc"],
     deps = [
         ":flag_utils",
+        "//xla:xla_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/transforms/simplifiers:hlo_dce",
         "//xla/service:collective_pipeliner",
@@ -3180,7 +3181,6 @@ xla_cc_test(
         "//xla/service:latency_hiding_scheduler",
         "//xla/service/gpu/transforms:double_buffer_loop_unrolling",
         "@com_google_googletest//:gtest_main",
-        "@local_tsl//tsl/platform:test",
     ],
 )
 
