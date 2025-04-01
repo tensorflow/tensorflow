@@ -27,6 +27,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/base/casts.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -40,20 +41,17 @@ limitations under the License.
 #include "xla/status_macros.h"
 #include "xla/stream_executor/activate_context.h"
 #include "xla/stream_executor/blas.h"
-#include "xla/stream_executor/cuda/cuda_blas.h"
 #include "xla/stream_executor/cuda/cuda_blas_utils.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/event_based_timer.h"
 #include "xla/stream_executor/gpu/gpu_blas_lt.h"
 #include "xla/stream_executor/gpu/gpu_helpers.h"
-#include "xla/stream_executor/gpu/gpu_stream.h"
 #include "xla/stream_executor/stream.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/types.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/ml_dtypes.h"
-#include "tsl/platform/statusor.h"
 
 #define SET_ATTR(setter, handle, attr, value) \
   ToStatus(setter(handle, attr, &value, sizeof(decltype(value))), #setter)
@@ -462,7 +460,8 @@ absl::Status BlasLt::MatmulPlan::DoMatmul(
           blas_lt->blas_lt_.get(), op_desc_.get(), alpha, a.opaque(),
           a_desc_.get(), b.opaque(), b_desc_.get(), beta, args.c.opaque(),
           c_desc_.get(), args.d.opaque(), d_desc_.get(), palgo, workspace_addr,
-          workspace_size, gpu::AsGpuStreamValue(stream)));
+          workspace_size,
+          absl::bit_cast<CUstream>(stream->platform_specific_handle().stream)));
     } else {
       return absl::InternalError("cublaslt: Invalid algorithm type");
     }

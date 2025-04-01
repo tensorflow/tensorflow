@@ -18,7 +18,6 @@ limitations under the License.
 
 #include <cstddef>
 #include <memory>
-#include <optional>
 #include <type_traits>
 #include <utility>
 #include <vector>
@@ -31,7 +30,6 @@ limitations under the License.
 #include "third_party/gpus/cuda/include/cublas_v2.h"
 #include "third_party/gpus/cuda/include/library_types.h"
 #include "xla/stream_executor/blas.h"
-#include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/gpu/gpu_blas_lt.h"
 #include "xla/stream_executor/scratch_allocator.h"
 #include "xla/stream_executor/stream_executor.h"
