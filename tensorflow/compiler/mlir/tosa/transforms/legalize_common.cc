@@ -1839,8 +1839,8 @@ std::optional<Value> convertSoftmaxOp(PatternRewriter& rewriter, Operation* op,
       auto exp_func = [](double x) -> double { return std::exp(x); };
 
       // Follow TFLite reference: tensorflow/lite/kernels/activations.cc
-      Value exp_table_const =
-          getTosaConst16bitTable(rewriter, op, exp_func, -10.0, 0);
+      Value exp_table_const = getTosaConst16bitTable<double>(
+          rewriter, op, 10.0 / 65535.0, 32767, 2.0 / 65535.0, 0, exp_func);
 
       double input_diff_scale = in_quant_type.getScale() / (10.0 / 65535.0);
 
@@ -1913,8 +1913,9 @@ std::optional<Value> convertSoftmaxOp(PatternRewriter& rewriter, Operation* op,
         return 1.0 / (1.0 + x);
       };
 
-      Value one_over_one_plus_x_table_const = getTosaConst16bitTable(
-          rewriter, op, one_over_one_plus_x_func, 0.0, 1.0);
+      Value one_over_one_plus_x_table_const = getTosaConst16bitTable<double>(
+          rewriter, op, 1.0 / 65535.0, -32768, 2.0 / 65535.0, 0,
+          one_over_one_plus_x_func);
 
       // Get (1 / sum(exp(x))) result as 23 bits (including sign bit)
       auto op17_table_op16 = CreateOpAndInfer<tosa::TableOp>(

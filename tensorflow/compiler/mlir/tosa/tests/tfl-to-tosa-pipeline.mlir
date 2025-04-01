@@ -431,9 +431,31 @@ func.func @test_mul_unranked(%arg0: tensor<13x21x3xf32>, %arg1: tensor<1x1x1xf32
 
 // CHECK-LABEL: test_exp
 // CHECK: %[[VAR0:.*]] = tosa.exp %arg0
-func.func @test_exp(%arg0: tensor<13x21x3xf32>) -> tensor<*xf32> {
-  %0 = "tfl.exp"(%arg0) : (tensor<13x21x3xf32>) -> tensor<*xf32>
-  func.return %0 : tensor<*xf32>
+func.func @test_exp(%arg0: tensor<13x21x3xf32>) -> tensor<13x21x3xf32> {
+  %0 = "tfl.exp"(%arg0) : (tensor<13x21x3xf32>) -> tensor<13x21x3xf32>
+  func.return %0 : tensor<13x21x3xf32>
+}
+
+// -----
+
+// CHECK-LABEL: test_exp_qi8
+// CHECK-SAME: %[[VAL_0:.*]]: tensor<13x21x3x!quant.uniform<i8:f32, 0.011764706112444401:43>>
+// CHECK: %[[VAL_1:.*]] = "tosa.const"() <{value = dense<{{.+}}> : tensor<256xi8>}>
+// CHECK: %[[VAL_2:.*]] = tosa.table %[[VAL_0]], %[[VAL_1]]
+func.func @test_exp_qi8(%arg0: tensor<13x21x3x!quant.uniform<i8:f32, 0.011764706112444401:43>>) -> (tensor<13x21x3x!quant.uniform<i8:f32, 0.028976691886782646:128>>) {
+  %0 = "tfl.exp"(%arg0) : (tensor<13x21x3x!quant.uniform<i8:f32, 0.011764706112444401:43>>) -> tensor<13x21x3x!quant.uniform<i8:f32, 0.028976691886782646:128>>
+  func.return %0 : tensor<13x21x3x!quant.uniform<i8:f32, 0.028976691886782646:128>>
+}
+
+// -----
+
+// CHECK-LABEL: test_exp_qi16
+// CHECK-SAME: %[[VAL_0:.*]]: tensor<13x21x3x!quant.uniform<i16:f32, 6.1037018895149231E-5>>
+// CHECK: %[[VAL_1:.*]] = "tosa.const"() <{value = dense<{{.+}}> : tensor<513xi16>}>
+// CHECK: %[[VAL_2:.*]] = tosa.table %[[VAL_0]], %[[VAL_1]]
+func.func @test_exp_qi16(%arg0: tensor<13x21x3x!quant.uniform<i16:f32, 6.1037018895149231E-5>>) -> (tensor<13x21x3x!quant.uniform<i16:f32, 2.2550298308487982E-4>>) {
+  %0 = "tfl.exp"(%arg0) : (tensor<13x21x3x!quant.uniform<i16:f32, 6.1037018895149231E-5>>) -> tensor<13x21x3x!quant.uniform<i16:f32, 2.2550298308487982E-4>>
+  func.return %0 : tensor<13x21x3x!quant.uniform<i16:f32, 2.2550298308487982E-4>>
 }
 
 // -----
