@@ -177,13 +177,14 @@ absl::StatusOr<std::unique_ptr<TfrtGpuBuffer>> AllocateTfrtGpuDestinationBuffer(
 }
 
 void EnqueueWork(tsl::thread::ThreadPool* pool,
-                 absl::AnyInvocable<void()> callee) {
+                 absl::AnyInvocable<void() &&> callee) {
   // TSL TheadPool expects std::function that must be copyable, so we are
   // forced to do a little bit of manual memory management here.
-  pool->Schedule([ptr = new absl::AnyInvocable<void()>(std::move(callee))]() {
-    (*ptr)();
-    delete ptr;
-  });
+  pool->Schedule(
+      [ptr = new absl::AnyInvocable<void() &&>(std::move(callee))]() {
+        std::move (*ptr)();
+        delete ptr;
+      });
 }
 
 // Enqueue to a thread pool when all `values` are ready.
@@ -504,7 +505,7 @@ class TfrtGpuAsyncHostToDeviceTransferManager final
     // called on this thread, to avoid deadlock.
     l.Release();
 
-    absl::AnyInvocable<void() &&> copy_to_gpu =
+    auto copy_to_gpu =
         [transfer_size, staging_buffer = std::move(staging_buffer), data,
          sub_buffer = std::move(sub_buffer), buffer_index, is_last_transfer,
          on_done = std::move(on_done), this]() mutable {
@@ -572,7 +573,7 @@ class TfrtGpuAsyncHostToDeviceTransferManager final
     }
 
     // Call on_done after finishing all housekeeping and releasing the lock.
-    std::move(on_done)();
+    EnqueueWork(client_->non_blocking_thread_pool(), std::move(on_done));
   }
 
   absl::Mutex mu_;
@@ -580,7 +581,10 @@ class TfrtGpuAsyncHostToDeviceTransferManager final
   // Retrieve.
   absl::InlinedVector<std::unique_ptr<PjRtBuffer>, 4> buffers_;
 
-  // Just a single thread, to ensure transfers are ordered.
+  // Just a single thread, to ensure transfers are ordered. Its lifetime is
+  // managed by H2DTransferManager. We assume `h2d_thread` is destructed before
+  // `client_`, so `on_done` callbacks on `h2d_thread` will be handled by
+  // threads managed by `client_`.
   std::unique_ptr<WorkerThread> h2d_thread_;
 
   absl::InlinedVector<tsl::AsyncValueRef<MaybeOwningGpuMemory>, 4> buffer_ptrs_;

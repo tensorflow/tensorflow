@@ -35,6 +35,7 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
+#include "absl/synchronization/notification.h"
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
 #include "xla/hlo/builder/xla_computation.h"
@@ -954,6 +955,29 @@ TEST(TfrtGpuClientTest, AsyncCopyToDevice) {
   EXPECT_TRUE(ShapeUtil::Compatible(src_literal.shape(), literal->shape()));
   EXPECT_EQ(src_literal.data<float>(),
             literal->Relayout(src_literal.shape().layout()).data<float>());
+}
+
+TEST(TfrtGpuClientTest, OnDoneSafelyDestructTransferManagerAsync) {
+  TF_ASSERT_OK_AND_ASSIGN(auto client, GetTfrtGpuClient(GpuClientOptions()));
+  ASSERT_GE(client->addressable_devices().size(), 1);
+  PjRtDevice* const device = client->addressable_devices()[0];
+
+  auto src_literal = LiteralUtil::CreateR1<float>({41.0f, 42.0f, 43.0f, 44.0f});
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<PjRtClient::AsyncHostToDeviceTransferManager>
+          transfer_manager,
+      client->CreateBuffersForAsyncHostToDevice(
+          {src_literal.shape()}, *device->default_memory_space()));
+  std::unique_ptr<PjRtBuffer> buffer = transfer_manager->RetrieveBuffer(0);
+  absl::Notification done;
+  EXPECT_OK(transfer_manager->TransferLiteralToBuffer(
+      0, src_literal,
+      /*on_done=*/
+      [&done, transfer_manager = std::move(transfer_manager)]() {
+        done.Notify();
+      }));
+  done.WaitForNotification();
 }
 
 }  // namespace
