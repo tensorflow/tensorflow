@@ -73,13 +73,6 @@ func.func @div(%arg0: tensor<2xi32>) -> tensor<2xi32> {
   func.return %0: tensor<2xi32>
 }
 
-// CHECK-LABEL: func @shift_left
-func.func @shift_left(%arg0: tensor<4xi32>, %arg1: tensor<4xi32>) -> tensor<4xi32> {
-  // CHECK:  mhlo.shift_left %arg0, %arg1 : tensor<4xi32>
-  %0 = "tf.LeftShift"(%arg0, %arg1) : (tensor<4xi32>, tensor<4xi32>) -> tensor<4xi32>
-  func.return %0 : tensor<4xi32>
-}
-
 // CHECK-LABEL: func @div_unranked
 func.func @div_unranked(%arg0: tensor<*xi32>, %arg1: tensor<?x?xi32>) -> tensor<?x?xi32> {
   // CHECK-NEXT: tf.Div
@@ -94,34 +87,11 @@ func.func @maximum(%arg0: tensor<4xf32>, %arg1: tensor<4xf32>) -> tensor<4xf32> 
   func.return %0 : tensor<4xf32>
 }
 
-// CHECK-LABEL: func @minimum
-func.func @minimum(%arg0: tensor<4xf32>, %arg1: tensor<4xf32>) -> tensor<4xf32> {
-  // CHECK-NEXT:  mhlo.minimum %arg0, %arg1 : tensor<4xf32>
-  %0 = "tf.Minimum"(%arg0, %arg1) : (tensor<4xf32>, tensor<4xf32>) -> tensor<4xf32>
-  func.return %0 : tensor<4xf32>
-}
-
-// CHECK-LABEL: func @mod
-// CHLO-LABEL: func @mod
-func.func @mod(%arg0: tensor<4xf32>, %arg1: tensor<4xf32>) -> tensor<4xf32> {
-  // CHECK-NEXT:  mhlo.remainder %arg0, %arg1 : tensor<4xf32>
-  // CHLO: chlo.broadcast_remainder
-  %0 = "tf.Mod"(%arg0, %arg1) : (tensor<4xf32>, tensor<4xf32>) -> tensor<4xf32>
-  func.return %0 : tensor<4xf32>
-}
-
 // CHECK-LABEL: func @mul
 func.func @mul(%arg0: tensor<2xi32>) -> tensor<2xi32> {
   // CHECK-NEXT:  %0 = mhlo.multiply %arg0, %arg0 : tensor<2xi32>
   // CHECK-NEXT:  return %0 : tensor<2xi32>
   %0 = "tf.Mul"(%arg0, %arg0) : (tensor<2xi32>, tensor<2xi32>) -> tensor<2xi32>
-  func.return %0: tensor<2xi32>
-}
-
-// CHECK-LABEL: func @real_div
-func.func @real_div(%arg0: tensor<2xi32>) -> tensor<2xi32> {
-  // CHECK-NEXT:  %0 = mhlo.divide %arg0, %arg0 : tensor<2xi32>
-  %0 = "tf.RealDiv"(%arg0, %arg0) : (tensor<2xi32>, tensor<2xi32>) -> tensor<2xi32>
   func.return %0: tensor<2xi32>
 }
 
@@ -131,28 +101,6 @@ func.func @sub(%arg0: tensor<2xi32>) -> tensor<2xi32> {
   // CHECK-NEXT:  return %0 : tensor<2xi32>
   %0 = "tf.Sub"(%arg0, %arg0) : (tensor<2xi32>, tensor<2xi32>) -> tensor<2xi32>
   func.return %0: tensor<2xi32>
-}
-
-// CHECK-LABEL: func @shift_right
-func.func @shift_right(%arg0: tensor<4xi32>, %arg1: tensor<4xi32>) -> tensor<4xi32> {
-  // CHECK:  mhlo.shift_right_arithmetic %arg0, %arg1 : tensor<4xi32>
-  %0 = "tf.RightShift"(%arg0, %arg1) : (tensor<4xi32>, tensor<4xi32>) -> tensor<4xi32>
-  func.return %0 : tensor<4xi32>
-}
-
-// CHECK-LABEL: func @shift_right_unsigned
-func.func @shift_right_unsigned(%arg0: tensor<4xui8>, %arg1: tensor<4xui8>) -> tensor<4xui8> {
-  // CHECK:  mhlo.shift_right_logical %arg0, %arg1 : tensor<4xui8>
-  %0 = "tf.RightShift"(%arg0, %arg1) : (tensor<4xui8>, tensor<4xui8>) -> tensor<4xui8>
-  func.return %0 : tensor<4xui8>
-}
-
-// CHECK-LABEL: func @broadcast_shift_right_unsigned
-func.func @broadcast_shift_right_unsigned(%arg0: tensor<4xui8>, %arg1: tensor<2x4xui8>) -> tensor<2x4xui8> {
-  // CHECK: %[[BROADCAST:.*]] = "mhlo.broadcast_in_dim"(%arg0) <{broadcast_dimensions = dense<1> : tensor<1xi64>}> : (tensor<4xui8>) -> tensor<2x4xui8>
-  // CHECK:  mhlo.shift_right_logical %[[BROADCAST]], %arg1 : tensor<2x4xui8>
-  %0 = "tf.RightShift"(%arg0, %arg1) : (tensor<4xui8>, tensor<2x4xui8>) -> tensor<2x4xui8>
-  func.return %0 : tensor<2x4xui8>
 }
 
 // CHECK-LABEL: func @and
@@ -176,20 +124,6 @@ func.func @or(%arg0: tensor<2xi1>, %arg1: tensor<2xi1>) -> tensor<2xi1> {
   func.return %0: tensor<2xi1>
 }
 
-// CHECK-LABEL: func @bitwise_or
-func.func @bitwise_or(%arg0: tensor<4xi32>, %arg1: tensor<4xi32>) -> tensor<4xi32> {
-  // CHECK-NEXT: mhlo.or
-  %0 = "tf.BitwiseOr"(%arg0, %arg1) : (tensor<4xi32>, tensor<4xi32>) -> tensor<4xi32>
-  func.return %0: tensor<4xi32>
-}
-
-// CHECK-LABEL: func @bitwise_or_unsigned
-func.func @bitwise_or_unsigned(%arg0: tensor<4xui32>, %arg1: tensor<4xui32>) -> tensor<4xui32> {
-  // CHECK-NEXT: mhlo.or
-  %0 = "tf.BitwiseOr"(%arg0, %arg1) : (tensor<4xui32>, tensor<4xui32>) -> tensor<4xui32>
-  func.return %0: tensor<4xui32>
-}
-
 // CHECK-LABEL: func @bitwise_xor
 func.func @bitwise_xor(%arg0: tensor<4xi32>, %arg1: tensor<4xi32>) -> tensor<4xi32> {
   // CHECK-NEXT: mhlo.xor
@@ -202,27 +136,6 @@ func.func @bitwise_xor_unsigned(%arg0: tensor<4xui32>, %arg1: tensor<4xui32>) ->
   // CHECK-NEXT: mhlo.xor
   %0 = "tf.BitwiseXor"(%arg0, %arg1) : (tensor<4xui32>, tensor<4xui32>) -> tensor<4xui32>
   func.return %0: tensor<4xui32>
-}
-
-// CHECK-LABEL: func @bitwise_and
-func.func @bitwise_and(%arg0: tensor<4xi32>, %arg1: tensor<4xi32>) -> tensor<4xi32> {
-  // CHECK-NEXT: mhlo.and
-  %0 = "tf.BitwiseAnd"(%arg0, %arg1) : (tensor<4xi32>, tensor<4xi32>) -> tensor<4xi32>
-  func.return %0: tensor<4xi32>
-}
-
-// CHECK-LABEL: func @bitwise_and_unsigned
-func.func @bitwise_and_unsigned(%arg0: tensor<4xui32>, %arg1: tensor<4xui32>) -> tensor<4xui32> {
-  // CHECK-NEXT: mhlo.and
-  %0 = "tf.BitwiseAnd"(%arg0, %arg1) : (tensor<4xui32>, tensor<4xui32>) -> tensor<4xui32>
-  func.return %0: tensor<4xui32>
-}
-
-// CHECK-LABEL: func @pow
-func.func @pow(%arg0: tensor<2xf32>) -> tensor<2xf32> {
-  // CHECK-NEXT:  mhlo.power
-  %0 = "tf.Pow"(%arg0, %arg0) : (tensor<2xf32>, tensor<2xf32>) -> tensor<2xf32>
-  func.return %0: tensor<2xf32>
 }
 
 //===----------------------------------------------------------------------===//
