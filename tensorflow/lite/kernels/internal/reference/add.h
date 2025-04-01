@@ -39,7 +39,7 @@ inline void Add(const ArithmeticParams& params,
   const int flat_size =
       MatchingElementsSize(input1_shape, input2_shape, output_shape);
   for (int i = 0; i < flat_size; ++i) {
-    output_data[i] = ActivationFunctionWithMinMax(
+    output_data[i] = ActivationFunctionWithMinMax<T>(
         input1_data[i] + input2_data[i], activation_min, activation_max);
   }
 }

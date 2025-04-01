@@ -662,6 +662,14 @@ struct ArithmeticParams {
   // float activation params.
   float float_activation_min;
   float float_activation_max;
+  #ifndef EIGEN_TFLITE
+  // float16 activation params.
+  Eigen::half Eigen_half_activation_min;
+  Eigen::half Eigen_half_activation_max;
+  // bfloat16 activation params.
+  Eigen::bfloat16 bf16_activation_min;
+  Eigen::bfloat16 bf16_activation_max;
+  #endif
   // int64_t activation params.
   int64_t int64_activation_min;
   int64_t int64_activation_max;
@@ -671,14 +679,6 @@ struct ArithmeticParams {
   // int8_t activation params.
   int8_t int8_activation_min;
   int8_t int8_activation_max;
-#ifndef EIGEN_TFLITE
-  // float16 activation params.
-  Eigen::half Eigen_half_activation_min;
-  Eigen::half Eigen_half_activation_max;
-  // bfloat16 activation params.
-  Eigen::bfloat16 bf16_activation_min;
-  Eigen::bfloat16 bf16_activation_max;
-#endif
 
   // Processed output dimensions.
   // Let input "a" be the one that broadcasts in the faster-changing dimension.

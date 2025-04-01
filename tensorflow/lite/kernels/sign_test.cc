@@ -16,6 +16,7 @@
 #include <vector>
 
 #include <gtest/gtest.h>
+#include "Eigen/Core"
 #include "tensorflow/lite/kernels/test_util.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 
@@ -40,10 +41,29 @@ tflite::TensorType GetTTEnum<int32_t>() {
   return tflite::TensorType_INT32;
 }
 
+template <>
+tflite::TensorType GetTTEnum<int16_t>() {
+  return tflite::TensorType_INT16;
+}
+
+template <>
+tflite::TensorType GetTTEnum<int8_t>() {
+  return tflite::TensorType_INT8;
+}
+
+template <>
+tflite::TensorType GetTTEnum<Eigen::half>() {
+  return tflite::TensorType_FLOAT16;
+}
+
+template <>
+tflite::TensorType GetTTEnum<Eigen::bfloat16>() {
+  return tflite::TensorType_BFLOAT16;
+}
+
 class SignModel : public tflite::SingleOpModel {
  public:
-  SignModel(tflite::TensorData x,
-            tflite::TensorData output) {
+  SignModel(tflite::TensorData x, tflite::TensorData output) {
     x_ = AddInput(x);
     output_ = AddOutput(output);
     SetBuiltinOp(BuiltinOperator_SIGN, BuiltinOptions_NONE, 0);
@@ -67,7 +87,7 @@ class SignTestFloat : public ::testing::Test {
   using FloatType = Float;
 };
 
-using TestTypes = ::testing::Types<float, double>;
+using TestTypes = ::testing::Types<float, double, Eigen::half, Eigen::bfloat16>;
 
 TYPED_TEST_SUITE(SignTestFloat, TestTypes);
 
@@ -76,12 +96,12 @@ TYPED_TEST(SignTestFloat, TestScalarFloat) {
   tflite::TensorData x = {GetTTEnum<Float>(), {}};
   tflite::TensorData output = {GetTTEnum<Float>(), {}};
   SignModel m(x, output);
-  auto got = m.GetOutput<Float>({0.0});
+  auto got = m.GetOutput<Float>({Float(0.0)});
   ASSERT_EQ(got.size(), 1);
   EXPECT_FLOAT_EQ(got[0], 0.0);
 
-  ASSERT_FLOAT_EQ(m.GetOutput<Float>({5.0})[0], 1.0);
-  ASSERT_FLOAT_EQ(m.GetOutput<Float>({-3.0})[0], -1.0);
+  ASSERT_FLOAT_EQ(m.GetOutput<Float>({Float(5.0)})[0], Float(1.0));
+  ASSERT_FLOAT_EQ(m.GetOutput<Float>({Float(-3.0)})[0], Float(-1.0));
 }
 
 TYPED_TEST(SignTestFloat, TestBatchFloat) {
@@ -90,12 +110,14 @@ TYPED_TEST(SignTestFloat, TestBatchFloat) {
   tflite::TensorData output = {GetTTEnum<Float>(), {4, 2, 1}};
   SignModel m(x, output);
 
-  std::vector<Float> x_data = {0.8, -0.7, 0.6, -0.5, 0.4, -0.3, 0.2, 0.0};
+  std::vector<Float> x_data = {Float(0.8), Float(-0.7), Float(0.6), Float(-0.5),
+                               Float(0.4), Float(-0.3), Float(0.2), Float(0.0)};
 
   auto got = m.GetOutput<Float>(x_data);
 
-  EXPECT_EQ(got, std::vector<Float>(
-      {1.0, -1.0, 1.0, -1.0, 1.0, -1.0, 1.0, 0.0}));
+  EXPECT_EQ(got, std::vector<Float>({Float(1.0), Float(-1.0), Float(1.0),
+                                     Float(-1.0), Float(1.0), Float(-1.0),
+                                     Float(1.0), Float(0.0)}));
 }
 
 template <typename Int>
@@ -103,7 +125,7 @@ class SignTestInt : public ::testing::Test {
  public:
   using IntType = Int;
 };
-using TestTypesInt = ::testing::Types<int32_t>;
+using TestTypesInt = ::testing::Types<int32_t, int16_t, int8_t>;
 
 TYPED_TEST_SUITE(SignTestInt, TestTypesInt);
 
