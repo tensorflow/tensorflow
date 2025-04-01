@@ -4305,8 +4305,9 @@ inline void Floor(const RuntimeShape& input_shape, const float* input_data,
   output_map.array() = Eigen::floor(input_map.array());
 }
 
-inline void Ceil(const RuntimeShape& input_shape, const float* input_data,
-                 const RuntimeShape& output_shape, float* output_data) {
+template <typename T>
+inline void Ceil(const RuntimeShape& input_shape, const T* input_data,
+                 const RuntimeShape& output_shape, T* output_data) {
   ruy::profiler::ScopeLabel label("Ceil");
   auto input_map = MapAsVector(input_data, input_shape);
   auto output_map = MapAsVector(output_data, output_shape);
