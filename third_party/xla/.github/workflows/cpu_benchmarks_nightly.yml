@@ -140,7 +140,7 @@ jobs:
           test_hlo_file="xla/tools/hlo_opt/tests/cpu_hlo.hlo"
           echo "Running CPU test with binary: $binary_dir"
           pwd #print working directory
-          $binary_dir/multihost_hlo_runner/hlo_runner_main --device_type=host --use_spmd_partitioning --profile_execution=True --xla_gpu_dump_xspace_to="$XSPACE_FILE_PATH" "$test_hlo_file" > "$OUTPUT_FILE_PATH"
+          $binary_dir/multihost_hlo_runner/hlo_runner_main --device_type=host --num_repeats=5 --use_spmd_partitioning --profile_execution=True --xla_gpu_dump_xspace_to="$XSPACE_FILE_PATH" "$test_hlo_file" > "$OUTPUT_FILE_PATH"
           $binary_dir/compute_xspace_stats_main --input="$XSPACE_FILE_PATH" --device_type=CPU >> "$OUTPUT_FILE_PATH"
           cat "$OUTPUT_FILE_PATH"
 
@@ -153,7 +153,7 @@ jobs:
           test_hlo_file="$OUTPUT_DIR/tmp_hlo/gemma2_2b_keras_jax.hlo"
           echo "Running CPU test with binary: $binary_dir"
           pwd #print working directory
-          $binary_dir/multihost_hlo_runner/hlo_runner_main --device_type=host --use_spmd_partitioning --profile_execution=True --xla_gpu_dump_xspace_to="$XSPACE_FILE_PATH" "$test_hlo_file" > "$OUTPUT_FILE_PATH"
+          $binary_dir/multihost_hlo_runner/hlo_runner_main --device_type=host --num_repeats=5 --use_spmd_partitioning --profile_execution=True --xla_gpu_dump_xspace_to="$XSPACE_FILE_PATH" "$test_hlo_file" > "$OUTPUT_FILE_PATH"
           $binary_dir/compute_xspace_stats_main --input="$XSPACE_FILE_PATH" --device_type=CPU >> "$OUTPUT_FILE_PATH"
           cat "$OUTPUT_FILE_PATH"
 
@@ -166,7 +166,7 @@ jobs:
           test_hlo_file="$OUTPUT_DIR/tmp_hlo/gemma3_1b_flax_call.hlo"
           echo "Running CPU test with binary: $binary_dir"
           pwd #print working directory
-          $binary_dir/multihost_hlo_runner/hlo_runner_main --device_type=host --use_spmd_partitioning --profile_execution=True --xla_gpu_dump_xspace_to="$XSPACE_FILE_PATH" "$test_hlo_file" > "$OUTPUT_FILE_PATH"
+          $binary_dir/multihost_hlo_runner/hlo_runner_main --device_type=host --num_repeats=5 --use_spmd_partitioning --profile_execution=True --xla_gpu_dump_xspace_to="$XSPACE_FILE_PATH" "$test_hlo_file" > "$OUTPUT_FILE_PATH"
           $binary_dir/compute_xspace_stats_main --input="$XSPACE_FILE_PATH" --device_type=CPU >> "$OUTPUT_FILE_PATH"
           cat "$OUTPUT_FILE_PATH"
 
