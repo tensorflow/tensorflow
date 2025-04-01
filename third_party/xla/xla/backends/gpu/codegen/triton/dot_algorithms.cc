@@ -21,10 +21,12 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Math/IR/Math.h"
@@ -42,6 +44,7 @@ limitations under the License.
 #include "xla/primitive_util.h"
 #include "xla/service/algorithm_util.h"
 #include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/tensor_float_32_utils.h"
 #include "triton/Dialect/Triton/IR/Dialect.h"
@@ -277,11 +280,14 @@ ttir::InputPrecision InferDotPrecision(const HloDotInstruction& dot) {
   return use_tf32 ? ttir::InputPrecision::TF32 : ttir::InputPrecision::IEEE;
 }
 
-Type GetAlgUnsetAccumulatorType(EmitterLocOpBuilder& b,
-                                const DotOperands& dot_operands) {
-  Type lhs_type = ElementType(dot_operands.lhs);
-  Type rhs_type = ElementType(dot_operands.rhs);
-  Type accumulator_type = ElementType(dot_operands.accumulator);
+absl::StatusOr<Type> GetAlgUnsetAccumulatorType(EmitterLocOpBuilder& b,
+                                                const HloDotInstruction& dot) {
+  TF_ASSIGN_OR_RETURN(Type lhs_type,
+                      TritonType(b, dot.operand(0)->shape().element_type()));
+  TF_ASSIGN_OR_RETURN(Type rhs_type,
+                      TritonType(b, dot.operand(1)->shape().element_type()));
+  TF_ASSIGN_OR_RETURN(Type accumulator_type,
+                      TritonType(b, dot.shape().element_type()));
 
   // The code below assumes that lhs and rhs have the same type. However
   // this may not always be the case with f8 matmuls, e.g. e4m3×e5m2 is
@@ -312,12 +318,6 @@ absl::StatusOr<Value> EmitDotAlgUnset(EmitterLocOpBuilder& b,
   Value lhs = dot_operands.lhs;
   Value rhs = dot_operands.rhs;
   Value acc = dot_operands.accumulator;
-
-  Type expected_acc_type = GetAlgUnsetAccumulatorType(b, dot_operands);
-  if (ElementType(acc) != expected_acc_type) {
-    return absl::FailedPreconditionError(
-        "Given accumulator type for unset dot does not match expected type.");
-  }
 
   int max_num_imprecise_acc = 0;
   if (ElementType(lhs).isFloat(8) || ElementType(rhs).isFloat(8)) {
@@ -365,113 +365,129 @@ absl::StatusOr<Value> EmitRegularDot(EmitterLocOpBuilder& b,
       /*maxNumImpreciseAcc=*/max_num_imprecise_acc);
 }
 
-}  // namespace
-
-absl::StatusOr<Value> EmitSingleTileDot(EmitterLocOpBuilder& b,
-                                        const HloDotInstruction& dot,
-                                        DotOperands dot_operands) {
-  AlgorithmEmitter algorithm_emitter = nullptr;
-  PrecisionSpec precision_spec{dot.precision_config().algorithm(),
-                               dot.precision_config().operand_precision(0),
-                               dot.precision_config().operand_precision(1),
-                               InferDotPrecision(dot)};
-
-  // Algorithms mostly expect that their input and output types correspond to
-  // what the algorithm describes. This is not always the case though, e.g.
-  // for BF16_BF16_F32_X9, working from inputs casted to BF16 makes no sense;
-  // this algorithm instead expects F32 inputs, and performs splits into BF16
-  // sub-values under the hood.
-  std::optional<Type> force_operands_type;
-  std::optional<Type> force_accumulator_type;
-
-  PrecisionConfig::Algorithm algorithm = precision_spec.algorithm;
-
-  Type bf16 = b.getBF16Type();
-  Type f16 = b.getF16Type();
-  Type f32 = b.getF32Type();
-  Type f64 = b.getF64Type();
-
+// Returns an emitter for the given dot algorithm. Raises an
+// `UnimplementedError` if the algorithm is not supported.
+absl::StatusOr<AlgorithmEmitter> GetAlgorithmEmitter(
+    const PrecisionConfig::Algorithm algorithm) {
   switch (algorithm) {
     case PrecisionConfig::ALG_UNSET:
-      algorithm_emitter = EmitDotAlgUnset;
-      break;
+      return EmitDotAlgUnset;
     case PrecisionConfig::ALG_DOT_F16_F16_F16:
-      force_operands_type = f16;
-      force_accumulator_type = f16;
-      algorithm_emitter = EmitRegularDot;
-      break;
     case PrecisionConfig::ALG_DOT_F32_F32_F32:
-      force_operands_type = f32;
-      force_accumulator_type = f32;
-      algorithm_emitter = EmitRegularDot;
-      break;
     case PrecisionConfig::ALG_DOT_F64_F64_F64:
-      force_operands_type = f64;
-      force_accumulator_type = f64;
-      algorithm_emitter = EmitRegularDot;
-      break;
     case PrecisionConfig::ALG_DOT_F16_F16_F32:
-      force_operands_type = f16;
-      force_accumulator_type = f32;
-      algorithm_emitter = EmitRegularDot;
-      break;
     case PrecisionConfig::ALG_DOT_BF16_BF16_BF16:
-      force_operands_type = bf16;
-      force_accumulator_type = bf16;
-      algorithm_emitter = EmitRegularDot;
-      break;
     case PrecisionConfig::ALG_DOT_BF16_BF16_F32:
-      force_operands_type = bf16;
-      force_accumulator_type = f32;
-      algorithm_emitter = EmitRegularDot;
-      break;
+      return EmitRegularDot;
     case PrecisionConfig::ALG_DOT_BF16_BF16_F32_X3:
-      force_operands_type = f32;  // This is not a typo.
-      force_accumulator_type = f32;
-      algorithm_emitter = EmitBF16x3Matmul;
-      break;
+      return EmitBF16x3Matmul;
     case PrecisionConfig::ALG_DOT_BF16_BF16_F32_X6:
-      force_operands_type = f32;  // This is not a typo.
-      force_accumulator_type = f32;
-      algorithm_emitter = EmitBF16x6Matmul;
-      break;
+      return EmitBF16x6Matmul;
     case PrecisionConfig::ALG_DOT_TF32_TF32_F32:
-      // TODO(bchetioui): pass around tf32 matmul config.
-      force_operands_type = f32;
-      force_accumulator_type = f32;
       // TODO(bchetioui): this should be factored out of EmitRegularDot.
-      algorithm_emitter = EmitRegularDot;
-      break;
+      return EmitRegularDot;
     case PrecisionConfig::ALG_DOT_TF32_TF32_F32_X3:
-      // TODO(bchetioui): pass around tf32 matmul config.
-      force_operands_type = f32;
-      force_accumulator_type = f32;
       // TODO(bchetioui): this should be factored out of EmitRegularDot.
-      algorithm_emitter = EmitRegularDot;
-      break;
+      return EmitRegularDot;
     case PrecisionConfig::ALG_DOT_BF16_BF16_F32_X9:
-      force_operands_type = f32;  // This is not a typo.
-      force_accumulator_type = f32;
-      algorithm_emitter = EmitBF16x9Matmul;
-      break;
+      return EmitBF16x9Matmul;
     case PrecisionConfig::ALG_DOT_ANY_F8_ANY_F8_F32:
-      // TODO(bchetioui): How to enforce "any f8"?
-      force_accumulator_type = f32;
-      break;
     case PrecisionConfig::ALG_DOT_ANY_F8_ANY_F8_F32_FAST_ACCUM:
-      // TODO(bchetioui): How to enforce "any f8"?
-      force_accumulator_type = f32;
-      break;
     default:
       break;
   }
 
   // Couldn't find an algorithm emitter for this algorithm. Raise an error.
-  if (algorithm_emitter == nullptr) {
-    return absl::UnimplementedError(
-        absl::StrCat("This algorithm is not supported yet: ",
-                     PrecisionConfig::Algorithm_Name(algorithm)));
+  return absl::UnimplementedError(
+      absl::StrCat("This algorithm is not supported yet: ",
+                   PrecisionConfig::Algorithm_Name(algorithm)));
+}
+
+// Returns the `Type` that the dot operands should be casted to if there is a
+// clear candidate. Raises an error if there are multiple allowed choices but
+// the operands do not already conform to any of them. Returns `std::nullopt` if
+// no casting is a priori needed.
+absl::StatusOr<std::optional<Type>> GetForceOperandsType(
+    EmitterLocOpBuilder& b, const HloDotInstruction& dot,
+    const DotOperands& dot_operands) {
+  PrecisionConfig::Algorithm algorithm = dot.precision_config().algorithm();
+  if (algorithm == PrecisionConfig::ALG_UNSET) {
+    return std::nullopt;
   }
+
+  TF_ASSIGN_OR_RETURN(
+      std::vector<PrimitiveType> allowed_operands_primitive_types,
+      algorithm_util::GetAllowedOperandsTypeForAlgorithm(algorithm));
+  CHECK(!allowed_operands_primitive_types.empty());
+
+  std::vector<Type> allowed_operands_types;
+  allowed_operands_types.reserve(allowed_operands_primitive_types.size());
+  for (PrimitiveType primitive_type : allowed_operands_primitive_types) {
+    TF_ASSIGN_OR_RETURN(Type type, TritonType(b, primitive_type));
+    allowed_operands_types.push_back(type);
+  }
+
+  Type lhs_type = ElementType(dot_operands.lhs);
+  Type rhs_type = ElementType(dot_operands.rhs);
+  if (allowed_operands_types.size() == 1) {
+    // If there is a single allowed operand type, we force the operands to use
+    // this type.
+    return allowed_operands_types.front();
+
+  } else {
+    // If there are several allowed operand types, we just check that the
+    // operands have the same type, and that this type is one of the allowed
+    // ones. Raise an error otherwise.
+    if (lhs_type != rhs_type ||
+        !absl::c_linear_search(allowed_operands_types, lhs_type)) {
+      std::string allowed_operands_types_str = absl::StrJoin(
+          allowed_operands_types, ", ", [&](std::string* out, Type type) {
+            absl::StrAppend(out, MlirToString(type));
+          });
+      return absl::FailedPreconditionError(absl::StrCat(
+          "Expected dot operands to both have the same type, and for this type "
+          "to be one of the following types: ",
+          allowed_operands_types_str, " but got ", MlirToString(lhs_type),
+          " and ", MlirToString(rhs_type)));
+    }
+  }
+
+  return std::nullopt;
+}
+
+}  // namespace
+
+// TODO(b/266862493): Add support for more types as needed.
+absl::StatusOr<Type> GetDotAccumulatorType(EmitterLocOpBuilder& b,
+                                           const HloDotInstruction& dot) {
+  const PrecisionConfig::Algorithm algorithm =
+      dot.precision_config().algorithm();
+
+  if (algorithm == PrecisionConfig::ALG_UNSET) {
+    return GetAlgUnsetAccumulatorType(b, dot);
+  }
+
+  TF_ASSIGN_OR_RETURN(PrimitiveType accumulator_type,
+                      algorithm_util::GetDotAccumulatorType(algorithm));
+  return TritonType(b, accumulator_type);
+}
+
+absl::StatusOr<Value> EmitSingleTileDot(EmitterLocOpBuilder& b,
+                                        const HloDotInstruction& dot,
+                                        DotOperands dot_operands) {
+  PrecisionConfig::Algorithm algorithm = dot.precision_config().algorithm();
+  PrecisionSpec precision_spec{
+      algorithm, dot.precision_config().operand_precision(0),
+      dot.precision_config().operand_precision(1), InferDotPrecision(dot)};
+
+  TF_ASSIGN_OR_RETURN(AlgorithmEmitter algorithm_emitter,
+                      GetAlgorithmEmitter(algorithm));
+
+  TF_ASSIGN_OR_RETURN(std::optional<Type> force_operands_type,
+                      GetForceOperandsType(b, dot, dot_operands));
+
+  TF_ASSIGN_OR_RETURN(Type force_accumulator_type,
+                      GetDotAccumulatorType(b, dot));
 
   if (force_operands_type.has_value()) {
     if (ElementType(dot_operands.lhs) != *force_operands_type) {
@@ -483,11 +499,9 @@ absl::StatusOr<Value> EmitSingleTileDot(EmitterLocOpBuilder& b,
     }
   }
 
-  if (force_accumulator_type.has_value()) {
-    if (ElementType(dot_operands.accumulator) != *force_accumulator_type) {
-      dot_operands.accumulator =
-          Cast(b, dot_operands.accumulator, *force_accumulator_type);
-    }
+  if (ElementType(dot_operands.accumulator) != force_accumulator_type) {
+    dot_operands.accumulator =
+        Cast(b, dot_operands.accumulator, force_accumulator_type);
   }
 
   TF_ASSIGN_OR_RETURN(Value result,

@@ -901,55 +901,6 @@ class MatMulEmitterHelper {
         dims_(dims),
         launch_config_(launch_config) {}
 
-  // TODO(b/266862493): Add support for more types as needed.
-  absl::StatusOr<mlir::Type> GetDotAccumulatorType(EmitterLocOpBuilder& b) {
-    const PrecisionConfig::Algorithm algorithm =
-        dot_instr_->precision_config().algorithm();
-
-    if (algorithm == PrecisionConfig::ALG_UNSET) {
-      TF_ASSIGN_OR_RETURN(Type dot_output_ty,
-                          TritonType(b, dot_instr_->shape().element_type()));
-      // The code below assumes that lhs and rhs have the same type. However
-      // it's not always the case with fp8 matmuls, e.g. e4m3×e5m2 is supported
-      // at the hardware level. NVidia GPU currently only supports f32
-      // accumulator for such matmuls.
-      if (IsFp8Matmul(dot_instr_)) {
-        return b.getF32Type();
-      }
-
-      // Data type of dot() immediate inputs.
-      TF_ASSIGN_OR_RETURN(
-          const Type lhs_ty,
-          TritonType(b, dot_instr_->operand(0)->shape().element_type()));
-      TF_ASSIGN_OR_RETURN(
-          const Type rhs_ty,
-          TritonType(b, dot_instr_->operand(1)->shape().element_type()));
-      TF_RET_CHECK(lhs_ty == rhs_ty);
-      Type dot_input_ty = lhs_ty;
-
-      // Currently allowing 8x8-bit ints -> i32.
-      if (dot_input_ty == b.getIntegerType(8) && dot_output_ty.isInteger(32)) {
-        return b.getI32Type();
-      }
-      return (dot_output_ty.isF64() && dot_input_ty.isF64()) ? b.getF64Type()
-                                                             : b.getF32Type();
-    }
-
-    absl::StatusOr<PrimitiveType> accum_type =
-        algorithm_util::GetDotAccumulatorType(algorithm);
-    CHECK(accum_type.ok()) << "Unexpected algorithm: "
-                           << PrecisionConfig::Algorithm_Name(algorithm);
-    TF_ASSIGN_OR_RETURN(Type mlir_accum_type,
-                        TritonType(b, accum_type.value()));
-    if (auto float_accum_type =
-            mlir::dyn_cast<mlir::FloatType>(mlir_accum_type)) {
-      return float_accum_type;
-    }
-    LOG(FATAL) << "Only floating point accumulator types are supported for "
-                  "now, but we got: "
-               << llvm_ir::DumpToString(mlir_accum_type);
-  }
-
   std::vector<const HloInstruction*> EpiloguePostOrderTransitiveOperands(
       const HloInstruction* root) {
     // Collect all instructions of the dot's output scope.
@@ -1987,7 +1938,8 @@ absl::StatusOr<std::optional<stream_executor::gpu::TmaMetadata>> EmitMatMul(
   MatMulEmitterHelper emitter(libdevice_path, device_info, dot_instr, index_ty,
                               dims, launch_config, analysis);
 
-  TF_ASSIGN_OR_RETURN(mlir::Type acc_ty, emitter.GetDotAccumulatorType(b));
+  TF_ASSIGN_OR_RETURN(mlir::Type acc_ty,
+                      triton::GetDotAccumulatorType(b, *dot_instr));
 
   ma::ConstantOp accumulator_init =
       CreateConst(b, acc_ty, 0, {block_m, block_n});

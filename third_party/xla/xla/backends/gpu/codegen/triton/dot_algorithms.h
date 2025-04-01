@@ -17,6 +17,7 @@ limitations under the License.
 #define XLA_BACKENDS_GPU_CODEGEN_TRITON_DOT_ALGORITHMS_H_
 
 #include "absl/status/statusor.h"
+#include "mlir/IR/Types.h"
 #include "mlir/IR/Value.h"
 #include "xla/codegen/emitter_loc_op_builder.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -32,6 +33,11 @@ struct DotOperands {
   ::mlir::Value rhs;
   ::mlir::Value accumulator;
 };
+
+// Returns the type to use for accumulation for the given `dot` instruction.
+// This also handles the case where the algorithm is `ALG_UNSET`.
+absl::StatusOr<::mlir::Type> GetDotAccumulatorType(
+    EmitterLocOpBuilder& b, const HloDotInstruction& dot);
 
 // Emits a single-tile dot, considering the given `dot` instruction's algorithm
 // and operand precisions. Raises an `UnimplementedError` if the algorithm is
