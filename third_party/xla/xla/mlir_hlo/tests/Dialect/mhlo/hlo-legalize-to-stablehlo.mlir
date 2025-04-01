@@ -466,6 +466,19 @@ func.func @op_all_reduce(%arg0: tensor<f32>) -> tensor<f32> {
   func.return %0 : tensor<f32>
 }
 
+// CHECK-LABEL: "op_all_reduce_tuple"
+func.func @op_all_reduce_tuple(%arg0: tensor<8xf32>, %arg1: tensor<f32>) -> (tensor<8xf32>, tensor<f32>) {
+  // CHECK: %[[RES:.*]]:2 = "stablehlo.all_reduce"([[ARG0:%arg[0-9]+]], [[ARG1:%arg[0-9]+]])
+  // CHECK-SAME: <{replica_groups = dense<> : tensor<0x0xi64>}>
+  // CHECK: "func.return"(%[[RES]]#0, %[[RES]]#1) : (tensor<8xf32>, tensor<f32>)
+  %0:2 = "mhlo.all_reduce"(%arg0, %arg1) ({
+  ^bb0(%arg2: tensor<f32>, %arg3: tensor<f32>):
+    %2 = mhlo.add %arg2, %arg3 : tensor<f32>
+    mhlo.return %2 : tensor<f32>
+  }) {replica_groups = dense<> : tensor<0x0xi64>} : (tensor<8xf32>, tensor<f32>) -> (tensor<8xf32>, tensor<f32>)
+  return %0#0, %0#1 : tensor<8xf32>, tensor<f32>
+}
+
 // CHECK-LABEL: "op_all_to_all"
 func.func @op_all_to_all(%arg0: tensor<4x16xf32>) -> tensor<16x4xf32> {
   //               CHECK: "stablehlo.all_to_all"([[ARG0:%arg[0-9]+]]) <{
@@ -483,6 +496,22 @@ func.func @op_all_to_all(%arg0: tensor<4x16xf32>) -> tensor<16x4xf32> {
     channel_handle = #mhlo.channel_handle<handle = 1, type = 0>
   } : (tensor<4x16xf32>) -> tensor<16x4xf32>
   func.return %0 : tensor<16x4xf32>
+}
+
+// CHECK-LABEL: "op_all_to_all_tuple"
+func.func @op_all_to_all_tuple(%arg0: tensor<2x4xi64>, %arg1: tensor<2x4xi64>) -> (tensor<4x2xi64>, tensor<4x2xi64>) {
+  //  CHECK: %[[RES:.*]]:2 = "stablehlo.all_to_all"([[ARG0:%arg[0-9]+]], [[ARG1:%arg[0-9]+]])
+  // CHECK-SAME: <{concat_dimension = 0 : i64,
+  // CHECK-SAME{LITERAL}:   replica_groups = dense<[[0, 1]]> : tensor<1x2xi64>,
+  // CHECK-SAME:   split_count = 2 : i64, split_dimension = 1 : i64}>
+  // CHECK-SAME:   : (tensor<2x4xi64>, tensor<2x4xi64>) -> (tensor<4x2xi64>, tensor<4x2xi64>)
+  %0:2 = "stablehlo.all_to_all"(%arg0, %arg1) {
+      split_dimension = 1 : i64,
+      concat_dimension = 0 : i64,
+      split_count = 2 : i64,
+      replica_groups = dense<[[0, 1]]> : tensor<1x2xi64>
+    } : (tensor<2x4xi64>, tensor<2x4xi64>) -> (tensor<4x2xi64>, tensor<4x2xi64>)
+  return %0#0, %0#1 : tensor<4x2xi64>, tensor<4x2xi64>
 }
 
 // CHECK-LABEL: "op_and"

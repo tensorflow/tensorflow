@@ -87,11 +87,6 @@ bool hasPrivateFeaturesNotInStablehlo(HloOpTy hloOp) {
 // for StableHLO, and they are usually accompanied by a StableHLO GitHub ticket.
 template <typename HloOpTy>
 bool hasExperimentalFeaturesNotInStablehlo(HloOpTy hloOp) {
-  if constexpr (std::is_same<HloOpTy, mhlo::AllReduceOp>::value) {
-    // StableHLO AllReduce doesn't support the tuple form yet.
-    // Proposal: https://github.com/openxla/stablehlo/issues/1370.
-    if (hloOp.getNumOperands() != 1) return true;
-  }
   if constexpr (std::is_same<HloOpTy, mhlo::AllToAllOp>::value) {
     // StableHLO AllToAll doesn't support the tuple form yet.
     // Proposal: https://github.com/openxla/stablehlo/issues/574.
