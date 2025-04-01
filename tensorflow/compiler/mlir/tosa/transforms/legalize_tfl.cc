@@ -1511,6 +1511,102 @@ Value lowerGroupedConvolution(TFL::Conv2DOp op, PatternRewriter& rewriter) {
                                                convolutions, output_slice_dim);
 }
 
+/* Ensure bias is of the correct type.
+TOSA requires that bias must be of the same type as the output, and that
+output type must be of a certain type depending on the input type.
+*/
+static FailureOr<std::pair<Type, Value>> getTosaBias(
+    Operation* op, PatternRewriter& rewriter, ShapedType input_type,
+    ShapedType output_type, bool output_is_qtype, Value bias) {
+  Type bias_ety;
+
+  int bias_bits;
+  if (output_is_qtype) {
+    auto input_qtype =
+        dyn_cast<mlir::quant::QuantizedType>(input_type.getElementType());
+    if (!input_qtype) {
+      return rewriter.notifyMatchFailure(op,
+                                         "output is qtype but input is not");
+    }
+    int input_bits = input_qtype.getStorageTypeIntegralWidth();
+    // For signed int8/int16 input tensor, int32/int48 bias and output
+    // tensor are generated.
+    bias_bits = input_bits == 16 ? 48 : 32;
+    bias_ety = rewriter.getIntegerType(bias_bits);
+  } else {
+    bias_ety = output_type.getElementType();
+    bias_bits = bias_ety.getIntOrFloatBitWidth();
+  }
+
+  if (!bias || !dyn_cast<RankedTensorType>(bias.getType())) {
+    // The bias may actually be typed "None" which has no value. TOSA requires
+    // bias to be an array of output_channel_count values, so create a constant
+    // of the appropriate number and type of zeros.
+    RankedTensorType bias_type = RankedTensorType::get({1}, bias_ety);
+    auto bias_attr = rewriter.getZeroAttr(bias_type);
+    bias = CreateOpAndInfer<tosa::ConstOp>(rewriter, op->getLoc(), bias_type,
+                                           bias_attr.cast<ElementsAttr>());
+  }
+
+  auto prev_bias_type = dyn_cast<ShapedType>(bias.getType());
+  if (!prev_bias_type) {
+    return rewriter.notifyMatchFailure(op, "bias not a ranked tensor");
+  }
+
+  auto prev_bias_etype = prev_bias_type.getElementType();
+
+  int prev_bias_bits;
+  if (auto prev_bias_eqtype =
+          dyn_cast<mlir::quant::QuantizedType>(prev_bias_etype)) {
+    prev_bias_bits = prev_bias_eqtype.getStorageTypeIntegralWidth();
+  } else {
+    prev_bias_bits = prev_bias_etype.getIntOrFloatBitWidth();
+  }
+
+  if (prev_bias_bits == bias_bits) {
+    return std::pair<Type, Value>(bias_ety, bias);
+  }
+
+  auto const_op = bias.getDefiningOp<tosa::ConstOp>();
+  if (!const_op) {
+    return rewriter.notifyMatchFailure(op, "bias not a ConstOp");
+  }
+
+  DenseElementsAttr bias_attr;
+  {
+    auto prev_bias_attr =
+        dyn_cast<DenseIntElementsAttr>(const_op.getValuesAttr());
+    if (!prev_bias_attr) {
+      return rewriter.notifyMatchFailure(
+          op, "bias values not DenseIntElementsAttr");
+    }
+    // Promote to int32/int48 if necessary.
+    bias_attr = prev_bias_attr.mapValues(
+        bias_ety,
+        [bias_bits = bias_ety.getIntOrFloatBitWidth()](
+            const APInt& x) -> APInt { return x.sext(bias_bits); });
+  }
+
+  ShapedType bias_output_type;
+  if (auto bias_attr_type = dyn_cast<ShapedType>(bias_attr.getType())) {
+    bias_output_type = bias_attr_type.clone(bias_ety);
+  } else {
+    bias_output_type = dyn_cast<ShapedType>(const_op.getResult().getType());
+    if (!bias_output_type) {
+      return rewriter.notifyMatchFailure(
+          op, "bias defining op result not ShapedType");
+    }
+    bias_output_type = bias_output_type.clone(bias_ety);
+  }
+
+  auto new_const_op =
+      rewriter.create<tosa::ConstOp>(op->getLoc(), bias_output_type, bias_attr);
+  Value new_bias = new_const_op.getResult();
+  rewriter.replaceOp(const_op, new_bias);
+
+  return std::make_pair(bias_ety, new_bias);
+}
+
 LogicalResult ConvertTFLConv2DOp::matchAndRewrite(
     Operation* op, PatternRewriter& rewriter) const {
   auto tfl_conv2d_op = cast<TFL::Conv2DOp>(op);
@@ -1583,19 +1679,10 @@ LogicalResult ConvertTFLConv2DOp::matchAndRewrite(
       return failure();
   }
 
-  Value unquantized_bias = tfl_conv2d_op.getBias();
-  Type bias_ety =
-      output_is_qtype ? rewriter.getI32Type() : output_type.getElementType();
-  if (unquantized_bias) {
-    Type new_bias_ety = getElementTypeOrSelf(unquantized_bias.getType());
-    if (auto qtype = mlir::dyn_cast<mlir::quant::QuantizedType>(new_bias_ety)) {
-      new_bias_ety = qtype.getStorageType();
-    }
-    if (new_bias_ety.getIntOrFloatBitWidth() >
-        bias_ety.getIntOrFloatBitWidth()) {
-      bias_ety = new_bias_ety;
-    }
-  }
+  auto bias_result = getTosaBias(op, rewriter, input_type, output_type,
+                                 output_is_qtype, tfl_conv2d_op.getBias());
+  if (failed(bias_result)) return failure();
+  auto [bias_ety, bias_val] = bias_result.value();
 
   // TFLite only supports NHWC format
   Value conv2d_input = getInputSlicedToItsUsedSize(
@@ -1609,8 +1696,7 @@ LogicalResult ConvertTFLConv2DOp::matchAndRewrite(
 
   auto a1_conv2d_op = CreateOpAndInfer<tosa::Conv2DOp>(
       rewriter, op->getLoc(), output_type.clone(bias_ety), conv2d_input,
-      tfl_conv2d_op.getFilter(), unquantized_bias, pad, stride, dilation,
-      acc_type);
+      tfl_conv2d_op.getFilter(), bias_val, pad, stride, dilation, acc_type);
 
   Value conv2d_output;
   if (input_is_qtype) {
@@ -1710,37 +1796,26 @@ LogicalResult ConvertTFLConv3DOp::matchAndRewrite(
     }
   }
 
-  Value unquantized_bias = tfl_conv3d_op.getBias();
-  if (!dyn_cast<RankedTensorType>(unquantized_bias.getType())) {
-    // The bias may actually be typed "None" which has no value. TOSA requires
-    // bias to be an array of output_channel_count values, so create a constant
-    // of the appropriate number and type of zeros.
-    auto bias_dim = filter_type.getShape().back();
-    RankedTensorType bias_type =
-        RankedTensorType::get({bias_dim}, filter_type.getElementType());
-    auto bias_attr = rewriter.getZeroAttr(bias_type);
-    unquantized_bias = CreateOpAndInfer<tosa::ConstOp>(
-        rewriter, op->getLoc(), bias_type, bias_attr.cast<ElementsAttr>());
-  }
-
   // TFLite only supports NDHWC format, tensorflow::FORMAT_NHWC is used for both
   // rank 4 and rank 5 tensors
   Value conv3d_input = getInputSlicedToItsUsedSize(
       rewriter, op, tensorflow::FORMAT_NHWC, input_type,
       tfl_conv3d_op.getInput(), kernel_size, pad, stride, dilation);
 
-  Type bias_ety =
-      unquantized_bias.getType().cast<ShapedType>().getElementType();
+  auto bias_result = getTosaBias(op, rewriter, input_type, output_type,
+                                 output_is_qtype, tfl_conv3d_op.getBias());
+  if (failed(bias_result)) return failure();
+  auto [bias_ety, bias_val] = bias_result.value();
 
   auto acc_type =
       getConvAccTypeAttr(rewriter,
                          /* input_etype = */ input_type.getElementType(),
                          /* output_etype = */ bias_ety);
 
-  std::optional<Value> a1_conv3d_op = convertConv3DCommon(
-      rewriter, op, output_type.clone(bias_ety), conv3d_input,
-      tfl_conv3d_op.getFilter(), unquantized_bias, pad, stride, dilation,
-      acc_type, StringRef("NDHWC"));
+  std::optional<Value> a1_conv3d_op =
+      convertConv3DCommon(rewriter, op, output_type.clone(bias_ety),
+                          conv3d_input, tfl_conv3d_op.getFilter(), bias_val,
+                          pad, stride, dilation, acc_type, StringRef("NDHWC"));
 
   if (!a1_conv3d_op) return failure();
 
@@ -1789,23 +1864,6 @@ LogicalResult ConvertTFLTransposeConvOp::matchAndRewrite(
   bool output_is_qtype =
       mlir::isa<mlir::quant::QuantizedType>(output_type.getElementType());
 
-  const bool has_bias =
-      tfl_conv_op.getBias() && !isa<NoneType>(tfl_conv_op.getBias().getType());
-
-  if (has_bias) {
-    RankedTensorType bias_type =
-        dyn_cast<RankedTensorType>(tfl_conv_op.getBias().getType());
-    bool bias_is_qtype =
-        isa<mlir::quant::QuantizedType>(bias_type.getElementType());
-
-    if (input_is_qtype != bias_is_qtype) {
-      return rewriter.notifyMatchFailure(
-          op,
-          "input/bias tensor should "
-          "be all quantized or all floating-point");
-    }
-  }
-
   if ((input_is_qtype != filter_is_qtype) ||
       (input_is_qtype != output_is_qtype)) {
     return rewriter.notifyMatchFailure(
@@ -1835,49 +1893,10 @@ LogicalResult ConvertTFLTransposeConvOp::matchAndRewrite(
       return failure();
   }
 
-  int output_channel = 0;
-  // TODO(suderman): We need to figure out how to guarantee output channel
-  // propagation.
-  if (output_type.hasRank()) {
-    output_channel = output_type.getDimSize(3);
-  } else if (filter_type.hasRank()) {
-    output_channel = filter_type.getDimSize(0);
-  } else {
-    return failure();
-  }
-
-  Value bias_val;
-  if (has_bias) {
-    bias_val = tfl_conv_op.getBias();
-  } else {
-    std::optional<Value> zero_bias;
-    if (input_is_qtype) {
-      uint32_t input_bits =
-          cast<mlir::quant::QuantizedType>(input_type.getElementType())
-              .getStorageTypeIntegralWidth();
-      uint32_t weight_bits =
-          cast<mlir::quant::QuantizedType>(filter_type.getElementType())
-              .getStorageTypeIntegralWidth();
-
-      if (input_bits == 16 && weight_bits == 8) {
-        // For signed 16x8, the output is accumulated into int48
-        SmallVector<APInt> vec(output_channel, APInt(48, 0, true));
-        zero_bias = getConstTensor<APInt>(rewriter, op, vec, {output_channel});
-      } else {
-        SmallVector<int32_t> vec(output_channel, 0);
-        zero_bias =
-            getConstTensor<int32_t>(rewriter, op, vec, {output_channel});
-      }
-    } else {
-      SmallVector<float> vec(output_channel, 0.0f);
-      zero_bias = getConstTensor<float>(rewriter, op, vec, {output_channel});
-    }
-
-    if (!zero_bias) return failure();
-    bias_val = zero_bias.value();
-  }
-
-  Type bias_ety = cast<ShapedType>(bias_val.getType()).getElementType();
+  auto bias_result = getTosaBias(op, rewriter, input_type, output_type,
+                                 output_is_qtype, tfl_conv_op.getBias());
+  if (failed(bias_result)) return failure();
+  auto [bias_ety, bias_val] = bias_result.value();
 
   auto acc_type =
       getConvAccTypeAttr(rewriter,
@@ -1886,8 +1905,8 @@ LogicalResult ConvertTFLTransposeConvOp::matchAndRewrite(
 
   auto a1_conv2d_op = CreateOpAndInfer<tosa::TransposeConv2DOp>(
       rewriter, op->getLoc(), output_type.clone(bias_ety),
-      tfl_conv_op.getInput(), tfl_conv_op.getWeights(), bias_val,
-      outpad, stride, acc_type);
+      tfl_conv_op.getInput(), tfl_conv_op.getWeights(), bias_val, outpad,
+      stride, acc_type);
 
   Value conv2d_output;
   if (input_is_qtype) {
@@ -2020,20 +2039,10 @@ LogicalResult ConvertTFLDepthwiseConv2DOp::matchAndRewrite(
                             filter_type.getElementType()),
       a1_filter_transpose_op.getResult(), a2_reshape_dims_value);
 
-  Type bias_ety =
-      output_is_qtype ? rewriter.getI32Type() : output_type.getElementType();
-
-  Value unquantized_bias = tfl_conv2d_op.getBias();
-  if (unquantized_bias) {
-    Type new_bias_ety = getElementTypeOrSelf(unquantized_bias.getType());
-    if (auto qtype = new_bias_ety.dyn_cast<mlir::quant::QuantizedType>()) {
-      new_bias_ety = qtype.getStorageType();
-    }
-    if (new_bias_ety.getIntOrFloatBitWidth() >
-        bias_ety.getIntOrFloatBitWidth()) {
-      bias_ety = new_bias_ety;
-    }
-  }
+  auto bias_result = getTosaBias(op, rewriter, input_type, output_type,
+                                 output_is_qtype, tfl_conv2d_op.getBias());
+  if (failed(bias_result)) return failure();
+  auto [bias_ety, bias_val] = bias_result.value();
 
   // TFLite only supports NHWC format
   Value conv2d_input = getInputSlicedToItsUsedSize(
@@ -2047,7 +2056,7 @@ LogicalResult ConvertTFLDepthwiseConv2DOp::matchAndRewrite(
 
   auto a3_depthwise_conv2d_op = CreateOpAndInfer<tosa::DepthwiseConv2DOp>(
       rewriter, op->getLoc(), output_type.clone(bias_ety), conv2d_input,
-      a2_filter_reshape_op.getResult(), unquantized_bias, pad, stride, dilation,
+      a2_filter_reshape_op.getResult(), bias_val, pad, stride, dilation,
       acc_type);
 
   Value conv2d_output;
@@ -2231,8 +2240,6 @@ LogicalResult ConvertTFLFullyConnectedOp::matchAndRewrite(
       dyn_cast<RankedTensorType>(tfl_fc_op.getInput().getType());
   RankedTensorType filter_type =
       dyn_cast<RankedTensorType>(tfl_fc_op.getFilter().getType());
-  RankedTensorType bias_type =
-      dyn_cast<RankedTensorType>(tfl_fc_op.getBias().getType());
   if (!input_type || !filter_type) return failure();
 
   bool input_is_qtype =
@@ -2306,53 +2313,10 @@ LogicalResult ConvertTFLFullyConnectedOp::matchAndRewrite(
       filter_val, new_filter_shape_value);
   filter_type = cast<RankedTensorType>(filter_val.getType());
 
-  Value bias_val;
-  if (!bias_type) {
-    // For some matmuls, the bias may actually be a "UnitType" which has no
-    // value. TOSA requires bias to be an array of output_channel_count values,
-    // so create a constant of the appropriate number and type of zeros.
-    SmallVector<int64_t, 1> bias_shape({filter_type.getShape()[0]});
-    RankedTensorType new_bias_type;
-
-    DenseElementsAttr bias_attr;
-    if (mlir::isa<FloatType>(input_type.getElementType())) {
-      SmallVector<float> bias_arr(bias_shape[0]);
-
-      for (int i = 0; i < bias_shape[0]; i++) {
-        bias_arr[i] = 0.0;
-      }
-      new_bias_type =
-          RankedTensorType::get(bias_shape, input_type.getElementType());
-      bias_attr =
-          DenseElementsAttr::get(new_bias_type, llvm::ArrayRef(bias_arr));
-    } else {
-      SmallVector<int32_t> bias_arr(bias_shape[0]);
-
-      for (int i = 0; i < bias_shape[0]; i++) {
-        bias_arr[i] = 0;
-      }
-      if (!input_is_qtype) {
-        return rewriter.notifyMatchFailure(
-            op, "input must be quantized type if it's not float type");
-      }
-      auto input_qtype =
-          mlir::cast<mlir::quant::QuantizedType>(input_type.getElementType());
-      Type new_bias_ety = input_qtype.getStorageTypeIntegralWidth() == 16
-                              ? rewriter.getIntegerType(48)
-                              : rewriter.getI32Type();
-      new_bias_type = RankedTensorType::get(bias_shape, new_bias_ety);
-      bias_attr =
-          DenseElementsAttr::get(new_bias_type, llvm::ArrayRef(bias_arr));
-    }
-    auto bias_op = CreateOpAndInfer<tosa::ConstOp>(rewriter, op->getLoc(),
-                                                   new_bias_type, bias_attr);
-    bias_val = bias_op.getResult();
-    bias_type = new_bias_type;
-  } else {
-    bias_val = tfl_fc_op.getBias();
-  }
-
-  Type bias_ety = mlir::cast<ShapedType>(bias_val.getType()).getElementType();
+  auto bias_result = getTosaBias(op, rewriter, input_type, output_type,
+                                 output_is_qtype, tfl_fc_op.getBias());
+  if (failed(bias_result)) return failure();
+  auto [bias_ety, bias_val] = bias_result.value();
 
   auto acc_type =
       getConvAccTypeAttr(rewriter,
