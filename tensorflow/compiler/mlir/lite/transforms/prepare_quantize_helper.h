@@ -40,14 +40,14 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
+#include "tensorflow/compiler/mlir/lite/quantization/common/quantization_lib/quantization_config.h"
+#include "tensorflow/compiler/mlir/lite/quantization/common/quantization_lib/quantization_traits.h"
+#include "tensorflow/compiler/mlir/lite/quantization/common/quantization_lib/quantization_utils.h"
 #include "tensorflow/compiler/mlir/lite/quantization/ir/QuantOps.h"
 #include "tensorflow/compiler/mlir/lite/schema/schema_generated.h"
 #include "tensorflow/compiler/mlir/lite/tools/optimize/operator_property.h"
 #include "tensorflow/compiler/mlir/lite/utils/shape_and_size_utils.h"
 #include "tensorflow/compiler/mlir/quantization/common/ir/FakeQuantSupport.h"
-#include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_config.h"
-#include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_traits.h"
-#include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_utils.h"
 #include "tensorflow/compiler/mlir/quantization/common/uniform_quantized_types.h"
 #include "tensorflow/core/framework/types.pb.h"
 
@@ -230,13 +230,13 @@ template <typename SourceOp>
 class ConvertOpStatsToQDQs : public OpRewritePattern<SourceOp> {
  public:
   explicit ConvertOpStatsToQDQs(MLIRContext* context,
-                                const quant::QuantizationSpecs& quant_specs,
+                                const QuantizationSpecs& quant_specs,
                                 PatternBenefit benefit = 1)
       : OpRewritePattern<SourceOp>(context, benefit),
         quant_specs_(quant_specs) {}
 
  protected:
-  quant::QuantizationSpecs quant_specs_;
+  QuantizationSpecs quant_specs_;
 
   LogicalResult processInputs(
       SourceOp op, const operator_property::OpVariant& op_variant,
@@ -306,8 +306,8 @@ class ConvertOpStatsToQDQs : public OpRewritePattern<SourceOp> {
       SmallVector<double, 4> mins(1, std::numeric_limits<double>::max());
       SmallVector<double, 4> maxs(1, std::numeric_limits<double>::min());
       // Computes the effective min/max values of the attribute values.
-      quant::ExtractMinMaxFromAttr(attr, /*dim_size=*/1, /*slice_size=*/1,
-                                   /*symmetric=*/true, mins, maxs);
+      ExtractMinMaxFromAttr(attr, /*dim_size=*/1, /*slice_size=*/1,
+                            /*symmetric=*/true, mins, maxs);
       double scale = maxs[0] / -llvm::minIntN(tensor_property.number_of_bits);
       quant_type = UniformQuantizedType::getChecked(
           const_op->getLoc(), quant::QuantizationFlags::Signed,
@@ -315,7 +315,7 @@ class ConvertOpStatsToQDQs : public OpRewritePattern<SourceOp> {
           /*zeroPoint=*/0, llvm::minIntN(10), -llvm::minIntN(10));
     } else {
       quant_type = mlir::dyn_cast<quant::UniformQuantizedType>(
-          quant::GetUniformQuantizedTypeForWeight(
+          GetUniformQuantizedTypeForWeight(
               attr, /*symmetric=*/true,
               /*num_bits=*/tensor_property.number_of_bits,
               /*is_signed=*/true,
@@ -393,7 +393,8 @@ class ConvertOpStatsToQDQs : public OpRewritePattern<SourceOp> {
             /*isSigned=*/true);
       }
       if (quant_specs_.legacy_float_scale) {
-        quant_type = quant::DownCastScale(quant_type, min, max, op.getLoc());
+        quant_type =
+            ::mlir::TFL::DownCastScale(quant_type, min, max, op.getLoc());
       }
     }
     rewriter.setInsertionPointAfter(stats_op);
@@ -410,7 +411,7 @@ template <typename SourceOp>
 class ConvertLstmStatsToQDQs : public ConvertOpStatsToQDQs<SourceOp> {
  public:
   ConvertLstmStatsToQDQs(MLIRContext* context,
-                         const quant::QuantizationSpecs& quant_specs)
+                         const QuantizationSpecs& quant_specs)
       : ConvertOpStatsToQDQs<SourceOp>(context, quant_specs),
         activation_number_of_bits_(quant_specs.GetQuantizationTypeWidth()) {}
   LogicalResult matchAndRewrite(SourceOp op,
@@ -476,9 +477,9 @@ class ConvertLstmStatsToQDQs : public ConvertOpStatsToQDQs<SourceOp> {
             /*narrowRange=*/false, calibrated_type.getExpressedType(),
             /*isSigned=*/this->quant_specs_.IsSignedInferenceType());
         if (this->quant_specs_.legacy_float_scale) {
-          qtype = mlir::cast<UniformQuantizedType>(
-              quant::DownCastScale(qtype, calibrated_type.getMin(),
-                                   calibrated_type.getMax(), op.getLoc()));
+          qtype = mlir::cast<UniformQuantizedType>(::mlir::TFL::DownCastScale(
+              qtype, calibrated_type.getMin(), calibrated_type.getMax(),
+              op.getLoc()));
         }
       } else if (tensor_property.number_of_bits == 16) {
         double max = std::max(std::abs(calibrated_type.getMin()),
@@ -505,13 +506,13 @@ class ConvertLstmStatsToQDQs : public ConvertOpStatsToQDQs<SourceOp> {
 // Returns a function that returns the quantized type of a bias input.
 // The scale of bias is a multiplication of given scale and scales from the
 // quantization type of other operands.
-inline quant::AccumulatorScaleFunc GetUniformQuantizedTypeForBiasWithScale(
+inline AccumulatorScaleFunc GetUniformQuantizedTypeForBiasWithScale(
     double scale) {
-  return [=](const std::vector<quant::QuantParams>& quant_params,
+  return [=](const std::vector<QuantParams>& quant_params,
              const int adjusted_quant_dim,
-             const bool legacy_float_scale) -> quant::QuantParams {
+             const bool legacy_float_scale) -> QuantParams {
     if (auto qtype = mlir::dyn_cast_or_null<UniformQuantizedType>(
-            quant::GetUniformQuantizedTypeForBias(
+            ::mlir::TFL::GetUniformQuantizedTypeForBias(
                 quant_params, legacy_float_scale, adjusted_quant_dim))) {
       return quant::UniformQuantizedType::get(
           qtype.getFlags(), qtype.getStorageType(), qtype.getExpressedType(),
@@ -524,14 +525,14 @@ inline quant::AccumulatorScaleFunc GetUniformQuantizedTypeForBiasWithScale(
 
 // Returns quantization spec for LSTMs based on their operator properties.
 template <typename LstmOp>
-std::unique_ptr<quant::OpQuantSpec> GetLstmOpQuantSpec(LstmOp op) {
+std::unique_ptr<OpQuantSpec> GetLstmOpQuantSpec(LstmOp op) {
   operator_property::OpVariant lstm_variant;
   operator_property::OperatorProperty lstm_property;
   if (failed(GetLstmProperty(op, &lstm_variant, &lstm_property))) {
     return nullptr;
   }
 
-  auto spec = std::make_unique<quant::OpQuantSpec>();
+  auto spec = std::make_unique<OpQuantSpec>();
 
   for (const auto& enumerated_inputs : lstm_property.inputs) {
     int index = enumerated_inputs.first;
@@ -556,8 +557,9 @@ std::unique_ptr<quant::OpQuantSpec> GetLstmOpQuantSpec(LstmOp op) {
       }
       spec->biases_params.emplace(
           index,
-          std::make_pair(tensor_property.derived_scale.input_tensors,
-                         GetUniformQuantizedTypeForBiasWithScale(scale)));
+          std::make_pair(
+              tensor_property.derived_scale.input_tensors,
+              ::mlir::TFL::GetUniformQuantizedTypeForBiasWithScale(scale)));
     }
   }
   return spec;
@@ -565,8 +567,8 @@ std::unique_ptr<quant::OpQuantSpec> GetLstmOpQuantSpec(LstmOp op) {
 
 class ConvertSvdfStatsToQDQs : public ConvertOpStatsToQDQs<TFL::SVDFOp> {
  public:
-  explicit ConvertSvdfStatsToQDQs(
-      MLIRContext* context, const quant::QuantizationSpecs& quant_specs_param)
+  explicit ConvertSvdfStatsToQDQs(MLIRContext* context,
+                                  const QuantizationSpecs& quant_specs_param)
       : ConvertOpStatsToQDQs<TFL::SVDFOp>(context, quant_specs_param) {}
   LogicalResult matchAndRewrite(TFL::SVDFOp op,
                                 PatternRewriter& rewriter) const override {

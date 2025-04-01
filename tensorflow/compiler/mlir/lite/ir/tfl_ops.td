@@ -28,7 +28,7 @@ include "mlir/Interfaces/LoopLikeInterface.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
 include "tensorflow/compiler/mlir/lite/ir/tfl_op_interfaces.td"
 include "tensorflow/compiler/mlir/lite/ir/tfl_op_enums.td"
-include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization.td"
+include "tensorflow/compiler/mlir/lite/quantization/common/quantization_lib/quantization.td"
 include "tensorflow/compiler/mlir/tensorflow/ir/tf_op_base.td"
 
 //===----------------------------------------------------------------------===//
@@ -369,9 +369,9 @@ class TFL_TCresVTEtIsSameAsOp<int i, int j> : And<[
     And<[
       SubstLeaves<"$_self", "getElementTypeOrSelf($_op.getOperand(" # j # "))",
         quant_QuantizedType.predicate>,
-      CPred<"quant::QuantizedType::castToStorageType("
+      CPred<"::mlir::quant::QuantizedType::castToStorageType("
                 "getElementTypeOrSelf($_op.getResult(" # i # "))) == "
-            "quant::QuantizedType::castToStorageType("
+            "::mlir::quant::QuantizedType::castToStorageType("
                 "getElementTypeOrSelf($_op.getOperand(" # j # ")))">]>]>]>;
 
 def TFL_SameFirstOperandAndFirstResultElementType :
@@ -385,9 +385,9 @@ class TFL_TCopVTEtAreSameAt<int i, int j, int num=8> : Or<[
   And<[
     SubstLeaves<"$_self", "getElementTypeOrSelf($_op.getOperand(" # j # "))",
       quant_QuantizedType.predicate>,
-    CPred<"quant::QuantizedType::castToStorageType("
+    CPred<"::mlir::quant::QuantizedType::castToStorageType("
               "getElementTypeOrSelf($_op.getOperand(" # i # "))) == "
-          "quant::QuantizedType::castToStorageType("
+          "::mlir::quant::QuantizedType::castToStorageType("
               "getElementTypeOrSelf($_op.getOperand(" # j # ")))">]>]>;
 
 //===----------------------------------------------------------------------===//
@@ -400,9 +400,9 @@ def OperandsSameElementTypeConstraintBasePred :
     And<[
       SubstLeaves<"$_self", "getElementTypeOrSelf($_op.getOperand(0))",
         quant_QuantizedType.predicate>,
-      CPred<"quant::QuantizedType::castToStorageType("
+      CPred<"::mlir::quant::QuantizedType::castToStorageType("
                 "getElementTypeOrSelf($_op.getOperand(0))) == "
-            "quant::QuantizedType::castToStorageType("
+            "::mlir::quant::QuantizedType::castToStorageType("
                 "getElementTypeOrSelf($_op.getOperand(1)))">]>]>;
 
 class OperandsSameElementTypeConstraintBase<string op> :
@@ -2026,13 +2026,13 @@ def TFL_L2NormalizationOp : TFL_Op<"l2_normalization", [Pure,
 
   let extraClassDeclaration = [{
   // FixedOutputRangeInterface:
-  quant::UniformQuantizedType GetFixedOutputRange(
+  UniformQuantizedType GetFixedOutputRange(
       bool is_signed, int bit_width) {
     auto result_type = getOutput().getType();
     // central_value = min_value / 2 + (max_value - 1) / 2 + 1
     // zero_point = central_value
     // scale = 1. / (central_value - min_value)
-    return quant::GetFixedOutputRange(is_signed, bit_width, result_type,
+    return mlir::TFL::GetFixedOutputRange(is_signed, bit_width, result_type,
         /*scale=*/1.0 / (1<<(bit_width-1)), /*zero_point=*/0);
   }
   }];
@@ -2187,12 +2187,12 @@ def TFL_LogisticOp: TFL_Op<"logistic", [
 
   let extraClassDeclaration = [{
   // FixedOutputRangeInterface:
-  quant::UniformQuantizedType GetFixedOutputRange(
+  UniformQuantizedType GetFixedOutputRange(
       bool is_signed, int bit_width) {
     auto result_type = getY().getType();
     // zero_point = 0
     // scale = 1. / (max_value + 1)
-    return quant::GetFixedOutputRange(is_signed, bit_width, result_type,
+    return mlir::TFL::GetFixedOutputRange(is_signed, bit_width, result_type,
         /*scale=*/1.0 / (1<<(bit_width)),
         /*zero_point=*/-(1<<(bit_width-1)));
   }
@@ -2268,12 +2268,12 @@ def TFL_LogSoftmaxOp : TFL_Op<"log_softmax", [
 
   let extraClassDeclaration = [{
   // FixedOutputRangeInterface:
-  quant::UniformQuantizedType GetFixedOutputRange(
+  UniformQuantizedType GetFixedOutputRange(
       bool is_signed, int bit_width) {
     auto result_type = getOutput().getType();
     // zero_point = max_value
     // scale = -log_softmax_output_min / (max_value + 1)
-    return quant::GetFixedOutputRange(is_signed, bit_width, result_type,
+    return mlir::TFL::GetFixedOutputRange(is_signed, bit_width, result_type,
         /*scale=*/16.0 / 256, /*zero_point=*/127);
   }
   }];
@@ -3359,13 +3359,13 @@ def TFL_SoftmaxOp : TFL_Op<"softmax", [
 
   let extraClassDeclaration = [{
   // FixedOutputRangeInterface:
-  quant::UniformQuantizedType GetFixedOutputRange(
+  UniformQuantizedType GetFixedOutputRange(
       bool is_signed, int bit_width) {
     if (bit_width != 8 && bit_width != 16) { return nullptr; }
     auto result_type = getOutput().getType();
     // zero_point = 0
     // scale = 1. / (max_value + 1)
-    return quant::GetFixedOutputRange(is_signed, bit_width, result_type,
+    return mlir::TFL::GetFixedOutputRange(is_signed, bit_width, result_type,
         /*scale=*/1.0 / (bit_width == 8 ? (1<<(bit_width)) : (1<<(bit_width-1))),
         /*zero_point=*/bit_width == 8 ? -(1<<(bit_width-1)): 0);
   }
@@ -3523,13 +3523,13 @@ def TFL_TanhOp: TFL_Op<"tanh", [
 
   let extraClassDeclaration = [{
   // FixedOutputRangeInterface:
-  quant::UniformQuantizedType GetFixedOutputRange(
+  UniformQuantizedType GetFixedOutputRange(
       bool is_signed, int bit_width) {
     auto result_type = getOutput().getType();
     // central_value = min_value / 2 + (max_value - 1) / 2 + 1
     // zero_point = central_value
     // scale = 1. / (central_value - min_value)
-    return quant::GetFixedOutputRange(is_signed, bit_width, result_type,
+    return mlir::TFL::GetFixedOutputRange(is_signed, bit_width, result_type,
         /*scale=*/1.0 / (1<<(bit_width-1)), /*zero_point=*/0);
   }
   }];
