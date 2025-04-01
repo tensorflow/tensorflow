@@ -98,7 +98,8 @@ class AutotunerCompileUtil {
       GenerateModuleFn extractor);
 
  private:
-  AutotunerCompileUtil(const AutotuneConfig& config, Compiler* compiler,
+  AutotunerCompileUtil(const AutotuneConfig& config,
+                       std::unique_ptr<Compiler> compiler,
                        se::StreamExecutor& stream_executor, se::Stream& stream,
                        se::DeviceMemoryAllocator& allocator,
                        const DebugOptions& opts);
@@ -108,7 +109,7 @@ class AutotunerCompileUtil {
                                           ExecutionProfile* profile = nullptr);
 
   AutotuneConfig config_;
-  Compiler* compiler_;
+  std::unique_ptr<Compiler> compiler_;
   se::StreamExecutor& stream_executor_;
   se::Stream& stream_;
   se::DeviceMemoryAllocator& allocator_;
