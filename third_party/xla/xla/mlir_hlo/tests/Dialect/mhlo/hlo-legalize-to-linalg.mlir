@@ -798,10 +798,10 @@ func.func @complex_sin(%arg0: tensor<2x2xcomplex<f32>>) -> tensor<2x2xcomplex<f3
 // CHECK-PRIMITIVE-SAME: [[ARG:%[a-zA-Z0-9]+]]
 func.func @copy(%input: tensor<2x4x8xf32>) -> tensor<2x4x8xf32> {
   %0 = "mhlo.copy"(%input) : (tensor<2x4x8xf32>) -> (tensor<2x4x8xf32>)
+  // CHECK-PRIMITIVE: linalg.map
+  // CHECK: return [[ARG]] : tensor<2x4x8xf32>
   func.return %0 : tensor<2x4x8xf32>
 }
-// CHECK: return [[ARG]] : tensor<2x4x8xf32>
-// CHECK-PRIMITIVE: return [[ARG]] : tensor<2x4x8xf32>
 
 // -----
 

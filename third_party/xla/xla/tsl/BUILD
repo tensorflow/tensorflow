@@ -416,7 +416,7 @@ config_setting(
     name = "android_x86",
     constraint_values =
         [
-            ":x86_any",
+            "@platforms//cpu:x86_64",
             "@platforms//os:android",
         ],
     values = dict(

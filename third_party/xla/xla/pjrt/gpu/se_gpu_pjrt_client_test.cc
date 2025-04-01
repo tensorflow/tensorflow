@@ -1154,7 +1154,7 @@ TEST(StreamExecutorGpuClientTest, GetDeviceFabricInfo) {
                   &executor->GetDeviceDescription())) == 9) {
             auto fabric_info = GetDeviceFabricInfo(executor->device_ordinal());
             if (fabric_info.ok()) {
-              ADD_FAILURE();
+              EXPECT_FALSE(true);
             }
           }
         }
@@ -1924,7 +1924,8 @@ TEST(StreamExecutorGpuClientTest, MlirParameterLayoutFromOptionsIsSetInHlo) {
   xla::CompileOptions options;
   options.argument_layouts = {
       {ShapeUtil::MakeShapeWithDenseLayout(S32, {2, 2, 2}, {0, 2, 1})}};
-  TF_ASSERT_OK_AND_ASSIGN(auto executable, client->Compile(*module, options));
+  TF_ASSERT_OK_AND_ASSIGN(auto executable,
+                          client->CompileAndLoad(*module, options));
   TF_ASSERT_OK_AND_ASSIGN(auto modules, executable->GetHloModules());
 
   auto first_param_layout =

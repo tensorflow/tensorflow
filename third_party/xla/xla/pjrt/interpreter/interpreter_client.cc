@@ -314,6 +314,7 @@ absl::StatusOr<Literal> InterpreterLoadedExecutable::Evaluate(
     const HloComputation& computation,
     absl::Span<const Literal* const> arg_literals) {
   absl::MutexLock lock(&hlo_evaluator_lock_);
+  hlo_evaluator_->ResetVisitStates();
   return hlo_evaluator_->Evaluate(computation, arg_literals);
 }
 
