@@ -2060,5 +2060,29 @@ ENTRY main {
                   .status());
 }
 
+// Test the ability to enforce aliasing .
+TEST_F(LayoutAssignmentTest, ReshapeOperandPropagation) {
+  const char* module_str = R"(
+ HloModule Reshape
+
+ ENTRY %main {
+   p0 = f32[16,4096,1,1] parameter(0)
+   r = f32[16,1,4096] reshape(p0)
+   cc = f32[1,2,3,4]{3,2,0,1} custom-call(%r), custom_call_target="baz", operand_layout_constraints={f32[16,1,4096]{2,1,0}}
+   ROOT e = f32[1,2,3,4] copy(cc)
+ } )";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
+                          ParseAndReturnVerifiedModule(module_str));
+  m->mutable_entry_computation_layout()->SetToDefaultLayout();
+  m->mutable_entry_computation_layout()->mutable_parameter_layout(0)->Clear();
+
+  LayoutAssignment layout_assignment(m->mutable_entry_computation_layout(),
+                                     nullptr);
+  EXPECT_IS_OK(layout_assignment.Run(m.get()).status());
+  ExpectLayoutIs(m->entry_computation_layout().parameter_layout(0).shape(),
+                 {1, 2, 0, 3});
+}
+
 }  // namespace
 }  // namespace xla

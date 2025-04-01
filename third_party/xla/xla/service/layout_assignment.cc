@@ -1405,8 +1405,81 @@ std::unique_ptr<Layout> LayoutAssignment::ChooseOperandLayoutFromOutputLayout(
     Shape operand_shape = operand->shape();
     *operand_shape.mutable_layout() =
         LayoutUtil::GetDefaultLayoutForShape(operand_shape);
+    auto align_superset_operand =
+        [](const Shape& input_shape,
+           const Shape& output_shape) -> std::optional<Shape> {
+      if (ShapeUtil::HasDegenerateDimensions(input_shape) ||
+          ShapeUtil::HasDegenerateDimensions(output_shape)) {
+        auto input_shape_no_degs =
+            ShapeUtil::DropDegenerateDimensions(input_shape);
+        auto output_shape_no_degs =
+            ShapeUtil::DropDegenerateDimensions(output_shape);
+        // In case the input dimension is a subset with degenerate extra
+        // dimensions of the output then try to create an output that is the
+        // same in layout up to that subset and then append the extra degenerate
+        // dimensions.
+        if (input_shape_no_degs.dimensions() ==
+                output_shape_no_degs.dimensions() &&
+            input_shape.dimensions_size() <= output_shape.dimensions_size()) {
+          auto unmodified_dims = ShapeUtil::DimensionsUnmodifiedByReshape(
+              input_shape, output_shape);
+          std::vector<int64_t> output_layout;
+          absl::flat_hash_set<int64_t> inserted_dims;
+          for (int i = 0; i < input_shape.layout().minor_to_major().size();
+               ++i) {
+            int dim = input_shape.layout().minor_to_major(i);
+            // If dimension is unmodified in the output
+            auto unmod_it = std::find_if(
+                unmodified_dims.begin(), unmodified_dims.end(),
+                [dim](const auto& pair) { return pair.first == dim; });
+            if (unmod_it == unmodified_dims.end()) {
+              int64_t output_modified_dim = -1;
+              for (int i = 0; i < output_shape.dimensions_size(); ++i) {
+                // Find a modified dimension that we haven't inserted yet.
+                if (inserted_dims.contains(i)) {
+                  continue;
+                }
+                auto out_unmod_it = std::find_if(
+                    unmodified_dims.begin(), unmodified_dims.end(),
+                    [i](const auto& pair) { return pair.second == i; });
+                if (out_unmod_it != unmodified_dims.end()) {
+                  continue;
+                }
+                CHECK_EQ(output_shape.dimensions(i), 1)
+                    << "Dimensions that are not 1 shouldn't be modified";
+                output_modified_dim = i;
+                break;
+              }
+              CHECK_NE(output_modified_dim, -1)
+                  << "Should have found a dimension";
+              output_layout.push_back(output_modified_dim);
+              inserted_dims.insert(output_modified_dim);
+              continue;
+            }
+            output_layout.push_back(unmod_it->second);
+            inserted_dims.insert(unmod_it->second);
+          }
+          // Add dimensions that are specifically extra in the output
+          if (output_shape.dimensions_size() > output_layout.size()) {
+            for (int i = 0; i < output_shape.dimensions_size(); ++i) {
+              if (!inserted_dims.contains(i)) {
+                output_layout.push_back(i);
+              }
+            }
+          }
+          return ShapeUtil::MakeShapeWithDenseLayout(
+              output_shape.element_type(), output_shape.dimensions(),
+              output_layout);
+        }
+      }
+      return std::nullopt;
+    };
     auto aligned_operand_shape =
+        align_superset_operand(output_shape_with_layout, operand_shape);
+    // if (!aligned_operand_shape) {
+    aligned_operand_shape =
         ShapeUtil::AlignLayouts(output_shape_with_layout, operand_shape);
+    //}
     if (aligned_operand_shape) {
       auto operand_layout = aligned_operand_shape.value().layout();
       TF_CHECK_OK(
