@@ -362,6 +362,13 @@ absl::StatusOr<std::string> GetBase64EncodedSha256Hash(absl::string_view s);
 
 std::string ToCanonicalString(const HloInstruction* instr);
 
+// Adds version information to each entry in AutotuneResults. Useful for unit
+// tests involving hard-coded AutotuneResults (including those read from files,
+// which happens automatically), as the entry version changes much more often
+// than the overall structure version of the AutotuneResults itself, so it's
+// nice to only have to change one place to update it.
+void AddVersionToAutotuneResults(AutotuneResults& results);
+
 }  // namespace gpu
 }  // namespace xla
 

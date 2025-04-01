@@ -101,7 +101,6 @@ results {
       num_ctas: 1
     }
   }
-  version: 1
 })";
 
   void SetUp() override {
@@ -185,6 +184,7 @@ TEST_F(AutotunerUtilTest, LoadAutotuneResultsFromFile_TextProto1) {
   EXPECT_TRUE(tsl::protobuf::TextFormat::ParseFromString(
       std::string(kResultText), &results));
   ASSERT_GT(results.results().size(), 0);
+  AddVersionToAutotuneResults(results);
   AutotuneCacheKey key(results.results(0).device(), results.results(0).hlo(),
                        results.results(0).version());
   auto options = DebugOptions();

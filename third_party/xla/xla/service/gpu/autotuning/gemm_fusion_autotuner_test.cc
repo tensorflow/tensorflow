@@ -762,7 +762,6 @@ ENTRY main {
 
   TF_ASSERT_OK_AND_ASSIGN(AutotuneResults autotune_results_override,
                           ParseTextProto<AutotuneResults>(R"pb(
-                            version: 3
                             results {
                               device: "..."
                               hlo: "..."
@@ -770,8 +769,8 @@ ENTRY main {
                                 gemm { algorithm: -1 }
                                 run_time { nanos: 14 }
                               }
-                              version: 1
                             })pb"));
+  AddVersionToAutotuneResults(autotune_results_override);
   autotune_results_override.mutable_results(0)->set_device(
       std::string(cache_key.GetModelStr()));
   autotune_results_override.mutable_results(0)->set_hlo(
@@ -1496,8 +1495,8 @@ absl::StatusOr<AutotuneResults> GetDummyAutotuneResultsForCacheKey(
                             custom_kernel_fusion { kernel_index: 1 }
                             run_time { nanos: 14 }
                           }
-                          version: 1
                         })pb"));
+  AddVersionToAutotuneResults(autotune_results);
   autotune_results.mutable_results(0)->set_device(
       std::string(cache_key.GetModelStr()));
   autotune_results.mutable_results(0)->set_hlo(std::string(cache_key.GetHlo()));
