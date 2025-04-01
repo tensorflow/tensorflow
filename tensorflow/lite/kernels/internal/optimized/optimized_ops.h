@@ -1521,6 +1521,30 @@ inline void AddElementwise(int size, const ArithmeticParams& params,
   }
 }
 
+#ifndef EIGEN_TFLITE
+inline void AddElementwise(int size, const ArithmeticParams& params,
+                           const Eigen::half* input1_data,
+                           const Eigen::half* input2_data,
+                           Eigen::half* output_data) {
+  for (int i = 0; i < size; ++i) {
+    auto x = input1_data[i] + input2_data[i];
+    output_data[i] = ActivationFunctionWithMinMax(
+        x, params.Eigen_half_activation_min, params.Eigen_half_activation_max);
+  }
+}
+
+inline void AddElementwise(int size, const ArithmeticParams& params,
+                           const Eigen::bfloat16* input1_data,
+                           const Eigen::bfloat16* input2_data,
+                           Eigen::bfloat16* output_data) {
+  for (int i = 0; i < size; ++i) {
+    auto x = input1_data[i] + input2_data[i];
+    output_data[i] = ActivationFunctionWithMinMax(x, params.bf16_activation_min,
+                                                  params.bf16_activation_max);
+  }
+}
+#endif
+
 inline void Add(const ArithmeticParams& params,
                 const RuntimeShape& input1_shape, const float* input1_data,
                 const RuntimeShape& input2_shape, const float* input2_data,
@@ -1530,6 +1554,33 @@ inline void Add(const ArithmeticParams& params,
       MatchingElementsSize(input1_shape, input2_shape, output_shape);
   AddElementwise(flat_size, params, input1_data, input2_data, output_data);
 }
+
+#ifndef EIGEN_TFLITE
+inline void Add(const ArithmeticParams& params,
+                const RuntimeShape& input1_shape,
+                const Eigen::half* input1_data,
+                const RuntimeShape& input2_shape,
+                const Eigen::half* input2_data,
+                const RuntimeShape& output_shape, Eigen::half* output_data) {
+  ruy::profiler::ScopeLabel label("Add");
+  const int flat_size =
+      MatchingElementsSize(input1_shape, input2_shape, output_shape);
+  AddElementwise(flat_size, params, input1_data, input2_data, output_data);
+}
+
+inline void Add(const ArithmeticParams& params,
+                const RuntimeShape& input1_shape,
+                const Eigen::bfloat16* input1_data,
+                const RuntimeShape& input2_shape,
+                const Eigen::bfloat16* input2_data,
+                const RuntimeShape& output_shape,
+                Eigen::bfloat16* output_data) {
+  ruy::profiler::ScopeLabel label("Add");
+  const int flat_size =
+      MatchingElementsSize(input1_shape, input2_shape, output_shape);
+  AddElementwise(flat_size, params, input1_data, input2_data, output_data);
+}
+#endif
 
 // Element-wise add that can often be used for inner loop of broadcast add as
 // well as the non-broadcast add.
@@ -1757,6 +1808,30 @@ inline void AddScalarBroadcast(int size, const ArithmeticParams& params,
         x, params.float_activation_min, params.float_activation_max);
   }
 }
+
+#ifndef EIGEN_TFLITE
+inline void AddScalarBroadcast(int size, const ArithmeticParams& params,
+                               Eigen::half broadcast_value,
+                               const Eigen::half* input2_data,
+                               Eigen::half* output_data) {
+  for (int i = 0; i < size; ++i) {
+    auto x = broadcast_value + input2_data[i];
+    output_data[i] = ActivationFunctionWithMinMax(
+        x, params.Eigen_half_activation_min, params.Eigen_half_activation_max);
+  }
+}
+
+inline void AddScalarBroadcast(int size, const ArithmeticParams& params,
+                               Eigen::bfloat16 broadcast_value,
+                               const Eigen::bfloat16* input2_data,
+                               Eigen::bfloat16* output_data) {
+  for (int i = 0; i < size; ++i) {
+    auto x = broadcast_value + input2_data[i];
+    output_data[i] = ActivationFunctionWithMinMax(x, params.bf16_activation_min,
+                                                  params.bf16_activation_max);
+  }
+}
+#endif
 
 inline void Add(const ArithmeticParams& params,
                 const RuntimeShape& input1_shape, const uint8_t* input1_data,
