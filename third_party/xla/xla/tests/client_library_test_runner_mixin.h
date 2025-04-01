@@ -255,6 +255,26 @@ class ClientLibraryTestRunnerMixin : public T {
     return literal;
   }
 
+  template <typename NativeT>
+  Literal CreateR2Parameter(const Array2D<NativeT>& array_2d,
+                            int64_t parameter_number, const std::string& name,
+                            XlaBuilder* builder, XlaOp* data_handle) {
+    Literal literal = LiteralUtil::CreateR2FromArray2D(array_2d);
+    literal = MaybeConvertLiteralToTestType(literal);
+    *data_handle = Parameter(builder, parameter_number, literal.shape(), name);
+    return literal;
+  }
+
+  template <typename NativeT>
+  Literal CreateR3Parameter(const Array3D<NativeT>& array_3d,
+                            int64_t parameter_number, const std::string& name,
+                            XlaBuilder* builder, XlaOp* data_handle) {
+    Literal literal = LiteralUtil::CreateR3FromArray3D(array_3d);
+    literal = MaybeConvertLiteralToTestType(literal);
+    *data_handle = Parameter(builder, parameter_number, literal.shape(), name);
+    return literal;
+  }
+
   Literal MaybeConvertLiteralToTestType(const Literal& literal) const {
     switch (test_type_) {
       case BF16:
@@ -281,6 +301,26 @@ class ClientLibraryTestRunnerMixin : public T {
   // tests tweak the options that will be used to compile/run the graph.
   DebugOptions* mutable_debug_options() {
     return execution_options_.mutable_debug_options();
+  }
+
+  // Creates a (rows x cols) array filled in the following form:
+  //
+  //  [      0              1 ...                   cols-1]
+  //  [  1,000          1,001 ...          1000.0 + cols-1]
+  //  [    ...            ... ...                      ...]
+  //  [(rows-1)*1000.0    ... ... (rows-1)*1000.0 + cols-1]
+  //
+  // If provided, offset is added uniformly to every element (e.g. an offset of
+  // 64 would cause 0 in the above to be 64, 1 to be 65, 1000 to be 1064, etc.)
+  static std::unique_ptr<Array2D<float>> CreatePatternedMatrix(
+      const int rows, const int cols, float offset = 0.0) {
+    auto array = std::make_unique<Array2D<float>>(rows, cols);
+    for (int64_t row = 0; row < rows; ++row) {
+      for (int64_t col = 0; col < cols; ++col) {
+        (*array)(row, col) = col + (row * 1000.0f) + offset;
+      }
+    }
+    return array;
   }
 
  private:
