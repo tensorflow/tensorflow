@@ -120,6 +120,7 @@ tf_cc_binary(
     visibility = ["//visibility:public"],
     deps = [
         ":protos_all_cc",
+        ":tfprof_options",
         "//tensorflow/c:checkpoint_reader",
         "//tensorflow/c:tf_status",
         "//tensorflow/core:framework_internal",
@@ -127,7 +128,6 @@ tf_cc_binary(
         "//tensorflow/core:lib_proto_parsing",
         "//tensorflow/core/framework:graph_proto_cc",
         "//tensorflow/core/platform:protobuf",
-        "//tensorflow/core/profiler:tfprof_options",
         "//tensorflow/core/profiler/internal:tfprof_stats",
         "//tensorflow/core/profiler/internal:tfprof_utils",
         "//tensorflow/core/profiler/internal/advisor:tfprof_advisor",
