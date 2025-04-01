@@ -41,10 +41,16 @@ namespace {
 
 struct StablehloLegalizeToHloPass
     : public impl::StablehloLegalizeToHloPassBase<StablehloLegalizeToHloPass> {
+  using StablehloLegalizeToHloPassBase::StablehloLegalizeToHloPassBase;
   void runOnOperation() override {
     ConversionTarget target(getContext());
     target.addIllegalDialect<stablehlo::StablehloDialect>();
     target.addLegalDialect<mhlo::MhloDialect>();
+
+    // Allow injecting legal ops to permit gradual migration.
+    if (!convert_xla_supported_stablehlo_) {
+      target.addLegalOp<stablehlo::ConstantOp>();
+    }
 
     stablehlo::StablehloToHloTypeConverter converter;
     RewritePatternSet patterns(&getContext());
@@ -62,11 +68,6 @@ struct StablehloLegalizeToHloPass
 };
 
 }  // namespace
-
-std::unique_ptr<mlir::OperationPass<ModuleOp>>
-createStablehloLegalizeToHloPass() {
-  return std::make_unique<StablehloLegalizeToHloPass>();
-}
 
 }  // namespace mhlo
 }  // namespace mlir

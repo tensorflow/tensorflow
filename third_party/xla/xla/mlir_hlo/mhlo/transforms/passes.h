@@ -72,9 +72,6 @@ std::unique_ptr<OperationPass<func::FuncOp>> createCollapseElementwiseMapPass();
 // Pass to replace unsigned types with signless integers.
 std::unique_ptr<OperationPass<ModuleOp>> createConvertToSignlessPass();
 
-// Legalizes from the StableHLO dialect to the MHLO dialect.
-std::unique_ptr<OperationPass<ModuleOp>> createStablehloLegalizeToHloPass();
-
 // Test passes.
 std::unique_ptr<Pass> createTestInferShapedTypeMethodsPass();
 std::unique_ptr<Pass> createTestMaterializeBroadcastsPass();
