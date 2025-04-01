@@ -62,6 +62,7 @@ tsl_cc_test(
         "//xla/tsl/platform:test_benchmark",
         "//xla/tsl/platform:test_main",
         "//xla/tsl/protobuf:distributed_runtime_payloads_proto_cc_impl",
+        "//xla/tsl/util/proto:proto_matchers",
     ] + tsl_grpc_cc_dependencies(),
 )
 

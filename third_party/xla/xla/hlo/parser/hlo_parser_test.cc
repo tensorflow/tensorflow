@@ -5972,14 +5972,13 @@ TEST_F(HloParserTest,
   // Check the async-start and async-done instructions.
   HloInstruction* async_done = m->entry_computation()->root_instruction();
   HloInstruction* async_start = async_done->async_chain_start();
-  EXPECT_EQ(async_start->metadata().DebugString(),
-            wrapped_instr->metadata().DebugString());
+  EXPECT_THAT(async_start->metadata(), EqualsProto(wrapped_instr->metadata()));
   EXPECT_EQ(async_start->raw_backend_config_string(),
             wrapped_instr->raw_backend_config_string());
-  EXPECT_EQ(async_start->frontend_attributes().DebugString(),
-            wrapped_instr->frontend_attributes().DebugString());
-  EXPECT_EQ(async_start->statistics_viz().DebugString(),
-            wrapped_instr->statistics_viz().DebugString());
+  EXPECT_THAT(async_start->frontend_attributes(),
+              EqualsProto(wrapped_instr->frontend_attributes()));
+  EXPECT_THAT(async_start->statistics_viz(),
+              EqualsProto(wrapped_instr->statistics_viz()));
   EXPECT_EQ(OriginalValueToString(*async_done->original_value()),
             OriginalValueToString(*wrapped_instr->original_value()));
 }

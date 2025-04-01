@@ -765,8 +765,7 @@ ENTRY ReduceR3ToR2.v3 {
   xla::HloModuleProtoWithConfig proto = module->ToProtoWithConfig();
   std::string serialized_module;
   ASSERT_TRUE(tsl::SerializeToStringDeterministic(proto, &serialized_module));
-  std::string original_debug_str = proto.DebugString();
-  RecordProperty("serialized_module", original_debug_str);
+  RecordProperty("serialized_module", proto.DebugString());
 
   // Verify that we can create a module from our parsed proto copy
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> reconstructed_module,

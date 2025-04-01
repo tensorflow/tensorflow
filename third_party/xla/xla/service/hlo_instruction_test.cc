@@ -2404,7 +2404,7 @@ TEST_F(HloInstructionTest, CloneWindowOnCustomCall) {
   Window w = window_util::MakeWindow({1, 2, 3});
   instr->set_window(w);
   auto clone = instr->Clone();
-  EXPECT_THAT(clone->window(), EqualsProto(w)) << clone->window().DebugString();
+  EXPECT_THAT(clone->window(), EqualsProto(w));
 }
 
 TEST_F(HloInstructionTest, CloneDnumsOnCustomCall) {
@@ -2415,8 +2415,7 @@ TEST_F(HloInstructionTest, CloneDnumsOnCustomCall) {
   dnums.set_output_batch_dimension(42);
   instr->set_convolution_dimension_numbers(dnums);
   auto clone = instr->Clone();
-  EXPECT_THAT(clone->convolution_dimension_numbers(), EqualsProto(dnums))
-      << clone->convolution_dimension_numbers().DebugString();
+  EXPECT_THAT(clone->convolution_dimension_numbers(), EqualsProto(dnums));
 }
 
 TEST_F(HloInstructionTest, CloneHasSideEffectOnCustomCall) {
