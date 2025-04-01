@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "absl/strings/escaping.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
@@ -395,6 +396,18 @@ absl::StatusOr<bool> CanEmitFusedDynamicUpdateSliceInPlaceForGpu(
   return true;
 }
 
+int GetBitwidth(PrimitiveType type) {
+  if (type == PRED) {
+    return 8;
+  }
+  return primitive_util::BitWidth(type);
+}
+
+bool CanEmitPackedTranspose(const HloTransposeInstruction& transpose) {
+  const auto& spec = GetTransposeSpec(&transpose);
+  return GetPackedTransposeTileSizes(spec).ok();
+}
+
 std::optional<TransposeDescription> GetDescriptionForTiledTransposeEmitter(
     const HloInstruction& hero) {
   if (hero.opcode() != HloOpcode::kTranspose) {
@@ -429,6 +442,8 @@ std::optional<TransposeDescription> GetDescriptionForTiledTransposeEmitter(
               dimensions.back() >= kMinDimensionToTransposeTiled2 &&
               operand_most_minor_dim * dimensions.back() >=
                   kMinTotalDimensionsToTransposeTiled)) {
+    return TransposeDescription{&hero, dimensions, permutation};
+  } else if (CanEmitPackedTranspose(*Cast<HloTransposeInstruction>(&hero))) {
     return TransposeDescription{&hero, dimensions, permutation};
   }
   return std::nullopt;
@@ -495,6 +510,44 @@ canonical_inv_permutation: $4
                           absl::StrJoin(canonical_permutation, ","),
                           absl::StrJoin(canonical_inv_permutation, ","),
                           dim_T2(), dim_A(), dim_T1(), dim_B());
+}
+
+absl::StatusOr<absl::InlinedVector<int64_t, 3>> GetPackedTransposeTileSizes(
+    const TransposeSpec& spec) {
+  // Check the side outputs, etc.
+  int64_t bits_per_element = GetBitwidth(spec.elem_type());
+  if (bits_per_element >= kBankBitwidth) {
+    return absl::InvalidArgumentError("Element type is too large");
+  }
+  absl::InlinedVector<int64_t, 3> tile_sizes(spec.canonical_rank(), 1);
+  int64_t vector_size = kBankBitwidth / bits_per_element;
+
+  // The shmem size is `shmem_dim x shmem_dim`.
+  int64_t shmem_dim = kNumShmemBanks * vector_size;
+  int64_t tile_size_T1 = std::min(spec.dim_T1(), shmem_dim);
+  int64_t tile_size_A = std::min(spec.dim_A(), shmem_dim / tile_size_T1);
+  int64_t tile_size_T2 = std::min(spec.dim_T2(), shmem_dim);
+  int64_t populated_shmem_rows = tile_size_T2;
+  int64_t populated_shmem_cols = tile_size_A * tile_size_T1;
+
+  // Do not use the packed transpose if there are not enough populated rows or
+  // columns in shmem.
+  const int64_t kNumMinPopulatedRowsOrColumns = 10 * vector_size;
+  if (populated_shmem_cols < kNumMinPopulatedRowsOrColumns ||
+      populated_shmem_rows < kNumMinPopulatedRowsOrColumns) {
+    return absl::InvalidArgumentError("Not enough rows or columns in shmem");
+  }
+
+  // These divisibility constrains are too strict, we can do better.
+  if (spec.dim_B() != 1 || populated_shmem_rows % vector_size != 0 ||
+      populated_shmem_cols % vector_size != 0 ||
+      spec.dim_T2() % tile_size_T2 % vector_size != 0) {
+    return absl::InvalidArgumentError("The shape is not supported");
+  }
+  tile_sizes[spec.dim_T1_output_id()] = tile_size_T1;
+  tile_sizes[spec.dim_T2_output_id()] = tile_size_T2;
+  tile_sizes[spec.dim_A_id()] = tile_size_A;
+  return tile_sizes;
 }
 
 bool IsIntermediate(const HloInstruction* instr, int allowed_operand_count) {

@@ -370,6 +370,10 @@ class GemmFusionAutotunerTest : public StatelessAutotunerTest {
           VLOG(5) << m->ToString();
           const HloInstruction* dot_fusion =
               m->entry_computation()->root_instruction();
+          // Split-K rewriting may introduce a convert and / or a reduce op.
+          if (dot_fusion->opcode() == HloOpcode::kConvert) {
+            dot_fusion = dot_fusion->operand(0);
+          }
           if (dot_fusion->opcode() == HloOpcode::kReduce) {
             dot_fusion = dot_fusion->operand(0);
           }
