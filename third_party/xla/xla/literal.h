@@ -292,6 +292,14 @@ class LiteralBase {
   void EachCell(
       absl::FunctionRef<void(absl::Span<const int64_t> indices, NativeT value)>
           per_cell) const;
+  template <typename NativeT>
+  // Like the above, but allows early return. At any time in the iteration, if
+  // the callback returns false, the iteration will be aborted and the function
+  // will return false. Otherwise it will iterate over all elements and return
+  // true.
+  bool EachCellUntilFailure(
+      absl::FunctionRef<bool(absl::Span<const int64_t> indices, NativeT value)>
+          per_cell) const;
 
   // Checks whether all of this literal's values are equal to the given scalar
   // literal.
@@ -1960,10 +1968,21 @@ template <typename NativeT>
 TF_ATTRIBUTE_NOINLINE void LiteralBase::EachCell(
     absl::FunctionRef<void(absl::Span<const int64_t> indices, NativeT value)>
         per_cell) const {
+  EachCellUntilFailure<NativeT>(
+      [=](absl::Span<const int64_t> indices, NativeT value) {
+        per_cell(indices, value);
+        return true;
+      });
+}
+
+template <typename NativeT>
+TF_ATTRIBUTE_NOINLINE bool LiteralBase::EachCellUntilFailure(
+    absl::FunctionRef<bool(absl::Span<const int64_t> indices, NativeT value)>
+        per_cell) const {
   CHECK(LayoutUtil::IsDenseArray(shape()))
       << __func__ << " is only supported for dense arrays: " << shape();
   if (ShapeUtil::IsZeroElementArray(shape())) {
-    return;
+    return true;
   }
   std::vector<int64_t> indices(shape().dimensions().size(), 0);
 
@@ -1972,8 +1991,9 @@ TF_ATTRIBUTE_NOINLINE void LiteralBase::EachCell(
     shape_dynamic.set_dimensions(i, GetDynamicSize(i));
   }
   do {
-    per_cell(indices, Get<NativeT>(indices));
+    if (!per_cell(indices, Get<NativeT>(indices))) return false;
   } while (IndexUtil::BumpIndices(shape_dynamic, absl::MakeSpan(indices)));
+  return true;
 }
 
 template <typename NativeT>

@@ -971,6 +971,30 @@ TEST_F(LiteralUtilTest, TransposeR0) {
   EXPECT_EQ(original, reshape);
 }
 
+TEST_F(LiteralUtilTest, EachCellUntilFailureAbortsOnFailure) {
+  auto original = LiteralUtil::CreateR1<int32_t>({1, 2, -2, 4, 5});
+  int count = 0;
+  auto check_positive = [&](absl::Span<const int64_t> indices,
+                            int32_t value) -> bool {
+    count++;
+    return value > 0;
+  };
+  EXPECT_FALSE(original.EachCellUntilFailure<int32_t>(check_positive));
+  EXPECT_EQ(count, 3);
+}
+
+TEST_F(LiteralUtilTest, EachCellUntilFailureGoesThroughAllCells) {
+  auto original = LiteralUtil::CreateR1<int32_t>({1, 2, 3, 4, 5});
+  int count = 0;
+  auto check_positive = [&](absl::Span<const int64_t> indices,
+                            int32_t value) -> bool {
+    count++;
+    return value > 0;
+  };
+  EXPECT_TRUE(original.EachCellUntilFailure<int32_t>(check_positive));
+  EXPECT_EQ(count, 5);
+}
+
 TEST_F(LiteralUtilTest, TransposeR4) {
   // clang-format off
   // F32[1x3x2x4]
