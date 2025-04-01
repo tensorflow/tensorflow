@@ -58,6 +58,11 @@ struct DevicelessConfig {
 
 class AutotuneCacheKey {
  public:
+  // Tie a version to the cache key in order to invalidate the cache when
+  // necessary. This should be incremented on triton upgrades or any other
+  // changes that may affect the autotuning results.
+  static constexpr int kCurrentVersion = 1;
+
   AutotuneCacheKey(const se::DeviceDescription& device_description,
                    const HloInstruction& instruction)
       : AutotuneCacheKey(DeviceDescriptionToCacheKey(device_description),
@@ -103,10 +108,7 @@ class AutotuneCacheKey {
  private:
   std::string model_str_;
   std::string hlo_canonical_;
-  // Tie a version to the cache key in order to invalidate the cache when
-  // necessary. This should be done on triton upgrades or any other changes
-  // that may affect the autotuning results.
-  int version_ = 1;
+  int version_ = kCurrentVersion;
 };
 
 using AutotuneCacheKeySet = absl::flat_hash_set<AutotuneCacheKey>;

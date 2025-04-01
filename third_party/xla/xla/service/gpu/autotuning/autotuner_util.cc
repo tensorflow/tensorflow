@@ -573,9 +573,8 @@ bool IsTextProtoPath(absl::string_view file_path) {
 void AddVersionToAutotuneResults(AutotuneResults& results) {
   for (auto& result : *results.mutable_results()) {
     if (result.version() == 0) {
-      // Create a dummy key and pull its version if we don't have one specified.
-      AutotuneCacheKey key("foo", "canonical_foo");
-      result.set_version(key.GetVersion());
+      // Set to current version if we don't have one specified.
+      result.set_version(AutotuneCacheKey::kCurrentVersion);
     }
   }
 }
