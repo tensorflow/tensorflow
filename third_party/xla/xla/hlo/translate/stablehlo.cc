@@ -62,17 +62,12 @@ absl::Status MhloToStablehlo(mlir::ModuleOp module) {
   return absl::OkStatus();
 }
 
-// TODO(b/385393967) Separate createCanonicalizerPass from StableHLO -> HLO
-// Translation
-absl::Status StablehloToMhlo(mlir::ModuleOp module, bool run_canonicalizer) {
+absl::Status StablehloToMhlo(mlir::ModuleOp module) {
   mlir::MLIRContext* context = module->getContext();
   mlir::PassManager pm(context);
   pm.addPass(mlir::mhlo::createStablehloLegalizeToHloPass());
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::mhlo::createChloLegalizeToHloPass());
-  if (run_canonicalizer) {
-    pm.addNestedPass<mlir::func::FuncOp>(mlir::createCanonicalizerPass());
-  }
   // In order to export to XLA, we must sink constants to control flow
   // regions, since XLA uses functional control flow.
   pm.addNestedPass<mlir::func::FuncOp>(
@@ -88,6 +83,40 @@ absl::Status StablehloToMhlo(mlir::ModuleOp module, bool run_canonicalizer) {
           << module;
 
   return absl::OkStatus();
+}
+
+absl::Status ConvertStablehloToHloProtoInternal(mlir::ModuleOp module,
+                                                xla::HloProto* hlo_proto,
+                                                bool use_tuple_args,
+                                                bool return_tuple) {
+  if (!module) return absl::InvalidArgumentError("Module is null");
+
+  TF_RETURN_IF_ERROR(StablehloToMhlo(module));
+
+  mlir::MlirToHloConversionOptions options;
+  options.return_tuple = return_tuple;
+  options.use_tuple_args = use_tuple_args;
+  TF_RETURN_IF_ERROR(mlir::ConvertMlirHloToHlo(module, hlo_proto, options));
+  return absl::OkStatus();
+}
+
+absl::StatusOr<std::unique_ptr<xla::HloModule>> ConvertStablehloToHloInternal(
+    mlir::ModuleOp module, bool use_tuple_args, bool return_tuple) {
+  xla::HloProto hlo_proto;
+  TF_RETURN_IF_ERROR(ConvertStablehloToHloProtoInternal(
+      module, &hlo_proto, use_tuple_args, return_tuple));
+
+  // Create default config and modify config with values stored
+  // in MLIR module attributes
+  const xla::HloModuleProto& module_proto = hlo_proto.hlo_module();
+  auto config = xla::HloModule::CreateModuleConfigFromProto(
+      module_proto, xla::GetDebugOptionsFromFlags());
+  if (!config.ok()) {
+    return config.status();
+  }
+  mlir::mhlo::ExportHloModuleConfig(config.value(), module);
+
+  return xla::HloModule::CreateFromProto(module_proto, config.value());
 }
 
 }  // namespace
@@ -124,45 +153,6 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ConvertHloToStablehlo(
   return std::move(mlir_module);
 }
 
-namespace {
-absl::Status ConvertStablehloToHloProtoInternal(mlir::ModuleOp module,
-                                                xla::HloProto* hlo_proto,
-                                                bool use_tuple_args,
-                                                bool return_tuple,
-                                                bool run_canonicalizer) {
-  if (!module) return absl::InvalidArgumentError("Module is null");
-
-  TF_RETURN_IF_ERROR(StablehloToMhlo(module, run_canonicalizer));
-
-  mlir::MlirToHloConversionOptions options;
-  options.return_tuple = return_tuple;
-  options.use_tuple_args = use_tuple_args;
-  TF_RETURN_IF_ERROR(mlir::ConvertMlirHloToHlo(module, hlo_proto, options));
-  return absl::OkStatus();
-}
-
-absl::StatusOr<std::unique_ptr<xla::HloModule>> ConvertStablehloToHloInternal(
-    mlir::ModuleOp module, bool use_tuple_args, bool return_tuple) {
-  xla::HloProto hlo_proto;
-  TF_RETURN_IF_ERROR(ConvertStablehloToHloProtoInternal(
-      module, &hlo_proto, use_tuple_args, return_tuple,
-      /*run_canonicalizer=*/true));
-
-  // Create default config and modify config with values stored
-  // in MLIR module attributes
-  const xla::HloModuleProto& module_proto = hlo_proto.hlo_module();
-  auto config = xla::HloModule::CreateModuleConfigFromProto(
-      module_proto, xla::GetDebugOptionsFromFlags());
-  if (!config.ok()) {
-    return config.status();
-  }
-  mlir::mhlo::ExportHloModuleConfig(config.value(), module);
-
-  return xla::HloModule::CreateFromProto(module_proto, config.value());
-}
-
-}  // namespace
-
 absl::StatusOr<std::unique_ptr<xla::HloModule>> ConvertStablehloToHlo(
     mlir::ModuleOp module) {
   return ConvertStablehloToHloInternal(module,
@@ -180,11 +170,9 @@ absl::Status ConvertStablehloToHloProto(mlir::ModuleOp module,
                                         xla::HloProto* hlo_proto) {
   if (!module) return absl::InvalidArgumentError("Module is null");
 
-  TF_RETURN_IF_ERROR(StablehloToMhlo(module, /*run_canonicalizer=*/true));
   return ConvertStablehloToHloProtoInternal(module, hlo_proto,
                                             /*use_tuple_args=*/false,
-                                            /*return_tuple=*/false,
-                                            /*run_canonicalizer=*/true);
+                                            /*return_tuple=*/false);
 }
 
 absl::Status ConvertStablehloWithManyArgsToHloProto(mlir::ModuleOp module,
@@ -196,8 +184,7 @@ absl::Status ConvertStablehloWithManyArgsToHloProto(mlir::ModuleOp module,
   module->removeAttr("mhlo.xla_entry_computation_parameter_layouts");
   module->removeAttr("mhlo.xla_entry_computation_parameter_tiles");
   return ConvertStablehloToHloProtoInternal(module, hlo_proto, use_tuple_args,
-                                            /*return_tuple=*/false,
-                                            /*run_canonicalizer=*/false);
+                                            /*return_tuple=*/false);
 }
 
 }  // namespace xla
