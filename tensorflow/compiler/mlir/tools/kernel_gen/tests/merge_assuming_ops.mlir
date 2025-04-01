@@ -1,4 +1,4 @@
-// RUN: mlir-hlo-opt --split-input-file --allow-unregistered-dialect \
+// RUN: kernel-gen-opt --split-input-file --allow-unregistered-dialect \
 // RUN:   --mhlo-merge-assuming-ops --canonicalize --cse %s | \
 // RUN: FileCheck %s
 
