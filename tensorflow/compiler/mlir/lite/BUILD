@@ -395,6 +395,8 @@ cc_library(
     name = "utils",
     hdrs = ["utils/utils.h"],
     deps = [
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:Dialect",
         "@llvm-project//mlir:IR",
@@ -642,6 +644,8 @@ cc_library(
         "//tensorflow/core:framework",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@eigen_archive//:eigen3",
         "@llvm-project//llvm:Support",
@@ -1214,6 +1218,29 @@ cc_library(
 )
 
 cc_library(
+    name = "optimize_batch_matmul_utils",
+    srcs = ["transforms/tflite_passes/optimize_batch_matmul_utils.cc"],
+    hdrs = ["transforms/tflite_passes/optimize_batch_matmul_utils.h"],
+    deps = [
+        ":utils",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
+    ],
+)
+
+tf_cc_test(
+    name = "optimize_batch_matmul_utils_test",
+    srcs = ["transforms/tflite_passes/optimize_batch_matmul_utils_test.cc"],
+    deps = [
+        ":optimize_batch_matmul_utils",
+        "@com_google_googletest//:gtest_main",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+    ],
+)
+
+cc_library(
     name = "tensorflow_lite_optimize_batch_matmul",
     srcs = [
         "transforms/generated_optimize_batch_matmul.inc",
@@ -1224,6 +1251,7 @@ cc_library(
     ],
     deps = [
         ":convert_type",
+        ":optimize_batch_matmul_utils",
         ":pass",
         ":pass_options",
         ":tensorflow_lite_ops",

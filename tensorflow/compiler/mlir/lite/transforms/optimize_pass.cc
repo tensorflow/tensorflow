@@ -824,21 +824,6 @@ bool IsPermutationNCHW(Value perm) {
 
 #include "tensorflow/compiler/mlir/lite/transforms/generated_optimize.inc"
 
-// Returns 1D 32-bit dense elements attribute with the given values.
-static DenseIntElementsAttr GetI32ElementsAttr(ArrayRef<int32_t> values,
-                                               Builder *builder) {
-  RankedTensorType ty = mlir::RankedTensorType::get(
-      {static_cast<int32_t>(values.size())}, builder->getIntegerType(32));
-  return DenseIntElementsAttr::get(ty, values);
-}
-
-DenseIntElementsAttr GetI64ElementsAttr(ArrayRef<int64_t> values,
-                                        Builder *builder) {
-  RankedTensorType ty = RankedTensorType::get(
-      {static_cast<int64_t>(values.size())}, builder->getIntegerType(64));
-  return DenseIntElementsAttr::get(ty, values);
-}
-
 // Get the number of leading 1s in the shape of the given input.
 // Ex. input_shape = [1 x 1 x 1 x 1 x 2 x 1] => 4
 // returns 0 if the input shape is not static.

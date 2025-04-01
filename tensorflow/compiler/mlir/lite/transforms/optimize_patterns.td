@@ -725,7 +725,7 @@ foreach ValueOp = [TFL_CeilOp, TFL_ExpOp, TFL_FloorOp, TFL_NegOp,
 // Returns truncated shape of a ranked-tensor.
 // Prefix-Truncated, here, means eliminating any contiguous 1s' in the lower
 // dimentions of the tensor
-def GetPrefixTruncatedShape: NativeCodeCall<"GetShape($0, true)">;
+def GetPrefixTruncatedShape: NativeCodeCall<"GetShapeAttr($0, true)">;
 
 // Returns True if the operand type is RankedTensorType and valid.
 def HasValidRankedTensor : Constraint<CPred<
@@ -734,11 +734,11 @@ def HasValidRankedTensor : Constraint<CPred<
 
 // Check if the truncated shape of the lhs is equal to the shape of rhs
 def IsPrefixTruncatedShapeEqualTo : Constraint<CPred<
-  "GetShape($0, true) == GetShape($1)">>;
+  "GetShapeAttr($0, true) == GetShapeAttr($1)">>;
 
 def ConvertSqueezeToReshape : Pat<
   (TFL_SqueezeOp:$squeeze_op $input, $squeeze_dims),
-  (TFL_ReshapeOp $input, (Arith_ConstantOp (GetShape $squeeze_op))),
+  (TFL_ReshapeOp $input, (Arith_ConstantOp (GetShapeAttr $squeeze_op))),
   [(HasValidRankedTensor $squeeze_op)]>;
 
 // Pattern to perform the following optimization
@@ -793,7 +793,7 @@ def UndoBroadcastConvBiasAdd : Pat<
 // Pattern to convert a trivial transpose op to a reshape op.
 def ConvertTrivialTransposeOpToReshapeOp : Pat<
   (TFL_TransposeOp:$transpose_op $input, (Arith_ConstantOp:$permutation $p1)),
-  (TFL_ReshapeOp $input, (Arith_ConstantOp (GetShape $transpose_op))),
+  (TFL_ReshapeOp $input, (Arith_ConstantOp (GetShapeAttr $transpose_op))),
   [(IsTransposeTrivial $input, $permutation),
    (AnyStaticShapeTensor $input),
    (AnyStaticShapeTensor $transpose_op)]>;
@@ -810,7 +810,7 @@ def FoldDoubleTranspose : Pat<
 // Convert expand_dims to reshape if possible.
 def ConvertExpandDimsToReshape : Pat<
   (TFL_ExpandDimsOp:$expand_dims_op $input, $dim),
-  (TFL_ReshapeOp $input, (Arith_ConstantOp (GetShape $expand_dims_op))),
+  (TFL_ReshapeOp $input, (Arith_ConstantOp (GetShapeAttr $expand_dims_op))),
   [(AnyStaticShapeTensor $expand_dims_op)]>;
 
 // Here, the element type can be any integer or float type.
@@ -1324,7 +1324,7 @@ def ReplaceOneHotFullyConnectedWithLookup : Pat<
         (Arith_ConstantOp ConstantAttr<RankedI32ElementsAttr<[2]>, "{1,0}">)),
       (returnType (GetEmbeddingLookupShape $indices, $filter))
     ),
-    (Arith_ConstantOp (GetShape (GetIthValue<0> $outputs)))),
+    (Arith_ConstantOp (GetShapeAttr (GetIthValue<0> $outputs)))),
   [(I32ElementsVal $indices),     // lookup is not implemented for i64
    (IsNoneType $bias)]>;          // Maybe folded into the lookup matrix later
 
