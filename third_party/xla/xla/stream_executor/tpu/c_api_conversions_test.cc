@@ -218,10 +218,8 @@ TEST(XlaShape, ToCScalar) {
       MakeSpan(c_shape.dynamic_dimensions);
   EXPECT_EQ(cpp_dynamic_dimensions, c_dynamic_dimensions);
 
-  int cpp_ntuple_shapes = cpp_shape.tuple_shapes_size();
-  int c_ntuple_shapes = c_shape.ntuple_shapes;
-  EXPECT_EQ(cpp_ntuple_shapes, c_ntuple_shapes);
-  EXPECT_EQ(cpp_ntuple_shapes, 0);
+  EXPECT_FALSE(cpp_shape.IsTuple());
+  EXPECT_EQ(c_shape.ntuple_shapes, 0);
 
   bool cpp_has_layout = cpp_shape.has_layout();
   bool c_has_layout = c_shape.has_layout;
@@ -231,7 +229,8 @@ TEST(XlaShape, ToCScalar) {
 }
 
 TEST(XlaShape, ToCNested) {
-  xla::Shape cpp_shape = xla::ShapeUtil::MakeShapeWithType<float>({4, 3, 2});
+  const xla::Shape cpp_shape =
+      xla::ShapeUtil::MakeShapeWithType<float>({4, 3, 2});
   XLA_Shape c_shape;
   ToC(cpp_shape, &c_shape);
 
@@ -247,10 +246,10 @@ TEST(XlaShape, ToCNested) {
       MakeSpan(c_shape.dynamic_dimensions);
   EXPECT_EQ(cpp_dynamic_dimensions, c_dynamic_dimensions);
 
-  int cpp_ntuple_shapes = cpp_shape.tuple_shapes_size();
-  int c_ntuple_shapes = c_shape.ntuple_shapes;
-  EXPECT_EQ(cpp_ntuple_shapes, c_ntuple_shapes);
+  EXPECT_FALSE(cpp_shape.IsTuple());
+  EXPECT_EQ(c_shape.ntuple_shapes, 0);
 
+  const int c_ntuple_shapes = c_shape.ntuple_shapes;
   const std::vector<xla::Shape>& cpp_tuple_shapes = cpp_shape.tuple_shapes();
   absl::Span<const XLA_Shape> c_tuple_shapes(c_shape.tuple_shapes,
                                              c_ntuple_shapes);

@@ -1946,16 +1946,16 @@ absl::Status DynamicDimensionInferenceVisitor::HandleConditional(
     // Only look at branch_index + 1, the correct operand index for a
     // given branch.
     const int64_t operand_index = branch_index + 1;
-
+    const Shape& operand_shape = hlo->operand(operand_index)->shape();
     int operand_count =
-        hlo->operand(operand_index)->shape().tuple_shapes_size();
+        operand_shape.IsTuple() ? operand_shape.tuple_shapes_size() : 0;
     // Prepare to pass dynamic dimension into the new computation and add
     // dynamic dimension sizes as parameters to the new tuple.
     TF_RETURN_IF_ERROR(ForEachDynamicDimensionInOperand(
         hlo, operand_index,
         [&](HloInstruction*, ShapeIndex, int64_t, int64_t,
             HloInstruction* dynamic_size) -> absl::Status {
-          TF_RET_CHECK(hlo->operand(operand_index)->shape().IsTuple())
+          TF_RET_CHECK(operand_shape.IsTuple())
               << "Only tuple typed inputs can have dynamic dimension. Please "
                  "file a bug against XLA team.";
           const HloInstruction* tuple_operand = hlo->operand(operand_index);
@@ -2035,7 +2035,8 @@ absl::Status DynamicDimensionInferenceVisitor::HandleConditional(
     new_branch_computations.push_back(new_computation);
     new_operands.push_back(new_operand);
   }
-  int tuple_count = hlo->shape().tuple_shapes_size();
+  int tuple_count =
+      hlo->shape().IsTuple() ? hlo->shape().tuple_shapes_size() : 0;
   // The dynamism of the output of branches can be different.
   // E.g.,
   //   true_branch  (s32[<=4])
@@ -2113,7 +2114,8 @@ absl::Status DynamicDimensionInferenceVisitor::HandleConditional(
           hlo->mutable_operand(0), new_branch_computations, new_operands));
 
   HloInstruction* new_conditional_extracted = TupleUtil::ExtractPrefix(
-      new_conditional, hlo->shape().tuple_shapes_size());
+      new_conditional,
+      hlo->shape().IsTuple() ? hlo->shape().tuple_shapes_size() : 0);
   // Now set the dynamic dimensions of the newly created conditional.
   dynamic_output_mapping.ForEachElement(
       [&](const ShapeIndex& index,
@@ -2230,11 +2232,12 @@ absl::Status DynamicDimensionInferenceVisitor::HandleWhile(
   // (represented by a shape index as output index and an int64_t dimension
   // number) to output index (represented by an int64_t) is tracked for the
   // while instruction.
-  Shape original_shape = hlo->shape();
+  const Shape& original_shape = hlo->shape();
   ShapeTree<absl::flat_hash_map<int64_t, int64_t>> dynamic_output_mapping(
       original_shape);
   std::vector<HloInstruction*> operands_to_add;
-  const int original_tuple_count = original_shape.tuple_shapes_size();
+  const int original_tuple_count =
+      original_shape.IsTuple() ? original_shape.tuple_shapes_size() : 0;
   int operand_count = original_tuple_count;
   // Clean up the result shape
   DynamicParameterBinding binding_for_while;

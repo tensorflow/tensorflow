@@ -835,7 +835,7 @@ absl::Status ShapeVerifier::HandleCollectivePermuteStart(HloInstruction* hlo) {
       hlo->operands(), std::back_inserter(operand_shapes),
       [](const HloInstruction* operand) { return &(operand->shape()); });
   std::vector<Shape> context_shapes;
-  if (hlo->shape().tuple_shapes_size() > 2) {
+  if (hlo->shape().IsTuple() && hlo->shape().tuple_shapes_size() > 2) {
     context_shapes = std::vector<Shape>(hlo->shape().tuple_shapes().begin() + 2,
                                         hlo->shape().tuple_shapes().end());
   }
