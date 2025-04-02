@@ -1658,7 +1658,11 @@ absl::StatusOr<TritonModule> CreateTritonModule(
   if (fusion_kind == kTritonGemmFusionKind) {
     // If the generic Triton emitter is enabled, we should never go through the
     // legacy MatMul emitter.
-    QCHECK(!UseGenericTritonEmitterForGemms(fusion));
+    if (UseGenericTritonEmitterForGemms(fusion)) {
+      return absl::FailedPreconditionError(
+          "The generic Triton emitter is enabled, but the legacy MatMul "
+          "emitter is being used.");
+    }
     TF_ASSIGN_OR_RETURN(tma_metadata,
                         EmitMatMul(b, libdevice_path, device_info, fusion, fn,
                                    block_level_parameters));
