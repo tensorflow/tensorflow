@@ -23,6 +23,7 @@ limitations under the License.
 #include <vector>
 
 #include <gtest/gtest.h>
+#include "absl/algorithm/container.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -51,12 +52,31 @@ limitations under the License.
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/model/tiled_hlo_computation.h"
 #include "xla/status_macros.h"
+#include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/tests/hlo_test_base.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/statusor.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
+#include "tsl/platform/protobuf.h"
 
 namespace xla::gpu {
+
+std::vector<xla::PrimitiveType> AllXlaDataTypes() {
+  std::vector<xla::PrimitiveType> xla_data_types;
+  std::vector<xla::PrimitiveType> to_filter_out = {PRIMITIVE_TYPE_INVALID,
+                                                   TUPLE, OPAQUE_TYPE, TOKEN};
+  const tsl::protobuf::EnumDescriptor* xla_type_descriptor =
+      tsl::protobuf::GetEnumDescriptor<xla::PrimitiveType>();
+  for (int enum_ix = 0; enum_ix < xla_type_descriptor->value_count();
+       ++enum_ix) {
+    xla::PrimitiveType xla_type = static_cast<xla::PrimitiveType>(
+        xla_type_descriptor->value(enum_ix)->number());
+    if (!absl::c_linear_search(to_filter_out, xla_type)) {
+      xla_data_types.push_back(xla_type);
+    }
+  }
+  return xla_data_types;
+}
 
 bool SupportsBF16(const stream_executor::GpuComputeCapability& cc) {
   if (std::holds_alternative<stream_executor::CudaComputeCapability>(cc)) {

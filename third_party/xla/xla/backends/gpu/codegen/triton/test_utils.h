@@ -42,6 +42,8 @@ limitations under the License.
 
 namespace xla::gpu {
 
+std::vector<xla::PrimitiveType> AllXlaDataTypes();
+
 bool SupportsBF16(const stream_executor::GpuComputeCapability& cc);
 
 std::string ComputeCapabilityToString(

@@ -87,6 +87,7 @@ limitations under the License.
 #include "xla/backends/gpu/codegen/emitters/ir/xla_gpu_ops.h"
 #include "xla/backends/gpu/codegen/emitters/transforms/passes.h"
 #include "xla/backends/gpu/codegen/triton/compilation_pipeline.h"
+#include "xla/backends/gpu/codegen/triton/dot_algorithms.h"
 #include "xla/backends/gpu/codegen/triton/emitter_helpers.h"
 #include "xla/backends/gpu/codegen/triton/fusion_emitter_legacy_matmul.h"
 #include "xla/backends/gpu/codegen/triton/ir/triton_xla_ops.h"
@@ -778,10 +779,14 @@ absl::StatusOr<ScalarOrTensor> EmitDot(EmitterLocOpBuilder& b,
     return absl::FailedPreconditionError("Expected dot operands to be fusions");
   }
 
-  // Iteration arguments only contain the accumulator.
-  TF_ASSIGN_OR_RETURN(Type ty, TritonType(b, dot.shape().element_type()));
-  SmallVector<Value> iter_args = {
-      CreateConst(b, ty, 0.0f, tiled_hlo_dot.tile_sizes()).UnwrapUnsafe()};
+  // The specific accumulator type to use may not correspond to the output type
+  // of the dot. In particular, that is the case when an algorithm is specified
+  // and the dot's output type does not match its expectations.
+  TF_ASSIGN_OR_RETURN(Type accumulator_type,
+                      triton::GetDotAccumulatorType(b, dot));
+  Value accumulator =
+      CreateConst(b, accumulator_type, 0.0f, tiled_hlo_dot.tile_sizes())
+          .UnwrapTensor();
 
   auto ci64 = [&](int64_t value) -> Value {
     return b.create<arith::ConstantOp>(b.getIntegerAttr(b.getI64Type(), value));
@@ -790,7 +795,7 @@ absl::StatusOr<ScalarOrTensor> EmitDot(EmitterLocOpBuilder& b,
                       GetDotLoopIterationCount(tiled_hlo_dot));
   auto for_op = b.create<mlir::scf::ForOp>(
       /*lowerBound=*/ci64(0), /*upperBound=*/ci64(loop_iteration_count),
-      /*step=*/ci64(1), iter_args);
+      /*step=*/ci64(1), SmallVector<Value>{accumulator});
   {  // Loop body.
     mlir::OpBuilder::InsertionGuard g(b);
     b.setInsertionPointToStart(for_op.getBody());
@@ -819,22 +824,7 @@ absl::StatusOr<ScalarOrTensor> EmitDot(EmitterLocOpBuilder& b,
       }
       dot_args.push_back(result.front().UnwrapTensor());
     }
-    QCHECK_EQ(dot_args.size(), 2);
-    QCHECK_EQ(iter_args.size(), 1);
     Value acc = for_op.getRegionIterArgs().front();
-    const PrecisionConfig& precision_config = dot.precision_config();
-    // TODO(b/393299275): Support precision config. Right now we bail out if
-    // user wants anything but the default.
-    if (precision_config.algorithm() != PrecisionConfig::ALG_UNSET ||
-        absl::c_any_of(precision_config.operand_precision(),
-                       [](const int precision) {
-                         return precision != PrecisionConfig::DEFAULT;
-                       })) {
-      return absl::UnimplementedError(
-          absl::StrCat("Unsupported precision config: ",
-                       precision_config.ShortDebugString()));
-    }
-
     int64_t lhs_contracting_dim_idx =
         dot.dot_dimension_numbers().lhs_contracting_dimensions(0);
 
@@ -853,13 +843,23 @@ absl::StatusOr<ScalarOrTensor> EmitDot(EmitterLocOpBuilder& b,
         Value rhs, MaskDotOperand(b, *tiled_hlo_dot.operand(1), dot_args[1],
                                   ki_i32, rhs_contracting_dim_idx));
 
-    Value dot_result =
-        b.create<ttir::DotOp>(lhs, rhs, acc,
-                              /*inputPrecision=*/ttir::InputPrecision::IEEE,
-                              /*maxNumImpreciseAcc=*/0);
-    b.create<mlir::scf::YieldOp>(dot_result);
+    TF_ASSIGN_OR_RETURN(
+        Value acc_next,
+        triton::EmitSingleTileDot(b, dot, triton::DotOperands{lhs, rhs, acc}));
+    b.create<mlir::scf::YieldOp>(acc_next);
   }
-  return ScalarOrTensor(for_op.getResult(0));
+
+  // The output of the loop may not match the expected output type of the dot.
+  // We make sure to issue a conversion if necessary.
+  TF_ASSIGN_OR_RETURN(Type dot_output_type,
+                      TritonType(b, dot.shape().element_type()));
+
+  Value result = for_op.getResult(0);
+  if (dot_output_type != accumulator_type) {
+    result = Cast(b, result, dot_output_type);
+  }
+
+  return ScalarOrTensor(result);
 }
 
 absl::StatusOr<ScalarOrTensor> EmitConcatenate(

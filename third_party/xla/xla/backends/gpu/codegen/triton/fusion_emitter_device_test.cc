@@ -13,7 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <array>
 #include <cstdint>
+#include <iterator>
 #include <memory>
 #include <string>
 #include <utility>
@@ -22,6 +24,8 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/algorithm/container.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
@@ -32,14 +36,14 @@ limitations under the License.
 #include "mlir/Pass/PassManager.h"
 #include "xla/autotuning.pb.h"
 #include "xla/backends/gpu/codegen/triton/fusion_emitter.h"
+#include "xla/backends/gpu/codegen/triton/support.h"
 #include "xla/backends/gpu/codegen/triton/test_utils.h"
 #include "xla/error_spec.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
-#include "xla/hlo/ir/hlo_computation.h"
-#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/primitive_util.h"
+#include "xla/service/algorithm_util.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/service/gpu/model/tiled_hlo_computation.h"
@@ -1703,10 +1707,16 @@ CHECK:      tt.broadcast {{.*}} -> tensor<1x2x64x8x
   EXPECT_TRUE(RunAndCompareNoHloPasses(kHloText, kExactMatch));
 }
 
+std::string TypeTestParamToString(
+    const ::testing::TestParamInfo<PrimitiveType>& data) {
+  return primitive_util::LowercasePrimitiveTypeName(data.param);
+}
+
 INSTANTIATE_TEST_SUITE_P(IotaEmitterParametrizedTestSuite,
                          IotaEmitterParametrizedTest,
                          ::testing::ValuesIn({S8, S16, S32, S64, BF16, F16, F32,
-                                              F64}));
+                                              F64}),
+                         TypeTestParamToString);
 
 TEST_F(TritonEmitterTest, ReducePrecisionIsLoweredCorrectly) {
   const std::string kHloText = R"(
@@ -2078,7 +2088,8 @@ fdot {
     }
   }
   ROOT fdot.root = f32[16,16]{1,0} dot(fdot.lhs, fdot.rhs),
-    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+    lhs_contracting_dims={1}, rhs_contracting_dims={0},
+    algorithm=dot_f32_f32_f32
 }
 
 ENTRY entry {
@@ -2132,7 +2143,8 @@ fdot {
     }
   }
   ROOT fdot.root = f32[32,512]{1,0} dot(fdot.lhs, fdot.rhs),
-    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+    lhs_contracting_dims={1}, rhs_contracting_dims={0},
+    algorithm=dot_f32_f32_f32
 }
 
 ENTRY entry {
@@ -2199,7 +2211,8 @@ fdot {
     }
   }
   ROOT fdot.root = f32[32,512]{1,0} dot(fdot.lhs, fdot.rhs),
-    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+    lhs_contracting_dims={1}, rhs_contracting_dims={0},
+    algorithm=dot_f32_f32_f32
 }
 
 ENTRY entry {
@@ -2379,7 +2392,8 @@ dot {
     }
   }
   ROOT dot = f32[32,512]{1,0} dot(lhs, rhs),
-    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+    lhs_contracting_dims={1}, rhs_contracting_dims={0},
+    algorithm=dot_f32_f32_f32
 }
 
 ENTRY entry {
@@ -2423,7 +2437,9 @@ triton_dot (p0: f32[264], p1: f32[128,8]) -> f32[264,8] {
   lhs = f32[264,128]{1,0} fusion(p0), kind=kCustom, calls=flhs, backend_config={"fusion_backend_config":{"kind":"__triton_nested_gemm_fusion","block_level_fusion_config":{"num_warps":"1","output_tiles":[{"sizes":["32","16"]}]}}}
   p1 = f32[128,8]{1,0} parameter(1)
   rhs = f32[128,8]{1,0} fusion(p1), kind=kCustom, calls=frhs, backend_config={"fusion_backend_config":{"kind":"__triton_nested_gemm_fusion","block_level_fusion_config":{"num_warps":"1","output_tiles":[{"sizes":["16","16"]}]}}}
-  ROOT result = f32[264,8]{1,0} dot(lhs, rhs), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  ROOT result = f32[264,8]{1,0} dot(lhs, rhs),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0},
+    algorithm=dot_f32_f32_f32
 }
 
 ENTRY e (p0.1: f32[11,1,24,1], p1.1: f32[128,8]) -> f32[264,8] {
@@ -2444,6 +2460,318 @@ ENTRY e (p0.1: f32[11,1,24,1], p1.1: f32[128,8]) -> f32[264,8] {
   EXPECT_TRUE(RunAndCompareNoHloPasses(
       kHloText, ErrorSpec{/*aabs=*/1e-4, /*arel=*/1e-6}));
 }
+
+// The template is parametrized by the type of the lhs/rhs, the type of the
+// dot output, and the algorithm.
+constexpr absl::string_view kHloForDotAlgorithmTestTemplate = R"(
+lhs {
+  ROOT p0 = $0[512,512] parameter(0)
+}
+
+rhs {
+  ROOT p0 = $0[512,512] parameter(0)
+}
+
+dot {
+  p0 = $0[512,512] parameter(0)
+  p1 = $0[512,512] parameter(1)
+  lhs = $0[512,512] fusion(p0), kind=kCustom, calls=lhs, backend_config={
+    "fusion_backend_config":{
+      "kind":"__triton_nested_gemm_fusion", "block_level_fusion_config":{
+        "output_tiles":[{"sizes":["16", "32"]}]
+    }}}
+  rhs = $0[512,512]{1,0} fusion(p1), kind=kCustom, calls=rhs, backend_config={
+    "fusion_backend_config":{
+      "kind":"__triton_nested_gemm_fusion", "block_level_fusion_config":{
+        "output_tiles":[{"sizes":["32", "64"]}]
+    }}}
+  ROOT dot = $1[512,512] dot(lhs, rhs),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}, algorithm=$2
+}
+
+ENTRY entry {
+  p0 = $0[512,512] parameter(0)
+  p1 = $0[512,512] parameter(1)
+  ROOT fusion = $1[512,512] fusion(p0, p1),
+    kind=kCustom, calls=dot, backend_config={
+      "fusion_backend_config":{
+        "kind":"__triton_nested_gemm_fusion", "block_level_fusion_config":{
+          "output_tiles":[{"sizes":["16","64"]}],
+          "num_warps":"1", "num_ctas":"1", "num_stages":"1"
+    }}}
+})";
+
+std::string GetDotAlgorithmHlo(PrimitiveType in_ty, PrimitiveType out_ty,
+                               PrecisionConfig::Algorithm algorithm) {
+  constexpr absl::string_view kAlgorithmPrefix = "ALG_";
+  std::string in_ty_str = primitive_util::LowercasePrimitiveTypeName(in_ty);
+  std::string out_ty_str = primitive_util::LowercasePrimitiveTypeName(out_ty);
+  std::string algorithm_str = PrecisionConfig::Algorithm_Name(algorithm).substr(
+      kAlgorithmPrefix.size());
+  return absl::Substitute(kHloForDotAlgorithmTestTemplate, in_ty_str,
+                          out_ty_str, algorithm_str);
+}
+
+// TODO(b/407744579): narrow down the error specs for the various dot
+// algorithms.
+//
+// The non-default values are either taken from the pre-existing
+// `dot_algorithms_test` as of 2025-04-01, or approximated. It's not clear
+// whether even the pre-existing values were derived to adhere precisely to the
+// numerical expectations of the corresponding algorithms. We should narrow this
+// down in the future.
+ErrorSpec ErrorSpecForDotAlgorithm(PrecisionConfig::Algorithm algorithm) {
+  // A default error spec, not particularly tuned to any algorithm.
+  ErrorSpec default_error_spec{/*aabs=*/1e-4, /*arel=*/1e-6};
+  switch (algorithm) {
+    case PrecisionConfig::ALG_UNSET:
+      // Give a loose tolerance to ALG_UNSET, as the expected behaviour is
+      // not deducible from the algorithm name alone.
+      return ErrorSpec{/*aabs=*/1e-2, /*arel=*/1e-3};
+    case PrecisionConfig::ALG_DOT_F16_F16_F16:
+      // Computed to make the tests pass (and it seems reasonable on the face of
+      // it), and not derived from first principles.
+      return ErrorSpec{/*aabs=*/1e-2, /*arel=*/1e-3};
+    case PrecisionConfig::ALG_DOT_F32_F32_F32:
+      return default_error_spec;
+    case PrecisionConfig::ALG_DOT_F64_F64_F64:
+      // Computed to make the tests pass (and it seems reasonable on the face of
+      // it), and not derived from first principles.
+      return ErrorSpec{/*aabs=*/2e-6, /*arel=*/2e-6};
+    case PrecisionConfig::ALG_DOT_F16_F16_F32:
+      return default_error_spec;
+    case PrecisionConfig::ALG_DOT_BF16_BF16_F32:
+      // Taken from `dot_algorithms_test`.
+      return ErrorSpec{/*aabs=*/0, /*arel=*/6e-5};
+    case PrecisionConfig::ALG_DOT_BF16_BF16_F32_X3:
+      // Taken from `dot_algorithms_test`.
+      return ErrorSpec{/*aabs=*/0, /*arel=*/7e-6};
+    case PrecisionConfig::ALG_DOT_BF16_BF16_F32_X6:
+      // Computed to make the tests pass (and it seems reasonable on the face of
+      // it), and not derived from first principles.
+      return ErrorSpec{/*aabs=*/2e-6, /*arel=*/2e-6};
+    case PrecisionConfig::ALG_DOT_TF32_TF32_F32:
+      // Computed to make the tests pass (and it seems reasonable on the face of
+      // it), and not derived from first principles.
+      return ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3};
+    case PrecisionConfig::ALG_DOT_TF32_TF32_F32_X3:
+      // Computed to make the tests pass (and it seems reasonable on the face of
+      // it), and not derived from first principles.
+      return ErrorSpec{/*aabs=*/2e-6, /*arel=*/3e-6};
+    case PrecisionConfig::ALG_DOT_BF16_BF16_F32_X9:
+      // Computed to make the tests pass (and it seems reasonable on the face of
+      // it), and not derived from first principles.
+      return ErrorSpec{/*aabs=*/2e-6, /*arel=*/2e-6};
+    case PrecisionConfig::ALG_DOT_BF16_BF16_BF16:
+    case PrecisionConfig::ALG_DOT_ANY_F8_ANY_F8_F32:
+    case PrecisionConfig::ALG_DOT_ANY_F8_ANY_F8_F32_FAST_ACCUM:
+      return kExactMatch;
+    // Keep in order to make the switch exhaustive.
+    case PrecisionConfig_Algorithm_PrecisionConfig_Algorithm_INT_MIN_SENTINEL_DO_NOT_USE_:  // NOLINT(whitespace/line_length)
+    case PrecisionConfig_Algorithm_PrecisionConfig_Algorithm_INT_MAX_SENTINEL_DO_NOT_USE_:  // NOLINT(whitespace/line_length)
+      LOG(FATAL) << "Unsupported algorithm: " << algorithm;
+  }
+}
+
+class TritonEmitterTestWithAlgorithmParam
+    : public TritonEmitterTest,
+      public ::testing::WithParamInterface<PrecisionConfig::Algorithm> {};
+
+// Regroups tests for dot algorithms that have no ambiguous type parameters as
+// per `algorithm_util::GetAllowedOperandsTypeForAlgorithm` and
+// `algorithm_util::GetDotAccumulatorType`, and do not decompose each tiled step
+// into multiple `dot` operations. We call these algorithms "basic" algorithms
+// here.
+using BasicDotAlgorithmEmitterTest = TritonEmitterTestWithAlgorithmParam;
+
+constexpr std::array kBasicAlgorithms = {
+    PrecisionConfig::ALG_DOT_F16_F16_F16,
+    PrecisionConfig::ALG_DOT_F32_F32_F32,
+    PrecisionConfig::ALG_DOT_F64_F64_F64,
+    PrecisionConfig::ALG_DOT_F16_F16_F32,
+    PrecisionConfig::ALG_DOT_BF16_BF16_F32,
+    PrecisionConfig::ALG_DOT_TF32_TF32_F32,
+};
+
+TEST_P(BasicDotAlgorithmEmitterTest, BasicAlgorithmIsEmittedCorrectly) {
+  auto algorithm = GetParam();
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::vector<PrimitiveType> allowed_types,
+      algorithm_util::GetAllowedOperandsTypeForAlgorithm(algorithm));
+  ASSERT_EQ(allowed_types.size(), 1);
+  PrimitiveType in_ty = allowed_types.front();
+  TF_ASSERT_OK_AND_ASSIGN(PrimitiveType out_ty,
+                          algorithm_util::GetDotAccumulatorType(algorithm));
+  const std::string kHloText = GetDotAlgorithmHlo(in_ty, out_ty, algorithm);
+
+  TF_EXPECT_OK(CreateTritonIrAndFileCheck(
+      this, kHloText, "dot",
+      absl::Substitute(R"(
+  CHECK:  tt.dot{{.*}} : tensor<16x32x$0> * tensor<32x64x$0> -> tensor<16x64x$1>
+  )",
+                       primitive_util::LowercasePrimitiveTypeName(in_ty),
+                       primitive_util::LowercasePrimitiveTypeName(out_ty))));
+
+  EXPECT_TRUE(
+      RunAndCompareNoHloPasses(kHloText, ErrorSpecForDotAlgorithm(algorithm)));
+}
+
+std::string DotAlgorithmTestToString(
+    const ::testing::TestParamInfo<PrecisionConfig::Algorithm>& data) {
+  return PrecisionConfig::Algorithm_Name(data.param);
+}
+
+INSTANTIATE_TEST_SUITE_P(BasicDotAlgorithmEmitterTestSuite,
+                         BasicDotAlgorithmEmitterTest,
+                         ::testing::ValuesIn(kBasicAlgorithms),
+                         DotAlgorithmTestToString);
+
+// Regroups tests for dot algorithms that issue several dot instructions.
+using MultiDotAlgorithmEmitterTest = TritonEmitterTestWithAlgorithmParam;
+
+constexpr std::array kMultiDotAlgorithms = {
+    PrecisionConfig::ALG_DOT_BF16_BF16_F32_X3,
+    PrecisionConfig::ALG_DOT_BF16_BF16_F32_X6,
+    PrecisionConfig::ALG_DOT_TF32_TF32_F32_X3,
+    PrecisionConfig::ALG_DOT_BF16_BF16_F32_X9,
+};
+
+TEST_P(MultiDotAlgorithmEmitterTest, MultiDotAlgorithmIsEmittedCorrectly) {
+  auto algorithm = GetParam();
+  TF_ASSERT_OK_AND_ASSIGN(PrimitiveType out_ty,
+                          algorithm_util::GetDotAccumulatorType(algorithm));
+  PrimitiveType in_ty =
+      algorithm == PrecisionConfig::ALG_DOT_TF32_TF32_F32_X3 ? F32 : BF16;
+  // Dummy value to ensure that the dot count is explicitly set.
+  int dot_count_for_algorithm = 0x1337;
+  std::string input_precision_string = "";
+  switch (algorithm) {
+    case PrecisionConfig::ALG_DOT_BF16_BF16_F32_X3:
+      dot_count_for_algorithm = 3;
+      break;
+    case PrecisionConfig::ALG_DOT_BF16_BF16_F32_X6:
+      dot_count_for_algorithm = 6;
+      break;
+    case PrecisionConfig::ALG_DOT_BF16_BF16_F32_X9:
+      dot_count_for_algorithm = 9;
+      break;
+    case PrecisionConfig::ALG_DOT_TF32_TF32_F32_X3:
+      // Triton implements TF32x3 as a specific precision mode.
+      input_precision_string = "tf32x3";
+      dot_count_for_algorithm = 1;
+      break;
+    default:
+      // Unreachable.
+      ASSERT_TRUE(false);
+  }
+
+  const std::string kHloText = GetDotAlgorithmHlo(in_ty, out_ty, algorithm);
+
+  TF_EXPECT_OK(CreateTritonIrAndFileCheck(
+      this, kHloText, "dot",
+      absl::Substitute(R"(
+  CHECK-COUNT-$2:  tt.dot{{.*}}$3{{.*}} : tensor<16x32x$0> * tensor<32x64x$0> -> tensor<16x64x$1>
+  )",
+                       primitive_util::LowercasePrimitiveTypeName(in_ty),
+                       primitive_util::LowercasePrimitiveTypeName(out_ty),
+                       dot_count_for_algorithm, input_precision_string)));
+
+  EXPECT_TRUE(
+      RunAndCompareNoHloPasses(kHloText, ErrorSpecForDotAlgorithm(algorithm)));
+}
+
+INSTANTIATE_TEST_SUITE_P(MultiDotAlgorithmEmitterTestSuite,
+                         MultiDotAlgorithmEmitterTest,
+                         ::testing::ValuesIn(kMultiDotAlgorithms),
+                         DotAlgorithmTestToString);
+
+// Regroups tests that use TF32 precision by definition.
+using TF32DotAlgorithmEmitterTest = TritonEmitterTestWithAlgorithmParam;
+
+constexpr std::array kTF32DotAlgorithms = {
+    PrecisionConfig::ALG_DOT_TF32_TF32_F32,
+    PrecisionConfig::ALG_DOT_TF32_TF32_F32_X3};
+
+TEST_P(TF32DotAlgorithmEmitterTest, TF32AlgorithmsUseTF32InputPrecision) {
+  auto algorithm = GetParam();
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::vector<PrimitiveType> allowed_types,
+      algorithm_util::GetAllowedOperandsTypeForAlgorithm(algorithm));
+  ASSERT_EQ(allowed_types.size(), 1);
+  PrimitiveType in_ty = allowed_types.front();
+  TF_ASSERT_OK_AND_ASSIGN(PrimitiveType out_ty,
+                          algorithm_util::GetDotAccumulatorType(algorithm));
+  const std::string kHloText = GetDotAlgorithmHlo(in_ty, out_ty, algorithm);
+
+  std::string input_precision_string =
+      algorithm == PrecisionConfig::ALG_DOT_TF32_TF32_F32_X3 ? "tf32x3"
+                                                             : "tf32";
+
+  TF_EXPECT_OK(CreateTritonIrAndFileCheck(
+      this, kHloText, "dot",
+      absl::Substitute(R"(
+  CHECK:  tt.dot{{.*}} inputPrecision = $2 : tensor<16x32x$0> * tensor<32x64x$0> -> tensor<16x64x$1>
+  )",
+                       primitive_util::LowercasePrimitiveTypeName(in_ty),
+                       primitive_util::LowercasePrimitiveTypeName(out_ty),
+                       input_precision_string)));
+  // No need to `RunAndCompare` here, these algorithms are already covered by
+  // other tests.
+}
+
+INSTANTIATE_TEST_SUITE_P(TF32DotAlgorithmEmitterTestSuite,
+                         TF32DotAlgorithmEmitterTest,
+                         ::testing::ValuesIn(kTF32DotAlgorithms),
+                         DotAlgorithmTestToString);
+
+class DotUnsetAlgorithmEmitterTest
+    : public TritonEmitterTest,
+      public ::testing::WithParamInterface<PrimitiveType> {};
+
+TEST_P(DotUnsetAlgorithmEmitterTest, UnsetAlgorithmIsEmittedCorrectly) {
+  // This currently assumes that the dot output type is the same as the input
+  // type. This is not enforced by the verifier/HLO spec, but is currently true
+  // for our emitters, and is enforced by `support_test.cc`. This test may
+  // require upgrading if we ever consider emitting code for truly mixed type
+  // `dot`s.
+  PrimitiveType ty = GetParam();
+  if (!internal::IsResultTypeSupportedByAlgUnsetDot(ty,
+                                                    GpuComputeCapability())) {
+    GTEST_SKIP() << primitive_util::LowercasePrimitiveTypeName(ty)
+                 << " is not supported on this platform.";
+  }
+
+  ErrorSpec error_spec = ErrorSpecForDotAlgorithm(PrecisionConfig::ALG_UNSET);
+  // For 8-bit floating point types, we need to allow large errors.
+  if (primitive_util::IsFloatingPointType(ty) &&
+      primitive_util::BitWidth(ty) == 8) {
+    error_spec = ErrorSpec{/*aabs=*/1e0, /*arel=*/1e-1};
+  }
+
+  const std::string kHloText =
+      GetDotAlgorithmHlo(ty, ty, PrecisionConfig::ALG_UNSET);
+  EXPECT_TRUE(RunAndCompareNoHloPasses(kHloText, error_spec));
+}
+
+std::vector<PrimitiveType> AllXlaDataTypesSupportedByAlgUnsetDotLowering() {
+  // We don't have a pointer to stream executor available here so we can't
+  // detect the particular device we're running on with a canonical API call.
+  // Instead, we just return a superset of the supported types (i.e. those that
+  // are supported on the latest device), and filter out the unsupported types
+  // in the test body.
+  std::vector<PrimitiveType> supported_types;
+  absl::c_copy_if(AllXlaDataTypes(), std::back_inserter(supported_types),
+                  [](PrimitiveType type) {
+                    return internal::IsResultTypeSupportedByAlgUnsetDot(
+                        type, se::CudaComputeCapability::Blackwell());
+                  });
+  return supported_types;
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    DotUnsetAlgorithmEmitterTestSuite, DotUnsetAlgorithmEmitterTest,
+    ::testing::ValuesIn(AllXlaDataTypesSupportedByAlgUnsetDotLowering()),
+    TypeTestParamToString);
 
 }  // namespace
 }  // namespace gpu
