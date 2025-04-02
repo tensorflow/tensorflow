@@ -210,6 +210,10 @@ class RawSEDeviceMemory : public tsl::ReferenceCounted<RawSEDeviceMemory> {
   // buffer.
   virtual void UnsafeReleaseMemory() = 0;
 
+  // Builds a ShapedBuffer which points to mem() of shape on_device_shape.
+  ShapedBuffer AsShapedBuffer(PjRtDevice* device,
+                              const Shape& on_device_shape) const;
+
   static tsl::RCReference<RawSEDeviceMemory> Create(
       se::DeviceMemoryBase value, PjRtLocalDeviceId device_id,
       se::DeviceMemoryAllocator* allocator);
@@ -269,8 +273,8 @@ class TrackedDeviceBuffer {
     return device_memory_;
   }
 
-  absl::Span<const std::shared_ptr<BufferSequencingEvent>> definition_events()
-      const {
+  const absl::InlinedVector<std::shared_ptr<BufferSequencingEvent>, 2>&
+  definition_events() const {
     return definition_events_;
   }
   absl::Span<const StreamAndEvent> usage_events() const {
@@ -341,8 +345,9 @@ void GetDeviceBufferEvents(const TrackedDeviceBuffer& buffer,
                            absl::flat_hash_set<BufferSequencingEvent*>* events);
 
 // Waits for all of the definition events in a buffer on 'stream'.
-void WaitForBufferDefinitionEventsOnStream(const TrackedDeviceBuffer& buffer,
-                                           se::Stream* stream);
+void WaitForBufferDefinitionEventsOnStream(
+    absl::Span<const std::shared_ptr<BufferSequencingEvent>> definition_events,
+    se::Stream* stream);
 
 }  // namespace xla
 

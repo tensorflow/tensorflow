@@ -1174,6 +1174,7 @@ TEST(StreamExecutorGpuClientTest, GetAllocatorStatsTest) {
     TF_ASSERT_OK_AND_ASSIGN(
         std::unique_ptr<PjRtBuffer> buffer,
         client->BufferFromHostLiteral(literal, memory_space));
+    TF_ASSERT_OK(buffer->GetReadyFuture().Await());
 
     auto stats = device->GetAllocatorStats();
     TF_ASSERT_OK(stats.status());

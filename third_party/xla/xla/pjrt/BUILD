@@ -1,4 +1,3 @@
-# copybara:uncomment load("@rules_python//python:proto.bzl", "py_proto_library")
 load("//xla:xla.default.bzl", "xla_cc_test")
 load("//xla/tsl:tsl.bzl", "internal_visibility")
 load(
@@ -12,6 +11,7 @@ load(
 )
 
 package(
+    # needed?
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = internal_visibility(["//xla:internal"]),
     licenses = ["notice"],
@@ -290,9 +290,6 @@ cc_library(
     hdrs = ["pjrt_executable.h"],
     visibility = internal_visibility([":friends"]),
     deps = [
-        ":compile_options_proto_cc",
-        ":executable_metadata_proto_cc",
-        ":execute_options_proto_cc",
         ":pjrt_common",
         ":pjrt_layout",
         "//xla:shape_util",
@@ -302,6 +299,9 @@ cc_library(
         "//xla/client:executable_build_options",
         "//xla/ffi:execution_context",
         "//xla/hlo/ir:hlo",
+        "//xla/pjrt/proto:compile_options_proto_cc",
+        "//xla/pjrt/proto:executable_metadata_proto_cc",
+        "//xla/pjrt/proto:execute_options_proto_cc",
         "//xla/service:buffer_assignment",
         "//xla/service:compiler",
         "//xla/service:computation_layout",
@@ -322,11 +322,11 @@ xla_cc_test(
     name = "pjrt_executable_test",
     srcs = ["pjrt_executable_test.cc"],
     deps = [
-        ":compile_options_proto_cc",
         ":pjrt_executable",
         "//xla:shape_util",
         "//xla:xla_data_proto_cc",
         "//xla/client:executable_build_options",
+        "//xla/pjrt/proto:compile_options_proto_cc",
         "//xla/tsl/lib/core:status_test_util",
         "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:status_matchers",
@@ -472,7 +472,7 @@ tf_proto_library(
     name = "stream_executor_executable_proto",
     srcs = ["stream_executor_executable.proto"],
     protodeps = [
-        ":compile_options_proto",
+        "//xla/pjrt/proto:compile_options_proto",
         "//xla:xla_proto",
     ],
     visibility = ["//visibility:public"],
@@ -808,7 +808,6 @@ cc_library(
     hdrs = ["pjrt_c_api_client.h"],
     visibility = internal_visibility([":friends"]),
     deps = [
-        ":compile_options_proto_cc",
         ":mlir_to_hlo",
         ":pjrt_api",
         ":pjrt_client",
@@ -836,6 +835,7 @@ cc_library(
         "//xla/pjrt/c:pjrt_c_api_profiler_extension_hdrs",
         "//xla/pjrt/c:pjrt_c_api_stream_extension_hdrs",
         "//xla/pjrt/distributed:key_value_store_interface",
+        "//xla/pjrt/proto:compile_options_proto_cc",
         "//xla/service:computation_placer_hdr",
         "//xla/service:hlo_cost_analysis",
         "//xla/service:hlo_proto_cc",
@@ -989,40 +989,6 @@ xla_cc_test(
         "@com_google_absl//absl/synchronization",
         "@com_google_googletest//:gtest_main",
     ],
-)
-
-tf_proto_library(
-    name = "compile_options_proto",
-    srcs = ["compile_options.proto"],
-    protodeps = [
-        "//xla:xla_data_proto",
-        "//xla:xla_proto",
-        "//xla/stream_executor:device_description_proto",
-    ],
-    visibility = ["//visibility:public"],
-)
-
-# copybara:uncomment_begin(google-only)
-# py_proto_library(
-#     name = "compile_options_py_pb2",
-#     visibility = ["//visibility:public"],
-#     deps = [":compile_options_proto"],
-# )
-# copybara:uncomment_end
-
-tf_proto_library(
-    name = "execute_options_proto",
-    srcs = ["execute_options.proto"],
-    visibility = ["//visibility:public"],
-)
-
-tf_proto_library(
-    name = "executable_metadata_proto",
-    srcs = ["executable_metadata.proto"],
-    protodeps = [
-        "//xla/service:hlo_proto",
-    ],
-    visibility = ["//visibility:public"],
 )
 
 cc_library(
