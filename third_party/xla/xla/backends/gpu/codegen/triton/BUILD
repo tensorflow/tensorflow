@@ -547,6 +547,55 @@ xla_test(
 )
 
 xla_test(
+    name = "fusion_emitter_device_legacy_port_test",
+    srcs = if_gpu_is_configured(["fusion_emitter_device_legacy_port_test.cc"]),
+    backends = [
+        "gpu_a100",
+        "gpu_h100",
+        "gpu_b200",
+        "gpu_amd_any",
+    ],
+    tags = [
+        "no_mac",
+    ],
+    deps = [
+        ":fusion_emitter",
+        ":test_utils",
+        "//xla:autotuning_proto_cc",
+        "//xla:error_spec",
+        "//xla:xla_proto_cc",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/testlib:filecheck",
+        "//xla/hlo/testlib:pattern_matcher_gmock",
+        "//xla/hlo/testlib:verified_hlo_module",
+        "//xla/hlo/utils:hlo_query",
+        "//xla/service:pattern_matcher",
+        "//xla/service/gpu:backend_configs_cc",
+        "//xla/service/gpu:gpu_device_info_for_tests",
+        "//xla/service/gpu/model:tiled_hlo_instruction_or_computation",
+        "//xla/service/gpu/tests:gpu_codegen_test",
+        "//xla/service/gpu/transforms:nest_gemm_fusion",
+        "//xla/stream_executor:device_description",
+        "//xla/stream_executor/cuda:cuda_compute_capability",
+        "//xla/tests:xla_internal_test_main",  # fixdeps: keep
+        "//xla/tsl/lib/core:status_test_util",
+        "//xla/tsl/platform:env",
+        "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:status_matchers",
+        "//xla/tsl/platform:statusor",
+        "//xla/tsl/platform:test",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest",
+        "@llvm-project//llvm:ir_headers",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@local_tsl//tsl/platform:path",
+    ],
+)
+
+xla_test(
     name = "fusion_emitter_int4_device_test",
     size = "large",
     srcs = if_gpu_is_configured(["fusion_emitter_int4_device_test.cc"]),
@@ -746,6 +795,7 @@ cc_library(
         "//xla/service/gpu:ir_emission_utils",
         "//xla/service/gpu:matmul_utils",
         "//xla/service/gpu/model:tiled_hlo_instruction_or_computation",
+        "//xla/service/gpu/transforms:nest_gemm_fusion",
         "//xla/stream_executor:device_description",
         "//xla/stream_executor/cuda:cuda_compute_capability",
         "//xla/tests:hlo_test_base",
