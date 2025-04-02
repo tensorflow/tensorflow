@@ -110,11 +110,14 @@ std::unique_ptr<HloReachabilityMap> HloReachabilityMap::BuildWithRestrictions(
 }
 
 std::unique_ptr<HloReachabilityMap> HloReachabilityMap::Build(
-    const HloComputation* computation) {
+    const HloComputation* computation,
+    const std::vector<HloInstruction*>& po_instructions) {
   HloComputation::ChannelDependencies channel_dependencies =
       computation->ComputeChannelDependencies();
   std::vector<HloInstruction*> instructions =
-      computation->MakeInstructionPostOrder(channel_dependencies);
+      po_instructions.empty()
+          ? computation->MakeInstructionPostOrder(channel_dependencies)
+          : po_instructions;
   auto result = std::make_unique<HloReachabilityMap>(instructions);
 
   auto get_bit_set = [&](const HloInstruction* instruction) -> BitSet& {

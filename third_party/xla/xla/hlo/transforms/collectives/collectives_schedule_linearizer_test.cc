@@ -207,5 +207,52 @@ ENTRY entry {
   EXPECT_TRUE(absl::c_linear_search(ars1->control_predecessors(), ard0));
 }
 
+TEST_F(CollectivesScheduleLinearizerTest, DefUseOrder) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+sum {
+  a = f32[] parameter(0)
+  b = f32[] parameter(1)
+  ROOT out = f32[] add(a, b)
+}
+
+ENTRY entry {
+  p0 = f32[100] parameter(0), parameter_replication={false}
+  p1 = f32[100] parameter(1), parameter_replication={false}
+  i0 = f32[100] add(p0, p1)
+  i1 = f32[100] multiply(p0, p1)
+  i2 = f32[100] divide(p0, p1)
+  c1 = f32[100] all-reduce(i0), replica_groups={}, to_apply=sum, channel_id=1
+  c2 = f32[100] all-reduce(i1), replica_groups={}, to_apply=sum, channel_id=1
+  c3 = f32[100] all-reduce(i2), replica_groups={}, to_apply=sum, channel_id=1
+  t = f32[100] add(c1, c2)
+  ROOT out = f32[100] add(t, c3)
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  InsertCollectivesSchedule(module.get());
+  EXPECT_EQ(CountControlEdges(*module->entry_computation()), 2);
+
+  const HloInstruction *root = module->entry_computation()->root_instruction();
+  const HloInstruction *t = root->operand(0);   // t = add(c1, c2)
+  const HloInstruction *c3 = root->operand(1);  // c3 = all-reduce(i2)...
+  EXPECT_EQ(t->opcode(), HloOpcode::kAdd);
+  EXPECT_EQ(c3->opcode(), HloOpcode::kAllReduce);
+
+  const HloInstruction *c1 = t->operand(0);
+  const HloInstruction *c2 = t->operand(1);
+  EXPECT_EQ(c1->opcode(), HloOpcode::kAllReduce);
+  EXPECT_EQ(c2->opcode(), HloOpcode::kAllReduce);
+
+  bool found_i0 = false;
+  // Verify that i0 is before c1.
+  for (const auto &instruction : module->entry_computation()->instructions()) {
+    if (instruction->name() == "c1") EXPECT_TRUE(found_i0);
+    if (instruction->name() == "i0") found_i0 = true;
+  }
+}
+
 }  // namespace
 }  // namespace xla

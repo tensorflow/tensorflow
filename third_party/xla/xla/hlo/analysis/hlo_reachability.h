@@ -55,7 +55,8 @@ class HloReachabilityMap {
   // dependencies (operands) and control dependencies are considered for
   // reachability. Trivially an instruction is reachable from itself.
   static std::unique_ptr<HloReachabilityMap> Build(
-      const HloComputation* computation);
+      const HloComputation* computation,
+      const std::vector<HloInstruction*>& po_instructions = {});
 
   // Similar to the above Build operation except that it tries to identify
   // paths between instructions that do not contain control instructions
