@@ -68,7 +68,7 @@ tf_proto_library(
         ":types_proto",
         # copybara:uncomment "@com_google_protobuf//:any",
         "//xla:xla_data_proto",
-        "//xla/pjrt:execute_options_proto",
+        "//xla/pjrt/proto:execute_options_proto",
         "//xla/python/ifrt:array_spec_proto",
         "//xla/python/ifrt:attribute_map_proto",
         "//xla/python/ifrt:dtype_proto",

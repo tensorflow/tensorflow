@@ -1,4 +1,4 @@
-/* Copyright 2023 The OpenXLA Authors.
+/* Copyright 2025 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,12 +13,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-syntax = "proto3";
+#ifndef XLA_PJRT_COMPILE_OPTIONS_PB_H_
+#define XLA_PJRT_COMPILE_OPTIONS_PB_H_
 
-package xla.ifrt;
+// TODO(b/401293975): Delete this file and migrate Jax to use the proto target
+// directly.
+#include "xla/pjrt/proto/compile_options.pb.h"
 
-import "xla/pjrt/proto/compile_options.proto";
-
-message XlaCompileOptionsProto {
-  xla.CompileOptionsProto compile_options = 1;
-}
+#endif  // XLA_PJRT_COMPILE_OPTIONS_PB_H_
