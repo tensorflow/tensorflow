@@ -13,32 +13,44 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cstdint>
 #include <limits>
+#include <memory>
+#include <optional>
+#include <string>
+#include <utility>
 #include <vector>
 
+#include "absl/strings/string_view.h"
 #include "absl/strings/substitute.h"
+#include "absl/types/span.h"
 #include "xla/array2d.h"
 #include "xla/error_spec.h"
+#include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/testlib/test.h"
 #include "xla/literal.h"
+#include "xla/literal_util.h"
+#include "xla/service/hlo_module_config.h"
 #include "xla/shape_util.h"
-#include "xla/status_macros.h"
-#include "xla/tests/client_library_test_base.h"
-#include "xla/tests/hlo_test_base.h"
+#include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
+#include "xla/tests/hlo_pjrt_test_base.h"
+#include "xla/tests/literal_test_util.h"
 #include "xla/tests/test_macros.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/types.h"
 
 namespace xla {
 namespace {
 
-class ScatterTest : public HloTestBase {
+class ScatterTest : public HloPjRtInterpreterReferenceMixin<HloPjRtTestBase> {
  protected:
-  void RunTest(const std::string& hlo_text, Literal* operand,
-               Literal* scatter_indices, Literal* updates) {
+  void RunTest(const absl::string_view hlo_text, Literal* const operand,
+               Literal* const scatter_indices, Literal* const updates) {
     RunTest(hlo_text, {operand, scatter_indices, updates});
   }
 
-  void RunTest(const std::string& hlo_text, absl::Span<Literal* const> args) {
+  void RunTest(const absl::string_view hlo_text,
+               const absl::Span<Literal* const> args) {
     HloModuleConfig config;
     config.set_debug_options(GetDebugOptionsForTest());
     TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,

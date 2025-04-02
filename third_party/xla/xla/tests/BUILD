@@ -1214,21 +1214,28 @@ xla_test(
 xla_test(
     name = "scatter_test",
     srcs = ["scatter_test.cc"],
-    tags = ["test_xla_cpu_no_thunks"],
-    # TODO(b/245550554): enable Pjrt runner for scatter test once it's fixed.
+    tags = [
+        "test_migrated_to_hlo_runner_pjrt",
+        "test_xla_cpu_no_thunks",
+    ],
     deps = [
-        ":client_library_test_base",
-        ":hlo_test_base",
+        ":hlo_pjrt_interpreter_reference_mixin",
+        ":hlo_pjrt_test_base",
+        ":literal_test_util",
         ":test_macros_header",
         ":xla_internal_test_main",
         "//xla:array2d",
         "//xla:error_spec",
         "//xla:literal",
+        "//xla:literal_util",
         "//xla:shape_util",
-        "//xla:status_macros",
         "//xla:types",
+        "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:test",
+        "//xla/service:hlo_module_config",
+        "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
     ],
 )
 
