@@ -15,19 +15,35 @@ limitations under the License.
 
 #include "xla/hlo/utils/concurrency/concurrency_utils.h"
 
+#include <algorithm>
+#include <memory>
 #include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
+#include "xla/hlo/ir/hlo_computation.h"
+#include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/utils/concurrency/tsl_task_executor.h"
+#include "xla/service/hlo_module_config.h"
+#include "xla/shape.h"
+#include "xla/shape_util.h"
 #include "xla/tsl/platform/statusor.h"
 
 namespace xla::concurrency {
 namespace {
 
 using ::testing::ElementsAreArray;
+
+template <typename T>
+struct WrappedT {
+  T val;
+};
 
 TEST(ForEachTest, IterVariantConcurrentlyIncrementsIntegers) {
   TslTaskExecutor task_executor(5);
@@ -129,6 +145,110 @@ TEST(ForEachTest, FailureOfTheFirstActionPropagates) {
                 .status()
                 .code(),
             absl::StatusCode::kCancelled);
+}
+
+class HloComputationTest : public HloHardwareIndependentTestBase {
+ protected:
+  HloComputationTest() = default;
+
+  // Create a computation which takes a scalar and returns its negation.
+  std::unique_ptr<HloComputation> CreateNegateComputation(
+      absl::string_view name = "Negate") {
+    auto builder = HloComputation::Builder(name);
+    auto param = builder.AddInstruction(
+        HloInstruction::CreateParameter(0, r0f32_, "param0"));
+    builder.AddInstruction(
+        HloInstruction::CreateUnary(r0f32_, HloOpcode::kNegate, param));
+    return builder.Build();
+  }
+
+  std::unique_ptr<HloModule> CreateNegateModule() {
+    auto module =
+        std::make_unique<HloModule>("NegateModule", HloModuleConfig{});
+    module->AddComputation(CreateNegateComputation("Negate0"), true);
+    module->AddComputation(CreateNegateComputation("Negate1"), false);
+    module->AddComputation(CreateNegateComputation("Negate2"), false);
+
+    return module;
+  };
+
+  Shape r0f32_ = ShapeUtil::MakeShape(F32, {});
+
+  TslTaskExecutor task_executor_{5};
+};
+
+TEST_F(HloComputationTest, ForEachHloComputationBasicCall) {
+  auto comp0 = CreateNegateComputation();
+  auto comp1 = CreateNegateComputation();
+  auto comp2 = CreateNegateComputation();
+
+  std::vector<HloComputation*> v = {comp0.get(), comp1.get(), comp2.get()};
+
+  auto result = ForEachHloComputation<bool, WrappedT<bool>>(
+      v.begin(), v.end(),
+      [](HloComputation* comp) -> absl::StatusOr<WrappedT<bool>> {
+        return WrappedT<bool>{true};
+      },
+      [](std::vector<WrappedT<bool>>& results) {
+        return std::any_of(results.begin(), results.end(),
+                           [](WrappedT<bool> b) { return b.val; });
+      },
+      task_executor_);
+  // For compatibility with OpenXLA.
+  ASSERT_EQ(result.status(), absl::OkStatus());
+  EXPECT_EQ(*result, true);
+}
+
+TEST_F(HloComputationTest, ForEachHloComputationSpanBasicCall) {
+  auto comp0 = CreateNegateComputation();
+  auto comp1 = CreateNegateComputation();
+  auto comp2 = CreateNegateComputation();
+
+  std::vector<HloComputation*> v = {comp0.get(), comp1.get(), comp2.get()};
+
+  auto result = ForEachHloComputation<bool, WrappedT<bool>>(
+      v,
+      [](HloComputation* comp) -> absl::StatusOr<WrappedT<bool>> {
+        return WrappedT<bool>{true};
+      },
+      [](std::vector<WrappedT<bool>>& results) {
+        return std::any_of(results.begin(), results.end(),
+                           [](WrappedT<bool> b) { return b.val; });
+      },
+      task_executor_);
+  // For compatibility with OpenXLA.
+  ASSERT_EQ(result.status(), absl::OkStatus());
+  EXPECT_EQ(*result, true);
+}
+
+TEST_F(HloComputationTest, ForEachHloComputationModuleBasicCall) {
+  auto module = CreateNegateModule();
+
+  auto result = ForEachHloComputation<int, WrappedT<bool>>(
+      module.get(),
+      [](HloComputation* comp) -> absl::StatusOr<WrappedT<bool>> {
+        return WrappedT<bool>{true};
+      },
+      [](std::vector<WrappedT<bool>>& results) { return results.size(); },
+      task_executor_);
+  // For compatibility with OpenXLA.
+  ASSERT_EQ(result.status(), absl::OkStatus());
+  EXPECT_EQ(*result, 3);
+}
+
+TEST_F(HloComputationTest, ForEachNonfusionHloComputationModuleBasicCall) {
+  auto module = CreateNegateModule();
+
+  auto result = ForEachNonfusionHloComputation<int, WrappedT<bool>>(
+      module.get(), {},
+      [](HloComputation* comp) -> absl::StatusOr<WrappedT<bool>> {
+        return WrappedT<bool>{true};
+      },
+      [](std::vector<WrappedT<bool>>& results) { return results.size(); },
+      task_executor_);
+  // For compatibility with OpenXLA.
+  ASSERT_EQ(result.status(), absl::OkStatus());
+  EXPECT_EQ(*result, 3);
 }
 
 }  // namespace

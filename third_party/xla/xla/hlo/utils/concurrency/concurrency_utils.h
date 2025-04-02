@@ -16,15 +16,21 @@ limitations under the License.
 #ifndef XLA_HLO_UTILS_CONCURRENCY_CONCURRENCY_UTILS_H_
 #define XLA_HLO_UTILS_CONCURRENCY_CONCURRENCY_UTILS_H_
 
+#include <algorithm>
 #include <iterator>
 #include <optional>
 #include <type_traits>
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_set.h"
 #include "absl/functional/any_invocable.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
+#include "absl/types/span.h"
+#include "xla/hlo/ir/hlo_computation.h"
+#include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/utils/concurrency/tsl_task_executor.h"
 
 namespace xla::concurrency {
@@ -124,6 +130,81 @@ absl::Status ForEach(ForwardItT begin, ForwardItT end,
     tasks.push_back([argument, &action]() { return action(argument); });
   }
   return task_executor.ExecuteIndependentTasks(std::move(tasks), parallelism);
+}
+
+// Specializes `ForEach` for an iterator of `xla::HloComputation` and provides a
+// parameter to use when combining return values from individual actions.
+template <typename FinalReturnT, typename PartialReturnT, typename ForwardItT,
+          typename TaskExecutorT>
+absl::StatusOr<FinalReturnT> ForEachHloComputation(
+    ForwardItT begin, ForwardItT end,
+    absl::AnyInvocable<absl::StatusOr<PartialReturnT>(HloComputation*)> action,
+    absl::AnyInvocable<
+        absl::StatusOr<FinalReturnT>(std::vector<PartialReturnT>&)>
+        combiner,
+    TaskExecutorT& task_executor,
+    std::optional<int> parallelism = std::nullopt) {
+  auto result_for_each =
+      ForEach(begin, end, std::move(action), task_executor, parallelism);
+  if (!result_for_each.ok()) {
+    return result_for_each.status();
+  }
+
+  return combiner(*result_for_each);
+}
+
+// Specializes `ForEach` for a span of `xla::HloComputation` and provides a
+// parameter to use when combining return values from individual actions.
+template <typename FinalReturnT, typename PartialReturnT,
+          typename TaskExecutorT>
+absl::StatusOr<FinalReturnT> ForEachHloComputation(
+    absl::Span<HloComputation* const> computations,
+    absl::AnyInvocable<absl::StatusOr<PartialReturnT>(HloComputation*)> action,
+    absl::AnyInvocable<
+        absl::StatusOr<FinalReturnT>(std::vector<PartialReturnT>&)>
+        combiner,
+    TaskExecutorT& task_executor,
+    std::optional<int> parallelism = std::nullopt) {
+  return ForEachHloComputation(computations.begin(), computations.end(),
+                               std::move(action), std::move(combiner),
+                               task_executor, parallelism);
+}
+
+// Specializes `ForEachHloComputation` to take an `xla::HloModule` and run on
+// all computations in it.
+template <typename FinalReturnT, typename PartialReturnT,
+          typename TaskExecutorT>
+absl::StatusOr<FinalReturnT> ForEachHloComputation(
+    HloModule* module,
+    absl::AnyInvocable<absl::StatusOr<PartialReturnT>(HloComputation*)> action,
+    absl::AnyInvocable<
+        absl::StatusOr<FinalReturnT>(std::vector<PartialReturnT>&)>
+        combiner,
+    TaskExecutorT& task_executor,
+    std::optional<int> parallelism = std::nullopt) {
+  // The returned type is not a `forward_iterator` so we create one.
+  auto it = module->computations();
+  std::vector<HloComputation*> computations{it.begin(), it.end()};
+  return ForEachHloComputation(computations, std::move(action),
+                               std::move(combiner), task_executor, parallelism);
+}
+
+// Specializes `ForEachHloComputation` to take an `xla::HloModule` and run on
+// all non-fusion computations in it.
+template <typename FinalReturnT, typename PartialReturnT,
+          typename TaskExecutorT>
+absl::StatusOr<FinalReturnT> ForEachNonfusionHloComputation(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads,
+    absl::AnyInvocable<absl::StatusOr<PartialReturnT>(HloComputation*)> action,
+    absl::AnyInvocable<
+        absl::StatusOr<FinalReturnT>(std::vector<PartialReturnT>&)>
+        combiner,
+    TaskExecutorT& task_executor,
+    std::optional<int> parallelism = std::nullopt) {
+  auto computations = module->MakeNonfusionComputations(execution_threads);
+  return ForEachHloComputation(computations, std::move(action),
+                               std::move(combiner), task_executor, parallelism);
 }
 
 }  // namespace xla::concurrency
