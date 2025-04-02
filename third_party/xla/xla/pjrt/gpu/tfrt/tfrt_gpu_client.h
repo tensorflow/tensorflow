@@ -26,6 +26,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/base/nullability.h"
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/inlined_vector.h"
@@ -439,7 +440,7 @@ class TfrtGpuClient final : public PjRtClient {
   // Addressable memory spaces.
   std::vector<std::unique_ptr<PjRtMemorySpace>> owned_memory_spaces_;
   // Pointers to `owned_memory_spaces_`.
-  std::vector<PjRtMemorySpace*> memory_spaces_;
+  std::vector<PjRtMemorySpace* /*absl_nonnull*/> memory_spaces_;
 
   std::unique_ptr<tsl::thread::ThreadPool> compile_thread_pool_;
   std::unique_ptr<tsl::thread::ThreadPool> blocking_thread_pool_;
@@ -523,9 +524,10 @@ class TfrtGpuBuffer final : public PjRtBuffer {
 
   PjRtFuture<> GetReadyFuture() override;
 
-  bool IsOnCpu() const override;
+  bool IsOnCpu() const override { return false; }
 
-  const tsl::AsyncValueRef<MaybeOwningGpuMemory>& GetBufferPtr() const;
+  const tsl::AsyncValueRef<MaybeOwningGpuMemory>& GetBufferPtr() const
+      ABSL_LOCKS_EXCLUDED(mu_);
 
  private:
   // Acquires the device buffer for shared read-only usages, and it also adds

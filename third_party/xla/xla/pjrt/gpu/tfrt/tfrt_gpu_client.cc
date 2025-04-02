@@ -31,6 +31,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/base/nullability.h"
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
@@ -79,6 +80,7 @@ limitations under the License.
 #include "xla/pjrt/utils.h"
 #include "xla/pjrt/worker_thread.h"
 #include "xla/primitive_util.h"
+#include "xla/service/backend.h"
 #include "xla/service/compiler.h"
 #include "xla/service/computation_placer.h"
 #include "xla/service/executable.h"
@@ -127,11 +129,12 @@ absl::StatusOr<Shape> GetDestinationDeviceShape(const Shape& on_host_shape,
                                                 PjRtMemorySpace* memory_space) {
   PjRtMemorySpace* default_memory_space =
       device->default_memory_space().value_or(nullptr);
-  if (!memory_space) {
+  if (memory_space != nullptr) {
     memory_space = default_memory_space;
   }
   bool is_pinned_host_memory =
-      memory_space && (memory_space->kind() == PinnedHostMemorySpace::kKind);
+      (memory_space != nullptr) &&
+      (memory_space->kind() == PinnedHostMemorySpace::kKind);
   // Only allow pinned host memory or device memory.
   if (memory_space != default_memory_space && !is_pinned_host_memory) {
     return InvalidArgument("Buffer allocation: invalid memory space");
@@ -140,6 +143,7 @@ absl::StatusOr<Shape> GetDestinationDeviceShape(const Shape& on_host_shape,
   TF_RETURN_IF_ERROR(ShapeUtil::ValidateShape(on_host_shape));
   TransferManager* transfer_manager =
       client->xla_client()->backend().transfer_manager();
+  DCHECK(transfer_manager != nullptr);
   auto memory_space_shape_fn = [is_pinned_host_memory,
                                 transfer_manager](const Shape& on_host_shape) {
     Shape result = transfer_manager->HostShapeToDeviceShape(on_host_shape);
@@ -166,8 +170,9 @@ absl::StatusOr<std::unique_ptr<TfrtGpuBuffer>> AllocateTfrtGpuDestinationBuffer(
       Shape on_device_shape,
       GetDestinationDeviceShape(on_host_shape, device, client, memory_space));
   size_t byte_size = ShapeUtil::ByteSizeOf(on_device_shape);
-  TF_ASSIGN_OR_RETURN(auto device_buffer, MaybeOwningGpuMemory::AllocateShared(
-                                              device->allocator(), byte_size));
+  TF_ASSIGN_OR_RETURN(
+      MaybeOwningGpuMemory device_buffer,
+      MaybeOwningGpuMemory::AllocateShared(device->allocator(), byte_size));
   auto buffer_async_value_ref =
       tsl::MakeAvailableAsyncValueRef<MaybeOwningGpuMemory>(
           std::move(device_buffer));
@@ -325,6 +330,7 @@ class TfrtGpuAsyncHostToDeviceTransferManager final
         copy_event.SetError(buffer.status());
         return absl::InternalError("Failed to allocate buffer.");
       } else {
+        DCHECK(buffer->get() != nullptr);
         buffer_ptrs.push_back(buffer->get()->GetBufferPtr());
       }
 
@@ -1135,10 +1141,10 @@ TfrtGpuClient::TfrtGpuClient(
   }
   // We don't promise anything about the order of memory spaces, but this
   // sorting is done for consistency with the device list that's sorted above.
-  absl::c_sort(memory_spaces_,
-               [](const PjRtMemorySpace* a, const PjRtMemorySpace* b) {
-                 return a->id() < b->id();
-               });
+  absl::c_sort(memory_spaces_, [](absl::Nonnull<const PjRtMemorySpace*> a,
+                                  absl::Nonnull<const PjRtMemorySpace*> b) {
+    return a->id() < b->id();
+  });
 
   LOG(INFO) << "TfrtGpuClient created.";
 }
@@ -1318,6 +1324,7 @@ TfrtGpuClient::CreateUninitializedBuffer(const Shape& shape,
   }
   TransferManager* transfer_manager =
       xla_client()->backend().transfer_manager();
+  DCHECK(transfer_manager != nullptr);
   TF_ASSIGN_OR_RETURN(Shape compact_shape,
                       transfer_manager->ChooseCompactLayoutForShape(shape));
   return AllocateTfrtGpuDestinationBuffer(
@@ -2624,6 +2631,7 @@ TfrtGpuExecutable::TfrtGpuExecutable(
       addressable_devices_(std::move(addressable_devices)) {
   TransferManager* transfer_manager =
       client_->xla_client()->backend().transfer_manager();
+  DCHECK(transfer_manager != nullptr);
   tsl::Fprint128 fingerprint = tsl::Fingerprint128(fingerprint_);
   executables_.reserve(executables.size());
   for (auto& executable : executables) {
