@@ -39,8 +39,8 @@ class Client;
 struct ArraySpec {
   DType dtype;
   Shape shape;
-  absl::Nonnull<std::shared_ptr<const Sharding>> sharding;
-  absl::Nullable<std::shared_ptr<const xla::PjRtLayout>> layout;
+  absl_nonnull std::shared_ptr<const Sharding> sharding;
+  absl_nullable std::shared_ptr<const xla::PjRtLayout> layout;
 
   bool operator==(const ArraySpec& other) const {
     auto are_pointees_equal = [](auto* lhs, auto* rhs) {
