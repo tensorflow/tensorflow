@@ -2402,6 +2402,7 @@ void HloScheduleGraph::AnnotateGraph(
 
 absl::Status DefaultSchedulerCore::InitializeScheduler(
     const HloModule* module) {
+  module_ = module;
   TF_ASSIGN_OR_RETURN(alias_analysis_, HloAliasAnalysis::Run(module));
   module_pressure_state_ = std::make_unique<ModulePressureState>(
       module, alias_analysis_.get(), shape_size_bytes_);
@@ -2411,6 +2412,7 @@ absl::Status DefaultSchedulerCore::InitializeScheduler(
   if (VLOG_IS_ON(2)) {
     annotation_tracker_->PrintAnnotationSets(2);
   }
+
   if (!scheduling_instruction_crosses_overlap_limit_) {
     scheduling_instruction_crosses_overlap_limit_ =
         [](const SchedulingState& sched_state, const HloGraphNode* node) {
@@ -2589,25 +2591,22 @@ DefaultSchedulerCore::ScheduleComputation(const HloComputation* computation) {
                  .GetNode(sched_state.new_sequence_reversed.front())
                  .GetReadyTime();
 
-  const auto& debug_options = xla::GetDebugOptionsFromFlags();
-  if (debug_options.xla_dump_latency_hiding_schedule()) {
-    int core_freq = latency_estimator_->CyclesPerMicrosecond();
-    DumpLatencyHidingSchedule(computation, sched_state.sched_graph,
-                              sched_state.new_sequence_reversed, core_freq,
-                              debug_options);
+  if (schedule_proto_.has_value()) {
+    *schedule_proto_->add_computation_schedules() = ComputationScheduleToProto(
+        computation, sched_state.sched_graph, *latency_estimator_,
+        sched_state.new_sequence_reversed);
   }
-
   return std::move(sched_state.new_sequence_reversed);
 }
 
-void DefaultSchedulerCore::DumpLatencyHidingSchedule(
+ScheduleProto::ComputationScheduleProto
+DefaultSchedulerCore::ComputationScheduleToProto(
     const HloComputation* computation, const HloScheduleGraph& schedule_graph,
-    const std::vector<HloInstruction*>& instructions,
-    const int cycles_per_microsecond, const DebugOptions& debug_options) {
-  ScheduleProto proto;
+    const LatencyEstimator& estimator,
+    const std::vector<HloInstruction*>& instructions) {
+  ScheduleProto::ComputationScheduleProto proto;
   proto.set_computation_id(computation->unique_id());
-  proto.set_cycles_per_microsecond(cycles_per_microsecond);
-
+  proto.set_cycles_per_microsecond(estimator.CyclesPerMicrosecond());
   *proto.mutable_scheduler_statistics() =
       LatencyHidingScheduler::LatencyHidingStatistics(
           computation, latency_estimator_, async_tracker_, shape_size_bytes_)
@@ -2626,10 +2625,7 @@ void DefaultSchedulerCore::DumpLatencyHidingSchedule(
     instr_msg->set_start_timestamp_cycles(start_time);
     instr_msg->set_end_timestamp_cycles(end_time);
   }
-  *proto.mutable_hlo_module() = computation->parent()->ToProto();
-
-  const std::string fn = absl::StrFormat("%s.schedule", computation->name());
-  DumpProtobufToFile(proto, debug_options, fn);
+  return proto;
 }
 
 LatencyHidingScheduler::SchedulerStatistics
@@ -2874,6 +2870,11 @@ absl::StatusOr<bool> LatencyHidingScheduler::Run(
   absl::flat_hash_map<HloComputation*, std::vector<HloInstruction*>>
       saved_schedules;
   TF_RETURN_IF_ERROR(scheduler_core_->InitializeScheduler(module));
+  const auto& debug_options = xla::GetDebugOptionsFromFlags();
+  if (debug_options.xla_dump_latency_hiding_schedule()) {
+    TF_RETURN_IF_ERROR(scheduler_core_->CaptureScheduleProto());
+  }
+
   for (HloComputation* computation : computations_to_schedule) {
     TF_ASSIGN_OR_RETURN(std::vector<HloInstruction*> new_schedule,
                         scheduler_core_->ScheduleComputation(computation));
@@ -2908,6 +2909,12 @@ absl::StatusOr<bool> LatencyHidingScheduler::Run(
         computation, absl::MakeConstSpan(saved_schedules[computation]));
     VLOG(1) << "Statistics after scheduling:";
     LogScheduleStatistics(computation);
+  }
+  if (debug_options.xla_dump_latency_hiding_schedule()) {
+    TF_ASSIGN_OR_RETURN(ScheduleProto proto,
+                        scheduler_core_->GetCapturedScheduleProto());
+    const std::string filename = absl::StrFormat("%s.schedule", module->name());
+    DumpProtobufToFile(proto, debug_options, filename);
   }
   return true;
 }
