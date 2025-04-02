@@ -1,1 +1,23 @@
 Auto generated patch. Do not edit or delete it, even if empty.
+diff -ruN --strip-trailing-cr a/llvm/include/llvm/Frontend/OpenMP/OMPIRBuilder.h b/llvm/include/llvm/Frontend/OpenMP/OMPIRBuilder.h
+--- a/llvm/include/llvm/Frontend/OpenMP/OMPIRBuilder.h
++++ b/llvm/include/llvm/Frontend/OpenMP/OMPIRBuilder.h
+@@ -22,6 +22,7 @@
+ #include "llvm/IR/Module.h"
+ #include "llvm/IR/ValueMap.h"
+ #include "llvm/Support/Allocator.h"
++#include "llvm/Support/Error.h"
+ #include "llvm/TargetParser/Triple.h"
+ #include <forward_list>
+ #include <map>
+diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/libc/BUILD.bazel b/utils/bazel/llvm-project-overlay/libc/BUILD.bazel
+--- a/utils/bazel/llvm-project-overlay/libc/BUILD.bazel
++++ b/utils/bazel/llvm-project-overlay/libc/BUILD.bazel
+@@ -1881,7 +1881,6 @@
+     name = "inv_trigf_utils",
+     srcs = ["src/math/generic/inv_trigf_utils.cpp"],
+     hdrs = [
+-        "src/math/generic/atan_utils.h",
+         "src/math/generic/inv_trigf_utils.h",
+     ],
+     deps = [

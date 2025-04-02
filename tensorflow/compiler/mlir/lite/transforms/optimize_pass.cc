@@ -2516,9 +2516,11 @@ struct EliminateQDQPairs : public OpRewritePattern<TFL::QuantizeOp> {
 //    (HasRankAtLeast<2> $bias),
 //    (IsDefinedByFullyConnectedOp $lhs)]>;
 struct UndoBroadcastFullyConnectedBiasAddWithQDQs
-    : public OpRewritePattern<TFL::AddOp>::SplitMatchAndRewrite {
-  using SplitMatchAndRewrite::SplitMatchAndRewrite;
-  LogicalResult match(TFL::AddOp add_op) const override {
+    : public OpRewritePattern<TFL::AddOp> {
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(TFL::AddOp add_op,
+                                PatternRewriter &rewriter) const override {
     if (!add_op->hasOneUse()) {
       return failure();
     }
@@ -2557,13 +2559,6 @@ struct UndoBroadcastFullyConnectedBiasAddWithQDQs
       return failure();
     }
 
-    return success();
-  }
-
-  void rewrite(TFL::AddOp add_op, PatternRewriter &rewriter) const override {
-    auto dq_op = cast<TFL::DequantizeOp>(add_op.getRhs().getDefiningOp());
-    auto q_op = cast<TFL::QuantizeOp>(dq_op.getInput().getDefiningOp());
-    auto bias_op = cast<arith::ConstantOp>(q_op.getInput().getDefiningOp());
     auto new_bias = FlattenTo1D(bias_op.getValueAttr());
     auto new_bias_type = new_bias.getType();
     auto new_bias_op = rewriter.create<arith::ConstantOp>(
@@ -2588,6 +2583,7 @@ struct UndoBroadcastFullyConnectedBiasAddWithQDQs
 
     // Remove old bias
     rewriter.eraseOp(bias_op);
+    return success();
   }
 };
 
