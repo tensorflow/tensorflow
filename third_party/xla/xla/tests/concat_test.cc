@@ -31,14 +31,16 @@ limitations under the License.
 #include "xla/reference_util.h"
 #include "xla/shape_util.h"
 #include "xla/tests/client_library_test_runner_mixin.h"
-#include "xla/tests/hlo_test_base.h"
+#include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
+#include "xla/tests/hlo_pjrt_test_base.h"
 #include "xla/tests/test_macros.h"
 
 namespace xla {
 namespace {
 
-using ConcatTest = ClientLibraryTestRunnerMixin<HloTestBase>;
-using ConcatTestHlo = HloTestBase;
+using ConcatTest = ClientLibraryTestRunnerMixin<
+    HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>>;
+using ConcatTestHlo = HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>;
 using ::testing::HasSubstr;
 
 // Concatenate expects at least one argument.
@@ -762,7 +764,7 @@ ENTRY jit_broken.874 {
   auto input_array = std::make_unique<Array2D<float>>(4, 2);
   input_array->FillUnique(1.0f);
   auto input = LiteralUtil::CreateR2FromArray2D<float>(*input_array);
-  EXPECT_TRUE(RunAndCompare(std::move(module), {&input}, error_spec_));
+  EXPECT_TRUE(RunAndCompare(std::move(module), {&input}, kDefaultErrorSpec));
 }
 
 // Describes a binary rank-2 concatenation test.

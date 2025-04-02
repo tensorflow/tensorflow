@@ -2548,11 +2548,13 @@ xla_test(
     name = "concat_test",
     srcs = ["concat_test.cc"],
     tags = [
+        "test_migrated_to_hlo_runner_pjrt",
         "test_xla_cpu_no_thunks",
     ],
     deps = [
         ":client_library_test_runner_mixin",
-        ":hlo_test_base",
+        ":hlo_pjrt_interpreter_reference_mixin",
+        ":hlo_pjrt_test_base",
         ":test_macros_header",
         ":xla_internal_test_main",
         "//xla:array2d",
