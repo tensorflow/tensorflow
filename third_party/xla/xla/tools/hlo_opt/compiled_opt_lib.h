@@ -62,7 +62,7 @@ class CompiledOptProvider : public OptProvider {
       std::unique_ptr<HloModule> input_module);
 
   // Gets a compiler associated with the provider.
-  virtual absl::StatusOr<Compiler *> GetCompiler();
+  virtual absl::StatusOr<std::unique_ptr<Compiler>> GetCompiler();
 
   // Registers hardware-specific passes which are shared by
   // multiple backends (CPU, GPU, xPU).

@@ -96,11 +96,12 @@ absl::StatusOr<std::optional<std::string>> CompiledOptProvider::GenerateStage(
   return std::nullopt;
 }
 
-absl::StatusOr<Compiler*> CompiledOptProvider::GetCompiler() {
+absl::StatusOr<std::unique_ptr<Compiler>> CompiledOptProvider::GetCompiler() {
   TF_ASSIGN_OR_RETURN(se::Platform * platform,
                       PlatformUtil::GetPlatform(GetPlatformName()));
 
-  TF_ASSIGN_OR_RETURN(Compiler * compiler, Compiler::GetForPlatform(platform));
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<Compiler> compiler,
+                      Compiler::GetForPlatform(platform));
   return compiler;
 }
 
@@ -110,7 +111,7 @@ absl::StatusOr<std::unique_ptr<HloModule>> CompiledOptProvider::GetOptimizedHlo(
 
   DebugOptions debug_opts = GetDebugOptionsFromFlags();
   Compiler::CompileOptions opts;
-  TF_ASSIGN_OR_RETURN(Compiler * compiler, GetCompiler());
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<Compiler> compiler, GetCompiler());
   DebugOptions d = input_module->config().debug_options();
   d.set_xla_embed_ir_in_executable(true);
   input_module->mutable_config().set_debug_options(d);
@@ -133,7 +134,7 @@ absl::StatusOr<std::unique_ptr<Executable>> CompiledOptProvider::GetExecutable(
   TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> optimized_module,
                       GetOptimizedHlo(std::move(input_module)));
   TF_ASSIGN_OR_RETURN(se::StreamExecutor * executor, GetExecutor());
-  TF_ASSIGN_OR_RETURN(Compiler * compiler, GetCompiler());
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<Compiler> compiler, GetCompiler());
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<Executable> executable,
       compiler->RunBackend(std::move(optimized_module), executor, opts));
