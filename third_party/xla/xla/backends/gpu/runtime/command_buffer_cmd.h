@@ -177,6 +177,15 @@ class CommandBufferCmd {
     StateManager& state;
   };
 
+  // A list of commands recorded into the command buffer (or updated).
+  struct RecordedCommands {
+    // Creates a recorded commands from a single se::CommandBuffer command.
+    static absl::StatusOr<RecordedCommands> Create(
+        absl::StatusOr<const se::CommandBuffer::Command*> command);
+
+    absl::InlinedVector<const se::CommandBuffer::Command*, 2> commands;
+  };
+
   // See Thunk documentation for XLA execution stages (prepare, initialize,
   // execute). Commands mirror thunks as they are executed as CommandBufferThunk
   // that is plugged into the Thunk execution cycle.
@@ -197,10 +206,12 @@ class CommandBufferCmd {
     return absl::OkStatus();
   }
 
-  // Records command into the command buffer using given execution scope.
-  virtual absl::Status Record(const Thunk::ExecuteParams& execute_params,
-                              const RecordParams& record_params,
-                              se::CommandBuffer* command_buffer) = 0;
+  // Records commands into the command buffer. Returned commands will be passed
+  // back on the next call to `Record` into the same command buffer, so that it
+  // can do efficient command buffer updates.
+  virtual absl::StatusOr<RecordedCommands> Record(
+      const Thunk::ExecuteParams& execute_params,
+      const RecordParams& record_params, se::CommandBuffer* command_buffer) = 0;
 
   // For some commands need to force update on Record even the input device
   // pointers do not change, e.g. command that has state that can be changed by
@@ -378,7 +389,7 @@ class TracedCommandBufferCmd : public CommandBufferCmd {
   // Creates a command buffer by calling a user-provided `trace` function and
   // adds it as a nested command to `command_buffer`. Traced command buffers
   // cached and reused in an instance of `TracedCommandBuffer` kept in `state`.
-  absl::Status AddTracedCommandBuffer(
+  absl::StatusOr<const se::CommandBuffer::Command*> AddTracedCommandBuffer(
       const Thunk::ExecuteParams& execute_params,
       const RecordParams& record_params, se::CommandBuffer* command_buffer,
       absl::FunctionRef<absl::Status(se::Stream*)> trace);
@@ -398,9 +409,10 @@ class ComputationIdCmd : public CommandBufferCmd {
   absl::Status Initialize(const Thunk::InitializeParams& params,
                           StateManager& state) override;
 
-  absl::Status Record(const Thunk::ExecuteParams& execute_params,
-                      const RecordParams& record_params,
-                      se::CommandBuffer* command_buffer) override;
+  absl::StatusOr<RecordedCommands> Record(
+      const Thunk::ExecuteParams& execute_params,
+      const RecordParams& record_params,
+      se::CommandBuffer* command_buffer) override;
 
   BufferUseVector buffers() override;
 
@@ -435,9 +447,10 @@ class LaunchCmd : public CommandBufferCmd {
   absl::Status Initialize(const Thunk::InitializeParams& params,
                           StateManager& state) override;
 
-  absl::Status Record(const Thunk::ExecuteParams& execute_params,
-                      const RecordParams& record_params,
-                      se::CommandBuffer* command_buffer) override;
+  absl::StatusOr<RecordedCommands> Record(
+      const Thunk::ExecuteParams& execute_params,
+      const RecordParams& record_params,
+      se::CommandBuffer* command_buffer) override;
 
   BufferUseVector buffers() override;
 
@@ -469,9 +482,10 @@ class CustomKernelLaunchCmd : public CommandBufferCmd {
   absl::Status Initialize(const Thunk::InitializeParams& params,
                           StateManager& state) override;
 
-  absl::Status Record(const Thunk::ExecuteParams& execute_params,
-                      const RecordParams& record_params,
-                      se::CommandBuffer* command_buffer) override;
+  absl::StatusOr<RecordedCommands> Record(
+      const Thunk::ExecuteParams& execute_params,
+      const RecordParams& record_params,
+      se::CommandBuffer* command_buffer) override;
 
   BufferUseVector buffers() override;
 
@@ -497,9 +511,10 @@ class MemcpyDeviceToDeviceCmd : public CommandBufferCmd {
                           BufferAllocation::Slice dst,
                           BufferAllocation::Slice src, int64_t num_bytes);
 
-  absl::Status Record(const Thunk::ExecuteParams& execute_params,
-                      const RecordParams& record_params,
-                      se::CommandBuffer* command_buffer) override;
+  absl::StatusOr<RecordedCommands> Record(
+      const Thunk::ExecuteParams& execute_params,
+      const RecordParams& record_params,
+      se::CommandBuffer* command_buffer) override;
 
   BufferUseVector buffers() override;
 
@@ -518,9 +533,10 @@ class MemzeroCmd : public CommandBufferCmd {
   MemzeroCmd(ExecutionStreamId execution_stream_id,
              BufferAllocation::Slice dst);
 
-  absl::Status Record(const Thunk::ExecuteParams& execute_params,
-                      const RecordParams& record_params,
-                      se::CommandBuffer* command_buffer) override;
+  absl::StatusOr<RecordedCommands> Record(
+      const Thunk::ExecuteParams& execute_params,
+      const RecordParams& record_params,
+      se::CommandBuffer* command_buffer) override;
 
   BufferUseVector buffers() override;
 
@@ -537,9 +553,10 @@ class Memset32Cmd : public CommandBufferCmd {
   Memset32Cmd(ExecutionStreamId execution_stream_id,
               BufferAllocation::Slice dst, uint32_t bit_pattern);
 
-  absl::Status Record(const Thunk::ExecuteParams& execute_params,
-                      const RecordParams& record_params,
-                      se::CommandBuffer* command_buffer) override;
+  absl::StatusOr<RecordedCommands> Record(
+      const Thunk::ExecuteParams& execute_params,
+      const RecordParams& record_params,
+      se::CommandBuffer* command_buffer) override;
 
   BufferUseVector buffers() override;
 
@@ -561,9 +578,10 @@ class CaseCmd : public CommandBufferCmd {
   absl::Status Initialize(const Thunk::InitializeParams& params,
                           StateManager& state) override;
 
-  absl::Status Record(const Thunk::ExecuteParams& execute_params,
-                      const RecordParams& record_params,
-                      se::CommandBuffer* command_buffer) override;
+  absl::StatusOr<RecordedCommands> Record(
+      const Thunk::ExecuteParams& execute_params,
+      const RecordParams& record_params,
+      se::CommandBuffer* command_buffer) override;
 
   bool force_update() override;
 
@@ -588,9 +606,10 @@ class WhileCmd : public CommandBufferCmd {
   absl::Status Initialize(const Thunk::InitializeParams& params,
                           StateManager& state) override;
 
-  absl::Status Record(const Thunk::ExecuteParams& execute_params,
-                      const RecordParams& record_params,
-                      se::CommandBuffer* command_buffer) override;
+  absl::StatusOr<RecordedCommands> Record(
+      const Thunk::ExecuteParams& execute_params,
+      const RecordParams& record_params,
+      se::CommandBuffer* command_buffer) override;
 
   bool force_update() override;
 
@@ -617,9 +636,10 @@ class GemmCmd : public TracedCommandBufferCmd {
   absl::Status Initialize(const Thunk::InitializeParams& params,
                           StateManager& state) override;
 
-  absl::Status Record(const Thunk::ExecuteParams& execute_params,
-                      const RecordParams& record_params,
-                      se::CommandBuffer* command_buffer) override;
+  absl::StatusOr<RecordedCommands> Record(
+      const Thunk::ExecuteParams& execute_params,
+      const RecordParams& record_params,
+      se::CommandBuffer* command_buffer) override;
 
   BufferUseVector buffers() override;
 
@@ -659,9 +679,10 @@ class CublasLtCmd : public TracedCommandBufferCmd {
   absl::Status Initialize(const Thunk::InitializeParams& params,
                           StateManager& state) override;
 
-  absl::Status Record(const Thunk::ExecuteParams& execute_params,
-                      const RecordParams& record_params,
-                      se::CommandBuffer* command_buffer) override;
+  absl::StatusOr<RecordedCommands> Record(
+      const Thunk::ExecuteParams& execute_params,
+      const RecordParams& record_params,
+      se::CommandBuffer* command_buffer) override;
 
   BufferUseVector buffers() override;
 
@@ -712,9 +733,10 @@ class CuDnnCmd : public TracedCommandBufferCmd {
   absl::Status Initialize(const Thunk::InitializeParams& params,
                           StateManager& state) override;
 
-  absl::Status Record(const Thunk::ExecuteParams& execute_params,
-                      const RecordParams& record_params,
-                      se::CommandBuffer* command_buffer) override;
+  absl::StatusOr<RecordedCommands> Record(
+      const Thunk::ExecuteParams& execute_params,
+      const RecordParams& record_params,
+      se::CommandBuffer* command_buffer) override;
 
   BufferUseVector buffers() override;
 
@@ -765,20 +787,21 @@ class CustomCallCmd : public CommandBufferCmd {
         operands_(std::move(operands)),
         results_(std::move(results)) {}
 
-  absl::Status Record(const Thunk::ExecuteParams& execute_params,
-                      const RecordParams& record_params,
-                      se::CommandBuffer* command_buffer) override;
+  absl::StatusOr<RecordedCommands> Record(
+      const Thunk::ExecuteParams& execute_params,
+      const RecordParams& record_params,
+      se::CommandBuffer* command_buffer) override;
 
   BufferUseVector buffers() override;
   bool IsNestedCommandBuffer() const final { return true; }
 
  private:
-  absl::Status RecordLegacyCustomCall(const Thunk::ExecuteParams& execute_param,
-                                      const RecordParams& record_params,
-                                      se::CommandBuffer* command_buffer);
-  absl::Status RecordXlaFfiCall(const Thunk::ExecuteParams& execute_param,
-                                const RecordParams& record_params,
-                                se::CommandBuffer* command_buffer);
+  absl::StatusOr<RecordedCommands> RecordLegacyCustomCall(
+      const Thunk::ExecuteParams& execute_param,
+      const RecordParams& record_params, se::CommandBuffer* command_buffer);
+  absl::StatusOr<RecordedCommands> RecordXlaFfiCall(
+      const Thunk::ExecuteParams& execute_param,
+      const RecordParams& record_params, se::CommandBuffer* command_buffer);
 
   std::string target_name_;
 
@@ -817,7 +840,7 @@ class CollectiveCmd : public CommandBufferCmd {
 
   bool IsNestedCommandBuffer() const final { return true; }
 
-  absl::Status AddTracedCommandBuffer(
+  absl::StatusOr<const se::CommandBuffer::Command*> AddTracedCommandBuffer(
       const Thunk::ExecuteParams& execute_params,
       const RecordParams& record_params, se::CommandBuffer* command_buffer,
       absl::FunctionRef<absl::Status(se::Stream*)> trace);
@@ -855,9 +878,10 @@ class AllReduceCmd : public CollectiveCmd {
                ReductionKind reduction_kind,
                absl::Span<const CollectiveThunk::Buffer> buffers);
 
-  absl::Status Record(const Thunk::ExecuteParams& execute_params,
-                      const RecordParams& record_params,
-                      se::CommandBuffer* command_buffer) override;
+  absl::StatusOr<RecordedCommands> Record(
+      const Thunk::ExecuteParams& execute_params,
+      const RecordParams& record_params,
+      se::CommandBuffer* command_buffer) override;
 
   BufferUseVector buffers() override;
 
@@ -881,9 +905,10 @@ class ReduceScatterCmd : public CollectiveCmd {
                    CollectiveConfig config, ReductionKind reduction_kind,
                    absl::Span<const CollectiveThunk::Buffer> buffers);
 
-  absl::Status Record(const Thunk::ExecuteParams& execute_params,
-                      const RecordParams& record_params,
-                      se::CommandBuffer* command_buffer) override;
+  absl::StatusOr<RecordedCommands> Record(
+      const Thunk::ExecuteParams& execute_params,
+      const RecordParams& record_params,
+      se::CommandBuffer* command_buffer) override;
 
   BufferUseVector buffers() override;
 
@@ -907,9 +932,10 @@ class AllToAllCmd : public CollectiveCmd {
               bool has_split_dimension,
               absl::Span<const CollectiveThunk::Buffer> buffers);
 
-  absl::Status Record(const Thunk::ExecuteParams& execute_params,
-                      const RecordParams& record_params,
-                      se::CommandBuffer* command_buffer) override;
+  absl::StatusOr<RecordedCommands> Record(
+      const Thunk::ExecuteParams& execute_params,
+      const RecordParams& record_params,
+      se::CommandBuffer* command_buffer) override;
 
   BufferUseVector buffers() override;
 
@@ -932,9 +958,10 @@ class AllGatherCmd : public CollectiveCmd {
                ExecutionStreamId async_from_stream_id, CollectiveConfig config,
                absl::Span<const CollectiveThunk::Buffer> buffers);
 
-  absl::Status Record(const Thunk::ExecuteParams& execute_params,
-                      const RecordParams& record_params,
-                      se::CommandBuffer* command_buffer) override;
+  absl::StatusOr<RecordedCommands> Record(
+      const Thunk::ExecuteParams& execute_params,
+      const RecordParams& record_params,
+      se::CommandBuffer* command_buffer) override;
 
   BufferUseVector buffers() override;
 
@@ -957,9 +984,10 @@ class CollectiveBroadcastCmd : public CollectiveCmd {
                          CollectiveConfig config,
                          absl::Span<const CollectiveThunk::Buffer> buffers);
 
-  absl::Status Record(const Thunk::ExecuteParams& execute_params,
-                      const RecordParams& record_params,
-                      se::CommandBuffer* command_buffer) override;
+  absl::StatusOr<RecordedCommands> Record(
+      const Thunk::ExecuteParams& execute_params,
+      const RecordParams& record_params,
+      se::CommandBuffer* command_buffer) override;
 
   BufferUseVector buffers() override;
 
@@ -991,9 +1019,10 @@ class DynamicSliceFusionCmd : public CommandBufferCmd {
       const Thunk::PrepareParams& params,
       Thunk::ResourceRequestsInterface& resource_requests) final;
 
-  absl::Status Record(const Thunk::ExecuteParams& execute_params,
-                      const RecordParams& record_params,
-                      se::CommandBuffer* command_buffer) override;
+  absl::StatusOr<RecordedCommands> Record(
+      const Thunk::ExecuteParams& execute_params,
+      const RecordParams& record_params,
+      se::CommandBuffer* command_buffer) override;
 
   BufferUseVector buffers() override;
 

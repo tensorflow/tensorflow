@@ -21,6 +21,7 @@ limitations under the License.
 
 #include "absl/functional/function_ref.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/ascii.h"
 #include "absl/types/span.h"
 #include "xla/backends/gpu/runtime/thunk.h"
@@ -69,9 +70,10 @@ struct TestOnlyCommandBufferCmd : public CommandBufferCmd {
                          execution_stream_id),
         buffer_usage(buffer_usage) {}
 
-  absl::Status Record(const Thunk::ExecuteParams&, const RecordParams&,
-                      se::CommandBuffer*) override {
-    return absl::OkStatus();
+  absl::StatusOr<RecordedCommands> Record(const Thunk::ExecuteParams&,
+                                          const RecordParams&,
+                                          se::CommandBuffer*) override {
+    return RecordedCommands{};
   }
 
   BufferUseVector buffers() override { return buffer_usage; }
@@ -81,14 +83,14 @@ struct TestOnlyCommandBufferCmd : public CommandBufferCmd {
 
 class FakeCmd : public CommandBufferCmd {
  public:
-  FakeCmd(ExecutionStreamId execution_stream_id)
+  explicit FakeCmd(ExecutionStreamId execution_stream_id)
       : CommandBufferCmd(CommandBufferCmdType::kTracedCommandBufferCmd,
                          execution_stream_id) {}
 
-  absl::Status Record(const Thunk::ExecuteParams& execute_params,
-                      const RecordParams& record_params,
-                      se::CommandBuffer* command_buffer) override {
-    return absl::OkStatus();
+  absl::StatusOr<RecordedCommands> Record(const Thunk::ExecuteParams&,
+                                          const RecordParams&,
+                                          se::CommandBuffer*) override {
+    return RecordedCommands{};
   }
   BufferUseVector buffers() override { return BufferUseVector{}; }
 };
