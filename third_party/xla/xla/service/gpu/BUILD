@@ -623,16 +623,7 @@ cc_library(
         "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/profiler/lib:scoped_annotation",
         "@local_tsl//tsl/profiler/lib:traceme",
-    ] + if_cuda_is_configured([
-        "//xla/stream_executor/cuda:cublas_plugin",
-        "//xla/stream_executor/cuda:cudnn_plugin",
-        "//xla/stream_executor/cuda:cufft_plugin",
-        "//xla/stream_executor/cuda:stream_executor_cuda",
-        "@local_config_cuda//cuda:cuda_headers",
-    ]) + if_rocm_is_configured([
-        "//xla/stream_executor/rocm:stream_executor_rocm",
-        "@local_config_rocm//rocm:rocm_headers",
-    ]),
+    ],
 )
 
 cc_library(
@@ -2369,6 +2360,7 @@ gpu_kernel_library(
     ]) + if_rocm_is_configured([
         "@local_config_rocm//rocm:rocm_headers",
         "@local_config_rocm//rocm:rocm_config",
+        "@local_config_rocm//rocm:hip",
     ]),
 )
 

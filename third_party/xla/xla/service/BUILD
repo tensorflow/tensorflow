@@ -6240,9 +6240,9 @@ xla_cc_binary(
         "//xla/stream_executor/gpu:gpu_init",
         "//xla/stream_executor/rocm:rocm_platform",
     ]) + if_cuda([
-        "//xla/stream_executor/cuda:cublas_plugin",
+        "//xla/stream_executor/cuda:all_runtime",
     ]) + if_rocm([
-        "//xla/stream_executor/rocm:rocblas_plugin",
+        "//xla/stream_executor/rocm:all_runtime",
     ]) + xla_internal(["tools:xsymbol_repository"]),
 )
 
