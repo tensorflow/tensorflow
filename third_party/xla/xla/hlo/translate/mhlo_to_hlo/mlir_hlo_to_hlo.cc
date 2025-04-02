@@ -1091,8 +1091,35 @@ namespace mlir {
 namespace stablehlo {
 namespace {
 
+LogicalResult ExportXlaOp(ReturnOp op, OpLoweringContext ctx) {
+  // Failure on purpose because `stablehlo::ReturnOp` will be handled by
+  // special purpose logic in `ConvertToHloModule::Lower`.
+  return failure();
+}
+
 LogicalResult ExportXlaOp(ConstantOp op, OpLoweringContext ctx) {
   return failure();
+}
+
+LogicalResult ExportXlaOp(ReduceOp op, OpLoweringContext ctx) {
+  auto& value_map = *ctx.values;
+  xla::XlaComputation body;
+  if (failed(ctx.converter->LowerRegionAsComputation(&op.getBody(), &body))) {
+    return failure();
+  }
+  llvm::SmallVector<xla::XlaOp> operands, init_values;
+  if (failed(GetTuple(op, op.getInputs(), ctx, operands)) ||
+      failed(GetTuple(op, op.getInitValues(), ctx, init_values))) {
+    return failure();
+  }
+  xla::XlaOp result =
+      xla::Reduce(ctx.builder, operands, init_values, body, op.getDimensions());
+  if (op.getNumResults() == 1) {
+    value_map[op.getResult(0)] = result;
+  } else {
+    BuildGetTupleElementsForTupleResults(op, result, ctx);
+  }
+  return success();
 }
 
 }  // namespace
