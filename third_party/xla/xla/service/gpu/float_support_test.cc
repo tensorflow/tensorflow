@@ -51,7 +51,6 @@ class FloatSupportTestWithTriton : public FloatSupportTest {
   DebugOptions GetDebugOptionsForTest() const override {
     DebugOptions debug_options = FloatSupportTest::GetDebugOptionsForTest();
     debug_options.set_xla_gpu_enable_triton_gemm(true);
-    debug_options.set_xla_gpu_unsupported_force_triton_gemm(true);
     debug_options.set_xla_gpu_cublas_fallback(false);
     return debug_options;
   }
