@@ -215,8 +215,8 @@ class AsyncHostToDeviceTransferManager
         device_(device) {
     buffer_sizes_.reserve(buffer_ptrs_.size());
     for (const auto& ptr : buffer_ptrs_) {
-      DCHECK_EQ(ptr->device_memory().size(), 1);
-      buffer_sizes_.push_back(ptr->device_memory()[0]->mem().size());
+      DCHECK(ptr->device_memory());
+      buffer_sizes_.push_back(ptr->device_memory()->mem().size());
     }
     last_transfer_started_.resize(buffer_ptrs_.size(), false);
   }
@@ -275,15 +275,13 @@ class AsyncHostToDeviceTransferManager
       last_transfer_started_[buffer_index] = true;
       buffer = buffer_ptrs_[buffer_index];
       DCHECK(buffer);
-      if (buffer->device_memory().empty()) {
+      if (!buffer->device_memory()) {
         return InvalidArgument(
             "TransferLiteralToBuffer requested for buffer index %d which has "
             "been donated. Async transfer of donated buffers is not supported "
             "in SE:GPU",
             buffer_index);
       }
-      DCHECK_EQ(buffer->device_memory().size(), 1);
-
       ++transfers_in_flight_;
     }
 
@@ -377,15 +375,14 @@ class AsyncHostToDeviceTransferManager
       last_transfer_started_[buffer_index] = true;
     }
     DCHECK(buffer_ptrs_[buffer_index]);
-    if (buffer_ptrs_[buffer_index]->device_memory().empty()) {
+    if (!buffer_ptrs_[buffer_index]->device_memory()) {
       return InvalidArgument(
           "TransferRawDataToSubBuffer requested for buffer index %d which has "
           "been donated. Async transfer of donated buffers is not supported "
           "in SE:GPU",
           buffer_index);
     }
-    DCHECK_EQ(buffer_ptrs_[buffer_index]->device_memory().size(), 1);
-    auto& buffer_memory = buffer_ptrs_[buffer_index]->device_memory()[0]->mem();
+    auto& buffer_memory = buffer_ptrs_[buffer_index]->device_memory()->mem();
     se::DeviceMemoryBase sub_buffer;
     CHECK_LE(offset, buffer_memory.size());
     CHECK_LE(transfer_size, buffer_memory.size() - offset);
@@ -652,8 +649,9 @@ PjRtFuture<> StreamExecutorGpuClient::CopyRawSubBufferToHost(
   }
 
   auto device_buffer = hold.buffer();
-  if (device_buffer->device_memory().size() != 1) {
-    return PjRtFuture<>(InvalidArgument("Copy raw buffer called on tuple"));
+  if (!device_buffer->device_memory()) {
+    return PjRtFuture<>(
+        InvalidArgument("Copy raw buffer called on an invalid buffer"));
   }
 
   auto promise = PjRtFuture<>::CreatePromise();
@@ -686,7 +684,7 @@ PjRtFuture<> StreamExecutorGpuClient::CopyRawSubBufferToHost(
       return;
     }
 
-    auto& device_memory = device_buffer->device_memory()[0]->mem();
+    auto& device_memory = device_buffer->device_memory()->mem();
     if (offset < 0 || offset > device_memory.size() ||
         device_memory.size() - offset < transfer_size) {
       promise.Set(

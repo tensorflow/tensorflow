@@ -239,14 +239,6 @@ class TrackedDeviceBuffer {
     bool reference_held;
   };
 
-  // Converts a ScopedShapedBuffer into a TrackedDeviceBuffer. Takes ownership
-  // of the buffers of the shaped_buffer.
-  static std::shared_ptr<TrackedDeviceBuffer> FromScopedShapedBuffer(
-      ScopedShapedBuffer* shaped_buffer,
-      absl::Span<const std::shared_ptr<BufferSequencingEvent>>
-          definition_events,
-      PjRtDevice* device);
-
   // Builds a ShapedBuffer view onto the buffers of 'tree'.
   ShapedBuffer AsShapedBuffer(const Shape& on_device_shape) const;
 
@@ -273,13 +265,10 @@ class TrackedDeviceBuffer {
       ExecutionInput* execution_input,
       se::DeviceMemoryAllocator* allocator) const;
 
-  absl::InlinedVector<tsl::RCReference<RawSEDeviceMemory>, 1>& device_memory() {
+  const tsl::RCReference<RawSEDeviceMemory>& device_memory() const {
     return device_memory_;
   }
-  const absl::InlinedVector<tsl::RCReference<RawSEDeviceMemory>, 1>&
-  device_memory() const {
-    return device_memory_;
-  }
+
   absl::Span<const std::shared_ptr<BufferSequencingEvent>> definition_events()
       const {
     return definition_events_;
@@ -312,19 +301,17 @@ class TrackedDeviceBuffer {
   // any stream and, e.g. AddUsageHold will CHECK fail.
   StreamAndEventContainer LockUseAndTransferUsageEvents();
 
-  TrackedDeviceBuffer() : in_use_(true) {}
-  TrackedDeviceBuffer(
-      PjRtDevice* device,
-      absl::Span<tsl::RCReference<RawSEDeviceMemory> const> device_memory,
-      absl::Span<const std::shared_ptr<BufferSequencingEvent>>
-          definition_events);
+  TrackedDeviceBuffer(PjRtDevice* device,
+                      tsl::RCReference<RawSEDeviceMemory> device_memory,
+                      absl::Span<const std::shared_ptr<BufferSequencingEvent>>
+                          definition_events);
   ~TrackedDeviceBuffer();
 
  private:
   PjRtDevice* device_;
 
   // Each host-side buffer may have several buffers on-device.
-  absl::InlinedVector<tsl::RCReference<RawSEDeviceMemory>, 1> device_memory_;
+  tsl::RCReference<RawSEDeviceMemory> device_memory_;
 
   // Events that are triggered when the content of one or more buffers is ready
   // during multistream execution. May be nullptr, which is used in the

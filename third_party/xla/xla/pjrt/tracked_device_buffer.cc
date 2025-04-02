@@ -242,31 +242,6 @@ tsl::RCReference<RawSEDeviceMemory> RawSEDeviceMemory::CreateForeign(
                                                 std::move(on_delete_callback));
 }
 
-/* static */ std::shared_ptr<TrackedDeviceBuffer>
-TrackedDeviceBuffer::FromScopedShapedBuffer(
-    ScopedShapedBuffer* shaped_buffer,
-    absl::Span<const std::shared_ptr<BufferSequencingEvent>> definition_events,
-    PjRtDevice* device) {
-  ShapeTree<se::DeviceMemoryBase>::iterator iterator =
-      shaped_buffer->buffers().begin();
-  std::vector<tsl::RCReference<RawSEDeviceMemory>> buffers;
-  buffers.reserve(1);
-
-  ShapeUtil::ForEachSubshape(
-      shaped_buffer->on_device_shape(), [&](const Shape&, const ShapeIndex&) {
-        CHECK(iterator != shaped_buffer->buffers().end());
-        buffers.push_back(RawSEDeviceMemory::Create(
-            iterator->second, device->local_device_id(),
-            shaped_buffer->memory_allocator()));
-        iterator->second = se::DeviceMemoryBase();
-        ++iterator;
-      });
-  CHECK(iterator == shaped_buffer->buffers().end());
-  return std::make_shared<TrackedDeviceBuffer>(
-      device, absl::Span<tsl::RCReference<RawSEDeviceMemory>>(buffers),
-      definition_events);
-}
-
 ShapedBuffer TrackedDeviceBuffer::AsShapedBuffer(
     const Shape& on_device_shape) const {
   ShapedBuffer shaped_buffer(on_device_shape,
@@ -274,9 +249,9 @@ ShapedBuffer TrackedDeviceBuffer::AsShapedBuffer(
                              device_->local_hardware_id().value());
   ShapeTree<se::DeviceMemoryBase>::iterator iterator =
       shaped_buffer.buffers().begin();
-  for (const tsl::RCReference<RawSEDeviceMemory>& buf : device_memory_) {
+  if (device_memory_) {
     CHECK(iterator != shaped_buffer.buffers().end());
-    iterator->second = buf->mem();
+    iterator->second = device_memory_->mem();
     ++iterator;
   }
   CHECK(iterator == shaped_buffer.buffers().end());
@@ -284,18 +259,19 @@ ShapedBuffer TrackedDeviceBuffer::AsShapedBuffer(
 }
 
 TrackedDeviceBuffer::TrackedDeviceBuffer(
-    PjRtDevice* device,
-    absl::Span<tsl::RCReference<RawSEDeviceMemory> const> device_memory,
+    PjRtDevice* device, tsl::RCReference<RawSEDeviceMemory> device_memory,
     absl::Span<const std::shared_ptr<BufferSequencingEvent>> definition_events)
     : device_(device),
-      device_memory_(device_memory.begin(), device_memory.end()),
+      device_memory_(std::move(device_memory)),
       definition_events_(std::make_move_iterator(definition_events.begin()),
                          std::make_move_iterator(definition_events.end())),
       in_use_(true) {}
 
 TrackedDeviceBuffer::~TrackedDeviceBuffer() = default;
 
-void TrackedDeviceBuffer::ReleaseDeviceMemory() { device_memory_.clear(); }
+void TrackedDeviceBuffer::ReleaseDeviceMemory() {
+  device_memory_ = tsl::RCReference<RawSEDeviceMemory>();
+}
 
 void TrackedDeviceBuffer::AddUsageEvent(
     se::Stream* usage_stream, std::shared_ptr<BufferSequencingEvent> event,

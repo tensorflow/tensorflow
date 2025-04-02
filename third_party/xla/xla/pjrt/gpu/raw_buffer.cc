@@ -53,13 +53,14 @@ CreateGPURawBuffer(PjRtBuffer* buffer) {
       return hold.status();
     }
     const auto& device_buffer = hold.buffer();
-    if (device_buffer->device_memory().size() != 1) {
-      return absl::InvalidArgumentError("Copy raw buffer called on tuple");
+    if (!device_buffer->device_memory()) {
+      return absl::InvalidArgumentError(
+          "Create raw buffer called on an invalid buffer");
     }
     return tsl::MakeRef<PjRtStreamExecutorRawBuffer>(
         se_client, se_buffer->memory_space(),
         se_buffer->device()->local_device_state(),
-        device_buffer->device_memory()[0]);
+        device_buffer->device_memory());
   }
   return std::nullopt;
 }

@@ -427,8 +427,9 @@ AllocateDestinationBuffer(
     bool is_uninitialized_create, PjRtStreamExecutorClient* client,
     std::shared_ptr<BufferSequencingEvent> definition_event,
     PjRtMemorySpace* memory_space) {
-  if (on_host_shape.IsTuple() && on_host_shape.tuple_shapes_size() == 0) {
-    return InvalidArgument("Can't make a buffer from an empty tuple");
+  if (on_host_shape.IsTuple()) {
+    return InvalidArgument(
+        "Cannot allocate a PjRtStreamExecutorBuffer for a tuple.");
   }
 
   PjRtMemorySpace* default_memory_space =
@@ -510,54 +511,18 @@ AllocateDestinationBuffer(
           std::make_shared<BufferSequencingEvent>(client->thread_pool()));
     }
   }
-  se::Stream* tuple_table_stream = local_device->host_to_device_stream();
-  if (on_device_shape.IsTuple()) {
-    // We also need to copy the tuple tables, so we'll have an additional
-    // definition event for that copy to complete.
-    if (tuple_table_stream != copy_stream) {
-      if (local_device->allocation_model() ==
-          LocalDeviceState::kComputeSynchronized) {
-        DCHECK(
-            tuple_table_stream->WaitFor(local_device->compute_stream()).ok());
-      } else {
-        DCHECK(transfer_manager->CanShapedBufferBeAccessedNow(
-            local_device->compute_stream()->parent(), dst_buffer));
-      }
-    }
 
-    TF_RETURN_IF_ERROR(transfer_manager->WriteTupleIndexTablesAsync(
-        tuple_table_stream, dst_buffer));
-    // CAUTION: From this point onwards we need to be careful about returning
-    // from error cases because we have started a transfer and must not allow
-    // dst_buffer to be freed too soon in the non-async allocation models.
+  auto mem = RawSEDeviceMemory::Create(dst_buffer.buffer({}),
+                                       device->local_device_id(),
+                                       dst_buffer.memory_allocator());
+  dst_buffer.clear();
 
-    definition_events.emplace_back(
-        std::make_shared<BufferSequencingEvent>(client->thread_pool()));
-    absl::StatusOr<EventPool::Handle> event_or =
-        local_device->event_pool().ThenAllocateAndRecordEvent(
-            tuple_table_stream);
-    if (!event_or.ok()) {
-      StallStreamOnError(local_device, tuple_table_stream);
-      return event_or.status();
-    }
-    definition_events.back()->SetSequencingEvent(std::move(event_or).value(),
-                                                 tuple_table_stream);
-  }
-  std::shared_ptr<TrackedDeviceBuffer> dst_device_buffer =
-      TrackedDeviceBuffer::FromScopedShapedBuffer(&dst_buffer,
-                                                  definition_events, device);
+  auto dst_device_buffer = std::make_shared<TrackedDeviceBuffer>(
+      device, std::move(mem), definition_events);
 
   auto py_buffer = std::make_unique<PjRtStreamExecutorBuffer>(
       on_device_shape, std::move(dst_device_buffer), client, device,
       memory_space);
-
-  if (on_device_shape.IsTuple()) {
-    // Add a usage hold for the tuple table write and immediately convert it to
-    // the appropriate form of synchronization.
-    RecordUsage(py_buffer->GetBufferWithUsageHold(), local_device, local_device,
-                definition_events.back(), tuple_table_stream);
-  }
-
   return py_buffer;
 }
 
@@ -667,7 +632,7 @@ class ScopedHoldAsExternalReference : public PjRtBuffer::ExternalReference {
       : external_reference_(std::move(hold)) {
     CHECK(external_reference_.type() ==
           PjRtStreamExecutorBuffer::ScopedHold::kExternalReference);
-    data_ptr_ = external_reference_->device_memory().front()->opaque();
+    data_ptr_ = external_reference_->device_memory()->opaque();
   }
 
   ~ScopedHoldAsExternalReference() override = default;
@@ -701,7 +666,7 @@ class TrackedDeviceBufferExternalReference
   explicit TrackedDeviceBufferExternalReference(
       std::shared_ptr<TrackedDeviceBuffer> tracked_device_buffer)
       : tracked_device_buffer_(std::move(tracked_device_buffer)) {
-    data_ptr_ = tracked_device_buffer_->device_memory()[0]->opaque();
+    data_ptr_ = tracked_device_buffer_->device_memory()->opaque();
   }
 
   ~TrackedDeviceBufferExternalReference() override = default;
@@ -744,9 +709,6 @@ PjRtStreamExecutorBuffer::DonateWithControlDependency(PjRtFuture<> dependency) {
   }
 
   // Copy all the data in the existing tracked_buffer.
-  absl::InlinedVector<tsl::RCReference<RawSEDeviceMemory>, 4> buffers(
-      tracked_buffer->device_memory().begin(),
-      tracked_buffer->device_memory().end());
   auto original_definition_events = tracked_buffer->definition_events();
   absl::InlinedVector<std::shared_ptr<BufferSequencingEvent>, 4>
       definition_events;
@@ -761,7 +723,7 @@ PjRtStreamExecutorBuffer::DonateWithControlDependency(PjRtFuture<> dependency) {
                            original_definition_events.end());
 
   auto new_device_buffer = std::make_shared<TrackedDeviceBuffer>(
-      device(), std::move(buffers), std::move(definition_events));
+      device(), tracked_buffer->device_memory(), std::move(definition_events));
 
   // Make the new buffer which is identical to the old, except for the new
   // definition event.
@@ -946,7 +908,7 @@ PjRtStreamExecutorClient::BufferFromHostBufferInternal(
         // allocation.
 
         se::DeviceMemoryBase device_memory =
-            device_buffer->device_memory()[0]->mem();
+            device_buffer->device_memory()->mem();
 
         // If applicable on the backend, stage the transfer via host memory
         // allocated via the host_memory_allocator. On GPU, this is pinned
@@ -1071,7 +1033,7 @@ PjRtStreamExecutorClient::CreateErrorBuffer(absl::Status error,
 
   // Create an empty buffer.
   auto dummy_device_buffer = std::make_shared<TrackedDeviceBuffer>(
-      device, absl::Span<tsl::RCReference<RawSEDeviceMemory>>(),
+      device, tsl::RCReference<RawSEDeviceMemory>(),
       absl::MakeSpan(&definition_event, 1));
 
   auto py_buffer = std::make_unique<PjRtStreamExecutorBuffer>(
@@ -1212,9 +1174,7 @@ PjRtStreamExecutorClient::CreateViewOfDeviceBuffer(
                                                definition_stream);
 
   auto device_buffer = std::make_shared<TrackedDeviceBuffer>(
-      device,
-      std::initializer_list<tsl::RCReference<RawSEDeviceMemory>>{buffer},
-      definition_events);
+      device, std::move(buffer), definition_events);
   return std::unique_ptr<PjRtBuffer>(std::make_unique<PjRtStreamExecutorBuffer>(
       shape, std::move(device_buffer), this, device,
       device->default_memory_space().value_or(nullptr)));
@@ -1728,15 +1688,11 @@ PjRtFuture<> PjRtStreamExecutorBuffer::ToLiteral(MutableLiteralBase* literal) {
 absl::StatusOr<size_t> PjRtStreamExecutorBuffer::GetOnDeviceSizeInBytes()
     const {
   absl::MutexLock lock(&mu_);
-  if (device_buffer_ == nullptr) {
+  if (device_buffer_ == nullptr || !device_buffer_->device_memory()) {
     return InvalidArgument(
         "GetOnDeviceSizeInBytes called on deleted or donated buffer");
   }
-  if (device_buffer_->device_memory().size() != 1) {
-    return InvalidArgument(
-        "GetOnDeviceSizeInBytes called on tuple-shaped buffer");
-  }
-  return device_buffer_->device_memory()[0]->mem().size();
+  return device_buffer_->device_memory()->mem().size();
 }
 
 PjRtFuture<> PjRtStreamExecutorBuffer::CopyRawToHost(void* dst, int64_t offset,
@@ -2166,15 +2122,10 @@ MakeTupleHelper(
   // Then set each sub-tuple in turn from the parameters.
   for (const PjRtStreamExecutorBuffer::ScopedHold& device_buffer :
        device_buffers) {
-    for (const tsl::RCReference<RawSEDeviceMemory>& buf :
-         device_buffer->device_memory()) {
-      CHECK(input_iterator != iterator_end);
-      input_iterator->second = {
-          device_buffer.type() ==
-              PjRtStreamExecutorBuffer::ScopedHold::kDonation,
-          buf};
-      ++input_iterator;
-    }
+    input_iterator->second = {
+        device_buffer.type() == PjRtStreamExecutorBuffer::ScopedHold::kDonation,
+        device_buffer->device_memory()};
+    ++input_iterator;
   }
   CHECK(input_iterator == iterator_end);
 
@@ -2207,12 +2158,15 @@ absl::StatusOr<std::unique_ptr<PjRtBuffer>> OutputBufferHelper(
     std::shared_ptr<BufferSequencingEvent> definition_event, PjRtClient* client,
     PjRtDevice* device, LocalDeviceState* local_device,
     std::vector<std::shared_ptr<TrackedDeviceBuffer>>& buffers_to_release) {
+  if (result_buffer.shape().IsTuple()) {
+    return absl::InternalError("OutputBufferHelper called on tuple.");
+  }
   absl::InlinedVector<tsl::RCReference<RawSEDeviceMemory>, 1> buffers;
   for (auto& item : result_buffer) {
     buffers.push_back(std::move(item.second));
   }
   auto out_buffer = std::make_shared<TrackedDeviceBuffer>(
-      device, absl::Span<tsl::RCReference<RawSEDeviceMemory> const>(buffers),
+      device, std::move(buffers[0]),
       absl::Span<const std::shared_ptr<BufferSequencingEvent>>{
           definition_event});
   const Shape& shape = result_buffer.shape();
@@ -2400,15 +2354,13 @@ PjRtStreamExecutorLoadedExecutable::MakeExecutionInputsAndWaitForEvents(
           execution_inputs.back();
       auto input_iterator = execution_input.begin();
       auto iterator_end = execution_input.end();
-      for (const tsl::RCReference<RawSEDeviceMemory>& buf :
-           device_buffers[i]->device_memory()) {
-        CHECK(input_iterator != iterator_end);
-        input_iterator->second = {
-            device_buffers[i].type() ==
-                PjRtStreamExecutorBuffer::ScopedHold::kDonation,
-            buf};
-        ++input_iterator;
-      }
+      const auto& buf = device_buffers[i]->device_memory();
+      CHECK(input_iterator != iterator_end);
+      input_iterator->second = {
+          device_buffers[i].type() ==
+              PjRtStreamExecutorBuffer::ScopedHold::kDonation,
+          buf};
+      ++input_iterator;
       CHECK(input_iterator == iterator_end);
     }
   }
@@ -2959,7 +2911,7 @@ PjRtStreamExecutorLoadedExecutable::MakeOutputBuffers(
   tsl::profiler::TraceMe traceme("MakeOutputBuffers");
   std::vector<std::unique_ptr<PjRtBuffer>> outputs;
   LocalDeviceState* device_state = &(client_->device_state(device_ordinal));
-  if (options.untuple_result && result_buffer.shape().IsTuple()) {
+  if (result_buffer.shape().IsTuple()) {
     int tuple_count = result_buffer.shape().tuple_shapes_size();
     outputs.reserve(tuple_count);
     // Take ownership of each of the output values, leaving only the root table
