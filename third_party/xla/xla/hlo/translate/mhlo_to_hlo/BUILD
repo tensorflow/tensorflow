@@ -196,6 +196,7 @@ cc_binary(
     name = "gen_hlo_op_writer",
     srcs = ["gen_hlo_op_writer.cc"],
     deps = [
+        "@com_google_absl//absl/container:flat_hash_set",
         "@llvm-project//llvm:Support",
         "@llvm-project//llvm:TableGen",
         "@llvm-project//mlir:TableGen",
@@ -213,6 +214,7 @@ gentbl_cc_library(
         "@llvm-project//mlir:InferTypeOpInterfaceTdFiles",
         "@llvm-project//mlir:OpBaseTdFiles",
         "@llvm-project//mlir:SideEffectInterfacesTdFiles",
+        "@stablehlo//:stablehlo_ops_td_filegroup",
     ],
 )
 

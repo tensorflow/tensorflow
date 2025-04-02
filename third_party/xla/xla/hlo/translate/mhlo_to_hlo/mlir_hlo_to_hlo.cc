@@ -64,6 +64,7 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"
 #include "mlir/Transforms/RegionUtils.h"
 #include "stablehlo/dialect/Base.h"
+#include "stablehlo/dialect/StablehloOps.h"
 #include "stablehlo/transforms/Passes.h"
 #include "xla/array.h"
 #include "xla/comparison_util.h"
@@ -1086,6 +1087,17 @@ void BuildGetTupleElementsForTupleResults(mlir::Operation* op, xla::XlaOp tuple,
 }  // namespace
 
 namespace mlir {
+
+namespace stablehlo {
+namespace {
+
+LogicalResult ExportXlaOp(ConstantOp op, OpLoweringContext ctx) {
+  return failure();
+}
+
+}  // namespace
+}  // namespace stablehlo
+
 namespace mhlo {
 namespace {
 LogicalResult ExportXlaOp(CollectiveBroadcastOp op, OpLoweringContext ctx) {
@@ -3639,8 +3651,8 @@ LogicalResult ConvertToHloModule::Lower(
     ConvertToHloModule::ValueLoweringMap* value_lowering,
     xla::XlaOp* return_value) {
   // Explicitly fail for ops that are not supported for export.
-  if (inst->getDialect() !=
-          inst->getContext()->getLoadedDialect<mlir::mhlo::MhloDialect>() &&
+  if (!mlir::isa<mhlo::MhloDialect, stablehlo::StablehloDialect>(
+          inst->getDialect()) &&
       !mlir::isa<mlir::func::ConstantOp, mlir::arith::ConstantOp,
                  mlir::func::CallOp, mlir::tensor::CastOp,
                  mlir::func::ReturnOp>(inst)) {

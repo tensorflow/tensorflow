@@ -39,6 +39,10 @@ namespace mhlo {
 
 namespace {
 
+void legalDirectStablehloToHloConversionOps(ConversionTarget& target) {
+  target.addLegalOp<stablehlo::AddOp, stablehlo::ConstantOp>();
+}
+
 struct StablehloLegalizeToHloPass
     : public impl::StablehloLegalizeToHloPassBase<StablehloLegalizeToHloPass> {
   using StablehloLegalizeToHloPassBase::StablehloLegalizeToHloPassBase;
@@ -49,7 +53,7 @@ struct StablehloLegalizeToHloPass
 
     // Allow injecting legal ops to permit gradual migration.
     if (!convert_xla_supported_stablehlo_) {
-      target.addLegalOp<stablehlo::ConstantOp>();
+      legalDirectStablehloToHloConversionOps(target);
     }
 
     stablehlo::StablehloToHloTypeConverter converter;
