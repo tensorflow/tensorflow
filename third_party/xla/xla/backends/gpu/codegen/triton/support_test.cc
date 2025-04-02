@@ -2280,7 +2280,8 @@ class FusionKindsTest
 
 TEST_P(FusionKindsTest, OperandOfDot) {
   auto [kind, cc] = GetParam();
-  const std::string hlo_text = absl::Substitute(R"(
+  const std::string hlo_text = absl::Substitute(
+      R"(
 flhs {
   ROOT result = f32[128,256] parameter(0)
 }
@@ -2302,7 +2303,7 @@ ENTRY triton_computation {
     lhs_contracting_dims={1}, rhs_contracting_dims={0}
 }
 )",
-                                                kind);
+      kind);
 
   TF_ASSERT_OK_AND_ASSIGN(
       TestedInstruction ti,
@@ -2360,6 +2361,49 @@ INSTANTIATE_TEST_SUITE_P(
     ::testing::Combine(::testing::ValuesIn(FusionKindsForTest()),
                        ::testing::ValuesIn(AllDevicesToTest())),
     FusionKindsTestName);
+
+using FusionTest = TritonSupportTest;
+
+TEST_F(FusionTest, FusionComputationIsCheckedRecursively) {
+  // We expect test for fail as `flhs` is not a supported computation as
+  // fusion there is not an operand of a dot or a concatenate.
+  absl::string_view hlo_text = R"(
+identity {
+  ROOT result = f32[128,256] parameter(0)
+}
+
+flhs {
+  p0 = f32[128,256] parameter(0)
+  ROOT result = f32[128,256] fusion(p0), kind=kCustom, calls=identity, backend_config={
+    "fusion_backend_config":{"kind":"__triton_nested_gemm_fusion", "block_level_fusion_config":{
+    "output_tiles":[{"sizes":["16", "64"]}]}}}
+}
+
+frhs {
+  ROOT result = f32[256,512] parameter(0)
+}
+
+ENTRY triton_computation {
+  p0 = f32[128,256] parameter(0)
+  p1 = f32[256,512] parameter(1)
+  lhs = f32[128,256] fusion(p0), kind=kCustom, calls=flhs, backend_config={
+    "fusion_backend_config":{"kind":"__triton_nested_gemm_fusion", "block_level_fusion_config":{
+    "output_tiles":[{"sizes":["16", "64"]}]}}}
+  rhs = f32[256,512]{1,0} fusion(p1), kind=kCustom, calls=frhs,
+    backend_config={ "fusion_backend_config":{ "kind":"__triton_nested_gemm_fusion",
+    "block_level_fusion_config": {"output_tiles":[{"sizes":["64", "32"]}]}}}
+  ROOT result = f32[128,512]{1,0} dot(lhs, rhs),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(
+      TestedInstruction ti,
+      ParseTemplateAndGetInstruction(hlo_text, F32, HloOpcode::kFusion,
+                                     /*use_nested_gemm_fusions=*/true));
+  se::GpuComputeCapability cc = se::CudaComputeCapability::Ampere();
+  ASSERT_FALSE(IsTritonSupportedInstruction(ti.Instruction(), cc));
+  RunSupportTest(std::move(ti), /*output_tile_sizes=*/{64, 32}, cc);
+}
 
 constexpr std::array kUnsupportedOps = {
     // clang-format off

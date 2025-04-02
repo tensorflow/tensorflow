@@ -39,6 +39,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/IR/MLIRContext.h"
+#include "xla/backends/gpu/codegen/triton/support.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -59,6 +60,7 @@ limitations under the License.
 #include "xla/service/instruction_fusion.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/stream_executor/device_description.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
@@ -709,38 +711,58 @@ absl::Status TryHoistBitcastsInComputationToCallers(HloInstruction* dot,
 
 class NestGemmFusionVisitor : public DfsHloRewriteVisitor {
  public:
-  explicit NestGemmFusionVisitor(mlir::MLIRContext* ctx, CallGraph* call_graph)
-      : ctx_(ctx), call_graph_(call_graph) {}
+  explicit NestGemmFusionVisitor(
+      mlir::MLIRContext* ctx, CallGraph* call_graph,
+      const se::GpuComputeCapability compute_capability)
+      : ctx_(ctx),
+        call_graph_(call_graph),
+        compute_capability_(compute_capability) {}
 
   absl::Status HandleFusion(HloInstruction* instruction) override {
     HloFusionInstruction* fusion = Cast<HloFusionInstruction>(instruction);
 
     absl::StatusOr<TritonGemmConfig> config = GetTritonGemmConfig(*fusion);
     if (!config.ok()) {
-      return absl::OkStatus();  // Skip because it's not a Triton gemm fusion.
+      VLOG(2) << "Skipping fusion as it does not have a TritonGemmConfig";
+      return absl::OkStatus();
     }
 
     HloComputation* computation = fusion->called_computation();
-    HloInstruction* dot =
+    HloInstruction* instr =
         hlo_query::GetFirstInstructionWithOpcode(*computation, HloOpcode::kDot);
-    if (dot == nullptr) {
-      return absl::OkStatus();  // Skip because fusion has no dot.
+    if (instr == nullptr) {
+      VLOG(2) << "Skipping fusion as it has no dot instruction";
+      return absl::OkStatus();
     }
     DCHECK_EQ(GetDotCount(computation), 1) << "Fusion has more than one dot.";
+    HloDotInstruction* dot = Cast<HloDotInstruction>(instr);
+    TF_RETURN_IF_ERROR(
+        TryHoistBitcastsInComputationToCallers(instr, call_graph_));
+    VLOG(2) << "After hoisting bitcasts: " << computation->ToString();
 
     TF_RETURN_IF_ERROR(
-        TryHoistBitcastsInComputationToCallers(dot, call_graph_));
-    VLOG(2) << "After hoisting bitcasts: " << computation->ToString();
-    TF_RETURN_IF_ERROR(MakeNestedFusionFromGemmFusion(
-        fusion, config.value(), Cast<HloDotInstruction>(dot), ctx_));
+        MakeNestedFusionFromGemmFusion(fusion, config.value(), dot, ctx_));
 
     this->MarkAsChanged();
+    // TODO(b/393299275): support checks should be run *before* the fusion is
+    // constructed and this pass should only be applied to the known supported
+    // HLO. Currently though, we are at mercy of what GemmFusion pass thinks
+    // legacy emitter can handle. We change the kind of the fusion here and
+    // switch the track. Thus it is on us to make sure that the generic emitter
+    // will be able to handle the result. That is an early check to make sure
+    // that that nesting did not produce an unsupported HLO.
+    if (!IsTritonSupportedComputation(*computation, compute_capability_)) {
+      return absl::InternalError(absl::StrCat("Computation of fusion ",
+                                              fusion->ToString(),
+                                              " is not supported by Triton."));
+    }
     return absl::OkStatus();
   }
 
  private:
   mlir::MLIRContext* ctx_;
   CallGraph* call_graph_;
+  const se::GpuComputeCapability compute_capability_;
 };
 
 }  // namespace
@@ -753,7 +775,7 @@ absl::StatusOr<bool> NestGemmFusion::Run(
   mlir::MLIRContext ctx;
   for (HloComputation* computation :
        module->MakeNonfusionComputations(execution_threads)) {
-    NestGemmFusionVisitor visitor(&ctx, call_graph.get());
+    NestGemmFusionVisitor visitor(&ctx, call_graph.get(), compute_capability_);
     TF_RETURN_IF_ERROR(computation->Accept(&visitor));
     changed |= visitor.changed();
   }

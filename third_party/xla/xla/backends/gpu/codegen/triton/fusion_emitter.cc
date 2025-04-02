@@ -90,6 +90,7 @@ limitations under the License.
 #include "xla/backends/gpu/codegen/triton/emitter_helpers.h"
 #include "xla/backends/gpu/codegen/triton/fusion_emitter_legacy_matmul.h"
 #include "xla/backends/gpu/codegen/triton/ir/triton_xla_ops.h"
+#include "xla/backends/gpu/codegen/triton/support.h"
 #include "xla/backends/gpu/codegen/triton/transforms/passes.h"
 #include "xla/codegen/emitter_loc_op_builder.h"
 #include "xla/codegen/emitters/elemental_hlo_to_mlir.h"
@@ -1109,38 +1110,6 @@ absl::StatusOr<ScalarOrTensor> EmitTiledHloInstruction(
       absl::StrCat("Unsupported operation ", hlo->ToString()));
 }
 
-// Verifies that the nested fusion instruction conforms to the assumptions of
-// the emitter. Currently, we expect nested fusions:
-// - of kind `__triton_nested_gemm_fusion`
-// - to have a single user that is either a `dot` or a `concatenate`.
-absl::Status VerifyNestedFusion(const HloInstruction& hlo) {
-  // TODO(b/393299275): test cases when there are multiple dot users of the
-  // same fusion.
-  if (hlo.user_count() != 1) {
-    return absl::FailedPreconditionError(
-        absl::StrCat("Expected only one user for fusion ", hlo.ToString(),
-                     " but got ", hlo.user_count()));
-  }
-  TF_ASSIGN_OR_RETURN(GpuBackendConfig backend_config,
-                      hlo.backend_config<GpuBackendConfig>());
-  if (const std::string& kind = backend_config.fusion_backend_config().kind();
-      kind != kTritonNestedGemmFusionKind) {
-    return absl::FailedPreconditionError(absl::StrCat(
-        "Expected ", hlo.ToString(),
-        " with fusion backend kind __triton_nested_gemm_fusion, got ", kind));
-  }
-  const HloInstruction* user = hlo.users().front();
-  switch (user->opcode()) {
-    case HloOpcode::kDot:
-    case HloOpcode::kConcatenate:
-      return absl::OkStatus();
-    default:
-      return absl::FailedPreconditionError(
-          absl::StrCat("Unexpected user ", user->ToString(),
-                       " of nested fusion ", hlo.ToString()));
-  }
-}
-
 // Emit a sequence of instructions using compatible tiling with producers
 // ordered before consumers in `tiled_computation`. Returns the results for the
 // roots of `tiled_computation`.
@@ -1158,7 +1127,13 @@ absl::StatusOr<std::vector<ScalarOrTensor>> EmitTiledComputation(
     // Skip generating nested fusions, they are emitted by their consumer.
     if (hlo->parent()->IsFusionComputation() &&
         hlo->opcode() == HloOpcode::kFusion) {
-      TF_RETURN_IF_ERROR(VerifyNestedFusion(*hlo));
+      CodegenDecision decision = IsTritonSupportedInstruction(
+          *hlo, device_info.gpu_compute_capability());
+      if (!decision.CanFuse()) {
+        return absl::FailedPreconditionError(
+            absl::StrCat("Fusion ", hlo->ToString(),
+                         " is not supported: ", decision.Explain()));
+      }
       VLOG(1) << "Skipping nested fusion: " << hlo->ToString();
       continue;
     }

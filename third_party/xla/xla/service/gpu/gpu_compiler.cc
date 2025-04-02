@@ -1656,7 +1656,8 @@ absl::Status GpuCompiler::OptimizeHloPostLayoutAssignment(
 
   if (debug_options
           .xla_gpu_unsupported_enable_generic_triton_emitter_for_gemms()) {
-    pipeline.AddPass<NestGemmFusion>();
+    pipeline.AddPass<NestGemmFusion>(
+        gpu_target_config.device_description.gpu_compute_capability());
   }
   // Inline back the calls which have better performance with cuBLAS.
   pipeline.AddPass<CallInliner>(

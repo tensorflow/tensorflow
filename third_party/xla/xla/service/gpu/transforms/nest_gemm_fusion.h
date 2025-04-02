@@ -21,6 +21,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/pass/hlo_pass_interface.h"
+#include "xla/stream_executor/device_description.h"
 
 namespace xla::gpu {
 
@@ -42,6 +43,9 @@ namespace xla::gpu {
 // nested fusions, each with their own BlockLevelFusionConfig.
 class NestGemmFusion : public HloModulePass {
  public:
+  explicit NestGemmFusion(const se::GpuComputeCapability& compute_capability)
+      : compute_capability_(compute_capability) {}
+
   absl::string_view name() const override { return "nest_gemm_fusion"; }
 
   using HloPassInterface::Run;
@@ -50,6 +54,7 @@ class NestGemmFusion : public HloModulePass {
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
  private:
+  const se::GpuComputeCapability compute_capability_;
 };
 
 }  // namespace xla::gpu

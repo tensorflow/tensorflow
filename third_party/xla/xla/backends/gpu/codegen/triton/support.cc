@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/backends/gpu/codegen/triton/support.h"
 
 #include <cstdint>
+#include <string>
 #include <variant>
 #include <vector>
 
@@ -367,20 +368,49 @@ CodegenDecision IsTritonSupportedDot(
   return CodegenDecision::Allow();
 }
 
-CodegenDecision IsSupportedFusion(const HloFusionInstruction& fusion) {
+// Verifies that the nested fusion instruction conforms to the assumptions of
+// the emitter. Currently, we expect nested fusions:
+// - of kind `__triton_nested_gemm_fusion`;
+// - to have a single user that is either a `dot` or a `concatenate`;
+// - calls a supported computation.
+CodegenDecision IsSupportedFusion(const HloFusionInstruction& hlo,
+                                  const se::GpuComputeCapability& capability) {
+  // TODO(b/393299275): test cases when there are multiple dot users of the
+  // same fusion.
+  if (hlo.user_count() != 1) {
+    return CodegenDecision::Forbid(
+        absl::StrCat("Expected only one user for fusion ", hlo.ToString(),
+                     " but got ", hlo.user_count()));
+  }
   absl::StatusOr<GpuBackendConfig> backend_config =
-      fusion.backend_config<GpuBackendConfig>();
+      hlo.backend_config<GpuBackendConfig>();
   if (!backend_config.ok()) {
     return CodegenDecision(backend_config.status());
   }
-  absl::string_view fusion_kind =
-      backend_config.value().fusion_backend_config().kind();
-  // Note: kTritonFusionKind is NOT expected to be set for nested fusions.
-  if (fusion_kind != kTritonNestedGemmFusionKind) {
+  if (const std::string& kind =
+          backend_config.value().fusion_backend_config().kind();
+      kind != kTritonNestedGemmFusionKind) {
     return CodegenDecision::Forbid(
-        absl::StrCat("Unsupported fusion kind: ", fusion_kind));
+        absl::StrCat("Expected ", hlo.ToString(), " with fusion backend kind ",
+                     kTritonNestedGemmFusionKind, ", got ", kind));
   }
-  return CodegenDecision::Allow();
+  const HloInstruction* user = hlo.users().front();
+  switch (user->opcode()) {
+    case HloOpcode::kDot:
+    case HloOpcode::kConcatenate:
+      break;
+    default:
+      return CodegenDecision::Forbid(absl::StrCat(
+          "Unexpected user opcode ", user->opcode(), " of nested fusion"));
+  }
+  CodegenDecision decision =
+      IsTritonSupportedComputation(*hlo.called_computation(), capability);
+  if (decision.CanFuse()) {
+    return CodegenDecision::Allow();
+  }
+  return CodegenDecision::Forbid(
+      absl::StrCat("Computation called by fusion ", hlo.ToString(),
+                   " is not supported: ", decision.Explain()));
 }
 
 CodegenDecision IsTritonSupportedConcatenate(const HloInstruction& hlo) {
@@ -471,7 +501,8 @@ CodegenDecision IsTritonSupportedInstructionImpl(
       return IsTritonSupportedDot(*Cast<HloDotInstruction>(&instr),
                                   gpu_version);
     case HloOpcode::kFusion:
-      return IsSupportedFusion(*Cast<HloFusionInstruction>(&instr));
+      return IsSupportedFusion(*Cast<HloFusionInstruction>(&instr),
+                               gpu_version);
     default:
       // Not all instructions have a special handling.
       break;
