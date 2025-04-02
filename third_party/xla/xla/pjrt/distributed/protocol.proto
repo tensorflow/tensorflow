@@ -87,6 +87,9 @@ message LocalTopologyProto {
   // See /proc/sys/kernel/random/boot_id.
   string boot_id = 2;
   repeated DeviceProto devices = 3;
+
+  // Explicit slice index; derived from boot_id if absent
+  optional int32 slice_index = 4;
 }
 
 message GlobalTopologyProto {

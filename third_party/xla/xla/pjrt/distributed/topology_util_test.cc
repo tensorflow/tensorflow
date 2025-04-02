@@ -46,9 +46,10 @@ TEST(TopologyTest, BuildGlobalTopology) {
   DeviceProto* d3 = locals[1].add_devices();
   d3->set_local_device_ordinal(1);
 
-  GlobalTopologyProto global =
+  TF_ASSERT_OK_AND_ASSIGN(
+      GlobalTopologyProto global,
       BuildGlobalTopology(absl::Span<LocalTopologyProto>(locals),
-                          /*assign_global_device_ids=*/true);
+                          /*assign_global_device_ids=*/true));
   EXPECT_EQ(global.nodes_size(), 2);
   EXPECT_EQ(global.nodes()[0].devices_size(), 2);
   EXPECT_EQ(global.nodes()[1].devices_size(), 2);
@@ -177,6 +178,40 @@ TEST(TopologyTest, ExchangeTopology_TwiceWithDifferentLocalTopology_Fails) {
   }
 }
 
+TEST(TopologyTest, BuildGlobalTopologyWithExplicitSliceIndices) {
+  // Set slice_index explicitly, and expect boot id to be ignored.
+  std::string boot_id = "foo";
+  std::vector<LocalTopologyProto> locals(2);
+  locals[0].set_boot_id(boot_id);
+  locals[1].set_boot_id(boot_id);
+  locals[0].set_node_id(0);
+  locals[1].set_node_id(1);
+  locals[0].set_slice_index(1);
+  locals[1].set_slice_index(0);
+  // Adds 2 devices to each host.
+  DeviceProto* d0 = locals[0].add_devices();
+  d0->set_local_device_ordinal(0);
+  DeviceProto* d1 = locals[0].add_devices();
+  d1->set_local_device_ordinal(1);
+  DeviceProto* d2 = locals[1].add_devices();
+  d2->set_local_device_ordinal(0);
+  DeviceProto* d3 = locals[1].add_devices();
+  d3->set_local_device_ordinal(1);
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      GlobalTopologyProto global,
+      BuildGlobalTopology(absl::Span<LocalTopologyProto>(locals),
+                          /*assign_global_device_ids=*/true));
+
+  EXPECT_EQ(global.nodes_size(), 2);
+  EXPECT_EQ(global.nodes()[0].devices_size(), 2);
+  EXPECT_EQ(global.nodes()[0].devices()[0].slice_index(), 1);
+  EXPECT_EQ(global.nodes()[0].devices()[1].slice_index(), 1);
+  EXPECT_EQ(global.nodes()[1].devices_size(), 2);
+  EXPECT_EQ(global.nodes()[1].devices()[0].slice_index(), 0);
+  EXPECT_EQ(global.nodes()[1].devices()[1].slice_index(), 0);
+}
+
 TEST(TopologyTest, BuildGpuTopology) {
   std::string slice_0_boot_id = "foo";
   std::string slice_1_boot_id = "bar";
@@ -200,9 +235,10 @@ TEST(TopologyTest, BuildGpuTopology) {
   d3->set_local_device_ordinal(1);
   d3->set_core_count(20);
 
-  GlobalTopologyProto global =
+  TF_ASSERT_OK_AND_ASSIGN(
+      GlobalTopologyProto global,
       BuildGlobalTopology(absl::Span<LocalTopologyProto>(locals),
-                          /*assign_global_device_ids=*/true);
+                          /*assign_global_device_ids=*/true));
 
   TF_ASSERT_OK_AND_ASSIGN(auto gpu_topology, BuildGpuTopology(global));
   EXPECT_EQ(gpu_topology.device_ids_size(), 4);
@@ -229,9 +265,10 @@ TEST(TopologyTest, BuildGpuTopologyWithDifferentNumHostsPerSlice) {
   DeviceProto* d2 = locals[2].add_devices();
   d2->set_local_device_ordinal(0);
 
-  GlobalTopologyProto global =
+  TF_ASSERT_OK_AND_ASSIGN(
+      GlobalTopologyProto global,
       BuildGlobalTopology(absl::Span<LocalTopologyProto>(locals),
-                          /*assign_global_device_ids=*/true);
+                          /*assign_global_device_ids=*/true));
 
   TF_ASSERT_OK_AND_ASSIGN(auto gpu_topology, BuildGpuTopology(global));
   EXPECT_EQ(gpu_topology.device_ids_size(), 3);
@@ -256,9 +293,10 @@ TEST(TopologyTest, BuildGpuTopologyWithDifferentNumDevicesPerHost) {
   DeviceProto* d2 = locals[1].add_devices();
   d2->set_local_device_ordinal(0);
 
-  GlobalTopologyProto global =
+  TF_ASSERT_OK_AND_ASSIGN(
+      GlobalTopologyProto global,
       BuildGlobalTopology(absl::Span<LocalTopologyProto>(locals),
-                          /*assign_global_device_ids=*/true);
+                          /*assign_global_device_ids=*/true));
 
   TF_ASSERT_OK_AND_ASSIGN(auto gpu_topology, BuildGpuTopology(global));
   EXPECT_EQ(gpu_topology.device_ids_size(), 3);
