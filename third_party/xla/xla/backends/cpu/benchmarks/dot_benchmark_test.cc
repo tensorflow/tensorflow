@@ -21,6 +21,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/backends/cpu/benchmarks/hlo_benchmark_runner.h"
+#include "xla/backends/cpu/benchmarks/multi_benchmark_config.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/primitive_util.h"
@@ -31,7 +32,8 @@ limitations under the License.
 
 namespace xla::cpu {
 
-static void BM_BatchedDot(benchmark::State& state) {
+static void BM_BatchedDot(benchmark::State& state,
+                          HloBenchmarkOptions options) {
   PrimitiveType dtype = static_cast<PrimitiveType>(state.range(0));
   int64_t d0 = state.range(1);
   int64_t d1 = state.range(2);
@@ -68,11 +70,12 @@ static void BM_BatchedDot(benchmark::State& state) {
       state, hlo, args,
       {{"$dtype", primitive_util::LowercasePrimitiveTypeName(dtype)},
        {"$d0", absl::StrCat(d0)},
-       {"$d1", absl::StrCat(d1)}}));
+       {"$d1", absl::StrCat(d1)}},
+      options));
 }
 
 #define BENCHMARK_BATCHED_DOT(dtype) \
-  BENCHMARK(BM_BatchedDot)           \
+  XLA_CPU_BENCHMARK(BM_BatchedDot)   \
       ->MeasureProcessCPUTime()      \
       ->Args({dtype, 1, 2})          \
       ->Args({dtype, 1, 32})         \

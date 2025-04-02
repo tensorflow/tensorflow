@@ -86,6 +86,7 @@ xla_cc_test(
     srcs = ["aliasing_benchmark_test.cc"],
     deps = [
         ":hlo_benchmark_runner",
+        ":multi_benchmark_config",
         "//xla:xla_data_proto_cc",
         "//xla/tsl/platform:test",
         "//xla/tsl/platform:test_benchmark",
@@ -102,6 +103,7 @@ xla_cc_test(
     fail_if_no_test_linked = False,  # NOLINT=This contains benchmarks only, no tests.
     deps = [
         ":hlo_benchmark_runner",
+        ":multi_benchmark_config",
         "//xla:literal",
         "//xla:literal_util",
         "//xla:shape_util",
@@ -121,6 +123,7 @@ xla_cc_test(
     fail_if_no_test_linked = False,  # NOLINT=This contains benchmarks only, no tests.
     deps = [
         ":hlo_benchmark_runner",
+        ":multi_benchmark_config",
         "//xla:literal",
         "//xla:literal_util",
         "//xla:shape_util",
@@ -140,6 +143,7 @@ xla_cc_test(
     fail_if_no_test_linked = False,  # NOLINT=This contains benchmarks only, no tests.
     deps = [
         ":hlo_benchmark_runner",
+        ":multi_benchmark_config",
         "//xla:literal",
         "//xla:literal_util",
         "//xla:shape_util",
@@ -159,6 +163,7 @@ xla_cc_test(
     fail_if_no_test_linked = False,  # NOLINT=This contains benchmarks only, no tests.
     deps = [
         ":hlo_benchmark_runner",
+        ":multi_benchmark_config",
         "//xla:literal",
         "//xla:literal_util",
         "//xla:shape_util",
@@ -178,6 +183,7 @@ xla_cc_test(
     fail_if_no_test_linked = False,  # NOLINT=This contains benchmarks only, no tests.
     deps = [
         ":hlo_benchmark_runner",
+        ":multi_benchmark_config",
         "//xla:literal",
         "//xla:literal_util",
         "//xla:shape_util",
@@ -197,6 +203,7 @@ xla_cc_test(
     fail_if_no_test_linked = False,  # NOLINT=This contains benchmarks only, no tests.
     deps = [
         ":hlo_benchmark_runner",
+        ":multi_benchmark_config",
         "//xla:literal",
         "//xla:literal_util",
         "//xla:shape_util",
@@ -216,6 +223,7 @@ xla_cc_test(
     fail_if_no_test_linked = False,  # NOLINT=This contains benchmarks only, no tests.
     deps = [
         ":hlo_benchmark_runner",
+        ":multi_benchmark_config",
         "//xla:literal",
         "//xla:literal_util",
         "//xla:shape_util",
@@ -248,6 +256,7 @@ xla_cc_test(
     fail_if_no_test_linked = False,  # NOLINT=This contains benchmarks only, no tests.
     deps = [
         ":hlo_benchmark_runner",
+        ":multi_benchmark_config",
         "//xla:literal",
         "//xla:literal_util",
         "//xla:shape_util",
@@ -267,6 +276,7 @@ xla_cc_test(
     fail_if_no_test_linked = False,  # NOLINT=This contains benchmarks only, no tests.
     deps = [
         ":hlo_benchmark_runner",
+        ":multi_benchmark_config",
         "//xla:literal",
         "//xla:literal_util",
         "//xla:shape_util",
@@ -286,6 +296,7 @@ xla_cc_test(
     fail_if_no_test_linked = False,  # NOLINT=This contains benchmarks only, no tests.
     deps = [
         ":hlo_benchmark_runner",
+        ":multi_benchmark_config",
         "//xla:literal",
         "//xla:literal_util",
         "//xla:shape_util",
@@ -303,6 +314,7 @@ xla_cc_test(
     fail_if_no_test_linked = False,  # NOLINT=This contains benchmarks only, no tests.
     deps = [
         ":hlo_benchmark_runner",
+        ":multi_benchmark_config",
         "//xla:literal",
         "//xla:literal_util",
         "//xla:shape_util",
@@ -325,6 +337,7 @@ xla_cc_test(
     fail_if_no_test_linked = False,  # NOLINT=This contains benchmarks only, no tests.
     deps = [
         ":hlo_benchmark_runner",
+        ":multi_benchmark_config",
         "//xla:array2d",
         "//xla:literal",
         "//xla:literal_util",
@@ -345,6 +358,7 @@ xla_cc_test(
     fail_if_no_test_linked = False,  # NOLINT=This contains benchmarks only, no tests.
     deps = [
         ":hlo_benchmark_runner",
+        ":multi_benchmark_config",
         "//xla:literal",
         "//xla:literal_util",
         "//xla:shape_util",
@@ -364,6 +378,7 @@ xla_cc_test(
     fail_if_no_test_linked = False,  # NOLINT=This contains benchmarks only, no tests.
     deps = [
         ":hlo_benchmark_runner",
+        ":multi_benchmark_config",
         "//xla:literal",
         "//xla:literal_util",
         "//xla:shape_util",
@@ -383,6 +398,7 @@ xla_cc_test(
     fail_if_no_test_linked = False,  # NOLINT=This contains benchmarks only, no tests.
     deps = [
         ":hlo_benchmark_runner",
+        ":multi_benchmark_config",
         "//xla:literal_util",
         "//xla:shape_util",
         "//xla:xla_data_proto_cc",
@@ -400,6 +416,7 @@ xla_cc_test(
     fail_if_no_test_linked = False,  # NOLINT=This contains benchmarks only, no tests.
     deps = [
         ":hlo_benchmark_runner",
+        ":multi_benchmark_config",
         "//xla:literal",
         "//xla:literal_util",
         "//xla:shape_util",
@@ -419,6 +436,7 @@ xla_cc_test(
     fail_if_no_test_linked = False,  # NOLINT=This contains benchmarks only, no tests.
     deps = [
         ":hlo_benchmark_runner",
+        ":multi_benchmark_config",
         "//xla:literal",
         "//xla:literal_util",
         "//xla:shape_util",
@@ -438,6 +456,7 @@ xla_cc_test(
     fail_if_no_test_linked = False,  # NOLINT=This contains benchmarks only, no tests.
     deps = [
         ":hlo_benchmark_runner",
+        ":multi_benchmark_config",
         "//xla:array2d",
         "//xla:literal",
         "//xla:literal_util",
@@ -461,6 +480,7 @@ xla_cc_test(
     fail_if_no_test_linked = False,  # NOLINT=This contains benchmarks only, no tests.
     deps = [
         ":hlo_benchmark_runner",
+        ":multi_benchmark_config",
         "//xla:literal",
         "//xla:literal_util",
         "//xla:shape_util",
@@ -480,6 +500,7 @@ xla_cc_test(
     fail_if_no_test_linked = False,  # NOLINT=This contains benchmarks only, no tests.
     deps = [
         ":hlo_benchmark_runner",
+        ":multi_benchmark_config",
         "//xla:literal",
         "//xla:literal_util",
         "//xla:shape_util",
@@ -499,6 +520,7 @@ xla_cc_test(
     fail_if_no_test_linked = False,  # NOLINT=This contains benchmarks only, no tests.
     deps = [
         ":hlo_benchmark_runner",
+        ":multi_benchmark_config",
         "//xla:literal",
         "//xla:literal_util",
         "//xla:shape_util",
