@@ -133,6 +133,20 @@ def LegalizeCompositeGELU : Pat<
         (TFL_GeluOp $inputs,
           (GetCompositeAttributeAs<"approximate", "BoolAttr"> $attrs))>;
 
+def LegalizeCompositeGELUDynamicShaped : Pat<
+        (MHLO_CompositeOp:$composite
+          (variadic $_, $inputs),
+          ConstantStrAttr<StrAttr, "tfl.gelu">, $attrs, $_, $_),
+        (TFL_GeluOp $inputs,
+          (GetCompositeAttributeAs<"approximate", "BoolAttr"> $attrs))>;
+
+def LegalizeCompositeGELUDynamicShaped2 : Pat<
+        (MHLO_CompositeOp:$composite
+          (variadic $_, $_, $inputs),
+          ConstantStrAttr<StrAttr, "tfl.gelu">, $attrs, $_, $_),
+        (TFL_GeluOp $inputs,
+          (GetCompositeAttributeAs<"approximate", "BoolAttr"> $attrs))>;
+
 def LegalizeCompositeOdmlEmbeddingLookup : Pat<
         (MHLO_CompositeOp:$composite
           (variadic $indices, $table),
