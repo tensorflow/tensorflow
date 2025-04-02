@@ -53,7 +53,7 @@ using ::tensorflow::quantization::ExportedModel;
 using ::tensorflow::quantization::PyFunctionLibrary;
 using ::tensorflow::quantization::RunPasses;
 
-WeightOnlyPtqComponent::WeightOnlyPtqComponent(absl::Nonnull<MLIRContext*> ctx)
+WeightOnlyPtqComponent::WeightOnlyPtqComponent(MLIRContext* /*absl_nonnull*/ ctx)
     : ctx_(ABSL_DIE_IF_NULL(ctx)) {}  // Crash OK
 
 absl::StatusOr<ModuleOp> WeightOnlyPtqComponent::Run(
