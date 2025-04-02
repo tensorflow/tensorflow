@@ -17,14 +17,10 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_MLIR_QUANTIZATION_TENSORFLOW_PASSES_TF_PASSES_H_
 
 #include <memory>
-#include <optional>
-#include <string>
 
-#include "absl/strings/string_view.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
-#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/quantization/common/tf_quantization_lib/tf_quantization_config.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/quantization_config.pb.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/quantization_options.pb.h"
@@ -40,6 +36,18 @@ CreateTFAddQuantizationUnitLocPass();
 std::unique_ptr<OperationPass<ModuleOp>>
 CreateTFLiftQuantizableSpotsAsFunctionsPass(
     const tensorflow::quantization::QuantizationOptions& quant_options);
+
+// Converts dequantize-(quantizable) call-quantize pattern to a single call op
+// that has quantized input and output types. It is expected for this pass to
+// emit illegal IR with unsupported quantized input and output types. The
+// pass following immediately after this one will be responsible for legalizing
+// input and output types by unwrapping quantization parameters.
+std::unique_ptr<OperationPass<func::FuncOp>> CreateTFQuantizePass();
+
+// Overloading of CreateTFQuantizePass which takes QuantizationSpecs.
+std::unique_ptr<OperationPass<func::FuncOp>> CreateTFQuantizePass(
+    tf_quant::QuantizationSpecs quant_specs,
+    tensorflow::quantization::OpSet target_opset);
 
 // Creates an instance of the PrepareQuantize pass, which will perform similar
 // transformations as TFL::PrepareQuantizePass.
