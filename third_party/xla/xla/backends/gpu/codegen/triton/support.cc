@@ -531,7 +531,6 @@ bool IsTritonUnsupportedOpcode(HloOpcode opcode) {
   switch (opcode) {
     case HloOpcode::kAddDependency:
     case HloOpcode::kAfterAll:
-    case HloOpcode::kBitcastConvert:
     case HloOpcode::kCholesky:
     case HloOpcode::kConvolution:
     case HloOpcode::kCopyDone:
