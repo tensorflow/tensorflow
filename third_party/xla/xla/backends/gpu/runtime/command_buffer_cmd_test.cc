@@ -95,6 +95,45 @@ class FakeCmd : public CommandBufferCmd {
   BufferUseVector buffers() override { return BufferUseVector{}; }
 };
 
+TEST(CommandBufferCmdStateManageTest, GetOrCreateState) {
+  struct StateA : public CommandBufferCmd::State {
+    int32_t value = 0;
+  };
+
+  struct StateB : public CommandBufferCmd::State {
+    float value = 0;
+  };
+
+  // We need a fake command buffer pointer to use as a key.
+  CommandBufferCmd* cmd = reinterpret_cast<CommandBufferCmd*>(0x1234567);
+
+  CommandBufferCmd::StateManager state_manager;
+
+  // Create a state of type StateA.
+  auto* stateA0 = state_manager.GetOrNull<StateA>(cmd);
+  ASSERT_EQ(stateA0, nullptr);
+
+  auto* stateA1 = state_manager.GetOrCreate<StateA>(cmd);
+  ASSERT_EQ(stateA1->value, 0);
+  stateA1->value += 42;
+
+  auto* stateA2 = state_manager.GetOrCreate<StateA>(cmd);
+  ASSERT_EQ(stateA2->value, 42);
+  ASSERT_EQ(stateA1, stateA2);
+
+  // StateB has a different type, and has no connection to StateA created above.
+  auto* stateB0 = state_manager.GetOrNull<StateB>(cmd);
+  ASSERT_EQ(stateB0, nullptr);
+
+  auto* stateB1 = state_manager.GetOrCreate<StateB>(cmd);
+  ASSERT_EQ(stateB1->value, 0);
+  stateB1->value += 42.0;
+
+  auto* stateB2 = state_manager.GetOrCreate<StateB>(cmd);
+  ASSERT_EQ(stateB2->value, 42.0);
+  ASSERT_EQ(stateB1, stateB2);
+}
+
 TEST(CommandBufferCmdTest, SerializeExecution) {
   BufferAllocation alloc0(/*index=*/0, /*size=*/1024, /*color=*/0);
 
@@ -277,28 +316,6 @@ TEST(CommandBufferCmdTest, LaunchCmd) {
   TF_ASSERT_OK(stream->Memcpy(dst.data(), b, byte_length));
 
   ASSERT_EQ(dst, std::vector<int32_t>(4, 42 + 42));
-}
-
-TEST(CommandBufferCmdStateManageTest, GetOrCreateState) {
-  struct TestState : public CommandBufferCmd::State {
-    int32_t value = 0;
-  };
-
-  // We need a fake command buffer pointer to use as a key.
-  CommandBufferCmd* cmd = reinterpret_cast<CommandBufferCmd*>(0x1234567);
-
-  CommandBufferCmd::StateManager state_manager;
-
-  auto* state0 = state_manager.GetOrNull<TestState>(cmd);
-  ASSERT_EQ(state0, nullptr);
-
-  auto* state1 = state_manager.GetOrCreate<TestState>(cmd);
-  ASSERT_EQ(state1->value, 0);
-  state1->value += 42;
-
-  auto* state2 = state_manager.GetOrCreate<TestState>(cmd);
-  ASSERT_EQ(state2->value, 42);
-  ASSERT_EQ(state1, state2);
 }
 
 TEST(TracedCommandBuffer, GetOrUpdateCommandBuffer) {

@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/command_buffer_cmd.h"
 
 #include <algorithm>
+#include <atomic>
 #include <cassert>
 #include <cstddef>
 #include <cstdint>
@@ -162,21 +163,29 @@ CommandBufferCmd::RecordedCommands::Create(
 // CommandBufferCmd
 //===----------------------------------------------------------------------===//
 
+CommandBufferCmd::StateManager::TypeId
+CommandBufferCmd::StateManager::GetNextTypeId() {
+  static auto* counter = new std::atomic<int64_t>(1);
+  return TypeId(counter->fetch_add(1));
+}
+
 CommandBufferCmd::State* CommandBufferCmd::StateManager::GetOrNull(
-    const CommandBufferCmd* cmd) {
-  if (auto it = state_.find(cmd); it != state_.end()) {
+    const CommandBufferCmd* cmd, TypeId type_id) {
+  StateKey key = {cmd, type_id};
+  if (auto it = state_.find(key); it != state_.end()) {
     return it->second.get();
   }
   return nullptr;
 }
 
 CommandBufferCmd::State* CommandBufferCmd::StateManager::GetOrCreate(
-    const CommandBufferCmd* cmd,
+    const CommandBufferCmd* cmd, TypeId type_id,
     absl::FunctionRef<std::unique_ptr<State>()> create) {
-  if (auto it = state_.find(cmd); it != state_.end()) {
+  StateKey key = {cmd, type_id};
+  if (auto it = state_.find(key); it != state_.end()) {
     return it->second.get();
   }
-  return state_.try_emplace(cmd, create()).first->second.get();
+  return state_.try_emplace(key, create()).first->second.get();
 }
 
 //===----------------------------------------------------------------------===//

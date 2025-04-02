@@ -58,6 +58,7 @@ limitations under the License.
 #include "xla/stream_executor/memory_allocation.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "xla/tsl/lib/gtl/int_type.h"
 
 namespace xla::gpu {
 
@@ -142,7 +143,8 @@ class CommandBufferCmd {
     template <typename ConcreteState>
     ConcreteState* GetOrNull(const CommandBufferCmd* cmd) {
       static_assert(std::is_base_of_v<State, ConcreteState>);
-      return static_cast<ConcreteState*>(GetOrNull(cmd));
+      return static_cast<ConcreteState*>(
+          GetOrNull(cmd, GetTypeId<ConcreteState>()));
     }
 
     template <typename ConcreteState>
@@ -150,24 +152,36 @@ class CommandBufferCmd {
         const CommandBufferCmd* cmd,
         absl::FunctionRef<std::unique_ptr<ConcreteState>()> create) {
       static_assert(std::is_base_of_v<State, ConcreteState>);
-      return static_cast<ConcreteState*>(GetOrCreate(
-          cmd, [&]() -> std::unique_ptr<State> { return create(); }));
+      return static_cast<ConcreteState*>(
+          GetOrCreate(cmd, GetTypeId<ConcreteState>(),
+                      [&]() -> std::unique_ptr<State> { return create(); }));
     }
 
     template <typename ConcreteState>
     ConcreteState* GetOrCreate(const CommandBufferCmd* cmd) {
-      static_assert(std::is_base_of_v<State, ConcreteState>);
-      return static_cast<ConcreteState*>(
-          GetOrCreate(cmd, [] { return std::make_unique<ConcreteState>(); }));
+      return GetOrCreate<ConcreteState>(
+          cmd, [] { return std::make_unique<ConcreteState>(); });
     }
 
    private:
-    State* GetOrNull(const CommandBufferCmd* cmd);
+    // We use TypeId to distinguish between different state types.
+    TSL_LIB_GTL_DEFINE_INT_TYPE(TypeId, int64_t);
 
-    State* GetOrCreate(const CommandBufferCmd* cmd,
+    template <typename F>
+    static TypeId GetTypeId() {
+      static const TypeId id = GetNextTypeId();
+      return id;
+    }
+
+    static TypeId GetNextTypeId();
+
+    State* GetOrNull(const CommandBufferCmd* cmd, TypeId type_id);
+
+    State* GetOrCreate(const CommandBufferCmd* cmd, TypeId type_id,
                        absl::FunctionRef<std::unique_ptr<State>()> create);
 
-    absl::flat_hash_map<const CommandBufferCmd*, std::unique_ptr<State>> state_;
+    using StateKey = std::pair<const CommandBufferCmd*, TypeId>;
+    absl::flat_hash_map<StateKey, std::unique_ptr<State>> state_;
   };
 
   // Parameters for recording commands into the command buffer.
