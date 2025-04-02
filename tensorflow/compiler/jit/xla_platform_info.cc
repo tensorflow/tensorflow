@@ -255,9 +255,8 @@ absl::Status BuildXlaDeviceCompiler(DeviceBase* device,
     return platform.status();
   }
 
-  // TODO(aliia): Replace auto with the actual type. This is a temporary change,
-  // needed to pass the OSS presubmits.
-  auto compiler_for_platform = xla::Compiler::GetForPlatform(platform.value());
+  absl::StatusOr<std::unique_ptr<xla::Compiler>> compiler_for_platform =
+      xla::Compiler::GetForPlatform(platform.value());
   if (!compiler_for_platform.ok()) {
     // In some rare cases (usually in unit tests with very small clusters) we
     // may end up transforming an XLA cluster with at least one GPU operation
