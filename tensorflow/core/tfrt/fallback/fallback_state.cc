@@ -115,13 +115,13 @@ absl::StatusOr<std::unique_ptr<FallbackState>>
 FallbackState::CreateWithDeviceMgr(
     const SessionOptions &session_options,
     const tensorflow::FunctionDefLibrary &fdef_lib,
-    absl::Nonnull<DynamicDeviceMgr *> device_mgr) {
+    DynamicDeviceMgr */*absl_nonnull*/ device_mgr) {
   return std::make_unique<FallbackState>(session_options, device_mgr, fdef_lib);
 }
 
 FallbackState::FallbackState(const SessionOptions &session_options,
                              std::variant<std::vector<std::unique_ptr<Device>>,
-                                          absl::Nonnull<DynamicDeviceMgr *>>
+                                          DynamicDeviceMgr */*absl_nonnull*/>
                                  device_mgr,
                              const tensorflow::FunctionDefLibrary &fdef_lib)
     : session_options_(session_options),
@@ -132,8 +132,8 @@ FallbackState::FallbackState(const SessionOptions &session_options,
                     std::get<std::vector<std::unique_ptr<Device>>>(device_mgr))
               : std::vector<std::unique_ptr<Device>>()),
       device_manager_ptr_(
-          std::holds_alternative<absl::Nonnull<DynamicDeviceMgr *>>(device_mgr)
-              ? std::get<absl::Nonnull<DynamicDeviceMgr *>>(device_mgr)
+          std::holds_alternative<DynamicDeviceMgr */*absl_nonnull*/>(device_mgr)
+              ? std::get<DynamicDeviceMgr */*absl_nonnull*/>(device_mgr)
               : &device_manager_),
       func_lib_def_(OpRegistry::Global(), fdef_lib),
       pflr_(device_manager_ptr_, session_options.env, &session_options.config,
