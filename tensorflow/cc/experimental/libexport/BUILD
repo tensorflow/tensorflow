@@ -20,6 +20,7 @@ cc_library(
     deps = [
         "//tensorflow/core:lib",
         "//tensorflow/core/platform:status",
+        "@com_google_absl//absl/status",
     ],
 )
 
@@ -49,7 +50,12 @@ cc_library(
         "//tensorflow/core/platform:protobuf",
         "//tensorflow/core/platform:statusor",
         "//tensorflow/core/util/tensor_bundle",
+        "//third_party/protobuf:protobuf_lite",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -63,5 +69,6 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core/platform:path",
+        "@com_google_absl//absl/status:statusor",
     ],
 )
