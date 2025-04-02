@@ -64,6 +64,7 @@ cc_library(
         "//xla/service/gpu/transforms:collective_permute_valid_iteration_annotator",
         "//xla/service/gpu/transforms:scatter_expander",
         "//xla/service/gpu/transforms:scatter_slice_simplifier",
+        "//xla/service/spmd:sharding_format_picker",
         "//xla/service/spmd/shardy:shardy_xla_pass",
         "//xla/stream_executor:platform",
         "//xla/stream_executor:stream_executor_h",

@@ -6172,14 +6172,6 @@ cc_library(
     deps = ["//xla/hlo/transforms/simplifiers:sub_byte_normalization"],
 )
 
-cc_library(
-    name = "sharding_format_picker",
-    testonly = True,
-    hdrs = ["sharding_format_picker.h"],
-    deprecation = "This library is deprecated and will be removed in February 2025. Use //third_party/tensorflow/compiler/xla/hlo/transforms:sharding_format_picker instead.",
-    deps = ["//xla/hlo/transforms:sharding_format_picker"],
-)
-
 xla_cc_test(
     name = "batched_gather_scatter_normalizer_test",
     srcs = ["batched_gather_scatter_normalizer_test.cc"],

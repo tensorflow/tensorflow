@@ -480,23 +480,6 @@ xla_cc_test(
 )
 
 cc_library(
-    name = "sharding_format_picker",
-    testonly = True,
-    srcs = ["sharding_format_picker.cc"],
-    hdrs = ["sharding_format_picker.h"],
-    deps = [
-        "//xla/hlo/ir:hlo",
-        "//xla/hlo/ir:tile_assignment",
-        "//xla/hlo/pass:hlo_pass",
-        "@com_google_absl//absl/algorithm:container",
-        "@com_google_absl//absl/container:flat_hash_set",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/types:span",
-    ],
-)
-
-cc_library(
     name = "add_original_value",
     srcs = ["add_original_value.cc"],
     hdrs = ["add_original_value.h"],

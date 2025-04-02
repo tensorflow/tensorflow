@@ -53,7 +53,6 @@ cc_library(
         "//xla/hlo/transforms:literal_canonicalizer",
         "//xla/hlo/transforms:memory_space_propagation",
         "//xla/hlo/transforms:operand_upcaster",
-        "//xla/hlo/transforms:sharding_format_picker",
         "//xla/hlo/transforms:while_loop_trip_count_annotator",
         "//xla/hlo/transforms/collectives:all_gather_broadcast_reorder",
         "//xla/hlo/transforms/collectives:all_gather_combiner",

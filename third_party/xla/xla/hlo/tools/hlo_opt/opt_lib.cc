@@ -81,7 +81,6 @@ limitations under the License.
 #include "xla/hlo/transforms/literal_canonicalizer.h"
 #include "xla/hlo/transforms/memory_space_propagation.h"
 #include "xla/hlo/transforms/operand_upcaster.h"
-#include "xla/hlo/transforms/sharding_format_picker.h"
 #include "xla/hlo/transforms/simplifiers/algebraic_simplifier.h"
 #include "xla/hlo/transforms/simplifiers/all_reduce_folder.h"
 #include "xla/hlo/transforms/simplifiers/ar_crs_combiner.h"
@@ -322,8 +321,6 @@ void OptProvider::RegisterAllHardwareIndependentPasses() {
   RegisterPass<RngBitGeneratorExpander>(RandomAlgorithm::RNG_THREE_FRY);
   RegisterPass<RngExpander>();
   RegisterPass<RootInstructionSinker>();
-  RegisterPass<ShardingFormatPicker>(
-      /*sharding_type=*/ShardingFormatPicker::ShardingType::kBestEffortV2);
   RegisterPass<SimplifyFPConversions>();
   RegisterPass<SliceSinker>();
   RegisterPass<SortSimplifier>();
@@ -343,13 +340,17 @@ void OptProvider::RegisterAllHardwareIndependentPasses() {
   //   pass specific customization to the `RegisterPass`.
 
   // Dummy passes for unit-testing the `hlo-opt` tool itself.
-  RegisterPass<test_only::FooToBarModulePass>();
+  // go/keep-sorted start
   RegisterPass<test_only::BarToHelloModulePass>();
+  RegisterPass<test_only::FooToBarModulePass>();
+  // go/keep-sorted end
 
   // Test-only passes exposing behavior that isn't easily testable through
   // standard passes, e.g. internal or config-dependent behavior.
+  // go/keep-sorted start
   RegisterPass<test_only::AlgebraicSimplifierWithOnednnEnabled>();
   RegisterPass<test_only::XlaBuilderTestPass>();
+  // go/keep-sorted end
 }
 
 }  // namespace xla

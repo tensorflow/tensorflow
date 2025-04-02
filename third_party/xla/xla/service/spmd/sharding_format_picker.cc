@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/hlo/transforms/sharding_format_picker.h"
+#include "xla/service/spmd/sharding_format_picker.h"
 
 #include <algorithm>
 #include <cmath>
@@ -46,6 +46,7 @@ class HloShardingTestHelper {
   }
 };
 
+namespace test_only {
 namespace {
 
 bool PermuteDimsHelper(absl::Span<int64_t> dims, absl::Span<const int32_t> perm,
@@ -195,4 +196,5 @@ absl::StatusOr<bool> ShardingFormatPicker::Run(
   return changed;
 }
 
+}  // namespace test_only
 }  // namespace xla

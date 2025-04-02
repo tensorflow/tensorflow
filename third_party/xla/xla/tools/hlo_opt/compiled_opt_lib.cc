@@ -49,6 +49,7 @@ limitations under the License.
 #include "xla/service/scatter_simplifier.h"
 #include "xla/service/select_and_scatter_expander.h"
 #include "xla/service/sharding_remover.h"
+#include "xla/service/spmd/sharding_format_picker.h"
 #include "xla/service/spmd/shardy/shardy_xla_pass.h"
 #include "xla/service/topk_rewriter.h"
 #include "xla/service/triangular_solve_expander.h"
@@ -177,6 +178,13 @@ void CompiledOptProvider::RegisterSharedHardwareSpecificPasses() {
   RegisterPass<WhileLoopInvariantCodeMotion>();
   RegisterPass<WhileLoopSimplifier>();
   RegisterPass<sdy::ShardyXLA>();
+  // go/keep-sorted end
+
+  // Test-only passes exposing behavior that isn't easily testable through
+  // standard passes, e.g. internal or config-dependent behavior.
+  // go/keep-sorted start
+  RegisterPass<test_only::ShardingFormatPicker>(
+      test_only::ShardingFormatPicker::ShardingType::kBestEffortV2);
   // go/keep-sorted end
 }
 
