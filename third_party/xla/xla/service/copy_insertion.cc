@@ -1592,6 +1592,24 @@ class CopyRemover {
       VLOG(2) << "Region-based interference is false.";
       return false;
     };
+    auto AddControlDependenciesBetween = [&](ValueNode* src, ValueNode* dst) {
+      if (src == nullptr || dst == nullptr) {
+        return;
+      }
+      for (auto use : src->uses) {
+        if (use->instruction->parent() != dst->value->instruction()->parent() ||
+            use->instruction == dst->value->instruction()) {
+          // Don't add control dependencies if the use is in a different
+          // computation or if the use is the same as the destination.
+          continue;
+        }
+        VLOG(2) << "Adding control dependency:";
+        VLOG(2) << "  From: " << use->instruction->ToString();
+        VLOG(2) << "  To: " << dst->value->instruction()->ToString();
+        CHECK_OK(use->instruction->AddControlDependencyTo(
+            dst->value->instruction()));
+      }
+    };
 
     // A kCopy instruction copies an HLO value from a source buffer and
     // defines an HLO value in a destination buffer. Most generally, the
@@ -1674,6 +1692,13 @@ class CopyRemover {
                                      kMergeFirstDestInSource)) {
         return false;
       }
+      // Ensure that the last uses of the copy source (e.g. s_x) are
+      // ordered before the next definition of the copy destination buffer
+      // (d_1).
+      AddControlDependenciesBetween(copy_node.src, Next(*copy_node.dest));
+      // Also ensure that the last uses of the copy destination (e.g. d_m) are
+      // ordered before the next definition of the copy source buffer (s_{x+1}).
+      AddControlDependenciesBetween(copy_node.dest->prev, Next(*copy_node.src));
       VLOG(2) << "Splice dest after source.";
       // Splice in destination buffer values list right after 'src'.
       SpliceAfter(copy_node.dest, copy_node.src);
@@ -1707,6 +1732,13 @@ class CopyRemover {
         VLOG(2) << "Region-based analysis concludes interference.";
         return false;
       }
+      // Ensure that the last uses of the copy source (e.g. s_n) are
+      // ordered before the next definition of the copy destination buffer
+      // (d_{y+1}).
+      AddControlDependenciesBetween(Prev(*copy_node.dest), copy_node.src->next);
+      // Also ensure that the last uses of the copy source (e.g. s_n) are
+      // ordered before next definition of the copy destination (e.g. d_{y+1}).
+      AddControlDependenciesBetween(copy_node.src, Next(*copy_node.dest));
       VLOG(2) << "Splice src after prev of dest.";
       // Splice source buffer values list right after 'prev_dest'.
       SpliceAfter(copy_node.src->next, Prev(*copy_node.dest));
