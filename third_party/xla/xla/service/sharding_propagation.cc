@@ -1003,7 +1003,7 @@ bool InferUnspecifiedDimsFromUsers(HloInstruction* annotate_op,
 
 bool InferUnspecifiedDimsFromShardGroup(
     HloInstruction* annotate_op, absl::Span<const int64_t> unspecified_dims,
-    const absl::flat_hash_set<HloInstruction*>& shard_group) {
+    const std::vector<HloInstruction*>& shard_group) {
   // ProcessShardingInstruction will either keep the "Sharding" custom call as
   // is or replace it with a copy.
   CHECK(annotate_op->IsCustomCall("Sharding") ||
@@ -1382,9 +1382,9 @@ absl::StatusOr<bool> ProcessShardingInstruction(
     absl::flat_hash_map<int64_t, HloSharding>* saved_parameter_shardings,
     absl::flat_hash_map<HloInstruction*, int64_t>*
         instruction_to_shard_group_id,
-    absl::flat_hash_map<int64_t, absl::flat_hash_set<HloInstruction*>>*
+    absl::flat_hash_map<int64_t, std::vector<HloInstruction*>>*
         shard_group_id_to_shard_as_group,
-    absl::flat_hash_map<int64_t, absl::flat_hash_set<HloInstruction*>>*
+    absl::flat_hash_map<int64_t, std::vector<HloInstruction*>>*
         shard_group_id_to_shard_like_group,
     const std::vector<bool>*
         allow_spmd_sharding_propagation_to_parameters_vector,
@@ -1440,7 +1440,7 @@ absl::StatusOr<bool> ProcessShardingInstruction(
                      "instructions within the same shard_as group: "
                   << (*shard_as_group.begin())->shape().ToString();
             }
-            shard_as_group.insert(instruction);
+            shard_as_group.push_back(instruction);
           } else {
             auto& shard_like_group =
                 (*shard_group_id_to_shard_like_group)[shard_group_id];
@@ -1452,7 +1452,7 @@ absl::StatusOr<bool> ProcessShardingInstruction(
                      "instructions within the same shard_like group: "
                   << (*shard_like_group.begin())->shape().ToString();
             }
-            shard_like_group.insert(instruction);
+            shard_like_group.push_back(instruction);
           }
           HloSharding sharding = instruction->sharding();
           sharding.ClearShardGroup();
@@ -2038,7 +2038,7 @@ bool InferDynamicUpdateSliceShardingFromOperand0(
 
 bool ShardingPropagation::InferShardingFromShardGroup(
     HloInstruction* instruction, int64_t aggressiveness,
-    const absl::flat_hash_set<HloInstruction*>& shard_group) {
+    const std::vector<HloInstruction*>& shard_group) {
   if (!CanPropagateThroughAtAggressiveLevel(*instruction, aggressiveness)) {
     return false;
   }
@@ -2836,9 +2836,9 @@ absl::StatusOr<bool> ShardingPropagation::RunToFixPoint(
         unspecified_dims,
     absl::flat_hash_map<HloInstruction*, int64_t>&
         instruction_to_shard_group_id,
-    absl::flat_hash_map<int64_t, absl::flat_hash_set<HloInstruction*>>&
+    absl::flat_hash_map<int64_t, std::vector<HloInstruction*>>&
         shard_group_id_to_shard_as_group,
-    absl::flat_hash_map<int64_t, absl::flat_hash_set<HloInstruction*>>&
+    absl::flat_hash_map<int64_t, std::vector<HloInstruction*>>&
         shard_group_id_to_shard_like_group,
     int64_t& iterations) {
   bool changed = false;
@@ -2885,7 +2885,7 @@ absl::StatusOr<bool> ShardingPropagation::RunToFixPoint(
         }
         if (instruction_to_shard_group_id.contains(hlo)) {
           const int64_t shard_group_id = instruction_to_shard_group_id.at(hlo);
-          const absl::flat_hash_set<HloInstruction*>& shard_group =
+          const std::vector<HloInstruction*>& shard_group =
               shard_group_id_to_shard_as_group.contains(shard_group_id)
                   ? shard_group_id_to_shard_as_group.at(shard_group_id)
                   : shard_group_id_to_shard_like_group.at(shard_group_id);
@@ -2908,7 +2908,7 @@ absl::StatusOr<bool> ShardingPropagation::RunToFixPoint(
           }
           const int64_t shard_group_id =
               instruction_to_shard_group_id.at(instruction);
-          const absl::flat_hash_set<HloInstruction*>& shard_group =
+          const std::vector<HloInstruction*>& shard_group =
               shard_group_id_to_shard_as_group.contains(shard_group_id)
                   ? shard_group_id_to_shard_as_group.at(shard_group_id)
                   : shard_group_id_to_shard_like_group.at(shard_group_id);
@@ -3158,9 +3158,9 @@ absl::StatusOr<bool> ShardingPropagation::Run(
   std::vector<HloSharding> saved_root_shardings;
   absl::flat_hash_map<int64_t, HloSharding> saved_parameter_shardings;
   absl::flat_hash_map<HloInstruction*, int64_t> instruction_to_shard_group_id;
-  absl::flat_hash_map<int64_t, absl::flat_hash_set<HloInstruction*>>
+  absl::flat_hash_map<int64_t, std::vector<HloInstruction*>>
       shard_group_id_to_shard_as_group;
-  absl::flat_hash_map<int64_t, absl::flat_hash_set<HloInstruction*>>
+  absl::flat_hash_map<int64_t, std::vector<HloInstruction*>>
       shard_group_id_to_shard_like_group;
   TF_ASSIGN_OR_RETURN(
       bool changed,

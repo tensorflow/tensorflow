@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_SERVICE_SHARDING_PROPAGATION_H_
 #define XLA_SERVICE_SHARDING_PROPAGATION_H_
 
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <utility>
@@ -74,9 +75,9 @@ absl::StatusOr<bool> ProcessShardingInstruction(
     absl::flat_hash_map<int64_t, HloSharding>* saved_parameter_shardings,
     absl::flat_hash_map<HloInstruction*, int64_t>*
         instruction_to_shard_group_id = nullptr,
-    absl::flat_hash_map<int64_t, absl::flat_hash_set<HloInstruction*>>*
+    absl::flat_hash_map<int64_t, std::vector<HloInstruction*>>*
         shard_group_id_to_shard_as_group = nullptr,
-    absl::flat_hash_map<int64_t, absl::flat_hash_set<HloInstruction*>>*
+    absl::flat_hash_map<int64_t, std::vector<HloInstruction*>>*
         shard_group_id_to_shard_like_group = nullptr,
     const std::vector<bool>*
         allow_spmd_sharding_propagation_to_parameters_vector = nullptr,
@@ -149,7 +150,7 @@ class ShardingPropagation : public HloModulePass {
  private:
   bool InferShardingFromShardGroup(
       HloInstruction* instruction, int64_t aggressiveness,
-      const absl::flat_hash_set<HloInstruction*>& shard_group);
+      const std::vector<HloInstruction*>& shard_group);
   bool InferShardingFromOperands(
       HloInstruction* instruction, const ComputationMap& computation_map,
       int64_t aggressiveness, const CallGraph& call_graph,
@@ -171,9 +172,9 @@ class ShardingPropagation : public HloModulePass {
           unspecified_dims,
       absl::flat_hash_map<HloInstruction*, int64_t>&
           instruction_to_shard_group_id,
-      absl::flat_hash_map<int64_t, absl::flat_hash_set<HloInstruction*>>&
+      absl::flat_hash_map<int64_t, std::vector<HloInstruction*>>&
           shard_group_id_to_shard_as_group,
-      absl::flat_hash_map<int64_t, absl::flat_hash_set<HloInstruction*>>&
+      absl::flat_hash_map<int64_t, std::vector<HloInstruction*>>&
           shard_group_id_to_shard_like_group,
       int64_t& iterations);
 
