@@ -80,9 +80,6 @@ void TileOp::print(OpAsmPrinter& p) {
 }
 
 LogicalResult TileOp::verify() {
-  if (getTensor().getType().getRank() == 0) {
-    return emitError("cannot tile a 0-d tensor");
-  }
   auto tensor_rank = getTensor().getType().getRank();
   if (tensor_rank != getOffsets().size() || tensor_rank != getStrides().size())
     return emitError(

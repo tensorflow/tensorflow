@@ -51,6 +51,7 @@ limitations under the License.
 #include "mlir/IR/TypeUtilities.h"
 #include "mlir/IR/Value.h"
 #include "mlir/IR/ValueRange.h"
+#include "mlir/Interfaces/FunctionInterfaces.h"
 #include "mlir/Support/LLVM.h"
 #include "xla/backends/gpu/codegen/triton/dot_algorithms.h"
 #include "xla/backends/gpu/codegen/triton/emitter_helpers.h"
@@ -1473,7 +1474,7 @@ class MatMulEmitterHelper {
   MatMulLaunchConfig launch_config_;
 };
 
-absl::StatusOr<SmallVector<Value>> GetArguments(mlir::triton::FuncOp fn,
+absl::StatusOr<SmallVector<Value>> GetArguments(mlir::FunctionOpInterface fn,
                                                 const HloInstruction& input) {
   if (input.opcode() == HloOpcode::kParameter) {
     return {{fn.getArgument(input.parameter_number())}};
@@ -1902,7 +1903,7 @@ absl::Status EmitForLoopBody(EmitterLocOpBuilder& b,
 absl::StatusOr<std::optional<stream_executor::gpu::TmaMetadata>> EmitMatMul(
     EmitterLocOpBuilder& b, absl::string_view libdevice_path,
     const se::DeviceDescription& device_info,
-    const HloFusionInstruction* fusion, mlir::triton::FuncOp fn,
+    const HloFusionInstruction* fusion, mlir::FunctionOpInterface fn,
     const BlockLevelParameters&) {
   // TODO b/315957220: Populate tma_metadata.
   stream_executor::gpu::TmaMetadata tma_metadata;

@@ -34,15 +34,6 @@ tt.func @insert_mismatch_rank(
 
 // -----
 
-"tt.func"() <{function_type = (tensor<bf16>) -> !triton_xla.tiled_tensor<|bf16>, sym_name = "xla_triton_tile"}> ({
-^bb0(%arg0: tensor<bf16>):
-  // expected-error @+1 {{cannot tile a 0-d tensor}}
-  %0 = "triton_xla.tile"(%arg0) {layout = array<i64:1, 0>} : (tensor<bf16>) -> !triton_xla.tiled_tensor<|bf16>
-  "tt.return"(%0) : (!triton_xla.tiled_tensor<|bf16>) -> ()
-}) : () -> ()
-
-// -----
-
 "tt.func"() <{function_type = (!triton_xla.tiled_tensor<|bf16>) -> tensor<bf16>, sym_name = "xla_triton_extract"}> ({
 ^bb0(%arg0: !triton_xla.tiled_tensor<|bf16>):
   %0 = "arith.constant"() <{value = 0 : index}> : () -> index

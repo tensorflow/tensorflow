@@ -30,6 +30,7 @@ limitations under the License.
 #include "mlir/Pass/PassManager.h"
 #include "xla/autotuning.pb.h"
 #include "xla/backends/gpu/codegen/triton/fusion_emitter.h"
+#include "xla/backends/gpu/codegen/triton/ir/triton_xla_ops.h"
 #include "xla/codegen/emitter_loc_op_builder.h"
 #include "xla/hlo/ir/hlo_clone_context.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -91,7 +92,7 @@ llvm::SmallVector<mlir::Value, 3> ComputeDelinearizedTileIndex(
   return {};
 }
 
-absl::StatusOr<MakeTensorPtrOpAndBoundaryChecks> CreateMakeTensorPtrOp(
+absl::StatusOr<mlir::triton::xla::TileOp> CreateTileOp(
     EmitterLocOpBuilder& b, mlir::ValueRange tile_multi_index,
     const TiledHloInstruction& tiled_hlo, mlir::Value parent_base_ptr) {
   return absl::UnimplementedError("not supported for this build configuration");
