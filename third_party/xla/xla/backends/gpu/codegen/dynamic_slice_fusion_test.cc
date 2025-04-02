@@ -3703,6 +3703,67 @@ TEST_F(DynamicSliceFusionTest,
       /*run_hlo_passes=*/false, /*use_threads=*/true, std::nullopt));
 }
 
+TEST_F(DynamicSliceFusionTest, WhileLoopSliceWithNoInductionVariable) {
+  const char* hlo = R"(
+  HloModule test, replica_count=2
+
+  add {
+    a = f32[] parameter(0)
+    b = f32[] parameter(1)
+    ROOT add = f32[] add(a, b)
+  }
+
+  body {
+    param = (s32[], s32[], f32[128,128], f32[1024,128]) parameter(0)
+    iter0 = s32[] get-tuple-element(param), index=0
+    iter1 = s32[] get-tuple-element(param), index=1
+    c0 = s32[] constant(0)
+    c1 = s32[] constant(1)
+    add0 = s32[] add(iter0, iter0)
+    add1 = s32[] add(iter1, c1)
+    a = f32[128,128] get-tuple-element(param), index=2
+    b = f32[1024,128] get-tuple-element(param), index=3
+    slice = f32[256,128] slice(b), slice={[0:256], [0:128]}
+    rs = f32[128,128] reduce-scatter(slice), replica_groups={{0,1}}, dimensions={0}, to_apply=add
+    ROOT tuple = tuple(add0, add1, rs, b)
+  }
+
+  condition {
+    param = (s32[], s32[], f32[128,128], f32[1024,128]) parameter(0)
+    iter = s32[] get-tuple-element(param), index=0
+    iter1 = s32[] get-tuple-element(param), index=1
+    c8 = s32[] constant(8)
+    compare1 = pred[] compare(iter, c8), direction=LT
+    compare2 = pred[] compare(iter1, c8), direction=LT
+    ROOT compare = pred[] and(compare1, compare2)
+  }
+
+  ENTRY main {
+    c1 = s32[] constant(1)
+    a = f32[128,128] parameter(0)
+    b = f32[1024,128] parameter(1)
+    tuple = tuple(c1, c1, a, b)
+    while = while(tuple), body=body, condition=condition
+  })";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
+                          ParseAndReturnVerifiedModule(hlo));
+  m->mutable_config()
+      .mutable_debug_options()
+      .set_xla_gpu_enable_dynamic_slice_fusion(false);
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m_ref,
+                          GetOptimizedModule(m->Clone()));
+  m->mutable_config()
+      .mutable_debug_options()
+      .set_xla_gpu_enable_dynamic_slice_fusion(true);
+  TF_ASSERT_OK_AND_ASSIGN(m, GetOptimizedModule(std::move(m)));
+  // VLOG(0) << "Fused module: " << m->ToString();
+  ErrorSpec error_spec(1e-5, 1e-5);
+  EXPECT_TRUE(RunAndCompareTwoModulesReplicated(std::move(m), std::move(m_ref),
+                                                /*run_hlo_passes=*/false,
+                                                /*use_threads=*/true,
+                                                error_spec));
+}
 }  // namespace
 }  // namespace gpu
 }  // namespace xla
