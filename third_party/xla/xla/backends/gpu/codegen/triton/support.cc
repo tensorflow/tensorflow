@@ -514,7 +514,6 @@ bool IsTritonUnsupportedOpcode(HloOpcode opcode) {
     case HloOpcode::kGetTupleElement:
     case HloOpcode::kInfeed:
     case HloOpcode::kMap:
-    case HloOpcode::kOptimizationBarrier:
     case HloOpcode::kOutfeed:
     case HloOpcode::kPad:
     case HloOpcode::kRaggedDot:
