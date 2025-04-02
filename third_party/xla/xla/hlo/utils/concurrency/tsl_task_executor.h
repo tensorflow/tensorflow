@@ -53,7 +53,6 @@ class TslTaskExecutor {
   // available, runs on as many as it has.
   //
   // When `parallelism` == 1 sequential execution is guaranteed.
-  //
   absl::Status ExecuteIndependentTasks(
       std::vector<Task> tasks, std::optional<int> parallelism = std::nullopt);
 

@@ -39,6 +39,18 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "concurrency_utils",
+    hdrs = ["concurrency_utils.h"],
+    # copybara:uncomment compatible_with = get_compatible_with_portable(),
+    deps = [
+        ":tsl_task_executor",
+        "@com_google_absl//absl/functional:any_invocable",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
+    ],
+)
+
 ## Tests below.
 
 xla_cc_test(
@@ -61,6 +73,20 @@ xla_cc_test(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+xla_cc_test(
+    name = "concurrency_utils_test",
+    size = "small",
+    srcs = ["concurrency_utils_test.cc"],
+    deps = [
+        ":concurrency_utils",
+        ":tsl_task_executor",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_googletest//:gtest_main",
     ],
 )
