@@ -890,7 +890,7 @@ class ComputeRelativeLocation {
     // A proper solution would be to track output index in
     // LiveRangeRegions::InstructionInfo.
     if (use->parent() == def->parent() &&
-        def->parent()->IsConditionalBranchComputation() &&
+        !def->parent()->caller_instructions(HloOpcode::kConditional).empty() &&
         def == entry2.first && def->shape().IsTuple()) {
       VLOG(3) << "Setting interception for multi-output instruction inside "
                  "conditional branch: "

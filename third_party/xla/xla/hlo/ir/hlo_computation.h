@@ -215,10 +215,8 @@ class HloComputation {
     // unreachable, and its instruction is set to null. We still need to regard
     // such computations as fusion computations for HLO scheduling purposes.
     kFusion,
-    // This computation is a conditional branch computation.
-    kConditional,
     // Last Value for range checking.
-    kLast = kConditional,
+    kLast = kFusion,
   };
   static constexpr uintptr_t kInstructionTypeMask = 0b111;
   static_assert(static_cast<int>(InstructionType::kUnset) == 0,
@@ -801,31 +799,6 @@ class HloComputation {
   }
   void SetFusionInstruction(HloInstruction* fusion_instruction) {
     SetInstruction(fusion_instruction, InstructionType::kFusion);
-  }
-
-  // Returns if this computation is a branch computation of a conditional.
-  [[deprecated(
-      "This is broken. Use CallGraph::GetComputationCallers() instead")]]
-  bool IsConditionalBranchComputation() const {
-    return instruction_type() == InstructionType::kConditional;
-  }
-
-  // Returns the owning conditional call instruction, or nullptr if this is not
-  // a conditional branch computation.
-  [[deprecated(
-      "This is broken. Use CallGraph::GetComputationCallers() instead")]]
-  HloInstruction* ConditionalCallInstruction() const {
-    return instruction_type() == InstructionType::kConditional ? instruction()
-                                                               : nullptr;
-  }
-
-  [[deprecated(
-      "This is broken. Use CallGraph::GetComputationCallers() instead")]]
-  void SetConditionalCallInstruction(
-      HloInstruction* conditional_call_instruction) {
-    CHECK(conditional_call_instruction != nullptr);
-    CHECK(conditional_call_instruction->opcode() == HloOpcode::kConditional);
-    SetInstruction(conditional_call_instruction, InstructionType::kConditional);
   }
 
   // Returns if this computation is an async computation.
