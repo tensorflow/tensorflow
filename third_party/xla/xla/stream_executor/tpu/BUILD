@@ -176,6 +176,7 @@ cc_library(
     deps = [
         ":c_api_decl",
         ":libtftpu_header",
+        "@com_google_absl//absl/status:statusor",
     ],
     alwayslink = True,
 )
