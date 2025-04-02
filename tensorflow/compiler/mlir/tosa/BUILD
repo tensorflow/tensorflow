@@ -187,6 +187,7 @@ cc_library(
         "tfl_passes.cc",
         "transforms/convert_metadata.cc",
         "transforms/convert_tfl_uint8.cc",
+        "transforms/dequantize_tfl_softmax.cc",
         "transforms/legalize_tfl.cc",
         "transforms/legalize_tfl_stateful.cc",
         "transforms/lower_complex_types.cc",
