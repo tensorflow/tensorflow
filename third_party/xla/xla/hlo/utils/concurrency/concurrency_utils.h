@@ -23,6 +23,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/functional/any_invocable.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "xla/hlo/utils/concurrency/tsl_task_executor.h"
 
@@ -89,6 +90,40 @@ absl::StatusOr<std::vector<ActionReturnT>> ForEach(
     return result_storage;
   }
   return status;
+}
+
+// Runs an action on all elements from an iterator. Note that the action must be
+// side-effecting to make any sense, and specifically it can be mutating.
+//
+// Returns synchronously when all actions finish. Aborts the run on the first
+// failure. If a run aborts the underlying data is likely to be corrupted or
+// partially modified.
+//
+// For synchronization, clients should make sure that actions do not deadlock or
+// corrupt any state they access. Specifically, if actions access any shared
+// mutable state clients must make sure that such access is synchronized.  The
+// run can deadlock in all the standard ways. Specifically, if the action locks
+// a set of shared resources make sure that all locks are acquired in the same
+// order.
+template <typename ForwardItT, typename TaskExecutorT>
+#if __cplusplus >= 202002L
+  requires(std::forward_iterator<ForwardItT>)
+#endif
+absl::Status ForEach(ForwardItT begin, ForwardItT end,
+                     absl::AnyInvocable<absl::Status(
+                         typename std::iterator_traits<ForwardItT>::value_type)>
+                         action,
+                     TaskExecutorT& task_executor,
+                     std::optional<int> parallelism = std::nullopt) {
+  auto result_size = std::distance(begin, end);
+  std::vector<Task> tasks;
+  tasks.reserve(result_size);
+
+  for (auto iterator = begin; iterator != end; ++iterator) {
+    auto argument = *iterator;
+    tasks.push_back([argument, &action]() { return action(argument); });
+  }
+  return task_executor.ExecuteIndependentTasks(std::move(tasks), parallelism);
 }
 
 }  // namespace xla::concurrency

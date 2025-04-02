@@ -29,6 +29,55 @@ namespace {
 
 using ::testing::ElementsAreArray;
 
+TEST(ForEachTest, IterVariantConcurrentlyIncrementsIntegers) {
+  TslTaskExecutor task_executor(5);
+
+  constexpr int kx0 = 0;
+  constexpr int kx1 = 1;
+  constexpr int kx2 = 2;
+
+  int v0 = kx0;
+  int v1 = kx1;
+  int v2 = kx2;
+
+  std::vector<int*> v = {&v0, &v1, &v2};
+
+  ASSERT_EQ(ForEach(
+                v.begin(), v.end(),
+                [](int* element) {
+                  ++(*element);
+                  return absl::OkStatus();
+                },
+                task_executor),
+            absl::OkStatus());
+
+  EXPECT_EQ(v0, kx0 + 1);
+  EXPECT_EQ(v1, kx1 + 1);
+  EXPECT_EQ(v2, kx2 + 1);
+}
+
+TEST(ForEachTest, NonOkStatusPropagatesAsTheFinalResult) {
+  const absl::Status status = absl::CancelledError("Test Error");
+
+  TslTaskExecutor task_executor{3};
+
+  constexpr int kx0 = 0;
+  constexpr int kx1 = 1;
+  constexpr int kx2 = 2;
+
+  int v0 = kx0;
+  int v1 = kx1;
+  int v2 = kx2;
+
+  std::vector<int*> v = {&v0, &v1, &v2};
+
+  EXPECT_THAT(ForEach(
+                  v.begin(), v.end(),
+                  [&status](int* element) { return status; }, task_executor)
+                  .code(),
+              absl::StatusCode::kCancelled);
+}
+
 TEST(ForEachTest, ActionReturnedValuesCollected) {
   TslTaskExecutor task_executor{3};
 

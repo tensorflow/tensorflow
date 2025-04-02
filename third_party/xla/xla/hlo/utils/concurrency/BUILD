@@ -46,6 +46,7 @@ cc_library(
     deps = [
         ":tsl_task_executor",
         "@com_google_absl//absl/functional:any_invocable",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
     ],
