@@ -2766,10 +2766,12 @@ TEST_F(HloInstructionTest,
   // point to the conditional instruction.
   int num_conditional_branch_comp = 0;
   for (HloComputation* comp : module->MakeComputationPostOrder()) {
-    if (comp->IsConditionalBranchComputation()) {
+    auto conditional_callers =
+        comp->caller_instructions(HloOpcode::kConditional);
+    if (!conditional_callers.empty()) {
       num_conditional_branch_comp += 1;
-      EXPECT_EQ(comp->ConditionalCallInstruction(),
-                module->entry_computation()->root_instruction());
+      EXPECT_THAT(conditional_callers,
+                  ElementsAre(module->entry_computation()->root_instruction()));
     }
   }
   EXPECT_EQ(num_conditional_branch_comp, 2);
@@ -2841,10 +2843,12 @@ TEST_F(HloInstructionTest,
   // point to the conditional instruction.
   int num_conditional_branch_comp = 0;
   for (HloComputation* comp : module->MakeComputationPostOrder()) {
-    if (comp->IsConditionalBranchComputation()) {
+    auto conditional_callers =
+        comp->caller_instructions(HloOpcode::kConditional);
+    if (!conditional_callers.empty()) {
       num_conditional_branch_comp += 1;
-      EXPECT_EQ(comp->ConditionalCallInstruction(),
-                module->entry_computation()->root_instruction());
+      EXPECT_THAT(conditional_callers,
+                  ElementsAre(module->entry_computation()->root_instruction()));
     }
   }
   EXPECT_EQ(num_conditional_branch_comp, branch_computations.size());

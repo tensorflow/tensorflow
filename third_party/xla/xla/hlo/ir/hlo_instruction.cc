@@ -2004,9 +2004,6 @@ HloInstruction::CreateAddDependency(HloInstruction* data_operand,
   // kFalseComputationIndex.
   instruction->AppendComputation(true_computation);
   instruction->AppendComputation(false_computation);
-  // Set back pointer from computations to the conditional instruction.
-  true_computation->SetConditionalCallInstruction(instruction.get());
-  false_computation->SetConditionalCallInstruction(instruction.get());
   return instruction;
 }
 
@@ -2021,8 +2018,6 @@ HloInstruction::CreateAddDependency(HloInstruction* data_operand,
   for (int i = 0; i < branch_computations.size(); ++i) {
     instruction->AppendComputation(branch_computations[i]);
     instruction->AppendOperand(branch_computation_args[i]);
-    // Set back pointer from the computation to the conditional instruction.
-    branch_computations[i]->SetConditionalCallInstruction(instruction.get());
   }
   return instruction;
 }

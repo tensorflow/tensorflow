@@ -137,10 +137,6 @@ absl::Status AnnotateNode(const CallGraphNode& node) {
       for (HloComputation* computation : instruction->called_computations()) {
         computation->SetFusionInstruction(instruction);
       }
-    } else if (instruction->opcode() == HloOpcode::kConditional) {
-      for (HloComputation* branch : instruction->branch_computations()) {
-        branch->SetConditionalCallInstruction(instruction);
-      }
     }
   }
   return absl::OkStatus();
