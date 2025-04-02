@@ -145,6 +145,7 @@ jobs:
           cat "$OUTPUT_FILE_PATH"
 
       - name: Run hlo_runner_main on gemma2_2b_keras_jax.hlo and collect profile stats
+        if: ${{ matrix.job_info.pool != 'linux-arm64-t2a-48' }}
         run: |
           bazel_arch_dir="${{ matrix.job_info.bazel_arch_dir }}"
           binary_dir="./bazel-out/${bazel_arch_dir}/bin/xla/tools"
@@ -158,6 +159,7 @@ jobs:
           cat "$OUTPUT_FILE_PATH"
 
       - name: Run hlo_runner_main on gemma3_1b_flax_call.hlo and collect profile stats
+        if: ${{ matrix.job_info.pool != 'linux-arm64-t2a-48' }}
         run: |
           bazel_arch_dir="${{ matrix.job_info.bazel_arch_dir }}"
           binary_dir="./bazel-out/${bazel_arch_dir}/bin/xla/tools"
@@ -171,6 +173,7 @@ jobs:
           cat "$OUTPUT_FILE_PATH"
 
       - name: Upload HLO test output to a GCS bucket
+        if: ${{ matrix.job_info.pool != 'linux-arm64-t2a-48' }}
         run: |
           GCS_BUCKET="gs://openxla-nightly-transient"
           TIMESTAMP=$(date +%Y%m%d_%H%M%S)
