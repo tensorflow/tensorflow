@@ -52,7 +52,7 @@ struct PersistentCliquesMap {
 };
 
 static PersistentCliquesMap& GetPersistentCliquesMap() {
-  static auto* persistent_cliques = new PersistentCliquesMap();
+  static auto* const persistent_cliques = new PersistentCliquesMap();
   return *persistent_cliques;
 }
 }  // namespace

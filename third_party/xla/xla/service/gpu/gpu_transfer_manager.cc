@@ -67,8 +67,8 @@ GpuTransferManager::GpuTransferManager(se::Platform::Id id,
 
 InfeedManager* GpuTransferManager::GetOrCreateInfeedManager(
     se::StreamExecutor* executor) {
-  static absl::Mutex* mutex = new absl::Mutex();
-  static auto* infeed_managers =
+  static absl::Mutex* const mutex = new absl::Mutex();
+  static auto* const infeed_managers =
       new absl::flat_hash_map<se::StreamExecutor*,
                               std::unique_ptr<InfeedManager>>();
   absl::MutexLock lock(mutex);
@@ -81,8 +81,8 @@ InfeedManager* GpuTransferManager::GetOrCreateInfeedManager(
 
 OutfeedManager* GpuTransferManager::GetOrCreateOutfeedManager(
     se::StreamExecutor* executor) {
-  static absl::Mutex* mutex = new absl::Mutex();
-  static auto* outfeed_managers =
+  static absl::Mutex* const mutex = new absl::Mutex();
+  static auto* const outfeed_managers =
       new absl::flat_hash_map<se::StreamExecutor*,
                               std::unique_ptr<OutfeedManager>>();
   absl::MutexLock lock(mutex);

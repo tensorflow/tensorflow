@@ -266,7 +266,7 @@ static tsl::thread::ThreadPool* GetCompilationThreadPool() {
   tsl::ThreadOptions thread_options;
   thread_options.stack_size = 4 * 1024 * 1024;  // 4 MB
 
-  static auto* thread_pool = new tsl::thread::ThreadPool(
+  static auto* const thread_pool = new tsl::thread::ThreadPool(
       tsl::Env::Default(), thread_options, "xla-cpu-llvm-codegen",
       std::min(kMaxCompilationThreads, tsl::port::MaxParallelism()));
   return thread_pool;
