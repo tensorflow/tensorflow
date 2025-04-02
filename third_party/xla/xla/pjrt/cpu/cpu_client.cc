@@ -987,13 +987,11 @@ TfrtCpuClient::CreateViewOfDeviceBuffer(
         reinterpret_cast<std::uintptr_t>(device_ptr),
         cpu_function_runtime::MinAlign());
   }
-  absl::InlinedVector<tsl::AsyncValueRef<CpuDeviceMemory>, 4> buffers;
   size_t byte_size = ShapeUtil::ByteSizeOf(shape);
   auto non_owning_buffer =
       tsl::MakeAvailableAsyncValueRef<CpuDeviceMemory>(device_ptr, byte_size);
-  buffers.push_back(std::move(non_owning_buffer));
   auto tracked_device_buffer = std::make_unique<TrackedCpuDeviceBuffer>(
-      /*is_tuple=*/false, /*owns_buffers=*/false, std::move(buffers),
+      /*owns_buffers=*/false, std::move(non_owning_buffer),
       /*definition_event=*/tsl::MakeAvailableAsyncValueRef<CpuEvent>(),
       std::move(on_delete_callback));
   CHECK_EQ(memory_space->devices().size(), 1);
@@ -1017,9 +1015,7 @@ absl::StatusOr<std::unique_ptr<PjRtBuffer>> TfrtCpuClient::CreateErrorBuffer(
   return std::make_unique<TfrtCpuBuffer>(
       shape,
       std::make_unique<TrackedCpuDeviceBuffer>(
-          /*is_tuple=*/false, /*owns_buffers=*/true,
-          absl::InlinedVector<tsl::AsyncValueRef<CpuDeviceMemory>, 4>{
-              std::move(buffer)},
+          /*owns_buffers=*/true, std::move(buffer),
           absl::InlinedVector<tsl::AsyncValueRef<CpuEvent>, 4>{
               tsl::AsyncValueRef<CpuEvent>(
                   tsl::MakeErrorAsyncValueRef(std::move(error)))}),
@@ -1325,18 +1321,23 @@ static absl::StatusOr<BufferInfo> MemoryForAllocation(
       } else if (allocation.param_shape_index().size() == 1) {
         std::tie(can_donate, arg) =
             arguments[allocation.param_shape_index()[0]];
-        out = arg->Buffer({});
-        buffer_size = arg->BufferSize({});
+        out = arg->buffer().AsPtr();
+        buffer_size = arg->BufferSize();
       } else {
         return absl::InvalidArgumentError(absl::StrCat(
             "Nested tuples are not supported for argument: ",
             allocation.parameter_number(),
             " at shape index:", allocation.param_shape_index().ToString()));
       }
+    } else if (!allocation.param_shape_index().empty()) {
+      return absl::InvalidArgumentError(absl::StrCat(
+          "Nested tuples are not supported for argument: ",
+          allocation.parameter_number(),
+          " at shape index:", allocation.param_shape_index().ToString()));
     } else {
       std::tie(can_donate, arg) = arguments[allocation.parameter_number()];
-      out = arg->Buffer(allocation.param_shape_index());
-      buffer_size = arg->BufferSize(allocation.param_shape_index());
+      out = arg->buffer().AsPtr();
+      buffer_size = arg->BufferSize();
     }
     CHECK_EQ(allocation.size(), buffer_size)
         << "Size mismatch on param " << allocation.parameter_number()
@@ -1577,8 +1578,7 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtCpuExecutable::ExecuteHelper(
     absl::InlinedVector<tsl::AsyncValueRef<CpuDeviceMemory>, 4> leaf_buffers;
     leaf_buffers.reserve(tracked_buffers.size());
     for (const auto& tracked_buffer : tracked_buffers) {
-      auto span = tracked_buffer.second->Buffers();
-      leaf_buffers.insert(leaf_buffers.end(), span.begin(), span.end());
+      leaf_buffers.push_back(tracked_buffer.second->buffer());
     }
     tuple_index_table = tsl::MakeUnconstructedAsyncValueRef<CpuDeviceMemory>();
     tsl::RunWhenReady(
@@ -1924,7 +1924,7 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtCpuExecutable::ExecuteHelper(
   // Create output TFRT buffers.
   const Shape& result_shape = cpu_executable_->result_shape();
   std::vector<std::unique_ptr<PjRtBuffer>> res;
-  if (options.untuple_result && result_shape.IsTuple()) {
+  if (result_shape.IsTuple()) {
     res.reserve(result_buffers_info.size());
     for (int i = 0; i < result_buffers_info.size(); ++i) {
       // Program execution writes to output buffers so it's a definition event.
@@ -1932,32 +1932,21 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtCpuExecutable::ExecuteHelper(
       definition_events.push_back(execute_event.CopyRef());
       auto leaf_tracked_device_buffer =
           std::make_unique<TrackedCpuDeviceBuffer>(
-              /*is_tuple=*/false, result_buffers_info[i].owns_buffer,
-              absl::InlinedVector<tsl::AsyncValueRef<CpuDeviceMemory>, 4>{
-                  std::move(result_buffers_info[i].buffer)},
-              absl::InlinedVector<size_t, 4>{
-                  result_buffers_info[i].buffer_size},
-              std::move(definition_events));
+              result_buffers_info[i].owns_buffer,
+              std::move(result_buffers_info[i].buffer),
+              result_buffers_info[i].buffer_size, std::move(definition_events));
       auto leaf_buffer = std::make_unique<TfrtCpuBuffer>(
           result_shape.tuple_shapes(i), std::move(leaf_tracked_device_buffer),
           client_, device, *device->default_memory_space());
       res.push_back(std::move(leaf_buffer));
     }
   } else {
-    bool owns_buffers = true;
-    absl::InlinedVector<tsl::AsyncValueRef<CpuDeviceMemory>, 4> sub_buffers;
-    absl::InlinedVector<size_t, 4> sub_buffer_sizes;
-    sub_buffers.reserve(result_buffers_info.size());
-    sub_buffer_sizes.reserve(result_buffers_info.size());
-    for (int i = 0; i < result_buffers_info.size(); ++i) {
-      owns_buffers = owns_buffers && result_buffers_info[i].owns_buffer;
-      sub_buffers.push_back(std::move(result_buffers_info[i].buffer));
-      sub_buffer_sizes.push_back(result_buffers_info[i].buffer_size);
-    }
+    CHECK_EQ(result_buffers_info.size(), 1);
     // Program execution writes to output buffers so it's a definition event.
     auto tracked_device_buffer = std::make_unique<TrackedCpuDeviceBuffer>(
-        /*is_tuple=*/result_shape.IsTuple(), owns_buffers,
-        std::move(sub_buffers), std::move(sub_buffer_sizes),
+        result_buffers_info[0].owns_buffer,
+        std::move(result_buffers_info[0].buffer),
+        result_buffers_info[0].buffer_size,
         /*definition_event=*/execute_event);
     auto tfrt_output_buffer = std::make_unique<TfrtCpuBuffer>(
         result_shape, std::move(tracked_device_buffer), client_, device,
@@ -2023,6 +2012,14 @@ TfrtCpuExecutable::Execute(
   tsl::profiler::TraceMeProducer activity("TfrtCpuExecutable::Execute",
                                           tsl::profiler::ContextType::kPjRt,
                                           run_id.ToInt());
+  if (!options.untuple_result && cpu_executable_->module()
+                                     .config()
+                                     .entry_computation_layout()
+                                     .result_shape()
+                                     .IsTuple()) {
+    return InvalidArgument(
+        "Tuple results must be untupled using ExecuteOptions::untuple_result.");
+  }
   if (device_assignment_ == nullptr) {
     return InvalidArgument("Execute expects a non-null device_assignment");
   }
@@ -2145,6 +2142,14 @@ TfrtCpuExecutable::ExecuteSharded(
                                           run_id.ToInt());
   if (device_assignment_ == nullptr) {
     return InvalidArgument("ExecuteShard expects a non-null device_assignment");
+  }
+  if (!options.untuple_result && cpu_executable_->module()
+                                     .config()
+                                     .entry_computation_layout()
+                                     .result_shape()
+                                     .IsTuple()) {
+    return InvalidArgument(
+        "Tuple results must be untupled using ExecuteOptions::untuple_result.");
   }
   for (int i = 0; i < addressable_devices_.size(); ++i) {
     if (addressable_devices_[i] == device) {

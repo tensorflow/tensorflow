@@ -84,40 +84,28 @@ class AliasHelper {
   }
 
   absl::Status SwapOutputAliasedBuffersToArgumentBuffers(
-      PjRtBuffer* result,
+      std::vector<std::unique_ptr<PjRtBuffer>>& results,
       std::vector<std::unique_ptr<PjRtBuffer>>& args_buffers,
       std::vector<PjRtBuffer*>& args_ptrs) {
     if (!ComputationHasAliasing()) {
       return absl::OkStatus();
     }
-    TfrtCpuBuffer* result_tfrt_cpu_buffer =
-        tsl::down_cast<TfrtCpuBuffer*>(result);
-
-    TF_ASSIGN_OR_RETURN(
-        AbstractTfrtCpuBuffer::DonationTransaction buffer_donation,
-        result_tfrt_cpu_buffer->AcquireDonation());
-    TrackedCpuDeviceBuffer* tracked_tfrt_cpu_device_buffer =
-        buffer_donation.device_buffer();
-
-    for (const auto& [output_index, arg_index] :
+    for (const auto& [output_sindex, arg_index] :
          aliased_output_index_to_argument_index_) {
-      // we don't need the entire buffer just the one at the output index
-      tsl::AsyncValuePtr<CpuDeviceMemory> output_cpu_memory =
-          tracked_tfrt_cpu_device_buffer->Buffer(output_index);
-
-      auto tracked_device_buffer = std::make_unique<TrackedCpuDeviceBuffer>(
-          /*is_tuple=*/false, /*owns_buffers=*/true,
-          absl::InlinedVector<tsl::AsyncValueRef<CpuDeviceMemory>, 4>{
-              output_cpu_memory.CopyRef()},
-          tsl::MakeAvailableAsyncValueRef<CpuEvent>());
-
-      args_buffers[arg_index] = std::make_unique<TfrtCpuBuffer>(
-          tsl::down_cast<AbstractTfrtCpuBuffer*>(args_buffers[arg_index].get())
-              ->on_device_shape(),
-          std::move(tracked_device_buffer),
-          tsl::down_cast<TfrtCpuClient*>(client_),
-          tsl::down_cast<TfrtCpuDevice*>(device_), memory_space_);
-
+      if (output_sindex.size() > 1) {
+        return absl::InvalidArgumentError("Nested tuples not supported");
+      }
+      size_t output_index = 0;
+      if (output_sindex.size() == 1) {
+        output_index = output_sindex[0];
+      }
+      if (output_index >= results.size()) {
+        return absl::InvalidArgumentError("index out of bounds.");
+      }
+      if (!results[output_index]) {
+        return absl::InvalidArgumentError("Result already donated.");
+      }
+      args_buffers[arg_index] = std::move(results[output_index]);
       args_ptrs[arg_index] = args_buffers[arg_index].get();
     }
     return absl::OkStatus();
@@ -215,6 +203,7 @@ absl::Status RunHloBenchmark(benchmark::State& state,
   // thread pool if we need to run multiple executions in parallel.
   ExecuteOptions execute_options;
   execute_options.execution_mode = ExecuteOptions::ExecutionMode::kSynchronous;
+  execute_options.untuple_result = true;
 
   std::vector<std::vector<PjRtBuffer*>> execution_args_ptrs(
       benchmark_options.num_executions);
@@ -266,20 +255,12 @@ absl::Status RunHloBenchmark(benchmark::State& state,
     for (size_t i = 0; i < benchmark_options.num_executions; ++i) {
       for (const auto& result : execution_results[i]) {
         CHECK_OK(result->GetReadyFuture().Await());
-        CHECK(!alias_helper.ComputationHasAliasing() ||
-              result->IsTuple() && execution_results[i].size() == 1)
-            << "Only single output tuple is supported in benchmarking aliased "
-               "models. "
-               "result->IsTuple(): "
-            << result->IsTuple()
-            << " execution_results size: " << execution_results[i].size();
-        std::vector<std::unique_ptr<PjRtBuffer>>& args_buffers =
-            execution_args_buffers[i];
-        std::vector<PjRtBuffer*>& args_ptrs = execution_args_ptrs[i];
-        TF_RETURN_IF_ERROR(
-            alias_helper.SwapOutputAliasedBuffersToArgumentBuffers(
-                result.get(), args_buffers, args_ptrs));
       }
+      std::vector<std::unique_ptr<PjRtBuffer>>& args_buffers =
+          execution_args_buffers[i];
+      std::vector<PjRtBuffer*>& args_ptrs = execution_args_ptrs[i];
+      TF_RETURN_IF_ERROR(alias_helper.SwapOutputAliasedBuffersToArgumentBuffers(
+          execution_results[i], args_buffers, args_ptrs));
     }
 
     return absl::OkStatus();

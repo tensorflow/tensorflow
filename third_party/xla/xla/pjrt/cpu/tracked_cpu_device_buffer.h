@@ -73,39 +73,34 @@ class TrackedCpuDeviceBuffer {
   // For tuple, takes the leaf buffers. Tuple index table created internally.
   // Nested tuple is not supported.
 
-  // Constructor for allocated cpu memory, i.e., `buffers` should have concrete
+  // Constructor for allocated cpu memory, i.e., `buffer` should have concrete
   // states. Definition event is after the list of `definition_events`.
   TrackedCpuDeviceBuffer(
-      bool is_tuple, bool owns_buffers,
-      absl::InlinedVector<tsl::AsyncValueRef<CpuDeviceMemory>, 4> buffers,
+      bool owns_buffers, tsl::AsyncValueRef<CpuDeviceMemory> buffer,
       absl::InlinedVector<tsl::AsyncValueRef<CpuEvent>, 4> definition_events,
       absl::AnyInvocable<void() &&> on_delete_callback = nullptr);
 
   // Variant with single definition event.
   TrackedCpuDeviceBuffer(
-      bool is_tuple, bool owns_buffers,
-      absl::InlinedVector<tsl::AsyncValueRef<CpuDeviceMemory>, 4> buffers,
+      bool owns_buffers, tsl::AsyncValueRef<CpuDeviceMemory> buffer,
       tsl::AsyncValueRef<CpuEvent> definition_event,
       absl::AnyInvocable<void() &&> on_delete_callback = nullptr);
 
-  // Constructor for unallocated cpu memory, i.e., `buffers` have unconstructed
-  // states, also needs to provide `buffer_sizes` which will be the sizes of
-  // the `buffers` after allocation. Definition event is after the list of
-  // `definition_events`. Callers need to ensure cpu memory is allocated before
-  // the definition event is ready.
+  // Constructor for unallocated cpu memory, i.e., `buffer` will have
+  // unconstructed states, and we also need to provide `buffer_size` which will
+  // be the size of the `buffer` after allocation. Definition event is after the
+  // list of `definition_events`. Callers need to ensure cpu memory is allocated
+  // before the definition event is ready.
   TrackedCpuDeviceBuffer(
-      bool is_tuple, bool owns_buffers,
-      absl::InlinedVector<tsl::AsyncValueRef<CpuDeviceMemory>, 4> buffers,
-      absl::InlinedVector<size_t, 4> buffer_sizes,
+      bool owns_buffers, tsl::AsyncValueRef<CpuDeviceMemory> buffer,
+      size_t buffer_size,
       absl::InlinedVector<tsl::AsyncValueRef<CpuEvent>, 4> definition_events,
       absl::AnyInvocable<void() &&> on_delete_callback = nullptr);
 
   // Variant with single definition event.
   TrackedCpuDeviceBuffer(
-      bool is_tuple, bool owns_buffers,
-      absl::InlinedVector<tsl::AsyncValueRef<CpuDeviceMemory>, 4> buffers,
-      absl::InlinedVector<size_t, 4> buffer_sizes,
-      tsl::AsyncValueRef<CpuEvent> definition_event,
+      bool owns_buffers, tsl::AsyncValueRef<CpuDeviceMemory> buffer,
+      size_t buffer_size, tsl::AsyncValueRef<CpuEvent> definition_event,
       absl::AnyInvocable<void() &&> on_delete_callback = nullptr);
 
   TrackedCpuDeviceBuffer(TrackedCpuDeviceBuffer&&) noexcept = default;
@@ -114,15 +109,13 @@ class TrackedCpuDeviceBuffer {
 
   ~TrackedCpuDeviceBuffer();
 
-  absl::Span<const tsl::AsyncValueRef<CpuDeviceMemory>> Buffers() {
-    return buffers_;
-  }
+  const tsl::AsyncValueRef<CpuDeviceMemory>& buffer() { return buffers_[0]; }
 
   absl::Span<const size_t> BufferSizes() { return buffer_sizes_; }
 
   tsl::AsyncValuePtr<CpuDeviceMemory> Buffer(const ShapeIndex& shape_index);
 
-  size_t BufferSize(const ShapeIndex& shape_index);
+  size_t BufferSize();
 
   const tsl::AsyncValueRef<CpuEvent>& definition_event() const {
     return definition_event_;
@@ -146,11 +139,8 @@ class TrackedCpuDeviceBuffer {
   // buffer is passed to a computation that aliases its inputs to outputs.
   void ReleaseDeviceMemory();
 
-  bool is_tuple_;
   bool owns_buffers_;
 
-  // If tuple, tuple index table is created and stored.
-  tsl::AsyncValueRef<CpuDeviceMemory> tuple_index_table_;
   // If non-tuple, `buffers_` contains 1 buffer; otherwise all leaf buffers.
   absl::InlinedVector<tsl::AsyncValueRef<CpuDeviceMemory>, 4> buffers_;
   // Should correspond to size of each buffer in `buffers_` when `buffers_` is
