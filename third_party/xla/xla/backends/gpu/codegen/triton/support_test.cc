@@ -1871,14 +1871,14 @@ ENTRY triton_computation {
   lhs = $0[16,128,256] fusion(p0), kind=kCustom, calls=flhs, backend_config={
     "fusion_backend_config":{
       "kind":"__triton_nested_gemm_fusion", "block_level_fusion_config":{
-        "output_tiles":[{"sizes":["16", "16", "64"]}]
+        "output_tiles":[{"sizes":["1", "16", "64"]}]
       }
     }
   }
   rhs = $0[16,256,512] fusion(p1), kind=kCustom, calls=frhs, backend_config={
     "fusion_backend_config":{
       "kind":"__triton_nested_gemm_fusion", "block_level_fusion_config":{
-        "output_tiles":[{"sizes":["16", "64", "32"]}]
+        "output_tiles":[{"sizes":["1", "64", "32"]}]
       }
     }
   }
@@ -1891,7 +1891,7 @@ ENTRY triton_computation {
       TestedInstruction ti,
       ParseTemplateAndGetInstruction(kHloTestTemplate, F32, HloOpcode::kDot,
                                      /* use_nested_gemm_fusions=*/true));
-  RunSupportTest(std::move(ti), /*output_tile_sizes=*/{16, 16, 32},
+  RunSupportTest(std::move(ti), /*output_tile_sizes=*/{1, 16, 32},
                  se::CudaComputeCapability::Ampere());
 }
 
@@ -1911,14 +1911,14 @@ ENTRY triton_computation {
   lhs = $0[16,128,256] fusion(p0), kind=kCustom, calls=flhs, backend_config={
     "fusion_backend_config":{
       "kind":"__triton_nested_gemm_fusion", "block_level_fusion_config":{
-        "output_tiles":[{"sizes":["4", "16", "64"]}]
+        "output_tiles":[{"sizes":["1", "16", "64"]}]
       }
     }
   }
   rhs = $0[16,256,512] fusion(p1), kind=kCustom, calls=frhs, backend_config={
     "fusion_backend_config":{
       "kind":"__triton_nested_gemm_fusion", "block_level_fusion_config":{
-        "output_tiles":[{"sizes":["4", "64", "32"]}]
+        "output_tiles":[{"sizes":["1", "64", "32"]}]
       }
     }
   }
@@ -1930,7 +1930,7 @@ ENTRY triton_computation {
       TestedInstruction ti,
       ParseTemplateAndGetInstruction(kHloTestTemplate, F32, HloOpcode::kDot,
                                      /* use_nested_gemm_fusions=*/true));
-  RunSupportTest(std::move(ti), /*output_tile_sizes=*/{4, 16, 4, 32},
+  RunSupportTest(std::move(ti), /*output_tile_sizes=*/{1, 16, 1, 32},
                  se::CudaComputeCapability::Ampere());
 }
 

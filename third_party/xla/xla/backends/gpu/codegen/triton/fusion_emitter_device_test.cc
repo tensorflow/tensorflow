@@ -2232,6 +2232,161 @@ ENTRY entry {
       kHloText, ErrorSpec{/*aabs=*/1e-4, /*arel=*/1e-6}));
 }
 
+TEST_F(TritonEmitterTest, DotWithMajorLhsContractingDimIsEmittedCorrectly) {
+  const std::string kHloText = R"(
+lhs {
+  ROOT p0 = f32[299,32] parameter(0)
+}
+
+rhs {
+  ROOT p0 = f32[299,512] parameter(0)
+}
+
+fdot {
+  p0 = f32[299,32] parameter(0)
+  p1 = f32[299,512] parameter(1)
+  lhs = f32[299,32] fusion(p0), kind=kCustom, calls=lhs, backend_config={
+    "fusion_backend_config":{
+      "kind":"__triton_nested_gemm_fusion", "block_level_fusion_config":{
+        "output_tiles":[{"sizes":["32", "16"]}]
+      }
+    }
+  }
+  rhs = f32[299,512]{1,0} fusion(p1), kind=kCustom, calls=rhs, backend_config={
+    "fusion_backend_config":{
+      "kind":"__triton_nested_gemm_fusion", "block_level_fusion_config":{
+        "output_tiles":[{"sizes":["32", "64"]}]
+      }
+    }
+  }
+  ROOT dot = f32[32,512]{1,0} dot(lhs, rhs),
+    lhs_contracting_dims={0}, rhs_contracting_dims={0},
+    algorithm=dot_f32_f32_f32
+}
+
+ENTRY entry {
+  // Take in boolean inputs for the test, in order to allow exact accumulation.
+  p0 = pred[299,32] parameter(0)
+  p1 = pred[299,512] parameter(1)
+  p0_f32 = f32[299,32] convert(p0)
+  p1_f32 = f32[299,512] convert(p1)
+  ROOT fusion = f32[32,512] fusion(p0_f32, p1_f32),
+    kind=kCustom, calls=fdot, backend_config={
+      "fusion_backend_config":{
+        "kind":"__triton_nested_gemm_fusion",
+        "block_level_fusion_config":{
+          "output_tiles":[{"sizes":["16", "64"]}],
+          "num_warps":"1",
+          "num_ctas":"1",
+          "num_stages":"1"}}}
+})";
+  EXPECT_TRUE(RunAndCompareNoHloPasses(kHloText, kExactMatch));
+}
+
+TEST_F(TritonEmitterTest, DotWithMinorRhsContractingDimIsEmittedCorrectly) {
+  const std::string kHloText = R"(
+lhs {
+  ROOT p0 = f32[32,299] parameter(0)
+}
+
+rhs {
+  ROOT p0 = f32[512,299] parameter(0)
+}
+
+fdot {
+  p0 = f32[32,299] parameter(0)
+  p1 = f32[512,299] parameter(1)
+  lhs = f32[32,299] fusion(p0), kind=kCustom, calls=lhs, backend_config={
+    "fusion_backend_config":{
+      "kind":"__triton_nested_gemm_fusion", "block_level_fusion_config":{
+        "output_tiles":[{"sizes":["16", "32"]}]
+      }
+    }
+  }
+  rhs = f32[512,299]{1,0} fusion(p1), kind=kCustom, calls=rhs, backend_config={
+    "fusion_backend_config":{
+      "kind":"__triton_nested_gemm_fusion", "block_level_fusion_config":{
+        "output_tiles":[{"sizes":["64", "32"]}]
+      }
+    }
+  }
+  ROOT dot = f32[32,512]{1,0} dot(lhs, rhs),
+    lhs_contracting_dims={1}, rhs_contracting_dims={1},
+    algorithm=dot_f32_f32_f32
+}
+
+ENTRY entry {
+  // Take in boolean inputs for the test, in order to allow exact accumulation.
+  p0 = pred[32,299] parameter(0)
+  p1 = pred[512,299] parameter(1)
+  p0_f32 = f32[32,299] convert(p0)
+  p1_f32 = f32[512,299] convert(p1)
+  ROOT fusion = f32[32,512] fusion(p0_f32, p1_f32),
+    kind=kCustom, calls=fdot, backend_config={
+      "fusion_backend_config":{
+        "kind":"__triton_nested_gemm_fusion",
+        "block_level_fusion_config":{
+          "output_tiles":[{"sizes":["16", "64"]}],
+          "num_warps":"1",
+          "num_ctas":"1",
+          "num_stages":"1"}}}
+})";
+  EXPECT_TRUE(RunAndCompareNoHloPasses(kHloText, kExactMatch));
+}
+
+TEST_F(TritonEmitterTest,
+       DotWithAdditionalDimensionsWithUnitTileSizesIsEmittedCorrectly) {
+  const std::string kHloText = R"(
+lhs {
+  ROOT p0 = f32[2,3,32,125] parameter(0)
+}
+
+rhs {
+  ROOT p0 = f32[2,125,3,256] parameter(0)
+}
+
+fdot {
+  p0 = f32[2,3,32,125] parameter(0)
+  p1 = f32[2,125,3,256] parameter(1)
+  lhs = f32[2,3,32,125] fusion(p0), kind=kCustom, calls=lhs,
+    backend_config={"fusion_backend_config":{
+      "kind":"__triton_nested_gemm_fusion", "block_level_fusion_config":{
+        "output_tiles":[{"sizes":["1", "1", "16", "32"]}]
+      }
+    }
+  }
+  rhs = f32[2,125,3,256] fusion(p1), kind=kCustom, calls=rhs,
+    backend_config={"fusion_backend_config":{
+      "kind":"__triton_nested_gemm_fusion", "block_level_fusion_config":{
+        "output_tiles":[{"sizes":["1", "32", "1", "64"]}]
+      }
+    }
+  }
+  ROOT dot = f32[2,3,32,256] dot(lhs, rhs),
+    lhs_batch_dims={0,1}, rhs_batch_dims={0,2},
+    lhs_contracting_dims={3}, rhs_contracting_dims={1},
+    algorithm=dot_f32_f32_f32
+}
+
+ENTRY entry {
+  // Take in boolean inputs for the test, in order to allow exact accumulation.
+  p0 = pred[2,3,32,125] parameter(0)
+  p1 = pred[2,125,3,256] parameter(1)
+  p0_f32 = f32[2,3,32,125] convert(p0)
+  p1_f32 = f32[2,125,3,256] convert(p1)
+  ROOT fusion = f32[2,3,32,256] fusion(p0_f32, p1_f32),
+    kind=kCustom, calls=fdot, backend_config={
+      "fusion_backend_config":{
+        "kind":"__triton_nested_gemm_fusion",
+        "block_level_fusion_config":{
+          "output_tiles":[{"sizes":["1", "1", "16", "64"]}],
+          "num_warps":"1",
+          "num_ctas":"1",
+          "num_stages":"1"}}}
+})";
+  EXPECT_TRUE(RunAndCompareNoHloPasses(kHloText, kExactMatch));
+}
+
 TEST_F(TritonEmitterTest, ConcatenateOfNestsIsEmittedCorrectly) {
   const std::string kHloText = R"(
 nest0 {

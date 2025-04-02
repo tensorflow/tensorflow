@@ -15,8 +15,6 @@ limitations under the License.
 
 #include "xla/service/gpu/transforms/nest_gemm_fusion.h"
 
-#include <ostream>
-
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/log/log.h"
@@ -37,17 +35,10 @@ limitations under the License.
 #include "xla/tsl/platform/statusor.h"
 
 using ::testing::ElementsAre;
-using ::testing::Not;
-using ::tsl::testing::IsOk;
 using ::tsl::testing::IsOkAndHolds;
 using ::tsl::testing::StatusIs;
 
 namespace xla {
-
-// Gtest hook to pretty-print an HloInstruction.
-static void PrintTo(const HloInstruction& hlo, std::ostream* os) {
-  *os << hlo.ToString();
-}
 
 namespace gpu {
 namespace {
@@ -422,9 +413,8 @@ ENTRY entry_computation {
 }
 )";
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
-  // TODO(b/393299275): rhs_contracting_dims={0} is not currently supported.
   EXPECT_THAT(NestGemmFusion(compute_capability_).Run(module.get()),
-              Not(IsOk()));
+              IsOkAndHolds(true));
   TF_ASSERT_OK(verifier().Run(module.get()).status());
 }
 

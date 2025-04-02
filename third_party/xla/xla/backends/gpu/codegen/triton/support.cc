@@ -275,44 +275,13 @@ bool IsInTritonNestedGemmFusion(const HloInstruction& hlo) {
 }
 
 absl::Status CheckSupportedCheckDotDimensions(const HloDotInstruction& dot) {
-  const Shape& lhs_shape = dot.operand(0)->shape();
-  const Shape& rhs_shape = dot.operand(1)->shape();
   const DotDimensionNumbers& dim_numbers = dot.dot_dimension_numbers();
-  TF_ASSIGN_OR_RETURN(
-      std::vector<int64_t> lhs_non_contracting_dims,
-      GetNonContractingDims(lhs_shape, dim_numbers.lhs_batch_dimensions(),
-                            dim_numbers.lhs_contracting_dimensions()));
-  TF_ASSIGN_OR_RETURN(
-      std::vector<int64_t> rhs_non_contracting_dims,
-      GetNonContractingDims(rhs_shape, dim_numbers.rhs_batch_dimensions(),
-                            dim_numbers.rhs_contracting_dimensions()));
-  if (lhs_non_contracting_dims.size() > 1 ||
-      rhs_non_contracting_dims.size() > 1) {
-    return absl::UnimplementedError(absl::StrCat(
-        "Multiple non-contracting dimensions are not supported, got LHS: [",
-        absl::StrJoin(lhs_non_contracting_dims, ","), "], RHS: [",
-        absl::StrJoin(rhs_non_contracting_dims, ","), "]"));
-  }
   // Only checking one side of bach and contracting dimensions, since they must
   // be the same for left and right.
-  if (dim_numbers.lhs_batch_dimensions_size() > 0) {
-    return absl::UnimplementedError(
-        absl::StrCat("Batch dimensions are not supported yet, got ",
-                     absl::StrJoin(dim_numbers.lhs_batch_dimensions(), ",")));
-  }
   if (dim_numbers.lhs_contracting_dimensions_size() != 1) {
     return absl::UnimplementedError(absl::StrCat(
         "Exactly one contracting dimension is supported, got ",
         absl::StrJoin(dim_numbers.lhs_contracting_dimensions(), ",")));
-  }
-  if (dim_numbers.lhs_contracting_dimensions(0) != 1 ||
-      dim_numbers.rhs_contracting_dimensions(0) != 0) {
-    return absl::UnimplementedError(absl::StrCat(
-        "Only lhs_contracting_dimensions=1 (got ",
-        absl::StrJoin(dim_numbers.lhs_contracting_dimensions(), ","),
-        ") and  rhs_contracting_dimensions=0 (got ",
-        absl::StrJoin(dim_numbers.rhs_contracting_dimensions(), ","),
-        ") are supported."));
   }
   return absl::OkStatus();
 }
