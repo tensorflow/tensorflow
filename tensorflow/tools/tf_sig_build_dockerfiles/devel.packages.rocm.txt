@@ -24,6 +24,7 @@ ca-certificates
 colordiff
 llvm-18
 clang-18
+libclang-rt-18-dev
 curl
 ffmpeg
 git
