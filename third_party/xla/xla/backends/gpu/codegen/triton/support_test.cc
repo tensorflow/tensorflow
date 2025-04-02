@@ -2456,16 +2456,75 @@ INSTANTIATE_TEST_SUITE_P(
                        ::testing::ValuesIn(AllDevicesToTest())),
     TritonSupportTestTwoTypesAndDeviceToString);
 
+using AddDependencyTest = TritonSupportTestWithDeviceParam;
+
+TEST_P(AddDependencyTest, AddDependency) {
+  auto cc = GetParam();
+  const std::string kHloTestTemplate = R"(
+    ENTRY triton_computation {
+      param = f32[10] parameter(0)
+      token0 = token[] after-all()
+      ROOT add_dep = f32[10] add-dependency(param, token0)
+    })";
+  TF_ASSERT_OK_AND_ASSIGN(TestedInstruction ti, ParseTemplateAndGetInstruction(
+                                                    kHloTestTemplate,
+                                                    F32,  // Type is irrelevant.
+                                                    HloOpcode::kAddDependency));
+  RunSupportTest(std::move(ti), /*output_tile_sizes=*/{1}, cc);
+}
+
+INSTANTIATE_TEST_SUITE_P(AddDependencySuite, AddDependencyTest,
+                         ::testing::ValuesIn(AllDevicesToTest()),
+                         TritonSupportTestDeviceToString);
+
+using AfterAllTest = TritonSupportTestWithDeviceParam;
+
+TEST_P(AfterAllTest, AfterAll) {
+  auto cc = GetParam();
+  const std::string kHloTestTemplate = R"(
+    ENTRY triton_computation {
+      token0 = token[] after-all()
+      token1 = token[] after-all()
+      ROOT token2 = token[] after-all(token0, token1)
+    })";
+  TF_ASSERT_OK_AND_ASSIGN(TestedInstruction ti, ParseTemplateAndGetInstruction(
+                                                    kHloTestTemplate,
+                                                    F32,  // Type is irrelevant.
+                                                    HloOpcode::kAfterAll));
+  RunSupportTest(std::move(ti), /*output_tile_sizes=*/{}, cc);
+}
+
+INSTANTIATE_TEST_SUITE_P(AfterAllSuite, AfterAllTest,
+                         ::testing::ValuesIn(AllDevicesToTest()),
+                         TritonSupportTestDeviceToString);
+
+using CustomCallTest = TritonSupportTestWithDeviceParam;
+
+TEST_P(CustomCallTest, CustomCall) {
+  auto cc = GetParam();
+  const std::string kHloTestTemplate = R"(
+    ENTRY triton_computation {
+      parameter = f32[10] parameter(0)
+      ROOT custom_call_op = f32[10] custom-call(parameter), custom_call_target="SomeTarget"
+    })";
+  TF_ASSERT_OK_AND_ASSIGN(TestedInstruction ti, ParseTemplateAndGetInstruction(
+                                                    kHloTestTemplate,
+                                                    F32,  // Type is irrelevant.
+                                                    HloOpcode::kCustomCall));
+  RunSupportTest(std::move(ti), /*output_tile_sizes=*/{1}, cc);
+}
+
+INSTANTIATE_TEST_SUITE_P(CustomCallSuite, CustomCallTest,
+                         ::testing::ValuesIn(AllDevicesToTest()),
+                         TritonSupportTestDeviceToString);
+
 constexpr std::array kUnsupportedOps = {
     // clang-format off
     // go/keep-sorted start
-    HloOpcode::kAddDependency,
-    HloOpcode::kAfterAll,
     HloOpcode::kCholesky,
     HloOpcode::kConvolution,
     HloOpcode::kCopyDone,
     HloOpcode::kCopyStart,
-    HloOpcode::kCustomCall,
     HloOpcode::kDynamicReshape,
     HloOpcode::kDynamicSlice,
     HloOpcode::kDynamicUpdateSlice,
@@ -2515,6 +2574,8 @@ absl::flat_hash_set<HloOpcode> AllTestedOpcodes() {
   ret.insert(kTestedOpsIota.begin(), kTestedOpsIota.end());
   ret.insert(kTestedOpsRng.begin(), kTestedOpsRng.end());
 
+  ret.emplace(HloOpcode::kAfterAll);
+  ret.emplace(HloOpcode::kAddDependency);
   ret.emplace(HloOpcode::kBatchNormGrad);
   ret.emplace(HloOpcode::kBatchNormInference);
   ret.emplace(HloOpcode::kBatchNormTraining);
@@ -2522,6 +2583,7 @@ absl::flat_hash_set<HloOpcode> AllTestedOpcodes() {
   ret.emplace(HloOpcode::kCall);
   ret.emplace(HloOpcode::kComplex);
   ret.emplace(HloOpcode::kConditional);
+  ret.emplace(HloOpcode::kCustomCall);
   ret.emplace(HloOpcode::kDomain);
   ret.emplace(HloOpcode::kDot);
   ret.emplace(HloOpcode::kGetDimensionSize);
