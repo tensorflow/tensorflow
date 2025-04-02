@@ -219,6 +219,10 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       DynamicUpdateSlice<int8_t>(operand, update, indices_data_i64.data(),
                                  output);
       break;
+    case kTfLiteInt16:
+      DynamicUpdateSlice<int16_t>(operand, update, indices_data_i64.data(),
+                                  output);
+      break;
     case kTfLiteInt32:
       DynamicUpdateSlice<int32_t>(operand, update, indices_data_i64.data(),
                                   output);

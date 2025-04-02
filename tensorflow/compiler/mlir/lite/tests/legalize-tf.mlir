@@ -2589,6 +2589,14 @@ func.func @dynamic_update_slice_f16_arg(%arg0: tensor<4x5xf16>, %arg1: tensor<1x
 // CHECK: "tfl.dynamic_update_slice"(%arg0, %arg1, %arg2) : (tensor<4x5xf16>, tensor<1x5xf16>, tensor<2xi32>) -> tensor<4x5xf16>
 }
 
+func.func @dynamic_update_slice_i16(%arg0: tensor<4x5xi16>, %arg1: tensor<1x5xi16>, %arg2: tensor<2xi32>) -> tensor<4x5xi16> {
+  %0 = "tf.XlaDynamicUpdateSlice"(%arg0, %arg1, %arg2) : (tensor<4x5xi16>, tensor<1x5xi16>, tensor<2xi32>) -> tensor<4x5xi16>
+  func.return %0 : tensor<4x5xi16>
+
+// CHECK-LABEL:dynamic_update_slice_i16
+// CHECK: "tfl.dynamic_update_slice"(%arg0, %arg1, %arg2) : (tensor<4x5xi16>, tensor<1x5xi16>, tensor<2xi32>) -> tensor<4x5xi16>
+}
+
 func.func @testReluI32(%arg0: tensor<1xi32>) -> tensor<1xi32> {
   %0 = "tf.Relu"(%arg0) : (tensor<1xi32>) -> tensor<1xi32>
   func.return %0: tensor<1xi32>
