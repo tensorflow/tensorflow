@@ -363,8 +363,10 @@ TEST_F(GpuReduceScatterCombinerTest, CombinesSynchronousCollectivesMaximally) {
       p1 = f16[20000000]{0} parameter(1)
 
       // 20MB combinable reduce-scatter collectives. Default combiner threshold is 30MB.
-      rs0 = f16[10000000]{0} reduce-scatter(p0), replica_groups={{0,1}}, dimensions={0}, to_apply=add
-      rs1 = f16[10000000]{0} reduce-scatter(p1), replica_groups={{0,1}}, dimensions={0}, to_apply=add
+      rs0 = f16[10000000]{0} reduce-scatter(p0), replica_groups={{0,1}}, dimensions={0}, to_apply=add,
+        frontend_attributes={sync_collective="true"}
+      rs1 = f16[10000000]{0} reduce-scatter(p1), replica_groups={{0,1}}, dimensions={0}, to_apply=add,
+        frontend_attributes={sync_collective="true"}
       ROOT result = tuple(rs0, rs1)
     }
   )";
@@ -379,13 +381,7 @@ TEST_F(GpuReduceScatterCombinerTest, CombinesSynchronousCollectivesMaximally) {
       /*combine_threshold_count=*/256,
       /*combine_by_dim=*/false, /*pointer_size=*/4);
 
-  EXPECT_THAT(combiner.Run(module.get()), IsOkAndHolds(false));
-
-  module->mutable_config()
-      .mutable_debug_options()
-      .set_xla_gpu_experimental_enable_sync_collective_combining(true);
   EXPECT_THAT(combiner.Run(module.get()), IsOkAndHolds(true));
-
   Matcher<const HloInstruction*> combined_reduce_scatter =
       op::ReduceScatter(op::Parameter(0), op::Parameter(1));
   EXPECT_THAT(module->entry_computation()->root_instruction(),

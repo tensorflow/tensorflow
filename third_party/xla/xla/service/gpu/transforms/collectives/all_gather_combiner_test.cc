@@ -356,8 +356,10 @@ TEST_F(GpuAllGatherCombinerTest, CombinesSynchronousCollectivesMaximally) {
       p1 = f16[5000000]{0} parameter(1)
 
       // 20MB combinable all-gather collectives. Default combiner threshold is 30MB.
-      ag0 = f16[10000000]{0} all-gather(p0), replica_groups={}, dimensions={0}
-      ag1 = f16[10000000]{0} all-gather(p1), replica_groups={}, dimensions={0}
+      ag0 = f16[10000000]{0} all-gather(p0), replica_groups={}, dimensions={0},
+        frontend_attributes={sync_collective="true"}
+      ag1 = f16[10000000]{0} all-gather(p1), replica_groups={}, dimensions={0},
+        frontend_attributes={sync_collective="true"}
       ROOT result = tuple(ag0, ag1)
     }
   )";
@@ -373,13 +375,7 @@ TEST_F(GpuAllGatherCombinerTest, CombinesSynchronousCollectivesMaximally) {
       /*combine_by_dim=*/false,
       /*combine_different_dtypes=*/true, /*pointer_size=*/4);
 
-  EXPECT_THAT(combiner.Run(module.get()), IsOkAndHolds(false));
-
-  module->mutable_config()
-      .mutable_debug_options()
-      .set_xla_gpu_experimental_enable_sync_collective_combining(true);
   EXPECT_THAT(combiner.Run(module.get()), IsOkAndHolds(true));
-
   Matcher<const HloInstruction*> combined_all_gather =
       op::AllGather(op::Parameter(0), op::Parameter(1));
   EXPECT_THAT(module->entry_computation()->root_instruction(),

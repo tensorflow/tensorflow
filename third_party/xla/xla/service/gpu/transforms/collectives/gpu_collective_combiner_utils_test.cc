@@ -18,9 +18,7 @@ limitations under the License.
 #include <cstdint>
 #include <optional>
 
-#include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "absl/container/flat_hash_set.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -34,15 +32,11 @@ limitations under the License.
 #include "xla/service/hlo_module_config.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/tests/hlo_test_base.h"
-#include "xla/tsl/platform/status_matchers.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 
 namespace xla::gpu {
 namespace {
-
-using ::testing::UnorderedElementsAre;
-using ::tsl::testing::IsOkAndHolds;
 
 using CollectiveCombinerUtilsTest = HloTestBase;
 
@@ -517,78 +511,6 @@ TEST_F(CollectiveCombinerUtilsTest,
 
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloText));
   EXPECT_FALSE(ContainsPipelinedInstruction(*module));
-}
-
-absl::StatusOr<absl::flat_hash_set<HloInstruction*>> SynchronousCollectives(
-    const HloModule& module) {
-  int pointer_size = 4;
-  stream_executor::DeviceDescription device_info;
-  device_info.set_device_memory_size(20000);
-  return xla::gpu::SynchronousCollectives(module, pointer_size, device_info);
-}
-
-TEST_F(CollectiveCombinerUtilsTest, SynchronousCollectivesNoOverlap) {
-  absl::string_view kHloText = R"(
-    HloModule m
-
-    add {
-      p0 = f16[] parameter(0)
-      p1 = f16[] parameter(1)
-      ROOT add = f16[] add(p0, p1)
-    }
-
-    ENTRY main {
-      p0 = f16[10000000]{0} parameter(0)
-      p1 = f16[10000000]{0} parameter(1)
-      ar0 = f16[10000000]{0} all-reduce(p0), replica_groups={}, to_apply=add
-      ar1 = f16[10000000]{0} all-reduce(p1), replica_groups={}, to_apply=add
-      ROOT result = tuple(ar0, ar1)
-    }
-  )";
-
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloText));
-  const HloInstruction* ar0 =
-      module->entry_computation()->root_instruction()->operand(0);
-  const HloInstruction* ar1 =
-      module->entry_computation()->root_instruction()->operand(1);
-  EXPECT_THAT(SynchronousCollectives(*module),
-              IsOkAndHolds(UnorderedElementsAre(ar0, ar1)));
-}
-
-TEST_F(CollectiveCombinerUtilsTest, SynchronousCollectivesWithOverlap) {
-  // Expected schedule:
-  // ------------------
-  // c0 –> ar0
-  //       c1 –> ar1
-  // ------------------
-  absl::string_view kHloText = R"(
-    HloModule m
-
-    add {
-      p0 = f16[] parameter(0)
-      p1 = f16[] parameter(1)
-      ROOT add = f16[] add(p0, p1)
-    }
-
-    ENTRY main {
-      p0 = f16[10000000]{0} parameter(0)
-      p1 = f16[10000000]{0} parameter(1)
-
-      c0 = f16[10000000]{0} copy(p0)
-      c1 = f16[10000000]{0} copy(p1)
-
-      ar0 = f16[10000000]{0} all-reduce(c0), replica_groups={}, to_apply=add
-      ar1 = f16[10000000]{0} all-reduce(c1), replica_groups={}, to_apply=add
-
-      ROOT result = tuple(ar0, ar1)
-    }
-  )";
-
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloText));
-  const HloInstruction* ar1 =
-      module->entry_computation()->root_instruction()->operand(1);
-  EXPECT_THAT(SynchronousCollectives(*module),
-              IsOkAndHolds(UnorderedElementsAre(ar1)));
 }
 
 }  // namespace

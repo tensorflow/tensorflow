@@ -359,8 +359,10 @@ TEST_F(GpuAllReduceCombinerTest, CombinesSynchronousCollectivesMaximally) {
       p1 = f16[10000000]{0} parameter(1)
 
       // 20MB combinable all-reduce collectives. Default combiner threshold is 30MB.
-      ar0 = f16[10000000]{0} all-reduce(p0), replica_groups={}, to_apply=add
-      ar1 = f16[10000000]{0} all-reduce(p1), replica_groups={}, to_apply=add
+      ar0 = f16[10000000]{0} all-reduce(p0), replica_groups={}, to_apply=add,
+        frontend_attributes={sync_collective="true"}
+      ar1 = f16[10000000]{0} all-reduce(p1), replica_groups={}, to_apply=add,
+        frontend_attributes={sync_collective="true"}
       ROOT result = tuple(ar0, ar1)
     }
   )";
@@ -374,13 +376,7 @@ TEST_F(GpuAllReduceCombinerTest, CombinesSynchronousCollectivesMaximally) {
       /*combine_threshold_in_bytes=*/kDefaultAllReduceCombineThreshold,
       /*combine_threshold_count=*/256, /*pointer_size=*/4);
 
-  EXPECT_THAT(combiner.Run(module.get()), IsOkAndHolds(false));
-
-  module->mutable_config()
-      .mutable_debug_options()
-      .set_xla_gpu_experimental_enable_sync_collective_combining(true);
   EXPECT_THAT(combiner.Run(module.get()), IsOkAndHolds(true));
-
   Matcher<const HloInstruction*> combined_all_reduce =
       op::AllReduce(op::Parameter(0), op::Parameter(1));
   EXPECT_THAT(module->entry_computation()->root_instruction(),
@@ -400,17 +396,17 @@ TEST_F(GpuAllReduceCombinerTest,
     }
 
     ENTRY main {
-      p0 = f16[10000000]{0} parameter(0)
-      p1 = f16[10000000]{0} parameter(1)
+      p0 = f16[10000]{0} parameter(0)
+      p1 = f16[10000]{0} parameter(1)
 
       // This all-reduce must happen first, which is enforced by the control
       // dependency and must be respected.
-      lead_ar = f16[10000000]{0} all-reduce(p0), replica_groups={}, to_apply=add
+      lead_ar = f16[10000]{0} all-reduce(p0), replica_groups={}, to_apply=add
 
       // These all-reduce have control dependencies and must not be combined.
-      ar0 = f16[10000000]{0} all-reduce(p0), replica_groups={}, to_apply=add,
+      ar0 = f16[10000]{0} all-reduce(p0), replica_groups={}, to_apply=add,
           control-predecessors={lead_ar}
-      ar1 = f16[10000000]{0} all-reduce(p1), replica_groups={}, to_apply=add,
+      ar1 = f16[10000]{0} all-reduce(p1), replica_groups={}, to_apply=add,
           control-predecessors={lead_ar}
       ROOT result = tuple(ar0, ar1)
     }
@@ -424,10 +420,6 @@ TEST_F(GpuAllReduceCombinerTest,
       kDefaultAllReduceCombineThreshold,
       /*combine_threshold_in_bytes=*/kDefaultAllReduceCombineThreshold,
       /*combine_threshold_count=*/256, /*pointer_size=*/4);
-
-  module->mutable_config()
-      .mutable_debug_options()
-      .set_xla_gpu_experimental_enable_sync_collective_combining(true);
   EXPECT_THAT(combiner.Run(module.get()), IsOkAndHolds(false));
 }
 
