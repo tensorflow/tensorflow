@@ -784,14 +784,15 @@ absl::Status RunOptimizationPasses(
       LOG(FATAL) << "Unreachable";
   }
 
+  // DynamicPadder creates a stable KeyValue sort for dynamic reshapes.
   pipeline.AddPass<DynamicPadder>(dynamic_padder_options);
+
+  // TODO(b/407909195): Add SortRewriter here once it supports S32 keys for
+  // KeyValueSort. It needs to run before StableSortExpander, otherwise we will
+  // not match the comparison computation.
 
   // Expand the sort op to support stable sorting if required.
   pipeline.AddPass<StableSortExpander>();
-
-  if (hlo_module->config().debug_options().xla_gpu_enable_cub_radix_sort()) {
-    pipeline.AddPass<SortRewriter>();
-  }
 
   se::GpuComputeCapability gpu_version =
       gpu_target_config.device_description.gpu_compute_capability();

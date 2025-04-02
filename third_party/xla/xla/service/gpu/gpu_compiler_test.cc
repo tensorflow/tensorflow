@@ -1618,6 +1618,14 @@ TEST_F(PassOrderTest, FusionDispatchRunsAfterAllFusionPasses) {
                   /*include_pipeline_name=*/true);
 }
 
+TEST_F(PassOrderTest,
+       SortRewriterRunsBeforeStableSortExpanderAndComparisonExpander) {
+  VerifyPassOrder(/*first_pass_regex=*/"sort-rewriter",
+                  /*last_pass_regex=*/"stable-sort-expander");
+  VerifyPassOrder(/*first_pass_regex=*/"sort-rewriter",
+                  /*last_pass_regex=*/"comparison-expander");
+}
+
 TEST_F(PassOrderTest, CollectivePipelinerRunsAfterCollectiveQuantizer) {
   DebugOptions options = GetDebugOptionsForTest();
   options.set_xla_gpu_enable_pipelined_collectives(true);
