@@ -122,11 +122,26 @@ filegroup(
     ],
 )
 
+filegroup(
+    name = "xla_cpu_runtime_hdrs",
+    srcs = [
+        "safe_reinterpret_cast.h",
+    ],
+    compatible_with = get_compatible_with_portable(),
+)
+
+filegroup(
+    name = "xla_cpu_runtime_srcs",
+    srcs = [],
+    compatible_with = get_compatible_with_portable(),
+)
+
 cc_library(
     name = "byte_swap_array",
     srcs = ["byte_swap_array.cc"],
     hdrs = ["byte_swap_array.h"],
     deps = [
+        ":safe_reinterpret_cast",
         "//xla/tsl/platform:byte_order",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:status",
@@ -363,6 +378,20 @@ tsl_cc_test(
     deps = [
         ":fixed_option_set_flag",
         "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
+    name = "safe_reinterpret_cast",
+    hdrs = ["safe_reinterpret_cast.h"],
+)
+
+tsl_cc_test(
+    name = "safe_reinterpret_cast_test",
+    srcs = ["safe_reinterpret_cast_test.cc"],
+    deps = [
+        ":safe_reinterpret_cast",
         "@com_google_googletest//:gtest_main",
     ],
 )

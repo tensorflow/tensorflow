@@ -44,7 +44,10 @@ package(
 cc_library(
     name = "compactptrset",
     hdrs = ["compactptrset.h"],
-    deps = [":flatset"],
+    deps = [
+        ":flatset",
+        "//xla/tsl/util:safe_reinterpret_cast",
+    ],
 )
 
 cc_library(
