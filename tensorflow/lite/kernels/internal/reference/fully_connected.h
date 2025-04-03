@@ -16,6 +16,8 @@ limitations under the License.
 #define TENSORFLOW_LITE_KERNELS_INTERNAL_REFERENCE_FULLY_CONNECTED_H_
 
 #include <algorithm>
+#include <cmath>
+#include <cstdint>
 
 #include "ruy/profiler/instrumentation.h"  // from @ruy
 #include "tensorflow/lite/kernels/internal/common.h"
@@ -67,12 +69,11 @@ inline void FullyConnected(
     const uint8_t* input_data, const RuntimeShape& filter_shape,
     const uint8_t* filter_data, const RuntimeShape& bias_shape,
     const int32_t* bias_data, const RuntimeShape& output_shape,
-    uint8_t* output_data) {
+    uint8_t* output_data, float input_scale, float output_scale,
+    float filter_scale) {
   const int32_t input_offset = params.input_offset;
   const int32_t filter_offset = params.weights_offset;
   const int32_t output_offset = params.output_offset;
-  const int32_t output_multiplier = params.output_multiplier;
-  const int output_shift = params.output_shift;
   const int32_t output_activation_min = params.quantized_activation_min;
   const int32_t output_activation_max = params.quantized_activation_max;
   TFLITE_DCHECK_GE(filter_shape.DimensionsCount(), 2);
@@ -101,11 +102,15 @@ inline void FullyConnected(
       if (bias_data) {
         acc += bias_data[out_c];
       }
-      acc = MultiplyByQuantizedMultiplier(acc, output_multiplier, output_shift);
-      acc += output_offset;
-      acc = std::max(acc, output_activation_min);
-      acc = std::min(acc, output_activation_max);
-      output_data[out_c + output_depth * b] = static_cast<uint8_t>(acc);
+      const double effective_output_scale = static_cast<double>(input_scale) *
+                                            static_cast<double>(filter_scale) /
+                                            static_cast<double>(output_scale);
+      int32_t acc_scaled = static_cast<int32_t>(
+          round(static_cast<double>(acc) * effective_output_scale));
+      acc_scaled += output_offset;
+      acc_scaled = std::max(acc_scaled, output_activation_min);
+      acc_scaled = std::min(acc_scaled, output_activation_max);
+      output_data[out_c + output_depth * b] = static_cast<uint8_t>(acc_scaled);
     }
   }
 }
@@ -115,12 +120,11 @@ inline void FullyConnected(
     const uint8_t* input_data, const RuntimeShape& filter_shape,
     const uint8_t* filter_data, const RuntimeShape& bias_shape,
     const int32_t* bias_data, const RuntimeShape& output_shape,
-    int16_t* output_data) {
+    int16_t* output_data, float input_scale, float output_scale,
+    float filter_scale) {
   const int32_t input_offset = params.input_offset;
   const int32_t filter_offset = params.weights_offset;
   const int32_t output_offset = params.output_offset;
-  const int32_t output_multiplier = params.output_multiplier;
-  const int output_shift = params.output_shift;
   const int32_t output_activation_min = params.quantized_activation_min;
   const int32_t output_activation_max = params.quantized_activation_max;
 
@@ -149,17 +153,16 @@ inline void FullyConnected(
             filter_data[out_c * accum_depth + d] + filter_offset;
         accum += filter_val * input_val;
       }
-      // Down-scale the final int32_t accumulator to the scale used by our
-      // (16-bit, typically 3 integer bits) fixed-point format. The quantized
-      // multiplier and shift here have been pre-computed offline
-      // (e.g. by toco).
-      accum =
-          MultiplyByQuantizedMultiplier(accum, output_multiplier, output_shift);
+      const double effective_output_scale = static_cast<double>(input_scale) *
+                                            static_cast<double>(filter_scale) /
+                                            static_cast<double>(output_scale);
+      int32_t acc_scaled = static_cast<int32_t>(
+          round(static_cast<double>(accum) * effective_output_scale));
       // Saturate, cast to int16_t, and store to output array.
-      accum = std::max(accum, output_activation_min - output_offset);
-      accum = std::min(accum, output_activation_max - output_offset);
-      accum += output_offset;
-      output_data[out_c + output_depth * b] = accum;
+      acc_scaled = std::max(acc_scaled, output_activation_min - output_offset);
+      acc_scaled = std::min(acc_scaled, output_activation_max - output_offset);
+      acc_scaled += output_offset;
+      output_data[out_c + output_depth * b] = acc_scaled;
     }
   }
 }
