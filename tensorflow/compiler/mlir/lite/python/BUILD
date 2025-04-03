@@ -1,6 +1,6 @@
 load("@local_xla//xla/tsl/platform:build_config_root.bzl", "if_pywrap")
 load("//tensorflow:strict.default.bzl", "py_strict_library")
-load("//tensorflow:tensorflow.default.bzl", "tf_python_pybind_extension")
+load("//tensorflow:tensorflow.default.bzl", "pybind_extension", "tf_python_pybind_extension")
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 
 licenses(["notice"])
@@ -249,4 +249,42 @@ tf_python_pybind_extension(
         "//third_party/python_runtime:headers",
         "@pybind11",
     ] + if_pywrap([":converter_python_api"]),
+)
+
+pybind_extension(
+    name = "model_utils_core_pybind",
+    srcs = [
+        "model_utils_core_pybind.cc",
+    ],
+    deps = [
+        "//tensorflow/compiler/mlir:init_mlir",
+        "//tensorflow/compiler/mlir/lite:flatbuffer_export",
+        "//tensorflow/compiler/mlir/lite:flatbuffer_import",
+        "//tensorflow/compiler/mlir/lite:tensorflow_lite",
+        "//tensorflow/compiler/mlir/lite/quantization/ir:QuantOps",
+        "//tensorflow/compiler/mlir/lite/stablehlo:prepare_hlo",
+        "//tensorflow/compiler/mlir/tensorflow:convert_tensor",
+        "//tensorflow/python/lib/core:ndarray_tensor",
+        "//tensorflow/python/lib/core:py_func_lib",
+        "//third_party/python_runtime:headers",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:AllPassesAndDialects",
+        "@llvm-project//mlir:ArithDialect",
+        "@llvm-project//mlir:CAPIIRHeaders",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:FuncExtensions",
+        "@llvm-project//mlir:FuncTransforms",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:MLIRBindingsPythonHeaders",
+        "@llvm-project//mlir:MLIRBindingsPythonHeadersAndDeps",
+        "@llvm-project//mlir:MlirOptLib",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:QuantOps",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:Transforms",
+        "@pybind11",
+        "@stablehlo//:register",
+        "@stablehlo//:stablehlo_ops",
+        "@stablehlo//:vhlo_ops",
+    ],
 )

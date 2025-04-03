@@ -17,11 +17,36 @@
 
 # pylint: disable=g-import-not-at-top
 # pylint: disable=unused-import
+# pylint: disable=consider-using-from-import
+# pylint: disable=g-bad-import-order
+
+from pathlib import Path
+import sys
+
+print(__file__, file=sys.stderr)
+d = Path(__file__).parent
 
 
-def smoketest():
-  import tensorflow.compiler.mlir.lite.integrations.python.mlir
+def print_dir(d, level=0):
+  print("-" * level, d.name, file=sys.stderr)
+  if d.is_dir():
+    for f in d.iterdir():
+      print_dir(f, level + 1)
 
 
-if __name__ == "__main__":
-  smoketest()
+print_dir(d)
+
+
+# Importing the top-level module is fine but doesn't provide submodules.
+import tensorflow.compiler.mlir.lite.python.mlir as mlir
+
+assert not hasattr(mlir, "ir")
+
+# Importing a submodule should also be fine.
+import tensorflow.compiler.mlir.lite.python.mlir.ir
+
+assert hasattr(mlir, "ir")
+
+# Just some basic API usage to make sure things are roughly in the right place.
+context = mlir.ir.Context()
+module = mlir.ir.Module.parse("module @foo {}", context)
