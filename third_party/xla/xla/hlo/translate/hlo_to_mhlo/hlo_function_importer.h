@@ -32,6 +32,7 @@ limitations under the License.
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Block.h"
 #include "mlir/IR/Builders.h"
+#include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/Operation.h"
@@ -207,6 +208,8 @@ class HloFunctionImporter {
   // Converts the dimensions of an HLO instruction into an MLIR attribute.
   mlir::DenseIntElementsAttr ConvertDimensions(
       absl::Span<const int64_t> op_dimensions);
+
+  mlir::DenseI64ArrayAttr ConvertArray(llvm::ArrayRef<int64_t> elements);
 
   // Converts Array ref to an DenseIntElementsAttr.
   mlir::DenseIntElementsAttr Convert(llvm::ArrayRef<int64_t> elements);

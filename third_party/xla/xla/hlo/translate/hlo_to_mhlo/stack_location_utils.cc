@@ -25,7 +25,7 @@ limitations under the License.
 #include "xla/hlo/translate/hlo_to_mhlo/hlo_utils.h"
 
 namespace mlir {
-namespace mhlo {
+namespace hlo {
 mlir::Location GetLocationFromFrameIndex(int frame_id, mlir::Builder& builder,
                                          const xla::HloModule* hlo_module) {
   std::vector<mlir::Location> stack_locations;
@@ -57,5 +57,5 @@ mlir::Location GetLocationFromFrameIndex(int frame_id, mlir::Builder& builder,
   return mlir::CallSiteLoc::get(stack_locations[0],
                                 stack_locations_ref.drop_front());
 }
-}  // namespace mhlo
+}  // namespace hlo
 }  // namespace mlir

@@ -574,4 +574,31 @@ diff --ruN a/stablehlo/stablehlo/transforms/VhloToVersion.cpp b/stablehlo/stable
  
  namespace mlir {
  namespace stablehlo {
+diff --ruN a/stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimplification.cpp b/stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimplification.cpp
+--- stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimplification.cpp
++++ stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimplification.cpp
+@@ -1539,8 +1539,8 @@
+ 
+ void populateStablehloHloImportCanonicalizationPatterns(
+     MLIRContext *context, RewritePatternSet *patterns) {
+-  patterns->add<TupleIsRepacking, TupleIsUnpacked, WhileOpImplicitCapture>(
+-      context);
++  patterns->add<ReshapeIsNoop, TupleIsRepacking, TupleIsUnpacked,
++                WhileOpImplicitCapture>(context);
+ }
+ 
+ std::unique_ptr<Pass> createStablehloAggressiveSimplificationPass(
+diff --ruN a/stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimplificationPatterns.td b/stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimplificationPatterns.td
+--- stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimplificationPatterns.td
++++ stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimplificationPatterns.td
+@@ -366,7 +366,8 @@
+           (StableHLO_ReshapeOpWithShape $reshape, $operand)>;
+ 
+ // Pattern: reshape(X, [X.shape]) -> X
+-def : Pat<(StableHLO_ReshapeOp:$reshape $operand),
++def ReshapeIsNoop
++    : Pat<(StableHLO_ReshapeOp:$reshape $operand),
+           (replaceWithValue $operand),
+           [(TypesEqual $reshape, $operand)]>;
+ 
 
