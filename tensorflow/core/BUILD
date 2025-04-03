@@ -1037,6 +1037,7 @@ cc_library(
         "//tensorflow/core:mobile_additional_lib_deps",
         "//tensorflow/core/platform:resource",
         "//tensorflow/core/public:release_version",
+        "//tensorflow/core/util:onednn_env_vars",
         "//tensorflow/core/util:stats_calculator_portable",
     ] + tf_portable_proto_lib() + tf_portable_deps_no_runtime(),
     alwayslink = 1,
