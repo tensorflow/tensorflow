@@ -9,17 +9,19 @@ bazel test --build_tag_filters=-multiaccelerator --test_tag_filters=-multiaccele
 bazel analyze-profile profile.json.gz
 # END BuildType.JAX_LINUX_X86_GPU_T4_GITHUB_ACTIONS
 # BEGIN BuildType.TENSORFLOW_LINUX_X86_CPU_GITHUB_ACTIONS
+find $GITHUB_WORKSPACE/openxla/xla -type f -exec sed -i s/@local_xla/@local_xla/g {} +
+find $GITHUB_WORKSPACE/openxla/xla -type f -exec sed -i s/@local_tsl/@local_tsl/g {} +
 cp -r $GITHUB_WORKSPACE/openxla/xla $GITHUB_WORKSPACE/tensorflow/tensorflow/third_party
-find $GITHUB_WORKSPACE/tensorflow/tensorflow/third_party/xla -type f -exec sed -i s/@local_xla/@local_xla/g {} +
-find $GITHUB_WORKSPACE/tensorflow/tensorflow/third_party/xla -type f -exec sed -i s/@local_tsl/@local_tsl/g {} +
+find $GITHUB_WORKSPACE/openxla/xla/third_party/ -maxdepth 1 -exec cp -r {} $GITHUB_WORKSPACE/tensorflow/tensorflow/third_party ;
 parallel --ungroup --retries 3 --delay 15 --nonall -- bazel build --build_tag_filters=-no_oss,-tf_tosa,-oss_excluded,-oss_serial,-tpu,-benchmark-test,-v1only,-gpu --test_tag_filters=-no_oss,-tf_tosa,-oss_excluded,-oss_serial,-tpu,-benchmark-test,-v1only,-gpu --config=release_cpu_linux --config=rbe_linux_cpu --repo_env=USE_PYWRAP_RULES=True --verbose_failures --test_output=errors --profile=profile.json.gz --test_lang_filters=cc,py --color=yes --nobuild -- //tensorflow/compiler/... -//tensorflow/compiler/tf2tensorrt/... //tensorflow/python/... -//tensorflow/python/distribute/... -//tensorflow/python/kernel_tests/... -//tensorflow/python/data/... -//tensorflow/python/compiler/tensorrt/...
 bazel test --build_tag_filters=-no_oss,-tf_tosa,-oss_excluded,-oss_serial,-tpu,-benchmark-test,-v1only,-gpu --test_tag_filters=-no_oss,-tf_tosa,-oss_excluded,-oss_serial,-tpu,-benchmark-test,-v1only,-gpu --config=release_cpu_linux --config=rbe_linux_cpu --repo_env=USE_PYWRAP_RULES=True --verbose_failures --test_output=errors --profile=profile.json.gz --test_lang_filters=cc,py --color=yes -- //tensorflow/compiler/... -//tensorflow/compiler/tf2tensorrt/... //tensorflow/python/... -//tensorflow/python/distribute/... -//tensorflow/python/kernel_tests/... -//tensorflow/python/data/... -//tensorflow/python/compiler/tensorrt/...
 bazel analyze-profile profile.json.gz
 # END BuildType.TENSORFLOW_LINUX_X86_CPU_GITHUB_ACTIONS
 # BEGIN BuildType.TENSORFLOW_LINUX_X86_GPU_T4_GITHUB_ACTIONS
+find $GITHUB_WORKSPACE/openxla/xla -type f -exec sed -i s/@local_xla/@local_xla/g {} +
+find $GITHUB_WORKSPACE/openxla/xla -type f -exec sed -i s/@local_tsl/@local_tsl/g {} +
 cp -r $GITHUB_WORKSPACE/openxla/xla $GITHUB_WORKSPACE/tensorflow/tensorflow/third_party
-find $GITHUB_WORKSPACE/tensorflow/tensorflow/third_party/xla -type f -exec sed -i s/@local_xla/@local_xla/g {} +
-find $GITHUB_WORKSPACE/tensorflow/tensorflow/third_party/xla -type f -exec sed -i s/@local_tsl/@local_tsl/g {} +
+find $GITHUB_WORKSPACE/openxla/xla/third_party/ -maxdepth 1 -exec cp -r {} $GITHUB_WORKSPACE/tensorflow/tensorflow/third_party ;
 parallel --ungroup --retries 3 --delay 15 --nonall -- bazel build --build_tag_filters=-no_oss,-tf_tosa,-oss_excluded,-oss_serial,-tpu,-benchmark-test,-v1only,-no_gpu,-no_gpu_presubmit,-no_cuda11,+gpu --test_tag_filters=-no_oss,-tf_tosa,-oss_excluded,-oss_serial,-tpu,-benchmark-test,-v1only,-no_gpu,-no_gpu_presubmit,-no_cuda11,+gpu --config=release_gpu_linux --config=rbe_linux_cuda --repo_env=USE_PYWRAP_RULES=True --verbose_failures --test_output=errors --profile=profile.json.gz --test_lang_filters=cc,py --color=yes --nobuild -- //tensorflow/compiler/... -//tensorflow/compiler/tf2tensorrt/... //tensorflow/python/... -//tensorflow/python/distribute/... -//tensorflow/python/kernel_tests/... -//tensorflow/python/data/... -//tensorflow/python/compiler/tensorrt/...
 bazel test --build_tag_filters=-no_oss,-tf_tosa,-oss_excluded,-oss_serial,-tpu,-benchmark-test,-v1only,-no_gpu,-no_gpu_presubmit,-no_cuda11,+gpu --test_tag_filters=-no_oss,-tf_tosa,-oss_excluded,-oss_serial,-tpu,-benchmark-test,-v1only,-no_gpu,-no_gpu_presubmit,-no_cuda11,+gpu --config=release_gpu_linux --config=rbe_linux_cuda --repo_env=USE_PYWRAP_RULES=True --verbose_failures --test_output=errors --profile=profile.json.gz --test_lang_filters=cc,py --color=yes -- //tensorflow/compiler/... -//tensorflow/compiler/tf2tensorrt/... //tensorflow/python/... -//tensorflow/python/distribute/... -//tensorflow/python/kernel_tests/... -//tensorflow/python/data/... -//tensorflow/python/compiler/tensorrt/...
 bazel analyze-profile profile.json.gz

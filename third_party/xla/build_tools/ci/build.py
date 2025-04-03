@@ -544,21 +544,27 @@ Build(
         # work here to get XLA into the shape TF expects. b/407638223
         # pyformat:disable
         [
+            "find",
+            f"{_GITHUB_WORKSPACE}/openxla/xla",
+            "-type", "f",
+            "-exec", "sed", "-i", "s/@local_xla/@local_xla/g", "{}", "+",
+        ],
+        [
+            "find",
+            f"{_GITHUB_WORKSPACE}/openxla/xla",
+            "-type", "f",
+            "-exec", "sed", "-i", "s/@local_tsl/@local_tsl/g", "{}", "+",
+        ],
+        [
             "cp", "-r",
             f"{_GITHUB_WORKSPACE}/openxla/xla",
             f"{_GITHUB_WORKSPACE}/tensorflow/tensorflow/third_party",
         ],
         [
             "find",
-            f"{_GITHUB_WORKSPACE}/tensorflow/tensorflow/third_party/xla",
-            "-type", "f",
-            "-exec", "sed", "-i", "s/@local_xla/@local_xla/g", "{}", "+",
-        ],
-        [
-            "find",
-            f"{_GITHUB_WORKSPACE}/tensorflow/tensorflow/third_party/xla",
-            "-type", "f",
-            "-exec", "sed", "-i", "s/@local_tsl/@local_tsl/g", "{}", "+",
+            f"{_GITHUB_WORKSPACE}/openxla/xla/third_party/",
+            "-maxdepth", "1", "-exec", "cp", "-r", "{}",
+            f"{_GITHUB_WORKSPACE}/tensorflow/tensorflow/third_party", ";",
         ],
     ),
 )
@@ -594,21 +600,27 @@ Build(
         # work here to get XLA into the shape TF expects. b/407638223
         # pyformat:disable
         [
+            "find",
+            f"{_GITHUB_WORKSPACE}/openxla/xla",
+            "-type", "f",
+            "-exec", "sed", "-i", "s/@local_xla/@local_xla/g", "{}", "+",
+        ],
+        [
+            "find",
+            f"{_GITHUB_WORKSPACE}/openxla/xla",
+            "-type", "f",
+            "-exec", "sed", "-i", "s/@local_tsl/@local_tsl/g", "{}", "+",
+        ],
+        [
             "cp", "-r",
             f"{_GITHUB_WORKSPACE}/openxla/xla",
             f"{_GITHUB_WORKSPACE}/tensorflow/tensorflow/third_party",
         ],
         [
             "find",
-            f"{_GITHUB_WORKSPACE}/tensorflow/tensorflow/third_party/xla",
-            "-type", "f",
-            "-exec", "sed", "-i", "s/@local_xla/@local_xla/g", "{}", "+",
-        ],
-        [
-            "find",
-            f"{_GITHUB_WORKSPACE}/tensorflow/tensorflow/third_party/xla",
-            "-type", "f",
-            "-exec", "sed", "-i", "s/@local_tsl/@local_tsl/g", "{}", "+",
+            f"{_GITHUB_WORKSPACE}/openxla/xla/third_party/",
+            "-maxdepth", "1", "-exec", "cp", "-r", "{}",
+            f"{_GITHUB_WORKSPACE}/tensorflow/tensorflow/third_party", ";",
         ],
     ),
 )
