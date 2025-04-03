@@ -155,15 +155,36 @@ absl::StatusOr<std::string> ConvertXSpaceToTraceEvents(
   }
 }
 
-absl::StatusOr<std::string> ConvertMultiXSpacesToOverviewPage(
-    const SessionSnapshot& session_snapshot) {
+absl::Status ConvertMultiXSpaceToCombinedOpStatsWithCache(
+    const SessionSnapshot& session_snapshot, OpStats* combined_op_stats) {
   OpStatsOptions options;
-  options.generate_kernel_stats_db = true;
   options.generate_op_metrics_db = true;
   options.generate_step_db = true;
+  options.generate_kernel_stats_db = true;
+  TF_ASSIGN_OR_RETURN(auto has_cache,
+                      session_snapshot.HasCacheFile(StoredDataType::OP_STATS));
+  if (has_cache.first) {
+    TF_RETURN_IF_ERROR(ReadBinaryProto(session_snapshot,
+                                       StoredDataType::OP_STATS,
+                                       kAllHostsIdentifier, combined_op_stats));
+
+  } else {
+    TF_RETURN_IF_ERROR(ConvertMultiXSpacesToCombinedOpStats(
+        session_snapshot, options, combined_op_stats));
+    if (!WriteBinaryProto(session_snapshot, StoredDataType::OP_STATS,
+                          kAllHostsIdentifier, *combined_op_stats)
+             .ok()) {
+      LOG(WARNING) << "Failed to write op stats cache file.";
+    };
+  }
+  return absl::OkStatus();
+}
+
+absl::StatusOr<std::string> ConvertMultiXSpacesToOverviewPage(
+    const SessionSnapshot& session_snapshot) {
   OpStats combined_op_stats;
-  TF_RETURN_IF_ERROR(ConvertMultiXSpacesToCombinedOpStats(
-      session_snapshot, options, &combined_op_stats));
+  TF_RETURN_IF_ERROR(ConvertMultiXSpaceToCombinedOpStatsWithCache(
+      session_snapshot, &combined_op_stats));
   OverviewPage overview_page = ConvertOpStatsToOverviewPage(combined_op_stats);
   InferenceStats inference_stats;
   TF_RETURN_IF_ERROR(ConvertMultiXSpaceToInferenceStats(session_snapshot, "",
@@ -175,34 +196,26 @@ absl::StatusOr<std::string> ConvertMultiXSpacesToOverviewPage(
 
 absl::StatusOr<std::string> ConvertMultiXSpacesToInputPipeline(
     const SessionSnapshot& session_snapshot) {
-  OpStatsOptions options;
-  options.generate_op_metrics_db = true;
-  options.generate_step_db = true;
   OpStats combined_op_stats;
-  TF_RETURN_IF_ERROR(ConvertMultiXSpacesToCombinedOpStats(
-      session_snapshot, options, &combined_op_stats));
+  TF_RETURN_IF_ERROR(ConvertMultiXSpaceToCombinedOpStatsWithCache(
+      session_snapshot, &combined_op_stats));
   return ConvertOpStatsToInputPipelineAnalysis(combined_op_stats)
       .SerializeAsString();
 }
 
 absl::StatusOr<std::string> ConvertMultiXSpacesToTfStats(
     const SessionSnapshot& session_snapshot) {
-  OpStatsOptions options;
-  options.generate_op_metrics_db = true;
-  options.generate_kernel_stats_db = true;
   OpStats combined_op_stats;
-  TF_RETURN_IF_ERROR(ConvertMultiXSpacesToCombinedOpStats(
-      session_snapshot, options, &combined_op_stats));
+  TF_RETURN_IF_ERROR(ConvertMultiXSpaceToCombinedOpStatsWithCache(
+      session_snapshot, &combined_op_stats));
   return ConvertOpStatsToTfStats(combined_op_stats).SerializeAsString();
 }
 
 absl::StatusOr<std::string> ConvertMultiXSpacesToKernelStats(
     const SessionSnapshot& session_snapshot) {
-  OpStatsOptions options;
-  options.generate_kernel_stats_db = true;
   OpStats combined_op_stats;
-  TF_RETURN_IF_ERROR(ConvertMultiXSpacesToCombinedOpStats(
-      session_snapshot, options, &combined_op_stats));
+  TF_RETURN_IF_ERROR(ConvertMultiXSpaceToCombinedOpStatsWithCache(
+      session_snapshot, &combined_op_stats));
   return combined_op_stats.kernel_stats_db().SerializeAsString();
 }
 
@@ -225,12 +238,9 @@ absl::StatusOr<std::string> ConvertXSpaceToMemoryProfile(
 
 absl::StatusOr<std::string> ConvertMultiXSpacesToPodViewer(
     const SessionSnapshot& session_snapshot) {
-  OpStatsOptions options;
-  options.generate_op_metrics_db = true;
-  options.generate_step_db = true;
   OpStats combined_op_stats;
-  TF_RETURN_IF_ERROR(ConvertMultiXSpacesToCombinedOpStats(
-      session_snapshot, options, &combined_op_stats));
+  TF_RETURN_IF_ERROR(ConvertMultiXSpaceToCombinedOpStatsWithCache(
+      session_snapshot, &combined_op_stats));
 
   std::string json_output;
   tsl::protobuf::util::JsonPrintOptions opts;
@@ -275,11 +285,9 @@ absl::StatusOr<std::string> ConvertMultiXSpacesToTfDataBottleneckAnalysis(
 
 absl::StatusOr<std::string> ConvertMultiXSpacesToHloStats(
     const SessionSnapshot& session_snapshot) {
-  OpStatsOptions options;
-  options.generate_op_metrics_db = true;
   OpStats combined_op_stats;
-  TF_RETURN_IF_ERROR(ConvertMultiXSpacesToCombinedOpStats(
-      session_snapshot, options, &combined_op_stats));
+  TF_RETURN_IF_ERROR(ConvertMultiXSpaceToCombinedOpStatsWithCache(
+      session_snapshot, &combined_op_stats));
   hlo_stats::HloStatsDatabase hlo_stats_db =
       ConvertOpStatsToHloStats(combined_op_stats);
   return HloStatsToDataTableJson(hlo_stats_db);
@@ -287,11 +295,9 @@ absl::StatusOr<std::string> ConvertMultiXSpacesToHloStats(
 
 absl::StatusOr<std::string> ConvertMultiXSpacesToRooflineModel(
     const SessionSnapshot& session_snapshot) {
-  OpStatsOptions op_stats_options;
-  op_stats_options.generate_op_metrics_db = true;
   OpStats combined_op_stats;
-  TF_RETURN_IF_ERROR(ConvertMultiXSpacesToCombinedOpStats(
-      session_snapshot, op_stats_options, &combined_op_stats));
+  TF_RETURN_IF_ERROR(ConvertMultiXSpaceToCombinedOpStatsWithCache(
+      session_snapshot, &combined_op_stats));
   RooflineModelDatabase result =
       ConvertOpStatsToRooflineModel(combined_op_stats, true);
   RooflineModelDatabase result_without_infeed_outfeed =
@@ -303,11 +309,9 @@ absl::StatusOr<std::string> ConvertMultiXSpacesToRooflineModel(
 
 absl::StatusOr<std::string> ConvertMultiXSpacesToOpProfileViewer(
     const SessionSnapshot& session_snapshot) {
-  OpStatsOptions options;
-  options.generate_op_metrics_db = true;
   OpStats combined_op_stats;
-  TF_RETURN_IF_ERROR(ConvertMultiXSpacesToCombinedOpStats(
-      session_snapshot, options, &combined_op_stats));
+  TF_RETURN_IF_ERROR(ConvertMultiXSpaceToCombinedOpStatsWithCache(
+      session_snapshot, &combined_op_stats));
 
   tensorflow::profiler::op_profile::Profile profile;
   ConvertOpStatsToOpProfile(
