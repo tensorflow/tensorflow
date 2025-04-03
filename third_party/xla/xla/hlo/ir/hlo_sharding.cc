@@ -186,7 +186,7 @@ HloSharding HloSharding::PartialTile(
     }
     return group_id;
   };
-  tile_assignment_last_dim_replicate.Each(
+  tile_assignment_last_dim_replicate.TemplatedEach(
       [&](absl::Span<const int64_t> indices, const int64_t device) {
         const int64_t group_id = get_group_id(indices);
         sorted_groups[group_id * group_size + current_group_idx[group_id]++] =
@@ -199,7 +199,8 @@ HloSharding HloSharding::PartialTile(
   absl::c_fill(current_group_idx, 0);
   auto sorted_tile = std::make_shared<Array<int64_t>>(
       tile_assignment_last_dim_replicate.dimensions());
-  sorted_tile->Each([&](absl::Span<const int64_t> indices, int64_t* device) {
+  sorted_tile->TemplatedEach([&](absl::Span<const int64_t> indices,
+                                 int64_t* device) {
     const int64_t group_id = get_group_id(indices);
     *device =
         sorted_groups[group_id * group_size + current_group_idx[group_id]++];

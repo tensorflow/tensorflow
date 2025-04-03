@@ -324,6 +324,23 @@ class Array {
     }
   }
 
+  // Templated variants of Each() that avoid virtual function call
+  // overhead per element. Useful for hot code paths.
+  template <class Fn>  // void(absl::Span<const int64_t>, T*)
+  void TemplatedEach(const Fn& f) {
+    OwnedBuffer<int64_t> index(sizes_.size, default_init_t{});
+    for (int64_t i = 0; i < num_elements(); ++i, next_index(&index)) {
+      f(index.span(), &values_[i]);
+    }
+  }
+  template <class Fn>  // void(absl::Span<const int64_t>, T)
+  void TemplatedEach(const Fn& f) const {
+    OwnedBuffer<int64_t> index(sizes_.size, default_init_t{});
+    for (int64_t i = 0; i < num_elements(); ++i, next_index(&index)) {
+      f(index.span(), values_[i]);
+    }
+  }
+
   // Invokes a callback with the (indices, value_ptr) for each cell in the
   // array. If a callback returns a non-OK status, returns that else returns
   // absl::OkStatus().
@@ -541,7 +558,7 @@ class Array {
     }
     Array<T> permuted(permuted_dims.span());
     OwnedBuffer<int64_t> src_indices(sizes_.size, -1);
-    permuted.Each([&](absl::Span<const int64_t> indices, T* value) {
+    permuted.TemplatedEach([&](absl::Span<const int64_t> indices, T* value) {
       for (int64_t i = 0; i < sizes_.size; ++i) {
         src_indices[permutation[i]] = indices[i];
       }
