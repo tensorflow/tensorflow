@@ -1,0 +1,15 @@
+This can be removed as soon as we updated ptxas to 12.8 (b/385480934).
+
+--- a/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/DotOpToLLVM/WGMMA.cpp	2025-03-26 00:22:57.000000000 -0700
++++ b/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/DotOpToLLVM/WGMMA.cpp	2025-04-02 02:43:36.000000000 -0700
+@@ -180,6 +180,10 @@
+   // warpgroup.
+   Value warp =
+       b.and_(rewriter.create<nvgpu::WarpIdOp>(loc), b.i32_val(0xFFFFFFFC));
++  // Workaround for a bug in ptxas 12.3 that cause a failure in
++  // test_core.py::test_dot. The shuffle will force the compiler to treat the
++  // value as uniform and prevent wrong optimizations.
++  warp = mlir::LLVM::NVIDIA::shuffleIdx(loc, rewriter, warp, 0);
+   Value warpM = b.urem(warp, b.i32_val(wpt[0]));
+   Value warpId = b.urem(warpM, b.i32_val(shapePerCTA[0] / instrShape[0]));
+ 

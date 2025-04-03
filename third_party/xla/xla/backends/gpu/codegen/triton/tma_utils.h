@@ -37,7 +37,7 @@ absl::StatusOr<stream_executor::gpu::TmaDescriptor> Create2DTmaDescriptor(
     mlir::Type element_type);
 
 // Emit a TmaDescriptor for the given argument & tensor type. It can then be
-// used to load a tensor using the ExperimentalDescriptorLoadOp.
+// used to load a tensor using the DescriptorLoadOp.
 mlir::Value EmitTmaDescriptor(EmitterLocOpBuilder& b, mlir::Value arg,
                               mlir::RankedTensorType tensor_type);
 

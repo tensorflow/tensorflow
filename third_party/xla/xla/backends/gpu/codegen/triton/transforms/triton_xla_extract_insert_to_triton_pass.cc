@@ -466,7 +466,7 @@ struct RewriteExtract : mlir::OpRewritePattern<ExtractOp> {
 
       auto descriptor_load =
           builder
-              .create<ExperimentalDescriptorLoadOp>(
+              .create<DescriptorLoadOp>(
                   op.getResult().getType(), cast_to_tensor_desc_ptr_type,
                   IndexCastUI(builder, builder.getI32Type(), op.getOffsets()))
               .getResult();
@@ -523,7 +523,7 @@ struct RewriteInsert : mlir::OpRewritePattern<InsertOp> {
                   op.getDst())
               .getResult(0);
 
-      builder.create<ExperimentalDescriptorStoreOp>(
+      builder.create<DescriptorStoreOp>(
           cast_to_tensor_desc_ptr_type, op.getSrc(),
           IndexCastUI(builder, builder.getI32Type(), op.getOffsets()));
     } else {

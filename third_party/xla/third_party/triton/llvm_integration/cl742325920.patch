@@ -42,7 +42,7 @@
 
 --- a/third_party/amd/test/lib/Analysis/TestAMDRangeAnalysis.cpp	2025-03-25 07:48:50.000000000 -0700
 +++ b/third_party/amd/test/lib/Analysis/TestAMDRangeAnalysis.cpp	2025-03-31 11:20:16.000000000 -0700
-@@ -34,6 +34,13 @@
+@@ -34,7 +34,14 @@
        return signalPassFailure();
  
      auto nonNegativePred = [&solver](Value v) -> bool {
@@ -55,4 +55,5 @@
 +      }
        return succeeded(dataflow::staticallyNonNegative(*solver, v));
      };
+ 
      mod->walk<WalkOrder::PreOrder>([&solver, nonNegativePred](Operation *op) {
