@@ -14,8 +14,10 @@ load(
     "HERMETIC_CUDA_VERSION",
     "TF_CUDA_VERSION",
     "TF_NEED_CUDA",
+    "USE_CUDA_REDISTRIBUTIONS",
     "enable_cuda",
     "get_cuda_version",
+    "use_cuda_redistributions",
 )
 load(
     "//third_party/remote_config:common.bzl",
@@ -157,7 +159,14 @@ def _nccl_autoconf_impl(repository_ctx):
         get_cpu_value(repository_ctx) != "Linux"):
         # Add a dummy build file to make bazel query happy.
         repository_ctx.file("BUILD", _NCCL_DUMMY_BUILD_CONTENT)
-        repository_ctx.file("nccl_config.h", "#define TF_NCCL_VERSION \"\"")
+        if use_cuda_redistributions(repository_ctx):
+            nccl_version = repository_ctx.read(repository_ctx.attr.nccl_version)
+            repository_ctx.file(
+                "nccl_config.h",
+                "#define TF_NCCL_VERSION \"%s\"" % nccl_version,
+            )
+        else:
+            repository_ctx.file("nccl_config.h", "#define TF_NCCL_VERSION \"\"")
     else:
         _create_local_nccl_repository(repository_ctx)
 
@@ -167,6 +176,8 @@ _ENVIRONS = [
     _TF_NCCL_USE_STUB,
     HERMETIC_CUDA_VERSION,
     "LOCAL_NCCL_PATH",
+    USE_CUDA_REDISTRIBUTIONS,
+    "TF_NEED_ROCM",
 ]
 
 nccl_configure = repository_rule(

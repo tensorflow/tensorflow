@@ -2,7 +2,10 @@
 
 `cuda_configure` depends on the following environment variables:
 
-  * `TF_NEED_CUDA`: Whether to enable building with CUDA.
+  * `TF_NEED_CUDA`: Whether to enable building with CUDA toolchain.
+  * `USE_CUDA_REDISTRIBUTIONS`: Whether to use CUDA redistributions, but not
+    the CUDA toolchain. This can be used to preserve the cache between GPU and
+    CPU builds.
   * `TF_NVCC_CLANG` (deprecated): Whether to use clang for C++ and NVCC for Cuda
     compilation.
   * `CUDA_NVCC`: Whether to use NVCC for Cuda compilation.
@@ -119,6 +122,11 @@ def _get_clang_major_version(repository_ctx, cc):
 def enable_cuda(repository_ctx):
     """Returns whether to build with CUDA support."""
     return int(get_host_environ(repository_ctx, TF_NEED_CUDA, False))
+
+def use_cuda_redistributions(repository_ctx):
+    """Returns whether to use CUDA redistributions."""
+    return (int(get_host_environ(repository_ctx, USE_CUDA_REDISTRIBUTIONS, False)) and
+            not int(get_host_environ(repository_ctx, _TF_NEED_ROCM, False)))
 
 def _flag_enabled(repository_ctx, flag_name):
     return get_host_environ(repository_ctx, flag_name) == "1"
@@ -459,23 +467,43 @@ def _create_dummy_repository(repository_ctx):
 
     # Set up cuda_config.h, which is used by
     # tensorflow/compiler/xla/stream_executor/dso_loader.cc.
-    repository_ctx.template(
-        "cuda/cuda/cuda_config.h",
-        repository_ctx.attr.cuda_config_tpl,
-        {
-            "%{cuda_version}": "",
-            "%{cudart_version}": "",
-            "%{cupti_version}": "",
-            "%{cublas_version}": "",
-            "%{cusolver_version}": "",
-            "%{curand_version}": "",
-            "%{cufft_version}": "",
-            "%{cusparse_version}": "",
-            "%{cudnn_version}": "",
-            "%{cuda_toolkit_path}": "",
-            "%{cuda_compute_capabilities}": "",
-        },
-    )
+    if use_cuda_redistributions(repository_ctx):
+        cuda_config = _get_cuda_config(repository_ctx)
+        repository_ctx.template(
+            "cuda/cuda/cuda_config.h",
+            repository_ctx.attr.cuda_config_tpl,
+            {
+                "%{cuda_version}": cuda_config.cudart_version,
+                "%{cudart_version}": cuda_config.cudart_version,
+                "%{cupti_version}": cuda_config.cupti_version,
+                "%{cublas_version}": cuda_config.cublas_version,
+                "%{cusolver_version}": cuda_config.cusolver_version,
+                "%{curand_version}": cuda_config.curand_version,
+                "%{cufft_version}": cuda_config.cufft_version,
+                "%{cusparse_version}": cuda_config.cusparse_version,
+                "%{cudnn_version}": cuda_config.cudnn_version,
+                "%{cuda_toolkit_path}": "",
+                "%{cuda_compute_capabilities}": "",
+            },
+        )
+    else:
+        repository_ctx.template(
+            "cuda/cuda/cuda_config.h",
+            repository_ctx.attr.cuda_config_tpl,
+            {
+                "%{cuda_version}": "",
+                "%{cudart_version}": "",
+                "%{cupti_version}": "",
+                "%{cublas_version}": "",
+                "%{cusolver_version}": "",
+                "%{curand_version}": "",
+                "%{cufft_version}": "",
+                "%{cusparse_version}": "",
+                "%{cudnn_version}": "",
+                "%{cuda_toolkit_path}": "",
+                "%{cuda_compute_capabilities}": "",
+            },
+        )
 
     # Set up cuda_config.py, which is used by gen_build_info to provide
     # static build environment info to the API
@@ -586,6 +614,8 @@ _TF_CUDA_COMPUTE_CAPABILITIES = "TF_CUDA_COMPUTE_CAPABILITIES"
 HERMETIC_CUDA_VERSION = "HERMETIC_CUDA_VERSION"
 TF_CUDA_VERSION = "TF_CUDA_VERSION"
 TF_NEED_CUDA = "TF_NEED_CUDA"
+_TF_NEED_ROCM = "TF_NEED_ROCM"
+USE_CUDA_REDISTRIBUTIONS = "USE_CUDA_REDISTRIBUTIONS"
 _TF_NVCC_CLANG = "TF_NVCC_CLANG"
 _CUDA_NVCC = "CUDA_NVCC"
 _TF_SYSROOT = "TF_SYSROOT"
@@ -595,6 +625,7 @@ _ENVIRONS = [
     _CC,
     _CLANG_CUDA_COMPILER_PATH,
     TF_NEED_CUDA,
+    _TF_NEED_ROCM,
     _TF_NVCC_CLANG,
     _CUDA_NVCC,
     TF_CUDA_VERSION,
@@ -606,6 +637,7 @@ _ENVIRONS = [
     _TMPDIR,
     "LOCAL_CUDA_PATH",
     "LOCAL_CUDNN_PATH",
+    USE_CUDA_REDISTRIBUTIONS,
 ]
 
 cuda_configure = repository_rule(
