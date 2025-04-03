@@ -201,9 +201,6 @@ void AbstractTfrtCpuBuffer::DropExternalReference() {
   absl::MutexLock lock(&mu_);
   CHECK_GT(external_reference_counter_, 0);
   --external_reference_counter_;
-  if (external_reference_counter_ == 0 && external_references_dropped_event_) {
-    external_references_dropped_event_->SetStateConcrete();
-  }
 }
 
 class TrackedCpuDeviceBufferExternalReference
@@ -263,16 +260,10 @@ void AbstractTfrtCpuBuffer::AbortDonation(
 
 void AbstractTfrtCpuBuffer::Delete() {
   std::unique_ptr<TrackedCpuDeviceBuffer> device_buffer;
-  std::optional<tsl::AsyncValueRef<CpuEvent>> external_references_dropped_event;
   {
     absl::MutexLock lock(&mu_);
     device_buffer = ReleaseBufferLocked();
     if (device_buffer == nullptr) return;
-
-    if (external_reference_counter_ > 0) {
-      external_references_dropped_event = external_references_dropped_event_ =
-          tsl::MakeConstructedAsyncValueRef<CpuEvent>();
-    }
   }
 
   // Now that all holds have completed and no more can be added, we can get
@@ -288,9 +279,6 @@ void AbstractTfrtCpuBuffer::Delete() {
 
   // We should also wait for the definition event.
   event_avs.push_back(device_buffer->definition_event().GetAsyncValue());
-  if (external_references_dropped_event) {
-    event_avs.push_back(external_references_dropped_event->GetAsyncValue());
-  }
 
   RunWhenReady(event_avs, [device_buffer = std::move(device_buffer)]() mutable {
     device_buffer.reset();
@@ -517,7 +505,7 @@ AbstractTfrtCpuBuffer::CopyToDeviceHelper(AsyncWorkRunner* async_work_runner) {
   }
   MarkEventReadyOnExit ready_on_exit(std::move(usage_event));
 
-  auto dst_buffer = tsl::MakeUnconstructedAsyncValueRef<CpuDeviceMemory>();
+  auto dst_buffer = tsl::MakeUnconstructedAsyncValueRef<CpuDeviceMemoryOwned>();
   auto dst_definition_event = tsl::MakeConstructedAsyncValueRef<CpuEvent>();
 
   // Wait for src buffer definition events to finish before d2d dispatch.
@@ -538,12 +526,12 @@ AbstractTfrtCpuBuffer::CopyToDeviceHelper(AsyncWorkRunner* async_work_runner) {
     }
 
     CHECK(src_buffer.IsConcrete());
-    auto dst_memory = CpuDeviceMemory::Allocate(src_buffer->size_bytes());
-    if (!dst_memory.ok()) {
-      dst_definition_event.SetError(dst_memory.status());
+    auto status = CpuDeviceMemoryOwned::AllocateInto(src_buffer->size_bytes(),
+                                                     dst_buffer_copy);
+    if (!status.ok()) {
+      dst_definition_event.SetError(status);
       return;
     }
-    dst_buffer_copy.emplace(std::move(*dst_memory));
     std::memcpy(dst_buffer_copy->untyped_data(), src_buffer->untyped_data(),
                 src_buffer->size_bytes());
     dst_definition_event.SetStateConcrete();
@@ -716,7 +704,6 @@ AbstractTfrtCpuBuffer::BufferFromHostBufferHelper(
 
   absl::InlinedVector<tsl::AsyncValueRef<CpuDeviceMemory>, 4> buffers;
   absl::InlinedVector<tsl::AsyncValueRef<CpuEvent>, 4> definition_events;
-  absl::AnyInvocable<void() &&> on_delete_callback;
   size_t byte_size = ShapeUtil::ByteSizeOf(shape);
   bool owns_buffers = true;
 
@@ -724,20 +711,15 @@ AbstractTfrtCpuBuffer::BufferFromHostBufferHelper(
     // For a mutable zero copy semantics we pass a no-op deleter because
     // underlying buffer is owned by the caller and it will free it when
     // PjRt will call `on_done_with_host_buffer` callback.
-    CpuDeviceMemory::OwnedData::deleter_type no_op = +[](void*) {};
-    buffers.push_back(tsl::MakeAvailableAsyncValueRef<CpuDeviceMemory>(
-        CpuDeviceMemory::OwnedData(
-            reinterpret_cast<uint8_t*>(const_cast<void*>(data)), no_op),
-        byte_size));
-    on_delete_callback = std::move(on_done_with_host_buffer);
-
+    buffers.push_back(CpuDeviceMemory::CreateForeignMemory(
+        const_cast<void*>(data), byte_size,  // CONST_CAST_OK=flag controlled.
+        std::move(on_done_with_host_buffer)));
   } else if (can_use_zero_copy && immutable_zero_copy_semantics) {
     // For immutable zero-copy semantics we pass non-owning cpu memory.
     owns_buffers = false;
-    buffers.push_back(tsl::MakeAvailableAsyncValueRef<CpuDeviceMemory>(
-        const_cast<void*>(data), byte_size));
-    on_delete_callback = std::move(on_done_with_host_buffer);
-
+    buffers.push_back(CpuDeviceMemory::CreateForeignMemory(
+        const_cast<void*>(data), byte_size,  // CONST_CAST_OK=flag controlled.
+        std::move(on_done_with_host_buffer)));
   } else {
     size_t dst_byte_size =
         is_packed ? CeilOfRatio<size_t>(byte_size, 8 / bit_width) : byte_size;
@@ -816,8 +798,7 @@ AbstractTfrtCpuBuffer::BufferFromHostBufferHelper(
     }
   }
   return std::make_unique<TrackedCpuDeviceBuffer>(
-      owns_buffers, std::move(buffers[0]), std::move(definition_events),
-      std::move(on_delete_callback));
+      owns_buffers, std::move(buffers[0]), std::move(definition_events));
 }
 
 AbstractAsyncHostToHostMemoryTransferManager::

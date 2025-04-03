@@ -19,6 +19,7 @@ limitations under the License.
 #include <string>
 
 #include <gtest/gtest.h>
+#include "absl/log/check.h"
 #include "xla/pjrt/cpu/cpu_event.h"
 #include "xla/tsl/concurrency/async_value.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
@@ -51,8 +52,7 @@ TEST(TrackedCpuDeviceBufferTest, Basic) {
   });
 
   TrackedCpuDeviceBuffer tracked_buffer(
-      /*owns_buffers=*/true, buffer, definition_event,
-      /*on_delete_callback_=*/nullptr);
+      /*owns_buffers=*/true, buffer, definition_event);
 
   BlockUntilReady(tracked_buffer.definition_event().GetAsyncValue());
 
@@ -77,8 +77,7 @@ TEST(TrackedCpuDeviceBufferTest, BasicError) {
   });
 
   TrackedCpuDeviceBuffer tracked_buffer(
-      /*owns_buffers=*/true, buffer, definition_event,
-      /*on_delete_callback_=*/nullptr);
+      /*owns_buffers=*/true, buffer, definition_event);
 
   BlockUntilReady(tracked_buffer.definition_event().GetAsyncValue());
 
@@ -90,20 +89,19 @@ TEST(TrackedCpuDeviceBufferTest, BasicError) {
 TEST(TrackedCpuDeviceBufferTest, DelayedAllocation) {
   std::string expected = "tracked_cpu_device_buffer_test";
 
-  auto buffer = MakeUnconstructedAsyncValueRef<CpuDeviceMemory>();
+  auto buffer = MakeUnconstructedAsyncValueRef<CpuDeviceMemoryOwned>();
   auto malloc_event = MakeConstructedAsyncValueRef<CpuEvent>();
-  malloc_event.AndThen(
-      [buffer_copy = buffer.CopyRef(), buffer_size = expected.size()] {
-        buffer_copy.emplace(CpuDeviceMemory::Allocate(buffer_size).value());
-      });
+  malloc_event.AndThen([buffer_copy = buffer.CopyRef(),
+                        buffer_size = expected.size()]() mutable {
+    CHECK_OK(CpuDeviceMemoryOwned::AllocateInto(buffer_size, buffer_copy));
+  });
 
   auto definition_event = MakeConstructedAsyncValueRef<CpuEvent>();
   TrackedCpuDeviceBuffer tracked_buffer(/*owns_buffers=*/true, buffer,
-                                        expected.size(), definition_event,
-                                        /*on_delete_callback_=*/nullptr);
+                                        expected.size(), definition_event);
   auto result = tracked_buffer.buffer();
   ASSERT_FALSE(result.IsAvailable());
-  ASSERT_EQ(tracked_buffer.BufferSizes()[0], expected.size());
+  ASSERT_EQ(tracked_buffer.BufferSize(), expected.size());
 
   ThreadPool thread_pool(tsl::Env::Default(), "tracked_buffer_test",
                          /*num_threads=*/4);
