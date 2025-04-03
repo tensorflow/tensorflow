@@ -24,9 +24,11 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/test_helpers.h"
 #include "xla/service/pattern_matcher.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -249,6 +251,13 @@ ENTRY entry {
   bool found_i0 = false;
   // Verify that i0 is before c1.
   for (const auto &instruction : module->entry_computation()->instructions()) {
+    if (instruction->name() == "c1") EXPECT_TRUE(found_i0);
+    if (instruction->name() == "i0") found_i0 = true;
+  }
+  // Calling MakeInstructionPostOrder() again to verify idempotence.
+  auto post_order = module->entry_computation()->MakeInstructionPostOrder();
+  found_i0 = false;
+  for (HloInstruction *instruction : post_order) {
     if (instruction->name() == "c1") EXPECT_TRUE(found_i0);
     if (instruction->name() == "i0") found_i0 = true;
   }
