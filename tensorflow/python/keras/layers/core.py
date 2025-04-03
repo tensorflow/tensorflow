@@ -922,7 +922,7 @@ class Lambda(Layer):
           but are not tracked by said layer:
           {variable_str}
           The layer cannot safely ensure proper Variable reuse across multiple
-          calls, and consquently this behavior is disallowed for safety. Lambda
+          calls, and consequently this behavior is disallowed for safety. Lambda
           layers are not well suited to stateful computation; instead, writing a
           subclassed Layer is the recommend way to define layers with
           Variables.'''
@@ -1399,7 +1399,7 @@ class TFOpLambda(Layer):
           but are not tracked by said layer:
           {variable_str}
           The layer cannot safely ensure proper Variable reuse across multiple
-          calls, and consquently this behavior is disallowed for safety. Lambda
+          calls, and consequently this behavior is disallowed for safety. Lambda
           layers are not well suited to stateful computation; instead, writing a
           subclassed Layer is the recommend way to define layers with
           Variables.'''
