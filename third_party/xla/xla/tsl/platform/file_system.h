@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <stdint.h>
 
+#include <cstddef>
 #include <functional>
 #include <memory>
 #include <string>
@@ -26,6 +27,8 @@ limitations under the License.
 #include <vector>
 
 #include "absl/base/attributes.h"
+#include "absl/base/macros.h"
+#include "absl/status/status.h"
 #include "absl/types/span.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/file_statistics.h"
@@ -783,13 +786,29 @@ class RandomAccessFile {
   /// because of EOF.
   ///
   /// Safe for concurrent use by multiple threads.
-  ABSL_DEPRECATED("Use the version that takes absl::Span<char> instead.")
+  ABSL_DEPRECATE_AND_INLINE()
   virtual absl::Status Read(uint64 offset, size_t n, absl::string_view* result,
-                            char* scratch) const = 0;
+                            char* scratch) const {
+    // Subclasses should implement the safe version of Read() below instead of
+    // this. This implementation is provided to enable the migration: without
+    // this, when a subclass switches from implementing this (deprecated) Read()
+    // to the safe version, the compiler will complain that the subclass
+    // doesn't implement the old one.
+    return Read(offset, *result, absl::MakeSpan(scratch, n));
+  }
 
-  virtual absl::Status Read(uint64 offset, size_t n, absl::string_view& result,
+  // Like the above, but takes an absl::Span<char> instead of a size_t and a
+  // char*.
+  // TODO(b/393630847):
+  // - Make subclasses implement this method instead of the above,
+  // - Remove the above.
+  // - Mark this method as `= 0` to force subclasses to implement it.
+  virtual absl::Status Read(uint64 offset, absl::string_view& result,
                             absl::Span<char> scratch) const {
-    return Read(offset, n, &result, scratch.data());
+    // This implementation is provided only for backward compatibility.
+    // If a subclass implements the deprecated Read() above instead of this, it
+    // will still work.
+    return Read(offset, scratch.size(), &result, scratch.data());
   }
 
 #if defined(TF_CORD_SUPPORT)
