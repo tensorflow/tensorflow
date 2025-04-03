@@ -16,6 +16,19 @@ limitations under the License.
 #ifndef XLA_TESTS_CLIENT_LIBRARY_TEST_BASE_H_
 #define XLA_TESTS_CLIENT_LIBRARY_TEST_BASE_H_
 
+// Inclusion of this header indicates that the test has NOT been migrated to use
+// HloRunnerPjRt. Migration requires tagging the build target so that the
+// correct dependencies are included. The whole target must be migrated at once.
+// This macro helps to ensure that migration test base classes are not used in
+// conjunction with ClientLibraryTestBase.
+// TODO: b/408276009 - Remove these macros once all tests have been migrated.
+#define XLA_TEST_NOT_MIGRATED_TO_HLO_RUNNER_PJRT
+#ifdef XLA_TEST_MIGRATED_TO_HLO_RUNNER_PJRT
+static_assert(false,
+              "ClientLibraryTestBase cannot be used in the same target as a "
+              "test that has been explicitly migrated to use HloRunnerPjRt.");
+#endif  // XLA_TEST_MIGRATED_TO_HLO_RUNNER_PJRT
+
 #include <memory>
 #include <string>
 #include <type_traits>
