@@ -588,8 +588,6 @@ bool IsTritonUnsupportedOpcode(HloOpcode opcode) {
   switch (opcode) {
     case HloOpcode::kCholesky:
     case HloOpcode::kConvolution:
-    case HloOpcode::kCopyDone:
-    case HloOpcode::kCopyStart:
     case HloOpcode::kDynamicReshape:
     case HloOpcode::kDynamicSlice:
     case HloOpcode::kDynamicUpdateSlice:

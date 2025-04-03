@@ -2518,13 +2518,45 @@ INSTANTIATE_TEST_SUITE_P(CustomCallSuite, CustomCallTest,
                          ::testing::ValuesIn(AllDevicesToTest()),
                          TritonSupportTestDeviceToString);
 
+using CopyStartDoneTest = TritonSupportTestWithTypeAndDeviceParam;
+
+TEST_P(CopyStartDoneTest, CopyStartDone) {
+  auto [data_type, cc] = GetParam();
+  const std::string kHloTestTemplate = R"(
+    ENTRY triton_computation {
+      parameter = $0[10,10,10] parameter(0)
+      cp_start = ($0[10,10,10], $0[10,10,10], u32[]) copy-start(parameter)
+      ROOT cp_done = $0[10,10,10] copy-done(cp_start)
+    })";
+
+  // Test CopyStart
+  TF_ASSERT_OK_AND_ASSIGN(
+      TestedInstruction ti_start,
+      ParseTemplateAndGetInstruction(kHloTestTemplate, data_type,
+                                     HloOpcode::kCopyStart));
+  RunSupportTestMultipleOutputTiles(
+      std::move(ti_start), /*output_tile_sizes=*/{{{1, 1, 1}, {1, 1, 1}, {}}},
+      cc);
+
+  // Test CopyDone
+  TF_ASSERT_OK_AND_ASSIGN(
+      TestedInstruction ti_done,
+      ParseTemplateAndGetInstruction(kHloTestTemplate, data_type,
+                                     HloOpcode::kCopyDone));
+  RunSupportTest(std::move(ti_done), /*output_tile_sizes=*/{1, 1, 1}, cc);
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    CopyStartDoneSuite, CopyStartDoneTest,
+    ::testing::Combine(::testing::ValuesIn(AllXlaDataTypes()),
+                       ::testing::ValuesIn(AllDevicesToTest())),
+    TritonSupportTestTypeAndDeviceToString);
+
 constexpr std::array kUnsupportedOps = {
     // clang-format off
     // go/keep-sorted start
     HloOpcode::kCholesky,
     HloOpcode::kConvolution,
-    HloOpcode::kCopyDone,
-    HloOpcode::kCopyStart,
     HloOpcode::kDynamicReshape,
     HloOpcode::kDynamicSlice,
     HloOpcode::kDynamicUpdateSlice,
@@ -2583,6 +2615,8 @@ absl::flat_hash_set<HloOpcode> AllTestedOpcodes() {
   ret.emplace(HloOpcode::kCall);
   ret.emplace(HloOpcode::kComplex);
   ret.emplace(HloOpcode::kConditional);
+  ret.emplace(HloOpcode::kCopyStart);
+  ret.emplace(HloOpcode::kCopyDone);
   ret.emplace(HloOpcode::kCustomCall);
   ret.emplace(HloOpcode::kDomain);
   ret.emplace(HloOpcode::kDot);
