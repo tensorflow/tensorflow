@@ -123,7 +123,6 @@ cc_library(
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/utility",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
@@ -172,18 +171,16 @@ config_setting(
     visibility = ["//visibility:private"],
 )
 
-filegroup(
-    name = "converter_python_api_hdrs",
-    srcs = [
-        "converter_python_api.h",
-    ],
-    visibility = ["//visibility:private"],
-)
-
 cc_library(
     name = "converter_python_api",
-    srcs = ["converter_python_api.cc"],
-    hdrs = ["converter_python_api.h"],
+    srcs = [
+        "converter_python_api.cc",
+        "model_utils_core.cc",
+    ],
+    hdrs = [
+        "converter_python_api.h",
+        "model_utils_core.h",
+    ],
     features = ["-parse_headers"],
     visibility = [
         "//tensorflow/python:__subpackages__",
@@ -195,22 +192,28 @@ cc_library(
         ":saved_model_to_tfl_flatbuffer",
         "//tensorflow/c:kernels",
         "//tensorflow/c:tf_status_headers",
+        "//tensorflow/compiler/mlir:init_mlir",
         "//tensorflow/compiler/mlir/lite:converter_flags_proto_cc",
+        "//tensorflow/compiler/mlir/lite:flatbuffer_export",
+        "//tensorflow/compiler/mlir/lite:flatbuffer_import",
         "//tensorflow/compiler/mlir/lite:model_flags_proto_cc",
+        "//tensorflow/compiler/mlir/lite:tensorflow_lite",
         "//tensorflow/compiler/mlir/lite:types_proto_cc",
         "//tensorflow/compiler/mlir/lite/core:absl_error_model_builder",
         "//tensorflow/compiler/mlir/lite/debug:debug_options_proto_cc",
         "//tensorflow/compiler/mlir/lite/metrics:error_collector",
         "//tensorflow/compiler/mlir/lite/python/interpreter_wrapper:python_error_reporter",
         "//tensorflow/compiler/mlir/lite/python/interpreter_wrapper:python_utils",
+        "//tensorflow/compiler/mlir/lite/quantization/ir:QuantOps",
         "//tensorflow/compiler/mlir/lite/quantization/lite:quantize_model",
         "//tensorflow/compiler/mlir/lite/schema:schema_fbs",
         "//tensorflow/compiler/mlir/lite/sparsity:sparsify_model",
+        "//tensorflow/compiler/mlir/lite/stablehlo:prepare_hlo",
         "//tensorflow/compiler/mlir/quantization/tensorflow/python:py_function_lib",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
-        "//third_party/python_runtime:headers",  # build_cleaner: keep; DNR: b/35864863
+        "//third_party/python_runtime:headers",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
@@ -218,7 +221,26 @@ cc_library(
         "@com_google_protobuf//:protobuf",
         "@com_google_protobuf//:protobuf_headers",
         "@flatbuffers//:runtime_cc",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:AllPassesAndDialects",
+        "@llvm-project//mlir:ArithDialect",
+        "@llvm-project//mlir:CAPIIRHeaders",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:FuncExtensions",
+        "@llvm-project//mlir:FuncTransforms",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:MLIRBindingsPythonHeaders",
+        "@llvm-project//mlir:MLIRBindingsPythonHeadersAndDeps",
+        "@llvm-project//mlir:MlirOptLib",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:QuantOps",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:Transforms",
         "@local_xla//xla/tsl/platform:status",
+        "@pybind11",
+        "@stablehlo//:register",
+        "@stablehlo//:stablehlo_ops",
+        "@stablehlo//:vhlo_ops",
     ] + select({
         # This is required when running `tflite_convert` from `bazel`.
         # It requires to link with TensorFlow Ops to get the op definitions.
@@ -235,7 +257,10 @@ tf_python_pybind_extension(
     srcs = [
         "converter_python_api_wrapper.cc",
     ],
-    hdrs = [":converter_python_api_hdrs"],
+    hdrs = [
+        "converter_python_api.h",
+        "model_utils_core.h",
+    ],
     enable_stub_generation = True,
     pytype_srcs = [
         "_pywrap_converter_api.pyi",
@@ -245,8 +270,14 @@ tf_python_pybind_extension(
     ],
     deps = [
         "//tensorflow/compiler/mlir/quantization/tensorflow/python:py_function_lib",
+        "//tensorflow/core:framework",
         "//tensorflow/python/lib/core:pybind11_lib",
         "//third_party/python_runtime:headers",
+        "@com_google_absl//absl/status",
+        "@llvm-project//mlir:CAPIIRHeaders",
+        "@llvm-project//mlir:MLIRBindingsPythonHeaders",
         "@pybind11",
-    ] + if_pywrap([":converter_python_api"]),
+    ] + if_pywrap([
+        ":converter_python_api",
+    ]),
 )
