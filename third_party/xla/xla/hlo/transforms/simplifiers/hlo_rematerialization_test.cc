@@ -39,6 +39,7 @@ limitations under the License.
 #include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/hlo/transforms/simplifiers/hlo_dce.h"
 #include "xla/hlo/transforms/simplifiers/hlo_memory_scheduler.h"
+#include "xla/hlo/transforms/simplifiers/hlo_rematerialization_options.h"
 #include "xla/hlo/transforms/simplifiers/hlo_rematerialization_test_utils.h"
 #include "xla/hlo/utils/hlo_matchers.h"
 #include "xla/layout.h"
@@ -82,11 +83,11 @@ class AsyncRematerializationTest : public RematerializationTestBase {
       });
       TF_EXPECT_OK(scheduler.Run(module).status());
     }
-    HloRematerialization::RematerializationModeConfig config(
+    HloRematerializationOptions::RematerializationModeConfig config(
         /*recompute=*/true, /*compress=*/true, /*host_offload=*/false);
     auto shape_size_func = [](const Shape& shape) { return ByteSizeOf(shape); };
     HloCostAnalysis cost_analysis(shape_size_func);
-    HloRematerialization::Options options(
+    HloRematerializationOptions options(
         cost_analysis, config, memory_limit_bytes,
         /*block_size_limit=*/1, /*block_rematerialization_factor=*/1,
         min_remat_size, /*compact_shape_function=*/nullptr,
@@ -157,8 +158,8 @@ class RecomputeAndCompressHloRematerializationTest
  protected:
   absl::StatusOr<bool> RunHloRematerialization(
       int64_t memory_limit_bytes, HloModule* module, int64_t min_remat_size = 0,
-      HloRematerialization::RematAlgorithm remat_algorithm =
-          HloRematerialization::RematAlgorithm::kAlwaysRemat,
+      HloRematerializationOptions::RematAlgorithm remat_algorithm =
+          HloRematerializationOptions::RematAlgorithm::kAlwaysRemat,
       absl::AnyInvocable<absl::Status(HloInstruction*, HloInstruction*)>
           on_rematerialized = nullptr) {
     TF_EXPECT_OK(verifier().Run(module).status());
@@ -178,11 +179,11 @@ class RecomputeAndCompressHloRematerializationTest
     }
 
     // Run remat.
-    HloRematerialization::RematerializationModeConfig config(
+    HloRematerializationOptions::RematerializationModeConfig config(
         /*recompute=*/true, /*compress=*/true, /*host_offload=*/false);
     auto shape_size_func = [](const Shape& shape) { return ByteSizeOf(shape); };
     HloCostAnalysis cost_analysis(shape_size_func);
-    HloRematerialization::Options options(
+    HloRematerializationOptions options(
         cost_analysis, config, memory_limit_bytes,
         /*block_size_limit=*/1, /*block_rematerialization_factor=*/1,
         min_remat_size, /*compact_shape_function=*/nullptr,
@@ -1148,13 +1149,13 @@ class CompressingRematerializationTest : public RematerializationTestBase {
                                                HloModule* module,
                                                int64_t min_remat_size = 0) {
     TF_EXPECT_OK(verifier().Run(module).status());
-    HloRematerialization::RematerializationModeConfig config(
+    HloRematerializationOptions::RematerializationModeConfig config(
         /*recompute=*/false, /*compress=*/true, /*host_offload=*/false);
     auto shape_size_func = [](const Shape& shape) {
       return ShapeSizePadMinorTo64(shape);
     };
     HloCostAnalysis cost_analysis(shape_size_func);
-    HloRematerialization::Options options(
+    HloRematerializationOptions options(
         cost_analysis, config, memory_limit_bytes,
         /*block_size_limit=*/1, /*block_rematerialization_factor=*/1,
         min_remat_size, ChooseCompactLayoutForShape,
@@ -1360,11 +1361,12 @@ class OffloadingRematerializationTest : public RematerializationTestBase {
     hlo_cost_analysis_options.set_transcendentals_per_second(
         transcendentals_per_second_);
     HloCostAnalysis cost_analysis(hlo_cost_analysis_options);
-    HloRematerialization::RematerializationModeConfig config(
+    HloRematerializationOptions::RematerializationModeConfig config(
         /*recompute=*/false, /*compress=*/false, /*host_offload=*/true);
-    HloRematerialization::HostMemoryOffloadConfig host_memory_offload_config(
-        kHostMemorySpaceColor, copy_to_host_speed_, copy_from_host_speed_);
-    HloRematerialization::Options options(
+    HloRematerializationOptions::HostMemoryOffloadConfig
+        host_memory_offload_config(kHostMemorySpaceColor, copy_to_host_speed_,
+                                   copy_from_host_speed_);
+    HloRematerializationOptions options(
         cost_analysis, config, memory_limit_bytes,
         /*block_size_limit=*/1, /*block_rematerialization_factor=*/1,
         min_remat_size, /*compact_shape_function=*/nullptr,
@@ -1642,9 +1644,9 @@ e {
   HloCostAnalysis cost_analysis(HloCostAnalysis::DefaultShapeSize);
   HloRematerialization::RematerializationSizes sizes;
   HloRematerialization remat(
-      HloRematerialization::Options(
+      HloRematerializationOptions(
           cost_analysis,
-          HloRematerialization::RematerializationModeConfig(
+          HloRematerializationOptions::RematerializationModeConfig(
               /*recompute=*/true,
               /*compress=*/false,
               /*host_offload=*/false),
@@ -1693,10 +1695,11 @@ ENTRY MyModule {
 
   // Rematerialize with a low memory limit.
   TF_ASSERT_OK_AND_ASSIGN(
-      bool changed, RunHloRematerialization(
-                        /*memory_limit_bytes=*/100 * 1024, module.get(),
-                        /*min_remat_size=*/0,
-                        HloRematerialization::RematAlgorithm::kPeakPriority));
+      bool changed,
+      RunHloRematerialization(
+          /*memory_limit_bytes=*/100 * 1024, module.get(),
+          /*min_remat_size=*/0,
+          HloRematerializationOptions::RematAlgorithm::kPeakPriority));
 
   EXPECT_TRUE(changed);
 
@@ -1780,10 +1783,11 @@ ENTRY %entry (param.0: f32[], param.1: f32[]) -> f32[1024] {
 
   // Rematerialize with a low memory limit and min_remat_size.
   TF_ASSERT_OK_AND_ASSIGN(
-      bool changed, RunHloRematerialization(
-                        /*memory_limit_bytes=*/0, module.get(),
-                        /*min_remat_size=*/0,
-                        HloRematerialization::RematAlgorithm::kPeakPriority));
+      bool changed,
+      RunHloRematerialization(
+          /*memory_limit_bytes=*/0, module.get(),
+          /*min_remat_size=*/0,
+          HloRematerializationOptions::RematAlgorithm::kPeakPriority));
 
   EXPECT_TRUE(changed);
 }
@@ -1861,7 +1865,7 @@ ENTRY %entry (param.0: f32[], param.1: f32[]) -> f32[1024] {
           /*memory_limit_bytes=*/14 * 1024, module.get(),
           /*min_remat_size=*/0,
           /*remat_algorithm=*/
-          HloRematerialization::RematAlgorithm::kAlwaysRemat,
+          HloRematerializationOptions::RematAlgorithm::kAlwaysRemat,
           /*on_rematerialized=*/std::move(rematerialization_callback)));
   EXPECT_TRUE(changed);
 
@@ -1965,13 +1969,17 @@ ENTRY %entry (param.0: f32[], param.1: f32[]) -> f32[1024] {
   EXPECT_THAT(RunHloRematerialization(
                   /*memory_limit_bytes=*/0, module.get(),
                   /*min_remat_size=*/0,
-                  HloRematerialization::RematAlgorithm::kPeakPriority),
+                  HloRematerializationOptions::RematAlgorithm::kPeakPriority),
               IsOkAndHolds(true));
 
   const std::vector<HloInstruction*>& call_convoluted_instructions =
       module->schedule()
           .sequence(module->GetComputationWithName("call_convoluted"))
           .instructions();
+
+  for (HloInstruction* instruction : call_convoluted_instructions) {
+    LOG(INFO) << "instruction: " << instruction->name();
+  }
 
   EXPECT_THAT(call_convoluted_instructions,
               AllOf(
