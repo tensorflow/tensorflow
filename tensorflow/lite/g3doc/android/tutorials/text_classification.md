@@ -7,7 +7,7 @@ physical Android device but can also run on a device emulator.
 The
 [example application](https://github.com/tensorflow/examples/tree/master/lite/examples/text_classification/android)
 uses TensorFlow Lite to classify text as either positive or negative, using the
-[Task library for natural language (NL)](../../inference_with_metadata/task_library/overview#supported_tasks)
+[Task library for natural language (NL)](https://ai.google.dev/edge/litert/libraries/task_library/overview)
 to enable execution of the text classification machine learning models.
 
 If you are updating an existing project, you can use the example application as
@@ -31,7 +31,7 @@ text being correctly classified as either positive or negative.
 
 For more information on how the models in this tutorial are generated, refer to
 the
-[Text classification with TensorFlow Lite Model Maker](https://www.tensorflow.org/lite/models/modify/model_maker/text_classification)
+[Text classification with TensorFlow Lite Model Maker](https://ai.google.dev/edge/litert/libraries/modify/text_classification)
 tutorial.
 
 ## Models and dataset
@@ -41,7 +41,7 @@ This tutorial uses models that were trained using the
 Treebank) dataset. SST-2 contains 67,349 movie reviews for training and 872
 movie reviews for testing, with each review categorized as either positive or
 negative. The models used in this app were trained using the TensorFlow Lite
-[Model Maker](https://www.tensorflow.org/lite/models/modify/model_maker/text_classification)
+[Model Maker](https://ai.google.dev/edge/litert/libraries/modify/text_classification)
 tool.
 
 The example application uses the following pre-trained models:
@@ -149,10 +149,10 @@ implement text classification features to your production applications:
 ## How the example app works {:#how_it_works}
 
 The application uses the
-[Task library for natural language (NL)](../../inference_with_metadata/task_library/overview#supported_tasks)
+[Task library for natural language (NL)](https://ai.google.dev/edge/litert/libraries/task_library/overview)
 package to implement the text classification models. The two models, Average
 Word Vector and MobileBERT, were trained using the TensorFlow Lite
-[Model Maker](https://www.tensorflow.org/lite/models/modify/model_maker/text_classification).
+[Model Maker](https://ai.google.dev/edge/litert/libraries/modify/text_classification).
 The application runs on CPU by default, with the option of hardware acceleration
 using the NNAPI delegate.
 
@@ -237,10 +237,10 @@ model with parameters before running predictions with the model.
 
 A TensorFlow Lite model is stored as a `*.tflite` file. The model file contains
 the prediction logic and typically includes
-[metadata](../../models/convert/metadata) about how to interpret prediction
-results, such as prediction class names. Typically, model files are stored in
-the `src/main/assets` directory of your development project, as in the code
-example:
+[metadata](https://ai.google.dev/edge/litert/models/metadata) about how to
+interpret prediction results, such as prediction class names. Typically, model
+files are stored in the `src/main/assets` directory of your development project,
+as in the code example:
 
 -   `<project>/src/main/assets/mobilebert.tflite`
 -   `<project>/src/main/assets/wordvec.tflite`
@@ -475,7 +475,7 @@ user interface.
 ## Next steps
 
 *   Train and implement the models from scratch with the
-    [Text classification with TensorFlow Lite Model Maker](https://www.tensorflow.org/lite/models/modify/model_maker/text_classification)
+    [Text classification with TensorFlow Lite Model Maker](https://ai.google.dev/edge/litert/libraries/modify/text_classification)
     tutorial.
 *   Explore more
     [text processing tools for TensorFlow](https://www.tensorflow.org/text).
