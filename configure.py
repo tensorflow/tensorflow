@@ -85,7 +85,7 @@ def is_cygwin():
 def get_input(question):
   try:
     try:
-      answer = raw_input(question)
+      answer = input(question)
     except NameError:
       answer = input(question)  # pylint: disable=bad-builtin
   except EOFError:
