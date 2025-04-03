@@ -15,6 +15,10 @@ limitations under the License.
 
 #include "xla/backends/cpu/runtime/xnnpack/xnn_dot_thunk.h"
 
+#include <string>
+#include <vector>
+
+#include "absl/strings/str_cat.h"
 #include "xla/backends/cpu/runtime/buffer_allocations.h"
 #include "xla/backends/cpu/runtime/thunk.h"
 #include "xla/backends/cpu/runtime/thunk_testlib.h"
@@ -27,6 +31,7 @@ limitations under the License.
 #include "xla/tsl/platform/test.h"
 #include "xla/tsl/platform/threadpool.h"
 #include "xla/xla_data.pb.h"
+#include "tsl/platform/cpu_info.h"
 
 #define EIGEN_USE_THREADS
 #include "unsupported/Eigen/CXX11/Tensor"
@@ -34,12 +39,27 @@ limitations under the License.
 namespace xla::cpu {
 namespace {
 
-class XnnDotThunkTest : public testing::TestWithParam<bool> {
- protected:
-  bool use_threadpool() const { return GetParam(); }
+struct XnnDotThunkTestSpec {
+  PrimitiveType input_type;
+  bool use_threadpool;
+};
+
+class XnnDotThunkTest : public testing::TestWithParam<XnnDotThunkTestSpec> {
+ public:
+  static std::string Name(
+      const ::testing::TestParamInfo<XnnDotThunkTestSpec>& info) {
+    return absl::StrCat(
+        PrimitiveType_Name(info.param.input_type), "_",
+        info.param.use_threadpool ? "threadpool" : "single_threaded");
+  }
 };
 
 TEST_P(XnnDotThunkTest, SimpleDot) {
+  XnnDotThunkTestSpec spec = GetParam();
+  if (spec.input_type == BF16 &&
+      !tsl::port::TestCPUFeature(tsl::port::AVX512_BF16)) {
+    GTEST_SKIP() << "CPU needs AVX512_BF16 for this test.";
+  }
   tsl::thread::ThreadPool threads(tsl::Env::Default(), "test", 8);
   Eigen::ThreadPoolDevice device(threads.AsEigenThreadPool(),
                                  threads.NumThreads());
@@ -47,6 +67,10 @@ TEST_P(XnnDotThunkTest, SimpleDot) {
   auto lhs = LiteralUtil::CreateR2<float>({{1.0, 2.0}, {3.0, 4.0}});
   auto rhs = LiteralUtil::CreateR2<float>({{4.0, 3.0}, {2.0, 1.0}});
   auto out = LiteralUtil::CreateR2<float>({{0.0, 0.0}, {0.0, 0.0}});
+  if (spec.input_type == BF16) {
+    lhs = LiteralUtil::ConvertF32ToBF16(lhs);
+    rhs = LiteralUtil::ConvertF32ToBF16(rhs);
+  }
 
   BufferAllocations allocations = CreateBufferAllocations(lhs, rhs, out);
 
@@ -55,20 +79,22 @@ TEST_P(XnnDotThunkTest, SimpleDot) {
   auto [lhs_slice, rhs_slice, out_slice] =
       CreateBufferAllocationSlice(lhs_alloc, rhs_alloc, out_alloc);
 
-  Shape shape = ShapeUtil::MakeShape(F32, {2, 2});
+  Shape input_shape = ShapeUtil::MakeShape(spec.input_type, {2, 2});
+  Shape output_shape = ShapeUtil::MakeShape(F32, {2, 2});
 
   DotDimensionNumbers dot_dimensions;
   dot_dimensions.add_lhs_contracting_dimensions(1);
   dot_dimensions.add_rhs_contracting_dimensions(0);
 
   TF_ASSERT_OK_AND_ASSIGN(
-      auto thunk, XnnDotThunk::Create(XnnDotThunk::Options{use_threadpool()},
-                                      {"dot"}, dot_dimensions, lhs_slice, shape,
-                                      rhs_slice, shape, out_slice, shape));
+      auto thunk,
+      XnnDotThunk::Create(XnnDotThunk::Options{spec.use_threadpool}, {"dot"},
+                          dot_dimensions, lhs_slice, input_shape, rhs_slice,
+                          input_shape, out_slice, output_shape));
 
   Thunk::ExecuteParams params;
   params.buffer_allocations = &allocations;
-  params.intra_op_threadpool = use_threadpool() ? &device : nullptr;
+  params.intra_op_threadpool = spec.use_threadpool ? &device : nullptr;
 
   auto execute_event = thunk->Execute(params);
   tsl::BlockUntilReady(execute_event);
@@ -77,7 +103,17 @@ TEST_P(XnnDotThunkTest, SimpleDot) {
   EXPECT_EQ(out, LiteralUtil::CreateR2<float>({{8.0, 5.0}, {20.0, 13.0}}));
 }
 
-INSTANTIATE_TEST_SUITE_P(XnnDot, XnnDotThunkTest, testing::Values(true, false));
+std::vector<XnnDotThunkTestSpec> GetXnnDotThunkTestSpecs() {
+  return std::vector<XnnDotThunkTestSpec>{
+      XnnDotThunkTestSpec{F32, /*use_threadpool=*/true},
+      XnnDotThunkTestSpec{F32, /*use_threadpool=*/false},
+      XnnDotThunkTestSpec{BF16, /*use_threadpool=*/true},
+      XnnDotThunkTestSpec{BF16, /*use_threadpool=*/false}};
+}
+
+INSTANTIATE_TEST_SUITE_P(XnnDot, XnnDotThunkTest,
+                         ::testing::ValuesIn(GetXnnDotThunkTestSpecs()),
+                         XnnDotThunkTest::Name);
 
 }  // namespace
 }  // namespace xla::cpu

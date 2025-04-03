@@ -95,6 +95,7 @@ limitations under the License.
 #include "xla/backends/cpu/runtime/thunk.pb.h"
 #include "xla/backends/cpu/runtime/thunk_proto_serdes.h"
 #include "xla/backends/cpu/transforms/xnn_graph_fusion.h"
+#include "xla/backends/cpu/xnn_fusion.h"
 #include "xla/cpu_function_runtime.h"
 #include "xla/hlo/analysis/hlo_ordering.h"
 #include "xla/hlo/analysis/indexed_array_analysis.h"
@@ -166,6 +167,7 @@ limitations under the License.
 #include "xla/service/cpu/conv_canonicalization.h"
 #include "xla/service/cpu/cpu_aot_compilation_result.h"
 #include "xla/service/cpu/cpu_executable.h"
+#include "xla/service/cpu/cpu_float_support.h"
 #include "xla/service/cpu/cpu_instruction_fusion.h"
 #include "xla/service/cpu/cpu_layout_assignment.h"
 #include "xla/service/cpu/cpu_options.h"
@@ -555,7 +557,30 @@ absl::Status CpuCompiler::RunHloPassesThroughLayoutAssn(
   AddHloVerifier(&pipeline);
   pipeline.AddPass<BatchedGatherScatterNormalizer>();
   pipeline.AddPass<ResultCaster>();
-  pipeline.AddPass<OperandUpcaster>();
+
+  // If XNNPACK is enabled, we only need to upcast dots that XnnDotThunk does
+  // not support. `upcaster_filter` returns false if the instruction shouldn't
+  // be processed.
+  // TODO(b/406806134): Stop calling XNNPACK from regular Dot thunks. All XNN
+  // Dots should be wrapped in an `__xnn_fusion` fusion region and processed in
+  // `XnnFusionThunk`.
+  bool xnnpack_enabled = module->config().debug_options().xla_cpu_use_xnnpack();
+  auto call_library_for_dot = [&](const HloInstruction& instr) {
+    if (!xnnpack_enabled) return false;
+    DotImplementationStrategy strategy = GetDotImplementationStrategy(
+        module->config(), instr, *target_machine_features,
+        /*allow_runtime_calls=*/true);
+    return strategy == DotImplementationStrategy::kEigen;
+  };
+  HloPredicate upcaster_filter = [&](const HloInstruction* instr) {
+    if (!call_library_for_dot(*instr)) return true;
+    return !IsXnnDotSupported(instr->dot_dimension_numbers(),
+                              instr->operand(0)->shape(),
+                              instr->operand(1)->shape(), instr->shape(),
+                              target_machine_features)
+                .value_or(false);
+  };
+  pipeline.AddPass<OperandUpcaster>(upcaster_filter);
 
   // Expand random number generation.
   pipeline.AddPass<RngExpander>();
@@ -609,7 +634,8 @@ absl::Status CpuCompiler::RunHloPassesThroughLayoutAssn(
   // Convert BF16 and F8 operations to F32 and F16 respectively so that the CPU
   // backend can support BF16/F8 operations without directly implementing a
   // BF16/F8 lowering for most ops.
-  FloatSupport bf16_support(BF16);
+  CpuFloatSupport bf16_support(BF16, call_library_for_dot,
+                               target_machine_features);
 #if defined(INTEL_MKL)
   OneDnnFloatSupport onednn_bf16_support(BF16);
   if (!is_aot_compile && !is_thunk_runtime) {

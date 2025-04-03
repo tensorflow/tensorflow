@@ -33,11 +33,13 @@ limitations under the License.
 #include "xla/backends/cpu/runtime/thunk.h"
 #include "xla/backends/cpu/runtime/xnnpack/xnn_fusion_thunk.h"
 #include "xla/backends/cpu/runtime/xnnpack/xnn_interop.h"
+#include "xla/primitive_util.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/shape.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/statusor.h"
+#include "xla/util.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla::cpu {
@@ -60,16 +62,25 @@ absl::StatusOr<xnn_subgraph_t> XnnDotThunk::BuildDotSubgraph(
   std::vector<size_t> rhs_dims = dims(dot_slices_.rhs_shape.dimensions());
   std::vector<size_t> out_dims = dims(dot_slices_.out_shape.dimensions());
 
+  PrimitiveType dtype = dot_slices_.lhs_shape.element_type();
+  if (dtype != F32 && dtype != BF16) {
+    return InvalidArgument("Unsupported input data type for XnnDotThunk: %s",
+                           primitive_util::LowercasePrimitiveTypeName(dtype));
+  }
+  xnn_datatype input_dtype =
+      (dtype == F32) ? xnn_datatype_fp32 : xnn_datatype_bf16;
+  xnn_datatype output_dtype = xnn_datatype_fp32;
+
   XNN_RETURN_IF_ERROR(xnn_define_tensor_value(
-      subgraph, xnn_datatype_fp32, lhs_dims.size(), lhs_dims.data(), nullptr,
+      subgraph, input_dtype, lhs_dims.size(), lhs_dims.data(), nullptr,
       /*external_id=*/0, XNN_VALUE_FLAG_EXTERNAL_INPUT, &lhs_id));
 
   XNN_RETURN_IF_ERROR(xnn_define_tensor_value(
-      subgraph, xnn_datatype_fp32, rhs_dims.size(), rhs_dims.data(), nullptr,
+      subgraph, input_dtype, rhs_dims.size(), rhs_dims.data(), nullptr,
       /*external_id=*/1, XNN_VALUE_FLAG_EXTERNAL_INPUT, &rhs_id));
 
   XNN_RETURN_IF_ERROR(xnn_define_tensor_value(
-      subgraph, xnn_datatype_fp32, out_dims.size(), out_dims.data(), nullptr,
+      subgraph, output_dtype, out_dims.size(), out_dims.data(), nullptr,
       /*external_id=*/2, XNN_VALUE_FLAG_EXTERNAL_OUTPUT, &out_id));
 
   XNN_RETURN_IF_ERROR(xnn_define_batch_matrix_multiply(

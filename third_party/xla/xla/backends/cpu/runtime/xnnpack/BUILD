@@ -141,6 +141,7 @@ cc_library(
         ":xnn_fusion_thunk",
         ":xnn_interop",
         "//xla:shape_util",
+        "//xla:util",
         "//xla:xla_data_proto_cc",
         "//xla/backends/cpu/runtime:dot_lib",
         "//xla/backends/cpu/runtime:thunk",
@@ -162,7 +163,6 @@ xla_cc_test(
     srcs = ["xnn_dot_thunk_test.cc"],
     deps = [
         ":xnn_dot_thunk",
-        "//xla:executable_run_options",
         "//xla:literal_util",
         "//xla:shape_util",
         "//xla:xla_data_proto_cc",
@@ -173,10 +173,10 @@ xla_cc_test(
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:test",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest_main",
         "@eigen_archive//:eigen3",
+        "@local_tsl//tsl/platform:platform_port",
     ],
 )
 

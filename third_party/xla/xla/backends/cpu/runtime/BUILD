@@ -818,7 +818,6 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@eigen_archive//:eigen3",
-        "@local_tsl//tsl/profiler/lib:traceme",
     ],
 )
 
