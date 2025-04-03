@@ -260,8 +260,7 @@ ENTRY e {
         }
       }
     }
-}
-)";
+})";
   TF_ASSERT_OK_AND_ASSIGN(ModuleAndNestedFusionMetadata module_and_metadata,
                           GetModuleAndNestedFusionMetadata(kHloText));
   TF_EXPECT_OK(
@@ -274,10 +273,9 @@ CHECK: %{{.*}} = arith.andi %[[TRUNCI]], %{{.*}} : tensor<16x16xi1>
 )"));
 }
 
-TEST_F(TritonTest,
-       DISABLED_CodegenBatchedDotWithConcatenationWithCorrectBatchStride) {
+TEST_F(TritonTest, CodegenBatchedDotWithConcatenationWithCorrectBatchStride) {
   constexpr absl::string_view kHloText = R"(
-HloModule t, is_scheduled=true
+HloModule t
 
 triton_gemm {
   parameter_0 = f32[2,3,10]{2,1,0} parameter(0)
@@ -301,18 +299,13 @@ ENTRY e {
                          "num_ctas":1}}}
 })";
 
+  TF_ASSERT_OK_AND_ASSIGN(ModuleAndNestedFusionMetadata module_and_metadata,
+                          GetModuleAndNestedFusionMetadata(kHloText));
   TF_EXPECT_OK(
-      CreateTritonIrAndFileCheckForDot(this, kHloText, "triton_gemm", R"(
-CHECK:   tt.func @triton_fn(%[[P0:[^:]*]]: !tt.ptr<f32>
-CHECK-SAME:                 %[[P1:[^:]*]]: !tt.ptr<f32>
-CHECK-SAME:                 %[[P2:[^:]*]]: !tt.ptr<f32>
-CHECK-DAG: %[[ARG_PTR:.*]] = arith.select %[[CONCAT_COND:.*]], %[[P1]], %[[P2]]
-CHECK-DAG: %[[BATCH_STRIDE_P1:.*]] = arith.constant 1280
-CHECK-DAG: %[[BATCH_STRIDE_P2:.*]] = arith.constant 2560
-CHECK-DAG: %[[BATCH_STRIDE:.*]] = arith.select %[[CONCAT_COND_2:.*]], %[[BATCH_STRIDE_P1]], %[[BATCH_STRIDE_P2]]
-CHECK-DAG: %[[PID_BATCH:.*]] = tt.get_program_id y
-CHECK-DAG: %[[OFFSET:.*]] = arith.muli %[[PID_BATCH]], %[[BATCH_STRIDE]]
-CHECK:     %[[BLOCK_BASE_PTR:.*]] = tt.addptr %[[ARG_PTR]], %[[OFFSET]]
+      CreateTritonIrAndFileCheck(*module_and_metadata.computation,
+                                 module_and_metadata.block_level_parameters, R"(
+CHECK: scf.if {{.*}} -> (tensor<1x32x64xf32>)
+CHECK: tt.dot {{.*}} : tensor<16x32xf32> * tensor<32x64xf32> -> tensor<16x64xf32>
 )"));
 }
 

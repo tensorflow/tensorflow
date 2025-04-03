@@ -294,6 +294,30 @@ absl::StatusOr<TritonGemmConfig> GetTritonGemmConfig(
   return TritonGemmConfig::FromProto(backend_config.triton_gemm_config());
 }
 
+// Constructs nested fusion nodes for the operands of `concatenate` instructions
+// and annotates them with `kTritonNestedGemmFusionKind`.
+absl::Status FuseAndAnnotateConcatOperands(HloComputation* computation) {
+  for (HloInstruction* instr : computation->MakeInstructionPostOrder()) {
+    if (instr->opcode() == HloOpcode::kConcatenate) {
+      for (int i = 0; i < instr->operand_count(); ++i) {
+        TF_RETURN_IF_ERROR(FuseInstructionsForConsumer(
+            computation->MakeInstructionPostOrderFrom(
+                *instr->mutable_operand(i)),
+            *instr));
+        HloInstruction* new_operand = instr->mutable_operand(i);
+        TF_ASSIGN_OR_RETURN(auto gpu_config,
+                            new_operand->backend_config<GpuBackendConfig>());
+        FusionBackendConfig& backend_config =
+            *gpu_config.mutable_fusion_backend_config();
+        backend_config.clear_triton_gemm_config();
+        backend_config.set_kind(std::string(kTritonNestedGemmFusionKind));
+        TF_RETURN_IF_ERROR(new_operand->set_backend_config(gpu_config));
+      }
+    }
+  }
+  return absl::OkStatus();
+}
+
 // Transforms a fusion into an equivalent nested fusion if it has a single dot.
 // Returns ok if the transformation was successful.
 absl::Status MakeNestedFusionFromGemmFusion(HloFusionInstruction* fusion,
@@ -303,6 +327,10 @@ absl::Status MakeNestedFusionFromGemmFusion(HloFusionInstruction* fusion,
   DCHECK(GetTritonGemmConfig(*fusion).value() == config);
 
   HloComputation* computation = fusion->called_computation();
+
+  // First, create nested fusions for the operands of `concatenate` instructions
+  // if they exist.
+  TF_RETURN_IF_ERROR(FuseAndAnnotateConcatOperands(computation));
 
   // Left-hand side of the dot.
   TF_RETURN_IF_ERROR(FuseInstructionsForConsumer(
