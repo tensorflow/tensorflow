@@ -64,22 +64,63 @@ TEST_P(HloShardingTest, CreateWithBadDeviceList) {
 TEST_P(HloShardingTest, IsFullyReplicated) {
   auto device_list = GetDevices({0, 1, 2, 3, 4, 5});
   {
-    // Fully replicated.
+    // Fully replicated HloSharding is fully replicated.
     auto xla_hlo_sharding = xla::HloSharding::Replicate();
     std::shared_ptr<const HloSharding> sharding =
         HloSharding::Create(device_list, MemoryKind(), xla_hlo_sharding);
     EXPECT_TRUE(sharding->IsFullyReplicated());
   }
   {
-    // Not fully replicated.
+    // Single-tile HloSharding is fully replicated.
+    auto device_list = GetDevices({0});  // This sharding uses 1 device.
+    auto xla_hlo_sharding = xla::HloSharding::IotaTile({1, 1});
+    std::shared_ptr<const HloSharding> sharding =
+        HloSharding::Create(device_list, MemoryKind(), xla_hlo_sharding);
+    EXPECT_TRUE(sharding->IsFullyReplicated());
+  }
+  {
+    // Multi-tile HloSharding with last_dim_replicate where all replices are on
+    // the last tile dimension is fully replicated.
+    auto xla_hlo_sharding = xla::HloSharding::PartialTile(
+        xla::TileAssignment(xla::IotaTileAssignment::Create({1, 6})));
+    std::shared_ptr<const HloSharding> sharding =
+        HloSharding::Create(device_list, MemoryKind(), xla_hlo_sharding);
+    EXPECT_TRUE(sharding->IsFullyReplicated());
+  }
+  {
+    // Multi-tile HloSharding with last_dim_replicate where not all replices are
+    // on the last tile dimension is not fully replicated.
+    auto xla_hlo_sharding = xla::HloSharding::PartialTile(
+        xla::TileAssignment(xla::IotaTileAssignment::Create({2, 3})));
+    std::shared_ptr<const HloSharding> sharding =
+        HloSharding::Create(device_list, MemoryKind(), xla_hlo_sharding);
+    EXPECT_FALSE(sharding->IsFullyReplicated());
+  }
+  {
+    // Multi-tile HloSharding with no last_dim_replicate is not fully
+    // replicated.
     auto xla_hlo_sharding = xla::HloSharding::IotaTile({1, 6});
     std::shared_ptr<const HloSharding> sharding =
         HloSharding::Create(device_list, MemoryKind(), xla_hlo_sharding);
     EXPECT_FALSE(sharding->IsFullyReplicated());
   }
   {
-    // Not fully replicated.
-    auto xla_hlo_sharding = xla::HloSharding::IotaTile({2, 3});
+    // Maximal HloSharding is not fully replicated.
+    auto xla_hlo_sharding = xla::HloSharding::AssignDevice(/*device_id=*/0);
+    std::shared_ptr<const HloSharding> sharding =
+        HloSharding::Create(device_list, MemoryKind(), xla_hlo_sharding);
+    EXPECT_FALSE(sharding->IsFullyReplicated());
+  }
+  {
+    // Manual HloSharding is not fully replicated.
+    auto xla_hlo_sharding = xla::HloSharding::Manual();
+    std::shared_ptr<const HloSharding> sharding =
+        HloSharding::Create(device_list, MemoryKind(), xla_hlo_sharding);
+    EXPECT_FALSE(sharding->IsFullyReplicated());
+  }
+  {
+    // Unknown HloSharding is not fully replicated.
+    auto xla_hlo_sharding = xla::HloSharding::Unknown();
     std::shared_ptr<const HloSharding> sharding =
         HloSharding::Create(device_list, MemoryKind(), xla_hlo_sharding);
     EXPECT_FALSE(sharding->IsFullyReplicated());
