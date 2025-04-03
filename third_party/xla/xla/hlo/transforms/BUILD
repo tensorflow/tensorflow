@@ -66,8 +66,10 @@ xla_cc_test(
         "//xla/service:float_support",
         "//xla/service:hlo_verifier",
         "//xla/tests:literal_test_util",
+        "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",  # fixdeps: keep
         "@local_tsl//tsl/platform:statusor",
     ],
