@@ -48,7 +48,8 @@ class GpuCodegenTest : public LlvmIrGenTestBase {
   // and hence the "Optionally" in function name.
   // For ROCm platform this routine will only do the "Compile" part.
   void CompileAndOptionallyVerifyPtx(
-      std::unique_ptr<VerifiedHloModule> hlo_module, absl::string_view pattern);
+      std::unique_ptr<VerifiedHloModule> hlo_module, absl::string_view pattern,
+      bool run_optimization_passes = true);
 
   bool is_built_with_rocm_;
 };
