@@ -17,7 +17,12 @@ limitations under the License.
 
 #include <utility>
 
+#include "absl/status/status.h"
+#include "third_party/protobuf/message.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/platform/status.h"
 
 namespace tensorflow {
 
