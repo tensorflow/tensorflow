@@ -41,3 +41,29 @@ func.func @main(%arg0: tensor<3x4xi32>, %arg1: tensor<i64>, %arg2: tensor<i64>) 
   return %0 : tensor<1x4xi32>
 }
 // CHECK-DIRECT: stablehlo.dynamic_slice
+
+// -----
+
+// CHECK-LABEL: HloModule main, entry_computation_layout={(s32[4]{0})->s32[1,2,3,4]{3,2,1,0}}
+
+// CHECK:       ENTRY %[[$main_3:[^ ]+]]
+// CHECK-NEXT:  %[[Arg_0_1:[^ ]+]] = s32[4] parameter(0)
+// CHECK-NEXT:  ROOT %[[broadcast_2:[^ ]+]] = s32[1,2,3,4] broadcast(%[[Arg_0_1]]), dimensions={3}
+func.func @main(%arg0: tensor<4xi32>) -> tensor<1x2x3x4xi32> {
+  %0 = stablehlo.broadcast %arg0, sizes = [1, 2, 3] : (tensor<4xi32>) -> tensor<1x2x3x4xi32>
+  return %0 : tensor<1x2x3x4xi32>
+}
+// CHECK-DIRECT: stablehlo.broadcast
+
+// -----
+
+// CHECK-LABEL: HloModule main, entry_computation_layout={(f32[1]{0})->f32[1,10]{1,0}}
+
+// CHECK:       ENTRY %[[$main_3:[^ ]+]]
+// CHECK-NEXT:  %[[Arg_0_1:[^ ]+]] = f32[1] parameter(0)
+// CHECK-NEXT:  ROOT %[[broadcast_2:[^ ]+]] = f32[1,10] broadcast(%[[Arg_0_1]]), dimensions={0}
+func.func @main(%arg0: tensor<1xf32>) -> tensor<1x10xf32> {
+  %0 = stablehlo.broadcast_in_dim %arg0, dims = [0] : (tensor<1xf32>) -> tensor<1x10xf32>
+  return %0 : tensor<1x10xf32>
+}
+// CHECK-DIRECT: stablehlo.broadcast_in_dim
