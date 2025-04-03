@@ -192,90 +192,10 @@ CpuFusionEmitterBase::CreateMLIRModule(
   auto loc = mlir::NameLoc::get(builder.getStringAttr(fusion.name()));
   mlir::OwningOpRef<mlir::ModuleOp> module = llvm_ir::CreateMlirModuleOp(loc);
 
-  // Create the entry function.
   TF_ASSIGN_OR_RETURN(
-      std::vector<KernelApiIrBuilder::KernelParameter> arguments,
-      KernelApiIrBuilder::GetKernelArgumentsParameters(&fusion,
-                                                       &buffer_assignment));
-  TF_ASSIGN_OR_RETURN(std::vector<KernelApiIrBuilder::KernelParameter> results,
-                      KernelApiIrBuilder::GetKernelResultsParameters(
-                          &fusion, &buffer_assignment));
-
-  // TBD: Annotate tensors with the buffer indices. This way, the buffer
-  // propagation pass can clean them up later.
-  auto get_arg_attrs = [&](int index, BufferAllocation::Slice& slice,
-                           bool is_result) -> absl::StatusOr<mlir::Attribute> {
-    SmallVector<mlir::NamedAttribute> attrs;
-    attrs.push_back(builder.getNamedAttr(
-        "xla.slice_index",
-        builder.getIndexAttr(index + (is_result ? arguments.size() : 0))));
-    attrs.push_back(builder.getNamedAttr(
-        mlir::LLVM::LLVMDialect::getDereferenceableAttrName(),
-        builder.getIndexAttr(slice.size())));
-    attrs.push_back(
-        builder.getNamedAttr(mlir::LLVM::LLVMDialect::getAlignAttrName(),
-                             builder.getIndexAttr(MinAlign())));
-    return builder.getDictionaryAttr(attrs);
-  };
-
-  // First argument is the thread id.
-  SmallVector<mlir::Attribute> arg_attrs{builder.getDictionaryAttr(
-      builder.getNamedAttr("xla.invariant", builder.getUnitAttr()))};
-  SmallVector<mlir::Type> param_types{builder.getIndexType()};
-
-  for (const auto& [index, arg] : llvm::enumerate(arguments)) {
-    param_types.push_back(emitters::TensorShapeToMlirType(arg.shape, builder));
-    TF_ASSIGN_OR_RETURN(
-        arg_attrs.emplace_back(),
-        get_arg_attrs(index - 1, arg.slice, /*is_result=*/false));
-  }
-
-  auto result_types = emitters::ShapeToMlirTypes(fusion.shape(), builder);
-  param_types.append(result_types.begin(), result_types.end());
-  for (const auto& [index, result] : llvm::enumerate(results)) {
-    TF_ASSIGN_OR_RETURN(arg_attrs.emplace_back(),
-                        get_arg_attrs(index, result.slice, /*is_result=*/true));
-  }
-
-  builder.setInsertionPointToStart(module->getBody());
-  auto entry_func = builder.create<FuncOp>(
-      loc, entry_function_name,
-      mlir::FunctionType::get(&context, param_types, result_types),
-      /*sym_visibility=*/mlir::StringAttr{},
-      mlir::ArrayAttr::get(&context, arg_attrs),
-      /*res_attrs=*/mlir::ArrayAttr{});
-  entry_func->setAttr("xla.entry", mlir::UnitAttr::get(&context));
-  SetBackendKind(&context, entry_func, xla::BackendKind::kCpu);
-  entry_func.setPrivate();
-
-  // Create wrapper for the entry function. This function has one call_frame
-  // argument and call the entry function.
-  auto error_type = cpu::ErrorType::get(&context);
-  auto call_frame_type = CallFrameType::get(mlir_context_);
-  auto call_frame_func = builder.create<FuncOp>(
-      loc, fusion.name(),
-      builder.getFunctionType(/*arg_types=*/{call_frame_type},
-                              /*result_types=*/{error_type}));
-  builder.setInsertionPointToStart(call_frame_func.addEntryBlock());
-  mlir::Value call_frame_arg = call_frame_func.getArgument(0);
-  SmallVector<mlir::Value> extracted_values;
-  extracted_values.reserve(arguments.size() + results.size() + 1);
-  extracted_values.push_back(builder.create<cpu::ThreadIdOp>(
-      loc, builder.getIndexType(), call_frame_arg));
-
-  for (int i = 1; i < param_types.size(); ++i) {
-    extracted_values.push_back(builder.create<cpu::LoadOp>(
-        loc, param_types[i], call_frame_arg, i - 1));
-  }
-  auto call_results =
-      builder.create<xla::PureCallOp>(loc, entry_func, extracted_values);
-  call_results->setAttr("noinline", mlir::UnitAttr::get(&context));
-  for (auto [index, call_result] : llvm::enumerate(call_results.getResults())) {
-    builder.create<cpu::StoreOp>(loc, call_result, call_frame_arg,
-                                 index + arguments.size());
-  }
-  auto error = builder.create<cpu::SuccessOp>(loc, error_type);
-  builder.create<mlir::func::ReturnOp>(loc, error.getResult());
+      mlir::func::FuncOp entry_func,
+      EmitFusionKernelApi(module.get(), fusion, entry_function_name,
+                          buffer_assignment));
 
   TF_RETURN_IF_ERROR(EmitMlir(module.get(), entry_func, fusion));
   return module;
@@ -380,6 +300,100 @@ IndexingMap GetDefaultIndexingMap(absl::Span<const int64_t> thread_tile_sizes,
       affine_map, {IndexingMap::Variable({0, num_threads - 1, "thread_id"})},
       {IndexingMap::Variable({0, num_tile_elements - 1, "linear_index"})}, {},
       constraints);
+}
+
+absl::StatusOr<mlir::func::FuncOp> EmitFusionKernelApi(
+    mlir::ModuleOp fusion_module, const HloFusionInstruction& fusion,
+    const std::string& entry_function_name,
+    const BufferAssignment& buffer_assignment) {
+  auto* context = fusion_module.getContext();
+  mlir::OpBuilder builder(context);
+  auto loc = mlir::NameLoc::get(builder.getStringAttr(fusion.name()));
+  TF_ASSIGN_OR_RETURN(
+      std::vector<KernelApiIrBuilder::KernelParameter> arguments,
+      KernelApiIrBuilder::GetKernelArgumentsParameters(&fusion,
+                                                       &buffer_assignment));
+  TF_ASSIGN_OR_RETURN(std::vector<KernelApiIrBuilder::KernelParameter> results,
+                      KernelApiIrBuilder::GetKernelResultsParameters(
+                          &fusion, &buffer_assignment));
+
+  // TBD: Annotate tensors with the buffer indices. This way, the buffer
+  // propagation pass can clean them up later.
+  auto get_arg_attrs = [&](int index, BufferAllocation::Slice& slice,
+                           bool is_result) -> absl::StatusOr<mlir::Attribute> {
+    SmallVector<mlir::NamedAttribute> attrs;
+    attrs.push_back(builder.getNamedAttr(
+        "xla.slice_index",
+        builder.getIndexAttr(index + (is_result ? arguments.size() : 0))));
+    attrs.push_back(builder.getNamedAttr(
+        mlir::LLVM::LLVMDialect::getDereferenceableAttrName(),
+        builder.getIndexAttr(slice.size())));
+    attrs.push_back(
+        builder.getNamedAttr(mlir::LLVM::LLVMDialect::getAlignAttrName(),
+                             builder.getIndexAttr(MinAlign())));
+    return builder.getDictionaryAttr(attrs);
+  };
+
+  // First argument is the thread id.
+  SmallVector<mlir::Attribute> arg_attrs{builder.getDictionaryAttr(
+      builder.getNamedAttr("xla.invariant", builder.getUnitAttr()))};
+  SmallVector<mlir::Type> param_types{builder.getIndexType()};
+
+  for (const auto& [index, arg] : llvm::enumerate(arguments)) {
+    param_types.push_back(emitters::TensorShapeToMlirType(arg.shape, builder));
+    TF_ASSIGN_OR_RETURN(
+        arg_attrs.emplace_back(),
+        get_arg_attrs(index - 1, arg.slice, /*is_result=*/false));
+  }
+
+  auto result_types = emitters::ShapeToMlirTypes(fusion.shape(), builder);
+  param_types.append(result_types.begin(), result_types.end());
+  for (const auto& [index, result] : llvm::enumerate(results)) {
+    TF_ASSIGN_OR_RETURN(arg_attrs.emplace_back(),
+                        get_arg_attrs(index, result.slice, /*is_result=*/true));
+  }
+
+  builder.setInsertionPointToStart(fusion_module.getBody());
+  auto entry_func = builder.create<FuncOp>(
+      loc, entry_function_name,
+      mlir::FunctionType::get(context, param_types, result_types),
+      /*sym_visibility=*/mlir::StringAttr{},
+      mlir::ArrayAttr::get(context, arg_attrs),
+      /*res_attrs=*/mlir::ArrayAttr{});
+  entry_func->setAttr("xla.entry", mlir::UnitAttr::get(context));
+  SetBackendKind(context, entry_func, xla::BackendKind::kCpu);
+  entry_func.setPrivate();
+
+  // Create wrapper for the entry function. This function has one call_frame
+  // argument and call the entry function.
+  auto error_type = cpu::ErrorType::get(context);
+  auto call_frame_type = CallFrameType::get(context);
+  auto call_frame_func = builder.create<FuncOp>(
+      loc, fusion.name(),
+      builder.getFunctionType(/*arg_types=*/{call_frame_type},
+                              /*result_types=*/{error_type}));
+  builder.setInsertionPointToStart(call_frame_func.addEntryBlock());
+  mlir::Value call_frame_arg = call_frame_func.getArgument(0);
+  SmallVector<mlir::Value> extracted_values;
+  extracted_values.reserve(arguments.size() + results.size() + 1);
+  extracted_values.push_back(builder.create<cpu::ThreadIdOp>(
+      loc, builder.getIndexType(), call_frame_arg));
+
+  for (int i = 1; i < param_types.size(); ++i) {
+    extracted_values.push_back(builder.create<cpu::LoadOp>(
+        loc, param_types[i], call_frame_arg, i - 1));
+  }
+  auto call_results =
+      builder.create<xla::PureCallOp>(loc, entry_func, extracted_values);
+  call_results->setAttr("noinline", mlir::UnitAttr::get(context));
+  for (auto [index, call_result] : llvm::enumerate(call_results.getResults())) {
+    builder.create<cpu::StoreOp>(loc, call_result, call_frame_arg,
+                                 index + arguments.size());
+  }
+  auto error = builder.create<cpu::SuccessOp>(loc, error_type);
+  builder.create<mlir::func::ReturnOp>(loc, error.getResult());
+
+  return entry_func;
 }
 
 int64_t CeilDiv(int64_t a, int64_t b) { return (a + b - 1) / b; }
