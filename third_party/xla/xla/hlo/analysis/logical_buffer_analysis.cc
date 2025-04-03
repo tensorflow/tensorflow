@@ -82,7 +82,8 @@ absl::Status LogicalBufferAnalysis::Analyze() {
     }
   }
   for (auto* instruction : fusion_instructions) {
-    TF_RETURN_IF_ERROR(instruction->fused_expression_root()->Accept(this));
+    TF_RETURN_IF_ERROR(
+        instruction->fused_instructions_computation()->Accept(this));
   }
   return absl::OkStatus();
 }

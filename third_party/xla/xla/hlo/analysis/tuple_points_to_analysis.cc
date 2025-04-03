@@ -174,7 +174,8 @@ absl::Status TuplePointsToAnalysis::Analyze() {
   }
   // Run points-to analysis on fusion instructions in 'computation'.
   for (auto* instruction : fusion_instructions) {
-    TF_RETURN_IF_ERROR(instruction->fused_expression_root()->Accept(this));
+    TF_RETURN_IF_ERROR(
+        instruction->fused_instructions_computation()->Accept(this));
     TF_RETURN_IF_ERROR(
         PopulateDefinedBuffersAndAliases(instruction->fused_instructions()));
   }
