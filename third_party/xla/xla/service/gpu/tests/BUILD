@@ -62,8 +62,10 @@ cc_library(
         "//xla/service/gpu:gpu_executable",
         "//xla/stream_executor:platform_manager",
         "//xla/tests:llvm_irgen_test_base",
+        "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest_for_library",
     ],
 )
 
