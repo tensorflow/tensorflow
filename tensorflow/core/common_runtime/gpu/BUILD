@@ -1,4 +1,6 @@
 load("@bazel_skylib//lib:selects.bzl", "selects")
+load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
+load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm")
 load("@local_xla//xla/tsl:tsl.bzl", "if_cuda_libs")
 load(
     "//tensorflow:tensorflow.bzl",
@@ -230,6 +232,10 @@ tf_cuda_library(
         ]),
     ) + if_cuda_or_rocm([
         "@local_tsl//tsl/platform:dso_loader",
+    ]) + if_cuda([
+        "@local_xla//xla/stream_executor/cuda:all_runtime",
+    ]) + if_rocm([
+        "@local_xla//xla/stream_executor/rocm:all_runtime",
     ]),
     alwayslink = 1,
 )
