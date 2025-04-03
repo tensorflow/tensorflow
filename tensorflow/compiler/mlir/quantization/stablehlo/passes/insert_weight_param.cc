@@ -80,15 +80,13 @@ class InsertWeightParamPass
 // Inserts quantization parameters for weights for hybrid quantization of
 // `stablehlo.convolution` and `stablehlo.dot_general`.
 class InsertWeightParamPattern
-    : public OpTraitRewritePattern<
-          OpTrait::ConstantLike>::SplitMatchAndRewrite {
+    : public OpTraitRewritePattern<OpTrait::ConstantLike> {
  public:
   explicit InsertWeightParamPattern(MLIRContext* context)
-      : SplitMatchAndRewrite(Pattern::MatchTraitOpTypeTag(),
-                             TypeID::get<OpTrait::ConstantLike>(), 1, context) {
-  }
+      : OpTraitRewritePattern(context) {}
 
-  LogicalResult match(Operation* op) const override {
+  LogicalResult matchAndRewrite(Operation* op,
+                                PatternRewriter& rewriter) const override {
     if (op->getNumResults() != 1) {
       return failure();
     }
@@ -96,27 +94,11 @@ class InsertWeightParamPattern
     if (!type || !type.getElementType().isF32()) {
       return failure();
     }
-    return success(
-        op->hasOneUse() &&
-        IsWeightQuantizableFunction(*op->getUses().begin(), type.getRank()));
-  }
-
-  // Checks if the operand is second operand of `tf.XlaCallModule` op for
-  // `stablehlo.convolution` or `stablehlo.dot_general` with fully_quantizable
-  // trait.
-  static bool IsWeightQuantizableFunction(OpOperand& operand, int64_t rank) {
-    if (operand.getOperandNumber() != 1) {
-      return false;
+    if (!op->hasOneUse() ||
+        !IsWeightQuantizableFunction(*op->getUses().begin(), type.getRank())) {
+      return failure();
     }
-    Operation* user = operand.getOwner();
-    if (!IsWeightOnlyQuantizableOp(*user)) {
-      return false;
-    }
-    Method method = GetQuantizationMethodOrDefault(user);
-    return HasValidWeightOnlyPtqMethod(method.weight_only_ptq(), rank);
-  }
 
-  void rewrite(Operation* op, PatternRewriter& rewriter) const override {
     Operation* quantizable_op = *op->getUsers().begin();
     DenseFPElementsAttr attr;
     matchPattern(op->getResult(0), m_Constant(&attr));
@@ -144,7 +126,7 @@ class InsertWeightParamPattern
       op->emitError(
           "Failed to get weight quantization parameters for weight-only "
           "quantization.");
-      return;
+      return failure();
     }
 
     const Type expressed_type = op->getResult(0).getType();
@@ -157,6 +139,22 @@ class InsertWeightParamPattern
     auto dq = rewriter.create<quantfork::DequantizeCastOp>(op->getLoc(),
                                                            expressed_type, q);
     quantizable_op->setOperand(1, dq.getResult());
+    return success();
+  }
+
+  // Checks if the operand is second operand of `tf.XlaCallModule` op for
+  // `stablehlo.convolution` or `stablehlo.dot_general` with fully_quantizable
+  // trait.
+  static bool IsWeightQuantizableFunction(OpOperand& operand, int64_t rank) {
+    if (operand.getOperandNumber() != 1) {
+      return false;
+    }
+    Operation* user = operand.getOwner();
+    if (!IsWeightOnlyQuantizableOp(*user)) {
+      return false;
+    }
+    Method method = GetQuantizationMethodOrDefault(user);
+    return HasValidWeightOnlyPtqMethod(method.weight_only_ptq(), rank);
   }
 
  private:
