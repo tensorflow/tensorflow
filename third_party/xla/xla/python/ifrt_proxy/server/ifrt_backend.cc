@@ -526,13 +526,14 @@ Future<BackendInterface::Response> IfrtBackend::ProcessInternal(
       asr.emplace(request->make_arrays_from_host_buffer_shards_request()
                       .array_handles(),
                   &array_store_);
-      return Future<Response>(HandleMakeArraysFromHostBufferShardsRequest(
-          *asr, std::move(request)));
+      return Future<Response>(
+          asr->ProcessResponse(HandleMakeArraysFromHostBufferShardsRequest(
+              *asr, std::move(request))));
     case IfrtRequest::RequestCase::kMakeErrorArraysRequest:
       asr.emplace(request->make_error_arrays_request().array_handles(),
                   &array_store_);
-      return Future<Response>(
-          HandleMakeErrorArraysRequest(*asr, std::move(request)));
+      return Future<Response>(asr->ProcessResponse(
+          HandleMakeErrorArraysRequest(*asr, std::move(request))));
     case IfrtRequest::RequestCase::kAssembleArrayFromSingleDeviceArraysRequest:
       asr.emplace(request->assemble_array_from_single_device_arrays_request()
                       .result_handle(),
