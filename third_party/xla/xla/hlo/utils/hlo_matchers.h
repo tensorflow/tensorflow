@@ -325,6 +325,7 @@ HLO_MATCHER(Pad);
 HLO_MATCHER(PartitionId);
 HLO_MATCHER(Power);
 HLO_MATCHER(RaggedAllToAll);
+HLO_MATCHER(RaggedDot);
 HLO_MATCHER(Recv);
 HLO_MATCHER(RecvDone);
 HLO_MATCHER(Reduce);

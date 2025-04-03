@@ -15749,6 +15749,102 @@ ENTRY main.12 {
   EXPECT_THAT(cp, op::Shape("s32[1]{0}"));
 }
 
+TEST_P(SpmdPartitioningTest, RaggedDotNonContractingMode) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  a = f32[16,32,64] parameter(0), sharding={devices=[2,1,2,2]<=[8] last_tile_dim_replicate}
+  b = f32[4,16,64,8] parameter(1), sharding={devices=[1,2,2,2]<=[8]}
+  c = u32[16,4] parameter(2), sharding={devices=[2,1,4]<=[8] last_tile_dim_replicate}
+  ROOT dot = f32[16,32,8] ragged-dot(a, b, c),
+    lhs_batch_dims={0}, rhs_batch_dims={1},
+    lhs_contracting_dims={2}, rhs_contracting_dims={2},
+    lhs_ragged_dims={1}, rhs_group_dims={0},
+    sharding={devices=[2,1,2,2]<=[2,2,2]T(0,2,1) last_tile_dim_replicate}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/8));
+
+  auto param0 = AllOf(op::Parameter(0), op::Shape("f32[8,32,32]"));
+  auto param1 = AllOf(op::Parameter(1), op::Shape("f32[4,8,32,4]"));
+  auto param2 = AllOf(op::Parameter(2), op::Shape("u32[8,4]"));
+  auto ragged_dot =
+      AllOf(op::RaggedDot(param0, param1, param2), op::Shape("f32[8,32,4]"));
+  auto all_reduce = AllOf(op::AllReduce(ragged_dot), op::Shape("f32[8,32,4]"));
+
+  const HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, all_reduce);
+
+  auto replica_groups = Cast<HloAllReduceInstruction>(root)->replica_groups();
+  EXPECT_EQ(replica_groups.size(), 4);
+  EXPECT_THAT(replica_groups[0].replica_ids(), ::testing::ElementsAre(0, 2));
+}
+
+TEST_P(SpmdPartitioningTest, RaggedDotContractingMode) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  a = f32[15,33,64] parameter(0), sharding={devices=[2,2,1,2]<=[8] last_tile_dim_replicate}
+  b = f32[15,64,9] parameter(1), sharding={devices=[2,1,2,2]<=[2,2,2]T(0,2,1) last_tile_dim_replicate}
+  c = u32[15,4] parameter(2), sharding={devices=[2,1,4]<=[8] last_tile_dim_replicate}
+  ROOT dot = f32[4,15,33,9] ragged-dot(a, b, c),
+    lhs_batch_dims={0}, rhs_batch_dims={0},
+    lhs_contracting_dims={2}, rhs_contracting_dims={1},
+    lhs_ragged_dims={2}, sharding={devices=[1,2,2,2]<=[8]}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/8));
+
+  auto param0 = AllOf(op::Parameter(0), op::Shape("f32[8,17,64]"));
+  auto param1 = AllOf(op::Parameter(1), op::Shape("f32[8,64,5]"));
+  auto param2 = AllOf(op::Parameter(2), op::Shape("u32[8,4]"));
+  auto ragged_dot =
+      AllOf(op::RaggedDot(param0, param1, param2), op::Shape("f32[4,8,17,5]"));
+  EXPECT_THAT(module->entry_computation()->root_instruction(), ragged_dot);
+}
+
+TEST_P(SpmdPartitioningTest, RaggedDotBatchMode) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  a = f32[16,32,63] parameter(0), sharding={devices=[2,2,2,2]<=[2,2,2,2]T(0,1,3,2) last_tile_dim_replicate}
+  b = f32[16,63,8] parameter(1), sharding={devices=[2,2,2,2]<=[2,2,2,2]T(0,3,2,1) last_tile_dim_replicate}
+  c = u32[4] parameter(2), sharding={devices=[4,4]<=[16] last_tile_dim_replicate}
+  ROOT dot = f32[16,32,8] ragged-dot(a, b, c),
+    lhs_batch_dims={0}, rhs_batch_dims={0},
+    lhs_contracting_dims={2}, rhs_contracting_dims={1},
+    lhs_ragged_dims={0},
+    sharding={devices=[2,2,2,2]<=[16] last_tile_dim_replicate}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/16));
+  LOG(ERROR) << module->ToString();
+
+  auto param0 = AllOf(op::Parameter(0), op::Shape("f32[8,16,32]"));
+  auto param0_pad = AllOf(op::Select(_, param0, op::Broadcast(op::Constant())),
+                          op::Shape("f32[8,16,32]"));
+
+  auto param1 = AllOf(op::Parameter(1), op::Shape("f32[8,32,4]"));
+  auto param1_pad = AllOf(op::Select(_, param1, op::Broadcast(op::Constant())),
+                          op::Shape("f32[8,32,4]"));
+
+  auto dot = AllOf(op::Dot(param0_pad, param1_pad), op::Shape("f32[8,16,4]"));
+  auto all_reduce = AllOf(op::AllReduce(dot), op::Shape("f32[8,16,4]"));
+
+  auto root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, all_reduce);
+
+  auto replica_groups = Cast<HloAllReduceInstruction>(root)->replica_groups();
+  EXPECT_EQ(replica_groups.size(), 8);
+  EXPECT_THAT(replica_groups[0].replica_ids(), ::testing::ElementsAre(0, 1));
+}
+
 }  // namespace
 }  // namespace spmd
 }  // namespace xla

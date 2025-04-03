@@ -4976,6 +4976,60 @@ absl::Status SpmdPartitioningVisitor::HandlePartitionId(HloInstruction* hlo) {
       "the data is replicated, and if the latter which data is replicated.");
 }
 
+absl::Status SpmdPartitioningVisitor::HandleRaggedDot(HloInstruction* hlo) {
+  LOG(WARNING) << "You have to use Shardy for RaggedDot. If not, the behavior "
+                  "is undefined.";
+
+  const RaggedDotDimensionNumbers& ragged_dot_dnums =
+      hlo->ragged_dot_dimension_numbers();
+  const DotDimensionNumbers& dot_dnums =
+      ragged_dot_dnums.dot_dimension_numbers();
+
+  CHECK_EQ(ragged_dot_dnums.lhs_ragged_dimensions_size(), 1);
+  int64_t lhs_ragged_dim = ragged_dot_dnums.lhs_ragged_dimensions(0);
+
+  PartitionedHlo& lhs = GetPartitionedHlo(hlo->operand(0));
+  PartitionedHlo& rhs = GetPartitionedHlo(hlo->operand(1));
+  PartitionedHlo& group_sizes = GetPartitionedHlo(hlo->operand(2));
+  if (lhs.hlo() == rhs.hlo()) {
+    rhs = MakeACopyAndReturnItsPartitionedHlo(rhs, builder());
+  }
+
+  std::vector<int64_t> sharded_lhs_contracting_dims;
+  if (lhs.sharding().IsTiled()) {
+    for (int64_t dim : dot_dnums.lhs_contracting_dimensions()) {
+      if (lhs.sharding().tile_assignment().dim(dim) > 1) {
+        sharded_lhs_contracting_dims.push_back(dim);
+      }
+    }
+  }
+
+  if (!sharded_lhs_contracting_dims.empty()) {
+    lhs = lhs.PadWithZero();
+    rhs = rhs.PadWithZero();
+  }
+
+  HloInstruction* phlo;
+  Shape pshape = MakePartitionedShape(hlo->shape(), hlo->sharding());
+  if (absl::c_linear_search(dot_dnums.lhs_batch_dimensions(), lhs_ragged_dim)) {
+    phlo = b_.AddInstruction(HloInstruction::CreateDot(
+        pshape, lhs.hlo(), rhs.hlo(), dot_dnums, hlo->precision_config()));
+  } else {
+    phlo = b_.AddInstruction(hlo->CloneWithNewOperands(
+        pshape, {lhs.hlo(), rhs.hlo(), group_sizes.hlo()}));
+  }
+
+  if (!sharded_lhs_contracting_dims.empty()) {
+    phlo = lhs.state().partitioner->AllReduceAlongShardingDims(
+        lhs.state().b, phlo, lhs.sharding(), lhs.state().next_channel_id,
+        sharded_lhs_contracting_dims, lhs.state().collective_ops_creator,
+        MakeBinaryAdd(phlo->shape().element_type(), lhs.state().module));
+  }
+
+  SetPartitionedHlo(hlo, [&]() { return phlo; });
+  return absl::OkStatus();
+}
+
 SPMDCollectiveOpsCreator GetDefaultCollectiveOpsCreator(int64_t num_partitions,
                                                         int64_t num_replicas) {
   return {
