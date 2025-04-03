@@ -67,7 +67,9 @@ DTensorMlirPassRunner::DTensorMlirPassRunner()
   // Explicitly enable MLIR bridge as DTensor introduces some ops like
   // XlaAllReduce are only supported in MLIR.
   GetMlirCommonFlags()->tf_mlir_enable_mlir_bridge =
-      ConfigProto::Experimental::MLIR_BRIDGE_ROLLOUT_ENABLED;
+      ConfigProto::Experimental::MLIR_BRIDGE_ROLLOUT_UNSPECIFIED;
+  VLOG(0) << "DO NOT SUBMIT enable_mlir_bridge in Dtensor ";
+  // exit(1);
 
   // Creates a pipeline that include each DTensor related passes.
   mlir::TF::StandardPipelineOptions pipeline_options;

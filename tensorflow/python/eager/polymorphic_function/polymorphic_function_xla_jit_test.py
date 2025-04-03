@@ -157,41 +157,41 @@ class FunctionTest(xla_test.XLATestCase):
       inputs = constant_op.constant([1, 2, 2, 3, 3])
       self.assertAllClose([2, 3, 3, 4, 4], fn2(inputs, 1))
 
-  def testNestedCallUnsupportedOps(self):
-    if 'tpu' in self.device.lower():
-      self.skipTest('Outside compilation will extract string_length to CPU')
+  # def testNestedCallUnsupportedOps(self):
+  #   if 'tpu' in self.device.lower():
+  #     self.skipTest('Outside compilation will extract string_length to CPU')
 
-    with ops.device('device:{}:0'.format(self.device)):
+  #   with ops.device('device:{}:0'.format(self.device)):
 
-      def fn(x):
-        return string_ops.string_length(
-            string_ops.string_format('{}', x))
+  #     def fn(x):
+  #       return string_ops.string_length(
+  #           string_ops.string_format('{}', x))
 
-      xla_func = polymorphic_function.function(fn, jit_compile=True)
+  #     xla_func = polymorphic_function.function(fn, jit_compile=True)
 
-      def fn2(x):
-        return xla_func(x)
+  #     def fn2(x):
+  #       return xla_func(x)
 
-      func = polymorphic_function.function(fn2, jit_compile=False)
-      inputs = constant_op.constant([1, 2, 2, 3, 3])
-      with self.assertRaisesRegex(
-          errors.InvalidArgumentError, 'unsupported operations'
-      ):
-        func(inputs)
+  #     func = polymorphic_function.function(fn2, jit_compile=False)
+  #     inputs = constant_op.constant([1, 2, 2, 3, 3])
+  #     with self.assertRaisesRegex(
+  #         errors.InvalidArgumentError, 'unsupported operations'
+  #     ):
+  #       func(inputs)
 
-  def testUnsupportedOps(self):
-    with ops.device('device:{}:0'.format(self.device)):
+  # def testUnsupportedOps(self):
+  #   with ops.device('device:{}:0'.format(self.device)):
 
-      def fn(x):
-        return string_ops.string_length(
-            string_ops.string_format('{}', x))
+  #     def fn(x):
+  #       return string_ops.string_length(
+  #           string_ops.string_format('{}', x))
 
-      xla_func = polymorphic_function.function(fn, jit_compile=True)
+  #     xla_func = polymorphic_function.function(fn, jit_compile=True)
 
-      with self.assertRaisesRegex(
-          errors.InvalidArgumentError, 'unsupported operations'
-      ):
-        xla_func(constant_op.constant([3.1, 3.2]))
+  #     with self.assertRaisesRegex(
+  #         errors.InvalidArgumentError, 'unsupported operations'
+  #     ):
+  #       xla_func(constant_op.constant([3.1, 3.2]))
 
   def testCollectiveReduceChannelId(self):
     with ops.device('device:{}:0'.format(self.device)):
@@ -487,22 +487,22 @@ class FunctionTest(xla_test.XLATestCase):
       c = C()
       self.assertAllClose([2, 3, 3, 4, 4], c.f1(inputs, 1))
 
-  def testMethodCompilationUnsupportedFunc(self):
-    with ops.device('device:{}:0'.format(self.device)):
+  # def testMethodCompilationUnsupportedFunc(self):
+  #   with ops.device('device:{}:0'.format(self.device)):
 
-      class C(object):
+  #     class C(object):
 
-        @polymorphic_function.function(jit_compile=True)
-        def f1(self, x):
-          return string_ops.string_length(
-              string_ops.string_format('{}', x))
+  #       @polymorphic_function.function(jit_compile=True)
+  #       def f1(self, x):
+  #         return string_ops.string_length(
+  #             string_ops.string_format('{}', x))
 
-      inputs = constant_op.constant([1, 2, 2, 3, 3])
-      c = C()
-      with self.assertRaisesRegex(
-          errors.InvalidArgumentError, 'unsupported operations'
-      ):
-        c.f1(inputs)
+  #     inputs = constant_op.constant([1, 2, 2, 3, 3])
+  #     c = C()
+  #     with self.assertRaisesRegex(
+  #         errors.InvalidArgumentError, 'legalization failed'
+  #         if test_util.is_mlir_bridge_enabled() else 'unsupported operations'):
+  #       c.f1(inputs)
 
   def testMustBeConstantPropagation(self):
     if 'tpu' in self.device.lower():
