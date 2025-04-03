@@ -1,1 +1,23 @@
 Auto generated patch. Do not edit or delete it, even if empty.
+diff -ruN --strip-trailing-cr a/clang/lib/Sema/SemaCXXScopeSpec.cpp b/clang/lib/Sema/SemaCXXScopeSpec.cpp
+--- a/clang/lib/Sema/SemaCXXScopeSpec.cpp
++++ b/clang/lib/Sema/SemaCXXScopeSpec.cpp
+@@ -873,6 +873,7 @@
+     DependentTemplateSpecializationTypeLoc SpecTL
+       = Builder.push<DependentTemplateSpecializationTypeLoc>(T);
+     SpecTL.setElaboratedKeywordLoc(SourceLocation());
++    SpecTL.setQualifierLoc(NestedNameSpecifierLoc());
+     SpecTL.setTemplateKeywordLoc(TemplateKWLoc);
+     SpecTL.setTemplateNameLoc(TemplateNameLoc);
+     SpecTL.setLAngleLoc(LAngleLoc);
+diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/libc/BUILD.bazel b/utils/bazel/llvm-project-overlay/libc/BUILD.bazel
+--- a/utils/bazel/llvm-project-overlay/libc/BUILD.bazel
++++ b/utils/bazel/llvm-project-overlay/libc/BUILD.bazel
+@@ -1902,7 +1902,6 @@
+     name = "inv_trigf_utils",
+     srcs = ["src/math/generic/inv_trigf_utils.cpp"],
+     hdrs = [
+-        "src/math/generic/atan_utils.h",
+         "src/math/generic/inv_trigf_utils.h",
+     ],
+     deps = [

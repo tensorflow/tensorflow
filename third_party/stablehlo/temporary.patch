@@ -1,1 +1,49 @@
+diff --ruN a/stablehlo/stablehlo/testdata/fft_complex128_14_15_0_17.mlir b/stablehlo/stablehlo/testdata/fft_complex128_14_15_0_17.mlir
+--- stablehlo/stablehlo/testdata/fft_complex128_14_15_0_17.mlir
++++ stablehlo/stablehlo/testdata/fft_complex128_14_15_0_17.mlir
+@@ -12,7 +12,7 @@
+     return %2 : tensor<14x15x0x33xf64>
+   }
+   func.func private @inputs() -> (tensor<14x15x0x17xcomplex<f64>> {mhlo.layout_mode = "default"}) {
+-    %cst = stablehlo.constant dense<> : tensor<14x15x0x17xcomplex<f64>>
++    %cst = stablehlo.constant dense<(0.0, 0.0)> : tensor<14x15x0x17xcomplex<f64>>
+     return %cst : tensor<14x15x0x17xcomplex<f64>>
+   }
+   func.func private @expected() -> (tensor<14x15x0x33xf64> {mhlo.layout_mode = "default"}) {
+diff --ruN a/stablehlo/stablehlo/testdata/fft_complex64_14_15_0_17.mlir b/stablehlo/stablehlo/testdata/fft_complex64_14_15_0_17.mlir
+--- stablehlo/stablehlo/testdata/fft_complex64_14_15_0_17.mlir
++++ stablehlo/stablehlo/testdata/fft_complex64_14_15_0_17.mlir
+@@ -12,7 +12,7 @@
+     return %2 : tensor<14x15x0x33xf32>
+   }
+   func.func private @inputs() -> (tensor<14x15x0x17xcomplex<f32>> {mhlo.layout_mode = "default"}) {
+-    %cst = stablehlo.constant dense<> : tensor<14x15x0x17xcomplex<f32>>
++    %cst = stablehlo.constant dense<(0.0, 0.0)> : tensor<14x15x0x17xcomplex<f32>>
+     return %cst : tensor<14x15x0x17xcomplex<f32>>
+   }
+   func.func private @expected() -> (tensor<14x15x0x33xf32> {mhlo.layout_mode = "default"}) {
+diff --ruN a/stablehlo/stablehlo/testdata/fft_float32_14_15_0_17.mlir b/stablehlo/stablehlo/testdata/fft_float32_14_15_0_17.mlir
+--- stablehlo/stablehlo/testdata/fft_float32_14_15_0_17.mlir
++++ stablehlo/stablehlo/testdata/fft_float32_14_15_0_17.mlir
+@@ -16,7 +16,7 @@
+     return %cst : tensor<14x15x0x17xf32>
+   }
+   func.func private @expected() -> (tensor<14x15x0x9xcomplex<f32>> {mhlo.layout_mode = "default"}) {
+-    %cst = stablehlo.constant dense<> : tensor<14x15x0x9xcomplex<f32>>
++    %cst = stablehlo.constant dense<(0.0, 0.0)> : tensor<14x15x0x9xcomplex<f32>>
+     return %cst : tensor<14x15x0x9xcomplex<f32>>
+   }
+ }
+diff --ruN a/stablehlo/stablehlo/testdata/fft_float64_14_15_0_17.mlir b/stablehlo/stablehlo/testdata/fft_float64_14_15_0_17.mlir
+--- stablehlo/stablehlo/testdata/fft_float64_14_15_0_17.mlir
++++ stablehlo/stablehlo/testdata/fft_float64_14_15_0_17.mlir
+@@ -16,7 +16,7 @@
+     return %cst : tensor<14x15x0x17xf64>
+   }
+   func.func private @expected() -> (tensor<14x15x0x9xcomplex<f64>> {mhlo.layout_mode = "default"}) {
+-    %cst = stablehlo.constant dense<> : tensor<14x15x0x9xcomplex<f64>>
++    %cst = stablehlo.constant dense<(0.0, 0.0)> : tensor<14x15x0x9xcomplex<f64>>
+     return %cst : tensor<14x15x0x9xcomplex<f64>>
+   }
+ }
 
