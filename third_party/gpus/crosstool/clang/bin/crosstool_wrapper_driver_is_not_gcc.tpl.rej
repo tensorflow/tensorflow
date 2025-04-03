@@ -1,0 +1,11 @@
+--- third_party/gpus/crosstool/clang/bin/crosstool_wrapper_driver_is_not_gcc.tpl
++++ third_party/gpus/crosstool/clang/bin/crosstool_wrapper_driver_is_not_gcc.tpl
+@@ -221,7 +221,7 @@ def InvokeNvcc(argv, log=False):
+   # Unfortunately, there are other options that have -c prefix too.
+   # So allowing only those look like C/C++ files.
+   src_files = [f for f in src_files if
+-               re.search('\.cpp$|\.cc$|\.c$|\.cxx$|\.C$', f)]
++               re.search('\\.cpp$|\\.cc$|\\.c$|\\.cxx$|\\.C$', f)]
+   srcs = ' '.join(src_files)
+   out = ' -o ' + out_file[0]
+ 
