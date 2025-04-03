@@ -563,7 +563,7 @@ ENTRY main {
 TEST_F(TritonGemmTest, UseTensorCoresForF32OnAmpere) {
   constexpr absl::string_view kHloText = R"(
 triton_gemm_r {
-  parameter_0 = f16[80,15]{1,0} parameter(0)
+  parameter_0 = s8[80,15]{1,0} parameter(0)
   convert.3 = f32[80,15]{1,0} convert(parameter_0)
   parameter_1 = f32[16,15]{1,0} parameter(1)
   ROOT r.1 = f32[80,16]{1,0} dot(convert.3, parameter_1),
@@ -572,7 +572,7 @@ triton_gemm_r {
 
 ENTRY e {
   p1 = f32[16,15]{1,0} parameter(1)
-  p0 = f16[80,15]{1,0} parameter(0)
+  p0 = s8[80,15]{1,0} parameter(0)
   ROOT triton_gemm_r = f32[80,16]{1,0} fusion(p0, p1), kind=kCustom,
     calls=triton_gemm_r,
     backend_config={"fusion_backend_config": {kind: "__triton_gemm", triton_gemm_config:
@@ -2484,7 +2484,7 @@ ENTRY e {
       GmockMatch(m::Fusion(m::Parameter(), m::Parameter())
                      .WithFusionKind(HloInstruction::FusionKind::kCustom)));
 
-  EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/3e-2, /*arel=*/3e-2}));
+  EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/4e-2, /*arel=*/6e-2}));
 }
 
 TEST_F(TritonGemmTest, ParameterAfterDotIsFused) {
@@ -4084,9 +4084,7 @@ ENTRY e {
                              .WithShape(BF16, {16, 40}, {1, 0})));
 }
 
-// This test could be modified to allow TF32 once this bug is fixed.
-// TODO(b/320659359) Allow TF32 for 8-bit or less types with F32.
-TEST_F(TritonTest, NoTF32For8BitOrLessWithF32) {
+TEST_F(TritonTest, UseTF32For8BitOrLessWithF32) {
   const std::string hlo_text = R"(
 HloModule t
 
@@ -4118,7 +4116,7 @@ ENTRY e {
   TF_ASSERT_OK(
       CreateTritonIrAndFileCheckForDot(this, hlo_text, "triton_dot", R"(
 CHECK:      tt.dot
-CHECK-NOT:  inputPrecision = tf32
+CHECK:  inputPrecision = tf32
   )"));
 
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));

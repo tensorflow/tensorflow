@@ -117,7 +117,7 @@ INSTANTIATE_TEST_SUITE_P(RewriteTestSuite, MixedTypeTest,
                          ::testing::ValuesIn({
                              MixTypeParams{PRED, F16, 16, 32, 8},
                              MixTypeParams{PRED, BF16, 16, 32, 8},
-                             MixTypeParams{PRED, F32, 16, 32, 8, 1e-4, 1e-3},
+                             MixTypeParams{PRED, F32, 16, 32, 8, 2e-4, 2e-3},
                              MixTypeParams{S8, F16, 16, 32, 8},
                              MixTypeParams{S8, BF16, 16, 32, 8},
                              MixTypeParams{S8, F32, 16, 32, 8, 5e-2, 1e-2},

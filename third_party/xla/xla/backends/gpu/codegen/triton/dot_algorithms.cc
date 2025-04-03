@@ -254,30 +254,14 @@ bool IsTf32Allowed(const HloDotInstruction& dot) {
   return algorithm_util::HasTf32InputType(precision_config.algorithm());
 }
 
-bool DotDependsOnConvertFromByteWideOrSmallerTypeToF32(
-    const HloDotInstruction* dot) {
-  return HloBfsAnyOf({dot}, [&](const HloInstruction* node) {
-    if (node->opcode() != HloOpcode::kConvert) {
-      return false;
-    }
-    int in_width =
-        primitive_util::BitWidth(node->operand(0)->shape().element_type());
-    return in_width <= 8 && node->shape().element_type() == F32;
-  });
-}
-
 ttir::InputPrecision InferDotPrecision(const HloDotInstruction& dot) {
   if (dot.precision_config().algorithm() ==
       PrecisionConfig::ALG_DOT_TF32_TF32_F32_X3) {
     return ttir::InputPrecision::TF32x3;
   }
 
-  bool use_tf32 = IsTf32Allowed(dot);
-  // TODO(b/320659359) Allow TF32 for 8-bit or less types with F32.
-  use_tf32 =
-      use_tf32 && !DotDependsOnConvertFromByteWideOrSmallerTypeToF32(&dot);
-
-  return use_tf32 ? ttir::InputPrecision::TF32 : ttir::InputPrecision::IEEE;
+  return IsTf32Allowed(dot) ? ttir::InputPrecision::TF32
+                            : ttir::InputPrecision::IEEE;
 }
 
 absl::StatusOr<Type> GetAlgUnsetAccumulatorType(EmitterLocOpBuilder& b,
