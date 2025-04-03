@@ -461,7 +461,7 @@ bool simplifyLoopDeallocs(Block& block) {
       breaks_if_you_move_ops::ValueSet equivalentOperands;
       llvm::SmallVector<memref::DeallocOp> deallocs;
       bool failed = false;
-      for (auto member = eq.member_begin(it);
+      for (auto member = eq.member_begin(*it);
            !failed && member != eq.member_end(); ++member) {
         if (operands.contains(*member)) {
           equivalentOperands.insert(*member);

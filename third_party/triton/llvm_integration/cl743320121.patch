@@ -1,0 +1,80 @@
+
+--- a/lib/Dialect/Triton/Transforms/ReorderBroadcast.cpp	2025-03-10 11:48:53.000000000 -0700
++++ b/lib/Dialect/Triton/Transforms/ReorderBroadcast.cpp	2025-04-02 16:35:31.000000000 -0700
+@@ -38,13 +38,11 @@
+ 
+ // elementwise(splat(a), splat(b), ...) => splat(elementwise(a, b, ...))
+ struct MoveSplatAfterElementwisePattern
+-    : public OpTraitRewritePattern<OpTrait::Elementwise>::SplitMatchAndRewrite {
++    : public OpTraitRewritePattern<OpTrait::Elementwise> {
++  using OpTraitRewritePattern::OpTraitRewritePattern;
+ 
+-  MoveSplatAfterElementwisePattern(MLIRContext *context)
+-      : SplitMatchAndRewrite(Pattern::MatchTraitOpTypeTag(),
+-                             TypeID::get<OpTrait::Elementwise>(), 1, context) {}
+-
+-  LogicalResult match(Operation *op) const override {
++  LogicalResult matchAndRewrite(Operation *op,
++                                PatternRewriter &rewriter) const override {
+     if (!isMemoryEffectFree(op)) {
+       return failure();
+     }
+@@ -58,10 +56,10 @@
+         return failure();
+       }
+     }
+-    return success(op->getNumOperands() > 0);
+-  }
++    if (op->getNumOperands() <= 0) {
++      return failure();
++    }
+ 
+-  void rewrite(Operation *op, PatternRewriter &rewriter) const override {
+     auto loc = op->getLoc();
+     auto operands = op->getOperands();
+ 
+@@ -97,6 +95,7 @@
+                                                 newOp->getResult(iRes));
+       rewriter.replaceAllUsesWith(op->getResult(iRes), newResult);
+     }
++    return success();
+   }
+ };
+ 
+@@ -104,15 +103,20 @@
+ // This also generalizes to multiple arguments when the rest are splat-like
+ // Not handled: multiple broadcasted arguments
+ struct MoveBroadcastAfterElementwisePattern
+-    : public OpTraitRewritePattern<OpTrait::Elementwise>::SplitMatchAndRewrite {
+-
+-  using SplitMatchAndRewrite::SplitMatchAndRewrite;
++    : public OpTraitRewritePattern<OpTrait::Elementwise> {
++  using OpTraitRewritePattern::OpTraitRewritePattern;
+ 
+-  MoveBroadcastAfterElementwisePattern(MLIRContext *context)
+-      : SplitMatchAndRewrite(Pattern::MatchTraitOpTypeTag(),
+-                             TypeID::get<OpTrait::Elementwise>(), 1, context) {}
++  LogicalResult matchAndRewrite(Operation *op,
++                                PatternRewriter &rewriter) const override {
++    if (match(op).failed()) {
++      return failure();
++    }
++    rewrite(op, rewriter);
++    return success();
++  }
+ 
+-  LogicalResult match(Operation *op) const override {
++ private:
++  LogicalResult match(Operation *op) const {
+     if (!isMemoryEffectFree(op)) {
+       return failure();
+     }
+@@ -144,7 +148,7 @@
+     return success(seenBroadcast);
+   }
+ 
+-  void rewrite(Operation *op, PatternRewriter &rewriter) const override {
++  void rewrite(Operation *op, PatternRewriter &rewriter) const {
+     auto loc = op->getLoc();
+ 
+     // Find broadcast op
