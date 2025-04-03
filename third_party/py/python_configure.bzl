@@ -2,7 +2,7 @@
 """
 
 load(
-    "//third_party/remote_config:common.bzl",
+    "@local_xla//third_party/remote_config:common.bzl",
     "BAZEL_SH",
     "PYTHON_BIN_PATH",
     "PYTHON_LIB_PATH",

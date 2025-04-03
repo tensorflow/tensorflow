@@ -7,13 +7,13 @@
 """
 
 load(
-    "//third_party/gpus:cuda_configure.bzl",
+    "@local_xla//third_party/gpus:cuda_configure.bzl",
     "find_cuda_config",
     "lib_name",
     "make_copy_files_rule",
 )
 load(
-    "//third_party/remote_config:common.bzl",
+    "@local_xla//third_party/remote_config:common.bzl",
     "config_repo_label",
     "get_cpu_value",
     "get_host_environ",

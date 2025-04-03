@@ -52,7 +52,6 @@ cc_library(
         "//tensorflow/lite/toco:types_proto_cc",
         "//tensorflow/lite/toco/logging:conversion_log_util",
         "//tensorflow/lite/toco/logging:toco_conversion_log_proto_cc",
-        "//third_party/python_runtime:headers",  # build_cleaner: keep; DNR: b/35864863
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/log:absl_log",
         "@com_google_absl//absl/status",
@@ -60,6 +59,7 @@ cc_library(
         "@com_google_protobuf//:protobuf_headers",
         "@flatbuffers//:runtime_cc",
         "@local_tsl//tsl/platform:status",
+        "@local_xla//third_party/python_runtime:headers",  # build_cleaner: keep; DNR: b/35864863
     ] + select({
         # This is required when running `tflite_convert` from `bazel`.
         # It requires to link with TensorFlow Ops to get the op definitions.
