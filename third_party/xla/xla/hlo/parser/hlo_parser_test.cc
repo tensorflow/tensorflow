@@ -4153,7 +4153,7 @@ TEST_F(HloParserTest, ParseUnknownSharding) {
 
 TEST_F(HloParserTest, ParseFrontendAttributes) {
   const std::string original =
-      R"({attr_a="test_a",attr_b="b",attr_c="s64",attr_d="a/b"})";
+      R"({attr_a="test_a",attr_b="b",attr_c={type="s64"},attr_d="a=\"b/c\""})";
   TF_ASSERT_OK_AND_ASSIGN(FrontendAttributes frontend_attributes,
                           ParseFrontendAttributes(original));
   EXPECT_EQ(FrontendAttributesToString(frontend_attributes), original);
