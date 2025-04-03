@@ -103,6 +103,10 @@ absl::StatusOr<mlir::ArrayAttr> ExtractLayoutsFromShapes(
 absl::StatusOr<mlir::ArrayAttr> ExtractLayoutsFromTuple(const xla::Shape shape,
                                                         mlir::Builder* builder);
 
+// Converts the ResultAccuracy to ResultAccuracyAttr.
+mlir::mhlo::ResultAccuracyAttr ConvertResultAccuracy(
+    const ResultAccuracy& result_accuracy, mlir::Builder* builder);
+
 }  // namespace xla
 
 #endif  // XLA_HLO_TRANSLATE_HLO_TO_MHLO_ATTRIBUTE_IMPORTER_H_

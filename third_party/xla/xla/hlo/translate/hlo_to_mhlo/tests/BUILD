@@ -38,6 +38,7 @@ lit_test_suite(
             "stacktrace_to_location.hlo",
             "types.hlo",
             "while.hlo",
+            "result_accuracy.hlo",
         ],
         include = [
             "*.hlo",
