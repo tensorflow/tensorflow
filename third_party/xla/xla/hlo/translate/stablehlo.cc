@@ -77,7 +77,7 @@ absl::Status StablehloToMhlo(mlir::ModuleOp module, bool run_canonicalizer) {
       mlir::mhlo::createChloLegalizeToHighLevelMhloPass());
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::stablehlo::createChloLegalizeToStablehloPass());
-  pm.addPass(mlir::mhlo::createStablehloLegalizeToHloPass());
+  pm.addPass(mlir::mhlo::createStablehloLegalizeToHloPass(/*options=*/{false}));
   if (run_canonicalizer) {
     pm.addNestedPass<mlir::func::FuncOp>(mlir::createCanonicalizerPass());
   }
