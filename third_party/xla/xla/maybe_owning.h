@@ -52,14 +52,14 @@ class MaybeOwning final {
     return *this;
   }
 
-  MaybeOwning& operator=(MaybeOwning&& other) {
+  MaybeOwning& operator=(MaybeOwning&& other) noexcept {
     using std::swap;
     swap(ptr_and_owning_bit_, other.ptr_and_owning_bit_);
     return *this;
   }
 
   MaybeOwning(const MaybeOwning&) = delete;
-  MaybeOwning(MaybeOwning&& other)
+  MaybeOwning(MaybeOwning&& other) noexcept
       : ptr_and_owning_bit_(other.ptr_and_owning_bit_) {
     other.ptr_and_owning_bit_ = 0;
   }
