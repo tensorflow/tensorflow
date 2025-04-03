@@ -445,7 +445,7 @@ void ChainResourceOps(
     // by `class_iter`). Keep track of ops that have already been processed.
     llvm::SmallDenseSet<Operation*> processed_ops;
     for (auto member_iter =
-             resource_equivalence_classes.member_begin(class_iter);
+             resource_equivalence_classes.member_begin(*class_iter);
          member_iter != resource_equivalence_classes.member_end();
          ++member_iter) {
       ResourceAndDevice resource_and_device = *member_iter;
