@@ -2030,10 +2030,17 @@ ENTRY entry_computation {
 }
 
 TEST_F(TritonEmitterTest, FP8ToFP8EndToEnd) {
-  if (auto cc =
+  if (auto cuda_cc =
           std::get_if<se::CudaComputeCapability>(&GpuComputeCapability())) {
-    if (!cc->IsAtLeastHopper()) {
+    if (!cuda_cc->IsAtLeastHopper()) {
       GTEST_SKIP() << "Doesn't pass on pre-Hopper GPUs.";
+    }
+  }
+
+  if (auto rocm_cc =
+          std::get_if<se::RocmComputeCapability>(&GpuComputeCapability())) {
+    if (!rocm_cc->has_ocp_fp8_support()) {
+      GTEST_SKIP() << "The arch doesn't support OCP FP8.";
     }
   }
 

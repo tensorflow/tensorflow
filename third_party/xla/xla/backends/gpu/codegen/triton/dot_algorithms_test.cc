@@ -124,6 +124,9 @@ class BlasAlgorithmTest : public AlgorithmTest {
 using TritonAlgorithmTest = AlgorithmTest;
 
 TEST_F(AlgorithmTest, Algorithm3xBF16) {
+  if (std::holds_alternative<se::RocmComputeCapability>(GpuComputeComp())) {
+    GTEST_SKIP() << "ALG_DOT_BF16_BF16_F32_X3 not supported on ROCM.";
+  }
   constexpr absl::string_view kHloText = R"(
     HloModule Algorithm3xBF16
 
@@ -140,6 +143,9 @@ TEST_F(AlgorithmTest, Algorithm3xBF16) {
 }
 
 TEST_F(AlgorithmTest, Algorithm6xBF16) {
+  if (std::holds_alternative<se::RocmComputeCapability>(GpuComputeComp())) {
+    GTEST_SKIP() << "ALG_DOT_BF16_BF16_F32_X6 not supported on ROCM.";
+  }
   constexpr absl::string_view kHloText = R"(
     HloModule Algorithm6xBF16
 
