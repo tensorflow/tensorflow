@@ -456,6 +456,7 @@ cc_library(
         "@local_xla//xla/tsl/platform:statusor",
         "@org_xprof//plugin/tensorboard_plugin_profile/protobuf:op_stats_proto_cc",
         "@org_xprof//xprof/utils:hardware_type_utils",
+        "@org_xprof//xprof/utils:hlo_module_map",
         "@org_xprof//xprof/utils:step_intersection",
     ],
 )
@@ -717,6 +718,7 @@ cc_library(
         "@local_xla//xla/tsl/profiler/utils:preprocess_xplane",
         "@local_xla//xla/tsl/profiler/utils:xplane_utils",
         "@org_xprof//xprof/utils:derived_timeline",
+        "@org_xprof//xprof/utils:hlo_module_map",
     ],
 )
 

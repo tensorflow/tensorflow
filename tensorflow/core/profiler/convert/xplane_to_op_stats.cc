@@ -284,7 +284,8 @@ DutyCycleTracker ConstructDutyCycleTracker(XPlaneVisitor& visitor) {
 }
 
 OpStats ConvertXSpaceToOpStats(const XSpace& space,
-                               const OpStatsOptions& options) {
+                               const OpStatsOptions& options,
+                               HloModuleMap& hlo_module_map) {
   OpStats op_stats;
   StepEvents step_events;
   PropagateXSpaceDiagnosticsToOpStats(space, &op_stats);
@@ -310,10 +311,11 @@ OpStats ConvertXSpaceToOpStats(const XSpace& space,
   }
   DutyCycleCombiner duty_cycle_combiner;
   // TODO(b/161942993) parallelize XPlane processing per thread.
-  HloModuleMap hlo_module_map;
   if (options.generate_kernel_stats_db ||
       (is_tpu && options.generate_op_metrics_db)) {
-    ProcessHloModuleMapFromXSpace(hlo_module_map, &space);
+    if (hlo_module_map.empty()) {
+      ProcessHloModuleMapFromXSpace(hlo_module_map, &space);
+    }
   }
   for (const XPlane* device_trace : device_planes) {
     if (options.generate_op_metrics_db) {

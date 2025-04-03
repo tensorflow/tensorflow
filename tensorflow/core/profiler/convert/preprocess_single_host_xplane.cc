@@ -22,12 +22,14 @@ limitations under the License.
 #include "xla/tsl/profiler/utils/xplane_utils.h"
 #include "tensorflow/core/profiler/utils/xplane_schema.h"
 #include "xprof/utils/derived_timeline.h"  // from @org_xprof
+#include "xprof/utils/hlo_module_map.h"  // from @org_xprof
 
 namespace tensorflow {
 namespace profiler {
 
 void PreprocessSingleHostXSpace(
     XSpace* space, bool step_grouping, bool derived_timeline,
+    HloModuleMap& hlo_module_map,
     tsl::profiler::GroupMetadataMap* group_metadata_map) {
   if (step_grouping && !tsl::profiler::IsXSpaceGrouped(*space)) {
     // Grouping (i.e. marking step number) events in the XSpace.
@@ -56,7 +58,8 @@ void PreprocessSingleHostXSpace(
 
     if (derived_timeline) {
       // Generated miscellaneous derived time lines for device planes.
-      GenerateDerivedTimeLines(event_forest.GetGroupMetadataMap(), space);
+      GenerateDerivedTimeLines(event_forest.GetGroupMetadataMap(), space,
+                               hlo_module_map);
     }
 
     if (group_metadata_map != nullptr) {
