@@ -142,15 +142,16 @@ TEST_P(UnaryTest, MultiThreading) {
 }
 
 BuiltinOperator all_unary_ops[] = {
-    BuiltinOperator_ABS,          BuiltinOperator_CEIL,
-    BuiltinOperator_COS,          BuiltinOperator_ELU,
-    BuiltinOperator_FLOOR,        BuiltinOperator_GELU,
-    BuiltinOperator_NEG,          BuiltinOperator_HARD_SWISH,
-    BuiltinOperator_RELU,         BuiltinOperator_RELU6,
-    BuiltinOperator_RELU_N1_TO_1, BuiltinOperator_ROUND,
-    BuiltinOperator_RSQRT,        BuiltinOperator_SIN,
-    BuiltinOperator_SQRT,         BuiltinOperator_SQUARE,
-    BuiltinOperator_TANH,         BuiltinOperator_LOGISTIC,
+    BuiltinOperator_ABS,        BuiltinOperator_CEIL,
+    BuiltinOperator_COS,        BuiltinOperator_ELU,
+    BuiltinOperator_EXP,        BuiltinOperator_FLOOR,
+    BuiltinOperator_GELU,       BuiltinOperator_NEG,
+    BuiltinOperator_HARD_SWISH, BuiltinOperator_RELU,
+    BuiltinOperator_RELU6,      BuiltinOperator_RELU_N1_TO_1,
+    BuiltinOperator_ROUND,      BuiltinOperator_RSQRT,
+    BuiltinOperator_SIN,        BuiltinOperator_SQRT,
+    BuiltinOperator_SQUARE,     BuiltinOperator_TANH,
+    BuiltinOperator_LOGISTIC,
 };
 
 INSTANTIATE_TEST_SUITE_P(
