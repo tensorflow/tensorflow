@@ -406,8 +406,7 @@ static absl::StatusOr<bool> TryRevectorizeConv(
   const auto& debug_options = conv->GetModule()->config().debug_options();
   bool use_reordering =
       input_shape.element_type() == xla::S8 && vect_size == 32 &&
-      debug_options.xla_gpu_enable_cudnn_int8x32_convolution_reordering() &&
-      cudnn_version >= se::dnn::VersionInfo{8, 3, 0};
+      debug_options.xla_gpu_enable_cudnn_int8x32_convolution_reordering();
   if (use_reordering) {
     // Reordering helper supports vector sizes of 4 and 32, so an additional
     // reshape-transpose-reshape is not necessary in these cases.
@@ -551,8 +550,7 @@ static absl::StatusOr<bool> TryVectorizeConv(
   const auto& debug_options = conv->GetModule()->config().debug_options();
   bool use_reordering =
       input_shape.element_type() == xla::S8 && vect_size == 32 &&
-      debug_options.xla_gpu_enable_cudnn_int8x32_convolution_reordering() &&
-      cudnn_version >= se::dnn::VersionInfo{8, 3, 0};
+      debug_options.xla_gpu_enable_cudnn_int8x32_convolution_reordering();
   if (use_reordering) {
     new_operands[1] = filter;
     TF_RETURN_IF_ERROR(ReorderInt8NchwVect(conv, new_operands.data()));
