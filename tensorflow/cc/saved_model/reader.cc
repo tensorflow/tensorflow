@@ -68,7 +68,9 @@ absl::StatusOr<MetaGraphDef*> FindMetaGraphDef(
     }
   }
   return Status(
-      absl::StatusCode::kNotFound,
+      // Returning InvalidArgument because not having the correct tags is
+      // considered a permanent error. It is not worth retrying.
+      absl::StatusCode::kInvalidArgument,
       strings::StrCat(
           "Could not find meta graph def matching supplied tags: { ",
           absl::StrJoin(tags, " "),
