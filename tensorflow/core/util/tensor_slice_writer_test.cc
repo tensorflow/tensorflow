@@ -20,17 +20,29 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
+#include "absl/strings/match.h"
+#include "Eigen/Core"  // from @eigen_archive
+#include "third_party/protobuf/text_format.h"
+#include "tensorflow/core/framework/numeric_types.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
+#include "tensorflow/core/framework/tensor_slice.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/framework/versions.pb.h"
-#include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/path.h"
 #include "tensorflow/core/platform/protobuf.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/platform/tstring.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
 #include "tensorflow/core/public/version.h"
+#include "tensorflow/core/util/saved_tensor_slice.pb.h"
 #include "tensorflow/core/util/saved_tensor_slice_util.h"
 #include "tensorflow/core/util/tensor_slice_reader.h"
+#include "tsl/lib/core/status_test_util.h"
+#include "tsl/platform/status.h"
+#include "tsl/protobuf/error_codes.pb.h"
 
 namespace tensorflow {
 
