@@ -95,6 +95,13 @@ class Timespan {
   bool operator<(const Timespan& other) const {
     if (begin_ps_ < other.begin_ps_) return true;
     if (begin_ps_ > other.begin_ps_) return false;
+    // In the case of equal begin times, we need to specially handle
+    // instantaneous events. If Timespan A is instantaneous and Timespan B is
+    // not, then A < B. If Timespan A is not instantaneous and Timespan B is,
+    // then B < A. If both are instantaneous, A == B. Otherwise, nest the
+    // timespans from outer to innermost.
+    if (Instant() && !other.Instant()) return true;
+    if (!Instant() && other.Instant()) return false;
     return duration_ps_ > other.duration_ps_;
   }
 
