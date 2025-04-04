@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "xla/hlo/builder/lib/comparators.h"
 
-#include <limits>
+#include <cstdint>
 #include <optional>
 #include <string>
 #include <vector>
