@@ -21,6 +21,7 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "third_party/protobuf/message_lite.h"
 #include "xla/service/test_compilation_environment.pb.h"
 #include "xla/test.h"
 #include "xla/tsl/lib/core/status_test_util.h"
@@ -37,7 +38,8 @@ using ::tsl::testing::StatusIs;
 std::unique_ptr<tsl::protobuf::Message> ProcessNewEnv1(
     std::unique_ptr<tsl::protobuf::Message> msg) {
   std::unique_ptr<test::TestCompilationEnvironment1> env(
-      tensorflow::down_cast<test::TestCompilationEnvironment1*>(msg.release()));
+      proto2::DownCastMessage<test::TestCompilationEnvironment1>(
+          msg.release()));
   if (!env) {
     env = std::make_unique<test::TestCompilationEnvironment1>();
   }
@@ -49,7 +51,8 @@ std::unique_ptr<tsl::protobuf::Message> ProcessNewEnv1(
 std::unique_ptr<tsl::protobuf::Message> ProcessNewEnv2(
     std::unique_ptr<tsl::protobuf::Message> msg) {
   std::unique_ptr<test::TestCompilationEnvironment2> env(
-      tensorflow::down_cast<test::TestCompilationEnvironment2*>(msg.release()));
+      proto2::DownCastMessage<test::TestCompilationEnvironment2>(
+          msg.release()));
   if (!env) {
     env = std::make_unique<test::TestCompilationEnvironment2>();
   }
@@ -61,7 +64,8 @@ std::unique_ptr<tsl::protobuf::Message> ProcessNewEnv2(
 std::unique_ptr<tsl::protobuf::Message> ProcessNewEnv3(
     std::unique_ptr<tsl::protobuf::Message> msg) {
   std::unique_ptr<test::TestCompilationEnvironment3> env(
-      tensorflow::down_cast<test::TestCompilationEnvironment3*>(msg.release()));
+      proto2::DownCastMessage<test::TestCompilationEnvironment3>(
+          msg.release()));
   if (!env) {
     env = std::make_unique<test::TestCompilationEnvironment3>();
   }
