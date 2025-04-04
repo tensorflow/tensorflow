@@ -337,11 +337,6 @@ class PjRtStreamExecutorClient : public PjRtClient {
 
   bool IsDmaMapped(const void* data_start, int64_t transfer_size);
 
-  // TODO(zhangqiaorjc): Experimental. Will be removed.
-  absl::Status Defragment() override {
-    return Unimplemented("Defragment not implemented");
-  }
-
   LocalDeviceState& device_state(int device_ordinal) const {
     return *tensorflow::down_cast<PjRtStreamExecutorDevice*>(
                 LookupAddressableDevice(xla::PjRtLocalDeviceId(device_ordinal))

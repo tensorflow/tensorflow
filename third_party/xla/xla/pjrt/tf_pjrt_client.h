@@ -310,7 +310,6 @@ class TfPjRtClient : public PjRtClient {
       const override {
     return wrapped_->GetTopologyDescription();
   }
-  absl::Status Defragment() override { return wrapped_->Defragment(); }
 
   PjRtClient* wrapped() const { return wrapped_.get(); }
 
