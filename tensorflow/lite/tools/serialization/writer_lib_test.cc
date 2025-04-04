@@ -29,6 +29,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/log/check.h"
 #include "tensorflow/compiler/mlir/lite/schema/mutable/schema_generated.h"
+#include "xla/tsl/platform/logging.h"
 #include "tensorflow/lite/builtin_ops.h"
 #include "tensorflow/lite/context_util.h"
 #include "tensorflow/lite/core/c/builtin_op_data.h"
@@ -43,7 +44,6 @@ limitations under the License.
 #include "tensorflow/lite/model_builder.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/util.h"
-#include "tsl/platform/logging.h"
 
 namespace tflite {
 
