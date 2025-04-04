@@ -280,20 +280,28 @@ def _download_redistribution(repository_ctx, arch_key, path_prefix):
     archive_name = get_archive_name(url)
     file_name = _get_file_name(url)
 
-    print("Downloading and extracting {}".format(url))  # buildifier: disable=print
+    download_time_before = repository_ctx.execute(["date", "+%s"]).stdout.replace("\n", "")
     repository_ctx.download(
         url = tf_mirror_urls(url),
         output = file_name,
         sha256 = sha256,
     )
+    download_time_after = repository_ctx.execute(["date", "+%s"]).stdout.replace("\n", "")
     if repository_ctx.attr.override_strip_prefix:
         strip_prefix = repository_ctx.attr.override_strip_prefix
     else:
         strip_prefix = archive_name
+    extract_time_before = repository_ctx.execute(["date", "+%s"]).stdout.replace("\n", "")
     repository_ctx.extract(
         archive = file_name,
         stripPrefix = strip_prefix,
     )
+    extract_time_after = repository_ctx.execute(["date", "+%s"]).stdout.replace("\n", "")
+    print("Downloading and extracting {}: download time {}s, extract time {}s".format(
+        url,
+        int(download_time_after) - int(download_time_before),
+        int(extract_time_after) - int(extract_time_before),
+    ))  # buildifier: disable=print
     repository_ctx.delete(file_name)
 
 def _get_platform_architecture(repository_ctx):
