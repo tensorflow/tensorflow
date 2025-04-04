@@ -27,6 +27,7 @@ limitations under the License.
 #include "xla/hlo/transforms/simplifiers/algebraic_simplifier.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/util.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla::gpu {
 
