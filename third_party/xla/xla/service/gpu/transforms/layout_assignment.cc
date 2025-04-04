@@ -177,24 +177,6 @@ HeuristicLayoutAssignment(const HloInstruction* instr,
         instr->shape().tuple_shapes(0).dimensions_size() != 4) {
       return kAllNCHW;
     }
-
-    // Empirically we've found with Volta and cudnn <= 7.3 that backward-input
-    // convs with stride are significantly faster with NCHW layouts.
-    //
-    // We could have used a mixed layout combination, e.g. (NHWC, NCHW, NCHW),
-    // which on paper gives good performance. However, there are two
-    // observations:
-    // * a mixed layout combination is more cuDNN-bug prone, based on empirical
-    //   evidence.
-    // * we've also observed that for mixed layouts, cuDNN transposes data back
-    //   and forth from a different layout combination. If we end up with
-    //   transposes anyway, we prefer to have them in XLA, as they can be fused.
-    if (std::make_tuple(dnn_version.major_version(),
-                        dnn_version.minor_version()) <= std::make_tuple(7, 3) &&
-        instr->custom_call_target() == kCudnnConvBackwardInputCallTarget &&
-        window_util::HasStride(instr->window())) {
-      return kAllNCHW;
-    }
   } else if (std::holds_alternative<se::RocmComputeCapability>(gpu_version)) {
     bool is_enabled = false;
     TF_CHECK_OK(tsl::ReadBoolFromEnvVar("TF_USE_ROCM_NHWC",
