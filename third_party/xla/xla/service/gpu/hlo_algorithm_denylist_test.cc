@@ -18,7 +18,11 @@ limitations under the License.
 #include <cstdlib>
 #include <string>
 
+#include <gmock/gmock.h>
+#include <gtest/gtest.h>
 #include "absl/strings/str_cat.h"
+#include "xla/autotuning.pb.h"
+#include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/stream_executor/dnn.h"
 #include "xla/tests/test_utils.h"
 #include "tsl/platform/env.h"

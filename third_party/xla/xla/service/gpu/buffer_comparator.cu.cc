@@ -19,6 +19,7 @@ limitations under the License.
 
 #include "xla/primitive_util.h"
 #include "xla/types.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla::gpu::buffer_comparator {
 
