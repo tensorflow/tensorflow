@@ -15,6 +15,7 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include <gtest/gtest.h>
 #include "absl/strings/string_view.h"
 #include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/tests/hlo_pjrt_test_base.h"
