@@ -2937,6 +2937,94 @@ struct ReorderTransposeReshapeTranspose
   }
 };
 
+// Some models produce FullyConnected ops where the LHS is a const and the RHS
+// is the activation. This breaks some downstream optimizations (notably input
+// caching in XNNPack among other things). This rewrite pattern swaps the
+// operands to match the expected order and recomputes a new output shape for
+// the resuling op.
+//
+// This pattern only applies when:
+// * input and filter operands are 2D
+// * bias = none
+// * keep_num_dims = false (implied if input and filter are 2D)
+// Support for additional cases to broaden applicability can be added later.
+// TODO(b/408313959): Add support for more cases.
+//
+// Note that transposes are added to maintain correctness:
+//
+// Original: Output[B, O] = FC(Input[B, I](Const), Filter[O, I](Var), Bias=None)
+//                           ~= matmul(C, transpose(V))
+//
+// Transformed:
+//   Intermediate[O, B] = FC(Filter[O, I](Var), Input[B, I](Const), None)
+//                           ~= matmul(V, transpose(C))
+//   FinalOutput[B, O]   = Transpose(Intermediate[O, B], perm=[1, 0])
+struct FullyConnectedSwapOperandsWhenLHSIsConst
+    : public OpRewritePattern<TFL::FullyConnectedOp> {
+  explicit FullyConnectedSwapOperandsWhenLHSIsConst(MLIRContext *context)
+      : OpRewritePattern<TFL::FullyConnectedOp>(context, /*benefit=*/0) {}
+
+  LogicalResult matchAndRewrite(TFL::FullyConnectedOp fc,
+                                PatternRewriter &rewriter) const override {
+    if (!mlir::isa<NoneType>(fc.getBias().getType())) return failure();
+
+    auto input = fc.getInput();
+    auto filter = fc.getFilter();
+
+    if (!matchPattern(input, m_Constant()) ||
+        matchPattern(filter, m_Constant()))
+      return failure();
+
+    auto input_type = mlir::dyn_cast<RankedTensorType>(input.getType());
+    auto filter_type = mlir::dyn_cast<RankedTensorType>(filter.getType());
+    auto output_type =
+        mlir::dyn_cast<RankedTensorType>(fc.getResult(0).getType());
+
+    if (!input_type || !filter_type || !output_type) return failure();
+
+    if (input_type.getRank() != 2 && filter_type.getRank() != 2)
+      return failure();
+
+    // Dimensions: B=Batch, I=InputDepth, O=OutputDepth
+    // Input: [B, I], Filter: [O, I]
+    // We extract B from the input operand and O from the filter operand
+    int64_t B = input_type.getDimSize(0);
+    int64_t O = filter_type.getDimSize(0);
+
+    Type element_type = output_type.getElementType();
+    Location loc = fc.getLoc();
+
+    RankedTensorType intermediate_type =
+        RankedTensorType::get({O, B}, element_type);
+
+    auto new_fc = rewriter.create<TFL::FullyConnectedOp>(
+        loc,
+        /*resultTypes=*/intermediate_type,
+        /*input=*/filter,  // Original Filter V[O, I]
+        /*filter=*/input,  // Original Input C[B, I]
+        /*bias=*/fc.getBias(),
+        /*fused_activation_function=*/
+        rewriter.getStringAttr(fc.getFusedActivationFunction()),
+        /*weights_format=*/fc.getWeightsFormatAttr(),
+        /*keep_num_dims=*/rewriter.getBoolAttr(false),
+        /*asymmetric_quantize_inputs=*/
+        fc.getAsymmetricQuantizeInputsAttr()  // Propagate quant attr
+    );
+
+    RankedTensorType final_shape_type =
+        RankedTensorType::get({B, O}, element_type);
+
+    Value transposed_result = rewriter.create<TFL::TransposeOp>(
+        loc, final_shape_type, new_fc.getResult(0),
+        rewriter.create<arith::ConstantOp>(
+            loc, GetI32ElementsAttr(ArrayRef<int32_t>({1, 0}), &rewriter)));
+
+    rewriter.replaceOp(fc, transposed_result);
+
+    return success();
+  }
+};
+
 // Adds canonicalization patterns to the list of patterns.
 void AddCanonicalizationPatterns(MLIRContext *context,
                                  RewritePatternSet *patterns) {
@@ -2998,7 +3086,8 @@ void OptimizePass::runOnOperation() {
       FuseReshapeAndTransposeAroundBatchMatmul,
       FuseTransposeReshapeIntoBatchMatmul, MoveReshapeAfterFullyConnected,
       EnableFullyConnectedKeepNumDimsBeforeReshape, ConvertTFLBroadcastToMulOp,
-      ReorderTransposeReshapeTranspose>(ctx);
+      ReorderTransposeReshapeTranspose,
+      FullyConnectedSwapOperandsWhenLHSIsConst>(ctx);
   if (!GetOptions().disable_fuse_mul_and_fc) {
     phase_2_patterns.add<FuseMulAndFullyConnected>(ctx);
   }
