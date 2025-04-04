@@ -263,8 +263,11 @@ bool InstructionFusion::EffectivelyAtMostUnary(HloInstruction* hlo) {
                    ShapeUtil::IsEffectiveScalar(operand->shape())) {
                  return false;
                }
-               return ShapeUtil::TrueNumDimensions(operand->shape()) >=
-                      output_rank;
+               const int true_dims =
+                   operand->shape().IsArray()
+                       ? ShapeUtil::TrueNumDimensions(operand->shape())
+                       : 0;
+               return true_dims >= output_rank;
              }) <= 1;
 }
 
