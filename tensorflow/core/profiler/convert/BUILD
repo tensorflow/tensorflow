@@ -441,7 +441,6 @@ cc_library(
         "@org_xprof//xprof/utils:hlo_module_map",
         "@org_xprof//xprof/utils:kernel_stats_utils",
         "@org_xprof//xprof/utils:op_utils",
-        "@org_xprof//xprof/utils:xprof_gpu_cost_analysis",
     ],
 )
 
@@ -1015,7 +1014,6 @@ cc_library(
         "@local_xla//xla/tsl/platform:statusor",
         "@local_xla//xla/tsl/profiler/utils:file_system_utils",
         "@org_xprof//xprof/utils:hlo_module_map",
-        "@org_xprof//xprof/utils:xprof_gpu_cost_analysis",
     ],
 )
 

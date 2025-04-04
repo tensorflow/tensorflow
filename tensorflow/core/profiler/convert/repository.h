@@ -34,7 +34,6 @@ limitations under the License.
 #include "tsl/platform/path.h"
 #include "tsl/profiler/protobuf/xplane.pb.h"
 #include "xprof/utils/hlo_module_map.h"  // from @org_xprof
-#include "xprof/utils/xprof_gpu_cost_analysis.h"  // from @org_xprof
 
 namespace tensorflow {
 namespace profiler {
