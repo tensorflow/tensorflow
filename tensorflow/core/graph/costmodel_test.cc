@@ -15,10 +15,17 @@ limitations under the License.
 
 #include "tensorflow/core/graph/costmodel.h"
 
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <unordered_map>
 
+#include <gmock/gmock.h>
+#include "absl/container/flat_hash_map.h"
+#include "absl/log/check.h"
+#include "absl/status/status.h"
+#include "absl/types/span.h"
+#include "third_party/protobuf/text_format.h"
 #include "tensorflow/cc/framework/scope.h"
 #include "tensorflow/core/common_runtime/costmodel_manager.h"
 #include "tensorflow/core/common_runtime/graph_constructor.h"
@@ -28,6 +35,7 @@ limitations under the License.
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/step_stats.pb.h"
 #include "tensorflow/core/framework/tensor_description.pb.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/types.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
