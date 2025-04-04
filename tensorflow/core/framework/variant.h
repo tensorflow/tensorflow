@@ -23,6 +23,7 @@ limitations under the License.
 #include <unordered_map>
 #include <utility>
 
+#include "absl/log/check.h"
 #include "absl/memory/memory.h"
 #include "tensorflow/core/framework/type_index.h"
 #include "tensorflow/core/framework/variant_encode_decode.h"
