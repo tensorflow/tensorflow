@@ -274,8 +274,13 @@ stream_executor::DeviceMemoryBase FromC(const SE_DeviceMemoryBase& se_base) {
 void ToC(const xla::Shape& xla_shape, XLA_Shape* c_shape) {
   c_shape->element_type = xla_shape.element_type();
 
-  CreateVector(xla_shape.dimensions(), &c_shape->dimensions);
-  CreateVector(xla_shape.dynamic_dimensions(), &c_shape->dynamic_dimensions);
+  if (xla_shape.IsArray()) {
+    CreateVector(xla_shape.dimensions(), &c_shape->dimensions);
+    CreateVector(xla_shape.dynamic_dimensions(), &c_shape->dynamic_dimensions);
+  } else {
+    c_shape->dimensions.size = 0;
+    c_shape->dynamic_dimensions.size = 0;
+  }
 
   c_shape->ntuple_shapes =
       xla_shape.IsTuple() ? xla_shape.tuple_shapes_size() : 0;
