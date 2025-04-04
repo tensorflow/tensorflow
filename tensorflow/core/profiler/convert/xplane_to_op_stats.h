@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/utils/hlo_proto_map.h"
 #include "tensorflow/core/profiler/utils/xplane_visitor.h"
 #include "tsl/profiler/protobuf/xplane.pb.h"
+#include "xprof/utils/hlo_module_map.h"  // from @org_xprof
 
 namespace tensorflow {
 namespace profiler {
@@ -35,9 +36,16 @@ struct OpStatsOptions {
   bool generate_kernel_stats_db = false;
 };
 
-// NOTE: call GroupTfEvents before if OpStats.step_db needs to be generated.
 OpStats ConvertXSpaceToOpStats(const XSpace& space,
-                               const OpStatsOptions& options);
+                               const OpStatsOptions& options,
+                               HloModuleMap& hlo_module_map);
+
+// NOTE: call GroupTfEvents before if OpStats.step_db needs to be generated.
+inline OpStats ConvertXSpaceToOpStats(const XSpace& space,
+                                      const OpStatsOptions& options) {
+  HloModuleMap hlo_module_map;
+  return ConvertXSpaceToOpStats(space, options, hlo_module_map);
+}
 
 // Populates the program_id_to_name map in OpStats.
 void SetProgramIdToNameMap(const HloProtoMap& hlo_proto_map,

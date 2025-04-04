@@ -29,6 +29,7 @@ limitations under the License.
 #include "tsl/profiler/protobuf/xplane.pb.h"
 #include "plugin/tensorboard_plugin_profile/protobuf/op_stats.pb.h"  // from @org_xprof
 #include "xprof/utils/hardware_type_utils.h"  // from @org_xprof
+#include "xprof/utils/hlo_module_map.h"  // from @org_xprof
 #include "xprof/utils/step_intersection.h"  // from @org_xprof
 
 namespace tensorflow {
@@ -43,11 +44,15 @@ absl::Status ConvertMultiXSpacesToCombinedOpStats(
   std::vector<OpStats> all_op_stats;
   all_op_stats.reserve(session_snapshot.XSpaceSize());
   for (int i = 0; i < session_snapshot.XSpaceSize(); i++) {
+    // HLO module map is used as a cache to avoid regenerating it for different
+    // stages, It is not thread safe.
+    HloModuleMap hlo_module_map;
     TF_ASSIGN_OR_RETURN(std::unique_ptr<XSpace> xspace,
                         session_snapshot.GetXSpace(i));
     PreprocessSingleHostXSpace(xspace.get(), /*step_grouping=*/true,
-                               /*derived_timeline=*/true);
-    all_op_stats.push_back(ConvertXSpaceToOpStats(*xspace, options));
+                               /*derived_timeline=*/true, hlo_module_map);
+    all_op_stats.push_back(
+        ConvertXSpaceToOpStats(*xspace, options, hlo_module_map));
   }
 
   // Combine OpStats.
