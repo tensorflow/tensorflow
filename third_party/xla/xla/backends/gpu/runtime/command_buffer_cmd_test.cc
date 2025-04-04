@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <array>
 #include <cstdint>
+#include <utility>
 #include <vector>
 
 #include "absl/functional/function_ref.h"
@@ -144,10 +145,10 @@ TEST(CommandBufferCmdTest, SerializeExecution) {
   auto use0 = BufferUse(slice0, BufferUse::kRead);
   auto use1 = BufferUse(slice1, BufferUse::kRead);
 
-  CommandBufferCmdSequence commands(
-      CommandBufferCmdSequence::SynchronizationMode::kSerialize);
-  commands.Emplace<TestOnlyCommandBufferCmd>(s0, BufferUseVector{use0});
-  commands.Emplace<TestOnlyCommandBufferCmd>(s0, BufferUseVector{use1});
+  CommandBufferCmdSequence::Builder builder;
+  builder.Emplace<TestOnlyCommandBufferCmd>(s0, BufferUseVector{use0});
+  builder.Emplace<TestOnlyCommandBufferCmd>(s0, BufferUseVector{use1});
+  CommandBufferCmdSequence commands = std::move(builder).Build();
 
   // TODO(ezhulenev): Check that commands correctly infer dependencies.
 }
@@ -162,9 +163,10 @@ TEST(CommandBufferCmdTest, NoReadBarrier) {
   auto use0 = BufferUse(slice0, BufferUse::kRead);
   auto use1 = BufferUse(slice1, BufferUse::kRead);
 
-  CommandBufferCmdSequence commands;
-  commands.Emplace<TestOnlyCommandBufferCmd>(s0, BufferUseVector{use0});
-  commands.Emplace<TestOnlyCommandBufferCmd>(s0, BufferUseVector{use1});
+  CommandBufferCmdSequence::Builder builder;
+  builder.Emplace<TestOnlyCommandBufferCmd>(s0, BufferUseVector{use0});
+  builder.Emplace<TestOnlyCommandBufferCmd>(s0, BufferUseVector{use1});
+  CommandBufferCmdSequence commands = std::move(builder).Build();
 
   // TODO(ezhulenev): Check that commands correctly infer dependencies.
 }
@@ -179,9 +181,10 @@ TEST(CommandBufferCmdTest, NoWriteBarrier) {
   auto use0 = BufferUse(slice0, BufferUse::kWrite);
   auto use1 = BufferUse(slice1, BufferUse::kWrite);
 
-  CommandBufferCmdSequence commands;
-  commands.Emplace<TestOnlyCommandBufferCmd>(s0, BufferUseVector{use0});
-  commands.Emplace<TestOnlyCommandBufferCmd>(s0, BufferUseVector{use1});
+  CommandBufferCmdSequence::Builder builder;
+  builder.Emplace<TestOnlyCommandBufferCmd>(s0, BufferUseVector{use0});
+  builder.Emplace<TestOnlyCommandBufferCmd>(s0, BufferUseVector{use1});
+  CommandBufferCmdSequence commands = std::move(builder).Build();
 
   // TODO(ezhulenev): Check that commands correctly infer dependencies.
 }
@@ -198,10 +201,11 @@ TEST(CommandBufferCmdTest, WriteConflictBarrier) {
   auto use1 = BufferUse(slice0, BufferUse::kRead);
   auto use2 = BufferUse(slice1, BufferUse::kWrite);
 
-  CommandBufferCmdSequence commands;
-  commands.Emplace<TestOnlyCommandBufferCmd>(s0, BufferUseVector{use0});
-  commands.Emplace<TestOnlyCommandBufferCmd>(s0, BufferUseVector{use1});
-  commands.Emplace<TestOnlyCommandBufferCmd>(s0, BufferUseVector{use2});
+  CommandBufferCmdSequence::Builder builder;
+  builder.Emplace<TestOnlyCommandBufferCmd>(s0, BufferUseVector{use0});
+  builder.Emplace<TestOnlyCommandBufferCmd>(s0, BufferUseVector{use1});
+  builder.Emplace<TestOnlyCommandBufferCmd>(s0, BufferUseVector{use2});
+  CommandBufferCmdSequence commands = std::move(builder).Build();
 
   // TODO(ezhulenev): Check that commands correctly infer dependencies.
 }
@@ -228,8 +232,9 @@ TEST(CommandBufferCmdTest, MemcpyCmd) {
   BufferAllocation::Slice slice_b(&alloc_b, 0, byte_length);
 
   // Prepare commands sequence for constructing command buffer.
-  CommandBufferCmdSequence commands;
-  commands.Emplace<MemcpyDeviceToDeviceCmd>(s0, slice_b, slice_a, byte_length);
+  CommandBufferCmdSequence::Builder builder;
+  builder.Emplace<MemcpyDeviceToDeviceCmd>(s0, slice_b, slice_a, byte_length);
+  CommandBufferCmdSequence commands = std::move(builder).Build();
 
   ServiceExecutableRunOptions run_options;
   se::StreamExecutorMemoryAllocator allocator(executor);
@@ -281,10 +286,11 @@ TEST(CommandBufferCmdTest, LaunchCmd) {
   auto args_access = {BufferUse::kRead, MemoryAccess::kRead, BufferUse::kWrite};
 
   // Prepare commands sequence for constructing command buffer.
-  CommandBufferCmdSequence commands;
-  commands.Emplace<LaunchCmd>(s0, "AddI32", args, args_access,
-                              LaunchDimensions(1, 4),
-                              /*shmem_bytes=*/0);
+  CommandBufferCmdSequence::Builder builder;
+  builder.Emplace<LaunchCmd>(s0, "AddI32", args, args_access,
+                             LaunchDimensions(1, 4),
+                             /*shmem_bytes=*/0);
+  CommandBufferCmdSequence commands = std::move(builder).Build();
 
   // Initialize command sequence and load device kernels.
   TF_ASSERT_OK_AND_ASSIGN(std::vector<uint8_t> fatbin,
