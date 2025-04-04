@@ -2835,6 +2835,43 @@ xla_cc_test(
 )
 
 cc_library(
+    name = "schedule_postprocessing",
+    srcs = ["schedule_postprocessing.cc"],
+    hdrs = ["schedule_postprocessing.h"],
+    deps = [
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/pass:hlo_pass",
+        "//xla/hlo/utils:hlo_query",
+        "//xla/service/gpu:backend_configs_cc",
+        "//xla/service/gpu/transforms/collectives:collective_ops_utils",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
+        "@local_tsl//tsl/platform:errors",
+        "@local_tsl//tsl/platform:statusor",
+    ],
+)
+
+xla_cc_test(
+    name = "schedule_postprocessing_test",
+    srcs = ["schedule_postprocessing_test.cc"],
+    deps = [
+        ":schedule_postprocessing",
+        "//xla:util",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/parser:hlo_parser",
+        "//xla/service/gpu:backend_configs_cc",
+        "//xla/tests:hlo_test_base",
+        "//xla/tests:xla_internal_test_main",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest",
+        "@local_tsl//tsl/platform:statusor",
+    ],
+)
+
+cc_library(
     name = "scheduling_instruction_annotator",
     srcs = ["scheduling_instruction_annotator.cc"],
     hdrs = ["scheduling_instruction_annotator.h"],

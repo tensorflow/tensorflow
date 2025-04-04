@@ -59,6 +59,7 @@ TEST_F(BackendConfigsTest, DefaultCollectiveBackendConfig) {
   const auto& collective_backend_config =
       gpu_config.collective_backend_config();
   EXPECT_THAT(collective_backend_config.is_sync(), IsFalse());
+  EXPECT_THAT(collective_backend_config.no_parallel_custom_call(), IsFalse());
 }
 
 TEST_F(BackendConfigsTest, DefaultGpuBackendConfigParseOpQueue) {

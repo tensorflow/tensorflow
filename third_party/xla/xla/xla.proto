@@ -443,6 +443,9 @@ message DebugOptions {
   // threads. Setting to 0 (the default value) means no enforcement.
   bool xla_gpu_enable_llvm_module_compilation_parallelism = 268;
 
+  // Allow early return when acquiring NCCL cliques.
+  bool xla_gpu_enable_nccl_clique_optimization = 244;
+
   // Enable NCCL communicator splitting.
   bool xla_gpu_enable_nccl_comm_splitting = 272;
 
@@ -802,7 +805,6 @@ message DebugOptions {
 
   // go/keep-sorted end
 
-  reserved 244;  // xla_gpu_enable_nccl_clique_optimization
   reserved 276;  // xla_gpu_enable_nccl_per_stream_comms
 
   //--------------------------------------------------------------------------//
