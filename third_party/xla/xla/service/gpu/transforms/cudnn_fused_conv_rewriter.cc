@@ -848,9 +848,6 @@ absl::StatusOr<bool> F8GraphConv(HloComputation* comp,
                                  const se::SemanticVersion& toolkit_version) {
   bool changed = false;
 
-  if (dnn_version < se::dnn::VersionInfo(8, 9, 0)) {
-    return false;
-  }
   if (toolkit_version < se::SemanticVersion{12, 0, 0}) {
     return false;
   }
