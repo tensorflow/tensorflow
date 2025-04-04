@@ -17,8 +17,11 @@ limitations under the License.
 #include <cstdint>
 #include <sstream>
 #include <string>
+#include <tuple>
 #include <vector>
 
+#include <gmock/gmock.h>
+#include <gtest/gtest.h>
 #include "absl/hash/hash.h"
 #include "absl/types/span.h"
 #include "xla/hlo/parser/hlo_parser.h"
