@@ -619,27 +619,4 @@ nb::tuple MutableSpanToNbTuple(absl::Span<nb::object> xs) {
   return out;
 }
 
-std::optional<CastToArrayResult> CastToArray(nb::handle h) {
-  auto array =
-      nb_numpy_ndarray::ensure(h, NPY_ARRAY_C_CONTIGUOUS | NPY_ARRAY_ALIGNED);
-  auto type_or_status = DtypeToPrimitiveType(array.dtype());
-  if (!type_or_status.ok()) {
-    throw xla::XlaRuntimeError(type_or_status.status());
-  }
-  PrimitiveType type = type_or_status.value();
-
-  absl::InlinedVector<int64_t, 4> dims(array.ndim());
-  for (int i = 0; i < array.ndim(); ++i) {
-    dims[i] = array.shape(i);
-  }
-  Shape shape = ShapeUtil::MakeShape(type, dims);
-  if (array.size() * array.itemsize() != ShapeUtil::ByteSizeOf(shape)) {
-    throw xla::XlaRuntimeError(absl::StrCat(
-        "Size mismatch for buffer: ", array.size() * array.itemsize(), " vs. ",
-        ShapeUtil::ByteSizeOf(shape)));
-  }
-  return CastToArrayResult{array, static_cast<const char*>(array.data()),
-                           shape};
-}
-
 }  // namespace xla
