@@ -185,7 +185,7 @@ ReductionDimensions GetReductionKindAndContiguousComponents(
   Shape input_shape = reduce.operand(0)->shape();
   absl::Span<const int64_t> dims_to_reduce = reduce.dimensions();
   DimensionVector dims_to_keep;
-  for (int64_t dim = 0; dim < input_shape.dimensions_size(); ++dim) {
+  for (int64_t dim = 0; dim < input_shape.dimensions().size(); ++dim) {
     if (!absl::c_linear_search(dims_to_reduce, dim)) {
       dims_to_keep.push_back(dim);
     }
