@@ -448,7 +448,7 @@ ReferenceUtil::ConvArray4DGeneralDimensionsDilated(
   HloEvaluator evaluator;
   Literal result_literal = evaluator.Evaluate(*computation, {}).value();
 
-  CHECK_EQ(result_literal.shape().dimensions_size(), 4);
+  CHECK_EQ(result_literal.shape().dimensions().size(), 4);
   auto result =
       std::make_unique<Array4D<float>>(result_literal.shape().dimensions(0),
                                        result_literal.shape().dimensions(1),
