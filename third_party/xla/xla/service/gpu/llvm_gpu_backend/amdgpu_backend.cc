@@ -320,6 +320,9 @@ absl::Status AMDGPUTargetModuleLinker(
       fn.addFnAttr("denormal-fp-math-f32", "preserve-sign");
     }
   }
+  const int32_t kAbiVersion = 500;
+  module->addModuleFlag(llvm::Module::Error, "amdhsa_code_object_version",
+                        kAbiVersion);
 
   return absl::OkStatus();
 }

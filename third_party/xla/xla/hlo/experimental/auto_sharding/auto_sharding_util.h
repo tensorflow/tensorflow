@@ -184,7 +184,7 @@ GetSpaceDims(const Shape& lhs_shape, const Shape& rhs_shape,
              const DotDimensionNumbers& dnums) {
   tsl::protobuf::RepeatedField<int64_t> lhs_space_dims, rhs_space_dims;
 
-  for (int64_t i = 0; i < lhs_shape.dimensions_size(); ++i) {
+  for (int64_t i = 0; i < lhs_shape.dimensions().size(); ++i) {
     if (absl::c_linear_search(dnums.lhs_batch_dimensions(), i) ||
         absl::c_linear_search(dnums.lhs_contracting_dimensions(), i)) {
       continue;
@@ -192,7 +192,7 @@ GetSpaceDims(const Shape& lhs_shape, const Shape& rhs_shape,
     lhs_space_dims.Add(i);
   }
 
-  for (int64_t i = 0; i < rhs_shape.dimensions_size(); ++i) {
+  for (int64_t i = 0; i < rhs_shape.dimensions().size(); ++i) {
     if (absl::c_linear_search(dnums.rhs_batch_dimensions(), i) ||
         absl::c_linear_search(dnums.rhs_contracting_dimensions(), i)) {
       continue;
