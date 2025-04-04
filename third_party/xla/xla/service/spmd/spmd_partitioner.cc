@@ -3761,8 +3761,11 @@ absl::Status SpmdPartitioningVisitor::HandleDynamicUpdateSlice(
         if (slice_size == 1) {
           partitioned_slice_offsets.push_back(-1);
         } else {
+          const PrimitiveType elemType =
+              hlo->operand(i + 2)->shape().element_type();
           partitioned_slice_offsets.push_back(
-              hlo->operand(i + 2)->literal().Get<int>({}));
+              elemType == S64 ? hlo->operand(i + 2)->literal().Get<int64_t>({})
+                              : hlo->operand(i + 2)->literal().Get<int>({}));
         }
       }
     } else if (hlo->sharding().tile_assignment().dim(i) != 1) {
