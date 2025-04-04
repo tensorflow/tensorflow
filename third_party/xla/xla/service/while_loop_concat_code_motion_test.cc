@@ -15,10 +15,11 @@ limitations under the License.
 
 #include "xla/service/while_loop_concat_code_motion.h"
 
-#include <algorithm>
-#include <iterator>
+#include <memory>
 
-#include "absl/algorithm/container.h"
+#include <gmock/gmock.h>
+#include <gtest/gtest.h>
+#include "absl/log/log.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"

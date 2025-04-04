@@ -20,6 +20,8 @@ limitations under the License.
 #include <unordered_map>
 #include <vector>
 
+#include "absl/base/thread_annotations.h"
+#include "absl/synchronization/mutex.h"
 #include "xla/stream_executor/stream_executor.h"
 
 namespace xla {
