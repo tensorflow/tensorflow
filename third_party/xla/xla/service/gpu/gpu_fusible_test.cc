@@ -12,7 +12,6 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-
 #include "xla/service/gpu/gpu_fusible.h"
 
 #include <memory>
@@ -1549,6 +1548,38 @@ TEST_F(GpuFusibleTest, GetSharedMemoryUsage) {
   FusionInfoCache cache(device_description());
   auto fusion = module->entry_computation()->root_instruction();
   EXPECT_EQ(cache.GetSharedMemoryUsage(*fusion), 32 * 33 * 2 * 4);
+}
+
+TEST_F(GpuFusibleTest, GetSharedMemoryUsageVariadicReduction) {
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto module, ParseAndReturnVerifiedModule(absl::StrCat(kModulePrefix, R"(
+        reducer {
+          p0 = pred[] parameter(0)
+          p1 = s32[] parameter(1)
+          p2 = pred[] parameter(2)
+          p3 = s32[] parameter(3)
+          ROOT %tuple.20.0 = (pred[], s32[]) tuple(p2, p3)
+        }
+        reduce {
+          p0 = pred[4,128,128] parameter(0)
+          p1 = s32[4,128,128] parameter(1)
+          cfalse = pred[] constant(false)
+          c0 = s32[] constant(0)
+          ROOT reduce = (pred[4,128], s32[4,128]) reduce(p0, p1, cfalse, c0),
+            dimensions={1}, to_apply=reducer
+        }
+        ENTRY main {
+          p0 = pred[4,128,128] parameter(0)
+          p1 = s32[4,128,128] parameter(1)
+          ROOT fusion = (pred[4,128], s32[4,128]) fusion(p0, p1),
+            kind=kInput, calls=reduce
+        })")));
+  FusionInfoCache cache(device_description());
+  auto fusion = module->entry_computation()->root_instruction();
+  constexpr int kMaxVectorSize = 4;
+  EXPECT_EQ(
+      cache.GetSharedMemoryUsage(*fusion),
+      (sizeof(int8_t) + sizeof(int32_t)) * 32 * (32 * kMaxVectorSize + 1));
 }
 
 TEST_F(GpuFusibleTest, IsConsumerTheOnlyNonRootUser) {
