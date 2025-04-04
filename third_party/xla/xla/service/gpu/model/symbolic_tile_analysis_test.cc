@@ -34,6 +34,7 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"
 #include "xla/hlo/analysis/indexing_test_utils.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/hlo/utils/hlo_traversal.h"
 #include "xla/service/gpu/model/constraint_expression.h"
@@ -284,6 +285,16 @@ ENTRY main {
   EXPECT_EQ(p0_from_producer, p0_from_consumer);
 
   EXPECT_THAT(*p0_from_producer,
+              MatchTiledHloInstruction(
+                  /*tile_sizes=*/{1, 97}, /*tile_strides=*/{1, 1},
+                  /*tile_offsets_indexing=*/R"(
+    (pid_0, pid_1) -> (pid_0, 0),
+    domain:
+    pid_0 in [0, 1],
+    pid_1 in [0, 0]
+  )"));
+
+  EXPECT_THAT(*p0_from_consumer,
               MatchTiledHloInstruction(
                   /*tile_sizes=*/{1, 97}, /*tile_strides=*/{1, 1},
                   /*tile_offsets_indexing=*/R"(
@@ -1238,7 +1249,7 @@ ENTRY main {
 
   EXPECT_THAT(*dynamic_slice, MatchTiledHloInstruction(
                                   /*tile_sizes=*/{1, 1, 32},
-                                  /*tile_strides=*/{0, 1, 1},
+                                  /*tile_strides=*/{1, 1, 1},
                                   /*tile_offsets_indexing=*/R"(
     (pid_0, pid_1) -> (0, pid_1, 0),
     domain:
@@ -1248,7 +1259,7 @@ ENTRY main {
 
   EXPECT_THAT(*param_0_tile, MatchTiledHloInstruction(
                                  /*tile_sizes=*/{1, 1, 32},
-                                 /*tile_strides=*/{0, 1, 1},
+                                 /*tile_strides=*/{1, 1, 1},
                                  /*tile_offsets_indexing=*/R"(
     (pid_0, pid_1){rt0, rt1} -> (rt0, pid_1, rt1),
     domain:
@@ -1259,8 +1270,16 @@ ENTRY main {
   )"));
 }
 
+// TODO(b/393299275): find a way to re-enable this test. When avoiding the
+// collapsing of point dimensions, I am no longer able to craft a test that
+// fails in the same way as required---i.e. one that has a valid tile for the
+// parameter node, but not for the following bitcast.
+//
+// We can think about improving the analysis to find cases where collapsing
+// point dimensions is safe---but until this happens, this test likely will have
+// to remain disabled.
 TEST_F(SymbolicTileAnalysisTest,
-       BailsOutOnReshapeWhenStandaloneSymbolicTileDerivationFails) {
+       DISABLED_BailsOutOnReshapeWhenStandaloneSymbolicTileDerivationFails) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(R"(
 HloModule m
@@ -1295,7 +1314,7 @@ ENTRY main {
                ->fused_instructions_computation(),
           &mlir_context_, /*emitter_specific_constraints_builder=*/nullptr);
 
-  EXPECT_TRUE(std::holds_alternative<FusionDecision>(analysis_or_error));
+  ASSERT_TRUE(std::holds_alternative<FusionDecision>(analysis_or_error));
   EXPECT_THAT(std::get<FusionDecision>(analysis_or_error).Explain(),
               ::testing::HasSubstr("Bailing out on reshape"));
 }
@@ -1560,7 +1579,7 @@ ENTRY main {
       "kind":"__triton_nested_gemm_fusion"}}
 })"));
   std::optional<SymbolicTileAnalysis> analysis = TryAnalyzeModule(module.get());
-  EXPECT_TRUE(analysis.has_value());
+  ASSERT_TRUE(analysis.has_value());
 
   TF_ASSERT_OK_AND_ASSIGN(
       TiledHloComputation tiled_hlo_computation,
@@ -1615,6 +1634,79 @@ ENTRY main {
               tsl::testing::StatusIs(
                   absl::StatusCode::kUnimplemented,
                   ::testing::HasSubstr("not divisible by tile size")));
+}
+
+TEST_F(SymbolicTileAnalysisTest, TrivialDimensionParametersArePreserved) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(R"(
+lhs {
+  ROOT p0 = f32[137,115] parameter(0)
+}
+
+rhs {
+  ROOT p0 = f32[1,115] parameter(0)
+}
+
+dot {
+  p0 = f32[137,115] parameter(0)
+  p1 = f32[1,115] parameter(1)
+
+  lhs = f32[137,115] fusion(p0),
+    kind=kCustom, calls=lhs, backend_config={
+      "fusion_backend_config":{
+        "block_level_fusion_config":{
+          "output_tiles":[{"sizes":["16","32"]}]}}}
+  rhs = f32[1,115] fusion(p1),
+    kind=kCustom, calls=rhs, backend_config={
+      "fusion_backend_config":{
+        "block_level_fusion_config":{
+          "output_tiles":[{"sizes":["16","32"]}]}}}
+
+  ROOT dot = f32[137,1] dot(lhs, rhs),
+    lhs_contracting_dims={1}, rhs_contracting_dims={1}
+}
+
+ENTRY main {
+  p0 = f32[137,115] parameter(0)
+  p1 = f32[1,115] parameter(1)
+  ROOT fusion = f32[137,1] fusion(p0, p1),
+    kind=kCustom, calls=dot
+})"));
+  std::optional<SymbolicTileAnalysis> analysis = TryAnalyzeModule(module.get());
+  ASSERT_TRUE(analysis.has_value());
+
+  TF_ASSERT_OK_AND_ASSIGN(TiledHloComputation tiled_hlo_computation,
+                          analysis->ComputeTiledHloInstructions(
+                              /*tile_parameters=*/{16, 16},
+                              /*constraints_are_known_satisfied=*/true,
+                              /*compute_all_tile_offset_indexing_maps=*/true));
+
+  const TiledHloInstruction* dot = tiled_hlo_computation.GetRoots().front();
+  ASSERT_EQ(dot->hlo()->opcode(), HloOpcode::kDot);
+
+  const TiledHloFusionInstruction* lhs_fusion =
+      static_cast<const TiledHloFusionInstruction*>(dot->operand(0));
+  const TiledHloFusionInstruction* rhs_fusion =
+      static_cast<const TiledHloFusionInstruction*>(dot->operand(1));
+
+  EXPECT_THAT(*lhs_fusion->called_computation()->GetRoots().front(),
+              MatchTiledHloInstruction(
+                  /*tile_sizes=*/{16, 32}, /*tile_strides=*/{1, 1},
+                  /*tile_offsets_indexing=*/
+                  "(pid_0, pid_1, pid_2) -> (pid_0 * 16, pid_2 * 32), domain: "
+                  "pid_0 in [0, 8], pid_1 in [0, 0], pid_2 in [0, 3]"));
+
+  // RHS has a trivial dimension. We make sure here that the requested padding
+  // is propagated as requested, and not simplified away (which would result in
+  // an invalid tile size of size "1").
+  // The trivial argument is still expected to be eliminated in the
+  // `tile_offsets_indexing` map, since this allows for more effective CSE.
+  EXPECT_THAT(*rhs_fusion->called_computation()->GetRoots().front(),
+              MatchTiledHloInstruction(
+                  /*tile_sizes=*/{16, 32}, /*tile_strides=*/{1, 1},
+                  /*tile_offsets_indexing=*/
+                  "(pid_0, pid_1, pid_2) -> (0, pid_2 * 32), domain: "
+                  "pid_0 in [0, 8], pid_1 in [0, 0], pid_2 in [0, 3]"));
 }
 
 }  // namespace

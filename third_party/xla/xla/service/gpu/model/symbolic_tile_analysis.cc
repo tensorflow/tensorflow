@@ -510,7 +510,8 @@ absl::StatusOr<int64_t> GetRealRootIndex(
                << tiled_hlo_instruction->hlo()->ToString() << " and operand "
                << operand.instruction().ToString();
       }
-      operand_indexing_map.Simplify();
+      operand_indexing_map.Simplify(
+          IndexingMap::SimplifyPointDimensions::kPreserve);
       operand_indexing_map.RescaleSymbols();
       operand_indexing_map.RemoveUnusedSymbols();
 
