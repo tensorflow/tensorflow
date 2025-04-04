@@ -38,7 +38,6 @@ cc_library(
     deps = [
         ":algorithm",
         ":allocation",
-        ":cost_analysis",
         ":memory_space_assignment_proto_cc",
         ":options",
         ":simulator",
@@ -637,7 +636,6 @@ cc_library(
     hdrs = ["allocation_value.h"],
     deps = [
         ":allocation",
-        "//xla:shape_tree",
         "//xla:shape_util",
         "//xla/hlo/ir:hlo",
         "//xla/service:hlo_value",

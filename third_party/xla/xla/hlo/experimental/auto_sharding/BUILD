@@ -176,7 +176,6 @@ cc_library(
     hdrs = ["auto_sharding_cost_graph.h"],
     compatible_with = get_compatible_with_libtpu_portable(),
     deps = [
-        ":auto_sharding_device_mesh",
         ":auto_sharding_strategy",
         ":matrix",
         "//xla:shape_util",
@@ -195,9 +194,7 @@ cc_library(
     hdrs = ["auto_sharding_option.h"],
     compatible_with = get_compatible_with_libtpu_portable(),
     deps = [
-        ":auto_sharding_device_mesh",
         ":auto_sharding_util",
-        "//xla:array",
         "//xla/service:hlo_module_config",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/log",

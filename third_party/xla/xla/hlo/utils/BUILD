@@ -39,8 +39,6 @@ cc_library(
     deps = [
         "//xla:shape_util",
         "//xla/hlo/analysis:hlo_alias_analysis",
-        "//xla/hlo/analysis:hlo_dataflow_analysis",
-        "//xla/hlo/analysis:hlo_ordering",
         "//xla/hlo/ir:hlo",
         "//xla/service:hlo_buffer",
         "//xla/service:hlo_value",

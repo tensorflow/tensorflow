@@ -47,13 +47,22 @@ class CastBf16OpsToF32Pass
   void runOnOperation() override;
 };
 
-class CastBf16OpsToF32 : public RewritePattern::SplitMatchAndRewrite {
+class CastBf16OpsToF32 : public RewritePattern {
  public:
   explicit CastBf16OpsToF32(MLIRContext* context)
-      : SplitMatchAndRewrite(MatchAnyOpTypeTag(), /*benefit=*/1, context) {}
+      : RewritePattern(MatchAnyOpTypeTag(), /*benefit=*/1, context) {}
+
+  LogicalResult matchAndRewrite(Operation* op,
+                                PatternRewriter& rewriter) const override {
+    if (match(op).failed()) {
+      return failure();
+    }
+    rewrite(op, rewriter);
+    return success();
+  }
 
  private:
-  LogicalResult match(Operation* op) const override {
+  LogicalResult match(Operation* op) const {
     if (isa<TF::CastOp, TF::ConstOp>(op) ||
         op->getName().hasTrait<OpTrait::ZeroOperands>()) {
       return failure();
@@ -71,7 +80,7 @@ class CastBf16OpsToF32 : public RewritePattern::SplitMatchAndRewrite {
     return failure();
   }
 
-  void rewrite(Operation* op, PatternRewriter& rewriter) const override {
+  void rewrite(Operation* op, PatternRewriter& rewriter) const {
     // Casts inputs of the operation.
     for (int i = 0; i < op->getNumOperands(); i++) {
       Value input = op->getOperand(i);

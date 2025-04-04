@@ -17,6 +17,7 @@ limitations under the License.
 #include <utility>
 
 #include "absl/base/nullability.h"
+#include "llvm/Support/LogicalResult.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
@@ -98,12 +99,12 @@ absl::Nullable<Operation*> SkipUpwardsOptionalBroadcastInDimOp(
   return op;
 }
 
-class DeferActivationTransposeForAddOp
-    : public OpRewritePattern<AddOp>::SplitMatchAndRewrite {
+class DeferActivationTransposeForAddOp : public OpRewritePattern<AddOp> {
  public:
-  using SplitMatchAndRewrite::SplitMatchAndRewrite;
+  using OpRewritePattern::OpRewritePattern;
 
-  LogicalResult match(AddOp op) const override {
+  LogicalResult matchAndRewrite(AddOp op,
+                                PatternRewriter& rewriter) const override {
     // Only supports the case for 2D convolution.
     const Value lhs = op.getOperand(0);
     if (!HasRankOf(lhs, /*rank=*/4)) return failure();
@@ -120,12 +121,13 @@ class DeferActivationTransposeForAddOp
     }
 
     // Match LHS permutation that converts: NHWC -> NCHW.
-    return IsTransposeOpWithPermuation(lhs.getDefiningOp(),
-                                       kNhwcToNchwPermutation);
-  }
+    if (IsTransposeOpWithPermuation(lhs.getDefiningOp(), kNhwcToNchwPermutation)
+            .failed()) {
+      return failure();
+    }
 
-  void rewrite(AddOp op, PatternRewriter& rewriter) const override {
     DeferRhsTransposeForBinaryOp(op, rewriter);
+    return success();
   }
 };
 
@@ -134,12 +136,12 @@ class DeferActivationTransposeForAddOp
 // to the result. The reduce function should be equivalent to
 // `stablehlo.maximum`, representing max pooling.
 class DeferActivationTransposeForMaxPoolReduceWindowOp
-    : public OpRewritePattern<
-          mlir::stablehlo::ReduceWindowOp>::SplitMatchAndRewrite {
+    : public OpRewritePattern<mlir::stablehlo::ReduceWindowOp> {
  public:
-  using SplitMatchAndRewrite::SplitMatchAndRewrite;
+  using OpRewritePattern::OpRewritePattern;
 
-  LogicalResult match(mlir::stablehlo::ReduceWindowOp op) const override {
+  LogicalResult matchAndRewrite(mlir::stablehlo::ReduceWindowOp op,
+                                PatternRewriter& rewriter) const override {
     if (failed(MatchMaxPoolReduceWindowOp(op))) return failure();
 
     // Match only when the lhs is connected to a transpose.
@@ -148,13 +150,12 @@ class DeferActivationTransposeForMaxPoolReduceWindowOp
     if (!HasRankOf(lhs, /*rank=*/4)) return failure();
 
     // Match input permutation that converts: NHWC -> NCHW.
-    return IsTransposeOpWithPermuation(lhs.getDefiningOp(),
-                                       kNhwcToNchwPermutation);
-  }
+    if (IsTransposeOpWithPermuation(lhs.getDefiningOp(), kNhwcToNchwPermutation)
+            .failed()) {
+      return failure();
+    }
 
-  // Pushes the transpose op at the input to the result.
-  void rewrite(mlir::stablehlo::ReduceWindowOp op,
-               PatternRewriter& rewriter) const override {
+    // Pushes the transpose op at the input to the result.
     auto transpose_op = cast<TransposeOp>(op.getOperand(0).getDefiningOp());
 
     const auto result_type = mlir::cast<TensorType>(op.getResult(0).getType());
@@ -194,6 +195,7 @@ class DeferActivationTransposeForMaxPoolReduceWindowOp
         rewriter);
 
     rewriter.replaceAllUsesWith(op.getResult(0), result_transpose_op);
+    return success();
   }
 
  private:
@@ -242,12 +244,12 @@ class DeferActivationTransposeForMaxPoolReduceWindowOp
 
 // Rewrites `maximum(transpose(%rhs), %lhs)` patterns to
 // `transpose(maximum(%rhs, transpose(%lhs)))`.
-class DeferActivationTransposeForMaxOp
-    : public OpRewritePattern<MaxOp>::SplitMatchAndRewrite {
+class DeferActivationTransposeForMaxOp : public OpRewritePattern<MaxOp> {
  public:
-  using SplitMatchAndRewrite::SplitMatchAndRewrite;
+  using OpRewritePattern::OpRewritePattern;
 
-  LogicalResult match(MaxOp op) const override {
+  LogicalResult matchAndRewrite(MaxOp op,
+                                PatternRewriter& rewriter) const override {
     Value input = op.getOperand(0);
     if (!HasRankOf(input, /*rank=*/4)) return failure();
 
@@ -258,12 +260,13 @@ class DeferActivationTransposeForMaxOp
       return failure();
     }
 
-    return IsTransposeOpWithPermuation(input.getDefiningOp(),
-                                       kNhwcToNchwPermutation);
-  }
-
-  void rewrite(MaxOp op, PatternRewriter& rewriter) const override {
+    if (IsTransposeOpWithPermuation(input.getDefiningOp(),
+                                    kNhwcToNchwPermutation)
+            .failed()) {
+      return failure();
+    }
     DeferRhsTransposeForBinaryOp(op, rewriter);
+    return success();
   }
 };
 

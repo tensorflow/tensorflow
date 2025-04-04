@@ -55,7 +55,6 @@ py_strict_test(
     ],
     deps = [
         ":profile_data",
-        # copybara:uncomment "//pyglib:gfile",
         "@absl_py//absl/testing:absltest",
     ],
 )

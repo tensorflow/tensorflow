@@ -67,21 +67,19 @@ class PrepareTpuComputationForTfExportPass
 };
 
 class RewriteXlaHostComputeMlir
-    : public OpRewritePattern<TF::_XlaHostComputeMlirOp>::SplitMatchAndRewrite {
+    : public OpRewritePattern<TF::_XlaHostComputeMlirOp> {
  public:
-  using SplitMatchAndRewrite::SplitMatchAndRewrite;
+  using OpRewritePattern::OpRewritePattern;
 
-  LogicalResult match(TF::_XlaHostComputeMlirOp op) const override {
+  LogicalResult matchAndRewrite(TF::_XlaHostComputeMlirOp op,
+                                PatternRewriter& rewriter) const override {
     if (op.getManualSharding()) {
       // This rewrite does not support manual_sharding. It is expected that the
       // _XlaHostComputeMlirOp registered as an MlirXlaOpKernel will handle this
       // case later once the XlaBuilder graph reaches it.
       return failure();
     }
-    return success();
-  }
-  void rewrite(TF::_XlaHostComputeMlirOp op,
-               PatternRewriter& rewriter) const override {
+
     llvm::SmallVector<Attribute> shape_attrs;
     shape_attrs.reserve(op.getNumResults());
     for (Type ty : op.getResultTypes()) {
@@ -141,6 +139,7 @@ class RewriteXlaHostComputeMlir
         op.getRecvKeyAttr(),
         /*cost_estimate_ns=*/rewriter.getI64IntegerAttr(kDefaultCostEstimate),
         /*tpu_core=*/rewriter.getI64IntegerAttr(0));
+    return success();
   }
 };
 

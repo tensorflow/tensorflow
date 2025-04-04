@@ -164,16 +164,24 @@ class AddDumpTensorOpPass
 };
 
 template <typename LiftedOpT>
-class AddDumpTensorOp
-    : public OpRewritePattern<LiftedOpT>::SplitMatchAndRewrite {
+class AddDumpTensorOp : public OpRewritePattern<LiftedOpT> {
  public:
   // Does not take ownership of context, which must refer to a valid value that
   // outlives this object.
   explicit AddDumpTensorOp(MLIRContext *context, DebuggerType debugger_type,
                            std::string log_dir_path)
-      : OpRewritePattern<LiftedOpT>::SplitMatchAndRewrite(context),
+      : OpRewritePattern<LiftedOpT>(context),
         debugger_type_(debugger_type),
         log_dir_path_(std::move(log_dir_path)) {}
+
+  LogicalResult matchAndRewrite(LiftedOpT op,
+                                PatternRewriter &rewriter) const override {
+    if (match(op).failed()) {
+      return failure();
+    }
+    rewrite(op, rewriter);
+    return success();
+  }
 
  private:
   SmallVector<NamedAttribute> CreateDumpAttributes(
@@ -204,7 +212,7 @@ class AddDumpTensorOp
     return symbol_table.insert(new_ref_func);
   }
 
-  LogicalResult match(LiftedOpT op) const override {
+  LogicalResult match(LiftedOpT op) const {
     if (!op->hasAttr(kQuantTraitAttrName) || op->getNumResults() != 1) {
       return failure();
     }
@@ -219,7 +227,7 @@ class AddDumpTensorOp
     return success();
   }
 
-  void rewrite(LiftedOpT op, PatternRewriter &rewriter) const override {
+  void rewrite(LiftedOpT op, PatternRewriter &rewriter) const {
     // Only support ops with 1 results
     Value result = op->getResult(0);
     rewriter.setInsertionPointAfterValue(result);
