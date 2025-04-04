@@ -518,6 +518,29 @@ LiteRtTensorBufferT::GetOpenClBuffer() {
   if (buffer_type_ == kLiteRtTensorBufferTypeOpenCl) {
     return &std::get<litert::internal::OpenClBuffer>(buffer_);
   }
+  if (buffer_type_ == kLiteRtTensorBufferTypeAhwb) {
+    if (auto it = memory_backed_buffers_.find(kLiteRtTensorBufferTypeOpenCl);
+        it != memory_backed_buffers_.end()) {
+      BufferVariant& memory_backed_buffer = it->second;
+      return &std::get<litert::internal::OpenClBuffer>(memory_backed_buffer);
+    }
+    // Create a new CL buffer from the AHWB buffer if not found.
+    litert::internal::AhwbBuffer ahwb_buffer = {
+        .ahwb = std::get<AhwbBuffer>(buffer_).ahwb};
+
+    LITERT_ASSIGN_OR_RETURN(
+        litert::internal::OpenClBuffer cl_buffer_from_ahwb,
+        litert::internal::OpenClBuffer::AllocFromAhwbBuffer(ahwb_buffer));
+
+    auto [it, inserted] = memory_backed_buffers_.insert(
+        {kLiteRtTensorBufferTypeOpenCl, std::move(cl_buffer_from_ahwb)});
+    LITERT_RETURN_IF_ERROR(
+        inserted == true,
+        Unexpected(kLiteRtStatusErrorRuntimeFailure,
+                   "Failed to insert CL buffer into memory backed buffers"));
+    return &std::get<litert::internal::OpenClBuffer>(it->second);
+  }
+
   return Unexpected(
       kLiteRtStatusErrorRuntimeFailure,
       absl::StrFormat("Cannot get %s buffer from %s tensor buffer",

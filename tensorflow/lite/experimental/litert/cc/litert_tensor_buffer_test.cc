@@ -19,6 +19,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <utility>
+#include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>  // NOLINT: Need when ANDROID_API_LEVEL >= 26
@@ -45,6 +46,14 @@
 #if LITERT_HAS_OPENGL_SUPPORT
 #include "tensorflow/lite/delegates/gpu/gl/egl_environment.h"
 #endif  // LITERT_HAS_OPENGL_SUPPORT
+
+#if LITERT_HAS_OPENCL_SUPPORT
+#include <CL/cl.h>
+#include "tensorflow/lite/experimental/litert/runtime/gpu_environment.h"
+#include "tensorflow/lite/experimental/litert/runtime/open_cl_buffer.h"
+#include "tensorflow/lite/experimental/litert/runtime/opencl/buffer.h"
+#include "tensorflow/lite/experimental/litert/runtime/opencl/cl_command_queue.h"
+#endif  // LITERT_HAS_OPENCL_SUPPORT
 
 namespace litert {
 namespace {
@@ -510,8 +519,9 @@ TEST(TensorBuffer, CreateFromGlTexture) {
   LITERT_ASSERT_OK_AND_ASSIGN(
       TensorBuffer tensor_buffer,
       TensorBuffer::CreateFromGlTexture(
-          RankedTensorType(kTensorType), gl_texture.target(), gl_texture.id(),
-          gl_texture.format(), gl_texture.bytes_size(), gl_texture.layer()));
+          RankedTensorType(kTestTensorType), gl_texture.target(),
+          gl_texture.id(), gl_texture.format(), gl_texture.bytes_size(),
+          gl_texture.layer()));
 }
 
 tflite::gpu::gl::GlBuffer CreateTestGlBuffer(size_t size_bytes) {
@@ -532,7 +542,7 @@ TEST(TensorBuffer, CreateFromGlBuffer) {
   LITERT_ASSERT_OK_AND_ASSIGN(
       TensorBuffer tensor_buffer,
       TensorBuffer::CreateFromGlBuffer(
-          RankedTensorType(kTensorType), gl_buffer.target(), gl_buffer.id(),
+          RankedTensorType(kTestTensorType), gl_buffer.target(), gl_buffer.id(),
           gl_buffer.bytes_size(), gl_buffer.offset()));
 }
 
@@ -545,7 +555,7 @@ TEST(TensorBuffer, GetGlBufferFromAhwb) {
   LITERT_ASSERT_OK_AND_ASSIGN(
       TensorBuffer ahwb_tensor_buffer,
       TensorBuffer::CreateManaged(kLiteRtTensorBufferTypeAhwb,
-                                  RankedTensorType(kTensorType),
+                                  RankedTensorType(kTestTensorType),
                                   sizeof(kTensorData)));
 
   // Write to AHWB Tensor buffer.
@@ -566,12 +576,48 @@ TEST(TensorBuffer, GetGlBufferFromAhwb) {
       gl_buffer.target, gl_buffer.id, gl_buffer.size_bytes, gl_buffer.offset,
       /*has_ownership=*/false);
   float read_data[sizeof(kTensorData) / sizeof(kTensorData[0])];
-  ASSERT_OK(gl_buffer_from_ahwb.Read<float>(absl::MakeSpan(read_data)));
+  auto status = gl_buffer_from_ahwb.Read<float>(absl::MakeSpan(read_data));
+  ASSERT_TRUE(status.ok());
   ASSERT_EQ(std::memcmp(read_data, kTensorData, sizeof(kTensorData)), 0);
 }
 #endif  // LITERT_HAS_AHWB_SUPPORT
 
 #endif  // LITERT_HAS_OPENGL_SUPPORT
+
+#if LITERT_HAS_OPENCL_SUPPORT
+TEST(TensorBuffer, GetClBufferFromAhwb) {
+  if (!internal::OpenClBuffer::IsSupported()) {
+    GTEST_SKIP() << "OpenCL is not supported on this platform; skipping the "
+                    "test";
+  }
+  // Create AHWB Tensor buffer.
+  LITERT_ASSERT_OK_AND_ASSIGN(
+      TensorBuffer ahwb_tensor_buffer,
+      TensorBuffer::CreateManaged(kLiteRtTensorBufferTypeAhwb,
+                                  RankedTensorType(kTestTensorType),
+                                  sizeof(kTensorData)));
+
+  // Write to AHWB Tensor buffer.
+  LITERT_ASSERT_OK(ahwb_tensor_buffer.Write<float>(absl::MakeConstSpan(
+      kTensorData, sizeof(kTensorData) / sizeof(kTensorData[0]))));
+
+  LITERT_ASSERT_OK_AND_ASSIGN(cl_mem cl_buffer,
+                              ahwb_tensor_buffer.GetOpenClBuffer());
+  EXPECT_THAT(cl_buffer, Ne(nullptr));
+
+  // Read from CL buffer.
+  // TODO(gcarranza): Add ClBuffer ReadLock functionality to LiteRT
+  // TensorBuffer. ClBuffer::Unlock currently writes to CL buffer.
+
+  cl::Buffer cl_buffer_from_ahwb(cl_buffer, sizeof(kTensorData));
+  cl::ClCommandQueue* queue =
+      internal::GpuEnvironmentSingleton::GetInstance().getCommandQueue();
+  std::vector<float> read_data;
+  auto status = cl_buffer_from_ahwb.ReadData(queue, &read_data);
+  ASSERT_TRUE(status.ok());
+  ASSERT_EQ(std::memcmp(read_data.data(), kTensorData, sizeof(kTensorData)), 0);
+}
+#endif  // LITERT_HAS_OPENCL_SUPPORT
 
 TEST(TensorBuffer, GetAhwb) {
   if (!internal::AhwbBuffer::IsSupported()) {
