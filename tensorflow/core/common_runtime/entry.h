@@ -15,6 +15,8 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_COMMON_RUNTIME_ENTRY_H_
 #define TENSORFLOW_CORE_COMMON_RUNTIME_ENTRY_H_
 
+#include <atomic>
+
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
@@ -37,7 +39,12 @@ struct Entry {
   };
 
   Entry() : state(State::NO_VALUE) {}
-  Entry(const Entry& other) : state(other.state), alloc_attr(other.alloc_attr) {
+  Entry(const Entry& other)
+      // This shouldn't be copied where it needs to be atomic, atomic access is
+      // only required when we have an array of entries shared by multiple
+      // threads.
+      : state(other.state.load(std::memory_order_relaxed)),
+        alloc_attr(other.alloc_attr) {
     switch (state) {
       case State::NO_VALUE:
         break;
@@ -54,16 +61,18 @@ struct Entry {
   }
 
   ~Entry() {
-    if (state == State::HAS_VALUE) val.Destroy();
+    if (state.load(std::memory_order_acquire) == State::HAS_VALUE) {
+      val.Destroy();
+    }
   }
 
   Entry& operator=(const Entry& other) {
     if (state == State::HAS_VALUE) {
       val.Destroy();
     }
-    state = other.state;
+    auto new_state = other.state.load(std::memory_order_acquire);
     alloc_attr = other.alloc_attr;
-    switch (state) {
+    switch (new_state) {
       case State::NO_VALUE:
         break;
       case State::HAS_VALUE:
@@ -76,6 +85,7 @@ struct Entry {
         ref_tensor = other.ref_tensor;
         break;
     }
+    state.store(new_state, std::memory_order_release);
     return *this;
   }
 
@@ -83,9 +93,9 @@ struct Entry {
     if (state == State::HAS_VALUE) {
       val.Destroy();
     }
-    state = other.state;
+    auto new_state = other.state.load(std::memory_order_acquire);
     alloc_attr = other.alloc_attr;
-    switch (state) {
+    switch (new_state) {
       case State::NO_VALUE:
         break;
       case State::HAS_VALUE:
@@ -98,15 +108,16 @@ struct Entry {
         ref_tensor = other.ref_tensor;
         break;
     }
+    state.store(new_state, std::memory_order_release);
     return *this;
   }
 
   // Clears the <val> field, and sets this entry to the `NO_VALUE` state.
   void ClearVal() {
-    if (state == State::HAS_VALUE) {
+    auto old_state = state.exchange(State::NO_VALUE);
+    if (old_state == State::HAS_VALUE) {
       val.Destroy();
     }
-    state = State::NO_VALUE;
   }
 
   union {
@@ -126,8 +137,11 @@ struct Entry {
   };
 
   // The current state of this entry, indicating which member of the above
-  // union is active.
-  State state;
+  // union is active. This can be used to mark the result as ready to another
+  // thread waiting for this entry, hence the atomic. If an entry is used this
+  // way it must have a stable address (no vector.push_back() while threads are
+  // running).
+  std::atomic<State> state;
 
   // The attributes of the allocator that creates the tensor.
   AllocatorAttributes alloc_attr;
