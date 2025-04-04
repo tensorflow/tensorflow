@@ -182,9 +182,11 @@ TritonEmitterConstraints::GetBuilder(
                                     const HloInstructionAdaptor& instr) {
             return &instr.instruction() == tiled_hlo_instruction->hlo();
           })) {
-        root_infos.push_back(RootTileInfo{
-            tiled_hlo_instruction->symbolic_tile().size_map(),
-            SpanToVector(tiled_hlo_instruction->hlo()->shape().dimensions())});
+        const auto& shape = tiled_hlo_instruction->hlo()->shape();
+        root_infos.push_back(
+            RootTileInfo{tiled_hlo_instruction->symbolic_tile().size_map(),
+                         shape.IsArray() ? SpanToVector(shape.dimensions())
+                                         : std::vector<int64_t>()});
       }
     }
 
