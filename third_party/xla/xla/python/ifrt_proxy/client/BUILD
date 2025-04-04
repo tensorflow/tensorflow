@@ -562,6 +562,7 @@ ifrt_proxy_cc_test(
         ":rpc_helper",
         ":version",
         "//xla:shape_util",
+        "//xla:xla_data_proto_cc",
         "//xla/python/ifrt",
         "//xla/python/ifrt:basic_device_list",
         "//xla/python/ifrt:mock",
