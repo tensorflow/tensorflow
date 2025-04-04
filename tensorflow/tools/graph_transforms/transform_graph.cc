@@ -15,15 +15,21 @@ limitations under the License.
 
 #include "tensorflow/tools/graph_transforms/transform_graph.h"
 
+#include "absl/strings/ascii.h"
 #include "tensorflow/core/framework/function.pb.h"
-#include "tensorflow/core/lib/strings/scanner.h"
+#include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/init_main.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/stringpiece.h"
 #include "tensorflow/core/util/command_line_flags.h"
 #include "tensorflow/tools/graph_transforms/file_utils.h"
 #include "tensorflow/tools/graph_transforms/transform_utils.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/scanner.h"
 #if !defined(PLATFORM_WINDOWS)
 #include <pwd.h>
 #include <unistd.h>
