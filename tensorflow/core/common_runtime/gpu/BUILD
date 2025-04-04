@@ -216,7 +216,6 @@ tf_cuda_library(
             clean_dep("//tensorflow:linux_x86_64_with_weightwatcher"): [],
             (
                 clean_dep("//tensorflow:linux_x86_64"),
-                clean_dep("//tensorflow:haswell"),
             ): [
                 "//tensorflow/compiler/tf2xla:layout_util",
                 "//tensorflow/compiler/jit:flags",
