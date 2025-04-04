@@ -16,7 +16,12 @@ limitations under the License.
 #define TENSORFLOW_LITE_DELEGATES_FLEX_DELEGATE_DATA_H_
 
 #include <functional>
+#include <map>
+#include <memory>
+#include <set>
 #include <string>
+#include <unordered_map>
+#include <vector>
 
 #include "tensorflow/core/common_runtime/eager/context.h"
 #include "tensorflow/core/framework/cancellation.h"
