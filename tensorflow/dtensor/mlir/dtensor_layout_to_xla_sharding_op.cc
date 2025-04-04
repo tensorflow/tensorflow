@@ -43,16 +43,32 @@ namespace {
 using mlir::TF::DTensorLayout;
 
 class RemoveDTensorLayoutAfterConstOrBlockArgPattern
-    : public mlir::OpRewritePattern<DTensorLayout>::SplitMatchAndRewrite {
+    : public mlir::OpRewritePattern<DTensorLayout> {
  public:
-  using SplitMatchAndRewrite::SplitMatchAndRewrite;
+  using OpRewritePattern::OpRewritePattern;
 
-  mlir::LogicalResult match(DTensorLayout layout_op) const override;
-
-  void rewrite(DTensorLayout layout_op,
-               mlir::PatternRewriter& rewriter) const override {
+  mlir::LogicalResult matchAndRewrite(
+      DTensorLayout layout_op, mlir::PatternRewriter& rewriter) const override {
+    if (match(layout_op).failed()) {
+      return mlir::failure();
+    }
     rewriter.replaceAllUsesWith(layout_op, layout_op.getInput());
     rewriter.eraseOp(layout_op);
+    return mlir::success();
+  }
+
+ private:
+  mlir::LogicalResult match(DTensorLayout layout_op) const {
+    auto input = layout_op.getInput();
+    if (mlir::isa<mlir::BlockArgument>(input)) {
+      return mlir::success();
+    }
+    mlir::Operation* input_op = input.getDefiningOp();
+    if (input_op != nullptr) {
+      return mlir::success(input_op->hasTrait<mlir::OpTrait::ConstantLike>());
+    } else {
+      return layout_op->emitOpError() << "Can't find defining op for " << input;
+    }
   }
 };
 
@@ -62,20 +78,6 @@ class DTensorLayoutToXlaShardingOpPass
  public:
   void runOnOperation() override;
 };
-
-mlir::LogicalResult RemoveDTensorLayoutAfterConstOrBlockArgPattern::match(
-    DTensorLayout layout_op) const {
-  auto input = layout_op.getInput();
-  if (mlir::isa<mlir::BlockArgument>(input)) {
-    return mlir::success();
-  }
-  mlir::Operation* input_op = input.getDefiningOp();
-  if (input_op != nullptr) {
-    return mlir::success(input_op->hasTrait<mlir::OpTrait::ConstantLike>());
-  } else {
-    return layout_op->emitOpError() << "Can't find defining op for " << input;
-  }
-}
 
 void DTensorLayoutToXlaShardingOpPass::runOnOperation() {
   mlir::RewritePatternSet patterns(&getContext());
