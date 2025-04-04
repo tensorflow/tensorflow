@@ -105,9 +105,7 @@ tf_proto_library(
     protodeps = [
         "@org_xprof//plugin/tensorboard_plugin_profile/protobuf:op_metrics_proto",
     ],
-    visibility = [
-        ":friends",
-    ],
+    visibility = ["//visibility:public"],
     exports = [
         "@org_xprof//plugin/tensorboard_plugin_profile/protobuf:op_metrics_proto",
     ],
