@@ -1058,7 +1058,7 @@ TEST(ShapeUtilTest, PermuteDynamicDimensions) {
     SCOPED_TRACE(absl::StrCat("permutation=", absl::StrJoin(permutation, ",")));
 
     auto permuted = ShapeUtil::PermuteDimensions(permutation, shape);
-    for (int i = 0; i < shape.dimensions_size(); i++) {
+    for (int i = 0; i < shape.dimensions().size(); i++) {
       EXPECT_EQ(permuted.dimensions(i), shape.dimensions(permutation[i]));
       EXPECT_EQ(permuted.is_dynamic_dimension(i),
                 shape.is_dynamic_dimension(permutation[i]));
