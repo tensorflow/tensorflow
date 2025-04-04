@@ -73,7 +73,7 @@ func.func @QuantizeConvWithBiasAndReluWeightOnly(%arg0: tensor<1x4x4x3xf32>) -> 
 
 func.func @QuantizeConvWithBiasAndReluSRQ(%arg0: tensor<1x4x4x3xf32>) -> (tensor<1x4x4x1xf32>) {
   %cst = arith.constant dense<1.14751196> : tensor<1xf32>
-  %0 = "tfl.quantize"(%cst) <{qtype = tensor<1x!quant.uniform<i32:f32, 5.576458833533339E-5>>}> {volatile} : (tensor<1xf32>) -> tensor<1x!quant.uniform<i32:f32, 5.576458833533339E-5>>
+  %0 = "tfl.quantize"(%cst) <{qtype = tensor<1x!quant.uniform<i32:f32, 5.576458833533339E-5>>}> : (tensor<1xf32>) -> tensor<1x!quant.uniform<i32:f32, 5.576458833533339E-5>>
   %1 = "tfl.dequantize"(%0) : (tensor<1x!quant.uniform<i32:f32, 5.576458833533339E-5>>) -> tensor<1xf32>
   %cst_0 = arith.constant dense<[[[[1.76285899, -0.257785767, 0.20429258], [1.16310906, 0.23124367, 0.529797196]], [[0.348971426, -0.319283515, -0.772461354], [0.316666812, 1.88180697, -1.78054631]]]]> : tensor<1x2x2x3xf32>
   %2 = "tfl.quantize"(%arg0) <{qtype = tensor<1x4x4x3x!quant.uniform<i8:f32, 0.0037634586915373802:-128>>}> : (tensor<1x4x4x3xf32>) -> tensor<1x4x4x3x!quant.uniform<i8:f32, 0.0037634586915373802:-128>>
@@ -105,3 +105,14 @@ func.func @DQQToRequantize(%arg0: tensor<1x128x128x320x!quant.uniform<i8:f32, 0.
 // CHECK:    return %0 : tensor<1x128x128x320x!quant.uniform<i8:f32, 0.1043805405497551:-6>>
 }
 
+// -----
+
+func.func @VolatileQuantizeConst() -> (tensor<1xf32>) {
+  %cst = arith.constant dense<1.14751196> : tensor<1xf32>
+  %0 = "tfl.quantize"(%cst) <{qtype = tensor<1x!quant.uniform<i32:f32, 5.576458833533339E-5>>}> {volatile} : (tensor<1xf32>) -> tensor<1x!quant.uniform<i32:f32, 5.576458833533339E-5>>
+  %1 = "tfl.dequantize"(%0) : (tensor<1x!quant.uniform<i32:f32, 5.576458833533339E-5>>) -> tensor<1xf32>
+  return %1 : tensor<1xf32>
+// CHECK: %0 = "tfl.pseudo_qconst"() <{qtype = tensor<1x!quant.uniform<i32:f32, 5.576458833533339E-5>>, value = dense<20578> : tensor<1xi32>}> {volatile} : () -> tensor<1x!quant.uniform<i32:f32, 5.576458833533339E-5>>
+// CHECK: %1 = "tfl.dequantize"(%0) : (tensor<1x!quant.uniform<i32:f32, 5.576458833533339E-5>>) -> tensor<1xf32>
+// CHECK: return %1 : tensor<1xf32>
+}
