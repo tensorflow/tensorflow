@@ -454,8 +454,9 @@ common:rbe_linux_cpu --remote_instance_name=projects/tensorflow-testing/instance
 
 # Download CUDA/CUDNN redistributions to preserve the repositories cache between
 # CPU and GPU builds.
-build:rbe_linux_cpu --repo_env USE_CUDA_REDISTRIBUTIONS=1
-build:rbe_linux_cpu --config=cuda_version
+# TODO(ybaturina): Uncomment when RBE is ready to support this.
+# build:rbe_linux_cpu --repo_env USE_CUDA_REDISTRIBUTIONS=1
+# build:rbe_linux_cpu --config=cuda_version
 
 build:rbe_linux_cuda --config=cuda_clang_official
 build:rbe_linux_cuda --config=rbe_linux_cpu
