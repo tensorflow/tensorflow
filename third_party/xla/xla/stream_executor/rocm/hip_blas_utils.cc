@@ -35,14 +35,12 @@ absl::Status ToStatus(hipblasStatus_t status, const char* prefix) {
 
 hipDataType AsHipblasDataType(blas::DataType type) {
   switch (type) {
-    case blas::DataType::kF8E5M2:
     case blas::DataType::kF8E4M3:
-    case blas::DataType::kF8E4M3FN:
     case blas::DataType::kF8E3M4:
     case blas::DataType::kF4E2M1FN:
     case blas::DataType::kF8E8M0FNU:
-      LOG(FATAL) << "hipblaslt does not support F8E5M2, F8E4M3, F8E4M3FN, "
-                    "F8E3M4, F4E2M1FN and F8E8M0FNU";
+      LOG(FATAL) << "hipblaslt does not support, F8E4M3, F8E3M4, F4E2M1FN and "
+                    "F8E8M0FNU";
 #if TF_ROCM_VERSION >= 60000
     case blas::DataType::kF8E5M2FNUZ:
       return HIP_R_8F_E5M2_FNUZ;
@@ -51,7 +49,17 @@ hipDataType AsHipblasDataType(blas::DataType type) {
 #else
     case blas::DataType::kF8E5M2FNUZ:
     case blas::DataType::kF8E4M3FNUZ:
-      LOG(FATAL) << "hipblaslt only supports F8 in ROCm 6.0 and above";
+      LOG(FATAL) << "hipblaslt only supports nanoo F8 in ROCm 6.0 and above";
+#endif
+#if TF_ROCM_VERSION >= 60300
+    case blas::DataType::kF8E5M2:
+      return HIP_R_8F_E5M2;
+    case blas::DataType::kF8E4M3FN:
+      return HIP_R_8F_E4M3;
+#else
+    case blas::DataType::kF8E5M2:
+    case blas::DataType::kF8E4M3FN:
+      LOG(FATAL) << "hipblaslt only supports OCP F8 in ROCm 6.3 and above";
 #endif
     case blas::DataType::kHalf:
       return HIP_R_16F;

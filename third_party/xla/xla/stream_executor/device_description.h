@@ -124,8 +124,12 @@ class RocmComputeCapability {
   }
 
   bool has_fp8_support() const {
-    return gfx9_mi300_series() || gfx1200() || gfx1201();
+    return has_ocp_fp8_support() || has_nanoo_fp8_support();
   }
+
+  bool has_ocp_fp8_support() const { return gfx1200() || gfx1201(); }
+
+  bool has_nanoo_fp8_support() const { return gfx_version() == "gfx942"; }
 
   std::string ToString() const { return gcn_arch_name(); }
 
