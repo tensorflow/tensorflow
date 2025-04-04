@@ -193,19 +193,14 @@ class NanoIfrtClient : public llvm::RTTIExtends<NanoIfrtClient, ifrt::Client> {
   // details.
   std::unique_ptr<ifrt::Compiler> compiler_;
   std::unique_ptr<ifrt::Memory> memory_;
-  std::unique_ptr<ifrt::Device> device_;
+  std::vector<std::unique_ptr<ifrt::Device>> owned_devices_;
 
   // The default sharding for this client. When this sharding is used it
   // typically means that we can use an array's contents directly.
   std::shared_ptr<ifrt::Sharding> default_sharding_;
 
   // Some of the ifrt::Client methods return a span of devices, so we need to
-  // keep storage for them here. Note that this may repeat the device_ pointer
-  // multiple times if this client is configured with multiple devices. This is
-  // mostly to make IFRT callers that expect sharded programs to run on multiple
-  // devices happy. This has the unusual property that we have multiple devices
-  // but a single device_id, but this seems to work fine and most documentation
-  // warns that devices may be repeated within a device list or sharding.
+  // keep storage for them here.
   std::vector<ifrt::Device*> devices_;
 };
 
