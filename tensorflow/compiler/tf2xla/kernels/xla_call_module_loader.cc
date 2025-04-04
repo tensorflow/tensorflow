@@ -399,9 +399,15 @@ absl::Status XlaCallModuleLoader::LoadModule(
   }
 
   // Parse the StableHLO/VHLO bytecode
-  module_ = mlir::stablehlo::deserializePortableArtifact(module_str, context_);
-  if (!module_) {
-    return absl::InvalidArgumentError("Cannot deserialize computation");
+  {
+    mlir::StatusScopedDiagnosticHandler diag_handler(context_);
+    module_ =
+        mlir::stablehlo::deserializePortableArtifact(module_str, context_);
+    if (!module_) {
+      return absl::InvalidArgumentError(
+          absl::StrCat("Cannot deserialize computation: ",
+                       diag_handler.ConsumeStatus().ToString()));
+    }
   }
   VLOG(3) << "Parsed serialized module (version = " << version
           << ", platforms = [" << absl::StrJoin(platforms, ", ")

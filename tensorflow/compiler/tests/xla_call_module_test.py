@@ -1568,6 +1568,30 @@ module @jit_f.0 {
 
     self._assertOpOutputMatchesExpected(f, (x,), (np.sin(np.cos(x)),))
 
+  def test_op_backward_incompatibility(self):
+    """Test for ensuring XlaCallModuleOp with invalid bytecode."""
+    x = np.array([1.0, 2.0, 3.0], dtype=np.float32)
+
+    def f(x):
+      # Use an invalid MLIR string that will fail to parse when loading the
+      # call module op, emulating a backward incompatibility.
+      corrupted_module = 'stablehlo.invalid_op'
+      return gen_xla_ops.xla_call_module(
+          [x],
+          version=xla.call_module_maximum_supported_version(),
+          module=corrupted_module,
+          Tout=[x.dtype],
+          Sout=[x.shape],
+          platforms=[self.testing_platform()],
+      )
+
+    # Expect any error message to be included after `:`
+    with self.assertRaisesRegex(
+        errors.InvalidArgumentError,
+        'Cannot deserialize computation: .+',
+    ):
+      f(x)
+
 
 if __name__ == '__main__':
   ops.enable_eager_execution(
