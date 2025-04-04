@@ -586,7 +586,6 @@ CodegenDecision IsTritonSupportedInstructionImpl(
 namespace internal {
 bool IsTritonUnsupportedOpcode(HloOpcode opcode) {
   switch (opcode) {
-    case HloOpcode::kCholesky:
     case HloOpcode::kConvolution:
     case HloOpcode::kCopyDone:
     case HloOpcode::kCopyStart:

@@ -89,6 +89,7 @@ bool DoesOpSupportType(HloOpcode opcode, PrimitiveType type) {
     case HloOpcode::kReal:
     case HloOpcode::kImag:
     case HloOpcode::kLogistic:
+    case HloOpcode::kCholesky:
       return pu::IsFloatingPointType(type) || pu::IsComplexType(type);
     case HloOpcode::kCbrt:
     case HloOpcode::kErf:
@@ -2518,10 +2519,47 @@ INSTANTIATE_TEST_SUITE_P(CustomCallSuite, CustomCallTest,
                          ::testing::ValuesIn(AllDevicesToTest()),
                          TritonSupportTestDeviceToString);
 
+class CholeskyTest
+    : public TritonSupportTest,
+      public ::testing::WithParamInterface<
+          // The bool parameter is used to parametrize the lower=?.
+          std::tuple<PrimitiveType, se::GpuComputeCapability, bool>> {};
+
+TEST_P(CholeskyTest, Cholesky) {
+  auto [data_type, cc, lower] = GetParam();
+
+  const std::string kHloTestTemplate = absl::Substitute(
+      R"(
+    ENTRY triton_computation {
+      parameter = $0[4,4] parameter(0)
+      ROOT cholesky_op = $0[4,4] cholesky(parameter), lower=$1
+    })",
+      primitive_util::LowercasePrimitiveTypeName(data_type), lower);
+
+  TF_ASSERT_OK_AND_ASSIGN(TestedInstruction ti, ParseTemplateAndGetInstruction(
+                                                    kHloTestTemplate, data_type,
+                                                    HloOpcode::kCholesky));
+  RunSupportTest(std::move(ti), /*output_tile_sizes=*/{2, 2}, cc);
+}
+
+std::string CholeskyTestName(
+    const ::testing::TestParamInfo<
+        std::tuple<PrimitiveType, se::GpuComputeCapability, bool>>& data) {
+  const auto [data_type, cc, lower] = data.param;
+  return absl::StrCat(primitive_util::LowercasePrimitiveTypeName(data_type),
+                      "_", ComputeCapabilityToString(cc), "_", lower);
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    CholeskySuite, CholeskyTest,
+    ::testing::Combine(
+        ::testing::ValuesIn(AllOpSupportedTypes(HloOpcode::kCholesky)),
+        ::testing::ValuesIn(AllDevicesToTest()), ::testing::Bool()),
+    CholeskyTestName);
+
 constexpr std::array kUnsupportedOps = {
     // clang-format off
     // go/keep-sorted start
-    HloOpcode::kCholesky,
     HloOpcode::kConvolution,
     HloOpcode::kCopyDone,
     HloOpcode::kCopyStart,
@@ -2581,6 +2619,7 @@ absl::flat_hash_set<HloOpcode> AllTestedOpcodes() {
   ret.emplace(HloOpcode::kBatchNormTraining);
   ret.emplace(HloOpcode::kBitcastConvert);
   ret.emplace(HloOpcode::kCall);
+  ret.emplace(HloOpcode::kCholesky);
   ret.emplace(HloOpcode::kComplex);
   ret.emplace(HloOpcode::kConditional);
   ret.emplace(HloOpcode::kCustomCall);
