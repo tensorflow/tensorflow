@@ -33,7 +33,8 @@ limitations under the License.
 #include "xla/pjrt/exceptions.h"
 #include "xla/pjrt/status_casters.h"
 #include "xla/python/aggregate_profile.h"
-#include "xla/python/profiler/profile_data.h"
+#include "xla/python/profiler/build_profile_data_nb_module.h"
+#include "xla/python/profiler/profile_data_lib.h"
 #include "xla/python/profiler_utils.h"
 #include "xla/python/xplane_to_profile_instructions.h"
 #include "xla/tsl/platform/macros.h"
@@ -188,7 +189,7 @@ void BuildProfilerSubmodule(nb::module_& m) {
              xla::ThrowIfError(tsl::profiler::ExportToTensorBoard(
                  xspace, tensorboard_dir, /* also_export_trace_json= */ true));
            })
-      .def("stop",
+      .def("stop_and_get_bytes",
            [](ProfilerSessionWrapper* sess) -> nb::bytes {
              tensorflow::profiler::XSpace xspace;
              // Disables the ProfilerSession
@@ -196,7 +197,7 @@ void BuildProfilerSubmodule(nb::module_& m) {
              std::string xspace_str = xspace.SerializeAsString();
              return nb::bytes(xspace_str.data(), xspace_str.size());
            })
-      .def("stop_and_get_profile_data",
+      .def("stop_and_get_xspace",
            [](ProfilerSessionWrapper* sess)
                -> tensorflow::profiler::python::ProfileData {
              auto xspace = std::make_shared<tensorflow::profiler::XSpace>();
@@ -328,6 +329,8 @@ void BuildProfilerSubmodule(nb::module_& m) {
         return nb::bytes(result.data(), result.size());
       },
       nb::arg("profiles") = nb::list(), nb::arg("percentile"));
+
+  BuildProfileDataClasses(profiler);
 }
 
 }  // namespace xla

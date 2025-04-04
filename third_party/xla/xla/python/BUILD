@@ -302,6 +302,7 @@ cc_library(
         "//xla/pjrt:status_casters",
         "//xla/pjrt/c:pjrt_c_api_hdrs",
         "//xla/pjrt/c:pjrt_c_api_profiler_extension_hdrs",
+        "//xla/python/profiler:build_profile_data_nb_module",
         "//xla/python/profiler:profile_data_lib",
         "//xla/tsl/platform:macros",
         "//xla/tsl/profiler/rpc:profiler_server_impl",
