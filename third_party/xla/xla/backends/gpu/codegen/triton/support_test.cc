@@ -2169,7 +2169,6 @@ ENTRY triton_computation {
 }
 
 constexpr std::array kOperandPrecisions = {
-    // All precisions except PACKED_NIBBLE.
     PrecisionConfig::DEFAULT,
     PrecisionConfig::HIGH,
     PrecisionConfig::HIGHEST,
