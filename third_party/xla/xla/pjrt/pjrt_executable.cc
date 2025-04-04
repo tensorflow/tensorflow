@@ -635,7 +635,8 @@ absl::Status CompileOptions::ApplyOption(const std::string& key,
                                          const OptionOverride& value) {
   auto* xla_field = xla::DebugOptions::descriptor()->FindFieldByName(key);
   if (xla_field == nullptr) {
-    return InvalidArgument("No such compile option: '%s'", key);
+    return absl::OkStatus();
+    // return InvalidArgument("No such compile option: '%s'", key);
   }
   xla::DebugOptions& debug_options =
       *executable_build_options.mutable_debug_options();

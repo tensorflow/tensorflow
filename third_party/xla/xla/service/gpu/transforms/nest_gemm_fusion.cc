@@ -779,10 +779,12 @@ class NestGemmFusionVisitor : public DfsHloRewriteVisitor {
     // switch the track. Thus it is on us to make sure that the generic emitter
     // will be able to handle the result. That is an early check to make sure
     // that that nesting did not produce an unsupported HLO.
-    if (!IsTritonSupportedComputation(*computation, compute_capability_)) {
-      return absl::InternalError(absl::StrCat("Computation of fusion ",
-                                              fusion->ToString(),
-                                              " is not supported by Triton."));
+    CodegenDecision can_codegen_computation =
+        IsTritonSupportedComputation(*computation, compute_capability_);
+    if (!can_codegen_computation) {
+      return absl::InternalError(absl::StrCat(
+          "Computation of fusion ", fusion->ToString(),
+          " is not supported by Triton: ", can_codegen_computation.Explain()));
     }
     return absl::OkStatus();
   }
