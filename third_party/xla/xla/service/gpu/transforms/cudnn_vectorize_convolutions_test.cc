@@ -50,7 +50,7 @@ class CudnnVectorizeConvolutionsTest : public HloTestBase {
     CudnnVectorizeConvolutions pass(
         se::CudaComputeCapability{compute_capability.first,
                                   compute_capability.second},
-        se::dnn::VersionInfo(8, 3, 0));
+        se::dnn::VersionInfo(8, 9, 0));
     TF_ASSIGN_OR_RETURN(bool changed, RunHloPass(&pass, module));
 
     CallInliner inliner;
@@ -229,7 +229,7 @@ TEST_F(CudnnVectorizeConvolutionsTest, NoVectorizeTo4) {
                     .value();
   CudnnVectorizeConvolutions pass(
       /*compute_capability=*/{7, 5},
-      /*cudnn_version=*/se::dnn::VersionInfo{8, 3, 0});
+      /*cudnn_version=*/se::dnn::VersionInfo{8, 9, 0});
   TF_ASSERT_OK_AND_ASSIGN(bool changed, Run({7, 5}, module.get()));
 
   SCOPED_TRACE(module->ToString());

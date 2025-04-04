@@ -49,12 +49,10 @@ bool CudnnUseRuntimeFusion() {
   static bool result = [] {
     bool value = false;
 #if GOOGLE_CUDA
-    if (CUDNN_VERSION >= 8400) {
-      absl::Status status =
-          ReadBoolFromEnvVar("TF_CUDNN_USE_RUNTIME_FUSION", false, &value);
-      if (!status.ok()) {
-        LOG(ERROR) << status;
-      }
+    absl::Status status =
+        ReadBoolFromEnvVar("TF_CUDNN_USE_RUNTIME_FUSION", false, &value);
+    if (!status.ok()) {
+      LOG(ERROR) << status;
     }
 #endif  // GOOGLE_CUDA
     return value;
