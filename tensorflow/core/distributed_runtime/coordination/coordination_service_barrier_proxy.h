@@ -15,6 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_COORDINATION_COORDINATION_SERVICE_BARRIER_PROXY_H_
 #define TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_COORDINATION_COORDINATION_SERVICE_BARRIER_PROXY_H_
 
+#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <string>
