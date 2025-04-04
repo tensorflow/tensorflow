@@ -139,7 +139,7 @@ template <typename NativeT>
 absl::Status Equal(LiteralSlice expected, LiteralSlice actual,
                    absl::Span<int64_t> multi_index, int64_t dimension,
                    Literal* mismatched = nullptr) {
-  if (dimension == expected.shape().dimensions_size()) {
+  if (dimension == expected.shape().dimensions().size()) {
     NativeT expected_value = expected.Get<NativeT>(multi_index);
     NativeT actual_value = actual.Get<NativeT>(multi_index);
     bool result =
@@ -518,7 +518,7 @@ class NearComparator {
       }
       return;
     }
-    std::vector<int64_t> multi_index(actual_.shape().dimensions_size(), 0);
+    std::vector<int64_t> multi_index(actual_.shape().dimensions().size(), 0);
     CompareLiteralsSlow(0, &multi_index);
   }
 
@@ -706,7 +706,7 @@ absl::Status EqualHelper(const LiteralSlice& expected,
       next_index.pop_back();
     }
   } else {
-    std::vector<int64_t> multi_index(expected.shape().dimensions_size(), 0);
+    std::vector<int64_t> multi_index(expected.shape().dimensions().size(), 0);
     auto index = absl::MakeSpan(multi_index);
 
     Shape unequal_shape = ShapeUtil::MakeShape(PrimitiveType::PRED,
@@ -838,7 +838,7 @@ absl::Status EqualShapes(const Shape& expected, const Shape& actual) {
       }
     }
   } else if (expected.IsArray()) {
-    if (expected.dimensions_size() != actual.dimensions_size()) {
+    if (expected.dimensions().size() != actual.dimensions().size()) {
       return InvalidArgument("want rank of %s got rank of %s",
                              ShapeUtil::HumanString(expected),
                              ShapeUtil::HumanString(actual));
@@ -848,12 +848,12 @@ absl::Status EqualShapes(const Shape& expected, const Shape& actual) {
                              PrimitiveType_Name(expected.element_type()),
                              PrimitiveType_Name(actual.element_type()));
     }
-    if (expected.dimensions_size() != actual.dimensions_size()) {
+    if (expected.dimensions().size() != actual.dimensions().size()) {
       return InvalidArgument("want dimensions_size %d got dimensions_size %d",
-                             expected.dimensions_size(),
-                             actual.dimensions_size());
+                             expected.dimensions().size(),
+                             actual.dimensions().size());
     }
-    for (int i = 0; i < expected.dimensions_size(); ++i) {
+    for (int i = 0; i < expected.dimensions().size(); ++i) {
       if (expected.dimensions(i) != actual.dimensions(i)) {
         return InvalidArgument(
             "mismatch in dimension #%d expected: %s actual: %s", i,
