@@ -16,10 +16,15 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_GRAPPLER_GRAPH_ANALYZER_SIG_NODE_H_
 #define TENSORFLOW_CORE_GRAPPLER_GRAPH_ANALYZER_SIG_NODE_H_
 
+#include <cstddef>
+#include <cstdint>
 #include <map>
 #include <memory>
+#include <unordered_map>
 #include <vector>
 
+#include "absl/log/check.h"
+#include "absl/status/status.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/grappler/graph_analyzer/gen_node.h"
