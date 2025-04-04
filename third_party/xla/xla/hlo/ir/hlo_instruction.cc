@@ -264,7 +264,11 @@ void HloInstruction::ClearCalledComputations() {
 }
 
 HloInstruction* HloInstruction::AddInstruction(
-    std::unique_ptr<HloInstruction> derived_instruction) {
+    std::unique_ptr<HloInstruction> derived_instruction,
+    absl::string_view new_name) {
+  if (!new_name.empty()) {
+    derived_instruction->SetAndSanitizeName(new_name);
+  }
   HloInstruction* derived =
       parent()->AddInstruction(std::move(derived_instruction));
   const bool has_prior_sharding = derived->has_sharding();

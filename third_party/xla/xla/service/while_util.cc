@@ -156,7 +156,7 @@ WhileUtil::MakeInstructionsLiveIn(
   HloInstruction* new_while_init =
       TupleUtil::AppendSuffix(while_instr->mutable_operand(0), instructions);
   HloComputation* containing_computation = while_instr->parent();
-  HloInstruction* new_while = containing_computation->AddInstruction(
+  HloInstruction* new_while = while_instr->AddInstruction(
       HloInstruction::CreateWhile(new_while_shape, new_while_condition,
                                   new_while_body, new_while_init));
 
