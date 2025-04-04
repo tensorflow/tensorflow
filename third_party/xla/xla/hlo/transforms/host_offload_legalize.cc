@@ -485,8 +485,8 @@ absl::Status MoveCopyDown(
               "Expecting copy to only change instructions layout. Copy: %s",
               copy_to_move->ToString()));
         }
-        if (after_bitcast_shape.dimensions_size() ==
-            before_bitcast_shape.dimensions_size() - 1) {
+        if (after_bitcast_shape.dimensions().size() ==
+            before_bitcast_shape.dimensions().size() - 1) {
           if (!(ShapeUtil::IsEffectivelyMostMajorDimension(before_bitcast_shape,
                                                            0) &&
                 before_bitcast_shape.dimensions(0) == 1)) {
@@ -509,8 +509,8 @@ absl::Status MoveCopyDown(
               " Also updating shape after copy from %s to %s",
               shape_after_copy.ToString(true), new_copy_shape.ToString(true));
           shape_after_copy = new_copy_shape;
-        } else if (after_bitcast_shape.dimensions_size() ==
-                   before_bitcast_shape.dimensions_size() + 1) {
+        } else if (after_bitcast_shape.dimensions().size() ==
+                   before_bitcast_shape.dimensions().size() + 1) {
           if (!(ShapeUtil::IsEffectivelyMostMajorDimension(after_bitcast_shape,
                                                            0) &&
                 after_bitcast_shape.dimensions(0) == 1)) {
