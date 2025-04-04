@@ -213,11 +213,7 @@ class Shape {
   // Returns a span to indicate whether each dimension is dynamic.
   // Precondition: this is an array shape.
   absl::Span<const bool> dynamic_dimensions() const {
-    if (auto* const state = if_array_state()) {
-      return state->dynamic_dimensions;
-    }
-    // TODO(b/404276923): ensure that this is never called on non-array shapes.
-    return {};
+    return array_state().dynamic_dimensions;
   }
   absl::Span<bool> mutable_dynamic_dimensions() {
     return absl::MakeSpan(array_state().dynamic_dimensions);
@@ -625,9 +621,9 @@ class ProgramShape {
   ProgramShape();
   ~ProgramShape();
   ProgramShape(const ProgramShape&);
-  ProgramShape(ProgramShape&&);
+  ProgramShape(ProgramShape&&) noexcept;
   ProgramShape& operator=(const ProgramShape&);
-  ProgramShape& operator=(ProgramShape&&);
+  ProgramShape& operator=(ProgramShape&&) noexcept;
 
   // Creates a ProgramShape from a ProgramShapeProto protobuf.
   explicit ProgramShape(const ProgramShapeProto& program_shape_proto);
