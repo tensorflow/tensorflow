@@ -19,6 +19,7 @@
 import tensorflow.compat.v1 as tf
 
 
+# DO_NOT_SUBMIT
 def symmetric_kl_divergence(predicted, actual):
   """Calculate symmetric KL-divergence over two classification tensors.
 
