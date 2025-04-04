@@ -174,9 +174,24 @@ class GemmAutotuner {
     se::DeviceMemoryBase a_scale_buffer, b_scale_buffer, c_scale_buffer,
         d_scale_buffer, d_amax_buffer, bias_buffer, aux_buffer;
 
+    int64_t input_buffer_idx = 2;  // lhs is at 0, rhs is at 1
     if (has_vector_bias) {
-      bias_buffer = rz_buffers_.input_buffers().at(has_matrix_bias ? 3 : 2);
+      if (has_matrix_bias) {
+        input_buffer_idx++;
+      }
+      bias_buffer = rz_buffers_.input_buffers().at(input_buffer_idx++);
     }
+    // In the current GemmRewriter design for FP8, the a/b scales remain active
+    // even when they are not used. Consequently, we must inform the autotuner
+    // so it can choose algorithms that properly support a/b scales.
+    if (xla::primitive_util::IsF8Type(
+            gemm->operand(0)->shape().element_type()) &&
+        xla::primitive_util::IsF8Type(
+            gemm->operand(1)->shape().element_type())) {
+      a_scale_buffer = rz_buffers_.input_buffers().at(input_buffer_idx++);
+      b_scale_buffer = rz_buffers_.input_buffers().at(input_buffer_idx++);
+    }
+
     if (has_aux_output) {
       aux_buffer = rz_buffers_.output_buffers().at(1);
     }
