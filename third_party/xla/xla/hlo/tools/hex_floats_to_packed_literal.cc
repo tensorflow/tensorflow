@@ -15,10 +15,13 @@ limitations under the License.
 
 #include <stdio.h>
 
+#include <memory>
 #include <string>
 #include <vector>
 
 #include "absl/base/casts.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/strings/string_view.h"
 #include "xla/tsl/lib/io/buffered_inputstream.h"
 #include "xla/tsl/lib/io/random_inputstream.h"
