@@ -81,6 +81,7 @@ message IfrtRequest {
     // ===== Client =====
     GetDefaultDeviceAssignmentRequest get_default_device_assignment_request =
         19;
+    GetDefaultLayoutRequest get_default_layout_request = 27;
   }
 
   reserved 10;
@@ -133,6 +134,7 @@ message IfrtResponse {
     // ===== Client =====
     GetDefaultDeviceAssignmentResponse get_default_device_assignment_response =
         19;
+    GetDefaultLayoutResponse get_default_layout_response = 27;
   }
 
   reserved 10;
@@ -570,4 +572,13 @@ message GetDefaultDeviceAssignmentRequest {
 }
 message GetDefaultDeviceAssignmentResponse {
   xla.DeviceAssignmentProto device_assignment = 1;
+}
+message GetDefaultLayoutRequest {
+  DTypeProto dtype = 1;
+  repeated int64 dims = 2;
+  int32 device_id = 3;
+  string memory_kind = 4;
+}
+message GetDefaultLayoutResponse {
+  bytes serialized_pjrt_layout = 1;
 }

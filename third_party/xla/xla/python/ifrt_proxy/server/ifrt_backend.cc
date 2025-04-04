@@ -617,6 +617,9 @@ Future<BackendInterface::Response> IfrtBackend::ProcessInternal(
     case IfrtRequest::RequestCase::kGetDefaultDeviceAssignmentRequest:
       return Future<Response>(
           HandleGetDefaultDeviceAssignmentRequest(std::move(request)));
+    case IfrtRequest::RequestCase::kGetDefaultLayoutRequest:
+      return Future<Response>(
+          HandleGetDefaultLayoutRequest(std::move(request)));
     default:
       LOG(ERROR) << "Got unimplemented request type: "
                  << request->DebugString();
@@ -1924,6 +1927,33 @@ IfrtBackend::HandleGetDefaultDeviceAssignmentRequest(
   assignment.Serialize(
       ifrt_resp->mutable_get_default_device_assignment_response()
           ->mutable_device_assignment());
+
+  return ifrt_resp;
+}
+
+absl::StatusOr<BackendInterface::Response>
+IfrtBackend::HandleGetDefaultLayoutRequest(
+    std::unique_ptr<IfrtRequest> request) {
+  const auto& get_default_layout_request =
+      request->get_default_layout_request();
+  TF_ASSIGN_OR_RETURN(auto dtype,
+                      DType::FromProto(get_default_layout_request.dtype()));
+  TF_ASSIGN_OR_RETURN(
+      Device* const device,
+      client_->LookupDevice(DeviceId(get_default_layout_request.device_id())));
+  MemoryKind memory_kind =
+      get_default_layout_request.memory_kind().empty()
+          ? MemoryKind()
+          : MemoryKind(get_default_layout_request.memory_kind());
+  TF_ASSIGN_OR_RETURN(
+      std::shared_ptr<const xla::PjRtLayout> layout,
+      client_->GetDefaultLayout(dtype, get_default_layout_request.dims(),
+                                device, memory_kind));
+
+  auto ifrt_resp = NewIfrtResponse(request->request_metadata().op_id());
+
+  *ifrt_resp->mutable_get_default_layout_response()
+       ->mutable_serialized_pjrt_layout() = layout->Serialize();
 
   return ifrt_resp;
 }

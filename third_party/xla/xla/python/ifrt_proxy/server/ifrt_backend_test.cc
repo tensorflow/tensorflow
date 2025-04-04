@@ -1789,6 +1789,42 @@ TEST_P(IfrtBackendHandlerTest,
               StatusIs(absl::StatusCode::kUnknown, StrEq("injected error")));
 }
 
+TEST_P(IfrtBackendHandlerTest, GetDefaultLayoutSuccess) {
+  const auto kDefaultLayout = std::make_shared<xla::PjRtLayout>(
+      xla::LayoutUtil::MakeDescendingLayout(1));
+  const xla::ifrt::DType kDType = xla::ifrt::DType(xla::ifrt::DType::kF32);
+  const std::vector<int64_t> kDims = {1, 2, 3};
+  const int64_t kDeviceId = 42;
+  const auto mock_device = std::make_unique<xla::ifrt::MockDevice>();
+  const std::string kMemoryKindStr = "xla::ifrt::MemoryKind()";
+  const xla::ifrt::MemoryKind kMemoryKind(kMemoryKindStr);
+
+  ON_CALL(*mock_client_, LookupDevice(DeviceId(kDeviceId)))
+      .WillByDefault(Return(mock_device.get()));
+
+  EXPECT_CALL(*mock_client_,
+              GetDefaultLayout(kDType, absl::MakeConstSpan(kDims),
+                               mock_device.get(), kMemoryKind))
+      .WillOnce(Return(std::shared_ptr<const xla::PjRtLayout>(kDefaultLayout)));
+
+  auto request = NewIfrtRequest(NewOpId());
+  auto* default_layout_request = request->mutable_get_default_layout_request();
+  *default_layout_request->mutable_dtype() = kDType.ToProto();
+  default_layout_request->mutable_dims()->Reserve(kDims.size());
+  for (int64_t dim : kDims) {
+    default_layout_request->add_dims(dim);
+  }
+  default_layout_request->set_device_id(kDeviceId);
+  default_layout_request->set_memory_kind(kMemoryKindStr);
+
+  TF_ASSERT_OK_AND_ASSIGN(auto response, CallBackend(std::move(request)));
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto layout_got,
+      xla::PjRtLayout::Deserialize(
+          response->get_default_layout_response().serialized_pjrt_layout()));
+  EXPECT_EQ(*layout_got, *kDefaultLayout);
+}
+
 INSTANTIATE_TEST_SUITE_P(
     IfrtBackendHandlerTestWithAllVersions, IfrtBackendHandlerTest,
     testing::Range(kServerMinVersion, kServerMaxVersion + 1),

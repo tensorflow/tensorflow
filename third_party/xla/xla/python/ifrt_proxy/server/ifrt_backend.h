@@ -220,6 +220,8 @@ class IfrtBackend final : public BackendInterface {
 
   absl::StatusOr<Response> HandleGetDefaultDeviceAssignmentRequest(
       std::unique_ptr<IfrtRequest> request);
+  absl::StatusOr<Response> HandleGetDefaultLayoutRequest(
+      std::unique_ptr<IfrtRequest> request);
 
   //////////////////////////////////////////////////////////////////////
   // Auxiliary/Helper methods for the handler methods above

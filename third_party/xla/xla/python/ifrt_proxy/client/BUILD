@@ -158,6 +158,7 @@ cc_library(
         ":rpc_helper",
         "//xla:xla_data_proto_cc",
         "//xla/pjrt:pjrt_device_description",
+        "//xla/pjrt:pjrt_layout",
         "//xla/python/ifrt",
         "//xla/python/ifrt:attribute_map",
         "//xla/python/ifrt:basic_device_list",

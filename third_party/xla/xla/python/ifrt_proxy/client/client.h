@@ -151,10 +151,7 @@ class Client final : public llvm::RTTIExtends<Client, xla::ifrt::Client> {
   absl::StatusOr<std::shared_ptr<const xla::PjRtLayout>> GetDefaultLayout(
       xla::ifrt::DType dtype, absl::Span<const int64_t> dims,
       xla::ifrt::Device* device,
-      xla::ifrt::MemoryKind memory_kind) const override {
-    return absl::UnimplementedError(
-        "GetDefaultLayout is not supported for the IFRT proxy client.");
-  }
+      xla::ifrt::MemoryKind memory_kind) const override;
 
   tsl::RCReference<xla::ifrt::UserContext> CreateUserContext() override {
     return tsl::RCReference<xla::ifrt::UserContext>();
