@@ -20,6 +20,8 @@ package_group(
         "//learning/deepmind/partir/...",
         "//third_party/openxla/shardy/...",
         "//third_party/py/jax/...",
+        # TODO(b/406478471): remove once StableHLO serialization supports different dialects
+        "//third_party/australis/google/ifrt/...",
     ],
 )
 
