@@ -3133,7 +3133,7 @@ tf_cc_test(
     srcs = select({
         "//tensorflow:android_x86": [],
         "//tensorflow:arm_any": [],
-        "//tensorflow:fuchsia_x86_64": [],
+        "//tensorflow:fuchsia": [],
         "//tensorflow:ios": [],
         "//tensorflow:linux_ppc64le": [],
         "//tensorflow:linux_s390x": [],
