@@ -668,16 +668,16 @@ void ReplaceQuantizedXlaCallModuleOpWithQuantizedCallOp(
 template <typename FuncBodyRewritePatternT,
           typename = std::enable_if_t<std::is_base_of_v<
               EntryFuncBodyQuantizationPattern, FuncBodyRewritePatternT>>>
-class XlaCallModuleOpToCallOp
-    : public OpRewritePattern<TF::XlaCallModuleOp>::SplitMatchAndRewrite {
+class XlaCallModuleOpToCallOp : public OpRewritePattern<TF::XlaCallModuleOp> {
  public:
   explicit XlaCallModuleOpToCallOp(
       MLIRContext& ctx, const bool enable_per_channel_quantized_weight)
-      : OpRewritePattern<TF::XlaCallModuleOp>::SplitMatchAndRewrite(&ctx),
+      : OpRewritePattern<TF::XlaCallModuleOp>::OpRewritePattern(&ctx),
         enable_per_channel_quantized_weight_(
             enable_per_channel_quantized_weight) {}
 
-  LogicalResult match(TF::XlaCallModuleOp op) const override {
+  LogicalResult matchAndRewrite(TF::XlaCallModuleOp op,
+                                PatternRewriter& rewriter) const override {
     ModuleOp module_op = op->getParentOfType<ModuleOp>();
 
     // Ignore ops without quantization method.
@@ -698,22 +698,20 @@ class XlaCallModuleOpToCallOp
       return failure();
     }
     Method quantization_method = GetQuantizationMethodOrDefault(op);
-    return FuncBodyRewritePatternT(enable_per_channel_quantized_weight_)
-        .match(entry_func_op, quantization_method);
-  }
+    if (FuncBodyRewritePatternT(enable_per_channel_quantized_weight_)
+            .match(entry_func_op, quantization_method)
+            .failed()) {
+      return failure();
+    }
 
-  void rewrite(TF::XlaCallModuleOp xla_call_module_op,
-               PatternRewriter& rewriter) const override {
     // TODO: b/331145946 - Each quantization method should be valid
     // (GetQuantizationMethodOrDefault swallows invalid method attribute). Check
     // the validity in `match()`. Use accessors to achieve this.
-    const Method quantization_method =
-        GetQuantizationMethodOrDefault(xla_call_module_op);
-
     ReplaceQuantizedXlaCallModuleOpWithQuantizedCallOp(
-        *rewriter.getContext(), rewriter, xla_call_module_op,
+        *rewriter.getContext(), rewriter, op,
         FuncBodyRewritePatternT(enable_per_channel_quantized_weight_),
         quantization_method);
+    return success();
   }
 
  private:
@@ -726,14 +724,22 @@ class XlaCallModuleOpToCallOp
 // Quantizes only when the nested region consists of ops whose quantization
 // parameters can be propagated from outside.
 class QuantizeOpWithRegionPattern
-    : public OpRewritePattern<
-          quantfork::DequantizeCastOp>::SplitMatchAndRewrite {
+    : public OpRewritePattern<quantfork::DequantizeCastOp> {
  public:
   explicit QuantizeOpWithRegionPattern(MLIRContext& ctx)
-      : OpRewritePattern<quantfork::DequantizeCastOp>::SplitMatchAndRewrite(
-            &ctx) {};
+      : OpRewritePattern<quantfork::DequantizeCastOp>(&ctx) {};
 
-  LogicalResult match(quantfork::DequantizeCastOp op) const final {
+  LogicalResult matchAndRewrite(quantfork::DequantizeCastOp op,
+                                PatternRewriter& rewriter) const final {
+    if (match(op).failed()) {
+      return failure();
+    }
+    rewrite(op, rewriter);
+    return success();
+  }
+
+ private:
+  LogicalResult match(quantfork::DequantizeCastOp op) const {
     // Match only when there is one user of the dequantize op.
     if (!op.getResult().hasOneUse()) {
       return failure();
@@ -762,7 +768,7 @@ class QuantizeOpWithRegionPattern
   }
 
   void rewrite(quantfork::DequantizeCastOp op,
-               PatternRewriter& rewriter) const final {
+               PatternRewriter& rewriter) const {
     // Rewrite the floating-point ops to the quantized version, by fusing
     // preceding dequantize ops and succeding quantize ops.
     for (Operation* op_with_region : op.getResult().getUsers()) {
@@ -849,7 +855,6 @@ class QuantizeOpWithRegionPattern
     }
   }
 
- private:
   // Checks if an op is quantizable in a nested region.
   bool IsOpQuantizableInNestedRegion(Operation& op) const {
     return isa<mlir::stablehlo::MaxOp, mlir::stablehlo::ReturnOp>(op);

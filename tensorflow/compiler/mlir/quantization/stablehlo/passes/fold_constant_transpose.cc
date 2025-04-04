@@ -116,12 +116,12 @@ class DenseElementsTransposer {
 };
 
 class FoldTransposedConstantOp
-    : public OpRewritePattern<
-          mlir::stablehlo::TransposeOp>::SplitMatchAndRewrite {
+    : public OpRewritePattern<mlir::stablehlo::TransposeOp> {
  public:
-  using SplitMatchAndRewrite::SplitMatchAndRewrite;
+  using OpRewritePattern::OpRewritePattern;
 
-  LogicalResult match(mlir::stablehlo::TransposeOp op) const override {
+  LogicalResult matchAndRewrite(mlir::stablehlo::TransposeOp op,
+                                PatternRewriter& rewriter) const override {
     Value operand = op.getOperand();
     auto const_op =
         dyn_cast_or_null<mlir::stablehlo::ConstantOp>(operand.getDefiningOp());
@@ -133,14 +133,9 @@ class FoldTransposedConstantOp
       return failure();
     }
 
-    return success(
-        mlir::isa_and_nonnull<DenseFPElementsAttr>(const_op.getValue()));
-  }
-
-  void rewrite(mlir::stablehlo::TransposeOp op,
-               PatternRewriter& rewriter) const override {
-    auto const_op =
-        cast<mlir::stablehlo::ConstantOp>(op.getOperand().getDefiningOp());
+    if (!mlir::isa_and_nonnull<DenseFPElementsAttr>(const_op.getValue())) {
+      return failure();
+    }
 
     const auto value_attr =
         mlir::cast<DenseFPElementsAttr>(const_op.getValue());
@@ -169,7 +164,8 @@ class FoldTransposedConstantOp
         combined_loc, new_value_attr);
 
     rewriter.replaceAllUsesWith(op, new_const_op);
-  };
+    return success();
+  }
 };
 
 }  // namespace

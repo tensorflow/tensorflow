@@ -444,15 +444,15 @@ int64_t GetConvolutionKernelInputFeatureDimension(bool is_depthwise) {
 // stablehlo.uniform_quantize -> tfl.quantize
 // TODO: b/322428814 - Add StableHLO quantizer integration tests for ODML.
 class RewriteUniformQuantizeOp
-    : public OpRewritePattern<
-          stablehlo::UniformQuantizeOp>::SplitMatchAndRewrite {
-  using SplitMatchAndRewrite::SplitMatchAndRewrite;
+    : public OpRewritePattern<stablehlo::UniformQuantizeOp> {
+  using OpRewritePattern::OpRewritePattern;
 
   // Determines whether the input and output types are compatible with
   // `tfl.quantize`. See the definition for the `QUANTIZE` kernel for the
   // detailed limitations
   // (https://github.com/tensorflow/tensorflow/blob/8f145d579aa0ee7f4187af32dbbf4e12fdabbffe/tensorflow/lite/kernels/quantize.cc#L105).
-  LogicalResult match(stablehlo::UniformQuantizeOp op) const override {
+  LogicalResult matchAndRewrite(stablehlo::UniformQuantizeOp op,
+                                PatternRewriter& rewriter) const override {
     const Type input_element_type = GetElementType(op.getOperand());
     if (!(input_element_type.isa<FloatType>() ||
           IsI32F32UniformQuantizedType(input_element_type) ||
@@ -475,29 +475,25 @@ class RewriteUniformQuantizeOp
       return failure();
     }
 
-    return success();
-  }
-
-  void rewrite(stablehlo::UniformQuantizeOp op,
-               PatternRewriter& rewriter) const override {
     Type output_type = *op->getResultTypes().begin();
     rewriter.replaceOpWithNewOp<TFL::QuantizeOp>(
         op, output_type, /*input=*/op.getOperand(),
         /*qtype=*/TypeAttr::get(output_type));
+    return success();
   }
 };
 
 // stablehlo.uniform_dequantize -> tfl.dequantize
 class RewriteUniformDequantizeOp
-    : public OpRewritePattern<
-          stablehlo::UniformDequantizeOp>::SplitMatchAndRewrite {
-  using SplitMatchAndRewrite::SplitMatchAndRewrite;
+    : public OpRewritePattern<stablehlo::UniformDequantizeOp> {
+  using OpRewritePattern::OpRewritePattern;
 
   // Determines whether the input and output types are compatible with
   // `tfl.dequantize`. See the definition for the `DEQUANTIZE` kernel for the
   // detailed limitations
   // (https://github.com/tensorflow/tensorflow/blob/8f145d579aa0ee7f4187af32dbbf4e12fdabbffe/tensorflow/lite/kernels/dequantize.cc#L52).
-  LogicalResult match(stablehlo::UniformDequantizeOp op) const override {
+  LogicalResult matchAndRewrite(stablehlo::UniformDequantizeOp op,
+                                PatternRewriter& rewriter) const override {
     const auto input_storage_type = GetElementType(op.getOperand())
                                         .cast<QuantizedType>()
                                         .getStorageType()
@@ -518,13 +514,9 @@ class RewriteUniformDequantizeOp
       return failure();
     }
 
-    return success();
-  }
-
-  void rewrite(stablehlo::UniformDequantizeOp op,
-               PatternRewriter& rewriter) const override {
     rewriter.replaceOpWithNewOp<TFL::DequantizeOp>(
         op, /*resultTypes=*/op->getResultTypes(), /*input=*/op.getOperand());
+    return success();
   }
 };
 
@@ -563,17 +555,26 @@ class RewriteUniformDequantizeOp
 //   * The filter tensor's rank is 2. The contracting dimension should be the
 //     first dimension (dim 0), i.e. [c_y, r_y] where c_y == r_x.
 class RewriteQuantizedDotGeneralOpToTflFullyConnectedOrBatchMatmulOp
-    : public OpRewritePattern<stablehlo::DotGeneralOp>::SplitMatchAndRewrite {
+    : public OpRewritePattern<stablehlo::DotGeneralOp> {
  public:
   // Sets benefit to 10 to make this pattern more preferred than smaller local
   // transformations like `stablehlo.transpose`->`tfl.transpose`, as this
   // pattern involves `stablehlo.transpose` in some cases.
   explicit RewriteQuantizedDotGeneralOpToTflFullyConnectedOrBatchMatmulOp(
       MLIRContext* ctx)
-      : OpRewritePattern<stablehlo::DotGeneralOp>::SplitMatchAndRewrite(
-            ctx, /*benefit=*/10) {}
+      : OpRewritePattern<stablehlo::DotGeneralOp>(ctx, /*benefit=*/10) {}
 
-  LogicalResult match(stablehlo::DotGeneralOp op) const override {
+  LogicalResult matchAndRewrite(stablehlo::DotGeneralOp op,
+                                PatternRewriter& rewriter) const override {
+    if (match(op).failed()) {
+      return failure();
+    }
+    rewrite(op, rewriter);
+    return success();
+  }
+
+ private:
+  LogicalResult match(stablehlo::DotGeneralOp op) const {
     const stablehlo::DotDimensionNumbersAttr dot_dimension_nums =
         op.getDotDimensionNumbers();
     const bool is_batch_matmul = !IsDotGeneralFullyConnected(op).value();
@@ -605,8 +606,7 @@ class RewriteQuantizedDotGeneralOpToTflFullyConnectedOrBatchMatmulOp
                                                 has_i32_output);
   }
 
-  void rewrite(stablehlo::DotGeneralOp op,
-               PatternRewriter& rewriter) const override {
+  void rewrite(stablehlo::DotGeneralOp op, PatternRewriter& rewriter) const {
     const Type output_type = GetElementType(op.getResult());
     const bool has_i32_output =
         IsI32F32UniformQuantizedType(output_type) ||
@@ -624,7 +624,6 @@ class RewriteQuantizedDotGeneralOpToTflFullyConnectedOrBatchMatmulOp
     }
   }
 
- private:
   static LogicalResult MatchDotGeneralToTflBatchMatmulOp(
       stablehlo::DotGeneralOp op,
       const stablehlo::DotDimensionNumbersAttr dot_dimension_nums,
@@ -1007,10 +1006,21 @@ class RewriteQuantizedDotGeneralOpToTflFullyConnectedOrBatchMatmulOp
 //   * The filter tensor's format is `[0, 1, i, o]`.
 //   * Not a depthwise convolution.
 class RewriteQuantizedConvolutionOp
-    : public OpRewritePattern<stablehlo::ConvolutionOp>::SplitMatchAndRewrite {
+    : public OpRewritePattern<stablehlo::ConvolutionOp> {
  public:
-  using SplitMatchAndRewrite::SplitMatchAndRewrite;
-  LogicalResult match(stablehlo::ConvolutionOp op) const override {
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(stablehlo::ConvolutionOp op,
+                                PatternRewriter& rewriter) const override {
+    if (match(op).failed()) {
+      return failure();
+    }
+    rewrite(op, rewriter);
+    return success();
+  }
+
+ private:
+  LogicalResult match(stablehlo::ConvolutionOp op) const {
     const bool has_i32_output =
         IsI32F32UniformQuantizedPerAxisType(GetElementType(op.getResult()));
     const bool fuse_bias_constant =
@@ -1056,8 +1066,7 @@ class RewriteQuantizedConvolutionOp
     return success();
   }
 
-  void rewrite(stablehlo::ConvolutionOp op,
-               PatternRewriter& rewriter) const override {
+  void rewrite(stablehlo::ConvolutionOp op, PatternRewriter& rewriter) const {
     const bool has_i32_output =
         IsI32F32UniformQuantizedPerAxisType(GetElementType(op.getResult()));
     stablehlo::ConvDimensionNumbersAttr dimension_numbers =
@@ -1148,7 +1157,6 @@ class RewriteQuantizedConvolutionOp
     }
   }
 
- private:
   static LogicalResult MatchInput(Value input) {
     auto input_type = input.getType().cast<TensorType>();
     if (const auto input_element_type = input_type.getElementType();
@@ -1481,16 +1489,15 @@ class RewriteQuantizedConvolutionOp
 
 // Rewrites quantized `stablehlo.transpose` to `tfl.transpose`.
 class RewriteQuantizedTransposeOp
-    : public OpRewritePattern<stablehlo::TransposeOp>::SplitMatchAndRewrite {
+    : public OpRewritePattern<stablehlo::TransposeOp> {
  public:
-  using SplitMatchAndRewrite::SplitMatchAndRewrite;
+  using OpRewritePattern::OpRewritePattern;
 
-  LogicalResult match(stablehlo::TransposeOp op) const override {
-    return success(IsOpFullyQuantized(op));
-  }
-
-  void rewrite(stablehlo::TransposeOp op,
-               PatternRewriter& rewriter) const override {
+  LogicalResult matchAndRewrite(stablehlo::TransposeOp op,
+                                PatternRewriter& rewriter) const override {
+    if (!IsOpFullyQuantized(op)) {
+      return failure();
+    }
     auto operand_type = op.getOperand().getType().cast<TensorType>();
     const int64_t rank = operand_type.getRank();
     ArrayRef<int64_t> shape(rank);
@@ -1506,54 +1513,54 @@ class RewriteQuantizedTransposeOp
         rewriter.create<arith::ConstantOp>(op.getLoc(), permutation_attr);
     rewriter.replaceOpWithNewOp<TFL::TransposeOp>(op, op.getOperand(),
                                                   permutation);
+    return success();
   }
 };
 
 // Rewrites quantized stablehlo.reshape to tfl.reshape.
 class RewriteQuantizedReshapeOp
-    : public OpRewritePattern<stablehlo::ReshapeOp>::SplitMatchAndRewrite {
+    : public OpRewritePattern<stablehlo::ReshapeOp> {
  public:
-  using SplitMatchAndRewrite::SplitMatchAndRewrite;
+  using OpRewritePattern::OpRewritePattern;
 
-  LogicalResult match(stablehlo::ReshapeOp op) const override {
-    return success(IsOpFullyQuantized(op));
-  }
-
-  void rewrite(stablehlo::ReshapeOp op,
-               PatternRewriter& rewriter) const override {
+  LogicalResult matchAndRewrite(stablehlo::ReshapeOp op,
+                                PatternRewriter& rewriter) const override {
+    if (!IsOpFullyQuantized(op)) {
+      return failure();
+    }
     rewriter.replaceOpWithNewOp<TFL::ReshapeOp>(
         op, op.getOperand(),
         CreateI32ShapeConstantOp(op.getResult().getType(), op->getLoc(),
                                  rewriter));
+    return success();
   }
 };
 
 class RewriteQuantizedDynamicReshapeOp
-    : public OpRewritePattern<
-          stablehlo::DynamicReshapeOp>::SplitMatchAndRewrite {
+    : public OpRewritePattern<stablehlo::DynamicReshapeOp> {
  public:
-  using SplitMatchAndRewrite::SplitMatchAndRewrite;
+  using OpRewritePattern::OpRewritePattern;
 
-  LogicalResult match(stablehlo::DynamicReshapeOp op) const override {
-    return success(IsQuantizedTensorType(op.getOperand().getType()) &&
-                   IsQuantizedTensorType(op.getResult().getType()));
-  }
-
-  void rewrite(stablehlo::DynamicReshapeOp op,
-               PatternRewriter& rewriter) const override {
+  LogicalResult matchAndRewrite(stablehlo::DynamicReshapeOp op,
+                                PatternRewriter& rewriter) const override {
+    if (!IsQuantizedTensorType(op.getOperand().getType()) ||
+        !IsQuantizedTensorType(op.getResult().getType())) {
+      return failure();
+    }
     rewriter.replaceOpWithNewOp<TFL::ReshapeOp>(op, op.getOperand(),
                                                 op.getOutputShape());
+    return success();
   }
 };
 
 // Rewrites quantized stablehlo.select to tfl.select_v2.
 // TODO: b/322428814 - Add StableHLO quantizer integration tests for ODML.
-class RewriteQuantizedSelectOp
-    : public OpRewritePattern<stablehlo::SelectOp>::SplitMatchAndRewrite {
+class RewriteQuantizedSelectOp : public OpRewritePattern<stablehlo::SelectOp> {
  public:
-  using SplitMatchAndRewrite::SplitMatchAndRewrite;
+  using OpRewritePattern::OpRewritePattern;
 
-  LogicalResult match(stablehlo::SelectOp op) const override {
+  LogicalResult matchAndRewrite(stablehlo::SelectOp op,
+                                PatternRewriter& rewriter) const override {
     if (!IsQuantizedTensorType(op.getOperand(1).getType())) {
       return failure();
     }
@@ -1563,52 +1570,47 @@ class RewriteQuantizedSelectOp
     if (!IsQuantizedTensorType(op.getResult().getType())) {
       return failure();
     }
-    return success();
-  }
-
-  void rewrite(stablehlo::SelectOp op,
-               PatternRewriter& rewriter) const override {
     Value pred = op.getOperand(0);
     Value on_true = op.getOperand(1);
     Value on_false = op.getOperand(2);
     rewriter.replaceOpWithNewOp<TFL::SelectV2Op>(op, pred, on_true, on_false);
+    return success();
   }
 };
 
 // Rewrites quantized stablehlo.concatenate to tfl.concatenation.
 // TODO: b/322428814 - Add StableHLO quantizer integration tests for ODML.
 class RewriteQuantizedConcatenateOp
-    : public OpRewritePattern<stablehlo::ConcatenateOp>::SplitMatchAndRewrite {
+    : public OpRewritePattern<stablehlo::ConcatenateOp> {
  public:
-  using SplitMatchAndRewrite::SplitMatchAndRewrite;
+  using OpRewritePattern::OpRewritePattern;
 
-  LogicalResult match(stablehlo::ConcatenateOp op) const override {
-    return success(IsOpFullyQuantized(op));
-  }
-
-  void rewrite(stablehlo::ConcatenateOp op,
-               PatternRewriter& rewriter) const override {
+  LogicalResult matchAndRewrite(stablehlo::ConcatenateOp op,
+                                PatternRewriter& rewriter) const override {
+    if (!IsOpFullyQuantized(op)) {
+      return failure();
+    }
     Type output_type = op.getResult().getType();
     uint32_t axis = CastI64ToI32(op.getDimension()).value();
     rewriter.replaceOpWithNewOp<TFL::ConcatenationOp>(
         op, output_type, op.getOperands(), axis,
         /*fused_activation_function=*/rewriter.getStringAttr("NONE"));
+    return success();
   }
 };
 
 // Rewrites quantized stablehlo.pad to tfl.padv2.
 // tfl.dilate is introduced in between when interior padding exists.
 // TODO: b/322428814 - Add StableHLO quantizer integration tests for ODML.
-class RewriteQuantizedPadOp
-    : public OpRewritePattern<stablehlo::PadOp>::SplitMatchAndRewrite {
+class RewriteQuantizedPadOp : public OpRewritePattern<stablehlo::PadOp> {
  public:
-  using SplitMatchAndRewrite::SplitMatchAndRewrite;
+  using OpRewritePattern::OpRewritePattern;
 
-  LogicalResult match(stablehlo::PadOp op) const override {
-    return success(IsOpFullyQuantized(op));
-  }
-
-  void rewrite(stablehlo::PadOp op, PatternRewriter& rewriter) const override {
+  LogicalResult matchAndRewrite(stablehlo::PadOp op,
+                                PatternRewriter& rewriter) const override {
+    if (!IsOpFullyQuantized(op)) {
+      return failure();
+    }
     Value input = op.getOperand();
     // If any of the interior padding is non-zero, operand should be dilated
     // first, and then padded.
@@ -1639,6 +1641,7 @@ class RewriteQuantizedPadOp
         rewriter.create<arith::ConstantOp>(op.getLoc(), padding_attr);
     rewriter.replaceOpWithNewOp<TFL::PadV2Op>(op, output_type, input, padding,
                                               constant_values);
+    return success();
   }
 
   Value InsertDilateOp(stablehlo::PadOp op, PatternRewriter& rewriter) const {
@@ -1673,17 +1676,15 @@ class RewriteQuantizedPadOp
 };
 
 // Rewrites quantized stablehlo.slice to tfl.slice or tfl.strided_slice.
-class RewriteQuantizedSliceOp
-    : public OpRewritePattern<stablehlo::SliceOp>::SplitMatchAndRewrite {
+class RewriteQuantizedSliceOp : public OpRewritePattern<stablehlo::SliceOp> {
  public:
-  using SplitMatchAndRewrite::SplitMatchAndRewrite;
+  using OpRewritePattern::OpRewritePattern;
 
-  LogicalResult match(stablehlo::SliceOp op) const override {
-    return success(IsOpFullyQuantized(op));
-  }
-
-  void rewrite(stablehlo::SliceOp op,
-               PatternRewriter& rewriter) const override {
+  LogicalResult matchAndRewrite(stablehlo::SliceOp op,
+                                PatternRewriter& rewriter) const override {
+    if (!IsOpFullyQuantized(op)) {
+      return failure();
+    }
     auto operand_type = op.getOperand().getType().cast<TensorType>();
     Type output_type = op.getResult().getType();
     const int64_t rank = operand_type.getRank();
@@ -1716,7 +1717,7 @@ class RewriteQuantizedSliceOp
     if (llvm::all_of(strides, [](int64_t stride) { return stride == 1; })) {
       rewriter.replaceOpWithNewOp<TFL::SliceOp>(
           op, output_type, op.getOperand(), start_idx, slice_size);
-      return;
+      return success();
     }
 
     SmallVector<int32_t> stride_i32 = CastI64ArrayToI32(strides).value();
@@ -1727,6 +1728,7 @@ class RewriteQuantizedSliceOp
         /*begin_mask=*/0, /*end_mask=*/0,
         /*ellipsis_mask=*/0, /*new_axis_mask=*/0, /*shrink_axis_mask=*/0,
         /*offset=*/false);
+    return success();
   }
 };
 
@@ -1736,17 +1738,15 @@ class RewriteQuantizedSliceOp
 // output rank.
 // TODO: b/322428814 - Add StableHLO quantizer integration tests for ODML.
 class RewriteQuantizedBroadcastInDimOp
-    : public OpRewritePattern<
-          stablehlo::BroadcastInDimOp>::SplitMatchAndRewrite {
+    : public OpRewritePattern<stablehlo::BroadcastInDimOp> {
  public:
-  using SplitMatchAndRewrite::SplitMatchAndRewrite;
+  using OpRewritePattern::OpRewritePattern;
 
-  LogicalResult match(stablehlo::BroadcastInDimOp op) const override {
-    return success(IsOpFullyQuantized(op));
-  }
-
-  void rewrite(stablehlo::BroadcastInDimOp op,
-               PatternRewriter& rewriter) const override {
+  LogicalResult matchAndRewrite(stablehlo::BroadcastInDimOp op,
+                                PatternRewriter& rewriter) const override {
+    if (!IsOpFullyQuantized(op)) {
+      return failure();
+    }
     auto operand_type = op.getOperand().getType().cast<TensorType>();
     auto output_type = op.getResult().getType().cast<TensorType>();
     Value input = op.getOperand();
@@ -1773,6 +1773,7 @@ class RewriteQuantizedBroadcastInDimOp
 
     rewriter.replaceOpWithNewOp<TFL::BroadcastToOp>(op, output_type, input,
                                                     shape);
+    return success();
   }
 
   Value InsertTransposeOp(stablehlo::BroadcastInDimOp op,
@@ -1834,10 +1835,20 @@ class RewriteQuantizedBroadcastInDimOp
 
 // Rewrites quantized stablehlo.reduce_window with max to tfl.max_pool_2d.
 class RewriteQuantizedReduceWindowOpWithMax
-    : public OpRewritePattern<stablehlo::ReduceWindowOp>::SplitMatchAndRewrite {
+    : public OpRewritePattern<stablehlo::ReduceWindowOp> {
  public:
-  using SplitMatchAndRewrite::SplitMatchAndRewrite;
+  using OpRewritePattern::OpRewritePattern;
 
+  LogicalResult matchAndRewrite(stablehlo::ReduceWindowOp op,
+                                PatternRewriter& rewriter) const override {
+    if (match(op).failed()) {
+      return failure();
+    }
+    rewrite(op, rewriter);
+    return success();
+  }
+
+ private:
   LogicalResult MatchBinaryReduceFunction(Region& function) const {
     Block& body = function.front();
     if (body.getNumArguments() != 2) return failure();
@@ -1853,7 +1864,7 @@ class RewriteQuantizedReduceWindowOpWithMax
                    reduce_op.getRhs() == body.getArgument(1));
   }
 
-  LogicalResult match(stablehlo::ReduceWindowOp op) const override {
+  LogicalResult match(stablehlo::ReduceWindowOp op) const {
     // Check that the reduce-window is a max-reduce-window.
     if (failed(MatchBinaryReduceFunction(op.getBody()))) {
       return failure();
@@ -1887,8 +1898,7 @@ class RewriteQuantizedReduceWindowOpWithMax
     return success(IsOpFullyQuantized(op));
   }
 
-  void rewrite(stablehlo::ReduceWindowOp op,
-               PatternRewriter& rewriter) const override {
+  void rewrite(stablehlo::ReduceWindowOp op, PatternRewriter& rewriter) const {
     Type result_type = op.getResult(0).getType();
     Value input = op.getOperand(0);
     // Ops with padding is rejected in matching function, so we can use the
@@ -1929,12 +1939,12 @@ class RewriteQuantizedReduceWindowOpWithMax
 // Condition 3 - `offset_dims` should be the last dimensions of `output`.
 // Condition 4 - shape of slice should be same with shape of input on the
 // offset dimensions.
-class RewriteQuantizedGatherOp
-    : public OpRewritePattern<stablehlo::GatherOp>::SplitMatchAndRewrite {
+class RewriteQuantizedGatherOp : public OpRewritePattern<stablehlo::GatherOp> {
  public:
-  using SplitMatchAndRewrite::SplitMatchAndRewrite;
+  using OpRewritePattern::OpRewritePattern;
 
-  LogicalResult match(stablehlo::GatherOp op) const override {
+  LogicalResult matchAndRewrite(stablehlo::GatherOp op,
+                                PatternRewriter& rewriter) const override {
     const Type input_type = op.getOperand().getType();
     const Type output_type = op.getResult().getType();
     if (!IsQuantizedTensorType(input_type) ||
@@ -2014,35 +2024,28 @@ class RewriteQuantizedGatherOp
       }
     }
 
-    return success();
-  }
-
-  void rewrite(stablehlo::GatherOp op,
-               PatternRewriter& rewriter) const override {
     rewriter.replaceOpWithNewOp<TFL::GatherNdOp>(
         op, /*output=*/op.getResult().getType(), /*params=*/op.getOperand(),
         /*indices=*/op.getStartIndices());
+    return success();
   }
 };
 
 // Rewrites quantized stablehlo.dynamic_slice to tfl.slice.
 // TODO: b/322428814 - Add StableHLO quantizer integration tests for ODML.
 class RewriteQuantizedDynamicSliceOp
-    : public OpRewritePattern<stablehlo::DynamicSliceOp>::SplitMatchAndRewrite {
+    : public OpRewritePattern<stablehlo::DynamicSliceOp> {
  public:
-  using SplitMatchAndRewrite::SplitMatchAndRewrite;
+  using OpRewritePattern::OpRewritePattern;
 
-  LogicalResult match(stablehlo::DynamicSliceOp op) const override {
+  LogicalResult matchAndRewrite(stablehlo::DynamicSliceOp op,
+                                PatternRewriter& rewriter) const override {
     if (!IsQuantizedTensorType(op.getOperand().getType()) ||
-        !IsQuantizedTensorType(op.getResult().getType())) {
+        !IsQuantizedTensorType(op.getResult().getType()) ||
+        !quant::HasStaticShape(op.getOperand())) {
       return failure();
     }
 
-    return success(quant::HasStaticShape(op.getOperand()));
-  }
-
-  void rewrite(stablehlo::DynamicSliceOp op,
-               PatternRewriter& rewriter) const override {
     Type output = op.getResult().getType();
     Value input = op.getOperand();
     TensorType operand_type = input.getType().cast<TensorType>();
@@ -2098,20 +2101,20 @@ class RewriteQuantizedDynamicSliceOp
     auto size = rewriter.create<arith::ConstantOp>(op.getLoc(), size_attr);
 
     rewriter.replaceOpWithNewOp<TFL::SliceOp>(op, output, input, begin, size);
+    return success();
   }
 };
 
-class RewriteQuantizedAddOp
-    : public OpRewritePattern<stablehlo::AddOp>::SplitMatchAndRewrite {
+class RewriteQuantizedAddOp : public OpRewritePattern<stablehlo::AddOp> {
  public:
-  using SplitMatchAndRewrite::SplitMatchAndRewrite;
+  using OpRewritePattern::OpRewritePattern;
 
-  LogicalResult match(stablehlo::AddOp op) const override {
-    return success(IsI8F32UniformQuantizedType(GetElementType(op.getLhs())) &&
-                   IsI8F32UniformQuantizedType(GetElementType(op.getRhs())));
-  }
-
-  void rewrite(stablehlo::AddOp op, PatternRewriter& rewriter) const override {
+  LogicalResult matchAndRewrite(stablehlo::AddOp op,
+                                PatternRewriter& rewriter) const override {
+    if (!IsI8F32UniformQuantizedType(GetElementType(op.getLhs())) ||
+        !IsI8F32UniformQuantizedType(GetElementType(op.getRhs()))) {
+      return failure();
+    }
     TFL::QConstOp lhs_qconst_op;
     TFL::QConstOp rhs_qconst_op;
 
@@ -2137,24 +2140,25 @@ class RewriteQuantizedAddOp
         lhs_qconst_op ? lhs_qconst_op : op.getOperand(0),
         rhs_qconst_op ? rhs_qconst_op : op.getOperand(1),
         /*fused_activation_function=*/rewriter.getStringAttr("NONE"));
+    return success();
   }
 };
 
 // Rewrites quantized `stablehlo.constant` to `tfl.pseudo_qconst`.
 class RewriteQuantizedConstantOp
-    : public OpRewritePattern<stablehlo::ConstantOp>::SplitMatchAndRewrite {
+    : public OpRewritePattern<stablehlo::ConstantOp> {
  public:
-  using SplitMatchAndRewrite::SplitMatchAndRewrite;
+  using OpRewritePattern::OpRewritePattern;
 
-  LogicalResult match(stablehlo::ConstantOp op) const override {
-    return success(IsQuantizedTensorType(op.getOutput().getType()));
-  }
-
-  void rewrite(stablehlo::ConstantOp op,
-               PatternRewriter& rewriter) const override {
+  LogicalResult matchAndRewrite(stablehlo::ConstantOp op,
+                                PatternRewriter& rewriter) const override {
+    if (!IsQuantizedTensorType(op.getOutput().getType())) {
+      return failure();
+    }
     rewriter.replaceOpWithNewOp<TFL::QConstOp>(
         op, /*qtype=*/TypeAttr::get(op.getOutput().getType()),
         /*value=*/op.getValue());
+    return success();
   }
 };
 
@@ -2163,19 +2167,18 @@ class RewriteQuantizedConstantOp
 // `stablehlo.dot_general` op relies on existing passes for conversion of
 // StableHLO -> MHLO -> TF -> TFL.
 class RewriteHybridQuantizedDotGeneralOp
-    : public OpRewritePattern<stablehlo::DotGeneralOp>::SplitMatchAndRewrite {
+    : public OpRewritePattern<stablehlo::DotGeneralOp> {
  public:
-  using SplitMatchAndRewrite::SplitMatchAndRewrite;
+  using OpRewritePattern::OpRewritePattern;
 
-  LogicalResult match(stablehlo::DotGeneralOp op) const override {
+  LogicalResult matchAndRewrite(stablehlo::DotGeneralOp op,
+                                PatternRewriter& rewriter) const override {
     // Lhs and result should not be quantized and rhs should be quantized.
-    return success(!IsQuantizedTensorType(op->getOperand(0).getType()) &&
-                   IsQuantizedTensorType(op->getOperand(1).getType()) &&
-                   !IsQuantizedTensorType(op->getResult(0).getType()));
-  }
-
-  void rewrite(stablehlo::DotGeneralOp op,
-               PatternRewriter& rewriter) const override {
+    if (IsQuantizedTensorType(op->getOperand(0).getType()) ||
+        !IsQuantizedTensorType(op->getOperand(1).getType()) ||
+        IsQuantizedTensorType(op->getResult(0).getType())) {
+      return failure();
+    }
     Value rhs = op.getRhs();
     Type lhs_element_type =
         op.getLhs().getType().template cast<TensorType>().getElementType();
@@ -2185,6 +2188,7 @@ class RewriteHybridQuantizedDotGeneralOp
         op->getLoc(), /*output=*/dequantized_rhs_type,
         /*input=*/rhs);
     rewriter.replaceAllUsesExcept(rhs, dq.getOutput(), dq);
+    return success();
   }
 };
 
@@ -2194,26 +2198,24 @@ class RewriteHybridQuantizedDotGeneralOp
 // Legalization of float `stablehlo.convolution` op relies on existing passes
 // for conversion of StableHLO -> MHLO -> TF -> TFL.
 class RewriteHybridQuantizedConvolutionOp
-    : public OpRewritePattern<stablehlo::ConvolutionOp>::SplitMatchAndRewrite {
+    : public OpRewritePattern<stablehlo::ConvolutionOp> {
  public:
   explicit RewriteHybridQuantizedConvolutionOp(MLIRContext* ctx)
-      : OpRewritePattern<stablehlo::ConvolutionOp>::SplitMatchAndRewrite(
-            ctx, /*benefit=*/5) {}
+      : OpRewritePattern<stablehlo::ConvolutionOp>(ctx, /*benefit=*/5) {}
 
-  LogicalResult match(stablehlo::ConvolutionOp op) const override {
+  LogicalResult matchAndRewrite(stablehlo::ConvolutionOp op,
+                                PatternRewriter& rewriter) const override {
     if (failed(MatchConvolutionFormat(op))) {
       LLVM_DEBUG(llvm::dbgs()
                  << "Failed to match dimension format for convolution_op.\n");
       return failure();
     }
     // Lhs and result should not be quantized and rhs should be quantized.
-    return success(!IsQuantizedTensorType(op->getOperand(0).getType()) &&
-                   IsQuantizedTensorType(op->getOperand(1).getType()) &&
-                   !IsQuantizedTensorType(op->getResult(0).getType()));
-  }
-
-  void rewrite(stablehlo::ConvolutionOp op,
-               PatternRewriter& rewriter) const override {
+    if (IsQuantizedTensorType(op->getOperand(0).getType()) ||
+        !IsQuantizedTensorType(op->getOperand(1).getType()) ||
+        IsQuantizedTensorType(op->getResult(0).getType())) {
+      return failure();
+    }
     const bool is_depthwise = IsDepthwiseConvolution(op);
 
     Operation* filter_op = op.getRhs().getDefiningOp();
@@ -2243,6 +2245,7 @@ class RewriteHybridQuantizedConvolutionOp
         op->getLoc(), /*output=*/dequantized_rhs_type,
         /*input=*/new_filter);
     rewriter.replaceAllUsesExcept(filter_op->getResult(0), dq.getOutput(), dq);
+    return success();
   }
 
  private:
