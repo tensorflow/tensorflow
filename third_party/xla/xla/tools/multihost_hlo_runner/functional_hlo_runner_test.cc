@@ -420,6 +420,8 @@ TEST_F(FunctionalHloRunnerTest, ShardedAutotuningWorks) {
     GTEST_SKIP() << "GPU-only test.";
   }
 
+  // clin
+  absl::string_view log_dir = std::getenv("TEST_UNDECLARED_OUTPUTS_DIR");
   tsl::setenv("TF_CPP_VMODULE", "gemm_fusion_autotuner=2", /*overwrite=*/true);
   tsl::SubProcess child[kNumNodes];
   for (int node_id = 0; node_id < kNumNodes; ++node_id) {
@@ -427,6 +429,7 @@ TEST_F(FunctionalHloRunnerTest, ShardedAutotuningWorks) {
     argv.push_back(binary_name);
     argv.push_back("--xla_gpu_shard_autotuning");
     argv.push_back(absl::StrFormat("--node_id=%d", node_id));
+    argv.push_back(absl::StrCat("--log_dir=", log_dir));
     child[node_id].SetProgram(binary_name, argv);
     child[node_id].SetChannelAction(tsl::CHAN_STDOUT, tsl::ACTION_PIPE);
     child[node_id].SetChannelAction(tsl::CHAN_STDERR, tsl::ACTION_PIPE);
