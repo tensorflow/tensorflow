@@ -27,7 +27,12 @@ tf_python_pybind_extension(
     ],
     deps = [
         "//tensorflow/core:framework_headers_lib",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_proto_parsing",
+        "//tensorflow/core:portable_gif_internal",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/platform:file_statistics",
+        "//tensorflow/core/platform:stringpiece",
         "//tensorflow/python/lib/core:pybind11_absl",
         "//tensorflow/python/lib/core:pybind11_status",
         "@pybind11",
@@ -51,6 +56,7 @@ tf_python_pybind_extension(
         "//tensorflow/python/lib/core:pybind11_absl",
         "//tensorflow/python/lib/core:pybind11_status",
         "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/status",
         "@pybind11",
     ],
 )
