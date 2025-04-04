@@ -1026,8 +1026,8 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
     CHECK_GE(num_spatial_dims, 0);
     CHECK_EQ(window.dimensions_size(), num_spatial_dims);
 
-    const auto lhs_rank = lhs_shape.dimensions_size();
-    const auto rhs_rank = rhs_shape.dimensions_size();
+    const auto lhs_rank = lhs_shape.dimensions().size();
+    const auto rhs_rank = rhs_shape.dimensions().size();
 
     CHECK_EQ(num_spatial_dims + 2, lhs_rank);
     CHECK_EQ(num_spatial_dims + 2, rhs_rank);
@@ -1086,8 +1086,8 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
 
     const auto& dnums = dot->dot_dimension_numbers();
 
-    const int64_t lhs_rank = lhs->shape().dimensions_size();
-    const int64_t rhs_rank = rhs->shape().dimensions_size();
+    const int64_t lhs_rank = lhs->shape().dimensions().size();
+    const int64_t rhs_rank = rhs->shape().dimensions().size();
 
     CHECK(ShapeUtil::SameElementType(lhs->shape(), rhs->shape()));
     CHECK(ShapeUtil::SameElementType(lhs->shape(), dot->shape()));
@@ -1151,8 +1151,8 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
                                              const Literal& rhs_literal) {
     const auto& dnums = dot->dot_dimension_numbers();
 
-    const auto lhs_rank = lhs_literal.shape().dimensions_size();
-    const auto rhs_rank = rhs_literal.shape().dimensions_size();
+    const auto lhs_rank = lhs_literal.shape().dimensions().size();
+    const auto rhs_rank = rhs_literal.shape().dimensions().size();
 
     CHECK(ShapeUtil::SameElementType(lhs_literal.shape(), rhs_literal.shape()));
     CHECK(ShapeUtil::SameElementType(lhs_literal.shape(), dot->shape()));
@@ -1284,7 +1284,7 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
     CHECK(pad->operand(0)->shape().IsArray());
     // Padding value must be scalar.
     CHECK(ShapeUtil::IsScalar(pad->operand(1)->shape()));
-    CHECK_EQ(pad->operand(0)->shape().dimensions_size(),
+    CHECK_EQ(pad->operand(0)->shape().dimensions().size(),
              pad->padding_config().dimensions_size());
 
     TF_ASSIGN_OR_RETURN(auto inferred_return_shape,
@@ -1321,7 +1321,7 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
     const Literal& evaluated_operand =
         parent_->GetEvaluatedLiteralFor(pad->operand(0));
 
-    std::vector<int64_t> target_index(result.shape().dimensions_size(), 0);
+    std::vector<int64_t> target_index(result.shape().dimensions().size(), 0);
 
     // Loop through each element of the operand, assign them to the
     // corresponding index of the resulting padded literal.
@@ -1348,9 +1348,9 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
       return true;
     };
 
-    std::vector<int64_t> zero_base(evaluated_operand.shape().dimensions_size(),
-                                   0);
-    std::vector<int64_t> step(evaluated_operand.shape().dimensions_size(), 1);
+    std::vector<int64_t> zero_base(
+        evaluated_operand.shape().dimensions().size(), 0);
+    std::vector<int64_t> step(evaluated_operand.shape().dimensions().size(), 1);
 
     ShapeUtil::ForEachIndexNoStatus(evaluated_operand.shape(), zero_base,
                                     evaluated_operand.shape().dimensions(),
