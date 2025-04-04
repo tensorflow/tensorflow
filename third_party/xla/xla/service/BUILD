@@ -397,7 +397,9 @@ cc_library(
         "//xla:literal",
         "//xla:util",
         "@com_google_absl//absl/base",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
     ],
 )
 
