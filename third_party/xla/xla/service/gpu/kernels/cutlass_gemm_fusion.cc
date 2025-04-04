@@ -22,7 +22,6 @@ limitations under the License.
 #include <optional>
 #include <string>
 #include <utility>
-#include <variant>
 #include <vector>
 
 #include "absl/algorithm/container.h"
@@ -247,14 +246,6 @@ std::optional<CustomKernelFusionPattern::Match> CutlassGemmPattern::TryMatch(
 std::optional<CustomKernelFusionPattern::Match>
 CutlassGemmWithDynamicUpdateSlicePattern::TryMatch(
     const se::DeviceDescription& device, HloInstruction* instr) const {
-  // This pattern is disabled for VOLTA. See b/380087823.
-  if (std::holds_alternative<se::CudaComputeCapability>(
-          device.gpu_compute_capability())) {
-    if (device.cuda_compute_capability().major ==
-        se::CudaComputeCapability::CudaComputeCapabilities::kVolta) {
-      return std::nullopt;
-    }
-  }
   auto* update_slice = DynCast<HloDynamicUpdateSliceInstruction>(instr);
   if (!update_slice) return std::nullopt;
 
