@@ -1053,14 +1053,11 @@ CollectSliceArgumentMetadataForCollectives(
   SliceDataForCollectives slice_data(num_args);
   std::optional<HloInstruction*> while_op =
       GetParentWhileOp(fusion_instr, call_graph);
-  VLOG(0) << "Collecting while op data";
   if (while_op != std::nullopt) {
     CHECK(while_op.value() != nullptr)
         << "GetParentWhileOp is not expected to return nullptr.";
     slice_data.init_module = ExtractWhileInitModule(*while_op);
-    VLOG(0) << "Extracted init module";
     slice_data.update_module = ExtractWhileUpdateModule(*while_op);
-    VLOG(0) << "Extracted update module";
   }
   slice_data.can_compute_indvar_on_host = (slice_data.init_module != nullptr &&
                                            slice_data.update_module != nullptr);
