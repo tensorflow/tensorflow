@@ -3757,7 +3757,6 @@ TEST_F(DynamicSliceFusionTest, WhileLoopSliceWithNoInductionVariable) {
       .mutable_debug_options()
       .set_xla_gpu_enable_dynamic_slice_fusion(true);
   TF_ASSERT_OK_AND_ASSIGN(m, GetOptimizedModule(std::move(m)));
-  // VLOG(0) << "Fused module: " << m->ToString();
   ErrorSpec error_spec(1e-5, 1e-5);
   EXPECT_TRUE(RunAndCompareTwoModulesReplicated(std::move(m), std::move(m_ref),
                                                 /*run_hlo_passes=*/false,
