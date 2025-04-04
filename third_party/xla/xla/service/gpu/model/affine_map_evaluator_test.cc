@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "xla/service/gpu/model/affine_map_evaluator.h"
 
+#include <gmock/gmock.h>
+#include <gtest/gtest.h>
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/AffineMap.h"
 #include "mlir/IR/MLIRContext.h"
