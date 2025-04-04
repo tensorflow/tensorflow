@@ -354,6 +354,37 @@ func.func @approx_dynamic_top_k_success(%arg0: tensor<3x8xf32>) -> (tensor<3x4xf
   %k = stablehlo.constant dense<3> : tensor<ui64>
   // CHECK: ApproxTopK{{.*}}top_k = 3
   %2:2 = stablehlo.custom_call @stablehlo.dynamic_approx_top_k(%arg0, %inp1, %init0, %init1, %k) {
+    api_version = 4 : i32,
+    called_computations = [@top_k_gt_f32_comparator],
+    backend_config = {
+      aggregate_to_topk = true,
+      is_fallback = true,
+      recall_target = 0.95 : f32,
+      reduction_dim = 1 : i64,
+      reduction_input_size_override = -1 : i64
+    }
+  } : (tensor<3x8xf32>, tensor<3x8xi32>, tensor<f32>, tensor<i32>, tensor<ui64>) -> (tensor<3x4xf32>, tensor<3x4xi32>)
+  return %2#0, %2#1 : tensor<3x4xf32>, tensor<3x4xi32>
+}
+
+func.func private @top_k_gt_f32_comparator(%arg0: tensor<f32>, %arg1: tensor<f32>, %arg2: tensor<i32>, %arg3: tensor<i32>) -> tensor<i1> {
+  %0 = stablehlo.compare  GT, %arg0, %arg1 : (tensor<f32>, tensor<f32>) -> tensor<i1>
+  return %0 : tensor<i1>
+}
+
+// -----
+
+// TODO(b/392911302): Remove this test once XLA plugins are updated to support API v4
+// approx_dynamic_top_k_backward_compat_success
+// CHECK-LABEL: func @approx_dynamic_top_k_backward_compat_success
+func.func @approx_dynamic_top_k_backward_compat_success(%arg0: tensor<3x8xf32>) -> (tensor<3x4xf32>, tensor<3x4xi32>) {
+  %init0 = stablehlo.constant dense<0xFF800000> : tensor<f32>
+  %init1 = stablehlo.constant dense<-1> : tensor<i32>
+  %inp1 = stablehlo.iota dim = 1 : tensor<3x8xi32>
+  %k = stablehlo.constant dense<3> : tensor<ui64>
+  // CHECK: ApproxTopK{{.*}}top_k = 3
+  %2:2 = stablehlo.custom_call @stablehlo.dynamic_approx_top_k(%arg0, %inp1, %init0, %init1, %k) {
+    api_version = 2 : i32,
     called_computations = [@top_k_gt_f32_comparator],
     mhlo.backend_config = {
       aggregate_to_topk = true,
@@ -381,7 +412,8 @@ func.func @approx_dynamic_top_k_error_no_called_computation(%arg0: tensor<3x8xf3
   %k = stablehlo.constant dense<3> : tensor<ui64>
   // expected-error@+1{{must take 1 called_computations}}
   %2:2 = stablehlo.custom_call @stablehlo.dynamic_approx_top_k(%arg0, %inp1, %init0, %init1, %k) {
-    mhlo.backend_config = {
+    api_version = 4 : i32,
+    backend_config = {
       aggregate_to_topk = true,
       is_fallback = true,
       recall_target = 0.95 : f32,
@@ -400,10 +432,11 @@ func.func @approx_dynamic_top_k_error_backend_config_includes_top_k(%arg0: tenso
   %init1 = stablehlo.constant dense<-1> : tensor<i32>
   %inp1 = stablehlo.iota dim = 1 : tensor<3x8xi32>
   %k = stablehlo.constant dense<3> : tensor<ui64>
-  // expected-error@+1{{mhlo.backend_config attribute contains top_k}}
+  // expected-error@+1{{backend_config dictionary contains top_k}}
   %2:2 = stablehlo.custom_call @stablehlo.dynamic_approx_top_k(%arg0, %inp1, %init0, %init1, %k) {
+    api_version = 4 : i32,
     called_computations = [@top_k_gt_f32_comparator],
-    mhlo.backend_config = {
+    backend_config = {
       top_k = 3,
       aggregate_to_topk = true,
       is_fallback = true,
@@ -430,8 +463,9 @@ func.func @approx_dynamic_top_k_error_even_operands(%arg0: tensor<3x8xf32>) -> (
   %k = stablehlo.constant dense<3> : tensor<ui64>
   // expected-error@+1{{size(operands) is even or less than 3}}
   %2:2 = stablehlo.custom_call @stablehlo.dynamic_approx_top_k(%arg0, %inp1, %init0, %init1) {
+    api_version = 4 : i32,
     called_computations = [@top_k_gt_f32_comparator],
-    mhlo.backend_config = {
+    backend_config = {
       aggregate_to_topk = true,
       is_fallback = true,
       recall_target = 0.95 : f32,
@@ -457,8 +491,9 @@ func.func @approx_dynamic_top_k_error_few_operands(%arg0: tensor<3x8xf32>) -> (t
   %k = stablehlo.constant dense<3> : tensor<ui64>
   // expected-error@+1{{size(operands) is even or less than 3}}
   %2:2 = stablehlo.custom_call @stablehlo.dynamic_approx_top_k() {
+    api_version = 4 : i32,
     called_computations = [@top_k_gt_f32_comparator],
-    mhlo.backend_config = {
+    backend_config = {
       aggregate_to_topk = true,
       is_fallback = true,
       recall_target = 0.95 : f32,
