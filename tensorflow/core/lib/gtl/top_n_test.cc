@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "tensorflow/core/lib/gtl/top_n.h"
 
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -199,8 +200,10 @@ struct PointeeGreater {
 TEST(TopNTest, MoveOnly) {
   using StrPtr = std::unique_ptr<string>;
   TopN<StrPtr, PointeeGreater> topn(3);
-  for (int i = 0; i < 8; ++i) topn.push(StrPtr(new string(std::to_string(i))));
-  for (int i = 8; i > 0; --i) topn.push(StrPtr(new string(std::to_string(i))));
+  for (int i = 0; i < 8; ++i)
+    topn.push(std::make_unique<string>(std::to_string(i)));
+  for (int i = 8; i > 0; --i)
+    topn.push(std::make_unique<string>(std::to_string(i)));
 
   std::vector<StrPtr> extract = ConsumeRawPtr(topn.Extract());
   EXPECT_EQ(extract.size(), 3);
