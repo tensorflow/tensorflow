@@ -17,11 +17,19 @@
 
 # pylint: disable=g-import-not-at-top
 # pylint: disable=unused-import
+# pylint: disable=consider-using-from-import
+# pylint: disable=g-bad-import-order
 
+# Importing the top-level module is fine but doesn't provide submodules.
+import tensorflow.compiler.mlir.lite.integrations.python.mlir as mlir
 
-def smoketest():
-  import tensorflow.compiler.mlir.lite.integrations.python.mlir
+assert not hasattr(mlir, "ir")
 
+# Importing a submodule should also be fine.
+import tensorflow.compiler.mlir.lite.integrations.python.mlir.ir
 
-if __name__ == "__main__":
-  smoketest()
+assert hasattr(mlir, "ir")
+
+# Just some basic API usage to make sure things are roughly in the right place.
+context = mlir.ir.Context()
+module = mlir.ir.Module.parse("module @foo {}", context)

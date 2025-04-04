@@ -14,7 +14,6 @@
 # ==============================================================================
 
 load("//tensorflow:tensorflow.default.bzl", "pybind_extension")
-load("//tensorflow/compiler/mlir/lite:symlink_files.bzl", "symlink_files")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -38,22 +37,23 @@ pybind_extension(
         "@llvm-project//mlir:lib/Bindings/Python/MainModule.cpp",
     ],
     copts = COPTS,
-    pytype_srcs = [
-        ":_mlirPyi",
-    ],
+    # pytype_srcs = [
+    #     ":_mlirPyi",
+    # ],
     deps = [
         "@llvm-project//mlir:MLIRBindingsPythonCore",
-        "@llvm-project//mlir:MLIRBindingsPythonNanobindHeaders",
-        "@nanobind",
+        "@llvm-project//mlir:MLIRBindingsPythonHeadersAndDeps",
+        # "@llvm-project//mlir:MLIRBindingsPythonNanobindHeaders",
+        # "@nanobind",
     ],
 )
 
-symlink_files(
-    name = "_mlirPyi",
-    srcs = [
-        "@llvm-project//mlir/python:IRPyIFiles",
-        "@llvm-project//mlir/python:PassManagerPyIFiles",
-    ],
-    dst = "_mlir",
-    flatten = True,
-)
+# symlink_files(
+#     name = "_mlirPyi",
+#     srcs = [
+#         "@llvm-project//mlir/python:IRPyIFiles",
+#         "@llvm-project//mlir/python:PassManagerPyIFiles",
+#     ],
+#     dst = "_mlir",
+#     flatten = True,
+# )
