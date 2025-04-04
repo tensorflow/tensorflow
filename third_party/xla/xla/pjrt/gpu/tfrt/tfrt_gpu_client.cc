@@ -1548,7 +1548,8 @@ absl::StatusOr<std::unique_ptr<PjRtBuffer>> TfrtGpuClient::BufferFromHostBuffer(
       device_shape,
       transfer_manager->ChooseCompactLayoutForShape(device_shape));
 
-  absl::InlinedVector<int64_t, 4> shape_strides(device_shape.dimensions_size());
+  absl::InlinedVector<int64_t, 4> shape_strides(
+      device_shape.dimensions().size());
   TF_RETURN_IF_ERROR(
       ShapeUtil::ByteStrides(device_shape, absl::MakeSpan(shape_strides)));
   bool host_and_device_strides_equal =
