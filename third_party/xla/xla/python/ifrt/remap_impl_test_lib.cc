@@ -137,9 +137,11 @@ absl::StatusOr<tsl::RCReference<Array>> CreateArray(
                                    MemoryKind(),
                                    /*shape=*/shape,
                                    /*shard_shape=*/std::move(shard_shape));
+  absl::Span<tsl::RCReference<Array>> arrays = absl::MakeSpan(shards);
   return client->AssembleArrayFromSingleDeviceArrays(
-      std::move(shape), std::move(assembled_sharding), absl::MakeSpan(shards),
-      ArrayCopySemantics::kDonateInput);
+      arrays.at(0)->dtype(), std::move(shape), std::move(assembled_sharding),
+      arrays, ArrayCopySemantics::kDonateInput,
+      SingleDeviceShardSemantics::kAddressableShards);
 }
 
 // Checks the shards and contents of an array, same as what CreateArray would
