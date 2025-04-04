@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "absl/container/flat_hash_set.h"
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/test_util.h"
 #include "xla/tsl/platform/statusor.h"
@@ -60,10 +61,13 @@ TEST(ClientImplTest, GetAllDevices) {
 
   EXPECT_GE(client->GetAllDevices().size(), client->device_count());
 
+  absl::flat_hash_set<DeviceId> seen_device_ids;
   for (Device* device : client->GetAllDevices()) {
     TF_ASSERT_OK_AND_ASSIGN(auto* looked_up_device,
                             client->LookupDevice(device->Id()));
     EXPECT_EQ(device, looked_up_device);
+    EXPECT_TRUE(seen_device_ids.insert(device->Id()).second)
+        << "Duplicate device ID: " << device->Id();
   }
 }
 

@@ -443,6 +443,7 @@ cc_library(
         ":test_util",
         "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:test",
+        "@com_google_absl//absl/container:flat_hash_set",
     ],
     alwayslink = True,
 )
