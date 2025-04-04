@@ -23,7 +23,10 @@ cc_library(
     srcs = ["plugin_tracer.cc"],
     hdrs = ["plugin_tracer.h"],
     copts = tf_profiler_copts(),
-    visibility = ["//xla:internal"],
+    visibility = [
+        # copybara:uncomment "//third_party/py/jax:__subpackages__",
+        "//xla:internal",
+    ],
     deps = [
         ":profiler_c_api_hdrs",
         "//xla/tsl/platform:logging",

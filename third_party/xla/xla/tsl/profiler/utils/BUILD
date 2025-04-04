@@ -389,6 +389,7 @@ cc_library(
     copts = tf_profiler_copts(),
     visibility = internal_visibility([
         "//xla/python:__pkg__",
+        "//xla/tsl/profiler:friends",
         "//xla/tsl/profiler:internal",
     ]),
     deps = [

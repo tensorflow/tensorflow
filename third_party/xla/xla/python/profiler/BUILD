@@ -14,6 +14,7 @@ cc_library(
     ],
     features = ["-use_header_modules"],
     visibility = [
+        # copybara:uncomment "//third_party/py/jax:__subpackages__",
         "//xla/python:__pkg__",
     ],
     deps = [
