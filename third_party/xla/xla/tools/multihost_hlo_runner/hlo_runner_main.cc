@@ -89,7 +89,7 @@ struct HloRunnerConfig {
   bool log_output = false;
   bool run_xla_backend_only = false;
   bool disable_all_hlo_passes = false;
-  bool use_spmd_partitioning = false;
+  bool use_spmd_partitioning = true;
   bool is_spmd_partitioned_module = false;
   std::string xla_dump_to = "";
   bool xla_dump_as_text = false;
