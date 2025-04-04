@@ -65,7 +65,7 @@ class ReductionDegenerateDimRemoverVisitor : public DfsHloRewriteVisitor {
       auto reduced_dimensions = instr->dimensions();
       int64_t shift = 0;
 
-      for (int dim = 0; dim < input_shape.dimensions_size(); dim++) {
+      for (int dim = 0; dim < input_shape.dimensions().size(); dim++) {
         if (input_shape.dimensions(dim) == 1) {
           shift++;
         } else {

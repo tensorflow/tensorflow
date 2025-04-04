@@ -127,7 +127,7 @@ bool IsF8Type(const HloInstruction *instr) {
 Shape PadShapeToMultipleOf16(const Shape old_shape,
                              const absl::Span<const int64_t> batch_dims) {
   Shape padded_shape = old_shape;
-  for (int i = 0; i < old_shape.dimensions_size(); ++i) {
+  for (int i = 0; i < old_shape.dimensions().size(); ++i) {
     if (!absl::c_linear_search(batch_dims, i)) {
       int64_t padded_dimension =
           RoundUpTo<int64_t>(old_shape.dimensions(i), 16);
@@ -146,7 +146,7 @@ HloInstruction *PadOperandToTargetShape(const Shape &target,
   }
 
   PaddingConfig padding_config;
-  for (int i = 0; i < x->shape().dimensions_size(); ++i) {
+  for (int i = 0; i < x->shape().dimensions().size(); ++i) {
     auto dimension = padding_config.add_dimensions();
     dimension->set_edge_padding_low(0);
     dimension->set_edge_padding_high(target.dimensions(i) -
@@ -356,14 +356,14 @@ HloInstruction *TransposeMatrix(HloInstruction *instr, int64_t contracting_dim,
   auto input_shape = instr->shape();
   // Identify the dimensional order which describes a transpose of the
   // contracting and non-contracting dimensions of the GEMM.
-  std::vector<int64_t> permutation(input_shape.dimensions_size(), -1);
+  std::vector<int64_t> permutation(input_shape.dimensions().size(), -1);
   // Discard the batch dimensions.
   for (int64_t batch_dim : batch_dims) {
     permutation[batch_dim] = batch_dim;
   }
   // Identify the non-contracting dimension.
   int non_contracting_dim;
-  for (int i = 0; i < input_shape.dimensions_size(); ++i) {
+  for (int i = 0; i < input_shape.dimensions().size(); ++i) {
     if (permutation[i] == -1 && contracting_dim != i) {
       non_contracting_dim = i;
     }
@@ -628,9 +628,9 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     int64_t lhs_batch_dims_size =
         instr->dot_dimension_numbers().lhs_batch_dimensions_size();
     bool is_lhs_vector =
-        lhs->shape().dimensions_size() == lhs_batch_dims_size + 1;
+        lhs->shape().dimensions().size() == lhs_batch_dims_size + 1;
     bool is_rhs_vector =
-        rhs->shape().dimensions_size() == lhs_batch_dims_size + 1;
+        rhs->shape().dimensions().size() == lhs_batch_dims_size + 1;
     int64_t lhs_stride =
         is_lhs_vector ? lhs->shape().dimensions(lhs_batch_dims_size)
                       : lhs->shape().dimensions(lhs_batch_dims_size) *
@@ -1108,22 +1108,52 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     }
 
     if (IsRocm(gpu_version_)) {
-      if (a_type == F8E5M2FNUZ && b_type == F8E5M2FNUZ) {
-        VLOG(1)
-            << "Failed to rewrite " << instr->ToShortString()
-            << " into FP8 Custom Call. The element type of one of the operands "
-               "must be F8E4M3FNUZ.";
-        return false;
+      TF_ASSIGN_OR_RETURN(auto rocm_compute_capability,
+                          GetRocmComputeCapability(gpu_version_));
+      if (rocm_compute_capability.has_ocp_fp8_support()) {
+        if (a_type == F8E5M2 && b_type == F8E5M2) {
+          VLOG(1) << "Failed to rewrite " << instr->ToShortString()
+                  << " into FP8 Custom Call. For "
+                  << rocm_compute_capability.gfx_version()
+                  << " arch, one of the input types must be F8E4M3FN, but got "
+                  << PrimitiveType_Name(a_type) << " and "
+                  << PrimitiveType_Name(b_type);
+          return false;
+        }
+        if ((a_type != F8E5M2 && a_type != F8E4M3FN) ||
+            (b_type != F8E5M2 && b_type != F8E4M3FN)) {
+          VLOG(1)
+              << "Failed to rewrite " << instr->ToShortString()
+              << " into FP8 Custom Call. For "
+              << rocm_compute_capability.gfx_version()
+              << " arch, the input types must be F8E5M2 or F8E4M3FN, but got "
+              << PrimitiveType_Name(a_type) << " and "
+              << PrimitiveType_Name(b_type);
+          return false;
+        }
       }
-      if ((a_type != F8E5M2FNUZ && a_type != F8E4M3FNUZ) ||
-          (b_type != F8E5M2FNUZ && b_type != F8E4M3FNUZ)) {
-        VLOG(1)
-            << "Failed to rewrite " << instr->ToShortString()
-            << " into FP8 Custom Call. The input types must be F8E5M2FNUZ or "
-               "F8E4M3FNUZ, but got "
-            << PrimitiveType_Name(a_type) << " and "
-            << PrimitiveType_Name(b_type);
-        return false;
+      if (rocm_compute_capability.has_nanoo_fp8_support()) {
+        if (a_type == F8E5M2FNUZ && b_type == F8E5M2FNUZ) {
+          VLOG(1)
+              << "Failed to rewrite " << instr->ToShortString()
+              << " into FP8 Custom Call. For "
+              << rocm_compute_capability.gfx_version()
+              << " arch, one of the input types must be F8E4M3FNUZ, but got "
+              << PrimitiveType_Name(a_type) << " and "
+              << PrimitiveType_Name(b_type);
+          return false;
+        }
+        if ((a_type != F8E5M2FNUZ && a_type != F8E4M3FNUZ) ||
+            (b_type != F8E5M2FNUZ && b_type != F8E4M3FNUZ)) {
+          VLOG(1) << "Failed to rewrite " << instr->ToShortString()
+                  << " into FP8 Custom Call. For "
+                  << rocm_compute_capability.gfx_version()
+                  << " arch, the input types must be F8E5M2FNUZ or F8E4M3FNUZ, "
+                     "but got "
+                  << PrimitiveType_Name(a_type) << " and "
+                  << PrimitiveType_Name(b_type);
+          return false;
+        }
       }
     }
 
@@ -1170,25 +1200,56 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     }
 
     PrimitiveType d_type = instr->shape().element_type();
-    bool supported_d_type = (d_type == BF16 || d_type == F16 || d_type == F32);
-    if (IsCuda(gpu_version_) && (d_type == F8E4M3FN || d_type == F8E5M2)) {
-      supported_d_type = true;
+    std::unordered_set<PrimitiveType> supported_d_types = {BF16, F16, F32};
+    if (IsCuda(gpu_version_)) {
+      supported_d_types.insert(F8E4M3FN);
+      supported_d_types.insert(F8E5M2);
+      if (supported_d_types.find(d_type) == supported_d_types.end()) {
+        VLOG(1) << "Failed to rewrite " << instr->ToShortString()
+                << " into FP8 Custom Call. Output type must be "
+                   "F8E4M3FN, F8E5M2, BF16, F16 or F32, but got "
+                << PrimitiveType_Name(d_type);
+        return false;
+      }
     }
-    if (IsRocm(gpu_version_) &&
-        toolkit_version_ >= stream_executor::SemanticVersion{6, 2, 0} &&
-        (d_type == F8E4M3FNUZ || d_type == F8E5M2FNUZ)) {
-      supported_d_type = true;
-    }
-    if (!supported_d_type) {
-      VLOG(1) << "Failed to rewrite " << instr->ToShortString()
-              << " into FP8 Custom Call. Output element type must be "
-              << (IsCuda(gpu_version_) ? "F8E4M3FN, F8E5M2, BF16, F16 or F32. "
-                  : toolkit_version_ >=
-                          stream_executor::SemanticVersion{6, 2, 0}
-                      ? "F8E4M3FNUZ, F8E5M2FNUZ, BF16, F16 or F32. "
-                      : "BF16, F16 or F32. ")
-              << "Actual element type is " << PrimitiveType_Name(d_type);
-      return false;
+    if (IsRocm(gpu_version_)) {
+      if (toolkit_version_ < stream_executor::SemanticVersion{6, 2, 0}) {
+        if (supported_d_types.find(d_type) == supported_d_types.end()) {
+          VLOG(1) << "Failed to rewrite " << instr->ToShortString()
+                  << " into FP8 Custom Call. For ROCm version < 6.2, output "
+                     "type must be BF16, F16 or F32, but got "
+                  << PrimitiveType_Name(d_type);
+          return false;
+        }
+      }
+      TF_ASSIGN_OR_RETURN(auto rocm_compute_capability,
+                          GetRocmComputeCapability(gpu_version_));
+      if (rocm_compute_capability.has_ocp_fp8_support()) {
+        supported_d_types.insert(F8E4M3FN);
+        supported_d_types.insert(F8E5M2);
+        if (supported_d_types.find(d_type) == supported_d_types.end()) {
+          VLOG(1) << "Failed to rewrite " << instr->ToShortString()
+                  << " into FP8 Custom Call. For "
+                  << rocm_compute_capability.gfx_version()
+                  << " arch output type must be F8E4M3FN, F8E5M2, BF16, F16 or "
+                     "F32, but got "
+                  << PrimitiveType_Name(d_type);
+          return false;
+        }
+      }
+      if (rocm_compute_capability.has_nanoo_fp8_support()) {
+        supported_d_types.insert(F8E4M3FNUZ);
+        supported_d_types.insert(F8E5M2FNUZ);
+        if (supported_d_types.find(d_type) == supported_d_types.end()) {
+          VLOG(1) << "Failed to rewrite " << instr->ToShortString()
+                  << " into FP8 Custom Call. For "
+                  << rocm_compute_capability.gfx_version()
+                  << " arch output type must be F8E4M3FNUZ, F8E5M2FNUZ, BF16, "
+                     "F16 or F32, but got "
+                  << PrimitiveType_Name(d_type);
+          return false;
+        }
+      }
     }
 
     // Each operand must have exactly one contracting and one non-contracting
@@ -1209,7 +1270,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
       const HloInstruction *input = param.commutative_ops.empty()
                                         ? param.fp8_input
                                         : param.commutative_ops.back().first;
-      if (input->shape().dimensions_size() != num_batch_dims + 2) {
+      if (input->shape().dimensions().size() != num_batch_dims + 2) {
         VLOG(1) << "Failed to rewrite " << instr->ToShortString()
                 << "into FP8 Custom Call. Inputs must have exactly one "
                    "contracting and one non-contracting dimension.";
@@ -1324,8 +1385,8 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     // Slice the result of the GEMM if the operands were padded.
     HloInstruction *slice = nullptr;
     if (new_output_shape.dimensions() != instr->shape().dimensions()) {
-      std::vector<int64_t> start_indices(instr->shape().dimensions_size(), 0);
-      std::vector<int64_t> strides(instr->shape().dimensions_size(), 1);
+      std::vector<int64_t> start_indices(instr->shape().dimensions().size(), 0);
+      std::vector<int64_t> strides(instr->shape().dimensions().size(), 1);
       slice = instr->AddInstruction(HloInstruction::CreateSlice(
           instr->shape(), new_custom_call, start_indices,
           instr->shape().dimensions(), strides));
@@ -1383,6 +1444,10 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
                           HloInstruction *d_scale, HloInstruction *clamp_lower,
                           HloInstruction *clamp_upper,
                           bool mult_scale = false) {
+    // TODO: add ROCm support to this fusion pattern
+    if (IsRocm(gpu_version_)) {
+      return absl::OkStatus();
+    }
     // Verify the data types and the operands of clamp.
     if (instr->shape().element_type() == F8E4M3FN) {
       if (!clamp_lower->literal().IsAllFloat(static_cast<float>(
@@ -1559,7 +1624,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     // To ensure correctness, only slices that chop off the ends of dimensions
     // are supported.
     if (slice) {
-      int slice_op_dim = slice->operand(0)->shape().dimensions_size();
+      int slice_op_dim = slice->operand(0)->shape().dimensions().size();
       if (slice->slice_starts() != std::vector<int64_t>(slice_op_dim, 0) ||
           slice->slice_strides() != std::vector<int64_t>(slice_op_dim, 1)) {
         return absl::OkStatus();
@@ -1697,13 +1762,13 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     GemmBackendConfig &config = *gpu_config.mutable_gemm_backend_config();
     // # output column dims == # non-contracting rhs operand dims.
     const DotDimensionNumbers &dot_dims = config.dot_dimension_numbers();
-    size_t num_col_dims = gemm->operand(1)->shape().dimensions_size() -
+    size_t num_col_dims = gemm->operand(1)->shape().dimensions().size() -
                           dot_dims.rhs_batch_dimensions_size() -
                           dot_dims.rhs_contracting_dimensions_size();
 
     if ((gemm->user_count() != 1) ||
         (config.epilogue() != GemmBackendConfig::DEFAULT) ||
-        (bias->shape().dimensions_size() != num_col_dims)) {
+        (bias->shape().dimensions().size() != num_col_dims)) {
       return false;
     }
     // We require the bias vector to have been broadcast in the most major
@@ -2129,7 +2194,39 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
       return true;
     }
     const TypeCombinations supported_hipblas_type_combinations = {
-        // FP8 types:
+        // OCP FP8 types:
+        {ComputationType::kF32, DataType::kFloat, PrimitiveType::F8E4M3FN,
+         PrimitiveType::F8E4M3FN, DataType::kBF16},
+        {ComputationType::kF32, DataType::kFloat, PrimitiveType::F8E4M3FN,
+         PrimitiveType::F8E4M3FN, DataType::kF8E4M3FN},
+        {ComputationType::kF32, DataType::kFloat, PrimitiveType::F8E4M3FN,
+         PrimitiveType::F8E4M3FN, DataType::kHalf},
+        {ComputationType::kF32, DataType::kFloat, PrimitiveType::F8E4M3FN,
+         PrimitiveType::F8E4M3FN, DataType::kFloat},
+
+        {ComputationType::kF32, DataType::kFloat, PrimitiveType::F8E4M3FN,
+         PrimitiveType::F8E5M2, DataType::kBF16},
+        {ComputationType::kF32, DataType::kFloat, PrimitiveType::F8E4M3FN,
+         PrimitiveType::F8E5M2, DataType::kF8E4M3FN},
+        {ComputationType::kF32, DataType::kFloat, PrimitiveType::F8E4M3FN,
+         PrimitiveType::F8E5M2, DataType::kF8E5M2},
+        {ComputationType::kF32, DataType::kFloat, PrimitiveType::F8E4M3FN,
+         PrimitiveType::F8E5M2, DataType::kHalf},
+        {ComputationType::kF32, DataType::kFloat, PrimitiveType::F8E4M3FN,
+         PrimitiveType::F8E5M2, DataType::kFloat},
+
+        {ComputationType::kF32, DataType::kFloat, PrimitiveType::F8E5M2,
+         PrimitiveType::F8E4M3FN, DataType::kBF16},
+        {ComputationType::kF32, DataType::kFloat, PrimitiveType::F8E5M2,
+         PrimitiveType::F8E4M3FN, DataType::kF8E4M3FN},
+        {ComputationType::kF32, DataType::kFloat, PrimitiveType::F8E5M2,
+         PrimitiveType::F8E4M3FN, DataType::kF8E5M2},
+        {ComputationType::kF32, DataType::kFloat, PrimitiveType::F8E5M2,
+         PrimitiveType::F8E4M3FN, DataType::kHalf},
+        {ComputationType::kF32, DataType::kFloat, PrimitiveType::F8E5M2,
+         PrimitiveType::F8E4M3FN, DataType::kFloat},
+
+        // NANOO FP8 types:
         {ComputationType::kF32, DataType::kFloat, PrimitiveType::F8E4M3FNUZ,
          PrimitiveType::F8E4M3FNUZ, DataType::kBF16},
         {ComputationType::kF32, DataType::kFloat, PrimitiveType::F8E4M3FNUZ,

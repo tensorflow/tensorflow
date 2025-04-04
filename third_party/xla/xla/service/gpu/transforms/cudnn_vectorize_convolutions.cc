@@ -128,7 +128,7 @@ static Shape SplitShapeAtDim(Shape shape, int64_t dim, int64_t vect_size) {
 // Transposes dimension `src` to right before `dst`.
 static XlaOp MoveDim(XlaOp instr, int64_t src, int64_t dst) {
   XlaBuilder& b = *instr.builder();
-  int64_t rank = b.GetShape(instr)->dimensions_size();
+  int64_t rank = b.GetShape(instr)->dimensions().size();
 
   DimensionVector idxs(rank);
   absl::c_iota(idxs, 0);
@@ -406,8 +406,7 @@ static absl::StatusOr<bool> TryRevectorizeConv(
   const auto& debug_options = conv->GetModule()->config().debug_options();
   bool use_reordering =
       input_shape.element_type() == xla::S8 && vect_size == 32 &&
-      debug_options.xla_gpu_enable_cudnn_int8x32_convolution_reordering() &&
-      cudnn_version >= se::dnn::VersionInfo{8, 3, 0};
+      debug_options.xla_gpu_enable_cudnn_int8x32_convolution_reordering();
   if (use_reordering) {
     // Reordering helper supports vector sizes of 4 and 32, so an additional
     // reshape-transpose-reshape is not necessary in these cases.
@@ -494,7 +493,7 @@ static absl::StatusOr<bool> TryVectorizeConv(
     return false;
   }
 
-  if (input_shape.dimensions_size() >
+  if (input_shape.dimensions().size() >
       2 + dnums->input_spatial_dimensions_size()) {
     // Conv already has an extra dimension, which we assume is the vectorized
     // features dim.
@@ -551,8 +550,7 @@ static absl::StatusOr<bool> TryVectorizeConv(
   const auto& debug_options = conv->GetModule()->config().debug_options();
   bool use_reordering =
       input_shape.element_type() == xla::S8 && vect_size == 32 &&
-      debug_options.xla_gpu_enable_cudnn_int8x32_convolution_reordering() &&
-      cudnn_version >= se::dnn::VersionInfo{8, 3, 0};
+      debug_options.xla_gpu_enable_cudnn_int8x32_convolution_reordering();
   if (use_reordering) {
     new_operands[1] = filter;
     TF_RETURN_IF_ERROR(ReorderInt8NchwVect(conv, new_operands.data()));

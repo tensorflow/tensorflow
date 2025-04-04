@@ -1009,15 +1009,15 @@ class WindowedEinsumVisitor : public DfsHloRewriteVisitor {
 
       // Each split is sliced out of the input buffer, we need to determine the
       // slice sizes and increments.
-      std::vector<int64_t> lhs_slice_sizes(a2a->shape().dimensions_size(), 0);
-      std::vector<int64_t> lhs_slice_increments(a2a->shape().dimensions_size(),
-                                                1);
+      std::vector<int64_t> lhs_slice_sizes(a2a->shape().dimensions().size(), 0);
+      std::vector<int64_t> lhs_slice_increments(
+          a2a->shape().dimensions().size(), 1);
       std::vector<int64_t> lhs_slice_max_range(
           a2a->shape().dimensions().begin(), a2a->shape().dimensions().end());
 
-      std::vector<int64_t> rhs_slice_sizes(rhs->shape().dimensions_size(), 0);
-      std::vector<int64_t> rhs_slice_increments(rhs->shape().dimensions_size(),
-                                                1);
+      std::vector<int64_t> rhs_slice_sizes(rhs->shape().dimensions().size(), 0);
+      std::vector<int64_t> rhs_slice_increments(
+          rhs->shape().dimensions().size(), 1);
       std::vector<int64_t> rhs_slice_max_range(
           rhs->shape().dimensions().begin(), rhs->shape().dimensions().end());
 
@@ -1248,17 +1248,17 @@ class WindowedEinsumVisitor : public DfsHloRewriteVisitor {
       // Each split is sliced out of the input buffer, we need to determine the
       // slice sizes and increments.
       std::vector<int64_t> lhs_slice_sizes(
-          matched_result.lhs->shape().dimensions_size(), 0);
+          matched_result.lhs->shape().dimensions().size(), 0);
       std::vector<int64_t> lhs_slice_increments(
-          matched_result.lhs->shape().dimensions_size(), 1);
+          matched_result.lhs->shape().dimensions().size(), 1);
       std::vector<int64_t> lhs_slice_max_range(
           matched_result.lhs->shape().dimensions().begin(),
           matched_result.lhs->shape().dimensions().end());
 
       std::vector<int64_t> rhs_slice_sizes(
-          matched_result.rhs->shape().dimensions_size(), 0);
+          matched_result.rhs->shape().dimensions().size(), 0);
       std::vector<int64_t> rhs_slice_increments(
-          matched_result.rhs->shape().dimensions_size(), 1);
+          matched_result.rhs->shape().dimensions().size(), 1);
       std::vector<int64_t> rhs_slice_max_range(
           matched_result.rhs->shape().dimensions().begin(),
           matched_result.rhs->shape().dimensions().end());
