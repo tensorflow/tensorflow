@@ -60,7 +60,7 @@ FunctionDefTensorDesc::FunctionDefTensorDesc(const string& input) {
           .RestartCapture()
           .Many(strings::Scanner::DIGIT)
           .GetResult(nullptr, &capture)) {
-    CHECK(strings::safe_strto32(capture, &position));
+    CHECK(absl::SimpleAtoi(capture, &position));
   }
 }
 
