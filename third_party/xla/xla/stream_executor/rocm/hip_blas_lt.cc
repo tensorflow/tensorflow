@@ -238,9 +238,27 @@ auto BlasLt::MatmulPlan::GetAlgorithms(const Stream* stream,
     // no algorithms can be found for "bias epilogues". This is to be removed
     // later when this limitation is gone.
     if (op_desc_.has_bias_epilogue()) {
-      static int64_t dummyPointer = 0xACEBALL;
+      static int64_t dummy_pointer = 0xACEBALL;
       TF_RETURN_IF_ERROR(SetAttr(
-          op_desc_.get(), HIPBLASLT_MATMUL_DESC_BIAS_POINTER, &dummyPointer));
+          op_desc_.get(), HIPBLASLT_MATMUL_DESC_BIAS_POINTER, &dummy_pointer));
+    }
+
+    // hipBlasLt requires setting the a/b scale pointer (even a dummy one),
+    // otherwise no algorithms can be found for "a/b scaling". This is to be
+    // removed later when this limitation is gone.
+    auto IsFP8 = [&](const MatrixLayout& layout) -> bool {
+      return layout.type() == HIP_R_8F_E5M2_FNUZ ||
+             layout.type() == HIP_R_8F_E4M3_FNUZ ||
+             layout.type() == HIP_R_8F_E5M2 || layout.type() == HIP_R_8F_E4M3;
+    };
+    if (IsFP8(a_desc_) && IsFP8(b_desc_)) {
+      static int64_t dummy_pointer = 0xACEBALL;
+      TF_RETURN_IF_ERROR(SetAttr(op_desc_.get(),
+                                 HIPBLASLT_MATMUL_DESC_A_SCALE_POINTER,
+                                 &dummy_pointer));
+      TF_RETURN_IF_ERROR(SetAttr(op_desc_.get(),
+                                 HIPBLASLT_MATMUL_DESC_B_SCALE_POINTER,
+                                 &dummy_pointer));
     }
 
     int found_algorithm_count = 0;
@@ -419,9 +437,15 @@ absl::Status BlasLt::MatmulPlan::DoMatmul(
                                  HIPBLASLT_MATMUL_DESC_B_SCALE_POINTER,
                                  args.b_scale.opaque()));
     }
-    if (args.c_scale != nullptr || args.d_scale != nullptr) {
-      return absl::InternalError(
-          "hipblaslt does not support c_scale or d_scale.");
+    if (args.c_scale != nullptr) {
+      TF_RETURN_IF_ERROR(SetAttr(op_desc_.get(),
+                                 HIPBLASLT_MATMUL_DESC_C_SCALE_POINTER,
+                                 args.c_scale.opaque()));
+    }
+    if (args.d_scale != nullptr) {
+      TF_RETURN_IF_ERROR(SetAttr(op_desc_.get(),
+                                 HIPBLASLT_MATMUL_DESC_D_SCALE_POINTER,
+                                 args.d_scale.opaque()));
     }
 #else
     if (!(args.a_scale == nullptr && args.b_scale == nullptr &&
@@ -529,6 +553,32 @@ absl::Status BlasLt::MatmulPlan::ExecuteOnStream(
                HIP_R_8F_E5M2_FNUZ, HIP_R_8F_E5M2_FNUZ)
   TYPED_MATMUL(float, HIP_R_8F_E5M2_FNUZ, HIP_R_8F_E4M3_FNUZ,
                HIP_R_8F_E5M2_FNUZ, HIP_R_8F_E5M2_FNUZ)
+#endif
+
+#if TF_ROCM_VERSION >= 60300
+  TYPED_MATMUL(float, HIP_R_8F_E4M3, HIP_R_8F_E4M3, HIP_R_16BF, HIP_R_16BF)
+  TYPED_MATMUL(float, HIP_R_8F_E4M3, HIP_R_8F_E4M3, HIP_R_16BF, HIP_R_8F_E4M3)
+  TYPED_MATMUL(float, HIP_R_8F_E4M3, HIP_R_8F_E4M3, HIP_R_16F, HIP_R_8F_E4M3)
+  TYPED_MATMUL(float, HIP_R_8F_E4M3, HIP_R_8F_E4M3, HIP_R_16F, HIP_R_16F)
+  TYPED_MATMUL(float, HIP_R_8F_E4M3, HIP_R_8F_E4M3, HIP_R_32F, HIP_R_32F)
+  TYPED_MATMUL(float, HIP_R_8F_E4M3, HIP_R_8F_E4M3, HIP_R_8F_E4M3,
+               HIP_R_8F_E4M3)
+
+  TYPED_MATMUL(float, HIP_R_8F_E4M3, HIP_R_8F_E5M2, HIP_R_16BF, HIP_R_16BF)
+  TYPED_MATMUL(float, HIP_R_8F_E4M3, HIP_R_8F_E5M2, HIP_R_16BF, HIP_R_8F_E4M3)
+  TYPED_MATMUL(float, HIP_R_8F_E4M3, HIP_R_8F_E5M2, HIP_R_16BF, HIP_R_8F_E5M2)
+  TYPED_MATMUL(float, HIP_R_8F_E4M3, HIP_R_8F_E5M2, HIP_R_16F, HIP_R_8F_E4M3)
+  TYPED_MATMUL(float, HIP_R_8F_E4M3, HIP_R_8F_E5M2, HIP_R_16F, HIP_R_8F_E5M2)
+  TYPED_MATMUL(float, HIP_R_8F_E4M3, HIP_R_8F_E5M2, HIP_R_16F, HIP_R_16F)
+  TYPED_MATMUL(float, HIP_R_8F_E4M3, HIP_R_8F_E5M2, HIP_R_32F, HIP_R_32F)
+
+  TYPED_MATMUL(float, HIP_R_8F_E5M2, HIP_R_8F_E4M3, HIP_R_16BF, HIP_R_16BF)
+  TYPED_MATMUL(float, HIP_R_8F_E5M2, HIP_R_8F_E4M3, HIP_R_16BF, HIP_R_8F_E4M3)
+  TYPED_MATMUL(float, HIP_R_8F_E5M2, HIP_R_8F_E4M3, HIP_R_16BF, HIP_R_8F_E5M2)
+  TYPED_MATMUL(float, HIP_R_8F_E5M2, HIP_R_8F_E4M3, HIP_R_16F, HIP_R_8F_E4M3)
+  TYPED_MATMUL(float, HIP_R_8F_E5M2, HIP_R_8F_E4M3, HIP_R_16F, HIP_R_8F_E5M2)
+  TYPED_MATMUL(float, HIP_R_8F_E5M2, HIP_R_8F_E4M3, HIP_R_16F, HIP_R_16F)
+  TYPED_MATMUL(float, HIP_R_8F_E5M2, HIP_R_8F_E4M3, HIP_R_32F, HIP_R_32F)
 #endif
 
   // Other data types:

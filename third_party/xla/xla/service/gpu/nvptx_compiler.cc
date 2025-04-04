@@ -124,11 +124,8 @@ class ConvBfloat16Support : public FloatSupport {
       se::dnn::VersionInfo cudnn_version,
       se::CudaComputeCapability cuda_compute_capability)
       : FloatSupport(BF16),
-        is_conv_bf16_supported_((cudnn_version.major_version() > 8 ||
-                                 (cudnn_version.major_version() == 8 &&
-                                  cudnn_version.minor_version() >= 2)) &&
-                                cuda_compute_capability.IsAtLeast(
-                                    se::CudaComputeCapability::kAmpere)) {}
+        is_conv_bf16_supported_(cuda_compute_capability.IsAtLeast(
+            se::CudaComputeCapability::kAmpere)) {}
 
   bool SupportsLowPrecisionOperand(const HloInstruction& hlo,
                                    int64_t operand_index) const override {

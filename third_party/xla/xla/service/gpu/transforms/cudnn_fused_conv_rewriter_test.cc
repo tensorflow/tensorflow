@@ -286,16 +286,15 @@ class CudnnFusedConvRewriterTest : public GpuCodegenTest {
   }
 };
 
-#define MAYBE_SKIP_TEST(CAUSE)                                           \
-  do {                                                                   \
-    if (absl::string_view(CAUSE) == "F8" && IsCuda() &&                  \
-        (GetToolkitVersion() < se::SemanticVersion{12, 0, 0} ||          \
-         GetDnnVersion() < se::dnn::VersionInfo(8, 9, 0))) {             \
-      GTEST_SKIP() << "FP8 convolutions require CUDA 12 and cuDNN 8.9."; \
-    }                                                                    \
-    if (!IsCuda()) {                                                     \
-      GTEST_SKIP() << CAUSE " fusion is only supported on CUDA.";        \
-    }                                                                    \
+#define MAYBE_SKIP_TEST(CAUSE)                                    \
+  do {                                                            \
+    if (absl::string_view(CAUSE) == "F8" && IsCuda() &&           \
+        GetToolkitVersion() < se::SemanticVersion{12, 0, 0}) {    \
+      GTEST_SKIP() << "FP8 convolutions require CUDA 12.";        \
+    }                                                             \
+    if (!IsCuda()) {                                              \
+      GTEST_SKIP() << CAUSE " fusion is only supported on CUDA."; \
+    }                                                             \
   } while (0)
 
 TEST_F(CudnnFusedConvRewriterTest, TestConvOnly) {

@@ -66,12 +66,12 @@ class ReduceDimensionGroupVisitor : public DfsHloRewriteVisitor {
 
       // Since we have enforced the standard layout, iteration over logical
       // dimensions is equivalent to iteration over the major-to-minor order.
-      for (int logical_dim = 0; logical_dim < shape.dimensions_size();
+      for (int logical_dim = 0; logical_dim < shape.dimensions().size();
            logical_dim++) {
         VLOG(5) << "Processing dimension " << logical_dim << " of size "
                 << shape.dimensions(logical_dim);
         if (is_reduced(logical_dim) &&
-            logical_dim < shape.dimensions_size() - 1 &&
+            logical_dim < shape.dimensions().size() - 1 &&
             is_reduced(logical_dim + 1)) {
           VLOG(5) << "This and consecutive dimension are reduced, merging";
           changed = true;

@@ -37,7 +37,7 @@ gpu_device_info {
 platform_name: "CUDA"
 dnn_version_info {
   major: 8
-  minor: 3
-  patch: 2
+  minor: 9
+  patch: 4
 }
 device_description_str: "A100 80GB"
