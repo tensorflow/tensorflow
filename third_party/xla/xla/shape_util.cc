@@ -225,14 +225,13 @@ std::ostream& operator<<(std::ostream& out, const ShapeIndex& shape_index) {
   return equal;
 }
 
-/* static */ int64_t ShapeUtil::TrueNumDimensions(const Shape& shape) {
-  if (!shape.IsArray()) {
-    // TODO(b/404276923): enforce that this is never called on non-array shapes.
-    return 0;
-  }
+/* static */ int64_t ShapeUtil::TrueNumDimensions(const Shape& array_shape) {
+  CHECK(array_shape.IsArray())
+      << "TrueNumDimensions called on non-array shape: "
+      << array_shape.ToString();
 
   int64_t accum = 0;
-  for (const int64_t dimension : shape.dimensions()) {
+  for (const int64_t dimension : array_shape.dimensions()) {
     // We do not count unit dimensions.
     if (dimension != 1) {
       accum += 1;
