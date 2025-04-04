@@ -20,6 +20,7 @@ limitations under the License.
 #include <limits>
 #include <memory>
 #include <optional>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -44,6 +45,8 @@ limitations under the License.
 #include "tensorflow/core/profiler/utils/xplane_visitor.h"
 #include "tsl/profiler/protobuf/xplane.pb.h"
 #include "xprof/utils/cost_utils.h"  // from @org_xprof
+#include "xprof/utils/gpu_event_stats.h"  // from @org_xprof
+#include "xprof/utils/hlo_module_map.h"  // from @org_xprof
 #include "xprof/utils/op_metrics_db_utils.h"  // from @org_xprof
 #include "xprof/utils/op_utils.h"  // from @org_xprof
 
@@ -51,7 +54,23 @@ namespace tensorflow {
 namespace profiler {
 namespace {
 
+using ::tensorflow::profiler::GpuEventStats;
 using tsl::profiler::GetDeviceEventTimespan;
+
+struct HLOTracker {
+  uint64_t duration = 0;
+  uint64_t program_id = 0;
+  uint64_t group_id = 0;
+  bool is_eager;
+  const HloInstructionWrapper* hlo_instruction = nullptr;
+  std::string hlo_op_name;
+
+  void Reset() {
+    duration = program_id = group_id = 0;
+    hlo_op_name.clear();
+    hlo_instruction = nullptr;
+  }
+};
 
 // Type of a TensorFlow Op activity, which is either beginning or ending an Op.
 enum TfActivityType { kTfOpBegin, kTfOpEnd };
@@ -276,7 +295,31 @@ OpMetricsDb ConvertTpuDeviceTraceXPlaneToOpMetricsDb(
   return builder.Finalize(last_op_timestamp_ps - first_op_timestamp_ps);
 }
 
-OpMetricsDb ConvertDeviceTraceXPlaneToOpMetricsDb(const XPlane& device_trace) {
+void AggregateHloFunc(HLOTracker& current, DeviceOpMetricsDbBuilder& metricDb) {
+  if (current.hlo_instruction == nullptr) return;
+  auto performance_info_wrapper =
+      current.hlo_instruction->GetPerformanceInfoWrapper();
+  auto flops = 0;
+  auto bytes_accessed = 0;
+  if (performance_info_wrapper != nullptr) {
+    flops = performance_info_wrapper->flops();
+    bytes_accessed = performance_info_wrapper->bytes_accessed();
+  }
+  metricDb.EnterOp(
+      current.program_id, current.hlo_op_name,
+      current.hlo_instruction->Category(), current.hlo_instruction->TfOpName(),
+      current.hlo_instruction->DeduplicatedName(), current.is_eager, 1,
+      current.duration, 0, performance_info_wrapper->DeviceFlops(),
+      performance_info_wrapper->bytes_accessed(),
+      ConvertPerformanceInfo(
+          performance_info_wrapper->memory_accessed_breakdown(), 1),
+      performance_info_wrapper->ModelFlops(),
+      current.hlo_instruction->Expression());
+  current.Reset();
+}
+
+OpMetricsDb ConvertDeviceTraceXPlaneToOpMetricsDb(
+    const XPlane& device_trace, const HloModuleMap& hlo_module_map) {
   OpMetricsDb result;
   DeviceOpMetricsDbBuilder device_op_metrics_db_builder(&result);
 
@@ -285,42 +328,55 @@ OpMetricsDb ConvertDeviceTraceXPlaneToOpMetricsDb(const XPlane& device_trace) {
 
   TfOpRoofLineCostEstimator op_level_cost_estimator;
   XPlaneVisitor plane = tsl::profiler::CreateTfXPlaneVisitor(&device_trace);
+  HLOTracker current;
   plane.ForEachLine([&](const XLineVisitor& line) {
     if (IsDerivedThreadId(line.Id())) return;
     line.ForEachEvent([&](const XEventVisitor& event) {
       first_op_offset_ps = std::min(first_op_offset_ps, event.OffsetPs());
       last_op_offset_ps = std::max(last_op_offset_ps, event.EndOffsetPs());
 
-      absl::string_view tf_op_full_name;
-      bool is_eager = false;
-      int64_t program_id = 0;
-      absl::string_view deduplicated_name = "";
-      event.ForEachStat([&](const XStatVisitor& stat) {
-        if (stat.Type() == StatType::kTfOp) {
-          tf_op_full_name = stat.StrOrRefValue();
-        } else if (stat.Type() == StatType::kIsEager) {
-          is_eager = stat.IntValue();
-        } else if (stat.Type() == StatType::kProgramId) {
-          program_id = stat.IntOrUintValue();
-        } else if (stat.Type() == StatType::kDeduplicatedName) {
-          deduplicated_name = stat.StrOrRefValue();
+      GpuEventStats stats(&event);
+      if (stats.IsXlaOp()) {
+        const auto* hlo_instruction = GetHloInstruction(
+            hlo_module_map, stats.program_id, stats.hlo_op_names.back());
+        if (hlo_instruction != nullptr) {
+          if (stats.hlo_op_names.back() != current.hlo_op_name ||
+              stats.group_id != current.group_id) {
+            AggregateHloFunc(current, device_op_metrics_db_builder);
+          }
+          // Merge identical and contiguous HLOs.
+          current.hlo_instruction = hlo_instruction;
+          current.hlo_op_name = stats.hlo_op_names.back();
+          current.duration += event.DurationPs();
+          current.is_eager = stats.is_eager;
+          current.program_id = *stats.program_id;
+          if (stats.group_id.has_value()) {
+            current.group_id = *stats.group_id;
+          }
         }
-      });
-      if (tf_op_full_name.empty()) return;
-      tsl::profiler::TfOp tf_op =
-          tsl::profiler::ParseTfOpFullname(tf_op_full_name);
-      TfOpRoofLineCostEstimator::OpRoofLineStats costs;
-      if (tf_op.category != tsl::profiler::Category::kUnknown) {
-        costs = op_level_cost_estimator.Predict(event);
+      } else if (stats.IsTfOp()) {
+        AggregateHloFunc(current, device_op_metrics_db_builder);
+        tsl::profiler::TfOp tf_op =
+            tsl::profiler::ParseTfOpFullname(stats.tf_op_fullname);
+        PerformanceInfo perf_info;
+        if (tf_op.category != tsl::profiler::Category::kUnknown) {
+          auto costs = op_level_cost_estimator.Predict(event);
+          // NOTE: events are per kernel, but costs are per tf-ops.
+          perf_info.set_flops(costs.flops);
+          perf_info.set_bytes_accessed(costs.bytes_accessed);
+        }
+        std::string name = absl::StrCat(tf_op.name, "/", event.Name());
+        device_op_metrics_db_builder.EnterOp(
+            /*program_id=*/0,
+            /**name=*/name,
+            /**category=*/tf_op.type,
+            /*provenance=*/stats.tf_op_fullname, "", stats.is_eager,
+            /*occurrences=*/1, event.DurationPs(),
+            /*children_time_ps=*/0, perf_info.flops(),
+            perf_info.bytes_accessed());
       }
-      device_op_metrics_db_builder.EnterOp(
-          /*program_id=*/program_id,
-          /**name=*/absl::StrCat(tf_op.name, "/", event.Name()),
-          /**category=*/tf_op.type,
-          /*provenance=*/tf_op_full_name, deduplicated_name, is_eager,
-          /*occurrences=*/1, event.DurationPs(),
-          /*children_time_ps=*/0, costs.flops, costs.bytes_accessed);
     });
+    AggregateHloFunc(current, device_op_metrics_db_builder);
   });
   SetTotalTimePs(
       result, last_op_offset_ps ? last_op_offset_ps - first_op_offset_ps : 0);

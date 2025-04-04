@@ -47,7 +47,10 @@ void ConsumeTfMetricsDbData(TfMetricsDbData src, OpMetricsDbCombiner* dst);
 
 OpMetricsDb ConvertHostThreadsXPlaneToOpMetricsDb(const XPlane& host_trace);
 
-OpMetricsDb ConvertDeviceTraceXPlaneToOpMetricsDb(const XPlane& device_trace);
+// Converts GPU device trace to OpMetricsDb.
+// Will use HloModuleMap to source performance info for cost analysis.
+OpMetricsDb ConvertDeviceTraceXPlaneToOpMetricsDb(
+    const XPlane& device_trace, const HloModuleMap& hlo_module_map);
 
 // Convert TPU DeviceTrace XPlane to OpMetricDb
 OpMetricsDb ConvertTpuDeviceTraceXPlaneToOpMetricsDb(

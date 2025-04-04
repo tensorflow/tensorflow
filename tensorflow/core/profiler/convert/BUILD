@@ -34,6 +34,8 @@ cc_library(
         "@local_xla//xla/tsl/profiler/utils:xplane_schema",
         "@local_xla//xla/tsl/profiler/utils:xplane_utils",
         "@org_xprof//xprof/utils:cost_utils",
+        "@org_xprof//xprof/utils:gpu_event_stats",
+        "@org_xprof//xprof/utils:hlo_module_map",
         "@org_xprof//xprof/utils:op_metrics_db_utils",
         "@org_xprof//xprof/utils:op_utils",
     ],
@@ -58,7 +60,10 @@ tf_cc_test(
         "@local_tsl//tsl/profiler/protobuf:xplane_proto_cc",
         "@local_xla//xla/tsl/profiler/utils:math_utils",
         "@local_xla//xla/tsl/profiler/utils:xplane_schema",
+        "@org_xprof//xprof/utils:hlo_cost_analysis_wrapper",
+        "@org_xprof//xprof/utils:hlo_module_map",
         "@org_xprof//xprof/utils:op_metrics_db_utils",
+        "@org_xprof//xprof/utils:xprof_gpu_cost_analysis",
     ],
 )
 
@@ -432,9 +437,11 @@ cc_library(
         "@org_xprof//xprof/utils:event_span",
         "@org_xprof//xprof/utils:gpu_event_stats",
         "@org_xprof//xprof/utils:hardware_type_utils",
+        "@org_xprof//xprof/utils:hlo_cost_analysis_wrapper",
         "@org_xprof//xprof/utils:hlo_module_map",
         "@org_xprof//xprof/utils:kernel_stats_utils",
         "@org_xprof//xprof/utils:op_utils",
+        "@org_xprof//xprof/utils:xprof_gpu_cost_analysis",
     ],
 )
 
@@ -1008,6 +1015,7 @@ cc_library(
         "@local_xla//xla/tsl/platform:statusor",
         "@local_xla//xla/tsl/profiler/utils:file_system_utils",
         "@org_xprof//xprof/utils:hlo_module_map",
+        "@org_xprof//xprof/utils:xprof_gpu_cost_analysis",
     ],
 )
 

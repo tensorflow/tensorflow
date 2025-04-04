@@ -33,7 +33,10 @@ limitations under the License.
 #include "tensorflow/core/profiler/utils/xplane_schema.h"
 #include "tensorflow/core/profiler/utils/xplane_test_utils.h"
 #include "tsl/profiler/protobuf/xplane.pb.h"
+#include "xprof/utils/hlo_cost_analysis_wrapper.h"  // from @org_xprof
+#include "xprof/utils/hlo_module_map.h"  // from @org_xprof
 #include "xprof/utils/op_metrics_db_utils.h"  // from @org_xprof
+#include "xprof/utils/xprof_gpu_cost_analysis.h"  // from @org_xprof
 
 namespace tensorflow {
 namespace profiler {
@@ -185,16 +188,20 @@ TEST(ConvertXPlaneToOpMetricsDb, DeviceOpMetricsDb) {
   AddTensorFlowOpEvent(absl::StrCat(kTfOp2, ":", kTfOp2), kKernel3StartNs,
                        kKernel3DurationNs, /*on_device=*/true, kKernel3,
                        &device_plane, &stream2);
-
-  OpMetricsDb op_metrics = ConvertDeviceTraceXPlaneToOpMetricsDb(*xplane);
+  HloModuleMap hlo_module_map;
+  tensorflow::profiler::HloCostAnalysisWrapper::Factory create_cost_analysis =
+      []() { return tensorflow::profiler::CreateXprofGpuCostAnalysis(); };
+  ProcessHloModuleMapFromXSpace(hlo_module_map, &xspace, create_cost_analysis);
+  OpMetricsDb op_metrics =
+      ConvertDeviceTraceXPlaneToOpMetricsDb(*xplane, hlo_module_map);
 
   // kernel1, kernel2, kernel3, Idle.
   EXPECT_EQ(4, op_metrics.metrics_db_size());
   uint64 total_op_duration = tsl::profiler::NanoToPico(
       kKernel1DurationNs * 2 + kKernel2DurationNs * 2 + kKernel3DurationNs);
   EXPECT_EQ(total_op_duration, op_metrics.total_op_time_ps());
-  // For device, the total_duration for each device is the total duration merged
-  // from all GPU streams, which is from 100000 to 130000.
+  // For device, the total_duration for each device is the total duration
+  // merged from all GPU streams, which is from 100000 to 130000.
   uint64 total_duration = tsl::profiler::NanoToPico(
       kKernel3StartNs + kKernel3DurationNs - kKernel1StartNs);
   EXPECT_EQ(std::max(total_duration, total_op_duration),

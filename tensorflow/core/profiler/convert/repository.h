@@ -34,6 +34,7 @@ limitations under the License.
 #include "tsl/platform/path.h"
 #include "tsl/profiler/protobuf/xplane.pb.h"
 #include "xprof/utils/hlo_module_map.h"  // from @org_xprof
+#include "xprof/utils/xprof_gpu_cost_analysis.h"  // from @org_xprof
 
 namespace tensorflow {
 namespace profiler {
@@ -183,14 +184,19 @@ absl::Status ReadBinaryProto(const SessionSnapshot& session_snapshot,
   return session_snapshot.ReadBinaryProto(data_type, host, proto);
 }
 
+// TODO(b/408280338) Remove this function as 0 reference is found.
+// Add a dummy cost_analysis factory function as a no-op now.
 // Process HloModuleMap from all XSpaces in a session.
 inline absl::StatusOr<HloModuleMap> ProcessHloModuleMap(
     const SessionSnapshot& session_snapshot) {
   HloModuleMap hlo_module_map;
+  tensorflow::profiler::HloCostAnalysisWrapper::Factory create_cost_analysis =
+      []() { return nullptr; };
   for (int i = 0; i < session_snapshot.XSpaceSize(); i++) {
     TF_ASSIGN_OR_RETURN(std::unique_ptr<XSpace> xspace,
                         session_snapshot.GetXSpace(i));
-    ProcessHloModuleMapFromXSpace(hlo_module_map, xspace.get());
+    ProcessHloModuleMapFromXSpace(hlo_module_map, xspace.get(),
+                                  create_cost_analysis);
   }
   return hlo_module_map;
 }
