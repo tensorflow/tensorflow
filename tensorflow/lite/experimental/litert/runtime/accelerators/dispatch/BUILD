@@ -36,6 +36,6 @@ cc_library(
         "//tensorflow/lite/experimental/litert/cc:litert_macros",
         "//tensorflow/lite/experimental/litert/core:environment",
         "//tensorflow/lite/experimental/litert/runtime:accelerator_model_compilation_data",
-        "@com_google_absl//absl/strings:string_view",
+        "//tensorflow/lite/experimental/litert/runtime/accelerators:accelerator_implementation_helper",
     ],
 )
