@@ -13,7 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <algorithm>
 #include <cstdlib>
 #include <memory>
 #include <string>
@@ -69,7 +68,7 @@ namespace m = ::xla::match;
 using tsl::testing::StatusIs;
 
 struct ModuleAndNestedFusionMetadata {
-  std::unique_ptr<HloModule> module;
+  std::unique_ptr<VerifiedHloModule> module;
   HloComputation* computation;
   BlockLevelParameters block_level_parameters;
 };
@@ -106,11 +105,12 @@ class TritonTest : public GpuCodegenTest {
     }
   }
 
-  // Returns the computation and block level parameters from an HLO module text
-  // whose entry computation contains a single GEMM fusion.
+  // Returns the module, its fusion computation and associated block level
+  // parameters from an HLO module text whose entry computation contains a
+  // single GEMM fusion.
   absl::StatusOr<ModuleAndNestedFusionMetadata>
   GetModuleAndNestedFusionMetadata(absl::string_view hlo_text) {
-    TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
+    TF_ASSIGN_OR_RETURN(std::unique_ptr<VerifiedHloModule> module,
                         ParseAndReturnVerifiedModule(hlo_text));
     TF_ASSIGN_OR_RETURN(
         bool fusion_was_nested,
@@ -361,7 +361,7 @@ CHECK-DAG:   tt.make_tensor_ptr %[[DYNAMIC_SLICE_INPUT]], [%[[C2_i64]], %[[ROW_L
       tsl::testing::IsOk());
 }
 
-TEST_F(TritonGemmTest, DISABLED_DoNotUseTensorCoresWithNonDefaultPrecision) {
+TEST_F(TritonGemmTest, DoNotUseTensorCoresWithNonDefaultPrecision) {
   constexpr absl::string_view kHloText = R"(
 triton_gemm_r {
   parameter_0 = s8[80,15]{1,0} parameter(0)
@@ -382,10 +382,10 @@ ENTRY e {
        "split_k":1,"num_stages":1,"num_warps":2,
        "num_ctas":1}}}
 })";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> verified_module,
-                          ParseAndReturnVerifiedModule(kHloText));
+  TF_ASSERT_OK_AND_ASSIGN(ModuleAndNestedFusionMetadata module_and_metadata,
+                          GetModuleAndNestedFusionMetadata(kHloText));
 
-  CompileAndOptionallyVerifyPtx(std::move(verified_module),
+  CompileAndOptionallyVerifyPtx(std::move(module_and_metadata.module),
                                 R"(
 CHECK-NOT: mma
 )");
