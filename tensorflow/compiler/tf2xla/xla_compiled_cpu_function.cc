@@ -15,18 +15,35 @@ limitations under the License.
 
 #include "tensorflow/compiler/tf2xla/xla_compiled_cpu_function.h"
 
+#include <algorithm>
 #include <cassert>
+#include <cstddef>
 #include <iostream>
+#include <memory>
+#include <string>
+#include <utility>
 #include <vector>
 
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/types/span.h"
+#include "xla/backends/cpu/codegen/aot_compiled_function_library.h"
+#include "xla/backends/cpu/nanort/nanort_executable.h"
+#include "xla/backends/cpu/runtime/function_library.h"
 #include "xla/cpu_function_runtime.h"
+#include "xla/service/cpu/cpu_aot_compilation_result.h"
+#include "xla/tsl/concurrency/async_value_ref.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 
 XlaCompiledCpuFunction::XlaCompiledCpuFunction(const StaticData& static_data,
                                                AllocMode alloc_mode)
-    : raw_function_(static_data.raw_function_),
-      result_index_(static_data.result_index_),
+    : temp_allocation_index_(static_data.temp_allocation_index_),
+      raw_function_(static_data.raw_function_),
+      result_index_(*std::min_element(
+          static_data.result_index_table_,
+          static_data.result_index_table_ + static_data.num_results_)),
       buffer_table_(new void*[static_data.num_buffers_]),
       buffer_infos_(static_data.buffer_infos_),
       num_buffers_(static_data.num_buffers_),
@@ -57,13 +74,96 @@ XlaCompiledCpuFunction::XlaCompiledCpuFunction(const StaticData& static_data,
   if (hlo_profiling_enabled()) {
     profile_counters_ = new int64_t[static_data.profile_counters_size_]();
   }
+
+  if (is_thunk_mode()) {
+    std::unique_ptr<xla::cpu::FunctionLibrary> function_library =
+        std::make_unique<xla::cpu::AotCompiledFunctionLibrary>(
+            static_data.function_library_symbol_map_);
+
+    auto aot_compilation_result =
+        xla::cpu::CpuAotCompilationResultThunks::FromString(
+            static_data.compilation_result_proto_->SerializeAsString(),
+            function_library.release())
+            .value();
+
+    // To load a CPU executable we don't need a compiler or a stream executor.
+    auto cpu_executable = std::move(*aot_compilation_result)
+                              .LoadExecutable(nullptr, nullptr)
+                              .value();
+
+    executable_ =
+        xla::cpu::NanoRtExecutable::Create(std::move(cpu_executable)).value();
+  }
 }
 
 bool XlaCompiledCpuFunction::Run() {
+  if (is_thunk_mode()) {
+    auto ret = Execute(GenerateNanortArgs(), GenerateNanortResults(),
+                       GenerateNanortPreallocatedTemp());
+
+    if (!ret.ok()) {
+      error_msg_ = ret.message();
+    }
+
+    return ret.ok();
+  }
+
   XlaCustomCallStatus status;
   raw_function_(buffer_table_[result_index_], &run_options_, nullptr,
                 buffer_table_, &status, profile_counters_);
   return !xla::CustomCallStatusGetMessage(&status).has_value();
+}
+
+std::vector<xla::cpu::NanoRtExecutable::Argument>
+XlaCompiledCpuFunction::GenerateNanortArgs() {
+  std::vector<xla::cpu::NanoRtExecutable::Argument> arguments;
+  arguments.reserve(num_args());
+  for (int i = 0; i < num_args(); ++i) {
+    arguments.push_back(
+        xla::cpu::NanoRtExecutable::Argument(arg_data(i), arg_size(i)));
+  }
+
+  return arguments;
+}
+
+std::vector<xla::cpu::NanoRtExecutable::Result>
+XlaCompiledCpuFunction::GenerateNanortResults() {
+  std::vector<xla::cpu::NanoRtExecutable::Result> results;
+  results.reserve(num_results());
+  for (int i = 0; i < num_results(); ++i) {
+    results.push_back(
+        xla::cpu::NanoRtExecutable::Result(result_data(i), result_size(i)));
+  }
+
+  return results;
+}
+
+xla::cpu::NanoRtExecutable::PreallocatedTemp
+XlaCompiledCpuFunction::GenerateNanortPreallocatedTemp() {
+  xla::cpu::NanoRtExecutable::PreallocatedTemp temp;
+
+  if (temp_allocation_index_.has_value()) {
+    temp = xla::cpu::NanoRtExecutable::PreallocatedTemp(
+        static_cast<std::byte*>(buffer_table_[*temp_allocation_index_]),
+        buffer_infos_[*temp_allocation_index_].size());
+  }
+
+  return temp;
+}
+
+absl::Status XlaCompiledCpuFunction::Execute(
+    absl::Span<const xla::cpu::NanoRtExecutable::Argument> arguments,
+    absl::Span<const xla::cpu::NanoRtExecutable::Result> results,
+    xla::cpu::NanoRtExecutable::PreallocatedTemp temp) {
+  auto event =
+      executable_->Execute(arguments, results, temp, thunk_run_options_);
+  tsl::BlockUntilReady(event);
+
+  if (!event.IsConcrete()) {
+    return event.GetError();
+  }
+
+  return absl::OkStatus();
 }
 
 XlaCompiledCpuFunction::~XlaCompiledCpuFunction() {
