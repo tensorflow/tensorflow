@@ -36,6 +36,7 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/literal.h"
+#include "xla/pjrt/async_work_runner.h"
 #include "xla/pjrt/cpu/cpu_event.h"
 #include "xla/pjrt/cpu/tracked_cpu_device_buffer.h"
 #include "xla/pjrt/pjrt_client.h"
@@ -73,19 +74,6 @@ class MarkEventReadyOnExit {
 
  private:
   tsl::AsyncValueRef<CpuEvent> event_;
-};
-
-// Async work runner abstracts away the implementation of the underlying thread
-// pool (or concurrent work queue).
-class AsyncWorkRunner {
- public:
-  virtual ~AsyncWorkRunner() = default;
-
-  // `work` euqueued by `Schedule` may run on the calling thread.
-  virtual void Schedule(absl::AnyInvocable<void()> work) = 0;
-  virtual void ScheduleWhenReady(
-      absl::Span<const tsl::RCReference<tsl::AsyncValue>> values,
-      absl::AnyInvocable<void()> work) = 0;
 };
 
 class AbstractTfrtCpuBuffer : public PjRtBuffer {

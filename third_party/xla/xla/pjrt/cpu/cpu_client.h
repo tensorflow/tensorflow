@@ -1,3 +1,4 @@
+#include "xla/pjrt/async_work_runner.h"
 /* Copyright 2021 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");

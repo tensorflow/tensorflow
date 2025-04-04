@@ -40,6 +40,7 @@ limitations under the License.
 #include "xla/cpu_function_runtime.h"
 #include "xla/layout_util.h"
 #include "xla/literal.h"
+#include "xla/pjrt/async_work_runner.h"
 #include "xla/pjrt/cpu/cpu_event.h"
 #include "xla/pjrt/cpu/tracked_cpu_device_buffer.h"
 #include "xla/pjrt/pjrt_client.h"
