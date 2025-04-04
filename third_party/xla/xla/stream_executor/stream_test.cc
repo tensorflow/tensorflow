@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <memory>
 
+#include <gtest/gtest.h>
 #include "absl/log/check.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
