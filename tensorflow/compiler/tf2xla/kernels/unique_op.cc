@@ -56,8 +56,8 @@ class UniqueOpBase : public XlaOpKernel {
   xla::XlaOp MoveAxis(xla::XlaOp a, int64_t from, int64_t to,
                       const xla::Shape& input_shape) {
     std::vector<int64_t> permutation;
-    permutation.reserve(input_shape.dimensions_size());
-    for (int64_t i = 0; i < input_shape.dimensions_size(); ++i) {
+    permutation.reserve(input_shape.dimensions().size());
+    for (int64_t i = 0; i < input_shape.dimensions().size(); ++i) {
       permutation.push_back(i);
     }
     std::swap(permutation[from], permutation[to]);
@@ -146,15 +146,15 @@ class UniqueOpBase : public XlaOpKernel {
     absl::StatusOr<xla::Shape> input_shape_or = ctx->builder()->GetShape(input);
     OP_REQUIRES_OK(ctx, input_shape_or.status());
     auto input_shape = input_shape_or.value();
-    axis = axis < 0 ? axis + input_shape.dimensions_size() : axis;
-    OP_REQUIRES(ctx, 0 <= axis && axis < input_shape.dimensions_size(),
+    axis = axis < 0 ? axis + input_shape.dimensions().size() : axis;
+    OP_REQUIRES(ctx, 0 <= axis && axis < input_shape.dimensions().size(),
                 errors::InvalidArgument("axis has to be between [0, ",
-                                        input_shape.dimensions_size(), ")"));
+                                        input_shape.dimensions().size(), ")"));
     auto aux = MoveAxis(input, axis, 0, input_shape);
     auto aux_shape = ctx->builder()->GetShape(aux).value();
     int64_t leading_size = aux_shape.dimensions(0);
     int64_t product = 1;
-    for (int64_t i = 1; i < aux_shape.dimensions_size(); ++i) {
+    for (int64_t i = 1; i < aux_shape.dimensions().size(); ++i) {
       product *= aux_shape.dimensions(i);
     }
     aux = xla::Reshape(aux, {leading_size, product});
