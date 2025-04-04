@@ -14,7 +14,6 @@ limitations under the License.
 ==============================================================================*/
 #include <cstdlib>
 
-#include "absl/types/optional.h"
 #include "tensorflow/lite/tools/evaluation/tasks/task_executor.h"
 #include "tensorflow/lite/tools/logging.h"
 
