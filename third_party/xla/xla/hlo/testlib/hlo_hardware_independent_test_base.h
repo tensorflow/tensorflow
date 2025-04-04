@@ -25,6 +25,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include <gtest/gtest.h>
 #include "absl/base/attributes.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
