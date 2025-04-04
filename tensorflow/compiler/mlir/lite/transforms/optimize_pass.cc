@@ -2798,6 +2798,145 @@ struct PushTransposeThroughSqueeze : public RewritePattern {
   }
 };
 
+// Helper function to check if a constant tensor attribute has the expected
+// integer values
+bool matchConstantIntPermutation(Value permValue,
+                                 ArrayRef<int64_t> expectedPerm) {
+  DenseElementsAttr permAttr;
+  if (!matchPattern(permValue, m_Constant(&permAttr))) {
+    return false;  // Not a constant
+  }
+  if (!permAttr.getElementType().isInteger(32) &&
+      !permAttr.getElementType().isInteger(64)) {
+    // TFLite perms are often i32, but accept i64 too
+    return false;
+  }
+
+  auto values = permAttr.getValues<APInt>();
+  if (values.size() != expectedPerm.size()) {
+    return false;
+  }
+  for (size_t i = 0; i < expectedPerm.size(); ++i) {
+    if (values[i].getSExtValue() != expectedPerm[i]) {
+      return false;
+    }
+  }
+  return true;
+}
+
+inline DenseIntElementsAttr GetI32ElementsAttr(ArrayRef<int32_t> values,
+                                               Builder *builder) {
+  RankedTensorType ty = mlir::RankedTensorType::get(
+      {static_cast<int32_t>(values.size())}, builder->getIntegerType(32));
+  return DenseIntElementsAttr::get(ty, values);
+}
+
+inline DenseIntElementsAttr GetI32ElementsAttr(ArrayRef<int64_t> values,
+                                               Builder *builder) {
+  llvm::SmallVector<int32_t> new_values;
+  for (auto el : values) {
+    new_values.push_back(static_cast<int32_t>(el));
+  }
+  RankedTensorType ty = mlir::RankedTensorType::get(
+      {static_cast<int32_t>(values.size())}, builder->getIntegerType(32));
+  return DenseIntElementsAttr::get(ty, new_values);
+}
+
+// Reorders a Transpose-Reshape-Transpose sequence to
+// Reshape-Transpose-Transpose to allow for further optimization.
+//
+// The pattern matches:
+//   Transpose(Reshape(Transpose(input, perm: [1, 0])))
+//
+// and rewrites it to:
+//   Transpose(Transpose(Reshape(input)))
+//
+// This reordering allows for further optimization by potentially fusing the
+// reshapes and transposes.
+struct ReorderTransposeReshapeTranspose
+    : public OpRewritePattern<TFL::TransposeOp> {
+  explicit ReorderTransposeReshapeTranspose(MLIRContext *context)
+      : OpRewritePattern<TFL::TransposeOp>(context, /*benefit=*/0) {}
+
+  LogicalResult matchAndRewrite(TFL::TransposeOp outer_tpose,
+                                PatternRewriter &rewriter) const override {
+    auto reshape = outer_tpose.getInput().getDefiningOp<TFL::ReshapeOp>();
+    if (!reshape) return failure();
+
+    auto inner_tpose = reshape.getInput().getDefiningOp<TFL::TransposeOp>();
+    if (!inner_tpose) return failure();
+
+    auto inner_tpose_shape =
+        mlir::dyn_cast_or_null<RankedTensorType>(inner_tpose.getType());
+    if (!inner_tpose_shape) return failure();
+
+    auto input = inner_tpose.getInput();
+
+    auto inner_perm = inner_tpose.getPerm();
+    if (!matchConstantIntPermutation(inner_perm, {1, 0})) return failure();
+
+    int64_t perm0 = inner_tpose_shape.getDimSize(0);
+
+    llvm::SmallVector<int32_t, 4> reshape_shape;
+    {
+      DenseIntElementsAttr reshape_shape_attr;
+      if (!matchPattern(reshape.getShape(), m_Constant(&reshape_shape_attr))) {
+        return failure();
+      }
+
+      for (auto dim : reshape_shape_attr) {
+        reshape_shape.push_back(static_cast<int32_t>(dim.getSExtValue()));
+      }
+    }
+
+    // Consume dimensions until we've equaled the size of the first dim in the
+    // permuted result of the inner tpose and record the dim.
+    int32_t dim = -1;
+    for (auto i = 0, running_total = 1; i < reshape_shape.size(); i++) {
+      running_total *= reshape_shape[i];
+      if (perm0 == running_total) {
+        dim = i;
+      }
+    }
+
+    if (dim == -1) return failure();
+
+    llvm::SmallVector<int64_t, 4> new_reshape_shape(reshape_shape.size());
+    llvm::SmallVector<int32_t, 4> new_inner_perm(reshape_shape.size());
+
+    int index = 0;
+    for (auto i = dim + 1; i < reshape_shape.size(); i++) {
+      new_inner_perm[i] = index;
+      new_reshape_shape[index++] = reshape_shape[i];
+    }
+    for (auto i = 0; i <= dim; i++) {
+      new_inner_perm[i] = index;
+      new_reshape_shape[index++] = reshape_shape[i];
+    }
+
+    auto reshape_type =
+        mlir::dyn_cast_or_null<RankedTensorType>(reshape.getType());
+    if (!reshape_type) return failure();
+
+    auto new_reshape_shape_const = rewriter.create<arith::ConstantOp>(
+        reshape.getLoc(), GetI32ElementsAttr(new_reshape_shape, &rewriter));
+
+    auto new_inner_reshape = rewriter.create<TFL::ReshapeOp>(
+        reshape.getLoc(),
+        RankedTensorType::get(new_reshape_shape, reshape_type.getElementType()),
+        input, new_reshape_shape_const.getResult());
+    auto new_inner_tpose = rewriter.create<TFL::TransposeOp>(
+        inner_tpose.getLoc(), reshape_type, new_inner_reshape,
+        rewriter.create<arith::ConstantOp>(
+            inner_tpose.getLoc(),
+            GetI32ElementsAttr(new_inner_perm, &rewriter)));
+
+    rewriter.replaceOp(reshape, new_inner_tpose);
+
+    return success();
+  }
+};
+
 // Adds canonicalization patterns to the list of patterns.
 void AddCanonicalizationPatterns(MLIRContext *context,
                                  RewritePatternSet *patterns) {
@@ -2858,8 +2997,8 @@ void OptimizePass::runOnOperation() {
       OptimizeTopK, FuseAddAndStridedSlice,
       FuseReshapeAndTransposeAroundBatchMatmul,
       FuseTransposeReshapeIntoBatchMatmul, MoveReshapeAfterFullyConnected,
-      EnableFullyConnectedKeepNumDimsBeforeReshape, ConvertTFLBroadcastToMulOp>(
-      ctx);
+      EnableFullyConnectedKeepNumDimsBeforeReshape, ConvertTFLBroadcastToMulOp,
+      ReorderTransposeReshapeTranspose>(ctx);
   if (!GetOptions().disable_fuse_mul_and_fc) {
     phase_2_patterns.add<FuseMulAndFullyConnected>(ctx);
   }
