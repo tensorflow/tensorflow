@@ -253,12 +253,7 @@ void Shape::CheckStateIsEmpty() const {
 }
 
 const std::vector<Shape>& Shape::tuple_shapes() const {
-  if (const auto* const state = if_tuple_state()) {
-    return state->tuple_shapes;
-  }
-  // TODO(b/404276923): ensure that this is never called on non-tuple shapes.
-  static const auto* const kEmpty = new std::vector<Shape>();
-  return *kEmpty;
+  return tuple_state().tuple_shapes;
 }
 
 void Shape::Clear() {

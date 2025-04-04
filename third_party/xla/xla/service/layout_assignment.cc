@@ -2939,9 +2939,12 @@ bool LayoutAssignment::IsAtMostRank1(const Shape& shape) {
   if (shape.IsArray()) {
     return shape.dimensions_size() <= 1;
   }
-  return absl::c_all_of(shape.tuple_shapes(), [](const Shape& subshape) {
-    return IsAtMostRank1(subshape);
-  });
+  if (shape.IsTuple()) {
+    return absl::c_all_of(shape.tuple_shapes(), [](const Shape& subshape) {
+      return IsAtMostRank1(subshape);
+    });
+  }
+  return true;
 }
 
 absl::Status LayoutAssignment::Init(HloModule* module) {

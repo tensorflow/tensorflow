@@ -246,25 +246,13 @@ TEST(XlaShape, ToCNested) {
       MakeSpan(c_shape.dynamic_dimensions);
   EXPECT_EQ(cpp_dynamic_dimensions, c_dynamic_dimensions);
 
-  EXPECT_FALSE(cpp_shape.IsTuple());
-  EXPECT_EQ(c_shape.ntuple_shapes, 0);
+  ASSERT_FALSE(cpp_shape.IsTuple());
+  ASSERT_EQ(c_shape.ntuple_shapes, 0);
 
-  const int c_ntuple_shapes = c_shape.ntuple_shapes;
-  const std::vector<xla::Shape>& cpp_tuple_shapes = cpp_shape.tuple_shapes();
-  absl::Span<const XLA_Shape> c_tuple_shapes(c_shape.tuple_shapes,
-                                             c_ntuple_shapes);
-  for (int i = 0; i < c_ntuple_shapes; ++i) {
-    xla::Shape converted_c_shape = FromC(&c_tuple_shapes[i]);
-    EXPECT_EQ(cpp_tuple_shapes[i], converted_c_shape);
-  }
+  EXPECT_EQ(cpp_shape.has_layout(), c_shape.has_layout);
 
-  bool cpp_has_layout = cpp_shape.has_layout();
-  bool c_has_layout = c_shape.has_layout;
-  EXPECT_EQ(cpp_has_layout, c_has_layout);
-
-  if (c_has_layout) {
-    xla::Layout converted_c_layout = FromC(&c_shape.layout);
-    EXPECT_EQ(cpp_shape.layout(), converted_c_layout);
+  if (c_shape.has_layout) {
+    EXPECT_EQ(cpp_shape.layout(), FromC(&c_shape.layout));
   }
 
   Destroy(&c_shape);
