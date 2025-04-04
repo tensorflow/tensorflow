@@ -18,11 +18,15 @@ limitations under the License.
 #ifndef TENSORFLOW_CC_SAVED_MODEL_LOADER_H_
 #define TENSORFLOW_CC_SAVED_MODEL_LOADER_H_
 
+#include <memory>
 #include <string>
 #include <unordered_set>
+#include <utility>
 
+#include "absl/status/status.h"
 #include "tensorflow/core/framework/graph_debug_info.pb.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/protobuf/meta_graph.pb.h"
 #include "tensorflow/core/public/session.h"
 
