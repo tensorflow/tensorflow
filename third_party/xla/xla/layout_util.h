@@ -61,17 +61,17 @@ class LayoutUtil {
 
   // Returns a layout with descending ((i.e. {n-1, n-2, ... 0}) minor-to-major
   // dimensions.
-  static Layout MakeDescendingLayout(int64_t rank);
+  static Layout MakeDescendingLayout(int64_t num_dims);
 
   // Returns a layout with ascending ((i.e. {0, 1, ... n-1}) minor-to-major
   // dimensions.
-  static Layout MakeAscendingLayout(int64_t rank);
+  static Layout MakeAscendingLayout(int64_t num_dims);
 
   // Returns default layout for the given shape.
   static Layout GetDefaultLayoutForShape(const Shape& shape);
 
   // Helper functions that create default layouts for various ranks.
-  static Layout GetDefaultLayoutForRank(int64_t rank);
+  static Layout GetDefaultLayoutForRank(int64_t num_dims);
   static Layout GetDefaultLayoutForR2();
   static Layout GetDefaultLayoutForR3();
   static Layout GetDefaultLayoutForR4();
@@ -228,8 +228,8 @@ class LayoutUtil {
   //
   // In the returned vector, the first element represents the most major logical
   // dimension. The element whose contents are 0 represents the most major
-  // physical dimension, and the element with contents (rank - 1) represents
-  // the most minor physical dimension.
+  // physical dimension, and the element with contents (number of dimensions -
+  // 1) represents the most minor physical dimension.
   static std::vector<int64_t> MakeLogicalToPhysical(const Layout& layout);
 
   // Prints a human-readable string that represents the given layout.
@@ -241,7 +241,8 @@ class LayoutUtil {
   // Copies the layout from 'src' to 'dst'. Recursively copies layouts of
   // tuples.  'src' and 'dst' need not be compatible but the two shapes must
   // have the same tuple structure (if any) and arrays must have the same
-  // rank. within the shapes must have the same number of dimensions.
+  // number of dimensions. within the shapes must have the same number of
+  // dimensions.
   static absl::Status CopyLayoutBetweenShapes(const Shape& src, Shape* dst);
 
   // Returns true if the layouts of lhs and rhs are equal, false
@@ -249,7 +250,7 @@ class LayoutUtil {
   //
   // lhs and rhs need not be compatible to have the same layout but the two
   // shapes must have the same tuple structure (if any) and arrays must have the
-  // same rank. Element type is ignored.
+  // same number of dimensions. Element type is ignored.
   static bool LayoutsInShapesEqual(
       const Shape& lhs, const Shape& rhs,
       std::optional<Layout::Equal> equal = std::nullopt);

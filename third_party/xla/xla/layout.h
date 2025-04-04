@@ -99,7 +99,8 @@ using TileVector = absl::InlinedVector<Tile, 3>;
 // where the splits occur. For example, if the dimension contains 1024 elements,
 // a split indices value of {512} indicates splitting this dimension into two
 // right through the middle. The dimension here refers to the physical dimension
-// such that 0 is the majormost dimension and rank-1 is the minormost dimension.
+// such that 0 is the majormost dimension and (number of dimensions - 1) is the
+// minormost dimension.
 class SplitConfig {
  public:
   SplitConfig(int64_t dimension, absl::Span<const int64_t> split_indices)
