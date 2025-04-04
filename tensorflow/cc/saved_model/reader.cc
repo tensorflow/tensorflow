@@ -67,7 +67,7 @@ absl::StatusOr<MetaGraphDef*> FindMetaGraphDef(
       return meta_graph_def;
     }
   }
-  return Status(
+  return absl::Status(
       absl::StatusCode::kNotFound,
       strings::StrCat(
           "Could not find meta graph def matching supplied tags: { ",
@@ -78,8 +78,8 @@ absl::StatusOr<MetaGraphDef*> FindMetaGraphDef(
 
 // Reads the SavedModel proto from saved_model.pb in `export_dir`.
 // Returns a failure status when the SavedModel file does not exist.
-Status ReadSavedModel(absl::string_view export_dir,
-                      SavedModel* saved_model_proto) {
+absl::Status ReadSavedModel(absl::string_view export_dir,
+                            SavedModel* saved_model_proto) {
   LOG(INFO) << "Reading SavedModel from: " << export_dir;
 
   if (IS_OSS) {
@@ -89,8 +89,8 @@ Status ReadSavedModel(absl::string_view export_dir,
         bool saved_model_pb_exists,
         internal::FileExists(Env::Default(), saved_model_pb_path));
     if (saved_model_pb_exists) {
-      Status result = ReadBinaryProto(Env::Default(), saved_model_pb_path,
-                                      saved_model_proto);
+      absl::Status result = ReadBinaryProto(Env::Default(), saved_model_pb_path,
+                                            saved_model_proto);
       if (result.ok()) {
         metrics::SavedModelReadCount(
             saved_model::GetWriteVersion(*saved_model_proto))
@@ -117,7 +117,7 @@ Status ReadSavedModel(absl::string_view export_dir,
 
   if (!IS_OSS) {
     // Only use Merger outside of OSS.
-    // Placeholder for protosplitter merger call.
+    absl::// Placeholder for protosplitter merger call.
   }
 
   return absl::Status(
@@ -130,9 +130,9 @@ Status ReadSavedModel(absl::string_view export_dir,
                       "permissions for accessing it."));
 }
 
-Status ReadMetaGraphDefFromSavedModel(absl::string_view export_dir,
-                                      const std::unordered_set<string>& tags,
-                                      MetaGraphDef* const meta_graph_def) {
+absl::Status ReadMetaGraphDefFromSavedModel(
+    absl::string_view export_dir, const std::unordered_set<string>& tags,
+    MetaGraphDef* const meta_graph_def) {
   SavedModel saved_model_proto;
   TF_RETURN_IF_ERROR(ReadSavedModel(export_dir, &saved_model_proto));
   TF_ASSIGN_OR_RETURN(MetaGraphDef * m,
