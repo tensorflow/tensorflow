@@ -64,7 +64,7 @@ class CudnnSimplifyPaddingTest : public HloTestBase {
 
     TF_RETURN_IF_ERROR(
         RunHloPass(CudnnVectorizeConvolutions(
-                       cc, /*cudnn_version=*/se::dnn::VersionInfo{8, 3, 0}),
+                       cc, /*cudnn_version=*/se::dnn::VersionInfo{8, 9, 0}),
                    module)
             .status());
     VLOG(1) << "after vectorizing convs:\n" << module->ToString();

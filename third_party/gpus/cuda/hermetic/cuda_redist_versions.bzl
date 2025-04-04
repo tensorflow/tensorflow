@@ -81,10 +81,6 @@ CUDA_REDIST_JSON_DICT = {
 }
 
 CUDNN_REDIST_JSON_DICT = {
-    "8.6": [
-        "https://developer.download.nvidia.com/compute/cudnn/redist/redistrib_8.6.0.json",
-        "7f6f50bed4fd8216dc10d6ef505771dc0ecc99cce813993ab405cb507a21d51d",
-    ],
     "8.9.4.25": [
         "https://developer.download.nvidia.com/compute/cudnn/redist/redistrib_8.9.4.25.json",
         "02258dba8384860c9230fe3c78522e7bd8e350e461ccd37a8d932cb64127ba57",
