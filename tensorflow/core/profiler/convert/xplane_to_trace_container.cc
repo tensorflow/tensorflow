@@ -129,18 +129,19 @@ SpecialArguments ConvertXStatsToTraceEventArguments(
 void ConvertXLineToTraceEventsContainer(uint32_t device_id,
                                         const XLineVisitor& line,
                                         TraceEventsContainer* container) {
-  std::optional<uint32_t> resource_id;
-
-  if (line.Name() != tsl::profiler::kCounterEventsLineName) {
-    resource_id = line.DisplayId();
-    Resource* resource = container->MutableResource(*resource_id, device_id);
-    resource->set_resource_id(*resource_id);
-    resource->set_name(std::string(line.DisplayName()));
-    resource->set_num_events(line.NumEvents());
+  std::optional<uint32_t> resource_id = line.DisplayId();
+  bool is_counter_line = (line.Name() == tsl::profiler::kCounterEventsLineName);
+  Resource* resource = container->MutableResource(*resource_id, device_id);
+  resource->set_resource_id(*resource_id);
+  resource->set_num_events(line.NumEvents());
+  if (is_counter_line) {
+    resource->set_name(line.GetFirstEvent().Name());
+  } else {
+    resource->set_name(line.DisplayName());
   }
 
   RawData raw_data;  // hoisted for performance
-  line.ForEachEvent([device_id, resource_id, &raw_data,
+  line.ForEachEvent([device_id, resource_id, &raw_data, is_counter_line,
                      container](const XEventVisitor& event) {
     int64_t event_type =
         event.Type().value_or(HostEventType::kUnknownHostEventType);
@@ -166,9 +167,9 @@ void ConvertXLineToTraceEventsContainer(uint32_t device_id,
     if (!special_args.step_name.empty()) {
       event_name = special_args.step_name;
     }
-    if (!resource_id) {
-      container->AddCounterEvent(event_name, device_id, event.TimestampPs(),
-                                 raw_data);
+    if (is_counter_line) {
+      container->AddCounterEvent(event_name, *resource_id, device_id,
+                                 event.TimestampPs(), raw_data);
     } else if (special_args.flow) {
       tsl::profiler::Timespan span(event.TimestampPs(), event.DurationPs());
       if (special_args.is_async_event) {
