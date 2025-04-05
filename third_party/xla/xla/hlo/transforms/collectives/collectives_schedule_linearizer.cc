@@ -27,7 +27,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
-#include "tsl/platform/errors.h"
+#include "xla/tsl/platform/errors.h"
 
 namespace xla {
 
@@ -75,6 +75,9 @@ absl::StatusOr<bool> CollectivesScheduleLinearizer::Run(
       if (prev_done && !reachability->IsConnected(start, prev_done)) {
         // If prev_done and start are independent, enforce ordering.
         TF_RETURN_IF_ERROR(prev_done->AddControlDependencyTo(next));
+        // Adding control dependency does not update the reachability map.
+        reachability->SetReachable(start, prev_done);
+
         VLOG(1) << "Adding control dependency from " << prev_done->ToString()
                 << " to " << start->ToString();
         changed = true;
