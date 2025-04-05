@@ -50,6 +50,7 @@ limitations under the License.
 #include "xla/tsl/lib/math/math_util.h"
 #include "xla/tsl/platform/errors.h"  // IWYU pragma: keep
 #include "xla/tsl/platform/logging.h"
+#include "xla/tsl/util/safe_reinterpret_cast.h"
 #include "xla/types.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/bfloat16.h"
@@ -160,7 +161,8 @@ class ScopedLoggingTimer {
 template <typename T>
 absl::Span<const uint8_t> CastToByteSlice(absl::Span<const T> slice) {
   return absl::Span<const uint8_t>(
-      reinterpret_cast<const uint8_t*>(slice.data()), slice.size() * sizeof(T));
+      tsl::safe_reinterpret_cast<const uint8_t*>(slice.data()),
+      slice.size() * sizeof(T));
 }
 
 // Casts a byte slice to a non-byte type T, checking that the original slice
@@ -168,7 +170,7 @@ absl::Span<const uint8_t> CastToByteSlice(absl::Span<const T> slice) {
 template <typename T>
 absl::Span<const T> CastByteSlice(absl::Span<const uint8_t> slice) {
   CHECK_EQ(0, slice.size() % sizeof(T));
-  return absl::Span<const T>(reinterpret_cast<const T*>(slice.data()),
+  return absl::Span<const T>(tsl::safe_reinterpret_cast<const T*>(slice.data()),
                              slice.size() / sizeof(T));
 }
 

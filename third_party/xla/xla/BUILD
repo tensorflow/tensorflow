@@ -326,6 +326,7 @@ cc_library(
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:logging",
+        "//xla/tsl/util:safe_reinterpret_cast",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/base:core_headers",
@@ -628,6 +629,7 @@ cc_library(
         "//xla/tsl/platform:status",
         "//xla/tsl/platform:statusor",
         "//xla/tsl/util:byte_swap_array",
+        "//xla/tsl/util:safe_reinterpret_cast",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:inlined_vector",
@@ -666,6 +668,7 @@ xla_cc_test(
         "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:test_benchmark",
         "//xla/tsl/platform:test_main",
+        "//xla/tsl/util:safe_reinterpret_cast",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/hash",
         "@com_google_absl//absl/random",
@@ -1232,6 +1235,7 @@ cc_library(
     visibility = internal_visibility([":friends"]),
     deps = [
         "//xla/backends/cpu:alignment",
+        "//xla/tsl/util:safe_reinterpret_cast",
         "@com_google_absl//absl/base:dynamic_annotations",
     ],
 )

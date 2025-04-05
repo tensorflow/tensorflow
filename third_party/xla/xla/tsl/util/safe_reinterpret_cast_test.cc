@@ -33,11 +33,10 @@ TEST(SafeReinterpretCast, CanCastPointerToFromConstCharPointer) {
 
 TEST(SafeReinterpretCast, CanCastPointerToFromConstBytePointer) {
   const int x = 42;
-  const ::std::byte* const char_p =
-      safe_reinterpret_cast<const ::std::byte*>(&x);
+  const std::byte* const char_p = safe_reinterpret_cast<const std::byte*>(&x);
   EXPECT_EQ(
-      char_p,                                //
-      reinterpret_cast<const ::std::byte*>(  // REINTERPRET_CAST_OK=for testing.
+      char_p,                              //
+      reinterpret_cast<const std::byte*>(  // REINTERPRET_CAST_OK=for testing.
           &x));
 
   const int* const int_p = safe_reinterpret_cast<const int*>(char_p);
@@ -67,15 +66,39 @@ TEST(SafeReinterpretCast, CanCastPointerToFromMutableCharPointer) {
   EXPECT_EQ(int_p, &x);
 }
 
+TEST(SafeReinterpretCast, CanCastBetweenByteLikePointers) {
+  char x = 'A';
+  std::byte* const byte_p = safe_reinterpret_cast<std::byte*>(&x);
+  EXPECT_EQ(byte_p,                        //
+            reinterpret_cast<std::byte*>(  // REINTERPRET_CAST_OK=for testing.
+                &x));
+
+  unsigned char* const unsigned_char_p =
+      safe_reinterpret_cast<unsigned char*>(&x);
+  EXPECT_EQ(unsigned_char_p,                   //
+            reinterpret_cast<unsigned char*>(  // REINTERPRET_CAST_OK=for
+                                               // testing.
+                &x));
+}
+
 TEST(SafeReinterpretCast, CanCastPointerToFromStdUintptrT) {
   const int x = 42;
-  const ::std::uintptr_t uintptr_t_p =
-      safe_reinterpret_cast<::std::uintptr_t>(&x);
+  const std::uintptr_t uintptr_t_p = safe_reinterpret_cast<std::uintptr_t>(&x);
   EXPECT_EQ(
-      uintptr_t_p,                         //
-      reinterpret_cast<::std::uintptr_t>(  // REINTERPRET_CAST_OK=for testing.
+      uintptr_t_p,                       //
+      reinterpret_cast<std::uintptr_t>(  // REINTERPRET_CAST_OK=for testing.
           &x));
   EXPECT_EQ(safe_reinterpret_cast<const int*>(uintptr_t_p), &x);
+}
+
+TEST(SafeReinterpretCast, CanCastPointerToFromStdIntptrT) {
+  const int x = 42;
+  const std::intptr_t intptr_t_p = safe_reinterpret_cast<std::intptr_t>(&x);
+  EXPECT_EQ(
+      intptr_t_p,                       //
+      reinterpret_cast<std::intptr_t>(  // REINTERPRET_CAST_OK=for testing.
+          &x));
+  EXPECT_EQ(safe_reinterpret_cast<const int*>(intptr_t_p), &x);
 }
 
 }  // namespace

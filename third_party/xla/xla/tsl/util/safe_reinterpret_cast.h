@@ -37,6 +37,28 @@ namespace tsl {
 
 namespace internal {
 
+// IsByteLike<T>::value is true if T is a byte-like type (char, unsigned char,
+// or std::byte).
+template <typename T>
+struct IsByteLike : std::false_type {};
+template <>
+struct IsByteLike<char> : std::true_type {};
+template <>
+struct IsByteLike<unsigned char> : std::true_type {};
+template <>
+struct IsByteLike<std::byte> : std::true_type {};
+
+// IsCvByteLike<T>::value is true if T is a possibly CV-qualified byte-like type
+// (char, unsigned char, or std::byte).
+template <typename T>
+struct IsCvByteLike : IsByteLike<T> {};
+template <typename T>
+struct IsCvByteLike<const T> : IsByteLike<T> {};
+template <typename T>
+struct IsCvByteLike<volatile T> : IsByteLike<T> {};
+template <typename T>
+struct IsCvByteLike<const volatile T> : IsByteLike<T> {};
+
 // IsSafeCast<From, To>::value is true if it is safe to reinterpret_cast a
 // value of type From to a value of type To.
 //
@@ -49,39 +71,23 @@ struct IsSafeCast : std::false_type {};
 template <typename T>
 struct IsSafeCast<T, T> : std::true_type {};
 
-// It's safe to cast a pointer to any character pointer.
-template <typename From>
-struct IsSafeCast<From*, char*> : std::true_type {};
-template <typename From>
-struct IsSafeCast<From*, std::byte*> : std::true_type {};
-template <typename From>
-struct IsSafeCast<From*, unsigned char*> : std::true_type {};
-template <typename From>
-struct IsSafeCast<From*, const char*> : std::true_type {};
-template <typename From>
-struct IsSafeCast<From*, const std::byte*> : std::true_type {};
-template <typename From>
-struct IsSafeCast<From*, const unsigned char*> : std::true_type {};
-
-// It's safe to cast a character pointer to a pointer to any type.
-template <typename To>
-struct IsSafeCast<char*, To*> : std::true_type {};
-template <typename To>
-struct IsSafeCast<std::byte*, To*> : std::true_type {};
-template <typename To>
-struct IsSafeCast<unsigned char*, To*> : std::true_type {};
-template <typename To>
-struct IsSafeCast<const char*, To*> : std::true_type {};
-template <typename To>
-struct IsSafeCast<const std::byte*, To*> : std::true_type {};
-template <typename To>
-struct IsSafeCast<const unsigned char*, To*> : std::true_type {};
+// It's safe to cast a pointer to/from a byte-like type.
+template <typename From, typename To>
+struct IsSafeCast<From*, To*>
+    : std::integral_constant<bool, IsCvByteLike<From>::value ||
+                                       IsCvByteLike<To>::value> {};
 
 // It's safe to cast a pointer to/from std::uintptr_t.
 template <typename From>
 struct IsSafeCast<From*, std::uintptr_t> : std::true_type {};
 template <typename To>
 struct IsSafeCast<std::uintptr_t, To*> : std::true_type {};
+
+// It's safe to cast a pointer to/from std::intptr_t.
+template <typename From>
+struct IsSafeCast<From*, std::intptr_t> : std::true_type {};
+template <typename To>
+struct IsSafeCast<std::intptr_t, To*> : std::true_type {};
 
 }  // namespace internal
 

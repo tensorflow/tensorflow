@@ -56,6 +56,7 @@ limitations under the License.
 #include "xla/tsl/platform/status.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/util/byte_swap_array.h"
+#include "xla/tsl/util/safe_reinterpret_cast.h"
 #include "xla/types.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
@@ -2269,24 +2270,27 @@ void LiteralBase::Piece::WriteToProto(LiteralProto* proto) const {
       break;
     case U1:
       *proto->mutable_u1s() = std::string(
-          reinterpret_cast<const char*>(data<u1>().data()), size_bytes_dense());
+          tsl::safe_reinterpret_cast<const char*>(data<u1>().data()),
+          size_bytes_dense());
       break;
     case U2:
       *proto->mutable_u2s() = std::string(
-          reinterpret_cast<const char*>(data<u2>().data()), size_bytes_dense());
+          tsl::safe_reinterpret_cast<const char*>(data<u2>().data()),
+          size_bytes_dense());
       break;
     case U4:
       *proto->mutable_u4s() = std::string(
-          reinterpret_cast<const char*>(data<u4>().data()), size_bytes_dense());
+          tsl::safe_reinterpret_cast<const char*>(data<u4>().data()),
+          size_bytes_dense());
       break;
     case U8:
       proto->set_u8s(static_cast<const unsigned char*>(data<uint8_t>().data()),
                      element_count());
       break;
     case U16:
-      *proto->mutable_u16s() =
-          std::string(reinterpret_cast<const char*>(data<uint16_t>().data()),
-                      size_bytes_dense());
+      *proto->mutable_u16s() = std::string(
+          tsl::safe_reinterpret_cast<const char*>(data<uint16_t>().data()),
+          size_bytes_dense());
       if (!kLittleEndian) {
         ConvertEndianShort(proto->mutable_u16s());
       }
@@ -2299,24 +2303,27 @@ void LiteralBase::Piece::WriteToProto(LiteralProto* proto) const {
       break;
     case S1:
       *proto->mutable_s1s() = std::string(
-          reinterpret_cast<const char*>(data<s1>().data()), size_bytes_dense());
+          tsl::safe_reinterpret_cast<const char*>(data<s1>().data()),
+          size_bytes_dense());
       break;
     case S2:
       *proto->mutable_s2s() = std::string(
-          reinterpret_cast<const char*>(data<s2>().data()), size_bytes_dense());
+          tsl::safe_reinterpret_cast<const char*>(data<s2>().data()),
+          size_bytes_dense());
       break;
     case S4:
       *proto->mutable_s4s() = std::string(
-          reinterpret_cast<const char*>(data<s4>().data()), size_bytes_dense());
+          tsl::safe_reinterpret_cast<const char*>(data<s4>().data()),
+          size_bytes_dense());
       break;
     case S8:
       proto->set_s8s(static_cast<const signed char*>(data<int8_t>().data()),
                      element_count());
       break;
     case S16:
-      *proto->mutable_s16s() =
-          std::string(reinterpret_cast<const char*>(data<int16_t>().data()),
-                      size_bytes_dense());
+      *proto->mutable_s16s() = std::string(
+          tsl::safe_reinterpret_cast<const char*>(data<int16_t>().data()),
+          size_bytes_dense());
       if (!kLittleEndian) {
         ConvertEndianShort(proto->mutable_s16s());
       }
@@ -2328,62 +2335,71 @@ void LiteralBase::Piece::WriteToProto(LiteralProto* proto) const {
       CopyToRepeatedField(proto->mutable_s64s(), data<int64_t>());
       break;
     case F4E2M1FN:
-      *proto->mutable_f4e2m1fns() = std::string(
-          reinterpret_cast<const char*>(data<tsl::float4_e2m1fn>().data()),
-          size_bytes_dense());
+      *proto->mutable_f4e2m1fns() =
+          std::string(tsl::safe_reinterpret_cast<const char*>(
+                          data<tsl::float4_e2m1fn>().data()),
+                      size_bytes_dense());
       break;
     case F8E5M2:
-      *proto->mutable_f8e5m2s() = std::string(
-          reinterpret_cast<const char*>(data<tsl::float8_e5m2>().data()),
-          size_bytes_dense());
+      *proto->mutable_f8e5m2s() =
+          std::string(tsl::safe_reinterpret_cast<const char*>(
+                          data<tsl::float8_e5m2>().data()),
+                      size_bytes_dense());
       break;
     case F8E4M3:
-      *proto->mutable_f8e4m3s() = std::string(
-          reinterpret_cast<const char*>(data<tsl::float8_e4m3>().data()),
-          size_bytes_dense());
+      *proto->mutable_f8e4m3s() =
+          std::string(tsl::safe_reinterpret_cast<const char*>(
+                          data<tsl::float8_e4m3>().data()),
+                      size_bytes_dense());
       break;
     case F8E4M3FN:
-      *proto->mutable_f8e4m3fns() = std::string(
-          reinterpret_cast<const char*>(data<tsl::float8_e4m3fn>().data()),
-          size_bytes_dense());
+      *proto->mutable_f8e4m3fns() =
+          std::string(tsl::safe_reinterpret_cast<const char*>(
+                          data<tsl::float8_e4m3fn>().data()),
+                      size_bytes_dense());
       break;
     case F8E4M3B11FNUZ:
-      *proto->mutable_f8e4m3b11fnuzs() = std::string(
-          reinterpret_cast<const char*>(data<tsl::float8_e4m3b11fnuz>().data()),
-          size_bytes_dense());
+      *proto->mutable_f8e4m3b11fnuzs() =
+          std::string(tsl::safe_reinterpret_cast<const char*>(
+                          data<tsl::float8_e4m3b11fnuz>().data()),
+                      size_bytes_dense());
       break;
     case F8E5M2FNUZ:
-      *proto->mutable_f8e5m2fnuzs() = std::string(
-          reinterpret_cast<const char*>(data<tsl::float8_e5m2fnuz>().data()),
-          size_bytes_dense());
+      *proto->mutable_f8e5m2fnuzs() =
+          std::string(tsl::safe_reinterpret_cast<const char*>(
+                          data<tsl::float8_e5m2fnuz>().data()),
+                      size_bytes_dense());
       break;
     case F8E4M3FNUZ:
-      *proto->mutable_f8e4m3fnuzs() = std::string(
-          reinterpret_cast<const char*>(data<tsl::float8_e4m3fnuz>().data()),
-          size_bytes_dense());
+      *proto->mutable_f8e4m3fnuzs() =
+          std::string(tsl::safe_reinterpret_cast<const char*>(
+                          data<tsl::float8_e4m3fnuz>().data()),
+                      size_bytes_dense());
       break;
     case F8E3M4:
-      *proto->mutable_f8e3m4s() = std::string(
-          reinterpret_cast<const char*>(data<tsl::float8_e3m4>().data()),
-          size_bytes_dense());
+      *proto->mutable_f8e3m4s() =
+          std::string(tsl::safe_reinterpret_cast<const char*>(
+                          data<tsl::float8_e3m4>().data()),
+                      size_bytes_dense());
       break;
     case F8E8M0FNU:
-      *proto->mutable_f8e8m0fnus() = std::string(
-          reinterpret_cast<const char*>(data<tsl::float8_e8m0fnu>().data()),
-          size_bytes_dense());
+      *proto->mutable_f8e8m0fnus() =
+          std::string(tsl::safe_reinterpret_cast<const char*>(
+                          data<tsl::float8_e8m0fnu>().data()),
+                      size_bytes_dense());
       break;
     case F16:
-      *proto->mutable_f16s() =
-          std::string(reinterpret_cast<const char*>(data<half>().data()),
-                      size_bytes_dense());
+      *proto->mutable_f16s() = std::string(
+          tsl::safe_reinterpret_cast<const char*>(data<half>().data()),
+          size_bytes_dense());
       if (!kLittleEndian) {
         ConvertEndianShort(proto->mutable_f16s());
       }
       break;
     case BF16:
-      *proto->mutable_bf16s() =
-          std::string(reinterpret_cast<const char*>(data<bfloat16>().data()),
-                      size_bytes_dense());
+      *proto->mutable_bf16s() = std::string(
+          tsl::safe_reinterpret_cast<const char*>(data<bfloat16>().data()),
+          size_bytes_dense());
       if (!kLittleEndian) {
         ConvertEndianShort(proto->mutable_bf16s());
       }
@@ -2480,7 +2496,8 @@ absl::Status LiteralBase::Piece::CopyFromProto(const LiteralProto& proto) {
       TF_RET_CHECK(data<int16_t>().size() * sizeof(int16_t) == s.size());
       memcpy(untyped_data(), s.data(), s.size());
       if (!kLittleEndian) {
-        ConvertEndianShort(reinterpret_cast<char*>(untyped_data()), s.size());
+        ConvertEndianShort(tsl::safe_reinterpret_cast<char*>(untyped_data()),
+                           s.size());
       }
       break;
     }
@@ -2513,7 +2530,8 @@ absl::Status LiteralBase::Piece::CopyFromProto(const LiteralProto& proto) {
       TF_RET_CHECK(data<uint16_t>().size() * sizeof(uint16_t) == s.size());
       memcpy(untyped_data(), s.data(), s.size());
       if (!kLittleEndian) {
-        ConvertEndianShort(reinterpret_cast<char*>(untyped_data()), s.size());
+        ConvertEndianShort(tsl::safe_reinterpret_cast<char*>(untyped_data()),
+                           s.size());
       }
       break;
     }
@@ -2597,7 +2615,8 @@ absl::Status LiteralBase::Piece::CopyFromProto(const LiteralProto& proto) {
       TF_RET_CHECK(data<half>().size() * sizeof(half) == s.size());
       memcpy(untyped_data(), s.data(), s.size());
       if (!kLittleEndian) {
-        ConvertEndianShort(reinterpret_cast<char*>(untyped_data()), s.size());
+        ConvertEndianShort(tsl::safe_reinterpret_cast<char*>(untyped_data()),
+                           s.size());
       }
       break;
     }
@@ -2606,7 +2625,8 @@ absl::Status LiteralBase::Piece::CopyFromProto(const LiteralProto& proto) {
       TF_RET_CHECK(data<bfloat16>().size() * sizeof(bfloat16) == s.size());
       memcpy(untyped_data(), s.data(), s.size());
       if (!kLittleEndian) {
-        ConvertEndianShort(reinterpret_cast<char*>(untyped_data()), s.size());
+        ConvertEndianShort(tsl::safe_reinterpret_cast<char*>(untyped_data()),
+                           s.size());
       }
       break;
     }

@@ -53,6 +53,7 @@ limitations under the License.
 #include "xla/tsl/platform/macros.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test_benchmark.h"
+#include "xla/tsl/util/safe_reinterpret_cast.h"
 #include "xla/types.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
@@ -1485,7 +1486,8 @@ TEST_F(LiteralUtilTest, F16) {
   // are in little endian format
   // TODO - modify if we make the data format machine endianness dependent
   Literal m1 = Literal::CreateFromShape(ShapeUtil::MakeShape(F16, {2, 2}));
-  const char* d1 = reinterpret_cast<const char*>(m1.data<half>().data());
+  const char* const d1 =
+      tsl::safe_reinterpret_cast<const char*>(m1.data<half>().data());
   EXPECT_EQ(d1[0], 0);
   EXPECT_EQ(d1[1], 0);
   EXPECT_EQ(d1[2], 0);
@@ -1498,12 +1500,16 @@ TEST_F(LiteralUtilTest, F16) {
   half h1(1.0f);
   half h2(2.0f);
   auto m2 = LiteralUtil::CreateR2<half>({{h1, h2}, {h2, h1}});
-  const uint16_t* d2 =
-      reinterpret_cast<const uint16_t*>(m2.data<half>().data());
-  EXPECT_EQ(d2[0], 0x3C00);
-  EXPECT_EQ(d2[1], 0x4000);
-  EXPECT_EQ(d2[2], 0x4000);
-  EXPECT_EQ(d2[3], 0x3C00);
+  const char* const d2 =
+      tsl::safe_reinterpret_cast<const char*>(m2.data<half>().data());
+  EXPECT_EQ(d2[0], 0x00);
+  EXPECT_EQ(d2[1], 0x3C);
+  EXPECT_EQ(d2[2], 0x00);
+  EXPECT_EQ(d2[3], 0x40);
+  EXPECT_EQ(d2[4], 0x00);
+  EXPECT_EQ(d2[5], 0x40);
+  EXPECT_EQ(d2[6], 0x00);
+  EXPECT_EQ(d2[7], 0x3C);
 }
 
 TEST_F(LiteralUtilTest, Populate) {
@@ -2073,8 +2079,9 @@ TEST_F(LiteralUtilTest, BorrowingLiteralFromOneBufferPtr) {
   std::vector<int64_t> int64_values = {1, 2, 3};
   const Shape literal_shape = ShapeUtil::MakeShape(S64, {3});
 
-  BorrowingLiteral literal(reinterpret_cast<const char*>(int64_values.data()),
-                           literal_shape);
+  BorrowingLiteral literal(
+      tsl::safe_reinterpret_cast<const char*>(int64_values.data()),
+      literal_shape);
 
   EXPECT_EQ(literal.Get<int64_t>({0}), 1);
   EXPECT_EQ(literal.Get<int64_t>({1}), 2);
@@ -2090,8 +2097,9 @@ TEST_F(LiteralUtilTest, BorrowingLiteralFromMultipleBufferPtrs) {
 
   std::vector<const char*> src_buf_ptrs;
   src_buf_ptrs.emplace_back(
-      reinterpret_cast<const char*>(one_two_three.data()));
-  src_buf_ptrs.emplace_back(reinterpret_cast<const char*>(hundred.data()));
+      tsl::safe_reinterpret_cast<const char*>(one_two_three.data()));
+  src_buf_ptrs.emplace_back(
+      tsl::safe_reinterpret_cast<const char*>(hundred.data()));
   auto literal_tuple = BorrowingLiteral(
       src_buf_ptrs,
       ShapeUtil::MakeTupleShape({one_two_three_shape, hundred_shape}));
@@ -2117,9 +2125,12 @@ TEST_F(LiteralUtilTest, BorrowingLiteralFromShapeTree) {
   Shape nested_tuple = ShapeUtil::MakeTupleShape({tuple, shape});
 
   ShapeTree<const char*> ptr_tree(nested_tuple);
-  *ptr_tree.mutable_element({0, 0}) = reinterpret_cast<char*>(data.data());
-  *ptr_tree.mutable_element({0, 1}) = reinterpret_cast<char*>(data.data());
-  *ptr_tree.mutable_element({1}) = reinterpret_cast<char*>(data.data());
+  *ptr_tree.mutable_element({0, 0}) =
+      tsl::safe_reinterpret_cast<char*>(data.data());
+  *ptr_tree.mutable_element({0, 1}) =
+      tsl::safe_reinterpret_cast<char*>(data.data());
+  *ptr_tree.mutable_element({1}) =
+      tsl::safe_reinterpret_cast<char*>(data.data());
 
   BorrowingLiteral literal(ptr_tree);
 
@@ -2136,9 +2147,12 @@ TEST_F(LiteralUtilTest, MutableBorrowingLiteralFromShapeTree) {
   Shape nested_tuple = ShapeUtil::MakeTupleShape({tuple, shape});
 
   ShapeTree<char*> ptr_tree(nested_tuple);
-  *ptr_tree.mutable_element({0, 0}) = reinterpret_cast<char*>(data.data());
-  *ptr_tree.mutable_element({0, 1}) = reinterpret_cast<char*>(data.data());
-  *ptr_tree.mutable_element({1}) = reinterpret_cast<char*>(data.data());
+  *ptr_tree.mutable_element({0, 0}) =
+      tsl::safe_reinterpret_cast<char*>(data.data());
+  *ptr_tree.mutable_element({0, 1}) =
+      tsl::safe_reinterpret_cast<char*>(data.data());
+  *ptr_tree.mutable_element({1}) =
+      tsl::safe_reinterpret_cast<char*>(data.data());
 
   MutableBorrowingLiteral literal(ptr_tree);
 

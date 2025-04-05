@@ -58,6 +58,7 @@ limitations under the License.
 #include "xla/tsl/platform/logging.h"  // IWYU pragma: keep
 #include "xla/tsl/platform/macros.h"
 #include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/util/safe_reinterpret_cast.h"
 #include "xla/types.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
@@ -882,7 +883,7 @@ class LiteralBase {
     // Gets/sets the buffer holding dynamic sizes.
     const DynamicSizeType* dynamic_size_buffer() const {
       DCHECK(LayoutUtil::IsDenseArray(*subshape_));
-      return reinterpret_cast<const DynamicSizeType*>(
+      return tsl::safe_reinterpret_cast<const DynamicSizeType*>(
           buffer() + dynamic_size_buffer_offset());
     }
     DynamicSizeType* dynamic_size_buffer() {
@@ -1823,8 +1824,8 @@ absl::Span<const NativeT> LiteralBase::Piece::data() const {
       << PrimitiveType_Name(primitive_util::NativeToPrimitiveType<NativeT>())
       << " type, but literal element type is "
       << PrimitiveType_Name(subshape().element_type());
-  return absl::Span<const NativeT>(reinterpret_cast<const NativeT*>(buffer()),
-                                   element_count());
+  return absl::Span<const NativeT>(
+      tsl::safe_reinterpret_cast<const NativeT*>(buffer()), element_count());
 }
 
 template <typename NativeT>
@@ -1841,7 +1842,7 @@ absl::Span<NativeT> LiteralBase::Piece::data() {
       << PrimitiveType_Name(primitive_util::NativeToPrimitiveType<NativeT>())
       << " type, but literal element type is "
       << PrimitiveType_Name(subshape().element_type());
-  return absl::Span<NativeT>(reinterpret_cast<NativeT*>(buffer()),
+  return absl::Span<NativeT>(tsl::safe_reinterpret_cast<NativeT*>(buffer()),
                              element_count());
 }
 
