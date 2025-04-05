@@ -839,7 +839,7 @@ absl::Status ParentAllocation::Process(const BitcastSplitFn& bitcast_split_fn) {
   // in the default memory space.
   HloInstruction* producing_instruction =
       original_allocation_.AddGetTupleElements();
-  int new_tuple_index = calling_instruction_->shape().tuple_shapes_size();
+  int new_tuple_index = calling_instruction_->shape().tuple_shapes().size();
 
   TF_ASSIGN_OR_RETURN(
       HloInstruction * new_while_operand,

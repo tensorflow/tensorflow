@@ -38,7 +38,7 @@ namespace xla {
   // I{L(1)} = (linear_index / D{L(0)}) % D{L(1)}
   // I{L(2)} = (linear_index / (D{L(0)} * D{L(1)})) % D{L(2)}
   // ...
-  DimensionVector multi_index(shape.dimensions_size());
+  DimensionVector multi_index(shape.dimensions().size());
 
   // Accumulated product D{L(0)} * D{L(1)} * ...
   int64_t divisor = 1;
@@ -64,7 +64,7 @@ namespace xla {
 
 /* static */ bool IndexUtil::IndexInBounds(const Shape& shape,
                                            absl::Span<const int64_t> index) {
-  int64_t rank = shape.dimensions_size();
+  int64_t rank = shape.dimensions().size();
   const int64_t index_size = index.size();
   if (rank != index_size) {
     return false;

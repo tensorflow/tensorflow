@@ -3071,9 +3071,9 @@ absl::Status CanonicalizeLayoutAfterShardingPropagation(
       Shape result_shape = module->mutable_entry_computation_layout()
                                ->mutable_result_layout()
                                ->shape();
-      CHECK_EQ(result_shape.tuple_shapes_size(),
-               shapes_with_layout.second.tuple_shapes_size());
-      for (int64_t i = 0; i < result_shape.tuple_shapes_size(); ++i) {
+      CHECK_EQ(result_shape.tuple_shapes().size(),
+               shapes_with_layout.second.tuple_shapes().size());
+      for (int64_t i = 0; i < result_shape.tuple_shapes().size(); ++i) {
         if (update_output_layout[i]) {
           *result_shape.mutable_tuple_shapes(i) =
               shapes_with_layout.second.tuple_shapes(i);

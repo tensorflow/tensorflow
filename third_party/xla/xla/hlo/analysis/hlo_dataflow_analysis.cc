@@ -1613,7 +1613,7 @@ absl::Status HloDataflowAnalysis::InitializeInstructionValueSets() {
           // optional.
           define_value_at(/*index=*/{});
           define_value_at(/*index=*/{1});
-          for (int i = 2; i < instruction->shape().tuple_shapes_size(); ++i) {
+          for (int i = 2; i < instruction->shape().tuple_shapes().size(); ++i) {
             define_value_at(/*index=*/{i});
           }
 
@@ -1971,8 +1971,8 @@ HloDataflowAnalysis::GetInPlaceInputOutputPairs(
     if (instruction->operand(1)->shape().IsTuple()) {
       std::vector<std::pair<HloOperandIndex, ShapeIndex>> in_place_pairs(
           {{HloOperandIndex{1, {}}, {}}});
-      for (int i = 0; i < instruction->operand(1)->shape().tuple_shapes_size();
-           i++) {
+      for (int i = 0;
+           i < instruction->operand(1)->shape().tuple_shapes().size(); i++) {
         in_place_pairs.push_back({HloOperandIndex{1, {i}}, {i}});
       }
       return in_place_pairs;
@@ -1984,8 +1984,8 @@ HloDataflowAnalysis::GetInPlaceInputOutputPairs(
     if (instruction->operand(1)->shape().IsTuple()) {
       std::vector<std::pair<HloOperandIndex, ShapeIndex>> in_place_pairs(
           {{HloOperandIndex{1, {}}, {1}}});
-      for (int i = 0; i < instruction->operand(1)->shape().tuple_shapes_size();
-           i++) {
+      for (int i = 0;
+           i < instruction->operand(1)->shape().tuple_shapes().size(); i++) {
         in_place_pairs.push_back({HloOperandIndex{1, {i}}, {1, i}});
       }
       return in_place_pairs;

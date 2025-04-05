@@ -749,7 +749,7 @@ TEST_F(DynamicDimensionInferenceTest, WhileTest) {
   ASSERT_NE(while_hlo, nullptr);
   // The original while shape has 2 parameters. With dynamic size, the tuple
   // should have 4 elements (We don't deduplicate the arguments).
-  EXPECT_EQ(while_hlo->shape().tuple_shapes_size(), 4);
+  EXPECT_EQ(while_hlo->shape().tuple_shapes().size(), 4);
   HloInstruction* add_inst = nullptr;
   for (HloInstruction* inst : while_hlo->while_body()->instructions()) {
     if (inst->opcode() == HloOpcode::kAdd) {
@@ -883,7 +883,7 @@ TEST_F(DynamicDimensionInferenceTest, ConditionalInputTest) {
   ASSERT_NE(conditional_hlo, nullptr);
   // The original conditional shape has 1 parameters. With dynamic size passed
   // out from the computation, another element is added to the tuple.
-  EXPECT_EQ(conditional_hlo->shape().tuple_shapes_size(), 2);
+  EXPECT_EQ(conditional_hlo->shape().tuple_shapes().size(), 2);
   HloInstruction* add_true_branch = nullptr;
   for (HloInstruction* inst :
        conditional_hlo->true_computation()->instructions()) {
