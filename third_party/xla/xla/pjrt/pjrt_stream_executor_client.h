@@ -410,7 +410,13 @@ class PjRtStreamExecutorClient : public PjRtClient {
         addressable_device_logical_ids;
     std::vector<PjRtDevice*> addressable_devices;
   };
-  absl::StatusOr<ExecutableExtras> GetExecutableExtras(CompileOptions* options);
+
+  // Updates `options` for compilation.
+  void UpdateCompileOptions(CompileOptions* options);
+
+  // Same as above, but also returns the executable extras.
+  absl::StatusOr<ExecutableExtras> UpdateCompileOptionsAndGetExecutableExtras(
+      CompileOptions* options);
 
   absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> CompileInternal(
       const XlaComputation& computation,

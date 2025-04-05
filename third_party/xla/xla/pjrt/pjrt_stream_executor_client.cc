@@ -3414,15 +3414,7 @@ PjRtStreamExecutorLoadedExecutable::GetOutputMemoryKinds() const {
   return out;
 }
 
-absl::StatusOr<PjRtStreamExecutorClient::ExecutableExtras>
-PjRtStreamExecutorClient::GetExecutableExtras(CompileOptions* options) {
-  ExecutableExtras extras;
-  std::shared_ptr<DeviceAssignment>& device_assignment =
-      extras.device_assignment;
-  std::vector<PjRtStreamExecutorLoadedExecutable::LogicalDeviceIds>&
-      addressable_device_logical_ids = extras.addressable_device_logical_ids;
-  std::vector<PjRtDevice*>& addressable_devices = extras.addressable_devices;
-
+void PjRtStreamExecutorClient::UpdateCompileOptions(CompileOptions* options) {
   ExecutableBuildOptions& build_options = options->executable_build_options;
   if (!build_options.compile_thread_pool()) {
     build_options.set_compile_thread_pool(thread_pool());
@@ -3459,6 +3451,26 @@ PjRtStreamExecutorClient::GetExecutableExtras(CompileOptions* options) {
   };
 
   build_options.set_layout_canonicalization_callback(layout_callback);
+
+  if (build_options.device_ordinal() < 0) {
+    build_options.set_device_ordinal(0);
+  }
+}
+
+absl::StatusOr<PjRtStreamExecutorClient::ExecutableExtras>
+PjRtStreamExecutorClient::UpdateCompileOptionsAndGetExecutableExtras(
+    CompileOptions* options) {
+  const int original_device_ordinal =
+      options->executable_build_options.device_ordinal();
+
+  UpdateCompileOptions(options);
+
+  ExecutableExtras extras;
+  std::shared_ptr<DeviceAssignment>& device_assignment =
+      extras.device_assignment;
+  std::vector<PjRtStreamExecutorLoadedExecutable::LogicalDeviceIds>&
+      addressable_device_logical_ids = extras.addressable_device_logical_ids;
+  std::vector<PjRtDevice*>& addressable_devices = extras.addressable_devices;
 
   int num_replicas;
   int num_partitions;
@@ -3503,7 +3515,8 @@ PjRtStreamExecutorClient::GetExecutableExtras(CompileOptions* options) {
           device_assignment->ToString());
     }
 
-    if (build_options.device_ordinal() < 0) {
+    ExecutableBuildOptions& build_options = options->executable_build_options;
+    if (original_device_ordinal < 0) {
       build_options.set_device_ordinal(
           addressable_devices.front()->local_hardware_id().value());
     }
@@ -3530,7 +3543,8 @@ PjRtStreamExecutorClient::CompileInternal(
 
   TF_RETURN_IF_ERROR(options.ApplyAllOptionOverrides());
 
-  TF_ASSIGN_OR_RETURN(ExecutableExtras extras, GetExecutableExtras(&options));
+  TF_ASSIGN_OR_RETURN(ExecutableExtras extras,
+                      UpdateCompileOptionsAndGetExecutableExtras(&options));
   std::shared_ptr<DeviceAssignment>& device_assignment =
       extras.device_assignment;
   std::vector<PjRtStreamExecutorLoadedExecutable::LogicalDeviceIds>&
@@ -3719,8 +3733,9 @@ PjRtStreamExecutorClient::LoadSerializedExecutable(
       "PjRtStreamExecutorClient::DeserializeExecutable");
   VLOG(1) << "PjRtStreamExecutorClient::DeserializeExecutable";
 
-  TF_ASSIGN_OR_RETURN(ExecutableExtras extras,
-                      GetExecutableExtras(&compile_options));
+  TF_ASSIGN_OR_RETURN(
+      ExecutableExtras extras,
+      UpdateCompileOptionsAndGetExecutableExtras(&compile_options));
   std::shared_ptr<DeviceAssignment>& device_assignment =
       extras.device_assignment;
   std::vector<PjRtStreamExecutorLoadedExecutable::LogicalDeviceIds>&

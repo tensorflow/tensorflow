@@ -905,8 +905,9 @@ StreamExecutorGpuClient::Load(std::unique_ptr<PjRtExecutable> executable) {
   CompileOptions compile_options = se_executable->compile_options();
   CompileOptions input_options = compile_options;
   TF_RETURN_IF_ERROR(compile_options.ApplyAllOptionOverrides());
-  TF_ASSIGN_OR_RETURN(ExecutableExtras extras,
-                      GetExecutableExtras(&compile_options));
+  TF_ASSIGN_OR_RETURN(
+      ExecutableExtras extras,
+      UpdateCompileOptionsAndGetExecutableExtras(&compile_options));
 
   // Load Executable from AOT compilation result.
   std::vector<std::unique_ptr<LocalExecutable>> local_executables;
