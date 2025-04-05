@@ -1523,6 +1523,8 @@ cc_library(
         "executable.h",
         "service_executable_run_options.h",
     ],
+    # TODO(ashyamli): fix visibility before submitting when location is final.
+    visibility = internal_visibility(["//xla/backends/autotuner:__subpackages__"]),
     deps = [
         ":buffer_assignment",
         ":computation_layout",
@@ -1584,7 +1586,10 @@ cc_library(
     name = "compiler",
     srcs = ["compiler.cc"],
     hdrs = ["compiler.h"],
-    visibility = internal_visibility(["//xla/internal:hwi_internal"]),
+    visibility = internal_visibility([
+        "//xla/internal:hwi_internal",
+        "//xla/backends/autotuner:__subpackages__",
+    ]),
     deps = [
         ":buffer_assignment",
         ":buffer_value",
