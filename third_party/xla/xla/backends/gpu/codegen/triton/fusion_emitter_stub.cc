@@ -62,7 +62,7 @@ absl::StatusOr<TritonWrapperResult> TritonWrapper(
   return absl::UnimplementedError("not supported for this build configuration");
 }
 
-absl::StatusOr<TritonModule> CreateTritonModule(
+absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> CreateTritonModule(
     absl::string_view fn_name, const HloFusionInstruction* fusion,
     const se::DeviceDescription& device_info,
     const BlockLevelParameters& block_level_parameters,

@@ -184,6 +184,7 @@ cc_library(
         ":emitter_helpers",
         ":fusion_emitter_legacy_matmul",
         ":support",
+        ":tma_utils",
         "//xla:autotuning_proto_cc",
         "//xla:permutation_util",
         "//xla:shape_util",

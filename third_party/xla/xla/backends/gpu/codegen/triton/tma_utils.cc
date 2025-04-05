@@ -16,58 +16,42 @@ limitations under the License.
 #include "xla/backends/gpu/codegen/triton/tma_utils.h"
 
 #include <cstdint>
-#include <optional>
 
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/SmallVector.h"
-#include "mlir/IR/Builders.h"
-#include "mlir/IR/BuiltinTypes.h"
-#include "mlir/IR/Types.h"
-#include "mlir/IR/Value.h"
-#include "xla/codegen/emitter_loc_op_builder.h"
-#include "xla/shape.h"
 #include "xla/stream_executor/gpu/tma_metadata.h"
 #include "xla/tsl/platform/statusor.h"
-#include "triton/Dialect/Triton/IR/Dialect.h"
-#include "triton/Dialect/Triton/IR/Types.h"
 
 namespace xla::gpu {
 
-namespace mt = ::mlir::triton;
-
 using ::llvm::SmallVector;
-using ::mlir::RankedTensorType;
-using ::mlir::Type;
-using ::mlir::Value;
 using ::stream_executor::gpu::TmaDescriptor;
-using ::stream_executor::gpu::TmaMetadata;
 
 // Returns a TmaDescriptor for a 2D tensor to be emitted in Triton.
 //
 // This function follows the defaults and logic found in fill2DTMADescriptor in
 // @triton/third_party/nvidia/backend/cuda_utils.cc
 absl::StatusOr<TmaDescriptor> Create2DTmaDescriptor(
-    Shape global_shape, llvm::ArrayRef<int64_t> block_shape,
-    Type element_type) {
-  if (global_shape.dimensions().size() != 2) {
+    llvm::ArrayRef<int64_t> global_shape, llvm::ArrayRef<int64_t> block_shape,
+    int element_byte_size) {
+  if (global_shape.size() != 2) {
     return absl::InvalidArgumentError("expected 2D global shape");
   }
   if (block_shape.size() != 2) {
     return absl::InvalidArgumentError("expected 2D block shape");
   }
-  int byte_width = element_type.getIntOrFloatBitWidth() / 8;
   SmallVector<uint64_t, 2> global_dims = {
-      static_cast<uint64_t>(global_shape.dimensions(1)),
-      static_cast<uint64_t>(global_shape.dimensions(0))};
-  auto global_strides = {global_dims[0] * byte_width};
+      static_cast<uint64_t>(global_shape[1]),
+      static_cast<uint64_t>(global_shape[0])};
+  auto global_strides = {global_dims[0] * element_byte_size};
   SmallVector<uint32_t, 2> box_dims = {static_cast<uint32_t>(block_shape[1]),
                                        static_cast<uint32_t>(block_shape[0])};
   SmallVector<uint32_t, 2> element_strides = {1, 1};
   TmaDescriptor::TmaSwizzle swizzle;
-  uint32_t contig_dim_size_in_byte = byte_width * box_dims[0];
+  uint32_t contig_dim_size_in_byte = element_byte_size * box_dims[0];
   if (contig_dim_size_in_byte >= 128) {
     swizzle = TmaDescriptor::TmaSwizzle::k128B;
   } else if (contig_dim_size_in_byte >= 64) {
@@ -79,30 +63,14 @@ absl::StatusOr<TmaDescriptor> Create2DTmaDescriptor(
         "continguous dimension size too small");
   }
   if (contig_dim_size_in_byte > 128) {
-    box_dims[0] = 128 / byte_width;
+    box_dims[0] = 128 / element_byte_size;
   }
   TF_ASSIGN_OR_RETURN(
       auto tma_desc, TmaDescriptor::Create(
                          global_dims, global_strides, box_dims, element_strides,
-                         byte_width, TmaDescriptor::TmaInterleave::kNone,
+                         element_byte_size, TmaDescriptor::TmaInterleave::kNone,
                          swizzle, TmaDescriptor::TmaL2Promotion::k128B));
   return tma_desc;
-}
-
-Value EmitTmaDescriptor(EmitterLocOpBuilder& b, Value arg,
-                        RankedTensorType tensor_type) {
-  auto desc_type = mt::TensorDescType::get(b.getContext(), tensor_type);
-  return b.create<mt::ReinterpretTensorDescOp>(desc_type, arg);
-}
-
-void RewriteFunctionForTma(EmitterLocOpBuilder& b, mlir::triton::FuncOp fn,
-                           std::optional<TmaMetadata> tma_metadata) {
-  if (!tma_metadata.has_value()) {
-    return;
-  }
-  for (auto& [parameter_number, _] : tma_metadata->arg_index_to_tma_info) {
-    fn.setArgAttr(parameter_number, "tt.nv_tma_desc", b.getI32IntegerAttr(1));
-  }
 }
 
 }  // namespace xla::gpu
