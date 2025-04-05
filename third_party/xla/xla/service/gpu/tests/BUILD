@@ -140,10 +140,8 @@ xla_test(
     srcs = ["command_buffer_test.cc"],
     backends = ["gpu"],
     deps = [
-        "//xla:debug_options_flags",
         "//xla:literal",
         "//xla:literal_util",
-        "//xla/service:hlo_module_config",
         "//xla/tests:hlo_test_base",
         "//xla/tests:literal_test_util",
         "//xla/tsl/platform:statusor",
@@ -644,7 +642,6 @@ lit_test_suite(
 #         "//xla/backends/gpu/codegen/triton/transforms:passes",
 #         "//xla/codegen/emitters/transforms:passes",
 #         "@triton//:AllPassesAndDialects",
-#         "@triton//third_party/amd:TestAMDRangeAnalysis",
 #     ],
 # )
 # copybara:uncomment_end
@@ -873,6 +870,18 @@ xla_test(
 )
 
 xla_test(
+    name = "reduction_emitter_test",
+    srcs = ["reduction_emitter_test.cc"],
+    backends = ["gpu"],
+    deps = [
+        ":gpu_codegen_test",
+        "//xla:error_spec",
+        "@com_google_googletest//:gtest_main",
+        "@local_tsl//tsl/platform:test",
+    ],
+)
+
+xla_test(
     name = "simplify_fp_conversions_test",
     srcs = ["simplify_fp_conversions_test.cc"],
     backends = ["gpu"],
@@ -881,6 +890,18 @@ xla_test(
         "//xla/tests:hlo_test_base",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",
+    ],
+)
+
+xla_test(
+    name = "transpose_emitter_test",
+    srcs = ["transpose_emitter_test.cc"],
+    backends = ["gpu"],
+    deps = [
+        ":gpu_codegen_test",
+        "//xla:error_spec",
+        "@com_google_googletest//:gtest_main",
+        "@local_tsl//tsl/platform:test",
     ],
 )
 

@@ -129,7 +129,6 @@ xla_test(
         "//xla:literal_util",
         "//xla:types",
         "//xla:xla_data_proto_cc",
-        "//xla/hlo/testlib:verified_hlo_module",
         "//xla/service/gpu:gpu_device_info_for_tests",
         "//xla/service/gpu/transforms:custom_kernel_fusion_rewriter",
         "//xla/stream_executor:device_description",
@@ -430,6 +429,7 @@ cuda_library(
     deps = [
         ":cutlass_gemm",
         "@cutlass_archive//:cutlass",
+        "@local_config_cuda//cuda:cuda_headers",
     ],
 )
 
@@ -483,7 +483,6 @@ cuda_library(
     deps = [
         ":cutlass_gemm_adaptor",
         "@cutlass_archive//:cutlass",
-        "@local_config_cuda//cuda:cuda_headers",
     ],
 )
 
@@ -498,7 +497,6 @@ cuda_library(
     deps = [
         ":cutlass_gemm_adaptor",
         "@cutlass_archive//:cutlass",
-        "@local_config_cuda//cuda:cuda_headers",
     ],
 )
 
@@ -516,7 +514,6 @@ cuda_library(
     deps = [
         ":cutlass_gemm_adaptor",
         "@cutlass_archive//:cutlass",
-        "@local_config_cuda//cuda:cuda_headers",
     ],
 )
 
@@ -534,7 +531,6 @@ cuda_library(
     deps = [
         ":cutlass_gemm_adaptor",
         "@cutlass_archive//:cutlass",
-        "@local_config_cuda//cuda:cuda_headers",
     ],
 )
 
@@ -549,7 +545,6 @@ cuda_library(
     deps = [
         ":cutlass_gemm_adaptor",
         "@cutlass_archive//:cutlass",
-        "@local_config_cuda//cuda:cuda_headers",
     ],
 )
 
@@ -586,7 +581,6 @@ cc_library(
         "//xla/stream_executor:kernel",
         "//xla/stream_executor:kernel_spec",
         "//xla/stream_executor:launch_dim",
-        "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
     ],
