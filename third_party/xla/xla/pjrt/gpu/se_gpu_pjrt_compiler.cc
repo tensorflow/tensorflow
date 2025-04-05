@@ -81,12 +81,6 @@ absl::Status IsValidTopologyAndClientForCompile(
     return absl::InvalidArgumentError(
         "SE:GPU compiler requires a GPU PjRtClient.");
   }
-  TF_ASSIGN_OR_RETURN(auto client_topology, client->GetTopologyDescription());
-
-  if (!IsSameTopology(topology, *client_topology)) {
-    return absl::UnimplementedError(
-        "SE:GPU compiler requires the topology same as the one in the client.");
-  }
   return absl::OkStatus();
 }
 
