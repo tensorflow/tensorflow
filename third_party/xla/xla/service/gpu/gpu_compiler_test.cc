@@ -27,9 +27,11 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/base/log_severity.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/log/scoped_mock_log.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
@@ -83,10 +85,12 @@ namespace {
 
 namespace m = ::xla::match;
 
+using ::testing::EndsWith;
 using ::testing::IsEmpty;
 using ::testing::IsSupersetOf;
 using ::testing::Matches;
 using ::testing::Not;
+using ::testing::StartsWith;
 using ::testing::TempDir;
 
 class GpuCompilerTest : public HloTestBase {
@@ -1923,6 +1927,44 @@ TEST_F(GpuCompilerTest, DynamicSliceFusionReduceScatterMultipleBuffers) {
   )";
   EXPECT_THAT(RunFileCheck(m->ToString(), kExpected),
               ::tsl::testing::IsOkAndHolds(true));
+}
+
+TEST_F(GpuCompilerTest, CompilingSortsWorksWithoutDevice) {
+  constexpr absl::string_view kHlo = R"(
+HloModule TestModule
+
+%compare {
+  %lhs = f32[] parameter(0)
+  %rhs = f32[] parameter(1)
+  ROOT %lt = pred[] compare(%lhs, %rhs), direction=LT
+}
+
+ENTRY %main {
+  %input = f32[1000] parameter(0)
+  ROOT %sort = f32[1000] sort(%input), dimensions={0}, to_apply=%compare
+})";
+
+  HloModuleConfig config;
+  DebugOptions debug_options = GetDebugOptionsForTest();
+  debug_options.set_xla_gpu_enable_cub_radix_sort(true);
+
+  std::string target_file;
+  ASSERT_TRUE(tsl::Env::Default()->LocalTempFilename(&target_file));
+  TF_ASSERT_OK(tsl::WriteTextProto(
+      tsl::Env::Default(), target_file,
+      Compiler::TargetConfig(backend().default_stream_executor()).ToProto()));
+  debug_options.set_xla_gpu_target_config_filename(target_file);
+  config.set_debug_options(debug_options);
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(kHlo, config));
+  absl::ScopedMockLog mock_log(absl::MockLogDefault::kIgnoreUnexpected);
+  EXPECT_CALL(mock_log,
+              Log(absl::LogSeverity::kWarning, EndsWith("/gpu_compiler.cc"),
+                  StartsWith("Using fallback sort algorithm")));
+  mock_log.StartCapturingLogs();
+  TF_ASSERT_OK(backend().compiler()->RunHloPasses(std::move(module), nullptr,
+                                                  GetAllocator()));
 }
 
 }  // namespace
