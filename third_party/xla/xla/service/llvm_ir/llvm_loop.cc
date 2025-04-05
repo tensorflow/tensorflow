@@ -244,7 +244,7 @@ std::unique_ptr<ForLoop> ForLoopNest::AddLoop(int64_t start_index,
 
 IrArray::Index ForLoopNest::AddLoopsForShape(const Shape& shape,
                                              absl::string_view suffix) {
-  std::vector<int64_t> dimensions(shape.dimensions_size());
+  std::vector<int64_t> dimensions(shape.dimensions().size());
   std::iota(dimensions.begin(), dimensions.end(), 0);
   return IrArray::Index(AddLoopsForShapeOnDimensions(shape, dimensions, suffix),
                         shape, index_type_);
@@ -253,7 +253,7 @@ IrArray::Index ForLoopNest::AddLoopsForShape(const Shape& shape,
 std::vector<llvm::Value*> ForLoopNest::AddLoopsForShapeOnDimensions(
     const Shape& shape, absl::Span<const int64_t> dimensions,
     absl::string_view suffix) {
-  std::vector<llvm::Value*> multi_index(shape.dimensions_size());
+  std::vector<llvm::Value*> multi_index(shape.dimensions().size());
   for (int64_t dimension : dimensions) {
     std::unique_ptr<llvm_ir::ForLoop> loop = AddLoop(
         /*start_index=*/0,
