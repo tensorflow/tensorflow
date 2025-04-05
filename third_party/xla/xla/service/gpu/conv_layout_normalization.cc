@@ -45,7 +45,7 @@ absl::StatusOr<std::optional<HloInstruction*>> UpdateLayoutForCudnnConvolution(
       hlo->convolution_dimension_numbers();
 
   auto transpose_dim = [&](int64_t dim, const Shape& unnormalized_shape) {
-    return unnormalized_shape.dimensions_size() -
+    return unnormalized_shape.dimensions().size() -
            FindIndex(unnormalized_shape.layout().minor_to_major(), dim) - 1;
   };
 
@@ -110,7 +110,7 @@ absl::StatusOr<std::optional<HloInstruction*>> UpdateLayoutForCudnnConvolution(
 
   Shape normalized_shape;
   if (hlo->shape().IsTuple()) {
-    TF_RET_CHECK(hlo->shape().tuple_shapes().back().dimensions_size() == 1)
+    TF_RET_CHECK(hlo->shape().tuple_shapes().back().dimensions().size() == 1)
         << "The last element in the tuple returned by a convolution Custom "
            "Call is expected to be an "
            "allocator of rank one";
