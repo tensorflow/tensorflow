@@ -294,11 +294,7 @@ class Shape {
   // Returns a span to indicate the size of each dimension.
   // Precondition: this is an array shape.
   absl::Span<const int64_t> dimensions() const {
-    if (const auto* const state = if_array_state()) {
-      return state->dimensions;
-    }
-    // TODO(b/404276923): ensure that this is never called on non-array shapes.
-    return {};
+    return array_state().dimensions;
   }
   absl::Span<int64_t> mutable_dimensions() {
     return absl::MakeSpan(array_state().dimensions);
