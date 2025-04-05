@@ -59,6 +59,7 @@ class CostAnalysis {
   void EvaluateCost(mlir::Operation* op);
 
   int64_t max_arg_size_ = 1;
+  int64_t cost_threshold_ = -1;
   llvm::DenseMap<mlir::Operation*, int64_t> cost_map_;
   const tfrt_stub::CostRecorder* cost_recorder_;
 };
