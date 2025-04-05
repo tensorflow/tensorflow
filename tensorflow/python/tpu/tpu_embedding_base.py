@@ -64,6 +64,8 @@ class TPUEmbeddingBase(autotrackable.AutoTrackable):
                          "instance of one of the optimizer classes under "
                          "tf.tpu.experimental.embedding.".format(
                              type(table.optimizer)))
+      if table.combiner is None:
+        raise ValueError("{table.name} does not have a combiner specified!")
       if table.name is None:
         table.name = "table_{}".format(i)
       if table.name in table_names:
