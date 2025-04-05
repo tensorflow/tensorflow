@@ -183,19 +183,25 @@ int main(int argc, char** argv) {
 
   CompareCPUGPUResults(cpu_inference.get(), gpu_inference.get(), 1e-4f);
 
+  int run_count = 10;
+
   // CPU inference latency.
   auto start = std::chrono::high_resolution_clock::now();
-  cpu_inference->Invoke();
+  for (int i = 0; i < run_count; ++i) {
+    cpu_inference->Invoke();
+  }
   auto end = std::chrono::high_resolution_clock::now();
-  std::cout << "CPU time - " << (end - start).count() * 1e-6f << "ms"
-            << std::endl;
+  std::cout << "CPU time - " << (end - start).count() * 1e-6f / run_count
+            << "ms" << std::endl;
 
   // GPU inference latency.
   start = std::chrono::high_resolution_clock::now();
-  gpu_inference->Invoke();
+  for (int i = 0; i < run_count; ++i) {
+    gpu_inference->Invoke();
+  }
   end = std::chrono::high_resolution_clock::now();
-  std::cout << "GPU time(CPU->GPU->CPU) - " << (end - start).count() * 1e-6f
-            << "ms" << std::endl;
+  std::cout << "GPU time(CPU->GPU->CPU) - "
+            << (end - start).count() * 1e-6f / run_count << "ms" << std::endl;
 
   TfLiteGpuDelegateV2Delete(gpu_delegate);
   return EXIT_SUCCESS;
