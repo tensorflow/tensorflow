@@ -39,7 +39,9 @@ absl::StatusOr<std::string> GetAvailableToolNames(
     tools.reserve(11);
     tools.push_back(is_cloud_vertex_ai ? "trace_viewer" : "trace_viewer@");
     tools.push_back("overview_page");
-    tools.push_back("input_pipeline_analyzer");
+    // TODO(jonahweaver): Re-enable input_pipeline_analyzer when it is ready.
+    // b/407096031
+    // tools.push_back("input_pipeline_analyzer");
     tools.push_back("framework_op_stats");
     tools.push_back("memory_profile");
     tools.push_back("pod_viewer");
