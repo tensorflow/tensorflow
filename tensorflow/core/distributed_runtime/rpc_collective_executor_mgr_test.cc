@@ -16,6 +16,7 @@ limitations under the License.
 
 #include <stdlib.h>
 
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -55,9 +56,9 @@ class RpcCollectiveExecutorMgrTest : public ::testing::Test {
             options.config, device_mgr_.get(), dr.get(),
             /*nccl_communicator*/ nullptr, worker_cache, task_name));
     // This CME is the group leader.
-    cme_.reset(new RpcCollectiveExecutorMgr(
+    cme_ = std::make_unique<RpcCollectiveExecutorMgr>(
         options.config, device_mgr_.get(), std::move(dr), std::move(cpr),
-        MaybeCreateNcclCommunicator(options.config), worker_cache, task_name));
+        MaybeCreateNcclCommunicator(options.config), worker_cache, task_name);
   }
 
   std::unique_ptr<RpcCollectiveExecutorMgr> cme_;
