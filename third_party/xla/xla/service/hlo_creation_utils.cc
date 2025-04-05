@@ -46,6 +46,7 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/errors.h"
@@ -905,6 +906,18 @@ HloInstruction* ExpandDegenerateReshape(HloInstruction* inst) {
     return degenerate_adding_hlo;
   }
   return nullptr;
+}
+
+absl::StatusOr<HloInstruction*> MakeWithinBounds(HloInstruction* inst,
+                                                 HloInstruction* lower_bound,
+                                                 HloInstruction* upper_bound) {
+  TF_ASSIGN_OR_RETURN(
+      HloInstruction * le,
+      MakeCompareHlo(Comparison::Direction::kLe, lower_bound, inst));
+  TF_ASSIGN_OR_RETURN(
+      HloInstruction * gt,
+      MakeCompareHlo(Comparison::Direction::kGt, upper_bound, inst));
+  return MakeBinaryHlo(HloOpcode::kAnd, le, gt);
 }
 
 }  // namespace xla

@@ -101,6 +101,12 @@ HloInstruction* FormatShape(HloInstruction* data,
             step.output_shape, data, padding, padding_config));
         break;
       }
+      case HloOpcode::kTranspose: {
+        CHECK(step.xpose_permutation.has_value());
+        data = computation->AddInstruction(HloInstruction::CreateTranspose(
+            step.output_shape, data, *step.xpose_permutation));
+        break;
+      }
       default:
         LOG(FATAL) << "Unsupported formatting step";
     }
@@ -133,6 +139,19 @@ HloInstruction* ReverseFormatShape(
         data = computation->AddInstruction(
             HloInstruction::CreateSlice(previous_shape, data, start_indices,
                                         previous_shape.dimensions(), strides));
+        break;
+      }
+      case HloOpcode::kTranspose: {
+        CHECK(step.xpose_permutation.has_value());
+        std::vector<int64_t> reverse_permutation;
+        reverse_permutation.reserve(step.xpose_permutation->size());
+        for (int64_t i = 0; i < step.xpose_permutation->size(); ++i) {
+          reverse_permutation.push_back(
+              absl::c_find(*step.xpose_permutation, i) -
+              step.xpose_permutation->begin());
+        }
+        data = computation->AddInstruction(HloInstruction::CreateTranspose(
+            previous_shape, data, reverse_permutation));
         break;
       }
       default:
