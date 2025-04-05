@@ -1,0 +1,73 @@
+[
+  {
+    "children": [
+      {
+        "children": [
+          {
+            "children": [
+              {
+                "children": [],
+                "frame": {
+                  "name": "cuda_kernel",
+                  "type": "function"
+                },
+                "metrics": {
+                  "count": 1,
+                  "device_id": "0",
+                  "device_type": "CUDA",
+                  "time (ns)": 4064
+                }
+              }
+            ],
+            "frame": {
+              "name": "__proton_launch_metadata",
+              "type": "function"
+            },
+            "metrics": {}
+          },
+          {
+            "children": [],
+            "frame": {
+              "name": "triton_kernel",
+              "type": "function"
+            },
+            "metrics": {
+              "bytes": 2.0,
+              "count": 1,
+              "device_id": "0",
+              "device_type": "CUDA",
+              "time (ns)": 1664
+            }
+          }
+        ],
+        "frame": {
+          "name": "scope",
+          "type": "function"
+        },
+        "metrics": {
+          "cpu_time (ns)": 12345
+        }
+      }
+    ],
+    "frame": {
+      "name": "ROOT",
+      "type": "function"
+    },
+    "metrics": {
+      "bytes": 0,
+      "count": 0,
+      "time (ns)": 0
+    }
+  },
+  {
+    "CUDA": {
+      "0": {
+        "arch": "86",
+        "bus_width": 128,
+        "clock_rate": 1140000,
+        "memory_clock_rate": 5501000,
+        "num_sms": 16
+      }
+    }
+  }
+]

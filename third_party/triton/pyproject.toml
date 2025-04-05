@@ -1,0 +1,16 @@
+[build-system]
+requires = ["setuptools>=40.8.0", "wheel", "cmake>=3.18", "ninja>=1.11.1"]
+
+[tool.yapf]
+based_on_style = "pep8"
+column_limit = 120
+disable_split_list_with_comment = true
+each_dict_entry_on_separate_line=false
+split_before_named_assigns = false
+split_complex_comprehension = true
+
+[tool.ruff]
+line-length = 120
+
+[tool.ruff.lint]
+ignore = ["E501", "E701", "E731", "E741"]

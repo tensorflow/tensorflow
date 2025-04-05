@@ -164,6 +164,7 @@ package(
 #     data = [
 #         ":copybara_library",
 #         "//learning/brain/testing/copybara:all_bara_sky",
+#         "//third_party/triton:copybara_library",
 #         "//third_party/tsl:copybara_library",
 #         "//third_party/xla:copybara_library",
 #     ],
