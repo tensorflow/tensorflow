@@ -121,7 +121,7 @@ std::optional<HloSharding> PropagateDimwiseSharding(
   CHECK(old_shape.IsArray());
 
   const auto& tile_assignment = input_spec.tile_assignment();
-  for (int64_t i = 0; i < old_shape.dimensions_size(); ++i) {
+  for (int64_t i = 0; i < old_shape.dimensions().size(); ++i) {
     if (tile_assignment.dim(i) > 1 &&
         new_shape.dimensions(i) != old_shape.dimensions(i)) {
       return std::nullopt;
@@ -144,7 +144,7 @@ std::optional<HloSharding> PropagateReduceWindowSharding(
   CHECK(!input_spec.IsTuple());
 
   const auto& tile_assignment = input_spec.tile_assignment();
-  for (int64_t i = 0; i < old_shape.dimensions_size(); ++i) {
+  for (int64_t i = 0; i < old_shape.dimensions().size(); ++i) {
     if (tile_assignment.dim(i) > 1 && window.dimensions(i).size() != 1) {
       return std::nullopt;
     }
@@ -265,7 +265,7 @@ void BatchDimMapForward(const std::vector<HloInstruction*>& instructions,
         if (batch_map.contains(GetBatchDimMapKey(operand))) {
           int value = batch_map[GetBatchDimMapKey(operand)];
           int old_dim = -1;
-          for (int i = 0; i < ins->shape().dimensions_size(); ++i) {
+          for (int i = 0; i < ins->shape().dimensions().size(); ++i) {
             if (absl::c_linear_search(dimensions, i)) {
               old_dim++;
             }
@@ -521,7 +521,7 @@ void BatchDimMapBackward(const std::vector<HloInstruction*>& instructions,
             !batch_map.contains(GetBatchDimMapKey(operand))) {
           int value = batch_map[GetBatchDimMapKey(ins)];
           int old_dim = -1;
-          for (int i = 0; i < ins->shape().dimensions_size(); ++i) {
+          for (int i = 0; i < ins->shape().dimensions().size(); ++i) {
             if (absl::c_linear_search(dimensions, i)) {
               old_dim++;
             }
@@ -914,7 +914,7 @@ bool IsAlwaysReplicated(const HloInstruction* inst) {
   if (inst->opcode() == HloOpcode::kConstant) {
     return true;
   }
-  if (inst->shape().dimensions_size() == 0) {
+  if (inst->shape().dimensions().size() == 0) {
     return true;
   }
   if (inst->opcode() == HloOpcode::kBroadcast) {
@@ -1211,7 +1211,7 @@ absl::StatusOr<Shape> ComputeIntermediateShape(const HloSharding& src_sharding,
 
   // Find an intermediate shape
   std::vector<int64_t> inter_shape_dims;
-  for (size_t i = 0; i < shape.dimensions_size(); ++i) {
+  for (size_t i = 0; i < shape.dimensions().size(); ++i) {
     if (sharding_1d->tile_assignment().dim(i) == 1) {
       inter_shape_dims.push_back(shape.dimensions(i));
     } else {
@@ -1501,7 +1501,7 @@ HloSharding TileV1(const Shape& tensor_shape,
   CHECK_EQ(tensor_dims.size(), mesh_dims.size());
   CHECK(tensor_shape.IsArray());
   std::vector<int64_t> tile_assignment_dimensions(
-      tensor_shape.dimensions_size(), 1);
+      tensor_shape.dimensions().size(), 1);
 
   // Split on certain mesh dimensions
   int64_t split_prod = 1;
@@ -1542,7 +1542,7 @@ HloSharding TileV1(const Shape& tensor_shape,
     }
 
     if (proceed_to_next_tensor_dim &&
-        current_tensor_dim == tensor_shape.dimensions_size() - 1) {
+        current_tensor_dim == tensor_shape.dimensions().size() - 1) {
       AppendFlattenElements(&tile_assignment_devices, device_mesh.DeviceArray(),
                             mesh_indices);
       return;
@@ -1598,7 +1598,7 @@ HloSharding TileV2(const Shape& tensor_shape,
   CHECK_EQ(tensor_dims.size(), mesh_dims.size());
   CHECK(tensor_shape.IsArray());
   std::vector<int64_t> tile_assignment_dimensions(
-      tensor_shape.dimensions_size(), 1);
+      tensor_shape.dimensions().size(), 1);
   std::vector<int> transpose_perm;
   absl::Span<const int64_t> reshape_dims = device_mesh.dimensions();
 
@@ -2261,8 +2261,9 @@ absl::StatusOr<bool> AdjustShardingsWithPartialMeshShape(
           output_flattened_shardings.push_back(sharding);
           continue;
         }
-        TF_ASSIGN_OR_RETURN(std::optional<HloSharding> new_sharding,
-                            adjust_sharding(shape.dimensions_size(), sharding));
+        TF_ASSIGN_OR_RETURN(
+            std::optional<HloSharding> new_sharding,
+            adjust_sharding(shape.dimensions().size(), sharding));
         output_flattened_shardings.push_back(
             new_sharding.has_value() ? *new_sharding : sharding);
         changed |= new_sharding.has_value();
@@ -2277,7 +2278,7 @@ absl::StatusOr<bool> AdjustShardingsWithPartialMeshShape(
     }
     TF_ASSIGN_OR_RETURN(
         std::optional<HloSharding> new_sharding,
-        adjust_sharding(inst->shape().dimensions_size(), inst->sharding()));
+        adjust_sharding(inst->shape().dimensions().size(), inst->sharding()));
     if (new_sharding.has_value()) {
       inst->set_sharding(*new_sharding);
       changed = true;
@@ -2538,7 +2539,7 @@ bool IsShardingMisaligned(const HloSharding& sharding, const Shape& shape) {
     return false;
   }
 
-  for (size_t i = 0; i < shape.dimensions_size(); ++i) {
+  for (size_t i = 0; i < shape.dimensions().size(); ++i) {
     int64_t shape_dim = shape.dimensions()[i];
     int64_t sharding_dim = sharding.tile_assignment().dim(i);
     if (shape_dim % sharding_dim != 0) {
