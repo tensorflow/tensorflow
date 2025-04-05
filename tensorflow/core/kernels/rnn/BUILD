@@ -37,6 +37,7 @@ tf_gpu_library(
         "//tensorflow/core/kernels:numeric_options_utils",
         "//tensorflow/core/platform:stream_executor",
         "@eigen_archive//:eigen3",
+        "@eigen_archive//:eigen3_test",
         "@local_xla//xla/tsl/framework/contraction:eigen_contraction_kernel",
     ],
 )
@@ -52,6 +53,7 @@ tf_kernel_library(
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@eigen_archive//:eigen3",
+        "@eigen_archive//:eigen3_test",
     ],
 )
 
@@ -64,5 +66,6 @@ tf_kernel_library(
         "//tensorflow/core:lib",
         "//tensorflow/core/kernels:eigen_helpers",
         "@eigen_archive//:eigen3",
+        "@eigen_archive//:eigen3_test",
     ],
 )
