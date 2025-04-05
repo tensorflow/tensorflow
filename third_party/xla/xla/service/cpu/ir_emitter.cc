@@ -696,7 +696,7 @@ absl::Status IrEmitter::HandleSort(HloInstruction* hlo) {
     higher_dimensions *= normalized_keys_shape.dimensions(i);
   }
   int64_t lower_dimensions = 1;
-  for (int64_t i = normalized_keys_shape.dimensions_size() - 1;
+  for (int64_t i = normalized_keys_shape.dimensions().size() - 1;
        i > physical_dimension_to_sort; --i) {
     lower_dimensions *= normalized_keys_shape.dimensions(i);
   }
@@ -827,7 +827,7 @@ absl::Status IrEmitter::HandleConvolution(HloInstruction* convolution) {
       // convolutions, except that we pretend that the 1D convolution is really
       // a 2D convolution with the missing dimension set to 1.  We also adjust
       // the padding, dilation parameters as needed.
-      bool one_dim_convolution = lhs_shape.dimensions_size() == 3;
+      bool one_dim_convolution = lhs_shape.dimensions().size() == 3;
       llvm::Value* lhs_address = GetEmittedValueFor(lhs);
       llvm::Value* rhs_address = GetEmittedValueFor(rhs);
       TF_RETURN_IF_ERROR(EmitTargetAddressForOp(convolution));
@@ -1009,7 +1009,7 @@ absl::Status IrEmitter::HandleFft(HloInstruction* fft) {
   // Flatten operand batches.
   absl::InlinedVector<int64_t, 4> operand_shape_flat(fft_rank + 1);
   int64_t input_batch = 1;
-  int64_t input_batch_length = fft->shape().dimensions_size() - fft_rank;
+  int64_t input_batch_length = fft->shape().dimensions().size() - fft_rank;
   for (int i = 0; i < input_batch_length; i++) {
     input_batch *= operand->shape().dimensions(i);
   }
@@ -1443,7 +1443,7 @@ static bool ReductionPreservesLayout(const HloInstruction& reduce) {
   const Shape& result_shape = reduce.shape();
 
   int64_t delta = 0;
-  for (int64_t i = 0; i < operand_shape.dimensions_size(); i++) {
+  for (int64_t i = 0; i < operand_shape.dimensions().size(); i++) {
     if (reduced_dims.contains(i)) {
       delta++;
     } else {
@@ -1455,7 +1455,7 @@ static bool ReductionPreservesLayout(const HloInstruction& reduce) {
   // dimensions in the source and target shapes are equivalent.
   int64_t result_dim_idx = 0;
   for (int64_t operand_dim_idx = 0;
-       operand_dim_idx < operand_shape.dimensions_size(); operand_dim_idx++) {
+       operand_dim_idx < operand_shape.dimensions().size(); operand_dim_idx++) {
     int64_t operand_dim =
         operand_shape.layout().minor_to_major(operand_dim_idx);
     if (!reduced_dims.contains(operand_dim)) {
@@ -1466,7 +1466,7 @@ static bool ReductionPreservesLayout(const HloInstruction& reduce) {
     }
   }
 
-  CHECK_EQ(result_dim_idx, result_shape.dimensions_size());
+  CHECK_EQ(result_dim_idx, result_shape.dimensions().size());
 
   return true;
 }
@@ -1811,7 +1811,7 @@ absl::StatusOr<bool> IrEmitter::EmitVectorizedReduce(
 
   llvm_ir::ForLoopNest loop_nest(IrName(reduce), b());
   std::vector<llvm::Value*> array_multi_index(
-      reduce->shape().dimensions_size());
+      reduce->shape().dimensions().size());
   for (int i = LayoutUtil::MinorToMajor(reduce->shape()).size() - 1; i > 0;
        --i) {
     int64_t dimension = LayoutUtil::Minor(reduce->shape().layout(), i);
@@ -1969,7 +1969,7 @@ absl::Status IrEmitter::HandleSlice(HloInstruction* slice) {
   }
 
   const Layout& layout = operand->shape().layout();
-  const int64_t num_dims = operand->shape().dimensions_size();
+  const int64_t num_dims = operand->shape().dimensions().size();
 
   // The slice lowering finds maximal contiguous blocks of memory that can be
   // copied from the source to the target. This is done by looking at the
@@ -2427,7 +2427,7 @@ absl::Status IrEmitter::HandleTopK(HloInstruction* hlo) {
   TF_RETURN_IF_ERROR(EmitTargetAddressForOp(hlo));
   const HloInstruction* input = hlo->operand(0);
   const int64_t k = hlo->shape().tuple_shapes(0).dimensions().back();
-  const bool has_batch = hlo->shape().tuple_shapes(0).dimensions_size() == 2;
+  const bool has_batch = hlo->shape().tuple_shapes(0).dimensions().size() == 2;
   TF_RET_CHECK(input->shape().element_type() == F32) << hlo->ToString();
   TF_RET_CHECK(LayoutUtil::IsMonotonicWithDim0Major(
       hlo->shape().tuple_shapes(0).layout()))

@@ -93,7 +93,7 @@ static Shape RowMajorShape(Shape shape) {
         if (!subshape->IsArray()) {
           return;
         }
-        std::vector<int64_t> dimension_order(subshape->dimensions_size());
+        std::vector<int64_t> dimension_order(subshape->dimensions().size());
         std::iota(dimension_order.rbegin(), dimension_order.rend(), 0);
         *subshape->mutable_layout() = LayoutUtil::MakeLayout(dimension_order);
       });
@@ -102,7 +102,7 @@ static Shape RowMajorShape(Shape shape) {
 
 static Shape ColMajorShape(const Shape& old_shape) {
   Shape new_shape(old_shape);
-  std::vector<int64_t> dimension_order(new_shape.dimensions_size());
+  std::vector<int64_t> dimension_order(new_shape.dimensions().size());
   std::iota(dimension_order.begin(), dimension_order.end(), 0);
   *new_shape.mutable_layout() = LayoutUtil::MakeLayout(dimension_order);
   return new_shape;
