@@ -1260,6 +1260,7 @@ int64_t PjRtCApiExecutable::SizeOfGeneratedCodeInBytes() const {
 
 absl::StatusOr<absl::flat_hash_map<std::string, PjRtValueType>>
 PjRtCApiExecutable::GetCostAnalysis() const {
+  LOG(INFO) << "In PjRtCApiExecutable::GetCostAnalysis";
   // Initialize function call args
   PJRT_Executable_GetCostAnalysis_Args args;
   args.struct_size = PJRT_Executable_GetCostAnalysis_Args_STRUCT_SIZE;

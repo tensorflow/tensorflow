@@ -152,6 +152,7 @@ class PjRtExecutable final
   }
 
   absl::StatusOr<xla::ifrt::AttributeMap> GetCostAnalysis() const override {
+    LOG(INFO) << "In (IFRT) PjRtExecutable::GetCostAnalysis";
     TF_ASSIGN_OR_RETURN(auto result, pjrt_executable_->GetCostAnalysis());
     return xla::ifrt::FromPjRtAttributeMap(std::move(result));
   }
@@ -302,6 +303,7 @@ class PjRtLoadedExecutable final
   }
 
   absl::StatusOr<xla::ifrt::AttributeMap> GetCostAnalysis() const override {
+    LOG(INFO) << "In (IFRT) PjRtLoadedExecutable::GetCostAnalysis";
     TF_ASSIGN_OR_RETURN(auto result,
                         pjrt_loaded_executable_->GetCostAnalysis());
     return xla::ifrt::FromPjRtAttributeMap(std::move(result));

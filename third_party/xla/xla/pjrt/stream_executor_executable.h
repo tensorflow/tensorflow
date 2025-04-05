@@ -69,6 +69,7 @@ class StreamExecutorExecutable : public PjRtExecutable {
     }
     return absl::UnimplementedError("GetOutputMemoryKinds is not supported.");
   }
+
   absl::StatusOr<absl::flat_hash_map<std::string, PjRtValueType>>
   GetCostAnalysis() const override {
     return absl::UnimplementedError("GetCostAnalysis is not supported.");

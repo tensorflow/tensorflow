@@ -40,6 +40,7 @@ limitations under the License.
 #include "xla/pjrt/plugin/xla_gpu/xla_gpu_client_options.h"
 #include "xla/service/compiler.h"
 #include "xla/tests/literal_test_util.h"
+#include "xla/tsl/platform/statusor.h"
 #include "tsl/platform/casts.h"
 #include "tsl/platform/statusor.h"
 
@@ -87,12 +88,13 @@ TEST(StreamExecutorGpuCompilerTest, SuccessAotCompileMlirAndLoad) {
   Compiler::TargetConfig gpu_target_config = xla::Compiler::TargetConfig(
       se_client->client()->backend().default_stream_executor());
   StreamExecutorGpuCompiler compiler(se_client->client()->platform()->id());
+  TF_ASSERT_OK_AND_ASSIGN(auto topology, se_client->GetTopologyDescription());
 
   mlir::MLIRContext context;
   context.loadDialect<mlir::mhlo::MhloDialect, mlir::func::FuncDialect>();
   auto mlir_module =
       mlir::parseSourceString<mlir::ModuleOp>(mlir_str, &context);
-  TF_ASSERT_OK_AND_ASSIGN(auto topology, se_client->GetTopologyDescription());
+
   xla::CompileOptions opts;
   opts.target_config = gpu_target_config;
 
@@ -116,11 +118,11 @@ TEST(StreamExecutorGpuCompilerTest, SuccessAotCompileXlaAndLoad) {
   Compiler::TargetConfig gpu_target_config{
       se_client->client()->backend().default_stream_executor()};
   StreamExecutorGpuCompiler compiler(se_client->client()->platform()->id());
+  TF_ASSERT_OK_AND_ASSIGN(auto topology, se_client->GetTopologyDescription());
 
   TF_ASSERT_OK_AND_ASSIGN(XlaComputation computation,
                           GetXlaComputation(kProgram));
-  TF_ASSERT_OK_AND_ASSIGN(const PjRtTopologyDescription* topology,
-                          se_client->GetTopologyDescription());
+
   xla::CompileOptions opts;
   opts.target_config = gpu_target_config;
 
@@ -151,8 +153,9 @@ TEST(StreamExecutorGpuCompilerTest, SuccessLoadFromSerializedExecutable) {
   TF_ASSERT_OK_AND_ASSIGN(const PjRtTopologyDescription* topology,
                           se_client->GetTopologyDescription());
   TF_ASSERT_OK_AND_ASSIGN(
-      std::unique_ptr<PjRtExecutable> executable,
-      compiler.Compile(opts, computation, *topology, /*client=*/nullptr));
+      std::unique_ptr<PjRtLoadedExecutable> loaded_executable,
+      compiler.CompileAndLoad(opts, computation, *topology,
+                              /*client=*/nullptr));
 
   // Serialize the executable and load it.
   TF_ASSERT_OK_AND_ASSIGN(std::string serialized_executable,
@@ -202,7 +205,7 @@ TEST(StreamExecutorGpuCompilerTest, SuccessSerializeDeserialize) {
       se_client->LoadSerializedExecutable(serialized_executable, std::nullopt,
                                           LoadOptions()));
 
-  EXPECT_EQ(deserialized_executable->name(), "Identity");
+  EXPECT_EQ(deserialized_executable->GetExecutable()->name(), "Identity");
 }
 
 }  // namespace
