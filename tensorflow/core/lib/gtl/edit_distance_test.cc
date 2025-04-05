@@ -17,10 +17,13 @@ limitations under the License.
 
 #include <cctype>
 #include <vector>
+
+#include "absl/types/span.h"
+#include "benchmark/benchmark.h"  // from @com_google_benchmark
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/test.h"
-#include "tensorflow/core/platform/test_benchmark.h"
 #include "tensorflow/core/platform/types.h"
+#include "tsl/platform/test_benchmark.h"
 
 namespace tensorflow {
 namespace gtl {
