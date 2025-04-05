@@ -38,7 +38,8 @@ class HloModuleImporter {
  public:
   explicit HloModuleImporter(mlir::ModuleOp module,
                              bool import_all_computation = false,
-                             bool flatten_computation_args_result = false);
+                             bool flatten_computation_args_result = false,
+                             bool emit_stablehlo = false);
 
   // Import the HloModule into the MLIR Module.
   absl::Status Import(const xla::HloModule& module);
@@ -50,6 +51,7 @@ class HloModuleImporter {
   bool import_all_computation_;
   bool flatten_computation_args_result_;
   mlir::SymbolTable symbol_table_;
+  bool emit_stablehlo_;
   mlir::Builder builder_;
 
   // Map for tracking which MLIR function map to which HLO Computation. This
