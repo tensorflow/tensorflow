@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/functional/any_invocable.h"
+#include "xla/pjrt/abstract_tracked_device_buffer.h"
 #include "xla/pjrt/event_pool.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/service/executable.h"
@@ -229,7 +230,7 @@ class RawSEDeviceMemory : public tsl::ReferenceCounted<RawSEDeviceMemory> {
 // owns all of the device memory in the tuple. It also tracks the definition and
 // usage of the memory on streams, to allow for synchronized usage and deletion
 // of memory under all of the allocation model semantics.
-class TrackedDeviceBuffer {
+class TrackedDeviceBuffer : public AbstractTrackedDeviceBuffer {
  public:
   // Helper object to keep track of usage of the buffer on streams.
   struct StreamAndEvent {
@@ -284,6 +285,9 @@ class TrackedDeviceBuffer {
   // Relinquishes ownership of the buffer's device memory, e.g., after the
   // buffer is passed to a computation that aliases its inputs to outputs.
   void ReleaseDeviceMemory();
+
+  // Only to be called by ScopedHold to mark a successful donation.
+  void ConfirmDonation() override;
 
   // Indicates that the buffer has been used on a stream.
   //

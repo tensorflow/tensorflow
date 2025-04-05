@@ -286,6 +286,13 @@ void TrackedDeviceBuffer::ReleaseDeviceMemory() {
   device_memory_ = tsl::RCReference<RawSEDeviceMemory>();
 }
 
+void TrackedDeviceBuffer::ConfirmDonation() {
+  // As a sanity check ensure no more usage events can be added to the buffer.
+  LockUseAndTransferUsageEvents();
+  // Release the memory so that no new usage is possible.
+  ReleaseDeviceMemory();
+}
+
 void TrackedDeviceBuffer::AddUsageEvent(
     se::Stream* usage_stream, std::shared_ptr<BufferSequencingEvent> event,
     bool reference_held) {
