@@ -185,7 +185,12 @@ class AsynchronousCopyResource {
   // The constructor needs the initial resources.
   explicit AsynchronousCopyResource(absl::Span<const float> initial_resources)
       : initial_resources_(initial_resources.begin(), initial_resources.end()),
-        delay_(initial_resources.size(), 0) {}
+        delay_(initial_resources.size(), 0) {
+    for (int i = 0; i < initial_resources.size(); ++i) {
+      initial_resources_scaled_.push_back(
+          GetScaledIntegerResource(initial_resources[i]));
+    }
+  }
 
   // Adds the given asynchronous copy and updates the current resources. CHECK
   // fails if there aren't enough resources to satisfy this copy (the caller
@@ -204,13 +209,24 @@ class AsynchronousCopyResource {
   // order specified.
   bool HasEnoughResourceMultiCheck(const std::vector<ResourceSpec>& specs);
 
+  int64_t GetScaledIntegerResource(float resource) const {
+    float scaled_value = resource * kCopyResourceIntScale;
+    int64_t scaled_value_int = static_cast<int64_t>(scaled_value);
+    return scaled_value_int;
+  }
+
+  float GetDescaledFloatResource(int64_t scaled_resource) const {
+    return scaled_resource / kCopyResourceIntScale;
+  }
+
   // This is only used for debugging and testing purposes, it returns the
   // currently available resource at each logical time.
   std::vector<float> GetCurrentResources() const {
     std::vector<float> current_resources(initial_resources_.begin(),
                                          initial_resources_.end());
     for (int i = 0; i < current_resources.size(); ++i) {
-      current_resources[i] -= std::min(current_resources[i], delay_[i]);
+      current_resources[i] -=
+          std::min(current_resources[i], GetDescaledFloatResource(delay_[i]));
     }
     return current_resources;
   }
@@ -220,6 +236,11 @@ class AsynchronousCopyResource {
   std::string Dump(int64_t start_time, int64_t end_time,
                    MemorySpace memory_space_filter) const;
 
+  // The scale factor to convert a float resource to an integer resource. Note
+  // that is a power of 2 to avoid introducing noise when casting the scaled
+  // value to an int64_t.
+  static constexpr int64_t kCopyResourceIntScale = 1ULL << 50;
+
  private:
   // Internal helper method to implement adding/removing/checking resources.
   // ConsumeResource() may modify delay_. If delay_changes is not null,
@@ -227,9 +248,9 @@ class AsynchronousCopyResource {
   // delay_changes, allowing callers to undo any modifications by iterating over
   // the vector in reverse order.
   bool ConsumeResource(
-      int64_t exclusive_start_time, int64_t end_time, float resource,
-      std::vector<std::pair<int64_t, float>>* delay_changes = nullptr,
-      float resource_to_free = 0.0);
+      int64_t exclusive_start_time, int64_t end_time, int64_t resource,
+      std::vector<std::pair<int64_t, int64_t>>* delay_changes = nullptr,
+      int64_t resource_to_free = 0.0);
 
   // Same as the public RemoveCopy except it works on the async_copies_
   // iterator. Assumes copy_it points to the last copy for its start time;
@@ -253,7 +274,8 @@ class AsynchronousCopyResource {
   std::map<int64_t, std::list<AsynchronousCopy>::iterator> async_copy_time_map_;
 #endif
   std::vector<float> initial_resources_;
-  std::vector<float> delay_;
+  std::vector<int64_t> initial_resources_scaled_;
+  std::vector<int64_t> delay_;
 };
 
 // This class inherits from GlobalDecreasingSizeBestFitHeap with a notion of

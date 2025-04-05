@@ -9946,6 +9946,28 @@ TEST_F(AsynchronousCopyResourceTest, StartAtZeroAndRemove) {
             std::vector<float>({0.0, 0.0, 0.0, 0.0, 2.0}));
 }
 
+// Below test only works when the resource values are scaled to int64 to avoid
+// floating point precision issues.
+TEST_F(AsynchronousCopyResourceTest, ConsumeResourceScaledIntegerResource) {
+  auto alternate_mem_space = MemorySpace::kAlternate;
+  AsynchronousCopyResource resource(
+      {5.71429e-10, 8.71333e-09, 8.71333e-09, 1.74267e-08, 1.74267e-08});
+  AsynchronousCopy copy1{0, 2, 8.71333e-09, alternate_mem_space, 0};
+  EXPECT_TRUE(resource.HasEnoughResource(0, 2, 8.71333e-09));
+  resource.AddCopy(copy1);
+
+  AsynchronousCopy copy2{0, 3, 4.35667e-09, alternate_mem_space, 1};
+  EXPECT_TRUE(resource.HasEnoughResource(0, 3, 4.35667e-09));
+  resource.AddCopy(copy2);
+
+  AsynchronousCopy copy3{2, 4, 4.35667e-09, alternate_mem_space, 2};
+  EXPECT_TRUE(resource.HasEnoughResource(2, 4, 4.35667e-09));
+  resource.AddCopy(copy3);
+
+  // This call to RemoveCopy should not cause a crash.
+  resource.RemoveCopy(copy1);
+}
+
 TEST_F(AsynchronousCopyResourceTest, OutOfOrderRemovalSameStartTime) {
   // time:      0 1 2 3 4
   // resource:  2 2 2 2 2

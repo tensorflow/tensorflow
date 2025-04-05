@@ -3229,16 +3229,16 @@ bool AsynchronousCopyOrdering::ViolatesOrdering(int64_t exclusive_start_time,
 }
 
 bool AsynchronousCopyResource::ConsumeResource(
-    int64_t exclusive_start_time, int64_t end_time, float resource,
-    std::vector<std::pair<int64_t, float>>* delay_changes,
-    float resource_to_free) {
+    int64_t exclusive_start_time, int64_t end_time, int64_t resource,
+    std::vector<std::pair<int64_t, int64_t>>* delay_changes,
+    int64_t resource_to_free) {
   // Cache the pointers to the arrays to avoid the overhead of `operator[]`
   // size checks in hardened libc++.
   //
   // NOTE: Do not modify the vectors `initial_resources_` or `delay_` in this
   // function, otherwise the pointers will become dangling.
-  float* initial_resources_ptr = initial_resources_.data();
-  float* delay_ptr = delay_.data();
+  int64_t* initial_resources_scaled_ptr = initial_resources_scaled_.data();
+  int64_t* delay_ptr = delay_.data();
 
   std::list<AsynchronousCopy>::iterator current_copy = async_copies_.end();
   // In order to propagate the resource to the next scheduled copy, we iterate
@@ -3247,7 +3247,7 @@ bool AsynchronousCopyResource::ConsumeResource(
   // resource (and return false).
   while (true) {
     // resource is modified below. We save its initial value for logging below.
-    const float amount_requested = resource;
+    const int64_t amount_requested = resource;
 
     VLOG(3) << "Consume resource: start time_exclusive = "
             << exclusive_start_time << ", end time = " << end_time
@@ -3261,7 +3261,7 @@ bool AsynchronousCopyResource::ConsumeResource(
                    end_time);
 
     // Nothing to do if we're not adding or removing any resources.
-    if (resource == 0.0 && resource_to_free == 0.0) {
+    if (resource == 0 && resource_to_free == 0) {
       return true;
     }
 
@@ -3290,13 +3290,14 @@ bool AsynchronousCopyResource::ConsumeResource(
     // Check if this copy will push the next copy later in time (or if removing
     // the resource, check if the removal of this copy move the next copy
     // earlier in time).
-    std::optional<float> delay_for_next_copy = std::nullopt;
-    float resource_freed = 0.0;
+    std::optional<int64_t> delay_for_next_copy = std::nullopt;
+    int64_t resource_freed = 0;
     for (int64_t time = ExclusiveToInclusiveStartTime(exclusive_start_time);
          time < end_time && resource != 0; ++time) {
+      int64_t initial_resource_scaled = initial_resources_scaled_ptr[time];
       // Iterate over the logical times that this copy spans. Note that the
       // start and end time ranges are exclusive.
-      float used_resource = std::min(resource, initial_resources_ptr[time]);
+      int64_t used_resource = std::min(resource, initial_resource_scaled);
       if (next_copy != async_copies_.end() &&
           next_copy->exclusive_start_time ==
               InclusiveToExclusiveStartTime(time)) {
@@ -3309,13 +3310,13 @@ bool AsynchronousCopyResource::ConsumeResource(
       if (!delay_for_next_copy.has_value()) {
         // Update the delay_ vector and resource_freed variable with the amount
         // that was freed when removing the copy.
-        float old_delay = delay_ptr[time];
-        float old_resource =
-            std::max(0.0f, initial_resources_ptr[time] - old_delay);
-        float new_delay = std::max(0.0f, resource - resource_to_free);
-        float new_resource =
-            std::max(0.0f, initial_resources_ptr[time] - new_delay);
-        resource_freed += std::max(0.0f, new_resource - old_resource);
+        int64_t old_delay = delay_ptr[time];
+        int64_t old_resource =
+            std::max<int64_t>(0, initial_resource_scaled - old_delay);
+        int64_t new_delay = std::max<int64_t>(0, resource - resource_to_free);
+        int64_t new_resource =
+            std::max<int64_t>(0, initial_resource_scaled - new_delay);
+        resource_freed += std::max<int64_t>(0, new_resource - old_resource);
         delay_ptr[time] = new_delay;
         if (delay_changes) {
           delay_changes->emplace_back(time, old_delay);
@@ -3325,7 +3326,8 @@ bool AsynchronousCopyResource::ConsumeResource(
       resource -= used_resource;
     }
 
-    // If resource isn't satisfied by the end, we didn't have enough resources.
+    // If resource isn't satisfied by the end, we didn't have enough
+    // resources.
     if (resource > 0) {
       VLOG(3) << "Doesn't have enough resource; requested resource = "
               << amount_requested << "; leftover resources = " << resource;
@@ -3340,14 +3342,15 @@ bool AsynchronousCopyResource::ConsumeResource(
     // removed.
     exclusive_start_time = next_copy->exclusive_start_time;
     end_time = next_copy->end_time;
-    resource = *delay_for_next_copy + next_copy->resource;
+    resource =
+        *delay_for_next_copy + GetScaledIntegerResource(next_copy->resource);
     current_copy = next_copy;
   }
 }
 
 void AsynchronousCopyResource::AddCopy(const AsynchronousCopy& copy) {
-  CHECK(
-      ConsumeResource(copy.exclusive_start_time, copy.end_time, copy.resource));
+  CHECK(ConsumeResource(copy.exclusive_start_time, copy.end_time,
+                        GetScaledIntegerResource(copy.resource)));
 
   // Find the iterator for the copy that would be right after this copy and put
   // this copy right before it in async_copies_.
@@ -3413,10 +3416,11 @@ void AsynchronousCopyResource::RemoveCopy(
   CHECK(std::next(copy_it) == async_copies_.end() ||
         std::next(copy_it)->exclusive_start_time >
             copy_it->exclusive_start_time);
-  CHECK(ConsumeResource(copy_it->exclusive_start_time, copy_it->end_time,
-                        /*resource=*/0,
-                        /*delay_changes=*/nullptr,
-                        /*resource_to_free=*/copy_it->resource));
+  CHECK(ConsumeResource(
+      copy_it->exclusive_start_time, copy_it->end_time,
+      /*resource=*/0,
+      /*delay_changes=*/nullptr,
+      /*resource_to_free=*/GetScaledIntegerResource(copy_it->resource)));
   // If the copy to be removed is the value pointed by async_copy_time_map_, we
   // make the next copy with the same start time to be pointed by
   // async_copy_time_map_. If there are no such copies, we remove the key for
@@ -3437,10 +3441,11 @@ void AsynchronousCopyResource::RemoveCopy(
 bool AsynchronousCopyResource::HasEnoughResource(int64_t exclusive_start_time,
                                                  int64_t end_time,
                                                  float resource) {
-  std::vector<std::pair<int64_t, float>> delay_changes;
+  std::vector<std::pair<int64_t, int64_t>> delay_changes;
   delay_changes.reserve(delay_.size());
   bool result =
-      ConsumeResource(exclusive_start_time, end_time, resource, &delay_changes);
+      ConsumeResource(exclusive_start_time, end_time,
+                      GetScaledIntegerResource(resource), &delay_changes);
   // Apply the delay changes in reverse order. This ensures that the original
   // value of each delay is restored.
   if (!delay_changes.empty()) {
@@ -3454,11 +3459,12 @@ bool AsynchronousCopyResource::HasEnoughResource(int64_t exclusive_start_time,
 
 bool AsynchronousCopyResource::HasEnoughResourceMultiCheck(
     const std::vector<ResourceSpec>& specs) {
-  std::vector<std::pair<int64_t, float>> delay_changes;
+  std::vector<std::pair<int64_t, int64_t>> delay_changes;
   delay_changes.reserve(delay_.size());
   bool result = absl::c_all_of(specs, [&](const ResourceSpec& spec) {
     return ConsumeResource(spec.exclusive_start_time, spec.end_time,
-                           spec.resource, &delay_changes);
+                           GetScaledIntegerResource(spec.resource),
+                           &delay_changes);
   });
   // Apply the delay changes in reverse order. This ensures that the original
   // value of each delay is restored.
@@ -3492,7 +3498,7 @@ std::string AsynchronousCopyResource::Dump(
   for (int i = start_time; i < end_time; ++i) {
     time_dump_data.push_back({
         initial_resources_[i],
-        delay_[i],
+        GetDescaledFloatResource(delay_[i]),
         available[i],
         /*overlapping_copies=*/{},
     });
