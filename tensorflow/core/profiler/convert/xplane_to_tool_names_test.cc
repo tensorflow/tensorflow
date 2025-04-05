@@ -119,7 +119,9 @@ TEST_P(XPlaneToToolsTest, ToolsList) {
   std::vector<std::string> expected_tools = {
       "trace_viewer",
       "overview_page",
-      "input_pipeline_analyzer",
+      // TODO(jonahweaver): Re-enable input_pipeline_analyzer when it is ready.
+      // b/407096031
+      // "input_pipeline_analyzer",
       "framework_op_stats",
       "memory_profile",
       "pod_viewer",
