@@ -26,6 +26,12 @@
 
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "tensorflow/lite/experimental/litert/c/litert_common.h"
+#include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
+#include "tensorflow/lite/experimental/litert/cc/litert_macros.h"  // IWYU pragma: keep
+#include "tensorflow/lite/experimental/litert/cc/litert_shared_library.h"
+#include "tensorflow/lite/experimental/litert/vendors/qualcomm/common.h"
+#include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/backends/perf_control.h"
 #include "third_party/qairt/latest/include/QNN/HTP/QnnHtpDevice.h"
 #include "third_party/qairt/latest/include/QNN/QnnBackend.h"
 #include "third_party/qairt/latest/include/QNN/QnnCommon.h"
@@ -34,11 +40,6 @@
 #include "third_party/qairt/latest/include/QNN/QnnTypes.h"
 #include "third_party/qairt/latest/include/QNN/System/QnnSystemContext.h"
 #include "third_party/qairt/latest/include/QNN/System/QnnSystemInterface.h"
-#include "tensorflow/lite/experimental/litert/c/litert_common.h"
-#include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
-#include "tensorflow/lite/experimental/litert/cc/litert_macros.h"  // IWYU pragma: keep
-#include "tensorflow/lite/experimental/litert/cc/litert_shared_library.h"
-#include "tensorflow/lite/experimental/litert/vendors/qualcomm/common.h"
 
 //===----------------------------------------------------------------------===//
 //
@@ -196,6 +197,7 @@ class QnnManager {
   Qnn_BackendHandle_t backend_handle_ = nullptr;
   Qnn_DeviceHandle_t device_handle_ = nullptr;
   QnnHtpDevice_Arch_t soc_model_ = QNN_HTP_DEVICE_ARCH_UNKNOWN;
+  std::unique_ptr<::qnn::PerfControl> perf_control_ = nullptr;
 };
 
 // Unfortunately we can't use std::unique_ptr with a deleter because
