@@ -74,8 +74,8 @@ xla::PrecisionConfig GetPrecisionConfig() {
 // If `shape` is [H, W, ..., M, N] returns [H, W, ..., 1, M*N].
 xla::Shape GroupedFilterShapeForDepthwiseConvolution(
     const xla::Shape& filter_shape) {
-  int64_t input_feature_dim = filter_shape.dimensions_size() - 2;
-  int64_t output_feature_dim = filter_shape.dimensions_size() - 1;
+  int64_t input_feature_dim = filter_shape.dimensions().size() - 2;
+  int64_t output_feature_dim = filter_shape.dimensions().size() - 1;
   int64_t depthwise_multiplier = filter_shape.dimensions(output_feature_dim);
   int64_t input_feature = filter_shape.dimensions(input_feature_dim);
 
@@ -93,7 +93,7 @@ xla::XlaOp TransposeFilterForGroupConvolutionBackpropInput(
     int num_spatial_dims) {
   // 1. Reshape from [H, W, ..., filter_in_depth, out_depth] to [H, W, ...,
   // filter_in_depth, G, out_depth / G]
-  int num_dims = filter_shape.dimensions_size();
+  int num_dims = filter_shape.dimensions().size();
   CHECK_GE(num_dims, 2);  // Crash OK
   xla::Shape new_shape = filter_shape;
   new_shape.set_dimensions(num_dims - 1, num_groups);
@@ -256,11 +256,11 @@ absl::StatusOr<xla::XlaOp> MakeXlaForwardConvOp(
 
   // For 2D convolution, there should be 4 dimensions.
   int num_dims = attrs.num_spatial_dims + 2;
-  if (input_shape.dimensions_size() != num_dims) {
+  if (input_shape.dimensions().size() != num_dims) {
     return errors::InvalidArgument("input must be ", num_dims, "-dimensional",
                                    input_shape.DebugString());
   }
-  if (filter_shape.dimensions_size() != num_dims) {
+  if (filter_shape.dimensions().size() != num_dims) {
     return errors::InvalidArgument(
         "filter must be ", num_dims,
         "-dimensional: ", filter_shape.DebugString());
