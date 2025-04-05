@@ -13,8 +13,9 @@
 # limitations under the License.
 # ==============================================================================
 
-load("//tensorflow:tensorflow.default.bzl", "pybind_extension")
-load("//tensorflow/compiler/mlir/lite:symlink_files.bzl", "symlink_files")
+# load("@local_xla//xla/tsl:tsl.bzl", pybind_extension = "tsl_pybind_extension_opensource")
+
+load("//third_party/bazel_rules/rules_python/python:py_extension.bzl", "py_extension")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -32,28 +33,29 @@ COPTS = [
     "-frtti",
 ]
 
-pybind_extension(
+py_extension(
     name = "_mlir",
     srcs = [
         "@llvm-project//mlir:lib/Bindings/Python/MainModule.cpp",
     ],
     copts = COPTS,
-    pytype_srcs = [
-        ":_mlirPyi",
-    ],
+    # pytype_srcs = [
+    #     ":_mlirPyi",
+    # ],
     deps = [
         "@llvm-project//mlir:MLIRBindingsPythonCore",
+        "@llvm-project//mlir:MLIRBindingsPythonHeadersAndDeps",
         "@llvm-project//mlir:MLIRBindingsPythonNanobindHeaders",
         "@nanobind",
     ],
 )
 
-symlink_files(
-    name = "_mlirPyi",
-    srcs = [
-        "@llvm-project//mlir/python:IRPyIFiles",
-        "@llvm-project//mlir/python:PassManagerPyIFiles",
-    ],
-    dst = "_mlir",
-    flatten = True,
-)
+# symlink_files(
+#     name = "_mlirPyi",
+#     srcs = [
+#         "@llvm-project//mlir/python:IRPyIFiles",
+#         "@llvm-project//mlir/python:PassManagerPyIFiles",
+#     ],
+#     dst = "_mlir",
+#     flatten = True,
+# )
