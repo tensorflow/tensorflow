@@ -114,14 +114,14 @@ Examples:
                                      --repo_env=ML_WHEEL_BUILD_DATE=20250107
 2. release wheel version: 2.19.0
    Env vars passed to Bazel command: --repo_env=ML_WHEEL_TYPE=release
-3. release candidate wheel version: 2.19.0-rc1
+3. release candidate wheel version: 2.19.0rc1
    Env vars passed to Bazel command: --repo_env=ML_WHEEL_TYPE=release
-                                     --repo_env=ML_WHEEL_VERSION_SUFFIX=-rc1
-4. custom wheel version: 2.19.0.dev20250107+cbe478fc5-custom
+                                     --repo_env=ML_WHEEL_VERSION_SUFFIX=rc1
+4. custom wheel version: 2.19.0.dev20250107+cbe478fc5custom
    Env vars passed to Bazel command: --repo_env=ML_WHEEL_TYPE=custom
                                      --repo_env=ML_WHEEL_BUILD_DATE=$(git show -s --format=%as HEAD)
                                      --repo_env=ML_WHEEL_GIT_HASH=$(git rev-parse HEAD)
-                                     --repo_env=ML_WHEEL_VERSION_SUFFIX=-custom
+                                     --repo_env=ML_WHEEL_VERSION_SUFFIX=custom
 5. snapshot wheel version: 2.19.0.dev0+selfbuilt
    Env vars passed to Bazel command: --repo_env=ML_WHEEL_TYPE=snapshot
 
@@ -192,10 +192,38 @@ collect_data_aspect = aspect(
     },
 )
 
+def _collect_symlink_data_aspect_impl(_, ctx):
+    files = {}
+    extensions = ctx.attr._extensions
+    if hasattr(ctx.rule.attr, "deps"):
+        for dep in ctx.rule.attr.deps:
+            if dep[DefaultInfo].default_runfiles and dep[DefaultInfo].default_runfiles.files:
+                for file in dep[DefaultInfo].default_runfiles.files.to_list():
+                    if "pypi" in file.path or file.path.startswith("_solib_"):
+                        continue
+                    if any([file.path.endswith(ext) for ext in extensions]):
+                        files[file] = True
+
+    return [FilePathInfo(files = depset(files.keys()))]
+
+collect_symlink_data_aspect = aspect(
+    implementation = _collect_symlink_data_aspect_impl,
+    attr_aspects = ["symlink_deps"],
+    attrs = {
+        "_extensions": attr.string_list(
+            default = [".so", ".pyd", ".pyi", ".dll", ".dylib", ".lib", ".pd"],
+        ),
+    },
+)
+
 def _collect_data_files_impl(ctx):
     files = []
     for dep in ctx.attr.deps:
         files.extend((dep[FilePathInfo].files.to_list()))
+    for dep in ctx.attr.symlink_deps:
+        for f in dep[FilePathInfo].files.to_list():
+            if f not in files:
+                files.append(f)
     return [DefaultInfo(files = depset(
         files,
     ))]
@@ -205,6 +233,9 @@ collect_data_files = rule(
     attrs = {
         "deps": attr.label_list(
             aspects = [collect_data_aspect],
+        ),
+        "symlink_deps": attr.label_list(
+            aspects = [collect_symlink_data_aspect],
         ),
     },
 )
