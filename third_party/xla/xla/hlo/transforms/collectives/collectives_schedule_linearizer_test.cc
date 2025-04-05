@@ -252,6 +252,13 @@ ENTRY entry {
     if (instruction->name() == "c1") EXPECT_TRUE(found_i0);
     if (instruction->name() == "i0") found_i0 = true;
   }
+  // Calling MakeInstructionPostOrder() again to verify idempotence.
+  auto post_order = module->entry_computation()->MakeInstructionPostOrder();
+  found_i0 = false;
+  for (HloInstruction *instruction : post_order) {
+    if (instruction->name() == "c1") EXPECT_TRUE(found_i0);
+    if (instruction->name() == "i0") found_i0 = true;
+  }
 }
 
 }  // namespace
