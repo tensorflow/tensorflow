@@ -169,6 +169,8 @@ bool IsEvaluatedMoreThanOnce(const HloInstruction* instr) {
 
 using SubgraphId = int;
 
+constexpr int kMaxHloOpsPerSubgraph = 2000;
+
 // HloSubgraphData is associated with a single HLO instruction and contains
 // the necessary information to partition the computation into subgraphs.
 struct HloSubgraphData {
@@ -180,6 +182,8 @@ struct HloSubgraphData {
   SubgraphId subgraph_id = -1;
   // Whether the instruction is a root of the subgraph.
   bool is_root = false;
+  // Number of users.
+  int num_users = 0;
 };
 
 PartitionedComputation::PartitionedComputation(
@@ -197,6 +201,7 @@ PartitionedComputation::PartitionedComputation(
 
   SubgraphId subgraph_count = 0;
   std::vector<HloSubgraphData> id_to_subgraph_data(pre_order.size());
+  std::vector<int> num_ops_per_subgraph;
   // Iterate over the use-def chains and check if the instruction should be
   // placed in a separate function.
   for (auto [instr_index, instr] : llvm::enumerate(pre_order)) {
@@ -208,12 +213,26 @@ PartitionedComputation::PartitionedComputation(
         is_subgraph_root(instr) ||
         instr_subgraph_data.user_subgraph_ids.size() != 1 ||
         instr_subgraph_data.indexings.size() > 1;
-    if (instr_subgraph_data.is_root) {
+    bool is_large_subgraph =
+        instr_subgraph_data.subgraph_id > -1 &&
+        num_ops_per_subgraph[instr_subgraph_data.subgraph_id] >=
+            kMaxHloOpsPerSubgraph;
+    if (instr_subgraph_data.is_root || is_large_subgraph) {
       instr_subgraph_data.subgraph_id = subgraph_count++;
       instr_subgraph_data.indexings.clear();
+      num_ops_per_subgraph.push_back(1);
     } else {
       instr_subgraph_data.subgraph_id =
           *instr_subgraph_data.user_subgraph_ids.begin();
+      ++num_ops_per_subgraph.at(instr_subgraph_data.subgraph_id);
+    }
+    if (num_ops_per_subgraph.at(instr_subgraph_data.subgraph_id) >
+            kMaxHloOpsPerSubgraph &&
+        instr_subgraph_data.num_users == 1) {
+      instr_subgraph_data.subgraph_id = subgraph_count++;
+      instr_subgraph_data.is_root = true;
+      instr_subgraph_data.indexings.clear();
+      num_ops_per_subgraph.push_back(1);
     }
     auto operands_indexing = ComputeOperandIndexingMaps(instr, mlir_context);
     // Iterate over the operands and add the func_ids of the current instruction
@@ -222,6 +241,7 @@ PartitionedComputation::PartitionedComputation(
          llvm::zip(instr->operands(), operands_indexing)) {
       auto& operand_subgraph_data =
           id_to_subgraph_data[instr_to_id[operand_instr]];
+      ++operand_subgraph_data.num_users;
       IndexingMap instr_indexing = instr_subgraph_data.indexings.empty()
                                        ? IndexingMap::GetUndefined()
                                        : *instr_subgraph_data.indexings.begin();
