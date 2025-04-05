@@ -38,6 +38,7 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/Casting.h"
+#include "llvm/Support/Debug.h"
 #include "llvm/Support/LogicalResult.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
@@ -115,6 +116,8 @@ using ::tsl::uint16;
 using ::tsl::uint32;
 using ::tsl::uint64;
 using ::tsl::uint8;
+
+#define DEBUG_TYPE "xla-translate"
 
 // Boolean attribute.
 constexpr char kJaxBufferDonor[] = "jax.buffer_donor";
@@ -4070,11 +4073,14 @@ LogicalResult ConvertToHloModule::LowerBasicBlockAsFunction(
   }
 
   xla::XlaOp return_value;
-  for (auto& inst : *block)
+  for (auto& inst : *block) {
+    if (isa<stablehlo::StablehloDialect>(inst.getDialect()))
+      LLVM_DEBUG(llvm::dbgs() << "Direct StableHLO to HLO Lowering: "
+                              << inst.getName().getStringRef() << "\n");
     if (failed(Lower(&inst, is_entry_function, ret_shardings, implicit_results,
                      builder, &lowering, &return_value)))
       return failure();
-
+  }
   // Build the XlaComputation and check for failures.
   auto computation_or =
       return_value.valid() ? builder->Build(return_value) : builder->Build();
@@ -4154,7 +4160,7 @@ absl::Status ConvertMlirHloToHlo(mlir::ModuleOp module,
   // temporarily support StableHLO to MHLO lowering here as well to ensure
   // a smooth migration.
   mlir::PassManager pm(module->getContext());
-  pm.addPass(mlir::mhlo::createStablehloLegalizeToHloPass());
+  pm.addPass(mlir::mhlo::createStablehloLegalizeToHloPass(/*options=*/{false}));
   if (failed(pm.run(module))) {
     return tsl::errors::Internal("Unable to convert StableHLO to MHLO");
   }
