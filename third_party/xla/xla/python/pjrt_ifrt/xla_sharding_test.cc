@@ -21,6 +21,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/hash/hash_testing.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/hlo/ir/tile_assignment.h"
@@ -32,7 +33,6 @@ limitations under the License.
 #include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
-#include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/status_matchers.h"
 #include "xla/tsl/platform/statusor.h"
@@ -921,6 +921,22 @@ TEST_P(HloShardingTest, DisassembleFailsWithDynamicShape) {
   EXPECT_THAT(sharding->Disassemble(dynamic_shape),
               StatusIs(tsl::error::INVALID_ARGUMENT,
                        HasSubstr("can only disassemble static shape")));
+}
+
+TEST_P(HloShardingTest, Hash) {
+  EXPECT_TRUE(absl::VerifyTypeImplementsAbslHashCorrectly({
+      HloSharding::Create(GetDevices({0, 1, 2, 3, 4, 5}), MemoryKind(),
+                          xla::HloSharding::Replicate()),
+      HloSharding::Create(GetDevices({0}), MemoryKind(),
+                          xla::HloSharding::Replicate()),
+      HloSharding::Create(GetDevices({0}), MemoryKind("pinned_host"),
+                          xla::HloSharding::Replicate()),
+      HloSharding::Create(GetDevices({0, 1, 2, 3, 4, 5}), MemoryKind(),
+                          xla::HloSharding::AssignDevice(/*device_id=*/0)),
+      HloSharding::Create(GetDevices({0, 1, 2, 3, 4, 5}), MemoryKind(),
+                          xla::HloSharding::PartialTile(xla::TileAssignment(
+                              xla::IotaTileAssignment::Create({2, 3})))),
+  }));
 }
 
 INSTANTIATE_TEST_SUITE_P(NumDevices, HloShardingTest,
