@@ -456,12 +456,12 @@ bool simplifyLoopDeallocs(Block& block) {
     }
 
     for (auto it = eq.begin(), e = eq.end(); it != e; ++it) {
-      if (!it->isLeader()) continue;
+      if (!(*it)->isLeader()) continue;
 
       breaks_if_you_move_ops::ValueSet equivalentOperands;
       llvm::SmallVector<memref::DeallocOp> deallocs;
       bool failed = false;
-      for (auto member = eq.member_begin(*it);
+      for (auto member = eq.member_begin(**it);
            !failed && member != eq.member_end(); ++member) {
         if (operands.contains(*member)) {
           equivalentOperands.insert(*member);
