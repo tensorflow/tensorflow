@@ -710,7 +710,7 @@ absl::Status LayoutAssignment::AddMandatoryConstraints(
         ShapeLayout parameter_layout =
             constraints->computation_layout().parameter_layout(
                 instruction->parameter_number());
-        // Allow some paramter/result layouts to be unset in the entry
+        // Allow some parameter/result layouts to be unset in the entry
         // computation.
         if (parameter_layout.AnyLayoutIsSet()) {
           // Clear out memory space in layout. Host offloader will do the
@@ -1386,7 +1386,7 @@ std::unique_ptr<Layout> LayoutAssignment::ChooseOperandLayoutFromOutputLayout(
   }
 
   if (instruction->opcode() == HloOpcode::kReshape) {
-    // Prefer the operand layout that makes the reshape an bitcast. If any
+    // Prefer the operand layout that makes the reshape a bitcast. If any
     // dimension bound is 1 in the operand shape, there may be several such
     // layouts. So if 'output_layout' is the default layout, try if the
     // reshape is a bitcast when using the same layout. This may avoid copy
@@ -2707,63 +2707,9 @@ absl::StatusOr<bool> LayoutAssignment::Run(
                             entry_computation_layout_->AnyLayoutSet()
                                 ? LayoutConstraint::kGivenPriority
                                 : LayoutConstraint::kDefaultPriority));
-  for (int64_t i = 0; i < kNumberOfPropagationRounds; ++i) {
-    if (i > 0) {
-      LayoutConstraints* constraints =
-          mutable_computation_constraints(module->entry_computation());
-
-      bool changed = false;
-      module->input_output_alias_config().ForEachAlias(
-          [&](const ShapeIndex& output_index,
-              const HloInputOutputAliasConfig::Alias& alias) {
-            const auto param = alias.parameter_number;
-            const auto& index = alias.parameter_index;
-            bool param_is_forced =
-                ShapeUtil::GetSubshape(
-                    saved_entry_computation_layout_.parameter_shape(param),
-                    index)
-                    .has_layout();
-            bool result_is_forced =
-                ShapeUtil::GetSubshape(
-                    saved_entry_computation_layout_.result_shape(),
-                    output_index)
-                    .has_layout();
-            Shape* param_shape =
-                ShapeUtil::GetMutableSubshape(module->entry_computation()
-                                                  ->parameter_instruction(param)
-                                                  ->mutable_shape(),
-                                              index);
-            Shape* result_shape =
-                ShapeUtil::GetMutableSubshape(module->entry_computation()
-                                                  ->root_instruction()
-                                                  ->mutable_shape(),
-                                              output_index);
-            if (param_is_forced && result_is_forced) {
-              return;
-            }
-
-            if (param_shape->layout().minor_to_major() ==
-                result_shape->layout().minor_to_major()) {
-              return;
-            }
-            changed = true;
-            if (!param_is_forced) {
-              *param_shape = *result_shape;
-              return;
-            }
-            *result_shape = *param_shape;
-          });
-      if (changed) {
-        auto computed_program_shape =
-            module->entry_computation()->ComputeProgramShape();
-        constraints->mutable_computation_constraint()->ResetComputationLayout(
-            ComputationLayout{
-                module->entry_computation()->ComputeProgramShape(), false},
-            LayoutConstraint::kGivenPriority, true, true);
-        *entry_computation_layout_ =
-            constraints->computation_constraint().computation_layout();
-      }
-    }
+  bool changed = true;
+  for (int64_t i = 0; changed || i < kNumberOfPropagationRounds; ++i) {
+    changed = false;
     VLOG(1) << "Running " << (i == 0 ? "un" : "") << "constrained pass";
     TF_RETURN_IF_ERROR(ClearPreviousPassSideEffects(module, execution_threads));
     for (auto* computation : computations_to_work) {
@@ -2773,6 +2719,62 @@ absl::StatusOr<bool> LayoutAssignment::Run(
           RunOnComputation(constraints, channel_layout_constraints_));
     }
     current_priority_ += 1;
+    auto* entry_constraint =
+        mutable_computation_constraints(module->entry_computation())
+            ->mutable_computation_constraint()
+            ->mutable_computation_layout();
+    TF_RETURN_IF_ERROR(
+        module->input_output_alias_config().ForEachAliasWithStatus(
+            [&](const ShapeIndex& output_index,
+                const HloInputOutputAliasConfig::Alias& alias) {
+              const auto param = alias.parameter_number;
+              const auto& index = alias.parameter_index;
+              bool param_is_forced =
+                  ShapeUtil::GetSubshape(
+                      saved_entry_computation_layout_.parameter_shape(param),
+                      index)
+                      .has_layout();
+              bool result_is_forced =
+                  ShapeUtil::GetSubshape(
+                      saved_entry_computation_layout_.result_shape(),
+                      output_index)
+                      .has_layout();
+              if (param_is_forced && result_is_forced) {
+                return absl::OkStatus();
+              }
+              auto* entry = module->entry_computation();
+              TF_ASSIGN_OR_RETURN(
+                  auto param_layout,
+                  InferArrayLayout(entry->parameter_instruction(param), index));
+              TF_ASSIGN_OR_RETURN(
+                  auto result_layout,
+                  InferArrayLayout(entry->root_instruction(), output_index));
+              if (param_layout.minor_to_major() ==
+                  result_layout.minor_to_major()) {
+                return absl::OkStatus();
+              }
+              changed = true;
+              if (!param_is_forced) {
+                entry_computation_layout_->mutable_parameter_layout(param)
+                    ->ResetLayout(result_layout, index);
+                entry_computation_layout_->mutable_result_layout()->ResetLayout(
+                    result_layout, output_index);
+                entry_constraint->mutable_parameter_layout(param)->ResetLayout(
+                    result_layout, index);
+                entry_constraint->mutable_result_layout()->ResetLayout(
+                    result_layout, output_index);
+                return absl::OkStatus();
+              }
+              entry_computation_layout_->mutable_parameter_layout(param)
+                  ->ResetLayout(param_layout, index);
+              entry_computation_layout_->mutable_result_layout()->ResetLayout(
+                  param_layout, output_index);
+              entry_constraint->mutable_parameter_layout(param)->ResetLayout(
+                  param_layout, index);
+              entry_constraint->mutable_result_layout()->ResetLayout(
+                  param_layout, output_index);
+              return absl::OkStatus();
+            }));
   }
 
   for (auto* computation : computations_to_work) {

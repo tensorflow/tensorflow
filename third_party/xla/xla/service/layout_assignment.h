@@ -171,6 +171,9 @@ class ComputationLayoutConstraint : public LayoutConstraint {
   const ComputationLayout& computation_layout() const {
     return computation_layout_;
   }
+  ComputationLayout* mutable_computation_layout() {
+    return &computation_layout_;
+  }
   void ResetComputationLayout(const ComputationLayout& layout, int64_t priority,
                               bool prop_result_layout,
                               bool prop_parameter_layout) {
@@ -702,6 +705,10 @@ class LayoutAssignment : public HloModulePass {
     if (channel_layout_constraints_ != nullptr) {
       *channel_layout_constraints_ = channel_constraints_;
     }
+  }
+
+  void ResetEntryComputationLayout() {
+    *entry_computation_layout_ = saved_entry_computation_layout_;
   }
 
   // Adds constraints related to host Send/Recv instructions.
