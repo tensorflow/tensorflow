@@ -358,7 +358,7 @@ class Sequential(functional.Functional):
     if not self._has_explicit_input_shape:
       if not tensor_util.is_tf_type(inputs) and not isinstance(
           inputs, np_arrays.ndarray):
-        # This is a Sequential with mutiple inputs. This is technically an
+        # This is a Sequential with multiple inputs. This is technically an
         # invalid use case of Sequential, but we tolerate it for backwards
         # compatibility.
         self._use_legacy_deferred_behavior = True
