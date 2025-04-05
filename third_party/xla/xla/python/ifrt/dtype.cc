@@ -146,9 +146,8 @@ absl::StatusOr<DType> DType::FromProto(const DTypeProto& dtype_proto) {
       CASE(C64);
       CASE(C128);
       CASE(F4E2M1FN);
-      // TODO: Uncomment once the minimum ml_dtypes in JAX is >= 0.5.0.
-      // CASE(F8E3M4);
-      // CASE(F8E4M3);
+      CASE(F8E3M4);
+      CASE(F8E4M3);
       CASE(F8E8M0FNU);
       CASE(F8E4M3FN);
       CASE(F8E4M3B11FNUZ);
@@ -196,9 +195,8 @@ DTypeProto DType::ToProto() const {
       CASE(C64);
       CASE(C128);
       CASE(F4E2M1FN);
-      // TODO: Uncomment once the minimum ml_dtypes in JAX is >= 0.5.0.
-      // CASE(F8E3M4);
-      // CASE(F8E4M3);
+      CASE(F8E3M4);
+      CASE(F8E4M3);
       CASE(F8E8M0FNU);
       CASE(F8E4M3FN);
       CASE(F8E4M3B11FNUZ);
