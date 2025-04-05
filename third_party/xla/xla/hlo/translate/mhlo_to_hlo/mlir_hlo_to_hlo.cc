@@ -256,15 +256,6 @@ static std::vector<int64_t> ConvertDenseIntAttr(
   return ConvertDenseIntAttr(*attr);
 }
 
-// Converts the broadcast_dimensions attribute into a vector of dimension
-// numbers (empty if the attribute is absent).
-static std::vector<int64_t> Convert_broadcast_dimensions(
-    std::optional<mlir::DenseIntElementsAttr> broadcast_dimensions) {
-  if (!broadcast_dimensions.has_value()) return {};
-
-  return ConvertDenseIntAttr(*broadcast_dimensions);
-}
-
 static std::vector<xla::CrossProgramPrefetch> Convert_cross_program_prefetches(
     mlir::ArrayAttr prefetches) {
   std::vector<xla::CrossProgramPrefetch> cross_program_prefetches;
@@ -400,18 +391,33 @@ static mlir::FailureOr<xla::Shape> ExtractXlaShape(mlir::Operation* op) {
     return ConvertDenseIntAttr(attribute);                   \
   }
 
+#define I64_ARRAY_ATTR_TO_VECTOR(attribute)                      \
+  static std::vector<int64_t> Convert_##attribute(               \
+      std::optional<llvm::ArrayRef<int64_t>> attribute) {        \
+    if (!attribute) return {};                                   \
+    return {attribute.value().begin(), attribute.value().end()}; \
+  }
+
 I64_ELEMENTS_ATTR_TO_VECTOR(broadcast_sizes);
+I64_ARRAY_ATTR_TO_VECTOR(broadcast_sizes);
+I64_ELEMENTS_ATTR_TO_VECTOR(broadcast_dimensions);
+I64_ARRAY_ATTR_TO_VECTOR(broadcast_dimensions);
 I64_ELEMENTS_ATTR_TO_VECTOR(permutation);
 I64_ELEMENTS_ATTR_TO_VECTOR(start_indices);
+I64_ARRAY_ATTR_TO_VECTOR(start_indices);
 I64_ELEMENTS_ATTR_TO_VECTOR(limit_indices);
+I64_ARRAY_ATTR_TO_VECTOR(limit_indices);
 I64_ELEMENTS_ATTR_TO_VECTOR(strides);
+I64_ARRAY_ATTR_TO_VECTOR(strides);
 I64_ELEMENTS_ATTR_TO_VECTOR(slice_sizes);
+I64_ARRAY_ATTR_TO_VECTOR(slice_sizes);
 I64_ELEMENTS_ATTR_TO_VECTOR(fft_length);
 I64_ELEMENTS_ATTR_TO_VECTOR(dimensions);
 I64_ELEMENTS_ATTR_TO_VECTOR(window_strides);
 I64_ELEMENTS_ATTR_TO_VECTOR(lhs_dilation);
 I64_ELEMENTS_ATTR_TO_VECTOR(rhs_dilation);
 
+#undef I64_ARRAY_ATTR_TO_VECTOR
 #undef I64_ELEMENTS_ATTR_TO_VECTOR
 
 #define BOOL_ELEMENTS_ATTR_TO_VECTOR(attribute)           \
@@ -1091,7 +1097,57 @@ namespace mlir {
 namespace stablehlo {
 namespace {
 
+LogicalResult ExportXlaOp(ReturnOp op, OpLoweringContext ctx) {
+  // Failure on purpose because `stablehlo::ReturnOp` will be handled by
+  // special purpose logic in `ConvertToHloModule::Lower`.
+  return failure();
+}
+
 LogicalResult ExportXlaOp(ConstantOp op, OpLoweringContext ctx) {
+  return failure();
+}
+
+LogicalResult ExportXlaOp(ReduceOp op, OpLoweringContext ctx) {
+  auto& value_map = *ctx.values;
+  xla::XlaComputation body;
+  if (failed(ctx.converter->LowerRegionAsComputation(&op.getBody(), &body)))
+    return failure();
+
+  llvm::SmallVector<xla::XlaOp> operands, init_values;
+  if (failed(GetTuple(op, op.getInputs(), ctx, operands)) ||
+      failed(GetTuple(op, op.getInitValues(), ctx, init_values)))
+    return failure();
+
+  xla::XlaOp result =
+      xla::Reduce(ctx.builder, operands, init_values, body, op.getDimensions());
+  if (op.getNumResults() == 1) {
+    value_map[op.getResult(0)] = result;
+  } else {
+    BuildGetTupleElementsForTupleResults(op, result, ctx);
+  }
+
+  return success();
+}
+
+LogicalResult ExportXlaOp(BroadcastInDimOp op, OpLoweringContext ctx) {
+  auto type = mlir::dyn_cast<RankedTensorType>(op.getType());
+  if (!type) return failure();
+  auto& value_map = *ctx.values;
+  xla::XlaOp operand;
+  if (failed(GetXlaOp(op.getOperand(), value_map, &operand, op)))
+    return failure();
+
+  // Use TypeToShape to handle bounded dynamism.
+  // HLO expects broadcast sizes to use the bound's value, not kDynamic.
+  xla::Shape shape = xla::TypeToShape(type);
+  value_map[op] =
+      BroadcastInDim(operand, shape.dimensions(),
+                     Convert_broadcast_dimensions(op.getBroadcastDimensions()));
+  return success();
+}
+
+LogicalResult ExportXlaOp(DynamicBroadcastInDimOp op, OpLoweringContext ctx) {
+  // This op has no expression in the legacy export format.
   return failure();
 }
 

@@ -30,6 +30,7 @@ limitations under the License.
 #include "mlir/Support/TypeID.h"
 #include "mlir/Transforms/DialectConversion.h"
 #include "stablehlo/dialect/StablehloOps.h"
+#include "third_party/stablehlo/stablehlo/dialect/StablehloOps.h"
 
 namespace mlir {
 namespace mhlo {
@@ -40,7 +41,14 @@ namespace mhlo {
 namespace {
 
 void legalDirectStablehloToHloConversionOps(ConversionTarget& target) {
-  target.addLegalOp<stablehlo::AddOp, stablehlo::ConstantOp>();
+  target.addLegalOp<
+      // go/keep-sorted start
+      stablehlo::AddOp, stablehlo::BroadcastInDimOp, stablehlo::BroadcastOp,
+      stablehlo::ConstantOp, stablehlo::DynamicBroadcastInDimOp,
+      stablehlo::DynamicSliceOp, stablehlo::ReduceOp, stablehlo::ReturnOp,
+      stablehlo::SliceOp
+      // go/keep-sorted end
+      >();
 }
 
 struct StablehloLegalizeToHloPass
