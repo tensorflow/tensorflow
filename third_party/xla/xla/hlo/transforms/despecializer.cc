@@ -158,7 +158,7 @@ absl::StatusOr<bool> DeconstructReduceWindowToReduceBroadcast::Run(
     auto reduce_dim_index = rw.second;
     if (reduce_window == nullptr || reduce_dim_index < 0 ||
         reduce_dim_index >=
-            reduce_window->operand(0)->shape().dimensions_size()) {
+            reduce_window->operand(0)->shape().dimensions().size()) {
       continue;
     }
     std::vector<int64_t> reduce_instr_dimensions;
