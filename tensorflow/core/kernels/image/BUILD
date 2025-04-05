@@ -318,7 +318,10 @@ tf_kernel_library(
 tf_kernel_library(
     name = "sample_distorted_bounding_box_op",
     prefix = "sample_distorted_bounding_box_op",
-    deps = IMAGE_DEPS + ["//tensorflow/core/kernels:stateless_random_ops"],
+    deps = IMAGE_DEPS + [
+        "//tensorflow/core/kernels:stateless_random_ops",
+        "@com_google_absl//absl/log:check",
+    ],
 )
 
 tf_kernel_library(

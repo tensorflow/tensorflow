@@ -15,6 +15,7 @@ limitations under the License.
 
 // See docs in ../ops/image_ops.cc.
 
+#include <cstdint>
 #define USE_EIGEN_TENSOR
 #define EIGEN_USE_THREADS
 
