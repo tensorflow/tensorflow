@@ -559,8 +559,9 @@ TEST_F(TritonTest, FuseMultiplyInPrologue) {
     }
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto module, GetOptimizedModule(kHloText));
+  // On Ampere the multiply result type is f32, on Hopper it is bf16.
   EXPECT_TRUE(*RunFileCheck(module->ToString(), R"(
-    CHECK:    %[[multiply:.*]] = bf16[32,64,128]{2,1,0} multiply
+    CHECK:    %[[multiply:.*]] = [[type:.*]][32,64,128]{2,1,0} multiply
     CHECK:    %[[dot:.*]] = f32[32,128,256]{2,1,0} dot
     CHECK:    ENTRY %main
   )"));
