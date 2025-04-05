@@ -16,6 +16,8 @@ limitations under the License.
 #define TENSORFLOW_LITE_KERNELS_INTERNAL_REFERENCE_INTEGER_OPS_FULLY_CONNECTED_H_
 
 #include <algorithm>
+#include <cmath>
+#include <cstdint>
 
 #include "tensorflow/lite/kernels/internal/common.h"
 
@@ -31,12 +33,12 @@ namespace reference_integer_ops {
 template <typename InputType, typename WeightType, typename OutputType,
           typename BiasType>
 void FullyConnectedPerChannel(
-    const FullyConnectedParams& params, const int32_t* output_multiplier,
-    const int* output_shift, const RuntimeShape& input_shape,
+    const FullyConnectedParams& params, const RuntimeShape& input_shape,
     const InputType* input_data, const RuntimeShape& filter_shape,
     const WeightType* filter_data, const RuntimeShape& bias_shape,
     const BiasType* bias_data, const RuntimeShape& output_shape,
-    OutputType* output_data) {
+    OutputType* output_data, float input_scale, float output_scale,
+    const float* filter_scales) {
   const int32_t input_offset = params.input_offset;
   const int32_t output_offset = params.output_offset;
   const int32_t output_activation_min = params.quantized_activation_min;
@@ -63,8 +65,15 @@ void FullyConnectedPerChannel(
       if (bias_data) {
         acc += bias_data[out_c];
       }
-      int32_t acc_scaled = MultiplyByQuantizedMultiplier(
-          acc, output_multiplier[out_c], output_shift[out_c]);
+
+      const float scale = filter_scales[out_c];
+      const double filter_scale = static_cast<double>(scale);
+      const double effective_output_scale = static_cast<double>(input_scale) *
+                                            filter_scale /
+                                            static_cast<double>(output_scale);
+      int32_t acc_scaled = static_cast<int32_t>(
+          round(static_cast<double>(acc) * effective_output_scale));
+
       acc_scaled += output_offset;
       acc_scaled = std::max(acc_scaled, output_activation_min);
       acc_scaled = std::min(acc_scaled, output_activation_max);
@@ -82,12 +91,11 @@ void FullyConnected(const FullyConnectedParams& params,
                     const RuntimeShape& filter_shape,
                     const WeightType* filter_data,
                     const RuntimeShape& bias_shape, const BiasType* bias_data,
-                    const RuntimeShape& output_shape, OutputType* output_data) {
+                    const RuntimeShape& output_shape, OutputType* output_data,
+                    float input_scale, float output_scale, float filter_scale) {
   const int32_t input_offset = params.input_offset;
   const int32_t filter_offset = params.weights_offset;
   const int32_t output_offset = params.output_offset;
-  const int32_t output_multiplier = params.output_multiplier;
-  const int output_shift = params.output_shift;
   const int32_t output_activation_min = params.quantized_activation_min;
   const int32_t output_activation_max = params.quantized_activation_max;
   TFLITE_DCHECK_GE(filter_shape.DimensionsCount(), 2);
@@ -111,8 +119,11 @@ void FullyConnected(const FullyConnectedParams& params,
       if (bias_data) {
         acc += bias_data[out_c];
       }
-      int32_t acc_scaled =
-          MultiplyByQuantizedMultiplier(acc, output_multiplier, output_shift);
+      const double effective_output_scale = static_cast<double>(input_scale) *
+                                            static_cast<double>(filter_scale) /
+                                            static_cast<double>(output_scale);
+      int32_t acc_scaled = static_cast<int32_t>(
+          round(static_cast<double>(acc) * effective_output_scale));
       acc_scaled += output_offset;
       acc_scaled = std::max(acc_scaled, output_activation_min);
       acc_scaled = std::min(acc_scaled, output_activation_max);
