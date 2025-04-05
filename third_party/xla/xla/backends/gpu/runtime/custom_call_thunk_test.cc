@@ -71,5 +71,37 @@ TEST(CustomCallThunkTest, SimpleCustomCall) {
   EXPECT_TRUE(was_called);
 }
 
+TEST(CustomCallThunkTest, CustomCallOnCustomStream) {
+  // Whitebox test to ensure that custom calls respect execution_stream_id
+  // assignments.
+  TF_ASSERT_OK_AND_ASSIGN(se::StreamExecutor * executor, GpuExecutor());
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<se::Stream> stream,
+                          executor->CreateStream());
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<se::Stream> extra_stream,
+                          executor->CreateStream());
+  // Setup the additional streams.
+  Thunk::ExecutionStreamIdMap additional_compute_streams = {};
+  additional_compute_streams[ExecutionStreamId(1)] = extra_stream.get();
+  se::StreamExecutorMemoryAllocator allocator(executor);
+  Thunk::ExecuteParams params = Thunk::ExecuteParams::Create(
+      ServiceExecutableRunOptions(), BufferAllocations({}, 0, &allocator),
+      stream.get(), stream.get(), nullptr, nullptr, additional_compute_streams);
+
+  CustomCallThunk::CustomCallTarget target =
+      [&](se::Stream* stream_in_callback, void** args, const char* target_name,
+          size_t num_args, XlaCustomCallStatus* status) {
+        // We should be launching on the extra stream and not the default one.
+        EXPECT_THAT(stream_in_callback, ::testing::Eq(extra_stream.get()));
+      };
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto thunk, CustomCallThunk::Create(Thunk::ThunkInfo(), "target_name",
+                                          target, {}, {}, ""));
+  // Setting this tells the thunk to dispatch on one of the additional streams.
+  thunk->set_execution_stream_id(ExecutionStreamId(1));
+  EXPECT_THAT(thunk->ExecuteOnStream(Thunk::ExecuteParams(params)),
+              ::tsl::testing::IsOk());
+}
+
 }  // namespace
 }  // namespace xla::gpu
