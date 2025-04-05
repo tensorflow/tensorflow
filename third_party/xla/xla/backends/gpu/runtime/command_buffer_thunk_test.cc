@@ -1456,4 +1456,21 @@ ENTRY main.49 {
   EXPECT_TRUE(RunAndCompare(std::move(module), ErrorSpec{1e-3, 2e-3}));
 }
 
+TEST(CommandBufferThunkTest, ToStringPrintsNestedThunks) {
+  BufferAllocation alloc_a(/*index=*/0, /*size=*/4, /*color=*/0);
+  BufferAllocation::Slice slice_a(&alloc_a, /*offset=*/0, /*size=*/4);
+  CommandBufferCmdSequence commands;
+  commands.Emplace<Memset32Cmd>(s0, slice_a, int32_t{42});
+  std::vector<std::unique_ptr<Thunk>> thunks;
+  thunks.emplace_back(
+      std::make_unique<Memset32BitValueThunk>(Thunk::ThunkInfo(), 42, slice_a));
+
+  CommandBufferThunk thunk(
+      std::move(commands), Thunk::ThunkInfo(),
+      std::make_unique<SequentialThunk>(Thunk::ThunkInfo(), std::move(thunks)));
+
+  EXPECT_TRUE(
+      absl::StrContains(thunk.ToString(/*indent=*/1), "    kMemset32BitValue"));
+}
+
 }  // namespace xla::gpu

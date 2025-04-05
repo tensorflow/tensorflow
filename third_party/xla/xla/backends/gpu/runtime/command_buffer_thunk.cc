@@ -348,4 +348,11 @@ void CommandBufferThunk::ForAllThunks(
     thunks_->ForAllThunks(fn);
   }
 }
+
+std::string CommandBufferThunk::ToString(int indent) const {
+  std::string result = "\n";
+  absl::StrAppend(&result, thunks_->ToString(indent + 1));
+  return result;
+}
+
 }  // namespace xla::gpu
