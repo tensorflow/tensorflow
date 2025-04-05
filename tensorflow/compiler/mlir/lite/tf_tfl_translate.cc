@@ -48,7 +48,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/lite/tf_tfl_translate_cl.h"
 #include "tensorflow/compiler/mlir/lite/tf_to_tfl_flatbuffer.h"
-#include "tensorflow/compiler/mlir/lite/tools/tf_mlir_translate_cl.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
 #include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_config.h"
 #include "tensorflow/compiler/mlir/tensorflow/dialect_registration.h"
@@ -58,8 +57,14 @@ limitations under the License.
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/platform/errors.h"
 
+using llvm::cl::opt;
 using mlir::MLIRContext;
 using mlir::ModuleOp;
+
+// NOLINTNEXTLINE
+opt<bool> upgrade_legacy("tf-upgrade-legacy",
+                         llvm::cl::desc("Upgrade legacy TF graph behavior"),
+                         llvm::cl::init(false));
 
 // NOLINTNEXTLINE
 static llvm::cl::opt<std::string> weight_quantization(
