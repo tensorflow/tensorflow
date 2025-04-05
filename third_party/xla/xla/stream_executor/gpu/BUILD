@@ -853,3 +853,31 @@ xla_cc_test(
         "@com_google_googletest//:gtest_main",
     ],
 )
+
+cc_library(
+    name = "buffer_comparator_kernel",
+    hdrs = ["buffer_comparator_kernel.h"],
+    deps = [
+        ":gpu_kernel_registry",
+        "//xla:shape_util",
+        "//xla:types",
+        "//xla/stream_executor:device_memory",
+        "//xla/stream_executor:kernel",
+        "//xla/stream_executor:kernel_spec",
+    ],
+)
+
+gpu_kernel_library(
+    name = "buffer_comparator_kernel_lib",
+    hdrs = ["buffer_comparator_kernel_lib.cu.h"],
+    # copybara:uncomment compatible_with = ["//buildenv/target:non_prod"],
+    deps = [
+        ":buffer_comparator_kernel",
+        ":gpu_kernel_registry",
+        "//xla:shape_util",
+        "//xla:types",
+        "//xla/stream_executor:device_memory",
+        "//xla/stream_executor:kernel",
+        "//xla/stream_executor:kernel_spec",
+    ],
+)

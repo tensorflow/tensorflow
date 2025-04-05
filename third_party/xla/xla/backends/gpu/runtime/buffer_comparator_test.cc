@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/gpu/buffer_comparator.h"
+#include "xla/backends/gpu/runtime/buffer_comparator.h"
 
 #include <cmath>
 #include <complex>

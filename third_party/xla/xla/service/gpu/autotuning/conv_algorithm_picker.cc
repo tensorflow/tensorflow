@@ -83,7 +83,7 @@ limitations under the License.
 #else
 #include "third_party/gpus/cudnn/cudnn_ops_infer.h"
 #endif  // CUDNN_VERSION >= 90000
-#include "xla/service/gpu/buffer_comparator.h"
+#include "xla/backends/gpu/runtime/buffer_comparator.h"
 #include "xla/stream_executor/gpu/redzone_allocator.h"
 #endif
 

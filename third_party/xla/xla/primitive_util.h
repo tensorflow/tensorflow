@@ -646,6 +646,41 @@ constexpr R PrimitiveTypeSwitch(F&& f, PrimitiveType type) {
   LOG(FATAL) << "unhandled type " << type;
 }
 
+template <typename F>
+constexpr void IntegralTypeForEach(F&& f) {
+  std::forward<F>(f)(PrimitiveTypeConstant<PrimitiveType::S1>());
+  std::forward<F>(f)(PrimitiveTypeConstant<PrimitiveType::S2>());
+  std::forward<F>(f)(PrimitiveTypeConstant<PrimitiveType::S4>());
+  std::forward<F>(f)(PrimitiveTypeConstant<PrimitiveType::S8>());
+  std::forward<F>(f)(PrimitiveTypeConstant<PrimitiveType::S16>());
+  std::forward<F>(f)(PrimitiveTypeConstant<PrimitiveType::S32>());
+  std::forward<F>(f)(PrimitiveTypeConstant<PrimitiveType::S64>());
+  std::forward<F>(f)(PrimitiveTypeConstant<PrimitiveType::U1>());
+  std::forward<F>(f)(PrimitiveTypeConstant<PrimitiveType::U2>());
+  std::forward<F>(f)(PrimitiveTypeConstant<PrimitiveType::U4>());
+  std::forward<F>(f)(PrimitiveTypeConstant<PrimitiveType::U8>());
+  std::forward<F>(f)(PrimitiveTypeConstant<PrimitiveType::U16>());
+  std::forward<F>(f)(PrimitiveTypeConstant<PrimitiveType::U32>());
+  std::forward<F>(f)(PrimitiveTypeConstant<PrimitiveType::U64>());
+}
+
+template <typename F>
+constexpr void FloatingPointTypeForEach(F&& f) {
+  std::forward<F>(f)(PrimitiveTypeConstant<PrimitiveType::F4E2M1FN>());
+  std::forward<F>(f)(PrimitiveTypeConstant<PrimitiveType::F8E3M4>());
+  std::forward<F>(f)(PrimitiveTypeConstant<PrimitiveType::F8E4M3>());
+  std::forward<F>(f)(PrimitiveTypeConstant<PrimitiveType::F8E4M3FN>());
+  std::forward<F>(f)(PrimitiveTypeConstant<PrimitiveType::F8E4M3B11FNUZ>());
+  std::forward<F>(f)(PrimitiveTypeConstant<PrimitiveType::F8E4M3FNUZ>());
+  std::forward<F>(f)(PrimitiveTypeConstant<PrimitiveType::F8E5M2>());
+  std::forward<F>(f)(PrimitiveTypeConstant<PrimitiveType::F8E5M2FNUZ>());
+  std::forward<F>(f)(PrimitiveTypeConstant<PrimitiveType::F8E8M0FNU>());
+  std::forward<F>(f)(PrimitiveTypeConstant<PrimitiveType::F16>());
+  std::forward<F>(f)(PrimitiveTypeConstant<PrimitiveType::BF16>());
+  std::forward<F>(f)(PrimitiveTypeConstant<PrimitiveType::F32>());
+  std::forward<F>(f)(PrimitiveTypeConstant<PrimitiveType::F64>());
+}
+
 namespace internal {
 
 // Returns the number of bits in the native type for a given primitive type if
