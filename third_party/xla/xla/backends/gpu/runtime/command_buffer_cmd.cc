@@ -1712,7 +1712,7 @@ DynamicSliceFusionCmd::DynamicSliceFusionCmd(
     offsets_allocs_base_.push_back(offsets_allocs_size_);
     if (slice.sliced_shape.has_value()) {
       offsets_allocs_size_ +=
-          slice.sliced_shape->dimensions_size() * sizeof(int64_t);
+          slice.sliced_shape->dimensions().size() * sizeof(int64_t);
     }
   }
 }
@@ -1760,9 +1760,9 @@ absl::Status DynamicSliceFusionCmd::Prepare(
       TF_RET_CHECK(slice.sliced_shape->IsArray());
 
       TF_RET_CHECK(slice.offsets->size() ==
-                   slice.orig_shape->dimensions_size());
-      TF_RET_CHECK(slice.sliced_shape->dimensions_size() ==
-                   slice.orig_shape->dimensions_size());
+                   slice.orig_shape->dimensions().size());
+      TF_RET_CHECK(slice.sliced_shape->dimensions().size() ==
+                   slice.orig_shape->dimensions().size());
     }
   }
   TF_RETURN_IF_ERROR(embedded_commands_.Prepare(params, resource_requests));
@@ -1813,7 +1813,7 @@ DynamicSliceFusionCmd::Record(const Thunk::ExecuteParams& execute_params,
     const Shape& dst_shape = *slice.sliced_shape;
 
     absl::InlinedVector<int64_t, 4> slice_starts;
-    slice_starts.reserve(dst_shape.dimensions_size());
+    slice_starts.reserve(dst_shape.dimensions().size());
 
     // Number of issues d2h transfers to copy offset values from device to
     // host.
