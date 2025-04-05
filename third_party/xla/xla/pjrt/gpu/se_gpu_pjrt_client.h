@@ -140,16 +140,6 @@ class StreamExecutorGpuClient : public xla::PjRtStreamExecutorClient {
     return &topology_;
   }
 
-  absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> Load(
-      std::unique_ptr<PjRtExecutable> executable,
-      const LoadOptions& load_options) override {
-    return absl::WrapUnique<PjRtLoadedExecutable>(
-        tensorflow::down_cast<PjRtLoadedExecutable*>(executable.release()));
-  }
-
-  absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> Load(
-      std::unique_ptr<PjRtExecutable> executable);
-
   absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> LoadSerialized(
       absl::string_view serialized, std::optional<CompileOptions> options,
       const LoadOptions& load_options);
