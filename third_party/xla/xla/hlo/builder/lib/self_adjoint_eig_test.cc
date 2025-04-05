@@ -126,10 +126,10 @@ XlaOp GetAverageAbsoluteError(XlaOp m1, XlaOp m2, XlaBuilder* builder) {
 XlaOp ComputeMatmulVWVt(SelfAdjointEigResult result, XlaBuilder* builder) {
   Shape shape = builder->GetShape(result.v).value();
   absl::Span<const int64_t> out_dims = shape.dimensions();
-  std::vector<int64_t> broadcast_dims(shape.dimensions_size() - 1);
+  std::vector<int64_t> broadcast_dims(shape.dimensions().size() - 1);
   std::iota(broadcast_dims.begin(), broadcast_dims.end(), 0);
 
-  broadcast_dims[shape.dimensions_size() - 2] = shape.dimensions_size() - 1;
+  broadcast_dims[shape.dimensions().size() - 2] = shape.dimensions().size() - 1;
   auto vw =
       Mul(result.v,
           BroadcastInDim(ConvertElementType(result.w, shape.element_type()),
