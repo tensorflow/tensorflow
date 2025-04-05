@@ -832,8 +832,8 @@ CaptureConvGraph(HloInstruction* instr, HloInstruction* convolution,
 }
 
 // Matches convolutions operating on FP8 inputs and filters and rewrites into a
-// ForwardGraph Custom Call. For scaled FP8 convolutions on Hopper systems, the
-// following steps are elided and rewritten into a ForwardGraph Custom Call:
+// ForwardGraph Custom Call. For scaled FP8 convolutions, the following steps
+// are elided and rewritten into a ForwardGraph Custom Call:
 //
 // 1. Cast the filter and input from FP8 to a wider type such as FP16 or FP32.
 // 2. Optionally unscale the filter and input by multiplying or dividing by
@@ -851,7 +851,12 @@ absl::StatusOr<bool> F8GraphConv(HloComputation* comp,
   if (toolkit_version < se::SemanticVersion{12, 0, 0}) {
     return false;
   }
-  if (!cc.IsAtLeast(se::CudaComputeCapability::kHopper)) {
+  if (!cc.IsAtLeastAda()) {
+    return false;
+  }
+  if (dnn_version < se::dnn::VersionInfo{9, 8, 0} && !cc.IsAtLeastHopper()) {
+    // Ada is not supported on older cuDNN versions, and instead Hopper or later
+    // is required.
     return false;
   }
   for (auto instr : comp->MakeInstructionPostOrder()) {

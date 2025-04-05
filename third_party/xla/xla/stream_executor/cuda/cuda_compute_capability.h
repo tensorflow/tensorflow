@@ -88,6 +88,8 @@ struct CudaComputeCapability {
     return major >= CudaComputeCapabilities::kAmpere;
   }
 
+  bool IsAtLeastAda() const { return IsAtLeast(8, 9); }
+
   bool IsAtLeastHopper() const {
     return major >= CudaComputeCapabilities::kHopper;
   }

@@ -198,7 +198,7 @@ absl::Status NVPTXCompiler::OptimizeHloConvolutionCanonicalization(
   if (!hlo_module->config()
            .debug_options()
            .xla_gpu_experimental_disable_binary_libraries()) {
-    pipeline.AddPass<ConvRewriter>(cuda_compute_capability);
+    pipeline.AddPass<ConvRewriter>(cuda_compute_capability, dnn_version);
     pipeline.AddPass<CudnnFusedConvRewriter>(cuda_compute_capability,
                                              dnn_version, toolkit_version);
     pipeline.AddPass<ConvPaddingLegalization>();
