@@ -43,7 +43,7 @@ absl::Status PopulateInfeedLayoutVector(const xla::Shape& shape,
       layouts->push_back(dim);
     }
   } else {
-    layouts->insert(layouts->end(), shape.dimensions_size(), -1);
+    layouts->insert(layouts->end(), shape.dimensions().size(), -1);
   }
   return absl::OkStatus();
 }
@@ -97,7 +97,7 @@ absl::Status XLAShapeToTensorShape(const xla::Shape& shape,
                                    " cannot be converted to a TensorShape");
   }
   *tensor_shape = TensorShape();
-  for (int i = 0; i < shape.dimensions_size(); ++i) {
+  for (int i = 0; i < shape.dimensions().size(); ++i) {
     TF_RETURN_IF_ERROR(tensor_shape->AddDimWithStatus(shape.dimensions(i)));
   }
   return absl::OkStatus();
@@ -237,7 +237,7 @@ absl::Status GetShapeWithLayout(
             "Nested tuples not supported: ",
             xla::ShapeUtil::HumanString(input_shape));
       }
-      int64_t rank = shape.dimensions_size();
+      int64_t rank = shape.dimensions().size();
       if (position + rank > minor_to_major.size()) {
         return errors::InvalidArgument(
             "Not enough layout attribute elements: position=", position,
@@ -259,7 +259,7 @@ absl::Status GetShapeWithLayout(
     }
     *output_shape = xla::ShapeUtil::MakeTupleShape(shapes);
   } else {
-    int64_t rank = input_shape.dimensions_size();
+    int64_t rank = input_shape.dimensions().size();
     const int64_t minor_to_major_size = minor_to_major.size();
     if (rank != minor_to_major_size) {
       return errors::InvalidArgument(
