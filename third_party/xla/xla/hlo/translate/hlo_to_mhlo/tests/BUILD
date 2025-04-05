@@ -26,6 +26,7 @@ lit_test_suite(
             "import_async.hlo",
             "import_bounded_dynamism.hlo",
             "import_entry_computation_layout.hlo",
+            "import_emit_stablehlo.hlo",
             "layouts_and_names.hlo",
             "location.hlo",
             "module_attributes.hlo",

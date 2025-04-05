@@ -22,13 +22,13 @@ limitations under the License.
 #include "xla/service/hlo.pb.h"
 
 namespace mlir {
-namespace mhlo {
+namespace hlo {
 // Construct MLIR location from frame index.
 // Returns unknown location if frame is not presented.
 mlir::Location GetLocationFromFrameIndex(int frame_id, mlir::Builder &builder,
                                          const xla::HloModule *hlo_module);
 
-}  // namespace mhlo
+}  // namespace hlo
 }  // namespace mlir
 
 #endif  // XLA_HLO_TRANSLATE_HLO_TO_MHLO_STACK_LOCATION_UTILS_H_

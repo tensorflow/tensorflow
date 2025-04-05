@@ -37,6 +37,7 @@ limitations under the License.
 #include "mlir/IR/Operation.h"
 #include "mlir/IR/TypeUtilities.h"
 #include "mlir/IR/ValueRange.h"
+#include "stablehlo/dialect/StablehloOps.h"
 #include "xla/layout_util.h"
 #include "xla/literal.h"
 #include "xla/mlir/utils/type_util.h"
@@ -174,6 +175,23 @@ mlir::DenseIntElementsAttr CreateDenseIntElementsAttrFromVector(
       vector);
 }
 
+namespace {
+bool HasMhloTokenType(mlir::TypeRange types) {
+  bool use_mhlo = false;
+  for (auto type : types) {
+    if (!use_mhlo) {
+      type.walk([&](mlir::Type type) {
+        use_mhlo |= llvm::isa<mlir::mhlo::TokenType>(type);
+        if (use_mhlo) return mlir::WalkResult::interrupt();
+        return mlir::WalkResult::advance();
+      });
+    }
+  }
+  return use_mhlo;
+}
+
+}  // namespace
+
 mlir::Value CreateTupleValue(mlir::OpBuilder* func_builder, mlir::Location loc,
                              mlir::ValueRange& flatten_values,
                              mlir::Type type) {
@@ -190,7 +208,11 @@ mlir::Value CreateTupleValue(mlir::OpBuilder* func_builder, mlir::Location loc,
     flatten_sub_values.push_back(
         CreateTupleValue(func_builder, loc, flatten_values, child_type));
 
-  return func_builder->create<mlir::mhlo::TupleOp>(loc, flatten_sub_values)
+  if (HasMhloTokenType(mlir::TypeRange(flatten_sub_values))) {
+    return func_builder->create<mlir::mhlo::TupleOp>(loc, flatten_sub_values)
+        .getResult();
+  }
+  return func_builder->create<mlir::stablehlo::TupleOp>(loc, flatten_sub_values)
       .getResult();
 }
 
@@ -203,10 +225,12 @@ mlir::Operation* CreateTupleFromOpResults(mlir::OpBuilder* func_builder,
   mlir::ValueRange flattened_results_ref(op->getResults());
   auto result =
       CreateTupleValue(func_builder, loc, flattened_results_ref, type);
-  auto defining_tuple_op = result.getDefiningOp<mlir::mhlo::TupleOp>();
-  assert(defining_tuple_op && "builder didn't return the right type");
-  auto tupleOp = defining_tuple_op.getOperation();
-  return tupleOp;
+  mlir::Operation* tuple_op = result.getDefiningOp<mlir::mhlo::TupleOp>();
+  if (!tuple_op) {
+    tuple_op = result.getDefiningOp<mlir::stablehlo::TupleOp>();
+  }
+  assert(tuple_op && "builder didn't return the right type");
+  return tuple_op;
 }
 
 mlir::Operation* WrapVariadicResultsInTuple(mlir::OpBuilder* builder,

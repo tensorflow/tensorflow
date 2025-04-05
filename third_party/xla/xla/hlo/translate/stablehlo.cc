@@ -150,7 +150,8 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ConvertHloToStablehlo(
       llvm_ir::CreateMlirModuleOp(mlir::UnknownLoc::get(&ctx));
   TF_RETURN_IF_ERROR(HloModuleImporter(mlir_module.get(),
                                        /*import_all_computation=*/true,
-                                       /*flatten_computation_args_result=*/true)
+                                       /*flatten_computation_args_result=*/true,
+                                       /*emit_stablehlo=*/true)
                          .Import(*hlo_module));
   TF_RETURN_IF_ERROR(MhloToStablehlo(mlir_module.get()));
   return std::move(mlir_module);
@@ -162,7 +163,8 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ConvertHloToStablehlo(
       llvm_ir::CreateMlirModuleOp(mlir::UnknownLoc::get(&ctx));
   TF_RETURN_IF_ERROR(HloModuleImporter(mlir_module.get(),
                                        /*import_all_computation=*/true,
-                                       /*flatten_computation_args_result=*/true)
+                                       /*flatten_computation_args_result=*/true,
+                                       /*emit_stablehlo=*/true)
                          .Import(*hlo_module_proto));
   TF_RETURN_IF_ERROR(MhloToStablehlo(mlir_module.get()));
   return std::move(mlir_module);
