@@ -19,6 +19,7 @@ limitations under the License.
 #include <cstring>
 #include <utility>
 
+#include "absl/status/status.h"
 #include "tensorflow/c/tf_tensor_internal.h"
 #include "tensorflow/core/framework/log_memory.h"
 #include "tensorflow/core/framework/tensor.h"
