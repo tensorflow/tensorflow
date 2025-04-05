@@ -400,18 +400,30 @@ static mlir::FailureOr<xla::Shape> ExtractXlaShape(mlir::Operation* op) {
     return ConvertDenseIntAttr(attribute);                   \
   }
 
+#define I64_ARRAY_ATTR_TO_VECTOR(attribute)                      \
+  static std::vector<int64_t> Convert_##attribute(               \
+      std::optional<llvm::ArrayRef<int64_t>> attribute) {        \
+    if (!attribute) return {};                                   \
+    return {attribute.value().begin(), attribute.value().end()}; \
+  }
+
 I64_ELEMENTS_ATTR_TO_VECTOR(broadcast_sizes);
 I64_ELEMENTS_ATTR_TO_VECTOR(permutation);
 I64_ELEMENTS_ATTR_TO_VECTOR(start_indices);
+I64_ARRAY_ATTR_TO_VECTOR(start_indices);
 I64_ELEMENTS_ATTR_TO_VECTOR(limit_indices);
+I64_ARRAY_ATTR_TO_VECTOR(limit_indices);
 I64_ELEMENTS_ATTR_TO_VECTOR(strides);
+I64_ARRAY_ATTR_TO_VECTOR(strides);
 I64_ELEMENTS_ATTR_TO_VECTOR(slice_sizes);
+I64_ARRAY_ATTR_TO_VECTOR(slice_sizes);
 I64_ELEMENTS_ATTR_TO_VECTOR(fft_length);
 I64_ELEMENTS_ATTR_TO_VECTOR(dimensions);
 I64_ELEMENTS_ATTR_TO_VECTOR(window_strides);
 I64_ELEMENTS_ATTR_TO_VECTOR(lhs_dilation);
 I64_ELEMENTS_ATTR_TO_VECTOR(rhs_dilation);
 
+#undef I64_ARRAY_ATTR_TO_VECTOR
 #undef I64_ELEMENTS_ATTR_TO_VECTOR
 
 #define BOOL_ELEMENTS_ATTR_TO_VECTOR(attribute)           \
@@ -1091,8 +1103,36 @@ namespace mlir {
 namespace stablehlo {
 namespace {
 
+LogicalResult ExportXlaOp(ReturnOp op, OpLoweringContext ctx) {
+  // Failure on purpose because `stablehlo::ReturnOp` will be handled by
+  // special purpose logic in `ConvertToHloModule::Lower`.
+  return failure();
+}
+
 LogicalResult ExportXlaOp(ConstantOp op, OpLoweringContext ctx) {
   return failure();
+}
+
+LogicalResult ExportXlaOp(ReduceOp op, OpLoweringContext ctx) {
+  auto& value_map = *ctx.values;
+  xla::XlaComputation body;
+  if (failed(ctx.converter->LowerRegionAsComputation(&op.getBody(), &body)))
+    return failure();
+
+  llvm::SmallVector<xla::XlaOp> operands, init_values;
+  if (failed(GetTuple(op, op.getInputs(), ctx, operands)) ||
+      failed(GetTuple(op, op.getInitValues(), ctx, init_values)))
+    return failure();
+
+  xla::XlaOp result =
+      xla::Reduce(ctx.builder, operands, init_values, body, op.getDimensions());
+  if (op.getNumResults() == 1) {
+    value_map[op.getResult(0)] = result;
+  } else {
+    BuildGetTupleElementsForTupleResults(op, result, ctx);
+  }
+
+  return success();
 }
 
 }  // namespace
