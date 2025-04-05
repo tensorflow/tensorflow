@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/mlir/lite/tools/tf_mlir_translate_cl.h"
+#include "tensorflow/compiler/mlir/tools/tf_mlir_translate_cl.h"
 
 #include <string>
 
