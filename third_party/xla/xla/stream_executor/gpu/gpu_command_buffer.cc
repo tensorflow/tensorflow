@@ -35,6 +35,7 @@ limitations under the License.
 #include "xla/stream_executor/bit_pattern.h"
 #include "xla/stream_executor/command_buffer.h"
 #include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/kernel_spec.h"
 #include "xla/stream_executor/launch_dim.h"
@@ -330,6 +331,52 @@ absl::Status GpuCommandBuffer::Memset(const Command* command,
                                       size_t num_elements) {
   auto* gpu_command = tsl::down_cast<const GpuCommand*>(command);
   return UpdateMemsetNode(gpu_command->handle, *dst, bit_pattern, num_elements);
+}
+
+absl::StatusOr<const CommandBuffer::Command*> GpuCommandBuffer::DnnGraph(
+    dnn::DnnGraph& dnn_graph, Stream& stream,
+    absl::Span<DeviceMemoryBase> operands,
+    absl::Span<const Command* const> dependencies) {
+  TF_RETURN_IF_ERROR(CheckNotFinalized());
+
+  if (state_ == State::kCreate) {
+    TF_ASSIGN_OR_RETURN(
+        std::unique_ptr<CommandBuffer> nested,
+        stream.parent()->CreateCommandBuffer(CommandBuffer::Mode::kNested));
+    GpuCommandBuffer& nested_gpu =
+        tensorflow::down_cast<GpuCommandBuffer&>(*nested);
+    TF_RETURN_IF_ERROR(
+        nested_gpu.PopulateDnnGraphNode(dnn_graph, stream, operands));
+    Dependencies barrier = dependencies.empty()
+                               ? GetAutoDependencies()
+                               : ToGraphNodeDependencies(dependencies);
+    TF_ASSIGN_OR_RETURN(GraphNodeHandle handle,
+                        CreateChildNode(barrier, *nested));
+    return AppendCommand(handle);
+  }
+
+  if (state_ == State::kUpdate) {
+    Command& command = *commands_[update_state_.command_idx++];
+    TF_RETURN_IF_ERROR(DnnGraph(&command, dnn_graph, stream, operands));
+    return &command;
+  }
+
+  return UnsupportedStateError(state_);
+}
+
+absl::Status GpuCommandBuffer::DnnGraph(const Command* command,
+                                        dnn::DnnGraph& dnn_graph,
+                                        Stream& stream,
+                                        absl::Span<DeviceMemoryBase> operands) {
+  auto* gpu_command = tsl::down_cast<const GpuCommand*>(command);
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<CommandBuffer> nested,
+      stream.parent()->CreateCommandBuffer(CommandBuffer::Mode::kNested));
+  GpuCommandBuffer& nested_gpu =
+      tensorflow::down_cast<GpuCommandBuffer&>(*nested);
+  TF_RETURN_IF_ERROR(nested_gpu.UpdateDnnGraphNode(dnn_graph, stream, operands,
+                                                   gpu_command->handle));
+  return UpdateChildNode(gpu_command->handle, *nested);
 }
 
 //--------------------------------------------------------------------------//
