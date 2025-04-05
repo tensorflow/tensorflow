@@ -331,12 +331,6 @@ absl::StatusOr<std::unique_ptr<HloModule>> TritonGemmAutotuneExtractor(
   *backend_config.mutable_triton_gemm_config() = config.ToProto();
   TF_RETURN_IF_ERROR(cloned_dot_fusion->set_backend_config(gpu_config));
 
-  if (debug_opts
-          .xla_gpu_unsupported_enable_generic_triton_emitter_for_gemms()) {
-    NestGemmFusion nest_gemm_fusion(gpu_device_info.gpu_compute_capability());
-    TF_RETURN_IF_ERROR(nest_gemm_fusion.Run(new_module.get()).status());
-  }
-
   if (config.split_k > 1) {
     TF_RETURN_IF_ERROR(MakeDotSplitKBatch(cloned_dot_fusion, config));
     for (PrimitiveType type :
@@ -356,6 +350,13 @@ absl::StatusOr<std::unique_ptr<HloModule>> TritonGemmAutotuneExtractor(
     FusionWrapper fusion_wrapper(gpu_device_info);
     TF_RETURN_IF_ERROR(fusion_wrapper.Run(new_module.get()).status());
   }
+
+  if (debug_opts
+          .xla_gpu_unsupported_enable_generic_triton_emitter_for_gemms()) {
+    NestGemmFusion nest_gemm_fusion(gpu_device_info.gpu_compute_capability());
+    TF_RETURN_IF_ERROR(nest_gemm_fusion.Run(new_module.get()).status());
+  }
+
   return new_module;
 }
 
