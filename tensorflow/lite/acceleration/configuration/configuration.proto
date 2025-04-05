@@ -101,6 +101,8 @@ enum Delegate {
   ARMNN = 8;
   // MediaTek Neuron Delegate.
   MTK_NEURON = 9;
+  // Intel OpenVINO Delegate.
+  INTEL_OPENVINO = 10;
 }
 
 enum NNAPIExecutionPreference {
@@ -802,6 +804,13 @@ message MtkNeuronSettings {
   optional int32 inference_abort_time_ms = 12;
 }
 
+// Intel OpenVINO delegate settings.
+message IntelOpenVINOSettings {
+  // Whether to allow the accelerator to optionally use lower-precision FP16
+  // arithmetic when performing calculations on FP32 data.
+  optional bool allow_fp16_precision_for_fp32 = 1 [default = false];
+}
+
 // How to configure TFLite.
 message TFLiteSettings {
   // Which delegate to use.
@@ -862,6 +871,9 @@ message TFLiteSettings {
 
   // For configuring MediaTek Neuron delegate.
   optional MtkNeuronSettings mtk_neuron_settings = 17;
+
+  // For configuring Intel OpenVINO delegate.
+  optional IntelOpenVINOSettings intel_openvino_settings = 18;
 }
 
 // Whether to automatically fallback to TFLite CPU path on delegation errors.
