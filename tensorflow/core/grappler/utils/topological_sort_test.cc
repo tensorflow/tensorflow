@@ -15,7 +15,11 @@ limitations under the License.
 
 #include "tensorflow/core/grappler/utils/topological_sort.h"
 
-#include "absl/strings/str_cat.h"
+#include <utility>
+#include <vector>
+
+#include "absl/log/check.h"
+#include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/graph/benchmark_testlib.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
