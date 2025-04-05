@@ -198,6 +198,8 @@ ENTRY e {
   EXPECT_TRUE(Run(kHloText, /*run_hlo_passes=*/false));
 }
 
+// TODO(bchetioui): there is already a change out to fix this, enable once it
+// lands.
 TEST_F(TritonTest, DISABLED_TestGemmWithTrivialNonContractingDimension) {
   constexpr absl::string_view kHloText = R"(
 HloModule t, is_scheduled=true
@@ -3946,20 +3948,24 @@ ENTRY e {
 
 // This test could be modified to allow TF32 once this bug is fixed.
 // TODO(b/320659359) Allow TF32 for 8-bit or less types with F32.
+//
+// TODO(b/393299275): this test uncovers a bug in hoisting bitcasts through
+// broadcasts (seems to generate a type mismatch).
 TEST_F(TritonTest, DISABLED_NoTF32For8BitOrLessWithF32) {
   const std::string hlo_text = R"(
 HloModule t
 
 triton_dot {
   parameter_0 = s32[11,24]{1,0} parameter(0)
-  broadcast.1747 = s32[11,24,128]{2,1,0} broadcast(parameter_0),
-  dimensions={0,1} parameter_1 = s32[11,24,128]{2,1,0} parameter(1)
-  compare.49 = pred[11,24,128]{2,1,0} compare(broadcast.1747, parameter_1),
+  broadcast = s32[11,24,128]{2,1,0} broadcast(parameter_0),
+  dimensions={0,1}
+  parameter_1 = s32[11,24,128]{2,1,0} parameter(1)
+  compare = pred[11,24,128]{2,1,0} compare(broadcast, parameter_1),
       direction=EQ
-  bitcast.4717 = pred[264,128]{1,0} bitcast(compare.49)
-  convert.142 = f32[264,128]{1,0} convert(bitcast.4717)
+  bitcast = pred[264,128]{1,0} bitcast(compare)
+  convert = f32[264,128]{1,0} convert(bitcast)
   parameter_2 = f32[128,8]{1,0} parameter(2)
-  ROOT dot.381 = f32[264,8]{1,0} dot(convert.142, parameter_2),
+  ROOT dot = f32[264,8]{1,0} dot(convert, parameter_2),
       lhs_contracting_dims={1}, rhs_contracting_dims={0}
 }
 
@@ -3974,16 +3980,23 @@ ENTRY e {
          "split_k":1,"num_stages":1,"num_warps":4,
          "num_ctas":1}}}
 })";
-
+  TF_ASSERT_OK_AND_ASSIGN(ModuleAndNestedFusionMetadata module_and_metadata,
+                          GetModuleAndNestedFusionMetadata(hlo_text));
   TF_ASSERT_OK(
-      CreateTritonIrAndFileCheckForDot(this, hlo_text, "triton_dot", R"(
+      CreateTritonIrAndFileCheck(*module_and_metadata.computation,
+                                 module_and_metadata.block_level_parameters,
+                                 R"(
 CHECK:      tt.dot
 CHECK-NOT:  inputPrecision = tf32
   )"));
 
-  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
+  EXPECT_TRUE(RunAndCompareNoHloPasses(
+      hlo_text, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
 }
 
+// TODO(b/393299275): this test requires us to allow actual mixed type GEMMs
+// in the lowering. We need to expand support tests and the lowering to model
+// mixed types as needed. (f8e4m3fn x f8e4m3fn -> f32)
 TEST_F(TritonTest, DISABLED_Fp8LoweringIsSupportedPostHopper) {
   if (!GetCudaComputeCapability().IsAtLeastHopper()) {
     GTEST_SKIP() << "Doesn't pass on pre-Hopper GPUs.";
@@ -4010,14 +4023,22 @@ ENTRY main {
           "num_stages":"4","num_warps":"4","num_ctas":"1"}}}
 })";
 
+  TF_ASSERT_OK_AND_ASSIGN(ModuleAndNestedFusionMetadata module_and_metadata,
+                          GetModuleAndNestedFusionMetadata(hlo_text));
   TF_ASSERT_OK(
-      CreateTritonIrAndFileCheckForDot(this, hlo_text, "triton_dot", R"(
+      CreateTritonIrAndFileCheck(*module_and_metadata.computation,
+                                 module_and_metadata.block_level_parameters,
+                                 R"(
 CHECK: tt.dot {{.*}}{maxNumImpreciseAcc = 2147483647 : i32} : tensor<128x64xf8E4M3FN> * tensor<64x32xf8E4M3FN> -> tensor<128x32xf32>
   )"));
 
-  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{/*aabs=*/1.0, /*arel=*/1e-3}));
+  EXPECT_TRUE(RunAndCompareNoHloPasses(hlo_text,
+                                       ErrorSpec{/*aabs=*/1.0, /*arel=*/1e-3}));
 }
 
+// TODO(b/393299275): this test requires us to allow actual mixed type GEMMs
+// in the lowering. We need to expand support tests and the lowering to model
+// mixed types as needed. (f8e4m3fn x f8e4m3fn -> f32)
 TEST_F(TritonTest, DISABLED_BF16ToFP8EndToEnd) {
   if (!GetCudaComputeCapability().IsAtLeastHopper()) {
     GTEST_SKIP() << "Doesn't pass on pre-Hopper GPUs.";
@@ -4048,6 +4069,9 @@ ENTRY main {
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{/*aabs=*/1.0, /*arel=*/1e-3}));
 }
 
+// TODO(b/393299275): this test requires us to allow actual mixed type GEMMs
+// in the lowering. We need to expand support tests and the lowering to model
+// mixed types as needed.
 TEST_F(TritonTest, DISABLED_FP8ToFP8EndToEnd) {
   if (!GetCudaComputeCapability().IsAtLeastHopper()) {
     GTEST_SKIP() << "Doesn't pass on pre-Hopper GPUs.";
@@ -4074,22 +4098,27 @@ ENTRY main {
          {"block_m":"32","block_n":"32","block_k":"32","split_k":"1",
           "num_stages":"1","num_warps":"4","num_ctas":"1"}}}
 })";
-
+  ASSERT_TRUE(
+      GetDebugOptionsForTest()
+          .xla_gpu_unsupported_enable_generic_triton_emitter_for_gemms());
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{/*aabs=*/1.0, /*arel=*/1e-3}));
 }
 
 // Test PreventMmaV3LoopUnrolling pass in order to keep compile time low.
 // See b/344841434.
-TEST_F(TritonGemmTest, DISABLED_TestPreventMMAV3LoopUnrolling) {
+// TODO(b/353484968): Tests that don't run RunAndCompareNoHloPasses should be
+// moved to deviceless test file.
+TEST_F(TritonGemmTest, TestPreventMMAV3LoopUnrolling) {
   if (GetCudaComputeCapability().major != se::CudaComputeCapability::kHopper) {
     GTEST_SKIP() << "wgmma instruction is only available on Hopper";
   }
   const std::string hlo_text = R"(
 gemm_fusion_dot {
-  %p0 = f16[64,1024]{1,0} parameter(0)
-  %p1 = f16[1024,32,32]{2,1,0} parameter(1)
-  %bitcast.74246 = f16[1024,1024]{0,1} bitcast(f16[1024,32,32]{2,1,0} %p1)
-  ROOT %dot.1302 = f16[64,1024]{1,0} dot(f16[64,1024]{1,0} %p0, f16[1024,1024]{0,1} %bitcast.74246), lhs_contracting_dims={1}, rhs_contracting_dims={0}, frontend_attributes={grad_x="false",grad_y="false"}
+  p0 = f16[64,1024]{1,0} parameter(0)
+  p1 = f16[1024,32,32]{2,1,0} parameter(1)
+  bitcast = f16[1024,1024]{0,1} bitcast(p1)
+  ROOT dot = f16[64,1024]{1,0} dot(p0, bitcast),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}
 }
 
 ENTRY e {
@@ -4103,19 +4132,22 @@ ENTRY e {
          "split_k":1,"num_stages":1,"num_warps":4,
          "num_ctas":1}}}
 })";
+  TF_ASSERT_OK_AND_ASSIGN(ModuleAndNestedFusionMetadata module_and_metadata,
+                          GetModuleAndNestedFusionMetadata(hlo_text));
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> verified_module,
-                          ParseAndReturnVerifiedModule(hlo_text));
-  CompileAndOptionallyVerifyPtx(std::move(verified_module),
+  CompileAndOptionallyVerifyPtx(std::move(module_and_metadata.module), R"(
                                 R"(
 CHECK: $L__BB0_1:
 CHECK-NEXT: // begin inline asm
 CHECK-NEXT: .pragma "nounroll";
 CHECK: wgmma
-)");
+)",
+                                /*run_optimization_passes=*/false);
 }
 
-TEST_F(TritonGemmTest, DISABLED_WgmmaIsUsedForMemBoundShape) {
+// TODO(b/353484968): Tests that don't run RunAndCompareNoHloPasses should be
+// moved to deviceless test file.
+TEST_F(TritonGemmTest, WgmmaIsUsedForMemBoundShape) {
   if (GetCudaComputeCapability().major != se::CudaComputeCapability::kHopper) {
     GTEST_SKIP() << "wgmma instruction is only available on Hopper";
   }
@@ -4139,21 +4171,21 @@ ENTRY e {
          "num_ctas":1}}}
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> verified_module,
-                          ParseAndReturnVerifiedModule(hlo_text));
-  CompileAndOptionallyVerifyPtx(std::move(verified_module), R"(
+  TF_ASSERT_OK_AND_ASSIGN(ModuleAndNestedFusionMetadata module_and_metadata,
+                          GetModuleAndNestedFusionMetadata(hlo_text));
+
+  CompileAndOptionallyVerifyPtx(std::move(module_and_metadata.module), R"(
 CHECK: wgmma.mma_async.sync.aligned.m64n16k16.f32.bf16.bf16
-)");
+)",
+                                /*run_optimization_passes=*/false);
 }
 
-// Test presence of default matmul config information
-// when gemm autotuner is not present in pipeline,
-// (which is currently the case on rocm).
-TEST_F(TritonGemmTest, DISABLED_TestNoAutotuner) {
-  if (std::holds_alternative<se::CudaComputeCapability>(
-          GpuComputeCapability())) {
-    GTEST_SKIP() << "Autotuner is always in pipeline on Cuda.";
-  }
+// Test presence of default matmul config information when the GEMM autotuner is
+// not present in the compilation pipeline (which is always the case on ROCM).
+//
+// TODO(b/353484968): Tests that don't run RunAndCompareNoHloPasses should be
+// moved to deviceless test file.
+TEST_F(TritonGemmTest, TestNoAutotuner) {
   constexpr absl::string_view kHloText = R"(
 ENTRY e {
   p0 = f16[30,30] parameter(0)
@@ -4174,11 +4206,8 @@ ENTRY e {
 ; CHECK-NEXT: parameter
 ; CHECK-NEXT: fusion(
 ; CHECK-SAME: kind=kCustom
-; CHECK-SAME: __triton_gemm
+; CHECK-SAME: __triton_nested_gemm_fusion
   )");
-
-  EXPECT_TRUE(RunAndCompare(std::move(verified_module),
-                            ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
 }
 
 }  // namespace
