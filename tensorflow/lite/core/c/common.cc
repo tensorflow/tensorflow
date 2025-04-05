@@ -113,12 +113,23 @@ TfLiteQuantization TfLiteQuantizationClone(const TfLiteQuantization& src) {
     case kTfLiteAffineQuantization: {
       dst.params = calloc(1, sizeof(TfLiteAffineQuantization));
       const TfLiteAffineQuantization* const src_params =
-          (TfLiteAffineQuantization*)(src.params);
+          reinterpret_cast<TfLiteAffineQuantization*>(src.params);
       TfLiteAffineQuantization* const dst_params =
-          (TfLiteAffineQuantization*)(dst.params);
+          reinterpret_cast<TfLiteAffineQuantization*>(dst.params);
       dst_params->quantized_dimension = src_params->quantized_dimension;
       dst_params->scale = TfLiteFloatArrayCopy(src_params->scale);
       dst_params->zero_point = TfLiteIntArrayCopy(src_params->zero_point);
+      break;
+    }
+    case kTfLiteBlockwiseQuantization: {
+      dst.params = calloc(1, sizeof(TfLiteBlockwiseQuantization));
+      const TfLiteBlockwiseQuantization* const src_params =
+          (TfLiteBlockwiseQuantization*)(src.params);
+      TfLiteBlockwiseQuantization* const dst_params =
+          (TfLiteBlockwiseQuantization*)(dst.params);
+      dst_params->blocksize = src_params->blocksize;
+      dst_params->scale = src_params->scale;
+      dst_params->zero_point = src_params->zero_point;
       break;
     }
   }
@@ -225,7 +236,7 @@ void TfLiteTensorDataFree(TfLiteTensor* t) {
 void TfLiteQuantizationFree(TfLiteQuantization* quantization) {
   if (quantization->type == kTfLiteAffineQuantization) {
     TfLiteAffineQuantization* q_params =
-        (TfLiteAffineQuantization*)(quantization->params);
+        reinterpret_cast<TfLiteAffineQuantization*>(quantization->params);
     if (q_params->scale) {
       TfLiteFloatArrayFree(q_params->scale);
       q_params->scale = nullptr;

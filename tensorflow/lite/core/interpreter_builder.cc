@@ -407,6 +407,20 @@ TfLiteStatus InterpreterBuilder::ParseNodes(
 TfLiteStatus InterpreterBuilder::ParseQuantization(
     const QuantizationParameters* src_quantization,
     TfLiteQuantization* quantization, const std::vector<int>& dims) {
+  // Blockwise quantization.
+  if (src_quantization && src_quantization->details_type() ==
+                              QuantizationDetails_BlockwiseQuantization) {
+    auto* src_quant = src_quantization->details_as_BlockwiseQuantization();
+    quantization->type = kTfLiteBlockwiseQuantization;
+    auto* blockwise_quantization =
+        reinterpret_cast<TfLiteBlockwiseQuantization*>(
+            malloc(sizeof(TfLiteBlockwiseQuantization)));
+    blockwise_quantization->scale = src_quant->scales();
+    blockwise_quantization->quantized_dimension = 0;
+    blockwise_quantization->blocksize = src_quant->block_size();
+    quantization->params = reinterpret_cast<void*>(blockwise_quantization);
+    return kTfLiteOk;
+  }
   quantization->type = kTfLiteNoQuantization;
   quantization->params = nullptr;
   if (!src_quantization || !src_quantization->scale() ||

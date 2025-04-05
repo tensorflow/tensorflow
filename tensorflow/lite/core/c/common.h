@@ -328,6 +328,8 @@ typedef enum TfLiteQuantizationType : int {
   /// Affine quantization (with support for per-channel quantization).
   /// Corresponds to TfLiteAffineQuantization.
   kTfLiteAffineQuantization = 1,
+  /// Blockwise quantization.
+  kTfLiteBlockwiseQuantization = 2,
 } TfLiteQuantizationType;
 
 /// Structure specifying the quantization used by the tensor, if-any.
@@ -352,6 +354,20 @@ typedef struct TfLiteAffineQuantization {
   TfLiteIntArray* zero_point;
   int32_t quantized_dimension;
 } TfLiteAffineQuantization;
+
+/// Parameters for blockwise quantization across the output channels dimension.
+/// For a particular value in quantized_dimension, quantized values can be
+/// converted back to float using:
+///     `real_value = scale * (quantized_value - zero_point)`
+typedef struct TfLiteBlockwiseQuantization {
+  // Index of the tensor containing the scales.
+  int32_t scale;
+  // Index of the tensor containing the zero points.
+  int32_t zero_point;
+  // Quantization blocksize.
+  int32_t blocksize;
+  int32_t quantized_dimension;
+} TfLiteBlockwiseQuantization;
 
 /// A union of pointers that points to memory for a given tensor.
 ///
