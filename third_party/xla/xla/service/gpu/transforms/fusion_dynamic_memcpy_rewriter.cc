@@ -16,7 +16,6 @@ limitations under the License.
 #include "xla/service/gpu/transforms/fusion_dynamic_memcpy_rewriter.h"
 
 #include <string>
-#include <utility>
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
