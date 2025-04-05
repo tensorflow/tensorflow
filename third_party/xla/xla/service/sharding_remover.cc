@@ -46,6 +46,7 @@ absl::StatusOr<bool> ShardingRemover::Run(
       "SPMDShardToFullShape",
       "SPMDFullToShardShape",
       sdy::kShardingGroupCustomCallTargetName,
+      sdy::kPropagationBarrierCustomCallTargetName,
       sdy::kFuncResultShardingTargetName,
       spmd::kShardBarrierFrom,
       spmd::kShardBarrierTo};
@@ -80,6 +81,8 @@ absl::StatusOr<bool> ShardingRemover::Run(
       if (instruction->custom_call_target() == "Sharding" ||
           instruction->custom_call_target() ==
               sdy::kFuncResultShardingTargetName ||
+          instruction->custom_call_target() ==
+              sdy::kPropagationBarrierCustomCallTargetName ||
           instruction->custom_call_target() == spmd::kShardBarrierFrom ||
           instruction->custom_call_target() == spmd::kShardBarrierTo) {
         auto copy = computation->AddInstruction(
