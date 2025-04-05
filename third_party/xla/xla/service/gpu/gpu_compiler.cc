@@ -582,6 +582,10 @@ AlgebraicSimplifierOptions LayoutInsensitiveAlgebraicSimplifierOptions(
   }
   layout_insensitive_algsimp_opts
       .set_enable_unconditional_reduce_of_concat_replacement(false);
+  // GPU pipeline handles transposes better than slice+concatenate, so keep
+  // the transpose.
+  layout_insensitive_algsimp_opts
+      .set_rewrite_reshape_transpose_as_slice_concatenate(false);
   return layout_insensitive_algsimp_opts;
 }
 
@@ -1742,11 +1746,10 @@ absl::Status GpuCompiler::OptimizeHloPostLayoutAssignment(
     HloPassPipeline& remove_no_op_reduce_precision_pipeline =
         pipeline.AddPass<HloPassPipeline>(
             "remove-no-op-reduce-precision-algebraic-simplifier");
-    AlgebraicSimplifierOptions simplifier_options_{simplifier_options};
-    simplifier_options_.set_enable_remove_no_op_reduce_precision(true);
+    AlgebraicSimplifierOptions options{simplifier_options};
+    options.set_enable_remove_no_op_reduce_precision(true);
     remove_no_op_reduce_precision_pipeline
-        .AddPass<HloPassFix<GpuAlgebraicSimplifier>>(simplifier_options_,
-                                                     gpu_version);
+        .AddPass<HloPassFix<GpuAlgebraicSimplifier>>(options, gpu_version);
   }
 
   pipeline.AddPass<HloCSE>(/*is_layout_sensitive=*/true);
