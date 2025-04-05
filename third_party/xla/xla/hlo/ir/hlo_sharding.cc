@@ -128,7 +128,7 @@ HloSharding HloSharding::AssignDevice(int64_t device_id,
 
 HloSharding HloSharding::Tile1D(const Shape& input_shape, int64_t num_tiles,
                                 absl::Span<const OpMetadata> metadata) {
-  CHECK_EQ(1, input_shape.dimensions_size());
+  CHECK_EQ(1, input_shape.dimensions().size());
   CHECK_GT(num_tiles, 1);
   absl::Span<const int64_t> dimensions(&num_tiles, 1);
   return HloSharding(TileAssignment(dimensions, dimensions, {0}),
@@ -577,9 +577,9 @@ std::vector<int64_t> HloSharding::TileOffsetForDevice(const Shape& shape,
   CHECK(!IsUnknown());
 
   if (maximal_) {
-    return std::vector<int64_t>(shape.dimensions_size(), 0);
+    return std::vector<int64_t>(shape.dimensions().size(), 0);
   }
-  CHECK_EQ(shape.dimensions_size(), TiledDataRank());
+  CHECK_EQ(shape.dimensions().size(), TiledDataRank());
   std::vector<int64_t> index = TileIndexForDevice(device);
   for (int64_t i = 0; i < index.size(); ++i) {
     const int64_t shape_dim = shape.dimensions(i);
@@ -600,7 +600,7 @@ std::vector<int64_t> HloSharding::TileLimitForDevice(const Shape& shape,
                                 shape.dimensions().end());
   }
 
-  CHECK_EQ(shape.dimensions_size(), TiledDataRank());
+  CHECK_EQ(shape.dimensions().size(), TiledDataRank());
   std::vector<int64_t> index = TileIndexForDevice(device);
   for (int64_t i = 0; i < index.size(); ++i) {
     const int64_t shape_dim = shape.dimensions(i);
@@ -776,7 +776,7 @@ absl::Status HloSharding::ValidateNonTuple(
   }
 
   // The tile assignment tensor must have the same rank as the tiled data rank.
-  if (shape.dimensions_size() != TiledDataRank()) {
+  if (shape.dimensions().size() != TiledDataRank()) {
     return tsl::errors::InvalidArgument(
         "Number of tile assignment dimensions (excluding subgroups) is "
         "different than the input rank. "
