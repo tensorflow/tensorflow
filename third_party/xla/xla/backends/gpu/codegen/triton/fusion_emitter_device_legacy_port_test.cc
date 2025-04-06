@@ -3946,12 +3946,9 @@ ENTRY e {
                              .WithShape(BF16, {16, 40}, {1, 0})));
 }
 
-// This test could be modified to allow TF32 once this bug is fixed.
-// TODO(b/320659359) Allow TF32 for 8-bit or less types with F32.
-//
 // TODO(b/393299275): this test uncovers a bug in hoisting bitcasts through
 // broadcasts (seems to generate a type mismatch).
-TEST_F(TritonTest, DISABLED_NoTF32For8BitOrLessWithF32) {
+TEST_F(TritonTest, DISABLED_UseTF32For8BitOrLessWithF32) {
   const std::string hlo_text = R"(
 HloModule t
 
@@ -3987,7 +3984,7 @@ ENTRY e {
                                  module_and_metadata.block_level_parameters,
                                  R"(
 CHECK:      tt.dot
-CHECK-NOT:  inputPrecision = tf32
+CHECK:      inputPrecision = tf32
   )"));
 
   EXPECT_TRUE(RunAndCompareNoHloPasses(
