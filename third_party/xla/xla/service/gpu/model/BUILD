@@ -1243,6 +1243,7 @@ xla_cc_test(
     deps = [
         ":hlo_op_profile_proto_cc",
         ":matmul_ptable_stats_collection",
+        "//third_party/protobuf",
         "//xla/hlo/parser:hlo_parser",
         "//xla/hlo/testlib:filecheck",
         "//xla/service/gpu:gpu_device_info_for_tests",
