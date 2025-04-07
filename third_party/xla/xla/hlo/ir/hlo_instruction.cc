@@ -246,6 +246,9 @@ void HloInstruction::set_called_computation(int index,
 void HloInstruction::ReplaceCalledComputations(
     absl::FunctionRef<HloComputation*(HloComputation*)> map_function) {
   for (int64_t i = 0; i < called_computations().size(); ++i) {
+    if (called_computations()[i]->IsAsyncComputation()) {
+      called_computations()[i]->RemoveAsyncStart();
+    }
     set_called_computation(i, map_function(rare()->called_computations[i]));
   }
 }
