@@ -301,7 +301,7 @@ ENTRY %CombineCollectivePermutes () -> (f32[256], f32[512], f32[2560], f32[1792]
   EXPECT_TRUE(changed);
 }
 
-TEST_F(CollectivePermuteCombinerTest, ChannelIdPreventsCombining) {
+TEST_F(CollectivePermuteCombinerTest, IgnoreChannelId) {
   const char* const hlo_string = R"(
 HloModule CombineCollectivePermutes, entry_computation_layout={()->(f32[256]{0}, f32[512]{0}, f32[2560]{0}, f32[1792]{0}, f32[1536]{0})}
 
@@ -328,16 +328,19 @@ ENTRY %CombineCollectivePermutes () -> (f32[256], f32[512], f32[2560], f32[1792]
   
   ROOT %tuple = (f32[256]{0}, f32[512]{0}, f32[2560]{0}, f32[1792]{0}, f32[1536]{0}) tuple(f32[256]{0} %collective-permute, f32[512]{0} %collective-permute.1, f32[2560]{0} %collective-permute.2, f32[1792]{0} %collective-permute.3, f32[1536]{0} %collective-permute.4)
 })";
+  HloModuleConfig config = GetModuleConfigForTest();
+  auto opts = GetDebugOptionsForTest();
+  opts.set_xla_ignore_channel_id(true);
+  config.set_debug_options(opts);
   TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+                          ParseAndReturnVerifiedModule(hlo_string, config));
 
   const int64_t total_count = 5;
   CollectivePermuteCombiner combine(1024 * 1024, kMaxCombineCount);
   ASSERT_EQ(CollectivePermuteCount(*module), total_count);
   TF_ASSERT_OK_AND_ASSIGN(bool changed, combine.Run(module.get()));
-  // Expect two combined collective permute ops since there are two types of
-  // channel_id in HLO
-  EXPECT_EQ(CollectivePermuteCount(*module), 2);
+  // Expect one combined collective permute op since channel_id is ignored
+  EXPECT_EQ(CollectivePermuteCount(*module), 1);
   EXPECT_TRUE(changed);
 }
 

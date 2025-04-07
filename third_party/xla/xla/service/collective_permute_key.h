@@ -32,8 +32,7 @@ namespace xla {
 // collective-permute instructions to be compatible with each other (and hence
 // be possible to combine the instructions).
 using CollectivePermuteKey = std::tuple<
-    /*source_target_pairs*/ std::vector<std::pair<int64_t, int64_t>>,
-    /*channel_id*/ std::optional<int64_t>>;
+    /*source_target_pairs*/ std::vector<std::pair<int64_t, int64_t>>>;
 
 std::optional<CollectivePermuteKey> GetCollectivePermuteKey(
     const HloInstruction* instruction);
