@@ -15,8 +15,8 @@ limitations under the License.
 
 #include "xla/hlo/ir/hlo_module_metadata.h"
 
-#include "xla/test.h"
-#include "xla/test_helpers.h"
+#include "xla/hlo/testlib/test.h"
+#include "xla/hlo/testlib/test_helpers.h"
 
 namespace xla {
 namespace {

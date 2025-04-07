@@ -19,8 +19,8 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "xla/hlo/testlib/test.h"
 #include "xla/literal.h"
-#include "xla/test.h"
 #include "xla/tests/hlo_test_base.h"
 #include "tsl/platform/statusor.h"
 

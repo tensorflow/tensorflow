@@ -16,10 +16,10 @@ limitations under the License.
 #include "xla/service/hlo_proto_util.h"
 
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/testlib/test.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
-#include "xla/test.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/types.h"
 
