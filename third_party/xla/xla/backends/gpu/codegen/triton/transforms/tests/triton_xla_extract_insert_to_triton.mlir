@@ -93,3 +93,81 @@ func.func @incompatible_tma_shapes(%arg0: tensor<1000x1000xbf16>,
 // CHECK-TMA:   tt.load
 // CHECK-TMA:   tt.advance
 // CHECK-TMA:   tt.store
+
+// -----
+
+#indexing_map = #xla.indexing_map<"(pid_0) -> (pid_0 * 32), domain: pid_0 in [0, 1]">
+module {
+  func.func @slice_with_tiling_that_needs_padding_has_boundary_checks(
+          %arg0: tensor<64xf32>, %arg1: tensor<63xf32>, %arg2: tensor<63xf32>)
+          -> (tensor<63xf32>, tensor<63xf32>) {
+    %cst = arith.constant dense<0.000000e+00> : tensor<32xf32>
+    %c0 = arith.constant 0 : index
+    %c1 = arith.constant 1 : index
+    %0 = tt.get_program_id x : i32
+    %1 = arith.extsi %0 : i32 to i64
+    %2 = arith.index_castui %1 : i64 to index
+    %3 = xla.apply_indexing #indexing_map(%2)
+    %tiled_tensor = triton_xla.tile %arg0[%3][%c1] {layout = array<i64:0>}
+      : !triton_xla.tiled_tensor<32|64xf32>
+    %extracted_tile = triton_xla.extract %tiled_tensor[%c0]
+      : tensor<64xf32> to tensor<32xf32>
+    %4 = math.absf %extracted_tile : tensor<32xf32>
+    %5 = arith.subf %cst, %4 : tensor<32xf32>
+    %tiled_tensor_0 = triton_xla.tile %arg1[%3][%c1] {layout = array<i64:0>}
+      : !triton_xla.tiled_tensor<32|63xf32>
+    %inserted_tile = triton_xla.insert %5 into %tiled_tensor_0[%c0]
+      : tensor<32xf32> into tensor<63xf32>
+    %tiled_tensor_1 = triton_xla.tile %arg2[%3][%c1] {layout = array<i64:0>}
+      : !triton_xla.tiled_tensor<32|63xf32>
+    %inserted_tile_2 = triton_xla.insert %4 into %tiled_tensor_1[%c0]
+      : tensor<32xf32> into tensor<63xf32>
+    return %inserted_tile, %inserted_tile_2 : tensor<63xf32>, tensor<63xf32>
+  }
+}
+
+// CHECK-LABEL:   func @slice_with_tiling_that_needs_padding_has_boundary_checks
+// CHECK-COUNT-1: tt.load
+// CHECK:         tt.store
+// CHECK-SAME:    boundaryCheck = array<i32: 0>
+// CHECK:         tt.store
+// CHECK-SAME:    boundaryCheck = array<i32: 0>
+
+// -----
+
+#indexing_map = #xla.indexing_map<"(pid_0) -> (pid_0 * 32), domain: pid_0 in [0, 1]">
+module {
+  func.func @slice_with_extra_output_that_can_reuse_tile_due_to_padding(
+            %arg0: tensor<64xf32>, %arg1: tensor<63xf32>, %arg2: tensor<64xf32>)
+            -> (tensor<63xf32>, tensor<64xf32>) {
+    %cst = arith.constant dense<0.000000e+00> : tensor<32xf32>
+    %c0 = arith.constant 0 : index
+    %c1 = arith.constant 1 : index
+    %0 = tt.get_program_id x : i32
+    %1 = arith.extsi %0 : i32 to i64
+    %2 = arith.index_castui %1 : i64 to index
+    %3 = xla.apply_indexing #indexing_map(%2)
+    %tiled_tensor = triton_xla.tile %arg0[%3][%c1] {layout = array<i64:0>}
+      : !triton_xla.tiled_tensor<32|64xf32>
+    %extracted_tile = triton_xla.extract %tiled_tensor[%c0]
+      : tensor<64xf32> to tensor<32xf32>
+    %4 = math.absf %extracted_tile : tensor<32xf32>
+    %5 = arith.subf %cst, %4 : tensor<32xf32>
+    %tiled_tensor_0 = triton_xla.tile %arg1[%3][%c1] {layout = array<i64:0>}
+      : !triton_xla.tiled_tensor<32|63xf32>
+    %inserted_tile = triton_xla.insert %5 into %tiled_tensor_0[%c0]
+      : tensor<32xf32> into tensor<63xf32>
+    %tiled_tensor_1 = triton_xla.tile %arg2[%3][%c1] {layout = array<i64:0>}
+      : !triton_xla.tiled_tensor<32|64xf32>
+    %inserted_tile_2 = triton_xla.insert %4 into %tiled_tensor_1[%c0]
+      : tensor<32xf32> into tensor<64xf32>
+    return %inserted_tile, %inserted_tile_2 : tensor<63xf32>, tensor<64xf32>
+  }
+}
+
+// CHECK-LABEL:   func @slice_with_extra_output_that_can_reuse_tile_due_to_padding
+// CHECK-COUNT-1: tt.load
+// CHECK:         tt.store
+// CHECK-SAME:    boundaryCheck = array<i32: 0>
+// CHECK:         tt.store
+// CHECK-NOT:     boundaryCheck = array<i32: 0>
