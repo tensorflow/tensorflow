@@ -139,9 +139,9 @@ absl::Status InPlaceDynamicUpdateSliceFusion::EmitEntryFunction(
           auto start_indices =
               ProvideParameterRange(root_computation, dus_instr,
                                     dus_instr->first_index_operand_number(),
-                                    update_shape.dimensions_size(), {},
+                                    update_shape.dimensions().size(), {},
                                     call_targets, entry_function, nested_b);
-          for (int i = 0; i < update_shape.dimensions_size(); ++i) {
+          for (int i = 0; i < update_shape.dimensions().size(); ++i) {
             int64_t update_size = update_shape.dimensions(i);
             auto start_index = ClampIndex(
                 start_indices[i],
