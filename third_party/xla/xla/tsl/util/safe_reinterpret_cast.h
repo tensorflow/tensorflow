@@ -67,15 +67,13 @@ struct IsCvByteLike<const volatile T> : IsByteLike<T> {};
 template <typename From, typename To>
 struct IsSafeCast : std::false_type {};
 
-// It's safe to cast a type to itself.
-template <typename T>
-struct IsSafeCast<T, T> : std::true_type {};
-
-// It's safe to cast a pointer to/from a byte-like type.
+// It's safe to cast a pointer to/from a byte-like type, or to/from the same
+// type.
 template <typename From, typename To>
 struct IsSafeCast<From*, To*>
     : std::integral_constant<bool, IsCvByteLike<From>::value ||
-                                       IsCvByteLike<To>::value> {};
+                                       IsCvByteLike<To>::value ||
+                                       std::is_same_v<From, To>> {};
 
 // It's safe to cast a pointer to/from std::uintptr_t.
 template <typename From>
