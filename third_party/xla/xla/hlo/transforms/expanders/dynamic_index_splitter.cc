@@ -50,7 +50,7 @@ absl::StatusOr<bool> DynamicIndexSplitter::Run(
       }
       auto parent = dynamic_op->parent();
       bool is_update = dynamic_op->opcode() == HloOpcode::kDynamicUpdateSlice;
-      int64_t num_indices = dynamic_op->operand(0)->shape().dimensions_size();
+      int64_t num_indices = dynamic_op->operand(0)->shape().dimensions().size();
 
       if (num_indices == 0) {
         // If the operand rank is 0, directly replace R0 DS/DUS with the
@@ -74,7 +74,7 @@ absl::StatusOr<bool> DynamicIndexSplitter::Run(
         // This DS/DUS already uses scalar indices.
         continue;
       }
-      TF_RET_CHECK(index_operand->shape().dimensions_size() == 1);
+      TF_RET_CHECK(index_operand->shape().dimensions().size() == 1);
       auto index_element_type = index_operand->shape().element_type();
       std::vector<HloInstruction*> index_array;
       index_array.reserve(num_indices);
