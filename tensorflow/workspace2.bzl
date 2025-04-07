@@ -927,7 +927,7 @@ def _tf_repositories():
 
     tf_http_archive(
         name = "org_xprof",
-        sha256 = "dec4889a6a5123fca0a775ba20f22717b2d0c3af1491f41bb52e1b502595271e",
+        sha256 = "b6747aa366f2dfdee12ad8bf6ad80c02d8586408",
         strip_prefix = "xprof-c3dbeb2c69b48163c6156d6f4a8c82ac34736f49",
         urls = tf_mirror_urls("https://github.com/openxla/xprof/archive/c3dbeb2c69b48163c6156d6f4a8c82ac34736f49.zip"),
     )

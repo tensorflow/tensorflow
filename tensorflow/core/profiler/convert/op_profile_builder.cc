@@ -34,6 +34,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/convert/op_metrics_to_record.h"
 #include "tensorflow/core/profiler/protobuf/op_metrics.pb.h"
 #include "tensorflow/core/profiler/protobuf/op_profile.pb.h"
+#include "tensorflow/core/profiler/protobuf/source_info.pb.h"
 #include "tsl/platform/protobuf.h"
 #include "xprof/utils/op_metrics_db_utils.h"  // from @org_xprof
 
@@ -66,6 +67,7 @@ void PopulateSymbolNode(const OpMetrics& op_metrics, Node* node) {
     }
   }
   xla.set_computation_primitive_size(op_metrics.computation_primitive_size());
+  *xla.mutable_source_info() = op_metrics.source_info();
 }
 
 // Sort the children and only keep the top K children.
@@ -164,7 +166,6 @@ void PopulateOpMetricsNode(
     const OpMetrics& op_metrics, double peak_gigaflops_per_second_per_core,
     std::vector<double> peak_mem_gibibytes_per_second_per_core,
     uint64_t total_time_ps, Node* node) {
-
   Metrics* metrics = node->mutable_metrics();
   // The UI computes flops_rate = raw_flops / raw_time
   // and memory_bandwidth = raw_bytes_accessed / raw_time. See:
