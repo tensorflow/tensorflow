@@ -101,5 +101,15 @@ TEST(SafeReinterpretCast, CanCastPointerToFromStdIntptrT) {
   EXPECT_EQ(safe_reinterpret_cast<const int*>(intptr_t_p), &x);
 }
 
+TEST(SafeReinterpretCast, CanCastPointerToFromSameType) {
+  const int x = 42;
+  const int* const int_p = safe_reinterpret_cast<const int*>(&x);
+  EXPECT_EQ(int_p, &x);
+
+  char y = 'A';
+  char* const char_p = safe_reinterpret_cast<char*>(&y);
+  EXPECT_EQ(char_p, &y);
+}
+
 }  // namespace
 }  // namespace tsl
