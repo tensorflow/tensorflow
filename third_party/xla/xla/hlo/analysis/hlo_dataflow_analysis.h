@@ -289,7 +289,6 @@ class HloDataflowAnalysis {
   bool UpdateCallValueSet(HloInstruction* call);
   bool UpdateConditionalValueSet(HloInstruction* conditional);
   bool UpdateCopyValueSet(HloInstruction* copy);
-  bool UpdateCustomCallValueSet(HloInstruction* custom_call);
   bool UpdateDomainValueSet(HloInstruction* domain);
   bool UpdateGetTupleElementValueSet(HloInstruction* gte);
   bool UpdateParameterValueSet(HloInstruction* parameter);
