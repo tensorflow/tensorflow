@@ -1182,12 +1182,12 @@ ABSL_ATTRIBUTE_UNUSED char NanoMemory::ID = 'M';  // NOLINT
 // Device implementation. There is only one device so this doesn't do much.
 class NanoDevice final : public llvm::RTTIExtends<NanoDevice, ifrt::Device> {
  public:
-  NanoDevice(NanoIfrtClient* client, ifrt::DeviceId id, ifrt::Memory* memory)
-      : client_(client), id_(id), memory_(memory) {}
+  NanoDevice(NanoIfrtClient* client, ifrt::Memory* memory)
+      : client_(client), memory_(memory) {}
 
   ifrt::Client* client() const override { return client_; }
 
-  ifrt::DeviceId Id() const override { return id_; }
+  ifrt::DeviceId Id() const override { return ifrt::DeviceId(0); }
 
   const ifrt::AttributeMap& Attributes() const override {
     static auto attributes = new ifrt::AttributeMap({});
@@ -1216,7 +1216,6 @@ class NanoDevice final : public llvm::RTTIExtends<NanoDevice, ifrt::Device> {
 
  private:
   NanoIfrtClient* client_;
-  ifrt::DeviceId id_;
   ifrt::Memory* memory_;
 };
 
@@ -1236,8 +1235,7 @@ std::shared_ptr<NanoIfrtClient> NanoIfrtClient::CreateWithDevices(
 }
 
 std::shared_ptr<ifrt::Sharding> NanoIfrtClient::default_sharding() const {
-  return ifrt::SingleDeviceSharding::Create(devices_.front(),
-                                            ifrt::MemoryKind{});
+  return ifrt::SingleDeviceSharding::Create(device_.get(), ifrt::MemoryKind{});
 }
 
 absl::StatusOr<tsl::RCReference<ifrt::Array>>
@@ -1411,9 +1409,7 @@ absl::StatusOr<ifrt::Device*> NanoIfrtClient::LookupDevice(
 
 absl::StatusOr<ifrt::Device*> NanoIfrtClient::LookupAddressableDevice(
     int local_hardware_id) const {
-  TF_RET_CHECK(local_hardware_id >= 0);
-  TF_RET_CHECK(local_hardware_id < devices_.size());
-  return devices_[local_hardware_id];
+  return device_.get();
 }
 
 ifrt::DeviceListRef NanoIfrtClient::MakeDeviceList(
@@ -1439,17 +1435,11 @@ NanoIfrtClient::GetDefaultLayout(ifrt::DType dtype,
 
 NanoIfrtClient::NanoIfrtClient(int32_t num_devices)
     : compiler_(std::make_unique<NanoCompiler>(this)),
-      memory_(std::make_unique<NanoMemory>(this)) {
-  owned_devices_.reserve(num_devices);
-  devices_.reserve(num_devices);
-  for (int i = 0; i < num_devices; ++i) {
-    owned_devices_.push_back(
-        std::make_unique<NanoDevice>(this, ifrt::DeviceId(i), memory_.get()));
-    devices_.push_back(owned_devices_.back().get());
-  }
-  default_sharding_ =
-      ifrt::SingleDeviceSharding::Create(devices_.front(), memory_->Kind());
-}
+      memory_(std::make_unique<NanoMemory>(this)),
+      device_(std::make_unique<NanoDevice>(this, memory_.get())),
+      default_sharding_(
+          ifrt::SingleDeviceSharding::Create(device_.get(), memory_->Kind())),
+      devices_(num_devices, device_.get()) {}
 
 char NanoIfrtClient::ID = 'N';  // NOLINT
 
