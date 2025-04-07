@@ -244,6 +244,15 @@ XLA_CUB_DEFINE_SORT_PAIRS(u32_b32, uint32_t, uint32_t)
 #ifdef CUB_TYPE_U32_B64
 XLA_CUB_DEFINE_SORT_PAIRS(u32_b64, uint32_t, uint64_t)
 #endif
+#ifdef CUB_TYPE_F32_B16
+XLA_CUB_DEFINE_SORT_PAIRS(f32_b16, float, uint16_t)
+#endif
+#ifdef CUB_TYPE_F32_B32
+XLA_CUB_DEFINE_SORT_PAIRS(f32_b32, float, uint32_t)
+#endif
+#ifdef CUB_TYPE_F32_B64
+XLA_CUB_DEFINE_SORT_PAIRS(f32_b64, float, uint64_t)
+#endif
 
 // Pairs with 64-bit key.
 #ifdef CUB_TYPE_U64_B16
