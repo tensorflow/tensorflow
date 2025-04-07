@@ -5,7 +5,6 @@ load("@bazel_skylib//rules:build_test.bzl", "build_test")
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 load(
     "@local_config_rocm//rocm:build_defs.bzl",
-    "if_rocm",
     "if_rocm_is_configured",
 )
 load(
@@ -6219,23 +6218,23 @@ xla_cc_binary(
         "@local_tsl//tsl/platform:platform_port",
         "@local_tsl//tsl/platform:types",
     ] + if_cuda_is_configured([
+        # keep sorted
         "//xla/service/gpu:executable_proto_cc",
         "//xla/service/gpu:gpu_compiler",
         "//xla/service/gpu:nvptx_compiler",
         "//xla/service/gpu:nvptx_compiler_impl",
-        "//xla/stream_executor/gpu:gpu_init",
+        "//xla/stream_executor/cuda:all_runtime",
         "//xla/stream_executor/cuda:cuda_platform",
+        "//xla/stream_executor/gpu:gpu_init",
     ]) + if_rocm_is_configured([
-        "//xla/service/gpu:executable_proto_cc",
-        "//xla/service/gpu:gpu_compiler",
+        # keep sorted
         "//xla/service/gpu:amdgpu_compiler",
         "//xla/service/gpu:amdgpu_compiler_impl",
+        "//xla/service/gpu:executable_proto_cc",
+        "//xla/service/gpu:gpu_compiler",
         "//xla/stream_executor/gpu:gpu_init",
-        "//xla/stream_executor/rocm:rocm_platform",
-    ]) + if_cuda([
-        "//xla/stream_executor/cuda:all_runtime",
-    ]) + if_rocm([
         "//xla/stream_executor/rocm:all_runtime",
+        "//xla/stream_executor/rocm:rocm_platform",
     ]) + xla_internal(["tools:xsymbol_repository"]),
 )
 
