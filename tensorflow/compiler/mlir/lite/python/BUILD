@@ -161,7 +161,6 @@ py_strict_library(
     visibility = ["//visibility:public"],
     deps = [
         ":_pywrap_converter_api",
-        "//tensorflow/compiler/mlir/quantization/tensorflow/python:py_function_lib_py",
         "//tensorflow/python:pywrap_tensorflow",
     ],
 )
@@ -244,9 +243,7 @@ tf_python_pybind_extension(
         "//tensorflow/python:__pkg__",
     ],
     deps = [
-        "//tensorflow/compiler/mlir/quantization/tensorflow/python:py_function_lib",
-        "//tensorflow/python/lib/core:pybind11_lib",
         "//third_party/python_runtime:headers",
-        "@pybind11",
+        "@nanobind",
     ] + if_pywrap([":converter_python_api"]),
 )
