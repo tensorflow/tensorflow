@@ -172,7 +172,6 @@ xla_cc_binary(
     name = "hlo_diff",
     srcs = ["hlo_diff_main.cc"],
     deps = [
-        ":hlo_diff_eval",
         ":hlo_diff_result",
         ":hlo_diff_summary",
         ":hlo_gumgraph_diff",
