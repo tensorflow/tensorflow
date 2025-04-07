@@ -103,6 +103,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_print_options.h"
 #include "xla/layout.h"
 #include "xla/literal.h"
+#include "xla/pjrt/abstract_tracked_device_buffer.h"
 #include "xla/pjrt/distributed/protocol.pb.h"
 #include "xla/pjrt/event_pool.h"
 #include "xla/pjrt/host_callback.h"
@@ -529,76 +530,14 @@ AllocateDestinationBuffer(
   return py_buffer;
 }
 
-PjRtStreamExecutorBuffer::ScopedHold::~ScopedHold() {
-  if (ok()) {
-    if (type_ == kDonation) {
-      parent_->DropDonationHold(std::move(buffer_));
-    } else {
-      parent_->DropUsageOrExternalHold(type_, buffer_ptr_);
-    }
-  }
-}
-
-PjRtStreamExecutorBuffer::ScopedHold::ScopedHold(ScopedHold&& other)
-    : parent_(other.parent_),
-      type_(other.type_),
-      state_(other.state_),
-      status_(std::move(other.status_)),
-      buffer_ptr_(other.buffer_ptr_),
-      buffer_(std::move(other.buffer_)) {
-  // Preserve the invariant that status is invalid if buffer == nullptr.
-  other.SetState(kMoved);
-}
-
-void PjRtStreamExecutorBuffer::ScopedHold::AcquireDonation(
-    absl::StatusOr<std::unique_ptr<TrackedDeviceBuffer>> buffer_or) {
-  CHECK(!ok());
-  if (buffer_or.ok()) {
-    buffer_ = std::move(buffer_or).value();
-    buffer_ptr_ = buffer_.get();
-    SetState(kValid);
-  } else {
-    status_ = std::move(buffer_or).status();
-    buffer_ = nullptr;
-    buffer_ptr_ = nullptr;
-    SetState(kError);
-  }
-  // Check the invariant holds.
-  CHECK(!ok() || buffer_ptr_ != nullptr);
-}
-
-void PjRtStreamExecutorBuffer::ScopedHold::AcquireUsageOrExternalReference(
-    absl::StatusOr<TrackedDeviceBuffer*> buffer_or) {
-  CHECK(!ok());
-  if (buffer_or.ok()) {
-    buffer_.reset();
-    buffer_ptr_ = buffer_or.value();
-    SetState(kValid);
-  } else {
-    status_ = std::move(buffer_or).status();
-    buffer_.reset();
-    buffer_ = nullptr;
-    SetState(kError);
-  }
-  // Check the invariant holds.
-  CHECK(!ok() || buffer_ptr_ != nullptr);
-}
-
 void PjRtStreamExecutorBuffer::ScopedHold::ConvertUsageHold(
     se::Stream* usage_stream, std::shared_ptr<BufferSequencingEvent> event,
     bool reference_held) {
   CHECK(ok());
-  CHECK_EQ(type_, kUsage);
-  parent_->ConvertUsageHold(buffer(), usage_stream, std::move(event),
-                            reference_held);
+  CHECK_EQ(type(), kUsage);
+  parent()->ConvertUsageHold(buffer(), usage_stream, std::move(event),
+                             reference_held);
   SetState(kConverted);
-}
-
-void PjRtStreamExecutorBuffer::ScopedHold::ConfirmDonation() {
-  CHECK(ok());
-  CHECK_EQ(type_, kDonation);
-  parent_->ConfirmDonation(buffer());
-  SetState(kDonated);
 }
 
 bool PjRtStreamExecutorBuffer::IsOnCpu() const {
@@ -612,16 +551,11 @@ absl::StatusOr<Shape> PjRtStreamExecutorBuffer::logical_on_device_shape() {
   }
   auto* local_device = device_->local_device_state();
   auto* stream = local_device->GetDeviceToHostStream();
-  ScopedHold device_buffer(this, ScopedHold::kUsage);
-  {
-    absl::MutexLock lock(&mu_);
-    // We can't perform any other action while a donation hold is in progress.
-    WaitForOutstandingDonationHold();
-    if (device_buffer_ == nullptr) {
-      return InvalidArgument(
-          "logical_on_device_shape() called on deleted or donated buffer");
-    }
-    AcquireHoldLocked(&device_buffer);
+  auto device_buffer = GetBufferWithUsageHold();
+  if (!device_buffer.ok()) {
+    return InvalidArgument(
+        "logical_on_device_shape() called on deleted or donated buffer: %s",
+        device_buffer.status().ToString());
   }
 
   WaitForBufferDefinitionEventsOnStream(device_buffer->definition_events(),
@@ -1348,60 +1282,26 @@ absl::Span<PjRtMemorySpace* const> PjRtStreamExecutorClient::memory_spaces()
 PjRtStreamExecutorBuffer::PjRtStreamExecutorBuffer(
     Shape on_device_shape, std::unique_ptr<TrackedDeviceBuffer> device_buffer,
     PjRtClient* client, PjRtDevice* device, PjRtMemorySpace* memory_space)
-    : client_(tensorflow::down_cast<PjRtStreamExecutorClient*>(client)),
+    : CommonPjRtBuffer(std::move(device_buffer)),
+      client_(tensorflow::down_cast<PjRtStreamExecutorClient*>(client)),
       on_device_shape_(std::move(on_device_shape)),
       device_(tensorflow::down_cast<PjRtStreamExecutorDevice*>(device)),
-      memory_space_(memory_space),
-      device_buffer_(std::move(device_buffer)) {
-  for (int i = 0; i < ScopedHold::Type::kMaxValue; ++i) {
-    holds_[i] = 0;
-  }
-}
+      memory_space_(memory_space) {}
 
 PjRtStreamExecutorBuffer::~PjRtStreamExecutorBuffer() {
   Delete();
-  for (int i = 0; i < ScopedHold::Type::kMaxValue; ++i) {
-    CHECK_EQ(holds_[i], 0);
-  }
-}
-
-void PjRtStreamExecutorBuffer::WaitForOutstandingUsageHolds() {
-  auto not_in_usage_hold = [&]() ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-    return holds_[ScopedHold::kUsage] == 0;
-  };
-  mu_.Await(absl::Condition(&not_in_usage_hold));
-}
-
-void PjRtStreamExecutorBuffer::WaitForOutstandingDonationHold() {
-  auto not_in_donation_hold = [&]() ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-    return holds_[ScopedHold::kDonation] == 0;
-  };
-  mu_.Await(absl::Condition(&not_in_donation_hold));
 }
 
 absl::StatusOr<tsl::RCReference<RawSEDeviceMemory>>
 PjRtStreamExecutorBuffer::Release(bool wait_for_operations_to_complete) {
   tsl::profiler::TraceMe trace_me("PjRtStreamExecutorBuffer::Release");
-  std::unique_ptr<TrackedDeviceBuffer> device_buffer;
-  TrackedDeviceBuffer::StreamAndEventContainer events;
-  {
-    absl::MutexLock lock(&mu_);
-    // We first wait for a donation hold to complete if there is one in
-    // progress. If the donation succeeds via ConfirmDonation() then it will
-    // set device_buffer_ to nullptr before returning to this thread.
-    WaitForOutstandingDonationHold();
-    if (device_buffer_ == nullptr) {
-      return tsl::RCReference<RawSEDeviceMemory>();
-    }
-    // Set device_buffer_ to null now so that no other
-    // thread can add a hold while we are in WaitForOutstandingUsageHolds()
-    // below.
-    std::swap(device_buffer_, device_buffer);
-    WaitForOutstandingUsageHolds();
-    // Now that all holds have completed and no more can be added, we can get
-    // the final set of usage events.
-    events = device_buffer->LockUseAndTransferUsageEvents();
+  std::unique_ptr<TrackedDeviceBuffer> device_buffer(
+      static_cast<TrackedDeviceBuffer*>(ReleaseBuffer().release()));
+  if (device_buffer == nullptr) {
+    return tsl::RCReference<RawSEDeviceMemory>();
   }
+  TrackedDeviceBuffer::StreamAndEventContainer events =
+      device_buffer->LockUseAndTransferUsageEvents();
   auto device_memory = device_buffer->device_memory();
   LocalDeviceState* local_device_state = device_->local_device_state();
   if (wait_for_operations_to_complete) {
@@ -1514,104 +1414,13 @@ void PjRtStreamExecutorBuffer::Delete() {
   TF_CHECK_OK(Release(/*wait_for_operations_to_complete=*/false).status());
 }
 
-bool PjRtStreamExecutorBuffer::IsDeleted() {
-  absl::MutexLock lock(&mu_);
-  return device_buffer_ == nullptr;
-}
-
-absl::StatusOr<TrackedDeviceBuffer*>
-PjRtStreamExecutorBuffer::GetBufferForUsageOrExternalHoldLocked(
-    ScopedHold::Type type) {
-  // All callers should have called WaitForOutstandingDonationHold().
-  CHECK_EQ(holds_[ScopedHold::kDonation], 0);
-  if (device_buffer_ == nullptr) {
-    return InvalidArgument("Buffer has been deleted or donated.");
-  } else {
-    ++holds_[type];
-  }
-  return device_buffer_.get();
-}
-
-absl::StatusOr<std::unique_ptr<TrackedDeviceBuffer>>
-PjRtStreamExecutorBuffer::GetBufferForDonationHoldLocked() {
-  // All callers should have called WaitForOutstandingDonationHold().
-  CHECK_EQ(holds_[ScopedHold::kDonation], 0);
-  if (device_buffer_ == nullptr) {
-    return InvalidArgument("Donation requested for invalid buffer");
-  }
-  if (holds_[ScopedHold::kExternalReference] > 0) {
-    return InvalidArgument(
-        "Donation requested for buffer with external reference");
-  }
-  // First add the donation hold.
-  ++holds_[ScopedHold::kDonation];
-  // Then wait for any usage holds to be dropped or converted. No new usage
-  // holds can be added until we drop the donation hold so this wait will
-  // complete eventually.
-  WaitForOutstandingUsageHolds();
-  // Because we added a donation hold, nobody could release the buffer while
-  // we were waiting.
-  CHECK(device_buffer_ != nullptr);
-  return std::move(device_buffer_);
-}
-
-void PjRtStreamExecutorBuffer::AcquireHoldLocked(ScopedHold* hold) {
-  if (hold->type() == ScopedHold::kDonation) {
-    hold->AcquireDonation(GetBufferForDonationHoldLocked());
-    return;
-  }
-
-  hold->AcquireUsageOrExternalReference(
-      GetBufferForUsageOrExternalHoldLocked(hold->type()));
-}
-
 void PjRtStreamExecutorBuffer::ConvertUsageHold(
     TrackedDeviceBuffer* buffer, se::Stream* usage_stream,
     std::shared_ptr<BufferSequencingEvent> event, bool reference_held) {
   absl::MutexLock lock(&mu_);
-  CHECK(device_buffer_.get() == buffer || device_buffer_ == nullptr);
+  CHECK(device_buffer() == buffer || device_buffer() == nullptr);
   buffer->AddUsageEvent(usage_stream, std::move(event), reference_held);
-  CHECK_GT(holds_[ScopedHold::kUsage], 0);
-  --holds_[ScopedHold::kUsage];
-}
-
-void PjRtStreamExecutorBuffer::ConfirmDonation(
-    TrackedDeviceBuffer* device_buffer) {
-  {
-    absl::MutexLock lock(&mu_);
-    CHECK_EQ(holds_[ScopedHold::kUsage], 0);
-    CHECK_EQ(holds_[ScopedHold::kExternalReference], 0);
-    CHECK_EQ(holds_[ScopedHold::kDonation], 1);
-    holds_[ScopedHold::kDonation] = 0;
-    // As a sanity check ensure no more usage events can be added to the buffer.
-    device_buffer->LockUseAndTransferUsageEvents();
-    // Give up ownership of the device memory so we don't free it when the last
-    // reference to device_buffer_ goes away.
-    device_buffer->ReleaseDeviceMemory();
-    // Make *this invalid so it can't be used again. Any threads blocking in
-    // Release or GetBufferWithHold will see an invalid buffer and return.
-    device_buffer_.reset();
-  }
-}
-
-void PjRtStreamExecutorBuffer::DropUsageOrExternalHold(
-    ScopedHold::Type type, TrackedDeviceBuffer* buffer) {
-  absl::MutexLock lock(&mu_);
-  CHECK(device_buffer_.get() == buffer || device_buffer_ == nullptr);
-  CHECK_GT(holds_[type], 0);
-  --holds_[type];
-}
-
-void PjRtStreamExecutorBuffer::DropDonationHold(
-    std::unique_ptr<TrackedDeviceBuffer> buffer) {
-  absl::MutexLock lock(&mu_);
-  CHECK_EQ(device_buffer_.get(), nullptr);
-  device_buffer_ = std::move(buffer);
-  CHECK_GT(holds_[ScopedHold::kDonation], 0);
-  --holds_[ScopedHold::kDonation];
-  CHECK_EQ(holds_[ScopedHold::kDonation], 0);
-  CHECK_EQ(holds_[ScopedHold::kUsage], 0);
-  CHECK_EQ(holds_[ScopedHold::kExternalReference], 0);
+  DecrementUsage();
 }
 
 PjRtFuture<> PjRtStreamExecutorBuffer::LazyToLiteral(
@@ -1630,16 +1439,11 @@ PjRtFuture<> PjRtStreamExecutorBuffer::ToLiteral(MutableLiteralBase* literal) {
   }
   LocalDeviceState* local_device = device_->local_device_state();
   se::Stream* stream = local_device->GetDeviceToHostStream();
-  ScopedHold device_buffer(this, ScopedHold::kUsage);
-  {
-    absl::MutexLock lock(&mu_);
-    // We can't perform any other action while a donation hold is in progress.
-    WaitForOutstandingDonationHold();
-    if (device_buffer_ == nullptr) {
-      return PjRtFuture<>(InvalidArgument(
-          "CopyToHostAsync() called on deleted or donated buffer"));
-    }
-    AcquireHoldLocked(&device_buffer);
+  auto device_buffer = GetBufferWithUsageHold();
+  if (!device_buffer.ok()) {
+    return PjRtFuture<>(
+        InvalidArgument("ToLiteral() called on deleted or donated buffer: %s",
+                        device_buffer.status().ToString()));
   }
 
   auto promise = PjRtFuture<>::CreatePromise();
@@ -1740,11 +1544,11 @@ PjRtFuture<> PjRtStreamExecutorBuffer::ToLiteral(MutableLiteralBase* literal) {
 absl::StatusOr<size_t> PjRtStreamExecutorBuffer::GetOnDeviceSizeInBytes()
     const {
   absl::MutexLock lock(&mu_);
-  if (device_buffer_ == nullptr || !device_buffer_->device_memory()) {
+  if (device_buffer() == nullptr || !device_buffer()->device_memory()) {
     return InvalidArgument(
         "GetOnDeviceSizeInBytes called on deleted or donated buffer");
   }
-  return device_buffer_->device_memory()->mem().size();
+  return device_buffer()->device_memory()->mem().size();
 }
 
 PjRtFuture<> PjRtStreamExecutorBuffer::CopyRawToHost(void* dst, int64_t offset,
@@ -1756,15 +1560,6 @@ PjRtFuture<> PjRtStreamExecutorBuffer::CopyRawToHost(void* dst, int64_t offset,
 PjRtFuture<> PjRtStreamExecutorBuffer::CopyRawToHostFuture(
     PjRtFuture<void*> dst, int64_t offset, int64_t transfer_size) {
   return client_->CopyRawSubBufferToHost(this, dst, offset, transfer_size);
-}
-
-absl::StatusOr<ShapedBuffer> PjRtStreamExecutorBuffer::AsShapedBuffer() const {
-  absl::MutexLock lock(&mu_);
-  if (device_buffer_ == nullptr) {
-    return InvalidArgument(
-        "Attempted to fetch value of invalid/deleted buffer.");
-  }
-  return device_buffer_->AsShapedBuffer(on_device_shape_);
 }
 
 PjRtStreamExecutorBuffer::ScopedHold
@@ -1915,16 +1710,11 @@ PjRtStreamExecutorBuffer::CopyToDeviceMemorySpace(
   se::Stream* transfer_stream =
       transfer_local_device->GetDeviceToDeviceStream();
 
-  ScopedHold src_device_buffer(this, ScopedHold::kUsage);
-  {
-    absl::MutexLock lock(&mu_);
-    // We can't perform any other action while a donation hold is in progress.
-    WaitForOutstandingDonationHold();
-    if (device_buffer_ == nullptr) {
-      return InvalidArgument(
-          "CopyToDevice called on deleted or donated buffer");
-    }
-    AcquireHoldLocked(&src_device_buffer);
+  auto src_device_buffer = GetBufferWithUsageHold();
+  if (!src_device_buffer.ok()) {
+    return InvalidArgument(
+        "CopyToDevice() called on deleted or donated buffer: %s",
+        src_device_buffer.status().ToString());
   }
 
   absl::StatusOr<std::pair<std::unique_ptr<PjRtBuffer>,
@@ -1972,12 +1762,12 @@ PjRtFuture<> PjRtStreamExecutorBuffer::GetReadyFuture() {
   PjRtFuture<>::Promise definition_promise;
   {
     absl::MutexLock lock(&mu_);
-    if (device_buffer_ == nullptr) {
+    if (device_buffer() == nullptr) {
       return PjRtFuture<>(InvalidArgument(
           "GetReadyFuture() called on deleted or donated buffer"));
     }
     if (!definition_promise_) {
-      definition_events = device_buffer_->definition_events();
+      definition_events = device_buffer()->definition_events();
       definition_promise_ = PjRtFuture<>::CreatePromise();
     }
     definition_promise = definition_promise_;
