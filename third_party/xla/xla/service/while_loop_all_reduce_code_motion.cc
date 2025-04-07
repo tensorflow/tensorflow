@@ -65,7 +65,7 @@ struct MovableAllReduceContext {
 };
 
 bool IsZero(const HloInstruction* hlo) {
-  if (hlo->IsConstant() && hlo->shape().dimensions_size() == 0 &&
+  if (hlo->IsConstant() && hlo->shape().dimensions().size() == 0 &&
       hlo->literal().IsZero({})) {
     return true;
   }
