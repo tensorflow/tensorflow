@@ -1860,8 +1860,7 @@ absl::StatusOr<TritonWrapperResult> CompileTritonToLLVM(
   const int shared_mem_bytes =
       triton_module->getAttrOfType<mlir::IntegerAttr>("ttg.shared").getInt();
   VLOG(2) << "Shared memory usage: " << shared_mem_bytes << " B";
-  if (std::holds_alternative<se::CudaComputeCapability>(cc) &&
-      shared_mem_bytes > device_info.shared_memory_per_block_optin()) {
+  if (shared_mem_bytes > device_info.shared_memory_per_block_optin()) {
     return absl::ResourceExhaustedError(absl::StrFormat(
         "Shared memory size limit exceeded: requested %d, available: %d",
         shared_mem_bytes, device_info.shared_memory_per_block_optin()));
