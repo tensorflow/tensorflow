@@ -128,6 +128,87 @@ inline std::ostream& operator<<(std::ostream& os, const DataType dtype) {
   return os << static_cast<XLA_FFI_DataType>(dtype);
 }
 
+// ---- CeilOfRatio ----
+// Taken from tsl::MathUtil::CeilOrFloorOfRatio.
+//
+// This is a branching-free, cast-to-double-free implementation.
+//
+// Casting to double is in general incorrect because of loss of precision
+// when casting an int64 into a double.
+//
+// There's a bunch of 'recipes' to compute a integer ceil (or floor) on the web,
+// and most of them are incorrect.
+constexpr size_t CeilOfRatio(size_t numerator, size_t denominator) {
+  assert(denominator != 0);
+
+  const size_t rounded_toward_zero = numerator / denominator;
+  const size_t intermediate_product = rounded_toward_zero * denominator;
+
+  // When rounded_toward_zero is negative, then an adjustment is never needed:
+  // the real ratio is negative, and so rounded toward zero is the ceil.
+  // When rounded_toward_zero is non-negative, an adjustment is needed if the
+  // sign of the difference numerator - intermediate_product is the same as
+  // the sign of the denominator.
+  //
+  //
+  // Using a bool and then a static_cast to size_t is not strictly
+  // necessary, but it makes the code clear, and anyway the compiler should
+  // get rid of it.
+  const bool needs_adjustment =
+      (rounded_toward_zero >= 0) &&
+      ((denominator > 0 && numerator > intermediate_product) ||
+       (denominator < 0 && numerator < intermediate_product));
+  const size_t adjustment = static_cast<size_t>(needs_adjustment);
+  const size_t ceil_of_ratio = rounded_toward_zero + adjustment;
+  return ceil_of_ratio;
+}
+
+constexpr size_t BitWidth(DataType dtype) {
+  switch (dtype) {
+    case DataType::INVALID:
+    case DataType::TOKEN:
+      return 0;
+    case DataType::PRED:
+    case DataType::S1:
+    case DataType::U1:
+      return 1;
+    case DataType::S2:
+    case DataType::U2:
+      return 2;
+    case DataType::S4:
+    case DataType::U4:
+    case DataType::F4E2M1FN:
+      return 4;
+    case DataType::S8:
+    case DataType::U8:
+    case DataType::F8E5M2:
+    case DataType::F8E4M3:
+    case DataType::F8E4M3FN:
+    case DataType::F8E4M3B11FNUZ:
+    case DataType::F8E5M2FNUZ:
+    case DataType::F8E4M3FNUZ:
+    case DataType::F8E3M4:
+    case DataType::F8E8M0FNU:
+      return 8;
+    case DataType::S16:
+    case DataType::U16:
+    case DataType::F16:
+    case DataType::BF16:
+      return 16;
+    case DataType::S32:
+    case DataType::U32:
+    case DataType::F32:
+      return 32;
+    case DataType::S64:
+    case DataType::U64:
+    case DataType::F64:
+    case DataType::C64:
+      return 64;
+    case DataType::C128:
+      return 128;
+  }
+}
+
 constexpr size_t ByteWidth(DataType dtype) {
   switch (dtype) {
     case DataType::INVALID:
@@ -573,6 +654,10 @@ class AnyBuffer {
     return ByteWidth(element_type()) * element_count();
   }
 
+  XLA_FFI_ATTRIBUTE_ALWAYS_INLINE size_t size_bits() const {
+    return BitWidth(element_type()) * element_count();
+  }
+
   XLA_FFI_ATTRIBUTE_ALWAYS_INLINE size_t element_count() const {
     Dimensions dims = dimensions();
     return std::accumulate(dims.begin(), dims.end(), int64_t{1},
@@ -718,6 +803,10 @@ class Buffer {
 
   XLA_FFI_ATTRIBUTE_ALWAYS_INLINE size_t size_bytes() const {
     return ByteWidth(dtype) * element_count();
+  }
+
+  XLA_FFI_ATTRIBUTE_ALWAYS_INLINE size_t size_bits() const {
+    return BitWidth(dtype) * element_count();
   }
 
   XLA_FFI_ATTRIBUTE_ALWAYS_INLINE size_t element_count() const {
