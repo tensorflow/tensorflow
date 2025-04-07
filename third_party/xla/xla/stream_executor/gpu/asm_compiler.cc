@@ -62,7 +62,7 @@ absl::StatusOr<std::vector<uint8_t>> BundleGpuAsm(
   std::ostringstream targets_list;
 
   inputs_list << "/dev/null";
-  targets_list << "host-x86_64-unknown-linux";
+  targets_list << "host-x86_64-unknown-linux-";
 
   // Write images to temporary files.
   std::vector<std::string> image_paths;
@@ -77,7 +77,7 @@ absl::StatusOr<std::vector<uint8_t>> BundleGpuAsm(
         env, img_path, std::string(img.bytes.begin(), img.bytes.end())));
     VLOG(2) << "image written to " << img_path;
     inputs_list << "," << img_path;
-    targets_list << ",hip-amdgcn-amd-amdhsa-" << img.gfx_arch;
+    targets_list << ",hip-amdgcn-amd-amdhsa--" << img.gfx_arch;
     image_paths.push_back(std::move(img_path));
   }
   absl::Cleanup image_files_cleaner = [&image_paths] {
