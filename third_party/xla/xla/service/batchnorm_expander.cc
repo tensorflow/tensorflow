@@ -109,7 +109,7 @@ class BatchNormExpanderVisitor : public DfsHloRewriteVisitor {
     auto elements_per_feature_s32 = add_instruction(
         HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32_t>(1)));
 
-    for (int64_t i = 0; i < operand->shape().dimensions_size(); ++i) {
+    for (int64_t i = 0; i < operand->shape().dimensions().size(); ++i) {
       if (i == feature_index) {
         continue;
       }
@@ -190,7 +190,7 @@ absl::Status BatchNormExpanderVisitor::HandleBatchNormTraining(
       scalar_broadcast_shape,
       add(HloInstruction::CreateConstant(std::move(epsilon_literal))), {}));
   std::vector<int64_t> dimensions_without_feature;
-  const int64_t rank = operand_shape.dimensions_size();
+  const int64_t rank = operand_shape.dimensions().size();
   dimensions_without_feature.reserve(rank - 1);
 
   for (int64_t i = 0; i < rank; ++i) {
@@ -325,7 +325,7 @@ absl::Status BatchNormExpanderVisitor::HandleBatchNormInference(
       {}));
 
   std::vector<int64_t> dimensions_without_feature;
-  const int64_t rank = operand_shape.dimensions_size();
+  const int64_t rank = operand_shape.dimensions().size();
   dimensions_without_feature.reserve(rank - 1);
 
   for (int64_t i = 0; i < rank; ++i) {
@@ -448,7 +448,7 @@ absl::Status BatchNormExpanderVisitor::HandleBatchNormGrad(
       ShapeUtil::MakeStaticShape(feature_shape), epsilon_scalar, {}));
 
   std::vector<int64_t> dimensions_without_feature;
-  const int64_t rank = activation_shape.dimensions_size();
+  const int64_t rank = activation_shape.dimensions().size();
   dimensions_without_feature.reserve(rank - 1);
 
   for (int64_t i = 0; i < rank; ++i) {
@@ -526,7 +526,8 @@ absl::Status BatchNormExpanderVisitor::HandleBatchNormGrad(
   // scale * rsqrt[Var[X] + epsilon] * 1/N
   Shape scale_times_rsqrt_var_add_epsilon_shape = scale_broadcasted->shape();
   for (int64_t i = 0;
-       i < rsqrt_var_add_epsilon_broadcasted->shape().dimensions_size(); ++i) {
+       i < rsqrt_var_add_epsilon_broadcasted->shape().dimensions().size();
+       ++i) {
     if (rsqrt_var_add_epsilon_broadcasted->shape().is_dynamic_dimension(i)) {
       scale_times_rsqrt_var_add_epsilon_shape.set_dynamic_dimension(i, true);
     }
