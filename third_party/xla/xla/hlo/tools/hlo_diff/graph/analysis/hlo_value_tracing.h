@@ -65,37 +65,11 @@ class HloValueTracing {
   // given position.
   const HloValueSet& GetValueSet(const HloInstruction* instruction,
                                  const ShapeIndex& index = {}) const;
-  const HloValueSet& GetValueSet(const HloPosition& position) const;
-  HloValueSet& GetValueSet(const HloPosition& position);
   HloValueSet& GetValueSet(const HloInstruction* instruction,
                            const ShapeIndex& index = {});
 
-  // Returns the unique value in the HloValueSet at the given instruction and
-  // shape index. CHECKs if the value set does not contain a exactly one value.
-  const HloValue& GetUniqueValueAt(const HloInstruction* instruction,
-                                   const ShapeIndex& index = {}) const {
-    return GetValueSet(instruction, index).GetUniqueValue();
-  }
-  HloValue& GetUniqueValueAt(const HloInstruction* instruction,
-                             const ShapeIndex& index = {}) {
-    return GetValue(GetValueSet(instruction, index).GetUniqueValue().id());
-  }
-
   // Returns the HloValue with the given Id.
-  const HloValue& GetValue(HloValue::Id value_id) const;
   HloValue& GetValue(HloValue::Id value_id);
-
-  // Returns the total number of HloValues.
-  int64_t value_count() const { return values_.size(); }
-
-  // Returns a vector of all HloValues stabily sorted by HloValue::Id.
-  const std::vector<HloValue*>& values() const { return values_vector_; }
-
-  // Returns the call graph used for computing the dataflow.
-  const CallGraph& call_graph() const { return *call_graph_; }
-
-
-  const HloModule& module() const { return module_; }
 
  private:
   HloValueTracing(const HloModule& module,
@@ -123,7 +97,6 @@ class HloValueTracing {
   bool UpdateCallValueSet(HloInstruction* call);
   bool UpdateConditionalValueSet(HloInstruction* conditional);
   bool UpdateCopyValueSet(HloInstruction* copy);
-  bool UpdateCustomCallValueSet(HloInstruction* custom_call);
   bool UpdateDomainValueSet(HloInstruction* domain);
   bool UpdateGetTupleElementValueSet(HloInstruction* gte);
   bool UpdateParameterValueSet(HloInstruction* parameter);
