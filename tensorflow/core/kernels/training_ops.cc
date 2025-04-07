@@ -820,7 +820,7 @@ struct ApplyAdamNonCuda {
       } else {
         m += (g - m) * (T(1) - beta1());
         v += (g.square() - v) * (T(1) - beta2());
-        var -= (m * alpha) / (v.sqrt() + epsilon());
+        var -= (m * alpha) / ((v / (T(1) - beta2_power())).sqrt() + epsilon());
       }
     };
 
