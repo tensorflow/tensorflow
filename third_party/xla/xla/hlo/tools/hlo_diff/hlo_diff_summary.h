@@ -62,7 +62,7 @@ struct ComputationSummary {
   bool all_unchanged = true;
 };
 
-// A group of computations that are connected in the graph.
+// A group of left and right computations that form a diff pattern.
 struct ComputationGroup {
   std::vector<const HloComputation*> left_computations;
   std::vector<const HloComputation*> right_computations;

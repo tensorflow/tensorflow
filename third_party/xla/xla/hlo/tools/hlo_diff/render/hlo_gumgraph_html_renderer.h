@@ -20,20 +20,15 @@
 #include <cstdint>
 #include <optional>
 #include <sstream>
-#include <string>
 
 #include "absl/functional/function_ref.h"
 #include "absl/strings/string_view.h"
-#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/tools/hlo_diff/hlo_diff_result.h"
 #include "xla/hlo/tools/hlo_diff/hlo_diff_summary.h"
+#include "xla/hlo/tools/hlo_diff/render/graph_url_generator.h"
 
 namespace xla {
 namespace hlo_diff {
-
-// A function that returns a visualization url for the given instruction pair.
-using UrlGenerator = absl::FunctionRef<std::string(const HloInstruction*,
-                                                   const HloInstruction*)>;
 
 // A function that returns the op metric for the given op name.
 using GetOpMetricFn =
@@ -42,10 +37,10 @@ using GetOpMetricFn =
 // Renders the diff result in HTML format, and writes the result to the given
 // output stream.
 
-// url_generator can be specified which is used to link an url to each generated
-// diff result.
+// url_generator can be specified which is used to link an url to each
+// generated diff result.
 void RenderHtml(const DiffResult& diff_result, const DiffSummary& diff_summary,
-                UrlGenerator url_generator, GetOpMetricFn left_op_metrics,
+                GraphUrlGenerator* url_generator, GetOpMetricFn left_op_metrics,
                 GetOpMetricFn right_op_metrics, std::ostringstream& out);
 
 }  // namespace hlo_diff

@@ -175,10 +175,7 @@ absl::Status RunGumgraphDiff(HloModule& first_module, HloModule& second_module,
   if (!html_output.empty()) {
     std::ostringstream html;
     RenderHtml(
-        diff, diff_summary,
-        [](const HloInstruction* left_inst, const HloInstruction* right_inst) {
-          return "";
-        },
+        diff, diff_summary, nullptr,
         [](absl::string_view op_name) { return std::nullopt; },
         [](absl::string_view op_name) { return std::nullopt; }, html);
     TF_RETURN_IF_ERROR(

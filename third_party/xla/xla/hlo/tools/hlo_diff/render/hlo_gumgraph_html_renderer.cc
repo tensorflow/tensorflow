@@ -34,6 +34,7 @@
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/tools/hlo_diff/hlo_diff_result.h"
 #include "xla/hlo/tools/hlo_diff/hlo_diff_summary.h"
+#include "xla/hlo/tools/hlo_diff/render/graph_url_generator.h"
 #include "xla/hlo/tools/hlo_diff/render/hlo_gumgraph_renderer_util.h"
 
 namespace xla {
@@ -60,7 +61,7 @@ std::string PrintCss() {
     .section > .content {
       font-size: 14px;
     }
-  
+
     details {
       margin: 0;
       padding: 0;
@@ -73,9 +74,9 @@ std::string PrintCss() {
       background-color: #eee;
     }
     details > .content {
-      padding-left: 10px;
+      padding-left: 20px;
     }
-  
+
     .list {
       margin: 0;
       padding: 0;
@@ -83,7 +84,12 @@ std::string PrintCss() {
     .list > .item:hover {
       background-color: #eee;
     }
-  
+
+    .attributes-list {
+      margin: 0;
+      padding: 0;
+    }
+
     .tooltip {
       position: relative;
       display: inline-block;
@@ -122,7 +128,7 @@ std::string PrintCss() {
       opacity: 1;
     }
     </style>
-    )";
+  )";
 }
 
 // Prints the div html block.
@@ -153,20 +159,21 @@ std::string PrintList(absl::Span<const std::string> items) {
                   "list");
 }
 
-// Prints a link to the instruction in model explorer if url_generator is not
-// null, otherwise returns the text directly.
-std::string PrintInstructionLink(const HloInstruction* left_inst,
-                                 const HloInstruction* right_inst,
-                                 absl::string_view text,
-                                 UrlGenerator url_generator) {
-  std::string url = url_generator(left_inst, right_inst);
+// Prints a list of attribute items.
+std::string PrintAttributesList(absl::Span<const std::string> items) {
+  return PrintDiv(absl::StrJoin(items, "",
+                                [](std::string* out, const auto& item) {
+                                  absl::StrAppend(out, PrintDiv(item, "item"));
+                                }),
+                  "attributes-list");
+}
 
-  if (url.empty()) {
-    return std::string(text);
-  }
+// Prints a link to the given url.
+std::string PrintLink(absl::string_view text, absl::string_view url) {
   return absl::StrFormat("<a href=\"%s\" target=\"_blank\">%s</a>", url, text);
 }
 
+// Prints a span with a tooltip.
 std::string PrintTooltip(absl::string_view text,
                          absl::string_view tooltip_text) {
   return absl::StrFormat(
@@ -176,13 +183,46 @@ std::string PrintTooltip(absl::string_view text,
 
 /*** Summary logic ***/
 
+// Prints a link to the instruction in model explorer if url_generator is not
+// null, otherwise returns the text directly.
+std::string PrintInstructionLink(const HloInstruction* left_inst,
+                                 const HloInstruction* right_inst,
+                                 absl::string_view text,
+                                 GraphUrlGenerator* url_generator) {
+  if (url_generator == nullptr) {
+    return std::string(text);
+  }
+  std::string url = url_generator->Generate(left_inst, right_inst);
+  if (url.empty()) {
+    return std::string(text);
+  }
+  return PrintLink(text, url);
+}
+
+// Prints a link to the computation in model explorer if url_generator is not
+// null, otherwise returns the text directly.
+std::string PrintComputationLink(const HloComputation* left_comp,
+                                 const HloComputation* right_comp,
+                                 absl::string_view text,
+                                 GraphUrlGenerator* url_generator) {
+  if (url_generator == nullptr) {
+    return std::string(text);
+  }
+  std::string maybe_url = url_generator->Generate(left_comp, right_comp);
+  if (maybe_url.empty()) {
+    return std::string(text);
+  }
+  return PrintLink(text, maybe_url);
+}
+
 // The location of the instruction in the diff result.
 enum class InstructionLocation : std::uint8_t { kLeft, kRight };
 
 // Prints a list of instructions.
 std::string PrintInstructionsAsList(
     absl::Span<const HloInstruction* const> instructions,
-    InstructionLocation location, bool name_only, UrlGenerator url_generator) {
+    InstructionLocation location, bool name_only,
+    GraphUrlGenerator* url_generator) {
   std::vector<std::string> instructions_list;
   for (const HloInstruction* inst : instructions) {
     std::string link;
@@ -220,7 +260,7 @@ std::string PrintUnmatchedInstructions(
     absl::Span<const HloInstruction* const> instructions,
     InstructionLocation location,
     const absl::flat_hash_set<HloOpcode>& opcodes_to_ignore, bool name_only,
-    UrlGenerator url_generator) {
+    GraphUrlGenerator* url_generator) {
   absl::flat_hash_map<HloOpcode, std::vector<const HloInstruction*>>
       instructions_by_opcode = GroupInstructionsByOpcode(instructions);
   std::vector<std::pair<HloOpcode, int64_t>> opcode_counts;
@@ -328,7 +368,7 @@ std::string PrintChangedInstructions(
     const absl::flat_hash_map<const HloInstruction*, const HloInstruction*>&
         instructions,
     const absl::flat_hash_set<HloOpcode>& opcodes_to_ignore,
-    UrlGenerator url_generator) {
+    GraphUrlGenerator* url_generator) {
   auto decorated_printer = [&url_generator](const HloInstruction* left_inst,
                                             const HloInstruction* right_inst) {
     std::vector<ChangedInstructionDiffType> diff_types =
@@ -365,7 +405,7 @@ std::string PrintUnchangedInstructions(
     const absl::flat_hash_map<const HloInstruction*, const HloInstruction*>&
         instructions,
     const absl::flat_hash_set<HloOpcode>& opcodes_to_ignore,
-    UrlGenerator url_generator) {
+    GraphUrlGenerator* url_generator) {
   auto simple_printer = [&url_generator](const HloInstruction* left_inst,
                                          const HloInstruction* right_inst) {
     return PrintInstructionLink(
@@ -381,7 +421,7 @@ std::string PrintUnchangedInstructions(
 
 std::string PrintUnmatchedMetricsDiff(
     absl::Span<const HloInstruction* const> instructions,
-    GetOpMetricFn get_op_metrics, UrlGenerator url_generator) {
+    GetOpMetricFn get_op_metrics, GraphUrlGenerator* url_generator) {
   std::vector<std::pair<const HloInstruction*, double>> sorted_metrics_diff;
   for (const HloInstruction* inst : instructions) {
     if (auto metric = get_op_metrics(inst->name()); metric.has_value()) {
@@ -405,7 +445,7 @@ std::string PrintMatchedMetricsDiff(
     const absl::flat_hash_map<const HloInstruction*, const HloInstruction*>&
         instructions,
     GetOpMetricFn left_op_metrics, GetOpMetricFn right_op_metrics,
-    UrlGenerator url_generator) {
+    GraphUrlGenerator* url_generator) {
   std::vector<std::pair<std::pair<const HloInstruction*, const HloInstruction*>,
                         double>>
       sorted_metrics_diff;
@@ -433,10 +473,80 @@ std::string PrintMatchedMetricsDiff(
   return PrintList(metrics_diff_list);
 }
 
+// Summarize a diff group.
+std::string SummarizeDiffGroup(
+    absl::Span<const ComputationGroup> computation_groups) {
+  if (computation_groups.size() > 1) {
+    return absl::StrFormat("Summarized %d computations with the same diff",
+                           computation_groups.size());
+  }
+  return "A single computation has unique diff";
+}
+
+// Prints the summary of the repetitive computation groups.
+std::string PrintRepetitiveComputationGroups(const DiffSummary& diff_summary,
+                                             GraphUrlGenerator* url_generator) {
+  // Sort the computation groups by the number of computations in each group in
+  // descending order.
+  std::vector<std::vector<ComputationGroup>> sorted_computation_groups;
+  for (const auto& [_, computation_groups] :
+       diff_summary.grouped_computations) {
+    sorted_computation_groups.push_back(computation_groups);
+  }
+  std::sort(
+      sorted_computation_groups.begin(), sorted_computation_groups.end(),
+      [](absl::Span<const ComputationGroup> a,
+         absl::Span<const ComputationGroup> b) { return a.size() > b.size(); });
+  std::string computation_group_list;
+  int i = 0;
+  for (const auto& computation_groups : sorted_computation_groups) {
+    if (computation_groups.empty()) {
+      continue;
+    }
+    const ComputationGroup& sample = computation_groups[0];
+    // We only print the one-to-one mapping for now.
+    if (sample.left_computations.size() != 1 ||
+        sample.right_computations.size() != 1) {
+      continue;
+    }
+    std::vector<std::string> computation_pair_list;
+    for (const ComputationGroup& computation_group : computation_groups) {
+      if (computation_group.left_computations.size() != 1 ||
+          computation_group.right_computations.size() != 1) {
+        continue;
+      }
+      const HloComputation* left_computation =
+          computation_group.left_computations[0];
+      const HloComputation* right_computation =
+          computation_group.right_computations[0];
+      computation_pair_list.push_back(PrintComputationLink(
+          left_computation, right_computation,
+          absl::StrFormat("%s and %s", left_computation->name(),
+                          right_computation->name()),
+          url_generator));
+    }
+    absl::StrAppend(
+        &computation_group_list,
+        PrintDetails(
+            absl::StrFormat("Group %d: %s (Sample: %s → %s)", ++i,
+                            SummarizeDiffGroup(computation_groups),
+                            sample.left_computations[0]->name(),
+                            sample.right_computations[0]->name()),
+            PrintAttributesList(
+                {absl::StrFormat(
+                     "Instruction count: %d → %d",
+                     sample.left_computations[0]->instruction_count(),
+                     sample.right_computations[0]->instruction_count()),
+                 PrintDetails("Instances",
+                              PrintList(computation_pair_list))})));
+  }
+  return computation_group_list;
+}
+
 }  // namespace
 
 void RenderHtml(const DiffResult& diff_result, const DiffSummary& diff_summary,
-                UrlGenerator url_generator, GetOpMetricFn left_op_metrics,
+                GraphUrlGenerator* url_generator, GetOpMetricFn left_op_metrics,
                 GetOpMetricFn right_op_metrics, std::ostringstream& out) {
   const absl::flat_hash_set<HloOpcode> ignored_opcodes(kIgnoredOpcodes.begin(),
                                                        kIgnoredOpcodes.end());
@@ -488,6 +598,11 @@ void RenderHtml(const DiffResult& diff_result, const DiffSummary& diff_summary,
                        PrintMatchedMetricsDiff(
                            diff_result.unchanged_instructions, left_op_metrics,
                            right_op_metrics, url_generator))));
+
+  // Print repetitive computation groups
+  out << PrintSectionWithHeader(
+      "Group of computations with the same diff",
+      PrintRepetitiveComputationGroups(diff_summary, url_generator));
 }
 
 }  // namespace hlo_diff
