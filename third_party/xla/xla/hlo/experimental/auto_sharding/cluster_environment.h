@@ -116,11 +116,11 @@ class ClusterEnvironment {
     std::vector<int64_t> tensor_dim_to_mesh_dim;
     if (crash_at_error) {
       tensor_dim_to_mesh_dim =
-          GetTensorDimToMeshDim(shape.dimensions_size(), spec, device_mesh_,
+          GetTensorDimToMeshDim(shape.dimensions().size(), spec, device_mesh_,
                                 consider_reverse_device_meshes);
     } else {
       auto tensor_dim_to_mesh_dim_status = GetTensorDimToMeshDimNoCrash(
-          shape.dimensions_size(), spec, device_mesh_,
+          shape.dimensions().size(), spec, device_mesh_,
           consider_reverse_device_meshes);
       if (tensor_dim_to_mesh_dim_status.ok()) {
         tensor_dim_to_mesh_dim = tensor_dim_to_mesh_dim_status.value();
