@@ -32,6 +32,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "third_party/protobuf/descriptor.h"
 #include "xla/client/executable_build_options.h"
 #include "xla/ffi/execution_context.h"
 #include "xla/hlo/ir/hlo_module.h"
