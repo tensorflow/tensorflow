@@ -117,12 +117,12 @@ func.func @test_real_div(%arg0: tensor<13x21x3xi32>, %arg1: tensor<13x1x3xi32>) 
 // CHECK-LABEL:   func.func @test_floor_div(
 // CHECK-SAME:                              %[[VAL_0:.*]]: tensor<13x21x3xi32>,
 // CHECK-SAME:                              %[[VAL_1:.*]]: tensor<13x1x3xi32>) -> tensor<13x21x3xi32> {
-// CHECK:           %[[VAL_2:.*]] = "tosa.const"() <{value = dense<0> : tensor<i8>}> : () -> tensor<i8>
-// CHECK:           %[[VAL_3:.*]] = "tosa.const"() <{value = dense<0> : tensor<1x1x1xi32>}> : () -> tensor<1x1x1xi32>
-// CHECK:           %[[VAL_4:.*]] = "tosa.const"() <{value = dense<1> : tensor<1x1x1xi32>}> : () -> tensor<1x1x1xi32>
+// CHECK:           %[[VAL_2:.*]] = "tosa.const"() <{values = dense<0> : tensor<1xi8>}> : () -> tensor<1xi8>
+// CHECK:           %[[VAL_3:.*]] = "tosa.const"() <{values = dense<0> : tensor<1x1x1xi32>}> : () -> tensor<1x1x1xi32>
+// CHECK:           %[[VAL_4:.*]] = "tosa.const"() <{values = dense<1> : tensor<1x1x1xi32>}> : () -> tensor<1x1x1xi32>
 // CHECK:           %[[VAL_5:.*]] = tosa.int_div %[[VAL_0]], %[[VAL_1]] : (tensor<13x21x3xi32>, tensor<13x1x3xi32>) -> tensor<13x21x3xi32>
-// CHECK:           %[[VAL_6:.*]] = tosa.mul %[[VAL_0]], %[[VAL_1]], %[[VAL_2]] : (tensor<13x21x3xi32>, tensor<13x1x3xi32>, tensor<i8>) -> tensor<13x21x3xi32>
-// CHECK:           %[[VAL_7:.*]] = tosa.mul %[[VAL_1]], %[[VAL_5]], %[[VAL_2]] : (tensor<13x1x3xi32>, tensor<13x21x3xi32>, tensor<i8>) -> tensor<13x21x3xi32>
+// CHECK:           %[[VAL_6:.*]] = tosa.mul %[[VAL_0]], %[[VAL_1]], %[[VAL_2]] : (tensor<13x21x3xi32>, tensor<13x1x3xi32>, tensor<1xi8>) -> tensor<13x21x3xi32>
+// CHECK:           %[[VAL_7:.*]] = tosa.mul %[[VAL_1]], %[[VAL_5]], %[[VAL_2]] : (tensor<13x1x3xi32>, tensor<13x21x3xi32>, tensor<1xi8>) -> tensor<13x21x3xi32>
 // CHECK:           %[[VAL_8:.*]] = tosa.equal %[[VAL_0]], %[[VAL_7]] : (tensor<13x21x3xi32>, tensor<13x21x3xi32>) -> tensor<13x21x3xi1>
 // CHECK:           %[[VAL_9:.*]] = tosa.logical_not %[[VAL_8]] : (tensor<13x21x3xi1>) -> tensor<13x21x3xi1>
 // CHECK:           %[[VAL_10:.*]] = tosa.greater %[[VAL_3]], %[[VAL_6]] : (tensor<1x1x1xi32>, tensor<13x21x3xi32>) -> tensor<13x21x3xi1>
