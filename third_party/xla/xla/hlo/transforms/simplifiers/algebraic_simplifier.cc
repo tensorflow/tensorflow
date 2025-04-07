@@ -9034,6 +9034,7 @@ absl::Status AlgebraicSimplifierVisitor::HandleTranspose(
   // the reshape/transpose combination can be interpreted as a space-to-depth
   // transformation.
   if (!options_.is_layout_sensitive() &&
+      options_.rewrite_reshape_transpose_as_slice_concatenate() &&
       operand->opcode() == HloOpcode::kReshape &&
       transpose->user_count() == 1 &&
       HloOpcode::kReshape == transpose->users()[0]->opcode()) {

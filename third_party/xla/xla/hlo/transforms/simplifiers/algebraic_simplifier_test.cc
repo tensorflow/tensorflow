@@ -6312,6 +6312,31 @@ ENTRY entry {
                              .WithShapeEqualTo(&result_shape)));
 }
 
+// Test that the transformation above doesn't happen when disabled.
+TEST_F(AlgebraicSimplifierTest, DisabledTransposeReshapeToConcatSlice) {
+  const std::string& hlo_string = R"(
+HloModule TransposeReshapeDepthToSpace
+
+ENTRY entry {
+  %param = f32[8,14,14,128] parameter(0)
+  %reshape.1 = f32[8,14,14,2,64] reshape(%param)
+  %transpose = transpose(%reshape.1), dimensions={0,1,3,2,4}
+  ROOT %reshape.2 = f32[8,28,14,64] reshape(%transpose)
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  AlgebraicSimplifierOptions options = default_options_;
+  options.set_rewrite_reshape_transpose_as_slice_concatenate(false);
+  AlgebraicSimplifier simplifier(options);
+  ASSERT_FALSE(simplifier.Run(module.get()).value());
+
+  Shape result_shape = ShapeUtil::MakeShape(F32, {8, 28, 14, 64});
+  EXPECT_THAT(
+      module->entry_computation()->root_instruction(),
+      GmockMatch(m::Reshape(m::Transpose(m::Reshape(m::Parameter(0))))));
+}
+
 // Test that a depth-to-space transformation expressed as
 // reshape(transpose(reshape(op))) with a large number of chunks
 // is not rewritten.
