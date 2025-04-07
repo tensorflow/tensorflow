@@ -1074,7 +1074,7 @@ absl::string_view PlatformName(const PJRT_Api* api,
   PJRT_TopologyDescription_PlatformName_Args args;
   args.struct_size = PJRT_TopologyDescription_PlatformName_Args_STRUCT_SIZE;
   args.extension_start = nullptr;
-  args.topology = const_cast<PJRT_TopologyDescription*>(topo_desc);
+  args.topology = topo_desc;
   LogFatalIfPjrtError(api->PJRT_TopologyDescription_PlatformName(&args), api);
   return {args.platform_name, args.platform_name_size};
 }
@@ -1085,7 +1085,7 @@ absl::Span<PJRT_DeviceDescription* const> DeviceDescriptions(
   args.struct_size =
       PJRT_TopologyDescription_GetDeviceDescriptions_Args_STRUCT_SIZE;
   args.extension_start = nullptr;
-  args.topology = const_cast<PJRT_TopologyDescription*>(topo_desc);
+  args.topology = topo_desc;
   LogFatalIfPjrtError(
       api->PJRT_TopologyDescription_GetDeviceDescriptions(&args), api);
   return {args.descriptions, args.num_descriptions};

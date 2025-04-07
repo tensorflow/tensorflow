@@ -82,7 +82,7 @@ PJRT_DEFINE_STRUCT_TRAITS(PJRT_Extension_Base, next);
 // Changes include:
 // * Adding a new field to the PJRT_Api or argument structs
 // * Renaming a method or argument (doesn't affect ABI)
-#define PJRT_API_MINOR 67
+#define PJRT_API_MINOR 68
 
 // The plugin should set the major_version and minor_version of
 // PJRT_Api.pjrt_api_version to be the `PJRT_API_MAJOR` and `PJRT_API_MINOR` in
@@ -2237,7 +2237,7 @@ typedef PJRT_Error* PJRT_TopologyDescription_PlatformVersion(
 struct PJRT_TopologyDescription_PlatformName_Args {
   size_t struct_size;
   PJRT_Extension_Base* extension_start;
-  PJRT_TopologyDescription* topology;
+  const PJRT_TopologyDescription* topology;
   // `platform_name` has the same lifetime as `topology`. It is owned by
   // `topology`.
   const char* platform_name;  // out
@@ -2253,7 +2253,7 @@ typedef PJRT_Error* PJRT_TopologyDescription_PlatformName(
 struct PJRT_TopologyDescription_GetDeviceDescriptions_Args {
   size_t struct_size;
   PJRT_Extension_Base* extension_start;
-  PJRT_TopologyDescription* topology;
+  const PJRT_TopologyDescription* topology;
   // Has the same lifetime as topology.
   PJRT_DeviceDescription* const* descriptions;  // out
   size_t num_descriptions;                      // out
