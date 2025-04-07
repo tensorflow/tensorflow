@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/python/pjrt_ifrt/xla_sharding.h"
 
 #include <algorithm>
+#include <atomic>
 #include <cstdint>
 #include <memory>
 #include <optional>
@@ -23,6 +24,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/base/optimization.h"
 #include "absl/hash/hash.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
@@ -40,7 +42,6 @@ limitations under the License.
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
 #include "xla/shape_util.h"
-#include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
@@ -426,8 +427,15 @@ std::string HloSharding::DebugString() const {
 }
 
 void HloSharding::Hash(absl::HashState state) const {
-  absl::HashState::combine(std::move(state), devices_, memory_kind_,
-                           xla_hlo_sharding_);
+  uint64_t hash = hash_.load(std::memory_order_relaxed);
+  if (hash == kUnsetHash) {
+    hash = absl::HashOf(devices_, memory_kind_, xla_hlo_sharding_);
+    if (ABSL_PREDICT_FALSE(hash == kUnsetHash)) {
+      ++hash;
+    }
+    hash_.store(hash, std::memory_order_relaxed);
+  }
+  absl::HashState::combine(std::move(state), hash);
 }
 
 std::vector<IndexDomain> TEST_HloShardingIndexDomainsSlowPath(
