@@ -1,3 +1,4 @@
+load("//xla:xla.default.bzl", "xla_internal")
 load("//xla/tsl:tsl.bzl", "internal_visibility")
 load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
 
@@ -76,6 +77,75 @@ cc_library(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/types:span",
     ],
+)
+
+cc_library(
+    name = "collectives_telemetry_consumer_registry",
+    srcs = ["collectives_telemetry_consumer_registry.cc"],
+    hdrs = ["collectives_telemetry_consumer_registry.h"],
+    deps = [
+        ":collectives_telemetry_consumer",
+        "//xla:util",
+        "//xla/service:platform_util",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/container:btree",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/synchronization",
+        "@local_tsl//tsl/platform:logging",
+    ],
+)
+
+cc_library(
+    name = "collectives_telemetry_consumer",
+    hdrs = ["collectives_telemetry_consumer.h"],
+    deps = [
+        "//xla/service:collective_ops_utils",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/time",
+        "@com_google_absl//absl/types:optional",
+    ],
+)
+
+cc_library(
+    name = "collectives_telemetry_logger",
+    srcs = ["collectives_telemetry_logger.cc"],
+    hdrs = ["collectives_telemetry_logger.h"],
+    deps = [
+        ":collectives_telemetry_consumer",
+        ":collectives_telemetry_consumer_registry",
+        "//xla/service:collective_ops_utils",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/time",
+        "@com_google_absl//absl/types:optional",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
+    name = "communicator_telemetry",
+    srcs = ["communicator_telemetry.cc"],
+    hdrs = ["communicator_telemetry.h"],
+    deps = [
+        ":collectives_telemetry_consumer_registry",
+        ":collectives_telemetry_logger",
+        ":communicator",
+        ":rank_id",
+        "//xla/service:collective_ops_utils",
+        "//xla/stream_executor:device_memory",
+        "@com_google_absl//absl/functional:any_invocable",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/time",
+        "@com_google_absl//absl/types:optional",
+        "@com_google_absl//absl/types:span",
+    ] + xla_internal(["service:collectives_telemetry_consumer"]),
 )
 
 cc_library(

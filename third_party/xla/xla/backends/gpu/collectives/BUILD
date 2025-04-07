@@ -204,6 +204,7 @@ cc_library(
         "//xla/core/collectives:clique_key",
         "//xla/core/collectives:collectives_registry",
         "//xla/core/collectives:communicator",
+        "//xla/core/collectives:communicator_telemetry",
         "//xla/core/collectives:rank_id",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:logging",
