@@ -1397,6 +1397,67 @@ def MatchGeluApproximate : Pat<
    (HasOneUse $pow_out),
   ]>;
 
+// Alternate pattern for GeluApproximate to match mul(x, mul(x, x)).
+//   0.5 * x * ( 1 + tanh( sqrt_2dPi  * ( x + 0.044715 * mul(x, mul(x, x)) ) ) )
+def MatchGeluApproximate_Mul1 : Pat<
+  (TFL_MulOp
+   (TFL_MulOp:$mul_out $arg0, (Arith_ConstantOp F32ElementsAttr:$Cst_1_2), TFL_AF_None),
+   (TFL_AddOp:$add_out
+    (TFL_TanhOp:$tanh_out
+     (TFL_MulOp:$mul_out1
+      (TFL_AddOp:$add_out1 $arg0,
+       (TFL_MulOp:$mul_out2
+        (TFL_MulOp:$pow_out $arg0,
+          (TFL_MulOp:$sqr_out $arg0, $arg0, TFL_AF_None), TFL_AF_None),
+        (Arith_ConstantOp F32ElementsAttr:$Coeff), TFL_AF_None), TFL_AF_None),
+      (Arith_ConstantOp F32ElementsAttr:$Cst_sqrt_2dPi), TFL_AF_None)),
+    (Arith_ConstantOp F32ElementsAttr:$Cst_1), TFL_AF_None), TFL_AF_None),
+  (TFL_GeluOp $arg0, ConstBoolAttrTrue),
+  [(FloatValueEquals<"0.5"> $Cst_1_2),
+   (FloatValueEquals<"1"> $Cst_1),
+   (FloatValueEquals<"0.797884583"> $Cst_sqrt_2dPi),
+   (FloatValueEquals<"0.044715"> $Coeff),
+   (HasOneUse $mul_out),
+   (HasOneUse $add_out),
+   (HasOneUse $tanh_out),
+   (HasOneUse $mul_out1),
+   (HasOneUse $add_out1),
+   (HasOneUse $mul_out2),
+   (HasOneUse $pow_out),
+   (HasOneUse $sqr_out),
+  ]>;
+
+// Alternate pattern for GeluApproximate to match mul(mul(x, x), x).
+//   0.5 * x * ( 1 + tanh( sqrt_2dPi  * ( x + 0.044715 * mul(mul(x, x), x) ) ) )
+def MatchGeluApproximate_Mul2 : Pat<
+  (TFL_MulOp
+   (TFL_MulOp:$mul_out $arg0, (Arith_ConstantOp F32ElementsAttr:$Cst_1_2), TFL_AF_None),
+   (TFL_AddOp:$add_out
+    (TFL_TanhOp:$tanh_out
+     (TFL_MulOp:$mul_out1
+      (TFL_AddOp:$add_out1 $arg0,
+       (TFL_MulOp:$mul_out2
+        (TFL_MulOp:$pow_out
+          (TFL_MulOp:$sqr_out $arg0, $arg0, TFL_AF_None),
+          $arg0, TFL_AF_None),
+        (Arith_ConstantOp F32ElementsAttr:$Coeff), TFL_AF_None), TFL_AF_None),
+      (Arith_ConstantOp F32ElementsAttr:$Cst_sqrt_2dPi), TFL_AF_None)),
+    (Arith_ConstantOp F32ElementsAttr:$Cst_1), TFL_AF_None), TFL_AF_None),
+  (TFL_GeluOp $arg0, ConstBoolAttrTrue),
+  [(FloatValueEquals<"0.5"> $Cst_1_2),
+   (FloatValueEquals<"1"> $Cst_1),
+   (FloatValueEquals<"0.797884583"> $Cst_sqrt_2dPi),
+   (FloatValueEquals<"0.044715"> $Coeff),
+   (HasOneUse $mul_out),
+   (HasOneUse $add_out),
+   (HasOneUse $tanh_out),
+   (HasOneUse $mul_out1),
+   (HasOneUse $add_out1),
+   (HasOneUse $mul_out2),
+   (HasOneUse $pow_out),
+   (HasOneUse $sqr_out),
+  ]>;
+
 // Alternate pattern for GeluApproximate (see different order for mul), replaces
 //   x * ( 0.5 * ( 1 + tanh( sqrt_2dPi  * ( x + 0.044715 * pow( x, 3 ) ) ) ) )
 def MatchGeluApproximate1 : Pat<
@@ -1424,6 +1485,67 @@ def MatchGeluApproximate1 : Pat<
    (HasOneUse $add_out1),
    (HasOneUse $mul_out2),
    (HasOneUse $pow_out),
+  ]>;
+
+// Alternate pattern for GeluApproximate1 to match mul(x, mul(x, x)).
+//   x * ( 0.5 * ( 1 + tanh( sqrt_2dPi  * ( x + 0.044715 * mul(x, mul(x, x)) ) ) ) )
+def MatchGeluApproximate1_Mul1 : Pat<
+  (TFL_MulOp $arg0,
+   (TFL_MulOp:$mul_out
+    (TFL_AddOp:$add_out
+     (TFL_TanhOp:$tanh_out
+      (TFL_MulOp:$mul_out1
+       (TFL_AddOp:$add_out1 $arg0,
+        (TFL_MulOp:$mul_out2
+          (TFL_MulOp:$pow_out $arg0,
+            (TFL_MulOp:$sqr_out $arg0, $arg0, TFL_AF_None), TFL_AF_None),
+         (Arith_ConstantOp F32ElementsAttr:$Coeff), TFL_AF_None), TFL_AF_None),
+       (Arith_ConstantOp F32ElementsAttr:$Cst_sqrt_2dPi), TFL_AF_None)),
+     (Arith_ConstantOp F32ElementsAttr:$Cst_1), TFL_AF_None), (Arith_ConstantOp F32ElementsAttr:$Cst_1_2), TFL_AF_None), TFL_AF_None),
+  (TFL_GeluOp $arg0, ConstBoolAttrTrue),
+  [(FloatValueEquals<"0.5"> $Cst_1_2),
+   (FloatValueEquals<"1"> $Cst_1),
+   (FloatValueEquals<"0.797884583"> $Cst_sqrt_2dPi),
+   (FloatValueEquals<"0.044715"> $Coeff),
+   (HasOneUse $mul_out),
+   (HasOneUse $add_out),
+   (HasOneUse $tanh_out),
+   (HasOneUse $mul_out1),
+   (HasOneUse $add_out1),
+   (HasOneUse $mul_out2),
+   (HasOneUse $pow_out),
+   (HasOneUse $sqr_out),
+  ]>;
+
+// Alternate pattern for GeluApproximate1 to match mul(mul(x, x), x).
+//   x * ( 0.5 * ( 1 + tanh( sqrt_2dPi  * ( x + 0.044715 * mul(mul(x, x), x) ) ) ) )
+def MatchGeluApproximate1_Mul2 : Pat<
+  (TFL_MulOp $arg0,
+   (TFL_MulOp:$mul_out
+    (TFL_AddOp:$add_out
+     (TFL_TanhOp:$tanh_out
+      (TFL_MulOp:$mul_out1
+       (TFL_AddOp:$add_out1 $arg0,
+        (TFL_MulOp:$mul_out2
+          (TFL_MulOp:$pow_out
+            (TFL_MulOp:$sqr_out $arg0, $arg0, TFL_AF_None),
+            $arg0, TFL_AF_None),
+         (Arith_ConstantOp F32ElementsAttr:$Coeff), TFL_AF_None), TFL_AF_None),
+       (Arith_ConstantOp F32ElementsAttr:$Cst_sqrt_2dPi), TFL_AF_None)),
+     (Arith_ConstantOp F32ElementsAttr:$Cst_1), TFL_AF_None), (Arith_ConstantOp F32ElementsAttr:$Cst_1_2), TFL_AF_None), TFL_AF_None),
+  (TFL_GeluOp $arg0, ConstBoolAttrTrue),
+  [(FloatValueEquals<"0.5"> $Cst_1_2),
+   (FloatValueEquals<"1"> $Cst_1),
+   (FloatValueEquals<"0.797884583"> $Cst_sqrt_2dPi),
+   (FloatValueEquals<"0.044715"> $Coeff),
+   (HasOneUse $mul_out),
+   (HasOneUse $add_out),
+   (HasOneUse $tanh_out),
+   (HasOneUse $mul_out1),
+   (HasOneUse $add_out1),
+   (HasOneUse $mul_out2),
+   (HasOneUse $pow_out),
+   (HasOneUse $sqr_out),
   ]>;
 
 // For Gelu, replaces
