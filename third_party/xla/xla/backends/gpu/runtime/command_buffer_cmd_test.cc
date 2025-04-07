@@ -58,8 +58,12 @@ static se::StreamExecutor* GpuExecutor() {
   return platform->ExecutorForDevice(0).value();
 }
 
-// Give a short aliases to execution threads.
+// Give a short alias to execution thread.
 static constexpr auto s0 = ExecutionStreamId(0);
+
+// Give a short alias to synchronization mode.
+static constexpr auto serialize =
+    CommandBufferCmdSequence::SynchronizationMode::kSerialize;
 
 // A command buffer cmd for testing automatic barriers insertion by the command
 // buffer cmd sequence. We never execute this command, we need it only to pass
@@ -148,7 +152,7 @@ TEST(CommandBufferCmdTest, SerializeExecution) {
   CommandBufferCmdSequence::Builder builder;
   builder.Emplace<TestOnlyCommandBufferCmd>(s0, BufferUseVector{use0});
   builder.Emplace<TestOnlyCommandBufferCmd>(s0, BufferUseVector{use1});
-  CommandBufferCmdSequence commands = std::move(builder).Build();
+  CommandBufferCmdSequence commands = std::move(builder).Build(serialize);
 
   // TODO(ezhulenev): Check that commands correctly infer dependencies.
 }
@@ -166,7 +170,7 @@ TEST(CommandBufferCmdTest, NoReadBarrier) {
   CommandBufferCmdSequence::Builder builder;
   builder.Emplace<TestOnlyCommandBufferCmd>(s0, BufferUseVector{use0});
   builder.Emplace<TestOnlyCommandBufferCmd>(s0, BufferUseVector{use1});
-  CommandBufferCmdSequence commands = std::move(builder).Build();
+  CommandBufferCmdSequence commands = std::move(builder).Build(serialize);
 
   // TODO(ezhulenev): Check that commands correctly infer dependencies.
 }
@@ -184,7 +188,7 @@ TEST(CommandBufferCmdTest, NoWriteBarrier) {
   CommandBufferCmdSequence::Builder builder;
   builder.Emplace<TestOnlyCommandBufferCmd>(s0, BufferUseVector{use0});
   builder.Emplace<TestOnlyCommandBufferCmd>(s0, BufferUseVector{use1});
-  CommandBufferCmdSequence commands = std::move(builder).Build();
+  CommandBufferCmdSequence commands = std::move(builder).Build(serialize);
 
   // TODO(ezhulenev): Check that commands correctly infer dependencies.
 }
@@ -205,7 +209,7 @@ TEST(CommandBufferCmdTest, WriteConflictBarrier) {
   builder.Emplace<TestOnlyCommandBufferCmd>(s0, BufferUseVector{use0});
   builder.Emplace<TestOnlyCommandBufferCmd>(s0, BufferUseVector{use1});
   builder.Emplace<TestOnlyCommandBufferCmd>(s0, BufferUseVector{use2});
-  CommandBufferCmdSequence commands = std::move(builder).Build();
+  CommandBufferCmdSequence commands = std::move(builder).Build(serialize);
 
   // TODO(ezhulenev): Check that commands correctly infer dependencies.
 }
@@ -234,7 +238,7 @@ TEST(CommandBufferCmdTest, MemcpyCmd) {
   // Prepare commands sequence for constructing command buffer.
   CommandBufferCmdSequence::Builder builder;
   builder.Emplace<MemcpyDeviceToDeviceCmd>(s0, slice_b, slice_a, byte_length);
-  CommandBufferCmdSequence commands = std::move(builder).Build();
+  CommandBufferCmdSequence commands = std::move(builder).Build(serialize);
 
   ServiceExecutableRunOptions run_options;
   se::StreamExecutorMemoryAllocator allocator(executor);
@@ -290,7 +294,7 @@ TEST(CommandBufferCmdTest, LaunchCmd) {
   builder.Emplace<LaunchCmd>(s0, "AddI32", args, args_access,
                              LaunchDimensions(1, 4),
                              /*shmem_bytes=*/0);
-  CommandBufferCmdSequence commands = std::move(builder).Build();
+  CommandBufferCmdSequence commands = std::move(builder).Build(serialize);
 
   // Initialize command sequence and load device kernels.
   TF_ASSERT_OK_AND_ASSIGN(std::vector<uint8_t> fatbin,

@@ -573,12 +573,10 @@ absl::Status IrEmitterUnnested::EmitCommandBufferThunk(
           ? CommandBufferCmdSequence::SynchronizationMode::kAutomatic
           : CommandBufferCmdSequence::SynchronizationMode::kSerialize;
 
-  // TODO(b/406370928): Use `synchronization_mode` to construct a command buffer
-  // cmd sequence with specified synchronization mode.
-  (void)synchronization_mode;
-
-  TF_ASSIGN_OR_RETURN(CommandBufferCmdSequence cmd_sequence,
-                      ConvertToCommands(thunk_sequence->thunks()));
+  TF_ASSIGN_OR_RETURN(
+      CommandBufferCmdSequence cmd_sequence,
+      ConvertToCommands(thunk_sequence->thunks(),
+                        ConvertToCommandsOptions{synchronization_mode}));
 
   AddThunkToThunkSequence(std::make_unique<CommandBufferThunk>(
       std::move(cmd_sequence), Thunk::ThunkInfo::WithProfileAnnotation(instr),

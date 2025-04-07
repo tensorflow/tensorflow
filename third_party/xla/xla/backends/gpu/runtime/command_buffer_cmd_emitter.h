@@ -22,13 +22,15 @@ limitations under the License.
 
 namespace xla::gpu {
 
-// Converts thunk sequence to a command buffer cmd sequence. If
-// `synchronization_mode` is kSerialize, we automatically insert barriers
-// between all commands in a sequence. Otherwise we use buffer usage aliasing to
-// allow commands to run concurrently and insert barriers only when needed for
-// correctness.
+// Options for converting from thunks to command buffer commands.
+struct ConvertToCommandsOptions {
+  CommandBufferCmdSequence::SynchronizationMode synchronization_mode =
+      CommandBufferCmdSequence::SynchronizationMode::kSerialize;
+};
+
+// Converts thunk sequence to a command buffer cmd sequence.
 absl::StatusOr<CommandBufferCmdSequence> ConvertToCommands(
-    const ThunkSequence& sequence);
+    const ThunkSequence& sequence, const ConvertToCommandsOptions& options);
 
 }  // namespace xla::gpu
 

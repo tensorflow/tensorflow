@@ -294,10 +294,7 @@ class CommandBufferCmdSequence {
       Append(std::make_unique<T>(std::forward<Args>(args)...));
     }
 
-    // TODO(b/406370928): Remove default argument and make sure we correctly
-    // propagate synchronization mode through the codebase.
-    CommandBufferCmdSequence Build(SynchronizationMode synchronization_mode =
-                                       SynchronizationMode::kSerialize) &&;
+    CommandBufferCmdSequence Build(SynchronizationMode synchronization_mode) &&;
 
    private:
     std::vector<std::unique_ptr<CommandBufferCmd>> commands_;

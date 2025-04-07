@@ -79,6 +79,7 @@ using MemoryAccess = BufferUse::MemoryAccess;
 using KernelArgsPacking = se::MultiKernelLoaderSpec::KernelArgsPacking;
 
 namespace {
+
 se::StreamExecutor* GpuExecutor() {
   auto name =
       absl::AsciiStrToUpper(PlatformUtil::CanonicalPlatformName("gpu").value());
@@ -129,6 +130,11 @@ bool IsAtLeastCuda12300(const se::StreamExecutor* executor) {
 // Give a short aliases to execution threads.
 constexpr auto s0 = ExecutionStreamId(0);
 constexpr auto s1 = ExecutionStreamId(1);
+
+// Give a short alias to synchronization mode.
+static constexpr auto serialize =
+    CommandBufferCmdSequence::SynchronizationMode::kSerialize;
+
 }  // namespace
 
 TEST(CommandBufferThunkTest, MemcpyCmd) {
@@ -156,7 +162,7 @@ TEST(CommandBufferThunkTest, MemcpyCmd) {
   // Prepare commands sequence for constructing command buffer.
   CommandBufferCmdSequence::Builder builder;
   builder.Emplace<MemcpyDeviceToDeviceCmd>(s0, slice_b, slice_a, byte_length);
-  CommandBufferCmdSequence commands = std::move(builder).Build();
+  CommandBufferCmdSequence commands = std::move(builder).Build(serialize);
 
   // Construct a thunk with command sequence.
   CommandBufferThunk thunk(std::move(commands), Thunk::ThunkInfo());
@@ -211,7 +217,7 @@ TEST(CommandBufferThunkTest, MemzeroCmd) {
   // Prepare commands sequence for constructing command buffer.
   CommandBufferCmdSequence::Builder builder;
   builder.Emplace<MemzeroCmd>(s0, slice_a);
-  CommandBufferCmdSequence commands = std::move(builder).Build();
+  CommandBufferCmdSequence commands = std::move(builder).Build(serialize);
 
   // Construct a thunk with command sequence.
   CommandBufferThunk thunk(std::move(commands), Thunk::ThunkInfo());
@@ -254,7 +260,7 @@ TEST(CommandBufferThunkTest, Memset32Cmd) {
   // Prepare commands sequence for constructing command buffer.
   CommandBufferCmdSequence::Builder builder;
   builder.Emplace<Memset32Cmd>(s0, slice_a, int32_t{84});
-  CommandBufferCmdSequence commands = std::move(builder).Build();
+  CommandBufferCmdSequence commands = std::move(builder).Build(serialize);
 
   // Construct a thunk with command sequence.
   CommandBufferThunk thunk(std::move(commands), Thunk::ThunkInfo());
@@ -304,7 +310,7 @@ TEST(CommandBufferThunkTest, Memset32CmdCommandBuffersDisabledDuringProfiling) {
   // be used.
   CommandBufferCmdSequence::Builder builder;
   builder.Emplace<Memset32Cmd>(s0, slice_a, int32_t{12});
-  CommandBufferCmdSequence commands = std::move(builder).Build();
+  CommandBufferCmdSequence commands = std::move(builder).Build(serialize);
 
   constexpr bool kProfileCommandBuffersEnabled = false;
   // Construct a thunk with command sequence.
@@ -359,7 +365,7 @@ TEST(CommandBufferThunkTest, Memset32CmdCommandBuffersEnabledDuringProfiling) {
   // be used.
   CommandBufferCmdSequence::Builder builder;
   builder.Emplace<Memset32Cmd>(s0, slice_a, int32_t{12});
-  CommandBufferCmdSequence commands = std::move(builder).Build();
+  CommandBufferCmdSequence commands = std::move(builder).Build(serialize);
 
   constexpr bool kProfileCommandBuffersEnabled = true;
   // Construct a thunk with command sequence.
@@ -404,7 +410,7 @@ TEST(CommandBufferThunkTest, Memset32CmdOnDifferentStreams) {
   CommandBufferCmdSequence::Builder builder;
   builder.Emplace<Memset32Cmd>(s0, slice0, int32_t{12});
   builder.Emplace<Memset32Cmd>(s1, slice1, int32_t{34});
-  CommandBufferCmdSequence commands = std::move(builder).Build();
+  CommandBufferCmdSequence commands = std::move(builder).Build(serialize);
 
   // Construct a thunk with command sequence.
   CommandBufferThunk thunk(std::move(commands), Thunk::ThunkInfo());
@@ -458,7 +464,7 @@ TEST(CommandBufferThunkTest, LaunchCmd) {
   builder.Emplace<LaunchCmd>(s0, "AddI32", args, args_access,
                              LaunchDimensions(1, 4),
                              /*shmem_bytes=*/0);
-  CommandBufferCmdSequence commands = std::move(builder).Build();
+  CommandBufferCmdSequence commands = std::move(builder).Build(serialize);
 
   // Construct a thunk with command sequence.
   CommandBufferThunk thunk(std::move(commands), Thunk::ThunkInfo());
@@ -556,7 +562,7 @@ TEST(CommandBufferThunkTest, CustomAddKernelLaunchCmd) {
   builder.Emplace<LaunchCmd>(s0, "AddI32", args, args_access,
                              LaunchDimensions(1, 4),
                              /*shmem_bytes=*/0);
-  CommandBufferCmdSequence commands = std::move(builder).Build();
+  CommandBufferCmdSequence commands = std::move(builder).Build(serialize);
 
   // Construct a thunk with command sequence.
   CommandBufferThunk thunk(std::move(commands), Thunk::ThunkInfo());
@@ -674,7 +680,7 @@ TEST(CommandBufferThunkTest, GemmCmd) {
   builder.Emplace<GemmCmd>(s0, config.value(), slice_lhs, slice_rhs, slice_out,
                            slice_workspace,
                            /*deterministic=*/true);
-  CommandBufferCmdSequence commands = std::move(builder).Build();
+  CommandBufferCmdSequence commands = std::move(builder).Build(serialize);
 
   // Construct a thunk with command sequence.
   CommandBufferThunk thunk(std::move(commands), Thunk::ThunkInfo());
@@ -801,7 +807,8 @@ TEST(CommandBufferThunkTest, DynamicSliceFusionCmd) {
   embed_builder.Emplace<GemmCmd>(s0, config.value(), fake_slice_lhs, slice_rhs,
                                  slice_out, slice_workspace,
                                  /*deterministic=*/true);
-  CommandBufferCmdSequence embed_commands = std::move(embed_builder).Build();
+  CommandBufferCmdSequence embed_commands =
+      std::move(embed_builder).Build(serialize);
 
   BufferAllocation alloc_lhs(/*index=*/0, lhs_length, /*color=*/0);
   BufferAllocation::Slice slice_lhs(&alloc_lhs, 0, lhs_length);
@@ -831,7 +838,7 @@ TEST(CommandBufferThunkTest, DynamicSliceFusionCmd) {
   builder.Emplace<DynamicSliceFusionCmd>(
       s0, std::move(embed_commands), arguments, std::move(fake_allocations),
       offsets, orig_shapes, sliced_shapes, offset_byte_sizes);
-  CommandBufferCmdSequence commands = std::move(builder).Build();
+  CommandBufferCmdSequence commands = std::move(builder).Build(serialize);
 
   // Construct a thunk with command sequence.
   CommandBufferThunk thunk(std::move(commands), Thunk::ThunkInfo());
@@ -944,7 +951,7 @@ TEST(CommandBufferThunkTest, CublasLtCmd) {
       BufferAllocation::Slice(), BufferAllocation::Slice(),
       BufferAllocation::Slice(), BufferAllocation::Slice(),
       BufferAllocation::Slice(), BufferAllocation::Slice(), slice_workspace);
-  CommandBufferCmdSequence commands = std::move(builder).Build();
+  CommandBufferCmdSequence commands = std::move(builder).Build(serialize);
 
   // Construct a thunk with command sequence.
   CommandBufferThunk thunk(std::move(commands), Thunk::ThunkInfo());
@@ -1078,7 +1085,7 @@ TEST(CommandBufferThunkTest, MultipleLaunchCmd) {
   builder.Emplace<LaunchCmd>(s0, "AddI32", args_1, args_access,
                              LaunchDimensions(1, 4),
                              /*shmem_bytes=*/0);
-  CommandBufferCmdSequence commands = std::move(builder).Build();
+  CommandBufferCmdSequence commands = std::move(builder).Build(serialize);
 
   // Construct a thunk with command sequence.
   CommandBufferThunk thunk(std::move(commands), Thunk::ThunkInfo());
@@ -1202,13 +1209,13 @@ TEST(CommandBufferThunkTest, CaseCmd) {
   }
 
   std::vector<CommandBufferCmdSequence> branches(2);
-  branches[0] = std::move(branches_builder[0]).Build();
-  branches[1] = std::move(branches_builder[1]).Build();
+  branches[0] = std::move(branches_builder[0]).Build(serialize);
+  branches[1] = std::move(branches_builder[1]).Build(serialize);
 
   // Prepare commands sequence for thunk.
   CommandBufferCmdSequence::Builder builder;
   builder.Emplace<CaseCmd>(s0, slice_i, false, std::move(branches));
-  CommandBufferCmdSequence commands = std::move(builder).Build();
+  CommandBufferCmdSequence commands = std::move(builder).Build(serialize);
 
   // Construct a thunk with command sequence.
   CommandBufferThunk thunk(std::move(commands), Thunk::ThunkInfo());
@@ -1296,7 +1303,7 @@ TEST(CommandBufferThunkTest, WhileCmd) {
       s0, "IncAndCmp", cond_args, cond_args_access, LaunchDimensions(1, 1),
       /*shmem_bytes=*/0);
   CommandBufferCmdSequence cond_commands =
-      std::move(cond_commands_builder).Build();
+      std::move(cond_commands_builder).Build(serialize);
 
   // Prepare commands sequence for loop `body`.
   CommandBufferCmdSequence::Builder body_commands_builder;
@@ -1304,13 +1311,13 @@ TEST(CommandBufferThunkTest, WhileCmd) {
       s0, "AddI32", body_args, body_args_access, LaunchDimensions(1, 4),
       /*shmem_bytes=*/0);
   CommandBufferCmdSequence body_commands =
-      std::move(body_commands_builder).Build();
+      std::move(body_commands_builder).Build(serialize);
 
   // Prepare commands sequence for thunk.
   CommandBufferCmdSequence::Builder builder;
   builder.Emplace<WhileCmd>(s0, slice_pred, std::move(cond_commands),
                             std::move(body_commands));
-  CommandBufferCmdSequence commands = std::move(builder).Build();
+  CommandBufferCmdSequence commands = std::move(builder).Build(serialize);
 
   // Construct a thunk with command sequence.
   CommandBufferThunk thunk(std::move(commands), Thunk::ThunkInfo());
