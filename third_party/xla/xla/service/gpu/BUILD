@@ -6,7 +6,6 @@ load("@local_config_cuda//cuda:build_defs.bzl", "cuda_library")
 load(
     "@local_config_rocm//rocm:build_defs.bzl",
     "if_rocm_is_configured",
-    "rocm_copts",
 )
 load("//xla:xla.default.bzl", "xla_cc_test", "xla_internal")
 load(
@@ -2493,80 +2492,6 @@ xla_cc_test(
         "@com_google_googletest//:gtest",
         "@local_tsl//tsl/platform:statusor",
     ],
-)
-
-cc_library(
-    name = "buffer_comparator",
-    srcs = if_gpu_is_configured(["buffer_comparator.cc"]),
-    hdrs = if_gpu_is_configured(["buffer_comparator.h"]),
-    deps = if_gpu_is_configured([
-        # keep sorted
-        ":buffer_comparator_kernel",
-        ":gpu_asm_opts_util",
-        ":launch_dimensions",
-        "//xla:shape_util",
-        "//xla:status_macros",
-        "//xla:util",
-        "//xla/service:hlo_module_config",
-        "//xla/stream_executor:device_description",
-        "//xla/stream_executor:device_memory",
-        "//xla/stream_executor:device_memory_handle",
-        "//xla/stream_executor:kernel",
-        "//xla/stream_executor:stream",
-        "//xla/stream_executor:stream_executor_h",
-        "//xla/stream_executor:typed_kernel_factory",
-        "//xla/stream_executor/gpu:asm_compiler",
-        "@com_google_absl//absl/base",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings",
-        "@eigen_archive//:eigen3",
-        "@local_tsl//tsl/platform:errors",
-        "@local_tsl//tsl/platform:logging",
-        "@local_tsl//tsl/platform:ml_dtypes",
-        "@local_tsl//tsl/platform:statusor",
-    ]) + if_rocm_is_configured([
-        # keep sorted
-        "@local_config_rocm//rocm:rocm_config",
-        "@local_config_rocm//rocm:rocm_headers",
-    ]),
-)
-
-gpu_kernel_library(
-    name = "buffer_comparator_kernel",
-    srcs = if_gpu_is_configured(["buffer_comparator.cu.cc"]),
-    copts = rocm_copts(),
-    deps = [
-        "//xla:shape_util",
-        "//xla:types",
-    ] + if_rocm_is_configured([
-        "@local_config_rocm//rocm:rocm_headers",
-    ]),
-)
-
-xla_test(
-    name = "buffer_comparator_test",
-    srcs = if_gpu_is_configured(["buffer_comparator_test.cc"]),
-    backends = ["gpu"],
-    deps = [
-        ":stream_executor_util",
-        "//xla:shape_util",
-        "//xla:types",
-        "//xla/service:hlo_module_config",
-        "//xla/service:platform_util",
-        "//xla/stream_executor:device_memory_allocator",
-        "//xla/stream_executor:device_memory_handle",
-        "//xla/stream_executor:platform",
-        "//xla/stream_executor:platform_manager",
-        "//xla/stream_executor:stream",
-        "@com_google_absl//absl/strings",
-        "@com_google_googletest//:gtest_main",
-        "@local_tsl//tsl/platform:ml_dtypes",
-        "@local_tsl//tsl/platform:status",
-        "@local_tsl//tsl/platform:test",
-    ] + if_gpu_is_configured([
-        ":buffer_comparator",
-        "//xla/stream_executor:device_memory",
-    ]),
 )
 
 cc_library(

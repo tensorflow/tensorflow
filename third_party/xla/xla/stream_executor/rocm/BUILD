@@ -824,6 +824,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":amdhipblaslt_plugin",
+        ":buffer_comparator_kernel_rocm",
         ":hipfft_plugin",
         ":miopen_plugin",
         ":rocblas_plugin",
@@ -1072,4 +1073,28 @@ cc_library(
         "@local_config_rocm//rocm:rocm_headers",
         "@local_tsl//tsl/platform:casts",
     ],
+)
+
+rocm_library(
+    name = "buffer_comparator_kernel_rocm",
+    srcs = [
+        "buffer_comparator_kernel_rocm.cu.cc",
+        "//xla/stream_executor/gpu:buffer_comparator_kernel_lib.cu.h",
+    ],
+    # copybara:uncomment compatible_with = ["//buildenv/target:non_prod"],
+    tags = [
+        "gpu",
+        "rocm-only",
+    ],
+    deps = [
+        ":rocm_platform_id",
+        "//xla:shape_util",
+        "//xla:types",
+        "//xla/stream_executor:kernel_spec",
+        "//xla/stream_executor/gpu:buffer_comparator_kernel",
+        "//xla/stream_executor/gpu:gpu_kernel_registry",
+        "//xla/stream_executor/platform:initialize",
+        "@local_config_rocm//rocm:rocm_headers",
+    ],
+    alwayslink = 1,
 )

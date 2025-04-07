@@ -1348,3 +1348,46 @@ cc_library(
         "@com_google_absl//absl/synchronization",
     ],
 )
+
+cc_library(
+    name = "buffer_comparator",
+    srcs = ["buffer_comparator.cc"],
+    hdrs = ["buffer_comparator.h"],
+    deps = [
+        "//xla:shape_util",
+        "//xla:util",
+        "//xla/service/gpu:launch_dimensions",
+        "//xla/stream_executor:device_description",
+        "//xla/stream_executor:device_memory",
+        "//xla/stream_executor:device_memory_handle",
+        "//xla/stream_executor:stream",
+        "//xla/stream_executor:stream_executor_h",
+        "//xla/stream_executor/gpu:buffer_comparator_kernel",
+        "//xla/stream_executor/gpu:gpu_kernel_registry",
+        "@com_google_absl//absl/status:statusor",
+        "@eigen_archive//:eigen3",
+    ],
+)
+
+xla_test(
+    name = "buffer_comparator_test",
+    srcs = ["buffer_comparator_test.cc"],
+    backends = ["gpu"],
+    disabled_backends = [],
+    deps = [
+        ":buffer_comparator",
+        "//xla:shape_util",
+        "//xla:types",
+        "//xla/service:platform_util",
+        "//xla/service/gpu:stream_executor_util",
+        "//xla/stream_executor:device_memory",
+        "//xla/stream_executor:device_memory_handle",
+        "//xla/stream_executor:platform",
+        "//xla/stream_executor:platform_manager",
+        "//xla/stream_executor:stream",
+        "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest_main",
+        "@local_tsl//tsl/platform:ml_dtypes",
+        "@local_tsl//tsl/platform:test",
+    ],
+)

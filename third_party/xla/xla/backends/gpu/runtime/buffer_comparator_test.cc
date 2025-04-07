@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/gpu/buffer_comparator.h"
+#include "xla/backends/gpu/runtime/buffer_comparator.h"
 
 #include <cmath>
 #include <complex>
@@ -33,7 +33,6 @@ limitations under the License.
 #include "xla/stream_executor/stream.h"
 #include "xla/types.h"
 #include "tsl/platform/ml_dtypes.h"
-#include "tsl/platform/status.h"
 #include "tsl/platform/test.h"
 
 namespace xla {

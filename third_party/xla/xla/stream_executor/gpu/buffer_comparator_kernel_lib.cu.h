@@ -1,4 +1,4 @@
-/* Copyright 2018 The OpenXLA Authors.
+/* Copyright 2025 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,21 +13,22 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#ifndef XLA_STREAM_EXECUTOR_GPU_BUFFER_COMPARATOR_KERNEL_LIB_CU_H_
+#define XLA_STREAM_EXECUTOR_GPU_BUFFER_COMPARATOR_KERNEL_LIB_CU_H_
+
+#include <sys/types.h>
+
 #include <cmath>
 #include <cstdint>
 #include <limits>
 
 #include "xla/primitive_util.h"
+#include "xla/stream_executor/gpu/buffer_comparator_kernel.h"
+#include "xla/stream_executor/gpu/gpu_kernel_registry.h"
+#include "xla/stream_executor/kernel_spec.h"
 #include "xla/types.h"
 
-namespace xla::gpu::buffer_comparator {
-
-// Comparison kernel code: compare two buffers of
-// fp8/bf16/fp16/fp32/fp64/int8_t/int32_t of length buffer_length where the
-// relative error does not exceed the passed rel_error_threshold. Write the
-// number of mismatches into out parameter mismatch_count.
-
-namespace {
+namespace stream_executor::gpu {
 
 // NaN's are considered equal, and for half's we clamp all numbers to largest
 // and smallest numbers representable to avoid miscomparisons due to overflows.
@@ -106,26 +107,38 @@ __global__ void xla_int_comparison(T* buffer_a, T* buffer_b,
     atomicAdd(mismatch_count, 1);
 }
 
-}  // namespace
+template <typename NativeT>
+void RegisterBufferComparatorKernelParametrized(Platform::Id platform_id) {
+  void* kernel_symbol = nullptr;
+  constexpr xla::PrimitiveType p_type =
+      xla::primitive_util::NativeToPrimitiveType<NativeT>();
 
-void* comparison_fn(const xla::PrimitiveType type) {
-  if (xla::primitive_util::IsFloatingPointType(type)) {
-    return primitive_util::FloatingPointTypeSwitch<void*>(
-        [](auto cst_type) {
-          using native_type = primitive_util::NativeTypeOf<cst_type>;
-          return reinterpret_cast<void*>(&xla_fp_comparison<native_type>);
-        },
-        type);
+  if constexpr (xla::primitive_util::IsIntegralType(p_type)) {
+    kernel_symbol = absl::bit_cast<void*>(&xla_int_comparison<NativeT>);
+  } else if constexpr (xla::primitive_util::IsFloatingPointType(p_type)) {
+    kernel_symbol = absl::bit_cast<void*>(&xla_fp_comparison<NativeT>);
+  } else {
+    LOG(FATAL) << "Failed to register buffer comparator kernel for type "
+               << xla::primitive_util::LowercasePrimitiveTypeName(p_type);
+    return;
   }
-  if (xla::primitive_util::IsIntegralType(type)) {
-    return primitive_util::IntegralTypeSwitch<void*>(
-        [](auto cst_type) {
-          using native_type = primitive_util::NativeTypeOf<cst_type>;
-          return reinterpret_cast<void*>(&xla_int_comparison<native_type>);
-        },
-        type);
+  std::string kernel_name = absl::StrCat(
+      xla::primitive_util::LowercasePrimitiveTypeName(p_type), "_comparison");
+
+  stream_executor::MultiKernelLoaderSpec spec(5);
+  spec.AddInProcessSymbol(kernel_symbol, kernel_name);
+
+  absl::Status result =
+      stream_executor::gpu::GpuKernelRegistry::GetGlobalRegistry()
+          .RegisterKernel<BufferComparatorKernel<NativeT>>(platform_id, spec);
+
+  if (!result.ok()) {
+    LOG(FATAL) << "Failed to register buffer comparator kernel for type "
+               << xla::primitive_util::LowercasePrimitiveTypeName(p_type)
+               << ": " << result;
   }
-  return nullptr;
 }
 
-}  // namespace xla::gpu::buffer_comparator
+}  // namespace stream_executor::gpu
+
+#endif  // XLA_STREAM_EXECUTOR_GPU_BUFFER_COMPARATOR_KERNEL_LIB_CU_H_

@@ -853,3 +853,14 @@ xla_cc_test(
         "@com_google_googletest//:gtest_main",
     ],
 )
+
+cc_library(
+    name = "buffer_comparator_kernel",
+    hdrs = ["buffer_comparator_kernel.h"],
+    deps = [
+        "//xla/stream_executor:device_memory",
+        "//xla/stream_executor:kernel",
+    ],
+)
+
+exports_files(["buffer_comparator_kernel_lib.cu.h"])

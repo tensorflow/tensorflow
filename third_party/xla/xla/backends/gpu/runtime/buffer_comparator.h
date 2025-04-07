@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_SERVICE_GPU_BUFFER_COMPARATOR_H_
-#define XLA_SERVICE_GPU_BUFFER_COMPARATOR_H_
+#ifndef XLA_BACKENDS_GPU_RUNTIME_BUFFER_COMPARATOR_H_
+#define XLA_BACKENDS_GPU_RUNTIME_BUFFER_COMPARATOR_H_
 
 #include "absl/status/statusor.h"
 #include "xla/shape.h"
@@ -50,12 +50,6 @@ class BufferComparator {
   bool verbose_;         // whether to print out error message on mismatch
 };
 
-namespace buffer_comparator {
-
-// Returns a pointer to CUDA C++ device function implementing comparison.
-void* comparison_fn(xla::PrimitiveType type);
-
-}  // namespace buffer_comparator
 }  // namespace xla::gpu
 
-#endif  // XLA_SERVICE_GPU_BUFFER_COMPARATOR_H_
+#endif  // XLA_BACKENDS_GPU_RUNTIME_BUFFER_COMPARATOR_H_

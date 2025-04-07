@@ -13,15 +13,15 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/gpu/buffer_comparator.h"
+#include "xla/backends/gpu/runtime/buffer_comparator.h"
 
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
-#include <string>
 #include <type_traits>
 #include <vector>
 
+#include "absl/status/statusor.h"
 #include "Eigen/Core"
 #include "xla/primitive_util.h"
 #include "xla/service/gpu/launch_dimensions.h"
@@ -29,22 +29,14 @@ limitations under the License.
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/device_memory_handle.h"
-#include "xla/stream_executor/kernel.h"
+#include "xla/stream_executor/gpu/buffer_comparator_kernel.h"
+#include "xla/stream_executor/gpu/gpu_kernel_registry.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
-#include "xla/stream_executor/typed_kernel_factory.h"
 #include "xla/util.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/logging.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {
-
-template <typename ElementT>
-using ComparisonKernelT =
-    se::TypedKernel<se::DeviceMemory<ElementT>, se::DeviceMemory<ElementT>,
-                    float, uint64_t, se::DeviceMemory<uint64_t>>;
 
 struct ComparisonParams {
   double relative_tol = 0.1;
@@ -59,9 +51,7 @@ struct ComparisonParams {
 //
 // Returns `true` if two buffers are equal, `false` otherwise.
 template <typename ElementT>
-static absl::StatusOr<bool> DeviceCompare(absl::string_view kernel_name,
-                                          void* kernel_symbol,
-                                          const ComparisonParams& params) {
+static absl::StatusOr<bool> DeviceCompare(const ComparisonParams& params) {
   se::StreamExecutor* executor = params.stream->parent();
 
   se::DeviceMemoryHandle out(executor, executor->AllocateScalar<uint64_t>());
@@ -78,11 +68,10 @@ static absl::StatusOr<bool> DeviceCompare(absl::string_view kernel_name,
   uint64_t buffer_size = current_typed.ElementCount();
 
   TF_ASSIGN_OR_RETURN(
-      ComparisonKernelT<ElementT> comparison_kernel,
-      (se::TypedKernelFactory<
-          se::DeviceMemory<ElementT>, se::DeviceMemory<ElementT>, float,
-          uint64_t, se::DeviceMemory<uint64_t>>::Create(executor, kernel_name,
-                                                        kernel_symbol)));
+      auto comparison_kernel,
+      stream_executor::gpu::GpuKernelRegistry::GetGlobalRegistry()
+          .LoadKernel<stream_executor::gpu::BufferComparatorKernel<ElementT>>(
+              executor));
 
   const se::DeviceDescription& gpu_device_info =
       executor->GetDeviceDescription();
@@ -162,12 +151,9 @@ static absl::StatusOr<bool> HostCompare(const ComparisonParams& params) {
 
 template <typename ElementT, typename ComparisonT>
 static absl::StatusOr<bool> CompareEqualParameterized(
-    absl::string_view kernel_name, void* kernel_symbol,
     const ComparisonParams& params) {
   XLA_SCOPED_LOGGING_TIMER("BufferComparator::CompareEqual");
-  TF_ASSIGN_OR_RETURN(
-      bool result, DeviceCompare<ElementT>(kernel_name, kernel_symbol, params));
-
+  TF_ASSIGN_OR_RETURN(bool result, DeviceCompare<ElementT>(params));
   if (result) {
     return true;
   }
@@ -185,21 +171,12 @@ absl::StatusOr<bool> BufferComparator::CompareEqual(
   ComparisonParams params{relative_tol_, verbose_, &shape_,
                           stream,        current,  expected};
 
-  void* kernel_symbol = buffer_comparator::comparison_fn(shape_.element_type());
-  if (kernel_symbol == nullptr) {
-    return Unimplemented("Unimplemented element type for device kernel");
-  }
-
-  std::string kernel_name = absl::StrCat(
-      primitive_util::LowercasePrimitiveTypeName(shape_.element_type()),
-      "_comparison");
-
   auto do_compare = [&](auto cst_type) {
     using ElementT = primitive_util::NativeTypeOf<cst_type>;
     using ComparisonT =
-        std::conditional_t<std::is_same_v<ElementT, double>, double, float>;
-    return CompareEqualParameterized<ElementT, ComparisonT>(
-        kernel_name, kernel_symbol, params);
+        std::conditional_t<std::is_same_v<ElementT, double>,
+                           double, float>;
+    return CompareEqualParameterized<ElementT, ComparisonT>(params);
   };
 
   if (primitive_util::IsFloatingPointType(shape_.element_type())) {

@@ -1117,6 +1117,7 @@ cc_library(
     ],
     visibility = ["//visibility:public"],
     deps = [
+        ":buffer_comparator_kernel_cuda",
         ":cublas_plugin",
         ":cuda_platform",
         ":cudnn_plugin",
@@ -1970,4 +1971,28 @@ xla_cc_test(
         "@com_google_absl//absl/status",
         "@com_google_googletest//:gtest_main",
     ],
+)
+
+cuda_library(
+    name = "buffer_comparator_kernel_cuda",
+    srcs = [
+        "buffer_comparator_kernel_cuda.cu.cc",
+        "//xla/stream_executor/gpu:buffer_comparator_kernel_lib.cu.h",
+    ],
+    # copybara:uncomment compatible_with = ["//buildenv/target:non_prod"],
+    tags = [
+        "cuda-only",
+        "gpu",
+    ],
+    deps = [
+        ":cuda_platform_id",
+        "//xla:shape_util",
+        "//xla:types",
+        "//xla/stream_executor:kernel_spec",
+        "//xla/stream_executor/gpu:buffer_comparator_kernel",
+        "//xla/stream_executor/gpu:gpu_kernel_registry",
+        "//xla/stream_executor/platform:initialize",
+        "@local_config_cuda//cuda:cuda_headers",
+    ],
+    alwayslink = 1,
 )
