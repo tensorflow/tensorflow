@@ -136,8 +136,11 @@ absl::Status CustomCallThunk::ExecuteCustomCall(const ExecuteParams& params) {
     }
   }
 
+  TF_ASSIGN_OR_RETURN(
+      se::Stream * stream,
+      GetStreamForExecution(Thunk::execution_stream_id(), params));
   XlaCustomCallStatus custom_call_status;
-  call_target_(params.stream, buffers.data(), opaque_.data(), opaque_.size(),
+  call_target_(stream, buffers.data(), opaque_.data(), opaque_.size(),
                &custom_call_status);
   auto message = CustomCallStatusGetMessage(&custom_call_status);
   if (message) {
@@ -246,10 +249,13 @@ absl::Status CustomCallThunk::Initialize(const InitializeParams& params) {
 }
 
 absl::Status CustomCallThunk::ExecuteOnStream(const ExecuteParams& params) {
+  TF_ASSIGN_OR_RETURN(
+      se::Stream * stream,
+      GetStreamForExecution(Thunk::execution_stream_id(), params));
   if (bundle_.has_value()) {
     return ExecuteFfiHandler(
         params.collective_params ? params.collective_params->run_id : RunId{-1},
-        bundle_->execute, XLA_FFI_ExecutionStage_EXECUTE, params.stream,
+        bundle_->execute, XLA_FFI_ExecutionStage_EXECUTE, stream,
         params.ffi_execution_context, params.buffer_allocations);
   }
   return ExecuteCustomCall(params);
