@@ -547,12 +547,6 @@ config_setting(
     visibility = ["//visibility:public"],
 )
 
-config_setting(
-    name = "haswell",
-    values = {"cpu": "haswell"},
-    visibility = ["//visibility:public"],
-)
-
 # This condition takes precedence over :linux_x86_64
 config_setting(
     name = "linux_x86_64_no_sse",
