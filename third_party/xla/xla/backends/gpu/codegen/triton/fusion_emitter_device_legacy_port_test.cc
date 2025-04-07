@@ -3827,16 +3827,20 @@ ENTRY e {
                                       /*run_hlo_passes=*/false));
 }
 
+// TODO(b/353484968): Tests that don't run RunAndCompareNoHloPasses should be
+// moved to deviceless test file. We should move all the
+// `TritonGemmContractionDims` tests.
 class TritonGemmContractionDims : public TritonGemmTest {
  public:
   DebugOptions GetDebugOptionsForTest() const override {
     DebugOptions debug_options = TritonGemmTest::GetDebugOptionsForTest();
     debug_options.set_xla_gpu_ensure_minor_dot_contraction_dims(true);
+    debug_options.set_xla_gpu_autotune_level(0);
     return debug_options;
   }
 };
 
-TEST_F(TritonGemmContractionDims, DISABLED_TritonDotForceContractionDims_1_0) {
+TEST_F(TritonGemmContractionDims, TritonDotForceContractionDims_1_0) {
   if (!SupportsBF16(GpuComputeCapability())) {
     GTEST_SKIP() << "BF16 not supported.";
   }
@@ -3844,9 +3848,9 @@ TEST_F(TritonGemmContractionDims, DISABLED_TritonDotForceContractionDims_1_0) {
 HloModule m
 
 ENTRY e {
-  parameter.0 = bf16[16,40]{1,0} parameter(0)
-  parameter.1 = bf16[40,32]{1,0} parameter(1)
-  ROOT dot.31472 = bf16[16,32]{1,0} dot(parameter.0, parameter.1), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  p0 = bf16[16,40]{1,0} parameter(0)
+  p1 = bf16[40,32]{1,0} parameter(1)
+  ROOT dot = bf16[16,32]{1,0} dot(p0, p1), lhs_contracting_dims={1}, rhs_contracting_dims={0}
 })";
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
@@ -3856,13 +3860,12 @@ ENTRY e {
                   ->root_instruction()
                   ->fused_instructions_computation()
                   ->root_instruction(),
-              GmockMatch(m::Dot(m::Op().WithShape(BF16, {16, 40}, {1, 0}),
-                                m::Op().WithShape(BF16, {40, 32}, {0, 1}))
+              GmockMatch(m::Dot(m::Fusion().WithShape(BF16, {16, 40}, {1, 0}),
+                                m::Fusion().WithShape(BF16, {40, 32}, {0, 1}))
                              .WithShape(BF16, {16, 32}, {1, 0})));
 }
 
-TEST_F(TritonGemmContractionDims,
-       DISABLED_TritonDotForceContractionDims_1_2_1_2) {
+TEST_F(TritonGemmContractionDims, TritonDotForceContractionDims_1_2_1_2) {
   if (!SupportsBF16(GpuComputeCapability())) {
     GTEST_SKIP() << "BF16 not supported.";
   }
@@ -3870,9 +3873,9 @@ TEST_F(TritonGemmContractionDims,
 HloModule m
 
 ENTRY e {
-  parameter_0 = bf16[32,4,36]{2,1,0} parameter(0)
-  parameter_1 = bf16[40,4,36]{2,1,0} parameter(1)
-  ROOT dot.16450 = bf16[4,32,40]{2,1,0} dot(parameter_0, parameter_1),
+  p0 = bf16[32,4,36]{2,1,0} parameter(0)
+  p1 = bf16[40,4,36]{2,1,0} parameter(1)
+  ROOT dot = bf16[4,32,40]{2,1,0} dot(p0, p1),
       lhs_batch_dims={1}, lhs_contracting_dims={2},
       rhs_batch_dims={1}, rhs_contracting_dims={2}
 })";
@@ -3882,17 +3885,17 @@ ENTRY e {
 
   // The contracting dims were already minor, so the layout is unchanged
   // (non-major batch dims are fine).
-  EXPECT_THAT(module->entry_computation()
-                  ->root_instruction()
-                  ->fused_instructions_computation()
-                  ->root_instruction(),
-              GmockMatch(m::Dot(m::Op().WithShape(BF16, {32, 4, 36}, {2, 1, 0}),
-                                m::Op().WithShape(BF16, {40, 4, 36}, {2, 1, 0}))
-                             .WithShape(BF16, {4, 32, 40}, {2, 1, 0})));
+  EXPECT_THAT(
+      module->entry_computation()
+          ->root_instruction()
+          ->fused_instructions_computation()
+          ->root_instruction(),
+      GmockMatch(m::Dot(m::Fusion().WithShape(BF16, {32, 4, 36}, {2, 1, 0}),
+                        m::Fusion().WithShape(BF16, {40, 4, 36}, {2, 1, 0}))
+                     .WithShape(BF16, {4, 32, 40}, {2, 1, 0})));
 }
 
-TEST_F(TritonGemmContractionDims,
-       DISABLED_TritonDotForceContractionDims_1_2_0_1) {
+TEST_F(TritonGemmContractionDims, TritonDotForceContractionDims_1_2_0_1) {
   if (!SupportsBF16(GpuComputeCapability())) {
     GTEST_SKIP() << "BF16 not supported.";
   }
@@ -3906,7 +3909,6 @@ ENTRY e {
       lhs_batch_dims={1}, lhs_contracting_dims={2},
       rhs_batch_dims={0}, rhs_contracting_dims={1}
 })";
-
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           GetOptimizedModule(kHloText));
 
@@ -3917,12 +3919,12 @@ ENTRY e {
           ->root_instruction()
           ->fused_instructions_computation()
           ->root_instruction(),
-      GmockMatch(m::Dot(m::Op().WithShape(BF16, {16, 16, 48}, {2, 1, 0}),
-                        m::Op().WithShape(BF16, {16, 48, 32}, {1, 2, 0}))
+      GmockMatch(m::Dot(m::Fusion().WithShape(BF16, {16, 16, 48}, {2, 1, 0}),
+                        m::Fusion().WithShape(BF16, {16, 48, 32}, {1, 2, 0}))
                      .WithShape(BF16, {16, 16, 32}, {2, 1, 0})));
 }
 
-TEST_F(TritonGemmContractionDims, DISABLED_TritonDotForceContractionDims_1_1) {
+TEST_F(TritonGemmContractionDims, TritonDotForceContractionDims_1_1) {
   if (!SupportsBF16(GpuComputeCapability())) {
     GTEST_SKIP() << "BF16 not supported.";
   }
@@ -3930,19 +3932,19 @@ TEST_F(TritonGemmContractionDims, DISABLED_TritonDotForceContractionDims_1_1) {
 HloModule m
 
 ENTRY e {
-  parameter_0 = bf16[16,32]{1,0} parameter(0)
-  parameter_1 = bf16[40,32]{0,1} parameter(1)
-  ROOT dot.15148 = bf16[16,40]{1,0} dot(parameter_0, parameter_1), lhs_contracting_dims={1}, rhs_contracting_dims={1}
+  p0 = bf16[16,32]{1,0} parameter(0)
+  p1 = bf16[40,32]{0,1} parameter(1)
+  ROOT dot = bf16[16,40]{1,0} dot(p0, p1),
+    lhs_contracting_dims={1}, rhs_contracting_dims={1}
 })";
-
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           GetOptimizedModule(kHloText));
   EXPECT_THAT(module->entry_computation()
                   ->root_instruction()
                   ->fused_instructions_computation()
                   ->root_instruction(),
-              GmockMatch(m::Dot(m::Op().WithShape(BF16, {16, 32}, {1, 0}),
-                                m::Op().WithShape(BF16, {32, 40}, {1, 0}))
+              GmockMatch(m::Dot(m::Fusion().WithShape(BF16, {16, 32}, {1, 0}),
+                                m::Fusion().WithShape(BF16, {32, 40}, {1, 0}))
                              .WithShape(BF16, {16, 40}, {1, 0})));
 }
 
