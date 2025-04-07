@@ -39,6 +39,27 @@ cc_library(
 )
 
 cc_library(
+    name = "saved_model_converter_utils",
+    srcs = ["saved_model_converter_utils.cc"],
+    hdrs = ["saved_model_converter_utils.h"],
+    visibility = [
+        "//tensorflow/cc/experimental/tfa:__subpackages__",
+    ],
+    deps = [
+        "//tensorflow/cc/saved_model:loader",
+        "//tensorflow/compiler/mlir/tensorflow:mlir_import_options",
+        "//tensorflow/compiler/mlir/tensorflow:translate_lib",
+        "//tensorflow/compiler/mlir/tf2xla/api/v2:mlir_roundtrip_flags",
+        "//tensorflow/core/framework:op",
+        "//tensorflow/core/framework:op_def_builder",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/types:span",
+        "@llvm-project//mlir:IR",
+    ],
+)
+
+cc_library(
     name = "validators",
     srcs = [
         "validators.cc",
