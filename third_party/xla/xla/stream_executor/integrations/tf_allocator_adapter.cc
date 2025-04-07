@@ -39,7 +39,7 @@ TfAllocatorAdapter::TfAllocatorAdapter(tsl::Allocator *wrapped, Stream *stream)
       stream_(stream) {}
 
 TfAllocatorAdapter::TfAllocatorAdapter(tsl::Allocator *wrapped,
-                                       Platform *platform)
+                                       const Platform *platform)
     : DeviceMemoryAllocator(platform), wrapped_(wrapped), stream_(nullptr) {}
 
 TfAllocatorAdapter::~TfAllocatorAdapter() {}

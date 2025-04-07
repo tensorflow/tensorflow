@@ -53,7 +53,7 @@ class TfAllocatorAdapter : public DeviceMemoryAllocator {
   TfAllocatorAdapter(tsl::Allocator *wrapped, Stream *stream);
 
   // Constructor for the cases where `stream` can not be provided.
-  TfAllocatorAdapter(tsl::Allocator *wrapped, Platform *platform);
+  TfAllocatorAdapter(tsl::Allocator *wrapped, const Platform *platform);
 
   ~TfAllocatorAdapter() override;
 

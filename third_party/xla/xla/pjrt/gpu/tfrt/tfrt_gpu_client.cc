@@ -931,7 +931,7 @@ TfrtGpuDevice::TfrtGpuDevice(Options&& options)
   CHECK_OK(executor_->CreateStream().status()) << "Failed to create stream";
 
   se_allocator_ = std::make_unique<se::TfAllocatorAdapter>(
-      allocator_.get(), const_cast<se::Platform*>(executor_->GetPlatform()));
+      allocator_.get(), executor_->GetPlatform());
 }
 
 void TfrtGpuDevice::SetClient(PjRtClient* client) {
