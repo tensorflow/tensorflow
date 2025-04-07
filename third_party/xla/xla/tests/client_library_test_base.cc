@@ -200,7 +200,7 @@ ClientLibraryTestBase::ComputeAndCompareLiteralWithAllOutputLayouts(
   verify_output(actual, "");
 
   // Try with all output layouts.
-  std::vector<int64_t> minor_to_major(expected.shape().dimensions_size());
+  std::vector<int64_t> minor_to_major(expected.shape().dimensions().size());
   std::iota(minor_to_major.begin(), minor_to_major.end(), 0);
   do {
     auto layout = ShapeUtil::MakeShapeWithDenseLayout(
@@ -243,7 +243,7 @@ absl::Status ClientLibraryTestBase::ComputeAndCompareLiteralWithAllInputLayouts(
         return absl::OkStatus();
       }
 
-      std::vector<int64_t> minor_to_major(literal.shape().dimensions_size());
+      std::vector<int64_t> minor_to_major(literal.shape().dimensions().size());
       std::iota(minor_to_major.begin(), minor_to_major.end(), 0);
       do {
         auto literal_relayout =
