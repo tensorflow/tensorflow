@@ -48,7 +48,7 @@ bool IsAddingOnlyDegenerateDimensions(const HloInstruction* inst) {
   const Shape& out_shape = inst->shape();
   return ShapeUtil::ElementsIn(in_shape) == ShapeUtil::ElementsIn(out_shape) &&
          ShapeUtil::DimensionsUnmodifiedByReshape(in_shape, out_shape).size() ==
-             in_shape.dimensions_size();
+             in_shape.dimensions().size();
 }
 
 // Passthrough reshapes or bitcasts adding only degenerate hdimensions to some
