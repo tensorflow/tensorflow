@@ -1491,29 +1491,6 @@ cc_library(
 )
 
 cc_library(
-    name = "_pywrap_lib_filter",
-    deps = if_pywrap(
-        if_true = [
-            "@pybind11_abseil//pybind11_abseil:absl_casters",
-            "@pybind11_abseil//pybind11_abseil:import_status_module",
-            "@pybind11_abseil//pybind11_abseil:status_casters",
-            "@pybind11_protobuf//pybind11_protobuf:native_proto_caster",
-        ],
-    ),
-)
-
-cc_library(
-    name = "_pywrap_lib_exclusion_filter",
-    deps = if_pywrap(
-        if_true = [
-            "@com_google_protobuf//:protobuf",
-            "@com_google_protobuf//:protobuf_lite",
-            "@zlib//:zlib",
-        ],
-    ),
-)
-
-cc_library(
     name = "_cuda_deps_filter",
     srcs = [],
     deps = if_pywrap(
@@ -1531,7 +1508,7 @@ pywrap_library(
     # buildifier: disable=unsorted-dict-items
     # @unsorted-dict-items
     common_lib_filters = {
-        "tensorflow/libtensorflow_framework.so.2": select({
+        "tensorflow/tensorflow_framework": select({
             "//tensorflow:windows": [],
             "//conditions:default": [
                 "//tensorflow:tensorflow_framework_pywrap_filter",
@@ -1542,7 +1519,7 @@ pywrap_library(
                 "@com_google_absl//absl/random",
             ],
         }),
-        "tensorflow/libtensorflow_cc.so.2": select({
+        "tensorflow/tensorflow_cc": select({
             "//tensorflow:windows": [],
             "//conditions:default": ["//tensorflow:tensorflow_cc_pywrap_filter"],
         }),
@@ -1550,8 +1527,13 @@ pywrap_library(
     # buildifier: disable=unsorted-dict-items
     # @unsorted-dict-items
     common_lib_linkopts = {
-        "tensorflow/libtensorflow_framework.so.2": select({
+        "tensorflow/tensorflow_framework": select({
             "//tensorflow:windows": [],
+            "//tensorflow:macos": [
+                "-lpthread",
+                "-ldl",
+                "-lm",
+            ],
             "//conditions:default": [
                 "-z defs",
                 "-lpthread",
@@ -1559,13 +1541,18 @@ pywrap_library(
                 "-lm",
             ],
         }),
-        "tensorflow/libtensorflow_cc.so.2": select({
+        "tensorflow/tensorflow_cc": select({
             "//tensorflow:windows": [
                 "-DEFAULTLIB:ws2_32.lib",
                 "-DEFAULTLIB:advapi32.lib",
                 "-DEFAULTLIB:crypt32.lib",
                 "-DEFAULTLIB:Normaliz.lib",
                 "-DEFAULTLIB:ntdll.lib",
+            ],
+            "//tensorflow:macos": [
+                "-lpthread",
+                "-ldl",
+                "-lm",
             ],
             "//conditions:default": [
                 "-z defs",
@@ -1578,14 +1565,23 @@ pywrap_library(
     # buildifier: disable=unsorted-dict-items
     # @unsorted-dict-items
     common_lib_version_scripts = {
-        "tensorflow/libtensorflow_cc.so.2": "//tensorflow:tf_version_script.lds",
+        "tensorflow/tensorflow_cc": select({
+            "//tensorflow:windows": None,
+            "//tensorflow:macos": "//tensorflow:tf_exported_symbols.lds",
+            "//conditions:default": "//tensorflow:tf_version_script.lds",
+        }),
+    },
+    # buildifier: disable=unsorted-dict-items
+    # @unsorted-dict-items
+    common_lib_versions = {
+        "tensorflow/tensorflow_framework": "2",
+        "tensorflow/tensorflow_cc": "2",
     },
     enable_common_lib_starlark_only_filter = select({
         "//tensorflow:windows": False,
+        "//tensorflow:macos": False,
         "//conditions:default": True,
     }),
-    pywrap_lib_exclusion_filter = ":_pywrap_lib_exclusion_filter",
-    pywrap_lib_filter = ":_pywrap_lib_filter",
     starlark_only_deps = [
         "//tensorflow/compiler/mlir/python/mlir_wrapper:filecheck_wrapper",
         "//tensorflow/compiler/mlir/quantization/stablehlo/python:pywrap_quantization",
@@ -1676,7 +1672,7 @@ pywrap_library(
 pywrap_common_library(
     name = "pywrap_tensorflow_framework",
     dep = ":_pywrap_tensorflow",
-    filter_name = "libtensorflow_framework.so.2",
+    filter_name = "tensorflow_framework",
 )
 
 pywrap_common_library(

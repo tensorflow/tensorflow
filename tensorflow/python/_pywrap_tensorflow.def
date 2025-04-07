@@ -1240,3 +1240,8 @@ EXPORTS
   ?CreateTypeInfoAndReturnTypeIdImpl@AsyncValue@tsl@@CAGAEBUTypeInfo@12@@Z
   ?pywrap_library_dependency_symbol@python@tensorflow@@YAXXZ
   ?NotifyAvailable@AsyncValue@tsl@@IEAAXVState@12@@Z
+  ??1CondVar@lts_20230802@absl@@QEAA@XZ
+  ?Lock@Mutex@lts_20230802@absl@@QEAAXXZ
+  ?Signal@CondVar@lts_20230802@absl@@QEAAXXZ
+  ?Unlock@Mutex@lts_20230802@absl@@QEAAXXZ
+  ?Wait@CondVar@lts_20230802@absl@@QEAAXPEAVMutex@23@@Z
