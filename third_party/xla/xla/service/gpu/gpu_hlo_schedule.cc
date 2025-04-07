@@ -59,7 +59,6 @@ limitations under the License.
 #include "xla/service/gpu/transforms/async_collective_annotator.h"
 #include "xla/service/gpu/transforms/collectives/collective_ops_utils.h"
 #include "xla/service/gpu/transforms/pgle_accuracy_checker.h"
-#include "xla/service/gpu/transforms/schedule_postprocessing.h"
 #include "xla/service/gpu/transforms/scheduling_instruction_annotator.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/latency_hiding_scheduler.h"
@@ -596,7 +595,6 @@ absl::Status RunLatencyHidingSchedulerPasses(
       std::move(estimator), std::move(async_tracker), std::move(scheduler_core),
       shape_size_in_bytes);
   pipeline.AddPass<SchedulingInstructionAnnotator>();
-  pipeline.AddPass<SchedulePostprocessing>();
 
   return pipeline.Run(module).status();
 }

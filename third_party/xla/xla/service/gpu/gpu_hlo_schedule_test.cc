@@ -43,7 +43,6 @@ limitations under the License.
 #include "xla/service/backend.h"
 #include "xla/service/gpu/gpu_compiler.h"
 #include "xla/service/gpu/gpu_latency_hiding_scheduler.h"
-#include "xla/service/gpu/transforms/schedule_postprocessing.h"
 #include "xla/service/gpu/transforms/scheduling_instruction_annotator.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/latency_hiding_scheduler.h"
