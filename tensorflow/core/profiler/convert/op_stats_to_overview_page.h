@@ -26,6 +26,11 @@ limitations under the License.
 #include "tensorflow/core/profiler/protobuf/op_stats.pb.h"
 #include "tensorflow/core/profiler/protobuf/overview_page.pb.h"
 #include "tsl/profiler/protobuf/xplane.pb.h"
+#include "plugin/tensorboard_plugin_profile/protobuf/hardware_types.pb.h"  // from @org_xprof
+#include "plugin/tensorboard_plugin_profile/protobuf/input_pipeline.pb.h"  // from @org_xprof
+#include "plugin/tensorboard_plugin_profile/protobuf/op_metrics.pb.h"  // from @org_xprof
+#include "plugin/tensorboard_plugin_profile/protobuf/op_stats.pb.h"  // from @org_xprof
+#include "plugin/tensorboard_plugin_profile/protobuf/overview_page.pb.h"  // from @org_xprof
 
 namespace tensorflow {
 namespace profiler {

@@ -21,6 +21,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/core/profiler/protobuf/inference_stats.pb.h"
+#include "plugin/tensorboard_plugin_profile/protobuf/inference_stats.pb.h"  // from @org_xprof
 
 namespace tensorflow::profiler {
 

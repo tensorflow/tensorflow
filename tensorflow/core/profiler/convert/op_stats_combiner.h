@@ -19,11 +19,14 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/log/check.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/profiler/convert/op_metrics_db_combiner.h"
 #include "tensorflow/core/profiler/protobuf/hardware_types.pb.h"
 #include "tensorflow/core/profiler/protobuf/op_stats.pb.h"
+#include "plugin/tensorboard_plugin_profile/protobuf/hardware_types.pb.h"  // from @org_xprof
+#include "plugin/tensorboard_plugin_profile/protobuf/op_stats.pb.h"  // from @org_xprof
 #include "xprof/utils/step_intersection.h"  // from @org_xprof
 
 namespace tensorflow {

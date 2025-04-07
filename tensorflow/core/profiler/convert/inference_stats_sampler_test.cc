@@ -18,6 +18,7 @@ limitations under the License.
 #include "xla/tests/test_utils.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/profiler/protobuf/inference_stats.pb.h"
+#include "plugin/tensorboard_plugin_profile/protobuf/inference_stats.pb.h"  // from @org_xprof
 
 namespace tensorflow::profiler {
 namespace {

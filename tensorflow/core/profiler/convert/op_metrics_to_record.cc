@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "tensorflow/core/profiler/protobuf/op_metrics.pb.h"
+#include "plugin/tensorboard_plugin_profile/protobuf/op_metrics.pb.h"  // from @org_xprof
 
 namespace tensorflow {
 namespace profiler {

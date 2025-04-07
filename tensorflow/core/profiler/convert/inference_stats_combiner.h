@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PROFILER_CONVERT_INFERENCE_STATS_COMBINER_H_
 #define TENSORFLOW_CORE_PROFILER_CONVERT_INFERENCE_STATS_COMBINER_H_
 #include "tensorflow/core/profiler/protobuf/inference_stats.pb.h"
+#include "plugin/tensorboard_plugin_profile/protobuf/inference_stats.pb.h"  // from @org_xprof
 
 namespace tensorflow::profiler {
 void CombineInferenceStatsResult(int src_host_id, const InferenceStats& src,

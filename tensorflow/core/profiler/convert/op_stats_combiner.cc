@@ -31,6 +31,10 @@ limitations under the License.
 #include "tensorflow/core/profiler/protobuf/power_metrics.pb.h"
 #include "tensorflow/core/profiler/protobuf/steps_db.pb.h"
 #include "tensorflow/core/profiler/protobuf/topology.pb.h"
+#include "plugin/tensorboard_plugin_profile/protobuf/diagnostics.pb.h"  // from @org_xprof
+#include "plugin/tensorboard_plugin_profile/protobuf/hardware_types.pb.h"  // from @org_xprof
+#include "plugin/tensorboard_plugin_profile/protobuf/op_stats.pb.h"  // from @org_xprof
+#include "plugin/tensorboard_plugin_profile/protobuf/steps_db.pb.h"  // from @org_xprof
 #include "xprof/utils/hardware_type_utils.h"  // from @org_xprof
 #include "xprof/utils/kernel_stats_utils.h"  // from @org_xprof
 #include "xprof/utils/step_intersection.h"  // from @org_xprof
