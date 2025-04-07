@@ -120,7 +120,14 @@ class AnyBuffer {
 
   ABSL_ATTRIBUTE_ALWAYS_INLINE size_t size_bytes() const {
     if (ABSL_PREDICT_TRUE(primitive_util::IsArrayType(element_type()))) {
-      return primitive_util::ByteWidth(element_type()) * element_count();
+      return xla::CeilOfRatio<size_t>(size_bits(), 8);
+    }
+    return 0;
+  }
+
+  ABSL_ATTRIBUTE_ALWAYS_INLINE size_t size_bits() const {
+    if (ABSL_PREDICT_TRUE(primitive_util::IsArrayType(element_type()))) {
+      return primitive_util::BitWidth(element_type()) * element_count();
     }
     return 0;
   }
@@ -141,7 +148,7 @@ class AnyBuffer {
   template <typename T>
   T* reinterpret_data() const {
     DCHECK(primitive_util::IsArrayType(element_type()) &&
-           sizeof(T) == primitive_util::ByteWidth(element_type()) &&
+           (sizeof(T) * 8) == primitive_util::BitWidth(element_type()) &&
            !(reinterpret_cast<std::uintptr_t>(buf_->data) % alignof(T)))
         << "Requested type must have the same byte width and alignment as the "
            "underlying buffer type";
@@ -178,7 +185,14 @@ class Buffer {
 
   ABSL_ATTRIBUTE_ALWAYS_INLINE size_t size_bytes() const {
     if constexpr (primitive_util::IsArrayType(dtype)) {
-      return primitive_util::ByteWidth(dtype) * element_count();
+      return xla::CeilOfRatio<size_t>(size_bits(), 8);
+    }
+    return 0;
+  }
+
+  ABSL_ATTRIBUTE_ALWAYS_INLINE size_t size_bits() const {
+    if constexpr (primitive_util::IsArrayType(dtype)) {
+      return primitive_util::BitWidth(element_type()) * element_count();
     }
     return 0;
   }
