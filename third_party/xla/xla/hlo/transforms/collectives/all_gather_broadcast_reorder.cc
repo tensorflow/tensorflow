@@ -76,7 +76,7 @@ absl::StatusOr<bool> AllGatherBroadcastReorder::Run(
 
       // Find the product of the size of uniform dims.
       int64_t uniform_dim_size = 1;
-      for (int64_t i = 0; i < ag->shape().dimensions_size(); ++i) {
+      for (int64_t i = 0; i < ag->shape().dimensions().size(); ++i) {
         if (non_uniform_dims.count(i) == 0) {
           uniform_dim_size *= ag->shape().dimensions(i);
         }
