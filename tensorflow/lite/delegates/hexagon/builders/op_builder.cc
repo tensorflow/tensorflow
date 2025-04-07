@@ -14,6 +14,9 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/delegates/hexagon/builders/op_builder.h"
 
+#include <cstdint>
+#include <vector>
+
 #include "hexagon/hexagon_nn_ops.h"
 #include "tensorflow/lite/builtin_ops.h"
 #include "tensorflow/lite/core/c/common.h"

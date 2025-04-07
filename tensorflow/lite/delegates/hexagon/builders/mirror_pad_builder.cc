@@ -16,7 +16,7 @@ limitations under the License.
 
 #include <stdint.h>
 
-#include <limits>
+#include <vector>
 
 #include "tensorflow/lite/core/c/builtin_op_data.h"
 #include "tensorflow/lite/core/c/common.h"
