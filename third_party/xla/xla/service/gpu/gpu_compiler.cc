@@ -1674,11 +1674,6 @@ absl::Status GpuCompiler::OptimizeHloPostLayoutAssignment(
       options.key_value_store,
       gpu_target_config.device_description.runtime_version()));
 
-  if (debug_options
-          .xla_gpu_unsupported_enable_generic_triton_emitter_for_gemms()) {
-    pipeline.AddPass<NestGemmFusion>(
-        gpu_target_config.device_description.gpu_compute_capability());
-  }
   // Inline back the calls which have better performance with cuBLAS.
   pipeline.AddPass<CallInliner>(
       /*single_call_site=*/false, /*update_domain=*/false,
@@ -1720,6 +1715,14 @@ absl::Status GpuCompiler::OptimizeHloPostLayoutAssignment(
   // The GEMM fusion autotuner can insert new bf16 reductions that need to be
   // normalized again.
   add_float_normalization(pipeline);
+
+  // Match the location of this pass in `gemm_fusion_autotuner.cc` to make sure
+  // that there is no discrepancy.
+  if (debug_options
+          .xla_gpu_unsupported_enable_generic_triton_emitter_for_gemms()) {
+    pipeline.AddPass<NestGemmFusion>(
+        gpu_target_config.device_description.gpu_compute_capability());
+  }
 
   // Clean up new_tuple described above.
   pipeline.AddPass<TupleSimplifier>();
