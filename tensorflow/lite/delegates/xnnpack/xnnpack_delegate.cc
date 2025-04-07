@@ -2842,6 +2842,7 @@ class Subgraph {
       case kTfLiteBuiltinCos:
       case kTfLiteBuiltinDequantize:
       case kTfLiteBuiltinElu:
+      case kTfLiteBuiltinExp:
       case kTfLiteBuiltinFloor:
       case kTfLiteBuiltinGelu:
       case kTfLiteBuiltinHardSwish:
@@ -4107,6 +4108,7 @@ class Subgraph {
       case BuiltinOperator_ABS:
       case BuiltinOperator_CEIL:
       case BuiltinOperator_COS:
+      case BuiltinOperator_EXP:
       case BuiltinOperator_FLOOR:
       case BuiltinOperator_GELU:
       case BuiltinOperator_HARD_SWISH:
@@ -4258,6 +4260,9 @@ class Subgraph {
         case BuiltinOperator_ELU:
           unary_op_type = xnn_unary_elu;
           params.elu.alpha = 1.0f;
+          break;
+        case BuiltinOperator_EXP:
+          unary_op_type = xnn_unary_exp;
           break;
         case BuiltinOperator_FLOOR:
           unary_op_type = xnn_unary_floor;
