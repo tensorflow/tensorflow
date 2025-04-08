@@ -14,15 +14,9 @@ limitations under the License.
 ==============================================================================*/
 #include <sys/mman.h>
 
-#include <algorithm>
-#include <array>
 #include <cstdint>
-#include <iterator>
 #include <memory>
-#include <numeric>
-#include <ostream>
 #include <string>
-#include <unordered_set>
 #include <vector>
 
 #include <gtest/gtest.h>
