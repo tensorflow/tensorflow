@@ -4442,6 +4442,27 @@ int64_t TransposeConvOp::GetArithmeticCount(Operation* op) {
 // StridedSliceOp
 //===----------------------------------------------------------------------===//
 
+bool VerifyStridedSliceOpInputRankConstraints(StridedSliceOp op) {
+  auto ranked_input_type =
+      mlir::dyn_cast<RankedTensorType>(op.getInput().getType());
+
+  // If input is unranked, there is nothing else to be verified.
+  if (!ranked_input_type) return true;
+  const int num_input_dims = ranked_input_type.getRank();
+
+  // The kernel will reshape the input tensor with new axis, it only supports
+  // this reshaped tensor up to 5D.
+  const uint32_t ellipsis_mask = op.getEllipsisMask();
+  const uint32_t new_axis_mask = op.getNewAxisMask();
+  int num_added_axis = 0;
+  for (int i = 0; i < 8; ++i) {
+    if (!((1 << i) & ellipsis_mask) && ((1 << i) & new_axis_mask)) {
+      num_added_axis++;
+    }
+  }
+  return (num_input_dims + num_added_axis <= 5);
+}
+
 LogicalResult StridedSliceOp::verify() {
   StridedSliceOp op = *this;
   auto ranked_input_type =
@@ -4468,17 +4489,6 @@ LogicalResult StridedSliceOp::verify() {
     if (strides_type.getDimSize(0) > num_input_dims) return failure();
   }
 
-  // The kernel will reshape the input tensor with new axis, it only supports
-  // this reshaped tensor up to 5D.
-  uint32_t ellipsis_mask = op.getEllipsisMask();
-  uint32_t new_axis_mask = op.getNewAxisMask();
-  int num_added_axis = 0;
-  for (int i = 0; i < 8; ++i) {
-    if (!((1 << i) & ellipsis_mask) && ((1 << i) & new_axis_mask)) {
-      num_added_axis++;
-    }
-  }
-  if (num_input_dims + num_added_axis > 5) return failure();
   return success();
 }
 
