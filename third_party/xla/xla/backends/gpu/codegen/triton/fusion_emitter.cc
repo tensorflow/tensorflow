@@ -17,11 +17,9 @@ limitations under the License.
 
 #include <cstddef>
 #include <cstdint>
-#include <iterator>
 #include <memory>
 #include <optional>
 #include <string>
-#include <system_error>  // NOLINT(build/c++11): required to interface with LLVM
 #include <utility>
 #include <variant>
 #include <vector>

@@ -17,6 +17,7 @@ limitations under the License.
 #include <array>
 #include <string>
 #include <tuple>
+#include <variant>
 #include <vector>
 
 #include <gtest/gtest.h>

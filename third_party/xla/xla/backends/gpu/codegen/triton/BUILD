@@ -98,6 +98,7 @@ cc_library(
     deps = [
         "//xla:literal",
         "//xla:shape_util",
+        "//xla:xla_data_proto_cc",
         "//xla:xla_proto_cc",
         "//xla/codegen:emitter_loc_op_builder",
         "//xla/hlo/ir:hlo",
@@ -296,6 +297,7 @@ cc_library(
     deps = [
         ":dot_algorithms",
         ":emitter_helpers",
+        "//xla:autotuning_proto_cc",
         "//xla:comparison_util",
         "//xla:literal",
         "//xla:shape_util",
@@ -310,6 +312,7 @@ cc_library(
         "//xla/mlir_hlo:map_mhlo_to_scalar_op",
         "//xla/mlir_hlo:transformation_helpers",
         "//xla/service:algorithm_util",
+        "//xla/service/gpu:backend_configs_cc",
         "//xla/service/gpu:ir_emission_utils",
         "//xla/service/gpu:launch_dimensions",
         "//xla/service/gpu:matmul_indexing_utils",
@@ -519,6 +522,7 @@ xla_test(
         ":test_utils",
         "//xla:autotuning_proto_cc",
         "//xla:error_spec",
+        "//xla:xla_data_proto_cc",
         "//xla:xla_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:filecheck",
@@ -563,6 +567,7 @@ xla_test(
         ":test_utils",
         "//xla:autotuning_proto_cc",
         "//xla:error_spec",
+        "//xla:xla_data_proto_cc",
         "//xla:xla_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:filecheck",
@@ -753,6 +758,7 @@ cc_library(
         "//xla/backends/profiler/gpu:cupti_tracer",
         "//xla/tsl/profiler/utils:time_utils",
         "@com_google_absl//absl/algorithm:container",
+        "@local_tsl//tsl/profiler/protobuf:xplane_proto_cc",
     ],
 )
 
@@ -783,6 +789,8 @@ cc_library(
         ":fusion_emitter",
         "//xla:shape_util",
         "//xla:status_macros",
+        "//xla:xla_data_proto_cc",
+        "//xla:xla_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/pass:hlo_pass_pipeline",
         "//xla/hlo/testlib:filecheck",
@@ -841,6 +849,7 @@ xla_test(
         "//xla/tests:hlo_test_base",
         "//xla/tests:xla_internal_test_main",  # fixdeps: keep
         "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest",
     ],
 )
@@ -1002,6 +1011,7 @@ xla_cc_test(
     deps = [
         ":tma_utils",
         "//xla:shape_util",
+        "//xla:xla_data_proto_cc",
         "//xla/codegen:emitter_loc_op_builder",
         "//xla/service:hlo_module_config",
         "//xla/service/llvm_ir:llvm_util",

@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "xla/backends/gpu/codegen/triton/support.h"
 
-#include <cstdint>
 #include <string>
 #include <variant>
 #include <vector>
