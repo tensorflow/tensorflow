@@ -50,7 +50,6 @@ limitations under the License.
 
 using tensorflow::FunctionDef;
 using tensorflow::Node;
-using tensorflow::NodeBuilder;
 using tensorflow::Status;
 using tensorflow::errors::InvalidArgument;
 
