@@ -746,11 +746,6 @@ gpu_kernel_library(
     ]),
 )
 
-cc_library(
-    name = "variant_visitor",
-    hdrs = ["variant_visitor.h"],
-)
-
 build_cub_sort_kernels(
     name = "cub_sort_kernel",
     srcs = if_gpu_is_configured(["cub_sort_kernel.cu.cc"]),
@@ -1150,10 +1145,10 @@ cc_library(
     srcs = ["cublas_padding_requirements.cc"],
     hdrs = ["cublas_padding_requirements.h"],
     deps = [
-        ":variant_visitor",
         "//xla:shape_util",
         "//xla:util",
         "//xla/hlo/ir:hlo",
+        "//xla/service:overload",
         "//xla/stream_executor:device_description",
     ],
 )
@@ -2581,9 +2576,9 @@ xla_test(
         "gpu_b200",
     ],
     deps = [
-        ":variant_visitor",
         "//xla:error_spec",
         "//xla:xla_proto_cc",
+        "//xla/service:overload",
         "//xla/stream_executor:device_description",
         "//xla/tests:hlo_test_base",
         "//xla/tests:xla_internal_test_main",

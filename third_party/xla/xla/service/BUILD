@@ -574,6 +574,11 @@ cc_library(
     ]),
 )
 
+cc_library(
+    name = "overload",
+    hdrs = ["overload.h"],
+)
+
 xla_cc_test(
     name = "dump_test",
     srcs = ["dump_test.cc"],

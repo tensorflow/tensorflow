@@ -30,7 +30,7 @@ limitations under the License.
 #include "xla/layout.h"
 #include "xla/primitive_util.h"
 #include "xla/service/gpu/backend_configs.pb.h"
-#include "xla/service/gpu/variant_visitor.h"
+#include "xla/service/overload.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/tensor_float_32_utils.h"
@@ -67,38 +67,34 @@ bool IsTritonSupportedDotOutputType(
     case F32:
       return true;
     case F8E5M2:
-      return std::visit(VariantVisitor{[](const se::CudaComputeCapability& cc) {
-                                         return cc.IsAtLeastAmpere();
-                                       },
-                                       [](const se::RocmComputeCapability& cc) {
-                                         return false;
-                                       }},
-                        gpu_version);
+      return std::visit(
+          Overload{[](const se::CudaComputeCapability& cc) {
+                     return cc.IsAtLeastAmpere();
+                   },
+                   [](const se::RocmComputeCapability& cc) { return false; }},
+          gpu_version);
 
     case F8E4M3FN:
-      return std::visit(VariantVisitor{[](const se::CudaComputeCapability& cc) {
-                                         return cc.IsAtLeastHopper();
-                                       },
-                                       [](const se::RocmComputeCapability& cc) {
-                                         return false;
-                                       }},
-                        gpu_version);
+      return std::visit(
+          Overload{[](const se::CudaComputeCapability& cc) {
+                     return cc.IsAtLeastHopper();
+                   },
+                   [](const se::RocmComputeCapability& cc) { return false; }},
+          gpu_version);
     case BF16:
-      return std::visit(VariantVisitor{[](const se::CudaComputeCapability& cc) {
-                                         return true;
-                                       },
-                                       [](const se::RocmComputeCapability& cc) {
-                                         return cc.has_bf16_dtype_support();
-                                       }},
-                        gpu_version);
+      return std::visit(
+          Overload{[](const se::CudaComputeCapability& cc) { return true; },
+                   [](const se::RocmComputeCapability& cc) {
+                     return cc.has_bf16_dtype_support();
+                   }},
+          gpu_version);
     case S32:
-      return std::visit(VariantVisitor{[](const se::CudaComputeCapability& cc) {
-                                         return cc.IsAtLeastAmpere();
-                                       },
-                                       [](const se::RocmComputeCapability& cc) {
-                                         return false;
-                                       }},
-                        gpu_version);
+      return std::visit(
+          Overload{[](const se::CudaComputeCapability& cc) {
+                     return cc.IsAtLeastAmpere();
+                   },
+                   [](const se::RocmComputeCapability& cc) { return false; }},
+          gpu_version);
     default:
       return false;
   }

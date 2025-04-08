@@ -13,22 +13,24 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_SERVICE_GPU_VARIANT_VISITOR_H_
-#define XLA_SERVICE_GPU_VARIANT_VISITOR_H_
+#ifndef XLA_SERVICE_OVERLOAD_H_
+#define XLA_SERVICE_OVERLOAD_H_
 
-namespace xla::gpu {
+namespace xla {
+
 // This structure is used to support C++17 overload pattern as described in
 // https://en.cppreference.com/w/cpp/utility/variant/visit
 //
 // TODO(b/319202112): Replace with absl::Overload once abs lts_2024_XXX is
 // tagged.
 template <class... Ts>
-struct VariantVisitor : Ts... {
+struct Overload : Ts... {
   using Ts::operator()...;
 };
+
 template <class... Ts>
-VariantVisitor(Ts...) -> VariantVisitor<Ts...>;
+Overload(Ts...) -> Overload<Ts...>;
 
-}  // namespace xla::gpu
+}  // namespace xla
 
-#endif  // XLA_SERVICE_GPU_VARIANT_VISITOR_H_
+#endif  // XLA_SERVICE_OVERLOAD_H_

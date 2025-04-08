@@ -43,7 +43,7 @@ limitations under the License.
 #include "xla/service/gpu/cublas_cudnn.h"
 #include "xla/service/gpu/matmul_utils.h"
 #include "xla/service/gpu/stream_executor_util.h"
-#include "xla/service/gpu/variant_visitor.h"
+#include "xla/service/overload.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/blas.h"
@@ -437,17 +437,17 @@ absl::StatusOr<bool> RunOnInstruction(HloInstruction* gemm,
   auto old_algorithm = backend_config.selected_algorithm();
   bool update_algorithm =
       IsCublasLtMatmulF8(*gemm) ||
-      std::visit(VariantVisitor{[](const se::CudaComputeCapability& cc) {
-                                  // We only set the 'algorithm' field on
-                                  // non-Ampere architectures, as for Ampere
-                                  // it's ignored in any case.
-                                  return !cc.IsAtLeast(
-                                      se::CudaComputeCapability::kAmpere);
-                                },
-                                [](const se::RocmComputeCapability&) {
-                                  return true;  // TODO: not decided yet
-                                }},
-                 config.GetGpuComputeCapability());
+      std::visit(
+          Overload{[](const se::CudaComputeCapability& cc) {
+                     // We only set the 'algorithm' field on
+                     // non-Ampere architectures, as for Ampere
+                     // it's ignored in any case.
+                     return !cc.IsAtLeast(se::CudaComputeCapability::kAmpere);
+                   },
+                   [](const se::RocmComputeCapability&) {
+                     return true;  // TODO: not decided yet
+                   }},
+          config.GetGpuComputeCapability());
 
   if (update_algorithm) {
     int64_t new_algorithm{};

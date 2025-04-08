@@ -69,11 +69,11 @@ namespace {
 constexpr size_t kNumProfilingRuns = 5;
 
 template <class... Ts>
-struct VariantVisitor : Ts... {
+struct Overload : Ts... {
   using Ts::operator()...;
 };
 template <class... Ts>
-VariantVisitor(Ts...) -> VariantVisitor<Ts...>;
+Overload(Ts...) -> Overload<Ts...>;
 
 struct StaticSpec {
   int b;
@@ -252,7 +252,7 @@ std::vector<ExplicitSpec> GetExplicitSpecs(
   for (int i = 0; i < entry_specs.size(); i++) {
     const EntrySpec& entry_spec = entry_specs[i];
     std::visit(
-        VariantVisitor{
+        Overload{
             [&specs](const PathSpec& spec) {
               std::string hlo;
               CHECK_OK(tsl::ReadFileToString(tsl::Env::Default(), spec.filepath,

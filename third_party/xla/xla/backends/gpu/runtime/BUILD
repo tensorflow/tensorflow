@@ -418,7 +418,7 @@ cc_library(
         "//xla:util",
         "//xla:xla_data_proto_cc",
         "//xla/service:buffer_assignment",
-        "//xla/service/gpu:variant_visitor",
+        "//xla/service:overload",
         "//xla/stream_executor:device_memory",
         "//xla/stream_executor:memory_allocation",
         "//xla/stream_executor:stream_executor_h",

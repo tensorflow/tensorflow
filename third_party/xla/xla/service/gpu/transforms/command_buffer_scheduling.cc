@@ -44,7 +44,7 @@ limitations under the License.
 #include "xla/service/gpu/cublas_cudnn.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
 #include "xla/service/gpu/ir_emission_utils.h"
-#include "xla/service/gpu/variant_visitor.h"
+#include "xla/service/overload.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/device_description.h"
@@ -880,7 +880,7 @@ absl::StatusOr<bool> CommandBufferScheduling::Run(
     erase(kRequireConditionals);  // on-device control flow
   };
 
-  std::visit(VariantVisitor{erase_cuda, erase_rocm},
+  std::visit(Overload{erase_cuda, erase_rocm},
              device_description_.gpu_compute_capability());
 
   auto order = module->MakeComputationPostOrder();
