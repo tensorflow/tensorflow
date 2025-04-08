@@ -591,7 +591,6 @@ bool IsTritonUnsupportedOpcode(HloOpcode opcode) {
     case HloOpcode::kDynamicReshape:
     case HloOpcode::kDynamicSlice:
     case HloOpcode::kDynamicUpdateSlice:
-    case HloOpcode::kFft:
     case HloOpcode::kGather:
     case HloOpcode::kGetTupleElement:
     case HloOpcode::kInfeed:
