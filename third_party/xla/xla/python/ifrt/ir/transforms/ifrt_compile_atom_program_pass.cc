@@ -116,12 +116,8 @@ void IfrtCompileAtomProgramPass::runOnOperation() {
   llvm::DenseMap<CallOp, CompileFuture, IfrtCallOpInfo> call_to_compile_futures;
   mlir::ModuleOp module_op = getOperation();
 
-  mlir::Attribute meshes_round_trip_attr;
-  // TODO: icgog - This attribute will be deleted in the IFRT -> VIFRT
-  // legalization. Fix in order to be able to use Sdy with VIFRT.
-  if (auto front_end_attr = xla::sdy::getFrontendAttrs(module_op)) {
-    meshes_round_trip_attr = front_end_attr.get(xla::sdy::kMeshesRoundTripAttr);
-  }
+  mlir::Attribute sdy_meshes_round_trip_attr =
+      module_op->getAttr(kIfrtSdyMeshesRoundTripAttr);
 
   // Stash the errors in a MapVector, which maintains the order in which they
   // are encountered. We do not emit an error within the walk because atom
@@ -156,7 +152,7 @@ void IfrtCompileAtomProgramPass::runOnOperation() {
           if (call_op->hasAttr(kIsSdyPartitioned)) {
             // Add the meshes roundtrip attribute to the callee module if the
             // atom program was partitioned with sdy.
-            if (!meshes_round_trip_attr) {
+            if (!sdy_meshes_round_trip_attr) {
               call_op_to_error.try_emplace(
                   call_op,
                   "requires meshes roundtrip attribute to be set on the "
@@ -166,7 +162,7 @@ void IfrtCompileAtomProgramPass::runOnOperation() {
             }
             xla::sdy::setFrontendAttribute(
                 callee_module, xla::sdy::kMeshesRoundTripAttr,
-                meshes_round_trip_attr, /*escapeAttr=*/false);
+                sdy_meshes_round_trip_attr, /*escapeAttr=*/false);
           }
 
           absl::StatusOr<CompileFuture> compile_future =
