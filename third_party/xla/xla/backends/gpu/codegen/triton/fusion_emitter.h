@@ -61,13 +61,6 @@ struct TritonWrapperResult {
   std::optional<stream_executor::gpu::TmaMetadata> tma_metadata;
 };
 
-// A wrapper containing a Triton module and optional TmaMetadata, which must be
-// extracted from compile-time and passed to the runtime.
-struct TritonModule {
-  mlir::OwningOpRef<mlir::ModuleOp> module;
-  std::optional<stream_executor::gpu::TmaMetadata> tma_metadata;
-};
-
 // Load the MLIR dialects required for Triton IR generation.
 void LoadMlirDialectsForTriton(mlir::MLIRContext& mlir_context);
 
@@ -82,7 +75,7 @@ absl::StatusOr<TritonWrapperResult> TritonWrapper(
 
 // Creates the initial Triton module for the given fusion. Visible for testing,
 // use TritonWrapper instead.
-absl::StatusOr<TritonModule> CreateTritonModule(
+absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> CreateTritonModule(
     absl::string_view fn_name, const HloFusionInstruction* fusion,
     const se::DeviceDescription& device_info,
     const BlockLevelParameters& block_level_parameters,

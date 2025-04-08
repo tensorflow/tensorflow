@@ -15,9 +15,7 @@ limitations under the License.
 
 #include <stdbool.h>
 
-#include <algorithm>
 #include <cstdint>
-#include <iterator>
 #include <memory>
 #include <optional>
 #include <string>
@@ -51,7 +49,6 @@ limitations under the License.
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "xla/backends/gpu/codegen/triton/emitter_helpers.h"
 #include "xla/backends/gpu/codegen/triton/ir/triton_xla_ops.h"
-#include "xla/backends/gpu/codegen/triton/tma_utils.h"
 #include "xla/backends/gpu/codegen/triton/transforms/passes.h"
 #include "xla/codegen/emitter_loc_op_builder.h"
 #include "xla/codegen/emitters/ir/xla_ops.h"
@@ -373,8 +370,13 @@ struct RewriteTile : mlir::OpRewritePattern<TileOp> {
                   op.getTensor())
               .getResult(0);
 
-      auto reinterpret_tensor_desc = xg::EmitTmaDescriptor(
-          builder, cast_to_tensor_ptr_type, tiled_tensor_type.getTileType());
+      auto reinterpret_tensor_desc =
+          builder
+              .create<mlir::triton::ReinterpretTensorDescOp>(
+                  mlir::triton::TensorDescType::get(
+                      builder.getContext(), tiled_tensor_type.getTileType()),
+                  cast_to_tensor_ptr_type)
+              .getResult();
 
       // !tt.tensordesc<tensor> -> tiled_tensor
       auto cast_desc_ptr_to_tiled_tensor_ptr_type =
@@ -622,10 +624,11 @@ struct TritonXLAExtractInsertToTritonPass
                                                        &device_info));
       device_description = stream_executor::DeviceDescription(device_info);
     }
-    tma_enabled = tma_enabled_;
+    if (tma_enabled_.hasValue()) {
+      tma_enabled = tma_enabled_.getValue();
+    }
 
     mlir::MLIRContext* mlir_context = &getContext();
-
     mlir::RewritePatternSet tile_pattern_set(mlir_context);
     tile_pattern_set.add<RewriteTile>(mlir_context, &device_description,
                                       tma_enabled);

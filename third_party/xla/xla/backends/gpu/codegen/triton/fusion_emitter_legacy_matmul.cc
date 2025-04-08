@@ -1521,7 +1521,6 @@ ConstHloInstructionSet ScopeInputs(const TritonFusionAnalysis& analysis,
   return result;
 }
 
-
 // This is a heuristic that serves as a proxy for register usage and code size.
 //
 // We have noticed that tilings with very long LLVM IR code are both slow to
@@ -1902,14 +1901,12 @@ absl::Status EmitForLoopBody(EmitterLocOpBuilder& b,
 // Use tiling and execution parameters from 'config'. BlockLevelParameters are
 // ignored.
 // Variable naming: lhs [m, k] x rhs [k, n] -> out [m, n].
-absl::StatusOr<std::optional<stream_executor::gpu::TmaMetadata>> EmitMatMul(
-    EmitterLocOpBuilder& b, absl::string_view libdevice_path,
-    const se::DeviceDescription& device_info,
-    const HloFusionInstruction* fusion, mlir::FunctionOpInterface fn,
-    const BlockLevelParameters&) {
-  // TODO b/315957220: Populate tma_metadata.
-  stream_executor::gpu::TmaMetadata tma_metadata;
-
+absl::Status EmitMatMul(EmitterLocOpBuilder& b,
+                        absl::string_view libdevice_path,
+                        const se::DeviceDescription& device_info,
+                        const HloFusionInstruction* fusion,
+                        mlir::FunctionOpInterface fn,
+                        const BlockLevelParameters&) {
   TF_ASSIGN_OR_RETURN(TritonGemmConfig config, GetTritonGemmConfig(fusion));
   TF_ASSIGN_OR_RETURN(auto analysis,
                       TritonFusionAnalysis::Execute(
@@ -2029,7 +2026,7 @@ absl::StatusOr<std::optional<stream_executor::gpu::TmaMetadata>> EmitMatMul(
     b.create<mt::StoreOp>(tensor_pointer, values_out[producer], boundary_checks,
                           mt::CacheModifier::NONE, mt::EvictionPolicy::NORMAL);
   }
-  return tma_metadata;
+  return absl::OkStatus();
 }
 
 absl::StatusOr<LaunchDimensions> GetMatMulLaunchDimensions(
