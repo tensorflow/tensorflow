@@ -45,7 +45,12 @@ void legalDirectStablehloToHloConversionOps(ConversionTarget& target) {
 
 struct StablehloLegalizeToHloPass
     : public impl::StablehloLegalizeToHloPassBase<StablehloLegalizeToHloPass> {
-  using StablehloLegalizeToHloPassBase::StablehloLegalizeToHloPassBase;
+  StablehloLegalizeToHloPass()
+      : StablehloLegalizeToHloPassBase<StablehloLegalizeToHloPass>() {}
+  explicit StablehloLegalizeToHloPass(
+      const StablehloLegalizeToHloPassOptions& opts)
+      : StablehloLegalizeToHloPassBase<StablehloLegalizeToHloPass>(opts) {}
+
   void runOnOperation() override {
     ConversionTarget target(getContext());
     target.addIllegalDialect<stablehlo::StablehloDialect>();
