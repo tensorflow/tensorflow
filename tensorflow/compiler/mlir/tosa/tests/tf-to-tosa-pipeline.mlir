@@ -106,7 +106,7 @@ func.func @test_mul(%arg0: tensor<13x21x3xf32>, %arg1: tensor<13x1x3xf32>) -> te
 // -----
 
 // CHECK-LABEL: test_real_div
-// CHECK: %[[VAR0:.*]] = tosa.int_div %arg0, %arg1
+// CHECK: %[[VAR0:.*]] = tosa.intdiv %arg0, %arg1
 func.func @test_real_div(%arg0: tensor<13x21x3xi32>, %arg1: tensor<13x1x3xi32>) -> tensor<13x21x3xi32> {
   %2 = "tf.RealDiv"(%arg0, %arg1)   : (tensor<13x21x3xi32>, tensor<13x1x3xi32>) -> tensor<13x21x3xi32>
   func.return %2 : tensor<13x21x3xi32>
@@ -120,7 +120,7 @@ func.func @test_real_div(%arg0: tensor<13x21x3xi32>, %arg1: tensor<13x1x3xi32>) 
 // CHECK:           %[[VAL_2:.*]] = "tosa.const"() <{values = dense<0> : tensor<1xi8>}> : () -> tensor<1xi8>
 // CHECK:           %[[VAL_3:.*]] = "tosa.const"() <{values = dense<0> : tensor<1x1x1xi32>}> : () -> tensor<1x1x1xi32>
 // CHECK:           %[[VAL_4:.*]] = "tosa.const"() <{values = dense<1> : tensor<1x1x1xi32>}> : () -> tensor<1x1x1xi32>
-// CHECK:           %[[VAL_5:.*]] = tosa.int_div %[[VAL_0]], %[[VAL_1]] : (tensor<13x21x3xi32>, tensor<13x1x3xi32>) -> tensor<13x21x3xi32>
+// CHECK:           %[[VAL_5:.*]] = tosa.intdiv %[[VAL_0]], %[[VAL_1]] : (tensor<13x21x3xi32>, tensor<13x1x3xi32>) -> tensor<13x21x3xi32>
 // CHECK:           %[[VAL_6:.*]] = tosa.mul %[[VAL_0]], %[[VAL_1]], %[[VAL_2]] : (tensor<13x21x3xi32>, tensor<13x1x3xi32>, tensor<1xi8>) -> tensor<13x21x3xi32>
 // CHECK:           %[[VAL_7:.*]] = tosa.mul %[[VAL_1]], %[[VAL_5]], %[[VAL_2]] : (tensor<13x1x3xi32>, tensor<13x21x3xi32>, tensor<1xi8>) -> tensor<13x21x3xi32>
 // CHECK:           %[[VAL_8:.*]] = tosa.equal %[[VAL_0]], %[[VAL_7]] : (tensor<13x21x3xi32>, tensor<13x21x3xi32>) -> tensor<13x21x3xi1>
