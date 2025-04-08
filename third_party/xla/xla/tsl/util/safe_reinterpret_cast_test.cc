@@ -111,5 +111,33 @@ TEST(SafeReinterpretCast, CanCastPointerToFromSameType) {
   EXPECT_EQ(char_p, &y);
 }
 
+TEST(SafeReinterpretCast, CanCastPointerToRestrictPointer) {
+  const int x = 42;
+  const char* __restrict const char_p =
+      safe_reinterpret_cast<const char* __restrict>(&x);
+  EXPECT_EQ(char_p,                         //
+            reinterpret_cast<const char*>(  // REINTERPRET_CAST_OK=for testing.
+                &x));
+}
+
+TEST(SafeReinterpretCast, CanCastRestrictPointerToPointer) {
+  const int x = 42;
+  const int* __restrict const int_p = &x;
+  const char* const char_p = safe_reinterpret_cast<const char*>(int_p);
+  EXPECT_EQ(char_p,                         //
+            reinterpret_cast<const char*>(  // REINTERPRET_CAST_OK=for testing.
+                &x));
+}
+
+TEST(SafeReinterpretCast, CanCastRestrictPointerToRestrictPointer) {
+  const int x = 42;
+  const int* __restrict const int_p = &x;
+  const char* __restrict const char_p =
+      safe_reinterpret_cast<const char* __restrict>(int_p);
+  EXPECT_EQ(char_p,                         //
+            reinterpret_cast<const char*>(  // REINTERPRET_CAST_OK=for testing.
+                &x));
+}
+
 }  // namespace
 }  // namespace tsl
