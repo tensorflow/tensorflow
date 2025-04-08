@@ -267,14 +267,19 @@ TEST_F(HloDiffTest, ComputationDiffFingerprintWorks) {
                     /*split_allegiance_instruction=*/0,
                     /*diff_fingerprint=*/13464792036913846758U,
                     /*all_unchanged=*/false))));
-  EXPECT_THAT(diff_summary->grouped_computations,
-              UnorderedElementsAre(Pair(
-                  2864899211444957078U,
+  EXPECT_THAT(diff_summary->computation_diff_patterns,
+              UnorderedElementsAre(FieldsAre(
+                  /*fingerprint=*/2864899211444957078U,
+                  /*computation_groups=*/
                   UnorderedElementsAre(FieldsAre(
                       /*left_computations=*/UnorderedElementsAre(
                           Pointee(Property(&HloComputation::name, "entry"))),
-                      /*right_computations=*/UnorderedElementsAre(Pointee(
-                          Property(&HloComputation::name, "entry"))))))));
+                      /*right_computations=*/UnorderedElementsAre(
+                          Pointee(Property(&HloComputation::name, "entry"))))),
+                  /*diff_metrics=*/
+                  FieldsAre(/*changed_instruction_count=*/0,
+                            /*left_unmatched_instruction_count=*/2,
+                            /*right_unmatched_instruction_count=*/2))));
 }
 
 TEST_F(HloDiffTest, FindConnectedComponentsWorks) {
@@ -340,28 +345,39 @@ TEST_F(HloDiffTest, FindConnectedComponentsWorks) {
   std::unique_ptr<const DiffSummary> diff_summary =
       ConstructDiffSummary(*graph_l, *graph_r, *mappings, *diff_result);
   EXPECT_THAT(
-      diff_summary->grouped_computations,
+      diff_summary->computation_diff_patterns,
       UnorderedElementsAre(
-          Pair(2864899211444957078U,
-               UnorderedElementsAre(
-                   FieldsAre(/*left_computations=*/UnorderedElementsAre(
-                                 Pointee(Property(&HloComputation::name,
-                                                  "fused_computation.1"))),
-                             /*right_computations=*/UnorderedElementsAre(
-                                 Pointee(Property(&HloComputation::name,
-                                                  "fused_computation.2")))),
-                   FieldsAre(/*left_computations=*/UnorderedElementsAre(
-                                 Pointee(Property(&HloComputation::name,
-                                                  "fused_computation.2"))),
-                             /*right_computations=*/UnorderedElementsAre(
-                                 Pointee(Property(&HloComputation::name,
-                                                  "fused_computation.1")))))),
-          Pair(15473561031564762362U,
-               UnorderedElementsAre(FieldsAre(
-                   /*left_computations=*/UnorderedElementsAre(
-                       Pointee(Property(&HloComputation::name, "entry"))),
-                   /*right_computations=*/UnorderedElementsAre(
-                       Pointee(Property(&HloComputation::name, "entry"))))))));
+          FieldsAre(
+              /*fingerprint=*/2864899211444957078U,
+              /*computation_groups=*/
+              UnorderedElementsAre(
+                  FieldsAre(/*left_computations=*/UnorderedElementsAre(
+                                Pointee(Property(&HloComputation::name,
+                                                 "fused_computation.1"))),
+                            /*right_computations=*/UnorderedElementsAre(
+                                Pointee(Property(&HloComputation::name,
+                                                 "fused_computation.2")))),
+                  FieldsAre(/*left_computations=*/UnorderedElementsAre(
+                                Pointee(Property(&HloComputation::name,
+                                                 "fused_computation.2"))),
+                            /*right_computations=*/UnorderedElementsAre(
+                                Pointee(Property(&HloComputation::name,
+                                                 "fused_computation.1"))))),
+              /*diff_metrics=*/
+              FieldsAre(/*changed_instruction_count=*/0,
+                        /*left_unmatched_instruction_count=*/2,
+                        /*right_unmatched_instruction_count=*/2)),
+          FieldsAre(/*fingerprint=*/15473561031564762362U,
+                    /*computation_groups=*/
+                    UnorderedElementsAre(FieldsAre(
+                        /*left_computations=*/UnorderedElementsAre(
+                            Pointee(Property(&HloComputation::name, "entry"))),
+                        /*right_computations=*/UnorderedElementsAre(Pointee(
+                            Property(&HloComputation::name, "entry"))))),
+                    /*diff_metrics=*/
+                    FieldsAre(/*changed_instruction_count=*/0,
+                              /*left_unmatched_instruction_count=*/6,
+                              /*right_unmatched_instruction_count=*/6))));
 }
 
 }  // namespace

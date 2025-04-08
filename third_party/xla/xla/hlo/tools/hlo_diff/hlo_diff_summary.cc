@@ -20,6 +20,7 @@
 #include <algorithm>
 #include <cstdint>
 #include <memory>
+#include <ostream>
 #include <string>
 #include <utility>
 #include <vector>
@@ -210,6 +211,53 @@ FindConnectedComponents(
   return result;
 }
 
+DiffMetrics GetDiffMetrics(const ComputationGroup& computation_group,
+                           const DiffResult& diff_result) {
+  DiffMetrics result;
+  for (const HloComputation* computation :
+       computation_group.left_computations) {
+    for (const HloInstruction* instruction : computation->instructions()) {
+      if (diff_result.changed_instructions.contains(instruction)) {
+        ++result.changed_instruction_count;
+      } else if (diff_result.left_module_unmatched_instructions.contains(
+                     instruction)) {
+        ++result.left_unmatched_instruction_count;
+      }
+    }
+  }
+  for (const HloComputation* computation :
+       computation_group.right_computations) {
+    for (const HloInstruction* instruction : computation->instructions()) {
+      if (diff_result.changed_instructions.contains(instruction)) {
+        ++result.changed_instruction_count;
+      } else if (diff_result.right_module_unmatched_instructions.contains(
+                     instruction)) {
+        ++result.right_unmatched_instruction_count;
+      }
+    }
+  }
+  return result;
+}
+
+std::vector<ComputationDiffPattern> FindComputationDiffPatterns(
+    const absl::flat_hash_map<const HloComputation*, const ComputationSummary>&
+        computation_summary,
+    const DiffResult& diff_result) {
+  std::vector<ComputationDiffPattern> result;
+  absl::flat_hash_map<uint64_t, std::vector<ComputationGroup>>
+      connected_components = FindConnectedComponents(computation_summary);
+  for (const auto& [fingerprint, computation_groups] : connected_components) {
+    ComputationDiffPattern diff_pattern;
+    diff_pattern.fingerprint = fingerprint;
+    diff_pattern.computation_groups = computation_groups;
+    diff_pattern.diff_metrics =
+        GetDiffMetrics(computation_groups[0], diff_result);
+    result.push_back(std::move(diff_pattern));
+  }
+  return result;
+}
+
+// Summarizes all computations in the given graph.
 absl::flat_hash_map<const HloComputation*, const ComputationSummary>
 SummarizeAllComputationsInGraph(
     const HloGumgraph& graph, const HloGumgraphMappings& mappings,
@@ -265,24 +313,25 @@ std::unique_ptr<const DiffSummary> ConstructDiffSummary(
       right_unmatched_instructions, ComputationMappingDirection::kRightToLeft));
 
   // Group the computations by their diff fingerprint.
-  summary->grouped_computations =
-      FindConnectedComponents(summary->computation_summary);
+  summary->computation_diff_patterns =
+      FindComputationDiffPatterns(summary->computation_summary, diff_result);
 
   return summary;
 }
 
 void LogDiffSummary(const DiffSummary& diff_summary) {
   // Log the connected components repeated more than 3 times.
-  LOG(INFO) << "Find Repeated Connected Components: ";
-  for (const auto& [fingerprint, computation_groups] :
-       diff_summary.grouped_computations) {
-    if (computation_groups.size() < 3) {
+  LOG(INFO) << "Find Repeated Diff Patterns: ";
+  for (const ComputationDiffPattern& diff_pattern :
+       diff_summary.computation_diff_patterns) {
+    if (diff_pattern.computation_groups.size() < 3) {
       continue;
     }
-    LOG(INFO) << computation_groups.size()
-              << " Repeated Connected Components Fingerprint: " << fingerprint;
+    LOG(INFO) << diff_pattern.computation_groups.size()
+              << " Repeated Diff Pattern Fingerprint: "
+              << diff_pattern.fingerprint;
     int i = 0;
-    for (const auto& computation_group : computation_groups) {
+    for (const auto& computation_group : diff_pattern.computation_groups) {
       ++i;
       std::string computations_str;
       for (const HloComputation* computation :
@@ -302,6 +351,31 @@ void LogDiffSummary(const DiffSummary& diff_summary) {
       }
     }
   }
+}
+
+void PrintTo(const ComputationDiffPattern& diff_pattern, std::ostream* os) {
+  *os << "{ fingerprint: " << diff_pattern.fingerprint;
+  for (const auto& computation_group : diff_pattern.computation_groups) {
+    *os << ", computation_groups: "
+        << "{ L: ";
+    for (const HloComputation* computation :
+         computation_group.left_computations) {
+      *os << absl::StrFormat("%s ", computation->name());
+    }
+    *os << ", R: ";
+    for (const HloComputation* computation :
+         computation_group.right_computations) {
+      *os << absl::StrFormat("%s ", computation->name());
+    }
+    *os << " }";
+  }
+  *os << ", diff_metrics: {"
+      << diff_pattern.diff_metrics.changed_instruction_count << " changed, "
+      << diff_pattern.diff_metrics.left_unmatched_instruction_count
+      << " left unmatched, "
+      << diff_pattern.diff_metrics.right_unmatched_instruction_count
+      << " right unmatched }";
+  *os << " }";
 }
 
 }  // namespace hlo_diff

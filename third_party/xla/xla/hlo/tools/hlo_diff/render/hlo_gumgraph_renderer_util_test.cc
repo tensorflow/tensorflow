@@ -20,6 +20,7 @@
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/testlib/verified_hlo_module.h"
@@ -48,10 +49,10 @@ ENTRY test_computation {
   ROOT sub = s32[10] subtract(add, param2)
 }
   )"));
-  std::vector<const HloInstruction*> instructions;
+  absl::flat_hash_set<const HloInstruction*> instructions;
   for (const HloComputation* computation : module->computations()) {
     for (const HloInstruction* instruction : computation->instructions()) {
-      instructions.push_back(instruction);
+      instructions.insert(instruction);
     }
   }
 

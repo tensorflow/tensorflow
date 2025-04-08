@@ -426,6 +426,7 @@ xla_test(
         "//xla/pjrt/plugin/xla_gpu:xla_gpu_client_options",
         "//xla/tests:literal_test_util",
         "//xla/tsl/platform:status_matchers",
+        "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
@@ -434,7 +435,6 @@ xla_test(
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Parser",
-        "@local_tsl//tsl/platform:statusor",
     ],
 )
 

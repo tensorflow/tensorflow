@@ -63,7 +63,7 @@ std::unique_ptr<const DiffResult> ConstructDiffResult(
     }
     diff_result->node_props.insert({left_node->instruction, left_node->props});
     if (!mappings.InstructionMapContainsLeft(left_node)) {
-      diff_result->left_module_unmatched_instructions.push_back(
+      diff_result->left_module_unmatched_instructions.insert(
           left_node->instruction);
       continue;
     }
@@ -104,7 +104,7 @@ std::unique_ptr<const DiffResult> ConstructDiffResult(
     diff_result->node_props.insert(
         {right_node->instruction, right_node->props});
     if (!mappings.InstructionMapContainsRight(right_node)) {
-      diff_result->right_module_unmatched_instructions.push_back(
+      diff_result->right_module_unmatched_instructions.insert(
           right_node->instruction);
     }
   }
