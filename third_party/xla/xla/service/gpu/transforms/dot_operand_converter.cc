@@ -39,7 +39,8 @@ bool DotOperandConverter::InstructionMatchesPattern(
   }
 
   // Exclude conversions between FP8 types.
-  absl::flat_hash_set<PrimitiveType> non_converting = {F8E4M3FN, F8E5M2};
+  absl::flat_hash_set<PrimitiveType> non_converting = {F8E4M3FN, F8E5M2,
+                                                       F8E4M3FNUZ, F8E5M2FNUZ};
   if (non_converting.contains(lhs_type) && non_converting.contains(rhs_type)) {
     return false;
   }
