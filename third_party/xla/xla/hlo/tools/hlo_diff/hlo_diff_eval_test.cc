@@ -184,9 +184,9 @@ TEST_F(HloDiffTest, DiffSizeWorks) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<const HloGumgraph> graph_r,
                           HloGumgraph::Create(module_r.get()));
   DiffResult diff_result;
-  diff_result.left_module_unmatched_instructions.push_back(
+  diff_result.left_module_unmatched_instructions.insert(
       graph_l->GetRoot().instruction);
-  diff_result.right_module_unmatched_instructions.push_back(
+  diff_result.right_module_unmatched_instructions.insert(
       graph_r->GetRoot().instruction);
   diff_result.changed_instructions.insert(
       {graph_l->GetRoot().instruction, graph_r->GetRoot().instruction});

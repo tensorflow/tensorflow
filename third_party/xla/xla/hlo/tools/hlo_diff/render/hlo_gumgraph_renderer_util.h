@@ -24,6 +24,7 @@
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -62,7 +63,8 @@ inline constexpr auto kIgnoredOpcodes = std::array<HloOpcode, 6>(
 
 // Groups the instructions by opcode.
 absl::flat_hash_map<HloOpcode, std::vector<const HloInstruction*>>
-GroupInstructionsByOpcode(absl::Span<const HloInstruction* const> instructions);
+GroupInstructionsByOpcode(
+    const absl::flat_hash_set<const HloInstruction*>& instructions);
 
 // Groups the instruction pairs by opcode.
 absl::flat_hash_map<
