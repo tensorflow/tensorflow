@@ -469,19 +469,19 @@ xla_cc_test(
     ],
 )
 
-xla_test(
+xla_cc_test(
     name = "fusion_emitter_deviceless_test",
     srcs = ["fusion_emitter_deviceless_test.cc"],
-    backends = ["gpu"],
+    tags = ["no_oss"],  # Doesn't pass in OSS when building with the `fusion_emitter_stub`.
     deps = [
         ":fusion_emitter",
         "//xla/codegen:emitter_loc_op_builder",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:filecheck",
+        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/hlo/testlib:verified_hlo_module",
         "//xla/service/gpu:gpu_device_info_for_tests",
         "//xla/service/gpu/model:tiled_hlo_instruction_or_computation",
-        "//xla/service/gpu/tests:gpu_codegen_test",
         "//xla/stream_executor:device_description",
         "//xla/stream_executor/cuda:cuda_compute_capability",
         "//xla/tests:xla_internal_test_main",
