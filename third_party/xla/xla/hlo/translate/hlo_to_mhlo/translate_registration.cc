@@ -30,18 +30,25 @@ llvm::cl::opt<bool> import_all_computations(
 llvm::cl::opt<bool> flatten_computation_args_result(
     "hlo-flatten-computation-args-result",
     llvm::cl::desc("Enable flattening computation arguments and results."));
+
+// NOLINTNEXTLINE
+llvm::cl::opt<bool> emit_stablehlo(
+    "emit-stablehlo",
+    llvm::cl::desc("Allow a mix of MHLO and StableHLO ops in the output."));
 }  // namespace
 
 static mlir::OwningOpRef<mlir::ModuleOp> HloToMlirHloTranslate(
     llvm::StringRef input, mlir::MLIRContext* context) {
   return xla::HloToMlirHloTranslateFunction(
-      input, context, import_all_computations, flatten_computation_args_result);
+      input, context, import_all_computations, flatten_computation_args_result,
+      emit_stablehlo);
 }
 
 static mlir::OwningOpRef<mlir::ModuleOp> HloTextToMlirHloTranslate(
     llvm::StringRef input, mlir::MLIRContext* context) {
   return xla::HloTextToMlirHloTranslateFunction(
-      input, context, import_all_computations, flatten_computation_args_result);
+      input, context, import_all_computations, flatten_computation_args_result,
+      emit_stablehlo);
 }
 
 static mlir::OwningOpRef<mlir::ModuleOp> HloToStablehloTranslate(

@@ -19,17 +19,21 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "llvm/Support/Casting.h"
+#include "llvm/Support/LogicalResult.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Quant/IR/Quant.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinOps.h"
+#include "mlir/Pass/PassManager.h"
+#include "stablehlo/dialect/StablehloOps.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/translate/hlo_to_mhlo/hlo_function_importer.h"
 #include "xla/hlo/translate/hlo_to_mhlo/module_attributes_importer.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
+#include "xla/mlir_hlo/mhlo/transforms/passes.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/xla.pb.h"
@@ -38,16 +42,30 @@ namespace xla {
 
 HloModuleImporter::HloModuleImporter(mlir::ModuleOp module,
                                      bool import_all_computation,
-                                     bool flatten_computation_args_result)
+                                     bool flatten_computation_args_result,
+                                     bool emit_stablehlo)
     : import_all_computation_(import_all_computation),
       flatten_computation_args_result_(flatten_computation_args_result),
       symbol_table_(module),
+      emit_stablehlo_(emit_stablehlo),
       builder_(module.getContext()) {
   module.getContext()->loadDialect<mlir::arith::ArithDialect>();
   module.getContext()->loadDialect<mlir::func::FuncDialect>();
   module.getContext()->loadDialect<mlir::mhlo::MhloDialect>();
+  module.getContext()->loadDialect<mlir::stablehlo::StablehloDialect>();
   module.getContext()->loadDialect<mlir::quant::QuantDialect>();
 }
+
+namespace {
+absl::Status ConvertToMhlo(mlir::ModuleOp module) {
+  mlir::PassManager pm(module.getContext());
+  pm.addPass(mlir::mhlo::createStablehloLegalizeToHloPass());
+  if (failed(pm.run(module))) {
+    return absl::InternalError("Failed to convert to MHLO");
+  }
+  return absl::OkStatus();
+}
+}  // namespace
 
 absl::Status HloModuleImporter::Import(const HloModule& hlo_module) {
   auto module = llvm::cast<mlir::ModuleOp>(symbol_table_.getOp());
@@ -68,11 +86,16 @@ absl::Status HloModuleImporter::Import(const HloModule& hlo_module) {
   if (!import_all_computation_) {
     // Only import the entry computation, any reachable one will be imported
     // unless turned into a region operation.
-    return HloFunctionImporter::ImportAsFunc(
-               *hlo_module.entry_computation(), symbol_table_, &function_map_,
-               &builder_,
-               /*is_main*/ true, flatten_computation_args_result_)
-        .status();
+    TF_RETURN_IF_ERROR(HloFunctionImporter::ImportAsFunc(
+                           *hlo_module.entry_computation(), symbol_table_,
+                           &function_map_, &builder_,
+                           /*is_main*/ true, flatten_computation_args_result_)
+                           .status());
+    // Convert all ops to MHLO
+    if (!emit_stablehlo_) {
+      TF_RETURN_IF_ERROR(ConvertToMhlo(module));
+    }
+    return absl::OkStatus();
   }
 
   auto* module_entry_computation = hlo_module.entry_computation();
@@ -89,6 +112,11 @@ absl::Status HloModuleImporter::Import(const HloModule& hlo_module) {
       hlo_module, module, flatten_computation_args_result_, builder_);
   TF_RETURN_IF_ERROR(ImportLayoutModes(
       hlo_module, module, flatten_computation_args_result_, builder_));
+
+  // Convert all ops to MHLO
+  if (!emit_stablehlo_) {
+    TF_RETURN_IF_ERROR(ConvertToMhlo(module));
+  }
   return absl::OkStatus();
 }
 

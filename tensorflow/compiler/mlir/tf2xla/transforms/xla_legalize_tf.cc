@@ -154,6 +154,24 @@ mlir::LogicalResult ApplyPatterns(Operation *op, RewritePatternSet &patterns,
   return result;
 }
 
+mlir::LogicalResult StablehloToMhlo(Operation *op) {
+  RewritePatternSet patterns(op->getContext());
+  stablehlo::StablehloToHloTypeConverter converter;
+  stablehlo::populateStablehloToHloPatterns(&patterns, &converter,
+                                            op->getContext());
+  ConversionTarget target(*op->getContext());
+  target.addLegalDialect<mhlo::MhloDialect>();
+  target.addIllegalDialect<stablehlo::StablehloDialect>();
+  stablehlo::StablehloToHloTypeConverter shlo_converter;
+  stablehlo::populateStablehloToHloPatterns(&patterns, &shlo_converter,
+                                            patterns.getContext());
+  stablehlo::registerFuncOpsForTypeConversion(target, patterns, shlo_converter);
+  if (failed(applyPartialConversion(op, target, std::move(patterns)))) {
+    return op->emitError("TF2XLA failed to convert StableHLO to MHLO");
+  }
+  return success();
+}
+
 /// When `tf2xla_fallback_device_type` is not `None`, also uses legalization
 /// patterns from TF2XLA fallback for provided device type (see
 /// legalize_tf_with_tf2xla.cc for details). By default, TF2XLA fallback is
@@ -216,7 +234,12 @@ LogicalResult legalizeTF(Operation *op, bool legalize_chlo,
   // canonicalization pattern to pattern list to enable multi-hop lowering.
   chlo::ConstantLikeOp::getCanonicalizationPatterns(patterns, context);
 
-  return ApplyPatterns(op, patterns, legalize_chlo);
+  if (failed(ApplyPatterns(op, patterns, legalize_chlo))) {
+    return failure();
+  }
+
+  // HLO->MLIR raises to StableHLO, but users of this pass expect MHLO.
+  return StablehloToMhlo(op);
 }
 
 // Performs the lowering to XLA dialect.
