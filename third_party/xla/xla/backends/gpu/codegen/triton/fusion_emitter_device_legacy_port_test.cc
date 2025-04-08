@@ -394,7 +394,7 @@ CHECK-NOT: mma
 )");
 }
 
-TEST_F(TritonGemmTest, DISABLED_DebugOptionsArePropagated) {
+TEST_F(TritonGemmTest, DebugOptionsArePropagated) {
   constexpr absl::string_view kHloText = R"(
 ENTRY e {
   p0 = f16[30,30] parameter(0)
@@ -423,8 +423,8 @@ ENTRY e {
   EXPECT_EQ(paths.size(), 1);
 }
 
-TEST_F(TritonGemmTest, DISABLED_DotWithPredFromCompareProducesCorrectResult) {
-  const std::string hlo_text = R"(
+TEST_F(TritonGemmTest, DotWithPredFromCompareProducesCorrectResult) {
+  constexpr absl::string_view kHloText = R"(
 triton_dot {
   parameter_0 = s32[4,128]{1,0} parameter(0)
   broadcast.255 = s32[4,128,64]{2,1,0} broadcast(parameter_0), dimensions={0,1}
@@ -442,11 +442,14 @@ ENTRY main {
   p2 = bf16[64,256]{0,1} parameter(2)
   ROOT gemm_fusion_dot.0 = bf16[512,256]{1,0} fusion(p0, p1, p2), kind=kCustom, calls=triton_dot, backend_config={"fusion_backend_config":{"kind":"__triton_gemm","triton_gemm_config":{"block_m":"64","block_n":"128","block_k":"32","split_k":"1","num_stages":"4","num_warps":"4","num_ctas":"1"}}}
 })";
-
-  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
+  TF_ASSERT_OK_AND_ASSIGN(ModuleAndNestedFusionMetadata module_and_metadata,
+                          GetModuleAndNestedFusionMetadata(kHloText));
+  EXPECT_TRUE(
+      RunAndCompareNoHloPasses(module_and_metadata.module->ToString(),
+                               ErrorSpec{/*aabs=*/1e-4, /*arel=*/1e-6}));
 }
 
-TEST_F(TritonGemmTest, DISABLED_UseTensorCoresForF32OnAmpere) {
+TEST_F(TritonGemmTest, UseTensorCoresForF32OnAmpere) {
   constexpr absl::string_view kHloText = R"(
 triton_gemm_r {
   parameter_0 = f16[80,15]{1,0} parameter(0)
@@ -466,10 +469,9 @@ ENTRY e {
       "split_k":1,"num_stages":1,"num_warps":2,
       "num_ctas":1}}}
 })";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> verified_module,
-                          ParseAndReturnVerifiedModule(kHloText));
-
-  CompileAndOptionallyVerifyPtx(std::move(verified_module),
+  TF_ASSERT_OK_AND_ASSIGN(ModuleAndNestedFusionMetadata module_and_metadata,
+                          GetModuleAndNestedFusionMetadata(kHloText));
+  CompileAndOptionallyVerifyPtx(std::move(module_and_metadata.module),
                                 R"(
 CHECK: mma
 )");
@@ -585,7 +587,7 @@ ENTRY e {
 }
 
 TEST_F(TritonGemmTest, DISABLED_MultipleDims) {
-  const std::string hlo_text = R"(
+  constexpr absl::string_view kHloText = R"(
 HloModule t
 
 ENTRY e {
@@ -596,7 +598,7 @@ ENTRY e {
     lhs_contracting_dims={2,3}, rhs_contracting_dims={1,2}
 })";
 
-  MatchOptimizedHlo(hlo_text, R"(
+  MatchOptimizedHlo(kHloText, R"(
 ; CHECK: ENTRY
 ; CHECK-NEXT: parameter
 ; CHECK-NEXT: parameter
@@ -605,11 +607,11 @@ ENTRY e {
 ; CHECK-PTX-SAME: "block_m":
   )");
 
-  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
+  EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
 }
 
-TEST_F(TritonGemmTest, DISABLED_PredWithBF16DotProducesCorrectResult) {
-  const std::string hlo_text = R"(
+TEST_F(TritonGemmTest, PredWithBF16DotProducesCorrectResult) {
+  constexpr absl::string_view kHloText = R"(
 triton_dot {
   p0 = pred[8,640]{1,0} parameter(0)
   cvt = bf16[8,640]{1,0} convert(pred[8,640]{1,0} p0)
@@ -627,11 +629,15 @@ ENTRY e {
       "num_ctas":1}}}
 })";
 
-  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
+  TF_ASSERT_OK_AND_ASSIGN(ModuleAndNestedFusionMetadata module_and_metadata,
+                          GetModuleAndNestedFusionMetadata(kHloText));
+  EXPECT_TRUE(
+      RunAndCompareNoHloPasses(module_and_metadata.module->ToString(),
+                               ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
 }
 
 TEST_F(TritonGemmTest, DISABLED_NoPadding) {
-  const char* hlo_text = R"(
+  constexpr absl::string_view kHloText = R"(
 HloModule t
 
 ENTRY e {
@@ -642,7 +648,7 @@ ENTRY e {
     lhs_contracting_dims={1}, rhs_contracting_dims={0}
 })";
 
-  MatchOptimizedHlo(hlo_text, R"(
+  MatchOptimizedHlo(kHloText, R"(
 ; CHECK: ENTRY
 ; CHECK-NEXT: parameter
 ; CHECK-NEXT: parameter
@@ -654,11 +660,11 @@ ENTRY e {
 ; CHECK-NOT: slice
 )");
 
-  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
+  EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
 }
 
 TEST_F(TritonGemmTest, DISABLED_S8xS8) {
-  const std::string hlo_text = R"(
+  constexpr absl::string_view kHloText = R"(
 HloModule t
 
 ENTRY f {
@@ -667,11 +673,11 @@ ENTRY f {
   ROOT z = s32[1024,1024]{1,0} dot(x, y),
     lhs_contracting_dims={1}, rhs_contracting_dims={0}
 })";
-  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
+  EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
 }
 
 TEST_F(TritonGemmTest, DISABLED_SplitLhsNoncontractingTransposeRhs) {
-  const std::string hlo_text = R"(
+  constexpr absl::string_view kHloText = R"(
 HloModule t
 
 ENTRY e {
@@ -683,7 +689,7 @@ ENTRY e {
     lhs_contracting_dims={1}, rhs_contracting_dims={2}
 })";
 
-  MatchOptimizedHlo(hlo_text, R"(
+  MatchOptimizedHlo(kHloText, R"(
 ; CHECK: ENTRY
 ; CHECK-NEXT: parameter
 ; CHECK-NEXT: parameter
@@ -692,12 +698,12 @@ ENTRY e {
 ; CHECK-PTX-SAME: "block_m":
 )");
 
-  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{/*aabs=*/0, /*arel=*/0}));
+  EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/0, /*arel=*/0}));
 }
 
 TEST_F(TritonGemmTest, DISABLED_SplitLhsNoncontracting) {
-  const std::string hlo_text = R"(
-HloModule t
+  constexpr absl::string_view kHloText = R"(
+Hl–oModule t
 
 ENTRY e {
   p0 = f32[72,72] parameter(0)
@@ -710,7 +716,7 @@ ENTRY e {
     lhs_contracting_dims={1}, rhs_contracting_dims={0}
 })";
 
-  MatchOptimizedHlo(hlo_text, R"(
+  MatchOptimizedHlo(kHloText, R"(
 ; CHECK: ENTRY
 ; CHECK-NEXT: parameter
 ; CHECK-NEXT: parameter
@@ -719,10 +725,10 @@ ENTRY e {
 ; CHECK-PTX-SAME: "block_m":
 )");
 
-  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
+  EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
 }
 
-TEST_F(TritonGemmTest, DISABLED_SplitAndTransposeLhsExecutesCorrectly) {
+TEST_F(TritonGemmTest, SplitAndTransposeLhsExecutesCorrectly) {
   constexpr absl::string_view kHloText = R"(
 HloModule m
 
@@ -743,12 +749,12 @@ ENTRY e {
 ; CHECK-NEXT: ROOT
 ; CHECK-SAME: fusion
 ; CHECK-SAME: kind=kCustom
+; CHECK-SAME: backend_config={{.*}}"kind":"__triton_nested_gemm_fusion"
 )");
-
   EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
 }
 
-TEST_F(TritonGemmTest, DISABLED_NondefaultOperandLayoutIsSupported) {
+TEST_F(TritonGemmTest, NondefaultOperandLayoutIsSupported) {
   // TODO(bchetioui): reenable when b/285866137 is fixed.
 #ifndef NDEBUG
   GTEST_SKIP() << "This test times out when -UNDEBUG is set.";
@@ -775,7 +781,7 @@ ENTRY r {
 }
 
 TEST_F(TritonGemmTest, DISABLED_DoNotFuseSplitRhsContractingTranspose) {
-  const std::string hlo_text = R"(
+  constexpr absl::string_view kHloText = R"(
 HloModule t
 
 ENTRY e {
@@ -788,7 +794,7 @@ ENTRY e {
     lhs_contracting_dims={1}, rhs_contracting_dims={1}
 })";
 
-  MatchOptimizedHlo(hlo_text, R"(
+  MatchOptimizedHlo(kHloText, R"(
 ; CHECK: ENTRY
 ; CHECK: transpose
 ; CHECK: fusion
@@ -796,11 +802,11 @@ ENTRY e {
 ; CHECK-PTX-SAME: "block_m":
 )");
 
-  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
+  EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
 }
 
 TEST_F(TritonGemmTest, DISABLED_DoNotFuseSplitLhsContractingTranspose) {
-  const std::string hlo_text = R"(
+  constexpr absl::string_view kHloText = R"(
 HloModule t
 
 ENTRY e {
@@ -813,7 +819,7 @@ ENTRY e {
     lhs_contracting_dims={1}, rhs_contracting_dims={1}
 })";
 
-  MatchOptimizedHlo(hlo_text, R"(
+  MatchOptimizedHlo(kHloText, R"(
 ; CHECK: ENTRY
 ; CHECK: transpose
 ; CHECK: fusion
@@ -821,11 +827,11 @@ ENTRY e {
 ; CHECK-PTX-SAME: "block_m":
 )");
 
-  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
+  EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
 }
 
 TEST_F(TritonGemmTest, DISABLED_BatchF32F16) {
-  const std::string hlo_text = R"(
+  constexpr absl::string_view kHloText = R"(
 HloModule t
 
 ENTRY e {
@@ -837,7 +843,7 @@ ENTRY e {
     lhs_batch_dims={0}, rhs_batch_dims={0}
 })";
 
-  MatchOptimizedHlo(hlo_text, R"(
+  MatchOptimizedHlo(kHloText, R"(
 ; CHECK: ENTRY
 ; CHECK-NEXT: parameter
 ; CHECK-NEXT: parameter
@@ -846,11 +852,11 @@ ENTRY e {
 ; CHECK-PTX-SAME: "block_m":
 )");
 
-  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{/*aabs=*/1e-4, /*arel=*/1e-2}));
+  EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-4, /*arel=*/1e-2}));
 }
 
 TEST_F(TritonGemmTest, DISABLED_NonMajorMostInputBatchWorksCorrectly) {
-  const std::string hlo_text = R"(
+  constexpr absl::string_view kHloText = R"(
 HloModule t
 
 ENTRY e {
@@ -862,7 +868,7 @@ ENTRY e {
     lhs_batch_dims={1}, rhs_batch_dims={1}
 })";
 
-  MatchOptimizedHlo(hlo_text, R"(
+  MatchOptimizedHlo(kHloText, R"(
 ; CHECK: ENTRY
 ; CHECK-NEXT: parameter
 ; CHECK-NEXT: parameter
@@ -871,11 +877,11 @@ ENTRY e {
 ; CHECK-PTX-SAME: "block_m":
 )");
 
-  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
+  EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
 }
 
 TEST_F(TritonGemmTest, DISABLED_BatchTransposeF32F16) {
-  const std::string hlo_text = R"(
+  constexpr absl::string_view kHloText = R"(
 HloModule t
 
 ENTRY e {
@@ -888,7 +894,7 @@ ENTRY e {
     lhs_batch_dims={0}, rhs_batch_dims={0}
 })";
 
-  MatchOptimizedHlo(hlo_text, R"(
+  MatchOptimizedHlo(kHloText, R"(
 ; CHECK: ENTRY
 ; CHECK-NEXT: parameter
 ; CHECK-NEXT: parameter
@@ -897,11 +903,11 @@ ENTRY e {
 ; CHECK-PTX-SAME: "block_m":
 )");
 
-  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{/*aabs=*/1e-4, /*arel=*/1e-2}));
+  EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-4, /*arel=*/1e-2}));
 }
 
 TEST_F(TritonGemmTest, DISABLED_DoNotFuseArbitraryReshape) {
-  const std::string hlo_text = R"(
+  constexpr absl::string_view kHloText = R"(
 HloModule m
 
 ENTRY e {
@@ -914,7 +920,7 @@ ENTRY e {
     rhs_batch_dims={0}, rhs_contracting_dims={1}
 })";
 
-  MatchOptimizedHlo(hlo_text, R"(
+  MatchOptimizedHlo(kHloText, R"(
 ; CHECK: ENTRY
 ; CHECK: f32[5,3,4]{2,1,0} bitcast
 ; CHECK: fusion
@@ -922,10 +928,10 @@ ENTRY e {
 ; CHECK-PTX-SAME: "block_m":
 )");
 
-  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{/*aabs=*/1e-4, /*arel=*/1e-4}));
+  EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-4, /*arel=*/1e-4}));
 }
 
-TEST_F(TritonGemmTest, DISABLED_MultipleBatchRequireSeparateTranspose) {
+TEST_F(TritonGemmTest, MultipleBatchRequireSeparateTranspose) {
   constexpr absl::string_view kHloText = R"(
 HloModule m
 
@@ -943,6 +949,7 @@ ENTRY e {
 ; CHECK: transpose(
 ; CHECK: bitcast(
 ; CHECK: kCustom
+; CHECK-SAME: backend_config={{.*}}"kind":"__triton_nested_gemm_fusion"
 )");
 
   EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-4, /*arel=*/1e-4}));
@@ -966,6 +973,7 @@ ENTRY e {
 ; CHECK-NOT:   concatenate
 ; CHECK:       fusion
 ; CHECK-SAME:    kind=kCustom
+; CHECK-SAME: backend_config={{.*}}"kind":"__triton_nested_gemm_fusion"
 )");
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
@@ -991,6 +999,7 @@ ENTRY e {
 ; CHECK-NOT:   concatenate
 ; CHECK:       fusion
 ; CHECK-SAME:    kind=kCustom
+; CHECK-SAME: backend_config={{.*}}"kind":"__triton_nested_gemm_fusion"
 )");
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
@@ -1200,9 +1209,8 @@ ENTRY e {
 )");
 }
 
-TEST_F(
-    TritonGemmTest,
-    DISABLED_BroadcastsOfTriviallySizedNonContractingDimensionsAreSupported) {
+TEST_F(TritonGemmTest,
+       BroadcastsOfTriviallySizedNonContractingDimensionsAreSupported) {
   EXPECT_TRUE(RunAndCompare(R"(
 f {
   p0 = f32[64,6464] parameter(0)
@@ -1221,7 +1229,9 @@ e {
   p1 = f32[16,6464] parameter(1)
   p2 = f32[64] parameter(2)
   f = f32[1,16,64] fusion(p0, p1, p2),
-    kind=kCustom, calls=f, backend_config={"fusion_backend_config": {"kind":"__triton_gemm"}}
+    kind=kCustom, calls=f, backend_config={"fusion_backend_config": {"kind":"__triton_gemm",
+    "triton_gemm_config": {"block_m":"16","block_n":"16","block_k":"64","split_k":"1",
+          "num_stages":"1","num_warps":"4","num_ctas":"1"}}}
 })",
                             ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
 }
@@ -1249,7 +1259,7 @@ e {
 }
 
 TEST_F(TritonGemmTest, DISABLED_DoF32F32) {
-  const std::string hlo_text = R"(
+  constexpr absl::string_view kHloText = R"(
 HloModule t
 
 ENTRY e {
@@ -1259,13 +1269,13 @@ ENTRY e {
     lhs_contracting_dims={1}, rhs_contracting_dims={0}
 })";
 
-  MatchOptimizedHlo(hlo_text, R"(
+  MatchOptimizedHlo(kHloText, R"(
 ; CHECK: fusion(
 ; CHECK-SAME: kind=kCustom
 ; CHECK-PTX-SAME: block_m
 )");
 
-  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
+  EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
 }
 
 TEST_F(TritonGemmTest, DISABLED_DoAddConstantToScalarAndBroadcastThat) {
@@ -1273,7 +1283,7 @@ TEST_F(TritonGemmTest, DISABLED_DoAddConstantToScalarAndBroadcastThat) {
           GpuComputeCapability())) {
     GTEST_SKIP() << "Not using autotuner on ROCM yet.";
   }
-  const std::string hlo_text = R"(
+  constexpr absl::string_view kHloText = R"(
 HloModule t
 
 ENTRY e {
@@ -1286,15 +1296,15 @@ ENTRY e {
     lhs_contracting_dims={1}, rhs_contracting_dims={0}
 })";
 
-  MatchOptimizedHlo(hlo_text, R"(
+  MatchOptimizedHlo(kHloText, R"(
 ; CHECK: fusion({{.*}} kind=kCustom, {{.*}}block_m
 )");
 
-  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
+  EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
 }
 
 TEST_F(TritonGemmTest, DISABLED_SameInput) {
-  const std::string hlo_text = R"(
+  constexpr absl::string_view kHloText = R"(
 HloModule m
 
 ENTRY e {
@@ -1305,14 +1315,14 @@ ENTRY e {
 })";
 
   // The fusion has separate parameters for each scope.
-  MatchOptimizedHlo(hlo_text, R"(
+  MatchOptimizedHlo(kHloText, R"(
 ; CHECK: ENTRY
 ; CHECK: %[[p0:.*]] = pred[5,5]{1,0} parameter(0)
 ; CHECK: fusion(%[[p0]], %[[p0]]), kind=kCustom
 ; CHECK-PTX-SAME: "block_m":
 )");
 
-  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{/*aabs=*/1e-6, /*arel=*/1e-6}));
+  EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-6, /*arel=*/1e-6}));
 }
 
 TEST_F(TritonGemmTest, DISABLED_DynamicSliceIsSupportedInLhsEndToEnd) {
@@ -1590,7 +1600,7 @@ TEST_F(TritonGemmTest,
   if (!SupportsBF16(GpuComputeCapability())) {
     GTEST_SKIP() << "BF16 not supported.";
   }
-  const std::string hlo_text = R"(
+  constexpr absl::string_view kHloText = R"(
 HloModule m
 
 ENTRY e {
@@ -1601,7 +1611,7 @@ ENTRY e {
   ROOT d = bf16[2,384,20] dot(concat, z), lhs_contracting_dims={2}, rhs_contracting_dims={0}
 })";
 
-  MatchOptimizedHlo(hlo_text, R"(
+  MatchOptimizedHlo(kHloText, R"(
 ; CHECK:      ENTRY
 ; CHECK:      concatenate
 ; CHECK:        ROOT
@@ -1610,7 +1620,7 @@ ENTRY e {
 ; CHECK-SAME:       "block_m"
 )");
 
-  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
+  EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
 }
 
 TEST_F(TritonGemmTest, DISABLED_BroadcastOfScalarWorksCorrectly) {
@@ -1665,7 +1675,7 @@ ENTRY e  {
                    .status());
 }
 
-TEST_F(TritonGemmTest, DISABLED_BinaryOperationWithSmallInputsIsFused) {
+TEST_F(TritonGemmTest, BinaryOperationWithSmallInputsIsFused) {
   constexpr absl::string_view kHloText = R"(
 HloModule m
 
@@ -1687,11 +1697,9 @@ ENTRY e {
       module->entry_computation()->root_instruction(),
       GmockMatch(m::Fusion(m::Parameter(), m::Parameter(), m::Parameter())
                      .WithFusionKind(HloInstruction::FusionKind::kCustom)));
-
-  EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-1, /*arel=*/1e-2}));
 }
 
-TEST_F(TritonGemmTest, DISABLED_BinaryOperationWithLargeInputsIsNotFused) {
+TEST_F(TritonGemmTest, BinaryOperationWithLargeInputsIsNotFused) {
   constexpr absl::string_view kHloText = R"(
 HloModule m
 
@@ -1716,13 +1724,11 @@ ENTRY e {
 ; CHECK: ENTRY
 ; CHECK: kLoop
 ; CHECK: kCustom
+; CHECK-SAME: backend_config={{.*}}"kind":"__triton_nested_gemm_fusion"
 )");
-
-  EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-1, /*arel=*/1e-3}));
 }
 
-TEST_F(TritonGemmTest,
-       DISABLED_ParametersWithDifferentLayoutsAreSupportedInOneScope) {
+TEST_F(TritonGemmTest, ParametersWithDifferentLayoutsAreSupportedInOneScope) {
   constexpr absl::string_view kHloText = R"(
 ENTRY e {
   p0 = s8[5,3] parameter(0)
@@ -1741,11 +1747,9 @@ ENTRY e {
       module->entry_computation()->root_instruction(),
       GmockMatch(m::Fusion(m::Parameter(), m::Parameter(), m::Parameter())
                      .WithFusionKind(HloInstruction::FusionKind::kCustom)));
-
-  EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-6, /*arel=*/1e-6}));
 }
 
-TEST_F(TritonGemmTest, DISABLED_BinaryOperationOnLargeParametersIsFused) {
+TEST_F(TritonGemmTest, BinaryOperationOnLargeParametersIsFused) {
   constexpr absl::string_view kHloText = R"(
 HloModule m
 
@@ -1766,11 +1770,12 @@ ENTRY e {
       module->entry_computation()->root_instruction(),
       GmockMatch(m::Fusion(m::Parameter(), m::Parameter(), m::Parameter())
                      .WithFusionKind(HloInstruction::FusionKind::kCustom)));
-
-  EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-1, /*arel=*/1e-3}));
 }
 
-TEST_F(TritonGemmTest, DISABLED_LinkingLibdeviceTwiceWorks) {
+TEST_F(TritonGemmTest, LinkingLibdeviceTwiceWorks) {
+  // TODO(b/393299275): This test looks weird. It's testing the whole
+  // optimization pipeline end-to-end to check that linking libdevice twice
+  // works? rewrite this to just use post-optimization HLO
   constexpr absl::string_view kHloText = R"(
 ENTRY e {
   p0 = s8[7,3] parameter(0)
@@ -1801,7 +1806,7 @@ ENTRY e {
   EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-2, /*arel=*/1e-2}));
 }
 
-TEST_F(TritonGemmTest, DISABLED_BroadcastOfScalarParameterIsFused) {
+TEST_F(TritonGemmTest, BroadcastOfScalarParameterIsFused) {
   constexpr absl::string_view kHloText = R"(
 ENTRY e {
   p0 = f16[64,256] parameter(0)
@@ -1822,7 +1827,7 @@ ENTRY e {
   EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
 }
 
-TEST_F(TritonGemmTest, DISABLED_BroadcastOfScalarConstantIsFused) {
+TEST_F(TritonGemmTest, BroadcastOfScalarConstantIsFused) {
   constexpr absl::string_view kHloText = R"(
 HloModule m
 
@@ -1841,8 +1846,6 @@ ENTRY e {
       module->entry_computation()->root_instruction(),
       GmockMatch(m::Fusion(m::Parameter())
                      .WithFusionKind(HloInstruction::FusionKind::kCustom)));
-
-  EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/2e-3, /*arel=*/2e-3}));
 }
 
 TEST_F(TritonGemmTest, DISABLED_DoubleBroadcastOfScalarConstantIsHandled) {
@@ -1893,7 +1896,7 @@ ENTRY e {
   EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-6, /*arel=*/1e-6}));
 }
 
-TEST_F(TritonGemmTest, DISABLED_AlwaysFuseScalarConstantAtBroadcastInput) {
+TEST_F(TritonGemmTest, AlwaysFuseScalarConstantAtBroadcastInput) {
   if (!SupportsBF16(GpuComputeCapability())) {
     GTEST_SKIP() << "BF16 not supported.";
   }
@@ -1918,12 +1921,11 @@ ENTRY e {
 ; CHECK: ROOT
 ; CHECK: ENTRY
 ; CHECK: kCustom
+; CHECK-SAME: backend_config={{.*}}"kind":"__triton_nested_gemm_fusion"
 )");
-
-  EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
 }
 
-TEST_F(TritonGemmTest, DISABLED_BroadcastOfVectorParameterIsFused) {
+TEST_F(TritonGemmTest, BroadcastOfVectorParameterIsFused) {
   constexpr absl::string_view kHloText = R"(
 triton_dot {
   p0 = f16[75] parameter(0)
@@ -1945,8 +1947,6 @@ ENTRY e {
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(kHloText));
-
-  EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/2e-3, /*arel=*/2e-3}));
 }
 
 TEST_F(TritonGemmTest, DISABLED_FuseConcatenation) {
@@ -2170,7 +2170,7 @@ ENTRY e {
                                                 /*arel=*/1e-3}));
 }
 
-TEST_F(TritonGemmTest, DISABLED_SineOutputIsNotFused) {
+TEST_F(TritonGemmTest, SineOutputIsNotFused) {
   constexpr absl::string_view kHloText = R"(
 HloModule m
 
@@ -2189,11 +2189,9 @@ ENTRY e {
               GmockMatch(m::Sin(
                   m::Fusion(m::Parameter(), m::Parameter())
                       .WithFusionKind(HloInstruction::FusionKind::kCustom))));
-
-  EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-1, /*arel=*/1e-2}));
 }
 
-TEST_F(TritonGemmTest, DISABLED_SliceInputIsFused) {
+TEST_F(TritonGemmTest, SliceInputIsFused) {
   constexpr absl::string_view kHloText = R"(
 ENTRY e {
   p0 = f16[97,121] parameter(0)
@@ -2210,8 +2208,6 @@ ENTRY e {
       module->entry_computation()->root_instruction(),
       GmockMatch(m::Fusion(m::Parameter(), m::Parameter())
                      .WithFusionKind(HloInstruction::FusionKind::kCustom)));
-
-  EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
 }
 
 TEST_F(TritonGemmTest, DISABLED_SliceInputWithReshapeIsFused) {
@@ -2236,7 +2232,7 @@ ENTRY e {
   EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
 }
 
-TEST_F(TritonGemmTest, DISABLED_NestedSlicingWorks) {
+TEST_F(TritonGemmTest, NestedSlicingWorks) {
   constexpr absl::string_view kHloText = R"(
 ENTRY e {
   p1 = f32[6,24] parameter(1)
@@ -2254,11 +2250,9 @@ ENTRY e {
       module->entry_computation()->root_instruction(),
       GmockMatch(m::Fusion(m::Parameter(), m::Parameter())
                      .WithFusionKind(HloInstruction::FusionKind::kCustom)));
-
-  EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-4, /*arel=*/1e-3}));
 }
 
-TEST_F(TritonGemmTest, DISABLED_SlicedBatchDimensionIsSupported) {
+TEST_F(TritonGemmTest, SlicedBatchDimensionIsSupported) {
   constexpr absl::string_view kHloText = R"(
 ENTRY e {
   p0 = f16[3,3,256] parameter(0)
@@ -2278,8 +2272,6 @@ ENTRY e {
       module->entry_computation()->root_instruction(),
       GmockMatch(m::Fusion(m::Parameter(), m::Parameter())
                      .WithFusionKind(HloInstruction::FusionKind::kCustom)));
-
-  EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
 }
 
 TEST_F(TritonGemmTestWithSplitK,
@@ -2375,7 +2367,8 @@ ENTRY e {
   EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/2e-2, /*arel=*/2e-2}));
 }
 
-TEST_F(TritonGemmTest, DISABLED_OutputFusionExecutesCorrectly) {
+TEST_F(TritonGemmTest, OutputFusionExecutesCorrectly) {
+  // TODO(b/393299275): it this test useful?
   if (!SupportsBF16(GpuComputeCapability())) {
     GTEST_SKIP() << "BF16 not supported.";
   }
@@ -2473,7 +2466,7 @@ ENTRY e {
   EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
 }
 
-TEST_F(TritonGemmTest, DISABLED_SupportPredParametersUsedInExpressions) {
+TEST_F(TritonGemmTest, SupportPredParametersUsedInExpressions) {
   constexpr absl::string_view kHloText = R"(
 ENTRY e {
   p = pred[2,2]{1,0} parameter(0)
@@ -2496,31 +2489,11 @@ ENTRY e {
       GmockMatch(m::Fusion(m::Parameter(), m::Parameter(), m::Parameter(),
                            m::Parameter())
                      .WithFusionKind(HloInstruction::FusionKind::kCustom)));
-  EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-5, /*arel=*/1e-3}));
-}
-
-TEST_F(TritonGemmTest, DISABLED_Naming) {
-  const char* hlo_text = R"(
-HloModule t
-
-ENTRY e {
-  p0 = f16[15,19] parameter(0)
-  p1 = s8[19,17] parameter(1)
-  cp1 = f16[19,17] convert(p1)
-  ROOT r = f16[15,17] dot(p0, cp1),
-    lhs_contracting_dims={1}, rhs_contracting_dims={0}
-})";
-
-  MatchOptimizedHlo(hlo_text, R"(
-; CHECK: %gemm_fusion_r_computation (
-; CHECK: ROOT %gemm_fusion_r
-; CHECK-SAME: kCustom
-)");
 }
 
 TEST_F(TritonGemmTest,
        DISABLED_LowerDotWithLhsWithoutNonContractingDimThroughTriton) {
-  const std::string hlo_text = R"(
+  constexpr absl::string_view kHloText = R"(
 HloModule t
 
 ENTRY e {
@@ -2531,18 +2504,18 @@ ENTRY e {
 })";
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          GetOptimizedModule(hlo_text));
+                          GetOptimizedModule(kHloText));
 
   EXPECT_THAT(
       module->entry_computation()->root_instruction(),
       GmockMatch(m::Fusion(m::Parameter(), m::Parameter())
                      .WithFusionKind(HloInstruction::FusionKind::kCustom)));
-  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
+  EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
 }
 
 TEST_F(TritonGemmTest,
        DISABLED_LowerDotWithRhsWithoutNonContractingDimThroughTriton) {
-  const std::string hlo_text = R"(
+  constexpr absl::string_view kHloText = R"(
 HloModule t
 
 ENTRY e {
@@ -2553,13 +2526,13 @@ ENTRY e {
 })";
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          GetOptimizedModule(hlo_text));
+                          GetOptimizedModule(kHloText));
 
   EXPECT_THAT(
       module->entry_computation()->root_instruction(),
       GmockMatch(m::Fusion(m::Parameter(), m::Parameter())
                      .WithFusionKind(HloInstruction::FusionKind::kCustom)));
-  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
+  EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
 }
 
 // This group of tests compares GPU results of dots already rewritten
@@ -2567,7 +2540,7 @@ ENTRY e {
 using CompareTest = TritonGemmTest;
 
 TEST_F(CompareTest, DISABLED_DifferentTilingsProduceSameResult) {
-  const char* hlo_text_ref = R"(
+  constexpr absl::string_view hlo_text_ref = R"(
 HloModule t
 
 triton_dot {
@@ -2589,7 +2562,7 @@ ENTRY e {
          "num_ctas":1}}}
 })";
 
-  const char* hlo_text_triton = R"(
+  constexpr absl::string_view hlo_text_triton = R"(
 HloModule t
 
 triton_dot {
@@ -2616,7 +2589,7 @@ ENTRY e {
 }
 
 TEST_F(CompareTest, DISABLED_F16) {
-  const char* hlo_text_ref = R"(
+  constexpr absl::string_view hlo_text_ref = R"(
 HloModule r
 
 ENTRY e {
@@ -2629,7 +2602,7 @@ ENTRY e {
 }
 )";
 
-  const char* hlo_text_triton = R"(
+  constexpr absl::string_view hlo_text_triton = R"(
 HloModule t
 
 triton_dot {
@@ -2656,7 +2629,7 @@ ENTRY e {
 }
 
 TEST_F(CompareTest, DISABLED_F32) {
-  const char* hlo_text_ref = R"(
+  constexpr absl::string_view hlo_text_ref = R"(
 HloModule r
 
 ENTRY e {
@@ -2669,7 +2642,7 @@ ENTRY e {
 }
 )";
 
-  const char* hlo_text_triton = R"(
+  constexpr absl::string_view hlo_text_triton = R"(
 HloModule t
 
 triton_dot {
@@ -2696,7 +2669,7 @@ ENTRY e {
 }
 
 TEST_F(CompareTest, DISABLED_F32WithTrivialNonContractingDimension) {
-  const char* hlo_text_ref = R"(
+  constexpr absl::string_view hlo_text_ref = R"(
 HloModule r
 
 ENTRY e {
@@ -2709,7 +2682,7 @@ ENTRY e {
 }
 )";
 
-  const char* hlo_text_triton = R"(
+  constexpr absl::string_view hlo_text_triton = R"(
 HloModule t
 
 triton_dot {
@@ -2739,7 +2712,7 @@ TEST_F(CompareTest, DISABLED_BF16TransposedLHS) {
   if (!SupportsBF16(GpuComputeCapability())) {
     GTEST_SKIP() << "BF16 not supported.";
   }
-  const char* hlo_text_ref = R"(
+  constexpr absl::string_view hlo_text_ref = R"(
 HloModule r
 
 ENTRY e {
@@ -2752,7 +2725,7 @@ ENTRY e {
 }
 )";
 
-  const char* hlo_text_triton = R"(
+  constexpr absl::string_view hlo_text_triton = R"(
 HloModule t
 
 triton_dot {
@@ -2865,7 +2838,7 @@ ENTRY e {
 }
 
 TEST_F(CompareTest, DISABLED_F16TransposedRHS) {
-  const char* hlo_text_ref = R"(
+  constexpr absl::string_view hlo_text_ref = R"(
 HloModule r
 
 ENTRY e {
@@ -2878,7 +2851,7 @@ ENTRY e {
 }
 )";
 
-  const char* hlo_text_triton = R"(
+  constexpr absl::string_view hlo_text_triton = R"(
 HloModule t
 
 triton_dot {
@@ -2905,7 +2878,7 @@ ENTRY e {
 }
 
 TEST_F(CompareTest, DISABLED_F32TransposedBoth) {
-  const char* hlo_text_ref = R"(
+  constexpr absl::string_view hlo_text_ref = R"(
 HloModule r
 
 ENTRY e {
@@ -2918,7 +2891,7 @@ ENTRY e {
 }
 )";
 
-  const char* hlo_text_triton = R"(
+  constexpr absl::string_view hlo_text_triton = R"(
 HloModule t
 
 triton_dot {
@@ -2948,7 +2921,7 @@ TEST_F(CompareTest, DISABLED_S8BF16) {
   if (!SupportsBF16(GpuComputeCapability())) {
     GTEST_SKIP() << "BF16 not supported.";
   }
-  const char* hlo_text_ref = R"(
+  constexpr absl::string_view hlo_text_ref = R"(
 HloModule r
 
 fused_computation {
@@ -2967,7 +2940,7 @@ ENTRY e {
 }
 )";
 
-  const char* hlo_text_triton = R"(
+  constexpr absl::string_view hlo_text_triton = R"(
 HloModule t
 
 triton_dot {
@@ -2998,7 +2971,7 @@ TEST_F(CompareTest, DISABLED_SplitK) {
   if (!SupportsBF16(GpuComputeCapability())) {
     GTEST_SKIP() << "BF16 not supported.";
   }
-  const std::string hlo_text_ref = R"(
+  constexpr absl::string_view hlo_text_ref = R"(
 HloModule t, is_scheduled=true
 
 triton_gemm_r {
@@ -3021,7 +2994,7 @@ ENTRY e {
                          "num_ctas":1}}}
 })";
 
-  const std::string hlo_text_splitk = R"(
+  constexpr absl::string_view hlo_text_splitk = R"(
 HloModule t, is_scheduled=true
 
 triton_gemm_r {
@@ -4033,7 +4006,7 @@ ENTRY e {
 // TODO(b/393299275): this test uncovers a bug in hoisting bitcasts through
 // broadcasts (seems to generate a type mismatch).
 TEST_F(TritonTest, DISABLED_UseTF32For8BitOrLessWithF32) {
-  const std::string hlo_text = R"(
+  constexpr absl::string_view kHloText = R"(
 HloModule t
 
 triton_dot {
@@ -4062,7 +4035,7 @@ ENTRY e {
          "num_ctas":1}}}
 })";
   TF_ASSERT_OK_AND_ASSIGN(ModuleAndNestedFusionMetadata module_and_metadata,
-                          GetModuleAndNestedFusionMetadata(hlo_text));
+                          GetModuleAndNestedFusionMetadata(kHloText));
   TF_ASSERT_OK(
       CreateTritonIrAndFileCheck(*module_and_metadata.computation,
                                  module_and_metadata.block_level_parameters,
@@ -4072,7 +4045,7 @@ CHECK:      inputPrecision = tf32
   )"));
 
   EXPECT_TRUE(RunAndCompareNoHloPasses(
-      hlo_text, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
+      kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
 }
 
 // TODO(b/393299275): this test requires us to allow actual mixed type GEMMs
@@ -4082,7 +4055,7 @@ TEST_F(TritonTest, DISABLED_Fp8LoweringIsSupportedPostHopper) {
   if (!GetCudaComputeCapability().IsAtLeastHopper()) {
     GTEST_SKIP() << "Doesn't pass on pre-Hopper GPUs.";
   }
-  const std::string hlo_text = R"(
+  constexpr absl::string_view kHloText = R"(
 HloModule t
 
 triton_dot {
@@ -4105,7 +4078,7 @@ ENTRY main {
 })";
 
   TF_ASSERT_OK_AND_ASSIGN(ModuleAndNestedFusionMetadata module_and_metadata,
-                          GetModuleAndNestedFusionMetadata(hlo_text));
+                          GetModuleAndNestedFusionMetadata(kHloText));
   TF_ASSERT_OK(
       CreateTritonIrAndFileCheck(*module_and_metadata.computation,
                                  module_and_metadata.block_level_parameters,
@@ -4113,7 +4086,7 @@ ENTRY main {
 CHECK: tt.dot {{.*}}{maxNumImpreciseAcc = 2147483647 : i32} : tensor<128x64xf8E4M3FN> * tensor<64x32xf8E4M3FN> -> tensor<128x32xf32>
   )"));
 
-  EXPECT_TRUE(RunAndCompareNoHloPasses(hlo_text,
+  EXPECT_TRUE(RunAndCompareNoHloPasses(kHloText,
                                        ErrorSpec{/*aabs=*/1.0, /*arel=*/1e-3}));
 }
 
@@ -4125,7 +4098,7 @@ TEST_F(TritonTest, DISABLED_BF16ToFP8EndToEnd) {
     GTEST_SKIP() << "Doesn't pass on pre-Hopper GPUs.";
   }
 
-  const std::string hlo_text = R"(
+  constexpr absl::string_view kHloText = R"(
 HloModule t
 
 triton_dot {
@@ -4147,7 +4120,7 @@ ENTRY main {
           "num_stages":"1","num_warps":"4","num_ctas":"1"}}}
 })";
 
-  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{/*aabs=*/1.0, /*arel=*/1e-3}));
+  EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1.0, /*arel=*/1e-3}));
 }
 
 // TODO(b/393299275): this test requires us to allow actual mixed type GEMMs
@@ -4158,7 +4131,7 @@ TEST_F(TritonTest, DISABLED_FP8ToFP8EndToEnd) {
     GTEST_SKIP() << "Doesn't pass on pre-Hopper GPUs.";
   }
 
-  const std::string hlo_text = R"(
+  constexpr absl::string_view kHloText = R"(
 HloModule t
 
 triton_dot {
@@ -4182,7 +4155,7 @@ ENTRY main {
   ASSERT_TRUE(
       GetDebugOptionsForTest()
           .xla_gpu_unsupported_enable_generic_triton_emitter_for_gemms());
-  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{/*aabs=*/1.0, /*arel=*/1e-3}));
+  EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1.0, /*arel=*/1e-3}));
 }
 
 // Test PreventMmaV3LoopUnrolling pass in order to keep compile time low.
@@ -4193,7 +4166,7 @@ TEST_F(TritonGemmTest, TestPreventMMAV3LoopUnrolling) {
   if (GetCudaComputeCapability().major != se::CudaComputeCapability::kHopper) {
     GTEST_SKIP() << "wgmma instruction is only available on Hopper";
   }
-  const std::string hlo_text = R"(
+  constexpr absl::string_view kHloText = R"(
 gemm_fusion_dot {
   p0 = f16[64,1024]{1,0} parameter(0)
   p1 = f16[1024,32,32]{2,1,0} parameter(1)
@@ -4214,7 +4187,7 @@ ENTRY e {
          "num_ctas":1}}}
 })";
   TF_ASSERT_OK_AND_ASSIGN(ModuleAndNestedFusionMetadata module_and_metadata,
-                          GetModuleAndNestedFusionMetadata(hlo_text));
+                          GetModuleAndNestedFusionMetadata(kHloText));
 
   CompileAndOptionallyVerifyPtx(std::move(module_and_metadata.module), R"(
                                 R"(
@@ -4232,7 +4205,7 @@ TEST_F(TritonGemmTest, WgmmaIsUsedForMemBoundShape) {
   if (GetCudaComputeCapability().major != se::CudaComputeCapability::kHopper) {
     GTEST_SKIP() << "wgmma instruction is only available on Hopper";
   }
-  const std::string hlo_text = R"(
+  constexpr absl::string_view kHloText = R"(
 gemm_fusion_dot {
   p0 = s8[128,128]{1,0} parameter(0)
   p1 = bf16[128,16]{1,0} parameter(1)
@@ -4253,7 +4226,7 @@ ENTRY e {
 })";
 
   TF_ASSERT_OK_AND_ASSIGN(ModuleAndNestedFusionMetadata module_and_metadata,
-                          GetModuleAndNestedFusionMetadata(hlo_text));
+                          GetModuleAndNestedFusionMetadata(kHloText));
 
   CompileAndOptionallyVerifyPtx(std::move(module_and_metadata.module), R"(
 CHECK: wgmma.mma_async.sync.aligned.m64n16k16.f32.bf16.bf16
