@@ -355,7 +355,7 @@ Attribute encodePrecisionConfig(ArrayAttr precisionConfigAttr) {
 template <typename FailedToConvertTy>
 LogicalResult notifyConversionFailure(ConversionPatternRewriter& rewriter,
                                       Operation* op,
-                                      std::string const& errorMessage,
+                                      const std::string& errorMessage,
                                       FailedToConvertTy ty) {
   return rewriter.notifyMatchFailure(
       op, [=](Diagnostic& diag) { diag << errorMessage << ": " << ty; });

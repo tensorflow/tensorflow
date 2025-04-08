@@ -113,7 +113,7 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> GetModuleFromHLOText(
 }
 
 absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> GetModuleFromHLOProto(
-    std::string const& content, mlir::MLIRContext* context) {
+    const std::string& content, mlir::MLIRContext* context) {
   xla::HloProto hlo_proto;
   if (!LoadHloProto(content, &hlo_proto))
     return absl::InvalidArgumentError(kLoadHloError);

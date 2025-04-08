@@ -78,7 +78,7 @@ LocalDeviceState::LocalDeviceState(se::StreamExecutor* executor,
   int num_device_to_device_streams =
       stream_options.has_value() ? stream_options->num_device_to_device_streams
                                  : kNumDeviceToDeviceStreams;
-  auto create_stream = [executor, &stream_options](std::string const& name) {
+  auto create_stream = [executor, &stream_options](const std::string& name) {
     std::unique_ptr<stream_executor::Stream> stream;
     if (stream_options.has_value()) {
       stream = executor->CreateStream(stream_options->priority).value();
