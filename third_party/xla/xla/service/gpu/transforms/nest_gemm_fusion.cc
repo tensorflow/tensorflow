@@ -68,13 +68,13 @@ limitations under the License.
 namespace xla::gpu {
 
 namespace {
-// Fuses the given instructions together. The instructions are expected to be
-// passed in def-before-use order.  The resulting fusion has a single root
-// instruction, which is the last instructions in the input span.  We only
-// replace the uses of the root in 'consumer', and leave other users alone.
-absl::Status FuseInstructionsForConsumer(
-    absl::Span<HloInstruction* const> instructions, HloInstruction& consumer) {
-  HloComputation::Builder builder(instructions.back()->name());
+
+// Creates a fusion for instructions starting from 'root' and returns it.
+absl::StatusOr<HloInstruction*> FuseInstructionsFromRoot(HloInstruction& root) {
+  std::vector<HloInstruction*> instructions =
+      root.parent()->MakeInstructionPostOrderFrom(root);
+
+  HloComputation::Builder builder(root.name());
 
   absl::flat_hash_map<const HloInstruction*, HloInstruction*>
       old_to_new_mapping;
@@ -108,27 +108,37 @@ absl::Status FuseInstructionsForConsumer(
     old_to_new_mapping[instruction] = builder.AddInstruction(
         instruction->CloneWithNewOperands(instruction->shape(), new_operands));
   }
-
-  HloInstruction* old_root = instructions.back();
-  old_to_new_mapping[old_root]->MarkAsRoot();
+  old_to_new_mapping[&root]->MarkAsRoot();
 
   HloComputation* computation =
-      old_root->GetModule()->AddComputationAndUnifyNamesAndIds(
-          builder.Build(), /*is_entry=*/false);
+      root.GetModule()->AddComputationAndUnifyNamesAndIds(builder.Build(),
+                                                          /*is_entry=*/false);
   HloInstruction* fusion =
-      old_root->parent()->AddInstruction(HloInstruction::CreateFusion(
-          old_root->shape(), HloInstruction::FusionKind::kCustom, parameters,
+      root.parent()->AddInstruction(HloInstruction::CreateFusion(
+          root.shape(), HloInstruction::FusionKind::kCustom, parameters,
           computation));
   fusion->GetModule()->SetAndUniquifyInstrName(fusion, "block_fusion");
 
+  return fusion;
+}
+
+// Fuses the instructions starting from 'root' for 'consumer'. Other users of
+// 'root' are not affected. Annotates fusion with `kTritonNestedGemmFusionKind`.
+absl::Status FuseInstructionsForConsumer(HloInstruction& root,
+                                         HloInstruction& consumer) {
+  CHECK(absl::c_count(consumer.operands(), &root) != 0)
+      << "Consumer " << consumer.ToString() << " does not use root "
+      << root.ToString();
+
+  TF_ASSIGN_OR_RETURN(HloInstruction * fusion, FuseInstructionsFromRoot(root));
+
   TF_ASSIGN_OR_RETURN(auto gpu_config,
                       fusion->backend_config<GpuBackendConfig>());
-  FusionBackendConfig& backend_config =
-      *gpu_config.mutable_fusion_backend_config();
-  backend_config.set_kind(std::string(kTritonNestedGemmFusionKind));
+  gpu_config.mutable_fusion_backend_config()->set_kind(
+      std::string(kTritonNestedGemmFusionKind));
   TF_RETURN_IF_ERROR(fusion->set_backend_config(gpu_config));
 
-  for (int64_t operand_index : consumer.OperandIndices(old_root)) {
+  for (int64_t operand_index : consumer.OperandIndices(&root)) {
     TF_RETURN_IF_ERROR(consumer.ReplaceOperandWith(operand_index, fusion));
   }
 
@@ -173,12 +183,12 @@ absl::Status AnnotateDotOperandNestedFusionImpl(
   block_level_parameters.num_ctas = config.num_ctas;
   block_level_parameters.num_stages = config.num_stages;
 
-  TF_ASSIGN_OR_RETURN(auto backend_config,
+  TF_ASSIGN_OR_RETURN(auto gpu_config,
                       nested_fusion.backend_config<GpuBackendConfig>());
-  *backend_config.mutable_fusion_backend_config()
+  *gpu_config.mutable_fusion_backend_config()
        ->mutable_block_level_fusion_config() =
       block_level_parameters.ToBlockLevelFusionConfig();
-  TF_RETURN_IF_ERROR(nested_fusion.set_backend_config(backend_config));
+  TF_RETURN_IF_ERROR(nested_fusion.set_backend_config(gpu_config));
 
   return absl::OkStatus();
 }
@@ -298,21 +308,11 @@ absl::StatusOr<TritonGemmConfig> GetTritonGemmConfig(
 // and annotates them with `kTritonNestedGemmFusionKind`.
 absl::Status FuseAndAnnotateConcatOperands(HloComputation* computation) {
   for (HloInstruction* instr : computation->MakeInstructionPostOrder()) {
-    if (instr->opcode() == HloOpcode::kConcatenate) {
-      for (int i = 0; i < instr->operand_count(); ++i) {
-        TF_RETURN_IF_ERROR(FuseInstructionsForConsumer(
-            computation->MakeInstructionPostOrderFrom(
-                *instr->mutable_operand(i)),
-            *instr));
-        HloInstruction* new_operand = instr->mutable_operand(i);
-        TF_ASSIGN_OR_RETURN(auto gpu_config,
-                            new_operand->backend_config<GpuBackendConfig>());
-        FusionBackendConfig& backend_config =
-            *gpu_config.mutable_fusion_backend_config();
-        backend_config.clear_triton_gemm_config();
-        backend_config.set_kind(std::string(kTritonNestedGemmFusionKind));
-        TF_RETURN_IF_ERROR(new_operand->set_backend_config(gpu_config));
-      }
+    if (instr->opcode() != HloOpcode::kConcatenate) {
+      continue;
+    }
+    for (HloInstruction* operand : instr->mutable_operands()) {
+      TF_RETURN_IF_ERROR(FuseInstructionsForConsumer(*operand, *instr));
     }
   }
   return absl::OkStatus();
@@ -333,17 +333,15 @@ absl::Status MakeNestedFusionFromGemmFusion(HloFusionInstruction* fusion,
   TF_RETURN_IF_ERROR(FuseAndAnnotateConcatOperands(computation));
 
   // Left-hand side of the dot.
-  TF_RETURN_IF_ERROR(FuseInstructionsForConsumer(
-      computation->MakeInstructionPostOrderFrom(*dot->mutable_operand(0)),
-      *dot));
+  TF_RETURN_IF_ERROR(
+      FuseInstructionsForConsumer(*dot->mutable_operand(0), *dot));
   TF_RETURN_IF_ERROR(AnnotateDotLhsNestedFusion(
       *::xla::Cast<HloFusionInstruction>(dot->mutable_operand(0)), *dot,
       config));
 
   // Right-hand side of the dot.
-  TF_RETURN_IF_ERROR(FuseInstructionsForConsumer(
-      computation->MakeInstructionPostOrderFrom(*dot->mutable_operand(1)),
-      *dot));
+  TF_RETURN_IF_ERROR(
+      FuseInstructionsForConsumer(*dot->mutable_operand(1), *dot));
   TF_RETURN_IF_ERROR(AnnotateDotRhsNestedFusion(
       *::xla::Cast<HloFusionInstruction>(dot->mutable_operand(1)), *dot,
       config));
