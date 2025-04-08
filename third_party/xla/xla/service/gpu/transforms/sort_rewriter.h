@@ -16,6 +16,9 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_TRANSFORMS_SORT_REWRITER_H_
 #define XLA_SERVICE_GPU_TRANSFORMS_SORT_REWRITER_H_
 
+#include <string>
+#include <utility>
+
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
@@ -34,8 +37,10 @@ namespace gpu {
 
 class SortRewriter : public HloModulePass {
  public:
-  explicit SortRewriter(const se::DeviceDescription& device_description)
-      : device_description_(device_description) {}
+  explicit SortRewriter(const se::DeviceDescription& device_description,
+                        std::string platform_name)
+      : device_description_(device_description),
+        platform_name_(std::move(platform_name)) {}
   absl::string_view name() const override { return "sort-rewriter"; }
 
   enum class Mode {
@@ -64,7 +69,8 @@ class SortRewriter : public HloModulePass {
   absl::StatusOr<bool> RunOnComputation(HloComputation* computation);
 
   static inline Mode sort_mode_ = Mode::kAuto;
-  const se::DeviceDescription device_description_;
+  se::DeviceDescription device_description_;
+  std::string platform_name_;
 };
 
 }  // namespace gpu
