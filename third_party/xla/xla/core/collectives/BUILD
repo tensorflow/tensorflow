@@ -31,12 +31,14 @@ cc_library(
 
 cc_library(
     name = "collectives",
+    srcs = ["collectives.cc"],
     hdrs = ["collectives.h"],
     deps = [
         ":clique_id",
         ":clique_key",
         ":communicator",
         ":rank_id",
+        "@com_google_absl//absl/functional:any_invocable",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/types:span",
     ],

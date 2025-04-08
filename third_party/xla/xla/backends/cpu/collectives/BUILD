@@ -68,6 +68,24 @@ cc_library(
     ],
 )
 
+xla_cc_test(
+    name = "cpu_cliques_test",
+    srcs = ["cpu_cliques_test.cc"],
+    deps = [
+        ":cpu_clique_key",
+        ":cpu_cliques",
+        ":in_process_collectives",
+        "//xla:util",
+        "//xla/core/collectives:rank_id",
+        "//xla/service:global_device_id",
+        "//xla/tsl/platform:statusor",
+        "//xla/tsl/platform:test",
+        "//xla/tsl/platform:test_main",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
 cc_library(
     name = "cpu_collectives",
     srcs = ["cpu_collectives.cc"],

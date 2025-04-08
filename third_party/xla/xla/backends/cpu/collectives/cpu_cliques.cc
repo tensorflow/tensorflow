@@ -55,15 +55,29 @@ struct ThreadSafeClique {
 // cliques, CPU cliques are not lockable, and we create communicators lazily
 // when needed.
 struct ProcessCpuCliques {
+  using Key = std::pair<CpuCollectives*, CpuCliqueKey>;
+
   absl::Mutex mu;
-  absl::node_hash_map<CpuCliqueKey, ThreadSafeClique> map ABSL_GUARDED_BY(mu);
+  absl::node_hash_map<Key, ThreadSafeClique> map ABSL_GUARDED_BY(mu);
 };
+
 }  // namespace
 
 // Returns process-local CPU cliques.
 static ProcessCpuCliques& GetProcessCpuCliques() {
   static auto* cliques = new ProcessCpuCliques;
   return *cliques;
+}
+
+// Erases cliques constructed from a given instance of CpuCollectives.
+static void EraseProcessCpuCliques(CpuCollectives* collectives) {
+  VLOG(3) << "Erase process CPU cliques for collectives: " << collectives;
+  ProcessCpuCliques& cliques = GetProcessCpuCliques();
+
+  absl::MutexLock lock(&cliques.mu);
+  absl::erase_if(cliques.map, [collectives](const auto& entry) {
+    return entry.first.first == collectives;
+  });
 }
 
 //===----------------------------------------------------------------------===//
@@ -73,14 +87,25 @@ static ProcessCpuCliques& GetProcessCpuCliques() {
 absl::StatusOr<Communicator*> AcquireCommunicator(
     CpuCollectives* collectives, const CpuCliqueKey& clique_key, RankId rank) {
   VLOG(3) << "Acquire communicator for clique key " << clique_key.ToString()
-          << " and rank " << rank;
+          << " and rank " << rank << " from collectives: " << collectives;
 
   ProcessCpuCliques& cliques = GetProcessCpuCliques();
 
   // Synchronize access to the process cliques.
   ThreadSafeClique& thread_safe_clique = [&]() -> ThreadSafeClique& {
     absl::MutexLock lock(&cliques.mu);
-    auto [it, emplaced] = cliques.map.try_emplace(clique_key, clique_key);
+    auto [it, emplaced] = cliques.map.try_emplace(
+        std::make_pair(collectives, clique_key), clique_key);
+
+    // If we created a new clique, register a callback to erase it when the
+    // collectives instance is destroyed.
+    if (emplaced) {
+      VLOG(3) << "Created a new clique for clique key " << clique_key.ToString()
+              << " and collectives: " << collectives;
+      collectives->AddOnDestroyCallback(
+          [collectives] { EraseProcessCpuCliques(collectives); });
+    }
+
     return it->second;
   }();
 
