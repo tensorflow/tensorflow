@@ -1038,6 +1038,9 @@ class ShapeUtil {
   static std::optional<absl::InlinedVector<int64_t, 4>> ByteStrides(
       const Shape& shape);
 
+  // Returns the size of the tensor element in bits.
+  static int64_t ElementSizeInBits(const Shape& shape);
+
   // Returns the array size in bytes (layout/tiling required), all paddings are
   // included.
   static int64_t ArraySize(const Shape& shape);

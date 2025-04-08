@@ -350,8 +350,8 @@ void LogLines(absl::LogSeverity sev, absl::string_view text, const char* fname,
 }
 
 int64_t Product(absl::Span<const int64_t> xs) {
-  return std::accumulate(xs.begin(), xs.end(), static_cast<int64_t>(1),
-                         std::multiplies<int64_t>());
+  return absl::c_accumulate(xs, static_cast<int64_t>(1),
+                            std::multiplies<int64_t>());
 }
 
 std::vector<int64_t> ElemwiseProduct(absl::Span<const int64_t> a,

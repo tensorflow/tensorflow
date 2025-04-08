@@ -340,6 +340,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_experimental_enable_sync_collective_combining(false);
   opts.set_xla_unsupported_crash_on_hlo_pass_silent_hlo_change(false);
   opts.set_xla_unsupported_crash_on_hlo_pass_noop_change(false);
+  opts.set_xla_gpu_experimental_enable_split_k_rewrite(false);
   return opts;
 }
 
@@ -1911,7 +1912,6 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       bool_setter_for(&DebugOptions::set_xla_gpu_enable_split_k_autotuning),
       debug_options->xla_gpu_enable_split_k_autotuning(),
       "Enable split_k autotuning for triton gemms."));
-
   flag_list->push_back(tsl::Flag(
       "xla_gpu_enable_reduction_epilogue_fusion",
       bool_setter_for(
@@ -2356,6 +2356,13 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       "If non empty will interpret this variable as a path for performance "
       "tables for matmuls. Expects `xla.gpu.DeviceHloInstructionProfiles` "
       "proto."));
+  flag_list->push_back(tsl::Flag(
+      "xla_gpu_experimental_enable_split_k_rewrite",
+      bool_setter_for(
+          &DebugOptions::set_xla_gpu_experimental_enable_split_k_rewrite),
+      debug_options->xla_gpu_experimental_enable_split_k_rewrite(),
+      "Enable the pass that splits GEMMs that underutilize the GPU load by "
+      "splitting the K dimension using a heuristic."));
 }  // NOLINT(readability/fn_size)
 
 // Allocates flag_values and flag_objects; this function must not be called more

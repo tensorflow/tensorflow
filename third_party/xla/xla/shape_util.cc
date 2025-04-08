@@ -2135,6 +2135,13 @@ std::optional<absl::InlinedVector<int64_t, 4>> ShapeUtil::ByteStrides(
   return strides;
 }
 
+/*static*/ int64_t ShapeUtil::ElementSizeInBits(const Shape& shape) {
+  if (shape.has_layout() && shape.layout().element_size_in_bits() != 0) {
+    return shape.layout().element_size_in_bits();
+  }
+  return ShapeUtil::ByteSizeOfPrimitiveType(shape.element_type()) * CHAR_BIT;
+}
+
 /*static*/ int64_t ShapeUtil::ArraySize(const Shape& shape) {
   CHECK(LayoutUtil::IsDenseArray(shape));
   if (shape.layout().tiles().empty()) {
