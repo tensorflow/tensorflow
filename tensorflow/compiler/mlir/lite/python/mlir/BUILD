@@ -18,12 +18,24 @@ load("//tensorflow/compiler/mlir/lite:symlink_files.bzl", "symlink_inputs")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
-    default_visibility = ["//tensorflow/compiler/mlir/lite:__subpackages__"],
+    default_visibility = [
+        "//tensorflow/compiler/mlir/lite:__subpackages__",
+        "//tensorflow/lite:__subpackages__",
+    ],
     features = [
         # Cannot use header_modules (parse_headers feature fails).
         "-use_header_modules",
     ],
     licenses = ["notice"],
+)
+
+py_library(
+    name = "mlir_all",
+    deps = [
+        ":ir",
+        ":mlir",
+        ":pass_manager",
+    ],
 )
 
 symlink_inputs(
