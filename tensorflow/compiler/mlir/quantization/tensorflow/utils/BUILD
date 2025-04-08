@@ -46,6 +46,7 @@ cc_library(
         "//tensorflow/compiler/mlir/quantization/tensorflow/ops:uniform_op_quant_spec",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
         "//tensorflow/core:protos_all_cc",
+        "//third_party/protobuf",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/strings",
