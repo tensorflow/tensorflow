@@ -45,6 +45,11 @@ cc_library_with_tflite(
     name = "simple_opaque_delegate",
     srcs = ["simple_opaque_delegate.cc"],
     hdrs = ["simple_opaque_delegate.h"],
+    # Disable whole program devirtualization broken by unsafe pointer casting. See b/378582118
+    # for detailed analysis.
+    # TODO(b/378582118): Remove `-fno-whole-program-vtables` after the pointer casting issue is
+    # fixed.
+    copts = ["-fno-whole-program-vtables"],
     generate_opaque_delegate_target = True,
     tflite_deps = [
         "//tensorflow/lite/c:c_api",
