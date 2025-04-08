@@ -187,6 +187,8 @@ class TfPjRtExecutable : public PjRtLoadedExecutable {
  private:
   TfPjRtClient* client_;
   std::unique_ptr<PjRtLoadedExecutable> wrapped_;
+
+  std::unique_ptr<PjRtExecutable> executable_forwarder_;
 };
 
 // A thin wrapper of PjRtClient that includes management of PjRtBuffer it

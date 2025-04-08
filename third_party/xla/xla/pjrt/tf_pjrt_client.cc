@@ -48,7 +48,9 @@ absl::StatusOr<std::unique_ptr<PjRtBuffer>> TfPjRtBuffer::CopyToMemorySpace(
 
 TfPjRtExecutable::TfPjRtExecutable(
     TfPjRtClient* client, std::unique_ptr<PjRtLoadedExecutable> wrapped)
-    : client_(client), wrapped_(std::move(wrapped)) {}
+    : client_(client), wrapped_(std::move(wrapped)) {
+  executable_forwarder_ = wrapped_->GetExecutable();
+}
 
 absl::StatusOr<std::vector<std::vector<std::unique_ptr<PjRtBuffer>>>>
 TfPjRtExecutable::Execute(
