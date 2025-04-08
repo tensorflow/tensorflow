@@ -49,6 +49,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/ir/ptrvec.h"
 #include "xla/hlo/transforms/simplifiers/hlo_dce.h"
 #include "xla/hlo/transforms/simplifiers/tuple_simplifier.h"
 #include "xla/map_util.h"
@@ -191,20 +192,30 @@ DeepCopyAndAddControlEdges(HloInstruction* from, HloInstruction* to,
   return std::make_pair(from_deep_copy, to_deep_copy);
 }
 
-bool IsSendRecv(const HloInstruction* instruction) {
-  return instruction->opcode() == HloOpcode::kSend ||
-         instruction->opcode() == HloOpcode::kRecv;
+// Returns true if the instruction produces non-copyable results.
+//
+// Currently, only asynchronous start ops produce non-copyable results and the
+// the whole result is non-copyable.
+bool IsNonCopyable(const HloInstruction* instruction) {
+  // Currently, the verifier only allows the pipelining of Send/Recv. As such,
+  // here we only handle to the ops allowed by
+  // HloDataflowAnalysis::IsAsynchronousOperationStart that pass through its
+  // operand for now. For the ops that don't pass through its operand, we need
+  // to add a copy of its operand for the straight line case in order to allow
+  // all ops in HloDataflowAnalysis::IsAsynchronousOperationStart.
+  HloOpcode opcode = instruction->opcode();
+  return opcode == HloOpcode::kSend || opcode == HloOpcode::kRecv ||
+         opcode == HloOpcode::kCopyStart;
 }
 
-bool IsSendRecvDone(const HloInstruction* instruction) {
-  return instruction->opcode() == HloOpcode::kSendDone ||
-         instruction->opcode() == HloOpcode::kRecvDone;
-}
-
-bool IsSendRecvInInit(const HloInstruction* init, const ShapeIndex& index) {
+// Returns true if the value at the given index in the while init is
+// non-copyable.
+bool IsNonCopyableInWhileInit(const HloInstruction* while_init,
+                              const ShapeIndex& index) {
   if (index.empty()) return false;
   int64_t i = index.front();
-  return i < init->operand_count() && IsSendRecv(init->operand(i));
+  return i < while_init->operand_count() &&
+         IsNonCopyable(while_init->operand(i));
 }
 
 // Compute the indices of the loop state which need copies in order to avoid
@@ -223,9 +234,9 @@ bool IndicesToCopyForWhile(const HloDataflowAnalysis& dataflow,
   for (auto& pair : *indices_to_copy) {
     const ShapeIndex& index = pair.first;
     bool& should_copy = pair.second;
-    if (IsSendRecvInInit(init, index)) {
-      // Do not copy partially pipelined send/recv ops. The required copies will
-      // be inserted specifically for the send/recv ops.
+    if (IsNonCopyableInWhileInit(init, index)) {
+      // Do not copy non-copyable values, instead, we will add copies for
+      // transitioning into and out of non-copyable values.
       should_copy = false;
       continue;
     } else if (dataflow.GetValueSet(init, index).values().size() > 1 ||
@@ -2018,51 +2029,107 @@ absl::Status CopyInsertion::AddCopiesForConditional(
   return absl::OkStatus();
 }
 
-HloInstruction* FindAsyncSendRecvDoneInWhileBody(
-    const HloComputation* while_body, const HloInstruction* start_op) {
-  // Partially pipelined send/recv must have a single user.
-  if (start_op->user_count() != 1) return nullptr;
-  HloInstruction* unique_user = start_op->users().front();
-  // Send/recv must be consumed by send/recv-done op or be passed through the
-  // loop.
-  if (IsSendRecvDone(unique_user)) return unique_user;
+// If `chain_start` is the head of a chain of non-copyable ops inside a while
+// loop, and part of the chain is rotated to the next iteration, returns the
+// chain end in the rotated part. Otherwise, returns nullptr.
+HloInstruction* FindEndOpForRotatedNonCopyableChain(
+    const HloComputation* while_body, const HloInstruction* chain_start) {
+  // Non-copyable op must have a single user.
+  if (chain_start->user_count() != 1) return nullptr;
+  HloInstruction* unique_user = chain_start->users().front();
   if (unique_user->opcode() != HloOpcode::kTuple || !unique_user->IsRoot())
     return nullptr;
-  int64_t index = unique_user->operand_index(start_op);
+  int64_t index = unique_user->operand_index(chain_start);
   for (const HloInstruction* it :
        while_body->parameter_instruction(0)->users()) {
     const auto* gte = DynCast<HloGetTupleElementInstruction>(it);
     if (gte->tuple_index() == index) {
-      CHECK_EQ(gte->user_count(), 1) << "send/recv in next loop iteration must "
-                                        "be consumed by unique send/recv-done.";
+      CHECK_EQ(gte->user_count(), 1)
+          << "non-copyable value in next loop iteration must "
+             "be consumed by unique instruction.";
       HloInstruction* next_unique_user = gte->users().front();
-      if (IsSendRecvDone(next_unique_user)) return next_unique_user;
+      if (HloDataflowAnalysis::IsAsynchronousOperationDone(
+              next_unique_user->opcode())) {
+        return next_unique_user;
+      }
+      break;
     }
   }
   return nullptr;
 }
 
-// Add copies for partially pipelined async send/recv. Copies are added before
-// starting to send and after finishing to recv. This is to prevent overlapping
-// live times of the buffers. The control flow edges from the added copy to the
-// recv or send-done operation guarantee disjoint live times of the buffers.
-// Note that we have anchor these control flow edges to the copies as the send
-// and recv-done ops are aliasing.
+// Adds copies for non-copyable transitioning between copyable and non-copyable
+// for a chain start with `chain_start` and part of the chain is rotated to the
+// next iteration that ends with `chain_end`.
+absl::Status AddCopiesForNonCopyableTransitionsRotatedCase(
+    HloInstruction* chain_start, HloInstruction* chain_end) {
+  HloComputation* while_body = chain_start->parent();
+  // Handle aliasing input for the op, where we transition from copyable to
+  // non-copyable.
+  if (!chain_start->operands().empty()) {
+    // A chain_start may have multiple operands, but we assume only the first
+    // operand is a buffer aliasing with the output, which is true currently.
+    HloInstruction* operand = chain_start->mutable_operand(0);
+    HloInstruction* copied_operand =
+        while_body->AddInstruction(HloInstruction::CreateUnary(
+            operand->shape(), HloOpcode::kCopy, operand));
+    TF_RETURN_IF_ERROR(operand->ReplaceUseWith(chain_start, copied_operand));
+    TF_RETURN_IF_ERROR(chain_end->AddControlDependencyTo(copied_operand));
+  }
+
+  // The chain_end is rotated and semantically paired with the chain_start of
+  // the previous iteration. We add a control dependency from the chain_end to
+  // the chain_start to in the same lexical iteration guarantee disjoint live
+  // times of the buffers involved.
+  TF_RETURN_IF_ERROR(chain_end->AddControlDependencyTo(chain_start));
+
+  // If chain_end has users, insert copies for the result produced by the
+  // chain_end with aliasing input and output buffers, where we transition from
+  // non-copyable to copyable.
+  PtrVec<HloInstruction*> users = chain_end->users();
+  if (users.empty()) return absl::OkStatus();
+
+  ShapeTree<HloInstruction*> copies_added(chain_end->shape());
+  TF_ASSIGN_OR_RETURN(
+      HloInstruction * copy,
+      while_body->DeepCopyInstruction(chain_end, /*indices_to_copy=*/nullptr,
+                                      &copies_added));
+  for (auto [shape_index, instr] : copies_added) {
+    if (instr != nullptr)
+      TF_RETURN_IF_ERROR(instr->AddControlDependencyTo(chain_start));
+  }
+  for (HloInstruction* it : users) {
+    TF_RETURN_IF_ERROR(chain_end->ReplaceUseWith(it, copy));
+  }
+  return absl::OkStatus();
+}
+
+// Adds the needed copies for transitioning into and out of non-copyable values,
+// to prevent overlapping live times of buffers. This is needed when the unique
+// user of the non-copyable op is rotated (also called pipelined) in a
+// while-loop. In particlar, if a non-copyable op has an input aliasing with its
+// output, such as async Send, we make a copy of its input to transition from
+// copyable to non-copyable. If a non-copyable op's unique user produces an
+// output aliasing with its input, such as async Recv, we make a copy of the
+// output produced by the unique user, to transition out of non-copyable to
+// copyable. We also add control-flow edges between the copies and the
+// non-copyable op to guarantee disjoint live times of the buffers invovled.
 //
+// Using async Send and Recv as examples, here is the transformation:
 //
 // Before:
 //
-//      kParameter                kParameter
-//          |                         |
-//      kSendDone                 kRecvDone
-//                                    |
-//         ...                     consumer
+//      kParameter               kParameter
+//          |                        |
+//      kSendDone                kRecvDone (end of a non-copyable chain)
+//                                   |
+//         ...                    consumer
 //
-//       producer                    ...
+//       producer                   ...
 //          |
-//        kSend                     kRecv
-//          |                         |
-//     (body root)               (body root)
+//        kSend                    kRecv   (start of a non-copyable op)
+//          |                        |
+//     (body root)              (body root)
 //
 //
 // After:
@@ -2080,73 +2147,53 @@ HloInstruction* FindAsyncSendRecvDoneInWhileBody(
 //          |                         |
 //     (body root)               (body root)
 //
-absl::Status CopyInsertion::AddCopiesForAsyncSendRecv(
-    const HloAliasAnalysis& alias_analysis, HloInstruction* start_op) {
-  // If start op has multiple users, this must be the synchronous use of
-  // send/recv.
-  // TODO(b/369589022): Disambiguate sync and async use of send/recv.
-  if (start_op->users().size() != 1) return absl::OkStatus();
-
-  // If start feeds directly into done, the live time is contained and we don't
-  // need to add any copies.
-  HloInstruction* unique_user = start_op->users().front();
-  const HloOpcode done_opcode = start_op->opcode() == HloOpcode::kSend
-                                    ? HloOpcode::kSendDone
-                                    : HloOpcode::kRecvDone;
-  if (unique_user->opcode() == done_opcode) {
+absl::Status CopyInsertion::AddCopiesForNonCopyableTransitions(
+    const HloAliasAnalysis& alias_analysis, HloInstruction* chain_start) {
+  if (chain_start->users().empty()) {
     return absl::OkStatus();
   }
 
-  HloComputation* parent = start_op->parent();
-  // If a Send is feeded into a pipelined while-loop, we need to make a copy
-  // of the Send operand and use it in the Send.
-  if (start_op->opcode() == HloOpcode::kSend &&
+  // Currently non-copyable ops can have at most one user.
+  if (chain_start->users().size() != 1) {
+    return absl::InvalidArgumentError(
+        "Non-copyable op must have a single user.");
+  }
+
+  HloInstruction* unique_user = chain_start->users().front();
+  // If start feeds directly into done, the live time is contained and we don't
+  // need to add any copies.
+  if (HloDataflowAnalysis::IsAsynchronousOperationDone(unique_user->opcode())) {
+    return absl::OkStatus();
+  }
+
+  HloComputation* parent = chain_start->parent();
+  // If a start op with an operand is fed into a pipelined while-loop, we
+  // need to make a copy of the operand and use the copy in the start op.
+  if (chain_start->operand_count() > 0 &&
       unique_user->opcode() == HloOpcode::kTuple &&
       unique_user->users().size() == 1 &&
       unique_user->users().front()->opcode() == HloOpcode::kWhile) {
-    HloInstruction* operand = start_op->mutable_operand(0);
+    HloInstruction* operand = chain_start->mutable_operand(0);
     HloInstruction* copied_operand =
         parent->AddInstruction(HloInstruction::CreateUnary(
             operand->shape(), HloOpcode::kCopy, operand));
-    TF_RETURN_IF_ERROR(operand->ReplaceUseWith(start_op, copied_operand));
+    TF_RETURN_IF_ERROR(operand->ReplaceUseWith(chain_start, copied_operand));
     return absl::OkStatus();
   }
 
-  // For other cases that send/recv are outside of the while loop, live times
-  // are disjoint. No copies are needed.
+  // For other cases where a non-copyable chain is outside of the while loop,
+  // live times are disjoint. No copies are needed.
   if (parent->caller_instructions(HloOpcode::kWhile).empty()) {
     return absl::OkStatus();
   }
 
-  // Handle send case.
-  HloInstruction* done_op = FindAsyncSendRecvDoneInWhileBody(parent, start_op);
-  // TODO(b/369589022): Disambiguate sync and async use of send/recv.
-  if (done_op == nullptr) return absl::OkStatus();
-  if (start_op->opcode() == HloOpcode::kSend) {
-    HloInstruction* operand = start_op->mutable_operand(0);
-    HloInstruction* copied_operand =
-        parent->AddInstruction(HloInstruction::CreateUnary(
-            operand->shape(), HloOpcode::kCopy, operand));
-    TF_RETURN_IF_ERROR(operand->ReplaceUseWith(start_op, copied_operand));
-    TF_RETURN_IF_ERROR(done_op->AddControlDependencyTo(copied_operand));
-    return absl::OkStatus();
-  }
+  // For async start ops, the end of the chain is the async done op.
+  HloInstruction* chain_end =
+      FindEndOpForRotatedNonCopyableChain(parent, chain_start);
+  if (chain_end)
+    return AddCopiesForNonCopyableTransitionsRotatedCase(chain_start,
+                                                         chain_end);
 
-  // Handle recv case.
-  CHECK_EQ(start_op->opcode(), HloOpcode::kRecv);
-  PtrVec<HloInstruction*> done_op_users = done_op->users();
-  ShapeTree<HloInstruction*> copies_added(done_op->shape());
-  TF_ASSIGN_OR_RETURN(HloInstruction * done_op_copy,
-                      parent->DeepCopyInstruction(
-                          done_op, /*indices_to_copy=*/nullptr, &copies_added));
-  for (auto [shape_index, instr] : copies_added) {
-    if (instr != nullptr)
-      TF_RETURN_IF_ERROR(instr->AddControlDependencyTo(start_op));
-  }
-  TF_RETURN_IF_ERROR(done_op->AddControlDependencyTo(start_op));
-  for (HloInstruction* it : done_op_users) {
-    TF_RETURN_IF_ERROR(done_op->ReplaceUseWith(it, done_op_copy));
-  }
   return absl::OkStatus();
 }
 
@@ -2170,10 +2217,9 @@ absl::Status CopyInsertion::AddCopiesToResolveInterference(
       } else if (instruction->opcode() == HloOpcode::kConditional) {
         TF_RETURN_IF_ERROR(
             AddCopiesForConditional(*alias_analysis, instruction));
-      } else if (IsSendRecv(instruction)) {
-        // TODO(b/371225893): Generalize this to all async collectives.
+      } else if (IsNonCopyable(instruction)) {
         TF_RETURN_IF_ERROR(
-            AddCopiesForAsyncSendRecv(*alias_analysis, instruction));
+            AddCopiesForNonCopyableTransitions(*alias_analysis, instruction));
       } else {
         // When an operand is a tuple, we avoid copying the operand multiple
         // times by recording and checking the operand number of operands that
