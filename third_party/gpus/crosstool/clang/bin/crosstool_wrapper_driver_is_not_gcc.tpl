@@ -224,7 +224,7 @@ def InvokeNvcc(argv, log=False):
   # Unfortunately, there are other options that have -c prefix too.
   # So allowing only those look like C/C++ files.
   src_files = [f for f in src_files if
-               re.search('\.cpp$|\.cc$|\.c$|\.cxx$|\.C$', f)]
+               re.search(r'\.cpp$|\.cc$|\.c$|\.cxx$|\.C$', f)]
   srcs = ' '.join(src_files)
   out = ' -o ' + out_file[0]
 
