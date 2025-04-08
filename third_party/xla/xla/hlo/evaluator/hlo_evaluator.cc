@@ -59,10 +59,10 @@ limitations under the License.
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_clone_context.h"
+#include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
-#include "xla/hlo/utils/hlo_query.h"
 #include "xla/index_util.h"
 #include "xla/layout.h"
 #include "xla/layout_util.h"
@@ -965,8 +965,16 @@ absl::StatusOr<Literal> HloEvaluator::Evaluate(
 
 absl::StatusOr<Literal> HloEvaluator::Evaluate(
     const HloInstruction* instruction, PrecomputedAnalyses precomputed_analyses,
-    bool recursively_evaluate_nonconstant_operands) {
+    bool recursively_evaluate_nonconstant_operands,
+    const absl::flat_hash_map<const HloInstruction*, const LiteralBase*>&
+        substitutions) {
   ScopedEvaluateState evaluate_state(&state_);
+
+  // Use the substitutions to manually set instructions results to a specific
+  // value.
+  for (const auto& [substituted_instr, literal_value] : substitutions) {
+    SetEvaluatedLiteralFor(substituted_instr, literal_value->Clone());
+  }
 
   call_graph_cache_.reset();
   tuple_points_to_analysis_cache_.reset();
@@ -998,63 +1006,6 @@ bool HloEvaluator::TryEvaluate(const HloInstruction* instruction,
   return true;
 }
 
-absl::StatusOr<Literal> HloEvaluator::EvaluateWithSubstitutions(
-    const HloInstruction* instruction,
-    const absl::flat_hash_map<const HloInstruction*, const LiteralBase*>&
-        substitutions,
-    bool recursively_evaluate_nonconstant_operands) {
-  auto value = substitutions.find(instruction);
-  if (value != substitutions.end()) {
-    return value->second->Clone();
-  }
-
-  std::vector<std::unique_ptr<HloInstruction>> owned_operands;
-  for (const HloInstruction* operand : instruction->operands()) {
-    auto it = substitutions.find(operand);
-    if (it == substitutions.end()) {
-      if (recursively_evaluate_nonconstant_operands) {
-        TF_ASSIGN_OR_RETURN(Literal value,
-                            EvaluateWithSubstitutions(
-                                operand, substitutions,
-                                recursively_evaluate_nonconstant_operands));
-        owned_operands.push_back(HloInstruction::CreateConstant(value.Clone()));
-      } else {
-        if (!operand->IsConstant()) {
-          VLOG(2) << "EvaluateWithSubstitutions called when not all operands "
-                     "are constant. Consider calling it with "
-                     "`recursively_evaluate_non_constant_operands` true.";
-        }
-        owned_operands.push_back(operand->Clone());
-      }
-    } else {
-      owned_operands.push_back(
-          HloInstruction::CreateConstant(it->second->Clone()));
-    }
-  }
-
-  std::vector<HloInstruction*> operands;
-  operands.reserve(owned_operands.size());
-  for (auto& operand : owned_operands) {
-    operands.push_back(operand.get());
-  }
-
-  std::unique_ptr<HloInstruction> cloned_instruction =
-      instruction->CloneWithNewOperands(instruction->shape(), operands);
-  // TODO(phawkins): it's unfortunate that we need to call set_parent() here,
-  // since it violates the invariant that an instruction has a parent iff it is
-  // in a computation.
-  // It's probably better to avoid constructing new instructions here in the
-  // first place.
-  cloned_instruction->set_parent(
-      const_cast<HloComputation*>(instruction->parent()));
-  auto result = Evaluate(cloned_instruction.get());
-
-  // Undo the parent change, since it will confuse code that expects the
-  // instruction to be in a computation.
-  cloned_instruction->set_parent(nullptr);
-
-  return result;
-}
 
 absl::StatusOr<Literal> HloEvaluator::EvaluateElementwiseBinaryOp(
     HloOpcode opcode, const Literal& lhs, const Literal& rhs) {
@@ -1241,10 +1192,13 @@ absl::Status HloEvaluator::EvaluateInternal(
   }
 
   if (!recursively_evaluate_nonconstant_operands) {
-    if (!hlo_query::AllOperandsAreConstants(*instruction)) {
-      return absl::FailedPreconditionError(
-          absl::StrCat("Not all operands are constants. Instruction: ",
-                       instruction->ToString()));
+    for (const HloInstruction* operand : instruction->operands()) {
+      if (!IsAlreadyEvaluated(operand, shape_index)) {
+        return absl::FailedPreconditionError(
+            absl::StrCat("Not all operands are constants or have known "
+                         "results. Instruction: ",
+                         instruction->ToString()));
+      }
     }
   } else {
     if (instruction->opcode() == HloOpcode::kGetTupleElement) {

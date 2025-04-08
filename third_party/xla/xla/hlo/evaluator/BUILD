@@ -56,7 +56,6 @@ cc_library(
         "//xla:xla_data_proto_cc",
         "//xla/hlo/analysis:tuple_points_to_analysis",
         "//xla/hlo/ir:hlo",
-        "//xla/hlo/utils:hlo_query",
         "//xla/service:call_graph",
         "//xla/service:compilation_environments",
         "//xla/service:dynamic_dimension_inference",

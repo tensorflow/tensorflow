@@ -148,26 +148,24 @@ class HloEvaluator : public ConstDfsHloVisitorWithDefault {
   // The caller may pass in non-null `precomputed_analyses` to avoid
   // recomputation during evaluation; the caller must ensure that any
   // precomputed analyses were performed on the module containing `instruction`.
+  // The optional `substitutions` map can be used to substitute the given
+  // literals for any instruction in the evaluation graph, usually some of the
+  // instruction's operands.
+  //
+  // For example, given instruction = op(A, B, C) and the map
+  // {A = x, C = y}, this evaluates op(x, B, y).
   absl::StatusOr<Literal> Evaluate(
       const HloInstruction* instruction,
       PrecomputedAnalyses precomputed_analyses = {},
-      bool recursively_evaluate_nonconstant_operands = false);
+      bool recursively_evaluate_nonconstant_operands = false,
+      const absl::flat_hash_map<const HloInstruction*, const LiteralBase*>&
+          substitutions = {});
 
   // Same as Evaluate, except returning false on error and accepts an output
   // pointer.
   bool TryEvaluate(const HloInstruction* instruction, Literal* result,
                    bool recursively_evaluate_nonconstant_operands = false);
 
-  // Evaluates a single HLO instruction, substituting the given literals for
-  // some of the instruction's operands.
-  //
-  // For example, given instruction = op(A, B, C) and the map
-  // {A = x, C = y}, this evaluates op(x, B, y).
-  absl::StatusOr<Literal> EvaluateWithSubstitutions(
-      const HloInstruction* instruction,
-      const absl::flat_hash_map<const HloInstruction*, const LiteralBase*>&
-          substitutions,
-      bool recursively_evaluate_nonconstant_operands = false);
 
   absl::StatusOr<Literal> EvaluateElementwiseBinaryOp(HloOpcode opcode,
                                                       const Literal& lhs,

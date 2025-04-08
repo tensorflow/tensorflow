@@ -2026,10 +2026,7 @@ class HloInstruction {
   }
   const OpMetadata& metadata() const { return *metadata_; }
 
-  // Set/get the computation containing this instruction. set_parent should only
-  // be called by HloComputation methods which add/remove instructions to
-  // computations.
-  void set_parent(HloComputation* computation) { parent_ = computation; }
+  // Get the computation containing this instruction.
   const HloComputation* parent() const { return parent_; }
   HloComputation* parent() { return parent_; }
 
@@ -2431,6 +2428,9 @@ class HloInstruction {
       bool layout_sensitive, bool sharding_sensitive,
       bool ignore_channel_id_values,
       bool ignore_commutative_operand_order) const;
+
+  // Set the computation containing this instruction.
+  void set_parent(HloComputation* computation) { parent_ = computation; }
 
   // Implementation for non-common logic of PrintExtraAttributes.
   virtual void PrintExtraAttributesImpl(AttributePrinter& printer,
