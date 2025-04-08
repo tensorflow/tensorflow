@@ -19,6 +19,7 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <deque>
+#include <memory>
 #include <sstream>
 #include <string>
 #include <utility>
@@ -61,6 +62,7 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/tools/hlo_extractor.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
@@ -225,10 +227,12 @@ absl::StatusOr<llvm::SmallVector<int64_t>> FindOutputTileSizesForEpilogue(
   SymbolicTileAnalysisOrError analysis_or =
       SymbolicTileAnalysis::AnalyzeComputation(*computation, ctx);
   if (std::holds_alternative<FusionDecision>(analysis_or)) {
+    std::unique_ptr<HloModule> extracted_computation_module =
+        ExtractModule(computation->FusionInstruction());
     return absl::InternalError(
         absl::StrCat("Failed to analyze the computation (",
                      std::get<FusionDecision>(analysis_or).Explain(),
-                     "): ", computation->ToString()));
+                     "): ", extracted_computation_module->ToString()));
   }
 
   auto& analysis = std::get<SymbolicTileAnalysis>(analysis_or);
