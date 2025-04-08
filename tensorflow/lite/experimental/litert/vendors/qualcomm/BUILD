@@ -93,14 +93,14 @@ litert_test(
     srcs = ["qnn_manager_test.cc"],
     linkstatic = True,
     tags = [
-        # Tests with ungrte deps do not currently work on forge.
-        "no-remote-exec",
-        "notap",
-        # Don't build/test in OS until qnn is available.
-        "nobuilder",
-        "no_oss",
-        # Sanitizer runtime doesn't work with anything that loads libQnnHtp.so.
-        "nosan",
+        # # Tests with ungrte deps do not currently work on forge.
+        # "no-remote-exec",
+        # "notap",
+        # # Don't build/test in OS until qnn is available.
+        # "nobuilder",
+        # "no_oss",
+        # # Sanitizer runtime doesn't work with anything that loads libQnnHtp.so.
+        # "nosan",
     ],
     # This test can be run only on Android and Linux.
     target_compatible_with = select({
@@ -108,6 +108,7 @@ litert_test(
         "@platforms//os:linux": [],
         "//conditions:default": ["@platforms//:incompatible"],
     }),
+    ungrte = True,
     deps = [
         ":qnn_manager",
         "//tensorflow/lite/experimental/litert/test:common",
