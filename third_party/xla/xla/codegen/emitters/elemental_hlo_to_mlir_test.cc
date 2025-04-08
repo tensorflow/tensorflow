@@ -1765,6 +1765,64 @@ TEST_F(ElementalHloToMlirTest, BroadcastSelect) {
   )"));
 }
 
+TEST_F(ElementalHloToMlirTest, DotC64) {
+  TF_EXPECT_OK(Run(
+      R"(
+HloModule c64_dot_test
+
+ENTRY main {
+  p0 = c64[4] parameter(0)
+  p1 = c64[4] parameter(1)
+  dot = c64[] dot(p0, p1), lhs_contracting_dims={0}, rhs_contracting_dims={0}
+  ROOT out = c64[] add(dot, dot)
+}
+      )",
+      R"(
+      // CHECK: func.func private @main_out(
+      // CHECK-SAME: %[[ARG0:.*]]: tensor<4xcomplex<f32>>,
+      // CHECK-SAME: %[[ARG1:.*]]: tensor<4xcomplex<f32>>
+      // CHECK:   %[[CST0:.*]] = arith.constant 0.000000e+00 : f32
+      // CHECK:   %[[INIT:.*]] = complex.create %[[CST0]], %[[CST0]] : complex<f32>
+      // CHECK:   %[[DOTRESULT:.*]] = scf.for {{.*}} = {{.*}} to {{.*}} step {{.*}} iter_args({{.*}} = %[[INIT]]) -> (complex<f32>) {
+      // CHECK:     %[[EXTRACTED:.*]] = tensor.extract %[[ARG0]][{{.*}}]
+      // CHECK:     %[[EXTRACTED0:.*]] = tensor.extract %[[ARG1]][{{.*}}]
+      // CHECK:     %[[MUL:.*]] = complex.mul %[[EXTRACTED]], %[[EXTRACTED0]]
+      // CHECK:     %[[NEXTACC:.*]] = complex.add {{.*}}, %[[MUL]]
+      // CHECK:     scf.yield %[[NEXTACC]]
+      // CHECK:   %[[OUT:.*]] = complex.add %[[DOTRESULT]], %[[DOTRESULT]]
+      // CHECK:   return %[[OUT]]
+      )"));
+}
+
+TEST_F(ElementalHloToMlirTest, DotC128) {
+  TF_EXPECT_OK(Run(
+      R"(
+HloModule c128_dot_test
+
+ENTRY main {
+  p0 = c128[3] parameter(0)
+  p1 = c128[3] parameter(1)
+  dot = c128[] dot(p0, p1), lhs_contracting_dims={0}, rhs_contracting_dims={0}
+  ROOT out = c128[] add(dot, dot)
+}
+      )",
+      R"(
+      // CHECK: func.func private @main_out(
+      // CHECK-SAME: %[[ARG0:.*]]: tensor<3xcomplex<f64>>,
+      // CHECK-SAME: %[[ARG1:.*]]: tensor<3xcomplex<f64>>
+      // CHECK:   %[[CST0:.*]] = arith.constant 0.000000e+00 : f64
+      // CHECK:   %[[INIT:.*]] = complex.create %[[CST0]], %[[CST0]] : complex<f64>
+      // CHECK:   %[[DOTRESULT:.*]] = scf.for {{.*}} = {{.*}} to {{.*}} step {{.*}} iter_args({{.*}} = %[[INIT]]) -> (complex<f64>) {
+      // CHECK:     %[[EXTRACTED:.*]] = tensor.extract %[[ARG0]][{{.*}}]
+      // CHECK:     %[[EXTRACTED0:.*]] = tensor.extract %[[ARG1]][{{.*}}]
+      // CHECK:     %[[MUL:.*]] = complex.mul %[[EXTRACTED]], %[[EXTRACTED0]]
+      // CHECK:     %[[NEXTACC:.*]] = complex.add {{.*}}, %[[MUL]]
+      // CHECK:     scf.yield %[[NEXTACC]]
+      // CHECK:   %[[OUT:.*]] = complex.add %[[DOTRESULT]], %[[DOTRESULT]]
+      // CHECK:   return %[[OUT]]
+      )"));
+}
+
 }  // namespace
 }  // namespace emitters
 }  // namespace xla
