@@ -16,14 +16,17 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_WORKER_H_
 #define TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_WORKER_H_
 
+#include <cstdint>
 #include <unordered_map>
 
+#include "absl/status/status.h"
 #include "tensorflow/core/distributed_runtime/graph_mgr.h"
 #include "tensorflow/core/distributed_runtime/partial_run_mgr.h"
 #include "tensorflow/core/distributed_runtime/recent_request_ids.h"
 #include "tensorflow/core/distributed_runtime/session_mgr.h"
 #include "tensorflow/core/distributed_runtime/worker_interface.h"
 #include "tensorflow/core/framework/cancellation.h"
+#include "tensorflow/core/protobuf/worker.pb.h"
 
 namespace tensorflow {
 
