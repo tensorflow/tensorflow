@@ -2335,6 +2335,7 @@ cc_library(
     deps = [
         "//xla:shape_util",
         "//xla:util",
+        "//xla:xla_data_proto_cc",
         "//xla/backends/gpu/codegen/triton:support",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/pass:hlo_pass",

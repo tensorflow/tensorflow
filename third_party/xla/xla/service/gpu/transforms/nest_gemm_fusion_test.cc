@@ -486,9 +486,7 @@ ENTRY e {
   EXPECT_THAT(result, StatusIs(absl::StatusCode::kInternal)) << result.status();
 }
 
-// TODO(b/393299275): correctly hoist bitcast through compare.
-// Fails with: "... [Unknown]: Expected comparison type UNSIGNED.".
-TEST_F(NestGemmFusionTest, DISABLED_BitcastsAreHoistedPastCompare) {
+TEST_F(NestGemmFusionTest, BitcastsAreHoistedPastCompare) {
   absl::string_view hlo = R"(
 HloModule t
 

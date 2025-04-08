@@ -66,6 +66,7 @@ limitations under the License.
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla::gpu {
 
@@ -552,6 +553,7 @@ absl::StatusOr<ReshapeBroadcastOutputParams> CalculateBroadcastOutputReshape(
 // outside of the computation.
 // Returns the new shapes of affected instructions in order of traversal from
 // users to producers.
+// Assumes that the bitcast does not covert the type of the operand.
 absl::StatusOr<std::vector<std::pair<HloInstruction*, Shape>>>
 PlanHoistBitcastToCallers(const HloInstruction* bitcast) {
   // Check that all producers only affect the bitcast. If there are any
@@ -560,15 +562,24 @@ PlanHoistBitcastToCallers(const HloInstruction* bitcast) {
   // producers downward.
   HloInstructionSet producers = GetProducerSet(bitcast);
   TF_RETURN_IF_ERROR(VerifyIsClosedProducerSet(producers, bitcast));
+  if (bitcast->shape().element_type() !=
+      bitcast->operand(0)->shape().element_type()) {
+    return absl::UnimplementedError(
+        absl::StrCat("Hoisting bitcast with type conversion is not supported: ",
+                     bitcast->ToString()));
+  }
   HloInstructionMap<Shape> to_update;
 
   auto set_shape = [&](const absl::Span<HloInstruction* const> instructions,
                        const Shape& shape) -> absl::Status {
     for (HloInstruction* instruction : instructions) {
       auto it = to_update.find(instruction);
+      // Only update the dimensions keeping the type intact.
+      Shape updated_shape = ShapeUtil::MakeShape(
+          instruction->shape().element_type(), shape.dimensions());
       if (it == to_update.end()) {
-        to_update.emplace(instruction, shape);
-      } else if (it->second != shape) {
+        to_update.emplace(instruction, updated_shape);
+      } else if (it->second != updated_shape) {
         return absl::FailedPreconditionError(absl::StrCat(
             "Conflicting shape assignment for ", instruction->ToString(),
             " got ", it->second.ToString(), " and ", shape.ToString()));
