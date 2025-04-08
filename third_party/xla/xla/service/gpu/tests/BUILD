@@ -730,6 +730,7 @@ xla_test(
     size = "medium",
     srcs = ["gpu_cub_sort_test.cc"],
     backends = ["gpu"],
+    disabled_backends = [],
     shard_count = 15,
     tags = ["nodebug"],
     deps = [

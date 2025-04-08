@@ -9,8 +9,6 @@ load(
 load("//xla:xla.default.bzl", "xla_cc_test", "xla_internal")
 load(
     "//xla/service/gpu:build_defs.bzl",
-    "build_cub_sort_kernels",
-    "get_cub_sort_kernel_types",
     "gpu_kernel_library",
 )
 load(
@@ -298,6 +296,8 @@ cc_library(
         "//xla/service:buffer_assignment",
         "//xla/service:name_uniquer",
         "//xla/stream_executor:device_description",
+        "//xla/stream_executor:platform",
+        "//xla/stream_executor/cuda:cuda_compute_capability",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings:string_view",
@@ -563,6 +563,7 @@ cc_library(
         ":gpu_constants",
         ":gpu_executable_run_options",
         ":ir_emission_utils",
+        ":resource_requests",
         ":stream_executor_util",
         "//xla:executable_run_options",
         "//xla:shape_tree",
@@ -585,7 +586,6 @@ cc_library(
         "//xla/service:shaped_buffer",
         "//xla/service:stream_pool",
         "//xla/service:xla_debug_info_manager",
-        "//xla/service/gpu:resource_requests",
         "//xla/stream_executor:device_description",
         "//xla/stream_executor:device_memory",
         "//xla/stream_executor:device_memory_allocator",
@@ -734,35 +734,9 @@ cc_library(
     ],
 )
 
-gpu_kernel_library(
-    name = "gpu_prim",
-    hdrs = ["gpu_prim.h"],
-    deps = [
-        "@eigen_archive//:eigen3",
-        "@local_config_cuda//cuda:cuda_headers",
-        "@local_tsl//tsl/platform:bfloat16",
-    ] + if_cuda_is_configured(["@local_config_cuda//cuda:cub_headers"]) + if_rocm_is_configured([
-        "@local_config_rocm//rocm:rocprim",
-    ]),
-)
-
 cc_library(
     name = "variant_visitor",
     hdrs = ["variant_visitor.h"],
-)
-
-build_cub_sort_kernels(
-    name = "cub_sort_kernel",
-    srcs = if_gpu_is_configured(["cub_sort_kernel.cu.cc"]),
-    hdrs = if_gpu_is_configured(["cub_sort_kernel.h"]),
-    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]) + if_rocm_is_configured([
-        "TENSORFLOW_USE_ROCM=1",
-    ]),
-    types = get_cub_sort_kernel_types(),
-    deps = if_gpu_is_configured([
-        ":gpu_prim",
-        "//xla/stream_executor/gpu:gpu_types_header",
-    ]),
 )
 
 cc_library(
@@ -1605,6 +1579,7 @@ cc_library(
         "//xla/service:while_loop_all_reduce_code_motion",
         "//xla/service:while_loop_constant_sinking",
         "//xla/service:while_loop_simplifier",
+        "//xla/stream_executor/cuda:cuda_compute_capability",
         "//xla/stream_executor/integrations:device_mem_allocator",
         "//xla/stream_executor:device_description",
         "//xla/stream_executor:device_description_proto_cc",
