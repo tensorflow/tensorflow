@@ -502,6 +502,11 @@ absl::StatusOr<Value> EmitMulAdd(Value lhs, Value rhs, Value accumulator,
     return b.create<arith::OrIOp>(accumulator,
                                   b.create<arith::AndIOp>(lhs, rhs));
   }
+  if (primitive_util::IsComplexType(result_element_type)) {
+    // Handle complex types (e.g., C64, C128)
+    Value mul = b.create<mlir::complex::MulOp>(accumulator_type, lhs, rhs);
+    return b.create<mlir::complex::AddOp>(accumulator_type, accumulator, mul);
+  }
   return b.create<arith::AddIOp>(accumulator,
                                  b.create<arith::MulIOp>(lhs, rhs));
 }
@@ -518,8 +523,23 @@ absl::StatusOr<SmallVector<Value, 1>> EmitDotLoop(
 
   const mlir::Type accumulator_type =
       result_element_type.isBF16() ? b.getF32Type() : result_element_type;
-  Value accum_init_value =
-      b.create<ConstantOp>(b.getZeroAttr(accumulator_type)).getResult();
+  Value accum_init_value;
+  if (auto complex_ty = accumulator_type.dyn_cast<mlir::ComplexType>()) {
+    // For complex, build real-zero and imag-zero separately:
+    mlir::Type element_ty = complex_ty.getElementType();
+
+    // E.g. float zero
+    auto real_zero = b.create<arith::ConstantOp>(b.getZeroAttr(element_ty));
+    auto imag_zero = b.create<arith::ConstantOp>(b.getZeroAttr(element_ty));
+
+    // Create a complex<element_ty> from these two scalars
+    accum_init_value =
+        b.create<mlir::complex::CreateOp>(complex_ty, real_zero, imag_zero);
+  } else {
+    // For non-complex, just build a float or integer zero directly
+    accum_init_value =
+        b.create<arith::ConstantOp>(b.getZeroAttr(accumulator_type));
+  }
 
   // For convolutions with `batch_group_count` > 1, there is an additional
   // symbol for LHS (group id) - ignore it for RHS.
