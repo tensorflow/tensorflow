@@ -54,11 +54,24 @@ cc_library(
     hdrs = ["collective_ops_utils.h"],
     deps = [
         "//xla/hlo/ir:hlo",
+        "//xla/service:hlo_module_config",
         "//xla/service/gpu:backend_configs_cc",
         "//xla/stream_executor:device_description",
         "//xla/stream_executor/cuda:cuda_compute_capability",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
+    ],
+)
+
+xla_cc_test(
+    name = "collective_ops_utils_test",
+    srcs = ["collective_ops_utils_test.cc"],
+    deps = [
+        ":collective_ops_utils",
+        "//xla/service:hlo_module_config",
+        "//xla/stream_executor:device_description",
+        "//xla/stream_executor/cuda:cuda_compute_capability",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 

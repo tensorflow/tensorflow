@@ -19,6 +19,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/service/hlo_module_config.h"
 #include "xla/stream_executor/device_description.h"
 
 namespace xla {
@@ -37,6 +38,12 @@ absl::StatusOr<GPUCommunicationType> CommunicationType(
 
 // Returns true if instruction is a synchronous collective op.
 bool IsGPUSyncCollective(const HloInstruction& instr);
+
+// Returns true if the topology is multi-host. Currently this function is
+// heuristic based. Will return false on any platform other than Hopper and
+// Ampere.
+bool IsMultiHostTopology(const HloModuleConfig& config,
+                         const se::DeviceDescription& device_description);
 
 }  // namespace gpu
 }  // namespace xla

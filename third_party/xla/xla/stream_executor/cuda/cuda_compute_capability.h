@@ -98,6 +98,8 @@ struct CudaComputeCapability {
     return major >= CudaComputeCapabilities::kBlackwell;
   }
 
+  bool IsAmpere() const { return major == CudaComputeCapabilities::kAmpere; }
+
   bool IsHopper() const { return major == CudaComputeCapabilities::kHopper; }
 
   bool IsBlackwell() const {

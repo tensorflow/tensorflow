@@ -21,6 +21,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/gpu/backend_configs.pb.h"
+#include "xla/service/hlo_module_config.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
 
@@ -67,6 +68,19 @@ absl::StatusOr<GPUCommunicationType> CommunicationType(
     return GPUCommunicationType::SINGLE_HOST;
   }
   return GPUCommunicationType::UNDEFINED;
+}
+
+bool IsMultiHostTopology(const HloModuleConfig& config,
+                         const se::DeviceDescription& device_description) {
+  // TODO: b/390095346 - Use topology information once available at compile
+  // time.
+  if (device_description.cuda_compute_capability().IsHopper()) {
+    return config.num_partitions() * config.replica_count() > 8;
+  }
+  if (device_description.cuda_compute_capability().IsAmpere()) {
+    return config.num_partitions() * config.replica_count() > 16;
+  }
+  return false;
 }
 
 }  // namespace gpu
