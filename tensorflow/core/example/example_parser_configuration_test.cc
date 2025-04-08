@@ -15,10 +15,18 @@ limitations under the License.
 #include "tensorflow/core/example/example_parser_configuration.h"
 
 #include <memory>
+#include <vector>
 
+#include "absl/log/check.h"
+#include "absl/status/status.h"
+#include "third_party/protobuf/text_format.h"
+#include "xla/tsl/protobuf/error_codes.pb.h"
+#include "tensorflow/core/example/example_parser_configuration.pb.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
+#include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/platform/protobuf.h"
