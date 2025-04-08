@@ -15,9 +15,12 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_UTIL_QUANTIZATION_UNIFORM_QUANT_OPS_PARAMS_H_
 #define TENSORFLOW_CORE_UTIL_QUANTIZATION_UNIFORM_QUANT_OPS_PARAMS_H_
 
+#include <cstdint>
 #include <string>
 #include <vector>
 
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/shape_inference.h"
 #include "tensorflow/core/framework/tensor_shape.h"
