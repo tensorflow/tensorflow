@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/pattern_matcher_gmock.h"
+#include "xla/hlo/testlib/pattern_matcher_gmock.h"
 
 #include <sstream>
 #include <string>
