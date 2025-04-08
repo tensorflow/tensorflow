@@ -43,6 +43,7 @@ limitations under the License.
 #include "xla/stream_executor/cuda/cuda_kernel.h"
 #include "xla/stream_executor/cuda/cuda_status.h"
 #include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/gpu/gpu_command_buffer.h"
 #include "xla/stream_executor/gpu/gpu_stream.h"
 #include "xla/stream_executor/gpu/scoped_update_mode.h"
@@ -389,6 +390,23 @@ absl::Status CudaCommandBuffer::UpdateMemcpyD2DNode(
       cuGraphExecMemcpyNodeSetParams(exec_, ToCudaGraphHandle(node_handle),
                                      &params, cuda_context_->context()),
       "Failed to set memcpy d2d node params");
+}
+
+absl::Status CudaCommandBuffer::PopulateDnnGraphNode(
+    dnn::DnnGraph& dnn_graph, Stream& stream,
+    absl::Span<DeviceMemoryBase> operands) {
+  return dnn_graph.PopulateOrUpdateRawCommandBuffer(stream, operands, graph_,
+                                                    false);
+}
+
+absl::Status CudaCommandBuffer::UpdateDnnGraphNode(
+    dnn::DnnGraph& dnn_graph, Stream& stream,
+    absl::Span<DeviceMemoryBase> operands, GraphNodeHandle node_handle) {
+  TF_RETURN_IF_ERROR(cuda::ToStatus(
+      cuGraphChildGraphNodeGetGraph(ToCudaGraphHandle(node_handle), &graph_)));
+  is_owned_graph_ = false;
+  return dnn_graph.PopulateOrUpdateRawCommandBuffer(stream, operands, graph_,
+                                                    true);
 }
 
 absl::StatusOr<GraphNodeHandle> CudaCommandBuffer::CreateChildNode(

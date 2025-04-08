@@ -1153,7 +1153,14 @@ absl::StatusOr<CommandBufferCmd::RecordedCommands> CuDnnCmd::Record(
     VLOG(5) << "  Arg: " << arg << ": " << buf.opaque();
     operands.push_back(buf);
   }
-
+  TF_ASSIGN_OR_RETURN(
+      const bool supports_explicit,
+      graph_->get()->SupportsExplicitCommandBufferConstruction());
+  if (supports_explicit) {
+    return RecordedCommands::Create(command_buffer->DnnGraph(
+        *graph_->get(), *execute_params.stream,
+        absl::Span<se::DeviceMemoryBase>(operands), {}));
+  }
   return RecordedCommands::Create(AddTracedCommandBuffer(
       execute_params, record_params, command_buffer, [&](se::Stream* stream) {
         return graph_->get()->Execute(

@@ -106,6 +106,17 @@ class RocmCommandBuffer : public GpuCommandBuffer {
                                    DeviceMemoryBase source,
                                    uint64_t size) override;
 
+  absl::Status PopulateDnnGraphNode(
+      dnn::DnnGraph&, Stream&, absl::Span<DeviceMemoryBase> operands) override {
+    return absl::UnimplementedError("Not implemented.");
+  }
+
+  absl::Status UpdateDnnGraphNode(dnn::DnnGraph&, Stream&,
+                                  absl::Span<DeviceMemoryBase> operands,
+                                  GraphNodeHandle) override {
+    return absl::UnimplementedError("Not implemented.");
+  }
+
   absl::StatusOr<GraphNodeHandle> CreateChildNode(
       absl::Span<const GraphNodeHandle> dependencies,
       const CommandBuffer& nested) override;

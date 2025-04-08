@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/stream_executor/bit_pattern.h"
 #include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/launch_dim.h"
 
@@ -164,6 +165,15 @@ class CommandBuffer {
   virtual absl::Status Memset(const Command* command, DeviceMemoryBase* dst,
                               const BitPattern& bit_pattern,
                               size_t num_elements) = 0;
+
+  // Adds a DNN graph launch command.
+  virtual absl::StatusOr<const Command*> DnnGraph(
+      dnn::DnnGraph&, Stream&, absl::Span<DeviceMemoryBase> operands,
+      absl::Span<const Command* const> dependencies) = 0;
+
+  // Updates a DNN graph command.
+  virtual absl::Status DnnGraph(const Command*, dnn::DnnGraph&, Stream&,
+                                absl::Span<DeviceMemoryBase> operands) = 0;
 
   //--------------------------------------------------------------------------//
   // Command buffer condtitional commands API
