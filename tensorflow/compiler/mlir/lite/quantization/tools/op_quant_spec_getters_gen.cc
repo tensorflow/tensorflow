@@ -53,7 +53,7 @@ static bool OpQuantSpecWriter(raw_ostream &os, const RecordKeeper &records) {
   std::vector<const Record *> defs = records.getAllDerivedDefinitions("Op");
   llvm::sort(defs, LessRecord());
 
-  OUT(0) << "static std::unique_ptr<quant::OpQuantSpec> "
+  OUT(0) << "static std::unique_ptr<OpQuantSpec> "
             "GetOpQuantSpec(mlir::Operation *op, bool "
             "disable_per_channel_for_dense_layers = false) {\n";
   // TODO(b/176258587): Move to OpTrait if this should be generalized.
@@ -66,7 +66,7 @@ static bool OpQuantSpecWriter(raw_ostream &os, const RecordKeeper &records) {
             "GetLstmOpQuantSpec<TFL::UnidirectionalSequenceLSTMOp>(lstm_op);\n";
   OUT(2) << "}\n";
 
-  OUT(2) << "auto spec = std::make_unique<quant::OpQuantSpec>();\n";
+  OUT(2) << "auto spec = std::make_unique<OpQuantSpec>();\n";
   llvm::SmallVector<llvm::StringRef, 3> matches;
   for (auto *def : defs) {
     Operator op(def);

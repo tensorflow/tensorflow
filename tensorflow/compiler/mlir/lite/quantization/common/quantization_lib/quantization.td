@@ -31,12 +31,12 @@ include "mlir/Dialect/Quant/IR/QuantBase.td"
 // explicit signedness check to differentiate the signed/unsigned constraints
 // predicates from one another at the TD level.
 class QuantizedType<string n, list<int> params, bit signed>
-  : Type<And<[CPred<"$_self.isa<mlir::TFL::QuantizedType>()">,
-              CPred<"$_self.cast<mlir::TFL::QuantizedType>()" #
+  : Type<And<[CPred<"$_self.isa<mlir::quant::QuantizedType>()">,
+              CPred<"$_self.cast<mlir::quant::QuantizedType>()" #
                     ".getStorageTypeIntegralWidth() == " # !head(params)>,
-              Or<[CPred<"$_self.cast<mlir::TFL::QuantizedType>()" #
+              Or<[CPred<"$_self.cast<mlir::quant::QuantizedType>()" #
                     ".getStorageType().isSignlessInteger()">,
-                  CPred<"$_self.cast<mlir::TFL::QuantizedType>()" #
+                  CPred<"$_self.cast<mlir::quant::QuantizedType>()" #
                     ".getStorageType().isSignedInteger() == " # signed>]>]>,
     "Q" # !if (signed, "I", "UI") # !head(params) # " type"> {
   string name = n;
