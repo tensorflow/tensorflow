@@ -19,6 +19,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include <gtest/gtest.h>
 #include "xla/literal.h"
 #include "xla/test.h"
 #include "xla/tests/hlo_test_base.h"
