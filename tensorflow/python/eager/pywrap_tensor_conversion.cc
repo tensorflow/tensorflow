@@ -16,8 +16,10 @@ limitations under the License.
 #include "tensorflow/python/eager/pywrap_tensor_conversion.h"
 
 #include "absl/container/flat_hash_map.h"
-#include "absl/hash/hash.h"
+#include "absl/strings/string_view.h"
+#include "tensorflow/c/eager/c_api.h"
 #include "tensorflow/c/eager/tfe_tensorhandle_internal.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/monitoring/counter.h"
 #include "tensorflow/core/platform/logging.h"
 
