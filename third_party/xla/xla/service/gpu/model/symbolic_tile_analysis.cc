@@ -556,6 +556,10 @@ absl::StatusOr<int64_t> GetRealRootIndex(
         tiled_operand = std::make_unique<SymbolicTiledHloInstruction>(
             &operand.instruction(), std::move(operand_indexing_map));
       }
+
+      // TODO(b/393299275): propagation to operands is not correct when nesting,
+      // because we derive something all the way to the parameters that are
+      // outside the fusion. We should not derive anything for those operands.
       auto [operand_tiled_hlo, inserted] =
           tiled_hlo_instructions_set.Insert(std::move(tiled_operand));
       tiled_hlo_instruction->AppendOperand(operand_tiled_hlo);

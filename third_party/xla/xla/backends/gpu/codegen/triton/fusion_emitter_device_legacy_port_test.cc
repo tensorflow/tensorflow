@@ -3135,82 +3135,88 @@ ENTRY e {
                                       /*run_hlo_passes=*/false));
 }
 
+// TODO(b/393299275): enable once `NestGemmFusion` data type propagation is
+// fixed. At the moment, the data type is not propagated correctly and that
+// causes a miscompile.
 TEST_F(CompareTest, DISABLED_SplitKNontrivialBitcast) {
   if (!SupportsBF16(GpuComputeCapability())) {
     GTEST_SKIP() << "BF16 not supported.";
   }
   const std::string kHloTextRef = R"(
-HloModule module, is_scheduled=true
+HloModule module
 
-triton_gemm_dot.5316 {
-  parameter_1 = bf16[16,4,128]{2,1,0} parameter(1)
-  bitcast.2 = bf16[16,512]{1,0} bitcast(parameter_1)
-  parameter_0 = s8[512,96]{1,0} parameter(0)
-  convert.4 = bf16[512,96]{1,0} convert(parameter_0)
-  ROOT dot.0 = bf16[16,96]{1,0} dot(bitcast.2, convert.4),
+dot {
+  p0 = s8[512,96]{1,0} parameter(0)
+  convert = bf16[512,96]{1,0} convert(p0)
+  p1 = bf16[16,4,128]{2,1,0} parameter(1)
+  bitcast = bf16[16,512]{1,0} bitcast(p1)
+  ROOT dot = bf16[16,96]{1,0} dot(bitcast, convert),
     lhs_contracting_dims={1}, rhs_contracting_dims={0}
 }
 
 ENTRY entry {
-  parameter_0.1 = s8[96,4,128]{2,1,0} parameter(0)
-  bitcast.6 = s8[512,96]{1,0} bitcast(parameter_0.1)
-  parameter_1.1 = bf16[16,4,128]{2,1,0} parameter(1)
-  ROOT triton_gemm_dot.5316 = bf16[16,96]{1,0} fusion(bitcast.6, parameter_1.1),
-    kind=kCustom, calls=triton_gemm_dot.5316,
+  p0 = s8[512,96]{1,0} parameter(0)
+  p1 = bf16[16,4,128]{2,1,0} parameter(1)
+  ROOT dot = bf16[16,96]{1,0} fusion(p0, p1),
+    kind=kCustom, calls=dot,
     backend_config={"fusion_backend_config": {kind: "__triton_gemm",
     triton_gemm_config: {"block_m":32,"block_n":32,"block_k":256,
                          "split_k":1,"num_stages":1,"num_warps":4,
                          "num_ctas":1}}}
 })";
 
-  const std::string kHloTextSplitK = R"(
-HloModule module, is_scheduled=true
+  const std::string kHloTextTest = R"(
+HloModule module
 
-triton_gemm_dot.5316 {
-  parameter_1 = bf16[16,4,128]{2,1,0} parameter(1)
-  bitcast.2 = bf16[16,512]{1,0} bitcast(parameter_1)
-  bitcast.17 = bf16[16,16,32]{2,1,0} bitcast(bitcast.2)
-  parameter_0 = s8[512,96]{1,0} parameter(0)
-  convert.4 = bf16[512,96]{1,0} convert(parameter_0)
-  bitcast.18 = bf16[16,32,96]{2,1,0} bitcast(convert.4)
-  ROOT dot.4 = bf16[16,16,96]{2,1,0} dot(bitcast.17, bitcast.18),
+dot {
+  p0 = s8[512,96]{1,0} parameter(0)
+  convert = bf16[512,96]{1,0} convert(p0)
+  p1 = bf16[16,4,128]{2,1,0} parameter(1)
+  bitcast_p1 = bf16[16,16,32]{2,1,0} bitcast(p1)
+  bitcast_convert = bf16[16,32,96]{2,1,0} bitcast(convert)
+  ROOT dot = bf16[16,16,96]{2,1,0} dot(bitcast_p1, bitcast_convert),
     lhs_batch_dims={1}, lhs_contracting_dims={2},
     rhs_batch_dims={0}, rhs_contracting_dims={1}
 }
 
-triton_gemm_dot.5316.reduce_sub_computation.clone {
-  rhs.1 = f32[] parameter(1)
-  lhs.1 = f32[] parameter(0)
-  ROOT add.1 = f32[] add(lhs.1, rhs.1)
+reducer {
+  rhs = f32[] parameter(1)
+  lhs = f32[] parameter(0)
+  ROOT add = f32[] add(lhs, rhs)
 }
 
-fused_computation {
-  param_0.2 = bf16[16,16,96]{2,1,0} parameter(0)
-  convert.19 = f32[16,16,96]{2,1,0} convert(param_0.2)
-  constant_1 = bf16[] constant(0)
-  convert.18 = f32[] convert(constant_1)
-  reduce.1 = f32[16,96]{1,0} reduce(convert.19, convert.18),
-    dimensions={0}, to_apply=triton_gemm_dot.5316.reduce_sub_computation.clone
-  ROOT convert.17 = bf16[16,96]{1,0} convert(reduce.1)
+split_k_reducer {
+  p0 = bf16[16,16,96]{2,1,0} parameter(0)
+  convert = f32[16,16,96]{2,1,0} convert(p0)
+  c0 = f32[] constant(0)
+  reduce = f32[16,96]{1,0} reduce(convert, c0),
+    dimensions={0}, to_apply=reducer
+  ROOT output = bf16[16,96]{1,0} convert(reduce)
 }
 
 ENTRY entry {
-  parameter_0.1 = s8[96,4,128]{2,1,0} parameter(0)
-  bitcast.6 = s8[512,96]{1,0} bitcast(parameter_0.1)
-  parameter_1.1 = bf16[16,4,128]{2,1,0} parameter(1)
-  triton_gemm_dot.5316 = bf16[16,16,96]{2,1,0} fusion(bitcast.6, parameter_1.1),
-    kind=kCustom, calls=triton_gemm_dot.5316,
+  p0 = s8[512,96]{1,0} parameter(0)
+  p1 = bf16[16,4,128]{2,1,0} parameter(1)
+  dot = bf16[16,16,96]{2,1,0} fusion(p0, p1),
+    kind=kCustom, calls=dot,
     backend_config={"fusion_backend_config": {kind: "__triton_gemm",
     triton_gemm_config: {"block_m":64,"block_n":32,"block_k":32,
                          "split_k":16,"num_stages":1,"num_warps":4,
                          "num_ctas":1}}}
-  ROOT fusion.1 = bf16[16,96]{1,0} fusion(triton_gemm_dot.5316),
-    kind=kLoop, calls=fused_computation
+  ROOT output = bf16[16,96]{1,0} fusion(dot), kind=kLoop, calls=split_k_reducer
 })";
+  TF_ASSERT_OK_AND_ASSIGN(
+      ModuleAndNestedFusionMetadata test_module_and_metadata,
+      GetModuleAndNestedFusionMetadata(kHloTextTest));
 
-  EXPECT_TRUE(RunAndCompareTwoModules(kHloTextRef, kHloTextSplitK,
-                                      ErrorSpec{/*aabs=*/2, /*arel=*/1e-2},
-                                      /*run_hlo_passes=*/false));
+  TF_ASSERT_OK_AND_ASSIGN(ModuleAndNestedFusionMetadata ref_module_and_metadata,
+                          GetModuleAndNestedFusionMetadata(kHloTextRef));
+
+  EXPECT_TRUE(
+      RunAndCompareTwoModules(std::move(ref_module_and_metadata.module),
+                              std::move(test_module_and_metadata.module),
+                              ErrorSpec{/*aabs=*/2, /*arel=*/1e-2},
+                              /*run_hlo_passes=*/false));
 }
 
 // This is based on gemm_fusion_test.cc/SplitKTest.SupportsIndivisible.
@@ -3294,6 +3300,7 @@ ENTRY entry_computation {
                                       /*run_hlo_passes=*/false));
 }
 
+// TODO(b/393299275): transform this test once padding derivation if fixed.
 TEST_F(CompareTest, DISABLED_SupportsSplitKWithIndivisibleKUsingPaddingEqual1) {
   constexpr absl::string_view kHloTextRef = R"(
 HloModule extracted, entry_computation_layout={(f16[1,8,4,1023]{3,2,1,0}, f16[1,1023,128]{2,1,0})->f16[1,8,4,128]{3,2,1,0}}
@@ -3372,24 +3379,41 @@ ENTRY entry_computation {
                                       /*run_hlo_passes=*/false));
 }
 
+// TODO(b/393299275): symbolic tile derivation fails for one of the padded
+// operands, with indexing map
+//  (d0, d1, d2, d3) -> (d1, d0 * 64 + d3)
+//    domain: d0 in [0, 15]
+//            d1 in [0, 31]
+//            d2 in [0, 127]
+//            d3 in [0, 63]
+//            d0 * 64 + d3 in [0, 1018]
+// While the expression should be processed without any issue, padding
+// introduces a non-redundant pre-existing constraint d0 * 64 + d3 in [0, 1018],
+// which causes the derivation to be rejected. The reason for this is that it's
+// not quite clear how to handle these pre-existing constraints in the general
+// sense. But wrt HLO specifically and symbolic tile analysis, we could probably
+// decide to just drop them from symbolic tile derivation: the reason for that
+// is that offset constraints are handled via `tile_offsets_indexing` anyway,
+// and it's all that should be relevant afaik. We can probably let the caller
+// decide to drop pre-existing constraints.
 TEST_F(CompareTest, DISABLED_SupportsSplitKWithIndivisibleKUsingPaddingEqual5) {
   constexpr absl::string_view kHloTextRef = R"(
-HloModule extracted, entry_computation_layout={(f16[1,8,4,1019]{3,2,1,0}, f16[1,1019,128]{2,1,0})->f16[1,8,4,128]{3,2,1,0}}
+HloModule extracted
 
-triton_gemm_dot.7103_computation.clone {
-  parameter_0.499 = f16[1,8,4,1019]{3,2,1,0} parameter(0)
-  bitcast.7923 = f16[32,1019]{1,0} bitcast(parameter_0.499)
-  parameter_1.499 = f16[1,1019,128]{2,1,0} parameter(1)
-  bitcast.7924 = f16[1019,128]{1,0} bitcast(parameter_1.499)
-  dot.9350 = f16[32,128]{1,0} dot(bitcast.7923, bitcast.7924), lhs_contracting_dims={1}, rhs_contracting_dims={0}
-  ROOT bitcast.7925 = f16[1,8,4,128]{3,2,1,0} bitcast(dot.9350)
+dot {
+  p0 = f16[1,8,4,1019]{3,2,1,0} parameter(0)
+  bitcast_p0 = f16[32,1019]{1,0} bitcast(p0)
+  p1 = f16[1,1019,128]{2,1,0} parameter(1)
+  bitcast_p1 = f16[1019,128]{1,0} bitcast(p1)
+  dot = f16[32,128]{1,0} dot(bitcast_p0, bitcast_p1), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  ROOT bitcast_dot = f16[1,8,4,128]{3,2,1,0} bitcast(dot)
 }
 
 ENTRY entry_computation {
   p0 = f16[1,8,4,1019]{3,2,1,0} parameter(0)
   p1 = f16[1,1019,128]{2,1,0} parameter(1)
-  ROOT triton_gemm_dot.7103 = f16[1,8,4,128]{3,2,1,0} fusion(p0, p1), kind=kCustom,
-    calls=triton_gemm_dot.7103_computation.clone,
+  ROOT dot = f16[1,8,4,128]{3,2,1,0} fusion(p0, p1), kind=kCustom,
+    calls=dot,
     backend_config={"fusion_backend_config": {"kind":"__triton_gemm",
     "triton_gemm_config":{"block_m":"32","block_n":"32","block_k":"256",
                           "split_k":"1","num_stages":"1","num_warps":"4",
@@ -3397,77 +3421,86 @@ ENTRY entry_computation {
 }
 )";
 
-  constexpr absl::string_view kHloTextSplitK = R"(
-HloModule extracted, entry_computation_layout={(f16[1,8,4,1019]{3,2,1,0}, f16[1,1019,128]{2,1,0})->f16[1,8,4,128]{3,2,1,0}}
+  constexpr absl::string_view kHloTextTest = R"(
+HloModule extracted
 
-triton_gemm_dot.7103_computation.clone {
-  parameter_0.499 = f16[1,8,4,1019]{3,2,1,0} parameter(0)
-  bitcast.7923 = f16[32,1019]{1,0} bitcast(parameter_0.499)
-  constant = f16[] constant(0)
-  pad = f16[32,1024]{1,0} pad(bitcast.7923, constant), padding=0_0x0_5
-  bitcast = f16[32,16,64]{2,1,0} bitcast(pad)
-  parameter_1.499 = f16[1,1019,128]{2,1,0} parameter(1)
-  bitcast.7924 = f16[1019,128]{1,0} bitcast(parameter_1.499)
-  constant.1 = f16[] constant(0)
-  pad.1 = f16[1024,128]{1,0} pad(bitcast.7924, constant.1), padding=0_5x0_0
-  bitcast.1 = f16[16,64,128]{2,1,0} bitcast(pad.1)
-  dot.1 = f16[16,32,128]{2,1,0} dot(bitcast, bitcast.1), lhs_batch_dims={1}, lhs_contracting_dims={2}, rhs_batch_dims={0}, rhs_contracting_dims={1}
-  ROOT bitcast.7925.clone = f16[16,1,8,4,128]{4,3,2,1,0} bitcast(dot.1)
+split_k_dot {
+  p0 = f16[1,8,4,1019]{3,2,1,0} parameter(0)
+  bitcast_p0 = f16[32,1019]{1,0} bitcast(p0)
+  c0 = f16[] constant(0)
+  pad_p0 = f16[32,1024]{1,0} pad(bitcast_p0, c0), padding=0_0x0_5
+  bitcast_pad_p0 = f16[32,16,64]{2,1,0} bitcast(pad_p0)
+  p1 = f16[1,1019,128]{2,1,0} parameter(1)
+  bitcast_p1 = f16[1019,128]{1,0} bitcast(p1)
+  pad_p1 = f16[1024,128]{1,0} pad(bitcast_p1, c0), padding=0_5x0_0
+  bitcast_pad_p1 = f16[16,64,128]{2,1,0} bitcast(pad_p1)
+  dot = f16[16,32,128]{2,1,0} dot(bitcast_pad_p0, bitcast_pad_p1),
+    lhs_batch_dims={1}, lhs_contracting_dims={2},
+    rhs_batch_dims={0}, rhs_contracting_dims={1}
+  ROOT bitcast.7925.clone = f16[16,1,8,4,128]{4,3,2,1,0} bitcast(dot)
 }
 
-triton_gemm_dot.7103.reduce_sub_computation.clone {
-  lhs.1 = f32[] parameter(0)
-  rhs.1 = f32[] parameter(1)
-  add.2 = f32[] add(lhs.1, rhs.1)
-  convert.13 = f16[] convert(add.2)
-  ROOT convert.12 = f32[] convert(convert.13)
+reducer {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  add = f32[] add(lhs, rhs)
+  convert = f16[] convert(add)
+  ROOT output = f32[] convert(convert)
 }
 
-fused_computation.1 {
-  param_0.5 = f16[16,1,8,4,128]{4,3,2,1,0} parameter(0)
-  convert.16 = f32[16,1,8,4,128]{4,3,2,1,0} convert(param_0.5)
-  constant.3 = f16[] constant(0)
-  convert.15 = f32[] convert(constant.3)
-  reduce.1 = f32[1,8,4,128]{3,2,1,0} reduce(convert.16, convert.15), dimensions={0}, to_apply=triton_gemm_dot.7103.reduce_sub_computation.clone
-  ROOT convert.14 = f16[1,8,4,128]{3,2,1,0} convert(reduce.1)
+split_k_reducer {
+  p0 = f16[16,1,8,4,128]{4,3,2,1,0} parameter(0)
+  convert = f32[16,1,8,4,128]{4,3,2,1,0} convert(p0)
+  c0 = f32[] constant(0)
+  reduce = f32[1,8,4,128]{3,2,1,0} reduce(convert, c0), dimensions={0}, to_apply=reducer
+  ROOT output = f16[1,8,4,128]{3,2,1,0} convert(reduce)
 }
 
 ENTRY entry_computation {
   p0 = f16[1,8,4,1019]{3,2,1,0} parameter(0)
   p1 = f16[1,1019,128]{2,1,0} parameter(1)
-  triton_gemm_dot.7103 = f16[16,1,8,4,128]{4,3,2,1,0} fusion(p0, p1), kind=kCustom,
-    calls=triton_gemm_dot.7103_computation.clone,
+  dot = f16[16,1,8,4,128]{4,3,2,1,0} fusion(p0, p1), kind=kCustom,
+    calls=split_k_dot,
     backend_config={"fusion_backend_config": {"kind":"__triton_gemm",
     "triton_gemm_config":{"block_m":"64","block_n":"32","block_k":"32",
                           "split_k":"16","num_stages":"1","num_warps":"4",
                           "num_ctas":"1"}}}
-  ROOT fusion.1 = f16[1,8,4,128]{3,2,1,0} fusion(triton_gemm_dot.7103), kind=kLoop, calls=fused_computation.1
+  ROOT fusion = f16[1,8,4,128]{3,2,1,0} fusion(dot), kind=kLoop,
+    calls=split_k_reducer
 }
 )";
+  TF_ASSERT_OK_AND_ASSIGN(
+      ModuleAndNestedFusionMetadata test_module_and_metadata,
+      GetModuleAndNestedFusionMetadata(kHloTextTest));
 
-  EXPECT_TRUE(RunAndCompareTwoModules(kHloTextRef, kHloTextSplitK,
-                                      ErrorSpec{/*aabs=*/4e-2, /*arel=*/2e-2},
-                                      /*run_hlo_passes=*/false));
+  TF_ASSERT_OK_AND_ASSIGN(ModuleAndNestedFusionMetadata ref_module_and_metadata,
+                          GetModuleAndNestedFusionMetadata(kHloTextRef));
+
+  EXPECT_TRUE(
+      RunAndCompareTwoModules(std::move(ref_module_and_metadata.module),
+                              std::move(test_module_and_metadata.module),
+                              ErrorSpec{/*aabs=*/4e-2, /*arel=*/2e-2},
+                              /*run_hlo_passes=*/false));
 }
 
-TEST_F(CompareTest, DISABLED_NonMajorMostOutputBatchWorksCorrectly) {
+TEST_F(CompareTest, NonMajorMostOutputBatchWorksCorrectly) {
   const std::string kHloTextTest = R"(
 HloModule m
 
-triton_gemm_dot.6 {
-  parameter_1 = f32[32,50,104]{2,1,0} parameter(1)
-  parameter_0 = s8[32,26,104]{2,1,0} parameter(0)
-  convert.22 = f32[32,26,104]{2,1,0} convert(parameter_0)
-  ROOT dot.127 = f32[32,50,26]{2,0,1} dot(parameter_1, convert.22),
+dot {
+  p0 = pred[32,26,104]{2,1,0} parameter(0)
+  p1 = f32[32,50,104]{2,1,0} parameter(1)
+  convert = f32[32,26,104]{2,1,0} convert(p0)
+  ROOT dot = f32[32,50,26]{2,0,1} dot(p1, convert),
     lhs_batch_dims={0}, lhs_contracting_dims={2},
     rhs_batch_dims={0}, rhs_contracting_dims={2}
 }
 
 ENTRY e {
-  p0 = s8[32,26,104]{2,1,0} parameter(0)
+  p0 = pred[32,26,104]{2,1,0} parameter(0)
   p1 = f32[32,50,104]{2,1,0} parameter(1)
-  ROOT triton_gemm_dot.6 = f32[32,50,26]{2,0,1} fusion(p0, p1),
-    kind=kCustom, calls=triton_gemm_dot.6,
+  ROOT dot = f32[32,50,26]{2,0,1} fusion(p0, p1),
+    kind=kCustom, calls=dot,
     backend_config={"fusion_backend_config": {kind: "__triton_gemm",
     triton_gemm_config: {"block_m":64,"block_n":16,"block_k":32,
                          "split_k":1,"num_stages":1,"num_warps":4,
@@ -3477,39 +3510,49 @@ ENTRY e {
   const std::string kHloTextRef = R"(
 HloModule m
 
-%triton_gemm_dot.127 {
-  %parameter_1.1 = f32[32,50,104]{2,1,0} parameter(1)
-  %parameter_0.1 = s8[32,26,104]{2,1,0} parameter(0)
-  %convert.0 = f32[32,26,104]{2,1,0} convert(%parameter_0.1)
-  ROOT %dot.0 = f32[32,50,26]{2,1,0} dot(%parameter_1.1, %convert.0),
+dot {
+  p0 = pred[32,26,104]{2,1,0} parameter(0)
+  p1 = f32[32,50,104]{2,1,0} parameter(1)
+  convert = f32[32,26,104]{2,1,0} convert(p0)
+  ROOT dot = f32[32,50,26]{2,1,0} dot(p1, convert),
     lhs_batch_dims={0}, lhs_contracting_dims={2},
     rhs_batch_dims={0}, rhs_contracting_dims={2}
 }
 
-%fused_computation {
-  %param_0.1 = f32[32,50,26]{2,1,0} parameter(0)
-  %transpose.1 = f32[50,32,26]{2,1,0} transpose(%param_0.1), dimensions={1,0,2}
-  ROOT %bitcast.7 = f32[32,50,26]{2,0,1} bitcast(%transpose.1)
+loop_fusion {
+  p0 = f32[32,50,26]{2,1,0} parameter(0)
+  transpose = f32[50,32,26]{2,1,0} transpose(p0), dimensions={1,0,2}
+  ROOT bitcast = f32[32,50,26]{2,0,1} bitcast(transpose)
 }
 
 ENTRY e {
-  %parameter_0 = s8[32,26,104]{2,1,0} parameter(0)
-  %parameter_1 = f32[32,50,104]{2,1,0} parameter(1)
-  %triton_gemm_dot.127 = f32[32,50,26]{2,1,0} fusion(%parameter_0, %parameter_1),
-    kind=kCustom, calls=%triton_gemm_dot.127,
+  p0 = pred[32,26,104]{2,1,0} parameter(0)
+  p1 = f32[32,50,104]{2,1,0} parameter(1)
+  dot = f32[32,50,26]{2,1,0} fusion(p0, p1),
+    kind=kCustom, calls=dot,
     backend_config={"fusion_backend_config": {kind: "__triton_gemm",
     triton_gemm_config: {"block_m":32,"block_n":128,"block_k":64,
                          "split_k":1,"num_stages":2,"num_warps":4,
                          "num_ctas":1}}}
-  ROOT %fusion.1 = f32[32,50,26]{2,0,1} fusion(%triton_gemm_dot.127), kind=kLoop, calls=%fused_computation
+  ROOT fusion = f32[32,50,26]{2,0,1} fusion(dot), kind=kLoop,
+    calls=loop_fusion
 })";
 
-  EXPECT_TRUE(RunAndCompareTwoModules(kHloTextRef, kHloTextTest,
-                                      ErrorSpec{/*aabs=*/1e-6, /*arel=*/1e-6},
-                                      /*run_hlo_passes=*/false));
+  TF_ASSERT_OK_AND_ASSIGN(
+      ModuleAndNestedFusionMetadata test_module_and_metadata,
+      GetModuleAndNestedFusionMetadata(kHloTextTest));
+
+  TF_ASSERT_OK_AND_ASSIGN(ModuleAndNestedFusionMetadata ref_module_and_metadata,
+                          GetModuleAndNestedFusionMetadata(kHloTextRef));
+
+  EXPECT_TRUE(
+      RunAndCompareTwoModules(std::move(ref_module_and_metadata.module),
+                              std::move(test_module_and_metadata.module),
+                              ErrorSpec{/*aabs=*/1e-6, /*arel=*/1e-6},
+                              /*run_hlo_passes=*/false));
 }
 
-TEST_F(CompareTest, DISABLED_TritonDotFusionCanHaveOnlyRHSParameter) {
+TEST_F(CompareTest, TritonDotFusionCanHaveOnlyRHSParameter) {
   const std::string kHloTextTest = R"(
 HloModule m, is_scheduled=true
 
@@ -3545,13 +3588,19 @@ ENTRY e {
     backend_config={"gemm_backend_config": {"alpha_real":1,"beta":0,"dot_dimension_numbers":{"lhs_contracting_dimensions":["0"],"rhs_contracting_dimensions":["1"],"lhs_batch_dimensions":[],"rhs_batch_dimensions":[]},"alpha_imag":0,"precision_config":{"operand_precision":["DEFAULT","DEFAULT"]},"epilogue":"DEFAULT"}}
   ROOT get-tuple-element = f32[63,92]{1,0} get-tuple-element((f32[63,92]{1,0}, s8[0]{0}) gemm), index=0
 })";
+  TF_ASSERT_OK_AND_ASSIGN(ModuleAndNestedFusionMetadata module_and_metadata,
+                          GetModuleAndNestedFusionMetadata(kHloTextTest));
 
-  EXPECT_TRUE(RunAndCompareTwoModules(kHloTextRef, kHloTextTest,
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> ref_module,
+                          ParseAndReturnVerifiedModule(kHloTextRef));
+
+  EXPECT_TRUE(RunAndCompareTwoModules(std::move(ref_module),
+                                      std::move(module_and_metadata.module),
                                       ErrorSpec{/*aabs=*/1e-2, /*arel=*/1e-2},
                                       /*run_hlo_passes=*/false));
 }
 
-TEST_F(CompareTest, DISABLED_TritonDotFusionCanHaveNoParametersAtAll) {
+TEST_F(CompareTest, TritonDotFusionCanHaveNoParametersAtAll) {
   const std::string kHloTextTest = R"(
 HloModule m, is_scheduled=true
 
@@ -3588,12 +3637,19 @@ ENTRY triton_gemm___computation {
   ROOT get-tuple-element = f32[11,45]{1,0} get-tuple-element((f32[11,45]{1,0}, s8[0]{0}) gemm), index=0
 })";
 
-  EXPECT_TRUE(RunAndCompareTwoModules(kHloTextRef, kHloTextTest,
+  TF_ASSERT_OK_AND_ASSIGN(ModuleAndNestedFusionMetadata module_and_metadata,
+                          GetModuleAndNestedFusionMetadata(kHloTextTest));
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> ref_module,
+                          ParseAndReturnVerifiedModule(kHloTextRef));
+
+  EXPECT_TRUE(RunAndCompareTwoModules(std::move(ref_module),
+                                      std::move(module_and_metadata.module),
                                       ErrorSpec{/*aabs=*/1e-6, /*arel=*/1e-6},
                                       /*run_hlo_passes=*/false));
 }
 
-TEST_F(CompareTest, DISABLED_TritonDotFusionCanHaveManyParameters) {
+TEST_F(CompareTest, TritonDotFusionCanHaveManyParameters) {
   const std::string kHloTextTest = R"(
 HloModule m
 
@@ -3705,12 +3761,19 @@ ENTRY e {
   ROOT get-tuple-element = f32[32,57]{0,1} get-tuple-element((f32[32,57]{0,1}, s8[0]{0}) gemm), index=0
 })";
 
-  EXPECT_TRUE(RunAndCompareTwoModules(kHloTextRef, kHloTextTest,
+  TF_ASSERT_OK_AND_ASSIGN(ModuleAndNestedFusionMetadata module_and_metadata,
+                          GetModuleAndNestedFusionMetadata(kHloTextTest));
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> ref_module,
+                          ParseAndReturnVerifiedModule(kHloTextRef));
+
+  EXPECT_TRUE(RunAndCompareTwoModules(std::move(ref_module),
+                                      std::move(module_and_metadata.module),
                                       ErrorSpec{/*aabs=*/1e-4, /*arel=*/1e-4},
                                       /*run_hlo_passes=*/false));
 }
 
-TEST_F(CompareTest, DISABLED_PredToBF16ConversionWorks) {
+TEST_F(CompareTest, PredToBF16ConversionWorks) {
   if (!SupportsBF16(GpuComputeCapability())) {
     GTEST_SKIP() << "BF16 not supported.";
   }
@@ -3740,6 +3803,9 @@ ENTRY e {
                                           "num_ctas":"1"}}}
 })";
 
+  TF_ASSERT_OK_AND_ASSIGN(ModuleAndNestedFusionMetadata module_and_metadata,
+                          GetModuleAndNestedFusionMetadata(kHloTextTest));
+
   const std::string kHloTextRef = R"(
 HloModule m, is_scheduled=true
 
@@ -3765,11 +3831,19 @@ ENTRY e {
   ROOT get-tuple-element = bf16[92,63]{1,0} get-tuple-element((bf16[92,63]{1,0}, s8[0]{0}) gemm), index=0
 })";
 
-  EXPECT_TRUE(RunAndCompareTwoModules(kHloTextRef, kHloTextTest,
-                                      ErrorSpec{/*aabs=*/1e-6, /*arel=*/1e-6},
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> ref_module,
+                          ParseAndReturnVerifiedModule(kHloTextRef));
+
+  EXPECT_TRUE(RunAndCompareTwoModules(std::move(ref_module),
+                                      std::move(module_and_metadata.module),
+                                      ErrorSpec{/*aabs=*/0, /*arel=*/0},
                                       /*run_hlo_passes=*/false));
 }
 
+// TODO(b/393299275): symbolic tile analysis fails to derive a tile for one
+// outer parameter here. However, we shouldn't be deriving this tile anyway,
+// and the underlying indexing map is incorrect. This requires a fix in
+// symbolic tile derivation.
 TEST_F(CompareTest, DISABLED_DifferentLayoutsAreSupportedInOneScope) {
   const std::string kHloTextTest = R"(
 triton_dot {
@@ -3803,6 +3877,9 @@ ENTRY e {
                          "num_ctas":"1"}}}
 })";
 
+  TF_ASSERT_OK_AND_ASSIGN(ModuleAndNestedFusionMetadata module_and_metadata,
+                          GetModuleAndNestedFusionMetadata(kHloTextTest));
+
   const std::string kHloTextRef = R"(
 ENTRY e {
   p1 = f16[3,3,2,16]{1,3,2,0} parameter(1)
@@ -3823,7 +3900,11 @@ ENTRY e {
     lhs_contracting_dims={1}, rhs_contracting_dims={0}
 })";
 
-  EXPECT_TRUE(RunAndCompareTwoModules(kHloTextRef, kHloTextTest,
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> ref_module,
+                          ParseAndReturnVerifiedModule(kHloTextRef));
+
+  EXPECT_TRUE(RunAndCompareTwoModules(std::move(ref_module),
+                                      std::move(module_and_metadata.module),
                                       ErrorSpec{/*aabs=*/1e-4, /*arel=*/1e-4},
                                       /*run_hlo_passes=*/false));
 }
