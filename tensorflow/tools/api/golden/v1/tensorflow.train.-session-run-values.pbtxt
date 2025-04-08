@@ -5,15 +5,15 @@ tf_class {
   is_instance: "<type \'tuple\'>"
   member {
     name: "options"
-    mtype: "<type \'property\'>"
+    mtype: "<class \'collections._tuplegetter\'>"
   }
   member {
     name: "results"
-    mtype: "<type \'property\'>"
+    mtype: "<class \'collections._tuplegetter\'>"
   }
   member {
     name: "run_metadata"
-    mtype: "<type \'property\'>"
+    mtype: "<class \'collections._tuplegetter\'>"
   }
   member_method {
     name: "__init__"
