@@ -16,9 +16,13 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_GRAPH_GRAPH_DEF_BUILDER_H_
 #define TENSORFLOW_CORE_GRAPH_GRAPH_DEF_BUILDER_H_
 
+#include <initializer_list>
 #include <string>
+#include <utility>
 #include <vector>
 
+#include "absl/status/status.h"
+#include "absl/types/span.h"
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/op.h"
