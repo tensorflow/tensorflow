@@ -58,6 +58,7 @@ cc_library(
     deps = [
         ":filecheck",
         ":verified_hlo_module",
+        "//testing/base/public:gunit_for_library_testonly",
         "//xla:debug_options_flags",
         "//xla:shape_layout",
         "//xla:shape_util",
