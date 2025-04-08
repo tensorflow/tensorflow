@@ -67,8 +67,9 @@ namespace {
 
 // Get the SparseCore logical replica count.
 absl::StatusOr<int64_t> GetSparseCoresPerChip() {
-  return stream_executor::tpu::OpsApiFn()->TpuTopology_AvailableCoresPerChipFn(
-      /*tpu_core_type=*/TpuCoreTypeEnum::kEmbeddingV2);
+  return stream_executor::tpu::OpsApiFn()
+      ->TpuTopology_MaybeAvailableCoresPerChipFn(
+          /*tpu_core_type=*/TpuCoreTypeEnum::kEmbeddingV2);
 }
 
 // This TensorFlow op performs the embedding lookup on SparseCore. It takes the
@@ -203,13 +204,19 @@ class XlaSparseDenseMatmulWithCsrInputOp : public XlaOpKernel {
       : XlaOpKernel(ctx) {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("table_name", &table_name_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("input_size", &input_size_));
-    OP_REQUIRES_VALUE(num_sparsecores_per_chip_, ctx, GetSparseCoresPerChip());
-    OP_REQUIRES(ctx, input_size_ % num_sparsecores_per_chip_ == 0,
-                errors::InvalidArgument("input_size_ ", input_size_,
-                                        " not divisible by the number "
-                                        "of sparsecores per chip ",
-                                        num_sparsecores_per_chip_));
-
+    // Try to get the number of sparsecores per chip from topology. And fall
+    // back to the attribute if the topology is not available.
+    absl::StatusOr<int> num_sparsecores_per_chip = GetSparseCoresPerChip();
+    if (num_sparsecores_per_chip.ok()) {
+      num_sparsecores_per_chip_ = num_sparsecores_per_chip.value();
+    } else {
+      OP_REQUIRES_OK(ctx, ctx->GetAttr("num_sparsecores_per_chip",
+                                       &num_sparsecores_per_chip_));
+      OP_REQUIRES(
+          ctx, num_sparsecores_per_chip_ == 2 || num_sparsecores_per_chip_ == 4,
+          absl::InvalidArgumentError(
+              "num_sparsecores_per_chip must be 2 or 4."));
+    }
     // Get and save quantization config params, if they were configured.
     // num_buckets == 0 indicate no quantization configs were provided.
     int check_num_buckets;
@@ -553,6 +560,19 @@ class XlaSparseDenseMatmulGradWithCsrInputBase : public XlaOpKernel {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("clip_weight_min", &clip_weight_min_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("clip_weight_max", &clip_weight_max_));
 
+    // Try to get the number of sparsecores per chip from topology. And fall
+    // back to the attribute if the topology is not available.
+    absl::StatusOr<int> num_sparsecores_per_chip = GetSparseCoresPerChip();
+    if (num_sparsecores_per_chip.ok()) {
+      num_sparsecores_per_chip_ = num_sparsecores_per_chip.value();
+    } else {
+      OP_REQUIRES_OK(ctx, ctx->GetAttr("num_sparsecores_per_chip",
+                                       &num_sparsecores_per_chip_));
+      OP_REQUIRES(
+          ctx, num_sparsecores_per_chip_ == 2 || num_sparsecores_per_chip_ == 4,
+          absl::InvalidArgumentError(
+              "num_sparsecores_per_chip must be 2 or 4."));
+    }
     OP_REQUIRES(ctx, clip_weight_min_ <= clip_weight_max_,
                 absl::InvalidArgumentError(
                     absl::StrCat("clip_weight_min must be smaller or equal to "
@@ -610,16 +630,14 @@ class XlaSparseDenseMatmulGradWithCsrInputBase : public XlaOpKernel {
                 errors::InvalidArgument(
                     "activations input has non static or non-rank 2 shape: ",
                     activation_shape.ToString()));
-    OP_REQUIRES_VALUE(int64_t num_sparsecores_per_chip, ctx,
-                      GetSparseCoresPerChip());
     int64 num_samples_per_chip = activation_shape.dimensions(0);
-    OP_REQUIRES(ctx, num_samples_per_chip % num_sparsecores_per_chip == 0,
+    OP_REQUIRES(ctx, num_samples_per_chip % num_sparsecores_per_chip_ == 0,
                 errors::InvalidArgument(
                     "num_samples_per_chip ", num_samples_per_chip,
                     " not divisible by the number of sparsecores per chip ",
-                    num_sparsecores_per_chip));
+                    num_sparsecores_per_chip_));
     int64_t per_sparse_core_batch_size =
-        num_samples_per_chip / num_sparsecores_per_chip;
+        num_samples_per_chip / num_sparsecores_per_chip_;
     int64_t max_ids_per_partition = 0;
     int64_t max_unique_ids_per_partition = 0;
     OP_REQUIRES_VALUE(xla::Shape embedding_table_shape, ctx,
@@ -696,6 +714,7 @@ class XlaSparseDenseMatmulGradWithCsrInputBase : public XlaOpKernel {
 
  private:
   std::string table_name_;
+  int64_t num_sparsecores_per_chip_;
 
   XlaSparseDenseMatmulGradWithCsrInputBase(
       const XlaSparseDenseMatmulGradWithCsrInputBase&) = delete;
@@ -709,6 +728,21 @@ class XlaSparseDenseMatmulGradWithCsrInputOp : public XlaOpKernel {
     const NameAttrList* name_attr;
     OP_REQUIRES_OK(ctx, ctx->GetAttr("custom_computation", &name_attr));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("table_name", &table_name_));
+
+    // Try to get the number of sparsecores per chip from topology. And fall
+    // back to the attribute if the topology is not available.
+    absl::StatusOr<int> num_sparsecores_per_chip = GetSparseCoresPerChip();
+    if (num_sparsecores_per_chip.ok()) {
+      num_sparsecores_per_chip_ = num_sparsecores_per_chip.value();
+    } else {
+      OP_REQUIRES_OK(ctx, ctx->GetAttr("num_sparsecores_per_chip",
+                                       &num_sparsecores_per_chip_));
+      OP_REQUIRES(
+          ctx, num_sparsecores_per_chip_ == 2 || num_sparsecores_per_chip_ == 4,
+          absl::InvalidArgumentError(
+              "num_sparsecores_per_chip must be 2 or 4."));
+    }
+
     custom_computation_ = *name_attr;
   }
 
@@ -742,17 +776,16 @@ class XlaSparseDenseMatmulGradWithCsrInputOp : public XlaOpKernel {
                 absl::InvalidArgumentError(absl::StrCat(
                     "activations input has non static or non-rank 2 shape: ",
                     activation_shape.ToString())));
-    OP_REQUIRES_VALUE(int64_t num_sparsecores_per_chip, ctx,
-                      GetSparseCoresPerChip());
+
     int64_t num_samples_per_chip = activation_shape.dimensions(0);
-    OP_REQUIRES(ctx, num_samples_per_chip % num_sparsecores_per_chip == 0,
+    OP_REQUIRES(ctx, num_samples_per_chip % num_sparsecores_per_chip_ == 0,
                 absl::InvalidArgumentError(absl::StrCat(
                     "num_samples_per_chip ", num_samples_per_chip,
                     " not divisible by the number of sparsecores per chip ",
-                    num_sparsecores_per_chip)));
+                    num_sparsecores_per_chip_)));
 
     int64_t per_sparse_core_batch_size =
-        num_samples_per_chip / num_sparsecores_per_chip;
+        num_samples_per_chip / num_sparsecores_per_chip_;
     int64_t max_ids_per_partition = 0;
     int64_t max_unique_ids_per_partition = 0;
 
@@ -866,6 +899,7 @@ class XlaSparseDenseMatmulGradWithCsrInputOp : public XlaOpKernel {
  private:
   std::string table_name_;
   NameAttrList custom_computation_;
+  int64_t num_sparsecores_per_chip_;
   XlaSparseDenseMatmulGradWithCsrInputOp(
       const XlaSparseDenseMatmulGradWithCsrInputOp&) = delete;
   void operator=(const XlaSparseDenseMatmulGradWithCsrInputOp&) = delete;
