@@ -1,0 +1,23 @@
+@LIT_SITE_CFG_IN_HEADER@
+
+import sys
+
+config.triton_obj_root = "@triton_BINARY_DIR@"
+config.llvm_src_root = "@LLVM_SOURCE_DIR@"
+config.llvm_obj_root = "@LLVM_BINARY_DIR@"
+config.llvm_tools_dir = "@LLVM_TOOLS_DIR@"
+config.llvm_lib_dir = "@LLVM_LIBS_DIR@"
+config.llvm_shlib_dir = "@CMAKE_LIBRARY_OUTPUT_DIRECTORY@"
+config.llvm_shlib_ext = "@CMAKE_SHARED_LIBRARY_SUFFIX@"
+config.llvm_exe_ext = "@EXEEXT@"
+config.lit_tools_dir = "@LLVM_LIT_TOOLS_DIR@"
+config.mlir_binary_dir = "@MLIR_BINARY_DIR@"
+config.python_executable = "@Python3_EXECUTABLE@"
+config.enable_bindings_python = @MLIR_ENABLE_BINDINGS_PYTHON@
+
+
+import lit.llvm
+lit.llvm.initialize(lit_config, config)
+
+# Let the main config do the real work
+lit_config.load_config(config, "@triton_SOURCE_DIR@/test/lit.cfg.py")

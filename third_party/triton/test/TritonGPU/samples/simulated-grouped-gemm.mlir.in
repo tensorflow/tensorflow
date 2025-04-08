@@ -1,0 +1,103 @@
+// To regenerate this test case, run `make golden-samples` in the triton root directory
+// RUN: triton-opt %s -tritongpu-pipeline -canonicalize | FileCheck --dump-input-context=50 %s
+#nvmma_128 = #ttg.nvmma_shared<{swizzlingByteWidth = 128, transposed = false, elementBitWidth = 16}>
+
+module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 8 : i32, ttg.target = "cuda:90", "ttg.threads-per-warp" = 32 : i32} {
+  tt.func public @matmul_kernel_descriptor_persistent(%arg0: !tt.ptr<f16> {tt.divisibility = 16 : i32}, %arg1: !tt.ptr<f16> {tt.divisibility = 16 : i32}, %arg2: !tt.ptr<f16> {tt.divisibility = 16 : i32}, %arg3: i32 {tt.divisibility = 16 : i32}, %arg4: i32 {tt.divisibility = 16 : i32}, %arg5: i32 {tt.divisibility = 16 : i32}) attributes {noinline = false} {
+    %c1_i32 = arith.constant 1 : i32
+    %c132_i32 = arith.constant 132 : i32
+    %c-1_i32 = arith.constant -1 : i32
+    %c0_i32 = arith.constant 0 : i32
+    %c8_i32 = arith.constant 8 : i32
+    %c128_i32 = arith.constant 128 : i32
+    %c256_i32 = arith.constant 256 : i32
+    %c64_i32 = arith.constant 64 : i32
+    %c1_i64 = arith.constant 1 : i64
+    %c127_i32 = arith.constant 127 : i32
+    %c255_i32 = arith.constant 255 : i32
+    %c63_i32 = arith.constant 63 : i32
+    %cst = arith.constant dense<0.000000e+00> : tensor<128x256xf32, #ttg.nvidia_mma<{versionMajor = 3, versionMinor = 0, warpsPerCTA = [8, 1], instrShape = [16, 256, 16]}>>
+    %0 = tt.get_program_id x : i32
+    %1 = arith.addi %arg3, %c127_i32 : i32
+    %2 = arith.divsi %1, %c128_i32 : i32
+    %3 = arith.addi %arg4, %c255_i32 : i32
+    %4 = arith.divsi %3, %c256_i32 : i32
+    %5 = arith.addi %arg5, %c63_i32 : i32
+    %6 = arith.divsi %5, %c64_i32 : i32
+    %7 = arith.muli %2, %4 : i32
+    %8 = arith.extsi %arg5 : i32 to i64
+    %9 = tt.make_tensor_descriptor %arg0, [%arg3, %arg5], [%8, %c1_i64] : <f16>, <tensor<128x64xf16, #nvmma_128>>
+    %10 = tt.make_tensor_descriptor %arg1, [%arg4, %arg5], [%8, %c1_i64] : <f16>, <tensor<256x64xf16, #nvmma_128>>
+    %11 = arith.extsi %arg4 : i32 to i64
+    %12 = tt.make_tensor_descriptor %arg2, [%arg3, %arg4], [%11, %c1_i64] : <f16>, <tensor<128x256xf16, #nvmma_128>>
+    %13 = arith.divsi %7, %c132_i32 : i32
+    %14 = arith.remsi %7, %c132_i32 : i32
+    %15 = arith.cmpi slt, %0, %14 : i32
+    %16 = scf.if %15 -> (i32) {
+      %23 = arith.addi %13, %c1_i32 : i32
+      scf.yield %23 : i32
+    } else {
+      scf.yield %13 : i32
+    }
+    %17 = arith.subi %0, %c132_i32 : i32
+    %18 = arith.muli %4, %c8_i32 : i32
+    %19 = tt.elementwise_inline_asm "mov.b32 $0, 0;" {constraints = "=r", packed_element = 1 : i32, pure = true} -> i32
+    %20 = arith.muli %6, %16 : i32
+    %21 = arith.subi %6, %c1_i32 : i32
+    %true = arith.constant true
+    %false = arith.constant false
+    %22:10 = scf.for %arg6 = %c0_i32 to %20 step %c1_i32 iter_args(%arg7 = %c-1_i32, %arg8 = %9, %arg9 = %10, %arg10 = %12, %arg11 = %17, %arg12 = %c-1_i32, %arg13 = %c0_i32, %arg14 = %c0_i32, %arg15 = %cst, %arg16 = %false) -> (i32, !tt.tensordesc<tensor<128x64xf16, #nvmma_128>>, !tt.tensordesc<tensor<256x64xf16, #nvmma_128>>, !tt.tensordesc<tensor<128x256xf16, #nvmma_128>>, i32, i32, i32, i32, tensor<128x256xf32, #ttg.nvidia_mma<{versionMajor = 3, versionMinor = 0, warpsPerCTA = [8, 1], instrShape = [16, 256, 16]}>>, i1)  : i32 {
+      %23 = arith.cmpi eq, %arg7, %21 {loop.cluster = 0 : i32, loop.stage = 0 : i32} : i32
+      %24 = arith.addi %arg7, %c1_i32 {loop.cluster = 0 : i32, loop.stage = 0 : i32} : i32
+      %25 = arith.select %23, %c0_i32, %24 {loop.cluster = 0 : i32, loop.stage = 0 : i32} : i32
+      %26 = arith.cmpi eq, %25, %c0_i32 {loop.cluster = 0 : i32, loop.stage = 0 : i32} : i32
+      %27:7 = scf.if %26 -> (!tt.tensordesc<tensor<128x64xf16, #nvmma_128>>, !tt.tensordesc<tensor<256x64xf16, #nvmma_128>>, !tt.tensordesc<tensor<128x256xf16, #nvmma_128>>, i32, i32, i32, i32) {
+        %37 = arith.addi %arg12, %c1_i32 : i32
+        %38 = arith.cmpi eq, %37, %c1_i32 : i32
+        %39:4 = scf.if %38 -> (!tt.tensordesc<tensor<128x64xf16, #nvmma_128>>, !tt.tensordesc<tensor<256x64xf16, #nvmma_128>>, !tt.tensordesc<tensor<128x256xf16, #nvmma_128>>, i32) {
+          %51 = tt.addptr %arg0, %19 : !tt.ptr<f16>, i32
+          %52 = tt.make_tensor_descriptor %51, [%arg3, %arg5], [%8, %c1_i64] : <f16>, <tensor<128x64xf16, #nvmma_128>>
+          %53 = tt.addptr %arg1, %19 : !tt.ptr<f16>, i32
+          %54 = tt.make_tensor_descriptor %53, [%arg4, %arg5], [%8, %c1_i64] : <f16>, <tensor<256x64xf16, #nvmma_128>>
+          %55 = tt.addptr %arg2, %19 : !tt.ptr<f16>, i32
+          %56 = tt.make_tensor_descriptor %55, [%arg3, %arg4], [%11, %c1_i64] : <f16>, <tensor<128x256xf16, #nvmma_128>>
+          scf.yield %52, %54, %56, %c0_i32 : !tt.tensordesc<tensor<128x64xf16, #nvmma_128>>, !tt.tensordesc<tensor<256x64xf16, #nvmma_128>>, !tt.tensordesc<tensor<128x256xf16, #nvmma_128>>, i32
+        } else {
+          scf.yield %arg8, %arg9, %arg10, %37 : !tt.tensordesc<tensor<128x64xf16, #nvmma_128>>, !tt.tensordesc<tensor<256x64xf16, #nvmma_128>>, !tt.tensordesc<tensor<128x256xf16, #nvmma_128>>, i32
+        }
+        %40 = arith.addi %arg11, %c132_i32 : i32
+        %41 = arith.divsi %40, %18 : i32
+        %42 = arith.muli %41, %c8_i32 : i32
+        %43 = arith.subi %2, %42 : i32
+        %44 = arith.minsi %43, %c8_i32 : i32
+        %45 = arith.remsi %40, %44 : i32
+        %46 = arith.addi %42, %45 : i32
+        %47 = arith.remsi %40, %18 : i32
+        %48 = arith.divsi %47, %44 : i32
+        %49 = arith.muli %46, %c128_i32 : i32
+        %50 = arith.muli %48, %c256_i32 : i32
+        scf.yield %39#0, %39#1, %39#2, %40, %39#3, %49, %50 : !tt.tensordesc<tensor<128x64xf16, #nvmma_128>>, !tt.tensordesc<tensor<256x64xf16, #nvmma_128>>, !tt.tensordesc<tensor<128x256xf16, #nvmma_128>>, i32, i32, i32, i32
+      } else {
+        scf.yield %arg8, %arg9, %arg10, %arg11, %arg12, %arg13, %arg14 : !tt.tensordesc<tensor<128x64xf16, #nvmma_128>>, !tt.tensordesc<tensor<256x64xf16, #nvmma_128>>, !tt.tensordesc<tensor<128x256xf16, #nvmma_128>>, i32, i32, i32, i32
+      } {loop.cluster = 0 : i32, loop.stage = 0 : i32}
+      %28 = arith.muli %25, %c64_i32 {loop.cluster = 2 : i32, loop.stage = 0 : i32} : i32
+      %29 = tt.experimental_descriptor_load %27#0[%27#5, %28] {loop.cluster = 2 : i32, loop.stage = 0 : i32} : !tt.tensordesc<tensor<128x64xf16, #nvmma_128>> -> tensor<128x64xf16, #ttg.blocked<{sizePerThread = [1, 1], threadsPerWarp = [1, 32], warpsPerCTA = [4, 2], order = [1, 0]}>>
+      %30 = ttg.local_alloc %29 {loop.cluster = 1 : i32, loop.stage = 2 : i32} : (tensor<128x64xf16, #ttg.blocked<{sizePerThread = [1, 1], threadsPerWarp = [1, 32], warpsPerCTA = [4, 2], order = [1, 0]}>>) -> !ttg.memdesc<128x64xf16, #ttg.nvmma_shared<{swizzlingByteWidth = 128, transposed = false, elementBitWidth = 16}>, #ttg.shared_memory>
+      %31 = tt.experimental_descriptor_load %27#1[%27#6, %28] {loop.cluster = 2 : i32, loop.stage = 0 : i32} : !tt.tensordesc<tensor<256x64xf16, #nvmma_128>> -> tensor<256x64xf16, #ttg.blocked<{sizePerThread = [1, 1], threadsPerWarp = [1, 32], warpsPerCTA = [4, 2], order = [1, 0]}>>
+      %32 = ttg.local_alloc %31 {loop.cluster = 1 : i32, loop.stage = 2 : i32} : (tensor<256x64xf16, #ttg.blocked<{sizePerThread = [1, 1], threadsPerWarp = [1, 32], warpsPerCTA = [4, 2], order = [1, 0]}>>) -> !ttg.memdesc<256x64xf16, #ttg.nvmma_shared<{swizzlingByteWidth = 128, transposed = false, elementBitWidth = 16}>, #ttg.shared_memory>
+      %33 = ttg.memdesc_trans %32 {loop.cluster = 1 : i32, loop.stage = 2 : i32, order = array<i32: 1, 0>} : !ttg.memdesc<256x64xf16, #ttg.nvmma_shared<{swizzlingByteWidth = 128, transposed = false, elementBitWidth = 16}>, #ttg.shared_memory> -> !ttg.memdesc<64x256xf16, #ttg.nvmma_shared<{swizzlingByteWidth = 128, transposed = true, elementBitWidth = 16}>, #ttg.shared_memory>
+      %34 = ttng.warp_group_dot %30, %33, %arg15, %arg16 {inputPrecision = 0 : i32, loop.cluster = 1 : i32, loop.stage = 2 : i32} : !ttg.memdesc<128x64xf16, #ttg.nvmma_shared<{swizzlingByteWidth = 128, transposed = false, elementBitWidth = 16}>, #ttg.shared_memory> * !ttg.memdesc<64x256xf16, #ttg.nvmma_shared<{swizzlingByteWidth = 128, transposed = true, elementBitWidth = 16}>, #ttg.shared_memory> -> tensor<128x256xf32, #ttg.nvidia_mma<{versionMajor = 3, versionMinor = 0, warpsPerCTA = [8, 1], instrShape = [16, 256, 16]}>>
+      %35 = arith.cmpi eq, %25, %21 {loop.cluster = 3 : i32, loop.stage = 2 : i32} : i32
+      %36 = scf.if %35 -> (i1) {
+        %37 = arith.truncf %34 : tensor<128x256xf32, #ttg.nvidia_mma<{versionMajor = 3, versionMinor = 0, warpsPerCTA = [8, 1], instrShape = [16, 256, 16]}>> to tensor<128x256xf16, #ttg.nvidia_mma<{versionMajor = 3, versionMinor = 0, warpsPerCTA = [8, 1], instrShape = [16, 256, 16]}>>
+        %38 = ttg.convert_layout %37 : tensor<128x256xf16, #ttg.nvidia_mma<{versionMajor = 3, versionMinor = 0, warpsPerCTA = [8, 1], instrShape = [16, 256, 16]}>> -> tensor<128x256xf16, #ttg.blocked<{sizePerThread = [1, 1], threadsPerWarp = [1, 32], warpsPerCTA = [1, 8], order = [1, 0]}>>
+        tt.experimental_descriptor_store %27#2[%27#5, %27#6], %38 : !tt.tensordesc<tensor<128x256xf16, #nvmma_128>>, tensor<128x256xf16, #ttg.blocked<{sizePerThread = [1, 1], threadsPerWarp = [1, 32], warpsPerCTA = [1, 8], order = [1, 0]}>>
+        scf.yield %false : i1
+      } else {
+        scf.yield %true : i1
+      } {loop.cluster = 3 : i32, loop.stage = 2 : i32}
+      scf.yield %25, %27#0, %27#1, %27#2, %27#3, %27#4, %27#5, %27#6, %34, %36 : i32, !tt.tensordesc<tensor<128x64xf16, #nvmma_128>>, !tt.tensordesc<tensor<256x64xf16, #nvmma_128>>, !tt.tensordesc<tensor<128x256xf16, #nvmma_128>>, i32, i32, i32, i32, tensor<128x256xf32, #ttg.nvidia_mma<{versionMajor = 3, versionMinor = 0, warpsPerCTA = [8, 1], instrShape = [16, 256, 16]}>>, i1
+    }
+    tt.return
+  }
+}

@@ -1,0 +1,168 @@
+[
+  {
+    "children": [
+      {
+        "children": [
+          {
+            "children": [],
+            "frame": {
+              "name": "kernel_1_2_2",
+              "type": "function"
+            },
+            "metrics": {
+              "count": 402,
+              "device_id": "0",
+              "device_type": "HIP",
+              "time (ns)": 78190414
+            }
+          },
+          {
+            "children": [
+              {
+                "children": [],
+                "frame": {
+                  "name": "kernel_1_3_1",
+                  "type": "function"
+                },
+                "metrics": {
+                  "count": 502,
+                  "device_id": "0",
+                  "device_type": "HIP",
+                  "time (ns)": 24125138
+                }
+              }
+            ],
+            "frame": {
+              "name": "kernel_1_2_1",
+              "type": "function"
+            },
+            "metrics": {
+              "bytes": 3997237248,
+              "flops": 1534939103232
+            }
+          }
+        ],
+        "frame": {
+          "name": "kernel_1_1_1",
+          "type": "function"
+        },
+        "metrics": {}
+      },
+      {
+        "children": [
+          {
+            "children": [],
+            "frame": {
+              "name": "kernel_2_2_2",
+              "type": "function"
+            },
+            "metrics": {
+              "count": 120,
+              "device_id": "0",
+              "device_type": "HIP",
+              "time (ns)": 23174888
+            }
+          },
+          {
+            "children": [
+              {
+                "children": [],
+                "frame": {
+                  "name": "kernel_2_3_1",
+                  "type": "function"
+                },
+                "metrics": {
+                  "count": 149,
+                  "device_id": "0",
+                  "device_type": "HIP",
+                  "time (ns)": 1040322
+                }
+              }
+            ],
+            "frame": {
+              "name": "kernel_2_2_1",
+              "type": "function"
+            },
+            "metrics": {
+              "bytes": 58589184,
+              "flops": 4999610368
+            }
+          }
+        ],
+        "frame": {
+          "name": "kernel_2_1_1",
+          "type": "function"
+        },
+        "metrics": {}
+      },
+      {
+        "children": [
+          {
+            "children": [],
+            "frame": {
+              "name": "kernel_3_2_2",
+              "type": "function"
+            },
+            "metrics": {
+              "count": 480,
+              "device_id": "0",
+              "device_type": "HIP",
+              "time (ns)": 93036508
+            }
+          },
+          {
+            "children": [
+              {
+                "children": [],
+                "frame": {
+                  "name": "kernel_3_2_1",
+                  "type": "function"
+                },
+                "metrics": {
+                  "count": 599,
+                  "device_id": "0",
+                  "device_type": "HIP",
+                  "time (ns)": 6306402
+                }
+              }
+            ],
+            "frame": {
+              "name": "kernel_3_2_1",
+              "type": "function"
+            },
+            "metrics": {
+              "bytes": 529956864,
+              "flops": 67834478592
+            }
+          }
+        ],
+        "frame": {
+          "name": "kernel_3_1_1",
+          "type": "function"
+        },
+        "metrics": {}
+      }
+    ],
+    "frame": {
+      "name": "ROOT",
+      "type": "function"
+    },
+    "metrics": {
+      "bytes": 0,
+      "count": 0,
+      "flops": 0,
+      "time (ns)": 0
+    }
+  },
+  {
+    "HIP": {
+      "0": {
+        "arch": "gfx90a",
+        "bus_width": 4096,
+        "clock_rate": 1700000,
+        "memory_clock_rate": 1600000,
+        "num_sms": 104
+      }
+    }
+  }
+]
