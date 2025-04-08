@@ -453,9 +453,9 @@ cc_library(
         "//xla:shape_util",
         "//xla/hlo/parser:hlo_parser",
         "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
-        "@local_tsl//tsl/platform:statusor",
     ],
 )
 

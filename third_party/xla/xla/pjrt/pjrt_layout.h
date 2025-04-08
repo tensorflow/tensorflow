@@ -21,11 +21,11 @@ limitations under the License.
 #include <utility>
 
 #include "absl/log/check.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/layout.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 
@@ -43,14 +43,27 @@ class PjRtLayout {
 
   static absl::StatusOr<std::shared_ptr<const PjRtLayout>> Deserialize(
       absl::string_view serialized) {
-    TF_ASSIGN_OR_RETURN(Layout xla_layout, ParseLayout(serialized));
-    return std::make_shared<PjRtLayout>(std::move(xla_layout));
+    Layout layout;
+    if (LayoutProto proto; proto.ParseFromString(serialized)) {
+      layout = Layout::CreateFromProto(proto);
+    } else if (absl::StatusOr<Layout> l = ParseLayout(serialized); l.ok()) {
+      // Support the legacy serialization format in case there are places that
+      // rely on the old format. Will eventually be cleaned up.
+      layout = *std::move(l);
+    } else {
+      return absl::InvalidArgumentError(
+          "Failed to parse serialized PjRtLayout");
+    }
+
+    return std::make_shared<PjRtLayout>(std::move(layout));
   }
 
   const Layout& xla_layout() const { return xla_layout_; }
 
   // Returns the serialized layout as a string.
-  std::string Serialize() const { return xla_layout_.ToString(); }
+  std::string Serialize() const {
+    return xla_layout_.ToProto().SerializeAsString();
+  }
 
   // Human-readable string for error messages, user introspection, etc.
   std::string ToString() const { return xla_layout_.ToString(); }

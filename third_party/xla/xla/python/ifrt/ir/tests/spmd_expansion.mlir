@@ -166,7 +166,7 @@ module @missing_entry_function
 #device = #ifrt<devices[0,1]>
 #sharding = #ifrt.sharding_param<2x1 to [0] on 2>
 module @non_divisible_global_shape attributes {ifrt.num_devices = 2} {
-  // expected-error@+1 {{Global shape is not divisible by the number of shards in dimension 0. Global size: 3, number of shards: 2}}
+  // expected-error@+1 {{Global shape is not divisible by the number of shards in dimension 0. Global shape: [3,2], number of shards: 2.}}
   func.func @main(
       %arg0: tensor<3x2xi32> {ifrt.sharding = #sharding,
       ifrt.devices = #device})
