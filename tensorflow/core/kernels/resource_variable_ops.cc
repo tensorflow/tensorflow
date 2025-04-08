@@ -46,6 +46,7 @@ limitations under the License.
 //   reference count is >1.
 
 #include "absl/status/status.h"
+#include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "tensorflow/core/framework/op_requires.h"
 #include "tensorflow/core/framework/types.pb.h"
@@ -95,6 +96,19 @@ REGISTER_KERNEL_BUILDER(Name("_VarHandlesOp").Device(DEVICE_CPU),
 
 ReadVariableOp::ReadVariableOp(OpKernelConstruction* c) : OpKernel(c) {
   OP_REQUIRES_OK(c, c->GetAttr("dtype", &dtype_));
+  var_name_ = "";
+  for (const string& i : c->def().input()) {
+    if (absl::StartsWith(i, "^")) {
+      continue;
+    }
+    OP_REQUIRES(c, var_name_.empty(),
+                absl::InvalidArgumentError(absl::StrCat(
+                    "ReadVariableOp expects a single non-control input (the "
+                    "varible handle), but got the wrong number of inputs. The "
+                    "op definition: ",
+                    c->def())));
+    var_name_ = i;
+  }
 }
 
 namespace {
@@ -162,11 +176,11 @@ void ReadVariableOp::Compute(OpKernelContext* ctx) {
   // writes when in copy-on-write mode.
   const Tensor* t = variable->tensor();
   if (!variable->copy_on_read_mode.load()) {
-    OP_REQUIRES(
-        ctx, dtype_ == t->dtype(),
-        errors::InvalidArgument(
-            "Trying to read variable with wrong dtype. Expected ",
-            DataTypeString(dtype_), " got ", DataTypeString(t->dtype())));
+    OP_REQUIRES(ctx, dtype_ == t->dtype(),
+                absl::InvalidArgumentError(absl::StrCat(
+                    "Trying to read variable '", var_name_,
+                    "' with wrong dtype. Expected ", DataTypeString(dtype_),
+                    " got ", DataTypeString(t->dtype()))));
     ctx->set_output(0, *t);
   } else {
     OP_REQUIRES_OK(ctx, CopyVariable(0, ctx, t));
