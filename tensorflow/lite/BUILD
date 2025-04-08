@@ -3,6 +3,13 @@ load("@bazel_skylib//lib:selects.bzl", "selects")
 load("@bazel_skylib//rules:common_settings.bzl", "bool_flag")
 load("//tensorflow:tensorflow.bzl", "if_google", "if_not_windows", "if_oss", "tf_cc_test")
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
+load(
+    "//tensorflow:tf_version.bzl",
+    "MAJOR_VERSION",
+    "MINOR_VERSION",
+    "PATCH_VERSION",
+    "TF_SEMANTIC_VERSION_SUFFIX",
+)
 load("//tensorflow/lite:build_def.bzl", "tflite_cc_shared_object", "tflite_copts", "tflite_copts_warnings", "tflite_linkopts_no_undefined", "tflite_self_contained_libs_test_suite")
 load("//tensorflow/lite:special_rules.bzl", "SPECIAL_RULES_DEPS", "internal_visibility_allowlist", "tflite_internal_cc_3p_api_deps_src_all_visibility_allowlist", "tflite_portable_test_suite")
 load("//tensorflow/lite/core/shims:cc_library_with_tflite.bzl", "alias_with_tflite", "cc_library_with_tflite", "cc_test_with_tflite")
@@ -193,14 +200,25 @@ exports_files(
     ] + tflite_internal_cc_3p_api_deps_src_all_visibility_allowlist(),
 )
 
+genrule(
+    name = "version_h",
+    srcs = ["version.h.tpl"],
+    outs = ["version.h"],
+    cmd = """sed -e 's/TF_VERSION_STRING/"{tf_major_version}.{tf_minor_version}.{tf_patch_version}{tf_version_suffix}"/' \
+$(location version.h.tpl) > $@;""".format(
+        tf_major_version = MAJOR_VERSION,
+        tf_minor_version = MINOR_VERSION,
+        tf_patch_version = PATCH_VERSION,
+        tf_version_suffix = TF_SEMANTIC_VERSION_SUFFIX,
+    ),
+    compatible_with = get_compatible_with_portable(),
+)
+
 cc_library(
     name = "version",
-    hdrs = ["version.h"],
+    hdrs = [":version_h"],
     compatible_with = get_compatible_with_portable(),
     copts = tflite_copts_warnings(),
-    deps = [
-        "//tensorflow/core/public:release_version",
-    ],
 )
 
 alias(
