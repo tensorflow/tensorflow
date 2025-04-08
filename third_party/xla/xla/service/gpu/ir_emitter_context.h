@@ -38,7 +38,9 @@ limitations under the License.
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/kernel_reuse_cache.h"
 #include "xla/service/name_uniquer.h"
+#include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/stream_executor/platform.h"
 
 namespace xla {
 namespace gpu {
@@ -62,14 +64,14 @@ class IrEmitterContext {
   IrEmitterContext(const HloModule* hlo_module,
                    const BufferAssignment* buffer_assignment,
                    const ExecutionStreamAssignment* execution_stream_assignment,
-                   std::string platform_name,
+                   const stream_executor::Platform* platform,
                    const se::DeviceDescription& gpu_device_info,
                    mlir::MLIRContext* mlir_context, llvm::Module* llvm_module,
                    llvm::Module* llvm_module_constants, bool emit_kernels)
       : hlo_module_(hlo_module),
         buffer_assignment_(buffer_assignment),
         execution_stream_assignment_(execution_stream_assignment),
-        platform_name_(std::move(platform_name)),
+        platform_(platform),
         gpu_device_info_(gpu_device_info),
         mlir_context_(mlir_context),
         llvm_module_(llvm_module),
@@ -87,7 +89,7 @@ class IrEmitterContext {
   const ExecutionStreamAssignment& execution_stream_assignment() const {
     return *execution_stream_assignment_;
   }
-  absl::string_view platform_name() const { return platform_name_; }
+  absl::string_view platform_name() const { return platform_->Name(); }
   const se::DeviceDescription& gpu_device_info() const {
     return gpu_device_info_;
   }
@@ -132,11 +134,13 @@ class IrEmitterContext {
 
   bool emit_kernels() const { return emit_kernels_; }
 
+  const stream_executor::Platform* platform() const { return platform_; }
+
  private:
   const HloModule* hlo_module_;
   const BufferAssignment* buffer_assignment_;
   const ExecutionStreamAssignment* execution_stream_assignment_;
-  std::string platform_name_;
+  const stream_executor::Platform* platform_;
   const se::DeviceDescription& gpu_device_info_;
   mlir::MLIRContext* mlir_context_;
   llvm::Module* llvm_module_;

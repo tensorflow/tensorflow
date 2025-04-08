@@ -265,6 +265,7 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
+#include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_description.pb.h"
 #include "xla/stream_executor/dnn.h"
@@ -425,7 +426,6 @@ GpuThunkAotCompilationResult::LoadExecutable(
   TF_ASSIGN_OR_RETURN(
       se::Platform * platform,
       se::PlatformManager::PlatformWithId(compiler->PlatformId()));
-  std::string platform_name = platform->Name();
   const se::DeviceDescription& gpu_device_info =
       stream_exec->GetDeviceDescription();
   mlir::DialectRegistry registry;
@@ -440,7 +440,7 @@ GpuThunkAotCompilationResult::LoadExecutable(
   llvm_module->setDataLayout(gpu_compiler->data_layout());
   IrEmitterContext ir_emitter_context(
       hlo_module.get(), buffer_assignment.get(), &execution_stream_assignment,
-      platform_name, gpu_device_info, mlir_context.get(), llvm_module.get(),
+      platform, gpu_device_info, mlir_context.get(), llvm_module.get(),
       /*llvm_module_constants=*/nullptr,
       /*emit_kernels=*/false);
 
@@ -663,7 +663,8 @@ absl::Status RunSPMDPasses(
 absl::Status RunOptimizationPasses(
     HloModule* hlo_module, stream_executor::StreamExecutor* stream_exec,
     const Compiler::TargetConfig& gpu_target_config,
-    const AlgebraicSimplifierOptions& layout_insensitive_algsimp_opts) {
+    const AlgebraicSimplifierOptions& layout_insensitive_algsimp_opts,
+    const stream_executor::Platform* platform) {
   const DebugOptions& debug_options = hlo_module->config().debug_options();
 
   HloPassPipeline pipeline("optimization");
@@ -706,7 +707,7 @@ absl::Status RunOptimizationPasses(
   // which isn't feasible if we don't have a device.
   if (hlo_module->config().debug_options().xla_gpu_enable_cub_radix_sort()) {
     if (stream_exec != nullptr) {
-      pipeline.AddPass<SortRewriter>();
+      pipeline.AddPass<SortRewriter>(platform);
     } else {
       LOG(WARNING) << "Using fallback sort algorithm rather than SortRewriter, "
                       "which will be slower at runtime. To avoid this, "
@@ -1384,9 +1385,12 @@ absl::Status GpuCompiler::OptimizeHloModule(
   TF_RETURN_IF_ERROR(RunPreSPMDPartitionerPasses(hlo_module));
   TF_RETURN_IF_ERROR(RunSPMDPasses(hlo_module, gpu_target_config,
                                    layout_insensitive_algsimp_opts));
-  TF_RETURN_IF_ERROR(RunOptimizationPasses(hlo_module, stream_exec,
-                                           gpu_target_config,
-                                           layout_insensitive_algsimp_opts));
+  TF_ASSIGN_OR_RETURN(
+      const stream_executor::Platform* platform,
+      stream_executor::PlatformManager::PlatformWithId(PlatformId()));
+  TF_RETURN_IF_ERROR(
+      RunOptimizationPasses(hlo_module, stream_exec, gpu_target_config,
+                            layout_insensitive_algsimp_opts, platform));
   se::GpuComputeCapability gpu_version =
       device_description.gpu_compute_capability();
   TF_RETURN_IF_ERROR(RunCollectiveOptimizationPasses(

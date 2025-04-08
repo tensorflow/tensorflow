@@ -24,6 +24,8 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"
+#include "absl/log/log.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/backends/gpu/runtime/cub_sort_thunk.h"
@@ -40,11 +42,11 @@ limitations under the License.
 #include "xla/service/pattern_matcher.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/stream_executor/platform.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/logging.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {
@@ -226,9 +228,10 @@ std::optional<SortComputationAnalysis> AnalyzeSortOp(
 
 // Create runner for CUB sort operation.
 absl::StatusOr<std::unique_ptr<CubSortRunnerInterface>> CreateRunner(
-    const SortComputationAnalysis& sort_analysis) {
+    const SortComputationAnalysis& sort_analysis,
+    const stream_executor::Platform* platform) {
   return CubSortRunnerInterface::Create(sort_analysis.key_type,
-                                        sort_analysis.value_type);
+                                        sort_analysis.value_type, platform);
 }
 
 // Restore the result shape after sorting a pair of tensors.
@@ -302,6 +305,41 @@ HloInstruction* AddNumpySortKey(HloInstruction* operand, PrimitiveType key_type,
   return sort_keys;
 }
 
+bool IsCubCompatibleSort(const HloSortInstruction* sort_op,
+                         const stream_executor::Platform* platform) {
+  VLOG(1) << "Sort instruction: " << sort_op->name();
+  if (sort_op->operand_count() != 1 && sort_op->operand_count() != 2) {
+    VLOG(2) << "Unsupported operand count: " << sort_op->operand_count();
+    return false;
+  }
+
+  const Shape& operand_shape = sort_op->operand(0)->shape();
+  if (sort_op->sort_dimension() != operand_shape.dimensions_size() - 1) {
+    VLOG(2) << "Sort dimension should be the minor one";
+    return false;
+  }
+  if (Product(operand_shape.dimensions()) < SortRewriter::SortSizeThreshold()) {
+    VLOG(2) << "Tensor shape size is too small to see an improvement";
+    return false;
+  }
+
+  auto sort_analysis = AnalyzeSortOp(*sort_op);
+  if (!sort_analysis.has_value()) {
+    VLOG(2) << "Only simple compare computations are supported";
+    return false;
+  }
+  if (!CreateRunner(*sort_analysis, platform).ok()) {
+    VLOG(2) << "Unsupported operand types (no compiled CUB kernels): "
+            << PrimitiveType_Name(sort_analysis->key_type) << " "
+            << (sort_analysis->value_type.has_value()
+                    ? PrimitiveType_Name(sort_analysis->value_type.value())
+                    : "");
+    return false;
+  }
+  VLOG(2) << "Sort operation is compatible";
+  return true;
+}
+
 }  // namespace
 
 // Rewrites a single sort instruction with a custom call.
@@ -315,7 +353,7 @@ absl::StatusOr<bool> SortRewriter::RunOnInstruction(
   int64_t batch_size = Product(operand_shape.dimensions()) /
                        operand_shape.dimensions(sort_op->sort_dimension());
 
-  TF_ASSIGN_OR_RETURN(auto runner, CreateRunner(sort_analysis));
+  TF_ASSIGN_OR_RETURN(auto runner, CreateRunner(sort_analysis, platform_));
   TF_ASSIGN_OR_RETURN(
       int64_t scratch_size,
       runner->GetScratchSize(Product(operand_shape.dimensions()), batch_size));
@@ -392,7 +430,7 @@ absl::StatusOr<bool> SortRewriter::RunOnComputation(
   std::vector<HloSortInstruction*> sort_ops;
   for (auto* inst : computation->instructions()) {
     HloSortInstruction* sort = DynCast<HloSortInstruction>(inst);
-    if (sort != nullptr && IsCubCompatibleSort(sort)) {
+    if (sort != nullptr && IsCubCompatibleSort(sort, platform_)) {
       sort_ops.push_back(sort);
     }
   }
@@ -417,40 +455,6 @@ absl::StatusOr<bool> SortRewriter::Run(
   }
   XLA_VLOG_LINES(3, "SortRewriter::Run(), after:\n" + module->ToString());
   return changed;
-}
-
-bool IsCubCompatibleSort(const HloSortInstruction* sort_op) {
-  VLOG(1) << "Sort instruction: " << sort_op->name();
-  if (sort_op->operand_count() != 1 && sort_op->operand_count() != 2) {
-    VLOG(2) << "Unsupported operand count: " << sort_op->operand_count();
-    return false;
-  }
-
-  const Shape& operand_shape = sort_op->operand(0)->shape();
-  if (sort_op->sort_dimension() != operand_shape.dimensions_size() - 1) {
-    VLOG(2) << "Sort dimension should be the minor one";
-    return false;
-  }
-  if (Product(operand_shape.dimensions()) < SortRewriter::SortSizeThreshold()) {
-    VLOG(2) << "Tensor shape size is too small to see an improvement";
-    return false;
-  }
-
-  auto sort_analysis = AnalyzeSortOp(*sort_op);
-  if (!sort_analysis.has_value()) {
-    VLOG(2) << "Only simple compare computations are supported";
-    return false;
-  }
-  if (!CreateRunner(*sort_analysis).ok()) {
-    VLOG(2) << "Unsupported operand types (no compiled CUB kernels): "
-            << PrimitiveType_Name(sort_analysis->key_type) << " "
-            << (sort_analysis->value_type.has_value()
-                    ? PrimitiveType_Name(sort_analysis->value_type.value())
-                    : "");
-    return false;
-  }
-  VLOG(2) << "Sort operation is compatible";
-  return true;
 }
 
 }  // namespace gpu

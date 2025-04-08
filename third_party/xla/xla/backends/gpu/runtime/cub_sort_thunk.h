@@ -26,6 +26,8 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/platform.h"
+#include "xla/stream_executor/stream.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -46,7 +48,8 @@ class CubSortRunnerInterface {
                                                  int64_t batch_size) = 0;
 
   static absl::StatusOr<std::unique_ptr<CubSortRunnerInterface>> Create(
-      PrimitiveType type, std::optional<PrimitiveType> value_type);
+      PrimitiveType type, std::optional<PrimitiveType> value_type,
+      const stream_executor::Platform* platform);
 };
 
 class CubSortThunk : public Thunk {
@@ -56,7 +59,7 @@ class CubSortThunk : public Thunk {
                absl::InlinedVector<BufferAllocation::Slice, 2> operands,
                absl::InlinedVector<BufferAllocation::Slice, 2> results,
                BufferAllocation::Slice scratch, bool descending,
-               int64_t batch_size);
+               int64_t batch_size, const stream_executor::Platform* platform);
 
   absl::Status ExecuteOnStream(const ExecuteParams& params) override {
     return runner_->Run(params, this);

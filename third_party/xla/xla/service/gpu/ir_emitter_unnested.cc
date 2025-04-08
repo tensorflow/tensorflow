@@ -1021,7 +1021,8 @@ absl::Status IrEmitterUnnested::EmitCubDeviceRadixSort(
           : std::nullopt,
       operands, results, scratch, options.descending(),
       Product(operand_shape.dimensions()) /
-          operand_shape.dimensions(operand_shape.dimensions_size() - 1));
+          operand_shape.dimensions(operand_shape.dimensions_size() - 1),
+      ir_emitter_context_->platform());
   AddThunkToThunkSequence(std::move(thunk));
   return absl::OkStatus();
 }
