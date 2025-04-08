@@ -319,9 +319,11 @@ PLUGIN_Profiler_Api profiler_api{
 };
 
 PJRT_Profiler_Extension profiler_extension{
-    /*struct_size=*/PJRT_Profiler_Extension_STRUCT_SIZE,
-    /*type=*/PJRT_Extension_Type::PJRT_Extension_Type_Profiler,
-    /*next=*/nullptr,
+    PJRT_Extension_Base{
+        /*struct_size=*/PJRT_Profiler_Extension_STRUCT_SIZE,
+        /*type=*/PJRT_Extension_Type::PJRT_Extension_Type_Profiler,
+        /*next=*/nullptr,
+    },
     /*profiler_api=*/&profiler_api,
 };
 

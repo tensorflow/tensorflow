@@ -1120,9 +1120,11 @@ PJRT_Profiler_Extension CreatePjrtProfilerExtension(
       traceme_name, tsl::profiler::ContextType::kPjrtLibraryCall);
   int64_t traceme_context_id = producer.GetContextId();
   PJRT_Profiler_Extension profiler_extension{
-      /*struct_size=*/PJRT_Profiler_Extension_STRUCT_SIZE,
-      /*type=*/PJRT_Extension_Type::PJRT_Extension_Type_Profiler,
-      /*next=*/nullptr,
+      PJRT_Extension_Base{
+          /*struct_size=*/PJRT_Profiler_Extension_STRUCT_SIZE,
+          /*type=*/PJRT_Extension_Type::PJRT_Extension_Type_Profiler,
+          /*next=*/nullptr,
+      },
       /*profiler_api=*/nullptr,
       /*traceme_context_id=*/traceme_context_id,
   };

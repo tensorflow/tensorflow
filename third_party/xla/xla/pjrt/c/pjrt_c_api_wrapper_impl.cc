@@ -2831,9 +2831,11 @@ PJRT_Api CreatePjrtApi(PJRT_Client_Create* create_fn,
 
 PJRT_Layouts_Extension CreateLayoutsExtension(PJRT_Extension_Base* next) {
   return PJRT_Layouts_Extension{
-      /*struct_size=*/PJRT_Layouts_Extension_STRUCT_SIZE,
-      /*type=*/PJRT_Extension_Type_Layouts,
-      /*next=*/next,
+      PJRT_Extension_Base{
+          /*struct_size=*/PJRT_Layouts_Extension_STRUCT_SIZE,
+          /*type=*/PJRT_Extension_Type_Layouts,
+          /*next=*/next,
+      },
       /*PJRT_Layouts_MemoryLayout_Destroy=*/
       pjrt::PJRT_Layouts_MemoryLayout_Destroy,
       /*PJRT_Layouts_MemoryLayout_Serialize=*/
@@ -2848,14 +2850,15 @@ PJRT_Layouts_Extension CreateLayoutsExtension(PJRT_Extension_Base* next) {
 PJRT_MemoryDescriptions_Extension CreateMemoryDescriptionsExtension(
     PJRT_Extension_Base* next) {
   return PJRT_MemoryDescriptions_Extension{
-      /*struct_size=*/PJRT_MemoryDescriptions_Extension_STRUCT_SIZE,
-      /*type=*/PJRT_Extension_Type_MemoryDescriptions,
-      /*next=*/next,
+      PJRT_Extension_Base{
+          /*struct_size=*/PJRT_MemoryDescriptions_Extension_STRUCT_SIZE,
+          /*type=*/PJRT_Extension_Type_MemoryDescriptions,
+          /*next=*/next,
+      },
       /*PJRT_DeviceDescription_MemorySpaces=*/
       pjrt::PJRT_DeviceDescription_MemoryDescriptions,
       /*PJRT_MemoryDescription_Kind=*/
-      pjrt::PJRT_MemoryDescription_Kind,
-  };
+      pjrt::PJRT_MemoryDescription_Kind};
 }
 
 }  // namespace pjrt
