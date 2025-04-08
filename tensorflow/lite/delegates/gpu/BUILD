@@ -346,6 +346,7 @@ cc_library(
     name = "async_buffers",
     srcs = ["async_buffers.cc"],
     hdrs = ["async_buffers.h"],
+    # features = ["-layering_check"],
     deps = [
         ":android_hardware_buffer",
         ":api",
