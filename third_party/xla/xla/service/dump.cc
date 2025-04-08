@@ -24,8 +24,11 @@ limitations under the License.
 #include <string>
 #include <utility>
 #include <vector>
+
 #include "absl/algorithm/container.h"
 #include "absl/base/const_init.h"
+#include "absl/base/thread_annotations.h"
+#include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/functional/any_invocable.h"
 #include "absl/log/log.h"
@@ -56,6 +59,7 @@ limitations under the License.
 #include "xla/tsl/platform/file_system.h"
 #include "xla/tsl/platform/file_system_helper.h"
 #include "xla/util.h"
+#include "xla/xla.pb.h"
 #include "tsl/platform/path.h"
 #include "tsl/platform/platform.h"
 #include "tsl/platform/protobuf.h"

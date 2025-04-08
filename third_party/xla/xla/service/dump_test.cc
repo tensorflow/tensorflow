@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/strings/match.h"
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/runtime/large_hlo_snapshot_serialization/serialization.h"
+#include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/env.h"

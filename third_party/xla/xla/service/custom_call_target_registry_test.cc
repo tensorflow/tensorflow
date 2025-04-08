@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "xla/service/custom_call_target_registry.h"
 
+#include <gmock/gmock.h>
+#include <gtest/gtest.h>
 #include "xla/service/custom_call_status.h"
 #include "xla/test.h"
 
