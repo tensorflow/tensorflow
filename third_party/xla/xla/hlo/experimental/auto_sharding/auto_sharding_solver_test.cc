@@ -104,11 +104,10 @@ AutoShardingSolverRequest DefaultAutoShardingSolverRequest() {
   edge2.set_first(1);
   edge2.set_second(2);
   const auto edges = {edge1, edge2};
-  const NodeMatrix live = {{1, 0},
-                           {1, 0},
-                           {1, 2, 0},
-                           {1, 2, 3, 0},
-                           {1, 3, 0}};
+  const std::vector<std::pair<int64_t, int64_t>> node_intervals =
+      {{0, 4}, {0, 4}, {2, 3}, {3, 4}, {100, -1}};
+  const std::vector<std::pair<int64_t, int64_t>> edge_intervals =
+      {{1, 2}, {2, 3}};
   const CostMatrix c = {{10, 11, 12, 13},
                         {20, 21, 22},
                         {30, 31, 32, 33},
@@ -163,7 +162,8 @@ AutoShardingSolverRequest DefaultAutoShardingSolverRequest() {
   request.mutable_s_len()->Add(s_len.begin(), s_len.end());
   request.mutable_s_follow()->Add(s_follow.begin(), s_follow.end());
   request.mutable_edges()->Add(edges.begin(), edges.end());
-  AddNodes(request.mutable_live(), live);
+  AddIntervals(request.mutable_node_intervals(), node_intervals);
+  AddIntervals(request.mutable_edge_intervals(), edge_intervals);
   AddCosts(request.mutable_computation_costs(), c);
   AddCosts(request.mutable_communication_costs(), d);
   AddCosts(request.mutable_memory_costs(), m);
@@ -188,11 +188,10 @@ AutoShardingSolverRequest AutoShardingSolverRequestWithEquivalences() {
   edge2.set_first(1);
   edge2.set_second(2);
   const auto edges = {edge1, edge2};
-  const NodeMatrix live = {{1, 0},
-                           {1, 0},
-                           {1, 2, 0},
-                           {1, 2, 3, 0},
-                           {1, 3, 0}};
+  const std::vector<std::pair<int64_t, int64_t>> node_intervals =
+      {{0, 4}, {0, 4}, {2, 3}, {3, 4}, {100, -1}};
+  const std::vector<std::pair<int64_t, int64_t>> edge_intervals =
+      {{1, 2}, {2, 3}};
   const CostMatrix c = {{10, 10, 10, 10},
                         {20, 20, 20},
                         {30, 30, 31, 30, 30, 30, 30},
@@ -246,7 +245,8 @@ AutoShardingSolverRequest AutoShardingSolverRequestWithEquivalences() {
   request.mutable_s_len()->Add(s_len.begin(), s_len.end());
   request.mutable_s_follow()->Add(s_follow.begin(), s_follow.end());
   request.mutable_edges()->Add(edges.begin(), edges.end());
-  AddNodes(request.mutable_live(), live);
+  AddIntervals(request.mutable_node_intervals(), node_intervals);
+  AddIntervals(request.mutable_edge_intervals(), edge_intervals);
   AddCosts(request.mutable_computation_costs(), c);
   AddCosts(request.mutable_communication_costs(), d);
   AddCosts(request.mutable_memory_costs(), m);
@@ -466,10 +466,6 @@ TEST(FormulateAndSolveMIPFromSolverRequestTest, HandlesMemoryEdgeCosts) {
 
 TEST(FormulateAndSolveMIPFromSolverRequestTest, HandlesIntervals) {
   AutoShardingSolverRequest request = DefaultAutoShardingSolverRequest();
-  const std::vector<std::pair<int64_t, int64_t>> node_intervals =
-      {{0, 4}, {0, 4}, {2, 3}, {3, 4}, {100, -1}};
-  const std::vector<std::pair<int64_t, int64_t>> edge_intervals =
-      {{1, 2}, {2, 3}};
   const CostMatrix memory_edge_costs = {{1000000, 1100, 1200, 1300,
                                          2000, 2100, 2200, 2300,
                                          3000, 3100, 3200, 3300,
@@ -477,9 +473,6 @@ TEST(FormulateAndSolveMIPFromSolverRequestTest, HandlesIntervals) {
                                         {5000000, 5100, 5200, 5300,
                                          6000, 6100, 6200, 6300,
                                          7000, 7100, 7200, 7300}};
-  request.clear_live();
-  AddIntervals(request.mutable_node_intervals(), node_intervals);
-  AddIntervals(request.mutable_edge_intervals(), edge_intervals);
   AddCosts(request.mutable_memory_edge_costs(), memory_edge_costs);
   request.set_enable_memory_edge_costs(true);
 
@@ -509,7 +502,8 @@ TEST(FormulateAndSolveMIPFromSolverRequestTest,
                                         {5000000, 5100, 5200, 5300,
                                          6000, 6100, 6200, 6300,
                                          7000, 7100, 7200, 7300}};
-  request.clear_live();
+  request.clear_node_intervals();
+  request.clear_edge_intervals();
   AddIntervals(request.mutable_node_intervals(), node_intervals);
   AddIntervals(request.mutable_edge_intervals(), edge_intervals);
   AddGroups(request.mutable_node_groups(), node_groups);
@@ -533,7 +527,8 @@ TEST(FormulateAndSolveMIPFromSolverRequestTest,
   const std::vector<std::pair<int64_t, int64_t>> node_intervals =
       {{5, -1}, {5, -1}, {2, 3}, {3, 4}, {100, -1}, {0, 4}};
   const std::vector<std::vector<int64_t>> node_groups = {{0, 1}};
-  request.clear_live();
+  request.clear_node_intervals();
+  request.clear_edge_intervals();
   AddIntervals(request.mutable_node_intervals(), node_intervals);
   AddGroups(request.mutable_node_groups(), node_groups);
   request.set_enable_memory_edge_costs(false);
@@ -569,7 +564,8 @@ TEST(FormulateAndSolveMIPFromSolverRequestTest,
                                         {0, 0, 0, 0,
                                          0, 0, 0, 0,
                                          0, 0, 0, 0}};
-  request.clear_live();
+  request.clear_node_intervals();
+  request.clear_edge_intervals();
   request.clear_memory_costs();
   AddIntervals(request.mutable_node_intervals(), node_intervals);
   AddIntervals(request.mutable_edge_intervals(), edge_intervals);
@@ -654,12 +650,8 @@ TEST(AutoShardingEvaluatorTest, EvaluatesOverbudget) {
 
 TEST(AutoShardingEvaluatorTest, EvaluatesOverbudgetWithIntervals) {
   AutoShardingSolverRequest request = DefaultAutoShardingSolverRequest();
-  const std::vector<std::pair<int64_t, int64_t>> node_intervals =
-      {{0, 4}, {0, 4}, {2, 3}, {3, 4}, {100, -1}};
   request.set_memory_budget(100000);
   request.mutable_overbudget_coeff()->set_coeff(10.0);
-  request.clear_live();
-  AddIntervals(request.mutable_node_intervals(), node_intervals);
   const std::vector<NodeStrategyIdx> s_val = {2 /* violates */, 1, 2, 2, 1};
   const double objective_value = 11138.0;
   const AutoShardingSolverOutput output = {s_val, objective_value};
@@ -690,7 +682,8 @@ TEST(AutoShardingEvaluatorTest,
   const std::vector<std::vector<int64_t>> node_groups = {{0, 1}};
   request.set_memory_budget(100000);
   request.mutable_overbudget_coeff()->set_coeff(10.0);
-  request.clear_live();
+  request.clear_node_intervals();
+  request.clear_edge_intervals();
   AddIntervals(request.mutable_node_intervals(), node_intervals);
   AddGroups(request.mutable_node_groups(), node_groups);
   const std::vector<NodeStrategyIdx> s_val = {2 /* violates */, 1, 2, 2, 1};
@@ -868,13 +861,14 @@ TEST(MinimumMemoryBudgetRequired, HandlesReducedIntervalsAndGroups) {
   const std::vector<std::pair<int64_t, int64_t>> node_intervals =
       {{5, -1}, {5, -1}, {2, 3}, {3, 4}, {100, -1}, {0, 4}};
   const std::vector<std::vector<int64_t>> node_groups = {{0, 1}};
-  request.clear_live();
+  request.clear_node_intervals();
+  request.clear_edge_intervals();
   AddIntervals(request.mutable_node_intervals(), node_intervals);
   AddGroups(request.mutable_node_groups(), node_groups);
   EXPECT_EQ(MinimumMemoryBudgetRequired(request), 1000000.0);
 }
 
-TEST(StableMap, IterationOrderDeterminism){
+TEST(StableMap, IterationOrderDeterminism) {
   StableMap<int, int> map;
   std::vector<int> insertion_order = {6, 3, 1, 2, 4, 5, 10, 0, 7, 9, 8};
   for (int key : insertion_order) {

@@ -85,45 +85,36 @@ bool AutoShardingSolverOutput::operator==(
 
 double MinimumMemoryBudgetRequired(const AutoShardingSolverRequest& request) {
   std::vector<double> min_memory_required;
-  if (request.node_intervals().empty()) {  // Handles live matrices.
-    min_memory_required.resize(request.live_size(), 0.0);
-    for (LivenessIdx time_idx = 0; time_idx < request.live_size(); ++time_idx) {
-      for (NodeIdx node_idx : request.live(time_idx).nodes()) {
-        const auto& m = request.memory_costs(node_idx).costs();
-        const double fixed_memory_cost = *std::min_element(m.begin(), m.end());
-        min_memory_required[time_idx] += fixed_memory_cost;
-      }
+  std::vector<double> min_memory_required_group;
+  for (const auto& group : request.node_groups()) {
+    double fixed_memory_cost = 0.0;
+    for (const NodeIdx node_idx : group.prims()) {
+      const auto& m = request.memory_costs(node_idx).costs();
+      fixed_memory_cost += *std::min_element(m.begin(), m.end());
     }
-  } else {  // Handles the interval-based memory representation.
-    std::vector<double> min_memory_required_group;
-    for (const auto& group : request.node_groups()) {
-      double fixed_memory_cost = 0.0;
-      for (const NodeIdx node_idx : group.prims()) {
-        const auto& m = request.memory_costs(node_idx).costs();
-        fixed_memory_cost += *std::min_element(m.begin(), m.end());
-      }
-      min_memory_required_group.push_back(fixed_memory_cost);
+    min_memory_required_group.push_back(fixed_memory_cost);
+  }
+  for (NodeIdx node_idx = 0; node_idx < request.node_intervals_size();
+       ++node_idx) {
+    const auto& interval = request.node_intervals(node_idx);
+    if (interval.first() > interval.second()) {
+      continue;
     }
-    for (NodeIdx node_idx = 0; node_idx < request.node_intervals_size();
-         ++node_idx) {
-      const auto& interval = request.node_intervals(node_idx);
-      if (interval.first() > interval.second()) continue;
-      // Expand cost vectors if needed to cover the range of this interval.
-      while (min_memory_required.size() <= interval.second()) {
-        min_memory_required.push_back(0.0);
-      }
-      double fixed_memory_cost = 0.0;
-      if (node_idx < request.num_nodes()) {
-        const auto& m = request.memory_costs(node_idx).costs();
-        fixed_memory_cost = *std::min_element(m.begin(), m.end());
-      } else {
-        int64_t group_idx = node_idx - request.num_nodes();
-        fixed_memory_cost = min_memory_required_group[group_idx];
-      }
-      for (LivenessIdx time_idx = interval.first();
-           time_idx <= interval.second(); ++time_idx) {
-        min_memory_required[time_idx] += fixed_memory_cost;
-      }
+    // Expand cost vectors if needed to cover the range of this interval.
+    while (min_memory_required.size() <= interval.second()) {
+      min_memory_required.push_back(0.0);
+    }
+    double fixed_memory_cost = 0.0;
+    if (node_idx < request.num_nodes()) {
+      const auto& m = request.memory_costs(node_idx).costs();
+      fixed_memory_cost = *std::min_element(m.begin(), m.end());
+    } else {
+      int64_t group_idx = node_idx - request.num_nodes();
+      fixed_memory_cost = min_memory_required_group[group_idx];
+    }
+    for (LivenessIdx time_idx = interval.first(); time_idx <= interval.second();
+         ++time_idx) {
+      min_memory_required[time_idx] += fixed_memory_cost;
     }
   }
   double min_memory_budget_required_estimate = 0.0;
@@ -341,10 +332,7 @@ absl::StatusOr<AutoShardingSolverOutput> SolveAndExtractSolution(
 // create constrained variables for the subsequent groups.
 std::optional<std::pair<int64_t, int64_t>> ReduceMemoryTerms(
     const AutoShardingSolverRequest& request, MPSolver& solver,
-    int64_t num_lives, int64_t num_primitives,
-    const std::function<
-        tsl::protobuf::RepeatedField<int64_t>(int64_t)>&  // NOLINT
-        live,
+    int64_t num_primitives,
     const tsl::protobuf::RepeatedPtrField<  // NOLINT
         AutoShardingSolverRequest_Pair>& intervals,
     const tsl::protobuf::RepeatedPtrField<  // NOLINT
@@ -360,8 +348,9 @@ std::optional<std::pair<int64_t, int64_t>> ReduceMemoryTerms(
   std::optional<std::pair<int64_t, int64_t>> num_terms = std::nullopt;
   std::vector<absl::btree_set<int64_t>> reduced_groups;
   if (groups.empty()) {
-    // If we've been given primitive intervals instead of a liveness matrix, we
-    // need to update the # of lives in order to use the memory term reducer.
+    // We need to compute the number of lives in order to use the memory term
+    // reducer.
+    int64_t num_lives = 0;
     for (const auto& interval : intervals) {
       if (interval.first() > interval.second()) continue;  // Interval undefined
       num_lives = std::max(num_lives, interval.second() + 1);
@@ -371,10 +360,7 @@ std::optional<std::pair<int64_t, int64_t>> ReduceMemoryTerms(
       return {intervals.at(prim_idx).first(), intervals.at(prim_idx).second()};
     };
     MemoryTermReducer reducer;
-    num_terms =
-        intervals.empty()
-            ? reducer.Reduce(num_lives, num_primitives, live)
-            : reducer.Reduce(num_lives, num_primitives, std::move(Intervals));
+    num_terms = reducer.Reduce(num_lives, num_primitives, std::move(Intervals));
     reduced_intervals = reducer.GetReducedIntervals();
     reduced_groups = reducer.GetReducedGroups();
   } else {  // If we've already done term reduction, just copy over the results.
@@ -720,30 +706,20 @@ absl::StatusOr<AutoShardingSolverOutput> FormulateAndSolveMIPFromSolverRequest(
   }
   // c.
   if (request.memory_budget() > 0) {
-    auto LiveNodes =
-        [request](int64_t live_idx) -> tsl::protobuf::RepeatedField<int64_t> {
-      return request.live(live_idx).nodes();
-    };
-    auto LiveEdges =
-        [request](int64_t live_idx) -> tsl::protobuf::RepeatedField<int64_t> {
-      return request.live_edges(live_idx).edges();
-    };
     std::vector<std::pair<int64_t, int64_t>> reduced_intervals_nodes,
         reduced_intervals_edges;
     absl::flat_hash_set<int64_t> reduced_times;
     std::vector<MPVariable*> group_node_vars, group_edge_vars;
     std::optional<std::pair<int64_t, int64_t>> num_node_terms, num_edge_terms;
     num_node_terms = ReduceMemoryTerms(
-        request, *solver, request.live_size(), request.num_nodes(),
-        std::move(LiveNodes), request.node_intervals(), request.node_groups(),
-        request.memory_costs(), "node", s, reduced_intervals_nodes,
-        group_node_vars, reduced_times);
+        request, *solver, request.num_nodes(), request.node_intervals(),
+        request.node_groups(), request.memory_costs(), "node", s,
+        reduced_intervals_nodes, group_node_vars, reduced_times);
     if (request.enable_memory_edge_costs()) {
       num_edge_terms = ReduceMemoryTerms(
-          request, *solver, request.live_edges_size(), request.edges_size(),
-          std::move(LiveEdges), request.edge_intervals(), request.edge_groups(),
-          request.memory_edge_costs(), "edge", e, reduced_intervals_edges,
-          group_edge_vars, reduced_times);
+          request, *solver, request.edges_size(), request.edge_intervals(),
+          request.edge_groups(), request.memory_edge_costs(), "edge", e,
+          reduced_intervals_edges, group_edge_vars, reduced_times);
     }
     absl::flat_hash_map<LivenessIdx, MPConstraint*> constraints;
     AddMemoryTerms(request, *solver, request.num_nodes(),
@@ -997,16 +973,6 @@ std::optional<AutoShardingViolationCode> ShardingStrategyHasViolation(
       return AutoShardingViolationCode::kInfiniteCostViolationCode;
     }
   }
-  // Check that the peak-memory constraint is satisfied at each time step t.
-  for (LivenessIdx t = 0; t < request.live_size(); ++t) {
-    double live_memory = 0.0;
-    for (NodeIdx v : request.live(t).nodes()) {
-      live_memory += request.memory_costs(v).costs(node_strategies[v]);
-      if (live_memory > request.memory_budget()) {
-        return AutoShardingViolationCode::kMemoryViolationCode;
-      }
-    }
-  }
   return std::nullopt;
 }
 
@@ -1203,76 +1169,55 @@ AutoShardingEvaluation Evaluate(const AutoShardingSolverRequest& request,
   }
   if (request.memory_budget() > 0) {
     std::vector<double> total_memory_costs, lower_bound_memory_costs;
-    if (request.node_intervals().empty()) {  // Handles live matrices.
-      total_memory_costs.resize(request.live_size(), 0.0);
-      lower_bound_memory_costs.resize(request.live_size(), 0.0);
-      for (LivenessIdx time_idx = 0; time_idx < request.live_size();
-           ++time_idx) {
-        for (NodeIdx node_idx : request.live(time_idx).nodes()) {
-          const auto& m = request.memory_costs(node_idx).costs();
-          total_memory_costs[time_idx] += m[s_val[node_idx]];
-          lower_bound_memory_costs[time_idx] +=
-              *std::min_element(m.begin(), m.end());
-        }
-        if (!request.live_edges().empty() &&
-            request.enable_memory_edge_costs()) {
-          for (EdgeIdx edge_idx : request.live_edges(time_idx).edges()) {
-            const auto& m = request.memory_edge_costs(edge_idx).costs();
-            total_memory_costs[time_idx] += m[e_val(edge_idx)];
-            lower_bound_memory_costs[time_idx] +=
-                *std::min_element(m.begin(), m.end());
-          }
-        }
+    std::vector<double> total_node_group_costs, total_edge_group_costs,
+        lower_bound_node_group_costs, lower_bound_edge_group_costs;
+    for (const auto& group : request.node_groups()) {
+      double total_group_cost = 0.0;
+      double lower_bound_group_cost = 0.0;
+      for (const NodeIdx node_idx : group.prims()) {
+        const auto& m = request.memory_costs(node_idx).costs();
+        total_group_cost += m[s_val[node_idx]];
+        lower_bound_group_cost += *std::min_element(m.begin(), m.end());
       }
-    } else {  // Handles the interval-based memory representation.
-      std::vector<double> total_node_group_costs, total_edge_group_costs,
-          lower_bound_node_group_costs, lower_bound_edge_group_costs;
-      for (const auto& group : request.node_groups()) {
-        double total_group_cost = 0.0;
-        double lower_bound_group_cost = 0.0;
-        for (const NodeIdx node_idx : group.prims()) {
-          const auto& m = request.memory_costs(node_idx).costs();
-          total_group_cost += m[s_val[node_idx]];
-          lower_bound_group_cost += *std::min_element(m.begin(), m.end());
-        }
-        total_node_group_costs.push_back(total_group_cost);
-        lower_bound_node_group_costs.push_back(lower_bound_group_cost);
+      total_node_group_costs.push_back(total_group_cost);
+      lower_bound_node_group_costs.push_back(lower_bound_group_cost);
+    }
+    for (const auto& group : request.edge_groups()) {
+      double total_group_cost = 0.0;
+      double lower_bound_group_cost = 0.0;
+      for (const EdgeIdx edge_idx : group.prims()) {
+        const auto& m = request.memory_edge_costs(edge_idx).costs();
+        total_group_cost += m[e_val(edge_idx)];
+        lower_bound_group_cost += *std::min_element(m.begin(), m.end());
       }
-      for (const auto& group : request.edge_groups()) {
-        double total_group_cost = 0.0;
-        double lower_bound_group_cost = 0.0;
-        for (const EdgeIdx edge_idx : group.prims()) {
-          const auto& m = request.memory_edge_costs(edge_idx).costs();
-          total_group_cost += m[e_val(edge_idx)];
-          lower_bound_group_cost += *std::min_element(m.begin(), m.end());
-        }
-        total_edge_group_costs.push_back(total_group_cost);
-        lower_bound_edge_group_costs.push_back(lower_bound_group_cost);
+      total_edge_group_costs.push_back(total_group_cost);
+      lower_bound_edge_group_costs.push_back(lower_bound_group_cost);
+    }
+    for (NodeIdx node_idx = 0; node_idx < request.node_intervals_size();
+         ++node_idx) {
+      const auto& interval = request.node_intervals(node_idx);
+      if (interval.first() > interval.second()) {
+        continue;
       }
-      for (NodeIdx node_idx = 0; node_idx < request.node_intervals_size();
-           ++node_idx) {
-        const auto& interval = request.node_intervals(node_idx);
-        if (interval.first() > interval.second()) continue;
-        // Expand cost vectors if needed to cover the range of this interval.
-        while (total_memory_costs.size() <= interval.second()) {
-          total_memory_costs.push_back(0.0);
-          lower_bound_memory_costs.push_back(0.0);
-        }
-        double total_memory_cost = 0.0, lower_bound_memory_cost = 0.0;
-        if (node_idx < request.num_nodes()) {
-          const auto& m = request.memory_costs(node_idx).costs();
-          total_memory_cost = m[s_val[node_idx]];
-          lower_bound_memory_cost = *std::min_element(m.begin(), m.end());
-        } else {
-          int64_t group_idx = node_idx - request.num_nodes();
-          total_memory_cost = total_node_group_costs[group_idx];
-          lower_bound_memory_cost = lower_bound_node_group_costs[group_idx];
-        }
-        for (LivenessIdx time_idx = interval.first();
-             time_idx <= interval.second(); ++time_idx) {
-          total_memory_costs[time_idx] += total_memory_cost;
-          lower_bound_memory_costs[time_idx] += lower_bound_memory_cost;
-        }
+      // Expand cost vectors if needed to cover the range of this interval.
+      while (total_memory_costs.size() <= interval.second()) {
+        total_memory_costs.push_back(0.0);
+        lower_bound_memory_costs.push_back(0.0);
+      }
+      double total_memory_cost = 0.0, lower_bound_memory_cost = 0.0;
+      if (node_idx < request.num_nodes()) {
+        const auto& m = request.memory_costs(node_idx).costs();
+        total_memory_cost = m[s_val[node_idx]];
+        lower_bound_memory_cost = *std::min_element(m.begin(), m.end());
+      } else {
+        int64_t group_idx = node_idx - request.num_nodes();
+        total_memory_cost = total_node_group_costs[group_idx];
+        lower_bound_memory_cost = lower_bound_node_group_costs[group_idx];
+      }
+      for (LivenessIdx time_idx = interval.first();
+           time_idx <= interval.second(); ++time_idx) {
+        total_memory_costs[time_idx] += total_memory_cost;
+        lower_bound_memory_costs[time_idx] += lower_bound_memory_cost;
       }
       if (request.enable_memory_edge_costs()) {
         for (EdgeIdx edge_idx = 0; edge_idx < request.edge_intervals_size();

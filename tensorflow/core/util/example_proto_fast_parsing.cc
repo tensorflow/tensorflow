@@ -1582,9 +1582,10 @@ absl::Status FastParseSingleExample(const Config& config,
       return errors::InvalidArgument("Key: ", feature_name, ".  ", suffix);
     };
 
-    auto parse_error = [feature_name] {
-      return errors::InvalidArgument("Key: ", feature_name,
-                                     ".  Can't parse serialized Example.");
+    auto parse_error = [feature_name](absl::string_view description) {
+      return errors::InvalidArgument(
+          "Key: ", feature_name,
+          ".  Can't parse serialized Example: ", description);
     };
 
     DataType example_dtype;
@@ -1619,27 +1620,30 @@ absl::Status FastParseSingleExample(const Config& config,
         case DT_INT64: {
           auto out_p = out->flat<int64_t>().data();
           LimitedArraySlice<int64_t> slice(out_p, num_elements);
-          if (!feature.ParseInt64List(&slice)) return parse_error();
+          if (!feature.ParseInt64List(&slice))
+            return parse_error("Parsing int64_list failed.");
           if (slice.EndDistance() != 0) {
-            return parse_error();
+            return parse_error("Some int64_list slice was not parsed.");
           }
           break;
         }
         case DT_FLOAT: {
           auto out_p = out->flat<float>().data();
           LimitedArraySlice<float> slice(out_p, num_elements);
-          if (!feature.ParseFloatList(&slice)) return parse_error();
+          if (!feature.ParseFloatList(&slice))
+            return parse_error("Parsing float_list failed.");
           if (slice.EndDistance() != 0) {
-            return parse_error();
+            return parse_error("Some float_list slice was not parsed.");
           }
           break;
         }
         case DT_STRING: {
           auto out_p = out->flat<tstring>().data();
           LimitedArraySlice<tstring> slice(out_p, num_elements);
-          if (!feature.ParseBytesList(&slice)) return parse_error();
+          if (!feature.ParseBytesList(&slice))
+            return parse_error("Parsing bytes_list failed.");
           if (slice.EndDistance() != 0) {
-            return parse_error();
+            return parse_error("Some bytes_list slice was not parsed.");
           }
           break;
         }
@@ -1697,22 +1701,25 @@ absl::Status FastParseSingleExample(const Config& config,
         case DT_INT64: {
           // TODO(mrry): Use the fact that the `int64_list` is packed to read
           // out the length and pre-allocate the output tensor.
-          if (!feature.ParseInt64List(&int64_list)) return parse_error();
+          if (!feature.ParseInt64List(&int64_list))
+            return parse_error("Parsing int64_list failed.");
           num_elements = int64_list.size();
           break;
         }
         case DT_FLOAT: {
-          if (!feature.ParseFloatList(&float_list)) return parse_error();
+          if (!feature.ParseFloatList(&float_list))
+            return parse_error("Parsing float_list failed.");
           num_elements = float_list.size();
           break;
         }
         case DT_STRING: {
           int actual_num_elements = 0;
           if (!feature.GetNumElementsInBytesList(&actual_num_elements)) {
-            return parse_error();
+            return parse_error("Could not get num elements in bytes_list.");
           }
           bytes_list.reserve(actual_num_elements);
-          if (!feature.ParseBytesList(&bytes_list)) return parse_error();
+          if (!feature.ParseBytesList(&bytes_list))
+            return parse_error("Parsing bytes_list failed.");
           num_elements = bytes_list.size();
           break;
         }
@@ -1778,7 +1785,9 @@ absl::Status FastParseSingleExample(const Config& config,
         }
         case DT_FLOAT: {
           if (!out->CopyFrom(float_list.tensor(), out_shape)) {
-            return parse_error();
+            return parse_error(absl::StrCat("Size of float_list is ",
+                                            float_list.tensor().dims(),
+                                            ", expected ", out_shape.dims()));
           }
           break;
         }
