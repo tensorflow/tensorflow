@@ -22,12 +22,7 @@ limitations under the License.
 #include "pybind11/pytypes.h"  // from @pybind11
 #include "pybind11/stl.h"  // from @pybind11
 #include "tensorflow/c/eager/c_api_experimental_reader.h"
-#include "tensorflow/c/eager/tfe_monitoring_reader_internal.h"
-#include "tensorflow/python/lib/core/py_exception_registry.h"
 #include "tensorflow/python/lib/core/pybind11_lib.h"
-#include "tensorflow/python/lib/core/pybind11_status.h"
-#include "tensorflow/python/lib/core/safe_pyobject_ptr.h"
-#include "tensorflow/python/util/util.h"
 
 namespace py = pybind11;
 
