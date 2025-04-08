@@ -169,7 +169,7 @@ bool PrepareQuantizePass::SetInputNodesQuantizationParams(func::FuncOp func) {
 
   // If the validation fails, the pass should stop immediately.
   if (!IsLegalQuantSpecs(func)) {
-    return true;
+    return false;
   }
 
   OpBuilder builder(func);
@@ -215,7 +215,7 @@ bool PrepareQuantizePass::SetInputNodesQuantizationParams(func::FuncOp func) {
                     std::next(arg_block->begin(), i), arg, i);
   }
 
-  return false;
+  return true;
 }
 
 #include "tensorflow/compiler/mlir/lite/utils/generated_op_quant_spec_getters.inc"
