@@ -8128,12 +8128,11 @@ absl::Status CudnnGraph::Build(dnn::DnnSupport& dnn_support,
   RETURN_CUDNN_FRONTEND_STATUS(graph_.build_plans(cudnn->handle()));
 }
 
-absl::Status CudnnGraph::Execute(Stream& stream,
-                                 absl::Span<DeviceMemoryBase> operands,
-                                 int64_t local_device_ordinal) const {
-  std::unordered_map<int64_t, void*> tensor_to_ptr_map;
+CudnnGraph::VariantPack CudnnGraph::PackOperands(
+    absl::Span<DeviceMemoryBase> operands, DeviceMemoryBase& workspace,
+    std::optional<int64_t> local_device_ordinal) const {
+  CudnnGraph::VariantPack tensor_to_ptr_map;
   absl::Span<DeviceMemoryBase> operands_without_workspace = operands;
-  DeviceMemoryBase workspace;
   if (graph_.get_workspace_size() > 0) {
     workspace = operands.back();
     CHECK_EQ(graph_.get_workspace_size(), workspace.size());
@@ -8147,17 +8146,64 @@ absl::Status CudnnGraph::Execute(Stream& stream,
   }
 
   if (dropout_rng_offset_increment_ > 0) {
-    UpdateDropoutState(local_device_ordinal);
+    CHECK(local_device_ordinal.has_value());
+    UpdateDropoutState(*local_device_ordinal);
     tensor_to_ptr_map[next_uid()] = (void*)&dropout_rng_seed_;
     tensor_to_ptr_map[next_uid()] =
-        (void*)&current_dropout_rng_offset_[local_device_ordinal];
+        (void*)&current_dropout_rng_offset_[*local_device_ordinal];
   }
+
+  return tensor_to_ptr_map;
+}
+
+absl::Status CudnnGraph::Execute(Stream& stream,
+                                 absl::Span<DeviceMemoryBase> operands,
+                                 int64_t local_device_ordinal) const {
+  DeviceMemoryBase workspace;
+  VariantPack tensor_to_ptr_map =
+      PackOperands(operands, workspace, local_device_ordinal);
 
   const CudnnSupport& dnn_support =
       static_cast<CudnnSupport&>(*stream.parent()->AsDnn());
-  auto cudnn = dnn_support.cudnn_->GetHandle(stream.parent(), &stream);
+  CudnnHandle cudnn = dnn_support.cudnn_->GetHandle(stream.parent(), &stream);
+
   RETURN_CUDNN_FRONTEND_STATUS(
       graph_.execute(cudnn.handle(), tensor_to_ptr_map, workspace.opaque()));
+}
+
+absl::StatusOr<bool> CudnnGraph::SupportsExplicitCommandBufferConstruction()
+    const {
+  std::vector<cudnn_frontend::BehaviorNote_t> notes;
+  RETURN_IF_CUDNN_FRONTEND_ERROR(graph_.get_behavior_notes(notes));
+  bool result = absl::c_any_of(notes, [](cudnn_frontend::BehaviorNote_t n) {
+    return n == cudnn_frontend::BehaviorNote_t::SUPPORTS_CUDA_GRAPH_NATIVE_API;
+  });
+  if (!result) {
+    VLOG(5) << "Graph does not support CUDA graph native API:\n"
+            << graph_.print();
+  }
+  return result;
+}
+
+absl::Status CudnnGraph::PopulateOrUpdateRawCommandBuffer(
+    Stream& stream, absl::Span<DeviceMemoryBase> operands,
+    RawCommandBufferHandle cuda_graph, bool do_update) {
+  DeviceMemoryBase workspace;
+  VariantPack tensor_to_ptr_map = PackOperands(operands, workspace);
+
+  const CudnnSupport& dnn_support =
+      static_cast<CudnnSupport&>(*stream.parent()->AsDnn());
+  CudnnHandle cudnn = dnn_support.cudnn_->GetHandle(stream.parent(), &stream);
+
+  if (do_update) {
+    RETURN_CUDNN_FRONTEND_STATUS(
+        graph_.update_cuda_graph(cudnn.handle(), tensor_to_ptr_map,
+                                 workspace.opaque(), (cudaGraph_t)cuda_graph));
+  } else {
+    RETURN_CUDNN_FRONTEND_STATUS(graph_.populate_cuda_graph(
+        cudnn.handle(), tensor_to_ptr_map, workspace.opaque(),
+        (cudaGraph_t)cuda_graph));
+  }
 }
 
 }  // namespace gpu

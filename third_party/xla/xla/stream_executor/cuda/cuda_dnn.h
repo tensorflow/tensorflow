@@ -75,12 +75,21 @@ class CudnnGraph : public dnn::DnnGraph {
     current_dropout_rng_offset_[local_device_ordinal] +=
         dropout_rng_offset_increment_;
   }
+  absl::StatusOr<bool> SupportsExplicitCommandBufferConstruction()
+      const override;
+  absl::Status PopulateOrUpdateRawCommandBuffer(
+      Stream&, absl::Span<DeviceMemoryBase> operands, RawCommandBufferHandle,
+      bool do_update) override;
 
  private:
   cudnn_frontend::graph::Graph graph_;
   int64_t dropout_rng_seed_;
   mutable std::vector<int64_t> current_dropout_rng_offset_;
   int64_t dropout_rng_offset_increment_ = 0;
+  using VariantPack = std::unordered_map<int64_t, void*>;
+  VariantPack PackOperands(
+      absl::Span<DeviceMemoryBase> operands, DeviceMemoryBase& workspace,
+      std::optional<int64_t> local_device_ordinal = std::nullopt) const;
 };
 
 // cudnn-library based DNN support. For details on overridden interface
