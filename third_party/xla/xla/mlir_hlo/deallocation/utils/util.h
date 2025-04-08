@@ -19,7 +19,6 @@ limitations under the License.
 #include <optional>
 #include <set>
 
-#include "llvm/ADT/EquivalenceClasses.h"
 #include "mlir/Interfaces/ControlFlowInterfaces.h"
 
 namespace mlir {
@@ -136,8 +135,6 @@ namespace breaks_if_you_move_ops {
 
 // The comparator depends on the location of ops, so if you insert an op into
 // a set and then move it, it may end up in the wrong location.
-using ValueEquivalenceClasses =
-    llvm::EquivalenceClasses<Value, detail::ValueComparator>;
 using ValueSet = std::set<Value, detail::ValueComparator>;
 template <typename T>
 using ValueMap = std::map<Value, T, detail::ValueComparator>;
