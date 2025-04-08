@@ -60,6 +60,20 @@ cc_library(
 )
 
 cc_library(
+    name = "ptx_version_util",
+    srcs = [
+        "ptx_version_util.cc",
+    ],
+    hdrs = [
+        "ptx_version_util.h",
+    ],
+    deps = [
+        "//xla/stream_executor:semantic_version",
+        "@com_google_absl//absl/status:statusor",
+    ],
+)
+
+cc_library(
     name = "nvptx_backend",
     srcs = [
         "nvptx_backend.cc",
@@ -75,6 +89,7 @@ cc_library(
         ":llvm_gpu_backend",
         ":load_ir_module",
         ":nvptx_libdevice_path",
+        ":ptx_version_util",
         "//xla:util",
         "//xla:xla_proto_cc",
         "//xla/service/gpu:metrics",

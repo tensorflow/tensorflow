@@ -38,6 +38,7 @@ gentbl_cc_library(
 cc_library(
     name = "passes",
     srcs = [
+        "convert_float_amd.cc",
         "convert_float_nvidia.cc",
         "convert_index_type.cc",
         "fuse_loops.cc",

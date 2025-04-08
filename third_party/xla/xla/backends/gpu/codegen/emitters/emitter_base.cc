@@ -105,6 +105,7 @@ limitations under the License.
 #include "xla/service/gpu/kernel_arguments.h"
 #include "xla/service/gpu/kernel_reuse_cache.h"
 #include "xla/service/gpu/launch_dimensions.h"
+#include "xla/service/gpu/llvm_gpu_backend/ptx_version_util.h"
 #include "xla/service/gpu/target_util.h"
 #include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/shape.h"
@@ -656,9 +657,23 @@ void AddLoweringPasses(mlir::OpPassManager& pm,
   pm.addPass(mlir::createCSEPass());
 
   // This pass has to run before `ExpandFloatOpsPass`.
-  auto maybe_convert_fp8 = MaybeCreateConvertFloatNvidiaPass(device);
-  if (maybe_convert_fp8.has_value()) {
-    pm.addPass(std::move(*maybe_convert_fp8));
+  if (auto* cc = std::get_if<se::CudaComputeCapability>(
+          &device.gpu_compute_capability())) {
+    se::SemanticVersion ptx_version =
+        nvptx::DetermineHighestSupportedPtxVersionFromCudaVersion(
+            device.runtime_version());
+
+    // FP8 conversion intrinsics are available on sm89 since ptx 8.1
+    // Older ptx versions only support FP8 conversion for sm90
+    if ((ptx_version >= se::SemanticVersion(8, 1, 0) && cc->IsAtLeast(8, 9)) ||
+        (ptx_version >= se::SemanticVersion(7, 8, 0) && cc->IsAtLeast(9, 0))) {
+      pm.addPass(CreateConvertFloatNvidiaPass());
+    }
+  } else if (auto* cc = std::get_if<se::RocmComputeCapability>(
+                 &device.gpu_compute_capability())) {
+    if (cc->has_fp8_support()) {
+      pm.addPass(CreateConvertFloatAMDPass(*cc));
+    }
   }
 
   pm.addPass(emitters::CreateExpandFloatOpsPass());
