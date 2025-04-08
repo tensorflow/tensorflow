@@ -1211,7 +1211,7 @@ ENTRY e {
 
 TEST_F(TritonGemmTest,
        BroadcastsOfTriviallySizedNonContractingDimensionsAreSupported) {
-  EXPECT_TRUE(RunAndCompare(R"(
+  constexpr absl::string_view kHloText = R"(
 f {
   p0 = f32[64,6464] parameter(0)
   p1 = f32[16,6464] parameter(1)
@@ -1232,8 +1232,13 @@ e {
     kind=kCustom, calls=f, backend_config={"fusion_backend_config": {"kind":"__triton_gemm",
     "triton_gemm_config": {"block_m":"16","block_n":"16","block_k":"64","split_k":"1",
           "num_stages":"1","num_warps":"4","num_ctas":"1"}}}
-})",
-                            ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
+})";
+  TF_ASSERT_OK_AND_ASSIGN(ModuleAndNestedFusionMetadata module_and_metadata,
+                          GetModuleAndNestedFusionMetadata(kHloText));
+
+  EXPECT_TRUE(
+      RunAndCompareNoHloPasses(std::move(module_and_metadata.module),
+                               ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
 }
 
 TEST_F(TritonGemmTest,
