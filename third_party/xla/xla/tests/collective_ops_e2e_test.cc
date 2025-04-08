@@ -3058,5 +3058,50 @@ ENTRY main {
   }
 }
 
+TEST_F(CollectiveOpsTestE2E, AllgatherMemspaceWithNcclUserBuffer) {
+  absl::string_view hlo_string = R"(
+HloModule AllgatherMemspaceWithNcclUserBuffer, entry_computation_layout={(bf16[1024,1024]{1,0},bf16[1024,1024]{1,0})->bf16[4096,1024]{1,0}}, num_partitions=4
+
+ENTRY main {
+  Arg_1 = bf16[1024,1024]{1,0} parameter(0)
+  Arg_2 = bf16[1024,1024]{1,0} parameter(1)
+
+  add = bf16[1024,1024]{1,0} add(Arg_1, Arg_2)
+  all-gather-start = (bf16[1024,1024]{1,0},bf16[4096,1024]{1,0}) all-gather-start(add), dimensions={0}
+  all-gather-done = bf16[4096,1024]{1,0} all-gather-done(all-gather-start)
+
+  ROOT add2 = bf16[4096,1024]{1,0} add(all-gather-done, all-gather-done)
+} // main
+)";
+
+  const int64_t kNumReplicas = 1;
+  const int64_t kNumPartitions = 4;
+  if (test_runner().device_count() < kNumReplicas * kNumPartitions) {
+    GTEST_SKIP() << "Test requires at least " << kNumReplicas * kNumPartitions
+                 << " devices (" << test_runner().device_count()
+                 << " available)";
+  }
+
+  HloModuleConfig config = GetModuleConfigForTest(kNumReplicas, kNumPartitions);
+  auto opts = GetDebugOptionsForTest();
+  opts.set_xla_gpu_enable_nccl_user_buffers(true);
+  opts.add_xla_disable_hlo_passes("gpu-convert-async-collectives-to-sync");
+
+  config.set_debug_options(opts);
+  config.set_use_spmd_partitioning(false);
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string, config));
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto executable,
+      CreateExecutable(std::move(module), /*run_hlo_passes=*/false));
+  TF_ASSERT_OK_AND_ASSIGN(const HloModule* const executable_module,
+                          test_runner().HloModuleFromWrapped(executable.get()));
+  HloInstruction* ag_start =
+      FindInstructions(executable_module, HloOpcode::kAllGatherStart)[0];
+  // Both ag and its producer should have collective memory space 1
+  EXPECT_EQ(ag_start->shape().tuple_shapes()[1].layout().memory_space(), 1);
+  EXPECT_EQ(ag_start->operand(0)->shape().layout().memory_space(), 1);
+}
+
 }  // namespace
 }  // namespace xla
