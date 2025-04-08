@@ -72,6 +72,19 @@ bool SameLocalTopology(const LocalTopologyProto& a,
   return true;
 }
 
+// Returns true if all devices have a valid fabric_uuid.
+bool HasFabricUuid(absl::Span<LocalTopologyProto> local_topologies) {
+  for (const LocalTopologyProto& local : local_topologies) {
+    for (const DeviceProto& device : local.devices()) {
+      if (device.fabric_uuid().empty() ||
+          device.fabric_uuid() == "00000000-0000-0000-0000-000000000000/0") {
+        return false;
+      }
+    }
+  }
+  return true;
+}
+
 }  // namespace
 
 // Exists on Linux systems. Unique per OS kernel restart.
@@ -174,25 +187,28 @@ absl::StatusOr<GlobalTopologyProto> BuildGlobalTopology(
       }
     }
   } else {
-    // Assign local devices of the same host to the same slice_index.
-    absl::flat_hash_map<std::string, int> boot_id_to_slice_index;
+    // Assign local devices of the same fabric_uuid/boot_id to the same
+    // slice_index.
+    const bool has_fabric_uuid = HasFabricUuid(local_topologies);
+    absl::flat_hash_map<std::string, int> id_to_slice_index;
     for (LocalTopologyProto& local : local_topologies) {
       if (local.has_slice_index()) {
         return InvalidArgument(
             "Either all of or none of the local topologies "
             "should explicitly set slice_index");
       }
-      // Every new boot_id seen is treated as a new host/slice.
-      auto [it, _] = boot_id_to_slice_index.try_emplace(
-          local.boot_id(), boot_id_to_slice_index.size());
       for (DeviceProto& device : *local.mutable_devices()) {
+        // Each new fabric_uuid/boot_id seen is treated as a new slice.
+        auto [it, _] = id_to_slice_index.try_emplace(
+            has_fabric_uuid ? device.fabric_uuid() : local.boot_id(),
+            id_to_slice_index.size());
         device.set_slice_index(it->second);
       }
     }
     if (VLOG_IS_ON(10)) {
-      for (auto it = boot_id_to_slice_index.begin();
-           it != boot_id_to_slice_index.end(); ++it) {
-        LOG(INFO) << "BuildGlobalTopology boot_id_to_slice_index " << it->first
+      for (auto it = id_to_slice_index.begin(); it != id_to_slice_index.end();
+           ++it) {
+        LOG(INFO) << "BuildGlobalTopology id_to_slice_index " << it->first
                   << "->" << it->second;
       }
     }

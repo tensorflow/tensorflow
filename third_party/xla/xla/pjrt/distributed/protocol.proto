@@ -58,7 +58,8 @@ message DeviceProto {
   int32 global_device_id = 4;  // Globally unique ID number.
 
   // Devices with the same slice_index are connected by fast network, e.g.
-  // NVLink on GPUs.
+  // NVLink on GPUs. Note that fast-interconnect can be cross-host, i.e. a
+  // slice may include multiple hosts.
   int32 slice_index = 5;
 
   // Store vendor-specific compute capability.
