@@ -26,7 +26,6 @@ cc_library(
         "//xla:types",
         "//xla:util",
         "//xla/tsl/distributed_runtime/coordination:coordination_service",
-        "//xla/tsl/distributed_runtime/coordination:coordination_service_impl",
         "//xla/tsl/distributed_runtime/rpc:async_service_interface",
         "//xla/tsl/distributed_runtime/rpc/coordination:grpc_coordination_service_impl",
         "//xla/tsl/protobuf:coordination_config_proto_cc",

@@ -2166,8 +2166,9 @@ void CoordinationServiceStandaloneImpl::CompleteShutdownAfterBarrier(
 }
 }  // namespace
 
-std::unique_ptr<CoordinationServiceInterface> EnableCoordinationService(
-    Env* env, const CoordinationServiceConfig& config,
+std::unique_ptr<CoordinationServiceInterface>
+CoordinationServiceInterface::EnableCoordinationService(
+    Env* env, const tensorflow::CoordinationServiceConfig& config,
     std::unique_ptr<CoordinationClientCache> cache) {
   return std::make_unique<CoordinationServiceStandaloneImpl>(env, config,
                                                              std::move(cache));
@@ -2203,8 +2204,5 @@ void CoordinationServiceStandaloneImpl::SendErrorPollingResponseOrFailAllTasks(
 bool CoordinationServiceStandaloneImpl::IsClientPollingForError() const {
   return client_polling_for_error_;
 }
-
-// Register standalone coordination service implementation.
-REGISTER_COORDINATION_SERVICE("standalone", EnableCoordinationService);
 
 }  // namespace tsl

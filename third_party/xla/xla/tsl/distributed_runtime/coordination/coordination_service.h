@@ -21,8 +21,6 @@ limitations under the License.
 #include <memory>
 #include <string>
 #include <string_view>
-#include <unordered_map>
-#include <utility>
 #include <vector>
 
 #include "absl/log/log.h"
@@ -31,26 +29,12 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/time/time.h"
 #include "xla/tsl/distributed_runtime/coordination/coordination_client.h"
-#include "xla/tsl/platform/macros.h"
 #include "xla/tsl/platform/status.h"
 #include "xla/tsl/protobuf/coordination_config.pb.h"
 #include "xla/tsl/protobuf/coordination_service.pb.h"
 
 namespace tsl {
 class Env;
-
-// Static registration for coordination service implementations.
-#define REGISTER_COORDINATION_SERVICE(service_type_name, factory_fn)        \
-  REGISTER_COORDINATION_SERVICE_UNIQ_HELPER(__COUNTER__, service_type_name, \
-                                            factory_fn)
-#define REGISTER_COORDINATION_SERVICE_UNIQ_HELPER(counter, service_type_name, \
-                                                  factory_fn)                 \
-  static bool static_coordination_service_##counter TF_ATTRIBUTE_UNUSED =     \
-      []() {                                                                  \
-        ::tsl::CoordinationServiceInterface::RegisterCoordinationService(     \
-            service_type_name, std::move(factory_fn));                        \
-        return true;                                                          \
-      }()
 
 // Coordination service is used for controlling and coordinating distributed
 // execution in a cluster of multiple tasks.
@@ -70,11 +54,6 @@ class Env;
 // tasks. Each task interacts with the service through CoordinationServiceAgent.
 class CoordinationServiceInterface {
  public:
-  using CoordinationServiceFactory =
-      std::function<std::unique_ptr<CoordinationServiceInterface>(
-          Env* env, const tensorflow::CoordinationServiceConfig& config,
-          std::unique_ptr<CoordinationClientCache> cache)>;
-
   using StatusOrValueCallback =
       std::function<void(const absl::StatusOr<std::string_view>&)>;
   using BarrierCallback = std::function<void(const absl::Status&, int64_t)>;
@@ -83,27 +62,10 @@ class CoordinationServiceInterface {
 
   virtual ~CoordinationServiceInterface() = default;
 
-  static void RegisterCoordinationService(
-      std::string_view service_type_name,
-      CoordinationServiceFactory factory_fn) {
-    auto factories = GetCoordinationServiceFactories();
-    factories->emplace(service_type_name, factory_fn);
-  }
-
   static std::unique_ptr<CoordinationServiceInterface>
   EnableCoordinationService(Env* env,
                             const tensorflow::CoordinationServiceConfig& config,
-                            std::unique_ptr<CoordinationClientCache> cache) {
-    const auto* factories = GetCoordinationServiceFactories();
-    auto factories_iter = factories->find(config.service_type());
-    if (factories_iter == factories->end()) {
-      LOG(ERROR) << "No coordination service factory found for service type "
-                 << config.service_type();
-      return nullptr;
-    }
-    auto service = factories_iter->second(env, config, std::move(cache));
-    return service;
-  }
+                            std::unique_ptr<CoordinationClientCache> cache);
 
   // This function is invoked after each task's local devices are appended in a
   // deterministic order during WaitForAllTasks(). This is useful to convert the
@@ -305,13 +267,6 @@ class CoordinationServiceInterface {
 
   virtual const tensorflow::DeviceInfo& ListClusterDevices() = 0;
   virtual uint64_t GetServiceIncarnation() = 0;
-
-  static std::unordered_map<std::string, CoordinationServiceFactory>*
-  GetCoordinationServiceFactories() {
-    static auto* coordination_service_factories =
-        new std::unordered_map<std::string, CoordinationServiceFactory>();
-    return coordination_service_factories;
-  }
 };
 
 }  // namespace tsl

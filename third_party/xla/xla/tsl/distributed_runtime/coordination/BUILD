@@ -50,33 +50,14 @@ cc_library(
 
 cc_library(
     name = "coordination_service",
+    srcs = ["coordination_service.cc"],
     hdrs = ["coordination_service.h"],
     deps = [
         ":coordination_client",
-        "//xla/tsl/platform:macros",
-        "//xla/tsl/platform:status",
-        "//xla/tsl/protobuf:coordination_config_proto_cc",
-        "//xla/tsl/protobuf:coordination_service_proto_cc",
-        "@com_google_absl//absl/log",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings:string_view",
-        "@com_google_absl//absl/time",
-    ],
-)
-
-# Keeping the implementation as a separate build target.
-# This is an alwayslink library for statically registering "standalone" implementation.
-# Other implementations of the service will be provided in the future.
-cc_library(
-    name = "coordination_service_impl",
-    srcs = ["coordination_service.cc"],
-    deps = [
-        ":coordination_client",
-        ":coordination_service",
         ":coordination_service_error_util",
         "//xla/tsl/distributed_runtime:call_options",
         "//xla/tsl/platform:env",
+        "//xla/tsl/platform:macros",
         "//xla/tsl/platform:status",
         "//xla/tsl/protobuf:coordination_config_proto_cc",
         "//xla/tsl/protobuf:coordination_service_proto_cc",
@@ -90,14 +71,19 @@ cc_library(
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
         "@local_tsl//tsl/platform:random",
     ],
-    alwayslink = 1,
 )
+
+# TODO(mwhittaker): Remove this once tensorflow only relies on the
+# coordination_service BUILD rule.
+cc_library(name = "coordination_service_impl")
 
 tf_proto_library(
     name = "test_device_proto",
@@ -116,7 +102,6 @@ tsl_cc_test(
         ":coordination_client",
         ":coordination_service",
         ":coordination_service_error_util",
-        ":coordination_service_impl",
         ":test_device_proto_cc",
         "//xla/tsl/distributed_runtime:call_options",
         "//xla/tsl/lib/core:status_test_util",
@@ -226,7 +211,6 @@ tsl_cc_test(
         ":coordination_client",
         ":coordination_service",
         ":coordination_service_agent",
-        ":coordination_service_impl",
         "//xla/tsl/distributed_runtime/rpc:async_service_interface",
         "//xla/tsl/distributed_runtime/rpc/coordination:grpc_coordination_client",
         "//xla/tsl/distributed_runtime/rpc/coordination:grpc_coordination_service_impl",
@@ -258,7 +242,6 @@ tsl_cc_test(
         ":coordination_client",
         ":coordination_service",
         ":coordination_service_agent",
-        ":coordination_service_impl",
         "//xla/tsl/distributed_runtime/rpc:async_service_interface",
         "//xla/tsl/distributed_runtime/rpc/coordination:grpc_coordination_client",
         "//xla/tsl/distributed_runtime/rpc/coordination:grpc_coordination_service_impl",
