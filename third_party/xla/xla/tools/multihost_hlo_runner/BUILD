@@ -139,6 +139,7 @@ cc_library(
     deps = [
         "//xla:literal",
         "//xla:literal_util",
+        "//xla:shape_layout",
         "//xla:shape_util",
         "//xla:status_macros",
         "//xla:util",
@@ -183,7 +184,6 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/synchronization",
-        "@com_google_absl//absl/time",
         "@com_google_absl//absl/types:span",
         "@llvm-project//mlir:FuncExtensions",
         "@local_tsl//tsl/platform:protobuf",

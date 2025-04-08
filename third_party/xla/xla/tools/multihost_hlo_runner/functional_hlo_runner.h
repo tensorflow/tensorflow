@@ -238,6 +238,9 @@ class FunctionalHloRunner {
     // compilation.
     bool compile_as_stablehlo = false;
 
+    // Use layouts from the HLO module.
+    bool use_layouts_from_hlo_module = false;
+
     // Should we flatten all while loops?
     bool flatten_while_loop() const {
       return while_execution_count.has_value();
@@ -418,7 +421,8 @@ class FunctionalHloRunner {
   // This would ideally be private, but we need it for the implementation of
   // MultihostHloRunner.
   static CompileOptions CompleteCompileOptions(const HloModule& hlo_module,
-                                               CompileOptions compile_options);
+                                               CompileOptions compile_options,
+                                               const PreprocessingOptions&);
 
   static absl::Status DumpOutput(
       const FunctionalHloRunner::PerDeviceLiteralVecType& output,

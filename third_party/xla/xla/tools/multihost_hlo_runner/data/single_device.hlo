@@ -1,6 +1,6 @@
-HloModule f
+HloModule f, entry_computation_layout={(f32[2,2]{0,1})->f32[2,2]{0,1}}
 
 ENTRY f {
-  arg = f32[2,2]{1,0} parameter(0)
-  ROOT add_result = f32[2,2]{1,0} add(arg, arg)
+  arg = f32[2,2]{0,1} parameter(0)
+  ROOT add_result = f32[2,2]{0,1} add(arg, arg)
 }

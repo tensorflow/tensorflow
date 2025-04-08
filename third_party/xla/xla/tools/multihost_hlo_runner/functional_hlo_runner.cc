@@ -18,6 +18,7 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <functional>
+#include <iterator>
 #include <memory>
 #include <optional>
 #include <random>
@@ -65,6 +66,7 @@ limitations under the License.
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/hlo_module_util.h"
+#include "xla/shape_layout.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
 #include "xla/tests/test_utils.h"
@@ -792,10 +794,22 @@ absl::Status FunctionalHloRunner::PrepareHloModuleForCompilation(
 }
 
 CompileOptions FunctionalHloRunner::CompleteCompileOptions(
-    const HloModule& hlo_module, CompileOptions compile_options) {
+    const HloModule& hlo_module, CompileOptions compile_options,
+    const PreprocessingOptions& preproc_options) {
   ParameterType parameter_type = GetParameterType(hlo_module);
   compile_options.parameter_is_tupled_arguments =
       (parameter_type == ParameterType::kOneTupleOfArrays);
+  if (preproc_options.use_layouts_from_hlo_module) {
+    const ComputationLayout& layout = hlo_module.entry_computation_layout();
+    std::vector<Shape> parameter_shapes;
+    parameter_shapes.reserve(layout.parameter_count());
+    for (const ShapeLayout& shape_layout : layout.parameter_layouts()) {
+      parameter_shapes.push_back(shape_layout.shape());
+    }
+    compile_options.argument_layouts = std::move(parameter_shapes);
+    compile_options.executable_build_options.set_result_layout(
+        layout.result_shape());
+  }
   return compile_options;
 }
 
@@ -838,7 +852,7 @@ FunctionalHloRunner::Compile(PjRtClient& client, HloModule* hlo_module,
   TF_RETURN_IF_ERROR(PrepareHloModuleForCompilation(hlo_module, debug_options,
                                                     preproc_options));
   CompileOptions modified_compile_options =
-      CompleteCompileOptions(*hlo_module, compile_options);
+      CompleteCompileOptions(*hlo_module, compile_options, preproc_options);
 
   return ConvertAndCallCompiler<PjRtLoadedExecutable>(
       preproc_options.compile_as_stablehlo, hlo_module,
@@ -856,7 +870,7 @@ absl::StatusOr<std::unique_ptr<PjRtExecutable>> FunctionalHloRunner::Compile(
   TF_RETURN_IF_ERROR(PrepareHloModuleForCompilation(hlo_module, debug_options,
                                                     preproc_options));
   CompileOptions modified_compile_options =
-      CompleteCompileOptions(*hlo_module, compile_options);
+      CompleteCompileOptions(*hlo_module, compile_options, preproc_options);
 
   return ConvertAndCallCompiler<PjRtExecutable>(
       preproc_options.compile_as_stablehlo, hlo_module,
