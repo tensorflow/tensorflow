@@ -147,11 +147,11 @@ module {
 // -----
 
 module {
-  func.func private @fib0(%start : f32) -> f32 {
+  func.func private @fib0(%start : f32) -> f32 attributes {no_compute = true} {
     %zero = arith.constant 0.0 : f32
     return %zero : f32
   }
-  func.func private @fib1(%start : f32) -> f32 {
+  func.func private @fib1(%start : f32) -> f32 attributes {no_compute = true} {
     return %start : f32
   }
   func.func private @fib2(%start : f32) -> f32 {
@@ -202,16 +202,17 @@ module {
 }
 
 // CHECK-LABEL: module {
+// CHECK-NOT: fib0
+// CHECK: func.func private @fib2
+// CHECK-NOT: fib1
+// CHECK-NOT: fib3
+// CHECK-NOT: fib4
+// CHECK-NOT: fib5
+// CHECK-NOT: fib6
+// CHECK-NOT: fib7
+
 // CHECK: @caller
-// CHECK: arith.constant 0.000000e+00
-// CHECK: xla.pure_call @fib5
-// CHECK: arith.addf
-// CHECK: arith.addf
-// CHECK: arith.addf
-// CHECK: arith.addf
-// CHECK: xla.pure_call @fib5
-// CHECK: arith.addf
-// CHECK: arith.addf
+// CHECK-COUNT-8: xla.pure_call @fib2
 
 // -----
 
