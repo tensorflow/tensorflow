@@ -41,6 +41,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "llvm/Support/Casting.h"
@@ -791,10 +792,10 @@ class NanoExecutable final
                         GetInputShardings(program_shape, computation));
     TF_ASSIGN_OR_RETURN(auto proto_output_shardings,
                         GetOutputShardings(program_shape, computation));
-    auto input_shardings =
-        IfrtShardingsFromProto(client, proto_input_shardings);
-    auto output_shardings =
-        IfrtShardingsFromProto(client, proto_output_shardings);
+    TF_ASSIGN_OR_RETURN(auto input_shardings,
+                        IfrtShardingsFromProto(client, proto_input_shardings));
+    TF_ASSIGN_OR_RETURN(auto output_shardings,
+                        IfrtShardingsFromProto(client, proto_output_shardings));
 
     return absl::WrapUnique(new NanoExecutable(
         client, std::move(computation), std::move(program_shape),
@@ -977,8 +978,9 @@ class NanoExecutable final
 
   // Converts an OpSharding proto (from an HLO Instruction) to an ifrt
   // sharding.
-  static std::vector<std::shared_ptr<ifrt::Sharding>> IfrtShardingsFromProto(
-      NanoIfrtClient* client, absl::Span<const OpSharding> shardings) {
+  static absl::StatusOr<std::vector<std::shared_ptr<ifrt::Sharding>>>
+  IfrtShardingsFromProto(NanoIfrtClient* client,
+                         absl::Span<const OpSharding> shardings) {
     std::vector<std::shared_ptr<ifrt::Sharding>> result;
     result.reserve(shardings.size());
     for (const auto& sharding : shardings) {
@@ -991,10 +993,13 @@ class NanoExecutable final
       for (const auto dim : sharding.tile_assignment_dimensions()) {
         num_tiles *= dim;
       }
-      // Repeat the device for each tile. We only have one device anyway so
-      // just used the first.
+      if (num_tiles > client->devices().size()) {
+        return absl::InvalidArgumentError(absl::StrFormat(
+            "Sharding has %d tiles, but only %d devices are available.",
+            num_tiles, client->devices().size()));
+      }
       auto device_list = ifrt::BasicDeviceList::Create(
-          ifrt::BasicDeviceList::Devices(num_tiles, client->devices()[0]));
+          client->devices().subspan(0, num_tiles));
       auto xla_sharding = *HloSharding::FromProto(sharding);
       result.push_back(ifrt::HloSharding::Create(
           std::move(device_list), client->devices()[0]->Memories()[0]->Kind(),
@@ -1401,7 +1406,20 @@ absl::Span<xla::ifrt::Device* const> NanoIfrtClient::GetAllDevices() const {
 absl::StatusOr<ifrt::DeviceAssignment>
 NanoIfrtClient::GetDefaultDeviceAssignment(int num_replicas,
                                            int num_partitions) const {
-  return ifrt::DeviceAssignment(num_replicas, num_partitions);
+  if (num_replicas < 1 || num_partitions < 1) {
+    return absl::InvalidArgumentError(
+        absl::StrFormat("Requested device assignment is invalid: %d replicas, "
+                        "%d partitions",
+                        num_replicas, num_partitions));
+  } else if (num_replicas * num_partitions > devices_.size()) {
+    return absl::InvalidArgumentError(absl::StrFormat(
+        "Requested device assignment is too large for the number of devices "
+        "available: %d vs. %d",
+        num_replicas * num_partitions, devices_.size()));
+  }
+  ifrt::DeviceAssignment device_assignment(num_replicas, num_partitions);
+  device_assignment.FillIota(0);
+  return device_assignment;
 }
 
 absl::StatusOr<ifrt::Device*> NanoIfrtClient::LookupDevice(
@@ -1411,8 +1429,11 @@ absl::StatusOr<ifrt::Device*> NanoIfrtClient::LookupDevice(
 
 absl::StatusOr<ifrt::Device*> NanoIfrtClient::LookupAddressableDevice(
     int local_hardware_id) const {
-  TF_RET_CHECK(local_hardware_id >= 0);
-  TF_RET_CHECK(local_hardware_id < devices_.size());
+  if (local_hardware_id < 0 || local_hardware_id >= devices_.size()) {
+    return absl::InvalidArgumentError(
+        absl::StrFormat("Device id %d is out of range [0, %d)",
+                        local_hardware_id, devices_.size()));
+  }
   return devices_[local_hardware_id];
 }
 

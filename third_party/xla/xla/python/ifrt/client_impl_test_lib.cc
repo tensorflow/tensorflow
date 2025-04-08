@@ -16,6 +16,7 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/test_util.h"
+#include "xla/tsl/platform/status_matchers.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 
@@ -27,6 +28,7 @@ using ::testing::IsEmpty;
 using ::testing::Not;
 using ::testing::NotNull;
 using ::testing::SizeIs;
+using ::tsl::testing::IsOk;
 
 TEST(ClientImplTest, RuntimeTypeAndPlatform) {
   TF_ASSERT_OK_AND_ASSIGN(auto client, test_util::GetClient());
@@ -74,6 +76,36 @@ TEST(ClientImplTest, GetAllDevices) {
 TEST(ClientImplTest, DefaultCompiler) {
   TF_ASSERT_OK_AND_ASSIGN(auto client, test_util::GetClient());
   EXPECT_THAT(client->GetDefaultCompiler(), NotNull());
+}
+
+TEST(ClientImplTest, DefaultDeviceAssignment) {
+  TF_ASSERT_OK_AND_ASSIGN(auto client, test_util::GetClient());
+  {
+    TF_ASSERT_OK_AND_ASSIGN(
+        auto device_assignment,
+        client->GetDefaultDeviceAssignment(client->device_count(), 1));
+    EXPECT_EQ(device_assignment.replica_count(), client->device_count());
+    EXPECT_EQ(device_assignment.computation_count(), 1);
+    for (int i = 0; i < device_assignment.replica_count(); ++i) {
+      for (int j = 0; j < device_assignment.computation_count(); ++j) {
+        EXPECT_THAT(client->LookupDevice(DeviceId(device_assignment(i, j))),
+                    IsOk());
+      }
+    }
+  }
+  {
+    TF_ASSERT_OK_AND_ASSIGN(
+        auto device_assignment,
+        client->GetDefaultDeviceAssignment(1, client->device_count()));
+    EXPECT_EQ(device_assignment.replica_count(), 1);
+    EXPECT_EQ(device_assignment.computation_count(), client->device_count());
+    for (int i = 0; i < device_assignment.replica_count(); ++i) {
+      for (int j = 0; j < device_assignment.computation_count(); ++j) {
+        EXPECT_THAT(client->LookupDevice(DeviceId(device_assignment(i, j))),
+                    IsOk());
+      }
+    }
+  }
 }
 
 }  // namespace

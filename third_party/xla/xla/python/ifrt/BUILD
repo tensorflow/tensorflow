@@ -441,6 +441,7 @@ cc_library(
     deps = [
         ":ifrt",
         ":test_util",
+        "//xla/tsl/platform:status_matchers",
         "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:test",
         "@com_google_absl//absl/container:flat_hash_set",
