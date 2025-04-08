@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_SERVICE_GPU_MAKE_BATCH_POINTERS_H_
-#define XLA_SERVICE_GPU_MAKE_BATCH_POINTERS_H_
+#ifndef XLA_BACKENDS_GPU_RUNTIME_MAKE_BATCH_POINTERS_H_
+#define XLA_BACKENDS_GPU_RUNTIME_MAKE_BATCH_POINTERS_H_
 
 #include <cstddef>
 
@@ -56,4 +56,4 @@ absl::Status MakeBatchPointers(se::Stream* stream,
 
 }  // namespace xla::gpu
 
-#endif  // XLA_SERVICE_GPU_MAKE_BATCH_POINTERS_H_
+#endif  // XLA_BACKENDS_GPU_RUNTIME_MAKE_BATCH_POINTERS_H_

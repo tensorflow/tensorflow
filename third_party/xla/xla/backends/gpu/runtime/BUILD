@@ -288,6 +288,7 @@ cc_library(
     hdrs = if_gpu_is_configured(["cholesky_thunk.h"]),
     deps = if_gpu_is_configured([
         # keep sorted
+        ":make_batch_pointers",
         "//xla:types",
         "//xla:util",
         "//xla:xla_data_proto_cc",
@@ -295,7 +296,6 @@ cc_library(
         "//xla/hlo/ir:hlo",
         "//xla/service:buffer_assignment",
         "//xla/service/gpu:buffer_allocations",
-        "//xla/service/gpu:make_batch_pointers",
         "//xla/stream_executor:blas",
         "//xla/stream_executor:device_memory",
         "//xla/stream_executor:gpu_solver_context",
@@ -307,7 +307,10 @@ cc_library(
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:status",
-    ]),
+    ]) + [
+        "//xla/tsl/platform:errors",
+        "@com_google_absl//absl/log:check",
+    ],
 )
 
 cc_library(
@@ -1218,6 +1221,7 @@ cc_library(
     hdrs = if_gpu_is_configured(["triangular_solve_thunk.h"]),
     deps = if_gpu_is_configured([
         # keep sorted
+        ":make_batch_pointers",
         "//xla:status_macros",
         "//xla:types",
         "//xla:util",
@@ -1226,7 +1230,6 @@ cc_library(
         "//xla/hlo/ir:hlo",
         "//xla/service:buffer_assignment",
         "//xla/service/gpu:buffer_allocations",
-        "//xla/service/gpu:make_batch_pointers",
         "//xla/stream_executor:blas",
         "//xla/stream_executor:device_memory",
         "//xla/stream_executor:stream",
@@ -1389,5 +1392,49 @@ xla_test(
         "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:ml_dtypes",
         "@local_tsl//tsl/platform:test",
+    ],
+)
+
+cc_library(
+    name = "make_batch_pointers",
+    srcs = ["make_batch_pointers.cc"],
+    hdrs = ["make_batch_pointers.h"],
+    deps = [
+        "//xla:types",
+        "//xla:util",
+        "//xla/stream_executor:device_memory",
+        "//xla/stream_executor:kernel",
+        "//xla/stream_executor:launch_dim",
+        "//xla/stream_executor:stream",
+        "//xla/stream_executor:stream_executor_h",
+        "//xla/stream_executor:typed_kernel_factory",
+        "//xla/stream_executor/gpu:gpu_kernel_registry",
+        "//xla/stream_executor/gpu:gpu_stream_header",
+        "//xla/stream_executor/gpu:make_batch_pointers_kernel",
+        "//xla/stream_executor/rocm:rocm_platform_id",
+        "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@local_tsl//tsl/platform:errors",
+        "@local_tsl//tsl/platform:statusor",
+    ],
+)
+
+xla_test(
+    name = "make_batch_pointers_test",
+    srcs = ["make_batch_pointers_test.cc"],
+    backends = ["gpu"],
+    deps = [
+        ":make_batch_pointers",
+        "//xla/service:platform_util",
+        "//xla/stream_executor:device_memory",
+        "//xla/stream_executor:platform",
+        "//xla/stream_executor:stream",
+        "//xla/stream_executor:stream_executor_h",
+        "//xla/tsl/platform:status_matchers",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_googletest//:gtest_main",
     ],
 )

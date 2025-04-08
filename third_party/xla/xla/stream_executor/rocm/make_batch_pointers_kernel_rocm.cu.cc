@@ -15,7 +15,13 @@ limitations under the License.
 
 #include <cstddef>
 
-namespace xla::gpu {
+#include "absl/base/casts.h"
+#include "xla/stream_executor/gpu/gpu_kernel_registry.h"
+#include "xla/stream_executor/gpu/make_batch_pointers_kernel.h"
+#include "xla/stream_executor/kernel_spec.h"
+#include "xla/stream_executor/rocm/rocm_platform_id.h"
+
+namespace stream_executor::rocm {
 namespace {
 __global__ void MakeBatchPointers(char* base, size_t stride, size_t n,
                                   void** ptrs_out) {
@@ -24,9 +30,14 @@ __global__ void MakeBatchPointers(char* base, size_t stride, size_t n,
   ptrs_out[idx] = base + idx * stride;
 }
 }  // namespace
+}  // namespace stream_executor::rocm
 
-namespace make_batch_pointers {
-void* kernel() { return reinterpret_cast<void*>(MakeBatchPointers); }
-}  // namespace make_batch_pointers
-
-}  // namespace xla::gpu
+GPU_KERNEL_REGISTRY_REGISTER_KERNEL_STATICALLY(
+    MakeBatchPointersKernelRocm, stream_executor::gpu::MakeBatchPointersKernel,
+    stream_executor::rocm::kROCmPlatformId, ([] {
+      stream_executor::MultiKernelLoaderSpec spec(4);
+      spec.AddInProcessSymbol(
+          absl::bit_cast<void*>(&stream_executor::rocm::MakeBatchPointers),
+          "make_batch_pointers");
+      return spec;
+    }));
