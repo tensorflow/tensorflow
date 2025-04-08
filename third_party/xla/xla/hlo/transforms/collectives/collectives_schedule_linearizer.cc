@@ -43,15 +43,14 @@ absl::StatusOr<bool> CollectivesScheduleLinearizer::Run(
        module->MakeNonfusionComputations(execution_threads)) {
     std::unique_ptr<HloReachabilityMap> reachability;
     HloInstruction* prev_done = nullptr;
-    auto post_order = computation->MakeInstructionPostOrder();
-    for (HloInstruction* inst : post_order) {
+    for (HloInstruction* inst : computation->MakeInstructionPostOrder()) {
       auto* next = DynCast<HloCollectiveInstruction>(inst);
       if (!next) {
         continue;
       }
       // Build reachability map on demand if we actually see collectives.
       if (!reachability) {
-        reachability = HloReachabilityMap::Build(computation, post_order);
+        reachability = HloReachabilityMap::Build(computation);
       }
       // Derive the 'start' and 'done' peers of this instruction. For non-async
       // variants of collectives, they are the same as this instruction. For
