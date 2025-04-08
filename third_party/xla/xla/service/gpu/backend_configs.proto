@@ -118,16 +118,19 @@ message BitcastBackendConfig {
 // Backend config for async collective operations. Note that for is_sync will
 // be false by default, so even if a backend config is not explicitly attached
 // to the HLOInstruction, getting the backend_config will yield a default valued
-// proto which will have is_sync = false.
+// proto which will have is_sync = false. Attribute no_parallel_custom_call
+// asserts that an asynchronous collective operation does not execute in
+// parallel with custom-calls, which can trigger device synchronization . This
+// attribute will also be false by default and should lead to conversative
+// runtime behavior.
 message CollectiveBackendConfig {
   bool is_sync = 1;
+  bool no_parallel_custom_call = 2;
   // Determines whether the collective op of interested has been pipelined
   // within a loop.
   bool is_pipelined = 3;
   // Cost model prediction.
   repeated ReificationCost reification_cost = 4;
-
-  reserved 2;
 }
 
 // Backend config for cost model estimates.
