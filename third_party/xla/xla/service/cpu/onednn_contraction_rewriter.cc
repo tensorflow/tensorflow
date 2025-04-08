@@ -724,8 +724,11 @@ class OneDnnContractionRewriteVisitor : public DfsHloRewriteVisitor {
       }
 
       // Validate addend for fusion.
+      auto addend_user_count = addend->user_count();
+      auto addend_idx = -1;
       if (IsSupportedType(addend->shape().element_type()) &&
           IsOperandFusible(addend, contraction)) {
+        addend_idx = new_operands.size();
         new_operands.push_back(addend);
       } else {
         return absl::OkStatus();
@@ -736,6 +739,10 @@ class OneDnnContractionRewriteVisitor : public DfsHloRewriteVisitor {
               contraction->shape(), new_operands)));
 
       auto backend_config = custom_call->backend_config<BackendConfig>();
+      bool can_fuse_sum =
+          (ShapeUtil::Equal(custom_call->shape(), addend->shape()) &&
+           addend_user_count == 1 &&
+           custom_call->output_operand_aliasing().empty());
       auto fusions_config = GetFusionsConfig(&backend_config);
       auto optimization_config = GetOptimizationsConfig(&backend_config);
       // TODO(intel-tf): Here, we allow 1D addends only when they are the first
@@ -745,8 +752,14 @@ class OneDnnContractionRewriteVisitor : public DfsHloRewriteVisitor {
           (ShapeUtil::TrueNumDimensions(addend->shape()) == 1)
               ? (fusions_config->ops().empty() ? OneDnnFusionConfig::BIAS
                                                : OneDnnFusionConfig::UNDEFINED)
-              : OneDnnFusionConfig::BINARY_ADD;
+          : can_fuse_sum ? OneDnnFusionConfig::SUM
+                         : OneDnnFusionConfig::BINARY_ADD;
       if (kind == OneDnnFusionConfig::UNDEFINED) return absl::OkStatus();
+
+      // Alias output buffers to addend for in-place accumulation
+      if (kind == OneDnnFusionConfig::SUM) {
+        custom_call->set_output_to_operand_aliasing({{{}, {addend_idx, {}}}});
+      }
 
       fusions_config->add_ops(kind);
 
@@ -1154,6 +1167,10 @@ class OneDnnPostRewriteVisitor : public DfsHloRewriteVisitor {
     auto scratch_add = AddScratch<PrimDesc>(custom_call);
     if (scratch_add.ok()) {
       custom_call = *scratch_add;
+      auto aliases = custom_call->output_operand_aliasing();
+      if (!aliases.empty()) {
+        custom_call->set_output_to_operand_aliasing({{{0}, aliases[0].second}});
+      }
     } else {
       VLOG(2) << scratch_add.status();
     }

@@ -67,6 +67,9 @@ dnnl::post_ops PopulateOneDnnPostOps(
       case OneDnnFusionConfig::SIGMOID:
         post_ops.append_eltwise(dnnl::algorithm::eltwise_logistic, 0.f, 0.f);
         break;
+      case OneDnnFusionConfig::SUM:
+        post_ops.append_sum();
+        break;
       case OneDnnFusionConfig::BIAS: {
         *bias_md = fused_mds.at(fused_operand_idx);
         if (fused_operands_ref) {
