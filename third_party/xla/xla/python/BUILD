@@ -192,6 +192,20 @@ cc_library(
 )
 
 cc_library(
+    name = "debug_callback_partitioner",
+    srcs = ["debug_callback_partitioner.cc"],
+    hdrs = ["debug_callback_partitioner.h"],
+    deps = [
+        "//xla:shape_util",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/ir:hlo_sharding",
+        "//xla/service:custom_call_sharding_helper",
+        "//xla/service/spmd:spmd_partitioner",
+        "@com_google_absl//absl/status",
+    ],
+)
+
+cc_library(
     name = "ops",
     srcs = ["ops.cc"],
     hdrs = ["ops.h"],
