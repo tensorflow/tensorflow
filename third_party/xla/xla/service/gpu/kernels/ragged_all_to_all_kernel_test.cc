@@ -90,6 +90,8 @@ TEST_F(RaggedAllToAllKernelTest, SimpleKernelTest) {
   for (int64_t i = 0; i < num_outputs; ++i) {
     output_buffers.emplace_back(executor, executor->AllocateArray<T>(n));
     ASSERT_TRUE(!output_buffers[i].memory().is_null());
+    TF_ASSERT_OK(
+        stream->MemZero(output_buffers[i].memory_ptr(), n * sizeof(T)));
   }
 
   stream_executor::DeviceMemoryHandle input_offsets_buffer(
