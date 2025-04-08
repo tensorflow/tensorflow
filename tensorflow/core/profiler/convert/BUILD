@@ -1013,7 +1013,6 @@ cc_library(
         "@local_xla//xla/tsl/platform:statusor",
         "@local_xla//xla/tsl/profiler/utils:file_system_utils",
         "@org_xprof//xprof/utils:hlo_module_map",
-        "@org_xprof//xprof/utils:xprof_gpu_cost_analysis",
     ],
 )
 
