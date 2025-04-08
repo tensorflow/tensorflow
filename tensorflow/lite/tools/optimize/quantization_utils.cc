@@ -382,6 +382,11 @@ TfLiteStatus SymmetricQuantizeFloatsToInt16(ModelT* model, TensorT* tensor,
   // Set the buffers and output type.
   uint8_t* uint8_buffer = reinterpret_cast<uint8_t*>(final_buffer.data());
   size_t buffer_size = num_elements * sizeof(int16_t);
+
+  // TODO(rameshkunasi): Forcing the scaling factor to be non-zero. This is
+  // needed to avoid the crash in the downstream code. This is a temporary
+  // workaround.
+  if (scaling_factor == 0) scaling_factor = 3.921568403342235e-9;
   std::vector<float> scales(1, scaling_factor);
   std::vector<int64_t> zero_points(1, 0);
   return AddQuantizationParams(scales, zero_points, 0, uint8_buffer,
