@@ -19,21 +19,22 @@ limitations under the License.
 #include <vector>
 
 #include <gmock/gmock.h>
+#include "absl/status/status.h"
+#include "llvm/Support/Error.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/platform/errors.h"
-#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/test.h"
-#include "tfrt/bef/bef_encoding.h"  // from @tf_runtime
-#include "tfrt/bef_converter/bef_attr_encoder.h"  // from @tf_runtime
 #include "tfrt/core_runtime/op_attr_type.h"  // from @tf_runtime
+#include "tfrt/core_runtime/op_attrs.h"  // from @tf_runtime
 #include "tfrt/dtype/dtype.h"  // from @tf_runtime
 #include "tfrt/host_context/attribute_utils.h"  // from @tf_runtime
 #include "tfrt/host_context/concurrent_work_queue.h"  // from @tf_runtime
 #include "tfrt/host_context/diagnostic.h"  // from @tf_runtime
 #include "tfrt/host_context/host_allocator.h"  // from @tf_runtime
+#include "tfrt/host_context/host_context.h"  // from @tf_runtime
 #include "tfrt/support/forward_decls.h"  // from @tf_runtime
 
 namespace tensorflow {
