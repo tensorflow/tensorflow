@@ -24,7 +24,6 @@ limitations under the License.
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/graph/validate.h"
 #include "tensorflow/core/grappler/utils/topological_sort.h"
-#include "tensorflow/core/grappler/verifiers/graph_verifier.h"
 #include "tensorflow/core/lib/core/status.h"
 
 namespace tensorflow {
