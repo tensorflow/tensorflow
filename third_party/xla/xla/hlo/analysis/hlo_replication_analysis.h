@@ -111,7 +111,10 @@ class HloReplicationAnalysis {
       bool cross_partition_spmd,
       const absl::flat_hash_map<const HloInstruction*,
                                 ShapeTree<HloReplication>>& hlo_replication,
-      bool support_partial_replication);
+      bool support_partial_replication,
+      const absl::flat_hash_map<const HloInstruction*,
+                                std::optional<HloReplication>*>&
+          replica_group_dedup_map);
 
   HloReplicationAnalysis(const HloModule* module, bool cross_partition_spmd,
                          const absl::flat_hash_set<const HloInstruction*>*
@@ -129,6 +132,12 @@ class HloReplicationAnalysis {
   // Returns whether hlo_replication_ is changed.
   bool ComputeHloReplicationOnComputation(const HloComputation* computation,
                                           bool mark_everything_not_replicated);
+
+  // Builds the replica group dedup map that allows caching replication
+  // calculations for all-reduce/all-gather that share the same replica groups.
+  // This can significantly help in compile times when replica groups are very
+  // large.
+  void BuildReplicaGroupDedupMap();
 
   const HloModule* module_;
 
@@ -155,6 +164,13 @@ class HloReplicationAnalysis {
   // partitions at each shape index.
   absl::flat_hash_map<const HloInstruction*, ShapeTree<HloReplication>>
       hlo_replication_;
+
+  // Replications for all-reduce/all-gather that have the same replica groups is
+  // usually identical. We use the following data structures to memoize the
+  // replications for instructions with identical replica groups.
+  absl::flat_hash_map<const HloInstruction*, std::optional<HloReplication>*>
+      replica_group_dedup_map_;
+  std::vector<std::optional<HloReplication>> unique_replications_;
 };
 
 }  // namespace xla
