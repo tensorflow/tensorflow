@@ -69,6 +69,7 @@ namespace xla {
 class PjRtClient;
 class PjRtDevice;
 
+// TODO: Add comment.
 class PjRtMemorySpace {
  public:
   virtual ~PjRtMemorySpace() = default;
