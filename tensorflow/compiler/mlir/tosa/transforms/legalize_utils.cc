@@ -1413,5 +1413,36 @@ LogicalResult broadcastLowRankTensor(PatternRewriter& rewriter, Operation* op,
   return success();
 }
 
+bool checkUniqueConstantScatterIndices(ShapedType indices_type,
+                                       ShapedType result_type,
+                                       ElementsAttr const_data) {
+  llvm::ArrayRef<int64_t> const indices_shape = indices_type.getShape();
+  const unsigned int indices_rank = indices_shape.size();
+  const unsigned int result_rank = result_type.getRank();
+  const unsigned int last_dim_size = indices_shape[indices_rank - 1];
+
+  // Reconstruct each index from the unshaped constant data array and
+  // calculate the corresponding flattened index
+  auto const const_data_range = const_data.getValues<int32_t>();
+  assert((const_data_range.size() % last_dim_size == 0) &&
+         "Constant data length should be a multiple of indices_shape[-1]");
+
+  std::vector<int64_t> flattened_indices;
+  flattened_indices.reserve(const_data_range.size() / last_dim_size);
+  for (auto beg = const_data_range.begin(); beg < const_data_range.end();
+       beg += last_dim_size) {
+    std::vector<uint64_t> current_single_index(result_rank);
+    std::copy(beg, beg + last_dim_size, current_single_index.begin());
+    const uint64_t f_index{
+        ElementsAttr::getFlattenedIndex(result_type, current_single_index)};
+    flattened_indices.push_back(f_index);
+  }
+
+  // If adjacent flattened values are found, there are non-unique indices
+  std::sort(flattened_indices.begin(), flattened_indices.end());
+  return std::adjacent_find(flattened_indices.begin(),
+                            flattened_indices.end()) == flattened_indices.end();
+}
+
 }  // namespace tosa
 }  // namespace mlir

@@ -1053,6 +1053,20 @@ func.func @test_gather_nd(%arg0: tensor<13x21x3xf32>) -> tensor<6x7x21x3xf32> {
   func.return %1 : tensor<6x7x21x3xf32>
 }
 
+// -----
+
+// CHECK-LABEL: test_scatter_nd
+// CHECK-DAG: %[[VAR1:.*]] = "tosa.const"() <{values = dense<0.000000e+00> : tensor<1x224x512xf32>}>
+// CHECK-DAG: %[[VAR2:.*]] = "tosa.const"() <{values = dense<0> : tensor<1x2xi32>}>
+// CHECK-DAG: %[[VAR3:.*]] = tosa.reduce_sum %[[VAR2:.*]] {axis = 1 : i32} : (tensor<1x2xi32>)
+// CHECK-DAG: %[[VAR4:.*]] = tosa.scatter %[[VAR1:.*]], %[[VAR3:.*]], %arg0 : (tensor<1x224x512xf32>, tensor<1x1xi32>, tensor<1x1x512xf32>)
+// CHECK: return %[[VAR4]]
+func.func @test_scatter_nd(%arg0: tensor<1x1x512xf32>) -> tensor<1x224x512xf32> {
+  %shape = "tf.Const"() {device = "", value = dense<[1, 224, 512]> : tensor<3xi32>} : () -> tensor<3xi32>
+  %indices = "tf.Const"() {device = "", value = dense<[[[0, 0]]]>: tensor<1x1x2xi32>} : () -> tensor<1x1x2xi32>
+  %1 = "tf.ScatterNd"(%indices, %arg0, %shape) {device = ""} : (tensor<1x1x2xi32>, tensor<1x1x512xf32>, tensor<3xi32>) -> tensor<1x224x512xf32>
+  func.return %1 : tensor<1x224x512xf32>
+}
 
 // -----
 

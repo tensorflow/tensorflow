@@ -298,6 +298,12 @@ std::optional<Value> convertGatherNdOp(PatternRewriter& rewriter, Operation* op,
                                        Value result_value, Value params_value,
                                        Value indices_value);
 
+// Lowers ScatterNd operator to a sequence of TOSA ops.
+std::optional<Value> convertScatterNdOp(PatternRewriter& rewriter,
+                                        Operation* op, Value result_value,
+                                        Value indices_value,
+                                        Value updates_value, Value shape_value);
+
 // Lowers OneHot operator to a sequence of TOSA ops.
 std::optional<Value> convertOneHotOp(PatternRewriter& rewriter, Operation* op,
                                      Value result_value, Value indices_value,

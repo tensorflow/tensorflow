@@ -131,6 +131,7 @@ DECL_CONVERT_OP(ResizeNearestNeighbor);
 DECL_CONVERT_OP(Gather);
 DECL_CONVERT_OP(GatherV2);
 DECL_CONVERT_OP(GatherNd);
+DECL_CONVERT_OP(ScatterNd);
 DECL_CONVERT_OP(SelectV2);
 DECL_CONVERT_OP(SpaceToDepth);
 DECL_CONVERT_OP(DepthToSpace);
@@ -2001,6 +2002,22 @@ LogicalResult ConvertTFGatherNdOp::matchAndRewrite(
   return success();
 }
 
+LogicalResult ConvertTFScatterNdOp::matchAndRewrite(
+    Operation* op, PatternRewriter& rewriter) const {
+  auto tfl_scatternd_op = cast<TF::ScatterNdOp>(op);
+
+  const std::optional<Value> result = convertScatterNdOp(
+      rewriter, op, tfl_scatternd_op.getResult(), tfl_scatternd_op.getIndices(),
+      tfl_scatternd_op.getUpdates(), tfl_scatternd_op.getShape());
+
+  if (!result) {
+    return failure();
+  }
+  rewriter.replaceOp(op, {result.value()});
+
+  return success();
+}
+
 LogicalResult ConvertTFSelectV2Op::matchAndRewrite(
     Operation* op, PatternRewriter& rewriter) const {
   auto tf_sel_op = cast<TF::SelectV2Op>(op);
@@ -2620,6 +2637,7 @@ void populateLegalizeTFPatterns(MLIRContext* ctx, RewritePatternSet& patterns) {
   patterns.add<ConvertTFGatherOp>(ctx);
   patterns.add<ConvertTFGatherV2Op>(ctx);
   patterns.add<ConvertTFGatherNdOp>(ctx);
+  patterns.add<ConvertTFScatterNdOp>(ctx);
   patterns.add<ConvertTFSelectV2Op>(ctx);
   patterns.add<ConvertTFSpaceToDepthOp>(ctx);
   patterns.add<ConvertTFDepthToSpaceOp>(ctx);
