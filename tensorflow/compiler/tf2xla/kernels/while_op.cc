@@ -628,7 +628,7 @@ void XlaWhileOp::Compile(XlaOpKernelContext* ctx) {
 
   // Remove compile time const args from the list of body outputs.
   absl::StatusOr<xla::XlaComputation> body_result =
-      BuildWrappedBody(ctx, *body.get(), compile_time_const_arg_indices,
+      BuildWrappedBody(ctx, *body, compile_time_const_arg_indices,
                        num_compile_time_const_args, has_token_input_output_);
   OP_REQUIRES_OK(ctx, body_result.status());
   xla::XlaComputation wrapped_body = std::move(body_result.value());
