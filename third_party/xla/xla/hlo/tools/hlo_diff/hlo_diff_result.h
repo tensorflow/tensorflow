@@ -19,9 +19,9 @@
 
 #include <memory>
 #include <utility>
-#include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/tools/hlo_diff/graph/hlo_gumgraph.h"
 #include "xla/hlo/tools/hlo_diff/hlo_gumgraph_mappings.h"
@@ -40,8 +40,9 @@ struct DiffResult {
       moved_instructions;
 
   // Unmatched instructions.
-  std::vector<const HloInstruction*> left_module_unmatched_instructions;
-  std::vector<const HloInstruction*> right_module_unmatched_instructions;
+  absl::flat_hash_set<const HloInstruction*> left_module_unmatched_instructions;
+  absl::flat_hash_set<const HloInstruction*>
+      right_module_unmatched_instructions;
 
   // Debug info.
   absl::flat_hash_map<std::pair<const HloInstruction*, const HloInstruction*>,

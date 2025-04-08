@@ -656,7 +656,6 @@ func.func @incomplete_composite_devices_while_body(%arg0: !tf_res, %arg1: !tf_re
     %mul, %mul_control = tf_executor.island wraps "tf.Mul"(%arg2, %arg2) : (tensor<f32>, tensor<f32>) -> tensor<f32>
     %control_barrier = tf_executor.island(%assign_control_0, %assign_control_1, %add_control, %exe_control) wraps "tf.NoOp"() : () -> ()
     // CHECK: [[exe]]{{.*}}"tf.Identity"
-    // CHECK-NOT: "tf.Identity"
     // CHECK: tf_executor.fetch
     tf_executor.fetch %arg0, %arg1, %add, %control_barrier, %mul_control : tensor<!tf_type.resource<tensor<f32>>>, tensor<!tf_type.resource<tensor<f32>>>, tensor<f32>, !tf_executor.control, !tf_executor.control
   }
@@ -816,10 +815,10 @@ func.func @tpu_execute_with_non_resource_operands(%arg0: !tf_res {tf._composite_
 func.func @double_tpu_execute_while_body(%arg0: !tf_res, %arg1: !tf_res,
                                          %arg2: tensor<f32>)
     -> (!tf_res, !tf_res, tensor<f32>) {
-    // CHECK: "tf.Identity"
   %graph:3 = tf_executor.graph {
     // CHECK: {{.*}}, [[ctrl1:%.*]] = tf_executor.island wraps "tf.Identity"
     // CHECK: {{.*}}, [[ctrl2:%.*]] = tf_executor.island wraps "tf.Identity"
+    // CHECK: "tf.Identity"
     // CHECK: "tf.Identity"
     %key, %key_control = tf_executor.island wraps "tf.Const"() {value = dense<"">: !tf_str} : () -> !tf_str
     // CHECK: [[exe_ctrl1:%.*]] = tf_executor.island([[ctrl1]]) wraps "tf.TPUExecuteAndUpdateVariables"
@@ -887,8 +886,8 @@ func.func @tpu_executes_on_same_device_while_body(%arg0: !tf_res, %arg1: !tf_res
                                          %arg2: tensor<f32>)
     -> (!tf_res, !tf_res, tensor<f32>) {
   %graph:3 = tf_executor.graph {
-    // CHECK: "tf.Identity"
     // CHECK: {{.*}}, [[id_ctrl:%.*]] = tf_executor.island wraps "tf.Identity"
+    // CHECK: "tf.Identity"
     // CHECK: "tf.Identity"
     %key, %key_control = tf_executor.island wraps "tf.Const"() {value = dense<"">: !tf_str} : () -> !tf_str
     // CHECK: [[exe_ctrl1:%.*]] = tf_executor.island([[id_ctrl]]) wraps "tf.TPUExecuteAndUpdateVariables"
@@ -911,8 +910,8 @@ func.func @tpu_executes_on_same_device_while_body(%arg0: !tf_res, %arg1: !tf_res
     %mul, %mul_control = tf_executor.island wraps "tf.Mul"(%arg2, %arg2) : (tensor<f32>, tensor<f32>) -> tensor<f32>
     %control_barrier = tf_executor.island(%assign_control_0, %assign_control_1, %add_control,
                                           %exe_control1, %exe_control2) wraps "tf.NoOp"() : () -> ()
-    // CHECK: "tf.Identity"(%arg3)
     // CHECK: tf_executor.island([[exe_ctrl1]], [[exe_ctrl2]]) wraps "tf.Identity"
+    // CHECK: "tf.Identity"(%arg4)
     // CHECK: "tf.Identity"(%arg5)
     // CHECK-NEXT: tf_executor.fetch
     tf_executor.fetch %arg0, %arg1, %add, %control_barrier, %mul_control : tensor<!tf_type.resource<tensor<f32>>>, tensor<!tf_type.resource<tensor<f32>>>, tensor<f32>, !tf_executor.control, !tf_executor.control

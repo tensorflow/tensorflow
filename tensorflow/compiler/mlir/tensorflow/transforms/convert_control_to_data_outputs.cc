@@ -424,7 +424,7 @@ void ChainResourceOps(
   for (auto class_iter = resource_equivalence_classes.begin();
        class_iter != resource_equivalence_classes.end(); ++class_iter) {
     // Only visit one element per class, the leader.
-    if (!class_iter->isLeader()) continue;
+    if (!(*class_iter)->isLeader()) continue;
 
     // Create chain source and sink identity islands for current equivalence
     // class.
@@ -445,7 +445,7 @@ void ChainResourceOps(
     // by `class_iter`). Keep track of ops that have already been processed.
     llvm::SmallDenseSet<Operation*> processed_ops;
     for (auto member_iter =
-             resource_equivalence_classes.member_begin(*class_iter);
+             resource_equivalence_classes.member_begin(**class_iter);
          member_iter != resource_equivalence_classes.member_end();
          ++member_iter) {
       ResourceAndDevice resource_and_device = *member_iter;

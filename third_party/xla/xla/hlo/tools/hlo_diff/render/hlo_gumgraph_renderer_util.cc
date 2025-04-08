@@ -20,6 +20,7 @@
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -111,7 +112,7 @@ std::string GetChangedInstructionDiffTypeString(
 
 absl::flat_hash_map<HloOpcode, std::vector<const HloInstruction*>>
 GroupInstructionsByOpcode(
-    absl::Span<const HloInstruction* const> instructions) {
+    const absl::flat_hash_set<const HloInstruction*>& instructions) {
   absl::flat_hash_map<HloOpcode, std::vector<const HloInstruction*>>
       instructions_by_opcode;
   for (const HloInstruction* inst : instructions) {

@@ -341,7 +341,7 @@ std::string PrintInstructionPairsAsList(
 // Prints unmatched instructions grouped by opcode and print in a descending
 // order of the number of instructions for each opcode.
 std::string PrintUnmatchedInstructions(
-    absl::Span<const HloInstruction* const> instructions,
+    const absl::flat_hash_set<const HloInstruction*>& instructions,
     InstructionLocation location,
     const absl::flat_hash_set<HloOpcode>& opcodes_to_ignore, bool name_only,
     GraphUrlGenerator* url_generator) {
@@ -494,7 +494,7 @@ std::string PrintUnchangedInstructions(
 }
 
 std::string PrintUnmatchedMetricsDiff(
-    absl::Span<const HloInstruction* const> instructions,
+    const absl::flat_hash_set<const HloInstruction*>& instructions,
     GetOpMetricFn get_op_metrics, GraphUrlGenerator* url_generator) {
   std::vector<std::pair<const HloInstruction*, double>> sorted_metrics_diff;
   for (const HloInstruction* inst : instructions) {
@@ -543,44 +543,45 @@ std::string PrintMatchedMetricsDiff(
   return PrintList(metrics_diff_list);
 }
 
-// Summarize a diff group.
-std::string SummarizeDiffGroup(
-    absl::Span<const ComputationGroup> computation_groups) {
-  if (computation_groups.size() > 1) {
+// Summarize a diff pattern.
+std::string SummarizeDiffPattern(const ComputationDiffPattern& diff_pattern) {
+  if (diff_pattern.computation_groups.size() > 1) {
     return absl::StrFormat("Summarized %d computations with the same diff",
-                           computation_groups.size());
+                           diff_pattern.computation_groups.size());
   }
   return "A single computation has unique diff";
 }
 
-// Prints the summary of the repetitive computation groups.
-std::string PrintRepetitiveComputationGroups(const DiffSummary& diff_summary,
-                                             GraphUrlGenerator* url_generator) {
-  // Sort the computation groups by the number of computations in each group in
+// Prints the summary of the repetitive diff patterns.
+std::string PrintRepetitiveDiffPatterns(
+    absl::Span<const ComputationDiffPattern> diff_patterns,
+    GraphUrlGenerator* url_generator) {
+  // Sort the diff patterns by the number of computations in each group in
   // descending order.
-  std::vector<std::vector<ComputationGroup>> sorted_computation_groups;
-  for (const auto& [_, computation_groups] :
-       diff_summary.grouped_computations) {
-    sorted_computation_groups.push_back(computation_groups);
+  std::vector<ComputationDiffPattern> sorted_diff_patterns;
+  for (const ComputationDiffPattern& diff_pattern : diff_patterns) {
+    sorted_diff_patterns.push_back(diff_pattern);
   }
   std::sort(
-      sorted_computation_groups.begin(), sorted_computation_groups.end(),
-      [](absl::Span<const ComputationGroup> a,
-         absl::Span<const ComputationGroup> b) { return a.size() > b.size(); });
+      sorted_diff_patterns.begin(), sorted_diff_patterns.end(),
+      [](const ComputationDiffPattern& a, const ComputationDiffPattern& b) {
+        return a.computation_groups.size() > b.computation_groups.size();
+      });
   std::string computation_group_list;
   int i = 0;
-  for (const auto& computation_groups : sorted_computation_groups) {
-    if (computation_groups.empty()) {
+  for (const auto& diff_pattern : sorted_diff_patterns) {
+    if (diff_pattern.computation_groups.empty()) {
       continue;
     }
-    const ComputationGroup& sample = computation_groups[0];
+    const ComputationGroup& sample = diff_pattern.computation_groups[0];
     // We only print the one-to-one mapping for now.
     if (sample.left_computations.size() != 1 ||
         sample.right_computations.size() != 1) {
       continue;
     }
     std::vector<std::string> computation_pair_list;
-    for (const ComputationGroup& computation_group : computation_groups) {
+    for (const ComputationGroup& computation_group :
+         diff_pattern.computation_groups) {
       if (computation_group.left_computations.size() != 1 ||
           computation_group.right_computations.size() != 1) {
         continue;
@@ -596,7 +597,7 @@ std::string PrintRepetitiveComputationGroups(const DiffSummary& diff_summary,
         &computation_group_list,
         PrintDetails(
             absl::StrFormat("Group %d: %s (Sample: %s → %s)", ++i,
-                            SummarizeDiffGroup(computation_groups),
+                            SummarizeDiffPattern(diff_pattern),
                             sample.left_computations[0]->name(),
                             sample.right_computations[0]->name()),
             PrintAttributesList(
@@ -604,6 +605,13 @@ std::string PrintRepetitiveComputationGroups(const DiffSummary& diff_summary,
                      "Instruction count: %d → %d",
                      sample.left_computations[0]->instruction_count(),
                      sample.right_computations[0]->instruction_count()),
+                 absl::StrFormat(
+                     "Diff summary: %d changed, %d left unmatched, %d right "
+                     "unmatched",
+                     diff_pattern.diff_metrics.changed_instruction_count,
+                     diff_pattern.diff_metrics.left_unmatched_instruction_count,
+                     diff_pattern.diff_metrics
+                         .right_unmatched_instruction_count),
                  PrintDetails("Instances",
                               PrintList(computation_pair_list))})));
   }
@@ -669,7 +677,8 @@ void RenderHtml(const DiffResult& diff_result, const DiffSummary& diff_summary,
   // Print repetitive computation groups
   out << PrintSectionWithHeader(
       "Group of computations with the same diff",
-      PrintRepetitiveComputationGroups(diff_summary, url_generator));
+      PrintRepetitiveDiffPatterns(diff_summary.computation_diff_patterns,
+                                  url_generator));
 }
 
 }  // namespace hlo_diff

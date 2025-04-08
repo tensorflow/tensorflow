@@ -43,7 +43,7 @@ namespace {
 // be printed.
 void PrintUnmatchedInstructions(
     const absl::string_view header,
-    absl::Span<const HloInstruction* const> instructions,
+    const absl::flat_hash_set<const HloInstruction*>& instructions,
     std::ostringstream& out, const RenderTextOptions& options) {
   out << header;
   if (options.top_n_opcodes >= 0) {
