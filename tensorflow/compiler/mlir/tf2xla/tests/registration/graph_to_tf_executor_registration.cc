@@ -26,11 +26,11 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Tools/mlir-translate/Translation.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/lite/tools/tf_mlir_translate_cl.h"
 #include "tensorflow/compiler/mlir/tensorflow/dialect_registration.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/tools/file_tf_mlir_translate.h"
 #include "tensorflow/compiler/mlir/tf2xla/api/v2/tf_executor_to_graph.h"
+#include "tensorflow/compiler/mlir/tools/tf_mlir_translate_cl.h"
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "xla/client/client_library.h"
@@ -88,15 +88,21 @@ static Status CompileGraph(tensorflow::Graph* graph,
 static mlir::OwningOpRef<mlir::ModuleOp> GraphdefToMlirTranslateFunction(
     llvm::StringRef input, mlir::MLIRContext* context) {
   tensorflow::GraphdefToMlirOptions options{
-      debug_info_file,        xla_compile_device_type,
-      prune_unused_nodes,     convert_legacy_fed_inputs,
-      graph_as_function,      upgrade_legacy,
-      enable_shape_inference, unconditionally_use_set_output_shapes,
-      enable_soft_placement,  set_original_tf_func_name};
+      mlir_tools::debug_info_file,
+      mlir_tools::xla_compile_device_type,
+      mlir_tools::prune_unused_nodes,
+      mlir_tools::convert_legacy_fed_inputs,
+      mlir_tools::graph_as_function,
+      mlir_tools::upgrade_legacy,
+      mlir_tools::enable_shape_inference,
+      mlir_tools::unconditionally_use_set_output_shapes,
+      mlir_tools::enable_soft_placement,
+      mlir_tools::set_original_tf_func_name};
 
   auto module_or = tensorflow::GraphdefToMlirTranslateFunction(
-      input, input_arrays, input_dtypes, input_shapes, output_arrays,
-      control_output_arrays, options, context);
+      input, mlir_tools::input_arrays, mlir_tools::input_dtypes,
+      mlir_tools::input_shapes, mlir_tools::output_arrays,
+      mlir_tools::control_output_arrays, options, context);
   if (!module_or.status().ok()) return nullptr;
   return std::move(module_or).value();
 }
@@ -109,8 +115,8 @@ static mlir::LogicalResult MlirToGraphTranslateFunction(
   if (!module) return mlir::failure();
 
   tensorflow::GraphExportConfig confs;
-  confs.export_entry_func_to_flib = export_entry_func_to_flib;
-  confs.export_original_tf_func_name = export_original_tf_func_name;
+  confs.export_entry_func_to_flib = mlir_tools::export_entry_func_to_flib;
+  confs.export_original_tf_func_name = mlir_tools::export_original_tf_func_name;
 
   std::unique_ptr<tensorflow::FunctionLibraryDefinition> flib_def;
   auto graph =
@@ -159,8 +165,8 @@ static llvm::LogicalResult MlirToGraphdefTranslateFunction(
   if (!module) return mlir::failure();
 
   tensorflow::GraphExportConfig confs;
-  confs.export_entry_func_to_flib = export_entry_func_to_flib;
-  confs.export_original_tf_func_name = export_original_tf_func_name;
+  confs.export_entry_func_to_flib = mlir_tools::export_entry_func_to_flib;
+  confs.export_original_tf_func_name = mlir_tools::export_original_tf_func_name;
 
   tensorflow::FunctionLibraryDefinition flib_def(
       tensorflow::OpRegistry::Global(), tensorflow::FunctionDefLibrary());
