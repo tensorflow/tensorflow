@@ -1158,43 +1158,44 @@ void AddDoubleBufferingPasses(const HloModule& module,
   }
 }
 
-absl::Status RunPostFusionPasses(
-    HloModule* hlo_module, const se::DeviceDescription& device_description,
-    int pointer_size, const int combine_threshold_count) {
-  const DebugOptions& opts = hlo_module->config().debug_options();
+constexpr int kCombineThresholdCount = 256;
 
-  HloPassPipeline pipeline("post-fusion optimization");
-  pipeline.AddPass<RenameFusions>();
-  if (hlo_module->config()
-          .debug_options()
-          .xla_gpu_experimental_enable_sync_collective_combining()) {
+void AddCollectiveCombinerPasses(
+    HloPassPipeline& pipeline, const HloModule& module,
+    const se::DeviceDescription& device_description, int pointer_size) {
+  const DebugOptions& opts = module.config().debug_options();
+
+  if (opts.xla_gpu_experimental_enable_sync_collective_combining()) {
     pipeline.AddPass<CollectiveCombinerAnnotator>(device_description,
                                                   pointer_size);
   }
+
   pipeline.AddPass<GpuAllGatherCombiner>(
-      device_description,
-      /*default_combine_threshold_in_bytes=*/kDefaultAllGatherCombineThreshold,
-      /*combine_threshold_in_bytes=*/
-      opts.xla_gpu_all_gather_combine_threshold_bytes(),
-      combine_threshold_count,
-      /*combine_by_dim=*/opts.xla_gpu_enable_all_gather_combine_by_dim(),
-      /*combine_different_dtypes=*/true, /*pointer_size=*/pointer_size);
+      device_description, kDefaultAllGatherCombineThreshold,
+      opts.xla_gpu_all_gather_combine_threshold_bytes(), kCombineThresholdCount,
+      opts.xla_gpu_enable_all_gather_combine_by_dim(),
+      /*combine_different_dtypes=*/true, pointer_size);
   pipeline.AddPass<GpuAllReduceCombiner>(
       device_description, kDefaultAllReduceCombineThreshold,
-      opts.xla_gpu_all_reduce_combine_threshold_bytes(),
-      combine_threshold_count, /*pointer_size=*/pointer_size);
+      opts.xla_gpu_all_reduce_combine_threshold_bytes(), kCombineThresholdCount,
+      pointer_size);
   pipeline.AddPass<GpuReduceScatterCombiner>(
-      device_description, /*default_combine_threshold_in_bytes=*/
-      kDefaultReduceScatterCombineThreshold,
-      /*combine_threshold_in_bytes=*/
+      device_description, kDefaultReduceScatterCombineThreshold,
       opts.xla_gpu_reduce_scatter_combine_threshold_bytes(),
-      combine_threshold_count,
-      /*combine_by_dim=*/opts.xla_gpu_enable_reduce_scatter_combine_by_dim(),
-      /*pointer_size=*/pointer_size);
+      kCombineThresholdCount,
+      opts.xla_gpu_enable_reduce_scatter_combine_by_dim(), pointer_size);
   pipeline.AddPass<CollectivePermuteCombiner>(
-      /*combine_threshold_in_bytes=*/
       opts.xla_gpu_collective_permute_combine_threshold_bytes(),
-      combine_threshold_count);
+      kCombineThresholdCount);
+}
+
+absl::Status RunPostFusionPasses(
+    HloModule* hlo_module, const se::DeviceDescription& device_description,
+    int pointer_size) {
+  HloPassPipeline pipeline("post-fusion optimization");
+  pipeline.AddPass<RenameFusions>();
+  AddCollectiveCombinerPasses(pipeline, *hlo_module, device_description,
+                              pointer_size);
 
   pipeline.AddPass<AllReduceContiguous>();
 
@@ -1316,21 +1317,17 @@ absl::Status RunAsyncDotPasses(HloModule* hlo_module) {
 
 absl::Status RunDynamicSliceFusionPasses(
     HloModule* hlo_module, se::Platform::Id platform_id,
-    const se::DeviceDescription& device_description, int64_t pointer_size,
-    const int combine_threshold_count) {
+    const se::DeviceDescription& device_description, int64_t pointer_size) {
   const DebugOptions& opts = hlo_module->config().debug_options();
   if (opts.xla_gpu_enable_dynamic_slice_fusion()) {
     HloPassPipeline pipeline("dynamic-slice");
     TF_ASSIGN_OR_RETURN(se::Platform * platform,
                         se::PlatformManager::PlatformWithId(platform_id));
     pipeline.AddPass<GpuReduceScatterCombiner>(
-        device_description, /*default_combine_threshold_in_bytes=*/
-        kDefaultReduceScatterCombineThreshold,
-        /*combine_threshold_in_bytes=*/
+        device_description, kDefaultReduceScatterCombineThreshold,
         opts.xla_gpu_reduce_scatter_combine_threshold_bytes(),
-        /*combine_threshold_count=*/combine_threshold_count,
-        /*combine_by_dim=*/opts.xla_gpu_enable_reduce_scatter_combine_by_dim(),
-        /*pointer_size=*/pointer_size);
+        kCombineThresholdCount,
+        opts.xla_gpu_enable_reduce_scatter_combine_by_dim(), pointer_size);
     pipeline.AddPass<DynamicSliceFusionRewriter>(platform->Name());
     pipeline.AddPass<AsyncWrapper>([](const HloInstruction* instr) {
       if (!IsDynamicSliceFusion(instr)) {
@@ -1416,19 +1413,17 @@ absl::Status GpuCompiler::OptimizeHloModule(
       hlo_module, stream_exec, options, gpu_target_config,
       thread_pool.get_mutable()));
 
-  const int combine_threshold_count = 256;
-
   // This is a "low effort, high impact" fusion that should be run first.
   TF_RETURN_IF_ERROR(RunDynamicSliceFusionPasses(
       hlo_module, /*platform_id=*/PlatformId(),
       /*device_description=*/gpu_target_config.device_description,
-      /*pointer_size=*/pointer_size_, combine_threshold_count));
+      /*pointer_size=*/pointer_size_));
 
   TF_RETURN_IF_ERROR(RunFusionPasses(hlo_module, gpu_target_config,
                                      thread_pool.get_mutable(),
                                      ShapeSizeBytesFunction()));
-  TF_RETURN_IF_ERROR(RunPostFusionPasses(
-      hlo_module, device_description, pointer_size_, combine_threshold_count));
+  TF_RETURN_IF_ERROR(
+      RunPostFusionPasses(hlo_module, device_description, pointer_size_));
   TF_RETURN_IF_ERROR(RunAsyncCollectivesConversionPasses(hlo_module));
   TF_RETURN_IF_ERROR(RunPostFusionSimplificationPasses(
       hlo_module, layout_insensitive_algsimp_opts, gpu_version,
