@@ -2523,8 +2523,8 @@ PjRtStreamExecutorLoadedExecutable::EnqueueExecution(
   absl::Span<int const> donated_params =
       ParametersThatMustBeDonated(executable_idx);
   auto donate_it = donated_params.begin();
-  absl::flat_hash_set<PjRtStreamExecutorBuffer*> used_buffers;
-  absl::flat_hash_set<PjRtStreamExecutorBuffer*> donated_buffers;
+  absl::flat_hash_map<const void*, std::pair<bool, int>> donation_clashes;
+  donation_clashes.reserve(argument_handles.size());
   for (int i = 0; i < argument_handles.size(); ++i) {
     auto* handle =
         tensorflow::down_cast<PjRtStreamExecutorBuffer*>(argument_handles[i]);
@@ -2541,29 +2541,8 @@ PjRtStreamExecutorLoadedExecutable::EnqueueExecution(
     if (must_donate) {
       ++donate_it;
     }
-    bool already_used = !used_buffers.emplace(handle).second;
-    bool already_donated =
-        must_donate ? !donated_buffers.emplace(handle).second
-                    : donated_buffers.find(handle) != donated_buffers.end();
-    if (must_donate && already_donated) {
-      return InvalidArgument(
-          "Attempt to donate the same buffer twice in Execute() (second use: "
-          "flattened argument %d, replica %d). "
-          "Toy example for this bug: `f(donate(a), donate(a))`.",
-          i, replica);
-    } else if (must_donate && already_used) {
-      return InvalidArgument(
-          "Attempt to donate a buffer which is also used by the same call to "
-          "Execute() (second use: flattened argument %d, replica %d). "
-          "Toy example for this bug: `f(a, donate(a))`.",
-          i, replica);
-    } else if (already_donated) {
-      return InvalidArgument(
-          "Attempt to use a buffer that was previously donated in the same "
-          "call to Execute() (second use: flattened argument %d, replica %d). "
-          "Toy example for this bug: `f(donate(a), a)`.",
-          i, replica);
-    }
+    TF_RETURN_IF_ERROR(TestBufferDonationClashes(
+        handle, donation_clashes, must_donate, i, replica, partition));
     device_buffers->emplace_back(handle->GetBufferWithHold(
         must_donate ? PjRtStreamExecutorBuffer::ScopedHold::kDonation
                     : PjRtStreamExecutorBuffer::ScopedHold::kUsage));
