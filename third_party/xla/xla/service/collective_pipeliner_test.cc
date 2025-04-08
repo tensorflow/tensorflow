@@ -82,12 +82,10 @@ absl::StatusOr<bool> RunOptimizer(
     HloPredicate reuse_pipelined_op_buffer = HloPredicateTrue,
     HloPredicate should_allow_loop_variant_parameter_in_chain =
         HloPredicateFalse,
-    CollectivePipeliner::HloPostprocessor postprocess_backward_peeled =
-        std::nullopt,
-    CollectivePipeliner::HloPostprocessor postprocess_backward_rotated =
-        std::nullopt,
+    CollectivePipeliner::HloPostprocessor postprocess_backward_peeled = {},
+    CollectivePipeliner::HloPostprocessor postprocess_backward_rotated = {},
     CollectivePipeliner::HloPostprocessor postprocess_backward_peeled_trailing =
-        std::nullopt,
+        {},
     bool should_add_loop_invariant_op_in_chain = false,
     int64_t collective_size_threshold_to_stop_sinking = INT64_MAX) {
   CollectivePipeliner::Config config = {
@@ -105,7 +103,7 @@ absl::StatusOr<bool> RunOptimizer(
       /*should_allow_control_dependencies=*/false, postprocess_backward_peeled,
       postprocess_backward_rotated, postprocess_backward_peeled_trailing,
       should_add_loop_invariant_op_in_chain,
-      /*postprocess_pipelined_ops=*/std::nullopt,
+      /*postprocess_pipelined_ops=*/{},
       collective_size_threshold_to_stop_sinking};
   HloPassPipeline pass("optimizer");
   pass.AddPass<HloVerifier>(/*layout_sensitive=*/false,
@@ -3175,9 +3173,9 @@ ENTRY entry {
           /*acceptable_formatting=*/HloPredicateTrue,
           /*reuse_pipelined_op_buffer=*/HloPredicateTrue,
           /*should_allow_loop_variant_parameter_in_chain=*/HloPredicateTrue,
-          /*postprocess_backward_peeled=*/std::nullopt,
-          /*postprocess_backward_rotated=*/std::nullopt,
-          /*postprocess_backward_peeled_trailing=*/std::nullopt,
+          /*postprocess_backward_peeled=*/{},
+          /*postprocess_backward_rotated=*/{},
+          /*postprocess_backward_peeled_trailing=*/{},
           /*should_add_loop_invariant_op_in_chain=*/true)
           .value());
   XLA_VLOG_LINES(1, module->ToString());
@@ -3206,9 +3204,9 @@ ENTRY entry {
           /*acceptable_formatting=*/HloPredicateTrue,
           /*reuse_pipelined_op_buffer=*/HloPredicateTrue,
           /*should_allow_loop_variant_parameter_in_chain=*/HloPredicateTrue,
-          /*postprocess_backward_peeled=*/std::nullopt,
-          /*postprocess_backward_rotated=*/std::nullopt,
-          /*postprocess_backward_peeled_trailing=*/std::nullopt,
+          /*postprocess_backward_peeled=*/{},
+          /*postprocess_backward_rotated=*/{},
+          /*postprocess_backward_peeled_trailing=*/{},
           /*should_add_loop_invariant_op_in_chain=*/false)
           .value());
 }
@@ -3598,9 +3596,9 @@ ENTRY entry {
           /*acceptable_formatting=*/HloPredicateIsNotOp<HloOpcode::kAllReduce>,
           /*reuse_pipelined_op_buffer=*/HloPredicateTrue,
           /*should_allow_loop_variant_parameter_in_chain=*/HloPredicateFalse,
-          /*postprocess_backward_peeled=*/std::nullopt,
-          /*postprocess_backward_rotated=*/std::nullopt,
-          /*postprocess_backward_peeled_trailing=*/std::nullopt,
+          /*postprocess_backward_peeled=*/{},
+          /*postprocess_backward_rotated=*/{},
+          /*postprocess_backward_peeled_trailing=*/{},
           /*should_add_loop_invariant_op_in_chain=*/false,
           /*collective_size_threshold_to_stop_sinking=*/1024)
           .value());

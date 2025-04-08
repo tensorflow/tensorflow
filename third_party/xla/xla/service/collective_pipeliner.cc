@@ -726,8 +726,7 @@ absl::StatusOr<HloInstruction*> CloneBackwardChain(
     int64_t& next_scheduling_id,
     absl::flat_hash_map<int64_t, int64_t>& annotation_map,
     LoopVariantParameterInfo* loop_variant_parameter_info = nullptr,
-    CollectivePipeliner::HloPostprocessor postprocess_pipelined_ops =
-        std::nullopt) {
+    CollectivePipeliner::HloPostprocessor postprocess_pipelined_ops = {}) {
   std::vector<HloInstruction*> to_clone(move_info.formatting_ops.begin(),
                                         move_info.formatting_ops.end());
   to_clone.push_back(move_info.collectives_to_move[0]);
@@ -748,9 +747,9 @@ absl::StatusOr<HloInstruction*> CloneBackwardChain(
                                             annotation_map);
     }
     clone_map[chain_op] = cloned;
-    if (postprocess_pipelined_ops.has_value()) {
+    if (postprocess_pipelined_ops) {
       TF_RETURN_IF_ERROR(
-          (*postprocess_pipelined_ops)(cloned, /*new_while_instr=*/nullptr));
+          postprocess_pipelined_ops(cloned, /*new_while_instr=*/nullptr));
     }
     last_cloned = cloned;
     if (loop_variant_parameter_info != nullptr &&
@@ -1949,9 +1948,9 @@ absl::Status TransformLoopForward(
               CollectivePipeliner::kInsertedByPreviousStep));
     }
 
-    if (post_processing_fn.has_value()) {
+    if (post_processing_fn) {
       TF_RETURN_IF_ERROR(
-          (*post_processing_fn)(processed, /*new_while_instr=*/nullptr));
+          post_processing_fn(processed, /*new_while_instr=*/nullptr));
     }
 
     InstructionMap cloned_map = pipelined_values_map;
@@ -1966,9 +1965,9 @@ absl::Status TransformLoopForward(
                                               annotation_map);
       }
       cloned_map[formatting_op] = processed;
-      if (post_processing_fn.has_value()) {
+      if (post_processing_fn) {
         TF_RETURN_IF_ERROR(
-            (*post_processing_fn)(processed, /*new_while_instr=*/nullptr));
+            post_processing_fn(processed, /*new_while_instr=*/nullptr));
       }
     }
     return processed;
@@ -2788,13 +2787,13 @@ static absl::Status TransformLoopBackward(
             next_channel_id, next_scheduling_id, annotation_map,
             /*loop_variant_parameter_info=*/nullptr, post_processing_fn));
 
-    if (post_processing_fn.has_value()) {
-      TF_RETURN_IF_ERROR((*post_processing_fn)(new_init_operands[idx],
-                                               /*new_while_instr=*/nullptr));
+    if (post_processing_fn) {
+      TF_RETURN_IF_ERROR(post_processing_fn(new_init_operands[idx],
+                                            /*new_while_instr=*/nullptr));
     }
-    if (postprocess_peeled.has_value()) {
-      TF_RETURN_IF_ERROR(postprocess_peeled.value()(
-          new_init_operands[idx], /*new_while_instr=*/nullptr));
+    if (postprocess_peeled) {
+      TF_RETURN_IF_ERROR(postprocess_peeled(new_init_operands[idx],
+                                            /*new_while_instr=*/nullptr));
     }
   }
   ConstantValue next_loop_iteration =
@@ -2848,13 +2847,13 @@ static absl::Status TransformLoopBackward(
               next_scheduling_id, annotation_map, &loop_variant_parameter_info,
               post_processing_fn));
 
-      if (post_processing_fn.has_value()) {
+      if (post_processing_fn) {
         TF_RETURN_IF_ERROR(
-            (*post_processing_fn)(cloned_instr, /*new_while_instr=*/nullptr));
+            post_processing_fn(cloned_instr, /*new_while_instr=*/nullptr));
       }
-      if (postprocess_rotated.has_value()) {
-        TF_RETURN_IF_ERROR(postprocess_rotated.value()(
-            cloned_instr, /*new_while_instr=*/nullptr));
+      if (postprocess_rotated) {
+        TF_RETURN_IF_ERROR(
+            postprocess_rotated(cloned_instr, /*new_while_instr=*/nullptr));
       }
     } else {
       auto new_operands =
@@ -2991,10 +2990,10 @@ static absl::Status TransformLoopBackward(
     HloInstruction* cloned_instr = while_loop->parent()->AddInstruction(
         instr->CloneWithNewOperands(instr->shape(), new_operands));
 
-    if (postprocess_peeled_trailing_op.has_value()) {
+    if (postprocess_peeled_trailing_op) {
       CHECK_NE(new_while_loop, nullptr);
       TF_RETURN_IF_ERROR(
-          postprocess_peeled_trailing_op.value()(cloned_instr, new_while_loop));
+          postprocess_peeled_trailing_op(cloned_instr, new_while_loop));
     }
 
     TF_RETURN_IF_ERROR(UpdateControlDependencies(instr, cloned_instr,

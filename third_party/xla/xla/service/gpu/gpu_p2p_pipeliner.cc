@@ -547,8 +547,7 @@ absl::StatusOr<bool> GpuP2PPipeliner::Run(
       PostprocessPeeledP2P;
   CollectivePipeliner::HloPostprocessor postprocess_backward_rotated_op =
       PostprocessRotatedP2P;
-  CollectivePipeliner::HloPostprocessor
-      postprocess_backward_peeled_trailing_op = std::nullopt;
+  CollectivePipeliner::HloPostprocessor postprocess_backward_peeled_trailing_op;
 
   // If partial send/recv pipelining is enabled, collect send/recv instructions
   // for post-processing.
