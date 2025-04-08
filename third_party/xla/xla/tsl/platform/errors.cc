@@ -18,8 +18,9 @@ limitations under the License.
 #include <errno.h>
 #include <string.h>
 
-#include "xla/tsl/platform/status.h"
-#include "tsl/platform/strcat.h"
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 
 namespace tsl {
 namespace errors {
@@ -175,74 +176,9 @@ absl::StatusCode ErrnoToCode(int err_number) {
 
 }  // namespace
 
-absl::Status IOError(const string& context, int err_number) {
+absl::Status IOError(absl::string_view context, int err_number) {
   auto code = ErrnoToCode(err_number);
-  return absl::Status(code,
-                      strings::StrCat(context, "; ", strerror(err_number)));
-}
-
-bool IsAborted(const absl::Status& status) {
-  return status.code() == tsl::error::Code::ABORTED;
-}
-
-bool IsAlreadyExists(const absl::Status& status) {
-  return status.code() == tsl::error::Code::ALREADY_EXISTS;
-}
-
-bool IsCancelled(const absl::Status& status) {
-  return status.code() == tsl::error::Code::CANCELLED;
-}
-
-bool IsDataLoss(const absl::Status& status) {
-  return status.code() == tsl::error::Code::DATA_LOSS;
-}
-
-bool IsDeadlineExceeded(const absl::Status& status) {
-  return status.code() == tsl::error::Code::DEADLINE_EXCEEDED;
-}
-
-bool IsFailedPrecondition(const absl::Status& status) {
-  return status.code() == tsl::error::Code::FAILED_PRECONDITION;
-}
-
-bool IsInternal(const absl::Status& status) {
-  return status.code() == tsl::error::Code::INTERNAL;
-}
-
-bool IsInvalidArgument(const absl::Status& status) {
-  return status.code() == tsl::error::Code::INVALID_ARGUMENT;
-}
-
-bool IsNotFound(const absl::Status& status) {
-  return status.code() == tsl::error::Code::NOT_FOUND;
-}
-
-bool IsOutOfRange(const absl::Status& status) {
-  return status.code() == tsl::error::Code::OUT_OF_RANGE;
-}
-
-bool IsPermissionDenied(const absl::Status& status) {
-  return status.code() == tsl::error::Code::PERMISSION_DENIED;
-}
-
-bool IsResourceExhausted(const absl::Status& status) {
-  return status.code() == tsl::error::Code::RESOURCE_EXHAUSTED;
-}
-
-bool IsUnauthenticated(const absl::Status& status) {
-  return status.code() == tsl::error::Code::UNAUTHENTICATED;
-}
-
-bool IsUnavailable(const absl::Status& status) {
-  return status.code() == tsl::error::Code::UNAVAILABLE;
-}
-
-bool IsUnimplemented(const absl::Status& status) {
-  return status.code() == tsl::error::Code::UNIMPLEMENTED;
-}
-
-bool IsUnknown(const absl::Status& status) {
-  return status.code() == tsl::error::Code::UNKNOWN;
+  return absl::Status(code, absl::StrCat(context, "; ", strerror(err_number)));
 }
 
 }  // namespace errors
