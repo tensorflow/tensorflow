@@ -43,6 +43,9 @@ absl::StatusOr<bool> CreateCollectivesGroupAsyncPair(HloInstruction* instr) {
   HloComputation* computation = instr->parent();
   auto new_computation = instr->GetModule()->AddEmbeddedComputation(
       instr->to_apply()->Clone("collectives_group"));
+  for (auto inner_instruction : new_computation->instructions()) {
+    inner_instruction->erase_frontend_attribute(kXlaSchedulingGroupIdAttr);
+  }
   // Get the shapes for the original instruction.
   std::vector<const Shape*> parameter_shapes(instr->operand_count());
   for (int i = 0; i < instr->operand_count(); ++i) {

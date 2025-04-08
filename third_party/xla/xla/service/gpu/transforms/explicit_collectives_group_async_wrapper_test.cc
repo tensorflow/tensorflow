@@ -64,6 +64,45 @@ TEST_F(ExplicitCollectivesGroupAsyncWrapperTest, AnnotatedOpIsWrapped) {
   ASSERT_TRUE(mutated);
 }
 
+TEST_F(ExplicitCollectivesGroupAsyncWrapperTest,
+       RemoveSchedulingGroupAnnotation) {
+  const absl::string_view hlo_string = R"(
+  HloModule composite
+  comms {
+    a = f32[1] parameter(0)
+    x = f32[1] all-gather(a), replica_groups={}, dimensions={0}, frontend_attributes={_scheduling_group_id="1"}
+    y = f32[1] collective-permute(a), source_target_pairs={{0,1}}, frontend_attributes={_scheduling_group_id="1"}
+    ROOT result = (f32[1], f32[1]) tuple(x, y)
+  }
+
+  ENTRY main {
+    b = f32[1] parameter(0)
+    ROOT c = (f32[1], f32[1]) call(b), to_apply=comms, frontend_attributes={_collectives_group="", _scheduling_group_id="1"}
+  }
+  )";
+
+  auto debug_options = HloTestBase::GetDebugOptionsForTest();
+  auto module = ParseAndReturnVerifiedModule(hlo_string).value();
+  ExplicitCollectivesGroupAsyncWrapper wrapper_pass;
+
+  TF_ASSERT_OK_AND_ASSIGN(bool mutated, wrapper_pass.Run(module.get()));
+  // Assert that the scheduling annotation is removed within the cloned
+  // computation, but remains on the async operations.
+  absl::StatusOr<bool> filecheck_result = RunFileCheck(module->ToString({}), R"(
+  // CHECK: %comms.collectives_group {{.*}} {
+  // CHECK-NEXT: %{{.*}} parameter(0)
+  // CHECK-NEXT: %{{.*}} all-gather({{.*}}), replica_groups={}, dimensions={0}
+  // CHECK-NEXT: %{{.*}} collective-permute({{.*}}), source_target_pairs={{[{][{]0,1[}][}]}}
+  // CHECK: ENTRY %main {{.*}}
+  // CHECK-NEXT: %[[P0:.*]] = {{.*}} parameter(0)
+  // CHECK-NEXT: %[[P1:.*]] = {{.*}} async-start(%[[P0]]), async_execution_thread="explicit", calls=%comms.collectives_group, frontend_attributes={_collectives_group="",_scheduling_group_id="1"}  
+  // CHECK-NEXT: ROOT %{{.*}} async-done(%[[P1]]), frontend_attributes={_collectives_group="",_scheduling_group_id="1"}
+  )");
+  TF_ASSERT_OK(filecheck_result.status());
+  EXPECT_TRUE(*filecheck_result);
+  ASSERT_TRUE(mutated);
+}
+
 TEST_F(ExplicitCollectivesGroupAsyncWrapperTest, ManyCollectivesGroups) {
   // This test calls the same collectives group computation twice, so the
   // computation is cloned so it can be used with many async instructions.
