@@ -19,6 +19,7 @@ limitations under the License.
 #include <tuple>
 #include <utility>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/strings/str_cat.h"
 #include "absl/strings/substitute.h"

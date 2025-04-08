@@ -16,7 +16,6 @@ limitations under the License.
 #include "xla/service/gpu/transforms/triton_fusion_numerics_verifier.h"
 
 #include <memory>
-#include <optional>
 #include <utility>
 
 #include "absl/container/flat_hash_set.h"
