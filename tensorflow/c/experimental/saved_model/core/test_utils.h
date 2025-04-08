@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_C_EXPERIMENTAL_SAVED_MODEL_CORE_TEST_UTILS_H_
 #define TENSORFLOW_C_EXPERIMENTAL_SAVED_MODEL_CORE_TEST_UTILS_H_
 
+#include <cstddef>
+#include <cstdint>
 #include <memory>
 #include <vector>
 
