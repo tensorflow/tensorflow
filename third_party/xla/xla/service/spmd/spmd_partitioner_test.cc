@@ -15807,7 +15807,7 @@ ENTRY entry {
   EXPECT_THAT(module->entry_computation()->root_instruction(), ragged_dot);
 }
 
-TEST_P(SpmdPartitioningTest, RaggedDotBatchMode) {
+TEST_P(SpmdPartitioningTest, RaggedDotBatchModeWithPadding) {
   absl::string_view hlo_string = R"(
 HloModule module
 
@@ -15824,7 +15824,6 @@ ENTRY entry {
 
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           PartitionComputation(hlo_string, /*num_devices=*/16));
-  LOG(ERROR) << module->ToString();
 
   auto param0 = AllOf(op::Parameter(0), op::Shape("f32[8,16,32]"));
   auto param0_pad = AllOf(op::Select(_, param0, op::Broadcast(op::Constant())),
@@ -15835,6 +15834,37 @@ ENTRY entry {
                           op::Shape("f32[8,32,4]"));
 
   auto dot = AllOf(op::Dot(param0_pad, param1_pad), op::Shape("f32[8,16,4]"));
+  auto all_reduce = AllOf(op::AllReduce(dot), op::Shape("f32[8,16,4]"));
+
+  auto root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, all_reduce);
+
+  auto replica_groups = Cast<HloAllReduceInstruction>(root)->replica_groups();
+  EXPECT_EQ(replica_groups.size(), 8);
+  EXPECT_THAT(replica_groups[0].replica_ids(), ::testing::ElementsAre(0, 1));
+}
+
+TEST_P(SpmdPartitioningTest, RaggedDotBatchModeWithoutPadding) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  a = f32[15,31,64] parameter(0), sharding={devices=[2,2,2,2]<=[2,2,2,2]T(0,1,3,2) last_tile_dim_replicate}
+  b = f32[15,64,7] parameter(1), sharding={devices=[2,2,2,2]<=[2,2,2,2]T(0,3,2,1) last_tile_dim_replicate}
+  c = u32[4] parameter(2), sharding={devices=[4,4]<=[16] last_tile_dim_replicate}
+  ROOT dot = f32[15,31,7] ragged-dot(a, b, c),
+    lhs_batch_dims={0}, rhs_batch_dims={0},
+    lhs_contracting_dims={2}, rhs_contracting_dims={1},
+    lhs_ragged_dims={0},
+    sharding={devices=[2,2,2,2]<=[16] last_tile_dim_replicate}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/16));
+
+  auto param0 = AllOf(op::Parameter(0), op::Shape("f32[8,16,32]"));
+  auto param1 = AllOf(op::Parameter(1), op::Shape("f32[8,32,4]"));
+  auto dot = AllOf(op::Dot(param0, param1), op::Shape("f32[8,16,4]"));
   auto all_reduce = AllOf(op::AllReduce(dot), op::Shape("f32[8,16,4]"));
 
   auto root = module->entry_computation()->root_instruction();

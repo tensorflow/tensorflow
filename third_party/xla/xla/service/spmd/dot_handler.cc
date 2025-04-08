@@ -2858,22 +2858,9 @@ absl::StatusOr<HloInstruction*> PartitionDotGroupOnContractingImpl(
     lhs = lhs.Reshard(lhs_sharding);
   }
   // Mask out invalid data.
-  std::vector<int64_t> lhs_skipped_dims;
-  for (int64_t i = 0; i < lhs.base_shape().dimensions_size(); ++i) {
-    if (absl::c_linear_search(lhs_dims, i)) {
-      continue;
-    }
-    lhs_skipped_dims.push_back(i);
-  }
-  lhs = lhs.PadWithZero(/*left_padded_dims=*/{}, lhs_skipped_dims);
-  std::vector<int64_t> rhs_skipped_dims;
-  for (int64_t i = 0; i < rhs.base_shape().dimensions_size(); ++i) {
-    if (absl::c_linear_search(rhs_dims, i)) {
-      continue;
-    }
-    rhs_skipped_dims.push_back(i);
-  }
-  rhs = rhs.PadWithZero(/*left_padded_dims=*/{}, rhs_skipped_dims);
+  lhs = lhs.PadWithZeroOnSpecifiedDims(lhs_dims);
+  rhs = rhs.PadWithZeroOnSpecifiedDims(rhs_dims);
+
   top_level_sharding_to_reset.emplace_back(lhs.hlo(), lhs_sharding);
   lhs.hlo()->set_sharding(lhs_grouped.sharding);
   top_level_sharding_to_reset.emplace_back(rhs.hlo(), rhs_sharding);

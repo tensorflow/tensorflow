@@ -493,8 +493,15 @@ class PartitionedHlo {
       absl::Span<const int64_t> left_padded_dims = {},
       absl::Span<const int64_t> skipped_dims = {}) const;
 
+  // Same as PadWithValue with zero as the pad value.
   PartitionedHlo PadWithZero(absl::Span<const int64_t> left_padded_dims = {},
                              absl::Span<const int64_t> skipped_dims = {}) const;
+
+  // PadWithZero consider all dimensions except the skipped dimensions.
+  // PadWithZeroOnSpecifiedDims considers only the specified dimensions.
+  PartitionedHlo PadWithZeroOnSpecifiedDims(
+      absl::Span<const int64_t> dims,
+      absl::Span<const int64_t> left_padded_dims = {}) const;
 
   // Returns the SPMD instruction.
   HloInstruction* hlo() const { return hlo_; }

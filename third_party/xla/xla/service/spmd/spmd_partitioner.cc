@@ -750,6 +750,19 @@ PartitionedHlo PartitionedHlo::PadWithZero(
   return PadWithValue(zero, left_padded_dims, skipped_dims);
 }
 
+PartitionedHlo PartitionedHlo::PadWithZeroOnSpecifiedDims(
+    absl::Span<const int64_t> dims,
+    absl::Span<const int64_t> left_padded_dims) const {
+  std::vector<int64_t> skipped_dims;
+  skipped_dims.reserve(base_shape_.dimensions_size() - dims.size());
+  for (int64_t i = 0; i < base_shape_.dimensions_size(); ++i) {
+    if (!absl::c_linear_search(dims, i)) {
+      skipped_dims.push_back(i);
+    }
+  }
+  return PadWithZero(left_padded_dims, skipped_dims);
+}
+
 std::optional<PartitionedHlo::WindowedInputShardReturnValue>
 PartitionedHlo::ReshardAsWindowedInput(const Window& window,
                                        const HloSharding& target,
@@ -5008,8 +5021,10 @@ absl::Status SpmdPartitioningVisitor::HandleRaggedDot(HloInstruction* hlo) {
   }
 
   if (!sharded_lhs_contracting_dims.empty()) {
-    lhs = lhs.PadWithZero();
-    rhs = rhs.PadWithZero();
+    lhs =
+        lhs.PadWithZeroOnSpecifiedDims(dot_dnums.lhs_contracting_dimensions());
+    rhs =
+        rhs.PadWithZeroOnSpecifiedDims(dot_dnums.rhs_contracting_dimensions());
   }
 
   HloInstruction* phlo;
