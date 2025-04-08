@@ -585,6 +585,12 @@ typedef cl_mem(CL_API_CALL *PFN_clCreateImageWithProperties)(
     const cl_image_desc * /*image_desc*/, void * /*host_ptr*/,
     cl_int * /*errcode_ret*/);
 
+// cl_arm_import_memory extension
+typedef cl_mem(CL_API_CALL *PFN_clImportMemoryARM)(
+    cl_context /*context*/, cl_mem_flags /*flags*/,
+    const cl_import_properties_arm * /*properties*/, void * /*memory*/,
+    size_t /*size*/, cl_int * /*errcode_ret*/);
+
 extern PFN_clGetPlatformIDs clGetPlatformIDs;
 extern PFN_clGetPlatformInfo clGetPlatformInfo;
 extern PFN_clGetDeviceIDs clGetDeviceIDs;
@@ -715,6 +721,9 @@ extern PFN_clGetCommandBufferInfoKHR clGetCommandBufferInfoKHR;
 // OpenCL 3.0
 extern PFN_clCreateBufferWithProperties clCreateBufferWithProperties;
 extern PFN_clCreateImageWithProperties clCreateImageWithProperties;
+
+// cl_arm_import_memory extension
+extern PFN_clImportMemoryARM clImportMemoryARM;
 
 // For convenient image creation
 // It uses clCreateImage if it available (clCreateImage available since cl 1.2)
