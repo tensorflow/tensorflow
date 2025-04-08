@@ -36,6 +36,7 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/literal.h"
+#include "xla/pjrt/abstract_tracked_device_buffer.h"
 #include "xla/pjrt/async_work_runner.h"
 #include "xla/pjrt/cpu/cpu_event.h"
 #include "xla/pjrt/cpu/tracked_cpu_device_buffer.h"
@@ -76,8 +77,25 @@ class MarkEventReadyOnExit {
   tsl::AsyncValueRef<CpuEvent> event_;
 };
 
-class AbstractTfrtCpuBuffer : public PjRtBuffer {
+class AbstractTfrtCpuBuffer : public CommonPjRtBuffer {
  public:
+  class ScopedHold : public CommonPjRtBuffer::ScopedHold {
+   public:
+    TrackedCpuDeviceBuffer* buffer() const {
+      return static_cast<TrackedCpuDeviceBuffer*>(
+          CommonPjRtBuffer::ScopedHold::buffer());
+    }
+    TrackedCpuDeviceBuffer* operator->() const { return buffer(); }
+    const TrackedCpuDeviceBuffer& operator*() const { return *buffer(); }
+    AbstractTfrtCpuBuffer* parent() const {
+      return static_cast<AbstractTfrtCpuBuffer*>(
+          CommonPjRtBuffer::ScopedHold::parent());
+    }
+
+   private:
+    using CommonPjRtBuffer::ScopedHold::ScopedHold;
+    friend class AbstractTfrtCpuBuffer;
+  };
   AbstractTfrtCpuBuffer(
       Shape on_device_shape,
       std::unique_ptr<TrackedCpuDeviceBuffer> tracked_device_buffer);
@@ -107,8 +125,6 @@ class AbstractTfrtCpuBuffer : public PjRtBuffer {
 
   void Delete() override;
 
-  bool IsDeleted() override;
-
   void CopyToRemoteDevice(PjRtFuture<std::string> serialized_descriptor,
                           RemoteSendCallback on_done) override {
     on_done(Unimplemented("CopyToRemoteDevice not implemented."),
@@ -127,56 +143,12 @@ class AbstractTfrtCpuBuffer : public PjRtBuffer {
   TrackedCpuDeviceBuffer* AcquireUsage(
       tsl::AsyncValueRef<CpuEvent> usage_event);
 
-  // A helper class for managing a pending donation. It should be committed upon
-  // success. Otherwise, the donated buffer is returned to the
-  // AbstractTfrtCpuBuffer.
-  class DonationTransaction {
-   public:
-    explicit DonationTransaction(
-        AbstractTfrtCpuBuffer* buffer,
-        std::unique_ptr<TrackedCpuDeviceBuffer> device_buffer)
-        : buffer_(buffer), device_buffer_(std::move(device_buffer)) {
-      CHECK(buffer_);
-    }
-    DonationTransaction(const DonationTransaction&) = delete;
-    DonationTransaction& operator=(const DonationTransaction&) = delete;
-    DonationTransaction(DonationTransaction&&) = default;
-    DonationTransaction& operator=(DonationTransaction&& other) noexcept {
-      Abort();
-
-      buffer_ = other.buffer_;
-      device_buffer_ = std::move(other.device_buffer_);
-      return *this;
-    }
-
-    ~DonationTransaction() { Abort(); }
-
-    // Commit the donation. The rvalue ref qualifier is used to ensure the
-    // semantic that it can be committed at most once.
-    void Commit() && {
-      buffer_->CommitDonation();
-      device_buffer_.reset();
-    }
-
-    TrackedCpuDeviceBuffer* device_buffer() const {
-      return device_buffer_.get();
-    }
-
-   private:
-    void Abort() {
-      if (device_buffer_) buffer_->AbortDonation(std::move(device_buffer_));
-    }
-
-    AbstractTfrtCpuBuffer* buffer_ = nullptr;
-    std::unique_ptr<TrackedCpuDeviceBuffer> device_buffer_;
-  };
-
   // Acquires the device buffer for exclusive donation. The caller of this
   // method is expected to use the usage events and definition events to
   // serialize this donation with previous usages. After this method is called,
   // calls to AcquireUsage() will fail. Returns error status if the buffer is
   // already donated or there is outstanding external references.
-  absl::StatusOr<DonationTransaction> AcquireDonation();
+  ScopedHold AcquireDonation();
 
   // A helper function for PjRtClient::BufferFromHostLiteral. Copy the literal
   // to the current buffer asynchronously. `avs` is used to signal when the copy
@@ -215,8 +187,18 @@ class AbstractTfrtCpuBuffer : public PjRtBuffer {
       const Shape& shape, AsyncWorkRunner* async_work_runner,
       absl::Mutex* transpose_mu, TransposePlanCache* transpose_cache);
 
+  // Returns a hold on the TrackedTfrtTpuDeviceBuffer holding the device
+  // buffers. See comment on ScopedHold.
+  ScopedHold GetBufferWithHold(ScopedHold::Type type);
+
  protected:
   virtual absl::string_view buffer_name() const = 0;
+
+  TrackedCpuDeviceBuffer* device_buffer() const
+      ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+    return static_cast<TrackedCpuDeviceBuffer*>(
+        CommonPjRtBuffer::device_buffer());
+  }
 
   PjRtFuture<> ToLiteralHelper(MutableLiteralBase* literal,
                                AsyncWorkRunner* async_work_runner);
@@ -243,17 +225,6 @@ class AbstractTfrtCpuBuffer : public PjRtBuffer {
            on_device_shape_.tuple_shapes_size() == 0;
   }
 
-  void DropExternalReference();
-
-  // Commits the pending donation by setting `pending_donation_` to false.
-  // `pending_donation_` must be true before calling this method.
-  void CommitDonation();
-
-  // Aborts the pending donation by returning the donated buffer, and setting
-  // `pending_donation_` to false. `pending_donation_` must be true before
-  // calling this method.
-  void AbortDonation(std::unique_ptr<TrackedCpuDeviceBuffer> device_buffer);
-
   // Similar to Delete, drops the buffer's reference to its associated device
   // memory, leaving the buffer in an invalid state, but returns the
   // TrackedCpuDeviceBuffer rather than freeing the device memory, so that
@@ -271,25 +242,7 @@ class AbstractTfrtCpuBuffer : public PjRtBuffer {
   absl::StatusOr<std::unique_ptr<TrackedCpuDeviceBuffer>> Release(
       bool wait_for_operations_to_complete);
 
-  // Releases the device buffer by returning a unique_ptr of it. If there is
-  // outstanding donation or usage holds, this method blocks until those holds
-  // are committed or dropped.
-  std::unique_ptr<TrackedCpuDeviceBuffer> ReleaseBufferLocked()
-      ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
-
   const Shape on_device_shape_;
-
-  mutable absl::Mutex mu_;
-  std::unique_ptr<TrackedCpuDeviceBuffer> tracked_device_buffer_
-      ABSL_GUARDED_BY(mu_);
-  // Count of external references on the buffer.
-  int external_reference_counter_ ABSL_GUARDED_BY(mu_) = 0;
-
-  // `pending_donation_` indicates whether a donation is pending. The destructor
-  // of the AbstractTfrtCpuBuffer will wait for a pending donation, as the
-  // donation might fail. Note that concurrent calls to AcquireUsage() and
-  // AcquireDonation() might fail even if the pending donation is aborted later.
-  bool pending_donation_ ABSL_GUARDED_BY(mu_) = false;
 };
 
 class AbstractAsyncHostToHostMemoryTransferManager

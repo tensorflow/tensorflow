@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/functional/any_invocable.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
+#include "xla/pjrt/abstract_tracked_device_buffer.h"
 #include "xla/pjrt/cpu/cpu_event.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
@@ -86,7 +87,7 @@ class CpuDeviceMemoryOwned : public CpuDeviceMemory {
 // or multiple memory regions for a tuple buffers. It also tracks the definition
 // and usage of the memory to allow for synchronized usage and deletion of CPU
 // memory. This class is thread-compatible.
-class TrackedCpuDeviceBuffer {
+class TrackedCpuDeviceBuffer : public AbstractTrackedDeviceBuffer {
  public:
   // For non-tuple, takes a single buffer.
   // For tuple, takes the leaf buffers. Tuple index table created internally.
@@ -150,6 +151,8 @@ class TrackedCpuDeviceBuffer {
   // Relinquishes ownership of the buffer's device memory, e.g., after the
   // buffer is passed to a computation that aliases its inputs to outputs.
   void ReleaseDeviceMemory();
+
+  void ConfirmDonation() override { ReleaseDeviceMemory(); }
 
   bool owns_buffers_;
 

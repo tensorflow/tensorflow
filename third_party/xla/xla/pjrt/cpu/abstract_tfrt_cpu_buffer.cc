@@ -40,6 +40,7 @@ limitations under the License.
 #include "xla/cpu_function_runtime.h"
 #include "xla/layout_util.h"
 #include "xla/literal.h"
+#include "xla/pjrt/abstract_tracked_device_buffer.h"
 #include "xla/pjrt/async_work_runner.h"
 #include "xla/pjrt/cpu/cpu_event.h"
 #include "xla/pjrt/cpu/tracked_cpu_device_buffer.h"
@@ -122,8 +123,8 @@ ShapedBuffer AsShapedBuffer(int device_ordinal, const Shape& on_device_shape,
 AbstractTfrtCpuBuffer::AbstractTfrtCpuBuffer(
     Shape on_device_shape,
     std::unique_ptr<TrackedCpuDeviceBuffer> tracked_device_buffer)
-    : on_device_shape_(std::move(on_device_shape)),
-      tracked_device_buffer_(std::move(tracked_device_buffer)) {}
+    : CommonPjRtBuffer(std::move(tracked_device_buffer)),
+      on_device_shape_(std::move(on_device_shape)) {}
 
 AbstractTfrtCpuBuffer::~AbstractTfrtCpuBuffer() {
   AbstractTfrtCpuBuffer::Delete();
@@ -167,9 +168,10 @@ absl::StatusOr<std::unique_ptr<PjRtBuffer::ExternalReference>>
 AbstractTfrtCpuBuffer::AcquireExternalReference() {
   class ScopedExternalReference : public PjRtBuffer::ExternalReference {
    public:
-    explicit ScopedExternalReference(AbstractTfrtCpuBuffer* buffer,
-                                     tsl::AsyncValueRef<CpuDeviceMemory> data)
-        : buffer_(buffer), data_(std::move(data)) {
+    explicit ScopedExternalReference(AbstractTfrtCpuBuffer::ScopedHold hold)
+        : external_reference_(std::move(hold)),
+          data_(external_reference_->buffer()) {
+      DCHECK(external_reference_.type() == ScopedHold::kExternalReference);
       DCHECK(data_);
       // We need to wait for the memory to be allocated before sharing it with
       // external frameworks like NumPy.
@@ -178,30 +180,18 @@ AbstractTfrtCpuBuffer::AcquireExternalReference() {
       data_ptr_ = data_->untyped_data();
     }
 
-    ~ScopedExternalReference() override { buffer_->DropExternalReference(); }
+    ~ScopedExternalReference() override = default;
 
    private:
-    AbstractTfrtCpuBuffer* buffer_ = nullptr;
+    AbstractTfrtCpuBuffer::ScopedHold external_reference_;
     // Keep a reference to the underlying data used. Note that it is still
     // users' responsibility to synchronize reads and writes to the data.
     tsl::AsyncValueRef<CpuDeviceMemory> data_;
   };
 
-  absl::MutexLock lock(&mu_);
-  if (tracked_device_buffer_ == nullptr) {
-    return InvalidArgument("Buffer has been deleted or donated.");
-  }
-
-  ++external_reference_counter_;
-
-  return {std::make_unique<ScopedExternalReference>(
-      this, tracked_device_buffer_->buffer())};
-}
-
-void AbstractTfrtCpuBuffer::DropExternalReference() {
-  absl::MutexLock lock(&mu_);
-  CHECK_GT(external_reference_counter_, 0);
-  --external_reference_counter_;
+  ScopedHold hold = GetBufferWithHold(ScopedHold::kExternalReference);
+  TF_RETURN_IF_ERROR(hold.status());
+  return {std::make_unique<ScopedExternalReference>(std::move(hold))};
 }
 
 class TrackedCpuDeviceBufferExternalReference
@@ -209,10 +199,10 @@ class TrackedCpuDeviceBufferExternalReference
  public:
   explicit TrackedCpuDeviceBufferExternalReference(
       std::unique_ptr<TrackedCpuDeviceBuffer> tracked_device_buffer)
-      : tracked_device_buffer_(std::move(tracked_device_buffer)) {
+      : device_buffer_(std::move(tracked_device_buffer)) {
     // We need to wait for the memory to be allocated before sharing it with
     // external frameworks like NumPy.
-    const auto& buffer = tracked_device_buffer_->buffer();
+    const auto& buffer = device_buffer_->buffer();
     tsl::BlockUntilReady(buffer);
     CHECK(buffer.IsConcrete());
     data_ptr_ = buffer->untyped_data();
@@ -221,7 +211,7 @@ class TrackedCpuDeviceBufferExternalReference
   ~TrackedCpuDeviceBufferExternalReference() override = default;
 
  private:
-  std::unique_ptr<TrackedCpuDeviceBuffer> tracked_device_buffer_;
+  std::unique_ptr<TrackedCpuDeviceBuffer> device_buffer_;
 };
 
 absl::StatusOr<std::unique_ptr<PjRtBuffer::ExternalReference>>
@@ -243,29 +233,10 @@ AbstractTfrtCpuBuffer::ReleaseDeviceMemoryOwnership(
   return ref;
 }
 
-void AbstractTfrtCpuBuffer::CommitDonation() {
-  absl::MutexLock lock(&mu_);
-  CHECK(pending_donation_);
-  CHECK(!tracked_device_buffer_);
-  pending_donation_ = false;
-}
-
-void AbstractTfrtCpuBuffer::AbortDonation(
-    std::unique_ptr<TrackedCpuDeviceBuffer> device_buffer) {
-  absl::MutexLock lock(&mu_);
-  CHECK(pending_donation_);
-  CHECK(!tracked_device_buffer_);
-  pending_donation_ = false;
-  tracked_device_buffer_ = std::move(device_buffer);
-}
-
 void AbstractTfrtCpuBuffer::Delete() {
-  std::unique_ptr<TrackedCpuDeviceBuffer> device_buffer;
-  {
-    absl::MutexLock lock(&mu_);
-    device_buffer = ReleaseBufferLocked();
-    if (device_buffer == nullptr) return;
-  }
+  std::unique_ptr<TrackedCpuDeviceBuffer> device_buffer(
+      static_cast<TrackedCpuDeviceBuffer*>(ReleaseBuffer().release()));
+  if (device_buffer == nullptr) return;
 
   // Now that all holds have completed and no more can be added, we can get
   // the final set of usage events.
@@ -286,27 +257,10 @@ void AbstractTfrtCpuBuffer::Delete() {
   });
 }
 
-bool AbstractTfrtCpuBuffer::IsDeleted() {
-  absl::MutexLock lock(&mu_);
-  return tracked_device_buffer_ == nullptr;
-}
-
-std::unique_ptr<TrackedCpuDeviceBuffer>
-AbstractTfrtCpuBuffer::ReleaseBufferLocked() {
-  auto condition = [this]() ABSL_SHARED_LOCKS_REQUIRED(mu_) {
-    return !pending_donation_;
-  };
-  mu_.Await(absl::Condition(&condition));
-  return std::move(tracked_device_buffer_);
-}
-
 absl::StatusOr<std::unique_ptr<TrackedCpuDeviceBuffer>>
 AbstractTfrtCpuBuffer::Release(bool wait_for_operations_to_complete) {
-  std::unique_ptr<TrackedCpuDeviceBuffer> device_buffer;
-  {
-    absl::MutexLock lock(&mu_);
-    device_buffer = ReleaseBufferLocked();
-  }
+  std::unique_ptr<TrackedCpuDeviceBuffer> device_buffer(
+      static_cast<TrackedCpuDeviceBuffer*>(ReleaseBuffer().release()));
   if (device_buffer == nullptr) return {nullptr};
 
   absl::InlinedVector<tsl::AsyncValueRef<CpuEvent>, 4> events;
@@ -334,33 +288,26 @@ AbstractTfrtCpuBuffer::Release(bool wait_for_operations_to_complete) {
 TrackedCpuDeviceBuffer* AbstractTfrtCpuBuffer::AcquireUsage(
     tsl::AsyncValueRef<CpuEvent> usage_event) {
   absl::MutexLock lock(&mu_);
-  if (!tracked_device_buffer_) {
+  if (!device_buffer()) {
     return nullptr;
   }
 
-  tracked_device_buffer_->AddUsageEvents(absl::MakeSpan(&usage_event, 1));
-  return tracked_device_buffer_.get();
+  device_buffer()->AddUsageEvents(absl::MakeSpan(&usage_event, 1));
+  return device_buffer();
 }
 
-absl::StatusOr<AbstractTfrtCpuBuffer::DonationTransaction>
-AbstractTfrtCpuBuffer::AcquireDonation() {
+AbstractTfrtCpuBuffer::ScopedHold AbstractTfrtCpuBuffer::GetBufferWithHold(
+    ScopedHold::Type type) {
   absl::MutexLock lock(&mu_);
+  // Ensure that at most one donation hold can be in progress at a time.
+  WaitForOutstandingDonationHold();
+  ScopedHold hold(this, type);
+  AcquireHoldLocked(&hold);
+  return hold;
+}
 
-  if (tracked_device_buffer_ == nullptr) {
-    return InvalidArgument("Donation requested for invalid buffer");
-  }
-
-  if (external_reference_counter_ > 0) {
-    return InvalidArgument(
-        "Donation requested for buffer with external reference");
-  }
-
-  CHECK(!pending_donation_);
-  pending_donation_ = true;
-
-  // Swap out `tracked_device_buffer_` so that no one can acquire a usage event
-  // after this point.
-  return DonationTransaction(this, std::move(tracked_device_buffer_));
+AbstractTfrtCpuBuffer::ScopedHold AbstractTfrtCpuBuffer::AcquireDonation() {
+  return GetBufferWithHold(ScopedHold::kDonation);
 }
 
 PjRtFuture<> AbstractTfrtCpuBuffer::DoAsyncWorkOnBuffer(
@@ -553,11 +500,11 @@ PjRtFuture<> AbstractTfrtCpuBuffer::GetReadyFuture() {
   tsl::AsyncValueRef<CpuEvent> definition_event;
   {
     absl::MutexLock lock(&mu_);
-    if (!tracked_device_buffer_) {
+    if (!device_buffer()) {
       return PjRtFuture<>(InvalidArgument(
           "GetReadyFuture() called on deleted or donated buffer"));
     }
-    definition_event = tracked_device_buffer_->definition_event();
+    definition_event = device_buffer()->definition_event();
   }
   DCHECK(definition_event);
 

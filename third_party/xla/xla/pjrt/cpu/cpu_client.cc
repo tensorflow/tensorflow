@@ -1488,8 +1488,7 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtCpuExecutable::ExecuteHelper(
   auto execute_event = tsl::MakeConstructedAsyncValueRef<CpuEvent>();
   MarkEventReadyOnExit ready_on_exit(execute_event);
 
-  absl::InlinedVector<TfrtCpuBuffer::DonationTransaction, 4>
-      donation_transactions;
+  absl::InlinedVector<TfrtCpuBuffer::ScopedHold, 4> donation_transactions;
 
   absl::InlinedVector<std::pair<bool, TrackedCpuDeviceBuffer*>, 4>
       tracked_buffers;
@@ -1526,8 +1525,8 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtCpuExecutable::ExecuteHelper(
           tfrt_buffer, donation_clashes, must_donate, i, replica, partition));
       if (must_donate) {
         ++donate_it;
-        absl::StatusOr<TfrtCpuBuffer::DonationTransaction>
-            donation_transaction = tfrt_buffer->AcquireDonation();
+        TfrtCpuBuffer::ScopedHold donation_transaction =
+            tfrt_buffer->AcquireDonation();
         // On CPU, we allow donation to succeed by introducing a copy. This was
         // added when enabling buffer donation on CPU since it turned out that a
         // number of users were holding external references to buffers that were
@@ -1537,15 +1536,14 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtCpuExecutable::ExecuteHelper(
           // After acquiring the buffer for donation, we retrieve the dependent
           // usage events. Note that we don't need any locking here as
           // AcquireDonation() is supposed to synchronize with other usages.
-          for (const auto& ev :
-               donation_transaction->device_buffer()->UsageEvents()) {
+          for (const auto& ev : donation_transaction->UsageEvents()) {
             if (!ev.IsAvailable()) {
               input_deps.push_back(ev.CopyRCRef());
             }
           }
-          tracked_buffer = donation_transaction->device_buffer();
+          tracked_buffer = donation_transaction.buffer();
           tracked_buffers.emplace_back(/*can_donate=*/true, tracked_buffer);
-          donation_transactions.push_back(std::move(*donation_transaction));
+          donation_transactions.push_back(std::move(donation_transaction));
           return absl::OkStatus();
         }
       }
@@ -1760,7 +1758,7 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtCpuExecutable::ExecuteHelper(
     }
 
     for (auto& donation_transaction : donation_transactions) {
-      std::move(donation_transaction).Commit();
+      std::move(donation_transaction).ConfirmDonation();
     }
 
     // Forward errors (if any) after executing compute function or thunks.
@@ -1909,7 +1907,7 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtCpuExecutable::ExecuteHelper(
           }
 
           for (auto& donation_transaction : donation_transactions) {
-            std::move(donation_transaction).Commit();
+            std::move(donation_transaction).ConfirmDonation();
           }
 
           if (!status.ok()) {
