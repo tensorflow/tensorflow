@@ -20,9 +20,9 @@ class TensorFlowLiteTests: XCTestCase {
 
   func testRuntime_Version() {
     #if swift(>=5.0)
-    let pattern = #"^(\d+)\.(\d+)\.(\d+)([+-][-.0-9A-Za-z]+)?$"#
+    let pattern = #"^(\d+)\.(\d+)\.(\d+)([+-][-.0-9A-Za-z]+)?(\+\w+)?$"#
     #else
-    let pattern = "^(\\d+)\\.(\\d+)\\.(\\d+)([+-][-.0-9A-Za-z]+)?$"
+    let pattern = "^(\\d+)\\.(\\d+)\\.(\\d+)([+-][-.0-9A-Za-z]+)?(\\+\\w+)?$"
     #endif  // swift(>=5.0)
     XCTAssertNotNil(TensorFlowLite.Runtime.version.range(of: pattern, options: .regularExpression))
   }
