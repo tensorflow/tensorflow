@@ -103,6 +103,14 @@ func.func @export_sharding_group(%arg0: tensor<8x8xf32>) -> tensor<8x8xf32> {
   return %arg0 : tensor<8x8xf32>
 }
 
+// CHECK-LABEL: func @export_propagation_barrier
+// CHECK-SAME:      %arg0: tensor<8x8xf32>) -> tensor<8x8xf32> {
+func.func @export_propagation_barrier(%arg0: tensor<8x8xf32>) -> tensor<8x8xf32> {
+  // CHECK: %0 = stablehlo.custom_call @local_xla.sdy.PropagationBarrier(%arg0) {mhlo.frontend_attributes = {xla.sdy.allowed_direction = "2 : i32"}} : (tensor<8x8xf32>) -> tensor<8x8xf32>
+  %0 = sdy.propagation_barrier %arg0 allowed_direction=BACKWARD :  tensor<8x8xf32>
+  return %0 : tensor<8x8xf32>
+}
+
 // CHECK-LABEL: func @constant
 func.func @constant() -> tensor<i32> {
   // CHECK-NEXT: %[[CONST:.*]] = stablehlo.constant dense<0>

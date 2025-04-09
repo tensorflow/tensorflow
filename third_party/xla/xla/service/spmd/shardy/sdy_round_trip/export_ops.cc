@@ -62,6 +62,7 @@ using ::mlir::StringRef;
 using ::mlir::success;
 
 using ::mlir::sdy::ConstantOp;
+using ::mlir::sdy::PropagationBarrierOp;
 using ::mlir::sdy::ShardingConstraintOp;
 using ::mlir::sdy::ShardingGroupOp;
 using ::mlir::sdy::TensorShardingAttr;
@@ -128,6 +129,25 @@ class ShardingGroupPattern : public OpConversionPattern<ShardingGroupOp> {
   }
 };
 
+class PropagationBarrierPattern
+    : public OpConversionPattern<PropagationBarrierOp> {
+ public:
+  using OpConversionPattern::OpConversionPattern;
+
+ private:
+  LogicalResult matchAndRewrite(
+      PropagationBarrierOp op, OpAdaptor adaptor,
+      ConversionPatternRewriter& rewriter) const override {
+    auto customCallOp = rewriter.replaceOpWithNewOp<stablehlo::CustomCallOp>(
+        op, op->getResultTypes(), adaptor.getInput());
+
+    customCallOp.setCallTargetName(kPropagationBarrierCustomCallTargetName);
+    setFrontendAttribute(customCallOp, kAllowedDirectionAttr,
+                         op.getAllowedDirectionAttr());
+    return success();
+  }
+};
+
 class SdyRoundTripExportOpsPass
     : public PassWrapper<SdyRoundTripExportOpsPass, OperationPass<ModuleOp>> {
  public:
@@ -139,9 +159,8 @@ class SdyRoundTripExportOpsPass
     target.addIllegalOp<ConstantOp, ShardingConstraintOp>();
     target.addLegalOp<stablehlo::ConstantOp, stablehlo::CustomCallOp>();
     mlir::RewritePatternSet patterns(&context);
-    patterns
-        .add<ConstantPattern, ShardingConstraintPattern, ShardingGroupPattern>(
-            &context);
+    patterns.add<ConstantPattern, ShardingConstraintPattern,
+                 ShardingGroupPattern, PropagationBarrierPattern>(&context);
     if (mlir::failed(mlir::applyPartialConversion(getOperation(), target,
                                                   std::move(patterns)))) {
       signalPassFailure();

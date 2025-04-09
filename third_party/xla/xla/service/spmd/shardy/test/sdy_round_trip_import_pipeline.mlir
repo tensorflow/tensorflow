@@ -244,6 +244,26 @@ func.func @import_sharding_group(%arg0: tensor<8x8xf32>) -> tensor<8x8xf32> {
 
 // -----
 
+// CHECK-LABEL: func @import_propagation_barrier_backward
+// CHECK-SAME:      %arg0: tensor<8x8xf32>) -> tensor<8x8xf32> {
+func.func @import_propagation_barrier_backward(%arg0: tensor<8x8xf32>) -> tensor<8x8xf32> {
+  // CHECK %r = sdy.propagation_barrier %arg0 allowed_direction=BACKWARD :  tensor<8x8xf32>
+  %r = stablehlo.custom_call @local_xla.sdy.PropagationBarrier(%arg0) {has_side_effect = true, mhlo.frontend_attributes = {xla.sdy.allowed_direction = "2 : i32"}} : (tensor<8x8xf32>) -> (tensor<8x8xf32>)
+  return %r : tensor<8x8xf32>
+}
+
+// -----
+
+// CHECK-LABEL: func @import_propagation_barrier_forward
+// CHECK-SAME:      %arg0: tensor<8x8xf32>) -> tensor<8x8xf32> {
+func.func @import_propagation_barrier_forward(%arg0: tensor<8x8xf32>) -> tensor<8x8xf32> {
+  // CHECK %r = sdy.propagation_barrier %arg0 allowed_direction=FORWARD :  tensor<8x8xf32>
+  %r = stablehlo.custom_call @local_xla.sdy.PropagationBarrier(%arg0) {mhlo.frontend_attributes = {xla.sdy.allowed_direction = "1 : i32"}} : (tensor<8x8xf32>) -> (tensor<8x8xf32>)
+  return %r : tensor<8x8xf32>
+}
+
+// -----
+
 func.func @callback_no_result(%arg0: tensor<f64>) {
   // CHECK:      %[[C:.*]] = sdy.constant
   // CHECK-NEXT: stablehlo.custom_call @xla_python_cpu_callback(%[[C]], %arg0) {

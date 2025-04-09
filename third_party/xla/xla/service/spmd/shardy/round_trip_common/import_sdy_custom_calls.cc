@@ -48,6 +48,8 @@ namespace {
 
 using ::mlir::IntegerAttr;
 using ::mlir::StringRef;
+using ::mlir::sdy::PropagationBarrierOp;
+using ::mlir::sdy::PropagationDirectionAttr;
 using ::mlir::sdy::ShardingConstraintOp;
 using ::mlir::sdy::ShardingGroupOp;
 using ::mlir::sdy::TensorShardingAttr;
@@ -87,6 +89,24 @@ mlir::LogicalResult rewriteShardingCustomCall(
   return mlir::success();
 }
 
+mlir::LogicalResult rewritePropagationBarrierCustomCall(
+    CustomCallOp op, CustomCallOpAdaptor adaptor,
+    mlir::ConversionPatternRewriter& rewriter) {
+  CHECK_EQ(op.getNumOperands(), 1);
+  CHECK_EQ(op.getNumResults(), 1);
+  std::optional<PropagationDirectionAttr> allowedDirection =
+      tryGetFrontendAttr<PropagationDirectionAttr>(op, kAllowedDirectionAttr);
+  if (!allowedDirection.has_value()) {
+    op.emitError() << "expected PropagationBarrier CustomCall Op with a "
+                      "propagation direction.";
+    return mlir::failure();
+  }
+
+  rewriter.replaceOpWithNewOp<PropagationBarrierOp>(
+      op, adaptor.getInputs().front(), allowedDirection->getValue());
+
+  return mlir::success();
+}
 mlir::LogicalResult rewriteShardingGroupCustomCall(
     CustomCallOp op, CustomCallOpAdaptor adaptor,
     mlir::ConversionPatternRewriter& rewriter) {
@@ -122,6 +142,9 @@ class SdyCustomCallPattern : public mlir::OpConversionPattern<CustomCallOp> {
     if (op.getCallTargetName() == kShardingGroupCustomCallTargetName) {
       return rewriteShardingGroupCustomCall(op, adaptor, rewriter);
     }
+    if (op.getCallTargetName() == kPropagationBarrierCustomCallTargetName) {
+      return rewritePropagationBarrierCustomCall(op, adaptor, rewriter);
+    }
 
     return rewriter.notifyMatchFailure(
         op, "expected CustomCallOp with xla.sdy target name.");
@@ -143,7 +166,8 @@ class ImportSdyCustomCallsPass
     target.addLegalDialect<mlir::sdy::SdyDialect>();
     target.addDynamicallyLegalOp<CustomCallOp>([](CustomCallOp op) {
       return op.getCallTargetName() != kShardingCustomCallTargetName &&
-             op.getCallTargetName() != kShardingGroupCustomCallTargetName;
+             op.getCallTargetName() != kShardingGroupCustomCallTargetName &&
+             op.getCallTargetName() != kPropagationBarrierCustomCallTargetName;
     });
     mlir::RewritePatternSet patterns(&context);
     patterns.add<SdyCustomCallPattern>(&context);

@@ -425,6 +425,13 @@ func.func @while_with_no_sharding_inside_manual_comp(
   return %0 : tensor<32x2xi32>
 }
 
+// CHECK-LABEL: func @propagation_barrier
+func.func @propagation_barrier(%arg0: tensor<8x16xf32>) -> (tensor<8x16xf32>) {
+  // CHECK-NEXT: return %arg0 : tensor<8x16xf32>
+  %r = sdy.propagation_barrier %arg0 allowed_direction=BACKWARD : tensor<8x16xf32>
+  return %r : tensor<8x16xf32>
+}
+
 
 // CHECK-LABEL: func private @foo
 // CHECK-SAME:    %arg0: tensor<4x2xi32> {mhlo.sharding = "{devices=[4,1,8]<=[8,4]T(1,0) last_tile_dim_replicate}"}
