@@ -147,5 +147,12 @@ TEST(SafeReinterepretCast, CanCastFuncPointerToFromVoidPointer) {
   EXPECT_EQ(func_p, &Dummy);
 }
 
+TEST(SafeReinterepretCast, CanCastDataPointerToFromVoidPointer) {
+  int x = 42;
+  void* const void_p = safe_reinterpret_cast<void*>(&x);
+  int* const int_p = safe_reinterpret_cast<int*>(void_p);
+  EXPECT_EQ(int_p, &x);
+}
+
 }  // namespace
 }  // namespace tsl
