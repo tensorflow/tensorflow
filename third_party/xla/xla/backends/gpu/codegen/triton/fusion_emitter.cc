@@ -20,6 +20,7 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
+#include <system_error>  // NOLINT
 #include <utility>
 #include <variant>
 #include <vector>
@@ -39,6 +40,7 @@ limitations under the License.
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Module.h"
 #include "llvm/Linker/Linker.h"
+#include "llvm/Support/FileSystem.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/Conversion/AffineToStandard/AffineToStandard.h"
 #include "mlir/Conversion/ArithToLLVM/ArithToLLVM.h"
@@ -135,6 +137,7 @@ limitations under the License.
 #include "xla/util.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
+#include "tsl/platform/path.h"
 #include "triton/Conversion/TritonGPUToLLVM/Passes.h"
 #include "triton/Conversion/TritonToTritonGPU/TritonToTritonGPUPass.h"
 #include "triton/Dialect/Triton/IR/Dialect.h"
@@ -1814,12 +1817,47 @@ absl::StatusOr<TritonWrapperResult> CompileTritonToLLVM(
 #endif
 
   bool should_dump_mlir_passes =
+      hlo_config.debug_options().xla_enable_dumping() &&
       DumpingEnabledForHloModule(hlo_module) &&
       DumpingEnabledForHloPass("triton-fusion-emitter",
                                hlo_config.debug_options());
 
   mlir::PassManager pm(&mlir_context);
   pm.enableVerifier(should_verify);
+
+  std::optional<llvm::raw_fd_ostream> log_stream;
+  if (should_dump_mlir_passes) {
+    std::string outputs_dir;
+    if (!tsl::io::GetTestUndeclaredOutputsDir(&outputs_dir)) {
+      outputs_dir = hlo_config.debug_options().xla_dump_to();
+    }
+    if (!outputs_dir.empty()) {
+      const std::string basename =
+          absl::StrCat(absl::string_view(tsl::io::Basename(hlo_module.name())),
+                       ".", kernel_name, ".triton-passes.log");
+      std::string path = tsl::io::JoinPath(outputs_dir, basename);
+      std::error_code err;
+      log_stream.emplace(path, err, llvm::sys::fs::OF_None);
+      if (err) {
+        log_stream.reset();
+        LOG(ERROR) << err.message();
+      } else {
+        pm.getContext()->disableMultithreading();
+        auto print_always = [](mlir::Pass*, mlir::Operation*) { return true; };
+        pm.enableIRPrinting(/*shouldPrintBeforePass=*/print_always,
+                            /*shouldPrintAfterPass=*/print_always,
+                            /*printModuleScope=*/true,
+                            /*printAfterOnlyOnChange=*/false,
+                            /*printAfterOnlyOnFailure=*/true, *log_stream,
+                            /*opPrintingFlags=*/{});
+      }
+    } else {
+      LOG(ERROR)
+          << "--xla_dump_hlo_pass_re=triton-fusion-emitter is set, but neither "
+          << "the environment variable TEST_UNDECLARED_OUTPUTS_DIR nor the "
+          << "flag --xla_dump_to is set, so the llvm dumps are disabled.";
+    }
+  }
 
   // TODO(b/315957220): Propagate TMA flag once it's supported.
   pm.addPass(mlir::triton::xla::CreateTritonXLAExtractInsertToTritonPass(
@@ -1854,29 +1892,7 @@ absl::StatusOr<TritonWrapperResult> CompileTritonToLLVM(
   // llvm::Linker::linkModules() segfaults if we don't strip locations.
   pm.addPass(mlir::createStripDebugInfoPass());
 
-  std::string mlir_passes_dump_result;
-  llvm::raw_string_ostream log_stream(mlir_passes_dump_result);
-  if (should_dump_mlir_passes) {
-    pm.getContext()->disableMultithreading();
-    auto print_always = [](mlir::Pass*, mlir::Operation*) { return true; };
-    pm.enableIRPrinting(/*shouldPrintBeforePass=*/print_always,
-                        /*shouldPrintAfterPass=*/print_always,
-                        /*printModuleScope=*/true,
-                        /*printAfterOnlyOnChange=*/false,
-                        /*printAfterOnlyOnFailure=*/true, log_stream,
-                        /*opPrintingFlags=*/{});
-
-    pm.printAsTextualPipeline(log_stream);
-    log_stream.write("\n\n", 2);
-  }
-
   bool succeeded = mlir::succeeded(pm.run(triton_module));
-
-  if (should_dump_mlir_passes) {
-    DumpToFileInDirOrStdout(hlo_module, "",
-                            absl::StrCat(kernel_name, ".triton-passes.log"),
-                            mlir_passes_dump_result);
-  }
 
   if (!succeeded) {
     return Internal("Failed to compile Triton kernel.");
