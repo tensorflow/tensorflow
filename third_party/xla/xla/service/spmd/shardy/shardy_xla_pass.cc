@@ -294,6 +294,19 @@ void removeFrontendAttributes(HloModule* hloModule,
   hloModule->set_frontend_attributes(feAttrs);
 }
 
+std::string getShardyDirIfShouldDump(const DebugOptions& debugOptions,
+                                     absl::string_view passName) {
+  std::string shardyDir = debugOptions.xla_dump_to();
+  if (shardyDir.empty()) {
+    return "";
+  }
+  if (debugOptions.xla_dump_hlo_pass_re().empty() ||
+      !RE2::PartialMatch(passName, debugOptions.xla_dump_hlo_pass_re())) {
+    return "";
+  }
+  return shardyDir;
+}
+
 }  // namespace
 
 absl::StatusOr<bool> ShardyXLA::Run(
@@ -309,12 +322,7 @@ absl::StatusOr<bool> ShardyXLA::Run(
       xla::ConvertHloToStablehlo(*mlirContext.get(), hloModule));
 
   const DebugOptions& debugOptions = hloModule->config().debug_options();
-  std::string shardyDir = debugOptions.xla_dump_to();
-
-  if (!shardyDir.empty() &&
-      !RE2::PartialMatch(name(), debugOptions.xla_dump_hlo_pass_re())) {
-    shardyDir.clear();
-  }
+  std::string shardyDir = getShardyDirIfShouldDump(debugOptions, name());
 
   if (shardyDir == "sponge") {
     shardyDir = getenv("TEST_UNDECLARED_OUTPUTS_DIR");
