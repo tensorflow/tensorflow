@@ -82,7 +82,11 @@ absl::Status GpuAlgebraicSimplifierVisitor::HandleAdd(HloInstruction* add) {
 }
 
 bool GpuAlgebraicSimplifierVisitor::SupportedDotPrecisionConfig(
-    const PrecisionConfig& config) {
+    const PrecisionConfig& config, bool has_contracting_dim) {
+  if (!has_contracting_dim) {
+    return config.algorithm() == PrecisionConfig::ALG_UNSET ||
+           config.algorithm() == PrecisionConfig::ALG_DOT_F32_F32_F32;
+  }
   return config.algorithm() == PrecisionConfig::ALG_UNSET ||
          config.algorithm() == PrecisionConfig::ALG_DOT_BF16_BF16_F32 ||
          config.algorithm() == PrecisionConfig::ALG_DOT_BF16_BF16_F32_X3 ||

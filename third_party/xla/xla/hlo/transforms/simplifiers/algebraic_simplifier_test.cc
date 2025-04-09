@@ -9849,11 +9849,25 @@ TEST_F(AlgebraicSimplifierTest, CanDisableDotToMultiplyRewrite) {
 TEST_F(AlgebraicSimplifierTest,
        NoDotToMultiplyRewriteWithPrecisionConfigAlgorithm) {
   constexpr char kModuleStr[] = R"(
+HloModule test
+ENTRY dot {
+ a = f32[128]{0} parameter(0)
+ b = f32[128]{0} parameter(1)
+ ROOT dot = f32[128,128]{1,0} dot(a, b), algorithm=dot_tf32_tf32_f32
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_FALSE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
+}
+
+TEST_F(AlgebraicSimplifierTest,
+       NoDotToMultiplyRewriteZeroContractingDimWithPrecisionConfigAlgorithm) {
+  constexpr char kModuleStr[] = R"(
     HloModule test
     ENTRY dot {
-      a = f32[128]{0} parameter(0)
-      b = f32[128]{0} parameter(1)
-      ROOT dot = f32[128,128]{1,0} dot(a, b), algorithm=dot_tf32_tf32_f32
+    a = f32[] parameter(0)
+    b = f32[] parameter(1)
+    ROOT dot = f32[] dot(a, b), algorithm=dot_tf32_tf32_f32
     }
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
