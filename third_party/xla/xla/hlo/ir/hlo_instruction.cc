@@ -4297,7 +4297,7 @@ std::string FrontendAttributesToString(
     if (LexesAsJsonDict(item.second)) {
       absl::StrAppend(out, item.first, "=", item.second);
     } else {
-      absl::StrAppend(out, item.first, "=\"", item.second, "\"");
+      absl::StrAppend(out, item.first, "=\"", CEscape(item.second), "\"");
     }
   };
   return absl::StrFormat("{%s}",
