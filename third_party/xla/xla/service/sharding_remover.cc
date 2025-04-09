@@ -15,10 +15,7 @@ limitations under the License.
 
 #include "xla/service/sharding_remover.h"
 
-#include <memory>
-#include <optional>
-#include <string>
-#include <utility>
+#include <algorithm>
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"
