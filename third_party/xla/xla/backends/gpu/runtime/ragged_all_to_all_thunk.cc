@@ -251,11 +251,13 @@ RendezvousBeforeKernelStart(absl::string_view name,
   std::string start_rendezvous_key =
       absl::StrFormat("start %s ragged-all-to-all for rank %d, clique %s", name,
                       rank.value(), clique_key.ToString());
-  std::shared_ptr<std::vector<RendezvousValue>> rendezvous_values =
+  TF_ASSIGN_OR_RETURN(
+      std::shared_ptr<std::vector<RendezvousValue>> rendezvous_values,
       Rendezvous<std::vector<RendezvousValue>>(
           /*name=*/
           start_rendezvous_key, /*key=*/clique_key,
-          /*value=*/rendezvous_value, /*num_threads=*/num_ranks, rendezvous_fn);
+          /*value=*/rendezvous_value, /*num_threads=*/num_ranks,
+          rendezvous_fn));
 
   // Wait for all devices to reach the start event. This indicates that all
   // output buffers are ready for transfer.
@@ -280,9 +282,9 @@ absl::Status RendezvousAfterKernelFinish(
   std::string finish_rendezvous_key =
       absl::StrFormat("finish %s ragged-all-to-all for rank %d, clique %s",
                       name, rank.value(), clique_key.ToString());
-  Rendezvous(/*name=*/finish_rendezvous_key,
-             /*key=*/clique_key,
-             /*num_threads=*/num_ranks);
+  TF_RETURN_IF_ERROR(Rendezvous(/*name=*/finish_rendezvous_key,
+                                /*key=*/clique_key,
+                                /*num_threads=*/num_ranks));
 
   // Wait for all devices to reach the end event. This indicates that all
   // updates from other devices have arrived.

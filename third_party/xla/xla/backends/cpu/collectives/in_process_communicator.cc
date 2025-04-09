@@ -404,9 +404,10 @@ absl::Status InProcessCommunicator::AllReduce(se::DeviceMemoryBase send_buffer,
   std::string name = absl::StrCat("all reduce ", key.ToString());
   AllReduceParticipant partiticipant{rank_, send_buffer, recv_buffer};
 
-  auto op = Rendezvous<OpParticipants<AllReduceParticipant>>(
-      name, key, partiticipant, key.num_local_participants,
-      CollectParticipants<AllReduceParticipant>);
+  TF_ASSIGN_OR_RETURN(auto op,
+                      Rendezvous<OpParticipants<AllReduceParticipant>>(
+                          name, key, partiticipant, key.num_local_participants,
+                          CollectParticipants<AllReduceParticipant>));
 
   return op->Invoke(AllReduceOp, rank_, dtype, count, reduction_kind);
 }
@@ -421,9 +422,10 @@ absl::Status InProcessCommunicator::ReduceScatter(
   std::string name = absl::StrCat("reduce scatter ", key.ToString());
   ReduceScatterParticipant partiticipant{rank_, send_buffer, recv_buffer};
 
-  auto op = Rendezvous<OpParticipants<ReduceScatterParticipant>>(
-      name, key, partiticipant, key.num_local_participants,
-      CollectParticipants<ReduceScatterParticipant>);
+  TF_ASSIGN_OR_RETURN(auto op,
+                      Rendezvous<OpParticipants<ReduceScatterParticipant>>(
+                          name, key, partiticipant, key.num_local_participants,
+                          CollectParticipants<ReduceScatterParticipant>));
 
   return op->Invoke(ReduceScatterOp, rank_, dtype, count, reduction_kind);
 }
@@ -439,9 +441,10 @@ absl::Status InProcessCommunicator::CollectivePermute(
   CollectivePermuteParticipant partiticipant{rank_, source_rank, send_buffer,
                                              recv_buffer};
 
-  auto op = Rendezvous<OpParticipants<CollectivePermuteParticipant>>(
-      name, key, partiticipant, key.num_local_participants,
-      CollectParticipants<CollectivePermuteParticipant>);
+  TF_ASSIGN_OR_RETURN(auto op,
+                      Rendezvous<OpParticipants<CollectivePermuteParticipant>>(
+                          name, key, partiticipant, key.num_local_participants,
+                          CollectParticipants<CollectivePermuteParticipant>));
 
   size_t num_bytes = count * primitive_util::ByteWidth(dtype);
   return op->Invoke(CollectivePermuteOp, rank_, num_bytes);
@@ -459,9 +462,10 @@ absl::Status InProcessCommunicator::AllToAll(
                                     {send_buffers.begin(), send_buffers.end()},
                                     {recv_buffers.begin(), recv_buffers.end()}};
 
-  auto op = Rendezvous<OpParticipants<AllToAllParticipant>>(
-      name, key, partiticipant, key.num_local_participants,
-      CollectParticipants<AllToAllParticipant>);
+  TF_ASSIGN_OR_RETURN(auto op,
+                      Rendezvous<OpParticipants<AllToAllParticipant>>(
+                          name, key, partiticipant, key.num_local_participants,
+                          CollectParticipants<AllToAllParticipant>));
 
   size_t num_bytes = count * primitive_util::ByteWidth(dtype);
   return op->Invoke(AllToAllOp, rank_, num_bytes);
@@ -477,9 +481,10 @@ absl::Status InProcessCommunicator::AllGather(se::DeviceMemoryBase send_buffer,
   std::string name = absl::StrCat("all gather ", key.ToString());
   AllGatherParticipant partiticipant{rank_, send_buffer, recv_buffer};
 
-  auto op = Rendezvous<OpParticipants<AllGatherParticipant>>(
-      name, key, partiticipant, key.num_local_participants,
-      CollectParticipants<AllGatherParticipant>);
+  TF_ASSIGN_OR_RETURN(auto op,
+                      Rendezvous<OpParticipants<AllGatherParticipant>>(
+                          name, key, partiticipant, key.num_local_participants,
+                          CollectParticipants<AllGatherParticipant>));
 
   size_t num_bytes = count * primitive_util::ByteWidth(dtype);
   return op->Invoke(AllGatherOp, rank_, num_bytes);

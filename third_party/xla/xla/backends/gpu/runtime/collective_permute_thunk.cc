@@ -285,9 +285,10 @@ absl::Status CollectivePermuteStartThunk::RunCollective(
 
     // Perform a rendezvous to make sure all receivers have their events
     // recorded.
-    Rendezvous(rendezvous_name, rendezvous_key, num_local_participants,
-               /*warn_stuck_timeout=*/absl::Seconds(20),
-               /*terminate_timeout=*/absl::Seconds(40));
+    TF_RETURN_IF_ERROR(Rendezvous(rendezvous_name, rendezvous_key,
+                                  num_local_participants,
+                                  /*warn_stuck_timeout=*/absl::Seconds(20),
+                                  /*terminate_timeout=*/absl::Seconds(40)));
 
     // For sending side, wait for the recorded event from the receiving side.
     if (target_id) {
@@ -325,9 +326,10 @@ absl::Status CollectivePermuteStartThunk::RunCollective(
 
     // Perform a rendezvous to make sure all senders have their events
     // recorded.
-    Rendezvous(rendezvous_name, rendezvous_key, num_local_participants,
-               /*warn_stuck_timeout=*/absl::Seconds(20),
-               /*terminate_timeout=*/absl::Seconds(40));
+    TF_RETURN_IF_ERROR(Rendezvous(rendezvous_name, rendezvous_key,
+                                  num_local_participants,
+                                  /*warn_stuck_timeout=*/absl::Seconds(20),
+                                  /*terminate_timeout=*/absl::Seconds(40)));
 
     // For receiving side, wait for the recorded event from the sending side.
     if (source_id) {
