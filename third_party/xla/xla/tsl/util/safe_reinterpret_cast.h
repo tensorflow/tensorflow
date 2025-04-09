@@ -68,12 +68,24 @@ template <typename From, typename To>
 struct IsSafeCast : std::false_type {};
 
 // It's safe to cast a pointer to/from a byte-like type, or to/from the same
-// type.
+// type. Also, while not guaranteed by the C++ standard, POSIX mandates that
+// it's safe to cast a function pointer to/from a void pointer
+// (https://pubs.opengroup.org/onlinepubs/9799919799/functions/dlsym.html).
+// On Windows (with MSVC), casting a function pointer to/from a void pointer has
+// been a widely adopted practice for decades and is considered safe in
+// practice, even though it is not explicitly guaranteed by Microsoft.
 template <typename From, typename To>
 struct IsSafeCast<From*, To*>
-    : std::integral_constant<bool, IsCvByteLike<From>::value ||
-                                       IsCvByteLike<To>::value ||
-                                       std::is_same_v<From, To>> {};
+    : std::integral_constant<
+          bool,
+          // To/from a pointer to a byte-like type.
+          (IsCvByteLike<From>::value || IsCvByteLike<To>::value) ||
+              // From function pointer to void pointer.
+              (std::is_function_v<From>&& std::is_void_v<To>) ||
+              // From void pointer to function pointer.
+              (std::is_void_v<From>&& std::is_function_v<To>) ||
+              // Between the same type.
+              std::is_same_v<From, To>> {};
 
 // If __restrict is a macro, we assume that the compiler doesn't support
 // the __restrict keyword (e.g. when the code is compiled for iOS). Otherwsie,
