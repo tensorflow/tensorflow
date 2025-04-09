@@ -38,6 +38,7 @@ using ::testing::Field;
 using ::testing::Ge;
 using ::testing::IsEmpty;
 using ::testing::Le;
+using ::testing::SizeIs;
 
 template <typename MatcherType>
 auto BlockMIs(MatcherType matcher) {
@@ -76,8 +77,14 @@ auto IsValidConfig() {
 
 class DotSearchSpaceTest : public HloHardwareIndependentTestBase {
  protected:
-  se::DeviceDescription device_description_{
-      se::DeviceDescription(se::GpuDeviceInfoProto::default_instance())};
+  se::DeviceDescription device_description_;
+
+  DotSearchSpaceTest()
+      : device_description_(se::GpuDeviceInfoProto::default_instance()) {
+    // Using H100 numbers as the most relevant example here.
+    device_description_.set_registers_per_block_limit(64 * 1024);
+    device_description_.set_core_count(132);
+  }
 
   absl::StatusOr<std::unique_ptr<VerifiedHloModule>> GetDefaultDotModule(
       int lhs_parallel_dim = 1024, int rhs_parallel_dim = 1024,
@@ -98,12 +105,25 @@ ENTRY e {
     return Cast<HloDotInstruction>(
         module->entry_computation()->root_instruction());
   }
+
+  TritonDotFusionSearchSpace MakeSearchSpace(VerifiedHloModule* module) {
+    return TritonDotFusionSearchSpace(device_description_, GetDot(module));
+  }
 };
+
+TEST_F(DotSearchSpaceTest, SerializesSearchSpace) {
+  TF_ASSERT_OK_AND_ASSIGN(auto module, GetDefaultDotModule());
+  auto search_space = MakeSearchSpace(module.get());
+
+  EXPECT_EQ(search_space.Serialize(),
+            "problem_size_BxMxNxKxE: 1x1024x1024x1024x16 "
+            "tile_range_SxMxNxK: [1-64]x[16-256]x[16-512]x[16-?] "
+            "desired_total_warps: 2160 warps_per_cta: [4-?]");
+}
 
 TEST_F(DotSearchSpaceTest, ReturnsValidConfigList) {
   TF_ASSERT_OK_AND_ASSIGN(auto module, GetDefaultDotModule());
-  TritonDotFusionSearchSpace search_space(device_description_,
-                                          GetDot(module.get()));
+  auto search_space = MakeSearchSpace(module.get());
 
   EXPECT_THAT(search_space.GenerateConfigs(),
               AllOf(Not(IsEmpty()), Each(IsValidConfig())));
@@ -111,8 +131,7 @@ TEST_F(DotSearchSpaceTest, ReturnsValidConfigList) {
 
 TEST_F(DotSearchSpaceTest, HonorsForcedContractingSplit) {
   TF_ASSERT_OK_AND_ASSIGN(auto module, GetDefaultDotModule());
-  TritonDotFusionSearchSpace search_space(device_description_,
-                                          GetDot(module.get()));
+  auto search_space = MakeSearchSpace(module.get());
 
   EXPECT_THAT(
       search_space.GenerateConfigs(/*force_contracting_split=*/2),
@@ -124,8 +143,7 @@ TEST_F(DotSearchSpaceTest, ConsidersContractingSplitForSmallOutputSize) {
                           GetDefaultDotModule(/*lhs_parallel_dim=*/16,
                                               /*rhs_parallel_dim=*/16,
                                               /*contracting_dim=*/1024));
-  TritonDotFusionSearchSpace search_space(device_description_,
-                                          GetDot(module.get()));
+  auto search_space = MakeSearchSpace(module.get());
 
   EXPECT_THAT(search_space.GenerateConfigs(), Contains(SplitKIs(Ge(2))));
 }
@@ -135,11 +153,73 @@ TEST_F(DotSearchSpaceTest, LimitsContractingSplitForSmallerContractingSize) {
                           GetDefaultDotModule(/*lhs_parallel_dim=*/16,
                                               /*rhs_parallel_dim=*/16,
                                               /*contracting_dim=*/32));
-  TritonDotFusionSearchSpace search_space(device_description_,
-                                          GetDot(module.get()));
+  auto search_space = MakeSearchSpace(module.get());
 
   EXPECT_THAT(search_space.GenerateConfigs(),
               AllOf(Not(IsEmpty()), Each(SplitKIs(Le(2)))));
+}
+
+TEST_F(DotSearchSpaceTest, FindsGoodDataReuseOutputTiles) {
+  TF_ASSERT_OK_AND_ASSIGN(auto module, GetDefaultDotModule());
+  auto search_space = MakeSearchSpace(module.get());
+
+  EXPECT_THAT(search_space.GenerateConfigs(),
+              Contains(AllOf(BlockMIs(Ge(32)), BlockNIs(Ge(32)))).Times(Ge(2)));
+}
+
+TEST_F(DotSearchSpaceTest, FindsGoodDataReuseTilesForLowOccupancyProblem) {
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto module,
+      GetDefaultDotModule(/*lhs_parallel_dim=*/4096, /*rhs_parallel_dim=*/16,
+                          /*contracting_dim=*/4096));
+  auto search_space = MakeSearchSpace(module.get());
+
+  EXPECT_THAT(search_space.GenerateConfigs(),
+              Contains(AllOf(BlockMIs(Ge(32)), SplitKIs(Ge(2)))));
+}
+
+TEST_F(DotSearchSpaceTest,
+       FindsUniqueOccupancyMaximizingTilingForSmallProblem) {
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto module,
+      GetDefaultDotModule(/*lhs_parallel_dim=*/32, /*rhs_parallel_dim=*/32,
+                          /*contracting_dim=*/32));
+  auto search_space = MakeSearchSpace(module.get());
+
+  EXPECT_THAT(search_space.GenerateConfigs(),
+              AllOf(SizeIs(1), Each(AllOf(BlockMIs(Eq(16)), BlockNIs(Eq(16)),
+                                          SplitKIs(Eq(2))))));
+}
+
+TEST_F(DotSearchSpaceTest, FindsGoodDataReuseTilesForForcedHugeSplit) {
+  TF_ASSERT_OK_AND_ASSIGN(auto module, GetDefaultDotModule());
+  auto search_space = MakeSearchSpace(module.get());
+
+  EXPECT_THAT(
+      search_space.GenerateConfigs(/*force_contracting_split=*/128),
+      Contains(AllOf(BlockMIs(Ge(32)), BlockNIs(Ge(32)), SplitKIs(Eq(128)))));
+}
+
+TEST_F(DotSearchSpaceTest, PadsTilesForSmallParallelDimension) {
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          GetDefaultDotModule(/*lhs_parallel_dim=*/1024,
+                                              /*rhs_parallel_dim=*/15,
+                                              /*contracting_dim=*/1024));
+  auto search_space = MakeSearchSpace(module.get());
+
+  EXPECT_THAT(search_space.GenerateConfigs(), Contains(BlockNIs(Eq(16))));
+}
+
+TEST_F(DotSearchSpaceTest, HonorsMinimumOutputTileSizeForTinyProblem) {
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          GetDefaultDotModule(/*lhs_parallel_dim=*/12,
+                                              /*rhs_parallel_dim=*/8,
+                                              /*contracting_dim=*/16));
+  auto search_space = MakeSearchSpace(module.get());
+
+  EXPECT_THAT(
+      search_space.GenerateConfigs(),
+      AllOf(Not(IsEmpty()), Each(BlockMIs(Ge(16))), Each(BlockNIs(Ge(16)))));
 }
 
 }  // namespace

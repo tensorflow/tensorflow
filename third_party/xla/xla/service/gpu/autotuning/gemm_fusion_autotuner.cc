@@ -891,13 +891,15 @@ GemmFusionAutotunerImpl::GenerateTritonConfigs(const HloDotInstruction& dot) {
       debug_options_.xla_gpu_enable_split_k_autotuning();
 
   if (debug_options_.xla_gpu_experimental_enable_dynamic_dot_search_space()) {
-    if (small_dot || !IsAutotuningEnabled()) {
+    if (!IsAutotuningEnabled()) {
       return {{kDefaultConfig}};
     }
     TritonDotFusionSearchSpace search_space(config_.GetDeviceDescription(),
                                             &dot);
     VLOG(1) << "Generating configs from search space: "
             << search_space.Serialize();
+    // We don't need to consider small_dot here. The new search space will
+    // already generate a unique config for small problems.
     return search_space.GenerateConfigs(
         autotune_contracting_split ? std::make_optional(1) : std::nullopt);
   }

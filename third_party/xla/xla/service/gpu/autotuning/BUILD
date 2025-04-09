@@ -271,7 +271,9 @@ cc_library(
         "//xla/stream_executor:device_description",
         "//xla/tsl/lib/core:bits",
         "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/strings:str_format",
+        "@llvm-project//llvm:Support",
         "@local_tsl//tsl/platform:protobuf",
     ],
 )
