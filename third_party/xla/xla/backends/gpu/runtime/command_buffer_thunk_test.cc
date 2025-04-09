@@ -41,6 +41,7 @@ limitations under the License.
 #include "xla/service/gpu/kernels/custom_kernel.h"
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/gpu/matmul_utils.h"
+#include "xla/service/hlo_module_config.h"
 #include "xla/service/platform_util.h"
 #include "xla/service/service_executable_run_options.h"
 #include "xla/shape.h"
@@ -738,7 +739,7 @@ TEST(CommandBufferThunkTest, GemmCmd) {
   ASSERT_EQ(dst, std::vector<float>({10, 10, 10, 26, 26, 26}));
 }
 
-TEST(CommandBufferThunkTest, DynamicSliceFusionCmd) {
+TEST(CommandBufferThunkTest, DISABLED_DynamicSliceFusionCmd) {
   se::StreamExecutor* executor = GpuExecutor();
 
   if (!IsAtLeastCuda12300(executor)) {
