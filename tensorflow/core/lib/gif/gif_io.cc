@@ -76,25 +76,29 @@ uint8* Decode(const void* srcdata, int datasize,
     return nullptr;
   }
 
+  int target_num_frames;
   if (DGifSlurp(gif_file) != GIF_OK) {
     *error_string = absl::StrCat("failed to slurp gif file: ",
                                  GifErrorStringNonNull(gif_file->Error));
     // Stop load if no images are detected or the allocation of the last image
     // buffer was failed.
     if (gif_file->ImageCount <= 0 ||
-        gif_file->SavedImages[gif_file->ImageCount - 1].RasterBits == nullptr ||
-        gif_file->Error == D_GIF_ERR_EOF_TOO_SOON) {
+        gif_file->SavedImages[gif_file->ImageCount - 1].RasterBits == nullptr) {
       return nullptr;
     }
+    // If giflib parses the header correctly but the image data is corrupt,
+    // giflib incorrectly sets ImageCount if it hits an error.
+    target_num_frames = gif_file->ImageCount - 1;
+    LOG(WARNING) << "Decoding" << target_num_frames << " frames due to error.";
     LOG(ERROR) << *error_string;
+  } else {
+    target_num_frames = gif_file->ImageCount;
   }
 
-  if (gif_file->ImageCount <= 0) {
+  if (target_num_frames <= 0) {
     *error_string = "gif file does not contain any image";
     return nullptr;
   }
-
-  int target_num_frames = gif_file->ImageCount;
 
   // Don't request more memory than needed for each frame, preventing OOM
   int max_frame_width = 0;
