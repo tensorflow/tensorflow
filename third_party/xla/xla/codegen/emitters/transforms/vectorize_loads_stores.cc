@@ -466,7 +466,7 @@ struct FoldVectorInsertExtractPairs
 
     // Check that the value that we insert is produced by a vector.extract.
     auto extract = mlir::dyn_cast_or_null<mlir::vector::ExtractOp>(
-        insert.getSource().getDefiningOp());
+        insert.getValueToStore().getDefiningOp());
     if (!extract || !extract.hasDynamicPosition() || !extract->hasOneUse()) {
       return rewriter.notifyMatchFailure(insert,
                                          "no single-use vector.extract found");
