@@ -887,6 +887,8 @@ GemmFusionAutotunerImpl::GenerateTritonConfigs(const HloDotInstruction& dot) {
   bool small_dot = ShapeUtil::ElementsIn(dot.operand(0)->shape()) +
                        ShapeUtil::ElementsIn(dot.operand(1)->shape()) <=
                    kMinGemmElements;
+  bool autotune_contracting_split =
+      debug_options_.xla_gpu_enable_split_k_autotuning();
 
   if (debug_options_.xla_gpu_experimental_enable_dynamic_dot_search_space()) {
     if (small_dot || !IsAutotuningEnabled()) {
@@ -896,7 +898,8 @@ GemmFusionAutotunerImpl::GenerateTritonConfigs(const HloDotInstruction& dot) {
                                             &dot);
     VLOG(1) << "Generating configs from search space: "
             << search_space.Serialize();
-    return search_space.GenerateConfigs();
+    return search_space.GenerateConfigs(
+        autotune_contracting_split ? std::make_optional(1) : std::nullopt);
   }
 
   // Retrieve the minimum bit-width participating in the dot. This is needed
@@ -952,7 +955,7 @@ GemmFusionAutotunerImpl::GenerateTritonConfigs(const HloDotInstruction& dot) {
     config.block_n = std::min(config.block_n, limits.block_n);
     config.block_k = std::min(config.block_k, limits.block_k);
     int max_split_k = 1;
-    if (debug_options_.xla_gpu_enable_split_k_autotuning()) {
+    if (autotune_contracting_split) {
       int64_t ratio = kSufficientNumberOfTiles * config.block_m *
                       config.block_n / result_size;
       max_split_k = 1 << std::max<int>(tsl::Log2Floor64(ratio), 0);

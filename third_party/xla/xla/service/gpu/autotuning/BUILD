@@ -264,10 +264,15 @@ cc_library(
     hdrs = ["dot_search_space.h"],
     tags = ["gpu"],
     deps = [
+        "//xla:shape_util",
+        "//xla:util",
         "//xla/hlo/ir:hlo",
         "//xla/service/gpu:matmul_utils",
         "//xla/stream_executor:device_description",
+        "//xla/tsl/lib/core:bits",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/strings:str_format",
+        "@local_tsl//tsl/platform:protobuf",
     ],
 )
 
@@ -284,6 +289,8 @@ xla_test(
         "//xla/stream_executor:device_description",
         "//xla/stream_executor:device_description_proto_cc",
         "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:str_format",
         "@com_google_googletest//:gtest_main",
     ],
 )

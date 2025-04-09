@@ -85,13 +85,10 @@ cc_library(
 gentbl_cc_library(
     name = "kernel_gen_passes_inc_gen",
     compatible_with = get_compatible_with_portable(),
-    tbl_outs = [(
-        [
-            "-gen-pass-decls",
-            "-name=KernelGen",
-        ],
-        "kernel_gen_passes.h.inc",
-    )],
+    tbl_outs = {"kernel_gen_passes.h.inc": [
+        "-gen-pass-decls",
+        "-name=KernelGen",
+    ]},
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "passes.td",
     deps = ["@llvm-project//mlir:PassBaseTdFiles"],
