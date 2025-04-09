@@ -109,20 +109,26 @@ HloReplicationAnalysis::DetermineHloInstructionIsReplicated(
     bool support_partial_replication,
     const absl::flat_hash_map<const HloInstruction*,
                               std::optional<HloReplication>*>&
-        replica_group_dedup_map) {
-  const auto merge_operand_replication = [&hlo_replication](
-                                             const HloInstruction* inst) {
-    HloReplication replication = HloReplication::ReplicatedOnAllDevices();
-    for (auto operand : inst->operands()) {
-      auto operand_it = hlo_replication.find(operand);
-      if (operand_it == hlo_replication.end()) {
-        replication = replication.Merge(HloReplication::UniqueOnAllDevices());
-      } else {
-        replication = replication.Merge(operand_it->second.element({}));
-      }
-    }
-    return replication;
-  };
+        replica_group_dedup_map,
+    absl::flat_hash_map<std::pair<HloReplication, HloReplication>,
+                        HloReplication>& replication_merge_map) {
+  const auto merge_operand_replication =
+      [&hlo_replication, &replication_merge_map](const HloInstruction* inst) {
+        HloReplication replication = HloReplication::ReplicatedOnAllDevices();
+        for (auto operand : inst->operands()) {
+          auto operand_it = hlo_replication.find(operand);
+          if (operand_it == hlo_replication.end()) {
+            replication = MergeReplications(
+                replication, HloReplication::UniqueOnAllDevices(),
+                replication_merge_map);
+          } else {
+            replication =
+                MergeReplications(replication, operand_it->second.element({}),
+                                  replication_merge_map);
+          }
+        }
+        return replication;
+      };
 
   auto calculate_all_reduce_all_gather_replication = [&](const HloInstruction*
                                                              hlo) {
@@ -325,15 +331,15 @@ bool HloReplicationAnalysis::ComputeHloReplicationOnComputation(
             return true;
           }
           bool updated = false;
-          it->second.ForEachMutableElement(
-              [&](const ShapeIndex& index, HloReplication* element) {
-                HloReplication new_replication =
-                    element->Merge(to_combine.element(index));
-                if (!element->Equal(new_replication)) {
-                  *element = std::move(new_replication);
-                  updated = true;
-                }
-              });
+          it->second.ForEachMutableElement([&](const ShapeIndex& index,
+                                               HloReplication* element) {
+            HloReplication new_replication = MergeReplications(
+                *element, to_combine.element(index), replication_merge_map_);
+            if (!element->Equal(new_replication)) {
+              *element = std::move(new_replication);
+              updated = true;
+            }
+          });
           return updated;
         };
     // Assigns or combines source's shape tree to dest. Returns if anything is
@@ -472,7 +478,8 @@ bool HloReplicationAnalysis::ComputeHloReplicationOnComputation(
               *shape_tree.mutable_element(index) =
                   DetermineHloInstructionIsReplicated(
                       inst, index, cross_partition_spmd_, hlo_replication_,
-                      support_partial_replication_, replica_group_dedup_map_);
+                      support_partial_replication_, replica_group_dedup_map_,
+                      replication_merge_map_);
             });
         changed |= assign_or_combine_shapetree(std::move(shape_tree), inst);
       }
@@ -762,6 +769,14 @@ HloReplicationAnalysis::HloReplication::Merge(
   }
 }
 
+HloReplicationAnalysis::HloReplication::HloReplication(
+    const std::pair<HloReplication, HloReplication>& merge_pair) {
+  auto merged_replication = merge_pair.first.Merge(merge_pair.second);
+  state_ = merged_replication.state_;
+  device_set_root_per_replica_ =
+      std::move(merged_replication.device_set_root_per_replica_);
+}
+
 bool HloReplicationAnalysis::HloReplication::Equal(
     const HloReplication& other) const {
   if (state_ != other.state_) {
@@ -775,6 +790,11 @@ bool HloReplicationAnalysis::HloReplication::Equal(
   }
 
   return true;
+}
+
+bool HloReplicationAnalysis::HloReplication::operator==(
+    const HloReplicationAnalysis::HloReplication& rhs) const {
+  return Equal(rhs);
 }
 
 bool HloReplicationAnalysis::HloReplication::IsReplicatedOnAllDevices() const {
