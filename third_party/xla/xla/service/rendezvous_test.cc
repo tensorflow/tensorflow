@@ -253,12 +253,33 @@ static void BM_RendezvousWithValues(benchmark::State& state) {
   for (auto _ : state) {
     absl::BlockingCounter counter(num_threads);
     for (int64_t i = 0; i < num_threads; ++i) {
-      thread_pool.Schedule([&] {
+      thread_pool.Schedule([&, i] {
         int32_t value = i;
         Rendezvous<int32_t>("rendezvous_test", 0, value, num_threads,
                             [](auto) { return 42; });
         counter.DecrementCount();
       });
+    }
+    counter.Wait();
+  }
+}
+
+static void BM_GroupedRendezvous(benchmark::State& state) {
+  int64_t num_groups = state.range(0);
+  int64_t group_size = state.range(1);
+
+  auto thread_pool = CreateThreadPool(num_groups * group_size);
+
+  for (auto _ : state) {
+    absl::BlockingCounter counter(num_groups * group_size);
+    for (int64_t group = 0; group < num_groups; ++group) {
+      for (int64_t i = 0; i < group_size; ++i) {
+        thread_pool.Schedule([&, group] {
+          Rendezvous<int32_t>("rendezvous_test", group, group_size,
+                              [] { return 42; });
+          counter.DecrementCount();
+        });
+      }
     }
     counter.Wait();
   }
@@ -279,6 +300,12 @@ BENCHMARK(BM_RendezvousWithValues)
     ->Arg(8)
     ->Arg(16)
     ->Arg(32);
+
+BENCHMARK(BM_GroupedRendezvous)
+    ->MeasureProcessCPUTime()
+    ->ArgPair(2, 2)
+    ->ArgPair(4, 2)
+    ->ArgPair(2, 4);
 
 }  // namespace
 }  // namespace xla
