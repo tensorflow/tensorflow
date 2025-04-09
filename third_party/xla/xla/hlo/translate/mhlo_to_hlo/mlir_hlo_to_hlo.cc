@@ -4154,10 +4154,10 @@ absl::Status ConvertMlirHloToHlo(mlir::ModuleOp module,
   // temporarily support StableHLO to MHLO lowering here as well to ensure
   // a smooth migration.
   mlir::PassManager pm(module->getContext());
-  pm.addPass(mlir::mhlo::createStablehloLegalizeToHloPass());
+  /* pm.addPass(mlir::mhlo::createStablehloLegalizeToHloPass());
   if (failed(pm.run(module))) {
     return tsl::errors::Internal("Unable to convert StableHLO to MHLO");
-  }
+  }*/
 
   TF_RETURN_IF_ERROR(PrepareForExport(module));
   mlir::BaseScopedDiagnosticHandler diag_handler(module.getContext());
