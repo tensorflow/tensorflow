@@ -1038,6 +1038,7 @@ cc_library(
         "//tensorflow/core/public:release_version",
         "//tensorflow/core/util:onednn_env_vars",
         "//tensorflow/core/util:stats_calculator_portable",
+        "@local_xla//xla/tsl/util:safe_reinterpret_cast",
     ] + tf_portable_proto_lib() + tf_portable_deps_no_runtime(),
     alwayslink = 1,
 )
