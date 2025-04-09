@@ -253,7 +253,6 @@ tf_cuda_library(
             "@local_xla//xla/pjrt/gpu:se_gpu_pjrt_client",
             "@local_xla//xla/tsl/distributed_runtime/coordination:coordination_service",
             "@local_xla//xla/tsl/distributed_runtime/coordination:coordination_service_agent",
-            "@local_xla//xla/tsl/distributed_runtime/coordination:coordination_service_impl",
             "@local_xla//xla/tsl/distributed_runtime/preemption:preemption_notifier",
             "@local_xla//xla/tsl/platform:statusor",
         ],
