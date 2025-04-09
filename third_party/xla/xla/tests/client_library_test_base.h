@@ -29,6 +29,7 @@ static_assert(false,
               "test that has been explicitly migrated to use HloRunnerPjRt.");
 #endif  // XLA_TEST_MIGRATED_TO_HLO_RUNNER_PJRT
 
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <type_traits>
@@ -46,6 +47,7 @@ static_assert(false,
 #include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "xla/tests/client_library_test_runner_utils.h"
 #include "xla/tests/literal_test_util.h"
 #include "xla/tests/test_utils.h"
 #include "xla/tsl/lib/core/bitmap.h"
@@ -219,8 +221,8 @@ class ClientLibraryTestBase : public ::testing::Test {
                          absl::Span<GlobalData* const> arguments,
                          std::optional<ErrorSpec> error = std::nullopt);
   // Create scalar operations for use in reductions.
-  XlaComputation CreateScalarReluF32();
-  XlaComputation CreateScalarMax();
+  XlaComputation CreateScalarReluF32() { return xla::CreateScalarReluF32(); }
+  XlaComputation CreateScalarMax() { return xla::CreateScalarMax(test_type_); }
 
   // Special case convenience functions for creating filled arrays.
 
@@ -576,27 +578,16 @@ std::unique_ptr<GlobalData> ClientLibraryTestBase::CreateParameter(
 
 template <typename NativeT>
 std::vector<NativeT> ClientLibraryTestBase::CreatePseudorandomR1(
-    const int width, NativeT min_value, NativeT max_value, uint32_t seed) {
-  std::vector<NativeT> result(width);
-  PseudorandomGenerator<NativeT> generator(min_value, max_value, seed);
-  for (int i = 0; i < width; ++i) {
-    result[i] = generator.get();
-  }
-  return result;
+    const int width, NativeT min_value, NativeT max_value,
+    const uint32_t seed) {
+  return xla::CreatePseudorandomR1(width, min_value, max_value, seed);
 }
 
 template <typename NativeT>
 std::unique_ptr<Array2D<NativeT>> ClientLibraryTestBase::CreatePseudorandomR2(
     const int rows, const int cols, NativeT min_value, NativeT max_value,
-    uint32_t seed) {
-  auto result = std::make_unique<Array2D<NativeT>>(rows, cols);
-  PseudorandomGenerator<NativeT> generator(min_value, max_value, seed);
-  for (int y = 0; y < rows; ++y) {
-    for (int x = 0; x < cols; ++x) {
-      (*result)(y, x) = generator.get();
-    }
-  }
-  return result;
+    const uint32_t seed) {
+  return xla::CreatePseudorandomR2(rows, cols, min_value, max_value, seed);
 }
 
 }  // namespace xla

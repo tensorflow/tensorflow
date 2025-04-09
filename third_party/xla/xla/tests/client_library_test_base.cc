@@ -472,28 +472,6 @@ ClientLibraryTestBase::ComputeValueAndReference(
   return std::make_pair(std::move(reference), std::move(result));
 }
 
-XlaComputation ClientLibraryTestBase::CreateScalarReluF32() {
-  XlaBuilder builder("relu");
-  auto shape = ShapeUtil::MakeShape(F32, {});
-  auto z_value = Parameter(&builder, 0, shape, "z_value");
-  auto zero = ConstantR0<float>(&builder, 0.0f);
-  Max(z_value, zero);
-  auto computation_status = builder.Build();
-  TF_CHECK_OK(computation_status.status());
-  return std::move(computation_status).value();
-}
-
-XlaComputation ClientLibraryTestBase::CreateScalarMax() {
-  XlaBuilder builder("max");
-  auto shape = ShapeUtil::MakeShape(test_type_, {});
-  auto x = Parameter(&builder, 0, shape, "x");
-  auto y = Parameter(&builder, 1, shape, "y");
-  Max(x, y);
-  auto computation_status = builder.Build();
-  TF_CHECK_OK(computation_status.status());
-  return std::move(computation_status).value();
-}
-
 std::unique_ptr<Array2D<float>> ClientLibraryTestBase::CreatePatternedMatrix(
     int rows, int cols, float offset) {
   auto array = std::make_unique<Array2D<float>>(rows, cols);

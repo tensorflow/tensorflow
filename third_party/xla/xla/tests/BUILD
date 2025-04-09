@@ -338,6 +338,7 @@ cc_library(
     srcs = ["client_library_test_base.cc"],
     hdrs = ["client_library_test_base.h"],
     deps = [
+        ":client_library_test_runner_utils",
         ":literal_test_util",
         ":test_utils",
         "//xla:array2d",
@@ -375,6 +376,7 @@ cc_library(
     testonly = True,
     hdrs = ["client_library_test_runner_mixin.h"],
     deps = [
+        ":client_library_test_runner_utils",
         ":hlo_runner_agnostic_test_base",
         ":literal_test_util",
         "//xla:array2d",
@@ -398,6 +400,22 @@ cc_library(
         "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:test",
         "@com_google_absl//absl/types:span",
+    ],
+)
+
+cc_library(
+    name = "client_library_test_runner_utils",
+    testonly = True,
+    srcs = ["client_library_test_runner_utils.cc"],
+    hdrs = ["client_library_test_runner_utils.h"],
+    deps = [
+        ":test_utils",
+        "//xla:array2d",
+        "//xla:shape_util",
+        "//xla/hlo/builder:xla_builder",
+        "//xla/hlo/builder:xla_computation",
+        "//xla/tsl/platform:status",
+        "@com_google_absl//absl/log:check",
     ],
 )
 
@@ -2560,6 +2578,7 @@ xla_test(
     ],
     deps = [
         ":client_library_test_runner_mixin",
+        ":client_library_test_runner_utils",
         ":hlo_pjrt_interpreter_reference_mixin",
         ":hlo_pjrt_test_base",
         ":test_macros_header",
