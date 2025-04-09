@@ -18,6 +18,7 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -80,5 +81,16 @@ absl::Status DebugCallbackCustomCallPartitioner::Partition(
 
   return absl::OkStatus();
 }
+
+namespace {
+struct Registerer {
+  explicit Registerer(std::string target_name) {
+    RegisterCustomCallPartitioner(
+        target_name, std::make_unique<DebugCallbackCustomCallPartitioner>());
+  }
+};
+Registerer cpu_registerer("xla_ffi_partitioned_python_cpu_callback");
+Registerer gpu_registerer("xla_ffi_partitioned_python_gpu_callback");
+}  // namespace
 
 }  // namespace xla
