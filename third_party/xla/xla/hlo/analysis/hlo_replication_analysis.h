@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_HLO_ANALYSIS_HLO_REPLICATION_ANALYSIS_H_
 #define XLA_HLO_ANALYSIS_HLO_REPLICATION_ANALYSIS_H_
 
+#include <cstddef>
 #include <optional>
 #include <string>
 #include <utility>
@@ -23,6 +24,7 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/hash/hash.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
@@ -120,6 +122,30 @@ class HloReplicationAnalysis {
     std::vector<std::vector<int64_t>> device_set_root_per_replica_;
   };
 
+  struct ReplicationPairHash {
+    using is_transparent = void;  // Enable heterogeneous lookup.
+
+    template <typename T, typename U>
+    size_t operator()(const std::pair<T, U>& p) const {
+      return absl::Hash<std::pair<T, U>>()(p);
+    }
+  };
+
+  struct ReplicationPairEq {
+    using is_transparent = void;  // Enable heterogeneous lookup.
+
+    template <typename T1, typename U1, typename T2, typename U2>
+    bool operator()(const std::pair<T1, U1>& lhs,
+                    const std::pair<T2, U2>& rhs) const {
+      return lhs.first == rhs.first && lhs.second == rhs.second;
+    }
+  };
+
+  using ReplicationMergeMap =
+      absl::flat_hash_map<std::pair<HloReplication, HloReplication>,
+                          HloReplication, ReplicationPairHash,
+                          ReplicationPairEq>;
+
   static HloReplication DetermineHloInstructionIsReplicated(
       const HloInstruction* hlo, const ShapeIndex& index,
       bool cross_partition_spmd,
@@ -129,21 +155,19 @@ class HloReplicationAnalysis {
       const absl::flat_hash_map<const HloInstruction*,
                                 std::optional<HloReplication>*>&
           replica_group_dedup_map,
-      absl::flat_hash_map<std::pair<HloReplication, HloReplication>,
-                          HloReplication>& replication_merge_map);
+      ReplicationMergeMap& replication_merge_map);
 
   static HloReplication MergeReplications(
       const HloReplication& replication_a, const HloReplication& replication_b,
-      absl::flat_hash_map<std::pair<HloReplication, HloReplication>,
-                          HloReplication>& replication_merge_map) {
-    std::pair<HloReplication, HloReplication> key = {replication_a,
-                                                     replication_b};
-
+      ReplicationMergeMap& replication_merge_map) {
+    std::pair<const HloReplication&, const HloReplication&> key = {
+        replication_a, replication_b};
     // Look replication pair up in map: if not found we pass the pair to an
     // overloaded constructor of HloReplication which constructs and returns
     // a merged HloReplication.
-    auto [iter, inserted] = replication_merge_map.try_emplace(key, key);
-    return iter->second;
+    auto it = replication_merge_map.lazy_emplace(
+        key, [&](const auto& ctor) { ctor(key, key); });
+    return it->second;
   }
 
   HloReplicationAnalysis(const HloModule* module, bool cross_partition_spmd,
@@ -200,8 +224,7 @@ class HloReplicationAnalysis {
   // replications for instructions with identical replica groups.
   absl::flat_hash_map<const HloInstruction*, std::optional<HloReplication>*>
       replica_group_dedup_map_;
-  absl::flat_hash_map<std::pair<HloReplication, HloReplication>, HloReplication>
-      replication_merge_map_;
+  ReplicationMergeMap replication_merge_map_;
   std::vector<std::optional<HloReplication>> unique_replications_;
 };
 
