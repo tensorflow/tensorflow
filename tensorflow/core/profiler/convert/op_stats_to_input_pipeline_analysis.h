@@ -33,6 +33,7 @@ limitations under the License.
 #include "tsl/platform/protobuf.h"
 #include "plugin/tensorboard_plugin_profile/protobuf/input_pipeline.pb.h"  // from @org_xprof
 #include "plugin/tensorboard_plugin_profile/protobuf/op_stats.pb.h"  // from @org_xprof
+#include "plugin/tensorboard_plugin_profile/protobuf/steps_db.pb.h"  // from @org_xprof
 #include "plugin/tensorboard_plugin_profile/protobuf/tpu_input_pipeline.pb.h"  // from @org_xprof
 #include "xprof/utils/event_span.h"  // from @org_xprof
 

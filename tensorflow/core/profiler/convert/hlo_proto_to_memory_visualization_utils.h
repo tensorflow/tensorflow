@@ -21,6 +21,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "xla/service/hlo.pb.h"
 #include "tensorflow/core/profiler/protobuf/memory_viewer_preprocess.pb.h"
+#include "plugin/tensorboard_plugin_profile/protobuf/memory_viewer_preprocess.pb.h"  // from @org_xprof
 
 namespace tensorflow {
 namespace profiler {

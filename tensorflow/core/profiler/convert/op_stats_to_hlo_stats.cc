@@ -29,6 +29,9 @@ limitations under the License.
 #include "tensorflow/core/profiler/protobuf/hlo_stats.pb.h"
 #include "tensorflow/core/profiler/protobuf/op_metrics.pb.h"
 #include "tensorflow/core/profiler/protobuf/op_stats.pb.h"
+#include "plugin/tensorboard_plugin_profile/protobuf/hlo_stats.pb.h"  // from @org_xprof
+#include "plugin/tensorboard_plugin_profile/protobuf/op_metrics.pb.h"  // from @org_xprof
+#include "plugin/tensorboard_plugin_profile/protobuf/op_stats.pb.h"  // from @org_xprof
 
 namespace tensorflow {
 namespace profiler {
