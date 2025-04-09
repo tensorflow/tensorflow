@@ -597,7 +597,8 @@ class AlgebraicSimplifierVisitor : public DfsHloRewriteVisitor {
 
  private:
   // Returns whether the dot precision config is supported by simplifier.
-  virtual bool SupportedDotPrecisionConfig(const PrecisionConfig& config);
+  virtual bool SupportedDotPrecisionConfig(const PrecisionConfig& config,
+                                           bool has_contracting_dim);
 
   // Makes algorithm specific set of instructions for multiply with precision
   // algorithm in mind. In the trivial case it returns just multiply.

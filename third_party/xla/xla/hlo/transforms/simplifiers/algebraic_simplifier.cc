@@ -36,6 +36,7 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/numeric/bits.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
@@ -68,6 +69,8 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/window_util.h"
 #include "xla/xla_data.pb.h"
@@ -3961,7 +3964,7 @@ absl::Status AlgebraicSimplifierVisitor::RewriteBatchPlusContractingAsReduce(
 }
 
 bool AlgebraicSimplifierVisitor::SupportedDotPrecisionConfig(
-    const PrecisionConfig& config) {
+    const PrecisionConfig& config, bool has_contracting_dim) {
   return config.algorithm() == PrecisionConfig::ALG_UNSET ||
          // TODO(loislo): Fixes a failure on a test with CPU backend.
          config.algorithm() == PrecisionConfig::ALG_DOT_F32_F32_F32;
@@ -3995,11 +3998,10 @@ absl::Status AlgebraicSimplifierVisitor::HandleDot(HloInstruction* dot) {
         dot, HloInstruction::CreateBroadcast(dot->shape(), zero, {}));
   }
 
-  const bool can_rewrite_dot_with_precision_config_algorithm =
-      SupportedDotPrecisionConfig(dot->precision_config());
   // If there are no contracting dimensions, a dot can be rewritten as
   // mul(broadcast(transpose(x)),broadcast(transpose(y)))
-  if (can_rewrite_dot_with_precision_config_algorithm &&
+  if (SupportedDotPrecisionConfig(dot->precision_config(),
+                                  /*has_contracting_dim=*/false) &&
       options_.enable_dot_to_multiply_rewrite() &&
       dnums.lhs_contracting_dimensions_size() == 0) {
     return RewriteAsMultiplyDotWithZeroLhsContractingDim(dot, lhs, rhs, dnums);
@@ -4026,7 +4028,8 @@ absl::Status AlgebraicSimplifierVisitor::HandleDot(HloInstruction* dot) {
 
   // If the lhs or rhs have only batch and contracting dimensions, a dot can be
   // rewritten as reduce(mul(broadcast(transpose(x)),broadcast(transpose(y))))
-  if (can_rewrite_dot_with_precision_config_algorithm &&
+  if (SupportedDotPrecisionConfig(dot->precision_config(),
+                                  /*has_contracting_dim=*/true) &&
       options_.enable_dot_strength_reduction() &&
       DotHasOnlyBatchAndContractingOnOneOperand(lhs->shape().dimensions_size(),
                                                 rhs->shape().dimensions_size(),
