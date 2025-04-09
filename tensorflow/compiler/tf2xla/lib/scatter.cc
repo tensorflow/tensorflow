@@ -35,9 +35,8 @@ limitations under the License.
 namespace tensorflow {
 
 absl::StatusOr<xla::XlaOp> XlaScatter(
-    const xla::XlaOp& buffer, const xla::XlaOp& updates,
-    const xla::XlaOp& indices, bool indices_are_vectors,
-    bool indices_are_sorted,
+    const xla::XlaOp buffer, const xla::XlaOp updates, const xla::XlaOp indices,
+    bool indices_are_vectors, bool indices_are_sorted,
     const std::function<xla::XlaOp(xla::XlaOp, xla::XlaOp, xla::XlaBuilder*)>&
         combiner,
     xla::XlaBuilder* builder) {
