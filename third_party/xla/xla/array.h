@@ -365,6 +365,9 @@ class Array {
                           const T&>::type
   operator()(Dims... dims) const {
     CHECK_EQ(sizeof...(dims), num_dimensions());
+    // Check each index is within the bounds of the array.
+    int64_t i = 0;
+    ([&] { DCHECK_LT(dims, sizes_[i++]); }(), ...);
     // We are using a std::array to avoid having to allocate memory in this
     // function for performance reasons.
     std::array<int64_t, sizeof...(dims)> indexes{
