@@ -16,12 +16,7 @@ package(
 gentbl_cc_library(
     name = "legalize_tf_patterns_inc_gen",
     compatible_with = get_compatible_with_portable(),
-    tbl_outs = [
-        (
-            ["-gen-rewriters"],
-            "generated_legalize_tf.inc",
-        ),
-    ],
+    tbl_outs = {"generated_legalize_tf.inc": ["-gen-rewriters"]},
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "legalize_tf_patterns.td",
     deps = [
@@ -36,15 +31,10 @@ gentbl_cc_library(
 gentbl_cc_library(
     name = "xla_legalize_tf_passes_inc_gen",
     compatible_with = get_compatible_with_portable(),
-    tbl_outs = [
-        (
-            [
-                "-gen-pass-decls",
-                "-name=LegalizeTf",
-            ],
-            "xla_legalize_tf_passes.h.inc",
-        ),
-    ],
+    tbl_outs = {"xla_legalize_tf_passes.h.inc": [
+        "-gen-pass-decls",
+        "-name=LegalizeTf",
+    ]},
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "xla_legalize_tf_passes.td",
     deps = [
@@ -55,15 +45,10 @@ gentbl_cc_library(
 gentbl_cc_library(
     name = "tf_xla_passes_inc_gen",
     compatible_with = get_compatible_with_portable(),
-    tbl_outs = [
-        (
-            [
-                "-gen-pass-decls",
-                "-name=TfXla",
-            ],
-            "tf_xla_passes.h.inc",
-        ),
-    ],
+    tbl_outs = {"tf_xla_passes.h.inc": [
+        "-gen-pass-decls",
+        "-name=TfXla",
+    ]},
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "tf_xla_passes.td",
     deps = [

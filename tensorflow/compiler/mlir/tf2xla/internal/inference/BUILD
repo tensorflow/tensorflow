@@ -13,15 +13,10 @@ package(
 gentbl_cc_library(
     name = "inference_passes_inc_gen",
     compatible_with = get_compatible_with_portable(),
-    tbl_outs = [
-        (
-            [
-                "-gen-pass-decls",
-                "-name=TF2XLA",
-            ],
-            "inference_passes.h.inc",
-        ),
-    ],
+    tbl_outs = {"inference_passes.h.inc": [
+        "-gen-pass-decls",
+        "-name=TF2XLA",
+    ]},
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "inference_passes.td",
     deps = [

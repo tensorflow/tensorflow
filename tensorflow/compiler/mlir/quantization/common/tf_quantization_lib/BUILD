@@ -102,16 +102,10 @@ td_library(
 gentbl_cc_library(
     name = "tf_quantization_interfaces_inc_gen",
     compatible_with = get_compatible_with_portable(),
-    tbl_outs = [
-        (
-            ["-gen-op-interface-decls"],
-            "tf_quantization_interface.h.inc",
-        ),
-        (
-            ["-gen-op-interface-defs"],
-            "tf_quantization_interface.cc.inc",
-        ),
-    ],
+    tbl_outs = {
+        "tf_quantization_interface.h.inc": ["-gen-op-interface-decls"],
+        "tf_quantization_interface.cc.inc": ["-gen-op-interface-defs"],
+    },
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "tf_quantization.td",
     deps = [

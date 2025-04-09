@@ -71,15 +71,10 @@ cc_library(
 gentbl_cc_library(
     name = "clustering_passes_inc_gen",
     compatible_with = get_compatible_with_portable(),
-    tbl_outs = [
-        (
-            [
-                "-gen-pass-decls",
-                "-name=TFXLABridgeClustering",
-            ],
-            "clustering_passes.h.inc",
-        ),
-    ],
+    tbl_outs = {"clustering_passes.h.inc": [
+        "-gen-pass-decls",
+        "-name=TFXLABridgeClustering",
+    ]},
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "clustering_passes.td",
     deps = [
@@ -229,15 +224,10 @@ cc_library(
 gentbl_cc_library(
     name = "mlir_to_graph_passes_inc_gen",
     compatible_with = get_compatible_with_portable(),
-    tbl_outs = [
-        (
-            [
-                "-gen-pass-decls",
-                "-name=TFXLABridgeMlirToGraph",
-            ],
-            "mlir_to_graph_passes.h.inc",
-        ),
-    ],
+    tbl_outs = {"mlir_to_graph_passes.h.inc": [
+        "-gen-pass-decls",
+        "-name=TFXLABridgeMlirToGraph",
+    ]},
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "mlir_to_graph_passes.td",
     deps = [
@@ -459,15 +449,10 @@ cc_library(
 gentbl_cc_library(
     name = "lowering_passes_inc_gen",
     compatible_with = get_compatible_with_portable(),
-    tbl_outs = [
-        (
-            [
-                "-gen-pass-decls",
-                "-name=TFXLABridgeLowering",
-            ],
-            "lowering_passes.h.inc",
-        ),
-    ],
+    tbl_outs = {"lowering_passes.h.inc": [
+        "-gen-pass-decls",
+        "-name=TFXLABridgeLowering",
+    ]},
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "lowering_passes.td",
     deps = [

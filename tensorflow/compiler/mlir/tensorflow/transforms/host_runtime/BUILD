@@ -141,15 +141,10 @@ tf_cc_test(
 gentbl_cc_library(
     name = "runtime_passes_inc_gen",
     compatible_with = get_compatible_with_portable(),
-    tbl_outs = [
-        (
-            [
-                "-gen-pass-decls",
-                "-name=RuntimeLowering",
-            ],
-            "runtime_passes.h.inc",
-        ),
-    ],
+    tbl_outs = {"runtime_passes.h.inc": [
+        "-gen-pass-decls",
+        "-name=RuntimeLowering",
+    ]},
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "runtime_passes.td",
     deps = [

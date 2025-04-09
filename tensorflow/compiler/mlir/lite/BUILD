@@ -101,15 +101,10 @@ td_library(
 gentbl_cc_library(
     name = "tensorflow_lite_passes_inc_gen",
     compatible_with = get_compatible_with_portable(),
-    tbl_outs = [
-        (
-            [
-                "-gen-pass-decls",
-                "-name=TensorFlowLiteTd",
-            ],
-            "transforms/passes.h.inc",
-        ),
-    ],
+    tbl_outs = {"transforms/passes.h.inc": [
+        "-gen-pass-decls",
+        "-name=TensorFlowLiteTd",
+    ]},
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "transforms/passes.td",
     deps = [
@@ -120,23 +115,14 @@ gentbl_cc_library(
 gentbl_cc_library(
     name = "tensorflow_lite_ops_inc_gen",
     compatible_with = get_compatible_with_portable(),
-    tbl_outs = [
-        (
-            ["-gen-op-decls"],
-            "ir/tfl_ops.h.inc",
-        ),
-        (
-            ["-gen-op-defs"],
-            "ir/tfl_ops.cc.inc",
-        ),
-        (
-            [
-                "-gen-dialect-doc",
-                "-dialect=tfl",
-            ],
-            "g3doc/tfl_ops.md",
-        ),
-    ],
+    tbl_outs = {
+        "ir/tfl_ops.h.inc": ["-gen-op-decls"],
+        "ir/tfl_ops.cc.inc": ["-gen-op-defs"],
+        "g3doc/tfl_ops.md": [
+            "-gen-dialect-doc",
+            "-dialect=tfl",
+        ],
+    },
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "ir/tfl_ops.td",
     deps = [
@@ -147,24 +133,12 @@ gentbl_cc_library(
 gentbl_cc_library(
     name = "tensorflow_lite_op_interfaces_inc_gen",
     compatible_with = get_compatible_with_portable(),
-    tbl_outs = [
-        (
-            ["-gen-op-interface-decls"],
-            "ir/tfl_ops_interface.h.inc",
-        ),
-        (
-            ["-gen-op-interface-defs"],
-            "ir/tfl_ops_interface.cc.inc",
-        ),
-        (
-            ["-gen-dialect-decls"],
-            "ir/tfl_ops_dialect.h.inc",
-        ),
-        (
-            ["-gen-dialect-defs"],
-            "ir/tfl_ops_dialect.cc.inc",
-        ),
-    ],
+    tbl_outs = {
+        "ir/tfl_ops_interface.h.inc": ["-gen-op-interface-decls"],
+        "ir/tfl_ops_interface.cc.inc": ["-gen-op-interface-defs"],
+        "ir/tfl_ops_dialect.h.inc": ["-gen-dialect-decls"],
+        "ir/tfl_ops_dialect.cc.inc": ["-gen-dialect-defs"],
+    },
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "ir/tfl_op_interfaces.td",
     deps = [
@@ -175,24 +149,12 @@ gentbl_cc_library(
 gentbl_cc_library(
     name = "tensorflow_lite_op_enums_inc_gen",
     compatible_with = get_compatible_with_portable(),
-    tbl_outs = [
-        (
-            ["-gen-enum-decls"],
-            "ir/tfl_ops_enums.h.inc",
-        ),
-        (
-            ["-gen-enum-defs"],
-            "ir/tfl_ops_enums.cc.inc",
-        ),
-        (
-            ["-gen-attrdef-decls"],
-            "ir/tfl_ops_attrdefs.h.inc",
-        ),
-        (
-            ["-gen-attrdef-defs"],
-            "ir/tfl_ops_attrdefs.cc.inc",
-        ),
-    ],
+    tbl_outs = {
+        "ir/tfl_ops_enums.h.inc": ["-gen-enum-decls"],
+        "ir/tfl_ops_enums.cc.inc": ["-gen-enum-defs"],
+        "ir/tfl_ops_attrdefs.h.inc": ["-gen-attrdef-decls"],
+        "ir/tfl_ops_attrdefs.cc.inc": ["-gen-attrdef-defs"],
+    },
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "ir/tfl_op_enums.td",
     deps = [
@@ -203,12 +165,7 @@ gentbl_cc_library(
 gentbl_cc_library(
     name = "tensorflow_lite_prepare_tf_inc_gen",
     compatible_with = get_compatible_with_portable(),
-    tbl_outs = [
-        (
-            ["-gen-rewriters"],
-            "transforms/generated_prepare_tf.inc",
-        ),
-    ],
+    tbl_outs = {"transforms/generated_prepare_tf.inc": ["-gen-rewriters"]},
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "transforms/prepare_patterns.td",
     deps = [":tensorflow_lite_patterns_td_files"],
@@ -217,12 +174,7 @@ gentbl_cc_library(
 gentbl_cc_library(
     name = "tensorflow_lite_lower_static_tensor_list_inc_gen",
     compatible_with = get_compatible_with_portable(),
-    tbl_outs = [
-        (
-            ["-gen-rewriters"],
-            "transforms/generated_lower_static_tensor_list.inc",
-        ),
-    ],
+    tbl_outs = {"transforms/generated_lower_static_tensor_list.inc": ["-gen-rewriters"]},
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "transforms/tensorlist_patterns.td",
     deps = [":tensorflow_lite_patterns_td_files"],
@@ -231,12 +183,7 @@ gentbl_cc_library(
 gentbl_cc_library(
     name = "tensorflow_lite_legalize_tf_inc_gen",
     compatible_with = get_compatible_with_portable(),
-    tbl_outs = [
-        (
-            ["-gen-rewriters"],
-            "transforms/generated_legalize_tf.inc",
-        ),
-    ],
+    tbl_outs = {"transforms/generated_legalize_tf.inc": ["-gen-rewriters"]},
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "transforms/legalize_patterns.td",
     deps = [":tensorflow_lite_patterns_td_files"],
@@ -245,12 +192,7 @@ gentbl_cc_library(
 gentbl_cc_library(
     name = "tensorflow_lite_legalize_variables_inc_gen",
     compatible_with = get_compatible_with_portable(),
-    tbl_outs = [
-        (
-            ["-gen-rewriters"],
-            "transforms/generated_legalize_variables.inc",
-        ),
-    ],
+    tbl_outs = {"transforms/generated_legalize_variables.inc": ["-gen-rewriters"]},
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "transforms/legalize_variables.td",
     deps = [":tensorflow_lite_patterns_td_files"],
@@ -259,12 +201,7 @@ gentbl_cc_library(
 gentbl_cc_library(
     name = "tensorflow_lite_optimize_inc_gen",
     compatible_with = get_compatible_with_portable(),
-    tbl_outs = [
-        (
-            ["-gen-rewriters"],
-            "transforms/generated_optimize.inc",
-        ),
-    ],
+    tbl_outs = {"transforms/generated_optimize.inc": ["-gen-rewriters"]},
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "transforms/optimize_patterns.td",
     deps = [":tensorflow_lite_patterns_td_files"],
@@ -273,12 +210,7 @@ gentbl_cc_library(
 gentbl_cc_library(
     name = "tensorflow_lite_optimize_batch_matmul_inc_gen",
     compatible_with = get_compatible_with_portable(),
-    tbl_outs = [
-        (
-            ["-gen-rewriters"],
-            "transforms/generated_optimize_batch_matmul.inc",
-        ),
-    ],
+    tbl_outs = {"transforms/generated_optimize_batch_matmul.inc": ["-gen-rewriters"]},
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "transforms/optimize_batch_matmul.td",
     deps = [":tensorflow_lite_patterns_td_files"],
@@ -287,12 +219,7 @@ gentbl_cc_library(
 gentbl_cc_library(
     name = "optimize_broadcast_like_inc_gen",
     compatible_with = get_compatible_with_portable(),
-    tbl_outs = [
-        (
-            ["-gen-rewriters"],
-            "transforms/generated_optimize_broadcast_like.inc",
-        ),
-    ],
+    tbl_outs = {"transforms/generated_optimize_broadcast_like.inc": ["-gen-rewriters"]},
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "transforms/optimize_broadcast_like_patterns.td",
     deps = [":tensorflow_lite_patterns_td_files"],
@@ -301,12 +228,7 @@ gentbl_cc_library(
 gentbl_cc_library(
     name = "tensorflow_lite_quantize_inc_gen",
     compatible_with = get_compatible_with_portable(),
-    tbl_outs = [
-        (
-            ["-gen-rewriters"],
-            "transforms/generated_quantize.inc",
-        ),
-    ],
+    tbl_outs = {"transforms/generated_quantize.inc": ["-gen-rewriters"]},
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "transforms/quantize_patterns.td",
     deps = [":tensorflow_lite_patterns_td_files"],
@@ -315,12 +237,7 @@ gentbl_cc_library(
 gentbl_cc_library(
     name = "tensorflow_lite_quantize_by_converter_inc_gen",
     compatible_with = get_compatible_with_portable(),
-    tbl_outs = [
-        (
-            ["-gen-rewriters"],
-            "transforms/generated_quantize_by_converter.inc",
-        ),
-    ],
+    tbl_outs = {"transforms/generated_quantize_by_converter.inc": ["-gen-rewriters"]},
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "transforms/quantize_by_converter_patterns.td",
     deps = [":tensorflow_lite_patterns_td_files"],
@@ -329,12 +246,7 @@ gentbl_cc_library(
 gentbl_cc_library(
     name = "tensorflow_lite_post_quantize_inc_gen",
     compatible_with = get_compatible_with_portable(),
-    tbl_outs = [
-        (
-            ["-gen-rewriters"],
-            "transforms/generated_post_quantize.inc",
-        ),
-    ],
+    tbl_outs = {"transforms/generated_post_quantize.inc": ["-gen-rewriters"]},
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "transforms/post_quantize_patterns.td",
     deps = [":tensorflow_lite_patterns_td_files"],
@@ -343,12 +255,7 @@ gentbl_cc_library(
 gentbl_cc_library(
     name = "tensorflow_lite_legalize_tensorlist_inc_gen",
     compatible_with = get_compatible_with_portable(),
-    tbl_outs = [
-        (
-            ["-gen-rewriters"],
-            "transforms/generated_legalize_tensorlist.inc",
-        ),
-    ],
+    tbl_outs = {"transforms/generated_legalize_tensorlist.inc": ["-gen-rewriters"]},
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "transforms/legalize_tensorlist.td",
     deps = [":tensorflow_lite_patterns_td_files"],
@@ -380,12 +287,7 @@ cc_library(
 gentbl_cc_library(
     name = "tensorflow_lite_canonicalize_inc_gen",
     compatible_with = get_compatible_with_portable(),
-    tbl_outs = [
-        (
-            ["-gen-rewriters"],
-            "ir/tfl_canonicalize.inc",
-        ),
-    ],
+    tbl_outs = {"ir/tfl_canonicalize.inc": ["-gen-rewriters"]},
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "ir/tfl_canonicalize.td",
     deps = [":tensorflow_lite_patterns_td_files"],
@@ -1470,7 +1372,7 @@ filegroup(
 gentbl_cc_library(
     name = "op_quant_spec_getters_inc",
     compatible_with = get_compatible_with_portable(),
-    tbl_outs = [([], "utils/generated_op_quant_spec_getters.inc")],
+    tbl_outs = {"utils/generated_op_quant_spec_getters.inc": []},
     tblgen = "//tensorflow/compiler/mlir/lite/quantization:op_quant_spec_getters_gen",
     td_file = "ir/tfl_ops.td",
     deps = [
@@ -1481,7 +1383,7 @@ gentbl_cc_library(
 gentbl_cc_library(
     name = "tflite_op_coverage_spec_inc",
     compatible_with = get_compatible_with_portable(),
-    tbl_outs = [([], "utils/tflite_op_coverage_spec.inc")],
+    tbl_outs = {"utils/tflite_op_coverage_spec.inc": []},
     tblgen = "//tensorflow/compiler/mlir/lite/quantization:tflite_op_coverage_spec_getters_gen",
     td_file = "ir/tfl_ops.td",
     visibility = ["//learning/brain/mobile/model_optimization/g3doc/autogen:__pkg__"],
@@ -1506,16 +1408,10 @@ tf_native_cc_binary(
 gentbl_cc_library(
     name = "converter_inc",
     compatible_with = get_compatible_with_portable(),
-    tbl_outs = [
-        (
-            ["--gen-operator-converters"],
-            "operator_converters.inc",
-        ),
-        (
-            ["--gen-runtime-verifiers"],
-            "runtime_verifiers.inc",
-        ),
-    ],
+    tbl_outs = {
+        "operator_converters.inc": ["--gen-operator-converters"],
+        "runtime_verifiers.inc": ["--gen-runtime-verifiers"],
+    },
     tblgen = ":converter-gen",
     td_file = "ir/tfl_ops.td",
     test = 1,

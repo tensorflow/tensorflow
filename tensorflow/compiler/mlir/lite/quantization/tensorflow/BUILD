@@ -36,12 +36,7 @@ td_library(
 gentbl_cc_library(
     name = "ptq_fallback_to_flex_inc_gen",
     compatible_with = get_compatible_with_portable(),
-    tbl_outs = [
-        (
-            ["-gen-rewriters"],
-            "fallback_to_flex_patterns.inc",
-        ),
-    ],
+    tbl_outs = {"fallback_to_flex_patterns.inc": ["-gen-rewriters"]},
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "fallback_to_flex_patterns.td",
     deps = [":ptq_td_files"],

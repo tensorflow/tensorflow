@@ -33,15 +33,10 @@ package_group(
 
 gentbl_cc_library(
     name = "pass_inc_gen",
-    tbl_outs = [
-        (
-            [
-                "-gen-pass-decls",
-                "-name=TfrtIfrtServing",
-            ],
-            "passes.h.inc",
-        ),
-    ],
+    tbl_outs = {"passes.h.inc": [
+        "-gen-pass-decls",
+        "-name=TfrtIfrtServing",
+    ]},
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "passes.td",
     deps = [

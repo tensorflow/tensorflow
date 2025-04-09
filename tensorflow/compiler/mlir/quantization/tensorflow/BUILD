@@ -114,12 +114,7 @@ td_library(
 gentbl_cc_library(
     name = "convert_tf_xla_op_to_tf_op_inc_gen",
     compatible_with = get_compatible_with_portable(),
-    tbl_outs = [
-        (
-            ["-gen-rewriters"],
-            "passes/convert_tf_xla_op_to_tf_op.inc",
-        ),
-    ],
+    tbl_outs = {"passes/convert_tf_xla_op_to_tf_op.inc": ["-gen-rewriters"]},
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "passes/convert_tf_xla_op_to_tf_op.td",
     deps = [":quant_td_files"],
@@ -128,12 +123,7 @@ gentbl_cc_library(
 gentbl_cc_library(
     name = "cast_bf16_ops_to_f32_inc_gen",
     compatible_with = get_compatible_with_portable(),
-    tbl_outs = [
-        (
-            ["-gen-rewriters"],
-            "passes/cast_bf16_ops_to_f32.inc",
-        ),
-    ],
+    tbl_outs = {"passes/cast_bf16_ops_to_f32.inc": ["-gen-rewriters"]},
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "passes/cast_bf16_ops_to_f32.td",
     deps = [":quant_td_files"],
@@ -142,12 +132,7 @@ gentbl_cc_library(
 gentbl_cc_library(
     name = "prepare_lifting_inc_gen",
     compatible_with = get_compatible_with_portable(),
-    tbl_outs = [
-        (
-            ["-gen-rewriters"],
-            "passes/prepare_lifting.inc",
-        ),
-    ],
+    tbl_outs = {"passes/prepare_lifting.inc": ["-gen-rewriters"]},
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "passes/prepare_lifting.td",
     deps = [":quant_td_files"],
@@ -156,12 +141,7 @@ gentbl_cc_library(
 gentbl_cc_library(
     name = "lift_quantizable_spots_as_functions_inc_gen",
     compatible_with = get_compatible_with_portable(),
-    tbl_outs = [
-        (
-            ["-gen-rewriters"],
-            "passes/lift_quantizable_spots_as_functions.inc",
-        ),
-    ],
+    tbl_outs = {"passes/lift_quantizable_spots_as_functions.inc": ["-gen-rewriters"]},
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "passes/lift_quantizable_spots_as_functions.td",
     deps = [":quant_td_files"],
@@ -170,12 +150,7 @@ gentbl_cc_library(
 gentbl_cc_library(
     name = "lift_quantizable_spots_as_functions_drq_inc_gen",
     compatible_with = get_compatible_with_portable(),
-    tbl_outs = [
-        (
-            ["-gen-rewriters"],
-            "passes/lift_quantizable_spots_as_functions_drq.inc",
-        ),
-    ],
+    tbl_outs = {"passes/lift_quantizable_spots_as_functions_drq.inc": ["-gen-rewriters"]},
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "passes/lift_quantizable_spots_as_functions_drq.td",
     deps = [":quant_td_files"],
@@ -184,12 +159,7 @@ gentbl_cc_library(
 gentbl_cc_library(
     name = "prepare_quantize_inc_gen",
     compatible_with = get_compatible_with_portable(),
-    tbl_outs = [
-        (
-            ["-gen-rewriters"],
-            "passes/prepare_quantize.inc",
-        ),
-    ],
+    tbl_outs = {"passes/prepare_quantize.inc": ["-gen-rewriters"]},
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "passes/prepare_quantize.td",
     deps = [":quant_td_files"],
@@ -198,12 +168,7 @@ gentbl_cc_library(
 gentbl_cc_library(
     name = "quantize_composite_functions_inc_gen",
     compatible_with = get_compatible_with_portable(),
-    tbl_outs = [
-        (
-            ["-gen-rewriters"],
-            "passes/quantize_composite_functions.inc",
-        ),
-    ],
+    tbl_outs = {"passes/quantize_composite_functions.inc": ["-gen-rewriters"]},
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "passes/quantize_composite_functions.td",
     deps = [":quant_td_files"],
@@ -212,16 +177,10 @@ gentbl_cc_library(
 gentbl_cc_library(
     name = "tf_quant_ops_inc_gen",
     compatible_with = get_compatible_with_portable(),
-    tbl_outs = [
-        (
-            ["-gen-op-decls"],
-            "passes/tf_quant_ops.h.inc",
-        ),
-        (
-            ["-gen-op-defs"],
-            "passes/tf_quant_ops.cc.inc",
-        ),
-    ],
+    tbl_outs = {
+        "passes/tf_quant_ops.h.inc": ["-gen-op-decls"],
+        "passes/tf_quant_ops.cc.inc": ["-gen-op-defs"],
+    },
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "passes/tf_quant_ops.td",
     deps = [
@@ -232,12 +191,7 @@ gentbl_cc_library(
 gentbl_cc_library(
     name = "optimize_inc_gen",
     compatible_with = get_compatible_with_portable(),
-    tbl_outs = [
-        (
-            ["-gen-rewriters"],
-            "passes/optimize.inc",
-        ),
-    ],
+    tbl_outs = {"passes/optimize.inc": ["-gen-rewriters"]},
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "passes/optimize.td",
     deps = [":quant_td_files"],
@@ -246,12 +200,7 @@ gentbl_cc_library(
 gentbl_cc_library(
     name = "convert_tpu_model_to_cpu_inc_gen",
     compatible_with = get_compatible_with_portable(),
-    tbl_outs = [
-        (
-            ["-gen-rewriters"],
-            "passes/convert_tpu_model_to_cpu.inc",
-        ),
-    ],
+    tbl_outs = {"passes/convert_tpu_model_to_cpu.inc": ["-gen-rewriters"]},
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "passes/convert_tpu_model_to_cpu.td",
     deps = [":quant_td_files"],
@@ -260,12 +209,7 @@ gentbl_cc_library(
 gentbl_cc_library(
     name = "post_quantize_inc_gen",
     compatible_with = get_compatible_with_portable(),
-    tbl_outs = [
-        (
-            ["-gen-rewriters"],
-            "passes/post_quantize.inc",
-        ),
-    ],
+    tbl_outs = {"passes/post_quantize.inc": ["-gen-rewriters"]},
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "passes/post_quantize.td",
     deps = [":quant_td_files"],
@@ -274,12 +218,7 @@ gentbl_cc_library(
 gentbl_cc_library(
     name = "preprocess_op_gen",
     compatible_with = get_compatible_with_portable(),
-    tbl_outs = [
-        (
-            ["-gen-rewriters"],
-            "passes/preprocess_op.inc",
-        ),
-    ],
+    tbl_outs = {"passes/preprocess_op.inc": ["-gen-rewriters"]},
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "passes/preprocess_op.td",
     deps = [":quant_td_files"],
@@ -319,12 +258,7 @@ cc_library(
 gentbl_cc_library(
     name = "replace_cast_hacks_with_tf_xla_ops_inc_gen",
     compatible_with = get_compatible_with_portable(),
-    tbl_outs = [
-        (
-            ["-gen-rewriters"],
-            "passes/replace_cast_hacks_with_tf_xla_ops.inc",
-        ),
-    ],
+    tbl_outs = {"passes/replace_cast_hacks_with_tf_xla_ops.inc": ["-gen-rewriters"]},
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "passes/replace_cast_hacks_with_tf_xla_ops.td",
     deps = [":quant_td_files"],
