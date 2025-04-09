@@ -440,3 +440,36 @@ xla_cc_test(
         "@local_tsl//tsl/platform:statusor",
     ] + if_google(["@com_google_ortools//ortools/linear_solver:linear_solver_scip"]),
 )
+
+cc_library(
+    name = "iopddl_lib",
+    srcs = [
+        "iopddl.cc",
+        "solver.cc",
+    ],
+    hdrs = [
+        "iopddl.h",
+        "solver.h",
+    ],
+    deps = [
+        "@com_google_absl//absl/numeric:int128",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/time",
+    ],
+)
+
+cc_test(
+    # CC_TEST_OK=tests imported from the IOPDDL library.
+    name = "iopddl_test",
+    srcs = ["iopddl_test.cc"],
+    data = ["example.json"],
+    deps = [
+        ":iopddl_lib",
+        "//xla/tsl/platform:status_matchers",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/time",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
