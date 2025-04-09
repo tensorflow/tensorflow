@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_AUTOTUNING_DOT_SEARCH_SPACE_H_
 #define XLA_SERVICE_GPU_AUTOTUNING_DOT_SEARCH_SPACE_H_
 
+#include <cstdint>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -39,14 +41,46 @@ class TritonDotFusionSearchSpace {
                              const HloDotInstruction* dot);
 
   // Generates the list of promising configs in the search space for the
-  // autotuner to try.
-  std::vector<TritonGemmConfig> GenerateConfigs();
+  // autotuner to try. If `force_contracting_split` is set, the search space
+  // will be restricted to only include configs with the given split_k factor.
+  std::vector<TritonGemmConfig> GenerateConfigs(
+      std::optional<int64_t> force_contracting_split = std::nullopt);
 
   // Serializes the search space to a human-readable string.
   std::string Serialize();
 
  private:
+  // Groups together the tiling of the dot's output dimensions: the parallel
+  // dimensions of the left and right hand sides. We assume that any batch
+  // dimensions are tiled by a factor of 1.
+  struct OutputTile {
+    int lhs_dim;  // LHS tiling (aka. block_m).
+    int rhs_dim;  // RHS tiling (aka. block_n).
+  };
+
+  // Computes the number of result tiles we would have without
+  // splitting the contracting dimension for a given output tile.
+  int64_t GetNumResultTiles(OutputTile output_tile) const;
+
+  // Computes the maximum sensible split in the contracting dimension
+  // (split_k) to sufficiently occupy all available cores when using the given
+  // output tile.
+  int GetMaxContractingSplit(OutputTile output_tile) const;
+
+  // Finds all promising values for splitting the contracting dimension to
+  // achieve sufficient occupancy (split_k).
+  std::vector<TritonGemmConfig> GenerateContractingSplitFactors();
+
   se::DeviceDescription device_description_;
+  int64_t contracting_size_;
+  int64_t batch_size_;
+  int64_t lhs_parallel_size_;
+  int64_t rhs_parallel_size_;
+  int desired_total_warps_;
+  OutputTile max_out_tile_;
+  int min_warps_per_cta_;
+  int min_contracting_tile_size_;
+  int max_contracting_split_;
 };
 
 }  // namespace xla::gpu
