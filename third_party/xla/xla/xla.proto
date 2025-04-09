@@ -500,10 +500,6 @@ message DebugOptions {
   // Determine the while loop unrolling scheme.
   WhileLoopUnrolling xla_gpu_enable_while_loop_unrolling = 294;
 
-  // Change the layout of the second triton dot operand to be column major.
-  // Only works for (bf16 x bf16) -> bf16.
-  bool xla_gpu_ensure_minor_dot_contraction_dims = 249;
-
   // Excludes non-deterministic ops from compiled executables.
   // Unlike --xla_gpu_deterministic_ops does not disable autotuning - the
   // compilation itself can be non-deterministic.
@@ -1233,8 +1229,9 @@ message DebugOptions {
   // xla_gpu_enable_cudnn_fmha
   // xla_gpu_unsupported_force_triton_gemm
   // xla_allow_get_default_platform
+  // xla_gpu_ensure_minor_dot_contraction_dims
   reserved 5, 117, 133, 139, 176, 178, 180, 193, 214, 194, 221, 242, 206, 320,
-      325, 326, 332, 361, 270, 229, 271, 279, 218, 369, 371;
+      325, 326, 332, 361, 270, 229, 271, 279, 218, 369, 371, 249;
 }
 
 // Contains flags which affects the GPU compilation result.

@@ -370,20 +370,12 @@ absl::Status GpuLayoutAssignment::AddDotBackendConstraints(
   // dimensions. Additionally, no batch dimension can be in the most
   // minor physical dimension for inputs or the output.
 
-  const bool xla_gpu_ensure_minor_dot_contraction_dims =
-      instruction->GetModule()
-          ->config()
-          .debug_options()
-          .xla_gpu_ensure_minor_dot_contraction_dims();
   const bool pack_along_contracting_dims =
       instruction->GetModule()
           ->config()
           .debug_options()
           .xla_gpu_experimental_pack_dot_operands_along_k_dimension();
 
-  const bool is_bf16_to_bf16 =
-      (output_type == PrimitiveType::BF16 && lhs.type == PrimitiveType::BF16 &&
-       rhs.type == PrimitiveType::BF16);
   const bool is_s8_to_s32 = output_type == PrimitiveType::S32 &&
                             lhs.type == PrimitiveType::S8 &&
                             rhs.type == PrimitiveType::S8;
@@ -395,7 +387,6 @@ absl::Status GpuLayoutAssignment::AddDotBackendConstraints(
   const se::CudaComputeCapability* cc =
       std::get_if<se::CudaComputeCapability>(&gpu_version_);
   const bool both_operands_require_minor_contraction_dims =
-      (is_bf16_to_bf16 && xla_gpu_ensure_minor_dot_contraction_dims) ||
       is_s8_to_s32 || (is_fp8 && !(cc && cc->IsBlackwell()));
 
   for (const Side& side : {lhs, rhs}) {

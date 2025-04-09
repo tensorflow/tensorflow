@@ -258,7 +258,6 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_enable_while_loop_double_buffering(false);
   opts.set_xla_gpu_enable_while_loop_unrolling(
       DebugOptions::WHILE_LOOP_UNROLLING_AUTO_UNROLL);
-  opts.set_xla_gpu_ensure_minor_dot_contraction_dims(false);
   opts.set_xla_gpu_filter_kernels_spilling_registers_on_autotuning(true);
   opts.set_xla_gpu_fail_ptx_compilation_on_register_spilling(false);
   opts.set_xla_gpu_llvm_verification_level(0);
@@ -1944,13 +1943,6 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
           &DebugOptions::set_xla_gpu_enable_while_loop_double_buffering),
       debug_options->xla_gpu_enable_while_loop_double_buffering(),
       "Enable double buffering for while loop"));
-  flag_list->push_back(tsl::Flag(
-      "xla_gpu_ensure_minor_dot_contraction_dims",
-      bool_setter_for(
-          &DebugOptions::set_xla_gpu_ensure_minor_dot_contraction_dims),
-      debug_options->xla_gpu_ensure_minor_dot_contraction_dims(),
-      "Ensure that the contracting dimensions for matmul operands are the most "
-      "minor by changing layouts accordingly"));
   flag_list->push_back(tsl::Flag(
       "xla_gpu_filter_kernels_spilling_registers_on_autotuning",
       bool_setter_for(
