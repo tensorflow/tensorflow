@@ -12,11 +12,11 @@ cc_library(
         "graph_to_tf_executor_registration.cc",
     ],
     deps = [
-        "//tensorflow/compiler/mlir/lite/tools:translate_cl_options",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow/translate:mlir_roundtrip_flags",
         "//tensorflow/compiler/mlir/tensorflow/translate/tools:file_tf_mlir_translate",
         "//tensorflow/compiler/mlir/tf2xla/api/v2:tf_executor_to_graph",
+        "//tensorflow/compiler/mlir/tools:translate_cl_options",
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/compiler/tf2xla/kernels:xla_ops",
         "//tensorflow/core:core_cpu_base",

@@ -218,3 +218,73 @@ opt<std::string> model_origin_framework(
     "model-origin-framework",
     llvm::cl::desc("The source model type: PYTORCH, JAX, TENSORFLOW, etc."),
     llvm::cl::init("UNSET"));
+
+// NOLINTNEXTLINE
+opt<std::string> input_arrays(
+    "tf-input-arrays", llvm::cl::desc("Input tensor names, separated by ','"),
+    llvm::cl::init(""));
+
+// NOLINTNEXTLINE
+opt<std::string> input_dtypes(
+    "tf-input-data-types",
+    llvm::cl::desc("(Optional) Input tensor data types, separated by ','. Use "
+                   "'' if a single data type is skipped. The data type from "
+                   "the import graph is used if it is skipped."),
+    llvm::cl::init(""));
+
+// NOLINTNEXTLINE
+opt<std::string> input_shapes(
+    "tf-input-shapes",
+    llvm::cl::desc(
+        "Input tensor shapes. Shapes for different tensors are separated by "
+        "':', and dimension sizes for the same tensor are separated by ','"),
+    llvm::cl::init(""));
+
+// NOLINTNEXTLINE
+opt<std::string> output_arrays(
+    "tf-output-arrays", llvm::cl::desc("Output tensor names, separated by ','"),
+    llvm::cl::init(""));
+
+// NOLINTNEXTLINE
+opt<std::string> control_output_arrays(
+    "tf-control-output-arrays",
+    llvm::cl::desc("Control output node names, separated by ','"),
+    llvm::cl::init(""));
+
+// NOLINTNEXTLINE
+opt<std::string> inference_type(
+    "tf-inference-type",
+    llvm::cl::desc(
+        "Sets the type of real-number arrays in the output file. Only allows "
+        "float and quantized types"),
+    llvm::cl::init(""));
+
+// NOLINTNEXTLINE
+opt<std::string> min_values(
+    "tf-input-min-values",
+    llvm::cl::desc(
+        "Sets the lower bound of the input data. Separated by ','; Each entry "
+        "in the list should match an entry in -tf-input-arrays. This is "
+        "used when -tf-inference-type is a quantized type."),
+    llvm::cl::Optional, llvm::cl::init(""));
+
+// NOLINTNEXTLINE
+opt<std::string> max_values(
+    "tf-input-max-values",
+    llvm::cl::desc(
+        "Sets the upper bound of the input data. Separated by ','; Each entry "
+        "in the list should match an entry in -tf-input-arrays. This is "
+        "used when -tf-inference-type is a quantized type."),
+    llvm::cl::Optional, llvm::cl::init(""));
+
+// NOLINTNEXTLINE
+opt<std::string> debug_info_file(
+    "tf-debug-info",
+    llvm::cl::desc("Path to the debug info file of the input graph def"),
+    llvm::cl::init(""));
+
+// NOLINTNEXTLINE
+opt<bool> enable_shape_inference(
+    "tf-enable-shape-inference-on-import",
+    llvm::cl::desc("Enable shape inference on import (temporary)"),
+    llvm::cl::init(false));

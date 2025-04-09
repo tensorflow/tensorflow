@@ -21,8 +21,8 @@ limitations under the License.
 
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/Tools/mlir-translate/Translation.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/lite/tools/tf_mlir_translate_cl.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/tools/file_tf_mlir_translate.h"
+#include "tensorflow/compiler/mlir/tools/tf_mlir_translate_cl.h"
 #include "tensorflow/core/framework/graph.pb.h"
 
 namespace mlir {
