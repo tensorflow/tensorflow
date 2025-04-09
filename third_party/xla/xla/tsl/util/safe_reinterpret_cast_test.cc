@@ -139,5 +139,13 @@ TEST(SafeReinterpretCast, CanCastRestrictPointerToRestrictPointer) {
                 &x));
 }
 
+void Dummy() {}
+
+TEST(SafeReinterepretCast, CanCastFuncPointerToFromVoidPointer) {
+  void* const void_p = safe_reinterpret_cast<void*>(&Dummy);
+  void (*func_p)() = safe_reinterpret_cast<void (*)()>(void_p);
+  EXPECT_EQ(func_p, &Dummy);
+}
+
 }  // namespace
 }  // namespace tsl
