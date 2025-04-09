@@ -3116,10 +3116,7 @@ ENTRY e {
                                       /*run_hlo_passes=*/false));
 }
 
-// TODO(b/393299275): enable once `NestGemmFusion` data type propagation is
-// fixed. At the moment, the data type is not propagated correctly and that
-// causes a miscompile.
-TEST_F(CompareTest, DISABLED_SplitKNontrivialBitcast) {
+TEST_F(CompareTest, SplitKNontrivialBitcast) {
   if (!SupportsBF16(GpuComputeCapability())) {
     GTEST_SKIP() << "BF16 not supported.";
   }
@@ -3890,9 +3887,7 @@ ENTRY e {
                                       /*run_hlo_passes=*/false));
 }
 
-// TODO(b/393299275): this test uncovers a bug in hoisting bitcasts through
-// broadcasts (seems to generate a type mismatch).
-TEST_F(TritonTest, DISABLED_UseTF32For8BitOrLessWithF32) {
+TEST_F(TritonTest, UseTF32For8BitOrLessWithF32) {
   constexpr absl::string_view kHloText = R"(
 HloModule t
 
@@ -3931,8 +3926,9 @@ CHECK:      tt.dot
 CHECK:      inputPrecision = tf32
   )"));
 
-  EXPECT_TRUE(RunAndCompareNoHloPasses(
-      kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
+  EXPECT_TRUE(
+      RunAndCompareNoHloPasses(std::move(module_and_metadata.module),
+                               ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
 }
 
 // TODO(b/393299275): this test requires us to allow actual mixed type GEMMs
