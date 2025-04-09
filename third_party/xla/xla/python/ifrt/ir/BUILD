@@ -38,50 +38,32 @@ td_library(
 gentbl_cc_library(
     name = "ifrt_dialect_inc_gen",
     compatible_with = get_compatible_with_portable(),
-    tbl_outs = [
-        (
-            [
-                "-gen-dialect-decls",
-                "-dialect=ifrt",
-            ],
-            "ifrt_dialect.h.inc",
-        ),
-        (
-            [
-                "-gen-dialect-defs",
-                "-dialect=ifrt",
-            ],
-            "ifrt_dialect.cc.inc",
-        ),
-        (
-            [
-                "-gen-typedef-decls",
-                "--typedefs-dialect=ifrt",
-            ],
-            "ifrt_types.h.inc",
-        ),
-        (
-            [
-                "-gen-typedef-defs",
-                "--typedefs-dialect=ifrt",
-            ],
-            "ifrt_types.cc.inc",
-        ),
-        (
-            [
-                "-gen-attrdef-decls",
-                "--attrdefs-dialect=ifrt",
-            ],
-            "ifrt_attrs.h.inc",
-        ),
-        (
-            [
-                "-gen-attrdef-defs",
-                "--attrdefs-dialect=ifrt",
-            ],
-            "ifrt_attrs.cc.inc",
-        ),
-    ],
+    tbl_outs = {
+        "ifrt_dialect.h.inc": [
+            "-gen-dialect-decls",
+            "-dialect=ifrt",
+        ],
+        "ifrt_dialect.cc.inc": [
+            "-gen-dialect-defs",
+            "-dialect=ifrt",
+        ],
+        "ifrt_types.h.inc": [
+            "-gen-typedef-decls",
+            "--typedefs-dialect=ifrt",
+        ],
+        "ifrt_types.cc.inc": [
+            "-gen-typedef-defs",
+            "--typedefs-dialect=ifrt",
+        ],
+        "ifrt_attrs.h.inc": [
+            "-gen-attrdef-decls",
+            "--attrdefs-dialect=ifrt",
+        ],
+        "ifrt_attrs.cc.inc": [
+            "-gen-attrdef-defs",
+            "--attrdefs-dialect=ifrt",
+        ],
+    },
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "ifrt_dialect.td",
     test = True,
@@ -91,16 +73,10 @@ gentbl_cc_library(
 gentbl_cc_library(
     name = "ifrt_ops_inc_gen",
     compatible_with = get_compatible_with_portable(),
-    tbl_outs = [
-        (
-            ["-gen-op-decls"],
-            "ifrt_ops.h.inc",
-        ),
-        (
-            ["-gen-op-defs"],
-            "ifrt_ops.cc.inc",
-        ),
-    ],
+    tbl_outs = {
+        "ifrt_ops.h.inc": ["-gen-op-decls"],
+        "ifrt_ops.cc.inc": ["-gen-op-defs"],
+    },
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "ifrt_ops.td",
     test = True,
@@ -110,24 +86,12 @@ gentbl_cc_library(
 gentbl_cc_library(
     name = "ifrt_interfaces_inc_gen",
     compatible_with = get_compatible_with_portable(),
-    tbl_outs = [
-        (
-            ["-gen-attr-interface-decls"],
-            "ifrt_attr_interfaces.h.inc",
-        ),
-        (
-            ["-gen-attr-interface-defs"],
-            "ifrt_attr_interfaces.cc.inc",
-        ),
-        (
-            ["-gen-op-interface-decls"],
-            "ifrt_op_interfaces.h.inc",
-        ),
-        (
-            ["-gen-op-interface-defs"],
-            "ifrt_op_interfaces.cc.inc",
-        ),
-    ],
+    tbl_outs = {
+        "ifrt_attr_interfaces.h.inc": ["-gen-attr-interface-decls"],
+        "ifrt_attr_interfaces.cc.inc": ["-gen-attr-interface-defs"],
+        "ifrt_op_interfaces.h.inc": ["-gen-op-interface-decls"],
+        "ifrt_op_interfaces.cc.inc": ["-gen-op-interface-defs"],
+    },
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "ifrt_interfaces.td",
     test = True,
@@ -341,32 +305,14 @@ td_library(
 gentbl_cc_library(
     name = "vifrt_interfaces_inc_gen",
     compatible_with = get_compatible_with_portable(),
-    tbl_outs = [
-        (
-            ["-gen-attr-interface-decls"],
-            "vifrt_attr_interfaces.h.inc",
-        ),
-        (
-            ["-gen-attr-interface-defs"],
-            "vifrt_attr_interfaces.cc.inc",
-        ),
-        (
-            ["-gen-type-interface-decls"],
-            "vifrt_type_interfaces.h.inc",
-        ),
-        (
-            ["-gen-type-interface-defs"],
-            "vifrt_type_interfaces.cc.inc",
-        ),
-        (
-            ["-gen-op-interface-decls"],
-            "vifrt_op_interfaces.h.inc",
-        ),
-        (
-            ["-gen-op-interface-defs"],
-            "vifrt_op_interfaces.cc.inc",
-        ),
-    ],
+    tbl_outs = {
+        "vifrt_attr_interfaces.h.inc": ["-gen-attr-interface-decls"],
+        "vifrt_attr_interfaces.cc.inc": ["-gen-attr-interface-defs"],
+        "vifrt_type_interfaces.h.inc": ["-gen-type-interface-decls"],
+        "vifrt_type_interfaces.cc.inc": ["-gen-type-interface-defs"],
+        "vifrt_op_interfaces.h.inc": ["-gen-op-interface-decls"],
+        "vifrt_op_interfaces.cc.inc": ["-gen-op-interface-defs"],
+    },
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "vifrt_interfaces.td",
     test = True,
@@ -376,50 +322,32 @@ gentbl_cc_library(
 gentbl_cc_library(
     name = "vifrt_dialect_inc_gen",
     compatible_with = get_compatible_with_portable(),
-    tbl_outs = [
-        (
-            [
-                "-gen-dialect-decls",
-                "-dialect=vifrt",
-            ],
-            "vifrt_dialect.h.inc",
-        ),
-        (
-            [
-                "-gen-dialect-defs",
-                "-dialect=vifrt",
-            ],
-            "vifrt_dialect.cc.inc",
-        ),
-        (
-            [
-                "-gen-typedef-decls",
-                "--typedefs-dialect=vifrt",
-            ],
-            "vifrt_types.h.inc",
-        ),
-        (
-            [
-                "-gen-typedef-defs",
-                "--typedefs-dialect=vifrt",
-            ],
-            "vifrt_types.cc.inc",
-        ),
-        (
-            [
-                "-gen-attrdef-decls",
-                "--attrdefs-dialect=vifrt",
-            ],
-            "vifrt_attrs.h.inc",
-        ),
-        (
-            [
-                "-gen-attrdef-defs",
-                "--attrdefs-dialect=vifrt",
-            ],
-            "vifrt_attrs.cc.inc",
-        ),
-    ],
+    tbl_outs = {
+        "vifrt_dialect.h.inc": [
+            "-gen-dialect-decls",
+            "-dialect=vifrt",
+        ],
+        "vifrt_dialect.cc.inc": [
+            "-gen-dialect-defs",
+            "-dialect=vifrt",
+        ],
+        "vifrt_types.h.inc": [
+            "-gen-typedef-decls",
+            "--typedefs-dialect=vifrt",
+        ],
+        "vifrt_types.cc.inc": [
+            "-gen-typedef-defs",
+            "--typedefs-dialect=vifrt",
+        ],
+        "vifrt_attrs.h.inc": [
+            "-gen-attrdef-decls",
+            "--attrdefs-dialect=vifrt",
+        ],
+        "vifrt_attrs.cc.inc": [
+            "-gen-attrdef-defs",
+            "--attrdefs-dialect=vifrt",
+        ],
+    },
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "vifrt_dialect.td",
     test = True,
@@ -429,16 +357,10 @@ gentbl_cc_library(
 gentbl_cc_library(
     name = "vifrt_ops_inc_gen",
     compatible_with = get_compatible_with_portable(),
-    tbl_outs = [
-        (
-            ["-gen-op-decls"],
-            "vifrt_ops.h.inc",
-        ),
-        (
-            ["-gen-op-defs"],
-            "vifrt_ops.cc.inc",
-        ),
-    ],
+    tbl_outs = {
+        "vifrt_ops.h.inc": ["-gen-op-decls"],
+        "vifrt_ops.cc.inc": ["-gen-op-defs"],
+    },
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "vifrt_ops.td",
     test = True,
