@@ -48,17 +48,6 @@ struct IsByteLike<unsigned char> : std::true_type {};
 template <>
 struct IsByteLike<std::byte> : std::true_type {};
 
-// IsCvByteLike<T>::value is true if T is a possibly CV-qualified byte-like type
-// (char, unsigned char, or std::byte).
-template <typename T>
-struct IsCvByteLike : IsByteLike<T> {};
-template <typename T>
-struct IsCvByteLike<const T> : IsByteLike<T> {};
-template <typename T>
-struct IsCvByteLike<volatile T> : IsByteLike<T> {};
-template <typename T>
-struct IsCvByteLike<const volatile T> : IsByteLike<T> {};
-
 // IsSafeCast<From, To>::value is true if it is safe to reinterpret_cast a
 // value of type From to a value of type To.
 //
@@ -79,7 +68,8 @@ struct IsSafeCast<From*, To*>
     : std::integral_constant<
           bool,
           // To/from a pointer to a byte-like type.
-          (IsCvByteLike<From>::value || IsCvByteLike<To>::value) ||
+          (IsByteLike<typename std::remove_cv<From>::type>::value ||
+           IsByteLike<typename std::remove_cv<To>::type>::value) ||
               // From function pointer to void pointer.
               (std::is_function_v<From>&& std::is_void_v<To>) ||
               // From void pointer to function pointer.
