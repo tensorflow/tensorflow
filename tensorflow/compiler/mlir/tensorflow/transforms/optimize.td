@@ -40,7 +40,7 @@ def IsNotComplexType : Constraint<And<[
 // Only fuse multiplier if all dimensions other than the channel dimension
 // are equal to 1.
 def CanFuseMulAndConv2D :
-    Constraint<CPred<"TFL::IsBroadcastableElementsAttrs($0, $1) && TFL::IsDimensionsDegenerateExceptLastOne($1)">>;
+    Constraint<CPred<"IsBroadcastableElementsAttrs($0, $1) && IsDimensionsDegenerateExceptLastOne($1)">>;
 
 def F32ElementsAttr : ElementsAttrBase<
     CPred<"$_self.cast<ElementsAttr>().getShapedType().getElementType().isF32()">, "float constant tensor">;

@@ -140,8 +140,8 @@ cc_library(
         "-Ithird_party",
     ],
     deps = [
-        "//tensorflow/compiler/mlir/lite:validators",
         "//tensorflow/compiler/mlir/quantization/common:attrs_and_constraints",
+        "//tensorflow/compiler/mlir/utils:validators",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:Dialect",
         "@llvm-project//mlir:FuncDialect",
