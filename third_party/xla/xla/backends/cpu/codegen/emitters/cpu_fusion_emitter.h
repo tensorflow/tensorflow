@@ -53,6 +53,11 @@ IndexingMap GetDefaultIndexingMap(absl::Span<const int64_t> thread_tile_sizes,
                                   absl::Span<const int64_t> shape,
                                   mlir::MLIRContext* mlir_context);
 
+absl::StatusOr<mlir::func::FuncOp> EmitFusionKernelApi(
+    mlir::ModuleOp fusion_module, const HloFusionInstruction& fusion,
+    const std::string& entry_function_name,
+    const BufferAssignment& buffer_assignment);
+
 class CpuFusionEmitterBase {
  public:
   CpuFusionEmitterBase(mlir::MLIRContext* mlir_context,
