@@ -5643,7 +5643,7 @@ class Subgraph {
     // Only support strided slice with no ellipsis mask, no new axis mask, and
     // no shrink_axis-mask.
     if (params->ellipsis_mask != 0 || params->new_axis_mask != 0 ||
-        params->shrink_axis_mask != 0) {
+        params->shrink_axis_mask != 0 || params->end_mask != 0) {
       return kTfLiteError;
     }
 
@@ -5753,9 +5753,7 @@ class Subgraph {
         begins[i] = begin_data[i];
       }
 
-      if ((params->end_mask & (1 << i)) != 0) {
-        ends[i] = 0;
-      } else if (params->offset) {
+      if (params->offset) {
         ends[i] = end_data[i] + begins[i];
       } else {
         ends[i] = end_data[i];
