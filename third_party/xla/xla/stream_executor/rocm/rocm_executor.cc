@@ -584,7 +584,7 @@ bool RocmExecutor::UnloadGpuBinary(ModuleHandle module_handle) {
     VLOG(3) << "No loaded  HSACO module for " << module_handle;
     return false;
   }
-  auto& module = module_it->second.first;
+  auto module = module_it->second.first;
   auto& refcount = module_it->second.second;
   VLOG(3) << "Found HSACO module " << module << " with refcount " << refcount;
   if (--refcount == 0) {
