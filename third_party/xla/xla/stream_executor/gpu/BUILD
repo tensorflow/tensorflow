@@ -646,7 +646,6 @@ xla_test(
         "//xla/service:platform_util",
         "//xla/stream_executor:command_buffer",
         "//xla/stream_executor:device_memory",
-        "//xla/stream_executor:dnn",
         "//xla/stream_executor:kernel",
         "//xla/stream_executor:kernel_spec",
         "//xla/stream_executor:launch_dim",
@@ -673,10 +672,8 @@ xla_test(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest",
-        "@cudnn_frontend_archive//:cudnn_frontend",
     ] + if_cuda([
         "//xla/stream_executor/cuda:cuda_platform",
-        "//xla/stream_executor/cuda:cudnn_plugin",
     ]) + if_rocm([
         "//xla/stream_executor/rocm:rocm_platform",
     ]),
