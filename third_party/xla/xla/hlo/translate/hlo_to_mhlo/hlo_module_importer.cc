@@ -19,6 +19,7 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "llvm/Support/Casting.h"
+#include "llvm/Support/Debug.h"
 #include "llvm/Support/LogicalResult.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
@@ -37,6 +38,8 @@ limitations under the License.
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/xla.pb.h"
+
+#define DEBUG_TYPE "xla-translate"
 
 namespace xla {
 
@@ -91,7 +94,9 @@ absl::Status HloModuleImporter::Import(const HloModule& hlo_module) {
                            &function_map_, &builder_,
                            /*is_main*/ true, flatten_computation_args_result_)
                            .status());
+
     // Convert all ops to MHLO
+    LLVM_DEBUG(llvm::dbgs() << "Emit StableHLO: " << emit_stablehlo_ << "\n");
     if (!emit_stablehlo_) {
       TF_RETURN_IF_ERROR(ConvertToMhlo(module));
     }
@@ -114,6 +119,7 @@ absl::Status HloModuleImporter::Import(const HloModule& hlo_module) {
       hlo_module, module, flatten_computation_args_result_, builder_));
 
   // Convert all ops to MHLO
+  LLVM_DEBUG(llvm::dbgs() << "Emit StableHLO: " << emit_stablehlo_ << "\n");
   if (!emit_stablehlo_) {
     TF_RETURN_IF_ERROR(ConvertToMhlo(module));
   }

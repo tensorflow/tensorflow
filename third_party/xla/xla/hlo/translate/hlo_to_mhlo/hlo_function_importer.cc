@@ -2325,8 +2325,10 @@ HloFunctionImporter::ImportInstructionWithLayout(
   }
 
   // Print generic in debug since module may be invalid while printing.
-  LLVM_DEBUG(
-      op->print(llvm::dbgs(), mlir::OpPrintingFlags().printGenericOpForm()));
+  LLVM_DEBUG({
+    op->print(llvm::dbgs(), mlir::OpPrintingFlags().printGenericOpForm());
+    llvm::dbgs() << "\n";
+  });
 
   // See MlirToHloConversionOptions for more about layouts.
   //

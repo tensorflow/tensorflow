@@ -97,14 +97,21 @@ bool LoadHloProto(const std::string& contents, xla::HloProto* hlo_proto) {
 constexpr char kLoadHloError[] = "Failed to parse HLO.";
 
 absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> GetModuleFromHLOText(
-    absl::string_view content, mlir::MLIRContext* context) {
+    absl::string_view content, mlir::MLIRContext* context, bool emit_mhlo) {
   auto hlo_text = xla::ParseAndReturnUnverifiedModule(
       content, {}, xla::HloParserOptions().set_keep_module_auto_layouts(true));
   if (!hlo_text.ok()) return absl::InvalidArgumentError(kLoadHloError);
 
+  auto hlo_module = std::move(hlo_text.value());
+
+  // For emitting StableHLO, use new APIs by defualt.
+  if (!emit_mhlo) {
+    return xla::ConvertHloToStablehlo(*context, hlo_module.get());
+  }
+
+  // For MHLO require legacy API for now.
   mlir::OwningOpRef<mlir::ModuleOp> module =
       xla::llvm_ir::CreateMlirModuleOp(mlir::UnknownLoc::get(context));
-  auto hlo_module = std::move(hlo_text.value());
   auto status = ConvertHloToMlirHlo(*module, hlo_module.get(),
                                     /*import_all_computations=*/true,
                                     /*flatten_computation_args_result*/ true);
@@ -113,11 +120,17 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> GetModuleFromHLOText(
 }
 
 absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> GetModuleFromHLOProto(
-    const std::string& content, mlir::MLIRContext* context) {
+    const std::string& content, mlir::MLIRContext* context, bool emit_mhlo) {
   xla::HloProto hlo_proto;
   if (!LoadHloProto(content, &hlo_proto))
     return absl::InvalidArgumentError(kLoadHloError);
 
+  // For emitting StableHLO, use new APIs by defualt.
+  if (!emit_mhlo) {
+    return xla::ConvertHloToStablehlo(*context, hlo_proto.mutable_hlo_module());
+  }
+
+  // For MHLO require legacy API for now.
   mlir::OwningOpRef<mlir::ModuleOp> module =
       xla::llvm_ir::CreateMlirModuleOp(mlir::UnknownLoc::get(context));
   auto status =
@@ -130,7 +143,7 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> GetModuleFromHLOProto(
 
 mlir::OwningOpRef<mlir::ModuleOp> GetModuleFromHloInput(
     const std::shared_ptr<llvm::SourceMgr>& source_mgr,
-    mlir::MLIRContext* context) {
+    mlir::MLIRContext* context, bool emit_mhlo) {
   const llvm::MemoryBuffer* input =
       source_mgr->getMemoryBuffer(source_mgr->getMainFileID());
   absl::string_view content =
@@ -144,7 +157,7 @@ mlir::OwningOpRef<mlir::ModuleOp> GetModuleFromHloInput(
   };
 
   // Try HLO Text
-  auto module_from_text = GetModuleFromHLOText(content, context);
+  auto module_from_text = GetModuleFromHLOText(content, context, emit_mhlo);
   if (module_from_text.ok()) return std::move(module_from_text.value());
   if (module_from_text.status().message() != kLoadHloError) {
     emitError() << "Failed to convert HLO to MLIR: "
@@ -153,7 +166,8 @@ mlir::OwningOpRef<mlir::ModuleOp> GetModuleFromHloInput(
   }
 
   // Try HLO Proto
-  auto module_from_proto = GetModuleFromHLOProto(std::string(content), context);
+  auto module_from_proto =
+      GetModuleFromHLOProto(std::string(content), context, emit_mhlo);
   if (module_from_proto.ok()) return std::move(module_from_proto.value());
   if (module_from_proto.status().message() != kLoadHloError) {
     emitError() << "Failed to convert HLO to MLIR: "
@@ -172,18 +186,9 @@ static mlir::OwningOpRef<mlir::ModuleOp> HloToMlirTranslate(
     const std::shared_ptr<llvm::SourceMgr>& sourceMgr,
     mlir::MLIRContext* context) {
   mlir::OwningOpRef<mlir::ModuleOp> module =
-      GetModuleFromHloInput(sourceMgr, context);
+      GetModuleFromHloInput(sourceMgr, context, emit_mhlo);
 
   if (!module) return nullptr;
-
-  if (emit_mhlo) return module;
-
-  mlir::PassManager pm(context);
-  pm.addPass(mlir::mhlo::createHloLegalizeToStablehloPass());
-  if (failed(pm.run(*module))) {
-    module->emitError("Failed to legalize to StableHLO");
-    return nullptr;
-  }
 
   return module;
 }
