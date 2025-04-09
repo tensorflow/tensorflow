@@ -214,15 +214,15 @@ struct RendezvousState : public RendezvousStateSynchronization {
 // Rendezvous state ownership:
 //
 // (1) When rendezvous participant initiates a rendezvous with a particular key
-//     we create a new state for it, keep it in a map for tracking and return a
-//     shared pointer to the caller.
+//     we create a new state for it, keep it in a map as weak pointer for
+//     tracking and return a shared pointer to the caller.
 //
 // (2) When rendezvous participant joins in-progress rendezvous it gets back
 //     a shared pointer that is copied from a tracking map.
 //
-// (3) When the last rendezvous participant computes the result it completes the
-//     rendezvous and removes a shared pointer to a state. Remaining shared
-//     pointers destructed when all participants are notified.
+// (3) When all rendezvous participants complete the rendezvous, shared pointers
+//     are destructed and the tracking map will have an expired weak pointer,
+//     that will be lazily garbage collected by the next rendezvous.
 //
 // This process guarantees that all completed rendezvous are removed from a map
 // and a map has records only for rendezvous in progress.
@@ -233,56 +233,25 @@ class RendezvousMap {
 
   std::shared_ptr<State> Join(const K& key, size_t num_threads) {
     absl::MutexLock lock(&mutex_);
-    std::shared_ptr<State>& state = state_[key];
 
-    // Join an in-progress rendezvous.
-    if (state) return state;
+    // Erase expired rendezvous from the map.
+    absl::erase_if(state_, [](const auto& e) { return e.second.expired(); });
 
-    // Join a newly created rendezvous.
-    return state = std::make_shared<State>(num_threads);
-  }
+    std::weak_ptr<State>& in_progress = state_[key];
 
-  template <typename Result>
-  void Complete(const K& key, Result&& result) {
-    std::shared_ptr<State> state = [&] {
-      absl::MutexLock lock(&mutex_);
-
-      // Extract state from the map so we can immediately start a new round of
-      // rendezvous with the same key. A state for previous rendezvous will be
-      // destructed with the last copy of a shared pointer.
-      std::shared_ptr<State> state = state_.extract(key).mapped();
-
-      // Check that we have have exactly the number of participants we expected:
-      // +1 reference for all participants and a +1 reference we extracted.
-      CHECK_EQ(state.use_count(), 1 + state->values.size());  // NOLINT
-
-      return state;
-    }();
-
-    // We notify awaiting participants without holding a rendezvous map lock, as
-    // the rendezvous callback might be an expensive operation and might block
-    // the progress of concurrent rendezvous for other keys.
-
-    // Publish rendezvous result to all participants.
-    if constexpr (IsStatusOrResult<Result>::value) {
-      if (ABSL_PREDICT_TRUE(result.ok())) {
-        state->result = std::make_shared<R>(*std::forward<Result>(result));
-      } else {
-        state->result = result.status();
-      }
-    } else {
-      state->result = std::make_shared<R>(std::forward<Result>(result));
+    // Try to join an in-progress rendezvous for a given key.
+    if (std::shared_ptr<State> joined = in_progress.lock()) {
+      return joined;
     }
 
-    // Notify awaiting participants that result is ready.
-    absl::MutexLock lock(&state->mutex);
-    state->ready = true;
-    state->cv.SignalAll();
+    // Start a new rendezvous for a given key.
+    std::shared_ptr<State> start = std::make_shared<State>(num_threads);
+    return (in_progress = start, start);
   }
 
  private:
   absl::Mutex mutex_;
-  absl::flat_hash_map<K, std::shared_ptr<State>> state_ ABSL_GUARDED_BY(mutex_);
+  absl::flat_hash_map<K, std::weak_ptr<State>> state_ ABSL_GUARDED_BY(mutex_);
 };
 
 void AwaitAndLogIfStuck(RendezvousStateSynchronization& state, int32_t id,
@@ -294,6 +263,22 @@ void AwaitAndLogIfStuck(RendezvousStateSynchronization& state, int32_t id,
 //===----------------------------------------------------------------------===//
 // Rendezvous implemenetation.
 //===----------------------------------------------------------------------===//
+
+template <typename R, typename V, typename Fn>
+absl::StatusOr<std::shared_ptr<R>> InvokeRendezvous(
+    Fn fn, absl::Span<const V*> values) {
+  auto result = fn(values);
+
+  if constexpr (internal::IsStatusOrResult<decltype(result)>::value) {
+    if (ABSL_PREDICT_TRUE(result.ok())) {
+      return std::make_shared<R>(*std::move(result));
+    } else {
+      return result.status();
+    }
+  } else {
+    return std::make_shared<R>(std::move(result));
+  }
+}
 
 template <typename R, typename K, typename V, typename Fn>
 absl::StatusOr<std::shared_ptr<R>> Rendezvous(
@@ -307,16 +292,7 @@ absl::StatusOr<std::shared_ptr<R>> Rendezvous(
   // Fast-path (DO NOT REMOVE: the logic below doesn't work for single thread).
   if (num_threads == 1) {
     const V* ptr = &value;
-    auto result = fn(absl::MakeSpan(&ptr, 1));
-
-    if constexpr (internal::IsStatusOrResult<decltype(result)>::value) {
-      if (ABSL_PREDICT_TRUE(result.ok())) {
-        return std::make_shared<R>(*std::move(result));
-      }
-      return result.status();
-    } else {
-      return std::make_shared<R>(std::move(result));
-    }
+    return InvokeRendezvous<R, V>(std::move(fn), absl::MakeSpan(&ptr, 1));
   }
 
   using State = internal::RendezvousState<R, V>;
@@ -359,9 +335,23 @@ absl::StatusOr<std::shared_ptr<R>> Rendezvous(
     // be notified via `state->ready` flag when result is ready, and we rely on
     // the store to a flag to create a memory barrier that makes access to
     // `state->result` safe without any extra synchronization.
-    tsl::profiler::TraceMe trace("ExecuteRendezvousCallback");
+    tsl::profiler::TraceMe trace("InvokeRendezvous");
     absl::Span<const V*> values(state->values.data(), num_threads);
-    rendezvous.Complete(key, fn(values));
+
+    // Check that we have have exactly the number of participants we expect.
+    CHECK_EQ(state.use_count(), num_threads);  // NOLINT
+
+    // Publish rendezvous result to all participants.
+    state->result = InvokeRendezvous<R, V>(std::move(fn), values);
+
+    // Switch `ready` flag to signal all participants that result is ready.
+    {
+      absl::MutexLock lock(&state->mutex);
+      state->ready = true;
+    }
+
+    // Notify awaiting participants that result is ready.
+    state->cv.SignalAll();
   }
 
   return state->result;
