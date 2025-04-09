@@ -783,7 +783,9 @@ ENTRY r {
   EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
 }
 
-TEST_F(TritonGemmTest, DISABLED_DoNotFuseSplitRhsContractingTranspose) {
+// TODO(b/393299275): this is a pure test of fusion logic. It should be moved to
+// a separate, fusion-specific, deviceless test.
+TEST_F(TritonGemmTest, DoNotFuseSplitRhsContractingTranspose) {
   constexpr absl::string_view kHloText = R"(
 HloModule t
 
@@ -802,13 +804,13 @@ ENTRY e {
 ; CHECK: transpose
 ; CHECK: fusion
 ; CHECK-SAME: kind=kCustom
-; CHECK-PTX-SAME: "block_m":
+; CHECK-SAME: "__triton_nested_gemm_fusion"
 )");
-
-  EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
 }
 
-TEST_F(TritonGemmTest, DISABLED_DoNotFuseSplitLhsContractingTranspose) {
+// TODO(b/393299275): this is a pure test of fusion logic. It should be moved to
+// a separate, fusion-specific, deviceless test.
+TEST_F(TritonGemmTest, DoNotFuseSplitLhsContractingTranspose) {
   constexpr absl::string_view kHloText = R"(
 HloModule t
 
@@ -818,7 +820,7 @@ ENTRY e {
   p0tr = f16[16,75]{1,0} reshape(p0t)
   p1 = s8[128,75]{1,0} parameter(1)
   cp1 = f16[128,75]{1,0} convert(p1)
-  ROOT dot.126 = f16[16,128]{1,0} dot(p0tr, cp1),
+  ROOT dot = f16[16,128]{1,0} dot(p0tr, cp1),
     lhs_contracting_dims={1}, rhs_contracting_dims={1}
 })";
 
@@ -827,38 +829,14 @@ ENTRY e {
 ; CHECK: transpose
 ; CHECK: fusion
 ; CHECK-SAME: kind=kCustom
-; CHECK-PTX-SAME: "block_m":
+; CHECK-SAME: "__triton_nested_gemm_fusion"
 )");
-
-  EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
 }
 
-TEST_F(TritonGemmTest, DISABLED_BatchF32F16) {
-  constexpr absl::string_view kHloText = R"(
-HloModule t
-
-ENTRY e {
-  x = f32[5,2,3] parameter(0)
-  y = f16[5,3,4] parameter(1)
-  cy = f32[5,3,4] convert(y)
-  ROOT _ = f32[5,2,4] dot(x, cy),
-    lhs_contracting_dims={2}, rhs_contracting_dims={1},
-    lhs_batch_dims={0}, rhs_batch_dims={0}
-})";
-
-  MatchOptimizedHlo(kHloText, R"(
-; CHECK: ENTRY
-; CHECK-NEXT: parameter
-; CHECK-NEXT: parameter
-; CHECK-NEXT: fusion
-; CHECK-SAME: kind=kCustom
-; CHECK-PTX-SAME: "block_m":
-)");
-
-  EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-4, /*arel=*/1e-2}));
-}
-
-TEST_F(TritonGemmTest, DISABLED_NonMajorMostInputBatchWorksCorrectly) {
+// TODO(b/393299275): this test should be rewritten to start from
+// post-optimization HLO. (Though I'm not entirely sure it's even worth keeping
+// it.)
+TEST_F(TritonGemmTest, NonMajorMostInputBatchWorksCorrectly) {
   constexpr absl::string_view kHloText = R"(
 HloModule t
 
@@ -877,39 +855,15 @@ ENTRY e {
 ; CHECK-NEXT: parameter
 ; CHECK-NEXT: fusion
 ; CHECK-SAME: kind=kCustom
-; CHECK-PTX-SAME: "block_m":
+; CHECK-SAME: "__triton_nested_gemm_fusion"
 )");
 
   EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
 }
 
-TEST_F(TritonGemmTest, DISABLED_BatchTransposeF32F16) {
-  constexpr absl::string_view kHloText = R"(
-HloModule t
-
-ENTRY e {
-  x = f32[5,3,2] parameter(0)
-  y = f16[5,3,4] parameter(1)
-  cy = f32[5,3,4] convert(y)
-  x_transposed = f32[5,2,3] transpose(x), dimensions={0, 2, 1}
-  ROOT _ = f32[5,2,4] dot(x_transposed, cy),
-    lhs_contracting_dims={2}, rhs_contracting_dims={1},
-    lhs_batch_dims={0}, rhs_batch_dims={0}
-})";
-
-  MatchOptimizedHlo(kHloText, R"(
-; CHECK: ENTRY
-; CHECK-NEXT: parameter
-; CHECK-NEXT: parameter
-; CHECK-NEXT: fusion
-; CHECK-SAME: kind=kCustom
-; CHECK-PTX-SAME: "block_m":
-)");
-
-  EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-4, /*arel=*/1e-2}));
-}
-
-TEST_F(TritonGemmTest, DISABLED_DoNotFuseArbitraryReshape) {
+// TODO(b/393299275): this is a pure test of fusion logic. It should be moved to
+// a separate, fusion-specific, deviceless test.
+TEST_F(TritonGemmTest, DoNotFuseArbitraryReshape) {
   constexpr absl::string_view kHloText = R"(
 HloModule m
 
@@ -918,7 +872,7 @@ ENTRY e {
   p0c = f32[5,2,3] convert(p0)
   p1 = f32[20,3] parameter(1)
   p1r = f32[5,3,4] reshape(p1)
-  ROOT dot.5 = f32[5,2,4] dot(p0c, p1r),
+  ROOT dot = f32[5,2,4] dot(p0c, p1r),
     lhs_batch_dims={0}, lhs_contracting_dims={2},
     rhs_batch_dims={0}, rhs_contracting_dims={1}
 })";
@@ -928,10 +882,8 @@ ENTRY e {
 ; CHECK: f32[5,3,4]{2,1,0} bitcast
 ; CHECK: fusion
 ; CHECK-SAME: kind=kCustom
-; CHECK-PTX-SAME: "block_m":
+; CHECK-SAME: "__triton_nested_gemm_fusion"
 )");
-
-  EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-4, /*arel=*/1e-4}));
 }
 
 TEST_F(TritonGemmTest, MultipleBatchRequireSeparateTranspose) {
@@ -2547,134 +2499,6 @@ ENTRY e {
 // into Triton fusions.
 using CompareTest = TritonGemmTest;
 
-TEST_F(CompareTest, DISABLED_DifferentTilingsProduceSameResult) {
-  constexpr absl::string_view hlo_text_ref = R"(
-HloModule t
-
-triton_dot {
-  p0 = s8[101,202] parameter(0)
-  p0c = f32[101,202] convert(p0)
-  p1 = f32[202,303] parameter(1)
-  ROOT dot = f32[101,303] dot(p0c, p1),
-    lhs_contracting_dims={1}, rhs_contracting_dims={0}
-}
-
-ENTRY e {
-  p0 = s8[101,202]{1,0} parameter(0)
-  p1 = f32[202,303]{1,0} parameter(1)
-  ROOT _ = f32[101,303] fusion(p0, p1), kind=kCustom, calls=triton_dot,
-    backend_config={"fusion_backend_config": {kind: "__triton_gemm",
-      triton_gemm_config:
-        {"block_m":16,"block_n":64,"block_k":32,
-         "split_k":1,"num_stages":3,"num_warps":8,
-         "num_ctas":1}}}
-})";
-
-  constexpr absl::string_view hlo_text_triton = R"(
-HloModule t
-
-triton_dot {
-  p0 = s8[101,202] parameter(0)
-  p0c = f32[101,202] convert(p0)
-  p1 = f32[202,303] parameter(1)
-  ROOT dot = f32[101,303] dot(p0c, p1),
-    lhs_contracting_dims={1}, rhs_contracting_dims={0}
-}
-
-ENTRY e {
-  p0 = s8[101,202]{1,0} parameter(0)
-  p1 = f32[202,303]{1,0} parameter(1)
-  ROOT _ = f32[101,303] fusion(p0, p1), kind=kCustom, calls=triton_dot,
-    backend_config={"fusion_backend_config": {kind: "__triton_gemm",
-    triton_gemm_config: {"block_m":32,"block_n":128,"block_k":32,
-                         "split_k":1,"num_stages":2,"num_warps":4,
-                         "num_ctas":1}}}
-})";
-
-  EXPECT_TRUE(RunAndCompareTwoModules(hlo_text_ref, hlo_text_triton,
-                                      ErrorSpec{/*aabs=*/1e-6, /*arel=*/1e-6},
-                                      /*run_hlo_passes=*/false));
-}
-
-TEST_F(CompareTest, DISABLED_F16) {
-  constexpr absl::string_view hlo_text_ref = R"(
-HloModule r
-
-ENTRY e {
-  arg0 = f16[5,7] parameter(0)
-  arg1 = f16[7,33] parameter(1)
-  gemm = (f16[5,33], s8[0]{0}) custom-call(arg0, arg1),
-    custom_call_target="__cublas$gemm",
-    backend_config={"gemm_backend_config": {"alpha_real":1,"beta":0,"dot_dimension_numbers":{"lhs_contracting_dimensions":[1],"rhs_contracting_dimensions":[0],"lhs_batch_dimensions":[],"rhs_batch_dimensions":[]},"alpha_imag":0,"precision_config":{"operand_precision":["DEFAULT","DEFAULT"]},"epilogue":"DEFAULT"}}
-  ROOT get-tuple-element = f16[5,33]{1,0} get-tuple-element((f16[5,33]{1,0}, s8[0]{0}) gemm), index=0
-}
-)";
-
-  constexpr absl::string_view hlo_text_triton = R"(
-HloModule t
-
-triton_dot {
-  p0 = f16[5,7] parameter(0)
-  p1 = f16[7,33] parameter(1)
-  ROOT dot = f16[5,33] dot(p0, p1),
-    lhs_contracting_dims={1}, rhs_contracting_dims={0}
-}
-
-ENTRY e {
-  p0 = f16[5,7]{1,0} parameter(0)
-  p1 = f16[7,33]{1,0} parameter(1)
-  ROOT _ = f16[5,33] fusion(p0, p1), kind=kCustom, calls=triton_dot,
-    backend_config={"fusion_backend_config": {kind: "__triton_gemm",
-    triton_gemm_config: {"block_m":32,"block_n":32,"block_k":32,
-                         "split_k":1,"num_stages":1,"num_warps":1,
-                         "num_ctas":1}}}
-}
-)";
-
-  EXPECT_TRUE(RunAndCompareTwoModules(hlo_text_ref, hlo_text_triton,
-                                      ErrorSpec{/*aabs=*/1e-6, /*arel=*/1e-6},
-                                      /*run_hlo_passes=*/false));
-}
-
-TEST_F(CompareTest, DISABLED_F32) {
-  constexpr absl::string_view hlo_text_ref = R"(
-HloModule r
-
-ENTRY e {
-  arg0 = f32[5,7] parameter(0)
-  arg1 = f32[7,33] parameter(1)
-  gemm = (f32[5,33], s8[0]{0}) custom-call(arg0, arg1),
-    custom_call_target="__cublas$gemm",
-    backend_config={"gemm_backend_config": {"alpha_real":1,"beta":0,"dot_dimension_numbers":{"lhs_contracting_dimensions":[1],"rhs_contracting_dimensions":[0],"lhs_batch_dimensions":[],"rhs_batch_dimensions":[]},"alpha_imag":0,"precision_config":{"operand_precision":["DEFAULT","DEFAULT"]},"epilogue":"DEFAULT"}}
-  ROOT get-tuple-element = f32[5,33]{1,0} get-tuple-element((f32[5,33]{1,0}, s8[0]{0}) gemm), index=0
-}
-)";
-
-  constexpr absl::string_view hlo_text_triton = R"(
-HloModule t
-
-triton_dot {
-  p0 = f32[5,7] parameter(0)
-  p1 = f32[7,33] parameter(1)
-  ROOT dot = f32[5,33] dot(p0, p1),
-    lhs_contracting_dims={1}, rhs_contracting_dims={0}
-}
-
-ENTRY e {
-  p0 = f32[5,7]{1,0} parameter(0)
-  p1 = f32[7,33]{1,0} parameter(1)
-  ROOT _ = f32[5,33] fusion(p0, p1), kind=kCustom, calls=triton_dot,
-    backend_config={"fusion_backend_config": {kind: "__triton_gemm",
-    triton_gemm_config: {"block_m":32,"block_n":32,"block_k":32,
-                         "split_k":1,"num_stages":1,"num_warps":1,
-                         "num_ctas":1}}}
-}
-)";
-
-  EXPECT_TRUE(RunAndCompareTwoModules(hlo_text_ref, hlo_text_triton,
-                                      ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3},
-                                      /*run_hlo_passes=*/false));
-}
 
 TEST_F(CompareTest, DISABLED_F32WithTrivialNonContractingDimension) {
   constexpr absl::string_view hlo_text_ref = R"(
@@ -2713,49 +2537,6 @@ ENTRY e {
 
   EXPECT_TRUE(RunAndCompareTwoModules(hlo_text_ref, hlo_text_triton,
                                       ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3},
-                                      /*run_hlo_passes=*/false));
-}
-
-TEST_F(CompareTest, DISABLED_BF16TransposedLHS) {
-  if (!SupportsBF16(GpuComputeCapability())) {
-    GTEST_SKIP() << "BF16 not supported.";
-  }
-  constexpr absl::string_view hlo_text_ref = R"(
-HloModule r
-
-ENTRY e {
-  arg0 = bf16[512,16]{1,0} parameter(0)
-  arg1 = bf16[512,256]{1,0} parameter(1)
-  gemm = (bf16[16,256]{1,0}, s8[0]{0}) custom-call(arg0, arg1),
-    custom_call_target="__cublas$gemm",
-    backend_config={"gemm_backend_config": {"alpha_real":1,"beta":0,"dot_dimension_numbers":{"lhs_contracting_dimensions":[0],"rhs_contracting_dimensions":[0],"lhs_batch_dimensions":[],"rhs_batch_dimensions":[]},"alpha_imag":0,"precision_config":{"operand_precision":["DEFAULT","DEFAULT"]},"epilogue":"DEFAULT"}}
-  ROOT get-tuple-element = bf16[16,256]{1,0} get-tuple-element((bf16[16,256]{1,0}, s8[0]{0}) gemm), index=0
-}
-)";
-
-  constexpr absl::string_view hlo_text_triton = R"(
-HloModule t
-
-triton_dot {
-  arg0 = bf16[512,16]{1,0} parameter(0)
-  arg1 = bf16[512,256]{1,0} parameter(1)
-  ROOT dot = bf16[16,256]{1,0} dot(arg0, arg1),
-    lhs_contracting_dims={0}, rhs_contracting_dims={0}
-}
-
-ENTRY e {
-  arg0 = bf16[512,16]{1,0} parameter(0)
-  arg1 = bf16[512,256]{1,0} parameter(1)
-  ROOT _ = bf16[16,256]{1,0} fusion(arg0, arg1), kind=kCustom, calls=triton_dot,
-    backend_config={"fusion_backend_config": {kind: "__triton_gemm",
-    triton_gemm_config: {"block_m":128,"block_n":32,"block_k":16,
-                         "split_k":1,"num_stages":2,"num_warps":4,
-                        "num_ctas":1}}}
-}
-)";
-
-  EXPECT_TRUE(RunAndCompareTwoModules(hlo_text_ref, hlo_text_triton,
-                                      ErrorSpec{/*aabs=*/1e-2, /*arel=*/1e-2},
                                       /*run_hlo_passes=*/false));
 }
 
@@ -2845,142 +2626,14 @@ ENTRY e {
                                       /*run_hlo_passes=*/false));
 }
 
-TEST_F(CompareTest, DISABLED_F16TransposedRHS) {
-  constexpr absl::string_view hlo_text_ref = R"(
-HloModule r
-
-ENTRY e {
-  arg0 = f16[128,32]{1,0} parameter(0)
-  arg1 = f16[64,32]{1,0} parameter(1)
-  gemm = (f16[128,64]{1,0}, s8[0]{0}) custom-call(arg0, arg1),
-    custom_call_target="__cublas$gemm",
-    backend_config={"gemm_backend_config": {"alpha_real":1,"beta":0,"dot_dimension_numbers":{"lhs_contracting_dimensions":[1],"rhs_contracting_dimensions":[1],"lhs_batch_dimensions":[],"rhs_batch_dimensions":[]},"alpha_imag":0,"precision_config":{"operand_precision":["DEFAULT","DEFAULT"]},"epilogue":"DEFAULT"}}
-  ROOT get-tuple-element = f16[128,64]{1,0} get-tuple-element((f16[128,64]{1,0}, s8[0]{0}) gemm), index=0
-}
-)";
-
-  constexpr absl::string_view hlo_text_triton = R"(
-HloModule t
-
-triton_dot {
-  arg0 = f16[128,32]{1,0} parameter(0)
-  arg1 = f16[64,32]{1,0} parameter(1)
-  ROOT dot = f16[128,64]{1,0} dot(arg0, arg1),
-    lhs_contracting_dims={1}, rhs_contracting_dims={1}
-}
-
-ENTRY e {
-  arg0 = f16[128,32]{1,0} parameter(0)
-  arg1 = f16[64,32]{1,0} parameter(1)
-  ROOT _ = f16[128,64]{1,0} fusion(arg0, arg1), kind=kCustom, calls=triton_dot,
-    backend_config={"fusion_backend_config": {kind: "__triton_gemm",
-    triton_gemm_config: {"block_m":128,"block_n":32,"block_k":64,
-                         "split_k":1,"num_stages":2,"num_warps":4,
-                         "num_ctas":1}}}
-}
-)";
-
-  EXPECT_TRUE(RunAndCompareTwoModules(hlo_text_ref, hlo_text_triton,
-                                      ErrorSpec{/*aabs=*/1e-2, /*arel=*/1e-2},
-                                      /*run_hlo_passes=*/false));
-}
-
-TEST_F(CompareTest, DISABLED_F32TransposedBoth) {
-  constexpr absl::string_view hlo_text_ref = R"(
-HloModule r
-
-ENTRY e {
-  arg0 = f32[64,128]{1,0} parameter(0)
-  arg1 = f32[1024,64]{1,0} parameter(1)
-  gemm = (f32[128,1024]{1,0}, s8[0]{0}) custom-call(arg0, arg1),
-    custom_call_target="__cublas$gemm",
-    backend_config={"gemm_backend_config": {"alpha_real":1,"beta":0,"dot_dimension_numbers":{"lhs_contracting_dimensions":[0],"rhs_contracting_dimensions":[1],"lhs_batch_dimensions":[],"rhs_batch_dimensions":[]},"alpha_imag":0,"precision_config":{"operand_precision":["DEFAULT","DEFAULT"]},"epilogue":"DEFAULT"}}
-  ROOT get-tuple-element = f32[128,1024]{1,0} get-tuple-element((f32[128,1024]{1,0}, s8[0]{0}) gemm), index=0
-}
-)";
-
-  constexpr absl::string_view hlo_text_triton = R"(
-HloModule t
-
-triton_dot {
-  arg0 = f32[64,128]{1,0} parameter(0)
-  arg1 = f32[1024,64]{1,0} parameter(1)
-  ROOT dot = f32[128,1024]{1,0} dot(arg0, arg1),
-    lhs_contracting_dims={0}, rhs_contracting_dims={1}
-}
-
-ENTRY e {
-  arg0 = f32[64,128]{1,0} parameter(0)
-  arg1 = f32[1024,64]{1,0} parameter(1)
-  ROOT _ = f32[128,1024]{1,0} fusion(arg0, arg1), kind=kCustom, calls=triton_dot,
-    backend_config={"fusion_backend_config": {kind: "__triton_gemm",
-    triton_gemm_config: {"block_m":32,"block_n":32,"block_k":64,
-                         "split_k":1,"num_stages":2,"num_warps":4,
-                         "num_ctas":1}}}
-}
-)";
-
-  EXPECT_TRUE(RunAndCompareTwoModules(hlo_text_ref, hlo_text_triton,
-                                      ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3},
-                                      /*run_hlo_passes=*/false));
-}
-
-TEST_F(CompareTest, DISABLED_S8BF16) {
-  if (!SupportsBF16(GpuComputeCapability())) {
-    GTEST_SKIP() << "BF16 not supported.";
-  }
-  constexpr absl::string_view hlo_text_ref = R"(
-HloModule r
-
-fused_computation {
-  param_0.1 = s8[144,256]{1,0} parameter(0)
-  ROOT convert.4 = bf16[144,256]{1,0} convert(param_0.1)
-}
-
-ENTRY e {
-  p0 = s8[144,256]{1,0} parameter(0)
-  fusion = bf16[144,256]{1,0} fusion(p0), kind=kInput, calls=fused_computation
-  p1 = bf16[256,122]{1,0} parameter(1)
-  gemm = (bf16[144,122]{1,0}, s8[0]{0}) custom-call(fusion, p1),
-    custom_call_target="__cublas$gemm",
-    backend_config={"gemm_backend_config": {"alpha_real":1,"beta":0,"dot_dimension_numbers":{"lhs_contracting_dimensions":[1],"rhs_contracting_dimensions":[0],"lhs_batch_dimensions":[],"rhs_batch_dimensions":[]},"alpha_imag":0,"precision_config":{"operand_precision":["DEFAULT","DEFAULT"]},"epilogue":"DEFAULT"}}
-  ROOT get-tuple-element = bf16[144,122]{1,0} get-tuple-element((bf16[144,122]{1,0}, s8[0]{0}) gemm), index=0
-}
-)";
-
-  constexpr absl::string_view hlo_text_triton = R"(
-HloModule t
-
-triton_dot {
-  param_0.1 = s8[144,256]{1,0} parameter(0)
-  p0c = bf16[144,256]{1,0} convert(param_0.1)
-  param_1.1 = bf16[256,122]{1,0} parameter(1)
-  ROOT dot = bf16[144,122]{1,0} dot(p0c, param_1.1),
-    lhs_contracting_dims={1}, rhs_contracting_dims={0}
-}
-
-ENTRY e {
-  p0 = s8[144,256]{1,0} parameter(0)
-  p1 = bf16[256,122]{1,0} parameter(1)
-  ROOT _ = bf16[144,122]{1,0} fusion(p0, p1), kind=kCustom, calls=triton_dot,
-    backend_config={"fusion_backend_config": {kind: "__triton_gemm",
-    triton_gemm_config: {"block_m":64,"block_n":64,"block_k":64,
-                         "split_k":1,"num_stages":1,"num_warps":2,
-                         "num_ctas":1}}}
-}
-)";
-
-  EXPECT_TRUE(RunAndCompareTwoModules(hlo_text_ref, hlo_text_triton,
-                                      ErrorSpec{/*aabs=*/1e-2, /*arel=*/1e-2},
-                                      /*run_hlo_passes=*/false));
-}
-
+// TODO(b/393299275): there seems to be a (not yet diagnosed) miscompile here.
+// We have to investigate.
 TEST_F(CompareTest, DISABLED_SplitK) {
   if (!SupportsBF16(GpuComputeCapability())) {
     GTEST_SKIP() << "BF16 not supported.";
   }
   constexpr absl::string_view hlo_text_ref = R"(
-HloModule t, is_scheduled=true
+HloModule t
 
 triton_gemm_r {
   parameter_0 = s8[480,120]{1,0} parameter(0)
@@ -2991,19 +2644,20 @@ triton_gemm_r {
 }
 
 ENTRY e {
-  p1 = bf16[16,120]{1,0} parameter(1)
-  p0 = s8[3,120,5,32]{3,2,1,0} parameter(0)
-  bitcast.4 = s8[480,120]{1,0} bitcast(p0)
-  ROOT triton_gemm_r = bf16[480,16]{1,0} fusion(bitcast.4, p1), kind=kCustom,
+  p0_pred = s8[480,120]{1,0} parameter(0)
+  p0 = s8[480,120]{1,0} convert(p0_pred)
+  p1_pred = pred[16,120]{1,0} parameter(1)
+  p1 = bf16[16,120]{1,0} convert(p1_pred)
+  ROOT triton_gemm_r = bf16[480,16]{1,0} fusion(p0, p1), kind=kCustom,
     calls=triton_gemm_r,
     backend_config={"fusion_backend_config": {kind: "__triton_gemm",
-    triton_gemm_config: {"block_m":64,"block_n":32,"block_k":64,
+    triton_gemm_config: {"block_m":64,"block_n":16,"block_k":16,
                          "split_k":1,"num_stages":4,"num_warps":4,
                          "num_ctas":1}}}
 })";
 
   constexpr absl::string_view hlo_text_splitk = R"(
-HloModule t, is_scheduled=true
+HloModule t
 
 triton_gemm_r {
   parameter_0 = s8[480,120]{1,0} parameter(0)
@@ -3033,22 +2687,32 @@ fused_computation {
 }
 
 ENTRY e {
-  p1 = bf16[16,120]{1,0} parameter(1)
-  p0 = s8[3,120,5,32]{3,2,1,0} parameter(0)
-  bitcast.4 = s8[480,120]{1,0} bitcast(p0)
-  triton_gemm_r = bf16[4,480,16]{2,1,0} fusion(bitcast.4, p1), kind=kCustom,
+  p0_pred = s8[480,120]{1,0} parameter(0)
+  p0 = s8[480,120]{1,0} convert(p0_pred)
+  p1_pred = pred[16,120]{1,0} parameter(1)
+  p1 = bf16[16,120]{1,0} convert(p1_pred)
+  triton_gemm_r = bf16[4,480,16]{2,1,0} fusion(p0, p1), kind=kCustom,
     calls=triton_gemm_r,
     backend_config={"fusion_backend_config": {kind: "__triton_gemm",
-    triton_gemm_config: {"block_m":32,"block_n":32,"block_k":128,
+    triton_gemm_config: {"block_m":64,"block_n":16,"block_k":16,
                          "split_k":4,"num_stages":1,"num_warps":4,
                          "num_ctas":1}}}
   ROOT fusion.1 = bf16[480,16]{1,0} fusion(triton_gemm_r), kind=kLoop,
     calls=fused_computation
 })";
 
-  EXPECT_TRUE(RunAndCompareTwoModules(hlo_text_ref, hlo_text_splitk,
-                                      ErrorSpec{/*aabs=*/1e-6, /*arel=*/1e-6},
-                                      /*run_hlo_passes=*/false));
+  TF_ASSERT_OK_AND_ASSIGN(
+      ModuleAndNestedFusionMetadata test_module_and_metadata,
+      GetModuleAndNestedFusionMetadata(hlo_text_splitk));
+
+  TF_ASSERT_OK_AND_ASSIGN(ModuleAndNestedFusionMetadata ref_module_and_metadata,
+                          GetModuleAndNestedFusionMetadata(hlo_text_ref));
+
+  EXPECT_TRUE(
+      RunAndCompareTwoModules(std::move(ref_module_and_metadata.module),
+                              std::move(test_module_and_metadata.module),
+                              ErrorSpec{/*aabs=*/1e-6, /*arel=*/1e-6},
+                              /*run_hlo_passes=*/false));
 }
 
 TEST_F(CompareTest, DISABLED_SplitKBatch) {
