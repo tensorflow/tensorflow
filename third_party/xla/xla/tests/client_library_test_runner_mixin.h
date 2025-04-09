@@ -35,6 +35,7 @@ limitations under the License.
 #include "xla/literal_util.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/shape.h"
+#include "xla/shape_util.h"
 #include "xla/tests/hlo_runner_agnostic_test_base.h"
 #include "xla/tests/literal_test_util.h"
 #include "xla/tsl/lib/core/bitmap.h"
@@ -143,16 +144,40 @@ class ClientLibraryTestRunnerMixin : public T {
   void ComputeAndCompareLiteral(
       XlaBuilder* const builder, const Literal& expected,
       const absl::Span<Literal* const> arguments,
-      const std::optional<ErrorSpec> error = std::nullopt) {
-    TF_ASSERT_OK_AND_ASSIGN(XlaComputation computation, builder->Build());
-    TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                            BuildAndVerifyHloModule(computation));
-    TF_ASSERT_OK_AND_ASSIGN(Literal actual,
-                            this->Execute(std::move(module), arguments));
+      const std::optional<ErrorSpec> error = std::nullopt,
+      const Shape* shape_with_layout = nullptr) {
+    if (error == std::nullopt) {
+      if (ShapeUtil::ElementIsFloating(expected.shape()) ||
+          ShapeUtil::ElementIsComplex(expected.shape())) {
+        LOG(WARNING) << "performing exact comparison of floating point numbers";
+      }
+    }
+    // We allow using a float expected literal for a non float outputs. In this
+    // case, we need to convert the expected literal to test_type_.
+    const Literal* expected_ptr = &expected;
+    Literal converted_expected;
+    Shape layout_shape;
+    if (test_type_ != F32) {
+      converted_expected = MaybeConvertLiteralToTestType(expected);
+      expected_ptr = &converted_expected;
+      if (shape_with_layout != nullptr) {
+        layout_shape = *shape_with_layout;
+        ShapeUtil::ForEachMutableSubshape(
+            &layout_shape, [&](Shape* subshape, const ShapeIndex& /*index*/) {
+              if (subshape->element_type() == F32) {
+                subshape->set_element_type(test_type_);
+              }
+            });
+        shape_with_layout = &layout_shape;
+      }
+    }
+    TF_ASSERT_OK_AND_ASSIGN(
+        Literal actual,
+        this->ExecuteAndTransfer(builder, arguments, shape_with_layout));
     if (error.has_value()) {
-      EXPECT_TRUE(LiteralTestUtil::Near(expected, actual, *error));
+      EXPECT_TRUE(LiteralTestUtil::Near(*expected_ptr, actual, *error));
     } else {
-      EXPECT_TRUE(LiteralTestUtil::Equal(expected, actual));
+      EXPECT_TRUE(LiteralTestUtil::Equal(*expected_ptr, actual));
     }
   }
 
