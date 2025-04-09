@@ -1253,7 +1253,7 @@ pywrap_aware_tf_cc_shared_object(
         # ],
         # copybara:uncomment_end
         "//conditions:default": [
-            "-z defs",
+            # "-z defs",
             "-Wl,--version-script,$(location //tensorflow/c:version_script.lds)",
         ],
     }),
@@ -1304,7 +1304,7 @@ tf_cc_shared_library(
         ],
         "//tensorflow:windows": [],
         "//conditions:default": [
-            "-z defs",
+            # "-z defs",
             "-Wl,--version-script,$(location //tensorflow:tf_version_script.lds)",
         ],
     }),

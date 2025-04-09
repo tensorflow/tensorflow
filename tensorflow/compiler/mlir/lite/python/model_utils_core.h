@@ -31,6 +31,7 @@ void RegisterDialects(MlirContext context);
 MlirModule FlatBufferToMlir(absl::string_view buffer, MlirContext context);
 std::string MlirToFlatbuffer(MlirOperation c_op);
 std::vector<std::string> GetOperationAttributeNames(MlirOperation c_op);
+bool MlirOpVerify(MlirOperation c_op);
 
 }  // namespace model_utils
 

@@ -46,10 +46,34 @@ symlink_inputs(
     }},
 )
 
+
+symlink_inputs(
+    name = "ir",
+    rule = py_library,
+    symlinked_inputs = {"srcs": {
+        ".": ["@llvm-project//mlir/python:IRPyFiles"],
+    }},
+    deps = [
+        ":mlir",
+    ],
+)
+
+symlink_inputs(
+    name = "pass_manager",
+    rule = py_library,
+    symlinked_inputs = {"srcs": {
+        ".": ["@llvm-project//mlir/python:PassManagerPyFiles"],
+    }},
+    deps = [
+        ":mlir",
+    ],
+)
+
+
 py_library(
     name = "mlir",
     deps = [
         ":mlir_libs",
-        "//tensorflow/compiler/mlir/lite/integrations/python/mlir/_mlir_libs:_mlir",
+        # "//tensorflow/compiler/mlir/lite/python/mlir/_mlir_libs:_mlir",
     ],
 )

@@ -17,31 +17,33 @@ limitations under the License.
 #include <string>
 #include <vector>
 
-#include "mlir/Support/LLVM.h"
-#include "mlir/Tools/mlir-opt/MlirOptMain.h"
 #include "absl/strings/string_view.h"
 #include "llvm/Support/Casting.h"
-#include "mlir/CAPI/IR.h"  // from @llvm-project
-#include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
+#include "mlir/CAPI/IR.h"                                // from @llvm-project
+#include "mlir/Dialect/Arith/IR/Arith.h"                 // from @llvm-project
 #include "mlir/Dialect/Func/Extensions/AllExtensions.h"  // from @llvm-project
-#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
-#include "mlir/Dialect/Func/Transforms/Passes.h"  // from @llvm-project
-#include "mlir/Dialect/Quant/IR/Quant.h"  // from @llvm-project
-#include "mlir/IR/BuiltinAttributeInterfaces.h"  // from @llvm-project
-#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
-#include "mlir/IR/Location.h"  // from @llvm-project
-#include "mlir/IR/MLIRContext.h"  // from @llvm-project
-#include "mlir/IR/Operation.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"                // from @llvm-project
+#include "mlir/Dialect/Func/Transforms/Passes.h"         // from @llvm-project
+#include "mlir/Dialect/Quant/IR/Quant.h"                 // from @llvm-project
+#include "mlir/IR/BuiltinAttributeInterfaces.h"          // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"                          // from @llvm-project
+#include "mlir/IR/Location.h"                            // from @llvm-project
+#include "mlir/IR/MLIRContext.h"                         // from @llvm-project
+#include "mlir/IR/Operation.h"                           // from @llvm-project
+#include "mlir/IR/Verifier.h"
 #include "mlir/InitAllDialects.h"  // from @llvm-project
-#include "mlir/Transforms/Passes.h"  // from @llvm-project
-#include "stablehlo/dialect/Register.h"  // from @stablehlo
+#include "mlir/Support/LLVM.h"
+#include "mlir/Tools/mlir-opt/MlirOptMain.h"
+#include "mlir/Transforms/Passes.h"          // from @llvm-project
+#include "stablehlo/dialect/Register.h"      // from @stablehlo
 #include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo
-#include "stablehlo/dialect/VhloOps.h"  // from @stablehlo
+#include "stablehlo/dialect/VhloOps.h"       // from @stablehlo
 #include "tensorflow/compiler/mlir/lite/flatbuffer_export.h"
 #include "tensorflow/compiler/mlir/lite/flatbuffer_import.h"
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/lite/quantization/ir/QuantOps.h"
-#include "tensorflow/compiler/mlir/lite/stablehlo/transforms/stablehlo_passes.h"
+// #include
+// "tensorflow/compiler/mlir/lite/stablehlo/transforms/stablehlo_passes.h"
 
 // -----------------------------------------------------------------------------
 // Module initialization.
@@ -63,11 +65,13 @@ inline void RegisterDialects(mlir::DialectRegistry& registry) {
                   mlir::stablehlo::StablehloDialect, mlir::vhlo::VhloDialect>();
 }
 
+}  // namespace
+
 void RegisterMlirPasses() {
   mlir::registerTransformsPasses();
   mlir::func::registerFuncPasses();
-  mlir::registerPass(
-      []() { return mlir::odml::createLegalizeStablehloToVhloPass(); });
+  // mlir::registerPass(
+  //     []() { return mlir::odml::createLegalizeStablehloToVhloPass(); });
 }
 
 void RegisterDialects(MlirContext context) {
@@ -114,6 +118,10 @@ std::vector<std::string> GetOperationAttributeNames(MlirOperation c_op) {
   return attr_names;
 }
 
-}  // namespace
+bool MlirOpVerify(MlirOperation c_op) {
+  mlir::Operation* op = unwrap(c_op);
+  return mlir::verify(op).succeeded();
+}
+
 }  // namespace model_utils
 }  // namespace tflite
