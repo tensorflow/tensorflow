@@ -1,0 +1,13 @@
+
+--- a/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/TargetInfo.cpp	2025-03-25 07:48:50.000000000 -0700
++++ b/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/TargetInfo.cpp	2025-04-07 13:13:57.000000000 -0700
+@@ -127,7 +127,8 @@
+                          Value cmp) const {
+   auto b = TritonLLVMOpBuilder(loc, rewriter);
+   Value threadMask = b.int_val(type.getIntOrFloatBitWidth(), -1);
+-  return rewriter.create<NVVM::VoteBallotOp>(loc, type, threadMask, cmp);
++  return rewriter.create<NVVM::VoteSyncOp>(loc, type, threadMask, cmp,
++                                           NVVM::VoteSyncKind::ballot);
+ }
+ 
+ static Value mapa(RewriterBase &rewriter, Location loc, Value ptr, Value ctaid,
