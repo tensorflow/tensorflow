@@ -1,5 +1,9 @@
 """Build rules for XLA testing. This file is only used for the OSS build."""
 
+load(
+    "@local_config_rocm//rocm:build_defs.bzl",
+    "is_rocm_configured",
+)
 load("//xla:xla.default.bzl", "xla_cc_test")
 load("//xla/tests:plugin.bzl", "plugins")
 load("//xla/tsl:package_groups.bzl", "DEFAULT_LOAD_VISIBILITY")
@@ -8,6 +12,7 @@ load(
     "tf_gpu_tests_tags",
 )
 load("//xla/tsl/platform/default:build_config.bzl", "strict_cc_test")
+load("//xla/tsl/platform/default:cuda_build_defs.bzl", "is_cuda_configured")
 
 visibility(DEFAULT_LOAD_VISIBILITY)
 
@@ -362,8 +367,9 @@ def xla_test(
             fail_if_no_test_linked = fail_if_no_test_linked,
             **this_backend_kwargs
         )
-
-        test_names.append(test_name)
+        if ((backend in NVIDIA_GPU_BACKENDS and is_cuda_configured()) or
+            (backend in AMD_GPU_DEFAULT_BACKENDS and is_rocm_configured())):
+            test_names.append(test_name)
 
     # Notably, a test_suite with `tests = []` is not empty:
     # https://bazel.build/reference/be/general#test_suite_args and the default
@@ -398,7 +404,6 @@ def xla_test(
             # --build_tag_filters (see above). Therefore we don't want to fail
             # if no test case is linked in.
             fail_if_no_test_linked = False,
-            **kwargs
         )
 
 def xla_test_library(
