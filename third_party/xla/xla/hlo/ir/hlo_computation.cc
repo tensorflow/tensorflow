@@ -519,8 +519,11 @@ absl::Status HloComputation::RemoveUnusedParametersImpl(bool allow_non_fusion) {
   return absl::OkStatus();
 }
 
-bool HloComputation::IsSafelyRemovable(const HloInstruction* instruction,
-                                       bool ignore_control_dependency) {
+bool HloComputation::IsSafelyRemovable(
+    const HloInstruction* instruction, bool ignore_control_dependency,
+    std::optional<
+        absl::FunctionRef<std::vector<HloInstruction*>(const HloComputation*)>>
+        computation_callers) const {
   // If the instruction has control predecessors or successors then we cannot
   // remove the instruction without violating ordering constraints (added, for
   // example, to avert interference due to buffer aliasing).
@@ -528,11 +531,42 @@ bool HloComputation::IsSafelyRemovable(const HloInstruction* instruction,
     return false;
   }
 
-  if (instruction->opcode() == HloOpcode::kParameter &&
-      !IsFusionComputation()) {
-    return false;
+  if (instruction->opcode() == HloOpcode::kParameter) {
+    // If there is no parent, it is safe to remove the child.
+    if (instruction->parent() == nullptr) {
+      return true;
+    }
+    // Entry computation parameters can never be removed.
+    if (instruction->parent()->IsEntryComputation()) {
+      return false;
+    }
+    // We generally want to be using the call graph to determine who the caller
+    // is, as this back pointer is very fragile, however its not reasonable to
+    // expect every caller to be passing in the call graph.
+    if (IsFusionComputation()) {
+      return true;
+    }
+    // If we can't fixup the caller, then we can't remove the parameter.
+    if (!computation_callers.has_value()) {
+      return false;
+    }
+    std::vector<HloInstruction*> callers =
+        (*computation_callers)(instruction->parent());
+    if (callers.empty()) {
+      return false;
+    }
+    for (HloInstruction* caller :
+         (*computation_callers)(instruction->parent())) {
+      if (caller->opcode() != HloOpcode::kFusion &&
+          caller->opcode() != HloOpcode::kCall &&
+          caller->opcode() != HloOpcode::kAsyncStart) {
+        // We don't handle callers with non-trivial control flow today.
+        return false;
+      }
+    }
   }
 
+  // All instruction generally are safe to remove.
   return true;
 }
 
@@ -552,12 +586,19 @@ bool HloComputation::IsMarkedAsDead(const HloInstruction* inst) {
 absl::Status HloComputation::RemoveInstructionAndUnusedOperands(
     HloInstruction* instruction,
     std::optional<absl::FunctionRef<void(HloInstruction*)>> cleanup,
-    bool ignore_control_dependencies) {
+    bool ignore_control_dependencies,
+    std::optional<
+        absl::FunctionRef<std::vector<HloInstruction*>(const HloComputation*)>>
+        computation_callers) {
   TF_RET_CHECK(root_instruction() != instruction);
 
   TF_RET_CHECK(instruction->IsDead());
-  TF_RET_CHECK(IsSafelyRemovable(instruction, ignore_control_dependencies))
+  TF_RET_CHECK(IsSafelyRemovable(instruction, ignore_control_dependencies,
+                                 computation_callers))
       << "Cannot remove instruction: " << instruction->ToString();
+  // Remember the parent, in case we lose all references to it, in order to
+  // clean up the callers.
+  HloComputation* parent = instruction->parent();
   absl::flat_hash_set<HloInstruction*> removed;
   std::queue<HloInstruction*> worklist;
   worklist.push(instruction);
@@ -567,7 +608,8 @@ absl::Status HloComputation::RemoveInstructionAndUnusedOperands(
     worklist.pop();
 
     if (removed.contains(item) || !item->IsDead() ||
-        !IsSafelyRemovable(item, ignore_control_dependencies) ||
+        !IsSafelyRemovable(item, ignore_control_dependencies,
+                           computation_callers) ||
         (item->HasSideEffect() && item != instruction)) {
       continue;
     }
@@ -585,10 +627,9 @@ absl::Status HloComputation::RemoveInstructionAndUnusedOperands(
       (*cleanup)(item);
     }
     if (item->opcode() == HloOpcode::kParameter) {
-      // Note that right now, only parameters inside fusion computations are
-      // considered to be safely removable. We cannot remove a parameter
-      // directly, because it may cause a renumbering of other parameters which
-      // may invalidate some of the pointers in the worklist.
+      // We cannot remove a parameter directly, because it may cause a
+      // renumbering of other parameters which may invalidate some of the
+      // pointers in the worklist.
       parameters_to_be_removed.push_back(item);
     } else {
       TF_RETURN_IF_ERROR(RemoveInstruction(item));
@@ -601,18 +642,47 @@ absl::Status HloComputation::RemoveInstructionAndUnusedOperands(
             [](HloInstruction* a, HloInstruction* b) {
               return a->parameter_number() > b->parameter_number();
             });
+  std::vector<HloInstruction*> callers;
+  if (!parameters_to_be_removed.empty()) {
+    if (parent != nullptr && computation_callers.has_value()) {
+      callers = (*computation_callers)(parent);
+    }
+    // We generally want to be using the call graph to determine who the caller
+    // is, as this back pointer is very fragile, however its not reasonable to
+    // expect every caller to be passing in the call graph.
+    if (callers.empty() && FusionInstruction() != nullptr) {
+      callers = {FusionInstruction()};
+    }
+  }
+  // Only attempt to remove parameters if we can fixup the caller.
+  if (callers.empty()) {
+    return absl::OkStatus();
+  }
   for (HloInstruction* param : parameters_to_be_removed) {
     int64_t parameter_number = param->parameter_number();
     TF_RETURN_IF_ERROR(RemoveParameter(parameter_number));
-    if (FusionInstruction() != nullptr) {
-      auto operand = FusionInstruction()->mutable_operand(parameter_number);
-      FusionInstruction()->RemoveOperandAt(parameter_number);
-      FusionInstruction()->DetachFrom(operand);
-      if (operand->IsDead() && operand->parent()->IsSafelyRemovable(
-                                   operand, ignore_control_dependencies)) {
+    for (HloInstruction* caller : callers) {
+      // The caller could have been eagerly removed.
+      if (caller->IsDead()) {
+        continue;
+      }
+      auto operand = caller->mutable_operand(parameter_number);
+      caller->RemoveOperandAt(parameter_number);
+      caller->DetachFrom(operand);
+      // Cleanup operand shape embedded into the async-start shape.
+      if (caller->opcode() == HloOpcode::kAsyncStart) {
+        std::vector<Shape>* operand_shapes = caller->mutable_shape()
+                                                 ->mutable_tuple_shapes(0)
+                                                 ->mutable_tuple_shapes();
+        operand_shapes->erase(operand_shapes->begin() + parameter_number);
+      }
+      if (operand->IsDead() &&
+          operand->parent()->IsSafelyRemovable(
+              operand, ignore_control_dependencies, computation_callers)) {
         TF_RETURN_IF_ERROR(
             operand->parent()->RemoveInstructionAndUnusedOperands(
-                operand, cleanup, ignore_control_dependencies));
+                operand, cleanup, ignore_control_dependencies,
+                computation_callers));
       }
     }
   }
