@@ -241,7 +241,7 @@ ENTRY main.5 {
 
   ASSERT_EQ(result.size(), 1);
   ASSERT_EQ(result[0].size(), 1);
-  EXPECT_OK(result[0][0]->GetReadyFuture().Await());
+  TF_EXPECT_OK(result[0][0]->GetReadyFuture().Await());
 }
 #endif
 
@@ -2189,12 +2189,12 @@ TEST(TpuLocalClientTest, RawBuffer) {
               *client->addressable_devices()[0]->default_memory_space(),
               /*device_layout=*/nullptr)
           .value();
-  ASSERT_OK(buffer->GetReadyFuture().Await());
-  ASSERT_OK_AND_ASSIGN(auto raw_buffer,
-                       PjRtRawBuffer::CreateRawAliasOfBuffer(buffer.get()));
+  TF_ASSERT_OK(buffer->GetReadyFuture().Await());
+  TF_ASSERT_OK_AND_ASSIGN(auto raw_buffer,
+                          PjRtRawBuffer::CreateRawAliasOfBuffer(buffer.get()));
   ASSERT_EQ(raw_buffer->memory_space(), buffer->memory_space());
-  ASSERT_OK_AND_ASSIGN(size_t on_device_size,
-                       raw_buffer->GetOnDeviceSizeInBytes());
+  TF_ASSERT_OK_AND_ASSIGN(size_t on_device_size,
+                          raw_buffer->GetOnDeviceSizeInBytes());
   ASSERT_EQ(on_device_size, 1024);
 
   std::vector<int32_t> data2(256);
@@ -2202,8 +2202,8 @@ TEST(TpuLocalClientTest, RawBuffer) {
   auto* dst1 = tsl::port::AlignedMalloc(1024, 1024);
   auto* dst2 = tsl::port::AlignedMalloc(1024, 1024);
   memcpy(dst1, data2.data(), sizeof(int32_t) * data2.size());
-  EXPECT_OK(raw_buffer->CopyRawHostToDevice(dst1, 0, 1024).Await());
-  EXPECT_OK(raw_buffer->CopyRawDeviceToHost(dst2, 0, 1024).Await());
+  TF_EXPECT_OK(raw_buffer->CopyRawHostToDevice(dst1, 0, 1024).Await());
+  TF_EXPECT_OK(raw_buffer->CopyRawDeviceToHost(dst2, 0, 1024).Await());
   EXPECT_EQ(absl::MakeSpan(reinterpret_cast<int32_t*>(dst2), 256), data2);
 
   tsl::port::AlignedFree(dst1);
