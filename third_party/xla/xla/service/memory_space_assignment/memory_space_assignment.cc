@@ -36,6 +36,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
+#include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/hlo/analysis/hlo_alias_analysis.h"
@@ -60,6 +61,7 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/casts.h"
@@ -396,6 +398,11 @@ MemorySpaceAssignment::RunMemorySpaceAssignment(
   if (options_.verify) {
     TF_RETURN_IF_ERROR(VerifyAllocations());
   }
+  preset_assignments_->set_largest_post_module_free_chunk(
+      ComputeLargestPostModuleFreeChunk());
+  VLOG(1) << "Setting the largest post-module free chunk to "
+          << preset_assignments_->largest_post_module_free_chunk()->ToString();
+
   // DEBUG_LOG_ALLOCATIONS_AT
   //
   // Uncomment the following to log the alternate memory allocations that MSA
@@ -458,6 +465,54 @@ absl::Status MemorySpaceAssignment::FindAllocationSequence(
                                         heap_simulator_options)
                          .status());
   return absl::OkStatus();
+}
+
+HeapSimulator::Chunk MemorySpaceAssignment::ComputeLargestPostModuleFreeChunk()
+    const {
+  // Build occupied_chunks, an offset-sorted vector of chunks that are occupied
+  // (in alternate memory) after the HloModule completes.
+  int64_t post_module_time = flattened_instructions_.size();
+  std::vector<HeapSimulator::Chunk> occupied_chunks;
+  for (const std::unique_ptr<Allocation>& allocation : allocations_) {
+    CHECK_LE(allocation->end_time(), post_module_time);
+    if (allocation->memory_space() == MemorySpace::kAlternate &&
+        !allocation->is_scoped_allocation() &&
+        allocation->end_time() == post_module_time) {
+      occupied_chunks.push_back(allocation->chunk());
+    }
+  }
+  std::sort(occupied_chunks.begin(), occupied_chunks.end(),
+            [](const HeapSimulator::Chunk& a, const HeapSimulator::Chunk& b) {
+              return a.size > b.size;
+            });
+  VLOG(4) << "Computing largest post-module free chunk. Alt mem size (bytes): "
+          << options_.max_size_in_bytes << ". Post-module occupied chunks: {"
+          << absl::StrJoin(
+                 occupied_chunks, ", ",
+                 [](std::string* out, const HeapSimulator::Chunk& chunk) {
+                   absl::StrAppend(out, chunk.ToString());
+                 })
+          << "}";
+
+  // Find the largest free chunk not occupied by something in occupied_chunks.
+  HeapSimulator::Chunk largest_post_module_free_chunk =
+      HeapSimulator::Chunk::FromOffsetSize(0, 0);
+  auto check_if_free_chunk_is_larger =
+      [&](const HeapSimulator::Chunk& free_chunk) {
+        if (free_chunk.size > largest_post_module_free_chunk.size) {
+          largest_post_module_free_chunk = free_chunk;
+        }
+      };
+  int64_t start_inclusive = 0;
+  for (const HeapSimulator::Chunk& chunk : occupied_chunks) {
+    check_if_free_chunk_is_larger(
+        HeapSimulator::Chunk::FromOffsetEnd(start_inclusive, chunk.offset));
+    start_inclusive = chunk.chunk_end();
+  }
+  check_if_free_chunk_is_larger(HeapSimulator::Chunk::FromOffsetEnd(
+      start_inclusive, options_.max_size_in_bytes));
+
+  return largest_post_module_free_chunk;
 }
 
 absl::Status MemorySpaceAssignment::Process(

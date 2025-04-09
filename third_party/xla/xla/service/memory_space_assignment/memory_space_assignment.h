@@ -180,6 +180,7 @@ Useful logging and error messages
 
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -258,6 +259,16 @@ class PresetAssignments {
     return assignment_info_;
   }
 
+  // Returns the largest chunk of free alternate memory, after the HloModule
+  // completes.
+  std::optional<HeapSimulator::Chunk> largest_post_module_free_chunk() const {
+    return largest_post_module_free_chunk_;
+  }
+
+  void set_largest_post_module_free_chunk(const HeapSimulator::Chunk& chunk) {
+    largest_post_module_free_chunk_ = chunk;
+  }
+
   // Get debugging information.
   std::string buffer_info_str() const { return buffer_info_str_; }
   std::string allocation_info_str() const { return allocation_info_str_; }
@@ -269,6 +280,7 @@ class PresetAssignments {
   std::vector<std::pair<HloPosition, HeapSimulator::Chunk>> chunks_;
   std::vector<std::pair<HloInstruction*, HeapSimulator::Chunk>>
       scoped_allocation_chunks_;
+  std::optional<HeapSimulator::Chunk> largest_post_module_free_chunk_;
   std::vector<std::pair<int64_t, AssignmentInformation>> assignment_info_;
   std::string buffer_info_str_;
   std::string allocation_info_str_;
@@ -335,6 +347,10 @@ class MemorySpaceAssignment {
   virtual absl::Status FindAllocationSequence(
       const HloLiveRange& hlo_live_range,
       const HloAliasAnalysis& alias_analysis);
+
+  // Computes the largest chunk of free alternate memory, after the HloModule
+  // completes.
+  HeapSimulator::Chunk ComputeLargestPostModuleFreeChunk() const;
 
   const Options& options() const { return options_; }
 
