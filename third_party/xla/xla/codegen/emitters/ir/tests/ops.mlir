@@ -123,7 +123,7 @@ func.func @loop_op(%input: tensor<1024x32xf32>, %init: f32,
     %t = tensor.extract %input[%i, %j] : tensor<1024x32xf32>
     %add = arith.addf %sum_, %t : f32
     xla.yield %add : f32
-  } {xla.range = [0 : index, 42 : index]}
+  } {disable_loop_unrolling = true, xla.range = [0 : index, 42 : index]}
   func.return %sum : f32
 }
 // CHECK: #[[$MAP:.*]] = #xla.indexing_map
@@ -133,7 +133,7 @@ func.func @loop_op(%input: tensor<1024x32xf32>, %init: f32,
 // CHECK:        %[[EXTRACTED:.*]] = tensor.extract %{{.*}}[%[[I]], %[[J]]]
 // CHECK:        %[[ADD:.*]] = arith.addf %{{.*}}, %[[EXTRACTED]] : f32
 // CHECK:        xla.yield %[[ADD]] : f32
-// CHECK:      } {xla.range = [0 : index, 42 : index]}
+// CHECK:      } {disable_loop_unrolling = true, xla.range = [0 : index, 42 : index]}
 
 // -----
 
