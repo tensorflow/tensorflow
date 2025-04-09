@@ -183,6 +183,7 @@ xla_cc_binary(
         "//xla/hlo/tools/hlo_diff/render:hlo_gumgraph_text_renderer",
         "//xla/service:hlo_module_config",
         "//xla/service:hlo_module_util",
+        "//xla/service:hlo_proto_cc",
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:status",
