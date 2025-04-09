@@ -43,6 +43,7 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/platform/test.h"
@@ -3623,6 +3624,54 @@ ENTRY AllToAll {
   std::vector<std::pair<HloOperandIndex, ShapeIndex>> expected_pairs;
   expected_pairs.push_back({HloOperandIndex{1, {}}, {}});
   EXPECT_EQ(in_place_pairs, expected_pairs);
+}
+
+// Test to check that the dataflow analysis works with a module that has scalar
+// bitcast user.
+TEST_P(HloDataflowAnalysisTest, b409416499) {
+  const char* after_layout_bitcast = R"(
+  HloModule jit__unnamed_wrapped_function_, entry_computation_layout={(s32[1]{0:T(128)}, s32[1]{0:T(128)}, s32[1]{0:T(128)}, s32[1]{0:T(128)})->(s32[1]{0:T(128)}, s32[1]{0:T(128)}, s32[1]{0:T(128)}, s32[1]{0:T(128)})}, allow_spmd_sharding_propagation_to_parameters={false,false,false,false}, allow_spmd_sharding_propagation_to_output={true,true,true,true}, num_partitions=4
+  %region_0.13_spmd (param.1: s32[]) -> s32[] {
+    %param.1 = s32[]{:T(128)} parameter(0), metadata={op_name="jit(<unnamed wrapped function>)/jit(main)/jit(shmap_body)/while"}
+    %constant.1 = s32[]{:T(128)} constant(1)
+    ROOT %add.0 = s32[]{:T(128)} add(%param.1, %constant.1), metadata={op_name="jit(<unnamed wrapped function>)/jit(main)/jit(shmap_body)/while/body/add" source_file="third_party/py/jax/tests/shard_map_test.py" source_line=1052}
+  }
+
+  %region_1.17_spmd (param: s32[]) -> pred[] {
+    %param = s32[]{:T(128)} parameter(0), metadata={op_name="jit(<unnamed wrapped function>)/jit(main)/jit(shmap_body)/while"}
+    %constant = s32[]{:T(128)} constant(1)
+    ROOT %compare.0 = pred[]{:T(512)} compare(%param, %constant), direction=LT, metadata={op_name="jit(<unnamed wrapped function>)/jit(main)/jit(shmap_body)/while/cond/lt" source_file="third_party/py/jax/tests/shard_map_test.py" source_line=1049}
+  }
+
+  ENTRY %main.44_spmd (param.2: s32[1], param.3: s32[1], param.4: s32[1], param.5: s32[1]) -> (s32[1], s32[1], s32[1], s32[1]) {
+    %param.2 = s32[1]{0:T(128)} parameter(0), sharding={devices=[4]<=[4]}, metadata={op_name="args[0]"}
+    %bitcast.2 = s32[]{:T(128)} bitcast(%param.2), metadata={op_name="jit(<unnamed wrapped function>)/jit(main)/jit(shmap_body)/squeeze" source_file="third_party/py/jax/tests/shard_map_test.py" source_line=1053}
+    %while.1 = s32[]{:T(128)} while(%bitcast.2), condition=%region_1.17_spmd, body=%region_0.13_spmd, metadata={op_name="jit(<unnamed wrapped function>)/jit(main)/jit(shmap_body)/while" source_file="third_party/py/jax/tests/shard_map_test.py" source_line=1053}
+    %bitcast.3 = s32[1]{0:T(128)} bitcast(%while.1), metadata={op_name="jit(<unnamed wrapped function>)/jit(main)/jit(shmap_body)/broadcast_in_dim" source_file="third_party/py/jax/tests/shard_map_test.py" source_line=1053}
+    %param.3 = s32[1]{0:T(128)} parameter(1), sharding={devices=[4]<=[4]}, metadata={op_name="args[1]"}
+    %param.4 = s32[1]{0:T(128)} parameter(2), sharding={devices=[4]<=[4]}, metadata={op_name="args[2]"}
+    %param.5 = s32[1]{0:T(128)} parameter(3), sharding={devices=[4]<=[4]}, metadata={op_name="args[3]"}
+    ROOT %tuple.1 = (s32[1]{0:T(128)}, s32[1]{0:T(128)}, s32[1]{0:T(128)}, s32[1]{0:T(128)}) tuple(%bitcast.3, %param.3, %param.4, %param.5)
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto after_layout_bitcast_module,
+                          ParseAndReturnVerifiedModule(after_layout_bitcast));
+  TF_ASSERT_OK_AND_ASSIGN(auto analysis,
+                          HloDataflowAnalysis::Run(*after_layout_bitcast_module,
+                                                   /*ssa_form=*/false));
+  HloInstruction* bitcast3 =
+      FindInstruction(after_layout_bitcast_module.get(), "bitcast.3");
+  HloInstruction* param2 =
+      FindInstruction(after_layout_bitcast_module.get(), "param.2");
+  HloComputation* while_body =
+      FindComputation(after_layout_bitcast_module.get(), "region_0.13_spmd");
+  HloInstruction* add0 = while_body->root_instruction();
+  std::vector<HloInstruction*> defining_instructions;
+  for (const HloValue* value :
+       analysis->GetValueSet(bitcast3, {}).TakeValues()) {
+    defining_instructions.push_back(value->defining_instruction());
+  }
+  EXPECT_THAT(defining_instructions, UnorderedElementsAre(param2, add0));
 }
 
 }  // namespace
