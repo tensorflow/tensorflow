@@ -19,6 +19,7 @@ limitations under the License.
 #include <cstdint>
 #include <string>
 
+#include "absl/log/check.h"
 #include "absl/strings/match.h"
 #include "llvm/Analysis/TargetTransformInfo.h"
 #include "llvm/IR/Function.h"
@@ -26,6 +27,7 @@ limitations under the License.
 #include "llvm/Target/TargetMachine.h"
 #include "xla/backends/cpu/alignment.h"
 #include "xla/primitive_util.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla::cpu {
 
