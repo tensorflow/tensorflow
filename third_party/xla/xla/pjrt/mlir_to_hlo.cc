@@ -270,8 +270,8 @@ absl::StatusOr<std::string> SerializeUsingVersionedStablehlo(
           mlir_module, target.value(), os))) {
     const absl::Status status = diagnostic_handler.ConsumeStatus();
     return absl::InvalidArgumentError(absl::StrCat(
-        "Failed to serialize StableHLO;\n\nDetailed error from MLIR: ",
-        status.message()));
+        "Failed to serialize StableHLO to plugin version ", target.value(),
+        ";\n\nDetailed error from MLIR: ", status.message()));
   }
   return buffer;
 }
