@@ -995,7 +995,7 @@ def _pywrap_binaries_impl(ctx):
 
     final_binaries = []
     original_to_final_binaries = [
-        "\n\nvvv Shared objects corresondence map, target = {} vvv".format(ctx.label),
+        "\n\nvvv Shared objects correspondence map, target = {} vvv".format(ctx.label),
     ]
     wheel_locations = {}
     for i in range(0, len(pywrap_infos)):
@@ -1063,7 +1063,7 @@ def _pywrap_binaries_impl(ctx):
     )
 
     original_to_final_binaries.append(
-        "^^^ Shared objects corresondence map^^^\n\n",
+        "^^^ Shared objects correspondence map^^^\n\n",
     )
     print("\n".join(original_to_final_binaries))
 
