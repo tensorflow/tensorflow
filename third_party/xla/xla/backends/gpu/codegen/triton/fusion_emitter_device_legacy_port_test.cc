@@ -142,6 +142,9 @@ class TritonGemmTest : public TritonTest {
  public:
   DebugOptions GetDebugOptionsForTest() const override {
     DebugOptions debug_options = TritonTest::GetDebugOptionsForTest();
+    // Disable autotuning by default, re-enable it on a per-test basis in order
+    // to avoid unnecessary slowness.
+    debug_options.set_xla_gpu_autotune_level(0);
     // Do not fall back to cuBLAS and disable cuDNN; we are testing Triton.
     debug_options.set_xla_gpu_cublas_fallback(false);
     debug_options.set_xla_gpu_cudnn_gemm_fusion_level(0);
