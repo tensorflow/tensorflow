@@ -142,6 +142,16 @@ class ClientLibraryTestRunnerMixin : public T {
 
   // Compare with literal.
   // Side effect: EXPECT_OK
+  void ComputeAndCompareLiteral(XlaBuilder* const builder,
+                                const Literal& expected,
+                                const absl::Span<Literal* const> arguments,
+                                const Shape* shape_with_layout) {
+    return ComputeAndCompareLiteral(builder, expected, arguments, std::nullopt,
+                                    shape_with_layout);
+  }
+
+  // Compare with literal.
+  // Side effect: EXPECT_OK
   void ComputeAndCompareLiteral(
       XlaBuilder* const builder, const Literal& expected,
       const absl::Span<Literal* const> arguments,
