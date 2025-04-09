@@ -141,13 +141,7 @@ TEST(GpuCommandBufferTest, TraceSingleKernel) {
   Platform* platform = GpuPlatform();
   StreamExecutor* executor = platform->ExecutorForDevice(0).value();
 
-  if (platform->id() == rocm::kROCmPlatformId) {
-    GTEST_SKIP() << "Not supported on ROCM";
-  }
-
-  if (platform->id() == cuda::kCudaPlatformId &&
-      executor->GetDeviceDescription().runtime_version() <
-          SemanticVersion{12, 3, 0}) {
+  if (!IsAtLeastCuda12300(executor)) {
     GTEST_SKIP() << "Command buffer tracing is not supported";
   }
 
