@@ -863,21 +863,16 @@ ENTRY e {
 }
 
 TEST_F(TritonGemmTest, NondefaultOperandLayoutIsSupported) {
-  // TODO(bchetioui): reenable when b/285866137 is fixed.
-#ifndef NDEBUG
-  GTEST_SKIP() << "This test times out when -UNDEBUG is set.";
-#endif
   constexpr absl::string_view kHloText = R"(
 ENTRY r {
-  p1 = f16[9,140,128]{2,1,0} parameter(1)
-  cp = f16[9,140,128]{2,0,1} copy(p1)
-  cv = f32[9,140,128]{2,0,1} convert(cp)
-  p0 = f32[9,140,123]{2,1,0} parameter(0)
-  ROOT d = f32[9,128,123]{2,1,0} dot(cv, p0),
+  p1 = f16[3,10,128]{2,1,0} parameter(1)
+  cp = f16[3,10,128]{2,0,1} copy(p1)
+  cv = f32[3,10,128]{2,0,1} convert(cp)
+  p0 = f32[3,10,123]{2,1,0} parameter(0)
+  ROOT d = f32[3,128,123]{2,1,0} dot(cv, p0),
     lhs_batch_dims={0}, lhs_contracting_dims={1},
     rhs_batch_dims={0}, rhs_contracting_dims={1}
 })";
-
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           GetOptimizedModule(kHloText));
   EXPECT_THAT(
