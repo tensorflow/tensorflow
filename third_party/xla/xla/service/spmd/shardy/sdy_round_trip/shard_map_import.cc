@@ -124,18 +124,49 @@ class ManualComputationPattern : public OpConversionPattern<CallOp> {
           "two ManualComputations?");
     }
 
-    mlir::DictionaryAttr frontendAttrs = getFrontendAttrs(callOp);
-    CHECK(frontendAttrs)
-        << "Expected in/out shardings and manual axes as frontend attrs on the "
-           "CallOp during round tripping.";
+    MLIRContext* context = rewriter.getContext();
+    sdy::TensorShardingPerValueAttr inShardings =
+        sdy::TensorShardingPerValueAttr::get(context, {});
+    sdy::TensorShardingPerValueAttr outShardings =
+        sdy::TensorShardingPerValueAttr::get(context, {});
+    sdy::ManualAxesAttr manualAxes = sdy::ManualAxesAttr::get(context, {});
+    bool newCodePath = false;
+
+    auto setShardingAttrs = [&newCodePath, &manualAxes](
+                                CustomCallOp customCallOp,
+                                sdy::TensorShardingPerValueAttr& shardings,
+                                llvm::StringRef shardingAttrName) {
+      if (!customCallOp) {
+        return;
+      }
+      if (mlir::DictionaryAttr frontendAttrs = getFrontendAttrs(customCallOp)) {
+        newCodePath = true;
+        shardings = parseStringAttr<sdy::TensorShardingPerValueAttr>(
+            frontendAttrs, shardingAttrName);
+        if (manualAxes.empty()) {
+          manualAxes =
+              parseStringAttr<sdy::ManualAxesAttr>(frontendAttrs, kManualAxes);
+        }
+      }
+    };
+
+    setShardingAttrs(globalToLocalShape, inShardings, kInShardings);
+    setShardingAttrs(localToGlobalShape, outShardings, kOutShardings);
+    // TODO(b/410499196): Code to handle loading an old checkpoint. Remove after
+    // 6 months of cl/745735176 being submitted.
+    mlir::DictionaryAttr callOpFrontendAttrs = getFrontendAttrs(callOp);
+    if (!newCodePath && callOpFrontendAttrs) {
+      inShardings = parseStringAttr<sdy::TensorShardingPerValueAttr>(
+          callOpFrontendAttrs, kInShardings);
+      outShardings = parseStringAttr<sdy::TensorShardingPerValueAttr>(
+          callOpFrontendAttrs, kOutShardings);
+      manualAxes = parseStringAttr<sdy::ManualAxesAttr>(callOpFrontendAttrs,
+                                                        kManualAxes);
+    }
     auto manualComputationOp =
         rewriter.replaceOpWithNewOp<sdy::ManualComputationOp>(
-            callOp, resultTypes, operands,
-            parseStringAttr<sdy::TensorShardingPerValueAttr>(frontendAttrs,
-                                                             kInShardings),
-            parseStringAttr<sdy::TensorShardingPerValueAttr>(frontendAttrs,
-                                                             kOutShardings),
-            parseStringAttr<sdy::ManualAxesAttr>(frontendAttrs, kManualAxes));
+            callOp, resultTypes, operands, inShardings, outShardings,
+            manualAxes);
     sdy::inlineRegionAndConvertTerminatorOp<sdy::ReturnOp>(
         shmapBodyFunc.getBody(), manualComputationOp.getRegion(), rewriter);
     rewriter.eraseOp(shmapBodyFunc);
