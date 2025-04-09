@@ -42,6 +42,7 @@
 #include "tensorflow/lite/experimental/litert/tools/dump.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/common.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/compiler/graph_mapper.h"
+#include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/builders/broadcast_to_op_builder.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/builders/cast_op_builder.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/builders/concatenation_op_builder.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/builders/conv2d_op_builder.h"
@@ -277,6 +278,11 @@ LiteRtStatus ConvertOp(
     case LiteRtOpCode::kLiteRtOpCodeTflLogicalAnd: {
       op_wrappers = ::qnn::BuildElementwiseAndOp(tensor_pool, input_tensors,
                                                  output_tensors);
+      break;
+    }
+    case LiteRtOpCode::kLiteRtOpCodeTflBroadcastTo: {
+      op_wrappers =
+          ::qnn::BuildBroadcastToOp(tensor_pool, input_tensors, output_tensors);
       break;
     }
     case LiteRtOpCode::kLiteRtOpCodeTflCos: {
