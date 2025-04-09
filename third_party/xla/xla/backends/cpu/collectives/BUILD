@@ -110,7 +110,6 @@ cc_library(
     ],
 )
 
-# TODO(b/380457503): Restrict visibility to private.
 cc_library(
     name = "in_process_collectives",
     srcs = ["in_process_collectives.cc"],
@@ -143,7 +142,6 @@ cc_library(
     ],
 )
 
-# TODO(b/380457503): Restrict visibility to private.
 cc_library(
     name = "in_process_communicator",
     srcs = ["in_process_communicator.cc"],
@@ -177,7 +175,6 @@ cc_library(
     ],
 )
 
-# TODO(b/380457503): Restrict visibility to private.
 cc_library(
     name = "gloo_kv_store",
     srcs = ["gloo_kv_store.cc"],
@@ -200,7 +197,6 @@ cc_library(
     ],
 )
 
-# TODO(b/380457503): Restrict visibility to private.
 cc_library(
     name = "gloo_collectives",
     srcs = ["gloo_collectives.cc"],
@@ -282,7 +278,6 @@ xla_cc_test(
     }),
 )
 
-# TODO(b/380457503): Restrict visibility to private.
 cc_library(
     name = "gloo_communicator",
     srcs = ["gloo_communicator.cc"],
@@ -362,7 +357,6 @@ cc_library(
     ],
 )
 
-# TODO(b/380457503): Restrict visibility to private.
 cc_library(
     name = "mpi_communicator",
     srcs = ["mpi_communicator.cc"],
