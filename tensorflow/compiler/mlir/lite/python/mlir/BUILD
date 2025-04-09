@@ -46,7 +46,6 @@ symlink_inputs(
     }},
 )
 
-
 symlink_inputs(
     name = "ir",
     rule = py_library,
@@ -69,9 +68,9 @@ symlink_inputs(
     ],
 )
 
-
 py_library(
     name = "mlir",
+    srcs = ["__init__.py"],
     deps = [
         ":mlir_libs",
         # "//tensorflow/compiler/mlir/lite/python/mlir/_mlir_libs:_mlir",
