@@ -65,12 +65,12 @@ static absl::Status SetAllReduceOptions(ReductionKind reduction_kind,
                                         se::DeviceMemoryBase output_buffer,
                                         size_t num_elements,
                                         gloo::AllreduceOptions& options) {
-  options.setInput(
-      reinterpret_cast<T*>(const_cast<void*>(input_buffer.opaque())),
-      num_elements);
-  options.setOutput(
-      reinterpret_cast<T*>(const_cast<void*>(output_buffer.opaque())),
-      num_elements);
+  options.setInput(reinterpret_cast<T*>(  // REINTERPRET_CAST_OK=existing code.
+                       input_buffer.opaque()),
+                   num_elements);
+  options.setOutput(reinterpret_cast<T*>(  // REINTERPRET_CAST_OK=existing code.
+                        output_buffer.opaque()),
+                    num_elements);
 
   using ReductionFn = void (*)(void*, const void*, const void*, size_t);
 
@@ -262,10 +262,10 @@ absl::Status GlooCommunicator::AllToAll(
         context_->size);
     for (size_t i = 0; i < world_size; ++i) {
       if (i != my_rank) {
-        ins[i] = context_->createUnboundBuffer(
-            const_cast<void*>(send_buffers[i].opaque()), chunk_bytes);
-        outs[i] = context_->createUnboundBuffer(
-            const_cast<void*>(recv_buffers[i].opaque()), chunk_bytes);
+        ins[i] = context_->createUnboundBuffer(send_buffers[i].opaque(),
+                                               chunk_bytes);
+        outs[i] = context_->createUnboundBuffer(recv_buffers[i].opaque(),
+                                                chunk_bytes);
       }
     }
 
@@ -276,8 +276,8 @@ absl::Status GlooCommunicator::AllToAll(
       outs[recv_rank]->recv(recv_rank, slot);
     }
 
-    std::memcpy(const_cast<void*>(recv_buffers[my_rank].opaque()),
-                send_buffers[my_rank].opaque(), chunk_bytes);
+    std::memcpy(recv_buffers[my_rank].opaque(), send_buffers[my_rank].opaque(),
+                chunk_bytes);
 
     auto deadline = absl::ToChronoTime(absl::Now() + cpu_executor->timeout());
     for (int i = 0; i < world_size; i++) {

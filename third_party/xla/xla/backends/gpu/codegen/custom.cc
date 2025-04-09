@@ -111,10 +111,10 @@ absl::StatusOr<BufferAllocation::Slice> GetOperandSlice(
   }
 
   // Walk through ShapeIndex to find the real starting point.
-  auto* start = const_cast<HloInstruction*>(&start_instr);
+  const auto* start = &start_instr;
   for (auto idx : shape_idx) {
     CHECK(start->shape().IsTuple());
-    start = const_cast<HloInstruction*>(start->operand(idx));
+    start = start->operand(idx);
   }
 
   if (const auto* param = DynCast<HloParameterInstruction>(start)) {

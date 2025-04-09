@@ -197,8 +197,8 @@ absl::Status MpiCommunicator::AllToAll(
   std::vector<void*> output_buffers;
 
   for (int i = 0; i < size; i++) {
-    input_buffers.push_back(const_cast<void*>(send_buffers[i].opaque()));
-    output_buffers.push_back(const_cast<void*>(recv_buffers[i].opaque()));
+    input_buffers.push_back(send_buffers[i].opaque());
+    output_buffers.push_back(recv_buffers[i].opaque());
   }
 
   std::memcpy(output_buffers[rank], input_buffers[rank], chunk_bytes);

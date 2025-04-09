@@ -16,24 +16,35 @@ limitations under the License.
 
 #include <algorithm>
 #include <cstddef>
+#include <cstdint>
+#include <cstdlib>
+#include <cstring>
+#include <map>
 #include <memory>
 #include <string>
-#include <unordered_map>
 #include <utility>
+#include <vector>
 
+#include "absl/log/check.h"
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "flatbuffers/flexbuffers.h"  // from @flatbuffers
+#include "xla/tsl/platform/errors.h"
 #include "tensorflow/core/example/feature.pb.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
-#include "tensorflow/core/framework/op_kernel.h"
-#include "tensorflow/core/platform/blocking_counter.h"
+#include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/platform/errors.h"
-#include "tensorflow/core/platform/fingerprint.h"
-#include "tensorflow/core/public/session_options.h"
+#include "tensorflow/core/platform/stringpiece.h"
+#include "tensorflow/core/platform/tstring.h"
 #include "tensorflow/core/util/example_proto_fast_parsing.h"
 #include "tensorflow/core/util/presized_cuckoo_map.h"
 #include "tensorflow/lite/core/c/common.h"
-#include "tensorflow/lite/kernels/internal/tensor.h"
+#include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/kernels/parse_example/example_proto_fast_parsing.h"
 #include "tensorflow/lite/mutable_op_resolver.h"
@@ -46,7 +57,6 @@ namespace parse_example {
 namespace {
 
 namespace tf = ::tensorflow;
-using tf::Status;
 using tf::StringPiece;
 using tf::tstring;
 using tf::example::CopyOrMoveBlock;
@@ -116,7 +126,7 @@ bool ParseExample(StringRef serialized, Example* example) {
   return ParseExample(&stream, example);
 }
 
-Status FastParseSerializedExample(
+absl::Status FastParseSerializedExample(
     StringRef serialized_example, const tstring& example_name,
     const size_t example_index, const FastParseExampleConfig& config,
     bool* quick_filter, int quick_filter_size,
@@ -139,7 +149,7 @@ Status FastParseSerializedExample(
     // I.e. last entry in the map overwrites all the previous ones.
     tensorflow::example::parsed::FeatureMapEntry& name_and_feature =
         parsed_example[parsed_example_size - i - 1];
-    const StringPiece feature_name = name_and_feature.first;
+    const absl::string_view feature_name = name_and_feature.first;
     tensorflow::example::parsed::Feature& feature = name_and_feature.second;
     if (feature_name.length() >= quick_filter_size ||
         !quick_filter[feature_name.length()]) {
@@ -153,7 +163,7 @@ Status FastParseSerializedExample(
     size_t d = d_and_type.first;
     bool is_dense = d_and_type.second == Type::Dense;
 
-    auto example_error = [&](StringPiece suffix) {
+    auto example_error = [&](absl::string_view suffix) {
       return tf::errors::Internal("Name: ", example_name,
                                   ", Key: ", feature_name,
                                   ", Index: ", example_index, ".  ", suffix);
@@ -164,7 +174,7 @@ Status FastParseSerializedExample(
     };
 
     tf::DataType example_dtype;
-    if (feature.ParseDataType(&example_dtype) != absl::OkStatus()) {
+    if (!feature.ParseDataType(&example_dtype).ok()) {
       return parse_error();
     }
     if (is_dense) {
@@ -184,7 +194,7 @@ Status FastParseSerializedExample(
         const std::size_t num_elements = config.dense[d].elements_per_stride;
         const std::size_t offset = example_index * num_elements;
 
-        auto shape_error = [&](size_t size, StringPiece type_str) {
+        auto shape_error = [&](size_t size, absl::string_view type_str) {
           return example_error(absl::StrCat(
               "Number of ", type_str,
               " values != expected.  "
@@ -238,7 +248,7 @@ Status FastParseSerializedExample(
               "Expected type: ", DataTypeString(config.dense[d].dtype)));
         }
 
-        auto shape_error = [&](size_t size, StringPiece type_str) {
+        auto shape_error = [&](size_t size, absl::string_view type_str) {
           return example_error(
               absl::StrCat("Number of ", type_str,
                            " values is not a multiple of stride length. Saw ",
@@ -452,7 +462,7 @@ inline void CopyToBuffer(absl::Span<const tstring> vec, char* tensor_buffer,
   }
 }
 
-Status FastParseExampleLite(
+absl::Status FastParseExampleLite(
     const FastParseExampleConfig& config, const TfLiteTensor* serialized,
     absl::Span<const tstring> example_names, bool* quick_filter,
     int quick_filter_size, const std::unique_ptr<ConfigIndex>& config_index,
@@ -465,7 +475,7 @@ Status FastParseExampleLite(
   std::vector<tf::Tensor> fixed_dense_values(config.dense.size());
   std::vector<SparseBuffer> sparse_buffers(config.sparse.size());
   std::vector<SparseBuffer> varlen_dense_buffers(config.dense.size());
-  Status status_of_minibatch;
+  absl::Status status_of_minibatch;
   for (size_t e = 0; e < count; ++e) {
     status_of_minibatch = FastParseSerializedExample(
         GetString(serialized, e),
@@ -971,8 +981,8 @@ TfLiteStatus EvalParseExample(TfLiteContext* context, TfLiteNode* node) {
       data->config, serialized, {}, data->quick_filter, data->quick_filter_size,
       data->config_index, data->config_index_size, &data->hasher, &data->got,
       stats, context);
-  if (status != absl::OkStatus()) {
-    TF_LITE_KERNEL_LOG(context, status.ToString().c_str());
+  if (!status.ok()) {
+    TF_LITE_KERNEL_LOG(context, "%s", status.ToString().c_str());
     return kTfLiteError;
   }
   return kTfLiteOk;
