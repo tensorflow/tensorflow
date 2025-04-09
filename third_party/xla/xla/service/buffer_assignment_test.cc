@@ -1771,8 +1771,6 @@ TEST_F(BufferAssignmentTest, ElementOfNestedTupleParameterAsOutput) {
             GetTopLevelAllocation(*assignment, tuple_element));
 }
 
-// TODO(b/32248867): Enable when buffer assignment gives allocations to
-// constants.
 TEST_F(BufferAssignmentTest, TupleConstantAsOutput) {
   // Test that a tuple constant which is forwarded to the computation output
   // is properly handled.
@@ -1956,8 +1954,6 @@ TEST_F(BufferAssignmentTest, BitcastAsOutput) {
             GetTopLevelAllocation(*assignment, bitcast));
 }
 
-// TODO(b/34669761): Remove this test when buffers are allowed to share
-// allocations.
 TEST_F(BufferAssignmentTest, TupleBufferNotReused) {
   // Test a computation that returns a tuple parameter.
   auto builder = HloComputation::Builder(TestName());
