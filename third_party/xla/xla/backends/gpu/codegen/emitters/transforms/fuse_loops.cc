@@ -148,7 +148,7 @@ void FuseExtractInsertLoopPair(MLIRContext* mlir_context, LoopOp insert_loop,
   auto vector_cst = insert_loop.getInits().back();
   insert_loop->replaceAllUsesWith(ValueRange(vector_cst));
   extract_loop->replaceAllUsesWith(new_loop.getResults());
-  extract.replaceAllUsesWith(insert.getSource());
+  extract.replaceAllUsesWith(insert.getValueToStore());
   auto insert_loop_yield =
       mlir::dyn_cast<YieldOp>(insert_loop.getRegion().front().back());
   rewriter.eraseOp(insert_loop_yield);

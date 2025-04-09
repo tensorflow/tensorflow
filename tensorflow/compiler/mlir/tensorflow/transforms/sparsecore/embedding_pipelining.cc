@@ -148,6 +148,7 @@ return selected_results
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
+#include "mlir/Transforms/Inliner.h"  // from @llvm-project
 #include "mlir/Transforms/InliningUtils.h"  // from @llvm-project
 #include "mlir/Transforms/RegionUtils.h"  // from @llvm-project
 #include "tensorflow/compiler/jit/flags.h"
@@ -422,6 +423,7 @@ struct Inliner : public InlinerInterface {
   LogicalResult InlineCallsInFunc(func::FuncOp func,
                                   bool inline_all_funcs = false) {
     llvm::SetVector<Operation*> ops_to_erase;
+    InlinerConfig config;
     for (auto caller :
          func.getRegion().getOps<TF::StatefulPartitionedCallOp>()) {
       if (!inline_all_funcs &&
@@ -441,7 +443,8 @@ struct Inliner : public InlinerInterface {
       auto callee =
           llvm::dyn_cast<func::FuncOp>(symbol_table.lookup(caller.getF()));
       auto& src_region = callee.getRegion();
-      auto result = inlineCall(*this, caller, callee, &src_region, true);
+      auto result = inlineCall(*this, config.getCloneCallback(), caller, callee,
+                               &src_region, true);
       if (failed(result)) {
         func.emitError("Inliner failed");
         return result;

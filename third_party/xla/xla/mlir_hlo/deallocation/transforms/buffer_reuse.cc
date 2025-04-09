@@ -15,11 +15,11 @@ limitations under the License.
 
 #include <functional>
 #include <memory>
-#include <optional>
 #include <utility>
 
 #include "deallocation/transforms/passes.h"
 #include "deallocation/utils/util.h"
+#include "llvm/ADT/EquivalenceClasses.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Casting.h"
@@ -440,7 +440,7 @@ bool simplifyLoopDeallocs(Block& block) {
       }
     }
 
-    breaks_if_you_move_ops::ValueEquivalenceClasses eq;
+    llvm::EquivalenceClasses<Value> eq;
     auto getAliases = [&](RegionBranchPoint point) {
       for (const auto& edge : getSuccessorRegions(rbi, point)) {
         for (auto [pred, succ] : llvm::zip(edge.getPredecessorOperands(),

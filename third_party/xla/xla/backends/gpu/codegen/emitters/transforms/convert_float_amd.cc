@@ -125,7 +125,7 @@ struct RewriteFp8TruncFPattern : public Fp8OpRewritePattern<arith::TruncFOp> {
 
     size_t pos;
     auto insert = mlir::dyn_cast<vector::InsertOp>(op->use_begin()->getOwner());
-    if (!insert || insert.getSource() != op->getResult(0) ||
+    if (!insert || insert.getValueToStore() != op->getResult(0) ||
         !matchPos(insert, &pos) || !insert.getDest().hasOneUse()) {
       return std::nullopt;
     }
