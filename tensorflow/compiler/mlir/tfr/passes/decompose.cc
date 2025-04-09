@@ -47,6 +47,7 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
+#include "mlir/Transforms/Inliner.h"  // from @llvm-project
 #include "mlir/Transforms/InliningUtils.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/quantization/ir/QuantOps.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
@@ -282,6 +283,7 @@ LogicalResult DecomposeTFOpsPass::RewriteUnregisteredTFOps() {
 LogicalResult DecomposeTFOpsPass::InlineTFRFuncCalls() {
   // The Inliner will automatically use the registered dialect inliner.
   InlinerInterface inliner(&getContext());
+  InlinerConfig config;
   func::FuncOp func = getOperation();
   SymbolTable table(external_tfr_module_.has_value()
                         ? *external_tfr_module_
@@ -301,7 +303,7 @@ LogicalResult DecomposeTFOpsPass::InlineTFRFuncCalls() {
 
     // Use the inliner to replace all the uses of the call_op by its
     // composition.
-    if (failed(inlineCall(inliner,
+    if (failed(inlineCall(inliner, config.getCloneCallback(),
                           cast<CallOpInterface>(call_op.getOperation()),
                           cast<CallableOpInterface>(callee.getOperation()),
                           callee.getCallableRegion(),
