@@ -23,6 +23,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/time/time.h"
 #include "absl/types/optional.h"
 #include "absl/types/span.h"
@@ -703,6 +704,11 @@ class OpKernelContext {
 
     // For access to distributed coordination service.
     tsl::CoordinationServiceAgent* coordination_service_agent = nullptr;
+
+    // Metadata associated with this op execution. This can be used to pass
+    // information across different ops within the same graph execution,
+    // particularly useful for optimizations and debugging.
+    absl::flat_hash_map<std::string, std::string> op_metadata;
   };
 
   // params must outlive the OpKernelContext.
@@ -1171,6 +1177,11 @@ class OpKernelContext {
   }
 
   // Other accessors.
+
+  // Access to the op metadata.
+  const absl::flat_hash_map<std::string, std::string>& op_metadata() const {
+    return params_->op_metadata;
+  }
 
   // For control flow.
   FrameAndIter frame_iter() const { return params_->frame_iter; }
