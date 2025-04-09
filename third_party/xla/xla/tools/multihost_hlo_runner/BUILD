@@ -210,6 +210,7 @@ xla_test(
         "gpu",
     ],
     data = [
+        "data/auto_layout.hlo",
         "data/multiple_gemm_fusions.hlo",
         "data/sharded_16_devices.hlo",
         "data/sharded_2_devices.hlo",

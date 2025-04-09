@@ -809,6 +809,8 @@ CompileOptions FunctionalHloRunner::CompleteCompileOptions(
     compile_options.argument_layouts = std::move(parameter_shapes);
     compile_options.executable_build_options.set_result_layout(
         layout.result_shape());
+    compile_options.executable_build_options.mutable_debug_options()
+        ->set_xla_pjrt_allow_auto_layout_in_hlo(true);
   }
   return compile_options;
 }

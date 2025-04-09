@@ -402,6 +402,18 @@ TEST_F(FunctionalHloRunnerTest, KeepLayoutsFromHloModule) {
                       /*num_partitions=*/1);
 }
 
+TEST_F(FunctionalHloRunnerTest, AutoLayoutAssignsNonDefaultLayout) {
+  if (IsTestingCpu()) GTEST_SKIP() << "CPU doesn't support auto-layout yet.";
+  FunctionalHloRunner::PreprocessingOptions preproc_options;
+  preproc_options.use_layouts_from_hlo_module = true;
+  CompileAndFilecheck(GetHloPath("auto_layout.hlo"),
+                      // Makes LHS contracting dimension minor.
+                      "// CHECK: entry_computation_layout={(bf16[4096,64,8]{0",
+                      preproc_options,
+                      FunctionalHloRunner::HloPassesMode::kStandardCompile,
+                      /*num_partitions=*/1);
+}
+
 TEST_F(FunctionalHloRunnerTest, CanCompileWithoutHavingEnoughGpus) {
   CompileAndFilecheck(GetHloPath("sharded_16_devices.hlo"),
                       // Check that the sharding was done correctly.
