@@ -15,16 +15,11 @@ package(
 
 gentbl_cc_library(
     name = "PassIncGen",
-    tbl_outs = [
-        (
-            [
-                "-gen-pass-decls",
-                "--name",
-                "TFGraph",
-            ],
-            "passes.h.inc",
-        ),
-    ],
+    tbl_outs = {"passes.h.inc": [
+        "-gen-pass-decls",
+        "--name",
+        "TFGraph",
+    ]},
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "passes.td",
     deps = [
@@ -69,12 +64,7 @@ cc_library(
 
 gentbl_cc_library(
     name = "PDLLUtilsIncGen",
-    tbl_outs = [
-        (
-            ["-x=cpp"],
-            "utils/pdll/PDLLUtils.h.inc",
-        ),
-    ],
+    tbl_outs = {"utils/pdll/PDLLUtils.h.inc": ["-x=cpp"]},
     tblgen = "@llvm-project//mlir:mlir-pdll",
     td_file = "utils/pdll/utils.pdll",
     deps = [

@@ -30,16 +30,10 @@ td_library(
 
 gentbl_cc_library(
     name = "DialectIncGen",
-    tbl_outs = [
-        (
-            ["-gen-dialect-decls"],
-            "dialect.h.inc",
-        ),
-        (
-            ["-gen-dialect-defs"],
-            "dialect.cpp.inc",
-        ),
-    ],
+    tbl_outs = {
+        "dialect.h.inc": ["-gen-dialect-decls"],
+        "dialect.cpp.inc": ["-gen-dialect-defs"],
+    },
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "dialect.td",
     deps = [
@@ -49,24 +43,12 @@ gentbl_cc_library(
 
 gentbl_cc_library(
     name = "AttributesIncGen",
-    tbl_outs = [
-        (
-            ["-gen-attrdef-decls"],
-            "attributes.h.inc",
-        ),
-        (
-            ["-gen-attrdef-defs"],
-            "attributes.cc.inc",
-        ),
-        (
-            ["-gen-enum-decls"],
-            "attributes_enum.h.inc",
-        ),
-        (
-            ["-gen-enum-defs"],
-            "attributes_enum.cc.inc",
-        ),
-    ],
+    tbl_outs = {
+        "attributes.h.inc": ["-gen-attrdef-decls"],
+        "attributes.cc.inc": ["-gen-attrdef-defs"],
+        "attributes_enum.h.inc": ["-gen-enum-decls"],
+        "attributes_enum.cc.inc": ["-gen-enum-defs"],
+    },
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "attributes.td",
     deps = [":DialectTdFiles"],
@@ -74,16 +56,10 @@ gentbl_cc_library(
 
 gentbl_cc_library(
     name = "TypesIncGen",
-    tbl_outs = [
-        (
-            ["-gen-typedef-decls"],
-            "types.h.inc",
-        ),
-        (
-            ["-gen-typedef-defs"],
-            "types.cc.inc",
-        ),
-    ],
+    tbl_outs = {
+        "types.h.inc": ["-gen-typedef-decls"],
+        "types.cc.inc": ["-gen-typedef-defs"],
+    },
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "types.td",
     deps = [":DialectTdFiles"],

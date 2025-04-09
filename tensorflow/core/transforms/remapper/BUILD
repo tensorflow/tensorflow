@@ -13,12 +13,7 @@ package(
 
 gentbl_cc_library(
     name = "MklPDLLPatternsIncGen",
-    tbl_outs = [
-        (
-            ["-x=cpp"],
-            "pdll/MklPDLLPatterns.h.inc",
-        ),
-    ],
+    tbl_outs = {"pdll/MklPDLLPatterns.h.inc": ["-x=cpp"]},
     tblgen = "@llvm-project//mlir:mlir-pdll",
     td_file = "pdll/mkl_patterns.pdll",
     deps = [
