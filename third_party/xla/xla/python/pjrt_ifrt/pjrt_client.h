@@ -173,7 +173,7 @@ class PjRtClient final
   absl::StatusOr<tsl::RCReference<Array>> MakeArrayFromHostBuffer(
       const void* data, DType dtype, Shape shape,
       std::optional<absl::Span<const int64_t>> byte_strides,
-      absl::Nonnull<std::shared_ptr<const Sharding>> sharding,
+      absl_nonnull std::shared_ptr<const Sharding> sharding,
       HostBufferSemantics semantics,
       std::function<void()> on_done_with_host_buffer,
       tsl::RCReference<UserContext> user_context) override;
