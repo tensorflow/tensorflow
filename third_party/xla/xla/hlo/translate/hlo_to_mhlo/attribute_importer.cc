@@ -103,6 +103,31 @@ mlir::NamedAttribute ConvertChannelHandle(std::optional<int64_t> channel_id,
   return stablehlo::ConvertChannelHandle(channel_handle, builder);
 }
 
+mlir::stablehlo::ConvDimensionNumbersAttr ConvertConvDimensionNumbers(
+    const xla::ConvolutionDimensionNumbers& dnums, mlir::Builder* builder) {
+  auto arrayref = [](absl::Span<const int64_t> array) {
+    return llvm::ArrayRef<int64_t>{array.data(), array.size()};
+  };
+  llvm::SmallVector<int64_t, 4> input_spatial_dims(
+      dnums.input_spatial_dimensions().begin(),
+      dnums.input_spatial_dimensions().end());
+  llvm::SmallVector<int64_t, 4> kernel_spatial_dims(
+      dnums.kernel_spatial_dimensions().begin(),
+      dnums.kernel_spatial_dimensions().end());
+  llvm::SmallVector<int64_t, 4> output_spatial_dims(
+      dnums.output_spatial_dimensions().begin(),
+      dnums.output_spatial_dimensions().end());
+  return mlir::stablehlo::ConvDimensionNumbersAttr::get(
+      builder->getContext(), dnums.input_batch_dimension(),
+      dnums.input_feature_dimension(),
+      arrayref(dnums.input_spatial_dimensions()),
+      dnums.kernel_input_feature_dimension(),
+      dnums.kernel_output_feature_dimension(),
+      arrayref(dnums.kernel_spatial_dimensions()),
+      dnums.output_batch_dimension(), dnums.output_feature_dimension(),
+      arrayref(dnums.output_spatial_dimensions()));
+}
+
 absl::StatusOr<mlir::stablehlo::CustomCallApiVersion>
 ConvertCustomCallApiVersion(xla::CustomCallApiVersion api_version) {
   switch (api_version) {
@@ -247,6 +272,28 @@ mlir::ArrayAttr ConvertPrecisionConfig(const PrecisionConfig* config,
   return builder->getArrayAttr(operand_precision_attrs);
 }
 
+mlir::stablehlo::ResultAccuracyAttr ConvertResultAccuracy(
+    const ResultAccuracy& result_accuracy, mlir::Builder* builder) {
+  if (result_accuracy.has_tolerance()) {
+    return mlir::stablehlo::ResultAccuracyAttr::get(
+        builder->getContext(),
+        llvm::APFloat(result_accuracy.tolerance().atol()),
+        llvm::APFloat(result_accuracy.tolerance().rtol()),
+        result_accuracy.tolerance().ulps(),
+        // Explicitly set the mode to TOLERANCE since ResultAccuracy has no
+        // TOLERANCE enum.
+        mlir::stablehlo::ResultAccuracyModeAttr::get(
+            builder->getContext(),
+            mlir::stablehlo::ResultAccuracyMode::TOLERANCE));
+  }
+  return mlir::stablehlo::ResultAccuracyAttr::get(
+      builder->getContext(), llvm::APFloat(0.0), llvm::APFloat(0.0), 0,
+      mlir::stablehlo::ResultAccuracyModeAttr::get(
+          builder->getContext(),
+          mlir::stablehlo::symbolizeResultAccuracyMode(result_accuracy.mode())
+              .value()));
+}
+
 }  // namespace stablehlo
 
 mlir::ArrayAttr ConvertPrecisionConfig(const PrecisionConfig* config,
@@ -305,82 +352,6 @@ mlir::mhlo::ScatterDimensionNumbersAttr ConvertScatterDimensionNumbers(
       builder->getContext(), update_window_dims, inserted_window_dims,
       input_batching_dims, scatter_indices_batching_dims,
       scatter_dims_to_operand_dims, dnums.index_vector_dim());
-}
-
-mlir::mhlo::DotAlgorithmAttr ConvertDotAlgorithm(
-    const PrecisionConfig::Algorithm algorithm, mlir::Builder* builder) {
-  mlir::Type lhs, rhs, accum;
-  int64_t lhsComponentCount = 1, rhsComponentCount = 1,
-          numPrimitiveOperations = 1;
-  bool allowImpreciseAccumulation = false;
-  switch (algorithm) {
-    case PrecisionConfig::ALG_DOT_ANY_F8_ANY_F8_F32: {
-      lhs = rhs = builder->getType<mlir::Float8E5M2Type>();
-      accum = builder->getF32Type();
-      break;
-    }
-    case PrecisionConfig::ALG_DOT_ANY_F8_ANY_F8_F32_FAST_ACCUM: {
-      lhs = rhs = builder->getType<mlir::Float8E5M2Type>();
-      accum = builder->getF32Type();
-      allowImpreciseAccumulation = true;
-      break;
-    }
-    case PrecisionConfig::ALG_DOT_F16_F16_F16: {
-      lhs = rhs = accum = builder->getF16Type();
-      break;
-    }
-    case PrecisionConfig::ALG_DOT_F16_F16_F32: {
-      lhs = rhs = builder->getF16Type();
-      accum = builder->getF32Type();
-      break;
-    }
-    case PrecisionConfig::ALG_DOT_BF16_BF16_BF16: {
-      lhs = rhs = accum = builder->getBF16Type();
-      break;
-    }
-    case PrecisionConfig::ALG_DOT_BF16_BF16_F32: {
-      lhs = rhs = builder->getBF16Type();
-      accum = builder->getF32Type();
-      break;
-    }
-    case PrecisionConfig::ALG_DOT_BF16_BF16_F32_X3: {
-      lhs = rhs = builder->getBF16Type();
-      accum = builder->getF32Type();
-      numPrimitiveOperations = 3;
-      break;
-    }
-    case PrecisionConfig::ALG_DOT_BF16_BF16_F32_X6: {
-      lhs = rhs = builder->getBF16Type();
-      accum = builder->getF32Type();
-      numPrimitiveOperations = 6;
-      break;
-    }
-    case PrecisionConfig::ALG_DOT_TF32_TF32_F32: {
-      lhs = rhs = builder->getTF32Type();
-      accum = builder->getF32Type();
-      break;
-    }
-    case PrecisionConfig::ALG_DOT_TF32_TF32_F32_X3: {
-      lhs = rhs = builder->getTF32Type();
-      accum = builder->getF32Type();
-      numPrimitiveOperations = 3;
-      break;
-    }
-    case PrecisionConfig::ALG_DOT_F32_F32_F32: {
-      lhs = rhs = accum = builder->getF32Type();
-      break;
-    }
-    case PrecisionConfig::ALG_DOT_F64_F64_F64: {
-      lhs = rhs = accum = builder->getF64Type();
-      break;
-    }
-    default:
-      // Unset, sentinels
-      return mlir::mhlo::DotAlgorithmAttr{};
-  }
-  return mlir::mhlo::DotAlgorithmAttr::get(
-      builder->getContext(), lhs, rhs, accum, lhsComponentCount,
-      rhsComponentCount, numPrimitiveOperations, allowImpreciseAccumulation);
 }
 
 mlir::mhlo::DotDimensionNumbersAttr ConvertDotDimensionNumbers(
@@ -458,37 +429,6 @@ absl::StatusOr<mlir::mhlo::SparsityDescriptorAttr> ConvertSparsityDescriptor(
           sparsity_descriptor.n(), sparsity_descriptor.m());
     default:
       return InvalidArgument("Unknown sparsity descriptor type");
-  }
-}
-
-absl::StatusOr<mlir::mhlo::FftType> ConvertFftType(FftType type) {
-  switch (type) {
-    case FftType::FFT:
-      return mlir::mhlo::FftType::FFT;
-    case FftType::IFFT:
-      return mlir::mhlo::FftType::IFFT;
-    case FftType::RFFT:
-      return mlir::mhlo::FftType::RFFT;
-    case FftType::IRFFT:
-      return mlir::mhlo::FftType::IRFFT;
-    default:
-      return InvalidArgument("Unknown FFT type enum value #%d", type);
-  }
-}
-
-absl::StatusOr<mlir::mhlo::Transpose> ConvertTranspose(
-    xla::TriangularSolveOptions_Transpose transpose) {
-  switch (transpose) {
-    case TriangularSolveOptions::NO_TRANSPOSE:
-      return mlir::mhlo::Transpose::NO_TRANSPOSE;
-    case TriangularSolveOptions::TRANSPOSE:
-      return mlir::mhlo::Transpose::TRANSPOSE;
-    case TriangularSolveOptions::ADJOINT:
-      return mlir::mhlo::Transpose::ADJOINT;
-    case TriangularSolveOptions::TRANSPOSE_INVALID:
-      return mlir::mhlo::Transpose::TRANSPOSE_INVALID;
-    default:
-      return InvalidArgument("Unknown transpose enum value #%d", transpose);
   }
 }
 
@@ -602,27 +542,6 @@ absl::StatusOr<mlir::ArrayAttr> ExtractLayoutsFromTuple(
     const Shape shape, mlir::Builder* builder) {
   if (!shape.IsTuple()) return InvalidArgument("Expected shape to be Tuple");
   return ExtractLayoutsFromShapes(shape.tuple_shapes(), builder);
-}
-
-mlir::mhlo::ResultAccuracyAttr ConvertResultAccuracy(
-    const ResultAccuracy& result_accuracy, mlir::Builder* builder) {
-  if (result_accuracy.has_tolerance()) {
-    return mlir::mhlo::ResultAccuracyAttr::get(
-        builder->getContext(),
-        llvm::APFloat(result_accuracy.tolerance().atol()),
-        llvm::APFloat(result_accuracy.tolerance().rtol()),
-        result_accuracy.tolerance().ulps(),
-        // Explicitly set the mode to TOLERANCE since ResultAccuracy has no
-        // TOLERANCE enum.
-        mlir::mhlo::ResultAccuracyModeAttr::get(
-            builder->getContext(), mlir::mhlo::ResultAccuracyMode::TOLERANCE));
-  }
-  return mlir::mhlo::ResultAccuracyAttr::get(
-      builder->getContext(), llvm::APFloat(0.0), llvm::APFloat(0.0), 0,
-      mlir::mhlo::ResultAccuracyModeAttr::get(
-          builder->getContext(),
-          mlir::mhlo::symbolizeResultAccuracyMode(result_accuracy.mode())
-              .value()));
 }
 
 }  // namespace xla
