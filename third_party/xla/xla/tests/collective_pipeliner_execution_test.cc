@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <string>
@@ -30,13 +31,15 @@ limitations under the License.
 #include "xla/hlo/pass/hlo_pass_pipeline.h"
 #include "xla/hlo/transforms/simplifiers/hlo_dce.h"
 #include "xla/service/collective_pipeliner.h"
-#include "xla/tests/hlo_test_base.h"
+#include "xla/service/hlo_verifier.h"
+#include "xla/tests/hlo_pjrt_test_base.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 
 namespace xla {
 namespace {
 
-using CollectivePipelinerExecutionTest = HloTestBase;
+using CollectivePipelinerExecutionTest = HloPjRtTestBase;
 
 absl::StatusOr<bool> RunOptimizer(
     HloModule* module, bool last_run, int64_t level_to_operate_on = 0,

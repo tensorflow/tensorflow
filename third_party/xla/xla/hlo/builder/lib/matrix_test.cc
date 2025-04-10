@@ -37,14 +37,16 @@ limitations under the License.
 #include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/tests/client_library_test_runner_mixin.h"
-#include "xla/tests/hlo_test_base.h"
+#include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
+#include "xla/tests/hlo_pjrt_test_base.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/types.h"
 
 namespace xla {
 namespace {
 
-class MatrixTest : public ClientLibraryTestRunnerMixin<HloTestBase> {
+class MatrixTest : public ClientLibraryTestRunnerMixin<
+                       HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>> {
  protected:
   template <typename T>
   void TestMatrixDiagonal();

@@ -74,7 +74,10 @@ xla_test(
     srcs = if_gpu_is_configured(["dynamic_slice_fusion_test.cc"]),
     backends = ["gpu"],
     local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]),
-    tags = ["notsan"],  # TODO(b/345034145): Fix tsan error.
+    tags = [
+        "notsan",
+        "test_migrated_to_hlo_runner_pjrt",
+    ],  # TODO(b/345034145): Fix tsan error.
     deps = if_gpu_is_configured(
         #keep sorted
         [
@@ -90,7 +93,9 @@ xla_test(
     ) + [
         "//xla/stream_executor:device_memory",
         "//xla/stream_executor:stream",
+        "//xla/tests:hlo_pjrt_test_base",
         "//xla/tests:xla_internal_test_main",
+        "//xla/tsl/platform:test",
     ],
 )
 
@@ -98,10 +103,13 @@ xla_test(
     name = "element_wise_row_vectorization_test",
     srcs = ["element_wise_row_vectorization_test.cc"],
     backends = ["gpu"],
+    tags = ["test_migrated_to_hlo_runner_pjrt"],
     deps = [
         "//xla:error_spec",
-        "//xla/tests:hlo_test_base",
+        "//xla/tests:hlo_pjrt_interpreter_reference_mixin",
+        "//xla/tests:hlo_pjrt_test_base",
         "//xla/tests:xla_internal_test_main",
+        "//xla/tsl/platform:test",
     ],
 )
 
@@ -122,14 +130,16 @@ xla_test(
     srcs = ["async_kernel_launch_test.cc"],
     backends = ["gpu"],
     # "requires-net:external" tag allows uploading `xprof` results.
-    tags = if_google(["requires-net:external"]),
+    tags = if_google(["requires-net:external"]) + ["test_migrated_to_hlo_runner_pjrt"],
     deps = [
         "//xla:debug_options_flags",
+        "//xla:error_spec",
         "//xla:literal",
         "//xla:literal_util",
         "//xla:xla_proto_cc",
         "//xla/service:hlo_module_config",
-        "//xla/tests:hlo_test_base",
+        "//xla/tests:hlo_pjrt_interpreter_reference_mixin",
+        "//xla/tests:hlo_pjrt_test_base",
         "//xla/tests:literal_test_util",
         "@com_google_googletest//:gtest_main",
     ],
@@ -139,12 +149,11 @@ xla_test(
     name = "command_buffer_test",
     srcs = ["command_buffer_test.cc"],
     backends = ["gpu"],
+    tags = ["test_migrated_to_hlo_runner_pjrt"],
     deps = [
-        "//xla:debug_options_flags",
         "//xla:literal",
         "//xla:literal_util",
-        "//xla/service:hlo_module_config",
-        "//xla/tests:hlo_test_base",
+        "//xla/tests:hlo_pjrt_test_base",
         "//xla/tests:literal_test_util",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/strings:string_view",
@@ -676,9 +685,11 @@ xla_test(
     name = "in_place_op_test",
     srcs = ["in_place_op_test.cc"],
     backends = ["gpu"],
+    tags = ["test_migrated_to_hlo_runner_pjrt"],
     deps = [
         "//xla:debug_options_flags",
-        "//xla/tests:hlo_test_base",
+        "//xla/tests:hlo_pjrt_interpreter_reference_mixin",
+        "//xla/tests:hlo_pjrt_test_base",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -722,9 +733,12 @@ xla_test(
     ] + if_oss([
         "gpu_any",
     ]),
+    tags = ["test_migrated_to_hlo_runner_pjrt"],
     deps = [
         "//xla:error_spec",
-        "//xla/tests:hlo_test_base",
+        "//xla/tests:hlo_pjrt_interpreter_reference_mixin",
+        "//xla/tests:hlo_pjrt_test_base",
+        "//xla/tsl/platform:test",
         "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:tensor_float_32_utils",
     ],
@@ -894,10 +908,11 @@ xla_test(
     name = "nop_custom_call_test",
     srcs = ["nop_custom_call_test.cc"],
     backends = ["gpu"],
+    tags = ["test_migrated_to_hlo_runner_pjrt"],
     deps = [
         "//xla:literal",
         "//xla:literal_util",
-        "//xla/tests:hlo_test_base",
+        "//xla/tests:hlo_pjrt_test_base",
         "//xla/tests:literal_test_util",
         "//xla/tsl/platform:test",
         "@com_google_googletest//:gtest_main",

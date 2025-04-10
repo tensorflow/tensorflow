@@ -23,7 +23,8 @@ limitations under the License.
 #include "xla/literal_util.h"
 #include "xla/shape_util.h"
 #include "xla/tests/client_library_test_runner_mixin.h"
-#include "xla/tests/hlo_test_base.h"
+#include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
+#include "xla/tests/hlo_pjrt_test_base.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/xla_data.pb.h"
@@ -34,7 +35,8 @@ namespace {
 using ::testing::ContainsRegex;
 
 class CheckExecutionArityTest
-    : public ClientLibraryTestRunnerMixin<HloTestBase> {};
+    : public ClientLibraryTestRunnerMixin<
+          HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>> {};
 
 TEST_F(CheckExecutionArityTest, TwoParamComputationNumArguments) {
   XlaBuilder builder("add_two_params");

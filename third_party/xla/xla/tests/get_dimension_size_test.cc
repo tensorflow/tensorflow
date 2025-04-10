@@ -16,13 +16,15 @@ limitations under the License.
 #include <utility>
 
 #include "absl/status/status.h"
+#include "xla/error_spec.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/testlib/test.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
-#include "xla/tests/hlo_test_base.h"
+#include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
+#include "xla/tests/hlo_pjrt_test_base.h"
 #include "xla/tests/test_macros.h"
-#include "tsl/platform/statusor.h"
+#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
@@ -33,7 +35,7 @@ void DisableAllHloPasses(HloModule& module) {
   module.mutable_config().set_debug_options(debug_options);
 }
 
-class GetDimensionSizeTest : public HloTestBase {};
+using GetDimensionSizeTest = HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>;
 
 // Test that the interpreter can correctly compute get_dimension_size.
 TEST_F(GetDimensionSizeTest, CorrectComputation) {

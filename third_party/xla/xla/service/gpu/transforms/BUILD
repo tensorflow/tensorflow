@@ -518,13 +518,17 @@ xla_test(
     name = "block_scaling_rewriter_cudnn_test",
     srcs = ["block_scaling_rewriter_cudnn_test.cc"],
     backends = ["gpu_b200"],
+    tags = ["test_migrated_to_hlo_runner_pjrt"],
     deps = [
         ":block_scaling_rewriter",
-        "//xla/tests:hlo_test_base",
+        "//xla:error_spec",
+        "//xla/hlo/ir:hlo",
+        "//xla/tests:hlo_pjrt_interpreter_reference_mixin",
+        "//xla/tests:hlo_pjrt_test_base",
         "//xla/tests:xla_internal_test_main",
+        "//xla/tsl/platform:status_matchers",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest",
-        "@local_tsl//tsl/platform:status_matchers",
     ],
 )
 
@@ -3044,6 +3048,7 @@ xla_test(
     ],
     tags = [
         "cuda-only",
+        "test_migrated_to_hlo_runner_pjrt",
     ],
     deps = [
         ":sort_rewriter",
@@ -3056,7 +3061,8 @@ xla_test(
         "//xla/service:pattern_matcher",
         "//xla/service/gpu:cublas_cudnn",
         "//xla/service/gpu:gpu_device_info_for_tests",
-        "//xla/tests:hlo_test_base",
+        "//xla/tests:hlo_pjrt_interpreter_reference_mixin",
+        "//xla/tests:hlo_pjrt_test_base",
         "//xla/tests:xla_internal_test_main",  # fixdeps: keep
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/strings",
@@ -3392,6 +3398,7 @@ xla_test(
         "gpu_h100",
         "gpu_b200",
     ],
+    tags = ["test_migrated_to_hlo_runner_pjrt"],
     deps = [
         ":triton_fusion_numerics_verifier",
         "//xla:shape_util",
@@ -3402,13 +3409,13 @@ xla_test(
         "//xla/service/gpu/autotuning:autotuner_compile_util",
         "//xla/service/gpu/autotuning:autotuner_util",
         "//xla/stream_executor:platform",
-        "//xla/tests:hlo_test_base",
+        "//xla/tests:hlo_pjrt_test_base",
         "//xla/tsl/lib/core:status_test_util",
+        "//xla/tsl/platform:status_matchers",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",
-        "@local_tsl//tsl/platform:status_matchers",
     ],
 )
 

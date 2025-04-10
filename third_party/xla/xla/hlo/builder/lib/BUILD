@@ -42,13 +42,15 @@ cc_library(
 xla_test(
     name = "arithmetic_test",
     srcs = ["arithmetic_test.cc"],
+    tags = ["test_migrated_to_hlo_runner_pjrt"],
     deps = [
         ":arithmetic",
         "//xla:shape_util",
         "//xla:xla_data_proto_cc",
         "//xla/hlo/builder:xla_builder",
         "//xla/tests:client_library_test_runner_mixin",
-        "//xla/tests:hlo_test_base",
+        "//xla/tests:hlo_pjrt_interpreter_reference_mixin",
+        "//xla/tests:hlo_pjrt_test_base",
         "//xla/tsl/platform:test",
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_main",
@@ -76,6 +78,7 @@ cc_library(
 xla_test(
     name = "comparators_test",
     srcs = ["comparators_test.cc"],
+    tags = ["test_migrated_to_hlo_runner_pjrt"],
     deps = [
         ":comparators",
         ":constants",
@@ -87,7 +90,8 @@ xla_test(
         "//xla/hlo/testlib:test",
         "//xla/service:hlo_proto_cc",
         "//xla/tests:client_library_test_runner_mixin",
-        "//xla/tests:hlo_test_base",
+        "//xla/tests:hlo_pjrt_interpreter_reference_mixin",
+        "//xla/tests:hlo_pjrt_test_base",
         "//xla/tsl/platform:test",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/strings:string_view",
@@ -234,6 +238,7 @@ xla_test(
     name = "math_test",
     timeout = "long",
     srcs = ["math_test.cc"],
+    tags = ["test_migrated_to_hlo_runner_pjrt"],
     deps = [
         ":constants",
         ":math",
@@ -248,7 +253,8 @@ xla_test(
         "//xla/hlo/testlib:test",
         "//xla/service",
         "//xla/tests:client_library_test_runner_mixin",
-        "//xla/tests:hlo_test_base",
+        "//xla/tests:hlo_pjrt_interpreter_reference_mixin",
+        "//xla/tests:hlo_pjrt_test_base",
         "//xla/tests:test_macros_header",
         "//xla/tsl/lib/core:status_test_util",
         "//xla/tsl/platform:test",
@@ -286,6 +292,7 @@ cc_library(
 xla_test(
     name = "matrix_test",
     srcs = ["matrix_test.cc"],
+    tags = ["test_migrated_to_hlo_runner_pjrt"],
     deps = [
         ":constants",
         ":matrix",
@@ -300,7 +307,8 @@ xla_test(
         "//xla/hlo/builder:xla_builder",
         "//xla/hlo/testlib:test",
         "//xla/tests:client_library_test_runner_mixin",
-        "//xla/tests:hlo_test_base",
+        "//xla/tests:hlo_pjrt_interpreter_reference_mixin",
+        "//xla/tests:hlo_pjrt_test_base",
         "//xla/tsl/platform:test",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
@@ -334,6 +342,7 @@ cc_library(
 xla_test(
     name = "pooling_test",
     srcs = ["pooling_test.cc"],
+    tags = ["test_migrated_to_hlo_runner_pjrt"],
     deps = [
         ":pooling",
         "//xla:error_spec",
@@ -341,7 +350,8 @@ xla_test(
         "//xla/hlo/builder:padding",
         "//xla/hlo/builder:xla_builder",
         "//xla/tests:client_library_test_runner_mixin",
-        "//xla/tests:hlo_test_base",
+        "//xla/tests:hlo_pjrt_interpreter_reference_mixin",
+        "//xla/tests:hlo_pjrt_test_base",
         "//xla/tsl/platform:test",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/types:span",
@@ -370,6 +380,7 @@ cc_library(
 xla_test(
     name = "prng_test",
     srcs = ["prng_test.cc"],
+    tags = ["test_migrated_to_hlo_runner_pjrt"],
     deps = [
         ":constants",
         ":prng",
@@ -378,7 +389,8 @@ xla_test(
         "//xla/hlo/builder:xla_builder",
         "//xla/hlo/testlib:test",
         "//xla/tests:client_library_test_runner_mixin",
-        "//xla/tests:hlo_test_base",
+        "//xla/tests:hlo_pjrt_interpreter_reference_mixin",
+        "//xla/tests:hlo_pjrt_test_base",
         "//xla/tsl/platform:test",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
@@ -601,7 +613,10 @@ xla_test(
     srcs = ["self_adjoint_eig_test.cc"],
     real_hardware_only = True,
     shard_count = 5,
-    tags = ["optonly"],
+    tags = [
+        "optonly",
+        "test_migrated_to_hlo_runner_pjrt",
+    ],
     deps = [
         ":arithmetic",
         ":constants",
@@ -621,7 +636,8 @@ xla_test(
         "//xla/hlo/testlib:test",
         "//xla/tests:client_library_test_base",
         "//xla/tests:client_library_test_runner_mixin",
-        "//xla/tests:hlo_test_base",
+        "//xla/tests:hlo_pjrt_interpreter_reference_mixin",
+        "//xla/tests:hlo_pjrt_test_base",
         "//xla/tests:test_macros_header",
         "//xla/tsl/platform:test",
         "@com_google_absl//absl/status:statusor",
@@ -660,7 +676,10 @@ xla_test(
     srcs = ["svd_test.cc"],
     real_hardware_only = True,
     shard_count = 10,
-    tags = ["optonly"],
+    tags = [
+        "optonly",
+        "test_migrated_to_hlo_runner_pjrt",
+    ],
     deps = [
         ":arithmetic",
         ":constants",
@@ -674,7 +693,8 @@ xla_test(
         "//xla:xla_data_proto_cc",
         "//xla/hlo/builder:xla_builder",
         "//xla/tests:client_library_test_runner_mixin",
-        "//xla/tests:hlo_test_base",
+        "//xla/tests:hlo_pjrt_interpreter_reference_mixin",
+        "//xla/tests:hlo_pjrt_test_base",
         "//xla/tests:test_macros_header",
         "//xla/tsl/platform:test",
         "@com_google_absl//absl/status:statusor",
@@ -708,7 +728,10 @@ xla_test(
     srcs = ["tridiagonal_test.cc"],
     real_hardware_only = True,
     shard_count = 10,
-    tags = ["optonly"],
+    tags = [
+        "optonly",
+        "test_migrated_to_hlo_runner_pjrt",
+    ],
     deps = [
         ":slicing",
         ":tridiagonal",
@@ -719,7 +742,8 @@ xla_test(
         "//xla/hlo/builder:xla_builder",
         "//xla/hlo/testlib:test",
         "//xla/tests:client_library_test_runner_mixin",
-        "//xla/tests:hlo_test_base",
+        "//xla/tests:hlo_pjrt_interpreter_reference_mixin",
+        "//xla/tests:hlo_pjrt_test_base",
         "//xla/tests:test_macros_header",
         "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:test",

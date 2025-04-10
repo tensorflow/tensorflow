@@ -21,9 +21,9 @@ limitations under the License.
 #include "xla/hlo/testlib/test.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
-#include "xla/tests/hlo_test_base.h"
+#include "xla/tests/hlo_pjrt_test_base.h"
 #include "xla/tests/test_macros.h"
-#include "tsl/platform/statusor.h"
+#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
@@ -45,7 +45,7 @@ void DisableAllHloPasses(HloModule& module) {
   module.mutable_config().set_debug_options(debug_options);
 }
 
-class SetDimensionSizeTest : public HloTestBase {};
+class SetDimensionSizeTest : public HloPjRtTestBase {};
 
 TEST_F(SetDimensionSizeTest, CorrectComputation) {
   TF_ASSERT_OK_AND_ASSIGN(auto module,

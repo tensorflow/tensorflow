@@ -24,8 +24,8 @@ limitations under the License.
 #include "xla/hlo/builder/xla_builder.h"
 #include "xla/shape_util.h"
 #include "xla/tests/client_library_test_runner_mixin.h"
-#include "xla/tests/hlo_test_base.h"
-#include "xla/tests/test_macros.h"
+#include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
+#include "xla/tests/hlo_pjrt_test_base.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/ml_dtypes.h"
@@ -33,7 +33,9 @@ limitations under the License.
 namespace xla {
 namespace {
 
-class BitcastConvertTest : public ClientLibraryTestRunnerMixin<HloTestBase> {
+class BitcastConvertTest
+    : public ClientLibraryTestRunnerMixin<
+          HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>> {
  public:
   BitcastConvertTest() {
     mutable_debug_options()->add_xla_disable_hlo_passes("algsimp");
@@ -147,7 +149,8 @@ TEST_F(BitcastConvertTest, ConvertReshape) {
   ComputeAndCompareR0<float>(&builder, 42.0f, {});
 }
 
-class BitcastConvertHloTest : public HloTestBase {};
+class BitcastConvertHloTest
+    : public HloPjRtInterpreterReferenceMixin<HloPjRtTestBase> {};
 
 TEST_F(BitcastConvertHloTest, S32to4S8) {
   absl::string_view hlo_string = R"(

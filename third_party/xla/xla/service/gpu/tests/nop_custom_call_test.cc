@@ -18,7 +18,7 @@ limitations under the License.
 
 #include "xla/literal.h"
 #include "xla/literal_util.h"
-#include "xla/tests/hlo_test_base.h"
+#include "xla/tests/hlo_pjrt_test_base.h"
 #include "xla/tests/literal_test_util.h"
 #include "xla/tsl/platform/test.h"
 
@@ -26,7 +26,7 @@ namespace xla {
 namespace gpu {
 namespace {
 
-class NopCustomCallTest : public HloTestBase {};
+class NopCustomCallTest : public HloPjRtTestBase {};
 
 TEST_F(NopCustomCallTest, RunAllocateBufferAndUpdate) {
   // The test uses a custom call with the AllocateBuffer target (also known as

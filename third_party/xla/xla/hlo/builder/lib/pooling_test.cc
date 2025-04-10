@@ -26,7 +26,8 @@ limitations under the License.
 #include "xla/hlo/builder/xla_builder.h"
 #include "xla/shape.h"
 #include "xla/tests/client_library_test_runner_mixin.h"
-#include "xla/tests/hlo_test_base.h"
+#include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
+#include "xla/tests/hlo_pjrt_test_base.h"
 #include "xla/tsl/platform/test.h"
 
 namespace xla {
@@ -69,7 +70,8 @@ std::vector<int64_t> ExpandWithBatchAndFeatureDimensions(
   return tensor_sizes;
 }
 
-using PoolingTest = ClientLibraryTestRunnerMixin<HloTestBase>;
+using PoolingTest = ClientLibraryTestRunnerMixin<
+    HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>>;
 
 TEST_F(PoolingTest, MaxPool2D) {
   XlaBuilder builder(TestName());

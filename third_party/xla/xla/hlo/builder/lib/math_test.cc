@@ -36,7 +36,8 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tests/client_library_test_runner_mixin.h"
-#include "xla/tests/hlo_test_base.h"
+#include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
+#include "xla/tests/hlo_pjrt_test_base.h"
 #include "xla/tests/test_macros.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/test.h"
@@ -48,7 +49,8 @@ namespace {
 
 constexpr ErrorSpec kErrorSpec{0.0001};
 
-using MathTest = ClientLibraryTestRunnerMixin<HloTestBase>;
+using MathTest = ClientLibraryTestRunnerMixin<
+    HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>>;
 
 // Write TYPED_TESTs within the class definition so that we don't have to litter
 // "this->" everywhere.

@@ -15,16 +15,17 @@ limitations under the License.
 
 #include <optional>
 #include <string>
-#include <vector>
 
 #include <gtest/gtest.h>
 #include "xla/error_spec.h"
-#include "xla/tests/hlo_test_base.h"
+#include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
+#include "xla/tests/hlo_pjrt_test_base.h"
 
 namespace xla {
 namespace {
 
-class AlgebraicSimplifierOverflowTest : public HloTestBase {};
+class AlgebraicSimplifierOverflowTest
+    : public HloPjRtInterpreterReferenceMixin<HloPjRtTestBase> {};
 
 // Test that the algebraic simplifier does not generate integer overflows
 // by moving the subtraction to the other side of the comparison

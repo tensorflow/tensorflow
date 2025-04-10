@@ -16,17 +16,12 @@ limitations under the License.
 #ifndef XLA_TESTS_CONV_DEPTHWISE_COMMON_H_
 #define XLA_TESTS_CONV_DEPTHWISE_COMMON_H_
 
-#include <optional>
+#include <cstdint>
+#include <string>
+#include <vector>
 
-#include "xla/execution_options_util.h"
-#include "xla/hlo/builder/xla_computation.h"
+#include <gtest/gtest.h>
 #include "xla/hlo/testlib/test.h"
-#include "xla/hlo/transforms/despecializer.h"
-#include "xla/hlo/transforms/simplifiers/float_normalization.h"
-#include "xla/status_macros.h"
-#include "xla/tests/client_library_test_base.h"
-#include "xla/tests/hlo_test_base.h"
-#include "xla/tests/test_macros.h"
 
 namespace xla {
 std::string GetFloatDataType(bool use_bfloat16);

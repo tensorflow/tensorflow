@@ -38,7 +38,8 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tests/client_library_test_runner_mixin.h"
-#include "xla/tests/hlo_test_base.h"
+#include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
+#include "xla/tests/hlo_pjrt_test_base.h"
 #include "xla/tests/test_macros.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/types.h"
@@ -46,10 +47,13 @@ limitations under the License.
 
 namespace xla {
 
-class SelfAdjointEigTest : public ClientLibraryTestRunnerMixin<HloTestBase> {
+class SelfAdjointEigTest
+    : public ClientLibraryTestRunnerMixin<
+          HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>> {
  protected:
   void SetUp() override {
-    ClientLibraryTestRunnerMixin<HloTestBase>::SetUp();
+    ClientLibraryTestRunnerMixin<
+        HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>>::SetUp();
     batch_3d_4x4_ = Array3D<float>{
         {
             {4, 6, 8, 10},
@@ -280,7 +284,8 @@ Array2D<float> GenerateRandomSymmetricMatrix(int size) {
 }
 
 using EighTestCase = int64_t;
-class RandomEighTest : public ClientLibraryTestRunnerMixin<HloTestBase>,
+class RandomEighTest : public ClientLibraryTestRunnerMixin<
+                           HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>>,
                        public ::testing::WithParamInterface<EighTestCase> {};
 
 XLA_TEST_P(RandomEighTest, Random) {

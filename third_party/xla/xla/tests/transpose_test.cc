@@ -25,7 +25,8 @@ limitations under the License.
 #include "xla/literal_util.h"
 #include "xla/reference_util.h"
 #include "xla/tests/client_library_test_runner_mixin.h"
-#include "xla/tests/hlo_test_base.h"
+#include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
+#include "xla/tests/hlo_pjrt_test_base.h"
 #include "xla/tests/test_macros.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
@@ -36,7 +37,8 @@ namespace {
 
 constexpr ErrorSpec kErrorSpec{0.0001};
 
-class TransposeTest : public ClientLibraryTestRunnerMixin<HloTestBase> {
+class TransposeTest : public ClientLibraryTestRunnerMixin<
+                          HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>> {
  protected:
   void TestTransposeConstant(Vector3 sizes, Vector3 transpose_dims) {
     Array3D<int32_t> aoperand(sizes[0], sizes[1], sizes[2]);
@@ -199,7 +201,7 @@ TEST_F(TransposeTest, TransposeConstant210_DegenerateDim) {
   TestTransposeConstant({20, 30, 1}, {2, 1, 0});
 }
 
-using HloTransposeTest = HloTestBase;
+using HloTransposeTest = HloPjRtTestBase;
 
 // Disable HLO passes to verify the default behavior
 TEST_F(HloTransposeTest, DISABLED_ON_INTERPRETER(DISABLED_ON_GPU(

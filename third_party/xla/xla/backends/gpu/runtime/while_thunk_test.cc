@@ -15,23 +15,33 @@ limitations under the License.
 
 #include "xla/backends/gpu/runtime/while_thunk.h"
 
+#include <cstdint>
 #include <memory>
 #include <optional>
+#include <utility>
+#include <vector>
 
 #include <gtest/gtest.h>
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
+#include "xla/backends/gpu/runtime/sequential_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/executable_run_options.h"
+#include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/testlib/verified_hlo_module.h"
+#include "xla/service/buffer_assignment.h"
+#include "xla/service/gpu/buffer_allocations.h"
 #include "xla/service/platform_util.h"
 #include "xla/service/service_executable_run_options.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor_memory_allocator.h"
-#include "xla/tests/hlo_test_base.h"
-#include "tsl/platform/status_matchers.h"
-#include "tsl/platform/statusor.h"
-#include "tsl/platform/test.h"
+#include "xla/tests/hlo_pjrt_test_base.h"
+#include "xla/tsl/platform/status_matchers.h"
+#include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/platform/test.h"
 
 namespace xla::gpu {
 namespace {
@@ -65,7 +75,7 @@ class IterationLoggerThunk : public Thunk {
 
 // Non-known trip count while thunks are difficult to unit test, so we only have
 // a unit test for the known trip count case.
-class KnownTripCountWhileThunkTest : public HloTestBase {
+class KnownTripCountWhileThunkTest : public HloPjRtTestBase {
  protected:
   absl::StatusOr<const HloInstruction*> CreateFakeWhileInstruction() {
     constexpr absl::string_view kDummyModule = R"(

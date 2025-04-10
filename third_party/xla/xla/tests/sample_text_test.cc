@@ -18,20 +18,19 @@ limitations under the License.
 
 #include <optional>
 #include <string>
-#include <vector>
 
+#include "xla/error_spec.h"
 #include "xla/hlo/testlib/test.h"
-#include "xla/tests/hlo_test_base.h"
-#include "xla/tests/literal_test_util.h"
-#include "xla/tests/test_macros.h"
-#include "xla/types.h"
+#include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
+#include "xla/tests/hlo_pjrt_test_base.h"
 
 namespace xla {
 namespace {
 
 using std::nullopt;
 
-class SampleTextTest : public HloTestBase {};
+class SampleTextTest
+    : public HloPjRtInterpreterReferenceMixin<HloPjRtTestBase> {};
 
 TEST_F(SampleTextTest, Axpy) {
   const std::string& hlo_string = R"(

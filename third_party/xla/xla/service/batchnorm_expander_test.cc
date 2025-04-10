@@ -15,8 +15,8 @@ limitations under the License.
 
 #include "xla/service/batchnorm_expander.h"
 
+#include <cstdint>
 #include <memory>
-#include <utility>
 
 #include "xla/error_spec.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -26,14 +26,16 @@ limitations under the License.
 #include "xla/hlo/testlib/test.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/tests/hlo_test_base.h"
+#include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
+#include "xla/tests/hlo_pjrt_test_base.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
 
-class BatchNormExpanderTest : public HloTestBase {
+class BatchNormExpanderTest
+    : public HloPjRtInterpreterReferenceMixin<HloPjRtTestBase> {
  protected:
   // BatchNorm should have a dynamic sized divider for mean operations.
   int64_t CountGetDimensionSize(const HloModule& module) {

@@ -25,8 +25,8 @@ limitations under the License.
 #include "xla/literal_util.h"
 #include "xla/tests/client_library_test_runner_mixin.h"
 #include "xla/tests/complex_unary_op_samples.h"
-#include "xla/tests/hlo_test_base.h"
-#include "xla/tests/test_macros.h"
+#include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
+#include "xla/tests/hlo_pjrt_test_base.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/xla_data.pb.h"
 
@@ -36,7 +36,9 @@ namespace {
 template <class>
 constexpr bool dependent_false = false;
 
-class ComplexUnaryOpTest : public ClientLibraryTestRunnerMixin<HloTestBase> {
+class ComplexUnaryOpTest
+    : public ClientLibraryTestRunnerMixin<
+          HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>> {
  protected:
   template <typename T, size_t index, typename... Types>
   std::vector<T> get_column(const std::vector<std::tuple<Types...>>& table) {

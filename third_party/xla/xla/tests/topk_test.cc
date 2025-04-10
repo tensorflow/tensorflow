@@ -16,15 +16,16 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/strings/string_view.h"
 #include "xla/error_spec.h"
-#include "xla/tests/hlo_test_base.h"
-#include "xla/tests/test_macros.h"
+#include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
+#include "xla/tests/hlo_pjrt_test_base.h"
+#include "xla/tsl/platform/test.h"
 
 namespace xla {
 namespace {
 
-class TopkTest : public HloTestBase {};
+using TopkTest = HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>;
 
-XLA_TEST_F(TopkTest, LargestTopK) {
+TEST_F(TopkTest, LargestTopK) {
   absl::string_view hlo_text_module = R"(
     HloModule topk
 
@@ -36,7 +37,7 @@ XLA_TEST_F(TopkTest, LargestTopK) {
   EXPECT_TRUE(RunAndCompare(hlo_text_module, ErrorSpec{1e-5, 1e-5}));
 }
 
-XLA_TEST_F(TopkTest, SmallestTopK) {
+TEST_F(TopkTest, SmallestTopK) {
   absl::string_view hlo_text_module = R"(
     HloModule topk
 
@@ -48,7 +49,7 @@ XLA_TEST_F(TopkTest, SmallestTopK) {
   EXPECT_TRUE(RunAndCompare(hlo_text_module, ErrorSpec{1e-5, 1e-5}));
 }
 
-XLA_TEST_F(TopkTest, TopKOfTranspose) {
+TEST_F(TopkTest, TopKOfTranspose) {
   // Regression test for b/362565176
   absl::string_view hlo_text_module = R"(
     HloModule topk
