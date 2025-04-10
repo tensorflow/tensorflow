@@ -455,6 +455,7 @@ absl::Status HloComputation::RemoveParameter(int64_t param_no) {
     HloInstruction* new_instr =
         AddInstructionInternal(HloInstruction::CreateParameter(
             param_no, param_instruction->shape(), StrCat("param_", param_no)));
+    param_instruction->SetupDerivedInstruction(new_instr);
     TF_RETURN_IF_ERROR(param_instruction->ReplaceAllUsesWith(new_instr));
     param_instructions_[param_no] = new_instr;
     TF_RETURN_IF_ERROR(ForceRemoveInstruction(param_instruction));

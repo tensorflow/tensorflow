@@ -21,9 +21,11 @@ limitations under the License.
 #include <vector>
 
 #include <gmock/gmock.h>
+#include <gtest/gtest.h>
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/status.h"
+#include "absl/strings/string_view.h"
 #include "xla/comparison_util.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "xla/hlo/ir/hlo_clone_context.h"
@@ -41,6 +43,7 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/statusor.h"
 #include "tsl/platform/status.h"
 #include "tsl/platform/statusor.h"
 
@@ -1039,6 +1042,35 @@ TEST_F(HloComputationTest, ToStringWhileCreatingReplacements) {
   entry->ForEachInstructionPostOrder(
       [&counter](HloInstruction* instr) { counter++; });
   EXPECT_EQ(counter, entry->instruction_count());
+}
+
+TEST_F(HloComputationTest, RemoveParameterWithBackendConfig) {
+  const absl::string_view hlo = R"(
+ENTRY main {
+  arg.0 = s32[] parameter(0)
+  arg.1 = s32[] parameter(1)
+  ROOT call.0 = (s32[]) call(arg.0, arg.1), to_apply={
+    arg.0 = s32[] parameter(0)
+    arg.1 = s32[] parameter(1), backend_config={"config" : []}
+    ROOT tuple.0 = tuple(arg.1)
+  }
+}
+  )";
+  // Since we remove the called computation parameter, we also need to remove
+  // the operand from the callee, but that's not possible, due to all related
+  // APIs being private/protected, hence the module will be left in an illegal
+  // state and not verifiable.
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnUnverifiedModule(hlo));
+
+  HloInstruction* call0 = module->entry_computation()->root_instruction();
+  ASSERT_EQ(call0->opcode(), HloOpcode::kCall);
+  HloComputation* computation = call0->to_apply();
+  ASSERT_TRUE(!computation->parameter_instruction(0)->has_backend_config());
+  // Parameter 0 is dead and safe to remove.
+  TF_ASSERT_OK(computation->RemoveParameter(0));
+  // Parameter 1 shifted to parameter 0 and should preserve its backend config.
+  EXPECT_TRUE(computation->parameter_instruction(0)->has_backend_config());
 }
 
 }  // namespace
