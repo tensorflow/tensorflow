@@ -1049,9 +1049,20 @@ bool QuantizationDriver::PropagateParamsAndReturnIfChanged() {
          spec->biases_params) {
       const auto& [non_bias_operand_indices, accumulator_scale_func] =
           non_bias_params;
-      const QuantizedType params =
-          GetBiasParams(op, bias_operand_idx, non_bias_operand_indices,
-                        accumulator_scale_func);
+
+      QuantizedType params;
+      if (qdq_conversion_mode_ == quant::QDQConversionMode::kQDQStrict) {
+        // If the model is in QDQ strict mode, we propagate/consider only the
+        // params that are explicitly set. This can be obtained from the
+        // QuantState of the operand at the bias operand index.
+        QuantState& bias_state = GetOperandQuantState(op, bias_operand_idx);
+        params = bias_state.params;
+      } else {
+        // If the model is not in QDQ strict mode, we allow for accumulation of
+        // the bias params from the non-bias operands.
+        params = GetBiasParams(op, bias_operand_idx, non_bias_operand_indices,
+                               accumulator_scale_func);
+      }
       if (!params) {
         quantized_.erase(op);
         continue;
