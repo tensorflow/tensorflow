@@ -2,8 +2,26 @@
 
 load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
 load("//third_party/llvm:workspace.bzl", llvm = "repo")
+load("//third_party/py:python_init_pip.bzl", "python_init_pip")
+load("//third_party/py:python_init_repositories.bzl", "python_init_repositories")
+load("//third_party/py:python_init_rules.bzl", "python_init_rules")
+load("//third_party/py:python_init_toolchains.bzl", "python_init_toolchains")
 
 def workspace():
+    # Initialize hermetic Python
+    python_init_rules()
+    python_init_repositories(
+        requirements = {
+            "3.9": "//:requirements_lock_3_9.txt",
+            "3.10": "//:requirements_lock_3_10.txt",
+            "3.11": "//:requirements_lock_3_11.txt",
+            "3.12": "//:requirements_lock_3_12.txt",
+            "3.13": "//:requirements_lock_3_13.txt",
+        },
+    )
+    python_init_toolchains()
+    python_init_pip()
+
     http_archive(
         name = "io_bazel_rules_closure",
         sha256 = "5b00383d08dd71f28503736db0500b6fb4dda47489ff5fc6bed42557c07c6ba9",

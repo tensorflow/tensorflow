@@ -8,6 +8,7 @@ load("@bazel_skylib//lib:versions.bzl", "versions")
 # Import external repository rules.
 load("@bazel_tools//tools/build_defs/repo:java.bzl", "java_import_external")
 load("@io_bazel_rules_closure//closure:defs.bzl", "filegroup_external")
+load("@pypi//:requirements.bzl", install_pypi_deps = "install_deps")
 load("//third_party:repo.bzl", "tf_http_archive", "tf_mirror_urls")
 
 # Import third party repository rules. See go/tfbr-thirdparty.
@@ -43,6 +44,7 @@ load("//tools/toolchains/remote_config:configs.bzl", "initialize_rbe_configs")
 
 def _initialize_third_party():
     """ Load third party repositories.  See above load() statements. """
+    install_pypi_deps()
     absl()
     benchmark()
     ducc()
