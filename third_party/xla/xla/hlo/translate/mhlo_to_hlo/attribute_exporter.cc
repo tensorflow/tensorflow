@@ -27,6 +27,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/Support/LLVM.h"
 #include "stablehlo/dialect/Base.h"
+#include "stablehlo/dialect/StablehloOps.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
@@ -39,6 +40,35 @@ namespace xla {
 
 ConvolutionDimensionNumbers ConvertConvDimensionNumbers(
     mlir::mhlo::ConvDimensionNumbersAttr input) {
+  ConvolutionDimensionNumbers output;
+
+  output.set_input_batch_dimension(input.getInputBatchDimension());
+  output.set_input_feature_dimension(input.getInputFeatureDimension());
+  for (auto v : input.getInputSpatialDimensions()) {
+    output.add_input_spatial_dimensions(v);
+  }
+
+  output.set_kernel_input_feature_dimension(
+      input.getKernelInputFeatureDimension());
+  output.set_kernel_output_feature_dimension(
+      input.getKernelOutputFeatureDimension());
+
+  for (auto v : input.getKernelSpatialDimensions()) {
+    output.add_kernel_spatial_dimensions(v);
+  }
+
+  output.set_output_batch_dimension(input.getOutputBatchDimension());
+  output.set_output_feature_dimension(input.getOutputFeatureDimension());
+
+  for (auto v : input.getOutputSpatialDimensions()) {
+    output.add_output_spatial_dimensions(v);
+  }
+
+  return output;
+}
+
+ConvolutionDimensionNumbers ConvertConvDimensionNumbers(
+    mlir::stablehlo::ConvDimensionNumbersAttr input) {
   ConvolutionDimensionNumbers output;
 
   output.set_input_batch_dimension(input.getInputBatchDimension());
