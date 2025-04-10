@@ -2699,11 +2699,11 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtGpuExecutable::ExecuteHelper(
   // too far, not for correctness. Placing it before the executable launch
   // allows the inputs for the next executable to be fetched even if the
   // launch is delayed.
-  VLOG(0) << "Going to get compute reservation for " << name() << ": "
+  VLOG(1) << "Going to get compute reservation for " << name() << ": "
           << options.launch_id << "; replica: " << replica;
   auto compute_reservation = std::make_unique<Semaphore::ScopedReservation>(
       device->max_inflight_computations_semaphore().ScopedAcquire(1));
-  VLOG(0) << "Got compute reservation for " << name() << ": "
+  VLOG(1) << "Got compute reservation for " << name() << ": "
           << options.launch_id << "; replica: " << replica;
   auto ffi_context =
       options.context != nullptr ? &options.context->ffi_context() : nullptr;
@@ -2730,7 +2730,7 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtGpuExecutable::ExecuteHelper(
        send_device_memory(std::move(send_device_memory)),
        recv_device_memory(std::move(recv_device_memory)),
        client = client_](std::vector<ExecutionInput> execution_inputs) mutable {
-        VLOG(0) << "execute_fn for " << executable_name << ": " << launch_id
+        VLOG(1) << "execute_fn for " << executable_name << ": " << launch_id
                 << "; replica: " << replica;
         tsl::profiler::TraceMe traceme("execute_fn");
         auto set_error = [&](absl::Status status) {
@@ -2796,7 +2796,7 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtGpuExecutable::ExecuteHelper(
 
         absl::StatusOr<ExecutionOutput> result_buffer_or_status =
             gpu_executable->RunAsync(std::move(execution_inputs), run_options);
-        VLOG(0) << "Replica " << replica << " partition " << partition
+        VLOG(1) << "Replica " << replica << " partition " << partition
                 << " completed; ok=" << result_buffer_or_status.ok();
 
         if (!result_buffer_or_status.ok()) {
