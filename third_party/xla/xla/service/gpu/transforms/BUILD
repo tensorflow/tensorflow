@@ -2081,6 +2081,23 @@ cc_library(
     ],
 )
 
+xla_test(
+    name = "gpusolver_rewriter_test",
+    srcs = ["gpusolver_rewriter_test.cc"],
+    backends = ["gpu"],
+    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]),
+    deps = [
+        ":gpusolver_rewriter",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/testlib:pattern_matcher_gmock",
+        "//xla/service:pattern_matcher",
+        "//xla/service/gpu/tests:gpu_codegen_test",
+        "//xla/stream_executor/cuda:cuda_solver_context",  # fixdeps: keep
+        "//xla/tests:xla_internal_test_main",  # fixdeps: keep
+        "@com_google_googletest//:gtest",
+    ],
+)
+
 cc_library(
     name = "horizontal_input_fusion",
     srcs = ["horizontal_input_fusion.cc"],
