@@ -31,7 +31,7 @@ class CoordinationServiceRpcHandler {
 
   void SetAgentInstance(CoordinationServiceAgent* agent);
 
-  void SetServiceInstance(CoordinationServiceInterface* service);
+  void SetServiceInstance(CoordinationService* service);
 
   void RegisterTaskAsync(const tensorflow::RegisterTaskRequest* request,
                          tensorflow::RegisterTaskResponse* response,
@@ -107,7 +107,7 @@ class CoordinationServiceRpcHandler {
  private:
   absl::Mutex mu_;
   CoordinationServiceAgent* agent_ TF_GUARDED_BY(mu_) = nullptr;
-  CoordinationServiceInterface* service_ TF_GUARDED_BY(mu_) = nullptr;
+  CoordinationService* service_ TF_GUARDED_BY(mu_) = nullptr;
 };
 
 }  // namespace tsl

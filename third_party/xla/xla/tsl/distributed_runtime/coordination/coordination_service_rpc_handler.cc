@@ -48,7 +48,7 @@ void CoordinationServiceRpcHandler::SetAgentInstance(
 }
 
 void CoordinationServiceRpcHandler::SetServiceInstance(
-    CoordinationServiceInterface* service) {
+    CoordinationService* service) {
   absl::MutexLock l(&mu_);
   service_ = service;
 }
@@ -103,6 +103,7 @@ void CoordinationServiceRpcHandler::WaitForAllTasksAsync(
       request->source_task(), request->device_info(),
       [response, service = service_, done = std::move(done)](absl::Status s) {
         if (s.ok()) {
+          service->state_mu_.AssertHeld();
           *response->mutable_device_info() = service->ListClusterDevices();
         }
         done(s);

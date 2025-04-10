@@ -42,11 +42,11 @@ class Env;
 
 // CoordinationServiceAgent defines the interface for tasks to communicate with
 // the coordination service instance (which implements
-// CoordinationServiceInterface). One instance of the agent should be deployed
+// CoordinationService). One instance of the agent should be deployed
 // on each task for it to send various requests and stores / retrieves config
 // key-value data to the service.
 //
-// See CoordinationServiceInterface for more details on coordination service.
+// See CoordinationService for more details on coordination service.
 //
 // All coordination service errors will have an additional
 // CoordinationServiceError payload to distinguish themselves from RPC failures.
